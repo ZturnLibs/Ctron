@@ -1,0 +1,26 @@
+// 03f_slices.ct —— 切片二分(v0.4 §3.1/§3.6/§4.2):T[] 可变视图 / &T[] 只读视图
+// 语义承诺:T[N]→T[] 退化共享后备;写透过视图可见;T[]→&T[] 隐式只读化;根 var 才可写
+
+fn total(xs: &I32[]) -> I32 {
+    var acc: I32 = 0
+    for x in xs { acc += x }
+    return acc
+}
+
+test "fixed array decays to mutable slice view" {
+    var buf: I32[3] = [1, 2, 3]        // 数组字面量 = T[N]
+    assert_eq(buf.len, 3)
+    var view: I32[] = buf             // T[N] → T[]:可变视图,共享后备存储
+    view[1] = 20
+    assert_eq(buf[1], 20)             // 写透过视图对原数组可见
+    assert_eq(view.len, 3)
+}
+
+test "read-only view via implicit T[] -> &T[]" {
+    var buf: I32[3] = [1, 2, 3]
+    var view: I32[] = buf
+    let ro: &I32[] = view             // 只读化:隐式,Send 判定随之改变(§7.4)
+    assert_eq(ro[0], 1)
+    assert_eq(total(view), 6)         // 实参 T[] → 形参 &T[],隐式
+    assert_eq(total(buf), 6)          // 实参 T[N] → 形参 &T[](两级退化链)
+}

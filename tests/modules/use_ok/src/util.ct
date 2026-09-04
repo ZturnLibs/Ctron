@@ -1,0 +1,15 @@
+pub fn double(x: I32) -> I32 {
+    return x * 2
+}
+
+pub(pkg) fn triple(x: I32) -> I32 {   // 包内可见(§2.3)
+    return x * 3
+}
+
+fn private_helper(x: I32) -> I32 {    // 模块私有
+    return x + 1
+}
+
+pub fn via_helper(x: I32) -> I32 {    // 私有仅限本模块文件内使用
+    return private_helper(x) * 10
+}

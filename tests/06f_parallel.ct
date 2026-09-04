@@ -1,0 +1,16 @@
+// 06f_parallel.ct —— 数据并行(§7.7):fork-join + 只读切片入参,与 I/O 任务分离建模
+use std.iter.{parallel}
+
+test "parallel map over read-only slice" {
+    var buf: I32[5] = [1, 2, 3, 4, 5]
+    let doubled = parallel.map(buf, |x| x * 2)     // 闭包推断纯 + 无捕获;入参 &T[]
+    assert_eq(doubled.len, 5)
+    assert_eq(doubled[0], 2)
+    assert_eq(doubled[4], 10)
+}
+
+test "parallel reduce" {
+    var buf: I32[4] = [1, 2, 3, 4]
+    let sum = parallel.reduce(buf, 0, |acc, x| acc + x)
+    assert_eq(sum, 10)
+}

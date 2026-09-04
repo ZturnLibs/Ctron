@@ -12,6 +12,7 @@ ROOT = Path(__file__).parent
 
 # 与 README §4 同步的错误码注册表
 ERROR_CODES = {
+    "E1001": "解析错误(通用语法违规;含比较不可链)",
     "E2010": "类型不匹配",
     "E2020": "未解析的名称",
     "E2030": "match 不穷尽",
@@ -22,6 +23,7 @@ ERROR_CODES = {
     "E3040": "no_alloc 上下文中出现 GC/String 分配",
     "E3050": "own 块内 move/borrow 违规",
     "E3060": "own 块内对 GC 值可变借用",
+    "E4010": "能力使用超出 manifest 声明",
     "E4020": "#[pure] 函数含副作用",
     "E5010": "trait 孤儿规则违规",
     "E5020": "循环依赖",
@@ -62,6 +64,22 @@ def check_file(path: Path) -> list[str]:
         markers.setdefault(key, []).append(value)
 
     has_test_block = 'test "' in path.read_text(encoding="utf-8")
+
+    # 多文件用例(tests/modules/<case>/):类型由标记决定,源码文件跳过
+    in_modules = "modules" in path.relative_to(ROOT).parts
+    if in_modules:
+        if not (path.parent.parent / "Ctron.toml").exists():
+            errors.append("modules 用例缺少 Ctron.toml(项目根)")
+        if markers.get("fail"):
+            kind = "neg"
+        elif markers.get("warn"):
+            kind = "lint"
+        elif markers.get("panic"):
+            kind = "panic"
+        elif has_test_block:
+            kind = "behavior"
+        else:
+            return errors          # 普通源码文件(如 circular/src/b.ct)
 
     # 未知标记键
     for key in markers:

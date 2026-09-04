@@ -1,0 +1,6 @@
+[package]
+name = "app"
+version = "0.1.0"
+
+[caps]
+time = true                           // 只声明了 time,没有 fs

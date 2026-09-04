@@ -68,7 +68,7 @@ impl Clock for FakeClock {
 ## 3.6 隐式转换(完备清单,之外全禁止)
 
 1. `String` → `Str`;
-2. `T[N]` → `T[]`(定长退化切片);
+2. `T[N]` → `T[]`(定长退化切片;**数组字面量 `[a, b, c]` 的直接类型为 `T[N]`**,元素类型按上下文适配);
 3. `T[]` → `&T[]`(切片只读化,Send 判定随之改变,§7.4);
 3. `T` → `T?`(`Some` 包装)、`T` → `Result[T, E]` 仅限 `Ok` 包装于显式构造,不作隐式;
 4. 值 → `&T` / `&Trait`(自动借为只读视图);
@@ -114,6 +114,9 @@ trait:Show Eq Error Cap Clone Hash Iter
 | `List[T]` | `new()` `push(v)` `pop()` `len`(prop);索引 |
 | `Arena` | `array[T](n)` `zeros[T](n)` `list[T]()`;`Arena.fixed(n)`(bare);句柄仅移动(§6.3);`into_gc()`(arena 数据出块唯一入口,§6.3) |
 | `Mutex[T]` | `with(f: fn(&T) -> R) -> R`(只读访问);`with_mut(f: fn(var T) -> R) -> R` |
+| `Atomic[I32]` | `Atomic[I32](init)`;`load()` `store(v)` `fetch_add(d) -> I32`(返回旧值;整数族) |
+| `Global[T]` | `Global[T](name, init)`;`with`/`with_mut` 同 Mutex(§7.6;注册经 manifest 审计) |
+| `Drop` | `fn drop(var self)`;值类型确定性析构(§6.4),作用域退出逆序执行 |
 | `Channel[T]` | `Channel[T](cap) -> (Sender, Receiver)`;`send(v) -> Result` `recv() -> Result`(§7.3) |
 | `Task[T]` | `join() -> T`(panic 重抛);`join_or() -> Result[T, TaskPanic]` |
 | `fmt` | `fmt(parts: Str, values...) -> String`(插值脱糖目标,§4.11;分配) |

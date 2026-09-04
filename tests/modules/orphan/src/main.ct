@@ -1,0 +1,10 @@
+// 孤儿规则(§2.5):trait 与类型至少一方属于当前包
+// Show 与 I32 均来自前奏(std)→ impl 非法
+//@ fail: E5010
+//@ msg: orphan
+
+impl Show for I32 {
+    fn show(&self) -> Str {
+        return "int"
+    }
+}

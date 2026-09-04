@@ -1,0 +1,5 @@
+use app.a.{fa}                         // b → a:与 a.ct 构成模块循环
+
+pub fn helper() -> I32 {
+    return fa() + 1
+}

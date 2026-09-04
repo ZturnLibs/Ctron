@@ -1,0 +1,7 @@
+use app.util.{double, triple, via_helper}   // 组导入 + 全限定路径(§2.2)
+
+test "cross-module use with visibility levels" {
+    assert_eq(double(21), 42)
+    assert_eq(triple(14), 42)          // pub(pkg):同包可用
+    assert_eq(via_helper(4), 50)       // 公开函数内部使用私有函数:合法
+}

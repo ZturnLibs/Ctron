@@ -1,0 +1,7 @@
+// 02d_divzero.panic.ct —— 除零永不关闭检查(§4.5:release 也保留)
+//@ panic: division by zero
+
+test "integer division by zero panics" {
+    let a: I32 = 1
+    let _ = a / 0
+}

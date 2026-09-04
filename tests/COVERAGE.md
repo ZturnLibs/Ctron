@@ -1,4 +1,18 @@
-# 测试覆盖审计(v0.4 规范 ↔ 18 个测试文件)
+# 测试覆盖审计(v0.4 规范 ↔ 测试集)
+
+> **第二批补测已落地(2026-09-04)**:新增 16 个单文件测试 + 5 个多文件模块用例,覆盖从 **48/121(40%)提升到约 92/121(76%)**。下文各章表格为首批审计基线(历史),第二批覆盖项见本节清单;剩余缺口约 18 项,集中在 P2 长尾与需后端的项。
+
+## 第二批补测清单(2026-09-04)
+
+**P0 —— v0.4 新特性:** `03f_slices.ct`(切片二分/T[N] 退化/隐式只读化)、`03g_fn_types.ct`(函数类型/多参闭包)、`06b_slice_nonsend.neg.ct`、`06c_static_nonsend.neg.ct`(E3031)
+**P1 —— 核心语义:** `05d_drop.ct`(RAII 逆序)、`02b_option_propagation.ct`(Option `?`/expect/`T?`/元组变体/块臂)、`04b_logic.ct`(`&&`/`!`/德摩根/`%`符号/复合赋值/遮蔽/range 值/else-if)、`03b_numeric_widths.ct`(宽度全集/进制/分隔/自适应/`as` 截断)、`02d_divzero.panic.ct`、`05b_panic_join.ct`(`panic()`/Never/`join_or`)、`05e_own_gc_mut.neg.ct`(E3060)、`06f_parallel.ct`(数据并行)、`06d_globals.ct`(static let/Global/Atomic)、`06e_cancel.ct`(取消传播)
+**基建:** `01c_parse.neg.ct`(E1001 注册 + 比较不可链)、`tests/modules/` 五例(use_ok 组导入+pub/pub(pkg)、orphan E5010、circular E5020、visibility E2020、caps E4010);README §6/§7 多文件格式与 std 隐式链接规则;前奏表补 Atomic/Global/Drop 行;数组字面量归属(`T[N]`)写入 §3.6。
+
+**仍开放的缺口(第三批,P2/后端):** 字符串转义/插值链/多行链、doc-test 样例、match 字面量与 struct 模式、`prop`/默认方法/超 trait 组合、泛型 struct/bound/`@derive(Show,Eq)`、Str/String 行为、隐式转换全集(String→Str)、W8020、`#[no_alloc]` 契约、ISR(E4030)、comptime 预算(E6010/6020/6030)、`into_gc` 隔离性、`?` 位置链、FFI/Simd/JS 桥(需对应后端)。
+
+---
+
+## 首批审计基线(v0.4 规范 ↔ 18 个测试文件,历史)
 
 方法:逐条对照 `docs/spec/` v0.4 的规范性特性与 `tests/*.ct`,标注 ✅ 已覆盖 / 🟡 部分 / ❌ 未覆盖 / ⛧ 需基建(多文件或后端)。
 统计:**121 项规范性特性中,✅ 48(40%)、🟡 9、❌ 60、⛭ 4**。结论:核心展示路径(Send/own/错误模型/值引用二分)覆盖扎实,**模块系统整章为零、v0.4 新特性大半未测**。

@@ -1,0 +1,18 @@
+// 06e_cancel.ct —— 取消传播(§7.2):兄弟任务失败 → 阻塞中的通道操作以 Err 返回,不悬挂
+// 确定性设计:容量 1 的通道先填满,blocker 的第二次 send 必然阻塞,且永远无接收方
+
+test "cancelled task unblocks with error instead of hanging" {
+    let (tx, rx) = Channel[I32](1)
+    scope { |s|
+        tx.send(1).expect("fill capacity")
+        let blocker = s.spawn(|| {
+            match tx.send(2) {        // 容量满 → 阻塞,等待接收或取消
+                Ok(_)  => 0
+                Err(_) => 1           // 兄弟失败 → 作用域取消 → Err(ScopeCancelled)
+            }
+        })
+        let failer = s.spawn(|| -> I32 { panic("boom") })
+        failer.join_or()              // 捕获失败:触发取消兄弟任务
+        assert_eq(blocker.join(), 1)  // 被取消的阻塞 send 返回失败,不悬挂
+    }
+}

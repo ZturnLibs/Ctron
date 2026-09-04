@@ -1,0 +1,8 @@
+//@ fail: E4010
+//@ msg: fs
+
+use std.fs.Fs
+
+fn read_all(fs: &Fs) -> Void {        // E4010:使用 fs 能力超出 manifest 声明集
+    return void
+}

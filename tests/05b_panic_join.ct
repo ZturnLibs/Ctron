@@ -1,0 +1,21 @@
+// 05b_panic_join.ct —— panic 的类型是 Never;任务 panic 在 join 边界被捕获(§5.5/§7.2)
+
+fn assert_nonzero(n: I32) -> I32 {
+    if n == 0 { panic("zero") }       // panic 返回 Never,参与分支推断
+    return n
+}
+
+test "panic branch has type Never" {
+    assert_eq(assert_nonzero(5), 5)
+}
+
+test "task panic captured by join_or" {
+    let r = scope { |s|
+        let t = s.spawn(|| -> I32 { panic("boom") })
+        t.join_or()                   // Result[I32, TaskPanic]:捕获而非重抛
+    }
+    match r {
+        Err(_) => assert(true)        // 任务 panic 不会静默丢失
+        Ok(_)  => assert(false)
+    }
+}

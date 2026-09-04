@@ -58,6 +58,7 @@
 
 | 码 | 含义 |
 |---|---|
+| E1001 | 解析错误(通用语法违规;含比较不可链) |
 | E2010 | 类型不匹配 |
 | E2020 | 未解析的名称 |
 | E2030 | match 不穷尽 |
@@ -68,6 +69,7 @@
 | E3040 | no_alloc 上下文(own 块/`#[no_alloc]`/bare 档)中出现 GC/String 分配 |
 | E3050 | own 块内 move/borrow 违规(含 use-after-move) |
 | E3060 | own 块内对 GC 值可变借用 |
+| E4010 | 能力使用超出 manifest 声明 |
 | E4020 | `#[pure]` 函数含副作用(能力 I/O) |
 | E5010 | trait 孤儿规则违规 |
 | E5020 | 循环依赖 |
@@ -80,3 +82,15 @@
 
 - **语言规范(`docs/spec/` v0.4)是语义与语法权威**;本目录的"钉子"是测试先行的裁决记录,冲突处以规范为准(规范 v0.4 已吸收全部钉子)。
 - 每个 `*.neg.ct` 是一条类型/并发/内存规则的**可执行反例**;每个 `*.ct` 是一条语义承诺。
+
+## 6. 多文件测试(tests/modules/)
+
+目录即最小包:`tests/modules/<case>/`,须含 `Ctron.toml` 与 `src/*.ct`(入口约定 `src/main.ct`)。
+
+- **入口文件的标记决定类型**:`//@ fail:` → neg、`//@ warn:` → lint、`//@ panic:` → panic;无标记但含 `test` 块 → 行为;**无标记且无 test 块 = 普通源码**(不做标记检查,如 `circular/src/b.ct`)。
+- neg/lint/panic 的判定作用于**整个包**的编译/运行结果;行为用例如常跑 `test` 块。
+- `meta_check.py` 对每个用例校验 `Ctron.toml` 存在性与标记规则。
+
+## 7. std 的可用性
+
+`tests/` 根下的单文件测试隐式链接 std(full 档),可直接 `use std.iter.{parallel}`;modules 用例按各自 `Ctron.toml` 声明(依赖/能力)。

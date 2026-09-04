@@ -1,0 +1,56 @@
+// 02b_option_propagation.ct —— Option 侧的 ? / expect / T? 糖、元组变体、match 块臂
+// 语义承诺:Option-returning 函数内 `?` 提前返回 None;expect 失败即 panic
+
+enum Step {
+    Advance(I32)      // 元组变体
+    Stop
+}
+
+fn next(xs: I32[], i: I32) -> Step {
+    if i < xs.len {
+        return Advance(xs[i])
+    }
+    return Stop
+}
+
+fn first_even(xs: I32[]) -> I32? {
+    for x in xs {
+        if x % 2 == 0 { return Some(x) }
+    }
+    return None
+}
+
+fn half_even(xs: I32[]) -> Option[F64] {
+    let n = first_even(xs)?           // Option `?`:None → 提前 return None
+    return Some(n.as[F64]() / 2.0)
+}
+
+test "option propagation and expect" {
+    var xs: I32[4] = [3, 7, 8, 9]
+    match half_even(xs) {
+        Some(v) => assert_eq(v, 4.0)
+        None    => assert(false)
+    }
+    assert_eq(first_even(xs).expect("no even"), 8)
+    let none: I32[2] = [9, 9]
+    assert_eq(first_even(none).or(-1), -1)
+}
+
+test "tuple variant with block arms and flag loop" {
+    var xs: I32[3] = [5, 6, 7]
+    var total: I32 = 0
+    var i: I32 = 0
+    var go: Bool = true
+    while go {
+        match next(xs, i) {
+            Advance(n) => {
+                total += n
+                i += 1
+            }
+            Stop => {
+                go = false            // 无 break:用标志位收束(§4.6 裁决)
+            }
+        }
+    }
+    assert_eq(total, 18)
+}

@@ -1,0 +1,29 @@
+// 05d_drop.ct —— RAII 确定性析构(§6.4):作用域退出按声明逆序 drop
+// 用 Atomic(共享单元,let 字段不触发 W8010)观察 drop 顺序
+
+struct Ticket {
+    let id: I32
+    let counter: Atomic[I32]     // 共享序号发生器
+    let dropped: Atomic[I32]     // 本 ticket 的 drop 序号写入口
+}
+
+impl Drop for Ticket {
+    fn drop(var self) {
+        let n = self.counter.fetch_add(1)
+        self.dropped.store(n)
+    }
+}
+
+test "drop runs at scope exit in reverse declaration order" {
+    let counter = Atomic[I32](0)
+    let a_dropped = Atomic[I32](-1)
+    let b_dropped = Atomic[I32](-1)
+    {
+        let a = Ticket { id: 1, counter: counter, dropped: a_dropped }
+        let b = Ticket { id: 2, counter: counter, dropped: b_dropped }
+        assert_eq(a_dropped.load(), -1)     // 未离开作用域:未 drop
+        assert_eq(b_dropped.load(), -1)
+    }                                        // 块结束:b 先 drop,a 后 drop(逆序)
+    assert_eq(b_dropped.load(), 0)
+    assert_eq(a_dropped.load(), 1)
+}

@@ -1,0 +1,8 @@
+//@ fail: E2020
+//@ msg: secret
+
+use app.hidden.{secret}               // E2020:secret 未 pub,名字不可解析
+
+fn main() -> I32 {
+    return secret()
+}

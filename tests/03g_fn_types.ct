@@ -1,0 +1,26 @@
+// 03g_fn_types.ct —— 函数类型 fn(...) -> T(v0.4 §3.1/§4.7)
+// 语义承诺:函数类型的参数可接受具名函数与闭包字面量;多参闭包自动适配
+
+fn apply_twice(f: fn(I32) -> I32, x: I32) -> I32 {
+    return f(f(x))
+}
+
+fn double(x: I32) -> I32 {
+    return x * 2
+}
+
+fn combine(f: fn(I32, I32) -> I32, a: I32, b: I32) -> I32 {
+    return f(a, b)
+}
+
+test "named function as fn-typed argument" {
+    assert_eq(apply_twice(double, 5), 20)
+}
+
+test "closure literal adapts to fn type" {
+    assert_eq(apply_twice(|x| x + 3, 5), 11)
+}
+
+test "multi-param closure adapts to fn type" {
+    assert_eq(combine(|a, b| a * 10 + b, 4, 2), 42)
+}

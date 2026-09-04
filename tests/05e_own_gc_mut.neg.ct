@@ -1,0 +1,14 @@
+// 05e_own_gc_mut.neg.ct —— own 块内禁止对 GC 值可变写(§6.3,防跨 GC/own 边界隐藏别名)
+//@ fail: E3060
+//@ msg: mutable
+
+class Acc {
+    var total: I32
+}
+
+fn bad(var acc: Acc) -> I32 {
+    own (arena) {
+        acc.total = 5                 // E3060:own 内对 GC 值可变借用;只读访问合法
+        return acc.total
+    }
+}

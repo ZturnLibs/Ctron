@@ -1,0 +1,9 @@
+// 06c_static_nonsend.neg.ct —— 非 Send 类型不可作静态存储(§7.4 检查点 3)
+//@ fail: E3031
+//@ msg: Send
+
+class Cell {
+    var n: I32                        // var 字段 → Cell 非 Send
+}
+
+static let CELL: Cell = Cell { n: 0 } // E3031:非 Send 静态存储;可变全局唯一路径是 Global[T]

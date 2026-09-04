@@ -1,0 +1,28 @@
+// 03b_numeric_widths.ct —— 数值宽度全集、进制/分隔/自适应字面量、as 显式转换
+// 语义承诺:宽度齐备;窄化 = 截断;字面量在期望类型明确时自适应
+
+test "integer widths and literal forms" {
+    let tiny: I8 = -128
+    let maxi: U16 = 65535
+    let big: U64 = 18_446_744_073_709_551_615      // `_` 分隔
+    let hex: I32 = 0xFF
+    let bin: U8 = 0b1010u8
+    let oct: I32 = 0o17
+    let adapted: USize = 5                        // 期望类型自适应
+    assert_eq(tiny.as[I32](), -128)
+    assert_eq(maxi.as[I32](), 65535)
+    assert_eq(big.as[U32](), 4294967295u32)
+    assert_eq(hex, 255)
+    assert_eq(bin, 10u8)
+    assert_eq(oct, 15)
+    assert_eq(adapted.as[I32](), 5)
+}
+
+test "explicit conversions: widening exact, narrowing truncates" {
+    let wide: I32 = 300
+    assert_eq(wide.as[U8](), 44)                  // 300 mod 256(§3.6 截断语义)
+    let f: F32 = 2.5f32
+    assert_eq(f.as[F64](), 2.5)
+    let d: F64 = 3.5
+    assert_eq(d.as[I32](), 3)                     // 浮点转整数 = 截断
+}

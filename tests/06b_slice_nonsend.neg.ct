@@ -1,0 +1,10 @@
+// 06b_slice_nonsend.neg.ct —— 可变切片恒非 Send(v0.4 §7.4):T[] 不可作通道元素类型
+//@ fail: E3020
+//@ msg: Send
+
+fn make_chan() -> Void {
+    var buf: I32[4] = [1, 2, 3, 4]
+    let view: I32[] = buf             // T[]:可变视图
+    let (tx, rx) = Channel[I32[]](2)  // E3020:T[] 恒非 Send;只读请用 &T[]
+    return void
+}

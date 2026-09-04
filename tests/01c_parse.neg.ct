@@ -1,0 +1,7 @@
+// 01c_parse.neg.ct —— 比较运算符不可链(§4.3):a < b < c 是解析错误,写 a < b && b < c
+//@ fail: E1001
+//@ msg: parse
+
+fn chain(x: I32, y: I32, z: I32) -> Bool {
+    return x < y < z                  // E1001:比较不可链
+}

@@ -1,0 +1,27 @@
+// 06d_globals.ct —— static let(不可变全局)、Global[T](可变全局唯一路径)、Atomic(§7.6)
+// 语义承诺:static let 编译期常量;可变全局必须看得见(Global/Atomic)
+
+static let VERSION: Str = "v1"
+static let LIMIT: I32 = 42
+
+test "static let is an immutable global" {
+    assert_eq(VERSION.len, 2)
+    assert_eq(LIMIT, 42)
+}
+
+test "global is the audited way to mutable global state" {
+    let counter = Global[I32]("counter", 0)
+    counter.with_mut(|var c| {
+        c += 1
+    })
+    let v = counter.with(|c| c)
+    assert_eq(v, 1)
+}
+
+test "atomic integer family" {
+    let n = Atomic[I32](10)
+    assert_eq(n.fetch_add(5), 10)     // 返回旧值
+    assert_eq(n.load(), 15)
+    n.store(0)
+    assert_eq(n.load(), 0)
+}
