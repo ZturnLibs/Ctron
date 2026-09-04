@@ -1,0 +1,80 @@
+# §7 并发
+
+模型:**无色**——没有 async/await 关键字,所有代码一种颜色;可挂起点由编译器与运行时识别。
+
+## 7.1 任务与调度
+
+- `spawn` 启动**轻量任务**(有栈协程);调度 = work-stealing;栈 = **可增长连续栈(拷贝式)**,上限默认 1MB(可配),触顶 = 任务边界 panic;bare 档静态栈 + guard page(溢出 = trap)。
+- 调度器不保证公平性/实时性;硬实时走 bare 档(§9.3)。
+
+## 7.2 结构化并发
+
+```c
+let total = scope { |s|
+    let t = s.spawn(|| compute())
+    t.join()                    // join() -> T;任务 panic 则重抛
+}
+```
+
+- `scope` 是表达式;作用域退出**必然 join 全部子任务**(成功取值/失败传播)。
+- 取消是一等公民:子任务失败 → 取消兄弟任务 → 错误沿作用域树向上传播;取消通过任务级取消令牌实现,阻塞点(通道/锁/睡眠)响应取消。
+- 向已取消作用域的通道操作返回 `Err(ScopeCancelled)`——不 panic、不静默。
+- `join() -> T`:panic 重抛语义;`join_or() -> Result[T, TaskPanic]` 用于显式处理。
+
+## 7.3 通道与共享原语(前奏)
+
+```c
+let (tx, rx) = Channel[T](cap)     // 有界;send/recv -> Result(背压/取消显式)
+let m = Mutex[T](value)            // m.with(|var x| ... ) 独占访问,返回闭包值
+Atomic[I32]                        // 原子整数族(fetch_add 等,stdlib)
+```
+
+- 通道有界默认(容量必填)——背压显式(P5)。
+- `Mutex.with` 保证临界区无遗漏解锁(闭包作用域)。
+
+## 7.4 Send(数据竞争消除的核心机制)
+
+**定义(编译器自动推导,用户不可手工实现)**:
+
+| 类型 | Send 当且仅当 |
+|---|---|
+| 标量/值类型 struct/enum/tuple | 全部字段 Send |
+| `class` | **全部字段为 `let` 且各字段类型 Send**(深度不可变) |
+| 闭包 | 全部捕获 Send |
+| `Mutex[T]` `Atomic[T]` `Global[T]` | 恒 Send(T 任意) |
+| `&Trait` | 按真实具体类型判定(对象携带 Send 位) |
+| 含任一 `var` 字段的类 | **非 Send** |
+
+**强制检查点(三处,编译期硬检查)**:
+
+1. `spawn` 闭包捕获的每个值必须 Send → 违规 E3010;
+2. `Channel[T]`/`Sender[T]`/`Receiver[T]` 的 `T` 必须 Send → 违规 E3020;
+3. 非 Send 类型不可作为全局/静态存储 → E3030 关联规则。
+
+**由此得到的保证**(无 `#[trusted]` 介入):任何被两个任务同时触达的数据要么深度不可变、要么在锁内——**非 Send 实例的全部引用天然被困于单一任务**(无法越界),任务内自由可变无竞争。数据竞争在编译期消除,且无生命周期标注。
+
+与既有语言的关系:同 Rust 的 Send 目标、无生命周期参与、错误机械可修("字段 x 为 var → 加 Mutex 或改 let");同 Swift Sendable 的形态但**硬检查**(无 ObjC 互操作包袱)。
+
+## 7.5 可变访问的任务局部性
+
+- `var self`/`var` 字段的可变使用要求路径独占:由于非 Send 类型不能跨任务,任务内引用即独占(§7.4 保证);可变使用跨任务唯一通道是 `Mutex.with`。
+- 通过 `let` 绑定的可变字段访问 = 编译错误(可变路径必须根为 `var`)。
+
+## 7.6 全局状态
+
+- `static let NAME: T = 常量/纯惰性值`:合法;初始化为 comptime 常量或首次访问的 `#[pure]` 惰性求值(线程安全 once)。
+- **`static var` 不存在**(E3030);可变全局唯一路径:`Global[T]` 显式注册(内部 Mutex),并在 manifest 能力审计中可见(§8.2)。
+
+## 7.7 数据并行(独立建模)
+
+- `parallel.map / reduce / fold`(stdlib,`iter` 模块):fork-join + work-stealing,与 I/O 任务互不混用(Rayon 证据);闭包须 `#[pure]` 且捕获 Send。
+- 自动 SIMD 向量化与分块;确定性模式(§10.4)下分块顺序固定。
+
+## 7.8 web 档差异(规范性)
+
+- 默认单线程事件循环:JS 回调不构建并行竞争——Send 检查按"编译期可判定的近似"执行(共享放开、阻塞禁用);启用 wasm threads 后恢复全量检查。
+- JSPI/栈切换承载任务挂起;语义与 full 档一致(§9.2)。
+
+## 7.9 与测试集的对应
+
+`tests/06_concurrency.ct`(Send 正例/通道/Mutex)、`tests/06_spawn_nonsend.neg.ct`(E3010)、`tests/06_channel_nonsend.neg.ct`(E3020)、`tests/06_static_var.neg.ct`(E3030)。
