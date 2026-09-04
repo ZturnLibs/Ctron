@@ -96,10 +96,77 @@ impl<'src> Lexer<'src> {
     }
 
     fn lex_number(&mut self, start: usize, line: u32, col: u32) -> Token {
-        // Task 4 完成数字;此处先消费数字字符避免误判标点
-        while matches!(self.peek(), Some(c) if c.is_ascii_digit()) { self.bump(); }
-        let text = std::str::from_utf8(&self.src[start..self.pos]).unwrap_or("").to_string();
-        Token { tok: Tok::Int { text, suffix: crate::token::NumSuffix::None }, span: self.mark(start, line, col) }
+        let radix = if self.peek() == Some(b'0') {
+            match self.peek2() {
+                Some(b'x') | Some(b'X') => Some(16),
+                Some(b'o') | Some(b'O') => Some(8),
+                Some(b'b') | Some(b'B') => Some(1), // 1 占位:二进制,见下方统一改写
+                _ => None,
+            }
+        } else { None };
+        if let Some(r) = radix {
+            self.bump(); self.bump();
+            let r = if r == 1 { 2 } else { r };
+            let digits_start = self.pos;
+            while matches!(self.peek(), Some(c) if (c as char).is_digit(r as u32) || c == b'_') {
+                self.bump();
+            }
+            if self.pos == digits_start {
+                let sp = self.mark(start, line, col);
+                self.err("E1001", "进制字面量缺少数字".into(), sp);
+            }
+            // 进制字面量不接受小数点/指数;直接进入后缀
+            let text = self.src[start..self.pos].iter().map(|&b| b as char).collect();
+            let suffix = self.take_suffix();
+            return Token { tok: Tok::Int { text, suffix }, span: self.mark(start, line, col) };
+        }
+        // 十进制整数部分
+        while matches!(self.peek(), Some(c) if c.is_ascii_digit() || c == b'_') { self.bump(); }
+        let mut is_float = false;
+        // 浮点:`.` 后跟数字才是(1..5 是 range;21.double() 是方法)
+        if self.peek() == Some(b'.') && self.peek2().is_some_and(|c| c.is_ascii_digit()) {
+            is_float = true;
+            self.bump();
+            while matches!(self.peek(), Some(c) if c.is_ascii_digit() || c == b'_') { self.bump(); }
+        }
+        // 指数:e/E [+-] 数字
+        if matches!(self.peek(), Some(b'e') | Some(b'E')) {
+            let sign = matches!(self.peek2(), Some(b'+') | Some(b'-'));
+            let digit_after = if sign { self.peek3().is_some_and(|c| c.is_ascii_digit()) }
+                              else { self.peek2().is_some_and(|c| c.is_ascii_digit()) };
+            if digit_after {
+                is_float = true;
+                self.bump();
+                if sign { self.bump(); }
+                while matches!(self.peek(), Some(c) if c.is_ascii_digit() || c == b'_') { self.bump(); }
+            }
+        }
+        let text = self.src[start..self.pos].iter().map(|&b| b as char).collect();
+        let suffix = self.take_suffix();
+        let tok = if is_float { Tok::Float { text, suffix } } else { Tok::Int { text, suffix } };
+        Token { tok, span: self.mark(start, line, col) }
+    }
+
+    fn take_suffix(&mut self) -> crate::token::NumSuffix {
+        use crate::token::NumSuffix::*;
+        const SUFFIXES: [(&str, crate::token::NumSuffix); 12] = [
+            ("i8", I8), ("i16", I16), ("i32", I32), ("i64", I64), ("isize", ISize),
+            ("u8", U8), ("u16", U16), ("u32", U32), ("u64", U64), ("usize", USize),
+            ("f32", F32), ("f64", F64),
+        ];
+        for (s, suff) in SUFFIXES {
+            let n = s.len();
+            if self.src.len() >= self.pos + n
+                && self.src[self.pos..self.pos + n].eq_ignore_ascii_case(s.as_bytes()) {
+                // 后缀必须是完整词(后面不能紧跟标识符字符)
+                let after = self.src.get(self.pos + n).copied();
+                if !matches!(after, Some(c) if c.is_ascii_alphanumeric() || c == b'_') {
+                    for _ in 0..n { self.bump(); }
+                    return suff;
+                }
+            }
+        }
+        None
     }
 
     fn lex_string(&mut self, start: usize, line: u32, col: u32) -> Token {
@@ -278,5 +345,37 @@ mod tests {
         assert!(diags[0].message.contains(';'));
         let (_, diags) = lex("a :: b");
         assert_eq!(diags[0].code, "E1001");
+    }
+
+    #[test]
+    fn number_radix_underscores_and_suffixes() {
+        assert_eq!(kinds("255u8 0xFF 0o17 0b1010 1_000_000 5usize"),
+            vec![Tok::Int { text: "255".into(), suffix: NumSuffix::U8 },
+                 Tok::Int { text: "0xFF".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "0o17".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "0b1010".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "1_000_000".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "5".into(), suffix: NumSuffix::USize },
+                 Tok::Eof]);
+    }
+
+    #[test]
+    fn float_vs_range_disambiguation() {
+        assert_eq!(kinds("1..5 0..=n 2.5 2.5f32 1e3"),
+            vec![Tok::Int { text: "1".into(), suffix: NumSuffix::None }, Tok::DotDot,
+                 Tok::Int { text: "5".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "0".into(), suffix: NumSuffix::None }, Tok::DotDotEq,
+                 Tok::Ident("n".into()),
+                 Tok::Float { text: "2.5".into(), suffix: NumSuffix::None },
+                 Tok::Float { text: "2.5".into(), suffix: NumSuffix::F32 },
+                 Tok::Float { text: "1e3".into(), suffix: NumSuffix::None },
+                 Tok::Eof]);
+    }
+
+    #[test]
+    fn method_call_on_int_literal_is_not_float() {
+        assert_eq!(kinds("21.double()"),
+            vec![Tok::Int { text: "21".into(), suffix: NumSuffix::None }, Tok::Dot,
+                 Tok::Ident("double".into()), Tok::LParen, Tok::RParen, Tok::Eof]);
     }
 }
