@@ -1,0 +1,8 @@
+// 10_web_dom.ct —— stdweb 最小 API 锚定(§9.2 v0.5;web 后端就绪后转绿)
+//@ target: web
+use stdweb.dom
+
+test "dom title roundtrip anchor" {
+    dom.set_title("Ctron")
+    assert_eq(dom.title(), "Ctron")
+}

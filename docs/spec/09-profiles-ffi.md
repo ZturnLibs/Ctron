@@ -15,6 +15,7 @@
 
 - 后端 WasmGC;GC 用宿主;任务挂起经 JSPI/栈切换;wasm threads 启用时恢复全量 Send 检查(§7.8)。
 - JS 桥:类型化(无 `any` 泄漏);JS 异常在边界转为 `Result`;JS 回调按 web 档 Send 近似规则;DOM/Canvas/Fetch 经 `stdweb`。
+- **stdweb 最小 API(v0.5 钉死,P1-D 起可用)**:`use stdweb.dom` 后——`dom.set_title(Str) -> Void`、`dom.title() -> Str`。其余 DOM/Canvas/Fetch 以此模式逐版扩充(锚定测试:`10_web_dom.ct`)。
 
 ## 9.3 bare 档
 
@@ -39,7 +40,12 @@
 
 ## 9.6 FFI 与 `#[trusted]`
 
-- `extern "c"` 函数声明 + `#[trusted]` 标记 = safe 子集外**唯一**入口;包级审计(`ctron lint --trusted`)。
+- `extern "c"` 函数声明 + `#[trusted]` 标记 = safe 子集外**唯一**入口;包级审计(`ctron lint --trusted`)。声明语法(v0.5):
+
+```c
+#[trusted]
+extern "c" fn ctron_add(a: I64, b: I64) -> I64     // 无函数体;定义在 C 侧
+```
 - **C ABI 类型映射**(节选):`I8↔int8_t` `USize↔size_t` `F64↔double` `Bool↔bool(C99)` `T[N]↔T[N]` `T[]↔(ptr,len)`(经包装);struct 按声明布局(`#[repr(c)]` 默认对 FFI 导出)。
 - **所有权三约定**(bindgen 按此生成包装):
   1. `C-owned`:C 分配 C 释放,Ctron 仅调用期借用;

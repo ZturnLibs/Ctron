@@ -42,3 +42,18 @@ test "loops and ranges" {
     while n < 100 { n = n * 3 }
     assert_eq(n, 243)
 }
+
+fn shout(msg: Str) -> Void {                  // 显式 Void 返回(§3.1 单元类型)
+    return void
+}
+
+test "multiline blocks with same-line else" {
+    let n = 5
+    let label = if n > 3 {
+        "big"
+    } else {
+        "small"
+    }                                          // `} else {` 必须同行(§1.6)
+    assert_eq(label, "big")
+    shout("ok")                                // Void 调用可作语句
+}

@@ -1,0 +1,25 @@
+// 10_trace.ct —— `?` 位置链:context 物化为 AnyError.trace(§5.3/§5.4,v0.5 两段式)
+@derive(Error)
+enum Fail {
+    Bad
+}
+
+fn inner() -> Result[I32, Fail] {
+    return Err(Bad)
+}
+
+fn relay() -> Result[I32, AnyError] {
+    let v = inner()?          // `?` 记录调用点;向 AnyError 自动擦除
+    return Ok(v)
+}
+
+test "context materializes the propagation trace" {
+    match relay().context("top") {
+        Err(e) => {
+            assert(e.trace.len > 0)        // 至少一处 file:line
+            assert(e.trace.contains(":"))
+            assert_eq(e.message, "top")
+        }
+        Ok(_) => assert(false)
+    }
+}

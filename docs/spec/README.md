@@ -1,4 +1,4 @@
-# Ctron 语言规范 v0.4
+# Ctron 语言规范 v0.5
 
 状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](../../tests/README.md) 为验收标准。
 
@@ -58,3 +58,9 @@
   10. **EBNF 完整化**(§1.7):`pub(pkg)` 可见性、`@derive`/属性接入类型声明、trait 超trait(`:` Bound)、`PathPattern` 去冗余;§1.8 重写 `IDENT {`(恒构造字面量)与 `IDENT [`(紧跟 `(`/`{` 即泛型实例化)消歧规则。
   11. **E3030 可达性**(§10.1):规定解析器对 `static var` 恢复并产出 E3030(而非 E1xxx)。
   12. **杂项**:`%` 符号随被除数(§4.5);`barer`→`bare` 笔误;ISize/USize 注释归位(§3.1);meta_check 移除未文档化 `profile` 键;测试修复——`06_concurrency.ct` Mutex 用例原断言为调度相关(52/74 恒败),改为读终态;`07_*.ct` 的 `Clock` 标注 `: Cap`。
+
+- **v0.4 → v0.5(2026-09-04,覆盖收尾钉子,目标 = 语言符合性测试 100%)**:
+  1. FFI 语法入规范:`extern` 进关键字表;EBNF `FnDecl` 支持 `"extern" STRING_LIT` 并允许省略函数体;§9.6 附声明示例。
+  2. 错误擦除类型钉死:前奏 `AnyError`(class,实现 Error);`context(msg) -> Result[T, AnyError]`;`?` 向 AnyError 返回型自动擦除(§5.3 "可转换"的唯一内建形态);`Error` trait 增 `prop trace: Str`;位置链改为**记录/物化两段式**(§5.3)。
+  3. 前奏补钉:`Simd[E, N].splat/lane/to_array` + 元素级白名单运算、`Str.contains`;§9.2 钉死 stdweb 最小 API(`dom.set_title/title`)。
+  4. 测试:第四批补齐 Simd/trace/stdweb 锚/FFI(c_src)/`} else {` 排版/显式 Void;`05i_deep_cause.ct` 的 `middle` 签名随 AnyError 设计修正;多文件格式新增 `c_src/` 规则(README §6)。覆盖口径分三层:语言符合性(.ct)= 100%,工具链行为归 compiler 集成测试,性能/体积归 CI 门禁。

@@ -8,7 +8,7 @@ fn leaf() -> Result[I32, Leaf] {
     return Err(Bad)
 }
 
-fn middle() -> Result[I32, Leaf] {
+fn middle() -> Result[I32, AnyError] {
     return leaf().context("middle")
 }
 

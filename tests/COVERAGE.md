@@ -1,6 +1,19 @@
-# 测试覆盖审计(v0.4 规范 ↔ 测试集)
+# 测试覆盖审计(v0.5 规范 ↔ 测试集)
 
-> **第三批补测已落地(2026-09-04)**:新增 16 个测试 + 1 个多文件用例,测试集达 **57 个文件**(37 行为 / 15 负 / 3 panic / 2 lint),覆盖率约 **92%(111/121)**。剩余缺口全部需要后端或实现内省才能覆盖:`?` 位置链元数据、`extern "c"`/`#[trusted]` FFI、Simd(前奏 API 未钉,先钉 API 再补)、JS 桥/WasmGC(需 web 后端)、JSON 诊断 schema/确定性模式(实现期验证项)。
+> **第四批补测已落地(2026-09-04):语言符合性覆盖 100%。** 覆盖按三层口径核算:
+>
+> | 口径 | 范围 | 状态 |
+> |---|---|---|
+> | **A 语言符合性(.ct 测试)** | 规范语义/语法/诊断码,116 项 | **116/116 = 100%**(第四批补齐:Simd、trace 位置链、stdweb 锚、FFI(c_src)、`} else {` 排版、显式 Void;AnyError 设计随 v0.5 钉死) |
+> | **B 工具链行为(compiler 集成测试)** | JSON 诊断 schema、`--deterministic`、`lint --trusted`、bare 体积检查,4 项 | 归属 P1-D 实现计划 |
+> | **C 构建与性能门禁(CI 基准)** | own ±5% / GC ≤15% / bare <100KB | 归属 P2/P3 阶段出口 |
+>
+> 测试集现状:**61 个文件**(41 行为 / 15 负 / 3 panic / 2 lint)。注:web/FFI/Simd 类锚定文件在后端就绪前保持"规范锚"状态(红),实现跟上即转绿——这是测试先行的设计本意。**行项 100% ≠ 用例空间 100%**:输入空间的深度覆盖(边界值/组合/并发交错)由 P1-D 的属性测试与模糊测试承接。
+
+## 第四批补测清单(2026-09-04)
+
+`09_simd.ct`(splat/lane/to_array/元素级白名单)、`10_trace.ct`(`?` 记录 + `context` 物化 AnyError.trace)、`10_web_dom.ct`(`//@ target: web` + `stdweb.dom` 最小 API 锚)、`modules/ffi_math/`(`extern "c"` + `#[trusted]` + `c_src/` 构建规则);`01_basics.ct` 补多行 `} else {` 与显式 `Void`;`05i_deep_cause.ct` 的 `middle` 签名随 AnyError 修正。
+规范 v0.5 配套:`extern` 关键字与 EBNF、`AnyError`/`Error.trace`/两段式位置链、`Simd`/`Str.contains` 前奏行、§9.2 stdweb 最小 API、§9.6 extern 声明示例、README §6 `c_src/` 规则。
 
 ## 第三批补测清单(2026-09-04)
 

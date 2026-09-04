@@ -1,0 +1,8 @@
+// extern "c" + #[trusted]:safe 子集外唯一入口(§9.6);C 源在 c_src/(README §6)
+#[trusted]
+extern "c" fn ctron_add(a: I64, b: I64) -> I64
+
+test "extern c call roundtrip through C source" {
+    assert_eq(ctron_add(40, 2), 42)
+    assert_eq(ctron_add(-1, 1), 0)
+}

@@ -25,7 +25,7 @@ enum Result[T, E] { Ok(T) | Err(E) }
 
 - `expr?` 合法**仅当**所在函数返回 `Result[_, E']`(E 实现且可转换/同一)或 `Option[_]`。
 - 语义:`Err(e)` → 立即 `return Err(转换(e))`;`None` → `return None`。
-- **位置元数据**:每次 `?` 将调用点(文件:行)追加进错误的**位置链**(仅诊断元数据,不改变 `E` 类型);release 可由构建配置关闭采集。错误链用于人审与 agent 修复定位。
+- **位置元数据(记录/物化两段式)**:每次 `?` 将调用点(文件:行)**记录**进位置链(诊断元数据,不改变 `E` 类型,实现可用伴随后设数据);`context` 与顶层失败打印负责**物化**为 `AnyError.trace` / 诊断输出。release 可由构建配置关闭采集。错误链用于人审与 agent 修复定位。
 
 ## 5.4 `Error` trait 与错误链
 
@@ -33,14 +33,17 @@ enum Result[T, E] { Ok(T) | Err(E) }
 trait Error {
     prop message: Str          // 人读摘要
     prop cause: &Error?        // 根因链;无根因为 None
+    prop trace: Str            // 位置链:file:line 以 "; " 连接,默认空(§5.3)
 }
 
 @derive(Error)                  // 为 enum 生成实现(§8.3)
 enum HttpError { Timeout(U64) | BadStatus(I32) }
 ```
 
-- `result.context(str)`:包装错误(新 message,原错误降为 cause),返回同形 `Result`;`?` 传播后链条自动累积。
-- 诊断展示:错误值被 `Show` 时按链输出 `msg … while msg2 … while …(file:line)`。
+- **`AnyError`**(前奏 class,实现 `Error`)是**错误擦除类型**:`message` = 最近上下文,`cause` = 被包装错误,`trace` = 累积位置链。
+- `result.context(msg) -> Result[T, AnyError]`:包装错误并**物化**位置链(message = msg,cause = 原错误,trace 追加当前 file:line)。
+- `?` 向返回 `AnyError` 的函数传播时,任意 `E: Error` **自动擦除转换**(§5.3 "可转换"的唯一内建形态)。
+- 诊断展示:错误值被 `Show` 时按链输出 `msg … while msg2 … while …(trace)`。
 
 ## 5.5 panic
 

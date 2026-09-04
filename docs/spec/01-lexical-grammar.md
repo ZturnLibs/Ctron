@@ -26,7 +26,7 @@
 fn let var const static comptime
 if else match while for in return
 struct class enum trait impl
-own scope test use pub
+own scope test use pub extern
 prop true false void self
 ```
 
@@ -128,8 +128,8 @@ ImplDecl    = "impl" [ TypeParams ] Path [ TypeArgs ] "for" Type
               "{" NEWLINE* { (Method | PropImpl) NEWLINE+ } "}" ;
 
 (* ---------- 函数与测试 ---------- *)
-FnDecl      = { DeclAttr } [ "pub" ] [ "comptime" ] "fn" IDENT [ TypeParams ]
-              "(" ParamList ")" [ "->" Type ] Block ;
+FnDecl      = { DeclAttr } [ "pub" ] [ "comptime" ] [ "extern" STRING_LIT ] "fn" IDENT
+              [ TypeParams ] "(" ParamList ")" [ "->" Type ] [ Block ] ;   (* extern 声明省略 Block,§9.6 *)
 ParamList   = [ Param { "," Param } [ "," ] ] ;
 Param       = Receiver | [ "var" ] IDENT ":" Type ;
 Receiver    = "&" "self" | "var" "self" ;

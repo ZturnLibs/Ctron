@@ -88,8 +88,8 @@ impl Clock for FakeClock {
 
 ```
 类型:Option Result Box List Map Set String Str StringBuilder
-     Channel Sender Receiver Task Scope Mutex Atomic Global Arena Region Pool
-     Simd Never Void Bool 及全部数值类型
+     Channel Sender Receiver Task Scope Mutex Atomic Global AnyError
+     Arena Region Pool Simd Never Void Bool 及全部数值类型
 trait:Show Eq Error Cap Clone Hash Iter
 值/函数:assert assert_eq assert_ne panic expect fmt
 变体:Some None Ok Err true false void
@@ -106,10 +106,12 @@ trait:Show Eq Error Cap Clone Hash Iter
 | `Result[T, E]` | `is_ok` `is_err`(prop);`map(f)` `or(默认)` `expect(msg)` `context(str)`(§5.4) |
 | `Show` | `fn show(&self) -> Str`;`@derive(Show)` 可生成 |
 | `Eq` | `fn eq(&self, other: &self) -> Bool`;`@derive(Eq)` 可生成 |
-| `Error` | `prop message: Str`、`prop cause: &Error?`(§5.4);`@derive(Error)` 可生成 |
+| `Error` | `prop message: Str`、`prop cause: &Error?`、`prop trace: Str`(位置链,默认空,§5.3/§5.4);`@derive(Error)` 可生成 |
+| `AnyError` | 前奏错误擦除类型(class,实现 Error):`context` 的返回错误类型;`?` 向 AnyError 自动擦除(§5.4) |
 | `Cap` | 空标记 trait:**能力 trait 必须继承它**(`trait Clock: Cap`),`#[pure]` 检查以此判定(§8.3);具体类型**无需也无法**单独实现 Cap——它只标注 trait 的类别 |
 | 数值类型 | `as[T]()`(显式转换,窄化=截断,§3.6);`abs()` `min(a,b)` `max(a,b)` |
-| `Str` / `String` | `len`(字节)`char_len`(字符);`slice(range)`(字节切片,须落字符边界,§3.3);`to_string()`(分配,§6.5);`iter()` |
+| `Simd[E, N]` | `Simd[E, N].splat(v)`;`lane(i) -> E`;`to_array() -> E[N]`;`+ - * /` 元素级(运算符白名单,§3.1/§9.5) |
+| `Str` / `String` | `len`(字节)`char_len`(字符);`slice(range)`(字节切片,须落字符边界,§3.3);`contains(s)`;`to_string()`(分配,§6.5);`iter()` |
 | `T[]` / `&T[]` | `len`(prop);`iter()`;索引 `[i]`(§4.5) |
 | `List[T]` | `new()` `push(v)` `pop()` `len`(prop);索引 |
 | `Arena` | `array[T](n)` `zeros[T](n)` `list[T]()`;`Arena.fixed(n)`(bare);句柄仅移动(§6.3);`into_gc()`(arena 数据出块唯一入口,§6.3) |
