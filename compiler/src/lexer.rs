@@ -8,11 +8,13 @@ pub struct Lexer<'src> {
     line: u32,
     col: u32,
     diags: Vec<Diagnostic>,
+    /// 上一个已产出记号是否为 `.`:成员位置的 `or` 是方法名(x.or(默认),§5.2),按 Ident 产出
+    prev_is_dot: bool,
 }
 
 impl<'src> Lexer<'src> {
     pub fn new(src: &'src str) -> Self {
-        Lexer { src: src.as_bytes(), pos: 0, line: 1, col: 1, diags: Vec::new() }
+        Lexer { src: src.as_bytes(), pos: 0, line: 1, col: 1, diags: Vec::new(), prev_is_dot: false }
     }
 
     fn peek(&self) -> Option<u8> { self.src.get(self.pos).copied() }
@@ -51,6 +53,12 @@ impl<'src> Lexer<'src> {
     }
 
     pub fn next_token(&mut self) -> Token {
+        let t = self.next_token_inner();
+        self.prev_is_dot = t.tok == Tok::Dot;
+        t
+    }
+
+    fn next_token_inner(&mut self) -> Token {
         self.skip_inline_trivia();
         let (start, line, col) = (self.pos, self.line, self.col);
         let Some(c) = self.peek() else {
@@ -89,7 +97,9 @@ impl<'src> Lexer<'src> {
             "true" => Tok::True, "false" => Tok::False, "void" => Tok::Void,
             "self" => Tok::SelfKw,
             "_" => Tok::Underscore, // 通配(§1.5);锚定测试 keywords_and_idents
-            "or" => Tok::Or, // 保留运算符字(§1.3);break/continue 等预留字按 Ident 处理,由 parser 拒绝
+            // 保留运算符字(§1.3),但成员位置除外:x.or(默认)(§5.2)按 Ident 产出(锚定测试 newline_rules_1_6);
+            // break/continue 等预留字按 Ident 处理,由 parser 拒绝
+            "or" if !self.prev_is_dot => Tok::Or,
             _ => Tok::Ident(s),
         };
         Token { tok, span: self.mark(start, line, col) }
@@ -502,6 +512,38 @@ mod tests {
         let (_, diags) = lex("\"abc");
         assert_eq!(diags[0].code, "E1001");
         let (_, diags) = lex("\"a\\q\""); // 非法转义
+        assert_eq!(diags[0].code, "E1001");
+    }
+
+    #[test]
+    fn newline_rules_1_6() {
+        // 首点式:换行被吞,是一个表达式
+        assert_eq!(kinds("opt\n    .map(f)\n    .or(0)"),
+            vec![Tok::Ident("opt".into()), Tok::Dot, Tok::Ident("map".into()),
+                 Tok::LParen, Tok::Ident("f".into()), Tok::RParen,
+                 Tok::Dot, Tok::Ident("or".into()), Tok::LParen, Tok::Int { text: "0".into(), suffix: NumSuffix::None }, Tok::RParen,
+                 Tok::Eof]);
+        // 行尾运算符:换行被吞
+        assert_eq!(kinds("let x = 1 +\n    2"),
+            vec![Tok::Let, Tok::Ident("x".into()), Tok::Assign,
+                 Tok::Int { text: "1".into(), suffix: NumSuffix::None }, Tok::Plus,
+                 Tok::Int { text: "2".into(), suffix: NumSuffix::None }, Tok::Eof]);
+        // 普通语句:换行保留;连续空行折叠为一个
+        assert_eq!(kinds("let a = 1\n\n\nlet b = 2"),
+            vec![Tok::Let, Tok::Ident("a".into()), Tok::Assign,
+                 Tok::Int { text: "1".into(), suffix: NumSuffix::None }, Tok::Newline,
+                 Tok::Let, Tok::Ident("b".into()), Tok::Assign,
+                 Tok::Int { text: "2".into(), suffix: NumSuffix::None }, Tok::Eof]);
+        // } else { 同行:行尾是 },换行语义留给 parser;此处验证 token 序列
+        assert_eq!(kinds("} else {"),
+            vec![Tok::RBrace, Tok::Else, Tok::LBrace, Tok::Eof]);
+    }
+
+    #[test]
+    fn backslash_eof_reports_e1001() {
+        // 反斜杠后即文件尾:按未终止字符串处理(锚定该路径)
+        let (_, diags) = lex("\"a\\");
+        assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "E1001");
     }
 }
