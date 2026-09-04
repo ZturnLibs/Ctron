@@ -12,7 +12,8 @@
 | E2030 | match 不穷尽 | §4.6 | `02_match_exhaustive.neg.ct` |
 | E3010 | spawn 捕获非 Send | §7.4 | `06_spawn_nonsend.neg.ct` |
 | E3020 | channel 收发非 Send 类型 | §7.4 | `06_channel_nonsend.neg.ct` |
-| E3030 | `static var` 不存在 | §7.6 | `06_static_var.neg.ct` |
+| E3030 | `static var` 不存在(解析器对 `static var` 做恢复并专门产出本码,而非 E1xxx——对 AI 迭代友好) | §7.6 | `06_static_var.neg.ct` |
+| E3031 | 非 Send 类型作为全局/静态存储 | §7.4 | 预留 |
 | E3040 | no_alloc 上下文出现 GC/String 分配 | §6.5 | `05_own_alloc.neg.ct` / `08_bare_alloc.neg.ct` |
 | E3050 | own 块 move/borrow 违规(含 use-after-move) | §6.3 | `05_own_move.neg.ct` |
 | E3060 | own 块内对 GC 值可变借用 | §6.3 | 预留 |

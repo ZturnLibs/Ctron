@@ -20,19 +20,20 @@
   - 函数/绑定/字段:`snake_case`
   - 常量/静态:`SCREAMING_CASE`
   - 包名:全小写单词
-- **关键字**(不能作标识符):
+- **关键字**(不能作标识符,唯一权威清单):
 
 ```
 fn let var const static comptime
 if else match while for in return
 struct class enum trait impl
 own scope test use pub
-prop as true false void self
-and? (无) — 逻辑与为 &&
+prop true false void self
 ```
 
-  完整清单:`fn let var const static comptime if else match while for in return struct class enum trait impl own scope test use pub prop true false void self`。`or` 不是关键字而是**中缀运算符**(§4.4);`arena`、`Box`、`List`、`String`、`Channel`、`Mutex`、`Arena`、`Option`、`Result` 等是前奏类型/绑定,不是关键字。
-- 保留未用(语法错误):`;` `::` `!`(仅作一元非)`&`(仅出现在类型中)`?`(仅作后缀)。
+- **保留运算符字**(不可作标识符):`or`(取默认中缀,§4.4)。
+- **预留字**(当前为语法错误,为演进保留):`break continue do async await interface module`。
+- `as` **不是关键字**——数值显式转换是数值类型的前奏方法 `x.as[U64]()`(§3.6)。`arena`、`Box`、`List`、`String`、`Channel`、`Mutex`、`Arena`、`Option`、`Result` 等是前奏类型/绑定,不是关键字。
+- 禁用的标点(语法错误):`;` `::`。`!` 仅作一元非;`&` 仅出现在类型中;`?` 仅作后缀。
 
 ## 1.4 字面量
 
@@ -69,11 +70,23 @@ _                    通配
 
 ## 1.6 换行终止规则(语句定界)
 
-Ctron 无分号。**换行是语句/字段/变体/match 臂的终止符**,除非行尾 token 属于延续集:
+Ctron 无分号。**换行是语句/字段/变体/match 臂的终止符**,除非满足以下任一条件:
+
+1. 行尾 token 属于延续集(该行语义未完成):
 
 ```
-,  =  ->  =>  &&  or  ..  ..=  +  -  *  /  %  +%  -%  ==  !=  <  >  <=  >=  (  [  {  |  ?  and.  — 即:行尾语义未完成
+,  =  ->  =>  &&  or  ..  ..=  +  -  *  /  %  +%  -%  ==  !=  <  >  <=  >=  (  [  {  |  ?
 ```
+
+2. **下一行以 `.` 或二元运算符开头**(支持链式调用的"首点排版":
+
+```c
+let y = xs
+    .filter(|x| x > 0)
+    .map(|x| x * 2)
+```
+
+行首 `.` 因此**永远**是前一行表达式的继续,不是新语句的开始;反之,行尾 `.` 不在延续集中,尾点式链式写法非法(统一用首点式,formatter 输出唯一形态)。
 
 - `else` 必须与 `}` 同行:`} else {`。
 - 块内最后一个表达式(块值)后可无换行直接 `}`。
@@ -91,29 +104,31 @@ UseDecl     = "use" Path [ "{" Path { "," Path } [ "," ] "}" ] NEWLINE ;
 Path        = IDENT { "." IDENT } ;
 
 (* ---------- 类型声明 ---------- *)
-StructDecl  = "struct" IDENT [ TypeParams ] "{" NEWLINE* { Field NEWLINE+ } "}" ;
-Field       = [ "pub" ] [ "var" ] IDENT ":" Type ;
-ClassDecl   = "class" IDENT [ TypeParams ] "{" NEWLINE* { ClassItem NEWLINE+ } "}" ;
+StructDecl  = { DeclAttr } "struct" IDENT [ TypeParams ] "{" NEWLINE* { Field NEWLINE+ } "}" ;
+Field       = Visibility [ "var" ] IDENT ":" Type ;
+ClassDecl   = { DeclAttr } "class" IDENT [ TypeParams ] "{" NEWLINE* { ClassItem NEWLINE+ } "}" ;
 ClassItem   = Field | Method ;
-EnumDecl    = "enum" IDENT [ TypeParams ] "{"
+EnumDecl    = { DeclAttr } "enum" IDENT [ TypeParams ] "{"
               NEWLINE* { Variant NEWLINE+ } "}" ;
 Variant     = IDENT [ "(" [ Type { "," Type } ] ")"
                     | "{" Field { NEWLINE+ Field } "}" ] ;
 TypeParams  = "[" TypeParam { "," TypeParam } "]" ;
 TypeParam   = IDENT [ ":" Bound ] | "comptime" IDENT ":" Type ;
 Bound       = Path { "+" Path } ;
+Visibility  = "pub" | "pub" "(" "pkg" ")" ;
 
 (* ---------- trait 与 impl ---------- *)
-TraitDecl   = "trait" IDENT [ TypeParams ] "{" NEWLINE* { TraitItem NEWLINE+ } "}" ;
+TraitDecl   = { DeclAttr } "trait" IDENT [ TypeParams ] [ ":" Bound ]
+              "{" NEWLINE* { TraitItem NEWLINE+ } "}" ;      (* Bound = 超 trait *)
 TraitItem   = Method | PropSig | PropImpl | ConstDecl ;
-Method      = [ "pub" ] "fn" IDENT [ TypeParams ] "(" ParamList ")" [ "->" Type ] Block ;
-PropSig     = [ "pub" ] "prop" IDENT ":" Type ;
-PropImpl    = [ "pub" ] "prop" IDENT ":" Type Block ;
+Method      = Visibility "fn" IDENT [ TypeParams ] "(" ParamList ")" [ "->" Type ] Block ;
+PropSig     = Visibility "prop" IDENT ":" Type ;
+PropImpl    = Visibility "prop" IDENT ":" Type Block ;
 ImplDecl    = "impl" [ TypeParams ] Path [ TypeArgs ] "for" Type
               "{" NEWLINE* { (Method | PropImpl) NEWLINE+ } "}" ;
 
 (* ---------- 函数与测试 ---------- *)
-FnDecl      = { Attribute } [ "pub" ] [ "comptime" ] "fn" IDENT [ TypeParams ]
+FnDecl      = { DeclAttr } [ "pub" ] [ "comptime" ] "fn" IDENT [ TypeParams ]
               "(" ParamList ")" [ "->" Type ] Block ;
 ParamList   = [ Param { "," Param } [ "," ] ] ;
 Param       = Receiver | [ "var" ] IDENT ":" Type ;
@@ -123,9 +138,10 @@ StaticDecl  = "static" "let" IDENT ":" Type "=" Expr NEWLINE ;
 TestDecl    = "test" STRING_LIT Block ;
 
 (* ---------- 属性 ---------- *)
+DeclAttr    = Attribute | DeriveAttr ;            (* 修饰紧随其后的声明 *)
 Attribute   = "#[" IDENT [ "(" AttrArgs ")" ] "]" ;
 AttrArgs    = Expr | IDENT { "," (Expr | IDENT) } ;
-DeriveAttr  = "@derive" "(" Path { "," Path } ")" ;   (* 必须紧邻类型声明 *)
+DeriveAttr  = "@derive" "(" Path { "," Path } ")" ;
 
 (* ---------- 语句 ---------- *)
 Block       = "{" NEWLINE* { (Stmt | Expr) NEWLINE+ } [ Expr NEWLINE* ] "}" ;
@@ -144,7 +160,7 @@ LiteralPattern = INT_LIT | FLOAT_LIT | STRING_LIT | "true" | "false" ;
 TuplePattern = "(" [ Pattern { "," Pattern } ] ")" ;
 AggPattern  = PathPattern [ "(" [ Pattern { "," Pattern } ] ")"
                         | "{" FieldPattern { "," FieldPattern } "}" ] ;
-PathPattern = IDENT { "." IDENT } | IDENT ;   (* 枚举变体 / 具名类型 *)
+PathPattern = IDENT { "." IDENT } ;   (* 枚举变体 / 具名类型 *)
 FieldPattern= IDENT | IDENT ":" Pattern ;
 
 (* ---------- 表达式(按优先级升序,详见 §4.3) ---------- *)
@@ -181,19 +197,21 @@ OwnExpr     = "own" "(" IDENT ")" Block ;
 
 (* ---------- 类型 ---------- *)
 Type        = "&" Type                  (* 共享只读引用 / trait 对象 *)
-            | Type "[" "]"              (* 切片 T[] *)
+            | Type "[" "]"              (* 可变切片视图 T[](§3.1;&T[] 为只读视图) *)
             | Type "[" Expr "]"         (* 定长数组 T[N],N 为 comptime 表达式 *)
             | Type "?"                  (* Option 糖 *)
             | "(" [ Type { "," Type } ] ")"   (* 元组 / 单元 "()")
+            | "fn" "(" [ Type { "," Type } ] ")" [ "->" Type ]   (* 函数类型:仅参数/返回位 *)
             | Path [ TypeArgs ]         (* 命名/泛型类型 *)
             | "self" ;                  (* impl 内指代实现类型 *)
 ```
 
 ## 1.8 语法歧义裁决
 
-- `IDENT {` 后若首个 token 是 `IDENT :` → 结构体/类字面量;否则为块(仅前奏类型名可出现于此形式)。
-- `IDENT [` 在**类型位置**是类型实参,在**表达式位置**是索引;类型位置由解析状态决定,无运行时歧义。
+- **表达式位置的 `IDENT {`**:恒为(具名类型的)构造字面量。裸块只能出现在关键字引导的位置(`fn`/`if`/`else`/`while`/`for`/`own`/`scope`/`match` 臂、闭包体),二者不冲突。
+- **表达式位置的 `IDENT [ ... ]`**:若 `[...]` **紧跟** `(` 或 `{` → 泛型实例化(如 `Channel[I32](4)`、`Box[Point](p)`);否则为索引。由此,对"数组元素为闭包再调用"必须加括号:`(xs[i])(arg)`——解析器无需类型信息即可判定。
 - 泛型用 `[]` 而非 `<>`(消除 `a < b > c` 歧义;规范性裁决,来自测试钉子)。
+- 函数类型 `fn(...) -> T` 仅出现在类型位置;表达式位置 `fn` 是非法 Primary,无歧义。
 
 ## 1.9 与测试集的对应
 

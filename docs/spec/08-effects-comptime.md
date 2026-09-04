@@ -11,7 +11,7 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 
 - 能力是普通值/引用(`&Fs`、`&Clock`),可组合为 trait;测试注入 fake 实现(`FakeClock`),无需 mock 框架。
 - **不做新类型系统/效应关键字**——能力参数即签名即契约;已知代价是深链传递样板,缓解:入口集中构造 + 任务局部传递(编译期可判定,不跨任务,RFC 细化)。
-- 长链传递污染库签名时,能力可打包为上下文 trait(`&Env: Clock + Fs + Log`)。
+- 长链传递污染库签名时,能力可打包为上下文 trait(超 trait 组合):`trait Env: Clock + Fs + Log`——接收 `&Env` 即同时持有三者。
 
 ## 8.2 能力审计
 
@@ -23,13 +23,13 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 
 | 注解 | 语义 | 违规 |
 |---|---|---|
-| `#[pure]` | 无 I/O 能力调用、无 spawn、无全局可变;分配允许(不可观察) | E4020 |
+| `#[pure]` | 无 `&Cap` 能力调用(**能力判定机制**:能力 trait 必须继承前奏标记 `trait Cap`,§3.8.2;对 `&Cap` 接收者的方法调用即非纯)、无 spawn、无全局可变;分配允许(不可观察) | E4020 |
 | `#[no_alloc]` | 函数体内无 GC 分配(§6.5);用于 trait 方法 = 实现契约 | E3040 |
-| `#[no_spawn]` | 函数体内禁止 spawn | E4xxx 专用码 |
+| `#[no_spawn]` | 函数体内禁止 spawn | E4030 |
 | `#[trusted]` | 开放不健全操作(仅 FFI/底层,§9.6);包级可枚举审计 | lint 统计 |
 | `@derive(A, B)` | 声明式代码生成,由沙箱内 derive 插件展开(普通代码,非宏手术) | 插件诊断 |
 
-- 编译器可利用 `#[pure]` 做优化与并行证明(§7.7 数据并行闭包要求 `#[pure]`)。
+- 编译器可利用 `#[pure]` 做优化与并行证明;`parallel.map` 闭包的纯度由**推断**得出(规则同上,§7.7),无需在闭包上书写注解。
 - `#[trusted]` 数量与位置随包发布元数据上报;`ctron lint --trusted` 列出全部信任边界。
 
 ## 8.4 comptime:有边界的编译期执行

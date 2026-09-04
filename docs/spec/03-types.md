@@ -4,8 +4,8 @@
 
 | 种类 | 语法示例 | 语义 |
 |---|---|---|
-| 整数 | `I8 I16 I32 I64 ISize U8 U16 U32 U64 USize` | 定宽;默认检查算术(§4.5) |
-| 浮点 | `F32 F64` | IEEE-754;`ISize/USize` 与目标指针同宽 |
+| 整数 | `I8 I16 I32 I64 ISize U8 U16 U32 U64 USize` | 定宽;默认检查算术(§4.5);`ISize/USize` 与目标指针同宽 |
+| 浮点 | `F32 F64` | IEEE-754 |
 | 布尔 | `Bool` | `true`/`false`;无整数互换 |
 | 字符串借用 | `Str` | 不可变 UTF-8 视图;`.len`(字节) `.char_len`(字符) |
 | 字符串持有 | `String` | GC 堆 UTF-8;隐式降格为 `Str` |
@@ -13,14 +13,15 @@
 | 类 | `class` 声明 | **引用类型**(GC 堆,§6.1) |
 | 枚举 | `enum` 声明 | 判别和(sum type) |
 | 元组 | `(I32, Str)` | 匿名积;`.0 .1` 访问;单元 `()` 类型为 `Void`,值为 `void` |
-| 切片 | `I32[]` | 长度+元素视图;借用语义 |
-| 定长数组 | `I32[3]` | 内联连续;可隐式退化为切片(§3.6) |
+| 切片 | `T[]` | **可变视图**:长度+指针;元素可写仅当绑定根为 `var`(§4.2);**恒非 Send**(§7.4) |
+| 只读切片 | `&T[]` | 只读视图;Send 当且仅当 `T` Send(§7.4);`T[] → &T[]` 隐式(§3.6) |
+| 定长数组 | `I32[3]` | 内联连续值类型;可隐式退化为切片(§3.6) |
 | 定长向量 | `Simd[F32, 8]` | 硬件向量(§9.5) |
 | 可选 | `Option[T]`,糖 `T?` | 无 null(§5.1) |
 | 结果 | `Result[T, E]` | 错误传播载体(§5.1) |
 | 引用 | `&T` / `&Trait` | 共享**只读**视图 / trait 对象(§3.5) |
 | 装箱 | `Box[T]` | 显式 GC 堆单值;访问自动解引用 |
-| 函数 | (仅经闭包/推断使用) | v0.3 无一等函数类型语法(闭包即函数值) |
+| 函数 | `fn(I32) -> Bool` | **函数类型**:仅用于参数/返回类型位置;闭包字面量是该类型的值(§4.7) |
 | 底类型 | `Never` | `panic` 等不返回表达式的类型,可协变于任何期望 |
 
 - **无 `null`、无 `any`、无隐式数值转换、无渐进类型**(P2;拒绝清单)。
@@ -55,6 +56,7 @@ impl Clock for FakeClock {
 - trait 可含默认方法体/默认属性。
 - **属性(`prop`)**:零参只读计算值;必须无副作用(纯读,`#[pure]` 语义);`xs.len`、`e.message` 即属性。
 - **bound**:`fn render[T: Show](x: T)`;bound 组合用 `+`(`T: Hash + Eq`)。
+- **超 trait**:`trait Env: Clock + Fs + Log { ... }`——实现方必须同时实现全部超 trait;能力上下文组合(§8.1)即用此机制。
 - trait 对象:仅 `&Trait`(借用形式,v0.3);动态分发;非 Send 传播按其真实类型判定(对象携带 Send 位,§7.4)。
 
 ## 3.5 引用与 trait 对象
@@ -67,6 +69,7 @@ impl Clock for FakeClock {
 
 1. `String` → `Str`;
 2. `T[N]` → `T[]`(定长退化切片);
+3. `T[]` → `&T[]`(切片只读化,Send 判定随之改变,§7.4);
 3. `T` → `T?`(`Some` 包装)、`T` → `Result[T, E]` 仅限 `Ok` 包装于显式构造,不作隐式;
 4. 值 → `&T` / `&Trait`(自动借为只读视图);
 5. 整数字面量自适应(§3.7)。
@@ -81,16 +84,42 @@ impl Clock for FakeClock {
 
 ## 3.8 标准前奏(隐式可用,无需 `use`)
 
+### 3.8.1 类型与值
+
 ```
 类型:Option Result Box List Map Set String Str StringBuilder
-     Channel Sender Receiver Mutex Atomic Global Arena Region Pool
+     Channel Sender Receiver Task Scope Mutex Atomic Global Arena Region Pool
      Simd Never Void Bool 及全部数值类型
-值/函数:assert assert_eq assert_ne panic expect
+trait:Show Eq Error Cap Clone Hash Iter
+值/函数:assert assert_eq assert_ne panic expect fmt
 变体:Some None Ok Err true false void
 ```
 
 - `Option[T] { Some(T) | None }`、`Result[T, E] { Ok(T) | Err(E) }` 为普通枚举,可 match(§4.6)。
 - 前奏符号可被本地声明遮蔽(lint 提示)。
+
+### 3.8.2 前奏 API 最小清单(规范性:P1 必须提供;扩充走 RFC)
+
+| 类型/trait | 成员(方法 `()` / 属性无括号) |
+|---|---|
+| `Option[T]` | `is_some` `is_none`(prop);`map(f)` `or(默认)` `expect(msg)` |
+| `Result[T, E]` | `is_ok` `is_err`(prop);`map(f)` `or(默认)` `expect(msg)` `context(str)`(§5.4) |
+| `Show` | `fn show(&self) -> Str`;`@derive(Show)` 可生成 |
+| `Eq` | `fn eq(&self, other: &self) -> Bool`;`@derive(Eq)` 可生成 |
+| `Error` | `prop message: Str`、`prop cause: &Error?`(§5.4);`@derive(Error)` 可生成 |
+| `Cap` | 空标记 trait:**能力 trait 必须继承它**(`trait Clock: Cap`),`#[pure]` 检查以此判定(§8.3);具体类型**无需也无法**单独实现 Cap——它只标注 trait 的类别 |
+| 数值类型 | `as[T]()`(显式转换,窄化=截断,§3.6);`abs()` `min(a,b)` `max(a,b)` |
+| `Str` / `String` | `len`(字节)`char_len`(字符);`to_string()`(分配,§6.5);`iter()` |
+| `T[]` / `&T[]` | `len`(prop);`iter()`;索引 `[i]`(§4.5) |
+| `List[T]` | `new()` `push(v)` `pop()` `len`(prop);索引 |
+| `Arena` | `array[T](n)` `zeros[T](n)` `list[T]()`;`Arena.fixed(n)`(bare);句柄仅移动(§6.3);`into_gc()`(arena 数据出块唯一入口,§6.3) |
+| `Mutex[T]` | `with(f: fn(&T) -> R) -> R`(只读访问);`with_mut(f: fn(var T) -> R) -> R` |
+| `Channel[T]` | `Channel[T](cap) -> (Sender, Receiver)`;`send(v) -> Result` `recv() -> Result`(§7.3) |
+| `Task[T]` | `join() -> T`(panic 重抛);`join_or() -> Result[T, TaskPanic]` |
+| `fmt` | `fmt(parts: Str, values...) -> String`(插值脱糖目标,§4.11;分配) |
+
+- 命名冲突裁决:`Mutex.with`(只读)与 `with_mut`(可变)成对——测试钉子 14 的 `m.with(|var a| ...)` 自 v0.4 起统一为 `with_mut`,`with` 仅只读。
+- 本表是**最小集**而非封闭集;stdlib 其余模块(`iter`/`net`/`fs`/...)不属于前奏,需 `use`。
 
 ## 3.9 泛型
 

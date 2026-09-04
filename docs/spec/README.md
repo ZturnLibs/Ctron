@@ -1,4 +1,4 @@
-# Ctron 语言规范 v0.3(P0 冻结草案)
+# Ctron 语言规范 v0.4
 
 状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](../../tests/README.md) 为验收标准。
 
@@ -25,11 +25,11 @@
 | §9 | 档位与互操作 | full/web/bare、目标矩阵、C ABI/FFI、JS 桥 |
 | §10 | 诊断与符合性 | 错误码注册表、JSON 诊断契约、规范↔测试映射、冻结范围 |
 
-## 冻结范围声明(v0.3)
+## 冻结范围声明(v0.4)
 
-以下为**规范性(normative)**,实现必须遵守:§1–§7 全部;§8 的 `#[pure]`/`#[no_alloc]`/`#[no_spawn]` 与 comptime 常量求值;§9 的三档模型与 C ABI 所有权约定;§10 的错误码与诊断 schema。
+以下为**规范性(normative)**,实现必须遵守:§1–§7 全部(含 v0.4 新增的函数类型与切片二分);§8 的 `#[pure]`/`#[no_alloc]`/`#[no_spawn]`、Cap 标记机制与 comptime 常量求值;§9 的三档模型与 C ABI 所有权约定;§10 的错误码与诊断 schema;§3.8.2 前奏 API 最小清单。
 
-以下**预留(non-normative,不阻塞 P1)**:类型级 comptime(类型产出函数,§8.4)、GPU/`kernel` 块、editions 演进细节、Unicode 标识符、raw 字符串、owned trait object(`Box[&Trait]`)、`debug_assert`。
+以下**预留(non-normative,不阻塞 P1)**:类型级 comptime(类型产出函数,§8.4)、GPU/`kernel` 块、editions 演进细节、Unicode 标识符、raw 字符串、owned trait object(`Box[&Trait]`)、`&Trait` 动态 Send 位、`debug_assert`。
 
 ## 术语速查
 
@@ -42,3 +42,19 @@
 | 能力对象 | 显式注入的 I/O 权限值(§8.1) |
 | own 块 | 作用域所有权子集,无 GC 内存(§6.3) |
 | 钉子 | 测试集先于实现钉死的语法裁决(已并入本规范) |
+
+## 修订记录
+
+- **v0.3 → v0.4(2026-09-04,评审修订:表达完备性与三方一致性)**:
+  1. **函数类型**(§3.1/§4.7/EBNF):新增 `fn(Params) -> Ret` 类型语法(仅参数/返回位)——修复"闭包参数类型无法表达、前奏无法声明"的空洞;`Mutex` 拆为 `with`(只读)/`with_mut`(可变)。
+  2. **切片二分**(§3.1/§3.6/§4.2/§7.4):`T[]` 可变视图(根 `var` 可写、**恒非 Send**)/ `&T[]` 只读视图(元素 Send 即 Send),`T[] → &T[]` 隐式;`parallel.map` 入参 `&T[]`——消除"可变视图跨任务"的数据竞争漏洞。
+  3. **`&Trait` Send 保守化**(§7.4):v0.4 恒非 Send(动态 Send 位预留),保住"三检查点全部静态可判"的承诺;非 Send 静态存储独立为 **E3031**。
+  4. **`static let` 三方矛盾消解**(§6.5/§7.6):E3040 强制点收窄为 bare 档;full/web 允许 `#[pure]` 惰性初始化分配。
+  5. **关键字表修正**(§1.3):清除残留行;`as` 非关键字(`.as[U64]()` 合法);`or` 归入保留运算符字;新增预留字清单。
+  6. **换行规则补全**(§1.6):新增"下一行以 `.` 或二元运算符开头则不终止"——多行方法链(首点式)合法,行尾 `.` 非法。
+  7. **德摩根修正**(§4.4):逻辑或的正确写法是 `!(!a && !b)`(原文 `!(a && b)` 为数学错误)。
+  8. **能力判定机制**(§3.8.2/§8.3):前奏标记 `trait Cap`,能力 trait 须继承;`#[pure]` = 无 `&Cap` 调用——E4020 从此可判定;`parallel` 闭包纯度改为推断。
+  9. **前奏 API 最小清单**(§3.8.2,规范性):Option/Result/Show/Eq/Error/Cap/Arena/Mutex/Channel/Task/fmt 等 P1 必备成员;`Task[T]` 补入前奏。
+  10. **EBNF 完整化**(§1.7):`pub(pkg)` 可见性、`@derive`/属性接入类型声明、trait 超trait(`:` Bound)、`PathPattern` 去冗余;§1.8 重写 `IDENT {`(恒构造字面量)与 `IDENT [`(紧跟 `(`/`{` 即泛型实例化)消歧规则。
+  11. **E3030 可达性**(§10.1):规定解析器对 `static var` 恢复并产出 E3030(而非 E1xxx)。
+  12. **杂项**:`%` 符号随被除数(§4.5);`barer`→`bare` 笔误;ISize/USize 注释归位(§3.1);meta_check 移除未文档化 `profile` 键;测试修复——`06_concurrency.ct` Mutex 用例原断言为调度相关(52/74 恒败),改为读终态;`07_*.ct` 的 `Clock` 标注 `: Cap`。

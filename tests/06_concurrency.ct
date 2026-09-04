@@ -40,15 +40,15 @@ test "channel roundtrip in scope" {
 test "mutex shares mutable state across tasks" {
     let total = scope { |s|
         let acc = Mutex[Acc](Acc { total: 0 })
-        let t1 = s.spawn(|| acc.with(|var a| {
+        let t1 = s.spawn(|| acc.with_mut(|var a| {
             a.total += 10
-            a.total
         }))
-        let t2 = s.spawn(|| acc.with(|var a| {
+        let t2 = s.spawn(|| acc.with_mut(|var a| {
             a.total += 32
-            a.total
         }))
-        t1.join() + t2.join()                 // with 串行化,结果确定
+        t1.join()
+        t2.join()
+        acc.with(|a| a.total)               // 读终态:10 + 32 = 42,与调度顺序无关
     }
     assert_eq(total, 42)
 }

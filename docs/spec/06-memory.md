@@ -46,7 +46,7 @@ own (arena) {
 - 推断:函数体直接分配 → `alloc`;调用 `alloc` 函数 → `alloc`;**经 `&Trait` 动态分发不可判定 → 保守 `alloc`**。
 - trait 方法可显式标注 `#[no_alloc]` 作为**契约**:所有实现必须 `no_alloc`(违者 E3040);用于发布"无分配接口"(ISR 回调等)。
 - 属性对用户零书写负担(默认推断),展示于签名文档与 LSP hover(P5)。
-- **强制点**:own 块内、`#[no_alloc]` 函数体、bare 档全部函数、`static let` 初始化 → 调用/出现 `alloc` = E3040。
+- **强制点**:own 块内、`#[no_alloc]` 函数体、bare 档全部函数、**bare 档的 `static let` 初始化** → 调用/出现 `alloc` = E3040。(full/web 档的 `static let` 允许 `#[pure]` 惰性初始化中的分配,§7.6——纯函数分配不可观察,§8.3。)
 
 ## 6.6 `bare` 档内存(§9.3 详述档位)
 

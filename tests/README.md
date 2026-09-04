@@ -48,7 +48,7 @@
 11. **derive 注解** `@derive(Error)`(插件展开)与编译器注解 `#[no_alloc] #[no_spawn] #[pure] #[trusted]` 两族并存。
 12. **错误链**:`Error` trait 含 `.message: Str`、`.cause: Error?`;`result.context(str)` 附加上下文,`?` 自动累积(§4.5 的落地)。
 13. **字符串**:字面量是 `Str`(不可变借用); owned 是 `String`(GC 分配);`s.to_string()` 转换;插值 `"hi {name}"`。
-14. **scope 并发**:`scope { |s| ... }` 是表达式(块值为结果);`s.spawn(closure) -> Task[T]`,`join() -> T`(任务 panic 则重抛);`Channel[T](cap) -> (Sender[T], Receiver[T])`,`send/recv -> Result`(取消作用域返回 `Err(ScopeCancelled)`);`Mutex[T](v)`,`m.with(|var x| ...)` 独占访问。
+14. **scope 并发**:`scope { |s| ... }` 是表达式(块值为结果);`s.spawn(closure) -> Task[T]`,`join() -> T`(任务 panic 则重抛);`Channel[T](cap) -> (Sender[T], Receiver[T])`,`send/recv -> Result`(取消作用域返回 `Err(ScopeCancelled)`);`Mutex[T](v)`:`m.with_mut(|var x| ...)` 独占可变访问、`m.with(|x| ...)` 只读(v0.4 拆分)。
 15. **own 块 API**:`arena.array[T](n) -> T[]`、`arena.zeros[T](n) -> T[]`、`arena.list[T]()`、`.push(x)`、`.into_gc()`;arena 句柄**仅移动**(赋值即 move,再用 = E3050)。
 16. **bare 档**:分配器作参数传递;`Arena.fixed(n)` 构造静态 arena;一切隐式分配 = E3040。
 17. **`static let` 合法,`static var` 不存在**(E3030);可变全局唯一路径是 `Global[T]`(§7.3)。
@@ -64,6 +64,7 @@
 | E3010 | spawn 捕获了非 Send 值 |
 | E3020 | channel 收发非 Send 类型 |
 | E3030 | `static var` 不存在 |
+| E3031 | 非 Send 类型作为全局/静态存储 |
 | E3040 | no_alloc 上下文(own 块/`#[no_alloc]`/bare 档)中出现 GC/String 分配 |
 | E3050 | own 块内 move/borrow 违规(含 use-after-move) |
 | E3060 | own 块内对 GC 值可变借用 |
@@ -75,7 +76,7 @@
 
 (错误码分段:E1xxx 解析;E2xxx 类型;E3xxx 内存/并发;E4xxx 效果;E5xxx 模块;E6xxx comptime;W8xxx lint。新码先加注册表再使用。)
 
-## 5. 与设计文档的关系
+## 5. 与规范的关系
 
-- 设计文档 v0.2 是语义权威;本目录的"钉子"是更具体的语法裁决,**冲突处以钉子为准**,并在规范冻结(v0.3)时合并回文档。
+- **语言规范(`docs/spec/` v0.4)是语义与语法权威**;本目录的"钉子"是测试先行的裁决记录,冲突处以规范为准(规范 v0.4 已吸收全部钉子)。
 - 每个 `*.neg.ct` 是一条类型/并发/内存规则的**可执行反例**;每个 `*.ct` 是一条语义承诺。

@@ -18,6 +18,7 @@ ERROR_CODES = {
     "E3010": "spawn 捕获了非 Send 值",
     "E3020": "channel 收发非 Send 类型",
     "E3030": "static var 不存在",
+    "E3031": "非 Send 类型作为全局/静态存储",
     "E3040": "no_alloc 上下文中出现 GC/String 分配",
     "E3050": "own 块内 move/borrow 违规",
     "E3060": "own 块内对 GC 值可变借用",
@@ -64,7 +65,7 @@ def check_file(path: Path) -> list[str]:
 
     # 未知标记键
     for key in markers:
-        if key not in {"fail", "msg", "warn", "panic", "target", "profile"}:
+        if key not in {"fail", "msg", "warn", "panic", "target"}:
             errors.append(f"未知标记键: //@ {key}:")
     # msg 只配 fail
     if "msg" in markers and "fail" not in markers:

@@ -49,7 +49,7 @@
 
 ## 9.7 产物与工具链(规范性概要)
 
-- 默认静态单二进制;体积口径:barer+core 运行时 < 100KB(硬指标),full 完整运行时 < 1MB(目标)。
+- 默认静态单二进制;体积口径:bare+core 运行时 < 100KB(硬指标),full 完整运行时 < 1MB(目标)。
 - 后端矩阵(全部插件化):Cranelift(dev)/ LLVM(release)/ WasmGC(web)/ Wasm MVP(嵌入式 wasm)/ CVM 解释器(comptime、`ctron run` 脚本、调试)。
 - 一条命令:`ctron build/test/fmt/doc/lint/bench/run/publish/add/target/check`;`ctron check --format=json` 见 §10.2。
 

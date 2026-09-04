@@ -25,7 +25,7 @@ let total = scope { |s|
 
 ```c
 let (tx, rx) = Channel[T](cap)     // 有界;send/recv -> Result(背压/取消显式)
-let m = Mutex[T](value)            // m.with(|var x| ... ) 独占访问,返回闭包值
+let m = Mutex[T](value)            // m.with_mut(|var x| ... ) 独占访问,返回闭包值;m.with(|x| ...) 只读
 Atomic[I32]                        // 原子整数族(fetch_add 等,stdlib)
 ```
 
@@ -38,18 +38,21 @@ Atomic[I32]                        // 原子整数族(fetch_add 等,stdlib)
 
 | 类型 | Send 当且仅当 |
 |---|---|
-| 标量/值类型 struct/enum/tuple | 全部字段 Send |
+| 标量/值类型 struct/enum/tuple/`T[N]` | 全部字段/元素 Send |
 | `class` | **全部字段为 `let` 且各字段类型 Send**(深度不可变) |
-| 闭包 | 全部捕获 Send |
+| 闭包 | **spawn 处按字面捕获逐个检查**(E3010);经 channel/静态存储 = 非 Send(捕获不可知) |
+| `fn(...)` 函数类型的值 | 同闭包:字面处可判,经 channel/静态存储 = 非 Send |
+| `&T[]` 只读切片 / `Str` | 元素类型 Send |
+| `T[]` 可变切片 | **恒非 Send** |
+| `&Trait` | **v0.3 恒非 Send**(保守裁决:具体类型已擦除,静态不可判;动态 Send 位预留 v2) |
 | `Mutex[T]` `Atomic[T]` `Global[T]` | 恒 Send(T 任意) |
-| `&Trait` | 按真实具体类型判定(对象携带 Send 位) |
 | 含任一 `var` 字段的类 | **非 Send** |
 
 **强制检查点(三处,编译期硬检查)**:
 
 1. `spawn` 闭包捕获的每个值必须 Send → 违规 E3010;
 2. `Channel[T]`/`Sender[T]`/`Receiver[T]` 的 `T` 必须 Send → 违规 E3020;
-3. 非 Send 类型不可作为全局/静态存储 → E3030 关联规则。
+3. 非 Send 类型不可作为全局/静态存储 → 违规 **E3031**。
 
 **由此得到的保证**(无 `#[trusted]` 介入):任何被两个任务同时触达的数据要么深度不可变、要么在锁内——**非 Send 实例的全部引用天然被困于单一任务**(无法越界),任务内自由可变无竞争。数据竞争在编译期消除,且无生命周期标注。
 
@@ -62,12 +65,12 @@ Atomic[I32]                        // 原子整数族(fetch_add 等,stdlib)
 
 ## 7.6 全局状态
 
-- `static let NAME: T = 常量/纯惰性值`:合法;初始化为 comptime 常量或首次访问的 `#[pure]` 惰性求值(线程安全 once)。
+- `static let NAME: T = 常量/纯惰性值`:合法;初始化为 comptime 常量,或首次访问的 `#[pure]` 惰性求值(线程安全 once;full/web 档允许其中的纯分配,§6.5)。**bare 档仅允许 comptime 常量**。
 - **`static var` 不存在**(E3030);可变全局唯一路径:`Global[T]` 显式注册(内部 Mutex),并在 manifest 能力审计中可见(§8.2)。
 
 ## 7.7 数据并行(独立建模)
 
-- `parallel.map / reduce / fold`(stdlib,`iter` 模块):fork-join + work-stealing,与 I/O 任务互不混用(Rayon 证据);闭包须 `#[pure]` 且捕获 Send。
+- `parallel.map / reduce / fold`(stdlib,`iter` 模块):fork-join + work-stealing,与 I/O 任务互不混用(Rayon 证据);闭包经**推断纯度**判定(不捕获 `&Cap` 能力、不 spawn、不触全局可变——机制同 §8.3,无需注解语法)且捕获 Send;数据入参为 `&T[]` 只读视图(§3.1)。
 - 自动 SIMD 向量化与分块;确定性模式(§10.4)下分块顺序固定。
 
 ## 7.8 web 档差异(规范性)
