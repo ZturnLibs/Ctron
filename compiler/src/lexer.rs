@@ -256,33 +256,43 @@ impl<'src> Lexer<'src> {
                     }
                 }
                 Some(b'{') => {
-                    // 插值:Text 段在此截断;{} 内原始源字节不解析,原样存入 Interp(§1.4)
-                    if !bytes.is_empty() {
-                        parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
-                        bytes.clear();
-                    }
+                    // 插值:同一行内必须存在配对的 '}'(支持 {} 嵌套深度计数,§1.4);
+                    // 行内未闭合则回退,`{` 按字面字节处理 —— 锚定 tests/01d_strings.ct:
+                    // `assert_eq("\{", "{")` 要求 "{" 即字面 `{`(转义 \{ 是规范写法,裸 { 宽松接受)
+                    let save = (self.pos, self.line, self.col);
                     self.bump(); // {
                     let expr_start = self.pos;
                     let mut depth = 1usize;
+                    let mut terminated = false;
                     while depth > 0 {
                         match self.peek() {
-                            None | Some(b'\n') => {
-                                let sp = self.mark(start, line, col);
-                                self.err("E1001", "未终止的插值".into(), sp);
-                                depth = 0;
-                            }
+                            None | Some(b'\n') => { depth = 0; } // 行内未闭合:不算插值
                             Some(b'{') => { depth += 1; self.bump(); }
                             Some(b'}') => {
                                 depth -= 1;
-                                // 收尾 '}' 不在此消耗:保证 raw 切片不含它,由循环外统一消耗
-                                if depth > 0 { self.bump(); }
+                                // 收尾 '}' 不在此消耗:保证 raw 切片不含它,由下方统一消耗
+                                if depth > 0 { self.bump(); } else { terminated = true; }
                             }
                             Some(_) => { self.bump(); }
                         }
                     }
-                    let raw = String::from_utf8_lossy(&self.src[expr_start..self.pos]).into_owned();
-                    if self.peek() == Some(b'}') { self.bump(); }
-                    parts.push(StrPart::Interp(raw));
+                    if terminated {
+                        // Text 段在此截断;{} 内原始源字节不解析,原样存入 Interp(§1.4)
+                        if !bytes.is_empty() {
+                            parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
+                            bytes.clear();
+                        }
+                        let raw = String::from_utf8_lossy(&self.src[expr_start..self.pos]).into_owned();
+                        self.bump(); // 收尾 '}'
+                        parts.push(StrPart::Interp(raw));
+                    } else {
+                        // 回退到 '{' 之前,按字面 '{' 继续
+                        self.pos = save.0;
+                        self.line = save.1;
+                        self.col = save.2;
+                        self.bump();
+                        bytes.push(b'{');
+                    }
                 }
                 Some(_) => {
                     // 源文件保证 UTF-8;多字节字符逐字节入缓冲,收尾 from_utf8_lossy 重组
@@ -505,6 +515,19 @@ mod tests {
                                        StrPart::Text(" first=".into()), StrPart::Interp("xs[0]".into())] },
                  Tok::Str { parts: vec![StrPart::Text("v=".into()), StrPart::Interp("opt.or(0)".into())] },
                  Tok::Eof]);
+    }
+
+    #[test]
+    fn bare_brace_without_closing_is_literal() {
+        // 锚定 tests/01d_strings.ct:assert_eq("\{", "{")
+        // 行内无配对 '}' 的 '{' 按字面 `{` 处理,零诊断;有配对时仍是插值
+        assert_eq!(kinds("\"{\" \"a{b\" \"len={xs.len}\""),
+            vec![Tok::Str { parts: vec![StrPart::Text("{".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("a{b".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("len=".into()), StrPart::Interp("xs.len".into())] },
+                 Tok::Eof]);
+        let (_, diags) = lex("\"{\"");
+        assert!(diags.is_empty());
     }
 
     #[test]
