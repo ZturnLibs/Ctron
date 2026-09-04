@@ -1,0 +1,31 @@
+// 03_values_refs.ct —— struct 值语义 vs class 引用语义(设计文档 §5.2)
+// 语义承诺:读者看类型名即可预测赋值行为——值拷贝,引用共享
+
+struct Point {
+    var x: I32
+    var y: I32
+}
+
+class Tag {
+    let id: I32
+}
+
+test "struct value semantics" {
+    var a = Point { x: 1, y: 2 }
+    var b = a                                 // 值拷贝
+    b.x = 10                                  // 只改 b,不影响 a
+    assert_eq(a.x, 1)
+    assert_eq(b.x, 10)
+}
+
+test "class reference semantics" {
+    let a = Tag { id: 7 }
+    let b = a                                 // 引用同一实例
+    assert_eq(b.id, 7)
+    assert_eq(a.id, 7)                        // let 字段不可变 → 深度不可变 → Send(§7.2)
+}
+
+test "box is explicit" {
+    let p = Box[Point](Point { x: 3, y: 4 })
+    assert_eq(p.x, 3)                         // Box 字段访问自动解引用
+}

@@ -1,0 +1,9 @@
+// 06_static_var.neg.ct —— static var 不存在(§7.3)
+//@ fail: E3030
+//@ msg: static
+
+static var COUNTER: I32 = 0                   // E3030:可变全局唯一路径是 Global[T]
+
+test "never compiles" {
+    assert_eq(COUNTER, 0)
+}

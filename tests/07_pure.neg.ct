@@ -1,0 +1,12 @@
+// 07_pure.neg.ct —— #[pure] 函数禁止副作用(能力 I/O 即副作用,§6.2)
+//@ fail: E4020
+//@ msg: pure
+
+trait Clock {
+    fn now(&self) -> U64
+}
+
+#[pure]
+fn stamped(c: &Clock) -> U64 {
+    return c.now()                            // E4020:能力调用含 I/O 效果
+}

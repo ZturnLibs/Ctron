@@ -1,0 +1,17 @@
+// 06_channel_nonsend.neg.ct —— channel 收发类型必须 Send(§7.2 强制检查点 2)
+//@ fail: E3020
+//@ msg: Send
+
+class Cell {
+    var n: I32
+}
+
+test "channel element must be Send" {
+    scope { |s|
+        let (tx, rx) = Channel[Cell](4)       // E3020:Cell 非 Send
+        s.spawn(|| {
+            tx.send(Cell { n: 1 }).expect("send")
+        })
+        rx.recv().expect("recv")
+    }
+}

@@ -1,0 +1,33 @@
+// 05_own.ct —— own 块:作用域所有权子集(§5.3)
+// 语义承诺:块内无 GC 分配;arena 句柄仅移动;Copy 值直接出块;大结果须显式 into_gc()
+
+fn sum_slice(xs: I32[]) -> I32 {
+    own (arena) {
+        var acc: I32 = 0
+        for x in xs {
+            acc += x
+        }
+        return acc                            // Copy 值直接出块
+    }
+}
+
+fn evens(n: I32) -> List[I32] {
+    own (arena) {
+        var out = arena.list[I32]()
+        for i in 0..n {
+            if i % 2 == 0 { out.push(i) }
+        }
+        return out.into_gc()                  // arena 数据出块唯一入口:显式 into_gc()(v1 = 深拷贝)
+    }
+}
+
+test "own block local computation" {
+    let xs: I32[] = [1, 2, 3, 4]
+    assert_eq(sum_slice(xs), 10)
+}
+
+test "own build then into_gc" {
+    let xs = evens(10)
+    assert_eq(xs.len, 5)
+    assert_eq(xs[4], 8)
+}

@@ -1,0 +1,14 @@
+// 05_own_alloc.neg.ct —— own 块内禁止 GC 分配(§5.3/§5.4)
+//@ fail: E3040
+//@ msg: allocation
+
+fn gc_string() -> String {
+    return "hello".to_string()                // String 分配在 GC 堆 → 函数分配属性为 alloc
+}
+
+fn bad() -> I32 {
+    own (arena) {
+        let s = gc_string()                   // E3040:GC 分配进入 own 块
+        return 0
+    }
+}

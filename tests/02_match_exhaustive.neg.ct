@@ -1,0 +1,15 @@
+// 02_match_exhaustive.neg.ct —— match 穷尽性是编译期强制(钉子 8)
+// 缺 Rect 分支 → E2030
+//@ fail: E2030
+//@ msg: not exhaustive
+
+enum Shape {
+    Circle { radius: F64 }
+    Rect   { w: F64, h: F64 }
+}
+
+fn area(s: Shape) -> F64 {
+    return match s {
+        Circle { radius } => 3.0 * radius * radius
+    }
+}

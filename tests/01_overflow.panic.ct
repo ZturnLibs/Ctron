@@ -1,0 +1,7 @@
+// 01_overflow.panic.ct —— 默认检查算术:溢出即 panic(钉子 6)
+//@ panic: overflow
+
+test "checked overflow panics" {
+    let m: U8 = 255
+    let _ = m + 1u8                           // 溢出 → panic,消息含 "overflow"
+}

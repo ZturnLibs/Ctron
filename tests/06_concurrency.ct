@@ -1,0 +1,54 @@
+// 06_concurrency.ct —— 结构化并发、通道、Mutex(§7,钉子 14)
+// 语义承诺:深度不可变类可自由跨任务(Send);可变共享仅经 Mutex;scope 块值即结果
+
+class Config {
+    let factor: I32                           // let 字段 → 深度不可变 → Send
+}
+
+class Acc {
+    var total: I32                            // var 字段 → 非 Send,任务封闭;跨任务须经 Mutex
+}
+
+fn scale(c: Config, x: I32) -> I32 {
+    return x * c.factor
+}
+
+test "spawn captures Send (deeply immutable)" {
+    let total = scope { |s|
+        let c = Config { factor: 3 }
+        let t = s.spawn(|| scale(c, 14))      // 捕获 c:Send,编译通过
+        t.join()
+    }
+    assert_eq(total, 42)
+}
+
+test "channel roundtrip in scope" {
+    let sum = scope { |s|
+        let (tx, rx) = Channel[I32](4)        // 有界通道,背压显式
+        s.spawn(|| {
+            for i in 0..4 {
+                tx.send(i * i).expect("send")
+            }
+        })
+        var acc: I32 = 0
+        for _ in 0..4 { acc += rx.recv().expect("recv") }
+        acc
+    }
+    assert_eq(sum, 14)                        // 0+1+4+9
+}
+
+test "mutex shares mutable state across tasks" {
+    let total = scope { |s|
+        let acc = Mutex[Acc](Acc { total: 0 })
+        let t1 = s.spawn(|| acc.with(|var a| {
+            a.total += 10
+            a.total
+        }))
+        let t2 = s.spawn(|| acc.with(|var a| {
+            a.total += 32
+            a.total
+        }))
+        t1.join() + t2.join()                 // with 串行化,结果确定
+    }
+    assert_eq(total, 42)
+}

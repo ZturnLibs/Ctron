@@ -1,0 +1,17 @@
+// 03_shallow_copy.lint.ct —— struct 含可变类引用字段:拷贝浅共享,lint 提示(§5.2 规则)
+//@ warn: W8010
+
+class Cell {
+    var n: I32                                // var 字段 → Cell 非 Send(§7.2)
+}
+
+struct Holder {
+    let c: Cell                               // 引用字段 → Holder 拷贝为浅共享 → W8010
+}
+
+test "shallow copy shares the cell" {
+    let cell = Cell { n: 1 }
+    let h1 = Holder { c: cell }
+    let h2 = h1                               // h1.c 与 h2.c 是同一实例
+    assert_eq(h1.c.n, h2.c.n)
+}

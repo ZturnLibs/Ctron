@@ -1,0 +1,12 @@
+// 05_own_move.neg.ct —— arena 句柄仅移动,use-after-move 编译期拒绝(钉子 15,§5.3)
+//@ fail: E3050
+//@ msg: moved
+
+fn demo() -> I32 {
+    own (arena) {
+        var buf = arena.array[I32](8)
+        let alias = buf                       // move:arena 句柄不可复制
+        buf[0] = 1                            // E3050:use-after-move
+        return alias[0]
+    }
+}

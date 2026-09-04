@@ -1,0 +1,14 @@
+// 06_spawn_nonsend.neg.ct —— spawn 捕获非 Send 值 = 编译错误(§7.2 核心机制)
+//@ fail: E3010
+//@ msg: Send
+
+class Cell {
+    var n: I32                                // var 字段 → Cell 非 Send
+}
+
+test "spawn capture must be Send" {
+    scope { |s|
+        let c = Cell { n: 1 }
+        s.spawn(|| c.n)                       // E3010:捕获非 Send;修复建议:加 Mutex 或传值
+    }
+}

@@ -1,0 +1,9 @@
+// 08_bare_alloc.neg.ct —— bare 档禁止一切隐式 GC/String 分配(§5.6)
+//@ target: bare
+//@ fail: E3040
+//@ msg: allocation
+
+fn sneaky() -> I32 {
+    let s = "abc".to_string()                 // E3040:bare 档无 GC,String 分配被拒绝
+    return 0
+}

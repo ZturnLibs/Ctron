@@ -1,0 +1,25 @@
+// 07_capabilities.ct —— I/O 效果 = 能力对象注入(§6.2)
+// 语义承诺:依赖出现在参数里;测试注入 fake 实现,无需 mock 框架
+
+trait Clock {
+    fn now(&self) -> U64
+}
+
+class FakeClock {
+    let base: U64                             // 不可变 → Send;确定性,无真实时钟
+}
+
+impl Clock for FakeClock {
+    fn now(&self) -> U64 {
+        return self.base
+    }
+}
+
+fn elapsed_since(clock: &Clock, start: U64) -> U64 {
+    return clock.now() - start
+}
+
+test "capability injection via trait object" {
+    let clock = FakeClock { base: 100 }
+    assert_eq(elapsed_since(clock, 58), 42)
+}
