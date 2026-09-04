@@ -1,0 +1,16 @@
+// 05g_into_gc_isolation.ct —— into_gc() v1 语义 = 深拷贝:GC 侧与 arena 原件互不影响(§5.3/§6.3)
+test "into_gc deep-copies: results are independent" {
+    own (arena) {
+        var a = arena.list[I32]()
+        a.push(1)
+        var b = arena.list[I32]()
+        b.push(1)
+        let ga = a.into_gc()
+        let gb = b.into_gc()
+        ga.push(99)                     // 只改 GC 侧 ga
+        assert_eq(ga.len, 2)
+        assert_eq(gb.len, 1)            // 另一个 into_gc 结果不受影响
+        assert_eq(b.len, 1)             // arena 原件不受 GC 侧影响
+        return void
+    }
+}

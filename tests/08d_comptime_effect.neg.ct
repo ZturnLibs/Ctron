@@ -1,0 +1,11 @@
+// 08d_comptime_effect.neg.ct —— comptime 函数为纯语义:能力调用 = E6020(§8.4)
+//@ fail: E6020
+//@ msg: comptime
+
+trait Clock: Cap {
+    fn now(&self) -> U64
+}
+
+comptime fn stamped(c: &Clock) -> U64 {
+    return c.now()                  // E6020:comptime 禁副作用/能力调用
+}

@@ -1,0 +1,8 @@
+//@ fail: E6010
+//@ msg: budget
+
+comptime fn spin(n: I32) -> I32 {
+    return spin(n + 1)              // 无限递归:受 comptime 时间预算约束
+}
+
+const NEVER: I32 = spin(0)          // E6010:超预算(本用例 budget_ms = 10)

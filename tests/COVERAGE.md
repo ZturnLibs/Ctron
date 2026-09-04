@@ -1,14 +1,17 @@
 # 测试覆盖审计(v0.4 规范 ↔ 测试集)
 
-> **第二批补测已落地(2026-09-04)**:新增 16 个单文件测试 + 5 个多文件模块用例,覆盖从 **48/121(40%)提升到约 92/121(76%)**。下文各章表格为首批审计基线(历史),第二批覆盖项见本节清单;剩余缺口约 18 项,集中在 P2 长尾与需后端的项。
+> **第三批补测已落地(2026-09-04)**:新增 16 个测试 + 1 个多文件用例,测试集达 **57 个文件**(37 行为 / 15 负 / 3 panic / 2 lint),覆盖率约 **92%(111/121)**。剩余缺口全部需要后端或实现内省才能覆盖:`?` 位置链元数据、`extern "c"`/`#[trusted]` FFI、Simd(前奏 API 未钉,先钉 API 再补)、JS 桥/WasmGC(需 web 后端)、JSON 诊断 schema/确定性模式(实现期验证项)。
+
+## 第三批补测清单(2026-09-04)
+
+`00_doctest.ct`(doc-test 格式锚)、`01d_strings.ct`(转义/插值链含索引/字节与字符)、`01e_multiline_chain.ct`(§1.6 首点式换行)、`02e_match_patterns.ct`(字面量/struct/变体模式)、`03c_str_string.ct`(Str/String/隐式降格)、`03d_props_traits.ct`(prop/默认方法/超 trait 组合/空 impl)、`03e_generics_types.ct`(泛型 struct+bound+class+`@derive(Show,Eq)`)、`03h_utf8_boundary.panic.ct`、`05f_must_use.lint.ct`(W8020)、`05g_into_gc_isolation.ct`(深拷贝隔离)、`05i_deep_cause.ct`(两层 cause 链)、`06g/06h_noalloc_trait`(`#[no_alloc]` 函数与 trait 契约 E3040)、`08b_nospawn.neg.ct`(E4030)、`08d_comptime_effect.neg.ct`(E6020)、`modules/comptime_budget/`(E6010,首例按 `[comptime] budget_ms` 配置预算)。
+配套:注册 E4030/E6010/E6020;§1.4 插值扩展到索引;前奏 Str 补 `slice(range)`;EBNF `ClassItem` 补 `PropImpl`、`Method` 补 `{ DeclAttr }`(trait 方法上的 `#[no_alloc]` 由此合法)。
 
 ## 第二批补测清单(2026-09-04)
 
 **P0 —— v0.4 新特性:** `03f_slices.ct`(切片二分/T[N] 退化/隐式只读化)、`03g_fn_types.ct`(函数类型/多参闭包)、`06b_slice_nonsend.neg.ct`、`06c_static_nonsend.neg.ct`(E3031)
 **P1 —— 核心语义:** `05d_drop.ct`(RAII 逆序)、`02b_option_propagation.ct`(Option `?`/expect/`T?`/元组变体/块臂)、`04b_logic.ct`(`&&`/`!`/德摩根/`%`符号/复合赋值/遮蔽/range 值/else-if)、`03b_numeric_widths.ct`(宽度全集/进制/分隔/自适应/`as` 截断)、`02d_divzero.panic.ct`、`05b_panic_join.ct`(`panic()`/Never/`join_or`)、`05e_own_gc_mut.neg.ct`(E3060)、`06f_parallel.ct`(数据并行)、`06d_globals.ct`(static let/Global/Atomic)、`06e_cancel.ct`(取消传播)
 **基建:** `01c_parse.neg.ct`(E1001 注册 + 比较不可链)、`tests/modules/` 五例(use_ok 组导入+pub/pub(pkg)、orphan E5010、circular E5020、visibility E2020、caps E4010);README §6/§7 多文件格式与 std 隐式链接规则;前奏表补 Atomic/Global/Drop 行;数组字面量归属(`T[N]`)写入 §3.6。
-
-**仍开放的缺口(第三批,P2/后端):** 字符串转义/插值链/多行链、doc-test 样例、match 字面量与 struct 模式、`prop`/默认方法/超 trait 组合、泛型 struct/bound/`@derive(Show,Eq)`、Str/String 行为、隐式转换全集(String→Str)、W8020、`#[no_alloc]` 契约、ISR(E4030)、comptime 预算(E6010/6020/6030)、`into_gc` 隔离性、`?` 位置链、FFI/Simd/JS 桥(需对应后端)。
 
 ---
 

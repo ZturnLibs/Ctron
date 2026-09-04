@@ -1,0 +1,13 @@
+// 00_doctest.ct —— doc-test 格式锚样例(README §8):/// 注释中的 ```c 围栏块被编译并执行
+/// 返回两数之和。
+///
+/// ```c
+/// assert_eq(add2(40, 2), 42)
+/// ```
+pub fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}
+
+test "doc-test format sample" {
+    assert_eq(add2(1, 2), 3)
+}

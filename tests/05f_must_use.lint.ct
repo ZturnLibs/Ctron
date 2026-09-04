@@ -1,0 +1,14 @@
+// 05f_must_use.lint.ct —— Result/Option 返回值被丢弃 → W8020(§5.6)
+//@ warn: W8020
+
+fn find_even(xs: I32[]) -> I32? {
+    for x in xs {
+        if x % 2 == 0 { return Some(x) }
+    }
+    return None
+}
+
+test "discarded must-use result warns" {
+    find_even([3, 5])           // W8020:结果被丢弃(应 `let _ =` 或处理)
+    assert(true)
+}

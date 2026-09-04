@@ -1,0 +1,17 @@
+// 03c_str_string.ct —— Str(借用,静态存储)vs String(GC 持有);String → Str 隐式
+fn byte_len(s: Str) -> USize {
+    return s.len
+}
+
+test "str literal: bytes vs characters" {
+    let s: Str = "héllo"            // é 为 2 字节
+    assert_eq(s.len, 6)
+    assert_eq(s.char_len, 5)
+}
+
+test "string to str implicit demotion" {
+    let owned = "héllo".to_string()  // String(分配,§6.5)
+    let back: Str = owned            // String → Str 隐式(§3.6)
+    assert_eq(back.len, 6)
+    assert_eq(byte_len(owned), 6)    // 实参 String → 形参 Str,隐式
+}

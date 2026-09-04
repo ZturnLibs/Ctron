@@ -70,9 +70,12 @@
 | E3050 | own 块内 move/borrow 违规(含 use-after-move) |
 | E3060 | own 块内对 GC 值可变借用 |
 | E4010 | 能力使用超出 manifest 声明 |
-| E4020 | `#[pure]` 函数含副作用(能力 I/O) |
+| E4020 | `#[pure]` 函数含副作用 |
+| E4030 | `#[no_spawn]` 上下文 spawn |
 | E5010 | trait 孤儿规则违规 |
 | E5020 | 循环依赖 |
+| E6010 | comptime 预算超限 |
+| E6020 | comptime 副作用/不确定 |
 | W8010 | struct 含可变类引用字段(拷贝为浅共享) |
 | W8020 | must-use 结果被丢弃 |
 
@@ -94,3 +97,7 @@
 ## 7. std 的可用性
 
 `tests/` 根下的单文件测试隐式链接 std(full 档),可直接 `use std.iter.{parallel}`;modules 用例按各自 `Ctron.toml` 声明(依赖/能力)。
+
+## 8. doc-test
+
+`///` 文档注释中的 ```c 围栏代码块会被**编译并执行**(断言失败 = 测试失败),块内可用前奏断言与被文档声明的符号。格式锚样例:`00_doctest.ct`。

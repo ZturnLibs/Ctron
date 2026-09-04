@@ -1,0 +1,6 @@
+[package]
+name = "app"
+version = "0.1.0"
+
+[comptime]
+budget_ms = 10

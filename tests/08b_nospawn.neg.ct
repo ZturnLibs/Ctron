@@ -1,0 +1,12 @@
+// 08b_nospawn.neg.ct —— #[no_spawn] 函数体内禁止 spawn(经作用域闭包传递同样违规)
+//@ fail: E4030
+//@ msg: spawn
+
+#[no_spawn]
+fn handler() -> Void {
+    scope { |s|
+        let t = s.spawn(|| 1)      // E4030:no_spawn 上下文中的 spawn
+        t.join()
+    }
+    return void
+}

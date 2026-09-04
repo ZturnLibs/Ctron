@@ -1,0 +1,7 @@
+// 03h_utf8_boundary.panic.ct —— 字符串切片按字节,必须落在 UTF-8 字符边界(§3.3)
+//@ panic: utf8
+
+test "slicing must land on char boundary" {
+    let s: Str = "héllo"        // é 占字节 1..3
+    let _ = s.slice(1..2)       // 从 é 的中间切开 → panic("invalid utf8 boundary")
+}

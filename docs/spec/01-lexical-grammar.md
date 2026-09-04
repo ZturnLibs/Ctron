@@ -44,7 +44,7 @@ prop true false void self
 - **布尔**:`true` / `false`。
 - **无字符字面量**(`char` 类型不存在;码点迭代经 stdlib 只读 API 返回整数)。
 - **字符串字面量**:双引号;转义 `\n \t \r \\ \" \0 \{ \u{HEX}`;字面量类型为 `Str`(不可变借用,§3.3),存放于静态存储(任何档位可用)。
-  - **插值**:`{` 引入插值表达式,可含标识符、字段/方法链(`{clock.now()}`);字面 `{` 必须写 `\{`。插值串是语法糖,等价于对片段拼接的 `fmt` 调用(§4.6)。
+  - **插值**:`{` 引入插值表达式,可含标识符、字段/属性/方法链与索引(`{clock.now()}`、`{xs[0]}`);字面 `{` 必须写 `\{`。插值串是语法糖,等价于对片段拼接的 `fmt` 调用(§4.6)。
 
 ## 1.5 运算符与标点
 
@@ -107,7 +107,7 @@ Path        = IDENT { "." IDENT } ;
 StructDecl  = { DeclAttr } "struct" IDENT [ TypeParams ] "{" NEWLINE* { Field NEWLINE+ } "}" ;
 Field       = Visibility [ "var" ] IDENT ":" Type ;
 ClassDecl   = { DeclAttr } "class" IDENT [ TypeParams ] "{" NEWLINE* { ClassItem NEWLINE+ } "}" ;
-ClassItem   = Field | Method ;
+ClassItem   = Field | Method | PropImpl ;
 EnumDecl    = { DeclAttr } "enum" IDENT [ TypeParams ] "{"
               NEWLINE* { Variant NEWLINE+ } "}" ;
 Variant     = IDENT [ "(" [ Type { "," Type } ] ")"
@@ -121,7 +121,7 @@ Visibility  = "pub" | "pub" "(" "pkg" ")" ;
 TraitDecl   = { DeclAttr } "trait" IDENT [ TypeParams ] [ ":" Bound ]
               "{" NEWLINE* { TraitItem NEWLINE+ } "}" ;      (* Bound = 超 trait *)
 TraitItem   = Method | PropSig | PropImpl | ConstDecl ;
-Method      = Visibility "fn" IDENT [ TypeParams ] "(" ParamList ")" [ "->" Type ] Block ;
+Method      = { DeclAttr } Visibility "fn" IDENT [ TypeParams ] "(" ParamList ")" [ "->" Type ] Block ;
 PropSig     = Visibility "prop" IDENT ":" Type ;
 PropImpl    = Visibility "prop" IDENT ":" Type Block ;
 ImplDecl    = "impl" [ TypeParams ] Path [ TypeArgs ] "for" Type

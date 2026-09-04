@@ -1,0 +1,40 @@
+// 03d_props_traits.ct —— prop 属性、默认方法体、超 trait 组合(§3.4/§8.1)
+trait Clock: Cap {
+    fn now(&self) -> U64
+}
+
+trait Named: Cap {
+    prop name: Str                   // trait 属性声明
+}
+
+trait Env: Clock + Named {          // 超trait 组合:实现 Env 须先实现两者
+    fn describe(&self) -> Str {     // 默认方法体:可调用超 trait 成员
+        return "{self.name} @ {self.now()}"
+    }
+}
+
+class FakeEnv {
+    let base: U64
+}
+
+impl Clock for FakeEnv {
+    fn now(&self) -> U64 {
+        return self.base
+    }
+}
+
+impl Named for FakeEnv {
+    prop name: Str {
+        return "fake"
+    }
+}
+
+impl Env for FakeEnv {              // describe 用默认体:空 impl 合法
+}
+
+test "props, default methods, supertraits" {
+    let env = FakeEnv { base: 100 }
+    assert_eq(env.now(), 100)
+    assert_eq(env.name, "fake")      // prop:无括号
+    assert_eq(env.describe(), "fake @ 100")
+}

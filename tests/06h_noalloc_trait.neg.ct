@@ -1,0 +1,19 @@
+// 06h_noalloc_trait.neg.ct —— trait 方法的 #[no_alloc] 是实现契约:违者 E3040(§6.5)
+//@ fail: E3040
+//@ msg: allocation
+
+trait Sink {
+    #[no_alloc]
+    fn put(&self, s: Str) -> Void
+}
+
+class HeapSink {
+    let buf: List[Str]
+}
+
+impl Sink for HeapSink {
+    fn put(&self, s: Str) -> Void {
+        self.buf.push(s)            // E3040:List.push 分配,违反 trait 的 no_alloc 契约
+        return void
+    }
+}

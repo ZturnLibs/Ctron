@@ -1,0 +1,23 @@
+// 01e_multiline_chain.ct —— 换行规则 §1.6:下一行以 `.` 开头 → 上一表达式延续(首点式)
+test "leading-dot multiline chain is one expression" {
+    let opt: I32? = Some(21)
+    let v = opt
+        .map(|x| x * 2)
+        .or(0)
+    assert_eq(v, 42)
+}
+
+fn twice(x: I32) -> I32 {
+    return x * 2
+}
+
+fn bump(opt: I32?) -> I32 {
+    return opt          // 函数体内同样适用:首点链跨三行仍是一个表达式
+        .map(twice)
+        .or(-1)
+}
+
+test "multiline chain inside function body" {
+    assert_eq(bump(Some(20)), 40)
+    assert_eq(bump(None), -1)
+}

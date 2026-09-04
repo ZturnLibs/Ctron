@@ -1,0 +1,14 @@
+// 06g_noalloc_trait.ct —— #[no_alloc] 函数可在 own 块内调用(分配属性,§6.5)
+#[no_alloc]
+fn sum(xs: &I32[]) -> I32 {
+    var acc: I32 = 0
+    for x in xs { acc += x }
+    return acc
+}
+
+test "no_alloc function is callable inside own block" {
+    var buf: I32[3] = [1, 2, 3]
+    own (arena) {
+        assert_eq(sum(buf), 6)      // 合法:sum 声明 no_alloc,无 E3040
+    }
+}

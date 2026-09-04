@@ -1,0 +1,35 @@
+// 03e_generics_types.ct —— 泛型 struct/class、类型参数 bound、@derive(Show, Eq)
+@derive(Show, Eq)
+struct Pixel {
+    let x: I32
+    let y: I32
+}
+
+struct Pair[A: Show + Eq, B: Show + Eq] {   // 类型参数带 bound
+    let first: A
+    let second: B
+}
+
+class Ref[T] {                               // 泛型 class(深度不可变 → Send)
+    let v: T
+}
+
+fn render[T: Show](v: T) -> Str {
+    return v.show()
+}
+
+test "generic struct with bounds and derive" {
+    let p = Pair { first: Pixel { x: 1, y: 2 }, second: Pixel { x: 3, y: 4 } }
+    assert(render(p.second).len > 0)         // derive(Show) 格式不钉死,断言非空
+    assert_eq(p.second.x, 3)
+}
+
+test "generic class" {
+    let r = Ref { v: 5 }
+    assert_eq(r.v, 5)
+}
+
+test "generic function with bound" {
+    let px = Pixel { x: 1, y: 2 }
+    assert_eq(render(px).len > 0, true)
+}

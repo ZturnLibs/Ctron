@@ -1,0 +1,25 @@
+// 05i_deep_cause.ct —— 两层 context 包装的 cause 链(§5.4)
+@derive(Error)
+enum Leaf {
+    Bad
+}
+
+fn leaf() -> Result[I32, Leaf] {
+    return Err(Bad)
+}
+
+fn middle() -> Result[I32, Leaf] {
+    return leaf().context("middle")
+}
+
+test "two-layer cause chain" {
+    let r = middle().context("outer")
+    match r {
+        Err(e) => {
+            assert_eq(e.message, "outer")
+            let mid = e.cause.expect("layer 1")     // cause: &Error? → &Error
+            assert_eq(mid.message, "middle")
+        }
+        Ok(_) => assert(false)
+    }
+}

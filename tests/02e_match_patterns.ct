@@ -1,0 +1,44 @@
+// 02e_match_patterns.ct —— 字面量模式、struct 模式、Option 变体模式(§4.6)
+struct Pt {
+    var x: I32
+    var y: I32
+}
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn name(c: Color, n: I32) -> Str {
+    return match c {
+        Red   => "red"
+        Green => "green"
+        Blue  => if n > 0 { "blue+" } else { "blue" }
+    }
+}
+
+test "literal patterns with wildcard" {
+    match 7 {
+        0 => assert(false)
+        7 => assert(true)
+        _ => assert(false)
+    }
+}
+
+test "struct pattern binds fields" {
+    let p = Pt { x: 1, y: 2 }
+    match p {
+        Pt { x, y } => assert_eq(x + y, 3)
+    }
+}
+
+test "enum unit variants and nested match arms" {
+    assert_eq(name(Green, 0), "green")
+    assert_eq(name(Blue, 5), "blue+")
+    let opt: I32? = Some(5)
+    match opt {
+        Some(v) => assert_eq(v, 5)
+        None    => assert(false)
+    }
+}
