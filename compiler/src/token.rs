@@ -22,7 +22,7 @@ pub enum Tok {
     // 名字与关键字(§1.3 唯一权威清单)
     Ident(String),
     Fn, Let, Var, Const, Static, Comptime, If, Else, Match, While, For, In,
-    Return, Struct, Class, Enum, Trait, Impl, Own, Scope, Test, Use, Pub,
+    Return, Struct, Class, Enum, Trait, Impl, Own, Scope, Test, Use, Pub, Extern,
     Prop, True, False, Void, SelfKw,
     // 运算符与标点(§1.5)
     Plus, Minus, Star, Slash, Percent, WrapPlus, WrapMinus,
