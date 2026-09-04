@@ -170,17 +170,114 @@ impl<'src> Lexer<'src> {
     }
 
     fn lex_string(&mut self, start: usize, line: u32, col: u32) -> Token {
+        use crate::token::StrPart;
         self.bump(); // 开引号
-        let mut text = String::new();
+        let mut parts: Vec<StrPart> = Vec::new();
+        // 按字节收集、收尾统一 from_utf8_lossy:多字节 UTF-8 字符逐字节复制后重组,不会损坏(§1.4)
+        let mut bytes: Vec<u8> = Vec::new();
         let tok = loop {
             match self.peek() {
                 None | Some(b'\n') => {
+                    if !bytes.is_empty() {
+                        parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
+                    }
                     let sp = self.mark(start, line, col);
                     self.err("E1001", "未终止的字符串(不允许跨行)".into(), sp);
-                    break Tok::Str { parts: vec![crate::token::StrPart::Text(text)] };
+                    break Tok::Str { parts };
                 }
-                Some(b'"') => { self.bump(); break Tok::Str { parts: vec![crate::token::StrPart::Text(text)] }; }
-                Some(_) => { text.push(self.bump().unwrap() as char); }
+                Some(b'"') => {
+                    self.bump();
+                    if !bytes.is_empty() {
+                        parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
+                    }
+                    break Tok::Str { parts };
+                }
+                Some(b'\\') => {
+                    self.bump();
+                    let Some(esc) = self.bump() else {
+                        // 反斜杠后即文件尾:按未终止处理
+                        if !bytes.is_empty() {
+                            parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
+                        }
+                        let sp = self.mark(start, line, col);
+                        self.err("E1001", "未终止的字符串(不允许跨行)".into(), sp);
+                        break Tok::Str { parts };
+                    };
+                    match esc {
+                        b'n' => bytes.push(b'\n'),
+                        b't' => bytes.push(b'\t'),
+                        b'r' => bytes.push(b'\r'),
+                        b'0' => bytes.push(0),
+                        b'\\' => bytes.push(b'\\'),
+                        b'"' => bytes.push(b'"'),
+                        b'{' => bytes.push(b'{'),
+                        b'u' => {
+                            // \u{HEX}
+                            if self.peek() == Some(b'{') {
+                                self.bump();
+                                let mut hex = String::new();
+                                while matches!(self.peek(), Some(c) if c.is_ascii_hexdigit()) {
+                                    hex.push(self.bump().unwrap() as char);
+                                }
+                                if self.peek() == Some(b'}') && !hex.is_empty() {
+                                    self.bump();
+                                    if let Some(ch) = char::from_u32(
+                                        u32::from_str_radix(&hex, 16).unwrap_or(0xFFFD),
+                                    ) {
+                                        let mut buf = [0u8; 4];
+                                        bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+                                    } else {
+                                        let sp = self.mark(start, line, col);
+                                        self.err("E1001", "非法的 Unicode 转义".into(), sp);
+                                    }
+                                } else {
+                                    let sp = self.mark(start, line, col);
+                                    self.err("E1001", "\\u 转义缺少 {HEX}".into(), sp);
+                                }
+                            } else {
+                                let sp = self.mark(start, line, col);
+                                self.err("E1001", "\\u 转义缺少 {".into(), sp);
+                            }
+                        }
+                        other => {
+                            let sp = self.mark(start, line, col);
+                            self.err("E1001", format!("非法转义 \\{}", other as char), sp);
+                        }
+                    }
+                }
+                Some(b'{') => {
+                    // 插值:Text 段在此截断;{} 内原始源字节不解析,原样存入 Interp(§1.4)
+                    if !bytes.is_empty() {
+                        parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
+                        bytes.clear();
+                    }
+                    self.bump(); // {
+                    let expr_start = self.pos;
+                    let mut depth = 1usize;
+                    while depth > 0 {
+                        match self.peek() {
+                            None | Some(b'\n') => {
+                                let sp = self.mark(start, line, col);
+                                self.err("E1001", "未终止的插值".into(), sp);
+                                depth = 0;
+                            }
+                            Some(b'{') => { depth += 1; self.bump(); }
+                            Some(b'}') => {
+                                depth -= 1;
+                                // 收尾 '}' 不在此消耗:保证 raw 切片不含它,由循环外统一消耗
+                                if depth > 0 { self.bump(); }
+                            }
+                            Some(_) => { self.bump(); }
+                        }
+                    }
+                    let raw = String::from_utf8_lossy(&self.src[expr_start..self.pos]).into_owned();
+                    if self.peek() == Some(b'}') { self.bump(); }
+                    parts.push(StrPart::Interp(raw));
+                }
+                Some(_) => {
+                    // 源文件保证 UTF-8;多字节字符逐字节入缓冲,收尾 from_utf8_lossy 重组
+                    bytes.push(self.bump().unwrap());
+                }
             }
         };
         Token { tok, span: self.mark(start, line, col) }
@@ -377,5 +474,34 @@ mod tests {
         assert_eq!(kinds("21.double()"),
             vec![Tok::Int { text: "21".into(), suffix: NumSuffix::None }, Tok::Dot,
                  Tok::Ident("double".into()), Tok::LParen, Tok::RParen, Tok::Eof]);
+    }
+
+    #[test]
+    fn string_escapes() {
+        assert_eq!(kinds("\"a\\nb\" \"\\{\" \"\\u{4E2D}\" \"\\\\\" \"\\\"\""),
+            vec![Tok::Str { parts: vec![StrPart::Text("a\nb".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("{".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("中".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("\\".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("\"".into())] },
+                 Tok::Eof]);
+    }
+
+    #[test]
+    fn string_interpolation_raw_parts() {
+        assert_eq!(kinds("\"hi {name}\" \"len={xs.len} first={xs[0]}\" \"v={opt.or(0)}\""),
+            vec![Tok::Str { parts: vec![StrPart::Text("hi ".into()), StrPart::Interp("name".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("len=".into()), StrPart::Interp("xs.len".into()),
+                                       StrPart::Text(" first=".into()), StrPart::Interp("xs[0]".into())] },
+                 Tok::Str { parts: vec![StrPart::Text("v=".into()), StrPart::Interp("opt.or(0)".into())] },
+                 Tok::Eof]);
+    }
+
+    #[test]
+    fn unterminated_string_reports_e1001() {
+        let (_, diags) = lex("\"abc");
+        assert_eq!(diags[0].code, "E1001");
+        let (_, diags) = lex("\"a\\q\""); // 非法转义
+        assert_eq!(diags[0].code, "E1001");
     }
 }
