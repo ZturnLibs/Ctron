@@ -204,6 +204,12 @@ fn scan(src: Str, toks: List[Str]) {
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 toks.push("&&")
                 i += 2
+            } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
+                toks.push("+%")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 37 {
+                toks.push("-%")
+                i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
                 toks.push("+=")
                 i += 2
@@ -437,6 +443,12 @@ fn parse_additive(toks: List[Str], cur: Atomic[I32]) -> Str {
         if t == "-" {
             op = "Sub"
         }
+        if t == "+%" {
+            op = "WrapAdd"
+        }
+        if t == "-%" {
+            op = "WrapSub"
+        }
         if op == "" {
             go = false
         } else {
@@ -557,6 +569,10 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     if t == "if" {
         return parse_if(toks, cur)
+    }
+    if t == "void" {
+        adv(cur)
+        return "Void"
     }
     adv(cur)
     return "Ident(\"" + t + "\")"

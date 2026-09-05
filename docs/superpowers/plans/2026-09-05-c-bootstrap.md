@@ -47,9 +47,16 @@
    语句,成员 .m、索引 [i]、多参调用后缀;扫描器补复合赋值最长匹配。input_parse_ast.ct 扩至
    17 fn(member/index/复合赋值/循环/if 三态/else-if 链/Expr(If) 语句),与 C `ctron_file_show`
    **逐字节一致**;suite_diff 60 用例全过;ASan/UBSan 全绿。
-7. **C6b②(下一阶梯)**:字符串字面量部件(Text/Interp,含转义解码与 qstr 再编码)、test 声明、
-   类型后缀(Optional/List[T]/Fn/切片)、match/模式、struct/class/enum 声明 → 全语法后对真实语料做
-   parse-AST 差分。
+7. **C6b②/③(完成)**:字符串字面量部件(Text 透传=qstr 互逆,\{ 坍缩;Interp 取 {} 内原始切片;
+   \u 钉待办)+ test 声明 + 类型扩面(Named+泛型实参/Optional?/Ref&/fn 类型);input_parse_ast.ct
+   扩至 24 fn/test,均与 C `ctron_file_show` 逐字节一致。
+8. **C6c(本文件交付)**:首个**真实语料 parse-AST 差分** —— parse_ast.ct 补 +%/-%(WrapAdd/WrapSub)
+   与 void 关键字后,整文件解析 `tests/01_basics.ct` 与 C 输出**逐字节一致**;suite_diff 增 parse
+   corpus 换靶 3 文件(01_basics/03c_str_string/08_bare_alloc.neg)全过 → 63 用例全绿。全 51 文件
+   扫描:3 过、余失败主因 = **as[T]/Box[T]/List[T] 等类型实参后缀消歧**、match/模式、
+   struct/class/enum 声明族、own/scope 等。ASan/UBSan 全绿。
+9. **C6d(下一阶梯)**:类型实参后缀消歧(`]` 后跟 ( / { / 类型列表;as[T] 成员),次之
+   match/模式、结构体族声明,逐步解锁更多 corpus 文件的 parse 差分。
 
 ## 冻结纪律
 

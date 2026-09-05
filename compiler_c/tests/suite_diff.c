@@ -185,6 +185,26 @@ int main(int argc, char** argv) {
         }
     }
     free(tsrc);
+    // 真实语料 parse-AST 差分(seq=3):parse_ast.ct 模板换靶,逐文件 vs C ctron_file_show
+    {
+        static const char* pcorpus[] = {
+            "../tests/01_basics.ct", "../tests/03c_str_string.ct", "../tests/08_bare_alloc.neg.ct"};
+        char ptpath[4096], pip[4096];
+        snprintf(ptpath, sizeof ptpath, "%s/parse_ast.ct", root);
+        snprintf(pip, sizeof pip, "%s/input_parse_ast.ct", root);
+        char* ptsrc = read_file_str(ptpath);
+        if (!ptsrc) { fails++; fprintf(stderr, "%s 无法读取\n", ptpath); }
+        else {
+            for (size_t i = 0; i < sizeof pcorpus / sizeof pcorpus[0]; i++) {
+                char* msrc = replace_first(ptsrc, pip, pcorpus[i]);
+                if (!msrc) { fprintf(stderr, "%s 模板替换失败\n", pcorpus[i]); fails++; continue; }
+                nrun++;
+                fails += diff_one(msrc, pcorpus[i], 3, pcorpus[i]);
+                free(msrc);
+            }
+        }
+        free(ptsrc);
+    }
     printf("suite_diff: %zu cases, %zu failures\n", nrun, fails);
     return fails ? 1 : 0;
 }
