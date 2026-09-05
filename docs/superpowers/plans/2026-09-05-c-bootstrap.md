@@ -67,8 +67,13 @@
    Pt{ x: p } 结构模式 → Agg{...,Struct([StructPatField...])}、小写 → Ident 绑定;
    match 臂 NL 分隔、臂表达式含 if/调用/块;fixture(match 作语句/return-if/臂内 if/嵌套
    match/字面量+通配+结构+Option 模式)与 C-AST v1 **逐字节一致**;suite_diff 66 用例全绿。
-11. **C6f(下一阶梯)**:声明族 struct/class/enum/trait/impl/use/const/static + 类型形参
-   (泛型<T: Bound>)、own/scope 块、闭包 |x| → 解锁剩余 match 语料(02_*/05d 等)的 parse 差分。
+11. **C6f①(本文件交付)**:类型后缀补全 + 值语法扩面 —— parse_type 拆分 base+type_postfix:
+   `I32[]`→Slice、`I32[3]`/`I32[N]`→Array{elem,size}(定长数组 size 为表达式,含
+   `[]`空/单整型消歧)、`&I32[]`→Ref(Slice(...));表达式加数组字面量 `[1,2,3]`→Array(...);
+   let/for 绑定改用 parse_pattern(元组 `let (tx, rx) = ...` 等);tok 越界守卫防 OOM。
+   parse 语料差分 6→**9 文件**(+03f_slices/05f_must_use.lint/08_bare),suite_diff 69 用例全绿。
+12. **C6f②(下一阶梯)**:struct/enum/use/const/static 声明族 + 结构字面量 + @derive/类型形参
+   (TypeParam{bound}),次之 own/闭包/class·impl·trait。
 
 ## 冻结纪律
 
