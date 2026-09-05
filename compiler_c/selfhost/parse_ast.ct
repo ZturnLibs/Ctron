@@ -204,6 +204,9 @@ fn scan(src: Str, toks: List[Str]) {
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 toks.push("&&")
                 i += 2
+            } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 62 {
+                toks.push("=>")
+                i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
                 toks.push("+%")
                 i += 2
@@ -364,6 +367,134 @@ fn str_parts(raw: Str) -> Str {
         k += 1
     }
     return "[" + out + "]"
+}
+
+fn parse_match(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var sc = parse_expr(toks, cur)
+    adv(cur)
+    var arms = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if or2(tok(toks, cur) == "}", tok(toks, cur) == "#EOF") {
+            go = false
+        } else {
+            var pat = parse_pattern(toks, cur)
+            adv(cur)
+            var ae = parse_expr(toks, cur)
+            if k > 0 {
+                arms = arms + ", "
+            }
+            arms = arms + "MatchArm \{ pattern: " + pat + ", expr: " + ae + "}"
+            k += 1
+        }
+    }
+    adv(cur)
+    return "Match \{ expr: " + sc + ", arms: [" + arms + "]}"
+}
+
+fn parse_pat_fields(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var fs = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" {
+            adv(cur)
+            go = false
+        } else if tok(toks, cur) == "#EOF" {
+            go = false
+        } else {
+            var fnm = tok(toks, cur)
+            adv(cur)
+            var pp = "None"
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                pp = parse_pattern(toks, cur)
+            }
+            if k > 0 {
+                fs = fs + ", "
+            }
+            fs = fs + "StructPatField \{ name: \"" + fnm + "\", pattern: " + pp + "}"
+            k += 1
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "," {
+                adv(cur)
+            }
+        }
+    }
+    return "Struct([" + fs + "])"
+}
+
+fn parse_pattern(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var t = tok(toks, cur)
+    if t == "_" {
+        adv(cur)
+        return "Wildcard"
+    }
+    var b0 = byte_at(t, 0)
+    if is_digit(b0) {
+        adv(cur)
+        if num_float(t) {
+            return "Lit(Float(\"" + num_text(t) + "\"))"
+        }
+        return "Lit(Int(\"" + num_text(t) + "\"))"
+    }
+    if b0 == 34 {
+        adv(cur)
+        return "Lit(Str(\"" + q_text(byte_slice(t, 1, t.len - 1)) + "\"))"
+    }
+    if t == "true" {
+        adv(cur)
+        return "Lit(Bool(true))"
+    }
+    if t == "false" {
+        adv(cur)
+        return "Lit(Bool(false))"
+    }
+    var nm = t
+    adv(cur)
+    if tok(toks, cur) == "(" {
+        adv(cur)
+        var ps = ""
+        var k: I32 = 0
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" {
+                more = false
+            } else {
+                var a = parse_pattern(toks, cur)
+                if k > 0 {
+                    ps = ps + ", "
+                }
+                ps = ps + a
+                k += 1
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                } else {
+                    more = false
+                }
+            }
+        }
+        adv(cur)
+        return "Agg \{ path: [\"" + nm + "\"], sub: Tuple(" + ps + ")}"
+    }
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        return "Agg \{ path: [\"" + nm + "\"], sub: " + parse_pat_fields(toks, cur) + "}"
+    }
+    if b0 >= 65 && b0 <= 90 {
+        return "Agg \{ path: [\"" + nm + "\"], sub: Unit}"
+    }
+    return "Ident(\"" + nm + "\")"
 }
 
 fn parse_expr(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -612,6 +743,9 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     if t == "if" {
         return parse_if(toks, cur)
+    }
+    if t == "match" {
+        return parse_match(toks, cur)
     }
     if t == "void" {
         adv(cur)

@@ -71,3 +71,30 @@ fn applyf(f: fn(I32) -> I32, x: I32) -> I32 {
 fn maybe(n: I32?) -> I32 {
     return 0
 }
+fn name(c: Color, n: I32) -> Str {
+    return match c {
+        Red   => "red"
+        Green => "green"
+        Blue  => if n > 0 { "blue+" } else { "blue" }
+    }
+}
+fn mm(o: Option[I32], p: Pt, s: Str) -> I32 {
+    match o {
+        Some(v) => v
+        None => 0
+    }
+    match s {
+        "a" => 1
+        _ => 0
+    }
+    match p {
+        Pt { x } => x
+        _ => 0
+    }
+    match 7 {
+        0 => assert(false)
+        7 => assert(true)
+        _ => assert(false)
+    }
+    return 0
+}

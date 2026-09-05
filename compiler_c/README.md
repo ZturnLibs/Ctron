@@ -79,6 +79,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C6b① ✅ | 子集扩:NL 换行记号/Assign/While/For/If(else·链)/成员·索引后缀 | 17 fn 语料逐字节一致 |
 | C6b②③ ✅ | Str 部件(Text/Interp)/test 声明/类型后缀(Named 实参·?·&·fn 类型) | 24 fn/test 语料逐字节一致 |
 | C6c ✅ | 真实语料 parse-AST 差分(parse 模板换靶) | 01_basics/03c_str_string/08_bare_alloc.neg 与 C-AST v1 逐字节 |
-| C6d ✅ | 类型实参后缀消歧/ComptimeVal/Bool/BlockExpr/pub/tok 越界守卫 | 真实语料 parse 差分扩至 6 文件全过(66 用例);C6e match/模式/声明族 |
+| C6d ✅ | 类型实参后缀消歧/ComptimeVal/Bool/BlockExpr/pub/tok 越界守卫 | 真实语料 parse 差分扩至 6 文件全过(66 用例) |
+| C6e ✅ | match/模式(通配·字面量·Pascal 无载荷·元组变体·结构·绑定) | 逐字节一致;C6f 声明族/类型形参/own·闭包 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。

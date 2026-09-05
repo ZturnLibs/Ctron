@@ -61,8 +61,14 @@
    #EOF(防非法输入 OOB/死循环,钉子)。真实语料 parse 差分扩至 **6 文件全过**(00_doctest/
    01_basics/03b/03c/04b/08_bare_alloc.neg),suite_diff 66 用例全绿;ASan/UBSan 全绿。
    余下失败主因:match/模式、struct/class/enum/trait/impl/own/scope 声明族。
-10. **C6e(下一阶梯)**:match 表达式与模式(pattern:Ident/Wildcard/Lit/变体 Some·None),
-   次之 struct/class/enum 声明族与类型形参,逐步解锁剩余语料的 parse 差分。
+10. **C6e(本文件交付)**:match 表达式与模式(镜像 C parse_match/parse_pattern)—— 扫描器补
+   `=>`;模式:_ → Wildcard、Int/Float/Str/Bool 字面量 → Lit(...)、PascalCase 无载荷变体 →
+   Agg{path,Unit}(先判 ( 与 {)、Some(v)/Err(e) 元组变体 → Agg{...,Tuple(...)}、Pt{ x }/
+   Pt{ x: p } 结构模式 → Agg{...,Struct([StructPatField...])}、小写 → Ident 绑定;
+   match 臂 NL 分隔、臂表达式含 if/调用/块;fixture(match 作语句/return-if/臂内 if/嵌套
+   match/字面量+通配+结构+Option 模式)与 C-AST v1 **逐字节一致**;suite_diff 66 用例全绿。
+11. **C6f(下一阶梯)**:声明族 struct/class/enum/trait/impl/use/const/static + 类型形参
+   (泛型<T: Bound>)、own/scope 块、闭包 |x| → 解锁剩余 match 语料(02_*/05d 等)的 parse 差分。
 
 ## 冻结纪律
 
