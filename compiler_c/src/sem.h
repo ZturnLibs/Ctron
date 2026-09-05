@@ -18,7 +18,12 @@ typedef struct {
     size_t ndiags;
 } ctron_sem_result;
 
-/// 对单个已解析文件做语义检查;message 落在 arena。
+typedef enum { SEM_FULL = 0, SEM_BARE, SEM_WEB } sem_profile;
+
+/// 对单个已解析文件做语义检查;message 落在 arena。profile 决定档位语境(SEM_BARE = 全量 no_alloc)。
+ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int profile);
+
+/// 默认 full 档。
 ctron_sem_result ctron_sem_check(const cfile* f, ctron_arena* arena);
 
 #endif

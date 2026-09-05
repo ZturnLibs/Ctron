@@ -56,7 +56,7 @@ static char* read_file(const char* path, size_t* out_len) {
 
 // marker 解析:每行 //@ key: value
 #define MAXEXP 16
-typedef struct { char codes[MAXEXP][8]; int msg[MAXEXP]; char want_msg[MAXEXP][64]; int n; } expect;
+typedef struct { char codes[MAXEXP][8]; int msg[MAXEXP]; char want_msg[MAXEXP][64]; int n; char target[8]; } expect;
 
 static void add_expect(expect* x, const char* code, const char* msg) {
     for (int i = 0; i < x->n; i++)
@@ -95,6 +95,8 @@ static void parse_markers(const char* src, expect* x) {
                 char* save = NULL;
                 for (char* t = strtok_r(v, ", ", &save); t; t = strtok_r(NULL, ", ", &save))
                     add_expect(x, t, NULL);
+            } else if (strcmp(k, "target") == 0) {
+                snprintf(x->target, 8, "%s", v);
             } else if (strcmp(k, "msg") == 0 && x->n > 0) {
                 add_expect(x, x->codes[x->n - 1], v); // 关联最近一个 fail/warn
             }
@@ -104,8 +106,8 @@ static void parse_markers(const char* src, expect* x) {
 
 static int implemented(const char* code) {
     static const char* const S[] = {"E2030", "E3010", "E3020", "E3031", "E4020",
-                                    "E6020", "E4030", "E3050", "E3060", "W8010",
-                                    "W8020", "E1001", "E3030"};
+                                    "E6020", "E4030", "E3050", "E3060", "E3040",
+                                    "W8010", "W8020", "E1001", "E3030"};
     for (size_t i = 0; i < sizeof S / sizeof S[0]; i++)
         if (strcmp(code, S[i]) == 0) return 1;
     return 0;
@@ -128,7 +130,9 @@ int main(int argc, char** argv) {
         parse_markers(src, &x);
         ctron_parse_result pr = ctron_parse_src(src, len);
         ctron_arena* arena = ctron_arena_new();
-        ctron_sem_result sr = ctron_sem_check(pr.file, arena);
+        int profile = SEM_FULL;
+        if (strcmp(x.target, "bare") == 0) profile = SEM_BARE;
+        ctron_sem_result sr = ctron_sem_check_mode(pr.file, arena, profile);
 
         // produced = parse ∪ sem 的码集合
         char produced[MAXEXP][8];

@@ -1,4 +1,4 @@
-# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3-a 语义 ✅)
+# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3-a 语义 ✅ / E3040 分配效果 ✅)
 
 > **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在两套独立、各自完整的编译器实现——Rust 版(`compiler/`)与 C 版(`compiler_c/`),互不依赖;两者共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`,61 文件)。最终自举目标不变:以 C 版为种子编译器,后续用 Ctron 自身实现 Ctron。
 
@@ -52,7 +52,7 @@ compiler_c/
 
 | 里程碑 | 内容 | 出口 |
 |---|---|---|
-| C3-b | 分配效果定点(E3040)+ 模块级(孤儿/循环/导入可见性/caps/comptime 预算) | 全部 neg/lint 语料命中(含 `tests/modules/`) |
+| C3-c | 模块级:孤儿/循环/导入可见性/caps/comptime 预算(读 `Ctron.toml`) | 全部 neg/lint 语料命中(含 `tests/modules/`) |
 | C4 | 执行层(CVM):`ctron test` 跑行为/panic 语料 | 行为/panic 测试运行通过 |
 | C5 | 自举种子就绪:ctron0-C 可编译 Ctron 写的模块 | — |
 

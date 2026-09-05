@@ -199,17 +199,158 @@ typedef struct ctx {
     int fn_no_spawn;
     int fn_pure;
     int fn_comptime;
+    int fn_noalloc;   // #[no_alloc] / trait 契约 / bare 档
+    int profile;      // sem_profile
     int in_own;
-    char** arena_binds; // own 块内 arena 句柄活绑定
+    char** arena_binds; // own 块内 arena 句柄活绑定(只移语义)
     size_t n_arena;
-    char** moved; // 已 move 的句柄名
+    char** moved;      // 已 move 的句柄名
     size_t n_moved;
+    char** gc_local;   // own 块内“块生”GC 集合(into_gc 产物等,push 放行)
+    size_t n_gc;
 } ctx;
 
 static int name_in(const char** a, size_t n, const char* name) {
     for (size_t i = 0; i < n; i++)
         if (strcmp(a[i], name) == 0) return 1;
     return 0;
+}
+
+// 分配效果摘要(may_alloc):fn 体含 GC 分配操作(含调用传递)。带递归栈防环。
+typedef struct { const char** stack; size_t n; } estack;
+static int expr_may_alloc(const cfile* f, const cdecl* fn, cexpr* e, estack* st);
+static int stmt_may_alloc(const cfile* f, const cdecl* fn, cstmt* s, estack* st);
+static int block_may_alloc(const cfile* f, const cdecl* fn, cblock* b, estack* st);
+
+static int fn_is_noalloc(const cdecl* fn) {
+    return fn && fn->kind == D_FN && has_attr(fn->fn_.attrs, fn->fn_.nattrs, "no_alloc");
+}
+static int on_estack(estack* st, const char* n) {
+    for (size_t i = 0; i < st->n; i++)
+        if (strcmp(st->stack[i], n) == 0) return 1;
+    return 0;
+}
+static int call_target_is_alloc(const cfile* f, cexpr* callee, estack* st) {
+    // 成员方法分类
+    if (callee && callee->kind == EX_MEMBER && callee->m_is_name && callee->mname) {
+        const char* m = callee->mname;
+        if (strcmp(m, "to_string") == 0) return 1;
+        if (strcmp(m, "push") == 0) return 1; // GC 集合增长
+        if (strcmp(m, "into_gc") == 0) return 1;
+        if (strcmp(m, "list") == 0 || strcmp(m, "array") == 0 || strcmp(m, "zeros") == 0) {
+            const char* root = NULL;
+            // 仅当接收者是 arena 时是允许路径;此处摘要模式保守:arena.* 不算分配
+            cexpr* o = callee->obj;
+            if (o && o->kind == EX_IDENT && strcmp(o->text, "arena") == 0) return 0;
+            (void)root;
+        }
+        return 0;
+    }
+    // 泛型构造(Box/List/Map/String…)
+    if (callee && callee->kind == EX_TYPEARGS && callee->obj && callee->obj->kind == EX_IDENT) {
+        const char* n = callee->obj->text;
+        if (strcmp(n, "Box") == 0 || strcmp(n, "List") == 0 || strcmp(n, "Map") == 0
+            || strcmp(n, "String") == 0)
+            return 1;
+    }
+    // 文件内用户函数调用
+    if (callee && callee->kind == EX_IDENT) {
+        const char* n = callee->text;
+        const cdecl* d = find_fn(f, n);
+        if (d && !fn_is_noalloc(d)) {
+            if (on_estack(st, n)) return 1; // 环:保守分配
+            if (st->n < 64) {
+                st->stack[st->n++] = n;
+                int r = block_may_alloc(f, d, d->fn_.body, st);
+                st->n--;
+                return r;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+static int expr_may_alloc(const cfile* f, const cdecl* fn, cexpr* e, estack* st) {
+    if (!e) return 0;
+    switch (e->kind) {
+    case EX_STR: case EX_INT: case EX_FLOAT: case EX_BOOL: case EX_VOID: case EX_IDENT:
+        return 0;
+    case EX_TUPLE: case EX_ARRAY:
+        for (size_t i = 0; i < e->nelems; i++)
+            if (expr_may_alloc(f, fn, e->elems[i], st)) return 1;
+        return 0;
+    case EX_STRUCT: {
+        if (e->npath > 0 && find_class(f, e->path[0])) return 1; // 类构造 = 分配
+        for (size_t i = 0; i < e->nfields; i++)
+            if (e->fields[i].value && expr_may_alloc(f, fn, e->fields[i].value, st)) return 1;
+        return 0;
+    }
+    case EX_UNARY: return expr_may_alloc(f, fn, e->ux, st);
+    case EX_BINARY: return expr_may_alloc(f, fn, e->lhs, st) || expr_may_alloc(f, fn, e->rhs, st);
+    case EX_RANGE: return expr_may_alloc(f, fn, e->from, st) || expr_may_alloc(f, fn, e->to, st);
+    case EX_CALL:
+        if (call_target_is_alloc(f, e->callee, st)) return 1;
+        if (expr_may_alloc(f, fn, e->callee, st)) return 1;
+        for (size_t i = 0; i < e->nelems; i++)
+            if (expr_may_alloc(f, fn, e->elems[i], st)) return 1;
+        return 0;
+    case EX_INDEX:
+        return expr_may_alloc(f, fn, e->obj, st) || expr_may_alloc(f, fn, e->index, st);
+    case EX_MEMBER: return expr_may_alloc(f, fn, e->obj, st);
+    case EX_TYPEARGS: return expr_may_alloc(f, fn, e->obj, st);
+    case EX_TRY: return expr_may_alloc(f, fn, e->obj, st);
+    case EX_CLOSURE: return expr_may_alloc(f, fn, e->cbody, st);
+    case EX_SCOPE: return block_may_alloc(f, fn, e->sbody, st);
+    case EX_OWN: return block_may_alloc(f, fn, e->obody, st);
+    case EX_IF:
+        return expr_may_alloc(f, fn, e->cond, st)
+            || block_may_alloc(f, fn, e->then_b, st)
+            || (e->els && expr_may_alloc(f, fn, e->els, st));
+    case EX_MATCH: {
+        if (expr_may_alloc(f, fn, e->scrut, st)) return 1;
+        for (size_t i = 0; i < e->narms; i++)
+            if (expr_may_alloc(f, fn, e->arms[i].expr, st)) return 1;
+        return 0;
+    }
+    case EX_BLOCK: return block_may_alloc(f, fn, e->block, st);
+    default: return 0;
+    }
+}
+static int stmt_may_alloc(const cfile* f, const cdecl* fn, cstmt* s, estack* st) {
+    if (!s) return 0;
+    switch (s->kind) {
+    case ST_LET: return s->e ? expr_may_alloc(f, fn, s->e, st) : 0;
+    case ST_RET: return s->e ? expr_may_alloc(f, fn, s->e, st) : 0;
+    case ST_FOR:
+        return (s->iter && expr_may_alloc(f, fn, s->iter, st))
+            || block_may_alloc(f, fn, s->body, st);
+    case ST_WHILE:
+        return (s->e && expr_may_alloc(f, fn, s->e, st)) || block_may_alloc(f, fn, s->body, st);
+    case ST_ASSIGN:
+        return (s->target && expr_may_alloc(f, fn, s->target, st))
+            || (s->value && expr_may_alloc(f, fn, s->value, st));
+    case ST_EXPR: return s->e ? expr_may_alloc(f, fn, s->e, st) : 0;
+    default: return 0;
+    }
+}
+static int block_may_alloc(const cfile* f, const cdecl* fn, cblock* b, estack* st) {
+    if (!b) return 0;
+    for (size_t i = 0; i < b->nstmts; i++)
+        if (stmt_may_alloc(f, fn, b->stmts[i], st)) return 1;
+    return b->tail ? expr_may_alloc(f, fn, b->tail, st) : 0;
+}
+
+// 摘要入口:fn 为顶层函数声明(D_FN)
+static int fn_may_alloc_summary(const cfile* f, const char* name) {
+    const cdecl* d = find_fn(f, name);
+    if (!d || !d->fn_.body) return 0;
+    estack st = {0};
+    st.stack = NULL;
+    // 用栈式小数组
+    static const char* tmp[64];
+    st.stack = tmp;
+    int r = block_may_alloc(f, d, d->fn_.body, &st);
+    return r;
 }
 
 // 前向
@@ -422,6 +563,59 @@ static void check_spawn_send(ctx* c, cexpr* call) {
     free(cs.names);
 }
 
+static const char* expr_root_name(cexpr* e) { return root_ident(e); }
+
+// 成员调用的接收者是否 arena(arena.list/zeros/array/Arena.fixed 放行)
+static int member_is_arena_op(cexpr* callee) {
+    if (!callee || callee->kind != EX_MEMBER || !callee->m_is_name || !callee->mname) return 0;
+    const char* m = callee->mname;
+    if (!(strcmp(m, "zeros") == 0 || strcmp(m, "array") == 0 || strcmp(m, "list") == 0
+          || strcmp(m, "fixed") == 0 || strcmp(m, "new") == 0)) return 0;
+    const char* root = expr_root_name(callee->obj);
+    return root && (strcmp(root, "arena") == 0 || strcmp(root, "Arena") == 0);
+}
+
+// E3040 分类:受限语境(own / #[no_alloc] / bare)内该调用是否为分配
+static int call_alloc_in_ctx(ctx* c, cexpr* call) {
+    cexpr* cal = call->callee;
+    if (!cal) return 0;
+    if (cal->kind == EX_MEMBER && cal->m_is_name && cal->mname) {
+        const char* m = cal->mname;
+        if (strcmp(m, "into_gc") == 0) return c->in_own ? 0 : 1;
+        if (strcmp(m, "to_string") == 0) return 1;
+        if (strcmp(m, "push") == 0) {
+            if (c->in_own) {
+                const char* root = expr_root_name(cal->obj);
+                if (root && (name_in((const char**)c->arena_binds, c->n_arena, root)
+                             || name_in((const char**)c->gc_local, c->n_gc, root)))
+                    return 0;
+                return 1;
+            }
+            return 1;
+        }
+        return member_is_arena_op(cal) ? 0 : 0;
+    }
+    if (cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT) {
+        const char* n = cal->obj->text;
+        if (strcmp(n, "Box") == 0 || strcmp(n, "List") == 0 || strcmp(n, "Map") == 0
+            || strcmp(n, "String") == 0)
+            return 1;
+        return 0;
+    }
+    if (cal->kind == EX_IDENT) {
+        const char* n = cal->text;
+        const cdecl* d = find_fn(c->s->f, n);
+        if (d && d->kind == D_FN && !fn_is_noalloc(d) && fn_may_alloc_summary(c->s->f, n)) return 1;
+        return 0;
+    }
+    return 0;
+}
+
+static void check_alloc_ctx(ctx* c, const char* kind) {
+    if (c->in_own) diag(c->k, "E3040", "own 块内 GC 分配(allocation):%s", kind);
+    else diag(c->k, "E3040", "no_alloc 上下文 GC 分配(allocation):%s", kind);
+}
+
 // ---------- 能力调用(pure/comptime)判定 ----------
 // 接收者类型的语法形态:&Trait(声明 trait)→ 能力调用
 static int receiver_is_capability_trait(ctx* c, cexpr* callee) {
@@ -477,6 +671,14 @@ static void check_block(ctx* c, cblock* b) {
                             char** ab = (char**)realloc(c->arena_binds, (c->n_arena + 1) * sizeof(char*));
                             c->arena_binds = ab;
                             c->arena_binds[c->n_arena++] = (char*)st->pat->name;
+                        }
+                        if (st->e->callee && st->e->callee->kind == EX_MEMBER
+                            && st->e->callee->m_is_name && st->e->callee->mname
+                            && strcmp(st->e->callee->mname, "into_gc") == 0
+                            && !name_in((const char**)c->gc_local, c->n_gc, st->pat->name)) {
+                            char** g = (char**)realloc(c->gc_local, (c->n_gc + 1) * sizeof(char*));
+                            c->gc_local = g;
+                            c->gc_local[c->n_gc++] = (char*)st->pat->name;
                         }
                     }
                     check_expr(c, st->e);
@@ -553,6 +755,9 @@ static void check_expr(ctx* c, cexpr* e) {
         for (size_t i = 0; i < e->nelems; i++) check_expr(c, e->elems[i]);
         return;
     case EX_STRUCT:
+        if ((c->in_own || c->fn_noalloc) && e->npath > 0 && find_class(c->s->f, e->path[0])) {
+            check_alloc_ctx(c, "类构造");
+        }
         for (size_t i = 0; i < e->nfields; i++)
             if (e->fields[i].value) check_expr(c, e->fields[i].value);
         return;
@@ -560,6 +765,12 @@ static void check_expr(ctx* c, cexpr* e) {
     case EX_BINARY: check_expr(c, e->lhs); check_expr(c, e->rhs); return;
     case EX_RANGE: check_expr(c, e->from); check_expr(c, e->to); return;
     case EX_CALL: {
+        // 分配语境(E3040):own 块 / #[no_alloc] / bare
+        if ((c->in_own || c->fn_noalloc) && call_alloc_in_ctx(c, e)) {
+            const char* root = expr_root_name(e->callee);
+            check_alloc_ctx(c, root ? root : "调用");
+            return;
+        }
         // Channel[T](cap):元素须 Send(E3020)
         if (e->callee && e->callee->kind == EX_TYPEARGS && e->callee->obj
             && e->callee->obj->kind == EX_IDENT
@@ -607,18 +818,25 @@ static void check_expr(ctx* c, cexpr* e) {
         size_t save_na = c->n_arena;
         char** save_moved = c->moved;
         size_t save_nm = c->n_moved;
+        char** save_gc = c->gc_local;
+        size_t save_ng = c->n_gc;
         c->arena_binds = NULL;
         c->n_arena = 0;
         c->moved = NULL;
         c->n_moved = 0;
+        c->gc_local = NULL;
+        c->n_gc = 0;
         c->depth++;
         check_block(c, e->obody);
         free(c->arena_binds);
         free(c->moved);
+        free(c->gc_local);
         c->arena_binds = save_arena;
         c->n_arena = save_na;
         c->moved = save_moved;
         c->n_moved = save_nm;
+        c->gc_local = save_gc;
+        c->n_gc = save_ng;
         c->in_own = 0;
         return;
     }
@@ -642,7 +860,21 @@ static void check_expr(ctx* c, cexpr* e) {
 }
 
 // ---------- 函数体驱动 ----------
-static void check_fn(ctx* c, const cfn* f) {
+// 方法所属 trait 的同名方法带 #[no_alloc] → 实现体受契约约束(E3040)
+static int impl_method_noalloc_contract(const sym* s, const cdecl* impl, const char* mname) {
+    if (!impl || impl->kind != D_IMPL || !mname) return 0;
+    const char* tn = head_name(impl->impl.trait_ty);
+    const cdecl* tr = tn ? find_trait(s->f, tn) : NULL;
+    if (!tr) return 0;
+    for (size_t i = 0; i < tr->trait.nitems; i++) {
+        const ctraititem* it = &tr->trait.items[i];
+        if (it->kind == TI_METHOD && it->m->name && strcmp(it->m->name, mname) == 0)
+            return has_attr(it->m->attrs, it->m->nattrs, "no_alloc");
+    }
+    return 0;
+}
+
+static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
     ctx sub;
     sub = *c;
     sub.env = NULL;
@@ -652,9 +884,13 @@ static void check_fn(ctx* c, const cfn* f) {
     sub.n_arena = 0;
     sub.moved = NULL;
     sub.n_moved = 0;
+    sub.gc_local = NULL;
+    sub.n_gc = 0;
     sub.fn_pure = has_attr(f->attrs, f->nattrs, "pure");
     sub.fn_comptime = f->is_comptime;
     sub.fn_no_spawn = has_attr(f->attrs, f->nattrs, "no_spawn");
+    sub.fn_noalloc = has_attr(f->attrs, f->nattrs, "no_alloc") || no_alloc_contract
+                     || (c->profile == SEM_BARE);
     for (size_t i = 0; i < f->nparams; i++) {
         const cparam* pr = &f->params[i];
         if (!pr->is_receiver && pr->name) bind_push(&sub.env, pr->name, pr->ty, 1);
@@ -664,7 +900,7 @@ static void check_fn(ctx* c, const cfn* f) {
 }
 
 // ---------- 顶层 ----------
-ctron_sem_result ctron_sem_check(const cfile* f, ctron_arena* arena) {
+ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int profile) {
     ck k = {0};
     k.arena = arena;
     sym s = {f};
@@ -672,36 +908,39 @@ ctron_sem_result ctron_sem_check(const cfile* f, ctron_arena* arena) {
     c.k = &k;
     c.s = &s;
     c.depth = 1;
+    c.profile = profile;
 
     // 顶层 fn 体
     for (size_t i = 0; i < f->ndecls; i++) {
         const cdecl* d = &f->decls[i];
         switch (d->kind) {
         case D_FN:
-            check_fn(&c, &d->fn_);
+            check_fn(&c, &d->fn_, 0);
             break;
         case D_CLASS:
             for (size_t j = 0; j < d->klass.nitems; j++) {
                 const cclassitem* it = &d->klass.items[j];
-                if (it->kind == CT_METHOD && it->m->body) check_fn(&c, it->m);
+                if (it->kind == CT_METHOD && it->m->body) check_fn(&c, it->m, 0);
             }
             break;
         case D_IMPL:
             for (size_t j = 0; j < d->impl.nitems; j++) {
                 const cimplitem* it = &d->impl.items[j];
-                if (it->kind == II_METHOD && it->m->body) check_fn(&c, it->m);
+                if (it->kind == II_METHOD && it->m->body)
+                    check_fn(&c, it->m, impl_method_noalloc_contract(&s, d, it->m->name));
             }
             break;
         case D_TRAIT:
             for (size_t j = 0; j < d->trait.nitems; j++) {
                 const ctraititem* it = &d->trait.items[j];
-                if (it->kind == TI_METHOD && it->m->body) check_fn(&c, it->m);
+                if (it->kind == TI_METHOD && it->m->body) check_fn(&c, it->m, 0);
             }
             break;
         case D_TEST: {
             ctx tc = c;
             tc.env = NULL;
             tc.depth = 1;
+            tc.fn_noalloc = (profile == SEM_BARE);
             check_block(&tc, d->test.body);
             bind_free(tc.env);
             break;
@@ -731,4 +970,8 @@ ctron_sem_result ctron_sem_check(const cfile* f, ctron_arena* arena) {
     r.diags = k.d;
     r.ndiags = k.n;
     return r;
+}
+
+ctron_sem_result ctron_sem_check(const cfile* f, ctron_arena* arena) {
+    return ctron_sem_check_mode(f, arena, SEM_FULL);
 }
