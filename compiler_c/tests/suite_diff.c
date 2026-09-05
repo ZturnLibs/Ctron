@@ -7,6 +7,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "rt.h"
+#include "sem.h"
 
 static char* read_file_str(const char* path) {
     FILE* f = fopen(path, "rb");
@@ -81,6 +82,36 @@ static int diff_one(const char* msrc, const char* ip, int seq, const char* label
                 }
                 free(buf);
             }
+        }
+        ctron_parse_result_free(&pf);
+    } else if (seq == 4) {
+        // 语义差分:C 侧 parse + ctron_sem_check 的 CODE: message 行
+        ctron_parse_result pf = ctron_parse_src(input, ilen);
+        if (pf.ndiags) {
+            fprintf(stderr, "%s 参考解析诊断 %zu\n", label, pf.ndiags);
+        } else {
+            ctron_arena* arena = ctron_arena_new();
+            ctron_sem_result sr = ctron_sem_check(pf.file, arena);
+            char* buf = NULL;
+            size_t bufn = 0;
+            FILE* mf = open_memstream(&buf, &bufn);
+            if (!mf) { ok = 0; }
+            else {
+                for (size_t i = 0; i < sr.ndiags; i++) {
+                    fprintf(mf, "%s: %s\n", sr.diags[i].code, sr.diags[i].message);
+                }
+                fclose(mf);
+                const char* co = rr.out ? rr.out : "";
+                const char* cb = buf ? buf : "";
+                ok = strcmp(co, cb) == 0;
+                if (!ok) {
+                    fprintf(stderr, "%s 语义差分失败\n  C: %s\n  Ctron: %s\n", label,
+                            cb, co);
+                }
+                free(buf);
+            }
+            free(sr.diags);
+            ctron_arena_free(arena);
         }
         ctron_parse_result_free(&pf);
     } else if (!seq) {
@@ -266,6 +297,56 @@ int main(int argc, char** argv) {
             }
         }
         free(tsrc2);
+    }
+    // 语义差分(seq=4):sem_chk.ct(树上 W8010)模板换靶;仅当 C 诊断 ⊆ 已实现码 {W8010}
+    {
+        static const char* known[] = {"W8010"};
+        char spath[4096];
+        snprintf(spath, sizeof spath, "%s/sem_chk.ct", root);
+        char* ssrc = read_file_str(spath);
+        if (!ssrc) { fails++; fprintf(stderr, "%s 无法读取\n", spath); }
+        else {
+            DIR* sd = opendir("../tests");
+            if (!sd) { fprintf(stderr, "无法打开 ../tests\n"); fails++; }
+            else {
+                struct dirent* se;
+                while ((se = readdir(sd)) != NULL) {
+                    if (se->d_type != DT_REG) continue;
+                    size_t sbl = strlen(se->d_name);
+                    if (sbl < 4 || strcmp(se->d_name + sbl - 3, ".ct") != 0) continue;
+                    char scp[4096];
+                    snprintf(scp, sizeof scp, "../tests/%s", se->d_name);
+                    char* sin = read_file_str(scp);
+                    if (!sin) continue;
+                    ctron_parse_result spr = ctron_parse_src(sin, strlen(sin));
+                    free(sin);
+                    if (spr.ndiags) { ctron_parse_result_free(&spr); continue; }
+                    ctron_arena* sarena = ctron_arena_new();
+                    ctron_sem_result ssr = ctron_sem_check(spr.file, sarena);
+                    int inscope = 1;
+                    for (size_t i = 0; i < ssr.ndiags && inscope; i++) {
+                        int kn = 0;
+                        for (size_t j = 0; j < sizeof known / sizeof known[0]; j++)
+                            if (strcmp(ssr.diags[i].code, known[j]) == 0) kn = 1;
+                        if (!kn) inscope = 0;
+                    }
+                    if (inscope) {
+                        char* msrc = replace_first(ssrc, "selfhost/input_ptree.ct", scp);
+                        if (!msrc) { fprintf(stderr, "%s 模板替换失败\n", scp); fails++; }
+                        else {
+                            nrun++;
+                            fails += diff_one(msrc, scp, 4, se->d_name);
+                            free(msrc);
+                        }
+                    }
+                    free(ssr.diags);
+                    ctron_arena_free(sarena);
+                    ctron_parse_result_free(&spr);
+                }
+                closedir(sd);
+            }
+        }
+        free(ssrc);
     }
     printf("suite_diff: %zu cases, %zu failures\n", nrun, fails);
     return fails ? 1 : 0;

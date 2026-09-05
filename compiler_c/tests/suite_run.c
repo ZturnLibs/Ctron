@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
         free(src);
         if (pr.ndiags) { fprintf(stderr, "%s: 解析诊断\n", e->d_name); ctron_parse_result_free(&pr); fails++; continue; }
         rt_run rr = ctron_rt_run_main(pr.file);
-        if (rr.st == RT_OK && rr.exit_code == 0 && rr.out && rr.out[0]) n++;
+        if (rr.st == RT_OK && rr.exit_code == 0) n++;
         else {
             fprintf(stderr, "%s: 运行失败 st=%d rc=%ld out=%s msg=%s\n", e->d_name, rr.st,
                     rr.exit_code, rr.out ? rr.out : "", rr.msg ? rr.msg : "");

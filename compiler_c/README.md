@@ -98,6 +98,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C7d ✅ | NL 记号+语句级消歧(Expr 语句/尾前瞻/空 return) | 夹具 23 项逐字节 |
 | C7e ✅ | 回绕算符/void/pub/\u 解码/@derive-Enum/类型三态/数组字面量/续行 | 夹具=全语法 input_parse_ast 逐字节 |
 | C7f① ✅ | 树版 let/for 模式化/`{`块→BlockExpr/TypeArgs 数字→ComptimeVal | 语料树差分 41/49 |
-| C7f② ✅ | attrs #[] 入树/use .{组}/impl Prop 标签/for 模式/元组表达式 | **全语料树差分 49/49**(159 用例);C8 语义层在树上移植 |
+| C7f② ✅ | attrs #[] 入树/use .{组}/impl Prop 标签/for 模式/元组表达式 | **全语料树差分 49/49** |
+| C8a ✅ | 语义检查首发 sem_chk.ct:W8010 浅拷贝(树上行走) | 与 C sem 差分全等(195 用例);C8b E2030/E3031/E4020/… 逐个入树 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
