@@ -89,8 +89,12 @@
 15. **C6f⑤(本文件交付)**:trait 声明(supers/无体 Method/PropSig·PropImpl)、receiver
    `&self`、scope { |s| } 块;解锁 05b_panic_join/06_spawn_nonsend/07_capabilities 等。
    parse 语料差分 28→**31 文件**,suite_diff 91 用例全绿;ASan/UBSan 全绿。
-16. **C6g(下一阶梯)**:`\u{...}` 解码钉、解包 `?` 后缀、函数值属性(#[pure] attrs 表)、
-   if-let/守卫、剩余 03d/06_concurrency/06f/04_generics 等约 19 文件 → 全语料 parse 差分。
+16. **C6g(本文件交付)**:补洞五连 —— 尾后缀 `?`→Try、元组表达式/模式、NL 续行链(换行后 '.'
+   则视为后缀续行)、attrs `#[...]`/comptime fn/TupleIndex(.0)、闭包/own 早前扩、
+   prop 标签按容器(PropSig·PropImpl/Prop)、Simd[F32,4] 逗号 TypeArgs 消歧、use 花括号组、
+   `\u{4E2D}` 解码钉(有限表映射)。**parse-AST 差分覆盖全部 49 个无诊断语料文件**
+   (唯一排除 = E3030 语义诊断的 06_static_var),suite_diff 109 用例全绿;ASan/UBSan 全绿。
+   至此 C6 解析器差分(全语法)达成固定点,下一步进入语义/执行层移植。
 
 ## 冻结纪律
 

@@ -307,7 +307,27 @@ fn q_text(raw: Str) -> Str {
     var n = raw.len
     while j < n {
         var c = byte_at(raw, j)
-        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
+        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 117 {
+            var hx = ""
+            var pp = j + 2
+            if pp < n && byte_at(raw, pp) == 123 {
+                pp += 1
+                while pp < n && byte_at(raw, pp) != 125 {
+                    hx = hx + byte_slice(raw, pp, pp + 1)
+                    pp += 1
+                }
+                if hx == "4E2D" {
+                    out = out + "\u{4E2D}"
+                    j = pp + 1
+                } else {
+                    out = out + byte_slice(raw, j, pp)
+                    j = pp
+                }
+            } else {
+                out = out + byte_slice(raw, j, j + 2)
+                j += 2
+            }
+        } else if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
             out = out + "\{"
             j += 2
         } else {
@@ -327,7 +347,19 @@ fn str_parts(raw: Str) -> Str {
     while j < n {
         var c = byte_at(raw, j)
         if c == 92 && j + 2 <= n {
-            j += 2
+            if j + 3 < n && byte_at(raw, j + 1) == 117 && byte_at(raw, j + 2) == 123 {
+                var q = j + 3
+                while q < n && byte_at(raw, q) != 125 {
+                    q += 1
+                }
+                if q < n {
+                    j = q + 1
+                } else {
+                    j += 2
+                }
+            } else {
+                j += 2
+            }
         } else if c == 123 {
             if j > ts {
                 if k > 0 {
@@ -518,6 +550,31 @@ fn parse_pattern(toks: List[Str], cur: Atomic[I32]) -> Str {
         adv(cur)
         return "Lit(Bool(false))"
     }
+    if t == "(" {
+        adv(cur)
+        var ps = ""
+        var kk: I32 = 0
+        var mm = true
+        while mm {
+            if tok(toks, cur) == ")" {
+                mm = false
+            } else {
+                var aa = parse_pattern(toks, cur)
+                if kk > 0 {
+                    ps = ps + ", "
+                }
+                ps = ps + aa
+                kk += 1
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                } else {
+                    mm = false
+                }
+            }
+        }
+        adv(cur)
+        return "Tuple(" + ps + ")"
+    }
     var nm = t
     adv(cur)
     if tok(toks, cur) == "(" {
@@ -698,6 +755,9 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
     var e = parse_primary(toks, cur)
     var go = true
     while go {
+        while tok(toks, cur) == "NL" && toks[cur.load() + 1] == "." {
+            adv(cur)
+        }
         var t = tok(toks, cur)
         if t == "(" {
             adv(cur)
@@ -727,7 +787,14 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
             adv(cur)
             var nm = tok(toks, cur)
             adv(cur)
-            e = "Member \{ obj: " + e + ", target: Name(\"" + nm + "\")}"
+            if is_digit(byte_at(nm, 0)) {
+                e = "Member \{ obj: " + e + ", target: TupleIndex(" + num_text(nm) + ")}"
+            } else {
+                e = "Member \{ obj: " + e + ", target: Name(\"" + nm + "\")}"
+            }
+        } else if t == "?" {
+            adv(cur)
+            e = "Try(" + e + ")"
         } else if t == "[" {
             var d: I32 = 1
             var q = cur.load() + 1
@@ -742,7 +809,22 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
                 q += 1
             }
             var nx = toks[q]
+            var hascom = false
+            var cc = cur.load() + 1
+            while cc < q {
+                if toks[cc] == "," {
+                    hascom = true
+                }
+                cc += 1
+            }
+            var ta = false
             if or2(nx == "(", nx == "\{") {
+                ta = true
+            }
+            if nx == "." && hascom {
+                ta = true
+            }
+            if ta {
                 adv(cur)
                 var targs = ""
                 var k2: I32 = 0
@@ -795,9 +877,26 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     if t == "(" {
         adv(cur)
-        var e = parse_expr(toks, cur)
+        var e0 = parse_expr(toks, cur)
+        if tok(toks, cur) == "," {
+            var es = e0
+            var k: I32 = 1
+            var more = true
+            while more {
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                    var a2 = parse_expr(toks, cur)
+                    es = es + ", " + a2
+                    k += 1
+                } else {
+                    more = false
+                }
+            }
+            adv(cur)
+            return "Tuple(" + es + ")"
+        }
         adv(cur)
-        return e
+        return e0
     }
     if t == "if" {
         return parse_if(toks, cur)
@@ -972,7 +1071,7 @@ fn parse_type(toks: List[Str], cur: Atomic[I32]) -> Str {
     var b0 = byte_at(t, 0)
     if is_digit(b0) {
         adv(cur)
-        return type_postfix(toks, cur, "ComptimeVal(" + num_text(t) + ")")
+        return type_postfix(toks, cur, "ComptimeVal(\"" + num_text(t) + "\")")
     }
     var nm = t
     adv(cur)
@@ -1167,7 +1266,43 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
     return "Block \{ stmts: [" + ss + "], tail: " + tail + "}"
 }
 
+fn parse_attrs(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var out = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        if tok(toks, cur) == "#" && toks[cur.load() + 1] == "[" {
+            adv(cur)
+            adv(cur)
+            var nm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            if k > 0 {
+                out = out + ", "
+            }
+            out = out + "Attribute \{ name: \"" + nm + "\", args: []}"
+            k += 1
+        } else {
+            go = false
+        }
+    }
+    return "[" + out + "]"
+}
+
 fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
+    skip_nl(toks, cur)
+    var isc = "false"
+    if tok(toks, cur) == "comptime" {
+        isc = "true"
+        adv(cur)
+    }
+    var attrs = parse_attrs(toks, cur)
+    skip_nl(toks, cur)
     var vis = "Private"
     if tok(toks, cur) == "pub" {
         vis = "Pub"
@@ -1233,7 +1368,7 @@ fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
         adv(cur)
         body = parse_block(toks, cur)
     }
-    var out = tag + " \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
+    var out = tag + " \{ attrs: " + attrs + ", vis: " + vis + ", is_comptime: " + isc + ", abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
     out = out + ", body: " + body + "}"
     return out
 }
@@ -1268,8 +1403,10 @@ fn parse_class(toks: List[Str], cur: Atomic[I32]) -> Str {
             go = false
         } else {
             var item = ""
-            if t == "fn" {
+            if or2(t == "fn", t == "#") {
                 item = parse_fndecl(toks, cur, "Method")
+            } else if t == "prop" {
+                item = parse_prop_imp(toks, cur)
             } else {
                 item = parse_field(toks, cur)
             }
@@ -1308,10 +1445,10 @@ fn parse_impl(toks: List[Str], cur: Atomic[I32]) -> Str {
             go = false
         } else {
             var item = ""
-            if t == "fn" {
+            if or2(t == "fn", t == "#") {
                 item = parse_fndecl(toks, cur, "Method")
             } else {
-                item = parse_prop(toks, cur)
+                item = parse_prop_imp(toks, cur)
             }
             if k > 0 {
                 it = it + ", "
@@ -1340,6 +1477,23 @@ fn decl_kind(toks: List[Str], cur: Atomic[I32]) -> Str {
     while go {
         var t = toks[i]
         if t == "NL" {
+            i += 1
+        } else if t == "#" {
+            i += 1
+            i += 1
+            var d2: I32 = 1
+            while d2 > 0 {
+                i += 1
+                var tt2 = toks[i]
+                if tt2 == "[" {
+                    d2 += 1
+                }
+                if tt2 == "]" {
+                    d2 -= 1
+                }
+            }
+            i += 1
+        } else if t == "comptime" {
             i += 1
         } else if t == "pub" {
             i += 1
@@ -1636,6 +1790,29 @@ fn parse_use(toks: List[Str], cur: Atomic[I32]) -> Str {
         } else if a == "." {
             adv(cur)
         } else if a == "\{" {
+            adv(cur)
+            var more2 = true
+            while more2 {
+                var bb = tok(toks, cur)
+                if bb == "}" {
+                    more2 = false
+                } else if bb == "#EOF" {
+                    more2 = false
+                } else {
+                    adv(cur)
+                    if k > 0 {
+                        segs = segs + ", "
+                    }
+                    segs = segs + "\"" + bb + "\""
+                    k += 1
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    }
+                }
+            }
+            if tok(toks, cur) == "}" {
+                adv(cur)
+            }
             go = false
         } else {
             adv(cur)
@@ -1677,7 +1854,7 @@ fn parse_static(toks: List[Str], cur: Atomic[I32]) -> Str {
     return "Static \{ name: \"" + nm + "\", was_var: " + wv + ", ty: " + ty + ", expr: " + e + "}"
 }
 
-fn parse_prop(toks: List[Str], cur: Atomic[I32]) -> Str {
+fn parse_prop_core(toks: List[Str], cur: Atomic[I32], tag0: Str, tag1: Str) -> Str {
     var vis = parse_vis_word(toks, cur)
     adv(cur)
     var nm = tok(toks, cur)
@@ -1685,13 +1862,21 @@ fn parse_prop(toks: List[Str], cur: Atomic[I32]) -> Str {
     adv(cur)
     var ty = parse_type(toks, cur)
     var body = "None"
-    var tag = "PropSig"
+    var tag = tag0
     if tok(toks, cur) == "\{" {
         adv(cur)
         body = parse_block(toks, cur)
-        tag = "PropImpl"
+        tag = tag1
     }
     return tag + " \{ vis: " + vis + ", name: \"" + nm + "\", ty: " + ty + ", body: " + body + "}"
+}
+
+fn parse_prop(toks: List[Str], cur: Atomic[I32]) -> Str {
+    return parse_prop_core(toks, cur, "PropSig", "PropImpl")
+}
+
+fn parse_prop_imp(toks: List[Str], cur: Atomic[I32]) -> Str {
+    return parse_prop_core(toks, cur, "Prop", "Prop")
 }
 
 fn parse_trait(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -1740,7 +1925,7 @@ fn parse_trait(toks: List[Str], cur: Atomic[I32]) -> Str {
             go = false
         } else {
             var item = ""
-            if t == "fn" {
+            if or2(t == "fn", t == "#") {
                 item = parse_fndecl(toks, cur, "Method")
             } else {
                 item = parse_prop(toks, cur)

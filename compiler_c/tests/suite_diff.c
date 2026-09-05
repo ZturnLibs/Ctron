@@ -187,19 +187,25 @@ int main(int argc, char** argv) {
     free(tsrc);
     // 真实语料 parse-AST 差分(seq=3):parse_ast.ct 模板换靶,逐文件 vs C ctron_file_show
     {
-        static const char* pcorpus[] = {
-            "../tests/00_doctest.ct", "../tests/01_basics.ct", "../tests/01_overflow.panic.ct",
-            "../tests/02_match_exhaustive.neg.ct", "../tests/02d_divzero.panic.ct",
-            "../tests/02e_match_patterns.ct", "../tests/03_shallow_copy.lint.ct", "../tests/03_values_refs.ct",
-            "../tests/03b_numeric_widths.ct", "../tests/03c_str_string.ct", "../tests/03e_generics_types.ct",
-            "../tests/03f_slices.ct", "../tests/03g_fn_types.ct", "../tests/03h_utf8_boundary.panic.ct",
-            "../tests/04b_logic.ct", "../tests/05_own.ct", "../tests/05_own_alloc.neg.ct",
-            "../tests/05_own_move.neg.ct", "../tests/05b_panic_join.ct", "../tests/05d_drop.ct",
-            "../tests/05e_own_gc_mut.neg.ct", "../tests/05f_must_use.lint.ct",
-            "../tests/05g_into_gc_isolation.ct", "../tests/05i_deep_cause.ct",
-            "../tests/06_spawn_nonsend.neg.ct", "../tests/06c_static_nonsend.neg.ct",
-            "../tests/06d_globals.ct", "../tests/07_capabilities.ct", "../tests/08_bare.ct",
-            "../tests/08_bare_alloc.neg.ct", "../tests/10_web_dom.ct"};
+                static const char* pcorpus[] = {
+            "../tests/00_doctest.ct","../tests/01_basics.ct","../tests/01_overflow.panic.ct",
+            "../tests/01d_strings.ct","../tests/01e_multiline_chain.ct","../tests/02_match_exhaustive.neg.ct",
+            "../tests/02_option_result.ct","../tests/02b_option_propagation.ct","../tests/02d_divzero.panic.ct",
+            "../tests/02e_match_patterns.ct","../tests/03_shallow_copy.lint.ct","../tests/03_values_refs.ct",
+            "../tests/03b_numeric_widths.ct","../tests/03c_str_string.ct","../tests/03d_props_traits.ct",
+            "../tests/03e_generics_types.ct","../tests/03f_slices.ct","../tests/03g_fn_types.ct",
+            "../tests/03h_utf8_boundary.panic.ct","../tests/04_generics_comptime.ct","../tests/04b_logic.ct",
+            "../tests/05_own_alloc.neg.ct","../tests/05_own_move.neg.ct","../tests/05_own.ct",
+            "../tests/05b_panic_join.ct","../tests/05d_drop.ct","../tests/05e_own_gc_mut.neg.ct",
+            "../tests/05f_must_use.lint.ct","../tests/05g_into_gc_isolation.ct","../tests/05i_deep_cause.ct",
+            "../tests/06_channel_nonsend.neg.ct","../tests/06_concurrency.ct","../tests/06_spawn_nonsend.neg.ct",
+            "../tests/06b_slice_nonsend.neg.ct","../tests/06c_static_nonsend.neg.ct","../tests/06d_globals.ct",
+            "../tests/06e_cancel.ct","../tests/06f_parallel.ct","../tests/06g_noalloc_trait.ct",
+            "../tests/06h_noalloc_trait.neg.ct","../tests/07_capabilities.ct","../tests/07_pure.neg.ct",
+            "../tests/08_bare_alloc.neg.ct","../tests/08_bare.ct","../tests/08b_nospawn.neg.ct",
+            "../tests/08d_comptime_effect.neg.ct","../tests/09_simd.ct","../tests/10_trace.ct",
+            "../tests/10_web_dom.ct"
+        };
         char ptpath[4096], pip[4096];
         snprintf(ptpath, sizeof ptpath, "%s/parse_ast.ct", root);
         snprintf(pip, sizeof pip, "%s/input_parse_ast.ct", root);

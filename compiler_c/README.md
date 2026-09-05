@@ -84,6 +84,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C6f①② ✅ | 切片/定长数组·数组字面量;struct/enum/use/const/static 声明族·类型形参·@derive·结构字面量 | 语料 parse 差分扩至 16 文件 |
 | C6f③ ✅ | class/impl 声明族 + receiver 方法(var self→Receiver) | 语料 parse 差分扩至 21 文件 |
 | C6f④ ✅ | 闭包 |x| 与 own(arena) 块表达式 | 语料 parse 差分扩至 28 文件 |
-| C6f⑤ ✅ | trait(supers/无体 Method/PropSig)/&self receiver/scope 块 | 语料 parse 差分扩至 31 文件(91 用例);C6g 解包/attrs/if-let/全语料 |
+| C6f⑤ ✅ | trait(supers/无体 Method/PropSig)/&self receiver/scope 块 | 语料 parse 差分扩至 31 文件 |
+| C6g ✅ | Try?/元组/续行链/attrs/comptime/TupleIndex/Prop 容器标签/Simd 消歧/use 花组/\u 钉 | **49/50 无诊断语料文件 parse-AST 逐字节全等**(109 用例) |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
