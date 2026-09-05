@@ -714,9 +714,6 @@ static ty emit_match(tc* c, cexpr* e, sb* o, int want_value, char** out_tmp) {
     char vn[32], rn[32];
     snprintf(vn, sizeof vn, "ctron_m%d", n);
     snprintf(rn, sizeof rn, "ctron_mr%d", n);
-    sb_f(o, "{ %s %s = %s;\n", ctype_of(st), vn, sc.d ? sc.d : "0");
-    sb_free(&sc);
-
     ty val_t = ty_unk();
     // 先干跑各臂求值,取值类型(表达式纯,双发射安全)
     if (want_value && e->narms > 0) {
@@ -731,11 +728,13 @@ static ty emit_match(tc* c, cexpr* e, sb* o, int want_value, char** out_tmp) {
         scope_pop(c);
         sb_free(&t0);
         if (val_t.k != T_UNK) {
-            sb_f(o, "    %s %s = 0;\n", ctype_of(val_t), rn);
+            sb_f(o, "%s %s = 0;\n", ctype_of(val_t), rn); // 结果变量在 match 块外(return/let 可见)
         } else want_value = 0;
     }
     if (want_value) want_value = 1;
 
+    sb_f(o, "{ %s %s = %s;\n", ctype_of(st), vn, sc.d ? sc.d : "0");
+    sb_free(&sc);
     int emitted_catch = 0;
     for (size_t i = 0; i < e->narms && !c->err; i++) {
         cpat* p = e->arms[i].pat;
@@ -764,9 +763,12 @@ static ty emit_match(tc* c, cexpr* e, sb* o, int want_value, char** out_tmp) {
             return ty_unk();
         }
 
-        if (i > 0 && !emitted_catch) sb_s(o, " else ");
-        if (need_cond) sb_f(o, "if (%s) ", cond.d ? cond.d : "1");
-        else if (i > 0) sb_s(o, "else ");
+        if (need_cond) {
+            if (i > 0 && !emitted_catch) sb_s(o, " else ");
+            sb_f(o, "if (%s) ", cond.d ? cond.d : "1");
+        } else if (i > 0) {
+            sb_s(o, " else ");
+        }
         sb_free(&cond);
         sb_s(o, "{\n    ");
         scope_push(c);
@@ -1086,6 +1088,8 @@ static void emit_block(tc* c, cblock* b, sb* o) {
     for (size_t i = 0; i < b->nstmts; i++)
         emit_stmt(c, b->stmts[i], o);
     if (b->tail) {
+        if (b->tail->kind == EX_MATCH) { emit_match(c, b->tail, o, 0, NULL); return; }
+        if (b->tail->kind == EX_IF) { emit_if_stmt(c, b->tail, o); return; }
         sb r = {0};
         emit_expr(c, b->tail, &r);
         sb_f(o, "%s;\n", r.d ? r.d : "");
@@ -1143,11 +1147,16 @@ static void emit_helper(tc* c, const char* name) {
         || !strcmp(fam, "div") || !strcmp(fam, "mod") || !strcmp(fam, "cadd")
         || !strcmp(fam, "csub") || !strcmp(fam, "cmul") || !strcmp(fam, "cdiv")
         || !strcmp(fam, "cmod") || !strcmp(fam, "iadd") || !strcmp(fam, "isub")
-        || !strcmp(fam, "imul") || !strcmp(fam, "idiv") || !strcmp(fam, "imod")) {
+        || !strcmp(fam, "imul") || !strcmp(fam, "idiv") || !strcmp(fam, "imod")
+        || !strcmp(fam, "madd") || !strcmp(fam, "msub") || !strcmp(fam, "mmul")
+        || !strcmp(fam, "mdiv") || !strcmp(fam, "mmod")) {
         int is_c = 0;
-        if (fam[0] == 'c') is_c = 1;      // cadd… → "(assign)"
-        else if (fam[0] == 'i') is_c = 2; // iadd… → "(idx assign)"
-        else if (fam[0] == 'm') is_c = 3; // madd… → "(member assign)"
+        size_t fln = strlen(fam);
+        // 复合族是 4 字符(cadd/iadd/madd…);普通二元 add/sub/mul/div/mod 是 3 字符,
+        // 不能按首字母 'm' 判别(否则 mul/mod 被误当成员赋值族,base 掉进兜底 '%')。
+        if (fln == 4 && fam[0] == 'c') is_c = 1;      // cadd… → "(assign)"
+        else if (fln == 4 && fam[0] == 'i') is_c = 2; // iadd… → "(idx assign)"
+        else if (fln == 4 && fam[0] == 'm') is_c = 3; // madd… → "(member assign)"
         const char* base = is_c ? fam + 1 : fam;
         const char* op = !strcmp(base, "add") ? "+" : !strcmp(base, "sub") ? "-" : !strcmp(base, "mul") ? "*"
                         : !strcmp(base, "div") ? "/" : "%";
@@ -1368,7 +1377,7 @@ static void collect_fns(tc* c, const cfile* f) {
 
 static void emit_fn(tc* c, const cfn* F, const char* cname) {
     ty ret = decl_ty_tc(c, F->ret);
-    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM) ? ctype_of(ret) : "void";
+    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM) ? ctype_of(ret) : "void";
     sb_f(&c->body, "static %s %s(", rct, cname);
     scope_push(c);
     for (size_t i = 0; i < F->nparams; i++) {
@@ -1378,7 +1387,7 @@ static void emit_fn(tc* c, const cfn* F, const char* cname) {
         if (pt.k == T_UNK) { terr(c, "v1:参数 %s 需类型注解", p->name ? p->name : "?"); return; }
         if (!p->name) { terr(c, "v1:参数缺名"); return; }
         if (i) sb_s(&c->body, ", ");
-        sb_f(&c->body, "%s ctron_p_%s", pt.k == T_FLT ? "double" : pt.k == T_BOOL ? "int" : "int64_t", p->name);
+        sb_f(&c->body, "%s ctron_p_%s", ctype_of(pt), p->name);
     }
     sb_s(&c->body, ") {\n");
     for (size_t i = 0; i < F->nparams; i++) {
@@ -1390,6 +1399,9 @@ static void emit_fn(tc* c, const cfn* F, const char* cname) {
             snprintf(h, sizeof h, "ctron_decl_%s", wlname(pt));
             use_helper(c, h);
             sb_f(&c->body, "    %s %s = %s(ctron_p_%s);\n", ctype_of(pt), p->name, h, p->name);
+            scope_def(c, p->name, pt);
+        } else if (pt.k == T_STRUCT || pt.k == T_ENUM) {
+            sb_f(&c->body, "    %s %s = ctron_p_%s;\n", ctype_of(pt), p->name, p->name);
             scope_def(c, p->name, pt);
         } else {
             scope_def(c, p->name, pt);
@@ -1510,12 +1522,12 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             const cdecl* d = &f->decls[i];
             if (d->kind != D_FN) continue;
             ty ret = decl_ty_tc(&c, d->fn_.ret);
-            const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM) ? ctype_of(ret) : "void";
+            const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM) ? ctype_of(ret) : "void";
             sb_f(h, "static %s ctron_user_%s(", rct, d->fn_.name);
             for (size_t j = 0; j < d->fn_.nparams; j++) {
                 ty pt = decl_ty_tc(&c, d->fn_.params[j].ty);
                 if (j) sb_s(h, ", ");
-                sb_f(h, "%s ctron_p_%s", pt.k == T_FLT ? "double" : pt.k == T_BOOL ? "int" : "int64_t",
+                sb_f(h, "%s ctron_p_%s", ctype_of(pt),
                      d->fn_.params[j].name ? d->fn_.params[j].name : "_");
             }
             sb_s(h, ");\n");
