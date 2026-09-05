@@ -1,10 +1,15 @@
 // main.c —— ctronc 命令行(C 版 Ctron 编译器)。
+// 子命令:version | lex | parse | check | run | pkg
+// check/pkg 支持 --format=json(规范 §10.2 冻结 schema:diagnostics[] =
+//   {code, severity, message, file, span{line_start,col_start,line_end,col_end}, notes[], fixes[]})。
+// 位置信息诚实输出:词法/解析诊断有行列;语义/模块级诊断当前无位置(span 全 0)。
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "lexer.h"
 #include "parser.h"
+#include "pkg.h"
 #include "sem.h"
 #include "rt.h"
 
@@ -24,6 +29,61 @@ static char* read_file(const char* path, size_t* out_len) {
     buf[got] = '\0';
     *out_len = got;
     return buf;
+}
+
+// ---------- JSON 诊断输出(§10.2) ----------
+typedef struct {
+    const char* code;
+    const char* severity; // error | warning
+    const char* message;
+    const char* file;
+    unsigned line, col;   // 未知为 0
+} jdiag;
+
+static void json_puts(const char* s) {
+    if (!s) s = "";
+    putchar('"');
+    for (const unsigned char* p = (const unsigned char*)s; *p; p++) {
+        switch (*p) {
+        case '"': fputs("\\\"", stdout); break;
+        case '\\': fputs("\\\\", stdout); break;
+        case '\n': fputs("\\n", stdout); break;
+        case '\r': fputs("\\r", stdout); break;
+        case '\t': fputs("\\t", stdout); break;
+        default:
+            if (*p < 0x20) printf("\\u%04x", *p);
+            else putchar(*p);
+        }
+    }
+    putchar('"');
+}
+
+static void print_diags_json(const jdiag* d, size_t n) {
+    printf("{\n  \"diagnostics\": [");
+    for (size_t i = 0; i < n; i++) {
+        printf("%s\n    {\"code\": ", i ? "," : "");
+        json_puts(d[i].code);
+        printf(", \"severity\": ");
+        json_puts(d[i].severity);
+        printf(", \"message\": ");
+        json_puts(d[i].message);
+        printf(", \"file\": ");
+        json_puts(d[i].file);
+        printf(", \"span\": {\"line_start\": %u, \"col_start\": %u, \"line_end\": %u, \"col_end\": %u}",
+               d[i].line, d[i].col, d[i].line, d[i].col);
+        printf(", \"notes\": [], \"fixes\": []}");
+    }
+    printf("%s]\n}\n", n ? "\n  " : "");
+}
+
+static const char* sev_of(const char* code) {
+    return code && code[0] == 'W' ? "warning" : "error";
+}
+
+static int has_flag(int argc, char** argv, int from, const char* flag) {
+    for (int i = from; i < argc; i++)
+        if (strcmp(argv[i], flag) == 0) return 1;
+    return 0;
 }
 
 static int cmd_lex(int argc, char** argv) {
@@ -82,10 +142,11 @@ static int cmd_parse(int argc, char** argv) {
 
 static int cmd_check(int argc, char** argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: ctronc check <file>\n");
+        fprintf(stderr, "usage: ctronc check <file> [--format=json]\n");
         return 2;
     }
     const char* path = argv[2];
+    int as_json = has_flag(argc, argv, 3, "--format=json");
     size_t len;
     char* src = read_file(path, &len);
     if (!src) {
@@ -96,19 +157,75 @@ static int cmd_check(int argc, char** argv) {
     ctron_arena* arena = ctron_arena_new();
     ctron_sem_result sr = ctron_sem_check(pr.file, arena);
     size_t total = pr.ndiags + sr.ndiags;
-    for (size_t i = 0; i < pr.ndiags; i++) {
-        ctron_diag* d = &pr.diags[i];
-        printf("%s:%u:%u %s: %s\n", path, d->span.line, d->span.col, d->code, d->message);
+    if (as_json) {
+        jdiag* jd = total ? (jdiag*)calloc(total, sizeof(jdiag)) : NULL;
+        size_t n = 0;
+        for (size_t i = 0; i < pr.ndiags; i++) {
+            jd[n].code = pr.diags[i].code;
+            jd[n].severity = sev_of(pr.diags[i].code);
+            jd[n].message = pr.diags[i].message;
+            jd[n].file = path;
+            jd[n].line = pr.diags[i].span.line;
+            jd[n].col = pr.diags[i].span.col;
+            n++;
+        }
+        for (size_t i = 0; i < sr.ndiags; i++) {
+            jd[n].code = sr.diags[i].code;
+            jd[n].severity = sev_of(sr.diags[i].code);
+            jd[n].message = sr.diags[i].message;
+            jd[n].file = path;
+            n++;
+        }
+        print_diags_json(jd, n);
+        free(jd);
+    } else {
+        for (size_t i = 0; i < pr.ndiags; i++) {
+            ctron_diag* d = &pr.diags[i];
+            printf("%s:%u:%u %s: %s\n", path, d->span.line, d->span.col, d->code, d->message);
+        }
+        for (size_t i = 0; i < sr.ndiags; i++) {
+            printf("%s %s: %s\n", path, sr.diags[i].code, sr.diags[i].message);
+        }
+        if (!as_json) printf("%zu diagnostics\n", total);
     }
-    for (size_t i = 0; i < sr.ndiags; i++) {
-        printf("%s %s: %s\n", path, sr.diags[i].code, sr.diags[i].message);
-    }
-    printf("%zu diagnostics\n", total);
     int ok = (total == 0);
     free(sr.diags);
     ctron_arena_free(arena);
     ctron_parse_result_free(&pr);
     free(src);
+    return ok ? 0 : 1;
+}
+
+static int cmd_pkg(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc pkg <dir> [--format=json]\n");
+        return 2;
+    }
+    const char* root = argv[2];
+    int as_json = has_flag(argc, argv, 3, "--format=json");
+    pkg_res r = ctron_pkg_check(root);
+    if (as_json) {
+        jdiag* jd = r.n ? (jdiag*)calloc(r.n, sizeof(jdiag)) : NULL;
+        for (size_t i = 0; i < r.n; i++) {
+            char* path = (char*)malloc(strlen(root) + strlen(r.d[i].rel) + 2);
+            sprintf(path, "%s/%s", root, r.d[i].rel);
+            jd[i].code = r.d[i].code;
+            jd[i].severity = sev_of(r.d[i].code);
+            jd[i].message = r.d[i].msg;
+            jd[i].file = path;
+        }
+        print_diags_json(jd, r.n);
+        if (jd) {
+            for (size_t i = 0; i < r.n; i++) free((void*)jd[i].file);
+            free(jd);
+        }
+    } else {
+        for (size_t i = 0; i < r.n; i++)
+            printf("%s/%s %s: %s\n", root, r.d[i].rel, r.d[i].code, r.d[i].msg);
+        printf("%zu diagnostics\n", r.n);
+    }
+    int ok = (r.n == 0);
+    ctron_pkg_res_free(&r);
     return ok ? 0 : 1;
 }
 
@@ -143,61 +260,6 @@ static int cmd_run(int argc, char** argv) {
     return rc;
 }
 
-// 用 Ctron 实现的解析器(parsetree.ct,结构化 AST 树)解析任意测试码并打印 C-AST v1。
-// 做法:读 Ctron 模块源码,把其中 read_file 的目标字面量换成目标文件后运行该模块。
-static int cmd_parse_ct(int argc, char** argv) {
-    if (argc < 3) {
-        fprintf(stderr, "usage: ctronc parse-ct <file> [module]\n");
-        return 2;
-    }
-    const char* mod = argc > 3 ? argv[3] : "selfhost/parsetree.ct";
-    size_t mlen;
-    char* msrc = read_file(mod, &mlen);
-    if (!msrc) {
-        fprintf(stderr, "无法读取模块 %s\n", mod);
-        return 2;
-    }
-    // 替换模块内 read_file("...") 的字符串字面量为目标文件
-    const char* rf = strstr(msrc, "read_file(\"");
-    if (!rf) {
-        fprintf(stderr, "模块 %s 缺 read_file 调用\n", mod);
-        free(msrc);
-        return 2;
-    }
-    const char* openq = rf + strlen("read_file(\"");
-    const char* closeq = strchr(openq, '"');
-    if (!closeq) {
-        fprintf(stderr, "模块 %s read_file 路径未闭合\n", mod);
-        free(msrc);
-        return 2;
-    }
-    size_t pre = (size_t)(openq - msrc);
-    size_t rlen = strlen(argv[2]);
-    size_t after = mlen - (size_t)(closeq - msrc); // 保留收尾引号
-    char* out = (char*)malloc(pre + rlen + after + 1);
-    if (!out) abort();
-    memcpy(out, msrc, pre);
-    memcpy(out + pre, argv[2], rlen);
-    memcpy(out + pre + rlen, closeq, after);
-    out[pre + rlen + after] = '\0';
-    free(msrc);
-    ctron_parse_result pr = ctron_parse_src(out, pre + rlen + after);
-    free(out);
-    if (pr.ndiags) {
-        fprintf(stderr, "Ctron 模块解析失败\n");
-        ctron_parse_result_free(&pr);
-        return 1;
-    }
-    rt_run rr = ctron_rt_run_main(pr.file);
-    if (rr.out) printf("%s", rr.out);
-    if (rr.msg) fprintf(stderr, "%s\n", rr.msg);
-    int rc = 0;
-    if (rr.st == RT_PANIC || rr.st == RT_ERROR || rr.exit_code != 0) rc = 1;
-    ctron_rt_run_free(&rr);
-    ctron_parse_result_free(&pr);
-    return rc;
-}
-
 int main(int argc, char** argv) {
     const char* sub = argc > 1 ? argv[1] : "";
     if (strcmp(sub, "version") == 0) {
@@ -207,8 +269,8 @@ int main(int argc, char** argv) {
     if (strcmp(sub, "lex") == 0) return cmd_lex(argc, argv);
     if (strcmp(sub, "parse") == 0) return cmd_parse(argc, argv);
     if (strcmp(sub, "check") == 0) return cmd_check(argc, argv);
+    if (strcmp(sub, "pkg") == 0) return cmd_pkg(argc, argv);
     if (strcmp(sub, "run") == 0) return cmd_run(argc, argv);
-    if (strcmp(sub, "parse-ct") == 0) return cmd_parse_ct(argc, argv);
-    fprintf(stderr, "usage: ctronc <version|lex|parse|check|run|parse-ct> [args]\n");
+    fprintf(stderr, "usage: ctronc <version|lex|parse|check|pkg|run> [args]\n");
     return 2;
 }

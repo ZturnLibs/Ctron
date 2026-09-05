@@ -60,6 +60,17 @@ compiler_c/
 UN_NOT/具名函数返回类型(match 穷尽同步受益)。推导不出 → 保守不报;数值↔数值宽度自适应
 (如 `let x: U64 = 5`)不报。已入 suite_sem 已实现集。
 
+### C3-e E2010 扩展 ✅(镜像 Rust check.rs 检查面)
+一元 - 需数值 / 一元 ! 需 Bool / && 需 Bool / 算术需数值(字串构造走插值,不走 `+`)/
+`?` 操作数与所在函数返回类型须 Option·Result / `or` 接收者须 Option·Result /
+struct·class 字段存在性(调用者位置跳过;prop·impl 一并识别)。全部保守:类型推导不出不报;
+61 文件行为语料零诊断维持,正反探针 13 例符合预期。
+
+### C9 工具链面 ✅(`ctronc pkg` + `--format=json`)
+新增 `pkg <dir>` 子命令(模块级检查直达 CLI,exit 0/1);`check`/`pkg` 支持 `--format=json`,
+按规范 §10.2 冻结 schema 输出(code/severity/message/file/span/notes/fixes;语义与模块级
+诊断当前无位置,span 诚实置 0)。字串转义经 \u 覆盖;JSON 合法性经 python json 验证。
+
 ## 后续里程碑(C 版路线,独立推进)
 
 | 里程碑 | 内容 | 出口 |

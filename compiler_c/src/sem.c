@@ -67,6 +67,36 @@ static const cdecl* find_enum(const cfile* f, const char* n) { return FIND(f, D_
 static const cdecl* find_trait(const cfile* f, const char* n) { return FIND(f, D_TRAIT, n); }
 static const cdecl* find_fn(const cfile* f, const char* n) { return FIND(f, D_FN, n); }
 
+static const char* head_name(const cty* t); // 前置:type_has_member 先于定义使用
+
+// 成员存在性:struct 字段 / class 字段·prop / impl prop(E2010 字段检查用)
+static int type_has_member(const cfile* f, const char* ty, const char* m) {
+    const cdecl* st = find_struct(f, ty);
+    if (st)
+        for (size_t i = 0; i < st->strukt.nfields; i++)
+            if (st->strukt.fields[i].name && strcmp(st->strukt.fields[i].name, m) == 0) return 1;
+    const cdecl* cl = find_class(f, ty);
+    if (cl)
+        for (size_t i = 0; i < cl->klass.nitems; i++) {
+            const cclassitem* it = &cl->klass.items[i];
+            if ((it->kind == CT_FIELD && it->f && it->f->name && strcmp(it->f->name, m) == 0)
+                || (it->kind == CT_PROP && it->p && it->p->name && strcmp(it->p->name, m) == 0))
+                return 1;
+        }
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind != D_IMPL) continue;
+        const char* fornm = head_name(d->impl.for_ty);
+        if (!fornm || strcmp(fornm, ty) != 0) continue;
+        for (size_t j = 0; j < d->impl.nitems; j++) {
+            const cimplitem* it = &d->impl.items[j];
+            if (it->kind == II_PROP && it->p && it->p->name && strcmp(it->p->name, m) == 0)
+                return 1;
+        }
+    }
+    return 0;
+}
+
 static const char* head_name(const cty* t) {
     if (!t || t->kind != TY_NAMED || t->npath == 0) return NULL;
     return t->path[0];
@@ -202,6 +232,8 @@ typedef struct ctx {
     int fn_noalloc;   // #[no_alloc] / trait 契约 / bare 档
     int profile;      // sem_profile
     int in_own;
+    const cty* fn_ret; // 当前函数返回类型(test 体为 NULL;? 语境检查用)
+    int in_callee;     // >0 = 正在检查调用者表达式(成员作方法名,不作字段)
     char** arena_binds; // own 块内 arena 句柄活绑定(只移语义)
     size_t n_arena;
     char** moved;      // 已 move 的句柄名
@@ -456,6 +488,18 @@ static int check_cond_bool(ctx* c, cexpr* cond, const char* what) {
     if (cat == 2 || cat == 0) return 0;
     diag(c->k, "E2010", "%s 条件应为 Bool,实际 %s", what, hn);
     return 1;
+}
+// opt/res 接收类型判定:Option/Result/T? → 1;可证明不是 → 0;未知 → -1(不判)
+static int is_optres_ty(const sym* s, const cty* t) {
+    if (!t) return -1;
+    if (t->kind == TY_OPT) return 1;
+    const char* hn = head_name(t);
+    if (!hn) return -1;
+    if (!strcmp(hn, "Option") || !strcmp(hn, "Result")) return 1;
+    // 原语/本文件具名类型 → 可证明非 Option/Result;其余(泛型形参等) → 未知
+    if (prim_cat(hn) || find_struct(s->f, hn) || find_class(s->f, hn) || find_enum(s->f, hn))
+        return 0;
+    return -1;
 }
 
 static const char* const OPTION_VARS[] = {"Some", "None"};
@@ -828,8 +872,50 @@ static void check_expr(ctx* c, cexpr* e) {
         for (size_t i = 0; i < e->nfields; i++)
             if (e->fields[i].value) check_expr(c, e->fields[i].value);
         return;
-    case EX_UNARY: check_expr(c, e->ux); return;
-    case EX_BINARY: check_expr(c, e->lhs); check_expr(c, e->rhs); return;
+    case EX_UNARY: {
+        cty* t = derive_type(c, e->ux);
+        const char* hn = head_name(t);
+        if (hn) {
+            int cat = prim_cat(hn);
+            if (e->uop == UN_NEG && cat && cat != 1)
+                diag(c->k, "E2010", "一元 - 需要数值,实际 %s", hn);
+            if (e->uop == UN_NOT && cat && cat != 2)
+                diag(c->k, "E2010", "一元 ! 需要 Bool,实际 %s", hn);
+        }
+        check_expr(c, e->ux);
+        return;
+    }
+    case EX_BINARY: {
+        if (e->bop == B_AND || e->bop == B_OR) {
+            cty* lt = derive_type(c, e->lhs);
+            cty* rt = derive_type(c, e->rhs);
+            int lc = prim_cat(head_name(lt)), rc = prim_cat(head_name(rt));
+            if (e->bop == B_AND && ((lc && lc != 2) || (rc && rc != 2)))
+                diag(c->k, "E2010", "&& 需要 Bool");
+            check_expr(c, e->lhs);
+            check_expr(c, e->rhs);
+            return;
+        }
+        cty* lt = derive_type(c, e->lhs);
+        cty* rt = derive_type(c, e->rhs);
+        const char* ln = head_name(lt);
+        const char* rn = head_name(rt);
+        int lc = prim_cat(ln), rc = prim_cat(rn);
+        if (e->bop >= B_EQ && e->bop <= B_GE) {
+            // 比较:两侧已知时,同类(数值/Bool/Str)或同名类型方可(Rust 同规则)
+            if (ln && rn && lc && rc
+                && !(lc == rc || (lc == 2 || rc == 2) || (lc == 3 || rc == 3)
+                     || (lc == 0 || rc == 0) || !strcmp(ln, rn)))
+                diag(c->k, "E2010", "比较类型不匹配:%s vs %s", ln, rn);
+        } else {
+            // 算术/回绕:两侧已知时需均为数值(字符串构造走插值,不走 +)
+            if (ln && rn && lc && rc && !(lc == 1 && rc == 1))
+                diag(c->k, "E2010", "算术需要数值,实际 %s 与 %s", ln, rn);
+        }
+        check_expr(c, e->lhs);
+        check_expr(c, e->rhs);
+        return;
+    }
     case EX_RANGE: check_expr(c, e->from); check_expr(c, e->to); return;
     case EX_CALL: {
         // 分配语境(E3040):own 块 / #[no_alloc] / bare
@@ -851,19 +937,49 @@ static void check_expr(ctx* c, cexpr* e) {
             if (c->fn_pure) diag(c->k, "E4020", "pure 函数含能力调用(pure)");
             else diag(c->k, "E6020", "comptime 函数含能力调用(comptime)");
         }
+        // or:只能用于 Option/Result(§4)
+        if (e->callee && e->callee->kind == EX_MEMBER && e->callee->m_is_name
+            && e->callee->mname && strcmp(e->callee->mname, "or") == 0
+            && is_optres_ty(c->s, derive_type(c, e->callee->obj)) == 0)
+            diag(c->k, "E2010", "`or` 只能用于 Option/Result");
         // spawn:no_spawn 上下文 E4030;否则闭包捕获 Send E3010
         if (e->callee && e->callee->kind == EX_MEMBER && e->callee->m_is_name
             && e->callee->mname && strcmp(e->callee->mname, "spawn") == 0) {
             check_spawn_send(c, e);
         }
-        if (e->callee) check_expr(c, e->callee);
+        if (e->callee) {
+            c->in_callee++;
+            check_expr(c, e->callee);
+            c->in_callee--;
+        }
         for (size_t i = 0; i < e->nelems; i++) check_expr(c, e->elems[i]);
         return;
     }
     case EX_INDEX: check_expr(c, e->obj); check_expr(c, e->index); return;
-    case EX_MEMBER: check_expr(c, e->obj); return;
+    case EX_MEMBER: {
+        check_expr(c, e->obj);
+        // 字段存在性(保守):接收者为本文件具名 struct/class 且成员既非字段也非 prop;调用者位置跳过
+        if (e->m_is_name && e->mname && !c->in_callee) {
+            cty* t = derive_type(c, e->obj);
+            const char* hn = head_name(t);
+            if (hn && !is_prim(hn) && (find_struct(c->s->f, hn) || find_class(c->s->f, hn))
+                && !type_has_member(c->s->f, hn, e->mname))
+                diag(c->k, "E2010", "`%s` 无字段 `%s`", hn, e->mname);
+        }
+        return;
+    }
     case EX_TYPEARGS: check_expr(c, e->obj); return;
-    case EX_TRY: check_expr(c, e->obj); return;
+    case EX_TRY: {
+        // §5.3:操作数须 Result/Option;所在函数须返回 Result/Option(可证明时)
+        int op_ok = is_optres_ty(c->s, derive_type(c, e->obj));
+        if (op_ok == 0)
+            diag(c->k, "E2010", "`?` 只能用于 Result/Option");
+        int fn_ok = is_optres_ty(c->s, c->fn_ret);
+        if (fn_ok == 0)
+            diag(c->k, "E2010", "`?` 只能用于返回 Result/Option 的函数(§5.3)");
+        check_expr(c, e->obj);
+        return;
+    }
     case EX_CLOSURE: {
         // 闭包参数进入环境(参数深于调用处)
         c->depth++;
@@ -957,6 +1073,7 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
     sub.fn_pure = has_attr(f->attrs, f->nattrs, "pure");
     sub.fn_comptime = f->is_comptime;
     sub.fn_no_spawn = has_attr(f->attrs, f->nattrs, "no_spawn");
+    sub.fn_ret = f->ret;
     sub.fn_noalloc = has_attr(f->attrs, f->nattrs, "no_alloc") || no_alloc_contract
                      || (c->profile == SEM_BARE);
     for (size_t i = 0; i < f->nparams; i++) {
