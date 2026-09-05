@@ -124,6 +124,21 @@
    已裁定钉子:块退出后不再可见的遮蔽名与 C 帧语义一致(env 前缀丢弃);解释函数调用时
    `return` 不向外泄(与 C 宿主一致);数值字面量/运算按 I32 域(后缀/溢出用例不纳入夹具);
    浮动/Float/List/闭包/类/UFCS 等后续阶梯。
+18w. **C9b②(本文件交付)—— Ctron 模块级检查升级为 C pkg 逐字 oracle + E6010 comptime 预算**:
+   `pkg_chk.ct` 自 tok 顶层提取版改写为镜像 `src/pkg.c` 全流程:toml 解析(Ctron.toml 注释/引号/
+   [package]/[caps]/[comptime] budget_ms)、逐文件诊断归属(rel=`src/<f>`)、C 同序
+   (每模块组 E5010→E2020→E4010,再 E5020、E6010)、消息文本与 `ctronc pkg` 逐字一致
+   (E5010 含 trait for type;E2020 未知模块/不可见项;E4010 含 &参数名;E5020 按 stem 排序 DFS
+   根锚定;E6010 const 求值 steps/depth 预算,消息 `comptime 超出预算(budget):<名> 求值超限`)。
+   E6010 求值器 = Ctron 纯 int 子集镜像 C ceval:Int/Ident(参数)/一元 Neg/二元加減乘除模/单
+   Return 块与尾表达式/comptime fn(FnC)递归;steps 超 budget_ms*10000(缺省 1e6)或深度超限
+   → E6010;不可估节点静默跳过不误报。验收:suite_diff 新增 **seq=8 模块级 oracle**:
+   pkg_chk.ct 模板按 7 个包目录换靶(orphan/circular/visibility/caps/comptime_budget 负例 +
+   use_ok/ffi_math 行为零误报),与 C `ctron_pkg_check` 非 JSON 文本逐字一致(218 cases 全绿;
+   make test + suite_run 15 files;ASan/UBSan 绿)。已裁定钉子:Ctron 侧 comptime 递归深度预算
+   降至 40(宿主解释器每层≈多 C 帧,ASan 栈保护;语料 spin 仍必中,与 C 差分不受影响);
+   comptime fn 跨文件检索暂限同文件(语料单文件;跨文件后续阶梯);E5020 环检测免于全局
+   done 剪枝(语料二模块环结果与 C 相同)。
 
 ## 自举产物目录
 

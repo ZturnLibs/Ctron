@@ -2126,187 +2126,607 @@ fn item_vis(itemMod: List[Str], names: List[Str], vis: List[Str], modn: Str, itn
     }
     return ""
 }
-fn dep_cycle(mods: List[Str], deps: List[Str], depM: List[Str]) -> Bool {
-    // 两两互引即报
+fn trim_line(s: Str) -> Str {
     var a: I32 = 0
-    while a < deps.len {
-        var b: I32 = 0
-        while b < deps.len {
-            var ma = depM[a]
-            var da = deps[a]
-            var mb = depM[b]
-            var db = deps[b]
-            if seq2(da, mb) && seq2(db, ma) && !seq2(ma, mb) {
-                return true
-            }
-            b += 1
-        }
+    var n = s.len
+    while a < n && or2(byte_at(s, a) == 32, or2(byte_at(s, a) == 9, byte_at(s, a) == 13)) {
         a += 1
+    }
+    var b = n
+    while b > a && or2(byte_at(s, b - 1) == 32, or2(byte_at(s, b - 1) == 9, byte_at(s, b - 1) == 13)) {
+        b -= 1
+    }
+    return byte_slice(s, a, b)
+}
+fn prs_i(t: Str) -> I32 {
+    var neg = false
+    var k: I32 = 0
+    if t.len > 0 && byte_at(t, 0) == 45 {
+        neg = true
+        k = 1
+    }
+    var acc: I32 = 0
+    while k < t.len {
+        var c = byte_at(t, k)
+        if c >= 48 && c <= 57 {
+            acc = acc * 10 + c - 48
+        } else {
+            k = t.len
+        }
+        k += 1
+    }
+    if neg {
+        return 0 - acc
+    }
+    return acc
+}
+fn has_ref(toks: List[Str], nm: Str) -> Bool {
+    var i: I32 = 0
+    while i + 1 < toks.len {
+        if seq2(toks[i], "&") && seq2(toks[i + 1], nm) {
+            return true
+        }
+        i += 1
     }
     return false
 }
-fn pkg_check(base: Str) -> Str {
-    var out = ""
-    var diags = List[Str]()
-    var files = List[Str]()
-    match read_dir(base + "/src") {
-        Some(s) => { files = split_nl(s) }
-        None => { return "read_dir-failed" }
-    }
-    var mods = List[Str]()
-    var names = List[Str]()
-    var vis = List[Str]()
-    var itemMod = List[Str]()
-    var implT = List[Str]()
-    var implF = List[Str]()
-    var imports = List[Str]()
-    var depMods = List[Str]()
-    var depM = List[Str]()
-    var fi: I32 = 0
-    while fi < files.len {
-        var fnm = files[fi]
-        var modn = fnm
-        if ends_ct(modn) { modn = byte_slice(fnm, 0, fnm.len - 3) }
-        mods.push(modn)
-        var text = ""
-        match read_file(base + "/src/" + fnm) {
-            Some(x) => { text = x }
-            None => {}
-        }
-        if text != "" {
-            var toks = List[Str]()
-            scan(text, toks)
-            var nm = List[Str]()
-            var vs = List[Str]()
-            var im = List[Str]()
-            var dp = List[Str]()
-            var it = List[Str]()
-            var iff = List[Str]()
-            top_extract(toks, nm, vs, im, dp, it, iff)
-            var k: I32 = 0
-            while k < nm.len {
-                names.push(nm[k])
-                vis.push(vs[k])
-                itemMod.push(modn)
-                k += 1
-            }
-            k = 0
-            while k < im.len {
-                imports.push(im[k])
-                k += 1
-            }
-            k = 0
-            while k < dp.len {
-                depM.push(modn)
-                depMods.push(dp[k])
-                k += 1
-            }
-            k = 0
-            while k < it.len {
-                implT.push(it[k])
-                implF.push(iff[k])
-                k += 1
-            }
-        }
-        fi += 1
-    }
-    // E4010 caps:能力(fs 等)须在 Ctron.toml [caps] 声明
-    var capText = ""
+// toml 解析(镜像 C toml_load):返回 [pkgname, caps列表, has_comptime("0"/"1"), budget_ms文本]
+fn toml_load2(base: Str) -> List[Str] {
+    var r = List[Str]()
+    var pn = ""
+    var caps = List[Str]()
+    var hc = "0"
+    var bm = "0"
+    var txt = ""
     match read_file(base + "/Ctron.toml") {
-        Some(x) => { capText = x }
+        Some(x) => {
+            txt = x
+        }
         None => {}
     }
-    var capsDecl = List[Str]()
-    var inSec = false
-    var ct = List[Str]()
-    // 简单按行扫 [caps] 后收集 名字=true
-    var cLines = split_nl(capText)
-    var li: I32 = 0
-    while li < cLines.len {
-        var ln = cLines[li]
-        if ln == "[caps]" { inSec = true } else if byte_at(ln, 0) == 91 && inSec { inSec = false }
-        if inSec {
-            var eq = -1
-            var wi: I32 = 0
-            while wi < ln.len {
-                if byte_at(ln, wi) == 61 { eq = wi }
-                wi += 1
-            }
-            if eq > 0 {
-                capsDecl.push(byte_slice(ln, 0, eq))
-            }
-        }
-        li += 1
-    }
-    var needCap = List[Str]()
-    var ci: I32 = 0
-    while ci < imports.len {
-        var str2 = imports[ci]
-        var bar2 = -1
-        var z2: I32 = 0
-        while z2 < str2.len {
-            if byte_at(str2, z2) == 124 { bar2 = z2 }
-            z2 += 1
-        }
-        if bar2 > 0 {
-            var mn2 = byte_slice(str2, 0, bar2)
-            if mn2 == "fs" && !in_l(capsDecl, "fs") {
-                if !in_l(needCap, "fs") { needCap.push("fs") }
-            }
-        }
-        ci += 1
-    }
-    var ci2: I32 = 0
-    while ci2 < needCap.len {
-        diags.push("E4010: 能力未声明(capability):" + needCap[ci2])
-        ci2 += 1
-    }
-    // E5010 orphan
-    var aa: I32 = 0
-    while aa < implT.len {
-        if !in_l(names, implT[aa]) && !in_l(names, implF[aa]) {
-            diags.push("E5010: 孤儿实现(orphan):trait 与类型均非本包")
-        }
-        aa += 1
-    }
-    // E5020 circular
-    if dep_cycle(mods, depMods, depM) {
-        diags.push("E5020: 模块循环依赖(circular)")
-    }
-    // E2020 可见性:导入符号在目标模块非 pub(V0 或缺文件)
-    var c: I32 = 0
-    while c < imports.len {
-        var str = imports[c]
-        // 拆 mod|name(最后一个 |)
-        var bar = -1
+    var sec = ""
+    var ls = split_nl(txt)
+    var i: I32 = 0
+    while i < ls.len {
+        var ln = ls[i]
+        var cm = -1
         var z: I32 = 0
-        while z < str.len {
-            if byte_at(str, z) == 124 { bar = z }
+        while z + 1 < ln.len {
+            if byte_at(ln, z) == 47 && byte_at(ln, z + 1) == 47 {
+                cm = z
+            }
             z += 1
         }
-        if bar > 0 {
-            var mn = byte_slice(str, 0, bar)
-            var iname = byte_slice(str, bar + 1, str.len)
-            var f = file_idx(mods, mn)
-            if f >= 0 {
-                var vv = item_vis(itemMod, names, vis, mn, iname)
-                if or2(vv == "", vv == "V0") {
-                    diags.push("E2020: 导入不可见(visibility):" + iname)
+        if cm >= 0 {
+            ln = byte_slice(ln, 0, cm)
+        }
+        ln = trim_line(ln)
+        var b0 = 0
+        if ln.len > 0 {
+            b0 = byte_at(ln, 0)
+        }
+        if b0 == 91 {
+            var end = -1
+            var z2: I32 = 1
+            while z2 < ln.len {
+                if byte_at(ln, z2) == 93 {
+                    end = z2
+                }
+                z2 += 1
+            }
+            if end > 0 {
+                sec = byte_slice(ln, 1, end)
+            }
+        } else if ln.len > 0 {
+            var eq = -1
+            var z3: I32 = 0
+            while z3 < ln.len {
+                if byte_at(ln, z3) == 61 {
+                    eq = z3
+                }
+                z3 += 1
+            }
+            if eq > 0 {
+                var k = trim_line(byte_slice(ln, 0, eq))
+                var v = trim_line(byte_slice(ln, eq + 1, ln.len))
+                if v.len >= 2 && byte_at(v, 0) == 34 && byte_at(v, v.len - 1) == 34 {
+                    v = byte_slice(v, 1, v.len - 1)
+                }
+                if seq2(sec, "package") && seq2(k, "name") {
+                    pn = v
+                }
+                if seq2(sec, "caps") {
+                    caps.push(k)
+                }
+                if seq2(sec, "comptime") {
+                    hc = "1"
+                    if seq2(k, "budget_ms") {
+                        bm = v
+                    }
                 }
             }
         }
-        c += 1
+        i += 1
     }
-    var dd: I32 = 0
-    while dd < diags.len {
-        out = out + diags[dd] + "\n"
-        dd += 1
+    r.push(pn)
+    r.push(caps)
+    r.push(hc)
+    r.push(bm)
+    return r
+}
+// ---------------- E6010 comptime 预算(镜像 C pkg.c ceval:步骤/深度预算) ----------------
+fn env_g(env: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if seq2(en[0], nm) {
+            return en
+        }
+        i += 1
     }
+    return List[Str]()
+}
+fn env_a(env: List[Str], nm: Str, v: Str) -> List[Str] {
+    var out = List[Str]()
+    var en = List[Str]()
+    en.push(nm)
+    en.push(v)
+    out.push(en)
+    var i: I32 = 0
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+fn find_cf(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if seq2(d[0], "FnC") && seq2(d[1], nm) {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn ce_pk(ok: Str, err: Str, val: Str) -> List[Str] {
+    var r = List[Str]()
+    r.push(ok)
+    r.push(err)
+    r.push(val)
+    return r
+}
+fn ce_block(file: List[Str], stp: Atomic[I32], budget: I32, env: List[Str], depth: I32, blk: List[Str]) -> List[Str] {
+    var i: I32 = 1
+    while i < blk.len - 1 {
+        var st = blk[i]
+        if seq2(st[0], "Return") {
+            if st[1][0] == "None" {
+                return ce_pk("1", "0", "0")
+            }
+            return ce_expr(file, stp, budget, env, depth, st[1])
+        }
+        return ce_pk("0", "0", "0")
+    }
+    var tl = blk[blk.len - 1]
+    if tl[0] == "None" {
+        return ce_pk("0", "0", "0")
+    }
+    return ce_expr(file, stp, budget, env, depth, tl)
+}
+fn ce_expr(file: List[Str], stp: Atomic[I32], budget: I32, env: List[Str], depth: I32, e: List[Str]) -> List[Str] {
+    stp.store(stp.load() + 1)
+    if stp.load() > budget {
+        return ce_pk("0", "1", "0")
+    }
+    var t = e[0]
+    if seq2(t, "Int") {
+        return ce_pk("1", "0", prs_i(e[1]).to_string())
+    }
+    if seq2(t, "Ident") {
+        var en = env_g(env, e[1])
+        if en.len > 0 {
+            return ce_pk("1", "0", en[1])
+        }
+        return ce_pk("0", "0", "0")
+    }
+    if seq2(t, "Unary") {
+        var ur = ce_expr(file, stp, budget, env, depth, e[2])
+        if !seq2(ur[0], "1") {
+            return ur
+        }
+        if seq2(e[1], "Neg") {
+            return ce_pk("1", "0", (0 - prs_i(ur[2])).to_string())
+        }
+        return ce_pk("0", "0", "0")
+    }
+    if seq2(t, "Binary") {
+        var op = e[1]
+        if or3(seq2(op, "Add"), seq2(op, "Sub"), seq2(op, "Mul")) {
+            var lr = ce_expr(file, stp, budget, env, depth, e[2])
+            if !seq2(lr[0], "1") {
+                return lr
+            }
+            var rr = ce_expr(file, stp, budget, env, depth, e[3])
+            if !seq2(rr[0], "1") {
+                return rr
+            }
+            var x = prs_i(lr[2])
+            var y = prs_i(rr[2])
+            var rv = 0
+            if seq2(op, "Add") {
+                rv = x + y
+            }
+            if seq2(op, "Sub") {
+                rv = x - y
+            }
+            if seq2(op, "Mul") {
+                rv = x * y
+            }
+            return ce_pk("1", "0", rv.to_string())
+        }
+        if or2(seq2(op, "Div"), seq2(op, "Mod")) {
+            var lr = ce_expr(file, stp, budget, env, depth, e[2])
+            if !seq2(lr[0], "1") {
+                return lr
+            }
+            var rr = ce_expr(file, stp, budget, env, depth, e[3])
+            if !seq2(rr[0], "1") {
+                return rr
+            }
+            var y = prs_i(rr[2])
+            if y == 0 {
+                return ce_pk("1", "0", "0")
+            }
+            var x = prs_i(lr[2])
+            var rv = 0
+            if seq2(op, "Div") {
+                rv = x / y
+            }
+            if seq2(op, "Mod") {
+                rv = x % y
+            }
+            return ce_pk("1", "0", rv.to_string())
+        }
+        return ce_pk("0", "0", "0")
+    }
+    if seq2(t, "Call") {
+        var cal = e[1]
+        if cal[0] == "Ident" {
+            var d = find_cf(file, cal[1])
+            if d.len > 0 {
+                if depth > 40 {
+                    return ce_pk("0", "1", "0")
+                }
+                var ps = d[3]
+                var ag = e[2]
+                if ag.len == ps.len {
+                    var nenv = env
+                    var kk: I32 = 1
+                    while kk < ag.len {
+                        var av = ce_expr(file, stp, budget, env, depth, ag[kk])
+                        if !seq2(av[0], "1") {
+                            return av
+                        }
+                        nenv = env_a(nenv, ps[kk][2], av[2])
+                        kk += 1
+                    }
+                    return ce_block(file, stp, budget, nenv, depth + 1, d[5])
+                }
+                return ce_pk("0", "0", "0")
+            }
+        }
+        return ce_pk("0", "0", "0")
+    }
+    return ce_pk("0", "0", "0")
+}
+// ---------------- E5020 模块循环(Ctron DFS 镜像 C:按 stem 排序,根锚定) ----------------
+fn stem_idx(recs: List[Str], nm: Str) -> I32 {
+    var i: I32 = 0
+    while i < recs.len {
+        if seq2(recs[i][0], nm) {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+fn path_has(path: List[Str], x: I32) -> Bool {
+    var i: I32 = 0
+    while i < path.len {
+        if prs_i(path[i]) == x {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+fn cyc_visit(recs: List[Str], cur: I32, path: List[Str]) -> List[Str] {
+    var deps = recs[cur][6]
+    var i: I32 = 0
+    while i < deps.len {
+        var dst = deps[i]
+        if !seq2(dst, recs[cur][0]) {
+            var ti = stem_idx(recs, dst)
+            if ti >= 0 {
+                if path_has(path, ti) {
+                    var m = List[Str]()
+                    m.push(recs[cur][0])
+                    m.push(dst)
+                    return m
+                }
+                var p2 = List[Str]()
+                var q: I32 = 0
+                while q < path.len {
+                    p2.push(path[q])
+                    q += 1
+                }
+                p2.push(ti.to_string())
+                var sub = cyc_visit(recs, ti, p2)
+                if sub.len > 0 {
+                    return sub
+                }
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn sorted_srecs(recs: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var used = List[Str]()
+    var k: I32 = 0
+    while k < recs.len {
+        var best = -1
+        var i: I32 = 0
+        while i < recs.len {
+            if !in_l(used, recs[i][0]) {
+                if best < 0 {
+                    best = i
+                } else {
+                    if scmp_stem(recs[i][0], recs[best][0]) < 0 {
+                        best = i
+                    }
+                }
+            }
+            i += 1
+        }
+        var r = recs[best]
+        out.push(r)
+        used.push(r[0])
+        k += 1
+    }
+    return out
+}
+fn scmp_stem(a: Str, b: Str) -> I32 {
+    var n = a.len
+    if b.len < n {
+        n = b.len
+    }
+    var i: I32 = 0
+    while i < n {
+        var x = byte_at(a, i)
+        var y = byte_at(b, i)
+        if x < y {
+            return -1
+        }
+        if x > y {
+            return 1
+        }
+        i += 1
+    }
+    if a.len < b.len {
+        return -1
+    }
+    if a.len > b.len {
+        return 1
+    }
+    return 0
+}
+fn pkg_check(base: Str) -> Str {
+    var tml = toml_load2(base)
+    var caps = tml[1]
+    var hasComp = seq2(tml[2], "1")
+    var budgetMs = prs_i(tml[3])
+    var dRel = List[Str]()
+    var dCode = List[Str]()
+    var dMsg = List[Str]()
+    var recs = List[Str]()
+    var localNames = List[Str]()
+    var itemMod = List[Str]()
+    var itemNm = List[Str]()
+    var itemV = List[Str]()
+    var files = List[Str]()
+    match read_dir(base + "/src") {
+        Some(s) => {
+            files = split_nl(s)
+        }
+        None => {}
+    }
+    var fi: I32 = 0
+    while fi < files.len {
+        var fnm = files[fi]
+        var stem = fnm
+        if ends_ct(stem) {
+            stem = byte_slice(fnm, 0, fnm.len - 3)
+        }
+        var rel = "src/" + fnm
+        var text = ""
+        match read_file(base + "/" + rel) {
+            Some(x) => {
+                text = x
+            }
+            None => {}
+        }
+        var toks = List[Str]()
+        scan(text, toks)
+        var nm = List[Str]()
+        var vs = List[Str]()
+        var im = List[Str]()
+        var dp = List[Str]()
+        var it = List[Str]()
+        var iff = List[Str]()
+        top_extract(toks, nm, vs, im, dp, it, iff)
+        var rec = List[Str]()
+        rec.push(stem)
+        rec.push(rel)
+        rec.push(toks)
+        rec.push(nm)
+        rec.push(vs)
+        rec.push(im)
+        rec.push(dp)
+        rec.push(it)
+        rec.push(iff)
+        recs.push(rec)
+        var k: I32 = 0
+        while k < nm.len {
+            itemMod.push(stem)
+            itemNm.push(nm[k])
+            itemV.push(vs[k])
+            k += 1
+        }
+        k = 0
+        while k < nm.len {
+            localNames.push(nm[k])
+            k += 1
+        }
+        fi += 1
+    }
+    // 每模块组:E5010 → E2020 → E4010(镜像 C 循环顺序)
+    var m: I32 = 0
+    while m < recs.len {
+        var rec = recs[m]
+        var rel = rec[1]
+        var stem = rec[0]
+        var itl = rec[7]
+        var ifl = rec[8]
+        var w: I32 = 0
+        while w < itl.len {
+            var tn = itl[w]
+            var tyn = ifl[w]
+            if !in_l(localNames, tn) && !in_l(localNames, tyn) {
+                dRel.push(rel)
+                dCode.push("E5010")
+                dMsg.push("孤儿 impl(orphan):" + tn + " for " + tyn + " 的 trait 与类型均不属本包")
+            }
+            w += 1
+        }
+        var ims = rec[5]
+        var u: I32 = 0
+        while u < ims.len {
+            var im0 = ims[u]
+            var bar = -1
+            var z: I32 = 0
+            while z < im0.len {
+                if byte_at(im0, z) == 124 {
+                    bar = z
+                }
+                z += 1
+            }
+            if bar > 0 {
+                var mn = byte_slice(im0, 0, bar)
+                var iname = byte_slice(im0, bar + 1, im0.len)
+                if !seq2(mn, stem) && !seq2(mn, "fs") && !seq2(mn, "time") {
+                    var tgt = stem_idx(recs, mn)
+                    if tgt >= 0 {
+                        var vv = item_vis(itemMod, itemNm, itemV, mn, iname)
+                        if or2(seq2(vv, ""), seq2(vv, "V0")) {
+                            dRel.push(rel)
+                            dCode.push("E2020")
+                            dMsg.push("不可见模块项(secret):" + iname + " 未 pub")
+                        }
+                    }
+                }
+            }
+            u += 1
+        }
+        // E4010 caps:std.<fs|time>.<Name> 且存在 &Name 参数
+        u = 0
+        while u < ims.len {
+            var im0 = ims[u]
+            var bar = -1
+            var z: I32 = 0
+            while z < im0.len {
+                if byte_at(im0, z) == 124 {
+                    bar = z
+                }
+                z += 1
+            }
+            if bar > 0 {
+                var mn = byte_slice(im0, 0, bar)
+                var iname = byte_slice(im0, bar + 1, im0.len)
+                if or2(seq2(mn, "fs"), seq2(mn, "time")) {
+                    if !in_l(caps, mn) && has_ref(rec[2], iname) {
+                        dRel.push(rel)
+                        dCode.push("E4010")
+                        dMsg.push("使用 " + mn + " 能力超出 manifest(caps) 声明:参数 &" + iname)
+                    }
+                }
+            }
+            u += 1
+        }
+        m += 1
+    }
+    // E5020 循环:按 stem 升序 DFS,环归属搜索根
+    var srecs = sorted_srecs(recs)
+    var fnd = false
+    var ri: I32 = 0
+    while ri < srecs.len && !fnd {
+        var path = List[Str]()
+        path.push(ri.to_string())
+        var cyc = cyc_visit(srecs, ri, path)
+        if cyc.len > 0 {
+            dRel.push(srecs[ri][1])
+            dCode.push("E5020")
+            dMsg.push("模块循环依赖(circular):" + cyc[0] + " → " + cyc[1])
+            fnd = true
+        }
+        ri += 1
+    }
+    // E6010 comptime 预算:对含 [comptime] 的包,逐文件求值 const
+    if hasComp {
+        var budget = 1000000
+        if budgetMs > 0 {
+            budget = budgetMs * 10000
+        }
+        var m2: I32 = 0
+        while m2 < recs.len {
+            var rec = recs[m2]
+            var rel = rec[1]
+            var cur = Atomic[I32](0)
+            var file = p_file(rec[2], cur)
+            var stp = Atomic[I32](0)
+            var j: I32 = 1
+            var stop = false
+            while j < file.len && !stop {
+                var d = file[j]
+                if d[0] == "Const" {
+                    var cr = ce_expr(file, stp, budget, List[Str](), 0, d[3])
+                    if seq2(cr[1], "1") {
+                        dRel.push(rel)
+                        dCode.push("E6010")
+                        dMsg.push("comptime 超出预算(budget):" + d[1] + " 求值超限")
+                        stop = true
+                    }
+                }
+                j += 1
+            }
+            m2 += 1
+        }
+    }
+    var out = ""
+    var di: I32 = 0
+    while di < dRel.len {
+        out = out + base + "/" + dRel[di] + " " + dCode[di] + ": " + dMsg[di] + "\n"
+        di += 1
+    }
+    out = out + dRel.len.to_string() + " diagnostics\n"
     return out
 }
 
 fn main() -> I32 {
-    var out = pkg_check("../tests/modules/orphan")
+    var out = pkg_check("../tests/modules/comptime_budget")
     print(out)
     return 0
 }

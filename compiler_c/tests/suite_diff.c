@@ -8,6 +8,7 @@
 #include "parser.h"
 #include "rt.h"
 #include "sem.h"
+#include "pkg.h"
 
 static char* read_file_str(const char* path) {
     FILE* f = fopen(path, "rb");
@@ -107,8 +108,57 @@ static int diff_exec(const char* msrc, const char* ip, int seq, const char* labe
     return ok ? 0 : 1;
 }
 
+// 模块级 oracle 差分(seq=8):Ctron pkg_chk 对包目录输出 vs C ctron_pkg_check 非 JSON 文本
+static int diff_pkg(const char* msrc, const char* ip, int seq, const char* label) {
+    (void)seq;
+    char* m2 = replace_first(msrc, "../tests/modules/comptime_budget", ip);
+    if (!m2) {
+        fprintf(stderr, "%s 模块模板换靶失败\n", label);
+        return 1;
+    }
+    ctron_parse_result pr = ctron_parse_src(m2, strlen(m2));
+    free(m2);
+    if (pr.ndiags) {
+        fprintf(stderr, "%s 模块解析失败\n", label);
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    rt_run mr = ctron_rt_run_main(pr.file);
+    ctron_parse_result_free(&pr);
+    if (mr.st != RT_OK || mr.exit_code != 0) {
+        fprintf(stderr, "%s: 模块运行失败 st=%d rc=%ld msg=%s\n", label, mr.st,
+                mr.exit_code, mr.msg ? mr.msg : "");
+        ctron_rt_run_free(&mr);
+        return 1;
+    }
+    pkg_res r = ctron_pkg_check(ip);
+    char* buf = NULL;
+    size_t bufn = 0;
+    FILE* mf = open_memstream(&buf, &bufn);
+    if (!mf) {
+        ctron_pkg_res_free(&r);
+        ctron_rt_run_free(&mr);
+        return 1;
+    }
+    for (size_t i = 0; i < r.n; i++)
+        fprintf(mf, "%s/%s %s: %s\n", ip, r.d[i].rel, r.d[i].code, r.d[i].msg);
+    fprintf(mf, "%zu diagnostics\n", r.n);
+    fclose(mf);
+    ctron_pkg_res_free(&r);
+    const char* mo = mr.out ? mr.out : "";
+    const char* cb = buf ? buf : "";
+    int ok = strcmp(mo, cb) == 0;
+    if (!ok) {
+        fprintf(stderr, "%s 模块级差分失败\n  C: %s\n  Ctron: %s\n", label, cb, mo);
+    }
+    free(buf);
+    ctron_rt_run_free(&mr);
+    return ok ? 0 : 1;
+}
+
 // 单个差分:msrc = Ctron 模块源码(已含目标输入), ip = 输入文件路径, seq=0 计数 1 种类 2 payload
 static int diff_one(const char* msrc, const char* ip, int seq, const char* label) {
+    if (seq == 8) return diff_pkg(msrc, ip, seq, label);
     if (seq == 5 || seq == 6) return diff_exec(msrc, ip, seq, label);
     ctron_parse_result pr = ctron_parse_src(msrc, strlen(msrc));
     if (pr.ndiags) {
@@ -249,6 +299,13 @@ int main(int argc, char** argv) {
         {"ev2.ct", "input_ev2.ct", 5},
         {"ev2.ct", "input_ev2t.ct", 6},
         {"ev2.ct", "input_ev2tf.ct", 6},
+        {"pkg_chk.ct", "../tests/modules/orphan", 8},
+        {"pkg_chk.ct", "../tests/modules/circular", 8},
+        {"pkg_chk.ct", "../tests/modules/visibility", 8},
+        {"pkg_chk.ct", "../tests/modules/caps", 8},
+        {"pkg_chk.ct", "../tests/modules/comptime_budget", 8},
+        {"pkg_chk.ct", "../tests/modules/use_ok", 8},
+        {"pkg_chk.ct", "../tests/modules/ffi_math", 8},
     };
     size_t fails = 0, nrun = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
