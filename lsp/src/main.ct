@@ -789,7 +789,7 @@ fn collect_docs(text: Str, decl_line: I64) -> Str {
     var done = false
     while !done {
         var sp = line_span_of(text, ln)
-        if or2(sp.b <= sp.a, !starts_lit(text, sp.a, "///")) {
+        if or3(ln < 0, sp.b <= sp.a, !starts_lit(text, sp.a, "///")) {
             done = true
         } else {
             var body = byte_slice(text, sp.a + 3, sp.b)
