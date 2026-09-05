@@ -77,3 +77,18 @@
 - C9d③ ✅(struct/枚举域;seq=5d 223 cases)。
 - C9e① ✅(cc.ct 快照刷新至 C9d + UFCS;seq5e/seq9-cc2,225 cases)。
 - C9e② ✅(闭包/fn 值;seq5f,226 cases)。
+---
+## 更新记录(19d session,C9f①)
+- **List 索引写缺陷已修复**:宿主 a3bf0b7 修掉 ST_ASSIGN 的 V_LIST 写透上界误用,现 `l[i]=v`
+  可用且写透共享后备(探针验证);上文 18x 记录的"List 索引写有缺陷"钉子过时。
+- C9f① ✅(`ev2.ct` List 域引用语义;seq5g input_ev2g.ct,227 cases)。客体 List = 宿主 List
+  对象,push 原地变/别名可见/into_gc 深拷贝,与 rt.c listnode 语义对齐。
+- 新钉子:①宿主 **for-over-list 不支持**(rt 仅 range/数组/tuple;ST_FOR 对 V_LIST 报
+  "for 需要 range 或数组");②println(List) → `<value>`;③List 构造 `List[T]()` 同参忽略恒空表。
+- **竞态实录(重要)**:本批提交 9638776 时把并行 session 当时在磁盘上的 trans.c WIP 一并
+  add 了(未先 `git diff` 自查);对方随后提交 C10-c,我方 reset 误撤其提交,对方又补 docs
+  提交恢复。教训:**提交前必须 `git status` + `git diff --stat` 逐文件自查,只 add 自己泳道
+  的文件;发现混入且 HEAD 已被并行方推进时,勿再做历史手术,现场移交并在文档留痕**。
+- 并行 C10 流 trans.c WIP 可能短暂阻断 `make build/suite_diff`(同一 CORE 链接);应急:
+  `git show HEAD:compiler_c/src/trans.c > /tmp/trans_stable.c` 用稳定版链接验收,不改其文件。
+- 下一批:C9f② trait/impl 方法域(用户类型方法调用/trait 默认方法),或 cc.ct 快照刷新并入 C9f①。

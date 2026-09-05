@@ -2042,6 +2042,36 @@ fn vV2() -> List[Str] {
     v.push("V")
     return v
 }
+// C9f①:List 域 —— 客体 List 直接持有宿主 List 对象(引用语义,push 原地变、别名可见,
+// 镜像 rt.c listnode);布局 ["L", item…](同 A:类别槽后逐元素)。
+fn vL() -> List[Str] {
+    var v = List[Str]()
+    v.push("L")
+    return v
+}
+// into_gc 深拷贝(镜像 rt.c clone_val):标量逐槽重建,嵌套 L 递归
+fn vdeep(v: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    out.push(v[0])
+    var i: I32 = 1
+    while i < v.len {
+        var it = v[i]
+        if it[0] == "L" {
+            out.push(vdeep(it))
+        } else {
+            var c = List[Str]()
+            c.push(it[0])
+            var j: I32 = 1
+            while j < it.len {
+                c.push(it[j])
+                j += 1
+            }
+            out.push(c)
+        }
+        i += 1
+    }
+    return out
+}
 fn dvi(t: Str) -> I32 {
     var neg = false
     var k: I32 = 0
@@ -2579,6 +2609,9 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 if recv[0] == "A" {
                     return e4("k", ob[1], vI(recv.len - 1), ob[3])
                 }
+                if recv[0] == "L" {
+                    return e4("k", ob[1], vI(recv.len - 1), ob[3])
+                }
                 panic("len target")
                 return e4("a", env, vV2(), out)
             }
@@ -2674,7 +2707,8 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         }
         var arrv = ob[2]
         var idx = dvi(ix[2][1])
-        if !seq2(arrv[0], "A") {
+        // C9f①:L 与 A 同布局(类别槽后逐元素),索引读同轨道(rt.c V_LIST/V_ARR 同分支)
+        if !or2(seq2(arrv[0], "A"), seq2(arrv[0], "L")) {
             panic("index target")
             return e4("a", env, vV2(), out)
         }
@@ -2914,6 +2948,17 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         panic("slice args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(m, "push") {
+        if recv[0] == "L" && vals.len == 1 {
+            recv.push(vals[0])
+            return e4("k", ob[1], vV2(), ob[3])
+        }
+    }
+    if seq2(m, "into_gc") {
+        if recv[0] == "L" && vals.len == 0 {
+            return e4("k", ob[1], vdeep(recv), ob[3])
+        }
+    }
     var ddx = find_decl(file, m)
     if ddx.len > 0 {
         var fvv = List[Str]()
@@ -2950,6 +2995,20 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     }
     if cal[0] == "Member" {
         return call_mem(file, env2, out2, cal, vals)
+    }
+    // C9f①:List 构造 List[T]()(rt.c:同参忽略,恒空表;arena.list[T]() 同)
+    if cal[0] == "TypeArgs" {
+        var base = cal[1]
+        var islist = false
+        if base[0] == "Ident" && seq2(base[1], "List") {
+            islist = true
+        }
+        if base[0] == "Member" && seq2(base[2], "Nm") && seq2(base[3], "list") && base[1][0] == "Ident" && seq2(base[1][1], "arena") {
+            islist = true
+        }
+        if islist {
+            return e4("k", env2, vL(), out2)
+        }
     }
     panic("call target")
     return e4("a", env, vV2(), out)
@@ -3034,6 +3093,42 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 nv = vI(ari(op, dvi(oa[1]), dvi(nv[1])))
             }
             return s4("k", env_set(vr[1], nm, nv), vr[3], vV2())
+        }
+        // C9f①:索引赋值 a[i] = v / a[i] op= v —— A/L 同布局;L 经宿主 List 索引写
+        // 写透共享后备(镜像 rt.c ST_ASSIGN 的 V_LIST/V_ARR 写透分支)
+        if tg[0] == "Index" && tg[1][0] == "Ident" {
+            var nm3 = tg[1][1]
+            var en3 = env_at(env, nm3)
+            if en3.len == 0 {
+                panic("unbound:" + nm3)
+                return s4("a", env, out, vV2())
+            }
+            var cont = en3[1]
+            if !or2(seq2(cont[0], "A"), seq2(cont[0], "L")) {
+                panic("index assign target")
+                return s4("a", env, out, vV2())
+            }
+            var ixr = eval_expr(file, env, out, tg[2])
+            if ixr[0] != "k" {
+                return s4(ixr[0], ixr[1], ixr[3], ixr[2])
+            }
+            var idx = dvi(ixr[2][1])
+            if or2(idx < 0, idx >= cont.len - 1) {
+                panic("index out of bounds")
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op3 = st[2]
+            var nv3 = vr[2]
+            if !seq2(op3, "Eq") {
+                var old3 = cont[idx + 1]
+                nv3 = vI(ari(op3, dvi(old3[1]), dvi(nv3[1])))
+            }
+            cont[idx + 1] = nv3
+            return s4("k", ixr[1], ixr[3], vV2())
         }
         panic("assign target:" + tg[0])
         return s4("a", env, out, vV2())

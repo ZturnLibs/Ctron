@@ -1,0 +1,47 @@
+// input_ev2g.ct —— C9f① List 域差分夹具(与 C rt run_main 逐字对齐)
+// 覆盖:List[T]() 构造 / push 原地变 / .len / 索引读 / 索引写与复合写 /
+// 引用别名(let b = a) / into_gc() 深拷贝隔离 / Str 元素 / println(List) → <value>
+fn sum_list(xs: List[I32]) -> I32 {
+    var acc: I32 = 0
+    var i: I32 = 0
+    while i < xs.len {
+        acc += xs[i]
+        i += 1
+    }
+    return acc
+}
+
+fn main() -> I32 {
+    let a = List[I32]()
+    a.push(3)
+    a.push(5)
+    a.push(8)
+    println(a.len)
+    println(sum_list(a))
+    a[1] = 50
+    println(sum_list(a))
+    a[1] += 5
+    println(sum_list(a))
+    let b = a
+    b.push(100)
+    println(a.len)
+    println(b.len)
+    let g = a.into_gc()
+    g.push(7)
+    println(a.len)
+    println(g.len)
+    let words = List[Str]()
+    words.push("alpha")
+    words.push("beta")
+    println(words.len)
+    println(words[0])
+    println(words[1])
+    println(a)
+    println(words)
+    var empty = List[I32]()
+    println(empty.len)
+    empty.push(9)
+    println(empty.len)
+    println(empty[0])
+    return 0
+}

@@ -186,6 +186,19 @@
    fn 类型参数 `fn(I32)->I32` 接收具名 fn 与闭包字面量,多参闭包适配。验收:suite_diff 新增
    seq5 用例 input_ev2f.ct(apply_twice(double|闭包)/combine 多参/闭包变量调用/捕获外层局部)
    与原生逐字一致;suite_diff 226 cases 全绿;ASan/UBSan 绿。
+19d. **C9f①(本文件交付)—— Ctron 求值器 List 域(引用语义)**:`ev2.ct` 补值种类 "L"
+   (客体 List 直接持有宿主 List 对象 → push 原地变、别名可见,镜像 rt.c listnode;布局
+   ["L", item…])。覆盖:`List[T]()` / `arena.list[T]()` 构造(call 路径 TypeArgs 换靶,
+   同 rt 同参忽略恒空表)、`.push(v)`(返回 void)、`.len`、索引读(A/L 同轨)、
+   索引赋值 `a[i] = v` 与复合 `a[i] op= v`(新增 Assign Index 目标分支;L 经宿主 List
+   索引写写透共享后备,镜像 rt.c ST_ASSIGN 的 V_LIST/V_ARR 写透)、`.into_gc()` 深拷贝
+   (vdeep:标量逐槽重建/嵌套 L 递归,镜像 clone_val)。已裁定钉子:①宿主 for-over-list
+   不支持(rt 仅 range/数组/tuple),求值器不同步,夹具避开;②println(List) → `<value>`
+   (fmt 默认轨,与 C fmt_val default 一致);③客体越界走宿主 panic,seq=5 参考侧需
+   RT_OK,夹具不含 OOB。验收:suite_diff 新增 seq5 用例 input_ev2g.ct(len/求和/索引写
+   复合写/别名 push 可见/into_gc 隔离/Str 元素/空表)与原生逐字一致;suite_diff 227
+   cases 全绿;其余套件全绿;ASan/UBSan 绿。注:本批期间并行 C10 流 trans.c WIP 短暂
+   阻断 make build/suite_diff,验收用 HEAD 稳定版 trans.c 链接验证(不影响结论)。
 
 
 ## 自举产物目录
