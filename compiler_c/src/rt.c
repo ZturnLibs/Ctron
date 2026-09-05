@@ -15,7 +15,10 @@
 #include <string.h>
 
 // ================= 值 =================
-typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE } vkind;
+typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE,
+                V_STRUCT, V_BOX } vkind;
+typedef struct vfld vfld;
+typedef struct boxval boxval;
 
 typedef struct val {
     vkind k;
@@ -33,7 +36,15 @@ typedef struct val {
     const cdecl* fnr;  // V_FN(命名函数值)
     const cexpr* clo;  // V_CLOSURE
     struct env* cap;   // V_CLOSURE 捕获环境
+    int is_class;      // V_STRUCT
+    const char* type;  // V_STRUCT 类型名
+    vfld* flds;        // V_STRUCT 字段
+    size_t nfld;
+    boxval* bx;        // V_BOX
 } val;
+
+struct vfld { const char* name; val v; };
+struct boxval { val inner; };
 
 static val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
 static val v_flt(double f) { val v = {0}; v.k = V_FLOAT; v.f = f; return v; }
@@ -43,6 +54,9 @@ static val v_rng(int64_t lo, int64_t hi, int incl) { val v = {0}; v.k = V_RANGE;
 static val v_arr(val* items, size_t n) { val v = {0}; v.k = V_ARR; v.items = items; v.nitems = n; return v; }
 static val v_tag(const char* tag, val* items, size_t n) { val v = {0}; v.k = V_TAG; v.tag = tag; v.items = items; v.nitems = n; return v; }
 static val v_fn(const cdecl* d) { val v = {0}; v.k = V_FN; v.fnr = d; return v; }
+static val v_obj(const char* type, int is_class, vfld* flds, size_t nf) {
+    val v = {0}; v.k = V_STRUCT; v.type = type; v.is_class = is_class; v.flds = flds; v.nfld = nf; return v;
+}
 static val v_closure(const cexpr* ce, struct env* cap) { val v = {0}; v.k = V_CLOSURE; v.clo = ce; v.cap = cap; return v; }
 
 // ================= 上下文 =================
@@ -71,6 +85,16 @@ static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
     R->st = st;
     longjmp(R->jb, 1);
 }
+
+static val v_box(rt* R, val inner) {
+    val v = {0};
+    v.k = V_BOX;
+    boxval* n = (boxval*)ctron_arena_alloc(R->a, sizeof(boxval));
+    n->inner = inner;
+    v.bx = n;
+    return v;
+}
+static val clone_val(rt* R, val v);
 
 // ================= 字符串缓冲 / 格式化 =================
 static char* astr(rt* R, const char* s) { return ctron_arena_strndup(R->a, s, strlen(s)); }
@@ -203,7 +227,7 @@ static bind* env_find(rt* R, const char* name) {
 static void env_let(rt* R, const char* name, val v) {
     bind* b = (bind*)ctron_arena_alloc(R->a, sizeof(bind));
     b->name = name;
-    b->slot = v;
+    b->slot = (v.k == V_STRUCT && !v.is_class) ? clone_val(R, v) : v;
     b->next = R->top->head;
     R->top->head = b;
 }
@@ -244,6 +268,31 @@ static val as_conv(rt* R, val v, const char* n) {
 }
 
 static int truthy(val v) { return v.k == V_BOOL ? v.i != 0 : v.k == V_INT ? v.i != 0 : v.k == V_FLOAT ? v.f != 0 : 1; }
+
+// 值拷贝语义:struct 值深拷贝;class/Box 共享
+static val clone_val(rt* R, val v) {
+    if (v.k == V_STRUCT && !v.is_class) {
+        vfld* fs = NULL;
+        if (v.nfld) {
+            fs = (vfld*)ctron_arena_alloc(R->a, v.nfld * sizeof(vfld));
+            for (size_t i = 0; i < v.nfld; i++) {
+                fs[i].name = v.flds[i].name;
+                fs[i].v = clone_val(R, v.flds[i].v);
+            }
+        }
+        return v_obj(v.type, 0, fs, v.nfld);
+    }
+    if (v.k == V_ARR) {
+        val* items = NULL;
+        if (v.nitems) {
+            items = (val*)ctron_arena_alloc(R->a, v.nitems * sizeof(val));
+            for (size_t i = 0; i < v.nitems; i++) items[i] = clone_val(R, v.items[i]);
+        }
+        return v_arr(items, v.nitems);
+    }
+    return v;
+}
+
 static int val_eq(rt* R, val a, val b) {
     (void)R;
     if (a.k == V_INT && b.k == V_INT) return a.i == b.i;
@@ -273,6 +322,49 @@ static void eval_stmt(rt* R, cstmt* st) {
     case ST_RET: R->ret = st->e ? eval_expr(R, st->e) : v_void(); R->has_ret = 1; break;
     case ST_EXPR: (void)eval_expr(R, st->e); break;
     case ST_ASSIGN: {
+        // 成员目标:b.x = v / b.x op= v
+        if (st->target && st->target->kind == EX_MEMBER && st->target->m_is_name
+            && st->target->obj && st->target->obj->kind == EX_IDENT) {
+            bind* b = env_find(R, st->target->obj->text);
+            if (!b) rt_abort(R, RT_ERROR, "未知绑定 %s", st->target->obj->text);
+            val* objv = &b->slot;
+            val target = *objv;
+            if (target.k == V_BOX && target.bx) { target = target.bx->inner; objv = &target; }
+            if (target.k != V_STRUCT || target.is_class)
+                rt_abort(R, RT_ERROR, "成员赋值目标需为 struct 值: %s", st->target->mname);
+            vfld* f = NULL;
+            for (size_t i = 0; i < target.nfld; i++)
+                if (strcmp(target.flds[i].name, st->target->mname) == 0) { f = &target.flds[i]; break; }
+            if (!f) rt_abort(R, RT_ERROR, "字段不存在: %s", st->target->mname);
+            val r = eval_expr(R, st->value);
+            if (st->aop == A_EQ) {
+                if (f->v.k == V_INT && r.k == V_INT) r = ck_int(R, r.i, f->v.bits, f->v.us, "=");
+                else if (f->v.k == V_INT && r.k == V_FLOAT) r = ck_int(R, (__int128)r.f, f->v.bits, f->v.us, "=");
+                f->v = (r.k == V_STRUCT && !r.is_class) ? clone_val(R, r) : r;
+                if (st->target->obj->kind == EX_IDENT) {
+                    // 写回(对象本身是绑定内槽,直接改已生效;仅 struct 值独立副本)
+                }
+                break;
+            }
+            val l = f->v;
+            __int128 x = 0;
+            switch (st->aop) {
+            case A_ADDEQ: x = l.i + r.i; break;
+            case A_SUBEQ: x = l.i - r.i; break;
+            case A_MULEQ: x = l.i * r.i; break;
+            case A_DIVEQ:
+                if (r.i == 0) rt_abort(R, RT_PANIC, "division by zero (/=)");
+                x = l.i / r.i;
+                break;
+            case A_MODEQ:
+                if (r.i == 0) rt_abort(R, RT_PANIC, "division by zero (%=)");
+                x = l.i % r.i;
+                break;
+            default: rt_abort(R, RT_ERROR, "赋值运算符"); break;
+            }
+            f->v = ck_int(R, x, l.bits, l.us, "member assign");
+            break;
+        }
         if (st->target && st->target->kind == EX_IDENT) {
             bind* b = env_find(R, st->target->text);
             if (!b) rt_abort(R, RT_ERROR, "未知绑定 %s", st->target->text);
@@ -281,7 +373,7 @@ static void eval_stmt(rt* R, cstmt* st) {
             if (st->aop == A_EQ) {
                 if (l.k == V_INT && r.k == V_INT) r = ck_int(R, r.i, l.bits, l.us, "=");
                 else if (l.k == V_INT && r.k == V_FLOAT) r = ck_int(R, (__int128)r.f, l.bits, l.us, "=");
-                b->slot = r;
+                b->slot = (r.k == V_STRUCT && !r.is_class) ? clone_val(R, r) : r;
                 break;
             }
             __int128 x;
@@ -403,6 +495,16 @@ static val str_expr(rt* R, cexpr* e) {
 }
 
 // ================= 函数与断言 =================
+static const cdecl* find_kind(const cfile* f, cdecl_kind kd, const char* name) {
+    if (!name) return NULL;
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind != kd) continue;
+        const char* nm = kd == D_STRUCT ? d->strukt.name : kd == D_CLASS ? d->klass.name : NULL;
+        if (nm && strcmp(nm, name) == 0) return d;
+    }
+    return NULL;
+}
 static const cdecl* file_fn(const rt* R, const char* name) {
     for (size_t i = 0; i < R->f->ndecls; i++) {
         const cdecl* d = &R->f->decls[i];
@@ -518,6 +620,21 @@ static int pat_bind(rt* R, cpat* p, val s) {
     }
     case PAT_TUPLE: return 0; // 本域不涉
     case PAT_AGG: {
+        if (p->agg == AG_STRUCT) {
+            if (s.k == V_BOX && s.bx) s = s.bx->inner;
+            if (s.k != V_STRUCT) return 0;
+            for (size_t i = 0; i < p->nsfields; i++) {
+                const cstructpatfield* f = &p->sfields[i];
+                val fv = v_void();
+                int found = 0;
+                for (size_t j = 0; j < s.nfld; j++)
+                    if (strcmp(s.flds[j].name, f->name) == 0) { fv = s.flds[j].v; found = 1; break; }
+                if (!found) return 0;
+                if (!f->pat) env_let(R, f->name, fv);
+                else if (!pat_bind(R, f->pat, fv)) return 0;
+            }
+            return 1;
+        }
         if (s.k != V_TAG || !p->path || p->npath == 0 || strcmp(p->path[0], s.tag) != 0) return 0;
         if (p->agg == AG_UNIT) return s.nitems == 0;
         if (p->agg == AG_TUPLE) {
@@ -651,6 +768,20 @@ static val eval_expr(rt* R, cexpr* e) {
         for (size_t i = 0; i < e->nelems; i++) arr[i] = eval_expr(R, e->elems[i]);
         return v_arr(arr, e->nelems);
     }
+    case EX_STRUCT: {
+        if (e->npath == 0) rt_abort(R, RT_ERROR, "构造缺少类型名");
+        const char* tn = e->path[0];
+        int is_class = find_kind(R->f, D_CLASS, tn) != NULL;
+        vfld* fs = NULL;
+        if (e->nfields) {
+            fs = (vfld*)ctron_arena_alloc(R->a, e->nfields * sizeof(vfld));
+            for (size_t i = 0; i < e->nfields; i++) {
+                fs[i].name = e->fields[i].name;
+                fs[i].v = e->fields[i].value ? eval_expr(R, e->fields[i].value) : v_void();
+            }
+        }
+        return v_obj(tn, is_class, fs, e->nfields);
+    }
     case EX_INDEX: {
         val o = eval_expr(R, e->obj);
         val ix = eval_expr(R, e->index);
@@ -661,12 +792,29 @@ static val eval_expr(rt* R, cexpr* e) {
     }
     case EX_MEMBER: {
         val o = eval_expr(R, e->obj);
-        if (e->m_is_name && e->mname && strcmp(e->mname, "len") == 0) {
+        if (o.k == V_BOX && o.bx) o = o.bx->inner;
+        if (!e->m_is_name || !e->mname) rt_abort(R, RT_ERROR, "属性访问不支持");
+        const char* m = e->mname;
+        if (strcmp(m, "len") == 0) {
             if (o.k == V_ARR) return v_int(o.nitems, 32, 0);
             if (o.k == V_STR) return v_int(o.s ? (__int128)strlen(o.s) : 0, 32, 0);
             rt_abort(R, RT_ERROR, ".len 目标类型不支持");
         }
-        rt_abort(R, RT_ERROR, "属性访问不支持: %s", e->mname ? e->mname : "?");
+        if (strcmp(m, "char_len") == 0) {
+            if (o.k == V_STR) {
+                int64_t n = 0;
+                const unsigned char* p = (const unsigned char*)(o.s ? o.s : "");
+                while (*p) { if ((*p & 0xC0) != 0x80) n++; p++; }
+                return v_int(n, 32, 0);
+            }
+            rt_abort(R, RT_ERROR, ".char_len 目标类型不支持");
+        }
+        if (o.k == V_STRUCT) {
+            for (size_t i = 0; i < o.nfld; i++)
+                if (strcmp(o.flds[i].name, m) == 0) return o.flds[i].v;
+            rt_abort(R, RT_ERROR, "字段不存在: %s", m);
+        }
+        rt_abort(R, RT_ERROR, "属性访问不支持: %s", m);
     }
     case EX_TRY: {
         val v = eval_expr(R, e->obj);
@@ -703,6 +851,12 @@ static val eval_expr(rt* R, cexpr* e) {
             val v = eval_expr(R, cal->obj->obj);
             const char* tn = cal->ntargs > 0 ? head_nm(cal->targs[0]) : NULL;
             return as_conv(R, v, tn);
+        }
+        // Box[T](v)
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "Box") == 0) {
+            if (e->nelems != 1) rt_abort(R, RT_ERROR, "Box 实参");
+            return v_box(R, eval_expr(R, e->elems[0]));
         }
         if (cal && cal->kind == EX_IDENT) {
             const char* nm = cal->text;
@@ -747,6 +901,10 @@ static val eval_expr(rt* R, cexpr* e) {
             if (option_builtin(R, recv, cal->mname, e)) {
                 val r = R->opt_result;
                 R->has_opt = 0;
+                return r;
+            }
+            if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "to_string") == 0) {
+                val r = recv; // 不可变;隐式降格语义
                 return r;
             }
             cexpr** arg2 = (cexpr**)ctron_arena_alloc(R->a, (e->nelems + 1) * sizeof(cexpr*));
