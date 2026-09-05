@@ -199,6 +199,20 @@
    复合写/别名 push 可见/into_gc 隔离/Str 元素/空表)与原生逐字一致;suite_diff 227
    cases 全绿;其余套件全绿;ASan/UBSan 绿。注:本批期间并行 C10 流 trans.c WIP 短暂
    阻断 make build/suite_diff,验收用 HEAD 稳定版 trans.c 链接验证(不影响结论)。
+19e. **C9f②(本文件交付)—— Ctron 求值器 trait/impl 方法域**:`ev2.ct` 补类型底链名
+   ty_head(Named/Ref/Slice/Optional)与四个检索器:find_trait/find_is_class/find_impl_method/
+   find_impl_prop(镜像 rt.c cls_method/cls_prop:逐 Impl 扫 items → 本 impl trait_ty 的
+   trait 默认体(须有 body);多 impl 按文件序续扫)。方法/prop 调用 call_method_vals/
+   call_prop_vals:self 绑定 + Param 具名参数(Method 节点体在 [5],Receiver 不耗实参)。
+   分发序镜像 rt:内建方法 → 类实例(U+is_class)方法(找不到即 panic 不落 UFCS) → UFCS;
+   Member 读序:字段 → impl prop(仅类)→ panic。已裁定钉子:①宿主解析器无 inherent
+   impl(`impl Type {}` 不支持,夹具用 trait impl 形式);②self 可变方法(方法内改字段
+   外部可见)依赖类/结构体写语义区分(类原地写/结构体重建),不在本批(挂账 C9g);
+   ③to_string/slice 内建未按接收者种类门控(与 rt 的门控差异,夹具避开)。
+   验收:suite_diff 新增 seq5 用例 input_ev2h.ct(仿 03d 语料:trait Clock/Named/Env
+   默认 describe 内 self.name prop + self.now() 方法互调/空 impl/env.now()·env.name·
+   env.describe()/Tagged 多参方法 label(6))与原生逐字一致;suite_diff 228 cases 全绿;
+   suite_run 16/suite_rt 34 全绿;ASan/UBSan 绿。
 
 
 ## 自举产物目录

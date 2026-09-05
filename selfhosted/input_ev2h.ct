@@ -1,0 +1,62 @@
+// input_ev2h.ct —— C9f② trait/impl 方法域差分夹具(与 C rt run_main 逐字对齐)
+// 覆盖:impl 方法分发 / trait 默认方法体(空 impl)/ impl prop(无括号访问)/
+// 默认体内 self 成员与方法互调 / 多 impl 检索顺序 / 类实例字面量
+trait Clock {
+    fn now(&self) -> U64
+}
+
+trait Named {
+    prop name: Str
+}
+
+trait Env: Clock + Named {
+    fn describe(&self) -> Str {
+        return "{self.name} @ {self.now()}"
+    }
+}
+
+class FakeEnv {
+    let base: U64
+}
+
+impl Clock for FakeEnv {
+    fn now(&self) -> U64 {
+        return self.base
+    }
+}
+
+impl Named for FakeEnv {
+    prop name: Str {
+        return "fake"
+    }
+}
+
+impl Env for FakeEnv {
+}
+
+class Tagged {
+    let tag: Str
+    let n: I32
+}
+
+trait Meter {
+    fn label(&self, mul: I32) -> I32
+}
+
+impl Meter for Tagged {
+    fn label(&self, mul: I32) -> I32 {
+        return self.n * mul
+    }
+}
+
+fn main() -> I32 {
+    let env = FakeEnv { base: 100 }
+    println(env.now())
+    println(env.name)
+    println(env.describe())
+    let t = Tagged { tag: "x", n: 7 }
+    println(t.label(6))
+    println(t.tag)
+    println(t.n)
+    return 0
+}

@@ -20,6 +20,7 @@
 | `ev2.ct`(续) | **UFCS**:`x.f(args)` → 文件自由 fn 首参调用 | C9e① seq=5 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **闭包/fn 值**:裸 fn 名 fn-ref、闭包字面量捕获、fn 类型参数高阶调用 | C9e② seq=5 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **List 域(引用语义)**:List[T]()/arena.list[T]() 构造、push 原地变、.len、索引读/写/复合写、别名可见、into_gc() 深拷贝隔离 | C9f① seq=5 与 C rt 逐字一致 |
+| `ev2.ct`(续) | **trait/impl 方法域**:impl 方法分发、trait 默认方法体(空 impl)、impl prop、self 互调、类实例字面量 | C9f② seq=5 与 C rt 逐字一致 |
 | `cc.ct` | **统一 cc 驱动**(自足快照:parse→单文件语义 12 项→run):有诊断输出 `CODE: msg` 并止;干净则解释执行 main/test | C9c+C9e① seq=9 正/负夹具与 C 管线逐字一致 |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |
 
@@ -63,7 +64,10 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
 - C9f①(List 域引用语义)已交付:List[T]() 构造、push 原地变、.len、索引读/写/复合写、别名可见、
   into_gc() 深拷贝隔离(input_ev2g.ct,227 cases);已裁定钉子:for-over-list 宿主不支持(夹具避开)、
   println(List) → `<value>`、越界走宿主 panic 不入差分;
-- 下一步:trait/impl 方法域(用户类型方法调用与 trait 默认方法),或 cc.ct 快照刷新并入 C9f①,
-  或元组/Try 之外的运行域小面(如 slice 语法糖),或把 `selfhosted/` 提升为独立工具链。
+- C9f②(trait/impl 方法域)已交付:impl 方法分发、trait 默认方法体(空 impl)、impl prop、
+  self 成员/方法互调、多参方法(input_ev2h.ct,228 cases);已裁定钉子:无 inherent impl、
+  self 可变方法挂账 C9g(类原地写/结构体重建之辨)、内建方法门控差异;
+- 下一步:C9g(self 可变方法与类/结构体写语义区分,或单文件语义扩面),或 cc.ct 快照刷新
+  并入 C9f①②,或把 `selfhosted/` 提升为独立工具链。
 - 注意:仓库 `make test` 暂被并行 C10-a 流(trans/suite_trans WIP)阻断,本目录逐 suite 构建运行可用。
 - 详细路线见 `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。

@@ -92,3 +92,8 @@
 - 并行 C10 流 trans.c WIP 可能短暂阻断 `make build/suite_diff`(同一 CORE 链接);应急:
   `git show HEAD:compiler_c/src/trans.c > /tmp/trans_stable.c` 用稳定版链接验收,不改其文件。
 - 下一批:C9f② trait/impl 方法域(用户类型方法调用/trait 默认方法),或 cc.ct 快照刷新并入 C9f①。
+- C9f② ✅(trait/impl 方法域;seq5h input_ev2h.ct,228 cases)。分发序镜像 rt:
+  内建 → 类方法(找不到即 panic 不落 UFCS)→ UFCS;Member:字段 → impl prop → panic。
+- 新钉子:①宿主解析器**无 inherent impl**(`impl Type {}` 不支持,必须 impl Trait for Type);
+  ②self 可变方法挂账 C9g(类原地写 vs 结构体重建的写语义区分);③内建 to_string/slice
+  未按接收者种类门控(夹具避开)。
