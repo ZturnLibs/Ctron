@@ -12,6 +12,7 @@
 #include "pkg.h"
 #include "sem.h"
 #include "rt.h"
+#include "trans.h"
 
 static const char* VERSION = "0.1.0";
 
@@ -260,6 +261,129 @@ static int cmd_run(int argc, char** argv) {
     return rc;
 }
 
+// trans/build —— C10-a:Ctron → C 转译后端。test 块文件用 ctronc test 执行。
+static int cmd_trans(int argc, char** argv) {
+    const char* path = NULL;
+    const char* out = NULL;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+        else if (!path) path = argv[i];
+    }
+    if (!path) {
+        fprintf(stderr, "usage: ctronc trans <file> [-o out.c]\n");
+        return 2;
+    }
+    size_t len;
+    char* src = read_file(path, &len);
+    if (!src) { fprintf(stderr, "无法读取 %s\n", path); return 2; }
+    ctron_parse_result pr = ctron_parse_src(src, len);
+    free(src);
+    if (pr.ndiags) {
+        for (size_t i = 0; i < pr.ndiags; i++)
+            printf("%s:%u:%u %s: %s\n", path, pr.diags[i].span.line, pr.diags[i].span.col,
+                   pr.diags[i].code, pr.diags[i].message);
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    ctron_trans_result tr = ctron_trans_file(pr.file);
+    ctron_parse_result_free(&pr);
+    if (tr.err) {
+        fprintf(stderr, "trans: %s\n", tr.err);
+        ctron_trans_result_free(&tr);
+        return 2;
+    }
+    if (out) {
+        FILE* f = fopen(out, "wb");
+        if (!f) { fprintf(stderr, "无法写入 %s\n", out); return 2; }
+        fwrite(tr.code, 1, strlen(tr.code), f);
+        fclose(f);
+    } else {
+        printf("%s", tr.code);
+    }
+    ctron_trans_result_free(&tr);
+    return 0;
+}
+
+static int cmd_build(int argc, char** argv) {
+    const char* path = NULL;
+    const char* out = "a.out";
+    int keep = 0;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+        else if (!strcmp(argv[i], "-k")) keep = 1;
+        else if (!path) path = argv[i];
+    }
+    if (!path) {
+        fprintf(stderr, "usage: ctronc build <file> [-o bin] [-k]\n");
+        return 2;
+    }
+    size_t len;
+    char* src = read_file(path, &len);
+    if (!src) { fprintf(stderr, "无法读取 %s\n", path); return 2; }
+    ctron_parse_result pr = ctron_parse_src(src, len);
+    free(src);
+    if (pr.ndiags) {
+        for (size_t i = 0; i < pr.ndiags; i++)
+            printf("%s:%u:%u %s: %s\n", path, pr.diags[i].span.line, pr.diags[i].span.col,
+                   pr.diags[i].code, pr.diags[i].message);
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    ctron_trans_result tr = ctron_trans_file(pr.file);
+    ctron_parse_result_free(&pr);
+    if (tr.err) {
+        fprintf(stderr, "trans: %s\n", tr.err);
+        ctron_trans_result_free(&tr);
+        return 2;
+    }
+    const char* cpath = keep ? "ctron_build_out.c" : "/tmp/ctron_build_out.c";
+    FILE* f = fopen(cpath, "wb");
+    if (!f) { fprintf(stderr, "无法写入 %s\n", cpath); return 2; }
+    fwrite(tr.code, 1, strlen(tr.code), f);
+    fclose(f);
+    ctron_trans_result_free(&tr);
+    char cmd[1024];
+    snprintf(cmd, sizeof cmd, "cc -std=c11 -O2 -o '%s' '%s'", out, cpath);
+    int rc = system(cmd);
+    if (!keep) remove(cpath);
+    if (rc != 0) {
+        fprintf(stderr, "build: cc 失败\n");
+        return 1;
+    }
+    printf("build: %s\n", out);
+    return 0;
+}
+
+// test —— 运行文件内全部 test 块(C 解释器);输出 rr.out;panic/断言失败 exit 1。
+static int cmd_test(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc test <file>\n");
+        return 2;
+    }
+    size_t len;
+    char* src = read_file(argv[2], &len);
+    if (!src) { fprintf(stderr, "无法读取 %s\n", argv[2]); return 2; }
+    ctron_parse_result pr = ctron_parse_src(src, len);
+    free(src);
+    if (pr.ndiags) {
+        for (size_t i = 0; i < pr.ndiags; i++)
+            printf("%s:%u:%u %s: %s\n", argv[2], pr.diags[i].span.line, pr.diags[i].span.col,
+                   pr.diags[i].code, pr.diags[i].message);
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    rt_run rr = ctron_rt_run(pr.file);
+    if (rr.out) printf("%s", rr.out);
+    int ok = rr.st == RT_OK && rr.tests_run == rr.tests_total && rr.tests_total > 0;
+    if (!ok && rr.msg) fprintf(stderr, "%s\n", rr.msg);
+    size_t run = rr.tests_run, total = rr.tests_total;
+    ctron_rt_run_free(&rr);
+    ctron_parse_result_free(&pr);
+    if (!ok) return 1;
+    printf("%zu/%zu tests passed\n", run, total);
+    return 0;
+}
+
 int main(int argc, char** argv) {
     const char* sub = argc > 1 ? argv[1] : "";
     if (strcmp(sub, "version") == 0) {
@@ -271,6 +395,9 @@ int main(int argc, char** argv) {
     if (strcmp(sub, "check") == 0) return cmd_check(argc, argv);
     if (strcmp(sub, "pkg") == 0) return cmd_pkg(argc, argv);
     if (strcmp(sub, "run") == 0) return cmd_run(argc, argv);
-    fprintf(stderr, "usage: ctronc <version|lex|parse|check|pkg|run> [args]\n");
+    if (strcmp(sub, "test") == 0) return cmd_test(argc, argv);
+    if (strcmp(sub, "trans") == 0) return cmd_trans(argc, argv);
+    if (strcmp(sub, "build") == 0) return cmd_build(argc, argv);
+    fprintf(stderr, "usage: ctronc <version|lex|parse|check|pkg|run|test|trans|build> [args]\n");
     return 2;
 }

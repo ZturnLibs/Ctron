@@ -1,0 +1,6 @@
+// 02_overflow.panic.ct —— 检查算术溢出(消息逐字对齐 rt)
+test "overflow panics" {
+    let big: I32 = 2147483647
+    assert_eq(big + 1, 0)
+}
+//@ panic: integer overflow

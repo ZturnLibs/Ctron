@@ -1,0 +1,7 @@
+// 06_assign_overflow.panic.ct —— 复合赋值溢出(rt "assign")
+test "assign overflow" {
+    var s: I16 = 32767
+    s += 1
+    assert_eq(s, 0)
+}
+//@ panic: integer overflow (assign)

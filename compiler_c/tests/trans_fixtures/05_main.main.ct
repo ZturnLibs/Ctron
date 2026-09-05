@@ -1,0 +1,9 @@
+// 05_main.main.ct —— fn main + print/println(stdout 差分)
+fn main() -> I32 {
+    print(42)
+    println(7)
+    println(true)
+    println(2.5)
+    println(100000000000)
+    return 0
+}

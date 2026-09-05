@@ -1,0 +1,27 @@
+// 04_control.ct —— while/if-else-if 链/复合赋值/Bool 逻辑/assert_ne
+fn classify(n: I32) -> I32 {
+    if n < 0 { return -1 }
+    if n == 0 { return 0 }
+    return 1
+}
+
+test "control flow" {
+    var i: I32 = 10
+    while i > 0 {
+        i -= 3
+    }
+    assert_eq(i, -2)
+    assert_eq(classify(-5), -1)
+    assert_eq(classify(0), 0)
+    assert_eq(classify(9), 1)
+    let a = true
+    let b = false
+    assert(a && !b)
+    assert_ne(a, b)
+    var m: I16 = 100
+    m *= 3
+    assert_eq(m, 300)
+    let f: F64 = 2.5
+    let g = f + 0.5
+    assert_eq(g, 3.0)
+}

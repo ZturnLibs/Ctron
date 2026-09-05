@@ -5,8 +5,8 @@ CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wpedantic
 INC      = -Isrc
 BUILD    = build
 BIN      = $(BUILD)/ctronc
-CORE     = src/arena.c src/token.c src/lexer.c src/parser.c src/ast_show.c src/sem.c src/pkg.c src/rt.c
-HDRS     = src/arena.h src/token.h src/lexer.h src/ast.h src/parser.h
+CORE     = src/arena.c src/token.c src/lexer.c src/parser.c src/ast_show.c src/sem.c src/pkg.c src/rt.c src/trans.c
+HDRS     = src/arena.h src/token.h src/lexer.h src/ast.h src/parser.h src/trans.h
 
 all: $(BIN)
 
@@ -50,9 +50,13 @@ $(BUILD)/suite_diff: tests/suite_diff.c $(CORE) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_diff.c $(CORE)
 
+$(BUILD)/suite_trans: tests/suite_trans.c $(CORE) $(HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_trans.c $(CORE)
+
 # 默认验收:单元 + 语料集成(词法+解析+语义+模块级)+ 执行层(C4-a 子集)
 
-test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff
+test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff $(BUILD)/suite_trans
 	./$(BUILD)/test_lex
 	./$(BUILD)/suite_lex ../tests
 	./$(BUILD)/test_parse
@@ -62,6 +66,7 @@ test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_pa
 	./$(BUILD)/suite_rt ../tests
 	./$(BUILD)/suite_run ../selfhosted
 	./$(BUILD)/suite_diff ../selfhosted
+	./$(BUILD)/suite_trans tests/trans_fixtures
 
 clean:
 	rm -rf $(BUILD)

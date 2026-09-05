@@ -1,0 +1,31 @@
+// 01_arith.ct —— 宽度全集/回绕/浮点/递归/for(差分基准)
+fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}
+
+fn fact(n: I64) -> I64 {
+    if n < 2 { return 1 }
+    return n * fact(n - 1)
+}
+
+test "arith basics" {
+    assert_eq(add2(40, 2), 42)
+    assert_eq(fact(10), 3628800)
+    let x: I32 = 7
+    let y = x % 3
+    assert_eq(y, 1)
+    var u: U8 = 250
+    u += 5
+    assert_eq(u, 255)
+    assert_eq(2.5 * 2.0, 5.0)
+    let w = 3 +% 2
+    assert_eq(w, 5)
+    let s: I64 = 9223372036854775807
+    assert_eq(s, 9223372036854775807)
+    for i in 0..3 {
+        assert(i >= 0)
+    }
+    for i in 0..=2 {
+        assert(i <= 2)
+    }
+}

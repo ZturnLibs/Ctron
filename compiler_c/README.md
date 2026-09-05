@@ -135,4 +135,15 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 检查 47/47 |
 | C8h② ✅ | E3040 分配效果(own/no_alloc/契约 + 函数效果摘要) | **C3 单文件 12 项全集 Ctron 树上收官:49/49(207 用例)** |
 
-计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
+### C10-a 转译后端骨架 ✅(Ctron → C,数值域差分)
+`ctronc trans <file> [-o out.c]` / `build <file> [-o bin] [-k]` / `test <file>`;
+语义逐字对齐 rt.c:检查算术(溢出/除零/assign 消息)、回绕二补截断、入口 coerce(decl)、
+返回不 coerce、int128 比较、test 块顺序执行 + panic 长跳;无后缀大字面量语义(算术 i32 宽度,
+raw 承载)对齐。v1 拒绝域显式报错(Str/容器/GC/并发…)。验收:`suite_trans` 对 6 个夹具
+解释器 vs 原生可执行差分(stdout/stderr/exit/panic 消息逐字),ASan/UBSan 全绿。
+泳道与协作协议见 `docs/superpowers/plans/2026-09-05-lane-split.md`。
+
+| C10-b… | 转译扩面:Str/数组/struct/enum/match/闭包;Option/Result/?;目标 = 61 语料全量可编译执行 | suite_trans 夹具逐域并入,与 rt 差分逐字 |
+| E6030/W8030 | 规范预留码(comptime 反射/未使用绑定) | 随实现与语料补 |
+
+计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`;**泳道分工** `docs/superpowers/plans/2026-09-05-lane-split.md`。

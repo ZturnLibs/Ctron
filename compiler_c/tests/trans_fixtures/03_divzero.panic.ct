@@ -1,0 +1,6 @@
+// 03_divzero.panic.ct —— 除零 panic
+test "divzero panics" {
+    let a: I32 = 7
+    assert_eq(a / 0, 0)
+}
+//@ panic: division by zero (/)
