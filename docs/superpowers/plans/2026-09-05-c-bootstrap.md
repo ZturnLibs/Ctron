@@ -111,6 +111,10 @@
    struct/enum 声明、Named 泛型实参(Option[I32]);语言钉:else 须与 } 同行
    (Ctron 解析要求);夹具扩 12 fn/test/enum/struct,与 C 逐字节一致(110 用例)。
 
+## 自举产物目录
+
+Ctron 实现的编译器模块已独立到**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk + 夹具 + README),为规范源;`compiler_c/selfhost/` 为 CI 工作副本,`make -C compiler_c sync-selfhosted`/`make test` 自动同步。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
+
 ## 冻结纪律
 
 自举代码会踩中语义含混(如 `08_bare.ct` 频次和 6 vs 4);每处先裁定再让 Ctron 代码使用,避免"自举期改语言"。

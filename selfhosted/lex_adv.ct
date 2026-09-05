@@ -1,0 +1,192 @@
+// 自举:Ctron 词法器 v3 —— 进制/下划线/数值后缀/..·..=
+fn or2(a: Bool, b: Bool) -> Bool { return !(!a && !b) }
+fn or3(a: Bool, b: Bool, c: Bool) -> Bool { return or2(or2(a, b), c) }
+fn is_ws(b: I32) -> Bool { return or3(b == 32, b == 9, b == 13) }
+fn is_digit(b: I32) -> Bool { return b >= 48 && b <= 57 }
+fn is_alpha(b: I32) -> Bool { return or2(b >= 65 && b <= 90, b >= 97 && b <= 122) }
+fn is_al(b: I32) -> Bool { return or2(is_alpha(b), b == 95) }
+fn is_ac(b: I32) -> Bool { return or2(is_al(b), is_digit(b)) }
+fn is_hex(b: I32) -> Bool { return or2(is_digit(b), or2(b >= 65 && b <= 70, b >= 97 && b <= 102)) }
+fn is_oct(b: I32) -> Bool { return b >= 48 && b <= 55 }
+fn is_bin(b: I32) -> Bool { return b >= 48 && b <= 49 }
+
+// 数值后缀(小写精确 + 词边界);返回长度 0/2/5
+fn suffix_len(src: Str, n: I32, i: I32) -> I32 {
+    if i + 2 <= n {
+        var a = byte_at(src, i)
+        var b = byte_at(src, i + 1)
+        var hit = false
+        if a == 105 && b == 56 {
+            hit = true
+        }
+        if a == 105 && b == 49 && i + 2 < n && byte_at(src, i + 2) == 54 {
+            hit = true
+        }
+        if a == 117 && b == 56 {
+            hit = true
+        }
+        if a == 117 && b == 49 && i + 2 < n && byte_at(src, i + 2) == 54 {
+            hit = true
+        }
+        if a == 102 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 {
+            hit = true
+        }
+        if a == 102 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 {
+            hit = true
+        }
+        if hit {
+            var end = 2
+            if i + 2 < n && byte_at(src, i + 2) == 52 {
+                end = 3
+            }
+            if i + 2 < n && byte_at(src, i + 2) == 54 {
+                end = 3
+            }
+            if i + 2 < n && byte_at(src, i + 2) == 50 {
+                end = 3
+            }
+            if i + end < n && is_ac(byte_at(src, i + end)) {
+                return 0
+            }
+            return end
+        }
+    }
+    return 0
+}
+
+fn kw(text: Str) -> Str {
+    if text == "let" { return "Let" }
+    if text == "var" { return "Var" }
+    if text == "return" { return "Return" }
+    return "Ident"
+}
+
+fn two_op(a: I32, b: I32) -> Str {
+    if a == 43 && b == 37 { return "WrapPlus" }
+    if a == 45 && b == 37 { return "WrapMinus" }
+    if a == 61 && b == 61 { return "EqEq" }
+    if a == 60 && b == 61 { return "LtEq" }
+    if a == 62 && b == 61 { return "GtEq" }
+    if a == 33 && b == 61 { return "NotEq" }
+    if a == 38 && b == 38 { return "AndAnd" }
+    if a == 45 && b == 62 { return "Arrow" }
+    if a == 61 && b == 62 { return "FatArrow" }
+    return "?"
+}
+
+fn one_kind(b: I32) -> Str {
+    if b == 43 { return "Plus" }
+    if b == 45 { return "Minus" }
+    if b == 42 { return "Star" }
+    if b == 47 { return "Slash" }
+    if b == 37 { return "Percent" }
+    if b == 61 { return "Assign" }
+    if b == 60 { return "Lt" }
+    if b == 62 { return "Gt" }
+    if b == 33 { return "Bang" }
+    if b == 63 { return "Question" }
+    if b == 46 { return "Dot" }
+    if b == 44 { return "Comma" }
+    if b == 58 { return "Colon" }
+    if b == 91 { return "LBracket" }
+    if b == 93 { return "RBracket" }
+    if b == 40 { return "LParen" }
+    if b == 41 { return "RParen" }
+    if b == 123 { return "LBrace" }
+    if b == 125 { return "RBrace" }
+    if b == 124 { return "Pipe" }
+    if b == 38 { return "Amp" }
+    if b == 35 { return "Hash" }
+    if b == 64 { return "At" }
+    return "?"
+}
+
+fn lex(src: Str) -> Str {
+    var out = ""
+    var n = src.len
+    var i: I32 = 0
+    while i < n {
+        var b = byte_at(src, i)
+        if is_ws(b) {
+            i += 1
+        } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 47 {
+            while i < n && byte_at(src, i) != 10 { i += 1 }
+        } else if is_al(b) {
+            var start = i
+            while i < n && is_ac(byte_at(src, i)) { i += 1 }
+            var word = byte_slice(src, start, i)
+            if word == "_" {
+                out = out + "Underscore" + "\n"
+            } else {
+                out = out + kw(word) + "\n"
+            }
+        } else if is_digit(b) {
+            // 进制前缀(仅小写)
+            if b == 48 && i + 1 < n {
+                var p = byte_at(src, i + 1)
+                if p == 120 {
+                    i += 2
+                    while i < n && or2(is_hex(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                } else if p == 111 {
+                    i += 2
+                    while i < n && or2(is_oct(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                } else if p == 98 {
+                    i += 2
+                    while i < n && or2(is_bin(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                } else {
+                    while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+            } else {
+                while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+            }
+            var sl = suffix_len(src, n, i)
+            if sl > 0 {
+                i += sl
+            }
+            out = out + "Int" + "\n"
+        } else {
+            // .. 与 ..=(三字符)
+            if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {
+                if i + 2 < n && byte_at(src, i + 2) == 61 {
+                    out = out + "DotDotEq" + "\n"
+                    i += 3
+                } else {
+                    out = out + "DotDot" + "\n"
+                    i += 2
+                }
+            } else {
+                var t = "?"
+                if i + 1 < n {
+                    t = two_op(b, byte_at(src, i + 1))
+                }
+                if t != "?" {
+                    out = out + t + "\n"
+                    i += 2
+                } else {
+                    var s = one_kind(b)
+                    if s != "?" {
+                        out = out + s + "\n"
+                    }
+                    i += 1
+                }
+            }
+        }
+    }
+    out = out + "Eof"
+    return out
+}
+
+fn main() -> I32 {
+    let src = read_file("selfhost/input_adv.ct")
+    match src {
+        Some(s) => {
+            var text = lex(s)
+            print(text)
+            return 0
+        }
+        None => {
+            print("read-failed")
+            return 1
+        }
+    }
+}
