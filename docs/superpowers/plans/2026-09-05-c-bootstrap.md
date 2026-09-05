@@ -78,8 +78,13 @@
    StructLit{path,fields};decl_kind 前探(pub/@derive/NL)分发,attr 行后 NL 消费等钉。
    parse 语料差分 9→**16 文件**(+02e_match_patterns/02_match_exhaustive/05i_deep_cause/
    01_overflow/02d_divzero/03h_utf8/10_web_dom 等),suite_diff 76 用例全绿;ASan/UBSan 全绿。
-13. **C6f③(下一阶梯)**:class/impl/trait 声明与 receiver 方法(self)、own(arena) 块、闭包
-   |x| 、Global 初始化,解锁 03_values_refs/05d/06_*/07_* 语料。
+13. **C6f③(本文件交付)**:class/impl 声明族 + receiver 方法 —— parse_fn 重构为共享
+   parse_fndecl(tag: Fn/Method),方法收参识别 `var self`/`let self` → Receiver{is_var};
+   class(items: Field/Method)/impl Trait for Type 落地(impl 含方法体)。
+   parse 语料差分 16→**21 文件**(+03_values_refs/03e_generics_types/05d_drop/
+   03_shallow_copy/06c_static_nonsend),suite_diff 81 用例全绿;ASan/UBSan 全绿。
+14. **C6f④(下一阶梯)**:trait 声明/Prop、own(arena) 块、闭包 |x|、scope/spawn、Global[T],
+   解锁 03d/04_generics/05_own*/06_*/07_* 语料。
 
 ## 冻结纪律
 

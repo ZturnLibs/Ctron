@@ -1100,7 +1100,7 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
     return "Block \{ stmts: [" + ss + "], tail: " + tail + "}"
 }
 
-fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
+fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
     var vis = "Private"
     if tok(toks, cur) == "pub" {
         vis = "Pub"
@@ -1121,14 +1121,29 @@ fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
         if tok(toks, cur) == ")" {
             more = false
         } else {
+            var isv = "false"
+            var t0 = tok(toks, cur)
+            if t0 == "var" {
+                isv = "true"
+                adv(cur)
+            }
+            if t0 == "let" {
+                adv(cur)
+            }
             var pn = tok(toks, cur)
             adv(cur)
-            adv(cur)
-            var ty = parse_type(toks, cur)
+            var entry = ""
+            if pn == "self" {
+                entry = "Receiver \{ is_var: " + isv + " }"
+            } else {
+                adv(cur)
+                var ty = parse_type(toks, cur)
+                entry = "Param \{ is_var: " + isv + ", name: \"" + pn + "\", ty: " + ty + "}"
+            }
             if k > 0 {
                 ps = ps + ", "
             }
-            ps = ps + "Param \{ is_var: false, name: \"" + pn + "\", ty: " + ty + "}"
+            ps = ps + entry
             k += 1
             if tok(toks, cur) == "," {
                 adv(cur)
@@ -1145,9 +1160,95 @@ fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     adv(cur)
     var body = parse_block(toks, cur)
-    var out = "Fn \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
+    var out = tag + " \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
     out = out + ", body: " + body + "}"
     return out
+}
+
+fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
+    return parse_fndecl(toks, cur, "Fn")
+}
+
+fn parse_class(toks: List[Str], cur: Atomic[I32]) -> Str {
+    skip_nl(toks, cur)
+    var vis = parse_vis_word(toks, cur)
+    var drv = parse_derive(toks, cur)
+    skip_nl(toks, cur)
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var tp = "[]"
+    if tok(toks, cur) == "[" {
+        tp = parse_type_params(toks, cur)
+    }
+    skip_nl(toks, cur)
+    adv(cur)
+    var it = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        skip_nl(toks, cur)
+        var t = tok(toks, cur)
+        if t == "}" {
+            go = false
+        } else if t == "#EOF" {
+            go = false
+        } else {
+            var item = ""
+            if t == "fn" {
+                item = parse_fndecl(toks, cur, "Method")
+            } else {
+                item = parse_field(toks, cur)
+            }
+            if k > 0 {
+                it = it + ", "
+            }
+            it = it + item
+            k += 1
+        }
+    }
+    adv(cur)
+    return "Class \{ attrs: [], name: \"" + nm + "\", type_params: " + tp + ", items: [" + it + "] }"
+}
+
+fn parse_impl(toks: List[Str], cur: Atomic[I32]) -> Str {
+    skip_nl(toks, cur)
+    adv(cur)
+    var tp = "[]"
+    if tok(toks, cur) == "[" {
+        tp = parse_type_params(toks, cur)
+    }
+    var tr = parse_type(toks, cur)
+    adv(cur)
+    var ft = parse_type(toks, cur)
+    skip_nl(toks, cur)
+    adv(cur)
+    var it = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        skip_nl(toks, cur)
+        var t = tok(toks, cur)
+        if t == "}" {
+            go = false
+        } else if t == "#EOF" {
+            go = false
+        } else {
+            var item = ""
+            if t == "fn" {
+                item = parse_fndecl(toks, cur, "Method")
+            } else {
+                item = parse_prop(toks, cur)
+            }
+            if k > 0 {
+                it = it + ", "
+            }
+            it = it + item
+            k += 1
+        }
+    }
+    adv(cur)
+    return "Impl \{ type_params: " + tp + ", trait_ty: " + tr + ", for_ty: " + ft + ", items: [" + it + "] }"
 }
 
 fn parse_test(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -1503,6 +1604,11 @@ fn parse_static(toks: List[Str], cur: Atomic[I32]) -> Str {
     return "Static \{ name: \"" + nm + "\", was_var: " + wv + ", ty: " + ty + ", expr: " + e + "}"
 }
 
+fn parse_prop(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    return "Prop \{ vis: Private, name: \\\"?\\\", ty: Named \{ path: [\\\"?\\\"], args: []}, body: None}"
+}
+
 fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
     var out = "File \{ decls: ["
     var k: I32 = 0
@@ -1530,6 +1636,10 @@ fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
                 d = parse_const(toks, cur)
             } else if kd == "static" {
                 d = parse_static(toks, cur)
+            } else if kd == "class" {
+                d = parse_class(toks, cur)
+            } else if kd == "impl" {
+                d = parse_impl(toks, cur)
             } else {
                 d = parse_fn(toks, cur)
             }
