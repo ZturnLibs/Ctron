@@ -20,3 +20,9 @@ fn ic(n: I32) -> I32 {
     let r = if n > 0 { 1 } else { 0 }
     return r
 }
+fn greet(name: Str, n: I32) -> Str {
+    return "hi {name} x{n}"
+}
+test "str edge" {
+    assert_eq("esc\n\ttab", "x")
+}

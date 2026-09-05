@@ -41,6 +41,24 @@ fn scan(src: Str, toks: List[Str]) {
             i += 1
         } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 47 {
             while i < n && byte_at(src, i) != 10 { i += 1 }
+        } else if b == 34 {
+            var q0 = i
+            i += 1
+            var done = false
+            while i < n && !done {
+                var c = byte_at(src, i)
+                if c == 34 {
+                    i += 1
+                    done = true
+                } else if c == 92 {
+                    i += 2
+                } else if c == 10 {
+                    done = true
+                } else {
+                    i += 1
+                }
+            }
+            toks.push(byte_slice(src, q0, i))
         } else if is_al(b) {
             var start = i
             while i < n && is_ac(byte_at(src, i)) { i += 1 }
@@ -140,6 +158,73 @@ fn mk(t: Str) -> List[Str] {
 }
 
 // ---------------- 解析(建树) ----------------
+fn qtext(raw: Str) -> Str {
+    var out = ""
+    var j: I32 = 0
+    var n = raw.len
+    while j < n {
+        var c = byte_at(raw, j)
+        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
+            out = out + "\{"
+            j += 2
+        } else {
+            out = out + byte_slice(raw, j, j + 1)
+            j += 1
+        }
+    }
+    return out
+}
+
+fn parts_of(raw: Str) -> List[Str] {
+    var np = mk("Parts")
+    var k: I32 = 0
+    var n = raw.len
+    var j: I32 = 0
+    var ts: I32 = 0
+    while j < n {
+        var c = byte_at(raw, j)
+        if c == 92 && j + 2 <= n {
+            if j + 3 < n && byte_at(raw, j + 1) == 117 && byte_at(raw, j + 2) == 123 {
+                var q = j + 3
+                while q < n && byte_at(raw, q) != 125 { q += 1 }
+                if q < n { j = q + 1 } else { j += 2 }
+            } else {
+                j += 2
+            }
+        } else if c == 123 {
+            if j > ts {
+                var tx = mk("Text")
+                tx.push(qtext(byte_slice(raw, ts, j)))
+                np.push(tx)
+                k += 1
+            }
+            var d: I32 = 1
+            var p = j + 1
+            while d > 0 && p < n {
+                var cp = byte_at(raw, p)
+                if cp == 123 { d += 1 }
+                if cp == 125 { d -= 1 }
+                p += 1
+            }
+            var ix = mk("Interp")
+            ix.push(qtext(byte_slice(raw, j + 1, p - 1)))
+            np.push(ix)
+            k += 1
+            j = p
+            ts = p
+        } else {
+            j += 1
+        }
+    }
+    if n > ts {
+        var ty = mk("Text")
+        ty.push(qtext(byte_slice(raw, ts, n)))
+        np.push(ty)
+        k += 1
+    }
+    return np
+}
+
 fn p_and(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var l = p_cmp(toks, cur)
     var go = true
@@ -262,7 +347,48 @@ fn p_una(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         nu.push(e)
         return nu
     }
-    return p_pri(toks, cur)
+    return p_post(toks, cur)
+}
+
+fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var e = p_pri(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        if t == "(" {
+            adv(cur)
+            var ag = mk("Args")
+            var more = true
+            while more {
+                if tok(toks, cur) == ")" {
+                    more = false
+                } else {
+                    ag.push(p_stmt_expr(toks, cur))
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    } else {
+                        more = false
+                    }
+                }
+            }
+            adv(cur)
+            var cl = mk("Call")
+            cl.push(e)
+            cl.push(ag)
+            e = cl
+        } else if t == "." {
+            adv(cur)
+            var nm = tok(toks, cur)
+            adv(cur)
+            var mb = mk("Member")
+            mb.push(e)
+            mb.push(nm)
+            e = mb
+        } else {
+            go = false
+        }
+    }
+    return e
 }
 
 fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
@@ -286,6 +412,12 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     if t == "if" {
         return p_if(toks, cur)
+    }
+    if b0 == 34 {
+        adv(cur)
+        var ns = mk("Str")
+        ns.push(parts_of(byte_slice(t, 1, t.len - 1)))
+        return ns
     }
     if t == "(" {
         adv(cur)
@@ -460,16 +592,32 @@ fn p_fn(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return nf
 }
 
+fn p_test(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var t = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Test")
+    nt.push(qtext(byte_slice(t, 1, t.len - 1)))
+    adv(cur)
+    nt.push(p_block(toks, cur))
+    return nt
+}
+
 fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var nf = mk("File")
     var go = true
     while go {
-        if tok(toks, cur) == "#EOF" { go = false } else {
+        if tok(toks, cur) == "#EOF" {
+            go = false
+        } else if tok(toks, cur) == "test" {
+            nf.push(p_test(toks, cur))
+        } else {
             nf.push(p_fn(toks, cur))
         }
     }
     return nf
 }
+
 
 // ---------------- 树打印 → C-AST v1 ----------------
 fn pnode(n: List[Str]) -> Str {
@@ -541,6 +689,35 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "While \{ cond: " + pnode(n[1]) + ", body: " + pnode(n[2]) + "}"
     } else if t == "For" {
         out = out + "For \{ pattern: Ident(\"" + n[1] + "\"), iter: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
+    } else if t == "Call" {
+        out = out + "Call \{ callee: " + pnode(n[1]) + ", args: ["
+        var al = n[2]
+        var ak: I32 = 1
+        while ak < al.len {
+            if ak > 1 { out = out + ", " }
+            out = out + pnode(al[ak])
+            ak += 1
+        }
+        out = out + "] }"
+    } else if t == "Member" {
+        out = out + "Member \{ obj: " + pnode(n[1]) + ", target: Name(\"" + n[2] + "\")}"
+    } else if t == "Str" {
+        out = out + "Str \{ parts: "
+        var pl = n[1]
+        var pk: I32 = 1
+        out = out + "["
+        while pk < pl.len {
+            if pk > 1 { out = out + ", " }
+            out = out + pnode(pl[pk])
+            pk += 1
+        }
+        out = out + "]}"
+    } else if t == "Text" {
+        out = out + "Text(\"" + qtext(n[1]) + "\")"
+    } else if t == "Interp" {
+        out = out + "Interp(\"" + qtext(n[1]) + "\")"
+    } else if t == "Test" {
+        out = out + "Test \{ name: \"" + n[1] + "\", body: " + pnode(n[2]) + "}"
     } else if t == "Int" {
         out = out + "Int \{ text: \"" + n[1] + "\", suffix: \"" + n[2] + "\"}"
     } else if t == "Float" {

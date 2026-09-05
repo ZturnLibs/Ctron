@@ -104,9 +104,10 @@
    Return·Let(var/let·带类型)·Assign/表达式全优先级(Binary·Unary·Range·Int·Float·Ident·括号);
    夹具 input_ptree.ct(5 fn)与 C `ctron_file_show` 逐字节一致;suite_diff 110 用例全绿。
    语义检查所需的可遍历数据树自此可用;C7b 按 parse_ast 语法面逐块扩树(if/while/for/
-   match/字符串部件/结构体族…)。C7b①(本文件交付):树版扩 if(else/else-if/BlockExpr)/While/For,
-   夹具扩 7 fn,与 C 逐字节一致(110 用例)。C7b②:字符串部件(Text/Interp)、test 声明、
-   结构体族/类型形参入树。
+   match/字符串部件/结构体族…)。
+17b. C7b①(完成):树版扩 if(else/else-if/BlockExpr)/While/For,夹具扩 7 fn。
+18b. C7b②(本文件交付):树版入 Str 部件(Text/Interp,含 \{ 坍缩/\u 跳过)、test 声明、
+   调用/成员后缀(assert_eq 等);夹具扩 9 fn/test,与 C 逐字节一致(110 用例)。
 
 ## 冻结纪律
 
