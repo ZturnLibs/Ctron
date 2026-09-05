@@ -382,8 +382,58 @@ fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             adv(cur)
             var mb = mk("Member")
             mb.push(e)
-            mb.push(nm)
+            if is_digit(byte_at(nm, 0)) {
+                mb.push("TIdx")
+                mb.push(num_text(nm))
+            } else {
+                mb.push("Nm")
+                mb.push(nm)
+            }
             e = mb
+        } else if t == "[" {
+            var d: I32 = 1
+            var q = cur.load() + 1
+            var hascom = false
+            while d > 0 {
+                var tk2 = toks[q]
+                if tk2 == "[" { d += 1 }
+                if tk2 == "]" { d -= 1 }
+                if tk2 == "," && d == 1 { hascom = true }
+                q += 1
+            }
+            var nx = toks[q]
+            var ta = false
+            if or2(nx == "(", nx == "\{") { ta = true }
+            if nx == "." && hascom { ta = true }
+            if ta {
+                adv(cur)
+                var ag = mk("TArgs2")
+                var more = true
+                while more {
+                    if tok(toks, cur) == "]" { more = false } else {
+                        ag.push(p_typ(toks, cur))
+                        if tok(toks, cur) == "," { adv(cur) } else { more = false }
+                    }
+                }
+                adv(cur)
+                var tg = mk("TypeArgs")
+                tg.push(e)
+                tg.push(ag)
+                e = tg
+            } else {
+                adv(cur)
+                var ix = p_stmt_expr(toks, cur)
+                adv(cur)
+                var inode = mk("Index")
+                inode.push(e)
+                inode.push(ix)
+                e = inode
+            }
+        } else if t == "?" {
+            adv(cur)
+            var tr = mk("Try")
+            tr.push(e)
+            e = tr
         } else {
             go = false
         }
@@ -415,6 +465,67 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     if t == "match" {
         return p_match(toks, cur)
+    }
+    if t == "own" {
+        adv(cur)
+        adv(cur)
+        var an = tok(toks, cur)
+        adv(cur)
+        adv(cur)
+        adv(cur)
+        var ow = mk("Own")
+        ow.push(an)
+        ow.push(p_block(toks, cur))
+        return ow
+    }
+    if t == "|" {
+        adv(cur)
+        var cl = mk("Closure")
+        var cp = mk("CPs")
+        var more = true
+        while more {
+            if tok(toks, cur) == "|" { more = false } else {
+                var isv = "false"
+                var t0 = tok(toks, cur)
+                if t0 == "var" { isv = "true" }
+                if or2(t0 == "var", t0 == "let") { adv(cur) }
+                var cn = tok(toks, cur)
+                adv(cur)
+                var cpar = mk("ClosureParam")
+                cpar.push(isv)
+                cpar.push(cn)
+                var ty = mk("None")
+                if tok(toks, cur) == ":" {
+                    adv(cur)
+                    ty = p_typ(toks, cur)
+                }
+                cpar.push(ty)
+                cp.push(cpar)
+                if tok(toks, cur) == "," { adv(cur) }
+            }
+        }
+        adv(cur)
+        var ret = mk("None")
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            ret = p_typ(toks, cur)
+        }
+        cl.push(cp)
+        cl.push(ret)
+        cl.push(p_stmt_expr(toks, cur))
+        return cl
+    }
+    if t == "scope" {
+        adv(cur)
+        adv(cur)
+        adv(cur)
+        var pn = tok(toks, cur)
+        adv(cur)
+        adv(cur)
+        var sc = mk("Scope")
+        sc.push(pn)
+        sc.push(p_block(toks, cur))
+        return sc
     }
     if b0 == 34 {
         adv(cur)
@@ -1206,7 +1317,43 @@ fn pnode(n: List[Str]) -> Str {
         }
         out = out + "] }"
     } else if t == "Member" {
-        out = out + "Member \{ obj: " + pnode(n[1]) + ", target: Name(\"" + n[2] + "\")}"
+        out = out + "Member \{ obj: " + pnode(n[1]) + ", target: "
+        if n[2] == "TIdx" {
+            out = out + "TupleIndex(" + n[3] + ")"
+        } else {
+            out = out + "Name(\"" + n[3] + "\")"
+        }
+        out = out + "}"
+    } else if t == "Index" {
+        out = out + "Index \{ obj: " + pnode(n[1]) + ", index: " + pnode(n[2]) + "}"
+    } else if t == "TypeArgs" {
+        out = out + "TypeArgs \{ expr: " + pnode(n[1]) + ", args: ["
+        var tl = n[2]
+        var tk: I32 = 1
+        while tk < tl.len {
+            if tk > 1 { out = out + ", " }
+            out = out + pnode(tl[tk])
+            tk += 1
+        }
+        out = out + "]}"
+    } else if t == "Try" {
+        out = out + "Try(" + pnode(n[1]) + ")"
+    } else if t == "Own" {
+        out = out + "Own \{ arena: \"" + n[1] + "\", body: " + pnode(n[2]) + "}"
+    } else if t == "Closure" {
+        out = out + "Closure \{ params: ["
+        var cp = n[1]
+        var cj: I32 = 1
+        while cj < cp.len {
+            if cj > 1 { out = out + ", " }
+            out = out + pnode(cp[cj])
+            cj += 1
+        }
+        out = out + "], ret: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
+    } else if t == "ClosureParam" {
+        out = out + "ClosureParam \{ is_var: " + n[1] + ", name: \"" + n[2] + "\", ty: " + pnode(n[3]) + "}"
+    } else if t == "Scope" {
+        out = out + "Scope \{ param: \"" + n[1] + "\", body: " + pnode(n[2]) + "}"
     } else if t == "Match" {
         out = out + "Match \{ expr: " + pnode(n[1]) + ", arms: ["
         var ar = n[2]

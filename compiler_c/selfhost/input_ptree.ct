@@ -60,3 +60,17 @@ impl Drop for Ticket {
 trait Shape: Show {
     fn area(&self) -> I32
 }
+fn mx(x: I32, arr: List[I32], p: (I32, I32)) -> I32 {
+    let m = tiny.as[I32]() + arr[1] + p.0
+    return m
+}
+fn cfun() -> I32 {
+    let g = |a: I32| a + 1
+    let h = |x| x * 2
+    return g(1) + h(2)
+}
+fn ownf() -> I32 {
+    own (arena) {
+        let v = arena.list[I32]()
+    }
+}
