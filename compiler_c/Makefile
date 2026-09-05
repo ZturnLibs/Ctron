@@ -5,7 +5,7 @@ CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wpedantic
 INC      = -Isrc
 BUILD    = build
 BIN      = $(BUILD)/ctronc
-CORE     = src/arena.c src/token.c src/lexer.c src/parser.c src/ast_show.c src/sem.c
+CORE     = src/arena.c src/token.c src/lexer.c src/parser.c src/ast_show.c src/sem.c src/pkg.c
 HDRS     = src/arena.h src/token.h src/lexer.h src/ast.h src/parser.h
 
 all: $(BIN)
@@ -34,13 +34,18 @@ $(BUILD)/suite_sem: tests/suite_sem.c $(CORE) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_sem.c $(CORE)
 
-# 默认验收:单元(lex+parse)+ 61 文件语料集成(词法 + 解析 + 语义)
-test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem
+$(BUILD)/suite_pkg: tests/suite_pkg.c $(CORE) $(HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_pkg.c $(CORE)
+
+# 默认验收:单元(lex+parse)+ 61 文件语料集成(词法+解析+单文件语义)+ 模块级
+test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg
 	./$(BUILD)/test_lex
 	./$(BUILD)/suite_lex ../tests
 	./$(BUILD)/test_parse
 	./$(BUILD)/suite_parse ../tests
 	./$(BUILD)/suite_sem ../tests
+	./$(BUILD)/suite_pkg ../tests/modules
 
 clean:
 	rm -rf $(BUILD)

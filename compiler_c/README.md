@@ -1,4 +1,4 @@
-# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3-a 语义 ✅ / E3040 分配效果 ✅)
+# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅)
 
 > **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在两套独立、各自完整的编译器实现——Rust 版(`compiler/`)与 C 版(`compiler_c/`),互不依赖;两者共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`,61 文件)。最终自举目标不变:以 C 版为种子编译器,后续用 Ctron 自身实现 Ctron。
 
@@ -31,8 +31,10 @@ compiler_c/
   tests/suite_lex.c     # 61 文件零词法诊断
   tests/test_parse.c    # 解析单元(锚定行为)
   tests/suite_parse.c   # 61 文件解析分类验收
-  src/sem.{h,c}         # 语义检查(C3-a)
-  tests/suite_sem.c     # 61 文件语义 marker 评分
+  src/sem.{h,c}         # 语义检查(单文件)
+  src/pkg.{h,c}         # 模块级检查(Ctron.toml + 跨文件)
+  tests/suite_sem.c     # 61 文件单文件语义 marker 评分
+  tests/suite_pkg.c     # modules/* 包级语义评分
 ```
 
 构建环境:仅 libc,C11(`cc`);零外部依赖。验收命令 `make test`。
@@ -52,8 +54,15 @@ compiler_c/
 
 | 里程碑 | 内容 | 出口 |
 |---|---|---|
-| C3-c | 模块级:孤儿/循环/导入可见性/caps/comptime 预算(读 `Ctron.toml`) | 全部 neg/lint 语料命中(含 `tests/modules/`) |
+### C3 语义层 ✅(C3-a 单文件 + E3040 分配效果 + C3-c 模块级)
+61 文件全部 neg/lint marker 命中(单文件与模块级);行为语料零诊断。详见
+`docs/superpowers/plans/2026-09-05-c-sem.md` 与 `docs/superpowers/plans/2026-09-05-c-pkg.md`。
+
+## 后续里程碑(C 版路线,独立推进)
+
+| 里程碑 | 内容 | 出口 |
+|---|---|---|
 | C4 | 执行层(CVM):`ctron test` 跑行为/panic 语料 | 行为/panic 测试运行通过 |
 | C5 | 自举种子就绪:ctron0-C 可编译 Ctron 写的模块 | — |
 
-计划文档:C1 `docs/superpowers/plans/2026-09-05-c-lexer.md`;C2 `docs/superpowers/plans/2026-09-05-c-parser.md`;C3-a `docs/superpowers/plans/2026-09-05-c-sem.md`。
+计划文档:C1 `docs/superpowers/plans/2026-09-05-c-lexer.md`;C2 `docs/superpowers/plans/2026-09-05-c-parser.md`;C3 `docs/superpowers/plans/2026-09-05-c-sem.md`、`2026-09-05-c-pkg.md`。
