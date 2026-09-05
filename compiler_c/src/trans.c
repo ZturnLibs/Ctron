@@ -845,7 +845,7 @@ static void emit_helper(tc* c, const char* name) {
     else if (!nowl && !strcmp(wl, "b")) isb = 1;
     else if (!nowl) { us = wl[0] == 'u'; bits = atoi(wl + 1); }
     char ct[32], lo[48], hi[48];
-    if (!isf && !isb && !nowl) {
+    if (!isf && !isb && !nowl && bits > 0) {
         ty t = ty_int(bits, us);
         snprintf(ct, sizeof ct, "%s", ctype_of(t));
         wbounds(lo, hi, sizeof lo, bits, us);
