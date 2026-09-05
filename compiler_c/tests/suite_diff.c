@@ -37,8 +37,79 @@ static char* replace_first(const char* msrc, const char* needle, const char* rep
     return out;
 }
 
+// 执行差分(seq=5 main 模式 / seq=6 test 模式):Ctron 求值器输出 vs C rt 运行同一输入
+// 模块源内 read_file 目标字面量统一为 ../selfhosted/input_ev2.ct,套件按 ip 换靶。
+static int diff_exec(const char* msrc, const char* ip, int seq, const char* label) {
+    char* m2 = replace_first(msrc, "../selfhosted/input_ev2.ct", ip);
+    if (!m2) {
+        fprintf(stderr, "%s 模块模板换靶失败\n", label);
+        return 1;
+    }
+    ctron_parse_result pr = ctron_parse_src(m2, strlen(m2));
+    free(m2);
+    if (pr.ndiags) {
+        fprintf(stderr, "%s 模块解析失败\n", label);
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    rt_run mr = ctron_rt_run_main(pr.file);
+    ctron_parse_result_free(&pr);
+    if (mr.st != RT_OK) {
+        fprintf(stderr, "%s: 模块运行失败 st=%d msg=%s\n", label, mr.st, mr.msg ? mr.msg : "");
+        ctron_rt_run_free(&mr);
+        return 1;
+    }
+    size_t ilen;
+    char* input = read_file_str(ip);
+    if (!input) {
+        fprintf(stderr, "%s 输入无法读取\n", ip);
+        ctron_rt_run_free(&mr);
+        return 1;
+    }
+    ctron_parse_result pf = ctron_parse_src(input, ilen = strlen(input));
+    free(input);
+    if (pf.ndiags) {
+        fprintf(stderr, "%s 参考解析诊断 %zu\n", label, pf.ndiags);
+        ctron_rt_run_free(&mr);
+        ctron_parse_result_free(&pf);
+        return 1;
+    }
+    const char* want = "";
+    long want_rc = 0;
+    rt_run orr;
+    memset(&orr, 0, sizeof orr);
+    if (seq == 5) {
+        orr = ctron_rt_run_main(pf.file);
+        if (orr.st != RT_OK) {
+            fprintf(stderr, "%s 参考运行失败 st=%d msg=%s\n", label, orr.st, orr.msg ? orr.msg : "");
+            ctron_rt_run_free(&mr);
+            ctron_rt_run_free(&orr);
+            ctron_parse_result_free(&pf);
+            return 1;
+        }
+        want = orr.out ? orr.out : "";
+        want_rc = orr.exit_code;
+    } else {
+        orr = ctron_rt_run(pf.file);
+        int pass = orr.st == RT_OK && orr.tests_run == orr.tests_total && orr.tests_total > 0;
+        if (pass) { want = ""; want_rc = 0; }
+        else { want = orr.msg ? orr.msg : ""; want_rc = 1; }
+    }
+    const char* mout = mr.out ? mr.out : "";
+    int ok = strcmp(mout, want) == 0 && mr.exit_code == want_rc;
+    if (!ok) {
+        fprintf(stderr, "%s 执行差分失败\n  参考(rc=%ld): %s\n  Ctron(rc=%ld): %s\n",
+                label, want_rc, want, mr.exit_code, mout);
+    }
+    ctron_rt_run_free(&mr);
+    ctron_rt_run_free(&orr);
+    ctron_parse_result_free(&pf);
+    return ok ? 0 : 1;
+}
+
 // 单个差分:msrc = Ctron 模块源码(已含目标输入), ip = 输入文件路径, seq=0 计数 1 种类 2 payload
 static int diff_one(const char* msrc, const char* ip, int seq, const char* label) {
+    if (seq == 5 || seq == 6) return diff_exec(msrc, ip, seq, label);
     ctron_parse_result pr = ctron_parse_src(msrc, strlen(msrc));
     if (pr.ndiags) {
         ctron_parse_result_free(&pr);
@@ -175,6 +246,9 @@ int main(int argc, char** argv) {
         {"lex_num.ct", "input_num.ct", 2},
         {"parse_ast.ct", "input_parse_ast.ct", 3},
         {"parsetree.ct", "input_ptree.ct", 3},
+        {"ev2.ct", "input_ev2.ct", 5},
+        {"ev2.ct", "input_ev2t.ct", 6},
+        {"ev2.ct", "input_ev2tf.ct", 6},
     };
     size_t fails = 0, nrun = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {

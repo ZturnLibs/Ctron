@@ -1,0 +1,3 @@
+test "str mismatch" {
+    assert_eq("ab", "abc")
+}

@@ -110,6 +110,20 @@
 18c. C7b③(本文件交付):树版入 match/模式(通配·字面量·Pascal 无载荷·元组/结构/绑定)、
    struct/enum 声明、Named 泛型实参(Option[I32]);语言钉:else 须与 } 同行
    (Ctron 解析要求);夹具扩 12 fn/test/enum/struct,与 C 逐字节一致(110 用例)。
+18v. **C9b①(本文件交付)—— Ctron 求值器扩面(纯函数式树行走)**:`selfhosted/ev2.ct` 快照自
+   ev_num.ct,尾部换为解释器:值 = List[I/B/S/V/R](I32/Bool/Str/void/range),env = 绑定列表
+   (纯重建,无 List 索引写依赖),流控 flow = k/r/a(return 仅在激活内,调用点吞 r 只放行 a),
+   表达式/语句/块统一线程 env·out。覆盖:Int/Bool/Str 字面量、Str{parts}(Text + `{expr}`
+   Interp 重解析求值)、Ident、算术/回绕/比较/Eq/`&&` 短路、! / 一元负、成员 `.len`/`.to_string`
+   /`.slice`、内建 print/println/assert/assert_eq/assert_ne/byte_at/byte_slice/panic、let/var
+   (类型注解忽略,I32 域)、块作用域(块退出丢头部新增绑定)、Assign(= 与复合)、Return 展开、
+   While、For(range 含 ..=)、If/else-if(语句与尾表达式)、递归函数调用。验收:suite_diff 新增
+   **执行差分 oracle**:seq=5 主模式(ev2.ct 解释 input_ev2.ct 输出 vs C `ctron_rt_run_main`
+   同输入,逐字一致),seq=6 测试模式(解释器跑 input_ev2t.ct 全过 / input_ev2tf.ct 断言失败
+   消息,vs C `ctron_rt_run`),211 cases + suite_run 15 files 全绿;ASan/UBSan 绿。
+   已裁定钉子:块退出后不再可见的遮蔽名与 C 帧语义一致(env 前缀丢弃);解释函数调用时
+   `return` 不向外泄(与 C 宿主一致);数值字面量/运算按 I32 域(后缀/溢出用例不纳入夹具);
+   浮动/Float/List/闭包/类/UFCS 等后续阶梯。
 
 ## 自举产物目录
 

@@ -1,0 +1,57 @@
+fn fib(n: I32) -> I32 {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+test "int math" {
+    assert_eq(2 + 3 * 4, 14)
+    assert_eq(7 / 2, 3)
+    var sum = 0
+    for i in 0..5 {
+        sum += i
+    }
+    assert_eq(sum, 10)
+    var inc = 0
+    for i in 0..=3 {
+        inc += i
+    }
+    assert_eq(inc, 6)
+}
+
+test "string bool loops" {
+    var s = "he" + "llo"
+    assert_eq(s.len, 5)
+    assert_eq(s, "hello")
+    assert_eq(s == "hello", true)
+    assert_eq(3 < 2, false)
+    var t = true
+    var i2 = 0
+    while i2 < 3 {
+        if t {
+            t = false
+        } else {
+            t = true
+        }
+        i2 += 1
+    }
+    assert_eq(t, false)
+    assert("ok")
+    assert(true)
+}
+
+test "recursion fib" {
+    assert_eq(fib(8), 21)
+    assert_eq(fib(1), 1)
+    assert_eq(fib(0), 0)
+}
+
+test "block scope" {
+    var q = 1
+    if true {
+        var q = 2
+        assert_eq(q, 2)
+    }
+    assert_eq(q, 1)
+}
