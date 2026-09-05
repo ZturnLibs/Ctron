@@ -135,6 +135,11 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 检查 47/47 |
 | C8h② ✅ | E3040 分配效果(own/no_alloc/契约 + 函数效果摘要) | **C3 单文件 12 项全集 Ctron 树上收官:49/49(207 用例)** |
 
+### C10-b 转译扩面:Str + 数组/切片 ✅(差分 9/9)
+Str 域(字面量/拼接/strcmp 比较/len/char_len/contains/slice/byte_at/byte_slice,消息逐字)
++ 数组域(定长 T[N] 与切片 T[] 统一 ctron_arr_<wl> 结构,对齐 rt V_ARR;索引读写/
+.len/for-in/越界 panic 逐字)。插值显式拒绝留 C10-c。
+
 ### C10-a 转译后端骨架 ✅(Ctron → C,数值域差分)
 `ctronc trans <file> [-o out.c]` / `build <file> [-o bin] [-k]` / `test <file>`;
 语义逐字对齐 rt.c:检查算术(溢出/除零/assign 消息)、回绕二补截断、入口 coerce(decl)、
