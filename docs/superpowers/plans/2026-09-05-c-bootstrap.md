@@ -83,8 +83,11 @@
    class(items: Field/Method)/impl Trait for Type 落地(impl 含方法体)。
    parse 语料差分 16→**21 文件**(+03_values_refs/03e_generics_types/05d_drop/
    03_shallow_copy/06c_static_nonsend),suite_diff 81 用例全绿;ASan/UBSan 全绿。
-14. **C6f④(下一阶梯)**:trait 声明/Prop、own(arena) 块、闭包 |x|、scope/spawn、Global[T],
-   解锁 03d/04_generics/05_own*/06_*/07_* 语料。
+14. **C6f④(本文件交付)**:闭包 `|x| expr`/`|a: T, var b| -> R expr`(ClosureParam{is_var,ty}/
+   ret 可选)与 `own(arena) {}` 块(Own{arena,body})表达式;解锁 03g_fn_types/05_own*
+   /05e/05g/06d_globals 等。parse 语料差分 21→**28 文件**,suite_diff 88 用例全绿。
+15. **C6f⑤(下一阶梯)**:trait 声明(Method 无体/PropSig·PropImpl/supers)、scope { |s| }/spawn、
+   Global[T] 初始化、解包成员(?.可选) → 解锁 03d/06_*/07_*/08d/04_generics 语料。
 
 ## 冻结纪律
 

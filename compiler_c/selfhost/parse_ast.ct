@@ -369,6 +369,64 @@ fn str_parts(raw: Str) -> Str {
     return "[" + out + "]"
 }
 
+fn parse_closure(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var ps = ""
+    var k: I32 = 0
+    var more = true
+    while more {
+        if tok(toks, cur) == "|" {
+            more = false
+        } else {
+            var isv = "false"
+            var t0 = tok(toks, cur)
+            if t0 == "var" {
+                isv = "true"
+                adv(cur)
+            }
+            if t0 == "let" {
+                adv(cur)
+            }
+            var nm = tok(toks, cur)
+            adv(cur)
+            var ty = "None"
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                ty = parse_type(toks, cur)
+            }
+            if k > 0 {
+                ps = ps + ", "
+            }
+            ps = ps + "ClosureParam \{ is_var: " + isv + ", name: \"" + nm + "\", ty: " + ty + "}"
+            k += 1
+            if tok(toks, cur) == "," {
+                adv(cur)
+            } else {
+                more = false
+            }
+        }
+    }
+    adv(cur)
+    var ret = "None"
+    if tok(toks, cur) == "->" {
+        adv(cur)
+        ret = parse_type(toks, cur)
+    }
+    var body = parse_expr(toks, cur)
+    return "Closure \{ params: [" + ps + "], ret: " + ret + ", body: " + body + "}"
+}
+
+fn parse_own(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    adv(cur)
+    var body = parse_block(toks, cur)
+    return "Own \{ arena: \"" + nm + "\", body: " + body + "}"
+}
+
 fn parse_match(toks: List[Str], cur: Atomic[I32]) -> Str {
     adv(cur)
     var sc = parse_expr(toks, cur)
@@ -746,6 +804,12 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     if t == "match" {
         return parse_match(toks, cur)
+    }
+    if t == "|" {
+        return parse_closure(toks, cur)
+    }
+    if t == "own" {
+        return parse_own(toks, cur)
     }
     if t == "void" {
         adv(cur)

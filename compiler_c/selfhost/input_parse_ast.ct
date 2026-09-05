@@ -135,3 +135,14 @@ impl Drop for Ticket {
         let n = self.n
     }
 }
+fn apply_twice(f: fn(I32) -> I32, x: I32) -> I32 {
+    return f(f(x))
+}
+fn oc_main() -> I32 {
+    let g = |x| x + 1
+    let h = |a: I32, b: I32| a * b
+    own(arena) {
+        let v = arena.list[I32]()
+    }
+    return apply_twice(g, 1)
+}
