@@ -155,3 +155,11 @@ fn f(n: I32) -> I32 {
     Global[I32](0)
     return n
 }
+fn wc() -> I32 {
+    let _ = 5
+    return 0
+}
+fn tp(p: (I32, I32)) -> I32 {
+    let (a, b) = p
+    return a + b
+}
