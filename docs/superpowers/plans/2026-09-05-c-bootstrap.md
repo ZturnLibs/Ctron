@@ -228,6 +228,16 @@
    suite_diff 229 cases 全绿(O2 与 ASan 同数,消除构建时序假象);其余套件全绿。
    注:C9g 代码因并行竞态被卷入 40cdd0c(P1-D 提交)落库,本条为设计裁定与验收留痕;
    竞态双向版详见交接文档 19g 记录。
+20a. **C9h(本文件交付)—— cc.ct 快照刷新至 C9g + 独立驱动 cc.sh(独立工具链第一步)**:
+   ①`cc.ct` 重拼:语义段(C8a–E3040 的 12 项 sem_walk2)不动,解释器段整体换入当前
+   ev2.ct(C9b①→C9g 全量:match/数组/Option·Result·Try/struct·enum/UFCS/闭包·fn 值/
+   List 引用语义/trait·impl 方法/绑定克隆与原地写),前缀逐字节同源、函数零重名
+   (155 fn/5488 行);②新增 `selfhosted/cc.sh` 独立驱动:任意 .ct 输入换靶 → 宿主 seed
+   解释执行,正例运行/负例编译期拦截(rc=1),`selfhosted/` 自此自带工具链入口
+   (宿主仅作 Ctron 解释器,自举完成后可自替换);③新增 seq9 夹具 input_cc3.ct
+   (多 impl 分发/方法内 self 复合写外部可见/List 全套/fn 类型参数+闭包/Option match),
+   C check 0 诊断,cc 全管线输出与原生逐字一致。验收:suite_diff 230 cases
+   (O2/ASan 同数)+ suite_run 16 + make test 端到端恢复绿(并行 trans 已 12/12)。
 
 
 ## 自举产物目录

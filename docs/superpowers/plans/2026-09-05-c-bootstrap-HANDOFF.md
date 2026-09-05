@@ -112,3 +112,10 @@
   建于 suite_diff.c 中间态;**每次改套件用例后两个构建都要重建再对比**。并行方 trans.c
   WIP 若阻断构建,用 `git show HEAD:compiler_c/src/trans.c` 稳定版链接验收。
 - 下一批:cc.ct 快照刷新并入 C9f/C9g,或单文件语义扩面,或 selfhosted 独立工具链。
+- C9h ✅(cc.ct 快照刷新至 C9g + 独立驱动 cc.sh + seq9 input_cc3;230 cases,
+  make test 端到端恢复绿)。selfhosted 自此自带工具链入口:
+  `selfhosted/cc.sh <input.ct>`(正例运行/负例编译期拦截)。
+- 独立化路线(用户口径:不依赖不关注其他实现,专注自举版自身):
+  ①cc 语义面扩面(12 项之外);②求值器运行域补尾;③**自译化阶梯**:cc.ct 解释
+  cc.ct(cc.sh 嵌套自举),验证自足性;④差分脚本从 compiler_c/tests 迁移/复制到
+  selfhosted/ 本地,验收不再依赖宿主管的套件源码。
