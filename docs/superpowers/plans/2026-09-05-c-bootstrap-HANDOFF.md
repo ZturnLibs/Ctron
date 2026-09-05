@@ -74,3 +74,4 @@
 - C9d① ✅(match+数组;seq=5b)提交 1c83147;C9d② ✅(Option/Result tag+`?` Try;seq=5c 222 cases)。
 - 注意:并行 C10-a(trans)流已把 compiler_c/Makefile 接上未落盘的 tests/suite_trans.c → 整体
   `make test` 暂不可用;验收请逐 suite 构建运行(或等其落盘)。勿改其 Makefile。
+- C9d③ ✅(struct/枚举域;seq=5d 223 cases)。

@@ -166,6 +166,13 @@
    Some(x)/None,裸 None 变量)与原生逐字一致;suite_diff 222 cases + suite_run 16 files 全绿;
    ASan/UBSan 绿。注意:仓库 Makefile 被并行 C10-a 流临时接上未落盘的 tests/suite_trans.c,
    整体 `make test` 暂不可用(其 WIP);本批验收=逐 suite 构建运行。
+19a. **C9d③(本文件交付)—— Ctron 求值器 struct/枚举域**:`ev2.ct` 补值 kind "U"(类型名+字段名/值对):
+   StructLit 求值(逐字段,线程 env/out)、Member 字段读(u_field)、Assign 成员写(含复合 op;env_set
+   重建 U,值拷贝语义镜像)、match struct 模式(PatAgg SubSt 绑定/嵌套子模式);用户枚举 unit 变体:
+   Ident 裸变体名(扫 Enum decl 变体表)→ [T,name],match SubUnit。验收:suite_diff 新增 seq=5
+   用例 input_ev2d.ct(struct 字面量/拷贝/字段写/struct 模式/枚举 unit 变体与函数传参/尾 return
+   match)与原生逐字一致;suite_diff 223 cases + suite_run 16 files 全绿;ASan/UBSan 绿。
+   注:并行 C10-a(trans)流 Makefile WIP 仍阻整体 `make test`,验收=逐 suite 构建运行。
 
 
 ## 自举产物目录

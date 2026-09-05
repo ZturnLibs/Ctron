@@ -406,6 +406,7 @@ int main(int argc, char** argv) {
         {"ev2.ct", "input_ev2.ct", 5},
         {"ev2.ct", "input_ev2b.ct", 5},
         {"ev2.ct", "input_ev2c.ct", 5},
+        {"ev2.ct", "input_ev2d.ct", 5},
         {"ev2.ct", "input_ev2t.ct", 6},
         {"ev2.ct", "input_ev2tf.ct", 6},
         {"pkg_chk.ct", "../tests/modules/orphan", 8},

@@ -2295,6 +2295,53 @@ fn pm2(ok: Str, env: List[Str]) -> List[Str] {
     r.push(env)
     return r
 }
+fn enum_var(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" {
+            var vs = d[3]
+            var k: I32 = 1
+            while k < vs.len {
+                if seq2(vs[k][1], nm) {
+                    return true
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return false
+}
+fn u_field(u: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 2
+    while i + 1 < u.len {
+        if seq2(u[i], nm) {
+            return u[i + 1]
+        }
+        i += 2
+    }
+    return List[Str]()
+}
+fn u_set(u: List[Str], nm: Str, nv: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    out.push("U")
+    out.push(u[1])
+    var i: I32 = 2
+    var done = false
+    while i < u.len {
+        if !done && seq2(u[i], nm) {
+            out.push(nm)
+            out.push(nv)
+            done = true
+        } else {
+            out.push(u[i])
+            out.push(u[i + 1])
+        }
+        i += 2
+    }
+    return out
+}
 fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
     var t = pat[0]
     if t == "PatWild" {
@@ -2319,8 +2366,37 @@ fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
         return pm2("0", env)
     }
     if t == "PatAgg" {
+        var sub = pat[2]
+        if v[0] == "U" && seq2(v[1], pat[1]) && sub[0] == "SubSt" {
+            var env2 = env
+            var ok3 = true
+            var k: I32 = 1
+            while k < sub.len && ok3 {
+                var pf = sub[k]
+                var nm2 = pf[1]
+                var fv2 = u_field(v, nm2)
+                if fv2.len == 0 {
+                    ok3 = false
+                } else {
+                    if pf[2][0] == "None" {
+                        env2 = env_add(env2, nm2, fv2)
+                    } else {
+                        var pr3 = pat_match(pf[2], fv2, env2)
+                        if !seq2(pr3[0], "1") {
+                            ok3 = false
+                        } else {
+                            env2 = pr3[1]
+                        }
+                    }
+                }
+                k += 1
+            }
+            if ok3 {
+                return pm2("1", env2)
+            }
+            return pm2("0", env)
+        }
         if v[0] == "T" && seq2(v[1], pat[1]) {
-            var sub = pat[2]
             if sub[0] == "SubUnit" {
                 if v.len == 2 {
                     return pm2("1", env)
@@ -2331,22 +2407,22 @@ fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
                 var np = sub.len - 1
                 var npv = v.len - 2
                 if np == npv {
-                    var env2 = env
+                    var env3 = env
                     var ok2 = true
                     var k: I32 = 1
                     while k < sub.len && ok2 {
                         var pp = sub[k]
                         var pv = v[k + 1]
-                        var pr2 = pat_match(pp, pv, env2)
+                        var pr2 = pat_match(pp, pv, env3)
                         if !seq2(pr2[0], "1") {
                             ok2 = false
                         } else {
-                            env2 = pr2[1]
+                            env3 = pr2[1]
                         }
                         k += 1
                     }
                     if ok2 {
-                        return pm2("1", env2)
+                        return pm2("1", env3)
                     }
                 }
                 return pm2("0", env)
@@ -2383,6 +2459,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             tv.push("T")
             tv.push(e[1])
             return e4("k", env, tv, out)
+        }
+        if enum_var(file, e[1]) {
+            var tv2 = List[Str]()
+            tv2.push("T")
+            tv2.push(e[1])
+            return e4("k", env, tv2, out)
         }
         panic("unbound:" + e[1])
         return e4("a", env, vV2(), out)
@@ -2493,6 +2575,14 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 panic("len target")
                 return e4("a", env, vV2(), out)
             }
+            if recv[0] == "U" {
+                var fv = u_field(recv, m)
+                if fv.len > 0 {
+                    return e4("k", ob[1], fv, ob[3])
+                }
+                panic("field:" + m)
+                return e4("a", env, vV2(), out)
+            }
             panic("member:" + m)
             return e4("a", env, vV2(), out)
         }
@@ -2535,6 +2625,28 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             k += 1
         }
         return e4("k", env2, arr, out2)
+    }
+    if t == "StructLit" {
+        var su = List[Str]()
+        su.push("U")
+        su.push(e[1])
+        var lf = e[2]
+        var env2 = env
+        var out2 = out
+        var k: I32 = 1
+        while k < lf.len {
+            var fld = lf[k]
+            var fv = eval_expr(file, env2, out2, fld[2])
+            if fv[0] != "k" {
+                return fv
+            }
+            env2 = fv[1]
+            out2 = fv[3]
+            su.push(fld[1])
+            su.push(fv[2])
+            k += 1
+        }
+        return e4("k", env2, su, out2)
     }
     if t == "Index" {
         var ob = eval_expr(file, env, out, e[1])
@@ -2822,6 +2934,31 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
     }
     if t == "Assign" {
         var tg = st[1]
+        if tg[0] == "Member" && tg[2] == "Nm" && tg[1][0] == "Ident" {
+            var oname = tg[1][1]
+            var fname = tg[3]
+            var en = env_at(env, oname)
+            if en.len == 0 {
+                panic("unbound:" + oname)
+                return s4("a", env, out, vV2())
+            }
+            var ov = en[1]
+            if ov[0] != "U" {
+                panic("member assign target")
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op = st[2]
+            var nv = vr[2]
+            if !seq2(op, "Eq") {
+                var oldf = u_field(ov, fname)
+                nv = vI(ari(op, dvi(oldf[1]), dvi(nv[1])))
+            }
+            return s4("k", env_set(vr[1], oname, u_set(ov, fname, nv)), vr[3], vV2())
+        }
         if tg[0] == "Ident" {
             var nm = tg[1]
             var en = env_at(env, nm)

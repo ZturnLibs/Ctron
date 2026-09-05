@@ -16,6 +16,7 @@
 | `ev2.ct` | **Ctron 求值器扩面**:纯函数式树行走解释器(Bool/Str/变量+块作用域/if/while/for/递归/test+assert/输出),主模式+测试模式自判 | C9b① seq5/6 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **运行域对齐**:match(字面量/通配/绑定)+ 数组(字面量/索引/.len/for-over-array) | C9d① seq=5 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **Option/Result 域**:tag 值 Some/None/Ok/Err(构造/裸 Ident)+ match 模式绑定 + `?` Try 传播 | C9d② seq=5 与 C rt 逐字一致 |
+| `ev2.ct`(续) | **struct/枚举域**:StructLit/字段读写/struct 模式绑定 + 用户枚举 unit 变体(裸值/SubUnit) | C9d③ seq=5 与 C rt 逐字一致 |
 | `cc.ct` | **统一 cc 驱动**(自足快照:parse→单文件语义 12 项→run):有诊断输出 `CODE: msg` 并止;干净则解释执行 main/test | C9c seq=9 正/负夹具与 C 管线逐字一致 |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |
 
@@ -52,7 +53,8 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
 - C9d①(运行域对齐:match + 数组)已交付:`ev2.ct` 补 match(I32/Bool/Str 字面量/通配/绑定)
   与数组(字面量/索引/.len/for-over-array),input_ev2b.ct 与原生逐字一致(221 cases);
 - C9d②(Option/Result 域)已交付:tag 值/变体构造/match 绑定/`?` Try 传播,input_ev2c.ct 与原生逐字一致(222 cases);
-- 下一步:运行域继续对齐(结构体/枚举变体 tag 广泛化/UFCS/闭包/List 等),或单文件语义扩面,
+- C9d③(struct/枚举域)已交付:StructLit/字段读写/struct 模式/用户枚举 unit 变体,input_ev2d.ct 与原生逐字一致(223 cases);
+- 下一步:运行域继续对齐(UFCS/闭包/List/结构体内嵌等),或单文件语义扩面,
   或把 `selfhosted/` 提升为独立工具链(cc.ct 快照需并入 C9d①② 后固化)。
 - 注意:仓库 `make test` 暂被并行 C10-a 流(trans/suite_trans WIP)阻断,本目录逐 suite 构建运行可用。
 - 详细路线见 `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。

@@ -1,0 +1,50 @@
+struct Pt {
+    var x: I32
+    var y: I32
+}
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn name_of(c: Color) -> Str {
+    return match c {
+        Red => "red"
+        Green => "green"
+        Blue => "blue"
+    }
+}
+
+fn dist(p: Pt) -> I32 {
+    return p.x + p.y
+}
+
+fn main() -> I32 {
+    var a = Pt { x: 1, y: 2 }
+    println(a.x.to_string())
+    println(dist(a).to_string())
+    var b = a
+    b.x = 10
+    println(a.x.to_string())
+    println(b.x.to_string())
+    println(name_of(Blue))
+    println(name_of(Red))
+    var c2 = Green
+    println(name_of(c2))
+    var s = ""
+    match a {
+        Pt { x, y } => { s = (x + y).to_string() }
+    }
+    println(s)
+    var f2 = ""
+    match a {
+        Pt { x, y } => {
+            var x2 = x * 2
+            f2 = x2.to_string()
+        }
+    }
+    println(f2)
+    return 0
+}
