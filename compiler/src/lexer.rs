@@ -52,30 +52,32 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    pub fn next_token(&mut self) -> Token {
-        let t = self.next_token_inner();
+    /// Some(t) = 实记号;None = 错误记号已吞(哨兵),由 lex() 主循环消化。
+    /// prev_is_dot 仅按实记号更新:哨兵不得清除 `.` 状态(`x.;y` 中 y 仍是成员名)。
+    pub fn next_token(&mut self) -> Option<Token> {
+        let t = self.next_token_inner()?;
         self.prev_is_dot = t.tok == Tok::Dot;
-        t
+        Some(t)
     }
 
-    fn next_token_inner(&mut self) -> Token {
+    fn next_token_inner(&mut self) -> Option<Token> {
         self.skip_inline_trivia();
         let (start, line, col) = (self.pos, self.line, self.col);
         let Some(c) = self.peek() else {
-            return Token { tok: Tok::Eof, span: self.mark(start, line, col) };
+            return Some(Token { tok: Tok::Eof, span: self.mark(start, line, col) });
         };
         if c == b'\n' {
             self.bump();
-            return Token { tok: Tok::Newline, span: self.mark(start, line, col) };
+            return Some(Token { tok: Tok::Newline, span: self.mark(start, line, col) });
         }
         if c.is_ascii_alphabetic() || c == b'_' {
-            return self.lex_name(start, line, col);
+            return Some(self.lex_name(start, line, col));
         }
         if c.is_ascii_digit() {
-            return self.lex_number(start, line, col);
+            return Some(self.lex_number(start, line, col));
         }
         if c == b'"' {
-            return self.lex_string(start, line, col);
+            return Some(self.lex_string(start, line, col));
         }
         self.lex_punct(start, line, col)
     }
@@ -308,7 +310,7 @@ impl<'src> Lexer<'src> {
         Token { tok, span: self.mark(start, line, col) }
     }
 
-    fn lex_punct(&mut self, start: usize, line: u32, col: u32) -> Token {
+    fn lex_punct(&mut self, start: usize, line: u32, col: u32) -> Option<Token> {
         // 闭包只捕获拷贝(src 引用与 pos),避免与 self.bump() 的可变借用冲突
         let (src0, pos0) = (self.src, self.pos);
         let two = |a: u8, b: u8| src0.len() > pos0 + 1 && src0[pos0] == a && src0[pos0 + 1] == b;
@@ -360,10 +362,12 @@ impl<'src> Lexer<'src> {
                 }
             }
         };
-        if tok == Tok::Eof && self.pos < self.src.len() {
-            return self.next_token(); // 错误记号被吞,继续
+        if tok == Tok::Eof {
+            // 错误记号(`;`/无法识别字符)已吞:返回哨兵 None,由 lex() 主循环继续取下一记号
+            // (不再 `return self.next_token()` 尾递归——100k 连续 `;` 曾栈溢出)
+            return None;
         }
-        Token { tok, span: self.mark(start, line, col) }
+        Some(Token { tok, span: self.mark(start, line, col) })
     }
 }
 
@@ -372,10 +376,15 @@ pub fn lex(src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
     let mut lx = Lexer::new(src);
     let mut raw = Vec::new();
     loop {
-        let t = lx.next_token();
-        let eof = t.tok == Tok::Eof;
-        raw.push(t);
-        if eof { break }
+        match lx.next_token() {
+            // 哨兵(错误记号已吞)由主循环消化:错误恢复是循环,非尾递归
+            None => continue,
+            Some(t) => {
+                let eof = t.tok == Tok::Eof;
+                raw.push(t);
+                if eof { break }
+            }
+        }
     }
     let diags = lx.diags;
     (filter_newlines(raw), diags)
@@ -469,6 +478,19 @@ mod tests {
         assert!(diags[0].message.contains(';'));
         let (_, diags) = lex("a :: b");
         assert_eq!(diags[0].code, "E1001");
+    }
+
+    #[test]
+    fn hundred_k_semicolons_no_stack_overflow() {
+        // 错误记号恢复必须由 lex() 主循环消化哨兵,而非 next_token 尾递归:
+        // 100k 连续 `;` 在旧实现下递归 100k 层会栈溢出
+        let src = ";".repeat(100_000);
+        let (toks, diags) = lex(&src);
+        assert_eq!(diags.len(), 100_000);
+        assert!(diags.iter().all(|d| d.code == "E1001"));
+        // lex 完成:除真实 Eof 外无记号产出
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0].tok, Tok::Eof);
     }
 
     #[test]
