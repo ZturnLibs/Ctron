@@ -2175,7 +2175,10 @@ fn fmt(v: List[Str]) -> Str {
     if k == "S" {
         return v[1]
     }
-    return ""
+    if k == "V" {
+        return ""
+    }
+    return "<value>"
 }
 fn env_at(env: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 0
@@ -2285,6 +2288,40 @@ fn eval_str(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str
         j += 1
     }
     return e4("k", env2, vS(acc), out)
+}
+fn pm2(ok: Str, env: List[Str]) -> List[Str] {
+    var r = List[Str]()
+    r.push(ok)
+    r.push(env)
+    return r
+}
+fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
+    var t = pat[0]
+    if t == "PatWild" {
+        return pm2("1", env)
+    }
+    if t == "PatLitI" {
+        if v[0] == "I" && dvi(v[1]) == dvi(pat[1]) {
+            return pm2("1", env)
+        }
+        return pm2("0", env)
+    }
+    if t == "PatLitS" {
+        if v[0] == "S" && seq2(v[1], pat[1]) {
+            return pm2("1", env)
+        }
+        return pm2("0", env)
+    }
+    if t == "PatLitB" {
+        if v[0] == "B" && seq2(v[1], pat[1]) {
+            return pm2("1", env)
+        }
+        return pm2("0", env)
+    }
+    if t == "PatId" {
+        return pm2("1", env_add(env, pat[1], v))
+    }
+    return pm2("0", env)
 }
 fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
     var t = e[0]
@@ -2408,6 +2445,9 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 if recv[0] == "S" {
                     return e4("k", ob[1], vI(recv[1].len), ob[3])
                 }
+                if recv[0] == "A" {
+                    return e4("k", ob[1], vI(recv.len - 1), ob[3])
+                }
                 panic("len target")
                 return e4("a", env, vV2(), out)
             }
@@ -2435,6 +2475,74 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     if t == "BlockExpr" {
         var br = run_block(file, env, out, e[1])
         return e4(br[0], br[1], br[3], br[2])
+    }
+    if t == "ArrLit" {
+        var arr = List[Str]()
+        arr.push("A")
+        var env2 = env
+        var out2 = out
+        var k: I32 = 1
+        while k < e.len {
+            var er = eval_expr(file, env2, out2, e[k])
+            if er[0] != "k" {
+                return er
+            }
+            env2 = er[1]
+            out2 = er[3]
+            arr.push(er[2])
+            k += 1
+        }
+        return e4("k", env2, arr, out2)
+    }
+    if t == "Index" {
+        var ob = eval_expr(file, env, out, e[1])
+        if ob[0] != "k" {
+            return ob
+        }
+        var ix = eval_expr(file, ob[1], ob[3], e[2])
+        if ix[0] != "k" {
+            return ix
+        }
+        var arrv = ob[2]
+        var idx = dvi(ix[2][1])
+        if !seq2(arrv[0], "A") {
+            panic("index target")
+            return e4("a", env, vV2(), out)
+        }
+        if idx < 0 {
+            panic("index target")
+            return e4("a", env, vV2(), out)
+        }
+        if idx >= arrv.len - 1 {
+            panic("index target")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("k", ix[1], arrv[idx + 1], ix[3])
+    }
+    if t == "Match" {
+        var sr = eval_expr(file, env, out, e[1])
+        if sr[0] != "k" {
+            return sr
+        }
+        var arms = e[2]
+        var i2: I32 = 1
+        var found = false
+        var res = e4("k", sr[1], vV2(), sr[3])
+        while i2 < arms.len && !found {
+            var arm = arms[i2]
+            var pm = pat_match(arm[1], sr[2], sr[1])
+            if seq2(pm[0], "1") {
+                var ae = eval_expr(file, pm[1], sr[3], arm[2])
+                res = ae
+                found = true
+            }
+            i2 += 1
+        }
+        if found {
+            return res
+        }
+        panic("match no arm")
+        return e4("a", env, vV2(), out)
     }
     if t == "TypeArgs" {
         return eval_expr(file, env, out, e[1])
@@ -2699,6 +2807,22 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             return s4(ir[0], ir[1], ir[3], ir[2])
         }
         var it = ir[2]
+        if it[0] == "A" {
+            var envw3 = ir[1]
+            var outw3 = ir[3]
+            var c2: I32 = 1
+            while c2 < it.len {
+                var eit = env_add(envw3, nm, it[c2])
+                var br = run_block(file, eit, outw3, st[3])
+                if br[0] != "k" {
+                    return s4(br[0], br[1], br[2], br[3])
+                }
+                envw3 = env_drop(br[1], 1)
+                outw3 = br[2]
+                c2 += 1
+            }
+            return s4("k", envw3, outw3, vV2())
+        }
         if it[0] != "R" {
             panic("for iter not range")
             return s4("a", env, out, vV2())

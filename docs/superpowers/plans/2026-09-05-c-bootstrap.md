@@ -149,6 +149,15 @@
    suite_diff 220 cases + suite_run 16 files 全绿;ASan/UBSan 绿。已裁定钉子:Ctron rt 允许
    Str+Str `+`(运行域)而 C sem 判 E2010 —— 语义域不一致,cc 正例夹具避开;cc 语义阶段只
    报 Ctron 已实现 12 码(其余码原样下钻运行时,与 C check 的差异由后续单文件语义扩面覆盖)。
+18y. **C9d①(本文件交付)—— Ctron 求值器运行域对齐:match + 数组**:`ev2.ct` 补值域 kind "A"
+   (数组字面量求值)、`Index` 读(越界/非数组 panic)、`for x in xs` 迭代数组(逐元素绑定,退出
+   丢绑定)、Member `.len`(A 计元素数);求值器 `match`:PatWild/PatLitI/PatLitS/PatLitB 逐字量
+   比较 + PatId 绑定,臂表达式求值(支持 BlockExpr 臂内赋值),无匹配 panic(镜像 C rt
+   "match 无匹配臂");`fmt` 未知名值对齐 C 默认 `<value>`(非 I/B/S/V)。验收:suite_diff
+   新增 seq=5 用例 input_ev2b.ct(数组字面量/len/索引/for 区间叠加 for-over-array/if/match 于
+   I32·Bool·Str 臂)与原生 `ctron_rt_run_main` 逐字一致;suite_diff 221 cases + suite_run 16 files
+   全绿;ASan/UBSan 绿。已裁定钉子:Ctron 宿主无 `||`,模块代码勿写(Ctron 语言钉子复查);
+   `cc.ct` 快照未含本批(下一轮并入)。
 
 
 ## 自举产物目录

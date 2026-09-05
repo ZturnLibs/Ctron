@@ -1,0 +1,58 @@
+fn main() -> I32 {
+    var xs = [10, 20, 30]
+    println(xs.len.to_string())
+    var sum = 0
+    for i in 0..xs.len {
+        sum = sum + xs[i]
+    }
+    println(sum.to_string())
+    var s2 = 0
+    for x in xs {
+        s2 = s2 + x
+    }
+    println(s2.to_string())
+    println(xs[1].to_string())
+    var t = 0
+    for i in 0..xs.len {
+        var v = xs[i]
+        if v > 15 {
+            t = t + 1
+        }
+    }
+    println(t.to_string())
+    var m = "x"
+    if m == "x" {
+        println("eq-x")
+    } else {
+        println("neq")
+    }
+    var w2 = 2
+    var g = ""
+    match w2 {
+        0 => { g = "zero" }
+        1 => { g = "one" }
+        _ => { g = "many" }
+    }
+    println(g)
+    var s3 = ""
+    match w2 {
+        1 => { s3 = "one" }
+        _ => { s3 = "other" }
+    }
+    println(s3)
+    var bv = true
+    var bs = ""
+    match bv {
+        true => { bs = "yes" }
+        false => { bs = "no" }
+    }
+    println(bs)
+    var sv = "hi"
+    var ms = ""
+    match sv {
+        "hi" => { ms = "hello" }
+        _ => { ms = "other" }
+    }
+    println(ms)
+    return 0
+}
