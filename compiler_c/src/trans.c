@@ -199,12 +199,22 @@ struct tc {
 };
 
 static ty decl_ty_tc(tc* c, const cty* t) {
+    if (!t) return ty_unk();
     ty b = decl_ty(t);
     if (b.k != T_UNK) return b;
+    ty sm = sum_ty_of(c, t); // T? / Option[T] / Result[T,E](须在 TY_NAMED 守卫前)
+    if (sm.k == T_SUM) return sm;
+    if (t->kind == TY_REF) return decl_ty_tc(c, t->sub); // 共享引用:表示不变
+    if (t->kind == TY_SLICE) {
+        ty e = decl_ty_tc(c, t->sub);
+        return e.k == T_UNK ? ty_unk() : ty_arr(e);
+    }
+    if (t->kind == TY_ARRAY) {
+        ty e = decl_ty_tc(c, t->elem);
+        return e.k == T_UNK ? ty_unk() : ty_arr(e); // 维度不校验(对齐 rt)
+    }
     if (!t || t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];
-    ty sm = sum_ty_of(c, t);
-    if (sm.k == T_SUM) return sm;
     for (size_t i = 0; i < c->nstructs; i++)
         if (!strcmp(c->structs[i].name, n)) {
             ty r = ty_unk(); r.k = T_STRUCT; r.bits = (int)i; r.tname = c->structs[i].name; return r;
@@ -356,6 +366,9 @@ static ty sum_ty_of(tc* c, const cty* t) {
 // ================= 表达式(单次求值发射) =================
 static ty emit_expr(tc* c, cexpr* e, sb* o);
 static void emit_block(tc* c, cblock* b, sb* o);
+static void emit_stmt(tc* c, cstmt* st, sb* o);
+static void emit_value_to(tc* c, cexpr* ax, const char* rn, sb* o);
+static void emit_if_assign(tc* c, cexpr* e, const char* rn, sb* o);
 
 static ty emit_expr(tc* c, cexpr* e, sb* o) {
     if (c->err) return ty_unk();
@@ -807,6 +820,23 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             }
             sb_free(&rob);
         }
+        // .as[T]() 显式转换(rt as_conv:int 回绕截断/浮点)
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_MEMBER
+            && cal->obj->m_is_name && cal->obj->mname && strcmp(cal->obj->mname, "as") == 0
+            && cal->ntargs == 1 && e->nelems == 0) {
+            ty tt = decl_ty_tc(c, cal->targs[0]);
+            sb v = {0};
+            emit_expr(c, cal->obj->obj, &v);
+            if (tt.k == T_FLT) sb_f(o, "((double)(%s))", v.d ? v.d : "0");
+            else if (tt.k == T_INT) {
+                char hn[64];
+                snprintf(hn, sizeof hn, "ctron_as_%s", wlname(tt));
+                use_helper(c, hn);
+                sb_f(o, "%s(%s)", hn, v.d ? v.d : "0");
+            } else { terr(c, "v1:as 目标类型不支持"); }
+            sb_free(&v);
+            return tt;
+        }
         // Box[T](v):显式堆分配,自动解引用访问
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "Box") == 0 && cal->ntargs == 1 && e->nelems == 1) {
@@ -918,9 +948,34 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
                 }
             }
         }
-        // 和类型构造:Some/Ok/Err(期望类型推导)
+        // 和类型构造:Some/Ok/Err(期望类型推导;Some 缺失时从载荷推导)
         if (!strcmp(nm, "Some") || !strcmp(nm, "Ok") || !strcmp(nm, "Err")) {
             const ty* w = c->want;
+            char wbuf[96];
+            if ((!w || w->k != T_SUM) && !strcmp(nm, "Some") && e->nelems == 1) {
+                // 从载荷推导 opt<T>
+                const ty* sw = c->want;
+                c->want = NULL;
+                sb p1 = {0};
+                ty pt = emit_expr(c, e->elems[0], &p1);
+                c->want = sw;
+                if (pt.k == T_UNK) { terr(c, "v1:Some 载荷类型未知"); sb_free(&p1); sb_free(&args); return ty_unk(); }
+                char* k = ty_mangle(c, pt);
+                snprintf(wbuf, sizeof wbuf, "ctron_opt_%s", k);
+                char def[512];
+                snprintf(def, sizeof def,
+                    "typedef struct { int tag; union { %s some; } as; } %s;\n"
+                    "#define CTRON_OPT_NONE 0\n#define CTRON_OPT_SOME 1\n", ctype_of(pt), wbuf);
+                use_sum(c, def);
+                static ty derived; // 单线程发射器
+                derived = ty_unk(); derived.k = T_SUM;
+                derived.ek = pt.k; derived.ebits = pt.bits; derived.eus = pt.us;
+                derived.tname = ctron_arena_strndup(c->a, wbuf, strlen(wbuf));
+                sb_free(&p1);
+                sb_f(o, "(%s){ .tag = CTRON_OPT_SOME, .as.some = %s }", wbuf, args.d ? args.d : "0");
+                sb_free(&args);
+                return derived;
+            }
             if (!w || w->k != T_SUM) { terr(c, "v1:%s 需期望类型(注解/返回类型)", nm); sb_free(&args); return ty_unk(); }
             int is_opt = !strncmp(w->tname, "ctron_opt_", 10);
             if (!strcmp(nm, "Some") && is_opt)
@@ -967,6 +1022,38 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         terr(c, "v1 不支持该表达式构造(kind %d)", (int)e->kind);
         return ty_unk();
     }
+}
+
+// ================= if 作为值(C10-f)=================
+static void emit_if_assign(tc* c, cexpr* e, const char* rn, sb* o);
+static void emit_if_assign(tc* c, cexpr* e, const char* rn, sb* o) {
+    if (c->err || !e) return;
+    sb cond = {0};
+    emit_expr(c, e->cond, &cond);
+    sb_f(o, "if (%s) {", cond.d ? cond.d : "0");
+    sb_free(&cond);
+    scope_push(c);
+    if (e->then_b) {
+        for (size_t i = 0; i < e->then_b->nstmts; i++) emit_stmt(c, e->then_b->stmts[i], o);
+        if (e->then_b->tail) emit_value_to(c, e->then_b->tail, rn, o);
+    }
+    scope_pop(c);
+    if (e->els && e->els->kind == EX_IF) {
+        sb_s(o, " } else ");
+        emit_if_assign(c, e->els, rn, o);
+        return;
+    }
+    if (e->els && e->els->kind == EX_BLOCK) {
+        sb_s(o, " } else {");
+        scope_push(c);
+        cblock* bl = e->els->block;
+        for (size_t i = 0; bl && i < bl->nstmts; i++) emit_stmt(c, bl->stmts[i], o);
+        if (bl && bl->tail) emit_value_to(c, bl->tail, rn, o);
+        scope_pop(c);
+        sb_s(o, "}\n");
+        return;
+    }
+    sb_s(o, "}\n");
 }
 
 // ================= match(C10-c)=================
@@ -1110,6 +1197,12 @@ static ty emit_match(tc* c, cexpr* e, sb* o, int want_value, char** out_tmp) {
                 } else { terr(c, "v1:载荷子模式不支持"); sb_free(&cond); return ty_unk(); }
             }
             if (p->nelems > 1) { terr(c, "v1:多载荷变体不支持"); sb_free(&cond); return ty_unk(); }
+        } else if (p->kind == PAT_AGG && p->agg == AG_UNIT && p->npath > 0 && st.k == T_SUM) {
+            // None(和类型单元模式)
+            const char* p0 = p->path[0];
+            int is_opt = !strncmp(st.tname, "ctron_opt_", 10);
+            if (is_opt && !strcmp(p0, "None")) sb_f(&cond, "(%s.tag == CTRON_OPT_NONE)", vn);
+            else { terr(c, "v1:和类型单元模式不支持:%s", p0); sb_free(&cond); return ty_unk(); }
         } else if (p->kind == PAT_AGG && p->agg == AG_UNIT && p->npath > 0 && st.k == T_ENUM) {
             edef* ed = &c->enums[st.bits];
             sb_f(&cond, "(%s.tag == CTRON_%s_%s)", vn, ed->name, p->path[0]);
@@ -1122,7 +1215,8 @@ static ty emit_match(tc* c, cexpr* e, sb* o, int want_value, char** out_tmp) {
                 } else { terr(c, "v1:struct 模式字段子模式不支持"); sb_free(&cond); return ty_unk(); }
             }
         } else {
-            terr(c, "v1:该模式不支持(kind %d agg %d)", (int)p->kind, (int)p->agg);
+            terr(c, "v1:该模式不支持(kind %d agg %d path %s scrut %d/%s)", (int)p->kind, (int)p->agg,
+                 p->npath > 0 ? p->path[0] : "-", (int)st.k, st.tname ? st.tname : "-");
             sb_free(&cond);
             return ty_unk();
         }
@@ -1217,8 +1311,19 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
     if (c->err || !st) return;
     switch (st->kind) {
     case ST_LET: {
+        if (st->pat && st->pat->kind == PAT_WILD) {
+            // let _ = expr:求值(保留 panic 副作用)后丢弃
+            const ty* saved_w = c->want;
+            c->want = NULL;
+            sb d = {0};
+            if (st->e) emit_expr(c, st->e, &d);
+            c->want = saved_w;
+            sb_f(o, "(void)(%s);\n", d.d ? d.d : "0");
+            sb_free(&d);
+            return;
+        }
         if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name) {
-            terr(c, "v1:let 仅支持标识符模式");
+            terr(c, "v1:let 仅支持标识符/通配模式");
             return;
         }
         const char* name = st->pat->name;
@@ -1261,6 +1366,36 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
             if (t2.k == T_UNK) { terr(c, "v1:无法推导 %s 的类型", name); return; }
             sb_f(o, "%s %s = %s;\n", ctype_of(t2), name, rn ? rn : "0");
             scope_def(c, name, t2);
+            return;
+        }
+        if (st->e->kind == EX_IF || st->e->kind == EX_BLOCK) {
+            // let x = if/块 值:先声明(类型从 then 尾干跑推导),再 if/else 链赋值
+            const ty* saved_w2 = c->want;
+            c->want = NULL;
+            ty vt = ty_unk();
+            {
+                sb d0 = {0};
+                scope_push(c);
+                if (st->e->kind == EX_IF && st->e->then_b) {
+                    for (size_t i = 0; i < st->e->then_b->nstmts; i++) emit_stmt(c, st->e->then_b->stmts[i], &d0);
+                    if (st->e->then_b->tail) vt = emit_expr(c, st->e->then_b->tail, &d0);
+                } else if (st->e->kind == EX_BLOCK && st->e->block) {
+                    for (size_t i = 0; i < st->e->block->nstmts; i++) emit_stmt(c, st->e->block->stmts[i], &d0);
+                    if (st->e->block->tail) vt = emit_expr(c, st->e->block->tail, &d0);
+                }
+                scope_pop(c);
+                sb_free(&d0);
+            }
+            c->want = saved_w2;
+            if (vt.k == T_UNK) { terr(c, "v1:无法推导 %s 的类型", name); return; }
+            int n3 = c->tmpn++;
+            char rn[32];
+            snprintf(rn, sizeof rn, "ctron_v%d", n3);
+            sb_f(o, "%s %s = 0;\n", ctype_of(vt), rn);
+            if (st->e->kind == EX_IF) emit_if_assign(c, st->e, rn, o);
+            else emit_value_to(c, st->e, rn, o);
+            sb_f(o, "%s %s = %s;\n", ctype_of(vt), name, rn);
+            scope_def(c, name, vt);
             return;
         }
         sb rhs = {0};
@@ -1447,12 +1582,25 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
         } else sb_s(o, "return 0;\n");
         return;
     case ST_EXPR:
+        if (st->e && st->e->kind == EX_OWN) {
+            // own 块:语句位透明执行(arena 句柄域 → C10-f+)
+            scope_push(c);
+            emit_block(c, st->e->obody, o);
+            scope_pop(c);
+            return;
+        }
         if (st->e && st->e->kind == EX_IF) {
             emit_if_stmt(c, st->e, o);
             return;
         }
         if (st->e && st->e->kind == EX_MATCH) {
             emit_match(c, st->e, o, 0, NULL);
+            return;
+        }
+        if (st->e && st->e->kind == EX_BLOCK) {
+            scope_push(c);
+            emit_block(c, st->e->block, o);
+            scope_pop(c);
             return;
         }
         {
@@ -1533,6 +1681,12 @@ static void emit_block(tc* c, cblock* b, sb* o) {
     if (b->tail) {
         if (b->tail->kind == EX_MATCH) { emit_match(c, b->tail, o, 0, NULL); return; }
         if (b->tail->kind == EX_IF) { emit_if_stmt(c, b->tail, o); return; }
+        if (b->tail->kind == EX_OWN) {
+            scope_push(c);
+            emit_block(c, b->tail->obody, o);
+            scope_pop(c);
+            return;
+        }
         sb r = {0};
         emit_expr(c, b->tail, &r);
         sb_f(o, "%s;\n", r.d ? r.d : "");
@@ -1715,6 +1869,19 @@ static void emit_helper(tc* c, const char* name) {
     }
     if (!strcmp(name, "ctron_fmt_bool")) {
         sb_f(o, "static const char* %s(int v) { char* r = (char*)malloc(8); snprintf(r, 8, \"%%s\", v ? \"true\" : \"false\"); return r; }\n", name);
+        return;
+    }
+    if (!strcmp(fam, "as")) {
+        sb_f(o, "static %s %s(int64_t v) {\n", ct, name);
+        if (us)
+            sb_f(o, "    uint64_t r = (uint64_t)v & %lluULL;\n"
+                "    return (%s)(int64_t)r;\n}\n", (1ULL << bits) - 1, ct);
+        else if (bits < 64)
+            sb_f(o, "    uint64_t r = (uint64_t)v & %lluULL;\n"
+                "    return (%s)((int64_t)(r ^ %lluULL) - (int64_t)%lluULL);\n}\n",
+                ct, (1ULL << bits) - 1, (1ULL << (bits - 1)), (1ULL << (bits - 1)));
+        else
+            sb_f(o, "    return (%s)v;\n}\n", ct);
         return;
     }
     if (!strcmp(fam, "idx")) {
