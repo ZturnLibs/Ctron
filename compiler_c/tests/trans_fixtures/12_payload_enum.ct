@@ -1,0 +1,24 @@
+// 12_payload_enum.ct —— 元组变体(载荷)/match 载荷绑定
+enum Step {
+    Advance(I32)
+    Stop
+}
+
+fn next(xs: I32[], i: I32) -> Step {
+    if i < xs.len {
+        return Advance(xs[i])
+    }
+    return Stop
+}
+
+test "payload variants" {
+    let xs: I32[] = [3, 8]
+    match next(xs, 0) {
+        Advance(v) => assert_eq(v, 3)
+        Stop       => assert(false)
+    }
+    match next(xs, 5) {
+        Advance(v) => assert(false)
+        Stop       => assert(true)
+    }
+}

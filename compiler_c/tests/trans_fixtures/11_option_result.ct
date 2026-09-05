@@ -1,0 +1,29 @@
+enum MathErr {
+    DivByZero
+}
+
+fn safe_div(a: I32, b: I32) -> Result[I32, MathErr] {
+    if b == 0 { return Err(DivByZero) }
+    return Ok(a / b)
+}
+
+fn ratio(a: I32, b: I32, c: I32) -> Result[I32, MathErr] {
+    let x = safe_div(a, b)?
+    return safe_div(x, c)
+}
+
+fn div_opt(a: F64, b: F64) -> Option[F64] {
+    if b == 0.0 { return None }
+    return Some(a / b)
+}
+
+test "option and result" {
+    assert_eq(div_opt(1.0, 2.0).or(-1.0), 0.5)
+    assert_eq(div_opt(1.0, 0.0).or(-1.0), -1.0)
+    assert_eq(ratio(100, 5, 4).or(-1), 5)
+    match ratio(1, 0, 2) {
+        Err(DivByZero) => assert(true)
+        Ok(_)          => assert(false)
+    }
+    let res = safe_div(8, 2)?
+}
