@@ -577,6 +577,18 @@ impl Parser {
     // ---------- 类型 ----------
 
     pub fn parse_type(&mut self) -> Type {
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            self.err_here("E1001", "类型嵌套过深".into());
+            self.depth -= 1;
+            return Type::SelfT;
+        }
+        let t = self.parse_type_inner();
+        self.depth -= 1;
+        t
+    }
+
+    fn parse_type_inner(&mut self) -> Type {
         if self.eat(&Tok::Amp) {
             return Type::Ref(Box::new(self.parse_type()));
         }
@@ -812,7 +824,19 @@ impl Parser {
 
     fn parse_postfix(&mut self, allow_struct: bool) -> Expr {
         let mut e = self.parse_primary(allow_struct);
+        self.depth += 1;
+        let r = self.parse_postfix_loop(e, allow_struct);
+        self.depth -= 1;
+        r
+    }
+
+    fn parse_postfix_loop(&mut self, mut e: Expr, allow_struct: bool) -> Expr {
         loop {
+            // 恢复路径守卫:超限立即返回,不再构造 Call 包裹(否则与 parse_expr 互递归无界)
+            if self.depth > MAX_EXPR_DEPTH {
+                self.err_here("E1001", "表达式嵌套过深".into());
+                return e;
+            }
             match self.peek().clone() {
                 Tok::LParen => {
                     self.bump();
@@ -1592,13 +1616,17 @@ mod final_review_pins {
 
     #[test]
     fn deep_nesting_capped() {
-        // 测试线程默认栈小;用 16MB 线程验证"上限先于栈溢出生效"
-        let h = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {
-            let src = format!("fn f() -> I32 {{ return {}1{} }}", "(".repeat(300), ")".repeat(300));
-            let (_, d) = crate::parse_src(&src);
-            assert!(d.iter().any(|x| x.message.contains("嵌套过深")));
-        }).unwrap();
-        h.join().unwrap();
+        // 恢复路径盲区回归:2000 个连续 ( 在默认测试线程上必须正常退出且产出诊断
+        // (曾因 postfix 的 LParen 恢复分支与 parse_expr 互递归而栈溢出 abort)
+        let src = format!("fn f() -> I32 {{ return {}1{} }}", "(".repeat(2000), ")".repeat(2000));
+        let (_, d) = crate::parse_src(&src);
+        assert!(!d.is_empty());
+        assert!(d.iter().any(|x| x.message.contains("嵌套过深")));
+        let nested = format!("{}I64{}", "(".repeat(1500), ")".repeat(1500));
+        let src = format!("fn g(x: {}) -> Void {{ return void }}", nested);
+        let (_, d) = crate::parse_src(&src);
+        assert!(!d.is_empty());
+        assert!(d.iter().any(|x| x.message.contains("嵌套过深")));
     }
 }
 
