@@ -1459,6 +1459,29 @@ static val eval_expr(rt* R, cexpr* e) {
                 free(b.d);
                 return v_void();
             }
+            if (!strcmp(nm, "byte_at")) {
+                if (e->nelems != 2) rt_abort(R, RT_ERROR, "byte_at 实参");
+                val sv = eval_expr(R, e->elems[0]);
+                val iv = eval_expr(R, e->elems[1]);
+                if (sv.k != V_STR) rt_abort(R, RT_ERROR, "byte_at 目标需 Str");
+                long long i = (long long)iv.i;
+                if (i < 0 || (unsigned long long)i >= strlen(sv.s)) rt_abort(R, RT_PANIC, "index out of bounds");
+                return v_int((unsigned char)sv.s[i], 32, 0);
+            }
+            if (!strcmp(nm, "byte_slice")) {
+                if (e->nelems != 3) rt_abort(R, RT_ERROR, "byte_slice 实参");
+                val sv = eval_expr(R, e->elems[0]);
+                val av = eval_expr(R, e->elems[1]);
+                val bv = eval_expr(R, e->elems[2]);
+                if (sv.k != V_STR) rt_abort(R, RT_ERROR, "byte_slice 目标需 Str");
+                long long a = (long long)av.i, b = (long long)bv.i;
+                long long len = sv.s ? (long long)strlen(sv.s) : 0;
+                if (a < 0 || b > len || a > b) rt_abort(R, RT_PANIC, "byte_slice 越界");
+                val o = {0};
+                o.k = V_STR;
+                o.s = ctron_arena_strndup(R->a, sv.s + a, (size_t)(b - a));
+                return o;
+            }
             if (!strcmp(nm, "read_file")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_file 实参");
                 val pv = eval_expr(R, e->elems[0]);
@@ -1708,6 +1731,7 @@ rt_run ctron_rt_run(const cfile* f) {
 rt_run ctron_rt_run_main(const cfile* f) {
     ctron_arena* arena = ctron_arena_new();
     rt R = {0};
+    R.f = f;
     R.a = arena;
     rt_run out = {0};
     out.st = RT_OK;

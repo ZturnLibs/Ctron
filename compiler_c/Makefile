@@ -46,8 +46,12 @@ $(BUILD)/suite_run: tests/suite_run.c $(CORE) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_run.c $(CORE)
 
+$(BUILD)/suite_diff: tests/suite_diff.c $(CORE) $(HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_diff.c $(CORE)
+
 # 默认验收:单元 + 语料集成(词法+解析+语义+模块级)+ 执行层(C4-a 子集)
-test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run
+test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff
 	./$(BUILD)/test_lex
 	./$(BUILD)/suite_lex ../tests
 	./$(BUILD)/test_parse
@@ -56,6 +60,7 @@ test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_pa
 	./$(BUILD)/suite_pkg ../tests/modules
 	./$(BUILD)/suite_rt ../tests
 	./$(BUILD)/suite_run selfhost
+	./$(BUILD)/suite_diff selfhost
 
 clean:
 	rm -rf $(BUILD)
