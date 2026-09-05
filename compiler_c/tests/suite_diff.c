@@ -143,6 +143,7 @@ int main(int argc, char** argv) {
         {"lex_str.ct", "input_str.ct", 2},
         {"lex_num.ct", "input_num.ct", 2},
         {"parse_ast.ct", "input_parse_ast.ct", 3},
+        {"parsetree.ct", "input_ptree.ct", 3},
     };
     size_t fails = 0, nrun = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {

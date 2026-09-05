@@ -98,10 +98,13 @@
 17. **C6h(本文件交付)**:parse 差分改**目录自动扫描门禁**(tests/*.ct 自动纳入;参考带诊断的
    01c_parse.neg/06_static_var 自动豁免),不再依赖手工名单;suite_diff 109 用例全绿,
    ASan/UBSan 全绿 —— C6(解析器差分)收口。
-18. **C7(下一阶梯,语义层前置)**:现有 Ctron 解析器只产出 C-AST v1 契约文本,而 C 版 11 项
-   语义检查(E2030/E3010…E3040/W8010…)全部基于结构化树。C7a 先给 Ctron 解析器加
-   **结构化 AST 数据树**(parse 函数建树+打印双产物,打印回归保持 49 文件逐字节),
-   再照 C3 里程碑逐个检查移植+差分。
+18. **C7(下一阶梯,语义层前置)**:…C7a(本文件交付)**:新模块 `selfhost/parsetree.ct` —— Ctron
+   **结构化 AST 数据树**(节点 = List[Str],child[0]=tag,其后按模式放标量/子节点),解析建树、
+   `pnode` 走树打印 → C-AST v1。v0 覆盖:File/Fn(形参 Named 类型)/Block(多句+尾)/
+   Return·Let(var/let·带类型)·Assign/表达式全优先级(Binary·Unary·Range·Int·Float·Ident·括号);
+   夹具 input_ptree.ct(5 fn)与 C `ctron_file_show` 逐字节一致;suite_diff 110 用例全绿。
+   语义检查所需的可遍历数据树自此可用;C7b 按 parse_ast 语法面逐块扩树(if/while/for/
+   match/字符串部件/结构体族…)。
 
 ## 冻结纪律
 

@@ -1,0 +1,8 @@
+fn f(x: I32) -> I32 { return x * 2 }
+fn g(a: F64) -> F64 { return a + 2.5 }
+fn h(n: I32) -> Bool { return n > 0 && !(n < 100) }
+fn r(x: I32) -> I32 { return -x + 1_000i16 .. 7 }
+fn s(a: I32, b: I32) -> I32 {
+    let y = a + b * 2
+    return y - 6 / 3 % 2
+}
