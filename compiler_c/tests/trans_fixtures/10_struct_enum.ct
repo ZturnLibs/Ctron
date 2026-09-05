@@ -1,0 +1,40 @@
+// 10_struct_enum.ct —— struct 值语义/字段读写/enum 单元变体/match(字面量·通配·变体·struct 模式)
+struct Pt {
+    var x: I32
+    var y: I32
+}
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn name(c: Color, n: I32) -> Str {
+    return match c {
+        Red   => "red"
+        Green => "green"
+        Blue  => if n > 0 { "blue+" } else { "blue" }
+    }
+}
+
+test "structs and enums" {
+    var a = Pt { x: 1, y: 2 }
+    var b = a
+    b.x = 10
+    assert_eq(a.x, 1)
+    assert_eq(b.x, 10)
+    b.y += 5
+    assert_eq(b.y, 7)
+    assert_eq(name(Green, 0), "green")
+    assert_eq(name(Blue, 5), "blue+")
+    match 7 {
+        0 => assert(false)
+        7 => assert(true)
+        _ => assert(false)
+    }
+    let p = Pt { x: 1, y: 2 }
+    match p {
+        Pt { x, y } => assert_eq(x + y, 3)
+    }
+}

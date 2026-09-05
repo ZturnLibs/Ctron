@@ -1354,9 +1354,12 @@ fn layout_scan(text: Str, mode: I64) -> Str {
     var depth: I64 = 0
     var line: I64 = 0
     var i: I64 = 0
-    while i <= n {
+    var done = false
+    while !done {
         var sp = line_span_of(text, line)
-        if sp.a > n { break }
+        if sp.a > n {
+            done = true
+        } else {
         var k = sp.a
         var lead = 0 - 1
         var opens: I64 = 0
@@ -1379,10 +1382,6 @@ fn layout_scan(text: Str, mode: I64) -> Str {
                     } else {
                         if b == 123 { opens += 1 }
                         if b == 125 { closes += 1 }
-                        if b == 40 { opens += 1 }
-                        if b == 41 { closes += 1 }
-                        if b == 91 { opens += 1 }
-                        if b == 93 { closes += 1 }
                     }
                 }
             }
@@ -1412,11 +1411,12 @@ fn layout_scan(text: Str, mode: I64) -> Str {
         }
         depth += opens - closes
         if depth < 0 { depth = 0 }
-        if opens > 0 && top < 64 {
+        if mode == 2 && opens > 0 && top < 64 {
             fstk[top] = line
             dstk[top] = depth
             top += 1
         }
+        if mode == 2 {
         var popping = true
         while popping && top > 0 {
             var dtop = dstk[top - 1]
@@ -1430,8 +1430,13 @@ fn layout_scan(text: Str, mode: I64) -> Str {
                 popping = false
             }
         }
-        if sp.b >= n { break }
-        line += 1
+        }
+        if sp.b >= n {
+            done = true
+        } else {
+            line += 1
+        }
+        }
     }
     return jarr(acc.s)
 }
@@ -1469,6 +1474,8 @@ fn inlay_hints(text: Str) -> Str {
         if !handled {
             if is_al(byte_at(text, p.i)) {
                 var start = p.i
+                var startline = p.line
+                var startcol = p.col
                 while p.i < n && is_ac(byte_at(text, p.i)) {
                     p.i += 1
                     p.col += 1
@@ -1478,7 +1485,7 @@ fn inlay_hints(text: Str) -> Str {
                 if nextb == 40 && !pipe_has(KW_ALL, tok) {
                     var prev = prev_sig_char(text, start)
                     if prev != 46 {
-                        emit_call_hints(text, tok, p.i, p.line, acc)
+                        emit_call_hints(text, tok, startline, startcol, p.i, p.line, acc)
                     }
                 }
                 if acc.count >= 300 {
@@ -1511,7 +1518,7 @@ fn prev_sig_char(text: Str, from: I64) -> I64 {
     return 0
 }
 
-fn emit_call_hints(text: Str, word: Str, open_abs: I64, line0: I64, acc: OccAcc) {
+fn emit_call_hints(text: Str, word: Str, startline: I64, startcol: I64, open_abs: I64, line0: I64, acc: OccAcc) {
     var n = text.len
     var close = 0 - 1
     var k = open_abs + 1
@@ -1528,6 +1535,11 @@ fn emit_call_hints(text: Str, word: Str, open_abs: I64, line0: I64, acc: OccAcc)
     var hit = decl_hit_new()
     find_decl(text, word, hit)
     if !hit.found { return }
+    // 声明行自身的形参表不是调用点,跳过
+    if or2(hit.line != startline, hit.ncol != startcol) {
+    } else {
+        return
+    }
     var names = param_pipe(hit.sig)
     if names == "" { return }
     var basecol = col_of(text, open_abs)

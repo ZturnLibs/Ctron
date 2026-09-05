@@ -100,6 +100,8 @@ pub struct Interp<'a> {
     pub globals_rt: RefCell<HashMap<String, Rc<Cell<i64>>>>,
     pub cancelled_scopes: RefCell<HashSet<u32>>,
     pub expr_depth: Cell<u32>,
+    pub steps: Cell<u64>,
+    pub in_own: bool,
     pub interp_cache: RefCell<HashMap<String, ast::Expr>>,
     pub cur_ret_e_name: RefCell<Option<String>>,
 }
@@ -113,9 +115,15 @@ impl<'a> Interp<'a> {
             task_next: Cell::new(0), chan_next: Cell::new(0),
             atomics: RefCell::new(HashMap::new()), globals_rt: RefCell::new(HashMap::new()),
             cancelled_scopes: RefCell::new(HashSet::new()),
-            expr_depth: Cell::new(0), interp_cache: RefCell::new(HashMap::new()),
+            expr_depth: Cell::new(0), steps: Cell::new(0), in_own: false,
+            interp_cache: RefCell::new(HashMap::new()),
             cur_ret_e_name: RefCell::new(None),
         }
+    }
+
+    fn err(&mut self, code: &'static str, msg: String, span: Span) {
+        // interp 层的诊断转为 panic(运行时无诊断队列)
+        eprintln!("[ctron:{}] {}: {}", self.module, code, msg);
     }
 
     fn fresh_task(&self) -> u32 { let v = self.task_next.get(); self.task_next.set(v + 1); v }
@@ -310,6 +318,11 @@ impl<'a> Interp<'a> {
     // ---------- 表达式 ----------
 
     fn expr(&mut self, e: &ast::Expr, env: &Rc<Env>) -> EvalResult {
+        // 步数上限:防无限循环
+        self.steps.set(self.steps.get() + 1);
+        if self.steps.get() > 2_000_000 {
+            return Err(Flow::Panic("instruction limit exceeded (可能的无限循环)".into()));
+        }
         self.expr_depth.set(self.expr_depth.get() + 1);
         if self.expr_depth.get() > 256 {
             self.expr_depth.set(self.expr_depth.get() - 1);
@@ -444,7 +457,15 @@ impl<'a> Interp<'a> {
                 self.cancelled_scopes.borrow_mut().insert(sid);
                 r
             }
-            Expr::Own { body, .. } => self.check_block(body, env),
+            Expr::Own { arena, body } => {
+                let saved = self.in_own;
+                self.in_own = true;
+                let arena_env = Env::child(env);
+                arena_env.define(arena.clone(), Local { value: Value::Arena });
+                let r = self.check_block(body, &arena_env);
+                self.in_own = saved;
+                r
+            }
             Expr::If { cond, then, els } => {
                 let c = self.expr(cond, env)?;
                 if truthy(&c) {
@@ -1155,6 +1176,17 @@ impl<'a> Interp<'a> {
                 "len" => Ok(Value::UInt(arr.borrow().len() as u64)),
                 _ => Err(Flow::Panic(format!("无属性 `{}`", name))),
             },
+            Value::Tuple(items) => {
+                // .0 .1 等
+                if let Ok(idx) = name.parse::<usize>() {
+                    match items.get(idx) {
+                        Some(v) => Ok(v.clone()),
+                        None => Err(Flow::Panic(format!("元组索引 {} 越界", idx))),
+                    }
+                } else {
+                    Err(Flow::Panic(format!("元组无成员 `{}`", name)))
+                }
+            }
             Value::Simd(items) => match name {
                 "len" => Ok(Value::UInt(items.len() as u64)),
                 _ => Err(Flow::Panic(format!("Simd 无属性 `{}`", name))),
@@ -1424,16 +1456,19 @@ fn text_int_eq(t: &str, i: i64) -> bool {
 }
 
 fn values_equal(a: &Value, b: &Value) -> bool {
+    // 跨宽度数值比较
+    if compare_values(a, b) == Some(0) {
+        if matches!((a, b), (Value::Int(_) | Value::UInt(_) | Value::F64(_) | Value::F32(_), Value::Int(_) | Value::UInt(_) | Value::F64(_) | Value::F32(_))) {
+            return true;
+        }
+    }
     match (a, b) {
-        (Value::Int(x), Value::Int(y)) => x == y,
-        (Value::UInt(x), Value::UInt(y)) => x == y,
-        (Value::F64(x), Value::F64(y)) => x == y,
-        (Value::F32(x), Value::F32(y)) => x == y,
         (Value::Bool(x), Value::Bool(y)) => x == y,
         (Value::Str(x), Value::Str(y)) => x == y,
         (Value::Enum { variant: v1, payload: p1, .. }, Value::Enum { variant: v2, payload: p2, .. }) => {
             v1 == v2 && p1.len() == p2.len() && p1.iter().zip(p2).all(|(x, y)| values_equal(x, y))
         }
+        (Value::Tuple(x), Value::Tuple(y)) => x.len() == y.len() && x.iter().zip(y).all(|(u, v)| values_equal(u, v)),
         _ => false,
     }
 }
@@ -1578,12 +1613,36 @@ impl<'a> Interp<'a> {
         // 常量 / 静态
         if let Some(v) = self.consts.borrow().get(name) { return Ok(v.clone()); }
         if let Some(v) = self.statics.borrow().get(name) { return Ok(v.clone()); }
-        // 类型名作为关联调用接收者(Arena.fixed)
-        if let Some(&def) = self.sema.def_by_name.get(name) {
-            return Ok(Value::Arena); // Arena 类型值;其余类型名在调用处特判
+        // prelude 枚举变体值(Some/None/Ok/Err)
+        match name {
+            "Some" => {
+                let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                return Ok(Value::Enum { def: d, variant: 0, payload: vec![Value::Void] }); // 需要 hint 提供类型
+            }
+            "None" => {
+                let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                return Ok(Value::Enum { def: d, variant: 1, payload: vec![] });
+            }
+            "Ok" => {
+                let d = self.sema.def_by_name.get("Result").copied().unwrap_or(0);
+                return Ok(Value::Enum { def: d, variant: 0, payload: vec![Value::Void] }); // 需要 hint 提供类型
+            }
+            "Err" => {
+                let d = self.sema.def_by_name.get("Result").copied().unwrap_or(0);
+                return Ok(Value::Enum { def: d, variant: 1, payload: vec![Value::Void] }); // 需要 hint 提供类型
+            }
+            _ => {}
         }
-        // 用户 fn / 任务
+        // 用户枚举的单元变体值(Bad, DivByZero, Stop, Red 等)
+        if let Some(Symbol::Variant { def, idx }) = self.module_symbol(name) {
+            return Ok(Value::Enum { def, variant: idx, payload: vec![] });
+        }
+        // 用户 fn
         if let Some(Symbol::Fn(id)) = self.module_symbol(name) { return Ok(Value::FnRef { id }); }
+        // 类型名作为关联调用接收者(Arena.fixed / Simd.splat 等)
+        if let Some(&def) = self.sema.def_by_name.get(name) {
+            return Ok(Value::Arena);
+        }
         Err(Flow::Panic(format!("未解析的名称 `{}`", name)))
     }
 
@@ -1617,7 +1676,7 @@ impl<'a> Interp<'a> {
             AndAnd => Ok(Value::Bool(truthy(a) && truthy(&b))),
             Eq | Ne | Lt | Gt | Le | Ge => {
                 let ord = compare_values(a, &b);
-                let pass = match op {
+                let r = match op {
                     Eq => ord == Some(0),
                     Ne => ord != Some(0),
                     Lt => ord == Some(-1),
@@ -1626,10 +1685,10 @@ impl<'a> Interp<'a> {
                     Ge => ord != Some(-1),
                     _ => false,
                 };
-                if !pass {
-                    return Err(Flow::Panic(format!("比较类型不匹配({:?}):{} vs {}", op, to_display(a), to_display(&b))));
+                if ord.is_none() {
+                    self.err("E2010", format!("比较类型不匹配({:?}):{} vs {}", op, to_display(a), to_display(&b)), Span::new(1, 1, 0, 0));
                 }
-                Ok(Value::Bool(true))
+                Ok(Value::Bool(r))
             }
             Add | Sub | Mul | Div | Mod => {
                 let b_clone = b.clone();

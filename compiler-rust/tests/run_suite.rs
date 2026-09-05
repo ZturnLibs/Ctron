@@ -40,6 +40,7 @@ fn all_behavior_files_run_and_pass() {
         if name.starts_with("10_web") { deferred += 1; continue; }
 
         let src = std::fs::read_to_string(f).unwrap();
+        eprintln!("[run] {}", rel);
         let profile = profile_for(f);
         let results = ctron::interp::run_test_file(&src, profile);
         ran += 1;
