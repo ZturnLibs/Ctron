@@ -1,0 +1,45 @@
+struct Point {
+    var x: I32
+    var y: I32
+}
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+fn name(c: Color, n: I32) -> Str {
+    return match c {
+        Red   => "red"
+        Green => "green"
+        Blue  => if n > 0 { "blue+" } else { "blue" }
+    }
+}
+
+fn safe_div(a: I32, b: I32) -> Result[I32, Str] {
+    if b == 0 { return Err("div by zero") }
+    return Ok(a / b)
+}
+
+fn fib(n: I64) -> I64 {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() -> I32 {
+    let p = Point { x: 3, y: 4 }
+    print("p=({p.x},{p.y})")
+    println("")
+    println(name(Green, 0))
+    println(name(Blue, 2))
+    let r = safe_div(10, 2)?
+    println(r)
+    println(fib(20))
+    match safe_div(1, 0) {
+        Ok(v)  => { print("v=")
+                     println(v) }
+        Err(e) => println(e)
+    }
+    return 0
+}

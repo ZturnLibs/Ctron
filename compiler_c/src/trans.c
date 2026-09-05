@@ -188,6 +188,7 @@ struct tc {
     size_t nfns;
     const ty* fn_ret; // 当前函数返回类型提示(?)
     const ty* want;   // 期望类型提示(None/Some/Ok/Err 构造推导)
+    int in_main;      // 当前正在发射 fn main(? 早退 = exit 0,对齐 rt run_main)
     scope* sc;
     scope scopes[MAX_SCOPES];
     size_t n_scopes;
@@ -1245,7 +1246,9 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
             snprintf(tn, sizeof tn, "ctron_t%d", n2);
             sb_f(o, "%s %s = %s;\n", ctype_of(ot), tn, op.d ? op.d : "0");
             if (c->in_test) sb_f(o, "if (%s.tag == %s) return;\n", tn, bad);
-            else sb_f(o, "if (%s.tag == %s) return %s;\n", tn, bad, tn);
+            else if (c->in_main) sb_f(o, "if (%s.tag == %s) exit(0);\n", tn, bad);
+            else if (c->fn_ret && c->fn_ret->k == T_SUM) sb_f(o, "if (%s.tag == %s) return %s;\n", tn, bad, tn);
+            else { terr(c, "v1:? 早退类型与函数返回类型不符"); sb_free(&op); return; }
             sb_f(o, "%s %s = %s.as.%s;\n", ctype_of(vt), name, tn, mem);
             sb_free(&op);
             scope_def(c, name, vt);
@@ -1415,9 +1418,16 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
                 const char* bad = is_opt ? "CTRON_OPT_NONE" : "CTRON_RES_ERR";
                 const char* mem = is_opt ? "some" : "ok";
                 int n2 = c->tmpn++;
-                sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
-                sb_f(o, "    if (ctron_t%d.tag == %s) return ctron_t%d;\n", n2, bad, n2);
-                sb_f(o, "    return ctron_t%d.as.%s;\n}\n", n2, mem);
+                if (c->in_main) {
+                    sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
+                    sb_f(o, "    if (ctron_t%d.tag == %s) exit(0);\n}\n", n2, bad);
+                } else if (c->fn_ret && c->fn_ret->k == T_SUM) {
+                    sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
+                    sb_f(o, "    if (ctron_t%d.tag == %s) return ctron_t%d;\n", n2, bad, n2);
+                    sb_f(o, "    return ctron_t%d.as.%s;\n}\n", n2, mem);
+                } else {
+                    terr(c, "v1:? 早退类型与函数返回类型不符");
+                }
                 sb_free(&op);
                 c->want = saved_rw;
                 return;
@@ -1955,7 +1965,10 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             if (is_reserved(nm)) { terr(&c, "v1:标识符保留前缀 ctron_:%s", nm); break; }
             char cn[256];
             snprintf(cn, sizeof cn, "ctron_user_%s", nm);
+            int was_main = !strcmp(nm, "main");
+            c.in_main = was_main;
             emit_fn(&c, &d->fn_, cn);
+            c.in_main = 0;
             break;
         }
         case D_TEST: {
