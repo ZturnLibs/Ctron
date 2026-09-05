@@ -721,8 +721,8 @@ static void eval_stmt(rt* R, cstmt* st) {
             if (cont->k == V_ARR || cont->k == V_LIST) {
                 val ix = eval_expr(R, st->target->index);
                 long long idx = (long long)ix.i;
-                if (idx < 0 || (unsigned long long)idx >= cont->nitems
-                    || (cont->k == V_LIST && (size_t)idx >= cont->lst->n))
+                size_t lim = cont->k == V_LIST ? cont->lst->n : cont->nitems;
+                if (idx < 0 || (unsigned long long)idx >= lim)
                     rt_abort(R, RT_PANIC, "index out of bounds");
                 if (cont->k == V_ARR) elem = &cont->items[idx];
                 else elem = &cont->lst->items[idx];
@@ -1605,11 +1605,9 @@ static val eval_expr(rt* R, cexpr* e) {
                 val iv = eval_expr(R, e->elems[1]);
                 if (sv.k != V_STR) rt_abort(R, RT_ERROR, "byte_at 目标需 Str");
                 long long i = (long long)iv.i;
-                if (i < 0 || !sv.s) rt_abort(R, RT_PANIC, "index out of bounds");
-                // O(1) 快路径:非结尾字节直取;疑似结尾才回退 strlen 全检(保持原语义)
-                if ((unsigned char)sv.s[i] != 0) return v_int((unsigned char)sv.s[i], 32, 0);
-                if ((unsigned long long)i >= strlen(sv.s)) rt_abort(R, RT_PANIC, "index out of bounds");
-                return v_int(0, 32, 0);
+                if (i < 0 || !sv.s || (unsigned long long)i >= strlen(sv.s))
+                    rt_abort(R, RT_PANIC, "index out of bounds");
+                return v_int((unsigned char)sv.s[i], 32, 0);
             }
             if (!strcmp(nm, "byte_slice")) {
                 if (e->nelems != 3) rt_abort(R, RT_ERROR, "byte_slice 实参");
