@@ -1,0 +1,43 @@
+fn maybe_even(n: I32) -> I32? {
+    if n % 2 == 1 {
+        return None
+    }
+    return Some(n)
+}
+
+fn double_opt(n: I32) -> I32? {
+    var x = maybe_even(n)?
+    return Some(x * 2)
+}
+
+fn main() -> I32 {
+    var a = double_opt(4)
+    var out = ""
+    match a {
+        Some(v) => { out = v.to_string() }
+        None => { out = "none" }
+    }
+    println(out)
+    var b = double_opt(3)
+    var out2 = ""
+    match b {
+        Some(v) => { out2 = v.to_string() }
+        None => { out2 = "none" }
+    }
+    println(out2)
+    var c = maybe_even(8)
+    var out3 = ""
+    match c {
+        Some(v) => { out3 = v.to_string() }
+        None => { out3 = "none" }
+    }
+    println(out3)
+    var n = None
+    var out4 = ""
+    match n {
+        Some(v) => { out4 = v.to_string() }
+        None => { out4 = "none-var" }
+    }
+    println(out4)
+    return 0
+}

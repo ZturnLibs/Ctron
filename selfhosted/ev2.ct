@@ -2318,6 +2318,42 @@ fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
         }
         return pm2("0", env)
     }
+    if t == "PatAgg" {
+        if v[0] == "T" && seq2(v[1], pat[1]) {
+            var sub = pat[2]
+            if sub[0] == "SubUnit" {
+                if v.len == 2 {
+                    return pm2("1", env)
+                }
+                return pm2("0", env)
+            }
+            if sub[0] == "SubTup" {
+                var np = sub.len - 1
+                var npv = v.len - 2
+                if np == npv {
+                    var env2 = env
+                    var ok2 = true
+                    var k: I32 = 1
+                    while k < sub.len && ok2 {
+                        var pp = sub[k]
+                        var pv = v[k + 1]
+                        var pr2 = pat_match(pp, pv, env2)
+                        if !seq2(pr2[0], "1") {
+                            ok2 = false
+                        } else {
+                            env2 = pr2[1]
+                        }
+                        k += 1
+                    }
+                    if ok2 {
+                        return pm2("1", env2)
+                    }
+                }
+                return pm2("0", env)
+            }
+        }
+        return pm2("0", env)
+    }
     if t == "PatId" {
         return pm2("1", env_add(env, pat[1], v))
     }
@@ -2341,6 +2377,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         var en = env_at(env, e[1])
         if en.len > 0 {
             return e4("k", env, en[1], out)
+        }
+        if or2(seq2(e[1], "Some"), or2(seq2(e[1], "None"), or2(seq2(e[1], "Ok"), seq2(e[1], "Err")))) {
+            var tv = List[Str]()
+            tv.push("T")
+            tv.push(e[1])
+            return e4("k", env, tv, out)
         }
         panic("unbound:" + e[1])
         return e4("a", env, vV2(), out)
@@ -2547,6 +2589,25 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     if t == "TypeArgs" {
         return eval_expr(file, env, out, e[1])
     }
+    if t == "Try" {
+        var xr = eval_expr(file, env, out, e[1])
+        if xr[0] != "k" {
+            return xr
+        }
+        var xv = xr[2]
+        if xv[0] == "T" {
+            if or2(seq2(xv[1], "None"), seq2(xv[1], "Err")) {
+                return e4("r", xr[1], xv, xr[3])
+            }
+            if or2(seq2(xv[1], "Some"), seq2(xv[1], "Ok")) {
+                if xv.len == 3 {
+                    return e4("k", xr[1], xv[2], xr[3])
+                }
+                return e4("k", xr[1], xv, xr[3])
+            }
+        }
+        return e4("k", xr[1], xv, xr[3])
+    }
     if t == "Call" {
         return eval_call(file, env, out, e)
     }
@@ -2639,6 +2700,17 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         }
         panic("panic arity")
         return e4("a", env, vV2(), out)
+    }
+    if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) {
+        var tv = List[Str]()
+        tv.push("T")
+        tv.push(nm)
+        var qq: I32 = 0
+        while qq < vals.len {
+            tv.push(vals[qq])
+            qq += 1
+        }
+        return e4("k", env, tv, out)
     }
     var d = find_decl(file, nm)
     if d.len == 0 {

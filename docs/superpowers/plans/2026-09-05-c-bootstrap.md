@@ -158,6 +158,14 @@
    I32·Bool·Str 臂)与原生 `ctron_rt_run_main` 逐字一致;suite_diff 221 cases + suite_run 16 files
    全绿;ASan/UBSan 绿。已裁定钉子:Ctron 宿主无 `||`,模块代码勿写(Ctron 语言钉子复查);
    `cc.ct` 快照未含本批(下一轮并入)。
+18z. **C9d②(本文件交付)—— Ctron 求值器 Option/Result 域:tag 值 + 变体构造 + 模式绑定 + `?` Try**:
+   `ev2.ct` 补值 kind "T"(tag:payloads),Ident 裸 `Some/None/Ok/Err` 解析为 tag 值,call_id
+   变体构造(载荷求值),match 模式 PatAgg(SubUnit 无载荷 / SubTup 逐元素绑定/字面量/通配),
+   Try:`None|Err` → 提前返回整 tag(r-flow 经调用点转返回值);`Some|Ok` → 解开载荷。验收:
+   suite_diff 新增 seq=5 用例 input_ev2c.ct(helper 返回 I32? + `?` 传播 + main match
+   Some(x)/None,裸 None 变量)与原生逐字一致;suite_diff 222 cases + suite_run 16 files 全绿;
+   ASan/UBSan 绿。注意:仓库 Makefile 被并行 C10-a 流临时接上未落盘的 tests/suite_trans.c,
+   整体 `make test` 暂不可用(其 WIP);本批验收=逐 suite 构建运行。
 
 
 ## 自举产物目录
