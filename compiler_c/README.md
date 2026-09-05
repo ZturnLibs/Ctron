@@ -112,6 +112,7 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8d ✅ | E3060 own 内类成员可变写(绑定 env 近似 + own 上下文) | 六检查 42/42 语料与 C 全等 |
 | C8e ✅ | E4020/E6020 pure/comptime 能力调用(pwalk+env) | 八检查 44/44 语料与 C 全等 |
 | C8f ✅ | E3010 spawn 闭包捕获 Send(捕获集 + env 类型节点) | 九检查 45/45 语料与 C 全等 |
-| C8g ✅ | E3050 own arena use-after-move(arena_binds/moved 集) | 十检查 46/46 语料与 C 全等(205 用例);C8h E2030 穷尽/E3040 分配效果 |
+| C8g ✅ | E3050 own arena use-after-move(arena_binds/moved 集) | 十检查 46/46 语料与 C 全等 |
+| C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 十一检查 47/47 语料与 C 全等(206 用例);C8h② E3040 分配效果(收官) |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
