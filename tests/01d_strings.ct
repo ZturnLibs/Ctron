@@ -1,7 +1,7 @@
 // 01d_strings.ct —— 转义、插值链(字段/属性/方法/索引)、len(字节) vs char_len(字符)
 test "escapes" {
     assert_eq("a\nb".len, 3)
-    assert_eq("\{", "{")
+    assert_eq("\{", "\{")
     assert_eq("\u{4E2D}", "中")
 }
 

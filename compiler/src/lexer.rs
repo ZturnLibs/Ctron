@@ -257,16 +257,19 @@ impl<'src> Lexer<'src> {
                 }
                 Some(b'{') => {
                     // 插值:同一行内必须存在配对的 '}'(支持 {} 嵌套深度计数,§1.4);
-                    // 行内未闭合则回退,`{` 按字面字节处理 —— 锚定 tests/01d_strings.ct:
-                    // `assert_eq("\{", "{")` 要求 "{" 即字面 `{`(转义 \{ 是规范写法,裸 { 宽松接受)
-                    let save = (self.pos, self.line, self.col);
+                    // 字面 '{' 必须写 `\{`,行内无配对 '}' 的裸 '{' 报 E1001"未终止的插值",
+                    // 不回退为字面(撤销 12945f3 的字面回退,规范所有者裁决 §1.4)
+                    if !bytes.is_empty() {
+                        parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
+                        bytes.clear();
+                    }
                     self.bump(); // {
                     let expr_start = self.pos;
                     let mut depth = 1usize;
                     let mut terminated = false;
                     while depth > 0 {
                         match self.peek() {
-                            None | Some(b'\n') => { depth = 0; } // 行内未闭合:不算插值
+                            None | Some(b'\n') => { depth = 0; }
                             Some(b'{') => { depth += 1; self.bump(); }
                             Some(b'}') => {
                                 depth -= 1;
@@ -277,21 +280,14 @@ impl<'src> Lexer<'src> {
                         }
                     }
                     if terminated {
-                        // Text 段在此截断;{} 内原始源字节不解析,原样存入 Interp(§1.4)
-                        if !bytes.is_empty() {
-                            parts.push(StrPart::Text(String::from_utf8_lossy(&bytes).into_owned()));
-                            bytes.clear();
-                        }
                         let raw = String::from_utf8_lossy(&self.src[expr_start..self.pos]).into_owned();
                         self.bump(); // 收尾 '}'
                         parts.push(StrPart::Interp(raw));
                     } else {
-                        // 回退到 '{' 之前,按字面 '{' 继续
-                        self.pos = save.0;
-                        self.line = save.1;
-                        self.col = save.2;
-                        self.bump();
-                        bytes.push(b'{');
+                        // 行内无配对 '}':报 E1001 后字符串就此截断,只出这一条诊断
+                        let sp = self.mark(start, line, col);
+                        self.err("E1001", "未终止的插值".into(), sp);
+                        break Tok::Str { parts };
                     }
                 }
                 Some(_) => {
@@ -518,16 +514,19 @@ mod tests {
     }
 
     #[test]
-    fn bare_brace_without_closing_is_literal() {
-        // 锚定 tests/01d_strings.ct:assert_eq("\{", "{")
-        // 行内无配对 '}' 的 '{' 按字面 `{` 处理,零诊断;有配对时仍是插值
-        assert_eq!(kinds("\"{\" \"a{b\" \"len={xs.len}\""),
-            vec![Tok::Str { parts: vec![StrPart::Text("{".into())] },
-                 Tok::Str { parts: vec![StrPart::Text("a{b".into())] },
-                 Tok::Str { parts: vec![StrPart::Text("len=".into()), StrPart::Interp("xs.len".into())] },
-                 Tok::Eof]);
+    fn bare_brace_without_closing_reports_e1001() {
+        // §1.4:字面 '{' 必须写 `\{`(锚定 tests/01d_strings.ct assert_eq("\{", "\{"))
+        // 行内无配对 '}' 的裸 '{' 报 1 条 E1001"未终止的插值";同行有配对时仍是插值,行为不变
         let (_, diags) = lex("\"{\"");
-        assert!(diags.is_empty());
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "E1001");
+        assert_eq!(diags[0].message, "未终止的插值");
+        let (_, diags) = lex("\"a{b\"");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "E1001");
+        assert_eq!(kinds("\"len={xs.len}\""),
+            vec![Tok::Str { parts: vec![StrPart::Text("len=".into()), StrPart::Interp("xs.len".into())] },
+                 Tok::Eof]);
     }
 
     #[test]
