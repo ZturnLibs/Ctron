@@ -89,6 +89,7 @@ pub struct Checker<'a> {
     pure_ctx: bool,
     comptime_ctx: bool,
     fresh: u32,
+    depth: u32,
     caps_used: HashSet<String>,
     gc_alloc_fns: HashMap<usize, bool>,
     any_alloc_fns: HashMap<usize, bool>,
@@ -101,7 +102,7 @@ impl<'a> Checker<'a> {
             sema, subs: HashMap::new(), scopes: vec![HashMap::new()],
             diags: Vec::new(), module, cur_ret: Ty::Void, fresh: 0,
             in_own: false, no_alloc_ctx: false, no_spawn_ctx: false,
-            pure_ctx: false, comptime_ctx: false,
+            pure_ctx: false, comptime_ctx: false, depth: 0,
             caps_used: HashSet::new(), gc_alloc_fns: HashMap::new(), any_alloc_fns: HashMap::new(),
             trait_method_alloc_map,
         };
@@ -219,6 +220,17 @@ impl<'a> Checker<'a> {
         matches!(self.resolve(ty), Ty::Int(_) | Ty::UInt(_))
     }
 
+    fn is_gc_class_name(&self, name: &str) -> bool {
+        self.sema.def_by_name.get(name)
+            .map(|&d| matches!(self.sema.defs[d].kind, DefKind::Class))
+            .unwrap_or(false)
+    }
+
+    fn is_alloc_kind_name(&self, name: &str) -> bool {
+        matches!(name, "String" | "StringBuilder" | "List" | "Map" | "Set" | "Box")
+            || self.is_gc_class_name(name)
+    }
+
     fn is_gc_class(&self, ty: &Ty) -> bool {
         match self.resolve(ty) {
             Ty::Named { def, .. } => matches!(self.sema.defs[def].kind, DefKind::Class),
@@ -244,33 +256,43 @@ impl<'a> Checker<'a> {
     // ---------- Send(§7.4) ----------
 
     fn is_send(&self, ty: &Ty) -> bool {
+        let mut seen = HashSet::new();
+        self.is_send_seen(ty, &mut seen)
+    }
+
+    fn is_send_seen(&self, ty: &Ty, seen: &mut HashSet<DefId>) -> bool {
+        // 递归类型(Node? / 链表字段)防爆栈:def 只访问一次
+        match self.resolve(ty) {
+            Ty::Named { def, .. } if !seen.insert(def) => return true,
+            _ => {}
+        }
         match self.resolve(ty) {
             Ty::Err | Ty::Void | Ty::Never | Ty::Bool | Ty::Str | Ty::String
             | Ty::Int(_) | Ty::UInt(_) | Ty::F32 | Ty::F64 | Ty::Range(_) | Ty::ComptimeVal(_) => true,
             Ty::Simd(_) => true,
             Ty::MutSlice(_) => false,
-            Ty::RoSlice(e) => self.is_send(&e),
+            Ty::RoSlice(e) => self.is_send_seen(&e, seen),
             Ty::Ref(e) => {
                 // &Trait 恒非 Send(v0.4);&T 共享只读视图按 T
                 let e2 = self.resolve(e.as_ref());
                 match &e2 {
                     Ty::Named { def, .. } if self.sema.defs[*def].kind == DefKind::Trait =>
                         self.sema.defs[*def].name == "AnyError",
-                    _ => self.is_send(&e2),
+                    _ => self.is_send_seen(&e2, seen),
                 }
             }
-            Ty::Array(e) | Ty::Optional(e) => self.is_send(&e),
-            Ty::Tuple(items) => items.iter().all(|t| self.is_send(t)),
+            Ty::Array(e) | Ty::Optional(e) => self.is_send_seen(&e, seen),
+            Ty::Tuple(items) => items.iter().all(|t| self.is_send_seen(t, seen)),
             Ty::Named { def, args } => {
                 let d = &self.sema.defs[def];
                 match d.name.as_str() {
                     "Mutex" | "Atomic" | "Global" => true,
                     "Option" | "Result" | "Box" | "List" | "Sender" | "Receiver" | "Task" =>
-                        args.iter().all(|a| self.is_send(a)),
+                        args.iter().all(|a| self.is_send_seen(a, seen)),
                     _ => match d.kind {
-                        DefKind::Class => d.fields.iter().all(|(_, t, is_var)| !is_var && self.is_send(t)),
-                        DefKind::Struct => d.fields.iter().all(|(_, t, _)| self.is_send(t)),
-                        DefKind::Enum => d.variants.iter().all(|(_, ps)| ps.iter().all(|t| self.is_send(t))),
+                        DefKind::Class => d.fields.iter().all(|(_, t, is_var)| !is_var && self.is_send_seen(t, seen)),
+                        DefKind::Struct => d.fields.iter().all(|(_, t, _)| self.is_send_seen(t, seen)),
+                        DefKind::Enum => d.variants.iter().all(|(_, ps)| ps.iter().all(|t| self.is_send_seen(t, seen))),
                         DefKind::Trait => false, // &Trait 已在上层处理;裸 trait 名按非 Send
                         DefKind::Prelude => true,
                     },
@@ -320,7 +342,10 @@ impl<'a> Checker<'a> {
         use ast::Expr::*;
         match e {
             Str { parts } => parts.iter().any(|p| matches!(p, ast::StrPart::Interp(_))),
-            StructLit { .. } => true,
+            StructLit { path, .. } => {
+                // 仅类(引用类型)构造是 GC 分配;值 struct 是栈/内联(§6.1)
+                path.last().map(|n| self.is_gc_class_name(n)).unwrap_or(false)
+            }
             Unary { expr, .. } | Try(expr) => self.scan_expr_gc(expr, seen),
             Binary { lhs, rhs, .. } | Range { from: lhs, to: rhs, .. } =>
                 self.scan_expr_gc(lhs, seen) || self.scan_expr_gc(rhs, seen),
@@ -385,8 +410,15 @@ impl<'a> Checker<'a> {
         match e {
             Call { callee, args } => {
                 if args.iter().any(|a| self.scan_expr_any(a, seen)) { return true; }
-                if let Expr::Member { target: ast::MemberTarget::Name(m), .. } = &**callee {
-                    if matches!(m.as_str(), "push" | "pop" | "insert" | "remove" | "into_gc") { return true; }
+                if let Expr::Member { obj, target: ast::MemberTarget::Name(m), .. } = &**callee {
+                    // 拒绝表按接收者判定:ArenaList 是 arena 后备,不算分配(§6.6)
+                    if matches!(m.as_str(), "push" | "pop" | "insert" | "remove") {
+                        // 接收者是 arena.xxx 成员链(ArenaList)→ 不算分配
+                        let recv_is_arena = matches!(obj.as_ref(),
+                            Expr::Member { obj: recv_obj, .. }
+                                if matches!(**recv_obj, Expr::Ident(ref n) if n == "arena"));
+                        if !recv_is_arena { return true; }
+                    }
                 }
                 if let Ident(name) = &**callee {
                     if let Some(Symbol::Fn(id)) = self.lookup_fn(name) {
@@ -935,6 +967,18 @@ impl<'a> Checker<'a> {
     // ---------- 表达式 ----------
 
     fn expr(&mut self, e: &ast::Expr, hint: Option<&Ty>) -> Ty {
+        self.depth += 1;
+        if self.depth > 256 {
+            self.err("E1001", "表达式嵌套过深(语义检查)".into(), Span::new(1, 1, 0, 0));
+            self.depth -= 1;
+            return Ty::Err;
+        }
+        let t = self.expr_inner(e, hint);
+        self.depth -= 1;
+        t
+    }
+
+    fn expr_inner(&mut self, e: &ast::Expr, hint: Option<&Ty>) -> Ty {
         match e {
             Expr::Int { suffix, .. } => {
                 if let Some(Ty::Int(w)) = hint.map(|h| self.resolve(h)) { return Ty::Int(w); }
@@ -1029,6 +1073,22 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Try(e) => {
+                // §5.3 前置:所在函数必须返回 Result/Option
+                let ret_ok = match self.resolve(&self.cur_ret.clone()) {
+                    Ty::Named { def, .. } => {
+                        matches!(self.sema.defs[def].name.as_str(), "Result" | "Option")
+                    }
+                    _ => false,
+                };
+                if !ret_ok {
+                    self.err("E2010", "`?` 只能用于返回 Result/Option 的函数(§5.3)".into(), Span::new(1, 1, 0, 0));
+                    let t = self.expr(e, None);
+                    return match self.resolve(&t) {
+                        Ty::Optional(inner) => *inner,
+                        Ty::Named { ref args, .. } => args.first().cloned().unwrap_or(Ty::Err),
+                        _ => Ty::Err,
+                    };
+                }
                 let t = self.expr(e, None);
                 match self.resolve(&t) {
                     Ty::Named { def, ref args } => {

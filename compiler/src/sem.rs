@@ -341,9 +341,16 @@ pub fn build_package(
 
     // 第一遍:本模块声明 → 符号表 + fns/impls + 孤儿规则
     let mut mod_syms: Vec<HashMap<String, Symbol>> = vec![HashMap::new(); parsed.len()];
+    // 预建空类型壳(前向引用可解析),待填列表
+    let mut pending_fills: Vec<DefFill> = Vec::new();
     for pf in &parsed {
         let mut lower = Lower { sema: &mut sema, params: HashMap::new() };
-        collect_own_decls(pf, &mut lower, &mut mod_syms[pf.file_idx], &mut per_module[pf.file_idx].1);
+        pre_register_type_shells(pf, &mut lower, &mut mod_syms[pf.file_idx]);
+        collect_own_decls(pf, &mut lower, &mut mod_syms[pf.file_idx], &mut pending_fills, &mut per_module[pf.file_idx].1);
+    }
+    // 第二遍:填充字段/变体(此时全部类型名已注册,前向引用可解析)
+    for fill in pending_fills {
+        fill_def_fields(&mut sema, fill);
     }
 
     // 第二遍:导入解析(跨模块可见性 E2020)
@@ -383,6 +390,32 @@ fn dfs_cycles(node: &str, edges: &HashMap<String, Vec<String>>, state: &mut Hash
     state.insert(node.to_string(), 1);
 }
 
+fn fill_def_fields(sema: &mut Sema, fill: DefFill) {
+    let d = &mut sema.defs[fill.def];
+    d.fields = fill.fields;
+    d.variants = fill.variants;
+}
+
+/// 预建类型壳:全部类型名先注册(前向引用可解析),字段/变体延后填充
+fn pre_register_type_shells(pf: &ParsedFile, lower: &mut Lower, syms: &mut HashMap<String, Symbol>) {
+    for d in &pf.ast.decls {
+        let (name, kind, derives, type_params): (String, DefKind, Vec<String>, &Vec<ast::TypeParam>) = match d {
+            ast::Decl::Struct(s) => (s.name.clone(), DefKind::Struct, s.derives.clone(), &s.type_params),
+            ast::Decl::Class(c) => (c.name.clone(), DefKind::Class, vec![], &c.type_params),
+            ast::Decl::Enum(e) => (e.name.clone(), DefKind::Enum, e.derives.clone(), &e.type_params),
+            _ => continue,
+        };
+        let (param_vars, pvmap) = take_param_vars(lower, type_params);
+        drop(pvmap);
+        let id = lower.sema.def_id(TypeDef { name: name.clone(), kind, cap: false,
+            params: param_vars, fields: vec![], variants: vec![], props: vec![], methods: vec![] });
+        for der in &derives {
+            lower.sema.impls.push(ImplEntry { module: "@derive".into(), trait_name: der.clone(), for_type: name.clone() });
+        }
+        syms.insert(name, Symbol::Type(id));
+    }
+}
+
 fn collect_use_targets(file: &ast::File, out: &mut Vec<String>) {
     for d in &file.decls {
         if let ast::Decl::Use(u) = d {
@@ -403,20 +436,30 @@ fn collect_imports(file: &ast::File) -> Vec<Vec<String>> {
     out
 }
 
+struct DefFill {
+    def: DefId,
+    fields: Vec<(String, Ty, bool)>,
+    variants: Vec<(String, Vec<Ty>)>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn collect_own_decls(
     pf: &ParsedFile,
     lower: &mut Lower,
     syms: &mut HashMap<String, Symbol>,
+    fills: &mut Vec<DefFill>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for d in &pf.ast.decls {
         match d {
             ast::Decl::Struct(s) => {
                 let (param_vars, pvmap) = take_param_vars(lower, &s.type_params);
+                let id = lower.sema.def_id(TypeDef { name: s.name.clone(), kind: DefKind::Struct, cap: false,
+                    params: param_vars, fields: vec![], variants: vec![], props: vec![], methods: vec![] });
+                for d in &s.derives { lower.sema.impls.push(ImplEntry { module: "@derive".into(), trait_name: d.clone(), for_type: s.name.clone() }); }
                 let fields = s.fields.iter().map(|fl| (fl.name.clone(), lower.lower(&fl.ty), fl.is_var)).collect();
+                fills.push(DefFill { def: id, fields, variants: vec![] });
                 drop(pvmap);
-                let id = def_id_user_params(lower.sema, &s.name, DefKind::Struct, &s.derives, param_vars, fields, vec![]);
                 syms.insert(s.name.clone(), Symbol::Type(id));
             }
             ast::Decl::Class(c) => {
@@ -442,7 +485,9 @@ fn collect_own_decls(
                     }
                 }
                 drop(pvmap);
-                let id = def_id_user_params(lower.sema, &e.name, DefKind::Enum, &e.derives, param_vars, vec![], variants);
+                let id = lower.sema.def_id(TypeDef { name: e.name.clone(), kind: DefKind::Enum, cap: false,
+                    params: param_vars, fields: vec![], variants, props: vec![], methods: vec![] });
+                for d in &e.derives { lower.sema.impls.push(ImplEntry { module: "@derive".into(), trait_name: d.clone(), for_type: e.name.clone() }); }
                 syms.insert(e.name.clone(), Symbol::Type(id));
                 for (i, v) in e.variants.iter().enumerate() {
                     syms.insert(v.name.clone(), Symbol::Variant { def: id, idx: i });
