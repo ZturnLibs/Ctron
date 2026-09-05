@@ -6,3 +6,17 @@ fn s(a: I32, b: I32) -> I32 {
     let y = a + b * 2
     return y - 6 / 3 % 2
 }
+fn l(n: I32) -> I32 {
+    var s = 0
+    while s < n {
+        s = s + 1
+    }
+    for i in 0 .. 5 {
+        s = s + i
+    }
+    return s
+}
+fn ic(n: I32) -> I32 {
+    let r = if n > 0 { 1 } else { 0 }
+    return r
+}

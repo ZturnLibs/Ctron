@@ -284,6 +284,9 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         nb.push(num_sfx(t))
         return nb
     }
+    if t == "if" {
+        return p_if(toks, cur)
+    }
     if t == "(" {
         adv(cur)
         var e = p_and(toks, cur)
@@ -308,6 +311,29 @@ fn p_stmt_expr(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return p_and(toks, cur)
 }
 
+fn p_if(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var ni = mk("If")
+    ni.push(p_and(toks, cur))
+    adv(cur)
+    ni.push(p_block(toks, cur))
+    var els = mk("None")
+    if tok(toks, cur) == "else" {
+        adv(cur)
+        if tok(toks, cur) == "if" {
+            els = p_if(toks, cur)
+        } else {
+            adv(cur)
+            var be = mk("BlockExpr")
+            be.push(p_block(toks, cur))
+            els = be
+        }
+    }
+    ni.push(els)
+    return ni
+}
+
+
 fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var nb = mk("Block")
     var hasTail = false
@@ -324,6 +350,28 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             var re = mk("Return")
             re.push(p_stmt_expr(toks, cur))
             nb.push(re)
+        } else if t == "while" {
+            adv(cur)
+            var wc = p_and(toks, cur)
+            adv(cur)
+            var wb = p_block(toks, cur)
+            var wh = mk("While")
+            wh.push(wc)
+            wh.push(wb)
+            nb.push(wh)
+        } else if t == "for" {
+            adv(cur)
+            var pn = tok(toks, cur)
+            adv(cur)
+            adv(cur)
+            var it = p_and(toks, cur)
+            adv(cur)
+            var fb = p_block(toks, cur)
+            var fo = mk("For")
+            fo.push(pn)
+            fo.push(it)
+            fo.push(fb)
+            nb.push(fo)
         } else if or2(t == "let", t == "var") {
             var isv = "false"
             if t == "var" { isv = "true" }
@@ -485,6 +533,14 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "Unary \{ op: " + n[1] + ", expr: " + pnode(n[2]) + "}"
     } else if t == "Range" {
         out = out + "Range \{ inclusive: " + n[1] + ", from: " + pnode(n[2]) + ", to: " + pnode(n[3]) + "}"
+    } else if t == "If" {
+        out = out + "If \{ cond: " + pnode(n[1]) + ", then: " + pnode(n[2]) + ", els: " + pnode(n[3]) + "}"
+    } else if t == "BlockExpr" {
+        out = out + "BlockExpr(" + pnode(n[1]) + ")"
+    } else if t == "While" {
+        out = out + "While \{ cond: " + pnode(n[1]) + ", body: " + pnode(n[2]) + "}"
+    } else if t == "For" {
+        out = out + "For \{ pattern: Ident(\"" + n[1] + "\"), iter: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
     } else if t == "Int" {
         out = out + "Int \{ text: \"" + n[1] + "\", suffix: \"" + n[2] + "\"}"
     } else if t == "Float" {
