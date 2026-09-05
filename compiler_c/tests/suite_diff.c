@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
         {"lex_corpus.ct", "../tests/05_own.ct", 1},
         {"lex_float.ct", "input_floats.ct", 1},
         {"lex_pay.ct", "input_pay.ct", 2},
+        {"lex_str.ct", "input_str.ct", 2},
     };
     size_t fails = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
@@ -60,7 +61,6 @@ int main(int argc, char** argv) {
         size_t ilen;
         char* input = read_file_str(ip);
         ctron_lex_result lr = ctron_lex(input, ilen = strlen(input));
-        free(input);
         int ok = 0;
         if (!cases[i].seq) {
             char buf[64];
@@ -73,12 +73,23 @@ int main(int argc, char** argv) {
             for (size_t k = 0; k < lr.ntoks; k++) {
                 const char* nm = ctron_tok_name(lr.toks[k].kind);
                 const char* txt = lr.toks[k].text ? lr.toks[k].text : "";
+                int is_str = lr.toks[k].kind == TOK_STR;
                 int with = cases[i].seq == 2
-                    && (lr.toks[k].kind == TOK_IDENT || lr.toks[k].kind == TOK_INT
+                    && (is_str || lr.toks[k].kind == TOK_IDENT || lr.toks[k].kind == TOK_INT
                         || lr.toks[k].kind == TOK_FLOAT);
-                char line[128];
-                if (with) snprintf(line, sizeof line, "%s:%s", nm, txt);
-                else snprintf(line, sizeof line, "%s", nm);
+                char line[512];
+                if (with && is_str) {
+                    size_t a = lr.toks[k].span.start, bb = lr.toks[k].span.end;
+                    size_t wlen = bb > a && bb <= ilen ? bb - a : 0;
+                    char* raw = (char*)malloc(wlen + 1);
+                    memcpy(raw, input + a, wlen);
+                    raw[wlen] = 0;
+                    snprintf(line, sizeof line, "%s:%s", nm, raw);
+                    free(raw);
+                } else if (with)
+                    snprintf(line, sizeof line, "%s:%s", nm, txt);
+                else
+                    snprintf(line, sizeof line, "%s", nm);
                 size_t need = strlen(want) + strlen(line) + 2;
                 if (need > cap) { cap = need * 2; want = (char*)realloc(want, cap); }
                 strcat(want, line);
@@ -91,6 +102,7 @@ int main(int argc, char** argv) {
             }
             free(want);
         }
+        free(input);
         ctron_lex_result_free(&lr);
         ctron_rt_run_free(&rr);
         if (!ok) fails++;
