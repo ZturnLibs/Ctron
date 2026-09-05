@@ -326,7 +326,73 @@ impl Trans {
         Err("trans v1 拒绝域:字段类型形态".into())
     }
 
-    /// 模式编译:(变体号, 载荷绑定语句);-1 = 通配臂
+    /// 模式编译 → (条件头如 `if (..) {`, 绑定语句);无条件头 = 通配/解构(裸 `{`)
+    fn pat_arm(&mut self, pat: &ast::Pattern, mv: &str, scrut: VTy) -> Result<(String, Vec<String>), String> {
+        match pat {
+            ast::Pattern::Wildcard => Ok(("1".to_string(), vec![])),
+            ast::Pattern::Agg { path, sub } => {
+                let vname = path.last().cloned().unwrap_or_default();
+                // struct 解构模式:绑定字段值
+                if let VTy::Struct(tid) = scrut {
+                    let ast::AggSub::Struct(fs) = sub else {
+                        return Err("trans:struct 模式需字段子模式".into());
+                    };
+                    let mut binds = Vec::new();
+                    for f in fs {
+                        let fty = self.types[tid as usize].fields.iter()
+                            .find(|(n, _)| *n == f.name).map(|(_, t)| *t)
+                            .ok_or_else(|| format!("trans:无字段 `{}`", f.name))?;
+                        let fname = f.pattern.as_ref().is_none();
+                        let pname = match &f.pattern {
+                            Some(ast::Pattern::Ident(n)) => n.clone(),
+                            None => f.name.clone(),
+                            _ => return Err("trans v1 拒绝域:嵌套字段模式".into()),
+                        };
+                        let cname = self.bind(&pname, fty);
+                        binds.push(format!("{} {} = ({}).{};", self.c_ty(fty), cname, mv, f.name));
+                        let _ = fname;
+                    }
+                    return Ok(("1".to_string(), binds));
+                }
+                // 和类型变体模式
+                let Some((_eid, vid)) = self.find_variant(&vname) else {
+                    return Err(format!("trans:未知变体 `{}`", vname));
+                };
+                let pay = match scrut { VTy::Sum(_, p) => p, _ => Pay::I };
+                let mut binds = Vec::new();
+                if let ast::AggSub::Tuple(ps) = sub {
+                    let slot = if pay == Pay::F { "f" } else { "i" };
+                    let ctype = if pay == Pay::F { "double" } else { "ct_i" };
+                    let st = if pay == Pay::F { VTy::F64 } else { VTy::Int(None) };
+                    for (i, sp) in ps.iter().enumerate() {
+                        match sp {
+                            ast::Pattern::Ident(n) => {
+                                let cname = self.bind(n, st);
+                                binds.push(format!("{} {} = ({}).p[{}].{};", ctype, cname, mv, i, slot));
+                            }
+                            ast::Pattern::Wildcard => {}
+                            _ => return Err("trans v1 拒绝域:载荷子模式".into()),
+                        }
+                    }
+                }
+                Ok((format!("({}).variant == {}", mv, vid), binds))
+            }
+            ast::Pattern::Lit(l) => {
+                // 整数/布尔字面量模式(scrutinee 为 Int/Bool)
+                let lit = match l {
+                    crate::ast::PatLit::Int(t) => {
+                        let cleaned = t.replace('_', "");
+                        format!("(ct_i){}", cleaned)
+                    }
+                    crate::ast::PatLit::Bool(b) => format!("{}", *b as i32),
+                    _ => return Err("trans v1 拒绝域:该字面量模式".into()),
+                };
+                Ok((format!("(({}) == ({}))", mv, lit), vec![]))
+            }
+            _ => Err("trans v1 拒绝域:该模式形态".into()),
+        }
+    }
+
     /// 变体名 → (enum id, variant index)
     fn find_variant(&self, name: &str) -> Option<(u32, usize)> {
         for (eid, e) in self.enums.iter().enumerate() {
@@ -335,51 +401,6 @@ impl Trans {
             }
         }
         None
-    }
-
-    fn pat_arm(&mut self, pat: &ast::Pattern, mv: &str, pay: Pay) -> Result<(i32, Vec<String>), String> {
-        let ast::Pattern::Agg { path, sub } = pat else {
-            return Err("trans v1 拒绝域:match 模式(仅变体/通配)".into());
-        };
-        let vname = path.last().cloned().unwrap_or_default();
-        let Some(eid) = self.enum_by_name.values().cloned().reduce(|a, _| a) else {
-            return Err("trans:无和类型".into());
-        };
-        let _ = eid;
-        // 在全部枚举里找变体定义
-        let mut found: Option<(i32, usize)> = None;
-        for e in &self.enums {
-            if let Some((vi, (_vn, arity))) = e.variants.iter().enumerate()
-                .find(|(_, (vn, _))| *vn == vname)
-            {
-                found = Some((vi as i32, *arity));
-            }
-        }
-        let Some((vid, arity)) = found else {
-            return Err(format!("trans:未知变体 `{}`", vname));
-        };
-        let mut binds = Vec::new();
-        match sub {
-            ast::AggSub::Unit => {}
-            ast::AggSub::Tuple(ps) => {
-                for (i, sp) in ps.iter().enumerate() {
-                    match sp {
-                        ast::Pattern::Ident(n) => {
-                            let slot_ty = if pay == Pay::F { VTy::F64 } else { VTy::Int(None) };
-                            let slot = if pay == Pay::F { "f" } else { "i" };
-                            let ctype = if pay == Pay::F { "double" } else { "ct_i" };
-                            let cname = self.bind(n, slot_ty);
-                            binds.push(format!("{} {} = {}.p[{}].{};", ctype, cname, mv, i, slot));
-                        }
-                        ast::Pattern::Wildcard => {}
-                        _ => return Err("trans v1 拒绝域:载荷子模式".into()),
-                    }
-                }
-            }
-            _ => return Err("trans v1 拒绝域:struct 载荷模式".into()),
-        }
-        let _ = arity;
-        Ok((vid, binds))
     }
 
     /// 字段访问基串(含分隔符):struct 值用 `.`,class/Boxed 指针用 `->`
@@ -892,33 +913,60 @@ impl Trans {
                 }
             }
             ast::Expr::Match { expr, arms } => {
-                // 语句形态 match:variant 分派 + 载荷绑定;无匹配臂 panic(对齐 interp)
+                // match:和类型按 variant 分派;整数按字面量比较;struct 解构绑定。
+                // 臂值经临时变量语句提升(与 if 同法);全 Void 臂 = 纯语句形态。
                 let (sc, sty) = self.expr(expr)?;
-                let VTy::Sum(_, pay) = sty else { return Err("trans:match 需和类型".into()); };
+                let _ = sty;
                 let mv = self.uniq_name("m");
                 let dv = self.uniq_name("done");
-                self.w(1, &format!("{{ ct_sum {} = ({}); int {} = 0;", mv, sc, dv));
+                let mut merged: Option<VTy> = None;
+                let mut arm_blocks: Vec<String> = Vec::new();
+                let mut arm_heads: Vec<String> = Vec::new();
+                let mut arm_vals: Vec<Option<(String, VTy)>> = Vec::new();
                 for arm in arms {
-                    let (vid, binds) = self.pat_arm(&arm.pattern, &mv, pay)?;
+                    self.sink.push(String::new());
                     self.scope_push();
-                    let cond = if vid == -1 { String::new() } else { format!("if ({}.variant == {}) {{", mv, vid) };
-                    if vid != -1 {
-                        self.w(2, &cond);
-                        for b in binds {
-                            self.w(3, &b);
-                        }
-                    } else {
-                        // 通配臂放最后,直接开块
-                        self.w(2, "{");
-                    }
+                    let (head, binds) = self.pat_arm(&arm.pattern, &mv, sty)?;
+                    for b in binds { self.w(2, &b); }
                     let (ac, aty) = self.expr(&arm.expr)?;
-                    let _ = aty;
-                    self.w(3, &format!("(void)({});", ac));
-                    self.w(3, &format!("{} = 1;", dv));
-                    self.w(2, "}");
                     self.scope_pop();
+                    let code = self.sink.pop().unwrap_or_default();
+                    arm_heads.push(head);
+                    arm_blocks.push(code);
+                    arm_vals.push(Some((ac, aty)));
+                    merged = Some(match merged {
+                        None => aty,
+                        Some(prev) => merge_ty(prev, aty),
+                    });
                 }
-                self.w(2, &format!("if (!{}) ct_panic(\"match 无匹配臂\");", dv));
+                let has_value = merged.map(|t| !matches!(t, VTy::Void | VTy::Unknown)).unwrap_or(false);
+                self.w(1, &format!("{} {} = ({});", self.c_ty(sty), mv, sc));
+                self.w(1, &format!("ct_i {} = 0;", dv));
+                if has_value {
+                    let t = merged.unwrap();
+                    let vv = self.uniq_name("mv");
+                    self.w(1, &format!("{} {};", self.c_ty(t), vv));
+                    for (i, _) in arm_heads.iter().enumerate() {
+                        let kw = if i == 0 { "if" } else { "} else if" };
+                        self.w(1, &format!("{} ({}) {{", kw, arm_heads[i]));
+                        self.emit_lines(&arm_blocks[i]);
+                        self.w(2, &format!("{} = {};", vv, arm_vals[i].as_ref().unwrap().0));
+                        self.w(2, &format!("{} = 1;", dv));
+                    }
+                    self.w(1, "} else {");
+                    self.w(2, "ct_panic(\"match 无匹配臂\");");
+                    self.w(1, "}");
+                    return Ok((vv, merged.unwrap()));
+                }
+                for (i, _) in arm_heads.iter().enumerate() {
+                    let kw = if i == 0 { "if" } else { "} else if" };
+                    self.w(1, &format!("{} ({}) {{", kw, arm_heads[i]));
+                    self.emit_lines(&arm_blocks[i]);
+                    let _ = arm_vals[i];
+                    self.w(2, &format!("{} = 1;", dv));
+                }
+                self.w(1, "} else {");
+                self.w(2, "ct_panic(\"match 无匹配臂\");");
                 self.w(1, "}");
                 Ok(("0".to_string(), VTy::Void))
             }
