@@ -1,0 +1,550 @@
+// 自举:Ctron 解析器种子(C6a)—— fn 声明/类型化形参/Return/表达式递归下降,输出 C-AST v1 文本
+// 记号编码:词=原文("fn"/"return"/"I32");数值=文本+"~"+后缀(空后缀亦留 ~);
+// 标点=原始串("(","->","..=");流末哨兵 "#EOF"。换行/注释/空白直接丢弃(语法由分隔符界定)。
+fn or2(a: Bool, b: Bool) -> Bool { return !(!a && !b) }
+fn or3(a: Bool, b: Bool, c: Bool) -> Bool { return or2(or2(a, b), c) }
+fn is_digit(b: I32) -> Bool { return b >= 48 && b <= 57 }
+fn is_alpha(b: I32) -> Bool { return or2(b >= 65 && b <= 90, b >= 97 && b <= 122) }
+fn is_al(b: I32) -> Bool { return or2(is_alpha(b), b == 95) }
+fn is_ac(b: I32) -> Bool { return or2(is_al(b), is_digit(b)) }
+fn is_hex(b: I32) -> Bool { return or2(is_digit(b), or2(b >= 65 && b <= 70, b >= 97 && b <= 102)) }
+fn is_oct(b: I32) -> Bool { return b >= 48 && b <= 55 }
+fn is_bin(b: I32) -> Bool { return b >= 48 && b <= 49 }
+
+fn suffix_len(src: Str, n: I32, i: I32) -> I32 {
+    if i + 2 <= n {
+        var a = byte_at(src, i)
+        var b = byte_at(src, i + 1)
+        var len: I32 = 0
+        if a == 105 && b == 56 {
+            len = 2
+        }
+        if a == 105 && b == 49 && i + 2 < n && byte_at(src, i + 2) == 54 {
+            len = 3
+        }
+        if a == 105 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 {
+            len = 3
+        }
+        if a == 105 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 {
+            len = 3
+        }
+        if a == 105 && b == 115 && i + 5 <= n && byte_at(src, i + 2) == 105 && byte_at(src, i + 3) == 122 && byte_at(src, i + 4) == 101 {
+            len = 5
+        }
+        if a == 117 && b == 56 {
+            len = 2
+        }
+        if a == 117 && b == 49 && i + 2 < n && byte_at(src, i + 2) == 54 {
+            len = 3
+        }
+        if a == 117 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 {
+            len = 3
+        }
+        if a == 117 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 {
+            len = 3
+        }
+        if a == 117 && b == 115 && i + 5 <= n && byte_at(src, i + 2) == 105 && byte_at(src, i + 3) == 122 && byte_at(src, i + 4) == 101 {
+            len = 5
+        }
+        if a == 102 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 {
+            len = 3
+        }
+        if a == 102 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 {
+            len = 3
+        }
+        if len > 0 {
+            if i + len < n && is_ac(byte_at(src, i + len)) {
+                return 0
+            }
+            return len
+        }
+    }
+    return 0
+}
+
+// 扫描:跳过空白/换行/注释;词与数值原样入列;标点最长匹配原始串
+fn scan(src: Str, toks: List[Str]) {
+    var n = src.len
+    var i: I32 = 0
+    while i < n {
+        var b = byte_at(src, i)
+        if b == 10 {
+            i += 1
+        } else if or3(b == 32, b == 9, b == 13) {
+            i += 1
+        } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 47 {
+            while i < n && byte_at(src, i) != 10 {
+                i += 1
+            }
+        } else if is_al(b) {
+            var start = i
+            while i < n && is_ac(byte_at(src, i)) {
+                i += 1
+            }
+            toks.push(byte_slice(src, start, i))
+        } else if is_digit(b) {
+            var tstart = i
+            var radix: I32 = 0
+            if b == 48 && i + 1 < n {
+                var p = byte_at(src, i + 1)
+                if p == 120 {
+                    radix = 16
+                }
+                if p == 111 {
+                    radix = 8
+                }
+                if p == 98 {
+                    radix = 2
+                }
+            }
+            var fnum = false
+            var tend = i
+            if radix > 0 {
+                i += 2
+                if radix == 16 {
+                    while i < n && or2(is_hex(byte_at(src, i)), byte_at(src, i) == 95) {
+                        i += 1
+                    }
+                }
+                if radix == 8 {
+                    while i < n && or2(is_oct(byte_at(src, i)), byte_at(src, i) == 95) {
+                        i += 1
+                    }
+                }
+                if radix == 2 {
+                    while i < n && or2(is_bin(byte_at(src, i)), byte_at(src, i) == 95) {
+                        i += 1
+                    }
+                }
+                tend = i
+            } else {
+                while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) {
+                    i += 1
+                }
+                if i + 1 < n && byte_at(src, i) == 46 && is_digit(byte_at(src, i + 1)) {
+                    fnum = true
+                    i += 1
+                    while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) {
+                        i += 1
+                    }
+                }
+                if i < n && or2(byte_at(src, i) == 101, byte_at(src, i) == 69) {
+                    var esign = false
+                    if i + 1 < n && or2(byte_at(src, i + 1) == 43, byte_at(src, i + 1) == 45) {
+                        esign = true
+                    }
+                    var eok = false
+                    if esign && i + 2 < n && is_digit(byte_at(src, i + 2)) {
+                        eok = true
+                    }
+                    if !esign && i + 1 < n && is_digit(byte_at(src, i + 1)) {
+                        eok = true
+                    }
+                    if eok {
+                        fnum = true
+                        i += 1
+                        if esign {
+                            i += 1
+                        }
+                        while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) {
+                            i += 1
+                        }
+                    }
+                }
+                tend = i
+            }
+            var tk = byte_slice(src, tstart, tend) + "~"
+            var sl = suffix_len(src, n, i)
+            if sl > 0 {
+                tk = tk + byte_slice(src, i, i + sl)
+                i += sl
+            }
+            toks.push(tk)
+        } else {
+            if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
+                toks.push("..=")
+                i += 3
+            } else if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {
+                toks.push("..")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 62 {
+                toks.push("->")
+                i += 2
+            } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("==")
+                i += 2
+            } else if b == 33 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("!=")
+                i += 2
+            } else if b == 60 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("<=")
+                i += 2
+            } else if b == 62 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push(">=")
+                i += 2
+            } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
+                toks.push("&&")
+                i += 2
+            } else {
+                toks.push(byte_slice(src, i, i + 1))
+                i += 1
+            }
+        }
+    }
+    toks.push("#EOF")
+}
+
+// ---- 记号取值:tok = 当前记号;adv = 前进一格(Atomic 共享游标) ----
+fn tok(toks: List[Str], cur: Atomic[I32]) -> Str {
+    return toks[cur.load()]
+}
+fn adv(cur: Atomic[I32]) {
+    var v = cur.load()
+    cur.store(v + 1)
+}
+
+// 数值记号切分:文本="~" 之前;后缀="~" 之后
+fn sep_of(t: Str) -> I32 {
+    var j: I32 = 0
+    while j < t.len {
+        if byte_at(t, j) == 126 {
+            return j
+        }
+        j += 1
+    }
+    return -1
+}
+fn num_text(t: Str) -> Str {
+    var k = sep_of(t)
+    return byte_slice(t, 0, k)
+}
+fn num_sfx(t: Str) -> Str {
+    var k = sep_of(t)
+    return byte_slice(t, k + 1, t.len)
+}
+// Int/Float 判别:进制前缀恒为 Int;十进制文本含 '.'/e/E → Float(0f32 文本无点 → Int,与 C 同)
+fn num_float(t: Str) -> Bool {
+    if byte_at(t, 0) == 48 && byte_at(t, 1) == 120 {
+        return false
+    }
+    if byte_at(t, 0) == 48 && byte_at(t, 1) == 111 {
+        return false
+    }
+    if byte_at(t, 0) == 48 && byte_at(t, 1) == 98 {
+        return false
+    }
+    var k = sep_of(t)
+    var j: I32 = 0
+    while j < k {
+        var c = byte_at(t, j)
+        if c == 46 {
+            return true
+        }
+        if c == 101 {
+            return true
+        }
+        if c == 69 {
+            return true
+        }
+        j += 1
+    }
+    return false
+}
+
+// ---- 递归下降(优先级阶梯照 C parser:and→compare→range→additive→multiplicative→unary→postfix) ----
+fn parse_expr(toks: List[Str], cur: Atomic[I32]) -> Str {
+    return parse_and(toks, cur)
+}
+
+fn parse_and(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var l = parse_compare(toks, cur)
+    var go = true
+    while go {
+        if tok(toks, cur) == "&&" {
+            adv(cur)
+            var r = parse_compare(toks, cur)
+            l = "Binary \{ op: AndAnd, lhs: " + l + ", rhs: " + r + "}"
+        } else {
+            go = false
+        }
+    }
+    return l
+}
+
+fn parse_compare(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var l = parse_range(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        var op = ""
+        if t == "==" {
+            op = "Eq"
+        }
+        if t == "!=" {
+            op = "Ne"
+        }
+        if t == "<" {
+            op = "Lt"
+        }
+        if t == ">" {
+            op = "Gt"
+        }
+        if t == "<=" {
+            op = "Le"
+        }
+        if t == ">=" {
+            op = "Ge"
+        }
+        if op == "" {
+            go = false
+        } else {
+            adv(cur)
+            var r = parse_range(toks, cur)
+            l = "Binary \{ op: " + op + ", lhs: " + l + ", rhs: " + r + "}"
+        }
+    }
+    return l
+}
+
+fn parse_range(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var f = parse_additive(toks, cur)
+    var t = tok(toks, cur)
+    if or2(t == "..", t == "..=") {
+        adv(cur)
+        var to = parse_additive(toks, cur)
+        var inc = "false"
+        if t == "..=" {
+            inc = "true"
+        }
+        return "Range \{ inclusive: " + inc + ", from: " + f + ", to: " + to + "}"
+    }
+    return f
+}
+
+fn parse_additive(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var l = parse_multiplicative(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        var op = ""
+        if t == "+" {
+            op = "Add"
+        }
+        if t == "-" {
+            op = "Sub"
+        }
+        if op == "" {
+            go = false
+        } else {
+            adv(cur)
+            var r = parse_multiplicative(toks, cur)
+            l = "Binary \{ op: " + op + ", lhs: " + l + ", rhs: " + r + "}"
+        }
+    }
+    return l
+}
+
+fn parse_multiplicative(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var l = parse_unary(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        var op = ""
+        if t == "*" {
+            op = "Mul"
+        }
+        if t == "/" {
+            op = "Div"
+        }
+        if t == "%" {
+            op = "Mod"
+        }
+        if op == "" {
+            go = false
+        } else {
+            adv(cur)
+            var r = parse_unary(toks, cur)
+            l = "Binary \{ op: " + op + ", lhs: " + l + ", rhs: " + r + "}"
+        }
+    }
+    return l
+}
+
+fn parse_unary(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var t = tok(toks, cur)
+    if t == "-" {
+        adv(cur)
+        var e = parse_unary(toks, cur)
+        return "Unary \{ op: Neg, expr: " + e + "}"
+    }
+    if t == "!" {
+        adv(cur)
+        var e = parse_unary(toks, cur)
+        return "Unary \{ op: Not, expr: " + e + "}"
+    }
+    return parse_postfix(toks, cur)
+}
+
+fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var e = parse_primary(toks, cur)
+    var go = true
+    while go {
+        if tok(toks, cur) == "(" {
+            adv(cur)
+            var args = ""
+            var k: I32 = 0
+            var more = true
+            while more {
+                if tok(toks, cur) == ")" {
+                    more = false
+                } else {
+                    var a = parse_expr(toks, cur)
+                    if k > 0 {
+                        args = args + ", "
+                    }
+                    args = args + a
+                    k += 1
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    } else {
+                        more = false
+                    }
+                }
+            }
+            adv(cur)
+            e = "Call \{ callee: " + e + ", args: [" + args + "] }"
+        } else {
+            go = false
+        }
+    }
+    return e
+}
+
+fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var t = tok(toks, cur)
+    var b0 = byte_at(t, 0)
+    if is_digit(b0) {
+        adv(cur)
+        if num_float(t) {
+            return "Float \{ text: \"" + num_text(t) + "\", suffix: \"" + num_sfx(t) + "\"}"
+        }
+        return "Int \{ text: \"" + num_text(t) + "\", suffix: \"" + num_sfx(t) + "\"}"
+    }
+    if t == "(" {
+        adv(cur)
+        var e = parse_expr(toks, cur)
+        adv(cur)
+        return e
+    }
+    adv(cur)
+    return "Ident(\"" + t + "\")"
+}
+
+fn parse_type(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var nm = tok(toks, cur)
+    adv(cur)
+    return "Named \{ path: [\"" + nm + "\"], args: []}"
+}
+
+fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var ss = ""
+    var k: I32 = 0
+    var tail = "None"
+    var go = true
+    while go {
+        if tok(toks, cur) == "}" {
+            go = false
+        } else {
+            if tok(toks, cur) == "return" {
+                adv(cur)
+                var e = parse_expr(toks, cur)
+                if k > 0 {
+                    ss = ss + ", "
+                }
+                ss = ss + "Return(" + e + ")"
+                k += 1
+            } else {
+                tail = parse_expr(toks, cur)
+                go = false
+            }
+        }
+    }
+    adv(cur)
+    return "Block \{ stmts: [" + ss + "], tail: " + tail + "}"
+}
+
+fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ps = ""
+    var k: I32 = 0
+    var more = true
+    while more {
+        if tok(toks, cur) == ")" {
+            more = false
+        } else {
+            var pn = tok(toks, cur)
+            adv(cur)
+            adv(cur)
+            var ty = parse_type(toks, cur)
+            if k > 0 {
+                ps = ps + ", "
+            }
+            ps = ps + "Param \{ is_var: false, name: \"" + pn + "\", ty: " + ty + "}"
+            k += 1
+            if tok(toks, cur) == "," {
+                adv(cur)
+            } else {
+                more = false
+            }
+        }
+    }
+    adv(cur)
+    var ret = "None"
+    if tok(toks, cur) == "->" {
+        adv(cur)
+        ret = parse_type(toks, cur)
+    }
+    adv(cur)
+    var body = parse_block(toks, cur)
+    var out = "Fn \{ attrs: [], vis: Private, is_comptime: false, abi: None, name: \"" + nm + "\", type_params: [], params: [" + ps + "], ret: " + ret
+    out = out + ", body: " + body + "}"
+    return out
+}
+
+fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var out = "File \{ decls: ["
+    var k: I32 = 0
+    while tok(toks, cur) != "#EOF" {
+        var d = parse_fn(toks, cur)
+        if k > 0 {
+            out = out + ",\n  "
+        } else {
+            out = out + "\n  "
+        }
+        out = out + d
+        k += 1
+    }
+    out = out + "\n] }\n"
+    return out
+}
+
+fn main() -> I32 {
+    let src = read_file("selfhost/input_parse_ast.ct")
+    match src {
+        Some(s) => {
+            var toks = List[Str]()
+            scan(s, toks)
+            var cur = Atomic[I32](0)
+            var text = parse_file(toks, cur)
+            print(text)
+            return 0
+        }
+        None => {
+            print("read-failed")
+            return 1
+        }
+    }
+}

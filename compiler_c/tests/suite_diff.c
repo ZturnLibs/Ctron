@@ -61,7 +61,29 @@ static int diff_one(const char* msrc, const char* ip, int seq, const char* label
     }
     ctron_lex_result lr = ctron_lex(input, ilen = strlen(input));
     int ok = 0;
-    if (!seq) {
+    if (seq == 3) {
+        // 解析器差分:C 侧对同一输入 parse + ctron_file_show 作参考
+        ctron_parse_result pf = ctron_parse_src(input, ilen);
+        if (pf.ndiags) {
+            fprintf(stderr, "%s 参考解析诊断 %zu\n", label, pf.ndiags);
+        } else {
+            char* buf = NULL;
+            size_t bufn = 0;
+            FILE* mf = open_memstream(&buf, &bufn);
+            if (!mf) { ok = 0; }
+            else {
+                ctron_file_show(pf.file, mf);
+                fclose(mf);
+                ok = rr.out && buf && strcmp(rr.out, buf) == 0;
+                if (!ok) {
+                    fprintf(stderr, "%s 解析差分失败\n  C: %s\n  Ctron: %s\n", label,
+                            buf ? buf : "(空)", rr.out ? rr.out : "(空)");
+                }
+                free(buf);
+            }
+        }
+        ctron_parse_result_free(&pf);
+    } else if (!seq) {
         char buf[64];
         snprintf(buf, sizeof buf, "%ld", (long)lr.ntoks);
         ok = rr.out && strstr(rr.out, buf) != NULL;
@@ -120,6 +142,7 @@ int main(int argc, char** argv) {
         {"lex_pay.ct", "input_pay.ct", 2},
         {"lex_str.ct", "input_str.ct", 2},
         {"lex_num.ct", "input_num.ct", 2},
+        {"parse_ast.ct", "input_parse_ast.ct", 3},
     };
     size_t fails = 0, nrun = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {

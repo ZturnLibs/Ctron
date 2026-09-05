@@ -32,8 +32,17 @@
    (payload 逐字)通过;随后 suite_diff 改模板换靶:**lex_num 对整个 tests/*.ct 语料逐文件
    payload 差分**(引号原切片/Ident/Int/Float 文本,51 文件全过)——Ctron 词法器与 C 版
    词法器在真实语料上达全字一致,是解析器差分的输入保证。ASan/UBSan 全绿。
-5. **C6(下一阶梯)**:Ctron 解析器,输出 vs **C-AST v1 文本**(`ctron_file_show` 契约)差分;
-   词法层已全语料锁死,解析器可假定 token 流与 C 一致,照 C2 里程碑全语法递归下降逐块移植。
+5. **C6a(本文件交付)**:首个 Ctron **解析器差分**闭环 —— `parse_ast.ct`(纯 Ctron 递归下降):
+   记号流(词=原文/数值=文本~后缀/标点=原始串,换行丢弃)+ Atomic 共享游标(语言钉子:
+   List 索引写透 rt 缺陷 → 改 Atomic[I32] store/load 推进);语法子集 fn/类型化形参/
+   Return 多句/尾表达式/调用实参 + 表达式全优先级阶梯(and→compare→range→additive→
+   multiplicative→unary→postfix,镜像 C parser);输出 **C-AST v1 文本**(File/Fn/Block/
+   Int{text,suffix}/Float/Binary/Call…)。`input_parse_ast.ct`(9 个 fn:进制/后缀/指数/
+   下划线/一元/区间/布尔/嵌套优先级/调用实参)与 C `ctron_file_show` **逐字节一致**;
+   suite_diff 第 9 用例(seq=3 解析差分)通过。钉子再记:字符串字面量内 `{` 需 `\{` 转义
+   (否则按插值扫描)。60 用例全过;ASan/UBSan 全绿。
+6. **C6b(下一阶梯)**:解析子集扩面(Let/If/Match/Str 部件/成员·索引/类型形参/测试声明
+   …→ 全语法递归下降),再对真实语料做 parse-AST 差分;随后语义层、删 C 版,固定点为远期终点。
 
 ## 冻结纪律
 

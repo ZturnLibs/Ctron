@@ -75,6 +75,6 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 |---|---|---|
 | C4-b/c/d | GC 集合/类/match/闭包;own/arena;并发(scope/spawn/Channel/Mutex) | 行为/panic 语料逐域并入 suite_rt 允许表 |
 | C5b/c…g ✅ | Ctron 词法器 v1→v5(selfhost)+ 差分 harness | 首个"Ctron 写模块 ↔ C 版逐字一致"闭环;v5(lex_num)对全部 tests/*.ct 语料 payload 逐字一致(进制/下划线/指数/12 后缀),详见 bootstrap 计划 |
-| C6 | Ctron 解析器(输出 vs C-AST v1 文本)… 流式移植+差分+删 C 版 | 固定点之路 |
+| C6a ✅ | Ctron 解析器种子 parse_ast.ct(递归下降子集) | 输出 vs `ctron_file_show`(C-AST v1)逐字节一致(9 fn 语料);C6b 扩面至全语法 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
