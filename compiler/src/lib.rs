@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod check;
+pub mod interp;
 pub mod sem;
 pub mod lexer;
 pub mod parser;
@@ -21,6 +22,11 @@ pub fn parse_src(src: &str) -> (ast::File, Vec<token::Diagnostic>) {
 }
 
 /// 单文件语义检查
+/// 运行单个文件的全部 test 块;返回 (测试名, 结果)
+pub fn run_test_file(src: &str, profile: sem::Profile) -> Vec<(String, Result<(), String>)> {
+    interp::run_test_file(src, profile)
+}
+
 pub fn check_src(src: &str, profile: sem::Profile) -> Vec<token::Diagnostic> {
     check::check_src(src, profile)
 }

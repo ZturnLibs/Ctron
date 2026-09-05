@@ -1677,3 +1677,17 @@ mod rework_pins {
         let _ = f;
     }
 }
+
+impl Parser {
+    /// 供解释器:解析单个表达式(插值源文本)
+    pub fn parse_expr_public(&mut self) -> crate::ast::Expr {
+        self.parse_expr()
+    }
+}
+
+impl Parser {
+    /// 公开文件解析(interp 用)
+    pub fn parse_file_public(&mut self) -> crate::ast::File {
+        self.parse_file()
+    }
+}

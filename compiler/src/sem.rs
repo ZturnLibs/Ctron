@@ -113,9 +113,16 @@ pub struct Sema {
     pub manifest: Option<Manifest>,
     pub profile: Profile,
     pub var_next: u32,
+    pub runtime_fns: HashMap<String, RuntimeFnSig>,
 }
 
 impl Sema {
+    /// 公开的不可变类型降级(interp 用)
+    pub fn lower_ty_pub(&self, t: &ast::Type) -> Ty {
+        let empty = HashMap::new();
+        self.lower_ty(t, &empty)
+    }
+
     /// 不可变类型降级(检查期;未知类型名 → Ty::Err)
     pub fn lower_ty(&self, t: &ast::Type, params: &HashMap<String, Ty>) -> Ty {
         match t {
@@ -297,6 +304,7 @@ pub fn build_package(
         defs: Vec::new(), def_by_name: HashMap::new(), cap_key_by_def: HashMap::new(),
         fns: Vec::new(), impls: Vec::new(), mods: Vec::new(), mod_by_path: HashMap::new(),
         manifest, profile, var_next: 0,
+        runtime_fns: HashMap::new(),
     };
     register_prelude(&mut sema);
 
@@ -672,4 +680,54 @@ fn resolve_import(
             }
         }
     }
+}
+
+
+/// 公开 prelude 注册(供 interp 使用)
+pub fn register_prelude_pub(sema: &mut Sema) { register_prelude(sema); }
+
+/// 简版声明收集(interp 运行时用:只注册 fn 名/type/const/static 值)
+pub fn collect_decls_simple(sema: &mut Sema, file: &ast::File, _src: &str) {
+    for d in &file.decls {
+        match d {
+            ast::Decl::Struct(s) => {
+                let id = sema.intern_type_name(&s.name);
+                let _ = id;
+            }
+            ast::Decl::Class(c) => { sema.intern_type_name(&c.name); }
+            ast::Decl::Enum(e) => {
+                let def = sema.intern_type_name(&e.name);
+                let variants: Vec<(String, Vec<Ty>)> = Vec::new();
+                let _ = variants;
+                if let Some(td) = sema.defs.get_mut(def) {
+                    for (i, v) in e.variants.iter().enumerate() {
+                        td.variants.push((v.name.clone(), vec![]));
+                        let _ = i;
+                    }
+                }
+            }
+            ast::Decl::Fn(f) => {
+                let param_tys: Vec<Ty> = f.params.iter()
+                    .filter_map(|p| match p {
+                        ast::Param::Param { ty, .. } => Some(sema.lower_ty_pub(ty)),
+                        _ => None,
+                    }).collect();
+                let ret = match &f.ret {
+                    Some(r) => sema.lower_ty_pub(r),
+                    None => Ty::Void,
+                };
+                sema.runtime_fns.entry(f.name.clone()).or_insert_with(|| RuntimeFnSig {
+                    params: param_tys, ret, is_comptime: f.is_comptime,
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeFnSig {
+    pub params: Vec<Ty>,
+    pub ret: Ty,
+    pub is_comptime: bool,
 }
