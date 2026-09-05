@@ -119,9 +119,9 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | P1 ✅ | signatureHelp(同文件) | B | 无 | 已交付(2026-09-05) |
 | P1 ✅ | **`ctronc check --format=json` 诊断+quick fixes 包装** | A | 无(契约冻结) | 已交付:保存时语义诊断 + fixes[] 映射 + 词法确定性修复(`;` 删除/`::`→`.`) |
 | P2 | **格式化(fmt-on-save)** | A | parsetree.ct 打印器 | 3~5 天 |
-| P2 | 真解析器接入(精确诊断区间/folding/selectionRange) | B | selfhosted 模块合并 | 3~5 天 |
-| P2 | inlay hints(调用点形参名) | B | 无 | 1 天 |
-| P2 | semantic tokens | B | 轻命名解析 | 3~4 天 |
+| P2 🟡 | 真解析器接入(精确诊断区间/folding/selectionRange) | B | selfhosted 模块合并 | folding 已交付;解析器接入待做 |
+| P2 ✅ | inlay hints(调用点形参名) | B | 无 | 已交付(2026-09-05;>24KB 跳过) |
+| P2 | semantic tokens | B | 轻命名解析 | 3~4 天(下一轮) |
 | P2 | `ctronc test --filter` CLI → 测试 CodeLens/Test Explorer | A | CLI 新子命令 | 2~4 天 |
 | P3 | 工作区索引 → 跨文件 def/refs/workspace symbol/自动 use | C | index 或多文件 run | 1~2 周 |
 | P3 | 类型感知补全/hover 推断类型/go-to-impl | C | sem 进 LSP(或 C10 转译) | 随编译器 |

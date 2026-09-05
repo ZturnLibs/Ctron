@@ -1357,6 +1357,7 @@ fn sig_help(text: Str, line: I64, col: I64) -> Str {
 
 // ============ 8d. 布局扫描(格式化 + 折叠,单遍) ============
 
+// 单趟扫描(逐行 O(n)):mode 1 = 缩进编辑,mode 2 = 折叠区间
 fn layout_scan(text: Str, mode: I64) -> Str {
     var acc = OccAcc { s: "", first: true, count: 0 }
     var fstk: I64[] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
@@ -1365,90 +1366,91 @@ fn layout_scan(text: Str, mode: I64) -> Str {
     var n = text.len
     var depth: I64 = 0
     var line: I64 = 0
+    var start: I64 = 0
     var i: I64 = 0
-    var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a > n {
-            done = true
-        } else {
-        var k = sp.a
-        var lead = 0 - 1
-        var opens: I64 = 0
-        var closes: I64 = 0
-        var instr = false
-        while k < sp.b {
-            var b = byte_at(text, k)
-            if instr {
-                if b == 92 {
-                    k += 1
-                } else {
-                    if b == 34 { instr = false }
-                }
-            } else {
-                if b == 34 {
-                    instr = true
-                } else {
-                    if b == 47 && k + 1 < sp.b && byte_at(text, k + 1) == 47 {
-                        k = sp.b
+    while i <= n {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            // —— 行内处理 ——
+            var k = sp.a
+            var lead = 0 - 1
+            var opens: I64 = 0
+            var closes: I64 = 0
+            var instr = false
+            while k < sp.b {
+                var b = byte_at(text, k)
+                if instr {
+                    if b == 92 {
+                        k += 1
                     } else {
-                        if b == 123 { opens += 1 }
-                        if b == 125 { closes += 1 }
+                        if b == 34 { instr = false }
+                    }
+                } else {
+                    if b == 34 {
+                        instr = true
+                    } else {
+                        if b == 47 && k + 1 < sp.b && byte_at(text, k + 1) == 47 {
+                            k = sp.b
+                        } else {
+                            if b == 123 { opens += 1 }
+                            if b == 125 { closes += 1 }
+                        }
+                    }
+                }
+                if lead < 0 && !is_ws_b(b) { lead = k - sp.a }
+                k += 1
+            }
+            var isblank = sp.b <= sp.a
+            if lead < 0 { lead = sp.b - sp.a }
+            var startsClose = false
+            if !isblank {
+                var fc = byte_at(text, sp.a + lead)
+                if or3(fc == 125, fc == 41, fc == 93) { startsClose = true }
+                if starts_lit(text, sp.a + lead, "else") { startsClose = true }
+            }
+            if mode == 1 && !isblank {
+                var want = depth
+                if startsClose { want -= 1 }
+                if want < 0 { want = 0 }
+                var wantcols = want * 4
+                if lead != wantcols {
+                    var head = ""
+                    if !acc.first { head = "," }
+                    var r = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", 0))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", lead))))
+                    acc.s = "{acc.s}{head}" + jobj(jkv_raw("range", r) + "," + jkv_str("newText", pad_spaces(wantcols)))
+                    acc.first = false
+                }
+            }
+            depth += opens - closes
+            if depth < 0 { depth = 0 }
+            if mode == 2 && opens > 0 && top < 64 {
+                fstk[top] = line
+                dstk[top] = depth
+                top += 1
+            }
+            if mode == 2 {
+                var popping = true
+                while popping && top > 0 {
+                    var dtop = dstk[top - 1]
+                    if depth < dtop {
+                        top -= 1
+                        var head = ""
+                        if !acc.first { head = "," }
+                        acc.s = "{acc.s}{head}" + jobj(jnum("startLine", fstk[top]) + "," + jnum("endLine", line) + "," + jkv_str("kind", "region"))
+                        acc.first = false
+                    } else {
+                        popping = false
                     }
                 }
             }
-            if lead < 0 && !is_ws_b(b) { lead = k - sp.a }
-            k += 1
-        }
-        var isblank = sp.b <= sp.a
-        if lead < 0 { lead = sp.b - sp.a }
-        var startsClose = false
-        if !isblank {
-            var fc = byte_at(text, sp.a + lead)
-            if or3(fc == 125, fc == 41, fc == 93) { startsClose = true }
-            if starts_lit(text, sp.a + lead, "else") { startsClose = true }
-        }
-        if mode == 1 && !isblank {
-            var want = depth
-            if startsClose { want -= 1 }
-            if want < 0 { want = 0 }
-            var wantcols = want * 4
-            if lead != wantcols {
-                var head = ""
-                if !acc.first { head = "," }
-                var r = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", 0))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", lead))))
-                acc.s = "{acc.s}{head}" + jobj(jkv_raw("range", r) + "," + jkv_str("newText", pad_spaces(wantcols)))
-                acc.first = false
-            }
-        }
-        depth += opens - closes
-        if depth < 0 { depth = 0 }
-        if mode == 2 && opens > 0 && top < 64 {
-            fstk[top] = line
-            dstk[top] = depth
-            top += 1
-        }
-        if mode == 2 {
-        var popping = true
-        while popping && top > 0 {
-            var dtop = dstk[top - 1]
-            if depth < dtop {
-                top -= 1
-                var head = ""
-                if !acc.first { head = "," }
-                acc.s = "{acc.s}{head}" + jobj(jnum("startLine", fstk[top]) + "," + jnum("endLine", line) + "," + jkv_str("kind", "region"))
-                acc.first = false
-            } else {
-                popping = false
-            }
-        }
-        }
-        if sp.b >= n {
-            done = true
-        } else {
             line += 1
         }
-        }
+        i += 1
     }
     return jarr(acc.s)
 }

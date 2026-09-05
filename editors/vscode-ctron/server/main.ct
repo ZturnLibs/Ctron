@@ -762,18 +762,23 @@ fn eff_kw2(text: Str, sp: Pos2, kws: Pos2, out: Pos2) -> Str {
 }
 
 // 文档符号(大纲)
+// 单趟扫描(逐行 O(n))
 fn scan_symbols(text: Str) -> Str {
     var items = ""
     var first = true
     var n = text.len
     var line: I64 = 0
-    var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a >= n {
-            done = true
-        } else {
-            if is_top_line(text, sp) {
+    var start: I64 = 0
+    var i: I64 = 0
+    while i <= n {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            if sp.a < n && is_top_line(text, sp) {
                 var kws = pos2(0, 0)
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
@@ -791,12 +796,9 @@ fn scan_symbols(text: Str) -> Str {
                     }
                 }
             }
-            if sp.b >= n {
-                done = true
-            } else {
-                line += 1
-            }
+            line += 1
         }
+        i += 1
     }
     return jarr(items)
 }
@@ -839,47 +841,55 @@ fn collect_docs(text: Str, decl_line: I64) -> Str {
     return out
 }
 
+// 单趟字节扫描(逐行 O(n),不逐行回扫全文)
 fn find_decl(text: Str, word: Str, hit: DeclHit) {
     var n = text.len
     var line: I64 = 0
+    var start: I64 = 0
+    var i: I64 = 0
     var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a >= n {
-            done = true
-        } else {
-            var kws = pos2(0, 0)
-            if first_word(text, sp, kws) {
-                var kws2 = pos2(0, 0)
-                var kwv = eff_kw2(text, sp, kws, kws2)
-                var isdecl = pipe_has(DECL_KW, kwv)
-                if !isdecl && kwv == "prop" { isdecl = true }
-                if isdecl {
-                    var name = decl_name(text, sp, kwv, kws2)
-                    if name == word {
-                        hit.found = true
-                        hit.line = line
-                        hit.col = kws.a - sp.a
-                        hit.sig = byte_slice(text, sp.a, sp.b)
-                        hit.docs = collect_docs(text, line)
-                        var nw = pos2(0, 0)
-                        if word_span_at(text, sp, kws2.b, nw) && byte_slice(text, nw.a, nw.b) == word {
-                            hit.ncol = nw.a - sp.a
-                            hit.nlen = nw.b - nw.a
+    while i <= n && !done {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            line += 1
+            if sp.a >= n {
+                done = true
+            } else {
+                var kws = pos2(0, 0)
+                if first_word(text, sp, kws) {
+                    var kws2 = pos2(0, 0)
+                    var kwv = eff_kw2(text, sp, kws, kws2)
+                    var isdecl = pipe_has(DECL_KW, kwv)
+                    if !isdecl && kwv == "prop" { isdecl = true }
+                    if isdecl {
+                        var name = decl_name(text, sp, kwv, kws2)
+                        if name == word {
+                            hit.found = true
+                            hit.line = line - 1
+                            hit.col = kws2.a - sp.a
+                            hit.sig = byte_slice(text, sp.a, sp.b)
+                            hit.docs = collect_docs(text, line - 1)
+                            var nw = pos2(0, 0)
+                            if word_span_at(text, sp, kws2.b, nw) && byte_slice(text, nw.a, nw.b) == word {
+                                hit.ncol = nw.a - sp.a
+                                hit.nlen = nw.b - nw.a
+                            }
                         }
                     }
                 }
-            }
-            if !hit.found {
-                if sp.b >= n {
-                    done = true
+                if !hit.found {
+                    if sp.b >= n { done = true }
                 } else {
-                    line += 1
+                    done = true
                 }
-            } else {
-                done = true
             }
         }
+        i += 1
     }
 }
 
@@ -1067,18 +1077,23 @@ fn item_list(all: Str, kind: I64, detail: Str, prefix: Str) -> Str {
 }
 
 // 文档内声明名补全(顶层声明 + pub fn)
+// 单趟扫描(逐行 O(n))
 fn doc_decl_items(text: Str, prefix: Str) -> Str {
     var items = ""
     var first = true
     var n = text.len
     var line: I64 = 0
-    var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a >= n {
-            done = true
-        } else {
-            if is_top_line(text, sp) {
+    var start: I64 = 0
+    var i: I64 = 0
+    while i <= n {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            if sp.a < n && is_top_line(text, sp) {
                 var kws = pos2(0, 0)
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
@@ -1094,12 +1109,9 @@ fn doc_decl_items(text: Str, prefix: Str) -> Str {
                     }
                 }
             }
-            if sp.b >= n {
-                done = true
-            } else {
-                line += 1
-            }
+            line += 1
         }
+        i += 1
     }
     return items
 }
@@ -1345,6 +1357,7 @@ fn sig_help(text: Str, line: I64, col: I64) -> Str {
 
 // ============ 8d. 布局扫描(格式化 + 折叠,单遍) ============
 
+// 单趟扫描(逐行 O(n)):mode 1 = 缩进编辑,mode 2 = 折叠区间
 fn layout_scan(text: Str, mode: I64) -> Str {
     var acc = OccAcc { s: "", first: true, count: 0 }
     var fstk: I64[] = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
@@ -1353,90 +1366,91 @@ fn layout_scan(text: Str, mode: I64) -> Str {
     var n = text.len
     var depth: I64 = 0
     var line: I64 = 0
+    var start: I64 = 0
     var i: I64 = 0
-    var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a > n {
-            done = true
-        } else {
-        var k = sp.a
-        var lead = 0 - 1
-        var opens: I64 = 0
-        var closes: I64 = 0
-        var instr = false
-        while k < sp.b {
-            var b = byte_at(text, k)
-            if instr {
-                if b == 92 {
-                    k += 1
-                } else {
-                    if b == 34 { instr = false }
-                }
-            } else {
-                if b == 34 {
-                    instr = true
-                } else {
-                    if b == 47 && k + 1 < sp.b && byte_at(text, k + 1) == 47 {
-                        k = sp.b
+    while i <= n {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            // —— 行内处理 ——
+            var k = sp.a
+            var lead = 0 - 1
+            var opens: I64 = 0
+            var closes: I64 = 0
+            var instr = false
+            while k < sp.b {
+                var b = byte_at(text, k)
+                if instr {
+                    if b == 92 {
+                        k += 1
                     } else {
-                        if b == 123 { opens += 1 }
-                        if b == 125 { closes += 1 }
+                        if b == 34 { instr = false }
+                    }
+                } else {
+                    if b == 34 {
+                        instr = true
+                    } else {
+                        if b == 47 && k + 1 < sp.b && byte_at(text, k + 1) == 47 {
+                            k = sp.b
+                        } else {
+                            if b == 123 { opens += 1 }
+                            if b == 125 { closes += 1 }
+                        }
+                    }
+                }
+                if lead < 0 && !is_ws_b(b) { lead = k - sp.a }
+                k += 1
+            }
+            var isblank = sp.b <= sp.a
+            if lead < 0 { lead = sp.b - sp.a }
+            var startsClose = false
+            if !isblank {
+                var fc = byte_at(text, sp.a + lead)
+                if or3(fc == 125, fc == 41, fc == 93) { startsClose = true }
+                if starts_lit(text, sp.a + lead, "else") { startsClose = true }
+            }
+            if mode == 1 && !isblank {
+                var want = depth
+                if startsClose { want -= 1 }
+                if want < 0 { want = 0 }
+                var wantcols = want * 4
+                if lead != wantcols {
+                    var head = ""
+                    if !acc.first { head = "," }
+                    var r = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", 0))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", lead))))
+                    acc.s = "{acc.s}{head}" + jobj(jkv_raw("range", r) + "," + jkv_str("newText", pad_spaces(wantcols)))
+                    acc.first = false
+                }
+            }
+            depth += opens - closes
+            if depth < 0 { depth = 0 }
+            if mode == 2 && opens > 0 && top < 64 {
+                fstk[top] = line
+                dstk[top] = depth
+                top += 1
+            }
+            if mode == 2 {
+                var popping = true
+                while popping && top > 0 {
+                    var dtop = dstk[top - 1]
+                    if depth < dtop {
+                        top -= 1
+                        var head = ""
+                        if !acc.first { head = "," }
+                        acc.s = "{acc.s}{head}" + jobj(jnum("startLine", fstk[top]) + "," + jnum("endLine", line) + "," + jkv_str("kind", "region"))
+                        acc.first = false
+                    } else {
+                        popping = false
                     }
                 }
             }
-            if lead < 0 && !is_ws_b(b) { lead = k - sp.a }
-            k += 1
-        }
-        var isblank = sp.b <= sp.a
-        if lead < 0 { lead = sp.b - sp.a }
-        var startsClose = false
-        if !isblank {
-            var fc = byte_at(text, sp.a + lead)
-            if or3(fc == 125, fc == 41, fc == 93) { startsClose = true }
-            if starts_lit(text, sp.a + lead, "else") { startsClose = true }
-        }
-        if mode == 1 && !isblank {
-            var want = depth
-            if startsClose { want -= 1 }
-            if want < 0 { want = 0 }
-            var wantcols = want * 4
-            if lead != wantcols {
-                var head = ""
-                if !acc.first { head = "," }
-                var r = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", 0))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", lead))))
-                acc.s = "{acc.s}{head}" + jobj(jkv_raw("range", r) + "," + jkv_str("newText", pad_spaces(wantcols)))
-                acc.first = false
-            }
-        }
-        depth += opens - closes
-        if depth < 0 { depth = 0 }
-        if mode == 2 && opens > 0 && top < 64 {
-            fstk[top] = line
-            dstk[top] = depth
-            top += 1
-        }
-        if mode == 2 {
-        var popping = true
-        while popping && top > 0 {
-            var dtop = dstk[top - 1]
-            if depth < dtop {
-                top -= 1
-                var head = ""
-                if !acc.first { head = "," }
-                acc.s = "{acc.s}{head}" + jobj(jnum("startLine", fstk[top]) + "," + jnum("endLine", line) + "," + jkv_str("kind", "region"))
-                acc.first = false
-            } else {
-                popping = false
-            }
-        }
-        }
-        if sp.b >= n {
-            done = true
-        } else {
             line += 1
         }
-        }
+        i += 1
     }
     return jarr(acc.s)
 }
@@ -1462,7 +1476,10 @@ fn pad_spaces(count: I64) -> Str {
 // ============ 8e. 形参名 inlay hints ============
 
 fn inlay_hints(text: Str) -> Str {
+    // 大文档护栏:解释器下逐调用点 find_decl 为 O(n),超限直接跳过(README 已注明)
+    if text.len > 24000 { return "[]" }
     var acc = OccAcc { s: "", first: true, count: 0 }
+    var sites: I64 = 0
     var dummy = DiagAcc { s: "", n: 0 }
     var p = ScanPos { i: 0, line: 0, col: 0 }
     var n = text.len
@@ -1485,7 +1502,10 @@ fn inlay_hints(text: Str) -> Str {
                 if nextb == 40 && !pipe_has(KW_ALL, tok) {
                     var prev = prev_sig_char(text, start)
                     if prev != 46 {
-                        emit_call_hints(text, tok, startline, startcol, p.i, p.line, acc)
+                        if sites < 40 {
+                            sites += 1
+                            emit_call_hints(text, tok, startline, startcol, p.i, p.line, acc)
+                        }
                     }
                 }
                 if acc.count >= 300 {

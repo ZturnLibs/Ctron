@@ -20,6 +20,9 @@ Ctron 语言的 VSCode 支持:语法高亮 + 智能提示。语言服务器(`lsp
 | **引用查找** | LSP | 同文件,含/不含声明可选 |
 | **文档高亮** | LSP | 光标词全部出现点 |
 | **签名帮助** | LSP | 调用点回溯声明,形参名与 activeParameter 提示(`(` `,` 触发) |
+| **形参名提示** | LSP | inlay hints:调用点实参前显示形参名(≤24KB 文档;大文档跳过) |
+| **格式化** | LSP | 缩进规整(4 空格/层,`} / ) / ] / else` 起始行去层)——配合编辑器 format-on-save |
+| **代码折叠** | LSP | 花括号块折叠(优于默认缩进折叠) |
 
 ## 安装(开发模式)
 
@@ -45,12 +48,13 @@ cd editors/vscode-ctron && npx @vscode/vsce package && code --install-extension 
 | `ctron.ctroncPath` | "" | ctronc 路径(保存时语义检查用) |
 | `ctron.checkOnSave` | true | 保存时运行 `ctronc check --format=json` |
 
-## 已知边界(0.2)
+## 已知边界(0.3)
 
 - rename/references 为**同文件词法级**(不做作用域感知:同名字符串/注释已跳过,但不同作用域的同名符号会一并改名)——语义级待 sem 接入;
 - `ctronc check` 读取磁盘文件,语义诊断以保存为准(未保存改动只出词法诊断);
 - 位置编码声明为 utf-8,非 ASCII 行内列偏移在旧客户端可能有偏差;
-- 解释器执行,大文档有可感知延迟——C10 转译后端落地后可原生运行。
+- 解释器执行:≤24KB 文档体验流畅;更大文档跳过 inlay hints,其余特性 61KB/3s 内——C10 转译后端落地后可原生运行;
+- 语义 tokens 与 canonical ctron-fmt(规范唯一形态)待后续版本。
 
 ## 结构
 
