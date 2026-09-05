@@ -9,6 +9,7 @@
 //   - test 块顺序执行;panic 长跳 main 帧 → stderr + exit 1(对齐 ctronc run/test 行为)。
 // v1 拒绝域:Str/数组/struct/class/enum/match/闭包/Option/Result/?/GC/own/scope/tuple/const/static。
 #include "trans.h"
+#include "parser.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -421,25 +422,16 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
                 ctron_parse_result_free(&ip);
             }
             if (c->err) { sb_free(&seg); break; }
-            if (nseg == 0) sb_s(&chain, seg.d ? seg.d : "\"\"");
-            else {
-                char* old_chain = chain.d ? chain.d : astr_dup("\"\"");
+            if (nseg == 0) {
+                sb_s(&chain, seg.d ? seg.d : "");
+            } else {
                 use_helper(c, "ctron_str_concat");
                 sb nc = {0};
-                sb_f(&nc, "ctron_str_concat(%s, %s)", old_chain, seg.d ? seg.d : "\"\"");
-                sb_free(&nc);
-                // 重建 chain(前缀保留)
-                sb t2 = {0};
-                sb_s(&t2, chain.d ? chain.d : "");
+                sb_f(&nc, "ctron_str_concat(%s, %s)", chain.d ? chain.d : "", seg.d ? seg.d : "");
                 sb_free(&chain);
-                chain = t2;
-                // 直接拼新表达式:改用累积变量
-                sb t3 = {0};
-                sb_f(&t3, "ctron_str_concat(%s, %s)", old_chain, seg.d ? seg.d : "\"\"");
-                sb_free(&chain);
-                chain = t3;
-                free(old_chain);
+                chain = nc;
             }
+            nseg++;
             nseg++;
             sb_free(&seg);
         }
@@ -499,6 +491,35 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             terr(c, "v1:struct %s 无字段 %s", sd->name, m);
             sb_free(&ob);
             return ty_unk();
+        }
+        if (ot.k == T_CLASS) {
+            cdef* cd = &c->classes[ot.bits];
+            for (size_t i = 0; i < cd->n; i++)
+                if (!strcmp(cd->fields[i].name, m)) {
+                    sb_f(o, "(%s)->%s", ov, m);
+                    ty r = cd->fields[i].t;
+                    sb_free(&ob);
+                    return r;
+                }
+            terr(c, "v1:class %s 无字段 %s", cd->name, m);
+            sb_free(&ob);
+            return ty_unk();
+        }
+        if (ot.k == T_BOX) {
+            ty et = box_elem(ot);
+            if (et.k == T_STRUCT || et.k == T_CLASS) {
+                for (size_t i = 0; i < c->nstructs; i++)
+                    if (!strcmp(c->structs[i].name, et.tname ? et.tname : "")) {
+                        sdef* sd = &c->structs[i];
+                        for (size_t k2 = 0; k2 < sd->n; k2++)
+                            if (!strcmp(sd->fields[k2].name, m)) {
+                                sb_f(o, "(%s)->%s", ov, m);
+                                ty r = sd->fields[k2].t;
+                                sb_free(&ob);
+                                return r;
+                            }
+                    }
+            }
         }
         if (ot.k == T_ARR && !strcmp(m, "len")) {
             sb_f(o, "((%s).n)", ov);
@@ -646,6 +667,27 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
     case EX_STRUCT: {
         if (e->npath == 0) { terr(c, "v1:构造缺类型名"); return ty_unk(); }
         const char* tn = e->path[0];
+        int is_cls = 0;
+        for (size_t i = 0; i < c->nclasses; i++)
+            if (!strcmp(c->classes[i].name, tn)) is_cls = 1;
+        if (is_cls) {
+            // class:malloc + 字段赋值(引用语义)
+            sb_f(o, "ctron_new_%s(", tn);
+            sdef* cds = NULL;
+            for (size_t i = 0; i < c->nclasses; i++)
+                if (!strcmp(c->classes[i].name, tn)) { cds = (sdef*)&c->classes[i]; break; }
+            for (size_t j = 0; cds && j < cds->n; j++) {
+                if (j) sb_s(o, ", ");
+                cexpr* fv = NULL;
+                for (size_t i = 0; i < e->nfields; i++)
+                    if (e->fields[i].name && !strcmp(e->fields[i].name, cds->fields[j].name)) fv = e->fields[i].value;
+                if (fv) emit_expr(c, fv, o);
+                else sb_s(o, "0");
+            }
+            sb_s(o, ")");
+            ty r = ty_unk(); r.k = T_CLASS; r.tname = tn;
+            return r;
+        }
         sdef* sd = NULL;
         for (size_t i = 0; i < c->nstructs; i++)
             if (!strcmp(c->structs[i].name, tn)) { sd = &c->structs[i]; break; }
@@ -756,6 +798,23 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
                 return ty_str();
             }
             sb_free(&rob);
+        }
+        // Box[T](v):显式堆分配,自动解引用访问
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "Box") == 0 && cal->ntargs == 1 && e->nelems == 1) {
+            ty et = decl_ty_tc(c, cal->targs[0]);
+            if (et.k == T_UNK) { terr(c, "v1:Box 元素类型不支持"); return ty_unk(); }
+            char* k = ty_mangle(c, et);
+            
+            { char hn[96]; snprintf(hn, sizeof hn, "ctron_box_%s", k); use_helper(c, hn); }
+            sb a1 = {0};
+            emit_expr(c, e->elems[0], &a1);
+            char hn2[96];
+            snprintf(hn2, sizeof hn2, "ctron_box_%s", k);
+            sb_f(o, "%s(%s)", hn2, a1.d ? a1.d : "0");
+            sb_free(&a1);
+            ty r = ty_unk(); r.k = T_BOX; r.ek = et.k; r.ebits = et.bits; r.eus = et.us; r.tname = et.tname;
+            return r;
         }
         const char* nm = (cal && cal->kind == EX_IDENT) ? cal->text : NULL;
         if (!nm) { terr(c, "v1 仅支持具名函数调用"); return ty_unk(); }
@@ -1220,23 +1279,38 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
             const char* fn2 = st->target->mname;
             ty t;
             if (!scope_find(c, on, &t)) { terr(c, "v1 未解析名称:%s", on); return; }
-            if (t.k != T_STRUCT) { terr(c, "v1:成员赋值目标需 struct"); return; }
-            sdef* sd = &c->structs[t.bits];
+            if (t.k != T_STRUCT && t.k != T_CLASS && t.k != T_BOX) { terr(c, "v1:成员赋值目标需 struct/class"); return; }
+            sdef* sd = NULL;
             sfield* fl = NULL;
-            for (size_t i = 0; i < sd->n; i++)
-                if (!strcmp(sd->fields[i].name, fn2)) { fl = &sd->fields[i]; break; }
-            if (!fl) { terr(c, "v1:struct %s 无字段 %s", sd->name, fn2); return; }
+            if (t.k == T_STRUCT) {
+                sd = &c->structs[t.bits];
+                for (size_t i = 0; i < sd->n; i++)
+                    if (!strcmp(sd->fields[i].name, fn2)) { fl = &sd->fields[i]; break; }
+            } else if (t.k == T_CLASS) {
+                cdef* cd = &c->classes[t.bits];
+                for (size_t i = 0; i < cd->n; i++)
+                    if (!strcmp(cd->fields[i].name, fn2)) { fl = (sfield*)&cd->fields[i]; break; }
+            } else {
+                ty et = box_elem(t);
+                if (et.k == T_STRUCT) {
+                    sd = &c->structs[et.bits];
+                    for (size_t i = 0; i < sd->n; i++)
+                        if (!strcmp(sd->fields[i].name, fn2)) { fl = &sd->fields[i]; break; }
+                }
+            }
+            if (!fl) { terr(c, "v1:成员赋值字段不存在:%s", fn2); return; }
             sb rhs = {0};
             emit_expr(c, st->value, &rhs);
             if (c->err) { sb_free(&rhs); return; }
+            const char* arrow = (t.k == T_CLASS || t.k == T_BOX) ? "->" : ".";
             if (st->aop == A_EQ) {
                 if (fl->t.k == T_INT) {
                     char h[64];
                     snprintf(h, sizeof h, "ctron_decl_%s", wlname(fl->t));
                     use_helper(c, h);
-                    sb_f(o, "%s.%s = %s(%s);\n", on, fn2, h, rhs.d ? rhs.d : "0");
+                    sb_f(o, "%s%s%s = %s(%s);\n", on, arrow, fn2, h, rhs.d ? rhs.d : "0");
                 } else {
-                    sb_f(o, "%s.%s = %s;\n", on, fn2, rhs.d ? rhs.d : "0");
+                    sb_f(o, "%s%s%s = %s;\n", on, arrow, fn2, rhs.d ? rhs.d : "0");
                 }
             } else {
                 if (fl->t.k != T_INT) { terr(c, "v1:复合成员赋值需整型"); sb_free(&rhs); return; }
@@ -1245,7 +1319,7 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
                 char h[64];
                 snprintf(h, sizeof h, "ctron_%s_%s", fam, wlname(fl->t));
                 use_helper(c, h);
-                sb_f(o, "%s.%s = %s(%s.%s, %s);\n", on, fn2, h, on, fn2, rhs.d ? rhs.d : "0");
+                sb_f(o, "%s%s%s = %s(%s%s%s, %s);\n", on, arrow, fn2, h, on, arrow, fn2, rhs.d ? rhs.d : "0");
             }
             sb_free(&rhs);
             return;
@@ -1608,6 +1682,24 @@ static void emit_helper(tc* c, const char* name) {
               "    return r;\n}\n", name);
         return;
     }
+    if (!strcmp(fam, "fmt")) {
+        if (!strcmp(wl, "i64") || !strcmp(wl, "str")) { /* 不会到这 */ }
+        char pt[16] = "int64_t";
+        if (us) snprintf(pt, sizeof pt, "uint64_t");
+        if (!strcmp(wl, "i8") || !strcmp(wl, "i16") || !strcmp(wl, "i32") || !strcmp(wl, "i64"))
+            sb_f(o, "static const char* %s(int64_t v) { char* r = (char*)malloc(32); snprintf(r, 32, \"%%lld\", (long long)v); return r; }\n", name);
+        else if (us)
+            sb_f(o, "static const char* %s(uint64_t v) { char* r = (char*)malloc(32); snprintf(r, 32, \"%%llu\", (unsigned long long)v); return r; }\n", name);
+        return;
+    }
+    if (!strcmp(name, "ctron_fmt_f64")) {
+        sb_f(o, "static const char* %s(double v) { char* r = (char*)malloc(64); if (v == (double)(long long)v) snprintf(r, 64, \"%%.1f\", v); else snprintf(r, 64, \"%%g\", v); return r; }\n", name);
+        return;
+    }
+    if (!strcmp(name, "ctron_fmt_bool")) {
+        sb_f(o, "static const char* %s(int v) { char* r = (char*)malloc(8); snprintf(r, 8, \"%%s\", v ? \"true\" : \"false\"); return r; }\n", name);
+        return;
+    }
     if (!strcmp(fam, "idx")) {
         sb_f(o, "static int64_t %s(int64_t n, int64_t i) { if (i < 0 || i >= n) ctron_panic(\"index out of bounds\"); return i; }\n", name);
         return;
@@ -1635,6 +1727,45 @@ static void emit_helper(tc* c, const char* name) {
             sb_f(o, "static void %s(uint64_t v) { printf(\"%%llu\", (unsigned long long)v); }\n", name);
         else
             sb_f(o, "static void %s(int64_t v) { printf(\"%%lld\", (long long)v); }\n", name);
+        return;
+    }
+    if (!strncmp(name, "ctron_box_", 10)) {
+        char k[48];
+        snprintf(k, sizeof k, "%s", name + 10);
+        if (!strcmp(k, "I32"))
+            sb_f(o, "static int32_t* %s(int64_t v) { int32_t* p = (int32_t*)malloc(sizeof(int32_t)); *p = (int32_t)v; return p; }\n", name);
+        else if (!strcmp(k, "I64"))
+            sb_f(o, "static int64_t* %s(int64_t v) { int64_t* p = (int64_t*)malloc(sizeof(int64_t)); *p = v; return p; }\n", name);
+        else if (!strcmp(k, "F64"))
+            sb_f(o, "static double* %s(double v) { double* p = (double*)malloc(sizeof(double)); *p = v; return p; }\n", name);
+        else if (!strcmp(k, "Bool"))
+            sb_f(o, "static int* %s(int v) { int* p = (int*)malloc(sizeof(int)); *p = v; return p; }\n", name);
+        else
+            sb_f(o, "static ctron_t_%s* %s(ctron_t_%s v) { ctron_t_%s* p = (ctron_t_%s*)malloc(sizeof(ctron_t_%s)); *p = v; return p; }\n", k, name, k, k, k, k);
+        return;
+    }
+    if (!strncmp(name, "ctron_new_", 10)) {
+        // class 构造:字段逐个赋值
+        char cn[48];
+        snprintf(cn, sizeof cn, "%s", name + 10);
+        cdef* cd = NULL;
+        for (size_t i = 0; i < c->nclasses; i++)
+            if (!strcmp(c->classes[i].name, cn)) { cd = &c->classes[i]; break; }
+        if (!cd) return;
+        sb sig = {0};
+        sb_f(&sig, "static ctron_c_%s* %s(", cn, name);
+        sb asg = {0};
+        for (size_t j = 0; j < cd->n; j++) {
+            ty ft = cd->fields[j].t;
+            if (j) sb_s(&sig, ", ");
+            sb_f(&sig, "%s f_%s", ctype_of(ft), cd->fields[j].name);
+            sb_f(&asg, "    p->%s = f_%s;\n", cd->fields[j].name, cd->fields[j].name);
+        }
+        sb_f(o, "%s) {\n    ctron_c_%s* p = (ctron_c_%s*)calloc(1, sizeof(ctron_c_%s));\n", sig.d ? sig.d : "", cn, cn, cn);
+        sb_s(o, asg.d ? asg.d : "");
+        sb_f(o, "    return p;\n}\n");
+        sb_free(&sig);
+        sb_free(&asg);
         return;
     }
     if (!strncmp(name, "ctron_arr_", 10)) {
@@ -1836,6 +1967,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         }
         case D_USE: break;
         case D_STRUCT:
+        case D_CLASS:
         case D_ENUM:
             break; // typedef 由头部装配统一发射(collect_types 已收集)
         default:

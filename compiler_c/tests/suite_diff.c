@@ -423,6 +423,7 @@ int main(int argc, char** argv) {
         {"pkg_chk.ct", "../tests/modules/ffi_math", 8},
         {"cc.ct", "input_cc.ct", 9},
         {"cc.ct", "input_cc2.ct", 9},
+        {"cc.ct", "input_cc3.ct", 9},
         {"cc.ct", "input_cc_neg.ct", 9},
     };
     size_t fails = 0, nrun = 0;

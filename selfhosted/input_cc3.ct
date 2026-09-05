@@ -1,0 +1,81 @@
+// input_cc3.ct —— C9f/C9g 域经 cc 全管线(parse → 单文件语义 12 项 → run)差分夹具
+// 覆盖:多 impl 方法分发 + 方法内 self 复合写(外部可见)/ List 构造·push·索引写·
+// into_gc 隔离 / fn 类型参数(具名 + 闭包字面量)/ Option match(Some 绑定 + None)
+trait Meter {
+    fn label(&self, mul: I32) -> I32
+}
+
+class Acc {
+    var total: I32
+}
+
+impl Meter for Acc {
+    fn label(&self, mul: I32) -> I32 {
+        return self.total * mul
+    }
+}
+
+trait Pump {
+    fn bump(&self, by: I32) -> I32
+}
+
+impl Pump for Acc {
+    fn bump(&self, by: I32) -> I32 {
+        self.total += by
+        return self.total
+    }
+}
+
+fn sum_list(xs: List[I32]) -> I32 {
+    var acc: I32 = 0
+    var i: I32 = 0
+    while i < xs.len {
+        acc += xs[i]
+        i += 1
+    }
+    return acc
+}
+
+fn apply(f: fn(I32) -> I32, x: I32) -> I32 {
+    return f(x)
+}
+
+fn double(x: I32) -> I32 {
+    return x * 2
+}
+
+fn first_pos(xs: I32[]) -> I32? {
+    for x in xs {
+        if x > 0 {
+            return Some(x)
+        }
+    }
+    return None
+}
+
+fn main() -> I32 {
+    let a = Acc { total: 10 }
+    println(a.bump(5))
+    println(a.bump(7))
+    println(a.label(2))
+    let xs = List[I32]()
+    xs.push(3)
+    xs.push(4)
+    xs.push(5)
+    println(xs.len)
+    println(sum_list(xs))
+    xs[0] = 30
+    println(sum_list(xs))
+    let g = xs.into_gc()
+    g.push(1)
+    println(xs.len)
+    println(g.len)
+    println(apply(double, 21))
+    println(apply(|x| x + 1, 9))
+    let arr = [1, -2, 3]
+    match first_pos(arr) {
+        Some(v) => println(v)
+        None => println(0)
+    }
+    return 0
+}

@@ -4038,6 +4038,48 @@ fn vV2() -> List[Str] {
     v.push("V")
     return v
 }
+// C9f①:List 域 —— 客体 List 直接持有宿主 List 对象(引用语义,push 原地变、别名可见,
+// 镜像 rt.c listnode);布局 ["L", item…](同 A:类别槽后逐元素)。
+fn vL() -> List[Str] {
+    var v = List[Str]()
+    v.push("L")
+    return v
+}
+// into_gc 深拷贝(镜像 rt.c clone_val):按种类分发,U 域名/值交错、A/L 值槽递归,
+// 标量/T/F/C 逐槽重建(槽内容不窥探 —— 字符串载荷不可索引)
+fn vdeep(v: List[Str]) -> List[Str] {
+    var k0 = v[0]
+    if k0 == "U" {
+        var ou = List[Str]()
+        ou.push("U")
+        ou.push(v[1])
+        var iu: I32 = 2
+        while iu + 1 < v.len {
+            ou.push(v[iu])
+            ou.push(vdeep(v[iu + 1]))
+            iu += 2
+        }
+        return ou
+    }
+    if or2(k0 == "A", k0 == "L") {
+        var oa = List[Str]()
+        oa.push(k0)
+        var ia: I32 = 1
+        while ia < v.len {
+            oa.push(vdeep(v[ia]))
+            ia += 1
+        }
+        return oa
+    }
+    var out = List[Str]()
+    out.push(v[0])
+    var i: I32 = 1
+    while i < v.len {
+        out.push(v[i])
+        i += 1
+    }
+    return out
+}
 fn dvi(t: Str) -> I32 {
     var neg = false
     var k: I32 = 0
@@ -4309,6 +4351,144 @@ fn enum_var(file: List[Str], nm: Str) -> Bool {
     }
     return false
 }
+// ---------------- C9f②:trait/impl 方法域(镜像 rt.c cls_method/cls_prop/call_*_body) ----------------
+// 节点 schema:Method=[Method,nm,TPs,Ps,ret,body];Impl=[Impl,TPs,trait_ty,for_ty,Items];
+// Trait=[Trait,nm,TPs,Bounds,Items];Prop=[Prop,nm,ty,body];Class=[Class,nm,TPs,Items]
+fn ty_head(ty: List[Str]) -> Str {
+    var t = ty[0]
+    if t == "Named" {
+        return ty[1]
+    }
+    if or3(t == "Ref", or2(t == "Slice", t == "Optional")) {
+        return ty_head(ty[1])
+    }
+    return ""
+}
+fn find_trait(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Trait" && seq2(d[1], nm) {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn is_class(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Class" && seq2(d[1], nm) {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+fn find_impl_method(file: List[Str], cls: Str, m: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" && seq2(ty_head(d[3]), cls) {
+            var its = d[4]
+            var k: I32 = 1
+            while k < its.len {
+                var it = its[k]
+                if it[0] == "Method" && seq2(it[1], m) {
+                    return it
+                }
+                k += 1
+            }
+            var tn = ty_head(d[2])
+            if tn.len > 0 {
+                var tr = find_trait(file, tn)
+                if tr.len > 0 {
+                    var tits = tr[4]
+                    var j: I32 = 1
+                    while j < tits.len {
+                        var tit = tits[j]
+                        if tit[0] == "Method" && seq2(tit[1], m) && tit[5][0] != "None" {
+                            return tit
+                        }
+                        j += 1
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn find_impl_prop(file: List[Str], cls: Str, m: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" && seq2(ty_head(d[3]), cls) {
+            var its = d[4]
+            var k: I32 = 1
+            while k < its.len {
+                var it = its[k]
+                if it[0] == "Prop" && seq2(it[1], m) && it[3][0] != "None" {
+                    return it
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], sv: List[Str], vals: List[Str]) -> List[Str] {
+    var ps = mth[3]
+    var nenv = env_add(List[Str](), "self", bind_of(file, sv))
+    var k: I32 = 1
+    var ai: I32 = 0
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            nenv = env_add(nenv, pr[2], bind_of(file, vals[ai]))
+            ai += 1
+        }
+        k += 1
+    }
+    var br = run_block(file, nenv, out, mth[5])
+    var fl = "k"
+    if br[0] == "a" {
+        fl = "a"
+    }
+    return e4(fl, env, br[3], br[2])
+}
+fn call_prop_vals(file: List[Str], env: List[Str], out: Str, pp: List[Str], sv: List[Str]) -> List[Str] {
+    var nenv = env_add(List[Str](), "self", sv)
+    var br = run_block(file, nenv, out, pp[3])
+    var fl = "k"
+    if br[0] == "a" {
+        fl = "a"
+    }
+    return e4(fl, env, br[3], br[2])
+}
+// ---------------- C9g:绑定克隆与原地写(镜像 rt.c env_let/ST_ASSIGN) ----------------
+// rt env_let:结构体值(非类)深克隆后才入绑定槽;类/List/标量保持引用。
+// 成员写经绑定槽原地生效:结构体无别名(绑定时已克隆)→ 原地 == 重建;
+// 类共享 → 原地写对别名可见。
+fn bind_of(file: List[Str], v: List[Str]) -> List[Str] {
+    if v[0] == "U" && !is_class(file, v[1]) {
+        return vdeep(v)
+    }
+    return v
+}
+fn u_set_ip(u: List[Str], nm: Str, nv: List[Str]) -> Bool {
+    var i: I32 = 2
+    while i + 1 < u.len {
+        if seq2(u[i], nm) {
+            u[i + 1] = nv
+            return true
+        }
+        i += 2
+    }
+    return false
+}
 fn u_field(u: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 2
     while i + 1 < u.len {
@@ -4462,6 +4642,13 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             tv2.push(e[1])
             return e4("k", env, tv2, out)
         }
+        var fnd = find_decl(file, e[1])
+        if fnd.len > 0 {
+            var fv = List[Str]()
+            fv.push("F")
+            fv.push(e[1])
+            return e4("k", env, fv, out)
+        }
         panic("unbound:" + e[1])
         return e4("a", env, vV2(), out)
     }
@@ -4568,6 +4755,9 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 if recv[0] == "A" {
                     return e4("k", ob[1], vI(recv.len - 1), ob[3])
                 }
+                if recv[0] == "L" {
+                    return e4("k", ob[1], vI(recv.len - 1), ob[3])
+                }
                 panic("len target")
                 return e4("a", env, vV2(), out)
             }
@@ -4575,6 +4765,14 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 var fv = u_field(recv, m)
                 if fv.len > 0 {
                     return e4("k", ob[1], fv, ob[3])
+                }
+                // C9f②:类实例 impl prop(rt.c EX_MEMBER 字段→cls_prop 同序)
+                if is_class(file, recv[1]) {
+                    var pp = find_impl_prop(file, recv[1], m)
+                    if pp.len > 0 {
+                        var prr = call_prop_vals(file, ob[1], ob[3], pp, recv)
+                        return e4(prr[0], ob[1], prr[2], prr[3])
+                    }
                 }
                 panic("field:" + m)
                 return e4("a", env, vV2(), out)
@@ -4603,6 +4801,14 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     if t == "BlockExpr" {
         var br = run_block(file, env, out, e[1])
         return e4(br[0], br[1], br[3], br[2])
+    }
+    if t == "Closure" {
+        var cv = List[Str]()
+        cv.push("C")
+        cv.push(e[1])
+        cv.push(e[3])
+        cv.push(env)
+        return e4("k", env, cv, out)
     }
     if t == "ArrLit" {
         var arr = List[Str]()
@@ -4655,7 +4861,8 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         }
         var arrv = ob[2]
         var idx = dvi(ix[2][1])
-        if !seq2(arrv[0], "A") {
+        // C9f①:L 与 A 同布局(类别槽后逐元素),索引读同轨道(rt.c V_LIST/V_ARR 同分支)
+        if !or2(seq2(arrv[0], "A"), seq2(arrv[0], "L")) {
             panic("index target")
             return e4("a", env, vV2(), out)
         }
@@ -4732,7 +4939,7 @@ fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals:
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            nenv = env_add(nenv, pr[2], vals[k - 1])
+            nenv = env_add(nenv, pr[2], bind_of(file, vals[k - 1]))
         }
         k += 1
     }
@@ -4742,6 +4949,30 @@ fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals:
         fl = "a"
     }
     return e4(fl, env, br[3], br[2])
+}
+fn call_cv(file: List[Str], env: List[Str], out: Str, v: List[Str], vals: List[Str]) -> List[Str] {
+    if seq2(v[0], "F") {
+        var d = find_decl(file, v[1])
+        if d.len == 0 {
+            panic("no fn:" + v[1])
+            return e4("a", env, vV2(), out)
+        }
+        return call_decl_vals(file, env, out, d, vals)
+    }
+    if seq2(v[0], "C") {
+        var cap = v[3]
+        var cp = v[1]
+        var nenv = cap
+        var k: I32 = 1
+        while k < cp.len {
+            nenv = env_add(nenv, cp[k][2], vals[k - 1])
+            k += 1
+        }
+        var br = eval_expr(file, nenv, out, v[2])
+        return e4(br[0], env, br[2], br[3])
+    }
+    panic("call value")
+    return e4("a", env, vV2(), out)
 }
 fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> List[Str] {
     if seq2(nm, "print") {
@@ -4820,6 +5051,13 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         }
         return e4("k", env, tv, out)
     }
+    var evb = env_at(env, nm)
+    if evb.len > 0 {
+        var kv = evb[1]
+        if or2(seq2(kv[0], "C"), seq2(kv[0], "F")) {
+            return call_cv(file, env, out, kv, vals)
+        }
+    }
     var d = find_decl(file, nm)
     if d.len == 0 {
         panic("no fn:" + nm)
@@ -4864,6 +5102,38 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         panic("slice args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(m, "push") {
+        if recv[0] == "L" && vals.len == 1 {
+            recv.push(vals[0])
+            return e4("k", ob[1], vV2(), ob[3])
+        }
+    }
+    if seq2(m, "into_gc") {
+        if recv[0] == "L" && vals.len == 0 {
+            return e4("k", ob[1], vdeep(recv), ob[3])
+        }
+    }
+    // C9f②:类实例方法/trait 默认方法(镜像 rt.c V_STRUCT&&is_class 先于 UFCS;
+    // 类找不到方法直接 panic,不落 UFCS)
+    if recv[0] == "U" && is_class(file, recv[1]) {
+        var mth = find_impl_method(file, recv[1], m)
+        if mth.len > 0 {
+            return call_method_vals(file, ob[1], ob[3], mth, recv, vals)
+        }
+        panic("unknown method:" + m)
+        return e4("a", env, vV2(), out)
+    }
+    var ddx = find_decl(file, m)
+    if ddx.len > 0 {
+        var fvv = List[Str]()
+        fvv.push(recv)
+        var qq: I32 = 0
+        while qq < vals.len {
+            fvv.push(vals[qq])
+            qq += 1
+        }
+        return call_decl_vals(file, ob[1], ob[3], ddx, fvv)
+    }
     panic("method:" + m)
     return e4("a", env, vV2(), out)
 }
@@ -4890,6 +5160,20 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     if cal[0] == "Member" {
         return call_mem(file, env2, out2, cal, vals)
     }
+    // C9f①:List 构造 List[T]()(rt.c:同参忽略,恒空表;arena.list[T]() 同)
+    if cal[0] == "TypeArgs" {
+        var base = cal[1]
+        var islist = false
+        if base[0] == "Ident" && seq2(base[1], "List") {
+            islist = true
+        }
+        if base[0] == "Member" && seq2(base[2], "Nm") && seq2(base[3], "list") && base[1][0] == "Ident" && seq2(base[1][1], "arena") {
+            islist = true
+        }
+        if islist {
+            return e4("k", env2, vL(), out2)
+        }
+    }
     panic("call target")
     return e4("a", env, vV2(), out)
 }
@@ -4912,7 +5196,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             if er[0] != "k" {
                 return s4(er[0], er[1], er[3], er[2])
             }
-            return s4("k", env_add(er[1], pat[1], er[2]), er[3], vV2())
+            return s4("k", env_add(er[1], pat[1], bind_of(file, er[2])), er[3], vV2())
         }
         if pat[0] == "PatWild" {
             var er = eval_expr(file, env, out, st[4])
@@ -4953,7 +5237,12 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 var oldf = u_field(ov, fname)
                 nv = vI(ari(op, dvi(oldf[1]), dvi(nv[1])))
             }
-            return s4("k", env_set(vr[1], oname, u_set(ov, fname, nv)), vr[3], vV2())
+            // C9g:原地写(镜像 rt.c ST_ASSIGN 经绑定槽直接改;结构体绑定时已克隆,类共享可见)
+            if !u_set_ip(ov, fname, nv) {
+                panic("field:" + fname)
+                return s4("a", env, out, vV2())
+            }
+            return s4("k", vr[1], vr[3], vV2())
         }
         if tg[0] == "Ident" {
             var nm = tg[1]
@@ -4972,7 +5261,44 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 var oa = en[1]
                 nv = vI(ari(op, dvi(oa[1]), dvi(nv[1])))
             }
-            return s4("k", env_set(vr[1], nm, nv), vr[3], vV2())
+            // C9g:结构体右值赋给绑定也克隆(镜像 rt.c b->slot = clone…)
+            return s4("k", env_set(vr[1], nm, bind_of(file, nv)), vr[3], vV2())
+        }
+        // C9f①:索引赋值 a[i] = v / a[i] op= v —— A/L 同布局;L 经宿主 List 索引写
+        // 写透共享后备(镜像 rt.c ST_ASSIGN 的 V_LIST/V_ARR 写透分支)
+        if tg[0] == "Index" && tg[1][0] == "Ident" {
+            var nm3 = tg[1][1]
+            var en3 = env_at(env, nm3)
+            if en3.len == 0 {
+                panic("unbound:" + nm3)
+                return s4("a", env, out, vV2())
+            }
+            var cont = en3[1]
+            if !or2(seq2(cont[0], "A"), seq2(cont[0], "L")) {
+                panic("index assign target")
+                return s4("a", env, out, vV2())
+            }
+            var ixr = eval_expr(file, env, out, tg[2])
+            if ixr[0] != "k" {
+                return s4(ixr[0], ixr[1], ixr[3], ixr[2])
+            }
+            var idx = dvi(ixr[2][1])
+            if or2(idx < 0, idx >= cont.len - 1) {
+                panic("index out of bounds")
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op3 = st[2]
+            var nv3 = vr[2]
+            if !seq2(op3, "Eq") {
+                var old3 = cont[idx + 1]
+                nv3 = vI(ari(op3, dvi(old3[1]), dvi(nv3[1])))
+            }
+            cont[idx + 1] = nv3
+            return s4("k", ixr[1], ixr[3], vV2())
         }
         panic("assign target:" + tg[0])
         return s4("a", env, out, vV2())
@@ -5120,7 +5446,6 @@ fn run_tests(file: List[Str]) -> List[Str] {
     }
     return s4("k", List[Str](), "", vV2())
 }
-
 // ---------------- C9c:统一 cc 驱动(parse → 单文件语义 12 项 → run) ----------------
 // 语义阶段:sems != "(Ctron sem_walk2 逐条 "CODE: msg")→ 打印并止(编译失败)
 // 运行阶段:文件含 fn main → 解释 main;否则解释 test 块(全过返回 0)

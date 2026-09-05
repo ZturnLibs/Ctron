@@ -541,7 +541,7 @@ impl<'a> Interp<'a> {
                 }
                 self.eval_method(obj, &m, args, env)
             }
-            Expr::TypeArgs { expr: inner, .. } => {
+            Expr::TypeArgs { expr: inner, args: type_args_ast } => {
                 // 1) inner = Ident(类型名) → 泛型类型构造器:Atomic[I32](0), Box[T](v), Channel[T](cap)
                 if let Expr::Ident(ty_name) = &**inner {
                     let mut vals = Vec::new();
@@ -582,10 +582,36 @@ impl<'a> Interp<'a> {
                 // 2) inner = Member(泛型方法):arena.list[I32](), x.as[I8]() 等
                 if let Expr::Member { obj: recv_expr, target: ast::MemberTarget::Name(method) } = &**inner {
                     let recv = self.expr(recv_expr, env)?;
-                    // `as` 方法:数值转换
+                    // `as` 方法:数值转换(截断语义,§3.6)
                     if method == "as" {
-                        // 类型实参决定目标类型;此处直接返回原值(interp 无实际转换)
-                        return Ok(recv);
+                        // 提取目标类型名
+                        let targ = type_args_ast.iter().filter_map(|t| match t {
+                            ast::Type::Named { path, .. } => path.last().cloned(),
+                            _ => None,
+                        }).next().unwrap_or_default();
+                        let converted = match (&recv, targ.as_str()) {
+                            (Value::Int(i), "U8") => Value::UInt((*i as u64) & 0xFF),
+                            (Value::Int(i), "U16") => Value::UInt((*i as u64) & 0xFFFF),
+                            (Value::Int(i), "U32") => Value::UInt((*i as u64) & 0xFFFFFFFF),
+                            (Value::Int(i), "U64") | (Value::Int(i), "USize") => Value::UInt(*i as u64),
+                            (Value::UInt(u), "I8") => Value::Int(*u as i8 as i64),
+                            (Value::UInt(u), "I16") => Value::Int(*u as i16 as i64),
+                            (Value::UInt(u), "I32") => Value::Int(*u as i32 as i64),
+                            (Value::UInt(u), "I64") | (Value::UInt(u), "ISize") => Value::Int(*u as i64),
+                            (Value::Int(i), "F64") => Value::F64(*i as f64),
+                            (Value::Int(i), "F32") => Value::F32(*i as f32),
+                            (Value::F64(f), "F32") => Value::F32(*f as f32),
+                            (Value::F64(f), "I32") => Value::Int(*f as i64),
+                            (Value::F64(f), "I64") => Value::Int(*f as i64),
+                            (Value::F64(f), "U8") => Value::UInt(*f as u64),
+                            (Value::F64(f), "U32") => Value::UInt(*f as u64),
+                            (Value::F64(f), "U64") => Value::UInt(*f as u64),
+                            (Value::F32(f), "I32") => Value::Int(*f as i64),
+                            (Value::Int(i), "I8") => Value::Int((*i as i8) as i64),
+                            (Value::Int(i), "I16") => Value::Int((*i as i16) as i64),
+                            _ => recv.clone(),
+                        };
+                        return Ok(converted);
                     }
                     // Arena 泛型方法
                     if matches!(recv, Value::Arena) {
@@ -1714,6 +1740,8 @@ impl<'a> Interp<'a> {
         // 常量 / 静态
         if let Some(v) = self.consts.borrow().get(name) { return Ok(v.clone()); }
         if let Some(v) = self.statics.borrow().get(name) { return Ok(v.clone()); }
+        // prelude 值
+        if name == "parallel" { return Ok(Value::Parallel); }
         // prelude 枚举变体值(Some/None/Ok/Err)
         match name {
             "Some" => {
@@ -1852,6 +1880,16 @@ fn checked_sub_i64(x: i64, y: i64) -> Result<i64, Flow> {
     x.checked_sub(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
 }
 fn checked_mul_i64(x: i64, y: i64) -> Result<i64, Flow> {
+    x.checked_mul(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
+}
+
+fn checked_add_u64(x: u64, y: u64) -> Result<u64, Flow> {
+    x.checked_add(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
+}
+fn checked_sub_u64(x: u64, y: u64) -> Result<u64, Flow> {
+    x.checked_sub(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
+}
+fn checked_mul_u64(x: u64, y: u64) -> Result<u64, Flow> {
     x.checked_mul(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
 }
 
