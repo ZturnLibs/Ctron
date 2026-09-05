@@ -980,18 +980,18 @@ impl<'a> Checker<'a> {
                 if let Some(Ty::Int(w)) = hint.map(|h| self.resolve(h)) { return Ty::Int(w); }
                 if let Some(Ty::UInt(w)) = hint.map(|h| self.resolve(h)) { return Ty::UInt(w); }
                 match suffix.as_str() {
-                    "I8" => Ty::Int(IntW::W8), "I16" => Ty::Int(IntW::W16),
-                    "I32" => Ty::Int(IntW::W32), "I64" => Ty::Int(IntW::W64),
-                    "ISize" => Ty::Int(IntW::WSize),
-                    "U8" => Ty::UInt(IntW::W8), "U16" => Ty::UInt(IntW::W16),
-                    "U32" => Ty::UInt(IntW::W32), "U64" => Ty::UInt(IntW::W64),
-                    "USize" => Ty::UInt(IntW::WSize),
+                    "i8" => Ty::Int(IntW::W8), "i16" => Ty::Int(IntW::W16),
+                    "i32" => Ty::Int(IntW::W32), "i64" => Ty::Int(IntW::W64),
+                    "isize" => Ty::Int(IntW::WSize),
+                    "u8" => Ty::UInt(IntW::W8), "u16" => Ty::UInt(IntW::W16),
+                    "u32" => Ty::UInt(IntW::W32), "u64" => Ty::UInt(IntW::W64),
+                    "usize" => Ty::UInt(IntW::WSize),
                     _ => Ty::Int(IntW::W32),
                 }
             }
             Expr::Float { suffix, .. } => {
                 if let Some(h) = hint { if matches!(self.resolve(h), Ty::F32 | Ty::F64) { return self.resolve(h); } }
-                match suffix.as_str() { "F32" => Ty::F32, _ => Ty::F64 }
+                match suffix.as_str() { "f32" => Ty::F32, _ => Ty::F64 }
             }
             Expr::Str { parts } => {
                 if self.in_own && parts.iter().any(|p| matches!(p, ast::StrPart::Interp(_))) {

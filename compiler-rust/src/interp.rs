@@ -364,14 +364,14 @@ impl<'a> Interp<'a> {
                 let v = parse_int(&cleaned).unwrap_or(0);
                 if !suffix.is_empty() {
                     return Ok(match suffix.as_str() {
-                        "U8" => Value::UIntW(IntW::W8, v as u64),
-                        "U16" => Value::UIntW(IntW::W16, v as u64),
-                        "U32" => Value::UIntW(IntW::W32, v as u64),
-                        "U64" | "USize" => Value::UInt(v as u64),
-                        "I8" => Value::IntW(IntW::W8, v),
-                        "I16" => Value::IntW(IntW::W16, v),
-                        "I32" => Value::IntW(IntW::W32, v),
-                        "I64" | "ISize" => Value::Int(v),
+                        "u8" => Value::UIntW(IntW::W8, v as u64),
+                        "u16" => Value::UIntW(IntW::W16, v as u64),
+                        "u32" => Value::UIntW(IntW::W32, v as u64),
+                        "u64" | "usize" => Value::UInt(v as u64),
+                        "i8" => Value::IntW(IntW::W8, v),
+                        "i16" => Value::IntW(IntW::W16, v),
+                        "i32" => Value::IntW(IntW::W32, v),
+                        "i64" | "isize" => Value::Int(v),
                         _ => Value::Int(v),
                     });
                 }

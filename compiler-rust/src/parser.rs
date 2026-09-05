@@ -468,7 +468,7 @@ impl Parser {
     fn parse_fn(&mut self, attrs: Vec<Attribute>, top_level: bool) -> FnDecl {
         let vis = if top_level { self.parse_vis() } else { Vis::Private };
         let is_comptime = self.eat(&Tok::Comptime);
-        let extern_abi = if self.at(&Tok::Extern) {
+        let abi = if self.at(&Tok::Extern) {
             self.bump();
             match self.peek().clone() {
                 Tok::Str { .. } => {
@@ -511,7 +511,7 @@ impl Parser {
         self.expect(&Tok::RParen, "参数表结束");
         let ret = if self.eat(&Tok::Arrow) { Some(self.parse_type()) } else { None };
         let body = if self.at(&Tok::LBrace) { Some(self.parse_block()) } else { None };
-        FnDecl { attrs, vis, is_comptime, extern_abi, name, type_params, params, ret, body }
+        FnDecl { attrs, vis, is_comptime, abi, name, type_params, params, ret, body }
     }
 
     fn take_str_lit(&mut self) -> Vec<crate::ast::StrPart> {
@@ -1256,9 +1256,16 @@ impl Parser {
 }
 
 fn suffix_name(s: &NumSuffix) -> String {
+    // C-AST v1 契约:后缀保留源码小写原文(§1.4)
     match s {
         NumSuffix::None => String::new(),
-        other => format!("{:?}", other),
+        NumSuffix::I8 => "i8".into(), NumSuffix::I16 => "i16".into(),
+        NumSuffix::I32 => "i32".into(), NumSuffix::I64 => "i64".into(),
+        NumSuffix::ISize => "isize".into(),
+        NumSuffix::U8 => "u8".into(), NumSuffix::U16 => "u16".into(),
+        NumSuffix::U32 => "u32".into(), NumSuffix::U64 => "u64".into(),
+        NumSuffix::USize => "usize".into(),
+        NumSuffix::F32 => "f32".into(), NumSuffix::F64 => "f64".into(),
     }
 }
 
@@ -1454,7 +1461,7 @@ mod tests {
         assert!(d.is_empty(), "{:?}", d);
         match &f.decls[0] {
             Decl::Fn(fun) => {
-                assert_eq!(fun.extern_abi.as_deref(), Some("c"));
+                assert_eq!(fun.abi.as_deref(), Some("c"));
                 assert!(fun.body.is_none());
                 assert_eq!(fun.attrs.len(), 1);
             }

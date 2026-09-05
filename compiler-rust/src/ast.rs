@@ -39,7 +39,7 @@ pub struct ImplDecl { pub type_params: Vec<TypeParam>, pub trait_ty: Type,
 pub enum ImplItem { Method(FnDecl), Prop(PropDecl) }
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDecl { pub attrs: Vec<Attribute>, pub vis: Vis, pub is_comptime: bool,
-    pub extern_abi: Option<String>, pub name: String, pub type_params: Vec<TypeParam>,
+    pub abi: Option<String>, pub name: String, pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>, pub ret: Option<Type>, pub body: Option<Block> }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Param { Receiver { is_var: bool }, Param { is_var: bool, name: String, ty: Type } }
