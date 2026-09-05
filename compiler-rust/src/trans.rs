@@ -30,6 +30,14 @@ enum VTy {
     F32,
     Str,
     Range,
+    /// 数组/切片句柄(ct_arr*):赋值共享后备,对齐 interp Rc 语义
+    Array,
+    /// 用户 struct(值语义)——索引指向 Trans::types
+    Struct(u32),
+    /// 用户 class(引用语义)——ctn_<Name>* 指针
+    Class(u32),
+    /// Box[T](v)——内层 struct 的堆指针
+    Boxed(u32),
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -90,17 +98,31 @@ fn suffix_ty(suffix: &str) -> VTy {
 
 type TRes = Result<(String, VTy), String>; // Ok((C 表达式, 类型)) / Err(域外拒绝)
 
+#[derive(Clone)]
+struct TypeInfo {
+    name: String,
+    is_class: bool,
+    fields: Vec<(String, VTy)>, // (字段名, 类型)
+}
+
 pub struct Trans {
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
     scopes: Vec<Vec<(String, String, VTy)>>, // 作用域栈:(名, C 名, 类型)
     uniq: u32,
     fns: Vec<(String, Vec<VTy>, VTy)>,
+    types: Vec<TypeInfo>,
+    type_by_name: std::collections::HashMap<String, u32>,
 }
 
 impl Trans {
     pub fn new() -> Self {
-        Trans { sink: vec![String::new()], scopes: Vec::new(), uniq: 0, fns: Vec::new() }
+        Trans {
+            sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
+            fns: Vec::new(), types: Vec::new(),
+            type_by_name: std::collections::HashMap::new(),
+        }
     }
+
 
     fn uniq_name(&mut self, base: &str) -> String {
         self.uniq += 1;
@@ -149,6 +171,21 @@ impl Trans {
         let mut tests = Vec::new();
         for d in &file.decls {
             match d {
+                ast::Decl::Struct(st) => {
+                    if !st.type_params.is_empty() {
+                        return Err("trans v1 拒绝域:泛型 struct(单态化未实现)".into());
+                    }
+                    self.collect_type(&st.name, &st.fields, false)?
+                }
+                ast::Decl::Class(cl) => {
+                    if !cl.type_params.is_empty() {
+                        return Err("trans v1 拒绝域:泛型 class".into());
+                    }
+                    if cl.items.iter().any(|it| !matches!(it, ast::ClassItem::Field(_))) {
+                        return Err("trans v1 拒绝域:class 方法/prop".into());
+                    }
+                    self.collect_class(cl)?
+                }
                 ast::Decl::Fn(f) => {
                     let params = f.params.iter().map(|p| match p {
                         ast::Param::Param { ty, .. } => self.ty_of(ty),
@@ -166,6 +203,15 @@ impl Trans {
         }
 
         self.w(0, PREAMBLE);
+
+        // 用户类型 typedef(struct 值语义 / class 指针语义)
+        let types_snapshot = self.types.clone();
+        for t in &types_snapshot {
+            let fs: Vec<String> = t.fields.iter()
+                .map(|(n, ty)| format!("    {} {};", self.c_ty(*ty), n))
+                .collect();
+            self.w(0, &format!("typedef struct {{\n{}\n}} ctn_{};", fs.join("\n"), t.name));
+        }
 
         for d in &file.decls {
             if let ast::Decl::Fn(f) = d {
@@ -197,13 +243,74 @@ impl Trans {
         Ok(self.sink.into_iter().next_back().unwrap_or_default())
     }
 
-    fn ty_of(&self, t: &ast::Type) -> VTy {
+    fn intern_type(&mut self, name: &str, is_class: bool) -> u32 {
+        if let Some(&id) = self.type_by_name.get(name) { return id; }
+        let id = self.types.len() as u32;
+        self.types.push(TypeInfo { name: name.to_string(), is_class, fields: Vec::new() });
+        self.type_by_name.insert(name.to_string(), id);
+        id
+    }
+
+    fn collect_type(&mut self, name: &str, fields: &[ast::Field], is_class: bool) -> Result<(), String> {
+        let id = self.intern_type(name, is_class);
+        let _ = id;
+        let mut fs = Vec::new();
+        for f in fields {
+            let ty = self.field_ty(&f.ty)?;
+            fs.push((f.name.clone(), ty));
+        }
+        self.types[id as usize].fields = fs;
+        Ok(())
+    }
+
+    fn collect_class(&mut self, cl: &ast::ClassDecl) -> Result<(), String> {
+        let fields: Vec<ast::Field> = cl.items.iter().filter_map(|it| match it {
+            ast::ClassItem::Field(f) => Some(f.clone()),
+            _ => None,
+        }).collect();
+        self.collect_type(&cl.name, &fields, true)
+    }
+
+    fn field_ty(&self, t: &ast::Type) -> Result<VTy, String> {
         if let ast::Type::Named { path, .. } = t {
             if let Some(name) = path.last() {
-                if let Some(v) = scalar_annotation(name) { return v; }
+                if let Some(v) = scalar_annotation(name) { return Ok(v); }
+                if let Some(&id) = self.type_by_name.get(name.as_str()) {
+                    let is_class = self.types[id as usize].is_class;
+                    return Ok(if is_class { VTy::Class(id) } else { VTy::Struct(id) });
+                }
+                return Err(format!("trans v1 拒绝域:字段类型 `{}`(仅数值/Bool/Str/用户类型)", name));
             }
         }
-        VTy::Unknown
+        Err("trans v1 拒绝域:字段类型形态".into())
+    }
+
+    /// 字段访问基串(含分隔符):struct 值用 `.`,class/Boxed 指针用 `->`
+    fn deref_obj(&self, c: &str, ty: VTy) -> Result<(String, u32), String> {
+        match ty {
+            VTy::Struct(id) => Ok((format!("({}).", c), id)),
+            VTy::Class(id) | VTy::Boxed(id) => Ok((format!("({})->", c), id)),
+            _ => Err("trans:字段访问需用户类型".into()),
+        }
+    }
+
+    fn ty_of(&self, t: &ast::Type) -> VTy {
+        match t {
+            ast::Type::Named { path, .. } => {
+                if let Some(name) = path.last() {
+                    if let Some(v) = scalar_annotation(name) { return v; }
+                    if let Some(&id) = self.type_by_name.get(name.as_str()) {
+                        let is_class = self.types[id as usize].is_class;
+                        return if is_class { VTy::Class(id) } else { VTy::Struct(id) };
+                    }
+                }
+                VTy::Unknown
+            }
+            // T[N] 定长 / T[] 视图 / &T[] 只读视图:统一数组句柄(interp 同为 Value::Array)
+            ast::Type::Slice(_) | ast::Type::Array { .. } => VTy::Array,
+            ast::Type::Ref(inner) => self.ty_of(inner),
+            _ => VTy::Unknown,
+        }
     }
 
     fn c_ty(&self, t: VTy) -> &'static str {
@@ -213,6 +320,9 @@ impl Trans {
             VTy::Bool => "int",
             VTy::Str => "char*",
             VTy::Range => "ct_range",
+            VTy::Array => "ct_arr*",
+            VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
+            VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
             VTy::Int(_) | _ => "ct_i",
         }
     }
@@ -298,8 +408,52 @@ impl Trans {
                 Ok(())
             }
             ast::Stmt::Assign { target, op, value } => {
+                // 字段/索引赋值
+                if let ast::Expr::Member { obj, target: mt } = target {
+                    let name = match mt {
+                        ast::MemberTarget::Name(n) => n.clone(),
+                        _ => return Err("trans v1 拒绝域:元组索引赋值".into()),
+                    };
+                    let (oc, oty) = self.expr(obj)?;
+                    let (base, _tid) = self.deref_obj(&oc, oty)?;
+                    let (v, fvty) = self.expr(value)?;
+                    let lhs = format!("{}{}", base, name);
+                    let _ = oty;
+                    let _ = fvty;
+                    return match op {
+                        ast::AssignOp::Eq => {
+                            self.w(1, &format!("{} = {};", lhs, v));
+                            Ok(())
+                        }
+                        other => {
+                            let bin = assign_binop(other);
+                            let (cc, _) = self.binop(&bin, &format!("({})", lhs), VTy::Int(None), &v, VTy::Int(None))?;
+                            self.w(1, &format!("{} = {};", lhs, cc));
+                            Ok(())
+                        }
+                    };
+                }
+                if let ast::Expr::Index { obj, index } = target {
+                    let (oc, oty) = self.expr(obj)?;
+                    if oty != VTy::Array { return Err("trans:索引赋值仅支持数组".into()); }
+                    let (ic, ity) = self.expr(index)?;
+                    if !matches!(ity, VTy::Int(_)) { return Err("trans:索引需整数".into()); }
+                    let (v, _) = self.expr(value)?;
+                    return match op {
+                        ast::AssignOp::Eq => {
+                            self.w(1, &format!("ct_elem_store({}, {}, {});", oc, ic, v));
+                            Ok(())
+                        }
+                        other => {
+                            let bin = assign_binop(other);
+                            let (cc, _) = self.binop(&bin, &format!("ct_elem({}, {})", oc, ic), VTy::Int(None), &v, VTy::Int(None))?;
+                            self.w(1, &format!("ct_elem_store({}, {}, {});", oc, ic, cc));
+                            Ok(())
+                        }
+                    };
+                }
                 let ast::Expr::Ident(name) = target else {
-                    return Err("trans v1 拒绝域:赋值目标(仅 Ident)".into());
+                    return Err("trans v1 拒绝域:赋值目标".into());
                 };
                 let Some((c, vty)) = self.lookup(name) else {
                     return Err(format!("trans:未绑定变量 `{}`", name));
@@ -345,40 +499,58 @@ impl Trans {
                 let ast::Pattern::Ident(name) = pattern else {
                     return Err("trans v1 拒绝域:for 非 Ident 模式".into());
                 };
-                // iter:range 字面量或 Range 类型的值
-                let (lo_c, hi_c, incl, rtmp) = match iter {
+                // 三种迭代:range 字面量 / Range 类型的值 / 数组(Range/数组值只求值一次)
+                enum IterKind { RangeLit, RangeVal, Arr }
+                let (kind, lo_c, hi_c, incl, tmp, init) = match iter {
                     ast::Expr::Range { inclusive, from, to } => {
                         let (fc, ft) = self.expr(from.as_ref())?;
                         if !matches!(ft, VTy::Int(_)) { return Err("trans:range 端点需整数".into()); }
                         let (tcc, _) = self.expr(to.as_ref())?;
-                        (fc, tcc, *inclusive, None)
+                        (IterKind::RangeLit, fc, tcc, *inclusive, String::new(), String::new())
                     }
                     other => {
                         let (c, ty) = self.expr(other)?;
-                        if ty != VTy::Range { return Err("trans v1 拒绝域:for 仅支持 range".into()); }
-                        let tmp = self.uniq_name("rng");
-                        ("(ct_i)0".to_string(), "(ct_i)0".to_string(), false, Some((tmp, c)))
+                        match ty {
+                            VTy::Range => {
+                                let t = self.uniq_name("rng");
+                                (IterKind::RangeVal, String::new(), String::new(), false, t, c)
+                            }
+                            VTy::Array => {
+                                let t = self.uniq_name("arr");
+                                (IterKind::Arr, String::new(), String::new(), false, t, c)
+                            }
+                            _ => return Err("trans v1 拒绝域:for 仅支持 range/数组".into()),
+                        }
                     }
                 };
                 let end = self.uniq_name("end");
                 let it = self.uniq_name("it");
-                match &rtmp {
-                    Some((tmp, init)) => self.w(1, &format!("{{ ct_range {} = {};", tmp, init)),
-                    None => self.w(1, &format!("{{ ct_i {} = (ct_i)({});", end, hi_c)),
+                match kind {
+                    IterKind::RangeLit => {
+                        self.w(1, &format!("{{ ct_i {} = (ct_i)({});", end, hi_c));
+                        let cmp = if incl { "<=" } else { "<" };
+                        self.w(1, &format!(
+                            "for (ct_i {} = {}; {} {} {}; {}++) {{", it, lo_c, it, cmp, end, it));
+                    }
+                    IterKind::RangeVal => {
+                        self.w(1, &format!("{{ ct_range {} = {};", tmp, init));
+                        let cmp = if incl { "<=" } else { "<" };
+                        self.w(1, &format!(
+                            "for (ct_i {} = (ct_i)({}.lo); {} {} (ct_i)({}.hi); {}++) {{",
+                            it, tmp, it, cmp, tmp, it));
+                    }
+                    IterKind::Arr => {
+                        self.w(1, &format!("{{ ct_arr* {} = {};", tmp, init));
+                        self.w(1, &format!(
+                            "for (size_t {} = 0; {} < {}->n; {}++) {{", it, it, tmp, it));
+                    }
                 }
-                let (lo_expr, end_expr, cmp) = match &rtmp {
-                    Some((tmp, _)) => (format!("(ct_i)({}.lo)", tmp), format!("(ct_i)({}.hi)", tmp),
-                        if incl { "<=" } else { "<" }),
-                    None => (lo_c.clone(), end.clone(), if incl { "<=" } else { "<" }),
-                };
-                let _ = hi_c;
-                self.w(1, &format!(
-                    "for (ct_i {} = {}; {} {} {}; {}++) {{",
-                    it, lo_expr, it, cmp, end_expr, it
-                ));
                 self.scope_push();
                 let c = self.bind(name, VTy::Int(Some((IntW::W64, true))));
-                self.w(1, &format!("ct_i {} = {};", c, it));
+                match kind {
+                    IterKind::Arr => self.w(1, &format!("ct_i {} = {}->d[{}];", c, tmp, it)),
+                    _ => self.w(1, &format!("ct_i {} = {};", c, it)),
+                }
                 self.emit_block_stmts(body)?;
                 self.scope_pop();
                 self.w(1, "}");
@@ -536,8 +708,8 @@ impl Trans {
                 ))
             }
             ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } => {
-                // 属性访问(无括号):Str.len / Str.char_len
                 let (c, ty) = self.expr(obj)?;
+                // 属性访问(无括号)
                 if ty == VTy::Str {
                     return match m.as_str() {
                         "len" => Ok((format!("((ct_i)strlen({}))", c), VTy::Int(Some((IntW::W64, false))))),
@@ -545,7 +717,58 @@ impl Trans {
                         _ => Err(format!("trans v1 拒绝域:Str 属性 `{}`", m)),
                     };
                 }
-                Err(format!("trans v1 拒绝域:属性访问 `.{}`", m))
+                if ty == VTy::Array {
+                    return match m.as_str() {
+                        "len" => Ok((format!("((ct_i)({})->n)", c), VTy::Int(Some((IntW::W64, false))))),
+                        _ => Err(format!("trans v1 拒绝域:Array 属性 `{}`", m)),
+                    };
+                }
+                // 用户类型字段(struct 值 / class、Boxed 指针)
+                let (base, tid) = self.deref_obj(&c, ty)?;
+                let fty = self.types[tid as usize].fields.iter()
+                    .find(|(n, _)| n == m).map(|(_, t)| *t);
+                let Some(fty) = fty else {
+                    return Err(format!("trans:类型无字段 `{}`", m));
+                };
+                return Ok((format!("{}{}", base, m), fty));
+            }
+            ast::Expr::Index { obj, index } => {
+                let (oc, ty) = self.expr(obj)?;
+                if ty != VTy::Array { return Err("trans:索引仅支持数组".into()); }
+                let (ic, it) = self.expr(index)?;
+                if !matches!(it, VTy::Int(_)) { return Err("trans:索引需整数".into()); }
+                Ok((format!("ct_elem({}, {})", oc, ic), VTy::Int(None)))
+            }
+            ast::Expr::Array(items) => {
+                let mut parts = Vec::new();
+                for i in items {
+                    let (c, _) = self.expr(i)?;
+                    parts.push(c);
+                }
+                let n = parts.len();
+                let inits = if parts.is_empty() { "NULL".to_string() }
+                    else { format!("(ct_i[]){{{}}}", parts.join(", ")) };
+                Ok((format!("ct_arr_new({}, {})", n, inits), VTy::Array))
+            }
+            ast::Expr::StructLit { path, fields, .. } => {
+                let name = path.last().cloned().unwrap_or_default();
+                let Some(&tid) = self.type_by_name.get(name.as_str()) else {
+                    return Err(format!("trans:未解析类型 `{}`", name));
+                };
+                let is_class = self.types[tid as usize].is_class;
+                let mut inits = Vec::new();
+                for f in fields {
+                    let v = f.value.as_ref().ok_or("trans:字段简写未支持")?;
+                    let (c, _) = self.expr(v)?;
+                    inits.push(format!(".{} = ({})", f.name, c));
+                }
+                let lit = format!("(ctn_{}){{ {} }}", name, inits.join(", "));
+                if is_class {
+                    // class 引用语义:字面量即堆分配
+                    Ok((format!("({{ ctn_{name}* p = malloc(sizeof(ctn_{name})); *p = {lit}; p; }})", name = name, lit = lit), VTy::Class(tid)))
+                } else {
+                    Ok((lit, VTy::Struct(tid)))
+                }
             }
             ast::Expr::Call { callee, args } => self.call(callee, args),
             ast::Expr::TypeArgs { expr, args } => {
@@ -610,6 +833,24 @@ impl Trans {
     }
 
     fn call(&mut self, callee: &ast::Expr, args: &[ast::Expr]) -> TRes {
+        // Box[T](v) — 堆装箱
+        if let ast::Expr::TypeArgs { expr, .. } = callee {
+            if let ast::Expr::Ident(tn) = &**expr {
+                if tn == "Box" {
+                    let Some(a) = args.first() else { return Err("trans:Box 需实参".into()) };
+                    let (vc, vty) = self.expr(a)?;
+                    let tid = match vty {
+                        VTy::Struct(id) => id,
+                        _ => return Err("trans v1 拒绝域:Box 仅支持用户 struct".into()),
+                    };
+                    let name = self.types[tid as usize].name.clone();
+                    return Ok((
+                        format!("({{ ctn_{n}* p = malloc(sizeof(ctn_{n})); *p = {v}; p; }})", n = name, v = vc),
+                        VTy::Boxed(tid),
+                    ));
+                }
+            }
+        }
         // x.as[T]() — as 的 TypeArgs 挂在 callee 位置
         if let ast::Expr::TypeArgs { expr, args: targ_args } = callee {
             if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = &**expr {
@@ -778,6 +1019,21 @@ impl Trans {
 }
 
 /// 返回 (宽度标记, bits, us);us 语义 = 1 无符号(VTy 的 bool = 有符号,注意取反)
+fn assign_binop(op: &ast::AssignOp) -> ast::BinOp {
+    match op {
+        ast::AssignOp::AddEq => ast::BinOp::Add,
+        ast::AssignOp::SubEq => ast::BinOp::Sub,
+        ast::AssignOp::MulEq => ast::BinOp::Mul,
+        ast::AssignOp::DivEq => ast::BinOp::Div,
+        _ => ast::BinOp::Mod,
+    }
+}
+
+/// intern 成 &'static str(编译器进程一次性,不做回收)
+fn leak_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
 fn merge_width(lw: Option<(IntW, bool)>, rw: Option<(IntW, bool)>) -> (Option<(IntW, bool)>, i32, i32) {
     match (lw, rw) {
         (Some(x), _) => (Some(x), wbits(x.0), (!x.1) as i32),
@@ -902,6 +1158,26 @@ static int ct_assert(int ok) {
     if (!ok) { fprintf(stderr, "assertion failed (test %s)\n", ct_cur_test); exit(1); }
     return ok;
 }
+/* ---- 数组运行时:句柄共享语义(对齐 interp Rc<Vec>),进程期不回收 ---- */
+typedef struct { ct_i* d; size_t n; } ct_arr;
+static ct_arr* ct_arr_new(size_t n, ct_i* init) {
+    ct_arr* a = (ct_arr*)malloc(sizeof(ct_arr));
+    if (!a) abort();
+    a->n = n;
+    a->d = n ? (ct_i*)malloc(n * sizeof(ct_i)) : NULL;
+    if (n && !a->d) abort();
+    for (size_t i = 0; i < n; i++) a->d[i] = init[i];
+    return a;
+}
+static ct_i ct_elem(ct_arr* a, ct_i i) {
+    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
+    return a->d[(size_t)i];
+}
+static void ct_elem_store(ct_arr* a, ct_i i, ct_i v) {
+    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
+    a->d[(size_t)i] = v;
+}
+
 /* ---- Str 运行时(进程期分配,v1 不回收;参考后端契约) ---- */
 static char* ct_concat(const char* a, const char* b) {
     size_t la = strlen(a), lb = strlen(b);

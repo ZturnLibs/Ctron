@@ -118,7 +118,7 @@ fn native_matches_interpreter() {
         }
     }
 
-    println!("P1-E① 原生差分: {ran} 文件原生运行一致, {skipped} 域外跳过");
-    assert!(ran >= 3, "数值域至少应覆盖 3 个语料文件,实际 {ran}");
+    println!("P1-E 原生差分: {ran} 文件原生运行一致, {skipped} 域外跳过");
+    assert!(ran >= 9, "原生差分覆盖不应回退(已到 10),实际 {ran}");
     assert!(failures.is_empty(), "原生/解释器分歧({}):\n{}", failures.len(), failures.join("\n---\n"));
 }
