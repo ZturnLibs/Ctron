@@ -143,6 +143,61 @@ static int cmd_run(int argc, char** argv) {
     return rc;
 }
 
+// 用 Ctron 实现的解析器(parsetree.ct,结构化 AST 树)解析任意测试码并打印 C-AST v1。
+// 做法:读 Ctron 模块源码,把其中 read_file 的目标字面量换成目标文件后运行该模块。
+static int cmd_parse_ct(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc parse-ct <file> [module]\n");
+        return 2;
+    }
+    const char* mod = argc > 3 ? argv[3] : "selfhost/parsetree.ct";
+    size_t mlen;
+    char* msrc = read_file(mod, &mlen);
+    if (!msrc) {
+        fprintf(stderr, "无法读取模块 %s\n", mod);
+        return 2;
+    }
+    // 替换模块内 read_file("...") 的字符串字面量为目标文件
+    const char* rf = strstr(msrc, "read_file(\"");
+    if (!rf) {
+        fprintf(stderr, "模块 %s 缺 read_file 调用\n", mod);
+        free(msrc);
+        return 2;
+    }
+    const char* openq = rf + strlen("read_file(\"");
+    const char* closeq = strchr(openq, '"');
+    if (!closeq) {
+        fprintf(stderr, "模块 %s read_file 路径未闭合\n", mod);
+        free(msrc);
+        return 2;
+    }
+    size_t pre = (size_t)(openq - msrc);
+    size_t rlen = strlen(argv[2]);
+    size_t after = mlen - (size_t)(closeq - msrc); // 保留收尾引号
+    char* out = (char*)malloc(pre + rlen + after + 1);
+    if (!out) abort();
+    memcpy(out, msrc, pre);
+    memcpy(out + pre, argv[2], rlen);
+    memcpy(out + pre + rlen, closeq, after);
+    out[pre + rlen + after] = '\0';
+    free(msrc);
+    ctron_parse_result pr = ctron_parse_src(out, pre + rlen + after);
+    free(out);
+    if (pr.ndiags) {
+        fprintf(stderr, "Ctron 模块解析失败\n");
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    rt_run rr = ctron_rt_run_main(pr.file);
+    if (rr.out) printf("%s", rr.out);
+    if (rr.msg) fprintf(stderr, "%s\n", rr.msg);
+    int rc = 0;
+    if (rr.st == RT_PANIC || rr.st == RT_ERROR || rr.exit_code != 0) rc = 1;
+    ctron_rt_run_free(&rr);
+    ctron_parse_result_free(&pr);
+    return rc;
+}
+
 int main(int argc, char** argv) {
     const char* sub = argc > 1 ? argv[1] : "";
     if (strcmp(sub, "version") == 0) {
@@ -153,6 +208,7 @@ int main(int argc, char** argv) {
     if (strcmp(sub, "parse") == 0) return cmd_parse(argc, argv);
     if (strcmp(sub, "check") == 0) return cmd_check(argc, argv);
     if (strcmp(sub, "run") == 0) return cmd_run(argc, argv);
-    fprintf(stderr, "usage: ctronc <version|lex|parse|check|run> [args]\n");
+    if (strcmp(sub, "parse-ct") == 0) return cmd_parse_ct(argc, argv);
+    fprintf(stderr, "usage: ctronc <version|lex|parse|check|run|parse-ct> [args]\n");
     return 2;
 }

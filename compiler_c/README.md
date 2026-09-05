@@ -12,7 +12,9 @@
 
 - **集成验收**(与 Rust 版同一口径):61 文件中仅 `01c_parse.neg.ct` 报 E1001、`06_static_var.neg.ct` 报 E3030,**其余零解析诊断**。
 - 单元锚点:声明/类型三态(空=切片、单整型=定长数组、其余=泛型实参)、`]` 后跟 `(`/`{` 快速路径与顶层逗号回退、比较不可链、`else` 同行、赋值目标校验、2000 层 `(`/1500 层类型括号嵌套上限(嵌套过深 E1001,不栈溢出)。
-- `ctronc parse <file> [--ast]`:AST 确定性文本(自举差分产物形态,C 版契约见下)。
+- `ctronc parse <file> [--ast]`:AST 确定性文本。
+- `ctronc parse-ct <file> [module]`:直接调用 **Ctron 实现的解析器/词法器** 处理任意 Ctron 测试码
+  (默认 parsetree.ct 结构化树解析器;可指定 selfhost/lex_num.ct 等模块,read_file 目标自动替换)。
 - ASan/UBSan 全绿;`make test` 全绿(四件套)。
 
 ## 目录与构建
