@@ -788,6 +788,42 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
         adv(cur)
         return "Array(" + es + ")"
     }
+    if b0 >= 65 && b0 <= 90 && toks[cur.load() + 1] == "\{" {
+        var nm = t
+        adv(cur)
+        adv(cur)
+        var fs = ""
+        var k2: I32 = 0
+        var more2 = true
+        while more2 {
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "}" {
+                more2 = false
+            } else if tok(toks, cur) == "#EOF" {
+                more2 = false
+            } else {
+                var fnm = tok(toks, cur)
+                adv(cur)
+                adv(cur)
+                var vv = parse_expr(toks, cur)
+                if k2 > 0 {
+                    fs = fs + ", "
+                }
+                fs = fs + "StructField \{ name: \"" + fnm + "\", value: " + vv + "}"
+                k2 += 1
+                while tok(toks, cur) == "NL" {
+                    adv(cur)
+                }
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                }
+            }
+        }
+        adv(cur)
+        return "StructLit \{ path: [\"" + nm + "\"], fields: [" + fs + "] }"
+    }
     adv(cur)
     return "Ident(\"" + t + "\")"
 }
@@ -840,6 +876,31 @@ fn parse_type(toks: List[Str], cur: Atomic[I32]) -> Str {
         adv(cur)
         var sub = parse_type(toks, cur)
         return type_postfix(toks, cur, "Ref(" + sub + ")")
+    }
+    if t == "(" {
+        adv(cur)
+        var es = ""
+        var k: I32 = 0
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" {
+                more = false
+            } else {
+                var a = parse_type(toks, cur)
+                if k > 0 {
+                    es = es + ", "
+                }
+                es = es + a
+                k += 1
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                } else {
+                    more = false
+                }
+            }
+        }
+        adv(cur)
+        return type_postfix(toks, cur, "Tuple(" + es + ")")
     }
     var b0 = byte_at(t, 0)
     if is_digit(b0) {
@@ -1048,6 +1109,10 @@ fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
+    var tp = "[]"
+    if tok(toks, cur) == "[" {
+        tp = parse_type_params(toks, cur)
+    }
     adv(cur)
     var ps = ""
     var k: I32 = 0
@@ -1080,7 +1145,7 @@ fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     adv(cur)
     var body = parse_block(toks, cur)
-    var out = "Fn \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: [], params: [" + ps + "], ret: " + ret
+    var out = "Fn \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
     out = out + ", body: " + body + "}"
     return out
 }
@@ -1095,6 +1160,349 @@ fn parse_test(toks: List[Str], cur: Atomic[I32]) -> Str {
     return "Test \{ name: \"" + nm + "\", body: " + body + "}"
 }
 
+fn decl_kind(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var i = cur.load()
+    var go = true
+    while go {
+        var t = toks[i]
+        if t == "NL" {
+            i += 1
+        } else if t == "pub" {
+            i += 1
+        } else if t == "@" {
+            i += 1
+            i += 1
+            var d: I32 = 1
+            while d > 0 {
+                i += 1
+                var tt = toks[i]
+                if tt == "(" {
+                    d += 1
+                }
+                if tt == ")" {
+                    d -= 1
+                }
+            }
+            i += 1
+        } else {
+            go = false
+        }
+    }
+    return toks[i]
+}
+
+fn parse_derive(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var out = "[]"
+    if tok(toks, cur) == "@" {
+        adv(cur)
+        adv(cur)
+        adv(cur)
+        var ds = ""
+        var k: I32 = 0
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" {
+                more = false
+            } else {
+                var a = tok(toks, cur)
+                adv(cur)
+                if k > 0 {
+                    ds = ds + ", "
+                }
+                ds = ds + "\"" + a + "\""
+                k += 1
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                } else {
+                    more = false
+                }
+            }
+        }
+        adv(cur)
+        out = "[" + ds + "]"
+    }
+    return out
+}
+
+fn parse_vis_word(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var vis = "Private"
+    if tok(toks, cur) == "pub" {
+        vis = "Pub"
+        adv(cur)
+    }
+    return vis
+}
+
+fn parse_type_params(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var out = ""
+    var k: I32 = 0
+    var more = true
+    while more {
+        if tok(toks, cur) == "]" {
+            more = false
+        } else {
+            var isc = "false"
+            if tok(toks, cur) == "comptime" {
+                isc = "true"
+                adv(cur)
+            }
+            var nm = tok(toks, cur)
+            adv(cur)
+            var bs = ""
+            var k2: I32 = 0
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                var more2 = true
+                while more2 {
+                    var b = tok(toks, cur)
+                    adv(cur)
+                    if k2 > 0 {
+                        bs = bs + ", "
+                    }
+                    bs = bs + "\"" + b + "\""
+                    k2 += 1
+                    if tok(toks, cur) == "+" {
+                        adv(cur)
+                    } else {
+                        more2 = false
+                    }
+                }
+            }
+            if k > 0 {
+                out = out + ", "
+            }
+            out = out + "TypeParam \{ name: \"" + nm + "\", bound: [" + bs + "], is_comptime: " + isc + " }"
+            k += 1
+            if tok(toks, cur) == "," {
+                adv(cur)
+            } else {
+                more = false
+            }
+        }
+    }
+    adv(cur)
+    return "[" + out + "]"
+}
+
+fn parse_field(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var vis = parse_vis_word(toks, cur)
+    var isv = "false"
+    var t = tok(toks, cur)
+    if or2(t == "let", t == "var") {
+        if t == "var" {
+            isv = "true"
+        }
+        adv(cur)
+    }
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = parse_type(toks, cur)
+    return "Field \{ vis: " + vis + ", is_var: " + isv + ", name: \"" + nm + "\", ty: " + ty + "}"
+}
+
+fn skip_nl(toks: List[Str], cur: Atomic[I32]) {
+    while tok(toks, cur) == "NL" {
+        adv(cur)
+    }
+}
+
+fn parse_struct(toks: List[Str], cur: Atomic[I32]) -> Str {
+    skip_nl(toks, cur)
+    var vis = parse_vis_word(toks, cur)
+    var drv = parse_derive(toks, cur)
+    skip_nl(toks, cur)
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var tp = "[]"
+    if tok(toks, cur) == "[" {
+        tp = parse_type_params(toks, cur)
+    }
+    skip_nl(toks, cur)
+    adv(cur)
+    var fs = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" {
+            go = false
+        } else if tok(toks, cur) == "#EOF" {
+            go = false
+        } else {
+            var f = parse_field(toks, cur)
+            if k > 0 {
+                fs = fs + ", "
+            }
+            fs = fs + f
+            k += 1
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "," {
+                adv(cur)
+            }
+        }
+    }
+    adv(cur)
+    var out = "Struct \{ attrs: [], derives: " + drv + ", name: \"" + nm + "\", type_params: " + tp + ", fields: [" + fs + "] }"
+    return out
+}
+
+fn parse_enum(toks: List[Str], cur: Atomic[I32]) -> Str {
+    skip_nl(toks, cur)
+    var vis = parse_vis_word(toks, cur)
+    var drv = parse_derive(toks, cur)
+    skip_nl(toks, cur)
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var tp = "[]"
+    if tok(toks, cur) == "[" {
+        tp = parse_type_params(toks, cur)
+    }
+    skip_nl(toks, cur)
+    adv(cur)
+    var vs = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" {
+            go = false
+        } else if tok(toks, cur) == "#EOF" {
+            go = false
+        } else {
+            var vn = tok(toks, cur)
+            adv(cur)
+            var kind = "Unit"
+            if tok(toks, cur) == "(" {
+                adv(cur)
+                var es = ""
+                var k2: I32 = 0
+                var more2 = true
+                while more2 {
+                    if tok(toks, cur) == ")" {
+                        more2 = false
+                    } else {
+                        var a = parse_type(toks, cur)
+                        if k2 > 0 {
+                            es = es + ", "
+                        }
+                        es = es + a
+                        k2 += 1
+                        if tok(toks, cur) == "," {
+                            adv(cur)
+                        } else {
+                            more2 = false
+                        }
+                    }
+                }
+                adv(cur)
+                kind = "Tuple(" + es + ")"
+            } else if tok(toks, cur) == "\{" {
+                adv(cur)
+                var fs = ""
+                var k3: I32 = 0
+                var more3 = true
+                while more3 {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
+                    if tok(toks, cur) == "}" {
+                        more3 = false
+                    } else if tok(toks, cur) == "#EOF" {
+                        more3 = false
+                    } else {
+                        var f = parse_field(toks, cur)
+                        if k3 > 0 {
+                            fs = fs + ", "
+                        }
+                        fs = fs + f
+                        k3 += 1
+                        while tok(toks, cur) == "NL" {
+                            adv(cur)
+                        }
+                        if tok(toks, cur) == "," {
+                            adv(cur)
+                        }
+                    }
+                }
+                adv(cur)
+                kind = "Struct([" + fs + "])"
+            }
+            if k > 0 {
+                vs = vs + ", "
+            }
+            vs = vs + "Variant \{ name: \"" + vn + "\", kind: " + kind + "}"
+            k += 1
+        }
+    }
+    adv(cur)
+    return "Enum \{ attrs: [], derives: " + drv + ", name: \"" + nm + "\", type_params: " + tp + ", variants: [" + vs + "] }"
+}
+
+fn parse_use(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var segs = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        var a = tok(toks, cur)
+        if a == "#EOF" {
+            go = false
+        } else if a == "NL" {
+            go = false
+        } else if a == "." {
+            adv(cur)
+        } else if a == "\{" {
+            go = false
+        } else {
+            adv(cur)
+            if k > 0 {
+                segs = segs + ", "
+            }
+            segs = segs + "\"" + a + "\""
+            k += 1
+        }
+    }
+    return "Use \{ imports: [[" + segs + "]] }"
+}
+
+fn parse_const(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = parse_type(toks, cur)
+    adv(cur)
+    var e = parse_expr(toks, cur)
+    return "Const \{ name: \"" + nm + "\", ty: " + ty + ", expr: " + e + "}"
+}
+
+fn parse_static(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var wv = "false"
+    var t = tok(toks, cur)
+    if t == "var" {
+        wv = "true"
+    }
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = parse_type(toks, cur)
+    adv(cur)
+    var e = parse_expr(toks, cur)
+    return "Static \{ name: \"" + nm + "\", was_var: " + wv + ", ty: " + ty + ", expr: " + e + "}"
+}
+
 fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
     var out = "File \{ decls: ["
     var k: I32 = 0
@@ -1107,8 +1515,21 @@ fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
             go = false
         } else {
                     var d = "?"
-            if tok(toks, cur) == "test" {
+            var kd = decl_kind(toks, cur)
+            if kd == "test" {
                 d = parse_test(toks, cur)
+            } else if kd == "fn" {
+                d = parse_fn(toks, cur)
+            } else if kd == "struct" {
+                d = parse_struct(toks, cur)
+            } else if kd == "enum" {
+                d = parse_enum(toks, cur)
+            } else if kd == "use" {
+                d = parse_use(toks, cur)
+            } else if kd == "const" {
+                d = parse_const(toks, cur)
+            } else if kd == "static" {
+                d = parse_static(toks, cur)
             } else {
                 d = parse_fn(toks, cur)
             }

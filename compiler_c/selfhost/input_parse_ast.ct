@@ -98,3 +98,28 @@ fn mm(o: Option[I32], p: Pt, s: Str) -> I32 {
     }
     return 0
 }
+@derive(Show, Eq)
+struct Pixel {
+    let x: I32
+    let y: I32
+}
+struct Pair[A: Show + Eq, B] {
+    let first: A
+    let second: B
+}
+fn swap[T](pair: (T, T)) -> (T, T) {
+    return pair
+}
+fn usep(p: Pixel) -> I32 {
+    let q = Pixel { x: 1, y: 2 }
+    return q.x
+}
+enum Color {
+    Red
+    Green
+    Hue(I32)
+    Rgba { r: I32, g: I32 }
+}
+use stdweb.dom
+const LIMIT: I32 = 5
+static let seed: I32 = 1

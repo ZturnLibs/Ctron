@@ -72,8 +72,14 @@
    `[]`空/单整型消歧)、`&I32[]`→Ref(Slice(...));表达式加数组字面量 `[1,2,3]`→Array(...);
    let/for 绑定改用 parse_pattern(元组 `let (tx, rx) = ...` 等);tok 越界守卫防 OOM。
    parse 语料差分 6→**9 文件**(+03f_slices/05f_must_use.lint/08_bare),suite_diff 69 用例全绿。
-12. **C6f②(下一阶梯)**:struct/enum/use/const/static 声明族 + 结构字面量 + @derive/类型形参
-   (TypeParam{bound}),次之 own/闭包/class·impl·trait。
+12. **C6f②(本文件交付)**:声明族落地 —— struct(字段/pub/@derive→derives)、enum(Unit·
+   Tuple 载荷·Struct 变体)、use(点分路径)、const、static(let/var)、fn/struct/enum 类型形参
+   (`[T: Show + Eq]`→TypeParam{name,bound,is_comptime})、(T,T) 元组类型、表达式结构字面量
+   StructLit{path,fields};decl_kind 前探(pub/@derive/NL)分发,attr 行后 NL 消费等钉。
+   parse 语料差分 9→**16 文件**(+02e_match_patterns/02_match_exhaustive/05i_deep_cause/
+   01_overflow/02d_divzero/03h_utf8/10_web_dom 等),suite_diff 76 用例全绿;ASan/UBSan 全绿。
+13. **C6f③(下一阶梯)**:class/impl/trait 声明与 receiver 方法(self)、own(arena) 块、闭包
+   |x| 、Global 初始化,解锁 03_values_refs/05d/06_*/07_* 语料。
 
 ## 冻结纪律
 

@@ -188,9 +188,12 @@ int main(int argc, char** argv) {
     // 真实语料 parse-AST 差分(seq=3):parse_ast.ct 模板换靶,逐文件 vs C ctron_file_show
     {
         static const char* pcorpus[] = {
-            "../tests/00_doctest.ct", "../tests/01_basics.ct", "../tests/03b_numeric_widths.ct",
-            "../tests/03c_str_string.ct", "../tests/03f_slices.ct", "../tests/04b_logic.ct",
-            "../tests/05f_must_use.lint.ct", "../tests/08_bare.ct", "../tests/08_bare_alloc.neg.ct"};
+            "../tests/00_doctest.ct", "../tests/01_basics.ct", "../tests/01_overflow.panic.ct",
+            "../tests/02_match_exhaustive.neg.ct", "../tests/02d_divzero.panic.ct",
+            "../tests/02e_match_patterns.ct", "../tests/03b_numeric_widths.ct", "../tests/03c_str_string.ct",
+            "../tests/03f_slices.ct", "../tests/03h_utf8_boundary.panic.ct", "../tests/04b_logic.ct",
+            "../tests/05f_must_use.lint.ct", "../tests/05i_deep_cause.ct", "../tests/08_bare.ct",
+            "../tests/08_bare_alloc.neg.ct", "../tests/10_web_dom.ct"};
         char ptpath[4096], pip[4096];
         snprintf(ptpath, sizeof ptpath, "%s/parse_ast.ct", root);
         snprintf(pip, sizeof pip, "%s/input_parse_ast.ct", root);
