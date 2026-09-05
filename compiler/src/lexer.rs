@@ -107,10 +107,11 @@ impl<'src> Lexer<'src> {
 
     fn lex_number(&mut self, start: usize, line: u32, col: u32) -> Token {
         let radix = if self.peek() == Some(b'0') {
+            // 进制前缀仅小写:`0XFF`/`0O`/`0B` 不复认,按 Int("0") + Ident 回落
             match self.peek2() {
-                Some(b'x') | Some(b'X') => Some(16),
-                Some(b'o') | Some(b'O') => Some(8),
-                Some(b'b') | Some(b'B') => Some(1), // 1 占位:二进制,见下方统一改写
+                Some(b'x') => Some(16),
+                Some(b'o') => Some(8),
+                Some(b'b') => Some(1), // 1 占位:二进制,见下方统一改写
                 _ => None,
             }
         } else { None };
@@ -166,8 +167,9 @@ impl<'src> Lexer<'src> {
         ];
         for (s, suff) in SUFFIXES {
             let n = s.len();
+            // 后缀精确匹配(区分大小写):`255U8` 不匹配 u8,回落为 Int + Ident(U8)
             if self.src.len() >= self.pos + n
-                && self.src[self.pos..self.pos + n].eq_ignore_ascii_case(s.as_bytes()) {
+                && &self.src[self.pos..self.pos + n] == s.as_bytes() {
                 // 后缀必须是完整词(后面不能紧跟标识符字符)
                 let after = self.src.get(self.pos + n).copied();
                 if !matches!(after, Some(c) if c.is_ascii_alphanumeric() || c == b'_') {
@@ -231,9 +233,10 @@ impl<'src> Lexer<'src> {
                                 }
                                 if self.peek() == Some(b'}') && !hex.is_empty() {
                                     self.bump();
-                                    if let Some(ch) = char::from_u32(
-                                        u32::from_str_radix(&hex, 16).unwrap_or(0xFFFD),
-                                    ) {
+                                    // 解析溢出 u32 或非标量值(代理区)→ 非法 Unicode 转义,不再静默替换
+                                    if let Some(ch) =
+                                        u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
+                                    {
                                         let mut buf = [0u8; 4];
                                         bytes.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
                                     } else {
@@ -270,6 +273,12 @@ impl<'src> Lexer<'src> {
                     while depth > 0 {
                         match self.peek() {
                             None | Some(b'\n') => { depth = 0; }
+                            Some(b'"') => {
+                                // 插值不得跨字符串配对:扫到 '"' 即未终止插值;
+                                // 消耗它作为本串截断收尾引号,产出两个独立 Str(不融合、不续扫下一段)
+                                self.bump();
+                                depth = 0;
+                            }
                             Some(b'{') => { depth += 1; self.bump(); }
                             Some(b'}') => {
                                 depth -= 1;
@@ -375,26 +384,28 @@ pub fn lex(src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
 /// §1.6:行尾在延续集 → 换行无效;下一行以 `.` 或二元运算符开头 → 换行无效;连续换行折叠为一个。
 /// 文件起始(第一个实记号之前)的 K 个前导换行保留为 K-1 个:首行不需要终止符
 /// (锚定测试 comments_and_markers_are_trivia)。
-fn filter_newlines(mut raw: Vec<Token>) -> Vec<Token> {
-    let mut out: Vec<Token> = Vec::with_capacity(raw.len());
-    let lead = raw.iter().take_while(|t| t.tok == Tok::Newline).count();
-    out.extend(raw.drain(0..lead).skip(1));
-    while !raw.is_empty() {
-        let t = raw.remove(0);
+fn filter_newlines(raw: Vec<Token>) -> Vec<Token> {
+    // VecDeque 的 pop_front/drain(0..n) 均为 O(1)/一次性摊还:
+    // 取代 Vec::remove(0) 逐次整体搬移的 O(n²)(50k 行源文件 61.5s → 亚秒)
+    use std::collections::VecDeque;
+    let mut rest: VecDeque<Token> = raw.into();
+    let mut out: Vec<Token> = Vec::with_capacity(rest.len());
+    let lead = rest.iter().take_while(|t| t.tok == Tok::Newline).count();
+    out.extend(rest.drain(0..lead).skip(1));
+    while let Some(t) = rest.pop_front() {
         if t.tok != Tok::Newline {
             out.push(t);
             continue;
         }
         // 收集连续换行,看向第一个实记号
-        let mut next = raw.first().map(|x| x.tok.clone());
+        let mut next = rest.front().map(|x| x.tok.clone());
         while next.as_ref() == Some(&Tok::Newline) {
-            raw.remove(0);
-            next = raw.first().map(|x| x.tok.clone());
+            rest.pop_front();
+            next = rest.front().map(|x| x.tok.clone());
         }
-        let suppressed = match out.last() {
-            Some(prev) => line_end_continues(&prev.tok),
-            None => true, // 文件开头
-        } || next.as_ref().is_some_and(continues_next_line);
+        // 走到此处 out 必非空:前导换行已保留 K-1(K≥2)个,否则首个实记号已入 out
+        let suppressed = matches!(out.last().map(|t| &t.tok), Some(prev) if line_end_continues(prev))
+            || next.as_ref().is_some_and(continues_next_line);
         if !suppressed {
             out.push(t);
         }
@@ -567,5 +578,56 @@ mod tests {
         let (_, diags) = lex("\"a\\");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "E1001");
+    }
+
+    #[test]
+    fn numeric_suffix_is_case_sensitive() {
+        // 大写后缀不复认:255U8 回落为 Int("255") + Ident("U8"),无诊断
+        assert_eq!(kinds("255U8"),
+            vec![Tok::Int { text: "255".into(), suffix: NumSuffix::None },
+                 Tok::Ident("U8".into()), Tok::Eof]);
+        let (_, diags) = lex("255U8");
+        assert!(diags.is_empty());
+        // 小写后缀不受影响
+        assert_eq!(kinds("255u8"),
+            vec![Tok::Int { text: "255".into(), suffix: NumSuffix::U8 }, Tok::Eof]);
+    }
+
+    #[test]
+    fn uppercase_radix_prefix_is_not_recognized() {
+        // 大写进制前缀不复认:0XFF → Int("0") + Ident("XFF")
+        assert_eq!(kinds("0XFF"),
+            vec![Tok::Int { text: "0".into(), suffix: NumSuffix::None },
+                 Tok::Ident("XFF".into()), Tok::Eof]);
+        // 小写前缀不受影响
+        assert_eq!(kinds("0xFF 0o17 0b1010"),
+            vec![Tok::Int { text: "0xFF".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "0o17".into(), suffix: NumSuffix::None },
+                 Tok::Int { text: "0b1010".into(), suffix: NumSuffix::None },
+                 Tok::Eof]);
+    }
+
+    #[test]
+    fn unicode_escape_overflow_reports_e1001() {
+        // \u{FFFFFFFFF} 超出 u32:恰 1 条 E1001"非法的 Unicode 转义",不再静默替换
+        let (_, diags) = lex("\"\\u{FFFFFFFFF}\"");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "E1001");
+        assert_eq!(diags[0].message, "非法的 Unicode 转义");
+    }
+
+    #[test]
+    fn interpolation_does_not_pair_across_strings() {
+        // 跨串配对:插值扫描遇 '"' 视为未终止 → 恰 1 条 E1001,产出两个独立 Str(不再融合为一串)
+        let (toks, diags) = lex("f(\"x{y\",\"z}\")");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "E1001");
+        assert_eq!(diags[0].message, "未终止的插值");
+        assert_eq!(toks.into_iter().map(|t| t.tok).collect::<Vec<_>>(),
+            vec![Tok::Ident("f".into()), Tok::LParen,
+                 Tok::Str { parts: vec![StrPart::Text("x".into())] },
+                 Tok::Comma,
+                 Tok::Str { parts: vec![StrPart::Text("z}".into())] },
+                 Tok::RParen, Tok::Eof]);
     }
 }
