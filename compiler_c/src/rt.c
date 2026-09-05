@@ -105,6 +105,8 @@ typedef struct {
     val opt_result;
     int has_opt;
     scope_t* scope;
+    char* out;
+    size_t out_n, out_cap;
 } rt;
 
 static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
@@ -114,6 +116,20 @@ static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
     va_end(ap);
     R->st = st;
     longjmp(R->jb, 1);
+}
+
+static void rt_puts(rt* R, const char* s) {
+    size_t n = s ? strlen(s) : 0;
+    if (!n) return;
+    if (R->out_n + n + 1 > R->out_cap) {
+        R->out_cap = (R->out_cap ? R->out_cap * 2 : 256);
+        while (R->out_n + n + 1 > R->out_cap) R->out_cap *= 2;
+        R->out = (char*)realloc(R->out, R->out_cap);
+        if (!R->out) abort();
+    }
+    memcpy(R->out + R->out_n, s, n);
+    R->out_n += n;
+    R->out[R->out_n] = 0;
 }
 
 static val v_box(rt* R, val inner) {
@@ -1165,6 +1181,17 @@ static val eval_expr(rt* R, cexpr* e) {
         val r = eval_expr(R, e->rhs);
         switch (e->bop) {
         case B_ADD:
+            if (l.k == V_STR && r.k == V_STR) {
+                size_t a1 = l.s ? strlen(l.s) : 0, b1 = r.s ? strlen(r.s) : 0;
+                char* c2 = (char*)ctron_arena_alloc(R->a, a1 + b1 + 1);
+                if (a1) memcpy(c2, l.s, a1);
+                if (b1) memcpy(c2 + a1, r.s, b1);
+                c2[a1 + b1] = 0;
+                val o = {0};
+                o.k = V_STR;
+                o.s = c2;
+                return o;
+            }
             if (l.k == V_FLOAT || r.k == V_FLOAT) return v_flt((l.k == V_FLOAT ? l.f : (double)l.i) + (r.k == V_FLOAT ? r.f : (double)r.i));
             return ck_int(R, l.i + r.i, l.bits, l.us, "+");
         case B_SUB:
@@ -1422,6 +1449,38 @@ static val eval_expr(rt* R, cexpr* e) {
                 val mv = eval_expr(R, e->elems[0]);
                 rt_abort(R, RT_PANIC, "%s", (mv.k == V_STR && mv.s) ? mv.s : "panic");
             }
+            if (!strcmp(nm, "print") || !strcmp(nm, "println")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "%s 实参", nm);
+                sb b = {0};
+                val pv = eval_expr(R, e->elems[0]);
+                fmt_val(R, pv, &b);
+                rt_puts(R, b.d ? b.d : "");
+                if (!strcmp(nm, "println")) rt_puts(R, "\n");
+                free(b.d);
+                return v_void();
+            }
+            if (!strcmp(nm, "read_file")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_file 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                FILE* f = fopen(path, "rb");
+                if (!f) {
+                    val* none = NULL;
+                    return v_tag("None", none, 0);
+                }
+                fseek(f, 0, SEEK_END);
+                long sz = ftell(f);
+                fseek(f, 0, SEEK_SET);
+                char* buf = (char*)malloc((size_t)sz + 1);
+                size_t got = fread(buf, 1, (size_t)sz, f);
+                fclose(f);
+                buf[got] = 0;
+                char* ar = ctron_arena_strndup(R->a, buf, got);
+                free(buf);
+                val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                one[0] = v_str_own(R, ar);
+                return v_tag("Some", one, 1);
+            }
             if (!strcmp(nm, "assert")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "assert 参数");
                 val c = eval_expr(R, e->elems[0]);
@@ -1484,9 +1543,15 @@ static val eval_expr(rt* R, cexpr* e) {
                 out.s = ctron_arena_strndup(R->a, recv.s + lo, (size_t)(hi - lo));
                 return out;
             }
-            if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "to_string") == 0) {
-                val r = recv; // 不可变;隐式降格语义
-                return r;
+            if (cal->mname && strcmp(cal->mname, "to_string") == 0
+                && (recv.k == V_STR || recv.k == V_INT || recv.k == V_BOOL || recv.k == V_FLOAT)) {
+                sb b = {0};
+                fmt_val(R, recv, &b);
+                val out = v_void();
+                out.k = V_STR;
+                out.s = astr(R, b.d ? b.d : "");
+                free(b.d);
+                return out;
             }
             if (recv.k == V_STRUCT && cal->mname && strcmp(cal->mname, "show") == 0) {
                 // @derive(Show) 的格式化(语料只断言非空)
@@ -1640,8 +1705,50 @@ rt_run ctron_rt_run(const cfile* f) {
     return out;
 }
 
+rt_run ctron_rt_run_main(const cfile* f) {
+    ctron_arena* arena = ctron_arena_new();
+    rt R = {0};
+    R.a = arena;
+    rt_run out = {0};
+    out.st = RT_OK;
+    const cfn* main = NULL;
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind == D_FN && strcmp(d->fn_.name, "main") == 0) { main = &d->fn_; break; }
+    }
+    if (!main) {
+        out.st = RT_ERROR;
+        out.msg = strdup("缺少 fn main");
+        ctron_arena_free(arena);
+        return out;
+    }
+    if (setjmp(R.jb)) {
+        out.st = R.st;
+        out.msg = strdup(R.msg);
+        out.out = R.out ? R.out : NULL;
+        out.exit_code = 1;
+        ctron_arena_free(arena);
+        return out;
+    }
+    env_push(&R);
+    int sr = R.has_ret;
+    val srv = R.ret;
+    R.has_ret = 0;
+    (void)eval_block(&R, main->body);
+    val res = R.has_ret ? R.ret : srv;
+    R.has_ret = sr;
+    R.ret = srv;
+    env_pop(&R);
+    if (res.k == V_INT) out.exit_code = (long)res.i;
+    out.out = R.out ? R.out : NULL;
+    ctron_arena_free(arena);
+    return out;
+}
+
 void ctron_rt_run_free(rt_run* r) {
     if (!r) return;
     free((void*)r->msg);
+    free(r->out);
     r->msg = NULL;
+    r->out = NULL;
 }

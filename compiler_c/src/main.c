@@ -6,6 +6,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "sem.h"
+#include "rt.h"
 
 static const char* VERSION = "0.1.0";
 
@@ -111,6 +112,37 @@ static int cmd_check(int argc, char** argv) {
     return ok ? 0 : 1;
 }
 
+static int cmd_run(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc run <file>\n");
+        return 2;
+    }
+    size_t len;
+    char* src = read_file(argv[2], &len);
+    if (!src) {
+        fprintf(stderr, "无法读取 %s\n", argv[2]);
+        return 2;
+    }
+    ctron_parse_result pr = ctron_parse_src(src, len);
+    if (pr.ndiags) {
+        for (size_t i = 0; i < pr.ndiags; i++)
+            printf("%s:%u:%u %s: %s\n", argv[2], pr.diags[i].span.line, pr.diags[i].span.col,
+                   pr.diags[i].code, pr.diags[i].message);
+        ctron_parse_result_free(&pr);
+        free(src);
+        return 1;
+    }
+    rt_run rr = ctron_rt_run_main(pr.file);
+    if (rr.out) printf("%s", rr.out);
+    if (rr.msg) fprintf(stderr, "%s\n", rr.msg);
+    int rc = (int)(rr.exit_code & 0xFF);
+    if (rr.st == RT_PANIC || rr.st == RT_ERROR) rc = 1;
+    ctron_rt_run_free(&rr);
+    ctron_parse_result_free(&pr);
+    free(src);
+    return rc;
+}
+
 int main(int argc, char** argv) {
     const char* sub = argc > 1 ? argv[1] : "";
     if (strcmp(sub, "version") == 0) {
@@ -120,6 +152,7 @@ int main(int argc, char** argv) {
     if (strcmp(sub, "lex") == 0) return cmd_lex(argc, argv);
     if (strcmp(sub, "parse") == 0) return cmd_parse(argc, argv);
     if (strcmp(sub, "check") == 0) return cmd_check(argc, argv);
-    fprintf(stderr, "usage: ctronc <version|lex|parse|check> [args]\n");
+    if (strcmp(sub, "run") == 0) return cmd_run(argc, argv);
+    fprintf(stderr, "usage: ctronc <version|lex|parse|check|run> [args]\n");
     return 2;
 }
