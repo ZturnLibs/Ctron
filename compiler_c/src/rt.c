@@ -1144,15 +1144,24 @@ static val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     const cfn* F = &fn->fn_;
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu",
                                    F->name, F->nparams, n);
+    /* 实参先在调用方环境求值(§4 调用语义:形参不得遮蔽调用方同名局部)。
+       否则 or3(b == 34, …) 中实参表达式会读到形参 b 的中间值。 */
+    val* vals = NULL;
+    if (n) {
+        vals = (val*)malloc(n * sizeof(val));
+        if (!vals) abort();
+        for (size_t i = 0; i < n; i++) vals[i] = eval_expr(R, args[i]);
+    }
     env_push(R);
     const char* saved_eh = R->err_head;
     R->err_head = err_head_of(F->ret);
     for (size_t i = 0; i < n; i++) {
-        val a = eval_expr(R, args[i]);
+        val a = vals[i];
         const cparam* pr = &F->params[i];
         a = apply_decl(R, a, pr->ty);
         env_let(R, pr->name, a);
     }
+    if (vals) free(vals);
     int save_ret = R->has_ret;
     val save_retv = R->ret;
     R->has_ret = 0;
