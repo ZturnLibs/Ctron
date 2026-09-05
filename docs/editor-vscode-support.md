@@ -1,10 +1,11 @@
 # Ctron 编辑器支持分析:VSCode 语法高亮、智能提示与工具链集成
 
-状态:**已落地第一版**(v0.1 → 实现,2026-09-05)
-- Phase 0 已交付:`editors/vscode-ctron/`(grammar/language-configuration/snippets/手写 LSP 客户端,零 npm 依赖)
-- LSP 已交付:**用 Ctron 语言实现**(`lsp/src/main.ct`,单文件,经 `ctronc run` 解释运行)——与自举路线一致;诊断(词法 E1001 族)/大纲/hover/补全/定义跳转已可用
-- 运行时新增(rt.c):`read_line` / `read_bytes` / `flush_out` 三个 I/O 内建(LSP/管道程序的基础设施)、`byte_at` O(1) 快路径;并修复 `call_decl` 实参在被调环境求值导致形参遮蔽调用方同各局部的语义 bug(全套测试 61 文件 + 208 diff 用例保持绿)
-- 验收:78 文件(51 语料 + 26 selfhost + LSP 自身)灌入服务器零 panic;全协议链路(含 didChange 即时报 E1001、UTF-8 透传)端到端通过
+状态:**v0.3.0 已交付**(2026-09-05;交接文档见 `superpowers/plans/2026-09-05-editor-lane-HANDOFF.md`)
+- 扩展:`editors/vscode-ctron/`(grammar/language-configuration/snippets/手写零依赖 LSP 客户端/check 包装/打包流水线)
+- LSP:**用 Ctron 语言实现**(`lsp/src/main.ct`,`ctronc run` 解释执行;架构与解释器域约束见 `lsp/README.md`)
+- 能力:词法诊断(E1001 族)+ 保存时语义诊断(`ctronc check --format=json`)、大纲、hover、补全、定义、同文件 rename/references/highlight、signatureHelp、形参名 inlay hints、缩进格式化、花括号折叠、快速修复(`;` 删除/`::`→`.` + fixes[] 通道)
+- 运行时(rt.c,跨泳道):I/O 内建 `read_line`/`read_bytes`/`flush_out`;`call_decl` 实参求值修复(详见 compiler_c/README 台账)
+- 验收:90 文件(语料+selfhosted+自身)全特性回归零 panic;61KB 文档整会话 3.4s(单趟扫描重构,原 256s);LSP 自身零自诊断
 
 原始分析(保留供后续阶段参考):
 目标:以最小成本让 `.ct` 文件获得一等开发体验——高亮、补全、诊断、跳转、重构。

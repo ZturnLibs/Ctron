@@ -28,8 +28,8 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | 语义高亮 semanticTokens | ✅ | ✅ | ❌(P2,见 §4-B) |
 | 缩进/注释续行/自动闭合 | ✅ | ✅ | ✅(§1.6 延续集,已是 Ctron 特化) |
 | 代码片段 | 少(rust 用 proc-macro) | ✅ | ✅ 22 条 |
-| **格式化** | ✅ rustfmt | ✅ zig fmt | ❌ ⛔ 依赖 `ctron-fmt`(§4-A1) |
-| 折叠 | ✅(语法级) | ✅ | 🟡(默认缩进折叠;brace 级需 foldingRange) |
+| **格式化** | ✅ rustfmt | ✅ zig fmt | 🟡 缩进级已交付(format-on-save 可用);canonical 待 ctron-fmt |
+| 折叠 | ✅(语法级) | ✅ | ✅ brace 级 foldingRange |
 | 文件图标/语言状态栏 | ✅ | 🟡 | ❌(低成本,可随手补) |
 
 ### 2.2 诊断与快速修复
@@ -37,9 +37,9 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | 功能 | rust-analyzer | gopls | **ctron 现状** |
 |---|---|---|---|
 | 词法/语法诊断 | ✅ | ✅ | 🟡 仅词法 E1001 族;**真解析器未接入**(selfhosted 的 parsetree.ct 可复用,§4-B) |
-| 语义诊断(E2xxx 类型/match 穷尽、E3xxx Send/alloc) | ✅ | ✅ | ❌ ⛔ 可走 `ctronc check --format=json` 包装(§4-A2,契约已冻结 §10.2) |
+| 语义诊断(E2xxx 类型/match 穷尽、E3xxx Send/alloc) | ✅ | ✅ | ✅ 保存时 `ctronc check --format=json` 包装 |
 | Lint(未使用/遮蔽前奏) | ✅ | ✅(vet) | ❌ 同上 |
-| **Quick fixes(机器可执行修复)** | ✅ 丰富 | ✅ | ❌ ⛔ §10.2 的 `fixes[]` 字段就是为此设计的,接上即有 |
+| **Quick fixes(机器可执行修复)** | ✅ 丰富 | ✅ | 🟡 词法确定性修复(`;` 删除/`::`→`.`)+ fixes[] 通道已接(C 侧尚未产出 fixes) |
 | 诊断错误码悬停文档 | ❌(rust 用标签) | 🟡 | ✅ 已带 code(可再加 §10.1 链接,差异化小甜点) |
 
 ### 2.3 导航与符号
@@ -118,7 +118,7 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | P1 ✅ | 同文件 rename / references / document highlight | B | 无 | 已交付(2026-09-05) |
 | P1 ✅ | signatureHelp(同文件) | B | 无 | 已交付(2026-09-05) |
 | P1 ✅ | **`ctronc check --format=json` 诊断+quick fixes 包装** | A | 无(契约冻结) | 已交付:保存时语义诊断 + fixes[] 映射 + 词法确定性修复(`;` 删除/`::`→`.`) |
-| P2 | **格式化(fmt-on-save)** | A | parsetree.ct 打印器 | 3~5 天 |
+| P2 🟡 | **格式化**:缩进级已交付;canonical 形态 | A | parsetree.ct 打印器 | 余 2~3 天 |
 | P2 🟡 | 真解析器接入(精确诊断区间/folding/selectionRange) | B | selfhosted 模块合并 | folding 已交付;解析器接入待做 |
 | P2 ✅ | inlay hints(调用点形参名) | B | 无 | 已交付(2026-09-05;>24KB 跳过) |
 | P2 | semantic tokens | B | 轻命名解析 | 3~4 天(下一轮) |
