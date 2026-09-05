@@ -21,7 +21,7 @@ static char* read_file_str(const char* path) {
 }
 
 int main(int argc, char** argv) {
-    const char* dir = argc > 1 ? argv[1] : "selfhost";
+    const char* dir = argc > 1 ? argv[1] : "../selfhosted";
     DIR* d = opendir(dir);
     if (!d) { fprintf(stderr, "suite_run: 无法打开 %s\n", dir); return 2; }
     size_t n = 0, fails = 0;

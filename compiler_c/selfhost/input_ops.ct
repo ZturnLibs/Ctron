@@ -1,1 +1,0 @@
-fn double(x) { return x * 2 } if ok && done { n = 42 } else { n = 0 }

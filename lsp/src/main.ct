@@ -1,0 +1,1206 @@
+// lsp/src/main.ct —— Ctron 语言服务器(LSP over stdio)
+// 运行:ctronc run lsp/src/main.ct(见 editors/vscode-ctron/server/ctron-lsp.sh)
+// 编码约定:解释器(C4)域内实现——无 match/enum/List/元组/break;
+// 用 if 链 + 固定槽位 + 流式扫描 + 字符串累积(与自举 C5-C8 模块同款习语)。
+// 能力:全量文本同步 / 词法诊断(E1001 族)/ 文档符号 / hover / 补全 / 定义跳转。
+// 位置编码:声明 utf-8(character = 行内字节偏移)。
+
+// ============ 0. 字节与串基础 ============
+
+fn or2(a: Bool, b: Bool) -> Bool { return !(!a && !b) }
+fn or3(a: Bool, b: Bool, c: Bool) -> Bool { return or2(or2(a, b), c) }
+fn or5(a: Bool, b: Bool, c: Bool, d: Bool, e: Bool) -> Bool { return or3(or2(a, b), or2(c, d), e) }
+fn is_ws_b(b: I64) -> Bool { return or3(b == 32, b == 9, b == 13) }
+fn is_dig(b: I64) -> Bool { return b >= 48 && b <= 57 }
+fn is_alpha(b: I64) -> Bool { return or2(b >= 65 && b <= 90, b >= 97 && b <= 122) }
+fn is_al(b: I64) -> Bool { return or2(is_alpha(b), b == 95) }
+fn is_ac(b: I64) -> Bool { return or2(is_al(b), is_dig(b)) }
+fn is_hexp(b: I64) -> Bool { return or2(is_dig(b), or2(b >= 97 && b <= 102, b >= 65 && b <= 70)) }
+
+// b 8..13 → 索引 b-8
+const CHR_CTL: Str = "\u{8}\t\n\u{c}\r"
+// b 32..126 → 索引 b-32(注意 \{ \} 转义)
+const CHR_ASC: Str = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~"
+const HEXD: Str = "0123456789abcdef"
+
+fn chr_ascii(b: I64) -> Str {
+    if b >= 8 && b <= 13 { return byte_slice(CHR_CTL, b - 8, b - 7) }
+    if b >= 32 && b <= 126 { return byte_slice(CHR_ASC, b - 32, b - 31) }
+    return ""
+}
+
+// s 从 i 起是否以 lit(纯 ASCII)开头
+fn starts_lit(s: Str, i: I64, lit: Str) -> Bool {
+    var m = lit.len
+    if i + m > s.len { return false }
+    var j: I64 = 0
+    while j < m {
+        if byte_at(s, i + j) != byte_at(lit, j) { return false }
+        j += 1
+    }
+    return true
+}
+
+// 十进制解析(容忍前导空白;无数字返回 -1)
+fn parse_dec(s: Str) -> I64 {
+    var n = s.len
+    var i: I64 = 0
+    while i < n && is_ws_b(byte_at(s, i)) { i += 1 }
+    if or2(i >= n, !is_dig(byte_at(s, i))) { return 0 - 1 }
+    var v: I64 = 0
+    while i < n && is_dig(byte_at(s, i)) {
+        v = v * 10 + (byte_at(s, i) - 48)
+        i += 1
+    }
+    return v
+}
+
+// ============ 1. 游标与出参类 ============
+
+class Cur {
+    var i: I64
+}
+
+class Pos2 {
+    var a: I64
+    var b: I64
+}
+
+fn cur_at(i: I64) -> Cur { return Cur { i: i } }
+fn pos2(a: I64, b: I64) -> Pos2 { return Pos2 { a: a, b: b } }
+
+// ============ 2. JSON(字节级提取 + 序列化) ============
+
+fn skip_ws(s: Str, c: Cur) {
+    var n = s.len
+    while c.i < n {
+        var b = byte_at(s, c.i)
+        if or2(is_ws_b(b), b == 10) {
+            c.i += 1
+        } else {
+            return
+        }
+    }
+}
+
+// JSON 字符串解码。支持 \" \\ \/ \b \f \n \r \t;\uXXXX 原样透传
+// (VSCode 不转义非 ASCII,透传在往返中语义不变)。段式拼接避免 O(n^2)。
+fn decode_json_string(s: Str, c: Cur) -> Str {
+    var out = ""
+    var n = s.len
+    if or2(c.i >= n, byte_at(s, c.i) != 34) {
+        c.i += 1
+        return ""
+    }
+    c.i += 1
+    var seg = c.i
+    while c.i < n {
+        var b = byte_at(s, c.i)
+        if b == 34 {
+            if c.i > seg { out = "{out}{byte_slice(s, seg, c.i)}" }
+            c.i += 1
+            return out
+        }
+        if b == 92 {
+            if c.i > seg { out = "{out}{byte_slice(s, seg, c.i)}" }
+            if c.i + 1 < n {
+                var e = byte_at(s, c.i + 1)
+                if e == 117 {
+                    // \uXXXX:六字节原样透传
+                    if c.i + 6 <= n {
+                        out = "{out}{byte_slice(s, c.i, c.i + 6)}"
+                        c.i += 6
+                    } else {
+                        c.i = n
+                    }
+                } else {
+                    if e == 110 { out = "{out}{chr_ascii(10)}" } else { if e == 116 { out = "{out}{chr_ascii(9)}" } else { if e == 114 { out = "{out}{chr_ascii(13)}" } else { if e == 98 { out = "{out}{chr_ascii(8)}" } else { if e == 102 { out = "{out}{chr_ascii(12)}" } else { if e == 34 { out = "{out}{chr_ascii(34)}" } else { if e == 92 { out = "{out}{chr_ascii(92)}" } else { if e == 47 { out = "{out}{chr_ascii(47)}" } else { out = "{out}{chr_ascii(e)}" } } } } } } } }
+                    c.i += 2
+                }
+                seg = c.i
+            } else {
+                c.i = n
+                seg = n
+            }
+        } else {
+            c.i += 1
+        }
+    }
+    if n > seg { out = "{out}{byte_slice(s, seg, n)}" }
+    return out
+}
+
+// 在值起点跳过一个完整 JSON 值(迭代 + 串感知括号配平)
+fn skip_value(s: Str, c: Cur) {
+    skip_ws(s, c)
+    var n = s.len
+    if c.i >= n { return }
+    var b = byte_at(s, c.i)
+    if b == 34 {
+        decode_json_string(s, c)
+        return
+    }
+    if or2(b == 123, b == 91) {
+        var depth: I64 = 1
+        c.i += 1
+        while c.i < n && depth > 0 {
+            var d = byte_at(s, c.i)
+            if d == 34 {
+                decode_json_string(s, c)
+            } else {
+                if d == 123 { depth += 1 }
+                if d == 125 { depth -= 1 }
+                if d == 91 { depth += 1 }
+                if d == 93 { depth -= 1 }
+                c.i += 1
+            }
+        }
+        return
+    }
+    while c.i < n {
+        var d = byte_at(s, c.i)
+        if or5(d == 44, d == 125, d == 93, is_ws_b(d), d == 10) { return }
+        c.i += 1
+    }
+}
+
+// c 在对象 '{' 上:找 key;命中后 c 停在值起点
+fn find_field(s: Str, c: Cur, key: Str) -> Bool {
+    skip_ws(s, c)
+    var n = s.len
+    if or2(c.i >= n, byte_at(s, c.i) != 123) { return false }
+    c.i += 1
+    skip_ws(s, c)
+    if c.i < n && byte_at(s, c.i) == 125 { return false }
+    while c.i < n {
+        skip_ws(s, c)
+        if or2(c.i >= n, byte_at(s, c.i) != 34) { return false }
+        var k = decode_json_string(s, c)
+        skip_ws(s, c)
+        if c.i < n && byte_at(s, c.i) == 58 { c.i += 1 }
+        skip_ws(s, c)
+        if k == key { return true }
+        skip_value(s, c)
+        skip_ws(s, c)
+        if c.i < n && byte_at(s, c.i) == 44 { c.i += 1 }
+        if c.i < n && byte_at(s, c.i) == 125 { return false }
+    }
+    return false
+}
+
+fn parse_int_at(s: Str, c: Cur) -> I64 {
+    skip_ws(s, c)
+    var neg = false
+    if c.i < s.len && byte_at(s, c.i) == 45 {
+        neg = true
+        c.i += 1
+    }
+    var v: I64 = 0
+    while c.i < s.len && is_dig(byte_at(s, c.i)) {
+        v = v * 10 + (byte_at(s, c.i) - 48)
+        c.i += 1
+    }
+    if neg { v = 0 - v }
+    return v
+}
+
+// 值的原始 JSON 切片(id 回显:number / string / null 均可)
+fn raw_value_span(s: Str, c: Cur, out: Pos2) -> Bool {
+    skip_ws(s, c)
+    if c.i >= s.len { return false }
+    var start = c.i
+    if byte_at(s, c.i) == 34 {
+        decode_json_string(s, c)
+    } else {
+        skip_value(s, c)
+    }
+    out.a = start
+    out.b = c.i
+    return true
+}
+
+// ---- 序列化 ----
+
+fn json_escape(s: Str) -> Str {
+    var out = ""
+    var n = s.len
+    var seg: I64 = 0
+    var i: I64 = 0
+    while i < n {
+        var b = byte_at(s, i)
+        if or3(b == 34, b == 92, b < 32) {
+            if i > seg { out = "{out}{byte_slice(s, seg, i)}" }
+            if b == 34 { out = "{out}\\\"" } else { if b == 92 { out = "{out}\\\\" } else { if b == 10 { out = "{out}\\n" } else { if b == 9 { out = "{out}\\t" } else { if b == 13 { out = "{out}\\r" } else {
+                var h1 = byte_at(HEXD, b / 16)
+                var h2 = byte_at(HEXD, b - (b / 16) * 16)
+                out = "{out}\\u00{chr_ascii(h1)}{chr_ascii(h2)}"
+            } } } } }
+            i += 1
+            seg = i
+        } else {
+            i += 1
+        }
+    }
+    if n > seg { out = "{out}{byte_slice(s, seg, n)}" }
+    return out
+}
+
+fn jstr(s: Str) -> Str { return "\"{json_escape(s)}\"" }
+fn jobj(inner: Str) -> Str { return "\{{inner}}" }
+fn jarr(inner: Str) -> Str { return "[{inner}]" }
+fn jkv_str(k: Str, v: Str) -> Str { return "\"{k}\":{jstr(v)}" }
+fn jkv_raw(k: Str, v: Str) -> Str { return "\"{k}\":{v}" }
+fn jnum(k: Str, n: I64) -> Str { return "\"{k}\":{n}" }
+
+// ============ 3. 文档库(单实例 Store,16 槽位;类实例按引用可变) ============
+
+class Store {
+    var n: I64
+    var u0: Str
+    var t0: Str
+    var u1: Str
+    var t1: Str
+    var u2: Str
+    var t2: Str
+    var u3: Str
+    var t3: Str
+    var u4: Str
+    var t4: Str
+    var u5: Str
+    var t5: Str
+    var u6: Str
+    var t6: Str
+    var u7: Str
+    var t7: Str
+    var u8: Str
+    var t8: Str
+    var u9: Str
+    var t9: Str
+    var u10: Str
+    var t10: Str
+    var u11: Str
+    var t11: Str
+    var u12: Str
+    var t12: Str
+    var u13: Str
+    var t13: Str
+    var u14: Str
+    var t14: Str
+    var u15: Str
+    var t15: Str
+}
+
+fn store_new() -> Store {
+    return Store { n: 0, u0: "", t0: "", u1: "", t1: "", u2: "", t2: "", u3: "", t3: "", u4: "", t4: "", u5: "", t5: "", u6: "", t6: "", u7: "", t7: "", u8: "", t8: "", u9: "", t9: "", u10: "", t10: "", u11: "", t11: "", u12: "", t12: "", u13: "", t13: "", u14: "", t14: "", u15: "", t15: "" }
+}
+
+fn st_uri(s: Store, i: I64) -> Str {
+    if i == 0 { return s.u0 }
+    if i == 1 { return s.u1 }
+    if i == 2 { return s.u2 }
+    if i == 3 { return s.u3 }
+    if i == 4 { return s.u4 }
+    if i == 5 { return s.u5 }
+    if i == 6 { return s.u6 }
+    if i == 7 { return s.u7 }
+    if i == 8 { return s.u8 }
+    if i == 9 { return s.u9 }
+    if i == 10 { return s.u10 }
+    if i == 11 { return s.u11 }
+    if i == 12 { return s.u12 }
+    if i == 13 { return s.u13 }
+    if i == 14 { return s.u14 }
+    if i == 15 { return s.u15 }
+    return ""
+}
+
+fn st_text(s: Store, i: I64) -> Str {
+    if i == 0 { return s.t0 }
+    if i == 1 { return s.t1 }
+    if i == 2 { return s.t2 }
+    if i == 3 { return s.t3 }
+    if i == 4 { return s.t4 }
+    if i == 5 { return s.t5 }
+    if i == 6 { return s.t6 }
+    if i == 7 { return s.t7 }
+    if i == 8 { return s.t8 }
+    if i == 9 { return s.t9 }
+    if i == 10 { return s.t10 }
+    if i == 11 { return s.t11 }
+    if i == 12 { return s.t12 }
+    if i == 13 { return s.t13 }
+    if i == 14 { return s.t14 }
+    if i == 15 { return s.t15 }
+    return ""
+}
+
+fn st_set(s: Store, i: I64, uri: Str, text: Str) {
+    if i == 0 { s.u0 = uri
+        s.t0 = text }
+    if i == 1 { s.u1 = uri
+        s.t1 = text }
+    if i == 2 { s.u2 = uri
+        s.t2 = text }
+    if i == 3 { s.u3 = uri
+        s.t3 = text }
+    if i == 4 { s.u4 = uri
+        s.t4 = text }
+    if i == 5 { s.u5 = uri
+        s.t5 = text }
+    if i == 6 { s.u6 = uri
+        s.t6 = text }
+    if i == 7 { s.u7 = uri
+        s.t7 = text }
+    if i == 8 { s.u8 = uri
+        s.t8 = text }
+    if i == 9 { s.u9 = uri
+        s.t9 = text }
+    if i == 10 { s.u10 = uri
+        s.t10 = text }
+    if i == 11 { s.u11 = uri
+        s.t11 = text }
+    if i == 12 { s.u12 = uri
+        s.t12 = text }
+    if i == 13 { s.u13 = uri
+        s.t13 = text }
+    if i == 14 { s.u14 = uri
+        s.t14 = text }
+    if i == 15 { s.u15 = uri
+        s.t15 = text }
+}
+
+fn store_find(s: Store, uri: Str) -> I64 {
+    var i: I64 = 0
+    while i < s.n {
+        if st_uri(s, i) == uri { return i }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn store_put(s: Store, uri: Str, text: Str) -> I64 {
+    var i = store_find(s, uri)
+    if i < 0 {
+        if s.n < 16 {
+            i = s.n
+            s.n += 1
+        } else {
+            i = 0
+        }
+    }
+    st_set(s, i, uri, text)
+    return i
+}
+
+// ============ 4. 行/词定位 ============
+
+fn line_span(text: Str, line: I64, out: Pos2) {
+    var n = text.len
+    var cur: I64 = 0
+    var start: I64 = 0
+    var i: I64 = 0
+    while i < n && cur < line {
+        if byte_at(text, i) == 10 {
+            cur += 1
+            start = i + 1
+        }
+        i += 1
+    }
+    var j = start
+    while j < n && byte_at(text, j) != 10 { j += 1 }
+    out.a = start
+    out.b = j
+}
+
+// 位置(行,列)处的标识符(光标可在词内任意处);无词返回 ""
+fn word_at(text: Str, line: I64, col: I64) -> Str {
+    var sp = pos2(0, 0)
+    line_span(text, line, sp)
+    var lo = sp.a + col
+    if lo > sp.b { lo = sp.b }
+    if lo > sp.a && !is_ac(byte_at(text, lo - 1)) {
+        if lo < sp.b && is_ac(byte_at(text, lo)) {
+            // 词首,继续
+        } else {
+            return ""
+        }
+    }
+    while lo > sp.a && is_ac(byte_at(text, lo - 1)) { lo -= 1 }
+    var hi = lo
+    while hi < sp.b && is_ac(byte_at(text, hi)) { hi += 1 }
+    if hi <= lo { return "" }
+    return byte_slice(text, lo, hi)
+}
+
+// ============ 5. 词法诊断扫描(E1001 族) ============
+
+class DiagAcc {
+    var s: Str
+    var n: I64
+}
+
+class ScanPos {
+    var i: I64
+    var line: I64
+    var col: I64
+}
+
+fn diag_add(acc: DiagAcc, line: I64, col: I64, len: I64, code: Str, msg: Str) {
+    if acc.n >= 200 { return }
+    var head = ""
+    if acc.n > 0 { head = "," }
+    var st = jobj(jnum("line", line) + "," + jnum("character", col))
+    var en = jobj(jnum("line", line) + "," + jnum("character", col + len))
+    var r = jobj(jkv_raw("start", st) + "," + jkv_raw("end", en))
+    var d = jobj(jkv_raw("range", r) + "," + jnum("severity", 1) + "," + jkv_str("code", code) + "," + jkv_str("source", "ctron-lsp") + "," + jkv_str("message", msg))
+    acc.s = "{acc.s}{head}{d}"
+    acc.n += 1
+}
+
+fn scan_diag(text: Str, acc: DiagAcc) {
+    var p = ScanPos { i: 0, line: 0, col: 0 }
+    var n = text.len
+    while p.i < n {
+        var handled = sp_ws(text, p)
+        if !handled { handled = sp_comment(text, p, acc) }
+        if !handled { handled = sp_string(text, p, acc) }
+        if !handled { handled = sp_char(text, p, acc) }
+        if !handled { sp_ident(text, p) }
+    }
+}
+
+fn sp_ws(t: Str, p: ScanPos) -> Bool {
+    var b = byte_at(t, p.i)
+    if b == 10 {
+        p.line += 1
+        p.col = 0
+        p.i += 1
+        return true
+    }
+    if is_ws_b(b) {
+        p.col += 1
+        p.i += 1
+        return true
+    }
+    return false
+}
+
+fn sp_comment(t: Str, p: ScanPos, acc: DiagAcc) -> Bool {
+    if byte_at(t, p.i) != 47 { return false }
+    var n = t.len
+    if p.i + 1 < n && byte_at(t, p.i + 1) == 47 {
+        p.i += 2
+        p.col += 2
+        while p.i < n && byte_at(t, p.i) != 10 {
+            p.i += 1
+            p.col += 1
+        }
+        return true
+    }
+    if p.i + 1 < n && byte_at(t, p.i + 1) == 42 {
+        diag_add(acc, p.line, p.col, 2, "E1001", "块注释不存在(Ctron 仅有行注释 // 与文档注释 ///)")
+        p.i += 2
+        p.col += 2
+        return true
+    }
+    return false
+}
+
+fn sp_string(t: Str, p: ScanPos, acc: DiagAcc) -> Bool {
+    if byte_at(t, p.i) != 34 { return false }
+    var n = t.len
+    var start_line = p.line
+    var start_col = p.col
+    var closed = false
+    p.i += 1
+    p.col += 1
+    while p.i < n && !closed {
+        var b = byte_at(t, p.i)
+        if b == 34 {
+            closed = true
+            p.i += 1
+            p.col += 1
+        } else { if b == 10 {
+            diag_add(acc, start_line, start_col, 1, "E1001", "未终止的字符串")
+            closed = true
+        } else { if b == 92 {
+            if p.i + 1 < n {
+                var e = byte_at(t, p.i + 1)
+                p.i += 2
+                p.col += 2
+                if e == 117 {
+                    if p.i < n && byte_at(t, p.i) == 123 {
+                        while p.i < n && byte_at(t, p.i) != 125 {
+                            p.i += 1
+                            p.col += 1
+                        }
+                        if p.i < n {
+                            p.i += 1
+                            p.col += 1
+                        }
+                    }
+                }
+            } else {
+                p.i += 1
+            }
+        } else { if b == 123 {
+            // 插值 {…}:与 C 词法器同口径——引号即视为串已结束
+            p.i += 1
+            p.col += 1
+            var idone = false
+            while p.i < n && !idone {
+                var c2 = byte_at(t, p.i)
+                if c2 == 125 {
+                    idone = true
+                    p.i += 1
+                    p.col += 1
+                } else { if c2 == 10 {
+                    diag_add(acc, start_line, start_col, 1, "E1001", "未终止的插值")
+                    idone = true
+                } else { if c2 == 34 {
+                    idone = true
+                } else {
+                    p.i += 1
+                    p.col += 1
+                } } }
+            }
+            if p.i >= n && !idone {
+                diag_add(acc, start_line, start_col, 1, "E1001", "未终止的插值")
+            }
+        } else {
+            p.i += 1
+            p.col += 1
+        } } } }
+    }
+    if !closed && p.i >= n {
+        diag_add(acc, start_line, start_col, 1, "E1001", "未终止的字符串")
+    }
+    return true
+}
+
+fn sp_char(t: Str, p: ScanPos, acc: DiagAcc) -> Bool {
+    var b = byte_at(t, p.i)
+    if b == 59 {
+        diag_add(acc, p.line, p.col, 1, "E1001", "禁用的标点 ;(Ctron 以换行终止语句)")
+        p.i += 1
+        p.col += 1
+        return true
+    }
+    if b == 39 {
+        diag_add(acc, p.line, p.col, 1, "E1001", "无字符字面量(char 不存在;码点经 stdlib 只读 API 返回整数)")
+        p.i += 1
+        p.col += 1
+        return true
+    }
+    if b == 58 {
+        if p.i + 1 < t.len && byte_at(t, p.i + 1) == 58 {
+            diag_add(acc, p.line, p.col, 2, "E1001", "禁用的标点 ::(路径分隔符是 .)")
+            p.i += 2
+            p.col += 2
+            return true
+        }
+        return false
+    }
+    return false
+}
+
+fn sp_ident(t: Str, p: ScanPos) -> Bool {
+    var b = byte_at(t, p.i)
+    if is_ac(b) {
+        var n = t.len
+        while p.i < n && is_ac(byte_at(t, p.i)) {
+            p.i += 1
+            p.col += 1
+        }
+        return true
+    }
+    p.i += 1
+    p.col += 1
+    return true
+}
+
+// ============ 6. 符号提取(大纲 / 补全 / 定义 / hover 共用) ============
+
+fn line_span_of(text: Str, line: I64) -> Pos2 {
+    var sp = pos2(0, 0)
+    line_span(text, line, sp)
+    return sp
+}
+
+// 行内 [from, sp.b) 的第一个词 span
+fn word_span_at(text: Str, sp: Pos2, from: I64, out: Pos2) -> Bool {
+    var i = from
+    while i < sp.b && is_ws_b(byte_at(text, i)) { i += 1 }
+    if or2(i >= sp.b, !is_al(byte_at(text, i))) { return false }
+    var j = i
+    while j < sp.b && is_ac(byte_at(text, j)) { j += 1 }
+    out.a = i
+    out.b = j
+    return true
+}
+
+fn first_word(text: Str, sp: Pos2, out: Pos2) -> Bool {
+    return word_span_at(text, sp, sp.a, out)
+}
+
+fn word_after(text: Str, sp: Pos2, from: I64) -> Str {
+    var w = pos2(0, 0)
+    if !word_span_at(text, sp, from, w) { return "" }
+    return byte_slice(text, w.a, w.b)
+}
+
+// 顶层声明行:列 0 起始非空白
+fn is_top_line(text: Str, sp: Pos2) -> Bool {
+    if sp.a >= sp.b { return false }
+    return !is_ws_b(byte_at(text, sp.a))
+}
+
+const DECL_KW: Str = "fn|struct|class|enum|trait|impl|const|static|test|use"
+
+fn pipe_has(all: Str, w: Str) -> Bool {
+    var n = all.len
+    var i: I64 = 0
+    while i < n {
+        var j = i
+        while j < n && byte_at(all, j) != 124 { j += 1 }
+        if j > i && byte_slice(all, i, j) == w { return true }
+        i = j + 1
+    }
+    return false
+}
+
+fn sym_kind(kw: Str) -> I64 {
+    if kw == "fn" { return 12 }
+    if kw == "struct" { return 23 }
+    if kw == "class" { return 5 }
+    if kw == "enum" { return 10 }
+    if kw == "trait" { return 11 }
+    if kw == "impl" { return 11 }
+    if kw == "const" { return 14 }
+    if kw == "static" { return 14 }
+    if kw == "test" { return 12 }
+    if kw == "use" { return 2 }
+    return 19
+}
+
+// 声明显示名。kws = 关键字 span;kw 为生效关键字(已剥 pub)。
+fn decl_name(text: Str, sp: Pos2, kw: Str, kws: Pos2) -> Str {
+    if kw == "impl" {
+        var i = sp.a
+        var n = sp.b
+        while i + 5 <= n {
+            if starts_lit(text, i, " for ") {
+                var j = i + 5
+                while j < n && is_ws_b(byte_at(text, j)) { j += 1 }
+                var e = j
+                while e < n && byte_at(text, e) != 123 && byte_at(text, e) != 32 { e += 1 }
+                if e > j { return byte_slice(text, j, e) }
+                return "impl"
+            }
+            i += 1
+        }
+        return "impl"
+    }
+    if kw == "test" {
+        var s2 = kws.b
+        var e = sp.b
+        while s2 < e && is_ws_b(byte_at(text, s2)) { s2 += 1 }
+        while e > s2 && or3(byte_at(text, e - 1) == 123, is_ws_b(byte_at(text, e - 1)), byte_at(text, e - 1) == 125) { e -= 1 }
+        if e > s2 { return byte_slice(text, s2, e) }
+        return "test"
+    }
+    if kw == "static" {
+        var a = word_after(text, sp, kws.b)
+        if a == "let" {
+            var w = pos2(0, 0)
+            if word_span_at(text, sp, kws.b + 4, w) { return byte_slice(text, w.a, w.b) }
+            return ""
+        }
+        return a
+    }
+    return word_after(text, sp, kws.b)
+}
+
+// 生效关键字:剥掉 pub 前缀
+fn eff_kw(text: Str, sp: Pos2, kws: Pos2) -> Str {
+    var kwv = byte_slice(text, kws.a, kws.b)
+    if kwv == "pub" {
+        return word_after(text, sp, kws.b)
+    }
+    return kwv
+}
+
+// 文档符号(大纲)
+fn scan_symbols(text: Str) -> Str {
+    var items = ""
+    var first = true
+    var n = text.len
+    var line: I64 = 0
+    var done = false
+    while !done {
+        var sp = line_span_of(text, line)
+        if sp.a >= n {
+            done = true
+        } else {
+            if is_top_line(text, sp) {
+                var kws = pos2(0, 0)
+                if first_word(text, sp, kws) {
+                    var kwv = eff_kw(text, sp, kws)
+                    if pipe_has(DECL_KW, kwv) {
+                        var name = decl_name(text, sp, kwv, kws)
+                        if name != "" {
+                            var head = ""
+                            if !first { head = "," }
+                            var r = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", 0))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", sp.b - sp.a))))
+                            var sel = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", kws.a - sp.a))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", kws.b - sp.a))))
+                            items = "{items}{head}" + jobj(jkv_str("name", name) + "," + jnum("kind", sym_kind(kwv)) + "," + jkv_raw("range", r) + "," + jkv_raw("selectionRange", sel))
+                            first = false
+                        }
+                    }
+                }
+            }
+            if sp.b >= n {
+                done = true
+            } else {
+                line += 1
+            }
+        }
+    }
+    return jarr(items)
+}
+
+class DeclHit {
+    var found: Bool
+    var line: I64
+    var col: I64
+    var sig: Str
+    var docs: Str
+}
+
+fn decl_hit_new() -> DeclHit {
+    return DeclHit { found: false, line: 0, col: 0, sig: "", docs: "" }
+}
+
+// 向上收集相邻 /// 文档行
+fn collect_docs(text: Str, decl_line: I64) -> Str {
+    var out = ""
+    var ln = decl_line - 1
+    var first = true
+    var done = false
+    while !done {
+        var sp = line_span_of(text, ln)
+        if or2(sp.b <= sp.a, !starts_lit(text, sp.a, "///")) {
+            done = true
+        } else {
+            var body = byte_slice(text, sp.a + 3, sp.b)
+            if first {
+                out = body
+                first = false
+            } else {
+                out = "{body}\n{out}"
+            }
+            ln -= 1
+        }
+    }
+    return out
+}
+
+fn find_decl(text: Str, word: Str, hit: DeclHit) {
+    var n = text.len
+    var line: I64 = 0
+    var done = false
+    while !done {
+        var sp = line_span_of(text, line)
+        if sp.a >= n {
+            done = true
+        } else {
+            var kws = pos2(0, 0)
+            if first_word(text, sp, kws) {
+                var kwv = eff_kw(text, sp, kws)
+                var isdecl = pipe_has(DECL_KW, kwv)
+                if !isdecl && kwv == "prop" { isdecl = true }
+                if isdecl {
+                    var name = decl_name(text, sp, kwv, kws)
+                    if name == word {
+                        hit.found = true
+                        hit.line = line
+                        hit.col = kws.a - sp.a
+                        hit.sig = byte_slice(text, sp.a, sp.b)
+                        hit.docs = collect_docs(text, line)
+                    }
+                }
+            }
+            if !hit.found {
+                if sp.b >= n {
+                    done = true
+                } else {
+                    line += 1
+                }
+            } else {
+                done = true
+            }
+        }
+    }
+}
+
+// ============ 7. 静态知识表(关键字 / 前奏 / 成员,§1.3 §3.8.2) ============
+
+const KW_ALL: Str = "fn|let|var|const|static|comptime|if|else|match|while|for|in|return|struct|class|enum|trait|impl|own|scope|test|use|pub|extern|prop|true|false|void|self|or"
+const PT_ALL: Str = "Bool|I8|I16|I32|I64|ISize|U8|U16|U32|U64|USize|F32|F64|Str|String|Void|Option|Result|List|Box|Channel|Mutex|Atomic|Global|Arena|Task|Simd|Show|Eq|Error|Cap|Drop|AnyError"
+const MEM_ALL: Str = "len|char_len|contains|slice|to_string|iter|map|or|expect|is_some|is_none|is_ok|is_err|context|push|pop|new|with|with_mut|join|join_or|send|recv|load|store|fetch_add|splat|lane|to_array|abs|min|max|into_gc|as|message|cause|trace|show|eq|drop"
+
+fn ptype_hover(w: Str) -> Str {
+    if w == "Option" { return "Option[T] —— 无 null;is_some/is_none(prop);map(f)/or(默认)/expect(msg)。类型糖:T?" }
+    if w == "Result" { return "Result[T, E] —— is_ok/is_err(prop);map(f)/or(默认)/expect(msg)/context(str);? 传播" }
+    if w == "Str" { return "Str —— 不可变借用,静态存储;len(字节)/char_len(字符)/slice(range)/contains(s)/to_string()" }
+    if w == "String" { return "String —— 分配拥有串(to_string 产生);插值脱糖目标为 fmt" }
+    if w == "List" { return "List[T] —— new()/push(v)/pop()/len(prop);索引 [i]" }
+    if w == "Mutex" { return "Mutex[T] —— with(f: fn(&T) -> R) 只读 / with_mut(f: fn(var T) -> R) 可变" }
+    if w == "Channel" { return "Channel[T](cap) -> (Sender, Receiver);send(v) -> Result / recv() -> Result" }
+    if w == "Task" { return "Task[T] —— join() -> T(panic 重抛)/ join_or() -> Result[T, TaskPanic]" }
+    if w == "Arena" { return "Arena —— own 块分配器;array[T](n)/zeros[T](n)/list[T]();into_gc() 出块唯一入口" }
+    if w == "Error" { return "trait Error: Cap —— prop message/cause/trace;@derive(Error) 可生成;? 自动附加上下文" }
+    if w == "Cap" { return "trait Cap —— 空标记:能力 trait 必须继承它(#[pure] 判定依据)" }
+    if w == "Simd" { return "Simd[E, N] —— splat(v)/lane(i)/to_array();+ - * / 元素级" }
+    return "前奏类型(§3.8.2)"
+}
+
+fn kw_hover(w: Str) -> Str {
+    if w == "fn" { return "函数声明;表达式位置 fn(…) -> T 是函数类型(仅参数/返回位)" }
+    if w == "let" { return "不可变绑定;var 为可变。Ctron 无分号,换行终止语句" }
+    if w == "var" { return "可变绑定/可变字段" }
+    if w == "match" { return "match 表达式:臂 = 模式 => 表达式,换行分隔;必须穷尽(E2030)" }
+    if w == "own" { return "own (arena) { … } —— 作用域所有权子块,无 GC 分配;出块经 into_gc()" }
+    if w == "scope" { return "scope { |s| … } —— 结构化并发作用域;块值即结果(§7)" }
+    if w == "test" { return "test \"名称\" { … } —— 测试块;/// 中的代码块参与 doc-test" }
+    if w == "prop" { return "属性声明/实现:无括号访问(env.name)" }
+    if w == "comptime" { return "编译期执行:comptime fn 在 CVM 求值,const 初始化即 comptime" }
+    if w == "self" { return "impl 内指代实现类型;receiver:&self(只读)/ var self(可变)" }
+    if w == "or" { return "中缀取默认(Option/Result),非逻辑或;逻辑或写作 !(!a && !b)" }
+    return "Ctron 关键字(§1.3)"
+}
+
+// ============ 8. LSP 协议 ============
+
+class Frame {
+    var body: Str
+}
+
+fn send_msg(body: Str) {
+    print("Content-Length: {body.len}\r\n\r\n{body}")
+    flush_out()
+}
+
+fn send_result(id_raw: Str, result: Str) {
+    send_msg(jobj(jkv_raw("jsonrpc", jstr("2.0")) + "," + jkv_raw("id", id_raw) + "," + jkv_raw("result", result)))
+}
+
+fn send_err(id_raw: Str, code: I64, msg: Str) {
+    var e = jobj(jnum("code", code) + "," + jkv_str("message", msg))
+    send_msg(jobj(jkv_raw("jsonrpc", jstr("2.0")) + "," + jkv_raw("id", id_raw) + "," + jkv_raw("error", e)))
+}
+
+fn send_notify(method: Str, params: Str) {
+    send_msg(jobj(jkv_raw("jsonrpc", jstr("2.0")) + "," + jkv_str("method", method) + "," + jkv_raw("params", params)))
+}
+
+fn read_frame(fr: Frame) -> Bool {
+    var line = read_line()
+    if line == "" { return false }
+    var clen: I64 = 0 - 1
+    while line != "" {
+        if starts_lit(line, 0, "Content-Length:") {
+            clen = parse_dec(byte_slice(line, 15, line.len))
+        }
+        line = read_line()
+    }
+    if clen < 0 { return false }
+    fr.body = read_bytes(clen)
+    return true
+}
+
+fn msg_uri(msg: Str, params_i: I64) -> Str {
+    var c = cur_at(params_i)
+    if !find_field(msg, c, "textDocument") { return "" }
+    var c2 = cur_at(c.i)
+    if !find_field(msg, c2, "uri") { return "" }
+    return decode_json_string(msg, c2)
+}
+
+fn msg_pos(msg: Str, params_i: I64, out: Pos2) -> Bool {
+    var c = cur_at(params_i)
+    if !find_field(msg, c, "position") { return false }
+    var c2 = cur_at(c.i)
+    if !find_field(msg, c2, "line") { return false }
+    out.a = parse_int_at(msg, c2)
+    var c3 = cur_at(c.i)
+    if !find_field(msg, c3, "character") { return false }
+    out.b = parse_int_at(msg, c3)
+    return true
+}
+
+fn publish_diag(st: Store, idx: I64) {
+    var uri = st_uri(st, idx)
+    var text = st_text(st, idx)
+    var acc = DiagAcc { s: "", n: 0 }
+    scan_diag(text, acc)
+    var params = jobj(jkv_str("uri", uri) + "," + jkv_raw("diagnostics", jarr(acc.s)))
+    send_notify("textDocument/publishDiagnostics", params)
+}
+
+fn hov_position(msg: Str, params_i: I64, st: Store) -> Str {
+    var uri = msg_uri(msg, params_i)
+    var idx = store_find(st, uri)
+    if idx < 0 { return "null" }
+    var text = st_text(st, idx)
+    var pp = pos2(0, 0)
+    if !msg_pos(msg, params_i, pp) { return "null" }
+    var w = word_at(text, pp.a, pp.b)
+    if w == "" { return "null" }
+    if pipe_has(KW_ALL, w) {
+        var md = "**(keyword)** `{w}`\n\n{kw_hover(w)}"
+        return jobj(jkv_raw("contents", jobj(jkv_str("kind", "markdown") + "," + jkv_str("value", md))))
+    }
+    if pipe_has(PT_ALL, w) {
+        var md = "**{w}**\n\n{ptype_hover(w)}"
+        return jobj(jkv_raw("contents", jobj(jkv_str("kind", "markdown") + "," + jkv_str("value", md))))
+    }
+    var hit = decl_hit_new()
+    find_decl(text, w, hit)
+    if hit.found {
+        var md = "```ctron\n{hit.sig}\n```"
+        if hit.docs != "" { md = "{md}\n\n{hit.docs}" }
+        return jobj(jkv_raw("contents", jobj(jkv_str("kind", "markdown") + "," + jkv_str("value", md))))
+    }
+    return "null"
+}
+
+fn def_position(msg: Str, params_i: I64, st: Store) -> Str {
+    var uri = msg_uri(msg, params_i)
+    var idx = store_find(st, uri)
+    if idx < 0 { return "null" }
+    var text = st_text(st, idx)
+    var pp = pos2(0, 0)
+    if !msg_pos(msg, params_i, pp) { return "null" }
+    var w = word_at(text, pp.a, pp.b)
+    if w == "" { return "null" }
+    var hit = decl_hit_new()
+    find_decl(text, w, hit)
+    if !hit.found { return "null" }
+    var r = jobj(jkv_raw("start", jobj(jnum("line", hit.line) + "," + jnum("character", hit.col))) + "," + jkv_raw("end", jobj(jnum("line", hit.line) + "," + jnum("character", hit.col + w.len))))
+    return jobj(jkv_str("uri", uri) + "," + jkv_raw("range", r))
+}
+
+// 前缀粗筛(细过滤交给客户端)
+fn prefix_hit(lab: Str, prefix: Str) -> Bool {
+    if prefix == "" { return true }
+    var m = prefix.len
+    if lab.len < m { return false }
+    var i: I64 = 0
+    while i < m {
+        if byte_at(lab, i) != byte_at(prefix, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn item_list(all: Str, kind: I64, detail: Str, prefix: Str) -> Str {
+    var items = ""
+    var first = true
+    var n = all.len
+    var i: I64 = 0
+    while i < n {
+        var j = i
+        while j < n && byte_at(all, j) != 124 { j += 1 }
+        if j > i {
+            var lab = byte_slice(all, i, j)
+            if prefix_hit(lab, prefix) {
+                var head = ""
+                if !first { head = "," }
+                items = "{items}{head}" + jobj(jkv_str("label", lab) + "," + jnum("kind", kind) + "," + jkv_str("detail", detail))
+                first = false
+            }
+        }
+        i = j + 1
+    }
+    return items
+}
+
+// 文档内声明名补全(顶层声明 + pub fn)
+fn doc_decl_items(text: Str, prefix: Str) -> Str {
+    var items = ""
+    var first = true
+    var n = text.len
+    var line: I64 = 0
+    var done = false
+    while !done {
+        var sp = line_span_of(text, line)
+        if sp.a >= n {
+            done = true
+        } else {
+            if is_top_line(text, sp) {
+                var kws = pos2(0, 0)
+                if first_word(text, sp, kws) {
+                    var kwv = eff_kw(text, sp, kws)
+                    if pipe_has(DECL_KW, kwv) && kwv != "use" && kwv != "impl" {
+                        var name = decl_name(text, sp, kwv, kws)
+                        if name != "" && prefix_hit(name, prefix) {
+                            var head = ""
+                            if !first { head = "," }
+                            items = "{items}{head}" + jobj(jkv_str("label", name) + "," + jnum("kind", sym_kind(kwv)) + "," + jkv_str("detail", "本文档声明"))
+                            first = false
+                        }
+                    }
+                }
+            }
+            if sp.b >= n {
+                done = true
+            } else {
+                line += 1
+            }
+        }
+    }
+    return items
+}
+
+fn join_comma(a: Str, b: Str) -> Str {
+    if b == "" { return a }
+    if a == "" { return b }
+    return "{a},{b}"
+}
+
+fn complete_at(msg: Str, params_i: I64, st: Store) -> Str {
+    var uri = msg_uri(msg, params_i)
+    var idx = store_find(st, uri)
+    var member_ctx = false
+    var prefix = ""
+    if idx >= 0 {
+        var text = st_text(st, idx)
+        var pp = pos2(0, 0)
+        if msg_pos(msg, params_i, pp) {
+            var sp = line_span_of(text, pp.a)
+            var e = sp.a + pp.b
+            if e > sp.b { e = sp.b }
+            var b = e
+            while b > sp.a && is_ac(byte_at(text, b - 1)) { b -= 1 }
+            if e > b { prefix = byte_slice(text, b, e) }
+            var d = b
+            while d > sp.a && is_ws_b(byte_at(text, d - 1)) { d -= 1 }
+            if d > sp.a && byte_at(text, d - 1) == 46 { member_ctx = true }
+        }
+    }
+    if member_ctx {
+        var items = item_list(MEM_ALL, 2, "前奏成员", prefix)
+        return jobj(jkv_raw("isIncomplete", "false") + "," + jkv_raw("items", jarr(items)))
+    }
+    var all = ""
+    all = join_comma(all, item_list(KW_ALL, 14, "关键字", prefix))
+    all = join_comma(all, item_list(PT_ALL, 7, "前奏类型", prefix))
+    if idx >= 0 {
+        all = join_comma(all, doc_decl_items(st_text(st, idx), prefix))
+    }
+    return jobj(jkv_raw("isIncomplete", "false") + "," + jkv_raw("items", jarr(all)))
+}
+
+// ============ 9. 请求分发 ============
+
+fn handle(msg: Str, st: Store) -> I64 {
+    var c = cur_at(0)
+    var method = ""
+    if find_field(msg, c, "method") {
+        method = decode_json_string(msg, c)
+    }
+    var cid = cur_at(0)
+    var has_id = find_field(msg, cid, "id")
+    var id_raw = "null"
+    if has_id {
+        var sp = pos2(0, 0)
+        if raw_value_span(msg, cid, sp) { id_raw = byte_slice(msg, sp.a, sp.b) }
+    }
+    if method == "exit" { return 1 }
+    if starts_lit(method, 0, "$/") { return 0 }
+    if method == "initialize" {
+        var caps = jobj(jkv_str("positionEncoding", "utf-8") + "," + jkv_raw("textDocumentSync", "1") + "," + jkv_raw("hoverProvider", "true") + "," + jkv_raw("definitionProvider", "true") + "," + jkv_raw("documentSymbolProvider", "true") + "," + jkv_raw("completionProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("."))))))
+        var info = jobj(jkv_str("name", "ctron-lsp") + "," + jkv_str("version", "0.1.0"))
+        send_result(id_raw, jobj(jkv_raw("capabilities", caps) + "," + jkv_raw("serverInfo", info)))
+        return 0
+    }
+    if method == "shutdown" {
+        send_result(id_raw, "null")
+        return 0
+    }
+    var pc = cur_at(0)
+    var has_params = find_field(msg, pc, "params")
+    if method == "textDocument/didOpen" && has_params {
+        var cd = cur_at(pc.i)
+        if find_field(msg, cd, "textDocument") {
+            var cu = cur_at(cd.i)
+            if find_field(msg, cu, "uri") {
+                var uri = decode_json_string(msg, cu)
+                var ct = cur_at(cd.i)
+                if find_field(msg, ct, "text") {
+                    var text = decode_json_string(msg, ct)
+                    var idx = store_put(st, uri, text)
+                    publish_diag(st, idx)
+                }
+            }
+        }
+        return 0
+    }
+    if method == "textDocument/didChange" && has_params {
+        var uri = msg_uri(msg, pc.i)
+        var cc = cur_at(pc.i)
+        if find_field(msg, cc, "contentChanges") {
+            cc.i += 1
+            skip_ws(msg, cc)
+            if find_field(msg, cc, "text") {
+                var text = decode_json_string(msg, cc)
+                var idx = store_put(st, uri, text)
+                publish_diag(st, idx)
+            }
+        }
+        return 0
+    }
+    if method == "textDocument/didClose" && has_params { return 0 }
+    if method == "textDocument/documentSymbol" && has_params {
+        var uri = msg_uri(msg, pc.i)
+        var idx = store_find(st, uri)
+        if idx < 0 {
+            send_result(id_raw, "[]")
+            return 0
+        }
+        send_result(id_raw, scan_symbols(st_text(st, idx)))
+        return 0
+    }
+    if method == "textDocument/hover" && has_id {
+        var r = "null"
+        if has_params { r = hov_position(msg, pc.i, st) }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/definition" && has_id {
+        var r = "null"
+        if has_params { r = def_position(msg, pc.i, st) }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/completion" && has_id {
+        var r = jobj(jkv_raw("isIncomplete", "false") + "," + jkv_raw("items", "[]"))
+        if has_params { r = complete_at(msg, pc.i, st) }
+        send_result(id_raw, r)
+        return 0
+    }
+    if has_id {
+        send_err(id_raw, 0 - 32601, "Method not found: {method}")
+    }
+    return 0
+}
+
+fn main() -> I64 {
+    var st = store_new()
+    var fr = Frame { body: "" }
+    while read_frame(fr) {
+        if handle(fr.body, st) == 1 { return 0 }
+    }
+    return 0
+}

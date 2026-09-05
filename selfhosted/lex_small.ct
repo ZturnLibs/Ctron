@@ -37,7 +37,7 @@ fn count_tokens(src: Str) -> I32 {
 }
 
 fn main() -> I32 {
-    let src = read_file("selfhost/input_small.ct")
+    let src = read_file("../selfhosted/input_small.ct")
     match src {
         Some(s) => {
             println("tokens=" + count_tokens(s).to_string())

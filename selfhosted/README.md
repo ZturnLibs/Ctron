@@ -1,8 +1,7 @@
 # selfhosted —— Ctron 自举编译器(用 Ctron 写的编译器,独立目录)
 
-> 规范源目录:本目录是 **Ctron 实现的编译器模块** 的唯一权威源。
-> `compiler_c/selfhost/` 是 CI 工作副本,由根 Makefile 目标从本目录同步(见下)。
-> C 版(`compiler_c/src`)仅作为宿主运行器与差分 oracle,不参与本目录内容、也**不会被清理**。
+> Ctron 自举的唯一目录:所有 Ctron 编译器模块、夹具与差分管线都以本目录为源。
+> C 版(`compiler_c/src`)仅作为宿主运行器与差分 oracle,保留不清理。
 
 ## 组成(按管线顺序)
 
@@ -21,17 +20,18 @@ cd compiler_c && make          # 构建宿主
 # 解析任意 Ctron 测试码(结构树 → C-AST v1)
 ./build/ctronc parse-ct <file>
 # 语义检查(12 项)任意测试码
-./build/ctronc parse-ct <file> selfhosted/sem_chk.ct
+./build/ctronc parse-ct <file> ../selfhosted/sem_chk.ct
 # 词法
-./build/ctronc parse-ct <file> selfhosted/lex_num.ct
+./build/ctronc parse-ct <file> ../selfhosted/lex_num.ct
+# 模块级检查(示例包)
+./build/ctronc run ../selfhosted/pkg_chk.ct
 ```
 > `parse-ct` 会把模块里 `read_file("...")` 的目标自动替换为 `<file>`。
 
-## 同步(规范源 → CI 工作副本)
+## 验收
 
 ```bash
-make -C compiler_c sync-selfhosted   # 把 ../selfhosted/*.ct 拷回 compiler_c/selfhost
-make -C compiler_c test              # 全量差分验收(make test 已依赖同步)
+make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目录模块)
 ```
 
 ## 自举状态与下一步

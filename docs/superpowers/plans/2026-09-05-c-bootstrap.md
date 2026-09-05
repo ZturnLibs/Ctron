@@ -113,7 +113,7 @@
 
 ## 自举产物目录
 
-Ctron 实现的编译器模块已独立到**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk + 夹具 + README),为规范源;`compiler_c/selfhost/` 为 CI 工作副本,`make -C compiler_c sync-selfhosted`/`make test` 自动同步。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
+Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
 
 ## 冻结纪律
 

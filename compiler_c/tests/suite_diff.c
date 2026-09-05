@@ -163,7 +163,7 @@ static int diff_one(const char* msrc, const char* ip, int seq, const char* label
 typedef struct { const char* module; const char* input; int seq; } TCase; // seq:0=计数 1=种类 2=payload
 
 int main(int argc, char** argv) {
-    const char* root = argc > 1 ? argv[1] : "selfhost";
+    const char* root = argc > 1 ? argv[1] : "../selfhosted";
     TCase cases[] = {
         {"lex_small.ct", "input_small.ct", 0},
         {"lex_kind.ct", "input_ops.ct", 1},
@@ -331,7 +331,7 @@ int main(int argc, char** argv) {
                         if (!kn) inscope = 0;
                     }
                     if (inscope) {
-                        char* msrc = replace_first(ssrc, "selfhost/input_ptree.ct", scp);
+                        char* msrc = replace_first(ssrc, "../selfhosted/input_ptree.ct", scp);
                         if (!msrc) { fprintf(stderr, "%s 模板替换失败\n", scp); fails++; }
                         else {
                             nrun++;

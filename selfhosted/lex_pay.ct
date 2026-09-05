@@ -292,7 +292,7 @@ fn filter(toks: List[Str]) -> List[Str] {
 }
 
 fn main() -> I32 {
-    let src = read_file("selfhost/input_pay.ct")
+    let src = read_file("../selfhosted/input_pay.ct")
     match src {
         Some(s) => {
             var toks = List[Str]()

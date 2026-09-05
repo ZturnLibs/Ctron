@@ -1965,7 +1965,7 @@ fn pnode(n: List[Str]) -> Str {
 }
 
 fn main() -> I32 {
-    let src = read_file("selfhost/input_ptree.ct")
+    let src = read_file("../selfhosted/input_ptree.ct")
     match src {
         Some(s) => {
             var toks = List[Str]()

@@ -51,10 +51,8 @@ $(BUILD)/suite_diff: tests/suite_diff.c $(CORE) $(HDRS)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_diff.c $(CORE)
 
 # 默认验收:单元 + 语料集成(词法+解析+语义+模块级)+ 执行层(C4-a 子集)
-sync-selfhosted:
-	cp ../selfhosted/*.ct selfhost/
 
-test: sync-selfhosted $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff
+test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff
 	./$(BUILD)/test_lex
 	./$(BUILD)/suite_lex ../tests
 	./$(BUILD)/test_parse
@@ -62,10 +60,10 @@ test: sync-selfhosted $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $
 	./$(BUILD)/suite_sem ../tests
 	./$(BUILD)/suite_pkg ../tests/modules
 	./$(BUILD)/suite_rt ../tests
-	./$(BUILD)/suite_run selfhost
-	./$(BUILD)/suite_diff selfhost
+	./$(BUILD)/suite_run ../selfhosted
+	./$(BUILD)/suite_diff ../selfhosted
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all sync-selfhosted test clean
+.PHONY: all test clean

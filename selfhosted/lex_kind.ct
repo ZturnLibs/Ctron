@@ -241,7 +241,7 @@ fn lex(src: Str) -> Str {
 }
 
 fn main() -> I32 {
-    let src = read_file("selfhost/input_ops.ct")
+    let src = read_file("../selfhosted/input_ops.ct")
     match src {
         Some(s) => {
             var text = lex(s)

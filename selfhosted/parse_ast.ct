@@ -2002,7 +2002,7 @@ fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
 }
 
 fn main() -> I32 {
-    let src = read_file("selfhost/input_parse_ast.ct")
+    let src = read_file("../selfhosted/input_parse_ast.ct")
     match src {
         Some(s) => {
             var toks = List[Str]()
