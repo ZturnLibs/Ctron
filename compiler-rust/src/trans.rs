@@ -28,6 +28,8 @@ enum VTy {
     Bool,
     F64,
     F32,
+    Str,
+    Range,
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -63,6 +65,7 @@ fn scalar_annotation(name: &str) -> Option<VTy> {
         "F64" => VTy::F64,
         "F32" => VTy::F32,
         "Bool" => VTy::Bool,
+        "Str" | "String" => VTy::Str,
         _ => return None,
     })
 }
@@ -208,8 +211,9 @@ impl Trans {
             VTy::F64 => "double",
             VTy::F32 => "float",
             VTy::Bool => "int",
-            VTy::Int(_) => "ct_i",
-            _ => "ct_i",
+            VTy::Str => "char*",
+            VTy::Range => "ct_range",
+            VTy::Int(_) | _ => "ct_i",
         }
     }
 
@@ -341,19 +345,36 @@ impl Trans {
                 let ast::Pattern::Ident(name) = pattern else {
                     return Err("trans v1 拒绝域:for 非 Ident 模式".into());
                 };
-                let ast::Expr::Range { inclusive, from, to } = iter else {
-                    return Err("trans v1 拒绝域:for 仅支持 range".into());
+                // iter:range 字面量或 Range 类型的值
+                let (lo_c, hi_c, incl, rtmp) = match iter {
+                    ast::Expr::Range { inclusive, from, to } => {
+                        let (fc, ft) = self.expr(from.as_ref())?;
+                        if !matches!(ft, VTy::Int(_)) { return Err("trans:range 端点需整数".into()); }
+                        let (tcc, _) = self.expr(to.as_ref())?;
+                        (fc, tcc, *inclusive, None)
+                    }
+                    other => {
+                        let (c, ty) = self.expr(other)?;
+                        if ty != VTy::Range { return Err("trans v1 拒绝域:for 仅支持 range".into()); }
+                        let tmp = self.uniq_name("rng");
+                        ("(ct_i)0".to_string(), "(ct_i)0".to_string(), false, Some((tmp, c)))
+                    }
                 };
-                let (fc, ft) = self.expr(from.as_ref())?;
-                if !matches!(ft, VTy::Int(_)) { return Err("trans:range 端点需整数".into()); }
-                let (tcc, _) = self.expr(to.as_ref())?;
                 let end = self.uniq_name("end");
                 let it = self.uniq_name("it");
-                self.w(1, &format!("{{ ct_i {} = (ct_i)({});", end, tcc));
-                let cmp = if *inclusive { "<=" } else { "<" };
+                match &rtmp {
+                    Some((tmp, init)) => self.w(1, &format!("{{ ct_range {} = {};", tmp, init)),
+                    None => self.w(1, &format!("{{ ct_i {} = (ct_i)({});", end, hi_c)),
+                }
+                let (lo_expr, end_expr, cmp) = match &rtmp {
+                    Some((tmp, _)) => (format!("(ct_i)({}.lo)", tmp), format!("(ct_i)({}.hi)", tmp),
+                        if incl { "<=" } else { "<" }),
+                    None => (lo_c.clone(), end.clone(), if incl { "<=" } else { "<" }),
+                };
+                let _ = hi_c;
                 self.w(1, &format!(
                     "for (ct_i {} = {}; {} {} {}; {}++) {{",
-                    it, fc, it, cmp, end, it
+                    it, lo_expr, it, cmp, end_expr, it
                 ));
                 self.scope_push();
                 let c = self.bind(name, VTy::Int(Some((IntW::W64, true))));
@@ -445,7 +466,7 @@ impl Trans {
                 let e_ty = els_tail.as_ref().map(|(_, t)| *t).unwrap_or(VTy::Void);
                 let merged = if els.is_some() { merge_ty(t_ty, e_ty) } else { VTy::Void };
 
-                if merged.is_num() || merged == VTy::Bool {
+                if merged.is_num() || merged == VTy::Bool || merged == VTy::Str || merged == VTy::Range {
                     let tv = self.uniq_name("ifv");
                     let (tc_, _) = then_tail.unwrap();
                     let (ec, _) = els_tail.unwrap();
@@ -481,6 +502,51 @@ impl Trans {
                 self.scope_pop();
                 Ok(out)
             }
+            ast::Expr::Str { parts } => {
+                // 串插值:各段求值 → 字符串化 → ct_concat 链(进程期分配,v1 不回收)
+                let mut acc: Option<String> = None;
+                for p in parts {
+                    let (c, _ty) = match p {
+                        ast::StrPart::Text(t) => (format!("(char*)\"{}\"", c_escape(t)), VTy::Str),
+                        ast::StrPart::Interp(src) => {
+                            let (tokens, _) = crate::lex(src);
+                            let mut parser = crate::parser::Parser::new(tokens);
+                            let e = parser.parse_expr_public();
+                            let (c, ty) = self.expr(&e)?;
+                            (display_wrap(&c, ty)?, VTy::Str)
+                        }
+                    };
+                    acc = Some(match acc {
+                        Some(prev) => format!("ct_concat({}, {})", prev, c),
+                        None => c,
+                    });
+                }
+                match acc {
+                    Some(c) => Ok((c, VTy::Str)),
+                    None => Ok(("(char*)\"\"".into(), VTy::Str)),
+                }
+            }
+            ast::Expr::Range { inclusive, from, to } => {
+                let (fc, ft) = self.expr(from)?;
+                if !matches!(ft, VTy::Int(_)) { return Err("trans:range 端点需整数".into()); }
+                let (tcc, _) = self.expr(to)?;
+                Ok((
+                    format!("(ct_range){{ {}, {}, {} }}", fc, tcc, if *inclusive { 1 } else { 0 }),
+                    VTy::Range,
+                ))
+            }
+            ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } => {
+                // 属性访问(无括号):Str.len / Str.char_len
+                let (c, ty) = self.expr(obj)?;
+                if ty == VTy::Str {
+                    return match m.as_str() {
+                        "len" => Ok((format!("((ct_i)strlen({}))", c), VTy::Int(Some((IntW::W64, false))))),
+                        "char_len" => Ok((format!("((ct_i)ct_char_len({}))", c), VTy::Int(Some((IntW::W64, false))))),
+                        _ => Err(format!("trans v1 拒绝域:Str 属性 `{}`", m)),
+                    };
+                }
+                Err(format!("trans v1 拒绝域:属性访问 `.{}`", m))
+            }
             ast::Expr::Call { callee, args } => self.call(callee, args),
             ast::Expr::TypeArgs { expr, args } => {
                 // as[T]() 显式转换(§3.6 截断语义)
@@ -497,7 +563,6 @@ impl Trans {
                 }
                 Err("trans v1 拒绝域:泛型实参".into())
             }
-            ast::Expr::Range { .. } => Err("trans v1 拒绝域:range 作为值".into()),
             other => Err(format!(
                 "trans v1 拒绝域:{}",
                 match other {
@@ -574,7 +639,9 @@ impl Trans {
                     if args.len() < 2 { return Err("trans:assert_eq 需两实参".into()); }
                     let (a, at) = self.expr(&args[0])?;
                     let (b, bt) = self.expr(&args[1])?;
-                    let ok = if at.is_float() || bt.is_float() {
+                    let ok = if at == VTy::Str && bt == VTy::Str {
+                        format!("(strcmp({}, {}) == 0)", a, b)
+                    } else if at.is_float() || bt.is_float() {
                         // 浮点:C == 语义(与解释器 values_equal 的数值比较对齐,NaN 不在语料)
                         format!("(({}) == ({}))", a, b)
                     } else if matches!(at, VTy::Bool) && matches!(bt, VTy::Bool) {
@@ -609,6 +676,51 @@ impl Trans {
                 return Ok((format!("{}({})", sanitize(name), cs.join(", ")), ret));
             }
         }
+        // 方法调用:接收者.方法(实参) — Str 方法,其次 UFCS 用户函数
+        if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = callee {
+            let (rc, rt) = self.expr(obj)?;
+            if rt == VTy::Str {
+                let r = match m.as_str() {
+                    "len" => Some((format!("((ct_i)strlen({}))", rc), VTy::Int(Some((IntW::W64, false))))),
+                    "char_len" => Some((format!("((ct_i)ct_char_len({}))", rc), VTy::Int(Some((IntW::W64, false))))),
+                    "contains" => {
+                        let Some(a) = args.first() else { return Err("trans:contains 需实参".into()) };
+                        let (ac, at) = self.expr(a)?;
+                        if at != VTy::Str { return Err("trans:contains 需 Str".into()); }
+                        Some((format!("(ct_i)(ct_contains({}, {}) != NULL)", rc, ac), VTy::Int(Some((IntW::W64, true)))))
+                    }
+                    "slice" => {
+                        let Some(a) = args.first() else { return Err("trans:slice 需实参".into()) };
+                        let ast::Expr::Range { from, to, .. } = a else {
+                            return Err("trans:slice 需 range 实参".into());
+                        };
+                        let (fc, _) = self.expr(from)?;
+                        let (tcc, _) = self.expr(to)?;
+                        Some((format!("ct_slice({}, (long)({}), (long)({}))", rc, fc, tcc), VTy::Str))
+                    }
+                    "to_string" => Some((format!("ct_dup({})", rc), VTy::Str)),
+                    _ => None,
+                };
+                if let Some(r) = r { return Ok(r); }
+            }
+            // UFCS:用户自由函数以接收者为首参
+            if let Some((ptys, ret)) = self.lookup_fn(m) {
+                if args.len() == ptys.len().saturating_sub(1) || args.len() + 1 == ptys.len() {
+                    let mut cs = vec![rc];
+                    for a in args {
+                        let (c, _) = self.expr(a)?;
+                        cs.push(c);
+                    }
+                    if cs.len() == ptys.len() {
+                        let mut final_cs = Vec::new();
+                        for (c, pt) in cs.iter().zip(&ptys) {
+                            final_cs.push(coerce(self.c_ty(*pt), c.clone(), VTy::Unknown, *pt));
+                        }
+                        return Ok((format!("{}({})", sanitize(m), final_cs.join(", ")), ret));
+                    }
+                }
+            }
+        }
         Err("trans v1 拒绝域:该调用形态(仅内建/数值函数)".into())
     }
 
@@ -617,6 +729,11 @@ impl Trans {
         match op {
             AndAnd => Ok((format!("(({}) && ({}))", lc, rc), VTy::Bool)),
             Eq | Ne | Lt | Gt | Le | Ge => {
+                if lt == VTy::Str && rt == VTy::Str {
+                    if !matches!(op, Eq | Ne) { return Err("trans:Str 仅可 ==/!=".into()); }
+                    let c = if *op == Eq { "==" } else { "!=" };
+                    return Ok((format!("((strcmp({}, {}) {}) 0)", lc, rc, c), VTy::Bool));
+                }
                 if lt.is_num() && rt.is_num() {
                     let c = match op {
                         Eq => "==", Ne => "!=", Lt => "<", Gt => ">", Le => "<=", _ => ">=",
@@ -698,6 +815,37 @@ fn merge_ty(a: VTy, b: VTy) -> VTy {
     }
 }
 
+/// 插值段字符串化(对齐 interp to_display 的分派)
+fn display_wrap(c: &str, ty: VTy) -> Result<String, String> {
+    Ok(match ty {
+        VTy::Str => c.to_string(),
+        VTy::Bool => format!("ct_bool_str((int)(!!({})))", c),
+        VTy::F64 => format!("ct_f64_str({})", c),
+        VTy::F32 => format!("ct_f32_str({})", c),
+        VTy::Int(_) => format!("ct_i128_str({})", c),
+        _ => return Err("trans v1 拒绝域:插值表达式类型".into()),
+    })
+}
+
+/// 解码后的 Ctron 字符串文本 → C 字符串字面量转义(非 ASCII 原样 UTF-8 字节)
+fn c_escape(t: &str) -> String {
+    // 字节级转义:非 ASCII 字节原样保留(UTF-8 字节流直通 C 字面量)
+    let mut out: Vec<u8> = Vec::new();
+    for &b in t.as_bytes() {
+        match b {
+            b'\\' => out.extend_from_slice(b"\\\\"),
+            b'"' => out.extend_from_slice(b"\\\""),
+            b'\n' => out.extend_from_slice(b"\\n"),
+            b'\t' => out.extend_from_slice(b"\\t"),
+            b'\r' => out.extend_from_slice(b"\\r"),
+            0x00..=0x1F | 0x7F => out.extend_from_slice(format!("\\{:03o}", b).as_bytes()),
+            _ => out.push(b),
+        }
+    }
+    String::from_utf8(out).expect("UTF-8")
+}
+
+
 fn coerce(c_ty: &str, c: String, from: VTy, to: VTy) -> String {
     match (from, to) {
         (VTy::F64, VTy::F32) => format!("(float)({})", c),
@@ -728,10 +876,22 @@ fn decl_name(d: &ast::Decl) -> &str {
 const PREAMBLE: &str = r#"/* Ctron → C 转译产物(P1-E① 数值域;语义契约 = Rust 解释器) */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <signal.h>
 #include <unistd.h>
 
 typedef __int128 ct_i;
+typedef struct { ct_i lo; ct_i hi; int incl; } ct_range;
+
+static char* ct_f32_str(float f) {
+    static char bufs[8][64];
+    static int rot = 0;
+    rot = (rot + 1) % 8;
+    double d = (double)f;
+    if (d == (double)(long long)d && d < 1e15 && d > -1e15) snprintf(bufs[rot], 64, "%.1f", d);
+    else snprintf(bufs[rot], 64, "%.9g", d);
+    return bufs[rot];
+}
 static const char* ct_cur_test = "";
 
 static void ct_panic(const char* msg) {
@@ -741,6 +901,62 @@ static void ct_panic(const char* msg) {
 static int ct_assert(int ok) {
     if (!ok) { fprintf(stderr, "assertion failed (test %s)\n", ct_cur_test); exit(1); }
     return ok;
+}
+/* ---- Str 运行时(进程期分配,v1 不回收;参考后端契约) ---- */
+static char* ct_concat(const char* a, const char* b) {
+    size_t la = strlen(a), lb = strlen(b);
+    char* r = (char*)malloc(la + lb + 1);
+    if (!r) abort();
+    memcpy(r, a, la); memcpy(r + la, b, lb + 1);
+    return r;
+}
+static char* ct_dup(const char* s) {
+    char* r = (char*)malloc(strlen(s) + 1);
+    if (!r) abort();
+    strcpy(r, s);
+    return r;
+}
+static size_t ct_char_len(const char* s) {
+    size_t n = 0;
+    for (const unsigned char* p = (const unsigned char*)s; *p; p++)
+        if ((*p & 0xC0) != 0x80) n++;
+    return n;
+}
+static int ct_contains(const char* s, const char* sub) { return strstr(s, sub) != NULL; }
+static int ct_is_boundary(const char* s, long i) {
+    if (i < 0) return 0;
+    unsigned char c = (unsigned char)s[i];
+    return c == 0 || (c & 0xC0) != 0x80;
+}
+static char* ct_slice(const char* s, long f, long t) {
+    if (t < f) ct_panic("invalid utf8 boundary");
+    if (!ct_is_boundary(s, f) || !ct_is_boundary(s, t)) ct_panic("invalid utf8 boundary");
+    char* r = (char*)malloc((size_t)(t - f) + 1);
+    if (!r) abort();
+    memcpy(r, s + f, (size_t)(t - f));
+    r[t - f] = '\0';
+    return r;
+}
+static char* ct_i128_str(ct_i v) {
+    static char bufs[8][48];
+    static int rot = 0;
+    rot = (rot + 1) % 8;
+    char* p = bufs[rot] + 47;
+    *p = '\0';
+    int neg = v < 0;
+    unsigned __int128 u = neg ? (unsigned __int128)(-v) : (unsigned __int128)v;
+    do { *--p = (char)('0' + (char)(u % 10)); u /= 10; } while (u);
+    if (neg) *--p = '-';
+    return p;
+}
+static char* ct_bool_str(int b) { return b ? (char*)"true" : (char*)"false"; }
+static char* ct_f64_str(double d) {
+    static char bufs[8][64];
+    static int rot = 0;
+    rot = (rot + 1) % 8;
+    if (d == (double)(long long)d && d < 1e15 && d > -1e15) snprintf(bufs[rot], 64, "%.1f", d);
+    else snprintf(bufs[rot], 64, "%.17g", d);
+    return bufs[rot];
 }
 /* 宽度检查算术(bits ≤ 64;us = 无符号)。结果宽度 = 调用点左操作数宽度。 */
 static ct_i ct_add(ct_i a, ct_i b, int bits, int us) {

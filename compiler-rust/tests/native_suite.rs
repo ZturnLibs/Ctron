@@ -75,7 +75,7 @@ fn native_matches_interpreter() {
         if !diags.is_empty() { skipped += 1; continue; }
         let c_code = match ctron::trans::Trans::new().trans_file(&file_ast) {
             Ok(c) => c,
-            Err(_reason) => { skipped += 1; continue; }
+            Err(_) => { skipped += 1; continue; }
         };
 
         // 编译 + 运行
