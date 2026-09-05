@@ -598,9 +598,28 @@ static val chan_recv(rt* R, val recv) {
 }
 
 static val mutex_with(rt* R, val mx, val f, int mut) {
-    val inner = mx.mtx->inner;
-    val arg = mut ? inner : inner; // 可变通道下同语义;类共享、struct 值副本
-    return invoke_val1(R, f, arg);
+    if (!mut) return invoke_val1(R, f, mx.mtx->inner); // with:只读
+    // with_mut:参数绑定副本,闭包体写回存储(整值/类共享皆可)
+    if (f.k != V_CLOSURE || !f.clo) rt_abort(R, RT_ERROR, "with_mut 需闭包");
+    const cexpr* c = f.clo;
+    env* saved = R->top;
+    env* ce = (env*)ctron_arena_alloc(R->a, sizeof(env));
+    ce->head = NULL;
+    ce->up = f.cap;
+    R->top = ce;
+    const char* pn = c->ncparams >= 1 && c->cparams[0].name ? c->cparams[0].name : "it";
+    env_let(R, pn, mx.mtx->inner);
+    int sr = R->has_ret;
+    val srv = R->ret;
+    R->has_ret = 0;
+    val res = eval_expr(R, c->cbody);
+    if (R->has_ret) res = R->ret;
+    bind* bb = env_find(R, pn);
+    if (bb) mx.mtx->inner = bb->slot; // 写回
+    R->has_ret = sr;
+    R->ret = srv;
+    R->top = saved;
+    return res;
 }
 
 static int val_eq(rt* R, val a, val b) {
@@ -1077,6 +1096,11 @@ static val eval_expr(rt* R, cexpr* e) {
         if (b) return b->slot;
         const cdecl* d = file_fn(R, e->text);
         if (d) return v_fn(d); // 一等函数值(如 map(twice))
+        for (size_t i = 0; i < R->f->ndecls; i++) {
+            const cdecl* sd = &R->f->decls[i];
+            if (sd->kind == D_STATIC && sd->statik.name && strcmp(sd->statik.name, e->text) == 0)
+                return eval_expr(R, sd->statik.expr); // static let 只读全局
+        }
         if (is_variant(R, e->text)) return v_tag(e->text, NULL, 0); // 裸变体值(如 None)
         rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
     }
@@ -1298,9 +1322,12 @@ static val eval_expr(rt* R, cexpr* e) {
             return v_tuple(R, snd, rcv);
         }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
-            && strcmp(cal->obj->text, "Mutex") == 0) {
-            if (e->nelems != 1) rt_abort(R, RT_ERROR, "Mutex 实参");
-            return v_mutex(R, eval_expr(R, e->elems[0]));
+            && (strcmp(cal->obj->text, "Mutex") == 0 || strcmp(cal->obj->text, "Global") == 0)) {
+            if (e->nelems < 1 || e->nelems > 2) rt_abort(R, RT_ERROR, "%s 实参", cal->obj->text);
+            if (strcmp(cal->obj->text, "Global") == 0 && e->nelems == 2 && e->elems[0])
+                (void)eval_expr(R, e->elems[0]); // 名称仅编译期
+            val init = eval_expr(R, e->elems[e->nelems - 1]);
+            return v_mutex(R, init);
         }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_MEMBER
             && cal->obj->mname && strcmp(cal->obj->mname, "list") == 0
@@ -1361,6 +1388,24 @@ static val eval_expr(rt* R, cexpr* e) {
             if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "to_string") == 0) {
                 val r = recv; // 不可变;隐式降格语义
                 return r;
+            }
+            if (recv.k == V_STRUCT && cal->mname && strcmp(cal->mname, "show") == 0) {
+                // @derive(Show) 的格式化(语料只断言非空)
+                sb b = {0};
+                sb_s(&b, recv.type ? recv.type : "?");
+                sb_s(&b, "(");
+                for (size_t i = 0; i < recv.nfld; i++) {
+                    if (i) sb_s(&b, ",");
+                    sb_s(&b, recv.flds[i].name);
+                    sb_s(&b, "=");
+                    fmt_val(R, recv.flds[i].v, &b);
+                }
+                sb_s(&b, ")");
+                val out = v_void();
+                out.k = V_STR;
+                out.s = astr(R, b.d ? b.d : "");
+                free(b.d);
+                return out;
             }
             if (recv.k == V_LIST && cal->mname) {
                 if (strcmp(cal->mname, "push") == 0) {
