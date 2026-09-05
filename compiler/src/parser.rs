@@ -422,17 +422,19 @@ impl Parser {
             if self.at(&Tok::Eof) { self.err_here("E1001", "未闭合的 trait 体".into()); break; }
             let mattrs = self.parse_attrs().0;
             self.skip_newlines();
+            let before = self.pos;
+            let vis = self.parse_vis();
             if self.at(&Tok::Prop) {
-                let p = self.parse_prop_decl(mattrs, Vis::Private);
+                let p = self.parse_prop_decl(mattrs, vis);
                 if p.body.is_some() { items.push(TraitItem::PropImpl(p)); }
                 else { items.push(TraitItem::PropSig(p)); }
             } else {
-                let vis = self.parse_vis();
                 let mut f = self.parse_fn(mattrs, false);
                 f.vis = vis;
                 // 无体方法保留 Method(FnDecl{body:None})——签名即契约,不得降格为属性
                 items.push(TraitItem::Method(f));
             }
+            self.ensure_progress(before);
         }
         TraitDecl { attrs, vis: Vis::Private, name, type_params, supers, items }
     }
@@ -615,18 +617,31 @@ impl Parser {
             }
             Tok::Ident(_) => {
                 let path = self.parse_dotted_path();
-                let mut args = Vec::new();
-                // 类型位置的 [...] 无条件为类型实参(§1.8 消歧只属表达式位置)
-                if self.at(&Tok::LBracket) {
-                    self.bump();
-                    loop {
-                        if self.at(&Tok::RBracket) { break; }
-                        args.push(self.parse_type());
-                        if !self.eat(&Tok::Comma) { break; }
+                let mut ty = Type::Named { path, args: Vec::new() };
+                // 类型位置 [ ] 消歧(§1.8 裁决):空 → 切片(交后缀);
+                // 单个整数字面量 → 定长数组 Type [ Expr ];其余 → 泛型类型实参。
+                // 残余歧义:T[SIZE](comptime 常量标识符)按泛型解析。
+                if self.at(&Tok::LBracket) && !self.bracket_content_is_empty() {
+                    if self.bracket_content_is_single_int() {
+                        self.bump();
+                        let size = self.parse_expr();
+                        self.expect(&Tok::RBracket, "定长数组");
+                        ty = Type::Array { elem: Box::new(ty), size: Some(size) };
+                    } else {
+                        self.bump();
+                        let mut args = Vec::new();
+                        loop {
+                            if self.at(&Tok::RBracket) { break; }
+                            args.push(self.parse_type());
+                            if !self.eat(&Tok::Comma) { break; }
+                        }
+                        self.expect(&Tok::RBracket, "类型实参");
+                        if let Type::Named { args: ref mut old, .. } = ty {
+                            *old = args;
+                        }
                     }
-                    self.expect(&Tok::RBracket, "类型实参");
                 }
-                Type::Named { path, args }
+                ty
             }
             other => {
                 self.err_here("E1001", format!("预期类型,实际 {:?}", other));
@@ -655,6 +670,16 @@ impl Parser {
             }
         }
         ty
+    }
+
+    /// `[` 处内容是否为空(`[]`)。
+    fn bracket_content_is_empty(&self) -> bool {
+        matches!(self.peek2(), Tok::RBracket)
+    }
+
+    /// `[` 处内容是否恰为一个整数字面量。
+    fn bracket_content_is_single_int(&self) -> bool {
+        matches!(self.peek2(), Tok::Int { .. }) && matches!(self.tok_at(2), Tok::RBracket)
     }
 
     /// `[` 处的快速判定:配对 `]` 之后是否紧跟 `(` 或 `{`(§1.8)。
@@ -1574,5 +1599,53 @@ mod final_review_pins {
             assert!(d.iter().any(|x| x.message.contains("嵌套过深")));
         }).unwrap();
         h.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod rework_pins {
+    use super::*;
+    use crate::ast::*;
+
+    #[test]
+    fn trait_pub_prop_parses() {
+        // B-3 收尾回归:trait 内 pub prop(曾漏改 trait 循环)
+        let (f, d) = crate::parse_src("trait T {\n    pub prop size: I64\n}");
+        assert!(d.is_empty(), "{:?}", d);
+        match &f.decls[0] {
+            Decl::Trait(t) => match &t.items[0] {
+                TraitItem::PropSig(p) => assert_eq!(p.vis, Vis::Pub),
+                other => panic!("{:?}", other),
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn fixed_array_type_survives_disambiguation() {
+        // B-1 对称回归:I32[3] 必须是定长数组而非泛型实参
+        let (f, d) = crate::parse_src("fn f() -> Void {\n    var buf: I32[3] = [1, 2, 3]\n    return void\n}");
+        assert!(d.is_empty(), "{:?}", d);
+        let (f, d) = crate::parse_src("static let BUF: I32[3] = zero()");
+        assert!(d.is_empty(), "{:?}", d);
+        match &f.decls[0] {
+            Decl::Static(s) => match &s.ty {
+                Type::Array { elem, size: Some(_) } => {
+                    assert!(matches!(**elem, Type::Named { ref path, .. } if path == &vec!["I32".to_string()]));
+                }
+                other => panic!("应为定长数组,实际 {:?}", other),
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn slice_and_generic_types_still_work() {
+        // 切片与泛型不回归
+        let (f, d) = crate::parse_src("fn f(xs: I32[]) { return void }");
+        assert!(d.is_empty(), "{:?}", d);
+        let (f, d) = crate::parse_src("fn g(m: Map[Str, I32]) { return void }");
+        assert!(d.is_empty(), "{:?}", d);
+        let _ = f;
     }
 }
