@@ -2440,6 +2440,171 @@ fn sem_e3060(file: List[Str], d: List[Str], tag: Str) -> Str {
     }
     return out
 }
+
+// ---- E4020/E6020:pure(#[pure])/comptime 函数内 &Trait 接收者能力调用 ----
+fn is_trait(file: List[Str], nm: Str) -> Bool {
+    return decl_node(file, "Trait", nm).len > 0
+}
+fn env_ty(envN: List[Str], envT: List[Str], nm: Str) -> List[Str] {
+    var i = envN.len - 1
+    while i >= 0 {
+        if envN[i] == nm { return envT[i] }
+        i -= 1
+    }
+    return List[Str]()
+}
+fn cap_ty(file: List[Str], ty: List[Str]) -> Bool {
+    if ty.len > 0 && ty[0] == "Ref" {
+        var sub = ty[1]
+        if sub.len > 0 && sub[0] == "Named" && is_trait(file, sub[1]) {
+            return true
+        }
+    }
+    return false
+}
+fn pwalk_e(file: List[Str], e: List[Str], code: Str, envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "Member" {
+            var obj = cal[1]
+            if obj[0] == "Ident" {
+                var ty = env_ty(envN, envT, obj[1])
+                if cap_ty(file, ty) {
+                    diags.push(code)
+                }
+            }
+            pwalk_e(file, cal[1], code, envN, envT, diags)
+        }
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            pwalk_e(file, ag[i], code, envN, envT, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if t == "Binary" {
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Unary" {
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        return
+    }
+    if t == "Range" {
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Index" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if t == "Try" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            pwalk_e(file, e[i2], code, envN, envT, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        pwalk_b(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if t == "If" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        pwalk_b(file, e[2], code, envN, envT, diags)
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Match" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            pwalk_e(file, arms[i3][2], code, envN, envT, diags)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Own" {
+        pwalk_b(file, e[2], code, envN, envT, diags)
+        return
+    }
+    if t == "Scope" {
+        pwalk_b(file, e[2], code, envN, envT, diags)
+        return
+    }
+}
+fn pwalk_b(file: List[Str], b: List[Str], code: Str, envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            pwalk_e(file, st[1], code, envN, envT, diags)
+        } else if t == "Expr" {
+            pwalk_e(file, st[1], code, envN, envT, diags)
+        } else if t == "While" {
+            pwalk_e(file, st[1], code, envN, envT, diags)
+            pwalk_b(file, st[2], code, envN, envT, diags)
+        } else if t == "For" {
+            pwalk_e(file, st[2], code, envN, envT, diags)
+            pwalk_b(file, st[3], code, envN, envT, diags)
+        } else if t == "Let" {
+            var ex = st[4]
+            if ex.len > 0 && ex[0] == "Closure" {
+                pwalk_e(file, ex, code, envN, envT, diags)
+            }
+        }
+        i += 1
+    }
+    pwalk_e(file, b[b.len - 1], code, envN, envT, diags)
+}
+fn sem_cap(file: List[Str], d: List[Str], kind: Str) -> Str {
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envT = List[Str]()
+    var body = d[5]
+    var ps = d[3]
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envT.push(p[3])
+        }
+        k += 1
+    }
+    pwalk_b(file, body, kind, envN, envT, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
 fn sem_walk2(file: List[Str]) -> Str {
     var out = ""
     var diags = List[Str]()
@@ -2501,6 +2666,18 @@ fn sem_walk2(file: List[Str]) -> Str {
             var e6 = sem_e3060(file, d, t)
             if e6 != "" {
                 diags.push(byte_slice(e6, 0, e6.len - 1))
+            }
+            var ckind = ""
+            if d.len >= 7 && d[6] == "pure" {
+                ckind = "E4020: pure 函数含能力调用(pure)"
+            } else if t == "FnC" {
+                ckind = "E6020: comptime 函数含能力调用(comptime)"
+            }
+            if ckind != "" {
+                var ec = sem_cap(file, d, ckind)
+                if ec != "" {
+                    diags.push(byte_slice(ec, 0, ec.len - 1))
+                }
             }
         } else if t == "Test" {
             walk_b(file, d[2], false, fns, rets, diags)
