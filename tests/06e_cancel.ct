@@ -12,7 +12,7 @@ test "cancelled task unblocks with error instead of hanging" {
             }
         })
         let failer = s.spawn(|| -> I32 { panic("boom") })
-        failer.join_or()              // 捕获失败:触发取消兄弟任务
+        let _ = failer.join_or()      // 捕获失败:触发取消兄弟任务(must-use,显式消费)
         assert_eq(blocker.join(), 1)  // 被取消的阻塞 send 返回失败,不悬挂
     }
 }

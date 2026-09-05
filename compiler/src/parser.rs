@@ -823,14 +823,14 @@ impl Parser {
     }
 
     fn parse_postfix(&mut self, allow_struct: bool) -> Expr {
-        let mut e = self.parse_primary(allow_struct);
+        let e = self.parse_primary(allow_struct);
         self.depth += 1;
         let r = self.parse_postfix_loop(e, allow_struct);
         self.depth -= 1;
         r
     }
 
-    fn parse_postfix_loop(&mut self, mut e: Expr, allow_struct: bool) -> Expr {
+    fn parse_postfix_loop(&mut self, mut e: Expr, _allow_struct: bool) -> Expr {
         loop {
             // 恢复路径守卫:超限立即返回,不再构造 Call 包裹(否则与 parse_expr 互递归无界)
             if self.depth > MAX_EXPR_DEPTH {

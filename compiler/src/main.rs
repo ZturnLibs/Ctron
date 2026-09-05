@@ -47,8 +47,31 @@ fn main() -> ExitCode {
             }
             if diags.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
         }
+        Some("check") => {
+            let path = match args.get(2) {
+                Some(p) if !p.starts_with("--") => p.clone(),
+                _ => {
+                    eprintln!("usage: ctron check <file> [--profile bare|web|full]");
+                    return ExitCode::from(2);
+                }
+            };
+            let profile = args.iter().position(|a| a == "--profile")
+                .and_then(|i| args.get(i + 1))
+                .map(|p| match p.as_str() { "bare" => ctron::sem::Profile::Bare, "web" => ctron::sem::Profile::Web, _ => ctron::sem::Profile::Full })
+                .unwrap_or(ctron::sem::Profile::Full);
+            let Ok(src) = std::fs::read_to_string(&path) else {
+                eprintln!("无法读取 {path}");
+                return ExitCode::from(2);
+            };
+            let diags = ctron::check_src(&src, profile);
+            for d in &diags {
+                println!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+            }
+            println!("{} diagnostics", diags.len());
+            if diags.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+        }
         _ => {
-            eprintln!("usage: ctron <version|lex|parse> [args]");
+            eprintln!("usage: ctron <version|lex|parse|check> [args]");
             ExitCode::from(2)
         }
     }
