@@ -379,6 +379,41 @@ class CtronLspClient {
         });
     }
 
+    // ---------- P2:inlay hints / 格式化 / 折叠 ----------
+
+    inlayHints(document, range) {
+        return this.safeRequest('textDocument/inlayHint', {
+            textDocument: this.textDocId(document),
+            range: { start: { line: 0, character: 0 }, end: { line: 1e9, character: 0 } }
+        }).then((result) => {
+            if (!Array.isArray(result)) { return null; }
+            return result.map((h) => {
+                const pos = new vscode.Position(h.position.line, h.position.character);
+                return new vscode.InlayHint(pos, h.label || '',
+                    h.kind === 2 ? vscode.InlayHintKind.Type : vscode.InlayHintKind.Parameter);
+            });
+        });
+    }
+
+    formatting(document, _options) {
+        return this.safeRequest('textDocument/formatting', {
+            textDocument: this.textDocId(document),
+            options: { tabSize: 4, insertSpaces: true }
+        }).then((result) => {
+            if (!Array.isArray(result)) { return null; }
+            return result.map((e) => new vscode.TextEdit(asRange(e.range), e.newText));
+        });
+    }
+
+    foldingRanges(document) {
+        return this.safeRequest('textDocument/foldingRange', {
+            textDocument: this.textDocId(document)
+        }).then((result) => {
+            if (!Array.isArray(result)) { return null; }
+            return result.map((f) => new vscode.FoldingRange(f.startLine, f.endLine, f.kind || 'region'));
+        });
+    }
+
     dispose() {
         try { this.notify('exit', {}); } catch { /* 忽略 */ }
         if (this.child) {
@@ -638,6 +673,15 @@ function activate(context) {
         vscode.languages.registerSignatureHelpProvider(selector, {
             provideSignatureHelp: (doc, pos) => client ? client.signatureHelp(doc, pos) : null
         }, '(', ','),
+        vscode.languages.registerInlayHintsProvider(selector, {
+            provideInlayHints: (doc, range) => client ? client.inlayHints(doc, range) : null
+        }),
+        vscode.languages.registerDocumentFormattingEditProvider(selector, {
+            provideDocumentFormattingEdits: (doc, opts) => client ? client.formatting(doc, opts) : null
+        }),
+        vscode.languages.registerFoldingRangeProvider(selector, {
+            provideFoldingRanges: (doc) => client ? client.foldingRanges(doc) : null
+        }),
         vscode.languages.registerCodeActionsProvider(selector, {
             provideCodeActions: (doc, range, ctx) => checkRunner ? checkRunner.codeActions(doc, ctx.diagnostics) : []
         })
