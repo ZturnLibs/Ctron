@@ -138,7 +138,18 @@
    make test + suite_run 15 files;ASan/UBSan 绿)。已裁定钉子:Ctron 侧 comptime 递归深度预算
    降至 40(宿主解释器每层≈多 C 帧,ASan 栈保护;语料 spin 仍必中,与 C 差分不受影响);
    comptime fn 跨文件检索暂限同文件(语料单文件;跨文件后续阶梯);E5020 环检测免于全局
-   done 剪枝(语料二模块环结果与 C 相同)。
+   done 剪枝(语料二模块环结果与 C 相同)。18x. **C9c(本文件交付)—— 统一 cc 驱动(parse→单文件语义 12 项→run 单入口)**:新模块
+   `selfhosted/cc.ct`(自足快照 4.8k 行):把 sem_chk.ct 的 parser+pnode+单文件语义 12 项
+   (sem_walk2)与 ev2.ct 的解释器段(vI..run_block/run_tests)并入一文件(函数零冲突;去重
+   保留各自所需 seq2/txt_num 预置)。管线:parse(树)→ sem_walk2:有诊断 → 逐条输出
+   "CODE: msg" 并返回 1(不运行);无诊断 → 解释执行 fn main,否则 test 块(全过 0,
+   断言失败打印消息返 1)。验收:suite_diff 新增 **seq=9 cc 驱动差分** —— 正例
+   input_cc.ct(Ctron 子集主程序,`ctronc check` 0 诊断)输出与原生运行逐字一致(rc 0);
+   负例 input_cc_neg.ct(class+struct 引用字段 → W8010)输出与 C sem 行逐字一致(rc 1)。
+   suite_diff 220 cases + suite_run 16 files 全绿;ASan/UBSan 绿。已裁定钉子:Ctron rt 允许
+   Str+Str `+`(运行域)而 C sem 判 E2010 —— 语义域不一致,cc 正例夹具避开;cc 语义阶段只
+   报 Ctron 已实现 12 码(其余码原样下钻运行时,与 C check 的差异由后续单文件语义扩面覆盖)。
+
 
 ## 自举产物目录
 

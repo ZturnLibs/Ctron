@@ -69,3 +69,5 @@
   提交前只 `git add` 自己的文件。孤儿 C 改动(W8040/E2010、rt call_decl 调用方求值)在 `git stash@{0}`。
 - 下一批:C9c 统一 cc 驱动(parse→单文件语义 12 项→run 单入口;把 sem_chk 检查段与 ev2 解释段
   并入一个自足快照,注意函数去重)。
+- C9c ✅(`cc.ct` 统一驱动 parse→sem12→run;seq=9;提交待本批次尾)。验收 220 cases + suite_run 16 files。
+- 下一批见计划 18y 意向:单文件语义 12 项之外扩面 / 运行域对齐 / selfhosted 独立工具链。

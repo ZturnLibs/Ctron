@@ -156,8 +156,115 @@ static int diff_pkg(const char* msrc, const char* ip, int seq, const char* label
     return ok ? 0 : 1;
 }
 
+// cc 驱动差分(seq=9):Ctron cc.ct(parse→单文件语义 12 项→run)输出 vs C 同管线
+static const char* const CC_KNOWN[] = {"W8010", "W8020", "E4030", "E3020", "E3031", "E3060",
+                                       "E4020", "E6020", "E3010", "E3050", "E2030", "E3040"};
+static int diff_cc(const char* msrc, const char* ip, int seq, const char* label) {
+    (void)seq;
+    char* m2 = replace_first(msrc, "../selfhosted/input_cc.ct", ip);
+    if (!m2) {
+        fprintf(stderr, "%s 模块模板换靶失败\n", label);
+        return 1;
+    }
+    ctron_parse_result pr = ctron_parse_src(m2, strlen(m2));
+    free(m2);
+    if (pr.ndiags) {
+        fprintf(stderr, "%s 模块解析失败\n", label);
+        ctron_parse_result_free(&pr);
+        return 1;
+    }
+    rt_run mr = ctron_rt_run_main(pr.file);
+    ctron_parse_result_free(&pr);
+    if (mr.st != RT_OK) {
+        fprintf(stderr, "%s: 模块运行失败 st=%d msg=%s\n", label, mr.st, mr.msg ? mr.msg : "");
+        ctron_rt_run_free(&mr);
+        return 1;
+    }
+    // C oracle:parse + sem(仅已实现 12 码入账);无诊断才原生运行
+    char* input = read_file_str(ip);
+    if (!input) {
+        fprintf(stderr, "%s 输入无法读取\n", ip);
+        ctron_rt_run_free(&mr);
+        return 1;
+    }
+    ctron_parse_result pf = ctron_parse_src(input, strlen(input));
+    free(input);
+    if (pf.ndiags) {
+        fprintf(stderr, "%s 参考解析诊断 %zu\n", label, pf.ndiags);
+        ctron_rt_run_free(&mr);
+        ctron_parse_result_free(&pf);
+        return 1;
+    }
+    ctron_arena* arena = ctron_arena_new();
+    ctron_sem_result sr = ctron_sem_check(pf.file, arena);
+    char* buf = NULL;
+    size_t bufn = 0;
+    FILE* mf = open_memstream(&buf, &bufn);
+    if (!mf) {
+        free(sr.diags);
+        ctron_arena_free(arena);
+        ctron_rt_run_free(&mr);
+        ctron_parse_result_free(&pf);
+        return 1;
+    }
+    int any = 0;
+    for (size_t i = 0; i < sr.ndiags; i++) {
+        int in = 0;
+        for (size_t j = 0; j < sizeof CC_KNOWN / sizeof CC_KNOWN[0]; j++)
+            if (strcmp(sr.diags[i].code, CC_KNOWN[j]) == 0) in = 1;
+        if (in) {
+            fprintf(mf, "%s: %s\n", sr.diags[i].code, sr.diags[i].message);
+            any = 1;
+        }
+    }
+    fclose(mf);
+    free(sr.diags);
+    ctron_arena_free(arena);
+    ctron_parse_result_free(&pf);
+    long want_rc = 0;
+    if (!any) {
+        // 干净:原生运行 main(输出进 oracle)
+        free(buf);
+        buf = NULL;
+        char* src2 = read_file_str(ip);
+        if (!src2) { ctron_rt_run_free(&mr); return 1; }
+        ctron_parse_result pf2 = ctron_parse_src(src2, strlen(src2));
+        free(src2);
+        if (pf2.ndiags) {
+            ctron_rt_run_free(&mr);
+            ctron_parse_result_free(&pf2);
+            return 1;
+        }
+        rt_run rr2 = ctron_rt_run_main(pf2.file);
+        ctron_parse_result_free(&pf2);
+        if (rr2.st != RT_OK) {
+            fprintf(stderr, "%s 参考运行失败 st=%d msg=%s\n", label, rr2.st, rr2.msg ? rr2.msg : "");
+            ctron_rt_run_free(&mr);
+            ctron_rt_run_free(&rr2);
+            return 1;
+        }
+        FILE* mf2 = open_memstream(&buf, &bufn);
+        if (mf2) { fputs(rr2.out ? rr2.out : "", mf2); fclose(mf2); }
+        want_rc = rr2.exit_code == 0 ? 0 : 1;
+        ctron_rt_run_free(&rr2);
+    } else {
+        want_rc = 1; // 有诊断:编译失败,不运行
+    }
+    const char* mo = mr.out ? mr.out : "";
+    const char* cb = buf ? buf : "";
+    int ok = strcmp(mo, cb) == 0 && mr.exit_code == want_rc;
+    if (!ok) {
+        fprintf(stderr, "%s cc 差分失败\n  参考(rc=%ld): %s\n  Ctron(rc=%ld): %s\n",
+                label, want_rc, cb, mr.exit_code, mo);
+    }
+    free(buf);
+    ctron_rt_run_free(&mr);
+    return ok ? 0 : 1;
+}
+
 // 单个差分:msrc = Ctron 模块源码(已含目标输入), ip = 输入文件路径, seq=0 计数 1 种类 2 payload
 static int diff_one(const char* msrc, const char* ip, int seq, const char* label) {
+    if (seq == 9) return diff_cc(msrc, ip, seq, label);
     if (seq == 8) return diff_pkg(msrc, ip, seq, label);
     if (seq == 5 || seq == 6) return diff_exec(msrc, ip, seq, label);
     ctron_parse_result pr = ctron_parse_src(msrc, strlen(msrc));
@@ -306,6 +413,8 @@ int main(int argc, char** argv) {
         {"pkg_chk.ct", "../tests/modules/comptime_budget", 8},
         {"pkg_chk.ct", "../tests/modules/use_ok", 8},
         {"pkg_chk.ct", "../tests/modules/ffi_math", 8},
+        {"cc.ct", "input_cc.ct", 9},
+        {"cc.ct", "input_cc_neg.ct", 9},
     };
     size_t fails = 0, nrun = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {

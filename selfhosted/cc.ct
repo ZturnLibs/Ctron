@@ -1,0 +1,4829 @@
+// C7a 原型:Ctron 结构化 AST(数据树)+ 树打印 → C-AST v1 逐字节(v0:fn/let/return/二元/数值)
+// 节点 = List[Str]:child[0]=tag,其后按模式放标量 Str 或子节点(List)。打印按 tag 模式走树。
+fn or2(a: Bool, b: Bool) -> Bool { return !(!a && !b) }
+fn or3(a: Bool, b: Bool, c: Bool) -> Bool { return or2(or2(a, b), c) }
+fn is_digit(b: I32) -> Bool { return b >= 48 && b <= 57 }
+fn is_alpha(b: I32) -> Bool { return or2(b >= 65 && b <= 90, b >= 97 && b <= 122) }
+fn is_al(b: I32) -> Bool { return or2(is_alpha(b), b == 95) }
+fn is_ac(b: I32) -> Bool { return or2(is_al(b), is_digit(b)) }
+
+fn is_hex(b: I32) -> Bool { return or2(b >= 48 && b <= 57, or2(b >= 65 && b <= 70, b >= 97 && b <= 102)) }
+fn is_oct(b: I32) -> Bool { return b >= 48 && b <= 55 }
+fn is_bin(b: I32) -> Bool { return b >= 48 && b <= 49 }
+
+fn suffix_len(src: Str, n: I32, i: I32) -> I32 {
+    if i + 2 <= n {
+        var a = byte_at(src, i)
+        var b = byte_at(src, i + 1)
+        var len: I32 = 0
+        if a == 105 && b == 56 { len = 2 }
+        if a == 105 && b == 49 && i + 2 < n && byte_at(src, i + 2) == 54 { len = 3 }
+        if a == 105 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 { len = 3 }
+        if a == 105 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 { len = 3 }
+        if a == 105 && b == 115 && i + 5 <= n && byte_at(src, i + 2) == 105 && byte_at(src, i + 3) == 122 && byte_at(src, i + 4) == 101 { len = 5 }
+        if a == 117 && b == 56 { len = 2 }
+        if a == 117 && b == 49 && i + 2 < n && byte_at(src, i + 2) == 54 { len = 3 }
+        if a == 117 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 { len = 3 }
+        if a == 117 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 { len = 3 }
+        if a == 117 && b == 115 && i + 5 <= n && byte_at(src, i + 2) == 105 && byte_at(src, i + 3) == 122 && byte_at(src, i + 4) == 101 { len = 5 }
+        if a == 102 && b == 51 && i + 2 < n && byte_at(src, i + 2) == 50 { len = 3 }
+        if a == 102 && b == 54 && i + 2 < n && byte_at(src, i + 2) == 52 { len = 3 }
+        if len > 0 {
+            if i + len < n && is_ac(byte_at(src, i + len)) { return 0 }
+            return len
+        }
+    }
+    return 0
+}
+
+// 词法:空白/换行(NL)/注释丢弃;数值=text~sfx;标点原始串;哨兵 #EOF
+fn scan(src: Str, toks: List[Str]) {
+    var n = src.len
+    var i: I32 = 0
+    while i < n {
+        var b = byte_at(src, i)
+        if b == 10 {
+            toks.push("NL")
+            i += 1
+        } else if or2(b == 32, or2(b == 9, b == 13)) {
+            i += 1
+        } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 47 {
+            while i < n && byte_at(src, i) != 10 { i += 1 }
+        } else if b == 34 {
+            var q0 = i
+            i += 1
+            var done = false
+            while i < n && !done {
+                var c = byte_at(src, i)
+                if c == 34 {
+                    i += 1
+                    done = true
+                } else if c == 92 {
+                    i += 2
+                } else if c == 10 {
+                    done = true
+                } else {
+                    i += 1
+                }
+            }
+            toks.push(byte_slice(src, q0, i))
+        } else if is_al(b) {
+            var start = i
+            while i < n && is_ac(byte_at(src, i)) { i += 1 }
+            toks.push(byte_slice(src, start, i))
+        } else if is_digit(b) {
+            var tstart = i
+            var radix: I32 = 0
+            if b == 48 && i + 1 < n {
+                var p2 = byte_at(src, i + 1)
+                if p2 == 120 { radix = 16 }
+                if p2 == 111 { radix = 8 }
+                if p2 == 98 { radix = 2 }
+            }
+            var fnum = false
+            if radix > 0 {
+                i += 2
+                if radix == 16 {
+                    while i < n && or2(is_hex(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+                if radix == 8 {
+                    while i < n && or2(is_oct(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+                if radix == 2 {
+                    while i < n && or2(is_bin(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+            } else {
+                while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                if i + 1 < n && byte_at(src, i) == 46 && is_digit(byte_at(src, i + 1)) {
+                    fnum = true
+                    i += 1
+                    while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+                if i < n && or2(byte_at(src, i) == 101, byte_at(src, i) == 69) {
+                    var esign = false
+                    if i + 1 < n && or2(byte_at(src, i + 1) == 43, byte_at(src, i + 1) == 45) { esign = true }
+                    var eok = false
+                    if esign && i + 2 < n && is_digit(byte_at(src, i + 2)) { eok = true }
+                    if !esign && i + 1 < n && is_digit(byte_at(src, i + 1)) { eok = true }
+                    if eok {
+                        fnum = true
+                        i += 1
+                        if esign { i += 1 }
+                        while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                    }
+                }
+            }
+            var tend = i
+            var tk = byte_slice(src, tstart, tend) + "~"
+            var sl = suffix_len(src, n, i)
+            if sl > 0 { tk = tk + byte_slice(src, i, i + sl) }
+            i += sl
+            toks.push(tk)
+        } else {
+            if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
+                toks.push("..=")
+                i += 3
+            } else if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {
+                toks.push("..")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 62 {
+                toks.push("->")
+                i += 2
+            } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 62 {
+                toks.push("=>")
+                i += 2
+            } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("==")
+                i += 2
+            } else if b == 33 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("!=")
+                i += 2
+            } else if b == 60 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("<=")
+                i += 2
+            } else if b == 62 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push(">=")
+                i += 2
+            } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
+                toks.push("&&")
+                i += 2
+            } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
+                toks.push("+%")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 37 {
+                toks.push("-%")
+                i += 2
+            } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("+=")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("-=")
+                i += 2
+            } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("*=")
+                i += 2
+            } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("/=")
+                i += 2
+            } else if b == 37 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("%=")
+                i += 2
+            } else {
+                toks.push(byte_slice(src, i, i + 1))
+                i += 1
+            }
+        }
+    }
+    toks.push("#EOF")
+}
+
+fn tok(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var i = cur.load()
+    if i < toks.len { return toks[i] }
+    return "#EOF"
+}
+fn adv(cur: Atomic[I32]) {
+    cur.store(cur.load() + 1)
+}
+
+fn num_text(t: Str) -> Str {
+    var k: I32 = 0
+    while k < t.len && byte_at(t, k) != 126 { k += 1 }
+    return byte_slice(t, 0, k)
+}
+fn num_sfx(t: Str) -> Str {
+    var k: I32 = 0
+    while k < t.len && byte_at(t, k) != 126 { k += 1 }
+    return byte_slice(t, k + 1, t.len)
+}
+
+// ---------------- 树节点 ----------------
+fn mk(t: Str) -> List[Str] {
+    var n = List[Str]()
+    n.push(t)
+    return n
+}
+
+// ---------------- 解析(建树) ----------------
+fn qtext(raw: Str) -> Str {
+    var out = ""
+    var j: I32 = 0
+    var n = raw.len
+    while j < n {
+        var c = byte_at(raw, j)
+        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 117 {
+            var hx = ""
+            var pp = j + 2
+            var mapped = false
+            if pp < n && byte_at(raw, pp) == 123 {
+                pp += 1
+                while pp < n && byte_at(raw, pp) != 125 {
+                    hx = hx + byte_slice(raw, pp, pp + 1)
+                    pp += 1
+                }
+                if hx == "4E2D" {
+                    out = out + "中"
+                    mapped = true
+                }
+            }
+            if mapped {
+                j = pp + 1
+            } else {
+                out = out + byte_slice(raw, j, j + 2)
+                j += 2
+            }
+        } else if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
+            out = out + "\{"
+            j += 2
+        } else {
+            out = out + byte_slice(raw, j, j + 1)
+            j += 1
+        }
+    }
+    return out
+}
+
+fn parts_of(raw: Str) -> List[Str] {
+    var np = mk("Parts")
+    var k: I32 = 0
+    var n = raw.len
+    var j: I32 = 0
+    var ts: I32 = 0
+    while j < n {
+        var c = byte_at(raw, j)
+        if c == 92 && j + 2 <= n {
+            if j + 3 < n && byte_at(raw, j + 1) == 117 && byte_at(raw, j + 2) == 123 {
+                var q = j + 3
+                while q < n && byte_at(raw, q) != 125 { q += 1 }
+                if q < n { j = q + 1 } else { j += 2 }
+            } else {
+                j += 2
+            }
+        } else if c == 123 {
+            if j > ts {
+                var tx = mk("Text")
+                tx.push(qtext(byte_slice(raw, ts, j)))
+                np.push(tx)
+                k += 1
+            }
+            var d: I32 = 1
+            var p = j + 1
+            while d > 0 && p < n {
+                var cp = byte_at(raw, p)
+                if cp == 123 { d += 1 }
+                if cp == 125 { d -= 1 }
+                p += 1
+            }
+            var ix = mk("Interp")
+            ix.push(qtext(byte_slice(raw, j + 1, p - 1)))
+            np.push(ix)
+            k += 1
+            j = p
+            ts = p
+        } else {
+            j += 1
+        }
+    }
+    if n > ts {
+        var ty = mk("Text")
+        ty.push(qtext(byte_slice(raw, ts, n)))
+        np.push(ty)
+        k += 1
+    }
+    return np
+}
+
+fn p_and(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var l = p_cmp(toks, cur)
+    var go = true
+    while go {
+        if tok(toks, cur) == "&&" {
+            adv(cur)
+            var r = p_cmp(toks, cur)
+            var nb = mk("Binary")
+            nb.push("AndAnd")
+            nb.push(l)
+            nb.push(r)
+            l = nb
+        } else { go = false }
+    }
+    return l
+}
+
+fn p_cmp(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var l = p_rng(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        var op = ""
+        if t == "==" { op = "Eq" }
+        if t == "!=" { op = "Ne" }
+        if t == "<" { op = "Lt" }
+        if t == ">" { op = "Gt" }
+        if t == "<=" { op = "Le" }
+        if t == ">=" { op = "Ge" }
+        if op == "" { go = false } else {
+            adv(cur)
+            var r = p_rng(toks, cur)
+            var nb = mk("Binary")
+            nb.push(op)
+            nb.push(l)
+            nb.push(r)
+            l = nb
+        }
+    }
+    return l
+}
+
+fn p_rng(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var f = p_add(toks, cur)
+    var t = tok(toks, cur)
+    if or2(t == "..", t == "..=") {
+        adv(cur)
+        var to = p_add(toks, cur)
+        var nb = mk("Range")
+        if t == "..=" {
+            nb.push("true")
+        } else {
+            nb.push("false")
+        }
+        nb.push(f)
+        nb.push(to)
+        return nb
+    }
+    return f
+}
+
+fn p_add(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var l = p_mul(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        var op = ""
+        if t == "+" { op = "Add" }
+        if t == "-" { op = "Sub" }
+        if t == "+%" { op = "WrapAdd" }
+        if t == "-%" { op = "WrapSub" }
+        if op == "" { go = false } else {
+            adv(cur)
+            var r = p_mul(toks, cur)
+            var nb = mk("Binary")
+            nb.push(op)
+            nb.push(l)
+            nb.push(r)
+            l = nb
+        }
+    }
+    return l
+}
+
+fn p_mul(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var l = p_una(toks, cur)
+    var go = true
+    while go {
+        var t = tok(toks, cur)
+        var op = ""
+        if t == "*" { op = "Mul" }
+        if t == "/" { op = "Div" }
+        if t == "%" { op = "Mod" }
+        if op == "" { go = false } else {
+            adv(cur)
+            var r = p_una(toks, cur)
+            var nb = mk("Binary")
+            nb.push(op)
+            nb.push(l)
+            nb.push(r)
+            l = nb
+        }
+    }
+    return l
+}
+
+fn p_una(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var t = tok(toks, cur)
+    if t == "-" {
+        adv(cur)
+        var e = p_una(toks, cur)
+        var nu = mk("Unary")
+        nu.push("Neg")
+        nu.push(e)
+        return nu
+    }
+    if t == "!" {
+        adv(cur)
+        var e = p_una(toks, cur)
+        var nu = mk("Unary")
+        nu.push("Not")
+        nu.push(e)
+        return nu
+    }
+    return p_post(toks, cur)
+}
+
+fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var e = p_pri(toks, cur)
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" && toks[cur.load() + 1] == "." {
+            adv(cur)
+        }
+        var t = tok(toks, cur)
+        if t == "(" {
+            adv(cur)
+            var ag = mk("Args")
+            var more = true
+            while more {
+                if tok(toks, cur) == ")" {
+                    more = false
+                } else {
+                    ag.push(p_stmt_expr(toks, cur))
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    } else {
+                        more = false
+                    }
+                }
+            }
+            adv(cur)
+            var cl = mk("Call")
+            cl.push(e)
+            cl.push(ag)
+            e = cl
+        } else if t == "." {
+            adv(cur)
+            var nm = tok(toks, cur)
+            adv(cur)
+            var mb = mk("Member")
+            mb.push(e)
+            if is_digit(byte_at(nm, 0)) {
+                mb.push("TIdx")
+                mb.push(num_text(nm))
+            } else {
+                mb.push("Nm")
+                mb.push(nm)
+            }
+            e = mb
+        } else if t == "[" {
+            var d: I32 = 1
+            var q = cur.load() + 1
+            var hascom = false
+            while d > 0 {
+                var tk2 = toks[q]
+                if tk2 == "[" { d += 1 }
+                if tk2 == "]" { d -= 1 }
+                if tk2 == "," && d == 1 { hascom = true }
+                q += 1
+            }
+            var nx = toks[q]
+            var ta = false
+            if or2(nx == "(", nx == "\{") { ta = true }
+            if nx == "." && hascom { ta = true }
+            if ta {
+                adv(cur)
+                var ag = mk("TArgs2")
+                var more = true
+                while more {
+                    if tok(toks, cur) == "]" { more = false } else {
+                        var at = tok(toks, cur)
+                        if is_digit(byte_at(at, 0)) {
+                            var cv = mk("ComptimeVal")
+                            cv.push(num_text(at))
+                            ag.push(cv)
+                            adv(cur)
+                        } else {
+                            ag.push(p_typ(toks, cur))
+                        }
+                        if tok(toks, cur) == "," { adv(cur) } else { more = false }
+                    }
+                }
+                adv(cur)
+                var tg = mk("TypeArgs")
+                tg.push(e)
+                tg.push(ag)
+                e = tg
+            } else {
+                adv(cur)
+                var ix = p_stmt_expr(toks, cur)
+                adv(cur)
+                var inode = mk("Index")
+                inode.push(e)
+                inode.push(ix)
+                e = inode
+            }
+        } else if t == "?" {
+            adv(cur)
+            var tr = mk("Try")
+            tr.push(e)
+            e = tr
+        } else {
+            go = false
+        }
+    }
+    return e
+}
+
+fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var t = tok(toks, cur)
+    var b0 = byte_at(t, 0)
+    if is_digit(b0) {
+        adv(cur)
+        var nb = mk("Int")
+        var isf = false
+        var tx = num_text(t)
+        var jj: I32 = 0
+        while jj < tx.len {
+            var cc = byte_at(tx, jj)
+            if or2(cc == 46, or2(cc == 101, cc == 69)) { isf = true }
+            jj += 1
+        }
+        if isf { nb = mk("Float") }
+        nb.push(num_text(t))
+        nb.push(num_sfx(t))
+        return nb
+    }
+    if t == "if" {
+        return p_if(toks, cur)
+    }
+    if t == "match" {
+        return p_match(toks, cur)
+    }
+    if t == "void" {
+        adv(cur)
+        return mk("Void")
+    }
+    if t == "true" {
+        adv(cur)
+        var bt = mk("Bool")
+        bt.push("true")
+        return bt
+    }
+    if t == "false" {
+        adv(cur)
+        var bf = mk("Bool")
+        bf.push("false")
+        return bf
+    }
+    if t == "own" {
+        adv(cur)
+        adv(cur)
+        var an = tok(toks, cur)
+        adv(cur)
+        adv(cur)
+        adv(cur)
+        var ow = mk("Own")
+        ow.push(an)
+        ow.push(p_block(toks, cur))
+        return ow
+    }
+    if t == "|" {
+        adv(cur)
+        var cl = mk("Closure")
+        var cp = mk("CPs")
+        var more = true
+        while more {
+            if tok(toks, cur) == "|" { more = false } else {
+                var isv = "false"
+                var t0 = tok(toks, cur)
+                if t0 == "var" { isv = "true" }
+                if or2(t0 == "var", t0 == "let") { adv(cur) }
+                var cn = tok(toks, cur)
+                adv(cur)
+                var cpar = mk("ClosureParam")
+                cpar.push(isv)
+                cpar.push(cn)
+                var ty = mk("None")
+                if tok(toks, cur) == ":" {
+                    adv(cur)
+                    ty = p_typ(toks, cur)
+                }
+                cpar.push(ty)
+                cp.push(cpar)
+                if tok(toks, cur) == "," { adv(cur) }
+            }
+        }
+        adv(cur)
+        var ret = mk("None")
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            ret = p_typ(toks, cur)
+        }
+        cl.push(cp)
+        cl.push(ret)
+        cl.push(p_stmt_expr(toks, cur))
+        return cl
+    }
+    if t == "scope" {
+        adv(cur)
+        adv(cur)
+        adv(cur)
+        var pn = tok(toks, cur)
+        adv(cur)
+        adv(cur)
+        var sc = mk("Scope")
+        sc.push(pn)
+        sc.push(p_block(toks, cur))
+        return sc
+    }
+    if b0 == 34 {
+        adv(cur)
+        var ns = mk("Str")
+        ns.push(parts_of(byte_slice(t, 1, t.len - 1)))
+        return ns
+    }
+    if t == "\{" {
+        adv(cur)
+        var be = mk("BlockExpr")
+        be.push(p_block(toks, cur))
+        return be
+    }
+    if t == "[" {
+        adv(cur)
+        var al = mk("ArrLit")
+        var more = true
+        while more {
+            if tok(toks, cur) == "]" { more = false } else {
+                al.push(p_stmt_expr(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+            }
+        }
+        adv(cur)
+        return al
+    }
+    if t == "(" {
+        adv(cur)
+        var e0 = p_and(toks, cur)
+        if tok(toks, cur) == "," {
+            var tn = mk("TupleE")
+            tn.push(e0)
+            var more = true
+            while more {
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                    tn.push(p_and(toks, cur))
+                } else {
+                    more = false
+                }
+            }
+            adv(cur)
+            return tn
+        }
+        adv(cur)
+        return e0
+    }
+    if b0 >= 65 && b0 <= 90 && toks[cur.load() + 1] == "\{" {
+        var nm = t
+        adv(cur)
+        adv(cur)
+        var sl = mk("StructLit")
+        sl.push(nm)
+        var lf = mk("LitFs")
+        var more = true
+        while more {
+            if tok(toks, cur) == "}" {
+                more = false
+            } else {
+                var fnm = tok(toks, cur)
+                adv(cur)
+                adv(cur)
+                var fv = mk("LField")
+                fv.push(fnm)
+                fv.push(p_stmt_expr(toks, cur))
+                lf.push(fv)
+                if tok(toks, cur) == "," { adv(cur) }
+            }
+        }
+        adv(cur)
+        sl.push(lf)
+        return sl
+    }
+    adv(cur)
+    var ni = mk("Ident")
+    ni.push(t)
+    return ni
+}
+
+fn p_tpars(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var tp = mk("TPs")
+    var more = true
+    while more {
+        if tok(toks, cur) == "]" { more = false } else {
+            var isc = "false"
+            if tok(toks, cur) == "comptime" {
+                isc = "true"
+                adv(cur)
+            }
+            var nm = tok(toks, cur)
+            adv(cur)
+            var tp1 = mk("TPar")
+            tp1.push(nm)
+            tp1.push(isc)
+            var bd = mk("Bounds")
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                var more2 = true
+                while more2 {
+                    bd.push(tok(toks, cur))
+                    adv(cur)
+                    if tok(toks, cur) == "+" { adv(cur) } else { more2 = false }
+                }
+            }
+            tp1.push(bd)
+            tp.push(tp1)
+            if tok(toks, cur) == "," { adv(cur) } else { more = false }
+        }
+    }
+    adv(cur)
+    return tp
+}
+
+fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var t = tok(toks, cur)
+    if t == "(" {
+        adv(cur)
+        var tt = mk("TupleT")
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" { more = false } else {
+                tt.push(p_typ(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+            }
+        }
+        adv(cur)
+        return tt
+    }
+    if t == "&" {
+        adv(cur)
+        var rf = mk("Ref")
+        rf.push(p_typ(toks, cur))
+        if tok(toks, cur) == "?" {
+            adv(cur)
+            var op = mk("Optional")
+            op.push(rf)
+            return op
+        }
+        return rf
+    }
+    if t == "fn" {
+        adv(cur)
+        var ft = mk("FnT")
+        adv(cur)
+        var more2 = true
+        while more2 {
+            if tok(toks, cur) == ")" { more2 = false } else {
+                ft.push(p_typ(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more2 = false }
+            }
+        }
+        adv(cur)
+        var fret = mk("None")
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            fret = p_typ(toks, cur)
+        }
+        var ftn = mk("FnType")
+        ftn.push(ft)
+        ftn.push(fret)
+        if tok(toks, cur) == "?" {
+            adv(cur)
+            var op2 = mk("Optional")
+            op2.push(ftn)
+            return op2
+        }
+        return ftn
+    }
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Named")
+    nt.push(nm)
+    var ta = mk("TArgs")
+    if tok(toks, cur) == "[" {
+        var nx1 = toks[cur.load() + 1]
+        var isempty = false
+        var single = false
+        if nx1 == "]" { isempty = true }
+        if !isempty && nx1 != "#EOF" && toks[cur.load() + 2] == "]" && is_digit(byte_at(nx1, 0)) { single = true }
+        if !isempty && !single {
+            adv(cur)
+            var more = true
+            while more {
+                if tok(toks, cur) == "]" { more = false } else {
+                    ta.push(p_typ(toks, cur))
+                    if tok(toks, cur) == "," { adv(cur) } else { more = false }
+                }
+            }
+            adv(cur)
+        }
+    }
+    nt.push(ta)
+    var base = nt
+    if tok(toks, cur) == "[" {
+        var nx2 = toks[cur.load() + 1]
+        var isarr = false
+        if nx2 == "]" { isarr = true }
+        if nx2 != "#EOF" && toks[cur.load() + 2] == "]" && is_digit(byte_at(nx2, 0)) { isarr = true }
+        if isarr {
+            adv(cur)
+            if tok(toks, cur) == "]" {
+                adv(cur)
+                var sl = mk("Slice")
+                sl.push(base)
+                base = sl
+            } else {
+                var sz = p_stmt_expr(toks, cur)
+                adv(cur)
+                var ar = mk("ArrayT")
+                ar.push(base)
+                ar.push(sz)
+                base = ar
+            }
+        }
+    }
+    if tok(toks, cur) == "?" {
+        adv(cur)
+        var op3 = mk("Optional")
+        op3.push(base)
+        base = op3
+    }
+    return base
+}
+
+fn p_stmt_expr(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    return p_and(toks, cur)
+}
+
+fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var t = tok(toks, cur)
+    if t == "_" {
+        adv(cur)
+        return mk("PatWild")
+    }
+    var b0 = byte_at(t, 0)
+    if is_digit(b0) {
+        adv(cur)
+        var isf = false
+        var tx = num_text(t)
+        var jj: I32 = 0
+        while jj < tx.len {
+            var cc = byte_at(tx, jj)
+            if or2(cc == 46, or2(cc == 101, cc == 69)) { isf = true }
+            jj += 1
+        }
+        var np = mk("PatLitI")
+        if isf { np = mk("PatLitF") }
+        np.push(num_text(t))
+        return np
+    }
+    if b0 == 34 {
+        adv(cur)
+        var np = mk("PatLitS")
+        np.push(qtext(byte_slice(t, 1, t.len - 1)))
+        return np
+    }
+    if t == "true" {
+        adv(cur)
+        var np = mk("PatLitB")
+        np.push("true")
+        return np
+    }
+    if t == "false" {
+        adv(cur)
+        var np = mk("PatLitB")
+        np.push("false")
+        return np
+    }
+    if t == "(" {
+        adv(cur)
+        var np = mk("PatTup")
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" { more = false } else {
+                np.push(p_pattern(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+            }
+        }
+        adv(cur)
+        return np
+    }
+    var nm = t
+    adv(cur)
+    if tok(toks, cur) == "(" {
+        adv(cur)
+        var agg = mk("PatAgg")
+        agg.push(nm)
+        var sub = mk("SubTup")
+        var more2 = true
+        while more2 {
+            if tok(toks, cur) == ")" { more2 = false } else {
+                sub.push(p_pattern(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more2 = false }
+            }
+        }
+        adv(cur)
+        agg.push(sub)
+        return agg
+    }
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        var agg = mk("PatAgg")
+        agg.push(nm)
+        var sub = mk("SubSt")
+        var more3 = true
+        while more3 {
+            if tok(toks, cur) == "}" { more3 = false } else {
+                var fnm = tok(toks, cur)
+                adv(cur)
+                var pp = mk("None")
+                if tok(toks, cur) == ":" {
+                    adv(cur)
+                    pp = p_pattern(toks, cur)
+                }
+                var fld = mk("PatFld")
+                fld.push(fnm)
+                fld.push(pp)
+                sub.push(fld)
+                if tok(toks, cur) == "," { adv(cur) }
+            }
+        }
+        adv(cur)
+        agg.push(sub)
+        return agg
+    }
+    if or2(b0 >= 65, false) && b0 <= 90 {
+        var agg = mk("PatAgg")
+        agg.push(nm)
+        agg.push(mk("SubUnit"))
+        return agg
+    }
+    var pi = mk("PatId")
+    pi.push(nm)
+    return pi
+}
+
+fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = mk("Match")
+    nm.push(p_stmt_expr(toks, cur))
+    adv(cur)
+    var arms = mk("Arms")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
+            var ma = mk("Arm")
+            ma.push(p_pattern(toks, cur))
+            adv(cur)
+            ma.push(p_stmt_expr(toks, cur))
+            arms.push(ma)
+        }
+    }
+    adv(cur)
+    nm.push(arms)
+    return nm
+}
+
+
+fn p_if(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var ni = mk("If")
+    ni.push(p_and(toks, cur))
+    adv(cur)
+    ni.push(p_block(toks, cur))
+    var els = mk("None")
+    if tok(toks, cur) == "else" {
+        adv(cur)
+        if tok(toks, cur) == "if" {
+            els = p_if(toks, cur)
+        } else {
+            adv(cur)
+            var be = mk("BlockExpr")
+            be.push(p_block(toks, cur))
+            els = be
+        }
+    }
+    ni.push(els)
+    return ni
+}
+
+
+fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var nb = mk("Block")
+    var tailSet = false
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        var t = tok(toks, cur)
+        if t == "}" {
+            adv(cur)
+            go = false
+        } else if t == "#EOF" {
+            go = false
+        } else if t == "return" {
+            adv(cur)
+            var re = mk("Return")
+            var rt = tok(toks, cur)
+            if or3(rt == "}", rt == "#EOF", rt == "NL") {
+                var rn = mk("None")
+                re.push(rn)
+            } else {
+                re.push(p_stmt_expr(toks, cur))
+            }
+            nb.push(re)
+        } else if or2(t == "let", t == "var") {
+            var isv = "false"
+            if t == "var" { isv = "true" }
+            adv(cur)
+            var pp = p_pattern(toks, cur)
+            var ty = mk("None")
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                ty = p_typ(toks, cur)
+            }
+            adv(cur)
+            var lv = mk("Let")
+            lv.push(isv)
+            lv.push(pp)
+            lv.push(ty)
+            lv.push(p_stmt_expr(toks, cur))
+            nb.push(lv)
+        } else if t == "while" {
+            adv(cur)
+            var wc = p_stmt_expr(toks, cur)
+            adv(cur)
+            var wb = p_block(toks, cur)
+            var wh = mk("While")
+            wh.push(wc)
+            wh.push(wb)
+            nb.push(wh)
+        } else if t == "for" {
+            adv(cur)
+            var fp = p_pattern(toks, cur)
+            adv(cur)
+            var it = p_stmt_expr(toks, cur)
+            adv(cur)
+            var fb = p_block(toks, cur)
+            var fo = mk("For")
+            fo.push(fp)
+            fo.push(it)
+            fo.push(fb)
+            nb.push(fo)
+        } else {
+            var e = p_stmt_expr(toks, cur)
+            var t2 = tok(toks, cur)
+            var op = ""
+            if t2 == "=" { op = "Eq" }
+            if t2 == "+=" { op = "AddEq" }
+            if t2 == "-=" { op = "SubEq" }
+            if t2 == "*=" { op = "MulEq" }
+            if t2 == "/=" { op = "DivEq" }
+            if t2 == "%=" { op = "ModEq" }
+            if op != "" {
+                adv(cur)
+                var asn = mk("Assign")
+                asn.push(e)
+                asn.push(op)
+                asn.push(p_stmt_expr(toks, cur))
+                nb.push(asn)
+            } else {
+                var nx = t2
+                if nx == "NL" {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
+                    nx = tok(toks, cur)
+                }
+                if nx == "}" {
+                    adv(cur)
+                    nb.push(e)
+                    tailSet = true
+                    go = false
+                } else {
+                    var es = mk("Expr")
+                    es.push(e)
+                    nb.push(es)
+                }
+            }
+        }
+    }
+    if !tailSet {
+        var nn = mk("None")
+        nb.push(nn)
+    }
+    return nb
+}
+
+fn p_fn2(toks: List[Str], cur: Atomic[I32], tag: Str) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nf = mk(tag)
+    nf.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    var ps = mk("Ps")
+    var more = true
+    while more {
+        if tok(toks, cur) == ")" { more = false } else {
+            var isv = "false"
+            var t0 = tok(toks, cur)
+            if t0 == "var" { isv = "true" }
+            if or2(t0 == "var", t0 == "let") { adv(cur) }
+            if tok(toks, cur) == "&" {
+                adv(cur)
+            }
+            var pn = tok(toks, cur)
+            adv(cur)
+            if pn == "self" {
+                var rc = mk("Receiver")
+                rc.push(isv)
+                ps.push(rc)
+            } else {
+                adv(cur)
+                var pty = p_typ(toks, cur)
+                var par = mk("Param")
+                par.push(isv)
+                par.push(pn)
+                par.push(pty)
+                ps.push(par)
+            }
+            if tok(toks, cur) == "," { adv(cur) } else { more = false }
+        }
+    }
+    adv(cur)
+    var ret = mk("None")
+    if tok(toks, cur) == "->" {
+        adv(cur)
+        ret = p_typ(toks, cur)
+    }
+    var body = mk("None")
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = p_block(toks, cur)
+    }
+    nf.push(tp)
+    nf.push(ps)
+    nf.push(ret)
+    nf.push(body)
+    return nf
+}
+
+fn p_fn(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    return p_fn2(toks, cur, "Fn")
+}
+
+
+fn p_test(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var t = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Test")
+    nt.push(qtext(byte_slice(t, 1, t.len - 1)))
+    adv(cur)
+    nt.push(p_block(toks, cur))
+    return nt
+}
+
+fn p_field(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var isv = "false"
+    var t = tok(toks, cur)
+    if t == "var" { isv = "true" }
+    if or2(t == "let", t == "var") { adv(cur) }
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var f = mk("Field")
+    f.push(isv)
+    f.push(nm)
+    f.push(p_typ(toks, cur))
+    return f
+}
+
+fn p_struct2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    var ns = mk("Struct")
+    ns.push(nm)
+    ns.push(dr)
+    ns.push(tp)
+    var fs = mk("Fields")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
+            fs.push(p_field(toks, cur))
+        }
+    }
+    adv(cur)
+    ns.push(fs)
+    return ns
+}
+
+fn p_struct(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var dr0 = mk("Drvs")
+    return p_struct2(toks, cur, dr0)
+}
+
+fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ne = mk("Enum")
+    ne.push(nm)
+    ne.push(dr)
+    var vs = mk("Vars")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
+            var vn = tok(toks, cur)
+            adv(cur)
+            var v = mk("Variant")
+            v.push(vn)
+            var kind = mk("KUnit")
+            if tok(toks, cur) == "(" {
+                adv(cur)
+                kind = mk("KTuple")
+                var more = true
+                while more {
+                    if tok(toks, cur) == ")" { more = false } else {
+                        kind.push(p_typ(toks, cur))
+                        if tok(toks, cur) == "," { adv(cur) } else { more = false }
+                    }
+                }
+                adv(cur)
+            } else if tok(toks, cur) == "\{" {
+                adv(cur)
+                kind = mk("KStruct")
+                var more2 = true
+                while more2 {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
+                    if tok(toks, cur) == "}" { more2 = false } else if tok(toks, cur) == "#EOF" { more2 = false } else {
+                        kind.push(p_field(toks, cur))
+                        while tok(toks, cur) == "NL" {
+                            adv(cur)
+                        }
+                        if tok(toks, cur) == "," {
+                            adv(cur)
+                        }
+                    }
+                }
+                adv(cur)
+            }
+            v.push(kind)
+            vs.push(v)
+        }
+    }
+    adv(cur)
+    ne.push(vs)
+    return ne
+}
+
+fn p_prop_item(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    return p_prop_item2(toks, cur, "sig")
+}
+
+fn p_prop_item2(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur)
+    var body = mk("None")
+    var tag = "PropSig"
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = p_block(toks, cur)
+        tag = "PropImpl"
+    }
+    if kind == "imp" {
+        tag = "Prop"
+    }
+    var pn = mk(tag)
+    pn.push(nm)
+    pn.push(ty)
+    pn.push(body)
+    return pn
+}
+
+fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+    var it = mk("Items")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        var t = tok(toks, cur)
+        if or2(t == "}", t == "#EOF") {
+            adv(cur)
+            go = false
+        } else if t == "#" {
+            adv(cur)
+            adv(cur)
+            var anm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var md = p_fn2(toks, cur, "Method")
+            md.push(anm)
+            it.push(md)
+        } else if t == "fn" {
+            it.push(p_fn2(toks, cur, "Method"))
+        } else if t == "prop" {
+            var pk = "sig"
+            if or2(kind == "impl", kind == "class") {
+                pk = "imp"
+            }
+            it.push(p_prop_item2(toks, cur, pk))
+        } else if kind == "trait" {
+            go = false
+        } else {
+            it.push(p_field(toks, cur))
+        }
+    }
+    adv(cur)
+    return it
+}
+
+fn p_class(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nc = mk("Class")
+    nc.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    nc.push(tp)
+    nc.push(p_items(toks, cur, "class"))
+    return nc
+}
+
+fn p_impl(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var ni = mk("Impl")
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    ni.push(tp)
+    ni.push(p_typ(toks, cur))
+    adv(cur)
+    ni.push(p_typ(toks, cur))
+    adv(cur)
+    ni.push(p_items(toks, cur, "impl"))
+    return ni
+}
+
+fn p_trait(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Trait")
+    nt.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    nt.push(tp)
+    var sup = mk("Bounds")
+    if tok(toks, cur) == ":" {
+        adv(cur)
+        var more = true
+        while more {
+            sup.push(tok(toks, cur))
+            adv(cur)
+            if tok(toks, cur) == "+" { adv(cur) } else { more = false }
+        }
+    }
+    nt.push(sup)
+    adv(cur)
+    nt.push(p_items(toks, cur, "trait"))
+    return nt
+}
+
+fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var dr0 = mk("Drvs")
+    return p_enum2(toks, cur, dr0)
+}
+
+fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nu = mk("Use")
+    var more = true
+    while more {
+        var a = tok(toks, cur)
+        if a == "." {
+            adv(cur)
+        } else if a == "\{" {
+            adv(cur)
+            var more2 = true
+            while more2 {
+                var b2 = tok(toks, cur)
+                if or2(b2 == "}", b2 == "#EOF") {
+                    more2 = false
+                } else {
+                    nu.push(b2)
+                    adv(cur)
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    }
+                }
+            }
+            if tok(toks, cur) == "}" {
+                adv(cur)
+            }
+            more = false
+        } else if a == "#EOF" {
+            more = false
+        } else {
+            nu.push(a)
+            adv(cur)
+            var nx = tok(toks, cur)
+            if nx != "." {
+                more = false
+            }
+        }
+    }
+    return nu
+}
+
+fn p_const(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur)
+    adv(cur)
+    var nc = mk("Const")
+    nc.push(nm)
+    nc.push(ty)
+    nc.push(p_stmt_expr(toks, cur))
+    return nc
+}
+
+fn p_static(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var wv = "false"
+    var t = tok(toks, cur)
+    if t == "var" { wv = "true" }
+    if or2(t == "var", t == "let") { adv(cur) }
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur)
+    adv(cur)
+    var ns = mk("Static")
+    ns.push(nm)
+    ns.push(wv)
+    ns.push(ty)
+    ns.push(p_stmt_expr(toks, cur))
+    return ns
+}
+
+fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var nf = mk("File")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        var t = tok(toks, cur)
+        if t == "#EOF" {
+            go = false
+        } else if t == "#" {
+            adv(cur)
+            adv(cur)
+            var anm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var fd = p_fn2(toks, cur, "Fn")
+            fd.push(anm)
+            nf.push(fd)
+        } else if t == "pub" {
+            adv(cur)
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "fn" {
+                nf.push(p_fn2(toks, cur, "FnPub"))
+            } else {
+                nf.push(p_fn(toks, cur))
+            }
+        } else if t == "comptime" {
+            adv(cur)
+            nf.push(p_fn2(toks, cur, "FnC"))
+        } else if t == "@" {
+            adv(cur)
+            adv(cur)
+            adv(cur)
+            var dr2 = mk("Drvs")
+            var more3 = true
+            while more3 {
+                if tok(toks, cur) == ")" {
+                    more3 = false
+                } else {
+                    dr2.push(tok(toks, cur))
+                    adv(cur)
+                    if tok(toks, cur) == "," { adv(cur) }
+                }
+            }
+            adv(cur)
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var t2 = tok(toks, cur)
+            if t2 == "struct" {
+                nf.push(p_struct2(toks, cur, dr2))
+            } else if t2 == "enum" {
+                nf.push(p_enum2(toks, cur, dr2))
+            } else if t2 == "trait" {
+                nf.push(p_trait(toks, cur))
+            } else {
+                nf.push(p_fn(toks, cur))
+            }
+        } else if t == "test" {
+            nf.push(p_test(toks, cur))
+        } else if t == "enum" {
+            nf.push(p_enum(toks, cur))
+        } else if t == "struct" {
+            nf.push(p_struct(toks, cur))
+        } else if t == "class" {
+            nf.push(p_class(toks, cur))
+        } else if t == "impl" {
+            nf.push(p_impl(toks, cur))
+        } else if t == "trait" {
+            nf.push(p_trait(toks, cur))
+        } else if t == "use" {
+            nf.push(p_use(toks, cur))
+        } else if t == "const" {
+            nf.push(p_const(toks, cur))
+        } else if t == "static" {
+            nf.push(p_static(toks, cur))
+        } else {
+            nf.push(p_fn(toks, cur))
+        }
+    }
+    return nf
+}
+
+
+
+
+// ---------------- 树打印 → C-AST v1 ----------------
+fn pjoin(n: List[Str]) -> Str {
+    var out = ""
+    var i: I32 = 1
+    while i < n.len {
+        if i > 1 { out = out + ", " }
+        out = out + pnode(n[i])
+        i += 1
+    }
+    return out
+}
+
+fn pnode(n: List[Str]) -> Str {
+    var t = n[0]
+    var out = ""
+    if t == "File" {
+        out = out + "File \{ decls: ["
+        var i: I32 = 1
+        while i < n.len {
+            if i > 1 {
+                out = out + ",\n  "
+            } else {
+                out = out + "\n  "
+            }
+            out = out + pnode(n[i])
+            i += 1
+        }
+        out = out + "\n] }\n"
+        } else if t == "FnPub" {
+        out = out + "Fn \{ attrs: [], vis: Pub, is_comptime: false, abi: None, name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], params: ["
+        var ps = n[3]
+        var j: I32 = 1
+        while j < ps.len {
+            if j > 1 { out = out + ", " }
+            out = out + pnode(ps[j])
+            j += 1
+        }
+        out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
+    } else if t == "FnC" {
+        out = out + "Fn \{ attrs: [], vis: Private, is_comptime: true, abi: None, name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], params: ["
+        var ps = n[3]
+        var j: I32 = 1
+        while j < ps.len {
+            if j > 1 { out = out + ", " }
+            out = out + pnode(ps[j])
+            j += 1
+        }
+        out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
+    } else if or2(t == "Fn", t == "Method") {
+        var atxt = "[]"
+        if n.len >= 7 {
+            atxt = "[Attribute \{ name: \"" + n[6] + "\", args: []}]"
+        }
+        out = out + t + " \{ attrs: " + atxt + ", vis: Private, is_comptime: false, abi: None, name: \""
+        out = out + n[1] + "\", type_params: ["
+        var tp = n[2]
+        var tj: I32 = 1
+        while tj < tp.len {
+            if tj > 1 { out = out + ", " }
+            out = out + pnode(tp[tj])
+            tj += 1
+        }
+        out = out + "], params: ["
+        var ps = n[3]
+        var j: I32 = 1
+        while j < ps.len {
+            if j > 1 { out = out + ", " }
+            out = out + pnode(ps[j])
+            j += 1
+        }
+        out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
+    } else if t == "Ps" {
+    } else if t == "Ps" {
+        var j2: I32 = 1
+        while j2 < n.len {
+            if j2 > 1 { out = out + ", " }
+            out = out + pnode(n[j2])
+            j2 += 1
+        }
+        } else if t == "Param" {
+        out = out + "Param \{ is_var: " + n[1] + ", name: \"" + n[2] + "\", ty: " + pnode(n[3]) + "}"
+    } else if t == "Receiver" {
+        out = out + "Receiver \{ is_var: " + n[1] + " }"
+    } else if t == "TPs" {
+        var tj2: I32 = 1
+        while tj2 < n.len {
+            if tj2 > 1 { out = out + ", " }
+            out = out + pnode(n[tj2])
+            tj2 += 1
+        }
+    } else if t == "TPar" {
+        out = out + "TypeParam \{ name: \"" + n[1] + "\", bound: ["
+        var bd = n[3]
+        var bj: I32 = 1
+        while bj < bd.len {
+            if bj > 1 { out = out + ", " }
+            out = out + "\"" + bd[bj] + "\""
+            bj += 1
+        }
+        out = out + "], is_comptime: " + n[2] + " }"
+    } else if t == "TupleT" {
+        out = out + "Tuple(" + pjoin(n) + ")"
+    } else if t == "Ref" {
+        out = out + "Ref(" + pnode(n[1]) + ")"
+    } else if t == "Optional" {
+        out = out + "Optional(" + pnode(n[1]) + ")"
+    } else if t == "FnType" {
+        out = out + "Fn \{ params: [" + pjoin(n[1]) + "], ret: " + pnode(n[2]) + "}"
+    } else if t == "Slice" {
+        out = out + "Slice(" + pnode(n[1]) + ")"
+    } else if t == "ArrayT" {
+        out = out + "Array \{ elem: " + pnode(n[1]) + ", size: " + pnode(n[2]) + "}"
+    } else if t == "Named" {
+        out = out + "Named \{ path: [\"" + n[1] + "\"], args: ["
+        var tt = n[2]
+        var tk2: I32 = 1
+        while tk2 < tt.len {
+            if tk2 > 1 { out = out + ", " }
+            out = out + pnode(tt[tk2])
+            tk2 += 1
+        }
+        out = out + "]}"
+    } else if t == "None" {
+        out = out + "None"
+    } else if t == "Block" {
+        out = out + "Block \{ stmts: ["
+        var k: I32 = 1
+        while k < n.len - 1 {
+            if k > 1 { out = out + ", " }
+            out = out + pnode(n[k])
+            k += 1
+        }
+        out = out + "], tail: " + pnode(n[n.len - 1]) + "}"
+    } else if t == "Return" {
+        out = out + "Return(" + pnode(n[1]) + ")"
+    } else if t == "Let" {
+        out = out + "Let \{ is_var: " + n[1] + ", pattern: " + pnode(n[2]) + ", ty: " + pnode(n[3]) + ", expr: " + pnode(n[4]) + "}"
+    } else if t == "Expr" {
+        out = out + "Expr(" + pnode(n[1]) + ")"
+    } else if t == "Assign" {
+        out = out + "Assign \{ target: " + pnode(n[1]) + ", op: " + n[2] + ", value: " + pnode(n[3]) + "}"
+    } else if t == "Binary" {
+        out = out + "Binary \{ op: " + n[1] + ", lhs: " + pnode(n[2]) + ", rhs: " + pnode(n[3]) + "}"
+    } else if t == "Unary" {
+        out = out + "Unary \{ op: " + n[1] + ", expr: " + pnode(n[2]) + "}"
+    } else if t == "Range" {
+        out = out + "Range \{ inclusive: " + n[1] + ", from: " + pnode(n[2]) + ", to: " + pnode(n[3]) + "}"
+    } else if t == "If" {
+        out = out + "If \{ cond: " + pnode(n[1]) + ", then: " + pnode(n[2]) + ", els: " + pnode(n[3]) + "}"
+    } else if t == "BlockExpr" {
+        out = out + "BlockExpr(" + pnode(n[1]) + ")"
+    } else if t == "While" {
+        out = out + "While \{ cond: " + pnode(n[1]) + ", body: " + pnode(n[2]) + "}"
+    } else if t == "For" {
+        out = out + "For \{ pattern: " + pnode(n[1]) + ", iter: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
+    } else if t == "Call" {
+        out = out + "Call \{ callee: " + pnode(n[1]) + ", args: ["
+        var al = n[2]
+        var ak: I32 = 1
+        while ak < al.len {
+            if ak > 1 { out = out + ", " }
+            out = out + pnode(al[ak])
+            ak += 1
+        }
+        out = out + "] }"
+    } else if t == "Member" {
+        out = out + "Member \{ obj: " + pnode(n[1]) + ", target: "
+        if n[2] == "TIdx" {
+            out = out + "TupleIndex(" + n[3] + ")"
+        } else {
+            out = out + "Name(\"" + n[3] + "\")"
+        }
+        out = out + "}"
+    } else if t == "Index" {
+        out = out + "Index \{ obj: " + pnode(n[1]) + ", index: " + pnode(n[2]) + "}"
+    } else if t == "TypeArgs" {
+        out = out + "TypeArgs \{ expr: " + pnode(n[1]) + ", args: ["
+        var tl = n[2]
+        var tk: I32 = 1
+        while tk < tl.len {
+            if tk > 1 { out = out + ", " }
+            out = out + pnode(tl[tk])
+            tk += 1
+        }
+        out = out + "]}"
+    } else if t == "Try" {
+        out = out + "Try(" + pnode(n[1]) + ")"
+    } else if t == "Own" {
+        out = out + "Own \{ arena: \"" + n[1] + "\", body: " + pnode(n[2]) + "}"
+    } else if t == "Closure" {
+        out = out + "Closure \{ params: ["
+        var cp = n[1]
+        var cj: I32 = 1
+        while cj < cp.len {
+            if cj > 1 { out = out + ", " }
+            out = out + pnode(cp[cj])
+            cj += 1
+        }
+        out = out + "], ret: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
+    } else if t == "ClosureParam" {
+        out = out + "ClosureParam \{ is_var: " + n[1] + ", name: \"" + n[2] + "\", ty: " + pnode(n[3]) + "}"
+    } else if t == "Scope" {
+        out = out + "Scope \{ param: \"" + n[1] + "\", body: " + pnode(n[2]) + "}"
+    } else if t == "Match" {
+        out = out + "Match \{ expr: " + pnode(n[1]) + ", arms: ["
+        var ar = n[2]
+        var ak: I32 = 1
+        while ak < ar.len {
+            if ak > 1 { out = out + ", " }
+            out = out + pnode(ar[ak])
+            ak += 1
+        }
+        out = out + "]}"
+    } else if t == "Arm" {
+        out = out + "MatchArm \{ pattern: " + pnode(n[1]) + ", expr: " + pnode(n[2]) + "}"
+    } else if t == "PatWild" {
+        out = out + "Wildcard"
+    } else if t == "PatLitI" {
+        out = out + "Lit(Int(\"" + n[1] + "\"))"
+    } else if t == "PatLitF" {
+        out = out + "Lit(Float(\"" + n[1] + "\"))"
+    } else if t == "PatLitS" {
+        out = out + "Lit(Str(\"" + n[1] + "\"))"
+    } else if t == "PatLitB" {
+        out = out + "Lit(Bool(" + n[1] + "))"
+    } else if t == "PatId" {
+        out = out + "Ident(\"" + n[1] + "\")"
+    } else if t == "PatTup" {
+        out = out + "Tuple(" + pjoin(n) + ")"
+    } else if t == "PatAgg" {
+        out = out + "Agg \{ path: [\"" + n[1] + "\"], sub: " + pnode(n[2]) + "}"
+    } else if t == "SubUnit" {
+        out = out + "Unit"
+    } else if t == "SubTup" {
+        out = out + "Tuple(" + pjoin(n) + ")"
+    } else if t == "SubSt" {
+        out = out + "Struct(["
+        var j2: I32 = 1
+        while j2 < n.len {
+            if j2 > 1 { out = out + ", " }
+            out = out + pnode(n[j2])
+            j2 += 1
+        }
+        out = out + "])"
+    } else if t == "PatFld" {
+        out = out + "StructPatField \{ name: \"" + n[1] + "\", pattern: " + pnode(n[2]) + "}"
+    } else if t == "StructLit" {
+        out = out + "StructLit \{ path: [\"" + n[1] + "\"], fields: ["
+        var ll = n[2]
+        var lj: I32 = 1
+        while lj < ll.len {
+            if lj > 1 { out = out + ", " }
+            out = out + pnode(ll[lj])
+            lj += 1
+        }
+        out = out + "] }"
+    } else if t == "LField" {
+        out = out + "StructField \{ name: \"" + n[1] + "\", value: " + pnode(n[2]) + "}"
+            } else if t == "Struct" {
+        out = out + "Struct \{ attrs: [], derives: ["
+        var dv = n[2]
+        var dj: I32 = 1
+        while dj < dv.len {
+            if dj > 1 { out = out + ", " }
+            out = out + "\"" + dv[dj] + "\""
+            dj += 1
+        }
+        out = out + "], name: \"" + n[1] + "\", type_params: [" + pjoin(n[3]) + "], fields: [" + pjoin(n[4]) + "] }"
+    } else if t == "Enum" {
+        out = out + "Enum \{ attrs: [], derives: ["
+        var dv2 = n[2]
+        var dj2: I32 = 1
+        while dj2 < dv2.len {
+            if dj2 > 1 { out = out + ", " }
+            out = out + "\"" + dv2[dj2] + "\""
+            dj2 += 1
+        }
+        out = out + "], name: \"" + n[1] + "\", type_params: [], variants: [" + pjoin(n[3]) + "] }"
+} else if t == "Field" {
+        out = out + "Field \{ vis: Private, is_var: " + n[1] + ", name: \"" + n[2] + "\", ty: " + pnode(n[3]) + "}"
+    } else if t == "Variant" {
+        out = out + "Variant \{ name: \"" + n[1] + "\", kind: " + pnode(n[2]) + "}"
+    } else if t == "KUnit" {
+        out = out + "Unit"
+    } else if t == "KTuple" {
+        out = out + "Tuple(" + pjoin(n) + ")"
+    } else if t == "KStruct" {
+        out = out + "Struct([" + pjoin(n) + "])"
+    } else if t == "Class" {
+        out = out + "Class \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], items: [" + pjoin(n[3]) + "] }"
+    } else if t == "Impl" {
+        out = out + "Impl \{ type_params: [" + pjoin(n[1]) + "], trait_ty: " + pnode(n[2]) + ", for_ty: " + pnode(n[3]) + ", items: [" + pjoin(n[4]) + "] }"
+    } else if or3(t == "PropSig", t == "PropImpl", t == "Prop") {
+        out = out + t + " \{ vis: Private, name: \"" + n[1] + "\", ty: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
+    } else if t == "Trait" {
+        out = out + "Trait \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], supers: ["
+        var su = n[3]
+        var sj: I32 = 1
+        while sj < su.len {
+            if sj > 1 { out = out + ", " }
+            out = out + "\"" + su[sj] + "\""
+            sj += 1
+        }
+        out = out + "], items: [" + pjoin(n[4]) + "] }"
+    } else if t == "Items" {
+        out = out + pjoin(n)
+    } else if t == "Use" {
+        out = out + "Use \{ imports: [["
+        var uj: I32 = 1
+        while uj < n.len {
+            if uj > 1 { out = out + ", " }
+            out = out + "\"" + n[uj] + "\""
+            uj += 1
+        }
+        out = out + "]] }"
+    } else if t == "Const" {
+        out = out + "Const \{ name: \"" + n[1] + "\", ty: " + pnode(n[2]) + ", expr: " + pnode(n[3]) + "}"
+    } else if t == "Static" {
+        out = out + "Static \{ name: \"" + n[1] + "\", was_var: " + n[2] + ", ty: " + pnode(n[3]) + ", expr: " + pnode(n[4]) + "}"
+    } else if t == "Str" {
+        out = out + "Str \{ parts: "
+        var pl = n[1]
+        var pk: I32 = 1
+        out = out + "["
+        while pk < pl.len {
+            if pk > 1 { out = out + ", " }
+            out = out + pnode(pl[pk])
+            pk += 1
+        }
+        out = out + "]}"
+    } else if t == "Text" {
+        out = out + "Text(\"" + qtext(n[1]) + "\")"
+    } else if t == "Interp" {
+        out = out + "Interp(\"" + qtext(n[1]) + "\")"
+    } else if t == "Test" {
+        out = out + "Test \{ name: \"" + n[1] + "\", body: " + pnode(n[2]) + "}"
+    } else if t == "BlockExpr" {
+        out = out + "BlockExpr(" + pnode(n[1]) + ")"
+    } else if t == "ComptimeVal" {
+        out = out + "ComptimeVal(\"" + n[1] + "\")"
+    } else if t == "Int" {
+        out = out + "Int \{ text: \"" + n[1] + "\", suffix: \"" + n[2] + "\"}"
+    } else if t == "Float" {
+        out = out + "Float \{ text: \"" + n[1] + "\", suffix: \"" + n[2] + "\"}"
+    } else if t == "Bool" {
+        out = out + "Bool(" + n[1] + ")"
+    } else if t == "Void" {
+        out = out + "Void"
+    } else if t == "ArrLit" {
+        out = out + "Array(" + pjoin(n) + ")"
+    } else if t == "TupleE" {
+        out = out + "Tuple(" + pjoin(n) + ")"
+    } else if t == "Ident" {
+        out = out + "Ident(\"" + n[1] + "\")"
+    }
+    return out
+}
+
+
+// ---------------- C8a:语义检查(W8010 浅拷贝;树上行走,与 C sem 差分) ----------------
+fn sem_walk(file: List[Str]) -> Str {
+    var out = ""
+    // 第一遍:收集 class 名
+    var cls = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Class" {
+            cls.push(d[1])
+        }
+        i += 1
+    }
+    // 第二遍:struct 字段类型首段命中 class → W8010(每 struct 一条)
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" {
+            var nm = d[1]
+            var hit = false
+            var hn = ""
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len && !hit {
+                var f = fs[j]
+                var ty = f[3]
+                if ty[0] == "Named" {
+                    var h = ty[1]
+                    var k: I32 = 0
+                    while k < cls.len && !hit {
+                        if cls[k] == h {
+                            hit = true
+                            hn = f[2]
+                        }
+                        k += 1
+                    }
+                }
+                j += 1
+            }
+            if hit {
+                out = out + "W8010: struct 含类引用字段(浅拷贝):" + nm + "." + hn + "\n"
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+
+// ---------------- C8b:W8020(must-use)/E4030(no_spawn) 树上行走 ----------------
+fn is_opt_ret(ty: List[Str]) -> Bool {
+    if ty[0] == "Optional" { return true }
+    if ty[0] == "Named" {
+        var h = ty[1]
+        if or2(h == "Option", h == "Result") { return true }
+    }
+    return false
+}
+
+// walk_block/Expr:返回诊断行;ns = no_spawn 上下文
+fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        // E4030:.spawn 调用
+        if ns && cal[0] == "Member" && cal[3] == "spawn" {
+            out.push("E4030: no_spawn 上下文中的 spawn")
+        }
+        // W8020:丢弃 Option/Result 返回值(仅 Expr 语句层,见 stmt)
+        if cal[0] == "TypeArgs" && cal[1].len > 0 && cal[1][0] == "Ident" && cal[1][1] == "Channel" {
+            var ag2 = cal[2]
+            if ag2.len > 1 {
+                var el = ag2[1]
+                if !send_of(file, el, 0) {
+                    out.push("E3020: channel 元素非 Send(Send):Channel 元素类型")
+                }
+            }
+        }
+        walk_e(file, cal, ns, fns, rets, out)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            walk_e(file, ag[i], ns, fns, rets, out)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if t == "Binary" {
+        walk_e(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Unary" {
+        walk_e(file, e[2], ns, fns, rets, out)
+        return
+    }
+    if t == "Range" {
+        walk_e(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Index" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        walk_e(file, e[2], ns, fns, rets, out)
+        return
+    }
+    if t == "TypeArgs" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if t == "Try" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            walk_e(file, e[i2], ns, fns, rets, out)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        walk_b(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if t == "If" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        walk_b(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Match" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            var a = arms[i3]
+            walk_e(file, a[2], ns, fns, rets, out)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Own" {
+        walk_b(file, e[2], ns, fns, rets, out)
+        return
+    }
+    if t == "Scope" {
+        walk_b(file, e[2], ns, fns, rets, out)
+        return
+    }
+}
+
+fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            walk_e(file, st[1], ns, fns, rets, out)
+        } else if t == "Let" {
+            walk_e(file, st[4], ns, fns, rets, out)
+        } else if t == "While" {
+            walk_e(file, st[1], ns, fns, rets, out)
+            walk_b(file, st[2], ns, fns, rets, out)
+        } else if t == "For" {
+            walk_e(file, st[2], ns, fns, rets, out)
+            walk_b(file, st[3], ns, fns, rets, out)
+        } else if t == "Assign" {
+            walk_e(file, st[3], ns, fns, rets, out)
+        } else if t == "Expr" {
+            // W8020:丢弃 Option/Result 返回值
+            var ce = st[1]
+            if ce[0] == "Call" {
+                var cal2 = ce[1]
+                if cal2[0] == "Ident" {
+                    var nm2 = cal2[1]
+                    var k: I32 = 0
+                    var hit = false
+                    while k < fns.len && !hit {
+                        if fns[k] == nm2 {
+                            hit = true
+                            if is_opt_ret(rets[k]) {
+                                out.push("W8020: 结果被丢弃(must-use):" + nm2 + " 返回 Option/Result")
+                            }
+                        }
+                        k += 1
+                    }
+                }
+            }
+            walk_e(file, ce, ns, fns, rets, out)
+        }
+        i += 1
+    }
+    walk_e(file, b[b.len - 1], ns, fns, rets, out)
+}
+
+
+// ---------------- C8c:Send 内核(照 C ty_send;未知保守 Send) ----------------
+fn s_prim(n: Str) -> Bool {
+    if n == "I8" { return true }
+    if n == "I16" { return true }
+    if n == "I32" { return true }
+    if n == "I64" { return true }
+    if n == "ISize" { return true }
+    if n == "U8" { return true }
+    if n == "U16" { return true }
+    if n == "U32" { return true }
+    if n == "U64" { return true }
+    if n == "USize" { return true }
+    if n == "F32" { return true }
+    if n == "F64" { return true }
+    if n == "Bool" { return true }
+    if n == "Str" { return true }
+    if n == "Void" { return true }
+    return false
+}
+fn s_special(n: Str) -> Bool {
+    if n == "Mutex" { return true }
+    if n == "Atomic" { return true }
+    if n == "Global" { return true }
+    if n == "Sender" { return true }
+    if n == "Receiver" { return true }
+    if n == "Task" { return true }
+    if n == "String" { return true }
+    if n == "Box" { return true }
+    if n == "Never" { return true }
+    if n == "Option" { return true }
+    if n == "Result" { return true }
+    return false
+}
+fn decl_node(file: List[Str], tag: Str, name: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == tag && d[1] == name {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn send_of(file: List[Str], ty: List[Str], depth: I32) -> Bool {
+    if depth > 16 { return true }
+    if ty.len == 0 { return true }
+    var t = ty[0]
+    if t == "Named" {
+        var n = ty[1]
+        if s_prim(n) { return true }
+        if s_special(n) { return true }
+        var c = decl_node(file, "Class", n)
+        if c.len > 0 {
+            var items = c[3]
+            var j: I32 = 1
+            while j < items.len {
+                var it = items[j]
+                if it[0] == "Field" {
+                    if it[1] == "true" { return false }
+                    if !send_of(file, it[3], depth + 1) { return false }
+                }
+                j += 1
+            }
+            return true
+        }
+        var st = decl_node(file, "Struct", n)
+        if st.len > 0 {
+            var fs = st[4]
+            var k: I32 = 1
+            while k < fs.len {
+                if !send_of(file, fs[k][3], depth + 1) { return false }
+                k += 1
+            }
+            return true
+        }
+        var en = decl_node(file, "Enum", n)
+        if en.len > 0 {
+            var vs = en[3]
+            var m: I32 = 1
+            while m < vs.len {
+                var v = vs[m]
+                var kind = v[2]
+                if kind[0] == "KTuple" {
+                    var q: I32 = 1
+                    while q < kind.len {
+                        if !send_of(file, kind[q], depth + 1) { return false }
+                        q += 1
+                    }
+                }
+                if kind[0] == "KStruct" {
+                    var q2: I32 = 1
+                    while q2 < kind.len {
+                        if !send_of(file, kind[q2][3], depth + 1) { return false }
+                        q2 += 1
+                    }
+                }
+                m += 1
+            }
+            return true
+        }
+        return true
+    }
+    if t == "Ref" {
+        var sub = ty[1]
+        if sub.len > 0 && sub[0] == "Named" {
+            var n2 = sub[1]
+            var tr = decl_node(file, "Trait", n2)
+            if tr.len > 0 { return false }
+        }
+        if sub.len > 0 && sub[0] == "Slice" {
+            return send_of(file, sub[1], depth + 1)
+        }
+        return send_of(file, sub, depth + 1)
+    }
+    if t == "Slice" { return false }
+    if t == "ArrayT" { return send_of(file, ty[1], depth + 1) }
+    if t == "Optional" { return send_of(file, ty[1], depth + 1) }
+    if t == "TupleT" {
+        var z: I32 = 1
+        while z < ty.len {
+            if !send_of(file, ty[z], depth + 1) { return false }
+            z += 1
+        }
+        return true
+    }
+    return true
+}
+
+// ---- E3060:own 内对 GC 值可变写(env 近似;形参/let 注解或类构造字面量) ----
+fn env_lookup(envN: List[Str], envC: List[Str], nm: Str) -> Str {
+    var i = envN.len - 1
+    while i >= 0 {
+        if envN[i] == nm { return envC[i] }
+        i -= 1
+    }
+    return ""
+}
+fn ch_of_type(file: List[Str], ty: List[Str]) -> Str {
+    if ty.len == 0 { return "" }
+    if ty[0] == "Named" {
+        var n = ty[1]
+        var c = decl_node(file, "Class", n)
+        if c.len > 0 { return n }
+    }
+    return ""
+}
+fn walk6e(file: List[Str], e: List[Str], ow: Bool, envN: List[Str], envC: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Own" {
+        walk6b(file, e[2], true, envN, envC, diags)
+        return
+    }
+    if t == "If" {
+        walk6e(file, e[1], ow, envN, envC, diags)
+        walk6b(file, e[2], ow, envN, envC, diags)
+        walk6e(file, e[3], ow, envN, envC, diags)
+        return
+    }
+    if t == "BlockExpr" {
+        walk6b(file, e[1], ow, envN, envC, diags)
+        return
+    }
+    if t == "Match" {
+        walk6e(file, e[1], ow, envN, envC, diags)
+        var arms = e[2]
+        var i2: I32 = 1
+        while i2 < arms.len {
+            walk6e(file, arms[i2][2], ow, envN, envC, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        walk6e(file, e[3], ow, envN, envC, diags)
+        return
+    }
+    if t == "Scope" {
+        walk6b(file, e[2], ow, envN, envC, diags)
+        return
+    }
+}
+fn walk6b(file: List[Str], b: List[Str], ow: Bool, envN: List[Str], envC: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Let" {
+            var ch = ""
+            var ty0 = st[3]
+            ch = ch_of_type(file, ty0)
+            if ch == "" {
+                var ex = st[4]
+                if ex[0] == "StructLit" {
+                    var cn = ex[1]
+                    if decl_node(file, "Class", cn).len > 0 {
+                        ch = cn
+                    }
+                }
+            }
+            var pat = st[2]
+            if pat[0] == "PatId" && ch != "" {
+                envN.push(pat[1])
+                envC.push(ch)
+            } else if pat[0] == "PatId" {
+                envN.push(pat[1])
+                envC.push("")
+            }
+        } else if t == "Assign" {
+            if ow {
+                var tgt = st[1]
+                if tgt[0] == "Member" {
+                    var obj = tgt[1]
+                    if obj[0] == "Ident" {
+                        var nm = obj[1]
+                        var ch2 = env_lookup(envN, envC, nm)
+                        if ch2 != "" {
+                            diags.push("E3060: own 块内对 GC 值可变写(mutable):" + nm)
+                        }
+                    }
+                }
+            }
+            walk6e(file, st[3], ow, envN, envC, diags)
+        } else if t == "Return" {
+            walk6e(file, st[1], ow, envN, envC, diags)
+        } else if t == "Expr" {
+            walk6e(file, st[1], ow, envN, envC, diags)
+        } else if t == "While" {
+            walk6e(file, st[1], ow, envN, envC, diags)
+            walk6b(file, st[2], ow, envN, envC, diags)
+        } else if t == "For" {
+            walk6e(file, st[2], ow, envN, envC, diags)
+            walk6b(file, st[3], ow, envN, envC, diags)
+        }
+        i += 1
+    }
+    walk6e(file, b[b.len - 1], ow, envN, envC, diags)
+}
+fn sem_e3060(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var out = ""
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envC = List[Str]()
+    var body = d[2]
+    if tag != "Test" {
+        body = d[5]
+    }
+    // 形参绑定(仅 Param;Receiver 跳过)
+    var ps = List[Str]()
+    if tag != "Test" {
+        ps = d[3]
+    }
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envC.push(ch_of_type(file, p[3]))
+        }
+        k += 1
+    }
+    walk6b(file, body, false, envN, envC, diags)
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
+
+// ---- E4020/E6020:pure(#[pure])/comptime 函数内 &Trait 接收者能力调用 ----
+fn is_trait(file: List[Str], nm: Str) -> Bool {
+    return decl_node(file, "Trait", nm).len > 0
+}
+fn env_ty(envN: List[Str], envT: List[Str], nm: Str) -> List[Str] {
+    var i = envN.len - 1
+    while i >= 0 {
+        if envN[i] == nm { return envT[i] }
+        i -= 1
+    }
+    return List[Str]()
+}
+fn cap_ty(file: List[Str], ty: List[Str]) -> Bool {
+    if ty.len > 0 && ty[0] == "Ref" {
+        var sub = ty[1]
+        if sub.len > 0 && sub[0] == "Named" && is_trait(file, sub[1]) {
+            return true
+        }
+    }
+    return false
+}
+fn pwalk_e(file: List[Str], e: List[Str], code: Str, envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "Member" {
+            var obj = cal[1]
+            if obj[0] == "Ident" {
+                var ty = env_ty(envN, envT, obj[1])
+                if cap_ty(file, ty) {
+                    diags.push(code)
+                }
+            }
+            pwalk_e(file, cal[1], code, envN, envT, diags)
+        }
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            pwalk_e(file, ag[i], code, envN, envT, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if t == "Binary" {
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Unary" {
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        return
+    }
+    if t == "Range" {
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Index" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        pwalk_e(file, e[2], code, envN, envT, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if t == "Try" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            pwalk_e(file, e[i2], code, envN, envT, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        pwalk_b(file, e[1], code, envN, envT, diags)
+        return
+    }
+    if t == "If" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        pwalk_b(file, e[2], code, envN, envT, diags)
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Match" {
+        pwalk_e(file, e[1], code, envN, envT, diags)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            pwalk_e(file, arms[i3][2], code, envN, envT, diags)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        pwalk_e(file, e[3], code, envN, envT, diags)
+        return
+    }
+    if t == "Own" {
+        pwalk_b(file, e[2], code, envN, envT, diags)
+        return
+    }
+    if t == "Scope" {
+        pwalk_b(file, e[2], code, envN, envT, diags)
+        return
+    }
+}
+fn pwalk_b(file: List[Str], b: List[Str], code: Str, envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            pwalk_e(file, st[1], code, envN, envT, diags)
+        } else if t == "Expr" {
+            pwalk_e(file, st[1], code, envN, envT, diags)
+        } else if t == "While" {
+            pwalk_e(file, st[1], code, envN, envT, diags)
+            pwalk_b(file, st[2], code, envN, envT, diags)
+        } else if t == "For" {
+            pwalk_e(file, st[2], code, envN, envT, diags)
+            pwalk_b(file, st[3], code, envN, envT, diags)
+        } else if t == "Let" {
+            var ex = st[4]
+            if ex.len > 0 && ex[0] == "Closure" {
+                pwalk_e(file, ex, code, envN, envT, diags)
+            }
+        }
+        i += 1
+    }
+    pwalk_e(file, b[b.len - 1], code, envN, envT, diags)
+}
+fn sem_cap(file: List[Str], d: List[Str], kind: Str) -> Str {
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envT = List[Str]()
+    var body = d[5]
+    var ps = d[3]
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envT.push(p[3])
+        }
+        k += 1
+    }
+    pwalk_b(file, body, kind, envN, envT, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
+
+// ---- E3010:spawn 闭包捕获非 Send ----
+
+// 捕获收集:闭包体内全部标识符(不区分作用域;env 命中才有效)
+fn cle(file: List[Str], e: List[Str], names: List[Str]) {
+    var t = e[0]
+    if t == "Ident" {
+        names.push(e[1])
+        return
+    }
+    if t == "Call" {
+        cle(file, e[1], names)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            cle(file, ag[i], names)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        cle(file, e[1], names)
+        return
+    }
+    if t == "Binary" {
+        cle(file, e[2], names)
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Unary" {
+        cle(file, e[2], names)
+        return
+    }
+    if t == "Range" {
+        cle(file, e[2], names)
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Index" {
+        cle(file, e[1], names)
+        cle(file, e[2], names)
+        return
+    }
+    if t == "TypeArgs" {
+        cle(file, e[1], names)
+        return
+    }
+    if t == "Try" {
+        cle(file, e[1], names)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            cle(file, e[i2], names)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        clb(file, e[1], names)
+        return
+    }
+    if t == "If" {
+        cle(file, e[1], names)
+        clb(file, e[2], names)
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Match" {
+        cle(file, e[1], names)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            cle(file, arms[i3][2], names)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Own" {
+        clb(file, e[2], names)
+        return
+    }
+    if t == "Scope" {
+        clb(file, e[2], names)
+        return
+    }
+}
+fn clb(file: List[Str], b: List[Str], names: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            cle(file, st[1], names)
+        } else if t == "Expr" {
+            cle(file, st[1], names)
+        } else if t == "Let" {
+            cle(file, st[4], names)
+        } else if t == "While" {
+            cle(file, st[1], names)
+            clb(file, st[2], names)
+        } else if t == "For" {
+            cle(file, st[2], names)
+            clb(file, st[3], names)
+        } else if t == "Assign" {
+            cle(file, st[3], names)
+        }
+        i += 1
+    }
+    cle(file, b[b.len - 1], names)
+}
+fn send_env(file: List[Str], nm: Str, envN: List[Str], envT: List[Str]) -> Bool {
+    var i = envN.len - 1
+    while i >= 0 {
+        if envN[i] == nm {
+            return send_of(file, envT[i], 0)
+        }
+        i -= 1
+    }
+    return true
+}
+fn let_ty(file: List[Str], st: List[Str]) -> List[Str] {
+    var ann = st[3]
+    if ann.len > 0 && ann[0] != "None" {
+        return ann
+    }
+    var ex = st[4]
+    if ex.len > 0 && ex[0] == "StructLit" {
+        var cn = ex[1]
+        if decl_node(file, "Class", cn).len > 0 {
+            var nt = mk("Named")
+            nt.push(cn)
+            return nt
+        }
+    }
+    return List[Str]()
+}
+fn wse(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "Member" && cal[3] == "spawn" && e[2].len > 1 {
+            var arg0 = e[2][1]
+            if arg0[0] == "Closure" {
+                var caps = List[Str]()
+                cle(file, arg0[3], caps)
+                var ci: I32 = 0
+                var done = false
+                while ci < caps.len && !done {
+                    var nm = caps[ci]
+                    if !send_env(file, nm, envN, envT) {
+                        diags.push("E3010: spawn 捕获非 Send(Send):" + nm)
+                        done = true
+                    }
+                    ci += 1
+                }
+            }
+        }
+        wse(file, cal, envN, envT, diags)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            wse(file, ag[i], envN, envT, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        wse(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Binary" {
+        wse(file, e[2], envN, envT, diags)
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Unary" {
+        wse(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Range" {
+        wse(file, e[2], envN, envT, diags)
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Index" {
+        wse(file, e[1], envN, envT, diags)
+        wse(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        wse(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Try" {
+        wse(file, e[1], envN, envT, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            wse(file, e[i2], envN, envT, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        wsb(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "If" {
+        wse(file, e[1], envN, envT, diags)
+        wsb(file, e[2], envN, envT, diags)
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Match" {
+        wse(file, e[1], envN, envT, diags)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            wse(file, arms[i3][2], envN, envT, diags)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Own" {
+        wsb(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Scope" {
+        wsb(file, e[2], envN, envT, diags)
+        return
+    }
+}
+fn wsb(file: List[Str], b: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            wse(file, st[1], envN, envT, diags)
+        } else if t == "Expr" {
+            wse(file, st[1], envN, envT, diags)
+        } else if t == "Let" {
+            var ty = let_ty(file, st)
+            var pat = st[2]
+            if pat[0] == "PatId" {
+                envN.push(pat[1])
+                envT.push(ty)
+            }
+            wse(file, st[4], envN, envT, diags)
+        } else if t == "While" {
+            wse(file, st[1], envN, envT, diags)
+            wsb(file, st[2], envN, envT, diags)
+        } else if t == "For" {
+            wse(file, st[2], envN, envT, diags)
+            wsb(file, st[3], envN, envT, diags)
+        } else if t == "Assign" {
+            wse(file, st[3], envN, envT, diags)
+        }
+        i += 1
+    }
+    wse(file, b[b.len - 1], envN, envT, diags)
+}
+fn sem_spawn2(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envT = List[Str]()
+    var body = d[2]
+    var ps = List[Str]()
+    if tag != "Test" {
+        body = d[5]
+        ps = d[3]
+    }
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envT.push(p[3])
+        }
+        k += 1
+    }
+    wsb(file, body, envN, envT, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
+
+// ---- E3050:own 内 arena 句柄 use-after-move(arena_binds/moved 集) ----
+fn in_list(ls: List[Str], nm: Str) -> Bool {
+    var i: I32 = 0
+    while i < ls.len {
+        if ls[i] == nm { return true }
+        i += 1
+    }
+    return false
+}
+fn rm_name(ls: List[Str], nm: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < ls.len {
+        if ls[i] != nm {
+            out.push(ls[i])
+        }
+        i += 1
+    }
+    return out
+}
+fn call_root_arena(e: List[Str]) -> Bool {
+    if e.len > 0 && e[0] == "Call" {
+        var cal = e[1]
+        while cal.len > 0 && cal[0] == "TypeArgs" {
+            cal = cal[1]
+        }
+        if cal.len > 0 && cal[0] == "Member" && cal[1].len > 0 && cal[1][0] == "Ident" && cal[1][1] == "arena" {
+            return true
+        }
+    }
+    return false
+}
+
+fn me(file: List[Str], e: List[Str], moved: List[Str], arenaB: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Ident" {
+        if in_list(moved, e[1]) {
+            diags.push("E3050: use-after-move(moved):arena 句柄 " + e[1])
+        }
+        return
+    }
+    if t == "Call" {
+        me(file, e[1], moved, arenaB, diags)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            me(file, ag[i], moved, arenaB, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        me(file, e[1], moved, arenaB, diags)
+        return
+    }
+    if t == "Index" {
+        me(file, e[1], moved, arenaB, diags)
+        me(file, e[2], moved, arenaB, diags)
+        return
+    }
+    if t == "Binary" {
+        me(file, e[2], moved, arenaB, diags)
+        me(file, e[3], moved, arenaB, diags)
+        return
+    }
+    if t == "Unary" {
+        me(file, e[2], moved, arenaB, diags)
+        return
+    }
+    if t == "Range" {
+        me(file, e[2], moved, arenaB, diags)
+        me(file, e[3], moved, arenaB, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        me(file, e[1], moved, arenaB, diags)
+        return
+    }
+    if t == "Try" {
+        me(file, e[1], moved, arenaB, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            me(file, e[i2], moved, arenaB, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        mb(file, e[1], moved, arenaB, diags)
+        return
+    }
+    if t == "If" {
+        me(file, e[1], moved, arenaB, diags)
+        mb(file, e[2], moved, arenaB, diags)
+        me(file, e[3], moved, arenaB, diags)
+        return
+    }
+    if t == "Match" {
+        me(file, e[1], moved, arenaB, diags)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            me(file, arms[i3][2], moved, arenaB, diags)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        me(file, e[3], moved, arenaB, diags)
+        return
+    }
+    if t == "Own" {
+        if e.len > 1 && !in_list(arenaB, e[1]) {
+            arenaB.push(e[1])
+        }
+        mb(file, e[2], moved, arenaB, diags)
+        return
+    }
+    if t == "Scope" {
+        mb(file, e[2], moved, arenaB, diags)
+        return
+    }
+}
+fn mb(file: List[Str], b: List[Str], moved: List[Str], arenaB: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            me(file, st[1], moved, arenaB, diags)
+        } else if t == "Expr" {
+            me(file, st[1], moved, arenaB, diags)
+        } else if t == "While" {
+            me(file, st[1], moved, arenaB, diags)
+            mb(file, st[2], moved, arenaB, diags)
+        } else if t == "For" {
+            me(file, st[2], moved, arenaB, diags)
+            mb(file, st[3], moved, arenaB, diags)
+        } else if t == "Let" {
+            var pat = st[2]
+            var init = st[4]
+            var handled = false
+            if init.len > 0 && init[0] == "Ident" {
+                var src = init[1]
+                if in_list(arenaB, src) {
+                    moved.push(src)
+                    arenaB = rm_name(arenaB, src)
+                    if pat[0] == "PatId" {
+                        arenaB.push(pat[1])
+                    }
+                    handled = true
+                } else if in_list(moved, src) {
+                    diags.push("E3050: use-after-move(moved):arena 句柄 " + src)
+                    handled = true
+                }
+            }
+            if !handled {
+                if init.len > 0 && init[0] == "Call" && call_root_arena(init) {
+                    if pat[0] == "PatId" && !in_list(arenaB, pat[1]) {
+                        arenaB.push(pat[1])
+                    }
+                }
+                me(file, init, moved, arenaB, diags)
+            }
+        } else if t == "Assign" {
+            me(file, st[1], moved, arenaB, diags)
+            me(file, st[3], moved, arenaB, diags)
+        }
+        i += 1
+    }
+    me(file, b[b.len - 1], moved, arenaB, diags)
+}
+fn sem_mv(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var diags = List[Str]()
+    var moved = List[Str]()
+    var arenaB = List[Str]()
+    var body = d[2]
+    var ps = List[Str]()
+    if tag != "Test" {
+        body = d[5]
+        ps = d[3]
+    }
+    mb(file, body, moved, arenaB, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
+
+
+// ---- E2030:match 穷尽(scrutinee 类型→枚举/Option/Result 变体表;臂覆盖) ----
+fn seq(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var j: I32 = 0
+    while j < a.len {
+        if byte_at(a, j) != byte_at(b, j) { return false }
+        j += 1
+    }
+    return true
+}
+fn variants_of(file: List[Str], ty: List[Str]) -> List[Str] {
+    var vs = List[Str]()
+    if ty.len == 0 { return vs }
+    var t = ty[0]
+    if t == "Optional" {
+        vs.push("Some")
+        vs.push("None")
+        return vs
+    }
+    if t == "Named" {
+        var n = ty[1]
+        if or2(n == "Option", n == "Result") {
+            if n == "Option" {
+                vs.push("Some")
+                vs.push("None")
+            } else {
+                vs.push("Ok")
+                vs.push("Err")
+            }
+            return vs
+        }
+        var en = decl_node(file, "Enum", n)
+        if en.len > 0 {
+            var vars = en[3]
+            var i: I32 = 1
+            while i < vars.len {
+                vs.push(vars[i][1])
+                i += 1
+            }
+        }
+    }
+    return vs
+}
+fn ex_resolve(file: List[Str], scrut: List[Str], envN: List[Str], envT: List[Str]) -> List[Str] {
+    if scrut.len > 0 && scrut[0] == "Ident" {
+        var i = envN.len - 1
+        while i >= 0 {
+            if seq(envN[i], scrut[1]) {
+                return envT[i]
+            }
+            i -= 1
+        }
+    }
+    return List[Str]()
+}
+fn xe(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Match" {
+        var ty = ex_resolve(file, e[1], envN, envT)
+        var vs = variants_of(file, ty)
+        if vs.len > 0 {
+            var covered = List[Str]()
+            var whole = false
+            var arms = e[2]
+            var ai: I32 = 1
+            while ai < arms.len && !whole {
+                var arm = arms[ai]
+                var pat = arm[1]
+                if or2(pat[0] == "PatWild", pat[0] == "PatId") {
+                    whole = true
+                } else if pat[0] == "PatAgg" {
+                    covered.push(pat[1])
+                }
+                ai += 1
+            }
+            if !whole {
+                var miss = List[Str]()
+                var vi: I32 = 0
+                while vi < vs.len {
+                    var hit = false
+                    var ci: I32 = 0
+                    while ci < covered.len {
+                        if seq(covered[ci], vs[vi]) { hit = true }
+                        ci += 1
+                    }
+                    if !hit { miss.push(vs[vi]) }
+                    vi += 1
+                }
+                if miss.len > 0 {
+                    var buf = ""
+                    var mi: I32 = 0
+                    while mi < miss.len {
+                        if mi > 0 { buf = buf + " " }
+                        buf = buf + miss[mi]
+                        mi += 1
+                    }
+                    diags.push("E2030: match 不穷尽(not exhaustive):缺变体 " + buf)
+                }
+            }
+        }
+        // 继续递归
+        xe(file, e[1], envN, envT, diags)
+        var arms2 = e[2]
+        var aj: I32 = 1
+        while aj < arms2.len {
+            xe(file, arms2[aj][2], envN, envT, diags)
+            aj += 1
+        }
+        return
+    }
+    if t == "Call" {
+        xe(file, e[1], envN, envT, diags)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            xe(file, ag[i], envN, envT, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        xe(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Binary" {
+        xe(file, e[2], envN, envT, diags)
+        xe(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Unary" {
+        xe(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Index" {
+        xe(file, e[1], envN, envT, diags)
+        xe(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        xe(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Try" {
+        xe(file, e[1], envN, envT, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            xe(file, e[i2], envN, envT, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        xb(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "If" {
+        xe(file, e[1], envN, envT, diags)
+        xb(file, e[2], envN, envT, diags)
+        xe(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Closure" {
+        xe(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Own" {
+        xb(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Scope" {
+        xb(file, e[2], envN, envT, diags)
+        return
+    }
+}
+fn xb(file: List[Str], b: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            xe(file, st[1], envN, envT, diags)
+        } else if t == "Expr" {
+            xe(file, st[1], envN, envT, diags)
+        } else if t == "Let" {
+            var ann = st[3]
+            var pat = st[2]
+            if pat[0] == "PatId" {
+                if ann.len > 0 && ann[0] != "None" {
+                    envN.push(pat[1])
+                    envT.push(ann)
+                } else {
+                    envN.push(pat[1])
+                    envT.push(List[Str]())
+                }
+            }
+            xe(file, st[4], envN, envT, diags)
+        } else if t == "While" {
+            xe(file, st[1], envN, envT, diags)
+            xb(file, st[2], envN, envT, diags)
+        } else if t == "For" {
+            xe(file, st[2], envN, envT, diags)
+            xb(file, st[3], envN, envT, diags)
+        } else if t == "Assign" {
+            xe(file, st[3], envN, envT, diags)
+        }
+        i += 1
+    }
+    xe(file, b[b.len - 1], envN, envT, diags)
+}
+fn sem_exh(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envT = List[Str]()
+    var body = d[2]
+    var ps = List[Str]()
+    if tag != "Test" {
+        body = d[5]
+        ps = d[3]
+    }
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envT.push(p[3])
+        }
+        k += 1
+    }
+    xb(file, body, envN, envT, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
+
+// ---------------- E3040:分配效果(own/#[no_alloc]/契约 内 GC 分配) ----------------
+fn has_noalloc(node: List[Str]) -> Bool {
+    return node.len >= 7 && node[6] == "no_alloc"
+}
+fn mem_target(m: List[Str]) -> Str {
+    // Member: [Member,obj,kind,name]
+    if m.len > 3 { return m[3] }
+    return ""
+}
+fn callee_root_alloc(e: List[Str]) -> Bool {
+    // e 是 Call 时:裸函数/泛型构造/成员分配判
+    var cal = e[1]
+    var r = ""
+    if cal[0] == "Ident" {
+        r = cal[1]
+    } else if cal[0] == "TypeArgs" && cal[1][0] == "Ident" {
+        r = cal[1][1]
+    } else if cal[0] == "Member" {
+        r = mem_target(cal)
+    }
+    // 识别类型名集合
+    var b = false
+    if r == "to_string" { b = true }
+    if r == "push" { b = true }
+    if r == "into_gc" { b = true }
+    if r == "Box" { b = true }
+    if r == "List" { b = true }
+    if r == "Map" { b = true }
+    if r == "String" { b = true }
+    if b { return true }
+    return false
+}
+fn fn_alloc_sum(file: List[Str], nm: Str, vis: List[Str]) -> Bool {
+    // 环防:vis 含 nm → 保守分配
+    var i: I32 = 0
+    while i < vis.len {
+        if seq(vis[i], nm) { return true }
+        i += 1
+    }
+    var d = decl_node(file, "Fn", nm)
+    if d.len == 0 {
+        return false
+    }
+    if has_noalloc(d) { return false }
+    if d.len >= 7 && d[6] == "no_spawn" { } // 与分配无关
+    vis.push(nm)
+    var body = d[5]
+    var r = scan_alloc(file, body, vis)
+    // pop 近似:不需要
+    return r
+}
+fn scan_alloc(file: List[Str], b: List[Str], vis: List[Str]) -> Bool {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            if sc_e(file, st[1], vis) { return true }
+        } else if t == "Expr" {
+            if sc_e(file, st[1], vis) { return true }
+        } else if t == "Let" {
+            if sc_e(file, st[4], vis) { return true }
+        } else if t == "While" {
+            if sc_e(file, st[1], vis) { return true }
+            if scan_alloc(file, st[2], vis) { return true }
+        } else if t == "For" {
+            if sc_e(file, st[2], vis) { return true }
+            if scan_alloc(file, st[3], vis) { return true }
+        } else if t == "Assign" {
+            if sc_e(file, st[3], vis) { return true }
+        }
+        i += 1
+    }
+    if sc_e(file, b[b.len - 1], vis) { return true }
+    return false
+}
+fn sc_e(file: List[Str], e: List[Str], vis: List[Str]) -> Bool {
+    var t = e[0]
+    if t == "Call" {
+        if call_allocish(file, e, vis) { return true }
+        if sc_e(file, e[1], vis) { return true }
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            if sc_e(file, ag[i], vis) { return true }
+            i += 1
+        }
+        return false
+    }
+    if t == "Member" {
+        return sc_e(file, e[1], vis)
+    }
+    if t == "Index" {
+        if sc_e(file, e[1], vis) { return true }
+        if sc_e(file, e[2], vis) { return true }
+        return false
+    }
+    if t == "Binary" {
+        if sc_e(file, e[2], vis) { return true }
+        if sc_e(file, e[3], vis) { return true }
+        return false
+    }
+    if t == "Unary" {
+        return sc_e(file, e[2], vis)
+    }
+    if t == "Range" {
+        if sc_e(file, e[2], vis) { return true }
+        if sc_e(file, e[3], vis) { return true }
+        return false
+    }
+    if t == "TypeArgs" {
+        return sc_e(file, e[1], vis)
+    }
+    if t == "Try" {
+        return sc_e(file, e[1], vis)
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            if sc_e(file, e[i2], vis) { return true }
+            i2 += 1
+        }
+        return false
+    }
+    if t == "StructLit" {
+        var cn = e[1]
+        if decl_node(file, "Class", cn).len > 0 { return true }
+        var lf = e[2]
+        var j: I32 = 1
+        while j < lf.len {
+            if sc_e(file, lf[j][2], vis) { return true }
+            j += 1
+        }
+        return false
+    }
+    if t == "BlockExpr" {
+        return scan_alloc(file, e[1], vis)
+    }
+    if t == "If" {
+        if sc_e(file, e[1], vis) { return true }
+        if scan_alloc(file, e[2], vis) { return true }
+        if sc_e(file, e[3], vis) { return true }
+        return false
+    }
+    if t == "Match" {
+        if sc_e(file, e[1], vis) { return true }
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            if sc_e(file, arms[i3][2], vis) { return true }
+            i3 += 1
+        }
+        return false
+    }
+    if t == "Closure" {
+        return sc_e(file, e[3], vis)
+    }
+    if t == "Own" {
+        return scan_alloc(file, e[2], vis)
+    }
+    if t == "Scope" {
+        return scan_alloc(file, e[2], vis)
+    }
+    return false
+}
+fn call_allocish(file: List[Str], e: List[Str], vis: List[Str]) -> Bool {
+    var cal = e[1]
+    if cal[0] == "Member" {
+        var m = mem_target(cal)
+        if seq(m, "to_string") { return true }
+        if seq(m, "into_gc") { return true }
+        if seq(m, "push") { return true }
+        // arena.list/array/zeros 且 root arena → 非分配
+        if or3(seq(m, "list"), seq(m, "array"), seq(m, "zeros")) {
+            var obj = cal[1]
+            if obj[0] == "Ident" && seq(obj[1], "arena") { return false }
+            return false
+        }
+        return false
+    }
+    if cal[0] == "TypeArgs" && cal[1][0] == "Ident" {
+        var n = cal[1][1]
+        if or2(or2(seq(n, "Box"), seq(n, "List")), or2(seq(n, "Map"), seq(n, "String"))) {
+            return true
+        }
+        return false
+    }
+    if cal[0] == "Ident" {
+        return fn_alloc_sum(file, cal[1], vis)
+    }
+    return false
+}
+
+fn member_root(m: List[Str]) -> Str {
+    var c = m
+    while c.len > 0 && c[0] == "Member" && c[1].len > 0 && c[1][0] == "Member" {
+        c = c[1]
+    }
+    if c.len > 0 && c[0] == "Member" && c[1].len > 0 && c[1][0] == "Ident" {
+        return c[1][1]
+    }
+    if c.len > 0 && c[0] == "Ident" {
+        return c[1]
+    }
+    return ""
+}
+fn is_arena_op_m(e: List[Str]) -> Bool {
+    if e.len > 0 && e[0] == "Member" {
+        var m = mem_target(e)
+        if or2(or2(seq(m, "zeros"), seq(m, "array")), or2(seq(m, "list"), seq(m, "fixed"))) {
+            var obj = e[1]
+            if obj.len > 0 && obj[0] == "Ident" && or2(seq(obj[1], "arena"), seq(obj[1], "Arena")) {
+                return true
+            }
+        }
+    }
+    return false
+}
+fn al_e(file: List[Str], e: List[Str], ow: Bool, na: Bool, arenaB: List[Str], gcL: List[Str], diags: List[Str]) {
+    var restricted = or2(ow, na)
+    var t = e[0]
+    if t == "Call" && restricted {
+        var cal = e[1]
+        var alloc = false
+        var kind = "调用"
+        if cal[0] == "Member" {
+            var m = mem_target(cal)
+            if seq(m, "to_string") {
+                alloc = true
+                kind = member_root(cal)
+            } else if seq(m, "into_gc") {
+                alloc = !ow
+                kind = member_root(cal)
+            } else if seq(m, "push") {
+                if ow {
+                    var obj = cal[1]
+                    var allow = false
+                    if obj.len > 0 && obj[0] == "Ident" {
+                        if in_list(arenaB, obj[1]) { allow = true }
+                        if in_list(gcL, obj[1]) { allow = true }
+                    }
+                    if !allow { alloc = true }
+                } else {
+                    alloc = true
+                }
+                kind = member_root(cal)
+            }
+        } else if cal[0] == "TypeArgs" && cal[1].len > 0 && cal[1][0] == "Ident" {
+            var n = cal[1][1]
+            if or2(or2(seq(n, "Box"), seq(n, "List")), or2(seq(n, "Map"), seq(n, "String"))) {
+                alloc = true
+                kind = n
+            }
+        } else if cal[0] == "Ident" {
+            if fn_alloc_sum(file, cal[1], List[Str]()) {
+                alloc = true
+                kind = cal[1]
+            }
+        }
+        if alloc {
+            if ow {
+                diags.push("E3040: own 块内 GC 分配(allocation):" + kind)
+            } else {
+                diags.push("E3040: no_alloc 上下文 GC 分配(allocation):" + kind)
+            }
+            return
+        }
+        // 不是分配则继续递归(arena op 等在允许/不判断路径照常)
+    }
+    if t == "StructLit" && restricted {
+        var cn = e[1]
+        if decl_node(file, "Class", cn).len > 0 {
+            if ow {
+                diags.push("E3040: own 块内 GC 分配(allocation):类构造")
+            } else {
+                diags.push("E3040: no_alloc 上下文 GC 分配(allocation):类构造")
+            }
+            return
+        }
+    }
+    if t == "Call" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            al_e(file, ag[i], ow, na, arenaB, gcL, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Index" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        al_e(file, e[2], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Binary" {
+        al_e(file, e[2], ow, na, arenaB, gcL, diags)
+        al_e(file, e[3], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Unary" {
+        al_e(file, e[2], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Range" {
+        al_e(file, e[2], ow, na, arenaB, gcL, diags)
+        al_e(file, e[3], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Try" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            al_e(file, e[i2], ow, na, arenaB, gcL, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "StructLit" {
+        var lf = e[2]
+        var j: I32 = 1
+        while j < lf.len {
+            al_e(file, lf[j][2], ow, na, arenaB, gcL, diags)
+            j += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        al_b(file, e[1], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "If" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        al_b(file, e[2], ow, na, arenaB, gcL, diags)
+        al_e(file, e[3], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Match" {
+        al_e(file, e[1], ow, na, arenaB, gcL, diags)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            al_e(file, arms[i3][2], ow, na, arenaB, gcL, diags)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        al_e(file, e[3], ow, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Own" {
+        if e.len > 1 && !in_list(arenaB, e[1]) {
+            arenaB.push(e[1])
+        }
+        al_b(file, e[2], true, na, arenaB, gcL, diags)
+        return
+    }
+    if t == "Scope" {
+        al_b(file, e[2], ow, na, arenaB, gcL, diags)
+        return
+    }
+}
+fn al_b(file: List[Str], b: List[Str], ow: Bool, na: Bool, arenaB: List[Str], gcL: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            al_e(file, st[1], ow, na, arenaB, gcL, diags)
+        } else if t == "Expr" {
+            al_e(file, st[1], ow, na, arenaB, gcL, diags)
+        } else if t == "Let" {
+            var pat = st[2]
+            var init = st[4]
+            if ow {
+                var handled = false
+                if init.len > 0 && init[0] == "Ident" {
+                    var src = init[1]
+                    if in_list(arenaB, src) {
+                        arenaB = rm_name(arenaB, src)
+                        if pat[0] == "PatId" {
+                            arenaB.push(pat[1])
+                        }
+                        handled = true
+                    }
+                }
+                if !handled && init.len > 0 && init[0] == "Call" {
+                    var cal = init[1]
+                    if cal.len > 0 && cal[0] == "Member" && seq(mem_target(cal), "into_gc") {
+                        if pat[0] == "PatId" && !in_list(gcL, pat[1]) {
+                            gcL.push(pat[1])
+                        }
+                    } else if cal.len > 0 && cal[0] == "TypeArgs" && cal[1].len > 0 && cal[1][0] == "Member"
+                        && cal[1][1].len > 0 && cal[1][1][0] == "Ident" && seq(cal[1][1][1], "arena") {
+                        if pat[0] == "PatId" && !in_list(arenaB, pat[1]) {
+                            arenaB.push(pat[1])
+                        }
+                    }
+                }
+            }
+            al_e(file, init, ow, na, arenaB, gcL, diags)
+        } else if t == "While" {
+            al_e(file, st[1], ow, na, arenaB, gcL, diags)
+            al_b(file, st[2], ow, na, arenaB, gcL, diags)
+        } else if t == "For" {
+            al_e(file, st[2], ow, na, arenaB, gcL, diags)
+            al_b(file, st[3], ow, na, arenaB, gcL, diags)
+        } else if t == "Assign" {
+            al_e(file, st[1], ow, na, arenaB, gcL, diags)
+            al_e(file, st[3], ow, na, arenaB, gcL, diags)
+        }
+        i += 1
+    }
+    al_e(file, b[b.len - 1], ow, na, arenaB, gcL, diags)
+}
+fn sem_alloc(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var diags = List[Str]()
+    var arenaB = List[Str]()
+    var gcL = List[Str]()
+    var body = d[2]
+    var na = false
+    if tag != "Test" {
+        body = d[5]
+        if has_noalloc(d) { na = true }
+    }
+    al_b(file, body, false, na, arenaB, gcL, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
+fn trait_method_noalloc(file: List[Str], tr: Str, mnm: Str) -> Bool {
+    var td = decl_node(file, "Trait", tr)
+    if td.len > 0 {
+        var items = td[4]
+        var i: I32 = 1
+        while i < items.len {
+            var it = items[i]
+            if it[0] == "Method" && seq(it[1], mnm) && has_noalloc(it) {
+                return true
+            }
+            i += 1
+        }
+    }
+    return false
+}
+fn sem_walk2(file: List[Str]) -> Str {
+    var out = ""
+    var diags = List[Str]()
+    // 预扫描:class 名、fn 名+ret、attr
+    var cls = List[Str]()
+    var fns = List[Str]()
+    var rets = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        var t = d[0]
+        if t == "Class" {
+            cls.push(d[1])
+        } else if or2(t == "Fn", or2(t == "FnC", t == "FnPub")) {
+            fns.push(d[1])
+            rets.push(d[4])
+        } else if t == "Method" {
+            fns.push(d[1])
+            rets.push(d[4])
+        }
+        i += 1
+    }
+    // 声明序遍历
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        var t = d[0]
+        if t == "Struct" {
+            var nm = d[1]
+            var hit = false
+            var hn = ""
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len && !hit {
+                var f = fs[j]
+                var ty = f[3]
+                if ty[0] == "Named" {
+                    var h = ty[1]
+                    var k: I32 = 0
+                    while k < cls.len && !hit {
+                        if cls[k] == h {
+                            hit = true
+                            hn = f[2]
+                        }
+                        k += 1
+                    }
+                }
+                j += 1
+            }
+            if hit {
+                diags.push("W8010: struct 含类引用字段(浅拷贝):" + nm + "." + hn)
+            }
+        } else if or2(t == "Fn", or2(t == "FnC", t == "FnPub")) {
+            var ns = false
+            if d.len >= 7 && d[6] == "no_spawn" {
+                ns = true
+            }
+            walk_b(file, d[5], ns, fns, rets, diags)
+            var e6 = sem_e3060(file, d, t)
+            if e6 != "" {
+                diags.push(byte_slice(e6, 0, e6.len - 1))
+            }
+            var ckind = ""
+            if d.len >= 7 && d[6] == "pure" {
+                ckind = "E4020: pure 函数含能力调用(pure)"
+            } else if t == "FnC" {
+                ckind = "E6020: comptime 函数含能力调用(comptime)"
+            }
+            if ckind != "" {
+                var ec = sem_cap(file, d, ckind)
+                if ec != "" {
+                    diags.push(byte_slice(ec, 0, ec.len - 1))
+                }
+            }
+            if !(d.len >= 7 && d[6] == "no_spawn") {
+                var es = sem_spawn2(file, d, t)
+                if es != "" {
+                    diags.push(byte_slice(es, 0, es.len - 1))
+                }
+            }
+            var mv = sem_mv(file, d, t)
+            if mv != "" {
+                diags.push(byte_slice(mv, 0, mv.len - 1))
+            }
+            var ex = sem_exh(file, d, t)
+            if ex != "" {
+                diags.push(byte_slice(ex, 0, ex.len - 1))
+            }
+            var ac = sem_alloc(file, d, t)
+            if ac != "" {
+                diags.push(byte_slice(ac, 0, ac.len - 1))
+            }
+        } else if t == "Test" {
+            walk_b(file, d[2], false, fns, rets, diags)
+            var e6b = sem_e3060(file, d, "Test")
+            if e6b != "" {
+                diags.push(byte_slice(e6b, 0, e6b.len - 1))
+            }
+            var es2 = sem_spawn2(file, d, "Test")
+            if es2 != "" {
+                diags.push(byte_slice(es2, 0, es2.len - 1))
+            }
+            var mv2 = sem_mv(file, d, "Test")
+            if mv2 != "" {
+                diags.push(byte_slice(mv2, 0, mv2.len - 1))
+            }
+            var ex2 = sem_exh(file, d, "Test")
+            if ex2 != "" {
+                diags.push(byte_slice(ex2, 0, ex2.len - 1))
+            }
+            var ac2 = sem_alloc(file, d, "Test")
+            if ac2 != "" {
+                diags.push(byte_slice(ac2, 0, ac2.len - 1))
+            }
+        } else if t == "Static" {
+            if !send_of(file, d[3], 0) {
+                diags.push("E3031: static 存储非 Send(Send):" + d[1])
+            }
+        } else if t == "Impl" {
+            var tr = d[2]
+            var trname = ""
+            if tr.len > 0 && tr[0] == "Named" {
+                trname = tr[1]
+            }
+            var its = d[4]
+            var mi: I32 = 1
+            while mi < its.len {
+                var md = its[mi]
+                if md[0] == "Method" {
+                    var mna = or2(has_noalloc(md), trait_method_noalloc(file, trname, md[1]))
+                    if mna {
+                        var dl = List[Str]()
+                        var ab = List[Str]()
+                        var gl = List[Str]()
+                        al_b(file, md[5], false, true, ab, gl, dl)
+                        var qq: I32 = 0
+                        while qq < dl.len {
+                            diags.push(dl[qq])
+                            qq += 1
+                        }
+                    }
+                }
+                mi += 1
+            }
+        }
+        i += 1
+    }
+    var kk: I32 = 0
+    while kk < diags.len {
+        out = out + diags[kk] + "\n"
+        kk += 1
+    }
+    return out
+}
+fn seq2(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var j: I32 = 0
+    while j < a.len {
+        if byte_at(a, j) != byte_at(b, j) { return false }
+        j += 1
+    }
+    return true
+}
+
+// ---------------- C9b-0:Ctron 执行种子(数值子集树求值器) ----------------
+fn digit_of(c: I32) -> I32 {
+    if c >= 48 && c <= 57 { return c - 48 }
+    if c >= 97 && c <= 102 { return c - 97 + 10 }
+    if c >= 65 && c <= 70 { return c - 65 + 10 }
+    return 0
+}
+fn txt_num(t: Str) -> I32 {
+    // 支持 0x/0b/0o/十进制(去下划线)
+    var i: I32 = 0
+    var n = t.len
+    var radix: I32 = 10
+    if n >= 2 && byte_at(t, 0) == 48 && byte_at(t, 1) == 120 {
+        radix = 16
+        i = 2
+    }
+    if n >= 2 && byte_at(t, 0) == 48 && byte_at(t, 1) == 111 {
+        radix = 8
+        i = 2
+    }
+    if n >= 2 && byte_at(t, 0) == 48 && byte_at(t, 1) == 98 {
+        radix = 2
+        i = 2
+    }
+    var acc: I32 = 0
+    while i < n {
+        var c = byte_at(t, i)
+        if c == 95 {
+            i += 1
+        } else {
+            acc = acc * radix + digit_of(c)
+            i += 1
+        }
+    }
+    return acc
+}
+// ---------------- C9b①:Ctron 求值器扩面(纯函数式树行走) ----------------
+// 值 = List[Str]:[0]=类别 I(Int文本)/B(true|false)/S(文本)/V(void)/R(range)
+// env = 绑定 List(新在前);表达式求值线程 env/out;返回 [flow,env,val,out]
+// flow:k 正常 / r return / a 断言失败;run_stmt/run_block 返回 [flow,env,out,val]
+
+fn vI(x: I32) -> List[Str] {
+    var v = List[Str]()
+    v.push("I")
+    v.push(x.to_string())
+    return v
+}
+fn vB(b: Bool) -> List[Str] {
+    var v = List[Str]()
+    v.push("B")
+    if b {
+        v.push("true")
+    } else {
+        v.push("false")
+    }
+    return v
+}
+fn vS(s: Str) -> List[Str] {
+    var v = List[Str]()
+    v.push("S")
+    v.push(s)
+    return v
+}
+fn vV2() -> List[Str] {
+    var v = List[Str]()
+    v.push("V")
+    return v
+}
+fn dvi(t: Str) -> I32 {
+    var neg = false
+    var k: I32 = 0
+    if t.len > 0 && byte_at(t, 0) == 45 {
+        neg = true
+        k = 1
+    }
+    var acc: I32 = 0
+    while k < t.len {
+        acc = acc * 10 + byte_at(t, k) - 48
+        k += 1
+    }
+    if neg {
+        return 0 - acc
+    }
+    return acc
+}
+fn truth(v: List[Str]) -> Bool {
+    var k = v[0]
+    if k == "B" {
+        return seq2(v[1], "true")
+    }
+    if k == "I" {
+        return dvi(v[1]) != 0
+    }
+    return true
+}
+fn veq(a: List[Str], b: List[Str]) -> Bool {
+    var ka = a[0]
+    var kb = b[0]
+    if ka == "I" && kb == "I" {
+        return dvi(a[1]) == dvi(b[1])
+    }
+    if ka == "B" && kb == "B" {
+        return seq2(a[1], b[1])
+    }
+    if ka == "S" && kb == "S" {
+        return seq2(a[1], b[1])
+    }
+    return false
+}
+fn scmp(a: Str, b: Str) -> I32 {
+    var n = a.len
+    if b.len < n {
+        n = b.len
+    }
+    var i: I32 = 0
+    while i < n {
+        var x = byte_at(a, i)
+        var y = byte_at(b, i)
+        if x < y {
+            return -1
+        }
+        if x > y {
+            return 1
+        }
+        i += 1
+    }
+    if a.len < b.len {
+        return -1
+    }
+    if a.len > b.len {
+        return 1
+    }
+    return 0
+}
+fn vcmp(a: List[Str], b: List[Str]) -> I32 {
+    if a[0] == "S" && b[0] == "S" {
+        return scmp(a[1], b[1])
+    }
+    var x = dvi(a[1])
+    var y = dvi(b[1])
+    if x < y {
+        return -1
+    }
+    if x > y {
+        return 1
+    }
+    return 0
+}
+fn ari(op: Str, x: I32, y: I32) -> I32 {
+    if op == "Add" {
+        return x + y
+    }
+    if op == "Sub" {
+        return x - y
+    }
+    if op == "Mul" {
+        return x * y
+    }
+    if op == "Div" {
+        return x / y
+    }
+    if op == "Mod" {
+        return x % y
+    }
+    if op == "WrapAdd" {
+        return x + y
+    }
+    if op == "WrapSub" {
+        return x - y
+    }
+    if op == "AddEq" {
+        return x + y
+    }
+    if op == "SubEq" {
+        return x - y
+    }
+    if op == "MulEq" {
+        return x * y
+    }
+    if op == "DivEq" {
+        return x / y
+    }
+    if op == "ModEq" {
+        return x % y
+    }
+    return 0
+}
+fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
+    return vI(ari(op, dvi(a[1]), dvi(b[1])))
+}
+fn fmt(v: List[Str]) -> Str {
+    var k = v[0]
+    if k == "I" {
+        return v[1]
+    }
+    if k == "B" {
+        return v[1]
+    }
+    if k == "S" {
+        return v[1]
+    }
+    return ""
+}
+fn env_at(env: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if seq2(en[0], nm) {
+            return en
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn env_add(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var en = List[Str]()
+    en.push(nm)
+    en.push(val)
+    out.push(en)
+    var i: I32 = 0
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+fn env_set(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var done = false
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if !done && seq2(en[0], nm) {
+            var nb = List[Str]()
+            nb.push(nm)
+            nb.push(val)
+            out.push(nb)
+            done = true
+        } else {
+            out.push(en)
+        }
+        i += 1
+    }
+    return out
+}
+fn env_drop(env: List[Str], n: I32) -> List[Str] {
+    var out = List[Str]()
+    var i = n
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+fn e4(fl: Str, env: List[Str], vv: List[Str], out: Str) -> List[Str] {
+    var r = List[Str]()
+    r.push(fl)
+    r.push(env)
+    r.push(vv)
+    r.push(out)
+    return r
+}
+fn s4(fl: Str, env: List[Str], out: Str, vv: List[Str]) -> List[Str] {
+    var r = List[Str]()
+    r.push(fl)
+    r.push(env)
+    r.push(out)
+    r.push(vv)
+    return r
+}
+fn expr_of_text(s: Str) -> List[Str] {
+    var toks = List[Str]()
+    scan(s, toks)
+    var cur = Atomic[I32](0)
+    return p_stmt_expr(toks, cur)
+}
+fn find_decl(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        var tt = d[0]
+        if seq2(d[1], nm) && or3(seq2(tt, "Fn"), seq2(tt, "FnPub"), seq2(tt, "FnC")) {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn eval_str(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+    var parts = e[1]
+    var acc = ""
+    var env2 = env
+    var j: I32 = 1
+    while j < parts.len {
+        var p = parts[j]
+        if p[0] == "Text" {
+            acc = acc + p[1]
+        } else {
+            var ex = expr_of_text(p[1])
+            var er = eval_expr(file, env2, out, ex)
+            out = er[3]
+            if er[0] != "k" {
+                return er
+            }
+            env2 = er[1]
+            acc = acc + fmt(er[2])
+        }
+        j += 1
+    }
+    return e4("k", env2, vS(acc), out)
+}
+fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+    var t = e[0]
+    if t == "Int" {
+        return e4("k", env, vI(txt_num(e[1])), out)
+    }
+    if t == "Bool" {
+        if seq2(e[1], "true") {
+            return e4("k", env, vB(true), out)
+        }
+        return e4("k", env, vB(false), out)
+    }
+    if t == "Str" {
+        return eval_str(file, env, out, e)
+    }
+    if t == "Ident" {
+        var en = env_at(env, e[1])
+        if en.len > 0 {
+            return e4("k", env, en[1], out)
+        }
+        panic("unbound:" + e[1])
+        return e4("a", env, vV2(), out)
+    }
+    if t == "Unary" {
+        var ur = eval_expr(file, env, out, e[2])
+        if ur[0] != "k" {
+            return ur
+        }
+        if seq2(e[1], "Neg") {
+            return e4("k", ur[1], vI(0 - dvi(ur[2][1])), ur[3])
+        }
+        return e4("k", ur[1], vB(!truth(ur[2])), ur[3])
+    }
+    if t == "Binary" {
+        var op = e[1]
+        if seq2(op, "AndAnd") {
+            var lr = eval_expr(file, env, out, e[2])
+            if lr[0] != "k" {
+                return lr
+            }
+            if !truth(lr[2]) {
+                return e4("k", lr[1], vB(false), lr[3])
+            }
+            var rr = eval_expr(file, lr[1], lr[3], e[3])
+            if rr[0] != "k" {
+                return rr
+            }
+            return e4("k", rr[1], vB(truth(rr[2])), rr[3])
+        }
+        var lr2 = eval_expr(file, env, out, e[2])
+        if lr2[0] != "k" {
+            return lr2
+        }
+        var rr2 = eval_expr(file, lr2[1], lr2[3], e[3])
+        if rr2[0] != "k" {
+            return rr2
+        }
+        var a = lr2[2]
+        var b = rr2[2]
+        if seq2(op, "Eq") {
+            return e4("k", rr2[1], vB(veq(a, b)), rr2[3])
+        }
+        if seq2(op, "Ne") {
+            return e4("k", rr2[1], vB(!veq(a, b)), rr2[3])
+        }
+        if seq2(op, "Lt") {
+            return e4("k", rr2[1], vB(vcmp(a, b) < 0), rr2[3])
+        }
+        if seq2(op, "Gt") {
+            return e4("k", rr2[1], vB(vcmp(a, b) > 0), rr2[3])
+        }
+        if seq2(op, "Le") {
+            return e4("k", rr2[1], vB(vcmp(a, b) <= 0), rr2[3])
+        }
+        if seq2(op, "Ge") {
+            return e4("k", rr2[1], vB(vcmp(a, b) >= 0), rr2[3])
+        }
+        if seq2(op, "Add") {
+            if a[0] == "S" && b[0] == "S" {
+                return e4("k", rr2[1], vS(fmt(a) + fmt(b)), rr2[3])
+            }
+            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+        }
+        if or3(seq2(op, "Sub"), seq2(op, "Mul"), seq2(op, "Div")) {
+            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+        }
+        if seq2(op, "Mod") {
+            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+        }
+        if or2(seq2(op, "WrapAdd"), seq2(op, "WrapSub")) {
+            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+        }
+        panic("binop:" + op)
+        return e4("a", env, vV2(), out)
+    }
+    if t == "Range" {
+        var fr = eval_expr(file, env, out, e[2])
+        if fr[0] != "k" {
+            return fr
+        }
+        var tr = eval_expr(file, fr[1], fr[3], e[3])
+        if tr[0] != "k" {
+            return tr
+        }
+        var rv = List[Str]()
+        rv.push("R")
+        rv.push(e[1])
+        rv.push(fr[2])
+        rv.push(tr[2])
+        return e4("k", tr[1], rv, tr[3])
+    }
+    if t == "Member" {
+        var ob = eval_expr(file, env, out, e[1])
+        if ob[0] != "k" {
+            return ob
+        }
+        var recv = ob[2]
+        if seq2(e[2], "Nm") {
+            var m = e[3]
+            if seq2(m, "len") {
+                if recv[0] == "S" {
+                    return e4("k", ob[1], vI(recv[1].len), ob[3])
+                }
+                panic("len target")
+                return e4("a", env, vV2(), out)
+            }
+            panic("member:" + m)
+            return e4("a", env, vV2(), out)
+        }
+        panic("tindex")
+        return e4("a", env, vV2(), out)
+    }
+    if t == "If" {
+        var cr = eval_expr(file, env, out, e[1])
+        if cr[0] != "k" {
+            return cr
+        }
+        if truth(cr[2]) {
+            var br = run_block(file, cr[1], cr[3], e[2])
+            return e4(br[0], br[1], br[3], br[2])
+        }
+        var el = e[3]
+        if el[0] == "None" {
+            return e4("k", cr[1], vV2(), cr[3])
+        }
+        return eval_expr(file, cr[1], cr[3], el)
+    }
+    if t == "BlockExpr" {
+        var br = run_block(file, env, out, e[1])
+        return e4(br[0], br[1], br[3], br[2])
+    }
+    if t == "TypeArgs" {
+        return eval_expr(file, env, out, e[1])
+    }
+    if t == "Call" {
+        return eval_call(file, env, out, e)
+    }
+    if t == "Void" {
+        return e4("k", env, vV2(), out)
+    }
+    panic("expr:" + t)
+    return e4("a", env, vV2(), out)
+}
+fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> List[Str] {
+    var ps = d[3]
+    var nenv = List[Str]()
+    var k: I32 = 1
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            nenv = env_add(nenv, pr[2], vals[k - 1])
+        }
+        k += 1
+    }
+    var br = run_block(file, nenv, out, d[5])
+    var fl = "k"
+    if br[0] == "a" {
+        fl = "a"
+    }
+    return e4(fl, env, br[3], br[2])
+}
+fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> List[Str] {
+    if seq2(nm, "print") {
+        if vals.len == 1 {
+            return e4("k", env, vV2(), out + fmt(vals[0]))
+        }
+        panic("print arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "println") {
+        if vals.len == 1 {
+            return e4("k", env, vV2(), out + fmt(vals[0]) + "\n")
+        }
+        panic("println arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "assert") {
+        if vals.len == 1 {
+            if truth(vals[0]) {
+                return e4("k", env, vV2(), out)
+            }
+            return e4("a", env, vS("assert failed"), out)
+        }
+        panic("assert arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "assert_eq") {
+        if vals.len == 2 {
+            if veq(vals[0], vals[1]) {
+                return e4("k", env, vV2(), out)
+            }
+            return e4("a", env, vS("assert_eq failed: " + fmt(vals[0]) + " != " + fmt(vals[1])), out)
+        }
+        panic("assert_eq arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "assert_ne") {
+        if vals.len == 2 {
+            if !veq(vals[0], vals[1]) {
+                return e4("k", env, vV2(), out)
+            }
+            return e4("a", env, vS("assert_ne failed: " + fmt(vals[0]) + " != " + fmt(vals[1])), out)
+        }
+        panic("assert_ne arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "byte_at") {
+        if vals.len == 2 && vals[0][0] == "S" && vals[1][0] == "I" {
+            return e4("k", env, vI(byte_at(vals[0][1], dvi(vals[1][1]))), out)
+        }
+        panic("byte_at arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "byte_slice") {
+        if vals.len == 3 && vals[0][0] == "S" && vals[1][0] == "I" && vals[2][0] == "I" {
+            return e4("k", env, vS(byte_slice(vals[0][1], dvi(vals[1][1]), dvi(vals[2][1]))), out)
+        }
+        panic("byte_slice arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "panic") {
+        if vals.len == 1 {
+            panic(fmt(vals[0]))
+        }
+        panic("panic arity")
+        return e4("a", env, vV2(), out)
+    }
+    var d = find_decl(file, nm)
+    if d.len == 0 {
+        panic("no fn:" + nm)
+        return e4("a", env, vV2(), out)
+    }
+    return call_decl_vals(file, env, out, d, vals)
+}
+fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: List[Str]) -> List[Str] {
+    var ob = eval_expr(file, env, out, cal[1])
+    if ob[0] != "k" {
+        return ob
+    }
+    var recv = ob[2]
+    var m = cal[3]
+    if seq2(m, "to_string") {
+        if vals.len == 0 {
+            return e4("k", ob[1], vS(fmt(recv)), ob[3])
+        }
+        panic("to_string arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(m, "slice") {
+        if vals.len == 1 && recv[0] == "S" && vals[0][0] == "R" {
+            var rv = vals[0]
+            var lo = dvi(rv[2][1])
+            var hi = dvi(rv[3][1])
+            if seq2(rv[1], "true") {
+                hi += 1
+            }
+            if lo < 0 {
+                lo = 0
+            }
+            var L = recv[1].len
+            if hi > L {
+                hi = L
+            }
+            if hi < lo {
+                hi = lo
+            }
+            return e4("k", ob[1], vS(byte_slice(recv[1], lo, hi)), ob[3])
+        }
+        panic("slice args")
+        return e4("a", env, vV2(), out)
+    }
+    panic("method:" + m)
+    return e4("a", env, vV2(), out)
+}
+fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+    var ag = e[2]
+    var vals = List[Str]()
+    var env2 = env
+    var out2 = out
+    var i: I32 = 1
+    while i < ag.len {
+        var ar = eval_expr(file, env2, out2, ag[i])
+        if ar[0] != "k" {
+            return ar
+        }
+        env2 = ar[1]
+        out2 = ar[3]
+        vals.push(ar[2])
+        i += 1
+    }
+    var cal = e[1]
+    if cal[0] == "Ident" {
+        return call_id(file, env2, out2, cal[1], vals)
+    }
+    if cal[0] == "Member" {
+        return call_mem(file, env2, out2, cal, vals)
+    }
+    panic("call target")
+    return e4("a", env, vV2(), out)
+}
+fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[Str] {
+    var t = st[0]
+    if t == "Return" {
+        if st[1][0] == "None" {
+            return s4("r", env, out, vV2())
+        }
+        var er = eval_expr(file, env, out, st[1])
+        if er[0] != "k" {
+            return s4(er[0], er[1], er[3], er[2])
+        }
+        return s4("r", er[1], er[3], er[2])
+    }
+    if t == "Let" {
+        var pat = st[2]
+        if pat[0] == "PatId" {
+            var er = eval_expr(file, env, out, st[4])
+            if er[0] != "k" {
+                return s4(er[0], er[1], er[3], er[2])
+            }
+            return s4("k", env_add(er[1], pat[1], er[2]), er[3], vV2())
+        }
+        if pat[0] == "PatWild" {
+            var er = eval_expr(file, env, out, st[4])
+            if er[0] != "k" {
+                return s4(er[0], er[1], er[3], er[2])
+            }
+            return s4("k", er[1], er[3], vV2())
+        }
+        panic("let pat:" + pat[0])
+        return s4("a", env, out, vV2())
+    }
+    if t == "Expr" {
+        var er = eval_expr(file, env, out, st[1])
+        return s4(er[0], er[1], er[3], er[2])
+    }
+    if t == "Assign" {
+        var tg = st[1]
+        if tg[0] == "Ident" {
+            var nm = tg[1]
+            var en = env_at(env, nm)
+            if en.len == 0 {
+                panic("unbound:" + nm)
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op = st[2]
+            var nv = vr[2]
+            if !seq2(op, "Eq") {
+                var oa = en[1]
+                nv = vI(ari(op, dvi(oa[1]), dvi(nv[1])))
+            }
+            return s4("k", env_set(vr[1], nm, nv), vr[3], vV2())
+        }
+        panic("assign target:" + tg[0])
+        return s4("a", env, out, vV2())
+    }
+    if t == "While" {
+        var go = true
+        var envw = env
+        var outw = out
+        while go {
+            var cr = eval_expr(file, envw, outw, st[1])
+            if cr[0] != "k" {
+                return s4(cr[0], cr[1], cr[3], cr[2])
+            }
+            envw = cr[1]
+            outw = cr[3]
+            if truth(cr[2]) {
+                var br = run_block(file, envw, outw, st[2])
+                if br[0] != "k" {
+                    return s4(br[0], br[1], br[2], br[3])
+                }
+                envw = br[1]
+                outw = br[2]
+            } else {
+                go = false
+            }
+        }
+        return s4("k", envw, outw, vV2())
+    }
+    if t == "For" {
+        var pat = st[1]
+        var nm = "_"
+        if pat[0] == "PatId" {
+            nm = pat[1]
+        }
+        var ir = eval_expr(file, env, out, st[2])
+        if ir[0] != "k" {
+            return s4(ir[0], ir[1], ir[3], ir[2])
+        }
+        var it = ir[2]
+        if it[0] != "R" {
+            panic("for iter not range")
+            return s4("a", env, out, vV2())
+        }
+        var lo = dvi(it[2][1])
+        var hi = dvi(it[3][1])
+        var incl = seq2(it[1], "true")
+        var envw = ir[1]
+        var outw = ir[3]
+        var cur = lo
+        var more = true
+        if incl {
+            if cur > hi {
+                more = false
+            }
+        } else {
+            if cur >= hi {
+                more = false
+            }
+        }
+        while more {
+            var eit = env_add(envw, nm, vI(cur))
+            var br = run_block(file, eit, outw, st[3])
+            if br[0] != "k" {
+                return s4(br[0], br[1], br[2], br[3])
+            }
+            envw = env_drop(br[1], 1)
+            outw = br[2]
+            cur += 1
+            if incl {
+                if cur > hi {
+                    more = false
+                }
+            } else {
+                if cur >= hi {
+                    more = false
+                }
+            }
+        }
+        return s4("k", envw, outw, vV2())
+    }
+    panic("stmt:" + t)
+    return s4("a", env, out, vV2())
+}
+fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str]) -> List[Str] {
+    var flow = "k"
+    var env = env0
+    var o2 = out
+    var val = vV2()
+    var i: I32 = 1
+    while i < blk.len - 1 {
+        if flow == "k" {
+            var sr = run_stmt(file, env, o2, blk[i])
+            flow = sr[0]
+            env = sr[1]
+            o2 = sr[2]
+            val = sr[3]
+        }
+        i += 1
+    }
+    if flow == "k" {
+        var tl = blk[blk.len - 1]
+        if tl[0] == "None" {
+            val = vV2()
+        } else {
+            var er = eval_expr(file, env, o2, tl)
+            flow = er[0]
+            env = er[1]
+            val = er[2]
+            o2 = er[3]
+        }
+    }
+    var extra = env.len - env0.len
+    if extra > 0 {
+        env = env_drop(env, extra)
+    }
+    return s4(flow, env, o2, val)
+}
+fn run_tests(file: List[Str]) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Test" {
+            var br = run_block(file, List[Str](), "", d[2])
+            if br[0] == "a" {
+                return br
+            }
+        }
+        i += 1
+    }
+    return s4("k", List[Str](), "", vV2())
+}
+
+// ---------------- C9c:统一 cc 驱动(parse → 单文件语义 12 项 → run) ----------------
+// 语义阶段:sems != ""(Ctron sem_walk2 逐条 "CODE: msg")→ 打印并止(编译失败)
+// 运行阶段:文件含 fn main → 解释 main;否则解释 test 块(全过返回 0)
+fn main() -> I32 {
+    let src = read_file("../selfhosted/input_cc.ct")
+    match src {
+        Some(s) => {
+            var toks = List[Str]()
+            scan(s, toks)
+            var cur = Atomic[I32](0)
+            var file = p_file(toks, cur)
+            var sems = sem_walk2(file)
+            if !seq2(sems, "") {
+                print(sems)
+                return 1
+            }
+            var d = find_decl(file, "main")
+            if d.len > 0 {
+                var br = run_block(file, List[Str](), "", d[5])
+                if br[0] == "a" {
+                    print(fmt(br[3]))
+                    return 1
+                }
+                print(br[2])
+                return 0
+            }
+            var tr = run_tests(file)
+            if tr[0] == "a" {
+                print(fmt(tr[3]))
+                return 1
+            }
+            return 0
+        }
+        None => {
+            print("read-failed")
+            return 1
+        }
+    }
+}

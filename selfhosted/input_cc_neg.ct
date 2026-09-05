@@ -1,0 +1,11 @@
+class Box2 {
+    var v: I32
+}
+
+struct Pair {
+    var b: Box2
+}
+
+fn main() -> I32 {
+    return 0
+}
