@@ -34,7 +34,7 @@ static void sb_s(sb* b, const char* s) {
         while (*s) sb_c(b, *s++);
 }
 static void sb_f(sb* b, const char* fmt, ...) {
-    char tmp[512];
+    char tmp[4096];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(tmp, sizeof tmp, fmt, ap);
@@ -44,15 +44,18 @@ static void sb_f(sb* b, const char* fmt, ...) {
 static void sb_free(sb* b) { free(b->d); }
 
 // ================= 类型模型 =================
-enum { T_UNK, T_INT, T_FLT, T_BOOL };
+enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR };
 typedef struct {
     int k;
     int bits, us;
+    int ek, ebits, eus; // T_ARR:元素类型(扁平;不支持嵌套数组)
 } ty;
-static ty ty_int(int bits, int us) { ty t = {T_INT, bits, us}; return t; }
-static ty ty_flt(void) { ty t = {T_FLT, 64, 0}; return t; }
-static ty ty_bool(void) { ty t = {T_BOOL, 1, 0}; return t; }
-static ty ty_unk(void) { ty t = {T_UNK, 0, 0}; return t; }
+static ty ty_int(int bits, int us) { ty t = {T_INT, bits, us, 0, 0, 0}; return t; }
+static ty ty_flt(void) { ty t = {T_FLT, 64, 0, 0, 0, 0}; return t; }
+static ty ty_bool(void) { ty t = {T_BOOL, 1, 0, 0, 0, 0}; return t; }
+static ty ty_unk(void) { ty t = {T_UNK, 0, 0, 0, 0, 0}; return t; }
+static ty ty_str(void) { ty t = {T_STR, 0, 0, 0, 0, 0}; return t; }
+static ty ty_arr(ty elem) { ty t = {T_ARR, 0, 0, elem.k, elem.bits, elem.us}; return t; }
 
 static ty suff_ty(const char* s) {
     int bits = 32, us = 0, isf = 0;
@@ -70,8 +73,18 @@ static ty suff_ty(const char* s) {
     return isf ? ty_flt() : ty_int(bits, us);
 }
 static ty decl_ty(const cty* t) {
-    if (!t || t->kind != TY_NAMED || t->npath != 1) return ty_unk();
+    if (!t) return ty_unk();
+    if (t->kind == TY_SLICE) {
+        ty e = decl_ty(t->sub);
+        return e.k == T_UNK ? ty_unk() : ty_arr(e);
+    }
+    if (t->kind == TY_ARRAY) {
+        ty e = decl_ty(t->elem);
+        return e.k == T_UNK ? ty_unk() : ty_arr(e); // 维度不校验(对齐 rt)
+    }
+    if (t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];
+    if (!strcmp(n, "Str")) return ty_str();
     if (!strcmp(n, "Bool")) return ty_bool();
     static const struct { const char* n; int bits, us; } IS[] = {
         {"I8", 8, 0}, {"I16", 16, 0}, {"I32", 32, 0}, {"I64", 64, 0}, {"ISize", 64, 0},
@@ -82,7 +95,16 @@ static ty decl_ty(const cty* t) {
     if (!strcmp(n, "F32") || !strcmp(n, "F64")) return ty_flt();
     return ty_unk();
 }
+static const char* ctype_of(ty t);
+static const char* wlname(ty t);
+static const char* ewlname(ty t) { if (t.ek == T_STR) return "str"; if (t.ek == T_FLT) return "f64"; if (t.ek == T_BOOL) return "b"; ty e = ty_int(t.ebits, t.eus); return wlname(e); }
 static const char* ctype_of(ty t) {
+    if (t.k == T_STR) return "const char*";
+    if (t.k == T_ARR) {
+        static char buf[48];
+        snprintf(buf, sizeof buf, "ctron_arr_%s", ewlname(t));
+        return buf;
+    }
     if (t.k == T_FLT) return "double";
     if (t.k == T_BOOL) return "int";
     if (t.us) {
@@ -101,6 +123,7 @@ static const char* ctype_of(ty t) {
     }
 }
 static const char* wlname(ty t) {
+    if (t.k == T_STR) return "str";
     if (t.k == T_FLT) return "f64";
     if (t.k == T_BOOL) return "b";
     static char buf[8];
@@ -122,6 +145,8 @@ typedef struct {
     sb head, body;
     char* helpers[160];
     size_t n_helpers;
+    char* arrs[32]; // 已用数组元素宽度(ctron_arr_<wl> typedef)
+    size_t n_arrs;
     struct { char* name; ty ret; int nparams; int is_void; } fns[MAX_FNS];
     size_t nfns;
     scope* sc;
@@ -141,6 +166,11 @@ static void terr(tc* c, const char* fmt, ...) {
     vsnprintf(buf, sizeof buf, fmt, ap);
     va_end(ap);
     c->err = ctron_arena_strndup(c->a, buf, strlen(buf));
+}
+static void use_arr(tc* c, const char* wl) {
+    for (size_t i = 0; i < c->n_arrs; i++)
+        if (!strcmp(c->arrs[i], wl)) return;
+    if (c->n_arrs < 32) c->arrs[c->n_arrs++] = ctron_arena_strndup(c->a, wl, strlen(wl));
 }
 static void use_helper(tc* c, const char* name) {
     for (size_t i = 0; i < c->n_helpers; i++)
@@ -207,6 +237,27 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         sb_f(o, "(int64_t)(%s)", e->text && *e->text ? e->text : "0");
         return t;
     }
+    case EX_STR: {
+        // v1:纯文本字面量(0 个或全 TEXT 部件;插值 → C10-c)
+        int pure_text = 1;
+        for (size_t i = 0; i < e->nsparts; i++)
+            if (e->sparts[i].kind != PART_TEXT) pure_text = 0;
+        if (pure_text) {
+            sb_s(o, "\"");
+            for (size_t i = 0; i < e->nsparts; i++) {
+                const char* p = e->sparts[i].s ? e->sparts[i].s : "";
+                for (; *p; p++) {
+                    if (*p == '"' || *p == '\\') sb_c(o, '\\');
+                    if (*p == '\n') { sb_s(o, "\\n"); continue; }
+                    sb_c(o, *p);
+                }
+            }
+            sb_s(o, "\"");
+            return ty_str();
+        }
+        terr(c, "v1:字符串插值不支持(C10-c)");
+        return ty_unk();
+    }
     case EX_FLOAT:
         sb_f(o, "(double)(%s)", e->text && *e->text ? e->text : "0");
         return ty_flt();
@@ -220,6 +271,27 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             return t;
         }
         terr(c, "v1 未解析名称:%s", e->text);
+        return ty_unk();
+    }
+    case EX_MEMBER: {
+        if (!e->m_is_name || !e->mname) { terr(c, "v1:成员访问不支持"); return ty_unk(); }
+        const char* m = e->mname;
+        sb ob = {0};
+        ty ot = emit_expr(c, e->obj, &ob);
+        if (c->err) { sb_free(&ob); return ty_unk(); }
+        const char* ov = ob.d ? ob.d : "0";
+        if (ot.k == T_ARR && !strcmp(m, "len")) {
+            sb_f(o, "((%s).n)", ov);
+            sb_free(&ob);
+            return ty_int(64, 0);
+        }
+        if (ot.k == T_STR) {
+            if (!strcmp(m, "len")) { use_helper(c, "ctron_str_len"); sb_f(o, "ctron_str_len(%s)", ov); sb_free(&ob); return ty_int(64, 0); }
+            if (!strcmp(m, "char_len")) { use_helper(c, "ctron_str_char_len"); sb_f(o, "ctron_str_char_len(%s)", ov); sb_free(&ob); return ty_int(64, 0); }
+            if (!strcmp(m, "to_string")) { sb_s(o, ov); sb_free(&ob); return ty_str(); }
+        }
+        terr(c, "v1:成员 .%s 不支持(目标类型 %d)", m, (int)ot.k);
+        sb_free(&ob);
         return ty_unk();
     }
     case EX_UNARY: {
@@ -266,13 +338,26 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (e->bop >= B_EQ && e->bop <= B_GE) {
             const char* op = e->bop == B_EQ ? "==" : e->bop == B_NE ? "!="
                             : e->bop == B_LT ? "<" : e->bop == B_GT ? ">" : e->bop == B_LE ? "<=" : ">=";
-            if (lt.k == T_INT && rt.k == T_INT)
+            if (lt.k == T_STR && rt.k == T_STR) {
+                use_helper(c, "ctron_str_cmp");
+                const char* c2 = !strcmp(op, "==") ? "==" : !strcmp(op, "!=") ? "!="
+                                : !strcmp(op, "<") ? "<" : !strcmp(op, ">") ? ">" : !strcmp(op, "<=") ? "<=" : ">=";
+                sb_f(o, "(ctron_str_cmp(%s, %s) %s 0)", l.d ? l.d : "0", r.d ? r.d : "0", c2);
+            } else if (lt.k == T_INT && rt.k == T_INT)
                 sb_f(o, "((__int128)(%s) %s (__int128)(%s))", l.d ? l.d : "0", op, r.d ? r.d : "0");
             else
                 sb_f(o, "((%s) %s (%s))", l.d ? l.d : "0", op, r.d ? r.d : "0");
             sb_free(&l);
             sb_free(&r);
             return ty_bool();
+        }
+        if ((lt.k == T_STR || rt.k == T_STR) && e->bop == B_ADD) {
+            if (lt.k != T_STR || rt.k != T_STR) { terr(c, "v1:Str 拼接需两侧 Str"); sb_free(&l); sb_free(&r); return ty_unk(); }
+            use_helper(c, "ctron_str_concat");
+            sb_f(o, "ctron_str_concat(%s, %s)", l.d ? l.d : "\"\"", r.d ? r.d : "\"\"");
+            sb_free(&l);
+            sb_free(&r);
+            return ty_str();
         }
         if (lt.k == T_FLT || rt.k == T_FLT) {
             if (e->bop == B_WADD || e->bop == B_WSUB) terr(c, "v1:回绕算符需整型");
@@ -303,8 +388,93 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         sb_free(&r);
         return lt;
     }
+    case EX_ARRAY: {
+        if (e->nelems == 0) { terr(c, "v1:空数组字面量需注解推导(v1 拒绝)"); return ty_unk(); }
+        sb elems = {0};
+        ty et = ty_unk();
+        for (size_t i = 0; i < e->nelems; i++) {
+            if (i) sb_s(&elems, ", ");
+            sb a1 = {0};
+            ty it = emit_expr(c, e->elems[i], &a1);
+            if (i == 0) et = it;
+            else if (it.k != et.k || it.bits != et.bits || it.us != et.us)
+                terr(c, "v1:数组字面量元素类型不一致");
+            sb_s(&elems, a1.d ? a1.d : "0");
+            sb_free(&a1);
+        }
+        if (c->err) { sb_free(&elems); return ty_unk(); }
+        if (et.k != T_INT && et.k != T_FLT && et.k != T_BOOL && et.k != T_STR) {
+            terr(c, "v1:数组元素类型不支持");
+            sb_free(&elems);
+            return ty_unk();
+        }
+        char wl[16];
+        if (et.k == T_STR) snprintf(wl, sizeof wl, "str");
+        else snprintf(wl, sizeof wl, "%s", wlname(et));
+        use_arr(c, wl);
+        char h[64];
+        snprintf(h, sizeof h, "ctron_arr_%s_lit", wl);
+        use_helper(c, h);
+
+        const char* lit_t = et.k == T_STR ? "const char*"
+                          : et.k == T_FLT ? "double"
+                          : (et.us && et.bits >= 64) ? "uint64_t" : "int64_t";
+        sb_f(o, "%s(%lld, (%s[]){%s})", h, (long long)e->nelems, lit_t, elems.d ? elems.d : "");
+        sb_free(&elems);
+        return ty_arr(et);
+    }
+    case EX_INDEX: {
+        // v1:obj 仅标识符(数组);str 索引走 byte_at
+        if (!e->obj || e->obj->kind != EX_IDENT) { terr(c, "v1:索引目标仅标识符"); return ty_unk(); }
+        ty t;
+        if (!scope_find(c, e->obj->text, &t)) { terr(c, "v1 未解析名称:%s", e->obj->text); return ty_unk(); }
+        if (t.k != T_ARR) { terr(c, "v1:索引目标需数组"); return ty_unk(); }
+        use_helper(c, "ctron_idx");
+        sb ix = {0};
+        emit_expr(c, e->index, &ix);
+        if (c->err) { sb_free(&ix); return ty_unk(); }
+        sb_f(o, "%s.d[ctron_idx(%s.n, %s)]", e->obj->text, e->obj->text, ix.d ? ix.d : "0");
+        sb_free(&ix);
+        ty e2 = ty_int(t.ebits, t.eus);
+        if (t.ek == T_FLT) e2 = ty_flt();
+        if (t.ek == T_BOOL) e2 = ty_bool();
+        if (t.ek == T_STR) e2 = ty_str();
+        return e2;
+    }
     case EX_CALL: {
         cexpr* cal = e->callee;
+        // Str 成员方法:contains/slice/to_string(rt 内建;必须在具名函数门之前)
+        if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname) {
+            sb rob = {0};
+            ty rt3 = emit_expr(c, cal->obj, &rob);
+            if (c->err) { sb_free(&rob); return ty_unk(); }
+            if (rt3.k == T_STR && !strcmp(cal->mname, "contains")) {
+                if (e->nelems != 1) { terr(c, "v1:contains 实参"); sb_free(&rob); return ty_unk(); }
+                sb a1 = {0};
+                emit_expr(c, e->elems[0], &a1);
+                use_helper(c, "ctron_str_contains");
+                sb_f(o, "ctron_str_contains(%s, %s)", rob.d ? rob.d : "\"\"", a1.d ? a1.d : "\"\"");
+                sb_free(&a1); sb_free(&rob);
+                return ty_bool();
+            }
+            if (rt3.k == T_STR && !strcmp(cal->mname, "slice")) {
+                if (e->nelems != 1 || e->elems[0]->kind != EX_RANGE) { terr(c, "v1:slice 需 range"); sb_free(&rob); return ty_unk(); }
+                sb a1 = {0}, a2 = {0};
+                emit_expr(c, e->elems[0]->from, &a1);
+                emit_expr(c, e->elems[0]->to, &a2);
+                use_helper(c, "ctron_str_slice");
+                sb_f(o, "ctron_str_slice(%s, %s, %s, %d)", rob.d ? rob.d : "\"\"",
+                     a1.d ? a1.d : "0", a2.d ? a2.d : "0", e->elems[0]->inclusive ? 1 : 0);
+                sb_free(&a1); sb_free(&a2); sb_free(&rob);
+                return ty_str();
+            }
+            if (rt3.k == T_STR && !strcmp(cal->mname, "to_string")) {
+                sb_s(o, rob.d ? rob.d : "\"\"");
+                sb_free(&rob);
+                return ty_str();
+            }
+            sb_free(&rob);
+        }
         const char* nm = (cal && cal->kind == EX_IDENT) ? cal->text : NULL;
         if (!nm) { terr(c, "v1 仅支持具名函数调用"); return ty_unk(); }
         sb args = {0};
@@ -316,6 +486,27 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_free(&a1);
         }
         if (c->err) { sb_free(&args); return ty_unk(); }
+        if (!strcmp(nm, "byte_at")) {
+            if (e->nelems != 2) { terr(c, "v1:byte_at 实参"); sb_free(&args); return ty_unk(); }
+            sb a1 = {0}, a2 = {0};
+            emit_expr(c, e->elems[0], &a1);
+            emit_expr(c, e->elems[1], &a2);
+            use_helper(c, "ctron_byte_at");
+            sb_f(o, "ctron_byte_at(%s, %s)", a1.d ? a1.d : "0", a2.d ? a2.d : "0");
+            sb_free(&a1); sb_free(&a2); sb_free(&args);
+            return ty_int(32, 0);
+        }
+        if (!strcmp(nm, "byte_slice")) {
+            if (e->nelems != 3) { terr(c, "v1:byte_slice 实参"); sb_free(&args); return ty_unk(); }
+            sb a1 = {0}, a2 = {0}, a3 = {0};
+            emit_expr(c, e->elems[0], &a1);
+            emit_expr(c, e->elems[1], &a2);
+            emit_expr(c, e->elems[2], &a3);
+            use_helper(c, "ctron_byte_slice");
+            sb_f(o, "ctron_byte_slice(%s, %s, %s)", a1.d ? a1.d : "0", a2.d ? a2.d : "0", a3.d ? a3.d : "0");
+            sb_free(&a1); sb_free(&a2); sb_free(&a3); sb_free(&args);
+            return ty_str();
+        }
         if (!strcmp(nm, "panic")) {
             if (e->nelems != 1 || e->elems[0]->kind != EX_STR)
                 terr(c, "v1:panic 需单个字面量实参");
@@ -448,6 +639,45 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
         return;
     }
     case ST_ASSIGN: {
+        // 索引赋值:arr[i] = v / arr[i] op= v(rt:"="/"idx assign")
+        if (st->target && st->target->kind == EX_INDEX && st->target->obj
+            && st->target->obj->kind == EX_IDENT) {
+            const char* on = st->target->obj->text;
+            ty t;
+            if (!scope_find(c, on, &t)) { terr(c, "v1 未解析名称:%s", on); return; }
+            if (t.k != T_ARR) { terr(c, "v1:索引赋值目标需数组"); return; }
+            use_helper(c, "ctron_idx");
+            sb ix = {0}, rhs = {0};
+            emit_expr(c, st->target->index, &ix);
+            emit_expr(c, st->value, &rhs);
+            if (c->err) { sb_free(&ix); sb_free(&rhs); return; }
+            ty e2 = ty_int(t.ebits, t.eus);
+            if (t.ek == T_FLT) e2 = ty_flt();
+            if (t.ek == T_BOOL) e2 = ty_bool();
+            if (t.ek == T_STR) e2 = ty_str();
+            if (st->aop == A_EQ) {
+                if (e2.k == T_INT) {
+                    char h[64];
+                    snprintf(h, sizeof h, "ctron_decl_%s", wlname(e2));
+                    use_helper(c, h);
+                    sb_f(o, "%s.d[ctron_idx(%s.n, %s)] = %s(%s);\n", on, on, ix.d ? ix.d : "0", h, rhs.d ? rhs.d : "0");
+                } else {
+                    sb_f(o, "%s.d[ctron_idx(%s.n, %s)] = %s;\n", on, on, ix.d ? ix.d : "0", rhs.d ? rhs.d : "0");
+                }
+            } else {
+                if (e2.k != T_INT) { terr(c, "v1:复合索引赋值需整型"); sb_free(&ix); sb_free(&rhs); return; }
+                const char* fam = st->aop == A_ADDEQ ? "iadd" : st->aop == A_SUBEQ ? "isub"
+                                : st->aop == A_MULEQ ? "imul" : st->aop == A_DIVEQ ? "idiv" : "imod";
+                char h[64];
+                snprintf(h, sizeof h, "ctron_%s_%s", fam, wlname(e2));
+                use_helper(c, h);
+                sb_f(o, "%s.d[ctron_idx(%s.n, %s)] = %s(%s.d[ctron_idx(%s.n, %s)], %s);\n",
+                     on, on, ix.d ? ix.d : "0", h, on, on, ix.d ? ix.d : "0", rhs.d ? rhs.d : "0");
+            }
+            sb_free(&ix);
+            sb_free(&rhs);
+            return;
+        }
         if (!st->target || st->target->kind != EX_IDENT) { terr(c, "v1:赋值目标仅支持标识符"); return; }
         const char* name = st->target->text;
         ty t;
@@ -511,6 +741,32 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
         return;
     }
     case ST_FOR: {
+        // for x in <数组>
+        if (st->iter && st->iter->kind != EX_RANGE) {
+            if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name) { terr(c, "v1:for 模式仅标识符"); return; }
+            const char* var = st->pat->name;
+            if (is_reserved(var)) { terr(c, "v1:标识符保留前缀 ctron_:%s", var); return; }
+            sb it = {0};
+            ty it_t = emit_expr(c, st->iter, &it);
+            if (c->err) { sb_free(&it); return; }
+            if (it_t.k != T_ARR) { terr(c, "v1:for 需要 range 或数组"); sb_free(&it); return; }
+            ty e2 = ty_int(it_t.ebits, it_t.eus);
+            if (it_t.ek == T_FLT) e2 = ty_flt();
+            if (it_t.ek == T_BOOL) e2 = ty_bool();
+            if (it_t.ek == T_STR) e2 = ty_str();
+            char iname[32];
+            snprintf(iname, sizeof iname, "ctron_it_%d", c->tmpn++);
+            sb_f(o, "{ %s %s = %s; for (int64_t ctron_i = 0; ctron_i < %s.n; ctron_i++) {",
+                 ctype_of(it_t), iname, it.d ? it.d : "0", iname);
+            sb_free(&it);
+            scope_push(c);
+            scope_def(c, var, e2);
+            sb_f(o, " %s %s = %s.d[ctron_i];", ctype_of(e2), var, iname);
+            emit_block(c, st->body, o);
+            scope_pop(c);
+            sb_s(o, "}}\n");
+            return;
+        }
         if (!st->iter || st->iter->kind != EX_RANGE) { terr(c, "v1:for 仅支持 range"); return; }
         if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name) { terr(c, "v1:for 模式仅标识符"); return; }
         const char* var = st->pat->name;
@@ -565,7 +821,16 @@ static void wbounds(char* lo, char* hi, size_t n, int bits, int us) {
 static void emit_helper(tc* c, const char* name) {
     // name 形如 ctron_<fam>_<wl>;fam ∈ add/sub/mul/div/mod/neg/wadd/wsub/decl/print/assert_eq/assert_ne
     char fam[32], wl[16];
-    if (!strncmp(name, "ctron_assert_eq_", 16)) {
+    if (!strcmp(name, "ctron_str_len")) { snprintf(fam, sizeof fam, "str_len"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_str_char_len")) { snprintf(fam, sizeof fam, "str_char_len"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_str_contains")) { snprintf(fam, sizeof fam, "str_contains"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_str_cmp")) { snprintf(fam, sizeof fam, "str_cmp"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_str_concat")) { snprintf(fam, sizeof fam, "str_concat"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_str_slice")) { snprintf(fam, sizeof fam, "str_slice"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_byte_at")) { snprintf(fam, sizeof fam, "byte_at"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_byte_slice")) { snprintf(fam, sizeof fam, "byte_slice"); wl[0] = 0; }
+    else if (!strcmp(name, "ctron_idx")) { snprintf(fam, sizeof fam, "idx"); wl[0] = 0; }
+    else if (!strncmp(name, "ctron_assert_eq_", 16)) {
         snprintf(fam, sizeof fam, "assert_eq");
         snprintf(wl, sizeof wl, "%s", name + 16);
     } else if (!strncmp(name, "ctron_assert_ne_", 16)) {
@@ -575,11 +840,12 @@ static void emit_helper(tc* c, const char* name) {
         return;
     }
     int bits = 32, us = 0, isf = 0, isb = 0;
-    if (!strcmp(wl, "f64")) isf = 1;
-    else if (!strcmp(wl, "b")) isb = 1;
-    else { us = wl[0] == 'u'; bits = atoi(wl + 1); }
+    int nowl = wl[0] == 0;
+    if (!nowl && !strcmp(wl, "f64")) isf = 1;
+    else if (!nowl && !strcmp(wl, "b")) isb = 1;
+    else if (!nowl) { us = wl[0] == 'u'; bits = atoi(wl + 1); }
     char ct[32], lo[48], hi[48];
-    if (!isf && !isb) {
+    if (!isf && !isb && !nowl) {
         ty t = ty_int(bits, us);
         snprintf(ct, sizeof ct, "%s", ctype_of(t));
         wbounds(lo, hi, sizeof lo, bits, us);
@@ -588,14 +854,18 @@ static void emit_helper(tc* c, const char* name) {
     if (!strcmp(fam, "add") || !strcmp(fam, "sub") || !strcmp(fam, "mul")
         || !strcmp(fam, "div") || !strcmp(fam, "mod") || !strcmp(fam, "cadd")
         || !strcmp(fam, "csub") || !strcmp(fam, "cmul") || !strcmp(fam, "cdiv")
-        || !strcmp(fam, "cmod")) {
-        int is_c = fam[0] == 'c';
+        || !strcmp(fam, "cmod") || !strcmp(fam, "iadd") || !strcmp(fam, "isub")
+        || !strcmp(fam, "imul") || !strcmp(fam, "idiv") || !strcmp(fam, "imod")) {
+        int is_c = 0;
+        if (fam[0] == 'c') is_c = 1;      // cadd… → "(assign)"
+        else if (fam[0] == 'i') is_c = 2; // iadd… → "(idx assign)"
         const char* base = is_c ? fam + 1 : fam;
         const char* op = !strcmp(base, "add") ? "+" : !strcmp(base, "sub") ? "-" : !strcmp(base, "mul") ? "*"
                         : !strcmp(base, "div") ? "/" : "%";
         const char* zmsg = !strcmp(base, "div") ? "division by zero (/)" : "division by zero (%)";
         char omsg[48];
-        if (is_c) snprintf(omsg, sizeof omsg, "integer overflow (assign)");
+        if (is_c == 1) snprintf(omsg, sizeof omsg, "integer overflow (assign)");
+        else if (is_c == 2) snprintf(omsg, sizeof omsg, "integer overflow (idx assign)");
         else snprintf(omsg, sizeof omsg, "integer overflow (%s)", op);
         sb_f(o, "static %s %s(int64_t a, int64_t b) {\n", ct, name);
         if (!strcmp(base, "div") || !strcmp(base, "mod"))
@@ -632,6 +902,65 @@ static void emit_helper(tc* c, const char* name) {
         sb_f(o, "}\n");
         return;
     }
+    if (!strcmp(fam, "str_len")) { sb_f(o, "static int64_t %s(const char* s) { return (%s)(s ? strlen(s) : 0); }\n", name, "int64_t"); return; }
+    if (!strcmp(fam, "str_char_len")) {
+        sb_f(o, "static int64_t %s(const char* s) { int64_t n = 0; const unsigned char* p = (const unsigned char*)(s ? s : \"\"); while (*p) { if ((*p & 0xC0) != 0x80) n++; p++; } return n; }\n", name);
+        return;
+    }
+    if (!strcmp(fam, "str_contains")) {
+        sb_f(o, "static int %s(const char* s, const char* x) { return strstr(s ? s : \"\", x ? x : \"\") != 0; }\n", name);
+        return;
+    }
+    if (!strcmp(fam, "str_cmp")) {
+        sb_f(o, "static int %s(const char* a, const char* b) { return strcmp(a ? a : \"\", b ? b : \"\"); }\n", name);
+        return;
+    }
+    if (!strcmp(fam, "str_concat")) {
+        sb_f(o, "static const char* %s(const char* a, const char* b) {\n"
+              "    size_t n1 = a ? strlen(a) : 0, n2 = b ? strlen(b) : 0;\n"
+              "    char* r = (char*)malloc(n1 + n2 + 1);\n"
+              "    if (n1) memcpy(r, a, n1);\n"
+              "    if (n2) memcpy(r + n1, b, n2);\n"
+              "    r[n1 + n2] = 0;\n"
+              "    return r;\n}\n", name);
+        return;
+    }
+    if (!strcmp(fam, "str_slice")) {
+        sb_f(o, "static const char* %s(const char* s, int64_t lo, int64_t hi, int incl) {\n"
+              "    size_t len = s ? strlen(s) : 0;\n"
+              "    int64_t l = lo < 0 ? 0 : lo;\n"
+              "    int64_t h = incl ? hi + 1 : hi;\n"
+              "    if (h > (int64_t)len) h = len;\n"
+              "    if (l < (int64_t)len && ((unsigned char)s[l] & 0xC0) == 0x80) ctron_panic(\"invalid utf8 boundary (utf8)\");\n"
+              "    if (h < (int64_t)len && ((unsigned char)s[h] & 0xC0) == 0x80) ctron_panic(\"invalid utf8 boundary (utf8)\");\n"
+              "    if (l < 0 || h < l) ctron_panic(\"invalid utf8 boundary (utf8)\");\n"
+              "    char* r = (char*)malloc((size_t)(h - l) + 1);\n"
+              "    if (h > l) memcpy(r, s + l, (size_t)(h - l));\n"
+              "    r[h - l] = 0;\n"
+              "    return r;\n}\n", name);
+        return;
+    }
+    if (!strcmp(fam, "byte_at")) {
+        sb_f(o, "static int %s(const char* s, int64_t i) {\n"
+              "    size_t len = s ? strlen(s) : 0;\n"
+              "    if (i < 0 || (unsigned long long)i >= len) ctron_panic(\"index out of bounds\");\n"
+              "    return (unsigned char)s[i];\n}\n", name);
+        return;
+    }
+    if (!strcmp(fam, "byte_slice")) {
+        sb_f(o, "static const char* %s(const char* s, int64_t a, int64_t b) {\n"
+              "    size_t len = s ? strlen(s) : 0;\n"
+              "    if (a < 0 || b > (int64_t)len || a > b) ctron_panic(\"byte_slice 越界\");\n"
+              "    char* r = (char*)malloc((size_t)(b - a) + 1);\n"
+              "    if (b > a) memcpy(r, s + a, (size_t)(b - a));\n"
+              "    r[b - a] = 0;\n"
+              "    return r;\n}\n", name);
+        return;
+    }
+    if (!strcmp(fam, "idx")) {
+        sb_f(o, "static int64_t %s(int64_t n, int64_t i) { if (i < 0 || i >= n) ctron_panic(\"index out of bounds\"); return i; }\n", name);
+        return;
+    }
     if (!strcmp(fam, "decl")) {
         sb_f(o, "static %s %s(int64_t v) {\n", ct, name);
         if (us)
@@ -640,6 +969,10 @@ static void emit_helper(tc* c, const char* name) {
             sb_f(o, "    if ((__int128)v < (__int128)(%s) || (__int128)v > (__int128)(%s)) ctron_panic(\"integer overflow (decl)\");\n",
                  lo, hi);
         sb_f(o, "    return (%s)v;\n}\n", ct);
+        return;
+    }
+    if (!strcmp(fam, "print") && !strcmp(wl, "str")) {
+        sb_f(o, "static void %s(const char* v) { printf(\"%%s\", v ? v : \"\"); }\n", name);
         return;
     }
     if (!strcmp(fam, "print")) {
@@ -653,11 +986,37 @@ static void emit_helper(tc* c, const char* name) {
             sb_f(o, "static void %s(int64_t v) { printf(\"%%lld\", (long long)v); }\n", name);
         return;
     }
+    if (!strncmp(name, "ctron_arr_", 10)) {
+        // name: ctron_arr_<wl>_lit
+        char wl[16];
+        snprintf(wl, sizeof wl, "%s", name + 10);
+        wl[strlen(wl) - 4] = 0; // 去掉 _lit
+        if (!strcmp(wl, "str"))
+            sb_f(o, "static ctron_arr_str %s(int64_t n, const char** vals) { ctron_arr_str r; r.n = n; r.d = (const char**)calloc((size_t)(n ? n : 1), sizeof(const char*)); for (int64_t i = 0; i < n; i++) r.d[i] = vals[i] ? vals[i] : \"\"; return r; }\n", name);
+        else if (!strncmp(wl, "f", 1)) {
+            sb_f(o, "static ctron_arr_%s %s(int64_t n, double* vals) { ctron_arr_%s r; r.n = n; r.d = (double*)calloc((size_t)(n ? n : 1), sizeof(double)); for (int64_t i = 0; i < n; i++) r.d[i] = vals[i]; return r; }\n",
+                 wl, name, wl);
+        } else {
+            int ub = wl[0] == 'u';
+            int bits = atoi(wl + 1);
+            ty t = ty_int(bits, ub);
+            if (bits < 64)
+                sb_f(o, "static ctron_arr_%s %s(int64_t n, int64_t* vals) { ctron_arr_%s r; r.n = n; r.d = (%s*)calloc((size_t)(n ? n : 1), sizeof(%s)); for (int64_t i = 0; i < n; i++) r.d[i] = (%s)vals[i]; return r; }\n",
+                     wl, name, wl, ctype_of(t), ctype_of(t), ctype_of(t));
+            else
+                sb_f(o, "static ctron_arr_%s %s(int64_t n, uint64_t* vals) { ctron_arr_%s r; r.n = n; r.d = (%s*)calloc((size_t)(n ? n : 1), sizeof(%s)); for (int64_t i = 0; i < n; i++) r.d[i] = (%s)vals[i]; return r; }\n",
+                     wl, name, wl, ctype_of(t), ctype_of(t), ctype_of(t));
+        }
+        return;
+    }
     if (!strcmp(fam, "assert_eq") || !strcmp(fam, "assert_ne")) {
         int ne = !strcmp(fam, "assert_ne");
         const char* label = ne ? "assert_ne failed" : "assert_eq failed";
         const char* cmp = ne ? "!=" : "==";
-        if (isf) {
+        if (!strcmp(wl, "str")) {
+            sb_f(o, "static void %s(const char* a, const char* b) { if (!(strcmp(a ? a : \"\", b ? b : \"\") %s 0)) { char m[256]; snprintf(m, sizeof m, \"%s: %%s != %%s\", a ? a : \"\", b ? b : \"\"); ctron_panic(m); } }\n",
+                 name, ne ? "!=" : "==", label);
+        } else if (isf) {
             sb_f(o, "static void %s(double a, double b) {\n", name);
             sb_f(o, "    char x[64], y[64];\n");
             sb_f(o, "    if (a == (double)(long long)a) snprintf(x, sizeof x, \"%%.1f\", a); else snprintf(x, sizeof x, \"%%g\", a);\n");
@@ -790,9 +1149,10 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
 
     if (!c.err) {
         sb* h = &c.head;
-        sb_s(h, "/* 由 ctronc trans(C10-a)生成;语义对齐 rt.c 解释器 */\n"
+        sb_s(h, "/* 由 ctronc trans(C10-a/b)生成;语义对齐 rt.c 解释器 */\n"
                 "#include <stdio.h>\n#include <stdint.h>\n#include <stdlib.h>\n"
                 "#include <string.h>\n#include <setjmp.h>\n\n"
+                "typedef struct { const char** d; int64_t n; } ctron_arr_str;\n"
                 "static jmp_buf ctron_panic_frame;\n"
                 "static _Noreturn void ctron_panic(const char* msg) {\n"
                 "    fprintf(stderr, \"%s\\n\", msg);\n"
@@ -800,6 +1160,12 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
                 "}\n"
                 "static void ctron_print_nl(void) { printf(\"\\n\"); }\n"
                 "static void ctron_assert(int v) { if (!v) ctron_panic(\"assert failed\"); }\n");
+        for (size_t i = 0; i < c.n_arrs; i++) {
+            const char* wl = c.arrs[i];
+            if (!strcmp(wl, "str")) continue; // typedef 已在头部
+            const char* dt = !strncmp(wl, "f", 1) ? "double" : (wl[0] == 'u' && atoi(wl + 1) >= 64) ? "uint64_t" : ctype_of(ty_int(atoi(wl + 1), wl[0] == 'u'));
+            sb_f(h, "typedef struct { %s* d; int64_t n; } ctron_arr_%s;\n", dt, wl);
+        }
         for (size_t i = 0; i < c.n_helpers; i++)
             emit_helper(&c, c.helpers[i]);
         for (size_t i = 0; i < f->ndecls; i++) {

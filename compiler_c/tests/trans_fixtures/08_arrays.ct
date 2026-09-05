@@ -1,0 +1,20 @@
+// 08_arrays.ct —— 定长数组/切片/索引读写/for-in/Str 数组(差分)
+test "arrays" {
+    let a: I32[3] = [1, 2, 3]
+    assert_eq(a[0], 1)
+    assert_eq(a.len, 3)
+    let xs: I32[] = [1, 2, 3, 4]
+    var acc: I32 = 0
+    for x in xs { acc += x }
+    assert_eq(acc, 10)
+    var m: I32[] = [5, 6, 7]
+    m[1] = 60
+    m[2] += 1
+    assert_eq(m[1], 60)
+    assert_eq(m[2], 8)
+    let ws: Str[] = ["a", "b"]
+    assert_eq(ws.len, 2)
+    assert_eq(ws[1], "b")
+    let fs: F64[] = [1.5, 2.5]
+    assert_eq(fs[0] + fs[1], 4.0)
+}

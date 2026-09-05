@@ -1,0 +1,21 @@
+// 07_str.ct —— Str 域:字面量/拼接/比较/len/char_len/contains/slice(差分)
+fn main() -> I32 {
+    let a = "hello"
+    let b = "world"
+    let c = a + " " + b
+    print(c)
+    println("")
+    println(c.len)
+    println(c.char_len)
+    if c.contains("lo w") { println(1) }
+    let d = c.slice(0..5)
+    println(d)
+    assert_eq(d, "hello")
+    let bs = byte_slice(c, 6, 11)
+    assert_eq(bs, "world")
+    assert_eq(byte_at(c, 0), 104)
+    assert("cb" < "da")
+    let empty = ""
+    assert_eq(empty.len, 0)
+    return 0
+}

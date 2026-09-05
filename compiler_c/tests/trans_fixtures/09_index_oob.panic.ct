@@ -1,0 +1,6 @@
+// 09_index_oob.panic.ct —— 索引越界
+test "oob" {
+    let a: I32[] = [1, 2, 3]
+    assert_eq(a[5], 0)
+}
+//@ panic: index out of bounds
