@@ -79,11 +79,13 @@ struct·class 字段存在性(调用者位置跳过;prop·impl 一并识别)。�
 61 文件全部 neg/lint marker 命中(单文件与模块级);行为语料零诊断。详见
 `docs/superpowers/plans/2026-09-05-c-sem.md` 与 `docs/superpowers/plans/2026-09-05-c-pkg.md`。
 
-## 后续里程碑(C 版路线,独立推进)
+## 编辑器支持(DX) runtime 扩展(服务 `ctronc run` 域)
 
-| 里程碑 | 内容 | 出口 |
-|---|---|---|
-### C4-a…h 解释器 ✅(28 文件 62 test 块)
+- **I/O 内建**:`read_line()`(stdin 读一行,EOF 空串)/ `read_bytes(n)`(恰好读 n 字节)/ `flush_out()`(print 缓冲立即落盘)——语言服务器(`../lsp/`)与管道程序的基础设施;不影响 suite_rt 契约(测试不调用这些名字)。
+- **`byte_at` O(1) 快路径**:非尾字节直取,疑似结尾才回退全检(语义不变)。
+- **`call_decl` 实参求值修复**:实参先在调用方环境求值,再进被调环境绑定——修复形参遮蔽调用方同各局部导致的错误求值(如 `or3(b == 34, b == 92, b < 32)` 中形参 `b` 撞名);`make test` 全套绿(61 文件 + 208 diff 用例)。
+
+## 后续里程碑(C 版路线,独立推进)
 `src/rt.c` + `suite_rt`:纯数值/逻辑/字符串/范围域 5 文件 16 test 块真实运行通过,panic 消息断言;
 GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详见
 `docs/superpowers/plans/2026-09-05-c-rt.md`。

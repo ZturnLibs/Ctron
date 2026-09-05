@@ -1,6 +1,12 @@
 # Ctron 编辑器支持分析:VSCode 语法高亮、智能提示与工具链集成
 
-状态:分析提案(v0.1,2026-09-05)
+状态:**已落地第一版**(v0.1 → 实现,2026-09-05)
+- Phase 0 已交付:`editors/vscode-ctron/`(grammar/language-configuration/snippets/手写 LSP 客户端,零 npm 依赖)
+- LSP 已交付:**用 Ctron 语言实现**(`lsp/src/main.ct`,单文件,经 `ctronc run` 解释运行)——与自举路线一致;诊断(词法 E1001 族)/大纲/hover/补全/定义跳转已可用
+- 运行时新增(rt.c):`read_line` / `read_bytes` / `flush_out` 三个 I/O 内建(LSP/管道程序的基础设施)、`byte_at` O(1) 快路径;并修复 `call_decl` 实参在被调环境求值导致形参遮蔽调用方同各局部的语义 bug(全套测试 61 文件 + 208 diff 用例保持绿)
+- 验收:78 文件(51 语料 + 26 selfhost + LSP 自身)灌入服务器零 panic;全协议链路(含 didChange 即时报 E1001、UTF-8 透传)端到端通过
+
+原始分析(保留供后续阶段参考):
 目标:以最小成本让 `.ct` 文件获得一等开发体验——高亮、补全、诊断、跳转、重构。
 
 ---
@@ -172,10 +178,10 @@ editors/
 
 | 阶段 | 内容 | 工作量 | 出口 |
 |---|---|---|---|
-| P0 | Layer 1 全套(高亮/缩进/片段) | 1~2 天 | .vsix 可装,61 语料高亮正确 |
-| P1 | 包装式诊断 LSP | 1 天 | 保存即出错误码诊断 |
-| P2 | Rust 嵌入 LSP:诊断+outline+hover | 2~4 天 | 打开即诊断,大纲可用 |
-| P3 | 补全/定义/引用/重命名 + prelude.json 生成 | 1~2 周 | 语义补全与跳转可用 |
+| P0 | Layer 1 全套(高亮/缩进/片段) | ✅ 已交付 | .vsix 可装,语料高亮正确 |
+| P1 | 包装式诊断 LSP | ✅(直接并入 P2) | 保存即出错误码诊断 |
+| P2 | 嵌入式 LSP:诊断+outline+hover | ✅(Ctron 实现) | 打开即诊断,大纲可用 |
+| P3 | 补全/定义/引用/重命名 + prelude.json 生成 | 部分(补全/定义已交付;引用/重命名待 sem) | 语义补全与跳转可用 |
 | P4 | semantic tokens / inlay / quick fixes / CodeLens / AST 视图 | 持续 | 与 §10 fixes 契约闭环 |
 | P5 | ctron-fmt(规范已定义唯一形态)+ 自宿主 LSP | 随自举路线 | 生态完备 |
 
