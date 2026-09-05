@@ -69,6 +69,7 @@ fn scan(src: Str, toks: List[Str]) {
     while i < n {
         var b = byte_at(src, i)
         if b == 10 {
+            toks.push("NL")
             i += 1
         } else if or3(b == 32, b == 9, b == 13) {
             i += 1
@@ -184,6 +185,21 @@ fn scan(src: Str, toks: List[Str]) {
                 i += 2
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 toks.push("&&")
+                i += 2
+            } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("+=")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("-=")
+                i += 2
+            } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("*=")
+                i += 2
+            } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("/=")
+                i += 2
+            } else if b == 37 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("%=")
                 i += 2
             } else {
                 toks.push(byte_slice(src, i, i + 1))
@@ -389,7 +405,8 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
     var e = parse_primary(toks, cur)
     var go = true
     while go {
-        if tok(toks, cur) == "(" {
+        var t = tok(toks, cur)
+        if t == "(" {
             adv(cur)
             var args = ""
             var k: I32 = 0
@@ -413,6 +430,16 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
             }
             adv(cur)
             e = "Call \{ callee: " + e + ", args: [" + args + "] }"
+        } else if t == "." {
+            adv(cur)
+            var nm = tok(toks, cur)
+            adv(cur)
+            e = "Member \{ obj: " + e + ", target: Name(\"" + nm + "\")}"
+        } else if t == "[" {
+            adv(cur)
+            var ix = parse_expr(toks, cur)
+            adv(cur)
+            e = "Index \{ obj: " + e + ", index: " + ix + "}"
         } else {
             go = false
         }
@@ -436,8 +463,29 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
         adv(cur)
         return e
     }
+    if t == "if" {
+        return parse_if(toks, cur)
+    }
     adv(cur)
     return "Ident(\"" + t + "\")"
+}
+
+fn parse_if(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    var cond = parse_expr(toks, cur)
+    adv(cur)
+    var thenb = parse_block(toks, cur)
+    var els = "None"
+    if tok(toks, cur) == "else" {
+        adv(cur)
+        if tok(toks, cur) == "if" {
+            els = parse_if(toks, cur)
+        } else {
+            adv(cur)
+            els = "BlockExpr(" + parse_block(toks, cur) + ")"
+        }
+    }
+    return "If \{ cond: " + cond + ", then: " + thenb + ", els: " + els + "}"
 }
 
 fn parse_type(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -452,6 +500,9 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
     var tail = "None"
     var go = true
     while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
         var t = tok(toks, cur)
         if t == "}" {
             go = false
@@ -483,10 +534,82 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
             }
             ss = ss + "Return(" + e + ")"
             k += 1
+        } else if t == "while" {
+            adv(cur)
+            var cond = parse_expr(toks, cur)
+            adv(cur)
+            var body = parse_block(toks, cur)
+            if k > 0 {
+                ss = ss + ", "
+            }
+            ss = ss + "While \{ cond: " + cond + ", body: " + body + "}"
+            k += 1
+        } else if t == "for" {
+            adv(cur)
+            var pn = tok(toks, cur)
+            adv(cur)
+            adv(cur)
+            var iter = parse_expr(toks, cur)
+            adv(cur)
+            var body = parse_block(toks, cur)
+            if k > 0 {
+                ss = ss + ", "
+            }
+            ss = ss + "For \{ pattern: Ident(\"" + pn + "\"), iter: " + iter + ", body: " + body + "}"
+            k += 1
         } else {
-            tail = parse_expr(toks, cur)
-            go = false
+            var e = parse_expr(toks, cur)
+            var t2 = tok(toks, cur)
+            var op = ""
+            if t2 == "=" {
+                op = "Eq"
+            }
+            if t2 == "+=" {
+                op = "AddEq"
+            }
+            if t2 == "-=" {
+                op = "SubEq"
+            }
+            if t2 == "*=" {
+                op = "MulEq"
+            }
+            if t2 == "/=" {
+                op = "DivEq"
+            }
+            if t2 == "%=" {
+                op = "ModEq"
+            }
+            if op == "" {
+                var nx = t2
+                if nx == "NL" {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
+                    nx = tok(toks, cur)
+                }
+                if nx == "}" {
+                    tail = e
+                    go = false
+                } else {
+                    if k > 0 {
+                        ss = ss + ", "
+                    }
+                    ss = ss + "Expr(" + e + ")"
+                    k += 1
+                }
+            } else {
+                adv(cur)
+                var v = parse_expr(toks, cur)
+                if k > 0 {
+                    ss = ss + ", "
+                }
+                ss = ss + "Assign \{ target: " + e + ", op: " + op + ", value: " + v + "}"
+                k += 1
+            }
         }
+    }
+    while tok(toks, cur) == "NL" {
+        adv(cur)
     }
     adv(cur)
     return "Block \{ stmts: [" + ss + "], tail: " + tail + "}"
@@ -536,15 +659,23 @@ fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
 fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
     var out = "File \{ decls: ["
     var k: I32 = 0
-    while tok(toks, cur) != "#EOF" {
-        var d = parse_fn(toks, cur)
-        if k > 0 {
-            out = out + ",\n  "
-        } else {
-            out = out + "\n  "
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
         }
-        out = out + d
-        k += 1
+        if tok(toks, cur) == "#EOF" {
+            go = false
+        } else {
+            var d = parse_fn(toks, cur)
+            if k > 0 {
+                out = out + ",\n  "
+            } else {
+                out = out + "\n  "
+            }
+            out = out + d
+            k += 1
+        }
     }
     out = out + "\n] }\n"
     return out

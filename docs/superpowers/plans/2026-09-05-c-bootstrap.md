@@ -41,8 +41,15 @@
    下划线/一元/区间/布尔/嵌套优先级/调用实参)与 C `ctron_file_show` **逐字节一致**;
    suite_diff 第 9 用例(seq=3 解析差分)通过。钉子再记:字符串字面量内 `{` 需 `\{` 转义
    (否则按插值扫描)。60 用例全过;ASan/UBSan 全绿。
-6. **C6b(下一阶梯)**:解析子集扩面(Let/If/Match/Str 部件/成员·索引/类型形参/测试声明
-   …→ 全语法递归下降),再对真实语料做 parse-AST 差分;随后语义层、删 C 版,固定点为远期终点。
+6. **C6b①(本文件交付)**:解析子集扩至常用语句/表达式 —— 换行改记号为 "NL" token(否则
+   无法区分 Expr 语句与尾表达式,钉子:C 以换行定语句边界),parse_block/file 按 C skip_newlines
+   位点消费;新增 Assign(含 += -= *= /= %=)/While/For/If(else/else-if/尾表达式)
+   语句,成员 .m、索引 [i]、多参调用后缀;扫描器补复合赋值最长匹配。input_parse_ast.ct 扩至
+   17 fn(member/index/复合赋值/循环/if 三态/else-if 链/Expr(If) 语句),与 C `ctron_file_show`
+   **逐字节一致**;suite_diff 60 用例全过;ASan/UBSan 全绿。
+7. **C6b②(下一阶梯)**:字符串字面量部件(Text/Interp,含转义解码与 qstr 再编码)、test 声明、
+   类型后缀(Optional/List[T]/Fn/切片)、match/模式、struct/class/enum 声明 → 全语法后对真实语料做
+   parse-AST 差分。
 
 ## 冻结纪律
 
