@@ -24,6 +24,11 @@ static const char* const SUPPORTED[] = {
     "03c_str_string.ct",
     "02_option_result.ct",
     "03d_props_traits.ct",
+    "05_own.ct",
+    "05g_into_gc_isolation.ct",
+    "05i_deep_cause.ct",
+    "06g_noalloc_trait.ct",
+    "05d_drop.ct",
 };
 
 static int supported(const char* n) {

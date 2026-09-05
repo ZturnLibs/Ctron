@@ -16,7 +16,9 @@
 
 // ================= 值 =================
 typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE,
-                V_STRUCT, V_BOX, V_ERR } vkind;
+                V_STRUCT, V_BOX, V_ERR, V_LIST, V_ATOM } vkind;
+typedef struct listnode listnode;
+typedef struct atomcell atomcell;
 typedef struct vfld vfld;
 typedef struct errval errval;
 typedef struct boxval boxval;
@@ -43,11 +45,15 @@ typedef struct val {
     size_t nfld;
     boxval* bx;        // V_BOX
     errval* err;       // V_ERR
+    listnode* lst;     // V_LIST
+    atomcell* atom;    // V_ATOM
 } val;
 
 struct vfld { const char* name; val v; };
 struct boxval { val inner; };
 struct errval { char* msg; val cause; };
+struct listnode { struct val* items; size_t n; size_t cap; };
+struct atomcell { __int128 v; int bits; int us; };
 
 static val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
 static val v_flt(double f) { val v = {0}; v.k = V_FLOAT; v.f = f; return v; }
@@ -392,6 +398,40 @@ static val call_prop_body(rt* R, const cprop* P, val self) {
     return res;
 }
 
+
+static val v_list(rt* R) {
+    val v = {0};
+    v.k = V_LIST;
+    listnode* ln = (listnode*)ctron_arena_alloc(R->a, sizeof(listnode));
+    v.lst = ln;
+    return v;
+}
+static val v_atom(rt* R, __int128 x, int bits, int us) {
+    val v = {0};
+    v.k = V_ATOM;
+    atomcell* c = (atomcell*)ctron_arena_alloc(R->a, sizeof(atomcell));
+    c->v = x;
+    c->bits = bits;
+    c->us = us;
+    v.atom = c;
+    return v;
+}
+static void list_push(rt* R, listnode* ln, val item) {
+    if (ln->n == ln->cap) {
+        size_t nc = ln->cap ? ln->cap * 2 : 4;
+        val* ni = (val*)ctron_arena_alloc(R->a, nc * sizeof(val));
+        for (size_t i = 0; i < ln->n; i++) ni[i] = ln->items[i];
+        ln->items = ni;
+        ln->cap = nc;
+    }
+    ln->items[ln->n++] = item;
+}
+static val list_clone_deep(rt* R, const listnode* ln) {
+    val v = v_list(R);
+    for (size_t i = 0; i < ln->n; i++) list_push(R, v.lst, clone_val(R, ln->items[i]));
+    return v;
+}
+
 static int val_eq(rt* R, val a, val b) {
     (void)R;
     if (a.k == V_INT && b.k == V_INT) return a.i == b.i;
@@ -537,6 +577,27 @@ static void eval_stmt(rt* R, cstmt* st) {
 }
 
 // ================= 块 =================
+// Drop impl 探测与作用域退出逆序 drop(RAII,§6.4)
+static int type_has_drop(const rt* R, const char* ty) {
+    if (!ty) return 0;
+    for (size_t i = 0; i < R->f->ndecls; i++) {
+        const cdecl* d = &R->f->decls[i];
+        if (d->kind != D_IMPL) continue;
+        const char* tn = head_nm(d->impl.trait_ty);
+        const char* fn2 = head_nm(d->impl.for_ty);
+        if (tn && fn2 && strcmp(tn, "Drop") == 0 && strcmp(fn2, ty) == 0) return 1;
+    }
+    return 0;
+}
+static void drop_scope(rt* R) {
+    if (!R->top) return;
+    for (bind* b = R->top->head; b; b = b->next) {
+        if (b->slot.k != V_STRUCT || !type_has_drop(R, b->slot.type)) continue;
+        const cfn* F = cls_method(R, b->slot.type, "drop");
+        if (F && F->body) (void)call_method_body(R, F, b->slot, NULL, 0);
+    }
+}
+
 static val eval_block(rt* R, cblock* b) {
     val tail = v_void();
     if (!b) return tail;
@@ -544,6 +605,7 @@ static val eval_block(rt* R, cblock* b) {
     for (size_t i = 0; i < b->nstmts && !R->has_ret; i++)
         eval_stmt(R, b->stmts[i]);
     if (!R->has_ret && b->tail) tail = eval_expr(R, b->tail);
+    drop_scope(R); // 本帧声明逆序 drop
     env_pop(R);
     return R->has_ret ? R->ret : tail;
 }
@@ -717,8 +779,10 @@ static int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
             val msg = call->nelems == 1 ? eval_expr(R, call->elems[0]) : v_bool(0);
             const char* txt = (msg.k == V_STR && msg.s) ? msg.s : "";
             val payload = recv.nitems >= 1 ? recv.items[0] : v_void();
+            val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            cause_payload[0] = payload;
             val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
-            one[0] = v_err(R, txt, v_tag("Some", &payload, 1));
+            one[0] = v_err(R, txt, v_tag("Some", cause_payload, 1));
             R->opt_result = v_tag("Err", one, 1);
             R->has_opt = 1;
             return 1;
@@ -908,6 +972,11 @@ static val eval_expr(rt* R, cexpr* e) {
     case EX_INDEX: {
         val o = eval_expr(R, e->obj);
         val ix = eval_expr(R, e->index);
+        if (o.k == V_LIST) {
+            long long li = (long long)ix.i;
+            if (li < 0 || (unsigned long long)li >= o.lst->n) rt_abort(R, RT_PANIC, "index out of bounds");
+            return o.lst->items[li];
+        }
         if (o.k != V_ARR) rt_abort(R, RT_ERROR, "索引目标非数组");
         long long i = (long long)ix.i;
         if (i < 0 || (unsigned long long)i >= o.nitems) rt_abort(R, RT_PANIC, "index out of bounds");
@@ -921,6 +990,7 @@ static val eval_expr(rt* R, cexpr* e) {
         if (strcmp(m, "len") == 0) {
             if (o.k == V_ARR) return v_int(o.nitems, 32, 0);
             if (o.k == V_STR) return v_int(o.s ? (__int128)strlen(o.s) : 0, 32, 0);
+            if (o.k == V_LIST) return v_int(o.lst->n, 32, 0);
             rt_abort(R, RT_ERROR, ".len 目标类型不支持");
         }
         if (strcmp(m, "char_len") == 0) {
@@ -975,6 +1045,7 @@ static val eval_expr(rt* R, cexpr* e) {
         }
         rt_abort(R, RT_ERROR, "match 无匹配臂");
     }
+    case EX_OWN: return eval_block(R, e->obody);
     case EX_BLOCK: return eval_block(R, e->block);
     case EX_CALL: {
         cexpr* cal = e->callee;
@@ -990,6 +1061,19 @@ static val eval_expr(rt* R, cexpr* e) {
             && strcmp(cal->obj->text, "Box") == 0) {
             if (e->nelems != 1) rt_abort(R, RT_ERROR, "Box 实参");
             return v_box(R, eval_expr(R, e->elems[0]));
+        }
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "Atomic") == 0) {
+            if (e->nelems != 1) rt_abort(R, RT_ERROR, "Atomic 实参");
+            val v = eval_expr(R, e->elems[0]);
+            if (v.k != V_INT) rt_abort(R, RT_ERROR, "Atomic 初始值");
+            return v_atom(R, v.i, v.bits, v.us);
+        }
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_MEMBER
+            && cal->obj->mname && strcmp(cal->obj->mname, "list") == 0
+            && cal->obj->obj && cal->obj->obj->kind == EX_IDENT
+            && strcmp(cal->obj->obj->text, "arena") == 0) {
+            return v_list(R); // arena.list[T]()
         }
         if (cal && cal->kind == EX_IDENT) {
             const char* nm = cal->text;
@@ -1039,6 +1123,35 @@ static val eval_expr(rt* R, cexpr* e) {
             if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "to_string") == 0) {
                 val r = recv; // 不可变;隐式降格语义
                 return r;
+            }
+            if (recv.k == V_LIST && cal->mname) {
+                if (strcmp(cal->mname, "push") == 0) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "push 实参");
+                    list_push(R, recv.lst, eval_expr(R, e->elems[0]));
+                    return v_void();
+                }
+                if (strcmp(cal->mname, "into_gc") == 0) return list_clone_deep(R, recv.lst);
+                rt_abort(R, RT_ERROR, "列表方法不支持: %s", cal->mname);
+            }
+            if (recv.k == V_ATOM && cal->mname) {
+                if (strcmp(cal->mname, "load") == 0) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "load 参数");
+                    return v_int(recv.atom->v, recv.atom->bits, recv.atom->us);
+                }
+                if (strcmp(cal->mname, "store") == 0) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "store 实参");
+                    val x = eval_expr(R, e->elems[0]);
+                    recv.atom->v = x.k == V_INT ? x.i : (__int128)x.f;
+                    return v_void();
+                }
+                if (strcmp(cal->mname, "fetch_add") == 0) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "fetch_add 实参");
+                    val x = eval_expr(R, e->elems[0]);
+                    __int128 old = recv.atom->v;
+                    recv.atom->v = old + (x.k == V_INT ? x.i : 0);
+                    return v_int(old, recv.atom->bits, recv.atom->us);
+                }
+                rt_abort(R, RT_ERROR, "原子方法不支持: %s", cal->mname);
             }
             if (recv.k == V_STRUCT && recv.is_class && cal->mname) {
                 const cfn* F = cls_method(R, recv.type, cal->mname);
