@@ -82,8 +82,8 @@ struct·class 字段存在性(调用者位置跳过;prop·impl 一并识别)。�
 ## 编辑器支持(DX) runtime 扩展(服务 `ctronc run` 域)
 
 - **I/O 内建**:`read_line()`(stdin 读一行,EOF 空串)/ `read_bytes(n)`(恰好读 n 字节)/ `flush_out()`(print 缓冲立即落盘)——语言服务器(`../lsp/`)与管道程序的基础设施;不影响 suite_rt 契约(测试不调用这些名字)。
-- **`byte_at` O(1) 快路径**:非尾字节直取,疑似结尾才回退全检(语义不变)。
-- **`call_decl` 实参求值修复**:实参先在调用方环境求值,再进被调环境绑定——修复形参遮蔽调用方同各局部导致的错误求值(如 `or3(b == 34, b == 92, b < 32)` 中形参 `b` 撞名);`make test` 全套绿(61 文件 + 208 diff 用例)。
+- **`byte_at`**:曾试 O(1) 快路径,因存在越界读 UB 被回退(a3bf0b7 恢复先 strlen 边界检查,语义正确);解释器下逐字节 strlen 为 O(n) ——扫描密集程序(如 LSP)应单趟设计避免 O(n²),另见 `../docs/editor-feature-gap-analysis.md`。
+- **`call_decl` 实参求值修复**:实参先在调用方环境求值,再进被调环境绑定——修复形参遮蔽调用方同名局部导致的错误求值(如 `or3(b == 34, …)` 中形参 `b` 撞名;首次修复曾被未提交窗口事故覆盖,21a5b3e 最小重放);全套测试保持绿。
 
 ## 后续里程碑(C 版路线,独立推进)
 `src/rt.c` + `suite_rt`:纯数值/逻辑/字符串/范围域 5 文件 16 test 块真实运行通过,panic 消息断言;
@@ -134,6 +134,11 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8g ✅ | E3050 own arena use-after-move(arena_binds/moved 集) | 十检查 46/46 语料与 C 全等 |
 | C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 检查 47/47 |
 | C8h② ✅ | E3040 分配效果(own/no_alloc/契约 + 函数效果摘要) | **C3 单文件 12 项全集 Ctron 树上收官:49/49(207 用例)** |
+
+### C10-d 转译扩面:Option/Result/?/载荷变体 ✅(差分 12/12)
+和类型按实例化生成 C 结构(tag+union);Some/None/Ok/Err 期望类型提示推导;`?` 分解为
+tag 检查 + 早退(let/return;test 体 void return);.or/.expect;用户枚举载荷变体
+(构造/绑定/嵌套变体条件)。class/闭包/context 链 → C10-e。
 
 ### C10-c 转译扩面:struct/enum/match ✅(差分 10/10)
 struct 值语义(by-value,对齐 clone_val)/字段读写(rt "member assign" 消息)/构造指定初始化;
