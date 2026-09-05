@@ -10,7 +10,9 @@ const fs = require('fs');
 
 let client = null;
 let outputChannel = null;
-let diagnosticCollection = null;
+let lspDiagnostics = null;      // 词法诊断(LSP 服务器推送)
+let checkDiagnostics = null;    // 编译器语义诊断(ctronc check --format=json)
+let checkRunner = null;
 
 function log(msg) {
     const cfg = vscode.workspace.getConfiguration('ctron');
@@ -162,10 +164,10 @@ class CtronLspClient {
                 : vscode.DiagnosticSeverity.Error;
             const diag = new vscode.Diagnostic(range, d.message || '', sev);
             diag.code = d.code;
-            diag.source = d.source || 'ctron-lsp';
+            diag.source = 'ctron-lsp';
             diags.push(diag);
         }
-        diagnosticCollection.set(vscode.Uri.parse(params.uri), diags);
+        lspDiagnostics.set(vscode.Uri.parse(params.uri), diags);
     }
 
     sendRaw(obj) {
@@ -227,7 +229,7 @@ class CtronLspClient {
         const key = doc.uri.toString();
         if (!this.opened.has(key)) { return; }
         this.opened.delete(key);
-        diagnosticCollection.delete(doc.uri);
+        lspDiagnostics.delete(doc.uri);
         this.notify('textDocument/didClose', {
             textDocument: { uri: key }
         });
@@ -304,6 +306,79 @@ class CtronLspClient {
         });
     }
 
+    // ---------- 新增:rename / references / highlight / signatureHelp ----------
+
+    prepareRename(document, position) {
+        return this.safeRequest('textDocument/prepareRename', {
+            textDocument: this.textDocId(document),
+            position: this.positionOf(document, position)
+        }).then((result) => {
+            if (!result || !result.range) { return null; }
+            return { range: asRange(result.range), placeholder: result.placeholder };
+        });
+    }
+
+    rename(document, position, newName) {
+        return this.safeRequest('textDocument/rename', {
+            textDocument: this.textDocId(document),
+            position: this.positionOf(document, position),
+            newName
+        }).then((result) => {
+            if (!result || !result.changes) { return null; }
+            const edit = new vscode.WorkspaceEdit();
+            for (const [uri, edits] of Object.entries(result.changes)) {
+                for (const e of edits || []) {
+                    edit.replace(vscode.Uri.parse(uri), asRange(e.range), e.newText);
+                }
+            }
+            return edit;
+        });
+    }
+
+    references(document, position) {
+        return this.safeRequest('textDocument/references', {
+            textDocument: this.textDocId(document),
+            position: this.positionOf(document, position),
+            context: { includeDeclaration: true }
+        }).then((result) => {
+            if (!Array.isArray(result)) { return null; }
+            return result.map((d) => new vscode.Location(vscode.Uri.parse(d.uri), asRange(d.range)));
+        });
+    }
+
+    documentHighlight(document, position) {
+        return this.safeRequest('textDocument/documentHighlight', {
+            textDocument: this.textDocId(document),
+            position: this.positionOf(document, position)
+        }).then((result) => {
+            if (!Array.isArray(result)) { return null; }
+            return result.map((h) => new vscode.DocumentHighlight(asRange(h.range)));
+        });
+    }
+
+    signatureHelp(document, position) {
+        return this.safeRequest('textDocument/signatureHelp', {
+            textDocument: this.textDocId(document),
+            position: this.positionOf(document, position)
+        }).then((result) => {
+            if (!result || !Array.isArray(result.signatures)) { return null; }
+            return {
+                activeSignature: result.activeSignature || 0,
+                activeParameter: result.activeParameter || 0,
+                signatures: result.signatures.map((s) => {
+                    const info = new vscode.SignatureInformation(s.label);
+                    info.parameters = (s.parameters || []).map((p) => {
+                        const pi = new vscode.ParameterInformation(
+                            Array.isArray(p.label) ? new vscode.Range(0, p.label[0], 0, p.label[1]) : p.label
+                        );
+                        return pi;
+                    });
+                    return info;
+                })
+            };
+        });
+    }
+
     dispose() {
         try { this.notify('exit', {}); } catch { /* 忽略 */ }
         if (this.child) {
@@ -336,12 +411,176 @@ function kindOf(k) {
     return LSP_KIND_MAP[k] || vscode.CompletionItemKind.Text;
 }
 
+// ---------- ctronc 定位与编译器检查包装(§10.2 JSON 契约) ----------
+
+function resolveCtronc(context) {
+    const cfg = vscode.workspace.getConfiguration('ctron');
+    const candidates = [];
+    const custom = cfg.get('ctroncPath');
+    if (custom && custom.trim()) { candidates.push(custom.trim()); }
+    if (process.env.CTRONC) { candidates.push(process.env.CTRONC); }
+    candidates.push('/opt/homebrew/bin/ctronc', '/usr/local/bin/ctronc');
+    if (process.env.HOME) {
+        candidates.push(path.join(process.env.HOME, '.local/bin/ctronc'));
+        candidates.push(path.join(process.env.HOME, 'bin/ctronc'));
+    }
+    // 仓库开发布局(扩展仍在仓库内时)
+    candidates.push(path.resolve(context.extensionPath, '..', '..', 'compiler_c', 'build', 'ctronc'));
+    for (const c of candidates) {
+        try { fs.accessSync(c, fs.constants.X_OK); return c; } catch { /* 下一个 */ }
+    }
+    for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+        if (!dir) { continue; }
+        const c = path.join(dir, 'ctronc');
+        try { fs.accessSync(c, fs.constants.X_OK); return c; } catch { /* 下一个 */ }
+    }
+    return null;
+}
+
+class CheckRunner {
+    constructor(context) {
+        this.context = context;
+        this.ctronc = resolveCtronc(context);
+        this.collection = vscode.languages.createDiagnosticCollection('ctron-check');
+        this.raw = new Map();          // uri -> [{diag, fixes}]
+        this.running = false;
+        this.queued = null;
+    }
+
+    runNow(uri) {
+        if (!this.ctronc) {
+            vscode.window.showWarningMessage(
+                'ctronc 不可用,语义检查跳过。可设置 "ctron.ctroncPath" 或构建 compiler_c。',
+                '知道了'
+            );
+            return;
+        }
+        if (uri.scheme !== 'file') { return; }
+        const fsPath = uri.fsPath;
+        if (this.running) { this.queued = uri; return; }
+        this.running = true;
+        log(`[check] ${fsPath}`);
+        const child = spawn(this.ctronc, ['check', '--format=json', fsPath], {});
+        let out = '';
+        child.stdout.on('data', (d) => { out += d.toString('utf8'); });
+        child.on('exit', () => {
+            this.running = false;
+            try { this.apply(uri, out); } catch (e) { log(`check 解析失败: ${e.message}`); }
+            if (this.queued) {
+                const q = this.queued;
+                this.queued = null;
+                this.runNow(q);
+            }
+        });
+    }
+
+    apply(uri, jsonText) {
+        const list = [];
+        let parsed = null;
+        try { parsed = JSON.parse(jsonText); } catch { parsed = null; }
+        const ds = (parsed && parsed.diagnostics) || [];
+        let text = '';
+        try { text = fs.readFileSync(uri.fsPath, 'utf8'); } catch { text = ''; }
+        const lineStarts = computeLineStarts(text);
+        for (const d of ds) {
+            const ls = Math.max(0, (d.span.line_start || 1) - 1);
+            const cs = Math.max(0, (d.span.col_start || 1) - 1);
+            const le = Math.max(0, (d.span.line_end || 1) - 1);
+            const ce = Math.max(0, (d.span.col_end || 1) - 1);
+            let range = new vscode.Range(ls, cs, le, ce);
+            // 退化 span(0,0 或零宽)→ 扩到整行,便于阅读
+            if (range.isEmpty && range.start.character === 0) {
+                const lineEnd = lineEndOf(lineStarts, text, ls);
+                range = new vscode.Range(ls, 0, ls, lineEnd);
+            }
+            const diag = new vscode.Diagnostic(
+                range,
+                (d.message || '') + ((d.notes || []).length ? '\n' + d.notes.join('\n') : ''),
+                d.severity === 'warning' ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error
+            );
+            diag.code = d.code;
+            diag.source = 'ctronc';
+            const entry = { diag, fixes: d.fixes || [] };
+            list.push(entry);
+        }
+        this.raw.set(uri.toString(), list);
+        this.collection.set(uri, list.map((e) => e.diag));
+    }
+
+    clear(uri) {
+        this.raw.delete(uri.toString());
+        this.collection.delete(uri);
+    }
+
+    // CodeActions:fixes[] 映射 + 词法确定性修复
+    codeActions(document, contextDiagnostics) {
+        const actions = [];
+        const entries = this.raw.get(document.uri.toString()) || [];
+        for (const d of contextDiagnostics) {
+            // 1) 编译器 fixes[](§10.2)
+            if (d.source === 'ctronc') {
+                const entry = entries.find((e) => e.diag.message === d.message && e.diag.code === d.code && e.diag.range.isEqual(d.range));
+                for (const fix of (entry && entry.fixes) || []) {
+                    const we = new vscode.WorkspaceEdit();
+                    for (const ed of fix.edits || []) {
+                        const r = new vscode.Range(
+                            Math.max(0, (ed.span.line_start || 1) - 1), Math.max(0, (ed.span.col_start || 1) - 1),
+                            Math.max(0, (ed.span.line_end || 1) - 1), Math.max(0, (ed.span.col_end || 1) - 1)
+                        );
+                        if (ed.kind === 'insert') { we.insert(document.uri, r.start, ed.text || ''); }
+                        else if (ed.kind === 'delete') { we.delete(document.uri, r); }
+                        else { we.replace(document.uri, r, ed.text || ''); }
+                    }
+                    const action = new vscode.CodeAction(fix.title || '快速修复', vscode.CodeActionKind.QuickFix);
+                    action.edit = we;
+                    action.diagnostics = [d];
+                    actions.push(action);
+                }
+            }
+            // 2) 词法 E1001 确定性修复
+            if (d.source === 'ctron-lsp' && d.code === 'E1001') {
+                const msg = d.message || '';
+                if (msg.includes('禁用的标点 ;')) {
+                    const we = new vscode.WorkspaceEdit();
+                    we.delete(document.uri, d.range);
+                    const a = new vscode.CodeAction('删除多余的 ;', vscode.CodeActionKind.QuickFix);
+                    a.edit = we;
+                    a.diagnostics = [d];
+                    actions.push(a);
+                } else if (msg.includes('禁用的标点 ::')) {
+                    const we = new vscode.WorkspaceEdit();
+                    we.replace(document.uri, d.range, '.');
+                    const a = new vscode.CodeAction(':: 改为 .(Ctron 路径分隔符是 .)', vscode.CodeActionKind.QuickFix);
+                    a.edit = we;
+                    a.diagnostics = [d];
+                    actions.push(a);
+                }
+            }
+        }
+        return actions;
+    }
+}
+
+function computeLineStarts(text) {
+    const starts = [0];
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === '\n') { starts.push(i + 1); }
+    }
+    return starts;
+}
+
+function lineEndOf(lineStarts, text, line) {
+    if (line + 1 < lineStarts.length) { return lineStarts[line + 1] - 1; }
+    return text.length;
+}
+
 // ---------- 扩展入口 ----------
 
 function activate(context) {
     outputChannel = vscode.window.createOutputChannel('ctron-lsp');
-    diagnosticCollection = vscode.languages.createDiagnosticCollection('ctron');
-    context.subscriptions.push(diagnosticCollection, outputChannel);
+    lspDiagnostics = vscode.languages.createDiagnosticCollection('ctron-lsp');
+    checkRunner = new CheckRunner(context);
+    context.subscriptions.push(lspDiagnostics, checkRunner.collection, outputChannel, checkRunner);
 
     function launch() {
         if (client) { client.dispose(); }
@@ -350,6 +589,10 @@ function activate(context) {
     }
 
     context.subscriptions.push(vscode.commands.registerCommand('ctron.restartServer', launch));
+    context.subscriptions.push(vscode.commands.registerCommand('ctron.checkNow', () => {
+        const ed = vscode.window.activeTextEditor;
+        if (ed && ed.document.languageId === 'ctron') { checkRunner.runNow(ed.document.uri); }
+    }));
 
     context.subscriptions.push(vscode.workspace.onDidOpenTextDocument((doc) => {
         if (client) { client.handleOpen(doc); }
@@ -357,8 +600,15 @@ function activate(context) {
     context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((e) => {
         if (client) { client.handleChange(e.document); }
     }));
+    context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((doc) => {
+        const cfg = vscode.workspace.getConfiguration('ctron');
+        if (doc.languageId === 'ctron' && cfg.get('checkOnSave', true)) {
+            checkRunner.runNow(doc.uri);
+        }
+    }));
     context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((doc) => {
         if (client) { client.handleClose(doc); }
+        checkRunner.clear(doc.uri);
     }));
 
     const selector = { language: 'ctron' };
@@ -374,6 +624,22 @@ function activate(context) {
         }),
         vscode.languages.registerDocumentSymbolProvider(selector, {
             provideDocumentSymbols: (doc) => client ? client.documentSymbol(doc) : null
+        }),
+        vscode.languages.registerRenameProvider(selector, {
+            prepareRename: (doc, pos) => client ? client.prepareRename(doc, pos) : null,
+            provideRenameEdits: (doc, pos, newName) => client ? client.rename(doc, pos, newName) : null
+        }),
+        vscode.languages.registerReferenceProvider(selector, {
+            provideReferences: (doc, pos) => client ? client.references(doc, pos) : null
+        }),
+        vscode.languages.registerDocumentHighlightProvider(selector, {
+            provideDocumentHighlights: (doc, pos) => client ? client.documentHighlight(doc, pos) : null
+        }),
+        vscode.languages.registerSignatureHelpProvider(selector, {
+            provideSignatureHelp: (doc, pos) => client ? client.signatureHelp(doc, pos) : null
+        }, '(', ','),
+        vscode.languages.registerCodeActionsProvider(selector, {
+            provideCodeActions: (doc, range, ctx) => checkRunner ? checkRunner.codeActions(doc, ctx.diagnostics) : []
         })
     );
 

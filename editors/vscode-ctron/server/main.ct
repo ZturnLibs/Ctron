@@ -204,6 +204,20 @@ fn parse_int_at(s: Str, c: Cur) -> I64 {
     return v
 }
 
+// JSON 布尔:true/false(容忍数字兼容)
+fn parse_bool_at(s: Str, c: Cur) -> Bool {
+    skip_ws(s, c)
+    if starts_lit(s, c.i, "true") {
+        c.i += 4
+        return true
+    }
+    if starts_lit(s, c.i, "false") {
+        c.i += 5
+        return false
+    }
+    return parse_int_at(s, c) != 0
+}
+
 // 值的原始 JSON 切片(id 回显:number / string / null 均可)
 fn raw_value_span(s: Str, c: Cur, out: Pos2) -> Bool {
     skip_ws(s, c)
@@ -413,9 +427,11 @@ fn line_span(text: Str, line: I64, out: Pos2) {
 }
 
 // 位置(行,列)处的标识符(光标可在词内任意处);无词返回 ""
-fn word_at(text: Str, line: I64, col: I64) -> Str {
+fn word_span_pos(text: Str, line: I64, col: I64, out: Pos2) -> Str {
     var sp = pos2(0, 0)
     line_span(text, line, sp)
+    out.a = line
+    out.b = 0
     var lo = sp.a + col
     if lo > sp.b { lo = sp.b }
     if lo > sp.a && !is_ac(byte_at(text, lo - 1)) {
@@ -429,7 +445,13 @@ fn word_at(text: Str, line: I64, col: I64) -> Str {
     var hi = lo
     while hi < sp.b && is_ac(byte_at(text, hi)) { hi += 1 }
     if hi <= lo { return "" }
+    out.b = lo - sp.a
     return byte_slice(text, lo, hi)
+}
+
+fn word_at(text: Str, line: I64, col: I64) -> Str {
+    var out = pos2(0, 0)
+    return word_span_pos(text, line, col, out)
 }
 
 // ============ 5. 词法诊断扫描(E1001 族) ============
@@ -449,12 +471,13 @@ fn diag_add(acc: DiagAcc, line: I64, col: I64, len: I64, code: Str, msg: Str) {
     if acc.n >= 200 { return }
     var head = ""
     if acc.n > 0 { head = "," }
-    var st = jobj(jnum("line", line) + "," + jnum("character", col))
-    var en = jobj(jnum("line", line) + "," + jnum("character", col + len))
-    var r = jobj(jkv_raw("start", st) + "," + jkv_raw("end", en))
-    var d = jobj(jkv_raw("range", r) + "," + jnum("severity", 1) + "," + jkv_str("code", code) + "," + jkv_str("source", "ctron-lsp") + "," + jkv_str("message", msg))
+    var d = jobj(jkv_raw("range", mk_range(line, col, len)) + "," + jnum("severity", 1) + "," + jkv_str("code", code) + "," + jkv_str("source", "ctron-lsp") + "," + jkv_str("message", msg))
     acc.s = "{acc.s}{head}{d}"
     acc.n += 1
+}
+
+fn mk_range(line: I64, col: I64, len: I64) -> Str {
+    return jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", col))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", col + len))))
 }
 
 fn scan_diag(text: Str, acc: DiagAcc) {
@@ -721,12 +744,20 @@ fn decl_name(text: Str, sp: Pos2, kw: Str, kws: Pos2) -> Str {
     return word_after(text, sp, kws.b)
 }
 
-// 生效关键字:剥掉 pub 前缀
-fn eff_kw(text: Str, sp: Pos2, kws: Pos2) -> Str {
+// 生效关键字:剥掉 pub 前缀;kws2 = 生效关键字的 span
+fn eff_kw2(text: Str, sp: Pos2, kws: Pos2, out: Pos2) -> Str {
     var kwv = byte_slice(text, kws.a, kws.b)
     if kwv == "pub" {
-        return word_after(text, sp, kws.b)
+        var w = pos2(0, 0)
+        if word_span_at(text, sp, kws.b, w) {
+            out.a = w.a
+            out.b = w.b
+            return byte_slice(text, w.a, w.b)
+        }
+        return ""
     }
+    out.a = kws.a
+    out.b = kws.b
     return kwv
 }
 
@@ -745,14 +776,15 @@ fn scan_symbols(text: Str) -> Str {
             if is_top_line(text, sp) {
                 var kws = pos2(0, 0)
                 if first_word(text, sp, kws) {
-                    var kwv = eff_kw(text, sp, kws)
+                    var kws2 = pos2(0, 0)
+                    var kwv = eff_kw2(text, sp, kws, kws2)
                     if pipe_has(DECL_KW, kwv) {
-                        var name = decl_name(text, sp, kwv, kws)
+                        var name = decl_name(text, sp, kwv, kws2)
                         if name != "" {
                             var head = ""
                             if !first { head = "," }
                             var r = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", 0))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", sp.b - sp.a))))
-                            var sel = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", kws.a - sp.a))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", kws.b - sp.a))))
+                            var sel = jobj(jkv_raw("start", jobj(jnum("line", line) + "," + jnum("character", kws2.a - sp.a))) + "," + jkv_raw("end", jobj(jnum("line", line) + "," + jnum("character", kws2.b - sp.a))))
                             items = "{items}{head}" + jobj(jkv_str("name", name) + "," + jnum("kind", sym_kind(kwv)) + "," + jkv_raw("range", r) + "," + jkv_raw("selectionRange", sel))
                             first = false
                         }
@@ -775,10 +807,12 @@ class DeclHit {
     var col: I64
     var sig: Str
     var docs: Str
+    var ncol: I64
+    var nlen: I64
 }
 
 fn decl_hit_new() -> DeclHit {
-    return DeclHit { found: false, line: 0, col: 0, sig: "", docs: "" }
+    return DeclHit { found: false, line: 0, col: 0, sig: "", docs: "", ncol: 0 - 1, nlen: 0 }
 }
 
 // 向上收集相邻 /// 文档行
@@ -816,17 +850,23 @@ fn find_decl(text: Str, word: Str, hit: DeclHit) {
         } else {
             var kws = pos2(0, 0)
             if first_word(text, sp, kws) {
-                var kwv = eff_kw(text, sp, kws)
+                var kws2 = pos2(0, 0)
+                var kwv = eff_kw2(text, sp, kws, kws2)
                 var isdecl = pipe_has(DECL_KW, kwv)
                 if !isdecl && kwv == "prop" { isdecl = true }
                 if isdecl {
-                    var name = decl_name(text, sp, kwv, kws)
+                    var name = decl_name(text, sp, kwv, kws2)
                     if name == word {
                         hit.found = true
                         hit.line = line
                         hit.col = kws.a - sp.a
                         hit.sig = byte_slice(text, sp.a, sp.b)
                         hit.docs = collect_docs(text, line)
+                        var nw = pos2(0, 0)
+                        if word_span_at(text, sp, kws2.b, nw) && byte_slice(text, nw.a, nw.b) == word {
+                            hit.ncol = nw.a - sp.a
+                            hit.nlen = nw.b - nw.a
+                        }
                     }
                 }
             }
@@ -1041,9 +1081,10 @@ fn doc_decl_items(text: Str, prefix: Str) -> Str {
             if is_top_line(text, sp) {
                 var kws = pos2(0, 0)
                 if first_word(text, sp, kws) {
-                    var kwv = eff_kw(text, sp, kws)
+                    var kws2 = pos2(0, 0)
+                    var kwv = eff_kw2(text, sp, kws, kws2)
                     if pipe_has(DECL_KW, kwv) && kwv != "use" && kwv != "impl" {
-                        var name = decl_name(text, sp, kwv, kws)
+                        var name = decl_name(text, sp, kwv, kws2)
                         if name != "" && prefix_hit(name, prefix) {
                             var head = ""
                             if !first { head = "," }
@@ -1102,6 +1143,206 @@ fn complete_at(msg: Str, params_i: I64, st: Store) -> Str {
     return jobj(jkv_raw("isIncomplete", "false") + "," + jkv_raw("items", jarr(all)))
 }
 
+// ============ 8b. 出现点扫描(rename / references / highlight) ============
+
+class OccAcc {
+    var s: Str
+    var first: Bool
+    var count: I64
+}
+
+// 模式:1 = documentHighlight 条目,2 = Location,3 = TextEdit
+// skip_line/skip_col:跳过一个出现点(references 排除声明用;-1 = 不跳)
+fn occ_scan(text: Str, word: Str, mode: I64, uri: Str, newname: Str, skip_line: I64, skip_col: I64) -> Str {
+    var acc = OccAcc { s: "", first: true, count: 0 }
+    var dummy = DiagAcc { s: "", n: 0 }
+    var p = ScanPos { i: 0, line: 0, col: 0 }
+    var n = text.len
+    while p.i < n {
+        var handled = sp_ws(text, p)
+        if !handled { handled = sp_comment(text, p, dummy) }
+        if !handled { handled = sp_string(text, p, dummy) }
+        if !handled { handled = sp_char(text, p, dummy) }
+        if !handled {
+            if is_al(byte_at(text, p.i)) {
+                var start = p.i
+                var startcol = p.col
+                while p.i < n && is_ac(byte_at(text, p.i)) {
+                    p.i += 1
+                    p.col += 1
+                }
+                var tok = byte_slice(text, start, p.i)
+                if tok == word {
+                    if or2(p.line != skip_line, startcol != skip_col) {
+                        var it = ""
+                        if mode == 1 {
+                            it = jobj(jkv_raw("range", mk_range(p.line, startcol, p.i - start)) + "," + jnum("kind", 1))
+                        }
+                        if mode == 2 {
+                            it = jobj(jkv_str("uri", uri) + "," + jkv_raw("range", mk_range(p.line, startcol, p.i - start)))
+                        }
+                        if mode == 3 {
+                            it = jobj(jkv_raw("range", mk_range(p.line, startcol, p.i - start)) + "," + jkv_str("newText", newname))
+                        }
+                        var head = ""
+                        if !acc.first { head = "," }
+                        acc.s = "{acc.s}{head}{it}"
+                        acc.first = false
+                        acc.count += 1
+                    }
+                }
+            } else {
+                p.i += 1
+                p.col += 1
+            }
+        }
+    }
+    return jarr(acc.s)
+}
+
+fn valid_ident(w: Str) -> Bool {
+    if w.len == 0 { return false }
+    if !is_al(byte_at(w, 0)) { return false }
+    var i: I64 = 1
+    while i < w.len {
+        if !is_ac(byte_at(w, i)) { return false }
+        i += 1
+    }
+    if pipe_has(KW_ALL, w) { return false }
+    return true
+}
+
+// ============ 8c. signatureHelp(同文件声明) ============
+
+// 向后找未配平的 '(';out.a = open 位置,out.b = 活动形参序号;返回被调名("" = 无)
+fn find_call_open(text: Str, line: I64, col: I64, out: Pos2) -> Str {
+    var sp = line_span_of(text, line)
+    var i = sp.a + col - 1
+    if i >= sp.b { i = sp.b - 1 }
+    var depth: I64 = 0
+    var found = false
+    var open = 0 - 1
+    while i >= sp.a && !found {
+        var ch = byte_at(text, i)
+        if ch == 41 { depth += 1 }
+        if ch == 40 {
+            if depth == 0 {
+                found = true
+                open = i
+            } else {
+                depth -= 1
+            }
+        }
+        if !found { i -= 1 }
+    }
+    if !found { return "" }
+    var e = open
+    while e - 1 >= sp.a && byte_at(text, e - 1) == 32 { e -= 1 }
+    var s2 = e
+    while s2 - 1 >= sp.a && is_ac(byte_at(text, s2 - 1)) { s2 -= 1 }
+    if e <= s2 { return "" }
+    var cur = sp.a + col
+    if cur > sp.b { cur = sp.b }
+    var k = open + 1
+    var cnt: I64 = 0
+    var d2: I64 = 0
+    while k < cur {
+        var ch2 = byte_at(text, k)
+        if or2(ch2 == 40, ch2 == 91) { d2 += 1 }
+        if or2(ch2 == 41, ch2 == 93) { d2 -= 1 }
+        if ch2 == 44 && d2 == 0 { cnt += 1 }
+        k += 1
+    }
+    out.a = open
+    out.b = cnt
+    return byte_slice(text, s2, e)
+}
+
+class ParamAcc {
+    var s: Str
+    var first: Bool
+    var count: I64
+}
+
+// label[s,e) 段加入形参表(修剪空白;label 对 = [s,e) 字节偏移)
+fn add_param_at(pa: ParamAcc, label: Str, s: I64, e: I64) {
+    var ts = s
+    var te = e
+    while ts < te && byte_at(label, ts) == 32 { ts += 1 }
+    while te > ts && byte_at(label, te - 1) == 32 { te -= 1 }
+    if te <= ts { return }
+    var head = ""
+    if !pa.first { head = "," }
+    pa.s = "{pa.s}{head}" + jobj(jkv_raw("label", "[{ts},{te}]"))
+    pa.first = false
+    pa.count += 1
+}
+
+fn sig_help(text: Str, line: I64, col: I64) -> Str {
+    var op = pos2(0, 0)
+    var callee = find_call_open(text, line, col, op)
+    if callee == "" { return "null" }
+    var hit = decl_hit_new()
+    find_decl(text, callee, hit)
+    if !hit.found { return "null" }
+    // label:去掉尾部空白与块花括号
+    var sig = hit.sig
+    var siglen = sig.len
+    var trimming = true
+    while trimming {
+        if siglen == 0 {
+            trimming = false
+        } else {
+            var last = byte_at(sig, siglen - 1)
+            if or2(last == 123, last == 32) {
+                siglen -= 1
+            } else {
+                trimming = false
+            }
+        }
+    }
+    var label = byte_slice(sig, 0, siglen)
+    // 第一对配平括号内的顶层逗号分段
+    var p0 = 0 - 1
+    var p1 = 0 - 1
+    var pd: I64 = 0
+    var k: I64 = 0
+    while k < siglen {
+        var ch = byte_at(label, k)
+        if ch == 40 {
+            if pd == 0 && p0 < 0 { p0 = k }
+            pd += 1
+        }
+        if ch == 41 {
+            pd -= 1
+            if pd == 0 && p1 < 0 { p1 = k }
+        }
+        k += 1
+    }
+    var pa = ParamAcc { s: "", first: true, count: 0 }
+    if p0 >= 0 && p1 > p0 {
+        var seg = p0 + 1
+        var kd: I64 = 0
+        var k2 = p0 + 1
+        while k2 < p1 {
+            var ch2 = byte_at(label, k2)
+            if or2(ch2 == 40, ch2 == 91) { kd += 1 }
+            if or2(ch2 == 41, ch2 == 93) { kd -= 1 }
+            if ch2 == 44 && kd == 0 {
+                add_param_at(pa, label, seg, k2)
+                seg = k2 + 1
+            }
+            k2 += 1
+        }
+        add_param_at(pa, label, seg, p1)
+    }
+    var act = op.b
+    if pa.count > 0 && act > pa.count - 1 { act = pa.count - 1 }
+    if pa.count == 0 { act = 0 }
+    var siginfo = jobj(jkv_str("label", label) + "," + jkv_raw("parameters", jarr(pa.s)))
+    return jobj(jkv_raw("signatures", jarr(siginfo)) + "," + jnum("activeSignature", 0) + "," + jnum("activeParameter", act))
+}
+
 // ============ 9. 请求分发 ============
 
 fn handle(msg: Str, st: Store) -> I64 {
@@ -1120,7 +1361,7 @@ fn handle(msg: Str, st: Store) -> I64 {
     if method == "exit" { return 1 }
     if starts_lit(method, 0, "$/") { return 0 }
     if method == "initialize" {
-        var caps = jobj(jkv_str("positionEncoding", "utf-8") + "," + jkv_raw("textDocumentSync", "1") + "," + jkv_raw("hoverProvider", "true") + "," + jkv_raw("definitionProvider", "true") + "," + jkv_raw("documentSymbolProvider", "true") + "," + jkv_raw("completionProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("."))))))
+        var caps = jobj(jkv_str("positionEncoding", "utf-8") + "," + jkv_raw("textDocumentSync", "1") + "," + jkv_raw("hoverProvider", "true") + "," + jkv_raw("definitionProvider", "true") + "," + jkv_raw("documentSymbolProvider", "true") + "," + jkv_raw("referencesProvider", "true") + "," + jkv_raw("documentHighlightProvider", "true") + "," + jkv_raw("renameProvider", jobj(jkv_raw("prepareProvider", "true"))) + "," + jkv_raw("signatureHelpProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("(") + "," + jstr(","))))) + "," + jkv_raw("completionProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("."))))))
         var info = jobj(jkv_str("name", "ctron-lsp") + "," + jkv_str("version", "0.1.0"))
         send_result(id_raw, jobj(jkv_raw("capabilities", caps) + "," + jkv_raw("serverInfo", info)))
         return 0
@@ -1188,6 +1429,125 @@ fn handle(msg: Str, st: Store) -> I64 {
         var r = jobj(jkv_raw("isIncomplete", "false") + "," + jkv_raw("items", "[]"))
         if has_params { r = complete_at(msg, pc.i, st) }
         send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/signatureHelp" && has_id {
+        var r = "null"
+        if has_params {
+            var uri = msg_uri(msg, pc.i)
+            var idx = store_find(st, uri)
+            if idx >= 0 {
+                var pp = pos2(0, 0)
+                if msg_pos(msg, pc.i, pp) {
+                    r = sig_help(st_text(st, idx), pp.a, pp.b)
+                }
+            }
+        }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/documentHighlight" && has_id {
+        var r = "null"
+        if has_params {
+            var uri = msg_uri(msg, pc.i)
+            var idx = store_find(st, uri)
+            if idx >= 0 {
+                var pp = pos2(0, 0)
+                if msg_pos(msg, pc.i, pp) {
+                    var text = st_text(st, idx)
+                    var w = word_at(text, pp.a, pp.b)
+                    if w != "" {
+                        r = occ_scan(text, w, 1, "", "", 0 - 1, 0 - 1)
+                    }
+                }
+            }
+        }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/references" && has_id {
+        var r = "[]"
+        if has_params {
+            var uri = msg_uri(msg, pc.i)
+            var idx = store_find(st, uri)
+            if idx >= 0 {
+                var pp = pos2(0, 0)
+                if msg_pos(msg, pc.i, pp) {
+                    var text = st_text(st, idx)
+                    var w = word_at(text, pp.a, pp.b)
+                    if w != "" {
+                        // context.includeDeclaration:排除声明时跳过其名字出现点
+                        var skip_line = 0 - 1
+                        var skip_col = 0 - 1
+                        var cc = cur_at(pc.i)
+                        if find_field(msg, cc, "context") {
+                            var c3 = cur_at(cc.i)
+                            if find_field(msg, c3, "includeDeclaration") {
+                                if !parse_bool_at(msg, c3) {
+                                    var hit = decl_hit_new()
+                                    find_decl(text, w, hit)
+                                    if hit.found && hit.ncol >= 0 {
+                                        skip_line = hit.line
+                                        skip_col = hit.ncol
+                                    }
+                                }
+                            }
+                        }
+                        r = occ_scan(text, w, 2, uri, "", skip_line, skip_col)
+                    }
+                }
+            }
+        }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/prepareRename" && has_id {
+        var r = "null"
+        if has_params {
+            var uri = msg_uri(msg, pc.i)
+            var idx = store_find(st, uri)
+            if idx >= 0 {
+                var pp = pos2(0, 0)
+                if msg_pos(msg, pc.i, pp) {
+                    var text = st_text(st, idx)
+                    var wp = pos2(0, 0)
+                    var w = word_span_pos(text, pp.a, pp.b, wp)
+                    if w != "" && !pipe_has(KW_ALL, w) {
+                        r = jobj(jkv_raw("range", mk_range(wp.a, wp.b, w.len)) + "," + jkv_str("placeholder", w))
+                    }
+                }
+            }
+        }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/rename" && has_id {
+        if has_params {
+            var cn = cur_at(pc.i)
+            var newname = ""
+            if find_field(msg, cn, "newName") {
+                newname = decode_json_string(msg, cn)
+            }
+            if !valid_ident(newname) {
+                send_err(id_raw, 0 - 32602, "新名称必须是合法标识符且非关键字: {newname}")
+                return 0
+            }
+            var uri = msg_uri(msg, pc.i)
+            var idx = store_find(st, uri)
+            if idx >= 0 {
+                var pp = pos2(0, 0)
+                if msg_pos(msg, pc.i, pp) {
+                    var text = st_text(st, idx)
+                    var w = word_at(text, pp.a, pp.b)
+                    if w != "" {
+                        var edits = occ_scan(text, w, 3, uri, newname, 0 - 1, 0 - 1)
+                        send_result(id_raw, jobj(jkv_raw("changes", jobj(jkv_raw(uri, jarr(edits))))))
+                        return 0
+                    }
+                }
+            }
+        }
+        send_result(id_raw, "null")
         return 0
     }
     if has_id {

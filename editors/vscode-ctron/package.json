@@ -2,7 +2,7 @@
   "name": "ctron-lang",
   "displayName": "Ctron Language Support",
   "description": "Ctron 语言支持:语法高亮、智能提示、诊断、跳转(LSP 由 Ctron 自身实现,经 ctronc 解释运行)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "ctron",
   "license": "MIT",
   "engines": {
@@ -52,6 +52,16 @@
           "type": "boolean",
           "default": false,
           "description": "在输出面板(ctron-lsp)打印 LSP 收发日志。"
+        },
+        "ctron.ctroncPath": {
+          "type": "string",
+          "default": "",
+          "description": "ctronc 可执行文件路径(用于保存时语义检查)。留空则按 CTRONC 环境变量 → 常见安装位 → PATH 查找。"
+        },
+        "ctron.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "保存 .ct 文件时运行 ctronc check --format=json,报告语义诊断(E2xxx…E6xxx)。"
         }
       }
     },
@@ -59,6 +69,11 @@
       {
         "command": "ctron.restartServer",
         "title": "重启语言服务器",
+        "category": "Ctron"
+      },
+      {
+        "command": "ctron.checkNow",
+        "title": "立即检查当前文件",
         "category": "Ctron"
       }
     ]
