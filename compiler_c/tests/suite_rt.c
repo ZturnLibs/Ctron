@@ -29,6 +29,9 @@ static const char* const SUPPORTED[] = {
     "05i_deep_cause.ct",
     "06g_noalloc_trait.ct",
     "05d_drop.ct",
+    "05b_panic_join.ct",
+    "06_concurrency.ct",
+    "06e_cancel.ct",
 };
 
 static int supported(const char* n) {

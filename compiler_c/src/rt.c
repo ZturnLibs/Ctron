@@ -16,7 +16,11 @@
 
 // ================= 值 =================
 typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE,
-                V_STRUCT, V_BOX, V_ERR, V_LIST, V_ATOM } vkind;
+                V_STRUCT, V_BOX, V_ERR, V_LIST, V_ATOM, V_TUPLE, V_TASK, V_CHAN, V_MUTEX, V_SCOPE } vkind;
+typedef struct chan_t chan_t;
+typedef struct mutex_t mutex_t;
+typedef struct task_t task_t;
+typedef struct scope_t scope_t;
 typedef struct listnode listnode;
 typedef struct atomcell atomcell;
 typedef struct vfld vfld;
@@ -47,6 +51,10 @@ typedef struct val {
     errval* err;       // V_ERR
     listnode* lst;     // V_LIST
     atomcell* atom;    // V_ATOM
+    chan_t* chan;      // V_CHAN(is_sender 存于 us)
+    mutex_t* mtx;      // V_MUTEX
+    task_t* task;      // V_TASK
+    scope_t* scope;    // V_SCOPE
 } val;
 
 struct vfld { const char* name; val v; };
@@ -54,6 +62,18 @@ struct boxval { val inner; };
 struct errval { char* msg; val cause; };
 struct listnode { struct val* items; size_t n; size_t cap; };
 struct atomcell { __int128 v; int bits; int us; };
+struct chan_t { int cap; struct listnode q; size_t head; };
+struct mutex_t { val inner; };
+struct task_t {
+    val closure;
+    jmp_buf jb;
+    int panicked;
+    char msg[512];
+    int ran;
+    val result;
+    struct task_t* next;
+};
+struct scope_t { task_t* tasks; int cancelled; };
 
 static val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
 static val v_flt(double f) { val v = {0}; v.k = V_FLOAT; v.f = f; return v; }
@@ -84,6 +104,7 @@ typedef struct {
     size_t tests_run, tests_total;
     val opt_result;
     int has_opt;
+    scope_t* scope;
 } rt;
 
 static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
@@ -432,6 +453,156 @@ static val list_clone_deep(rt* R, const listnode* ln) {
     return v;
 }
 
+
+static val invoke_val1(rt* R, val fnv, val a);
+
+// ---------------- 并发原语 ----------------
+static val v_tuple(rt* R, val a, val b) {
+    val* it = (val*)ctron_arena_alloc(R->a, 2 * sizeof(val));
+    it[0] = a;
+    it[1] = b;
+    val v = {0};
+    v.k = V_TUPLE;
+    v.items = it;
+    v.nitems = 2;
+    return v;
+}
+static val v_chan(rt* R, int cap) {
+    val v = {0};
+    v.k = V_CHAN;
+    chan_t* c = (chan_t*)ctron_arena_alloc(R->a, sizeof(chan_t));
+    c->cap = cap;
+    v.chan = c;
+    v.us = 1; // 发送端
+    return v;
+}
+static val v_mutex(rt* R, val inner) {
+    val v = {0};
+    v.k = V_MUTEX;
+    mutex_t* m = (mutex_t*)ctron_arena_alloc(R->a, sizeof(mutex_t));
+    m->inner = inner;
+    v.mtx = m;
+    return v;
+}
+static val v_scope(rt* R) {
+    val v = {0};
+    v.k = V_SCOPE;
+    scope_t* sc = (scope_t*)ctron_arena_alloc(R->a, sizeof(scope_t));
+    v.scope = sc;
+    return v;
+}
+static val v_task(rt* R, task_t* t) {
+    (void)R;
+    val v = {0};
+    v.k = V_TASK;
+    v.task = t;
+    return v;
+}
+static void scope_add_task(rt* R, scope_t* sc, task_t* t) {
+    (void)R;
+    t->next = sc->tasks;
+    sc->tasks = t;
+}
+
+// 运行任务体:任务级捕获 panic
+static void run_task(rt* R, task_t* t) {
+    if (t->ran) return;
+    t->ran = 1;
+    jmp_buf saved;
+    memcpy(saved, R->jb, sizeof saved);
+    if (setjmp(R->jb) == 0) {
+        // 以闭包捕获环境执行
+        const cexpr* c = t->closure.clo;
+        env* saved_top = R->top;
+        env* te = (env*)ctron_arena_alloc(R->a, sizeof(env));
+        te->head = NULL;
+        te->up = t->closure.cap;
+        R->top = te;
+        int sr = R->has_ret;
+        val srv = R->ret;
+        R->has_ret = 0;
+        if (c->ncparams >= 1 && c->cparams[0].name) env_let(R, c->cparams[0].name, v_void());
+        val res = eval_expr(R, c->cbody);
+        t->result = R->has_ret ? R->ret : res;
+        R->has_ret = sr;
+        R->ret = srv;
+        R->top = saved_top;
+    } else {
+        t->panicked = 1;
+        snprintf(t->msg, sizeof t->msg, "%s", R->msg);
+    }
+    memcpy(R->jb, saved, sizeof saved);
+}
+
+// 运行一个尚未执行的任务(返回是否运行过)
+static int run_next_task(rt* R) {
+    if (!R->scope) return 0;
+    for (task_t* t = R->scope->tasks; t; t = t->next) {
+        if (!t->ran) {
+            run_task(R, t);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static val chan_send(rt* R, val sender, val v) {
+    chan_t* c = sender.chan;
+    for (int guard = 0; guard < 8; guard++) {
+        if (c->q.n < (size_t)c->cap) {
+            list_push(R, &c->q, v);
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = v_void();
+            return v_tag("Ok", one, 1);
+        }
+        if (R->scope && R->scope->cancelled) {
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = v_tag("ScopeCancelled", NULL, 0);
+            return v_tag("Err", one, 1);
+        }
+        if (!run_next_task(R)) {
+            // 无其他任务可推进:若已取消则 Err,否则视为死锁(语料不出现)
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = v_tag("ScopeCancelled", NULL, 0);
+            return v_tag("Err", one, 1);
+        }
+    }
+    val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+    one[0] = v_tag("ScopeCancelled", NULL, 0);
+    return v_tag("Err", one, 1);
+}
+
+static val chan_recv(rt* R, val recv) {
+    chan_t* c = recv.chan;
+    for (int guard = 0; guard < 8; guard++) {
+        if (c->head < c->q.n) {
+            val out = c->q.items[c->head++];
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = out;
+            return v_tag("Ok", one, 1);
+        }
+        if (R->scope && R->scope->cancelled) {
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = v_tag("ScopeCancelled", NULL, 0);
+            return v_tag("Err", one, 1);
+        }
+        if (!run_next_task(R)) {
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = v_tag("ScopeCancelled", NULL, 0);
+            return v_tag("Err", one, 1);
+        }
+    }
+    val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+    one[0] = v_tag("ScopeCancelled", NULL, 0);
+    return v_tag("Err", one, 1);
+}
+
+static val mutex_with(rt* R, val mx, val f, int mut) {
+    val inner = mx.mtx->inner;
+    val arg = mut ? inner : inner; // 可变通道下同语义;类共享、struct 值副本
+    return invoke_val1(R, f, arg);
+}
+
 static int val_eq(rt* R, val a, val b) {
     (void)R;
     if (a.k == V_INT && b.k == V_INT) return a.i == b.i;
@@ -444,8 +615,30 @@ static int val_eq(rt* R, val a, val b) {
 }
 
 // ================= 语句 =================
+static void bind_value(rt* R, cpat* p, val v);
+
+static void bind_value(rt* R, cpat* p, val v) {
+    if (!p) return;
+    switch (p->kind) {
+    case PAT_IDENT: env_let(R, p->name, v); break;
+    case PAT_WILD: break;
+    case PAT_TUPLE:
+        if (v.k != V_TUPLE && v.k != V_ARR) break;
+        for (size_t i = 0; i < p->nelems && i < v.nitems; i++)
+            bind_value(R, p->elems[i], v.items[i]);
+        break;
+    default: break;
+    }
+}
+
 static void eval_let(rt* R, cstmt* st) {
-    if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name) {
+    if (!st->pat) return;
+    if (st->pat->kind == PAT_TUPLE) {
+        val v = st->e ? eval_expr(R, st->e) : v_void();
+        bind_value(R, st->pat, v);
+        return;
+    }
+    if (st->pat->kind != PAT_IDENT || !st->pat->name) {
         if (st->e) (void)eval_expr(R, st->e);
         return;
     }
@@ -469,8 +662,8 @@ static void eval_stmt(rt* R, cstmt* st) {
             val* objv = &b->slot;
             val target = *objv;
             if (target.k == V_BOX && target.bx) { target = target.bx->inner; objv = &target; }
-            if (target.k != V_STRUCT || target.is_class)
-                rt_abort(R, RT_ERROR, "成员赋值目标需为 struct 值: %s", st->target->mname);
+            if (target.k != V_STRUCT)
+                rt_abort(R, RT_ERROR, "成员赋值目标需为 struct/class: %s", st->target->mname);
             vfld* f = NULL;
             for (size_t i = 0; i < target.nfld; i++)
                 if (strcmp(target.flds[i].name, st->target->mname) == 0) { f = &target.flds[i]; break; }
@@ -540,21 +733,26 @@ static void eval_stmt(rt* R, cstmt* st) {
         break;
     }
     case ST_FOR: {
-        if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name || !st->iter)
+        if (!st->iter) rt_abort(R, RT_ERROR, "for 缺迭代");
+        int wild = st->pat && st->pat->kind == PAT_WILD;
+        if (st->pat && st->pat->kind != PAT_IDENT && st->pat->kind != PAT_WILD)
             rt_abort(R, RT_ERROR, "for 模式不支持");
         val it = eval_expr(R, st->iter);
         env_push(R);
-        env_let(R, st->pat->name, v_int(0, 32, 0));
-        bind* iv = env_find(R, st->pat->name);
+        bind* iv = NULL;
+        if (!wild) {
+            env_let(R, st->pat->name, v_int(0, 32, 0));
+            iv = env_find(R, st->pat->name);
+        }
         if (it.k == V_RANGE) {
             for (int64_t cur = it.lo; (it.inclusive ? cur <= it.hi : cur < it.hi); cur++) {
-                iv->slot = v_int(cur, 32, 0);
+                if (iv) iv->slot = v_int(cur, 32, 0);
                 (void)eval_block(R, st->body);
                 if (R->has_ret) break;
             }
-        } else if (it.k == V_ARR) {
+        } else if (it.k == V_ARR || it.k == V_TUPLE) {
             for (size_t i = 0; i < it.nitems; i++) {
-                iv->slot = it.items[i];
+                if (iv) iv->slot = it.items[i];
                 (void)eval_block(R, st->body);
                 if (R->has_ret) break;
             }
@@ -1046,6 +1244,26 @@ static val eval_expr(rt* R, cexpr* e) {
         rt_abort(R, RT_ERROR, "match 无匹配臂");
     }
     case EX_OWN: return eval_block(R, e->obody);
+    case EX_SCOPE: {
+        val sv = v_scope(R);
+        scope_t* saved = R->scope;
+        R->scope = sv.scope;
+        env_push(R);
+        if (e->sparam) env_let(R, e->sparam, sv);
+        int sr = R->has_ret;
+        val srv = R->ret;
+        R->has_ret = 0;
+        val body = eval_block(R, e->sbody);
+        val res = R->has_ret ? R->ret : body;
+        R->has_ret = sr;
+        R->ret = srv;
+        // 作用域退出:收尾所有任务(正常已 join;残留应可推进)
+        for (int guard = 0; guard < 64; guard++)
+            if (!run_next_task(R)) break;
+        env_pop(R);
+        R->scope = saved;
+        return res;
+    }
     case EX_BLOCK: return eval_block(R, e->block);
     case EX_CALL: {
         cexpr* cal = e->callee;
@@ -1069,6 +1287,21 @@ static val eval_expr(rt* R, cexpr* e) {
             if (v.k != V_INT) rt_abort(R, RT_ERROR, "Atomic 初始值");
             return v_atom(R, v.i, v.bits, v.us);
         }
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "Channel") == 0) {
+            if (e->nelems != 1) rt_abort(R, RT_ERROR, "Channel 实参");
+            val capv = eval_expr(R, e->elems[0]);
+            int cap = (int)capv.i;
+            val snd = v_chan(R, cap);
+            val rcv = snd;
+            rcv.us = 0;
+            return v_tuple(R, snd, rcv);
+        }
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "Mutex") == 0) {
+            if (e->nelems != 1) rt_abort(R, RT_ERROR, "Mutex 实参");
+            return v_mutex(R, eval_expr(R, e->elems[0]));
+        }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_MEMBER
             && cal->obj->mname && strcmp(cal->obj->mname, "list") == 0
             && cal->obj->obj && cal->obj->obj->kind == EX_IDENT
@@ -1077,6 +1310,11 @@ static val eval_expr(rt* R, cexpr* e) {
         }
         if (cal && cal->kind == EX_IDENT) {
             const char* nm = cal->text;
+            if (!strcmp(nm, "panic")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "panic 实参");
+                val mv = eval_expr(R, e->elems[0]);
+                rt_abort(R, RT_PANIC, "%s", (mv.k == V_STR && mv.s) ? mv.s : "panic");
+            }
             if (!strcmp(nm, "assert")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "assert 参数");
                 val c = eval_expr(R, e->elems[0]);
@@ -1152,6 +1390,55 @@ static val eval_expr(rt* R, cexpr* e) {
                     return v_int(old, recv.atom->bits, recv.atom->us);
                 }
                 rt_abort(R, RT_ERROR, "原子方法不支持: %s", cal->mname);
+            }
+            if (recv.k == V_SCOPE && cal->mname && strcmp(cal->mname, "spawn") == 0) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "spawn 实参");
+                val f = eval_expr(R, e->elems[0]);
+                if (f.k != V_CLOSURE && f.k != V_FN) rt_abort(R, RT_ERROR, "spawn 需闭包");
+                task_t* t = (task_t*)ctron_arena_alloc(R->a, sizeof(task_t));
+                t->closure = f;
+                scope_add_task(R, recv.scope, t);
+                return v_task(R, t);
+            }
+            if (recv.k == V_TASK && cal->mname) {
+                task_t* t = recv.task;
+                if (strcmp(cal->mname, "join") == 0) {
+                    run_task(R, t);
+                    if (t->panicked) rt_abort(R, RT_PANIC, "%s", t->msg);
+                    return t->result;
+                }
+                if (strcmp(cal->mname, "join_or") == 0) {
+                    run_task(R, t);
+                    val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                    if (t->panicked) {
+                        if (R->scope) R->scope->cancelled = 1; // 兄弟失败 → 取消作用域
+                        one[0] = v_tag("TaskPanic", NULL, 0);
+                        return v_tag("Err", one, 1);
+                    }
+                    one[0] = t->result;
+                    return v_tag("Ok", one, 1);
+                }
+                rt_abort(R, RT_ERROR, "任务方法不支持: %s", cal->mname);
+            }
+            if (recv.k == V_CHAN && cal->mname) {
+                if (strcmp(cal->mname, "send") == 0) {
+                    if (!recv.us) rt_abort(R, RT_ERROR, "接收端不能 send");
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "send 实参");
+                    return chan_send(R, recv, eval_expr(R, e->elems[0]));
+                }
+                if (strcmp(cal->mname, "recv") == 0) {
+                    if (recv.us) rt_abort(R, RT_ERROR, "发送端不能 recv");
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "recv 实参");
+                    return chan_recv(R, recv);
+                }
+                rt_abort(R, RT_ERROR, "通道方法不支持: %s", cal->mname);
+            }
+            if (recv.k == V_MUTEX && cal->mname) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "%s 实参", cal->mname);
+                val f = eval_expr(R, e->elems[0]);
+                if (!strcmp(cal->mname, "with") || !strcmp(cal->mname, "with_mut"))
+                    return mutex_with(R, recv, f, !strcmp(cal->mname, "with_mut"));
+                rt_abort(R, RT_ERROR, "互斥方法不支持: %s", cal->mname);
             }
             if (recv.k == V_STRUCT && recv.is_class && cal->mname) {
                 const cfn* F = cls_method(R, recv.type, cal->mname);
