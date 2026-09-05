@@ -435,7 +435,7 @@ impl Parser {
             let mattrs = self.parse_attrs().0;
             self.skip_newlines();
             if self.at(&Tok::Prop) {
-                let mut p = self.parse_prop_decl(mattrs);
+                let p = self.parse_prop_decl(mattrs);
                 if p.body.is_some() { items.push(TraitItem::PropImpl(p)); }
                 else { items.push(TraitItem::PropSig(p)); }
             } else {
