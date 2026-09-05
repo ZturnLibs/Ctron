@@ -62,3 +62,12 @@ test "str edge" {
     assert_eq("q\"q", "x")
     assert_eq("lit \{x}", "x")
 }
+fn useopt(p: Option[Str], r: &I32) -> Option[I32] {
+    return p
+}
+fn applyf(f: fn(I32) -> I32, x: I32) -> I32 {
+    return f(x)
+}
+fn maybe(n: I32?) -> I32 {
+    return 0
+}

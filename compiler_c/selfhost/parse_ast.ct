@@ -581,9 +581,82 @@ fn parse_if(toks: List[Str], cur: Atomic[I32]) -> Str {
 }
 
 fn parse_type(toks: List[Str], cur: Atomic[I32]) -> Str {
-    var nm = tok(toks, cur)
+    var t = tok(toks, cur)
+    if t == "&" {
+        adv(cur)
+        var sub = parse_type(toks, cur)
+        var r = "Ref(" + sub + ")"
+        if tok(toks, cur) == "?" {
+            adv(cur)
+            r = "Optional(" + r + ")"
+        }
+        return r
+    }
+    var nm = t
     adv(cur)
-    return "Named \{ path: [\"" + nm + "\"], args: []}"
+    var ty = ""
+    if nm == "fn" {
+        adv(cur)
+        var ps = ""
+        var k: I32 = 0
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" {
+                more = false
+            } else {
+                var a = parse_type(toks, cur)
+                if k > 0 {
+                    ps = ps + ", "
+                }
+                ps = ps + a
+                k += 1
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                } else {
+                    more = false
+                }
+            }
+        }
+        adv(cur)
+        var ret = "None"
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            ret = parse_type(toks, cur)
+        }
+        ty = "Fn \{ params: [" + ps + "], ret: " + ret + "}"
+    } else {
+        ty = "Named \{ path: [\"" + nm + "\"], args: []}"
+        if tok(toks, cur) == "[" {
+            adv(cur)
+            var args = ""
+            var k: I32 = 0
+            var more = true
+            while more {
+                if tok(toks, cur) == "]" {
+                    more = false
+                } else {
+                    var a = parse_type(toks, cur)
+                    if k > 0 {
+                        args = args + ", "
+                    }
+                    args = args + a
+                    k += 1
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    } else {
+                        more = false
+                    }
+                }
+            }
+            adv(cur)
+            ty = "Named \{ path: [\"" + nm + "\"], args: [" + args + "]}"
+        }
+    }
+    if tok(toks, cur) == "?" {
+        adv(cur)
+        ty = "Optional(" + ty + ")"
+    }
+    return ty
 }
 
 fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
