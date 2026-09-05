@@ -673,6 +673,48 @@ static void eval_stmt(rt* R, cstmt* st) {
     case ST_RET: R->ret = st->e ? eval_expr(R, st->e) : v_void(); R->has_ret = 1; break;
     case ST_EXPR: (void)eval_expr(R, st->e); break;
     case ST_ASSIGN: {
+        // 索引目标:arr[i] = v / arr[i] op= v(写透共享后备)
+        if (st->target && st->target->kind == EX_INDEX
+            && st->target->obj && st->target->obj->kind == EX_IDENT) {
+            bind* b = env_find(R, st->target->obj->text);
+            if (!b) rt_abort(R, RT_ERROR, "未知绑定 %s", st->target->obj->text);
+            val* cont = &b->slot;
+            val* elem = NULL;
+            if (cont->k == V_ARR || cont->k == V_LIST) {
+                val ix = eval_expr(R, st->target->index);
+                long long idx = (long long)ix.i;
+                if (idx < 0 || (unsigned long long)idx >= cont->nitems
+                    || (cont->k == V_LIST && (size_t)idx >= cont->lst->n))
+                    rt_abort(R, RT_PANIC, "index out of bounds");
+                if (cont->k == V_ARR) elem = &cont->items[idx];
+                else elem = &cont->lst->items[idx];
+            } else rt_abort(R, RT_ERROR, "索引赋值目标非数组/列表");
+            val r = eval_expr(R, st->value);
+            if (st->aop == A_EQ) {
+                if (elem->k == V_INT && r.k == V_INT) r = ck_int(R, r.i, elem->bits, elem->us, "=");
+                else if (elem->k == V_INT && r.k == V_FLOAT) r = ck_int(R, (__int128)r.f, elem->bits, elem->us, "=");
+                *elem = r;
+                break;
+            }
+            val l = *elem;
+            __int128 x = 0;
+            switch (st->aop) {
+            case A_ADDEQ: x = l.i + r.i; break;
+            case A_SUBEQ: x = l.i - r.i; break;
+            case A_MULEQ: x = l.i * r.i; break;
+            case A_DIVEQ:
+                if (r.i == 0) rt_abort(R, RT_PANIC, "division by zero (/=)");
+                x = l.i / r.i;
+                break;
+            case A_MODEQ:
+                if (r.i == 0) rt_abort(R, RT_PANIC, "division by zero (%=)");
+                x = l.i % r.i;
+                break;
+            default: rt_abort(R, RT_ERROR, "索引赋值运算符"); break;
+            }
+            *elem = ck_int(R, x, l.bits, l.us, "idx assign");
+            break;
+        }
         // 成员目标:b.x = v / b.x op= v
         if (st->target && st->target->kind == EX_MEMBER && st->target->m_is_name
             && st->target->obj && st->target->obj->kind == EX_IDENT) {
@@ -928,27 +970,30 @@ static val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     return res;
 }
 
-// 以单值实参调用函数值(命名函数或闭包)
-static val invoke_val1(rt* R, val fnv, val a) {
-    if (fnv.k == V_FN) {
-        val args[1];
-        args[0] = a;
-        return call_decl_vals(R, fnv.fnr, args, 1);
-    }
+// 多/单实参调用函数值(命名函数或闭包)
+static val invoke_vals(rt* R, val fnv, val* args, size_t n) {
+    if (fnv.k == V_FN) return call_decl_vals(R, fnv.fnr, args, n);
     if (fnv.k == V_CLOSURE) {
         const cexpr* c = fnv.clo;
+        if (n != c->ncparams) rt_abort(R, RT_ERROR, "闭包参数个数");
         env* saved = R->top;
         env* callee_env = (env*)ctron_arena_alloc(R->a, sizeof(env));
         callee_env->head = NULL;
         callee_env->up = fnv.cap;
         R->top = callee_env;
-        if (c->ncparams >= 1 && c->cparams[0].name) env_let(R, c->cparams[0].name, a);
+        for (size_t i = 0; i < n; i++)
+            if (c->cparams[i].name) env_let(R, c->cparams[i].name, args[i]);
         val r = eval_expr(R, c->cbody);
         R->top = saved;
         return r;
     }
     rt_abort(R, RT_ERROR, "调用目标非函数值");
     return v_void();
+}
+static val invoke_val1(rt* R, val fnv, val a) {
+    val args[1];
+    args[0] = a;
+    return invoke_vals(R, fnv, args, 1);
 }
 
 // 选项/结果方法内建(map/or/expect/context/is_some);命中置 R->opt_result
@@ -1291,6 +1336,19 @@ static val eval_expr(rt* R, cexpr* e) {
     case EX_BLOCK: return eval_block(R, e->block);
     case EX_CALL: {
         cexpr* cal = e->callee;
+        if (cal && cal->kind == EX_MEMBER && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "Arena") == 0 && cal->mname
+            && strcmp(cal->mname, "fixed") == 0) {
+            // Arena.fixed(n): arena 句柄(无状态)
+            val h = {0};
+            h.k = V_ARR; // 占位;真正零数组经 arena.zeros 现建
+            (void)e;
+            val av = {0};
+            av.k = V_ARR;
+            av.items = NULL;
+            av.nitems = 0;
+            return av;
+        }
         // .as[T]()
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_MEMBER
             && cal->obj->m_is_name && cal->obj->mname && strcmp(cal->obj->mname, "as") == 0) {
@@ -1330,13 +1388,35 @@ static val eval_expr(rt* R, cexpr* e) {
             return v_mutex(R, init);
         }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_MEMBER
-            && cal->obj->mname && strcmp(cal->obj->mname, "list") == 0
-            && cal->obj->obj && cal->obj->obj->kind == EX_IDENT
+            && cal->obj->mname && cal->obj->obj && cal->obj->obj->kind == EX_IDENT
             && strcmp(cal->obj->obj->text, "arena") == 0) {
-            return v_list(R); // arena.list[T]()
+            const char* am = cal->obj->mname;
+            if (strcmp(am, "list") == 0) return v_list(R);
+            if (strcmp(am, "zeros") == 0 || strcmp(am, "array") == 0) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "%s 实参", am);
+                val nv = eval_expr(R, e->elems[0]);
+                long long n = (long long)nv.i;
+                if (n < 0 || n > (1 << 20)) rt_abort(R, RT_ERROR, "数组过大");
+                val* arr = (val*)ctron_arena_alloc(R->a, (size_t)n * sizeof(val));
+                for (long long i = 0; i < n; i++) arr[i] = v_int(0, 32, 0);
+                return v_arr(arr, (size_t)n);
+            }
+            rt_abort(R, RT_ERROR, "arena 方法不支持: %s", am);
         }
         if (cal && cal->kind == EX_IDENT) {
             const char* nm = cal->text;
+            // 绑定为函数值(fn 类型参数)→ 按值调用
+            {
+                bind* fb = env_find(R, nm);
+                if (fb && (fb->slot.k == V_FN || fb->slot.k == V_CLOSURE)) {
+                    val* av = NULL;
+                    if (e->nelems) {
+                        av = (val*)ctron_arena_alloc(R->a, e->nelems * sizeof(val));
+                        for (size_t i = 0; i < e->nelems; i++) av[i] = eval_expr(R, e->elems[i]);
+                    }
+                    return invoke_vals(R, fb->slot, av, e->nelems);
+                }
+            }
             if (!strcmp(nm, "panic")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "panic 实参");
                 val mv = eval_expr(R, e->elems[0]);
@@ -1384,6 +1464,25 @@ static val eval_expr(rt* R, cexpr* e) {
                 val r = R->opt_result;
                 R->has_opt = 0;
                 return r;
+            }
+            if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "slice") == 0) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "slice 实参");
+                val rg = eval_expr(R, e->elems[0]);
+                if (rg.k != V_RANGE) rt_abort(R, RT_ERROR, "slice 需 range");
+                size_t len = recv.s ? strlen(recv.s) : 0;
+                long long lo = rg.lo < 0 ? 0 : rg.lo;
+                long long hi = rg.inclusive ? rg.hi + 1 : rg.hi;
+                if (hi > (long long)len) hi = len;
+                // utf8 边界检查
+                if (lo < (long long)len && ((unsigned char)recv.s[lo] & 0xC0) == 0x80)
+                    rt_abort(R, RT_PANIC, "invalid utf8 boundary (utf8)");
+                if (hi < (long long)len && ((unsigned char)recv.s[hi] & 0xC0) == 0x80)
+                    rt_abort(R, RT_PANIC, "invalid utf8 boundary (utf8)");
+                if (lo < 0 || hi < lo) rt_abort(R, RT_PANIC, "invalid utf8 boundary (utf8)");
+                val out = {0};
+                out.k = V_STR;
+                out.s = ctron_arena_strndup(R->a, recv.s + lo, (size_t)(hi - lo));
+                return out;
             }
             if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "to_string") == 0) {
                 val r = recv; // 不可变;隐式降格语义

@@ -35,6 +35,10 @@ static const char* const SUPPORTED[] = {
     "03e_generics_types.ct",
     "06d_globals.ct",
     "07_capabilities.ct",
+    "00_doctest.ct",
+    "03f_slices.ct",
+    "03g_fn_types.ct",
+    "03h_utf8_boundary.panic.ct",
 };
 
 static int supported(const char* n) {
