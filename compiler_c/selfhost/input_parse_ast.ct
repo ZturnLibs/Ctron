@@ -146,3 +146,12 @@ fn oc_main() -> I32 {
     }
     return apply_twice(g, 1)
 }
+trait Animal: Show {
+    fn name(&self) -> Str
+    prop age: I32
+}
+fn f(n: I32) -> I32 {
+    scope { |s| }
+    Global[I32](0)
+    return n
+}

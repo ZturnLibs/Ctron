@@ -811,6 +811,9 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
     if t == "own" {
         return parse_own(toks, cur)
     }
+    if t == "scope" {
+        return parse_scope(toks, cur)
+    }
     if t == "void" {
         adv(cur)
         return "Void"
@@ -1194,6 +1197,9 @@ fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
             if t0 == "let" {
                 adv(cur)
             }
+            if tok(toks, cur) == "&" {
+                adv(cur)
+            }
             var pn = tok(toks, cur)
             adv(cur)
             var entry = ""
@@ -1222,8 +1228,11 @@ fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
         adv(cur)
         ret = parse_type(toks, cur)
     }
-    adv(cur)
-    var body = parse_block(toks, cur)
+    var body = "None"
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = parse_block(toks, cur)
+    }
     var out = tag + " \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
     out = out + ", body: " + body + "}"
     return out
@@ -1669,8 +1678,93 @@ fn parse_static(toks: List[Str], cur: Atomic[I32]) -> Str {
 }
 
 fn parse_prop(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var vis = parse_vis_word(toks, cur)
     adv(cur)
-    return "Prop \{ vis: Private, name: \\\"?\\\", ty: Named \{ path: [\\\"?\\\"], args: []}, body: None}"
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = parse_type(toks, cur)
+    var body = "None"
+    var tag = "PropSig"
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = parse_block(toks, cur)
+        tag = "PropImpl"
+    }
+    return tag + " \{ vis: " + vis + ", name: \"" + nm + "\", ty: " + ty + ", body: " + body + "}"
+}
+
+fn parse_trait(toks: List[Str], cur: Atomic[I32]) -> Str {
+    skip_nl(toks, cur)
+    var vis = parse_vis_word(toks, cur)
+    var drv = parse_derive(toks, cur)
+    skip_nl(toks, cur)
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var tp = "[]"
+    if tok(toks, cur) == "[" {
+        tp = parse_type_params(toks, cur)
+    }
+    var sup = ""
+    var k0: I32 = 0
+    if tok(toks, cur) == ":" {
+        adv(cur)
+        var more0 = true
+        while more0 {
+            var a = tok(toks, cur)
+            adv(cur)
+            if k0 > 0 {
+                sup = sup + ", "
+            }
+            sup = sup + "\"" + a + "\""
+            k0 += 1
+            if tok(toks, cur) == "+" {
+                adv(cur)
+            } else {
+                more0 = false
+            }
+        }
+    }
+    skip_nl(toks, cur)
+    adv(cur)
+    var it = ""
+    var k: I32 = 0
+    var go = true
+    while go {
+        skip_nl(toks, cur)
+        var t = tok(toks, cur)
+        if t == "}" {
+            go = false
+        } else if t == "#EOF" {
+            go = false
+        } else {
+            var item = ""
+            if t == "fn" {
+                item = parse_fndecl(toks, cur, "Method")
+            } else {
+                item = parse_prop(toks, cur)
+            }
+            if k > 0 {
+                it = it + ", "
+            }
+            it = it + item
+            k += 1
+        }
+    }
+    adv(cur)
+    return "Trait \{ attrs: [], name: \"" + nm + "\", type_params: " + tp + ", supers: [" + sup + "], items: [" + it + "] }"
+}
+
+fn parse_scope(toks: List[Str], cur: Atomic[I32]) -> Str {
+    adv(cur)
+    adv(cur)
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var body = parse_block(toks, cur)
+    return "Scope \{ param: \"" + nm + "\", body: " + body + "}"
 }
 
 fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -1704,6 +1798,8 @@ fn parse_file(toks: List[Str], cur: Atomic[I32]) -> Str {
                 d = parse_class(toks, cur)
             } else if kd == "impl" {
                 d = parse_impl(toks, cur)
+            } else if kd == "trait" {
+                d = parse_trait(toks, cur)
             } else {
                 d = parse_fn(toks, cur)
             }

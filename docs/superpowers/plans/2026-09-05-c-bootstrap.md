@@ -86,8 +86,11 @@
 14. **C6f④(本文件交付)**:闭包 `|x| expr`/`|a: T, var b| -> R expr`(ClosureParam{is_var,ty}/
    ret 可选)与 `own(arena) {}` 块(Own{arena,body})表达式;解锁 03g_fn_types/05_own*
    /05e/05g/06d_globals 等。parse 语料差分 21→**28 文件**,suite_diff 88 用例全绿。
-15. **C6f⑤(下一阶梯)**:trait 声明(Method 无体/PropSig·PropImpl/supers)、scope { |s| }/spawn、
-   Global[T] 初始化、解包成员(?.可选) → 解锁 03d/06_*/07_*/08d/04_generics 语料。
+15. **C6f⑤(本文件交付)**:trait 声明(supers/无体 Method/PropSig·PropImpl)、receiver
+   `&self`、scope { |s| } 块;解锁 05b_panic_join/06_spawn_nonsend/07_capabilities 等。
+   parse 语料差分 28→**31 文件**,suite_diff 91 用例全绿;ASan/UBSan 全绿。
+16. **C6g(下一阶梯)**:`\u{...}` 解码钉、解包 `?` 后缀、函数值属性(#[pure] attrs 表)、
+   if-let/守卫、剩余 03d/06_concurrency/06f/04_generics 等约 19 文件 → 全语料 parse 差分。
 
 ## 冻结纪律
 
