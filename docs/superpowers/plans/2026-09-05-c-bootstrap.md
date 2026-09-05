@@ -238,6 +238,20 @@
    (多 impl 分发/方法内 self 复合写外部可见/List 全套/fn 类型参数+闭包/Option match),
    C check 0 诊断,cc 全管线输出与原生逐字一致。验收:suite_diff 230 cases
    (O2/ASan 同数)+ suite_run 16 + make test 端到端恢复绿(并行 trans 已 12/12)。
+20b. **C9i①(本文件交付)—— Ctron 词法换行过滤 + 解析停滞守卫(自译化阶梯的第一块真实缺口)**:
+   尝试 cc.ct 自译化(cc 解释 cc.ct 自身)时暴露:**Ctron scan 无换行抑制规则** —— C 词法器
+   `filter_newlines`(§1.6):行尾延续集(`,` `=` `->` `=>` `&&` `||` `..` `..=` `+-*/%` `+% -%`
+   `== != < > <= >=` `(` `[` `{` `|`)或下一行首延续集(`.` 与各二元运算符)→ 换行抑制;
+   cc.ct 自身源码(al_b/eval_call)使用了 `&&` 领行续行,C 解析器接受而 Ctron 解析器遇 NL 即断 →
+   解析树错位。修复:六个模块(ev2/cc/sem_chk/parsetree/parse_ast/pkg_chk)统一安装
+   filter_nl(镜像 C 规则,含连续换行折叠);另安装 p_file/p_block 循环停滞守卫
+   (镜像 C `ensure_progress`:一轮未推进强制消费,防语法缺口退化为无限挂起)。
+   已裁定分歧:①`{` 行尾抑制暂不启用(Ctron p_block 依赖 `{` 后换行作为块恢复边界,
+   启用即回归;与 C 的差异挂账,待解析器韧性加固后对齐);②pkg_chk/parse_ast 的
+   p_file/p_block 形态差异未加守卫(挂账)。验收:make test 全量绿(含新增 corpus_trans
+   17/17)+ suite_diff 230(O2/ASan 同数);自编译阶梯实测:input_cc3/sem_chk(120KB)/
+   parsetree 源码可被 cc 全管线 parse+sem 通过(≤2s);ev2/cc 自身源码在种子解释器上
+   ~90-120s 被系统资源杀(非逻辑失败,解释器资源边界,挂账 C9i② 性能)。
 
 
 ## 自举产物目录

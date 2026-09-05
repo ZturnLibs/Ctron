@@ -122,3 +122,10 @@
   ①cc 语义面扩面(12 项之外);②求值器运行域补尾;③**自译化阶梯**:cc.ct 解释
   cc.ct(cc.sh 嵌套自举),验证自足性;④差分脚本从 compiler_c/tests 迁移/复制到
   selfhosted/ 本地,验收不再依赖宿主管的套件源码。
+- C9i① ✅(自译化尝试暴露真实缺口并修复):**Ctron scan 无换行抑制规则** —— cc.ct 自身
+  源码用了 `&&` 领行续行,C 解析器接受、Ctron 解析器遇 NL 即断。修复:六模块统一安装
+  filter_nl(镜像 C filter_newlines)+ p_file/p_block 停滞守卫(镜像 ensure_progress)。
+  分歧挂账:①`{` 行尾抑制暂不启用(p_block 依赖该换行,启用即回归);②pkg_chk/parse_ast
+  未加守卫。自编译阶梯:input_cc3/sem_chk/parsetree ✓(≤2s);ev2/cc 种子解释器资源边界
+  (~90-120s 被杀)→ 下一阶梯 C9i②:种子解释器性能(或自举二进制替代种子)。
+  验收:make test 全量绿(含并行新增 corpus_trans 17/17)+ suite_diff 230(O2/ASan 同数)。
