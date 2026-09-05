@@ -92,6 +92,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C7b② ✅ | 树版入 Str 部件(Text/Interp)/test 声明/调用·成员后缀 | 夹具 9 fn/test 逐字节 |
 | C7b③ ✅ | 树版入 match/模式/struct/enum/泛型类型实参 | 夹具 12 项逐字节 |
 | C7b④ ✅ | 树版入 use/const/static/class/impl/trait/类型形参/元组类型 | 夹具 18 项逐字节 |
-| C7c ✅ | 树版入 TypeArgs 消歧/Index/Try?/.0/own/闭包/scope | 夹具 20 项逐字节;C7d comptime/attrs/@derive/Expr 语句 NL 消歧 → 对齐 parse_ast |
+| C7c ✅ | 树版入 TypeArgs 消歧/Index/Try?/.0/own/闭包/scope | 夹具 20 项逐字节 |
+| C7d ✅ | NL 记号+语句级消歧(Expr 语句/尾前瞻/空 return) | 夹具 23 项逐字节;C7e comptime/attrs/@derive/结构字面量 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
