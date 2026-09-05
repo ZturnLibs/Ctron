@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "lexer.h"
+#include "parser.h"
 
 static const char* VERSION = "0.1.0";
 
@@ -47,9 +48,34 @@ static int cmd_lex(int argc, char** argv) {
 }
 
 static int cmd_parse(int argc, char** argv) {
-    (void)argc; (void)argv;
-    fprintf(stderr, "ctronc: parse 子命令属于下一里程碑(解析器),尚未实现\n");
-    return 2;
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc parse <file> [--ast]\n");
+        return 2;
+    }
+    const char* path = argv[2];
+    int show_ast = 0;
+    for (int i = 3; i < argc; i++)
+        if (strcmp(argv[i], "--ast") == 0) show_ast = 1;
+    size_t len;
+    char* src = read_file(path, &len);
+    if (!src) {
+        fprintf(stderr, "无法读取 %s\n", path);
+        return 2;
+    }
+    ctron_parse_result r = ctron_parse_src(src, len);
+    for (size_t i = 0; i < r.ndiags; i++) {
+        ctron_diag* d = &r.diags[i];
+        printf("%s:%u:%u %s: %s\n", path, d->span.line, d->span.col, d->code, d->message);
+    }
+    if (show_ast) {
+        ctron_file_show(r.file, stdout);
+    } else {
+        printf("%zu decls, %zu diagnostics\n", r.file->ndecls, r.ndiags);
+    }
+    int ok = (r.ndiags == 0);
+    ctron_parse_result_free(&r);
+    free(src);
+    return ok ? 0 : 1;
 }
 
 int main(int argc, char** argv) {
