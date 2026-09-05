@@ -6,6 +6,7 @@
 //   E3031 静态存储非 Send / E4020 #[pure] 能力调用 / E6020 comptime 能力调用
 //   E4030 #[no_spawn] 内 spawn / E3050 own 块 arena 句柄 use-after-move
 //   E3060 own 块内对类值成员可变写 / W8010 浅拷贝 / W8020 must-use 丢弃
+//   W8040 遮蔽前奏符号(名单对齐 Rust register_prelude;let 前奏类型名由语法层路由防护)
 // 模块级在 pkg.c(E5010/E5020/E2020/E4010/E6010);分配效果 E3040 见 check_alloc_ctx。
 #ifndef CTRON_SEM_H
 #define CTRON_SEM_H

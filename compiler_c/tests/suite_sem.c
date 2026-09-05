@@ -107,7 +107,7 @@ static void parse_markers(const char* src, expect* x) {
 static int implemented(const char* code) {
     static const char* const S[] = {"E2010", "E2030", "E3010", "E3020", "E3031", "E4020",
                                     "E6020", "E4030", "E3050", "E3060", "E3040",
-                                    "W8010", "W8020", "E1001", "E3030"};
+                                    "W8010", "W8020", "W8040", "E1001", "E3030"};
     for (size_t i = 0; i < sizeof S / sizeof S[0]; i++)
         if (strcmp(code, S[i]) == 0) return 1;
     return 0;

@@ -489,6 +489,29 @@ static int check_cond_bool(ctx* c, cexpr* cond, const char* what) {
     diag(c->k, "E2010", "%s 条件应为 Bool,实际 %s", what, hn);
     return 1;
 }
+static const char* cat_name(int cat) {
+    return cat == 1 ? "数值" : cat == 2 ? "Bool" : "Str";
+}
+// ---------- W8040:遮蔽前奏符号(名单对齐 Rust sem.rs register_prelude) ----------
+static int is_prelude_name(const char* n) {
+    static const char* const P[] = {
+        "I8", "I16", "I32", "I64", "ISize", "U8", "U16", "U32", "U64", "USize",
+        "F32", "F64", "Bool", "Str", "String", "Void", "Never", "TaskPanic",
+        "Channel", "List", "Map", "Set", "Box", "StringBuilder", "Atomic", "Global",
+        "Mutex", "Sender", "Receiver", "Task", "Scope", "Arena", "Region", "Pool",
+        "ArenaList", "Simd", "AnyError", "Parallel", "Path", "Bytes",
+        "Option", "Result", "Some", "None", "Ok", "Err",
+        "Error", "Show", "Eq", "Drop", "Clone", "Hash", "Iter", "Cap",
+        "Clock", "Fs", "Net", "Log",
+    };
+    for (size_t i = 0; i < sizeof P / sizeof P[0]; i++)
+        if (strcmp(n, P[i]) == 0) return 1;
+    return 0;
+}
+static void check_shadow_prelude(ctx* c, const char* name) {
+    if (name && is_prelude_name(name))
+        diag(c->k, "W8040", "遮蔽前奏符号(shadow):%s", name);
+}
 // opt/res 接收类型判定:Option/Result/T? → 1;可证明不是 → 0;未知 → -1(不判)
 static int is_optres_ty(const sym* s, const cty* t) {
     if (!t) return -1;
@@ -736,18 +759,26 @@ static void check_block(ctx* c, cblock* b) {
             // 单标识符模式 → 绑定
             if (st->pat && st->pat->kind == PAT_IDENT && st->pat->name) {
                 cty* ty = st->ty ? st->ty : derive_type(c, st->e);
-                // E2010(保守):初值是字面量且类别与注解原语冲突(数值↔Bool↔Str)
-                if (st->ty && st->e) {
-                    int lcat = 0;
-                    if (st->e->kind == EX_STR) lcat = 3;
-                    else if (st->e->kind == EX_BOOL) lcat = 2;
-                    else if (st->e->kind == EX_INT || st->e->kind == EX_FLOAT) lcat = 1;
+                // E2010(保守):注解原语类别 vs 初值类别(字面量直接归类;其余推导,推得出才判)
+                if (st->ty) {
                     const char* ann = (st->ty->kind == TY_NAMED && st->ty->npath == 1) ? st->ty->path[0] : NULL;
                     int acat = prim_cat(ann);
-                    if (lcat && acat && lcat != acat)
-                        diag(c->k, "E2010", "类型不匹配:期望 %s,实得 %s", ann,
-                             lcat == 1 ? "数值" : lcat == 2 ? "Bool" : "Str");
+                    if (acat && st->e) {
+                        int lcat = 0;
+                        const char* lname = NULL;
+                        if (st->e->kind == EX_STR) lcat = 3;
+                        else if (st->e->kind == EX_BOOL) lcat = 2;
+                        else if (st->e->kind == EX_INT || st->e->kind == EX_FLOAT) lcat = 1;
+                        else {
+                            lname = head_name(derive_type(c, st->e));
+                            lcat = prim_cat(lname);
+                        }
+                        if (lcat && lcat != acat)
+                            diag(c->k, "E2010", "类型不匹配:期望 %s,实得 %s", ann,
+                                 lname ? lname : cat_name(lcat));
+                    }
                 }
+                check_shadow_prelude(c, st->pat->name); // W8040
                 int handled_move = 0;
                 // own 块 move 语义:let x = <arena 句柄> 是 move(源失效,别名接管)
                 if (c->in_own && st->e && st->e->kind == EX_IDENT) {
@@ -1078,7 +1109,10 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
                      || (c->profile == SEM_BARE);
     for (size_t i = 0; i < f->nparams; i++) {
         const cparam* pr = &f->params[i];
-        if (!pr->is_receiver && pr->name) bind_push(&sub.env, pr->name, pr->ty, 1);
+        if (!pr->is_receiver && pr->name) {
+            check_shadow_prelude(&sub, pr->name); // W8040
+            bind_push(&sub.env, pr->name, pr->ty, 1);
+        }
     }
     if (f->body) check_block(&sub, f->body);
     bind_free(sub.env);
@@ -1100,6 +1134,7 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
         const cdecl* d = &f->decls[i];
         switch (d->kind) {
         case D_FN:
+            check_shadow_prelude(&c, d->fn_.name); // W8040
             check_fn(&c, &d->fn_, 0);
             break;
         case D_CLASS:
@@ -1135,7 +1170,11 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             if (!ty_send(&s, d->statik.ty, 0))
                 diag(&k, "E3031", "static 存储非 Send(Send):%s", d->statik.name);
             break;
+        case D_CONST:
+            check_shadow_prelude(&c, d->konst.name); // W8040
+            break;
         case D_STRUCT:
+            check_shadow_prelude(&c, d->strukt.name); // W8040
             // W8010:struct 含类引用字段 → 拷贝浅共享
             for (size_t j = 0; j < d->strukt.nfields; j++) {
                 const cfield* fl = &d->strukt.fields[j];
