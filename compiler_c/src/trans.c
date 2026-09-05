@@ -45,7 +45,7 @@ static void sb_free(sb* b) { free(b->d); }
 
 // ================= 类型模型 =================
 typedef struct tc tc;
-enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM };
+enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM };
 typedef struct {
     int k;
     int bits, us;
@@ -75,6 +75,7 @@ static ty suff_ty(const char* s) {
     return isf ? ty_flt() : ty_int(bits, us);
 }
 static ty decl_ty_tc(tc* c, const cty* t);
+static ty sum_ty_of(tc* c, const cty* t);
 static ty decl_ty(const cty* t) {
     if (!t) return ty_unk();
     if (t->kind == TY_SLICE) {
@@ -102,6 +103,7 @@ static const char* ctype_of(ty t);
 static const char* wlname(ty t);
 static const char* ewlname(ty t) { if (t.ek == T_STR) return "str"; if (t.ek == T_FLT) return "f64"; if (t.ek == T_BOOL) return "b"; ty e = ty_int(t.ebits, t.eus); return wlname(e); }
 static const char* ctype_of(ty t) {
+    if (t.k == T_SUM) return t.tname ? t.tname : "void";
     if (t.k == T_STRUCT) { static char sb1[96]; snprintf(sb1, sizeof sb1, "ctron_t_%s", t.tname ? t.tname : "?"); return sb1; }
     if (t.k == T_ENUM) { static char sb2[96]; snprintf(sb2, sizeof sb2, "ctron_e_%s", t.tname ? t.tname : "?"); return sb2; }
     if (t.k == T_STR) return "const char*";
@@ -163,8 +165,12 @@ struct tc {
     size_t n_helpers;
     char* arrs[32]; // 已用数组元素宽度(ctron_arr_<wl> typedef)
     size_t n_arrs;
-    struct { char* name; ty ret; int nparams; int is_void; } fns[MAX_FNS];
+    char* sums[64]; // 已用和类型 typedef 全文(ctron_opt_/ctron_res_/ctron_e_)
+    size_t n_sums;
+    struct { char* name; ty ret; int nparams; int is_void; ty pty[8]; } fns[MAX_FNS];
     size_t nfns;
+    const ty* fn_ret; // 当前函数返回类型提示(?)
+    const ty* want;   // 期望类型提示(None/Some/Ok/Err 构造推导)
     scope* sc;
     scope scopes[MAX_SCOPES];
     size_t n_scopes;
@@ -179,6 +185,8 @@ static ty decl_ty_tc(tc* c, const cty* t) {
     if (b.k != T_UNK) return b;
     if (!t || t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];
+    ty sm = sum_ty_of(c, t);
+    if (sm.k == T_SUM) return sm;
     for (size_t i = 0; i < c->nstructs; i++)
         if (!strcmp(c->structs[i].name, n)) {
             ty r = ty_unk(); r.k = T_STRUCT; r.bits = (int)i; r.tname = c->structs[i].name; return r;
@@ -208,20 +216,22 @@ static void use_helper(tc* c, const char* name) {
         if (!strcmp(c->helpers[i], name)) return;
     if (c->n_helpers < 160) c->helpers[c->n_helpers++] = ctron_arena_strndup(c->a, name, strlen(name));
 }
-static void add_fn(tc* c, const char* name, ty ret, int nparams, int is_void) {
+static void add_fn(tc* c, const char* name, ty ret, int nparams, int is_void, const ty* ptys) {
     if (c->nfns >= MAX_FNS) return;
     c->fns[c->nfns].name = ctron_arena_strndup(c->a, name, strlen(name));
     c->fns[c->nfns].ret = ret;
     c->fns[c->nfns].nparams = nparams;
     c->fns[c->nfns].is_void = is_void;
+    for (int i = 0; i < nparams && i < 8; i++) c->fns[c->nfns].pty[i] = ptys[i];
     c->nfns++;
 }
-static int fn_lookup(tc* c, const char* name, int* nparams, int* is_void, ty* ret) {
+static int fn_lookup(tc* c, const char* name, int* nparams, int* is_void, ty* ret, ty* ptys) {
     for (size_t i = 0; i < c->nfns; i++)
         if (!strcmp(c->fns[i].name, name)) {
             *nparams = c->fns[i].nparams;
             *is_void = c->fns[i].is_void;
             *ret = c->fns[i].ret;
+            if (ptys) for (int i = 0; i < *nparams && i < 8; i++) ptys[i] = c->fns[i].pty[i];
             return 1;
         }
     return 0;
@@ -250,6 +260,59 @@ static void scope_def(tc* c, const char* name, ty t) {
     c->sc->n++;
 }
 static int is_reserved(const char* n) { return !strncmp(n, "ctron_", 6); }
+
+// ---- 和类型(Option/Result)C10-d ----
+static char* ty_mangle(tc* c, ty t) {
+    char buf[96];
+    if (t.k == T_INT) snprintf(buf, sizeof buf, "%c%d", t.us ? 'U' : 'I', t.bits);
+    else if (t.k == T_FLT) snprintf(buf, sizeof buf, "F64");
+    else if (t.k == T_BOOL) snprintf(buf, sizeof buf, "Bool");
+    else if (t.k == T_STR) snprintf(buf, sizeof buf, "Str");
+    else if (t.k == T_STRUCT || t.k == T_ENUM) snprintf(buf, sizeof buf, "%s", t.tname ? t.tname : "?");
+    else snprintf(buf, sizeof buf, "X");
+    return ctron_arena_strndup(c->a, buf, strlen(buf));
+}
+static void use_sum(tc* c, const char* typedef_text) {
+    for (size_t i = 0; i < c->n_sums; i++)
+        if (!strcmp(c->sums[i], typedef_text)) return;
+    if (c->n_sums < 64) c->sums[c->n_sums++] = ctron_arena_strndup(c->a, typedef_text, strlen(typedef_text));
+}
+// want: Option[F64] / Result[I32,MathErr] / T? → 注册 typedef;返回和类型 ty
+static ty sum_ty_of(tc* c, const cty* t) {
+    if (!t) return ty_unk();
+    char def[512], name[96];
+    if (t->kind == TY_OPT) {
+        ty e = decl_ty_tc(c, t->sub);
+        if (e.k == T_UNK) return ty_unk();
+        char* k = ty_mangle(c, e);
+        snprintf(name, sizeof name, "ctron_opt_%s", k);
+        snprintf(def, sizeof def,
+            "typedef struct { int tag; union { %s some; } as; } %s;\n"
+            "#define CTRON_OPT_NONE 0\n"
+            "#define CTRON_OPT_SOME 1\n", ctype_of(e), name);
+        use_sum(c, def);
+        ty r = ty_unk(); r.k = T_SUM; r.tname = ctron_arena_strndup(c->a, name, strlen(name));
+        r.ek = e.k; r.ebits = e.bits; r.eus = e.us; r.tname = r.tname;
+        return r;
+    }
+    if (t->kind == TY_NAMED && t->npath == 1 && !strcmp(t->path[0], "Result") && t->nargs >= 2) {
+        ty a = decl_ty_tc(c, t->args[0]);
+        ty b = decl_ty_tc(c, t->args[1]);
+        if (a.k == T_UNK || b.k == T_UNK) return ty_unk();
+        char* k1 = ty_mangle(c, a);
+        char* k2 = ty_mangle(c, b);
+        snprintf(name, sizeof name, "ctron_res_%s_%s", k1, k2);
+        snprintf(def, sizeof def,
+            "typedef struct { int tag; union { %s ok; %s err; } as; } %s;\n"
+            "#define CTRON_RES_OK 0\n"
+            "#define CTRON_RES_ERR 1\n", ctype_of(a), ctype_of(b), name);
+        use_sum(c, def);
+        ty r = ty_unk(); r.k = T_SUM; r.tname = ctron_arena_strndup(c->a, name, strlen(name));
+        r.ek = a.k; r.ebits = a.bits; r.eus = a.us; // ek=ok 载荷
+        return r;
+    }
+    return ty_unk();
+}
 
 // ================= 表达式(单次求值发射) =================
 static ty emit_expr(tc* c, cexpr* e, sb* o);
@@ -300,6 +363,12 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (scope_find(c, e->text, &t)) {
             sb_s(o, e->text);
             return t;
+        }
+        // None(期望 Option)
+        if (!strcmp(e->text, "None") && c->want && c->want->k == T_SUM
+            && !strncmp(c->want->tname, "ctron_opt_", 10)) {
+            sb_f(o, "(%s){ CTRON_OPT_NONE }", c->want->tname);
+            return *c->want;
         }
         // 裸变体(用户 enum 单元变体;须全文件唯一)
         for (size_t i = 0; i < c->nenums; i++) {
@@ -553,11 +622,18 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         }
         const char* nm = (cal && cal->kind == EX_IDENT) ? cal->text : NULL;
         if (!nm) { terr(c, "v1 仅支持具名函数调用"); return ty_unk(); }
+        // 用户函数参数类型提示(提前查表)
+        int nparams = 0, is_void = 0;
+        ty fret, argtys[8];
+        int is_user_fn = fn_lookup(c, nm, &nparams, &is_void, &fret, argtys);
         sb args = {0};
         for (size_t i = 0; i < e->nelems; i++) {
             if (i) sb_s(&args, ", ");
+            const ty* saved_w = c->want;
+            if (is_user_fn && i < 8) c->want = &argtys[i];
             sb a1 = {0};
             emit_expr(c, e->elems[i], &a1);
+            c->want = saved_w;
             sb_s(&args, a1.d ? a1.d : "0");
             sb_free(&a1);
         }
@@ -620,6 +696,21 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_free(&args);
             return ty_bool();
         }
+        // 和类型构造:Some/Ok/Err(期望类型推导)
+        if (!strcmp(nm, "Some") || !strcmp(nm, "Ok") || !strcmp(nm, "Err")) {
+            const ty* w = c->want;
+            if (!w || w->k != T_SUM) { terr(c, "v1:%s 需期望类型(注解/返回类型)", nm); sb_free(&args); return ty_unk(); }
+            int is_opt = !strncmp(w->tname, "ctron_opt_", 10);
+            if (!strcmp(nm, "Some") && is_opt)
+                sb_f(o, "(%s){ CTRON_OPT_SOME, .as.some = %s }", w->tname, args.d ? args.d : "0");
+            else if (!strcmp(nm, "Ok") && !is_opt)
+                sb_f(o, "(%s){ CTRON_RES_OK, .as.ok = %s }", w->tname, args.d ? args.d : "0");
+            else if (!strcmp(nm, "Err") && !is_opt)
+                sb_f(o, "(%s){ CTRON_RES_ERR, .as.err = %s }", w->tname, args.d ? args.d : "0");
+            else { terr(c, "v1:%s 与期望和类型不符", nm); sb_free(&args); return ty_unk(); }
+            sb_free(&args);
+            return *w;
+        }
         if (!strcmp(nm, "print") || !strcmp(nm, "println")) {
             if (e->nelems != 1) { terr(c, "v1:%s 参数", nm); sb_free(&args); return ty_unk(); }
             sb a1 = {0};
@@ -635,9 +726,7 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_free(&args);
             return ty_unk();
         }
-        int nparams, is_void;
-        ty ret;
-        if (!fn_lookup(c, nm, &nparams, &is_void, &ret)) {
+        if (!is_user_fn) {
             terr(c, "v1 未解析函数:%s", nm);
             sb_free(&args);
             return ty_unk();
@@ -647,7 +736,7 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         snprintf(cn, sizeof cn, "ctron_user_%s", nm);
         sb_f(o, "%s(%s)", cn, args.d ? args.d : "");
         sb_free(&args);
-        return is_void ? ty_unk() : ret;
+        return is_void ? ty_unk() : fret;
     }
     case EX_MATCH:
         terr(c, "v1:match 仅支持 return/let/语句位置");
@@ -1371,7 +1460,9 @@ static void collect_fns(tc* c, const cfile* f) {
         if (d->kind != D_FN) continue;
         if (d->fn_.abi) { terr(c, "v1 不支持 extern:%s", d->fn_.name); continue; }
         ty ret = decl_ty_tc(c, d->fn_.ret);
-        add_fn(c, d->fn_.name, ret, (int)d->fn_.nparams, ret.k == T_UNK);
+        ty ptys[8];
+        for (size_t j = 0; j < d->fn_.nparams && j < 8; j++) ptys[j] = decl_ty_tc(c, d->fn_.params[j].ty);
+        add_fn(c, d->fn_.name, ret, (int)d->fn_.nparams, ret.k == T_UNK, ptys);
     }
 }
 

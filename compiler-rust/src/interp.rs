@@ -186,10 +186,19 @@ impl<'a> Interp<'a> {
         Ok(())
     }
 
+    fn lower_local_ty(&mut self, t: &ast::Type) -> Ty {
+        self.sema.lower_ty_pub(t)
+    }
+
     fn exec_stmt(&mut self, s: &ast::Stmt, env: &Rc<Env>, drops: &mut Vec<(Value, DefId)>) -> Result<(), Flow> {
         match s {
-            ast::Stmt::Let { pattern, expr, .. } => {
+            ast::Stmt::Let { pattern, ty: ann, expr, .. } => {
                 let v = self.expr(expr, env)?;
+                // 注解类型强制(§3.6 字面量自适应)
+                let v = if let Some(ann_ty) = ann {
+                    let target = self.lower_local_ty(ann_ty);
+                    self.coerce_literal(&v, &target)
+                } else { v };
                 let v = self.copy_if_value(&v);
                 if let Some(dd) = self.def_has_drop(&v) { drops.push((v.clone(), dd)); }
                 self.scopes_push_bind(pattern, &v, env);
@@ -338,10 +347,20 @@ impl<'a> Interp<'a> {
             Expr::Int { text, suffix } => {
                 let cleaned = text.replace('_', "");
                 let v = parse_int(&cleaned).unwrap_or(0);
-                Ok(match suffix.as_str() {
-                    "U8" | "U16" | "U32" | "U64" | "USize" => Value::UInt(v as u64),
-                    _ => Value::Int(v),
-                })
+                if !suffix.is_empty() {
+                    return Ok(match suffix.as_str() {
+                        "U8" | "U16" | "U32" | "U64" | "USize" => Value::UInt(v as u64),
+                        "I8" | "I16" | "I32" | "I64" | "ISize" => Value::Int(v),
+                        _ => Value::Int(v),
+                    });
+                }
+                Ok(Value::Int(v))
+            }
+            Expr::Float { text, suffix } => {
+                let cleaned = text.replace('_', "");
+                let v: f64 = cleaned.parse().unwrap_or(0.0);
+                if suffix == "F32" { return Ok(Value::F32(v as f32)); }
+                Ok(Value::F64(v))
             }
             Expr::Float { text, suffix } => {
                 let cleaned = text.replace('_', "");
@@ -519,6 +538,61 @@ impl<'a> Interp<'a> {
                     }
                 }
                 self.eval_method(obj, &m, args, env)
+            }
+            Expr::TypeArgs { expr: inner, .. } => {
+                // 1) inner = Ident(类型名) → 泛型类型构造器:Atomic[I32](0), Box[T](v), Channel[T](cap)
+                if let Expr::Ident(ty_name) = &**inner {
+                    let mut vals = Vec::new();
+                    for a in args { vals.push(self.expr(a, env)?); }
+                    return match ty_name.as_str() {
+                        "Atomic" => Ok(Value::Atomic(Rc::new(Cell::new(
+                            vals.first().and_then(|v| if let Value::Int(i) = v { Some(*i) } else { None }).unwrap_or(0)
+                        )))),
+                        "Mutex" => Ok(Value::MutexInst(Rc::new(RefCell::new(
+                            vals.first().cloned().unwrap_or(Value::Void)
+                        )))),
+                        "Global" => Ok(Value::GlobalRef(Rc::new(Cell::new(
+                            vals.get(1).and_then(|v| if let Value::Int(i) = v { Some(*i) } else { None }).unwrap_or(0)
+                        )))),
+                        "Box" => Ok(Value::Boxed(Rc::new(vals.first().cloned().unwrap_or(Value::Void)))),
+                        "Channel" => {
+                            let ch_id = self.fresh_chan();
+                            let cap = vals.first().and_then(|v| if let Value::Int(i) = v { Some(*i as usize) } else { Some(16) }).unwrap_or(16);
+                            self.channels.borrow_mut().insert(ch_id, Rc::new(RefCell::new(ChannelState {
+                                queue: std::collections::VecDeque::new(), capacity: cap,
+                            })));
+                            let sender = Value::Chan { id: ch_id, sender: true };
+                            let receiver = Value::Chan { id: ch_id, sender: false };
+                            Ok(Value::Tuple(vec![sender, receiver]))
+                        }
+                        _ => Ok(Value::Void),
+                    };
+                }
+                // 2) inner = Member(泛型方法):arena.list[I32](), x.as[I8]() 等
+                if let Expr::Member { obj: recv_expr, target: ast::MemberTarget::Name(method) } = &**inner {
+                    let recv = self.expr(recv_expr, env)?;
+                    // `as` 方法:数值转换
+                    if method == "as" {
+                        // 类型实参决定目标类型;此处直接返回原值(interp 无实际转换)
+                        return Ok(recv);
+                    }
+                    // Arena 泛型方法
+                    if matches!(recv, Value::Arena) {
+                        return match method.as_str() {
+                            "list" => Ok(Value::Array(Rc::new(RefCell::new(vec![])))),
+                            "array" | "zeros" => {
+                                let n = if let Some(Some(a)) = args.first().map(|a| self.expr(a, env).ok()) {
+                                    match a { Value::Int(n) => n as usize, _ => 0 }
+                                } else { 0 };
+                                Ok(Value::Array(Rc::new(RefCell::new(vec![Value::Int(0); n]))))
+                            }
+                            _ => Err(Flow::Panic(format!("Arena 无方法 `{}`", method))),
+                        };
+                    }
+                }
+                // 3) 常规调用:先求值 inner(可能是链式成员),再分发
+                let f = self.expr(inner, env)?;
+                self.call_fn_value_ast(&f, args, env)
             }
             _ => {
                 let f = self.expr(callee, env)?;
@@ -1871,5 +1945,22 @@ impl<'a> Interp<'a> {
             results.push((name.clone(), r));
         }
         results
+    }
+}
+
+impl<'a> Interp<'a> {
+    /// 字面量类型强制:根据注解类型调整数值运行时表示
+    fn coerce_literal(&self, v: &Value, target: &Ty) -> Value {
+        match (v, target) {
+            (Value::Int(i), Ty::UInt(_)) => Value::UInt(*i as u64),
+            (Value::UInt(u), Ty::Int(_)) => Value::Int(*u as i64),
+            (Value::Int(i), Ty::F64) => Value::F64(*i as f64),
+            (Value::Int(i), Ty::F32) => Value::F32(*i as f32),
+            (Value::F64(f), Ty::F32) => Value::F32(*f as f32),
+            (Value::F32(f), Ty::F64) => Value::F64(*f as f64),
+            (Value::Int(i), Ty::F64) => Value::F64(*i as f64),
+            (Value::F64(f), Ty::Int(_)) => Value::Int(*f as i64),
+            _ => v.clone(),
+        }
     }
 }

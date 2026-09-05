@@ -762,18 +762,23 @@ fn eff_kw2(text: Str, sp: Pos2, kws: Pos2, out: Pos2) -> Str {
 }
 
 // 文档符号(大纲)
+// 单趟扫描(逐行 O(n))
 fn scan_symbols(text: Str) -> Str {
     var items = ""
     var first = true
     var n = text.len
     var line: I64 = 0
-    var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a >= n {
-            done = true
-        } else {
-            if is_top_line(text, sp) {
+    var start: I64 = 0
+    var i: I64 = 0
+    while i <= n {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            if sp.a < n && is_top_line(text, sp) {
                 var kws = pos2(0, 0)
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
@@ -791,12 +796,9 @@ fn scan_symbols(text: Str) -> Str {
                     }
                 }
             }
-            if sp.b >= n {
-                done = true
-            } else {
-                line += 1
-            }
+            line += 1
         }
+        i += 1
     }
     return jarr(items)
 }
@@ -839,47 +841,55 @@ fn collect_docs(text: Str, decl_line: I64) -> Str {
     return out
 }
 
+// 单趟字节扫描(逐行 O(n),不逐行回扫全文)
 fn find_decl(text: Str, word: Str, hit: DeclHit) {
     var n = text.len
     var line: I64 = 0
+    var start: I64 = 0
+    var i: I64 = 0
     var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a >= n {
-            done = true
-        } else {
-            var kws = pos2(0, 0)
-            if first_word(text, sp, kws) {
-                var kws2 = pos2(0, 0)
-                var kwv = eff_kw2(text, sp, kws, kws2)
-                var isdecl = pipe_has(DECL_KW, kwv)
-                if !isdecl && kwv == "prop" { isdecl = true }
-                if isdecl {
-                    var name = decl_name(text, sp, kwv, kws2)
-                    if name == word {
-                        hit.found = true
-                        hit.line = line
-                        hit.col = kws.a - sp.a
-                        hit.sig = byte_slice(text, sp.a, sp.b)
-                        hit.docs = collect_docs(text, line)
-                        var nw = pos2(0, 0)
-                        if word_span_at(text, sp, kws2.b, nw) && byte_slice(text, nw.a, nw.b) == word {
-                            hit.ncol = nw.a - sp.a
-                            hit.nlen = nw.b - nw.a
+    while i <= n && !done {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            line += 1
+            if sp.a >= n {
+                done = true
+            } else {
+                var kws = pos2(0, 0)
+                if first_word(text, sp, kws) {
+                    var kws2 = pos2(0, 0)
+                    var kwv = eff_kw2(text, sp, kws, kws2)
+                    var isdecl = pipe_has(DECL_KW, kwv)
+                    if !isdecl && kwv == "prop" { isdecl = true }
+                    if isdecl {
+                        var name = decl_name(text, sp, kwv, kws2)
+                        if name == word {
+                            hit.found = true
+                            hit.line = line - 1
+                            hit.col = kws2.a - sp.a
+                            hit.sig = byte_slice(text, sp.a, sp.b)
+                            hit.docs = collect_docs(text, line - 1)
+                            var nw = pos2(0, 0)
+                            if word_span_at(text, sp, kws2.b, nw) && byte_slice(text, nw.a, nw.b) == word {
+                                hit.ncol = nw.a - sp.a
+                                hit.nlen = nw.b - nw.a
+                            }
                         }
                     }
                 }
-            }
-            if !hit.found {
-                if sp.b >= n {
-                    done = true
+                if !hit.found {
+                    if sp.b >= n { done = true }
                 } else {
-                    line += 1
+                    done = true
                 }
-            } else {
-                done = true
             }
         }
+        i += 1
     }
 }
 
@@ -1067,18 +1077,23 @@ fn item_list(all: Str, kind: I64, detail: Str, prefix: Str) -> Str {
 }
 
 // 文档内声明名补全(顶层声明 + pub fn)
+// 单趟扫描(逐行 O(n))
 fn doc_decl_items(text: Str, prefix: Str) -> Str {
     var items = ""
     var first = true
     var n = text.len
     var line: I64 = 0
-    var done = false
-    while !done {
-        var sp = line_span_of(text, line)
-        if sp.a >= n {
-            done = true
-        } else {
-            if is_top_line(text, sp) {
+    var start: I64 = 0
+    var i: I64 = 0
+    while i <= n {
+        var isnl = false
+        if i < n {
+            isnl = byte_at(text, i) == 10
+        }
+        if or2(i == n, isnl) {
+            var sp = pos2(start, i)
+            start = i + 1
+            if sp.a < n && is_top_line(text, sp) {
                 var kws = pos2(0, 0)
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
@@ -1094,12 +1109,9 @@ fn doc_decl_items(text: Str, prefix: Str) -> Str {
                     }
                 }
             }
-            if sp.b >= n {
-                done = true
-            } else {
-                line += 1
-            }
+            line += 1
         }
+        i += 1
     }
     return items
 }
@@ -1462,7 +1474,10 @@ fn pad_spaces(count: I64) -> Str {
 // ============ 8e. 形参名 inlay hints ============
 
 fn inlay_hints(text: Str) -> Str {
+    // 大文档护栏:解释器下逐调用点 find_decl 为 O(n),超限直接跳过(README 已注明)
+    if text.len > 24000 { return "[]" }
     var acc = OccAcc { s: "", first: true, count: 0 }
+    var sites: I64 = 0
     var dummy = DiagAcc { s: "", n: 0 }
     var p = ScanPos { i: 0, line: 0, col: 0 }
     var n = text.len
@@ -1485,7 +1500,10 @@ fn inlay_hints(text: Str) -> Str {
                 if nextb == 40 && !pipe_has(KW_ALL, tok) {
                     var prev = prev_sig_char(text, start)
                     if prev != 46 {
-                        emit_call_hints(text, tok, startline, startcol, p.i, p.line, acc)
+                        if sites < 40 {
+                            sites += 1
+                            emit_call_hints(text, tok, startline, startcol, p.i, p.line, acc)
+                        }
                     }
                 }
                 if acc.count >= 300 {
