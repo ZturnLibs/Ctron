@@ -1390,6 +1390,10 @@ static val eval_expr(rt* R, cexpr* e) {
             return v_box(R, eval_expr(R, e->elems[0]));
         }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "List") == 0) {
+            return v_list(R); // GC List[T]()
+        }
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "Atomic") == 0) {
             if (e->nelems != 1) rt_abort(R, RT_ERROR, "Atomic 实参");
             val v = eval_expr(R, e->elems[0]);

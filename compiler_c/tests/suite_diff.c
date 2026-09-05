@@ -29,12 +29,16 @@ int main(int argc, char** argv) {
         {"lex_small.ct", "input_small.ct", 0},
         {"lex_kind.ct", "input_ops.ct", 1},
         {"lex_adv.ct", "input_adv.ct", 1},
+        {"lex_corpus.ct", "../tests/05_own.ct", 1},
     };
     size_t fails = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         char mp[4096], ip[4096];
         snprintf(mp, sizeof mp, "%s/%s", root, cases[i].module);
-        snprintf(ip, sizeof ip, "%s/%s", root, cases[i].input);
+        if (cases[i].input[0] == '.')
+            snprintf(ip, sizeof ip, "%s", cases[i].input);
+        else
+            snprintf(ip, sizeof ip, "%s/%s", root, cases[i].input);
         // 运行 Ctron 模块
         char* msrc = read_file_str(mp);
         if (!msrc) { fails++; fprintf(stderr, "%s 无法读取\n", mp); continue; }
