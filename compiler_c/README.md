@@ -103,6 +103,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C8b ✅ | W8020 must-use + E4030 no_spawn(树上行走,含嵌套闭包/scope) | 三检查 38/38 语料与 C 全等 |
 | C8c ✅ | Send 内核(ty_send 同构)+ E3020 Channel 元素 + E3031 static 存储 | 五检查 41/41 语料与 C 全等 |
 | C8d ✅ | E3060 own 内类成员可变写(绑定 env 近似 + own 上下文) | 六检查 42/42 语料与 C 全等 |
-| C8e ✅ | E4020/E6020 pure/comptime 能力调用(pwalk+env) | 八检查 44/44 语料与 C 全等(202 用例);C8f E3010 spawn捕获/E2030 穷尽/E3050/E3040 |
+| C8e ✅ | E4020/E6020 pure/comptime 能力调用(pwalk+env) | 八检查 44/44 语料与 C 全等 |
+| C8f ✅ | E3010 spawn 闭包捕获 Send(捕获集 + env 类型节点) | 九检查 45/45 语料与 C 全等(204 用例);C8g E2030 穷尽/E3050/E3040 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
