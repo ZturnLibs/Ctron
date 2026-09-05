@@ -168,11 +168,12 @@ impl<'a> Interp<'a> {
     // ---------- 块与语句 ----------
 
     fn check_block(&mut self, block: &ast::Block, env: &Rc<Env>) -> EvalResult {
+        let child = Env::child(env);
         let mut drop_stack: Vec<(Value, DefId)> = Vec::new();
-        let r = self.exec_stmts(&block.stmts, env, &mut drop_stack);
+        let r = self.exec_stmts(&block.stmts, &child, &mut drop_stack);
         let out = match r {
             Ok(()) => match block.tail.as_deref() {
-                Some(t) => self.expr(t, env),
+                Some(t) => self.expr(t, &child),
                 None => Ok(Value::Void),
             },
             Err(f) => Err(f),
@@ -555,6 +556,11 @@ impl<'a> Interp<'a> {
                             vals.get(1).and_then(|v| if let Value::Int(i) = v { Some(*i) } else { None }).unwrap_or(0)
                         )))),
                         "Box" => Ok(Value::Boxed(Rc::new(vals.first().cloned().unwrap_or(Value::Void)))),
+                        "Simd" => {
+                            // Simd[F32, N].splat(v) — 返回一个可调用 splat 的标记值
+                            let n = vals.len(); // 暂无好的方式获取 N
+                            Ok(Value::Simd(vec![0.0; 4])) // 默认 4 lane
+                        }
                         "Channel" => {
                             let ch_id = self.fresh_chan();
                             let cap = vals.first().and_then(|v| if let Value::Int(i) = v { Some(*i as usize) } else { Some(16) }).unwrap_or(16);
@@ -839,6 +845,21 @@ impl<'a> Interp<'a> {
 
         // 非阻塞成员方法(含错误级联的 Err 接收者)
         match &o {
+            Value::Array(arr) => return match m {
+                "push" => {
+                    let v = self.expr(&args[0], env)?;
+                    arr.borrow_mut().push(v);
+                    Ok(Value::Void)
+                }
+                "pop" => Ok(arr.borrow_mut().pop().unwrap_or(Value::Void)),
+                "len" => Ok(Value::UInt(arr.borrow().len() as u64)),
+                "into_gc" => {
+                    // 深拷贝到新的 GC 数组(interp 中即新建独立 Rc)
+                    let items = arr.borrow().clone();
+                    Ok(Value::Array(Rc::new(RefCell::new(items))))
+                }
+                _ => Err(Flow::Panic(format!("Array 无方法 `{}`", m))),
+            },
             Value::Str(s) => {
                 let s = s.clone();
                 return match m {
@@ -1776,7 +1797,9 @@ impl<'a> Interp<'a> {
                         _ => 0,
                     })),
                     (Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(match op {
-                        Add => x.wrapping_add(*y), Sub => x.wrapping_sub(*y), Mul => x.wrapping_mul(*y),
+                        Add => { let r = x.checked_add(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?; r }
+                        Sub => { let r = x.checked_sub(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?; r }
+                        Mul => { let r = x.checked_mul(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?; r }
                         Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x / y }
                         Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x % y }
                         _ => 0,

@@ -1,0 +1,49 @@
+// input_ev2i.ct —— C9g 绑定克隆与原地写差分夹具(与 C rt run_main 逐字对齐)
+// 覆盖:结构体绑定深克隆(b=a 后写 b 不影响 a)/ 结构体参数值语义(函数内写不外泄)/
+// 类实例引用语义(别名 + 方法内 self 字段写外部可见)/ 复合成员写
+struct Pt {
+    var x: I32
+    var y: I32
+}
+
+class Box2 {
+    var v: I32
+}
+
+trait Pump {
+    fn bump(&self) -> I32
+}
+
+impl Pump for Box2 {
+    fn bump(&self) -> I32 {
+        self.v = self.v + 1
+        return self.v
+    }
+}
+
+fn touch(p: Pt) -> I32 {
+    p.x = 99
+    return p.x
+}
+
+fn main() -> I32 {
+    var a = Pt { x: 1, y: 2 }
+    var b = a
+    b.x = 10
+    println(a.x)
+    println(b.x)
+    println(touch(a))
+    println(a.x)
+    let z = Box2 { v: 5 }
+    let w = z
+    println(z.bump())
+    println(w.v)
+    w.v = 40
+    println(z.v)
+    var c = Pt { x: 3, y: 4 }
+    c.y += 10
+    println(c.y)
+    println(touch(c))
+    println(c.x)
+    return 0
+}

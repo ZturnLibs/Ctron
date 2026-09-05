@@ -2049,8 +2049,31 @@ fn vL() -> List[Str] {
     v.push("L")
     return v
 }
-// into_gc 深拷贝(镜像 rt.c clone_val):标量逐槽重建,嵌套 L 递归
+// into_gc 深拷贝(镜像 rt.c clone_val):标量逐槽重建,嵌套 L/U/A 递归
 fn vdeep(v: List[Str]) -> List[Str] {
+    var k0 = v[0]
+    if k0 == "U" {
+        var ou = List[Str]()
+        ou.push("U")
+        ou.push(v[1])
+        var iu: I32 = 2
+        while iu + 1 < v.len {
+            ou.push(v[iu])
+            ou.push(vdeep(v[iu + 1]))
+            iu += 2
+        }
+        return ou
+    }
+    if k0 == "A" {
+        var oa = List[Str]()
+        oa.push("A")
+        var ia: I32 = 1
+        while ia < v.len {
+            oa.push(vdeep(v[ia]))
+            ia += 1
+        }
+        return oa
+    }
     var out = List[Str]()
     out.push(v[0])
     var i: I32 = 1
@@ -2433,13 +2456,13 @@ fn find_impl_prop(file: List[Str], cls: Str, m: Str) -> List[Str] {
 }
 fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], sv: List[Str], vals: List[Str]) -> List[Str] {
     var ps = mth[3]
-    var nenv = env_add(List[Str](), "self", sv)
+    var nenv = env_add(List[Str](), "self", bind_of(file, sv))
     var k: I32 = 1
     var ai: I32 = 0
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            nenv = env_add(nenv, pr[2], vals[ai])
+            nenv = env_add(nenv, pr[2], bind_of(file, vals[ai]))
             ai += 1
         }
         k += 1
@@ -2459,6 +2482,27 @@ fn call_prop_vals(file: List[Str], env: List[Str], out: Str, pp: List[Str], sv: 
         fl = "a"
     }
     return e4(fl, env, br[3], br[2])
+}
+// ---------------- C9g:绑定克隆与原地写(镜像 rt.c env_let/ST_ASSIGN) ----------------
+// rt env_let:结构体值(非类)深克隆后才入绑定槽;类/List/标量保持引用。
+// 成员写经绑定槽原地生效:结构体无别名(绑定时已克隆)→ 原地 == 重建;
+// 类共享 → 原地写对别名可见。
+fn bind_of(file: List[Str], v: List[Str]) -> List[Str] {
+    if v[0] == "U" && !is_class(file, v[1]) {
+        return vdeep(v)
+    }
+    return v
+}
+fn u_set_ip(u: List[Str], nm: Str, nv: List[Str]) -> Bool {
+    var i: I32 = 2
+    while i + 1 < u.len {
+        if seq2(u[i], nm) {
+            u[i + 1] = nv
+            return true
+        }
+        i += 2
+    }
+    return false
 }
 fn u_field(u: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 2
@@ -2910,7 +2954,7 @@ fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals:
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            nenv = env_add(nenv, pr[2], vals[k - 1])
+            nenv = env_add(nenv, pr[2], bind_of(file, vals[k - 1]))
         }
         k += 1
     }
@@ -3167,7 +3211,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             if er[0] != "k" {
                 return s4(er[0], er[1], er[3], er[2])
             }
-            return s4("k", env_add(er[1], pat[1], er[2]), er[3], vV2())
+            return s4("k", env_add(er[1], pat[1], bind_of(file, er[2])), er[3], vV2())
         }
         if pat[0] == "PatWild" {
             var er = eval_expr(file, env, out, st[4])
@@ -3208,7 +3252,12 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 var oldf = u_field(ov, fname)
                 nv = vI(ari(op, dvi(oldf[1]), dvi(nv[1])))
             }
-            return s4("k", env_set(vr[1], oname, u_set(ov, fname, nv)), vr[3], vV2())
+            // C9g:原地写(镜像 rt.c ST_ASSIGN 经绑定槽直接改;结构体绑定时已克隆,类共享可见)
+            if !u_set_ip(ov, fname, nv) {
+                panic("field:" + fname)
+                return s4("a", env, out, vV2())
+            }
+            return s4("k", vr[1], vr[3], vV2())
         }
         if tg[0] == "Ident" {
             var nm = tg[1]
@@ -3227,7 +3276,8 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 var oa = en[1]
                 nv = vI(ari(op, dvi(oa[1]), dvi(nv[1])))
             }
-            return s4("k", env_set(vr[1], nm, nv), vr[3], vV2())
+            // C9g:结构体右值赋给绑定也克隆(镜像 rt.c b->slot = clone…)
+            return s4("k", env_set(vr[1], nm, bind_of(file, nv)), vr[3], vV2())
         }
         // C9f①:索引赋值 a[i] = v / a[i] op= v —— A/L 同布局;L 经宿主 List 索引写
         // 写透共享后备(镜像 rt.c ST_ASSIGN 的 V_LIST/V_ARR 写透分支)
