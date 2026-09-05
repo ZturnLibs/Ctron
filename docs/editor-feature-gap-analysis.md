@@ -25,7 +25,7 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | 功能 | rust-analyzer | zls | **ctron 现状** |
 |---|---|---|---|
 | 语法高亮 | 🟡(大量让位 semantic tokens) | ✅ | ✅ 含插值/后缀/非法标点标红,高于同体量平均 |
-| 语义高亮 semanticTokens | ✅ | ✅ | ❌(P2,见 §4-B) |
+| 语义高亮 semanticTokens | ✅ | ✅ | ✅ 轻启发式(声明/调用/成员/类型/宏;类型感知待 sem) |
 | 缩进/注释续行/自动闭合 | ✅ | ✅ | ✅(§1.6 延续集,已是 Ctron 特化) |
 | 代码片段 | 少(rust 用 proc-macro) | ✅ | ✅ 22 条 |
 | **格式化** | ✅ rustfmt | ✅ zig fmt | 🟡 缩进级已交付(format-on-save 可用);canonical 待 ctron-fmt |
@@ -121,7 +121,7 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | P2 🟡 | **格式化**:缩进级已交付;canonical 形态 | A | parsetree.ct 打印器 | 余 2~3 天 |
 | P2 🟡 | 真解析器接入(精确诊断区间/folding/selectionRange) | B | selfhosted 模块合并 | folding 已交付;解析器接入待做 |
 | P2 ✅ | inlay hints(调用点形参名) | B | 无 | 已交付(2026-09-05;>24KB 跳过) |
-| P2 | semantic tokens | B | 轻命名解析 | 3~4 天(下一轮) |
+| P2 ✅ | semantic tokens(轻启发式) | B | 无 | 已交付(2026-09-05;类型感知版待 sem) |
 | P2 | `ctronc test --filter` CLI → 测试 CodeLens/Test Explorer | A | CLI 新子命令 | 2~4 天 |
 | P3 | 工作区索引 → 跨文件 def/refs/workspace symbol/自动 use | C | index 或多文件 run | 1~2 周 |
 | P3 | 类型感知补全/hover 推断类型/go-to-impl | C | sem 进 LSP(或 C10 转译) | 随编译器 |

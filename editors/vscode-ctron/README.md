@@ -23,6 +23,7 @@ Ctron 语言的 VSCode 支持:语法高亮 + 智能提示。语言服务器(`lsp
 | **形参名提示** | LSP | inlay hints:调用点实参前显示形参名(≤24KB 文档;大文档跳过) |
 | **格式化** | LSP | 缩进规整(4 空格/层,`} / ) / ] / else` 起始行去层)——配合编辑器 format-on-save |
 | **代码折叠** | LSP | 花括号块折叠(优于默认缩进折叠) |
+| **语义着色** | LSP | semantic tokens:调用/方法/属性/声明(+decl 修饰)/内建与自定义类型/注解宏 分类着色,覆盖 TextMate 启发式 |
 
 ## 安装(开发模式)
 
@@ -54,7 +55,7 @@ cd editors/vscode-ctron && npx @vscode/vsce package && code --install-extension 
 - `ctronc check` 读取磁盘文件,语义诊断以保存为准(未保存改动只出词法诊断);
 - 位置编码声明为 utf-8,非 ASCII 行内列偏移在旧客户端可能有偏差;
 - 解释器执行:≤24KB 文档体验流畅;更大文档跳过 inlay hints,其余特性 61KB/3s 内——C10 转译后端落地后可原生运行;
-- 语义 tokens 与 canonical ctron-fmt(规范唯一形态)待后续版本。
+- canonical ctron-fmt(规范唯一形态)待后续版本。
 
 ## 结构
 

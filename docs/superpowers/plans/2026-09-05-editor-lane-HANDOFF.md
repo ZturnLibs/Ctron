@@ -60,13 +60,15 @@ code --install-extension ctron-lang-0.3.0.vsix  # 本地安装
 非 ASCII 行内列偏移按字节;>24KB 跳过 inlay hints。
 
 下一步(按差距矩阵 §5 优先级):
-1. **semantic tokens**(轻命名解析:声明/调用/成员/内建分类着色;服务器 + legend 接线,~3 天);
+1. ~~semantic tokens~~ ✅ 已交付(轻启发式:声明+decl/调用/成员/PT_ALL 类型/PascalCase/注解宏;类型感知待 sem);
 2. **真解析器接入**:合并 selfhosted `parsetree.ct`(159 用例差分锁定)进 LSP → 精确语法
    诊断区间/selectionRange;注意单文件解释器约束(合并或等 C10 多模块);
 3. **测试集成**:`ctronc test` CLI(需 `ctron_rt_run` 暴露 filter;跨泳道,先与 A 泳道协调)
    → 逐测试 CodeLens / Test Explorer;
 4. canonical **ctron-fmt**(规范唯一形态)→ 替换当前缩进级格式化;
 5. 跨文件:工作区索引 → workspace symbol / 跨文件 def/refs / 自动 use(待 C8 模块系统)。
+
+**当前版本 v0.4.0**(semantic tokens 已含);交接时工作区应干净。
 
 ## 4. 协作记录(泳道协议执行情况)
 
