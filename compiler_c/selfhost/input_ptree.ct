@@ -40,3 +40,23 @@ fn pick(o: Option[I32]) -> I32 {
         None => 0
     }
 }
+use stdweb.dom
+const LIMIT: I32 = 5
+static let seed: I32 = 1
+fn swap[T](pair: (T, T)) -> (T, T) {
+    return pair
+}
+class Acc {
+    var n: I32
+    fn add(var self, x: I32) -> I32 {
+        return self.n + x
+    }
+}
+impl Drop for Ticket {
+    fn drop(var self) {
+        return
+    }
+}
+trait Shape: Show {
+    fn area(&self) -> I32
+}

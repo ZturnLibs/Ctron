@@ -434,7 +434,56 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return ni
 }
 
+fn p_tpars(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var tp = mk("TPs")
+    var more = true
+    while more {
+        if tok(toks, cur) == "]" { more = false } else {
+            var isc = "false"
+            if tok(toks, cur) == "comptime" {
+                isc = "true"
+                adv(cur)
+            }
+            var nm = tok(toks, cur)
+            adv(cur)
+            var tp1 = mk("TPar")
+            tp1.push(nm)
+            tp1.push(isc)
+            var bd = mk("Bounds")
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                var more2 = true
+                while more2 {
+                    bd.push(tok(toks, cur))
+                    adv(cur)
+                    if tok(toks, cur) == "+" { adv(cur) } else { more2 = false }
+                }
+            }
+            tp1.push(bd)
+            tp.push(tp1)
+            if tok(toks, cur) == "," { adv(cur) } else { more = false }
+        }
+    }
+    adv(cur)
+    return tp
+}
+
 fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var t = tok(toks, cur)
+    if t == "(" {
+        adv(cur)
+        var tt = mk("TupleT")
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" { more = false } else {
+                tt.push(p_typ(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+            }
+        }
+        adv(cur)
+        return tt
+    }
     var nm = tok(toks, cur)
     adv(cur)
     var nt = mk("Named")
@@ -626,7 +675,12 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         } else if t == "return" {
             adv(cur)
             var re = mk("Return")
-            re.push(p_stmt_expr(toks, cur))
+            if or2(tok(toks, cur) == "}", tok(toks, cur) == "#EOF") {
+                var rn = mk("None")
+                re.push(rn)
+            } else {
+                re.push(p_stmt_expr(toks, cur))
+            }
             nb.push(re)
         } else if t == "while" {
             adv(cur)
@@ -702,25 +756,43 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return nb
 }
 
-fn p_fn(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_fn2(toks: List[Str], cur: Atomic[I32], tag: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
-    adv(cur)
-    var nf = mk("Fn")
+    var nf = mk(tag)
     nf.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
     var ps = mk("Ps")
     var more = true
     while more {
         if tok(toks, cur) == ")" { more = false } else {
+            var isv = "false"
+            var t0 = tok(toks, cur)
+            if t0 == "var" { isv = "true" }
+            if or2(t0 == "var", t0 == "let") { adv(cur) }
+            if tok(toks, cur) == "&" {
+                adv(cur)
+            }
             var pn = tok(toks, cur)
             adv(cur)
-            adv(cur)
-            var pty = p_typ(toks, cur)
-            var par = mk("Param")
-            par.push(pn)
-            par.push(pty)
-            ps.push(par)
+            if pn == "self" {
+                var rc = mk("Receiver")
+                rc.push(isv)
+                ps.push(rc)
+            } else {
+                adv(cur)
+                var pty = p_typ(toks, cur)
+                var par = mk("Param")
+                par.push(isv)
+                par.push(pn)
+                par.push(pty)
+                ps.push(par)
+            }
             if tok(toks, cur) == "," { adv(cur) } else { more = false }
         }
     }
@@ -730,13 +802,22 @@ fn p_fn(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         adv(cur)
         ret = p_typ(toks, cur)
     }
-    adv(cur)
-    var body = p_block(toks, cur)
+    var body = mk("None")
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = p_block(toks, cur)
+    }
+    nf.push(tp)
     nf.push(ps)
     nf.push(ret)
     nf.push(body)
     return nf
 }
+
+fn p_fn(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    return p_fn2(toks, cur, "Fn")
+}
+
 
 fn p_test(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     adv(cur)
@@ -830,24 +911,168 @@ fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return ne
 }
 
+fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+    var it = mk("Items")
+    var go = true
+    while go {
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else if tok(toks, cur) == "fn" {
+            it.push(p_fn2(toks, cur, "Method"))
+        } else if kind == "trait" {
+            go = false
+        } else {
+            it.push(p_field(toks, cur))
+        }
+    }
+    adv(cur)
+    return it
+}
+
+fn p_class(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nc = mk("Class")
+    nc.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    nc.push(tp)
+    nc.push(p_items(toks, cur, "class"))
+    return nc
+}
+
+fn p_impl(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var ni = mk("Impl")
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    ni.push(tp)
+    ni.push(p_typ(toks, cur))
+    adv(cur)
+    ni.push(p_typ(toks, cur))
+    adv(cur)
+    ni.push(p_items(toks, cur, "impl"))
+    return ni
+}
+
+fn p_trait(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Trait")
+    nt.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    nt.push(tp)
+    var sup = mk("Bounds")
+    if tok(toks, cur) == ":" {
+        adv(cur)
+        var more = true
+        while more {
+            sup.push(tok(toks, cur))
+            adv(cur)
+            if tok(toks, cur) == "+" { adv(cur) } else { more = false }
+        }
+    }
+    nt.push(sup)
+    adv(cur)
+    nt.push(p_items(toks, cur, "trait"))
+    return nt
+}
+
+fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nu = mk("Use")
+    var more = true
+    while more {
+        var a = tok(toks, cur)
+        if a == "." {
+            adv(cur)
+        } else if or2(a == "#EOF", a == "\{") {
+            more = false
+        } else {
+            nu.push(a)
+            adv(cur)
+            var nx = tok(toks, cur)
+            if nx != "." {
+                more = false
+            }
+        }
+    }
+    return nu
+}
+
+fn p_const(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur)
+    adv(cur)
+    var nc = mk("Const")
+    nc.push(nm)
+    nc.push(ty)
+    nc.push(p_stmt_expr(toks, cur))
+    return nc
+}
+
+fn p_static(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var wv = "false"
+    var t = tok(toks, cur)
+    if t == "var" { wv = "true" }
+    if or2(t == "var", t == "let") { adv(cur) }
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur)
+    adv(cur)
+    var ns = mk("Static")
+    ns.push(nm)
+    ns.push(wv)
+    ns.push(ty)
+    ns.push(p_stmt_expr(toks, cur))
+    return ns
+}
+
 fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var nf = mk("File")
     var go = true
     while go {
-        if tok(toks, cur) == "#EOF" {
+        var t = tok(toks, cur)
+        if t == "#EOF" {
             go = false
-        } else if tok(toks, cur) == "test" {
+        } else if t == "test" {
             nf.push(p_test(toks, cur))
-        } else if tok(toks, cur) == "enum" {
+        } else if t == "enum" {
             nf.push(p_enum(toks, cur))
-        } else if tok(toks, cur) == "struct" {
+        } else if t == "struct" {
             nf.push(p_struct(toks, cur))
+        } else if t == "class" {
+            nf.push(p_class(toks, cur))
+        } else if t == "impl" {
+            nf.push(p_impl(toks, cur))
+        } else if t == "trait" {
+            nf.push(p_trait(toks, cur))
+        } else if t == "use" {
+            nf.push(p_use(toks, cur))
+        } else if t == "const" {
+            nf.push(p_const(toks, cur))
+        } else if t == "static" {
+            nf.push(p_static(toks, cur))
         } else {
             nf.push(p_fn(toks, cur))
         }
     }
     return nf
 }
+
 
 
 
@@ -879,17 +1104,26 @@ fn pnode(n: List[Str]) -> Str {
             i += 1
         }
         out = out + "\n] }\n"
-    } else if t == "Fn" {
-        out = out + "Fn \{ attrs: [], vis: Private, is_comptime: false, abi: None, name: \""
-        out = out + n[1] + "\", type_params: [], params: ["
-        var ps = n[2]
+        } else if or2(t == "Fn", t == "Method") {
+        out = out + t + " \{ attrs: [], vis: Private, is_comptime: false, abi: None, name: \""
+        out = out + n[1] + "\", type_params: ["
+        var tp = n[2]
+        var tj: I32 = 1
+        while tj < tp.len {
+            if tj > 1 { out = out + ", " }
+            out = out + pnode(tp[tj])
+            tj += 1
+        }
+        out = out + "], params: ["
+        var ps = n[3]
         var j: I32 = 1
         while j < ps.len {
             if j > 1 { out = out + ", " }
             out = out + pnode(ps[j])
             j += 1
         }
-        out = out + "], ret: " + pnode(n[3]) + ", body: " + pnode(n[4]) + "}"
+        out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
+    } else if t == "Ps" {
     } else if t == "Ps" {
         var j2: I32 = 1
         while j2 < n.len {
@@ -897,8 +1131,29 @@ fn pnode(n: List[Str]) -> Str {
             out = out + pnode(n[j2])
             j2 += 1
         }
-    } else if t == "Param" {
-        out = out + "Param \{ is_var: false, name: \"" + n[1] + "\", ty: " + pnode(n[2]) + "}"
+        } else if t == "Param" {
+        out = out + "Param \{ is_var: " + n[1] + ", name: \"" + n[2] + "\", ty: " + pnode(n[3]) + "}"
+    } else if t == "Receiver" {
+        out = out + "Receiver \{ is_var: " + n[1] + " }"
+    } else if t == "TPs" {
+        var tj2: I32 = 1
+        while tj2 < n.len {
+            if tj2 > 1 { out = out + ", " }
+            out = out + pnode(n[tj2])
+            tj2 += 1
+        }
+    } else if t == "TPar" {
+        out = out + "TypeParam \{ name: \"" + n[1] + "\", bound: ["
+        var bd = n[3]
+        var bj: I32 = 1
+        while bj < bd.len {
+            if bj > 1 { out = out + ", " }
+            out = out + "\"" + bd[bj] + "\""
+            bj += 1
+        }
+        out = out + "], is_comptime: " + n[2] + " }"
+    } else if t == "TupleT" {
+        out = out + "Tuple(" + pjoin(n) + ")"
     } else if t == "Named" {
         out = out + "Named \{ path: [\"" + n[1] + "\"], args: ["
         var tt = n[2]
@@ -1009,6 +1264,35 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "Tuple(" + pjoin(n) + ")"
     } else if t == "KStruct" {
         out = out + "Struct([" + pjoin(n) + "])"
+    } else if t == "Class" {
+        out = out + "Class \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], items: [" + pjoin(n[3]) + "] }"
+    } else if t == "Impl" {
+        out = out + "Impl \{ type_params: [" + pjoin(n[1]) + "], trait_ty: " + pnode(n[2]) + ", for_ty: " + pnode(n[3]) + ", items: [" + pjoin(n[4]) + "] }"
+    } else if t == "Trait" {
+        out = out + "Trait \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], supers: ["
+        var su = n[3]
+        var sj: I32 = 1
+        while sj < su.len {
+            if sj > 1 { out = out + ", " }
+            out = out + "\"" + su[sj] + "\""
+            sj += 1
+        }
+        out = out + "], items: [" + pjoin(n[4]) + "] }"
+    } else if t == "Items" {
+        out = out + pjoin(n)
+    } else if t == "Use" {
+        out = out + "Use \{ imports: [["
+        var uj: I32 = 1
+        while uj < n.len {
+            if uj > 1 { out = out + ", " }
+            out = out + "\"" + n[uj] + "\""
+            uj += 1
+        }
+        out = out + "]] }"
+    } else if t == "Const" {
+        out = out + "Const \{ name: \"" + n[1] + "\", ty: " + pnode(n[2]) + ", expr: " + pnode(n[3]) + "}"
+    } else if t == "Static" {
+        out = out + "Static \{ name: \"" + n[1] + "\", was_var: " + n[2] + ", ty: " + pnode(n[3]) + ", expr: " + pnode(n[4]) + "}"
     } else if t == "Str" {
         out = out + "Str \{ parts: "
         var pl = n[1]
