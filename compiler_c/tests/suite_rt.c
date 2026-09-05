@@ -1,5 +1,5 @@
-// suite_rt.c —— C4-a 执行验收:对“已支持”行为/panic 语料逐文件运行 test 块。
-// 允许表诚实列出当前解释器覆盖的文件;其余 .ct 记为 deferred(不运行,不计失败)。
+// suite_rt.c —— C4 执行验收:对“已支持”行为/panic 语料逐文件运行 test 块。
+// C4-i 起 34 个可运行语料全量纳入(允许表 = 全集);新增域收敛时在此登记。
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,6 +39,13 @@ static const char* const SUPPORTED[] = {
     "03f_slices.ct",
     "03g_fn_types.ct",
     "03h_utf8_boundary.panic.ct",
+    // C4-i deferred 域收敛
+    "04_generics_comptime.ct",
+    "06f_parallel.ct",
+    "08_bare.ct",
+    "09_simd.ct",
+    "10_trace.ct",
+    "10_web_dom.ct",
 };
 
 static int supported(const char* n) {
@@ -131,5 +138,7 @@ int main(int argc, char** argv) {
     }
     closedir(d);
     printf("suite_rt: %zu files run(pass), %zu failures, %zu deferred(未支持)\n", run, fails, deferred);
+    if (deferred > 0)
+        fprintf(stderr, "suite_rt: 警告 —— %zu 个文件仍未纳入允许表\n", deferred);
     return fails ? 1 : 0;
 }

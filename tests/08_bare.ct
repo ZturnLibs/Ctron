@@ -5,7 +5,7 @@ fn total(data: U8[], arena: Arena) -> U32 {
     var seen = arena.zeros[U32](256)          // 显式 arena 分配频次表
     for b in data { seen[b] += 1 }
     var acc: U32 = 0
-    for b in data { acc += seen[b] }          // 频次之和 = 元素个数(自校验)
+    for c in seen { acc += c }                // 频次之和 = 元素个数(自校验)
     return acc
 }
 

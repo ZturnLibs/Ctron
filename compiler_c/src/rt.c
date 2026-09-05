@@ -1,7 +1,10 @@
-// rt.c —— C4-a 解释器:数值/逻辑/字符串/范围子集的行为/panic 语料执行器。
+// rt.c —— C4 解释器:行为/panic 语料执行器。
 // 支持:整宽全集/浮点/布尔/Str;检查算术(溢出 panic)、+%/回绕、除法/取模;
 //       比较;&& 短路;if/else 值、块尾值、while/for-range、跨块遮蔽;
-//       let/var + 类型自适应;顶层函数/递归/UFCS、.as[T]()、断言内建、插值串。
+//       let/var + 类型自适应;顶层函数/递归/UFCS、.as[T]()、断言内建、插值串;
+//       C4-i 补:deferred 域收敛 —— 元组/元组下标、const 求值、Simd splat/lane/
+//       to_array/元素级白名单运算、parallel.map/reduce、stdweb.dom 最小锚、
+//       AnyError 两段式 trace(? 擦除 + context 物化)。
 // panic/断言失败经 setjmp 长跳回 runner;字符串生命周期 = 单 arena。
 #include "rt.h"
 #include "arena.h"
@@ -16,7 +19,8 @@
 
 // ================= 值 =================
 typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE,
-                V_STRUCT, V_BOX, V_ERR, V_LIST, V_ATOM, V_TUPLE, V_TASK, V_CHAN, V_MUTEX, V_SCOPE } vkind;
+                V_STRUCT, V_BOX, V_ERR, V_LIST, V_ATOM, V_TUPLE, V_TASK, V_CHAN, V_MUTEX, V_SCOPE,
+                V_SIMD, V_NS } vkind;
 typedef struct chan_t chan_t;
 typedef struct mutex_t mutex_t;
 typedef struct task_t task_t;
@@ -59,7 +63,7 @@ typedef struct val {
 
 struct vfld { const char* name; val v; };
 struct boxval { val inner; };
-struct errval { char* msg; val cause; };
+struct errval { char* msg; val cause; char* trace; };
 struct listnode { struct val* items; size_t n; size_t cap; };
 struct atomcell { __int128 v; int bits; int us; };
 struct chan_t { int cap; struct listnode q; size_t head; };
@@ -87,6 +91,7 @@ static val v_obj(const char* type, int is_class, vfld* flds, size_t nf) {
     val v = {0}; v.k = V_STRUCT; v.type = type; v.is_class = is_class; v.flds = flds; v.nfld = nf; return v;
 }
 static val v_closure(const cexpr* ce, struct env* cap) { val v = {0}; v.k = V_CLOSURE; v.clo = ce; v.cap = cap; return v; }
+static val v_ns(const char* name) { val v = {0}; v.k = V_NS; v.tag = name; return v; }
 
 // ================= 上下文 =================
 typedef struct bind { const char* name; val slot; struct bind* next; } bind;
@@ -107,6 +112,10 @@ typedef struct {
     scope_t* scope;
     char* out;
     size_t out_n, out_cap;
+    val* consts;          // D_CONST 求值表(按 decl 顺序;const 初始化即 comptime)
+    size_t nconsts;
+    const char* err_head; // 当前函数 ? 的错误擦除目标(Result[.., E] 的 E 头;AnyError 时启用两段式)
+    char* dom_title;      // stdweb.dom 最小锚(set_title/title 往返)
 } rt;
 
 static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
@@ -118,7 +127,7 @@ static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
     longjmp(R->jb, 1);
 }
 
-static void rt_puts(rt* R, const char* s) {
+static void rt_puts(rt* R, const char* s) {  // 缓冲输出;LSP 经 flush_out 主动落盘
     size_t n = s ? strlen(s) : 0;
     if (!n) return;
     if (R->out_n + n + 1 > R->out_cap) {
@@ -144,12 +153,13 @@ static val clone_val(rt* R, val v);
 
 static val v_str_own(rt* R, const char* s) { val v = {0}; v.k = V_STR; v.s = ctron_arena_strndup(R->a, s, strlen(s)); return v; }
 
-static val v_err(rt* R, const char* msg, val cause) {
+static val v_err_t(rt* R, const char* msg, val cause, const char* trace) {
     val v = {0};
     v.k = V_ERR;
     errval* e = (errval*)ctron_arena_alloc(R->a, sizeof(errval));
     e->msg = ctron_arena_strndup(R->a, msg, strlen(msg));
     e->cause = cause;
+    e->trace = trace ? ctron_arena_strndup(R->a, trace, strlen(trace)) : NULL;
     v.err = e;
     return v;
 }
@@ -186,8 +196,9 @@ static void fmt_val(rt* R, val v, sb* b) {
         break;
     case V_BOOL: sb_s(b, v.i ? "true" : "false"); break;
     case V_STR: sb_s(b, v.s ? v.s : ""); break;
+    case V_TAG: sb_s(b, v.tag ? v.tag : ""); break;
     case V_VOID: break;
-    default: sb_s(b, "<range>"); break;
+    default: sb_s(b, "<value>"); break;
     }
 }
 
@@ -267,6 +278,13 @@ static int decl_num(const char* n, int* bits, int* us, int* isf) {
 static const char* head_nm(const cty* t) {
     if (!t || t->kind != TY_NAMED || t->npath == 0) return NULL;
     return t->path[0];
+}
+// ? 擦除目标:Result[T, E] 的 E 头;AnyError 本身 ⇒ 两段式转换(§5.3/§5.4)
+static const char* err_head_of(const cty* t) {
+    if (!t || t->kind != TY_NAMED || t->npath == 0) return NULL;
+    if (!strcmp(t->path[0], "AnyError")) return "AnyError";
+    if (!strcmp(t->path[0], "Result") && t->nargs >= 2) return head_nm(t->args[1]);
+    return NULL;
 }
 
 // ================= 环境 =================
@@ -399,6 +417,8 @@ static val call_method_body(rt* R, const cfn* F, val self, cexpr** args, size_t 
     for (size_t i = 0; i < F->nparams; i++) if (!F->params[i].is_receiver) named++;
     if (named != nargs) rt_abort(R, RT_ERROR, "方法参数个数: %s", F->name ? F->name : "?");
     env_push(R);
+    const char* saved_eh = R->err_head;
+    R->err_head = err_head_of(F->ret);
     for (size_t i = 0; i < F->nparams; i++) {
         const cparam* pr = &F->params[i];
         if (pr->is_receiver) env_let(R, "self", self);
@@ -418,6 +438,7 @@ static val call_method_body(rt* R, const cfn* F, val self, cexpr** args, size_t 
     val res = R->has_ret ? R->ret : body;
     R->has_ret = sr;
     R->ret = srv;
+    R->err_head = saved_eh;
     env_pop(R);
     return res;
 }
@@ -970,6 +991,8 @@ static val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     const cfn* F = &fn->fn_;
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu", F->name, F->nparams, n);
     env_push(R);
+    const char* saved_eh = R->err_head;
+    R->err_head = err_head_of(F->ret);
     for (size_t i = 0; i < n; i++) {
         val a = args[i];
         a = apply_decl(R, a, F->params[i].ty);
@@ -982,6 +1005,7 @@ static val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     val res = R->has_ret ? R->ret : body;
     R->has_ret = sr;
     R->ret = srv;
+    R->err_head = saved_eh;
     env_pop(R);
     return res;
 }
@@ -1052,15 +1076,16 @@ static int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
         return 1;
     }
     if (!strcmp(m, "context")) {
-        // Result 专用:Err 包成错误链;Ok 原样
+        // Result 专用:Err 包成错误链;Ok 原样。context 物化 AnyError,trace 继承传播链(§5.4)
         if (strcmp(recv.tag, "Err") == 0) {
             val msg = call->nelems == 1 ? eval_expr(R, call->elems[0]) : v_bool(0);
             const char* txt = (msg.k == V_STR && msg.s) ? msg.s : "";
             val payload = recv.nitems >= 1 ? recv.items[0] : v_void();
+            const char* tr = (payload.k == V_ERR && payload.err && payload.err->trace) ? payload.err->trace : "main:1";
             val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
             cause_payload[0] = payload;
             val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
-            one[0] = v_err(R, txt, v_tag("Some", cause_payload, 1));
+            one[0] = v_err_t(R, txt, v_tag("Some", cause_payload, 1), tr);
             R->opt_result = v_tag("Err", one, 1);
             R->has_opt = 1;
             return 1;
@@ -1119,6 +1144,8 @@ static val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu",
                                    F->name, F->nparams, n);
     env_push(R);
+    const char* saved_eh = R->err_head;
+    R->err_head = err_head_of(F->ret);
     for (size_t i = 0; i < n; i++) {
         val a = eval_expr(R, args[i]);
         const cparam* pr = &F->params[i];
@@ -1132,6 +1159,7 @@ static val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     val res = R->has_ret ? R->ret : body;
     R->has_ret = save_ret;
     R->ret = save_retv;
+    R->err_head = saved_eh;
     env_pop(R);
     return res;
 }
@@ -1162,7 +1190,18 @@ static val eval_expr(rt* R, cexpr* e) {
             if (sd->kind == D_STATIC && sd->statik.name && strcmp(sd->statik.name, e->text) == 0)
                 return eval_expr(R, sd->statik.expr); // static let 只读全局
         }
+        if (R->consts) { // const(初始化已预求值,即 comptime)
+            size_t ci = 0;
+            for (size_t i = 0; i < R->f->ndecls; i++) {
+                const cdecl* cd = &R->f->decls[i];
+                if (cd->kind != D_CONST) continue;
+                if (strcmp(cd->konst.name, e->text) == 0) return R->consts[ci];
+                ci++;
+            }
+        }
         if (is_variant(R, e->text)) return v_tag(e->text, NULL, 0); // 裸变体值(如 None)
+        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom"))
+            return v_ns(e->text); // 内建命名空间(§7.7/§9.2)
         rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
     }
     case EX_UNARY: {
@@ -1179,6 +1218,25 @@ static val eval_expr(rt* R, cexpr* e) {
         }
         val l = eval_expr(R, e->lhs);
         val r = eval_expr(R, e->rhs);
+        if (l.k == V_SIMD || r.k == V_SIMD) {
+            // 元素级白名单运算(§9.5):+ - * /,两侧同长 Simd
+            if (l.k != V_SIMD || r.k != V_SIMD) rt_abort(R, RT_ERROR, "Simd 运算需两侧同为 Simd");
+            if (l.nitems != r.nitems) rt_abort(R, RT_ERROR, "Simd 元素数不一致");
+            if (e->bop != B_ADD && e->bop != B_SUB && e->bop != B_MUL && e->bop != B_DIV)
+                rt_abort(R, RT_ERROR, "Simd 元素级运算不支持该算符");
+            val* it = (val*)ctron_arena_alloc(R->a, l.nitems * sizeof(val));
+            for (size_t i = 0; i < l.nitems; i++) {
+                double a = l.items[i].k == V_FLOAT ? l.items[i].f : (double)l.items[i].i;
+                double b2 = r.items[i].k == V_FLOAT ? r.items[i].f : (double)r.items[i].i;
+                it[i] = v_flt(e->bop == B_ADD ? a + b2 : e->bop == B_SUB ? a - b2
+                              : e->bop == B_MUL ? a * b2 : a / b2);
+            }
+            val sv = {0};
+            sv.k = V_SIMD;
+            sv.items = it;
+            sv.nitems = l.nitems;
+            return sv;
+        }
         switch (e->bop) {
         case B_ADD:
             if (l.k == V_STR && r.k == V_STR) {
@@ -1235,6 +1293,20 @@ static val eval_expr(rt* R, cexpr* e) {
         val b = eval_expr(R, e->to);
         return v_rng((int64_t)a.i, (int64_t)b.i, e->inclusive);
     }
+    case EX_TUPLE: {
+        val* it = NULL;
+        if (e->nelems) {
+            it = (val*)ctron_arena_alloc(R->a, e->nelems * sizeof(val));
+            for (size_t i = 0; i < e->nelems; i++) it[i] = eval_expr(R, e->elems[i]);
+        }
+        val v = {0};
+        v.k = V_TUPLE;
+        v.items = it;
+        v.nitems = e->nelems;
+        return v;
+    }
+    case EX_TYPEARGS:
+        return eval_expr(R, e->obj); // 类型实参后缀对值透明(如 Simd[F32,4] 的基)
     case EX_IF: {
         val c = eval_expr(R, e->cond);
         if (truthy(c)) return eval_block(R, e->then_b);
@@ -1279,7 +1351,13 @@ static val eval_expr(rt* R, cexpr* e) {
     case EX_MEMBER: {
         val o = eval_expr(R, e->obj);
         if (o.k == V_BOX && o.bx) o = o.bx->inner;
-        if (!e->m_is_name || !e->mname) rt_abort(R, RT_ERROR, "属性访问不支持");
+        if (!e->m_is_name) {
+            // 元组下标 .0/.1/…
+            if (o.k != V_TUPLE) rt_abort(R, RT_ERROR, "元组下标目标不支持");
+            if (e->mtuple >= o.nitems) rt_abort(R, RT_PANIC, "index out of bounds");
+            return o.items[e->mtuple];
+        }
+        if (!e->mname) rt_abort(R, RT_ERROR, "属性访问不支持");
         const char* m = e->mname;
         if (strcmp(m, "len") == 0) {
             if (o.k == V_ARR) return v_int(o.nitems, 32, 0);
@@ -1299,6 +1377,17 @@ static val eval_expr(rt* R, cexpr* e) {
         if (o.k == V_ERR) {
             if (strcmp(m, "message") == 0) return v_str_own(R, o.err->msg);
             if (strcmp(m, "cause") == 0) return o.err->cause;
+            if (strcmp(m, "trace") == 0) {
+                // 两段式位置链:自环向上找最近一次 ? 记录(§5.4)
+                const errval* e2 = o.err;
+                for (int d2 = 0; e2 && d2 < 8; d2++) {
+                    if (e2->trace) return v_str_own(R, e2->trace);
+                    if (e2->cause.k == V_TAG && e2->cause.nitems == 1 && e2->cause.items[0].k == V_ERR)
+                        e2 = e2->cause.items[0].err;
+                    else break;
+                }
+                return v_str_own(R, "");
+            }
             rt_abort(R, RT_ERROR, "错误属性不支持: %s", m);
         }
         if (o.k == V_STRUCT) {
@@ -1321,7 +1410,31 @@ static val eval_expr(rt* R, cexpr* e) {
         }
         if (v.k == V_TAG && (strcmp(v.tag, "Some") == 0 || strcmp(v.tag, "Ok") == 0)
             && v.nitems == 1) return v.items[0];
-        if (v.k == V_TAG && strcmp(v.tag, "Err") == 0) { R->ret = v; R->has_ret = 1; return v; }
+        if (v.k == V_TAG && strcmp(v.tag, "Err") == 0) {
+            // 两段式擦除:函数错误类型为 AnyError 时,? 记录调用点并自动转换(§5.3)
+            if (R->err_head && strcmp(R->err_head, "AnyError") == 0) {
+                val inner = v.nitems >= 1 ? v.items[0] : v_void();
+                val errv;
+                if (inner.k != V_ERR) {
+                    sb b = {0};
+                    fmt_val(R, inner, &b);
+                    val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                    cause_payload[0] = inner;
+                    errv = v_err_t(R, b.d ? b.d : "", v_tag("Some", cause_payload, 1), "main:1");
+                    free(b.d);
+                } else {
+                    errv = inner; // 已是 AnyError,原样传播
+                }
+                val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                one[0] = errv;
+                R->ret = v_tag("Err", one, 1); // 自动擦除为 Err(AnyError) 并传播
+                R->has_ret = 1;
+                return R->ret;
+            }
+            R->ret = v;
+            R->has_ret = 1;
+            return v;
+        }
         return v;
     }
     case EX_CLOSURE:
@@ -1392,6 +1505,28 @@ static val eval_expr(rt* R, cexpr* e) {
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "List") == 0) {
             return v_list(R); // GC List[T]()
+        }
+        // Simd[E, N].method(args) —— splat(其余 lane/to_array 走成员路径)
+        if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname && cal->obj
+            && cal->obj->kind == EX_TYPEARGS && cal->obj->obj && cal->obj->obj->kind == EX_IDENT
+            && strcmp(cal->obj->obj->text, "Simd") == 0) {
+            if (strcmp(cal->mname, "splat") != 0) rt_abort(R, RT_ERROR, "Simd 方法不支持: %s", cal->mname);
+            size_t n = 0;
+            for (size_t ti = 0; ti < cal->obj->ntargs; ti++) {
+                const cty* ta = cal->obj->targs[ti];
+                if (ta->kind == TY_CVAL && ta->npath == 1) n = (size_t)strtoul(ta->path[0], NULL, 10);
+            }
+            if (n == 0 || n > 64) rt_abort(R, RT_ERROR, "Simd 宽度非法");
+            if (e->nelems != 1) rt_abort(R, RT_ERROR, "splat 实参");
+            val x = eval_expr(R, e->elems[0]);
+            double d = x.k == V_FLOAT ? x.f : (double)x.i;
+            val* it = (val*)ctron_arena_alloc(R->a, n * sizeof(val));
+            for (size_t i = 0; i < n; i++) it[i] = v_flt(d);
+            val sv = {0};
+            sv.k = V_SIMD;
+            sv.items = it;
+            sv.nitems = n;
+            return sv;
         }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "Atomic") == 0) {
@@ -1508,6 +1643,54 @@ static val eval_expr(rt* R, cexpr* e) {
                 one[0] = v_str_own(R, ar);
                 return v_tag("Some", one, 1);
             }
+            if (!strcmp(nm, "read_line")) {
+                // stdin 读一行(去尾部 \n/\r);EOF 返回空串。LSP/管道程序用。
+                size_t cap = 256, n = 0;
+                char* buf = (char*)malloc(cap);
+                if (!buf) abort();
+                int c;
+                while ((c = fgetc(stdin)) != EOF) {
+                    if (c == '\n') break;
+                    if (n + 2 > cap) { cap *= 2; buf = (char*)realloc(buf, cap); if (!buf) abort(); }
+                    buf[n++] = (char)c;
+                }
+                if (c == EOF && n == 0) { free(buf); return v_str_own(R, ""); }
+                if (n > 0 && buf[n - 1] == '\r') n--;
+                buf[n] = 0;
+                char* ar = ctron_arena_strndup(R->a, buf, n);
+                free(buf);
+                return v_str_own(R, ar);
+            }
+            if (!strcmp(nm, "read_bytes")) {
+                // stdin 恰好读 n 字节(LSP Content-Length 体);不足则返回已读部分
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_bytes 实参");
+                val nv = eval_expr(R, e->elems[0]);
+                long long want = nv.k == V_INT ? (long long)nv.i : 0;
+                if (want < 0) rt_abort(R, RT_PANIC, "read_bytes 负长度");
+                size_t cap = (size_t)want + 1;
+                char* buf = (char*)malloc(cap);
+                if (!buf) abort();
+                size_t got = 0;
+                while (got < (size_t)want) {
+                    size_t k = fread(buf + got, 1, (size_t)want - got, stdin);
+                    if (k == 0) break;
+                    got += k;
+                }
+                buf[got] = 0;
+                char* ar = ctron_arena_strndup(R->a, buf, got);
+                free(buf);
+                return v_str_own(R, ar);
+            }
+            if (!strcmp(nm, "flush_out")) {
+                // 把 print/println 的缓冲立即写到真实 stdout(LSP 每帧后调用)
+                if (R->out && R->out_n) {
+                    fwrite(R->out, 1, R->out_n, stdout);
+                    fflush(stdout);
+                    R->out_n = 0;
+                    R->out[0] = 0;
+                }
+                return v_void();
+            }
             if (!strcmp(nm, "assert")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "assert 参数");
                 val c = eval_expr(R, e->elems[0]);
@@ -1570,6 +1753,12 @@ static val eval_expr(rt* R, cexpr* e) {
                 out.s = ctron_arena_strndup(R->a, recv.s + lo, (size_t)(hi - lo));
                 return out;
             }
+            if (cal->mname && strcmp(cal->mname, "contains") == 0 && recv.k == V_STR) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "contains 实参");
+                val nv = eval_expr(R, e->elems[0]);
+                if (nv.k != V_STR) rt_abort(R, RT_ERROR, "contains 需 Str");
+                return v_bool(strstr(recv.s ? recv.s : "", nv.s ? nv.s : "") != NULL);
+            }
             if (cal->mname && strcmp(cal->mname, "to_string") == 0
                 && (recv.k == V_STR || recv.k == V_INT || recv.k == V_BOOL || recv.k == V_FLOAT)) {
                 sb b = {0};
@@ -1597,6 +1786,61 @@ static val eval_expr(rt* R, cexpr* e) {
                 out.s = astr(R, b.d ? b.d : "");
                 free(b.d);
                 return out;
+            }
+            if (recv.k == V_NS && cal->mname) {
+                // 内建命名空间:parallel(§7.7 数据并行,解释器序贯执行)/ stdweb.dom(§9.2 最小锚)
+                const char* ns = recv.tag;
+                if (!strcmp(ns, "parallel") && !strcmp(cal->mname, "map")) {
+                    if (e->nelems != 2) rt_abort(R, RT_ERROR, "parallel.map 实参");
+                    val arrv = eval_expr(R, e->elems[0]);
+                    val fv = eval_expr(R, e->elems[1]);
+                    if (arrv.k != V_ARR) rt_abort(R, RT_ERROR, "parallel.map 需切片");
+                    val* out = (val*)ctron_arena_alloc(R->a, (arrv.nitems ? arrv.nitems : 1) * sizeof(val));
+                    for (size_t i = 0; i < arrv.nitems; i++) out[i] = invoke_val1(R, fv, arrv.items[i]);
+                    return v_arr(out, arrv.nitems);
+                }
+                if (!strcmp(ns, "parallel") && !strcmp(cal->mname, "reduce")) {
+                    if (e->nelems != 3) rt_abort(R, RT_ERROR, "parallel.reduce 实参");
+                    val arrv = eval_expr(R, e->elems[0]);
+                    val acc = eval_expr(R, e->elems[1]);
+                    val fv = eval_expr(R, e->elems[2]);
+                    if (arrv.k != V_ARR) rt_abort(R, RT_ERROR, "parallel.reduce 需切片");
+                    for (size_t i = 0; i < arrv.nitems; i++) {
+                        val pair[2];
+                        pair[0] = acc;
+                        pair[1] = arrv.items[i];
+                        acc = invoke_vals(R, fv, pair, 2);
+                    }
+                    return acc;
+                }
+                if (!strcmp(ns, "dom") && !strcmp(cal->mname, "set_title")) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "set_title 实参");
+                    val tv = eval_expr(R, e->elems[0]);
+                    if (tv.k != V_STR) rt_abort(R, RT_ERROR, "set_title 需 Str");
+                    R->dom_title = astr(R, tv.s ? tv.s : "");
+                    return v_void();
+                }
+                if (!strcmp(ns, "dom") && !strcmp(cal->mname, "title")) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "title 实参");
+                    return v_str_own(R, R->dom_title ? R->dom_title : "");
+                }
+                rt_abort(R, RT_ERROR, "命名空间不支持: %s.%s", ns, cal->mname);
+            }
+            if (recv.k == V_SIMD && cal->mname) {
+                if (!strcmp(cal->mname, "lane")) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "lane 实参");
+                    val iv = eval_expr(R, e->elems[0]);
+                    long long li = (long long)iv.i;
+                    if (li < 0 || (unsigned long long)li >= recv.nitems) rt_abort(R, RT_PANIC, "index out of bounds");
+                    return recv.items[li];
+                }
+                if (!strcmp(cal->mname, "to_array")) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "to_array 实参");
+                    val* it = (val*)ctron_arena_alloc(R->a, (recv.nitems ? recv.nitems : 1) * sizeof(val));
+                    for (size_t i = 0; i < recv.nitems; i++) it[i] = recv.items[i];
+                    return v_arr(it, recv.nitems);
+                }
+                rt_abort(R, RT_ERROR, "Simd 方法不支持: %s", cal->mname);
             }
             if (recv.k == V_LIST && cal->mname) {
                 if (strcmp(cal->mname, "push") == 0) {
@@ -1697,6 +1941,27 @@ static val eval_expr(rt* R, cexpr* e) {
     return v_void();
 }
 
+// const 初始化即 comptime(§8):运行 test/main 前预求值全部 D_CONST
+static void eval_consts(rt* R) {
+    size_t n = 0;
+    for (size_t i = 0; i < R->f->ndecls; i++)
+        if (R->f->decls[i].kind == D_CONST) n++;
+    if (!n) return;
+    R->consts = (val*)ctron_arena_alloc(R->a, n * sizeof(val));
+    R->nconsts = n;
+    env* saved = R->top;
+    R->top = NULL;
+    env_push(R);
+    size_t ci = 0;
+    for (size_t i = 0; i < R->f->ndecls; i++) {
+        const cdecl* d = &R->f->decls[i];
+        if (d->kind != D_CONST) continue;
+        val v = d->konst.expr ? eval_expr(R, d->konst.expr) : v_void();
+        R->consts[ci++] = apply_decl(R, v, d->konst.ty);
+    }
+    R->top = saved;
+}
+
 // ================= 入口:运行 test 块 =================
 rt_run ctron_rt_run(const cfile* f) {
     rt_run out = {0};
@@ -1719,6 +1984,7 @@ rt_run ctron_rt_run(const cfile* f) {
         return out;
     }
 
+    eval_consts(&R);
     for (size_t i = 0; i < f->ndecls; i++) {
         const cdecl* d = &f->decls[i];
         if (d->kind != D_TEST) continue;
@@ -1758,6 +2024,7 @@ rt_run ctron_rt_run_main(const cfile* f) {
         ctron_arena_free(arena);
         return out;
     }
+    eval_consts(&R);
     env_push(&R);
     int sr = R.has_ret;
     val srv = R.ret;

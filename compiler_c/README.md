@@ -1,4 +1,4 @@
-# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅ / C4-a…h 解释器 ✅(28 文件 62 test 块))
+# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅ / C4-a…i 解释器 ✅(34 文件全量运行))
 
 > **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在两套独立、各自完整的编译器实现——Rust 版(`compiler/`)与 C 版(`compiler_c/`),互不依赖;两者共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`,61 文件)。最终自举目标不变:以 C 版为种子编译器,后续用 Ctron 自身实现 Ctron。
 
@@ -70,6 +70,13 @@ compiler_c/
 `src/rt.c` + `suite_rt`:纯数值/逻辑/字符串/范围域 5 文件 16 test 块真实运行通过,panic 消息断言;
 GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详见
 `docs/superpowers/plans/2026-09-05-c-rt.md`。
+
+### C4-i 解释器 deferred 域收敛 ✅(34 文件全量运行,0 deferred)
+元组/元组下标、const 预求值(comptime 语义)、Simd splat/lane/to_array/元素级白名单运算、
+parallel.map/reduce(序贯形态)、stdweb.dom 最小锚(set_title/title)、AnyError 两段式
+(? 擦除记录 main:1 + context 物化继承传播链)、Str.contains;suite_rt 允许表收口为全集,
+deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频次之和应对 `seen` 全表求和;
+原写法对 data 求和得 Σcount²,与断言 4 矛盾)。详见本表后补记。
 
 ## 后续里程碑(C 版路线,独立推进)
 
