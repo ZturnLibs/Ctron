@@ -16,8 +16,9 @@
 
 // ================= 值 =================
 typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE,
-                V_STRUCT, V_BOX } vkind;
+                V_STRUCT, V_BOX, V_ERR } vkind;
 typedef struct vfld vfld;
+typedef struct errval errval;
 typedef struct boxval boxval;
 
 typedef struct val {
@@ -41,10 +42,12 @@ typedef struct val {
     vfld* flds;        // V_STRUCT 字段
     size_t nfld;
     boxval* bx;        // V_BOX
+    errval* err;       // V_ERR
 } val;
 
 struct vfld { const char* name; val v; };
 struct boxval { val inner; };
+struct errval { char* msg; val cause; };
 
 static val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
 static val v_flt(double f) { val v = {0}; v.k = V_FLOAT; v.f = f; return v; }
@@ -95,6 +98,18 @@ static val v_box(rt* R, val inner) {
     return v;
 }
 static val clone_val(rt* R, val v);
+
+static val v_str_own(rt* R, const char* s) { val v = {0}; v.k = V_STR; v.s = ctron_arena_strndup(R->a, s, strlen(s)); return v; }
+
+static val v_err(rt* R, const char* msg, val cause) {
+    val v = {0};
+    v.k = V_ERR;
+    errval* e = (errval*)ctron_arena_alloc(R->a, sizeof(errval));
+    e->msg = ctron_arena_strndup(R->a, msg, strlen(msg));
+    e->cause = cause;
+    v.err = e;
+    return v;
+}
 
 // ================= 字符串缓冲 / 格式化 =================
 static char* astr(rt* R, const char* s) { return ctron_arena_strndup(R->a, s, strlen(s)); }
@@ -291,6 +306,90 @@ static val clone_val(rt* R, val v) {
         return v_arr(items, v.nitems);
     }
     return v;
+}
+
+static int tag_is_some(const char* t) { return t && (!strcmp(t, "Some") || !strcmp(t, "Ok")); }
+static int tag_is_none(const char* t) { return t && (!strcmp(t, "None") || !strcmp(t, "Err")); }
+
+// ---- 类实例:impl/trait 方法与 prop 解析(按实例类名) ----
+static const cdecl* find_kind(const cfile* f, cdecl_kind kd, const char* name);
+static const cfn* cls_method(const rt* R, const char* cls, const char* m) {
+    for (size_t i = 0; i < R->f->ndecls; i++) {
+        const cdecl* d = &R->f->decls[i];
+        if (d->kind != D_IMPL) continue;
+        const char* fornm = head_nm(d->impl.for_ty);
+        if (!fornm || strcmp(fornm, cls) != 0) continue;
+        const char* tn = head_nm(d->impl.trait_ty);
+        const cdecl* tr = tn ? find_kind(R->f, D_TRAIT, tn) : NULL;
+        for (size_t j = 0; j < d->impl.nitems; j++) {
+            const cimplitem* it = &d->impl.items[j];
+            if (it->kind == II_METHOD && it->m->name && strcmp(it->m->name, m) == 0) return it->m;
+        }
+        if (tr) {
+            for (size_t j = 0; j < tr->trait.nitems; j++) {
+                const ctraititem* it = &tr->trait.items[j];
+                if (it->kind == TI_METHOD && it->m->body && it->m->name && strcmp(it->m->name, m) == 0)
+                    return it->m; // trait 默认方法体
+            }
+        }
+    }
+    return NULL;
+}
+static const cprop* cls_prop(const rt* R, const char* cls, const char* m) {
+    for (size_t i = 0; i < R->f->ndecls; i++) {
+        const cdecl* d = &R->f->decls[i];
+        if (d->kind != D_IMPL) continue;
+        const char* fornm = head_nm(d->impl.for_ty);
+        if (!fornm || strcmp(fornm, cls) != 0) continue;
+        for (size_t j = 0; j < d->impl.nitems; j++) {
+            const cimplitem* it = &d->impl.items[j];
+            if (it->kind == II_PROP && it->p->name && strcmp(it->p->name, m) == 0 && it->p->body)
+                return it->p;
+        }
+    }
+    return NULL;
+}
+// 以 self=实例调用方法体
+static val call_method_body(rt* R, const cfn* F, val self, cexpr** args, size_t nargs) {
+    // 参数:receiver(&self)→ self;其余按名
+    size_t named = 0;
+    for (size_t i = 0; i < F->nparams; i++) if (!F->params[i].is_receiver) named++;
+    if (named != nargs) rt_abort(R, RT_ERROR, "方法参数个数: %s", F->name ? F->name : "?");
+    env_push(R);
+    for (size_t i = 0; i < F->nparams; i++) {
+        const cparam* pr = &F->params[i];
+        if (pr->is_receiver) env_let(R, "self", self);
+    }
+    size_t ai = 0;
+    for (size_t i = 0; i < F->nparams; i++) {
+        const cparam* pr = &F->params[i];
+        if (pr->is_receiver) continue;
+        val a = eval_expr(R, args[ai++]);
+        a = apply_decl(R, a, pr->ty);
+        env_let(R, pr->name, a);
+    }
+    int sr = R->has_ret;
+    val srv = R->ret;
+    R->has_ret = 0;
+    val body = eval_block(R, F->body);
+    val res = R->has_ret ? R->ret : body;
+    R->has_ret = sr;
+    R->ret = srv;
+    env_pop(R);
+    return res;
+}
+static val call_prop_body(rt* R, const cprop* P, val self) {
+    env_push(R);
+    env_let(R, "self", self);
+    int sr = R->has_ret;
+    val srv = R->ret;
+    R->has_ret = 0;
+    val body = eval_block(R, P->body);
+    val res = R->has_ret ? R->ret : body;
+    R->has_ret = sr;
+    R->ret = srv;
+    env_pop(R);
+    return res;
 }
 
 static int val_eq(rt* R, val a, val b) {
@@ -500,7 +599,10 @@ static const cdecl* find_kind(const cfile* f, cdecl_kind kd, const char* name) {
     for (size_t i = 0; i < f->ndecls; i++) {
         const cdecl* d = &f->decls[i];
         if (d->kind != kd) continue;
-        const char* nm = kd == D_STRUCT ? d->strukt.name : kd == D_CLASS ? d->klass.name : NULL;
+        const char* nm = kd == D_STRUCT ? d->strukt.name
+                        : kd == D_CLASS ? d->klass.name
+                        : kd == D_TRAIT ? d->trait.name
+                        : kd == D_ENUM ? d->en.name : NULL;
         if (nm && strcmp(nm, name) == 0) return d;
     }
     return NULL;
@@ -570,11 +672,12 @@ static val invoke_val1(rt* R, val fnv, val a) {
     return v_void();
 }
 
-// 选项方法内建(map/or/expect);命中时置 R->opt_result 并返回 1
+// 选项/结果方法内建(map/or/expect/context/is_some);命中置 R->opt_result
 static int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
     if (recv.k != V_TAG) return 0;
-    int some = !strcmp(recv.tag, "Some");
-    if (!some && strcmp(recv.tag, "None") != 0) return 0;
+    int is_t = tag_is_some(recv.tag) || tag_is_none(recv.tag);
+    if (!is_t) return 0;
+    int some = tag_is_some(recv.tag);
     if (!strcmp(m, "or")) {
         if (call->nelems != 1) rt_abort(R, RT_ERROR, "or 实参");
         if (some && recv.nitems == 1) { R->opt_result = recv.items[0]; R->has_opt = 1; return 1; }
@@ -590,7 +693,7 @@ static int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
         val r = invoke_val1(R, f, recv.items[0]);
         val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
         one[0] = r;
-        R->opt_result = v_tag("Some", one, 1);
+        R->opt_result = v_tag(some && !strcmp(recv.tag, "Some") ? "Some" : "Ok", one, 1);
         R->has_opt = 1;
         return 1;
     }
@@ -603,10 +706,30 @@ static int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
         }
         rt_abort(R, RT_PANIC, "%s", msg);
     }
+    if (!strcmp(m, "is_some") || !strcmp(m, "is_ok")) {
+        R->opt_result = v_bool(some);
+        R->has_opt = 1;
+        return 1;
+    }
+    if (!strcmp(m, "context")) {
+        // Result 专用:Err 包成错误链;Ok 原样
+        if (strcmp(recv.tag, "Err") == 0) {
+            val msg = call->nelems == 1 ? eval_expr(R, call->elems[0]) : v_bool(0);
+            const char* txt = (msg.k == V_STR && msg.s) ? msg.s : "";
+            val payload = recv.nitems >= 1 ? recv.items[0] : v_void();
+            val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+            one[0] = v_err(R, txt, v_tag("Some", &payload, 1));
+            R->opt_result = v_tag("Err", one, 1);
+            R->has_opt = 1;
+            return 1;
+        }
+        R->opt_result = recv;
+        R->has_opt = 1;
+        return 1;
+    }
     return 0;
 }
 
-// 模式绑定(PAT_AGG 针对 V_TAG;返回是否匹配,并在当前 top 环境绑定名字)
 static int pat_bind(rt* R, cpat* p, val s) {
     if (!p) return 0;
     switch (p->kind) {
@@ -809,10 +932,19 @@ static val eval_expr(rt* R, cexpr* e) {
             }
             rt_abort(R, RT_ERROR, ".char_len 目标类型不支持");
         }
+        if (o.k == V_ERR) {
+            if (strcmp(m, "message") == 0) return v_str_own(R, o.err->msg);
+            if (strcmp(m, "cause") == 0) return o.err->cause;
+            rt_abort(R, RT_ERROR, "错误属性不支持: %s", m);
+        }
         if (o.k == V_STRUCT) {
             for (size_t i = 0; i < o.nfld; i++)
                 if (strcmp(o.flds[i].name, m) == 0) return o.flds[i].v;
-            rt_abort(R, RT_ERROR, "字段不存在: %s", m);
+            if (o.is_class) {
+                const cprop* P = cls_prop(R, o.type, m);
+                if (P) return call_prop_body(R, P, o);
+            }
+            rt_abort(R, RT_ERROR, "字段/属性不存在: %s", m);
         }
         rt_abort(R, RT_ERROR, "属性访问不支持: %s", m);
     }
@@ -823,7 +955,8 @@ static val eval_expr(rt* R, cexpr* e) {
             R->has_ret = 1;
             return v;
         }
-        if (v.k == V_TAG && strcmp(v.tag, "Some") == 0 && v.nitems == 1) return v.items[0];
+        if (v.k == V_TAG && (strcmp(v.tag, "Some") == 0 || strcmp(v.tag, "Ok") == 0)
+            && v.nitems == 1) return v.items[0];
         if (v.k == V_TAG && strcmp(v.tag, "Err") == 0) { R->ret = v; R->has_ret = 1; return v; }
         return v;
     }
@@ -906,6 +1039,11 @@ static val eval_expr(rt* R, cexpr* e) {
             if (recv.k == V_STR && cal->mname && strcmp(cal->mname, "to_string") == 0) {
                 val r = recv; // 不可变;隐式降格语义
                 return r;
+            }
+            if (recv.k == V_STRUCT && recv.is_class && cal->mname) {
+                const cfn* F = cls_method(R, recv.type, cal->mname);
+                if (F) return call_method_body(R, F, recv, e->elems, e->nelems);
+                rt_abort(R, RT_ERROR, "未知方法/UFCS: %s", cal->mname);
             }
             cexpr** arg2 = (cexpr**)ctron_arena_alloc(R->a, (e->nelems + 1) * sizeof(cexpr*));
             arg2[0] = cal->obj;

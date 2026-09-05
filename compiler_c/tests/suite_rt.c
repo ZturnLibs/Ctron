@@ -22,6 +22,8 @@ static const char* const SUPPORTED[] = {
     "02e_match_patterns.ct",
     "03_values_refs.ct",
     "03c_str_string.ct",
+    "02_option_result.ct",
+    "03d_props_traits.ct",
 };
 
 static int supported(const char* n) {
