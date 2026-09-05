@@ -16,6 +16,9 @@ static const char* const SUPPORTED[] = {
     "02d_divzero.panic.ct",
     "03b_numeric_widths.ct",
     "04b_logic.ct",
+    "01d_strings.ct",
+    "01e_multiline_chain.ct",
+    "02b_option_propagation.ct",
 };
 
 static int supported(const char* n) {

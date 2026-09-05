@@ -15,9 +15,9 @@
 #include <string.h>
 
 // ================= 值 =================
-typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE } vkind;
+typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE } vkind;
 
-typedef struct {
+typedef struct val {
     vkind k;
     __int128 i; // 整数(raw 已归一到位宽;64 位无符号按非负)
     double f;
@@ -26,6 +26,13 @@ typedef struct {
     char* s;
     int64_t lo, hi;
     int inclusive;
+    // 复合载荷
+    struct val* items; // V_ARR 元素 / V_TAG 载荷
+    size_t nitems;
+    const char* tag;   // V_TAG(变体名:Some/None/Advance…)
+    const cdecl* fnr;  // V_FN(命名函数值)
+    const cexpr* clo;  // V_CLOSURE
+    struct env* cap;   // V_CLOSURE 捕获环境
 } val;
 
 static val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
@@ -33,6 +40,10 @@ static val v_flt(double f) { val v = {0}; v.k = V_FLOAT; v.f = f; return v; }
 static val v_bool(int b) { val v = {0}; v.k = V_BOOL; v.i = b; return v; }
 static val v_void(void) { val v = {0}; v.k = V_VOID; return v; }
 static val v_rng(int64_t lo, int64_t hi, int incl) { val v = {0}; v.k = V_RANGE; v.lo = lo; v.hi = hi; v.inclusive = incl; return v; }
+static val v_arr(val* items, size_t n) { val v = {0}; v.k = V_ARR; v.items = items; v.nitems = n; return v; }
+static val v_tag(const char* tag, val* items, size_t n) { val v = {0}; v.k = V_TAG; v.tag = tag; v.items = items; v.nitems = n; return v; }
+static val v_fn(const cdecl* d) { val v = {0}; v.k = V_FN; v.fnr = d; return v; }
+static val v_closure(const cexpr* ce, struct env* cap) { val v = {0}; v.k = V_CLOSURE; v.clo = ce; v.cap = cap; return v; }
 
 // ================= 上下文 =================
 typedef struct bind { const char* name; val slot; struct bind* next; } bind;
@@ -48,6 +59,8 @@ typedef struct {
     rt_status st;
     char msg[512];
     size_t tests_run, tests_total;
+    val opt_result;
+    int has_opt;
 } rt;
 
 static void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
@@ -298,15 +311,25 @@ static void eval_stmt(rt* R, cstmt* st) {
     case ST_FOR: {
         if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name || !st->iter)
             rt_abort(R, RT_ERROR, "for 模式不支持");
-        val rg = eval_expr(R, st->iter);
-        if (rg.k != V_RANGE) rt_abort(R, RT_ERROR, "for 需要 range");
+        val it = eval_expr(R, st->iter);
         env_push(R);
-        env_let(R, st->pat->name, v_int(rg.lo, 32, 0));
+        env_let(R, st->pat->name, v_int(0, 32, 0));
         bind* iv = env_find(R, st->pat->name);
-        for (int64_t cur = rg.lo; (rg.inclusive ? cur <= rg.hi : cur < rg.hi); cur++) {
-            iv->slot = v_int(cur, 32, 0);
-            (void)eval_block(R, st->body);
-            if (R->has_ret) break;
+        if (it.k == V_RANGE) {
+            for (int64_t cur = it.lo; (it.inclusive ? cur <= it.hi : cur < it.hi); cur++) {
+                iv->slot = v_int(cur, 32, 0);
+                (void)eval_block(R, st->body);
+                if (R->has_ret) break;
+            }
+        } else if (it.k == V_ARR) {
+            for (size_t i = 0; i < it.nitems; i++) {
+                iv->slot = it.items[i];
+                (void)eval_block(R, st->body);
+                if (R->has_ret) break;
+            }
+        } else {
+            env_pop(R);
+            rt_abort(R, RT_ERROR, "for 需要 range 或数组");
         }
         env_pop(R);
         break;
@@ -388,6 +411,127 @@ static const cdecl* file_fn(const rt* R, const char* name) {
     return NULL;
 }
 
+// 标签构造名:Some/None/Ok/Err + 本文件枚举变体
+static int is_variant(const rt* R, const char* name) {
+    if (!name) return 0;
+    if (!strcmp(name, "Some") || !strcmp(name, "None") || !strcmp(name, "Ok") || !strcmp(name, "Err")) return 1;
+    for (size_t i = 0; i < R->f->ndecls; i++) {
+        const cdecl* d = &R->f->decls[i];
+        if (d->kind != D_ENUM) continue;
+        for (size_t j = 0; j < d->en.nvariants; j++)
+            if (strcmp(d->en.variants[j].name, name) == 0) return 1;
+    }
+    return 0;
+}
+
+// 以既有实参值调用具名函数(用于 UFCS 与 map 路径)
+static val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
+    const cfn* F = &fn->fn_;
+    if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu", F->name, F->nparams, n);
+    env_push(R);
+    for (size_t i = 0; i < n; i++) {
+        val a = args[i];
+        a = apply_decl(R, a, F->params[i].ty);
+        env_let(R, F->params[i].name, a);
+    }
+    int sr = R->has_ret;
+    val srv = R->ret;
+    R->has_ret = 0;
+    val body = eval_block(R, F->body);
+    val res = R->has_ret ? R->ret : body;
+    R->has_ret = sr;
+    R->ret = srv;
+    env_pop(R);
+    return res;
+}
+
+// 以单值实参调用函数值(命名函数或闭包)
+static val invoke_val1(rt* R, val fnv, val a) {
+    if (fnv.k == V_FN) {
+        val args[1];
+        args[0] = a;
+        return call_decl_vals(R, fnv.fnr, args, 1);
+    }
+    if (fnv.k == V_CLOSURE) {
+        const cexpr* c = fnv.clo;
+        env* saved = R->top;
+        env* callee_env = (env*)ctron_arena_alloc(R->a, sizeof(env));
+        callee_env->head = NULL;
+        callee_env->up = fnv.cap;
+        R->top = callee_env;
+        if (c->ncparams >= 1 && c->cparams[0].name) env_let(R, c->cparams[0].name, a);
+        val r = eval_expr(R, c->cbody);
+        R->top = saved;
+        return r;
+    }
+    rt_abort(R, RT_ERROR, "调用目标非函数值");
+    return v_void();
+}
+
+// 选项方法内建(map/or/expect);命中时置 R->opt_result 并返回 1
+static int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
+    if (recv.k != V_TAG) return 0;
+    int some = !strcmp(recv.tag, "Some");
+    if (!some && strcmp(recv.tag, "None") != 0) return 0;
+    if (!strcmp(m, "or")) {
+        if (call->nelems != 1) rt_abort(R, RT_ERROR, "or 实参");
+        if (some && recv.nitems == 1) { R->opt_result = recv.items[0]; R->has_opt = 1; return 1; }
+        R->opt_result = eval_expr(R, call->elems[0]);
+        R->has_opt = 1;
+        return 1;
+    }
+    if (!strcmp(m, "map")) {
+        if (call->nelems != 1) rt_abort(R, RT_ERROR, "map 实参");
+        val f = eval_expr(R, call->elems[0]);
+        if (!some) { R->opt_result = recv; R->has_opt = 1; return 1; }
+        if (recv.nitems != 1) rt_abort(R, RT_ERROR, "map 载荷");
+        val r = invoke_val1(R, f, recv.items[0]);
+        val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+        one[0] = r;
+        R->opt_result = v_tag("Some", one, 1);
+        R->has_opt = 1;
+        return 1;
+    }
+    if (!strcmp(m, "expect")) {
+        if (some && recv.nitems == 1) { R->opt_result = recv.items[0]; R->has_opt = 1; return 1; }
+        char msg[128] = "expect failed";
+        if (call->nelems == 1) {
+            val mv = eval_expr(R, call->elems[0]);
+            if (mv.k == V_STR && mv.s) snprintf(msg, sizeof msg, "expect failed: %s", mv.s);
+        }
+        rt_abort(R, RT_PANIC, "%s", msg);
+    }
+    return 0;
+}
+
+// 模式绑定(PAT_AGG 针对 V_TAG;返回是否匹配,并在当前 top 环境绑定名字)
+static int pat_bind(rt* R, cpat* p, val s) {
+    if (!p) return 0;
+    switch (p->kind) {
+    case PAT_WILD: return 1;
+    case PAT_IDENT: env_let(R, p->name, s); return 1;
+    case PAT_LIT: {
+        if (s.k == V_INT && p->lkind == PLIT_INT) return s.i == parse_int(p->name);
+        if (s.k == V_STR && p->lkind == PLIT_STR) return s.s && p->name && strcmp(s.s, p->name) == 0;
+        if (s.k == V_BOOL && p->lkind == PLIT_BOOL) return s.i == (p->lb ? 1 : 0);
+        return 0;
+    }
+    case PAT_TUPLE: return 0; // 本域不涉
+    case PAT_AGG: {
+        if (s.k != V_TAG || !p->path || p->npath == 0 || strcmp(p->path[0], s.tag) != 0) return 0;
+        if (p->agg == AG_UNIT) return s.nitems == 0;
+        if (p->agg == AG_TUPLE) {
+            if (p->nelems != s.nitems) return 0;
+            for (size_t i = 0; i < p->nelems; i++)
+                if (!pat_bind(R, p->elems[i], s.items[i])) return 0;
+            return 1;
+        }
+        return 0;
+    }
+    default: return 0;
+    }
+}
+
 static val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     const cfn* F = &fn->fn_;
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu",
@@ -428,8 +572,11 @@ static val eval_expr(rt* R, cexpr* e) {
     case EX_VOID: return v_void();
     case EX_IDENT: {
         bind* b = env_find(R, e->text);
-        if (!b) rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
-        return b->slot;
+        if (b) return b->slot;
+        const cdecl* d = file_fn(R, e->text);
+        if (d) return v_fn(d); // 一等函数值(如 map(twice))
+        if (is_variant(R, e->text)) return v_tag(e->text, NULL, 0); // 裸变体值(如 None)
+        rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
     }
     case EX_UNARY: {
         val x = eval_expr(R, e->ux);
@@ -499,6 +646,54 @@ static val eval_expr(rt* R, cexpr* e) {
         }
         return v_void();
     }
+    case EX_ARRAY: {
+        val* arr = (val*)ctron_arena_alloc(R->a, (e->nelems ? e->nelems : 0) * sizeof(val));
+        for (size_t i = 0; i < e->nelems; i++) arr[i] = eval_expr(R, e->elems[i]);
+        return v_arr(arr, e->nelems);
+    }
+    case EX_INDEX: {
+        val o = eval_expr(R, e->obj);
+        val ix = eval_expr(R, e->index);
+        if (o.k != V_ARR) rt_abort(R, RT_ERROR, "索引目标非数组");
+        long long i = (long long)ix.i;
+        if (i < 0 || (unsigned long long)i >= o.nitems) rt_abort(R, RT_PANIC, "index out of bounds");
+        return o.items[i];
+    }
+    case EX_MEMBER: {
+        val o = eval_expr(R, e->obj);
+        if (e->m_is_name && e->mname && strcmp(e->mname, "len") == 0) {
+            if (o.k == V_ARR) return v_int(o.nitems, 32, 0);
+            if (o.k == V_STR) return v_int(o.s ? (__int128)strlen(o.s) : 0, 32, 0);
+            rt_abort(R, RT_ERROR, ".len 目标类型不支持");
+        }
+        rt_abort(R, RT_ERROR, "属性访问不支持: %s", e->mname ? e->mname : "?");
+    }
+    case EX_TRY: {
+        val v = eval_expr(R, e->obj);
+        if (v.k == V_TAG && strcmp(v.tag, "None") == 0) {
+            R->ret = v; // 提前返回 None
+            R->has_ret = 1;
+            return v;
+        }
+        if (v.k == V_TAG && strcmp(v.tag, "Some") == 0 && v.nitems == 1) return v.items[0];
+        if (v.k == V_TAG && strcmp(v.tag, "Err") == 0) { R->ret = v; R->has_ret = 1; return v; }
+        return v;
+    }
+    case EX_CLOSURE:
+        return v_closure(e, R->top);
+    case EX_MATCH: {
+        val sc = eval_expr(R, e->scrut);
+        for (size_t i = 0; i < e->narms; i++) {
+            env_push(R);
+            if (pat_bind(R, e->arms[i].pat, sc)) {
+                val r = eval_expr(R, e->arms[i].expr);
+                env_pop(R);
+                return r;
+            }
+            env_pop(R);
+        }
+        rt_abort(R, RT_ERROR, "match 无匹配臂");
+    }
     case EX_BLOCK: return eval_block(R, e->block);
     case EX_CALL: {
         cexpr* cal = e->callee;
@@ -533,12 +728,27 @@ static val eval_expr(rt* R, cexpr* e) {
                 }
                 return v_void();
             }
+            if (is_variant(R, nm)) {
+                val* items = NULL;
+                if (e->nelems) {
+                    items = (val*)ctron_arena_alloc(R->a, e->nelems * sizeof(val));
+                    for (size_t i = 0; i < e->nelems; i++) items[i] = eval_expr(R, e->elems[i]);
+                }
+                return v_tag(nm, items, e->nelems);
+            }
             const cdecl* fn = file_fn(R, nm);
             if (!fn) rt_abort(R, RT_ERROR, "未知函数: %s", nm);
             return call_decl(R, fn, e->elems, e->nelems);
         }
-        // UFCS / 成员方法(把接收者作为首参)
+        // 成员方法:选项内建(map/or/expect)优先,否则 UFCS(接收者作首参)
         if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname) {
+            val recv = eval_expr(R, cal->obj);
+            R->has_opt = 0;
+            if (option_builtin(R, recv, cal->mname, e)) {
+                val r = R->opt_result;
+                R->has_opt = 0;
+                return r;
+            }
             cexpr** arg2 = (cexpr**)ctron_arena_alloc(R->a, (e->nelems + 1) * sizeof(cexpr*));
             arg2[0] = cal->obj;
             for (size_t i = 0; i < e->nelems; i++) arg2[i + 1] = e->elems[i];
