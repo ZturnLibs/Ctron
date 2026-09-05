@@ -1,9 +1,9 @@
-// suite_sem.c —— C3-a 语义验收:遍历 tests/ 全部 .ct,按文件头 marker 评估。
+// suite_sem.c —— C3 语义验收:遍历 tests/ 全部 .ct,按文件头 marker 评估。
 // 规则(对"已实现"检查诚实评分,防误报):
-//   已实现集 = {E2030,E3010,E3020,E3031,E4020,E6020,E4030,E3050,E3060,W8010,W8020}
+//   已实现集 = {E2010,E2030,E3010,E3020,E3031,E4020,E6020,E4030,E3050,E3060,W8010,W8020}
 //             ∪ 解析层 {E1001,E3030}
 //   pass ⟺ produced ⊆ expected ∧ (expected ∩ implemented) ⊆ produced ∧ msg 子串满足
-// 未实现检查(E3040 分配效果与模块级 E5010/E5020/E2020/E4010/E6010)不在此轮断言。
+// 模块级(E5010/E5020/E2020/E4010/E6010)与分配效果 E3040 不在此轮断言(见 suite_pkg)。
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,7 +105,7 @@ static void parse_markers(const char* src, expect* x) {
 }
 
 static int implemented(const char* code) {
-    static const char* const S[] = {"E2030", "E3010", "E3020", "E3031", "E4020",
+    static const char* const S[] = {"E2010", "E2030", "E3010", "E3020", "E3031", "E4020",
                                     "E6020", "E4030", "E3050", "E3060", "E3040",
                                     "W8010", "W8020", "E1001", "E3030"};
     for (size_t i = 0; i < sizeof S / sizeof S[0]; i++)

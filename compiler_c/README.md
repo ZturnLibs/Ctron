@@ -54,6 +54,12 @@ compiler_c/
 ### C3-a 语义检查 ✅
 单文件 11 项检查(Send 三检查点/match 穷尽/pure/comptime/no_spawn/own 块 move 与 gc-mut/浅拷贝 lint/must-use lint);`suite_sem` 读 marker 对 61 文件诚实评分,行为文件零诊断。详见 `docs/superpowers/plans/2026-09-05-c-sem.md`。
 
+### C3-d E2010 保守子集 ✅(条件 Bool + let 字面量类别)
+对齐 Rust 版 check.rs 的基础类型检查:`while`/`if` 条件可证明非 Bool → E2010;let 注解原语与
+字面量类别(数值/Bool/Str)冲突 → E2010。derive_type 同步扩 INT/FLOAT(含后缀)/比较与逻辑/
+UN_NOT/具名函数返回类型(match 穷尽同步受益)。推导不出 → 保守不报;数值↔数值宽度自适应
+(如 `let x: U64 = 5`)不报。已入 suite_sem 已实现集。
+
 ## 后续里程碑(C 版路线,独立推进)
 
 | 里程碑 | 内容 | 出口 |

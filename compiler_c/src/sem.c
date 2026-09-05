@@ -374,7 +374,7 @@ static const char* root_ident(cexpr* e) {
     }
 }
 
-// 语法导向的局部类型推导(够 Send/穷尽/效果检查即可)
+// 语法导向的局部类型推导(够 Send/穷尽/效果/条件类型检查即可)
 static cty* derive_type(ctx* c, cexpr* e) {
     if (!e) return NULL;
     switch (e->kind) {
@@ -392,6 +392,8 @@ static cty* derive_type(ctx* c, cexpr* e) {
                 return mk_named(c->k->arena, "Option", NULL, 0);
             if (strcmp(n, "Ok") == 0 || strcmp(n, "Err") == 0)
                 return mk_named(c->k->arena, "Result", NULL, 0);
+            const cdecl* d = find_fn(c->s->f, n);
+            if (d) return d->fn_.ret; // 命名函数调用的返回类型
         }
         return NULL;
     }
@@ -399,11 +401,61 @@ static cty* derive_type(ctx* c, cexpr* e) {
         bind* b = bind_find(c->env, e->text);
         return b ? b->ty : NULL;
     }
+    case EX_INT: {
+        // 无后缀 → 默认 I32(期望类型自适应由类别检查放宽,不在此推断宽度)
+        if (e->suffix && *e->suffix) {
+            char u[8];
+            size_t j = 0;
+            for (const char* p = e->suffix; *p && j < 7; p++) u[j++] = (char)toupper((unsigned char)*p);
+            u[j] = 0;
+            if (!strcmp(u, "F32") || !strcmp(u, "F64")) return mk_named(c->k->arena, u, NULL, 0);
+            if (u[0] == 'I' || u[0] == 'U') return mk_named(c->k->arena, u, NULL, 0);
+        }
+        return mk_named(c->k->arena, "I32", NULL, 0);
+    }
+    case EX_FLOAT: {
+        if (e->suffix && !strcmp(e->suffix, "f32")) return mk_named(c->k->arena, "F32", NULL, 0);
+        return mk_named(c->k->arena, "F64", NULL, 0);
+    }
     case EX_STR: return mk_named(c->k->arena, "Str", NULL, 0);
     case EX_BOOL: return mk_named(c->k->arena, "Bool", NULL, 0);
+    case EX_UNARY:
+        if (e->uop == UN_NOT) return mk_named(c->k->arena, "Bool", NULL, 0);
+        return derive_type(c, e->ux);
+    case EX_BINARY: {
+        switch (e->bop) {
+        case B_OR: case B_AND: case B_EQ: case B_NE: case B_LT: case B_GT: case B_LE: case B_GE:
+            return mk_named(c->k->arena, "Bool", NULL, 0);
+        default:
+            return derive_type(c, e->lhs); // 算术沿左操作数
+        }
+    }
     case EX_TRY: return mk_named(c->k->arena, "Option", NULL, 0);
     default: return NULL;
     }
+}
+
+// ---------- E2010(保守子集):条件须 Bool;let 字面量类别与注解冲突 ----------
+// 类别:0 未知(不判) / 1 数值 / 2 Bool / 3 Str 系
+static int prim_cat(const char* n) {
+    if (!n) return 0;
+    if (!strcmp(n, "Bool")) return 2;
+    if (!strcmp(n, "Str") || !strcmp(n, "String")) return 3;
+    static const char* const NUM[] = {"I8", "I16", "I32", "I64", "ISize", "U8", "U16",
+                                      "U32", "U64", "USize", "F32", "F64"};
+    for (size_t i = 0; i < sizeof NUM / sizeof NUM[0]; i++)
+        if (!strcmp(n, NUM[i])) return 1;
+    return 0;
+}
+// cond 非空且可证明非 Bool 时报告;返回是否报告
+static int check_cond_bool(ctx* c, cexpr* cond, const char* what) {
+    cty* t = derive_type(c, cond);
+    const char* hn = head_name(t);
+    if (!hn) return 0; // 推不出 → 不报告(保守)
+    int cat = prim_cat(hn);
+    if (cat == 2 || cat == 0) return 0;
+    diag(c->k, "E2010", "%s 条件应为 Bool,实际 %s", what, hn);
+    return 1;
 }
 
 static const char* const OPTION_VARS[] = {"Some", "None"};
@@ -640,6 +692,18 @@ static void check_block(ctx* c, cblock* b) {
             // 单标识符模式 → 绑定
             if (st->pat && st->pat->kind == PAT_IDENT && st->pat->name) {
                 cty* ty = st->ty ? st->ty : derive_type(c, st->e);
+                // E2010(保守):初值是字面量且类别与注解原语冲突(数值↔Bool↔Str)
+                if (st->ty && st->e) {
+                    int lcat = 0;
+                    if (st->e->kind == EX_STR) lcat = 3;
+                    else if (st->e->kind == EX_BOOL) lcat = 2;
+                    else if (st->e->kind == EX_INT || st->e->kind == EX_FLOAT) lcat = 1;
+                    const char* ann = (st->ty->kind == TY_NAMED && st->ty->npath == 1) ? st->ty->path[0] : NULL;
+                    int acat = prim_cat(ann);
+                    if (lcat && acat && lcat != acat)
+                        diag(c->k, "E2010", "类型不匹配:期望 %s,实得 %s", ann,
+                             lcat == 1 ? "数值" : lcat == 2 ? "Bool" : "Str");
+                }
                 int handled_move = 0;
                 // own 块 move 语义:let x = <arena 句柄> 是 move(源失效,别名接管)
                 if (c->in_own && st->e && st->e->kind == EX_IDENT) {
@@ -697,7 +761,10 @@ static void check_block(ctx* c, cblock* b) {
             if (st->body) check_block(c, st->body);
             break;
         case ST_WHILE:
-            if (st->e) check_expr(c, st->e);
+            if (st->e) {
+                check_cond_bool(c, st->e, "while");
+                check_expr(c, st->e);
+            }
             if (st->body) check_block(c, st->body);
             break;
         case ST_ASSIGN: {
@@ -841,6 +908,7 @@ static void check_expr(ctx* c, cexpr* e) {
         return;
     }
     case EX_IF:
+        check_cond_bool(c, e->cond, "if");
         check_expr(c, e->cond);
         check_block(c, e->then_b);
         if (e->els) check_expr(c, e->els);
