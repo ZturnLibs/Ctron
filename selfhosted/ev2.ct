@@ -2868,6 +2868,17 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         panic("slice args")
         return e4("a", env, vV2(), out)
     }
+    var ddx = find_decl(file, m)
+    if ddx.len > 0 {
+        var fvv = List[Str]()
+        fvv.push(recv)
+        var qq: I32 = 0
+        while qq < vals.len {
+            fvv.push(vals[qq])
+            qq += 1
+        }
+        return call_decl_vals(file, ob[1], ob[3], ddx, fvv)
+    }
     panic("method:" + m)
     return e4("a", env, vV2(), out)
 }

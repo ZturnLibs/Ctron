@@ -75,3 +75,4 @@
 - 注意:并行 C10-a(trans)流已把 compiler_c/Makefile 接上未落盘的 tests/suite_trans.c → 整体
   `make test` 暂不可用;验收请逐 suite 构建运行(或等其落盘)。勿改其 Makefile。
 - C9d③ ✅(struct/枚举域;seq=5d 223 cases)。
+- C9e① ✅(cc.ct 快照刷新至 C9d + UFCS;seq5e/seq9-cc2,225 cases)。

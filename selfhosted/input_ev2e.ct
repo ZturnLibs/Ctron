@@ -1,0 +1,17 @@
+fn double(x: I32) -> I32 {
+    return x * 2
+}
+
+fn scale(x: I32, k: I32) -> I32 {
+    return x * k
+}
+
+fn main() -> I32 {
+    println(double(21).to_string())
+    println((21.double()).to_string())
+    println(scale(6, 7).to_string())
+    println((6.scale(7)).to_string())
+    var s = "abcd"
+    println(s.len.to_string())
+    return 0
+}

@@ -173,6 +173,13 @@
    用例 input_ev2d.ct(struct 字面量/拷贝/字段写/struct 模式/枚举 unit 变体与函数传参/尾 return
    match)与原生逐字一致;suite_diff 223 cases + suite_run 16 files 全绿;ASan/UBSan 绿。
    注:并行 C10-a(trans)流 Makefile WIP 仍阻整体 `make test`,验收=逐 suite 构建运行。
+19b. **C9e①(本文件交付)—— cc 快照刷新至 C9d 求值器 + UFCS**:统一驱动 `cc.ct` 重新自
+   sem_chk(parser+语义 12 项)+ ev2(解释器段,含 C9d 系列 match/数组/Option/struct/enum)
+   拼装(函数零冲突);seq9 新增富程序正例 `input_cc2.ct`(数组/for-over-array/区间/match/
+   Option `?`/struct 字段/枚举 unit + 尾 return match,经 cc 全管线与原生逐字一致)。
+   求值器再补 **UFCS**:`x.f(args)` 找不到内建方法时按文件自由 fn `f` 以接收者为首参调用
+   (镜像 C rt file_fn 收参);新 seq5 用例 `input_ev2e.ct`(21.double()/6.scale(7)/len)。
+   suite_diff 225 cases 全绿;ASan/UBSan 绿。
 
 
 ## 自举产物目录
