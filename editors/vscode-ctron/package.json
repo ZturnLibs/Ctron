@@ -2,7 +2,7 @@
   "name": "ctron-lang",
   "displayName": "Ctron Language Support",
   "description": "Ctron 语言支持:语法高亮、智能提示、诊断、跳转(LSP 由 Ctron 自身实现,经 ctronc 解释运行)",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "ctron",
   "license": "MIT",
   "engines": {

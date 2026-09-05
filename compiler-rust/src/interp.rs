@@ -2,13 +2,13 @@
 //! 值模型 Rc 化;任务为急切执行 + 阻塞挂起 + 取消重跑(§7 语义的语料级实现)。
 
 use crate::ast::{self, Expr};
-use crate::sem::{self, DefKind, Sema, Symbol, Ty};
+use crate::sem::{self, DefId, DefKind, IntW, Sema, Symbol, Ty};
 use crate::token::Span;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-pub type DefId = usize;
+
 
 #[derive(Clone)]
 pub enum Value {
@@ -38,6 +38,7 @@ pub enum Value {
     Arena,
     AnyError { message: Rc<String>, cause: Option<Rc<Value>>, trace: Rc<String> },
 }
+
 
 pub struct Local { pub value: Value }
 
@@ -557,6 +558,10 @@ impl<'a> Interp<'a> {
                         )))),
                         "Box" => Ok(Value::Boxed(Rc::new(vals.first().cloned().unwrap_or(Value::Void)))),
                         "Simd" => {
+                            // Simd[F32, 4] 返回一个标记值,后续 .splat() 在此基础上调用
+                            Ok(Value::Simd(vec![])) // 空 Simd 标记,等待 splat 填充
+                        }
+                        "Simd" => {
                             // Simd[F32, N].splat(v) — 返回一个可调用 splat 的标记值
                             let n = vals.len(); // 暂无好的方式获取 N
                             Ok(Value::Simd(vec![0.0; 4])) // 默认 4 lane
@@ -890,8 +895,9 @@ impl<'a> Interp<'a> {
                 return match m {
                     "splat" => {
                         let v = self.expr(&args[0], env)?;
-                        let f = match v { Value::F32(f) => f as f64, Value::F64(f) => f, _ => 0.0 };
-                        Ok(Value::Simd(vec![f; items.len().max(1)]))
+                        let f = match v { Value::F32(f) => f as f64, Value::F64(f) => f, Value::Int(i) => i as f64, _ => 0.0 };
+                        let n = items.len().max(1);
+                        Ok(Value::Simd(vec![f; n]))
                     }
                     "lane" => {
                         let i = self.expr(&args[0], env)?;
@@ -1974,6 +1980,24 @@ impl<'a> Interp<'a> {
 impl<'a> Interp<'a> {
     /// 字面量类型强制:根据注解类型调整数值运行时表示
     fn coerce_literal(&self, v: &Value, target: &Ty) -> Value {
+        // Named 原生标量名 → 原生 Ty
+        let target = match target {
+            Ty::Named { def, args } if args.is_empty() => {
+                let n = self.sema.defs.get(*def).map(|d| d.name.as_str()).unwrap_or("");
+                match n {
+                    "I8" => Ty::Int(IntW::W8), "I16" => Ty::Int(IntW::W16),
+                    "I32" => Ty::Int(IntW::W32), "I64" => Ty::Int(IntW::W64),
+                    "ISize" => Ty::Int(IntW::WSize),
+                    "U8" => Ty::UInt(IntW::W8), "U16" => Ty::UInt(IntW::W16),
+                    "U32" => Ty::UInt(IntW::W32), "U64" => Ty::UInt(IntW::W64),
+                    "USize" => Ty::UInt(IntW::WSize),
+                    "F32" => Ty::F32, "F64" => Ty::F64,
+                    "Str" => Ty::Str, "Bool" => Ty::Bool,
+                    _ => target.clone(),
+                }
+            }
+            _ => target.clone(),
+        };
         match (v, target) {
             (Value::Int(i), Ty::UInt(_)) => Value::UInt(*i as u64),
             (Value::UInt(u), Ty::Int(_)) => Value::Int(*u as i64),

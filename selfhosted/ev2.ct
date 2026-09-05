@@ -2049,7 +2049,8 @@ fn vL() -> List[Str] {
     v.push("L")
     return v
 }
-// into_gc 深拷贝(镜像 rt.c clone_val):标量逐槽重建,嵌套 L/U/A 递归
+// into_gc 深拷贝(镜像 rt.c clone_val):按种类分发,U 域名/值交错、A/L 值槽递归,
+// 标量/T/F/C 逐槽重建(槽内容不窥探 —— 字符串载荷不可索引)
 fn vdeep(v: List[Str]) -> List[Str] {
     var k0 = v[0]
     if k0 == "U" {
@@ -2064,9 +2065,9 @@ fn vdeep(v: List[Str]) -> List[Str] {
         }
         return ou
     }
-    if k0 == "A" {
+    if or2(k0 == "A", k0 == "L") {
         var oa = List[Str]()
-        oa.push("A")
+        oa.push(k0)
         var ia: I32 = 1
         while ia < v.len {
             oa.push(vdeep(v[ia]))
@@ -2078,19 +2079,7 @@ fn vdeep(v: List[Str]) -> List[Str] {
     out.push(v[0])
     var i: I32 = 1
     while i < v.len {
-        var it = v[i]
-        if it[0] == "L" {
-            out.push(vdeep(it))
-        } else {
-            var c = List[Str]()
-            c.push(it[0])
-            var j: I32 = 1
-            while j < it.len {
-                c.push(it[j])
-                j += 1
-            }
-            out.push(c)
-        }
+        out.push(v[i])
         i += 1
     }
     return out

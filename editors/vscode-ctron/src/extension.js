@@ -414,6 +414,15 @@ class CtronLspClient {
         });
     }
 
+    semanticTokens(document) {
+        return this.safeRequest('textDocument/semanticTokens/full', {
+            textDocument: this.textDocId(document)
+        }).then((result) => {
+            if (!result || !Array.isArray(result.data)) { return null; }
+            return new vscode.SemanticTokens(new Uint32Array(result.data), undefined);
+        });
+    }
+
     dispose() {
         try { this.notify('exit', {}); } catch { /* 忽略 */ }
         if (this.child) {
@@ -682,6 +691,12 @@ function activate(context) {
         vscode.languages.registerFoldingRangeProvider(selector, {
             provideFoldingRanges: (doc) => client ? client.foldingRanges(doc) : null
         }),
+        vscode.languages.registerDocumentSemanticTokensProvider(selector, {
+            provideDocumentSemanticTokens: (doc) => client ? client.semanticTokens(doc) : null
+        }, new vscode.SemanticTokensLegend(
+            ['function', 'method', 'property', 'variable', 'class', 'type', 'enumMember', 'macro'],
+            ['declaration']
+        )),
         vscode.languages.registerCodeActionsProvider(selector, {
             provideCodeActions: (doc, range, ctx) => checkRunner ? checkRunner.codeActions(doc, ctx.diagnostics) : []
         })

@@ -1697,6 +1697,110 @@ fn pipe_nth(all: Str, idx: I64) -> Str {
     return ""
 }
 
+// ============ 8f. semantic tokens(轻启发式,单趟) ============
+// legend: 0=function 1=method 2=property 3=variable 4=class 5=type 7=macro;modifier 0=declaration
+// 启发式(不经 sem):. 成员 / 紧跟 ( 的调用 / 声明名(prev word)/ PT_ALL 类型 / PascalCase / 注解名
+
+fn prev_word(text: Str, from: I64, out: Pos2) -> Str {
+    var k = from
+    while k > 0 {
+        var b = byte_at(text, k - 1)
+        if !is_ws_b(b) && b != 10 {
+            var e = k
+            var s2 = e
+            while s2 > 0 && is_ac(byte_at(text, s2 - 1)) { s2 -= 1 }
+            out.a = s2
+            out.b = e
+            if e > s2 { return byte_slice(text, s2, e) }
+            return ""
+        }
+        k -= 1
+    }
+    return ""
+}
+
+fn sem_tokens(text: Str) -> Str {
+    var dummy = DiagAcc { s: "", n: 0 }
+    var p = ScanPos { i: 0, line: 0, col: 0 }
+    var n = text.len
+    var data = ""
+    var first = true
+    var prevline: I64 = 0
+    var prevcol: I64 = 0
+    while p.i < n {
+        var handled = sp_ws(text, p)
+        if !handled { handled = sp_comment(text, p, dummy) }
+        if !handled { handled = sp_string(text, p, dummy) }
+        if !handled { handled = sp_char(text, p, dummy) }
+        if !handled {
+            if is_al(byte_at(text, p.i)) {
+                var start = p.i
+                var startline = p.line
+                var startcol = p.col
+                while p.i < n && is_ac(byte_at(text, p.i)) {
+                    p.i += 1
+                    p.col += 1
+                }
+                var tok = byte_slice(text, start, p.i)
+                if !pipe_has(KW_ALL, tok) {
+                    var t: I64 = 3
+                    var decl: I64 = 0
+                    var nextb = next_nonspace(text, p.i)
+                    var prevb = prev_sig_char(text, start)
+                    var pw = pos2(0, 0)
+                    var prevw = prev_word(text, start, pw)
+                    if prevb == 46 {
+                        if nextb == 40 { t = 1 } else { t = 2 }
+                    } else {
+                        if or2(prevb == 91, prevb == 64) {
+                            t = 7
+                        } else {
+                            if pipe_has(PT_ALL, tok) {
+                                t = 5
+                            } else {
+                                if or3(prevw == "struct", or3(prevw == "class", prevw == "enum", prevw == "trait"), prevw == "impl") {
+                                    t = 4
+                                    decl = 1
+                                } else {
+                                    if or2(prevw == "fn", prevw == "prop") {
+                                        t = 0
+                                        decl = 1
+                                    } else {
+                                        if or2(prevw == "const", prevw == "static") {
+                                            t = 3
+                                            decl = 1
+                                        } else {
+                                            if nextb == 40 {
+                                                t = 0
+                                            } else {
+                                                var b0 = byte_at(tok, 0)
+                                                if b0 >= 65 && b0 <= 90 { t = 4 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    var dl = startline - prevline
+                    var ds = startcol
+                    if dl == 0 { ds = startcol - prevcol }
+                    var head = ""
+                    if !first { head = "," }
+                    data = "{data}{head}{dl},{ds},{p.i - start},{t},{decl}"
+                    first = false
+                    prevline = startline
+                    prevcol = startcol
+                }
+            } else {
+                p.i += 1
+                p.col += 1
+            }
+        }
+    }
+    return jobj(jkv_raw("data", jarr(data)))
+}
+
 // ============ 9. 请求分发 ============
 
 fn handle(msg: Str, st: Store) -> I64 {
@@ -1715,7 +1819,7 @@ fn handle(msg: Str, st: Store) -> I64 {
     if method == "exit" { return 1 }
     if starts_lit(method, 0, "$/") { return 0 }
     if method == "initialize" {
-        var caps = jobj(jkv_str("positionEncoding", "utf-8") + "," + jkv_raw("textDocumentSync", "1") + "," + jkv_raw("hoverProvider", "true") + "," + jkv_raw("definitionProvider", "true") + "," + jkv_raw("documentSymbolProvider", "true") + "," + jkv_raw("referencesProvider", "true") + "," + jkv_raw("documentHighlightProvider", "true") + "," + jkv_raw("renameProvider", jobj(jkv_raw("prepareProvider", "true"))) + "," + jkv_raw("signatureHelpProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("(") + "," + jstr(","))))) + "," + jkv_raw("completionProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("."))))) + "," + jkv_raw("inlayHintProvider", "true") + "," + jkv_raw("documentFormattingProvider", "true") + "," + jkv_raw("foldingRangeProvider", "true"))
+        var caps = jobj(jkv_str("positionEncoding", "utf-8") + "," + jkv_raw("textDocumentSync", "1") + "," + jkv_raw("hoverProvider", "true") + "," + jkv_raw("definitionProvider", "true") + "," + jkv_raw("documentSymbolProvider", "true") + "," + jkv_raw("referencesProvider", "true") + "," + jkv_raw("documentHighlightProvider", "true") + "," + jkv_raw("renameProvider", jobj(jkv_raw("prepareProvider", "true"))) + "," + jkv_raw("signatureHelpProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("(") + "," + jstr(","))))) + "," + jkv_raw("completionProvider", jobj(jkv_raw("triggerCharacters", jarr(jstr("."))))) + "," + jkv_raw("inlayHintProvider", "true") + "," + jkv_raw("documentFormattingProvider", "true") + "," + jkv_raw("foldingRangeProvider", "true") + "," + jkv_raw("semanticTokensProvider", jobj(jkv_raw("legend", jobj(jkv_raw("tokenTypes", jarr(jstr("function") + "," + jstr("method") + "," + jstr("property") + "," + jstr("variable") + "," + jstr("class") + "," + jstr("type") + "," + jstr("enumMember") + "," + jstr("macro"))) + "," + jkv_raw("tokenModifiers", jarr(jstr("declaration"))))) + "," + jkv_raw("full", "true"))))
         var info = jobj(jkv_str("name", "ctron-lsp") + "," + jkv_str("version", "0.1.0"))
         send_result(id_raw, jobj(jkv_raw("capabilities", caps) + "," + jkv_raw("serverInfo", info)))
         return 0
@@ -1923,6 +2027,18 @@ fn handle(msg: Str, st: Store) -> I64 {
             var idx = store_find(st, uri)
             if idx >= 0 {
                 r = layout_scan(st_text(st, idx), 1)
+            }
+        }
+        send_result(id_raw, r)
+        return 0
+    }
+    if method == "textDocument/semanticTokens/full" && has_id {
+        var r = jobj(jkv_raw("data", "[]"))
+        if has_params {
+            var uri = msg_uri(msg, pc.i)
+            var idx = store_find(st, uri)
+            if idx >= 0 {
+                r = sem_tokens(st_text(st, idx))
             }
         }
         send_result(id_raw, r)
