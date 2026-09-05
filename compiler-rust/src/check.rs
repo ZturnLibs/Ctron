@@ -226,10 +226,6 @@ impl<'a> Checker<'a> {
             .unwrap_or(false)
     }
 
-    fn is_alloc_kind_name(&self, name: &str) -> bool {
-        matches!(name, "String" | "StringBuilder" | "List" | "Map" | "Set" | "Box")
-            || self.is_gc_class_name(name)
-    }
 
     fn is_gc_class(&self, ty: &Ty) -> bool {
         match self.resolve(ty) {

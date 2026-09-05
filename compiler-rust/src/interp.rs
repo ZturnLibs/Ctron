@@ -14,7 +14,10 @@ use std::rc::Rc;
 pub enum Value {
     Void,
     Int(i64),
+    /// 宽度标记整数(let 注解/字面量后缀/as 转换产生,§3.6 溢出与回绕语义)
+    IntW(IntW, i64),
     UInt(u64),
+    UIntW(IntW, u64),
     F64(f64),
     F32(f32),
     Bool(bool),
@@ -53,6 +56,14 @@ impl Env {
         Rc::new(Env { vars: RefCell::new(HashMap::new()), parent: Some(parent.clone()) })
     }
     pub fn define(&self, name: String, l: Local) { self.vars.borrow_mut().insert(name, l); }
+    /// 就近更新既有绑定(含外层作用域);找不到时返回 false
+    pub fn assign(&self, name: &str, l: Local) -> bool {
+        if self.vars.borrow().contains_key(name) {
+            self.vars.borrow_mut().insert(name.to_string(), l);
+            return true;
+        }
+        self.parent.as_ref().map(|p| p.assign(name, l)).unwrap_or(false)
+    }
     pub fn get(&self, name: &str) -> Option<Local> {
         if let Some(l) = self.vars.borrow().get(name) { return Some(Local { value: l.value.clone() }); }
         self.parent.as_ref().and_then(|p| p.get(name))
@@ -70,8 +81,8 @@ pub struct Task {
     pub panic_msg: Option<String>,
 }
 
-struct ChannelState {
-    queue: std::collections::VecDeque<Value>,
+pub struct ChannelState {
+    pub queue: std::collections::VecDeque<Value>,
     capacity: usize,
 }
 
@@ -122,7 +133,7 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn err(&mut self, code: &'static str, msg: String, span: Span) {
+    fn err(&mut self, code: &'static str, msg: String, _span: Span) {
         // interp 层的诊断转为 panic(运行时无诊断队列)
         eprintln!("[ctron:{}] {}: {}", self.module, code, msg);
     }
@@ -156,7 +167,7 @@ impl<'a> Interp<'a> {
             if let ast::Decl::Test(t) = d {
                 let env = Env::child(&self.globals);
                 let r = match self.check_block(&t.body, &env) {
-                    Ok(_) => Ok(()),
+                    Ok(_) | Err(Flow::EarlyReturn(_)) => Ok(()),
                     Err(Flow::Panic(m)) => Err(m),
                     Err(_) => Err("异常控制流".into()),
                 };
@@ -294,7 +305,9 @@ impl<'a> Interp<'a> {
             Expr::Ident(n) => {
                 let cur = env.get(n).map(|l| l.value).unwrap_or(Value::Void);
                 let nv = apply_assign_op(op, &cur, &v)?;
-                env.define(n.clone(), Local { value: nv });
+                if !env.assign(n, Local { value: nv.clone() }) {
+                    env.define(n.clone(), Local { value: nv });
+                }
                 Ok(())
             }
             Expr::Member { obj, target: mt } => {
@@ -351,8 +364,14 @@ impl<'a> Interp<'a> {
                 let v = parse_int(&cleaned).unwrap_or(0);
                 if !suffix.is_empty() {
                     return Ok(match suffix.as_str() {
-                        "U8" | "U16" | "U32" | "U64" | "USize" => Value::UInt(v as u64),
-                        "I8" | "I16" | "I32" | "I64" | "ISize" => Value::Int(v),
+                        "U8" => Value::UIntW(IntW::W8, v as u64),
+                        "U16" => Value::UIntW(IntW::W16, v as u64),
+                        "U32" => Value::UIntW(IntW::W32, v as u64),
+                        "U64" | "USize" => Value::UInt(v as u64),
+                        "I8" => Value::IntW(IntW::W8, v),
+                        "I16" => Value::IntW(IntW::W16, v),
+                        "I32" => Value::IntW(IntW::W32, v),
+                        "I64" | "ISize" => Value::Int(v),
                         _ => Value::Int(v),
                     });
                 }
@@ -363,11 +382,6 @@ impl<'a> Interp<'a> {
                 let v: f64 = cleaned.parse().unwrap_or(0.0);
                 if suffix == "F32" { return Ok(Value::F32(v as f32)); }
                 Ok(Value::F64(v))
-            }
-            Expr::Float { text, suffix } => {
-                let cleaned = text.replace('_', "");
-                let v: f64 = cleaned.parse().unwrap_or(0.0);
-                Ok(if suffix == "F32" { Value::F32(v as f32) } else { Value::F64(v) })
             }
             Expr::Str { parts } => {
                 let mut out = String::new();
@@ -439,7 +453,20 @@ impl<'a> Interp<'a> {
                 let o = self.expr(obj, env)?;
                 self.member(&o, &member_name(target))
             }
-            Expr::TypeArgs { expr, .. } => self.expr(expr, env),
+            Expr::TypeArgs { expr, args } => {
+                // 非调用位置的泛型类型表达式:Simd[F32, N] → 定宽标记值
+                if let Expr::Ident(ty_name) = &**expr {
+                    if ty_name == "Simd" {
+                        let n = args.get(1).and_then(|t| match t {
+                            ast::Type::ComptimeVal(s) => s.trim().parse::<usize>().ok(),
+                            ast::Type::Named { path, .. } => path.last().and_then(|s| s.trim().parse::<usize>().ok()),
+                            _ => None,
+                        }).unwrap_or(4);
+                        return Ok(Value::Simd(vec![0.0; n.max(1)]));
+                    }
+                }
+                self.expr(expr, env)
+            }
             Expr::Try(e) => {
                 let v = self.expr(e, env)?;
                 match v {
@@ -558,13 +585,13 @@ impl<'a> Interp<'a> {
                         )))),
                         "Box" => Ok(Value::Boxed(Rc::new(vals.first().cloned().unwrap_or(Value::Void)))),
                         "Simd" => {
-                            // Simd[F32, 4] 返回一个标记值,后续 .splat() 在此基础上调用
-                            Ok(Value::Simd(vec![])) // 空 Simd 标记,等待 splat 填充
-                        }
-                        "Simd" => {
-                            // Simd[F32, N].splat(v) — 返回一个可调用 splat 的标记值
-                            let n = vals.len(); // 暂无好的方式获取 N
-                            Ok(Value::Simd(vec![0.0; 4])) // 默认 4 lane
+                            // Simd[F32, N] → 定宽标记(长度即 N),后续 .splat() 填充
+                            let n = type_args_ast.get(1).and_then(|t| match t {
+                                ast::Type::ComptimeVal(s) => s.trim().parse::<usize>().ok(),
+                                ast::Type::Named { path, .. } => path.last().and_then(|s| s.trim().parse::<usize>().ok()),
+                                _ => None,
+                            }).unwrap_or(4);
+                            Ok(Value::Simd(vec![0.0; n.max(1)]))
                         }
                         "Channel" => {
                             let ch_id = self.fresh_chan();
@@ -584,34 +611,11 @@ impl<'a> Interp<'a> {
                     let recv = self.expr(recv_expr, env)?;
                     // `as` 方法:数值转换(截断语义,§3.6)
                     if method == "as" {
-                        // 提取目标类型名
                         let targ = type_args_ast.iter().filter_map(|t| match t {
                             ast::Type::Named { path, .. } => path.last().cloned(),
                             _ => None,
                         }).next().unwrap_or_default();
-                        let converted = match (&recv, targ.as_str()) {
-                            (Value::Int(i), "U8") => Value::UInt((*i as u64) & 0xFF),
-                            (Value::Int(i), "U16") => Value::UInt((*i as u64) & 0xFFFF),
-                            (Value::Int(i), "U32") => Value::UInt((*i as u64) & 0xFFFFFFFF),
-                            (Value::Int(i), "U64") | (Value::Int(i), "USize") => Value::UInt(*i as u64),
-                            (Value::UInt(u), "I8") => Value::Int(*u as i8 as i64),
-                            (Value::UInt(u), "I16") => Value::Int(*u as i16 as i64),
-                            (Value::UInt(u), "I32") => Value::Int(*u as i32 as i64),
-                            (Value::UInt(u), "I64") | (Value::UInt(u), "ISize") => Value::Int(*u as i64),
-                            (Value::Int(i), "F64") => Value::F64(*i as f64),
-                            (Value::Int(i), "F32") => Value::F32(*i as f32),
-                            (Value::F64(f), "F32") => Value::F32(*f as f32),
-                            (Value::F64(f), "I32") => Value::Int(*f as i64),
-                            (Value::F64(f), "I64") => Value::Int(*f as i64),
-                            (Value::F64(f), "U8") => Value::UInt(*f as u64),
-                            (Value::F64(f), "U32") => Value::UInt(*f as u64),
-                            (Value::F64(f), "U64") => Value::UInt(*f as u64),
-                            (Value::F32(f), "I32") => Value::Int(*f as i64),
-                            (Value::Int(i), "I8") => Value::Int((*i as i8) as i64),
-                            (Value::Int(i), "I16") => Value::Int((*i as i16) as i64),
-                            _ => recv.clone(),
-                        };
-                        return Ok(converted);
+                        return Ok(convert_as(&recv, &targ));
                     }
                     // Arena 泛型方法
                     if matches!(recv, Value::Arena) {
@@ -712,7 +716,11 @@ impl<'a> Interp<'a> {
     }
 
     fn eval_method(&mut self, obj: &ast::Expr, m: &str, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
-        let o = self.expr(obj, env)?;
+        let mut o = self.expr(obj, env)?;
+        // Box 自动解引用(§3.3):字段/方法访问穿透
+        if let Value::Boxed(inner) = &o {
+            o = (**inner).clone();
+        }
 
         if m == "spawn" {
             if let Some(ast::Expr::Closure { body, .. }) = args.first() {
@@ -837,9 +845,20 @@ impl<'a> Interp<'a> {
                     match f {
                         Value::Closure { params, body, env: fenv } => {
                             let cenv = Env::child(&fenv);
+                            let pname = params.first().map(|p| p.name.clone());
                             if let Some(p) = params.first() { cenv.define(p.name.clone(), Local { value: cur }); }
                             match self.expr(&body, &cenv) {
-                                Ok(v) => { if let Value::Int(nv) = v { cell.set(nv); } Ok(v) }
+                                Ok(v) => {
+                                    if m == "with_mut" {
+                                        // 回写参数终值(体可能为 void 块)
+                                        if let Some(pn) = pname {
+                                            if let Some(l) = cenv.get(&pn) {
+                                                if let Value::Int(nv) = l.value { cell.set(nv); }
+                                            }
+                                        }
+                                    }
+                                    Ok(v)
+                                }
                                 other => other,
                             }
                         }
@@ -1031,6 +1050,10 @@ impl<'a> Interp<'a> {
                     let mut vals = vec![o.clone()];
                     for a in args { vals.push(self.expr(a, env)?); }
                     return self.call_user_fn(id, &vals, env);
+                }
+                // @derive(Show):.show() 综合为格式化字符串(格式不钉死)
+                if m == "show" {
+                    return Ok(Value::Str(Rc::new(self.show_value(&o))));
                 }
             }
             _ => {}
@@ -1293,6 +1316,10 @@ impl<'a> Interp<'a> {
     // ---------- 成员 ----------
 
     fn member(&mut self, o: &Value, name: &str) -> EvalResult {
+        // Box 自动解引用(§3.3)
+        if let Value::Boxed(inner) = o {
+            return self.member(inner, name);
+        }
         match o {
             Value::Str(s) => match name {
                 "len" => Ok(Value::UInt(s.len() as u64)),
@@ -1330,7 +1357,7 @@ impl<'a> Interp<'a> {
                         if matches!(self.sema.defs[tdef].kind, DefKind::Trait) {
                             if let Some((_, pty)) = self.sema.defs[tdef].props.iter().find(|(n, _)| n == name) {
                                 let _ = pty;
-                                return self.call_trait_prop(tdef, name, o);
+                                return self.call_trait_prop(tdef, name, &dname, o);
                             }
                         }
                     }
@@ -1365,22 +1392,34 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn call_trait_prop(&mut self, tdef: DefId, name: &str, self_val: &Value) -> EvalResult {
-        // PropImpl 体在 AST trait 声明中
+    fn call_trait_prop(&mut self, tdef: DefId, name: &str, for_type: &str, self_val: &Value) -> EvalResult {
+        // prop 体优先在 impl 声明,其次 trait 声明默认体
         let tname = self.def_name(tdef);
-        // 先 clone body 避免 borrow 冲突
-        let prop_body = self.file.decls.iter().find_map(|d| {
-            if let ast::Decl::Trait(t) = d {
-                if t.name == tname {
-                    for item in &t.items {
-                        if let crate::ast::TraitItem::PropImpl(p) = item {
-                            if p.name == *name { return p.body.clone(); }
-                        }
+        let mut prop_body: Option<ast::Block> = None;
+        for d in &self.file.decls {
+            if let ast::Decl::Impl(im) = d {
+                if named_tail(&im.for_ty) != for_type || named_tail(&im.trait_ty) != tname { continue; }
+                for item in &im.items {
+                    if let ast::ImplItem::Prop(p) = item {
+                        if p.name == *name { prop_body = p.body.clone(); break; }
                     }
                 }
             }
-            None
-        });
+        }
+        if prop_body.is_none() {
+            prop_body = self.file.decls.iter().find_map(|d| {
+                if let ast::Decl::Trait(t) = d {
+                    if t.name == tname {
+                        for item in &t.items {
+                            if let crate::ast::TraitItem::PropImpl(p) = item {
+                                if p.name == *name { return p.body.clone(); }
+                            }
+                        }
+                    }
+                }
+                None
+            });
+        }
         if let Some(body) = prop_body {
             let saved = self.module.clone();
             let fenv = Env::child(&self.globals);
@@ -1393,9 +1432,32 @@ impl<'a> Interp<'a> {
     }
 
     fn set_member(&mut self, o: &Value, name: &str, v: Value) {
-        if let (Value::Class { fields, .. } | Value::Struct { fields, .. }) = o {
+        if let Value::Class { fields, .. } | Value::Struct { fields, .. } = o {
             let mut b = fields.borrow_mut();
             if let Some(slot) = b.iter_mut().find(|(n, _)| n == name) { slot.1 = v; }
+        }
+    }
+
+    /// @derive(Show) 综合格式化(格式不钉死,只要求信息完整)
+    fn show_value(&mut self, v: &Value) -> String {
+        match v {
+            Value::Struct { def, fields } | Value::Class { def, fields } => {
+                let name = self.def_name(*def);
+                let fs: Vec<String> = fields.borrow().iter()
+                    .map(|(n, fv)| format!("{}: {}", n, self.show_value(fv))).collect();
+                format!("{}{{{}}}", name, fs.join(", "))
+            }
+            Value::Enum { def, variant, payload } => {
+                let dname = self.def_name(*def);
+                let vname = self.variant_name(*def, *variant);
+                if payload.is_empty() { format!("{}::{}", dname, vname) }
+                else {
+                    let ps: Vec<String> = payload.iter().map(|p| self.show_value(p)).collect();
+                    format!("{}::{}({})", dname, vname, ps.join(", "))
+                }
+            }
+            Value::Boxed(inner) => self.show_value(inner),
+            _ => to_display(v),
         }
     }
 
@@ -1561,10 +1623,6 @@ impl<'a> Interp<'a> {
         self.sema.def_by_name.get(name).copied()
     }
 
-    fn def_symbol(&self, name: &str) -> Option<Symbol> {
-        self.sema.def_by_name.get(name).map(|&id| Symbol::Type(id))
-            .or_else(|| self.module_symbol(name))
-    }
 }
 
 fn named_tail(t: &ast::Type) -> String {
@@ -1585,7 +1643,7 @@ fn text_int_eq(t: &str, i: i64) -> bool {
 fn values_equal(a: &Value, b: &Value) -> bool {
     // 跨宽度数值比较
     if compare_values(a, b) == Some(0) {
-        if matches!((a, b), (Value::Int(_) | Value::UInt(_) | Value::F64(_) | Value::F32(_), Value::Int(_) | Value::UInt(_) | Value::F64(_) | Value::F32(_))) {
+        if matches!((a, b), (Value::Int(_) | Value::IntW(..) | Value::UInt(_) | Value::UIntW(..) | Value::F64(_) | Value::F32(_), Value::Int(_) | Value::IntW(..) | Value::UInt(_) | Value::UIntW(..) | Value::F64(_) | Value::F32(_))) {
             return true;
         }
     }
@@ -1601,30 +1659,26 @@ fn values_equal(a: &Value, b: &Value) -> bool {
 }
 
 fn runtime_index(o: &Value, i: &Value) -> Value {
+    let idx_of = |i: &Value| -> Option<usize> { int_i64(i).map(|n| n as usize) };
     match (o, i) {
-        (Value::Array(arr), Value::Int(idx)) => {
+        (Value::Array(arr), _) => {
+            let Some(idx) = idx_of(i) else { return Value::Void };
             let b = arr.borrow();
-            let idx = *idx as usize;
             if idx >= b.len() { panic!("index out of bounds"); }
             b[idx].clone()
         }
-        (Value::Array(arr), Value::UInt(idx)) => {
-            let b = arr.borrow();
-            let idx = *idx as usize;
-            if idx >= b.len() { panic!("index out of bounds"); }
-            b[idx].clone()
-        }
-        (Value::Simd(items), Value::Int(idx)) => {
-            Value::F32(items.get(*idx as usize).copied().unwrap_or(0.0) as f32)
+        (Value::Simd(items), _) => {
+            let Some(idx) = idx_of(i) else { return Value::Void };
+            Value::F32(items.get(idx).copied().unwrap_or(0.0) as f32)
         }
         _ => Value::Void,
     }
 }
 
-fn runtime_index_usize(o: &Value, i: &Value) -> usize {
+fn runtime_index_usize(_o: &Value, i: &Value) -> usize {
     match i {
-        Value::Int(n) => *n as usize,
-        Value::UInt(n) => *n as usize,
+        Value::Int(n) | Value::IntW(_, n) => *n as usize,
+        Value::UInt(n) | Value::UIntW(_, n) => *n as usize,
         _ => 0,
     }
 }
@@ -1650,8 +1704,8 @@ pub fn truthy(v: &Value) -> bool {
 pub fn to_display(v: &Value) -> String {
     match v {
         Value::Void => "void".into(),
-        Value::Int(i) => i.to_string(),
-        Value::UInt(u) => u.to_string(),
+        Value::Int(i) | Value::IntW(_, i) => i.to_string(),
+        Value::UInt(u) | Value::UIntW(_, u) => u.to_string(),
         Value::F64(f) => fmt_float(*f),
         Value::F32(f) => fmt_float(*f as f64),
         Value::Bool(b) => b.to_string(),
@@ -1664,25 +1718,6 @@ pub fn to_display(v: &Value) -> String {
         Value::Tuple(items) => format!("({})", items.iter().map(|p| to_display(p)).collect::<Vec<_>>().join(", ")),
         _ => "<value>".into(),
     }
-}
-
-fn ty_display(t: &Ty) -> String {
-    match t {
-        Ty::Named { def, .. } => sema_name(t, def),
-        Ty::Str => "Str".into(), Ty::String => "String".into(), Ty::Bool => "Bool".into(),
-        Ty::Int(w) => format!("I{:?}", w), Ty::UInt(w) => format!("U{:?}", w),
-        Ty::F32 => "F32".into(), Ty::F64 => "F64".into(),
-        Ty::Optional(e) => format!("{}?", ty_display(e)),
-        Ty::MutSlice(e) => format!("{}[]", ty_display(e)),
-        Ty::RoSlice(e) => format!("&{}[]", ty_display(e)),
-        Ty::Ref(e) => format!("&{}", ty_display(e)),
-        _ => "?".into(),
-    }
-}
-
-fn sema_name(t: &Ty, def: &DefId) -> String {
-    let _ = t;
-    SEMA_NAME.with(|c| c.borrow().get(def).cloned().unwrap_or("?".into()))
 }
 
 thread_local! {
@@ -1704,23 +1739,32 @@ fn fmt_float(f: f64) -> String {
 }
 
 fn apply_assign_op(op: &ast::AssignOp, cur: &Value, v: &Value) -> Result<Value, Flow> {
+    use ast::AssignOp::*;
+    if *op == Eq { return Ok(v.clone()); }
+    // 宽度标记值:复合赋值与二元算术同语义(§3.6)
+    if let Some(bin) = match op {
+        AddEq => Some(ast::BinOp::Add), SubEq => Some(ast::BinOp::Sub),
+        MulEq => Some(ast::BinOp::Mul), DivEq => Some(ast::BinOp::Div),
+        ModEq => Some(ast::BinOp::Mod), _ => None,
+    } {
+        if let Some(r) = tagged_bin(cur, v, &bin) { return r; }
+    }
     match (op, cur, v) {
-        (ast::AssignOp::Eq, _, v) => Ok(v.clone()),
-        (ast::AssignOp::AddEq, Value::Int(x), Value::Int(y)) => Ok(Value::Int(x + y)),
-        (ast::AssignOp::SubEq, Value::Int(x), Value::Int(y)) => Ok(Value::Int(x - y)),
-        (ast::AssignOp::MulEq, Value::Int(x), Value::Int(y)) => Ok(Value::Int(x * y)),
-        (ast::AssignOp::DivEq, Value::Int(x), Value::Int(y)) => {
+        (AddEq, Value::Int(x), Value::Int(y)) => Ok(Value::Int(x + y)),
+        (SubEq, Value::Int(x), Value::Int(y)) => Ok(Value::Int(x - y)),
+        (MulEq, Value::Int(x), Value::Int(y)) => Ok(Value::Int(x * y)),
+        (DivEq, Value::Int(x), Value::Int(y)) => {
             if *y == 0 { Err(Flow::Panic("division by zero".into())) } else { Ok(Value::Int(x / y)) }
         }
-        (ast::AssignOp::ModEq, Value::Int(x), Value::Int(y)) => {
+        (ModEq, Value::Int(x), Value::Int(y)) => {
             if *y == 0 { Err(Flow::Panic("division by zero".into())) } else { Ok(Value::Int(x % y)) }
         }
-        (ast::AssignOp::AddEq, Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(x + y)),
-        (ast::AssignOp::SubEq, Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(x - y)),
-        (ast::AssignOp::MulEq, Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(x * y)),
-        (ast::AssignOp::AddEq, Value::F64(x), Value::F64(y)) => Ok(Value::F64(x + y)),
-        (ast::AssignOp::SubEq, Value::F64(x), Value::F64(y)) => Ok(Value::F64(x - y)),
-        (ast::AssignOp::MulEq, Value::F64(x), Value::F64(y)) => Ok(Value::F64(x * y)),
+        (AddEq, Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(x + y)),
+        (SubEq, Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(x - y)),
+        (MulEq, Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(x * y)),
+        (AddEq, Value::F64(x), Value::F64(y)) => Ok(Value::F64(x + y)),
+        (SubEq, Value::F64(x), Value::F64(y)) => Ok(Value::F64(x - y)),
+        (MulEq, Value::F64(x), Value::F64(y)) => Ok(Value::F64(x * y)),
         _ => Err(Flow::Panic("算术类型错误".into())),
     }
 }
@@ -1769,7 +1813,7 @@ impl<'a> Interp<'a> {
         // 用户 fn
         if let Some(Symbol::Fn(id)) = self.module_symbol(name) { return Ok(Value::FnRef { id }); }
         // 类型名作为关联调用接收者(Arena.fixed / Simd.splat 等)
-        if let Some(&def) = self.sema.def_by_name.get(name) {
+        if let Some(&_def) = self.sema.def_by_name.get(name) {
             return Ok(Value::Arena);
         }
         Err(Flow::Panic(format!("未解析的名称 `{}`", name)))
@@ -1819,8 +1863,9 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::Bool(r))
             }
-            Add | Sub | Mul | Div | Mod => {
+            Add | Sub | Mul | Div | Mod | WrapAdd | WrapSub => {
                 let b_clone = b.clone();
+                if let Some(r) = tagged_bin(a, &b_clone, op) { return r; }
                 match (a, &b_clone) {
                     (Value::Int(x), Value::Int(y)) => Ok(Value::Int(match op {
                         Add => checked_add_i64(*x, *y)?,
@@ -1828,6 +1873,8 @@ impl<'a> Interp<'a> {
                         Mul => checked_mul_i64(*x, *y)?,
                         Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x / y }
                         Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x % y }
+                        WrapAdd => x.wrapping_add(*y),
+                        WrapSub => x.wrapping_sub(*y),
                         _ => 0,
                     })),
                     (Value::UInt(x), Value::UInt(y)) => Ok(Value::UInt(match op {
@@ -1836,15 +1883,17 @@ impl<'a> Interp<'a> {
                         Mul => { let r = x.checked_mul(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?; r }
                         Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x / y }
                         Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x % y }
+                        WrapAdd => x.wrapping_add(*y),
+                        WrapSub => x.wrapping_sub(*y),
                         _ => 0,
                     })),
                     (Value::F64(x), Value::F64(y)) => Ok(Value::F64(match op {
-                        Add => x + y, Sub => x - y, Mul => x * y,
+                        Add | WrapAdd => x + y, Sub | WrapSub => x - y, Mul => x * y,
                         Div => if *y == 0.0 { f64::NAN } else { x / y },
                         Mod => x % y, _ => 0.0,
                     })),
                     (Value::F32(x), Value::F32(y)) => Ok(Value::F32(match op {
-                        Add => x + y, Sub => x - y, Mul => x * y,
+                        Add | WrapAdd => x + y, Sub | WrapSub => x - y, Mul => x * y,
                         Div => if *y == 0.0 { f32::NAN } else { x / y },
                         Mod => x % y, _ => 0.0,
                     })),
@@ -1854,20 +1903,6 @@ impl<'a> Interp<'a> {
                     }
                 }
             }
-            WrapAdd => Ok(match (a, b) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x.wrapping_add(y)),
-                (Value::UInt(x), Value::UInt(y)) => Value::UInt(x.wrapping_add(y)),
-                (Value::F64(x), Value::F64(y)) => Value::F64(x + y),
-                (Value::F32(x), Value::F32(y)) => Value::F32(x + y),
-                _ => Value::Void,
-            }),
-            WrapSub => Ok(match (a, b) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x.wrapping_sub(y)),
-                (Value::UInt(x), Value::UInt(y)) => Value::UInt(x.wrapping_sub(y)),
-                (Value::F64(x), Value::F64(y)) => Value::F64(x - y),
-                (Value::F32(x), Value::F32(y)) => Value::F32(x - y),
-                _ => Value::Void,
-            }),
             Or => Ok(a.clone()),
         }
     }
@@ -1883,33 +1918,164 @@ fn checked_mul_i64(x: i64, y: i64) -> Result<i64, Flow> {
     x.checked_mul(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
 }
 
-fn checked_add_u64(x: u64, y: u64) -> Result<u64, Flow> {
-    x.checked_add(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
-}
-fn checked_sub_u64(x: u64, y: u64) -> Result<u64, Flow> {
-    x.checked_sub(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
-}
-fn checked_mul_u64(x: u64, y: u64) -> Result<u64, Flow> {
-    x.checked_mul(y).ok_or_else(|| Flow::Panic("integer overflow".into()))
+// ---- 宽度整数视图(带标记与不带标记统一读取) ----
+
+fn int_i64(v: &Value) -> Option<i64> {
+    match v {
+        Value::Int(x) | Value::IntW(_, x) => Some(*x),
+        Value::UInt(x) | Value::UIntW(_, x) => Some(*x as i64),
+        _ => None,
+    }
 }
 
-fn numeric_bin(a: &Value, b: &Value, fi: impl Fn(i64, i64) -> i64, ff: impl Fn(f64, f64) -> f64) -> Value {
-    match (a, b) {
-        (Value::Int(x), Value::Int(y)) => Value::Int(fi(*x, *y)),
-        (Value::UInt(x), Value::UInt(y)) => Value::UInt(fi(*x as i64, *y as i64) as u64),
-        (Value::F64(x), Value::F64(y)) => Value::F64(ff(*x, *y)),
-        (Value::F32(x), Value::F32(y)) => Value::F32(ff(*x as f64, *y as f64) as f32),
-        _ => Value::Void,
+fn int_u64(v: &Value) -> Option<u64> {
+    match v {
+        Value::Int(x) | Value::IntW(_, x) => Some(*x as u64),
+        Value::UInt(x) | Value::UIntW(_, x) => Some(*x),
+        _ => None,
+    }
+}
+
+fn int_width_of(v: &Value) -> Option<(IntW, bool)> {
+    match v {
+        Value::IntW(w, _) => Some((*w, true)),
+        Value::UIntW(w, _) => Some((*w, false)),
+        _ => None,
+    }
+}
+
+const OVERFLOW_MSG: &str = "integer overflow";
+
+/// 带宽度标记的算术(§3.6):默认检查(溢出 panic),Wrap* 回绕到目标宽度
+fn tagged_bin(a: &Value, b: &Value, op: &ast::BinOp) -> Option<Result<Value, Flow>> {
+    use ast::BinOp::*;
+    if !matches!(op, Add | Sub | Mul | Div | Mod | WrapAdd | WrapSub) { return None; }
+    let (w, signed) = match (int_width_of(a), int_width_of(b)) {
+        (Some(t), _) => t,
+        (None, Some(t)) => t,
+        (None, None) => return None,
+    };
+    let wrapping = matches!(op, WrapAdd | WrapSub);
+    let div0 = || Flow::Panic("division by zero".into());
+    if !signed {
+        let (x, y) = (int_u64(a)?, int_u64(b)?);
+        let r: u64 = match op {
+            Add => match x.checked_add(y) { Some(r) => r, None => return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))) },
+            Sub => match x.checked_sub(y) { Some(r) => r, None => return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))) },
+            Mul => match x.checked_mul(y) { Some(r) => r, None => return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))) },
+            WrapAdd => x.wrapping_add(y),
+            WrapSub => x.wrapping_sub(y),
+            Div => { if y == 0 { return Some(Err(div0())); } x / y }
+            Mod => { if y == 0 { return Some(Err(div0())); } x % y }
+            _ => return None,
+        };
+        let r = if wrapping && !matches!(w, IntW::W64 | IntW::WSize) {
+            match w { IntW::W8 => (r as u8) as u64, IntW::W16 => (r as u16) as u64, IntW::W32 => (r as u32) as u64, _ => r }
+        } else if !wrapping {
+            let max: u64 = match w { IntW::W8 => u8::MAX as u64, IntW::W16 => u16::MAX as u64, IntW::W32 => u32::MAX as u64, _ => u64::MAX };
+            if r > max { return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))); }
+            r
+        } else { r };
+        return Some(Ok(Value::UIntW(w, r)));
+    }
+    let (x, y) = (int_i64(a)?, int_i64(b)?);
+    let r: i64 = match op {
+        Add => match x.checked_add(y) { Some(r) => r, None => return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))) },
+        Sub => match x.checked_sub(y) { Some(r) => r, None => return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))) },
+        Mul => match x.checked_mul(y) { Some(r) => r, None => return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))) },
+        WrapAdd => x.wrapping_add(y),
+        WrapSub => x.wrapping_sub(y),
+        Div => { if y == 0 { return Some(Err(div0())); } x / y }
+        Mod => { if y == 0 { return Some(Err(div0())); } x % y }
+        _ => return None,
+    };
+    let r = if wrapping && !matches!(w, IntW::W64 | IntW::WSize) {
+        match w { IntW::W8 => (r as i8) as i64, IntW::W16 => (r as i16) as i64, IntW::W32 => (r as i32) as i64, _ => r }
+    } else if !wrapping {
+        let (min, max) = match w {
+            IntW::W8 => (i8::MIN as i64, i8::MAX as i64),
+            IntW::W16 => (i16::MIN as i64, i16::MAX as i64),
+            IntW::W32 => (i32::MIN as i64, i32::MAX as i64),
+            _ => (i64::MIN, i64::MAX),
+        };
+        if r < min || r > max { return Some(Err(Flow::Panic(OVERFLOW_MSG.into()))); }
+        r
+    } else { r };
+    Some(Ok(Value::IntW(w, r)))
+}
+
+/// `as[T]()` 显式转换(§3.6 截断语义),结果携带目标宽度
+fn convert_as(v: &Value, targ: &str) -> Value {
+    let w_signed = match targ {
+        "I8" => Some((IntW::W8, true)), "I16" => Some((IntW::W16, true)),
+        "I32" => Some((IntW::W32, true)), "I64" | "ISize" => Some((IntW::W64, true)),
+        "U8" => Some((IntW::W8, false)), "U16" => Some((IntW::W16, false)),
+        "U32" => Some((IntW::W32, false)), "U64" | "USize" => Some((IntW::W64, false)),
+        _ => None,
+    };
+    if let Some((w, signed)) = w_signed {
+        if signed {
+            let x: i64 = match v {
+                Value::Int(i) | Value::IntW(_, i) => *i,
+                Value::UInt(u) | Value::UIntW(_, u) => *u as i64,
+                Value::F64(f) => *f as i64,
+                Value::F32(f) => *f as i64,
+                _ => return v.clone(),
+            };
+            return Value::IntW(w, match w {
+                IntW::W8 => (x as i8) as i64, IntW::W16 => (x as i16) as i64,
+                IntW::W32 => (x as i32) as i64, _ => x,
+            });
+        }
+        let x: u64 = match v {
+            Value::Int(i) | Value::IntW(_, i) => *i as u64,
+            Value::UInt(u) | Value::UIntW(_, u) => *u,
+            Value::F64(f) => *f as u64,
+            Value::F32(f) => *f as u64,
+            _ => return v.clone(),
+        };
+        return Value::UIntW(w, match w {
+            IntW::W8 => (x as u8) as u64, IntW::W16 => (x as u16) as u64,
+            IntW::W32 => (x as u32) as u64, _ => x,
+        });
+    }
+    match (v, targ) {
+        (_, "F64") => match v {
+            Value::F32(f) => Value::F64(*f as f64),
+            Value::F64(f) => Value::F64(*f),
+            other => int_i64(other).map(|i| Value::F64(i as f64)).unwrap_or_else(|| v.clone()),
+        },
+        (_, "F32") => match v {
+            Value::F64(f) => Value::F32(*f as f32),
+            Value::F32(f) => Value::F32(*f),
+            other => int_i64(other).map(|i| Value::F32(i as f32)).unwrap_or_else(|| v.clone()),
+        },
+        _ => v.clone(),
     }
 }
 
 fn compare_values(a: &Value, b: &Value) -> Option<i8> {
     let lt = |x: f64, y: f64| if x < y { -1 } else if x > y { 1 } else { 0 };
+    // 整数族(含宽度标记)统一精确比较:符号 + 绝对值位型
+    let int_cmp = |a: &Value, b: &Value| -> Option<i8> {
+        let sgn = |v: &Value| -> Option<(bool, u64)> {
+            match v {
+                Value::Int(x) | Value::IntW(_, x) => Some((*x < 0, x.unsigned_abs())),
+                Value::UInt(x) | Value::UIntW(_, x) => Some((false, *x)),
+                _ => None,
+            }
+        };
+        let (an, am) = sgn(a)?;
+        let (bn, bm) = sgn(b)?;
+        Some(match (an, bn) {
+            (true, true) => match bm.cmp(&am) { std::cmp::Ordering::Less => -1, std::cmp::Ordering::Greater => 1, std::cmp::Ordering::Equal => 0 },
+            (true, false) => -1,
+            (false, true) => 1,
+            (false, false) => match am.cmp(&bm) { std::cmp::Ordering::Less => -1, std::cmp::Ordering::Greater => 1, std::cmp::Ordering::Equal => 0 },
+        })
+    };
+    if let Some(r) = int_cmp(a, b) { return Some(r); }
     match (a, b) {
-        (Value::Int(x), Value::Int(y)) => Some(lt(*x as f64, *y as f64)),
-        (Value::UInt(x), Value::UInt(y)) => Some(lt(*x as f64, *y as f64)),
-        (Value::Int(x), Value::UInt(y)) => Some(lt(*x as f64, *y as f64)),
-        (Value::UInt(x), Value::Int(y)) => Some(lt(*x as f64, *y as f64)),
         (Value::F64(x), Value::F64(y)) => Some(lt(*x, *y)),
         (Value::F32(x), Value::F32(y)) => Some(lt(*x as f64, *y as f64)),
         (Value::F64(x), Value::F32(y)) => Some(lt(*x, *y as f64)),
@@ -1917,46 +2083,6 @@ fn compare_values(a: &Value, b: &Value) -> Option<i8> {
         (Value::Str(x), Value::Str(y)) => Some(match x.as_str() { s if s < y.as_str() => -1, s if s > y.as_str() => 1, _ => 0 }),
         _ => None,
     }
-}
-
-fn int_bin(x: &i64, y: &i64, op: &ast::BinOp) -> Result<Value, Flow> {
-    use ast::BinOp::*;
-    Ok(Value::Int(match op {
-        Add => x.checked_add(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
-        Sub => x.checked_sub(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
-        Mul => x.checked_mul(*y).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
-        Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x / y }
-        Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x % y }
-        _ => return Err(Flow::Panic("不支持的整数运算".into())),
-    }))
-}
-
-fn uint_bin(x: &u64, y: &u64, op: &ast::BinOp) -> Result<Value, Flow> {
-    use ast::BinOp::*;
-    Ok(Value::UInt(match op {
-        Add => x.wrapping_add(*y), Sub => x.wrapping_sub(*y), Mul => x.wrapping_mul(*y),
-        Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x / y }
-        Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } x % y }
-        _ => return Err(Flow::Panic("不支持的整数运算".into())),
-    }))
-}
-
-fn f64_bin(x: &f64, y: &f64, op: &ast::BinOp) -> Result<Value, Flow> {
-    use ast::BinOp::*;
-    Ok(Value::F64(match op {
-        Add => x + y, Sub => x - y, Mul => x * y,
-        Div => if *y == 0.0 { f64::NAN } else { x / y },
-        Mod => x % y, _ => 0.0,
-    }))
-}
-
-fn f32_bin(x: &f32, y: &f32, op: &ast::BinOp) -> Result<Value, Flow> {
-    use ast::BinOp::*;
-    Ok(Value::F32(match op {
-        Add => x + y, Sub => x - y, Mul => x * y,
-        Div => if *y == 0.0 { f32::NAN } else { x / y },
-        Mod => x % y, _ => 0.0,
-    }))
 }
 
 
@@ -1971,49 +2097,7 @@ pub fn run_test_file(src: &str, profile: crate::sem::Profile) -> Vec<(String, Re
     interp.run_tests(&file)
 }
 
-fn build_sema_from_file(src: &str, profile: crate::sem::Profile) -> Sema {
-    let files = vec![("".to_string(), src.to_string())];
-    let (sema, _) = sem::build_package(&files, None, profile);
-    sema
-}
 
-impl<'a> Interp<'a> {
-    fn run_tests_inner(&mut self) -> Vec<(String, Result<(), String>)> {
-        // 从 file 中执行 test 块
-        let mut results = Vec::new();
-        let const_inits: Vec<(String, ast::Expr)> = self.file.decls.iter().filter_map(|d| {
-            if let ast::Decl::Const(c) = d { Some((c.name.clone(), c.expr.clone())) } else { None }
-        }).collect();
-        let static_inits: Vec<(String, ast::Expr)> = self.file.decls.iter().filter_map(|d| {
-            if let ast::Decl::Static(s) = d { Some((s.name.clone(), s.expr.clone())) } else { None }
-        }).collect();
-        let test_decls: Vec<(String, ast::Block)> = self.file.decls.iter().filter_map(|d| {
-            if let ast::Decl::Test(t) = d { Some((t.name.clone(), t.body.clone())) } else { None }
-        }).collect();
-        for (name, expr) in &const_inits {
-            let env = Env::child(&self.globals);
-            if let Ok(v) = self.expr(expr, &env) {
-                self.consts.borrow_mut().insert(name.clone(), v);
-            }
-        }
-        for (name, expr) in &static_inits {
-            let env = Env::child(&self.globals);
-            if let Ok(v) = self.expr(expr, &env) {
-                self.statics.borrow_mut().insert(name.clone(), v);
-            }
-        }
-        for (name, body) in &test_decls {
-            let env = Env::child(&self.globals);
-            let r = match self.check_block(body, &env) {
-                Ok(_) => Ok(()),
-                Err(Flow::Panic(m)) => Err(m),
-                Err(_) => Err("异常控制流".into()),
-            };
-            results.push((name.clone(), r));
-        }
-        results
-    }
-}
 
 impl<'a> Interp<'a> {
     /// 字面量类型强制:根据注解类型调整数值运行时表示
@@ -2037,13 +2121,19 @@ impl<'a> Interp<'a> {
             _ => target.clone(),
         };
         match (v, target) {
-            (Value::Int(i), Ty::UInt(_)) => Value::UInt(*i as u64),
-            (Value::UInt(u), Ty::Int(_)) => Value::Int(*u as i64),
+            // 注解/后缀 → 宽度标记值(§3.6:溢出即 panic 的宽度依据)
+            (Value::Int(i), Ty::Int(w)) => Value::IntW(w, *i),
+            (Value::UInt(u), Ty::Int(w)) => Value::IntW(w, *u as i64),
+            (Value::IntW(_, i), Ty::Int(w)) => Value::IntW(w, *i),
+            (Value::UIntW(_, u), Ty::Int(w)) => Value::IntW(w, *u as i64),
+            (Value::Int(i), Ty::UInt(w)) => Value::UIntW(w, *i as u64),
+            (Value::UInt(u), Ty::UInt(w)) => Value::UIntW(w, *u),
+            (Value::IntW(_, i), Ty::UInt(w)) => Value::UIntW(w, *i as u64),
+            (Value::UIntW(_, u), Ty::UInt(w)) => Value::UIntW(w, *u),
             (Value::Int(i), Ty::F64) => Value::F64(*i as f64),
             (Value::Int(i), Ty::F32) => Value::F32(*i as f32),
             (Value::F64(f), Ty::F32) => Value::F32(*f as f32),
             (Value::F32(f), Ty::F64) => Value::F64(*f as f64),
-            (Value::Int(i), Ty::F64) => Value::F64(*i as f64),
             (Value::F64(f), Ty::Int(_)) => Value::Int(*f as i64),
             _ => v.clone(),
         }
