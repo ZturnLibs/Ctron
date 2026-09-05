@@ -1,0 +1,112 @@
+// suite_rt.c —— C4-a 执行验收:对“已支持”行为/panic 语料逐文件运行 test 块。
+// 允许表诚实列出当前解释器覆盖的文件;其余 .ct 记为 deferred(不运行,不计失败)。
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "parser.h"
+#include "rt.h"
+
+typedef struct { const char* name; int panic; char panic_msg[64]; } expect;
+
+static const char* const SUPPORTED[] = {
+    "01_basics.ct",
+    "01_overflow.panic.ct",
+    "02d_divzero.panic.ct",
+    "03b_numeric_widths.ct",
+    "04b_logic.ct",
+};
+
+static int supported(const char* n) {
+    for (size_t i = 0; i < sizeof SUPPORTED / sizeof SUPPORTED[0]; i++)
+        if (strcmp(SUPPORTED[i], n) == 0) return 1;
+    return 0;
+}
+
+static char* read_file_str(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* buf = (char*)malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return NULL; }
+    size_t got = fread(buf, 1, (size_t)sz, f);
+    fclose(f);
+    buf[got] = '\0';
+    return buf;
+}
+
+// //@ panic: <子串>
+static void panic_substr(const char* src, char out[64]) {
+    out[0] = 0;
+    const char* p = src;
+    while ((p = strstr(p, "//@")) != NULL) {
+        p += 3;
+        while (*p == ' ' || *p == '\t') p++;
+        if (strncmp(p, "panic:", 6) == 0) {
+            p += 6;
+            while (*p == ' ' || *p == '\t') p++;
+            const char* v = p;
+            while (*p && *p != '\n') p++;
+            size_t n = (size_t)(p - v);
+            if (n > 63) n = 63;
+            memcpy(out, v, n);
+            out[n] = 0;
+            return;
+        }
+    }
+}
+
+int main(int argc, char** argv) {
+    const char* root = argc > 1 ? argv[1] : "../tests";
+    DIR* d = opendir(root);
+    if (!d) { fprintf(stderr, "suite_rt: 无法打开 %s\n", root); return 2; }
+    size_t run = 0, fails = 0, deferred = 0;
+    struct dirent* e;
+    while ((e = readdir(d)) != NULL) {
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+        size_t bl = strlen(e->d_name);
+        if (bl < 4 || strcmp(e->d_name + bl - 3, ".ct") != 0) continue;
+        if (strstr(e->d_name, ".neg.ct") || strstr(e->d_name, ".lint.ct")) continue; // 语义层已覆盖
+        if (!supported(e->d_name)) { deferred++; continue; }
+        char path[4096];
+        snprintf(path, sizeof path, "%s/%s", root, e->d_name);
+        char* src = read_file_str(path);
+        if (!src) { fprintf(stderr, "无法读取 %s\n", path); fails++; continue; }
+        char pm[64];
+        panic_substr(src, pm);
+        int is_panic = pm[0] != 0;
+        size_t len = strlen(src);
+        ctron_parse_result pr = ctron_parse_src(src, len);
+        free(src);
+        if (pr.ndiags) {
+            fprintf(stderr, "%s: 解析诊断 %zu 条(应归 C2/C3 检查)\n", e->d_name, pr.ndiags);
+            ctron_parse_result_free(&pr);
+            fails++;
+            continue;
+        }
+        rt_run rr = ctron_rt_run(pr.file);
+        int ok = 0;
+        if (is_panic) {
+            ok = rr.st == RT_PANIC && strstr(rr.msg, pm) != NULL;
+            if (!ok)
+                fprintf(stderr, "%s: 期望 panic '%s',实得 [%d] %s\n", e->d_name, pm, rr.st,
+                        rr.msg ? rr.msg : "");
+        } else {
+            ok = rr.st == RT_OK && rr.tests_run == rr.tests_total && rr.tests_total > 0;
+            if (!ok)
+                fprintf(stderr, "%s: 期望全部 %zu 测试通过,实得 [%d] 通过 %zu/ %zu, %s\n",
+                        e->d_name, rr.tests_total, rr.st, rr.tests_run, rr.tests_total,
+                        rr.msg ? rr.msg : "");
+        }
+        if (!ok) fails++;
+        else run++;
+        ctron_rt_run_free(&rr);
+        ctron_parse_result_free(&pr);
+    }
+    closedir(d);
+    printf("suite_rt: %zu files run(pass), %zu failures, %zu deferred(未支持)\n", run, fails, deferred);
+    return fails ? 1 : 0;
+}

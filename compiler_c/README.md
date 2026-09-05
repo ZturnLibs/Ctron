@@ -1,4 +1,4 @@
-# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅)
+# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅ / C4-a 解释器 ✅)
 
 > **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在两套独立、各自完整的编译器实现——Rust 版(`compiler/`)与 C 版(`compiler_c/`),互不依赖;两者共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`,61 文件)。最终自举目标不变:以 C 版为种子编译器,后续用 Ctron 自身实现 Ctron。
 
@@ -33,8 +33,10 @@ compiler_c/
   tests/suite_parse.c   # 61 文件解析分类验收
   src/sem.{h,c}         # 语义检查(单文件)
   src/pkg.{h,c}         # 模块级检查(Ctron.toml + 跨文件)
+  src/rt.{h,c}          # C4-a 解释器(数值/逻辑/字符串/范围域)
   tests/suite_sem.c     # 61 文件单文件语义 marker 评分
   tests/suite_pkg.c     # modules/* 包级语义评分
+  tests/suite_rt.c      # 执行层允许表评分(行为/panic)
 ```
 
 构建环境:仅 libc,C11(`cc`);零外部依赖。验收命令 `make test`。
@@ -62,7 +64,16 @@ compiler_c/
 
 | 里程碑 | 内容 | 出口 |
 |---|---|---|
-| C4 | 执行层(CVM):`ctron test` 跑行为/panic 语料 | 行为/panic 测试运行通过 |
+### C4-a 解释器 ✅
+`src/rt.c` + `suite_rt`:纯数值/逻辑/字符串/范围域 5 文件 16 test 块真实运行通过,panic 消息断言;
+GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详见
+`docs/superpowers/plans/2026-09-05-c-rt.md`。
+
+## 后续里程碑(C 版路线,独立推进)
+
+| 里程碑 | 内容 | 出口 |
+|---|---|---|
+| C4-b/c/d | GC 集合/类/match/闭包;own/arena;并发(scope/spawn/Channel/Mutex) | 行为/panic 语料逐域并入 suite_rt 允许表 |
 | C5 | 自举种子就绪:ctron0-C 可编译 Ctron 写的模块 | — |
 
-计划文档:C1 `docs/superpowers/plans/2026-09-05-c-lexer.md`;C2 `docs/superpowers/plans/2026-09-05-c-parser.md`;C3 `docs/superpowers/plans/2026-09-05-c-sem.md`、`2026-09-05-c-pkg.md`。
+计划文档:C1 `docs/superpowers/plans/2026-09-05-c-lexer.md`;C2 `docs/superpowers/plans/2026-09-05-c-parser.md`;C3 `docs/superpowers/plans/2026-09-05-c-sem.md`、`2026-09-05-c-pkg.md`;C4-a `docs/superpowers/plans/2026-09-05-c-rt.md`。
