@@ -135,6 +135,11 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 检查 47/47 |
 | C8h② ✅ | E3040 分配效果(own/no_alloc/契约 + 函数效果摘要) | **C3 单文件 12 项全集 Ctron 树上收官:49/49(207 用例)** |
 
+### C10-e 转译扩面:插值 + class/Box ✅(差分 14/14)
+插值片段解析 → fmt 助手(i64/f64/bool,rt fmt_val 语义)+ concat 链;class 引用语义
+(malloc 构造助手/箭头访问/指针共享);Box[T](v) 显式堆分配 + 自动解引用。
+闭包/context 链/并发运行时 → C10-f+。
+
 ### C10-d 转译扩面:Option/Result/?/载荷变体 ✅(差分 12/12)
 和类型按实例化生成 C 结构(tag+union);Some/None/Ok/Err 期望类型提示推导;`?` 分解为
 tag 检查 + 早退(let/return;test 体 void return);.or/.expect;用户枚举载荷变体
