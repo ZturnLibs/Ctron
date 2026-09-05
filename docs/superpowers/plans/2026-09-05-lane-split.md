@@ -33,3 +33,15 @@
 - A 泳道已交付:selfhosted 词法/树解析/文本解析/sem_chk/pkg_chk/ev_num(见 HANDOFF §2)。
 - B 泳道下一里程碑:**C10-a Ctron→C 转译后端骨架**(数值域:宽度全集/检查算术/
   控制流/函数递归/test 块;差分对象 = C 解释器 `ctronc run`)。
+
+---
+## 战略转向(2026-09-05 晚)—— Rust 版成为唯一产品线
+项目方决定:**不再推进“Ctron 自举”(Ctron-in-C);C 版(compiler_c)与 selfhosted 仅保留为
+参考 oracle / 归档,不再新增功能**。**Rust 编译器成为唯一实现线**:
+- 目录:`compiler/` **已改名 `compiler-rust/`**(本次提交)。包名仍 `ctron`。
+- 归属:**Rust 线独立全力实现**(单 session 全权),其它泳道/其它 session **不得再修改
+  `compiler-rust/`**(旧“C:Rust 参照—暂缓”条款作废)。
+- C 版纵深(C10-a trans 等)与 LSP/editors 泳道:各自现存内容保留,不作为本项目主线。
+- 后续里程碑代号改用 **R- 前缀**(例 R-P1D、R-P2…),与历史 C*/P1* 区分。
+- 验收盘:`cargo test`(lex/parse/check/run 四 suite)+ 61 文件行为矩阵(目标全绿),对照
+  `docs/spec/` 与 `tests/` 语料。

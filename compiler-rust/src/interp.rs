@@ -1762,26 +1762,18 @@ fn f32_bin(x: &f32, y: &f32, op: &ast::BinOp) -> Result<Value, Flow> {
 
 /// 便捷入口:解析 + 构建 + 运行单文件的全部 test 块
 pub fn run_test_file(src: &str, profile: crate::sem::Profile) -> Vec<(String, Result<(), String>)> {
+    let files = vec![("".to_string(), src.to_string())];
+    let (sema, _) = sem::build_package(&files, None, profile);
     let (tokens, _) = crate::lex(src);
     let ast_file = crate::parser::Parser::new(tokens).parse_file_public();
-    let sema = build_sema_from_file(src, profile);
     let file = Rc::new(ast_file);
-    let mut interp = Interp::new(&sema, String::new(), file);
-    interp.run_tests_inner()
+    let mut interp = Interp::new(&sema, String::new(), file.clone());
+    interp.run_tests(&file)
 }
 
 fn build_sema_from_file(src: &str, profile: crate::sem::Profile) -> Sema {
-    let mut sema = Sema {
-        defs: Vec::new(), def_by_name: HashMap::new(), cap_key_by_def: HashMap::new(),
-        fns: Vec::new(), impls: Vec::new(), mods: Vec::new(), mod_by_path: HashMap::new(),
-        manifest: None, profile, var_next: 0,
-        runtime_fns: HashMap::new(),
-    };
-    crate::sem::register_prelude_pub(&mut sema);
-    let (tokens, _) = crate::lex(src);
-    let ast_file = crate::parser::Parser::new(tokens).parse_file_public();
-    // 收集声明到 sema(简版:只注册 fn/type/const/static)
-    crate::sem::collect_decls_simple(&mut sema, &ast_file, src);
+    let files = vec![("".to_string(), src.to_string())];
+    let (sema, _) = sem::build_package(&files, None, profile);
     sema
 }
 
