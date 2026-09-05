@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
         if (e->d_type != DT_REG) continue;
         size_t bl = strlen(e->d_name);
         if (bl < 4 || strcmp(e->d_name + bl - 3, ".ct") != 0) continue;
+        if (strncmp(e->d_name, "input_", 6) == 0) continue; // 数据夹具跳过
         char path[4096];
         snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
         char* src = read_file_str(path);
