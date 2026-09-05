@@ -23,8 +23,32 @@ fn main() -> ExitCode {
             println!("{} tokens, {} diagnostics", toks.len(), diags.len());
             if diags.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
         }
+        Some("parse") => {
+            let path = match args.get(2) {
+                Some(p) if p != "--ast" => p.clone(),
+                _ => {
+                    eprintln!("usage: ctron parse <file> [--ast]");
+                    return ExitCode::from(2);
+                }
+            };
+            let show_ast = args.iter().any(|a| a == "--ast");
+            let Ok(src) = std::fs::read_to_string(&path) else {
+                eprintln!("无法读取 {path}");
+                return ExitCode::from(2);
+            };
+            let (file, diags) = ctron::parse_src(&src);
+            for d in &diags {
+                println!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+            }
+            if show_ast {
+                println!("{file:#?}");
+            } else {
+                println!("{} decls, {} diagnostics", file.decls.len(), diags.len());
+            }
+            if diags.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+        }
         _ => {
-            eprintln!("usage: ctron <version|lex> [args]");
+            eprintln!("usage: ctron <version|lex|parse> [args]");
             ExitCode::from(2)
         }
     }

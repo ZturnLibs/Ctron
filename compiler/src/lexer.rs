@@ -427,7 +427,7 @@ fn line_end_continues(t: &Tok) -> bool {
         | Tok::Or | Tok::DotDot | Tok::DotDotEq | Tok::Plus | Tok::Minus | Tok::Star
         | Tok::Slash | Tok::Percent | Tok::WrapPlus | Tok::WrapMinus | Tok::EqEq
         | Tok::NotEq | Tok::Lt | Tok::Gt | Tok::LtEq | Tok::GtEq | Tok::LParen
-        | Tok::LBracket | Tok::LBrace | Tok::Pipe | Tok::Question)
+        | Tok::LBracket | Tok::LBrace | Tok::Pipe)
 }
 
 fn continues_next_line(t: &Tok) -> bool {

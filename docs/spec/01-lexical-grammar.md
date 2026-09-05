@@ -105,13 +105,13 @@ Path        = IDENT { "." IDENT } ;
 
 (* ---------- 类型声明 ---------- *)
 StructDecl  = { DeclAttr } "struct" IDENT [ TypeParams ] "{" NEWLINE* { Field NEWLINE+ } "}" ;
-Field       = Visibility [ "var" ] IDENT ":" Type ;
+Field       = Visibility [ "let" | "var" ] IDENT ":" Type ;   (* let 可省略;let/省略 = 不可变,var = 可变 *)
 ClassDecl   = { DeclAttr } "class" IDENT [ TypeParams ] "{" NEWLINE* { ClassItem NEWLINE+ } "}" ;
 ClassItem   = Field | Method | PropImpl ;
 EnumDecl    = { DeclAttr } "enum" IDENT [ TypeParams ] "{"
               NEWLINE* { Variant NEWLINE+ } "}" ;
 Variant     = IDENT [ "(" [ Type { "," Type } ] ")"
-                    | "{" Field { NEWLINE+ Field } "}" ] ;
+                    | "{" Field { ( "," | NEWLINE+ ) Field } [ "," ] "}" ] ;   (* 变体字段:逗号或换行分隔 *)
 TypeParams  = "[" TypeParam { "," TypeParam } "]" ;
 TypeParam   = IDENT [ ":" Bound ] | "comptime" IDENT ":" Type ;
 Bound       = Path { "+" Path } ;

@@ -49,7 +49,7 @@ pub struct ConstDecl { pub name: String, pub ty: Type, pub expr: Expr }
 pub struct StaticDecl { pub name: String, pub ty: Type, pub expr: Expr, pub was_var: bool }
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDecl { pub name: String, pub body: Block }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Vis { Private, Pub, PubPkg }
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeParam { pub name: String, pub bound: Vec<String>, pub is_comptime: bool }
@@ -123,4 +123,5 @@ pub enum Type {
     Named { path: Vec<String>, args: Vec<Type> }, Ref(Box<Type>), Slice(Box<Type>),
     Array { elem: Box<Type>, size: Option<Expr> }, Optional(Box<Type>),
     Tuple(Vec<Type>), Fn { params: Vec<Type>, ret: Option<Box<Type>> }, SelfT,
+    ComptimeVal(String),   // 泛型值实参(如 Simd[F32, 4] 的 4,§6.4)
 }
