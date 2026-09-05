@@ -57,3 +57,15 @@
 - 里程碑与设计:计划文档(18a–18u 最新为 C9b-0)、`selfhosted/README.md`、`compiler_c/README.md`
 - C 版 oracle 语义(sem/parser/rt 具体规则):`compiler_c/src/{sem,parser,rt,pkg}.c`
 - 现有 Ctron 模块即最佳“写法范本”:`selfhosted/sem_chk.ct`(语义全集)、`pkg_chk.ct`(tok 提取)、`ev_num.ct`(求值雏形)
+
+---
+## 更新记录(18w session)
+- C9b① ✅(`ev2.ct` 求值器;suite_diff seq=5/6 执行差分;提交 e468f22)
+- C9b② ✅(`pkg_chk.ct` 升级为 C pkg 逐字 oracle + E6010 comptime 预算;seq=8 7 包;提交 7113c78)
+- 验收口径升至 suite_diff 218 cases + suite_run 15 files,ASan/UBSan 绿。
+- Ctron 钉子补充:**List 索引写有缺陷**(读=拷贝、`l[i]=v` 越界),可变结构请纯重建/Atomic;
+  宿主是解释器,每层 Ctron 递归≈多 C 帧 → 深度受宿主栈约束(ASan 更严;comptime 预算深度取 40)。
+- 仓库另有**并行工作流**(editors/lsp/trans.c 等,提交 b641b60 之后);若工作区有并行未提交改动,
+  提交前只 `git add` 自己的文件。孤儿 C 改动(W8040/E2010、rt call_decl 调用方求值)在 `git stash@{0}`。
+- 下一批:C9c 统一 cc 驱动(parse→单文件语义 12 项→run 单入口;把 sem_chk 检查段与 ev2 解释段
+  并入一个自足快照,注意函数去重)。
