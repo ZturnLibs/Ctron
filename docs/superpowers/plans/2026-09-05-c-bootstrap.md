@@ -115,6 +115,10 @@
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
 
+## 交接
+
+新 session 请先读 **`docs/superpowers/plans/2026-09-05-c-bootstrap-HANDOFF.md`**(仓库/命令/战略口径/Ctron 语言钉子/下一批任务),再回到本计划文档里程碑(18a–18u)与 git log。
+
 ## 冻结纪律
 
 自举代码会踩中语义含混(如 `08_bare.ct` 频次和 6 vs 4);每处先裁定再让 Ctron 代码使用,避免"自举期改语言"。
