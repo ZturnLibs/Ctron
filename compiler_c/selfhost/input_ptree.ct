@@ -26,3 +26,17 @@ fn greet(name: Str, n: I32) -> Str {
 test "str edge" {
     assert_eq("esc\n\ttab", "x")
 }
+enum Color {
+    Red
+    Hue(I32)
+}
+struct Pt {
+    let x: I32
+    let y: I32
+}
+fn pick(o: Option[I32]) -> I32 {
+    match o {
+        Some(v) => v
+        None => 0
+    }
+}

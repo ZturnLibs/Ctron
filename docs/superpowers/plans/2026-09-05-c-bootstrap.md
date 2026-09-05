@@ -106,8 +106,10 @@
    语义检查所需的可遍历数据树自此可用;C7b 按 parse_ast 语法面逐块扩树(if/while/for/
    match/字符串部件/结构体族…)。
 17b. C7b①(完成):树版扩 if(else/else-if/BlockExpr)/While/For,夹具扩 7 fn。
-18b. C7b②(本文件交付):树版入 Str 部件(Text/Interp,含 \{ 坍缩/\u 跳过)、test 声明、
-   调用/成员后缀(assert_eq 等);夹具扩 9 fn/test,与 C 逐字节一致(110 用例)。
+18b. C7b②(完成):树版入 Str 部件(Text/Interp)/test 声明/调用·成员后缀。
+18c. C7b③(本文件交付):树版入 match/模式(通配·字面量·Pascal 无载荷·元组/结构/绑定)、
+   struct/enum 声明、Named 泛型实参(Option[I32]);语言钉:else 须与 } 同行
+   (Ctron 解析要求);夹具扩 12 fn/test/enum/struct,与 C 逐字节一致(110 用例)。
 
 ## 冻结纪律
 

@@ -89,6 +89,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C6h ✅ | parse 差分目录自动扫描门禁(新语料自动纳入,诊断文件自动豁免) | C6 解析器差分收口 |
 | C7a ✅ | 结构化 AST 数据树模块 parsetree.ct(节点=List,v0: fn/let/return/assign/二元全优先级) | 树打印=C-AST v1 逐字节(110 用例) |
 | C7b① ✅ | 树版扩 if/While/For | 夹具 7 fn 逐字节 |
-| C7b② ✅ | 树版入 Str 部件(Text/Interp)/test 声明/调用·成员后缀 | 夹具 9 fn/test 逐字节(110 用例);C7b③ match/声明族入树 |
+| C7b② ✅ | 树版入 Str 部件(Text/Interp)/test 声明/调用·成员后缀 | 夹具 9 fn/test 逐字节 |
+| C7b③ ✅ | 树版入 match/模式/struct/enum/泛型类型实参 | 夹具 12 fn/test/enum/struct 逐字节;C7b④ use/const/static/class/impl/trait 入树 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
