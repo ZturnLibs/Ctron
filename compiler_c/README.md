@@ -143,6 +143,12 @@ decl 无符号上界差一修复。新增 `suite_corpus_trans`:61 语料可转�
 "cc 原生执行 vs 解释器" 差分(stdout/exit/panic 逐字),neg/lint 跳过。
 13 pass / 21 untranspiled(需并发运行时/trait/闭包/context 链,= C10-g+)。
 
+### C10-g① UFCS + List 容器域 ✅(16/44 行为语料原生执行差分)
+UFCS(21.double() ≡ double(21));List[T] 容器(构造/push/into_gc 深拷贝/.len/索引/
+for-in);void 函数 return;test 内 return 静默中止;系列修复(decl 差一/进制归一/
+let 临时变量顺序/段错误)。残留:并发 scope/spawn、trait/impl 分发、闭包 .map、
+context 链、泛型参数、simd/dom/parallel。
+
 ### C10-e 转译扩面:插值 + class/Box ✅(差分 14/14)
 插值片段解析 → fmt 助手(i64/f64/bool,rt fmt_val 语义)+ concat 链;class 引用语义
 (malloc 构造助手/箭头访问/指针共享);Box[T](v) 显式堆分配 + 自动解引用。
