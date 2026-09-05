@@ -1965,7 +1965,7 @@ fn pnode(n: List[Str]) -> Str {
 }
 
 
-// ---------------- C9a:模块级检查(E5010 orphan / E5020 circular) ----------------
+// ---------------- C9a② 模块级检查器(tok 顶层提取版) ----------------
 fn seq2(a: Str, b: Str) -> Bool {
     if a.len != b.len { return false }
     var j: I32 = 0
@@ -1974,6 +1974,12 @@ fn seq2(a: Str, b: Str) -> Bool {
         j += 1
     }
     return true
+}
+fn ends_ct(s: Str) -> Bool {
+    if s.len > 3 && byte_at(s, s.len - 1) == 116 && byte_at(s, s.len - 2) == 99 && byte_at(s, s.len - 3) == 46 {
+        return true
+    }
+    return false
 }
 fn split_nl(s: Str) -> List[Str] {
     var out = List[Str]()
@@ -1998,120 +2004,298 @@ fn in_l(ls: List[Str], nm: Str) -> Bool {
     }
     return false
 }
-fn use_deps(file: List[Str], out: List[Str]) {
-    var i: I32 = 1
-    while i < file.len {
-        var d = file[i]
-        if d[0] == "Use" && d.len >= 3 {
-            out.push(d[2])
-        }
+fn file_idx(mods: List[Str], nm: Str) -> I32 {
+    var i: I32 = 0
+    while i < mods.len {
+        if seq2(mods[i], nm) { return i }
         i += 1
+    }
+    return -1
+}
+// 顶层提取:item(fileIdx 编码在调用者),uses/impl/imports
+// 输入 toks;输出:names/vis(每文件一次),imports(mod|name),deps(mod),implT/implF
+fn top_extract(toks: List[Str], names: List[Str], vis: List[Str], imports: List[Str], deps: List[Str], implT: List[Str], implF: List[Str]) {
+    var depth: I32 = 0
+    var i: I32 = 0
+    var n = toks.len
+    while i < n {
+        var t = toks[i]
+        if t == "NL" {
+            i += 1
+        } else if or2(t == "\{", t == "(") {
+            depth += 1
+            i += 1
+        } else if or2(t == "}", t == ")") {
+            if depth > 0 { depth -= 1 }
+            i += 1
+        } else if depth == 0 {
+            if t == "pub" {
+                var lv = 2
+                var j = i + 1
+                if j + 2 < n && toks[j] == "(" && toks[j + 1] == "pkg" && toks[j + 2] == ")" {
+                    lv = 1
+                    j += 3
+                }
+                var k2 = j
+                var kind = toks[j]
+                if or2(kind == "fn", or2(or2(kind == "struct", kind == "enum"), or2(kind == "class", kind == "trait"))) {
+                    names.push(toks[j + 1])
+                    vis.push("V" + lv.to_string())
+                    k2 = j + 2
+                } else if kind == "const" {
+                    names.push(toks[j + 1])
+                    vis.push("V" + lv.to_string())
+                    k2 = j + 2
+                }
+                i = k2
+            } else if t == "fn" {
+                names.push(toks[i + 1])
+                vis.push("V0")
+                i += 2
+            } else if or2(t == "struct", or2(t == "enum", or2(t == "class", t == "trait"))) {
+                names.push(toks[i + 1])
+                vis.push("V0")
+                i += 2
+            } else if t == "comptime" {
+                if i + 2 < n && toks[i + 1] == "fn" {
+                    names.push(toks[i + 2])
+                    vis.push("V0")
+                    i += 3
+                } else { i += 1 }
+            } else if t == "use" {
+                var segs = List[Str]()
+                var br = false
+                var stop = -1
+                var pp = i + 1
+                while pp < n && stop < 0 {
+                    var s2 = toks[pp]
+                    if or2(s2 == ".", s2 == ",") {
+                        pp += 1
+                    } else if s2 == "\{" {
+                        br = true
+                        pp += 1
+                    } else if br && s2 == "}" {
+                        stop = pp
+                    } else if !br && or2(s2 == "NL", s2 == "#EOF") {
+                        stop = pp
+                    } else {
+                        segs.push(s2)
+                        pp += 1
+                    }
+                }
+                if stop < 0 { stop = n - 1 }
+                if segs.len >= 2 {
+                    deps.push(segs[1])
+                }
+                if br {
+                    var q: I32 = 2
+                    while q < segs.len {
+                        imports.push(segs[1] + "|" + segs[q])
+                        q += 1
+                    }
+                } else if segs.len >= 3 {
+                    imports.push(segs[segs.len - 2] + "|" + segs[segs.len - 1])
+                }
+                i = stop + 1
+            } else if t == "impl" {
+                var q2 = i + 1
+                var ta = ""
+                if q2 < n { ta = toks[q2] }
+                while q2 < n && toks[q2] != "for" { q2 += 1 }
+                if q2 + 1 < n {
+                    implT.push(ta)
+                    implF.push(toks[q2 + 1])
+                }
+                i = q2 + 2
+            } else {
+                i += 1
+            }
+        } else {
+            i += 1
+        }
     }
 }
-fn impl_pairs(file: List[Str], trs: List[Str], fts: List[Str]) {
-    var i: I32 = 1
-    while i < file.len {
-        var d = file[i]
-        if d[0] == "Impl" {
-            var tr = d[2]
-            var ft = d[3]
-            var a = ""
-            var b = ""
-            if tr.len > 0 && tr[0] == "Named" { a = tr[1] }
-            if ft.len > 0 && ft[0] == "Named" { b = ft[1] }
-            trs.push(a)
-            fts.push(b)
+
+fn item_vis(itemMod: List[Str], names: List[Str], vis: List[Str], modn: Str, itn: Str) -> Str {
+    var i: I32 = 0
+    while i < itemMod.len {
+        if seq2(itemMod[i], modn) && seq2(names[i], itn) {
+            return vis[i]
         }
         i += 1
     }
+    return ""
+}
+fn dep_cycle(mods: List[Str], deps: List[Str], depM: List[Str]) -> Bool {
+    // 两两互引即报
+    var a: I32 = 0
+    while a < deps.len {
+        var b: I32 = 0
+        while b < deps.len {
+            var ma = depM[a]
+            var da = deps[a]
+            var mb = depM[b]
+            var db = deps[b]
+            if seq2(da, mb) && seq2(db, ma) && !seq2(ma, mb) {
+                return true
+            }
+            b += 1
+        }
+        a += 1
+    }
+    return false
 }
 fn pkg_check(base: Str) -> Str {
     var out = ""
     var diags = List[Str]()
     var files = List[Str]()
     match read_dir(base + "/src") {
-        Some(s) => {
-            files = split_nl(s)
-        }
-        None => {
-            return "read_dir-failed"
-        }
+        Some(s) => { files = split_nl(s) }
+        None => { return "read_dir-failed" }
     }
-    // 逐个文件解析,收集本地声明名 / impl 对 / use 依赖
-    var local = List[Str]()
-    var allTr = List[Str]()
-    var allFt = List[Str]()
-    var depFrom = List[Str]()
-    var depTo = List[Str]()
+    var mods = List[Str]()
+    var names = List[Str]()
+    var vis = List[Str]()
+    var itemMod = List[Str]()
+    var implT = List[Str]()
+    var implF = List[Str]()
+    var imports = List[Str]()
+    var depMods = List[Str]()
+    var depM = List[Str]()
     var fi: I32 = 0
     while fi < files.len {
         var fnm = files[fi]
-        var src2 = read_file(base + "/src/" + fnm)
-        var have = false
+        var modn = fnm
+        if ends_ct(modn) { modn = byte_slice(fnm, 0, fnm.len - 3) }
+        mods.push(modn)
         var text = ""
-        match src2 {
-            Some(x) => {
-                have = true
-                text = x
-            }
-            None => {
-            }
+        match read_file(base + "/src/" + fnm) {
+            Some(x) => { text = x }
+            None => {}
         }
-        if have {
+        if text != "" {
             var toks = List[Str]()
             scan(text, toks)
-            var cur = Atomic[I32](0)
-            var file = p_file(toks, cur)
-            // 本地声明名(仅 struct/enum/class/trait/fn)
-            var j: I32 = 1
-            while j < file.len {
-                var d = file[j]
-                local.push(d[1])
-                j += 1
-            }
-            impl_pairs(file, allTr, allFt)
-            var deps = List[Str]()
-            use_deps(file, deps)
-            var modn = fnm
-            if modn.len > 3 && byte_at(modn, modn.len - 1) == 116 && byte_at(modn, modn.len - 2) == 99 && byte_at(modn, modn.len - 3) == 46 {
-                modn = byte_slice(fnm, 0, modn.len - 3)
-            }
+            var nm = List[Str]()
+            var vs = List[Str]()
+            var im = List[Str]()
+            var dp = List[Str]()
+            var it = List[Str]()
+            var iff = List[Str]()
+            top_extract(toks, nm, vs, im, dp, it, iff)
             var k: I32 = 0
-            while k < deps.len {
-                depFrom.push(modn)
-                depTo.push(deps[k])
+            while k < nm.len {
+                names.push(nm[k])
+                vis.push(vs[k])
+                itemMod.push(modn)
+                k += 1
+            }
+            k = 0
+            while k < im.len {
+                imports.push(im[k])
+                k += 1
+            }
+            k = 0
+            while k < dp.len {
+                depM.push(modn)
+                depMods.push(dp[k])
+                k += 1
+            }
+            k = 0
+            while k < it.len {
+                implT.push(it[k])
+                implF.push(iff[k])
                 k += 1
             }
         }
         fi += 1
     }
-    // E5010 orphan:impl 的 trait 与 for 都非本地(前奏) → 非法
-    var ii: I32 = 0
-    while ii < allTr.len {
-        if !in_l(local, allTr[ii]) && !in_l(local, allFt[ii]) {
+    // E4010 caps:能力(fs 等)须在 Ctron.toml [caps] 声明
+    var capText = ""
+    match read_file(base + "/Ctron.toml") {
+        Some(x) => { capText = x }
+        None => {}
+    }
+    var capsDecl = List[Str]()
+    var inSec = false
+    var ct = List[Str]()
+    // 简单按行扫 [caps] 后收集 名字=true
+    var cLines = split_nl(capText)
+    var li: I32 = 0
+    while li < cLines.len {
+        var ln = cLines[li]
+        if ln == "[caps]" { inSec = true } else if byte_at(ln, 0) == 91 && inSec { inSec = false }
+        if inSec {
+            var eq = -1
+            var wi: I32 = 0
+            while wi < ln.len {
+                if byte_at(ln, wi) == 61 { eq = wi }
+                wi += 1
+            }
+            if eq > 0 {
+                capsDecl.push(byte_slice(ln, 0, eq))
+            }
+        }
+        li += 1
+    }
+    var needCap = List[Str]()
+    var ci: I32 = 0
+    while ci < imports.len {
+        var str2 = imports[ci]
+        var bar2 = -1
+        var z2: I32 = 0
+        while z2 < str2.len {
+            if byte_at(str2, z2) == 124 { bar2 = z2 }
+            z2 += 1
+        }
+        if bar2 > 0 {
+            var mn2 = byte_slice(str2, 0, bar2)
+            if mn2 == "fs" && !in_l(capsDecl, "fs") {
+                if !in_l(needCap, "fs") { needCap.push("fs") }
+            }
+        }
+        ci += 1
+    }
+    var ci2: I32 = 0
+    while ci2 < needCap.len {
+        diags.push("E4010: 能力未声明(capability):" + needCap[ci2])
+        ci2 += 1
+    }
+    // E5010 orphan
+    var aa: I32 = 0
+    while aa < implT.len {
+        if !in_l(names, implT[aa]) && !in_l(names, implF[aa]) {
             diags.push("E5010: 孤儿实现(orphan):trait 与类型均非本包")
         }
-        ii += 1
+        aa += 1
     }
-    // E5020 circular:文件依赖环(use app.<mod>)
-    var a0: I32 = 0
-    while a0 < depFrom.len {
-        var b0: I32 = 0
-        while b0 < depFrom.len {
-            if seq2(depTo[a0], depFrom[b0]) && seq2(depTo[b0], depFrom[a0]) && !seq2(depFrom[a0], depFrom[b0]) {
-                var done = false
-                var q: I32 = 0
-                while q < diags.len && !done {
-                    if diags[q] == "E5020: 模块循环依赖(circular)" { done = true }
-                    q += 1
-                }
-                if !done {
-                    diags.push("E5020: 模块循环依赖(circular)")
+    // E5020 circular
+    if dep_cycle(mods, depMods, depM) {
+        diags.push("E5020: 模块循环依赖(circular)")
+    }
+    // E2020 可见性:导入符号在目标模块非 pub(V0 或缺文件)
+    var c: I32 = 0
+    while c < imports.len {
+        var str = imports[c]
+        // 拆 mod|name(最后一个 |)
+        var bar = -1
+        var z: I32 = 0
+        while z < str.len {
+            if byte_at(str, z) == 124 { bar = z }
+            z += 1
+        }
+        if bar > 0 {
+            var mn = byte_slice(str, 0, bar)
+            var iname = byte_slice(str, bar + 1, str.len)
+            var f = file_idx(mods, mn)
+            if f >= 0 {
+                var vv = item_vis(itemMod, names, vis, mn, iname)
+                if or2(vv == "", vv == "V0") {
+                    diags.push("E2020: 导入不可见(visibility):" + iname)
                 }
             }
-            b0 += 1
         }
-        a0 += 1
+        c += 1
     }
     var dd: I32 = 0
     while dd < diags.len {
@@ -2122,7 +2306,6 @@ fn pkg_check(base: Str) -> Str {
 }
 
 fn main() -> I32 {
-    let src = read_file("../tests/modules/orphan/Ctron.toml")
     var out = pkg_check("../tests/modules/orphan")
     print(out)
     return 0
