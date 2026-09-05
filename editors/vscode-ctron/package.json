@@ -1,0 +1,69 @@
+{
+  "name": "ctron-lang",
+  "displayName": "Ctron Language Support",
+  "description": "Ctron 语言支持:语法高亮、智能提示、诊断、跳转(LSP 由 Ctron 自身实现,经 ctronc 解释运行)",
+  "version": "0.1.0",
+  "publisher": "ctron",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ctron",
+        "aliases": [
+          "Ctron",
+          "ctron"
+        ],
+        "extensions": [
+          ".ct"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ctron",
+        "scopeName": "source.ctron",
+        "path": "./syntaxes/ctron.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "ctron",
+        "path": "./snippets/ctron.json"
+      }
+    ],
+    "configuration": {
+      "title": "Ctron",
+      "properties": {
+        "ctron.server.command": {
+          "type": "string",
+          "default": "",
+          "description": "LSP 启动脚本/可执行文件路径。留空则使用扩展内置 server/ctron-lsp.sh(需要仓库内 compiler_c/build/ctronc,或设置 CTRONC 环境变量)。"
+        },
+        "ctron.server.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "在输出面板(ctron-lsp)打印 LSP 收发日志。"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ctron.restartServer",
+        "title": "重启语言服务器",
+        "category": "Ctron"
+      }
+    ]
+  },
+  "scripts": {},
+  "devDependencies": {},
+  "dependencies": {}
+}

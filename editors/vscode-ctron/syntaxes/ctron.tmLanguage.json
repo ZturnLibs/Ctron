@@ -1,0 +1,335 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Ctron",
+  "scopeName": "source.ctron",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#annotations" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#declarations" },
+    { "include": "#types" },
+    { "include": "#members" },
+    { "include": "#operators" },
+    { "include": "#invalid" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.ctron",
+          "match": "///.*$"
+        },
+        {
+          "name": "comment.line.double-slash.ctron",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "meta.annotation.ctron",
+          "match": "(@derive)\\s*(\\()([^)]*)(\\))",
+          "captures": {
+            "1": { "name": "storage.modifier.ctron" },
+            "2": { "name": "punctuation.section.group.begin.ctron" },
+            "3": { "name": "entity.other.attribute-name.ctron" },
+            "4": { "name": "punctuation.section.group.end.ctron" }
+          }
+        },
+        {
+          "name": "meta.annotation.ctron",
+          "begin": "#\\[",
+          "end": "\\]",
+          "beginCaptures": { "0": { "name": "punctuation.definition.annotation.begin.ctron" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.annotation.end.ctron" } },
+          "patterns": [
+            { "include": "#strings" },
+            { "include": "#keywords" },
+            { "name": "entity.other.attribute-name.ctron", "match": "[A-Za-z_][A-Za-z0-9_.]*" }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.ctron",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.ctron" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.ctron" } },
+          "patterns": [
+            { "include": "#string-escapes" },
+            { "include": "#interpolation" }
+          ]
+        }
+      ]
+    },
+    "string-escapes": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.ctron",
+          "match": "\\\\[ntr\\\\\"0\\{]|\\\\u\\{[0-9a-fA-F_]+\\}"
+        }
+      ]
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.ctron",
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": { "0": { "name": "punctuation.definition.interpolation.begin.ctron" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.interpolation.end.ctron" } },
+          "patterns": [
+            { "include": "#types" },
+            {
+              "name": "variable.other.ctron",
+              "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "entity.name.function.member.ctron",
+              "match": "(\\.)([a-zA-Z_][A-Za-z0-9_]*)(?=\\()",
+              "captures": {
+                "1": { "name": "punctuation.accessor.ctron" },
+                "2": { "name": "entity.name.function.ctron" }
+              }
+            },
+            { "name": "keyword.operator.accessor.ctron", "match": "\\." },
+            { "name": "meta.brackets.square.ctron", "match": "\\[|\\]" },
+            { "name": "keyword.operator.ctron", "match": "\\?|\\+" }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.ctron",
+          "match": "\\b(0x[0-9a-fA-F_]+|0o[0-7_]+|0b[01_]+|[0-9][0-9_]*(\\.[0-9_]+)?([eE][+-]?[0-9_]+)?)(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize|f32|f64)?\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.ctron",
+          "match": "\\b(if|else|match|while|for|in|return|scope|own)\\b"
+        },
+        {
+          "name": "storage.type.function.ctron",
+          "match": "\\bfn\\b"
+        },
+        {
+          "name": "storage.modifier.ctron",
+          "match": "\\b(pub|const|static|comptime|extern|let|var|prop)\\b"
+        },
+        {
+          "name": "storage.type.struct.ctron",
+          "match": "\\b(struct|class|enum|trait|impl)\\b"
+        },
+        {
+          "name": "keyword.declaration.test.ctron",
+          "match": "\\b(test)\\b"
+        },
+        {
+          "name": "keyword.control.import.ctron",
+          "match": "\\buse\\b"
+        },
+        {
+          "name": "variable.language.self.ctron",
+          "match": "\\bself\\b"
+        },
+        {
+          "name": "constant.language.ctron",
+          "match": "\\b(true|false|void)\\b"
+        },
+        {
+          "name": "keyword.operator.default.ctron",
+          "match": "\\bor\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.function.declaration.ctron",
+          "match": "\\b(fn)\\s+([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.ctron" },
+            "2": { "name": "entity.name.function.ctron" }
+          }
+        },
+        {
+          "name": "meta.type.declaration.ctron",
+          "match": "\\b(struct|class|enum|trait)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.struct.ctron" },
+            "2": { "name": "entity.name.type.ctron" }
+          }
+        },
+        {
+          "name": "meta.impl.declaration.ctron",
+          "match": "\\b(impl)\\s+.*\\b(for)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.struct.ctron" },
+            "2": { "name": "keyword.control.ctron" },
+            "3": { "name": "entity.name.type.ctron" }
+          }
+        },
+        {
+          "name": "meta.constant.declaration.ctron",
+          "match": "\\b(const|static)\\s+(let\\s+)?([A-Z_][A-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "storage.modifier.ctron" },
+            "2": { "name": "storage.modifier.ctron" },
+            "3": { "name": "entity.name.constant.ctron" }
+          }
+        },
+        {
+          "name": "meta.test.declaration.ctron",
+          "match": "\\b(test)\\s+(\\\")",
+          "captures": {
+            "1": { "name": "keyword.declaration.test.ctron" },
+            "2": { "name": "punctuation.definition.string.begin.ctron" }
+          }
+        },
+        {
+          "name": "meta.enum-variant.ctron",
+          "match": "^\\s+([A-Z][A-Za-z0-9_]*)\\s*(?=\\(|$)",
+          "captures": {
+            "1": { "name": "entity.name.enum-member.ctron" }
+          }
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.ctron",
+          "match": "\\b(Bool|I8|I16|I32|I64|ISize|U8|U16|U32|U64|USize|F32|F64|Str|String|Void)\\b"
+        },
+        {
+          "name": "support.class.prelude.ctron",
+          "match": "\\b(Option|Result|List|Box|Channel|Mutex|Atomic|Global|Arena|Task|Simd|AnyError)\\b"
+        },
+        {
+          "name": "support.type.trait.ctron",
+          "match": "\\b(Show|Eq|Error|Cap|Drop)\\b"
+        },
+        {
+          "name": "entity.name.type.user.ctron",
+          "match": "\\b([A-Z][A-Za-z0-9_]*)\\b"
+        },
+        {
+          "name": "meta.generic.ctron",
+          "begin": "\\[",
+          "end": "\\]",
+          "beginCaptures": { "0": { "name": "punctuation.definition.generic.begin.ctron" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.generic.end.ctron" } },
+          "patterns": [
+            { "include": "#types" },
+            { "include": "#numbers" },
+            { "include": "#operators" },
+            { "name": "variable.other.ctron", "match": "\\b[a-z_][A-Za-z0-9_]*\\b" }
+          ]
+        }
+      ]
+    },
+    "members": {
+      "patterns": [
+        {
+          "name": "meta.method-call.ctron",
+          "match": "(\\.)([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": { "name": "punctuation.accessor.ctron" },
+            "2": { "name": "entity.name.function.member.ctron" }
+          }
+        },
+        {
+          "name": "meta.property.ctron",
+          "match": "(\\.)([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.accessor.ctron" },
+            "2": { "name": "variable.other.property.ctron" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.wrap.ctron",
+          "match": "\\+%|-%"
+        },
+        {
+          "name": "keyword.operator.assignment.augmented.ctron",
+          "match": "\\+=|-=|\\*=|/=|%=|\\+%=|- %="
+        },
+        {
+          "name": "keyword.operator.comparison.ctron",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.ctron",
+          "match": "&&|!"
+        },
+        {
+          "name": "keyword.operator.range.ctron",
+          "match": "\\.\\.=|\\.\\."
+        },
+        {
+          "name": "keyword.operator.assignment.ctron",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arrow.ctron",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.try.ctron",
+          "match": "\\?"
+        },
+        {
+          "name": "keyword.operator.arithmetic.ctron",
+          "match": "\\+|-|\\*|/|%"
+        },
+        {
+          "name": "punctuation.separator.pipe.ctron",
+          "match": "\\|"
+        },
+        {
+          "name": "punctuation.underscore.wildcard.ctron",
+          "match": "\\b_\\b"
+        }
+      ]
+    },
+    "invalid": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.semicolon.ctron",
+          "match": ";"
+        },
+        {
+          "name": "invalid.illegal.pathsep.ctron",
+          "match": "::"
+        },
+        {
+          "name": "invalid.illegal.blockcomment.ctron",
+          "match": "/\\*"
+        },
+        {
+          "name": "invalid.illegal.charliteral.ctron",
+          "match": "'[^']*'"
+        },
+        {
+          "name": "invalid.illegal.reserved.ctron",
+          "match": "\\b(break|continue|do|async|await|interface|module)\\b"
+        }
+      ]
+    }
+  }
+}

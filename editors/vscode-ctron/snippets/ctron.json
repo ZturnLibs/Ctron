@@ -1,0 +1,172 @@
+{
+  "Test block": {
+    "prefix": "test",
+    "body": [
+      "test \"${1:name}\" {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Ctron 测试块"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:a: I32}) -> ${3:I32} {",
+      "\t${4:return ${5:0}}",
+      "}"
+    ],
+    "description": "函数声明"
+  },
+  "Public function": {
+    "prefix": "pfn",
+    "body": [
+      "pub fn ${1:name}(${2:a: I32}) -> ${3:I32} {",
+      "\t${4:return ${5:0}}",
+      "}"
+    ],
+    "description": "公开函数声明"
+  },
+  "Immutable binding": {
+    "prefix": "let",
+    "body": ["let ${1:x}${2:: ${3:I32}} = ${4:0}"],
+    "description": "let 绑定"
+  },
+  "Mutable binding": {
+    "prefix": "var",
+    "body": ["var ${1:x}${2:: ${3:I32}} = ${4:0}"],
+    "description": "var 可变绑定"
+  },
+  "Try propagation": {
+    "prefix": "try",
+    "body": ["let ${1:x} = ${2:expr}?"],
+    "description": "? 传播(Option/Result)"
+  },
+  "Match expression": {
+    "prefix": "match",
+    "body": [
+      "match ${1:expr} {",
+      "\t${2:Pattern} => ${3:expr}",
+      "\t_ => ${4:default}",
+      "}"
+    ],
+    "description": "match 表达式(臂间换行分隔)"
+  },
+  "If expression": {
+    "prefix": "if",
+    "body": ["if ${1:cond} {", "\t${2:expr}", "} else {", "\t${3:expr}", "}"],
+    "description": "if 表达式(else 同行)"
+  },
+  "Struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Name} {",
+      "\tlet ${2:field}: ${3:I32}",
+      "}"
+    ],
+    "description": "结构体(let 字段=不可变)"
+  },
+  "Class": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name} {",
+      "\tlet ${2:field}: ${3:I32}",
+      "\tvar ${4:state}: ${5:I32}",
+      "}"
+    ],
+    "description": "类(var 字段=可变,非 Send)"
+  },
+  "Enum with derive": {
+    "prefix": "enum",
+    "body": [
+      "@derive(${2|Show,Eq,Error|})",
+      "enum ${1:Name} {",
+      "\t${3:Variant}",
+      "\t${4:Payload(}I32${5:)}",
+      "}"
+    ],
+    "description": "枚举 + derive"
+  },
+  "Trait": {
+    "prefix": "trait",
+    "body": [
+      "trait ${1:Name}: Cap {",
+      "\tfn ${2:method}(&self) -> ${3:Str}",
+      "}"
+    ],
+    "description": "trait(能力 trait 须继承 Cap)"
+  },
+  "Impl": {
+    "prefix": "impl",
+    "body": [
+      "impl ${1:Trait} for ${2:Type} {",
+      "\tfn ${3:method}(&self) -> ${4:Str} {",
+      "\t\t${5:return \"\"}",
+      "\t}",
+      "}"
+    ],
+    "description": "trait 实现"
+  },
+  "Prop": {
+    "prefix": "prop",
+    "body": ["prop ${1:name}: ${2:Str} {", "\treturn ${3:\"\"}", "}"],
+    "description": "属性实现(无括号访问)"
+  },
+  "Own block": {
+    "prefix": "own",
+    "body": [
+      "own (arena) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "own 所有权块(无 GC 分配)"
+  },
+  "Scope block": {
+    "prefix": "scope",
+    "body": [
+      "let ${1:result} = scope { |s|",
+      "\t$0",
+      "}"
+    ],
+    "description": "结构化并发作用域"
+  },
+  "Spawn in scope": {
+    "prefix": "spawn",
+    "body": ["let ${1:t} = s.spawn(|| ${2:expr})", "${1|t|}.join()"],
+    "description": "作用域内 spawn + join"
+  },
+  "Closure": {
+    "prefix": "cl",
+    "body": ["|${1:x}| ${2:x}"],
+    "description": "闭包"
+  },
+  "For loop": {
+    "prefix": "for",
+    "body": ["for ${1:x} in ${2:0..n} {", "\t$0", "}"],
+    "description": "for-in range 循环"
+  },
+  "While loop": {
+    "prefix": "while",
+    "body": ["while ${1:cond} {", "\t$0", "}"],
+    "description": "while 循环"
+  },
+  "Pure function": {
+    "prefix": "pure",
+    "body": ["#[pure]"],
+    "description": "#[pure] 注解(无能力调用)"
+  },
+  "No alloc": {
+    "prefix": "noalloc",
+    "body": ["#[no_alloc]"],
+    "description": "#[no_alloc] 注解"
+  },
+  "Channel": {
+    "prefix": "chan",
+    "body": ["let (${1:tx}, ${2:rx}) = Channel[${3:I32}](${4:4})"],
+    "description": "有界通道"
+  },
+  "Mutex": {
+    "prefix": "mutex",
+    "body": ["${1:m}.with_mut(|var ${2:a}| {", "\t$0", "})"],
+    "description": "Mutex 可变访问"
+  }
+}
