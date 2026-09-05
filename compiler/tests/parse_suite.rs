@@ -34,22 +34,17 @@ fn all_suite_files_parse_per_expectation() {
         let parent = f.parent().and_then(|p| p.file_name()).map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
         let key = format!("{}/{}", parent, name);
         let cs = codes(&diags);
-        let expected: Option<&[&'static str]> = if name == "01c_parse.neg.ct" {
+        let neg_want: Option<&[&'static str]> = if name == "01c_parse.neg.ct" {
             Some(&["E1001"])
         } else if name == "06_static_var.neg.ct" {
             Some(&["E3030"])
         } else {
-            Some(&[])
+            None
         };
-        let ok = match expected {
-            Some(want) => want.iter().all(|w| cs.contains(w)) && (want.is_empty() || cs.len() == want.len() || want.iter().all(|w| cs.contains(w))),
-            None => cs.is_empty(),
-        };
-        // 对两个 neg 文件:必须包含期望码;对其余:必须零诊断
-        let ok = if name == "01c_parse.neg.ct" || name == "06_static_var.neg.ct" {
-            expected.unwrap().iter().all(|w| cs.contains(w))
-        } else {
-            diags.is_empty()
+        // neg 文件:必须包含期望码;其余:必须零诊断
+        let ok = match neg_want {
+            Some(want) => want.iter().all(|w| cs.contains(w)),
+            None => diags.is_empty(),
         };
         if !ok {
             let detail = diags.iter().map(|d| format!("  {}:{}:{} {}: {}", f.display(), d.span.line, d.span.col, d.code, d.message)).collect::<Vec<_>>().join("\n");

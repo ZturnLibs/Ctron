@@ -9,7 +9,10 @@ pub struct Parser {
     pos: usize,
     diags: Vec<Diagnostic>,
     eof: Token,
+    depth: u32,
 }
+
+const MAX_EXPR_DEPTH: u32 = 256;
 
 pub fn parse_tokens(toks: Vec<Token>, mut diags: Vec<Diagnostic>) -> (File, Vec<Diagnostic>) {
     let mut p = Parser::new(toks);
@@ -21,7 +24,7 @@ pub fn parse_tokens(toks: Vec<Token>, mut diags: Vec<Diagnostic>) -> (File, Vec<
 impl Parser {
     pub fn new(toks: Vec<Token>) -> Self {
         let eof = Token { tok: Tok::Eof, span: Span::new(0, 0, 0, 0) };
-        Parser { toks, pos: 0, diags: Vec::new(), eof }
+        Parser { toks, pos: 0, diags: Vec::new(), eof, depth: 0 }
     }
 
     // ---------- 游标原语 ----------
@@ -84,7 +87,7 @@ impl Parser {
                 self.err_here("E1001", "属性后缺少声明".into());
                 continue;
             }
-            decls.push(self.parse_decl(attrs, derives));
+            if let Some(d) = self.parse_decl(attrs, derives) { decls.push(d); }
             self.skip_newlines();
         }
         File { decls }
@@ -192,22 +195,22 @@ impl Parser {
         Vis::Private
     }
 
-    fn parse_decl(&mut self, attrs: Vec<Attribute>, derives: Vec<String>) -> Decl {
+    fn parse_decl(&mut self, attrs: Vec<Attribute>, derives: Vec<String>) -> Option<Decl> {
         match self.peek().clone() {
-            Tok::Use => Decl::Use(self.parse_use()),
-            Tok::Struct => Decl::Struct(self.parse_struct(attrs, derives)),
-            Tok::Class => Decl::Class(self.parse_class(attrs, derives)),
-            Tok::Enum => Decl::Enum(self.parse_enum(attrs, derives)),
-            Tok::Trait => Decl::Trait(self.parse_trait(attrs)),
-            Tok::Impl => Decl::Impl(self.parse_impl()),
-            Tok::Const => Decl::Const(self.parse_const()),
-            Tok::Static => Decl::Static(self.parse_static()),
-            Tok::Test => Decl::Test(self.parse_test()),
-            Tok::Fn | Tok::Pub | Tok::Comptime | Tok::Extern => Decl::Fn(self.parse_fn(attrs, true)),
+            Tok::Use => Some(Decl::Use(self.parse_use())),
+            Tok::Struct => Some(Decl::Struct(self.parse_struct(attrs, derives))),
+            Tok::Class => Some(Decl::Class(self.parse_class(attrs, derives))),
+            Tok::Enum => Some(Decl::Enum(self.parse_enum(attrs, derives))),
+            Tok::Trait => Some(Decl::Trait(self.parse_trait(attrs))),
+            Tok::Impl => Some(Decl::Impl(self.parse_impl())),
+            Tok::Const => Some(Decl::Const(self.parse_const())),
+            Tok::Static => Some(Decl::Static(self.parse_static())),
+            Tok::Test => Some(Decl::Test(self.parse_test())),
+            Tok::Fn | Tok::Pub | Tok::Comptime | Tok::Extern => Some(Decl::Fn(self.parse_fn(attrs, true))),
             other => {
                 self.err_here("E1001", format!("顶层应为声明,实际 {:?}", other));
                 self.bump();
-                Decl::Use(UseDecl { imports: Vec::new() })
+                None
             }
         }
     }
@@ -367,46 +370,31 @@ impl Parser {
             self.skip_newlines();
             if self.at(&Tok::RBrace) { self.bump(); break; }
             if self.at(&Tok::Eof) { self.err_here("E1001", "未闭合的类体".into()); break; }
-            if self.at(&Tok::Hash) || self.at(&Tok::At) {
+            let mattrs = if self.at(&Tok::Hash) || self.at(&Tok::At) {
                 let (mattrs, _) = self.parse_attrs();
                 self.skip_newlines();
-                if self.at(&Tok::Prop) {
-                    items.push(ClassItem::Prop(self.parse_prop_decl(mattrs)));
-                } else {
-                    let vis = self.parse_vis();
-                    let mut f = self.parse_fn(mattrs, false);
-                    f.vis = vis;
-                    items.push(ClassItem::Method(f));
-                }
-                self.skip_newlines();
-                continue;
-            }
-            if self.at(&Tok::Prop) {
-                items.push(ClassItem::Prop(self.parse_prop_decl(Vec::new())));
-                self.skip_newlines();
-                continue;
-            }
-            if self.at(&Tok::Fn) || self.at(&Tok::Pub) {
-                let vis = self.parse_vis();
-                let mut f = self.parse_fn(Vec::new(), false);
-                f.vis = vis;
-                items.push(ClassItem::Method(f));
-                self.skip_newlines();
-                continue;
-            }
+                mattrs
+            } else { Vec::new() };
             let before = self.pos;
             let vis = self.parse_vis();
-            items.push(ClassItem::Field(self.parse_field(vis)));
+            if self.at(&Tok::Prop) {
+                items.push(ClassItem::Prop(self.parse_prop_decl(mattrs, vis)));
+            } else if self.at(&Tok::Fn) {
+                let mut f = self.parse_fn(mattrs, false);
+                f.vis = vis;
+                items.push(ClassItem::Method(f));
+            } else {
+                items.push(ClassItem::Field(self.parse_field(vis)));
+            }
             self.ensure_progress(before);
             self.eat(&Tok::Comma);
         }
         ClassDecl { attrs, vis: Vis::Private, name, type_params, items }
     }
 
-    fn parse_prop_decl(&mut self, attrs: Vec<Attribute>) -> PropDecl {
+    fn parse_prop_decl(&mut self, attrs: Vec<Attribute>, vis: Vis) -> PropDecl {
         let _ = attrs;
         self.bump(); // prop
-        let vis = Vis::Private;
         let name = self.expect_ident("属性");
         self.expect(&Tok::Colon, "属性");
         let ty = self.parse_type();
@@ -435,15 +423,15 @@ impl Parser {
             let mattrs = self.parse_attrs().0;
             self.skip_newlines();
             if self.at(&Tok::Prop) {
-                let p = self.parse_prop_decl(mattrs);
+                let p = self.parse_prop_decl(mattrs, Vis::Private);
                 if p.body.is_some() { items.push(TraitItem::PropImpl(p)); }
                 else { items.push(TraitItem::PropSig(p)); }
             } else {
                 let vis = self.parse_vis();
                 let mut f = self.parse_fn(mattrs, false);
                 f.vis = vis;
-                if f.body.is_some() { items.push(TraitItem::Method(f)); }
-                else { items.push(TraitItem::PropSig(PropDecl { vis, name: f.name.clone(), ty: f.ret.clone().unwrap_or(Type::SelfT), body: None })); }
+                // 无体方法保留 Method(FnDecl{body:None})——签名即契约,不得降格为属性
+                items.push(TraitItem::Method(f));
             }
         }
         TraitDecl { attrs, vis: Vis::Private, name, type_params, supers, items }
@@ -463,10 +451,10 @@ impl Parser {
             if self.at(&Tok::Eof) { self.err_here("E1001", "未闭合的 impl 体".into()); break; }
             let mattrs = self.parse_attrs().0;
             self.skip_newlines();
+            let vis = self.parse_vis();
             if self.at(&Tok::Prop) {
-                items.push(ImplItem::Prop(self.parse_prop_decl(mattrs)));
+                items.push(ImplItem::Prop(self.parse_prop_decl(mattrs, vis)));
             } else {
-                let vis = self.parse_vis();
                 let mut f = self.parse_fn(mattrs, false);
                 f.vis = vis;
                 items.push(ImplItem::Method(f));
@@ -626,9 +614,10 @@ impl Parser {
                 Type::Tuple(tys)
             }
             Tok::Ident(_) => {
-                let mut path = self.parse_dotted_path();
+                let path = self.parse_dotted_path();
                 let mut args = Vec::new();
-                if self.at(&Tok::LBracket) && self.bracket_looks_like_typeargs() {
+                // 类型位置的 [...] 无条件为类型实参(§1.8 消歧只属表达式位置)
+                if self.at(&Tok::LBracket) {
                     self.bump();
                     loop {
                         if self.at(&Tok::RBracket) { break; }
@@ -637,7 +626,6 @@ impl Parser {
                     }
                     self.expect(&Tok::RBracket, "类型实参");
                 }
-                let _ = &mut path;
                 Type::Named { path, args }
             }
             other => {
@@ -692,8 +680,6 @@ impl Parser {
         }
         false
     }
-
-    fn bracket_looks_like_typeargs(&self) -> bool { self.bracket_followed_by_call_or_lit() }
 
     // ---------- 表达式 ----------
 
@@ -868,6 +854,18 @@ impl Parser {
     }
 
     fn parse_primary(&mut self, allow_struct: bool) -> Expr {
+        self.depth += 1;
+        if self.depth > MAX_EXPR_DEPTH {
+            self.err_here("E1001", "表达式嵌套过深".into());
+            self.depth -= 1;
+            return Expr::Void;
+        }
+        let e = self.parse_primary_inner(allow_struct);
+        self.depth -= 1;
+        e
+    }
+
+    fn parse_primary_inner(&mut self, allow_struct: bool) -> Expr {
         match self.peek().clone() {
             Tok::Int { text, suffix } => { self.bump(); Expr::Int { text, suffix: suffix_name(&suffix) } }
             Tok::Float { text, suffix } => { self.bump(); Expr::Float { text, suffix: suffix_name(&suffix) } }
@@ -1501,5 +1499,80 @@ mod tests {
         assert!(d.is_empty());
         let (_, d) = block("{ let m = 255 U8 }");
         assert!(d.iter().any(|x| x.code == "E1001"));
+    }
+}
+
+#[cfg(test)]
+mod final_review_pins {
+    use super::*;
+    use crate::ast::*;
+
+    #[test]
+    fn type_position_typeargs_unconditional() {
+        // B-1 回归:类型位置 [ ] 无条件为类型实参(曾静默错析为定长数组)
+        let (f, d) = crate::parse_src("fn f() -> Atomic[I32] { return x }");
+        assert!(d.is_empty(), "{:?}", d);
+        match &f.decls[0] {
+            Decl::Fn(fun) => match &fun.ret {
+                Some(Type::Named { args, .. }) => assert_eq!(args.len(), 1),
+                other => panic!("ret 应为 Named 带实参,实际 {:?}", other),
+            },
+            other => panic!("{:?}", other),
+        }
+        let (f, d) = crate::parse_src("fn g(m: Map[Str, I32]) -> Void { return void }");
+        assert!(d.is_empty(), "{:?}", d);
+        match &f.decls[0] {
+            Decl::Fn(fun) => match &fun.params[0] {
+                Param::Param { ty: Type::Named { args, .. }, .. } => assert_eq!(args.len(), 2),
+                other => panic!("参数应为 Named 带两实参,实际 {:?}", other),
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn trait_method_sig_keeps_fn_decl() {
+        // B-2 回归:trait 无体方法保留 Method(FnDecl),不得降格为 PropSig
+        let (f, d) = crate::parse_src("trait Clock: Cap {\n    fn now(&self) -> U64\n}");
+        assert!(d.is_empty(), "{:?}", d);
+        match &f.decls[0] {
+            Decl::Trait(t) => match &t.items[0] {
+                TraitItem::Method(fun) => {
+                    assert_eq!(fun.name, "now");
+                    assert!(fun.body.is_none());
+                    assert_eq!(fun.params.len(), 1);
+                }
+                other => panic!("应为 Method,实际 {:?}", other),
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn pub_prop_parses() {
+        // B-3 回归:prop 支持前置 Visibility
+        let (f, d) = crate::parse_src("class Box2 {\n    pub prop size: I64 {\n        return 1\n    }\n}");
+        assert!(d.is_empty(), "{:?}", d);
+        match &f.decls[0] {
+            Decl::Class(c) => match &c.items[0] {
+                ClassItem::Prop(p) => {
+                    assert_eq!(p.vis, Vis::Pub);
+                    assert!(p.body.is_some());
+                }
+                other => panic!("{:?}", other),
+            },
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn deep_nesting_capped() {
+        // 测试线程默认栈小;用 16MB 线程验证"上限先于栈溢出生效"
+        let h = std::thread::Builder::new().stack_size(16 * 1024 * 1024).spawn(|| {
+            let src = format!("fn f() -> I32 {{ return {}1{} }}", "(".repeat(300), ")".repeat(300));
+            let (_, d) = crate::parse_src(&src);
+            assert!(d.iter().any(|x| x.message.contains("嵌套过深")));
+        }).unwrap();
+        h.join().unwrap();
     }
 }
