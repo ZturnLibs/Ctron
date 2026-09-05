@@ -651,9 +651,24 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     if t == "(" {
         adv(cur)
-        var e = p_and(toks, cur)
+        var e0 = p_and(toks, cur)
+        if tok(toks, cur) == "," {
+            var tn = mk("TupleE")
+            tn.push(e0)
+            var more = true
+            while more {
+                if tok(toks, cur) == "," {
+                    adv(cur)
+                    tn.push(p_and(toks, cur))
+                } else {
+                    more = false
+                }
+            }
+            adv(cur)
+            return tn
+        }
         adv(cur)
-        return e
+        return e0
     }
     if b0 >= 65 && b0 <= 90 && toks[cur.load() + 1] == "\{" {
         var nm = t
@@ -1046,14 +1061,13 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             nb.push(wh)
         } else if t == "for" {
             adv(cur)
-            var pn = tok(toks, cur)
-            adv(cur)
+            var fp = p_pattern(toks, cur)
             adv(cur)
             var it = p_stmt_expr(toks, cur)
             adv(cur)
             var fb = p_block(toks, cur)
             var fo = mk("For")
-            fo.push(pn)
+            fo.push(fp)
             fo.push(it)
             fo.push(fb)
             nb.push(fo)
@@ -1285,6 +1299,10 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
 }
 
 fn p_prop_item(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    return p_prop_item2(toks, cur, "sig")
+}
+
+fn p_prop_item2(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -1296,6 +1314,9 @@ fn p_prop_item(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         adv(cur)
         body = p_block(toks, cur)
         tag = "PropImpl"
+    }
+    if kind == "imp" {
+        tag = "Prop"
     }
     var pn = mk(tag)
     pn.push(nm)
@@ -1315,10 +1336,31 @@ fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
         if or2(t == "}", t == "#EOF") {
             adv(cur)
             go = false
+        } else if t == "#" {
+            adv(cur)
+            adv(cur)
+            var anm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var md = p_fn2(toks, cur, "Method")
+            md.push(anm)
+            it.push(md)
         } else if t == "fn" {
             it.push(p_fn2(toks, cur, "Method"))
         } else if t == "prop" {
-            it.push(p_prop_item(toks, cur))
+            var pk = "sig"
+            if or2(kind == "impl", kind == "class") {
+                pk = "imp"
+            }
+            it.push(p_prop_item2(toks, cur, pk))
         } else if kind == "trait" {
             go = false
         } else {
@@ -1401,7 +1443,26 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var a = tok(toks, cur)
         if a == "." {
             adv(cur)
-        } else if or2(a == "#EOF", a == "\{") {
+        } else if a == "\{" {
+            adv(cur)
+            var more2 = true
+            while more2 {
+                var b2 = tok(toks, cur)
+                if or2(b2 == "}", b2 == "#EOF") {
+                    more2 = false
+                } else {
+                    nu.push(b2)
+                    adv(cur)
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    }
+                }
+            }
+            if tok(toks, cur) == "}" {
+                adv(cur)
+            }
+            more = false
+        } else if a == "#EOF" {
             more = false
         } else {
             nu.push(a)
@@ -1458,6 +1519,23 @@ fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var t = tok(toks, cur)
         if t == "#EOF" {
             go = false
+        } else if t == "#" {
+            adv(cur)
+            adv(cur)
+            var anm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var fd = p_fn2(toks, cur, "Fn")
+            fd.push(anm)
+            nf.push(fd)
         } else if t == "pub" {
             adv(cur)
             while tok(toks, cur) == "NL" {
@@ -1577,7 +1655,11 @@ fn pnode(n: List[Str]) -> Str {
         }
         out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
     } else if or2(t == "Fn", t == "Method") {
-        out = out + t + " \{ attrs: [], vis: Private, is_comptime: false, abi: None, name: \""
+        var atxt = "[]"
+        if n.len >= 7 {
+            atxt = "[Attribute \{ name: \"" + n[6] + "\", args: []}]"
+        }
+        out = out + t + " \{ attrs: " + atxt + ", vis: Private, is_comptime: false, abi: None, name: \""
         out = out + n[1] + "\", type_params: ["
         var tp = n[2]
         var tj: I32 = 1
@@ -1678,7 +1760,7 @@ fn pnode(n: List[Str]) -> Str {
     } else if t == "While" {
         out = out + "While \{ cond: " + pnode(n[1]) + ", body: " + pnode(n[2]) + "}"
     } else if t == "For" {
-        out = out + "For \{ pattern: Ident(\"" + n[1] + "\"), iter: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
+        out = out + "For \{ pattern: " + pnode(n[1]) + ", iter: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
     } else if t == "Call" {
         out = out + "Call \{ callee: " + pnode(n[1]) + ", args: ["
         var al = n[2]
@@ -1816,7 +1898,7 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "Class \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], items: [" + pjoin(n[3]) + "] }"
     } else if t == "Impl" {
         out = out + "Impl \{ type_params: [" + pjoin(n[1]) + "], trait_ty: " + pnode(n[2]) + ", for_ty: " + pnode(n[3]) + ", items: [" + pjoin(n[4]) + "] }"
-    } else if or2(t == "PropSig", t == "PropImpl") {
+    } else if or3(t == "PropSig", t == "PropImpl", t == "Prop") {
         out = out + t + " \{ vis: Private, name: \"" + n[1] + "\", ty: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
     } else if t == "Trait" {
         out = out + "Trait \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], supers: ["
@@ -1874,6 +1956,8 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "Void"
     } else if t == "ArrLit" {
         out = out + "Array(" + pjoin(n) + ")"
+    } else if t == "TupleE" {
+        out = out + "Tuple(" + pjoin(n) + ")"
     } else if t == "Ident" {
         out = out + "Ident(\"" + n[1] + "\")"
     }

@@ -229,6 +229,44 @@ int main(int argc, char** argv) {
             free(ptsrc);
         }
     }
+    // 树版(结构化 AST)语料差分:parsetree.ct 模板换靶,同样目录自动纳入/诊断豁免
+    {
+        char ttpath[4096], tip[4096];
+        snprintf(ttpath, sizeof ttpath, "%s/parsetree.ct", root);
+        snprintf(tip, sizeof tip, "%s/input_ptree.ct", root);
+        char* tsrc2 = read_file_str(ttpath);
+        if (!tsrc2) { fails++; fprintf(stderr, "%s 无法读取\n", ttpath); }
+        else {
+            DIR* td = opendir("../tests");
+            if (!td) { fprintf(stderr, "无法打开 ../tests\n"); fails++; }
+            else {
+                struct dirent* te;
+                while ((te = readdir(td)) != NULL) {
+                    if (te->d_type != DT_REG) continue;
+                    size_t tbl = strlen(te->d_name);
+                    if (tbl < 4 || strcmp(te->d_name + tbl - 3, ".ct") != 0) continue;
+                    char tcp[4096];
+                    snprintf(tcp, sizeof tcp, "../tests/%s", te->d_name);
+                    char* tinput = read_file_str(tcp);
+                    if (!tinput) continue;
+                    ctron_parse_result tpre = ctron_parse_src(tinput, strlen(tinput));
+                    free(tinput);
+                    int tclean = tpre.ndiags == 0;
+                    ctron_parse_result_free(&tpre);
+                    if (!tclean) continue;
+                    char* msrc2 = replace_first(tsrc2, tip, tcp);
+                    if (!msrc2) { fprintf(stderr, "%s 模板替换失败\n", tcp); fails++; }
+                    else {
+                        nrun++;
+                        fails += diff_one(msrc2, tcp, 3, te->d_name);
+                        free(msrc2);
+                    }
+                }
+                closedir(td);
+            }
+        }
+        free(tsrc2);
+    }
     printf("suite_diff: %zu cases, %zu failures\n", nrun, fails);
     return fails ? 1 : 0;
 }
