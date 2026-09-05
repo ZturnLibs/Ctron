@@ -135,6 +135,12 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 检查 47/47 |
 | C8h② ✅ | E3040 分配效果(own/no_alloc/契约 + 函数效果摘要) | **C3 单文件 12 项全集 Ctron 树上收官:49/49(207 用例)** |
 
+### C10-c 转译扩面:struct/enum/match ✅(差分 10/10)
+struct 值语义(by-value,对齐 clone_val)/字段读写(rt "member assign" 消息)/构造指定初始化;
+enum 单元变体(tag 结构+变体宏,裸变体构造);match 三位置(return/let/语句,块尾 match 归语句),
+模式 = 字面量/通配/绑定/单元变体/struct 模式,无兜底臂尾置 rt 逐字 panic;值臂 if/else 链。
+Option/Result/?/载荷变体/闭包 → C10-d。
+
 ### C10-b 转译扩面:Str + 数组/切片 ✅(差分 9/9)
 Str 域(字面量/拼接/strcmp 比较/len/char_len/contains/slice/byte_at/byte_slice,消息逐字)
 + 数组域(定长 T[N] 与切片 T[] 统一 ctron_arr_<wl> 结构,对齐 rt V_ARR;索引读写/
