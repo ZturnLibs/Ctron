@@ -21,7 +21,7 @@ static char* read_file_str(const char* path) {
     return buf;
 }
 
-typedef struct { const char* module; const char* input; int seq; } TCase;
+typedef struct { const char* module; const char* input; int seq; } TCase; // seq:0=计数 1=种类 2=payload
 
 int main(int argc, char** argv) {
     const char* root = argc > 1 ? argv[1] : "selfhost";
@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
         {"lex_adv.ct", "input_adv.ct", 1},
         {"lex_corpus.ct", "../tests/05_own.ct", 1},
         {"lex_float.ct", "input_floats.ct", 1},
+        {"lex_pay.ct", "input_pay.ct", 2},
     };
     size_t fails = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
@@ -62,25 +63,30 @@ int main(int argc, char** argv) {
         free(input);
         int ok = 0;
         if (!cases[i].seq) {
-            // 计数模式:Ctron 输出 'tokens=N' 或纯数字行
             char buf[64];
             snprintf(buf, sizeof buf, "%ld", (long)lr.ntoks);
             ok = rr.out && strstr(rr.out, buf) != NULL;
         } else {
-            // 种类序列模式:逐 token 种类名,以 '\n' 连接,结尾 Eof
             char* want = (char*)malloc(1);
             want[0] = 0;
             size_t cap = 1;
             for (size_t k = 0; k < lr.ntoks; k++) {
                 const char* nm = ctron_tok_name(lr.toks[k].kind);
-                size_t need = strlen(want) + strlen(nm) + 2;
+                const char* txt = lr.toks[k].text ? lr.toks[k].text : "";
+                int with = cases[i].seq == 2
+                    && (lr.toks[k].kind == TOK_IDENT || lr.toks[k].kind == TOK_INT
+                        || lr.toks[k].kind == TOK_FLOAT);
+                char line[128];
+                if (with) snprintf(line, sizeof line, "%s:%s", nm, txt);
+                else snprintf(line, sizeof line, "%s", nm);
+                size_t need = strlen(want) + strlen(line) + 2;
                 if (need > cap) { cap = need * 2; want = (char*)realloc(want, cap); }
-                strcat(want, nm);
+                strcat(want, line);
                 strcat(want, k + 1 < lr.ntoks ? "\n" : "");
             }
             ok = rr.out && strcmp(rr.out, want) == 0;
             if (!ok) {
-                fprintf(stderr, "%s 序列差分失败\n  C: %s\n  Ctron: %s\n", cases[i].module,
+                fprintf(stderr, "%s 差分失败\n  C: %s\n  Ctron: %s\n", cases[i].module,
                         want ? want : "(空)", rr.out ? rr.out : "(空)");
             }
             free(want);
