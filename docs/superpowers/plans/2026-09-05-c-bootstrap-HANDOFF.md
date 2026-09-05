@@ -115,6 +115,9 @@
 - C9h ✅(cc.ct 快照刷新至 C9g + 独立驱动 cc.sh + seq9 input_cc3;230 cases,
   make test 端到端恢复绿)。selfhosted 自此自带工具链入口:
   `selfhosted/cc.sh <input.ct>`(正例运行/负例编译期拦截)。
+  归属勘误:C9h 四文件(cc.ct/cc.sh/input_cc3.ct/suite_diff.c)被并行 session
+  卷入 83a81bd 落库,设计裁定与验收以 921b0d7 文档为准 —— 竞态第三次,判定为
+  对方工作流固定行为,我方对策:验证完成后立即提交,不跨验证窗口攒批。
 - 独立化路线(用户口径:不依赖不关注其他实现,专注自举版自身):
   ①cc 语义面扩面(12 项之外);②求值器运行域补尾;③**自译化阶梯**:cc.ct 解释
   cc.ct(cc.sh 嵌套自举),验证自足性;④差分脚本从 compiler_c/tests 迁移/复制到
