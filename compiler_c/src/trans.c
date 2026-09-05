@@ -46,7 +46,7 @@ static void sb_free(sb* b) { free(b->d); }
 
 // ================= 类型模型 =================
 typedef struct tc tc;
-enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM, T_CLASS, T_BOX };
+enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM, T_CLASS, T_BOX, T_RANGE };
 typedef struct {
     int k;
     int bits, us;
@@ -78,6 +78,14 @@ static ty suff_ty(const char* s) {
     return isf ? ty_flt() : ty_int(bits, us);
 }
 static ty decl_ty_tc(tc* c, const cty* t);
+static ty e2_of(ty t) {
+    ty e = ty_unk(); e.k = t.ek; e.bits = t.ebits; e.us = t.eus;
+    if (t.ek == T_FLT) e = ty_flt();
+    else if (t.ek == T_BOOL) e = ty_bool();
+    else if (t.ek == T_STR) e = ty_str();
+    else if (t.ek == T_STRUCT || t.ek == T_CLASS || t.ek == T_ENUM) e.tname = t.tname;
+    return e;
+}
 static ty box_elem(ty t) {
     ty e = ty_unk(); e.k = t.ek; e.bits = t.ebits; e.us = t.eus;
     if (t.ek == T_FLT) e = ty_flt();
@@ -115,6 +123,7 @@ static const char* wlname(ty t);
 static const char* ewlname(ty t) { if (t.ek == T_STR) return "str"; if (t.ek == T_FLT) return "f64"; if (t.ek == T_BOOL) return "b"; ty e = ty_int(t.ebits, t.eus); return wlname(e); }
 static const char* ctype_of(ty t) {
     if (t.k == T_SUM) return t.tname ? t.tname : "void";
+    if (t.k == T_RANGE) return "ctron_rng";
     if (t.k == T_CLASS) { static char cb1[96]; snprintf(cb1, sizeof cb1, "ctron_c_%s*", t.tname ? t.tname : "?"); return cb1; }
     if (t.k == T_BOX) { static char cb2[128]; ty e = box_elem(t); snprintf(cb2, sizeof cb2, "%s*", ctype_of(e)); return cb2; }
     if (t.k == T_STRUCT) { static char sb1[96]; snprintf(sb1, sizeof sb1, "ctron_t_%s", t.tname ? t.tname : "?"); return sb1; }
@@ -184,6 +193,8 @@ struct tc {
     size_t n_arrs;
     char* sums[64]; // 已用和类型 typedef 全文(ctron_opt_/ctron_res_/ctron_e_)
     size_t n_sums;
+    struct { char* name; ty t; char* init; } globals[32];
+    size_t n_globals;
     struct { char* name; ty ret; int nparams; int is_void; ty pty[8]; } fns[MAX_FNS];
     size_t nfns;
     const ty* fn_ret; // 当前函数返回类型提示(?)
@@ -380,7 +391,24 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_f(o, "(double)(%s)", e->text && *e->text ? e->text : "0");
             return t;
         }
-        sb_f(o, "(int64_t)(%s)", e->text && *e->text ? e->text : "0");
+        {
+            // 去 _ 分隔 + 进制归一(0x/0o/0b → 十进制发出;超 int64 以 ULL 承载)
+            char digits[64];
+            size_t di = 0;
+            const char* p = e->text && *e->text ? e->text : "0";
+            int base = 10;
+            if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) { base = 16; p += 2; }
+            else if (p[0] == '0' && (p[1] == 'o' || p[1] == 'O')) { base = 8; p += 2; }
+            else if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B')) { base = 2; p += 2; }
+            for (; *p && di < 63; p++)
+                if (*p != '_') digits[di++] = *p;
+            digits[di] = 0;
+            unsigned long long uv = strtoull(digits, NULL, base);
+            if (uv > 9223372036854775807ULL)
+                sb_f(o, "(int64_t)(uint64_t)(%lluULL)", uv);
+            else
+                sb_f(o, "(int64_t)(%llu)", uv);
+        }
         return t;
     }
     case EX_STR: {
@@ -471,6 +499,11 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_s(o, e->text);
             return t;
         }
+        for (size_t gi = 0; gi < c->n_globals; gi++)
+            if (!strcmp(c->globals[gi].name, e->text)) {
+                sb_s(o, e->text);
+                return c->globals[gi].t;
+            }
         // None(期望 Option)
         if (!strcmp(e->text, "None") && c->want && c->want->k == T_SUM
             && !strncmp(c->want->tname, "ctron_opt_", 10)) {
@@ -745,6 +778,18 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (t.ek == T_BOOL) e2 = ty_bool();
         if (t.ek == T_STR) e2 = ty_str();
         return e2;
+    }
+    case EX_RANGE: {
+        // range 作为值(let r = 0..4;for i in r)
+        sb a = {0}, b = {0};
+        emit_expr(c, e->from, &a);
+        emit_expr(c, e->to, &b);
+        sb_f(o, "(ctron_rng){ .lo = (int64_t)(%s), .hi = (int64_t)(%s), .incl = %d }",
+             a.d ? a.d : "0", b.d ? b.d : "0", e->inclusive ? 1 : 0);
+        sb_free(&a);
+        sb_free(&b);
+        ty r = ty_unk(); r.k = T_RANGE;
+        return r;
     }
     case EX_CALL: {
         cexpr* cal = e->callee;
@@ -1350,9 +1395,13 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
             char tn[32];
             snprintf(tn, sizeof tn, "ctron_t%d", n2);
             sb_f(o, "%s %s = %s;\n", ctype_of(ot), tn, op.d ? op.d : "0");
+            int ret_diff_sum = (c->fn_ret && c->fn_ret->k == T_SUM && strcmp(c->fn_ret->tname, ot.tname) != 0);
             if (c->in_test) sb_f(o, "if (%s.tag == %s) return;\n", tn, bad);
             else if (c->in_main) sb_f(o, "if (%s.tag == %s) exit(0);\n", tn, bad);
-            else if (c->fn_ret && c->fn_ret->k == T_SUM) sb_f(o, "if (%s.tag == %s) return %s;\n", tn, bad, tn);
+            else if (c->fn_ret && c->fn_ret->k == T_SUM && !ret_diff_sum)
+                sb_f(o, "if (%s.tag == %s) return %s;\n", tn, bad, tn);
+            else if (c->fn_ret && c->fn_ret->k == T_SUM && ret_diff_sum && is_opt)
+                sb_f(o, "if (%s.tag == %s) return (%s){ .tag = CTRON_OPT_NONE };\n", tn, bad, c->fn_ret->tname);
             else { terr(c, "v1:? 早退类型与函数返回类型不符"); sb_free(&op); return; }
             sb_f(o, "%s %s = %s.as.%s;\n", ctype_of(vt), name, tn, mem);
             sb_free(&op);
@@ -1403,13 +1452,19 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
         if (c->err) { sb_free(&rhs); return; }
         ty t = (ann.k != T_UNK) ? ann : it;
         if (t.k == T_UNK) { terr(c, "v1:无法推导 %s 的类型(补类型注解)", name); sb_free(&rhs); return; }
+        // 初始化器先于绑定求值(对齐 rt eval_let;C 的名字在声明符末即入栈,须走临时)
+        int n4 = c->tmpn++;
+        char nv[32];
+        snprintf(nv, sizeof nv, "ctron_nv%d", n4);
         if (ann.k == T_INT) {
             char h[64];
             snprintf(h, sizeof h, "ctron_decl_%s", wlname(ann));
             use_helper(c, h);
-            sb_f(o, "%s %s = %s(%s);\n", ctype_of(ann), name, h, rhs.d ? rhs.d : "0");
+            sb_f(o, "%s %s = %s(%s);\n", ctype_of(ann), nv, h, rhs.d ? rhs.d : "0");
+            sb_f(o, "%s %s = %s;\n", ctype_of(ann), name, nv);
         } else {
-            sb_f(o, "%s %s = %s;\n", ctype_of(t), name, rhs.d ? rhs.d : "0");
+            sb_f(o, "%s %s = %s;\n", ctype_of(t), nv, rhs.d ? rhs.d : "0");
+            sb_f(o, "%s %s = %s;\n", ctype_of(t), name, nv);
         }
         sb_free(&rhs);
         c->want = saved_let_want;
@@ -1599,8 +1654,10 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
         }
         if (st->e && st->e->kind == EX_BLOCK) {
             scope_push(c);
+            sb_s(o, "{\n");
             emit_block(c, st->e->block, o);
             scope_pop(c);
+            sb_s(o, "}\n");
             return;
         }
         {
@@ -1622,6 +1679,43 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
         return;
     }
     case ST_FOR: {
+        // for x in <range 值>(let r = 0..4; for i in r)
+        if (st->iter && st->iter->kind != EX_RANGE) {
+            if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name) { terr(c, "v1:for 模式仅标识符"); return; }
+            const char* var = st->pat->name;
+            sb it0 = {0};
+            ty it_t = emit_expr(c, st->iter, &it0);
+            if (c->err) { sb_free(&it0); return; }
+            if (it_t.k == T_RANGE) {
+                char iname[32];
+                snprintf(iname, sizeof iname, "ctron_it_%d", c->tmpn++);
+                sb_f(o, "{ ctron_rng %s = %s; for (int64_t %s = %s.lo; %s.incl ? %s <= %s.hi : %s < %s.hi; %s++) {",
+                     iname, it0.d ? it0.d : "0", var, iname,
+                     iname, var, iname, var, iname, var);
+                sb_free(&it0);
+                scope_push(c);
+                scope_def(c, var, ty_int(64, 0));
+                emit_block(c, st->body, o);
+                scope_pop(c);
+                sb_s(o, "}}\n");
+                return;
+            }
+            if (it_t.k != T_ARR) { terr(c, "v1:for 需要 range 或数组"); sb_free(&it0); return; }
+            {
+                char iname[32];
+                snprintf(iname, sizeof iname, "ctron_it_%d", c->tmpn++);
+                sb_f(o, "{ %s %s = %s; for (int64_t ctron_i = 0; ctron_i < %s.n; ctron_i++) {",
+                     ctype_of(it_t), iname, it0.d ? it0.d : "0", iname);
+                sb_free(&it0);
+                scope_push(c);
+                scope_def(c, var, e2_of(it_t));
+                sb_f(o, " %s %s = %s.d[ctron_i];", ctype_of(e2_of(it_t)), var, iname);
+                emit_block(c, st->body, o);
+                scope_pop(c);
+                sb_s(o, "}}\n");
+                return;
+            }
+        }
         // for x in <数组>
         if (st->iter && st->iter->kind != EX_RANGE) {
             if (!st->pat || st->pat->kind != PAT_IDENT || !st->pat->name) { terr(c, "v1:for 模式仅标识符"); return; }
@@ -1879,7 +1973,7 @@ static void emit_helper(tc* c, const char* name) {
         else if (bits < 64)
             sb_f(o, "    uint64_t r = (uint64_t)v & %lluULL;\n"
                 "    return (%s)((int64_t)(r ^ %lluULL) - (int64_t)%lluULL);\n}\n",
-                ct, (1ULL << bits) - 1, (1ULL << (bits - 1)), (1ULL << (bits - 1)));
+                (1ULL << bits) - 1, ct, (1ULL << (bits - 1)), (1ULL << (bits - 1)));
         else
             sb_f(o, "    return (%s)v;\n}\n", ct);
         return;
@@ -1891,7 +1985,7 @@ static void emit_helper(tc* c, const char* name) {
     if (!strcmp(fam, "decl")) {
         sb_f(o, "static %s %s(int64_t v) {\n", ct, name);
         if (us)
-            sb_f(o, "    if (v < 0 || (__int128)v >= (__int128)(%s)) ctron_panic(\"integer overflow (decl)\");\n", hi);
+            sb_f(o, "    if ((__int128)(uint64_t)v > (__int128)(%s)) ctron_panic(\"integer overflow (decl)\");\n", hi);
         else
             sb_f(o, "    if ((__int128)v < (__int128)(%s) || (__int128)v > (__int128)(%s)) ctron_panic(\"integer overflow (decl)\");\n",
                  lo, hi);
@@ -2034,6 +2128,17 @@ static void collect_types(tc* c, const cfile* f) {
                 ed->n++;
             }
             c->nenums++;
+        } else if (d->kind == D_STATIC) {
+            if (c->n_globals >= 32) continue;
+            ty gt = decl_ty_tc(c, d->statik.ty);
+            if (gt.k == T_UNK) { terr(c, "v1:static %s 类型不支持", d->statik.name); continue; }
+            sb init = {0};
+            if (d->statik.expr) emit_expr(c, d->statik.expr, &init);
+            c->globals[c->n_globals].name = d->statik.name;
+            c->globals[c->n_globals].t = gt;
+            c->globals[c->n_globals].init = init.d ? ctron_arena_strndup(c->a, init.d, strlen(init.d)) : NULL;
+            c->n_globals++;
+            sb_free(&init);
         } else if (d->kind == D_CLASS) {
             if (c->nclasses >= MAX_TYPES) continue;
             cdef* cd = &c->classes[c->nclasses];
@@ -2156,7 +2261,8 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         case D_STRUCT:
         case D_CLASS:
         case D_ENUM:
-            break; // typedef 由头部装配统一发射(collect_types 已收集)
+        case D_STATIC:
+            break; // typedef/全局由头部装配统一发射(collect_types 已收集)
         default:
             terr(&c, "v1 不支持该声明(kind %d)", (int)d->kind);
             break;
@@ -2185,6 +2291,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
                 "#include <stdio.h>\n#include <stdint.h>\n#include <stdlib.h>\n"
                 "#include <string.h>\n#include <setjmp.h>\n\n"
                 "typedef struct { const char** d; int64_t n; } ctron_arr_str;\n"
+                "typedef struct { int64_t lo, hi; int incl; } ctron_rng;\n"
                 "static jmp_buf ctron_panic_frame;\n"
                 "static _Noreturn void ctron_panic(const char* msg) {\n"
                 "    fprintf(stderr, \"%s\\n\", msg);\n"
@@ -2223,6 +2330,9 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             for (size_t j = 0; j < ed->n; j++)
                 sb_f(h, "#define CTRON_%s_%s %lld\n", ed->name, ed->variants[j].name, (long long)j);
         }
+        for (size_t i = 0; i < c.n_globals; i++)
+            sb_f(h, "static %s %s = %s;\n", ctype_of(c.globals[i].t), c.globals[i].name,
+                 c.globals[i].init ? c.globals[i].init : "0");
         for (size_t i = 0; i < c.n_sums; i++)
             sb_f(h, "%s\n", c.sums[i]);
         for (size_t i = 0; i < c.n_arrs; i++) {

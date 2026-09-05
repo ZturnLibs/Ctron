@@ -135,6 +135,14 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 | C8h① ✅ | E2030 match 穷尽(枚举/Option/Result 变体表 + 臂覆盖) | 检查 47/47 |
 | C8h② ✅ | E3040 分配效果(own/no_alloc/契约 + 函数效果摘要) | **C3 单文件 12 项全集 Ctron 树上收官:49/49(207 用例)** |
 
+### C10-f①② 转译覆盖率推进 ✅(13/61 语料原生编译执行差分)
+通配 let / TY_REF 透明 / EX_OWN 语句与块尾透明 / .as[T]() 回绕截断 / range 值 +
+for-in-range 值 / static let 全局 / None 单元模式 / let if·块 值 / let 临时变量保持
+初始化顺序(C 遮蔽作用域与 rt 绑定顺序的差异)/ 字面量进制归一 + U64 极值 ULL 承载 /
+decl 无符号上界差一修复。新增 `suite_corpus_trans`:61 语料可转译者自动
+"cc 原生执行 vs 解释器" 差分(stdout/exit/panic 逐字),neg/lint 跳过。
+13 pass / 21 untranspiled(需并发运行时/trait/闭包/context 链,= C10-g+)。
+
 ### C10-e 转译扩面:插值 + class/Box ✅(差分 14/14)
 插值片段解析 → fmt 助手(i64/f64/bool,rt fmt_val 语义)+ concat 链;class 引用语义
 (malloc 构造助手/箭头访问/指针共享);Box[T](v) 显式堆分配 + 自动解引用。
