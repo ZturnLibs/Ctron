@@ -236,7 +236,11 @@ fn scan(src: Str, toks: List[Str]) {
 
 // ---- 记号取值:tok = 当前记号;adv = 前进一格(Atomic 共享游标) ----
 fn tok(toks: List[Str], cur: Atomic[I32]) -> Str {
-    return toks[cur.load()]
+    var i = cur.load()
+    if i < toks.len {
+        return toks[i]
+    }
+    return "#EOF"
 }
 fn adv(cur: Atomic[I32]) {
     var v = cur.load()
@@ -536,10 +540,49 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
             adv(cur)
             e = "Member \{ obj: " + e + ", target: Name(\"" + nm + "\")}"
         } else if t == "[" {
-            adv(cur)
-            var ix = parse_expr(toks, cur)
-            adv(cur)
-            e = "Index \{ obj: " + e + ", index: " + ix + "}"
+            var d: I32 = 1
+            var q = cur.load() + 1
+            while d > 0 {
+                var tk2 = toks[q]
+                if tk2 == "[" {
+                    d += 1
+                }
+                if tk2 == "]" {
+                    d -= 1
+                }
+                q += 1
+            }
+            var nx = toks[q]
+            if or2(nx == "(", nx == "\{") {
+                adv(cur)
+                var targs = ""
+                var k2: I32 = 0
+                var more2 = true
+                while more2 {
+                    if tok(toks, cur) == "]" {
+                        more2 = false
+                    } else {
+                        var a = parse_type(toks, cur)
+                        if k2 > 0 {
+                            targs = targs + ", "
+                        }
+                        targs = targs + a
+                        k2 += 1
+                        if tok(toks, cur) == "," {
+                            adv(cur)
+                        } else {
+                            more2 = false
+                        }
+                    }
+                }
+                adv(cur)
+                e = "TypeArgs \{ expr: " + e + ", args: [" + targs + "]}"
+            } else {
+                adv(cur)
+                var ix = parse_expr(toks, cur)
+                adv(cur)
+                e = "Index \{ obj: " + e + ", index: " + ix + "}"
+            }
         } else {
             go = false
         }
@@ -574,6 +617,18 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
         adv(cur)
         return "Void"
     }
+    if t == "true" {
+        adv(cur)
+        return "Bool(true)"
+    }
+    if t == "false" {
+        adv(cur)
+        return "Bool(false)"
+    }
+    if t == "\{" {
+        adv(cur)
+        return "BlockExpr(" + parse_block(toks, cur) + ")"
+    }
     adv(cur)
     return "Ident(\"" + t + "\")"
 }
@@ -607,6 +662,11 @@ fn parse_type(toks: List[Str], cur: Atomic[I32]) -> Str {
             r = "Optional(" + r + ")"
         }
         return r
+    }
+    var b0 = byte_at(t, 0)
+    if is_digit(b0) {
+        adv(cur)
+        return "ComptimeVal(" + num_text(t) + ")"
     }
     var nm = t
     adv(cur)
@@ -685,7 +745,7 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
             adv(cur)
         }
         var t = tok(toks, cur)
-        if t == "}" {
+        if or2(t == "}", t == "#EOF") {
             go = false
         } else if or2(t == "let", t == "var") {
             var isv = "false"
@@ -797,6 +857,11 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
 }
 
 fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var vis = "Private"
+    if tok(toks, cur) == "pub" {
+        vis = "Pub"
+        adv(cur)
+    }
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -832,7 +897,7 @@ fn parse_fn(toks: List[Str], cur: Atomic[I32]) -> Str {
     }
     adv(cur)
     var body = parse_block(toks, cur)
-    var out = "Fn \{ attrs: [], vis: Private, is_comptime: false, abi: None, name: \"" + nm + "\", type_params: [], params: [" + ps + "], ret: " + ret
+    var out = "Fn \{ attrs: [], vis: " + vis + ", is_comptime: false, abi: None, name: \"" + nm + "\", type_params: [], params: [" + ps + "], ret: " + ret
     out = out + ", body: " + body + "}"
     return out
 }

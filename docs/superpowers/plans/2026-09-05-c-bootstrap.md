@@ -55,8 +55,14 @@
    corpus 换靶 3 文件(01_basics/03c_str_string/08_bare_alloc.neg)全过 → 63 用例全绿。全 51 文件
    扫描:3 过、余失败主因 = **as[T]/Box[T]/List[T] 等类型实参后缀消歧**、match/模式、
    struct/class/enum 声明族、own/scope 等。ASan/UBSan 全绿。
-9. **C6d(下一阶梯)**:类型实参后缀消歧(`]` 后跟 ( / { / 类型列表;as[T] 成员),次之
-   match/模式、结构体族声明,逐步解锁更多 corpus 文件的 parse 差分。
+9. **C6d(本文件交付)**:类型实参后缀消歧 + 值语法补全 —— postfix `[` 前探匹配 `]` 后随
+   `(`/`{` → TypeArgs(实参按 parse_type,整型字面量 → ComptimeVal("N")),否则 Index;
+   另补 true/false→Bool、`{` 块作表达式 → BlockExpr、pub 可见性、tok() 越界守卫返
+   #EOF(防非法输入 OOB/死循环,钉子)。真实语料 parse 差分扩至 **6 文件全过**(00_doctest/
+   01_basics/03b/03c/04b/08_bare_alloc.neg),suite_diff 66 用例全绿;ASan/UBSan 全绿。
+   余下失败主因:match/模式、struct/class/enum/trait/impl/own/scope 声明族。
+10. **C6e(下一阶梯)**:match 表达式与模式(pattern:Ident/Wildcard/Lit/变体 Some·None),
+   次之 struct/class/enum 声明族与类型形参,逐步解锁剩余语料的 parse 差分。
 
 ## 冻结纪律
 

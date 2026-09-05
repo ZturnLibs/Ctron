@@ -188,7 +188,8 @@ int main(int argc, char** argv) {
     // 真实语料 parse-AST 差分(seq=3):parse_ast.ct 模板换靶,逐文件 vs C ctron_file_show
     {
         static const char* pcorpus[] = {
-            "../tests/01_basics.ct", "../tests/03c_str_string.ct", "../tests/08_bare_alloc.neg.ct"};
+            "../tests/00_doctest.ct", "../tests/01_basics.ct", "../tests/03b_numeric_widths.ct",
+            "../tests/03c_str_string.ct", "../tests/04b_logic.ct", "../tests/08_bare_alloc.neg.ct"};
         char ptpath[4096], pip[4096];
         snprintf(ptpath, sizeof ptpath, "%s/parse_ast.ct", root);
         snprintf(pip, sizeof pip, "%s/input_parse_ast.ct", root);
