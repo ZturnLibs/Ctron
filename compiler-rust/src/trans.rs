@@ -38,6 +38,8 @@ enum VTy {
     Class(u32),
     /// Box[T](v)——内层 struct 的堆指针
     Boxed(u32),
+    /// 和类型(tagged union):预定义 Option/Result 与用户 enum;载荷槽类别
+    Sum(u32, Pay),
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -98,6 +100,16 @@ fn suffix_ty(suffix: &str) -> VTy {
 
 type TRes = Result<(String, VTy), String>; // Ok((C 表达式, 类型)) / Err(域外拒绝)
 
+#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug)]
+enum Pay { I, F }
+
+#[derive(Clone)]
+struct EnumInfo {
+    _name: String,
+    variants: Vec<(String, usize)>, // (变体名, 元组载荷数)
+}
+
 #[derive(Clone)]
 struct TypeInfo {
     name: String,
@@ -112,6 +124,8 @@ pub struct Trans {
     fns: Vec<(String, Vec<VTy>, VTy)>,
     types: Vec<TypeInfo>,
     type_by_name: std::collections::HashMap<String, u32>,
+    enums: Vec<EnumInfo>,
+    enum_by_name: std::collections::HashMap<String, u32>,
 }
 
 impl Trans {
@@ -120,6 +134,8 @@ impl Trans {
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
             type_by_name: std::collections::HashMap::new(),
+            enums: Vec::new(),
+            enum_by_name: std::collections::HashMap::new(),
         }
     }
 
@@ -168,9 +184,26 @@ impl Trans {
     // ---------------- 文件 ----------------
 
     pub fn trans_file(mut self, file: &ast::File) -> Result<String, String> {
+        // 预定义和类型:variant 0 = Some/Ok(载荷在 p[0]),variant 1 = None/Err
+        self.intern_enum("Option", vec![("Some".into(), 1), ("None".into(), 0)]);
+        self.intern_enum("Result", vec![("Ok".into(), 1), ("Err".into(), 1)]);
         let mut tests = Vec::new();
         for d in &file.decls {
             match d {
+                ast::Decl::Enum(en) => {
+                    if !en.type_params.is_empty() {
+                        return Err("trans v1 拒绝域:泛型 enum".into());
+                    }
+                    let variants: Vec<(String, usize)> = en.variants.iter().map(|v| {
+                        let arity = match &v.kind {
+                            ast::VariantKind::Unit => 0,
+                            ast::VariantKind::Tuple(ts) => ts.len(),
+                            _ => 0,
+                        };
+                        (v.name.clone(), arity)
+                    }).collect();
+                    self.intern_enum(&en.name, variants);
+                }
                 ast::Decl::Struct(st) => {
                     if !st.type_params.is_empty() {
                         return Err("trans v1 拒绝域:泛型 struct(单态化未实现)".into());
@@ -243,6 +276,14 @@ impl Trans {
         Ok(self.sink.into_iter().next_back().unwrap_or_default())
     }
 
+    fn intern_enum(&mut self, name: &str, variants: Vec<(String, usize)>) -> u32 {
+        if let Some(&id) = self.enum_by_name.get(name) { return id; }
+        let id = self.enums.len() as u32;
+        self.enums.push(EnumInfo { _name: name.to_string(), variants });
+        self.enum_by_name.insert(name.to_string(), id);
+        id
+    }
+
     fn intern_type(&mut self, name: &str, is_class: bool) -> u32 {
         if let Some(&id) = self.type_by_name.get(name) { return id; }
         let id = self.types.len() as u32;
@@ -285,6 +326,62 @@ impl Trans {
         Err("trans v1 拒绝域:字段类型形态".into())
     }
 
+    /// 模式编译:(变体号, 载荷绑定语句);-1 = 通配臂
+    /// 变体名 → (enum id, variant index)
+    fn find_variant(&self, name: &str) -> Option<(u32, usize)> {
+        for (eid, e) in self.enums.iter().enumerate() {
+            if let Some((vi, _)) = e.variants.iter().enumerate().find(|(_, (vn, _))| vn == name) {
+                return Some((eid as u32, vi));
+            }
+        }
+        None
+    }
+
+    fn pat_arm(&mut self, pat: &ast::Pattern, mv: &str, pay: Pay) -> Result<(i32, Vec<String>), String> {
+        let ast::Pattern::Agg { path, sub } = pat else {
+            return Err("trans v1 拒绝域:match 模式(仅变体/通配)".into());
+        };
+        let vname = path.last().cloned().unwrap_or_default();
+        let Some(eid) = self.enum_by_name.values().cloned().reduce(|a, _| a) else {
+            return Err("trans:无和类型".into());
+        };
+        let _ = eid;
+        // 在全部枚举里找变体定义
+        let mut found: Option<(i32, usize)> = None;
+        for e in &self.enums {
+            if let Some((vi, (_vn, arity))) = e.variants.iter().enumerate()
+                .find(|(_, (vn, _))| *vn == vname)
+            {
+                found = Some((vi as i32, *arity));
+            }
+        }
+        let Some((vid, arity)) = found else {
+            return Err(format!("trans:未知变体 `{}`", vname));
+        };
+        let mut binds = Vec::new();
+        match sub {
+            ast::AggSub::Unit => {}
+            ast::AggSub::Tuple(ps) => {
+                for (i, sp) in ps.iter().enumerate() {
+                    match sp {
+                        ast::Pattern::Ident(n) => {
+                            let slot_ty = if pay == Pay::F { VTy::F64 } else { VTy::Int(None) };
+                            let slot = if pay == Pay::F { "f" } else { "i" };
+                            let ctype = if pay == Pay::F { "double" } else { "ct_i" };
+                            let cname = self.bind(n, slot_ty);
+                            binds.push(format!("{} {} = {}.p[{}].{};", ctype, cname, mv, i, slot));
+                        }
+                        ast::Pattern::Wildcard => {}
+                        _ => return Err("trans v1 拒绝域:载荷子模式".into()),
+                    }
+                }
+            }
+            _ => return Err("trans v1 拒绝域:struct 载荷模式".into()),
+        }
+        let _ = arity;
+        Ok((vid, binds))
+    }
+
     /// 字段访问基串(含分隔符):struct 值用 `.`,class/Boxed 指针用 `->`
     fn deref_obj(&self, c: &str, ty: VTy) -> Result<(String, u32), String> {
         match ty {
@@ -292,6 +389,10 @@ impl Trans {
             VTy::Class(id) | VTy::Boxed(id) => Ok((format!("({})->", c), id)),
             _ => Err("trans:字段访问需用户类型".into()),
         }
+    }
+
+    fn pay_of(&self, t: &ast::Type) -> Pay {
+        if self.ty_of(t).is_float() { Pay::F } else { Pay::I }
     }
 
     fn ty_of(&self, t: &ast::Type) -> VTy {
@@ -303,12 +404,25 @@ impl Trans {
                         let is_class = self.types[id as usize].is_class;
                         return if is_class { VTy::Class(id) } else { VTy::Struct(id) };
                     }
+                    if let Some(&id) = self.enum_by_name.get(name.as_str()) {
+                        // 载荷类别取第一个类型实参(Option[F64] → F;无实参 → I)
+                        let pay = if let ast::Type::Named { args, .. } = t {
+                            args.first().map(|a| {
+                                if self.ty_of(a).is_float() { Pay::F } else { Pay::I }
+                            }).unwrap_or(Pay::I)
+                        } else { Pay::I };
+                        return VTy::Sum(id, pay);
+                    }
                 }
                 VTy::Unknown
             }
             // T[N] 定长 / T[] 视图 / &T[] 只读视图:统一数组句柄(interp 同为 Value::Array)
             ast::Type::Slice(_) | ast::Type::Array { .. } => VTy::Array,
             ast::Type::Ref(inner) => self.ty_of(inner),
+            ast::Type::Optional(inner) => {
+                let id = self.enum_by_name.get("Option").copied().unwrap_or(0);
+                VTy::Sum(id, self.pay_of(inner))
+            }
             _ => VTy::Unknown,
         }
     }
@@ -321,6 +435,7 @@ impl Trans {
             VTy::Str => "char*",
             VTy::Range => "ct_range",
             VTy::Array => "ct_arr*",
+            VTy::Sum(..) => "ct_sum",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
             VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
             VTy::Int(_) | _ => "ct_i",
@@ -579,10 +694,16 @@ impl Trans {
             ast::Expr::Bool(b) => Ok(((*b as i32).to_string(), VTy::Bool)),
             ast::Expr::Void => Ok(("0".into(), VTy::Void)),
             ast::Expr::Ident(name) => {
-                let Some((c, ty)) = self.lookup(name) else {
-                    return Err(format!("trans:未绑定标识符 `{}`", name));
-                };
-                Ok((c, ty))
+                if let Some((c, ty)) = self.lookup(name) {
+                    return Ok((c, ty));
+                }
+                // 无参变体作为值表达式(如 `return Stop`)
+                if let Some((eid, vid)) = self.find_variant(name) {
+                    if self.enums[eid as usize].variants[vid as usize].1 == 0 {
+                        return Ok((format!("(ct_sum){{ {}, {{ 0, 0, 0, 0 }} }}", vid), VTy::Sum(eid, Pay::I)));
+                    }
+                }
+                Err(format!("trans:未绑定标识符 `{}`", name))
             }
             ast::Expr::Unary { op, expr } => {
                 let (c, ty) = self.expr(expr)?;
@@ -770,6 +891,50 @@ impl Trans {
                     Ok((lit, VTy::Struct(tid)))
                 }
             }
+            ast::Expr::Match { expr, arms } => {
+                // 语句形态 match:variant 分派 + 载荷绑定;无匹配臂 panic(对齐 interp)
+                let (sc, sty) = self.expr(expr)?;
+                let VTy::Sum(_, pay) = sty else { return Err("trans:match 需和类型".into()); };
+                let mv = self.uniq_name("m");
+                let dv = self.uniq_name("done");
+                self.w(1, &format!("{{ ct_sum {} = ({}); int {} = 0;", mv, sc, dv));
+                for arm in arms {
+                    let (vid, binds) = self.pat_arm(&arm.pattern, &mv, pay)?;
+                    self.scope_push();
+                    let cond = if vid == -1 { String::new() } else { format!("if ({}.variant == {}) {{", mv, vid) };
+                    if vid != -1 {
+                        self.w(2, &cond);
+                        for b in binds {
+                            self.w(3, &b);
+                        }
+                    } else {
+                        // 通配臂放最后,直接开块
+                        self.w(2, "{");
+                    }
+                    let (ac, aty) = self.expr(&arm.expr)?;
+                    let _ = aty;
+                    self.w(3, &format!("(void)({});", ac));
+                    self.w(3, &format!("{} = 1;", dv));
+                    self.w(2, "}");
+                    self.scope_pop();
+                }
+                self.w(2, &format!("if (!{}) ct_panic(\"match 无匹配臂\");", dv));
+                self.w(1, "}");
+                Ok(("0".to_string(), VTy::Void))
+            }
+            ast::Expr::Try(e) => {
+                // `?`:variant 1(None/Err)→ 提前 return 同型空值;否则解包载荷
+                let (c, ty) = self.expr(e)?;
+                let VTy::Sum(_, pay) = ty else { return Err("trans:? 需 Option/Result".into()); };
+                let _ = ty;
+                Ok((
+                    format!(
+                        "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ return (ct_sum){{ 1, {{ {{.i = 0}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].i; }})",
+                        c
+                    ),
+                    if pay == Pay::F { VTy::F64 } else { VTy::Int(None) },
+                ))
+            }
             ast::Expr::Call { callee, args } => self.call(callee, args),
             ast::Expr::TypeArgs { expr, args } => {
                 // as[T]() 显式转换(§3.6 截断语义)
@@ -833,6 +998,31 @@ impl Trans {
     }
 
     fn call(&mut self, callee: &ast::Expr, args: &[ast::Expr]) -> TRes {
+        // 和类型变体构造器:Some/None/Ok/Err/用户 enum 变体
+        if let ast::Expr::Ident(name) = callee {
+            if let Some(&eid) = self.enum_by_name.get("*prelude*") { let _ = eid; }
+            let mut hit: Option<(u32, usize, usize)> = None;
+            for (eid, e) in self.enums.iter().enumerate() {
+                if let Some((vi, (_vn, arity))) = e.variants.iter().enumerate().find(|(_, (vn, _))| vn == name) {
+                    hit = Some((eid as u32, vi, *arity));
+                    break;
+                }
+            }
+            if let Some((eid, vi, arity)) = hit {
+                if args.len() != arity {
+                    return Err(format!("trans:变体 `{}` 需 {} 个载荷", name, arity));
+                }
+                let mut ps = Vec::new();
+                for a in args.iter() {
+                    let (c, at) = self.expr(a)?;
+                    ps.push(payload_cell(c, at)?);
+                }
+                let fields: Vec<String> = (0..4).map(|i| {
+                    ps.get(i).cloned().unwrap_or_else(|| "{.i = 0}".into())
+                }).collect();
+                return Ok((format!("(ct_sum){{ {}, {{ {} }} }}", vi, fields.join(", ")), VTy::Sum(eid, Pay::I)));
+            }
+        }
         // Box[T](v) — 堆装箱
         if let ast::Expr::TypeArgs { expr, .. } = callee {
             if let ast::Expr::Ident(tn) = &**expr {
@@ -944,6 +1134,43 @@ impl Trans {
                 };
                 if let Some(r) = r { return Ok(r); }
             }
+            // Option/Result 方法
+            if let VTy::Sum(_, _) = rt {
+                let r = match m.as_str() {
+                    "or" => {
+                        let Some(a) = args.first() else { return Err("trans:or 需默认值".into()) };
+                        let (dc, dty) = self.expr(a)?;
+                        if !dty.is_num() { return Err("trans:or 默认值需数值".into()); }
+                        let slot = if dty.is_float() { "f" } else { "i" };
+                        let cast = if dty == VTy::F32 { "(float)" } else { "" };
+                        (format!(
+                            "({{ ct_sum t = ({}); (t.variant == 0) ? {}t.p[0].{} : {}{}; }})",
+                            rc, cast, slot, cast, dc),
+                         dty)
+                    }
+                    "expect" => {
+                        let Some(a) = args.first() else { return Err("trans:expect 需消息".into()) };
+                        let ast::Expr::Str { parts } = a else {
+                            return Err("trans v1 拒绝域:非字面量 expect 消息".into());
+                        };
+                        let msg = match parts.as_slice() {
+                            [ast::StrPart::Text(t)] => t.replace('"', "\\\""),
+                            _ => "expect failed".to_string(),
+                        };
+                        (format!(
+                            "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
+                         VTy::Int(None))
+                    }
+                    "is_some" | "is_ok" => {
+                        (format!("(ct_i)(({}).variant == 0)", rc), VTy::Int(Some((IntW::W64, true))))
+                    }
+                    "is_none" | "is_err" => {
+                        (format!("(ct_i)(({}).variant == 1)", rc), VTy::Int(Some((IntW::W64, true))))
+                    }
+                    _ => return Err(format!("trans v1 拒绝域:和类型方法 `.{}`", m)),
+                };
+                return Ok(r);
+            }
             // UFCS:用户自由函数以接收者为首参
             if let Some((ptys, ret)) = self.lookup_fn(m) {
                 if args.len() == ptys.len().saturating_sub(1) || args.len() + 1 == ptys.len() {
@@ -1027,6 +1254,17 @@ fn assign_binop(op: &ast::AssignOp) -> ast::BinOp {
         ast::AssignOp::DivEq => ast::BinOp::Div,
         _ => ast::BinOp::Mod,
     }
+}
+
+/// 变体载荷 → ct_cell 初始化(v1:数值/Bool)
+fn payload_cell(c: String, ty: VTy) -> Result<String, String> {
+    Ok(match ty {
+        VTy::Int(_) => format!("{{.i = {}}}", c),
+        VTy::Bool => format!("{{.i = (ct_i)(!!({}))}}", c),
+        VTy::F64 => format!("{{.f = {}}}", c),
+        VTy::F32 => format!("{{.f = (double)({})}}", c),
+        _ => return Err("trans v1 拒绝域:该载荷类型".into()),
+    })
 }
 
 /// intern 成 &'static str(编译器进程一次性,不做回收)
@@ -1158,6 +1396,10 @@ static int ct_assert(int ok) {
     if (!ok) { fprintf(stderr, "assertion failed (test %s)\n", ct_cur_test); exit(1); }
     return ok;
 }
+/* ---- 和类型:tagged union;载荷槽 i/f 按静态类型选用 ---- */
+typedef union { ct_i i; double f; } ct_cell;
+typedef struct { int variant; ct_cell p[4]; } ct_sum;
+
 /* ---- 数组运行时:句柄共享语义(对齐 interp Rc<Vec>),进程期不回收 ---- */
 typedef struct { ct_i* d; size_t n; } ct_arr;
 static ct_arr* ct_arr_new(size_t n, ct_i* init) {
