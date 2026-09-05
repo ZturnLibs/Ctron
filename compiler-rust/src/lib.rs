@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod check;
 pub mod interp;
+pub mod trans;
 pub mod sem;
 pub mod lexer;
 pub mod parser;

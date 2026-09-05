@@ -47,6 +47,37 @@ fn main() -> ExitCode {
             }
             if diags.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
         }
+        Some("trans") => {
+            let mut path = String::new();
+            let mut out_path: Option<String> = None;
+            let mut a = args.iter().skip(2);
+            while let Some(arg) = a.next() {
+                if arg == "-o" { out_path = a.next().cloned(); }
+                else if !arg.starts_with('-') && path.is_empty() { path = arg.clone(); }
+            }
+            let Ok(src) = std::fs::read_to_string(&path) else {
+                eprintln!("无法读取 {path}");
+                return ExitCode::from(2);
+            };
+            let (file, diags) = ctron::parse_src(&src);
+            for d in &diags {
+                eprintln!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+            }
+            if !diags.is_empty() { return ExitCode::from(1); }
+            match ctron::trans::Trans::new().trans_file(&file) {
+                Ok(c_code) => {
+                    match out_path {
+                        Some(p) => { let _ = std::fs::write(&p, c_code); println!("{p}"); }
+                        None => print!("{c_code}"),
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(reason) => {
+                    eprintln!("{path}: {reason}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         Some("check") => {
             let path = match args.get(2) {
                 Some(p) if !p.starts_with("--") => p.clone(),
