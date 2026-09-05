@@ -1,0 +1,10 @@
+// 13_interp.ct —— 字符串插值(片段 = 标识符/表达式;rt fmt_val 语义)
+fn main() -> I32 {
+    let name = "Ctron"
+    let n = 5
+    print("hi {name} x{n}")
+    println("")
+    assert_eq("v={n}", "v=5")
+    assert_eq("\{", "\{")
+    return 0
+}

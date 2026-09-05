@@ -1,0 +1,19 @@
+// 14_class_box.ct —— class 引用语义 / Box 显式堆分配 + 自动解引用(对齐 03_values_refs)
+struct Point {
+    var x: I32
+    var y: I32
+}
+
+class Tag {
+    let id: I32
+}
+
+fn main() -> I32 {
+    let a = Tag { id: 7 }
+    let b = a
+    assert_eq(b.id, 7)
+    assert_eq(a.id, 7)
+    let p = Box[Point](Point { x: 3, y: 4 })
+    assert_eq(p.x, 3)
+    return 0
+}

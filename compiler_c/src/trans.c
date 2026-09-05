@@ -408,8 +408,12 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
                 free(tmp);
                 cexpr* px = NULL;
                 if (ip.file && ip.file->ndecls >= 1 && ip.file->decls[0].kind == D_FN
-                    && ip.file->decls[0].fn_.body && ip.file->decls[0].fn_.body->tail)
-                    px = ip.file->decls[0].fn_.body->tail;
+                    && ip.file->decls[0].fn_.body) {
+                    cblock* pb = ip.file->decls[0].fn_.body;
+                    if (pb->tail) px = pb->tail;
+                    else if (pb->nstmts >= 1 && pb->stmts[pb->nstmts - 1]->kind == ST_RET)
+                        px = pb->stmts[pb->nstmts - 1]->e; // return <片段>
+                }
                 if (!px) { terr(c, "v1:插值片段解析失败"); ctron_parse_result_free(&ip); sb_free(&seg); break; }
                 sb v = {0};
                 ty vt = emit_expr(c, px, &v);
@@ -672,6 +676,9 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (!strcmp(c->classes[i].name, tn)) is_cls = 1;
         if (is_cls) {
             // class:malloc + 字段赋值(引用语义)
+            char nh[96];
+            snprintf(nh, sizeof nh, "ctron_new_%s", tn);
+            use_helper(c, nh);
             sb_f(o, "ctron_new_%s(", tn);
             sdef* cds = NULL;
             for (size_t i = 0; i < c->nclasses; i++)
