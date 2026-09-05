@@ -7,6 +7,10 @@ fn is_alpha(b: I32) -> Bool { return or2(b >= 65 && b <= 90, b >= 97 && b <= 122
 fn is_al(b: I32) -> Bool { return or2(is_alpha(b), b == 95) }
 fn is_ac(b: I32) -> Bool { return or2(is_al(b), is_digit(b)) }
 
+fn is_hex(b: I32) -> Bool { return or2(b >= 48 && b <= 57, or2(b >= 65 && b <= 70, b >= 97 && b <= 102)) }
+fn is_oct(b: I32) -> Bool { return b >= 48 && b <= 55 }
+fn is_bin(b: I32) -> Bool { return b >= 48 && b <= 49 }
+
 fn suffix_len(src: Str, n: I32, i: I32) -> I32 {
     if i + 2 <= n {
         var a = byte_at(src, i)
@@ -69,29 +73,47 @@ fn scan(src: Str, toks: List[Str]) {
             toks.push(byte_slice(src, start, i))
         } else if is_digit(b) {
             var tstart = i
-            while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
-            var fnum = false
-            var tend = i
-            if i + 1 < n && byte_at(src, i) == 46 && is_digit(byte_at(src, i + 1)) {
-                fnum = true
-                i += 1
-                while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
-                tend = i
+            var radix: I32 = 0
+            if b == 48 && i + 1 < n {
+                var p2 = byte_at(src, i + 1)
+                if p2 == 120 { radix = 16 }
+                if p2 == 111 { radix = 8 }
+                if p2 == 98 { radix = 2 }
             }
-            if i < n && or2(byte_at(src, i) == 101, byte_at(src, i) == 69) {
-                var esign = false
-                if i + 1 < n && or2(byte_at(src, i + 1) == 43, byte_at(src, i + 1) == 45) { esign = true }
-                var eok = false
-                if esign && i + 2 < n && is_digit(byte_at(src, i + 2)) { eok = true }
-                if !esign && i + 1 < n && is_digit(byte_at(src, i + 1)) { eok = true }
-                if eok {
+            var fnum = false
+            if radix > 0 {
+                i += 2
+                if radix == 16 {
+                    while i < n && or2(is_hex(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+                if radix == 8 {
+                    while i < n && or2(is_oct(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+                if radix == 2 {
+                    while i < n && or2(is_bin(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                }
+            } else {
+                while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                if i + 1 < n && byte_at(src, i) == 46 && is_digit(byte_at(src, i + 1)) {
                     fnum = true
                     i += 1
-                    if esign { i += 1 }
                     while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
                 }
+                if i < n && or2(byte_at(src, i) == 101, byte_at(src, i) == 69) {
+                    var esign = false
+                    if i + 1 < n && or2(byte_at(src, i + 1) == 43, byte_at(src, i + 1) == 45) { esign = true }
+                    var eok = false
+                    if esign && i + 2 < n && is_digit(byte_at(src, i + 2)) { eok = true }
+                    if !esign && i + 1 < n && is_digit(byte_at(src, i + 1)) { eok = true }
+                    if eok {
+                        fnum = true
+                        i += 1
+                        if esign { i += 1 }
+                        while i < n && or2(is_digit(byte_at(src, i)), byte_at(src, i) == 95) { i += 1 }
+                    }
+                }
             }
-            if !fnum { tend = i }
+            var tend = i
             var tk = byte_slice(src, tstart, tend) + "~"
             var sl = suffix_len(src, n, i)
             if sl > 0 { tk = tk + byte_slice(src, i, i + sl) }
@@ -124,6 +146,27 @@ fn scan(src: Str, toks: List[Str]) {
                 i += 2
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 toks.push("&&")
+                i += 2
+            } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
+                toks.push("+%")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 37 {
+                toks.push("-%")
+                i += 2
+            } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("+=")
+                i += 2
+            } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("-=")
+                i += 2
+            } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("*=")
+                i += 2
+            } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("/=")
+                i += 2
+            } else if b == 37 && i + 1 < n && byte_at(src, i + 1) == 61 {
+                toks.push("%=")
                 i += 2
             } else {
                 toks.push(byte_slice(src, i, i + 1))
@@ -168,7 +211,28 @@ fn qtext(raw: Str) -> Str {
     var n = raw.len
     while j < n {
         var c = byte_at(raw, j)
-        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
+        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 117 {
+            var hx = ""
+            var pp = j + 2
+            var mapped = false
+            if pp < n && byte_at(raw, pp) == 123 {
+                pp += 1
+                while pp < n && byte_at(raw, pp) != 125 {
+                    hx = hx + byte_slice(raw, pp, pp + 1)
+                    pp += 1
+                }
+                if hx == "4E2D" {
+                    out = out + "中"
+                    mapped = true
+                }
+            }
+            if mapped {
+                j = pp + 1
+            } else {
+                out = out + byte_slice(raw, j, j + 2)
+                j += 2
+            }
+        } else if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
             out = out + "\{"
             j += 2
         } else {
@@ -298,6 +362,8 @@ fn p_add(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var op = ""
         if t == "+" { op = "Add" }
         if t == "-" { op = "Sub" }
+        if t == "+%" { op = "WrapAdd" }
+        if t == "-%" { op = "WrapSub" }
         if op == "" { go = false } else {
             adv(cur)
             var r = p_mul(toks, cur)
@@ -358,6 +424,9 @@ fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var e = p_pri(toks, cur)
     var go = true
     while go {
+        while tok(toks, cur) == "NL" && toks[cur.load() + 1] == "." {
+            adv(cur)
+        }
         var t = tok(toks, cur)
         if t == "(" {
             adv(cur)
@@ -470,6 +539,22 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     if t == "match" {
         return p_match(toks, cur)
     }
+    if t == "void" {
+        adv(cur)
+        return mk("Void")
+    }
+    if t == "true" {
+        adv(cur)
+        var bt = mk("Bool")
+        bt.push("true")
+        return bt
+    }
+    if t == "false" {
+        adv(cur)
+        var bf = mk("Bool")
+        bf.push("false")
+        return bf
+    }
     if t == "own" {
         adv(cur)
         adv(cur)
@@ -537,11 +622,50 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         ns.push(parts_of(byte_slice(t, 1, t.len - 1)))
         return ns
     }
+    if t == "[" {
+        adv(cur)
+        var al = mk("ArrLit")
+        var more = true
+        while more {
+            if tok(toks, cur) == "]" { more = false } else {
+                al.push(p_stmt_expr(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+            }
+        }
+        adv(cur)
+        return al
+    }
     if t == "(" {
         adv(cur)
         var e = p_and(toks, cur)
         adv(cur)
         return e
+    }
+    if b0 >= 65 && b0 <= 90 && toks[cur.load() + 1] == "\{" {
+        var nm = t
+        adv(cur)
+        adv(cur)
+        var sl = mk("StructLit")
+        sl.push(nm)
+        var lf = mk("LitFs")
+        var more = true
+        while more {
+            if tok(toks, cur) == "}" {
+                more = false
+            } else {
+                var fnm = tok(toks, cur)
+                adv(cur)
+                adv(cur)
+                var fv = mk("LField")
+                fv.push(fnm)
+                fv.push(p_stmt_expr(toks, cur))
+                lf.push(fv)
+                if tok(toks, cur) == "," { adv(cur) }
+            }
+        }
+        adv(cur)
+        sl.push(lf)
+        return sl
     }
     adv(cur)
     var ni = mk("Ident")
@@ -599,24 +723,100 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         adv(cur)
         return tt
     }
+    if t == "&" {
+        adv(cur)
+        var rf = mk("Ref")
+        rf.push(p_typ(toks, cur))
+        if tok(toks, cur) == "?" {
+            adv(cur)
+            var op = mk("Optional")
+            op.push(rf)
+            return op
+        }
+        return rf
+    }
+    if t == "fn" {
+        adv(cur)
+        var ft = mk("FnT")
+        adv(cur)
+        var more2 = true
+        while more2 {
+            if tok(toks, cur) == ")" { more2 = false } else {
+                ft.push(p_typ(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more2 = false }
+            }
+        }
+        adv(cur)
+        var fret = mk("None")
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            fret = p_typ(toks, cur)
+        }
+        var ftn = mk("FnType")
+        ftn.push(ft)
+        ftn.push(fret)
+        if tok(toks, cur) == "?" {
+            adv(cur)
+            var op2 = mk("Optional")
+            op2.push(ftn)
+            return op2
+        }
+        return ftn
+    }
     var nm = tok(toks, cur)
     adv(cur)
     var nt = mk("Named")
     nt.push(nm)
     var ta = mk("TArgs")
     if tok(toks, cur) == "[" {
-        adv(cur)
-        var more = true
-        while more {
-            if tok(toks, cur) == "]" { more = false } else {
-                ta.push(p_typ(toks, cur))
-                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+        var nx1 = toks[cur.load() + 1]
+        var isempty = false
+        var single = false
+        if nx1 == "]" { isempty = true }
+        if !isempty && nx1 != "#EOF" && toks[cur.load() + 2] == "]" && is_digit(byte_at(nx1, 0)) { single = true }
+        if !isempty && !single {
+            adv(cur)
+            var more = true
+            while more {
+                if tok(toks, cur) == "]" { more = false } else {
+                    ta.push(p_typ(toks, cur))
+                    if tok(toks, cur) == "," { adv(cur) } else { more = false }
+                }
             }
+            adv(cur)
         }
-        adv(cur)
     }
     nt.push(ta)
-    return nt
+    var base = nt
+    if tok(toks, cur) == "[" {
+        var nx2 = toks[cur.load() + 1]
+        var isarr = false
+        if nx2 == "]" { isarr = true }
+        if nx2 != "#EOF" && toks[cur.load() + 2] == "]" && is_digit(byte_at(nx2, 0)) { isarr = true }
+        if isarr {
+            adv(cur)
+            if tok(toks, cur) == "]" {
+                adv(cur)
+                var sl = mk("Slice")
+                sl.push(base)
+                base = sl
+            } else {
+                var sz = p_stmt_expr(toks, cur)
+                adv(cur)
+                var ar = mk("ArrayT")
+                ar.push(base)
+                ar.push(sz)
+                base = ar
+            }
+        }
+    }
+    if tok(toks, cur) == "?" {
+        adv(cur)
+        var op3 = mk("Optional")
+        op3.push(base)
+        base = op3
+    }
+    return base
 }
 
 fn p_stmt_expr(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
@@ -978,13 +1178,19 @@ fn p_field(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return f
 }
 
-fn p_struct(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_struct2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
     adv(cur)
     var ns = mk("Struct")
     ns.push(nm)
+    ns.push(dr)
+    ns.push(tp)
     var fs = mk("Fields")
     var go = true
     while go {
@@ -1000,13 +1206,19 @@ fn p_struct(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return ns
 }
 
-fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_struct(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var dr0 = mk("Drvs")
+    return p_struct2(toks, cur, dr0)
+}
+
+fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
     var ne = mk("Enum")
     ne.push(nm)
+    ne.push(dr)
     var vs = mk("Vars")
     var go = true
     while go {
@@ -1035,8 +1247,17 @@ fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 kind = mk("KStruct")
                 var more2 = true
                 while more2 {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
                     if tok(toks, cur) == "}" { more2 = false } else if tok(toks, cur) == "#EOF" { more2 = false } else {
                         kind.push(p_field(toks, cur))
+                        while tok(toks, cur) == "NL" {
+                            adv(cur)
+                        }
+                        if tok(toks, cur) == "," {
+                            adv(cur)
+                        }
                     }
                 }
                 adv(cur)
@@ -1050,6 +1271,26 @@ fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return ne
 }
 
+fn p_prop_item(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur)
+    var body = mk("None")
+    var tag = "PropSig"
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = p_block(toks, cur)
+        tag = "PropImpl"
+    }
+    var pn = mk(tag)
+    pn.push(nm)
+    pn.push(ty)
+    pn.push(body)
+    return pn
+}
+
 fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     var it = mk("Items")
     var go = true
@@ -1057,8 +1298,14 @@ fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
         while tok(toks, cur) == "NL" {
             adv(cur)
         }
-        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else if tok(toks, cur) == "fn" {
+        var t = tok(toks, cur)
+        if or2(t == "}", t == "#EOF") {
+            adv(cur)
+            go = false
+        } else if t == "fn" {
             it.push(p_fn2(toks, cur, "Method"))
+        } else if t == "prop" {
+            it.push(p_prop_item(toks, cur))
         } else if kind == "trait" {
             go = false
         } else {
@@ -1128,6 +1375,11 @@ fn p_trait(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return nt
 }
 
+fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var dr0 = mk("Drvs")
+    return p_enum2(toks, cur, dr0)
+}
+
 fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     adv(cur)
     var nu = mk("Use")
@@ -1193,6 +1445,48 @@ fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var t = tok(toks, cur)
         if t == "#EOF" {
             go = false
+        } else if t == "pub" {
+            adv(cur)
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "fn" {
+                nf.push(p_fn2(toks, cur, "FnPub"))
+            } else {
+                nf.push(p_fn(toks, cur))
+            }
+        } else if t == "comptime" {
+            adv(cur)
+            nf.push(p_fn2(toks, cur, "FnC"))
+        } else if t == "@" {
+            adv(cur)
+            adv(cur)
+            adv(cur)
+            var dr2 = mk("Drvs")
+            var more3 = true
+            while more3 {
+                if tok(toks, cur) == ")" {
+                    more3 = false
+                } else {
+                    dr2.push(tok(toks, cur))
+                    adv(cur)
+                    if tok(toks, cur) == "," { adv(cur) }
+                }
+            }
+            adv(cur)
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var t2 = tok(toks, cur)
+            if t2 == "struct" {
+                nf.push(p_struct2(toks, cur, dr2))
+            } else if t2 == "enum" {
+                nf.push(p_enum2(toks, cur, dr2))
+            } else if t2 == "trait" {
+                nf.push(p_trait(toks, cur))
+            } else {
+                nf.push(p_fn(toks, cur))
+            }
         } else if t == "test" {
             nf.push(p_test(toks, cur))
         } else if t == "enum" {
@@ -1249,7 +1543,27 @@ fn pnode(n: List[Str]) -> Str {
             i += 1
         }
         out = out + "\n] }\n"
-        } else if or2(t == "Fn", t == "Method") {
+        } else if t == "FnPub" {
+        out = out + "Fn \{ attrs: [], vis: Pub, is_comptime: false, abi: None, name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], params: ["
+        var ps = n[3]
+        var j: I32 = 1
+        while j < ps.len {
+            if j > 1 { out = out + ", " }
+            out = out + pnode(ps[j])
+            j += 1
+        }
+        out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
+    } else if t == "FnC" {
+        out = out + "Fn \{ attrs: [], vis: Private, is_comptime: true, abi: None, name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], params: ["
+        var ps = n[3]
+        var j: I32 = 1
+        while j < ps.len {
+            if j > 1 { out = out + ", " }
+            out = out + pnode(ps[j])
+            j += 1
+        }
+        out = out + "], ret: " + pnode(n[4]) + ", body: " + pnode(n[5]) + "}"
+    } else if or2(t == "Fn", t == "Method") {
         out = out + t + " \{ attrs: [], vis: Private, is_comptime: false, abi: None, name: \""
         out = out + n[1] + "\", type_params: ["
         var tp = n[2]
@@ -1299,6 +1613,16 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "], is_comptime: " + n[2] + " }"
     } else if t == "TupleT" {
         out = out + "Tuple(" + pjoin(n) + ")"
+    } else if t == "Ref" {
+        out = out + "Ref(" + pnode(n[1]) + ")"
+    } else if t == "Optional" {
+        out = out + "Optional(" + pnode(n[1]) + ")"
+    } else if t == "FnType" {
+        out = out + "Fn \{ params: [" + pjoin(n[1]) + "], ret: " + pnode(n[2]) + "}"
+    } else if t == "Slice" {
+        out = out + "Slice(" + pnode(n[1]) + ")"
+    } else if t == "ArrayT" {
+        out = out + "Array \{ elem: " + pnode(n[1]) + ", size: " + pnode(n[2]) + "}"
     } else if t == "Named" {
         out = out + "Named \{ path: [\"" + n[1] + "\"], args: ["
         var tt = n[2]
@@ -1433,11 +1757,39 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "])"
     } else if t == "PatFld" {
         out = out + "StructPatField \{ name: \"" + n[1] + "\", pattern: " + pnode(n[2]) + "}"
-    } else if t == "Struct" {
-        out = out + "Struct \{ attrs: [], derives: [], name: \"" + n[1] + "\", type_params: [], fields: [" + pjoin(n[2]) + "] }"
+    } else if t == "StructLit" {
+        out = out + "StructLit \{ path: [\"" + n[1] + "\"], fields: ["
+        var ll = n[2]
+        var lj: I32 = 1
+        while lj < ll.len {
+            if lj > 1 { out = out + ", " }
+            out = out + pnode(ll[lj])
+            lj += 1
+        }
+        out = out + "] }"
+    } else if t == "LField" {
+        out = out + "StructField \{ name: \"" + n[1] + "\", value: " + pnode(n[2]) + "}"
+            } else if t == "Struct" {
+        out = out + "Struct \{ attrs: [], derives: ["
+        var dv = n[2]
+        var dj: I32 = 1
+        while dj < dv.len {
+            if dj > 1 { out = out + ", " }
+            out = out + "\"" + dv[dj] + "\""
+            dj += 1
+        }
+        out = out + "], name: \"" + n[1] + "\", type_params: [" + pjoin(n[3]) + "], fields: [" + pjoin(n[4]) + "] }"
     } else if t == "Enum" {
-        out = out + "Enum \{ attrs: [], derives: [], name: \"" + n[1] + "\", type_params: [], variants: [" + pjoin(n[2]) + "] }"
-    } else if t == "Field" {
+        out = out + "Enum \{ attrs: [], derives: ["
+        var dv2 = n[2]
+        var dj2: I32 = 1
+        while dj2 < dv2.len {
+            if dj2 > 1 { out = out + ", " }
+            out = out + "\"" + dv2[dj2] + "\""
+            dj2 += 1
+        }
+        out = out + "], name: \"" + n[1] + "\", type_params: [], variants: [" + pjoin(n[3]) + "] }"
+} else if t == "Field" {
         out = out + "Field \{ vis: Private, is_var: " + n[1] + ", name: \"" + n[2] + "\", ty: " + pnode(n[3]) + "}"
     } else if t == "Variant" {
         out = out + "Variant \{ name: \"" + n[1] + "\", kind: " + pnode(n[2]) + "}"
@@ -1451,6 +1803,8 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "Class \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], items: [" + pjoin(n[3]) + "] }"
     } else if t == "Impl" {
         out = out + "Impl \{ type_params: [" + pjoin(n[1]) + "], trait_ty: " + pnode(n[2]) + ", for_ty: " + pnode(n[3]) + ", items: [" + pjoin(n[4]) + "] }"
+    } else if or2(t == "PropSig", t == "PropImpl") {
+        out = out + t + " \{ vis: Private, name: \"" + n[1] + "\", ty: " + pnode(n[2]) + ", body: " + pnode(n[3]) + "}"
     } else if t == "Trait" {
         out = out + "Trait \{ attrs: [], name: \"" + n[1] + "\", type_params: [" + pjoin(n[2]) + "], supers: ["
         var su = n[3]
@@ -1497,6 +1851,12 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "Int \{ text: \"" + n[1] + "\", suffix: \"" + n[2] + "\"}"
     } else if t == "Float" {
         out = out + "Float \{ text: \"" + n[1] + "\", suffix: \"" + n[2] + "\"}"
+    } else if t == "Bool" {
+        out = out + "Bool(" + n[1] + ")"
+    } else if t == "Void" {
+        out = out + "Void"
+    } else if t == "ArrLit" {
+        out = out + "Array(" + pjoin(n) + ")"
     } else if t == "Ident" {
         out = out + "Ident(\"" + n[1] + "\")"
     }

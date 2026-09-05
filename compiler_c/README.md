@@ -93,6 +93,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C7b③ ✅ | 树版入 match/模式/struct/enum/泛型类型实参 | 夹具 12 项逐字节 |
 | C7b④ ✅ | 树版入 use/const/static/class/impl/trait/类型形参/元组类型 | 夹具 18 项逐字节 |
 | C7c ✅ | 树版入 TypeArgs 消歧/Index/Try?/.0/own/闭包/scope | 夹具 20 项逐字节 |
-| C7d ✅ | NL 记号+语句级消歧(Expr 语句/尾前瞻/空 return) | 夹具 23 项逐字节;C7e comptime/attrs/@derive/结构字面量 |
+| C7d ✅ | NL 记号+语句级消歧(Expr 语句/尾前瞻/空 return) | 夹具 23 项逐字节 |
+| C7e ✅ | 回绕算符/void/pub/\u 解码/@derive-Enum/类型三态/数组字面量/续行 | 夹具=全语法 input_parse_ast 逐字节;全语料树差分 26/49;C7f match-尾消歧/attrs 入树 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
