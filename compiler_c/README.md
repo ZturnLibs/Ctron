@@ -101,6 +101,7 @@ GC/并发/match/own 等域列允许表为 deferred(C4-b/c/d 逐域并入)。详�
 | C7f② ✅ | attrs #[] 入树/use .{组}/impl Prop 标签/for 模式/元组表达式 | **全语料树差分 49/49** |
 | C8a ✅ | 语义检查首发 sem_chk.ct:W8010 浅拷贝(树上行走) | 与 C sem 差分全等 |
 | C8b ✅ | W8020 must-use + E4030 no_spawn(树上行走,含嵌套闭包/scope) | 三检查 38/38 语料与 C 全等 |
-| C8c ✅ | Send 内核(ty_send 同构)+ E3020 Channel 元素 + E3031 static 存储 | 五检查 41/41 语料与 C 全等(200 用例);C8d E3010/E3060/E2030/能力调用 |
+| C8c ✅ | Send 内核(ty_send 同构)+ E3020 Channel 元素 + E3031 static 存储 | 五检查 41/41 语料与 C 全等 |
+| C8d ✅ | E3060 own 内类成员可变写(绑定 env 近似 + own 上下文) | 六检查 42/42 语料与 C 全等(201 用例);C8e E3050/E3010/E2030/能力调用 |
 
 计划文档:C1…C4 见各 `docs/superpowers/plans/2026-09-05-c-*.md`;**自举路线** `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。

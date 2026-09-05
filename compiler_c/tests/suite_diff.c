@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
     }
     // 语义差分(seq=4):sem_chk.ct(树上 W8010)模板换靶;仅当 C 诊断 ⊆ 已实现码 {W8010}
     {
-        static const char* known[] = {"W8010", "W8020", "E4030", "E3020", "E3031"};
+        static const char* known[] = {"W8010", "W8020", "E4030", "E3020", "E3031", "E3060"};
         char spath[4096];
         snprintf(spath, sizeof spath, "%s/sem_chk.ct", root);
         char* ssrc = read_file_str(spath);

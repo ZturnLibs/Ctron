@@ -2299,6 +2299,147 @@ fn send_of(file: List[Str], ty: List[Str], depth: I32) -> Bool {
     }
     return true
 }
+
+// ---- E3060:own 内对 GC 值可变写(env 近似;形参/let 注解或类构造字面量) ----
+fn env_lookup(envN: List[Str], envC: List[Str], nm: Str) -> Str {
+    var i = envN.len - 1
+    while i >= 0 {
+        if envN[i] == nm { return envC[i] }
+        i -= 1
+    }
+    return ""
+}
+fn ch_of_type(file: List[Str], ty: List[Str]) -> Str {
+    if ty.len == 0 { return "" }
+    if ty[0] == "Named" {
+        var n = ty[1]
+        var c = decl_node(file, "Class", n)
+        if c.len > 0 { return n }
+    }
+    return ""
+}
+fn walk6e(file: List[Str], e: List[Str], ow: Bool, envN: List[Str], envC: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Own" {
+        walk6b(file, e[2], true, envN, envC, diags)
+        return
+    }
+    if t == "If" {
+        walk6e(file, e[1], ow, envN, envC, diags)
+        walk6b(file, e[2], ow, envN, envC, diags)
+        walk6e(file, e[3], ow, envN, envC, diags)
+        return
+    }
+    if t == "BlockExpr" {
+        walk6b(file, e[1], ow, envN, envC, diags)
+        return
+    }
+    if t == "Match" {
+        walk6e(file, e[1], ow, envN, envC, diags)
+        var arms = e[2]
+        var i2: I32 = 1
+        while i2 < arms.len {
+            walk6e(file, arms[i2][2], ow, envN, envC, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        walk6e(file, e[3], ow, envN, envC, diags)
+        return
+    }
+    if t == "Scope" {
+        walk6b(file, e[2], ow, envN, envC, diags)
+        return
+    }
+}
+fn walk6b(file: List[Str], b: List[Str], ow: Bool, envN: List[Str], envC: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Let" {
+            var ch = ""
+            var ty0 = st[3]
+            ch = ch_of_type(file, ty0)
+            if ch == "" {
+                var ex = st[4]
+                if ex[0] == "StructLit" {
+                    var cn = ex[1]
+                    if decl_node(file, "Class", cn).len > 0 {
+                        ch = cn
+                    }
+                }
+            }
+            var pat = st[2]
+            if pat[0] == "Ident" && ch != "" {
+                envN.push(pat[1])
+                envC.push(ch)
+            } else if pat[0] == "Ident" {
+                envN.push(pat[1])
+                envC.push("")
+            }
+        } else if t == "Assign" {
+            if ow {
+                var tgt = st[1]
+                if tgt[0] == "Member" {
+                    var obj = tgt[1]
+                    if obj[0] == "Ident" {
+                        var nm = obj[1]
+                        var ch2 = env_lookup(envN, envC, nm)
+                        if ch2 != "" {
+                            diags.push("E3060: own 块内对 GC 值可变写(mutable):" + nm)
+                        }
+                    }
+                }
+            }
+            walk6e(file, st[3], ow, envN, envC, diags)
+        } else if t == "Return" {
+            walk6e(file, st[1], ow, envN, envC, diags)
+        } else if t == "Expr" {
+            walk6e(file, st[1], ow, envN, envC, diags)
+        } else if t == "While" {
+            walk6e(file, st[1], ow, envN, envC, diags)
+            walk6b(file, st[2], ow, envN, envC, diags)
+        } else if t == "For" {
+            walk6e(file, st[2], ow, envN, envC, diags)
+            walk6b(file, st[3], ow, envN, envC, diags)
+        }
+        i += 1
+    }
+    walk6e(file, b[b.len - 1], ow, envN, envC, diags)
+}
+fn sem_e3060(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var out = ""
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envC = List[Str]()
+    var body = d[2]
+    if tag != "Test" {
+        body = d[5]
+    }
+    // 形参绑定(仅 Param;Receiver 跳过)
+    var ps = List[Str]()
+    if tag != "Test" {
+        ps = d[3]
+    }
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envC.push(ch_of_type(file, p[3]))
+        }
+        k += 1
+    }
+    walk6b(file, body, false, envN, envC, diags)
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}
 fn sem_walk2(file: List[Str]) -> Str {
     var out = ""
     var diags = List[Str]()
@@ -2357,8 +2498,16 @@ fn sem_walk2(file: List[Str]) -> Str {
                 ns = true
             }
             walk_b(file, d[5], ns, fns, rets, diags)
+            var e6 = sem_e3060(file, d, t)
+            if e6 != "" {
+                diags.push(byte_slice(e6, 0, e6.len - 1))
+            }
         } else if t == "Test" {
             walk_b(file, d[2], false, fns, rets, diags)
+            var e6b = sem_e3060(file, d, "Test")
+            if e6b != "" {
+                diags.push(byte_slice(e6b, 0, e6b.len - 1))
+            }
         } else if t == "Static" {
             if !send_of(file, d[3], 0) {
                 diags.push("E3031: static 存储非 Send(Send):" + d[1])
