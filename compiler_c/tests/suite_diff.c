@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
         {"lex_kind.ct", "input_ops.ct", 1},
         {"lex_adv.ct", "input_adv.ct", 1},
         {"lex_corpus.ct", "../tests/05_own.ct", 1},
+        {"lex_float.ct", "input_floats.ct", 1},
     };
     size_t fails = 0;
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
