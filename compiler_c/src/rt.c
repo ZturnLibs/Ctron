@@ -11,6 +11,7 @@
 #include "parser.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -1604,8 +1605,11 @@ static val eval_expr(rt* R, cexpr* e) {
                 val iv = eval_expr(R, e->elems[1]);
                 if (sv.k != V_STR) rt_abort(R, RT_ERROR, "byte_at 目标需 Str");
                 long long i = (long long)iv.i;
-                if (i < 0 || (unsigned long long)i >= strlen(sv.s)) rt_abort(R, RT_PANIC, "index out of bounds");
-                return v_int((unsigned char)sv.s[i], 32, 0);
+                if (i < 0 || !sv.s) rt_abort(R, RT_PANIC, "index out of bounds");
+                // O(1) 快路径:非结尾字节直取;疑似结尾才回退 strlen 全检(保持原语义)
+                if ((unsigned char)sv.s[i] != 0) return v_int((unsigned char)sv.s[i], 32, 0);
+                if ((unsigned long long)i >= strlen(sv.s)) rt_abort(R, RT_PANIC, "index out of bounds");
+                return v_int(0, 32, 0);
             }
             if (!strcmp(nm, "byte_slice")) {
                 if (e->nelems != 3) rt_abort(R, RT_ERROR, "byte_slice 实参");
@@ -1620,6 +1624,41 @@ static val eval_expr(rt* R, cexpr* e) {
                 o.k = V_STR;
                 o.s = ctron_arena_strndup(R->a, sv.s + a, (size_t)(b - a));
                 return o;
+            }
+            if (!strcmp(nm, "read_dir")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_dir 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                DIR* dd = opendir(path);
+                if (!dd) {
+                    val* none = NULL;
+                    return v_tag("None", none, 0);
+                }
+                size_t cap = 256, len = 0;
+                char* buf = (char*)malloc(cap);
+                if (!buf) abort();
+                buf[0] = 0;
+                struct dirent* de;
+                while ((de = readdir(dd)) != NULL) {
+                    if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+                    size_t bl = strlen(de->d_name);
+                    if (len + bl + 2 > cap) {
+                        while (len + bl + 2 > cap) cap *= 2;
+                        char* nb2 = (char*)realloc(buf, cap);
+                        if (!nb2) abort();
+                        buf = nb2;
+                    }
+                    memcpy(buf + len, de->d_name, bl);
+                    len += bl;
+                    buf[len++] = '\n';
+                }
+                closedir(dd);
+                buf[len] = 0;
+                char* ar = ctron_arena_strndup(R->a, buf, len);
+                free(buf);
+                val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                one[0] = v_str_own(R, ar);
+                return v_tag("Some", one, 1);
             }
             if (!strcmp(nm, "read_file")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_file 实参");

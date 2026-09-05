@@ -37,6 +37,6 @@ make -C compiler_c test              # 全量差分验收(make test 已依赖同
 ## 自举状态与下一步
 
 - 词法 / 全语法结构化解析 / 单文件语义(12 项)均在 Ctron 侧达成,全部以 C 版契约差分锁定;
-- 下一步:模块级(包/Ctron.toml/caps)检查、Ctron 侧执行层(test 块运行)、统一的 Ctron `cc` 驱动
+- 下一步:模块级其余(caps E4010/comptime 预算/use 可见性)、Ctron 侧执行层(test 块运行)、统一的 Ctron `cc` 驱动
   (parse→check 串成一个模块入口),之后把运行也交还 Ctron 侧。
 - 详细路线见 `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。
