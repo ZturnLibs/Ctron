@@ -2466,6 +2466,13 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             tv2.push(e[1])
             return e4("k", env, tv2, out)
         }
+        var fnd = find_decl(file, e[1])
+        if fnd.len > 0 {
+            var fv = List[Str]()
+            fv.push("F")
+            fv.push(e[1])
+            return e4("k", env, fv, out)
+        }
         panic("unbound:" + e[1])
         return e4("a", env, vV2(), out)
     }
@@ -2608,6 +2615,14 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         var br = run_block(file, env, out, e[1])
         return e4(br[0], br[1], br[3], br[2])
     }
+    if t == "Closure" {
+        var cv = List[Str]()
+        cv.push("C")
+        cv.push(e[1])
+        cv.push(e[3])
+        cv.push(env)
+        return e4("k", env, cv, out)
+    }
     if t == "ArrLit" {
         var arr = List[Str]()
         arr.push("A")
@@ -2747,6 +2762,30 @@ fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals:
     }
     return e4(fl, env, br[3], br[2])
 }
+fn call_cv(file: List[Str], env: List[Str], out: Str, v: List[Str], vals: List[Str]) -> List[Str] {
+    if seq2(v[0], "F") {
+        var d = find_decl(file, v[1])
+        if d.len == 0 {
+            panic("no fn:" + v[1])
+            return e4("a", env, vV2(), out)
+        }
+        return call_decl_vals(file, env, out, d, vals)
+    }
+    if seq2(v[0], "C") {
+        var cap = v[3]
+        var cp = v[1]
+        var nenv = cap
+        var k: I32 = 1
+        while k < cp.len {
+            nenv = env_add(nenv, cp[k][2], vals[k - 1])
+            k += 1
+        }
+        var br = eval_expr(file, nenv, out, v[2])
+        return e4(br[0], env, br[2], br[3])
+    }
+    panic("call value")
+    return e4("a", env, vV2(), out)
+}
 fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> List[Str] {
     if seq2(nm, "print") {
         if vals.len == 1 {
@@ -2823,6 +2862,13 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             qq += 1
         }
         return e4("k", env, tv, out)
+    }
+    var evb = env_at(env, nm)
+    if evb.len > 0 {
+        var kv = evb[1]
+        if or2(seq2(kv[0], "C"), seq2(kv[0], "F")) {
+            return call_cv(file, env, out, kv, vals)
+        }
     }
     var d = find_decl(file, nm)
     if d.len == 0 {

@@ -76,3 +76,4 @@
   `make test` 暂不可用;验收请逐 suite 构建运行(或等其落盘)。勿改其 Makefile。
 - C9d③ ✅(struct/枚举域;seq=5d 223 cases)。
 - C9e① ✅(cc.ct 快照刷新至 C9d + UFCS;seq5e/seq9-cc2,225 cases)。
+- C9e② ✅(闭包/fn 值;seq5f,226 cases)。

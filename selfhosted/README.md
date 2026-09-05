@@ -18,6 +18,7 @@
 | `ev2.ct`(续) | **Option/Result 域**:tag 值 Some/None/Ok/Err(构造/裸 Ident)+ match 模式绑定 + `?` Try 传播 | C9d② seq=5 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **struct/枚举域**:StructLit/字段读写/struct 模式绑定 + 用户枚举 unit 变体(裸值/SubUnit) | C9d③ seq=5 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **UFCS**:`x.f(args)` → 文件自由 fn 首参调用 | C9e① seq=5 与 C rt 逐字一致 |
+| `ev2.ct`(续) | **闭包/fn 值**:裸 fn 名 fn-ref、闭包字面量捕获、fn 类型参数高阶调用 | C9e② seq=5 与 C rt 逐字一致 |
 | `cc.ct` | **统一 cc 驱动**(自足快照:parse→单文件语义 12 项→run):有诊断输出 `CODE: msg` 并止;干净则解释执行 main/test | C9c+C9e① seq=9 正/负夹具与 C 管线逐字一致 |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |
 
@@ -57,7 +58,8 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
 - C9d③(struct/枚举域)已交付:StructLit/字段读写/struct 模式/用户枚举 unit 变体,input_ev2d.ct 与原生逐字一致(223 cases);
 - C9e①(cc 快照刷新 + UFCS)已交付:cc.ct 重拼至 C9d 求值器并新增富程序正例 input_cc2.ct;
   ev2.ct 补 UFCS(21.double()/6.scale(7)),input_ev2e.ct 与原生逐字一致(225 cases);
-- 下一步:运行域继续对齐(闭包/List/trait 默认方法等),或单文件语义扩面,
+- C9e②(闭包/fn 值)已交付:裸 fn 名 fn-ref、闭包字面量捕获、fn 类型参数高阶调用(input_ev2f.ct,226 cases);
+- 下一步:运行域继续对齐(List/trait 默认方法/impl 方法等),或单文件语义扩面,
   或把 `selfhosted/` 提升为独立工具链(cc.ct 快照需并入 C9d①② 后固化)。
 - 注意:仓库 `make test` 暂被并行 C10-a 流(trans/suite_trans WIP)阻断,本目录逐 suite 构建运行可用。
 - 详细路线见 `docs/superpowers/plans/2026-09-05-c-bootstrap.md`。

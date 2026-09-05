@@ -1,0 +1,23 @@
+fn apply_twice(f: fn(I32) -> I32, x: I32) -> I32 {
+    return f(f(x))
+}
+
+fn double(x: I32) -> I32 {
+    return x * 2
+}
+
+fn combine(f: fn(I32, I32) -> I32, a: I32, b: I32) -> I32 {
+    return f(a, b)
+}
+
+fn main() -> I32 {
+    println(apply_twice(double, 5).to_string())
+    println(apply_twice(|x| x + 3, 5).to_string())
+    println(combine(|a, b| a * 10 + b, 4, 2).to_string())
+    var g = |x| x * 100
+    println(g(7).to_string())
+    var base = 1000
+    var h = |x| x + base
+    println(h(1).to_string())
+    return 0
+}

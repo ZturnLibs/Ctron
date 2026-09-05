@@ -180,6 +180,12 @@
    求值器再补 **UFCS**:`x.f(args)` 找不到内建方法时按文件自由 fn `f` 以接收者为首参调用
    (镜像 C rt file_fn 收参);新 seq5 用例 `input_ev2e.ct`(21.double()/6.scale(7)/len)。
    suite_diff 225 cases 全绿;ASan/UBSan 绿。
+19c. **C9e②(本文件交付)—— Ctron 求值器闭包/fn 值**:`ev2.ct` 补 Ident 裸函数名 → fn-ref
+   值 ["F",name](镜像 C file_fn)、闭包字面量求值 ["C",cp,body,capEnv](镜像 V_CLOSURE 捕获),
+   call_cv 调用路径(env 绑定 C/F 值 → 以 fn 名找 decl/绑定参后 eval 闭包体);Ctron 语料
+   fn 类型参数 `fn(I32)->I32` 接收具名 fn 与闭包字面量,多参闭包适配。验收:suite_diff 新增
+   seq5 用例 input_ev2f.ct(apply_twice(double|闭包)/combine 多参/闭包变量调用/捕获外层局部)
+   与原生逐字一致;suite_diff 226 cases 全绿;ASan/UBSan 绿。
 
 
 ## 自举产物目录
