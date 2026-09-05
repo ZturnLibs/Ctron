@@ -97,3 +97,18 @@
 - 新钉子:①宿主解析器**无 inherent impl**(`impl Type {}` 不支持,必须 impl Trait for Type);
   ②self 可变方法挂账 C9g(类原地写 vs 结构体重建的写语义区分);③内建 to_string/slice
   未按接收者种类门控(夹具避开)。
+---
+## 更新记录(19f session,C9g)
+- C9g ✅(绑定克隆与原地写;seq5i input_ev2i.ct,229 cases)。bind_of 镜像 env_let 的
+  克隆决策(结构体非类深克隆入槽,类/List/标量保引用);成员写改 u_set_ip 原地透
+  (self 可变方法由此可用);vdeep 按种类分发重写。
+- **竞态镜像重演**:我方未提交的 C9g 三文件(ev2.ct/input_ev2i.ct/suite_diff.c 注册行)
+  被并行 session 以 40cdd0c(P1-D 提交)一并落库 —— 双向竞态成立。裁决:不再做历史
+  手术,以本条 + 计划 19f 留痕;后续双方都应:**改完即小步提交,add 前逐文件自查**。
+- 新钉子:①**字符串载荷不可索引**(裸槽 v[1] 做 it[0] 即宿主 panic"索引目标非数组";
+  本批 vdeep 初版踩中,已修);②for 迭代绑定不克隆(镜像 rt ST_FOR 棗写);③结构体
+  右值字段写克隆(rt 774 行)挂账。
+- 排障经验:suite_diff 计数不一致(O2 229 vs ASan 228)为陈旧二进制所致 —— ASan 二进制
+  建于 suite_diff.c 中间态;**每次改套件用例后两个构建都要重建再对比**。并行方 trans.c
+  WIP 若阻断构建,用 `git show HEAD:compiler_c/src/trans.c` 稳定版链接验收。
+- 下一批:cc.ct 快照刷新并入 C9f/C9g,或单文件语义扩面,或 selfhosted 独立工具链。

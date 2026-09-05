@@ -213,6 +213,21 @@
    默认 describe 内 self.name prop + self.now() 方法互调/空 impl/env.now()·env.name·
    env.describe()/Tagged 多参方法 label(6))与原生逐字一致;suite_diff 228 cases 全绿;
    suite_run 16/suite_rt 34 全绿;ASan/UBSan 绿。
+19f. **C9g(本文件交付)—— 绑定克隆与原地写(self 可变方法前置)**:镜像 rt.c
+   env_let(结构体值非类深克隆入槽;类/List/标量保引用)与 ST_ASSIGN(成员写经绑定槽
+   原地生效)。`ev2.ct` 新增 bind_of(Let/call_decl_vals/call_method_vals 自绑定与形参/
+   Assign Ident 右值统一走克隆决策)与 u_set_ip(宿主 List 索引写原地改字段);成员写
+   从 env_set 重建改为原地写(结构体绑定时已克隆 → 原地≡重建;类共享 → 别名可见,
+   self 可变方法由此可用);vdeep 重写为按种类分发(U 域名/值交错递归、A/L 值槽递归、
+   标量/T/F/C 逐槽拷贝不窥探)。钉子:①字符串载荷不可索引(v[1] 类裸槽它[0] 即
+   宿主 rt panic"索引目标非数组"—— 本批踩中并修复,初版 vdeep 对标量载荷做 it[0]
+   窥探所致);②for 迭代绑定不克隆(镜像 rt ST_FOR 直接棗写);③结构体字段写时若
+   右值为结构体,rt 会克隆(774 行)—— ev2 暂按引用(夹具避开,挂账)。
+   验收:suite_diff 新增 seq5 用例 input_ev2i.ct(结构体克隆独立/结构体参数值语义
+   touch 不外泄/类别名 z-w 互见/方法内 self.v 写外部可见/复合成员写)与原生逐字一致;
+   suite_diff 229 cases 全绿(O2 与 ASan 同数,消除构建时序假象);其余套件全绿。
+   注:C9g 代码因并行竞态被卷入 40cdd0c(P1-D 提交)落库,本条为设计裁定与验收留痕;
+   竞态双向版详见交接文档 19g 记录。
 
 
 ## 自举产物目录
