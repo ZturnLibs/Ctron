@@ -44,6 +44,8 @@ enum VTy {
     ErrPtr,
     /// 错误 cause 专用 Option(载荷为错误对象;expect 解包为 ErrPtr)
     SumErr(u32, Pay),
+    /// 函数指针(ct_i → ct_i;非捕获闭包与用户函数引用)
+    FnPtr,
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -122,6 +124,7 @@ struct TypeInfo {
 }
 
 pub struct Trans {
+    closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
     ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
     scopes: Vec<Vec<(String, String, VTy)>>, // 作用域栈:(名, C 名, 类型)
@@ -135,7 +138,7 @@ pub struct Trans {
 
 impl Trans {
     pub fn new() -> Self {
-        Trans { ret_anyerr: false,
+        Trans { closure_defs: Vec::new(), ret_anyerr: false,
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
             type_by_name: std::collections::HashMap::new(),
@@ -241,6 +244,7 @@ impl Trans {
         }
 
         self.w(0, PREAMBLE);
+        self.w(0, "/* @@CLOSURES@@ */");
 
         // 用户类型 typedef(struct 值语义 / class 指针语义)
         let types_snapshot = self.types.clone();
@@ -278,7 +282,9 @@ impl Trans {
         } else {
             self.w(0, "int main(void) { alarm(20); return 0; }");
         }
-        Ok(self.sink.into_iter().next_back().unwrap_or_default())
+                let main = self.sink.pop().unwrap_or_default();
+        let defs = self.closure_defs.join("");
+        Ok(main.replace("/* @@CLOSURES@@ */", &defs))
     }
 
     fn intern_enum(&mut self, name: &str, variants: Vec<(String, usize)>) -> u32 {
@@ -477,6 +483,7 @@ impl Trans {
             VTy::Range => "ct_range",
             VTy::Array => "ct_arr*",
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
+            VTy::FnPtr => "ct_fnptr",
             VTy::ErrPtr => "ct_i",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
             VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
@@ -750,6 +757,10 @@ impl Trans {
             ast::Expr::Ident(name) => {
                 if let Some((c, ty)) = self.lookup(name) {
                     return Ok((c, ty));
+                }
+                // 用户函数引用(函数一等公民,如 opt.map(twice))
+                if self.lookup_fn(name).is_some() {
+                    return Ok((sanitize(name), VTy::FnPtr));
                 }
                 // 无参变体作为值表达式(如 `return Stop`)
                 if let Some((eid, vid)) = self.find_variant(name) {
@@ -1034,6 +1045,49 @@ impl Trans {
                     unwrap_ty,
                 ))
             }
+            ast::Expr::Closure { params, body, .. } => {
+                // 非捕获闭包 → 顶层 static 函数 + 指针(捕获闭包域外)
+                let fname = self.uniq_name("closure");
+                let mut sig = String::from("static ct_i ");
+                sig.push_str(&fname);
+                sig.push_str("(");
+                self.scope_push();
+                let mut ps = Vec::new();
+                for cp in params {
+                    let c = self.bind(&cp.name, VTy::Int(None));
+                    ps.push(format!("ct_i {}", c));
+                }
+                sig.push_str(&ps.join(", "));
+                sig.push_str(") {");
+                self.closure_defs.push(sig);
+                match body.as_ref() {
+                    ast::Expr::BlockExpr(b) => {
+                        let mut buf = std::mem::take(&mut self.sink);
+                        // 闭包体发射进独立缓冲再拼接
+                        self.sink.push(String::new());
+                        self.emit_block_stmts(b)?;
+                        let code = self.sink.pop().unwrap_or_default();
+                        self.sink = buf;
+                        buf = Vec::new();
+                        for line in code.lines() {
+                            let last = self.closure_defs.last_mut().unwrap();
+                            last.push_str("    ");
+                            last.push_str(line);
+                            last.push('\n');
+                        }
+                        let _ = buf;
+                    }
+                    other => {
+                        let (c, ty) = self.expr(other)?;
+                        let _ = ty;
+                        let last = self.closure_defs.last_mut().unwrap();
+                        last.push_str(&format!("    return {};\n", c));
+                    }
+                }
+                self.scope_pop();
+                self.closure_defs.last_mut().unwrap().push_str("}\n");
+                Ok((fname, VTy::FnPtr))
+            }
             ast::Expr::Call { callee, args } => self.call(callee, args),
             ast::Expr::TypeArgs { expr, args } => {
                 // as[T]() 显式转换(§3.6 截断语义)
@@ -1271,6 +1325,16 @@ impl Trans {
                     }
                     "is_none" | "is_err" => {
                         (format!("(({}).variant == 1)", rc), VTy::Bool)
+                    }
+                    "map" => {
+                        let Some(a) = args.first() else { return Err("trans:map 需函数".into()) };
+                        let (fc, ft) = self.expr(a)?;
+                        if ft != VTy::FnPtr { return Err("trans:map 需函数指针".into()); }
+                        // Ok/Some → f(载荷) 重包;Err/None → 原样(Result 的 Err 槽 p[0] 不动)
+                        (format!(
+                            "({{ ct_sum t = ({}); ct_sum ct_m; if (t.variant != 0) {{ ct_m = t; }} else {{ ct_m = t; ct_m.p[0].i = ((ct_fnptr)({}))(t.p[0].i); }} ct_m; }})",
+                            rc, fc),
+                         rt)
                     }
                     "context" => {
                         // Err → Err(AnyError{message, cause=原载荷});Ok 原样
@@ -1520,6 +1584,7 @@ static int ct_assert(int ok) {
     return ok;
 }
 /* ---- 和类型:tagged union;载荷槽 i/f 按静态类型选用 ---- */
+typedef ct_i (*ct_fnptr)(ct_i);
 typedef union { ct_i i; double f; } ct_cell;
 typedef struct { int variant; ct_cell p[4]; } ct_sum;
 
