@@ -312,9 +312,6 @@ impl Trans {
         for d in &file.decls {
             if let ast::Decl::Impl(im) = d {
                 let tn = match &im.trait_ty { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() };
-                if tn == "Drop" {
-                    return Err("trans v1 拒绝域:Drop 析构钩子(发射时机待修,下一里程碑)".into());
-                }
                 let ft = match &im.for_ty { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() };
                 self.impls.push((tn.clone(), ft.clone()));
                 let tid = self.type_by_name.get(&ft).copied();
@@ -1552,15 +1549,31 @@ impl Trans {
                 }
             }
             ast::Expr::BlockExpr(b) => {
+                // 尾表达式必须在 drops 之前于块内求值:void 尾就地发射;
+                // 值尾先落临时变量,使用点引用(drops 不得吞掉副作用或值)
                 self.scope_push();
-                for s in &b.stmts { self.emit_stmt(s)?; }
-                let out = match &b.tail {
-                    Some(t) => self.expr(t)?,
-                    None => ("0".to_string(), VTy::Void),
-                };
-                self.emit_scope_drops();
-                self.scope_pop();
-                Ok(out)
+                for st in &b.stmts { self.emit_stmt(st)?; }
+                match &b.tail {
+                    Some(t) => {
+                        let (c, ty) = self.expr(t)?;
+                        if matches!(ty, VTy::Void | VTy::Unknown) {
+                            self.w(1, &format!("(void)({});", c));
+                            self.emit_scope_drops();
+                            self.scope_pop();
+                            return Ok(("0".into(), VTy::Void));
+                        }
+                        let tv = self.uniq_name("blk");
+                        self.w(1, &format!("{} {} = ({});", self.c_ty(ty), tv, c));
+                        self.emit_scope_drops();
+                        self.scope_pop();
+                        return Ok((tv, ty));
+                    }
+                    None => {
+                        self.emit_scope_drops();
+                        self.scope_pop();
+                        Ok(("0".into(), VTy::Void))
+                    }
+                }
             }
             ast::Expr::Tuple(items) => {
                 if items.len() != 2 { return Err("trans v1 拒绝域:非二元组".into()); }

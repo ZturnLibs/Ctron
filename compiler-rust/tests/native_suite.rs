@@ -70,7 +70,7 @@ fn native_matches_interpreter() {
             msgs.is_empty()
         };
 
-        // 转译(域外 → skip)
+        // 转译(域外 → skip;全量覆盖后不应再有域外)
         let (file_ast, diags) = ctron::parse_src(&src);
         if !diags.is_empty() { skipped += 1; continue; }
         let c_code = match ctron::trans::Trans::new().trans_file(&file_ast) {
@@ -119,6 +119,6 @@ fn native_matches_interpreter() {
     }
 
     println!("P1-E 原生差分: {ran} 文件原生运行一致, {skipped} 域外跳过");
-    assert!(ran >= 31, "原生差分覆盖不应回退(已到 32),实际 {ran}");
+    assert!(ran >= 33, "原生差分覆盖必须全量(33),实际 {ran}");
     assert!(failures.is_empty(), "原生/解释器分歧({}):\n{}", failures.len(), failures.join("\n---\n"));
 }
