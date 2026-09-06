@@ -129,6 +129,11 @@
   未加守卫。自编译阶梯:input_cc3/sem_chk/parsetree ✓(≤2s);ev2/cc 种子解释器资源边界
   (~90-120s 被杀)→ 下一阶梯 C9i②:种子解释器性能(或自举二进制替代种子)。
   验收:make test 全量绿(含并行新增 corpus_trans 17/17)+ suite_diff 230(O2/ASan 同数)。
+- **LitFs 守卫补遗(C9i①收尾)**:最小复现 `if <ident> <op> <ident> { 赋值 }` + 单行 fn 确定性挂起
+  = p_pri StructLit 在 if 条件上下文误触发 + LitFs 无 #EOF 守卫。已落地 LitFs `#EOF` 退出 + `NL`
+  跳过,三复现 0s 通过。allow_struct 线程化(C 正解)已实现到链路完整但 s6 仍挂(第二旋点未定位),
+  已回退未提交;C9i③ = 静机器 + 探针重做 allow 线程化。ev2/cc 自编译被杀(129-141s)疑负载混叠,
+  静机器重测后再定性。
 - **⚠️ 负载警示(重要)**:本轮后半段机器 load average 6.16(并行 session 并发构建),
   全部自译化计时数据不可信:20 行文件实测 177s(纯 CPU 争抢),8s 超时被误判为挂起。
   **下 session 首要先确认负载,再重测全部阶梯**。

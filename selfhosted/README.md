@@ -24,7 +24,8 @@
 | `ev2.ct`(续) | **绑定克隆与原地写**:结构体绑定深克隆、类引用共享、self 可变方法、成员写原地透 | C9g seq=5 与 C rt 逐字一致 |
 | `cc.ct` | **统一 cc 驱动**(自足快照 5.5k 行:parse→单文件语义 12 项→run 全量求值器):有诊断输出 `CODE: msg` 并止;干净则解释执行 main/test | C9h 刷新至 C9g,seq9 正/负夹具与 C 管线逐字一致 |
 | `cc.sh` | **独立工具链驱动**:任意 .ct 输入 → cc.ct 编译运行(换靶模板锚 + 宿主 seed 解释) | C9h |
-| 自编译检查 | cc 全管线 parse+sem 自身/互检源码:input_cc3/sem_chk/parsetree ✓(≤2s);ev2/cc 种子解释器资源边界(~90-120s 被杀,挂账 C9i②) | C9i① |
+| 自编译检查 | cc 全管线 parse+sem 自身/互检源码:input_cc3/sem_chk/parsetree ✓(≤2s);ev2/cc ~130s 被杀(负载混叠,静机器待重测) | C9i① |
+| 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫 + StructLit LitFs #EOF 守卫(条件内误触发不再挂起) | C9i① |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |
 
 ## 用法(宿主 = C 版 ctronc)

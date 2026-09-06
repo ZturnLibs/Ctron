@@ -252,6 +252,18 @@
    17/17)+ suite_diff 230(O2/ASan 同数);自编译阶梯实测:input_cc3/sem_chk(120KB)/
    parsetree 源码可被 cc 全管线 parse+sem 通过(≤2s);ev2/cc 自身源码在种子解释器上
    ~90-120s 被系统资源杀(非逻辑失败,解释器资源边界,挂账 C9i② 性能)。
+20c. **C9i①补遗(本文件交付)—— p_pri StructLit LitFs 循环 #EOF/NL 守卫(消除条件内误触发死旋)**:
+   自译化复现链(20 行最小夹具 `if <ident> <op> <ident> { 赋值 }` + 单行 fn)确定性挂起,根因 =
+   p_pri 的 StructLit 分支(大写标识符 + `{` 前瞻)在 **if 条件上下文**误触发(`L {` 被当作
+   结构体字面量),其 LitFs 循环无 #EOF 守卫 → clamped-#EOF 无限旋。C 解析器的正解是
+   allow_struct 标志线程穿透(if/match/while/for 头部传 0)——已实现并验证链路
+   (al 参数 17 处传递 + 4 个 "0" 条件位 + StructLit 按 al 门控),但 s6 复现仍挂
+   (存在第二处旋点,与负载混叠未定位)——**allow 线程化已回退未提交**,留作 C9i③
+   (需在静机器 + 探针法下重做)。本轮落地最小修复:LitFs 循环加 `#EOF` 退出 + `NL` 跳过
+   (镜像其他循环模式),误触发从"无限挂起"变为"快速吸收",三复现(s6/hand2/cm_ol)
+   全部 0s 通过,230 cases + suite_run 16 全绿。
+   负载警示:本轮后半段 load average 6-9(并行 session 并发构建),所有计时数据不可信,
+   ev2/cc 自编译 ~130-141s 被杀需在静机器重测(区分真慢/负载假象)后再定 C9i② 方案。
 
 
 ## 自举产物目录

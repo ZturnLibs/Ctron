@@ -775,8 +775,10 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var lf = mk("LitFs")
         var more = true
         while more {
-            if tok(toks, cur) == "}" {
+            if or2(tok(toks, cur) == "}", tok(toks, cur) == "#EOF") {
                 more = false
+            } else if tok(toks, cur) == "NL" {
+                adv(cur)
             } else {
                 var fnm = tok(toks, cur)
                 adv(cur)
