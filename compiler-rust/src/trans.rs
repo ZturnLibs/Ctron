@@ -126,6 +126,10 @@ struct TypeInfo {
 pub struct Trans {
     impls: Vec<(String, String)>, // (trait 名, 类型名)——方法/prop 分发注册表
     decls: Vec<ast::Decl>,
+    generics: std::collections::HashMap<String, (bool, Vec<(String, ast::Type)>)>, // 名 → (is_class, 字段)
+    mono_keys: std::collections::HashMap<String, u32>, // 实例键 → tid
+    mono_names: std::collections::HashMap<String, String>, // 任意键 → C 名
+    late_defs: Vec<String>, // 晚期定义(实例 typedef / 单态 fn / show fn)
     closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
     ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
@@ -140,7 +144,11 @@ pub struct Trans {
 
 impl Trans {
     pub fn new() -> Self {
-        Trans { impls: Vec::new(), decls: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
+        Trans { impls: Vec::new(), decls: Vec::new(),
+            generics: std::collections::HashMap::new(),
+            mono_keys: std::collections::HashMap::new(),
+            mono_names: std::collections::HashMap::new(),
+            late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
             type_by_name: std::collections::HashMap::new(),
@@ -217,19 +225,26 @@ impl Trans {
                     self.intern_enum(&en.name, variants);
                 }
                 ast::Decl::Struct(st) => {
-                    if !st.type_params.is_empty() {
-                        return Err("trans v1 拒绝域:泛型 struct(单态化未实现)".into());
+                    if st.type_params.is_empty() {
+                        self.collect_type(&st.name, &st.fields, false)?
+                    } else {
+                        let fields = st.fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+                        self.generics.insert(st.name.clone(), (false, fields));
                     }
-                    self.collect_type(&st.name, &st.fields, false)?
                 }
                 ast::Decl::Class(cl) => {
                     if !cl.type_params.is_empty() {
-                        return Err("trans v1 拒绝域:泛型 class".into());
+                        let fields = cl.items.iter().filter_map(|it| match it {
+                            ast::ClassItem::Field(f) => Some((f.name.clone(), f.ty.clone())),
+                            _ => None,
+                        }).collect();
+                        self.generics.insert(cl.name.clone(), (true, fields));
+                    } else {
+                        if cl.items.iter().any(|it| !matches!(it, ast::ClassItem::Field(_))) {
+                            return Err("trans v1 拒绝域:class 方法/prop".into());
+                        }
+                        self.collect_class(cl)?
                     }
-                    if cl.items.iter().any(|it| !matches!(it, ast::ClassItem::Field(_))) {
-                        return Err("trans v1 拒绝域:class 方法/prop".into());
-                    }
-                    self.collect_class(cl)?
                 }
                 ast::Decl::Fn(f) => {
                     let params = f.params.iter().map(|p| match p {
@@ -248,15 +263,12 @@ impl Trans {
         }
 
         self.w(0, PREAMBLE);
-        self.w(0, "/* @@CLOSURES@@ */");
+        self.w(0, "/* @@LATE@@ */");
 
-        // 用户类型 typedef(struct 值语义 / class 指针语义)
+        // 用户类型 typedef(struct 值语义 / class 指针语义)——晚期实例经标记位补入
         let types_snapshot = self.types.clone();
         for t in &types_snapshot {
-            let fs: Vec<String> = t.fields.iter()
-                .map(|(n, ty)| format!("    {} {};", self.c_ty(*ty), n))
-                .collect();
-            self.w(0, &format!("typedef struct {{\n{}\n}} ctn_{};", fs.join("\n"), t.name));
+            self.emit_typedef(t);
         }
 
         // impl 方法/prop:静态函数,self 为首参
@@ -312,7 +324,9 @@ impl Trans {
         }
         for d in &file.decls {
             if let ast::Decl::Fn(f) = d {
-                self.emit_fn(f)?;
+                if f.type_params.is_empty() {
+                    self.emit_fn(f)?;
+                } // 泛型 fn 由调用点单态化
             }
         }
 
@@ -338,8 +352,8 @@ impl Trans {
             self.w(0, "int main(void) { alarm(20); return 0; }");
         }
                 let main = self.sink.pop().unwrap_or_default();
-        let defs = self.closure_defs.join("");
-        Ok(main.replace("/* @@CLOSURES@@ */", &defs))
+        let defs = self.late_defs.join("") + &self.closure_defs.join("");
+        Ok(main.replace("/* @@LATE@@ */", &defs))
     }
 
     fn intern_enum(&mut self, name: &str, variants: Vec<(String, usize)>) -> u32 {
@@ -348,6 +362,61 @@ impl Trans {
         self.enums.push(EnumInfo { _name: name.to_string(), variants });
         self.enum_by_name.insert(name.to_string(), id);
         id
+    }
+
+    fn emit_typedef(&mut self, t: &TypeInfo) {
+        let fs: Vec<String> = t.fields.iter()
+            .map(|(n, ty)| format!("    {} {};", self.c_ty(*ty), n))
+            .collect();
+        self.late_defs.push(format!("typedef struct {{\n{}\n}} ctn_{};\n", fs.join("\n"), t.name));
+    }
+
+    /// 泛型字面量实例化:按字段值类型推断实参 → 具体实例 tid
+    fn instantiate_generic(&mut self, name: &str, field_vals: &[(String, VTy)]) -> Result<u32, String> {
+        let Some((is_class, decl_fields)) = self.generics.get(name).cloned() else {
+            return Err(format!("trans:非泛型类型 `{}`", name));
+        };
+        // 参数名 → 具体类型(按 decl 字段顺序对应值类型)
+        let mut binds: Vec<(String, VTy)> = Vec::new();
+        for (fname, fty) in &decl_fields {
+            let vt = field_vals.iter().find(|(n, _)| n == fname).map(|(_, t)| *t);
+            if let (ast::Type::Named { path, .. }, Some(vt)) = (&fty, vt) {
+                if path.len() == 1 {
+                    binds.push((path[0].clone(), vt));
+                }
+            }
+        }
+        let key = format!("{}<{}>", name, binds.iter().map(|(_, t)| format!("{:?}", t)).collect::<Vec<_>>().join(","));
+        if let Some(&tid) = self.mono_keys.get(&key) {
+            return Ok(tid);
+        }
+        let iname = format!("{}_{}", name, self.mono_keys.len());
+        let tid = self.intern_type(&iname, is_class);
+        self.mono_keys.insert(key.clone(), tid);
+        let mut fs = Vec::new();
+        for (fname, fty) in &decl_fields {
+            let ct = self.subst_ty(fty, &binds)?;
+            fs.push((fname.clone(), ct));
+        }
+        self.types[tid as usize].fields = fs;
+        self.emit_typedef(&self.types[tid as usize].clone());
+        Ok(tid)
+    }
+
+    /// 类型替换:类型参数名 → 具体类型
+    fn subst_ty(&self, t: &ast::Type, binds: &[(String, VTy)]) -> Result<VTy, String> {
+        if let ast::Type::Named { path, .. } = t {
+            if let Some(seg) = path.last() {
+                for (pn, pt) in binds {
+                    if pn == seg { return Ok(*pt); }
+                }
+                if let Some(&id) = self.type_by_name.get(seg.as_str()) {
+                    let is_class = self.types[id as usize].is_class;
+                    return Ok(if is_class { VTy::Class(id) } else { VTy::Struct(id) });
+                }
+            }
+        }
+        Ok(self.ty_of(t))
     }
 
     fn intern_type(&mut self, name: &str, is_class: bool) -> u32 {
@@ -624,6 +693,93 @@ impl Trans {
     }
 
     // ---------------- 函数 ----------------
+
+    fn fn_is_generic(&self, name: &str) -> bool {
+        self.decls.iter().any(|d| matches!(d, ast::Decl::Fn(f) if f.name == name && !f.type_params.is_empty()))
+    }
+
+    /// 泛型 fn 单态:按实参具体类型生成副本
+    fn mono_fn(&mut self, name: &str, atys: &[VTy]) -> Result<String, String> {
+        let key = format!("{}<{}>", name, atys.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(","));
+        if let Some(c) = self.mono_names.get(&key) {
+            return Ok(c.clone());
+        }
+        let cname = format!("{}_mono_{}", sanitize(name), self.mono_keys.len());
+        self.mono_names.insert(key, cname.clone());
+        let f = self.decls.iter().find_map(|d| match d {
+            ast::Decl::Fn(f) if f.name == name => Some(f.clone()),
+            _ => None,
+        }).ok_or("trans:泛型函数未找到")?;
+        let ret = f.ret.as_ref().map(|t| self.ty_of(t)).unwrap_or(VTy::Void);
+        self.scope_push();
+        let mut parts = Vec::new();
+        for (p, at) in f.params.iter().zip(atys) {
+            if let ast::Param::Param { name: pn, .. } = p {
+                let c = self.bind(pn, *at);
+                parts.push(format!("{} {}", self.c_ty(*at), c));
+            }
+        }
+        self.closure_defs.push(format!("static {} {}({}) {{\n", self.c_ty(ret), cname, parts.join(", ")));
+        if let Some(body) = &f.body {
+            self.sink.push(String::new());
+            self.emit_block_stmts(body)?;
+            let code = self.sink.pop().unwrap_or_default();
+            for line in code.lines() {
+                let last = self.closure_defs.last_mut().unwrap();
+                last.push_str("    ");
+                last.push_str(line);
+                last.push('\n');
+            }
+        }
+        self.scope_pop();
+        self.closure_defs.push("}\n".into());
+        Ok(cname)
+    }
+
+    /// 每具体类型一个 show 函数:Name{f: v, ...}(对齐 interp show_value)
+    fn show_fn_for(&mut self, tid: u32) -> Result<String, String> {
+        let key = format!("show{}", tid);
+        if let Some(c) = self.mono_names.get(&key) {
+            return Ok(c.clone());
+        }
+        let t = self.types[tid as usize].clone();
+        let cname = format!("ctn_{}_show", t.name);
+        self.mono_names.insert(key, cname.clone());
+        let is_class = t.is_class;
+        let self_cty = if is_class {
+            let c = self.c_ty(VTy::Class(tid)).to_string();
+            c
+        } else {
+            let c = self.c_ty(VTy::Struct(tid)).to_string();
+            c
+        };
+        let mut parts = vec![format!("\"{}{{\"", t.name)];
+        for (i, (fname, fty)) in t.fields.iter().enumerate() {
+            if i > 0 { parts.push("\", \"".into()); }
+            parts.push(format!("\"{}: \"", fname));
+            let acc = if is_class { format!("self->{}", fname) } else { format!("self.{}", fname) };
+            parts.push(self.show_expr_for(acc, *fty)?);
+        }
+        parts.push("\"}\"".into());
+        let body = parts.join(", ");
+        let sig = format!("static char* {}({} self) {{", cname, self_cty);
+        self.late_defs.push(format!("{} return ct_cat({}, {}); }}\n", sig, parts.len(), body));
+        Ok(cname)
+    }
+
+    /// 字段值字符串化表达式
+    fn show_expr_for(&mut self, acc: String, ty: VTy) -> Result<String, String> {
+        Ok(match ty {
+            VTy::Int(_) => format!("ct_i128_str({})", acc),
+            VTy::Bool => format!("ct_bool_str((int)(!!({})))", acc),
+            VTy::F64 => format!("ct_f64_str({})", acc),
+            VTy::F32 => format!("ct_f32_str({})", acc),
+            VTy::Str => acc,
+            VTy::Struct(st) => format!("{}({})", self.show_fn_for(st)?, acc),
+            VTy::Class(ct) | VTy::Boxed(ct) => format!("{}({})", self.show_fn_for(ct)?, acc),
+            _ => return Err("trans v1 拒绝域:show 字段类型".into()),
+        })
+    }
 
     /// impl 方法:ctn_<Trait>_<name>(self, ...)
     fn emit_impl_fn(&mut self, tn: &str, _ft: &str, tid: Option<u32>, name: &str, m: &ast::FnDecl) -> Result<(), String> {
@@ -1137,6 +1293,26 @@ impl Trans {
             }
             ast::Expr::StructLit { path, fields, .. } => {
                 let name = path.last().cloned().unwrap_or_default();
+                if !self.type_by_name.contains_key(name.as_str()) && self.generics.contains_key(name.as_str()) {
+                    // 泛型实例化:先求字段值类型
+                    let mut vals = Vec::new();
+                    let mut cs = Vec::new();
+                    for f in fields {
+                        let v = f.value.as_ref().ok_or("trans:字段简写未支持")?;
+                        let (c, t) = self.expr(v)?;
+                        cs.push((f.name.clone(), c));
+                        vals.push((f.name.clone(), t));
+                    }
+                    let tid = self.instantiate_generic(&name, &vals)?;
+                    let is_class = self.types[tid as usize].is_class;
+                    let inits: Vec<String> = cs.iter().map(|(n, c)| format!(".{} = ({})", n, c)).collect();
+                    let lit = format!("(ctn_{}){{ {} }}", self.types[tid as usize].name, inits.join(", "));
+                    if is_class {
+                        let n2 = self.types[tid as usize].name.clone();
+                        return Ok((format!("({{ ctn_{n2}* p = malloc(sizeof(ctn_{n2})); *p = {lit}; p; }})"), VTy::Class(tid)));
+                    }
+                    return Ok((lit, VTy::Struct(tid)));
+                }
                 let Some(&tid) = self.type_by_name.get(name.as_str()) else {
                     return Err(format!("trans:未解析类型 `{}`", name));
                 };
@@ -1454,6 +1630,18 @@ impl Trans {
                 if args.len() != ptys.len() {
                     return Err(format!("trans:函数 `{}` 实参数不符", name));
                 }
+                // 泛型 fn:按实参类型单态化
+                if self.fn_is_generic(name) {
+                    let mut atys = Vec::new();
+                    let mut cs = Vec::new();
+                    for a in args {
+                        let (c, t) = self.expr(a)?;
+                        cs.push(c);
+                        atys.push(t);
+                    }
+                    let sym = self.mono_fn(name, &atys)?;
+                    return Ok((format!("{}({})", sym, cs.join(", ")), ret));
+                }
                 let mut cs = Vec::new();
                 for (a, pt) in args.iter().zip(&ptys) {
                     let (c, at) = self.expr(a)?;
@@ -1488,6 +1676,13 @@ impl Trans {
                     _ => None,
                 };
                 if let Some(r) = r { return Ok(r); }
+            }
+            // @derive(Show):.show() → 每具体类型一个 show 函数(格式 Name{f: v, ...})
+            if let VTy::Class(tid) | VTy::Struct(tid) = rt {
+                if m == "show" {
+                    let sym = self.show_fn_for(tid)?;
+                    return Ok((format!("{}({})", sym, rc), VTy::Str));
+                }
             }
             // trait impl 分发:(接收者类型, 方法) → 注册表
             if let VTy::Class(tid) | VTy::Struct(tid) = rt {
@@ -1590,7 +1785,9 @@ impl Trans {
                 }
             }
         }
-        Err("trans v1 拒绝域:该调用形态(仅内建/数值函数)".into())
+        {
+            return Err("trans v1 拒绝域:该调用形态(仅内建/数值函数)".into());
+        }
     }
 
     fn binop(&mut self, op: &ast::BinOp, lc: &str, lt: VTy, rc: &str, rt: VTy) -> TRes {
@@ -1850,6 +2047,22 @@ static char* ct_concat(const char* a, const char* b) {
     char* r = (char*)malloc(la + lb + 1);
     if (!r) abort();
     memcpy(r, a, la); memcpy(r + la, b, lb + 1);
+    return r;
+}
+#include <stdarg.h>
+static char* ct_cat(int n, ...) {
+    va_list ap;
+    va_start(ap, n);
+    size_t total = 0;
+    for (int i = 0; i < n; i++) total += strlen(va_arg(ap, const char*));
+    va_end(ap);
+    char* r = (char*)malloc(total + 1);
+    if (!r) abort();
+    va_start(ap, n);
+    char* p = r;
+    for (int i = 0; i < n; i++) { const char* a = va_arg(ap, const char*); size_t l = strlen(a); memcpy(p, a, l); p += l; }
+    va_end(ap);
+    *p = '\0';
     return r;
 }
 static char* ct_dup(const char* s) {
