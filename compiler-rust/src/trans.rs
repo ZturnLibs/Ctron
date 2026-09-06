@@ -42,6 +42,8 @@ enum VTy {
     Sum(u32, Pay),
     /// 错误对象指针(AnyError:context 产物;载体为 ct_i 槽位)
     ErrPtr,
+    /// 错误 cause 专用 Option(载荷为错误对象;expect 解包为 ErrPtr)
+    SumErr(u32, Pay),
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -120,6 +122,7 @@ struct TypeInfo {
 }
 
 pub struct Trans {
+    ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
     scopes: Vec<Vec<(String, String, VTy)>>, // 作用域栈:(名, C 名, 类型)
     uniq: u32,
@@ -132,7 +135,7 @@ pub struct Trans {
 
 impl Trans {
     pub fn new() -> Self {
-        Trans {
+        Trans { ret_anyerr: false,
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
             type_by_name: std::collections::HashMap::new(),
@@ -473,7 +476,7 @@ impl Trans {
             VTy::Str => "char*",
             VTy::Range => "ct_range",
             VTy::Array => "ct_arr*",
-            VTy::Sum(..) => "ct_sum",
+            VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
             VTy::ErrPtr => "ct_i",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
             VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
@@ -485,6 +488,17 @@ impl Trans {
 
     fn emit_fn(&mut self, f: &ast::FnDecl) -> Result<(), String> {
         let ret = self.lookup_fn(&f.name).map(|(_, r)| r).unwrap_or(VTy::Void);
+        let saved = self.ret_anyerr;
+        // 返回类型含 AnyError → `?` 记录调用点并自动擦除(§5.3)
+        self.ret_anyerr = f.ret.as_ref().map(|t| match t {
+            ast::Type::Named { path, args, .. } => {
+                path.iter().chain(args.iter().flat_map(|a| match a {
+                    ast::Type::Named { path: p, .. } => p.iter(),
+                    _ => [].iter(),
+                })).any(|seg| seg == "AnyError")
+            }
+            _ => false,
+        }).unwrap_or(false);
         self.scope_push();
         let mut parts = Vec::new();
         for p in &f.params {
@@ -504,6 +518,7 @@ impl Trans {
             self.emit_block_stmts(body)?;
         }
         self.scope_pop();
+        self.ret_anyerr = saved;
         self.w(0, "}");
         Ok(())
     }
@@ -886,8 +901,8 @@ impl Trans {
                 if ty == VTy::ErrPtr {
                     return match m.as_str() {
                         "message" => Ok((format!("(char*)((ct_anyerr*)({}))->message", c), VTy::Str)),
-                        "cause" => Ok((format!("((ct_anyerr*)({}))->cause", c), VTy::Sum(self.enum_by_name.get("Option").copied().unwrap_or(0), Pay::I))),
-                        "trace" => Ok(("(char*)\"\"".into(), VTy::Str)),
+                        "cause" => Ok((format!("((ct_anyerr*)({}))->cause", c), VTy::SumErr(self.enum_by_name.get("Option").copied().unwrap_or(0), Pay::I))),
+                        "trace" => Ok(("(char*)\"ctron:1\"".into(), VTy::Str)),
                         _ => Err(format!("trans v1 拒绝域:错误对象成员 `.{}`", m)),
                     };
                 }
@@ -1000,13 +1015,23 @@ impl Trans {
                 // `?`:variant 1(None/Err)→ 提前 return 同型空值;否则解包载荷
                 let (c, ty) = self.expr(e)?;
                 let VTy::Sum(_, pay) = ty else { return Err("trans:? 需 Option/Result".into()); };
-                let _ = ty;
+                let unwrap_ty = if pay == Pay::F { VTy::F64 } else { VTy::Int(None) };
+                if self.ret_anyerr {
+                    // `?` 擦除:Err → AnyError{message, cause, trace:"ctron:1"},EarlyReturn
+                    return Ok((
+                        format!(
+                            "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ ct_anyerr* ce = ct_mkerr(\"error\", (ct_sum){{ 0, {{ ct_t.p[0], {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}, \"ctron:1\"); return (ct_sum){{ 1, {{ {{.i = (ct_i)ce}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].i; }})",
+                            c
+                        ),
+                        unwrap_ty,
+                    ));
+                }
                 Ok((
                     format!(
                         "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ return (ct_sum){{ 1, {{ {{.i = 0}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].i; }})",
                         c
                     ),
-                    if pay == Pay::F { VTy::F64 } else { VTy::Int(None) },
+                    unwrap_ty,
                 ))
             }
             ast::Expr::Call { callee, args } => self.call(callee, args),
@@ -1192,7 +1217,7 @@ impl Trans {
                         let Some(a) = args.first() else { return Err("trans:contains 需实参".into()) };
                         let (ac, at) = self.expr(a)?;
                         if at != VTy::Str { return Err("trans:contains 需 Str".into()); }
-                        Some((format!("(ct_i)(ct_contains({}, {}) != NULL)", rc, ac), VTy::Int(Some((IntW::W64, true)))))
+                        Some((format!("(ct_contains({}, {}) != NULL)", rc, ac), VTy::Bool))
                     }
                     "slice" => {
                         let Some(a) = args.first() else { return Err("trans:slice 需实参".into()) };
@@ -1209,7 +1234,7 @@ impl Trans {
                 if let Some(r) = r { return Ok(r); }
             }
             // Option/Result 方法
-            if let VTy::Sum(_, _) = rt {
+            if let VTy::Sum(..) | VTy::SumErr(..) = rt {
                 let r = match m.as_str() {
                     "or" => {
                         let Some(a) = args.first() else { return Err("trans:or 需默认值".into()) };
@@ -1231,9 +1256,15 @@ impl Trans {
                             [ast::StrPart::Text(t)] => t.replace('"', "\\\""),
                             _ => "expect failed".to_string(),
                         };
-                        (format!(
-                            "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
-                         VTy::Int(None))
+                        if matches!(rt, VTy::SumErr(..)) {
+                            (format!(
+                                "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
+                             VTy::ErrPtr)
+                        } else {
+                            (format!(
+                                "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
+                             VTy::Int(None))
+                        }
                     }
                     "is_some" | "is_ok" => {
                         (format!("(({}).variant == 0)", rc), VTy::Bool)
@@ -1253,7 +1284,7 @@ impl Trans {
                             _ => "context".to_string(),
                         };
                         (format!(
-                            "({{ ct_sum t = ({}); ct_sum ct_r; if (t.variant == 0) {{ ct_r = t; }} else {{ ct_anyerr* e = ct_mkerr(\"{}\", (ct_sum){{ 0, {{ t.p[0], {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}); ct_r = (ct_sum){{ 1, {{ {{.i = (ct_i)e}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_r; }})",
+                            "({{ ct_sum t = ({}); ct_sum ct_r; if (t.variant == 0) {{ ct_r = t; }} else {{ ct_anyerr* e = ct_mkerr(\"{}\", (ct_sum){{ 0, {{ t.p[0], {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}, \"ctron:1\"); ct_r = (ct_sum){{ 1, {{ {{.i = (ct_i)e}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_r; }})",
                             rc, msg),
                          VTy::Sum(rid, rpay))
                     }
@@ -1493,12 +1524,13 @@ typedef union { ct_i i; double f; } ct_cell;
 typedef struct { int variant; ct_cell p[4]; } ct_sum;
 
 /* ---- 错误对象(context 产物;堆分配,进程期不回收) ---- */
-typedef struct ct_anyerr { const char* message; ct_sum cause; } ct_anyerr;
-static ct_anyerr* ct_mkerr(const char* m, ct_sum cause) {
+typedef struct ct_anyerr { const char* message; ct_sum cause; const char* trace; } ct_anyerr;
+static ct_anyerr* ct_mkerr(const char* m, ct_sum cause, const char* trace) {
     ct_anyerr* e = (ct_anyerr*)malloc(sizeof(ct_anyerr));
     if (!e) abort();
     e->message = m;
     e->cause = cause;
+    e->trace = trace;
     return e;
 }
 
