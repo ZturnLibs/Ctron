@@ -25,7 +25,10 @@
 ctron lex <file>              # 词法诊断
 ctron parse <file> [--ast]    # 解析诊断 + 确定性 AST 文本(跨实现差分产物)
 ctron check <file> [--profile bare|web|full]
-ctron trans <file> [-o out.c] # 转译为 C11(gnu11);cc 编译即为原生二进制
+ctron run <file>              # 解释器执行全部 test 块
+ctron trans <file> [--with f.ct ...] [-o out.c]   # 转译为 C11(gnu11),多文件合并
+ctron build <file> [--with f.ct ...] [-o bin]     # trans + cc 一行得到原生二进制
+                                                 # (自动链接同包 c_src/*.c,FFI)
 ```
 
 ## 转译后端语义契约(§3.6 等)

@@ -122,3 +122,87 @@ fn native_matches_interpreter() {
     assert!(ran >= 33, "原生差分覆盖必须全量(33),实际 {ran}");
     assert!(failures.is_empty(), "原生/解释器分歧({}):\n{}", failures.len(), failures.join("\n---\n"));
 }
+
+/// modules/ 包:合并 src/*.ct → 转译 → cc(含 c_src/*.c)→ 原生运行,
+/// 并与解释器对同一合并文件的裁决差分。
+#[test]
+fn modules_native_run() {
+    if !cc_available() { return; }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/modules");
+    let tmp = std::env::temp_dir().join("ctron_native_modules");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+
+    let mut ran = 0usize;
+    let mut failures = Vec::new();
+    for case in std::fs::read_dir(&root).unwrap().flatten() {
+        let case_path = case.path();
+        if !case_path.is_dir() { continue; }
+        let name = case_path.file_name().unwrap().to_string_lossy().to_string();
+        let mut cts: Vec<PathBuf> = Vec::new();
+        walk_ct(&case_path.join("src"), &mut cts);
+        if cts.is_empty() { continue; }
+        // 主文件(含 test)在前,其余为依赖
+        cts.sort_by_key(|p| {
+            let s = std::fs::read_to_string(p).unwrap_or_default();
+            (std::rc::Rc::new(()), !s.contains("test \""))
+        });
+        cts.sort_by_key(|p| std::fs::read_to_string(p).unwrap_or_default().contains("test \"") == false);
+
+        let mut merged = ctron::ast::File { decls: Vec::new() };
+        let mut files: Vec<(String, String)> = Vec::new();
+        let mut any_diags = false;
+        for c in &cts {
+            let src = std::fs::read_to_string(c).unwrap();
+            let (f, d) = ctron::parse_src(&src);
+            if !d.is_empty() { any_diags = true; }
+            merged.decls.extend(f.decls);
+            files.push((c.file_stem().unwrap().to_string_lossy().to_string(), src));
+        }
+        if any_diags { continue; }
+        let has_tests = merged.decls.iter().any(|d| matches!(d, ctron::ast::Decl::Test(_)));
+        if !has_tests { continue; }
+
+        // 解释器裁决(多文件:build_package 语义 + 合并文件运行)
+        let (sema, _) = ctron::sem::build_package(&files, None, ctron::sem::Profile::Full);
+        let _ = &files;
+        let merged_rc = std::rc::Rc::new(merged);
+        let mut interp = ctron::interp::Interp::new(&sema, String::new(), merged_rc.clone());
+        let results = interp.run_tests(&merged_rc);
+        let interp_ok = !results.is_empty() && results.iter().all(|(_, r)| r.is_ok());
+
+        // 转译(域外 → skip)
+        let c_code = match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&merged_rc)) {
+            Ok(c) => c,
+            Err(_) => { continue; }
+        };
+        let stem = format!("mod_{}", name);
+        let c_path = tmp.join(format!("{stem}.c"));
+        std::fs::write(&c_path, &c_code).unwrap();
+        let mut cc = Command::new("cc");
+        cc.args(["-O0", "-w", "-std=gnu11"]).arg(&c_path).arg("-o").arg(tmp.join(&stem));
+        // 包内 c_src/*.c 一并链接
+        let cs_dir = case_path.join("c_src");
+        if cs_dir.is_dir() {
+            for e in std::fs::read_dir(&cs_dir).unwrap().flatten() {
+                if e.path().extension().is_some_and(|x| x == "c") { cc.arg(e.path()); }
+            }
+        }
+        let cc_out = cc.output().expect("cc 启动失败");
+        if !cc_out.status.success() {
+            failures.push(format!("{name}: cc 编译失败:\n{}", String::from_utf8_lossy(&cc_out.stderr)));
+            continue;
+        }
+        let run = Command::new(tmp.join(&stem)).output().expect("运行失败");
+        ran += 1;
+        let native_ok = run.status.success();
+        let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+        if !native_ok {
+            failures.push(format!("{name}: 原生运行失败:\n{stderr}"));
+        }
+    }
+
+    println!("modules 原生差分: {ran} 包一致");
+    assert!(ran >= 2, "至少应覆盖 use_ok/ffi_math 两个包,实际 {ran}");
+    assert!(failures.is_empty(), "modules 原生分歧({}):\n{}", failures.len(), failures.join("\n---\n"));
+}

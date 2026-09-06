@@ -50,21 +50,35 @@ fn main() -> ExitCode {
         Some("trans") => {
             let mut path = String::new();
             let mut out_path: Option<String> = None;
+            let mut with: Vec<String> = Vec::new();
             let mut a = args.iter().skip(2);
             while let Some(arg) = a.next() {
                 if arg == "-o" { out_path = a.next().cloned(); }
+                else if arg == "--with" { if let Some(w) = a.next() { with.push(w.clone()); } }
                 else if !arg.starts_with('-') && path.is_empty() { path = arg.clone(); }
             }
             let Ok(src) = std::fs::read_to_string(&path) else {
                 eprintln!("无法读取 {path}");
                 return ExitCode::from(2);
             };
-            let (file, diags) = ctron::parse_src(&src);
+            let (mut file, diags) = ctron::parse_src(&src);
+            for w in &with {
+                let Ok(ws) = std::fs::read_to_string(w) else {
+                    eprintln!("无法读取 {w}");
+                    return ExitCode::from(2);
+                };
+                let (wf, wd) = ctron::parse_src(&ws);
+                for d in &wd {
+                    eprintln!("{w}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+                }
+                if !wd.is_empty() { return ExitCode::from(1); }
+                file.decls.extend(wf.decls);
+            }
             for d in &diags {
                 eprintln!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
             }
             if !diags.is_empty() { return ExitCode::from(1); }
-            match ctron::trans::Trans::new().trans_file(&file) {
+            match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file)) {
                 Ok(c_code) => {
                     match out_path {
                         Some(p) => { let _ = std::fs::write(&p, c_code); println!("{p}"); }
@@ -76,6 +90,92 @@ fn main() -> ExitCode {
                     eprintln!("{path}: {reason}");
                     ExitCode::from(1)
                 }
+            }
+        }
+        Some("run") => {
+            // 解释器运行:执行全部 test 块
+            let path = match args.get(2) {
+                Some(p) if !p.starts_with('-') => p.clone(),
+                _ => { eprintln!("usage: ctron run <file>"); return ExitCode::from(2); }
+            };
+            let Ok(src) = std::fs::read_to_string(&path) else {
+                eprintln!("无法读取 {path}");
+                return ExitCode::from(2);
+            };
+            let profile = if path.contains("bare") { ctron::sem::Profile::Bare }
+                else if path.contains("web") { ctron::sem::Profile::Web }
+                else { ctron::sem::Profile::Full };
+            let results = ctron::run_test_file(&src, profile);
+            let mut failed = 0usize;
+            for (name, r) in &results {
+                match r {
+                    Ok(()) => println!("ok   {name}"),
+                    Err(m) => { println!("FAIL {name}: {m}"); failed += 1; }
+                }
+            }
+            if failed > 0 { eprintln!("{failed} 个测试失败"); ExitCode::from(1) } else { ExitCode::SUCCESS }
+        }
+        Some("build") => {
+            // 转译 + cc:一行得到原生二进制
+            let mut path = String::new();
+            let mut out_bin = String::from("a.out");
+            let mut with: Vec<String> = Vec::new();
+            let mut a = args.iter().skip(2);
+            while let Some(arg) = a.next() {
+                if arg == "-o" { out_bin = a.next().cloned().unwrap_or(out_bin); }
+                else if arg == "--with" { if let Some(w) = a.next() { with.push(w.clone()); } }
+                else if !arg.starts_with('-') && path.is_empty() { path = arg.clone(); }
+            }
+            let Ok(src) = std::fs::read_to_string(&path) else {
+                eprintln!("无法读取 {path}");
+                return ExitCode::from(2);
+            };
+            let (mut file, diags) = ctron::parse_src(&src);
+            for d in &diags {
+                eprintln!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+            }
+            if !diags.is_empty() { return ExitCode::from(1); }
+            for w in &with {
+                let Ok(ws) = std::fs::read_to_string(w) else {
+                    eprintln!("无法读取 {w}");
+                    return ExitCode::from(2);
+                };
+                let (wf, wd) = ctron::parse_src(&ws);
+                for d in &wd {
+                    eprintln!("{w}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+                }
+                if !wd.is_empty() { return ExitCode::from(1); }
+                file.decls.extend(wf.decls);
+            }
+            match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file)) {
+                Ok(c_code) => {
+                    let c_path = std::env::temp_dir().join("ctron_build.c");
+                    std::fs::write(&c_path, c_code).unwrap();
+                    let mut cmd = std::process::Command::new("cc");
+                    cmd.args(["-O1", "-w", "-std=gnu11"]).arg(&c_path).arg("-o").arg(&out_bin);
+                    // 同目录 c_src/*.c 自动链接(FFI)
+                    if let Some(dir) = std::path::Path::new(&path).parent() {
+                        let cs = if dir.join("c_src").is_dir() { dir.join("c_src") }
+                            else if let Some(pp) = dir.parent() { pp.join("c_src") }
+                            else { dir.join("c_src") };
+                                        if cs.is_dir() {
+                            if let Ok(es) = std::fs::read_dir(&cs) {
+                                for e in es.flatten() {
+                                    if e.path().extension().is_some_and(|x| x == "c") { cmd.arg(e.path()); }
+                                }
+                            }
+                        }
+                    }
+                    let st = cmd.status();
+                    if st.is_err() || !st.as_ref().map(|s| s.success()).unwrap_or(false) {
+                        eprintln!("cc 编译失败: {st:?}");
+                    }
+                    match st {
+                        Ok(st) if st.success() => { println!("{out_bin}"); ExitCode::SUCCESS }
+                        _ => ExitCode::from(1),
+                    }
+                }
+                Err(reason) => { eprintln!("{path}: {reason}"); ExitCode::from(1) }
             }
         }
         Some("check") => {

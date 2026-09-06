@@ -27,6 +27,8 @@ fn expectations() -> Vec<(&'static str, Vec<&'static str>)> {
         ("06_static_var.neg.ct", vec!["E3030"]),
         ("02_match_exhaustive.neg.ct", vec!["E2030"]),
         ("05_own_alloc.neg.ct", vec!["E3040"]),
+        ("05_own_move.neg.ct", vec!["E3050"]),
+        ("03_shallow_copy.lint.ct", vec!["W8010"]),
         ("05e_own_gc_mut.neg.ct", vec!["E3060"]),
         ("05f_must_use.lint.ct", vec!["W8020"]),
         ("06_spawn_nonsend.neg.ct", vec!["E3010"]),

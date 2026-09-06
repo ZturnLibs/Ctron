@@ -141,6 +141,7 @@ struct TypeInfo {
 
 pub struct Trans {
     impls: Vec<(String, String)>, // (trait 名, 类型名)——方法/prop 分发注册表
+    extern_fns: std::collections::HashSet<String>, // extern "c" 无体函数 → 调用点用裸名
     decls: Vec<ast::Decl>,
     generics: std::collections::HashMap<String, (bool, Vec<(String, ast::Type)>)>, // 名 → (is_class, 字段)
     mono_keys: std::collections::HashMap<String, u32>, // 实例键 → tid
@@ -165,7 +166,7 @@ pub struct Trans {
 
 impl Trans {
     pub fn new() -> Self {
-        Trans { impls: Vec::new(), decls: Vec::new(),
+        Trans { impls: Vec::new(), extern_fns: std::collections::HashSet::new(), decls: Vec::new(),
             generics: std::collections::HashMap::new(),
             mono_keys: std::collections::HashMap::new(),
             mono_names: std::collections::HashMap::new(),
@@ -227,7 +228,18 @@ impl Trans {
 
     // ---------------- 文件 ----------------
 
-    pub fn trans_file(mut self, file: &ast::File) -> Result<String, String> {
+    pub fn trans_file(self, file: &ast::File) -> Result<String, String> {
+        self.trans_files(std::slice::from_ref(file))
+    }
+
+    /// 多文件包转译:合并全部 decls(同一 C 产物)
+    pub fn trans_files(self, files: &[ast::File]) -> Result<String, String> {
+        let decls: Vec<ast::Decl> = files.iter().flat_map(|f| f.decls.clone()).collect();
+        let merged = ast::File { decls };
+        self.trans_one(&merged)
+    }
+
+    fn trans_one(mut self, file: &ast::File) -> Result<String, String> {
         self.decls = file.decls.clone();
         for d in &file.decls {
             if let ast::Decl::Trait(tr) = d { self.traits.push(tr.name.clone()); }
@@ -294,6 +306,10 @@ impl Trans {
                         self.ty_of(t)
                     }).unwrap_or(VTy::Void);
                     self.fns.push((f.name.clone(), params, ret));
+                    // extern "c" 无体函数:符号来自外部 C 源,调用点用裸名
+                    if f.abi.is_some() && f.body.is_none() {
+                        self.extern_fns.insert(f.name.clone());
+                    }
                 }
                 ast::Decl::Test(t) => tests.push(t.clone()),
             }
@@ -362,7 +378,21 @@ impl Trans {
         }
         for d in &file.decls {
             if let ast::Decl::Fn(f) = d {
-                if f.type_params.is_empty() && !self.fn_has_traitobj_param(&f.name) {
+                if f.abi.is_some() && f.body.is_none() {
+                    // extern 原型:裸 C 符号
+                    self.scope_push();
+                    let mut parts = Vec::new();
+                    for p in &f.params {
+                        if let ast::Param::Param { ty, .. } = p {
+                            let vty = self.ty_of(ty);
+                            parts.push(self.abi_ty(vty));
+                        }
+                    }
+                    let ret = self.lookup_fn(&f.name).map(|(_, r)| r).unwrap_or(VTy::Void);
+                    let rty = if ret == VTy::Void { "void".to_string() } else { self.abi_ty(ret) };
+                    self.late_defs.push(format!("extern {} {}({});\n", rty, f.name, parts.join(", ")));
+                    self.scope_pop();
+                } else if f.type_params.is_empty() && !self.fn_has_traitobj_param(&f.name) {
                     self.emit_fn(f)?;
                 } // 泛型 / trait 对象形参 fn 由调用点单态化
             }
@@ -847,6 +877,25 @@ impl Trans {
             ast::Stmt::While { cond, body } => { self.collect_idents_expr(cond, out); self.collect_idents_block(body, out); }
             ast::Stmt::For { iter, body, .. } => { self.collect_idents_expr(iter, out); self.collect_idents_block(body, out); }
             _ => {}
+        }
+    }
+
+    /// extern "c" 的真实 ABI 类型(C 原生宽度,非 i128 载体)
+    fn abi_ty(&self, t: VTy) -> String {
+        match t {
+            VTy::Int(Some((IntW::W8, false))) => "uint8_t".into(),
+            VTy::Int(Some((IntW::W16, false))) => "uint16_t".into(),
+            VTy::Int(Some((IntW::W32, false))) => "uint32_t".into(),
+            VTy::Int(Some((IntW::W64, false))) | VTy::Int(Some((IntW::WSize, false))) => "uint64_t".into(),
+            VTy::Int(Some((IntW::W8, true))) => "int8_t".into(),
+            VTy::Int(Some((IntW::W16, true))) => "int16_t".into(),
+            VTy::Int(Some((IntW::W32, true))) => "int32_t".into(),
+            VTy::Int(Some((IntW::W64, true))) | VTy::Int(Some((IntW::WSize, true))) | VTy::Int(None) => "int64_t".into(),
+            VTy::F64 => "double".into(),
+            VTy::F32 => "float".into(),
+            VTy::Bool => "int".into(),
+            VTy::Str => "char*".into(),
+            _ => "ct_i".into(),
         }
     }
 
@@ -2158,6 +2207,20 @@ impl Trans {
                     }
                     let (sym, mret) = self.mono_fn(name, &atys)?;
                     return Ok((format!("{}({})", sym, cs.join(", ")), mret));
+                }
+                if self.extern_fns.contains(name) {
+                    // extern "c":ABI 类型 cast,结果回包 ct_i(void → 0)
+                    let mut cs = Vec::new();
+                    for a in args {
+                        let (c, at) = self.expr(a)?;
+                        let aty = self.abi_ty(at);
+                        cs.push(format!("({})({})", aty, c));
+                    }
+                    let call = format!("{}({})", name, cs.join(", "));
+                    return Ok((match ret {
+                        VTy::Void => "0".to_string(),
+                        _ => format!("((ct_i){})", call),
+                    }, if ret == VTy::Void { VTy::Void } else { VTy::Int(None) }));
                 }
                 let mut cs = Vec::new();
                 for (a, pt) in args.iter().zip(&ptys) {

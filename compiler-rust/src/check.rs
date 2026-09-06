@@ -70,6 +70,26 @@ pub fn check_package(
         }
         let diags = c.finish_caps();
         per_module[i].1.extend(diags);
+
+        // W8010(§5.2):struct 含类引用字段 → 拷贝浅共享 lint(每 struct 一次)
+        for (di, d) in sema.defs.iter().enumerate() {
+            if d.kind != DefKind::Struct { continue; }
+            let shallow: Vec<&str> = d.fields.iter().filter_map(|(_, t, _)| match t {
+                Ty::Named { def, .. } if matches!(sema.defs[*def].kind, DefKind::Class) =>
+                    Some(sema.defs[*def].name.as_str()),
+                _ => None,
+            }).collect();
+            if !shallow.is_empty() {
+                per_module[i].1.push(Diagnostic {
+                    code: "W8010",
+                    message: format!(
+                        "struct `{}` 含类引用字段({}),拷贝为浅共享;需要深拷贝请显式克隆或改用 own",
+                        d.name, shallow.join(", ")),
+                    span: Span::new(1, 1, 0, 0),
+                });
+                let _ = di;
+            }
+        }
     }
     per_module
 }
@@ -78,6 +98,8 @@ struct Local { ty: Ty }
 
 pub struct Checker<'a> {
     sema: &'a Sema,
+    moved: std::collections::HashSet<String>,   // E3050:own 块内已 move 的 arena 句柄
+    handles: std::collections::HashSet<String>, // own 块内持有 arena 句柄的绑定
     subs: HashMap<u32, Ty>,
     scopes: Vec<HashMap<String, Local>>,
     diags: Vec<Diagnostic>,
@@ -101,6 +123,8 @@ impl<'a> Checker<'a> {
         let mut c = Checker {
             sema, subs: HashMap::new(), scopes: vec![HashMap::new()],
             diags: Vec::new(), module, cur_ret: Ty::Void, fresh: 0,
+            moved: std::collections::HashSet::new(),
+            handles: std::collections::HashSet::new(),
             in_own: false, no_alloc_ctx: false, no_spawn_ctx: false,
             pure_ctx: false, comptime_ctx: false, depth: 0,
             caps_used: HashSet::new(), gc_alloc_fns: HashMap::new(), any_alloc_fns: HashMap::new(),
@@ -787,6 +811,17 @@ impl<'a> Checker<'a> {
             ast::Stmt::Let { pattern, ty: ann, expr, .. } => {
                 let hinted = ann.as_ref().map(|t| self.lower_local_ty(t));
                 let ety = self.expr(expr, hinted.as_ref());
+                // E3050(§6.4):own 块内 arena 句柄仅移动——拷贝绑定即 move 源
+                if self.in_own {
+                    if self.expr_is_arena_handle_init(expr) {
+                        if let ast::Pattern::Ident(n) = pattern { self.handles.insert(n.clone()); }
+                    } else if let ast::Expr::Ident(src) = expr {
+                        if self.handles.contains(src) && !self.moved.contains(src) {
+                            self.moved.insert(src.clone());
+                            if let ast::Pattern::Ident(n) = pattern { self.handles.insert(n.clone()); }
+                        }
+                    }
+                }
                 let bind_ty = hinted.unwrap_or(ety);
                 let binds = self.check_pattern(pattern, Some(&bind_ty));
                 self.scopes.last_mut().unwrap().extend(binds);
@@ -1144,6 +1179,8 @@ impl<'a> Checker<'a> {
             Expr::Own { arena, body } => {
                 let saved_own = self.in_own;
                 let saved_na = self.no_alloc_ctx;
+                let saved_moved = std::mem::take(&mut self.moved);
+                let saved_handles = std::mem::take(&mut self.handles);
                 self.in_own = true;
                 let arena_ty = self.named("Arena", vec![]);
                 self.scopes.push(HashMap::from([(arena.clone(), Local { ty: arena_ty })]));
@@ -1151,6 +1188,8 @@ impl<'a> Checker<'a> {
                 self.scopes.pop();
                 self.in_own = saved_own;
                 self.no_alloc_ctx = saved_na;
+                self.moved = saved_moved;
+                self.handles = saved_handles;
                 Ty::Void
             }
             Expr::If { cond, then, els } => {
@@ -1205,7 +1244,31 @@ impl<'a> Checker<'a> {
         None
     }
 
+    /// own 块内:表达式是否创建 arena 句柄(arena.array/zeros/list)
+    fn expr_is_arena_handle_init(&self, e: &ast::Expr) -> bool {
+        let inner = match e {
+            ast::Expr::TypeArgs { expr, .. } => Some(&**expr),
+            ast::Expr::Call { callee, .. } => match &**callee {
+                ast::Expr::TypeArgs { expr, .. } => Some(&**expr),
+                ast::Expr::Member { obj, .. } => Some(&**obj),
+                _ => None,
+            },
+            ast::Expr::Member { obj, .. } => Some(&**obj),
+            _ => None,
+        };
+        match inner {
+            Some(ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) }) => {
+                if !matches!(m.as_str(), "array" | "zeros" | "list" | "fixed") { return false; }
+                matches!(&**obj, ast::Expr::Ident(a) if a == "arena")
+            }
+            _ => false,
+        }
+    }
+
     fn check_ident(&mut self, name: &str, _hint: Option<&Ty>) -> Ty {
+        if self.moved.contains(name) {
+            self.err("E3050", format!("arena 句柄 `{}` 已 move,不可再使用(use after move)", name), Span::new(1, 1, 0, 0));
+        }
         if let Some(t) = self.lookup_local(name) { return t; }
         match self.lookup_fn_global(name) {
             Some(Symbol::Fn(id)) => {
