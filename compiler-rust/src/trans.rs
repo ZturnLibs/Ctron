@@ -124,6 +124,8 @@ struct TypeInfo {
 }
 
 pub struct Trans {
+    impls: Vec<(String, String)>, // (trait 名, 类型名)——方法/prop 分发注册表
+    decls: Vec<ast::Decl>,
     closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
     ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
@@ -138,7 +140,7 @@ pub struct Trans {
 
 impl Trans {
     pub fn new() -> Self {
-        Trans { closure_defs: Vec::new(), ret_anyerr: false,
+        Trans { impls: Vec::new(), decls: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
             type_by_name: std::collections::HashMap::new(),
@@ -192,12 +194,14 @@ impl Trans {
     // ---------------- 文件 ----------------
 
     pub fn trans_file(mut self, file: &ast::File) -> Result<String, String> {
+        self.decls = file.decls.clone();
         // 预定义和类型:variant 0 = Some/Ok(载荷在 p[0]),variant 1 = None/Err
         self.intern_enum("Option", vec![("Some".into(), 1), ("None".into(), 0)]);
         self.intern_enum("Result", vec![("Ok".into(), 1), ("Err".into(), 1)]);
         let mut tests = Vec::new();
         for d in &file.decls {
             match d {
+                ast::Decl::Trait(_) | ast::Decl::Impl(_) => {}
                 ast::Decl::Enum(en) => {
                     if !en.type_params.is_empty() {
                         return Err("trans v1 拒绝域:泛型 enum".into());
@@ -255,6 +259,57 @@ impl Trans {
             self.w(0, &format!("typedef struct {{\n{}\n}} ctn_{};", fs.join("\n"), t.name));
         }
 
+        // impl 方法/prop:静态函数,self 为首参
+        for d in &file.decls {
+            if let ast::Decl::Impl(im) = d {
+                let tn = match &im.trait_ty { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() };
+                let ft = match &im.for_ty { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() };
+                self.impls.push((tn.clone(), ft.clone()));
+                let tid = self.type_by_name.get(&ft).copied();
+                // 默认体(impl 未提供时)
+                let default_bodies: Vec<(String, &ast::FnDecl)> = file.decls.iter().filter_map(|d| {
+                    if let ast::Decl::Trait(tr) = d {
+                        if tr.name == tn {
+                            return Some(tr.items.iter().filter_map(|it| match it {
+                                crate::ast::TraitItem::Method(m) if m.body.is_some() => Some((m.name.clone(), m)),
+                                _ => None,
+                            }).collect::<Vec<_>>());
+                        }
+                    }
+                    None
+                }).flatten().collect();
+                for item in &im.items {
+                    match item {
+                        ast::ImplItem::Method(mm) => {
+                            self.emit_impl_fn(&tn, &ft, tid, &mm.name, mm)?;
+                        }
+                        ast::ImplItem::Prop(pp) => {
+                            self.emit_impl_prop(&tn, &ft, tid, pp)?;
+                        }
+                    }
+                }
+                // 缺省方法:从 trait 默认体生成(仅当 impl 未覆盖)
+                for (mname, m) in &default_bodies {
+                    if im.items.iter().any(|it| matches!(it, ast::ImplItem::Method(mm) if &mm.name == mname)) { continue; }
+                    self.emit_impl_fn(&tn, &ft, tid, mname, m)?;
+                }
+                for (pname, _pty, pbody) in file.decls.iter().filter_map(|d| {
+                    if let ast::Decl::Trait(tr) = d {
+                        if tr.name == tn {
+                            return Some(tr.items.iter().filter_map(|it| match it {
+                                crate::ast::TraitItem::PropImpl(pp) if pp.body.is_some() => Some((pp.name.clone(), pp.ty.clone(), pp.body.clone())),
+                                _ => None,
+                            }).collect::<Vec<_>>());
+                        }
+                    }
+                    None
+                }).flatten() {
+                    if im.items.iter().any(|it| matches!(it, ast::ImplItem::Prop(pp) if pp.name == pname)) { continue; }
+                    let pp = ast::PropDecl { vis: ast::Vis::Private, name: pname, ty: _pty, body: pbody };
+                    self.emit_impl_prop(&tn, &ft, tid, &pp)?;
+                }
+            }
+        }
         for d in &file.decls {
             if let ast::Decl::Fn(f) = d {
                 self.emit_fn(f)?;
@@ -419,6 +474,82 @@ impl Trans {
         }
     }
 
+    /// 类型 tname 的 impl 中,声明方法 m 的 trait 名
+    fn trait_of_method(&self, tname: &str, m: &str) -> Option<String> {
+        for (tn, ft) in &self.impls {
+            if ft != tname { continue; }
+            for d in &self.decls {
+                if let ast::Decl::Trait(tr) = d {
+                    if &tr.name == tn && tr.items.iter().any(|it| matches!(it,
+                        crate::ast::TraitItem::Method(mm) if mm.name == m)) { return Some(tr.name.clone()); }
+                }
+            }
+        }
+        None
+    }
+
+    /// impl 方法的返回类型(impl 项或 trait 默认声明)
+    fn impl_ret_ty(&self, tname: &str, m: &str) -> VTy {
+        for (tn, ft) in &self.impls {
+            if ft != tname { continue; }
+            for d in &self.decls {
+                let mut ret = None;
+                if let ast::Decl::Impl(im) = d {
+                    let itn = named_tail_pub(&im.trait_ty);
+                    let ift = named_tail_pub(&im.for_ty);
+                    if &ift == tname {
+                        for item in &im.items {
+                            match item {
+                                ast::ImplItem::Method(mm) => {
+                                    if mm.name == m { ret = mm.ret.as_ref().map(|t| self.ty_of(t)); }
+                                }
+                                ast::ImplItem::Prop(pp) => {
+                                    if pp.name == m { ret = Some(self.ty_of(&pp.ty)); }
+                                }
+                            }
+                        }
+                    }
+                    let _ = itn;
+                }
+                if let Some(r) = ret { return r; }
+                if let ast::Decl::Trait(tr) = d {
+                    if &tr.name == tn {
+                        for it in &tr.items {
+                            match it {
+                                crate::ast::TraitItem::Method(mm) => {
+                                    if mm.name == m { if let Some(r) = mm.ret.as_ref().map(|t| self.ty_of(t)) { return r; } }
+                                }
+                                crate::ast::TraitItem::PropSig(pp) => {
+                                    if pp.name == m { return self.ty_of(&pp.ty); }
+                                }
+                                crate::ast::TraitItem::PropImpl(pp) => {
+                                    if pp.name == m { return self.ty_of(&pp.ty); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        VTy::Unknown
+    }
+
+    fn trait_of_prop(&self, tname: &str, m: &str) -> Option<String> {
+        for (tn, ft) in &self.impls {
+            if ft != tname { continue; }
+            for d in &self.decls {
+                if let ast::Decl::Trait(tr) = d {
+                    if &tr.name == tn && tr.items.iter().any(|it| match it {
+                        crate::ast::TraitItem::PropSig(pp) => pp.name == m,
+                        crate::ast::TraitItem::PropImpl(pp) => pp.name == m,
+                        _ => false,
+                    }) { return Some(tr.name.clone()); }
+                }
+            }
+        }
+        None
+    }
+
     /// 变体名 → (enum id, variant index)
     fn find_variant(&self, name: &str) -> Option<(u32, usize)> {
         for (eid, e) in self.enums.iter().enumerate() {
@@ -492,6 +623,58 @@ impl Trans {
     }
 
     // ---------------- 函数 ----------------
+
+    /// impl 方法:ctn_<Trait>_<name>(self, ...)
+    fn emit_impl_fn(&mut self, tn: &str, _ft: &str, tid: Option<u32>, name: &str, m: &ast::FnDecl) -> Result<(), String> {
+        let ret = m.ret.as_ref().map(|t| self.ty_of(t)).unwrap_or(VTy::Void);
+        let self_ty = match tid {
+            Some(id) => if self.types[id as usize].is_class { VTy::Class(id) } else { VTy::Struct(id) },
+            None => VTy::Unknown,
+        };
+        self.scope_push();
+        let mut parts = vec![format!("{} self", self.c_ty(self_ty))];
+        if let Some(sid) = tid {
+            let cself = self.c_ty(self_ty).to_string();
+            let key = format!("S{}|C{}", sid, sid);
+            let _ = key;
+            self.scopes.last_mut().unwrap().push(("self".into(), "self".into(), self_ty));
+            let _ = cself;
+        } else {
+            self.scopes.last_mut().unwrap().push(("self".into(), "self".into(), self_ty));
+        }
+        for p in &m.params {
+            if let ast::Param::Param { name: pn, ty, .. } = p {
+                let vty = self.ty_of(ty);
+                let c = self.bind(pn, vty);
+                parts.push(format!("{} {}", self.c_ty(vty), c));
+            }
+        }
+        self.w(0, &format!("static {} ctn_{}_{}({}) {{", self.c_ty(ret), tn, name, parts.join(", ")));
+        if let Some(body) = &m.body {
+            self.emit_block_stmts(body)?;
+        }
+        self.scope_pop();
+        self.w(0, "}");
+        Ok(())
+    }
+
+    /// impl prop:取值函数 ctn_<Trait>_<name>(self)
+    fn emit_impl_prop(&mut self, tn: &str, _ft: &str, tid: Option<u32>, pp: &ast::PropDecl) -> Result<(), String> {
+        let ret = self.ty_of(&pp.ty);
+        let self_ty = match tid {
+            Some(id) => if self.types[id as usize].is_class { VTy::Class(id) } else { VTy::Struct(id) },
+            None => VTy::Unknown,
+        };
+        self.scope_push();
+        self.scopes.last_mut().unwrap().push(("self".into(), "self".into(), self_ty));
+        self.w(0, &format!("static {} ctn_{}_{}({} self) {{", self.c_ty(ret), tn, pp.name, self.c_ty(self_ty)));
+        if let Some(body) = &pp.body {
+            self.emit_block_stmts(body)?;
+        }
+        self.scope_pop();
+        self.w(0, "}");
+        Ok(())
+    }
 
     fn emit_fn(&mut self, f: &ast::FnDecl) -> Result<(), String> {
         let ret = self.lookup_fn(&f.name).map(|(_, r)| r).unwrap_or(VTy::Void);
@@ -909,6 +1092,13 @@ impl Trans {
                         _ => Err(format!("trans v1 拒绝域:Array 属性 `{}`", m)),
                     };
                 }
+                // trait prop 分发:(类型, 属性) → 取值函数
+                if let VTy::Class(tid) | VTy::Struct(tid) = rt_of(ty) {
+                    let tname = self.types[tid as usize].name.clone();
+                    if let Some(tn) = self.trait_of_prop(&tname, m) {
+                        return Ok((format!("ctn_{}_{}({})", tn, m, c), self.impl_ret_ty(&tname, m)));
+                    }
+                }
                 if ty == VTy::ErrPtr {
                     return match m.as_str() {
                         "message" => Ok((format!("(char*)((ct_anyerr*)({}))->message", c), VTy::Str)),
@@ -1287,6 +1477,20 @@ impl Trans {
                 };
                 if let Some(r) = r { return Ok(r); }
             }
+            // trait impl 分发:(接收者类型, 方法) → 注册表
+            if let VTy::Class(tid) | VTy::Struct(tid) = rt {
+                let tname = self.types[tid as usize].name.clone();
+                if let Some(tn) = self.trait_of_method(&tname, m) {
+                    let mut cs = vec![rc];
+                    for a in args {
+                        let (c2, _) = self.expr(a)?;
+                        cs.push(c2);
+                    }
+                    let sym = format!("ctn_{}_{}", tn, m);
+                    let ret = self.impl_ret_ty(&tname, m);
+                    return Ok((format!("{}({})", sym, cs.join(", ")), ret));
+                }
+            }
             // Option/Result 方法
             if let VTy::Sum(..) | VTy::SumErr(..) = rt {
                 let r = match m.as_str() {
@@ -1454,6 +1658,12 @@ fn payload_cell(c: String, ty: VTy) -> Result<String, String> {
     })
 }
 
+fn rt_of(t: VTy) -> VTy { t }
+
+fn named_tail_pub(t: &ast::Type) -> String {
+    match t { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() }
+}
+
 /// intern 成 &'static str(编译器进程一次性,不做回收)
 fn leak_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
@@ -1504,7 +1714,7 @@ fn display_wrap(c: &str, ty: VTy) -> Result<String, String> {
         VTy::F64 => format!("ct_f64_str({})", c),
         VTy::F32 => format!("ct_f32_str({})", c),
         VTy::Int(_) => format!("ct_i128_str({})", c),
-        _ => return Err("trans v1 拒绝域:插值表达式类型".into()),
+        _ => return Err(format!("trans v1 拒绝域:插值表达式类型 {:?}", ty)),
     })
 }
 
