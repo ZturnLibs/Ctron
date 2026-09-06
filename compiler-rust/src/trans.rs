@@ -49,12 +49,18 @@ enum VTy {
     /// 二元组:索引指向 tuples 表
     Tup(u32),
     Arena,
-    /// 可变单元格(Global/Atomic):ct_i* 指针
-    Cell,
+    /// 可变单元格(Global/Atomic/Mutex):id → cells 表(内层类型)
+    Cell(u32),
     /// trait 对象形参(&Trait):调用点按实参具体类型单态化;id → traits 表
     TraitObj(u32),
     Simd,
     FArr,
+    /// 并发任务句柄(ct_task*)
+    Task,
+    /// scope 句柄(ct_scope*)
+    ScopeH,
+    /// 通道端点(ct_chan*)
+    Chan,
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -141,6 +147,7 @@ pub struct Trans {
     mono_names: std::collections::HashMap<String, (String, VTy)>, // 任意键 → (C 名, 返回类型)
     mono_seq: u32,
     tuples: Vec<(VTy, VTy)>,
+    cells: Vec<VTy>,
     traits: Vec<String>,
     tuple_keys: std::collections::HashMap<String, u32>,
     late_defs: Vec<String>, // 晚期定义(实例 typedef / 单态 fn / show fn)
@@ -164,6 +171,7 @@ impl Trans {
             mono_names: std::collections::HashMap::new(),
             mono_seq: 0,
             tuples: Vec::new(),
+            cells: Vec::new(),
             traits: Vec::new(),
             tuple_keys: std::collections::HashMap::new(),
             late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
@@ -402,6 +410,12 @@ impl Trans {
         let id = self.enums.len() as u32;
         self.enums.push(EnumInfo { _name: name.to_string(), variants });
         self.enum_by_name.insert(name.to_string(), id);
+        id
+    }
+
+    fn intern_cell(&mut self, inner: VTy) -> u32 {
+        let id = self.cells.len() as u32;
+        self.cells.push(inner);
         id
     }
 
@@ -756,8 +770,11 @@ impl Trans {
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
             VTy::FnPtr => "ct_fnptr0",
             VTy::Arena => "ct_arr*",
-            VTy::Cell => "ct_i*",
+            VTy::Cell(..) => "ct_i*",
             VTy::Simd => "ct_simd",
+            VTy::Task => "ct_task*",
+            VTy::ScopeH => "ct_scope*",
+            VTy::Chan => "ct_chan*",
             VTy::Void => "void",
             VTy::FArr => "ct_farr*",
             VTy::TraitObj(..) => "ct_i",
@@ -774,6 +791,59 @@ impl Trans {
     }
 
     // ---------------- 函数 ----------------
+
+    /// 收集表达式中的自由 Ident 名(粗粒度,语料级)
+    fn collect_idents_expr(&self, e: &ast::Expr, out: &mut Vec<String>) {
+        use ast::Expr as E;
+        match e {
+            E::Ident(n) => out.push(n.clone()),
+            E::Unary { expr, .. } | E::Try(expr) | E::TypeArgs { expr, .. } => self.collect_idents_expr(expr, out),
+            E::Binary { lhs, rhs, .. } => { self.collect_idents_expr(lhs, out); self.collect_idents_expr(rhs, out); }
+            E::Call { callee, args } => { self.collect_idents_expr(callee, out); for a in args { self.collect_idents_expr(a, out); } }
+            E::Member { obj, .. } => self.collect_idents_expr(obj, out),
+            E::Index { obj, index } => { self.collect_idents_expr(obj, out); self.collect_idents_expr(index, out); }
+            E::Array(items) | E::Tuple(items) => for i in items { self.collect_idents_expr(i, out); },
+            E::If { cond, then, els } => {
+                self.collect_idents_expr(cond, out);
+                self.collect_idents_block(then, out);
+                if let Some(x) = els { self.collect_idents_expr(x, out); }
+            }
+            E::BlockExpr(b) => self.collect_idents_block(b, out),
+            E::Match { expr, arms } => {
+                self.collect_idents_expr(expr, out);
+                for a in arms {
+                    if let ast::Pattern::Agg { sub: ast::AggSub::Tuple(ps), .. } = &a.pattern {
+                        for p in ps {
+                            if let ast::Pattern::Ident(n) = p { out.push(n.clone()); }
+                        }
+                    }
+                    self.collect_idents_expr(&a.expr, out);
+                }
+            }
+            E::Range { from, to, .. } => { self.collect_idents_expr(from, out); self.collect_idents_expr(to, out); }
+            E::StructLit { fields, .. } => for f in fields {
+                if let Some(v) = &f.value { self.collect_idents_expr(v, out); }
+            },
+            _ => {}
+        }
+    }
+    fn collect_idents_block(&self, b: &ast::Block, out: &mut Vec<String>) {
+        for st in &b.stmts { self.collect_idents_stmt(st, out); }
+        if let Some(t) = &b.tail { self.collect_idents_expr(t, out); }
+    }
+    fn collect_idents_stmt(&self, st: &ast::Stmt, out: &mut Vec<String>) {
+        match st {
+            ast::Stmt::Let { expr, .. } => self.collect_idents_expr(expr, out),
+            ast::Stmt::Expr(e) | ast::Stmt::Return(Some(e)) => self.collect_idents_expr(e, out),
+            ast::Stmt::Assign { target, value, .. } => {
+                if let ast::Expr::Ident(n) = target { out.push(n.clone()); }
+                self.collect_idents_expr(value, out);
+            }
+            ast::Stmt::While { cond, body } => { self.collect_idents_expr(cond, out); self.collect_idents_block(body, out); }
+            ast::Stmt::For { iter, body, .. } => { self.collect_idents_expr(iter, out); self.collect_idents_block(body, out); }
+            _ => {}
+        }
+    }
 
     fn fn_has_traitobj_param(&self, name: &str) -> bool {
         for d in &self.decls {
@@ -871,6 +941,99 @@ impl Trans {
             e.1 = ret;
         }
         Ok((cname, ret))
+    }
+
+    /// s.spawn(闭包):捕获分析 → env 结构体 + shim → ct_spawn
+    fn emit_spawn(&mut self, scope_c: String, args: &[ast::Expr]) -> TRes {
+        let Some(a) = args.first() else { return Err("trans:spawn 需闭包".into()) };
+        let ast::Expr::Closure { params, body, .. } = a else {
+            return Err("trans v1 拒绝域:spawn 需闭包字面量".into());
+        };
+        // 捕获分析:屏蔽参数后收集自由名,解析到外层者即捕获
+        self.scope_push();
+        for p in params { self.bind(&p.name, VTy::Int(None)); }
+        let mut names = Vec::new();
+        if let ast::Expr::BlockExpr(b) = body.as_ref() { self.collect_idents_block(b, &mut names); }
+        else { self.collect_idents_expr(body, &mut names); }
+        self.scope_pop();
+        let mut caps: Vec<(String, VTy, String)> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for n in names {
+            if seen.insert(n.clone()) {
+                if self.lookup_fn(&n).is_some() { continue; }
+                if self.find_variant(&n).is_some() { continue; }
+                if let Some((cn, ty)) = self.lookup(&n) {
+                    caps.push((n, ty, cn));
+                }
+            }
+        }
+        eprintln!("DBG caps={:?} scope_c={}", caps.iter().map(|(n, t, c)| format!("{}={}", n, c)).collect::<Vec<_>>(), scope_c);
+        self.mono_seq += 1;
+        let ename = format!("ct_env_{}", self.mono_seq);
+        let shim = format!("ct_shim_{}", self.mono_seq);
+        let fname_of = |n: &str| format!("f_{}", n);
+        // env typedef
+        let mut fields = vec!["ct_scope* scope".to_string()];
+        for (n, ty, _) in &caps {
+            fields.push(format!("{} {}", self.c_ty(*ty), fname_of(n)));
+        }
+        self.late_defs.push(format!("typedef struct {{ {} }} {};\n", fields.join("; "), ename));
+        // shim
+        self.scope_push();
+        let mut unpack = vec![format!("{}* e = ({}*)envp;", ename, ename)];
+        for (n, ty, _) in &caps {
+            let c = self.bind(n, *ty);
+            unpack.push(format!("{} {} = e->{};", self.c_ty(*ty), c, fname_of(n)));
+        }
+        for p in params { self.bind(&p.name, VTy::Int(None)); }
+        let mut head = format!("static void* {}(void* envp) {{\n", shim);
+        for l in &unpack { head.push_str("    "); head.push_str(l); head.push('\n'); }
+        self.closure_defs.push(head);
+        self.sink.push(String::new());
+        let mut result_line = None;
+        match body.as_ref() {
+            ast::Expr::BlockExpr(b) => {
+                self.scope_push();
+                for st in &b.stmts { self.emit_stmt(st)?; }
+                if let Some(t) = &b.tail {
+                    let (c, ty) = self.expr(t)?;
+                    if matches!(ty, VTy::Int(_) | VTy::Bool) {
+                        result_line = Some(c);
+                    } else {
+                        self.w(2, &format!("(void)({});", c));
+                    }
+                }
+                self.scope_pop();
+            }
+            other => {
+                let (c, ty) = self.expr(other)?;
+                if matches!(ty, VTy::Int(_) | VTy::Bool) {
+                    result_line = Some(c);
+                } else {
+                    self.w(2, &format!("(void)({});", c));
+                }
+            }
+        }
+        let code = self.sink.pop().unwrap_or_default();
+        for line in code.lines() {
+            let last = self.closure_defs.last_mut().unwrap();
+            last.push_str("    "); last.push_str(line); last.push('\n');
+        }
+        self.scope_pop();
+        if let Some(rc_) = result_line {
+            self.closure_defs.push(format!("    ct_tls_task->result = (ct_i)({});\n", rc_));
+        }
+        self.closure_defs.push("    return 0;\n}\n".into());
+        // spawn 调用点:env 实例
+        let mut inits = vec![format!("e->scope = ({});", scope_c)];
+        for (n, _ty, cn) in &caps {
+            inits.push(format!("e->{} = ({});", fname_of(n), cn));
+        }
+        Ok((
+            format!("({{ {}* e = malloc(sizeof({})); {} ct_task* ct_t = ct_spawn({}, e, ({})); ct_t; }})",
+                ename, ename, inits.join(" "), shim, scope_c),
+            VTy::Task,
+        ))
     }
 
     /// 每具体类型一个 show 函数:Name{f: v, ...}(对齐 interp show_value)
@@ -1176,9 +1339,12 @@ impl Trans {
                 Ok(())
             }
             ast::Stmt::For { pattern, iter, body } => {
-                let ast::Pattern::Ident(name) = pattern else {
-                    return Err("trans v1 拒绝域:for 非 Ident 模式".into());
+                let name_str = match pattern {
+                    ast::Pattern::Ident(n) => n.clone(),
+                    ast::Pattern::Wildcard => "_".to_string(),
+                    _ => return Err("trans v1 拒绝域:for 非 Ident 模式".into()),
                 };
+                let name = name_str.as_str();
                 // 三种迭代:range 字面量 / Range 类型的值 / 数组(Range/数组值只求值一次)
                 enum IterKind { RangeLit, RangeVal, Arr }
                 let (kind, lo_c, hi_c, incl, tmp, init) = match iter {
@@ -1684,9 +1850,12 @@ impl Trans {
                 self.scope_pop();
                 Ok(out)
             }
-            ast::Expr::Scope { body, .. } => {
-                // scope 块:结构化并发边界;运行期透明(spawn 语义由调用决定)
+            ast::Expr::Scope { param, body } => {
+                // scope 块:结构化并发边界;|s| 绑定 scope 句柄
                 self.scope_push();
+                let sc = self.uniq_name("scope");
+                self.w(1, &format!("ct_scope* {} = ct_scope_new();", sc));
+                self.scopes.last_mut().unwrap().push((param.clone(), sc.clone(), VTy::ScopeH));
                 for st in &body.stmts { self.emit_stmt(st)?; }
                 let out = match &body.tail {
                     Some(t) => self.expr(t)?,
@@ -1795,6 +1964,39 @@ impl Trans {
                 }
             }
         }
+        // Mutex[T](init) → 类型化单元格
+        if let ast::Expr::TypeArgs { expr, args: targ_args } = callee {
+            if let ast::Expr::Ident(tn) = &**expr {
+                if tn == "Mutex" {
+                    let inner = targ_args.first().map(|t| self.ty_of(t)).unwrap_or(VTy::Int(None));
+                    let cid = self.intern_cell(inner);
+                    let Some(a) = args.first() else { return Err("trans:Mutex 需初值".into()) };
+                    let (ic, _) = self.expr(a)?;
+                    let ct = self.c_ty(inner).to_string();
+                    return Ok((
+                        format!("({{ {}* p = malloc(sizeof(*p)); *p = ({}); ({}*)p; }})", ct, ic, ct),
+                        VTy::Cell(cid),
+                    ));
+                }
+            }
+        }
+        // Channel[T](cap) → (tx, rx) 同一通道双端
+        if let ast::Expr::TypeArgs { expr, .. } = callee {
+            if let ast::Expr::Ident(tn) = &**expr {
+                if tn == "Channel" {
+                    let id = self.intern_tuple(VTy::Chan, VTy::Chan);
+                    let tn2: String = self.c_ty(VTy::Chan).chars().map(|ch| if ch.is_alphanumeric() { ch } else { '_' }).collect();
+                    let cap_c = match args.first() {
+                        Some(a) => self.expr(a)?.0,
+                        None => "(ct_i)4".to_string(),
+                    };
+                    return Ok((
+                        format!("({{ ct_chan* ch = ct_ch_make((int)({})); (ct_val2_{}){{ (ct_chan*)ch, (ct_chan*)ch }}; }})", cap_c, tn2),
+                        VTy::Tup(id),
+                    ));
+                }
+            }
+        }
         // Global[T](name, init) / Atomic[T](init) → 局部静态单元格
         if let ast::Expr::TypeArgs { expr, .. } = callee {
             if let ast::Expr::Ident(tn) = &**expr {
@@ -1804,10 +2006,11 @@ impl Trans {
                         Some(a) => self.expr(a)?.0,
                         None => "(ct_i)0".to_string(),
                     };
+                    let cid = self.intern_cell(VTy::Int(None));
                     let cname = self.uniq_name(&format!("cell_{}", tn));
                     return Ok((
                         format!("({{ static ct_i {} = {}; (&{}); }})", cname, init_c, cname),
-                        VTy::Cell,
+                        VTy::Cell(cid),
                     ));
                 }
             }
@@ -1970,6 +2173,38 @@ impl Trans {
                 };
                 if let Some(r) = r { return Ok(r); }
             }
+            // scope.spawn(闭包) → 任务(捕获经 env 结构体)
+            if let VTy::ScopeH = rt {
+                if m == "spawn" {
+                    return self.emit_spawn(rc, args);
+                }
+                return Err(format!("trans v1 拒绝域:scope 方法 `.{}`", m));
+            }
+            // 任务:join / join_or
+            if let VTy::Task = rt {
+                return match m.as_str() {
+                    "join" => Ok((format!("ct_join({})", rc), VTy::Int(None))),
+                    "join_or" => {
+                        let rid = self.enum_by_name.get("Result").copied().unwrap_or(0);
+                        Ok((format!("ct_join_or({})", rc), VTy::Sum(rid, Pay::I)))
+                    }
+                    _ => Err(format!("trans v1 拒绝域:Task 方法 `.{}`", m)),
+                };
+            }
+            // 通道端点:send / recv
+            if let VTy::Chan = rt {
+                let rid = self.enum_by_name.get("Result").copied().unwrap_or(0);
+                return match m.as_str() {
+                    "send" => {
+                        let Some(a) = args.first() else { return Err("trans:send 需实参".into()) };
+                        let (c, at) = self.expr(a)?;
+                        let pc = payload_cell(c, at)?;
+                        Ok((format!("ct_ch_send((ct_chan*)({}), {})", rc, slot_i(&pc)), VTy::Sum(rid, Pay::I)))
+                    }
+                    "recv" => Ok((format!("ct_ch_recv((ct_chan*)({}))", rc), VTy::Sum(rid, Pay::I))),
+                    _ => Err(format!("trans v1 拒绝域:Chan 方法 `.{}`", m)),
+                };
+            }
             // 数组方法:push / into_gc(深拷贝)
             if let VTy::Array = rt {
                 let r = match m.as_str() {
@@ -2014,8 +2249,9 @@ impl Trans {
                 };
                 if let Some(r) = r { return Ok(r); }
             }
-            // Global/Atomic 单元格方法
-            if let VTy::Cell = rt {
+            // Global/Atomic/Mutex 单元格方法
+            if let VTy::Cell(cid) = rt {
+                let inner = self.cells[cid as usize];
                 let r = match m.as_str() {
                     "with" | "with_mut" => {
                         // 闭包首参即单元格值;with_mut 回写终值(对齐 interp)
@@ -2026,23 +2262,26 @@ impl Trans {
                         if m == "with" {
                             // with:读值传入,返回闭包结果
                             let (fname, _) = self.expr(cl)?;
+                            let acc = if self.cells[cid as usize].is_num() { format!("*({})", rc) } else { format!("**({}*)({})", self.c_ty(self.cells[cid as usize]), rc) };
                             return Ok((
-                                format!("((ct_fnptr0)({}))(*({}))", fname, rc),
+                                format!("((ct_fnptr0)({}))({})", fname, acc),
                                 VTy::Int(None),
                             ));
                         } // with_mut 走下方内联回写
                         let pname = params.first().map(|cp| cp.name.clone()).unwrap_or_else(|| "c".into());
-                                                self.scope_push();
+                        self.scope_push();
                         self.sink.push(String::new());
                         let cp = self.uniq_name("cp");
-                        self.w(2, &format!("ct_i* {} = ({});", cp, rc));
-                        let cbind = self.bind(&pname, VTy::Int(None));
-                        self.w(2, &format!("ct_i {} = *{};", cbind, cp));
+                        self.w(2, &format!("{}* {} = ({});", self.c_ty(inner), cp, rc));
+                        self.w(2, "ct_glock();");
+                        let cbind = self.bind(&pname, inner);
+                        self.w(2, &format!("{} {} = *{};", self.c_ty(inner), cbind, cp));
                         match body.as_ref() {
                             ast::Expr::BlockExpr(b) => { self.emit_block_stmts(b)?; }
                             other => { let (c3, _) = self.expr(other)?; self.w(2, &format!("(void)({});", c3)); }
                         }
                         self.w(2, &format!("*{} = {};", cp, cbind));
+                        self.w(2, "ct_gunlock();");
                         let code = self.sink.pop().unwrap_or_default();
                         self.scope_pop();
                         Some(Ok((format!("({{ {} 0; }})", code), VTy::Void)))
@@ -2254,6 +2493,18 @@ fn assign_binop(op: &ast::AssignOp) -> ast::BinOp {
 }
 
 /// 变体载荷 → ct_cell 初始化(v1:数值/Bool)
+/// ct_cell 初始化串中的整数值表达式(send 载荷恒走 .i 槽)
+fn slot_i(cell_init: &str) -> String {
+    // 形如 {.i = X} / {.f = X} / {.i = (ct_i)(!!(x))}
+    if let Some(i) = cell_init.find("= ") {
+        let inner = &cell_init[i + 2..];
+        let inner = inner.trim_end_matches('}');
+        inner.to_string()
+    } else {
+        cell_init.to_string()
+    }
+}
+
 fn payload_cell(c: String, ty: VTy) -> Result<String, String> {
     Ok(match ty {
         VTy::Int(_) => format!("{{.i = {}}}", c),
@@ -2368,6 +2619,8 @@ const PREAMBLE: &str = r#"/* Ctron → C 转译产物(P1-E① 数值域;语义�
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <setjmp.h>
 
 typedef __int128 ct_i;
 typedef struct { ct_i lo; ct_i hi; int incl; } ct_range;
@@ -2383,7 +2636,25 @@ static char* ct_f32_str(float f) {
 }
 static const char* ct_cur_test = "";
 
+typedef struct ct_scope { int cancelled; pthread_mutex_t mu; } ct_scope;
+typedef struct ct_task {
+    pthread_t th; void* env; void* (*shim)(void*);
+    ct_i result; int state; /* 0=run 1=done 2=panicked */
+    char pmsg[128]; ct_scope* scope;
+    jmp_buf jmp;
+} ct_task;
+static __thread ct_task* ct_tls_task = NULL;
+static __thread ct_scope* ct_tls_scope = NULL;
+static void ct_cancel_broadcast(void);
+
 static void ct_panic(const char* msg) {
+    ct_task* t = ct_tls_task;
+    if (t) {
+        snprintf(t->pmsg, sizeof t->pmsg, "%s", msg);
+        t->state = 2;
+        if (t->scope) t->scope->cancelled = 1;
+        longjmp(t->jmp, 1);
+    }
     fprintf(stderr, "panic: %s (test %s)\n", msg, ct_cur_test);
     exit(1);
 }
@@ -2395,6 +2666,107 @@ static int ct_assert(int ok) {
 typedef ct_i (*ct_fnptr0)();
 typedef union { ct_i i; double f; } ct_cell;
 typedef struct { int variant; ct_cell p[4]; } ct_sum;
+
+/* ---- 结构化并发:scope / task / channel(语义契约 = 解释器) ---- */
+#define CT_CH_CAP 64
+typedef struct ct_chan {
+    pthread_mutex_t mu; pthread_cond_t cv_full, cv_empty;
+    ct_i buf[CT_CH_CAP]; size_t head, tail, cnt; int cap;
+} ct_chan;
+static ct_chan* ct_chans[64]; static int ct_nchans = 0;
+static pthread_mutex_t ct_reg_mu = PTHREAD_MUTEX_INITIALIZER;
+static ct_chan* ct_ch_make(int cap) {
+    ct_chan* c = (ct_chan*)calloc(1, sizeof(ct_chan));
+    if (!c) abort();
+    pthread_mutex_init(&c->mu, NULL);
+    pthread_cond_init(&c->cv_full, NULL);
+    pthread_cond_init(&c->cv_empty, NULL);
+    if (cap > CT_CH_CAP || cap <= 0) cap = CT_CH_CAP;
+    c->cap = cap;
+    pthread_mutex_lock(&ct_reg_mu);
+    if (ct_nchans < 64) ct_chans[ct_nchans++] = c;
+    pthread_mutex_unlock(&ct_reg_mu);
+    return c;
+}
+static ct_sum ct_ch_send(ct_chan* c, ct_i v) {
+    pthread_mutex_lock(&c->mu);
+    while (c->cnt >= (size_t)c->cap) {
+        if (ct_tls_scope && ct_tls_scope->cancelled) {
+            pthread_mutex_unlock(&c->mu);
+            return (ct_sum){ 1, {{.i = (ct_i)"ScopeCancelled"}, {.i = 0}, {.i = 0}, {.i = 0}} };
+        }
+        pthread_cond_wait(&c->cv_full, &c->mu);
+    }
+    c->buf[c->tail] = v; c->tail = (c->tail + 1) % CT_CH_CAP; c->cnt++;
+    pthread_cond_broadcast(&c->cv_empty);
+    pthread_mutex_unlock(&c->mu);
+    return (ct_sum){ 0, {{.i = 0}, {.i = 0}, {.i = 0}, {.i = 0}} };
+}
+static ct_sum ct_ch_recv(ct_chan* c) {
+    pthread_mutex_lock(&c->mu);
+    while (c->cnt == 0) {
+        if (ct_tls_scope && ct_tls_scope->cancelled) {
+            pthread_mutex_unlock(&c->mu);
+            return (ct_sum){ 1, {{.i = (ct_i)"ScopeCancelled"}, {.i = 0}, {.i = 0}, {.i = 0}} };
+        }
+        pthread_cond_wait(&c->cv_empty, &c->mu);
+    }
+    ct_i v = c->buf[c->head]; c->head = (c->head + 1) % CT_CH_CAP; c->cnt--;
+    pthread_cond_broadcast(&c->cv_full);
+    pthread_mutex_unlock(&c->mu);
+    return (ct_sum){ 0, {{.i = v}, {.i = 0}, {.i = 0}, {.i = 0}} };
+}
+static pthread_mutex_t ct_glock_mu = PTHREAD_MUTEX_INITIALIZER;
+static void ct_glock(void) { pthread_mutex_lock(&ct_glock_mu); }
+static void ct_gunlock(void) { pthread_mutex_unlock(&ct_glock_mu); }
+static void ct_cancel_broadcast(void) {
+    pthread_mutex_lock(&ct_reg_mu);
+    for (int i = 0; i < ct_nchans; i++) {
+        pthread_cond_broadcast(&ct_chans[i]->cv_full);
+        pthread_cond_broadcast(&ct_chans[i]->cv_empty);
+    }
+    pthread_mutex_unlock(&ct_reg_mu);
+}
+static void* ct_shim_tramp(void* envp);
+static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) {
+    ct_task* t = (ct_task*)calloc(1, sizeof(ct_task));
+    if (!t) abort();
+    t->env = env; t->scope = sc; t->state = 0;
+    t->shim = shim;
+    pthread_create(&t->th, NULL, ct_shim_tramp, t);
+    return t;
+}
+static void* ct_shim_tramp(void* envp) {
+    ct_task* self = (ct_task*)envp;
+    ct_tls_task = self;
+    ct_tls_scope = self->scope;
+    if (setjmp(self->jmp)) {
+        self->state = 2;
+        if (self->scope) self->scope->cancelled = 1;
+        ct_cancel_broadcast();
+    } else {
+        self->shim(self->env);
+        self->state = 1;
+    }
+    return 0;
+}
+static ct_i ct_join(ct_task* t) {
+    void* d; pthread_join(t->th, &d);
+    return t->state == 2 ? (ct_i)0 : t->result;
+}
+static ct_sum ct_join_or(ct_task* t) {
+    void* d; pthread_join(t->th, &d);
+    if (t->state == 2) {
+        return (ct_sum){ 1, {{.i = (ct_i)t->pmsg}, {.i = 0}, {.i = 0}, {.i = 0}} };
+    }
+    return (ct_sum){ 0, {{.i = t->result}, {.i = 0}, {.i = 0}, {.i = 0}} };
+}
+static ct_scope* ct_scope_new(void) {
+    ct_scope* sc = (ct_scope*)calloc(1, sizeof(ct_scope));
+    if (!sc) abort();
+    pthread_mutex_init(&sc->mu, NULL);
+    return sc;
+}
 
 /* ---- Simd[F32,4](元素级白名单运算)与 f32 数组 ---- */
 typedef struct { float v[4]; } ct_simd;
