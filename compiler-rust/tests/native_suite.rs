@@ -84,7 +84,7 @@ fn native_matches_interpreter() {
         let bin_path = tmp.join(format!("{stem}.bin"));
         std::fs::write(&c_path, &c_code).unwrap();
         let cc = Command::new("cc")
-            .args(["-O0", "-std=gnu11"])
+            .args(["-O0", "-w", "-std=gnu11"])
             .arg(&c_path).arg("-o").arg(&bin_path)
             .output()
             .expect("cc 启动失败");
@@ -119,6 +119,6 @@ fn native_matches_interpreter() {
     }
 
     println!("P1-E 原生差分: {ran} 文件原生运行一致, {skipped} 域外跳过");
-    assert!(ran >= 12, "原生差分覆盖不应回退(已到 13),实际 {ran}");
+    assert!(ran >= 13, "原生差分覆盖不应回退(已到 14),实际 {ran}");
     assert!(failures.is_empty(), "原生/解释器分歧({}):\n{}", failures.len(), failures.join("\n---\n"));
 }

@@ -40,6 +40,8 @@ enum VTy {
     Boxed(u32),
     /// 和类型(tagged union):预定义 Option/Result 与用户 enum;载荷槽类别
     Sum(u32, Pay),
+    /// 错误对象指针(AnyError:context 产物;载体为 ct_i 槽位)
+    ErrPtr,
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -359,6 +361,7 @@ impl Trans {
                     return Err(format!("trans:未知变体 `{}`", vname));
                 };
                 let pay = match scrut { VTy::Sum(_, p) => p, _ => Pay::I };
+                let mut conds = vec![format!("({}).variant == {}", mv, vid)];
                 let mut binds = Vec::new();
                 if let ast::AggSub::Tuple(ps) = sub {
                     let slot = if pay == Pay::F { "f" } else { "i" };
@@ -367,15 +370,29 @@ impl Trans {
                     for (i, sp) in ps.iter().enumerate() {
                         match sp {
                             ast::Pattern::Ident(n) => {
+                                // Err 载荷绑定 = 错误对象指针(context 链约定)
+                                if vname == "Err" {
+                                    let cname = self.bind(n, VTy::ErrPtr);
+                                    binds.push(format!("ct_i {} = ({}).p[{}].i;", cname, mv, i));
+                                    continue;
+                                }
                                 let cname = self.bind(n, st);
                                 binds.push(format!("{} {} = ({}).p[{}].{};", ctype, cname, mv, i, slot));
                             }
                             ast::Pattern::Wildcard => {}
+                            // 嵌套无参变体(如 Err(DivByZero)):变体号相等并入头条件
+                            ast::Pattern::Agg { path, sub: ast::AggSub::Unit } => {
+                                let nested = path.last().cloned().unwrap_or_default();
+                                let Some((_, nvid)) = self.find_variant(&nested) else {
+                                    return Err(format!("trans:未知变体 `{}`", nested));
+                                };
+                                conds.push(format!("((ct_i)({}).p[{}].i) == {}", mv, i, nvid));
+                            }
                             _ => return Err("trans v1 拒绝域:载荷子模式".into()),
                         }
                     }
                 }
-                Ok((format!("({}).variant == {}", mv, vid), binds))
+                Ok((conds.join(" && "), binds))
             }
             ast::Pattern::Lit(l) => {
                 // 整数/布尔字面量模式(scrutinee 为 Int/Bool)
@@ -387,7 +404,7 @@ impl Trans {
                     crate::ast::PatLit::Bool(b) => format!("{}", *b as i32),
                     _ => return Err("trans v1 拒绝域:该字面量模式".into()),
                 };
-                Ok((format!("(({}) == ({}))", mv, lit), vec![]))
+                Ok((format!("({}) == ({})", mv, lit), vec![]))
             }
             _ => Err("trans v1 拒绝域:该模式形态".into()),
         }
@@ -457,6 +474,7 @@ impl Trans {
             VTy::Range => "ct_range",
             VTy::Array => "ct_arr*",
             VTy::Sum(..) => "ct_sum",
+            VTy::ErrPtr => "ct_i",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
             VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
             VTy::Int(_) | _ => "ct_i",
@@ -721,7 +739,7 @@ impl Trans {
                 // 无参变体作为值表达式(如 `return Stop`)
                 if let Some((eid, vid)) = self.find_variant(name) {
                     if self.enums[eid as usize].variants[vid as usize].1 == 0 {
-                        return Ok((format!("(ct_sum){{ {}, {{ 0, 0, 0, 0 }} }}", vid), VTy::Sum(eid, Pay::I)));
+                        return Ok((format!("(ct_sum){{ {}, {{ {{.i = 0}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}", vid), VTy::Sum(eid, Pay::I)));
                     }
                 }
                 Err(format!("trans:未绑定标识符 `{}`", name))
@@ -865,6 +883,14 @@ impl Trans {
                         _ => Err(format!("trans v1 拒绝域:Array 属性 `{}`", m)),
                     };
                 }
+                if ty == VTy::ErrPtr {
+                    return match m.as_str() {
+                        "message" => Ok((format!("(char*)((ct_anyerr*)({}))->message", c), VTy::Str)),
+                        "cause" => Ok((format!("((ct_anyerr*)({}))->cause", c), VTy::Sum(self.enum_by_name.get("Option").copied().unwrap_or(0), Pay::I))),
+                        "trace" => Ok(("(char*)\"\"".into(), VTy::Str)),
+                        _ => Err(format!("trans v1 拒绝域:错误对象成员 `.{}`", m)),
+                    };
+                }
                 // 用户类型字段(struct 值 / class、Boxed 指针)
                 let (base, tid) = self.deref_obj(&c, ty)?;
                 let fty = self.types[tid as usize].fields.iter()
@@ -948,7 +974,7 @@ impl Trans {
                     self.w(1, &format!("{} {};", self.c_ty(t), vv));
                     for (i, _) in arm_heads.iter().enumerate() {
                         let kw = if i == 0 { "if" } else { "} else if" };
-                        self.w(1, &format!("{} ({}) {{", kw, arm_heads[i]));
+                        self.w(1, &format!("{} (({}) != 0) {{", kw, arm_heads[i]));
                         self.emit_lines(&arm_blocks[i]);
                         self.w(2, &format!("{} = {};", vv, arm_vals[i].as_ref().unwrap().0));
                         self.w(2, &format!("{} = 1;", dv));
@@ -960,7 +986,7 @@ impl Trans {
                 }
                 for (i, _) in arm_heads.iter().enumerate() {
                     let kw = if i == 0 { "if" } else { "} else if" };
-                    self.w(1, &format!("{} ({}) {{", kw, arm_heads[i]));
+                    self.w(1, &format!("{} (({}) != 0) {{", kw, arm_heads[i]));
                     self.emit_lines(&arm_blocks[i]);
                     let _ = arm_vals[i];
                     self.w(2, &format!("{} = 1;", dv));
@@ -1210,10 +1236,26 @@ impl Trans {
                          VTy::Int(None))
                     }
                     "is_some" | "is_ok" => {
-                        (format!("(ct_i)(({}).variant == 0)", rc), VTy::Int(Some((IntW::W64, true))))
+                        (format!("(({}).variant == 0)", rc), VTy::Bool)
                     }
                     "is_none" | "is_err" => {
-                        (format!("(ct_i)(({}).variant == 1)", rc), VTy::Int(Some((IntW::W64, true))))
+                        (format!("(({}).variant == 1)", rc), VTy::Bool)
+                    }
+                    "context" => {
+                        // Err → Err(AnyError{message, cause=原载荷});Ok 原样
+                        let VTy::Sum(rid, rpay) = rt else { return Err("trans:context 需 Result".into()) };
+                        let Some(a) = args.first() else { return Err("trans:context 需消息".into()) };
+                        let ast::Expr::Str { parts } = a else {
+                            return Err("trans v1 拒绝域:非字面量 context 消息".into());
+                        };
+                        let msg = match parts.as_slice() {
+                            [ast::StrPart::Text(t)] => t.replace('"', "\\\""),
+                            _ => "context".to_string(),
+                        };
+                        (format!(
+                            "({{ ct_sum t = ({}); ct_sum ct_r; if (t.variant == 0) {{ ct_r = t; }} else {{ ct_anyerr* e = ct_mkerr(\"{}\", (ct_sum){{ 0, {{ t.p[0], {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}); ct_r = (ct_sum){{ 1, {{ {{.i = (ct_i)e}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_r; }})",
+                            rc, msg),
+                         VTy::Sum(rid, rpay))
                     }
                     _ => return Err(format!("trans v1 拒绝域:和类型方法 `.{}`", m)),
                 };
@@ -1311,6 +1353,8 @@ fn payload_cell(c: String, ty: VTy) -> Result<String, String> {
         VTy::Bool => format!("{{.i = (ct_i)(!!({}))}}", c),
         VTy::F64 => format!("{{.f = {}}}", c),
         VTy::F32 => format!("{{.f = (double)({})}}", c),
+        // 错误域:Sum 载荷编码为变体号(Err(DivByZero) → p[0].i = vid)
+        VTy::Sum(..) => format!("{{.i = ((ct_i)({}).variant)}}", c),
         _ => return Err("trans v1 拒绝域:该载荷类型".into()),
     })
 }
@@ -1447,6 +1491,16 @@ static int ct_assert(int ok) {
 /* ---- 和类型:tagged union;载荷槽 i/f 按静态类型选用 ---- */
 typedef union { ct_i i; double f; } ct_cell;
 typedef struct { int variant; ct_cell p[4]; } ct_sum;
+
+/* ---- 错误对象(context 产物;堆分配,进程期不回收) ---- */
+typedef struct ct_anyerr { const char* message; ct_sum cause; } ct_anyerr;
+static ct_anyerr* ct_mkerr(const char* m, ct_sum cause) {
+    ct_anyerr* e = (ct_anyerr*)malloc(sizeof(ct_anyerr));
+    if (!e) abort();
+    e->message = m;
+    e->cause = cause;
+    return e;
+}
 
 /* ---- 数组运行时:句柄共享语义(对齐 interp Rc<Vec>),进程期不回收 ---- */
 typedef struct { ct_i* d; size_t n; } ct_arr;
