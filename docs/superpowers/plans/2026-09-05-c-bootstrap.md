@@ -290,6 +290,18 @@
    "shell echo + heredoc + python" 三层引号叠加产生的假象(计数恒 5/断行/XXMARK)
    曾三次误判——生成类逻辑一律用 python 文件而非 shell echo;验收探针输出须在
    正常退出路径上(panic 退出丢缓冲)。
+21a. **C9j①(本文件交付)—— C 代码生成器 v0(Ctron 写的代码生成,编译产物落盘第一步)**:
+   `tools/trans_part.ct`(Ctron 写的代码发射器,~160 行)+ genmod `--trans` 模式
+   (cc.ct 前缀(解析设施)+ trans_part = 自举编译器的 C 代码生成模式)。v0 覆盖:
+   I32 fn/参数/返回(int32_t)/ var/let / 赋值(= 与复合)/ if/else-if/else / while /
+   return / 二元算术比较逻辑 / 一元 - / 用户 fn 调用(t_ 前缀防撞)/ println(int)
+   (ctron_print_i32 运行时辅助)。②ladder 第 4 步:代码生成往返(trans 模块发射 C →
+   gcc → 原生执行 vs cc 解释执行,逐字一致)。验收:trans_v0 fixture(add/fact(递归
+   while)/main)发射 C 编译零错,原生输出 42/120/3628800/0/1/2 与解释执行逐字一致;
+   make test 全量绿(trans 用 HEAD 稳定版链接——并行泳道 trans.c 中途重构暂不可编译);
+   ASan 230 全绿。钉子:①发射的 C 全部单行拼接——#include 后必须换行(单行时后续
+   全被预处理吞掉,链接 _main undefined);②发射字符串的 { 必须 \{、\n 用 "\"+"n"
+   拼接(Ctron 字符串转义镜像);③trans_part 非 standalone(引用 cc 前缀的 scan/p_file)。
 
 
 ## 自举产物目录

@@ -139,6 +139,14 @@
   ②v1 span 失配:全局替换改变长度后必须重算 span,自校验(行数/fn 数)写进脚本;
   ③嵌套输出字面 \n = Ctron 字符串求值不展开转义(C 词法器转义),unesc 已补;
   ④负载污染:并行构建期间一切计时不可信,先看 uptime。
+- **C9j① ✅ C 代码生成器 v0**(tools/trans_part.ct + genmod --trans + ladder 第 4 步):
+  Ctron 写的代码发射器,trans_v0 fixture(add/fact/main)发射 C→gcc→原生执行,
+  与解释执行逐字一致;make test 全量绿(trans 用 HEAD 稳定版链接,并行 trans.c
+  中途重构暂不可编译,勿动其文件)。
+- **钉子:发射的 C 必须 #include 独立成行**——单行拼接时 #include 吞掉整行剩余
+  全部 token(链接 _main undefined 的假象);发射字符串的 { 写 \{;\n 用 "\\n"。
+- 下一阶梯:C9j② 代码生成扩面(Str/Bool/比较逻辑已部分覆盖,补 struct/method/
+  List)→ 产物落盘 gcc 自动化已在 ladder;C9j③ cc 语义面扩面(12 项之外)。
 - **LitFs 守卫补遗(C9i①收尾)**:最小复现 `if <ident> <op> <ident> { 赋值 }` + 单行 fn 确定性挂起
   = p_pri StructLit 在 if 条件上下文误触发 + LitFs 无 #EOF 守卫。已落地 LitFs `#EOF` 退出 + `NL`
   跳过,三复现 0s 通过。allow_struct 线程化(C 正解)已实现到链路完整但 s6 仍挂(第二旋点未定位),

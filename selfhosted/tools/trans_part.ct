@@ -1,0 +1,186 @@
+// trans_part.ct —— C9j①: C 代码生成器 v0(Ctron 写的代码生成)
+// 本文件是 cc.ct 的追加部件(拼在 cc.ct 的 main 之前,替换 cc 的运行驱动):
+//   cc 前缀(scan/p_file/sem_walk2 等解析与语义设施)+ 本文件 = 自举编译器的
+//   C 代码生成模式:读入 .ct 源 → 输出等价 C 代码(stdout)→ gcc 编译执行。
+// v0 覆盖:I32 fn/参数/返回, var/let(I32), 赋值(= 与复合), if/else-if/else,
+//          while, return, 二元算术/比较/逻辑, 一元 -, 用户 fn 调用, println/println(int)。
+// 约定: 所有用户符号加 t_ 前缀;I32 → int32_t;暂不支持:struct/class/trait/
+//       方法/字符串运算/List/闭包(遇到即 panic,留待后续阶梯)。
+// 注意: 本文件字符串中的 { 均写作 \{(插值转义,镜像 C 词法器)。
+
+fn ct_op(op: Str) -> Str {
+    if op == "Add" { return "+" }
+    if op == "Sub" { return "-" }
+    if op == "Mul" { return "*" }
+    if op == "Div" { return "/" }
+    if op == "Mod" { return "%" }
+    if op == "Lt" { return "<" }
+    if op == "Gt" { return ">" }
+    if op == "Le" { return "<=" }
+    if op == "Ge" { return ">=" }
+    if op == "Eq" { return "==" }
+    if op == "Ne" { return "!=" }
+    if op == "AndAnd" { return "&&" }
+    panic("ct_op:" + op)
+    return "?"
+}
+
+fn ct_aop(op: Str) -> Str {
+    if op == "Eq" { return "=" }
+    if op == "AddEq" { return "+=" }
+    if op == "SubEq" { return "-=" }
+    if op == "MulEq" { return "*=" }
+    if op == "DivEq" { return "/=" }
+    if op == "ModEq" { return "%=" }
+    panic("ct_aop:" + op)
+    return "?"
+}
+
+fn ct_expr(e: List[Str]) -> Str {
+    var t = e[0]
+    if t == "Int" { return e[1] }
+    if t == "Bool" {
+        if e[1] == "true" { return "1" }
+        return "0"
+    }
+    if t == "Ident" { return "t_" + e[1] }
+    if t == "Unary" {
+        if e[1] == "Neg" { return "(-" + ct_expr(e[2]) + ")" }
+        return "(!" + ct_expr(e[2]) + ")"
+    }
+    if t == "Binary" {
+        return "(" + ct_expr(e[2]) + " " + ct_op(e[1]) + " " + ct_expr(e[3]) + ")"
+    }
+    if t == "Call" {
+        var callee = e[1][1]
+        var args = ""
+        var i: I32 = 1
+        while i < e[2].len {
+            if i > 1 { args = args + ", " }
+            args = args + ct_expr(e[2][i])
+            i += 1
+        }
+        if callee == "println" { return "ctron_print_i32(" + args + ")" }
+        if callee == "print" { return "ctron_print_i32(" + args + ")" }
+        return "t_" + callee + "(" + args + ")"
+    }
+    panic("ct_expr:" + t)
+    return ""
+}
+
+fn ct_block(b: List[Str]) {
+    println("\{")
+    var i: I32 = 1
+    while i < b.len - 1 {
+        ct_stmt(b[i])
+        i += 1
+    }
+    println("}")
+}
+
+fn ct_if_stmt(e: List[Str]) {
+    println("if (" + ct_expr(e[1]) + ") \{")
+    ct_block(e[2])
+    println("}")
+    var els = e[3]
+    if els[0] != "None" {
+        println("else \{")
+        if els[0] == "If" {
+            ct_if_stmt(els)
+        } else {
+            ct_block(els[1])
+        }
+        println("}")
+    }
+}
+
+fn ct_stmt(st: List[Str]) {
+    var t = st[0]
+    if t == "Let" {
+        var pat = st[2]
+        if pat[0] == "PatId" {
+            println("int32_t t_" + pat[1] + " = " + ct_expr(st[4]) + ";")
+            return
+        }
+        panic("ct_stmt:let pat:" + pat[0])
+        return
+    }
+    if t == "Assign" {
+        println("t_" + st[1][1] + " " + ct_aop(st[2]) + " " + ct_expr(st[3]) + ";")
+        return
+    }
+    if t == "While" {
+        println("while (" + ct_expr(st[1]) + ") \{")
+        ct_block(st[2])
+        println("}")
+        return
+    }
+    if t == "Return" {
+        if st[1][0] == "None" {
+            println("return;")
+            return
+        }
+        println("return " + ct_expr(st[1]) + ";")
+        return
+    }
+    if t == "Expr" {
+        var e = st[1]
+        if e[0] == "If" {
+            ct_if_stmt(e)
+            return
+        }
+        println(ct_expr(e) + ";")
+        return
+    }
+    panic("ct_stmt:" + t)
+}
+
+fn ct_fn(d: List[Str]) {
+    var ps = d[3]
+    var params = ""
+    var k: I32 = 1
+    var first = true
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            if !first { params = params + ", " }
+            params = params + "int32_t t_" + pr[2]
+            first = false
+        }
+        k += 1
+    }
+    var ret = "void"
+    if d[4][0] != "None" { ret = "int32_t" }
+    println(ret + " t_" + d[1] + "(" + params + ") \{")
+    ct_block(d[5])
+    println("}")
+}
+
+fn main() -> I32 {
+    let src = read_file("ANCHORINPUT")
+    match src {
+        Some(s) => {
+            var toks = List[Str]()
+            scan(s, toks)
+            var cur = Atomic[I32](0)
+            var file = p_file(toks, cur)
+            println("#include <stdio.h>")
+            println("#include <stdint.h>")
+            println("static void ctron_print_i32(int32_t v) \{ printf(\"%d\\n\", v); }")
+            var di: I32 = 1
+            while di < file.len {
+                var d = file[di]
+                if d[0] == "Fn" {
+                    ct_fn(d)
+                }
+                di += 1
+            }
+            println("int main(void) \{ return (int)t_main(); }")
+            return 0
+        }
+        None => {
+            println("read-failed")
+            return 1
+        }
+    }
+}

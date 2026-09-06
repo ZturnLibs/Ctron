@@ -20,6 +20,7 @@ def main():
         sys.exit(2)
     inp, out = sys.argv[1], sys.argv[2]
     count = '--count' in sys.argv[3:]
+    trans = '--trans' in sys.argv[3:]
 
     anchor = '../selfhosted/input_cc.ct'
     import os
@@ -29,6 +30,14 @@ def main():
         print('genmod: cc.ct 缺少输入锚', file=sys.stderr)
         sys.exit(2)
     mod = cc.replace(anchor, inp)
+
+    if trans:
+        import os as _os
+        part_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'trans_part.ct')
+        cut = mod.index('fn main() -> I32 {')
+        part = open(part_path).read()
+        mod = mod[:cut] + part
+        mod = mod.replace('ANCHORINPUT', inp)
 
     if count:
         sems_line = '            var sems = sem_walk2(file)'

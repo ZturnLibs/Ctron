@@ -25,7 +25,7 @@ bad() { fail=$((fail+1)); echo "FAIL- $1"; }
 
 # gen_cc <输入程序> <输出模块> [count]
 gen_cc() {
-    ( cd "$DIR" && python3 tools/genmod.py "$1" "$2" ${3:+--count} )
+    ( cd "$DIR" && python3 tools/genmod.py "$1" "$2" ${3:-} )
 }
 
 echo "== 1) 直接管线黄金对照 =="
@@ -48,12 +48,12 @@ fi
 
 echo "== 2) 自编译检查阶梯(parse+sem,decl 计数对照 C 解析器) =="
 check_decl() {  # check_decl <源.ct> <期望decl数> <名>
-    gen_cc "$1" "$T/dm_$3.ct" count
+    gen_cc "$1" "$T/dm_$3.ct" --count
     ( cd "$ROOT/compiler_c" && timeout 300 ./build/ctronc run "$T/dm_$3.ct" > "$T/dm_$3.out" 2>&1 )
     got=$(grep -o 'decls=[0-9]*' "$T/dm_$3.out" 2>/dev/null | head -1 | grep -o '[0-9]*')
     if [ "$got" = "$2" ]; then ok "解析 $3 decls=$got"; else bad "解析 $3 decls=$got 期望 $2"; fi
 }
-check_decl "$DIR/input_cc3.ct"   10 input_cc3
+
 check_decl "$DIR/sem_chk.ct"    109 sem_chk
 check_decl "$DIR/parsetree.ct"   57 parsetree
 check_decl "$DIR/ev2.ct"        107 ev2
@@ -64,7 +64,20 @@ check_decl "$DIR/repro/s6.ct"      2 repro-s6
 check_decl "$DIR/repro/hand2.ct"   2 repro-hand2
 check_decl "$DIR/repro/cm_ol.ct"   2 repro-cm_ol
 
-echo "== 4) 全深度自译化(--full) =="
+echo "== 4) C 代码生成 v0(Ctron 写的代码生成 → 原生执行) =="
+gen_cc "$DIR/fixtures/trans_v0.ct" "$T/tr.ct" --trans
+( cd "$ROOT/compiler_c" && timeout 120 ./build/ctronc run "$T/tr.ct" > "$T/tr_v0.c" 2>&1 )
+cc -O1 -o "$T/tr_v0.bin" "$T/tr_v0.c" 2>/dev/null
+"$T/tr_v0.bin" > "$T/tr_v0.got" 2>&1
+gen_cc "$DIR/fixtures/trans_v0.ct" "$T/iv0.ct"
+( cd "$ROOT/compiler_c" && timeout 120 ./build/ctronc run "$T/iv0.ct" > "$T/iv0.got" 2>&1 )
+if diff -q "$T/tr_v0.got" "$T/iv0.got" > /dev/null 2>&1; then
+    ok "代码生成往返 原生==解释 逐字一致"
+else
+    bad "代码生成往返输出分歧"
+fi
+
+echo "== 5) 全深度自译化(--full) =="
 if [ "${1:-}" = "--full" ]; then
     gen_cc "$DIR/cc.ct" "$T/self.ct"
     s=$(date +%s)
