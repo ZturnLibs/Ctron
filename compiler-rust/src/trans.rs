@@ -312,6 +312,9 @@ impl Trans {
         for d in &file.decls {
             if let ast::Decl::Impl(im) = d {
                 let tn = match &im.trait_ty { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() };
+                if tn == "Drop" {
+                    return Err("trans v1 拒绝域:Drop 析构钩子(发射时机待修,下一里程碑)".into());
+                }
                 let ft = match &im.for_ty { ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(), _ => String::new() };
                 self.impls.push((tn.clone(), ft.clone()));
                 let tid = self.type_by_name.get(&ft).copied();
@@ -330,7 +333,8 @@ impl Trans {
                 for item in &im.items {
                     match item {
                         ast::ImplItem::Method(mm) => {
-                            self.emit_impl_fn(&tn, &ft, tid, &mm.name, mm)?;
+                            let mname = if tn == "Drop" { format!("{}_drop", ft) } else { mm.name.clone() };
+                            self.emit_impl_fn(&tn, &ft, tid, &mname, mm)?;
                         }
                         ast::ImplItem::Prop(pp) => {
                             self.emit_impl_prop(&tn, &ft, tid, pp)?;
@@ -516,10 +520,14 @@ impl Trans {
         self.collect_type(&cl.name, &fields, true)
     }
 
-    fn field_ty(&self, t: &ast::Type) -> Result<VTy, String> {
+    fn field_ty(&mut self, t: &ast::Type) -> Result<VTy, String> {
         if let ast::Type::Named { path, .. } = t {
             if let Some(name) = path.last() {
                 if let Some(v) = scalar_annotation(name) { return Ok(v); }
+                if matches!(name.as_str(), "Atomic" | "Global" | "Chan") {
+                    let cid = self.intern_cell(VTy::Int(None));
+                    return Ok(VTy::Cell(cid));
+                }
                 if let Some(&id) = self.type_by_name.get(name.as_str()) {
                     let is_class = self.types[id as usize].is_class;
                     return Ok(if is_class { VTy::Class(id) } else { VTy::Struct(id) });
@@ -967,7 +975,6 @@ impl Trans {
                 }
             }
         }
-        eprintln!("DBG caps={:?} scope_c={}", caps.iter().map(|(n, t, c)| format!("{}={}", n, c)).collect::<Vec<_>>(), scope_c);
         self.mono_seq += 1;
         let ename = format!("ct_env_{}", self.mono_seq);
         let shim = format!("ct_shim_{}", self.mono_seq);
@@ -1176,6 +1183,23 @@ impl Trans {
 
     // ---------------- 语句 ----------------
 
+    /// RAII:当前层按声明逆序对有 Drop impl 的值发射析构调用(§6.4)
+    fn emit_scope_drops(&mut self) {
+        if let Some(layer) = self.scopes.last() {
+            let layer = layer.clone();
+            let drops: Vec<String> = layer.iter().rev().filter_map(|(_n, cname, ty)| {
+                if let VTy::Struct(tid) = ty {
+                    let tname = self.types[*tid as usize].name.clone();
+                    if self.impls.iter().any(|(tn, ft)| tn == "Drop" && ft == &tname) {
+                        return Some(format!("    ctn_Drop_{}_drop({});", tname, cname));
+                    }
+                }
+                None
+            }).collect();
+            for d in drops { self.w(1, &d); }
+        }
+    }
+
     fn emit_block_stmts(&mut self, block: &ast::Block) -> Result<(), String> {
         self.scope_push();
         for s in &block.stmts {
@@ -1185,6 +1209,7 @@ impl Trans {
             let (c, _) = self.expr(t)?;
             self.w(1, &format!("(void)({});", c));
         }
+        self.emit_scope_drops();
         self.scope_pop();
         Ok(())
     }
@@ -1208,13 +1233,16 @@ impl Trans {
                     let (c, ty) = self.expr(expr)?;
                     let VTy::Tup(id) = ty else { return Err("trans:解构需元组".into()) };
                     let (ta, tb) = self.tuples[id as usize];
+                    // 构造表达式只求值一次:先提升临时(通道等副作用构造器必须单次)
+                    let tmp = self.uniq_name("tup");
+                    self.w(1, &format!("{} {} = ({});", self.c_ty(ty), tmp, c));
                     for (i, sp) in ps.iter().enumerate() {
                         let ast::Pattern::Ident(n) = sp else {
                             return Err("trans v1 拒绝域:嵌套解构".into());
                         };
                         let (ft, f) = if i == 0 { (ta, "_0") } else { (tb, "_1") };
                         let cname = self.bind(n, ft);
-                        self.w(1, &format!("{} {} = ({}).{};", self.c_ty(ft), cname, c, f));
+                        self.w(1, &format!("{} {} = {}.{};", self.c_ty(ft), cname, tmp, f));
                     }
                     return Ok(());
                 }
@@ -1530,6 +1558,7 @@ impl Trans {
                     Some(t) => self.expr(t)?,
                     None => ("0".to_string(), VTy::Void),
                 };
+                self.emit_scope_drops();
                 self.scope_pop();
                 Ok(out)
             }
@@ -1621,7 +1650,8 @@ impl Trans {
                     };
                 }
                 // 用户类型字段(struct 值 / class、Boxed 指针)
-                let (base, tid) = self.deref_obj(&c, ty)?;
+                let (base, tid) = self.deref_obj(&c, ty)
+                    .map_err(|e| format!("{} [member `.{} on {:?}`]", e, m, ty))?;
                 let fty = self.types[tid as usize].fields.iter()
                     .find(|(n, _)| n == m).map(|(_, t)| *t);
                 let Some(fty) = fty else {
@@ -2008,8 +2038,10 @@ impl Trans {
                     };
                     let cid = self.intern_cell(VTy::Int(None));
                     let cname = self.uniq_name(&format!("cell_{}", tn));
+                    let iname = self.uniq_name("cellinit");
                     return Ok((
-                        format!("({{ static ct_i {} = {}; (&{}); }})", cname, init_c, cname),
+                        format!("({{ static ct_i {c}; static int {i} = 0; if (!{i}) {{ {c} = ({init}); {i} = 1; }} (&{c}); }})",
+                            c = cname, i = iname, init = init_c),
                         VTy::Cell(cid),
                     ));
                 }
@@ -2254,21 +2286,13 @@ impl Trans {
                 let inner = self.cells[cid as usize];
                 let r = match m.as_str() {
                     "with" | "with_mut" => {
-                        // 闭包首参即单元格值;with_mut 回写终值(对齐 interp)
+                        // 内联闭包体:参数按单元格内层类型绑定;with 返回尾值
                         let Some(cl) = args.first() else { return Err("trans:with 需闭包".into()) };
                         let ast::Expr::Closure { params, body, .. } = cl else {
                             return Err("trans v1 拒绝域:with 需闭包字面量".into());
                         };
-                        if m == "with" {
-                            // with:读值传入,返回闭包结果
-                            let (fname, _) = self.expr(cl)?;
-                            let acc = if self.cells[cid as usize].is_num() { format!("*({})", rc) } else { format!("**({}*)({})", self.c_ty(self.cells[cid as usize]), rc) };
-                            return Ok((
-                                format!("((ct_fnptr0)({}))({})", fname, acc),
-                                VTy::Int(None),
-                            ));
-                        } // with_mut 走下方内联回写
                         let pname = params.first().map(|cp| cp.name.clone()).unwrap_or_else(|| "c".into());
+                        let is_mut = m == "with_mut";
                         self.scope_push();
                         self.sink.push(String::new());
                         let cp = self.uniq_name("cp");
@@ -2276,15 +2300,38 @@ impl Trans {
                         self.w(2, "ct_glock();");
                         let cbind = self.bind(&pname, inner);
                         self.w(2, &format!("{} {} = *{};", self.c_ty(inner), cbind, cp));
-                        match body.as_ref() {
-                            ast::Expr::BlockExpr(b) => { self.emit_block_stmts(b)?; }
-                            other => { let (c3, _) = self.expr(other)?; self.w(2, &format!("(void)({});", c3)); }
+                        let tail_val: Option<(String, VTy)> = match body.as_ref() {
+                            ast::Expr::BlockExpr(b) => {
+                                self.scope_push();
+                                for st in &b.stmts { self.emit_stmt(st)?; }
+                                let t = match &b.tail {
+                                    Some(t) => Some(self.expr(t)?),
+                                    None => None,
+                                };
+                                self.scope_pop();
+                                t
+                            }
+                            other => Some(self.expr(other)?),
+                        };
+                        if is_mut {
+                            self.w(2, &format!("*{} = {};", cp, cbind));
                         }
-                        self.w(2, &format!("*{} = {};", cp, cbind));
                         self.w(2, "ct_gunlock();");
                         let code = self.sink.pop().unwrap_or_default();
                         self.scope_pop();
-                        Some(Ok((format!("({{ {} 0; }})", code), VTy::Void)))
+                        if is_mut {
+                            Some(Ok((format!("({{ {} *{} = {}; ct_gunlock(); 0; }})", code, cp, cbind), VTy::Void)))
+                        } else {
+                            match tail_val {
+                                Some((v, vt)) => {
+                                    let rv = self.uniq_name("r");
+                                    let rt2 = self.c_ty(vt).to_string();
+                                    Some(Ok((format!("({{ {} {} {} = ({}); ct_gunlock(); {}; }})",
+                                        code, rt2, rv, v, rv), vt)))
+                                }
+                                None => Some(Ok((format!("({{ {} ct_gunlock(); 0; }})", code), VTy::Void))),
+                            }
+                        }
                     }
                     "fetch_add" => {
                         let Some(a) = args.first() else { return Err("trans:fetch_add 需实参".into()) };
