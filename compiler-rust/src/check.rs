@@ -811,6 +811,27 @@ impl<'a> Checker<'a> {
             ast::Stmt::Let { pattern, ty: ann, expr, .. } => {
                 let hinted = ann.as_ref().map(|t| self.lower_local_ty(t));
                 let ety = self.expr(expr, hinted.as_ref());
+                // E2010(保守子集):注解为数值/Bool 标量而初值字面量/字面类别明确冲突
+                if let (Some(at), Some(lit)) = (ann.as_ref(), self.literal_literal_kind(expr)) {
+                    let conflict = match (&at, lit) {
+                        (ast::Type::Named { path, .. }, lk) => {
+                            let n = path.last().map(|x| x.as_str()).unwrap_or("");
+                            match (n, lk) {
+                                ("Bool", "Int") | ("Bool", "Float") | ("Bool", "Str") => true,
+                                ("Str", "Bool") => true,
+                                ("I8", "Bool") | ("I16", "Bool") | ("I32", "Bool") | ("I64", "Bool")
+                                | ("ISize", "Bool") | ("U8", "Bool") | ("U16", "Bool")
+                                | ("U32", "Bool") | ("U64", "Bool") | ("USize", "Bool") => true,
+                                ("F32", "Bool") | ("F64", "Bool") => true,
+                                _ => false,
+                            }
+                        }
+                        _ => false,
+                    };
+                    if conflict {
+                        self.err("E2010", format!("let 注解与初值字面量类别冲突"), Span::new(1, 1, 0, 0));
+                    }
+                }
                 // E3050(§6.4):own 块内 arena 句柄仅移动——拷贝绑定即 move 源
                 if self.in_own {
                     if self.expr_is_arena_handle_init(expr) {
@@ -1242,6 +1263,17 @@ impl<'a> Checker<'a> {
             if self.sema.defs[def].name == "Result" { return args.get(1).cloned(); }
         }
         None
+    }
+
+    /// 字面量类别:"Int" / "Float" / "Bool" / "Str" / None(非字面量)
+    fn literal_literal_kind(&self, e: &ast::Expr) -> Option<&'static str> {
+        match e {
+            ast::Expr::Int { .. } => Some("Int"),
+            ast::Expr::Float { .. } => Some("Float"),
+            ast::Expr::Bool(_) => Some("Bool"),
+            ast::Expr::Str { parts } if parts.iter().all(|p| matches!(p, ast::StrPart::Text(_))) => Some("Str"),
+            _ => None,
+        }
     }
 
     /// own 块内:表达式是否创建 arena 句柄(arena.array/zeros/list)

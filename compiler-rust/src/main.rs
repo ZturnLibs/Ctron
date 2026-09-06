@@ -105,12 +105,29 @@ fn main() -> ExitCode {
             let profile = if path.contains("bare") { ctron::sem::Profile::Bare }
                 else if path.contains("web") { ctron::sem::Profile::Web }
                 else { ctron::sem::Profile::Full };
+            // 尊重 //@ panic: 标记:文件声明了 panic 语义 → 预期某个 test panic 且消息含标记
+            let panic_marker = src.lines()
+                .find(|l| l.trim_start().starts_with("//@ panic:"))
+                .map(|l| l.trim_start_matches("//@ panic:").trim().to_string());
             let results = ctron::run_test_file(&src, profile);
             let mut failed = 0usize;
+            let panic_ok = match &panic_marker {
+                Some(marker) => results.iter().any(|(_, r)| matches!(r, Err(m) if m.contains(marker))),
+                None => false,
+            };
             for (name, r) in &results {
+                let is_expected_panic = panic_marker.is_some()
+                    && matches!(r, Err(m) if m.contains(panic_marker.as_ref().unwrap()));
                 match r {
                     Ok(()) => println!("ok   {name}"),
+                    Err(m) if is_expected_panic => println!("panic-ok {name}: {m}"),
                     Err(m) => { println!("FAIL {name}: {m}"); failed += 1; }
+                }
+            }
+            if let Some(marker) = &panic_marker {
+                if !panic_ok {
+                    println!("FAIL 预期 panic(含 \"{marker}\")但未发生");
+                    failed += 1;
                 }
             }
             if failed > 0 { eprintln!("{failed} 个测试失败"); ExitCode::from(1) } else { ExitCode::SUCCESS }
