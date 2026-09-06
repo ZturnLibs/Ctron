@@ -389,13 +389,13 @@ fn parts_of(raw: Str) -> List[Str] {
     return np
 }
 
-fn p_and(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    var l = p_cmp(toks, cur)
+fn p_and(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_cmp(toks, cur, al)
     var go = true
     while go {
         if tok(toks, cur) == "&&" {
             adv(cur)
-            var r = p_cmp(toks, cur)
+            var r = p_cmp(toks, cur, al)
             var nb = mk("Binary")
             nb.push("AndAnd")
             nb.push(l)
@@ -406,8 +406,8 @@ fn p_and(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return l
 }
 
-fn p_cmp(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    var l = p_rng(toks, cur)
+fn p_cmp(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_rng(toks, cur, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -420,7 +420,7 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         if t == ">=" { op = "Ge" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_rng(toks, cur)
+            var r = p_rng(toks, cur, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
@@ -431,12 +431,12 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return l
 }
 
-fn p_rng(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    var f = p_add(toks, cur)
+fn p_rng(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var f = p_add(toks, cur, al)
     var t = tok(toks, cur)
     if or2(t == "..", t == "..=") {
         adv(cur)
-        var to = p_add(toks, cur)
+        var to = p_add(toks, cur, al)
         var nb = mk("Range")
         if t == "..=" {
             nb.push("true")
@@ -450,8 +450,8 @@ fn p_rng(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return f
 }
 
-fn p_add(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    var l = p_mul(toks, cur)
+fn p_add(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_mul(toks, cur, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -462,7 +462,7 @@ fn p_add(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         if t == "-%" { op = "WrapSub" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_mul(toks, cur)
+            var r = p_mul(toks, cur, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
@@ -473,8 +473,8 @@ fn p_add(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return l
 }
 
-fn p_mul(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    var l = p_una(toks, cur)
+fn p_mul(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_una(toks, cur, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -484,7 +484,7 @@ fn p_mul(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         if t == "%" { op = "Mod" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_una(toks, cur)
+            var r = p_una(toks, cur, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
@@ -495,11 +495,11 @@ fn p_mul(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return l
 }
 
-fn p_una(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_una(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     var t = tok(toks, cur)
     if t == "-" {
         adv(cur)
-        var e = p_una(toks, cur)
+        var e = p_una(toks, cur, al)
         var nu = mk("Unary")
         nu.push("Neg")
         nu.push(e)
@@ -507,17 +507,17 @@ fn p_una(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     if t == "!" {
         adv(cur)
-        var e = p_una(toks, cur)
+        var e = p_una(toks, cur, al)
         var nu = mk("Unary")
         nu.push("Not")
         nu.push(e)
         return nu
     }
-    return p_post(toks, cur)
+    return p_post(toks, cur, al)
 }
 
-fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    var e = p_pri(toks, cur)
+fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var e = p_pri(toks, cur, al)
     var go = true
     while go {
         while tok(toks, cur) == "NL" && toks[cur.load() + 1] == "." {
@@ -532,7 +532,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 if tok(toks, cur) == ")" {
                     more = false
                 } else {
-                    ag.push(p_stmt_expr(toks, cur))
+                    ag.push(p_stmt_expr(toks, cur, "1"))
                     if tok(toks, cur) == "," {
                         adv(cur)
                     } else {
@@ -599,7 +599,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 e = tg
             } else {
                 adv(cur)
-                var ix = p_stmt_expr(toks, cur)
+                var ix = p_stmt_expr(toks, cur, "1")
                 adv(cur)
                 var inode = mk("Index")
                 inode.push(e)
@@ -618,7 +618,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return e
 }
 
-fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     var t = tok(toks, cur)
     var b0 = byte_at(t, 0)
     if is_digit(b0) {
@@ -705,7 +705,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         }
         cl.push(cp)
         cl.push(ret)
-        cl.push(p_stmt_expr(toks, cur))
+        cl.push(p_stmt_expr(toks, cur, "1"))
         return cl
     }
     if t == "scope" {
@@ -738,7 +738,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var more = true
         while more {
             if tok(toks, cur) == "]" { more = false } else {
-                al.push(p_stmt_expr(toks, cur))
+                al.push(p_stmt_expr(toks, cur, "1"))
                 if tok(toks, cur) == "," { adv(cur) } else { more = false }
             }
         }
@@ -747,7 +747,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     if t == "(" {
         adv(cur)
-        var e0 = p_and(toks, cur)
+        var e0 = p_and(toks, cur, "1")
         if tok(toks, cur) == "," {
             var tn = mk("TupleE")
             tn.push(e0)
@@ -755,7 +755,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             while more {
                 if tok(toks, cur) == "," {
                     adv(cur)
-                    tn.push(p_and(toks, cur))
+                    tn.push(p_and(toks, cur, "1"))
                 } else {
                     more = false
                 }
@@ -766,7 +766,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         adv(cur)
         return e0
     }
-    if b0 >= 65 && b0 <= 90 && toks[cur.load() + 1] == "\{" {
+    if al == "1" && b0 >= 65 && b0 <= 90 && toks[cur.load() + 1] == "\{" {
         var nm = t
         adv(cur)
         adv(cur)
@@ -785,7 +785,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 adv(cur)
                 var fv = mk("LField")
                 fv.push(fnm)
-                fv.push(p_stmt_expr(toks, cur))
+                fv.push(p_stmt_expr(toks, cur, "1"))
                 lf.push(fv)
                 if tok(toks, cur) == "," { adv(cur) }
             }
@@ -928,7 +928,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 sl.push(base)
                 base = sl
             } else {
-                var sz = p_stmt_expr(toks, cur)
+                var sz = p_stmt_expr(toks, cur, "1")
                 adv(cur)
                 var ar = mk("ArrayT")
                 ar.push(base)
@@ -946,8 +946,8 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return base
 }
 
-fn p_stmt_expr(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    return p_and(toks, cur)
+fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    return p_and(toks, cur, al)
 }
 
 fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
@@ -1061,7 +1061,7 @@ fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
 fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     adv(cur)
     var nm = mk("Match")
-    nm.push(p_stmt_expr(toks, cur))
+    nm.push(p_stmt_expr(toks, cur, "0"))
     adv(cur)
     var arms = mk("Arms")
     var go = true
@@ -1073,7 +1073,7 @@ fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             var ma = mk("Arm")
             ma.push(p_pattern(toks, cur))
             adv(cur)
-            ma.push(p_stmt_expr(toks, cur))
+            ma.push(p_stmt_expr(toks, cur, "1"))
             arms.push(ma)
         }
     }
@@ -1086,7 +1086,7 @@ fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
 fn p_if(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     adv(cur)
     var ni = mk("If")
-    ni.push(p_and(toks, cur))
+    ni.push(p_and(toks, cur, "0"))
     adv(cur)
     ni.push(p_block(toks, cur))
     var els = mk("None")
@@ -1129,7 +1129,7 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 var rn = mk("None")
                 re.push(rn)
             } else {
-                re.push(p_stmt_expr(toks, cur))
+                re.push(p_stmt_expr(toks, cur, "1"))
             }
             nb.push(re)
         } else if or2(t == "let", t == "var") {
@@ -1147,11 +1147,11 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             lv.push(isv)
             lv.push(pp)
             lv.push(ty)
-            lv.push(p_stmt_expr(toks, cur))
+            lv.push(p_stmt_expr(toks, cur, "1"))
             nb.push(lv)
         } else if t == "while" {
             adv(cur)
-            var wc = p_stmt_expr(toks, cur)
+            var wc = p_stmt_expr(toks, cur, "0")
             adv(cur)
             var wb = p_block(toks, cur)
             var wh = mk("While")
@@ -1162,7 +1162,7 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             adv(cur)
             var fp = p_pattern(toks, cur)
             adv(cur)
-            var it = p_stmt_expr(toks, cur)
+            var it = p_stmt_expr(toks, cur, "0")
             adv(cur)
             var fb = p_block(toks, cur)
             var fo = mk("For")
@@ -1171,7 +1171,7 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             fo.push(fb)
             nb.push(fo)
         } else {
-            var e = p_stmt_expr(toks, cur)
+            var e = p_stmt_expr(toks, cur, "1")
             var t2 = tok(toks, cur)
             var op = ""
             if t2 == "=" { op = "Eq" }
@@ -1185,7 +1185,7 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 var asn = mk("Assign")
                 asn.push(e)
                 asn.push(op)
-                asn.push(p_stmt_expr(toks, cur))
+                asn.push(p_stmt_expr(toks, cur, "1"))
                 nb.push(asn)
             } else {
                 var nx = t2
@@ -1588,7 +1588,7 @@ fn p_const(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var nc = mk("Const")
     nc.push(nm)
     nc.push(ty)
-    nc.push(p_stmt_expr(toks, cur))
+    nc.push(p_stmt_expr(toks, cur, "1"))
     return nc
 }
 
@@ -1607,7 +1607,7 @@ fn p_static(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     ns.push(nm)
     ns.push(wv)
     ns.push(ty)
-    ns.push(p_stmt_expr(toks, cur))
+    ns.push(p_stmt_expr(toks, cur, "1"))
     return ns
 }
 

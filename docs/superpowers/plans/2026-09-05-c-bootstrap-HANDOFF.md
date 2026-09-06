@@ -129,6 +129,16 @@
   未加守卫。自编译阶梯:input_cc3/sem_chk/parsetree ✓(≤2s);ev2/cc 种子解释器资源边界
   (~90-120s 被杀)→ 下一阶梯 C9i②:种子解释器性能(或自举二进制替代种子)。
   验收:make test 全量绿(含并行新增 corpus_trans 17/17)+ suite_diff 230(O2/ASan 同数)。
+- **C9i② ✅ 全深度自译化闭环**:allow_struct 线程化修正落地(patch_allow3:全局替换后重算
+  span/自后向前替换/行数自校验——v1 的 span 失配是"线程无效"主因)+ p0 检查移入循环体
+  (原误置循环顶=每轮强吞首 token)+ 新增内建 read_file/Atomic/load-store。
+  **cc.ct 解释 cc.ct(163KB)parse+sem+运行嵌套 main,235s rc=0,输出与直接管线逐字一致。**
+  自编译阶梯全绿:input_cc3(10)/sem_chk(109)/parsetree(57)/ev2(106)/cc(158),
+  decl 数与 C 解析器逐一吻合。make test 全量绿(240+ 用例);ASan 230 全绿。
+- 教训:①LitFs 守卫使误触发由死旋变"快吞静默 rc=0"——**验收必须对照 C 解析器的 decl 计数**;
+  ②v1 span 失配:全局替换改变长度后必须重算 span,自校验(行数/fn 数)写进脚本;
+  ③嵌套输出字面 \n = Ctron 字符串求值不展开转义(C 词法器转义),unesc 已补;
+  ④负载污染:并行构建期间一切计时不可信,先看 uptime。
 - **LitFs 守卫补遗(C9i①收尾)**:最小复现 `if <ident> <op> <ident> { 赋值 }` + 单行 fn 确定性挂起
   = p_pri StructLit 在 if 条件上下文误触发 + LitFs 无 #EOF 守卫。已落地 LitFs `#EOF` 退出 + `NL`
   跳过,三复现 0s 通过。allow_struct 线程化(C 正解)已实现到链路完整但 s6 仍挂(第二旋点未定位),

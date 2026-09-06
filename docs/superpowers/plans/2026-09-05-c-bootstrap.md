@@ -264,6 +264,20 @@
    全部 0s 通过,230 cases + suite_run 16 全绿。
    负载警示:本轮后半段 load average 6-9(并行 session 并发构建),所有计时数据不可信,
    ev2/cc 自编译 ~130-141s 被杀需在静机器重测(区分真慢/负载假象)后再定 C9i② 方案。
+20d. **C9i②(本文件交付)—— allow_struct 线程化修正落地 + 全深度自译化闭环**:
+   排查确定此前的全部"挂起/被杀"假象 = ①v1 变换 span 失配(al 线程未真正生效)+②守卫检查
+   误置循环顶(每轮强吞首 token)+③负载污染三因叠加。修正:patch_allow3(全局替换后重算
+   span、自后向前替换、行数自校验)重落五模块;p0 守卫检查移入循环体内(p0 声明后,镜像 C
+   ensure_progress);**新增内建**:read_file(镜像宿主 Some/None)+ Atomic 构造与 load/store
+   (M 值 = 宿主 List 单元,原地写共享)。验收:①S6/hand2/cm_ol 复现全部解析正确
+   (decl 数与 C 解析器一致,cond rhs = Ident 非 StructLit);②自编译阶梯全绿:input_cc3(10)/
+   sem_chk(109)/parsetree(57)/**ev2(106)/**/**cc(158)** 全部 parse+sem OK(≤4s,
+   decl 数与 C 解析器逐一吻合);③**全深度自译化达成**:cc.ct 解释 cc.ct(163KB/158 decls)
+   parse+sem+运行其 main→解析/语义/运行 input_cc.ct,235s rc=0,输出与直接管线**逐字一致**;
+   ④unesc(镜像 C 转义表 \n \t \r \{ \" \\)修复嵌套输出的字面 \n 分歧;
+   ⑤make test 全量绿(suite_corpus_trans 2 失败属并行 trans 泳道 WIP,与本批无关);
+   ASan 230 全绿。注:LitFs 守卫使误触发由"死旋"变"快吞"(静默 rc=0 假通过),
+   验收须以 decl 计数对照 C 解析器为准——本轮即由此揪出残留吞并。
 
 
 ## 自举产物目录
