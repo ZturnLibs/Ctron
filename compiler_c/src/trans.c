@@ -54,7 +54,7 @@ static void sb_free(sb* b) { free(b->d); }
 #define MAX_TYPES 64
 typedef struct tc tc;
 typedef struct { int k; int bits, us; int ek, ebits, eus; const char* tname; int ek2, ebits2, eus2; const char* tname2; } ty;
-enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM, T_CLASS, T_BOX, T_RANGE, T_LIST, T_TRAIT }; // T_TRAIT:&Trait 形参标记(C10-h 单态化)
+enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM, T_CLASS, T_BOX, T_RANGE, T_LIST, T_TRAIT, T_ERR }; // T_TRAIT:&Trait 形参标记;T_ERR:AnyError 链节点指针(ctron_anyerr*)(C10-i)
 typedef struct sfield sfield;
 typedef struct sdef sdef;
 typedef struct evar evar;
@@ -118,6 +118,7 @@ static const char* wlname(ty t);
 static ty box_elem(ty t);
 static const char* ewlname(ty t) { if (t.ek == T_STR) return "str"; if (t.ek == T_FLT) return "f64"; if (t.ek == T_BOOL) return "b"; ty e = ty_int(t.ebits, t.eus); return wlname(e); }
 static const char* ctype_of(ty t) {
+    if (t.k == T_ERR) return "ctron_anyerr*";
     if (t.k == T_SUM) return t.tname ? t.tname : "void";
     if (t.k == T_RANGE) return "ctron_rng";
     if (t.k == T_LIST) { static char cl[96]; snprintf(cl, sizeof cl, "ctron_list_%s", ewlname(t)); return cl; }
@@ -351,6 +352,7 @@ static char* ty_mangle(tc* c, ty t) {
     else if (t.k == T_BOOL) snprintf(buf, sizeof buf, "Bool");
     else if (t.k == T_STR) snprintf(buf, sizeof buf, "Str");
     else if (t.k == T_STRUCT || t.k == T_ENUM || t.k == T_CLASS) snprintf(buf, sizeof buf, "%s", t.tname ? t.tname : "?");
+    else if (t.k == T_ERR) snprintf(buf, sizeof buf, "Err");
     else snprintf(buf, sizeof buf, "X");
     return ctron_arena_strndup(c->a, buf, strlen(buf));
 }
@@ -594,6 +596,22 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (!strcmp(m, "char_len")) { use_helper(c, "ctron_str_char_len"); sb_f(o, "ctron_str_char_len(%s)", ov); sb_free(&ob); return ty_int(64, 0); }
             if (!strcmp(m, "to_string")) { sb_s(o, ov); sb_free(&ob); return ty_str(); }
         }
+        if (ot.k == T_ERR) {
+            // AnyError 链节点属性(C10-i):message/cause/trace(rt EX_MEMBER V_ERR 语义)
+            if (!strcmp(m, "message")) { sb_f(o, "(%s)->message", ov); sb_free(&ob); return ty_str(); }
+            if (!strcmp(m, "trace")) { sb_f(o, "(%s)->trace", ov); sb_free(&ob); return ty_str(); }
+            if (!strcmp(m, "cause")) {
+                use_sum(c, "typedef struct { int tag; union { ctron_anyerr* some; } as; } ctron_opt_err;\n"
+                           "#define CTRON_OPT_NONE 0\n#define CTRON_OPT_SOME 1\n");
+                sb_f(o, "(ctron_opt_err){ .tag = (%s)->cause ? CTRON_OPT_SOME : CTRON_OPT_NONE, .as.some = (%s)->cause }", ov, ov);
+                ty r = ty_unk(); r.k = T_SUM; r.tname = "ctron_opt_err"; r.ek = T_ERR;
+                sb_free(&ob);
+                return r;
+            }
+            terr(c, "v1:错误链属性不支持: %s", m);
+            sb_free(&ob);
+            return ty_unk();
+        }
         terr(c, "v1:成员 .%s 不支持(目标类型 %d)", m, (int)ot.k);
         sb_free(&ob);
         return ty_unk();
@@ -810,7 +828,9 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb rob2 = {0};
             ty rt4 = emit_expr(c, cal->obj, &rob2);
             if (c->err) { sb_free(&rob2); return ty_unk(); }
-            if (rt4.k == T_SUM && (!strcmp(cal->mname, "or") || !strcmp(cal->mname, "expect"))) {
+            if (rt4.k == T_SUM && (!strcmp(cal->mname, "or") || !strcmp(cal->mname, "expect")
+                                  || !strcmp(cal->mname, "context")
+                                  || !strcmp(cal->mname, "is_some") || !strcmp(cal->mname, "is_ok"))) {
                 int is_opt2 = !strncmp(rt4.tname, "ctron_opt_", 10);
                 const char* good = is_opt2 ? "CTRON_OPT_SOME" : "CTRON_RES_OK";
                 const char* mem = is_opt2 ? "some" : "ok";
@@ -818,6 +838,77 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
                 if (rt4.ek == T_FLT) vt = ty_flt();
                 if (rt4.ek == T_BOOL) vt = ty_bool();
                 if (rt4.ek == T_STR) vt = ty_str();
+                if (!strcmp(cal->mname, "is_some") || !strcmp(cal->mname, "is_ok")) {
+                    if (e->nelems != 0) { terr(c, "v1:%s 实参", cal->mname); sb_free(&rob2); return ty_unk(); }
+                    sb_f(o, "((%s).tag == %s)", rob2.d ? rob2.d : "0", good);
+                    sb_free(&rob2);
+                    return ty_bool();
+                }
+                if (!strcmp(cal->mname, "context")) {
+                    // Result 专用:Err 包成错误链;Ok 原样(rt option_builtin context 语义)
+                    if (e->nelems != 1) { terr(c, "v1:context 实参"); sb_free(&rob2); return ty_unk(); }
+                    sb a1 = {0};
+                    emit_expr(c, e->elems[0], &a1);
+                    if (c->err || is_opt2) {
+                        if (!is_opt2) { sb_free(&a1); sb_free(&rob2); return ty_unk(); }
+                        sb_s(o, rob2.d ? rob2.d : "0"); // Option:无效果(rt:原样)
+                        sb_free(&a1); sb_free(&rob2);
+                        return rt4;
+                    }
+                    if (c->err) { sb_free(&a1); sb_free(&rob2); return ty_unk(); }
+                    // ok 载荷 mangle/ctype(与 sum_ty_of 同源)
+                    ty okty = ty_unk(); okty.k = rt4.ek; okty.bits = rt4.ebits; okty.us = rt4.eus;
+                    if (rt4.ek == T_FLT) okty = ty_flt();
+                    else if (rt4.ek == T_BOOL) okty = ty_bool();
+                    else if (rt4.ek == T_STR) okty = ty_str();
+                    char* okm = ty_mangle(c, okty);
+                    const char* okct = ctype_of(okty);
+                    int src_chain = rt4.ek2 == T_ERR;
+                    const char* srcm = src_chain ? "Err" : (rt4.tname2 ? rt4.tname2 : "?");
+                    if (!strcmp(srcm, "?")) { terr(c, "v1:context 错误载荷类型未知"); sb_free(&a1); sb_free(&rob2); return ty_unk(); }
+                    char outn[96];
+                    snprintf(outn, sizeof outn, "ctron_res_%s_Err", okm ? okm : "?");
+                    char def[600];
+                    snprintf(def, sizeof def,
+                        "typedef struct { int tag; union { %s ok; ctron_anyerr* err; } as; } %s;\n"
+                        "#define CTRON_RES_OK 0\n#define CTRON_RES_ERR 1\n", okct, outn);
+                    use_sum(c, def);
+                    char hn[120];
+                    snprintf(hn, sizeof hn, "ctron_ctxres_%s_%s", okm ? okm : "?", srcm);
+                    char hbody[1024];
+                    if (src_chain)
+                        snprintf(hbody, sizeof hbody,
+                            "static %s %s(%s v, const char* msg) {\n"
+                            "    %s r;\n"
+                            "    if (v.tag == CTRON_RES_OK) { r.tag = CTRON_RES_OK; r.as.ok = v.as.ok; return r; }\n"
+                            "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                            "    n->message = strdup(msg ? msg : \"\");\n"
+                            "    n->cause = v.as.err;\n"
+                            "    n->trace = strdup(v.as.err && v.as.err->trace ? v.as.err->trace : \"main:1\");\n"
+                            "    r.tag = CTRON_RES_ERR; r.as.err = n; return r;\n}\n",
+                            outn, hn, ctype_of(rt4), outn);
+                    else
+                        snprintf(hbody, sizeof hbody,
+                            "static %s %s(%s v, const char* msg) {\n"
+                            "    %s r;\n"
+                            "    if (v.tag == CTRON_RES_OK) { r.tag = CTRON_RES_OK; r.as.ok = v.as.ok; return r; }\n"
+                            "    ctron_anyerr* leaf = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                            "    leaf->message = strdup(\"\");\n"
+                            "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                            "    n->message = strdup(msg ? msg : \"\");\n"
+                            "    n->cause = leaf;\n"
+                            "    n->trace = strdup(\"main:1\");\n"
+                            "    r.tag = CTRON_RES_ERR; r.as.err = n; return r;\n}\n",
+                            outn, hn, ctype_of(rt4), outn);
+                    use_sum(c, hbody);
+                    sb_f(o, "%s(%s, %s)", hn, rob2.d ? rob2.d : "0", a1.d ? a1.d : "\"\"");
+                    sb_free(&a1); sb_free(&rob2);
+                    ty r = ty_unk(); r.k = T_SUM;
+                    r.tname = ctron_arena_strndup(c->a, outn, strlen(outn));
+                    r.ek = rt4.ek; r.ebits = rt4.ebits; r.eus = rt4.eus;
+                    r.ek2 = T_ERR; r.ebits2 = 0; r.eus2 = 0; r.tname2 = NULL;
+                    return r;
+                }
                 if (!strcmp(cal->mname, "or")) {
                     if (e->nelems != 1) { terr(c, "v1:or 实参"); sb_free(&rob2); return ty_unk(); }
                     sb a1 = {0};
@@ -1810,7 +1901,23 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
                 sb_f(o, "if (%s.tag == %s) return %s;\n", tn, bad, tn);
             else if (c->fn_ret && c->fn_ret->k == T_SUM && ret_diff_sum && is_opt)
                 sb_f(o, "if (%s.tag == %s) return (%s){ .tag = CTRON_OPT_NONE };\n", tn, bad, c->fn_ret->tname);
-            else { terr(c, "v1:? 早退类型与函数返回类型不符"); sb_free(&op); return; }
+            else if (c->fn_ret && c->fn_ret->k == T_SUM && !is_opt
+                     && c->fn_ret->ek2 == T_ERR && ot.ek2 != T_ERR && ot.tname2) {
+                // 两段式擦除:fn 错误目标为 AnyError,? 操作数错误为具体类型 → 物化链后传播(rt §5.3)
+                char efn[96];
+                snprintf(efn, sizeof efn, "ctron_erase_e_%s", ot.tname2);
+                char ebody[512];
+                snprintf(ebody, sizeof ebody,
+                    "static ctron_anyerr* %s(ctron_e_%s v) {\n"
+                    "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                    "    n->message = strdup(\"\");\n"
+                    "    n->cause = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                    "    n->trace = strdup(\"main:1\");\n"
+                    "    (void)v; return n;\n}\n", efn, ot.tname2);
+                use_sum(c, ebody);
+                sb_f(o, "if (%s.tag == %s) return (%s){ .tag = CTRON_RES_ERR, .as.err = %s(%s.as.err) };\n",
+                     tn, bad, c->fn_ret->tname, efn, tn);
+            } else { terr(c, "v1:? 早退类型与函数返回类型不符"); sb_free(&op); return; }
             sb_f(o, "%s %s = %s.as.%s;\n", ctype_of(vt), name, tn, mem);
             sb_free(&op);
             scope_def(c, name, vt);
@@ -2024,6 +2131,25 @@ static void emit_stmt(tc* c, cstmt* st, sb* o) {
                 if (c->in_main) {
                     sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
                     sb_f(o, "    if (ctron_t%d.tag == %s) exit(0);\n}\n", n2, bad);
+                } else if (c->fn_ret && c->fn_ret->k == T_SUM && strcmp(c->fn_ret->tname, ot.tname) != 0
+                           && c->fn_ret->ek2 == T_ERR && ot.ek2 != T_ERR && ot.tname2) {
+                    // return expr? —— fn 错误目标 AnyError,操作数错误为具体类型:物化链后返回
+                    char efn[96];
+                    snprintf(efn, sizeof efn, "ctron_erase_e_%s", ot.tname2);
+                    char ebody[512];
+                    snprintf(ebody, sizeof ebody,
+                        "static ctron_anyerr* %s(ctron_e_%s v) {\n"
+                        "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                        "    n->message = strdup(\"\");\n"
+                        "    n->cause = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                        "    n->trace = strdup(\"main:1\");\n"
+                        "    (void)v; return n;\n}\n", efn, ot.tname2);
+                    use_sum(c, ebody);
+                    sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
+                    sb_f(o, "    if (ctron_t%d.tag == CTRON_RES_ERR) return (%s){ .tag = CTRON_RES_ERR, .as.err = %s(ctron_t%d.as.err) };\n",
+                         n2, c->fn_ret->tname, efn, n2);
+                    sb_f(o, "    return (%s){ .tag = CTRON_RES_OK, .as.ok = ctron_t%d.as.ok };\n}\n",
+                         c->fn_ret->tname, n2);
                 } else if (c->fn_ret && c->fn_ret->k == T_SUM) {
                     sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
                     sb_f(o, "    if (ctron_t%d.tag == %s) return ctron_t%d;\n", n2, bad, n2);
@@ -2782,6 +2908,8 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
                 "typedef struct { const char** d; int64_t n; } ctron_arr_str;\n"
                 "typedef struct { const char** d; int64_t n; int64_t cap; } ctron_list_str;\n"
                 "typedef struct { int64_t lo, hi; int incl; } ctron_rng;\n"
+                "typedef struct ctron_anyerr ctron_anyerr;\n"
+                "struct ctron_anyerr { char* message; ctron_anyerr* cause; char* trace; };\n"
                 "static jmp_buf ctron_panic_frame;\n"
                 "static _Noreturn void ctron_panic(const char* msg) {\n"
                 "    fprintf(stderr, \"%s\\n\", msg);\n"
@@ -2954,6 +3082,7 @@ static ty decl_ty(const cty* t) {
     }
     if (t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];
+    if (!strcmp(n, "AnyError")) { ty r = ty_unk(); r.k = T_ERR; return r; } // 错误链节点(C10-i)
     if (!strcmp(n, "Str")) return ty_str();
     if (!strcmp(n, "Bool")) return ty_bool();
     static const struct { const char* n; int bits, us; } IS[] = {

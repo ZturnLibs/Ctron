@@ -143,6 +143,13 @@ decl 无符号上界差一修复。新增 `suite_corpus_trans`:61 语料可转�
 "cc 原生执行 vs 解释器" 差分(stdout/exit/panic 逐字),neg/lint 跳过。
 13 pass / 21 untranspiled(需并发运行时/trait/闭包/context 链,= C10-g+)。
 
+### C10-i context/AnyError 链 ✅(21/44 行为语料原生执行差分)
+`Result.context(msg)` 物化错误链(Err → 链节点;Ok 原样)+ `?` 两段式擦除
+(fn 错误目标 AnyError 时具体枚举载荷自动转链);AnyError 链节点属性
+`.message/.cause/.trace` + `is_some/is_ok`。链节点 = 头部 `ctron_anyerr`
+(message/cause/trace);cause = `ctron_opt_err`(内嵌 Option)。
+02_option_result / 05i_deep_cause / 10_trace 原生执行 = 解释器;18/18 回归保持。
+
 ### C10-h trait 参数单态化 ✅(18/44 行为语料原生执行差分)
 `&Trait` 形参 → T_TRAIT 标记(decl_ty_tc 守卫内、prelude 后;TY_REF 递归 sub 后再查);
 泛型原体与头部原型跳过发射;调用点按实参具体类型惰性例化(原型进头部、函数体走临时缓冲进
