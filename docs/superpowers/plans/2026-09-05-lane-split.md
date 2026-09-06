@@ -45,3 +45,28 @@
 - 后续里程碑代号改用 **R- 前缀**(例 R-P1D、R-P2…),与历史 C*/P1* 区分。
 - 验收盘:`cargo test`(lex/parse/check/run 四 suite)+ 61 文件行为矩阵(目标全绿),对照
   `docs/spec/` 与 `tests/` 语料。
+
+## 附:C10-h trait 参数单态化设计预案(2026-09-05 调试结论,实现时避免重蹈)
+
+目标:07_capabilities(`elapsed_since(clock: &Clock, start)` + 调用点传 FakeClock)。
+
+已验证的设计要点:
+1. **decl_ty_tc 需 traits 表**:D_TRAIT 名单收集;`&Clock` 参数 → TY_REF 剥壳 → `Clock` TY_NAMED
+   查 traits 表 → T_TRAIT(tname=trait 名)。subs 检查必须在 TY_NAMED 守卫内、prelude 之后
+   (&Clock 是 TY_REF,subs 循环只匹配 TY_NAMED,靠 TY_REF 分支递归 sub 后再查)。
+2. **emit_fn 签名改 cdecl***:`static void emit_fn(tc* c, const cdecl* d, const char* cname)`
+   + 体内 `const cfn* F = &d->fn_;`。调用点传 `d`(非 `&d->fn_`!传 cfn* 会让 ensure 内
+   `d->fn_` 二次偏移读垃圾 → 空体 void 函数)。
+3. **特化发射必须走临时缓冲**:`c->out_sb = &tmp` + emit_fn + 完成后 `sb_s(&m_sb, tmp.d)`。
+   直接写 m_sb 会让嵌套 ensure_method(如特化体内的 `clock.now()`)把方法体插进
+   未闭合的特化函数中间(非法 C)。
+4. **调用点**:argtys[i].k == T_TRAIT 且实参 aty 具体 → 特化键 = `__<Mangle(aty)>`;
+   首个 trait 参数驱动;subs = {from: trait 名, to: 实参 ty}(引用实参 AST 名字安全,
+   ty 值拷贝)。
+5. **主发射循环跳过 monoed fn**(否则泛型原体先于特化体发射,其体内 trait 参数
+   分派失败即 c->err 置位,整个 trans 失败)。头部原型同步跳过。
+6. **陷阱实录**(本轮全部踩过):ensure 去重早退未设 out_ret(垃圾类型);
+   `*out_cname = <指针>` 写入调用者 char[192](应 snprintf 拷贝);scope_pop 未递减
+   槽位(64 次后作用域互串);emit_fn 未恢复 fn_ret(in_test 泄漏致方法体裸 return)。
+
+验收:07 原生执行 = 解释器;其余 17 语料回归全绿。
