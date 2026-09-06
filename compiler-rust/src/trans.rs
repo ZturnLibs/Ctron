@@ -48,6 +48,13 @@ enum VTy {
     FnPtr,
     /// 二元组:索引指向 tuples 表
     Tup(u32),
+    Arena,
+    /// 可变单元格(Global/Atomic):ct_i* 指针
+    Cell,
+    /// trait 对象形参(&Trait):调用点按实参具体类型单态化;id → traits 表
+    TraitObj(u32),
+    Simd,
+    FArr,
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -132,6 +139,7 @@ pub struct Trans {
     mono_keys: std::collections::HashMap<String, u32>, // 实例键 → tid
     mono_names: std::collections::HashMap<String, (String, VTy)>, // 任意键 → (C 名, 返回类型)
     tuples: Vec<(VTy, VTy)>,
+    traits: Vec<String>,
     tuple_keys: std::collections::HashMap<String, u32>,
     late_defs: Vec<String>, // 晚期定义(实例 typedef / 单态 fn / show fn)
     closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
@@ -153,6 +161,7 @@ impl Trans {
             mono_keys: std::collections::HashMap::new(),
             mono_names: std::collections::HashMap::new(),
             tuples: Vec::new(),
+            traits: Vec::new(),
             tuple_keys: std::collections::HashMap::new(),
             late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
@@ -209,6 +218,10 @@ impl Trans {
 
     pub fn trans_file(mut self, file: &ast::File) -> Result<String, String> {
         self.decls = file.decls.clone();
+        for d in &file.decls {
+            if let ast::Decl::Trait(tr) = d { self.traits.push(tr.name.clone()); }
+        }
+        self.scope_push(); // 全局层
         // 预定义和类型:variant 0 = Some/Ok(载荷在 p[0]),variant 1 = None/Err
         self.intern_enum("Option", vec![("Some".into(), 1), ("None".into(), 0)]);
         self.intern_enum("Result", vec![("Ok".into(), 1), ("Err".into(), 1)]);
@@ -217,6 +230,10 @@ impl Trans {
         for d in &file.decls {
             match d {
                 ast::Decl::Const(c) => consts.push(c.clone()),
+                ast::Decl::Static(st) => consts.push(ast::ConstDecl {
+                    name: st.name.clone(), ty: st.ty.clone(), expr: st.expr.clone(),
+                }),
+                ast::Decl::Use(_) => {}
                 ast::Decl::Trait(_) | ast::Decl::Impl(_) => {}
                 ast::Decl::Enum(en) => {
                     if !en.type_params.is_empty() {
@@ -259,14 +276,15 @@ impl Trans {
                         ast::Param::Param { ty, .. } => self.ty_of(ty),
                         ast::Param::Receiver { .. } => VTy::Unknown,
                     }).collect();
-                    let ret = f.ret.as_ref().map(|t| self.ty_of(t)).unwrap_or(VTy::Void);
+                    let ret = f.ret.as_ref().map(|t| {
+                        if let ast::Type::Named { path, .. } = t {
+                            if path.last().map(|n| n == "List").unwrap_or(false) { return VTy::Array; }
+                        }
+                        self.ty_of(t)
+                    }).unwrap_or(VTy::Void);
                     self.fns.push((f.name.clone(), params, ret));
                 }
                 ast::Decl::Test(t) => tests.push(t.clone()),
-                other => return Err(format!(
-                    "trans v1 拒绝域:声明 `{}`(仅支持 fn/test)",
-                    decl_name(other)
-                )),
             }
         }
 
@@ -332,9 +350,9 @@ impl Trans {
         }
         for d in &file.decls {
             if let ast::Decl::Fn(f) = d {
-                if f.type_params.is_empty() {
+                if f.type_params.is_empty() && !self.fn_has_traitobj_param(&f.name) {
                     self.emit_fn(f)?;
-                } // 泛型 fn 由调用点单态化
+                } // 泛型 / trait 对象形参 fn 由调用点单态化
             }
         }
 
@@ -345,10 +363,11 @@ impl Trans {
             self.scope_push();
             let (c_code, vty) = self.expr(&c.expr)?;
             self.scope_pop();
-            let _ = vty;
-            calls.push_str(&format!("    {} = ({});\n", sanitize(&c.name), c_code));
+            let cname = sanitize(&c.name);
+            self.scopes.first_mut().unwrap().push((c.name.clone(), cname.clone(), vty));
+            calls.push_str(&format!("    {} = ({});\n", cname, c_code));
             let ct = self.c_ty(ty).to_string();
-            self.late_defs.push(format!("static {} {};\n", ct, sanitize(&c.name)));
+            self.late_defs.push(format!("static {} {};\n", ct, cname));
         }
         for (i, t) in tests.iter().enumerate() {
             let fname = format!("ct_test_{}", i);
@@ -669,7 +688,7 @@ impl Trans {
         match ty {
             VTy::Struct(id) => Ok((format!("({}).", c), id)),
             VTy::Class(id) | VTy::Boxed(id) => Ok((format!("({})->", c), id)),
-            _ => Err("trans:字段访问需用户类型".into()),
+            other => Err(format!("trans:字段访问需用户类型(接收者 {:?})", other)),
         }
     }
 
@@ -686,6 +705,11 @@ impl Trans {
                         let is_class = self.types[id as usize].is_class;
                         return if is_class { VTy::Class(id) } else { VTy::Struct(id) };
                     }
+                    if let Some(pos) = self.traits.iter().position(|t| t == name) {
+                        return VTy::TraitObj(pos as u32);
+                    }
+                    if name == "Arena" { return VTy::Arena; }
+                    if name == "List" { return VTy::Array; }
                     if let Some(&id) = self.enum_by_name.get(name.as_str()) {
                         // 载荷类别取第一个类型实参(Option[F64] → F;无实参 → I)
                         let pay = if let ast::Type::Named { args, .. } = t {
@@ -728,6 +752,11 @@ impl Trans {
             VTy::Array => "ct_arr*",
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
             VTy::FnPtr => "ct_fnptr0",
+            VTy::Arena => "ct_arr*",
+            VTy::Cell => "ct_i*",
+            VTy::Simd => "ct_simd",
+            VTy::FArr => "ct_farr*",
+            VTy::TraitObj(..) => "ct_i",
             VTy::Tup(id) => {
                 let c = self.c_ty(self.tuples[id as usize].0).to_string();
                 return Box::leak(format!("ct_val2_{}", Box::leak(c.into_boxed_str())).into_boxed_str());
@@ -740,6 +769,30 @@ impl Trans {
     }
 
     // ---------------- 函数 ----------------
+
+    fn fn_has_traitobj_param(&self, name: &str) -> bool {
+        for d in &self.decls {
+            if let ast::Decl::Fn(f) = d {
+                if f.name != name || !f.type_params.is_empty() { continue; }
+                for p in &f.params {
+                    if let ast::Param::Param { ty, .. } = p {
+                        let seg = match ty {
+                            ast::Type::Named { path, .. } => path.last(),
+                            ast::Type::Ref(inner) => match &**inner {
+                                ast::Type::Named { path, .. } => path.last(),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some(seg) = seg {
+                            if seg != "List" && self.traits.iter().any(|t| t == seg) { return true; }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
 
     fn fn_is_generic(&self, name: &str) -> bool {
         self.decls.iter().any(|d| matches!(d, ast::Decl::Fn(f) if f.name == name && !f.type_params.is_empty()))
@@ -884,6 +937,7 @@ impl Trans {
                 parts.push(format!("{} {}", self.c_ty(vty), c));
             }
         }
+        self.late_defs.push(format!("static {} ctn_{}_{}({});\n", self.c_ty(ret), tn, name, parts.join(", ")));
         self.w(0, &format!("static {} ctn_{}_{}({}) {{", self.c_ty(ret), tn, name, parts.join(", ")));
         if let Some(body) = &m.body {
             self.emit_block_stmts(body)?;
@@ -902,6 +956,7 @@ impl Trans {
         };
         self.scope_push();
         self.scopes.last_mut().unwrap().push(("self".into(), "self".into(), self_ty));
+        self.late_defs.push(format!("static {} ctn_{}_{}({} self);\n", self.c_ty(ret), tn, pp.name, self.c_ty(self_ty)));
         self.w(0, &format!("static {} ctn_{}_{}({} self) {{", self.c_ty(ret), tn, pp.name, self.c_ty(self_ty)));
         if let Some(body) = &pp.body {
             self.emit_block_stmts(body)?;
@@ -933,6 +988,8 @@ impl Trans {
                 parts.push(format!("{} {}", self.c_ty(vty), c));
             }
         }
+        let proto = format!("static {} {}({});\n", self.c_ty(ret), sanitize(&f.name), parts.join(", "));
+        self.late_defs.push(proto.clone());
         self.w(0, &format!(
             "static {} {}({}) {{",
             self.c_ty(ret),
@@ -1084,8 +1141,17 @@ impl Trans {
                 Ok(())
             }
             ast::Stmt::Return(e) => {
-                let c = match e { Some(e) => self.expr(e)?.0, None => String::new() };
-                self.w(1, &format!("return {};", c));
+                match e {
+                    Some(e) => {
+                        let (c, ty) = self.expr(e)?;
+                        if matches!(ty, VTy::Void | VTy::Unknown) && c == "0" {
+                            self.w(1, "return;");
+                        } else {
+                            self.w(1, &format!("return {};", c));
+                        }
+                    }
+                    None => { self.w(1, "return;"); }
+                }
                 Ok(())
             }
             ast::Stmt::Expr(e) => {
@@ -1270,9 +1336,12 @@ impl Trans {
                     self.w(1, "}");
                     Ok((tv, merged))
                 } else {
-                    // 无值 if:纯语句形态
+                    // 无值 if:纯语句形态;分支尾表达式(副作用调用)仍需发射
                     self.w(1, &format!("if ({}) {{", cc));
                     self.emit_lines(&then_code);
+                    if let Some((tc_, _)) = then_tail {
+                        self.w(2, &format!("(void)({});", tc_));
+                    }
                     if let Some((ec, _)) = els_tail {
                         self.w(1, "} else {");
                         self.emit_lines(&els_code);
@@ -1348,6 +1417,7 @@ impl Trans {
             ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } => {
                 let (c, ty) = self.expr(obj)?;
                 // 属性访问(无括号)
+                if ty == VTy::Unknown { eprintln!("DBG member-unknown .{} obj={:?}", m, obj); }
                 if ty == VTy::Str {
                     return match m.as_str() {
                         "len" => Ok((format!("((ct_i)strlen({}))", c), VTy::Int(Some((IntW::W64, false))))),
@@ -1355,9 +1425,10 @@ impl Trans {
                         _ => Err(format!("trans v1 拒绝域:Str 属性 `{}`", m)),
                     };
                 }
-                if ty == VTy::Array {
+                if ty == VTy::Array || ty == VTy::FArr {
+                    let acc = if ty == VTy::FArr { "->n" } else { "->n" };
                     return match m.as_str() {
-                        "len" => Ok((format!("((ct_i)({})->n)", c), VTy::Int(Some((IntW::W64, false))))),
+                        "len" => Ok((format!("((ct_i)({}){})", c, acc), VTy::Int(Some((IntW::W64, false))))),
                         _ => Err(format!("trans v1 拒绝域:Array 属性 `{}`", m)),
                     };
                 }
@@ -1388,10 +1459,13 @@ impl Trans {
             }
             ast::Expr::Index { obj, index } => {
                 let (oc, ty) = self.expr(obj)?;
-                if ty != VTy::Array { return Err("trans:索引仅支持数组".into()); }
                 let (ic, it) = self.expr(index)?;
                 if !matches!(it, VTy::Int(_)) { return Err("trans:索引需整数".into()); }
-                Ok((format!("ct_elem({}, {})", oc, ic), VTy::Int(None)))
+                match ty {
+                    VTy::Array => Ok((format!("ct_elem({}, {})", oc, ic), VTy::Int(None))),
+                    VTy::FArr => Ok((format!("(float)(ct_felem({}, {}))", oc, ic), VTy::F32)),
+                    _ => Err("trans:索引仅支持数组".into()),
+                }
             }
             ast::Expr::Array(items) => {
                 let mut parts = Vec::new();
@@ -1494,7 +1568,9 @@ impl Trans {
                     let kw = if i == 0 { "if" } else { "} else if" };
                     self.w(1, &format!("{} (({}) != 0) {{", kw, arm_heads[i]));
                     self.emit_lines(&arm_blocks[i]);
-                    let _ = arm_vals[i];
+                    if let Some((ac, _)) = arm_vals[i].as_ref() {
+                        self.w(2, &format!("(void)({});", ac));
+                    }
                     self.w(2, &format!("{} = 1;", dv));
                 }
                 self.w(1, "} else {");
@@ -1570,6 +1646,12 @@ impl Trans {
             }
             ast::Expr::Call { callee, args } => self.call(callee, args),
             ast::Expr::TypeArgs { expr, args } => {
+                // Simd[F32, N] → 定宽向量标记值
+                if let ast::Expr::Ident(tn) = &**expr {
+                    if tn == "Simd" {
+                        return Ok(("((ct_simd){{ {{0}} }})".to_string(), VTy::Simd));
+                    }
+                }
                 // as[T]() 显式转换(§3.6 截断语义)
                 if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = &**expr {
                     if m == "as" {
@@ -1584,23 +1666,29 @@ impl Trans {
                 }
                 Err("trans v1 拒绝域:泛型实参".into())
             }
-            other => Err(format!(
-                "trans v1 拒绝域:{}",
-                match other {
-                    ast::Expr::Str { .. } => "字符串",
-                    ast::Expr::Array(_) | ast::Expr::Index { .. } => "数组",
-                    ast::Expr::StructLit { .. } => "结构体字面量",
-                    ast::Expr::Member { .. } => "成员访问",
-                    ast::Expr::TypeArgs { .. } => "泛型实参/as",
-                    ast::Expr::Try(_) => "? 错误传播",
-                    ast::Expr::Closure { .. } => "闭包",
-                    ast::Expr::Match { .. } => "match",
-                    ast::Expr::Own { .. } => "own 块",
-                    ast::Expr::Scope { .. } => "scope 块",
-                    ast::Expr::Tuple(_) => "元组",
-                    _ => "该表达式形态",
-                }
-            )),
+            ast::Expr::Own { arena: an, body } => {
+                // own 块:move/alloc 约束为编译期;运行期透明执行;arena 名绑定句柄
+                self.scope_push();
+                if !an.is_empty() { self.bind(&an, VTy::Arena); }
+                for st in &body.stmts { self.emit_stmt(st)?; }
+                let out = match &body.tail {
+                    Some(t) => self.expr(t)?,
+                    None => ("0".to_string(), VTy::Void),
+                };
+                self.scope_pop();
+                Ok(out)
+            }
+            ast::Expr::Scope { body, .. } => {
+                // scope 块:结构化并发边界;运行期透明(spawn 语义由调用决定)
+                self.scope_push();
+                for st in &body.stmts { self.emit_stmt(st)?; }
+                let out = match &body.tail {
+                    Some(t) => self.expr(t)?,
+                    None => ("0".to_string(), VTy::Void),
+                };
+                self.scope_pop();
+                Ok(out)
+            }
         }
     }
 
@@ -1685,6 +1773,68 @@ impl Trans {
                 }
             }
         }
+        // Arena.fixed[N](n) → arena 定长数组
+        if let ast::Expr::TypeArgs { expr, .. } = callee {
+            if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = &**expr {
+                if m == "fixed" {
+                    if let ast::Expr::Ident(on) = &**obj {
+                        if on == "Arena" {
+                            let n_c = match args.first() {
+                                Some(a) => self.expr(a)?.0,
+                                None => "(ct_i)0".to_string(),
+                            };
+                            return Ok((format!("ct_arr_new((size_t)({}), NULL)", n_c), VTy::Array));
+                        }
+                    }
+                }
+            }
+        }
+        // Global[T](name, init) / Atomic[T](init) → 局部静态单元格
+        if let ast::Expr::TypeArgs { expr, .. } = callee {
+            if let ast::Expr::Ident(tn) = &**expr {
+                if tn == "Global" || tn == "Atomic" {
+                    let init_i = if tn == "Global" { args.get(1) } else { args.first() };
+                    let init_c = match init_i {
+                        Some(a) => self.expr(a)?.0,
+                        None => "(ct_i)0".to_string(),
+                    };
+                    let cname = self.uniq_name(&format!("cell_{}", tn));
+                    return Ok((
+                        format!("({{ static ct_i {} = {}; (&{}); }})", cname, init_c, cname),
+                        VTy::Cell,
+                    ));
+                }
+            }
+        }
+        // Arena.fixed[N](n) → 定长 arena 数组(此处按需求长度分配)
+        if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = callee {
+            if m == "fixed" {
+                if let ast::Expr::Ident(on) = &**obj {
+                    if on == "Arena" {
+                        let n_c = if let Some(a) = args.first() { self.expr(a)?.0 } else { "(ct_i)0".into() };
+                        return Ok((format!("ct_arr_new((size_t)({}), NULL)", n_c), VTy::Array));
+                    }
+                }
+            }
+        }
+        // arena.list[T]() / arena.zeros[T](n) — TypeArgs 挂在 callee 位
+        if let ast::Expr::TypeArgs { expr, .. } = callee {
+            if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = &**expr {
+                let (_rc, rt) = self.expr(obj)?;
+                if let VTy::Arena = rt {
+                    let r = match m.as_str() {
+                        "list" => Some(("ct_arr_new(0, NULL)".to_string(), VTy::Array)),
+                        "array" | "zeros" => {
+                            let Some(a) = args.first() else { return Err("trans:array/zeros 需长度".into()) };
+                            let (c2, _) = self.expr(a)?;
+                            Some((format!("ct_arr_new((size_t)({}), NULL)", c2), VTy::Array))
+                        }
+                        _ => None,
+                    };
+                    if let Some(r) = r { return Ok(r); }
+                }
+            }
+        }
         // x.as[T]() — as 的 TypeArgs 挂在 callee 位置
         if let ast::Expr::TypeArgs { expr, args: targ_args } = callee {
             if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = &**expr {
@@ -1743,8 +1893,8 @@ impl Trans {
                 if args.len() != ptys.len() {
                     return Err(format!("trans:函数 `{}` 实参数不符", name));
                 }
-                // 泛型 fn:按实参类型单态化
-                if self.fn_is_generic(name) {
+                // 泛型 fn / trait 对象形参:按实参类型单态化
+                if self.fn_is_generic(name) || self.fn_has_traitobj_param(name) {
                     let mut atys = Vec::new();
                     let mut cs = Vec::new();
                     for a in args {
@@ -1761,6 +1911,30 @@ impl Trans {
                     cs.push(coerce(self.c_ty(*pt), c, at, *pt));
                 }
                 return Ok((format!("{}({})", sanitize(name), cs.join(", ")), ret));
+            }
+        }
+            // parallel.map(coll, f):fork-join 数据并行(v1 串行等价,元素级纯函数)
+        if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = callee {
+            if let ast::Expr::Ident(on) = &**obj {
+                if on == "parallel" && m == "reduce" {
+                    let (coll_c, coll_t) = self.expr(&args[0])?;
+                    let (init_c, _it) = self.expr(&args[1])?;
+                    let (fc, _ft) = self.expr(&args[2])?;
+                    if coll_t != VTy::Array { return Err("trans:parallel.reduce 需数组".into()); }
+                    return Ok((
+                        format!("ct_parallel_reduce({}, (ct_i)({}), (ct_fnptr0)({}))", coll_c, init_c, fc),
+                        VTy::Int(None),
+                    ));
+                }
+                if on == "parallel" && m == "map" {
+                    let (coll_c, coll_t) = self.expr(&args[0])?;
+                    let (fc, _ft) = self.expr(&args[1])?;
+                    if coll_t != VTy::Array { return Err("trans:parallel.map 需数组".into()); }
+                    return Ok((
+                        format!("ct_parallel_map({}, (ct_fnptr0)({}))", coll_c, fc),
+                        VTy::Array,
+                    ));
+                }
             }
         }
         // 方法调用:接收者.方法(实参) — Str 方法,其次 UFCS 用户函数
@@ -1786,6 +1960,90 @@ impl Trans {
                         Some((format!("ct_slice({}, (long)({}), (long)({}))", rc, fc, tcc), VTy::Str))
                     }
                     "to_string" => Some((format!("ct_dup({})", rc), VTy::Str)),
+                    _ => None,
+                };
+                if let Some(r) = r { return Ok(r); }
+            }
+            // 数组方法:push / into_gc(深拷贝)
+            if let VTy::Array = rt {
+                let r = match m.as_str() {
+                    "push" => {
+                        let Some(a) = args.first() else { return Err("trans:push 需实参".into()) };
+                        let (c, _) = self.expr(a)?;
+                        Some((format!("(ct_arr_push({}, (ct_i)({})), 0)", rc, c), VTy::Void))
+                    }
+                    "into_gc" => Some((format!("ct_arr_clone({})", rc), VTy::Array)),
+                    _ => None,
+                };
+                if let Some(r) = r { return Ok(r); }
+            }
+            // Arena 泛型方法:arena.list[T]() / arena.zeros[T](n)
+            if let VTy::Arena = rt {
+                let r = match m.as_str() {
+                    "list" => Some(("ct_arr_new(0, NULL)".to_string(), VTy::Array)),
+                    "array" | "zeros" => {
+                        let Some(a) = args.first() else { return Err("trans:array/zeros 需长度".into()) };
+                        let (c, _) = self.expr(a)?;
+                        Some((format!("ct_arr_new((size_t)({}), NULL)", c), VTy::Array))
+                    }
+                    _ => None,
+                };
+                if let Some(r) = r { return Ok(r); }
+            }
+            // Simd 方法:splat / lane / to_array
+            if rt == VTy::Simd {
+                let r = match m.as_str() {
+                    "splat" => {
+                        let Some(a) = args.first() else { return Err("trans:splat 需实参".into()) };
+                        let (c, _) = self.expr(a)?;
+                        Some((format!("ct_simd_splat((float)({}))", c), VTy::Simd))
+                    }
+                    "lane" => {
+                        let Some(a) = args.first() else { return Err("trans:lane 需实参".into()) };
+                        let (c, _) = self.expr(a)?;
+                        Some((format!("(float)(ct_simd_lane({}, (int)({})))", rc, c), VTy::F32))
+                    }
+                    "to_array" => Some((format!("ct_simd_to_array({})", rc), VTy::FArr)),
+                    _ => None,
+                };
+                if let Some(r) = r { return Ok(r); }
+            }
+            // Global/Atomic 单元格方法
+            if let VTy::Cell = rt {
+                let r = match m.as_str() {
+                    "with" | "with_mut" => {
+                        // 闭包首参即单元格值;with_mut 回写终值(对齐 interp)
+                        let Some(cl) = args.first() else { return Err("trans:with 需闭包".into()) };
+                        let ast::Expr::Closure { params, body, .. } = cl else {
+                            return Err("trans v1 拒绝域:with 需闭包字面量".into());
+                        };
+                        let pname = params.first().map(|cp| cp.name.clone()).unwrap_or_else(|| "c".into());
+                                                self.scope_push();
+                        self.sink.push(String::new());
+                        let cp = self.uniq_name("cp");
+                        self.w(2, &format!("ct_i* {} = ({});", cp, rc));
+                        let cbind = self.bind(&pname, VTy::Int(None));
+                        self.w(2, &format!("ct_i {} = *{};", cbind, cp));
+                        match body.as_ref() {
+                            ast::Expr::BlockExpr(b) => { self.emit_block_stmts(b)?; }
+                            other => { let (c3, _) = self.expr(other)?; self.w(2, &format!("(void)({});", c3)); }
+                        }
+                        self.w(2, &format!("*{} = {};", cp, cbind));
+                        let code = self.sink.pop().unwrap_or_default();
+                        self.scope_pop();
+                        Some((format!("({{ {} 0; }})", code), VTy::Void))
+                    }
+                    "fetch_add" => {
+                        let Some(a) = args.first() else { return Err("trans:fetch_add 需实参".into()) };
+                        let (c2, _) = self.expr(a)?;
+                        Some((format!("({{ ct_i* p = ({}); ct_i old = *p; *p += ({}); old; }})", rc, c2), VTy::Int(None)))
+                    }
+                    "load" => Some((format!("(*({}))", rc), VTy::Int(None))),
+                    "store" => {
+                        let Some(a) = args.first() else { return Err("trans:store 需实参".into()) };
+                        let (c2, _) = self.expr(a)?;
+                        Some((format!("(*({}) = ({}), 0)", rc, c2), VTy::Void))
+                    }
                     _ => None,
                 };
                 if let Some(r) = r { return Ok(r); }
@@ -1899,7 +2157,10 @@ impl Trans {
             }
         }
         {
-            return Err("trans v1 拒绝域:该调用形态(仅内建/数值函数)".into());
+            return Err({
+                let dn = match callee { ast::Expr::Ident(n) => format!("Ident({})", n), ast::Expr::Member { target: ast::MemberTarget::Name(m), .. } => format!("Member.{}", m), ast::Expr::TypeArgs { expr, args } => format!("TypeArgs({:?}, +{} args)", expr, args.len()), _ => "?".into() };
+                format!("trans v1 拒绝域:该调用形态 {} args={}", dn, args.len())
+            });
         }
     }
 
@@ -1926,6 +2187,13 @@ impl Trans {
                 }
             }
             Add | Sub | Mul | Div | Mod => {
+                if lt == VTy::Simd && rt == VTy::Simd {
+                    let f = match op {
+                        Add => "ct_simd_add", Sub => "ct_simd_sub",
+                        Mul => "ct_simd_mul", _ => return Err("trans:Simd 仅支持 + - *".into()),
+                    };
+                    return Ok((format!("{}({}, {})", f, lc, rc), VTy::Simd));
+                }
                 let (VTy::Int(lw), VTy::Int(rw)) = (lt, rt) else {
                     if lt.is_float() && rt.is_float() {
                         if float_kind(lt) != float_kind(rt) {
@@ -2075,19 +2343,6 @@ fn sanitize(name: &str) -> String {
     format!("ctn_{}", name)
 }
 
-fn decl_name(d: &ast::Decl) -> &str {
-    match d {
-        ast::Decl::Use(_) => "use",
-        ast::Decl::Struct(_) => "struct",
-        ast::Decl::Class(_) => "class",
-        ast::Decl::Enum(_) => "enum",
-        ast::Decl::Trait(_) => "trait",
-        ast::Decl::Impl(_) => "impl",
-        ast::Decl::Const(_) => "const",
-        ast::Decl::Static(_) => "static",
-        _ => "?",
-    }
-}
 
 const PREAMBLE: &str = r#"/* Ctron → C 转译产物(P1-E① 数值域;语义契约 = Rust 解释器) */
 #include <stdio.h>
@@ -2123,6 +2378,41 @@ typedef ct_i (*ct_fnptr0)();
 typedef union { ct_i i; double f; } ct_cell;
 typedef struct { int variant; ct_cell p[4]; } ct_sum;
 
+/* ---- Simd[F32,4](元素级白名单运算)与 f32 数组 ---- */
+typedef struct { float v[4]; } ct_simd;
+typedef struct { float* d; size_t n; } ct_farr;
+static ct_simd ct_simd_splat(float f) {
+    ct_simd s;
+    for (int i = 0; i < 4; i++) s.v[i] = f;
+    return s;
+}
+static ct_simd ct_simd_add(ct_simd a, ct_simd b) {
+    ct_simd r; for (int i = 0; i < 4; i++) r.v[i] = a.v[i] + b.v[i]; return r;
+}
+static ct_simd ct_simd_sub(ct_simd a, ct_simd b) {
+    ct_simd r; for (int i = 0; i < 4; i++) r.v[i] = a.v[i] - b.v[i]; return r;
+}
+static ct_simd ct_simd_mul(ct_simd a, ct_simd b) {
+    ct_simd r; for (int i = 0; i < 4; i++) r.v[i] = a.v[i] * b.v[i]; return r;
+}
+static float ct_simd_lane(ct_simd s, int i) {
+    if (i < 0 || i >= 4) { fprintf(stderr, "simd lane out of bounds\n"); exit(1); }
+    return s.v[i];
+}
+static ct_farr* ct_simd_to_array(ct_simd s) {
+    ct_farr* r = (ct_farr*)malloc(sizeof(ct_farr));
+    if (!r) abort();
+    r->n = 4;
+    r->d = (float*)malloc(4 * sizeof(float));
+    if (!r->d) abort();
+    for (int i = 0; i < 4; i++) r->d[i] = s.v[i];
+    return r;
+}
+static float ct_felem(ct_farr* a, ct_i i) {
+    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
+    return a->d[(size_t)i];
+}
+
 /* ---- 错误对象(context 产物;堆分配,进程期不回收) ---- */
 typedef struct ct_anyerr { const char* message; ct_sum cause; const char* trace; } ct_anyerr;
 static ct_anyerr* ct_mkerr(const char* m, ct_sum cause, const char* trace) {
@@ -2142,12 +2432,20 @@ static ct_arr* ct_arr_new(size_t n, ct_i* init) {
     a->n = n;
     a->d = n ? (ct_i*)malloc(n * sizeof(ct_i)) : NULL;
     if (n && !a->d) abort();
-    for (size_t i = 0; i < n; i++) a->d[i] = init[i];
+    if (init) { for (size_t i = 0; i < n; i++) a->d[i] = init[i]; }
     return a;
 }
 static ct_i ct_elem(ct_arr* a, ct_i i) {
     if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
     return a->d[(size_t)i];
+}
+static void ct_arr_push(ct_arr* a, ct_i v) {
+    a->d = (ct_i*)realloc(a->d, (a->n + 1) * sizeof(ct_i));
+    if (!a->d) abort();
+    a->d[a->n++] = v;
+}
+static ct_arr* ct_arr_clone(ct_arr* a) {
+    return ct_arr_new(a->n, a->d);
 }
 static void ct_elem_store(ct_arr* a, ct_i i, ct_i v) {
     if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
@@ -2177,6 +2475,16 @@ static char* ct_cat(int n, ...) {
     va_end(ap);
     *p = '\0';
     return r;
+}
+static ct_arr* ct_parallel_map(ct_arr* a, ct_fnptr0 f) {
+    ct_arr* r = ct_arr_new(a->n, NULL);
+    for (size_t i = 0; i < a->n; i++) r->d[i] = f(a->d[i]);
+    return r;
+}
+static ct_i ct_parallel_reduce(ct_arr* a, ct_i init, ct_fnptr0 f) {
+    ct_i acc = init;
+    for (size_t i = 0; i < a->n; i++) acc = f(acc, a->d[i]);
+    return acc;
 }
 static char* ct_dup(const char* s) {
     char* r = (char*)malloc(strlen(s) + 1);
