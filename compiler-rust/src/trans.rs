@@ -1548,7 +1548,7 @@ impl Trans {
                         if ft != VTy::FnPtr { return Err("trans:map 需函数指针".into()); }
                         // Ok/Some → f(载荷) 重包;Err/None → 原样(Result 的 Err 槽 p[0] 不动)
                         (format!(
-                            "({{ ct_sum t = ({}); ct_sum ct_m; if (t.variant != 0) {{ ct_m = t; }} else {{ ct_m = t; ct_m.p[0].i = ((ct_fnptr)({}))(t.p[0].i); }} ct_m; }})",
+                            "({{ ct_sum t = ({}); ct_sum ct_m; if (t.variant != 0) {{ ct_m = t; }} else {{ ct_m = t; ct_m.p[0].i = ((ct_fnptr0)({}))(t.p[0].i); }} ct_m; }})",
                             rc, fc),
                          rt)
                     }
