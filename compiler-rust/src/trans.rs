@@ -597,6 +597,7 @@ impl Trans {
             // T[N] 定长 / T[] 视图 / &T[] 只读视图:统一数组句柄(interp 同为 Value::Array)
             ast::Type::Slice(_) | ast::Type::Array { .. } => VTy::Array,
             ast::Type::Ref(inner) => self.ty_of(inner),
+            ast::Type::Fn { .. } => VTy::FnPtr,
             ast::Type::Optional(inner) => {
                 let id = self.enum_by_name.get("Option").copied().unwrap_or(0);
                 VTy::Sum(id, self.pay_of(inner))
@@ -614,7 +615,7 @@ impl Trans {
             VTy::Range => "ct_range",
             VTy::Array => "ct_arr*",
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
-            VTy::FnPtr => "ct_fnptr",
+            VTy::FnPtr => "ct_fnptr0",
             VTy::ErrPtr => "ct_i",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
             VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
@@ -1341,6 +1342,17 @@ impl Trans {
     }
 
     fn call(&mut self, callee: &ast::Expr, args: &[ast::Expr]) -> TRes {
+        // 局部函数指针调用(f(f(x)))
+        if let ast::Expr::Ident(name) = callee {
+            if let Some((c, VTy::FnPtr)) = self.lookup(name) {
+                let mut cs = Vec::new();
+                for a in args {
+                    let (c2, _) = self.expr(a)?;
+                    cs.push(c2);
+                }
+                return Ok((format!("((ct_fnptr0)({}))({})", c, cs.join(", ")), VTy::Int(None)));
+            }
+        }
         // 和类型变体构造器:Some/None/Ok/Err/用户 enum 变体
         if let ast::Expr::Ident(name) = callee {
             if let Some(&eid) = self.enum_by_name.get("*prelude*") { let _ = eid; }
@@ -1738,6 +1750,9 @@ fn c_escape(t: &str) -> String {
 
 
 fn coerce(c_ty: &str, c: String, from: VTy, to: VTy) -> String {
+    if from == VTy::FnPtr && to == VTy::FnPtr {
+        return format!("((ct_fnptr0)({}))", c);
+    }
     match (from, to) {
         (VTy::F64, VTy::F32) => format!("(float)({})", c),
         (VTy::F32, VTy::F64) => format!("(double)({})", c),
@@ -1794,7 +1809,7 @@ static int ct_assert(int ok) {
     return ok;
 }
 /* ---- 和类型:tagged union;载荷槽 i/f 按静态类型选用 ---- */
-typedef ct_i (*ct_fnptr)(ct_i);
+typedef ct_i (*ct_fnptr0)();
 typedef union { ct_i i; double f; } ct_cell;
 typedef struct { int variant; ct_cell p[4]; } ct_sum;
 
