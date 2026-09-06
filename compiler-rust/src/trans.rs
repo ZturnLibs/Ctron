@@ -91,6 +91,7 @@ fn scalar_annotation(name: &str) -> Option<VTy> {
         "F32" => VTy::F32,
         "Bool" => VTy::Bool,
         "Str" | "String" => VTy::Str,
+        "Void" => VTy::Void,
         _ => return None,
     })
 }
@@ -138,6 +139,7 @@ pub struct Trans {
     generics: std::collections::HashMap<String, (bool, Vec<(String, ast::Type)>)>, // 名 → (is_class, 字段)
     mono_keys: std::collections::HashMap<String, u32>, // 实例键 → tid
     mono_names: std::collections::HashMap<String, (String, VTy)>, // 任意键 → (C 名, 返回类型)
+    mono_seq: u32,
     tuples: Vec<(VTy, VTy)>,
     traits: Vec<String>,
     tuple_keys: std::collections::HashMap<String, u32>,
@@ -160,6 +162,7 @@ impl Trans {
             generics: std::collections::HashMap::new(),
             mono_keys: std::collections::HashMap::new(),
             mono_names: std::collections::HashMap::new(),
+            mono_seq: 0,
             tuples: Vec::new(),
             traits: Vec::new(),
             tuple_keys: std::collections::HashMap::new(),
@@ -411,8 +414,8 @@ impl Trans {
         self.tuple_keys.insert(key, id);
         let ca = self.c_ty(a);
         let cb = if a == b { ca.to_string() } else { self.c_ty(b).to_string() };
-        let ca2 = self.c_ty(a).to_string();
-        self.late_defs.push(format!("typedef struct {{ {} _0; {} _1; }} ct_val2_{};\n", ca2, cb, ca2));
+        let na: String = ca.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
+        self.late_defs.push(format!("typedef struct {{ {} _0; {} _1; }} ct_val2_{};\n", ca, cb, na));
         id
     }
 
@@ -755,11 +758,13 @@ impl Trans {
             VTy::Arena => "ct_arr*",
             VTy::Cell => "ct_i*",
             VTy::Simd => "ct_simd",
+            VTy::Void => "void",
             VTy::FArr => "ct_farr*",
             VTy::TraitObj(..) => "ct_i",
             VTy::Tup(id) => {
                 let c = self.c_ty(self.tuples[id as usize].0).to_string();
-                return Box::leak(format!("ct_val2_{}", Box::leak(c.into_boxed_str())).into_boxed_str());
+                let n: String = c.chars().map(|ch| if ch.is_alphanumeric() { ch } else { '_' }).collect();
+                return Box::leak(format!("ct_val2_{}", Box::leak(n.into_boxed_str())).into_boxed_str());
             }
             VTy::ErrPtr => "ct_i",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
@@ -804,7 +809,8 @@ impl Trans {
         if let Some((c, r)) = self.mono_names.get(&key) {
             return Ok((c.clone(), *r));
         }
-        let cname = format!("{}_mono_{}", sanitize(name), self.mono_keys.len());
+        self.mono_seq += 1;
+        let cname = format!("{}_mono_{}", sanitize(name), self.mono_seq);
         self.mono_names.insert(key.clone(), (cname.clone(), VTy::Unknown));
         let f = self.decls.iter().find_map(|d| match d {
             ast::Decl::Fn(f) if f.name == name => Some(f.clone()),
@@ -1371,7 +1377,7 @@ impl Trans {
                     tys.push(t);
                 }
                 let id = self.intern_tuple(tys[0], tys[1]);
-                let tn = self.c_ty(tys[0]).to_string();
+                let tn: String = self.c_ty(tys[0]).chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
                 Ok((format!("(ct_val2_{}){{ {}, {} }}", Box::leak(tn.into_boxed_str()), cs[0], cs[1]), VTy::Tup(id)))
             }
             ast::Expr::Str { parts } => {
@@ -2017,6 +2023,14 @@ impl Trans {
                         let ast::Expr::Closure { params, body, .. } = cl else {
                             return Err("trans v1 拒绝域:with 需闭包字面量".into());
                         };
+                        if m == "with" {
+                            // with:读值传入,返回闭包结果
+                            let (fname, _) = self.expr(cl)?;
+                            return Ok((
+                                format!("((ct_fnptr0)({}))(*({}))", fname, rc),
+                                VTy::Int(None),
+                            ));
+                        } // with_mut 走下方内联回写
                         let pname = params.first().map(|cp| cp.name.clone()).unwrap_or_else(|| "c".into());
                                                 self.scope_push();
                         self.sink.push(String::new());
@@ -2031,22 +2045,26 @@ impl Trans {
                         self.w(2, &format!("*{} = {};", cp, cbind));
                         let code = self.sink.pop().unwrap_or_default();
                         self.scope_pop();
-                        Some((format!("({{ {} 0; }})", code), VTy::Void))
+                        Some(Ok((format!("({{ {} 0; }})", code), VTy::Void)))
                     }
                     "fetch_add" => {
                         let Some(a) = args.first() else { return Err("trans:fetch_add 需实参".into()) };
                         let (c2, _) = self.expr(a)?;
-                        Some((format!("({{ ct_i* p = ({}); ct_i old = *p; *p += ({}); old; }})", rc, c2), VTy::Int(None)))
+                        Some(Ok((format!("({{ ct_i* p = ({}); ct_i old = *p; *p += ({}); old; }})", rc, c2), VTy::Int(None))))
                     }
-                    "load" => Some((format!("(*({}))", rc), VTy::Int(None))),
+                    "load" => Some(Ok((format!("(*({}))", rc), VTy::Int(None)))),
                     "store" => {
                         let Some(a) = args.first() else { return Err("trans:store 需实参".into()) };
                         let (c2, _) = self.expr(a)?;
-                        Some((format!("(*({}) = ({}), 0)", rc, c2), VTy::Void))
+                        Some(Ok((format!("(*({}) = ({}), 0)", rc, c2), VTy::Void)))
                     }
                     _ => None,
                 };
-                if let Some(r) = r { return Ok(r); }
+                match r {
+                    Some(Ok(v)) => return Ok(v),
+                    Some(Err(e)) => return Err(e),
+                    None => {}
+                }
             }
             // @derive(Show):.show() → 每具体类型一个 show 函数(格式 Name{f: v, ...})
             if let VTy::Class(tid) | VTy::Struct(tid) = rt {
