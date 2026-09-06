@@ -46,6 +46,8 @@ enum VTy {
     SumErr(u32, Pay),
     /// 函数指针(ct_i → ct_i;非捕获闭包与用户函数引用)
     FnPtr,
+    /// 二元组:索引指向 tuples 表
+    Tup(u32),
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -128,7 +130,9 @@ pub struct Trans {
     decls: Vec<ast::Decl>,
     generics: std::collections::HashMap<String, (bool, Vec<(String, ast::Type)>)>, // 名 → (is_class, 字段)
     mono_keys: std::collections::HashMap<String, u32>, // 实例键 → tid
-    mono_names: std::collections::HashMap<String, String>, // 任意键 → C 名
+    mono_names: std::collections::HashMap<String, (String, VTy)>, // 任意键 → (C 名, 返回类型)
+    tuples: Vec<(VTy, VTy)>,
+    tuple_keys: std::collections::HashMap<String, u32>,
     late_defs: Vec<String>, // 晚期定义(实例 typedef / 单态 fn / show fn)
     closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
     ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
@@ -148,6 +152,8 @@ impl Trans {
             generics: std::collections::HashMap::new(),
             mono_keys: std::collections::HashMap::new(),
             mono_names: std::collections::HashMap::new(),
+            tuples: Vec::new(),
+            tuple_keys: std::collections::HashMap::new(),
             late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
@@ -207,8 +213,10 @@ impl Trans {
         self.intern_enum("Option", vec![("Some".into(), 1), ("None".into(), 0)]);
         self.intern_enum("Result", vec![("Ok".into(), 1), ("Err".into(), 1)]);
         let mut tests = Vec::new();
+        let mut consts: Vec<ast::ConstDecl> = Vec::new();
         for d in &file.decls {
             match d {
+                ast::Decl::Const(c) => consts.push(c.clone()),
                 ast::Decl::Trait(_) | ast::Decl::Impl(_) => {}
                 ast::Decl::Enum(en) => {
                     if !en.type_params.is_empty() {
@@ -330,7 +338,18 @@ impl Trans {
             }
         }
 
+        // const:运行期初始化(求值顺序 = 声明序;comptime 语义对语料等价)
         let mut calls = String::new();
+        for c in &consts {
+            let ty = self.ty_of(&c.ty);
+            self.scope_push();
+            let (c_code, vty) = self.expr(&c.expr)?;
+            self.scope_pop();
+            let _ = vty;
+            calls.push_str(&format!("    {} = ({});\n", sanitize(&c.name), c_code));
+            let ct = self.c_ty(ty).to_string();
+            self.late_defs.push(format!("static {} {};\n", ct, sanitize(&c.name)));
+        }
         for (i, t) in tests.iter().enumerate() {
             let fname = format!("ct_test_{}", i);
             self.w(0, &format!("static void {}(void) {{", fname));
@@ -361,6 +380,20 @@ impl Trans {
         let id = self.enums.len() as u32;
         self.enums.push(EnumInfo { _name: name.to_string(), variants });
         self.enum_by_name.insert(name.to_string(), id);
+        id
+    }
+
+    /// 二元组实例:同成员类型共享 typedef
+    fn intern_tuple(&mut self, a: VTy, b: VTy) -> u32 {
+        let key = format!("{:?}|{:?}", a, b);
+        if let Some(&id) = self.tuple_keys.get(&key) { return id; }
+        let id = self.tuples.len() as u32;
+        self.tuples.push((a, b));
+        self.tuple_keys.insert(key, id);
+        let ca = self.c_ty(a);
+        let cb = if a == b { ca.to_string() } else { self.c_ty(b).to_string() };
+        let ca2 = self.c_ty(a).to_string();
+        self.late_defs.push(format!("typedef struct {{ {} _0; {} _1; }} ct_val2_{};\n", ca2, cb, ca2));
         id
     }
 
@@ -404,7 +437,7 @@ impl Trans {
     }
 
     /// 类型替换:类型参数名 → 具体类型
-    fn subst_ty(&self, t: &ast::Type, binds: &[(String, VTy)]) -> Result<VTy, String> {
+    fn subst_ty(&mut self, t: &ast::Type, binds: &[(String, VTy)]) -> Result<VTy, String> {
         if let ast::Type::Named { path, .. } = t {
             if let Some(seg) = path.last() {
                 for (pn, pt) in binds {
@@ -558,10 +591,12 @@ impl Trans {
     }
 
     /// impl 方法的返回类型(impl 项或 trait 默认声明)
-    fn impl_ret_ty(&self, tname: &str, m: &str) -> VTy {
-        for (tn, ft) in &self.impls {
+    fn impl_ret_ty(&mut self, tname: &str, m: &str) -> VTy {
+        let impls_snap = self.impls.clone();
+        for (tn, ft) in impls_snap.iter() {
             if ft != tname { continue; }
-            for d in &self.decls {
+            let decls_snap = self.decls.clone();
+            for d in &decls_snap {
                 let mut ret = None;
                 if let ast::Decl::Impl(im) = d {
                     let itn = named_tail_pub(&im.trait_ty);
@@ -638,11 +673,11 @@ impl Trans {
         }
     }
 
-    fn pay_of(&self, t: &ast::Type) -> Pay {
+    fn pay_of(&mut self, t: &ast::Type) -> Pay {
         if self.ty_of(t).is_float() { Pay::F } else { Pay::I }
     }
 
-    fn ty_of(&self, t: &ast::Type) -> VTy {
+    fn ty_of(&mut self, t: &ast::Type) -> VTy {
         match t {
             ast::Type::Named { path, .. } => {
                 if let Some(name) = path.last() {
@@ -667,6 +702,14 @@ impl Trans {
             ast::Type::Slice(_) | ast::Type::Array { .. } => VTy::Array,
             ast::Type::Ref(inner) => self.ty_of(inner),
             ast::Type::Fn { .. } => VTy::FnPtr,
+            ast::Type::Tuple(items) if items.len() == 2 => {
+                let a = self.ty_of(&items[0]);
+                let b = self.ty_of(&items[1]);
+                if matches!(a, VTy::Unknown) || matches!(b, VTy::Unknown) {
+                    return VTy::Unknown;
+                }
+                VTy::Tup(self.intern_tuple(a, b))
+            }
             ast::Type::Optional(inner) => {
                 let id = self.enum_by_name.get("Option").copied().unwrap_or(0);
                 VTy::Sum(id, self.pay_of(inner))
@@ -685,6 +728,10 @@ impl Trans {
             VTy::Array => "ct_arr*",
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
             VTy::FnPtr => "ct_fnptr0",
+            VTy::Tup(id) => {
+                let c = self.c_ty(self.tuples[id as usize].0).to_string();
+                return Box::leak(format!("ct_val2_{}", Box::leak(c.into_boxed_str())).into_boxed_str());
+            }
             VTy::ErrPtr => "ct_i",
             VTy::Struct(id) => leak_str(format!("ctn_{}", self.types[id as usize].name)),
             VTy::Class(id) | VTy::Boxed(id) => leak_str(format!("ctn_{}*", self.types[id as usize].name)),
@@ -699,18 +746,46 @@ impl Trans {
     }
 
     /// 泛型 fn 单态:按实参具体类型生成副本
-    fn mono_fn(&mut self, name: &str, atys: &[VTy]) -> Result<String, String> {
+    fn mono_fn(&mut self, name: &str, atys: &[VTy]) -> Result<(String, VTy), String> {
         let key = format!("{}<{}>", name, atys.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(","));
-        if let Some(c) = self.mono_names.get(&key) {
-            return Ok(c.clone());
+        if let Some((c, r)) = self.mono_names.get(&key) {
+            return Ok((c.clone(), *r));
         }
         let cname = format!("{}_mono_{}", sanitize(name), self.mono_keys.len());
-        self.mono_names.insert(key, cname.clone());
+        self.mono_names.insert(key.clone(), (cname.clone(), VTy::Unknown));
         let f = self.decls.iter().find_map(|d| match d {
             ast::Decl::Fn(f) if f.name == name => Some(f.clone()),
             _ => None,
         }).ok_or("trans:泛型函数未找到")?;
-        let ret = f.ret.as_ref().map(|t| self.ty_of(t)).unwrap_or(VTy::Void);
+        // 返回类型替换:类型参数(如 (T,T))→ 实参元组(或值)的成员类型,按位对应
+        let mut ret = f.ret.as_ref().map(|t| self.ty_of(t)).unwrap_or(VTy::Void);
+        if let Some(ast::Type::Tuple(items)) = &f.ret {
+            if items.len() == 2 {
+                // 实参里的元组:其成员即类型参数的具体类型
+                let tup_members = atys.iter().find_map(|t| match t {
+                    VTy::Tup(id) => Some(self.tuples[*id as usize]),
+                    _ => None,
+                });
+                let mut mem = Vec::new();
+                for (i, it) in items.iter().enumerate() {
+                    let mut mt = self.ty_of(it);
+                    if let ast::Type::Named { path, .. } = it {
+                        if path.len() == 1 && mt == VTy::Unknown {
+                            if let Some((m0, m1)) = tup_members {
+                                mt = if i == 0 { m0 } else { m1 };
+                            } else {
+                                mt = atys.first().copied().unwrap_or(VTy::Unknown);
+                            }
+                        }
+                    }
+                    mem.push(mt);
+                }
+                if mem.iter().all(|t| !matches!(t, VTy::Unknown)) {
+                    ret = VTy::Tup(self.intern_tuple(mem[0], mem[1]));
+                }
+            }
+        }
+        let _ = key;
         self.scope_push();
         let mut parts = Vec::new();
         for (p, at) in f.params.iter().zip(atys) {
@@ -733,18 +808,21 @@ impl Trans {
         }
         self.scope_pop();
         self.closure_defs.push("}\n".into());
-        Ok(cname)
+        if let Some(e) = self.mono_names.get_mut(&key) {
+            e.1 = ret;
+        }
+        Ok((cname, ret))
     }
 
     /// 每具体类型一个 show 函数:Name{f: v, ...}(对齐 interp show_value)
     fn show_fn_for(&mut self, tid: u32) -> Result<String, String> {
         let key = format!("show{}", tid);
-        if let Some(c) = self.mono_names.get(&key) {
+        if let Some((c, _)) = self.mono_names.get(&key) {
             return Ok(c.clone());
         }
         let t = self.types[tid as usize].clone();
         let cname = format!("ctn_{}_show", t.name);
-        self.mono_names.insert(key, cname.clone());
+        self.mono_names.insert(key, (cname.clone(), VTy::Str));
         let is_class = t.is_class;
         let self_cty = if is_class {
             let c = self.c_ty(VTy::Class(tid)).to_string();
@@ -900,6 +978,20 @@ impl Trans {
     fn emit_stmt(&mut self, s: &ast::Stmt) -> Result<(), String> {
         match s {
             ast::Stmt::Let { pattern, ty: ann, expr, .. } => {
+                if let ast::Pattern::Tuple(ps) = pattern {
+                    let (c, ty) = self.expr(expr)?;
+                    let VTy::Tup(id) = ty else { return Err("trans:解构需元组".into()) };
+                    let (ta, tb) = self.tuples[id as usize];
+                    for (i, sp) in ps.iter().enumerate() {
+                        let ast::Pattern::Ident(n) = sp else {
+                            return Err("trans v1 拒绝域:嵌套解构".into());
+                        };
+                        let (ft, f) = if i == 0 { (ta, "_0") } else { (tb, "_1") };
+                        let cname = self.bind(n, ft);
+                        self.w(1, &format!("{} {} = ({}).{};", self.c_ty(ft), cname, c, f));
+                    }
+                    return Ok(());
+                }
                 if !matches!(pattern, ast::Pattern::Ident(_) | ast::Pattern::Wildcard) {
                     return Err("trans v1 拒绝域:非 Ident 绑定模式".into());
                 }
@@ -1200,6 +1292,19 @@ impl Trans {
                 self.scope_pop();
                 Ok(out)
             }
+            ast::Expr::Tuple(items) => {
+                if items.len() != 2 { return Err("trans v1 拒绝域:非二元组".into()); }
+                let mut tys: Vec<VTy> = Vec::new();
+                let mut cs = Vec::new();
+                for i in items {
+                    let (c, t) = self.expr(i)?;
+                    cs.push(c);
+                    tys.push(t);
+                }
+                let id = self.intern_tuple(tys[0], tys[1]);
+                let tn = self.c_ty(tys[0]).to_string();
+                Ok((format!("(ct_val2_{}){{ {}, {} }}", Box::leak(tn.into_boxed_str()), cs[0], cs[1]), VTy::Tup(id)))
+            }
             ast::Expr::Str { parts } => {
                 // 串插值:各段求值 → 字符串化 → ct_concat 链(进程期分配,v1 不回收)
                 let mut acc: Option<String> = None;
@@ -1233,6 +1338,13 @@ impl Trans {
                     VTy::Range,
                 ))
             }
+            ast::Expr::Member { obj, target: ast::MemberTarget::TupleIndex(i) } => {
+                let (c, ty) = self.expr(obj)?;
+                let VTy::Tup(id) = ty else { return Err("trans:元组索引需元组".into()); };
+                let (a, b) = self.tuples[id as usize];
+                let (ft, f) = if *i == 0 { (a, "_0") } else { (b, "_1") };
+                Ok((format!("({}).{}", c, f), ft))
+            }
             ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } => {
                 let (c, ty) = self.expr(obj)?;
                 // 属性访问(无括号)
@@ -1252,7 +1364,8 @@ impl Trans {
                 // trait prop 分发:(类型, 属性) → 取值函数
                 if let VTy::Class(tid) | VTy::Struct(tid) = rt_of(ty) {
                     let tname = self.types[tid as usize].name.clone();
-                    if let Some(tn) = self.trait_of_prop(&tname, m) {
+                    let tn = self.trait_of_prop(&tname, m);
+                    if let Some(tn) = tn {
                         return Ok((format!("ctn_{}_{}({})", tn, m, c), self.impl_ret_ty(&tname, m)));
                     }
                 }
@@ -1639,8 +1752,8 @@ impl Trans {
                         cs.push(c);
                         atys.push(t);
                     }
-                    let sym = self.mono_fn(name, &atys)?;
-                    return Ok((format!("{}({})", sym, cs.join(", ")), ret));
+                    let (sym, mret) = self.mono_fn(name, &atys)?;
+                    return Ok((format!("{}({})", sym, cs.join(", ")), mret));
                 }
                 let mut cs = Vec::new();
                 for (a, pt) in args.iter().zip(&ptys) {
