@@ -1,0 +1,28 @@
+fn t(a: List[Str]) -> I32 {
+    var ob = e4("k", a, a, a)
+    var m = "slice"
+    if seq2(m, "slice") {
+        if vals.len == 1 && recv[0] == "S" && vals[0][0] == "R" {
+            var rv = vals[0]
+            var lo = dvi(rv[2][1])
+            var hi = dvi(rv[3][1])
+            if seq2(rv[1], "true") {
+                hi += 1
+            }
+            if lo < 0 {
+                lo = 0
+            }
+            var L = recv[1].len
+            if hi > L {
+                hi = L
+            }
+            if hi < lo {
+                hi = lo
+            }
+            return e4("k", ob[1], vS(byte_slice(recv[1], lo, hi)), ob[3])
+        }
+        panic("slice args")
+        return e4("a", a, vV2(), a)
+    }
+}
+fn main() -> I32 { return 0 }

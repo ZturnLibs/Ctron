@@ -1,0 +1,8 @@
+fn t(a: List[Str]) -> I32 {
+    var hi = 1
+    var L = 2
+    if hi == L {
+        hi = L
+    }
+}
+fn main() -> I32 { return 0 }

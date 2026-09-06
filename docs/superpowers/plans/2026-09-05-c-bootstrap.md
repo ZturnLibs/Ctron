@@ -278,6 +278,18 @@
    ⑤make test 全量绿(suite_corpus_trans 2 失败属并行 trans 泳道 WIP,与本批无关);
    ASan 230 全绿。注:LitFs 守卫使误触发由"死旋"变"快吞"(静默 rc=0 假通过),
    验收须以 decl 计数对照 C 解析器为准——本轮即由此揪出残留吞并。
+20e. **C9i③(本文件交付)—— 本地验收阶梯 ladder.sh + 复现夹具库 + 黄金基线(工具链自足)**:
+   `selfhosted/ladder.sh` 一次跑完全部本地验收:①直接管线黄金对照(input_cc/input_cc2/
+   input_cc3 逐字一致 + input_cc_neg W8010 编译期拦截);②自编译检查阶梯(input_cc3(10)/
+   sem_chk(109)/parsetree(57)/ev2(107)/cc(159) decl 计数对照 C 解析器);③复现解析
+   (repro/s6、hand2、cm_ol,StructLit 误触发守卫回归);④--full 全深度自译化(cc 解释
+   cc 解释 input_cc,逐字一致)。新增 `tools/genmod.py`(模块生成器,python 实现,消除
+   shell 引号地狱)、`expected/*.out` 黄金基线、`repro/*.ct` 复现夹具库。
+   验收:ladder 13/13 全绿(负载 6-9 下);make test 全量绿(自举泳道全绿,并行 trans
+   WIP 的 1 失败与其泳道相关);ASan 230 全绿。方法论教训:Ladder 调试期间
+   "shell echo + heredoc + python" 三层引号叠加产生的假象(计数恒 5/断行/XXMARK)
+   曾三次误判——生成类逻辑一律用 python 文件而非 shell echo;验收探针输出须在
+   正常退出路径上(panic 退出丢缓冲)。
 
 
 ## 自举产物目录

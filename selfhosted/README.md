@@ -28,6 +28,8 @@
 | **全深度自译化** | cc.ct 解释 cc.ct(163KB)parse+sem+运行嵌套 main,235s rc=0,输出与直接管线逐字一致 | C9i② |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫(循环体内 ensure_progress)+ StructLit LitFs #EOF 守卫 + allow_struct 线程化(条件上下文禁结构体字面量) | C9i①② |
 | 新增内建(求值器) | read_file(Some/None)/ Atomic 构造与 load/store(M 值共享单元)/ unesc(字符串转义展开,镜像 C 词法器) | C9i② |
+| **本地验收阶梯** | `./ladder.sh [--full]`:黄金对照+负例拦截+自编译阶梯+复现回归+全深度自译化,一次跑完 | C9i③ |
+| 工具链文件 | tools/genmod.py(模块生成器)/ expected/(黄金基线)/ repro/(复现夹具) | C9i③ |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫 + StructLit LitFs #EOF 守卫(条件内误触发不再挂起) | C9i① |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |
 

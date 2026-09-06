@@ -1,0 +1,73 @@
+fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: List[Str]) -> List[Str] {
+    var ob = eval_expr(file, env, out, cal[1])
+    if ob[0] != "k" {
+        return ob
+    }
+    var recv = ob[2]
+    var m = cal[3]
+    if seq2(m, "to_string") {
+        if vals.len == 0 {
+            return e4("k", ob[1], vS(fmt(recv)), ob[3])
+        }
+        panic("to_string arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(m, "slice") {
+        if vals.len == 1 && recv[0] == "S" && vals[0][0] == "R" {
+            var rv = vals[0]
+            var lo = dvi(rv[2][1])
+            var hi = dvi(rv[3][1])
+            if seq2(rv[1], "true") {
+                hi += 1
+            }
+            if lo < 0 {
+                lo = 0
+            }
+            var L = recv[1].len
+            if hi > L {
+                hi = L
+            }
+            if hi < lo {
+                hi = lo
+            }
+            return e4("k", ob[1], vS(byte_slice(recv[1], lo, hi)), ob[3])
+        }
+        panic("slice args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(m, "push") {
+        if recv[0] == "L" && vals.len == 1 {
+            recv.push(vals[0])
+            return e4("k", ob[1], vV2(), ob[3])
+        }
+    }
+    if seq2(m, "into_gc") {
+        if recv[0] == "L" && vals.len == 0 {
+            return e4("k", ob[1], vdeep(recv), ob[3])
+        }
+    }
+    // C9f②:类实例方法/trait 默认方法(镜像 rt.c V_STRUCT&&is_class 先于 UFCS;
+    // 类找不到方法直接 panic,不落 UFCS)
+    if recv[0] == "U" && is_class(file, recv[1]) {
+        var mth = find_impl_method(file, recv[1], m)
+        if mth.len > 0 {
+            return call_method_vals(file, ob[1], ob[3], mth, recv, vals)
+        }
+        panic("unknown method:" + m)
+        return e4("a", env, vV2(), out)
+    }
+    var ddx = find_decl(file, m)
+    if ddx.len > 0 {
+        var fvv = List[Str]()
+        fvv.push(recv)
+        var qq: I32 = 0
+        while qq < vals.len {
+            fvv.push(vals[qq])
+            qq += 1
+        }
+        return call_decl_vals(file, ob[1], ob[3], ddx, fvv)
+    }
+    panic("method:" + m)
+    return e4("a", env, vV2(), out)
+}
+fn main() -> I32 { return 0 }
