@@ -143,6 +143,13 @@ decl 无符号上界差一修复。新增 `suite_corpus_trans`:61 语料可转�
 "cc 原生执行 vs 解释器" 差分(stdout/exit/panic 逐字),neg/lint 跳过。
 13 pass / 21 untranspiled(需并发运行时/trait/闭包/context 链,= C10-g+)。
 
+### C10-h trait 参数单态化 ✅(18/44 行为语料原生执行差分)
+`&Trait` 形参 → T_TRAIT 标记(decl_ty_tc 守卫内、prelude 后;TY_REF 递归 sub 后再查);
+泛型原体与头部原型跳过发射;调用点按实参具体类型惰性例化(原型进头部、函数体走临时缓冲进
+专用段;subs 替换内层优先;首参数驱动,键 = `__<Mangle(aty)>`)。trait 默认方法/impl 方法分发
+沿用 C10-g② 基座。`07_capabilities`(FakeClock 注入)原生执行 = 解释器;17/17 回归保持。
+设计预案见 lane-split 附;陷阱实录同源(ensure 去重早退设 out_ret/out_sb 切换/in_test 泄漏→裸 return)。
+
 ### C10-g① UFCS + List 容器域 ✅(16/44 行为语料原生执行差分)
 UFCS(21.double() ≡ double(21));List[T] 容器(构造/push/into_gc 深拷贝/.len/索引/
 for-in);void 函数 return;test 内 return 静默中止;系列修复(decl 差一/进制归一/

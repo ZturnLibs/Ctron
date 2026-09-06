@@ -54,7 +54,7 @@ static void sb_free(sb* b) { free(b->d); }
 #define MAX_TYPES 64
 typedef struct tc tc;
 typedef struct { int k; int bits, us; int ek, ebits, eus; const char* tname; int ek2, ebits2, eus2; const char* tname2; } ty;
-enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM, T_CLASS, T_BOX, T_RANGE, T_LIST };
+enum { T_UNK, T_INT, T_FLT, T_BOOL, T_STR, T_ARR, T_STRUCT, T_ENUM, T_SUM, T_CLASS, T_BOX, T_RANGE, T_LIST, T_TRAIT }; // T_TRAIT:&Trait 形参标记(C10-h 单态化)
 typedef struct sfield sfield;
 typedef struct sdef sdef;
 typedef struct evar evar;
@@ -191,6 +191,17 @@ struct tc {
     size_t n_arrs;
     char* sums[64]; // 已用和类型 typedef 全文(ctron_opt_/ctron_res_/ctron_e_)
     size_t n_sums;
+    char* traits[64];     // 已声明的 trait 名(&Trait 形参 → T_TRAIT 标记;C10-h)
+    size_t n_traits;
+    struct { const char* from; ty to; } subs[8]; // 单态化替换:trait 名 → 具体类型
+    size_t n_subs;
+    char* monos[64];      // 已例化的单态化 cname(去重)
+    size_t n_monos;
+    char* monoprotos[64]; // 单态化函数原型(进头部,含 ';')
+    size_t n_monoprotos;
+    sb s_sb;              // 单态化函数体(头部/m_sb 之后、body 之前)
+    sb* out_sb;           // 当前函数体输出缓冲(默认 &body;单态化走临时缓冲)
+    const cfile* srcf;    // 源文件(单态化按名找 decl)
     sb m_sb;              // 方法体/prop 访问器(发射到 fns 之后、main 之前)
     char* protos[160];    // 方法/prop/expect 原型
     size_t n_protos;
@@ -235,6 +246,9 @@ static ty decl_ty_tc(tc* c, const cty* t) {
     }
     if (!t || t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];
+    // C10-h:单态化替换(内层优先:逆序查)—— 只在 TY_NAMED 单名守卫内、prelude(decl_ty)之后
+    for (size_t si = c->n_subs; si > 0; si--)
+        if (c->subs[si - 1].from && !strcmp(c->subs[si - 1].from, n)) return c->subs[si - 1].to;
     for (size_t i = 0; i < c->nstructs; i++)
         if (!strcmp(c->structs[i].name, n)) {
             ty r = ty_unk(); r.k = T_STRUCT; r.bits = (int)i; r.tname = c->structs[i].name; return r;
@@ -246,6 +260,11 @@ static ty decl_ty_tc(tc* c, const cty* t) {
     for (size_t i = 0; i < c->nclasses; i++)
         if (!strcmp(c->classes[i].name, n)) {
             ty r = ty_unk(); r.k = T_CLASS; r.bits = (int)i; r.tname = c->classes[i].name; return r;
+        }
+    // trait 名:&Trait 形参标记(未替换时)。只出现在需要按实参例化的位置。
+    for (size_t ti = 0; ti < c->n_traits; ti++)
+        if (!strcmp(c->traits[ti], n)) {
+            ty r = ty_unk(); r.k = T_TRAIT; r.tname = c->traits[ti]; return r;
         }
     return ty_unk();
 }
@@ -331,7 +350,7 @@ static char* ty_mangle(tc* c, ty t) {
     else if (t.k == T_FLT) snprintf(buf, sizeof buf, "F64");
     else if (t.k == T_BOOL) snprintf(buf, sizeof buf, "Bool");
     else if (t.k == T_STR) snprintf(buf, sizeof buf, "Str");
-    else if (t.k == T_STRUCT || t.k == T_ENUM) snprintf(buf, sizeof buf, "%s", t.tname ? t.tname : "?");
+    else if (t.k == T_STRUCT || t.k == T_ENUM || t.k == T_CLASS) snprintf(buf, sizeof buf, "%s", t.tname ? t.tname : "?");
     else snprintf(buf, sizeof buf, "X");
     return ctron_arena_strndup(c->a, buf, strlen(buf));
 }
@@ -345,6 +364,11 @@ static int ensure_prop_accessor(tc* c, const char* type, const char* name, char*
 static const cfn* find_default_fn_for(tc* c, const char* type, const char* name, char** out_trait);
 static int type_has_drop_m(tc* c, const char* type);
 static int ensure_method_fn(tc* c, const char* type, const char* name, char* out_cname, ty* out_ret);
+// C10-h:trait 参数单态化
+static int fn_has_trait_param(tc* c, const cfn* F);
+static const cfn* fn_named(const cfile* f, const char* nm);
+static void ensure_mono_fn(tc* c, const cfn* F, const char* cname, const ty* argtys, const ty* atys, int nparams);
+static void emit_fn(tc* c, const cfn* F, const char* cname);
 
 static ty emit_expr(tc* c, cexpr* e, sb* o) {
     if (c->err) return ty_unk();
@@ -1004,6 +1028,54 @@ static ty emit_expr(tc* c, cexpr* e, sb* o) {
         int nparams = 0, is_void = 0;
         ty fret, argtys[8];
         int is_user_fn = fn_lookup(c, nm, &nparams, &is_void, &fret, argtys);
+        // C10-h:trait 参数单态化 —— fn 带 &Trait 形参 → 按实参具体类型例化后调用
+        if (is_user_fn && (int)e->nelems == nparams) {
+            int ntrait = 0;
+            for (int i = 0; i < nparams && i < 8; i++)
+                if (argtys[i].k == T_TRAIT) { ntrait = 1; break; }
+            if (ntrait) {
+                sb abuf[8];
+                memset(abuf, 0, sizeof abuf);
+                ty atys[8];
+                memset(atys, 0, sizeof atys);
+                for (size_t i = 0; i < e->nelems && i < 8 && !c->err; i++) {
+                    const ty* saved_w = c->want;
+                    if (argtys[i].k != T_TRAIT) c->want = &argtys[i];
+                    atys[i] = emit_expr(c, e->elems[i], &abuf[i]);
+                    c->want = saved_w;
+                }
+                if (!c->err) {
+                    sb mname = {0};
+                    sb_f(&mname, "ctron_user_%s", nm);
+                    int bad = 0;
+                    for (int i = 0; i < nparams && i < 8; i++)
+                        if (argtys[i].k == T_TRAIT) {
+                            if (atys[i].k == T_TRAIT || atys[i].k == T_UNK) {
+                                terr(c, "v1:trait 形参 %s 实参类型无法单态化", nm);
+                                bad = 1; break;
+                            }
+                            char* mk = ty_mangle(c, atys[i]);
+                            sb_f(&mname, "__%s", mk ? mk : "?");
+                        }
+                    if (!bad) {
+                        const cfn* mf = fn_named(c->srcf, nm);
+                        if (!mf) terr(c, "v1 单态化目标缺失:%s", nm);
+                        else ensure_mono_fn(c, mf, mname.d ? mname.d : "", argtys, atys, nparams);
+                        if (!c->err) {
+                            sb_f(o, "%s(", mname.d ? mname.d : "");
+                            for (size_t i = 0; i < e->nelems && i < 8; i++) {
+                                if (i) sb_s(o, ", ");
+                                sb_s(o, abuf[i].d ? abuf[i].d : "0");
+                            }
+                            sb_s(o, ")");
+                        }
+                    }
+                    sb_free(&mname);
+                }
+                for (size_t i = 0; i < e->nelems && i < 8; i++) sb_free(&abuf[i]);
+                return c->err ? ty_unk() : (is_void ? ty_unk() : fret);
+            }
+        }
         sb args = {0};
         for (size_t i = 0; i < e->nelems; i++) {
             if (i) sb_s(&args, ", ");
@@ -1331,6 +1403,78 @@ static int ensure_prop_accessor(tc* c, const char* type, const char* name, char*
     *out_ret = decl_ty_tc(c, use->ty);
     emit_prop_accessor(c, type, use, cn);
     return 1;
+}
+
+// ================= trait 参数单态化(C10-h)=================
+// fn 带 &Trait 形参时为“泛型”;原体/原型不发射,调用点按实参具体类型例化。
+static int fn_has_trait_param(tc* c, const cfn* F) {
+    if (!F) return 0;
+    for (size_t j = 0; j < F->nparams; j++) {
+        const cparam* p = &F->params[j];
+        if (p->is_receiver || !p->ty) continue;
+        if (decl_ty_tc(c, p->ty).k == T_TRAIT) return 1;
+    }
+    return 0;
+}
+static const cfn* fn_named(const cfile* f, const char* nm) {
+    if (!f) return NULL;
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind == D_FN && d->fn_.name && !strcmp(d->fn_.name, nm)) return &d->fn_;
+    }
+    return NULL;
+}
+// argtys:模板形参(fn_lookup,含 T_TRAIT);atys:调用点实参实际类型。
+static void ensure_mono_fn(tc* c, const cfn* F, const char* cname,
+                           const ty* argtys, const ty* atys, int nparams) {
+    if (c->err) return;
+    for (size_t i = 0; i < c->n_monos; i++)
+        if (!strcmp(c->monos[i], cname)) return; // 已例化:复用
+    if (c->n_monos >= 64) { terr(c, "v1:单态化函数数量超限"); return; }
+    c->monos[c->n_monos++] = ctron_arena_strndup(c->a, cname, strlen(cname));
+
+    // subs:trait 形参名 → 实参具体类型(发射期间生效;嵌套例化由内层覆盖)
+    size_t saved_subs = c->n_subs;
+    for (int j = 0; j < nparams && j < 8; j++) {
+        if (argtys[j].k == T_TRAIT && c->n_subs < 8) {
+            c->subs[c->n_subs].from = argtys[j].tname;
+            c->subs[c->n_subs].to = atys[j];
+            c->n_subs++;
+        }
+    }
+    // 原型(具体签名,进头部;含 ';')
+    sb proto = {0};
+    ty ret = decl_ty_tc(c, F->ret);
+    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int"
+                    : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t"
+                    : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST
+                       || ret.k == T_CLASS || ret.k == T_BOX) ? ctype_of(ret) : "void";
+    sb_f(&proto, "static %s %s(", rct, cname);
+    int firstp = 1;
+    for (size_t j = 0; j < F->nparams; j++) {
+        const cparam* p = &F->params[j];
+        if (p->is_receiver) continue;
+        ty pt = decl_ty_tc(c, p->ty);
+        if (pt.k == T_UNK) { terr(c, "v1:单态化参数 %s 类型未知", p->name ? p->name : "?"); sb_free(&proto); c->n_subs = saved_subs; return; }
+        if (!firstp) sb_s(&proto, ", ");
+        firstp = 0;
+        sb_f(&proto, "%s ctron_p_%s", ctype_of(pt), p->name ? p->name : "_");
+    }
+    sb_s(&proto, ");");
+    if (c->n_monoprotos < 64)
+        c->monoprotos[c->n_monoprotos++] =
+            ctron_arena_strndup(c->a, proto.d ? proto.d : "", proto.d ? strlen(proto.d) : 0);
+    sb_free(&proto);
+
+    // 函数体走临时缓冲(直接写 body/m_sb 会把 ensure 嵌套体插进未闭合函数中间)
+    sb tmp = {0};
+    sb* saved_out = c->out_sb;
+    c->out_sb = &tmp;
+    emit_fn(c, F, cname);
+    c->out_sb = saved_out;
+    c->n_subs = saved_subs;
+    if (tmp.d) sb_s(&c->s_sb, tmp.d);
+    sb_free(&tmp);
 }
 
 // ================= if 作为值(C10-f)=================
@@ -2433,7 +2577,9 @@ static void collect_types(tc* c, const cfile* f) {
             c->n_globals++;
             sb_free(&init);
         } else if (d->kind == D_TRAIT) {
-            // trait 默认方法/prop 体
+            // trait 名登记(&Trait 形参解析; C10-h);默认方法/prop 体照旧
+            if (d->trait.name && c->n_traits < 64)
+                c->traits[c->n_traits++] = d->trait.name;
             for (size_t j = 0; j < d->trait.nitems && c->n_defaults < 64; j++) {
                 const ctraititem* it = &d->trait.items[j];
                 if (it->kind == TI_METHOD && it->m && it->m->body) {
@@ -2508,7 +2654,10 @@ static void emit_fn(tc* c, const cfn* F, const char* cname) {
     ty ret = decl_ty_tc(c, F->ret);
     c->fn_ret = &ret;
     const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX) ? ctype_of(ret) : "void";
-    sb_f(&c->body, "static %s %s(", rct, cname);
+    sb* B = c->out_sb ? c->out_sb : &c->body;
+    int saved_it = c->in_test; // in_test 泄漏会让方法/例化函数体裸 return
+    c->in_test = 0;
+    sb_f(B, "static %s %s(", rct, cname);
     scope_push(c);
     for (size_t i = 0; i < F->nparams; i++) {
         const cparam* p = &F->params[i];
@@ -2516,10 +2665,10 @@ static void emit_fn(tc* c, const cfn* F, const char* cname) {
         ty pt = decl_ty_tc(c, p->ty);
         if (pt.k == T_UNK) { terr(c, "v1:参数 %s 需类型注解", p->name ? p->name : "?"); return; }
         if (!p->name) { terr(c, "v1:参数缺名"); return; }
-        if (i) sb_s(&c->body, ", ");
-        sb_f(&c->body, "%s ctron_p_%s", ctype_of(pt), p->name);
+        if (i) sb_s(B, ", ");
+        sb_f(B, "%s ctron_p_%s", ctype_of(pt), p->name);
     }
-    sb_s(&c->body, ") {\n");
+    sb_s(B, ") {\n");
     for (size_t i = 0; i < F->nparams; i++) {
         const cparam* p = &F->params[i];
         ty pt = decl_ty_tc(c, p->ty);
@@ -2528,16 +2677,18 @@ static void emit_fn(tc* c, const cfn* F, const char* cname) {
             char h[64];
             snprintf(h, sizeof h, "ctron_decl_%s", wlname(pt));
             use_helper(c, h);
-            sb_f(&c->body, "    %s %s = %s(ctron_p_%s);\n", ctype_of(pt), p->name, h, p->name);
+            sb_f(B, "    %s %s = %s(ctron_p_%s);\n", ctype_of(pt), p->name, h, p->name);
             scope_def(c, p->name, pt);
         } else {
-            sb_f(&c->body, "    %s %s = ctron_p_%s;\n", ctype_of(pt), p->name, p->name);
+            sb_f(B, "    %s %s = ctron_p_%s;\n", ctype_of(pt), p->name, p->name);
             scope_def(c, p->name, pt);
         }
     }
-    if (F->body) emit_block(c, F->body, &c->body);
+    if (F->body) emit_block(c, F->body, B);
     scope_pop(c);
-    sb_s(&c->body, "}\n");
+    sb_s(B, "}\n");
+    c->in_test = saved_it;
+    c->fn_ret = NULL;
 }
 
 void ctron_trans_result_free(ctron_trans_result* r) {
@@ -2553,6 +2704,8 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
     ctron_arena* a = ctron_arena_new();
     tc c = {0};
     c.a = a;
+    c.srcf = f;
+    c.out_sb = &c.body;
 
     size_t ntests = 0;
     for (size_t i = 0; i < f->ndecls; i++)
@@ -2568,6 +2721,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         case D_FN: {
             const char* nm = d->fn_.name;
             if (is_reserved(nm)) { terr(&c, "v1:标识符保留前缀 ctron_:%s", nm); break; }
+            if (fn_has_trait_param(&c, &d->fn_)) break; // 泛型原体:调用点按实参单态化(C10-h)
             char cn[256];
             snprintf(cn, sizeof cn, "ctron_user_%s", nm);
             int was_main = !strcmp(nm, "main");
@@ -2687,6 +2841,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         for (size_t i = 0; i < f->ndecls; i++) {
             const cdecl* d = &f->decls[i];
             if (d->kind != D_FN) continue;
+            if (fn_has_trait_param(&c, &d->fn_)) continue; // 泛型(trait 形参)原型跳过
             ty ret = decl_ty_tc(&c, d->fn_.ret);
             const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX) ? ctype_of(ret) : "void";
             sb_f(h, "static %s ctron_user_%s(", rct, d->fn_.name);
@@ -2698,6 +2853,8 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             }
             sb_s(h, ");\n");
         }
+        for (size_t i = 0; i < c.n_monoprotos; i++) // C10-h 单态化原型
+            sb_f(h, "%s\n", c.monoprotos[i]);
         for (size_t i = 0; i < f->ndecls; i++)
             if (f->decls[i].kind == D_TEST) sb_f(h, "static void ctron_test_%zu(void);\n", i);
         sb_s(h, "\n");
@@ -2707,6 +2864,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         res.err = strdup(c.err);
         sb_free(&c.head);
         sb_free(&c.body);
+        sb_free(&c.s_sb);
         ctron_arena_free(a);
         return res;
     }
@@ -2714,10 +2872,12 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
     sb all = {0};
     sb_s(&all, c.head.d ? c.head.d : "");
     sb_s(&all, c.m_sb.d ? c.m_sb.d : "");
+    sb_s(&all, c.s_sb.d ? c.s_sb.d : "");
     sb_s(&all, c.body.d ? c.body.d : "");
     res.code = all.d ? all.d : strdup("");
     sb_free(&c.head);
     sb_free(&c.body);
+    sb_free(&c.s_sb);
     ctron_arena_free(a);
     return res;
 }static ty box_elem(ty t) {
