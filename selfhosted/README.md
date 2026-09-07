@@ -29,7 +29,7 @@
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫(循环体内 ensure_progress)+ StructLit LitFs #EOF 守卫 + allow_struct 线程化(条件上下文禁结构体字面量) | C9i①② |
 | 新增内建(求值器) | read_file(Some/None)/ Atomic 构造与 load/store(M 值共享单元)/ unesc(字符串转义展开,镜像 C 词法器) | C9i② |
 | **本地验收阶梯** | `./ladder.sh [--full]`:黄金对照+负例拦截+自编译阶梯+复现回归+代码生成往返+全深度自译化+自发射收官,一次跑完 | C9i③/C9j④ |
-| **C 代码生成器** | `tools/trans_part.ct`(Ctron 写,v0→v3):数值/Str(strcmp·拼接·按类型分发)/定长数组·for-in/浮点·assert → **List[Str](引用语义)/Atomic[I32]/索引读写/节点引用 N/match-Option/read_file·byte_at·byte_slice·to_string/函数原型前置/尾值返回**;trans_v0–v3 往返逐字一致;**自发射收官:cc.ct 经其发射 9.9k 行 C → gcc → 原生自举 cc 解释 input_cc3 == 黄金逐字一致**(ladder 第 6 步) | C9j①–④ |
+| **C 代码生成器** | `tools/trans_part.ct`(Ctron 写,v0→v3):数值/Str(strcmp·拼接·按类型分发)/定长数组·for-in/浮点·assert → **List[Str](引用语义)/Atomic[I32]/索引读写/节点引用 N/match-Option/read_file·byte_at·byte_slice·to_string/函数原型前置/尾值返回/N `.len` 魔数动态分派**;trans_v0–v3 往返逐字一致;**自发射收官:cc.ct 经其发射 9.9k 行 C → gcc → 原生自举 cc 解释 input_cc3 == 黄金逐字一致**(ladder 第 6 步);**自举固定点:编译器编译出的自身再编译自身 == 逐字节复现,且能编译用户程序 == 黄金** | C9j①–⑤ |
 | 工具链文件 | tools/genmod.py(模块生成器)/ expected/(黄金基线)/ repro/(复现夹具) | C9i③ |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫 + StructLit LitFs #EOF 守卫(条件内误触发不再挂起) | C9i① |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |

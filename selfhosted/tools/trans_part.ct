@@ -332,8 +332,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             var ot3 = ct_typeof(e[1], env, file)
-            if or2(ot3 == "L", ot3 == "N") {
+            if ot3 == "L" {
                 return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n"
+            }
+            if ot3 == "N" {
+                // N 值二义:真串或节点皆有 .len(env 表元素是串,AST 槽是节点)→ 动态分派镜像 rt
+                return "ctron_len((const void*)(" + ct_expr(e[1], env, file) + "))"
             }
             return "strlen((const char*)(" + ct_expr(e[1], env, file) + "))"
         }
@@ -841,9 +845,10 @@ fn main() -> I32 {
             println("#include <string.h>")
             println("#include <stdlib.h>")
             // 运行时辅助:容器/单元格/字节域/读文件(必须先于使用它的原型)
-            println("typedef struct \{ char** items; int n; int cap; } ctron_list;")
+            println("typedef struct \{ unsigned long long magic; char** items; int n; int cap; } ctron_list;")
             println("typedef struct \{ int32_t v; } ctron_cell;")
-            println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*)calloc(1, sizeof(ctron_list)); return l; }")
+            println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*)calloc(1, sizeof(ctron_list)); l->magic = 0x4354726F6E4C7374ULL; return l; }")
+            println("static int ctron_len(const void* p) \{ const char* s = (const char*)p; unsigned long long m = 0; if (strlen(s) >= 8) \{ memcpy(&m, s, 8); if (m == 0x4354726F6E4C7374ULL) \{ return ((const ctron_list*)p)->n; } } return (int)strlen(s); }")
             println("static void ctron_list_push(ctron_list* l, const char* s) \{ if (l->n == l->cap) \{ l->cap = l->cap ? l->cap * 2 : 8; l->items = (char**)realloc(l->items, sizeof(char*) * (size_t)l->cap); } l->items[l->n] = (char*)s; l->n += 1; }")
             println("static ctron_cell* ctron_cell_new(int32_t v0) \{ ctron_cell* c = (ctron_cell*)calloc(1, sizeof(ctron_cell)); c->v = v0; return c; }")
             println("static void ctron_print_i32(int32_t v) \{ printf(\"%d" + bs() + "n\", v); }")

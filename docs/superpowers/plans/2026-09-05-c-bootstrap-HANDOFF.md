@@ -190,3 +190,14 @@
   需对产物再 sed(ladder 第 6 步固化)。
 - 下一阶梯候选:C9j⑤ 原生自举 cc 扩验全部黄金面 + CTRON_SEED 换靶上位;值位 if/match
   泛化;struct/方法域发射(面向全语言);ASan 拆分回归修复(转交)。
+---
+## 更新记录(21y session,C9j⑤ 固定点)
+- **C9j⑤ ✅ 自举固定点达成**:`ctron_len` 魔数动态分派修掉 N 值 `.len` 二义(env 元素
+  真串 vs AST 槽节点;种子 rt 动态分派掩盖,原生编译即分叉)后实测:
+  ①selfcomp.ct(编译器完整源,读自身)→ 种子发射 11,450 行 → compiler1;
+  ②compiler1 编译自身 → **逐字节 == 阶段1 产物**;③compiler1 编译 trans_v3 →
+  运行 == 黄金。另:原生自举 cc 解释器形态通过全部黄金面(input_cc/2/3 + 负例 rc1)。
+  **自举三级闭环(自译化/编译/固定点)全部达成。**
+- 收官工程待办(见计划 22b):发射 main 加 argv → CTRON_SEED 上位 → 宿主退役;
+  固定点固化 ladder 第 7 步;原生 cc 扫全 suite_run/ev2 面;全语言发射域(struct/闭包/
+  并发/插值/值位 if·match)按"编译任意 Ctron 程序"口径排期。

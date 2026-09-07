@@ -334,6 +334,19 @@
    fn 尾特判,泛位挂账;③genmod 换靶只改模块副本,trans 模式读磁盘 cc.ct 的原始锚,
    故发射产物 t_main 锚需再 sed(ladder 第 6 步已固化)。
 
+22b. **C9j⑤(本文件交付)—— 自举固定点达成:编译器编译出的自身,能再逐字节复现自身**:
+   自发射冒烟实测暴露最后一处语义缺口 —— **N 值 `.len` 二义**(env 表元素是真串需 strlen,
+   AST 槽是节点需 ->n;种子 rt 动态分派无误,静态发射原生编译后即分叉)。修复:ctron_list
+   加 64 位魔数("CTronLst",无零字节保证 strlen≥8 可安全探测),N 的 `.len` 发射为动态
+   `ctron_len()`(镜像 rt 动态分派);L 码静态 `->n` 快路径保留。
+   固定点验证链:①selfcomp.ct(cc 前缀+trans_part 主=完整编译器源,读自身)→ 种子发射
+   11,450 行 C → compiler1(原生编译器);②compiler1 编译 selfcomp.ct → **selfcomp2.c ==
+   selfcomp1.c 逐字节**;③compiler1 编译用户程序 trans_v3 → gcc → 运行 == 黄金。
+   另实测:原生自举 cc(解释器形态)通过全部黄金面(input_cc/2/3 逐字 + 负例 W8010
+   rc1 拦截)。自举三级闭环(自译化/编译闭环/固定点)全部达成。
+   下一步(收官工程):发射产物 main 支持 argv → CTRON_SEED 上位 → ladder 全步跑自举
+   二进制,C 宿主退役;固定点实验固化 ladder 第 7 步;原生 cc 扫全 suite_run/ev2 差分面。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
