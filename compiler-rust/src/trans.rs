@@ -147,11 +147,13 @@ pub struct Trans {
     mono_keys: std::collections::HashMap<String, u32>, // 实例键 → tid
     mono_names: std::collections::HashMap<String, (String, VTy)>, // 任意键 → (C 名, 返回类型)
     mono_seq: u32,
+
     tuples: Vec<(VTy, VTy)>,
-    cells: Vec<VTy>,
+    cells: Vec<(VTy, bool)>, // (内层类型, 是否 Mutex 独立锁)
     traits: Vec<String>,
     tuple_keys: std::collections::HashMap<String, u32>,
     late_defs: Vec<String>, // 晚期定义(实例 typedef / 单态 fn / show fn)
+    mcell_typedefs: std::cell::RefCell<Vec<String>>, // Mutex 单元格 typedef(c_ty &self 惰性发射)
     closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
     ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
@@ -171,11 +173,13 @@ impl Trans {
             mono_keys: std::collections::HashMap::new(),
             mono_names: std::collections::HashMap::new(),
             mono_seq: 0,
+
             tuples: Vec::new(),
             cells: Vec::new(),
             traits: Vec::new(),
             tuple_keys: std::collections::HashMap::new(),
             late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
+            mcell_typedefs: std::cell::RefCell::new(Vec::new()),
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
             type_by_name: std::collections::HashMap::new(),
@@ -432,7 +436,14 @@ impl Trans {
             self.w(0, "int main(void) { alarm(20); return 0; }");
         }
                 let main = self.sink.pop().unwrap_or_default();
-        let defs = self.late_defs.join("") + &self.closure_defs.join("");
+        // mcell typedef 需位于用户 typedef 之后、env typedef 之前
+        let mdefs = self.mcell_typedefs.borrow().join("");
+        let late = self.late_defs.join("");
+        let late = match late.find("typedef struct { ct_scope*") {
+            Some(pos) => format!("{}{}{}", &late[..pos], mdefs, &late[pos..]),
+            None => format!("{}{}", late, mdefs),
+        };
+        let defs = late + &self.closure_defs.join("");
         Ok(main.replace("/* @@LATE@@ */", &defs))
     }
 
@@ -444,9 +455,13 @@ impl Trans {
         id
     }
 
-    fn intern_cell(&mut self, inner: VTy) -> u32 {
+    fn intern_cell(&mut self, inner: VTy, is_mutex: bool) -> u32 {
+        // 同 (内层, 锁型) 共享一个单元格 C 类型
+        if let Some((pos, _)) = self.cells.iter().enumerate().find(|(_, (t, m))| *t == inner && *m == is_mutex) {
+            return pos as u32;
+        }
         let id = self.cells.len() as u32;
-        self.cells.push(inner);
+        self.cells.push((inner, is_mutex));
         id
     }
 
@@ -552,7 +567,7 @@ impl Trans {
             if let Some(name) = path.last() {
                 if let Some(v) = scalar_annotation(name) { return Ok(v); }
                 if matches!(name.as_str(), "Atomic" | "Global" | "Chan") {
-                    let cid = self.intern_cell(VTy::Int(None));
+                    let cid = self.intern_cell(VTy::Int(None), false);
                     return Ok(VTy::Cell(cid));
                 }
                 if let Some(&id) = self.type_by_name.get(name.as_str()) {
@@ -805,7 +820,23 @@ impl Trans {
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
             VTy::FnPtr => "ct_fnptr0",
             VTy::Arena => "ct_arr*",
-            VTy::Cell(..) => "ct_i*",
+            VTy::Cell(cid) => {
+                let (inner, is_mutex) = self.cells[cid as usize];
+                if is_mutex {
+                    let inner_ct = self.c_ty(inner).to_string();
+                    let san: String = inner_ct.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
+                    let name = format!("ct_mcell_{}", san);
+                    let td = format!("typedef struct {{ pthread_mutex_t mu; {} v; }} {};\n", inner_ct, name);
+                    {
+                        let mut q = self.mcell_typedefs.borrow_mut();
+                        if !q.iter().any(|x| x.contains(&format!("}} {};", name))) {
+                            q.push(td);
+                        }
+                    }
+                    return leak_str(format!("{}*", name));
+                }
+                "ct_i*"
+            }
             VTy::Simd => "ct_simd",
             VTy::Task => "ct_task*",
             VTy::ScopeH => "ct_scope*",
@@ -878,6 +909,14 @@ impl Trans {
             ast::Stmt::For { iter, body, .. } => { self.collect_idents_expr(iter, out); self.collect_idents_block(body, out); }
             _ => {}
         }
+    }
+
+    /// Mutex 单元格 C 类型名
+    fn mcell_ty(&self, cid: u32) -> String {
+        let (inner, _) = self.cells[cid as usize];
+        let inner_ct = self.c_ty(inner).to_string();
+        let san: String = inner_ct.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
+        format!("ct_mcell_{}", san)
     }
 
     /// extern "c" 的真实 ABI 类型(C 原生宽度,非 i128 载体)
@@ -2061,12 +2100,12 @@ impl Trans {
             if let ast::Expr::Ident(tn) = &**expr {
                 if tn == "Mutex" {
                     let inner = targ_args.first().map(|t| self.ty_of(t)).unwrap_or(VTy::Int(None));
-                    let cid = self.intern_cell(inner);
+                    let cid = self.intern_cell(inner, true);
                     let Some(a) = args.first() else { return Err("trans:Mutex 需初值".into()) };
                     let (ic, _) = self.expr(a)?;
-                    let ct = self.c_ty(inner).to_string();
+                    let mty = self.mcell_ty(cid);
                     return Ok((
-                        format!("({{ {}* p = malloc(sizeof(*p)); *p = ({}); ({}*)p; }})", ct, ic, ct),
+                        format!("({{ {}* p = malloc(sizeof(*p)); pthread_mutex_init(&p->mu, NULL); p->v = ({}); (void*)p; }})", mty, ic),
                         VTy::Cell(cid),
                     ));
                 }
@@ -2098,7 +2137,7 @@ impl Trans {
                         Some(a) => self.expr(a)?.0,
                         None => "(ct_i)0".to_string(),
                     };
-                    let cid = self.intern_cell(VTy::Int(None));
+                    let cid = self.intern_cell(VTy::Int(None), false);
                     let cname = self.uniq_name(&format!("cell_{}", tn));
                     let iname = self.uniq_name("cellinit");
                     return Ok((
@@ -2359,23 +2398,28 @@ impl Trans {
             }
             // Global/Atomic/Mutex 单元格方法
             if let VTy::Cell(cid) = rt {
-                let inner = self.cells[cid as usize];
+                let (inner, is_mutex) = self.cells[cid as usize];
                 let r = match m.as_str() {
                     "with" | "with_mut" => {
-                        // 内联闭包体:参数按单元格内层类型绑定;with 返回尾值
                         let Some(cl) = args.first() else { return Err("trans:with 需闭包".into()) };
                         let ast::Expr::Closure { params, body, .. } = cl else {
                             return Err("trans v1 拒绝域:with 需闭包字面量".into());
                         };
                         let pname = params.first().map(|cp| cp.name.clone()).unwrap_or_else(|| "c".into());
                         let is_mut = m == "with_mut";
+                        let (lock_fn, unlock_fn, inner_acc) = if is_mutex {
+                            let mt = self.mcell_ty(cid);
+                            (format!("pthread_mutex_lock(&(({}*)({}))->mu)", mt, rc),
+                             format!("pthread_mutex_unlock(&(({}*)({}))->mu)", mt, rc),
+                             format!("(({}*)({}))->v", mt, rc))
+                        } else {
+                            ("ct_glock()".to_string(), "ct_gunlock()".to_string(), format!("(*({}))", rc))
+                        };
                         self.scope_push();
                         self.sink.push(String::new());
-                        let cp = self.uniq_name("cp");
-                        self.w(2, &format!("{}* {} = ({});", self.c_ty(inner), cp, rc));
-                        self.w(2, "ct_glock();");
+                        self.w(2, &format!("{};", lock_fn));
                         let cbind = self.bind(&pname, inner);
-                        self.w(2, &format!("{} {} = *{};", self.c_ty(inner), cbind, cp));
+                        self.w(2, &format!("{} {} = {};", self.c_ty(inner), cbind, inner_acc));
                         let tail_val: Option<(String, VTy)> = match body.as_ref() {
                             ast::Expr::BlockExpr(b) => {
                                 self.scope_push();
@@ -2389,23 +2433,20 @@ impl Trans {
                             }
                             other => Some(self.expr(other)?),
                         };
-                        if is_mut {
-                            self.w(2, &format!("*{} = {};", cp, cbind));
-                        }
-                        self.w(2, "ct_gunlock();");
                         let code = self.sink.pop().unwrap_or_default();
                         self.scope_pop();
                         if is_mut {
-                            Some(Ok((format!("({{ {} *{} = {}; ct_gunlock(); 0; }})", code, cp, cbind), VTy::Void)))
+                            Some(Ok((format!("({{ {} {} = {}; {}; 0; }})",
+                                code, inner_acc, cbind, unlock_fn), VTy::Void)))
                         } else {
                             match tail_val {
                                 Some((v, vt)) => {
+                                    let rty = self.c_ty(vt).to_string();
                                     let rv = self.uniq_name("r");
-                                    let rt2 = self.c_ty(vt).to_string();
-                                    Some(Ok((format!("({{ {} {} {} = ({}); ct_gunlock(); {}; }})",
-                                        code, rt2, rv, v, rv), vt)))
+                                    Some(Ok((format!("({{ {} {} {} = ({}); {}; {}; {}; }})",
+                                        code, rty, rv, v, rv, unlock_fn, rv), vt)))
                                 }
-                                None => Some(Ok((format!("({{ {} ct_gunlock(); 0; }})", code), VTy::Void))),
+                                None => Some(Ok((format!("({{ {}; {}; 0; }})", code, unlock_fn), VTy::Void))),
                             }
                         }
                     }
