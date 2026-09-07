@@ -1,0 +1,14 @@
+fn fib(n: I32) -> I32 {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+test "nfib" {
+    var i = 0
+    var acc = 0
+    while i < 5000000 {
+        acc += i % 7
+        i += 1
+    }
+    assert_eq(fib(27), 196418)
+    assert_eq(acc, 14999995)
+}

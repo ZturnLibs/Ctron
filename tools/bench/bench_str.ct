@@ -1,0 +1,16 @@
+test "bench_str" {
+    var s = ""
+    var i = 0
+    while i < 3000 {
+        s = "{s}x"
+        i += 1
+    }
+    assert_eq(s.len, 3000)
+    var t = ""
+    i = 0
+    while i < 1500 {
+        t = "{t}abcd"
+        i += 1
+    }
+    assert_eq(t.len, 6000)
+}

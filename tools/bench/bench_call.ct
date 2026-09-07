@@ -1,0 +1,22 @@
+fn add(a: I32, b: I32) -> I32 {
+    return a + b
+}
+fn label(n: I32) -> Str {
+    if n % 15 == 0 { return "fizzbuzz" }
+    if n % 3 == 0 { return "fizz" }
+    if n % 5 == 0 { return "buzz" }
+    return "n"
+}
+test "bench_call" {
+    var i = 1
+    var acc = 0
+    var fb = ""
+    while i <= 8000 {
+        acc = add(acc, i)
+        fb = label(i)
+        if fb == "n" { acc += 1 }
+        i += 1
+    }
+    assert_eq(fb, "buzz")
+    assert(acc > 0)
+}

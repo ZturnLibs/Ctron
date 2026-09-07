@@ -1,0 +1,24 @@
+test "narr" {
+    let a: I32[8] = [5, 3, 8, 1, 9, 2, 7, 4]
+    var passes = 0
+    while passes < 300000 {
+        var j = 0
+        while j < 7 {
+            var cur = a[j]
+            var nxt = a[j + 1]
+            if cur > nxt {
+                a[j] = nxt
+                a[j + 1] = cur
+            }
+            j += 1
+        }
+        passes += 1
+    }
+    var sum = 0
+    var i = 0
+    while i < 8 {
+        sum += a[i]
+        i += 1
+    }
+    assert_eq(sum, 39)
+}
