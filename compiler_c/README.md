@@ -32,7 +32,7 @@ compiler_c/
   src/parser_expr.c     #   类型/表达式/块与语句/模式解析
   src/parser.c          #   入口(ctron_parse_src;诊断 E1001/E3030 按序合并)
   src/ast_show.c        # AST → 确定性 Debug 文本
-  src/main.c            # CLI: ctronc <version|lex|parse|sem|pkg|run|check|trans|build|test>
+  src/main.c            # CLI: ctronc <version|lex|parse|sem|pkg|run|check|trans|build|test>;check/run/test 支持 --profile bare|web|full
   tests/…               # 单元 + 语料套件(见下)
   src/rt_internal.h     # 解释器内部共享契约(val/rt/原型)
   src/rt_core.c         #   值构造/缓冲/数值辅助/环境/字符串插值/函数调用与断言域
@@ -135,6 +135,18 @@ deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频
 - **bare arena 域**:`Arena` 类型注解(句柄 void*,无状态)+ `Arena.fixed(n)` +
   `arena.zeros[T](n)` 零数组(值等价 rt);数组字面量注解元素类型优先(宽度/符号自适应);
   fn 数组参数注册 typedef。解锁 08_bare。
+
+### C10-r extern FFI + modules 原生差分 + --profile 档位 ✅(对齐 Rust 版能力面)
+
+- **extern "c" FFI**(§9.6;P1-E⑰ 同构):无体声明登记函数表 + 裸名表;头部发射
+  `extern <abi> <名>(<abi>…);`(裸 C 符号,真实 ABI 宽度 int8_t..uint64_t/double/
+  int/char*);调用点逐实参 ABI cast、结果回包 int64_t(void → 语句)。
+- **suite_modules**:modules 包合并 src/*.ct(含 test 主文件在前)→ 转译 → cc
+  (一并链接 c_src/*.c)→ 原生运行 exit 0;解析诊断/无 test/转译域外包诚实跳过
+  (Rust modules_native_run 同口径)。ffi_math(extern + c_src)原生运行通过。
+- **--profile bare|web|full**:check 接入 `ctron_sem_check_mode`(SEM_BARE = 全量
+  no_alloc,sem 层先行实现);run/test 接受并校验旗标(档位语境预留,对齐 Rust
+  CLI 面)。负值拒绝 exit 2。
 
 ### C10-p 泛型单态化 + 元组 + derive(Show) + const ✅(34/34 语料原生差分达成)
 

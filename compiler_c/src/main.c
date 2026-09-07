@@ -87,6 +87,18 @@ static int has_flag(int argc, char** argv, int from, const char* flag) {
     return 0;
 }
 
+// --profile bare|web|full(Rust ctron 同名旗标;check 实行为,run/test 接受保留)
+static int parse_profile(int argc, char** argv, int from) {
+    for (int i = from; i < argc - 1; i++)
+        if (strcmp(argv[i], "--profile") == 0) {
+            if (strcmp(argv[i + 1], "bare") == 0) return SEM_BARE;
+            if (strcmp(argv[i + 1], "web") == 0) return SEM_WEB;
+            if (strcmp(argv[i + 1], "full") == 0) return SEM_FULL;
+            return -1;
+        }
+    return SEM_FULL;
+}
+
 static int cmd_lex(int argc, char** argv) {
     if (argc < 3) {
         fprintf(stderr, "usage: ctronc lex <file>\n");
@@ -143,11 +155,13 @@ static int cmd_parse(int argc, char** argv) {
 
 static int cmd_check(int argc, char** argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: ctronc check <file> [--format=json]\n");
+        fprintf(stderr, "usage: ctronc check <file> [--format=json] [--profile bare|web|full]\n");
         return 2;
     }
     const char* path = argv[2];
     int as_json = has_flag(argc, argv, 3, "--format=json");
+    int profile = parse_profile(argc, argv, 3);
+    if (profile < 0) { fprintf(stderr, "check: --profile 需 bare|web|full\n"); return 2; }
     size_t len;
     char* src = read_file(path, &len);
     if (!src) {
@@ -156,7 +170,7 @@ static int cmd_check(int argc, char** argv) {
     }
     ctron_parse_result pr = ctron_parse_src(src, len);
     ctron_arena* arena = ctron_arena_new();
-    ctron_sem_result sr = ctron_sem_check(pr.file, arena);
+    ctron_sem_result sr = ctron_sem_check_mode(pr.file, arena, profile);
     size_t total = pr.ndiags + sr.ndiags;
     if (as_json) {
         jdiag* jd = total ? (jdiag*)calloc(total, sizeof(jdiag)) : NULL;
@@ -232,7 +246,7 @@ static int cmd_pkg(int argc, char** argv) {
 
 static int cmd_run(int argc, char** argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: ctronc run <file>\n");
+        fprintf(stderr, "usage: ctronc run <file> [--profile bare|web|full]\n");
         return 2;
     }
     size_t len;
@@ -357,7 +371,7 @@ static int cmd_build(int argc, char** argv) {
 // test —— 运行文件内全部 test 块(C 解释器);输出 rr.out;panic/断言失败 exit 1。
 static int cmd_test(int argc, char** argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: ctronc test <file>\n");
+        fprintf(stderr, "usage: ctronc test <file> [--profile bare|web|full]\n");
         return 2;
     }
     size_t len;

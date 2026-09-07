@@ -61,9 +61,13 @@ $(BUILD)/suite_corpus_trans: tests/suite_corpus_trans.c $(CORE) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_corpus_trans.c $(CORE)
 
+$(BUILD)/suite_modules: tests/suite_modules.c $(CORE) $(HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_modules.c $(CORE)
+
 # 默认验收:单元 + 语料集成(词法+解析+语义+模块级)+ 执行层(C4-a 子集)
 
-test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff $(BUILD)/suite_trans $(BUILD)/suite_corpus_trans
+test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff $(BUILD)/suite_trans $(BUILD)/suite_corpus_trans $(BUILD)/suite_modules
 	./$(BUILD)/test_lex
 	./$(BUILD)/suite_lex ../tests
 	./$(BUILD)/test_parse
@@ -75,6 +79,7 @@ test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_pa
 	./$(BUILD)/suite_diff ../selfhosted
 	./$(BUILD)/suite_trans tests/trans_fixtures
 	./$(BUILD)/suite_corpus_trans ../tests
+	./$(BUILD)/suite_modules ../tests/modules
 
 clean:
 	rm -rf $(BUILD)

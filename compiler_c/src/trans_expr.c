@@ -1238,6 +1238,33 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             for (size_t i = 0; i < e->nelems && i < 8; i++) sb_free(&abuf[i]);
             return c->err ? ty_unk() : (is_void ? ty_unk() : fret);
         }
+        // extern "c" FFI:ABI 宽度 cast + 裸 C 符号调用(P1-E⑰ 同构)
+        int is_ext = 0;
+        for (size_t xi = 0; xi < c->n_externs; xi++)
+            if (!strcmp(c->externs[xi], nm)) { is_ext = 1; break; }
+        if (is_ext) {
+            if ((int)e->nelems != nparams) { terr(c, "v1:参数个数 %s", nm); return ty_unk(); }
+            sb ea = {0};
+            for (size_t i = 0; i < e->nelems && i < 8; i++) {
+                if (i) sb_s(&ea, ", ");
+                sb a1 = {0};
+                const ty* sw7 = c->want;
+                if (i < 8) c->want = &argtys[i];
+                emit_expr(c, e->elems[i], &a1);
+                c->want = sw7;
+                if (c->err) { sb_free(&a1); sb_free(&ea); return ty_unk(); }
+                sb_f(&ea, "(%s)(%s)", abi_ty(argtys[i]), a1.d ? a1.d : "0");
+                sb_free(&a1);
+            }
+            if (is_void_helper(is_void)) {
+                sb_f(o, "%s(%s)", nm, ea.d ? ea.d : "");
+                sb_free(&ea);
+                return ty_unk();
+            }
+            sb_f(o, "(int64_t)(%s(%s))", nm, ea.d ? ea.d : "");
+            sb_free(&ea);
+            return ty_int(64, 0);
+        }
         // C10-h:trait 参数单态化 —— fn 带 &Trait 形参 → 按实参具体类型例化后调用
         if (is_user_fn && (int)e->nelems == nparams) {
             int ntrait = 0;

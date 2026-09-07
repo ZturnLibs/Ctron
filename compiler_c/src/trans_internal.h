@@ -68,6 +68,8 @@ struct tc {
     size_t n_sums;
     char* traits[64];     // 已声明的 trait 名(&Trait 形参 → T_TRAIT 标记;C10-h)
     size_t n_traits;
+    char* externs[32];    // extern "c" 无体声明(裸 C 符号;调用点 ABI cast;P1-E⑰ 同构)
+    size_t n_externs;
     struct { const char* from; ty to; } subs[8]; // 单态化替换:trait 名 → 具体类型
     size_t n_subs;
     char* monos[64];      // 已例化的单态化 cname(去重)
@@ -120,6 +122,7 @@ ty ctron_payload_ty(ty t);
 ctron_trans_result ctron_trans_file(const cfile* f);
 void ctron_trans_result_free(ctron_trans_result* r);
 const char* ctype_of(ty t);
+const char* abi_ty(ty t); // extern "c" 真实 ABI 宽度(C 原生标量,非内部载荷)
 ty decl_ty(const cty* t);
 ty decl_ty_tc(tc* c, const cty* t);
 const char* dt_for_wl(const char* wl);

@@ -119,6 +119,14 @@ const char* ctype_of(ty t) {
     default: return "int64_t";
     }
 }
+const char* abi_ty(ty t) {
+    // extern "c" 的真实 ABI 类型(C 原生宽度;P1-E⑰ 同构;浮点对齐 C 版统一 double 载荷)
+    if (t.k == T_INT) return ctype_of(t); // int8_t..uint64_t 原生宽度
+    if (t.k == T_FLT) return "double";
+    if (t.k == T_BOOL) return "int";
+    if (t.k == T_STR) return "char*";
+    return "int64_t";
+}
 const char* wlname(ty t) {
     if (t.k == T_STR) return "str";
     if (t.k == T_FLT) return "f64";

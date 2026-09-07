@@ -132,7 +132,17 @@ void collect_fns(tc* c, const cfile* f) {
     for (size_t i = 0; i < f->ndecls; i++) {
         const cdecl* d = &f->decls[i];
         if (d->kind != D_FN) continue;
-        if (d->fn_.abi) { terr(c, "v1 不支持 extern:%s", d->fn_.name); continue; }
+        if (d->fn_.abi) {
+            // extern "c" 无体声明:符号来自外部 C 源(§9.6);登记函数表 + 裸名表
+            if (d->fn_.body) { terr(c, "v1:extern 带函数体:%s", d->fn_.name); continue; }
+            ty ret = decl_ty_tc(c, d->fn_.ret);
+            ty ptys[8];
+            for (size_t j = 0; j < d->fn_.nparams && j < 8; j++) ptys[j] = decl_ty_tc(c, d->fn_.params[j].ty);
+            add_fn(c, d->fn_.name, ret, (int)d->fn_.nparams, ret.k == T_UNK, ptys);
+            if (c->n_externs < 32)
+                c->externs[c->n_externs++] = ctron_arena_strndup(c->a, d->fn_.name, strlen(d->fn_.name));
+            continue;
+        }
         ty ret = decl_ty_tc(c, d->fn_.ret);
         ty ptys[8];
         for (size_t j = 0; j < d->fn_.nparams && j < 8; j++) ptys[j] = decl_ty_tc(c, d->fn_.params[j].ty);
@@ -213,6 +223,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             const char* nm = d->fn_.name;
             if (is_reserved(nm)) { terr(&c, "v1:标识符保留前缀 ctron_:%s", nm); break; }
             if (fn_is_generic(&d->fn_) || fn_has_trait_param(&c, &d->fn_)) break; // 泛型原体:调用点按实参单态化(C10-h/p)
+            if (d->fn_.abi) break; // extern "c":原型由头部装配发射,体在 c_src(P1-E⑰ 同构)
             char cn[256];
             snprintf(cn, sizeof cn, "ctron_user_%s", nm);
             int was_main = !strcmp(nm, "main");
@@ -376,6 +387,16 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             const cdecl* d = &f->decls[i];
             if (d->kind != D_FN) continue;
             if (fn_is_generic(&d->fn_) || fn_has_trait_param(&c, &d->fn_)) continue; // 泛型原体:原型由单态化点提供
+            if (d->fn_.abi) { // extern "c":裸 C 符号 + 真实 ABI 宽度(P1-E⑰ 同构)
+                ty eret = decl_ty_tc(&c, d->fn_.ret);
+                sb_f(h, "extern %s %s(", abi_ty(eret), d->fn_.name);
+                for (size_t j = 0; j < d->fn_.nparams; j++) {
+                    if (j) sb_s(h, ", ");
+                    sb_f(h, "%s", abi_ty(decl_ty_tc(&c, d->fn_.params[j].ty)));
+                }
+                sb_s(h, ");\n");
+                continue;
+            }
             ty ret = decl_ty_tc(&c, d->fn_.ret);
             const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
             sb_f(h, "static %s ctron_user_%s(", rct, d->fn_.name);

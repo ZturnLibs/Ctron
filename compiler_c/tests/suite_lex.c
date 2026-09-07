@@ -31,7 +31,10 @@ static void walk(const char* dir, strvec* out) {
         if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
         char path[4096];
         snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
-        if (e->d_type == DT_DIR) walk(path, out);
+        if (e->d_type == DT_DIR) {
+            if (strcmp(e->d_name, "roadmap") == 0) continue; // R 泳道阶段区(Rust roadmap_suite 门控,C 版随新语法实现后纳入)
+            walk(path, out);
+        }
         else if (ends_with(e->d_name, ".ct")) sv_push(out, path);
     }
     closedir(d);
