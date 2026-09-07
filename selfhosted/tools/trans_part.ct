@@ -1,12 +1,16 @@
-// trans_part.ct —— C9j①: C 代码生成器 v0(Ctron 写的代码生成)
+// trans_part.ct —— C9j②: C 代码生成器 v1(Ctron 写的代码生成)
 // 本文件是 cc.ct 的追加部件(拼在 cc.ct 的 main 之前,替换 cc 的运行驱动):
 //   cc 前缀(scan/p_file/sem_walk2 等解析与语义设施)+ 本文件 = 自举编译器的
 //   C 代码生成模式:读入 .ct 源 → 输出等价 C 代码(stdout)→ gcc 编译执行。
-// v0 覆盖:I32 fn/参数/返回, var/let(I32), 赋值(= 与复合), if/else-if/else,
-//          while, return, 二元算术/比较/逻辑, 一元 -, 用户 fn 调用, println/println(int)。
-// 约定: 所有用户符号加 t_ 前缀;I32 → int32_t;暂不支持:struct/class/trait/
-//       方法/字符串运算/List/闭包(遇到即 panic,留待后续阶梯)。
+// v1 覆盖(v0 之上): Str 类型(字面量/参数/返回/let, const char*),
+//   ==/!= 字符串比较(strcmp), .len(strlen), Str+Str 拼接(运行时辅助),
+//   println/print 按类型分发(%d/%s/Bool→true/false), 符号表类型推导(env "name:ty")。
+// 约定: 用户符号加 t_ 前缀;类型推导: 字面量/注解/init 传播(保守 int)。
 // 注意: 本文件字符串中的 { 均写作 \{(插值转义,镜像 C 词法器)。
+
+fn bsn() -> Str {
+    return "\\" + "n"
+}
 
 fn ct_op(op: Str) -> Str {
     if op == "Add" { return "+" }
@@ -36,20 +40,121 @@ fn ct_aop(op: Str) -> Str {
     return "?"
 }
 
-fn ct_expr(e: List[Str]) -> Str {
+// 符号表: env 条目形如 "name:ty"(ty: i/s/b);查找按 "name:" 前缀精确匹配
+fn ct_env_ty(env: List[Str], nm: Str) -> Str {
+    var key = nm + ":"
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if en.len >= key.len && byte_slice(en, 0, key.len) == key {
+            return byte_slice(en, key.len, en.len)
+        }
+        i += 1
+    }
+    return "i"
+}
+
+fn env_bind(env: List[Str], nm: Str, ty: Str) -> List[Str] {
+    var out = List[Str]()
+    out.push(nm + ":" + ty)
+    var i: I32 = 0
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+
+// 用户 fn 返回类型: Named Str→s / Bool→b / I32→i / None→v
+fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", d[0] == "FnPub")) && d[1] == nm {
+            var r = d[4]
+            if r[0] == "None" { return "v" }
+            if r[0] != "Named" { return "i" }
+            if r[1] == "Str" { return "s" }
+            if r[1] == "Bool" { return "b" }
+            return "i"
+        }
+        i += 1
+    }
+    return "i"
+}
+
+// 表达式类型: i=I32 / s=Str / b=Bool / v=void
+fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var t = e[0]
+    if t == "Int" { return "i" }
+    if t == "Str" { return "s" }
+    if t == "Bool" { return "b" }
+    if t == "Ident" { return ct_env_ty(env, e[1]) }
+    if t == "Unary" {
+        if e[1] == "Neg" { return "i" }
+        return "b"
+    }
+    if t == "Binary" {
+        if e[1] == "Add" {
+            if ct_typeof(e[2], env, file) == "s" { return "s" }
+            if ct_typeof(e[3], env, file) == "s" { return "s" }
+            return "i"
+        }
+        return "b"
+    }
+    if t == "Member" {
+        if e[3] == "len" { return "i" }
+    }
+    if t == "Call" {
+        return ct_fn_ret(file, e[1][1])
+    }
+    return "i"
+}
+
+fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" { return e[1] }
+    if t == "Str" {
+        var parts = e[1]
+        var acc = "\""
+        var j: I32 = 1
+        while j < parts.len {
+            var p = parts[j]
+            if p[0] != "Text" {
+                panic("ct_expr:str interp")
+                return ""
+            }
+            acc = acc + unesc(p[1])
+            j += 1
+        }
+        return acc + "\""
+    }
     if t == "Bool" {
         if e[1] == "true" { return "1" }
         return "0"
     }
     if t == "Ident" { return "t_" + e[1] }
     if t == "Unary" {
-        if e[1] == "Neg" { return "(-" + ct_expr(e[2]) + ")" }
-        return "(!" + ct_expr(e[2]) + ")"
+        if e[1] == "Neg" { return "(-" + ct_expr(e[2], env, file) + ")" }
+        return "(!" + ct_expr(e[2], env, file) + ")"
     }
     if t == "Binary" {
-        return "(" + ct_expr(e[2]) + " " + ct_op(e[1]) + " " + ct_expr(e[3]) + ")"
+        var op = ct_op(e[1])
+        if e[1] == "Add" && ct_typeof(e[2], env, file) == "s" {
+            return "ctron_str_concat(" + ct_expr(e[2], env, file) + ", " + ct_expr(e[3], env, file) + ")"
+        }
+        if or2(e[1] == "Eq", e[1] == "Ne") && ct_typeof(e[2], env, file) == "s" {
+            var c = "strcmp(" + ct_expr(e[2], env, file) + ", " + ct_expr(e[3], env, file) + ")"
+            if e[1] == "Eq" { return "(" + c + " == 0)" }
+            return "(" + c + " != 0)"
+        }
+        return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"
+    }
+    if t == "Member" {
+        if e[3] == "len" {
+            if e[1][0] == "Ident" { return "strlen(t_" + e[1][1] + ")" }
+            return "strlen(" + ct_expr(e[1], env, file) + ")"
+        }
     }
     if t == "Call" {
         var callee = e[1][1]
@@ -57,7 +162,7 @@ fn ct_expr(e: List[Str]) -> Str {
         var i: I32 = 1
         while i < e[2].len {
             if i > 1 { args = args + ", " }
-            args = args + ct_expr(e[2][i])
+            args = args + ct_expr(e[2][i], env, file)
             i += 1
         }
         if callee == "println" { return "ctron_print_i32(" + args + ")" }
@@ -68,92 +173,142 @@ fn ct_expr(e: List[Str]) -> Str {
     return ""
 }
 
-fn ct_block(b: List[Str]) {
+fn ct_block(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
     println("\{")
     var i: I32 = 1
+    var env2 = env
     while i < b.len - 1 {
-        ct_stmt(b[i])
+        env2 = ct_stmt(b[i], env2, file)
         i += 1
     }
+    // 尾槽:p_block 末元素为裸尾表达式(无 None 哨兵时),按语句发射(p_arsetree 同形)
+    var tl = b[b.len - 1]
+    if tl[0] != "None" {
+        var es = List[Str]()
+        es.push("Expr")
+        es.push(tl)
+        env2 = ct_stmt(es, env2, file)
+    }
     println("}")
+    return env2
 }
 
-fn ct_if_stmt(e: List[Str]) {
-    println("if (" + ct_expr(e[1]) + ") \{")
-    ct_block(e[2])
+fn ct_if_stmt(e: List[Str], env: List[Str], file: List[Str]) {
+    println("if (" + ct_expr(e[1], env, file) + ") \{")
+    ct_block(e[2], env, file)
     println("}")
     var els = e[3]
     if els[0] != "None" {
         println("else \{")
         if els[0] == "If" {
-            ct_if_stmt(els)
+            ct_if_stmt(els, env, file)
         } else {
-            ct_block(els[1])
+            ct_block(els[1], env, file)
         }
         println("}")
     }
 }
 
-fn ct_stmt(st: List[Str]) {
+fn ct_stmt(st: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
     var t = st[0]
     if t == "Let" {
         var pat = st[2]
         if pat[0] == "PatId" {
-            println("int32_t t_" + pat[1] + " = " + ct_expr(st[4]) + ";")
-            return
+            var ty = ct_typeof(st[4], env, file)
+            var ctype = "int32_t"
+            if ty == "s" { ctype = "const char*" }
+            println(ctype + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";")
+            return env_bind(env, pat[1], ty)
         }
         panic("ct_stmt:let pat:" + pat[0])
-        return
+        return env
     }
     if t == "Assign" {
-        println("t_" + st[1][1] + " " + ct_aop(st[2]) + " " + ct_expr(st[3]) + ";")
-        return
+        println("t_" + st[1][1] + " " + ct_aop(st[2]) + " " + ct_expr(st[3], env, file) + ";")
+        return env
     }
     if t == "While" {
-        println("while (" + ct_expr(st[1]) + ") \{")
-        ct_block(st[2])
+        println("while (" + ct_expr(st[1], env, file) + ") \{")
+        ct_block(st[2], env, file)
         println("}")
-        return
+        return env
     }
     if t == "Return" {
         if st[1][0] == "None" {
             println("return;")
-            return
+            return env
         }
-        println("return " + ct_expr(st[1]) + ";")
-        return
+        println("return " + ct_expr(st[1], env, file) + ";")
+        return env
     }
     if t == "Expr" {
         var e = st[1]
         if e[0] == "If" {
-            ct_if_stmt(e)
-            return
+            ct_if_stmt(e, env, file)
+            return env
         }
-        println(ct_expr(e) + ";")
-        return
+        if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "println" {
+            var at = ct_typeof(e[2][1], env, file)
+            if at == "s" {
+                println("printf(\"%s" + bs() + "n\", " + ct_expr(e[2][1], env, file) + ");")
+                return env
+            }
+            if at == "b" {
+                println("printf(\"%s" + bs() + "n\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");")
+                return env
+            }
+            println("printf(\"%d" + bs() + "n\", (int)(" + ct_expr(e[2][1], env, file) + "));")
+            return env
+        }
+        if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "print" {
+            var at = ct_typeof(e[2][1], env, file)
+            if at == "s" {
+                println("printf(\"%s\", " + ct_expr(e[2][1], env, file) + ");")
+                return env
+            }
+            println("printf(\"%d\", (int)(" + ct_expr(e[2][1], env, file) + "));")
+            return env
+        }
+        println(ct_expr(e, env, file) + ";")
+        return env
     }
     panic("ct_stmt:" + t)
+    return env
 }
 
-fn ct_fn(d: List[Str]) {
+fn ct_fn(d: List[Str], file: List[Str]) {
     var ps = d[3]
     var params = ""
     var k: I32 = 1
     var first = true
+    var env = List[Str]()
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
             if !first { params = params + ", " }
-            params = params + "int32_t t_" + pr[2]
+            var pty = "int32_t"
+            var ety = "i"
+            if pr[3][0] == "Named" && pr[3][1] == "Str" {
+                pty = "const char*"
+                ety = "s"
+            }
+            params = params + pty + " t_" + pr[2]
+            env = env_bind(env, pr[2], ety)
             first = false
         }
         k += 1
     }
     var ret = "void"
-    if d[4][0] != "None" { ret = "int32_t" }
+    if d[4][0] != "None" {
+        if d[4][1] == "Str" { ret = "const char*" } else { ret = "int32_t" }
+    }
     println(ret + " t_" + d[1] + "(" + params + ") \{")
-    ct_block(d[5])
+    ct_block(d[5], env, file)
     println("}")
+}
+
+fn bs() -> Str {
+    return "\\"
 }
 
 fn main() -> I32 {
@@ -166,12 +321,15 @@ fn main() -> I32 {
             var file = p_file(toks, cur)
             println("#include <stdio.h>")
             println("#include <stdint.h>")
-            println("static void ctron_print_i32(int32_t v) \{ printf(\"%d\\n\", v); }")
+            println("#include <string.h>")
+            println("#include <stdlib.h>")
+            println("static void ctron_print_i32(int32_t v) \{ printf(\"%d" + bs() + "n\", v); }")
+            println("static const char* ctron_str_concat(const char* a, const char* b) \{ size_t la = strlen(a), lb = strlen(b); char* r = (char*)malloc(la + lb + 1); memcpy(r, a, la); memcpy(r + la, b, lb); r[la + lb] = 0; return r; }")
             var di: I32 = 1
             while di < file.len {
                 var d = file[di]
                 if d[0] == "Fn" {
-                    ct_fn(d)
+                    ct_fn(d, file)
                 }
                 di += 1
             }

@@ -1,0 +1,23 @@
+fn greet(name: Str) -> Str {
+    return name
+}
+fn main() -> I32 {
+    let s = "hello"
+    println(s)
+    println(s.len)
+    let t = s + " world"
+    println(t)
+    if s == "hello" {
+        println(1)
+    }
+    if s != "world" {
+        println(2)
+    }
+    println(greet("abc"))
+    var i = 0
+    while i < 2 {
+        println(i)
+        i = i + 1
+    }
+    return 0
+}
