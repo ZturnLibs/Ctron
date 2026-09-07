@@ -199,10 +199,50 @@ fn main() -> ExitCode {
             let path = match args.get(2) {
                 Some(p) if !p.starts_with("--") => p.clone(),
                 _ => {
-                    eprintln!("usage: ctron check <file> [--profile bare|web|full]");
+                    eprintln!("usage: ctron check <file|pkg目录> [--profile bare|web|full]");
                     return ExitCode::from(2);
                 }
             };
+            // 包级检查:<目录>(含 Ctron.toml + src/*.ct)
+            if std::path::Path::new(&path).is_dir() {
+                let dir = std::path::Path::new(&path);
+                let toml = std::fs::read_to_string(dir.join("Ctron.toml")).unwrap_or_default();
+                let manifest = ctron::check::parse_manifest(&toml);
+                let pkg = toml.lines().find_map(|l| l.trim().strip_prefix("name = "))
+                    .map(|s| s.trim_matches('"').to_string())
+                    .unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+                let src_dir = if dir.join("src").is_dir() { dir.join("src") } else { dir.to_path_buf() };
+                let mut files: Vec<(String, String)> = Vec::new();
+                let mut cts: Vec<std::path::PathBuf> = std::fs::read_dir(&src_dir).unwrap()
+                    .flatten().map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|x| x == "ct")).collect();
+                cts.sort();
+                for c in &cts {
+                    let stem = c.file_stem().unwrap().to_string_lossy().to_string();
+                    files.push((format!("{pkg}.{stem}"), std::fs::read_to_string(c).unwrap()));
+                }
+                let profile = if args.iter().any(|a| a == "--profile") {
+                    match args.iter().position(|a| a == "--profile").and_then(|i| args.get(i + 1)) {
+                        Some(p) if p == "bare" => ctron::sem::Profile::Bare,
+                        Some(p) if p == "web" => ctron::sem::Profile::Web,
+                        _ => ctron::sem::Profile::Full,
+                    }
+                } else { ctron::sem::Profile::Full };
+                let result = ctron::check::check_package(&files, Some(manifest), profile);
+                let mut err_count = 0usize;
+                for (mpath, diags) in &result {
+                    for d in diags {
+                        println!("{mpath}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+                        if d.code.starts_with('E') { err_count += 1; }
+                    }
+                }
+                if err_count == 0 {
+                    println!("0 errors({} 文件)", files.len());
+                    return ExitCode::SUCCESS;
+                }
+                eprintln!("{err_count} 个错误");
+                return ExitCode::from(1);
+            }
             let profile = args.iter().position(|a| a == "--profile")
                 .and_then(|i| args.get(i + 1))
                 .map(|p| match p.as_str() { "bare" => ctron::sem::Profile::Bare, "web" => ctron::sem::Profile::Web, _ => ctron::sem::Profile::Full })
