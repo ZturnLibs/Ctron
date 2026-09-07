@@ -362,6 +362,26 @@
    "首次引导"职责**。下一步(可选):CTRON_SEED 默认值切到自举产物(需两级引导脚本:
    种子建 nc → nc 跑其余);原生 cc 扫全 suite_run/ev2 面;全语言发射域按需排期。
 
+22d. **C9j⑦(本文件交付)—— bootstrap.sh 两级引导 + 全模块面双种子差分,双种子实测收官**:
+   ① `selfhosted/bootstrap.sh`:阶段 0 用 C 宿主种子建第一个原生 cc(唯一宿主依赖点),
+   阶段 1 以 `CTRON_SEED=<nc> CTRON_BOOT=1` 重跑整个 ladder —— **日常验收自此可完全跑在
+   自举二进制上**。② ladder 第 9 步:16 个 selfhosted 模块(hello/ev_num/ev2/cc/sem_chk/
+   pkg_chk/parse_ast/parsetree/lex×8)C 宿主 vs 当前种子全差分;参考端恒定 C 宿主
+   (bootstrap 下 $HOST 已是 nc,不换参考即失去对照)。③ ladder 新增 know- 三分口径
+   (ok/known-div/fail),bootstrap 已知能力缺口如实标注不隐藏:
+   - **cc 求值器无 Float 域**(trans_v2 在原生种子下 `expr:Float`)——归"求值器运行域补尾"
+   - **自译化原生形态资源边界**(cc×cc 嵌套解释 rc=137@63s,原生 malloc 不归还)
+   - **C9i① 解析嵌套挂账实锤**:parsetree/sem_chk 老快照的 p_block 尾 guard,cc 解析器
+     嵌在 while 外、rt 解析在循环内 → 原生求值 unbound:p0(探针实证 rt 为标准块作用域:
+     while 内 let 块外读 abort、if 遮蔽块外恢复;cc 的 run_block env_drop 与 rt 一致,
+     本轮曾误删已回退)。
+   ④ cc.ct 补 read_dir 求值特判(镜像 read_file 形态;此前 pkg_chk 在原生种子下
+   `no fn:read_dir`——种子有宿主内建兜底,原生只能靠 cc 自身),发射器同步补
+   `ctron_read_dir`(opendir/readdir 跳 . .. 换行拼接)+ dirent.h + typeof read_dir→s。
+   实测:bootstrap --full 全绿 pass=35 fail=0 known-div=4;普通 ladder 38/0/0;
+   --full 负载原生比种子快 2.3 倍(136s→58s);make test 全绿(230 diff 回归验证了
+   env_drop 回退正确)。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。

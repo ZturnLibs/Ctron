@@ -216,3 +216,21 @@
   语义:外层 cc main 恒 rc0(打印内层输出),负例拦截只看输出 grep——与种子逐层一致。
 - 收官后格局:C 宿主只剩首次引导;剩余为可选项(两级引导脚本/全 suite_run 面/全语言
   发射域/ASan 迁移)。
+---
+## 更新记录(22a session,C9j⑦ 两级引导 + 全模块面双种子差分)
+- **C9j⑦ ✅**:①`bootstrap.sh` 两级引导(阶段 0 C 宿主建 nc;阶段 1 CTRON_SEED=nc +
+  CTRON_BOOT=1 重跑全阶梯)——日常验收自此可完全跑在自举二进制上。②ladder 第 9 步:
+  16 模块面双种子差分,参考端恒定 C 宿主;新增 know- 三分口径(ok/known-div/fail)。
+  ③cc.ct 补 read_dir 求值特判 + 发射器 ctron_read_dir/dirent.h/typeof。
+  实测:bootstrap --full 35/0/4(4 个已知分歧如实标注);普通 ladder 38/0/0;
+  **--full 负载原生比种子快 2.3 倍(136s→58s)**;make test 全绿。
+- **双种子 sweep 的四个发现(全部已记账)**:①cc 求值器无 Float 域(trans_v2 原生种子
+  `expr:Float`)→ 归"求值器运行域补尾";②自译化原生形态资源边界(cc×cc 嵌套 rc=137@63s,
+  原生 malloc 不归还)→ 归内存管理;③④**C9i① 解析嵌套挂账实锤**:parsetree/sem_chk 的
+  p_block 尾 guard,cc 解析器嵌在 while 外、rt 在循环内 → 原生 unbound:p0。
+- **裁定留痕(重要,勿重蹈)**:排查 unbound:p0 时曾误删 run_block 的 env_drop(以为 rt
+  是平铺 env)→ suite_diff input_cc 遮蔽用例立刻红(while 块外读在 rt 实为 abort,
+  探针实证 rt 是标准块作用域 push/pop)。**已回退**。教训:动作用域语义前先用最小探针
+  实证宿主行为,再对照 230 差分;bootstrap 的 sweep 是发现 cc-vs-rt 分叉的最强探针。
+- 下一批候选:cc 求值器 Float 域;解析嵌套挂账修复(静机器+探针,见 21z 前记录);
+  原生形态内存归还;发射器全语言域(struct/闭包/并发/插值/值位 if·match)。
