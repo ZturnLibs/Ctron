@@ -1,4 +1,4 @@
-# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅ / C4-a…i 解释器 ✅(34 文件全量运行))
+# Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅ / C4-a…i 解释器 ✅(34 文件全量运行) / C10 转译后端 ✅(34/34 语料原生差分))
 
 > **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在两套独立、各自完整的编译器实现——Rust 版(`compiler/`)与 C 版(`compiler_c/`),互不依赖;两者共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`,61 文件)。最终自举目标不变:以 C 版为种子编译器,后续用 Ctron 自身实现 Ctron。
 
@@ -26,20 +26,30 @@ compiler_c/
   src/token.{h,c}       # 记号模型
   src/lexer.{h,c}       # 词法器 + §1.6 换行过滤
   src/ast.h             # C 版纯数据 AST(字段即契约)
-  src/parser.{h,c}      # 递归下降解析器(parse_src 入口)
+  src/parser_internal.h # 解析器内部共享契约(类型/原型)
+  src/parser_core.c     #   列表基建/游标/AST 构造辅助
+  src/parser_decl.c     #   文件与声明解析(fn/struct/enum/class/trait/impl/use/const/static)
+  src/parser_expr.c     #   类型/表达式/块与语句/模式解析
+  src/parser.c          #   入口(ctron_parse_src;诊断 E1001/E3030 按序合并)
   src/ast_show.c        # AST → 确定性 Debug 文本
-  src/main.c            # CLI: ctronc <version|lex|parse [--ast]>
-  tests/test_lex.c      # 词法单元(58 断言)
-  tests/suite_lex.c     # 61 文件零词法诊断
-  tests/test_parse.c    # 解析单元(锚定行为)
-  tests/suite_parse.c   # 61 文件解析分类验收
-  src/sem.{h,c}         # 语义检查(单文件)
-  src/pkg.{h,c}         # 模块级检查(Ctron.toml + 跨文件)
-  src/rt.{h,c}          # C4-a 解释器(数值/逻辑/字符串/范围域)
-  tests/suite_sem.c     # 61 文件单文件语义 marker 评分
-  tests/suite_pkg.c     # modules/* 包级语义评分
-  tests/suite_rt.c      # 执行层允许表评分(行为/panic)
+  src/main.c            # CLI: ctronc <version|lex|parse|sem|pkg|run|check|trans|build|test>
+  tests/…               # 单元 + 语料套件(见下)
+  src/rt_internal.h     # 解释器内部共享契约(val/rt/原型)
+  src/rt_core.c         #   值构造/缓冲/数值辅助/环境/字符串插值/函数调用与断言域
+  src/rt_eval.c         #   域辅助(和类型/数组/类/并发)+ 表达式求值主分发
+  src/rt_stmt.c         #   语句/块求值 + 入口(test 块/main/runner)
+  src/trans_internal.h  # 转译后端内部共享契约(sb/ty/tc/原型)
+  src/trans_core.c      #   字符串缓冲/类型模型/上下文与作用域
+  src/trans_expr.c      #   表达式发射/内建与调用/方法与 trait 分发/泛型单态化
+  src/trans_conc.c      #   并发运行时发射(spawn/join/Channel/Mutex/Atomic/scope/parallel)
+  src/trans_stmt.c      #   if·match 值发射 + 语句/块/函数体发射
+  src/trans_rt.c        #   生成码助手发射(算术检查/字符串/容器/断言族)
+  src/trans.c           #   文件级:声明收集/头部装配/转译入口
 ```
+
+模块拆分原则(2026-09-06):原 trans.c(3866 行)/rt.c(2095)/parser.c(2141) 单体按既有
+分节标记机械拆分;跨模块符号一律经 *_internal.h 声明(非 static),节内私有助手保持
+static;全量套件逐字回归通过(230 diff + 61 语料 + 34 执行),行为零漂移,0 告警。
 
 构建环境:仅 libc,C11(`cc`);零外部依赖。验收命令 `make test`。
 
@@ -97,11 +107,70 @@ parallel.map/reduce(序贯形态)、stdweb.dom 最小锚(set_title/title)、AnyE
 deferred>0 转为硬告警。随附修正语料 `08_bare.ct` 自校验循环(频次之和应对 `seen` 全表求和;
 原写法对 data 求和得 Σcount²,与断言 4 矛盾)。详见本表后补记。
 
-## 后续里程碑(C 版路线,独立推进)
+### C10-j 并发/单元格域修复 + P1-E⑧⑩ 同构移植 ✅(31/34 语料原生差分)
 
-| 里程碑 | 内容 | 出口 |
-|---|---|---|
-| C4-b/c/d | GC 集合/类/match/闭包;own/arena;并发(scope/spawn/Channel/Mutex) | 行为/panic 语料逐域并入 suite_rt 允许表 |
+- **修复四个生成代码缺陷**:`fn_lookup` 内层循环变量遮蔽外层匹配下标(多函数时参数
+  类型拷错,`None` 实参解析失败);任务体 setjmp 捕获 panic 后未置 `panicked=1`
+  (`join_or` 恒 Ok,取消广播死锁);值位置 panic 赋 void(Never 语义:只发 panic 语句,
+  dest 靠 calloc/初始化器置零);scope/with 块值临时变量 `= 0` 不适配 struct 载荷
+  (`= {0}`)+ 声明移出内层块(语句表达式尾部读取同层可见)。
+- **头部装配顺序定型**:classes → enums → sums → arrs → structs → globals → helpers →
+  protos(class 指针被 sums 依赖;enum 被 sums 值内嵌;struct 字段可含单元格指针)。
+- **fn 类型/闭包值(P1-E⑧⑩ 同构)**:`T_FNPTR` + 无原型 `ctron_fnptr`(空参表,调用点
+  显式 cast);闭包值 → 顶层 static 函数(clo_sb,形参即源名);用户函数引用即函数指针;
+  `f(f(x))` 间接调用;`Option/Result.map` 专用助手(Ok/Some 重包,Err/None 原样)。
+  解锁 01e_multiline_chain / 03g_fn_types。
+- **Atomic 单元格域**:`Atomic[T](init)` 构造 + `load/store/fetch_add`(fetch_add 返回
+  旧值,__int128 承载回写;emit_atomic_call 收 (类型,接收者文本) 支持任意接收者表达式,
+  如 `self.counter.fetch_add(1)`);`Atomic/Global/Mutex` 类型注解 → T_MUTEX 句柄
+  (struct 字段按指针表示,`decl_ty_tc` 同步触发 typedef)。解锁 06d_globals。
+- **parallel 命名空间**:map(切片, fn)/reduce(切片, 初值, fn) 序贯形态发射(对齐
+  解释器),语句表达式局部变量保证实参单次求值。解锁 06f_parallel。
+- **for 通配模式**:`for _ in 0..4` 放行 PAT_WILD(循环变量 `_`,体内不可引用)。
+  解锁 06_concurrency。
+- **Drop RAII 补全**:drop 织入移至块尾表达式之后(对齐解释器"尾值先、drop_scope 后");
+  方法帧跳过 receiver self(消除 drop 内自递归);织入经 ensure_method_fn 确保原型+方法体。
+  解锁 05d_drop。
+- **dom 命名空间**:set_title/title 最小锚(static 全局 + strdup,对齐 rt)。解锁 10_web_dom。
+- **bare arena 域**:`Arena` 类型注解(句柄 void*,无状态)+ `Arena.fixed(n)` +
+  `arena.zeros[T](n)` 零数组(值等价 rt);数组字面量注解元素类型优先(宽度/符号自适应);
+  fn 数组参数注册 typedef。解锁 08_bare。
+
+### C10-p 泛型单态化 + 元组 + derive(Show) + const ✅(34/34 语料原生差分达成)
+
+- **泛型 fn 单态化**(03e/04g):带类型形参(`fn swap[T](pair: (T, T))`)的 fn 原体/
+  原型跳过发射,调用点按实参类型统一绑定(unify_gen:单名 Named 命中形参名;元组按元素
+  递归),复用 C10-h 的 subs 替换 + ensure_mono_fn 临时缓冲发射(原型/函数体在替换下
+  解析,`(T,T)` 直接解析为具体元组 typedef);实例名 `ctron_user_<名>__<Mangle>` 去重。
+- **二元组值域**(T_TUP):`(A, B)` 类型注解/字面量/下标 `.0`/`.1`/解构 `let (a, b)`(非
+  Channel 的一般路径);typedef `ctron_tup_<M0>_<M1>` 走 sums 段;元素限标量域(struct
+  载荷诚实拒绝)。
+- **泛型 struct/class 实例化**(03e):字面量点按字段实参推导类型实参 → 实例注册进
+  structs/classes 表(`Pair__Pixel_Pixel`),typedef/字段访问/drop/构造助手统一走既有
+  路径;字面量返回 ty 携带索引(顺带修复非泛型字面量 bits=0 的同源隐患)。
+- **derive(Show) 结构化合成**:`v.show()` 无 impl/默认方法时,字段全可显示(int/float/
+  bool/str/递归 struct)即合成 show 方法(fmt 助手 + concat 链,rt 同族格式);bound
+  满足的结构可显示性同走此路径(`render(p.second)` 泛型体内 `.show()` 经替换后分发)。
+- **const/comptime**(04g):const 声明入 globals;非常量初始化(comptime fn 调用)→
+  `ctron_ginit()` 运行时初始化(main 序言调用;函数原型在头部,装配次序安全)。
+
+### C10-q Simd 域 ✅(09_simd,34/34 收口)
+
+`Simd[E, N].splat(v)` / `.lane(i)`(越界 panic 逐字)/ `.to_array()`(f64 切片)/
+元素级白名单 `+ - * /`(单次求值语句表达式,同长检查);元素统一 double 承载(对齐 rt
+v_flt);typedef `ctron_simd_f64_<N>` 走 sums 段,splat/toarr 助手经 emit_helper 新家族
+(arrs 段之后发射,前向依赖安全)。
+
+**suite_corpus_trans:34 pass / 0 failures / 0 untranspiled —— 行为语料原生差分全量收口。**
+
+自举侧(C9j②):Ctron 写的 C 代码生成器 v1(Str 域)往返逐字一致(v1 夹具 trans_v1.ct
+原生==解释逐字);自举阶梯 13/13(含全深度自译化 cc 解释 cc 解释 input_cc 逐字一致)。
+修复:①`ct_stmt` 各分支裸 `return` → `return env`(void 污染符号表,后续 let 推导对
+void 环境求 `.len` 崩);②`ct_block` 补尾槽发射(p_block 末元素为裸尾表达式时按语句发
+射,修复 `{ println(1) }` 单尾语句块静默丢失);③摘除 EMIT 调试打印;④ladder.sh
+CTRON_SEED 换靶后 stage 5 须从 compiler_c 目录解析相对输入锚。
+
+
 | C5b/c…g ✅ | Ctron 词法器 v1→v5(selfhost)+ 差分 harness | 首个"Ctron 写模块 ↔ C 版逐字一致"闭环;v5(lex_num)对全部 tests/*.ct 语料 payload 逐字一致(进制/下划线/指数/12 后缀),详见 bootstrap 计划 |
 | C6a ✅ | Ctron 解析器种子 parse_ast.ct(递归下降子集) | 输出 vs `ctron_file_show`(C-AST v1)逐字节一致(9 fn 语料) |
 | C6b① ✅ | 子集扩:NL 换行记号/Assign/While/For/If(else·链)/成员·索引后缀 | 17 fn 语料逐字节一致 |

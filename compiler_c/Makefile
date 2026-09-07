@@ -5,8 +5,11 @@ CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wpedantic
 INC      = -Isrc
 BUILD    = build
 BIN      = $(BUILD)/ctronc
-CORE     = src/arena.c src/token.c src/lexer.c src/parser.c src/ast_show.c src/sem.c src/pkg.c src/rt.c src/trans.c
-HDRS     = src/arena.h src/token.h src/lexer.h src/ast.h src/parser.h src/trans.h
+CORE     = src/arena.c src/token.c src/lexer.c \
+           src/parser_core.c src/parser_decl.c src/parser_expr.c src/parser.c src/ast_show.c src/sem.c src/pkg.c \
+           src/rt_core.c src/rt_eval.c src/rt_stmt.c \
+           src/trans_core.c src/trans_expr.c src/trans_conc.c src/trans_stmt.c src/trans_rt.c src/trans.c
+HDRS     = src/arena.h src/token.h src/lexer.h src/ast.h src/parser.h src/trans.h src/trans_internal.h
 
 all: $(BIN)
 
