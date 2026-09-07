@@ -70,7 +70,8 @@ for fx in "$DIR"/fixtures/trans_*.ct; do
     gen_cc "$fx" "$T/tr_$name.ct" --trans
     ( cd "$ROOT" && timeout 120 "$HOST" run "$T/tr_$name.ct" > "$T/$name.c" 2>&1 )
     if cc -O1 -o "$T/$name.bin" "$T/$name.c" 2>/dev/null; then
-        "$T/$name.bin" > "$T/$name.got" 2>&1
+        # 与解释侧同 cwd($ROOT):夹具内相对路径 read_file 两侧行为一致
+        ( cd "$ROOT" && "$T/$name.bin" > "$T/$name.got" 2>&1 )
         ( cd "$ROOT" && timeout 120 "$HOST" run "$fx" > "$T/$name.iv" 2>&1 )
         if diff -q "$T/$name.got" "$T/$name.iv" > /dev/null 2>&1; then
             ok "代码生成往返 $name 逐字一致"
@@ -95,6 +96,24 @@ if [ "${1:-}" = "--full" ]; then
     else
         bad "全深度自译化失败(rc=$rc, $((e-s))s)"
     fi
+fi
+
+echo "== 6) 自发射收官(cc.ct 经 Ctron 代码生成 → gcc → 原生 cc 解释 input_cc3 == 黄金) =="
+gen_cc "$DIR/cc.ct" "$T/self_emit.ct" --trans
+( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/self_emit.ct" > "$T/cc_self.c" 2>&1 )
+if cc -O1 -w -o "$T/cc_self.bin" "$T/cc_self.c" 2>/dev/null; then
+    # 发射产物 t_main 的输入锚 = 磁盘 cc.ct 的原始相对锚;换成 input_cc3 绝对路径后,
+    # 该二进制即"原生自举 cc":用 Ctron 写的编译器+代码生成器编译出的原生解释器
+    sed "s|ctron_read_file(\"../selfhosted/input_cc.ct\")|ctron_read_file(\"$DIR/input_cc3.ct\")|" "$T/cc_self.c" > "$T/cc_self2.c"
+    cc -O1 -w -o "$T/cc_self2.bin" "$T/cc_self2.c" 2>/dev/null
+    ( cd "$ROOT/compiler_c" && timeout 120 "$T/cc_self2.bin" > "$T/cc_self.got" 2>&1 )
+    if diff -q "$EXP/input_cc3.out" "$T/cc_self.got" > /dev/null 2>&1; then
+        ok "自发射收官:原生自举 cc 解释 input_cc3 == 黄金逐字一致"
+    else
+        bad "自发射收官:原生 cc 输出与黄金分歧"
+    fi
+else
+    bad "自发射收官:cc.ct 发射产物编译失败"
 fi
 
 echo "== 阶梯结果: pass=$pass fail=$fail =="

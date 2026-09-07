@@ -162,3 +162,31 @@
   对括号密集源码是 O(N×depth) —— 强烈疑似平方级,与负载叠加即成被杀假象。
   下一步:①静机器重测 ev2 自编译(区分真慢/错位);②修 p_post 前瞻(预计算括号配对
   或缓存匹配位置);③用 TRV 阈值探针法定位垃圾 decl 的确切吞入起点。
+---
+## 更新记录(21x session,C9j④ 自发射收官)
+- **C9j④ ✅ 自发射收官**:trans_part.ct 升 v3(List[Str] 引用语义/Atomic[I32]/索引读写/
+  节点引用码 N/match-Option/read_file·byte_at·byte_slice·to_string/panic/函数原型前置/
+  fn 体尾值)。**cc.ct(159 decls)→ 种子上 cc 前缀解析自身 → Ctron 代码生成器发射
+  9,954 行 C → gcc 零错 → 原生自举 cc 解释 input_cc3 == 黄金逐字一致。**
+  ladder 升 17 步(第 4 步 trans_v0–v3 全扫 + 第 6 步自发射收官),--full 全绿
+  (自译化 127s);make test 全绿(corpus_trans 34/34 全转译);trans_v3 夹具新增,
+  v0–v2 零回归。
+- **发射器设计要点(写 v4+ 必读)**:①类型码 env "name:ty":i/s/b/f/L/A/N + a<N><码>(定长
+  数组);N = 索引结果(节点引用,cc.ct 的 AST 节点以 List[Str] 名义流动,d[0] 是节点索引
+  非字符索引);②列表元素槽一律 char*,节点 = 动态转型的 ctron_list*,调用点按形参码
+  ct_arg_cast 插转换;③字符串发射用 ct_cstr(转义逐字透传,\{ 坍缩)—— **unesc 不可用于
+  发射 C 字面量**(\n 变真实换行,预处理断行);④p_block 尾槽 = NL 折叠后紧跟 } 的表达式,
+  完整语句后跟空行也入尾槽 → ct_body 按值类黑名单区分(ct_is_value);⑤实参缺额补 0
+  (镜像 cc.ct ty_head 的 2 参 or3 潜伏 bug)。
+- **既有问题记账(均非本批引入,已留痕计划文档 22a)**:①2931c15 模块拆分后 ASan
+  suite_diff 在 rt_eval.c:360 栈溢出(纯 HEAD stash 验证复现;O2 230 全绿)——归
+  compiler_c 泳道;ASan 命令需排除 src/main.c(拆分后与套件 main 重复符号):
+  `srcs=(src/*.c); cc ... tests/suite_diff.c ${srcs:#*main.c}`(zsh)。
+  ②cc.ct 4506 行 ty_head 对 or3 只传 2 实参,种子一旦执行必 panic(套件未触达)。
+- **流程钉子**:①zsh 通配无匹配(如 rm $T/*.bin)会中止整条 && 链 → 批量清理用 rm -rf 目录;
+  ②zsh 不做 $var 单词拆分,文件列表传 cc 用数组 ${arr:#pattern};③工作区若有并行
+  session,写文件前先 stat mtime + git status(本 session 两次撞见对方热编辑,窗口期
+  小步提交);④genmod 换靶只改模块副本,trans 模式发射产物 t_main 读磁盘 cc.ct 原始锚,
+  需对产物再 sed(ladder 第 6 步固化)。
+- 下一阶梯候选:C9j⑤ 原生自举 cc 扩验全部黄金面 + CTRON_SEED 换靶上位;值位 if/match
+  泛化;struct/方法域发射(面向全语言);ASan 拆分回归修复(转交)。

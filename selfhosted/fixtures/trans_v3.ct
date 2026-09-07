@@ -1,0 +1,47 @@
+fn collect(xs: List[Str], cur: Atomic[I32], flag: Bool) -> List[Str] {
+    var out = List[Str]()
+    out.push("a")
+    out.push(xs[0])
+    var v = cur.load()
+    cur.store(v + 1)
+    xs[0] = "z"
+    var i = 0
+    while i < 2 {
+        out.push(byte_slice("abcd", i, i + 2))
+        i += 1
+    }
+    if flag {
+        out.push(v.to_string())
+    }
+    return out
+}
+fn main() -> I32 {
+    let src = read_file("selfhosted/fixtures/trans_v3_data.txt")
+    match src {
+        Some(s) => {
+            println(s.len)
+            println(byte_at(s, 0))
+        }
+        None => {
+            println(-1)
+        }
+    }
+    var l = List[Str]()
+    var a = Atomic[I32](0)
+    l.push("x")
+    let r = collect(l, a, true)
+    println(r.len)
+    println(r[0])
+    println(r[1])
+    println(l[0])
+    println(a.load())
+    var msg = "n=" + r.len.to_string()
+    println(msg)
+    if r[1] == "x" {
+        println("hit")
+    }
+    if r[1] != "q" {
+        println("ne-ok")
+    }
+    return 0
+}

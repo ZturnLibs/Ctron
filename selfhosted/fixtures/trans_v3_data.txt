@@ -1,0 +1,3 @@
+fn data() -> I32 {
+    return 7
+}

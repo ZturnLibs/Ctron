@@ -304,6 +304,36 @@
    拼接(Ctron 字符串转义镜像);③trans_part 非 standalone(引用 cc 前缀的 scan/p_file)。
 
 
+21b. **C9j②③(补档,并行 session 交付)** —— ②代码生成器 v1(Str 域)收口:往返逐字一致
+   + 阶梯 13/13(0c558b9);③v2(for-in-range/定长数组/浮点 fmt_val 同款/assert 族)+
+   夹具全扫 15/15(cef2a02)。二批修三处:ct_stmt 各分支裸 return(致 env 被:void 污染,
+   后续 let 推导对 void 环境求 .len 触发 rt_abort)、ct_block 尾槽发射缺失、EMIT 调试残留。
+
+22a. **C9j④(本文件交付)—— 自发射收官:cc.ct 经 Ctron 写的编译器+代码生成器产出原生自举二进制**:
+   `trans_part.ct` 升 v3,补齐自发射 cc.ct 所需域:
+   ① **List[Str] 域**:`List[Str]()`→`ctron_list*`(引用语义,元素槽一律 `char*`)、push/.len/
+   索引读·写;**节点引用码 N**——cc.ct 的 AST 节点以 `List[Str]` 名义类型流动(`d=file[i]` 后
+   `d[0]` 是节点索引非字符索引),索引结果一律 N(可当 Str 比较拼接、可再索引、按形参码
+   转 ctron_list*),镜像宿主 rt 动态装型;② **Atomic[I32] 域**:ctron_cell* + load/store;
+   ③ **函数原型前置**(cc 语料存在前向引用,此前 v2 连 List 形参都按 int32_t 发射,gcc 必炸);
+   ④ **fn 体尾值**:p_block 尾槽 = NL 折叠后紧跟 `}` 的表达式——完整语句后跟空行也入尾槽,
+   故尾槽按值类/语句类区分,值位 match 经 t_mr 中转(臂内 return 的语句尾仍按语句发射);
+   ⑤ **内建域**:read_file(char* NULL 模型)/byte_at/byte_slice/to_string/panic(宿主 panic
+   = 消息原文 + rc1);⑥ 字符串发射改 `ct_cstr`(转义逐字透传、仅 `\{` 坍缩——unesc 会把
+   `\n` 解析成真实换行打进 C 字面量,预处理断行)。
+   自发射闭环链:cc.ct(159 decls)→ 种子上的 cc 前缀解析自身 → trans_part 发射 9,954 行 C
+   → gcc 零错 → 产物 t_main = 原生 cc → 解释 input_cc3 输出与黄金逐字一致。
+   ladder 第 6 步固化(17/17 含 --full 自译化 127s);make test 全绿(230 diff + 61×3 语料 +
+   34 执行 + trans 34/34 全转译);trans_v3 夹具(List/Atomic/match/read_file/字节域/引用
+   语义写透别名)往返逐字一致,v0–v2 零回归。
+   记账(既有问题,非本批引入):①**ASan 拆分回归**——2931c15 模块拆分后 ASan suite_diff 在
+   rt_eval.c:360 栈溢出(纯 HEAD 经 stash 验证复现;O2 230 全绿;疑 eval_expr 跨 TU 不内联
+   加深递归栈,归 compiler_c 泳道);②**cc.ct 潜伏 bug**——ty_head(4506 行)对 3 参 or3 只传
+   2 实参,种子一旦执行必 panic(套件未触达;发射器按补 0 保编译,崩路无差分意义)。
+   钉子:①尾槽语义(NL 折叠)与直觉不符,ct_body 已按值类黑名单区分;②值位 if/match 仅
+   fn 尾特判,泛位挂账;③genmod 换靶只改模块副本,trans 模式读磁盘 cc.ct 的原始锚,
+   故发射产物 t_main 锚需再 sed(ladder 第 6 步已固化)。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。

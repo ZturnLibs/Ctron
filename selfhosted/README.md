@@ -28,7 +28,8 @@
 | **全深度自译化** | cc.ct 解释 cc.ct(163KB)parse+sem+运行嵌套 main,235s rc=0,输出与直接管线逐字一致 | C9i② |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫(循环体内 ensure_progress)+ StructLit LitFs #EOF 守卫 + allow_struct 线程化(条件上下文禁结构体字面量) | C9i①② |
 | 新增内建(求值器) | read_file(Some/None)/ Atomic 构造与 load/store(M 值共享单元)/ unesc(字符串转义展开,镜像 C 词法器) | C9i② |
-| **本地验收阶梯** | `./ladder.sh [--full]`:黄金对照+负例拦截+自编译阶梯+复现回归+全深度自译化,一次跑完 | C9i③ |
+| **本地验收阶梯** | `./ladder.sh [--full]`:黄金对照+负例拦截+自编译阶梯+复现回归+代码生成往返+全深度自译化+自发射收官,一次跑完 | C9i③/C9j④ |
+| **C 代码生成器** | `tools/trans_part.ct`(Ctron 写,v0→v3):数值/Str(strcmp·拼接·按类型分发)/定长数组·for-in/浮点·assert → **List[Str](引用语义)/Atomic[I32]/索引读写/节点引用 N/match-Option/read_file·byte_at·byte_slice·to_string/函数原型前置/尾值返回**;trans_v0–v3 往返逐字一致;**自发射收官:cc.ct 经其发射 9.9k 行 C → gcc → 原生自举 cc 解释 input_cc3 == 黄金逐字一致**(ladder 第 6 步) | C9j①–④ |
 | 工具链文件 | tools/genmod.py(模块生成器)/ expected/(黄金基线)/ repro/(复现夹具) | C9i③ |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫 + StructLit LitFs #EOF 守卫(条件内误触发不再挂起) | C9i① |
 | `input_*.ct` | 差分夹具(含 `input_ev2*.ct`、`input_cc.ct` 主程序、`input_cc_neg.ct` W8010 负例) | — |
@@ -79,8 +80,16 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
 - C9g(绑定克隆与原地写)已交付:结构体绑定深克隆、类引用共享、self 可变方法可用、
   成员写原地透(input_ev2i.ct,229 cases);钉子:字符串载荷不可索引(本批踩中修复)、
   for 迭代绑定不克隆(镜像 rt)、结构体右值字段写克隆挂账;
-- 下一步:cc 语义面扩面(12 项之外),或求值器运行域补尾(元组/for-over-list 待宿主后),
-  或 cc.sh 驱动下自举编译器自译化(cc.ct 解释 cc.ct)阶梯。
+- C9j①–④(C 代码生成器 → 自发射收官)已交付:`tools/trans_part.ct` 从 v0(I32 域)经
+  v1(Str 域,0c558b9)v2(for/数组/浮点/assert,cef2a02)到 v3(List[Str] 引用语义/
+  Atomic[I32]/索引读写/节点引用码 N/match-Option/read_file·byte_at·byte_slice/
+  to_string/函数原型前置/尾值返回,含三修:ct_stmt 裸 return、尾槽发射、\n 转义透传);
+  ladder 第 4 步 trans_v0–v3 往返全绿;**第 6 步自发射收官:cc.ct(159 decls)被
+  Ctron 写的编译器+代码生成器完整发射为 9.9k 行 C,gcc 零错编译,产物即原生自举 cc,
+  解释 input_cc3 输出与 C 版黄金逐字一致** —— 自举工具链自此可产出原生二进制。
+- 下一步:C9j⑤ 候选——原生自举 cc 扩验全部黄金面(input_cc/input_cc2/负例)并经
+  `CTRON_SEED` 换靶成为阶梯宿主;值位 if/match 泛化(现仅 fn 尾特判);struct/方法域发射
+  (cc.ct 未用,面向全语言);迁移 ASan 基建(拆分后 eval_expr ASan 栈溢出,详见 HANDOFF)。
 - 用法(独立驱动,推荐):
 ```bash
 selfhosted/cc.sh <input.ct>     # parse → 语义 12 项 → 运行(正例 rc=0/负例诊断 rc=1)
