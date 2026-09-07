@@ -241,6 +241,7 @@ rt_run ctron_rt_run(const cfile* f) {
     rt_run out = {0};
     ctron_arena* arena = ctron_arena_new();
     rt R = {0};
+    R.max_steps = rt_env_steps();
     R.f = f;
     R.a = arena;
     out.st = RT_OK;
@@ -275,6 +276,7 @@ rt_run ctron_rt_run(const cfile* f) {
 rt_run ctron_rt_run_main(const cfile* f) {
     ctron_arena* arena = ctron_arena_new();
     rt R = {0};
+    R.max_steps = rt_env_steps();
     R.f = f;
     R.a = arena;
     rt_run out = {0};

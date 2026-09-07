@@ -342,9 +342,13 @@ impl<'a> Interp<'a> {
     // ---------- 表达式 ----------
 
     fn expr(&mut self, e: &ast::Expr, env: &Rc<Env>) -> EvalResult {
-        // 步数上限:防无限循环
+        // 步数上限:防无限循环(默认 2_000_000;CTRON_MAX_STEPS 覆盖,0 = 无限;D2)
+        static MAX_STEPS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        let max_steps = *MAX_STEPS.get_or_init(|| {
+            std::env::var("CTRON_MAX_STEPS").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(2_000_000)
+        });
         self.steps.set(self.steps.get() + 1);
-        if self.steps.get() > 2_000_000 {
+        if max_steps > 0 && self.steps.get() > max_steps {
             return Err(Flow::Panic("instruction limit exceeded (可能的无限循环)".into()));
         }
         self.expr_depth.set(self.expr_depth.get() + 1);

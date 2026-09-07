@@ -359,6 +359,8 @@ int val_eq(rt* R, val a, val b) {
 // ================= 表达式 =================
 val eval_expr(rt* R, cexpr* e) {
     if (!e) return v_void();
+    if (R->max_steps && ++R->steps > R->max_steps)
+        rt_abort(R, RT_PANIC, "instruction limit exceeded (可能的无限循环)"); // D2:CTRON_MAX_STEPS
     switch (e->kind) {
     case EX_INT: {
         int bits = 32, us = 0, isf = 0;

@@ -14,6 +14,18 @@ val v_obj(const char* type, int is_class, vfld* flds, size_t nf) {
 }
 val v_closure(const cexpr* ce, struct env* cap) { val v = {0}; v.k = V_CLOSURE; v.clo = ce; v.cap = cap; return v; }
 val v_ns(const char* name) { val v = {0}; v.k = V_NS; v.tag = name; return v; }
+unsigned long long rt_env_steps(void) {
+    // D2:CTRON_MAX_STEPS 步上限(N = 上限;0/未设/非法 = 无限)。默认无限支撑自举负载。
+    const char* s = getenv("CTRON_MAX_STEPS");
+    if (!s || !*s) return 0;
+    unsigned long long v = 0;
+    for (const char* q = s; *q; q++) {
+        if (*q < '0' || *q > '9') return 0;
+        if (v > 1844674407370955161ULL) return 18446744073709551615ULL;
+        v = v * 10 + (unsigned long long)(*q - '0');
+    }
+    return v;
+}
 void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);

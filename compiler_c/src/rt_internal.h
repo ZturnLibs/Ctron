@@ -103,6 +103,8 @@ typedef struct {
     size_t nconsts;
     const char* err_head; // 当前函数 ? 的错误擦除目标(Result[.., E] 的 E 头;AnyError 时启用两段式)
     char* dom_title;      // stdweb.dom 最小锚(set_title/title 往返)
+    unsigned long long steps;     // 表达式求值步计数(D2;CTRON_MAX_STEPS 护栏)
+    unsigned long long max_steps; // 0 = 无限(C 默认,自举负载);N = 步上限,超限 panic
 } rt;
 
 
@@ -161,6 +163,7 @@ double parse_flt(const char* t);
 __int128 parse_int(const char* t);
 int pat_bind(rt* R, cpat* p, val s);
 void rt_abort(rt* R, rt_status st, const char* fmt, ...);
+unsigned long long rt_env_steps(void); // CTRON_MAX_STEPS(D2;0/未设 = 无限)
 void rt_puts(rt* R, const char* s);
 int run_next_task(rt* R);
 void run_task(rt* R, task_t* t);
