@@ -64,18 +64,23 @@ check_decl "$DIR/repro/s6.ct"      2 repro-s6
 check_decl "$DIR/repro/hand2.ct"   2 repro-hand2
 check_decl "$DIR/repro/cm_ol.ct"   2 repro-cm_ol
 
-echo "== 4) C 代码生成 v0(Ctron 写的代码生成 → 原生执行) =="
-gen_cc "$DIR/fixtures/trans_v0.ct" "$T/tr.ct" --trans
-( cd "$ROOT" && timeout 120 "$HOST" run "$T/tr.ct" > "$T/tr_v0.c" 2>&1 )
-cc -O1 -o "$T/tr_v0.bin" "$T/tr_v0.c" 2>/dev/null
-"$T/tr_v0.bin" > "$T/tr_v0.got" 2>&1
-gen_cc "$DIR/fixtures/trans_v0.ct" "$T/iv0.ct"
-( cd "$ROOT" && timeout 120 "$HOST" run "$T/iv0.ct" > "$T/iv0.got" 2>&1 )
-if diff -q "$T/tr_v0.got" "$T/iv0.got" > /dev/null 2>&1; then
-    ok "代码生成往返 原生==解释 逐字一致"
-else
-    bad "代码生成往返输出分歧"
-fi
+echo "== 4) C 代码生成(Ctron 写的代码生成 → 原生执行,fixtures 全扫) =="
+for fx in "$DIR"/fixtures/trans_*.ct; do
+    name=$(basename "$fx" .ct)
+    gen_cc "$fx" "$T/tr_$name.ct" --trans
+    ( cd "$ROOT" && timeout 120 "$HOST" run "$T/tr_$name.ct" > "$T/$name.c" 2>&1 )
+    if cc -O1 -o "$T/$name.bin" "$T/$name.c" 2>/dev/null; then
+        "$T/$name.bin" > "$T/$name.got" 2>&1
+        ( cd "$ROOT" && timeout 120 "$HOST" run "$fx" > "$T/$name.iv" 2>&1 )
+        if diff -q "$T/$name.got" "$T/$name.iv" > /dev/null 2>&1; then
+            ok "代码生成往返 $name 逐字一致"
+        else
+            bad "代码生成往返 $name 输出分歧"
+        fi
+    else
+        bad "代码生成 $name 生成码编译失败"
+    fi
+done
 
 echo "== 5) 全深度自译化(--full) =="
 if [ "${1:-}" = "--full" ]; then

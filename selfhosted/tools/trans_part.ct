@@ -1,11 +1,15 @@
-// trans_part.ct —— C9j②: C 代码生成器 v1(Ctron 写的代码生成)
+// trans_part.ct —— C9j③: C 代码生成器 v2(Ctron 写的代码生成)
 // 本文件是 cc.ct 的追加部件(拼在 cc.ct 的 main 之前,替换 cc 的运行驱动):
 //   cc 前缀(scan/p_file/sem_walk2 等解析与语义设施)+ 本文件 = 自举编译器的
 //   C 代码生成模式:读入 .ct 源 → 输出等价 C 代码(stdout)→ gcc 编译执行。
+// v2 覆盖(v1 之上): for-in-range / for-in-定长数组, 定长数组(字面量 let/
+//   索引/.len), F64·F32 浮点(字面量/参数/返回/let/算术, rt fmt_val 同款
+//   整值 %.1f 否则 %g), assert/assert_eq(失败 return 1), Binary 算术类型
+//   修正(任一浮点→f;此前 Mul/Sub/Div 一律误判 b,println 会误打 true/false)。
 // v1 覆盖(v0 之上): Str 类型(字面量/参数/返回/let, const char*),
 //   ==/!= 字符串比较(strcmp), .len(strlen), Str+Str 拼接(运行时辅助),
 //   println/print 按类型分发(%d/%s/Bool→true/false), 符号表类型推导(env "name:ty")。
-// 约定: 用户符号加 t_ 前缀;类型推导: 字面量/注解/init 传播(保守 int)。
+// 约定: 用户符号加 t_ 前缀;类型码 i/s/b/f/a<N><码>(env "name:ty")。
 // 注意: 本文件字符串中的 { 均写作 \{(插值转义,镜像 C 词法器)。
 
 fn bsn() -> Str {
@@ -65,7 +69,15 @@ fn env_bind(env: List[Str], nm: Str, ty: Str) -> List[Str] {
     return out
 }
 
-// 用户 fn 返回类型: Named Str→s / Bool→b / I32→i / None→v
+// 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / a<N><码>=定长数组
+fn ct_ctype(code: Str) -> Str {
+    if code == "s" { return "const char*" }
+    if code == "b" { return "int" }
+    if code == "f" { return "double" }
+    return "int32_t"
+}
+
+// 用户 fn 返回类型: Named Str→s / Bool→b / I32→i / F64·F32→f / None→v
 fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
     var i: I32 = 1
     while i < file.len {
@@ -76,6 +88,7 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
             if r[0] != "Named" { return "i" }
             if r[1] == "Str" { return "s" }
             if r[1] == "Bool" { return "b" }
+            if or2(r[1] == "F64", r[1] == "F32") { return "f" }
             return "i"
         }
         i += 1
@@ -83,27 +96,43 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
     return "i"
 }
 
-// 表达式类型: i=I32 / s=Str / b=Bool / v=void
+// 表达式类型: i=I32 / s=Str / b=Bool / f=F64 / a<N><码>=定长数组 / v=void
 fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" { return "i" }
     if t == "Str" { return "s" }
     if t == "Bool" { return "b" }
+    if t == "Float" { return "f" }
     if t == "Ident" { return ct_env_ty(env, e[1]) }
     if t == "Unary" {
-        if e[1] == "Neg" { return "i" }
+        if e[1] == "Neg" { return ct_typeof(e[2], env, file) }
         return "b"
     }
     if t == "Binary" {
-        if e[1] == "Add" {
-            if ct_typeof(e[2], env, file) == "s" { return "s" }
-            if ct_typeof(e[3], env, file) == "s" { return "s" }
+        var arith = or2(e[1] == "Add", or3(e[1] == "Sub", or2(e[1] == "Mul", e[1] == "Div"), e[1] == "Mod"))
+        if arith {
+            // 算术:任一操作数为浮点 → f;任一为 Str(仅 Add 拼接)→ s;否则 i
+            var l = ct_typeof(e[2], env, file)
+            var r = ct_typeof(e[3], env, file)
+            if or2(l == "f", r == "f") { return "f" }
+            if or2(l == "s", r == "s") { return "s" }
             return "i"
         }
         return "b"
     }
     if t == "Member" {
         if e[3] == "len" { return "i" }
+    }
+    if t == "ArrLit" {
+        var et = ct_typeof(e[1], env, file)
+        return "a" + (e.len - 1).to_string() + et
+    }
+    if t == "Index" {
+        var ot = ct_typeof(e[1], env, file)
+        if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
+            return byte_slice(ot, ot.len - 1, ot.len)
+        }
+        return "i"
     }
     if t == "Call" {
         return ct_fn_ret(file, e[1][1])
@@ -114,6 +143,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
 fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" { return e[1] }
+    if t == "Float" { return e[1] }
     if t == "Str" {
         var parts = e[1]
         var acc = "\""
@@ -152,9 +182,25 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     }
     if t == "Member" {
         if e[3] == "len" {
-            if e[1][0] == "Ident" { return "strlen(t_" + e[1][1] + ")" }
+            // 定长数组:len 编码在 env 类型码里(a<N><码> → N)
+            if e[1][0] == "Ident" {
+                var ot = ct_env_ty(env, e[1][1])
+                if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
+                    return byte_slice(ot, 1, ot.len - 1)
+                }
+                return "strlen(t_" + e[1][1] + ")"
+            }
             return "strlen(" + ct_expr(e[1], env, file) + ")"
         }
+    }
+    if t == "Index" {
+        if e[1][0] == "Ident" { return "t_" + e[1][1] + "[" + ct_expr(e[2], env, file) + "]" }
+        panic("ct_expr:Index obj")
+        return ""
+    }
+    if t == "ArrLit" {
+        panic("ct_expr:ArrLit 仅 let 初值位")
+        return ""
     }
     if t == "Call" {
         var callee = e[1][1]
@@ -215,8 +261,22 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
         var pat = st[2]
         if pat[0] == "PatId" {
             var ty = ct_typeof(st[4], env, file)
-            var ctype = "int32_t"
-            if ty == "s" { ctype = "const char*" }
+            if ty.len >= 3 && byte_slice(ty, 0, 1) == "a" {
+                // 定长数组 let:<elem C 类型> t_<名>[<N>] = { elems };
+                var n = byte_slice(ty, 1, ty.len - 1)
+                var ec = byte_slice(ty, ty.len - 1, ty.len)
+                var al = st[4]
+                var acc = ""
+                var j: I32 = 1
+                while j < al.len {
+                    if j > 1 { acc = acc + ", " }
+                    acc = acc + ct_expr(al[j], env, file)
+                    j += 1
+                }
+                println(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};")
+                return env_bind(env, pat[1], ty)
+            }
+            var ctype = ct_ctype(ty)
             println(ctype + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";")
             return env_bind(env, pat[1], ty)
         }
@@ -233,6 +293,42 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
         println("}")
         return env
     }
+    if t == "For" {
+        var pat = st[1]
+        var it = st[2]
+        var body = st[3]
+        if pat[0] != "PatId" {
+            panic("ct_stmt:for pat:" + pat[0])
+            return env
+        }
+        var v0 = pat[1]
+        if it[0] == "Range" {
+            // for x in lo..hi / lo..=hi:循环变量 int64_t(rt 同宽语义)
+            var incl = it[1]
+            var lo = ct_expr(it[2], env, file)
+            var hi = ct_expr(it[3], env, file)
+            var op2 = " < "
+            if incl == "true" { op2 = " <= " }
+            println("for (int64_t t_" + v0 + " = " + lo + "; t_" + v0 + op2 + hi + "; t_" + v0 + "++) \{")
+            ct_block(body, env_bind(env, v0, "i"), file)
+            println("}")
+            return env
+        }
+        var ity = ct_typeof(it, env, file)
+        if ity.len >= 3 && byte_slice(ity, 0, 1) == "a" {
+            // for x in <定长数组>:按 env 长度编码展开
+            var n = byte_slice(ity, 1, ity.len - 1)
+            var ec = byte_slice(ity, ity.len - 1, ity.len)
+            var arr = ct_expr(it, env, file)
+            println("for (int64_t ctron_i = 0; ctron_i < " + n + "; ctron_i++) \{")
+            println("    " + ct_ctype(ec) + " t_" + v0 + " = " + arr + "[ctron_i];")
+            ct_block(body, env_bind(env, v0, ec), file)
+            println("}")
+            return env
+        }
+        panic("ct_stmt:for iter:" + it[0])
+        return env
+    }
     if t == "Return" {
         if st[1][0] == "None" {
             println("return;")
@@ -247,6 +343,23 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
             ct_if_stmt(e, env, file)
             return env
         }
+        if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert" && e[2].len == 2 {
+            // rt assert 失败 panic 退出;生成码失败即 return 1(stdout 面 fixture 全过,逐字等价)
+            println("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ return 1; }")
+            return env
+        }
+        if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert_eq" && e[2].len == 3 {
+            var a0 = e[2][1]
+            var a1 = e[2][2]
+            var cmp = ""
+            if ct_typeof(a0, env, file) == "s" {
+                cmp = "(strcmp(" + ct_expr(a0, env, file) + ", " + ct_expr(a1, env, file) + ") == 0)"
+            } else {
+                cmp = "((" + ct_expr(a0, env, file) + ") == (" + ct_expr(a1, env, file) + "))"
+            }
+            println("if (!" + cmp + ") \{ return 1; }")
+            return env
+        }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "println" {
             var at = ct_typeof(e[2][1], env, file)
             if at == "s" {
@@ -255,6 +368,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
             }
             if at == "b" {
                 println("printf(\"%s" + bs() + "n\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");")
+                return env
+            }
+            if at == "f" {
+                // rt fmt_val:整值 %.1f,否则 %g(实参三次文本展开,仅限简单表达式)
+                var fx = ct_expr(e[2][1], env, file)
+                println("printf((" + fx + " == (double)(long long)(" + fx + ")) ? \"%.1f" + bs() + "n\" : \"%g" + bs() + "n\", " + fx + ");")
                 return env
             }
             println("printf(\"%d" + bs() + "n\", (int)(" + ct_expr(e[2][1], env, file) + "));")
@@ -292,6 +411,10 @@ fn ct_fn(d: List[Str], file: List[Str]) {
                 pty = "const char*"
                 ety = "s"
             }
+            if pr[3][0] == "Named" && or2(pr[3][1] == "F64", pr[3][1] == "F32") {
+                pty = "double"
+                ety = "f"
+            }
             params = params + pty + " t_" + pr[2]
             env = env_bind(env, pr[2], ety)
             first = false
@@ -300,7 +423,12 @@ fn ct_fn(d: List[Str], file: List[Str]) {
     }
     var ret = "void"
     if d[4][0] != "None" {
-        if d[4][1] == "Str" { ret = "const char*" } else { ret = "int32_t" }
+        if d[4][1] == "Str" {
+            ret = "const char*"
+        } else {
+            ret = "int32_t"
+        }
+        if or2(d[4][1] == "F64", d[4][1] == "F32") { ret = "double" }
     }
     println(ret + " t_" + d[1] + "(" + params + ") \{")
     ct_block(d[5], env, file)

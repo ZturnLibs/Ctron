@@ -163,11 +163,15 @@ v_flt);typedef `ctron_simd_f64_<N>` 走 sums 段,splat/toarr 助手经 emit_help
 
 **suite_corpus_trans:34 pass / 0 failures / 0 untranspiled —— 行为语料原生差分全量收口。**
 
-自举侧(C9j②):Ctron 写的 C 代码生成器 v1(Str 域)往返逐字一致(v1 夹具 trans_v1.ct
-原生==解释逐字);自举阶梯 13/13(含全深度自译化 cc 解释 cc 解释 input_cc 逐字一致)。
-修复:①`ct_stmt` 各分支裸 `return` → `return env`(void 污染符号表,后续 let 推导对
-void 环境求 `.len` 崩);②`ct_block` 补尾槽发射(p_block 末元素为裸尾表达式时按语句发
-射,修复 `{ println(1) }` 单尾语句块静默丢失);③摘除 EMIT 调试打印;④ladder.sh
+自举侧(C9j②③):Ctron 写的 C 代码生成器 v1/v2 往返逐字一致;自举阶梯 14/14
+(含全深度自译化 cc 解释 cc 解释 input_cc 逐字一致;stage 4 升级为 fixtures 全扫,
+新夹具自动纳入)。v2(2026-09-07):for-in-range / for-in-定长数组 / 定长数组
+(字面量 let·索引·.len)/ F64·F32 浮点(rt fmt_val 同款整值 %.1f 否则 %g)/
+assert·assert_eq(失败 return 1);并修 ct_typeof 潜伏错误(Mul/Sub/Div 一律误判
+b,println 算术实参误打 true/false → 按操作数推导 f/i)。v1 修复:①`ct_stmt`
+各分支裸 `return` → `return env`(void 污染符号表,后续 let 推导对 void 环境
+求 `.len` 崩);②`ct_block` 补尾槽发射(p_block 末元素为裸尾表达式时按语句发射,
+修复 `{ println(1) }` 单尾语句块静默丢失);③摘除 EMIT 调试打印;④ladder.sh
 CTRON_SEED 换靶后 stage 5 须从 compiler_c 目录解析相对输入锚。
 
 

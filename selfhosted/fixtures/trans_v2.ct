@@ -1,0 +1,25 @@
+// trans_v2.ct —— C9j③: 代码生成器 v2 夹具(for-in-range/for-in-数组/定长数组/浮点/assert 族)
+fn main() -> I32 {
+    var acc = 0
+    for x in 0..4 {
+        acc += x
+    }
+    assert_eq(acc, 6)
+    let xs = [3, 1, 2]
+    assert_eq(xs.len, 3)
+    println(xs[0])
+    var total = 0
+    for v in xs {
+        total += v
+    }
+    println(total)
+    let half = 2.5
+    println(half * 2.0)
+    println(5.0)
+    let flags = true
+    if flags && !false {
+        println("ok")
+    }
+    assert(half < 3.0)
+    return 0
+}
