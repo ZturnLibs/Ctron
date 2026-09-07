@@ -1,0 +1,34 @@
+// 01g_index_block.ct —— 回归锚(T1):下标访问紧跟块起始不被误判为泛型实参
+// 背景:bracket_followed_by_call_or_lit 曾把 `a[j + 1] {` 的 ]/{ 前瞻当
+// TypeArgs+结构字面量,产生 E1001;Pair[T] { } 形态双版皆不合法,故 ]/{ 只能
+// 是下标后跟块。C 与 Rust 的 AST 须经 tools/ast_diff.py 逐字节一致。
+fn max_of(a: I32[8]) -> I32 {
+    var m = a[0]
+    var i = 1
+    while i < 8 {
+        if a[i] > m {
+            m = a[i]
+        }
+        i += 1
+    }
+    return m
+}
+
+test "index before block" {
+    let a: I32[8] = [5, 3, 8, 1, 9, 2, 7, 4]
+    var j = 0
+    var swaps = 0
+    while j < 7 {
+        if a[j] > a[j + 1] {
+            swaps += 1
+        }
+        j += 1
+    }
+    assert_eq(max_of(a), 9)
+    assert_eq(swaps, 4)
+    let b: I32[2] = [1, 2]
+    if b[1 - 1] < b[1] {
+        swaps += 10
+    }
+    assert_eq(swaps, 14)
+}

@@ -696,6 +696,8 @@ impl Parser {
 
     /// `[` 处的快速判定:配对 `]` 之后是否紧跟 `(` 或 `{`(§1.8)。
     fn bracket_followed_by_call_or_lit(&self) -> bool {
+        // 仅 ]( 触发(泛型实参 + 构造调用,如 List[I32](…));]/{ 不触发:
+        // x[expr] { 是下标后跟块(T1;Pair[T] { } 形态双版语法皆不存在)
         let mut depth = 0i32;
         let mut i = self.pos;
         while i < self.toks.len() {
@@ -704,10 +706,7 @@ impl Parser {
                 Tok::RBracket => {
                     depth -= 1;
                     if depth == 0 {
-                        return matches!(
-                            self.toks.get(i + 1).map(|t| &t.tok),
-                            Some(Tok::LParen) | Some(Tok::LBrace)
-                        );
+                        return matches!(self.toks.get(i + 1).map(|t| &t.tok), Some(Tok::LParen));
                     }
                 }
                 Tok::Eof => return false,

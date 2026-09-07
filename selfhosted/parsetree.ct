@@ -572,7 +572,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
             }
             var nx = toks[q]
             var ta = false
-            if or2(nx == "(", nx == "\{") { ta = true }
+            if nx == "(" { ta = true }
             if nx == "." && hascom { ta = true }
             if ta {
                 adv(cur)

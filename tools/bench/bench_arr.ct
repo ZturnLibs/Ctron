@@ -4,11 +4,11 @@ test "bench_arr" {
     while passes < 4000 {
         var j = 0
         while j < 7 {
-            var cur = a[j]
-            var nxt = a[j + 1]
-            if cur > nxt {
-                a[j] = nxt
-                a[j + 1] = cur
+            // T1 回归利用:下标紧跟块起始的自然写法(修复前需绕开)
+            if a[j] > a[j + 1] {
+                var tmp = a[j]
+                a[j] = a[j + 1]
+                a[j + 1] = tmp
             }
             j += 1
         }

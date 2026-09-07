@@ -18,6 +18,7 @@ static const char* const SUPPORTED[] = {
     "04b_logic.ct",
     "01d_strings.ct",
     "01e_multiline_chain.ct",
+    "01g_index_block.ct",
     "02b_option_propagation.ct",
     "02e_match_patterns.ct",
     "03_values_refs.ct",

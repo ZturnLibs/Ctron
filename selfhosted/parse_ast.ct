@@ -914,7 +914,7 @@ fn parse_postfix(toks: List[Str], cur: Atomic[I32]) -> Str {
                 cc += 1
             }
             var ta = false
-            if or2(nx == "(", nx == "\{") {
+            if nx == "(" {
                 ta = true
             }
             if nx == "." && hascom {

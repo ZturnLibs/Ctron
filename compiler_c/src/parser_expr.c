@@ -11,7 +11,9 @@ int bracket_content_is_empty(const cparser* p) {
 int bracket_content_is_single_int(const cparser* p) {
     return tok_at(p, 1) == TOK_INT && tok_at(p, 2) == TOK_RBRACKET;
 }
-// [ 配对 ] 之后是否紧跟 ( 或 {
+// [ 配对 ] 之后是否紧跟 ( (泛型实参 + 构造调用,如 List[I32](…) / Atomic[I32](0))。
+// ]/{ 不触发:x[expr] { 是下标后跟块(语料无 Pair[T] { } 形态,双版皆拒;T1 修复,
+// 原启发式误吞 if a[j + 1] { 的下标)。
 int bracket_followed_by_call_or_lit(const cparser* p) {
     int depth = 0;
     size_t i = p->pos;
@@ -23,7 +25,7 @@ int bracket_followed_by_call_or_lit(const cparser* p) {
             if (depth == 0) {
                 if (i + 1 < p->ntoks) {
                     ctron_tok_kind nx = p->toks[i + 1].kind;
-                    return nx == TOK_LPAREN || nx == TOK_LBRACE;
+                    return nx == TOK_LPAREN;
                 }
                 return 0;
             }
