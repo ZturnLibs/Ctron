@@ -28,7 +28,7 @@
 | **全深度自译化** | cc.ct 解释 cc.ct(163KB)parse+sem+运行嵌套 main,235s rc=0,输出与直接管线逐字一致 | C9i② |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫(循环体内 ensure_progress)+ StructLit LitFs #EOF 守卫 + allow_struct 线程化(条件上下文禁结构体字面量) | C9i①② |
 | 新增内建(求值器) | read_file(Some/None)/ Atomic 构造与 load/store(M 值共享单元)/ unesc(字符串转义展开,镜像 C 词法器) | C9i② |
-| **本地验收阶梯** | `./ladder.sh [--full]`:黄金对照+负例拦截+自编译阶梯+复现回归+代码生成往返+全深度自译化+自发射收官,一次跑完 | C9i③/C9j④ |
+| **本地验收阶梯** | `./ladder.sh [--full]`:黄金对照+负例拦截+自编译阶梯+复现回归+代码生成往返+全深度自译化+自发射收官+**宿主上位+自举固定点**,一次跑完(23 步 8 级) | C9i③–C9j⑥ |
 | **C 代码生成器** | `tools/trans_part.ct`(Ctron 写,v0→v3):数值/Str(strcmp·拼接·按类型分发)/定长数组·for-in/浮点·assert → **List[Str](引用语义)/Atomic[I32]/索引读写/节点引用 N/match-Option/read_file·byte_at·byte_slice·to_string/函数原型前置/尾值返回/N `.len` 魔数动态分派**;trans_v0–v3 往返逐字一致;**自发射收官:cc.ct 经其发射 9.9k 行 C → gcc → 原生自举 cc 解释 input_cc3 == 黄金逐字一致**(ladder 第 6 步);**自举固定点:编译器编译出的自身再编译自身 == 逐字节复现,且能编译用户程序 == 黄金** | C9j①–⑤ |
 | 工具链文件 | tools/genmod.py(模块生成器)/ expected/(黄金基线)/ repro/(复现夹具) | C9i③ |
 | 解析器韧性 | NL 换行过滤(§1.6 续行)+ p_file/p_block 停滞守卫 + StructLit LitFs #EOF 守卫(条件内误触发不再挂起) | C9i① |
@@ -87,9 +87,14 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
   ladder 第 4 步 trans_v0–v3 往返全绿;**第 6 步自发射收官:cc.ct(159 decls)被
   Ctron 写的编译器+代码生成器完整发射为 9.9k 行 C,gcc 零错编译,产物即原生自举 cc,
   解释 input_cc3 输出与 C 版黄金逐字一致** —— 自举工具链自此可产出原生二进制。
-- 下一步:C9j⑤ 候选——原生自举 cc 扩验全部黄金面(input_cc/input_cc2/负例)并经
-  `CTRON_SEED` 换靶成为阶梯宿主;值位 if/match 泛化(现仅 fn 尾特判);struct/方法域发射
-  (cc.ct 未用,面向全语言);迁移 ASan 基建(拆分后 eval_expr ASan 栈溢出,详见 HANDOFF)。
+- C9j⑥(CLI 化 + 宿主上位)已交付:发射产物驱动升为 `main(argc,argv)`,`run <file>`
+  可覆盖输入锚(锚 = 自动探测 main 首个 read_file 字面量,默认烘焙)—— 产物即通用
+  二进制。ladder 第 7 步:原生 cc 经 CLI 跑全部黄金(input_cc/2/3 + 负例拦截);
+  第 8 步:固定点(编译器编译自身逐字节复现 + CLI 编译用户程序 == 黄金)。
+  **C 宿主自此只剩"首次引导"职责。**
+- 下一步(可选):CTRON_SEED 默认切自举产物(两级引导:种子建 nc → nc 跑其余);
+  原生 cc 扫全 suite_run/ev2 面;全语言发射域(struct/闭包/并发/插值/值位 if·match)
+  按"编译任意 Ctron 程序"口径排期;迁移 ASan 基建(拆分后 eval_expr 栈溢出,见 HANDOFF)。
 - 用法(独立驱动,推荐):
 ```bash
 selfhosted/cc.sh <input.ct>     # parse → 语义 12 项 → 运行(正例 rc=0/负例诊断 rc=1)

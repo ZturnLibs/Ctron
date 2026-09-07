@@ -102,11 +102,8 @@ echo "== 6) 自发射收官(cc.ct 经 Ctron 代码生成 → gcc → 原生 cc �
 gen_cc "$DIR/cc.ct" "$T/self_emit.ct" --trans
 ( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/self_emit.ct" > "$T/cc_self.c" 2>&1 )
 if cc -O1 -w -o "$T/cc_self.bin" "$T/cc_self.c" 2>/dev/null; then
-    # 发射产物 t_main 的输入锚 = 磁盘 cc.ct 的原始相对锚;换成 input_cc3 绝对路径后,
-    # 该二进制即"原生自举 cc":用 Ctron 写的编译器+代码生成器编译出的原生解释器
-    sed "s|ctron_read_file(\"../selfhosted/input_cc.ct\")|ctron_read_file(\"$DIR/input_cc3.ct\")|" "$T/cc_self.c" > "$T/cc_self2.c"
-    cc -O1 -w -o "$T/cc_self2.bin" "$T/cc_self2.c" 2>/dev/null
-    ( cd "$ROOT/compiler_c" && timeout 120 "$T/cc_self2.bin" > "$T/cc_self.got" 2>&1 )
+    # CLI 化后无需换锚:原生自举 cc 直接 run 任意输入
+    ( cd "$ROOT/compiler_c" && timeout 120 "$T/cc_self.bin" run "$DIR/input_cc3.ct" > "$T/cc_self.got" 2>&1 )
     if diff -q "$EXP/input_cc3.out" "$T/cc_self.got" > /dev/null 2>&1; then
         ok "自发射收官:原生自举 cc 解释 input_cc3 == 黄金逐字一致"
     else
@@ -114,6 +111,56 @@ if cc -O1 -w -o "$T/cc_self.bin" "$T/cc_self.c" 2>/dev/null; then
     fi
 else
     bad "自发射收官:cc.ct 发射产物编译失败"
+fi
+
+echo "== 7) 宿主上位(原生自举 cc 经 CLI run 作为种子跑黄金面) =="
+gen_cc "$DIR/cc.ct" "$T/boot_cc.ct" --trans
+( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/boot_cc.ct" > "$T/boot_cc.c" 2>&1 )
+if cc -O1 -w -o "$T/nc.bin" "$T/boot_cc.c" 2>/dev/null; then
+    for f in input_cc input_cc2 input_cc3; do
+        gen_cc "$DIR/$f.ct" "$T/nmod_$f.ct"
+        ( cd "$ROOT" && timeout 120 "$T/nc.bin" run "$T/nmod_$f.ct" > "$T/n_$f.got" 2>&1 )
+        if diff -q "$EXP/$f.out" "$T/n_$f.got" > /dev/null 2>&1; then
+            ok "宿主上位 $f == 黄金"
+        else
+            bad "宿主上位 $f 分歧"
+        fi
+    done
+    gen_cc "$DIR/input_cc_neg.ct" "$T/nmod_neg.ct"
+    ( cd "$ROOT" && timeout 120 "$T/nc.bin" run "$T/nmod_neg.ct" > "$T/n_neg.got" 2>&1 )
+    if grep -q 'W8010' "$T/n_neg.got"; then
+        ok "宿主上位 负例 W8010 拦截"
+    else
+        bad "宿主上位 负例未拦截"
+    fi
+else
+    bad "宿主上位:原生 cc 构建失败"
+fi
+
+echo "== 8) 自举固定点(编译器编译自身逐字节复现 + CLI 编译用户程序) =="
+gen_cc "$T/selfcomp.ct" "$T/selfcomp.ct" --trans
+( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/selfcomp.ct" > "$T/c1.c" 2>&1 )
+if cc -O1 -w -o "$T/compiler1.bin" "$T/c1.c" 2>/dev/null; then
+    ( cd "$ROOT" && timeout 120 "$T/compiler1.bin" > "$T/c2.c" 2>&1 )
+    if diff -q "$T/c1.c" "$T/c2.c" > /dev/null 2>&1; then
+        ok "固定点:编译器编译自身逐字节复现"
+    else
+        bad "固定点:两阶段产物分歧"
+    fi
+    ( cd "$ROOT" && timeout 120 "$T/compiler1.bin" run "$DIR/fixtures/trans_v3.ct" > "$T/fp_v3.c" 2>&1 )
+    if cc -O1 -w -o "$T/fp_v3.bin" "$T/fp_v3.c" 2>/dev/null; then
+        ( cd "$ROOT" && "$T/fp_v3.bin" > "$T/fp_v3.got" 2>&1 )
+        ( cd "$ROOT" && timeout 120 "$HOST" run "$DIR/fixtures/trans_v3.ct" > "$T/fp_v3.iv" 2>&1 )
+        if diff -q "$T/fp_v3.got" "$T/fp_v3.iv" > /dev/null 2>&1; then
+            ok "固定点:原生编译器 CLI 编译 trans_v3 往复逐字一致"
+        else
+            bad "固定点:CLI 编译用户程序输出分歧"
+        fi
+    else
+        bad "固定点:CLI 编译用户程序产物编译失败"
+    fi
+else
+    bad "固定点:compiler1 构建失败"
 fi
 
 echo "== 阶梯结果: pass=$pass fail=$fail =="

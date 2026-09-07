@@ -347,6 +347,21 @@
    下一步(收官工程):发射产物 main 支持 argv → CTRON_SEED 上位 → ladder 全步跑自举
    二进制,C 宿主退役;固定点实验固化 ladder 第 7 步;原生 cc 扫全 suite_run/ev2 差分面。
 
+22c. **C9j⑥(本文件交付)—— CLI 化 + 宿主上位 + 固定点入阶梯,自举收官工程完成**:
+   发射器 CLI 化(零语言级全局,全部在发射 C 层):①`ct_find_main_anchor` 探测输入 main
+   首个 `let = read_file("<字面量>")` 作默认锚;②`ct_swap_anchor` 纯 List 重建把该调用
+   载荷换为 CTRONCLIINPUT 标记;③`read_file` 发射遇标记 → `ctron_read_file_cli(ctron_anchor)`,
+   驱动升为 `int main(argc,argv)`:`run <file>` 覆盖锚 —— 产物即 `bin run <file>` 通用
+   二进制(解释器形态=原生 cc,编译器形态=原生 ctron→C)。④旧第 6 步 sed 换锚机制随之
+   退役,直用 CLI。
+   ladder 升 **23 步 8 级全绿(--full)**:第 7 步**宿主上位**——原生 cc 经 CLI run 跑全部
+   黄金(input_cc/2/3 逐字 + 负例 W8010 拦截,rc 语义与种子逐层一致);第 8 步**固定点**——
+   compiler1 编译自身逐字节复现 + CLI 编译 trans_v3 往复逐字一致。make test 全绿,
+   trans_v0–v3 往复零回归。
+   至此收官工程完成:**ladder 每一步所需的能力都可在自举二进制上复现,C 宿主只剩
+   "首次引导"职责**。下一步(可选):CTRON_SEED 默认值切到自举产物(需两级引导脚本:
+   种子建 nc → nc 跑其余);原生 cc 扫全 suite_run/ev2 面;全语言发射域按需排期。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。

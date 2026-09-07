@@ -201,3 +201,18 @@
 - 收官工程待办(见计划 22b):发射 main 加 argv → CTRON_SEED 上位 → 宿主退役;
   固定点固化 ladder 第 7 步;原生 cc 扫全 suite_run/ev2 面;全语言发射域(struct/闭包/
   并发/插值/值位 if·match)按"编译任意 Ctron 程序"口径排期。
+---
+## 更新记录(21z session,C9j⑥ CLI 化 + 宿主上位)
+- **C9j⑥ ✅**:发射器 CLI 化(零语言级全局):ct_find_main_anchor 探测输入 main 首个
+  read_file 字面量 → ct_swap_anchor 纯 List 重建换 CTRONCLIINPUT 标记 → read_file 发射
+  遇标记走 ctron_read_file_cli(ctron_anchor),驱动升 main(argc,argv) 支持 `run <file>`。
+  产物即通用二进制:解释器形态 = 原生 cc,编译器形态 = 原生 ctron→C。
+  ladder 升 **23 步 8 级全绿(--full)**:第 7 步宿主上位(原生 cc CLI 跑全部黄金+负例);
+  第 8 步固定点(自编译逐字节复现 + CLI 编译 trans_v3 == 黄金)。旧第 6 步 sed 换锚退役。
+  make test 全绿;trans_v0–v3 零回归。
+- **钉子**:①改计划文档用 Edit 时 old_string 选"## 自举产物目录"会吞标题(三次)——
+  追加条目应以末条正文为锚,并立即回查标题;②CLI 锚改写走"探测→换标记→发射遇标记
+  换 ctron_anchor"三步,勿用语言级全局(发射器自身就得支持 static);③嵌套 run 的 rc
+  语义:外层 cc main 恒 rc0(打印内层输出),负例拦截只看输出 grep——与种子逐层一致。
+- 收官后格局:C 宿主只剩首次引导;剩余为可选项(两级引导脚本/全 suite_run 面/全语言
+  发射域/ASan 迁移)。

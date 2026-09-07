@@ -394,7 +394,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
-        if callee == "read_file" { return "ctron_read_file(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "read_file" {
+            if ag.len > 1 && ag[1][0] == "Str" && ct_str_payload(ag[1]) == "CTRONCLIINPUT" {
+                // main 输入锚:CLI `run <file>` 可覆盖(ctron_anchor 默认 = 烘焙字面量)
+                return "ctron_read_file_cli(ctron_anchor)"
+            }
+            return "ctron_read_file(" + ct_call_args(ag, 1, env, file, "") + ")"
+        }
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
@@ -828,6 +834,115 @@ fn ct_fn(d: List[Str], file: List[Str]) {
     ct_body(d[5], env, file, rc)
 }
 
+// Str 节点 Text 载荷原样拼接(不做转义还原)
+fn ct_str_payload(e: List[Str]) -> Str {
+    var parts = e[1]
+    var acc = ""
+    var j: I32 = 1
+    while j < parts.len {
+        var p = parts[j]
+        if p[0] == "Text" { acc = acc + p[1] }
+        j += 1
+    }
+    return acc
+}
+
+// 输入 main 首个 let read_file(Str 字面量) 的载荷(cc/selfcomp 模块的输入锚);未命中返回 ""
+fn ct_find_main_anchor(file: List[Str]) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Fn" && d[1] == "main" {
+            var b = d[5]
+            var k: I32 = 1
+            while k < b.len {
+                var st = b[k]
+                if st[0] == "Let" {
+                    var e = st[4]
+                    if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "read_file" {
+                        if e[2].len > 1 && e[2][1][0] == "Str" {
+                            return ct_str_payload(e[2][1])
+                        }
+                    }
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 把 main 首个 read_file(Str 字面量) 载荷换为 CLI 标记(发射时改走 ctron_anchor);
+// 未命中返回原 file。纯 List 重建:Str→Args→Call→Let→Block→Fn→File。
+fn ct_swap_anchor(file: List[Str]) -> List[Str] {
+    var mi: I32 = 1
+    while mi < file.len {
+        var d = file[mi]
+        if d[0] == "Fn" && d[1] == "main" {
+            var b = d[5]
+            var k: I32 = 1
+            while k < b.len {
+                var st = b[k]
+                if st[0] == "Let" {
+                    var e = st[4]
+                    if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "read_file" {
+                        if e[2].len > 1 && e[2][1][0] == "Str" {
+                            var np = List[Str]()
+                            np.push("Text")
+                            np.push("CTRONCLIINPUT")
+                            var nps = List[Str]()
+                            nps.push("Parts")
+                            nps.push(np)
+                            var ns = List[Str]()
+                            ns.push("Str")
+                            ns.push(nps)
+                            var na = List[Str]()
+                            na.push("Args")
+                            na.push(ns)
+                            var nc = List[Str]()
+                            nc.push("Call")
+                            nc.push(e[1])
+                            nc.push(na)
+                            var nl = List[Str]()
+                            nl.push("Let")
+                            nl.push(st[1])
+                            nl.push(st[2])
+                            nl.push(st[3])
+                            nl.push(nc)
+                            var nb = List[Str]()
+                            nb.push("Block")
+                            var j: I32 = 1
+                            while j < b.len {
+                                if j == k { nb.push(nl) } else { nb.push(b[j]) }
+                                j += 1
+                            }
+                            var nd = List[Str]()
+                            nd.push("Fn")
+                            nd.push(d[1])
+                            nd.push(d[2])
+                            nd.push(d[3])
+                            nd.push(d[4])
+                            nd.push(nb)
+                            var nf = List[Str]()
+                            nf.push("File")
+                            var j2: I32 = 1
+                            while j2 < file.len {
+                                if j2 == mi { nf.push(nd) } else { nf.push(file[j2]) }
+                                j2 += 1
+                            }
+                            return nf
+                        }
+                    }
+                }
+                k += 1
+            }
+        }
+        mi += 1
+    }
+    return file
+}
+
 fn bs() -> Str {
     return "\\"
 }
@@ -840,6 +955,9 @@ fn main() -> I32 {
             scan(s, toks)
             var cur = Atomic[I32](0)
             var file = p_file(toks, cur)
+            // CLI 化:先取输入 main 的锚字面量(作默认值),再把调用点换为标记
+            var anch = ct_find_main_anchor(file)
+            file = ct_swap_anchor(file)
             println("#include <stdio.h>")
             println("#include <stdint.h>")
             println("#include <string.h>")
@@ -858,6 +976,9 @@ fn main() -> I32 {
             println("static const char* ctron_byte_slice(const char* s, int a, int b) \{ int n = b - a; char* r = (char*)malloc((size_t)n + 1); memcpy(r, s + a, (size_t)n); r[n] = 0; return r; }")
             println("static const char* ctron_read_file(const char* path) \{ FILE* f = fopen(path, \"rb\"); if (!f) \{ return NULL; } fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = (char*)malloc((size_t)n + 1); size_t rd = fread(r, 1, (size_t)n, f); r[rd] = 0; fclose(f); return r; }")
             println("static void ctron_panic(const char* m) \{ fprintf(stderr, \"%s" + bs() + "n\", m); exit(1); }")
+            println("static const char* ctron_cli_input = NULL;")
+            println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
+            println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
             // 原型前置:C 需先声明后用(语料存在前向引用/递归)
             var pj: I32 = 1
             while pj < file.len {
@@ -875,7 +996,7 @@ fn main() -> I32 {
                 }
                 di += 1
             }
-            println("int main(void) \{ return (int)t_main(); }")
+            println("int main(int argc, char** argv) \{ if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
             return 0
         }
         None => {
