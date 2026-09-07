@@ -1,0 +1,24 @@
+// r2d_fmt_chain.ct —— fmt 夹具:首点链换行(§1.6,R-P2d)
+// 双重身份:行为测试(今天绿)+ fmt 幂等夹具(多行链的规范形态)
+// 语义承诺:下一行以 . 开头不终止语句(§1.6);UFCS 链式调用合法(§4.7)
+// 记法注意:链起始用绑定名,不用整型字面量(避免 `5.` 与浮点前缀歧义)
+fn double(x: I32) -> I32 {
+    return x * 2
+}
+
+fn inc(x: I32) -> I32 {
+    return x + 1
+}
+
+test "first-dot multiline chain" {
+    let n = 5
+    let r = n
+        .double()
+        .inc()
+    assert_eq(r, 11)
+}
+
+test "single-line chain" {
+    let n = 5
+    assert_eq(n.double().inc(), 11)
+}

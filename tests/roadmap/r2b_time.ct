@@ -1,0 +1,19 @@
+// r2b_time.ct —— std.time 单调时钟(R-P2b,§3.8.2 v0.6)
+// 语义承诺:Clock.real() 构造宿主单调时钟;now 单调不减;elapsed_since(start) = now-start
+// 锚点:R-P2b 落地转绿(07_capabilities 钉的是注入形状;本文件钉 std 真实实现)
+use std.time.Clock
+
+test "monotonic now" {
+    let clock = Clock.real()
+    let t0 = clock.now()
+    let t1 = clock.now()
+    assert(t1 >= t0)
+}
+
+test "elapsed since is bounded" {
+    let clock = Clock.real()
+    let t0 = clock.now()
+    let d = clock.elapsed_since(t0)
+    assert(d >= 0)
+    assert(d < 1_000_000_000)
+}

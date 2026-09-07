@@ -1,5 +1,12 @@
 # 测试覆盖审计(v0.5 规范 ↔ 测试集)
 
+> **第五批补测已落地(2026-09-07):路线图锚点语料 `tests/roadmap/`。** R 线(R-P2…R-P7)测试先行,
+> 22 个单文件 + 2 个多文件用例钉死容器/std 能力/捕获闭包/迭代器/模式守卫/fmt 夹具/panic 源位置/
+> arena Send/comptime 常量尺寸/path 依赖的语法与语义裁决;由 `roadmap_suite.rs` 表驱动锚定状态
+> (首跑实测:绿 5 / 锚 17),主流套件零回归。设计:`docs/superpowers/plans/2026-09-07-r-tests-design.md`。
+> 附带修复:解释器 `Index` 第二求值路径越界为 Rust panic(击穿测试进程)→ 改 `Flow::Panic`(与主路径一致)。
+> 新码注册:**E3070**(闭包可变捕获未显式 Mutex 包装,R-P3a)。
+>
 > **第四批补测已落地(2026-09-04):语言符合性覆盖 100%。** 覆盖按三层口径核算:
 >
 > | 口径 | 范围 | 状态 |
@@ -8,7 +15,23 @@
 > | **B 工具链行为(compiler 集成测试)** | JSON 诊断 schema、`--deterministic`、`lint --trusted`、bare 体积检查,4 项 | 归属 P1-D 实现计划 |
 > | **C 构建与性能门禁(CI 基准)** | own ±5% / GC ≤15% / bare <100KB | 归属 P2/P3 阶段出口 |
 >
-> 测试集现状:**61 个文件**(41 行为 / 15 负 / 3 panic / 2 lint)。注:web/FFI/Simd 类锚定文件在后端就绪前保持"规范锚"状态(红),实现跟上即转绿——这是测试先行的设计本意。**行项 100% ≠ 用例空间 100%**:输入空间的深度覆盖(边界值/组合/并发交错)由 P1-D 的属性测试与模糊测试承接。
+> 测试集现状:**61 个冻结语料文件 + 24 个 roadmap 锚点文件**(86 个 .ct,meta_check 全过)。
+> 注:锚定文件在实现就绪前保持"规范锚"状态(红),实现跟上即翻转——这是测试先行的设计本意。
+> **行项 100% ≠ 用例空间 100%**:输入空间的深度覆盖(边界值/组合/并发交错)由 P1-D 的属性测试与模糊测试承接。
+
+## 第五批补测清单(2026-09-07,roadmap 锚点)
+
+`r2a_list/r2a_map/r2a_set/r2a_sb`(容器 API 面:`Type[T]()` 构造、get→Option 无 null、
+keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")、
+`r2a_container_send`(元素 Send 则容器 Send)、`r2a_container_alloc.neg`(E3040 覆盖容器,已生效)、
+`r2b_fs_fake/r2b_time/r2b_env`(std.fs/time/process 能力形状 + Fake 注入)、
+`modules/caps_fs`(E4010 键集扩展,已生效)、`r3a_capture`(拷贝捕获/闭包逃逸/Mutex 可变捕获,解释器已绿)、
+`r3a_capture_var.neg`(E3070 新码)、`r3b_adapters/r3b_iter_trait`(惰性适配器链、Iterator trait + for)、
+`r3c_guards/r3c_guard_exhaustive.neg`(守卫/或模式;守卫臂不参与穷尽)、
+`r2d_fmt_fixture/r2d_fmt_chain`(fmt 幂等夹具,行为测试身份)、
+`r4b_panic_location.panic`(panic 消息携带 `.ct:行号`,R-P4b 翻转判据)、
+`r4c_arena_send.neg`(arena 非 Send,已生效)、`r5a_const_size`(const 作数组尺寸,已实现)、
+`r5a_semantics`(comptime 语义回归锚)、`modules/path_dep`(`[deps] path=` 依赖格式,R-P7)。
 
 ## 第四批补测清单(2026-09-04)
 

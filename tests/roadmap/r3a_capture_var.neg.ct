@@ -1,0 +1,11 @@
+//@ fail: E3070
+//@ msg: Mutex
+// r3a_capture_var.neg.ct —— 裸可变捕获禁止(R-P3a,v0.6 §4.7,新码 E3070)
+// 语义承诺:可变捕获必须显式 Mutex[T] 包装;诊断给机械修复建议(P2 护栏诚实化)
+// 锚点:现状 E3070 未实现 → 红;R-P3a 落地转绿(码不变)
+test "bare var capture rejected" {
+    var count: I32 = 0
+    let bump = || { count += 1 }
+    bump()
+    assert_eq(count, 1)
+}

@@ -9,7 +9,7 @@ TESTS = ROOT / "tests"
 TMP = Path("/tmp/ctron_campaign")
 os.makedirs(TMP, exist_ok=True)
 
-files = sorted(p for p in TESTS.rglob("*.ct") if "modules" not in p.parts)
+files = sorted(p for p in TESTS.rglob("*.ct") if "modules" not in p.parts and "roadmap" not in p.parts)
 rows = []
 for f in files:
     name = f.name

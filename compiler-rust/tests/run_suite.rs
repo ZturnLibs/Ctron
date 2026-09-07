@@ -34,6 +34,8 @@ fn all_behavior_files_run_and_pass() {
         let name = f.file_name().unwrap().to_string_lossy().to_string();
         let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().to_string();
         if rel.starts_with("modules/") { continue; }
+        // roadmap/ 锚点语料由 roadmap_suite 按锚定状态驱动(测试先行,红=规范锚)
+        if rel.starts_with("roadmap/") { continue; }
         // neg/lint 不运行(编译期判定)
         if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") { continue; }
         // web 目标暂不运行(无浏览器后端)

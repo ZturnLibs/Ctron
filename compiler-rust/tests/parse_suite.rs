@@ -28,6 +28,10 @@ fn all_suite_files_parse_per_expectation() {
 
     let mut failures = Vec::new();
     for f in &files {
+        // roadmap/ 锚点语料的解析状态由 roadmap_suite 按锚定状态驱动(测试先行)
+        if let Ok(rel) = f.strip_prefix(&root) {
+            if rel.starts_with("roadmap/") { continue; }
+        }
         let src = std::fs::read_to_string(f).unwrap();
         let (_, diags) = ctron::parse_src(&src);
         let name = f.file_name().unwrap().to_string_lossy().to_string();

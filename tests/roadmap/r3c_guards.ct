@@ -1,0 +1,61 @@
+// r3c_guards.ct —— 模式守卫与或模式(R-P3c,v0.6 §4.6)
+// 语义承诺:pat if cond => 守卫(依序判定);A | B => 或模式;字符串字面量模式;
+//          守卫臂不参与穷尽(反例:r3c_guard_exhaustive.neg.ct)
+// 锚点:R-P3c 落地转绿(现状:解析拒绝 E1001)
+fn classify(n: I32) -> Str {
+    return match n {
+        0 => "zero"
+        x if x < 0 => "negative"
+        x if x % 2 == 0 => "even"
+        _ => "odd"
+    }
+}
+
+fn kind(c: Str) -> Str {
+    return match c {
+        "go" | "ctron" => "fast"
+        _ => "other"
+    }
+}
+
+enum Tag {
+    A
+    B
+    C
+}
+
+fn tag_name(t: Tag) -> Str {
+    return match t {
+        A | B => "ab"
+        C => "c"
+    }
+}
+
+test "guards evaluated in order" {
+    assert_eq(classify(0), "zero")
+    assert_eq(classify(-5), "negative")
+    assert_eq(classify(4), "even")
+    assert_eq(classify(7), "odd")
+}
+
+test "or patterns on string literals" {
+    assert_eq(kind("ctron"), "fast")
+    assert_eq(kind("go"), "fast")
+    assert_eq(kind("rust"), "other")
+}
+
+test "or patterns on enum variants" {
+    assert_eq(tag_name(A), "ab")
+    assert_eq(tag_name(B), "ab")
+    assert_eq(tag_name(C), "c")
+}
+
+test "option guard" {
+    let opt: I32? = Some(5)
+    let desc = match opt {
+        Some(v) if v > 3 => "big"
+        Some(_) => "small"
+        None => "empty"
+    }
+    assert_eq(desc, "big")
+}

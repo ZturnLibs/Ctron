@@ -1,0 +1,40 @@
+// r3a_capture.ct —— 捕获闭包(R-P3a,v0.6 §4.7)
+// 语义承诺:默认按值拷贝捕获;闭包可逃逸返回(环境随闭包存活,多次调用互不干扰);
+//          可变捕获必须 Mutex[T](裸 var 捕获 = E3070,见 r3a_capture_var.neg.ct)
+// 锚点:解释器今天应绿(Rc 环境已实现);原生后端 R-P3a(env 结构体泛化)落地后差分转绿
+fn make_adder(n: I32) -> fn(I32) -> I32 {
+    return |x| x + n
+}
+
+fn call_with(f: fn(I32) -> I32, v: I32) -> I32 {
+    return f(v)
+}
+
+test "capture by value" {
+    let base = 100
+    let f = |x| x + base
+    assert_eq(f(5), 105)
+}
+
+test "closure escapes with environment" {
+    let add10 = make_adder(10)
+    let add200 = make_adder(200)
+    assert_eq(add10(1), 11)
+    assert_eq(add200(1), 201)
+    assert_eq(add10(1), 11)
+}
+
+test "closure as fn-typed argument" {
+    let k = 3
+    assert_eq(call_with(|x| x * k, 4), 12)
+}
+
+test "mutable capture via mutex" {
+    let m = Mutex[I32](0)
+    let bump = || {
+        m.with_mut(|var c| { c += 1 })
+        return m.with(|c| c)
+    }
+    assert_eq(bump(), 1)
+    assert_eq(bump(), 2)
+}

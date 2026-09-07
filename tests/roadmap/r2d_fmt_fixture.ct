@@ -1,0 +1,30 @@
+// r2d_fmt_fixture.ct —— fmt 夹具:嵌套控制流排版(R-P2d)
+// 双重身份:行为测试(今天绿)+ fmt 幂等夹具(R-P2d 落地后 fmt(本文) == 本文)
+// 排版钉死:} else if 同行;块体一级缩进;match 臂换行分隔(钉子 8)
+fn grade(score: I32) -> Str {
+    if score >= 90 {
+        return "A"
+    } else if score >= 75 {
+        return "B"
+    } else if score >= 60 {
+        return "C"
+    } else {
+        return "F"
+    }
+}
+
+fn label(n: I32) -> Str {
+    return match n {
+        0 => "zero"
+        _ => "nonzero"
+    }
+}
+
+test "nested branches" {
+    assert_eq(grade(95), "A")
+    assert_eq(grade(80), "B")
+    assert_eq(grade(65), "C")
+    assert_eq(grade(10), "F")
+    assert_eq(label(0), "zero")
+    assert_eq(label(3), "nonzero")
+}

@@ -1,0 +1,51 @@
+// r2a_map.ct —— Map[K,V] 哈希映射(R-P2a,§3.8.2 v0.6)
+// 语义承诺:get 缺键 = None(无 null);remove 返回旧值;同键覆盖;
+//          keys()/values() 返回 List,迭代顺序不承诺(哈希种子冻结,确定性模式下可复现)
+// 锚点:R-P2a 落地转绿
+test "insert get contains len" {
+    var m = Map[Str, I32]()
+    assert_eq(m.len, 0)
+    m.insert("a", 1)
+    m.insert("b", 2)
+    assert_eq(m.len, 2)
+    assert_eq(m.get("a").or(0), 1)
+    assert_eq(m.get("z").or(-1), -1)
+    assert(m.contains_key("b"))
+    assert(!m.contains_key("z"))
+}
+
+test "insert overwrites same key" {
+    var m = Map[Str, I32]()
+    m.insert("k", 1)
+    m.insert("k", 2)
+    assert_eq(m.len, 1)
+    assert_eq(m.get("k").or(0), 2)
+}
+
+test "remove returns old value" {
+    var m = Map[I32, Str]()
+    m.insert(1, "one")
+    assert_eq(m.remove(1).or("none"), "one")
+    assert_eq(m.remove(1).or("none"), "none")
+    assert_eq(m.len, 0)
+}
+
+test "keys values are lists, order not promised" {
+    var m = Map[I32, Str]()
+    m.insert(1, "one")
+    m.insert(2, "two")
+    let ks = m.keys()
+    let vs = m.values()
+    assert_eq(ks.len, 2)
+    assert_eq(vs.len, 2)
+    var saw_one = false
+    var saw_two_v = false
+    for k in ks {
+        if k == 1 { saw_one = true }
+    }
+    for v in vs {
+        if v == "two" { saw_two_v = true }
+    }
+    assert(saw_one)
+    assert(saw_two_v)
+}

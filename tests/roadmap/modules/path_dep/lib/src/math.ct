@@ -1,0 +1,11 @@
+// libmath —— path 依赖用例的被依赖包(R-P7)
+// 普通源码文件(无标记无 test 块,meta_check 跳过判定)
+// 语义承诺:pub 导出;未导出符号在依赖方 = E2020(visibility 先例)
+
+pub fn add(a: I32, b: I32) -> I32 {
+    return a + b
+}
+
+pub fn mul(a: I32, b: I32) -> I32 {
+    return a * b
+}

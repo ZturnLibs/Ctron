@@ -1,0 +1,14 @@
+// r2b_env.ct —— std.process 环境与参数(R-P2b,§3.8.2 v0.6)
+// 语义承诺:Env.system() 构造宿主环境;get 缺失 = None;args 至少含程序名
+// 锚点:R-P2b 落地转绿
+use std.process.Env
+
+test "env missing is None" {
+    let env = Env.system()
+    assert_eq(env.get("CTRON_SURELY_UNSET_R2B").or("fallback"), "fallback")
+}
+
+test "args non-empty" {
+    let env = Env.system()
+    assert(env.args().len >= 1)
+}

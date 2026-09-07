@@ -1,0 +1,23 @@
+// r3b_adapters.ct —— 内建适配器链(R-P3b,§3/§4 v0.6)
+// 语义承诺:map/filter/take 惰性链(零中间集合);sum/count/any/all 终结;UFCS 链式
+// 锚点:R-P3b 落地转绿(interp 现有数组 map 之外的方法未实现)
+test "map filter sum" {
+    let xs: I32[] = [1, 2, 3, 4, 5, 6]
+    let total = xs.map(|x| x * 2).filter(|x| x > 4).sum()
+    assert_eq(total, 36)
+}
+
+test "collect to list and count" {
+    let xs: I32[] = [1, 2, 3]
+    let squares = xs.map(|x| x * x).collect()
+    assert_eq(squares.len, 3)
+    assert_eq(squares[2], 9)
+    assert_eq(xs.filter(|x| x % 2 == 1).count(), 2)
+}
+
+test "any all take" {
+    let xs: I32[] = [2, 4, 6]
+    assert(xs.all(|x| x % 2 == 0))
+    assert(!xs.any(|x| x > 5))
+    assert_eq(xs.map(|x| x + 1).take(2).sum(), 8)
+}

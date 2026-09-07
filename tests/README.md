@@ -69,6 +69,7 @@
 | E3040 | no_alloc 上下文(own 块/`#[no_alloc]`/bare 档)中出现 GC/String 分配 |
 | E3050 | own 块内 move/borrow 违规(含 use-after-move) |
 | E3060 | own 块内对 GC 值可变借用 |
+| E3070 | 闭包可变捕获未显式 `Mutex[T]` 包装(R 线 R-P3a,v0.6 §4.7 草案) |
 | E4010 | 能力使用超出 manifest 声明 |
 | E4020 | `#[pure]` 函数含副作用 |
 | E4030 | `#[no_spawn]` 上下文 spawn |
@@ -102,3 +103,16 @@
 ## 8. doc-test
 
 `///` 文档注释中的 ```c 围栏代码块会被**编译并执行**(断言失败 = 测试失败),块内可用前奏断言与被文档声明的符号。格式锚样例:`00_doctest.ct`。
+
+## 9. 路线图锚点语料(tests/roadmap/)
+
+**测试先行**的 R 线路线图语料(设计:`docs/superpowers/plans/2026-09-07-r-tests-design.md`,
+上游:`docs/superpowers/specs/2026-09-07-r-roadmap.md`)。文件命名 `r<里程碑>_<主题>.ct`,
+标记/后缀约定与 §1 完全一致,`meta_check.py` 同样校验。
+
+- **红 = 规范锚**:为尚未实现的特性钉死语法/语义(先例:`09_simd.ct`/`10_web_dom.ct`),
+  由 `compiler-rust/tests/roadmap_suite.rs` 表驱动断言其"今天的锚定状态"
+  (Green/RunRed/CheckRed/NegPending/NegGreen/PanicMsgRed);主流四套件与 campaign 跳过 `roadmap/` 前缀。
+- **翻转协议**:里程碑落地 → 该文件迁出 roadmap/(进 tests/ 根 + 主套件登记)→ 锚点表删行,
+  进度表(绿/锚计数)即路线图燃尽图。
+- 多文件用例在 `roadmap/modules/`,同 §6 约定。

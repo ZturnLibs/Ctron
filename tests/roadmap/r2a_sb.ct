@@ -1,0 +1,18 @@
+// r2a_sb.ct —— StringBuilder owned 字符串构建(R-P2a,§3.8.2 v0.6)
+// 语义承诺:push_str 拼接;to_string 产出 owned String;len 为当前字节长度
+// 锚点:R-P2a 落地转绿
+test "builder concat" {
+    var sb = StringBuilder()
+    sb.push_str("hello")
+    sb.push_str(", ")
+    sb.push_str("ctron")
+    assert_eq(sb.len, 12)
+    assert_eq(sb.to_string(), "hello, ctron")
+}
+
+test "builder from empty" {
+    var sb = StringBuilder()
+    assert_eq(sb.len, 0)
+    sb.push_str("")
+    assert_eq(sb.to_string(), "")
+}

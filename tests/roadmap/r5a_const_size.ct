@@ -1,0 +1,16 @@
+// r5a_const_size.ct —— const 作定长数组尺寸(R-P5a,§8 v0.6)
+// 语义承诺:comptime 常量可用于类型位(数组尺寸);尺寸表达式 = 编译期求值
+// 锚点:R-P5a 落地转绿(现状:尺寸位仅整型字面量)
+comptime fn double(n: I32) -> I32 {
+    return n * 2
+}
+
+const N: I32 = 4
+const M: I32 = double(N)
+
+test "const as array length" {
+    let a: I32[N] = [1, 2, 3, 4]
+    assert_eq(a.len, 4)
+    let b: I32[M] = [1, 2, 3, 4, 5, 6, 7, 8]
+    assert_eq(b.len, 8)
+}

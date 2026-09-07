@@ -17,6 +17,7 @@
 | E3040 | no_alloc 上下文出现 GC/String 分配 | §6.5 | `05_own_alloc.neg.ct` / `08_bare_alloc.neg.ct` |
 | E3050 | own 块 move/borrow 违规(含 use-after-move) | §6.3 | `05_own_move.neg.ct` |
 | E3060 | own 块内对 GC 值可变借用 | §6.3 | 预留 |
+| E3070 | 闭包可变捕获未显式 `Mutex[T]` 包装 | §4.7(v0.6 草案) | `roadmap/r3a_capture_var.neg.ct`(预留) |
 | E4010 | 能力使用超出 manifest 声明 | §8.2 | 预留 |
 | E4020 | `#[pure]` 含副作用 | §8.3 | `07_pure.neg.ct` |
 | E4030 | `#[no_spawn]` 上下文 spawn | §8.3 | 预留 |

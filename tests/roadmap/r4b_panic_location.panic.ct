@@ -1,0 +1,9 @@
+//@ panic: r4b_panic_location.ct
+// r4b_panic_location.panic.ct —— panic 消息携带 Ctron 源位置(R-P4b,#line 源码映射)
+// 语义承诺:panic 消息含 "文件名:行号" 形式的源位置(至少含文件名,如本文件名);
+//          解释器与原生一致。这是 R-P4b 的翻转判据
+// 锚点:现状 panic 消息不含位置 → 红;R-P4b 落地转绿
+test "panic message carries source location" {
+    let xs: I32[] = [1]
+    assert_eq(xs[5], 1)
+}

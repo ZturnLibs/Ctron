@@ -1,0 +1,10 @@
+//@ fail: E2020
+// path_dep/app —— 跨包 path 依赖(R-P7,§2 v0.6)
+// 语义承诺:use 包名.符号 解析 [deps] 依赖包的 pub 符号;孤儿规则(E5010)跨包生效
+// 锚点:现状 check_package 单包,跨包解析未实现 → E2020;
+//      R-P7 落地时删除 fail 标记并登记为行为用例(目标状态 = 全绿)
+use libmath.add
+
+test "cross-package call" {
+    assert_eq(add(1, 2), 3)
+}

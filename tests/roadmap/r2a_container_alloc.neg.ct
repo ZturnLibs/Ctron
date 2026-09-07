@@ -1,0 +1,14 @@
+//@ fail: E3040
+// r2a_container_alloc.neg.ct —— no_alloc 上下文的容器分配(R-P2a,E3040 机制覆盖容器)
+// 语义承诺:容器构造与扩容 = alloc 分配属性;#[no_alloc]/own 块/bare 档一律拦截(§6.5)
+// 锚点:现状 E3040 未覆盖容器操作 → 红;R-P2a 落地转绿(码不变)
+#[no_alloc]
+fn build_total() -> I32 {
+    var xs = List[I32]()
+    xs.push(1)
+    return xs[0]
+}
+
+test "no_alloc rejects container ops" {
+    assert_eq(build_total(), 1)
+}

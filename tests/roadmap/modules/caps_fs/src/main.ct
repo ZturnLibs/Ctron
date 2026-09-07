@@ -1,0 +1,10 @@
+//@ fail: E4010
+//@ msg: fs
+// caps_fs —— 使用 Fs 能力而 manifest 未声明 fs(R-P2b;E4010 键集扩展到 fs/env)
+// 同型先例:tests/modules/caps(Clock/time)。此文件今天即应产出 E4010(机制已实现,
+// 是 roadmap 语料中少数"现在就绿"的多文件负例)
+use std.fs.Fs
+
+fn probe(fs: &Fs) -> Bool {
+    return true
+}

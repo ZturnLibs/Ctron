@@ -1,0 +1,47 @@
+// r2b_fs_fake.ct —— std.fs API 形状 + Fake 注入(R-P2b,§3.8.2 v0.6)
+// 语义承诺:IO 是 Fs 能力 trait 上的方法(可测性:07 注入模式延伸到 std);
+//          错误经 Result[String, FsError];FsError 实现 Error(message)
+// 锚点:R-P2b 落地转绿(前奏 Fs trait 现无方法;std.fs 真实实现未提供)
+use std.fs.Fs
+
+@derive(Error)
+class FsError {
+    let message: Str
+}
+
+class MemFs {
+    let content: Str
+}
+
+impl Fs for MemFs {
+    fn read_to_string(&self, path: Str) -> Result[String, FsError] {
+        if path == "a.txt" { return Ok(self.content.to_string()) }
+        return Err(FsError { message: "not found: {path}".to_string() })
+    }
+    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {
+        return Ok(void)
+    }
+    fn exists(&self, path: Str) -> Bool {
+        return path == "a.txt"
+    }
+}
+
+fn read_a(fs: &Fs) -> Result[String, FsError] {
+    return fs.read_to_string("a.txt")
+}
+
+test "fake fs read via capability" {
+    let fs = MemFs { content: "hello" }
+    assert_eq(read_a(fs).expect("read"), "hello")
+    assert(fs.exists("a.txt"))
+    assert(!fs.exists("b.txt"))
+}
+
+test "fs error carries message" {
+    let fs = MemFs { content: "x" }
+    let r = fs.read_to_string("missing.txt")
+    match r {
+        Ok(_) => assert(false)
+        Err(e) => assert_eq(e.message, "not found: missing.txt")
+    }
+}

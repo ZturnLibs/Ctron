@@ -1,0 +1,62 @@
+// r2a_list.ct —— List[T] GC 容器(R-P2a,§3.8.2 v0.6 前奏扩展)
+// 语义承诺:构造/push/pop/len/get/set/下标/for 直迭代/泛型函数接容器
+// (arena 侧 arena.list 已由 05_own.ct 钉死;本文件钉 GC 侧同型 API)
+// 锚点:R-P2a 落地转绿,届时登记进 run/check/native 三套件
+
+fn sum(xs: List[I32]) -> I32 {
+    var acc: I32 = 0
+    for x in xs { acc += x }
+    return acc
+}
+
+fn head_or[T](xs: List[T], d: T) -> T {
+    return xs.get(0).or(d)
+}
+
+test "construct push len index" {
+    var xs = List[I32]()
+    assert_eq(xs.len, 0)
+    xs.push(10)
+    xs.push(20)
+    xs.push(30)
+    assert_eq(xs.len, 3)
+    assert_eq(xs[1], 20)
+}
+
+test "get returns Option not panic" {
+    var xs = List[I32]()
+    xs.push(7)
+    assert_eq(xs.get(0).or(0), 7)
+    assert_eq(xs.get(9).or(-1), -1)
+}
+
+test "set replaces in place" {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.set(0, 42)
+    assert_eq(xs[0], 42)
+}
+
+test "pop returns Option" {
+    var xs = List[Str]()
+    xs.push("a")
+    assert_eq(xs.pop().or("none"), "a")
+    assert_eq(xs.pop().or("none"), "none")
+    assert_eq(xs.len, 0)
+}
+
+test "for-in iteration and fn param" {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    assert_eq(sum(xs), 6)
+}
+
+test "generic fn over container" {
+    var xs = List[I32]()
+    xs.push(5)
+    assert_eq(head_or(xs, 0), 5)
+    var empty = List[I32]()
+    assert_eq(head_or(empty, -1), -1)
+}

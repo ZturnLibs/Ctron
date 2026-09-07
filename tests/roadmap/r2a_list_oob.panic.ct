@@ -1,0 +1,9 @@
+//@ panic: index out of bounds
+// r2a_list_oob.panic.ct —— List 越界 panic(R-P2a;消息与数组越界一致)
+// 语义承诺:下标读/写越界 = panic "index out of bounds";安全读用 .get(见 r2a_list.ct)
+// 锚点:R-P2a 落地转绿
+test "index read out of bounds panics" {
+    var xs = List[I32]()
+    xs.push(1)
+    assert_eq(xs[5], 0)
+}

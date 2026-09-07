@@ -58,6 +58,7 @@ fn all_suite_files_check_per_expectation() {
         let name = f.file_name().unwrap().to_string_lossy().to_string();
         let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().to_string();
         if rel.starts_with("modules/") { continue; }   // 多文件用例单独测
+        if rel.starts_with("roadmap/") { continue; }   // roadmap 锚点语料由 roadmap_suite 驱动
         checked += 1;
         let src = std::fs::read_to_string(f).unwrap();
         let diags = ctron::check_src(&src, profile_for(f));

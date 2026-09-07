@@ -1,0 +1,17 @@
+//@ fail: E3010
+// r4c_arena_send.neg.ct —— arena 数据非 Send(R-P4c,§6.3/§7.4)
+// 语义承诺:任务域即分配域(R-P4c);arena 分配的数据/句柄不得跨任务迁移,
+//          spawn 捕获 arena 数据 = E3010(spawn 捕获非 Send)
+// 锚点:现状 checker 未对 arena 判 Send → 红;R-P4c 落地转绿(码不变)
+test "arena data rejected in spawn capture" {
+    own (arena) {
+        let arr = arena.array[I32](4)
+        let r = scope { |s|
+            let t = s.spawn(|| {
+                return arr[0]
+            })
+            t.join()
+        }
+        assert_eq(r, 0)
+    }
+}

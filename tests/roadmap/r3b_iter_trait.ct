@@ -1,0 +1,34 @@
+// r3b_iter_trait.ct —— 用户实现 Iterator + for 集成(R-P3b,v0.6 §3)
+// 语义承诺:实现 Iterator[T] 即可 for 直迭代;适配器作用其上(惰性,单态化零成本)
+// 两可点(R-P3b 实现时裁决):next 的 self 形态;本文按 &var self 起草
+// 锚点:R-P3b 落地转绿
+trait Iterator[T] {
+    fn next(&var self) -> T?
+}
+
+struct Counter {
+    var cur: I32
+    let limit: I32
+}
+
+impl Iterator[I32] for Counter {
+    fn next(&var self) -> I32? {
+        if self.cur >= self.limit { return None }
+        let v = self.cur
+        self.cur += 1
+        return Some(v)
+    }
+}
+
+test "for over custom iterator" {
+    let c = Counter { cur: 0, limit: 4 }
+    var acc: I32 = 0
+    for v in c { acc += v }
+    assert_eq(acc, 6)
+}
+
+test "adapters over custom iterator" {
+    let c = Counter { cur: 0, limit: 6 }
+    let total = c.filter(|x| x % 2 == 0).sum()
+    assert_eq(total, 6)
+}

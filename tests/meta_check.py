@@ -23,6 +23,7 @@ ERROR_CODES = {
     "E3040": "no_alloc 上下文中出现 GC/String 分配",
     "E3050": "own 块内 move/borrow 违规",
     "E3060": "own 块内对 GC 值可变借用",
+    "E3070": "闭包可变捕获未显式 Mutex[T] 包装(R 线 R-P3a)",
     "E4010": "能力使用超出 manifest 声明",
     "E4020": "#[pure] 函数含副作用",
     "E4030": "#[no_spawn] 上下文 spawn",

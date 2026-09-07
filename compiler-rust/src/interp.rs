@@ -447,7 +447,7 @@ impl<'a> Interp<'a> {
             Expr::Index { obj, index } => {
                 let o = self.expr(obj, env)?;
                 let i = self.expr(index, env)?;
-                Ok(runtime_index(&o, &i))
+                runtime_index(&o, &i)
             }
             Expr::Member { obj, target } => {
                 let o = self.expr(obj, env)?;
@@ -1658,20 +1658,20 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     }
 }
 
-fn runtime_index(o: &Value, i: &Value) -> Value {
+fn runtime_index(o: &Value, i: &Value) -> Result<Value, Flow> {
     let idx_of = |i: &Value| -> Option<usize> { int_i64(i).map(|n| n as usize) };
     match (o, i) {
         (Value::Array(arr), _) => {
-            let Some(idx) = idx_of(i) else { return Value::Void };
+            let Some(idx) = idx_of(i) else { return Ok(Value::Void) };
             let b = arr.borrow();
-            if idx >= b.len() { panic!("index out of bounds"); }
-            b[idx].clone()
+            if idx >= b.len() { return Err(Flow::Panic("index out of bounds".into())); }
+            Ok(b[idx].clone())
         }
         (Value::Simd(items), _) => {
-            let Some(idx) = idx_of(i) else { return Value::Void };
-            Value::F32(items.get(idx).copied().unwrap_or(0.0) as f32)
+            let Some(idx) = idx_of(i) else { return Ok(Value::Void) };
+            Ok(Value::F32(items.get(idx).copied().unwrap_or(0.0) as f32))
         }
-        _ => Value::Void,
+        _ => Ok(Value::Void),
     }
 }
 

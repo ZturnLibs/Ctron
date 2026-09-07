@@ -1,0 +1,14 @@
+// r2a_container_send.ct —— 容器 Send 传递性(R-P2a,§7.4)
+// 语义承诺:元素 Send 则容器 Send;List 随 spawn 迁移进任务
+// 锚点:R-P2a 落地转绿
+test "list moves into task" {
+    let r = scope { |s|
+        var xs = List[I32]()
+        xs.push(41)
+        let t = s.spawn(|| {
+            return xs[0] + 1
+        })
+        t.join()
+    }
+    assert_eq(r, 42)
+}

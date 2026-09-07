@@ -44,6 +44,7 @@ fn native_matches_interpreter() {
         let name = f.file_name().unwrap().to_string_lossy().to_string();
         let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().to_string();
         if rel.starts_with("modules/") { continue; }
+        if rel.starts_with("roadmap/") { continue; }   // roadmap 锚点语料由 roadmap_suite 驱动
         if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") { continue; }
         if name.starts_with("10_web") { continue; }
 
