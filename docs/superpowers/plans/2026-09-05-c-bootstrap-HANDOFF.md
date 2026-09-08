@@ -252,3 +252,24 @@
 - 流程钉子:Ctron 无 `||`(又踩一次,df_g 初版)——写长表达式先想 or2;
   genmod 探针一律绝对路径;并行泳道活跃期(compiler_c parser_expr.c 在飞)提交前
   git status 逐文件核对。
+---
+## 更新记录(22c session,C9j⑨ 双种子差分清零)
+- **C9j⑨ ✅ parsetree/sem_chk 转正(known-div 3→1)**:机械化括号映射 + 双解析器树
+  diff 实锤 **cc 解析树与宿主树全一致**("解析嵌套挂账"猜想证伪)。真因 = 求值器作用域:
+  rt 帧泄漏怪癖(env_pop 只移指针,调用密集路径旧帧可达)可观察地容忍 while 外读
+  循环内绑定;cc 的 env_drop 即 unbound。修复:run_block keep 参数(While 体绑定留存,
+  其余块照丢——input_cc 遮蔽 238 diff 守护)+ env_dedupe/While 轮末压缩(cc 的 env_add
+  全量拷贝,keep 不压缩即 O(n²):sem_chk 计数 291s 被 jetsam 杀 → 修后 3s)+
+  发射器 hoist 保守化(ct_assigned 递归零赋值才提升;For 子节点误取 st[len-2] 自伤已修;
+  hreg 函数级登记防兄弟 while 重定义;ct_hoists 顺序穿 ew)。ct_stmt/ct_block/ct_if_stmt/
+  ct_match_value 签名均 +hreg。
+- 实测:bootstrap --full 38/0/1(唯一 known-div = 自译化原生形态资源边界);
+  普通 ladder --full 39/0/0;make test 12 套件零失败;cc decls 174→175(env_dedupe)。
+- **语言级发现(挂账)**:PascalCase 绑定名解析歧义——`var Qq = 7` 绑定名被 p_pattern
+  按变体模式收,rt 绑定/读路径不一致(探针:同名小写全绿)。cc 自身 `var X` 踩中已改。
+  规范应禁或解析/rt/生成码三处统一。
+- 流程钉子:①插桩定位时 println 目标区分 stdout(发射产物)与 stderr(诊断),别混流
+  grep;②zsh 管道 `cmd | tail; echo $?` 拿到的是 tail 的 rc —— 真实 rc 用无管道直跑;
+  ③并行泳道活跃期(compiler_c parser_expr.c / suite_lex 63 文件在飞),只 add 自己的文件。
+- 下一批候选:自译化原生形态内存归还(最后 known-div);发射器全语言域;CTRON_SEED
+  默认切自举产物;PascalCase 绑定名禁用或统一(语言语义)。

@@ -98,7 +98,13 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
   浮点探针三方逐字一致(rt == cc 求值器 == 原生发射);bootstrap known-div 4→3。
   语言级发现:PascalCase 绑定名是解析歧义源(var Qq 绑定名被按变体模式收,探针实证
   小写同名全绿)——规范上应禁或三处统一(挂账)。
-- 下一步(可选):两级引导默认化(CTRON_SEED 默认切自举产物);原生 cc 扫全
+- C9j⑨(双种子差分清零)已交付:双解析器树 diff 证伪"解析嵌套挂账"(cc 树与
+  宿主树全一致),真因是求值器作用域语义 —— rt 帧泄漏怪癖可观察地容忍 while 外读
+  循环内绑定,cc 严格 env_drop 即 unbound。修复:run_block keep 参数(While 体绑定
+  留存)+ env_dedupe/轮末压缩(防 O(n²))+ 发射器 hoist 保守化。bootstrap --full
+  38/0/1、普通 ladder 39/0/0、make test 全绿。语言级发现:PascalCase 绑定名解析
+  歧义(var Qq 绑定名被按变体模式收,探针实证小写全绿)—— 应禁或三处统一(挂账)。
+- 下一步(可选):原生形态内存归还(最后一个 known-div);原生 cc 扫全
   suite_run/ev2 面;发射器全语言域(struct/闭包/并发/插值/值位 if·match)按"编译任意
   Ctron 程序"口径排期;浮点二进制舍入细节/f32 精度挂账;迁移 ASan 基建(见 HANDOFF)。
 - 用法(独立驱动,推荐):

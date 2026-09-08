@@ -4780,6 +4780,33 @@ fn env_drop(env: List[Str], n: I32) -> List[Str] {
     }
     return out
 }
+// keep 块的前 n 项按名去重(保留最新):while 体绑定有界累积,新者优先查找不变
+fn env_dedupe(env: List[Str], n: I32) -> List[Str] {
+    var keep = List[Str]()
+    var i: I32 = 0
+    while i < n && i < env.len {
+        var en = env[i]
+        var seen = false
+        var j: I32 = 0
+        while j < keep.len {
+            if seq2(keep[j][0], en[0]) {
+                seen = true
+            }
+            j += 1
+        }
+        if !seen {
+            keep.push(en)
+        }
+        i += 1
+    }
+    var out = keep
+    i = n
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
 fn e4(fl: Str, env: List[Str], vv: List[Str], out: Str) -> List[Str] {
     var r = List[Str]()
     r.push(fl)
@@ -5000,7 +5027,7 @@ fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], s
         }
         k += 1
     }
-    var br = run_block(file, nenv, out, mth[5])
+    var br = run_block(file, nenv, out, mth[5], false)
     var fl = "k"
     if br[0] == "a" {
         fl = "a"
@@ -5009,7 +5036,7 @@ fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], s
 }
 fn call_prop_vals(file: List[Str], env: List[Str], out: Str, pp: List[Str], sv: List[Str]) -> List[Str] {
     var nenv = env_add(List[Str](), "self", sv)
-    var br = run_block(file, nenv, out, pp[3])
+    var br = run_block(file, nenv, out, pp[3], false)
     var fl = "k"
     if br[0] == "a" {
         fl = "a"
@@ -5351,7 +5378,7 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             return cr
         }
         if truth(cr[2]) {
-            var br = run_block(file, cr[1], cr[3], e[2])
+            var br = run_block(file, cr[1], cr[3], e[2], false)
             return e4(br[0], br[1], br[3], br[2])
         }
         var el = e[3]
@@ -5361,7 +5388,7 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         return eval_expr(file, cr[1], cr[3], el)
     }
     if t == "BlockExpr" {
-        var br = run_block(file, env, out, e[1])
+        var br = run_block(file, env, out, e[1], false)
         return e4(br[0], br[1], br[3], br[2])
     }
     if t == "Closure" {
@@ -5505,7 +5532,7 @@ fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals:
         }
         k += 1
     }
-    var br = run_block(file, nenv, out, d[5])
+    var br = run_block(file, nenv, out, d[5], false)
     var fl = "k"
     if br[0] == "a" {
         fl = "a"
@@ -5934,6 +5961,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
         var go = true
         var envw = env
         var outw = out
+        var base: I32 = envw.len
         while go {
             var cr = eval_expr(file, envw, outw, st[1])
             if cr[0] != "k" {
@@ -5942,12 +5970,16 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             envw = cr[1]
             outw = cr[3]
             if truth(cr[2]) {
-                var br = run_block(file, envw, outw, st[2])
+                var br = run_block(file, envw, outw, st[2], true)
                 if br[0] != "k" {
                     return s4(br[0], br[1], br[2], br[3])
                 }
                 envw = br[1]
                 outw = br[2]
+                // keep 累积压缩:新增段按名去重回基线,防跨轮线性增长(env_add 全量拷贝 → O(n²))
+                if envw.len > base {
+                    envw = env_dedupe(envw, envw.len - base)
+                }
             } else {
                 go = false
             }
@@ -5971,7 +6003,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             var c2: I32 = 1
             while c2 < it.len {
                 var eit = env_add(envw3, nm, it[c2])
-                var br = run_block(file, eit, outw3, st[3])
+                var br = run_block(file, eit, outw3, st[3], false)
                 if br[0] != "k" {
                     return s4(br[0], br[1], br[2], br[3])
                 }
@@ -6003,7 +6035,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
         }
         while more {
             var eit = env_add(envw, nm, vI(cur))
-            var br = run_block(file, eit, outw, st[3])
+            var br = run_block(file, eit, outw, st[3], false)
             if br[0] != "k" {
                 return s4(br[0], br[1], br[2], br[3])
             }
@@ -6025,7 +6057,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
     panic("stmt:" + t)
     return s4("a", env, out, vV2())
 }
-fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str]) -> List[Str] {
+fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: Bool) -> List[Str] {
     var flow = "k"
     var env = env0
     var o2 = out
@@ -6053,9 +6085,15 @@ fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str]) -> List
             o2 = er[3]
         }
     }
+    // 镜像 rt 可观察行为:while 体 keep=true 绑定留存但按名去重(有界,防 O(n²)),
+    // 其余块照丢。rt 实现为链帧泄漏怪癖,此处以显式去重等价复刻其可观察语义。
     var extra = env.len - env0.len
     if extra > 0 {
-        env = env_drop(env, extra)
+        if keep {
+            env = env_dedupe(env, extra)
+        } else {
+            env = env_drop(env, extra)
+        }
     }
     return s4(flow, env, o2, val)
 }
@@ -6064,7 +6102,7 @@ fn run_tests(file: List[Str]) -> List[Str] {
     while i < file.len {
         var d = file[i]
         if d[0] == "Test" {
-            var br = run_block(file, List[Str](), "", d[2])
+            var br = run_block(file, List[Str](), "", d[2], false)
             if br[0] == "a" {
                 return br
             }
@@ -6092,7 +6130,7 @@ fn main() -> I32 {
             }
             var d = find_decl(file, "main")
             if d.len > 0 {
-                var br = run_block(file, List[Str](), "", d[5])
+                var br = run_block(file, List[Str](), "", d[5], false)
                 if br[0] == "a" {
                     print(fmt(br[3]))
                     return 1

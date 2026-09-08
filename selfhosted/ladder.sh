@@ -58,7 +58,7 @@ check_decl() {  # check_decl <源.ct> <期望decl数> <名>
 check_decl "$DIR/sem_chk.ct"    109 sem_chk
 check_decl "$DIR/parsetree.ct"   57 parsetree
 check_decl "$DIR/ev2.ct"        107 ev2
-check_decl "$DIR/cc.ct"         174 cc
+check_decl "$DIR/cc.ct"         175 cc
 
 echo "== 3) 复现解析(StructLit 误触发守卫回归) =="
 check_decl "$DIR/repro/s6.ct"      2 repro-s6

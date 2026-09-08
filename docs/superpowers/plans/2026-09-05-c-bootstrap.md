@@ -397,6 +397,26 @@
    自身限制挂账:二进制 double 舍入的边界差异(%g 第 6 位半值)/f32 后缀精度/浮点
    to_string/div-by-zero inf —— 语料未触达,逐字差分守护下按需补。
 
+22f. **C9j⑨(本文件交付)—— 双种子差分清零:parsetree/sem_chk 转正,cc 求值器对齐 rt 块语义**:
+   机械化括号映射 + 双解析器树 diff 实锤:**cc 解析树与宿主树 57/57 全一致**(此前
+   "解析嵌套挂账"的猜想被证伪)。真正根因在求值器作用域语义:parsetree/sem_chk 老快照
+   的 p_block 尾 guard 在 while 外读循环内绑定,rt 因帧泄漏怪癖(arena 帧 env_pop 只移
+   指针,调用密集路径旧帧可达)可观察地容忍,cc 的 run_block env_drop 严格丢弃即
+   unbound:p0。修复三件:
+   ① **run_block 增 keep 参数**:While 体 keep=true 绑定留存(镜像 rt 可观察行为),
+     其余块照丢(input_cc 遮蔽语义不变,230→238 diff 回归守护);
+   ② **env_dedupe + While 轮末压缩**:keep 累积按名去重回基线 —— 防跨轮线性增长
+     (cc 的 env_add 全量拷贝,不压缩即 O(n²) 内存爆炸:sem_chk 计数 291s 被 jetsam 杀);
+   ③ 发射器 **hoist 保守化**:只提升"体内零赋值"的纯只读变量(递归 ct_assigned 检查,
+     修复 For 子节点误取 st[len-2] 的自伤);hreg 函数级登记,同名同型复用声明、
+     异型放弃提升;ct_hoists 顺序穿 ew(后候选 init 可见先候选型别,ty = f[3] 需 f:N);
+     ct_stmt/ct_block/ct_if_stmt/ct_match_value 签名穿 hreg。
+   顺带记账:**PascalCase 绑定名解析歧义实锤**(var Qq 绑定被按变体模式收,探针实证
+   小写全绿)——df_g 的 var X 即踩中,已改 xe;规范应禁或三处统一。
+   实测:bootstrap --full **38/0/1**(known-div 仅剩自译化原生形态资源边界);
+   普通 ladder --full **39/0/0**;make test 全绿(12 套件零失败,suite_lex 已至 63 文件);
+   sem_chk 计数在原生种子下 291s 被杀 → 3s 完成。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
