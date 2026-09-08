@@ -1,0 +1,10 @@
+// fx_arity_neg.ct —— E2010:调用实参数不匹配(arity)
+// 期望:编译期拦截 rc=1,诊断含 E2010
+fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}
+fn main() -> I32 {
+    let r = add2(1)
+    println(r.to_string())
+    return 0
+}

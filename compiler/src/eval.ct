@@ -1063,7 +1063,7 @@ fn ty_head(ty: List[Str]) -> Str {
     if t == "Named" {
         return ty[1]
     }
-    if or3(t == "Ref", or2(t == "Slice", t == "Optional")) {
+    if ty.len > 1 {
         return ty_head(ty[1])
     }
     return ""

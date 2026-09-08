@@ -1,0 +1,6 @@
+// fx_unresolved_neg.ct —— E2020:调用未定义名(bare 调用目标不在 fn/前奏/内建/局部集)
+// 期望:编译期拦截 rc=1,诊断含 E2020
+fn main() -> I32 {
+    prinlt("hi")
+    return 0
+}
