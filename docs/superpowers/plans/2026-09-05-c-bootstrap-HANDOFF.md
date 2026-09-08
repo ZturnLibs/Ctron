@@ -273,3 +273,18 @@
   ③并行泳道活跃期(compiler_c parser_expr.c / suite_lex 63 文件在飞),只 add 自己的文件。
 - 下一批候选:自译化原生形态内存归还(最后 known-div);发射器全语言域;CTRON_SEED
   默认切自举产物;PascalCase 绑定名禁用或统一(语言语义)。
+---
+## 更新记录(22d session,C9j⑩ arena 内存 + 测试提醒节点)
+- **C9j⑩ ✅ known-div 清零**:发射产物运行时全面切换 **ctron_amalloc 凸分配 arena**
+  (16 字节对齐,4MB 起步块倍增,旧块留存;str_concat/to_string/byte_slice/read_file/
+  list_new/push 拷贝式倍增/cell_new 全走 arena;read_dir 保留 malloc 低频)。原生自译化
+  cc×cc 此前 rc=137@63s 被杀 → **38s 完成、输出与黄金逐字一致**(较种子 127s 快 3.3 倍)。
+  ladder step 5 解除 bootstrap 跳过(两种子都实跑)。**bootstrap --full 39/0/0
+  known-div=0;普通 ladder --full 39/0/0;make test 12 套件零失败。**
+- **⚠️ 用户提醒请求(必须履行)**:用户要求"自举版本能做测试时提醒我"——本节点已达成
+  (bootstrap 全绿,自举二进制可跑完整验收阶梯),已在 session 结束时向用户正式提醒。
+  后续:当自举版本具备更强测试能力(test 块批量运行/ctron test 等)时再次提醒。
+- 发射器钉子:**Ctron 字符串转义只有 \{ 合法,\} 非法(E1001)**——闭括号写裸 };
+  perl 批量替换后必须重扫转义与残留片段(list_new 曾留重复 magic 赋值、push 曾双倍扩容)。
+- 下一批候选:发射器全语言域(struct/闭包/并发/插值/值位 if·match);CTRON_SEED 默认
+  切自举产物;PascalCase 绑定名禁用或统一(语言语义);迁移 ASan 基建。

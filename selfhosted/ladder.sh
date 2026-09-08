@@ -88,20 +88,16 @@ done
 
 echo "== 5) 全深度自译化(--full) =="
 if [ "${1:-}" = "--full" ]; then
-    if [ "${CTRON_BOOT:-0}" = "1" ]; then
-        kn "自译化(原生种子)已知资源边界:cc×cc 解释嵌套在原生形态内存超限(rc=137@63s),见 22d"
-    else
-        gen_cc "$DIR/cc.ct" "$T/self.ct"
-        s=$(date +%s)
-        # cc.ct 的输入锚是相对路径(../selfhosted/input_cc.ct),须从 compiler_c 目录解析
-        ( cd "$ROOT/compiler_c" && timeout 900 "$HOST" run "$T/self.ct" > "$T/selfdeep.got" 2>&1 )
+    gen_cc "$DIR/cc.ct" "$T/self.ct"
+    s=$(date +%s)
+    # cc.ct 的输入锚是相对路径(../selfhosted/input_cc.ct),须从 compiler_c 目录解析
+    ( cd "$ROOT/compiler_c" && timeout 900 "$HOST" run "$T/self.ct" > "$T/selfdeep.got" 2>&1 )
         rc=$?
         e=$(date +%s)
         if [ $rc = 0 ] && diff -q "$EXP/input_cc.out" "$T/selfdeep.got" > /dev/null 2>&1; then
             ok "全深度自译化(cc 解释 cc 解释 input_cc)逐字一致($((e-s))s)"
         else
-            bad "全深度自译化失败(rc=$rc, $((e-s))s)"
-        fi
+        bad "全深度自译化失败(rc=$rc, $((e-s))s)"
     fi
 fi
 

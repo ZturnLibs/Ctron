@@ -104,7 +104,12 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
   留存)+ env_dedupe/轮末压缩(防 O(n²))+ 发射器 hoist 保守化。bootstrap --full
   38/0/1、普通 ladder 39/0/0、make test 全绿。语言级发现:PascalCase 绑定名解析
   歧义(var Qq 绑定名被按变体模式收,探针实证小写全绿)—— 应禁或三处统一(挂账)。
-- 下一步(可选):原生形态内存归还(最后一个 known-div);原生 cc 扫全
+- C9j⑩(原生形态 arena 内存管理)已交付:发射产物运行时全面切换 ctron_amalloc 凸分配
+  arena(镜像宿主 rt 内存设计);原生自译化 cc×cc 此前 rc=137@63s 被内存杀,现 38s 完成、
+  输出与黄金逐字一致(较种子 127s 快 3.3 倍)。ladder step 5 解除 bootstrap 跳过。
+  **bootstrap --full 39/0/0 known-div=0 全绿 —— 自举版本可在自己的二进制上跑完整验收
+  阶梯(用户要求的测试提醒节点)。**
+- 下一步(可选):原生 cc 扫全
   suite_run/ev2 面;发射器全语言域(struct/闭包/并发/插值/值位 if·match)按"编译任意
   Ctron 程序"口径排期;浮点二进制舍入细节/f32 精度挂账;迁移 ASan 基建(见 HANDOFF)。
 - 用法(独立驱动,推荐):

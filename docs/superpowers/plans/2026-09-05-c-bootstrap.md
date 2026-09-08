@@ -417,6 +417,19 @@
    普通 ladder --full **39/0/0**;make test 全绿(12 套件零失败,suite_lex 已至 63 文件);
    sem_chk 计数在原生种子下 291s 被杀 → 3s 完成。
 
+22g. **C9j⑩(本文件交付)—— 原生形态 arena 内存管理,known-div 清零,bootstrap 全绿**:
+   发射产物运行时全面切换 **ctron_amalloc 凸分配 arena**(16 字节对齐,4MB 起步块倍增,
+   旧块留存不归还 —— 镜像宿主 rt 的内存设计):str_concat/to_string/byte_slice/read_file/
+   list_new/push(倍增改拷贝)/cell_new 全部走 arena;read_dir 保留 malloc(低频)。
+   修复发射器三次转义/残留事故(amalloc 行 \} 非法转义、list_new 重复片段、list_push
+   双倍扩容 —— 钉子:**Ctron 字符串转义只有 \{ 合法,闭括号写裸 }**)。
+   实测:**原生自译化 cc×cc 解释 input_cc —— 此前 rc=137@63s 被 jetsam 杀,现 38s 完成、
+   输出与黄金逐字一致**(arena 凸分配兼提速,较种子 127s 快 3.3 倍)。
+   ladder step 5 解除 bootstrap 跳过(两种子都实跑);**bootstrap --full 39/0/0
+   known-div=0 全绿**;普通 ladder --full 39/0/0;make test 12 套件零失败。
+   **自举版本自此可在自己的二进制上跑完整验收阶梯并全绿 —— 具备测试能力(用户要求
+   在此节点提醒)。**
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
