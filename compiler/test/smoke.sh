@@ -45,6 +45,23 @@ check_decl "$SH/parsetree.ct"   57
 check_decl "$SH/ev2.ct"        107
 check_decl "$SH/cc.ct"         175
 
+echo "== 2b) JSON 诊断契约(§10.2 v0) =="
+"$COMP/ctc.sh" check "$COMP/test/fx_json_neg.ct" --format=json > "$T/js.out" 2>&1
+jrc=$?
+if [ $jrc -eq 1 ] && grep -q '"code":"W8010"' "$T/js.out" \
+   && python3 -c "import json,sys; json.load(sys.stdin)" < "$T/js.out" 2>/dev/null; then
+    ok "JSON 诊断输出合法且含 W8010(rc=1)"
+else
+    bad "JSON 诊断面异常(rc=$jrc): $(cat "$T/js.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/fx_forlist.ct" --format=json > "$T/js2.out" 2>&1
+jrc2=$?
+if [ $jrc2 -eq 0 ] && [ "$(cat "$T/js2.out")" = '{"diagnostics":[]}' ]; then
+    ok "JSON 干净面 = {\"diagnostics\":[]}(rc=0)"
+else
+    bad "JSON 干净面异常(rc=$jrc2): $(cat "$T/js2.out")"
+fi
+
 echo "== 3) 发射往返(C 代码生成 → gcc → 原生执行,fixtures 全扫) =="
 for v in v0 v1 v2 v3; do
     if "$COMP/ctc.sh" emit "$SH/fixtures/trans_$v.ct" "$T/tr_$v.c" > /dev/null 2>&1 \

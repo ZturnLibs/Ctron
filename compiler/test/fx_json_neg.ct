@@ -1,0 +1,11 @@
+// fx_json_neg.ct —— JSON 诊断契约夹具:struct 含类引用字段 → W8010
+// 供 smoke 2b 节验证 ctc.sh check --format=json 输出冻结 schema
+class Engine {
+    let rpm: I32
+}
+struct Car {
+    let eng: Engine
+}
+fn main() -> I32 {
+    return 0
+}

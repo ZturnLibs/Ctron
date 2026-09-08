@@ -1,12 +1,128 @@
 // =====================================================================
 // driver_check.ct —— 编译器入口(检查模式)
-// parse → 单文件语义 12 项即止;诊断逐条 "CODE: msg" 打印并止(rc=1),
+// parse → 单文件语义检查即止;诊断逐条 "CODE: msg" 打印并止(rc=1),
 // 干净打印 "check OK decls=N"(N = 顶层 decl 数)并返回 rc=0。
-// 自编译检查面:ctc.sh check <本编译器自身/任意 .ct>。
+// --format=json(§10.2):构建锚 ANCHORFMT 注入("1"/"0";非 sed 路径恒文本面),
+// 输出冻结 schema:code/severity/message/file/span/notes/fixes。
+// span 为 v0 近似:以消息尾段名定位源码首含行(列恒 1);解析器 span 标注(类型检查 v1)落地后替换。
 // 输入锚:read_file("../selfhosted/input_cc.ct"),构建/运行脚本换靶。
 // =====================================================================
+fn json_escape(s: Str) -> Str {
+    var out = ""
+    var j: I32 = 0
+    var n = s.len
+    while j < n {
+        var c = byte_at(s, j)
+        if c == 34 {
+            out = out + "\\\""
+        } else if c == 92 {
+            out = out + "\\\\"
+        } else if c == 10 {
+            out = out + "\\n"
+        } else if c == 13 {
+            out = out + "\\r"
+        } else if c == 9 {
+            out = out + "\\t"
+        } else {
+            out = out + byte_slice(s, j, j + 1)
+        }
+        j += 1
+    }
+    return out
+}
+
+fn has_sub(hay: Str, nd: Str) -> Bool {
+    var nn = nd.len
+    if nn == 0 {
+        return true
+    }
+    var hn = hay.len
+    var i: I32 = 0
+    while i + nn <= hn {
+        var k: I32 = 0
+        var ok = true
+        while k < nn {
+            if byte_at(hay, i + k) != byte_at(nd, k) { ok = false }
+            k += 1
+        }
+        if ok {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+fn probe_line(src: Str, msg: Str) -> I32 {
+    // 取 msg 最后一段(": " 之后)作探针在源码中定位首含行;找不到退回 1
+    var probe = msg
+    var j: I32 = 0
+    var last: I32 = -1
+    while j + 1 < msg.len {
+        if byte_at(msg, j) == 58 && byte_at(msg, j + 1) == 32 { last = j }
+        j += 1
+    }
+    if last >= 0 { probe = byte_slice(msg, last + 2, msg.len) }
+    if probe.len == 0 { return 1 }
+    var line: I32 = 1
+    var pass = 0
+    var start: I32 = 0
+    var i2: I32 = 0
+    var n2 = src.len
+    while pass < 2 {
+        var probe2 = probe
+        if pass == 1 {
+            var dot: I32 = -1
+            var q: I32 = 0
+            while q < probe.len {
+                if byte_at(probe, q) == 46 { dot = q }
+                q += 1
+            }
+            if dot < 0 { break }
+            probe2 = byte_slice(probe, dot + 1, probe.len)
+            line = 1
+            start = 0
+            i2 = 0
+        }
+        while i2 <= n2 {
+            var hit = false
+            if i2 == n2 {
+                hit = true
+            } else {
+                hit = byte_at(src, i2) == 10
+            }
+            if hit {
+                if has_sub(byte_slice(src, start, i2), probe2) {
+                    return line
+                }
+                line += 1
+                start = i2 + 1
+            }
+            i2 += 1
+        }
+        pass += 1
+    }
+    return 1
+}
+
+fn json_diag(path: Str, src: Str, ln: Str, first: Bool) {
+    var sp: I32 = 0
+    while sp < ln.len && byte_at(ln, sp) != 32 { sp += 1 }
+    var code = byte_slice(ln, 0, sp)
+    if sp > 0 && byte_at(code, sp - 1) == 58 {
+        code = byte_slice(code, 0, sp - 1)
+    }
+    var msg = byte_slice(ln, sp + 1, ln.len)
+    var sev = "error"
+    if byte_at(code, 0) == 87 { sev = "warning" }
+    var at = probe_line(src, msg)
+    if !first { print(",") }
+    print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":1},\"notes\":[],\"fixes\":[]}")
+}
+
 fn main() -> I32 {
-    let src = read_file("../selfhosted/input_cc.ct")
+    let path = "../selfhosted/input_cc.ct"
+    let src = read_file(path)
     match src {
         Some(s) => {
             var toks = List[Str]()
@@ -14,6 +130,26 @@ fn main() -> I32 {
             var cur = Atomic[I32](0)
             var file = p_file(toks, cur)
             var sems = sem_walk2(file)
+            if seq2("ANCHORFMT", "1") {
+                print("\{\"diagnostics\":[")
+                if !seq2(sems, "") {
+                    var i: I32 = 0
+                    var first = true
+                    while i < sems.len {
+                        var e: I32 = i
+                        while e < sems.len && byte_at(sems, e) != 10 { e += 1 }
+                        if e > i {
+                            json_diag(path, s, byte_slice(sems, i, e), first)
+                            first = false
+                        }
+                        i = e + 1
+                    }
+                    println("]}")
+                    return 1
+                }
+                println("]}")
+                return 0
+            }
             if !seq2(sems, "") {
                 print(sems)
                 return 1

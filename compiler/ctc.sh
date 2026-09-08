@@ -38,9 +38,13 @@ case $mode in
         rc=$?
         ;;
     check)
+        FMT=0
+        for a in "$@"; do
+            case $a in --format=json) FMT=1 ;; esac
+        done
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed "s|\.\./selfhosted/input_cc\.ct|$IN|" "$DIR/build/cc_check.ct" > "$TMP"
+        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" "$DIR/build/cc_check.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
