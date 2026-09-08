@@ -432,6 +432,21 @@ impl Trans {
             self.w(1, &calls);
             self.w(1, "return 0;");
             self.w(0, "}");
+        } else if let Some((ptys, ret)) = self.lookup_fn("main") {
+            // D4:fn main 真实发射(体已随用户 fn 发射为 ctn_main)
+            if ptys.is_empty() {
+                self.w(0, "int main(void) {");
+                self.w(1, "alarm(20); /* 防挂起 */");
+                if matches!(ret, VTy::Void) {
+                    self.w(1, "ctn_main();");
+                    self.w(1, "return 0;");
+                } else {
+                    self.w(1, "return (int)ctn_main();");
+                }
+                self.w(0, "}");
+            } else {
+                self.w(0, "int main(void) { alarm(20); return 0; }");
+            }
         } else {
             self.w(0, "int main(void) { alarm(20); return 0; }");
         }
@@ -2220,6 +2235,19 @@ impl Trans {
                     };
                     return Ok((format!("(ct_assert({}), 0)", ok), VTy::Void));
                 }
+                "println" | "print" => {
+                    if args.len() != 1 { return Err(format!("trans:{} 需单实参", name)); }
+                    let (c, at) = self.expr(&args[0])?;
+                    let h = match at {
+                        VTy::Str => "ct_print_str",
+                        VTy::Bool => "ct_print_bool",
+                        VTy::F64 => "ct_print_f64",
+                        VTy::Int(Some((_, true))) => "ct_print_u64",
+                        _ => "ct_print_i64",
+                    };
+                    let tail = if name == "println" { ", ct_print_nl()" } else { "" };
+                    return Ok((format!("({}({}){})", h, c, tail), VTy::Void));
+                }
                 "panic" => {
                     if let Some(ast::Expr::Str { parts }) = args.first() {
                         if let [ast::StrPart::Text(t)] = parts.as_slice() {
@@ -2826,6 +2854,13 @@ static int ct_assert(int ok) {
     if (!ok) { fprintf(stderr, "assertion failed (test %s)\n", ct_cur_test); exit(1); }
     return ok;
 }
+/* ---- print 域(D4;格式面 = 解释器 fmt_val)---- */
+static void ct_print_nl(void) { printf("\n"); }
+static void ct_print_str(const char* v) { printf("%s", v ? v : ""); }
+static void ct_print_bool(int v) { printf("%s", v ? "true" : "false"); }
+static void ct_print_i64(ct_i v) { printf("%lld", (long long)v); }
+static void ct_print_u64(ct_i v) { printf("%llu", (unsigned long long)v); }
+static void ct_print_f64(double v) { char b[64]; if (v == (double)(long long)v) snprintf(b, sizeof b, "%.1f", v); else snprintf(b, sizeof b, "%g", v); printf("%s", b); }
 /* ---- 和类型:tagged union;载荷槽 i/f 按静态类型选用 ---- */
 typedef ct_i (*ct_fnptr0)();
 typedef union { ct_i i; double f; } ct_cell;

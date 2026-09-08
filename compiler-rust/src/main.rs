@@ -109,6 +109,17 @@ fn main() -> ExitCode {
             let panic_marker = src.lines()
                 .find(|l| l.trim_start().starts_with("//@ panic:"))
                 .map(|l| l.trim_start_matches("//@ panic:").trim().to_string());
+            // D1:有 fn main → 运行 main(对齐 C 版 run);否则执行全部 test 块
+            let is_main = ctron::parse_src(&src).0.decls.iter().any(|d| {
+                matches!(d, ctron::ast::Decl::Fn(f) if f.name == "main")
+            });
+            if is_main {
+                return match ctron::run_main_file(&src, profile) {
+                    Ok(code) if code == 0 => ExitCode::SUCCESS,
+                    Ok(code) => ExitCode::from(code as u8),
+                    Err(m) => { eprintln!("{}", m); ExitCode::from(1) }
+                };
+            }
             let results = ctron::run_test_file(&src, profile);
             let mut failed = 0usize;
             let panic_ok = match &panic_marker {

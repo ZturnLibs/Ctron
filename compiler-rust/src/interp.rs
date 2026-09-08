@@ -146,6 +146,22 @@ impl<'a> Interp<'a> {
     pub fn run_tests(&mut self, file: &ast::File) -> Vec<(String, Result<(), String>)> {
         register_sema_names(self.sema);
         let mut results = Vec::new();
+        self.eval_globals(file);
+        for d in &file.decls {
+            if let ast::Decl::Test(t) = d {
+                let env = Env::child(&self.globals);
+                let r = match self.check_block(&t.body, &env) {
+                    Ok(_) | Err(Flow::EarlyReturn(_)) => Ok(()),
+                    Err(Flow::Panic(m)) => Err(m),
+                    Err(_) => Err("异常控制流".into()),
+                };
+                results.push((t.name.clone(), r));
+            }
+        }
+        results
+    }
+
+    fn eval_globals(&mut self, file: &ast::File) {
         for d in &file.decls {
             match d {
                 ast::Decl::Const(c) => {
@@ -163,18 +179,23 @@ impl<'a> Interp<'a> {
                 _ => {}
             }
         }
-        for d in &file.decls {
-            if let ast::Decl::Test(t) = d {
-                let env = Env::child(&self.globals);
-                let r = match self.check_block(&t.body, &env) {
-                    Ok(_) | Err(Flow::EarlyReturn(_)) => Ok(()),
-                    Err(Flow::Panic(m)) => Err(m),
-                    Err(_) => Err("异常控制流".into()),
-                };
-                results.push((t.name.clone(), r));
-            }
+    }
+
+    /// 运行 fn main(D1;对齐 C 版 ctron_rt_run_main):
+    /// const/static 预求值后执行 main 体,EarlyReturn 值 → 退出码;panic → Err。
+    pub fn run_main(&mut self) -> Result<i32, String> {
+        let body = self.file.decls.iter().find_map(|d| match d {
+            ast::Decl::Fn(f) if f.name == "main" => f.body.clone(),
+            _ => None,
+        });
+        let Some(body) = body else { return Err("缺少 fn main".into()) };
+        let env = Env::child(&self.globals);
+        match self.check_block(&body, &env) {
+            Ok(_) => Ok(0),
+            Err(Flow::EarlyReturn(v)) => Ok(exit_code_of(v)),
+            Err(Flow::Panic(m)) => Err(m),
+            Err(_) => Err("异常控制流".into()),
         }
-        results
     }
 
     // ---------- 块与语句 ----------
@@ -578,6 +599,7 @@ impl<'a> Interp<'a> {
                     let mut vals = Vec::new();
                     for a in args { vals.push(self.expr(a, env)?); }
                     return match ty_name.as_str() {
+                        "List" => Ok(Value::Array(Rc::new(RefCell::new(Vec::new())))), // List[T]() 空表(D1)
                         "Atomic" => Ok(Value::Atomic(Rc::new(Cell::new(
                             vals.first().and_then(|v| if let Value::Int(i) = v { Some(*i) } else { None }).unwrap_or(0)
                         )))),
@@ -703,6 +725,86 @@ impl<'a> Interp<'a> {
                 return Ok(Value::Enum { def: d, variant: 1, payload });
             }
             _ => {}
+        }
+        // print 内建(D1;格式面 = fmt_val:浮点整值 %.1f 否则 %g)
+        if name == "println" || name == "print" {
+            if args.len() != 1 { return Err(Flow::Panic(format!("{} 需单实参", name))); }
+            let v = self.expr(&args[0], env)?;
+            let mut out = String::new();
+            fmt_value(&v, &mut out);
+            if name == "println" { out.push('\n'); }
+            print!("{}", out);
+            return Ok(Value::Void);
+        }
+        // I/O 内建族(D1;语义镜像 C rt read_file/read_line/read_bytes/flush_out)
+        if name == "read_file" {
+            if args.len() != 1 { return Err(Flow::Panic("read_file 实参".into())); }
+            let pv = self.expr(&args[0], env)?;
+            let path = match &pv { Value::Str(s) => s.clone(), _ => Rc::new(String::new()) };
+            let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+            return match std::fs::read(&*path) {
+                Ok(bytes) => Ok(Value::Enum {
+                    def: d, variant: 0,
+                    payload: vec![Value::Str(Rc::new(String::from_utf8_lossy(&bytes).to_string()))],
+                }),
+                Err(_) => Ok(Value::Enum { def: d, variant: 1, payload: vec![] }),
+            };
+        }
+        if name == "read_line" {
+            if !args.is_empty() { return Err(Flow::Panic("read_line 实参".into())); }
+            let mut line = String::new();
+            match std::io::stdin().read_line(&mut line) {
+                Ok(0) => {}
+                Ok(_) => { if line.ends_with('\n') { line.pop(); if line.ends_with('\r') { line.pop(); } } }
+                Err(e) => return Err(Flow::Panic(format!("read_line: {}", e))),
+            }
+            return Ok(Value::Str(Rc::new(line)));
+        }
+        if name == "read_bytes" {
+            if args.len() != 1 { return Err(Flow::Panic("read_bytes 实参".into())); }
+            let nv = self.expr(&args[0], env)?;
+            let want = match nv { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            if want < 0 { return Err(Flow::Panic("read_bytes 负长度".into())); }
+            use std::io::Read;
+            let mut buf = vec![0u8; want as usize];
+            let mut got = 0usize;
+            while got < buf.len() {
+                match std::io::stdin().read(&mut buf[got..]) {
+                    Ok(0) => break,
+                    Ok(k) => got += k,
+                    Err(e) => return Err(Flow::Panic(format!("read_bytes: {}", e))),
+                }
+            }
+            buf.truncate(got);
+            return Ok(Value::Str(Rc::new(String::from_utf8_lossy(&buf).to_string())));
+        }
+        if name == "flush_out" {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            return Ok(Value::Void);
+        }
+        // 字节访问内建(D1;语义镜像 C rt byte_at/byte_slice)
+        if name == "byte_at" {
+            if args.len() != 2 { return Err(Flow::Panic("byte_at 实参".into())); }
+            let sv = self.expr(&args[0], env)?;
+            let iv = self.expr(&args[1], env)?;
+            let s = match &sv { Value::Str(s) => s.clone(), _ => return Err(Flow::Panic("byte_at 目标需 Str".into())) };
+            let i = match iv { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            let b = s.as_bytes();
+            if i < 0 || (i as usize) >= b.len() { return Err(Flow::Panic("index out of bounds".into())); }
+            return Ok(Value::Int(b[i as usize] as i64));
+        }
+        if name == "byte_slice" {
+            if args.len() != 3 { return Err(Flow::Panic("byte_slice 实参".into())); }
+            let sv = self.expr(&args[0], env)?;
+            let av = self.expr(&args[1], env)?;
+            let bv = self.expr(&args[2], env)?;
+            let s = match &sv { Value::Str(s) => s.clone(), _ => return Err(Flow::Panic("byte_slice 目标需 Str".into())) };
+            let a = match av { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            let b = match bv { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            let len = s.len() as i64;
+            if a < 0 || b > len || a > b { return Err(Flow::Panic("byte_slice 越界".into())); }
+            return Ok(Value::Str(Rc::new(s[(a as usize)..(b as usize)].to_string())));
         }
         if let Some(sym) = self.module_symbol(name) {
             if let Symbol::Variant { def, idx } = sym {
@@ -2099,6 +2201,57 @@ pub fn run_test_file(src: &str, profile: crate::sem::Profile) -> Vec<(String, Re
     let file = Rc::new(ast_file);
     let mut interp = Interp::new(&sema, String::new(), file.clone());
     interp.run_tests(&file)
+}
+
+/// 运行 fn main(D1):解析诊断非空 → Err(诊断文本);panic → Err(消息)。
+pub fn run_main_file(src: &str, profile: crate::sem::Profile) -> Result<i32, String> {
+    let (file, diags) = crate::parse_src(src);
+    if !diags.is_empty() {
+        let mut msg = String::new();
+        for d in &diags {
+            msg.push_str(&format!("{}:{} {} {}\n", d.span.line, d.span.col, d.code, d.message));
+        }
+        return Err(msg);
+    }
+    let has_main = file.decls.iter().any(|d| matches!(d, ast::Decl::Fn(f) if f.name == "main"));
+    if !has_main { return Err("缺少 fn main".into()); }
+    let (sema, _) = sem::build_package(&vec![("".to_string(), src.to_string())], None, profile);
+    let ast_file = Rc::new(file);
+    let mut interp = Interp::new(&sema, String::new(), ast_file.clone());
+    interp.eval_globals(&ast_file);
+    interp.run_main()
+}
+
+// fmt_val 同族:浮点整值 %.1f 否则 %g(对齐 C rt fmt_val/C10 print 域)
+fn fmt_value(v: &Value, out: &mut String) {
+    match v {
+        Value::Void => {}
+        Value::Int(i) => out.push_str(&i.to_string()),
+        Value::IntW(_, i) => out.push_str(&i.to_string()),
+        Value::UInt(u) => out.push_str(&u.to_string()),
+        Value::UIntW(_, u) => out.push_str(&u.to_string()),
+        Value::F64(f) => {
+            if *f == (*f as i64) as f64 { out.push_str(&format!("{:.1}", f)); }
+            else { out.push_str(&format!("{}", f)); }
+        }
+        Value::F32(f) => {
+            if *f == (*f as i64) as f32 { out.push_str(&format!("{:.1}", f)); }
+            else { out.push_str(&format!("{}", f)); }
+        }
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Str(s) => out.push_str(s),
+        _ => out.push_str("<value>"),
+    }
+}
+
+fn exit_code_of(v: Value) -> i32 {
+    match v {
+        Value::Int(i) => i as i32,
+        Value::IntW(_, i) => i as i32,
+        Value::UInt(u) => u as i32,
+        Value::UIntW(_, u) => u as i32,
+        _ => 0,
+    }
 }
 
 

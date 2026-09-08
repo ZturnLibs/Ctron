@@ -45,13 +45,19 @@ C trans。C 版三层不自洽(check 拒、执行层收)。
 (c) 维持现状,文档化为「check=规格严格档,执行层=宽容档」,接受双面性。
 
 **状态:待规格裁决(裁决前双方执行层均不动)。**
+2026-09-08 增补证据:D1 打通后,`cc.ct` 全管道在 Rust interp 上即被本项阻塞
+(`tk + "~"` 等树打印代码)——ccmod 双种子对比的最后一环就是 T2,进一步支持方向 (b)。
 
 ## 行为差异(记录在案)
 
-### D1. CLI 运行入口:C `run` 支持 fn main;Rust `run` 仅执行 test 块
+### D1. CLI 运行入口 —— 已对齐(2026-09-08)
 
-Rust 版没有任何 CLI 子命令能运行 `fn main` 程序(解释器库可跑,CLI 不暴露)。
-共享语料全部为 test 块形式,故双方门控均绿;真实 main 程序只能 C 版单边运行。
+Rust 版补齐:`interp::run_main`(const/static 预求值 + main 体执行,EarlyReturn
+→ 退出码)+ lib `run_main_file`(解析诊断非空 → Err)+ CLI `run` main 优先分派
+(有 fn main 跑 main,否则 test 块;退出码 = main 返回值)。
+随附解释器内建补齐:println/print(fmt_val 同格式)、read_file(Option[Str])/
+read_line/read_bytes/flush_out、byte_at/byte_slice、`List[T]()` 构造器。
+残余:`cc.ct` 全管道在 Rust interp 上仍被 T2 阻塞(见上)。
 
 ### D5. Rust `run`/`test` 对解析错误静默成功
 
@@ -74,9 +80,11 @@ Rust 版没有任何 CLI 子命令能运行 `fn main` 程序(解释器库可跑,
 
 ### D3. 转译后端形态支持面
 
-- `fn main` 文件:C 后端完整发射(main 真实执行);Rust 后端只发射
-  `int main(void) { alarm(20); return 0; }`(其原生套件仅跑 test 块语料)。
-- `println`/`print` 发射:C 后端支持;Rust 后端拒绝(v1 拒绝域)。
+- `fn main` 文件:双版均完整发射(2026-09-08 Rust 补齐:无 test 且有 main 时
+  发射 `int main(void) { alarm(20); return (int)ctn_main(); }`;main 体本就随
+  用户 fn 发射为 ctn_main)。
+- `println`/`print` 发射:双版均支持(2026-09-08 Rust 补齐 ct_print_* 家族,
+  格式面 = 解释器 fmt_val:浮点整值 %.1f 否则 %g)。
 - `09_simd`:C 后端已覆盖(34/34);Rust 后端未覆盖(33/34)。
 
 ### D4. 检查器档案

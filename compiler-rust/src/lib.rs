@@ -28,6 +28,11 @@ pub fn run_test_file(src: &str, profile: sem::Profile) -> Vec<(String, Result<()
     interp::run_test_file(src, profile)
 }
 
+/// 运行 fn main(D1):返回退出码;解析/运行失败 → Err
+pub fn run_main_file(src: &str, profile: sem::Profile) -> Result<i32, String> {
+    interp::run_main_file(src, profile)
+}
+
 pub fn check_src(src: &str, profile: sem::Profile) -> Vec<token::Diagnostic> {
     check::check_src(src, profile)
 }
