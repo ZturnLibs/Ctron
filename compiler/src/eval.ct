@@ -2691,6 +2691,22 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             }
             return s4("k", envw3, outw3, vV2())
         }
+        if it[0] == "L" {
+            var envl = ir[1]
+            var outl = ir[3]
+            var ci: I32 = 1
+            while ci < it.len {
+                var eit = env_add(envl, nm, it[ci])
+                var br = run_block(file, eit, outl, st[3], false)
+                if br[0] != "k" {
+                    return s4(br[0], br[1], br[2], br[3])
+                }
+                envl = env_drop(br[1], 1)
+                outl = br[2]
+                ci += 1
+            }
+            return s4("k", envl, outl, vV2())
+        }
         if it[0] != "R" {
             panic("for iter not range")
             return s4("a", env, out, vV2())

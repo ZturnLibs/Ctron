@@ -1,0 +1,13 @@
+// fx_forlist.ct —— for-in 对 List 的迭代(§4.6 可迭代值)
+// 正例:遍历 List[Str] 累加输出 "ab";此前 L 值命中 "for iter not range" panic。
+fn main() -> I32 {
+    var xs = List[Str]()
+    xs.push("a")
+    xs.push("b")
+    var acc = ""
+    for x in xs {
+        acc = acc + x
+    }
+    println(acc)
+    return 0
+}
