@@ -1,3 +1,40 @@
+# ===== OS 杂物 =====
+.DS_Store
+Thumbs.db
+
+# ===== 编辑器 / IDE =====
+.idea/
+*.swp
+*.swo
+*.swn
+
+# ===== Python(工具/测试脚本) =====
 __pycache__/
 *.pyc
-.DS_Store
+*.pyo
+.pytest_cache/
+
+# ===== C / C++(compiler-c 宿主) =====
+build/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+a.out
+
+# ===== Rust(compiler-rust) =====
+target/
+**/*.rs.bk
+
+# ===== Ctron 自举编译器(compiler)产物 =====
+bin/
+
+# ===== Node / VSCode 扩展 =====
+node_modules/
+npm-debug.log*
+
+# ===== 会话 / 临时 =====
+.superpowers/
+*.log
+tmp/
