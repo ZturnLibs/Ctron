@@ -12,11 +12,11 @@
 |---|---|---|
 | `src/lex.ct` | 298 / 18 | 词法器:token 串(哨兵 `#EOF`)+ 换行过滤(规范 §1.6 行延续) |
 | `src/parse.ct` | 1413 / 35 | 解析器:token → 结构化文件节点树(`p_file`;节点 = `List[Str]`,child[0] = tag) |
-| `src/sem.ct` | 1926 / 50 | 单文件语义检查 12 项全集(`sem_walk2` → 诊断串,逐条 `CODE: msg`) |
-| `src/eval.ct` | 2024 / 64 | 树行走求值器:I32/Bool/Str 插值/Float/if·while·for/match/Option·Result·`?`/struct·枚举/UFCS/闭包/List 引用语义/trait·impl |
+| `src/sem.ct` | 2163 / 58 | 单文件语义检查全集(14 码 + E2020 调用目标解析 + E2010 调用 arity;`sem_walk2` → 诊断串) |
+| `src/eval.ct` | 2848 / 83 | 树行走求值器:I32/Bool/Str 插值/Float/if·while·for/match/Option·Result·`?`/struct·枚举/UFCS/闭包/List 引用语义/trait·impl |
 | `src/trans.ct` | 1131 / 30 | C 代码生成器 v3(`t_` 用户符号 / `ctron_*` 运行时 / 类型码 i·s·b·f·L·A·N) |
 | `src/driver_run.ct` | 46 | 入口(运行):parse → 语义 12 项 → 解释执行 main/test |
-| `src/driver_check.ct` | 29 | 入口(检查):parse → 语义 12 项即止,打印 `check OK decls=N` |
+| `src/driver_check.ct` | 165 | 入口(检查):parse → 语义检查即止,文本面 `check OK decls=N`;`--format=json` 出 §10.2 冻结 schema 诊断(span 为 v0 近似定位) |
 | `src/driver_emit.ct` | 72 | 入口(发射):parse → 生成等价 C(产物 gcc 可编译,`<bin> run <file>` 覆锚) |
 | `build.sh` | — | 按上表拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
 | `ctc.sh` | — | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
@@ -34,6 +34,7 @@ Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确
 make -C compiler-c                     # 构建宿主 seed(首次引导唯一依赖)
 compiler/ctc.sh selfhosted/input_cc.ct        # 运行:正例 rc=0 / 负例诊断 rc=1
 compiler/ctc.sh check compiler/build/cc_run.ct   # 自编译检查面
+compiler/ctc.sh check <in> --format=json         # §10.2 JSON 诊断契约(agent 循环消费面)
 compiler/ctc.sh emit selfhosted/fixtures/trans_v3.ct out.c  # 发射 C → gcc
 compiler/native.sh                     # 编译出原生编译器(约 9s)
 compiler/test/smoke.sh --full          # 全量验收(18 项)
@@ -105,6 +106,12 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第三批(2026-09-08,规范差距收补 Phase 0):**E2020 调用目标解析**与 **E2010 调用
+arity**(仅 bare 调用面,成员调用与内建 arity 留类型检查 v1;同步修复 eval/ev2/cc
+三处 `ty_head` 潜伏缺参 or3——按既有可观察行为忠实改写)、**for-in List 迭代**
+(§4.6 可迭代缺口)、**§10.2 JSON 诊断契约 v0**(code/severity/message/file/span/
+notes/fixes;span 以消息尾段名定位首含行,解析器 span 标注落地后替换)。
+
 顺带修复解析器缺陷:`a[i] {` 的 `{` 前瞻被误判为泛型 TypeArgs,导致
 if/while/match 条件上下文中比较表达式被吞(01g 类测试静默失败)——
 现按 allow_struct 门控,仅表达式上下文允许 `expr[T]{`。
@@ -115,6 +122,8 @@ if/while/match 条件上下文中比较表达式被吞(01g 类测试静默失败
 
 ## 边界(沿 selfhosted 挂账,未在本目录扩大能力面)
 
+- 类型检查仍无统一器:E2010/E2020 仅覆盖 bare 调用目标与 arity;变量读解析、
+  实参/注解类型统一、推断为类型检查 v1(见 docs/superpowers/plans 阶段计划)。
 - 发射器能力面 = `fixtures/trans_v0–v3` + 编译器自发射;"编译任意 Ctron 程序"
   (struct/闭包/并发/插值/值位 if·match)仍按 selfhosted 排期;
 - `pkg_chk.ct`(模块级检查 + E6010 comptime 预算)属包管理 oracle,未纳入;
