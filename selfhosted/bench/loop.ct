@@ -1,0 +1,14 @@
+fn main() -> I32 {
+    var s = 0
+    var k = 0
+    while k < 10 {
+        var i = 0
+        while i < 50000 {
+            s = s + (i % 7)
+            i = i + 1
+        }
+        k = k + 1
+    }
+    println(s)
+    return 0
+}

@@ -430,6 +430,22 @@
    **自举版本自此可在自己的二进制上跑完整验收阶梯并全绿 —— 具备测试能力(用户要求
    在此节点提醒)。**
 
+22i. **C9j⑪(本文件交付)—— 性能基准套件 bench.sh + 首份三形态性能报告**:
+   `selfhosted/bench.sh`(预热后 3 取最小,python 精确计时子进程)+ `bench/` 四夹具
+   (fib(24) 递归 / 500k 循环 / 20k 字符串拼接 / 50k List push)。三执行形态系统性对比
+   (seed = C 宿主 rt 解释;native = 原生自举 cc 解释;codegen = Ctron 发射器发射 C → gcc):
+   - S1 算法夹具(秒,正确性全 ✓):fib 0.073/0.128/**0.005**;loop 0.072/0.459/**0.005**;
+     str 0.038/0.039/0.036;list 0.020/0.039/**0.005** —— 原生代码生成在计算密集负载
+     比两个解释器快 8~26 倍;
+   - S2 前端 parse+sem cc.ct(175 decls):seed 1.92s vs native 1.89s(0.98,持平);
+   - S3 后端发射 cc.ct 全树:seed 2.56s vs native 4.52s(1.66,发射为求值密集,
+     cc 的 tag 分发慢于 rt 的枚举分发);两形态发射产物逐字节一致 ✓;
+   - S4 全深度自译化:seed 141.33s vs native **37.24s(原生快 3.8 倍)**,输出一致;
+     (arena 后原生形态在此负载占优 —— cc 的工作代码被编译,rt 侧仍在解释)。
+   性能结论:①求值器对解释器:前端持平、紧循环慢 6 倍(cc 的 env 持久 List 每绑定
+   全量拷贝 —— 未来优化点:结构共享);②编译形态 vs 解释形态:自举编译器的工作负载
+   原生编译后快 3.8 倍且内存有界(arena);③代码生成对一切计算密集负载:数量级优势。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。

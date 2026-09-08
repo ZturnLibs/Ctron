@@ -1,0 +1,10 @@
+fn fib(n: I32) -> I32 {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+fn main() -> I32 {
+    println(fib(24))
+    return 0
+}

@@ -112,6 +112,10 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
 - 下一步(可选):原生 cc 扫全
   suite_run/ev2 面;发射器全语言域(struct/闭包/并发/插值/值位 if·match)按"编译任意
   Ctron 程序"口径排期;浮点二进制舍入细节/f32 精度挂账;迁移 ASan 基建(见 HANDOFF)。
+- **性能基准**:`./bench.sh [--quick]` —— 三执行形态(seed 解释/原生自举 cc 解释/
+  原生代码生成)系统对比:S1 算法夹具(预热后 3 取最小)/S2 前端 parse+sem/S3 后端发射/
+  S4 全深度自译化;首份报告:C9j⑪(计划文档 22i)—— 原生代码生成比解释器快 8~26 倍,
+  原生自译化比种子快 3.8 倍,前端持平。
 - 用法(独立驱动,推荐):
 ```bash
 selfhosted/cc.sh <input.ct>     # parse → 语义 12 项 → 运行(正例 rc=0/负例诊断 rc=1)

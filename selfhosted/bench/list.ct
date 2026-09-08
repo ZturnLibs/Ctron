@@ -1,0 +1,10 @@
+fn main() -> I32 {
+    var l = List[Str]()
+    var i = 0
+    while i < 50000 {
+        l.push("item")
+        i = i + 1
+    }
+    println(l.len)
+    return 0
+}

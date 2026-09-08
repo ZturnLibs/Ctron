@@ -1,0 +1,10 @@
+fn main() -> I32 {
+    var s = ""
+    var i = 0
+    while i < 20000 {
+        s = s + "x"
+        i = i + 1
+    }
+    println(s.len)
+    return 0
+}
