@@ -763,7 +763,7 @@ impl<'a> Interp<'a> {
         if name == "read_bytes" {
             if args.len() != 1 { return Err(Flow::Panic("read_bytes 实参".into())); }
             let nv = self.expr(&args[0], env)?;
-            let want = match nv { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            let want = match nv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
             if want < 0 { return Err(Flow::Panic("read_bytes 负长度".into())); }
             use std::io::Read;
             let mut buf = vec![0u8; want as usize];
@@ -789,7 +789,7 @@ impl<'a> Interp<'a> {
             let sv = self.expr(&args[0], env)?;
             let iv = self.expr(&args[1], env)?;
             let s = match &sv { Value::Str(s) => s.clone(), _ => return Err(Flow::Panic("byte_at 目标需 Str".into())) };
-            let i = match iv { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            let i = match iv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
             let b = s.as_bytes();
             if i < 0 || (i as usize) >= b.len() { return Err(Flow::Panic("index out of bounds".into())); }
             return Ok(Value::Int(b[i as usize] as i64));
@@ -801,9 +801,9 @@ impl<'a> Interp<'a> {
             let bv = self.expr(&args[2], env)?;
             let s = match &sv { Value::Str(s) => s.clone(), _ => return Err(Flow::Panic("byte_slice 目标需 Str".into())) };
             let a = match av { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
-            let b = match bv { Value::Int(i) => i, Value::IntW(_, i) => i, _ => 0 };
+            let b = match bv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
             let len = s.len() as i64;
-            if a < 0 || b > len || a > b { return Err(Flow::Panic("byte_slice 越界".into())); }
+            if a < 0 || b > len || a > b { return Err(Flow::Panic(format!("byte_slice 越界 (DBG a={} b={} len={})", a, b, len))); }
             return Ok(Value::Str(Rc::new(s[(a as usize)..(b as usize)].to_string())));
         }
         if let Some(sym) = self.module_symbol(name) {
@@ -826,6 +826,13 @@ impl<'a> Interp<'a> {
         // Box 自动解引用(§3.3):字段/方法访问穿透
         if let Value::Boxed(inner) = &o {
             o = (**inner).clone();
+        }
+
+        // 标量 to_string(D1;fmt_val 同格式;method 位与属性位双覆盖)
+        if m == "to_string" && args.is_empty() {
+            let mut out = String::new();
+            fmt_value(&o, &mut out);
+            return Ok(Value::Str(Rc::new(out)));
         }
 
         if m == "spawn" {
@@ -1008,7 +1015,7 @@ impl<'a> Interp<'a> {
                     Ok(Value::Void)
                 }
                 "pop" => Ok(arr.borrow_mut().pop().unwrap_or(Value::Void)),
-                "len" => Ok(Value::UInt(arr.borrow().len() as u64)),
+                "len" => Ok(Value::Int(arr.borrow().len() as i64)),
                 "into_gc" => {
                     // 深拷贝到新的 GC 数组(interp 中即新建独立 Rc)
                     let items = arr.borrow().clone();
@@ -1019,8 +1026,8 @@ impl<'a> Interp<'a> {
             Value::Str(s) => {
                 let s = s.clone();
                 return match m {
-                    "len" => Ok(Value::UInt(s.len() as u64)),
-                    "char_len" => Ok(Value::UInt(s.chars().count() as u64)),
+                    "len" => Ok(Value::Int(s.len() as i64)),
+                    "char_len" => Ok(Value::Int(s.chars().count() as i64)),
                     "contains" => {
                         let a = self.expr(&args[0], env)?;
                         Ok(Value::Bool(s.contains(&to_display(&a))))
@@ -1428,12 +1435,23 @@ impl<'a> Interp<'a> {
         }
         match o {
             Value::Str(s) => match name {
-                "len" => Ok(Value::UInt(s.len() as u64)),
-                "char_len" => Ok(Value::UInt(s.chars().count() as u64)),
+                "len" => Ok(Value::Int(s.len() as i64)),
+                "char_len" => Ok(Value::Int(s.chars().count() as i64)),
+                "to_string" => Ok(o.clone()),
                 _ => Err(Flow::Panic(format!("Str 无属性 `{}`", name))),
             },
+            // 标量 to_string(D1;fmt_val 同格式)
+            Value::Int(_) | Value::IntW(..) | Value::UInt(_) | Value::UIntW(..)
+            | Value::Bool(_) | Value::F64(_) | Value::F32(_) => match name {
+                "to_string" => {
+                    let mut out = String::new();
+                    fmt_value(o, &mut out);
+                    Ok(Value::Str(Rc::new(out)))
+                }
+                _ => Err(Flow::Panic(format!("无属性 `{}`", name))),
+            },
             Value::Array(arr) => match name {
-                "len" => Ok(Value::UInt(arr.borrow().len() as u64)),
+                "len" => Ok(Value::Int(arr.borrow().len() as i64)),
                 _ => Err(Flow::Panic(format!("无属性 `{}`", name))),
             },
             Value::Tuple(items) => {
@@ -1448,7 +1466,7 @@ impl<'a> Interp<'a> {
                 }
             }
             Value::Simd(items) => match name {
-                "len" => Ok(Value::UInt(items.len() as u64)),
+                "len" => Ok(Value::Int(items.len() as i64)),
                 _ => Err(Flow::Panic(format!("Simd 无属性 `{}`", name))),
             },
             Value::Class { def, fields } | Value::Struct { def, fields } => {
@@ -1777,7 +1795,9 @@ fn runtime_index(o: &Value, i: &Value) -> Result<Value, Flow> {
             let Some(idx) = idx_of(i) else { return Ok(Value::Void) };
             Ok(Value::F32(items.get(idx).copied().unwrap_or(0.0) as f32))
         }
-        _ => Ok(Value::Void),
+        // 其余目标(Str/Int/…)不可索引:panic 逐字对齐 C rt(T2 后一致性收口;
+        // 原静默返回 Void 曾把 ccmod 双种子分歧藏进 cc.ct sem 域)
+        _ => return Err(Flow::Panic("索引目标非数组".into())),
     }
 }
 

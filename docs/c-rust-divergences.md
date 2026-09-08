@@ -46,11 +46,15 @@ C trans。C 版三层不自洽(check 拒、执行层收)。
 
 **状态:规格已裁决方向 (b),2026-09-08 落地**(规格 §4.5 修订 + C sem 放行 +
 Rust interp/check/trans 对齐;回归锚 `tests/01h_str_plus.ct` 四路逐字一致)。
-残余进展(2026-09-08):T2 落地后追查 byte_at 越界,连修两个 Rust interp 真实
-语义缺陷——① `&&` 不短路(LHS 假仍求值 RHS;对齐 C rt 守卫语义);② UInt/Int
-混合算术落入拒绝兜底(补 i128 中介混合分支)。`input_small` 现推进至分歧深入
-cc.ct 自身 sem 算法域(C rt abort「索引目标非数组」vs Rust 输出 89 行 cc.ct
-自检 E2010 流),需 rt 增设 Ctron 级回溯工具后专会话分析。
+**已收敛(2026-09-08)**:T2 落地后追查,连修四个 Rust interp 语义缺陷——
+① `&&` 不短路(LHS 假仍求值 RHS);② UInt/Int 混合算术兜底拒绝(补 i128 中介
+分支);③ Str `[]` 下标静默返回 Void(收紧为 panic「索引目标非数组」,对齐 C rt);
+④ `.len`/`char_len` 返回 UInt(对齐 C v_int 有符号;byte_at/byte_slice/read_bytes
+参数同步强化)。另补 `List[T]()` 构造器与标量 `to_string`。
+**里程碑:cc.ct 全管道双种子逐字一致**——input_small/pay(双版同点 abort)+
+input_cc/cc2/cc3(21/8/11 行输出 + 退出码),五个输入 diff 全零。
+范畴:本项为「自举代码 × Rust interp 域验收」首批成果;后续随自举泳道
+cc.ct 演进持续跑 `genmod` 矩阵即可。
 
 ## 行为差异(记录在案)
 
