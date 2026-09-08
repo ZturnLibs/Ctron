@@ -46,7 +46,7 @@
         "ctron.server.command": {
           "type": "string",
           "default": "",
-          "description": "LSP 启动脚本/可执行文件路径。留空则使用扩展内置 server/ctron-lsp.sh(需要仓库内 compiler_c/build/ctronc,或设置 CTRONC 环境变量)。"
+          "description": "LSP 启动脚本/可执行文件路径。留空则使用扩展内置 server/ctron-lsp.sh(需要仓库内 compiler-c/build/ctronc,或设置 CTRONC 环境变量)。"
         },
         "ctron.server.debug": {
           "type": "boolean",

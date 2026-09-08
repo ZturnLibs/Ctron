@@ -5,7 +5,7 @@
 #   bin/ctron-emit  编译器·发射驱动(parse → 生成等价 C,<bin> run <file> > out.c)
 #
 # 生成路径(自举链):发射器(cc_emit)编译编译器源 → C → 本机 cc。
-# 宿主 seed(compiler_c/build/ctronc)只在 ctc.sh emit 内部出现 —— 首次引导职责。
+# 宿主 seed(compiler-c/build/ctronc)只在 ctc.sh emit 内部出现 —— 首次引导职责。
 set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 BIN="$DIR/bin"

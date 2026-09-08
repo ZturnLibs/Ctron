@@ -6,14 +6,14 @@
 #
 # 说明:cc.ct 是自举编译器(parser + 语义检查 + 求值器,全部 Ctron 实现);
 # 本脚本只负责把输入路径换入 cc.ct 的 read_file 模板锚并以宿主 seed 运行。
-# 宿主 seed(compiler_c/build/ctronc)仅充当 Ctron 解释器;自举完成后可自替换。
+# 宿主 seed(compiler-c/build/ctronc)仅充当 Ctron 解释器;自举完成后可自替换。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
-HOST="$ROOT/compiler_c/build/ctronc"
+HOST="$ROOT/compiler-c/build/ctronc"
 
 if [ ! -x "$HOST" ]; then
-    echo "cc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler_c\")" >&2
+    echo "cc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
 if [ $# -lt 1 ] || [ ! -f "$1" ]; then

@@ -29,7 +29,7 @@ Ctron 语言的 VSCode 支持:语法高亮 + 智能提示。语言服务器(`lsp
 
 ```sh
 # 1. 构建 LSP 宿主(种子编译器)
-cd compiler_c && make && cd ..
+cd compiler-c && make && cd ..
 
 # 2. 方式 A:F5 调试运行
 code editors/vscode-ctron   # VSCode 打开扩展目录,按 F5
@@ -38,7 +38,7 @@ code editors/vscode-ctron   # VSCode 打开扩展目录,按 F5
 cd editors/vscode-ctron && npx @vscode/vsce package && code --install-extension ctron-lang-0.1.0.vsix
 ```
 
-服务器定位顺序:`ctron.server.command` 设置 → 扩展内置 `server/ctron-lsp.sh`(内部依次尝试 `$CTRONC`、`compiler_c/build/ctronc`、PATH)。
+服务器定位顺序:`ctron.server.command` 设置 → 扩展内置 `server/ctron-lsp.sh`(内部依次尝试 `$CTRONC`、`compiler-c/build/ctronc`、PATH)。
 
 ## 设置
 

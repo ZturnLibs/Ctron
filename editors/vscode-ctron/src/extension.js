@@ -469,7 +469,7 @@ function resolveCtronc(context) {
         candidates.push(path.join(process.env.HOME, 'bin/ctronc'));
     }
     // 仓库开发布局(扩展仍在仓库内时)
-    candidates.push(path.resolve(context.extensionPath, '..', '..', 'compiler_c', 'build', 'ctronc'));
+    candidates.push(path.resolve(context.extensionPath, '..', '..', 'compiler-c', 'build', 'ctronc'));
     for (const c of candidates) {
         try { fs.accessSync(c, fs.constants.X_OK); return c; } catch { /* 下一个 */ }
     }
@@ -494,7 +494,7 @@ class CheckRunner {
     runNow(uri) {
         if (!this.ctronc) {
             vscode.window.showWarningMessage(
-                'ctronc 不可用,语义检查跳过。可设置 "ctron.ctroncPath" 或构建 compiler_c。',
+                'ctronc 不可用,语义检查跳过。可设置 "ctron.ctroncPath" 或构建 compiler-c。',
                 '知道了'
             );
             return;

@@ -7,11 +7,11 @@
 #          复现解析(repro/,StructLit 误触发守卫回归)
 #   --full: 追加全深度自译化(cc 解释 cc 解释 input_cc,约 4 分钟,负载高时更久)
 #
-# 依赖: 宿主 seed compiler_c/build/ctronc(仅作 Ctron 解释器;自举完成后可自替换)
+# 依赖: 宿主 seed compiler-c/build/ctronc(仅作 Ctron 解释器;自举完成后可自替换)
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
-HOST="${CTRON_SEED:-$ROOT/compiler_c/build/ctronc}"
+HOST="${CTRON_SEED:-$ROOT/compiler-c/build/ctronc}"
 EXP="$DIR/expected"
 T=$(mktemp -d /tmp/ctron_ladder.XXXXXX)
 KEEP=${LADDER_KEEP:-0}
@@ -22,7 +22,7 @@ ok()  { pass=$((pass+1)); echo "ok  - $1"; }
 bad() { fail=$((fail+1)); echo "FAIL- $1"; }
 kn()  { known=$((known+1)); echo "know- $1"; }
 
-[ -x "$HOST" ] || { echo "ladder: 缺少宿主 seed $HOST(先: make -C compiler_c,或 CTRON_SEED=...)" >&2; exit 2; }
+[ -x "$HOST" ] || { echo "ladder: 缺少宿主 seed $HOST(先: make -C compiler-c,或 CTRON_SEED=...)" >&2; exit 2; }
 
 # gen_cc <输入程序> <输出模块> [count]
 gen_cc() {
@@ -90,8 +90,8 @@ echo "== 5) 全深度自译化(--full) =="
 if [ "${1:-}" = "--full" ]; then
     gen_cc "$DIR/cc.ct" "$T/self.ct"
     s=$(date +%s)
-    # cc.ct 的输入锚是相对路径(../selfhosted/input_cc.ct),须从 compiler_c 目录解析
-    ( cd "$ROOT/compiler_c" && timeout 900 "$HOST" run "$T/self.ct" > "$T/selfdeep.got" 2>&1 )
+    # cc.ct 的输入锚是相对路径(../selfhosted/input_cc.ct),须从 compiler-c 目录解析
+    ( cd "$ROOT/compiler-c" && timeout 900 "$HOST" run "$T/self.ct" > "$T/selfdeep.got" 2>&1 )
         rc=$?
         e=$(date +%s)
         if [ $rc = 0 ] && diff -q "$EXP/input_cc.out" "$T/selfdeep.got" > /dev/null 2>&1; then
@@ -103,10 +103,10 @@ fi
 
 echo "== 6) 自发射收官(cc.ct 经 Ctron 代码生成 → gcc → 原生 cc 解释 input_cc3 == 黄金) =="
 gen_cc "$DIR/cc.ct" "$T/self_emit.ct" --trans
-( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/self_emit.ct" > "$T/cc_self.c" 2>&1 )
+( cd "$ROOT/compiler-c" && timeout 300 "$HOST" run "$T/self_emit.ct" > "$T/cc_self.c" 2>&1 )
 if cc -O1 -w -o "$T/cc_self.bin" "$T/cc_self.c" 2>/dev/null; then
     # CLI 化后无需换锚:原生自举 cc 直接 run 任意输入
-    ( cd "$ROOT/compiler_c" && timeout 120 "$T/cc_self.bin" run "$DIR/input_cc3.ct" > "$T/cc_self.got" 2>&1 )
+    ( cd "$ROOT/compiler-c" && timeout 120 "$T/cc_self.bin" run "$DIR/input_cc3.ct" > "$T/cc_self.got" 2>&1 )
     if diff -q "$EXP/input_cc3.out" "$T/cc_self.got" > /dev/null 2>&1; then
         ok "自发射收官:原生自举 cc 解释 input_cc3 == 黄金逐字一致"
     else
@@ -118,7 +118,7 @@ fi
 
 echo "== 7) 宿主上位(原生自举 cc 经 CLI run 作为种子跑黄金面) =="
 gen_cc "$DIR/cc.ct" "$T/boot_cc.ct" --trans
-( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/boot_cc.ct" > "$T/boot_cc.c" 2>&1 )
+( cd "$ROOT/compiler-c" && timeout 300 "$HOST" run "$T/boot_cc.ct" > "$T/boot_cc.c" 2>&1 )
 if cc -O1 -w -o "$T/nc.bin" "$T/boot_cc.c" 2>/dev/null; then
     for f in input_cc input_cc2 input_cc3; do
         gen_cc "$DIR/$f.ct" "$T/nmod_$f.ct"
@@ -142,7 +142,7 @@ fi
 
 echo "== 8) 自举固定点(编译器编译自身逐字节复现 + CLI 编译用户程序) =="
 gen_cc "$T/selfcomp.ct" "$T/selfcomp.ct" --trans
-( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$T/selfcomp.ct" > "$T/c1.c" 2>&1 )
+( cd "$ROOT/compiler-c" && timeout 300 "$HOST" run "$T/selfcomp.ct" > "$T/c1.c" 2>&1 )
 if cc -O1 -w -o "$T/compiler1.bin" "$T/c1.c" 2>/dev/null; then
     ( cd "$ROOT" && timeout 120 "$T/compiler1.bin" > "$T/c2.c" 2>&1 )
     if diff -q "$T/c1.c" "$T/c2.c" > /dev/null 2>&1; then
@@ -168,15 +168,15 @@ fi
 
 echo "== 9) 全模块面双种子差分(C 宿主 vs 当前种子) =="
 # 参考端恒为 C 宿主(bootstrap 下 $HOST 已是原生 cc,不换参考即失去对照意义)
-CSEED="$ROOT/compiler_c/build/ctronc"
+CSEED="$ROOT/compiler-c/build/ctronc"
 # 已知分歧:parsetree/sem_chk 老快照依赖 C9i① 挂账的解析嵌套差异(cc 解析器把
 # p_block 尾 guard 嵌到 while 外,rt 解析在循环内)→ 原生求值 unbound:p0。
 # sweep 如实标注 know-;修复归解析器韧性工作(见 HANDOFF)。
 for m in hello ev_num ev2 cc sem_chk pkg_chk parse_ast parsetree lex_small lex_kind lex_adv lex_corpus lex_float lex_pay lex_str lex_num; do
     [ -f "$DIR/$m.ct" ] || continue
-    ( cd "$ROOT/compiler_c" && timeout 300 "$CSEED" run "$DIR/$m.ct" > "$T/ms_$m.seed" 2>&1 )
+    ( cd "$ROOT/compiler-c" && timeout 300 "$CSEED" run "$DIR/$m.ct" > "$T/ms_$m.seed" 2>&1 )
     src=$?
-    ( cd "$ROOT/compiler_c" && timeout 300 "$HOST" run "$DIR/$m.ct" > "$T/ms_$m.nc" 2>&1 )
+    ( cd "$ROOT/compiler-c" && timeout 300 "$HOST" run "$DIR/$m.ct" > "$T/ms_$m.nc" 2>&1 )
     nrc=$?
     if [ "$src" = "$nrc" ] && diff -q "$T/ms_$m.seed" "$T/ms_$m.nc" > /dev/null 2>&1; then
         ok "模块面 $m 双种子一致"

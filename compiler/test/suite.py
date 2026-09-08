@@ -7,7 +7,7 @@
   *.lint.ct   lint:诊断含全部 //@ warn: 码
   *.panic.ct  编译干净,运行期失败且输出含 //@ panic: 子串
 跳过:roadmap/(红=规范锚)、modules/(多文件包)、//@ target: 非 full。
-对照:C 参考宿主(compiler_c/build/ctronc)同口径跑一遍,输出双方记分与分歧清单。
+对照:C 参考宿主(compiler-c/build/ctronc)同口径跑一遍,输出双方记分与分歧清单。
 """
 import re, subprocess, sys, glob, os
 
@@ -75,8 +75,8 @@ def first_line(s):
     return (s[:90] + "…") if len(s) > 90 else s
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CC = os.path.join(ROOT, "compiler/bin/ctron-cc")
-HOST = os.path.join(ROOT, "compiler_c/build/ctronc")
+CC = os.environ.get("CTRON_CC", os.path.join(ROOT, "compiler/bin/ctron-cc"))
+HOST = os.path.join(ROOT, "compiler-c/build/ctronc")
 TESTS = os.path.join(ROOT, "tests")
 
 if not os.path.exists(CC):

@@ -1,7 +1,7 @@
 # selfhosted —— Ctron 自举编译器(用 Ctron 写的编译器,独立目录)
 
 > Ctron 自举的唯一目录:所有 Ctron 编译器模块、夹具与差分管线都以本目录为源。
-> C 版(`compiler_c/src`)仅作为宿主运行器与差分 oracle,保留不清理。
+> C 版(`compiler-c/src`)仅作为宿主运行器与差分 oracle,保留不清理。
 
 ## 组成(按管线顺序)
 
@@ -38,7 +38,7 @@
 ## 用法(宿主 = C 版 ctronc)
 
 ```bash
-cd compiler_c && make          # 构建宿主
+cd compiler-c && make          # 构建宿主
 # Ctron 求值器(ev2.ct)解释其 read_file 目标 —— 主模式/测试模式按内容自判
 ./build/ctronc run ../selfhosted/ev2.ct
 # C 宿主参考运行同一输入(执行差分 oracle)
@@ -51,7 +51,7 @@ cd compiler_c && make          # 构建宿主
 ## 验收
 
 ```bash
-make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目录模块)
+make -C compiler-c test    # 全量差分(suite_run/suite_diff 直接跑本目录模块)
 ```
 
 ## 自举状态与下一步

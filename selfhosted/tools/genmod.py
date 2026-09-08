@@ -7,7 +7,7 @@
 功能:
   读取 selfhosted/cc.ct(Ctron 写的编译器单文件快照),把其中 read_file 的
   输入锚(../selfhosted/input_cc.ct)替换为指定输入,写出可被宿主 seed
-  (compiler_c/build/ctronc)解释执行的模块。
+  (compiler-c/build/ctronc)解释执行的模块。
 
   --count: 额外改造为 decl 计数模式 —— parse 后打印全部 decl 清单并止,
   不运行程序(用于自编译检查阶梯的 decl 计数对照)。

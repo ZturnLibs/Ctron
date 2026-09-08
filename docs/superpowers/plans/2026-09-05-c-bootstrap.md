@@ -328,7 +328,7 @@
    语义写透别名)往返逐字一致,v0–v2 零回归。
    记账(既有问题,非本批引入):①**ASan 拆分回归**——2931c15 模块拆分后 ASan suite_diff 在
    rt_eval.c:360 栈溢出(纯 HEAD 经 stash 验证复现;O2 230 全绿;疑 eval_expr 跨 TU 不内联
-   加深递归栈,归 compiler_c 泳道);②**cc.ct 潜伏 bug**——ty_head(4506 行)对 3 参 or3 只传
+   加深递归栈,归 compiler-c 泳道);②**cc.ct 潜伏 bug**——ty_head(4506 行)对 3 参 or3 只传
    2 实参,种子一旦执行必 panic(套件未触达;发射器按补 0 保编译,崩路无差分意义)。
    钉子:①尾槽语义(NL 折叠)与直觉不符,ct_body 已按值类黑名单区分;②值位 if/match 仅
    fn 尾特判,泛位挂账;③genmod 换靶只改模块副本,trans 模式读磁盘 cc.ct 的原始锚,
@@ -448,7 +448,7 @@
 
 ## 自举产物目录
 
-Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
+Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler-c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler-c/src)仅作宿主与 oracle,保留不清理。
 
 ## 交接
 

@@ -8,8 +8,8 @@ CTRONC="${CTRONC:-}"
 # 1) 仓库开发布局(扩展目录仍在仓库内时)
 if [ -z "$CTRONC" ]; then
     ROOT=$(cd "$SCRIPT_DIR/../../.." 2>/dev/null && pwd) || ROOT=""
-    if [ -n "$ROOT" ] && [ -x "$ROOT/compiler_c/build/ctronc" ]; then
-        CTRONC="$ROOT/compiler_c/build/ctronc"
+    if [ -n "$ROOT" ] && [ -x "$ROOT/compiler-c/build/ctronc" ]; then
+        CTRONC="$ROOT/compiler-c/build/ctronc"
     fi
 fi
 
@@ -27,7 +27,7 @@ fi
 
 if [ -z "$CTRONC" ] || [ ! -x "$CTRONC" ]; then
     echo "ctron-lsp: 找不到 ctronc —— 任选其一:" >&2
-    echo "  a) cd <仓库>/compiler_c && make,然后 ln -sf <仓库>/compiler_c/build/ctronc /usr/local/bin/ctronc" >&2
+    echo "  a) cd <仓库>/compiler-c && make,然后 ln -sf <仓库>/compiler-c/build/ctronc /usr/local/bin/ctronc" >&2
     echo "  b) VSCode 设置 ctron.server.command 指向启动脚本/包装器" >&2
     echo "  c) 启动 code 前导出 CTRONC=/path/to/ctronc" >&2
     sleep 3

@@ -50,7 +50,7 @@
 ## 构建与测试
 
 ```sh
-cd ../compiler_c && make          # 解释器宿主
+cd ../compiler-c && make          # 解释器宿主
 # 端到端:python 构造 Content-Length 帧 | ctronc run lsp/src/main.ct,断言响应
 # 回归:全部 tests/*.ct + selfhosted/*.ct + 自身灌入,零 panic、退出码 0
 cd ../editors/vscode-ctron && make package   # 打包前自动同步本目录到 server/main.ct

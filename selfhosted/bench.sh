@@ -10,7 +10,7 @@
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
-SEED="$ROOT/compiler_c/build/ctronc"
+SEED="$ROOT/compiler-c/build/ctronc"
 T=$(mktemp -d /tmp/ctron_bench.XXXXXX)
 trap 'rm -rf "$T"' EXIT
 

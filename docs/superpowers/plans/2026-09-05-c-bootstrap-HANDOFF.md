@@ -5,16 +5,16 @@
 
 ## 0. 仓库与命令
 - 仓库根:`/Users/zyj/Zturn/Ctron`,分支:`discuss-c-implementation`
-- 构建/验收:`cd compiler_c && make test`(约 10 秒;208 diff cases + 若干 suite)
+- 构建/验收:`cd compiler-c && make test`(约 10 秒;208 diff cases + 若干 suite)
 - ASan:`cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc -o build/asan/suite_diff tests/suite_diff.c src/*.c && ./build/asan/suite_diff ../selfhosted`
-- 直接跑 Ctron 模块:`cd compiler_c && ./build/ctronc run ../selfhosted/<mod>.ct`
+- 直接跑 Ctron 模块:`cd compiler-c && ./build/ctronc run ../selfhosted/<mod>.ct`
 - Ctron 模块处理任意文件:`./build/ctronc parse-ct <file> [module]`
 - **当前工作区应干净(仅历史提交)。**
 
 ## 1. 战略(用户口径,必须遵守)
 1. **Ctron 自举 = 用 Ctron 实现 Ctron 编译器**,逐模块与 C 版契约差分锁定。
-2. **不要管理/重构/清理 C 版**(`compiler_c/src` 只是宿主与 oracle,保留)。
-3. **Ctron 自举代码全部放根目录 `selfhosted/`**(`compiler_c/selfhost` 已删除,勿重建)。
+2. **不要管理/重构/清理 C 版**(`compiler-c/src` 只是宿主与 oracle,保留)。
+3. **Ctron 自举代码全部放根目录 `selfhosted/`**(`compiler-c/selfhost` 已删除,勿重建)。
 4. suite_run/suite_diff 直接以 `../selfhosted` 为模块根;模块内夹具路径字面量一律
    `../selfhosted/input_*.ct`;suite_run 跳过 `input_*` 数据文件(勿再犯)。
 5. 每步交付:新增/改动 → 立刻跑 `make test` + ASan → 更新计划文档(18x 项)与
@@ -54,8 +54,8 @@
 4. 之后可考虑把 `selfhosted/` 提升为独立工具链(自带驱动/夹具/差分脚本),C 版仍保留。
 
 ## 5. 检索入口
-- 里程碑与设计:计划文档(18a–18u 最新为 C9b-0)、`selfhosted/README.md`、`compiler_c/README.md`
-- C 版 oracle 语义(sem/parser/rt 具体规则):`compiler_c/src/{sem,parser,rt,pkg}.c`
+- 里程碑与设计:计划文档(18a–18u 最新为 C9b-0)、`selfhosted/README.md`、`compiler-c/README.md`
+- C 版 oracle 语义(sem/parser/rt 具体规则):`compiler-c/src/{sem,parser,rt,pkg}.c`
 - 现有 Ctron 模块即最佳“写法范本”:`selfhosted/sem_chk.ct`(语义全集)、`pkg_chk.ct`(tok 提取)、`ev_num.ct`(求值雏形)
 
 ---
@@ -72,7 +72,7 @@
 - C9c ✅(`cc.ct` 统一驱动 parse→sem12→run;seq=9;提交待本批次尾)。验收 220 cases + suite_run 16 files。
 - 下一批见计划 18y 意向:单文件语义 12 项之外扩面 / 运行域对齐 / selfhosted 独立工具链。
 - C9d① ✅(match+数组;seq=5b)提交 1c83147;C9d② ✅(Option/Result tag+`?` Try;seq=5c 222 cases)。
-- 注意:并行 C10-a(trans)流已把 compiler_c/Makefile 接上未落盘的 tests/suite_trans.c → 整体
+- 注意:并行 C10-a(trans)流已把 compiler-c/Makefile 接上未落盘的 tests/suite_trans.c → 整体
   `make test` 暂不可用;验收请逐 suite 构建运行(或等其落盘)。勿改其 Makefile。
 - C9d③ ✅(struct/枚举域;seq=5d 223 cases)。
 - C9e① ✅(cc.ct 快照刷新至 C9d + UFCS;seq5e/seq9-cc2,225 cases)。
@@ -90,7 +90,7 @@
   提交恢复。教训:**提交前必须 `git status` + `git diff --stat` 逐文件自查,只 add 自己泳道
   的文件;发现混入且 HEAD 已被并行方推进时,勿再做历史手术,现场移交并在文档留痕**。
 - 并行 C10 流 trans.c WIP 可能短暂阻断 `make build/suite_diff`(同一 CORE 链接);应急:
-  `git show HEAD:compiler_c/src/trans.c > /tmp/trans_stable.c` 用稳定版链接验收,不改其文件。
+  `git show HEAD:compiler-c/src/trans.c > /tmp/trans_stable.c` 用稳定版链接验收,不改其文件。
 - 下一批:C9f② trait/impl 方法域(用户类型方法调用/trait 默认方法),或 cc.ct 快照刷新并入 C9f①。
 - C9f② ✅(trait/impl 方法域;seq5h input_ev2h.ct,228 cases)。分发序镜像 rt:
   内建 → 类方法(找不到即 panic 不落 UFCS)→ UFCS;Member:字段 → impl prop → panic。
@@ -110,7 +110,7 @@
   右值字段写克隆(rt 774 行)挂账。
 - 排障经验:suite_diff 计数不一致(O2 229 vs ASan 228)为陈旧二进制所致 —— ASan 二进制
   建于 suite_diff.c 中间态;**每次改套件用例后两个构建都要重建再对比**。并行方 trans.c
-  WIP 若阻断构建,用 `git show HEAD:compiler_c/src/trans.c` 稳定版链接验收。
+  WIP 若阻断构建,用 `git show HEAD:compiler-c/src/trans.c` 稳定版链接验收。
 - 下一批:cc.ct 快照刷新并入 C9f/C9g,或单文件语义扩面,或 selfhosted 独立工具链。
 - C9h ✅(cc.ct 快照刷新至 C9g + 独立驱动 cc.sh + seq9 input_cc3;230 cases,
   make test 端到端恢复绿)。selfhosted 自此自带工具链入口:
@@ -120,7 +120,7 @@
   对方工作流固定行为,我方对策:验证完成后立即提交,不跨验证窗口攒批。
 - 独立化路线(用户口径:不依赖不关注其他实现,专注自举版自身):
   ①cc 语义面扩面(12 项之外);②求值器运行域补尾;③**自译化阶梯**:cc.ct 解释
-  cc.ct(cc.sh 嵌套自举),验证自足性;④差分脚本从 compiler_c/tests 迁移/复制到
+  cc.ct(cc.sh 嵌套自举),验证自足性;④差分脚本从 compiler-c/tests 迁移/复制到
   selfhosted/ 本地,验收不再依赖宿主管的套件源码。
 - C9i① ✅(自译化尝试暴露真实缺口并修复):**Ctron scan 无换行抑制规则** —— cc.ct 自身
   源码用了 `&&` 领行续行,C 解析器接受、Ctron 解析器遇 NL 即断。修复:六模块统一安装
@@ -180,7 +180,7 @@
   (镜像 cc.ct ty_head 的 2 参 or3 潜伏 bug)。
 - **既有问题记账(均非本批引入,已留痕计划文档 22a)**:①2931c15 模块拆分后 ASan
   suite_diff 在 rt_eval.c:360 栈溢出(纯 HEAD stash 验证复现;O2 230 全绿)——归
-  compiler_c 泳道;ASan 命令需排除 src/main.c(拆分后与套件 main 重复符号):
+  compiler-c 泳道;ASan 命令需排除 src/main.c(拆分后与套件 main 重复符号):
   `srcs=(src/*.c); cc ... tests/suite_diff.c ${srcs:#*main.c}`(zsh)。
   ②cc.ct 4506 行 ty_head 对 or3 只传 2 实参,种子一旦执行必 panic(套件未触达)。
 - **流程钉子**:①zsh 通配无匹配(如 rm $T/*.bin)会中止整条 && 链 → 批量清理用 rm -rf 目录;
@@ -250,7 +250,7 @@
   解析/rt/生成码三处统一——归语言语义工作。另 df_* 自身限制挂账:二进制 double
   舍入边界/f32 后缀/浮点 to_string/div-by-zero inf(语料未触达)。
 - 流程钉子:Ctron 无 `||`(又踩一次,df_g 初版)——写长表达式先想 or2;
-  genmod 探针一律绝对路径;并行泳道活跃期(compiler_c parser_expr.c 在飞)提交前
+  genmod 探针一律绝对路径;并行泳道活跃期(compiler-c parser_expr.c 在飞)提交前
   git status 逐文件核对。
 ---
 ## 更新记录(22c session,C9j⑨ 双种子差分清零)
@@ -270,7 +270,7 @@
   规范应禁或解析/rt/生成码三处统一。
 - 流程钉子:①插桩定位时 println 目标区分 stdout(发射产物)与 stderr(诊断),别混流
   grep;②zsh 管道 `cmd | tail; echo $?` 拿到的是 tail 的 rc —— 真实 rc 用无管道直跑;
-  ③并行泳道活跃期(compiler_c parser_expr.c / suite_lex 63 文件在飞),只 add 自己的文件。
+  ③并行泳道活跃期(compiler-c parser_expr.c / suite_lex 63 文件在飞),只 add 自己的文件。
 - 下一批候选:自译化原生形态内存归还(最后 known-div);发射器全语言域;CTRON_SEED
   默认切自举产物;PascalCase 绑定名禁用或统一(语言语义)。
 ---

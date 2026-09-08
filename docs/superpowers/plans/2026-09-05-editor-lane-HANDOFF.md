@@ -10,7 +10,7 @@
 |---|---|
 | `editors/vscode-ctron/` | VSCode 扩展:TextMate 高亮、language-configuration(§1.6 延续集缩进)、22 片段、**手写零依赖 LSP 客户端**、check 包装(保存时 `ctronc check --format=json` 语义诊断 + fixes[] CodeAction + 词法确定性修复)、`make package` 打包流水线 |
 | `lsp/src/main.ct` | **LSP 服务器,用 Ctron 语言实现**(单文件 ~1500 行,`ctronc run` 解释执行);架构/约束/性能见 `lsp/README.md` |
-| `compiler_c/src/rt.c` | 跨泳道最小改动(按泳道协议):I/O 内建 `read_line`/`read_bytes`/`flush_out`;`call_decl` 实参求值语义修复(21a5b3e);byte_at 快路径因 UB 被自举泳道回退(正确取舍) |
+| `compiler-c/src/rt.c` | 跨泳道最小改动(按泳道协议):I/O 内建 `read_line`/`read_bytes`/`flush_out`;`call_decl` 实参求值语义修复(21a5b3e);byte_at 快路径因 UB 被自举泳道回退(正确取舍) |
 | `docs/` | 总体分析、差距矩阵(对照 rust-analyzer/gopls/zls)、本交接 |
 
 已交付特性:高亮(插值/后缀/非法标点标红)、缩进规则、片段、词法诊断、语义诊断(保存时)、
@@ -20,7 +20,7 @@ documentHighlight、signatureHelp、形参名 inlay hints、缩进格式化、�
 ## 1. 命令速查
 
 ```sh
-cd compiler_c && make && make test              # 宿主 + 全套回归
+cd compiler-c && make && make test              # 宿主 + 全套回归
 cd editors/vscode-ctron && make package         # 同步 lsp 源 → server/main.ct 副本 → vsce 打包
 code --install-extension ctron-lang-0.3.0.vsix  # 本地安装
 # 服务器端到端调试:python 构造 Content-Length 帧 | ctronc run lsp/src/main.ct

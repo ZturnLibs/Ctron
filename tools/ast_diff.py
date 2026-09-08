@@ -306,7 +306,7 @@ def collect_files(explicit):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rust", default=str(REPO / "compiler-rust" / "target" / "debug" / "ctron"))
-    ap.add_argument("--c", dest="cbin", default=str(REPO / "compiler_c" / "build" / "ctronc"))
+    ap.add_argument("--c", dest="cbin", default=str(REPO / "compiler-c" / "build" / "ctronc"))
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--max-show", type=int, default=6)
     ap.add_argument("files", nargs="*")

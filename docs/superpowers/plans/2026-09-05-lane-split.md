@@ -8,15 +8,15 @@
 
 | 泳道 | 归属 | 范围 |
 |---|---|---|
-| **A:自举** | 自举 session(见 HANDOFF) | `selfhosted/` 全部(C9b 求值器扩面、C9c cc 驱动、后续模块)、`suite_run`/`suite_diff` 夹具、`compiler_c/src/rt.c` 的**宿主内建新增**(read_dir 等,按需) |
-| **B:C 版纵深** | 本 session | `compiler_c/src/{sem,sem.h,pkg,pkg.h,main,parser,lexer,ast_show}.c`、**代码生成后端**(trans/build)、CLI 工具链、诊断注册表补全;`tests/` 一致性语料的增补 |
+| **A:自举** | 自举 session(见 HANDOFF) | `selfhosted/` 全部(C9b 求值器扩面、C9c cc 驱动、后续模块)、`suite_run`/`suite_diff` 夹具、`compiler-c/src/rt.c` 的**宿主内建新增**(read_dir 等,按需) |
+| **B:C 版纵深** | 本 session | `compiler-c/src/{sem,sem.h,pkg,pkg.h,main,parser,lexer,ast_show}.c`、**代码生成后端**(trans/build)、CLI 工具链、诊断注册表补全;`tests/` 一致性语料的增补 |
 | **C:Rust 参照** | 暂缓 | `compiler/`(P1-D WIP 已在库,双方均不动,除非明确领任务) |
 
 ## 2. 协作协议(硬规则)
 
 1. **只碰自己泳道内的文件**;跨泳道修复允许,但必须:(a) 最小 diff;(b) `make test` 全绿;
    (c) 提交信息说明动机(例:a3bf0b7 修 rt.c List 索引写/byte_at UB)。
-2. **compiler_c/src 是共享 oracle**:语义改动 = 改变 oracle,须在提交信息首行标注
+2. **compiler-c/src 是共享 oracle**:语义改动 = 改变 oracle,须在提交信息首行标注
    `oracle-shift:` 并在 selfhosted 侧复核差分;纯 bugfix(对齐既有语料行为)不需标注。
 3. **不 restore / 不 rebase / 不 stash 他人的未提交改动**。发现冲突文件:跳过该文件,
    在提交信息中注明,或等对方提交后 rebase 自己的工作。
@@ -24,7 +24,7 @@
    (本轮已发生两次未提交窗口事故)。
 5. **里程碑代号分段**:A 泳道沿用 C9x;B 泳道用 **C10x(后端)/C3x(语义)延续**,
    避免编号相撞。
-6. 每次交付后更新本文与 `compiler_c/README.md` 里程碑表(各自只改自己的行)。
+6. 每次交付后更新本文与 `compiler-c/README.md` 里程碑表(各自只改自己的行)。
 
 ## 3. 当前状态快照(2026-09-05)
 
@@ -36,7 +36,7 @@
 
 ---
 ## 战略转向(2026-09-05 晚)—— Rust 版成为唯一产品线
-项目方决定:**不再推进“Ctron 自举”(Ctron-in-C);C 版(compiler_c)与 selfhosted 仅保留为
+项目方决定:**不再推进“Ctron 自举”(Ctron-in-C);C 版(compiler-c)与 selfhosted 仅保留为
 参考 oracle / 归档,不再新增功能**。**Rust 编译器成为唯一实现线**:
 - 目录:`compiler/` **已改名 `compiler-rust/`**(本次提交)。包名仍 `ctron`。
 - 归属:**Rust 线独立全力实现**(单 session 全权),其它泳道/其它 session **不得再修改

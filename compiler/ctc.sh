@@ -6,19 +6,19 @@
 #   ./ctc.sh check <input.ct>        # 检查:parse → 语义 12 项即止,打印 "check OK decls=N"
 #   ./ctc.sh emit <input.ct> [out.c] # 发射:parse → 生成等价 C(产物 gcc 可编译,`<bin> run <file>` 可覆锚)
 #
-# 宿主 seed(compiler_c/build/ctronc)仅充当 Ctron 解释器;输入路径经
+# 宿主 seed(compiler-c/build/ctronc)仅充当 Ctron 解释器;输入路径经
 # read_file 锚换靶注入。自举完成后产物可自替换宿主(见 test/smoke.sh --full)。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
-HOST="$ROOT/compiler_c/build/ctronc"
+HOST="$ROOT/compiler-c/build/ctronc"
 
 mode=run
 case ${1:-} in
     check|emit) mode=$1; shift ;;
 esac
 if [ ! -x "$HOST" ]; then
-    echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler_c\")" >&2
+    echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
 if [ $# -lt 1 ] || [ ! -f "$1" ]; then

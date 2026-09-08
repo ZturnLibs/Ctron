@@ -1,6 +1,6 @@
 # Ctron 编译器 C 版(C1 词法 ✅ / C2 解析 ✅ / C3 语义层 ✅ / C4-a…i 解释器 ✅(34 文件全量运行) / C10 转译后端 ✅(34/34 语料原生差分))
 
-> **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在两套独立、各自完整的编译器实现——Rust 版(`compiler/`)与 C 版(`compiler_c/`),互不依赖;两者共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`,61 文件)。最终自举目标不变:以 C 版为种子编译器,后续用 Ctron 自身实现 Ctron。
+> **分支**:`discuss-c-implementation`。**决策记录**:Ctron 存在三套独立实现——C 版种子(`compiler-c/`)、Rust 版(`compiler-rust/`)与 Ctron 自举版(`compiler/`),互不依赖;共享**语言设计**(`docs/superpowers/specs/…ctron-language-design.md`)、**规范**(`docs/spec/` v0.5)与**一致性语料**(仓库根 `tests/`)。自举目标已达成:Ctron 自身实现的编译器在 `compiler/`,以 C 版为首次引导种子(方案见 `compiler/BOOTSTRAP.md`),tests/ 一致性 50/50 与 C 宿主对齐。
 
 ## 已交付里程碑
 
@@ -20,7 +20,7 @@
 ## 目录与构建
 
 ```
-compiler_c/
+compiler-c/
   Makefile              # make / make test / make clean
   src/arena.{h,c}       # 块链 bump 分配器:编译器对象整体一次释放
   src/token.{h,c}       # 记号模型
@@ -184,7 +184,7 @@ b,println 算术实参误打 true/false → 按操作数推导 f/i)。v1 修复:
 各分支裸 `return` → `return env`(void 污染符号表,后续 let 推导对 void 环境
 求 `.len` 崩);②`ct_block` 补尾槽发射(p_block 末元素为裸尾表达式时按语句发射,
 修复 `{ println(1) }` 单尾语句块静默丢失);③摘除 EMIT 调试打印;④ladder.sh
-CTRON_SEED 换靶后 stage 5 须从 compiler_c 目录解析相对输入锚。
+CTRON_SEED 换靶后 stage 5 须从 compiler-c 目录解析相对输入锚。
 
 
 | C5b/c…g ✅ | Ctron 词法器 v1→v5(selfhost)+ 差分 harness | 首个"Ctron 写模块 ↔ C 版逐字一致"闭环;v5(lex_num)对全部 tests/*.ct 语料 payload 逐字一致(进制/下划线/指数/12 后缀),详见 bootstrap 计划 |

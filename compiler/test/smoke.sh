@@ -10,7 +10,7 @@
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)
-HOST="$ROOT/compiler_c/build/ctronc"
+HOST="$ROOT/compiler-c/build/ctronc"
 COMP="$ROOT/compiler"
 SH="$ROOT/selfhosted"
 EXP="$SH/expected"
@@ -19,7 +19,7 @@ pass=0; fail=0
 ok()  { echo "  ok  : $1"; pass=$((pass+1)); }
 bad() { echo "  FAIL: $1"; fail=$((fail+1)); }
 
-[ -x "$HOST" ] || { echo "smoke.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler_c\")" >&2; exit 2; }
+[ -x "$HOST" ] || { echo "smoke.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2; exit 2; }
 
 echo "== 1) 黄金对照(run: parse → 语义 12 项 → 解释执行) =="
 for f in input_cc input_cc2 input_cc3; do
@@ -62,10 +62,10 @@ if [ "${1:-}" = "--full" ]; then
     if "$COMP/ctc.sh" emit "$COMP/build/cc_run.ct" "$T/cc_self.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cc_interp.bin" "$T/cc_self.c" 2>/dev/null; then
         for f in input_cc input_cc2 input_cc3; do
-            ( cd "$ROOT/compiler_c" && "$T/cc_interp.bin" run "$SH/$f.ct" > "$T/n_$f.out" 2>&1 )
+            ( cd "$ROOT/compiler-c" && "$T/cc_interp.bin" run "$SH/$f.ct" > "$T/n_$f.out" 2>&1 )
             diff -q "$EXP/$f.out" "$T/n_$f.out" > /dev/null 2>&1 && ok "原生解释 $f == 黄金" || bad "原生解释 $f 分歧"
         done
-        ( cd "$ROOT/compiler_c" && "$T/cc_interp.bin" run "$SH/input_cc_neg.ct" > "$T/n_neg.out" 2>&1 )
+        ( cd "$ROOT/compiler-c" && "$T/cc_interp.bin" run "$SH/input_cc_neg.ct" > "$T/n_neg.out" 2>&1 )
         grep -q 'W8010' "$T/n_neg.out" && ok "原生负例拦截" || bad "原生负例未拦截"
     else
         bad "自发射/编译失败"

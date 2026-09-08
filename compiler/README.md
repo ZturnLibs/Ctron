@@ -3,6 +3,8 @@
 > 源自 `selfhosted/`(自举唯一差分源):把 6153 行的手工单文件快照 `cc.ct`
 > 与追加部件 `tools/trans_part.ct` 重组为**按模块组织、单一定义源**的编译器树。
 > 语义与可观测行为逐字不变(见下方验收);夹具与黄金基线仍以 `selfhosted/` 为源,本目录不复制。
+>
+> **自举方案、三级证明的复现命令与实现不变量见 [BOOTSTRAP.md](BOOTSTRAP.md)。**
 
 ## 结构
 
@@ -29,7 +31,7 @@ Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确
 ## 用法
 
 ```bash
-make -C compiler_c                     # 构建宿主 seed(首次引导唯一依赖)
+make -C compiler-c                     # 构建宿主 seed(首次引导唯一依赖)
 compiler/ctc.sh selfhosted/input_cc.ct        # 运行:正例 rc=0 / 负例诊断 rc=1
 compiler/ctc.sh check compiler/build/cc_run.ct   # 自编译检查面
 compiler/ctc.sh emit selfhosted/fixtures/trans_v3.ct out.c  # 发射 C → gcc
@@ -116,5 +118,5 @@ if/while/match 条件上下文中比较表达式被吞(01g 类测试静默失败
 - 发射器能力面 = `fixtures/trans_v0–v3` + 编译器自发射;"编译任意 Ctron 程序"
   (struct/闭包/并发/插值/值位 if·match)仍按 selfhosted 排期;
 - `pkg_chk.ct`(模块级检查 + E6010 comptime 预算)属包管理 oracle,未纳入;
-- 宿主 seed(`compiler_c/build/ctronc`)仅承担首次引导,bootstrap/ladder 流程仍在
+- 宿主 seed(`compiler-c/build/ctronc`)仅承担首次引导,bootstrap/ladder 流程仍在
   `selfhosted/`。

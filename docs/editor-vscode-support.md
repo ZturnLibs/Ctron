@@ -4,7 +4,7 @@
 - 扩展:`editors/vscode-ctron/`(grammar/language-configuration/snippets/手写零依赖 LSP 客户端/check 包装/打包流水线)
 - LSP:**用 Ctron 语言实现**(`lsp/src/main.ct`,`ctronc run` 解释执行;架构与解释器域约束见 `lsp/README.md`)
 - 能力:词法诊断(E1001 族)+ 保存时语义诊断(`ctronc check --format=json`)、大纲、hover、补全、定义、同文件 rename/references/highlight、signatureHelp、形参名 inlay hints、缩进格式化、花括号折叠、快速修复(`;` 删除/`::`→`.` + fixes[] 通道)
-- 运行时(rt.c,跨泳道):I/O 内建 `read_line`/`read_bytes`/`flush_out`;`call_decl` 实参求值修复(详见 compiler_c/README 台账)
+- 运行时(rt.c,跨泳道):I/O 内建 `read_line`/`read_bytes`/`flush_out`;`call_decl` 实参求值修复(详见 compiler-c/README 台账)
 - 验收:90 文件(语料+selfhosted+自身)全特性回归零 panic;61KB 文档整会话 3.4s(单趟扫描重构,原 256s);LSP 自身零自诊断
 
 原始分析(保留供后续阶段参考):
@@ -18,7 +18,7 @@
 |---|---|---|
 | 规范 §1 词法/EBNF 语法 | `docs/spec/01-lexical-grammar.md` | TextMate grammar 与 tree-sitter 的**唯一权威依据**(关键字表、运算符表、换行规则) |
 | Rust 编译器 lib 接口 | `compiler/src/lib.rs`:`parse_src` / `check_src` / `check_package` | LSP server 可**直接嵌入**,无需子进程 |
-| C 编译器 CLI | `compiler_c`:`ctronc lex/parse/sem` | Phase 1 包装式 LSP 的诊断后端;自举路线的最终宿主 |
+| C 编译器 CLI | `compiler-c`:`ctronc lex/parse/sem` | Phase 1 包装式 LSP 的诊断后端;自举路线的最终宿主 |
 | JSON 诊断契约(冻结) | 规范 §10.2:`ctron check --format=json` | 诊断 → LSP publishDiagnostics 的映射**已经标准化**(code/severity/span/notes/fixes) |
 | 稳定错误码注册表 | 规范 §10.1(E1001…E6030) | hover/quick-fix 可附错误码文档链接 |
 | 前奏 API 最小清单(规范性) | 规范 §3.8.2 | **机器可读的补全数据源**:Option/Result/Str/List/Mutex/Channel/Task/fmt 全部成员签名齐全 |

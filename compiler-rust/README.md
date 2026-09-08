@@ -2,7 +2,7 @@
 
 > **范围**:本 crate 是 Ctron 语言的**独立完整 Rust 实现**(零外部依赖,Rust std only,edition 2021,MSRV 1.75)。
 > Ctron 自身实现编译器(自举/自宿主)由独立工作流负责,**不在本 crate 范围**。
-> 与 C 版实现(`compiler_c/`)分治:语言规范(`docs/spec/` v0.5)与一致性语料(仓库根 `tests/`,61 文件)共享,工程互不依赖。
+> 与 C 版实现(`compiler-c/`)分治:语言规范(`docs/spec/` v0.5)与一致性语料(仓库根 `tests/`,61 文件)共享,工程互不依赖。
 
 ## 状态总览
 
