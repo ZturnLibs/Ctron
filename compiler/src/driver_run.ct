@@ -1,0 +1,48 @@
+// =====================================================================
+// driver_run.ct —— 编译器入口(解释执行模式)
+// parse → 单文件语义 12 项;有诊断 "CODE: msg" 打印并止(rc=1);
+// 干净则解释执行:文件含 fn main → 解释 main,否则解释 test 块(rc=0)。
+// 输入锚:main 内 read_file("../selfhosted/input_cc.ct"),构建/运行脚本换靶。
+// =====================================================================
+// ---------------- 驱动:parse → 语义 12 项 → 运行 ----------------
+// 语义阶段:sems != "(Ctron sem_walk2 逐条 "CODE: msg")→ 打印并止(编译失败)
+// 运行阶段:文件含 fn main → 解释 main;否则解释 test 块(全过返回 0)
+// 快照说明:解释器段随 ev2.ct 演进刷新(C9d 系列:match/数组/Option/struct/enum)。
+fn main() -> I32 {
+    let src = read_file("../selfhosted/input_cc.ct")
+    match src {
+        Some(s) => {
+            var toks = List[Str]()
+            scan(s, toks)
+            var cur = Atomic[I32](0)
+            var file = p_file(toks, cur)
+            var sems = sem_walk2(file)
+            if !seq2(sems, "") {
+                print(sems)
+                return 1
+            }
+            var d = find_decl(file, "main")
+            if d.len > 0 {
+                var br = run_block(file, statics_env(file), "", d[5], false)
+                if br[0] == "a" {
+                    print(fmt(br[3]))
+                    return 1
+                }
+                print(br[2])
+                return 0
+            }
+            var tr = run_tests(file)
+            if tr[0] == "a" {
+                print(tr[2])
+                print(fmt(tr[3]))
+                return 1
+            }
+            print(tr[2])
+            return 0
+        }
+        None => {
+            print("read-failed")
+            return 1
+        }
+    }
+}

@@ -1,0 +1,29 @@
+// =====================================================================
+// driver_check.ct —— 编译器入口(检查模式)
+// parse → 单文件语义 12 项即止;诊断逐条 "CODE: msg" 打印并止(rc=1),
+// 干净打印 "check OK decls=N"(N = 顶层 decl 数)并返回 rc=0。
+// 自编译检查面:ctc.sh check <本编译器自身/任意 .ct>。
+// 输入锚:read_file("../selfhosted/input_cc.ct"),构建/运行脚本换靶。
+// =====================================================================
+fn main() -> I32 {
+    let src = read_file("../selfhosted/input_cc.ct")
+    match src {
+        Some(s) => {
+            var toks = List[Str]()
+            scan(s, toks)
+            var cur = Atomic[I32](0)
+            var file = p_file(toks, cur)
+            var sems = sem_walk2(file)
+            if !seq2(sems, "") {
+                print(sems)
+                return 1
+            }
+            println("check OK decls=" + (file.len - 1).to_string())
+            return 0
+        }
+        None => {
+            print("read-failed")
+            return 1
+        }
+    }
+}

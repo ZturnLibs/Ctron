@@ -1,0 +1,85 @@
+#!/bin/sh
+# smoke.sh —— compiler/ 目录验收冒烟
+#
+# 用法: ./smoke.sh [--full]
+#   快面: 黄金对照 ×3 + 负例拦截 + check 自编译面(decl 锁定) + 发射往返 trans_v0–v3
+#   --full: 追加自发射收官(发射 run 驱动编译器 → gcc → 原生解释器跑黄金)
+#           与自举固定点(原生发射器 vs seed 发射器逐字节复现)
+#
+# 夹具与黄金基线沿用 selfhosted/(自举唯一差分源),本目录不复制。
+set -u
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)
+HOST="$ROOT/compiler_c/build/ctronc"
+COMP="$ROOT/compiler"
+SH="$ROOT/selfhosted"
+EXP="$SH/expected"
+T=$(mktemp -d /tmp/ctron_smoke.XXXXXX)
+pass=0; fail=0
+ok()  { echo "  ok  : $1"; pass=$((pass+1)); }
+bad() { echo "  FAIL: $1"; fail=$((fail+1)); }
+
+[ -x "$HOST" ] || { echo "smoke.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler_c\")" >&2; exit 2; }
+
+echo "== 1) 黄金对照(run: parse → 语义 12 项 → 解释执行) =="
+for f in input_cc input_cc2 input_cc3; do
+    "$COMP/ctc.sh" "$SH/$f.ct" > "$T/$f.out" 2>&1
+    if diff -q "$EXP/$f.out" "$T/$f.out" > /dev/null 2>&1; then ok "$f 逐字一致"; else bad "$f 输出分歧"; fi
+done
+"$COMP/ctc.sh" "$SH/input_cc_neg.ct" > "$T/neg.out" 2>&1; rc=$?
+if [ $rc -eq 1 ] && grep -q 'W8010: struct 含类引用字段(浅拷贝):Pair.b' "$T/neg.out"; then
+    ok "负例编译期拦截(W8010, rc=1)"
+else
+    bad "负例未拦截(rc=$rc)"
+fi
+
+echo "== 2) check 模式(自编译面,decl 锁定) =="
+"$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
+grep -q 'check OK decls=188' "$T/chk.out" && ok "自检 cc_run 绿,decls=188" || bad "自检 cc_run: $(cat "$T/chk.out")"
+check_decl() { # <源.ct> <期望decl>
+    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
+    grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
+}
+check_decl "$SH/sem_chk.ct"    109
+check_decl "$SH/parsetree.ct"   57
+check_decl "$SH/ev2.ct"        107
+check_decl "$SH/cc.ct"         175
+
+echo "== 3) 发射往返(C 代码生成 → gcc → 原生执行,fixtures 全扫) =="
+for v in v0 v1 v2 v3; do
+    if "$COMP/ctc.sh" emit "$SH/fixtures/trans_$v.ct" "$T/tr_$v.c" > /dev/null 2>&1 \
+       && cc -O1 -w -o "$T/tr_$v.bin" "$T/tr_$v.c" 2>/dev/null; then
+        ( cd "$ROOT" && "$T/tr_$v.bin" > "$T/tr_$v.got" 2>&1 )
+        ( cd "$ROOT" && "$HOST" run "$SH/fixtures/trans_$v.ct" > "$T/tr_$v.iv" 2>&1 )
+        diff -q "$T/tr_$v.got" "$T/tr_$v.iv" > /dev/null 2>&1 && ok "trans_$v 往返逐字一致" || bad "trans_$v 输出分歧"
+    else
+        bad "trans_$v 发射/编译失败"
+    fi
+done
+
+if [ "${1:-}" = "--full" ]; then
+    echo "== 4) 自发射收官(发射 run 驱动编译器 → 原生解释器) =="
+    if "$COMP/ctc.sh" emit "$COMP/build/cc_run.ct" "$T/cc_self.c" > /dev/null 2>&1 \
+       && cc -O1 -w -o "$T/cc_interp.bin" "$T/cc_self.c" 2>/dev/null; then
+        for f in input_cc input_cc2 input_cc3; do
+            ( cd "$ROOT/compiler_c" && "$T/cc_interp.bin" run "$SH/$f.ct" > "$T/n_$f.out" 2>&1 )
+            diff -q "$EXP/$f.out" "$T/n_$f.out" > /dev/null 2>&1 && ok "原生解释 $f == 黄金" || bad "原生解释 $f 分歧"
+        done
+        ( cd "$ROOT/compiler_c" && "$T/cc_interp.bin" run "$SH/input_cc_neg.ct" > "$T/n_neg.out" 2>&1 )
+        grep -q 'W8010' "$T/n_neg.out" && ok "原生负例拦截" || bad "原生负例未拦截"
+    else
+        bad "自发射/编译失败"
+    fi
+    echo "== 5) 自举固定点(原生发射器 vs seed 发射器,逐字节) =="
+    if "$COMP/ctc.sh" emit "$COMP/build/cc_emit.ct" "$T/cc_emit.c" > /dev/null 2>&1 \
+       && cc -O1 -w -o "$T/cc_emitter.bin" "$T/cc_emit.c" 2>/dev/null; then
+        "$T/cc_emitter.bin" run "$COMP/build/cc_run.ct" > "$T/c2.c" 2>&1
+        diff -q "$T/cc_self.c" "$T/c2.c" > /dev/null 2>&1 && ok "固定点:发射产物逐字节复现" || bad "固定点:两路发射产物分歧"
+    else
+        bad "发射器自发射失败"
+    fi
+fi
+
+echo "== 结果: $pass ok / $fail fail =="
+rm -rf "$T"
+[ $fail -eq 0 ]
