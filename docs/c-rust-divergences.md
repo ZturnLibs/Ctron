@@ -46,9 +46,11 @@ C trans。C 版三层不自洽(check 拒、执行层收)。
 
 **状态:规格已裁决方向 (b),2026-09-08 落地**(规格 §4.5 修订 + C sem 放行 +
 Rust interp/check/trans 对齐;回归锚 `tests/01h_str_plus.ct` 四路逐字一致)。
-残余:`cc.ct` 全管道在 Rust interp 上此前被本项阻塞;T2 落地后推进到
-`byte_at(src, len)` 越界(C 不触发)——系 cc.ct 扫描路径与 Rust interp 的某处
-求值分歧,归入「自举代码 × Rust interp 域验收」独立工作流。
+残余进展(2026-09-08):T2 落地后追查 byte_at 越界,连修两个 Rust interp 真实
+语义缺陷——① `&&` 不短路(LHS 假仍求值 RHS;对齐 C rt 守卫语义);② UInt/Int
+混合算术落入拒绝兜底(补 i128 中介混合分支)。`input_small` 现推进至分歧深入
+cc.ct 自身 sem 算法域(C rt abort「索引目标非数组」vs Rust 输出 89 行 cc.ct
+自检 E2010 流),需 rt 增设 Ctron 级回溯工具后专会话分析。
 
 ## 行为差异(记录在案)
 

@@ -1938,6 +1938,12 @@ impl<'a> Interp<'a> {
             }
             return Ok(a.clone());
         }
+        // && 短路:LHS 假时不求值 RHS(对齐 C rt;守卫型 RHS 可含越界等副作用,T1 关联)
+        if *op == AndAnd {
+            if !truthy(a) { return Ok(Value::Bool(false)); }
+            let b = self.expr(rhs, env)?;
+            return Ok(Value::Bool(truthy(&b)));
+        }
         let b = self.expr(rhs, env)?;
         let simd_pair = matches!(a, Value::Simd(_)) && matches!(b, Value::Simd(_));
         if simd_pair {
@@ -2002,6 +2008,27 @@ impl<'a> Interp<'a> {
                         Add | WrapAdd => x + y, Sub | WrapSub => x - y, Mul => x * y,
                         Div => if *y == 0.0 { f32::NAN } else { x / y },
                         Mod => x % y, _ => 0.0,
+                    })),
+                    // 混合 UInt/Int:i128 中介 + 左侧类型承载(对齐 C rt ck_int)
+                    (Value::UInt(x), Value::Int(y)) => Ok(Value::UInt(match op {
+                        Add => i128::checked_add(*x as i128, *y as i128).and_then(|v| u64::try_from(v).ok()).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
+                        Sub => i128::checked_sub(*x as i128, *y as i128).and_then(|v| u64::try_from(v).ok()).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
+                        Mul => i128::checked_mul(*x as i128, *y as i128).and_then(|v| u64::try_from(v).ok()).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
+                        Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } ((*x as i128) / (*y as i128)) as u64 }
+                        Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } ((*x as i128) % (*y as i128)) as u64 }
+                        WrapAdd => x.wrapping_add_signed(*y),
+                        WrapSub => x.wrapping_sub(*y as u64),
+                        _ => 0,
+                    })),
+                    (Value::Int(x), Value::UInt(y)) => Ok(Value::Int(match op {
+                        Add => i128::checked_add(*x as i128, *y as i128).and_then(|v| i64::try_from(v).ok()).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
+                        Sub => i128::checked_sub(*x as i128, *y as i128).and_then(|v| i64::try_from(v).ok()).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
+                        Mul => i128::checked_mul(*x as i128, *y as i128).and_then(|v| i64::try_from(v).ok()).ok_or_else(|| Flow::Panic("integer overflow".into()))?,
+                        Div => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } ((*x as i128) / (*y as i128)) as i64 }
+                        Mod => { if *y == 0 { return Err(Flow::Panic("division by zero".into())); } ((*x as i128) % (*y as i128)) as i64 }
+                        WrapAdd => x.wrapping_add(*y as i64),
+                        WrapSub => x.wrapping_sub(*y as i64),
+                        _ => 0,
                     })),
                     (Value::Str(x), Value::Str(y)) if matches!(op, crate::ast::BinOp::Add) => {
                         // T2 规格修订:Add 双 Str 为拼接(对齐 C rt)
