@@ -84,12 +84,13 @@ fn ct_ty_code(nt: List[Str]) -> Str {
     if nt[1] == "Str" { return "s" }
     if nt[1] == "Bool" { return "b" }
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
+    if nt[1] == "I64" { return "6" }
     if nt[1] == "List" { return "L" }
     if nt[1] == "Atomic" { return "A" }
     return "i"
 }
 
-// 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用
+// 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
 fn ct_ctype(code: Str) -> Str {
     if code == "s" { return "const char*" }
     if code == "N" { return "const char*" }
@@ -97,6 +98,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "f" { return "double" }
     if code == "L" { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
+    if code == "6" { return "int64_t" }
     if code == "v" { return "void" }
     return "int32_t"
 }
@@ -376,7 +378,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { s0 = ct_expr(ag[1], env, file) }
                 return "(((ctron_cell*)(" + obj + "))->v = " + s0 + ")"
             }
-            if m == "to_string" { return "ctron_i32_to_string((int32_t)(" + obj + "))" }
+            if m == "to_string" {
+                if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
+                return "ctron_i32_to_string((int32_t)(" + obj + "))"
+            }
             // UFCS:文件自由 fn 首参调用
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
@@ -388,11 +393,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var at = ct_typeof(ag[1], env, file)
             if at == "s" { return "printf(\"%s" + bs() + "n\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             if at == "b" { return "printf(\"%s" + bs() + "n\", (" + ct_call_args(ag, 1, env, file, "") + ") ? \"true\" : \"false\")" }
+            if at == "6" { return "printf(\"%lld" + bs() + "n\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d" + bs() + "n\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
         if callee == "print" {
             var at2 = ct_typeof(ag[1], env, file)
-            if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "))" }
+            if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + ");" }
+            if at2 == "6" { return "printf(\"%lld\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
         if callee == "read_file" {
@@ -797,6 +804,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
                 println("printf((" + fx + " == (double)(long long)(" + fx + ")) ? \"%.1f" + bs() + "n\" : \"%g" + bs() + "n\", " + fx + ");")
                 return env
             }
+            if at == "6" {
+                println("printf(\"%lld" + bs() + "n\", (long long)(" + ct_expr(e[2][1], env, file) + "));")
+                return env
+            }
             println("printf(\"%d" + bs() + "n\", (int)(" + ct_expr(e[2][1], env, file) + "));")
             return env
         }
@@ -975,6 +986,8 @@ fn main() -> I32 {
             println("static void ctron_print_i32(int32_t v) \{ printf(\"%d" + bs() + "n\", v); }")
             println("static const char* ctron_str_concat(const char* a, const char* b) \{ size_t la = strlen(a), lb = strlen(b); char* r = (char*)malloc(la + lb + 1); memcpy(r, a, la); memcpy(r + la, b, lb); r[la + lb] = 0; return r; }")
             println("static const char* ctron_i32_to_string(int32_t v) \{ char* r = (char*)malloc(16); snprintf(r, 16, \"%d\", v); return r; }")
+            println("static const char* ctron_i64_to_string(int64_t v) \{ char* r = (char*)malloc(32); snprintf(r, 32, \"%lld\", (long long)v); return r; }")
+            println("static void ctron_print_i64(int64_t v) \{ printf(\"%lld" + bs() + "n\", (long long)v); }")
             println("static int ctron_byte_at(const char* s, int i) \{ return (int)(unsigned char)s[i]; }")
             println("static const char* ctron_byte_slice(const char* s, int a, int b) \{ int n = b - a; char* r = (char*)malloc((size_t)n + 1); memcpy(r, s + a, (size_t)n); r[n] = 0; return r; }")
             println("static const char* ctron_read_file(const char* path) \{ FILE* f = fopen(path, \"rb\"); if (!f) \{ return NULL; } fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = (char*)malloc((size_t)n + 1); size_t rd = fread(r, 1, (size_t)n, f); r[rd] = 0; fclose(f); return r; }")

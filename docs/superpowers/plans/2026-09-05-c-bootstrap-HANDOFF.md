@@ -234,3 +234,21 @@
   实证宿主行为,再对照 230 差分;bootstrap 的 sweep 是发现 cc-vs-rt 分叉的最强探针。
 - 下一批候选:cc 求值器 Float 域;解析嵌套挂账修复(静机器+探针,见 21z 前记录);
   原生形态内存归还;发射器全语言域(struct/闭包/并发/插值/值位 if·match)。
+---
+## 更新记录(22b session,C9j⑧ cc 求值器 Float 域)
+- **C9j⑧ ✅**:cc 求值器新增 ["D", 规范十进制文本] 值域(十进制定点:df_* 15 个 fn,
+  I64 尾数 + scale,工作精度 9 位;df_g 实现 C %g 6 位有效 + e±XX 科学计数);
+  fmt/truth/veq/vcmp/val_arith/Unary-Neg 全接入;发射器连带 **I64 支持**(类型码 "6" →
+  int64_t,ctron_i64_to_string/ctron_print_i64,println/print/to_string 分发)。
+  实测:浮点探针(整值 %.1f/0.1+0.2/1÷3 %g/1e-05 科学/负值/比较)三方逐字一致
+  (rt == cc 求值器 == 原生发射);**bootstrap known-div 4→3**(trans_v2 转正);
+  bootstrap 36/0/3、普通 ladder 38/0/0、make test 全绿(suite_diff 已至 238 cases,
+  并行泳道增量)。cc decls 159→174(ladder check_decl 已同步)。
+- **语言级发现(重要挂账)**:PascalCase 绑定名是解析歧义源——`var Qq = 7` 绑定名被
+  p_pattern 按变体模式收(PatAgg-SubUnit),rt 绑定/读路径行为不一致(探针:同名小写
+  全绿,大写绑定即未解析);cc 自身新代码 `var X` 即踩中(已改 xe)。规范应禁或
+  解析/rt/生成码三处统一——归语言语义工作。另 df_* 自身限制挂账:二进制 double
+  舍入边界/f32 后缀/浮点 to_string/div-by-zero inf(语料未触达)。
+- 流程钉子:Ctron 无 `||`(又踩一次,df_g 初版)——写长表达式先想 or2;
+  genmod 探针一律绝对路径;并行泳道活跃期(compiler_c parser_expr.c 在飞)提交前
+  git status 逐文件核对。

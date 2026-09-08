@@ -93,9 +93,14 @@ make -C compiler_c test    # 全量差分(suite_run/suite_diff 直接跑本目�
   二进制。ladder 第 7 步:原生 cc 经 CLI 跑全部黄金(input_cc/2/3 + 负例拦截);
   第 8 步:固定点(编译器编译自身逐字节复现 + CLI 编译用户程序 == 黄金)。
   **C 宿主自此只剩"首次引导"职责。**
-- 下一步(可选):CTRON_SEED 默认切自举产物(两级引导:种子建 nc → nc 跑其余);
-  原生 cc 扫全 suite_run/ev2 面;全语言发射域(struct/闭包/并发/插值/值位 if·match)
-  按"编译任意 Ctron 程序"口径排期;迁移 ASan 基建(拆分后 eval_expr 栈溢出,见 HANDOFF)。
+- C9j⑧(cc 求值器 Float 域)已交付:cc 求值器新增 D 值域(十进制定点,I64 尾数,
+  fmt 镜像 rt fmt_val:整值 %.1f 否则 %g);发射器连带 I64 支持(类型码 "6")。
+  浮点探针三方逐字一致(rt == cc 求值器 == 原生发射);bootstrap known-div 4→3。
+  语言级发现:PascalCase 绑定名是解析歧义源(var Qq 绑定名被按变体模式收,探针实证
+  小写同名全绿)——规范上应禁或三处统一(挂账)。
+- 下一步(可选):两级引导默认化(CTRON_SEED 默认切自举产物);原生 cc 扫全
+  suite_run/ev2 面;发射器全语言域(struct/闭包/并发/插值/值位 if·match)按"编译任意
+  Ctron 程序"口径排期;浮点二进制舍入细节/f32 精度挂账;迁移 ASan 基建(见 HANDOFF)。
 - 用法(独立驱动,推荐):
 ```bash
 selfhosted/cc.sh <input.ct>     # parse → 语义 12 项 → 运行(正例 rc=0/负例诊断 rc=1)

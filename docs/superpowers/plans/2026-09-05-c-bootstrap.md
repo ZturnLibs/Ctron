@@ -382,6 +382,21 @@
    --full 负载原生比种子快 2.3 倍(136s→58s);make test 全绿(230 diff 回归验证了
    env_drop 回退正确)。
 
+22e. **C9j⑧(本文件交付)—— cc 求值器 Float 域(十进制定点),bootstrap known-div 4→3**:
+   cc 求值器新增 ["D", 规范十进制文本] 值域:Float 字面量/加减乘除/比较/取负/truth/fmt
+   全接入;实现为 Ctron 整数十进制定点(pack "@": I64 尾数 + scale,工作精度 9 位有效,
+   scale ≤ 9),fmt 镜像 rt fmt_val 可观测语义(整值 %.1f 否则 %g,6 位有效舍入 +
+   e±XX 科学计数)。发射器连带补 **I64 支持**(类型码 "6" → int64_t,ctron_i64_to_string /
+   ctron_print_i64 %lld,println/print/to_string 按 "6" 分发)。
+   实测三方逐字一致:浮点探针(整值/0.1+0.2/1÷3/1e-5/负值/比较)rt == cc 求值器 ==
+   原生发射;bootstrap 下 trans_v2 由 know- 转正(35→36 pass,known-div 4→3);
+   bootstrap --full 全绿、普通 ladder 38/0/0、make test 全绿(suite_diff 已至 238 cases)。
+   **语言级发现(记账)**:PascalCase 绑定名是解析歧义源——`var Qq = 7` 的绑定名被
+   p_pattern 按变体模式收,rt/读路径行为不一致(20 字节探针实证:小写同名全绿);
+   cc 自身新代码 df_g 的 `var X` 即踩中,已改小写。规范上大写绑定名应禁或三处统一(挂账)。
+   自身限制挂账:二进制 double 舍入的边界差异(%g 第 6 位半值)/f32 后缀精度/浮点
+   to_string/div-by-zero inf —— 语料未触达,逐字差分守护下按需补。
+
 ## 自举产物目录
 
 Ctron 实现的编译器模块统一在**项目根目录 `selfhosted/`**(lex_*/parsetree/parse_ast/sem_chk/pkg_chk + 夹具 + README)进行;`compiler_c/selfhost` 已删除,suite_run/suite_diff 直接以 `../selfhosted` 为模块根。C 版(compiler_c/src)仅作宿主与 oracle,保留不清理。
