@@ -1,0 +1,11 @@
+test "str plus concat" {
+    var s = "a"
+    s = s + "b" + "c"
+    assert_eq(s, "abc")
+    assert_eq(s.len, 3)
+    let prefix = "ctron"
+    assert_eq(prefix + "!", "ctron!")
+    if s + "!" == "abc!" {
+        println("cat-ok")
+    }
+}

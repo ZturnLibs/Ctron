@@ -939,8 +939,9 @@ static void check_expr(ctx* c, cexpr* e) {
                      || (lc == 0 || rc == 0) || !strcmp(ln, rn)))
                 diag(c->k, "E2010", "比较类型不匹配:%s vs %s", ln, rn);
         } else {
-            // 算术/回绕:两侧已知时需均为数值(字符串构造走插值,不走 +)
-            if (ln && rn && lc && rc && !(lc == 1 && rc == 1))
+            // 算术/回绕:两侧已知时需均为数值;Add 亦接纳双 Str(拼接,T2 规格修订 2026-09-08)
+            if (ln && rn && lc && rc && !(lc == 1 && rc == 1)
+                && !(e->bop == B_ADD && lc == 3 && rc == 3))
                 diag(c->k, "E2010", "算术需要数值,实际 %s 与 %s", ln, rn);
         }
         check_expr(c, e->lhs);

@@ -2003,6 +2003,10 @@ impl<'a> Interp<'a> {
                         Div => if *y == 0.0 { f32::NAN } else { x / y },
                         Mod => x % y, _ => 0.0,
                     })),
+                    (Value::Str(x), Value::Str(y)) if matches!(op, crate::ast::BinOp::Add) => {
+                        // T2 规格修订:Add 双 Str 为拼接(对齐 C rt)
+                        Ok(Value::Str(Rc::new(format!("{}{}", x, y))))
+                    }
                     _ => {
                         let msg = format!("算术需要数值,实际 {} 与 {}", to_display(a), to_display(&b_clone));
                         return Err(Flow::Panic(msg));

@@ -1434,7 +1434,9 @@ impl Trans {
                         self.binop(&bin, &format!("({})", c), vty, &v, v_vty)?
                     }
                 };
-                self.w(1, &format!("{} = (ct_i)({});", c, rhs.0));
+                // 仅整数载体加 (ct_i);Str/Bool/浮点直接赋值(D4/T2 修复:Str 重赋值此前必坏)
+                let cast = if v_vty.is_num() || v_vty == VTy::Unknown { "(ct_i)" } else { "" };
+                self.w(1, &format!("{} = {}({});", c, cast, rhs.0));
                 Ok(())
             }
             ast::Stmt::Return(e) => {
@@ -2615,13 +2617,17 @@ impl Trans {
 
     fn binop(&mut self, op: &ast::BinOp, lc: &str, lt: VTy, rc: &str, rt: VTy) -> TRes {
         use ast::BinOp::*;
+        if matches!(op, Add) && lt == VTy::Str && rt == VTy::Str {
+            // T2 规格修订:Add 双 Str 为拼接
+            return Ok((format!("ct_str_concat({}, {})", lc, rc), VTy::Str));
+        }
         match op {
             AndAnd => Ok((format!("(({}) && ({}))", lc, rc), VTy::Bool)),
             Eq | Ne | Lt | Gt | Le | Ge => {
                 if lt == VTy::Str && rt == VTy::Str {
                     if !matches!(op, Eq | Ne) { return Err("trans:Str 仅可 ==/!=".into()); }
                     let c = if *op == Eq { "==" } else { "!=" };
-                    return Ok((format!("((strcmp({}, {}) {}) 0)", lc, rc, c), VTy::Bool));
+                    return Ok((format!("((strcmp({}, {}) {} 0))", lc, rc, c), VTy::Bool));
                 }
                 if lt.is_num() && rt.is_num() {
                     let c = match op {
@@ -2861,6 +2867,7 @@ static void ct_print_bool(int v) { printf("%s", v ? "true" : "false"); }
 static void ct_print_i64(ct_i v) { printf("%lld", (long long)v); }
 static void ct_print_u64(ct_i v) { printf("%llu", (unsigned long long)v); }
 static void ct_print_f64(double v) { char b[64]; if (v == (double)(long long)v) snprintf(b, sizeof b, "%.1f", v); else snprintf(b, sizeof b, "%g", v); printf("%s", b); }
+static char* ct_str_concat(const char* a, const char* b) { size_t la = strlen(a), lb = strlen(b); char* r = (char*)malloc(la + lb + 1); memcpy(r, a, la); memcpy(r + la, b, lb); r[la + lb] = 0; return r; }
 /* ---- 和类型:tagged union;载荷槽 i/f 按静态类型选用 ---- */
 typedef ct_i (*ct_fnptr0)();
 typedef union { ct_i i; double f; } ct_cell;

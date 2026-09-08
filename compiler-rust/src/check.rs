@@ -1395,7 +1395,9 @@ impl<'a> Checker<'a> {
             Add | Sub | Mul | Div | Mod | WrapAdd | WrapSub => {
                 if std::env::var("CTRON_DEBUG").is_ok() { eprintln!("arith lt={:?} rt={:?}", lt, rt); }
                 let simd_pair = matches!(&lt, Ty::Simd(_)) && matches!(&rt, Ty::Simd(_));
-                if simd_pair || Self::both_numeric(&lt, &rt) || lt == Ty::Err || rt == Ty::Err { lt }
+                let str_cat = matches!(op, crate::ast::BinOp::Add)
+                    && matches!(lt, Ty::Str | Ty::String) && matches!(rt, Ty::Str | Ty::String);
+                if simd_pair || str_cat || Self::both_numeric(&lt, &rt) || lt == Ty::Err || rt == Ty::Err { lt }
                 else {
                     self.err("E2010", format!("算术需要数值,实际 {} 与 {}", self.type_name(&lt), self.type_name(&rt)), Span::new(1, 1, 0, 0));
                     Ty::Err

@@ -269,6 +269,7 @@ rt_run ctron_rt_run(const cfile* f) {
         (void)eval_block(&R, d->test.body);
     }
     out.tests_run = R.tests_run;
+    out.out = R.out ? strdup(R.out) : NULL; // test 块内 println 输出此前被丢弃
     ctron_arena_free(arena);
     return out;
 }
