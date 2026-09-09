@@ -2993,22 +2993,6 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
     if diags.len > 0 {
         return
     }
-    // E6010 前置:无终止守卫的自递归 comptime fn(真步数预算留宿主 pkg oracle)
-    var runaway = List[Str]()
-    i = 1
-    while i < file.len {
-        var d = file[i]
-        if d[0] == "FnC" {
-            if comp_self_recursion(file, d[5], d[1]) && !comp_has_guard(d[5]) {
-                runaway.push(d[1])
-                diags.push("E6010: comptime 预算超限(budget):" + d[1] + " 无终止守卫的自递归")
-            }
-        }
-        i += 1
-    }
-    if diags.len > 0 {
-        return
-    }
     i = 1
     while i < file.len {
         var d = file[i]
@@ -3037,20 +3021,37 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
             knd = ty_kind(d[3])
         }
         if nm.len > 0 {
-            if comp_reach_runaway(file, expr, runaway, List[Str]()) {
-                diags.push("E6010: comptime 预算超限(budget):" + nm + " 依赖无终止守卫的自递归")
+            // 步数预算求值(E6010):超限 → 诊断;不支持 → 静默回退全量求值(运行期同口径)
+            var st = List[Str]()
+            st.push("0")
+            var cenvN = List[Str]()
+            var cenvV = List[Str]()
+            var vr = ceval_expr(file, expr, cenvN, cenvV, st)
+            if seq2(vr[0], "over") {
+                diags.push("E6010: comptime 预算超限(budget):" + nm)
                 return
             }
-            var vr = eval_expr(file, env, "", expr)
-            if vr[0] != "k" {
-                diags.push("E6010: comptime 求值失败(eval):" + nm + " " + fmt(vr[2]))
-                return
+            var done = false
+            if seq2(vr[0], "k") {
+                if knd.len > 0 && !vtag_ok(knd, vr[2][0]) {
+                    diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr[2][0])
+                    return
+                }
+                env = env_add(env, nm, vr[2])
+                done = true
             }
-            if knd.len > 0 && !vtag_ok(knd, vr[2][0]) {
-                diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr[2][0])
-                return
+            if !done {
+                // ceval 不支持:回退全量求值(与 statics_env 同口径)
+                var vr2 = eval_expr(file, env, "", expr)
+                if vr2[0] != "k" {
+                    return
+                }
+                if knd.len > 0 && !vtag_ok(knd, vr2[2][0]) {
+                    diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr2[2][0])
+                    return
+                }
+                env = env_add(env, nm, vr2[2])
             }
-            env = env_add(env, nm, vr[2])
         }
         i += 1
     }
@@ -3073,299 +3074,176 @@ fn local_type_or_trait(file: List[Str], nm: Str) -> Bool {
 }
 
 // comptime fn 体内是否存在直呼自身的调用
-fn comp_self_recursion(file: List[Str], e: List[Str], fnm: Str) -> Bool {
-    var t = e[0]
-    if t == "Block" {
-        return comp_self_guarded_block(file, e, fnm)
+// ---------------- comptime 步数预算求值器(E6010,镜像宿主 pkg ceval) ----------------
+// v0 支持:I 域整型字面量/const 引用/一元负号/算术(ari,静默回绕)/比较/逻辑与;
+// comptime fn 单表达式体调用。不支持 → "u"(静默回退全量求值);步数超限 → "over"。
+fn ce_budget(st: List[Str]) -> Bool {
+    var used = dvi(st[0])
+    if used > 1200 {
+        return false
     }
-    if t == "Call" {
-        var cal = e[1]
-        if cal[0] == "Ident" && seq2(cal[1], fnm) {
-            return true
-        }
-        var ag = e[2]
-        var i: I32 = 1
-        while i < ag.len {
-            if comp_self_recursion(file, ag[i], fnm) {
-                return true
+    st[0] = (used + 1).to_string()
+    return true
+}
+
+fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str], st: List[Str]) -> List[Str] {
+    if !ce_budget(st) {
+        return cover()
+    }
+    var t = e[0]
+    if t == "Int" {
+        return cok(vI(dvi(num_text(e[1]))))
+    }
+    if t == "Ident" {
+        var i: I32 = 0
+        while i < cenvN.len {
+            if seq2(cenvN[i], e[1]) {
+                return cok(cenvV[i])
             }
             i += 1
         }
-        return false
+        return cun()
     }
-    if t == "Member" { return comp_self_recursion(file, e[1], fnm) }
+    if t == "Unary" {
+        var x = ceval_expr(file, e[2], cenvN, cenvV, st)
+        if x[0] != "k" {
+            if seq2(x[0], "over") { return x }
+            return x
+        }
+        if x[2][0] != "I" { return cun() }
+        return cok(vI(0 - dvi(x[2][1])))
+    }
     if t == "Binary" {
-        return or2(comp_self_recursion(file, e[2], fnm), comp_self_recursion(file, e[3], fnm))
-    }
-    if t == "Unary" { return comp_self_recursion(file, e[2], fnm) }
-    if t == "Range" {
-        return or2(comp_self_recursion(file, e[2], fnm), comp_self_recursion(file, e[3], fnm))
-    }
-    if t == "Index" {
-        return or2(comp_self_recursion(file, e[1], fnm), comp_self_recursion(file, e[2], fnm))
-    }
-    if t == "TypeArgs" { return comp_self_recursion(file, e[1], fnm) }
-    if t == "Try" { return comp_self_recursion(file, e[1], fnm) }
-    if or2(t == "TupleE", t == "ArrLit") {
-        var i2: I32 = 1
-        while i2 < e.len {
-            if comp_self_recursion(file, e[i2], fnm) {
-                return true
-            }
-            i2 += 1
+        var op = e[1]
+        if seq2(op, "AndAnd") { return cun() }
+        var l = ceval_expr(file, e[2], cenvN, cenvV, st)
+        if l[0] != "k" { return l }
+        var r = ceval_expr(file, e[3], cenvN, cenvV, st)
+        if r[0] != "k" { return r }
+        if or2(l[2][0] != "I", r[2][0] != "I") { return cun() }
+        var a = dvi(l[2][1])
+        var b2 = dvi(r[2][1])
+        if is_cmp_op(op) {
+            var rb = false
+            if seq2(op, "Lt") { rb = a < b2 }
+            if seq2(op, "Gt") { rb = a > b2 }
+            if seq2(op, "Le") { rb = a <= b2 }
+            if seq2(op, "Ge") { rb = a >= b2 }
+            if seq2(op, "Eq") { rb = a == b2 }
+            if seq2(op, "Ne") { rb = a != b2 }
+            return cok(vB(rb))
         }
-        return false
-    }
-    if t == "BlockExpr" { return comp_self_guarded_block(file, e[1], fnm) }
-    if t == "If" {
-        if comp_self_recursion(file, e[1], fnm) {
-            return true
+        if seq2(op, "Add") { return cok(vI(a + b2)) }
+        if seq2(op, "Sub") { return cok(vI(a - b2)) }
+        if seq2(op, "Mul") { return cok(vI(a * b2)) }
+        if seq2(op, "Div") {
+            if b2 == 0 {
+                return cun()
+            }
+            return cok(vI(a / b2))
         }
-        return or2(comp_self_guarded_block(file, e[2], fnm), comp_self_recursion(file, e[3], fnm))
-    }
-    if t == "Match" {
-        if comp_self_recursion(file, e[1], fnm) {
-            return true
-        }
-        var arms = e[2]
-        var i3: I32 = 1
-        while i3 < arms.len {
-            if comp_self_recursion(file, arms[i3][2], fnm) {
-                return true
-            }
-            i3 += 1
-        }
-        return false
-    }
-    if t == "Closure" { return comp_self_recursion(file, e[3], fnm) }
-    if or2(t == "Own", t == "Scope") { return comp_self_guarded_block(file, e[2], fnm) }
-    if t == "StructLit" {
-        var lf = e[2]
-        var i4: I32 = 1
-        while i4 < lf.len {
-            var c = lf[i4]
-            if seq2(c[0], "LField") {
-                if comp_self_recursion(file, c[2], fnm) {
-                    return true
-                }
-            }
-            i4 += 1
-        }
-        return false
-    }
-    return false
-}
-
-fn comp_self_guarded_block(file: List[Str], b: List[Str], fnm: Str) -> Bool {
-    var i: I32 = 1
-    while i < b.len {
-        var st = b[i]
-        var t = st[0]
-        if t == "Let" {
-            if comp_self_recursion(file, st[4], fnm) {
-                return true
-            }
-        } else if t == "While" {
-            if or2(comp_self_recursion(file, st[1], fnm), comp_self_guarded_block(file, st[2], fnm)) {
-                return true
-            }
-        } else if t == "For" {
-            if or2(comp_self_recursion(file, st[2], fnm), comp_self_guarded_block(file, st[3], fnm)) {
-                return true
-            }
-        } else if t == "Return" {
-            if st[1].len > 1 {
-                if comp_self_recursion(file, st[1], fnm) {
-                    return true
-                }
-            }
-        } else if t == "Assign" {
-            if or2(comp_self_recursion(file, st[1], fnm), comp_self_recursion(file, st[3], fnm)) {
-                return true
-            }
-        } else if t == "Expr" {
-            if comp_self_recursion(file, st[1], fnm) {
-                return true
-            }
-        } else if seq2(t, "None") && st.len == 1 {
-            // 尾标记
-        } else {
-            if comp_self_recursion(file, st, fnm) {
-                return true
-            }
-        }
-        i += 1
-    }
-    return false
-}
-
-// comptime fn 体是否含 If(终止守卫的存在性近似;仅语句级与值位 if)
-fn comp_has_guard(body: List[Str]) -> Bool {
-    var i: I32 = 1
-    while i < body.len {
-        var st = body[i]
-        var t = st[0]
-        if t == "If" {
-            return true
-        }
-        if t == "Expr" && st[1][0] == "If" {
-            return true
-        }
-        if t == "While" {
-            if comp_has_guard(st[2]) {
-                return true
-            }
-        } else if t == "For" {
-            if comp_has_guard(st[3]) {
-                return true
-            }
-        }
-        i += 1
-    }
-    return false
-}
-
-// const/static 初始化的调用闭包是否可达 runaway 集
-fn comp_reach_runaway(file: List[Str], e: List[Str], runaway: List[Str], vis: List[Str]) -> Bool {
-    if runaway.len == 0 {
-        return false
-    }
-    var t = e[0]
-    if t == "Block" {
-        return comp_reach_block(file, e, runaway, vis)
+        return cun()
     }
     if t == "Call" {
         var cal = e[1]
-        if cal[0] == "Ident" {
-            var rt = cal[1]
-            if in_list(runaway, rt) {
-                return true
-            }
-            if !in_list(vis, rt) {
-                vis.push(rt)
-                var d = find_decl(file, rt)
-                if d.len > 0 {
-                    if comp_reach_runaway(file, d[5], runaway, vis) {
-                        return true
-                    }
-                }
-            }
+        if cal[0] != "Ident" { return cun() }
+        var fnm = cal[1]
+        var d = find_decl(file, fnm)
+                var known = d.len > 0
+        if known {
+            known = d[0] == "FnC"
+        }
+        if !known {
+            return cun()
         }
         var ag = e[2]
+        var cenvN2 = List[Str]()
+        var cenvV2 = List[Str]()
+        var ps = d[3]
         var i: I32 = 1
-        while i < ag.len {
-            if comp_reach_runaway(file, ag[i], runaway, vis) {
-                return true
+        var ai: I32 = 1
+        while i < ps.len {
+            var pr = ps[i]
+            if pr[0] == "Param" {
+                if ai >= ag.len { return cun() }
+                var av = ceval_expr(file, ag[ai], cenvN, cenvV, st)
+                if av[0] != "k" { return av }
+                if av[2][0] != "I" { return cun() }
+                cenvN2.push(pr[2])
+                cenvV2.push(av[2])
+            } else {
+                return cun()
             }
             i += 1
+            ai += 1
         }
-        return false
+        return ceval_block(file, d[5], cenvN2, cenvV2, st)
     }
-    if t == "Member" { return comp_reach_runaway(file, e[1], runaway, vis) }
-    if t == "Binary" {
-        return or2(comp_reach_runaway(file, e[2], runaway, vis), comp_reach_runaway(file, e[3], runaway, vis))
-    }
-    if t == "Unary" { return comp_reach_runaway(file, e[2], runaway, vis) }
-    if t == "Range" {
-        return or2(comp_reach_runaway(file, e[2], runaway, vis), comp_reach_runaway(file, e[3], runaway, vis))
-    }
-    if t == "Index" {
-        return or2(comp_reach_runaway(file, e[1], runaway, vis), comp_reach_runaway(file, e[2], runaway, vis))
-    }
-    if t == "TypeArgs" { return comp_reach_runaway(file, e[1], runaway, vis) }
-    if t == "Try" { return comp_reach_runaway(file, e[1], runaway, vis) }
-    if or2(t == "TupleE", t == "ArrLit") {
-        var i2: I32 = 1
-        while i2 < e.len {
-            if comp_reach_runaway(file, e[i2], runaway, vis) {
-                return true
-            }
-            i2 += 1
-        }
-        return false
-    }
-    if t == "BlockExpr" { return comp_reach_block(file, e[1], runaway, vis) }
-    if t == "If" {
-        if comp_reach_runaway(file, e[1], runaway, vis) {
-            return true
-        }
-        if comp_reach_block(file, e[2], runaway, vis) {
-            return true
-        }
-        return comp_reach_runaway(file, e[3], runaway, vis)
-    }
-    if t == "Match" {
-        if comp_reach_runaway(file, e[1], runaway, vis) {
-            return true
-        }
-        var arms = e[2]
-        var i3: I32 = 1
-        while i3 < arms.len {
-            if comp_reach_runaway(file, arms[i3][2], runaway, vis) {
-                return true
-            }
-            i3 += 1
-        }
-        return false
-    }
-    if t == "Closure" { return comp_reach_runaway(file, e[3], runaway, vis) }
-    if or2(t == "Own", t == "Scope") { return comp_reach_block(file, e[2], runaway, vis) }
-    if t == "StructLit" {
-        var lf = e[2]
-        var i4: I32 = 1
-        while i4 < lf.len {
-            var c = lf[i4]
-            if seq2(c[0], "LField") {
-                if comp_reach_runaway(file, c[2], runaway, vis) {
-                    return true
-                }
-            }
-            i4 += 1
-        }
-        return false
-    }
-    return false
+    return cun()
 }
 
-fn comp_reach_block(file: List[Str], b: List[Str], runaway: List[Str], vis: List[Str]) -> Bool {
+fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str], st: List[Str]) -> List[Str] {
+    // "k"+值 = return/尾值;"u" = 无返回(块贯通);"over" = 预算超限(向上传播)
+    var n = b.len
     var i: I32 = 1
-    while i < b.len {
-        var st = b[i]
-        var t = st[0]
-        if t == "Let" {
-            if comp_reach_runaway(file, st[4], runaway, vis) {
-                return true
+    while i < n - 1 {
+        var st2 = b[i]
+        var t = st2[0]
+        if t == "Return" {
+            if st2[1].len > 1 {
+                return ceval_expr(file, st2[1], cenvN, cenvV, st)
             }
-        } else if t == "While" {
-            if or2(comp_reach_runaway(file, st[1], runaway, vis), comp_reach_block(file, st[2], runaway, vis)) {
-                return true
+            return cun()
+        }
+        if t == "Expr" {
+            var v = ceval_expr(file, st2[1], cenvN, cenvV, st)
+            if v[0] != "k" {
+                return v
             }
-        } else if t == "For" {
-            if or2(comp_reach_runaway(file, st[2], runaway, vis), comp_reach_block(file, st[3], runaway, vis)) {
-                return true
+        } else if t == "If" {
+            var cv = ceval_expr(file, st2[1], cenvN, cenvV, st)
+            if cv[0] != "k" {
+                return cv
             }
-        } else if t == "Return" {
-            if st[1].len > 1 {
-                if comp_reach_runaway(file, st[1], runaway, vis) {
-                    return true
-                }
+            var target = st2[2]
+            if !truth(cv[2]) {
+                target = st2[3]
             }
-        } else if t == "Assign" {
-            if or2(comp_reach_runaway(file, st[1], runaway, vis), comp_reach_runaway(file, st[3], runaway, vis)) {
-                return true
+            if target[0] == "BlockExpr" {
+                target = target[1]
             }
-        } else if t == "Expr" {
-            if comp_reach_runaway(file, st[1], runaway, vis) {
-                return true
+            var br = ceval_block(file, target, cenvN, cenvV, st)
+            if br[0] != "u" {
+                return br
             }
-        } else if seq2(t, "None") && st.len == 1 {
-            // 尾标记
         } else {
-            if comp_reach_runaway(file, st, runaway, vis) {
-                return true
-            }
+            return cun()
         }
         i += 1
     }
-    return false
+    var tl = b[n - 1]
+    if seq2(tl[0], "None") && tl.len == 1 {
+        return cun()
+    }
+    return ceval_expr(file, tl, cenvN, cenvV, st)
+}
+
+fn cok(v: List[Str]) -> List[Str] {
+    var r = List[Str]()
+    r.push("k")
+    r.push("")
+    r.push(v)
+    return r
+}
+
+fn cun() -> List[Str] {
+    var r = List[Str]()
+    r.push("u")
+    return r
+}
+
+fn cover() -> List[Str] {
+    var r = List[Str]()
+    r.push("over")
+    return r
 }

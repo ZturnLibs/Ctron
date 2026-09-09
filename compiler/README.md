@@ -106,6 +106,12 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第十三批(2026-09-09,E6010 规格化:步数预算求值器):comptime 求值从"全量解释器
+直调"改为**专用步数预算求值器 ceval**(镜像宿主 pkg ceval;1200 步,静默回绕的
+I 域算术,const 引用/comptime fn 单表达式体/If 值位)——超预算 → **E6010**
+(spec 本义;替代此前的 runaway 启发),不支持形态 → 静默回退全量求值(运行期
+statics_env 同口径),const 求值自此**无挂起/无栈溢出**。runaway 启发五函数移除。
+
 第十二批(2026-09-09,FFI 切片,modules 收官):**extern "c" fn 声明**(§9.6,
 无函数体,#[trusted] 前缀兼容;FnExt 节点贯通 sem 前奏/调用解析/发射原型——
 C 侧符号无 t_ 前缀)、**语句位 assert 家族已有发射**(沿 return 1 约定)、
