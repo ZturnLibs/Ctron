@@ -104,7 +104,7 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
-        if or2(d[0] == "Fn", or2(d[0] == "FnC", d[0] == "FnPub")) && d[1] == nm {
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
             var r = d[4]
             if r[0] == "None" { return "v" }
             if r[0] != "Named" { return "i" }
@@ -121,7 +121,7 @@ fn ct_fn_pcodes(file: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
-        if or2(d[0] == "Fn", or2(d[0] == "FnC", d[0] == "FnPub")) && d[1] == nm {
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
             var ps = d[3]
             var k: I32 = 1
             while k < ps.len {
@@ -481,6 +481,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
         if callee == "ctron_entry" { return "ctron_entry()" }
+
         if callee == "read_file" {
             if ag.len > 1 && ag[1][0] == "Str" && ct_str_payload(ag[1]) == "CTRONCLIINPUT" {
                 // main 输入锚:CLI `run <file>` 可覆盖(ctron_anchor 默认 = 烘焙字面量)
@@ -492,6 +493,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // extern "c" 声明:C 侧符号无 t_ 前缀(§9.6)
+        var isext = false
+        var ie: I32 = 1
+        while ie < file.len {
+            var dd = file[ie]
+            if dd[0] == "FnExt" && dd[1] == callee {
+                isext = true
+            }
+            ie += 1
+        }
+        if isext {
+            return callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
+        }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }
     panic("ct_expr:" + t)

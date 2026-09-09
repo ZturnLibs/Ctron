@@ -80,24 +80,51 @@ fn main() -> I32 {
                 }
                 si += 1
             }
-            // 原型前置:C 需先声明后用(语料存在前向引用/递归)
+            // 原型前置:C 需先声明后用(语料存在前向引用/递归);extern 声明仅原型(§9.6)
             var pj: I32 = 1
             while pj < file.len {
                 var pd = file[pj]
-                if pd[0] == "Fn" {
+                if pd[0] == "FnExt" {
+                    println("static " + ct_ctype(ct_fn_ret(file, pd[1])) + " " + pd[1] + "(" + ct_params_str(pd, file) + ");")
+                } else if pd[0] == "Fn" {
                     println("static " + ct_ctype(ct_fn_ret(file, pd[1])) + " t_" + pd[1] + "(" + ct_params_str(pd, file) + ");")
                 }
                 pj += 1
             }
             var di: I32 = 1
+            var hasmain = false
+            var ntest: I32 = 0
+            var testcalls = ""
             while di < file.len {
                 var d = file[di]
                 if d[0] == "Fn" {
+                    if d[1] == "main" {
+                        hasmain = true
+                    }
                     ct_fn(d, file)
+                } else if d[0] == "Test" {
+                    // test 块 → int fn:断言失败 return 1(语句位 assert 发射),成功 return 0
+                    println("static int32_t t_test_" + ntest.to_string() + "(void) \{")
+                    var tenv = ct_stmts(d[2], List[Str](), file, "", List[Str]())
+                    var tl = d[2][d[2].len - 1]
+                    if tl[0] != "None" {
+                        var es = List[Str]()
+                        es.push("Expr")
+                        es.push(tl)
+                        ct_stmt(es, tenv, file, List[Str]())
+                    }
+                    println("return 0;")
+                    println("}")
+                    testcalls = testcalls + "if (t_test_" + ntest.to_string() + "()) \{ return 1; } "
+                    ntest += 1
                 }
                 di += 1
             }
-            println("int main(int argc, char** argv) \{ if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
+            if hasmain {
+                println("int main(int argc, char** argv) \{ if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
+            } else {
+                println("int main(int argc, char** argv) \{ " + "if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + testcalls + "return 0; " + "}")
+            }
             return 0
         }
         None => {

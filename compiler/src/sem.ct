@@ -1781,7 +1781,7 @@ fn sem_walk2(file: List[Str]) -> Str {
         var t = d[0]
         if t == "Class" {
             cls.push(d[1])
-        } else if or2(t == "Fn", or2(t == "FnC", t == "FnPub")) {
+        } else if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", t == "FnExt"))) {
             fns.push(d[1])
             rets.push(d[4])
         } else if t == "Method" {
@@ -2646,7 +2646,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
     while i < file.len {
         var d = file[i]
         var t = d[0]
-        if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", t == "Method"))) {
+        if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", or2(t == "Method", t == "FnExt")))) {
             fns.push(d[1])
             ars.push((d[3].len - 1).to_string())
             rets.push(d[4])
@@ -2745,7 +2745,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
     while i < file.len {
         var d = file[i]
         var t = d[0]
-        if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", t == "Method"))) {
+        if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", or2(t == "Method", t == "FnExt")))) {
             var loc = List[Str]()
             var envT = List[Str]()
             fn_params_push(d[3], loc, envT)

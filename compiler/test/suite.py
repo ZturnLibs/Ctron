@@ -138,8 +138,30 @@ for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
     name = os.path.basename(case)
     mpass[1] += 1
     hpass[1] += 1
-    rc, out = run(CC, entry, "run")
-    ok, why = verdict(kind, mk, rc, out)
+    has_csrc = os.path.isdir(os.path.join(case, "c_src"))
+    if has_csrc:
+        # FFI 行为用例(§6/§9.6):发射 → 链接 c_src → 原生运行(解释器无 FFI 口径)
+        import subprocess as sp, tempfile
+        with tempfile.TemporaryDirectory() as td:
+            em = os.path.join(td, "out.c")
+            binp = os.path.join(td, "app")
+            emit_bin = CC.replace("ctron-cc", "ctron-emit")
+            p1 = sp.run([emit_bin, "run", entry], capture_output=True, text=True, timeout=60, cwd=ROOT)
+            if p1.returncode != 0:
+                ok, why = False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
+            else:
+                open(em, "w").write(p1.stdout)
+                srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c")))
+                p2 = sp.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, timeout=60)
+                if p2.returncode != 0:
+                    ok, why = False, f"cc 失败: {first_line(p2.stderr)}"
+                else:
+                    p3 = sp.run([binp, "run", entry], capture_output=True, text=True, timeout=20, cwd=ROOT)
+                    rc, out = p3.returncode, p3.stdout + p3.stderr
+                    ok, why = verdict(kind, mk, rc, out)
+    else:
+        rc, out = run(CC, entry, "run")
+        ok, why = verdict(kind, mk, rc, out)
     if ok:
         mpass[0] += 1
     else:

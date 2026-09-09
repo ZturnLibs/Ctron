@@ -106,6 +106,15 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第十二批(2026-09-09,FFI 切片,modules 收官):**extern "c" fn 声明**(§9.6,
+无函数体,#[trusted] 前缀兼容;FnExt 节点贯通 sem 前奏/调用解析/发射原型——
+C 侧符号无 t_ 前缀)、**语句位 assert 家族已有发射**(沿 return 1 约定)、
+**test 块发射**(int fn:断言失败 return 1,成功 return 0;无 main 的包自动
+生成逐测试检查的 main)。suite modules/ffi_math 走"发射 → 链接 c_src → 原生
+运行"口径(解释器无 FFI)。modules 自举 7/7 = 宿主 pkg 7/7,多文件包收官。
+坑:字符串字面量内裸 `{` 开启插值(未终止即 E1001),发射模板一律 `\{` 转义
+且逐字面量配平。
+
 第十一批(2026-09-09,模块检查补全):**E5010 孤儿规则**(impl 的 trait 与 for
 类型均非本包声明即拦截)、**E4010 caps**(use std.<fs|time>.<Name> + 本文件
 &Name 参数而 Ctron.toml [caps] 未声明)、**E6010 前置拦截**(无终止守卫的
