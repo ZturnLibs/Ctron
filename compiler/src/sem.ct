@@ -1942,7 +1942,8 @@ fn seq2(a: Str, b: Str) -> Bool {
 // 成员调用面(UFCS/方法表解析)与内建类型留 v2。保守可证:任一侧类型未知即放行;
 // 字面量按期望整/浮自适应(§3.7);T→T?、String→Str、T[N]→T[] 按 §3.6 白名单放行。
 // tc 打包:tc[0]=fns tc[1]=ars tc[2]=rets tc[3]=prms tc[4]=stN tc[5]=stT
-//          tc[6]=vars tc[7]=varAr tc[8]=enums
+//          tc[6]=vars tc[7]=varAr tc[8]=enums tc[9]=lets tc[10]=reads
+//          tc[11]=isrc(插值原文) tc[12]=prel(前奏名,W8040)
 fn prelude_ok(nm: Str) -> Bool {
     if or2(seq2(nm, "print"), or2(seq2(nm, "println"), seq2(nm, "panic"))) { return true }
     if or2(seq2(nm, "assert"), or2(seq2(nm, "assert_eq"), seq2(nm, "assert_ne"))) { return true }
@@ -2281,6 +2282,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
     }
     if t == "Ident" {
         var nm = e[1]
+        tc[10].push(nm)
         if !in_list(loc, nm) && !in_list(tc[0], nm) && !in_list(tc[4], nm) && !in_list(tc[6], nm) && !in_list(tc[8], nm) && !value_ok(nm) {
             var m = "E2020: 未解析的名称(unresolved):" + nm
             if !in_list(diags, m) {
@@ -2438,6 +2440,18 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         }
         return
     }
+    if t == "Str" {
+        var pts = e[1]
+        var i7: I32 = 1
+        while i7 < pts.len {
+            var pt = pts[i7]
+            if seq2(pt[0], "Interp") && pt[1].len > 0 {
+                tc[11].push(pt[1])
+            }
+            i7 += 1
+        }
+        return
+    }
     // Str(含 Parts/Interp 原始文本)、字面量、成员名等:无进一步下钻
 }
 
@@ -2459,6 +2473,13 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
             var tn = List[Str]()
             if hasann {
                 tn = ann
+            }
+            if seq2(s[2][0], "PatId") {
+                var vn = s[2][1]
+                tc[9].push(vn)
+                if in_list(tc[12], vn) {
+                    diags.push("W8040: 遮蔽前奏符号(shadow prelude):" + vn)
+                }
             }
             bind_pat(s[2], loc, envT, tn)
         } else if t == "While" {
@@ -2516,6 +2537,31 @@ fn fn_params_push(ps: List[Str], loc: List[Str], envT: List[Str]) {
     }
 }
 
+// 插值原文是否引用绑定名(粗粒度:子串命中即算使用)
+fn interp_hit(txt: Str, nm: Str) -> Bool {
+    var nn = nm.len
+    if nn == 0 {
+        return false
+    }
+    var hn = txt.len
+    var i: I32 = 0
+    while i + nn <= hn {
+        var k: I32 = 0
+        var ok = true
+        while k < nn {
+            if byte_at(txt, i + k) != byte_at(nm, k) {
+                ok = false
+            }
+            k += 1
+        }
+        if ok {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
 fn sem_calls_all(file: List[Str], diags: List[Str]) {
     var fns = List[Str]()
     var ars = List[Str]()
@@ -2554,6 +2600,48 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
         }
         i += 1
     }
+    var prel = List[Str]()
+    prel.push("print")
+    prel.push("println")
+    prel.push("panic")
+    prel.push("assert")
+    prel.push("assert_eq")
+    prel.push("assert_ne")
+    prel.push("read_file")
+    prel.push("read_dir")
+    prel.push("byte_at")
+    prel.push("byte_slice")
+    prel.push("Some")
+    prel.push("None")
+    prel.push("Ok")
+    prel.push("Err")
+    prel.push("fmt")
+    prel.push("char_len")
+    prel.push("Box")
+    prel.push("List")
+    prel.push("String")
+    prel.push("Channel")
+    prel.push("Mutex")
+    prel.push("Atomic")
+    prel.push("Global")
+    prel.push("Task")
+    prel.push("Scope")
+    prel.push("Simd")
+    prel.push("Option")
+    prel.push("Result")
+    prel.push("AnyError")
+    prel.push("Show")
+    prel.push("Eq")
+    prel.push("Error")
+    prel.push("Cap")
+    prel.push("Clone")
+    prel.push("Hash")
+    prel.push("Iter")
+    prel.push("parallel")
+    prel.push("arena")
+    var lets = List[Str]()
+    var reads = List[Str]()
+    var isrc = List[Str]()
     var tc = List[Str]()
     tc.push(fns)
     tc.push(ars)
@@ -2564,6 +2652,10 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
     tc.push(vars)
     tc.push(varAr)
     tc.push(enums)
+    tc.push(lets)
+    tc.push(reads)
+    tc.push(isrc)
+    tc.push(prel)
     i = 1
     while i < file.len {
         var d = file[i]
@@ -2572,7 +2664,44 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
             var loc = List[Str]()
             var envT = List[Str]()
             fn_params_push(d[3], loc, envT)
-            tcb(file, d[5], tc, loc, envT, d[4], diags)
+            var wlets = List[Str]()
+            var wreads = List[Str]()
+            var wisrc = List[Str]()
+            var tcw = List[Str]()
+            var q: I32 = 0
+            while q < 9 {
+                tcw.push(tc[q])
+                q += 1
+            }
+            tcw.push(wlets)
+            tcw.push(wreads)
+            tcw.push(wisrc)
+            tcw.push(prel)
+            tcb(file, d[5], tcw, loc, envT, d[4], diags)
+            var u: I32 = 0
+            while u < wlets.len {
+                var un = wlets[u]
+                if !in_list(wreads, un) {
+                    var hit = false
+                    var w: I32 = 0
+                    while w < wisrc.len && !hit {
+                        if interp_hit(wisrc[w], un) {
+                            hit = true
+                        }
+                        w += 1
+                    }
+                    if !hit {
+                        var isu = false
+                        if un.len > 0 && byte_at(un, 0) == 95 {
+                            isu = true
+                        }
+                        if !isu {
+                            diags.push("W8030: 未使用绑定(unused):" + un)
+                        }
+                    }
+                }
+                u += 1
+            }
         } else if t == "Impl" {
             var its = d[4]
             var mi: I32 = 1

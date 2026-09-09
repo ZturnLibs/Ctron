@@ -106,6 +106,12 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
+双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/
+条件/? 合法性;保守可证,任一侧未知放行)、变体构造 arity(前奏+用户枚举)、
+**W8030 未使用绑定**(插值原文子串补偿)与 **W8040 遮蔽前奏**;修复 eval/ev2/cc
+三处 `var L` 大写 let 模式不绑定的潜伏死路。
+
 第三批(2026-09-08,规范差距收补 Phase 0):**E2020 调用目标解析**与 **E2010 调用
 arity**(仅 bare 调用面,成员调用与内建 arity 留类型检查 v1;同步修复 eval/ev2/cc
 三处 `ty_head` 潜伏缺参 or3——按既有可观察行为忠实改写)、**for-in List 迭代**
@@ -122,8 +128,9 @@ if/while/match 条件上下文中比较表达式被吞(01g 类测试静默失败
 
 ## 边界(沿 selfhosted 挂账,未在本目录扩大能力面)
 
-- 类型检查仍无统一器:E2010/E2020 仅覆盖 bare 调用目标与 arity;变量读解析、
-  实参/注解类型统一、推断为类型检查 v1(见 docs/superpowers/plans 阶段计划)。
+- 类型检查 v0 已落(E2020 全量 + E2010 基础统一,保守可证);仍无完整统一器:
+  泛型单态化、成员调用面(方法表解析)、跨语句流类型细化(窄化/收敛)留类型检查 v1;
+  解析器 span 标注(JSON 诊断精确定位)留 Phase 1.5(见 docs/superpowers/plans)。
 - 发射器能力面 = `fixtures/trans_v0–v3` + 编译器自发射;"编译任意 Ctron 程序"
   (struct/闭包/并发/插值/值位 if·match)仍按 selfhosted 排期;
 - `pkg_chk.ct`(模块级检查 + E6010 comptime 预算)属包管理 oracle,未纳入;

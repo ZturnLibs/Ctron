@@ -1,0 +1,6 @@
+// fx_shadow_neg.ct —— W8040:遮蔽前奏符号(let print 覆盖内建)
+fn main() -> I32 {
+    let print = 1
+    println(print.to_string())
+    return 0
+}

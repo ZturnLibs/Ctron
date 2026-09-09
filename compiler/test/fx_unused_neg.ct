@@ -1,0 +1,7 @@
+// fx_unused_neg.ct —— W8030:未使用绑定(dead 绑定名)
+// 注:插值文本含名即算使用(interp_hit 补偿);本例 total 从未被读
+fn main() -> I32 {
+    let total = 41 + 1
+    println("ok")
+    return 0
+}

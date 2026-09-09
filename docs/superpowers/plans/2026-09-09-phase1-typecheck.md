@@ -31,14 +31,14 @@
 
 ### Task 1: 核实类型节点布局
 
-- [ ] `sed -n` 读 `p_typ`（sem.ct 同款 tag）、`p_enum2` 的 KTuple/KStruct 槽位、sem.ct:446 `env_ty`（查找方向）、sem.ct:732 `let_ty`（能否复用）、Field 节点槽位（sem W8010 用 f[2]/f[3]）。
-- [ ] 产出：布局速记追加到本文件末尾「实施记录」。
+- [x] `sed -n` 读 `p_typ`（sem.ct 同款 tag）、`p_enum2` 的 KTuple/KStruct 槽位、sem.ct:446 `env_ty`（查找方向）、sem.ct:732 `let_ty`（能否复用）、Field 节点槽位（sem W8010 用 f[2]/f[3]）。
+- [x] 产出：布局速记追加到本文件末尾「实施记录」。
 
 ### Task 2: E2020 全量（Ident 读解析）
 
 **Files:** Modify `compiler/src/sem.ct`（sem_calls_all 预扫扩 statics/consts/variants/枚举名表 + 值名集 `value_ok`）；Test `compiler/test/fx_unresolved_read_neg.ct`。
 
-- [ ] 夹具（期望 E2020：读未定义名 `conuter`）：
+- [x] 夹具（期望 E2020：读未定义名 `conuter`）：
 
 ```ctron
 fn main() -> I32 {
@@ -49,15 +49,15 @@ fn main() -> I32 {
 }
 ```
 
-- [ ] 预扫扩表：`stN/stT`（Static d[1]/d[3]、Const d[1]/d[2]）、`vars`（全部枚举变体名）、`enums`（枚举类型名）。
-- [ ] `value_ok(nm)` = prelude_ok(nm) ∪ {parallel, arena}；Ident 检查：`!in_list(loc,nm) && !in_list(fns,nm) && !in_list(stN,nm) && !in_list(vars,nm) && !in_list(enums,nm) && !value_ok(nm)` → E2020（dedup 沿用）。
-- [ ] 三道门 → Commit。
+- [x] 预扫扩表：`stN/stT`（Static d[1]/d[3]、Const d[1]/d[2]）、`vars`（全部枚举变体名）、`enums`（枚举类型名）。
+- [x] `value_ok(nm)` = prelude_ok(nm) ∪ {parallel, arena}；Ident 检查：`!in_list(loc,nm) && !in_list(fns,nm) && !in_list(stN,nm) && !in_list(vars,nm) && !in_list(enums,nm) && !value_ok(nm)` → E2020（dedup 沿用）。
+- [x] 三道门 → Commit。
 
 ### Task 3: E2010 基础统一
 
 **Files:** Modify `compiler/src/sem.ct`（ty_kind/k_int/k_num/compat/ex_ty + 检查点接入 ucb/tcb 走，携带 envT/retK）；Test `compiler/test/fx_type_neg.ct`（一组小负例：let 注解矛盾、return 矛盾、实参矛盾、Str 参与 `-`、`?` 用于 I32 返回函数）。
 
-- [ ] 实现（骨架）：
+- [x] 实现（骨架）：
 
 ```ctron
 fn ty_kind(ty: List[Str]) -> Str          // Named→n:名 TArgs→头名 opt:/ref:/slice/arr/tup/fn
@@ -67,31 +67,48 @@ fn compat(exp: Str, act: Str, e: List[Str]) -> Bool   // 设计裁决 #3
 fn ex_ty(e, envN, envT, fns, rets, stN, stT) -> Str   // 表达式 kind;未知返 ""
 ```
 
-- [ ] 检查点：Let（注解 vs init）、Return（vs retK）、Call bare 实参（vs Param[3] kind，`prms` 平行表）、Binary（Str/Bool 规则）、While/If 条件已知非 Bool、Try（retK 已知且非 opt:/n:Result/n:AnyError → E2010）。
-- [ ] env 绑定：PatId → envN/envT push（注解优先，否则 init kind）；shadowing 双记录（保守放行）。
-- [ ] 三道门 + 自检修复 → Commit。
+- [x] 检查点：Let（注解 vs init）、Return（vs retK）、Call bare 实参（vs Param[3] kind，`prms` 平行表）、Binary（Str/Bool 规则）、While/If 条件已知非 Bool、Try（retK 已知且非 opt:/n:Result/n:AnyError → E2010）。
+- [x] env 绑定：PatId → envN/envT push（注解优先，否则 init kind）；shadowing 双记录（保守放行）。
+- [x] 三道门 + 自检修复 → Commit。
 
 ### Task 4: 变体构造 arity
 
-- [ ] `prelude_arity(nm) -> I32`（Some/Ok/Err=1 None=0 其余 -1）；用户变体表 `varAr`（平行 vars）。
-- [ ] Call 检查处接线：prelude_ok 且 arity≥0 → 校验；rt ∈ vars → 校验。
-- [ ] 夹具追加 `None(1)` / `Ok(a,b)` 负例 → 门禁 → Commit。
+- [x] `prelude_arity(nm) -> I32`（Some/Ok/Err=1 None=0 其余 -1）；用户变体表 `varAr`（平行 vars）。
+- [x] Call 检查处接线：prelude_ok 且 arity≥0 → 校验；rt ∈ vars → 校验。
+- [x] 夹具追加 `None(1)` / `Ok(a,b)` 负例 → 门禁 → Commit。
 
 ### Task 5: W8030/W8040 经验判定
 
-- [ ] 走内收集 `reads`（每个 Ident 名 + Interp 文本子串命中）；fn 走完 diff 声明集 → W8030（`_` 前缀豁免）；Let 绑定名 ∈ 前奏名集 → W8040。
-- [ ] 跑门禁：全绿 → 保留；任一红 → 回退此任务，边界文档记「W8030/W8040 待测试锚点先行」。
-- [ ] Commit（保留或回退均记录实证结果）。
+- [x] 走内收集 `reads`（每个 Ident 名 + Interp 文本子串命中）；fn 走完 diff 声明集 → W8030（`_` 前缀豁免）；Let 绑定名 ∈ 前奏名集 → W8040。
+- [x] 跑门禁：全绿 → 保留；任一红 → 回退此任务，边界文档记「W8030/W8040 待测试锚点先行」。
+- [x] Commit（保留或回退均记录实证结果）。
 
 ### Task 6: 冒烟/锁定/文档
 
-- [ ] smoke.sh：decl 锁定更新；新增 fx_unresolved_read_neg/fx_type_neg 的 check 面负例项（rc=1 + 码 grep）。
-- [ ] README 记分卡「第四批」；BOOTSTRAP 不变量补类型检查 v0 口径；总计划 Phase 1 状态更新。
+- [x] smoke.sh：decl 锁定更新；新增 fx_unresolved_read_neg/fx_type_neg 的 check 面负例项（rc=1 + 码 grep）。
+- [x] README 记分卡「第四批」；BOOTSTRAP 不变量补类型检查 v0 口径；总计划 Phase 1 状态更新。
 
 ### Task 7: 全量验证
 
-- [ ] `smoke.sh --full` 全绿；`suite.py` 50/50；三夹具 rc 断言。
+- [x] `smoke.sh --full` 全绿；`suite.py` 50/50；三夹具 rc 断言。
 
 ## 实施记录
 
-（Task 1 起追加布局速记与实证结论）
+**Task 1 布局速记**:`Named = ["Named", 名, TArgs]`(槽 2 恒为 TArgs 节点);`Ref/Optional/Slice = [tag, 内]`;`ArrayT = [tag, 基, 维]`;`FnType = ["FnType", FnT, ret]`;`TupleT = [tag, 类型…]`;`Variant = ["Variant", 名, KUnit|KTuple|KStruct]`(K 槽位数-1 = 变体 arity);`Field` 名在槽 2 型在槽 3;`ClosureParam` 名在槽 2(isv 在 1);`env_ty` 自尾向首扫(遮蔽后绑先胜);`or` 中缀解析器未实现(语料只用 `.or()` 成员,记入边界)。
+
+**Task 2/3/4 实证(误报 → 修正)**:
+1. `seq2` 不得传 Bool(运行期 `.len 目标类型不支持`)——Bool 直接 `!=`;
+2. `+` 规则须双侧已知才比 strish 性(单侧未知放行);
+3. 闭包参数名在槽 2(曾取槽 1 的 isv 串 → 语料 `|x|` 全体误报 E2020);
+4. 函数名 Ident 的 ex_ty 应为 `"fn"`(曾返回其返回类型 → 高阶实参误报);
+5. `compat` 对短 kind 串 `"fn"`(len 2)做 `byte_slice(0,4)` 越界 → 加长度守卫;
+6. 语料钉死的隐式形态:`Option[T]` 显式泛型形式用于 `?`(补 `n:Option`)、结构模式简写 `Point { x, y }` 绑定字段名(PatFld 无子模式 → 绑字段名)、`slice→ref:slice` 与 `arr→ref:slice`(§3.6 链)。
+
+**潜伏死路(检查器挖出)**:`var L = recv[1].len`(eval/ev2/cc 三处)——大写标识符
+模式被解析为 PatAgg(SubUnit),eval 的 Let 仅绑 PatId → 运行期"未解析名称: L",
+该路径从未被语料触达;已更名 `ln` 修复。str.slice 边界检查自此真正可用。
+
+**Task 5 实证**:W8030/W8040 全绿保留——编译器自身 10k 行零命中(decls=209),
+语料 50/50(重建 native 后),smoke 20/20。插值盲区以 `interp_hit` 子串补偿。
+
+**遗留**:解析器 span 标注(Phase 1.5)、成员调用面类型检查、泛型单态化(Phase 2)。
