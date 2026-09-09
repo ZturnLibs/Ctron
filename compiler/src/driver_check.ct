@@ -176,6 +176,23 @@ fn main() -> I32 {
             scan(s, toks, lns)
             var cur = Atomic[I32](0)
             var file = p_file(toks, cur, lns)
+            // 模块加载器(§2):use 解析 → 可见性 → 合并;无 use 时为无感直通
+            var ldiags = List[Str]()
+            var lstack = List[Str]()
+            var epath = ctron_entry()
+            if seq2(epath, "") {
+                epath = path
+            }
+            lstack.push(epath)
+            file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
+            if ldiags.len > 0 {
+                var li: I32 = 0
+                while li < ldiags.len {
+                    println(ldiags[li])
+                    li += 1
+                }
+                return 1
+            }
             var sems = sem_walk2(file)
             if seq2("ANCHORFMT", "1") {
                 print("\{\"diagnostics\":[")

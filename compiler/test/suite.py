@@ -116,6 +116,47 @@ for kind, pat in CATS:
         else:
             bothfail.append(f"{tag} — cc: {why} | 宿主: {first_line(hout)}")
 
+# ---------- modules/(多文件包,tests/README §6)----------
+# 入口:src/main.ct;无 main.ct 时取带 //@ 标记的文件。
+# 自举侧:bin/ctron-cc run <entry>(加载器常开:use 解析/可见性/合并/循环检测)。
+# 宿主侧:ctronc pkg <dir>(包检查 oracle,仅 check 面;宿主无包运行口径,行为用例不对齐运行)。
+print(f"\n== modules/ 多文件包(§6)==")
+mpass, hpass, mnotes = [0, 0], [0, 0], []
+for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
+    if not os.path.isdir(case):
+        continue
+    src = os.path.join(case, "src")
+    entry = os.path.join(src, "main.ct")
+    if not os.path.exists(entry):
+        marked = [f for f in sorted(glob.glob(os.path.join(src, "*.ct"))) if markers(f)]
+        if not marked:
+            mnotes.append(f"{os.path.basename(case)}: 无入口且无标记文件(跳过)")
+            continue
+        entry = marked[0]
+    mk = markers(entry)
+    kind = "neg" if mk.get("fail") else ("lint" if mk.get("warn") else ("panic" if mk.get("panic") else "behavior"))
+    name = os.path.basename(case)
+    mpass[1] += 1
+    hpass[1] += 1
+    rc, out = run(CC, entry, "run")
+    ok, why = verdict(kind, mk, rc, out)
+    if ok:
+        mpass[0] += 1
+    else:
+        mnotes.append(f"[{kind}] {name} — 自举: {why}")
+    hrc, hout = run(HOST, case, "pkg")
+    if kind == "behavior":
+        hok = hrc == 0
+    else:
+        hok = hrc != 0 and all(c in hout for c in mk.get("fail", []))
+    if hok:
+        hpass[0] += 1
+    else:
+        mnotes.append(f"[{kind}] {name} — 宿主pkg: rc={hrc} {first_line(hout)}")
+print(f"自举 {mpass[0]}/{mpass[1]} | 宿主pkg {hpass[0]}/{hpass[1]}")
+for n in mnotes:
+    print("  " + n)
+
 total = sum(v[1] for v in score.values())
 print(f"== tests/ 一致性测试集 × bin/ctron-cc(对照 C 参考宿主)==")
 print(f"{'类别':<10}{'自举cc':<12}{'C 宿主':<12}")
@@ -123,7 +164,7 @@ for kind, _ in CATS:
     c, h = score[kind], hscore[kind]
     print(f"{kind:<10}{c[0]}/{c[1]:<11}{h[0]}/{h[1]:<11}")
 print(f"{'合计':<10}{sum(v[0] for v in score.values())}/{total:<11}{sum(v[0] for v in hscore.values())}/{total}")
-print(f"(跳过: roadmap/ 全目录=规范锚、modules/ 多文件包 7 目录不在单文件口径;target 非 full {skip['target']} 件)")
+print(f"(跳过: roadmap/ 全目录=规范锚、modules/ 見独立小节;target 非 full {skip['target']} 件)")
 if gaps:
     print(f"\n-- 自举 cc 未过而宿主通过(能力缺口,{len(gaps)})--")
     for g in gaps: print("  " + g)

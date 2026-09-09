@@ -13,6 +13,22 @@ fn main() -> I32 {
             scan(s, toks, lns)
             var cur = Atomic[I32](0)
             var file = p_file(toks, cur, lns)
+            // 模块加载器(§2):use 解析 → 可见性 → 合并;无 use 时为无感直通
+            var ldiags = List[Str]()
+            var lstack = List[Str]()
+            // 发射驱动无 path 回退:ctron_entry 为空时加载器目录退化为 "."(无 use 源无感;
+            // 多文件包发射用 bin/ctron-emit,文档化限制)
+            var epath = ctron_entry()
+            lstack.push(epath)
+            file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
+            if ldiags.len > 0 {
+                var li: I32 = 0
+                while li < ldiags.len {
+                    println(ldiags[li])
+                    li += 1
+                }
+                return 1
+            }
             // CLI 化:先取输入 main 的锚字面量(作默认值),再把调用点换为标记
             var anch = ct_find_main_anchor(file)
             file = ct_swap_anchor(file)
@@ -43,6 +59,7 @@ fn main() -> I32 {
             println("static const char* ctron_read_dir(const char* path) \{ DIR* d = opendir(path); if (!d) \{ return NULL; } size_t cap = 256; size_t len = 0; char* r = (char*)malloc(cap); r[0] = 0; struct dirent* de; while ((de = readdir(d)) != NULL) \{ if (strcmp(de->d_name, \".\") == 0 || strcmp(de->d_name, \"..\") == 0) \{ continue; } size_t bl = strlen(de->d_name); while (len + bl + 2 > cap) \{ cap *= 2; } char* nb = (char*)realloc(r, cap); r = nb; memcpy(r + len, de->d_name, bl); len += bl; r[len] = 10; len += 1; } closedir(d); r[len] = 0; return r; }")
             println("static void ctron_panic(const char* m) \{ fprintf(stderr, \"%s" + bs() + "n\", m); exit(1); }")
             println("static const char* ctron_cli_input = NULL;")
+            println("static const char* ctron_entry(void) \{ return ctron_cli_input ? ctron_cli_input : \"\"; }")
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
             // 用户 struct 值类型(§6.1):typedef 先于原型与函数体

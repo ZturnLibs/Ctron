@@ -106,6 +106,16 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第十批(2026-09-09,Phase 3 v0:模块加载器):**多文件包可编译运行**——驱动常开
+pkg_load_use:use 节点结构化([Use, Segs, Syms]),按包名剥离 + 路径展开读取
+src 下模块文件,整模块合并(滤除 Use);符号可见性检查(非 pub → E2020);
+栈式循环检测(E5020 消息含 circular);pub(pkg) 解析为 FnPub(单包语义 v0);
+std.* 导入保持忽略(stdlib 未落地)。`ctron_entry` 内建(宿主 rt 恒空串/发射
+运行时取 argv[2])供加载器定位入口。suite 新增 modules 小节:自举 3/7
+(use_ok/visibility/circular),宿主 pkg oracle 7/7;caps/comptime_budget/
+orphan/ffi_math 待后续切片(E4010/E6010/E5010/FFI)。已知限制:同名私有符号
+跨模块合并取首个;发射多文件包需 bin/ctron-emit(ctc.sh emit 无 CLI 入口)。
+
 第九批(2026-09-09,Phase 1.5 span 标注):**JSON 诊断 span 精确化**——lex 的
 scan 增 lns 平行出参(逐 token 行号),parser 线程化(p_file 起全部建树路径)并在
 10 类节点(Call/Member/Let/Assign/Return/Try/Static/Struct/Match/StructLit)

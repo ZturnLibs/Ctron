@@ -236,6 +236,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ct_fn_ret(file, m)
         }
         if cal[0] == "Ident" {
+            if cal[1] == "ctron_entry" { return "s" }
             if cal[1] == "read_file" { return "s" }
             if cal[1] == "read_dir" { return "s" }
             if cal[1] == "byte_at" { return "i" }
@@ -479,6 +480,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if at2 == "6" { return "printf(\"%lld\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
+        if callee == "ctron_entry" { return "ctron_entry()" }
         if callee == "read_file" {
             if ag.len > 1 && ag[1][0] == "Str" && ct_str_payload(ag[1]) == "CTRONCLIINPUT" {
                 // main 输入锚:CLI `run <file>` 可覆盖(ctron_anchor 默认 = 烘焙字面量)

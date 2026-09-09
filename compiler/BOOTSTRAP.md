@@ -168,6 +168,12 @@ suite 证明语言能力面对齐可执行规范。**改动 compiler/src 后三�
   print/to_string/字段赋值、非纯表达式分支的值位 if 命中即 panic。
 - 节点形态不对称备忘:if 的 else 分支被 p_if 包为 BlockExpr(then 是裸 Block)
   ——消费 If 节点的代码必须两形态都处理。
+- 语言无 break/continue(保留字无实现)——解析器静默收为 Ident,运行期才炸
+  (2026-09-09 两度踩之);or2/or3 是函数不短路,副作用条件必须拆开写。
+- compiler-c Makefile 不追踪头文件以外的新依赖变更,改 .c 后 make 可能
+  "Nothing to be done"——touch 源文件强制重链。
+- 模块加载器(2026-09-09)对无 use 源逐字节无感(金样安全);加载失败即 rc=1
+  (visibility/circular 用例即此形态)。
 - span 标注(2026-09-09):节点末槽 = 行号串(nstamp 追加),**必须在节点构建
   完成后追加**——插在中部会把既有槽位整体后移(sem/eval/trans 全按固定下标读);
   诊断内部 "CODE@行",文本面 strip_at 剥离保持逐字,JSON 面消费。
