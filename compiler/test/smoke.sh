@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=216' "$T/chk.out" && ok "自检 cc_run 绿,decls=208" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=222' "$T/chk.out" && ok "自检 cc_run 绿,decls=208" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -49,8 +49,9 @@ echo "== 2b) JSON 诊断契约(§10.2 v0) =="
 "$COMP/ctc.sh" check "$COMP/test/fx_json_neg.ct" --format=json > "$T/js.out" 2>&1
 jrc=$?
 if [ $jrc -eq 1 ] && grep -q '"code":"W8010"' "$T/js.out" \
+   && grep -q '"line_start":6' "$T/js.out" \
    && python3 -c "import json,sys; json.load(sys.stdin)" < "$T/js.out" 2>/dev/null; then
-    ok "JSON 诊断输出合法且含 W8010(rc=1)"
+    ok "JSON 诊断合法且 span 精确(W8010@6, rc=1)"
 else
     bad "JSON 诊断面异常(rc=$jrc): $(cat "$T/js.out")"
 fi

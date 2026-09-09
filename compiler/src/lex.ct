@@ -103,7 +103,7 @@ fn nl_set_next(t: Str) -> Bool {
     }
     return false
 }
-fn filter_nl(raw: List[Str], toks: List[Str]) {
+fn filter_nl(raw: List[Str], rlines: List[Str], toks: List[Str], lns: List[Str]) {
     var i: I32 = 0
     while i < raw.len && raw[i] == "NL" {
         i += 1
@@ -111,6 +111,7 @@ fn filter_nl(raw: List[Str], toks: List[Str]) {
     while i < raw.len {
         if raw[i] != "NL" {
             toks.push(raw[i])
+            lns.push(rlines[i])
             i += 1
         } else {
             var run = i
@@ -130,19 +131,24 @@ fn filter_nl(raw: List[Str], toks: List[Str]) {
             }
             if !suppressed {
                 toks.push("NL")
+                lns.push(rlines[i])
             }
             i = run
         }
     }
 }
-fn scan(src: Str, toks: List[Str]) {
+fn scan(src: Str, toks: List[Str], lns: List[Str]) {
     var raw = List[Str]()
+    var rlines = List[Str]()
+    var line: I32 = 1
     var n = src.len
     var i: I32 = 0
     while i < n {
         var b = byte_at(src, i)
         if b == 10 {
             raw.push("NL")
+            rlines.push(line.to_string())
+            line += 1
             i += 1
         } else if or2(b == 32, or2(b == 9, b == 13)) {
             i += 1
@@ -165,11 +171,11 @@ fn scan(src: Str, toks: List[Str]) {
                     i += 1
                 }
             }
-            raw.push(byte_slice(src, q0, i))
+            rpush(raw, rlines, line, byte_slice(src, q0, i))
         } else if is_al(b) {
             var start = i
             while i < n && is_ac(byte_at(src, i)) { i += 1 }
-            raw.push(byte_slice(src, start, i))
+            rpush(raw, rlines, line, byte_slice(src, start, i))
         } else if is_digit(b) {
             var tstart = i
             var radix: I32 = 0
@@ -217,64 +223,70 @@ fn scan(src: Str, toks: List[Str]) {
             var sl = suffix_len(src, n, i)
             if sl > 0 { tk = tk + byte_slice(src, i, i + sl) }
             i += sl
-            raw.push(tk)
+            rpush(raw, rlines, line, tk)
         } else {
             if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
-                raw.push("..=")
+                rpush(raw, rlines, line, "..=")
                 i += 3
             } else if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {
-                raw.push("..")
+                rpush(raw, rlines, line, "..")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 62 {
-                raw.push("->")
+                rpush(raw, rlines, line, "->")
                 i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 62 {
-                raw.push("=>")
+                rpush(raw, rlines, line, "=>")
                 i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("==")
+                rpush(raw, rlines, line, "==")
                 i += 2
             } else if b == 33 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("!=")
+                rpush(raw, rlines, line, "!=")
                 i += 2
             } else if b == 60 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("<=")
+                rpush(raw, rlines, line, "<=")
                 i += 2
             } else if b == 62 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push(">=")
+                rpush(raw, rlines, line, ">=")
                 i += 2
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
-                raw.push("&&")
+                rpush(raw, rlines, line, "&&")
                 i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
-                raw.push("+%")
+                rpush(raw, rlines, line, "+%")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 37 {
-                raw.push("-%")
+                rpush(raw, rlines, line, "-%")
                 i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("+=")
+                rpush(raw, rlines, line, "+=")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("-=")
+                rpush(raw, rlines, line, "-=")
                 i += 2
             } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("*=")
+                rpush(raw, rlines, line, "*=")
                 i += 2
             } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("/=")
+                rpush(raw, rlines, line, "/=")
                 i += 2
             } else if b == 37 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                raw.push("%=")
+                rpush(raw, rlines, line, "%=")
                 i += 2
             } else {
-                raw.push(byte_slice(src, i, i + 1))
+                rpush(raw, rlines, line, byte_slice(src, i, i + 1))
                 i += 1
             }
         }
     }
-    filter_nl(raw, toks)
+    filter_nl(raw, rlines, toks, lns)
     toks.push("#EOF")
+    lns.push(line.to_string())
+}
+
+fn rpush(raw: List[Str], rlines: List[Str], line: I32, t: Str) {
+    raw.push(t)
+    rlines.push(line.to_string())
 }
 
 fn tok(toks: List[Str], cur: Atomic[I32]) -> Str {

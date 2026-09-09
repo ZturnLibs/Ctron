@@ -69,8 +69,8 @@ fn probe_line(src: Str, msg: Str) -> I32 {
     var start: I32 = 0
     var i2: I32 = 0
     var n2 = src.len
+    var probe2 = probe
     while pass < 2 {
-        var probe2 = probe
         if pass == 1 {
             var dot: I32 = -1
             var q: I32 = 0
@@ -78,12 +78,16 @@ fn probe_line(src: Str, msg: Str) -> I32 {
                 if byte_at(probe, q) == 46 { dot = q }
                 q += 1
             }
-            if dot < 0 { break }
-            probe2 = byte_slice(probe, dot + 1, probe.len)
+            if dot < 0 {
+                probe2 = ""
+            } else {
+                probe2 = byte_slice(probe, dot + 1, probe.len)
+            }
             line = 1
             start = 0
             i2 = 0
         }
+        if probe2.len > 0 {
         while i2 <= n2 {
             var hit = false
             if i2 == n2 {
@@ -100,6 +104,7 @@ fn probe_line(src: Str, msg: Str) -> I32 {
             }
             i2 += 1
         }
+        }
         pass += 1
     }
     return 1
@@ -115,20 +120,62 @@ fn json_diag(path: Str, src: Str, ln: Str, first: Bool) {
     var msg = byte_slice(ln, sp + 1, ln.len)
     var sev = "error"
     if byte_at(code, 0) == 87 { sev = "warning" }
-    var at = probe_line(src, msg)
+    // span 标注:code 段 "CODE@行" → 精确行;无标注 → probe 近似(v0 回退)
+    var at: I32 = 0
+    var atok: I32 = -1
+    var q: I32 = 0
+    while q < code.len {
+        if byte_at(code, q) == 64 { atok = q }
+        q += 1
+    }
+    if atok >= 0 {
+        at = dvi(byte_slice(code, atok + 1, code.len))
+        code = byte_slice(code, 0, atok)
+    }
+    if at <= 0 {
+        at = probe_line(src, msg)
+    }
     if !first { print(",") }
     print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":1},\"notes\":[],\"fixes\":[]}")
 }
 
+// 文本面剥离 span 标注:码后 "@<数字>"(诊断内部携带行号,JSON 面消费)
+fn strip_at(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var drop = false
+        if c == 64 {
+            var j = i + 1
+            var nd = 0
+            while j < s.len && byte_at(s, j) >= 48 && byte_at(s, j) <= 57 {
+                j += 1
+                nd += 1
+            }
+            if nd > 0 && j < s.len && byte_at(s, j) == 58 {
+                drop = true
+                out = out + ":"
+                i = j + 1
+            }
+        }
+        if !drop {
+            out = out + byte_slice(s, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
 fn main() -> I32 {
     let path = "../selfhosted/input_cc.ct"
     let src = read_file(path)
     match src {
         Some(s) => {
             var toks = List[Str]()
-            scan(s, toks)
+            var lns = List[Str]()
+            scan(s, toks, lns)
             var cur = Atomic[I32](0)
-            var file = p_file(toks, cur)
+            var file = p_file(toks, cur, lns)
             var sems = sem_walk2(file)
             if seq2("ANCHORFMT", "1") {
                 print("\{\"diagnostics\":[")
@@ -151,7 +198,7 @@ fn main() -> I32 {
                 return 0
             }
             if !seq2(sems, "") {
-                print(sems)
+                print(strip_at(sems))
                 return 1
             }
             println("check OK decls=" + (file.len - 1).to_string())

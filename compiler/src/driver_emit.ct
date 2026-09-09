@@ -9,9 +9,10 @@ fn main() -> I32 {
     match src {
         Some(s) => {
             var toks = List[Str]()
-            scan(s, toks)
+            var lns = List[Str]()
+            scan(s, toks, lns)
             var cur = Atomic[I32](0)
-            var file = p_file(toks, cur)
+            var file = p_file(toks, cur, lns)
             // CLI 化:先取输入 main 的锚字面量(作默认值),再把调用点换为标记
             var anch = ct_find_main_anchor(file)
             file = ct_swap_anchor(file)

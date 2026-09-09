@@ -168,6 +168,10 @@ suite 证明语言能力面对齐可执行规范。**改动 compiler/src 后三�
   print/to_string/字段赋值、非纯表达式分支的值位 if 命中即 panic。
 - 节点形态不对称备忘:if 的 else 分支被 p_if 包为 BlockExpr(then 是裸 Block)
   ——消费 If 节点的代码必须两形态都处理。
+- span 标注(2026-09-09):节点末槽 = 行号串(nstamp 追加),**必须在节点构建
+  完成后追加**——插在中部会把既有槽位整体后移(sem/eval/trans 全按固定下标读);
+  诊断内部 "CODE@行",文本面 strip_at 剥离保持逐字,JSON 面消费。
+  W8030 暂无行(绑定行未入表),探针回退。
 - 踩坑复记:发射器新代码两度踩 `||`(自举 parser 静默、宿主 parser 拒绝)与
   单行 if 内 return——宿主 seed 永远是最严口径,build 通过 ≠ 宿主可跑。
 - 并发为顺序化模拟:spawn 即刻完整执行,满发送立即 `Err(ScopeCancelled)`;

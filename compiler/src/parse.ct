@@ -1,7 +1,7 @@
 // =====================================================================
 // parse.ct —— 解析器:token 串 → 结构化文件节点树
 // 节点 = List[Str]:child[0] = tag,其后按模式放标量 Str 或子节点(List)。
-// 接口:p_file(toks, cur) → 文件节点树;内部 p_* 递归下降 + 停滞守卫。
+// 接口:p_file(toks, cur, lns) → 文件节点树;内部 p_* 递归下降 + 停滞守卫。
 // =====================================================================
 // ---------------- 树节点 ----------------
 fn mk(t: Str) -> List[Str] {
@@ -10,7 +10,12 @@ fn mk(t: Str) -> List[Str] {
     return n
 }
 
-// ---------------- 解析(建树):p_file(toks, cur) → 文件节点树 ----------------
+// 行号戳(lns 与 toks 平行,scan 产出):把行号串追加为节点末槽
+fn nstamp(n: List[Str], line: Str) {
+    n.push(line)
+}
+
+// ---------------- 解析(建树):p_file(toks, cur, lns) → 文件节点树 ----------------
 fn qtext(raw: Str) -> Str {
     var out = ""
     var j: I32 = 0
@@ -99,13 +104,13 @@ fn parts_of(raw: Str) -> List[Str] {
     return np
 }
 
-fn p_and(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var l = p_cmp(toks, cur, al)
+fn p_and(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var l = p_cmp(toks, cur, lns, al)
     var go = true
     while go {
         if tok(toks, cur) == "&&" {
             adv(cur)
-            var r = p_cmp(toks, cur, al)
+            var r = p_cmp(toks, cur, lns, al)
             var nb = mk("Binary")
             nb.push("AndAnd")
             nb.push(l)
@@ -116,8 +121,8 @@ fn p_and(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return l
 }
 
-fn p_cmp(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var l = p_rng(toks, cur, al)
+fn p_cmp(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var l = p_rng(toks, cur, lns, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -130,7 +135,7 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         if t == ">=" { op = "Ge" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_rng(toks, cur, al)
+            var r = p_rng(toks, cur, lns, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
@@ -141,12 +146,12 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return l
 }
 
-fn p_rng(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var f = p_add(toks, cur, al)
+fn p_rng(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var f = p_add(toks, cur, lns, al)
     var t = tok(toks, cur)
     if or2(t == "..", t == "..=") {
         adv(cur)
-        var to = p_add(toks, cur, al)
+        var to = p_add(toks, cur, lns, al)
         var nb = mk("Range")
         if t == "..=" {
             nb.push("true")
@@ -160,8 +165,8 @@ fn p_rng(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return f
 }
 
-fn p_add(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var l = p_mul(toks, cur, al)
+fn p_add(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var l = p_mul(toks, cur, lns, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -172,7 +177,7 @@ fn p_add(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         if t == "-%" { op = "WrapSub" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_mul(toks, cur, al)
+            var r = p_mul(toks, cur, lns, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
@@ -183,8 +188,8 @@ fn p_add(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return l
 }
 
-fn p_mul(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var l = p_una(toks, cur, al)
+fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var l = p_una(toks, cur, lns, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -194,7 +199,7 @@ fn p_mul(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         if t == "%" { op = "Mod" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_una(toks, cur, al)
+            var r = p_una(toks, cur, lns, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
@@ -205,11 +210,11 @@ fn p_mul(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return l
 }
 
-fn p_una(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
     var t = tok(toks, cur)
     if t == "-" {
         adv(cur)
-        var e = p_una(toks, cur, al)
+        var e = p_una(toks, cur, lns, al)
         var nu = mk("Unary")
         nu.push("Neg")
         nu.push(e)
@@ -217,23 +222,24 @@ fn p_una(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     }
     if t == "!" {
         adv(cur)
-        var e = p_una(toks, cur, al)
+        var e = p_una(toks, cur, lns, al)
         var nu = mk("Unary")
         nu.push("Not")
         nu.push(e)
         return nu
     }
-    return p_post(toks, cur, al)
+    return p_post(toks, cur, lns, al)
 }
 
-fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var e = p_pri(toks, cur, al)
+fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var e = p_pri(toks, cur, lns, al)
     var go = true
     while go {
         while tok(toks, cur) == "NL" && toks[cur.load() + 1] == "." {
             adv(cur)
         }
         var t = tok(toks, cur)
+        var ln0 = lns[cur.load()]
         if t == "(" {
             adv(cur)
             var ag = mk("Args")
@@ -242,7 +248,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
                 if tok(toks, cur) == ")" {
                     more = false
                 } else {
-                    ag.push(p_stmt_expr(toks, cur, "1"))
+                    ag.push(p_stmt_expr(toks, cur, lns, "1"))
                     if tok(toks, cur) == "," {
                         adv(cur)
                     } else {
@@ -254,6 +260,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
             var cl = mk("Call")
             cl.push(e)
             cl.push(ag)
+            nstamp(cl, ln0)
             e = cl
         } else if t == "." {
             adv(cur)
@@ -261,6 +268,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
             adv(cur)
             var mb = mk("Member")
             mb.push(e)
+            var mbline = ln0
             if is_digit(byte_at(nm, 0)) {
                 mb.push("TIdx")
                 mb.push(num_text(nm))
@@ -268,6 +276,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
                 mb.push("Nm")
                 mb.push(nm)
             }
+            nstamp(mb, mbline)
             e = mb
         } else if t == "[" {
             var d: I32 = 1
@@ -298,7 +307,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
                             ag.push(cv)
                             adv(cur)
                         } else {
-                            ag.push(p_typ(toks, cur))
+                            ag.push(p_typ(toks, cur, lns))
                         }
                         if tok(toks, cur) == "," { adv(cur) } else { more = false }
                     }
@@ -310,7 +319,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
                 e = tg
             } else {
                 adv(cur)
-                var ix = p_stmt_expr(toks, cur, "1")
+                var ix = p_stmt_expr(toks, cur, lns, "1")
                 adv(cur)
                 var inode = mk("Index")
                 inode.push(e)
@@ -321,6 +330,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
             adv(cur)
             var tr = mk("Try")
             tr.push(e)
+            nstamp(tr, ln0)
             e = tr
         } else {
             go = false
@@ -329,7 +339,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return e
 }
 
-fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
     var t = tok(toks, cur)
     var b0 = byte_at(t, 0)
     if is_digit(b0) {
@@ -349,10 +359,10 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         return nb
     }
     if t == "if" {
-        return p_if(toks, cur)
+        return p_if(toks, cur, lns)
     }
     if t == "match" {
-        return p_match(toks, cur)
+        return p_match(toks, cur, lns)
     }
     if t == "void" {
         adv(cur)
@@ -379,7 +389,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         adv(cur)
         var ow = mk("Own")
         ow.push(an)
-        ow.push(p_block(toks, cur))
+        ow.push(p_block(toks, cur, lns))
         return ow
     }
     if t == "|" {
@@ -401,7 +411,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
                 var ty = mk("None")
                 if tok(toks, cur) == ":" {
                     adv(cur)
-                    ty = p_typ(toks, cur)
+                    ty = p_typ(toks, cur, lns)
                 }
                 cpar.push(ty)
                 cp.push(cpar)
@@ -412,11 +422,11 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         var ret = mk("None")
         if tok(toks, cur) == "->" {
             adv(cur)
-            ret = p_typ(toks, cur)
+            ret = p_typ(toks, cur, lns)
         }
         cl.push(cp)
         cl.push(ret)
-        cl.push(p_stmt_expr(toks, cur, "1"))
+        cl.push(p_stmt_expr(toks, cur, lns, "1"))
         return cl
     }
     if t == "scope" {
@@ -428,7 +438,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         adv(cur)
         var sc = mk("Scope")
         sc.push(pn)
-        sc.push(p_block(toks, cur))
+        sc.push(p_block(toks, cur, lns))
         return sc
     }
     if b0 == 34 {
@@ -440,7 +450,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     if t == "\{" {
         adv(cur)
         var be = mk("BlockExpr")
-        be.push(p_block(toks, cur))
+        be.push(p_block(toks, cur, lns))
         return be
     }
     if t == "[" {
@@ -449,7 +459,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         var more = true
         while more {
             if tok(toks, cur) == "]" { more = false } else {
-                al.push(p_stmt_expr(toks, cur, "1"))
+                al.push(p_stmt_expr(toks, cur, lns, "1"))
                 if tok(toks, cur) == "," { adv(cur) } else { more = false }
             }
         }
@@ -458,7 +468,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     }
     if t == "(" {
         adv(cur)
-        var e0 = p_or(toks, cur, "1")
+        var e0 = p_or(toks, cur, lns, "1")
         if tok(toks, cur) == "," {
             var tn = mk("TupleE")
             tn.push(e0)
@@ -466,7 +476,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
             while more {
                 if tok(toks, cur) == "," {
                     adv(cur)
-                    tn.push(p_and(toks, cur, "1"))
+                    tn.push(p_and(toks, cur, lns, "1"))
                 } else {
                     more = false
                 }
@@ -496,13 +506,14 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
                 adv(cur)
                 var fv = mk("LField")
                 fv.push(fnm)
-                fv.push(p_stmt_expr(toks, cur, "1"))
+                fv.push(p_stmt_expr(toks, cur, lns, "1"))
                 lf.push(fv)
                 if tok(toks, cur) == "," { adv(cur) }
             }
         }
         adv(cur)
         sl.push(lf)
+        nstamp(sl, lns[cur.load()])
         return sl
     }
     adv(cur)
@@ -546,7 +557,7 @@ fn p_tpars(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return tp
 }
 
-fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var t = tok(toks, cur)
     if t == "(" {
         adv(cur)
@@ -554,7 +565,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var more = true
         while more {
             if tok(toks, cur) == ")" { more = false } else {
-                tt.push(p_typ(toks, cur))
+                tt.push(p_typ(toks, cur, lns))
                 if tok(toks, cur) == "," { adv(cur) } else { more = false }
             }
         }
@@ -564,7 +575,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     if t == "&" {
         adv(cur)
         var rf = mk("Ref")
-        rf.push(p_typ(toks, cur))
+        rf.push(p_typ(toks, cur, lns))
         if tok(toks, cur) == "?" {
             adv(cur)
             var op = mk("Optional")
@@ -580,7 +591,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var more2 = true
         while more2 {
             if tok(toks, cur) == ")" { more2 = false } else {
-                ft.push(p_typ(toks, cur))
+                ft.push(p_typ(toks, cur, lns))
                 if tok(toks, cur) == "," { adv(cur) } else { more2 = false }
             }
         }
@@ -588,7 +599,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         var fret = mk("None")
         if tok(toks, cur) == "->" {
             adv(cur)
-            fret = p_typ(toks, cur)
+            fret = p_typ(toks, cur, lns)
         }
         var ftn = mk("FnType")
         ftn.push(ft)
@@ -617,7 +628,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             var more = true
             while more {
                 if tok(toks, cur) == "]" { more = false } else {
-                    ta.push(p_typ(toks, cur))
+                    ta.push(p_typ(toks, cur, lns))
                     if tok(toks, cur) == "," { adv(cur) } else { more = false }
                 }
             }
@@ -639,7 +650,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 sl.push(base)
                 base = sl
             } else {
-                var sz = p_stmt_expr(toks, cur, "1")
+                var sz = p_stmt_expr(toks, cur, lns, "1")
                 adv(cur)
                 var ar = mk("ArrayT")
                 ar.push(base)
@@ -657,13 +668,13 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return base
 }
 
-fn p_or(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    var l = p_and(toks, cur, al)
+fn p_or(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var l = p_and(toks, cur, lns, al)
     var go = true
     while go {
         if tok(toks, cur) == "or" {
             adv(cur)
-            var r = p_and(toks, cur, al)
+            var r = p_and(toks, cur, lns, al)
             var nb = mk("Binary")
             nb.push("Or")
             nb.push(l)
@@ -676,8 +687,8 @@ fn p_or(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     return l
 }
 
-fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    return p_or(toks, cur, al)
+fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    return p_or(toks, cur, lns, al)
 }
 
 fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
@@ -788,10 +799,11 @@ fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return pi
 }
 
-fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_match(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var ln0 = lns[cur.load()]
     adv(cur)
     var nm = mk("Match")
-    nm.push(p_stmt_expr(toks, cur, "0"))
+    nm.push(p_stmt_expr(toks, cur, lns, "0"))
     adv(cur)
     var arms = mk("Arms")
     var go = true
@@ -803,30 +815,31 @@ fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             var ma = mk("Arm")
             ma.push(p_pattern(toks, cur))
             adv(cur)
-            ma.push(p_stmt_expr(toks, cur, "1"))
+            ma.push(p_stmt_expr(toks, cur, lns, "1"))
             arms.push(ma)
         }
     }
     adv(cur)
     nm.push(arms)
+    nstamp(nm, ln0)
     return nm
 }
 
-fn p_if(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_if(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var ni = mk("If")
-    ni.push(p_and(toks, cur, "0"))
+    ni.push(p_and(toks, cur, lns, "0"))
     adv(cur)
-    ni.push(p_block(toks, cur))
+    ni.push(p_block(toks, cur, lns))
     var els = mk("None")
     if tok(toks, cur) == "else" {
         adv(cur)
         if tok(toks, cur) == "if" {
-            els = p_if(toks, cur)
+            els = p_if(toks, cur, lns)
         } else {
             adv(cur)
             var be = mk("BlockExpr")
-            be.push(p_block(toks, cur))
+            be.push(p_block(toks, cur, lns))
             els = be
         }
     }
@@ -834,7 +847,7 @@ fn p_if(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return ni
 }
 
-fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_block(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var nb = mk("Block")
     var tailSet = false
     var go = true
@@ -844,6 +857,7 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         }
         var p0 = cur.load()
         var t = tok(toks, cur)
+        var ln0 = lns[cur.load()]
         if t == "}" {
             adv(cur)
             go = false
@@ -852,13 +866,15 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         } else if t == "return" {
             adv(cur)
             var re = mk("Return")
+            var reline = ln0
             var rt = tok(toks, cur)
             if or3(rt == "}", rt == "#EOF", rt == "NL") {
                 var rn = mk("None")
                 re.push(rn)
             } else {
-                re.push(p_stmt_expr(toks, cur, "1"))
+                re.push(p_stmt_expr(toks, cur, lns, "1"))
             }
+            nstamp(re, reline)
             nb.push(re)
         } else if or2(t == "let", t == "var") {
             var isv = "false"
@@ -868,20 +884,22 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             var ty = mk("None")
             if tok(toks, cur) == ":" {
                 adv(cur)
-                ty = p_typ(toks, cur)
+                ty = p_typ(toks, cur, lns)
             }
             adv(cur)
             var lv = mk("Let")
             lv.push(isv)
+            var lvline = ln0
             lv.push(pp)
             lv.push(ty)
-            lv.push(p_stmt_expr(toks, cur, "1"))
+            lv.push(p_stmt_expr(toks, cur, lns, "1"))
+            nstamp(lv, lvline)
             nb.push(lv)
         } else if t == "while" {
             adv(cur)
-            var wc = p_stmt_expr(toks, cur, "0")
+            var wc = p_stmt_expr(toks, cur, lns, "0")
             adv(cur)
-            var wb = p_block(toks, cur)
+            var wb = p_block(toks, cur, lns)
             var wh = mk("While")
             wh.push(wc)
             wh.push(wb)
@@ -890,16 +908,16 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             adv(cur)
             var fp = p_pattern(toks, cur)
             adv(cur)
-            var it = p_stmt_expr(toks, cur, "0")
+            var it = p_stmt_expr(toks, cur, lns, "0")
             adv(cur)
-            var fb = p_block(toks, cur)
+            var fb = p_block(toks, cur, lns)
             var fo = mk("For")
             fo.push(fp)
             fo.push(it)
             fo.push(fb)
             nb.push(fo)
         } else {
-            var e = p_stmt_expr(toks, cur, "1")
+            var e = p_stmt_expr(toks, cur, lns, "1")
             var t2 = tok(toks, cur)
             var op = ""
             if t2 == "=" { op = "Eq" }
@@ -912,8 +930,10 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 adv(cur)
                 var asn = mk("Assign")
                 asn.push(e)
+                var asline = ln0
                 asn.push(op)
-                asn.push(p_stmt_expr(toks, cur, "1"))
+                asn.push(p_stmt_expr(toks, cur, lns, "1"))
+                nstamp(asn, asline)
                 nb.push(asn)
             } else {
                 var nx = t2
@@ -946,7 +966,7 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return nb
 }
 
-fn p_fn2(toks: List[Str], cur: Atomic[I32], tag: Str) -> List[Str] {
+fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -976,7 +996,7 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], tag: Str) -> List[Str] {
                 ps.push(rc)
             } else {
                 adv(cur)
-                var pty = p_typ(toks, cur)
+                var pty = p_typ(toks, cur, lns)
                 var par = mk("Param")
                 par.push(isv)
                 par.push(pn)
@@ -990,12 +1010,12 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], tag: Str) -> List[Str] {
     var ret = mk("None")
     if tok(toks, cur) == "->" {
         adv(cur)
-        ret = p_typ(toks, cur)
+        ret = p_typ(toks, cur, lns)
     }
     var body = mk("None")
     if tok(toks, cur) == "\{" {
         adv(cur)
-        body = p_block(toks, cur)
+        body = p_block(toks, cur, lns)
     }
     nf.push(tp)
     nf.push(ps)
@@ -1004,22 +1024,22 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], tag: Str) -> List[Str] {
     return nf
 }
 
-fn p_fn(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
-    return p_fn2(toks, cur, "Fn")
+fn p_fn(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    return p_fn2(toks, cur, lns, "Fn")
 }
 
-fn p_test(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_test(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var t = tok(toks, cur)
     adv(cur)
     var nt = mk("Test")
     nt.push(qtext(byte_slice(t, 1, t.len - 1)))
     adv(cur)
-    nt.push(p_block(toks, cur))
+    nt.push(p_block(toks, cur, lns))
     return nt
 }
 
-fn p_field(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var isv = "false"
     var t = tok(toks, cur)
     if t == "var" { isv = "true" }
@@ -1030,11 +1050,12 @@ fn p_field(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var f = mk("Field")
     f.push(isv)
     f.push(nm)
-    f.push(p_typ(toks, cur))
+    f.push(p_typ(toks, cur, lns))
     return f
 }
 
-fn p_struct2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
+fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
+    var ln0 = lns[cur.load()]
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -1054,20 +1075,21 @@ fn p_struct2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
             adv(cur)
         }
         if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
-            fs.push(p_field(toks, cur))
+            fs.push(p_field(toks, cur, lns))
         }
     }
     adv(cur)
     ns.push(fs)
+    nstamp(ns, ln0)
     return ns
 }
 
-fn p_struct(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_struct(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var dr0 = mk("Drvs")
-    return p_struct2(toks, cur, dr0)
+    return p_struct2(toks, cur, lns, dr0)
 }
 
-fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
+fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -1093,7 +1115,7 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
                 var more = true
                 while more {
                     if tok(toks, cur) == ")" { more = false } else {
-                        kind.push(p_typ(toks, cur))
+                        kind.push(p_typ(toks, cur, lns))
                         if tok(toks, cur) == "," { adv(cur) } else { more = false }
                     }
                 }
@@ -1107,7 +1129,7 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
                         adv(cur)
                     }
                     if tok(toks, cur) == "}" { more2 = false } else if tok(toks, cur) == "#EOF" { more2 = false } else {
-                        kind.push(p_field(toks, cur))
+                        kind.push(p_field(toks, cur, lns))
                         while tok(toks, cur) == "NL" {
                             adv(cur)
                         }
@@ -1127,17 +1149,17 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
     return ne
 }
 
-fn p_prop_item2(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+fn p_prop_item2(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
-    var ty = p_typ(toks, cur)
+    var ty = p_typ(toks, cur, lns)
     var body = mk("None")
     var tag = "PropSig"
     if tok(toks, cur) == "\{" {
         adv(cur)
-        body = p_block(toks, cur)
+        body = p_block(toks, cur, lns)
         tag = "PropImpl"
     }
     if kind == "imp" {
@@ -1150,7 +1172,7 @@ fn p_prop_item2(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     return pn
 }
 
-fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+fn p_items(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List[Str] {
     var it = mk("Items")
     var go = true
     while go {
@@ -1175,28 +1197,28 @@ fn p_items(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
             while tok(toks, cur) == "NL" {
                 adv(cur)
             }
-            var md = p_fn2(toks, cur, "Method")
+            var md = p_fn2(toks, cur, lns, "Method")
             md.push(anm)
             it.push(md)
         } else if t == "fn" {
-            it.push(p_fn2(toks, cur, "Method"))
+            it.push(p_fn2(toks, cur, lns, "Method"))
         } else if t == "prop" {
             var pk = "sig"
             if or2(kind == "impl", kind == "class") {
                 pk = "imp"
             }
-            it.push(p_prop_item2(toks, cur, pk))
+            it.push(p_prop_item2(toks, cur, lns, pk))
         } else if kind == "trait" {
             go = false
         } else {
-            it.push(p_field(toks, cur))
+            it.push(p_field(toks, cur, lns))
         }
     }
     adv(cur)
     return it
 }
 
-fn p_class(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -1208,11 +1230,11 @@ fn p_class(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     adv(cur)
     nc.push(tp)
-    nc.push(p_items(toks, cur, "class"))
+    nc.push(p_items(toks, cur, lns, "class"))
     return nc
 }
 
-fn p_impl(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var ni = mk("Impl")
     var tp = mk("TPs")
@@ -1220,15 +1242,15 @@ fn p_impl(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         tp = p_tpars(toks, cur)
     }
     ni.push(tp)
-    ni.push(p_typ(toks, cur))
+    ni.push(p_typ(toks, cur, lns))
     adv(cur)
-    ni.push(p_typ(toks, cur))
+    ni.push(p_typ(toks, cur, lns))
     adv(cur)
-    ni.push(p_items(toks, cur, "impl"))
+    ni.push(p_items(toks, cur, lns, "impl"))
     return ni
 }
 
-fn p_trait(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -1251,13 +1273,13 @@ fn p_trait(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     }
     nt.push(sup)
     adv(cur)
-    nt.push(p_items(toks, cur, "trait"))
+    nt.push(p_items(toks, cur, lns, "trait"))
     return nt
 }
 
-fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_enum(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var dr0 = mk("Drvs")
-    return p_enum2(toks, cur, dr0)
+    return p_enum2(toks, cur, lns, dr0)
 }
 
 fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
@@ -1301,21 +1323,22 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return nu
 }
 
-fn p_const(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_const(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
-    var ty = p_typ(toks, cur)
+    var ty = p_typ(toks, cur, lns)
     adv(cur)
     var nc = mk("Const")
     nc.push(nm)
     nc.push(ty)
-    nc.push(p_stmt_expr(toks, cur, "1"))
+    nc.push(p_stmt_expr(toks, cur, lns, "1"))
     return nc
 }
 
-fn p_static(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var ln0 = lns[cur.load()]
     adv(cur)
     var wv = "false"
     var t = tok(toks, cur)
@@ -1324,17 +1347,18 @@ fn p_static(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
-    var ty = p_typ(toks, cur)
+    var ty = p_typ(toks, cur, lns)
     adv(cur)
     var ns = mk("Static")
     ns.push(nm)
     ns.push(wv)
     ns.push(ty)
-    ns.push(p_stmt_expr(toks, cur, "1"))
+    ns.push(p_stmt_expr(toks, cur, lns, "1"))
+    nstamp(ns, ln0)
     return ns
 }
 
-fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var nf = mk("File")
     var go = true
     while go {
@@ -1359,7 +1383,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             while tok(toks, cur) == "NL" {
                 adv(cur)
             }
-            var fd = p_fn2(toks, cur, "Fn")
+            var fd = p_fn2(toks, cur, lns, "Fn")
             fd.push(anm)
             nf.push(fd)
         } else if t == "pub" {
@@ -1368,13 +1392,13 @@ fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 adv(cur)
             }
             if tok(toks, cur) == "fn" {
-                nf.push(p_fn2(toks, cur, "FnPub"))
+                nf.push(p_fn2(toks, cur, lns, "FnPub"))
             } else {
-                nf.push(p_fn(toks, cur))
+                nf.push(p_fn(toks, cur, lns))
             }
         } else if t == "comptime" {
             adv(cur)
-            nf.push(p_fn2(toks, cur, "FnC"))
+            nf.push(p_fn2(toks, cur, lns, "FnC"))
         } else if t == "@" {
             adv(cur)
             adv(cur)
@@ -1396,34 +1420,34 @@ fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             }
             var t2 = tok(toks, cur)
             if t2 == "struct" {
-                nf.push(p_struct2(toks, cur, dr2))
+                nf.push(p_struct2(toks, cur, lns, dr2))
             } else if t2 == "enum" {
-                nf.push(p_enum2(toks, cur, dr2))
+                nf.push(p_enum2(toks, cur, lns, dr2))
             } else if t2 == "trait" {
-                nf.push(p_trait(toks, cur))
+                nf.push(p_trait(toks, cur, lns))
             } else {
-                nf.push(p_fn(toks, cur))
+                nf.push(p_fn(toks, cur, lns))
             }
         } else if t == "test" {
-            nf.push(p_test(toks, cur))
+            nf.push(p_test(toks, cur, lns))
         } else if t == "enum" {
-            nf.push(p_enum(toks, cur))
+            nf.push(p_enum(toks, cur, lns))
         } else if t == "struct" {
-            nf.push(p_struct(toks, cur))
+            nf.push(p_struct(toks, cur, lns))
         } else if t == "class" {
-            nf.push(p_class(toks, cur))
+            nf.push(p_class(toks, cur, lns))
         } else if t == "impl" {
-            nf.push(p_impl(toks, cur))
+            nf.push(p_impl(toks, cur, lns))
         } else if t == "trait" {
-            nf.push(p_trait(toks, cur))
+            nf.push(p_trait(toks, cur, lns))
         } else if t == "use" {
             nf.push(p_use(toks, cur))
         } else if t == "const" {
-            nf.push(p_const(toks, cur))
+            nf.push(p_const(toks, cur, lns))
         } else if t == "static" {
-            nf.push(p_static(toks, cur))
+            nf.push(p_static(toks, cur, lns))
         } else {
-            nf.push(p_fn(toks, cur))
+            nf.push(p_fn(toks, cur, lns))
         }
         if cur.load() == p0 {
             adv(cur)

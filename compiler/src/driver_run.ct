@@ -8,17 +8,45 @@
 // 语义阶段:sems != "(Ctron sem_walk2 逐条 "CODE: msg")→ 打印并止(编译失败)
 // 运行阶段:文件含 fn main → 解释 main;否则解释 test 块(全过返回 0)
 // 快照说明:解释器段随 ev2.ct 演进刷新(C9d 系列:match/数组/Option/struct/enum)。
+// 文本面剥离 span 标注:码后 "@<数字>"(诊断内部携带行号,JSON 面消费)
+fn strip_at(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var drop = false
+        if c == 64 {
+            var j = i + 1
+            var nd = 0
+            while j < s.len && byte_at(s, j) >= 48 && byte_at(s, j) <= 57 {
+                j += 1
+                nd += 1
+            }
+            if nd > 0 && j < s.len && byte_at(s, j) == 58 {
+                drop = true
+                out = out + ":"
+                i = j + 1
+            }
+        }
+        if !drop {
+            out = out + byte_slice(s, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
 fn main() -> I32 {
     let src = read_file("../selfhosted/input_cc.ct")
     match src {
         Some(s) => {
             var toks = List[Str]()
-            scan(s, toks)
+            var lns = List[Str]()
+            scan(s, toks, lns)
             var cur = Atomic[I32](0)
-            var file = p_file(toks, cur)
+            var file = p_file(toks, cur, lns)
             var sems = sem_walk2(file)
             if !seq2(sems, "") {
-                print(sems)
+                print(strip_at(sems))
                 return 1
             }
             var d = find_decl(file, "main")

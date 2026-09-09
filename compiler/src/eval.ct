@@ -954,9 +954,10 @@ fn s4(fl: Str, env: List[Str], out: Str, vv: List[Str]) -> List[Str] {
 }
 fn expr_of_text(s: Str) -> List[Str] {
     var toks = List[Str]()
-    scan(s, toks)
+    var lns = List[Str]()
+    scan(s, toks, lns)
     var cur = Atomic[I32](0)
-    return p_stmt_expr(toks, cur, "1")
+    return p_stmt_expr(toks, cur, lns, "1")
 }
 fn find_decl(file: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 1

@@ -298,9 +298,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             } else {
                 // 插值(§4.11):发射器内联解析片段 → 按类型转 C 串
                 var toks2 = List[Str]()
-                scan(p[1], toks2)
+                var lns2 = List[Str]()
+                scan(p[1], toks2, lns2)
                 var cur2 = Atomic[I32](0)
-                var ie = p_stmt_expr(toks2, cur2, "1")
+                var ie = p_stmt_expr(toks2, cur2, lns2, "1")
                 var ik = ct_typeof(ie, env, file)
                 var core = ct_expr(ie, env, file)
                 if or2(ik == "s", ik == "N") {

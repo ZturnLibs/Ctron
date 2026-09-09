@@ -106,6 +106,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第九批(2026-09-09,Phase 1.5 span 标注):**JSON 诊断 span 精确化**——lex 的
+scan 增 lns 平行出参(逐 token 行号),parser 线程化(p_file 起全部建树路径)并在
+10 类节点(Call/Member/Let/Assign/Return/Try/Static/Struct/Match/StructLit)
+尾部追加行号戳;sem 诊断内部携带 "CODE@行"(34 处推送位),驱动文本面 strip_at
+剥离(黄金逐字保持),JSON 面解析 @行 为精确 span(无戳节点回退探针近似)。
+兼容性放宽:类型参数期望与 trait 期望(含 &Trait)不判 E2010。suite 协议注意:
+自举 native 需重建后跑(否则对照旧二进制)。
+
 第八批(2026-09-09,发射面 trans v5:值位 if + 插值):**值位 if**(§4.6 if 是
 表达式)——fn 尾与 let 初值位的 if 发射为 C 三元;两分支须为纯表达式块(else
 的 BlockExpr 包装形态已适配,嵌套 if-else 链递归),否则命中即 panic(文档化,
