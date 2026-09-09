@@ -106,6 +106,12 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第十四批(2026-09-09,E3070 闭包可变捕获,§4.7 v0.6):两遍式检查——全文件
+var 绑定名集 × 每个闭包的赋值目标集,交集即 E3070(诊断含机械修复建议
+"改用 Mutex[T].with_mut";嵌套闭包独立检查;闭包自身参数不标记)。新遍历器
+cscan/cassign_names/cblock2/mblock/mexpr 全下钻(Block 与 BlockExpr 双形态)。
+教训入册:遍历器缺 Block/BlockExpr 分派 = 静默漏检(本轮第 N 次同类坑)。
+
 第十三批(2026-09-09,E6010 规格化:步数预算求值器):comptime 求值从"全量解释器
 直调"改为**专用步数预算求值器 ceval**(镜像宿主 pkg ceval;1200 步,静默回绕的
 I 域算术,const 引用/comptime fn 单表达式体/If 值位)——超预算 → **E6010**

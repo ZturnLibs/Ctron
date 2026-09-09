@@ -1,0 +1,12 @@
+// fx_capture_mut_neg.ct —— E3070:闭包可变捕获未显式 Mutex[T] 包装(§4.7 v0.6)
+// 机械修复建议:改用 Mutex[T].with_mut;插值原文子串不计入使用
+fn main() -> I32 {
+    var count: I32 = 0
+    let bump = || {
+        count += 1
+        count
+    }
+    bump()
+    assert_eq(count, 1)
+    return 0
+}
