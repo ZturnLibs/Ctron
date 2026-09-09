@@ -162,8 +162,12 @@ suite 证明语言能力面对齐可执行规范。**改动 compiler/src 后三�
 ## 7. 边界与挂账
 
 - 后端是 **gcc**(发射 C),不直接出机器码。
-- 发射器能力面 = `selfhosted/fixtures/trans_v0–v3` + 编译器自身;"编译任意
-  Ctron 程序"(struct/闭包/并发/插值/值位 if·match 全域)按 selfhosted 排期。
+- 发射器能力面 = `selfhosted/fixtures/trans_v0–v4` + 编译器自身;"编译任意
+  Ctron 程序"(枚举/闭包/并发/插值/值位 if·match 全域)按 selfhosted 排期;
+  struct 值类型已入面(2026-09-09,u:<名> 类型码 + C99 复合字面量),其 print/
+  to_string/字段赋值命中即 panic。
+- 踩坑复记:发射器新代码两度踩 `||`(自举 parser 静默、宿主 parser 拒绝)与
+  单行 if 内 return——宿主 seed 永远是最严口径,build 通过 ≠ 宿主可跑。
 - 并发为顺序化模拟:spawn 即刻完整执行,满发送立即 `Err(ScopeCancelled)`;
   与"结果与调度顺序无关"的测试面语义一致,真线程竞争不可观察。
 - U64 大数字面量(超出 I64 表示)不在宽度域内(03b 仍依赖 `as[]` 全集,挂账)。

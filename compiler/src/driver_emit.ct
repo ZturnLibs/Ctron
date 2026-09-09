@@ -44,12 +44,30 @@ fn main() -> I32 {
             println("static const char* ctron_cli_input = NULL;")
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
+            // 用户 struct 值类型(§6.1):typedef 先于原型与函数体
+            var si: I32 = 1
+            while si < file.len {
+                var sd = file[si]
+                if sd[0] == "Struct" {
+                    var fs = sd[4]
+                    var line = "typedef struct \{ "
+                    var fj: I32 = 1
+                    while fj < fs.len {
+                        var fd = fs[fj]
+                        line = line + ct_ctype(ct_ty_code(fd[3], file)) + " " + fd[2] + "; "
+                        fj += 1
+                    }
+                    line = line + "} t_" + sd[1] + ";"
+                    println(line)
+                }
+                si += 1
+            }
             // 原型前置:C 需先声明后用(语料存在前向引用/递归)
             var pj: I32 = 1
             while pj < file.len {
                 var pd = file[pj]
                 if pd[0] == "Fn" {
-                    println("static " + ct_ctype(ct_fn_ret(file, pd[1])) + " t_" + pd[1] + "(" + ct_params_str(pd) + ");")
+                    println("static " + ct_ctype(ct_fn_ret(file, pd[1])) + " t_" + pd[1] + "(" + ct_params_str(pd, file) + ");")
                 }
                 pj += 1
             }

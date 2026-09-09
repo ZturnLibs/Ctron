@@ -1,0 +1,38 @@
+// trans_v4.ct —— 发射面 struct 支持(§6.1 值类型):构造/字段读/按值传参返回/嵌套/数组
+struct Point {
+    let x: I32
+    let y: I32
+}
+struct Named {
+    let label: Str
+    let p: Point
+}
+fn flip(p: Point) -> Point {
+    var q: Point = Point { x: p.y, y: p.x }
+    return q
+}
+fn label_of(n: Named) -> Str {
+    return n.label
+}
+fn sum(p: Point) -> I32 {
+    return p.x + p.y
+}
+fn main() -> I32 {
+    var a = Point { x: 3, y: 8 }
+    var b = flip(a)
+    println(b.x.to_string())
+    println(b.y.to_string())
+    var n = Named { label: "L" + "1", p: a }
+    println(label_of(n))
+    println(n.p.x.to_string())
+    var pts = [a, b, flip(b)]
+    println(pts[1].x.to_string())
+    println(pts.len.to_string())
+    println(sum(a).to_string())
+    if a.x < b.y {
+        println(0)
+    } else {
+        println(1)
+    }
+    return 0
+}

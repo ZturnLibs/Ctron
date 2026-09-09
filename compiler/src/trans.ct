@@ -70,9 +70,10 @@ fn env_bind(env: List[Str], nm: Str, ty: Str) -> List[Str] {
     return out
 }
 
-// Named 类型节点 → 类型码
-fn ct_ty_code(nt: List[Str]) -> Str {
+// Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
+fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[0] != "Named" { return "i" }
+    if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
     if nt[1] == "Str" { return "s" }
     if nt[1] == "Bool" { return "b" }
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
@@ -84,6 +85,9 @@ fn ct_ty_code(nt: List[Str]) -> Str {
 
 // 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
 fn ct_ctype(code: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        return "t_" + byte_slice(code, 2, code.len)
+    }
     if code == "s" { return "const char*" }
     if code == "N" { return "const char*" }
     if code == "b" { return "int" }
@@ -104,7 +108,7 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
             var r = d[4]
             if r[0] == "None" { return "v" }
             if r[0] != "Named" { return "i" }
-            return ct_ty_code(r)
+            return ct_ty_code(r, file)
         }
         i += 1
     }
@@ -123,7 +127,7 @@ fn ct_fn_pcodes(file: List[Str], nm: Str) -> List[Str] {
             while k < ps.len {
                 var pr = ps[k]
                 if pr[0] == "Param" {
-                    out.push(ct_ty_code(pr[3]))
+                    out.push(ct_ty_code(pr[3], file))
                 }
                 k += 1
             }
@@ -135,7 +139,7 @@ fn ct_fn_pcodes(file: List[Str], nm: Str) -> List[Str] {
 }
 
 // fn 声明的 C 形参表(仅类型与名,用于原型前置与定义)
-fn ct_params_str(d: List[Str]) -> Str {
+fn ct_params_str(d: List[Str], file: List[Str]) -> Str {
     var ps = d[3]
     var params = ""
     var k: I32 = 1
@@ -144,7 +148,7 @@ fn ct_params_str(d: List[Str]) -> Str {
         var pr = ps[k]
         if pr[0] == "Param" {
             if !first { params = params + ", " }
-            params = params + ct_ctype(ct_ty_code(pr[3])) + " t_" + pr[2]
+            params = params + ct_ctype(ct_ty_code(pr[3], file)) + " t_" + pr[2]
             first = false
         }
         k += 1
@@ -185,9 +189,16 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         return "b"
     }
+    if t == "StructLit" {
+        return "u:" + e[1]
+    }
     if t == "Member" {
         if e[3] == "len" { return "i" }
         if e[3] == "to_string" { return "s" }
+        var oft = ct_typeof(e[1], env, file)
+        if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
+            return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
+        }
     }
     if t == "ArrLit" {
         var et = ct_typeof(e[1], env, file)
@@ -196,7 +207,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Index" {
         var ot = ct_typeof(e[1], env, file)
         if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
-            return byte_slice(ot, ot.len - 1, ot.len)
+            return a_elem(ot)
         }
         if or2(ot == "L", ot == "N") { return "N" }
         return "i"
@@ -324,7 +335,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1][0] == "Ident" {
                 var ot2 = ct_env_ty(env, e[1][1])
                 if ot2.len >= 3 && byte_slice(ot2, 0, 1) == "a" {
-                    return byte_slice(ot2, 1, ot2.len - 1)
+                    return a_count(ot2)
                 }
             }
             var ot3 = ct_typeof(e[1], env, file)
@@ -337,6 +348,29 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "strlen((const char*)(" + ct_expr(e[1], env, file) + "))"
         }
+        var oft = ct_typeof(e[1], env, file)
+        if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
+            // struct 字段读取(§6.1 值类型)
+            return "(" + ct_expr(e[1], env, file) + ")." + e[3]
+        }
+    }
+    if t == "StructLit" {
+        if !ct_is_struct(file, e[1]) {
+            panic("ct_expr:StructLit 非值类型")
+            return ""
+        }
+        var lf = e[2]
+        var acc = "(t_" + e[1] + ")\{"
+        var j: I32 = 1
+        while j < lf.len {
+            var c = lf[j]
+            if j > 1 {
+                acc = acc + ", "
+            }
+            acc = acc + "." + c[1] + " = " + ct_expr(c[2], env, file)
+            j += 1
+        }
+        return acc + "}"
     }
     if t == "ArrLit" {
         panic("ct_expr:ArrLit 仅 let 初值位")
@@ -372,6 +406,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return "(((ctron_cell*)(" + obj + "))->v = " + s0 + ")"
             }
             if m == "to_string" {
+                if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {
+                    panic("emit:struct to_string")
+                    return ""
+                }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
@@ -384,6 +422,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var callee = cal[1]
         if callee == "println" {
             var at = ct_typeof(ag[1], env, file)
+            if at.len > 2 && byte_slice(at, 0, 2) == "u:" {
+                panic("emit:print struct")
+                return ""
+            }
             if at == "s" { return "printf(\"%s" + bs() + "n\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             if at == "b" { return "printf(\"%s" + bs() + "n\", (" + ct_call_args(ag, 1, env, file, "") + ") ? \"true\" : \"false\")" }
             if at == "6" { return "printf(\"%lld" + bs() + "n\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
@@ -391,6 +433,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if callee == "print" {
             var at2 = ct_typeof(ag[1], env, file)
+            if at2.len > 2 && byte_slice(at2, 0, 2) == "u:" {
+                panic("emit:print struct")
+                return ""
+            }
             if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + ");" }
             if at2 == "6" { return "printf(\"%lld\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
@@ -512,7 +558,7 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
                 if !ct_assigned(pat[1], b) {
                     var ty = "i"
                     if st[3][0] != "None" {
-                        ty = ct_ty_code(st[3])
+                        ty = ct_ty_code(st[3], file)
                     } else {
                         ty = ct_typeof(st[4], ew, file)
                     }
@@ -529,8 +575,87 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
 }
 
 fn ct_zero(code: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        return "(t_" + byte_slice(code, 2, code.len) + ")\{0}"
+    }
     if code == "f" { return "0.0" }
     return "0"
+}
+
+// 定长数组码 a<N><元素码>:元素码自 v4 起可多字符(如 u:Point)
+fn a_count(code: Str) -> Str {
+    var i: I32 = 1
+    while i < code.len {
+        var c = byte_at(code, i)
+        var dig = true
+        if c < 48 {
+            dig = false
+        }
+        if c > 57 {
+            dig = false
+        }
+        if !dig {
+            return byte_slice(code, 1, i)
+        }
+        i += 1
+    }
+    return byte_slice(code, 1, code.len)
+}
+
+fn a_elem(code: Str) -> Str {
+    var i: I32 = 1
+    while i < code.len {
+        var c = byte_at(code, i)
+        var dig = true
+        if c < 48 {
+            dig = false
+        }
+        if c > 57 {
+            dig = false
+        }
+        if !dig {
+            return byte_slice(code, i, code.len)
+        }
+        i += 1
+    }
+    return "i"
+}
+
+fn ct_structs(file: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" {
+            out.push(d[1])
+        }
+        i += 1
+    }
+    return out
+}
+
+fn ct_is_struct(file: List[Str], nm: Str) -> Bool {
+    return in_list(ct_structs(file), nm)
+}
+
+fn ct_field_ty(file: List[Str], sname: Str, fname: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && d[1] == sname {
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len {
+                var f = fs[j]
+                if f[2] == fname {
+                    return ct_ty_code(f[3], file)
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return "i"
 }
 
 fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: List[Str]) -> List[Str] {
@@ -726,14 +851,14 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if or2(pat[0] == "PatId", pat[0] == "PatAgg" && pat[2][0] == "SubUnit") {
             var ty = "i"
             if st[3][0] != "None" {
-                ty = ct_ty_code(st[3])
+                ty = ct_ty_code(st[3], file)
             } else {
                 ty = ct_typeof(st[4], env, file)
             }
             if ty.len >= 3 && byte_slice(ty, 0, 1) == "a" {
                 // 定长数组 let:<elem C 类型> t_<名>[<N>] = { elems };
-                var n = byte_slice(ty, 1, ty.len - 1)
-                var ec = byte_slice(ty, ty.len - 1, ty.len)
+                var n = a_count(ty)
+                var ec = a_elem(ty)
                 var al = st[4]
                 var acc = ""
                 var j: I32 = 1
@@ -765,6 +890,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var tv = ct_expr(tgt[1], env, file)
             var vt = ct_typeof(st[3], env, file)
             println("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(vt, "s", ct_expr(st[3], env, file)) + ";")
+            return env
+        }
+        if tgt[0] == "Member" {
+            panic("ct_stmt:struct 字段赋值未支持")
             return env
         }
         var tt = ct_env_ty(env, tgt[1])
@@ -1008,12 +1137,12 @@ fn ct_fn(d: List[Str], file: List[Str]) {
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            env = env_bind(env, pr[2], ct_ty_code(pr[3]))
+            env = env_bind(env, pr[2], ct_ty_code(pr[3], file))
         }
         k += 1
     }
     var rc = ct_fn_ret(file, d[1])
-    println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d) + ") ")
+    println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
     ct_body(d[5], env, file, rc)
 }
 

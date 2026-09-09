@@ -106,6 +106,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第七批(2026-09-09,发射面 struct 支持/trans v4):**用户 struct 值类型可发射**——
+`u:<名>` 类型码贯通(ct_ty_code/typeof/env/形参/返回),C 端 `t_<名>` typedef
+(driver_emit 于运行时助手后前置发射),构造字面量 → C99 复合字面量(指定初始化),
+字段读 → `.f`,按值传参/返回/赋值(§6.1 值语义天然成立),定长数组元素码升级为
+多字符(a<N><元素码>,a_count/a_elem 解析)。不支持(命中即 panic,文档化):
+struct 的 print/to_string、字段赋值、class 字面量;发射面其余缺口(枚举/闭包/
+插值/值位 if·match)仍按 selfhosted 排期。夹具 trans_v4 往返逐字一致。
+
 第六批(2026-09-09,§4.4 or 中缀取默认):自举 parser 补 `p_or` 层(最低优先级,
 §4.3 层 1;元组/分组首元素同步改道),eval Binary "Or" 与 C 宿主 rt_eval B_OR
 同语义落地:仅解包左侧 Some/Ok(1 载荷),默认值原样返回(与 `.or(默认)` 语义
