@@ -106,6 +106,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第六批(2026-09-09,§4.4 or 中缀取默认):自举 parser 补 `p_or` 层(最低优先级,
+§4.3 层 1;元组/分组首元素同步改道),eval Binary "Or" 与 C 宿主 rt_eval B_OR
+同语义落地:仅解包左侧 Some/Ok(1 载荷),默认值原样返回(与 `.or(默认)` 语义
+唯一,钉子;急切求值)。此前宿主解析器收 `or` 而自举解析器报错、两侧求值器
+均未实现的三方分歧收敛。语料新增 tests/04c_or_infix.ct(51/51 双侧)。
+已知 suite 口径盲区:自举 run 单步在文件含 main 时不执行 test 块(宿主两阶段
+会执行)——语料断言类问题由宿主侧兜底,记入边界。
+
 第五批(2026-09-09,comptime v0/Phase 2 切片):**E6020**(comptime fn 副作用
 静态扫描:bare I/O 与成员 spawn/send/recv/store/fetch_add/with*;assert/panic
 不ban——静态断言合法,panic 失败映射见下)、**const/static-let check 面试求值**

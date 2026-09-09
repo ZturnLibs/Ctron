@@ -1,0 +1,37 @@
+// 04c_or_infix.ct —— §4.4 or 中缀取默认;与 .or(默认) 语义唯一(钉子)
+// 优先级最低(§4.3 层 1);Some/Ok(1 载荷)取载荷,None/Err 取默认
+fn get(k: I32) -> Option[I32] {
+    if k > 0 {
+        return Some(k)
+    }
+    return None
+}
+fn load(ok: Bool) -> Result[I32, Str] {
+    if ok {
+        return Ok(7)
+    }
+    return Err("bad")
+}
+test "option or infix" {
+    assert_eq(get(3) or 0, 3)
+    assert_eq(get(0) or 0, 0)
+    let a = get(5) or 99
+    assert_eq(a, 5)
+}
+test "result or infix" {
+    assert_eq(load(true) or 0, 7)
+    assert_eq(load(false) or 0, 0)
+}
+test "or chains and binds looser than and" {
+    let v = get(0) or 3
+    assert_eq(v, 3)
+    let w = get(4) or 9
+    assert_eq(w, 4)
+    let u = false && get(9) or 7
+    assert_eq(u, 7)
+}
+fn main() -> I32 {
+    let v = get(2) or 1
+    println(v.to_string())
+    return 0
+}

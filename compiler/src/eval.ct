@@ -1409,6 +1409,26 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             }
             return e4("k", rr[1], vB(truth(rr[2])), rr[3])
         }
+        if seq2(op, "Or") {
+            var lo = eval_expr(file, env, out, e[2])
+            if lo[0] != "k" {
+                return lo
+            }
+            var lv = lo[2]
+            if seq2(lv[0], "T") {
+                if or2(seq2(lv[1], "Some"), seq2(lv[1], "Ok")) {
+                    if lv.len == 3 {
+                        return e4("k", lo[1], lv[2], lo[3])
+                    }
+                    return e4("k", lo[1], lv, lo[3])
+                }
+            }
+            var ro = eval_expr(file, lo[1], lo[3], e[3])
+            if ro[0] != "k" {
+                return ro
+            }
+            return e4("k", ro[1], ro[2], ro[3])
+        }
         var lr2 = eval_expr(file, env, out, e[2])
         if lr2[0] != "k" {
             return lr2

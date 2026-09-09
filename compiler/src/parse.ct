@@ -458,7 +458,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     }
     if t == "(" {
         adv(cur)
-        var e0 = p_and(toks, cur, "1")
+        var e0 = p_or(toks, cur, "1")
         if tok(toks, cur) == "," {
             var tn = mk("TupleE")
             tn.push(e0)
@@ -657,8 +657,27 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return base
 }
 
+fn p_or(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_and(toks, cur, al)
+    var go = true
+    while go {
+        if tok(toks, cur) == "or" {
+            adv(cur)
+            var r = p_and(toks, cur, al)
+            var nb = mk("Binary")
+            nb.push("Or")
+            nb.push(l)
+            nb.push(r)
+            l = nb
+        } else {
+            go = false
+        }
+    }
+    return l
+}
+
 fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    return p_and(toks, cur, al)
+    return p_or(toks, cur, al)
 }
 
 fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {

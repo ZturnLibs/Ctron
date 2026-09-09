@@ -408,6 +408,12 @@ val eval_expr(rt* R, cexpr* e) {
             val l = eval_expr(R, e->lhs);
             return truthy(l) ? v_bool(truthy(eval_expr(R, e->rhs))) : v_bool(0);
         }
+        if (e->bop == B_OR) {
+            // or 中缀取默认(§4.4):Some/Ok(1 载荷)取载荷,否则取默认;与 .or(默认) 语义唯一
+            val l = eval_expr(R, e->lhs);
+            if (l.k == V_TAG && tag_is_some(l.tag) && l.nitems == 1) return l.items[0];
+            return eval_expr(R, e->rhs);
+        }
         val l = eval_expr(R, e->lhs);
         val r = eval_expr(R, e->rhs);
         if (l.k == V_SIMD || r.k == V_SIMD) {
