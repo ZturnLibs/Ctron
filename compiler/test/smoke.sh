@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=209' "$T/chk.out" && ok "自检 cc_run 绿,decls=208" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=215' "$T/chk.out" && ok "自检 cc_run 绿,decls=208" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -69,6 +69,28 @@ tc_fx fx_type_neg "E2010: let 初始化类型不匹配"
 tc_fx fx_variant_neg "E2010: 调用实参数不匹配"
 tc_fx fx_unused_neg "W8030: 未使用绑定"
 tc_fx fx_shadow_neg "W8040: 遮蔽前奏符号"
+echo "== 2d) comptime v0(§8 编译期求值) =="
+"$COMP/ctc.sh" check "$COMP/test/fx_comp_ok.ct" > "$T/cp.out" 2>&1
+if [ $? -eq 0 ] && grep -q "check OK" "$T/cp.out"; then
+    ok "fx_comp_ok 检查面通过"
+else
+    bad "fx_comp_ok 异常: $(cat "$T/cp.out")"
+fi
+"$COMP/ctc.sh" "$COMP/test/fx_comp_ok.ct" > "$T/cpr.out" 2>&1
+printf '49\nababab\n' > "$T/cp.exp"
+if diff -q "$T/cp.exp" "$T/cpr.out" > /dev/null 2>&1; then
+    ok "fx_comp_ok 运行输出 49/ababab"
+else
+    bad "fx_comp_ok 运行分歧: $(cat "$T/cpr.out")"
+fi
+tc_fx fx_comp_neg "E6020: comptime 函数含副作用"
+tc_fx fx_comp_type_neg "E2010: const 类型不匹配"
+"$COMP/ctc.sh" check "$COMP/test/fx_comp_eval_neg.ct" > "$T/cpe.out" 2>&1
+if [ $? -eq 1 ] && grep -q "division by zero" "$T/cpe.out"; then
+    ok "fx_comp_eval_neg 编译期中止(division by zero, rc=1)"
+else
+    bad "fx_comp_eval_neg 异常: $(cat "$T/cpe.out")"
+fi
 "$COMP/ctc.sh" check "$COMP/test/fx_forlist.ct" --format=json > "$T/js2.out" 2>&1
 jrc2=$?
 if [ $jrc2 -eq 0 ] && [ "$(cat "$T/js2.out")" = '{"diagnostics":[]}' ]; then

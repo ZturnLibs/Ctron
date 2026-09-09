@@ -1,0 +1,9 @@
+// fx_comp_neg.ct —— E6020:comptime fn 含副作用(println)
+comptime fn bad() -> I32 {
+    println("side effect")
+    return 1
+}
+const V: I32 = bad()
+fn main() -> I32 {
+    return 0
+}

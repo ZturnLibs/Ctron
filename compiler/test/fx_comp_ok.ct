@@ -1,0 +1,17 @@
+// fx_comp_ok.ct —— comptime v0 正例:comptime fn 编译期可调用,const 注解核对通过
+comptime fn sq(x: I32) -> I32 {
+    return x * x
+}
+comptime fn rep(s: Str, n: I32) -> Str {
+    if n <= 0 {
+        return ""
+    }
+    return rep(s, n - 1) + s
+}
+const N: I32 = sq(7)
+const S: Str = rep("ab", 3)
+fn main() -> I32 {
+    println(N.to_string())
+    println(S)
+    return 0
+}

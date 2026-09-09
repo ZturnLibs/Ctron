@@ -106,6 +106,13 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第五批(2026-09-09,comptime v0/Phase 2 切片):**E6020**(comptime fn 副作用
+静态扫描:bare I/O 与成员 spawn/send/recv/store/fetch_add/with*;assert/panic
+不ban——静态断言合法,panic 失败映射见下)、**const/static-let check 面试求值**
+(镜像 statics_env 顺序迭代,失败不再静默吞绑定:panic 以原文中止编译 rc=1,
+流级失败产出诊断;E6010 按 spec 保留给"预算超限"锚点)、**const 注解标量核对**
+(E2010)。v0 限制:无步数预算,comptime fn 死循环会挂起 check。
+
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/
 条件/? 合法性;保守可证,任一侧未知放行)、变体构造 arity(前奏+用户枚举)、

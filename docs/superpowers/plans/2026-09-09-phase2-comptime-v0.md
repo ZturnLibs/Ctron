@@ -18,27 +18,37 @@
 
 ### Task 1: E6020——comptime fn 副作用静态扫描
 
-- [ ] `scan_comp(file, e, diags, fnm)`：递归遍历 FnC 体（复用 tce 的遍历形态），bare 调用 ∈ {print, println, read_file, read_dir} 或成员名 ∈ {spawn, send, recv, store, fetch_add, with, with_mut} → `E6020: comptime 函数含副作用(effect):<名>`（dedup）。panic/assert 家族不ban（comptime 静态断言是合法用途，panic 失败在求值面映射为 E6010）。
-- [ ] 夹具 `fx_comp_neg.ct`：comptime fn 内 println → rc=1 含 E6020。
+- [x] `scan_comp(file, e, diags, fnm)`：递归遍历 FnC 体（复用 tce 的遍历形态），bare 调用 ∈ {print, println, read_file, read_dir} 或成员名 ∈ {spawn, send, recv, store, fetch_add, with, with_mut} → `E6020: comptime 函数含副作用(effect):<名>`（dedup）。panic/assert 家族不ban（comptime 静态断言是合法用途，panic 失败在求值面映射为 E6010）。
+- [x] 夹具 `fx_comp_neg.ct`：comptime fn 内 println → rc=1 含 E6020。
 
 ### Task 2: check 面试求值 + E6010 + const 类型核对
 
-- [ ] `sem_comp(file, diags)`：`diags.len > 0` 直接返回；否则按声明序对 `Const`(d[3]) 与 `static let`(d[4]) 逐个 `eval_expr(file, env, "", expr)`：
+- [x] `sem_comp(file, diags)`：`diags.len > 0` 直接返回；否则按声明序对 `Const`(d[3]) 与 `static let`(d[4]) 逐个 `eval_expr(file, env, "", expr)`：
   - `vr[0] != "k"` → `E6010: comptime 求值失败(eval):<名> <fmt(vr[2])>` 并 return（不级联）；
   - 值标签核对标量族（I/W↔整型注解、S↔Str、B↔Bool、D↔F32/F64；U/命名跳过 v0）→ 不符 `E2010: const 类型不匹配(type):<名> 期望 <k> 实得 <标签>`；
   - 成功 → `env_add` 供后续 const 引用。
-- [ ] 接入 sem_walk2 尾部（sem_calls_all 之后）。
-- [ ] 夹具：`fx_comp_eval_neg.ct`（`const V: I32 = 1 / 0` → E6010）、`fx_comp_type_neg.ct`（`const V: Str = 42` → E2010）、正例 `fx_comp_ok.ct`（comptime fn 阶乘/拼接 + const 调用，check OK 且 run 输出正确）。
+- [x] 接入 sem_walk2 尾部（sem_calls_all 之后）。
+- [x] 夹具：`fx_comp_eval_neg.ct`（`const V: I32 = 1 / 0` → E6010）、`fx_comp_type_neg.ct`（`const V: Str = 42` → E2010）、正例 `fx_comp_ok.ct`（comptime fn 阶乘/拼接 + const 调用，check OK 且 run 输出正确）。
 
 ### Task 3: 门禁 + 文档
 
-- [ ] 三道门：自检（decl 锁 209→实测）、smoke 快面、**重建 native 后** suite 50/50。
-- [ ] smoke 2d 节接入三夹具；README 记分卡「第五批」；BOOTSTRAP 边界补「comptime v0 限制：无步数预算，comptime 死循环挂起编译」；总计划 Phase 2 状态更新（E6030/单态化/真预算留后续切片）。
+- [x] 三道门：自检（decl 锁 209→实测）、smoke 快面、**重建 native 后** suite 50/50。
+- [x] smoke 2d 节接入三夹具；README 记分卡「第五批」；BOOTSTRAP 边界补「comptime v0 限制：无步数预算，comptime 死循环挂起编译」；总计划 Phase 2 状态更新（E6030/单态化/真预算留后续切片）。
 
 ### Task 4: 全量验证
 
-- [ ] `smoke.sh --full` 全绿；suite 50/50；五夹具 rc 断言。
+- [x] `smoke.sh --full` 全绿；suite 50/50；五夹具 rc 断言。
 
 ## 实施记录
 
-（实施时追加）
+1. **E6010 语义修正**:spec §10.1 中 E6010 = "comptime **预算超限**"而非求值失败;
+   求期 panic(eval 宿主级中止,不经 Ctron 流)以原文中止编译(rc=1)即正确的
+   编译拒绝形态,E6010 锚点继续预留。原计划"失败 → E6010"作废,流级失败
+   (vr[0] != "k")仍产出诊断。
+2. **scan_comp 入口坑**:函数体本身就是 Block 节点,入口须走 `scb` 而非
+   `scan_comp`(后者无 Block 分支)——语料化探针定位。
+3. smoke 为 POSIX sh:`<()` 进程替换不可用,黄金比对改临时文件 diff。
+4. decl 锁 209 → 215(+6 fn:comp_banned_call/comp_banned_mem/scan_comp/scb/
+   vtag_ok/sem_comp)。
+5. 实证:smoke 25/25;重建 native 后 suite 50/50;语料中所有 const/static-let
+   在 check 面求值零失败(运行期静默吞绑定的路径未被语料触达)。

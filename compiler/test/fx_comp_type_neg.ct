@@ -1,0 +1,5 @@
+// fx_comp_type_neg.ct —— E2010:const 注解 Str 与整值不符
+const V: Str = 42
+fn main() -> I32 {
+    return 0
+}

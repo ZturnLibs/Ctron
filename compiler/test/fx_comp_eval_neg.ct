@@ -1,0 +1,7 @@
+// fx_comp_eval_neg.ct —— const 初始化编译期求值 panic:原文中止编译(rc=1)
+// 注:panic 是宿主级中止,不经 Ctron 流;E6010 按 spec 保留给"预算超限",
+// comptime 求值 panic 的编译拒绝在 v0 为无码原文(spec §10.1 E6010 锚点仍预留)
+const V: I32 = 1 / 0
+fn main() -> I32 {
+    return 0
+}
