@@ -2975,10 +2975,41 @@ fn vtag_ok(k: Str, vt: Str) -> Bool {
 }
 
 fn sem_comp(file: List[Str], diags: List[Str]) {
+    // E5010 孤儿规则(§2.5):impl 的 trait 与 for 类型均非本包声明
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" {
+            var tn = ty_head(d[2])
+            var tyn = ty_head(d[3])
+            if tn.len > 0 && tyn.len > 0 {
+                if !local_type_or_trait(file, tn) && !local_type_or_trait(file, tyn) {
+                    diags.push("E5010: 孤儿 impl(orphan):" + tn + " for " + tyn + " 的 trait 与类型均不属本包")
+                }
+            }
+        }
+        i += 1
+    }
     if diags.len > 0 {
         return
     }
-    var i: I32 = 1
+    // E6010 前置:无终止守卫的自递归 comptime fn(真步数预算留宿主 pkg oracle)
+    var runaway = List[Str]()
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "FnC" {
+            if comp_self_recursion(file, d[5], d[1]) && !comp_has_guard(d[5]) {
+                runaway.push(d[1])
+                diags.push("E6010: comptime 预算超限(budget):" + d[1] + " 无终止守卫的自递归")
+            }
+        }
+        i += 1
+    }
+    if diags.len > 0 {
+        return
+    }
+    i = 1
     while i < file.len {
         var d = file[i]
         if d[0] == "FnC" {
@@ -3006,6 +3037,10 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
             knd = ty_kind(d[3])
         }
         if nm.len > 0 {
+            if comp_reach_runaway(file, expr, runaway, List[Str]()) {
+                diags.push("E6010: comptime 预算超限(budget):" + nm + " 依赖无终止守卫的自递归")
+                return
+            }
             var vr = eval_expr(file, env, "", expr)
             if vr[0] != "k" {
                 diags.push("E6010: comptime 求值失败(eval):" + nm + " " + fmt(vr[2]))
@@ -3019,4 +3054,318 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
         }
         i += 1
     }
+}
+
+// ---------------- E5010/E6010 助手(模块检查 v0) ----------------
+fn local_type_or_trait(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        var t = d[0]
+        if or2(t == "Trait", or2(t == "Struct", or2(t == "Enum", t == "Class"))) {
+            if seq2(d[1], nm) {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
+// comptime fn 体内是否存在直呼自身的调用
+fn comp_self_recursion(file: List[Str], e: List[Str], fnm: Str) -> Bool {
+    var t = e[0]
+    if t == "Block" {
+        return comp_self_guarded_block(file, e, fnm)
+    }
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "Ident" && seq2(cal[1], fnm) {
+            return true
+        }
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            if comp_self_recursion(file, ag[i], fnm) {
+                return true
+            }
+            i += 1
+        }
+        return false
+    }
+    if t == "Member" { return comp_self_recursion(file, e[1], fnm) }
+    if t == "Binary" {
+        return or2(comp_self_recursion(file, e[2], fnm), comp_self_recursion(file, e[3], fnm))
+    }
+    if t == "Unary" { return comp_self_recursion(file, e[2], fnm) }
+    if t == "Range" {
+        return or2(comp_self_recursion(file, e[2], fnm), comp_self_recursion(file, e[3], fnm))
+    }
+    if t == "Index" {
+        return or2(comp_self_recursion(file, e[1], fnm), comp_self_recursion(file, e[2], fnm))
+    }
+    if t == "TypeArgs" { return comp_self_recursion(file, e[1], fnm) }
+    if t == "Try" { return comp_self_recursion(file, e[1], fnm) }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            if comp_self_recursion(file, e[i2], fnm) {
+                return true
+            }
+            i2 += 1
+        }
+        return false
+    }
+    if t == "BlockExpr" { return comp_self_guarded_block(file, e[1], fnm) }
+    if t == "If" {
+        if comp_self_recursion(file, e[1], fnm) {
+            return true
+        }
+        return or2(comp_self_guarded_block(file, e[2], fnm), comp_self_recursion(file, e[3], fnm))
+    }
+    if t == "Match" {
+        if comp_self_recursion(file, e[1], fnm) {
+            return true
+        }
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            if comp_self_recursion(file, arms[i3][2], fnm) {
+                return true
+            }
+            i3 += 1
+        }
+        return false
+    }
+    if t == "Closure" { return comp_self_recursion(file, e[3], fnm) }
+    if or2(t == "Own", t == "Scope") { return comp_self_guarded_block(file, e[2], fnm) }
+    if t == "StructLit" {
+        var lf = e[2]
+        var i4: I32 = 1
+        while i4 < lf.len {
+            var c = lf[i4]
+            if seq2(c[0], "LField") {
+                if comp_self_recursion(file, c[2], fnm) {
+                    return true
+                }
+            }
+            i4 += 1
+        }
+        return false
+    }
+    return false
+}
+
+fn comp_self_guarded_block(file: List[Str], b: List[Str], fnm: Str) -> Bool {
+    var i: I32 = 1
+    while i < b.len {
+        var st = b[i]
+        var t = st[0]
+        if t == "Let" {
+            if comp_self_recursion(file, st[4], fnm) {
+                return true
+            }
+        } else if t == "While" {
+            if or2(comp_self_recursion(file, st[1], fnm), comp_self_guarded_block(file, st[2], fnm)) {
+                return true
+            }
+        } else if t == "For" {
+            if or2(comp_self_recursion(file, st[2], fnm), comp_self_guarded_block(file, st[3], fnm)) {
+                return true
+            }
+        } else if t == "Return" {
+            if st[1].len > 1 {
+                if comp_self_recursion(file, st[1], fnm) {
+                    return true
+                }
+            }
+        } else if t == "Assign" {
+            if or2(comp_self_recursion(file, st[1], fnm), comp_self_recursion(file, st[3], fnm)) {
+                return true
+            }
+        } else if t == "Expr" {
+            if comp_self_recursion(file, st[1], fnm) {
+                return true
+            }
+        } else if seq2(t, "None") && st.len == 1 {
+            // 尾标记
+        } else {
+            if comp_self_recursion(file, st, fnm) {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
+// comptime fn 体是否含 If(终止守卫的存在性近似;仅语句级与值位 if)
+fn comp_has_guard(body: List[Str]) -> Bool {
+    var i: I32 = 1
+    while i < body.len {
+        var st = body[i]
+        var t = st[0]
+        if t == "If" {
+            return true
+        }
+        if t == "Expr" && st[1][0] == "If" {
+            return true
+        }
+        if t == "While" {
+            if comp_has_guard(st[2]) {
+                return true
+            }
+        } else if t == "For" {
+            if comp_has_guard(st[3]) {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
+// const/static 初始化的调用闭包是否可达 runaway 集
+fn comp_reach_runaway(file: List[Str], e: List[Str], runaway: List[Str], vis: List[Str]) -> Bool {
+    if runaway.len == 0 {
+        return false
+    }
+    var t = e[0]
+    if t == "Block" {
+        return comp_reach_block(file, e, runaway, vis)
+    }
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "Ident" {
+            var rt = cal[1]
+            if in_list(runaway, rt) {
+                return true
+            }
+            if !in_list(vis, rt) {
+                vis.push(rt)
+                var d = find_decl(file, rt)
+                if d.len > 0 {
+                    if comp_reach_runaway(file, d[5], runaway, vis) {
+                        return true
+                    }
+                }
+            }
+        }
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            if comp_reach_runaway(file, ag[i], runaway, vis) {
+                return true
+            }
+            i += 1
+        }
+        return false
+    }
+    if t == "Member" { return comp_reach_runaway(file, e[1], runaway, vis) }
+    if t == "Binary" {
+        return or2(comp_reach_runaway(file, e[2], runaway, vis), comp_reach_runaway(file, e[3], runaway, vis))
+    }
+    if t == "Unary" { return comp_reach_runaway(file, e[2], runaway, vis) }
+    if t == "Range" {
+        return or2(comp_reach_runaway(file, e[2], runaway, vis), comp_reach_runaway(file, e[3], runaway, vis))
+    }
+    if t == "Index" {
+        return or2(comp_reach_runaway(file, e[1], runaway, vis), comp_reach_runaway(file, e[2], runaway, vis))
+    }
+    if t == "TypeArgs" { return comp_reach_runaway(file, e[1], runaway, vis) }
+    if t == "Try" { return comp_reach_runaway(file, e[1], runaway, vis) }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            if comp_reach_runaway(file, e[i2], runaway, vis) {
+                return true
+            }
+            i2 += 1
+        }
+        return false
+    }
+    if t == "BlockExpr" { return comp_reach_block(file, e[1], runaway, vis) }
+    if t == "If" {
+        if comp_reach_runaway(file, e[1], runaway, vis) {
+            return true
+        }
+        if comp_reach_block(file, e[2], runaway, vis) {
+            return true
+        }
+        return comp_reach_runaway(file, e[3], runaway, vis)
+    }
+    if t == "Match" {
+        if comp_reach_runaway(file, e[1], runaway, vis) {
+            return true
+        }
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            if comp_reach_runaway(file, arms[i3][2], runaway, vis) {
+                return true
+            }
+            i3 += 1
+        }
+        return false
+    }
+    if t == "Closure" { return comp_reach_runaway(file, e[3], runaway, vis) }
+    if or2(t == "Own", t == "Scope") { return comp_reach_block(file, e[2], runaway, vis) }
+    if t == "StructLit" {
+        var lf = e[2]
+        var i4: I32 = 1
+        while i4 < lf.len {
+            var c = lf[i4]
+            if seq2(c[0], "LField") {
+                if comp_reach_runaway(file, c[2], runaway, vis) {
+                    return true
+                }
+            }
+            i4 += 1
+        }
+        return false
+    }
+    return false
+}
+
+fn comp_reach_block(file: List[Str], b: List[Str], runaway: List[Str], vis: List[Str]) -> Bool {
+    var i: I32 = 1
+    while i < b.len {
+        var st = b[i]
+        var t = st[0]
+        if t == "Let" {
+            if comp_reach_runaway(file, st[4], runaway, vis) {
+                return true
+            }
+        } else if t == "While" {
+            if or2(comp_reach_runaway(file, st[1], runaway, vis), comp_reach_block(file, st[2], runaway, vis)) {
+                return true
+            }
+        } else if t == "For" {
+            if or2(comp_reach_runaway(file, st[2], runaway, vis), comp_reach_block(file, st[3], runaway, vis)) {
+                return true
+            }
+        } else if t == "Return" {
+            if st[1].len > 1 {
+                if comp_reach_runaway(file, st[1], runaway, vis) {
+                    return true
+                }
+            }
+        } else if t == "Assign" {
+            if or2(comp_reach_runaway(file, st[1], runaway, vis), comp_reach_runaway(file, st[3], runaway, vis)) {
+                return true
+            }
+        } else if t == "Expr" {
+            if comp_reach_runaway(file, st[1], runaway, vis) {
+                return true
+            }
+        } else if seq2(t, "None") && st.len == 1 {
+            // 尾标记
+        } else {
+            if comp_reach_runaway(file, st, runaway, vis) {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
 }

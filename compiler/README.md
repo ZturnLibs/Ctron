@@ -106,6 +106,12 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第十一批(2026-09-09,模块检查补全):**E5010 孤儿规则**(impl 的 trait 与 for
+类型均非本包声明即拦截)、**E4010 caps**(use std.<fs|time>.<Name> + 本文件
+&Name 参数而 Ctron.toml [caps] 未声明)、**E6010 前置拦截**(无终止守卫的
+自递归 comptime fn 及其 const 依赖——静态判定先行,防求值挂起;真步数预算
+留宿主 pkg oracle)。modules/ 自举 6/7(余 ffi_math 待 FFI 切片),宿主 pkg 7/7。
+
 第十批(2026-09-09,Phase 3 v0:模块加载器):**多文件包可编译运行**——驱动常开
 pkg_load_use:use 节点结构化([Use, Segs, Syms]),按包名剥离 + 路径展开读取
 src 下模块文件,整模块合并(滤除 Use);符号可见性检查(非 pub → E2020);
