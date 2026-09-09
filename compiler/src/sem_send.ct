@@ -1,0 +1,132 @@
+// =====================================================================
+// sem_send.ct —— Send 内核(照 C ty_send;未知保守 Send),E3020/E3031/E3010 共用
+// s_prim/s_special 前奏表 + decl_node 声明查找 + send_of 类型 Send 判定(递归下钻)。
+// =====================================================================
+// ---------------- Send 内核(照 C ty_send;未知保守 Send) ----------------
+fn s_prim(n: Str) -> Bool {
+    if n == "I8" { return true }
+    if n == "I16" { return true }
+    if n == "I32" { return true }
+    if n == "I64" { return true }
+    if n == "ISize" { return true }
+    if n == "U8" { return true }
+    if n == "U16" { return true }
+    if n == "U32" { return true }
+    if n == "U64" { return true }
+    if n == "USize" { return true }
+    if n == "F32" { return true }
+    if n == "F64" { return true }
+    if n == "Bool" { return true }
+    if n == "Str" { return true }
+    if n == "Void" { return true }
+    return false
+}
+fn s_special(n: Str) -> Bool {
+    if n == "Mutex" { return true }
+    if n == "Atomic" { return true }
+    if n == "Global" { return true }
+    if n == "Sender" { return true }
+    if n == "Receiver" { return true }
+    if n == "Task" { return true }
+    if n == "String" { return true }
+    if n == "Box" { return true }
+    if n == "Never" { return true }
+    if n == "Option" { return true }
+    if n == "Result" { return true }
+    return false
+}
+fn decl_node(file: List[Str], tag: Str, name: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == tag && d[1] == name {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn send_of(file: List[Str], ty: List[Str], depth: I32) -> Bool {
+    if depth > 16 { return true }
+    if ty.len == 0 { return true }
+    var t = ty[0]
+    if t == "Named" {
+        var n = ty[1]
+        if s_prim(n) { return true }
+        if s_special(n) { return true }
+        var c = decl_node(file, "Class", n)
+        if c.len > 0 {
+            var items = c[3]
+            var j: I32 = 1
+            while j < items.len {
+                var it = items[j]
+                if it[0] == "Field" {
+                    if it[1] == "true" { return false }
+                    if !send_of(file, it[3], depth + 1) { return false }
+                }
+                j += 1
+            }
+            return true
+        }
+        var st = decl_node(file, "Struct", n)
+        if st.len > 0 {
+            var fs = st[4]
+            var k: I32 = 1
+            while k < fs.len {
+                if !send_of(file, fs[k][3], depth + 1) { return false }
+                k += 1
+            }
+            return true
+        }
+        var en = decl_node(file, "Enum", n)
+        if en.len > 0 {
+            var vs = en[3]
+            var m: I32 = 1
+            while m < vs.len {
+                var v = vs[m]
+                var kind = v[2]
+                if kind[0] == "KTuple" {
+                    var q: I32 = 1
+                    while q < kind.len {
+                        if !send_of(file, kind[q], depth + 1) { return false }
+                        q += 1
+                    }
+                }
+                if kind[0] == "KStruct" {
+                    var q2: I32 = 1
+                    while q2 < kind.len {
+                        if !send_of(file, kind[q2][3], depth + 1) { return false }
+                        q2 += 1
+                    }
+                }
+                m += 1
+            }
+            return true
+        }
+        return true
+    }
+    if t == "Ref" {
+        var sub = ty[1]
+        if sub.len > 0 && sub[0] == "Named" {
+            var n2 = sub[1]
+            var tr = decl_node(file, "Trait", n2)
+            if tr.len > 0 { return false }
+        }
+        if sub.len > 0 && sub[0] == "Slice" {
+            return send_of(file, sub[1], depth + 1)
+        }
+        return send_of(file, sub, depth + 1)
+    }
+    if t == "Slice" { return false }
+    if t == "ArrayT" { return send_of(file, ty[1], depth + 1) }
+    if t == "Optional" { return send_of(file, ty[1], depth + 1) }
+    if t == "TupleT" {
+        var z: I32 = 1
+        while z < ty.len {
+            if !send_of(file, ty[z], depth + 1) { return false }
+            z += 1
+        }
+        return true
+    }
+    return true
+}

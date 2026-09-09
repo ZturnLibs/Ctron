@@ -23,7 +23,7 @@ G2' 原生编译器 bin/ctron-cc(运行驱动:parse → 语义 12 项 → 解释
 
 - **首次引导后链自持**:G1 起不再需要 C 宿主——每一代发射器都能编译出
   发射器自身(下一代的自己)与运行驱动编译器,产物逐字节稳定。
-- 源头只有一份 Ctron 源:`src/` 六模块;`build.sh` 确定性拼接出三个单文件产物。
+- 源头只有一份 Ctron 源:`src/` 36 个单职责模块;`build.sh` 确定性拼接出三个单文件产物。
 - "Ctron 写的编译器"同时以两种形态存在:被 seed **解释**执行(自译化面),
   和被发射器**编译**成原生二进制(自举面)。两条路互为印证。
 
@@ -31,12 +31,15 @@ G2' 原生编译器 bin/ctron-cc(运行驱动:parse → 语义 12 项 → 解释
 
 | 件 | 角色 |
 |---|---|
-| `src/lex.ct` `parse.ct` `sem.ct` `eval.ct` | 编译器核心四模块(167 fn),三产物共享 |
-| `src/trans.ct` | C 代码生成器 v3(30 fn):`t_` 用户符号 / `ctron_*` 运行时 / 类型码 i·s·b·f·L·A·N |
+| `src/lex.ct` | 词法器:token 串 + 换行过滤 |
+| `src/parse_*.ct`(5) | 解析器:树节点/表达式/语句/声明/模块加载,入口 `p_file`(parse_decl.ct) |
+| `src/sem_*.ct`(14) | 语义检查:一检查码一文件,主控 `sem_walk2`(sem_main.ct) |
+| `src/eval_*.ct`(9) | 树行走求值器:值域/宽度/Float/环境/trait/模式/表达式/调用/语句 |
+| `src/trans_*.ct`(4) | C 代码生成器 v3:类型基础/表达式/语句/函数样板;`t_` 用户符号 / `ctron_*` 运行时 / 类型码 i·s·b·f·L·A·N |
 | `src/driver_run.ct` | 运行驱动入口:parse → 语义 12 项 → 解释执行 main/test |
 | `src/driver_check.ct` | 检查驱动入口:parse → 语义 12 项即止,打印 `check OK decls=N` |
 | `src/driver_emit.ct` | 发射驱动入口:parse → 生成等价 C(产物带 `main(argc,argv)` CLI) |
-| `build.sh` | 确定性拼接:`cc_run/cc_check = 四核心+各自驱动`;`cc_emit = 四核心+trans+发射驱动` |
+| `build.sh` | 确定性拼接:`cc_run/cc_check = 核心(lex+parse+sem+eval)+各自驱动`;`cc_emit = 核心+trans+发射驱动` |
 | `ctc.sh` | 用户入口:`ctc.sh <in>` 运行 / `ctc.sh check <in>` / `ctc.sh emit <in> [out.c]` |
 | `native.sh` | 自举编译:发射器编译 `cc_run.ct`/`cc_emit.ct` → C → 本机 cc → `bin/` |
 | `test/smoke.sh` | 自举验收 18 项(快面 15 + `--full` 自发射收官与固定点) |

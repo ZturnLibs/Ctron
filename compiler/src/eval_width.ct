@@ -1,0 +1,155 @@
+// =====================================================================
+// eval_width.ct —— 宽度域 u8/i8/u16/i16(值标签 W:载荷在前、宽度在后)
+// vW 构造/w_of·w_rank·w_signed/w_max·w_min 域/w_arith 域内算术(溢出回绕)/w_bits;
+// iadd_ov/isub_ov/imul_ov 有符号溢出判定(I32 域 panic 用)。
+// =====================================================================
+// ---------------- 宽度域(u8/i8/u16/i16 值标签 W:载荷在前、宽度在后) ----------------
+fn vW(w: Str, x: I32) -> List[Str] {
+    var v = List[Str]()
+    v.push("W")
+    v.push(x.to_string())
+    v.push(w)
+    return v
+}
+fn w_of(v: List[Str]) -> Str {
+    if v[0] == "W" {
+        return v[2]
+    }
+    return "i32"
+}
+fn w_rank(w: Str) -> I32 {
+    if w == "i32" {
+        return 3
+    }
+    if or2(w == "u16", w == "i16") {
+        return 2
+    }
+    return 1
+}
+fn w_signed(w: Str) -> Bool {
+    return or2(w == "i8", w == "i16")
+}
+fn w_max(w: Str) -> I32 {
+    if w == "u8" {
+        return 255
+    }
+    if w == "i8" {
+        return 127
+    }
+    if w == "u16" {
+        return 65535
+    }
+    if w == "i16" {
+        return 32767
+    }
+    return 2147483647
+}
+fn w_min(w: Str) -> I32 {
+    if or2(w == "u8", w == "u16") {
+        return 0
+    }
+    if w == "i8" {
+        return 0 - 128
+    }
+    if w == "i16" {
+        return 0 - 32768
+    }
+    return 0 - 2147483647 - 1
+}
+// ≤16 位宽度下的回绕:I32 中间量安全;按 2^bits 取模,有符号再折回
+fn w_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
+    var wa = w_of(a)
+    var wb = w_of(b)
+    var w = wa
+    if w_rank(wb) > w_rank(wa) {
+        w = wb
+    }
+    var x = dvi(a[1])
+    var y = dvi(b[1])
+    var mx = w_max(w)
+    var mn = w_min(w)
+    if or2(seq2(op, "WrapAdd"), seq2(op, "WrapSub")) {
+        var t = x + y
+        if seq2(op, "WrapSub") {
+            t = x - y
+        }
+        var s: I32 = 1
+        var k: I32 = 0
+        while k < w_bits(w) {
+            s = s * 2
+            k += 1
+        }
+        var m = t % s
+        if m < 0 {
+            m += s
+        }
+        if w_signed(w) && m > mx {
+            m -= s
+        }
+        return vW(w, m)
+    }
+    if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
+        var r = x + y
+        if or2(r > mx, r < mn) {
+            panic("integer overflow (+)")
+        }
+        return vW(w, r)
+    }
+    if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
+        var r = x - y
+        if or2(r > mx, r < mn) {
+            panic("integer overflow (-)")
+        }
+        return vW(w, r)
+    }
+    if or2(seq2(op, "Mul"), seq2(op, "MulEq")) {
+        if imul_ov(x, y, mx, mn) {
+            panic("integer overflow (*)")
+        }
+        return vW(w, x * y)
+    }
+    return vW(w, ari(op, x, y))
+}
+fn w_bits(w: Str) -> I32 {
+    if or2(w == "u8", w == "i8") {
+        return 8
+    }
+    if or2(w == "u16", w == "i16") {
+        return 16
+    }
+    return 32
+}
+// I32 溢出判定(除法法,截断语义下精确;MIN 以 0-2147483647-1 构造避免字面量溢出)
+fn iadd_ov(x: I32, y: I32) -> Bool {
+    if y > 0 {
+        return x > 2147483647 - y
+    }
+    if y < 0 {
+        return x < (0 - 2147483647 - 1) - y
+    }
+    return false
+}
+fn isub_ov(x: I32, y: I32) -> Bool {
+    if y < 0 {
+        return x > 2147483647 + y
+    }
+    if y > 0 {
+        return x < (0 - 2147483647 - 1) + y
+    }
+    return false
+}
+fn imul_ov(x: I32, y: I32, mx: I32, mn: I32) -> Bool {
+    if or2(x == 0, y == 0) {
+        return false
+    }
+    if x > 0 && y > 0 {
+        return x > mx / y
+    }
+    if x > 0 && y < 0 {
+        return y < mn / x
+    }
+    if x < 0 && y > 0 {
+        return x < mn / y
+    }
+    return x < mx / y
+}

@@ -1,0 +1,166 @@
+// =====================================================================
+// sem_walk.ct —— 语义树上行走:W8020 must-use / E4030 no_spawn / E3020 channel 元素非 Send
+// walk_e/walk_b 携带 fns/rets/ns(no_spawn 上下文)下钻,返回诊断行;归属 sem_walk2 全集。
+// =====================================================================
+// ---------------- W8020 must-use / E4030 no_spawn(树上行走) ----------------
+fn is_opt_ret(ty: List[Str]) -> Bool {
+    if ty[0] == "Optional" { return true }
+    if ty[0] == "Named" {
+        var h = ty[1]
+        if or2(h == "Option", h == "Result") { return true }
+    }
+    return false
+}
+
+// walk_block/Expr:返回诊断行;ns = no_spawn 上下文
+fn is_cmp_op(op: Str) -> Bool {
+    return or2(op == "Lt", or2(op == "Gt", or2(op == "Le", or2(op == "Ge", or2(op == "Eq", op == "Ne")))))
+}
+fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        // E4030:.spawn 调用
+        if ns && cal[0] == "Member" && cal[3] == "spawn" {
+            out.push("E4030@" + nline(e) + ": no_spawn 上下文中的 spawn")
+        }
+        // W8020:丢弃 Option/Result 返回值(仅 Expr 语句层,见 stmt)
+        if cal[0] == "TypeArgs" && cal[1].len > 0 && cal[1][0] == "Ident" && cal[1][1] == "Channel" {
+            var ag2 = cal[2]
+            if ag2.len > 1 {
+                var el = ag2[1]
+                if !send_of(file, el, 0) {
+                    out.push("E3020@" + nline(e) + ": channel 元素非 Send(Send):Channel 元素类型")
+                }
+            }
+        }
+        walk_e(file, cal, ns, fns, rets, out)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            walk_e(file, ag[i], ns, fns, rets, out)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if t == "Binary" {
+        // E1001:比较运算符不可链(a < b < c;钉子 §2,镜像 C 词法同款拦截)
+        if is_cmp_op(e[1]) && e[2][0] == "Binary" && is_cmp_op(e[2][1]) {
+            out.push("E1001@" + nline(e) + "(parse): 比较运算符不可链:写 a < b && b < c")
+        }
+        walk_e(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Unary" {
+        walk_e(file, e[2], ns, fns, rets, out)
+        return
+    }
+    if t == "Range" {
+        walk_e(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Index" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        walk_e(file, e[2], ns, fns, rets, out)
+        return
+    }
+    if t == "TypeArgs" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if t == "Try" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            walk_e(file, e[i2], ns, fns, rets, out)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        walk_b(file, e[1], ns, fns, rets, out)
+        return
+    }
+    if t == "If" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        walk_b(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Match" {
+        walk_e(file, e[1], ns, fns, rets, out)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            var a = arms[i3]
+            walk_e(file, a[2], ns, fns, rets, out)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        walk_e(file, e[3], ns, fns, rets, out)
+        return
+    }
+    if t == "Own" {
+        walk_b(file, e[2], ns, fns, rets, out)
+        return
+    }
+    if t == "Scope" {
+        walk_b(file, e[2], ns, fns, rets, out)
+        return
+    }
+}
+
+fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            walk_e(file, st[1], ns, fns, rets, out)
+        } else if t == "Let" {
+            walk_e(file, st[4], ns, fns, rets, out)
+        } else if t == "While" {
+            walk_e(file, st[1], ns, fns, rets, out)
+            walk_b(file, st[2], ns, fns, rets, out)
+        } else if t == "For" {
+            walk_e(file, st[2], ns, fns, rets, out)
+            walk_b(file, st[3], ns, fns, rets, out)
+        } else if t == "Assign" {
+            walk_e(file, st[3], ns, fns, rets, out)
+        } else if t == "Expr" {
+            // W8020:丢弃 Option/Result 返回值
+            var ce = st[1]
+            if ce[0] == "Call" {
+                var cal2 = ce[1]
+                if cal2[0] == "Ident" {
+                    var nm2 = cal2[1]
+                    var k: I32 = 0
+                    var hit = false
+                    while k < fns.len && !hit {
+                        if fns[k] == nm2 {
+                            hit = true
+                            if is_opt_ret(rets[k]) {
+                                out.push("W8020@" + nline(ce) + ": 结果被丢弃(must-use):" + nm2 + " 返回 Option/Result")
+                            }
+                        }
+                        k += 1
+                    }
+                }
+            }
+            walk_e(file, ce, ns, fns, rets, out)
+        }
+        i += 1
+    }
+    walk_e(file, b[b.len - 1], ns, fns, rets, out)
+}

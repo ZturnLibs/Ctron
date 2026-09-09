@@ -1,0 +1,133 @@
+// =====================================================================
+// trans_emit.ct —— 函数发射与文件样板:ct_fn(fn→C 定义,值语义形参/返回)、
+// ct_str_payload 字面量载荷、ct_find_main_anchor/ct_swap_anchor main 锚替换、
+// bs 样板文本(原型区/运行时助手/无 main 包的测试 main 生成)。
+// =====================================================================
+fn ct_fn(d: List[Str], file: List[Str]) {
+    var ps = d[3]
+    var k: I32 = 1
+    var env = List[Str]()
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            env = env_bind(env, pr[2], ct_ty_code(pr[3], file))
+        }
+        k += 1
+    }
+    var rc = ct_fn_ret(file, d[1])
+    println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
+    ct_body(d[5], env, file, rc)
+}
+
+// Str 节点 Text 载荷原样拼接(不做转义还原)
+fn ct_str_payload(e: List[Str]) -> Str {
+    var parts = e[1]
+    var acc = ""
+    var j: I32 = 1
+    while j < parts.len {
+        var p = parts[j]
+        if p[0] == "Text" { acc = acc + p[1] }
+        j += 1
+    }
+    return acc
+}
+
+// 输入 main 首个 let read_file(Str 字面量) 的载荷(cc/selfcomp 模块的输入锚);未命中返回 ""
+fn ct_find_main_anchor(file: List[Str]) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Fn" && d[1] == "main" {
+            var b = d[5]
+            var k: I32 = 1
+            while k < b.len {
+                var st = b[k]
+                if st[0] == "Let" {
+                    var e = st[4]
+                    if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "read_file" {
+                        if e[2].len > 1 && e[2][1][0] == "Str" {
+                            return ct_str_payload(e[2][1])
+                        }
+                    }
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 把 main 首个 read_file(Str 字面量) 载荷换为 CLI 标记(发射时改走 ctron_anchor);
+// 未命中返回原 file。纯 List 重建:Str→Args→Call→Let→Block→Fn→File。
+fn ct_swap_anchor(file: List[Str]) -> List[Str] {
+    var mi: I32 = 1
+    while mi < file.len {
+        var d = file[mi]
+        if d[0] == "Fn" && d[1] == "main" {
+            var b = d[5]
+            var k: I32 = 1
+            while k < b.len {
+                var st = b[k]
+                if st[0] == "Let" {
+                    var e = st[4]
+                    if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "read_file" {
+                        if e[2].len > 1 && e[2][1][0] == "Str" {
+                            var np = List[Str]()
+                            np.push("Text")
+                            np.push("CTRONCLIINPUT")
+                            var nps = List[Str]()
+                            nps.push("Parts")
+                            nps.push(np)
+                            var ns = List[Str]()
+                            ns.push("Str")
+                            ns.push(nps)
+                            var na = List[Str]()
+                            na.push("Args")
+                            na.push(ns)
+                            var nc = List[Str]()
+                            nc.push("Call")
+                            nc.push(e[1])
+                            nc.push(na)
+                            var nl = List[Str]()
+                            nl.push("Let")
+                            nl.push(st[1])
+                            nl.push(st[2])
+                            nl.push(st[3])
+                            nl.push(nc)
+                            var nb = List[Str]()
+                            nb.push("Block")
+                            var j: I32 = 1
+                            while j < b.len {
+                                if j == k { nb.push(nl) } else { nb.push(b[j]) }
+                                j += 1
+                            }
+                            var nd = List[Str]()
+                            nd.push("Fn")
+                            nd.push(d[1])
+                            nd.push(d[2])
+                            nd.push(d[3])
+                            nd.push(d[4])
+                            nd.push(nb)
+                            var nf = List[Str]()
+                            nf.push("File")
+                            var j2: I32 = 1
+                            while j2 < file.len {
+                                if j2 == mi { nf.push(nd) } else { nf.push(file[j2]) }
+                                j2 += 1
+                            }
+                            return nf
+                        }
+                    }
+                }
+                k += 1
+            }
+        }
+        mi += 1
+    }
+    return file
+}
+
+fn bs() -> Str {
+    return "\\"
+}

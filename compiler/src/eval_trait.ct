@@ -1,0 +1,122 @@
+// =====================================================================
+// eval_trait.ct —— trait/impl 方法域(镜像 rt.c cls_method/cls_prop)
+// ty_head/find_trait/is_class/find_impl_method·prop 查找;call_method_vals/
+// call_prop_vals 值调用。
+// =====================================================================
+// ---------------- trait/impl 方法域(镜像 rt.c cls_method/cls_prop) ----------------
+// 节点 schema:Method=[Method,nm,TPs,Ps,ret,body];Impl=[Impl,TPs,trait_ty,for_ty,Items];
+// Trait=[Trait,nm,TPs,Bounds,Items];Prop=[Prop,nm,ty,body];Class=[Class,nm,TPs,Items]
+fn ty_head(ty: List[Str]) -> Str {
+    var t = ty[0]
+    if t == "Named" {
+        return ty[1]
+    }
+    if ty.len > 1 {
+        return ty_head(ty[1])
+    }
+    return ""
+}
+fn find_trait(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Trait" && seq2(d[1], nm) {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn is_class(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Class" && seq2(d[1], nm) {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+fn find_impl_method(file: List[Str], cls: Str, m: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" && seq2(ty_head(d[3]), cls) {
+            var its = d[4]
+            var k: I32 = 1
+            while k < its.len {
+                var it = its[k]
+                if it[0] == "Method" && seq2(it[1], m) {
+                    return it
+                }
+                k += 1
+            }
+            var tn = ty_head(d[2])
+            if tn.len > 0 {
+                var tr = find_trait(file, tn)
+                if tr.len > 0 {
+                    var tits = tr[4]
+                    var j: I32 = 1
+                    while j < tits.len {
+                        var tit = tits[j]
+                        if tit[0] == "Method" && seq2(tit[1], m) && tit[5][0] != "None" {
+                            return tit
+                        }
+                        j += 1
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn find_impl_prop(file: List[Str], cls: Str, m: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" && seq2(ty_head(d[3]), cls) {
+            var its = d[4]
+            var k: I32 = 1
+            while k < its.len {
+                var it = its[k]
+                if it[0] == "Prop" && seq2(it[1], m) && it[3][0] != "None" {
+                    return it
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], sv: List[Str], vals: List[Str]) -> List[Str] {
+    var ps = mth[3]
+    var nenv = env_add(List[Str](), "self", bind_of(file, sv))
+    var k: I32 = 1
+    var ai: I32 = 0
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            nenv = env_add(nenv, pr[2], bind_of(file, vals[ai]))
+            ai += 1
+        }
+        k += 1
+    }
+    var br = run_block(file, nenv, out, mth[5], false)
+    var fl = "k"
+    if br[0] == "a" {
+        fl = "a"
+    }
+    return e4(fl, env, br[3], br[2])
+}
+fn call_prop_vals(file: List[Str], env: List[Str], out: Str, pp: List[Str], sv: List[Str]) -> List[Str] {
+    var nenv = env_add(List[Str](), "self", sv)
+    var br = run_block(file, nenv, out, pp[3], false)
+    var fl = "k"
+    if br[0] == "a" {
+        fl = "a"
+    }
+    return e4(fl, env, br[3], br[2])
+}

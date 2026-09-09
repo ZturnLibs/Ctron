@@ -1,0 +1,105 @@
+// =====================================================================
+// parse_node.ct —— 解析器树节点助手 + 字符串基础
+// mk 建节点/nstamp 行号戳;qtext 引号原文还原;parts_of 插值片段切分
+// ({expr} → Text/Interp 序列)。节点模型:child[0] = tag 的 List[Str]。
+// =====================================================================
+// ---------------- 树节点 ----------------
+fn mk(t: Str) -> List[Str] {
+    var n = List[Str]()
+    n.push(t)
+    return n
+}
+
+// 行号戳(lns 与 toks 平行,scan 产出):把行号串追加为节点末槽
+fn nstamp(n: List[Str], line: Str) {
+    n.push(line)
+}
+
+// ---------------- 解析(建树):p_file(toks, cur, lns) → 文件节点树 ----------------
+fn qtext(raw: Str) -> Str {
+    var out = ""
+    var j: I32 = 0
+    var n = raw.len
+    while j < n {
+        var c = byte_at(raw, j)
+        if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 117 {
+            var hx = ""
+            var pp = j + 2
+            var mapped = false
+            if pp < n && byte_at(raw, pp) == 123 {
+                pp += 1
+                while pp < n && byte_at(raw, pp) != 125 {
+                    hx = hx + byte_slice(raw, pp, pp + 1)
+                    pp += 1
+                }
+                if hx == "4E2D" {
+                    out = out + "中"
+                    mapped = true
+                }
+            }
+            if mapped {
+                j = pp + 1
+            } else {
+                out = out + byte_slice(raw, j, j + 2)
+                j += 2
+            }
+        } else if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 123 {
+            out = out + "\{"
+            j += 2
+        } else {
+            out = out + byte_slice(raw, j, j + 1)
+            j += 1
+        }
+    }
+    return out
+}
+
+fn parts_of(raw: Str) -> List[Str] {
+    var np = mk("Parts")
+    var k: I32 = 0
+    var n = raw.len
+    var j: I32 = 0
+    var ts: I32 = 0
+    while j < n {
+        var c = byte_at(raw, j)
+        if c == 92 && j + 2 <= n {
+            if j + 3 < n && byte_at(raw, j + 1) == 117 && byte_at(raw, j + 2) == 123 {
+                var q = j + 3
+                while q < n && byte_at(raw, q) != 125 { q += 1 }
+                if q < n { j = q + 1 } else { j += 2 }
+            } else {
+                j += 2
+            }
+        } else if c == 123 {
+            if j > ts {
+                var tx = mk("Text")
+                tx.push(qtext(byte_slice(raw, ts, j)))
+                np.push(tx)
+                k += 1
+            }
+            var d: I32 = 1
+            var p = j + 1
+            while d > 0 && p < n {
+                var cp = byte_at(raw, p)
+                if cp == 123 { d += 1 }
+                if cp == 125 { d -= 1 }
+                p += 1
+            }
+            var ix = mk("Interp")
+            ix.push(qtext(byte_slice(raw, j + 1, p - 1)))
+            np.push(ix)
+            k += 1
+            j = p
+            ts = p
+        } else {
+            j += 1
+        }
+    }
+    if n > ts {
+        var ty = mk("Text")
+        ty.push(qtext(byte_slice(raw, ts, n)))
+        np.push(ty)
+        k += 1
+    }
+    return np
+}

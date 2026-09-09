@@ -1,0 +1,376 @@
+// =====================================================================
+// eval_run.ct —— 语句与顶层执行:run_stmt(声明/赋值/if·while·for-in/match/
+// return·? 传播/own 块/Scope 并发模拟)、run_block(作用域进出)、statics_env
+// (static let 预绑定)、run_tests(test 块)。解释入口在 driver_run.ct。
+// =====================================================================
+fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[Str] {
+    var t = st[0]
+    if t == "Return" {
+        if st[1][0] == "None" {
+            return s4("r", env, out, vV2())
+        }
+        var er = eval_expr(file, env, out, st[1])
+        if er[0] != "k" {
+            return s4(er[0], er[1], er[3], er[2])
+        }
+        return s4("r", er[1], er[3], er[2])
+    }
+    if t == "Let" {
+        var pat = st[2]
+        if pat[0] == "PatId" {
+            var er = eval_expr(file, env, out, st[4])
+            if er[0] != "k" {
+                return s4(er[0], er[1], er[3], er[2])
+            }
+            // 宽度注解:let x: U8/I8/U16/I16 = <整值> → 值带宽标签
+            var vv = bind_of(file, er[2])
+            if or2(er[2][0] == "I", er[2][0] == "W") && st[3][0] == "Named" {
+                var h = ty_head(st[3])
+                if or2(h == "U8", or2(h == "I8", or2(h == "U16", h == "I16"))) {
+                    var wl = "u8"
+                    if h == "I8" {
+                        wl = "i8"
+                    }
+                    if h == "U16" {
+                        wl = "u16"
+                    }
+                    if h == "I16" {
+                        wl = "i16"
+                    }
+                    vv = vW(wl, dvi(er[2][1]))
+                }
+            }
+            return s4("k", env_add(er[1], pat[1], vv), er[3], vV2())
+        }
+        if pat[0] == "PatWild" {
+            var er = eval_expr(file, env, out, st[4])
+            if er[0] != "k" {
+                return s4(er[0], er[1], er[3], er[2])
+            }
+            return s4("k", er[1], er[3], vV2())
+        }
+        if pat[0] == "PatTup" {
+            var er2 = eval_expr(file, env, out, st[4])
+            if er2[0] != "k" {
+                return s4(er2[0], er2[1], er2[3], er2[2])
+            }
+            var pmr = pat_match(pat, er2[2], er2[1])
+            if seq2(pmr[0], "1") {
+                return s4("k", pmr[1], er2[3], vV2())
+            }
+            panic("let pat mismatch")
+            return s4("a", env, out, vV2())
+        }
+        panic("let pat:" + pat[0])
+        return s4("a", env, out, vV2())
+    }
+    if t == "Expr" {
+        var er = eval_expr(file, env, out, st[1])
+        return s4(er[0], er[1], er[3], er[2])
+    }
+    if t == "Assign" {
+        var tg = st[1]
+        if tg[0] == "Member" && tg[2] == "Nm" && tg[1][0] == "Ident" {
+            var oname = tg[1][1]
+            var fname = tg[3]
+            var en = env_at(env, oname)
+            if en.len == 0 {
+                panic("unbound:" + oname)
+                return s4("a", env, out, vV2())
+            }
+            var ov = en[1]
+            if ov[0] != "U" {
+                panic("member assign target")
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op = st[2]
+            var nv = vr[2]
+            if !seq2(op, "Eq") {
+                var oldf = u_field(ov, fname)
+                nv = vI(ari(op, dvi(oldf[1]), dvi(nv[1])))
+            }
+            // C9g:原地写(镜像 rt.c ST_ASSIGN 经绑定槽直接改;结构体绑定时已克隆,类共享可见)
+            if !u_set_ip(ov, fname, nv) {
+                panic("field:" + fname)
+                return s4("a", env, out, vV2())
+            }
+            return s4("k", vr[1], vr[3], vV2())
+        }
+        if tg[0] == "Ident" {
+            var nm = tg[1]
+            var en = env_at(env, nm)
+            if en.len == 0 {
+                panic("unbound:" + nm)
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op = st[2]
+            var nv = vr[2]
+            if !seq2(op, "Eq") {
+                var oa = en[1]
+                if oa[0] == "M" {
+                    oa[1] = val_arith(op, oa[1], nv)
+                    return s4("k", vr[1], vr[3], vV2())
+                }
+                nv = val_arith(op, oa, nv)
+            }
+            // C9g:结构体右值赋给绑定也克隆(镜像 rt.c b->slot = clone…)
+            return s4("k", env_set(vr[1], nm, bind_of(file, nv)), vr[3], vV2())
+        }
+        // C9f①:索引赋值 a[i] = v / a[i] op= v —— A/L 同布局;L 经宿主 List 索引写
+        // 写透共享后备(镜像 rt.c ST_ASSIGN 的 V_LIST/V_ARR 写透分支)
+        if tg[0] == "Index" && tg[1][0] == "Ident" {
+            var nm3 = tg[1][1]
+            var en3 = env_at(env, nm3)
+            if en3.len == 0 {
+                panic("unbound:" + nm3)
+                return s4("a", env, out, vV2())
+            }
+            var cont = en3[1]
+            if !or2(seq2(cont[0], "A"), seq2(cont[0], "L")) {
+                panic("index assign target")
+                return s4("a", env, out, vV2())
+            }
+            var ixr = eval_expr(file, env, out, tg[2])
+            if ixr[0] != "k" {
+                return s4(ixr[0], ixr[1], ixr[3], ixr[2])
+            }
+            var idx = dvi(ixr[2][1])
+            if or2(idx < 0, idx >= cont.len - 1) {
+                panic("index out of bounds")
+                return s4("a", env, out, vV2())
+            }
+            var vr = eval_expr(file, env, out, st[3])
+            if vr[0] != "k" {
+                return s4(vr[0], vr[1], vr[3], vr[2])
+            }
+            var op3 = st[2]
+            var nv3 = vr[2]
+            if !seq2(op3, "Eq") {
+                var old3 = cont[idx + 1]
+                nv3 = vI(ari(op3, dvi(old3[1]), dvi(nv3[1])))
+            }
+            cont[idx + 1] = nv3
+            return s4("k", ixr[1], ixr[3], vV2())
+        }
+        panic("assign target:" + tg[0])
+        return s4("a", env, out, vV2())
+    }
+    if t == "While" {
+        var go = true
+        var envw = env
+        var outw = out
+        var base: I32 = envw.len
+        while go {
+            var cr = eval_expr(file, envw, outw, st[1])
+            if cr[0] != "k" {
+                return s4(cr[0], cr[1], cr[3], cr[2])
+            }
+            envw = cr[1]
+            outw = cr[3]
+            if truth(cr[2]) {
+                var br = run_block(file, envw, outw, st[2], true)
+                if br[0] != "k" {
+                    return s4(br[0], br[1], br[2], br[3])
+                }
+                envw = br[1]
+                outw = br[2]
+                // keep 累积压缩:新增段按名去重回基线,防跨轮线性增长(env_add 全量拷贝 → O(n²))
+                if envw.len > base {
+                    envw = env_dedupe(envw, envw.len - base)
+                }
+            } else {
+                go = false
+            }
+        }
+        return s4("k", envw, outw, vV2())
+    }
+    if t == "For" {
+        var pat = st[1]
+        var nm = "_"
+        if pat[0] == "PatId" {
+            nm = pat[1]
+        }
+        var ir = eval_expr(file, env, out, st[2])
+        if ir[0] != "k" {
+            return s4(ir[0], ir[1], ir[3], ir[2])
+        }
+        var it = ir[2]
+        if it[0] == "A" {
+            var envw3 = ir[1]
+            var outw3 = ir[3]
+            var c2: I32 = 1
+            while c2 < it.len {
+                var eit = env_add(envw3, nm, it[c2])
+                var br = run_block(file, eit, outw3, st[3], false)
+                if br[0] != "k" {
+                    return s4(br[0], br[1], br[2], br[3])
+                }
+                envw3 = env_drop(br[1], 1)
+                outw3 = br[2]
+                c2 += 1
+            }
+            return s4("k", envw3, outw3, vV2())
+        }
+        if it[0] == "L" {
+            var envl = ir[1]
+            var outl = ir[3]
+            var ci: I32 = 1
+            while ci < it.len {
+                var eit = env_add(envl, nm, it[ci])
+                var br = run_block(file, eit, outl, st[3], false)
+                if br[0] != "k" {
+                    return s4(br[0], br[1], br[2], br[3])
+                }
+                envl = env_drop(br[1], 1)
+                outl = br[2]
+                ci += 1
+            }
+            return s4("k", envl, outl, vV2())
+        }
+        if it[0] != "R" {
+            panic("for iter not range")
+            return s4("a", env, out, vV2())
+        }
+        var lo = dvi(it[2][1])
+        var hi = dvi(it[3][1])
+        var incl = seq2(it[1], "true")
+        var envw = ir[1]
+        var outw = ir[3]
+        var cur = lo
+        var more = true
+        if incl {
+            if cur > hi {
+                more = false
+            }
+        } else {
+            if cur >= hi {
+                more = false
+            }
+        }
+        while more {
+            var eit = env_add(envw, nm, vI(cur))
+            var br = run_block(file, eit, outw, st[3], false)
+            if br[0] != "k" {
+                return s4(br[0], br[1], br[2], br[3])
+            }
+            envw = env_drop(br[1], 1)
+            outw = br[2]
+            cur += 1
+            if incl {
+                if cur > hi {
+                    more = false
+                }
+            } else {
+                if cur >= hi {
+                    more = false
+                }
+            }
+        }
+        return s4("k", envw, outw, vV2())
+    }
+    panic("stmt:" + t)
+    return s4("a", env, out, vV2())
+}
+fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: Bool) -> List[Str] {
+    var flow = "k"
+    var env = env0
+    var o2 = out
+    var val = vV2()
+    var i: I32 = 1
+    while i < blk.len - 1 {
+        if flow == "k" {
+            var sr = run_stmt(file, env, o2, blk[i])
+            flow = sr[0]
+            env = sr[1]
+            o2 = sr[2]
+            val = sr[3]
+        }
+        i += 1
+    }
+    if flow == "k" {
+        var tl = blk[blk.len - 1]
+        if tl[0] == "None" {
+            val = vV2()
+        } else {
+            var er = eval_expr(file, env, o2, tl)
+            flow = er[0]
+            env = er[1]
+            val = er[2]
+            o2 = er[3]
+        }
+    }
+    // 镜像 rt 可观察行为:while 体 keep=true 绑定留存但按名去重(有界,防 O(n²)),
+    // 其余块照丢。rt 实现为链帧泄漏怪癖,此处以显式去重等价复刻其可观察语义。
+    var extra = env.len - env0.len
+    if extra > 0 {
+        if keep {
+            env = env_dedupe(env, extra)
+        } else {
+            // RAII(§6.4):作用域退出按声明逆序 drop(仅 impl Drop 的类/结构体值)
+            // env 为前插式:新增段是 [0, extra),逆声明序 = 下标升序
+            var di: I32 = 0
+            while di < extra {
+                var dv = env[di][1]
+                if dv[0] == "U" {
+                    var dm = find_impl_method(file, dv[1], "drop")
+                    if dm.len > 0 {
+                        // drop(self) 免克隆:字段共享单元(Atomic)的写入必须透到原件
+                        var dnenv = env_add(List[Str](), "self", dv)
+                        var dbr = run_block(file, dnenv, o2, dm[5], false)
+                        o2 = dbr[2]
+                    }
+                }
+                di += 1
+            }
+            env = env_drop(env, extra)
+        }
+    }
+    return s4(flow, env, o2, val)
+}
+// static let 预绑定:文件级 Static(false) 声明按序求值入 env(镜像 rt 全局初始化)
+fn statics_env(file: List[Str]) -> List[Str] {
+    var env = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Static" && d[2] == "false" {
+            var vr = eval_expr(file, env, "", d[4])
+            if vr[0] == "k" {
+                env = env_add(env, d[1], bind_of(file, vr[2]))
+            }
+        }
+        if d[0] == "Const" {
+            var vr2 = eval_expr(file, env, "", d[3])
+            if vr2[0] == "k" {
+                env = env_add(env, d[1], bind_of(file, vr2[2]))
+            }
+        }
+        i += 1
+    }
+    return env
+}
+fn run_tests(file: List[Str]) -> List[Str] {
+    var env0 = statics_env(file)
+    var acc = ""
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Test" {
+            var br = run_block(file, env0, "", d[2], false)
+            if br[0] == "a" {
+                return s4("a", br[1], acc + br[2], br[3])
+            }
+            acc = acc + br[2]
+        }
+        i += 1
+    }
+    return s4("k", List[Str](), acc, vV2())
+}

@@ -8,25 +8,56 @@
 
 ## 结构
 
-| 文件 | 行/fn | 职责 |
+单职责模块树(36 个 `.ct`,每文件一个职责,头部注明接口;沿用原分节横幅切分,函数零改动):
+
+| 模块组 | 文件 | 职责 |
 |---|---|---|
-| `src/lex.ct` | 298 / 18 | 词法器:token 串(哨兵 `#EOF`)+ 换行过滤(规范 §1.6 行延续) |
-| `src/parse.ct` | 1413 / 35 | 解析器:token → 结构化文件节点树(`p_file`;节点 = `List[Str]`,child[0] = tag) |
-| `src/sem.ct` | 2163 / 58 | 单文件语义检查全集(14 码 + E2020 调用目标解析 + E2010 调用 arity;`sem_walk2` → 诊断串) |
-| `src/eval.ct` | 2848 / 83 | 树行走求值器:I32/Bool/Str 插值/Float/if·while·for/match/Option·Result·`?`/struct·枚举/UFCS/闭包/List 引用语义/trait·impl |
-| `src/trans.ct` | 1131 / 30 | C 代码生成器 v3(`t_` 用户符号 / `ctron_*` 运行时 / 类型码 i·s·b·f·L·A·N) |
-| `src/driver_run.ct` | 46 | 入口(运行):parse → 语义 12 项 → 解释执行 main/test |
-| `src/driver_check.ct` | 165 | 入口(检查):parse → 语义检查即止,文本面 `check OK decls=N`;`--format=json` 出 §10.2 冻结 schema 诊断(span 为 v0 近似定位) |
-| `src/driver_emit.ct` | 72 | 入口(发射):parse → 生成等价 C(产物 gcc 可编译,`<bin> run <file>` 覆锚) |
-| `build.sh` | — | 按上表拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
-| `ctc.sh` | — | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
-| `native.sh` | — | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
-| `test/smoke.sh` | — | 验收冒烟(快面 15 项;`--full` 加自发射收官与固定点) |
-| `test/suite.py` | — | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
+| 词法 | `src/lex.ct` | token 串(哨兵 `#EOF`)+ 换行过滤(规范 §1.6 行延续) |
+| 解析 | `src/parse_node.ct` | 树节点助手 + 插值原文切分(qtext/parts_of) |
+| | `src/parse_expr.ct` | 表达式优先级链(p_or→…→p_pri)+ 类型 + or 层 |
+| | `src/parse_stmt.ct` | 语句/模式/if/match/block |
+| | `src/parse_decl.ct` | 声明(fn/struct/enum/class/trait/use…)与入口 `p_file` |
+| | `src/parse_pkg.ct` | 模块加载器 v0(use 解析/可见性/循环检测/caps) |
+| 语义 | `src/sem_main.ct` | 主控 `sem_walk2`:12 项全集编排(接口:→ 诊断串) |
+| | `src/sem_walk.ct` | W8020 must-use / E4030 no_spawn / E3020(树上行走) |
+| | `src/sem_send.ct` | Send 内核(send_of;E3020/E3031/E3010 共用) |
+| | `src/sem_own.ct` | E3060 own 内 GC 可变写 |
+| | `src/sem_pure.ct` | E4020/E6020 pure·comptime 能力调用 |
+| | `src/sem_spawn.ct` | E3010 spawn 闭包捕获非 Send |
+| | `src/sem_move.ct` | E3050 own 内 arena 句柄 use-after-move |
+| | `src/sem_exh.ct` | E2030 match 穷尽 |
+| | `src/sem_alloc.ct` | E3040 分配效果(own/#[no_alloc]/契约) |
+| | `src/sem_type.ct` | E2010 类型统一 v1(含 E2020 前奏助手) |
+| | `src/sem_calls.ct` | E2020 调用目标解析 |
+| | `src/sem_comptime.ct` | E6020 comptime 副作用扫描 |
+| | `src/sem_ceval.ct` | E6010 步数预算求值器 ceval + E5010 助手 |
+| | `src/sem_closure.ct` | E3070 闭包可变捕获(两遍式) |
+| 求值 | `src/eval_val.ct` | 值构造器/进制字面量/比较/算术 |
+| | `src/eval_width.ct` | 宽度域 u8/i8/u16/i16 |
+| | `src/eval_float.ct` | Float 十进制定点(df_* 家族) |
+| | `src/eval_env.ct` | 环境链/fmt/文本工具/插值串求值 |
+| | `src/eval_trait.ct` | trait/impl 方法域 |
+| | `src/eval_pat.ct` | 绑定克隆/原地写 + pat_match |
+| | `src/eval_expr.ct` | 核心表达式遍历 `eval_expr` |
+| | `src/eval_call.ct` | 调用分派:fn 值/UFCS/成员内建(call_mem) |
+| | `src/eval_run.ct` | 语句/块/statics_env/run_tests |
+| 发射 | `src/trans_ty.ct` | 符号/运算符/类型码/环境/C 字符串转义 |
+| | `src/trans_expr.ct` | 表达式发射(ct_expr/实参/提升/数组码) |
+| | `src/trans_stmt.ct` | struct 表/块/语句/match/if 值位发射 |
+| | `src/trans_emit.ct` | 函数发射/main 锚替换/文件样板 |
+| 驱动 | `src/driver_run.ct` | 入口(运行):parse → 语义 12 项 → 解释执行 main/test |
+| | `src/driver_check.ct` | 入口(检查):parse → 语义检查即止,文本面 `check OK decls=N`;`--format=json` 出 §10.2 冻结 schema 诊断(span 为 v0 近似定位) |
+| | `src/driver_emit.ct` | 入口(发射):parse → 生成等价 C(产物 gcc 可编译,`<bin> run <file>` 覆锚) |
+| 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
+| | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
+| | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
+| | `test/smoke.sh` | 验收冒烟(33 项;`--full` 加自发射收官与固定点) |
+| | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
-`cc_run.ct` = lex+parse+sem+eval+driver_run;`cc_check.ct` 换 driver_check;
-`cc_emit.ct` = 四核心 + trans + driver_emit。核心 167 fn 三产物共享,改动单点生效。
+`cc_run.ct` = lex + parse_* + sem_* + eval_* + driver_run;`cc_check.ct` 换 driver_check;
+`cc_emit.ct` = 核心 + trans_* + driver_emit(trans 仅入此产物)。核心 fn 三产物共享,
+改动单点生效;段内拼接序 = 原单文件的函数相对顺序(保序便于与历史产物 diff)。
 
 ## 用法
 
@@ -105,6 +136,12 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 元组值 `(a, b)` 与 `let (a, b)` 解构、`.0/.1` 元组索引、`char_len`、
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
+
+第十六批(2026-09-09,src 分模块重构):sem/eval/parse/trans 四大文件按职责拆为
+**32 个单职责模块**(sem 14 = 一检查码一文件,主控 sem_main.ct;eval 9 值域/执行域;
+parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
+build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
+"只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
 
 第十五批(2026-09-09,FFI 解释口径收口):解释器调用 extern 声明 → 明确指引
 "extern fn 仅原生口径可用(经 ctron-emit + cc 链接 c_src 后运行)"(此前为

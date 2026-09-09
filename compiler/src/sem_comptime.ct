@@ -1,0 +1,253 @@
+// =====================================================================
+// sem_comptime.ct —— E6020:comptime fn 副作用静态扫描(裸 I/O 与成员
+// spawn/send/recv/store/fetch_add/with*;assert/panic 不 ban——静态断言合法)
+// comp_banned_call/comp_banned_mem 白名单;scan_comp/scb 下钻;sem_comp 全文件扫。
+// =====================================================================
+// ---------------- E6020/E6010:comptime 副作用扫描 + 编译期试求值(v0,2026-09-09) ----------------
+// v0 限制:无步数预算——comptime fn 内死循环会挂起 check(真预算留 v1);
+// 仅当其余诊断为零才试求值(先名字/类型,后求值,不级联)。
+fn comp_banned_call(nm: Str) -> Bool {
+    return or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "read_file"), seq2(nm, "read_dir"))))
+}
+
+fn comp_banned_mem(nm: Str) -> Bool {
+    return or2(seq2(nm, "spawn"), or2(seq2(nm, "send"), or2(seq2(nm, "recv"), or2(seq2(nm, "store"), or2(seq2(nm, "fetch_add"), or2(seq2(nm, "with"), seq2(nm, "with_mut")))))))
+}
+
+fn scan_comp(file: List[Str], e: List[Str], diags: List[Str], fnm: Str) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        var rt = root_name(cal)
+        if comp_banned_call(rt) && !in_list(diags, "E6020: comptime 函数含副作用(effect):" + rt) {
+            diags.push("E6020@" + nline(e) + ": comptime 函数含副作用(effect):" + fnm + " 调用 " + rt)
+        }
+        if cal[0] == "Member" && cal[2] == "Nm" && comp_banned_mem(cal[3]) {
+            var mn = "E6020@" + nline(e) + ": comptime 函数含副作用(effect):" + fnm + " 调用 ." + cal[3]
+            if !in_list(diags, mn) {
+                diags.push(mn)
+            }
+        }
+        scan_comp(file, cal, diags, fnm)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            scan_comp(file, ag[i], diags, fnm)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        scan_comp(file, e[1], diags, fnm)
+        return
+    }
+    if t == "Binary" {
+        scan_comp(file, e[2], diags, fnm)
+        scan_comp(file, e[3], diags, fnm)
+        return
+    }
+    if t == "Unary" {
+        scan_comp(file, e[2], diags, fnm)
+        return
+    }
+    if t == "Range" {
+        scan_comp(file, e[2], diags, fnm)
+        scan_comp(file, e[3], diags, fnm)
+        return
+    }
+    if t == "Index" {
+        scan_comp(file, e[1], diags, fnm)
+        scan_comp(file, e[2], diags, fnm)
+        return
+    }
+    if t == "TypeArgs" {
+        scan_comp(file, e[1], diags, fnm)
+        return
+    }
+    if t == "Try" {
+        scan_comp(file, e[1], diags, fnm)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            scan_comp(file, e[i2], diags, fnm)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        scb(file, e[1], diags, fnm)
+        return
+    }
+    if t == "If" {
+        scan_comp(file, e[1], diags, fnm)
+        scb(file, e[2], diags, fnm)
+        scan_comp(file, e[3], diags, fnm)
+        return
+    }
+    if t == "Match" {
+        scan_comp(file, e[1], diags, fnm)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            scan_comp(file, arms[i3][2], diags, fnm)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        scan_comp(file, e[3], diags, fnm)
+        return
+    }
+    if or2(t == "Own", t == "Scope") {
+        scb(file, e[2], diags, fnm)
+        return
+    }
+    if t == "StructLit" {
+        var lf = e[2]
+        var i4: I32 = 1
+        while i4 < lf.len {
+            var c = lf[i4]
+            if seq2(c[0], "LField") {
+                scan_comp(file, c[2], diags, fnm)
+            }
+            i4 += 1
+        }
+        return
+    }
+}
+
+fn scb(file: List[Str], b: List[Str], diags: List[Str], fnm: Str) {
+    var i: I32 = 1
+    while i < b.len {
+        var st = b[i]
+        var t = st[0]
+        if t == "Let" {
+            scan_comp(file, st[4], diags, fnm)
+        } else if t == "While" {
+            scan_comp(file, st[1], diags, fnm)
+            scb(file, st[2], diags, fnm)
+        } else if t == "For" {
+            scan_comp(file, st[2], diags, fnm)
+            scb(file, st[3], diags, fnm)
+        } else if t == "Return" {
+            if st[1].len > 1 {
+                scan_comp(file, st[1], diags, fnm)
+            }
+        } else if t == "Assign" {
+            scan_comp(file, st[1], diags, fnm)
+            scan_comp(file, st[3], diags, fnm)
+        } else if t == "Expr" {
+            scan_comp(file, st[1], diags, fnm)
+        } else if seq2(t, "None") && st.len == 1 {
+            // 块尾标记
+        } else {
+            scan_comp(file, st, diags, fnm)
+        }
+        i += 1
+    }
+}
+
+// 值标签 vs 注解 kind(标量族;命名/未知 v0 放行)
+fn vtag_ok(k: Str, vt: Str) -> Bool {
+    if k_int(k) {
+        return or2(seq2(vt, "I"), seq2(vt, "W"))
+    }
+    if or2(seq2(k, "n:Str"), seq2(k, "n:String")) {
+        return seq2(vt, "S")
+    }
+    if seq2(k, "n:Bool") {
+        return seq2(vt, "B")
+    }
+    if or2(seq2(k, "n:F32"), seq2(k, "n:F64")) {
+        return seq2(vt, "D")
+    }
+    if seq2(k, "void") {
+        return seq2(vt, "V")
+    }
+    return true
+}
+
+fn sem_comp(file: List[Str], diags: List[Str]) {
+    // E5010 孤儿规则(§2.5):impl 的 trait 与 for 类型均非本包声明
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" {
+            var tn = ty_head(d[2])
+            var tyn = ty_head(d[3])
+            if tn.len > 0 && tyn.len > 0 {
+                if !local_type_or_trait(file, tn) && !local_type_or_trait(file, tyn) {
+                    diags.push("E5010: 孤儿 impl(orphan):" + tn + " for " + tyn + " 的 trait 与类型均不属本包")
+                }
+            }
+        }
+        i += 1
+    }
+    if diags.len > 0 {
+        return
+    }
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "FnC" {
+            scb(file, d[5], diags, d[1])
+        }
+        i += 1
+    }
+    if diags.len > 0 {
+        return
+    }
+    var env = List[Str]()
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        var nm = ""
+        var expr = List[Str]()
+        var knd = ""
+        if d[0] == "Const" {
+            nm = d[1]
+            expr = d[3]
+            knd = ty_kind(d[2])
+        } else if d[0] == "Static" && seq2(d[2], "false") {
+            nm = d[1]
+            expr = d[4]
+            knd = ty_kind(d[3])
+        }
+        if nm.len > 0 {
+            // 步数预算求值(E6010):超限 → 诊断;不支持 → 静默回退全量求值(运行期同口径)
+            var st = List[Str]()
+            st.push("0")
+            var cenvN = List[Str]()
+            var cenvV = List[Str]()
+            var vr = ceval_expr(file, expr, cenvN, cenvV, st)
+            if seq2(vr[0], "over") {
+                diags.push("E6010: comptime 预算超限(budget):" + nm)
+                return
+            }
+            var done = false
+            if seq2(vr[0], "k") {
+                if knd.len > 0 && !vtag_ok(knd, vr[2][0]) {
+                    diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr[2][0])
+                    return
+                }
+                env = env_add(env, nm, vr[2])
+                done = true
+            }
+            if !done {
+                // ceval 不支持:回退全量求值(与 statics_env 同口径)
+                var vr2 = eval_expr(file, env, "", expr)
+                if vr2[0] != "k" {
+                    return
+                }
+                if knd.len > 0 && !vtag_ok(knd, vr2[2][0]) {
+                    diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr2[2][0])
+                    return
+                }
+                env = env_add(env, nm, vr2[2])
+            }
+        }
+        i += 1
+    }
+}

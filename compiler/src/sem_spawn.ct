@@ -1,0 +1,305 @@
+// =====================================================================
+// sem_spawn.ct —— E3010:spawn 闭包捕获非 Send
+// cle/clb 捕获收集(闭包体内全部标识符,env 命中才有效)+ send_env;sem_spawn2 产诊断串。
+// =====================================================================
+// ---- E3010:spawn 闭包捕获非 Send ----
+
+// 捕获收集:闭包体内全部标识符(不区分作用域;env 命中才有效)
+fn cle(file: List[Str], e: List[Str], names: List[Str]) {
+    var t = e[0]
+    if t == "Ident" {
+        names.push(e[1])
+        return
+    }
+    if t == "Call" {
+        cle(file, e[1], names)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            cle(file, ag[i], names)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        cle(file, e[1], names)
+        return
+    }
+    if t == "Binary" {
+        cle(file, e[2], names)
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Unary" {
+        cle(file, e[2], names)
+        return
+    }
+    if t == "Range" {
+        cle(file, e[2], names)
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Index" {
+        cle(file, e[1], names)
+        cle(file, e[2], names)
+        return
+    }
+    if t == "TypeArgs" {
+        cle(file, e[1], names)
+        return
+    }
+    if t == "Try" {
+        cle(file, e[1], names)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            cle(file, e[i2], names)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        clb(file, e[1], names)
+        return
+    }
+    if t == "If" {
+        cle(file, e[1], names)
+        clb(file, e[2], names)
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Match" {
+        cle(file, e[1], names)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            cle(file, arms[i3][2], names)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        cle(file, e[3], names)
+        return
+    }
+    if t == "Own" {
+        clb(file, e[2], names)
+        return
+    }
+    if t == "Scope" {
+        clb(file, e[2], names)
+        return
+    }
+}
+fn clb(file: List[Str], b: List[Str], names: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            cle(file, st[1], names)
+        } else if t == "Expr" {
+            cle(file, st[1], names)
+        } else if t == "Let" {
+            cle(file, st[4], names)
+        } else if t == "While" {
+            cle(file, st[1], names)
+            clb(file, st[2], names)
+        } else if t == "For" {
+            cle(file, st[2], names)
+            clb(file, st[3], names)
+        } else if t == "Assign" {
+            cle(file, st[3], names)
+        }
+        i += 1
+    }
+    cle(file, b[b.len - 1], names)
+}
+fn send_env(file: List[Str], nm: Str, envN: List[Str], envT: List[Str]) -> Bool {
+    var i = envN.len - 1
+    while i >= 0 {
+        if envN[i] == nm {
+            return send_of(file, envT[i], 0)
+        }
+        i -= 1
+    }
+    return true
+}
+fn let_ty(file: List[Str], st: List[Str]) -> List[Str] {
+    var ann = st[3]
+    if ann.len > 0 && ann[0] != "None" {
+        return ann
+    }
+    var ex = st[4]
+    if ex.len > 0 && ex[0] == "StructLit" {
+        var cn = ex[1]
+        if decl_node(file, "Class", cn).len > 0 {
+            var nt = mk("Named")
+            nt.push(cn)
+            return nt
+        }
+    }
+    return List[Str]()
+}
+fn wse(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "Member" && cal[3] == "spawn" && e[2].len > 1 {
+            var arg0 = e[2][1]
+            if arg0[0] == "Closure" {
+                var caps = List[Str]()
+                cle(file, arg0[3], caps)
+                var ci: I32 = 0
+                var done = false
+                while ci < caps.len && !done {
+                    var nm = caps[ci]
+                    if !send_env(file, nm, envN, envT) {
+                        diags.push("E3010@" + nline(e) + ": spawn 捕获非 Send(Send):" + nm)
+                        done = true
+                    }
+                    ci += 1
+                }
+            }
+        }
+        wse(file, cal, envN, envT, diags)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            wse(file, ag[i], envN, envT, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        wse(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Binary" {
+        wse(file, e[2], envN, envT, diags)
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Unary" {
+        wse(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Range" {
+        wse(file, e[2], envN, envT, diags)
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Index" {
+        wse(file, e[1], envN, envT, diags)
+        wse(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        wse(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Try" {
+        wse(file, e[1], envN, envT, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            wse(file, e[i2], envN, envT, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        wsb(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "If" {
+        wse(file, e[1], envN, envT, diags)
+        wsb(file, e[2], envN, envT, diags)
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Match" {
+        wse(file, e[1], envN, envT, diags)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            wse(file, arms[i3][2], envN, envT, diags)
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        wse(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Own" {
+        wsb(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Scope" {
+        wsb(file, e[2], envN, envT, diags)
+        return
+    }
+}
+fn wsb(file: List[Str], b: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            wse(file, st[1], envN, envT, diags)
+        } else if t == "Expr" {
+            wse(file, st[1], envN, envT, diags)
+        } else if t == "Let" {
+            var ty = let_ty(file, st)
+            var pat = st[2]
+            if pat[0] == "PatId" {
+                envN.push(pat[1])
+                envT.push(ty)
+            }
+            wse(file, st[4], envN, envT, diags)
+        } else if t == "While" {
+            wse(file, st[1], envN, envT, diags)
+            wsb(file, st[2], envN, envT, diags)
+        } else if t == "For" {
+            wse(file, st[2], envN, envT, diags)
+            wsb(file, st[3], envN, envT, diags)
+        } else if t == "Assign" {
+            wse(file, st[3], envN, envT, diags)
+        }
+        i += 1
+    }
+    wse(file, b[b.len - 1], envN, envT, diags)
+}
+fn sem_spawn2(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envT = List[Str]()
+    var body = d[2]
+    var ps = List[Str]()
+    if tag != "Test" {
+        body = d[5]
+        ps = d[3]
+    }
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envT.push(p[3])
+        }
+        k += 1
+    }
+    wsb(file, body, envN, envT, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}

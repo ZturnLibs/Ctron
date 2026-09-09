@@ -1,0 +1,531 @@
+// =====================================================================
+// parse_decl.ct —— 声明解析与文件入口:p_fn2·p_fn(fn,含 extern "c" #[trusted])/
+// p_test/p_field/p_struct2·p_struct(derive)/p_enum2·p_enum/p_prop_item2·p_items/
+// p_class/p_impl/p_trait/p_use/p_const/p_static/p_extern;p_file(toks, cur, lns)
+// → 文件节点树(解析器总入口)。
+// =====================================================================
+fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nf = mk(tag)
+    nf.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    var ps = mk("Ps")
+    var more = true
+    while more {
+        if tok(toks, cur) == ")" { more = false } else {
+            var isv = "false"
+            var t0 = tok(toks, cur)
+            if t0 == "var" { isv = "true" }
+            if or2(t0 == "var", t0 == "let") { adv(cur) }
+            if tok(toks, cur) == "&" {
+                adv(cur)
+            }
+            var pn = tok(toks, cur)
+            adv(cur)
+            if pn == "self" {
+                var rc = mk("Receiver")
+                rc.push(isv)
+                ps.push(rc)
+            } else {
+                adv(cur)
+                var pty = p_typ(toks, cur, lns)
+                var par = mk("Param")
+                par.push(isv)
+                par.push(pn)
+                par.push(pty)
+                ps.push(par)
+            }
+            if tok(toks, cur) == "," { adv(cur) } else { more = false }
+        }
+    }
+    adv(cur)
+    var ret = mk("None")
+    if tok(toks, cur) == "->" {
+        adv(cur)
+        ret = p_typ(toks, cur, lns)
+    }
+    var body = mk("None")
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = p_block(toks, cur, lns)
+    }
+    nf.push(tp)
+    nf.push(ps)
+    nf.push(ret)
+    nf.push(body)
+    return nf
+}
+
+fn p_fn(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    return p_fn2(toks, cur, lns, "Fn")
+}
+
+fn p_test(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    adv(cur)
+    var t = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Test")
+    nt.push(qtext(byte_slice(t, 1, t.len - 1)))
+    adv(cur)
+    nt.push(p_block(toks, cur, lns))
+    return nt
+}
+
+fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var isv = "false"
+    var t = tok(toks, cur)
+    if t == "var" { isv = "true" }
+    if or2(t == "let", t == "var") { adv(cur) }
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var f = mk("Field")
+    f.push(isv)
+    f.push(nm)
+    f.push(p_typ(toks, cur, lns))
+    return f
+}
+
+fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
+    var ln0 = lns[cur.load()]
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    var ns = mk("Struct")
+    ns.push(nm)
+    ns.push(dr)
+    ns.push(tp)
+    var fs = mk("Fields")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
+            fs.push(p_field(toks, cur, lns))
+        }
+    }
+    adv(cur)
+    ns.push(fs)
+    nstamp(ns, ln0)
+    return ns
+}
+
+fn p_struct(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var dr0 = mk("Drvs")
+    return p_struct2(toks, cur, lns, dr0)
+}
+
+fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ne = mk("Enum")
+    ne.push(nm)
+    ne.push(dr)
+    var vs = mk("Vars")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
+            var vn = tok(toks, cur)
+            adv(cur)
+            var v = mk("Variant")
+            v.push(vn)
+            var kind = mk("KUnit")
+            if tok(toks, cur) == "(" {
+                adv(cur)
+                kind = mk("KTuple")
+                var more = true
+                while more {
+                    if tok(toks, cur) == ")" { more = false } else {
+                        kind.push(p_typ(toks, cur, lns))
+                        if tok(toks, cur) == "," { adv(cur) } else { more = false }
+                    }
+                }
+                adv(cur)
+            } else if tok(toks, cur) == "\{" {
+                adv(cur)
+                kind = mk("KStruct")
+                var more2 = true
+                while more2 {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
+                    if tok(toks, cur) == "}" { more2 = false } else if tok(toks, cur) == "#EOF" { more2 = false } else {
+                        kind.push(p_field(toks, cur, lns))
+                        while tok(toks, cur) == "NL" {
+                            adv(cur)
+                        }
+                        if tok(toks, cur) == "," {
+                            adv(cur)
+                        }
+                    }
+                }
+                adv(cur)
+            }
+            v.push(kind)
+            vs.push(v)
+        }
+    }
+    adv(cur)
+    ne.push(vs)
+    return ne
+}
+
+fn p_prop_item2(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur, lns)
+    var body = mk("None")
+    var tag = "PropSig"
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        body = p_block(toks, cur, lns)
+        tag = "PropImpl"
+    }
+    if kind == "imp" {
+        tag = "Prop"
+    }
+    var pn = mk(tag)
+    pn.push(nm)
+    pn.push(ty)
+    pn.push(body)
+    return pn
+}
+
+fn p_items(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List[Str] {
+    var it = mk("Items")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        var t = tok(toks, cur)
+        if or2(t == "}", t == "#EOF") {
+            adv(cur)
+            go = false
+        } else if t == "#" {
+            adv(cur)
+            adv(cur)
+            var anm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var md = p_fn2(toks, cur, lns, "Method")
+            md.push(anm)
+            it.push(md)
+        } else if t == "fn" {
+            it.push(p_fn2(toks, cur, lns, "Method"))
+        } else if t == "prop" {
+            var pk = "sig"
+            if or2(kind == "impl", kind == "class") {
+                pk = "imp"
+            }
+            it.push(p_prop_item2(toks, cur, lns, pk))
+        } else if kind == "trait" {
+            go = false
+        } else {
+            it.push(p_field(toks, cur, lns))
+        }
+    }
+    adv(cur)
+    return it
+}
+
+fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nc = mk("Class")
+    nc.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    adv(cur)
+    nc.push(tp)
+    nc.push(p_items(toks, cur, lns, "class"))
+    return nc
+}
+
+fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    adv(cur)
+    var ni = mk("Impl")
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    ni.push(tp)
+    ni.push(p_typ(toks, cur, lns))
+    adv(cur)
+    ni.push(p_typ(toks, cur, lns))
+    adv(cur)
+    ni.push(p_items(toks, cur, lns, "impl"))
+    return ni
+}
+
+fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    var nt = mk("Trait")
+    nt.push(nm)
+    var tp = mk("TPs")
+    if tok(toks, cur) == "[" {
+        tp = p_tpars(toks, cur)
+    }
+    nt.push(tp)
+    var sup = mk("Bounds")
+    if tok(toks, cur) == ":" {
+        adv(cur)
+        var more = true
+        while more {
+            sup.push(tok(toks, cur))
+            adv(cur)
+            if tok(toks, cur) == "+" { adv(cur) } else { more = false }
+        }
+    }
+    nt.push(sup)
+    adv(cur)
+    nt.push(p_items(toks, cur, lns, "trait"))
+    return nt
+}
+
+fn p_enum(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var dr0 = mk("Drvs")
+    return p_enum2(toks, cur, lns, dr0)
+}
+
+fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    adv(cur)
+    var nu = mk("Use")
+    var segs = mk("Segs")
+    var syms = mk("Syms")
+    var braced = false
+    var more = true
+    while more {
+        var a = tok(toks, cur)
+        if a == "." {
+            adv(cur)
+        } else if a == "\{" {
+            adv(cur)
+            braced = true
+            var more2 = true
+            while more2 {
+                var b2 = tok(toks, cur)
+                if or2(b2 == "}", b2 == "#EOF") {
+                    more2 = false
+                } else {
+                    syms.push(b2)
+                    adv(cur)
+                    if tok(toks, cur) == "," {
+                        adv(cur)
+                    }
+                }
+            }
+            if tok(toks, cur) == "}" {
+                adv(cur)
+            }
+            more = false
+        } else if a == "#EOF" {
+            more = false
+        } else {
+            segs.push(a)
+            adv(cur)
+            var nx = tok(toks, cur)
+            if nx != "." {
+                more = false
+            }
+        }
+    }
+    if !braced {
+        // 无花括号:末段即符号(use app.hidden.secret)
+        syms.push(segs[segs.len - 1])
+    }
+    nu.push(segs)
+    nu.push(syms)
+    return nu
+}
+
+fn p_const(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    adv(cur)
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur, lns)
+    adv(cur)
+    var nc = mk("Const")
+    nc.push(nm)
+    nc.push(ty)
+    nc.push(p_stmt_expr(toks, cur, lns, "1"))
+    return nc
+}
+
+fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var ln0 = lns[cur.load()]
+    adv(cur)
+    var wv = "false"
+    var t = tok(toks, cur)
+    if t == "var" { wv = "true" }
+    if or2(t == "var", t == "let") { adv(cur) }
+    var nm = tok(toks, cur)
+    adv(cur)
+    adv(cur)
+    var ty = p_typ(toks, cur, lns)
+    adv(cur)
+    var ns = mk("Static")
+    ns.push(nm)
+    ns.push(wv)
+    ns.push(ty)
+    ns.push(p_stmt_expr(toks, cur, lns, "1"))
+    nstamp(ns, ln0)
+    return ns
+}
+
+// extern "c" fn 声明(§9.6):无函数体;仅支持 "c"(v0);anm = 前置 #[attr] 名(可空)
+fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], anm: Str) -> List[Str] {
+    adv(cur)
+    adv(cur)
+    while tok(toks, cur) == "NL" {
+        adv(cur)
+    }
+    var fd = p_fn2(toks, cur, lns, "FnExt")
+    if anm != "" {
+        fd.push(anm)
+    }
+    return fd
+}
+
+fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var nf = mk("File")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        var p0 = cur.load()
+        var t = tok(toks, cur)
+        if t == "#EOF" {
+            go = false
+        } else if t == "#" {
+            adv(cur)
+            adv(cur)
+            var anm = tok(toks, cur)
+            adv(cur)
+            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "]" {
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "extern" {
+                nf.push(p_extern(toks, cur, lns, anm))
+            } else {
+                var fd = p_fn2(toks, cur, lns, "Fn")
+                fd.push(anm)
+                nf.push(fd)
+            }
+        } else if t == "pub" {
+            adv(cur)
+            if tok(toks, cur) == "(" {
+                // pub(pkg):单包模型下与 pub 同义(v0)
+                adv(cur)
+                adv(cur)
+                adv(cur)
+            }
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            if tok(toks, cur) == "fn" {
+                nf.push(p_fn2(toks, cur, lns, "FnPub"))
+            } else {
+                nf.push(p_fn(toks, cur, lns))
+            }
+        } else if t == "comptime" {
+            adv(cur)
+            nf.push(p_fn2(toks, cur, lns, "FnC"))
+        } else if t == "@" {
+            adv(cur)
+            adv(cur)
+            adv(cur)
+            var dr2 = mk("Drvs")
+            var more3 = true
+            while more3 {
+                if tok(toks, cur) == ")" {
+                    more3 = false
+                } else {
+                    dr2.push(tok(toks, cur))
+                    adv(cur)
+                    if tok(toks, cur) == "," { adv(cur) }
+                }
+            }
+            adv(cur)
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
+            var t2 = tok(toks, cur)
+            if t2 == "struct" {
+                nf.push(p_struct2(toks, cur, lns, dr2))
+            } else if t2 == "enum" {
+                nf.push(p_enum2(toks, cur, lns, dr2))
+            } else if t2 == "trait" {
+                nf.push(p_trait(toks, cur, lns))
+            } else {
+                nf.push(p_fn(toks, cur, lns))
+            }
+        } else if t == "test" {
+            nf.push(p_test(toks, cur, lns))
+        } else if t == "extern" {
+            nf.push(p_extern(toks, cur, lns, ""))
+        } else if t == "enum" {
+            nf.push(p_enum(toks, cur, lns))
+        } else if t == "struct" {
+            nf.push(p_struct(toks, cur, lns))
+        } else if t == "class" {
+            nf.push(p_class(toks, cur, lns))
+        } else if t == "impl" {
+            nf.push(p_impl(toks, cur, lns))
+        } else if t == "trait" {
+            nf.push(p_trait(toks, cur, lns))
+        } else if t == "use" {
+            nf.push(p_use(toks, cur))
+        } else if t == "const" {
+            nf.push(p_const(toks, cur, lns))
+        } else if t == "static" {
+            nf.push(p_static(toks, cur, lns))
+        } else {
+            nf.push(p_fn(toks, cur, lns))
+        }
+        if cur.load() == p0 {
+            adv(cur)
+        }
+    }
+    return nf
+}

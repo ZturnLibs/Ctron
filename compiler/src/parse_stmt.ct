@@ -1,0 +1,282 @@
+// =====================================================================
+// parse_stmt.ct —— 语句解析:p_stmt_expr 表达式语句、p_pattern 模式
+// (字面量/绑定/变体/元组/通配)、p_match/p_if 语句与值位、p_block 块(停滞守卫)。
+// =====================================================================
+fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    return p_or(toks, cur, lns, al)
+}
+
+fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var t = tok(toks, cur)
+    if t == "_" {
+        adv(cur)
+        return mk("PatWild")
+    }
+    var b0 = byte_at(t, 0)
+    if is_digit(b0) {
+        adv(cur)
+        var isf = false
+        var tx = num_text(t)
+        var jj: I32 = 0
+        while jj < tx.len {
+            var cc = byte_at(tx, jj)
+            if or2(cc == 46, or2(cc == 101, cc == 69)) { isf = true }
+            jj += 1
+        }
+        var np = mk("PatLitI")
+        if isf { np = mk("PatLitF") }
+        np.push(num_text(t))
+        return np
+    }
+    if b0 == 34 {
+        adv(cur)
+        var np = mk("PatLitS")
+        np.push(qtext(byte_slice(t, 1, t.len - 1)))
+        return np
+    }
+    if t == "true" {
+        adv(cur)
+        var np = mk("PatLitB")
+        np.push("true")
+        return np
+    }
+    if t == "false" {
+        adv(cur)
+        var np = mk("PatLitB")
+        np.push("false")
+        return np
+    }
+    if t == "(" {
+        adv(cur)
+        var np = mk("PatTup")
+        var more = true
+        while more {
+            if tok(toks, cur) == ")" { more = false } else {
+                np.push(p_pattern(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more = false }
+            }
+        }
+        adv(cur)
+        return np
+    }
+    var nm = t
+    adv(cur)
+    if tok(toks, cur) == "(" {
+        adv(cur)
+        var agg = mk("PatAgg")
+        agg.push(nm)
+        var sub = mk("SubTup")
+        var more2 = true
+        while more2 {
+            if tok(toks, cur) == ")" { more2 = false } else {
+                sub.push(p_pattern(toks, cur))
+                if tok(toks, cur) == "," { adv(cur) } else { more2 = false }
+            }
+        }
+        adv(cur)
+        agg.push(sub)
+        return agg
+    }
+    if tok(toks, cur) == "\{" {
+        adv(cur)
+        var agg = mk("PatAgg")
+        agg.push(nm)
+        var sub = mk("SubSt")
+        var more3 = true
+        while more3 {
+            if tok(toks, cur) == "}" { more3 = false } else {
+                var fnm = tok(toks, cur)
+                adv(cur)
+                var pp = mk("None")
+                if tok(toks, cur) == ":" {
+                    adv(cur)
+                    pp = p_pattern(toks, cur)
+                }
+                var fld = mk("PatFld")
+                fld.push(fnm)
+                fld.push(pp)
+                sub.push(fld)
+                if tok(toks, cur) == "," { adv(cur) }
+            }
+        }
+        adv(cur)
+        agg.push(sub)
+        return agg
+    }
+    if or2(b0 >= 65, false) && b0 <= 90 {
+        var agg = mk("PatAgg")
+        agg.push(nm)
+        agg.push(mk("SubUnit"))
+        return agg
+    }
+    var pi = mk("PatId")
+    pi.push(nm)
+    return pi
+}
+
+fn p_match(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var ln0 = lns[cur.load()]
+    adv(cur)
+    var nm = mk("Match")
+    nm.push(p_stmt_expr(toks, cur, lns, "0"))
+    adv(cur)
+    var arms = mk("Arms")
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
+            var ma = mk("Arm")
+            ma.push(p_pattern(toks, cur))
+            adv(cur)
+            ma.push(p_stmt_expr(toks, cur, lns, "1"))
+            arms.push(ma)
+        }
+    }
+    adv(cur)
+    nm.push(arms)
+    nstamp(nm, ln0)
+    return nm
+}
+
+fn p_if(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    adv(cur)
+    var ni = mk("If")
+    ni.push(p_and(toks, cur, lns, "0"))
+    adv(cur)
+    ni.push(p_block(toks, cur, lns))
+    var els = mk("None")
+    if tok(toks, cur) == "else" {
+        adv(cur)
+        if tok(toks, cur) == "if" {
+            els = p_if(toks, cur, lns)
+        } else {
+            adv(cur)
+            var be = mk("BlockExpr")
+            be.push(p_block(toks, cur, lns))
+            els = be
+        }
+    }
+    ni.push(els)
+    return ni
+}
+
+fn p_block(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+    var nb = mk("Block")
+    var tailSet = false
+    var go = true
+    while go {
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
+        var p0 = cur.load()
+        var t = tok(toks, cur)
+        var ln0 = lns[cur.load()]
+        if t == "}" {
+            adv(cur)
+            go = false
+        } else if t == "#EOF" {
+            go = false
+        } else if t == "return" {
+            adv(cur)
+            var re = mk("Return")
+            var reline = ln0
+            var rt = tok(toks, cur)
+            if or3(rt == "}", rt == "#EOF", rt == "NL") {
+                var rn = mk("None")
+                re.push(rn)
+            } else {
+                re.push(p_stmt_expr(toks, cur, lns, "1"))
+            }
+            nstamp(re, reline)
+            nb.push(re)
+        } else if or2(t == "let", t == "var") {
+            var isv = "false"
+            if t == "var" { isv = "true" }
+            adv(cur)
+            var pp = p_pattern(toks, cur)
+            var ty = mk("None")
+            if tok(toks, cur) == ":" {
+                adv(cur)
+                ty = p_typ(toks, cur, lns)
+            }
+            adv(cur)
+            var lv = mk("Let")
+            lv.push(isv)
+            var lvline = ln0
+            lv.push(pp)
+            lv.push(ty)
+            lv.push(p_stmt_expr(toks, cur, lns, "1"))
+            nstamp(lv, lvline)
+            nb.push(lv)
+        } else if t == "while" {
+            adv(cur)
+            var wc = p_stmt_expr(toks, cur, lns, "0")
+            adv(cur)
+            var wb = p_block(toks, cur, lns)
+            var wh = mk("While")
+            wh.push(wc)
+            wh.push(wb)
+            nb.push(wh)
+        } else if t == "for" {
+            adv(cur)
+            var fp = p_pattern(toks, cur)
+            adv(cur)
+            var it = p_stmt_expr(toks, cur, lns, "0")
+            adv(cur)
+            var fb = p_block(toks, cur, lns)
+            var fo = mk("For")
+            fo.push(fp)
+            fo.push(it)
+            fo.push(fb)
+            nb.push(fo)
+        } else {
+            var e = p_stmt_expr(toks, cur, lns, "1")
+            var t2 = tok(toks, cur)
+            var op = ""
+            if t2 == "=" { op = "Eq" }
+            if t2 == "+=" { op = "AddEq" }
+            if t2 == "-=" { op = "SubEq" }
+            if t2 == "*=" { op = "MulEq" }
+            if t2 == "/=" { op = "DivEq" }
+            if t2 == "%=" { op = "ModEq" }
+            if op != "" {
+                adv(cur)
+                var asn = mk("Assign")
+                asn.push(e)
+                var asline = ln0
+                asn.push(op)
+                asn.push(p_stmt_expr(toks, cur, lns, "1"))
+                nstamp(asn, asline)
+                nb.push(asn)
+            } else {
+                var nx = t2
+                if nx == "NL" {
+                    while tok(toks, cur) == "NL" {
+                        adv(cur)
+                    }
+                    nx = tok(toks, cur)
+                }
+                if nx == "}" {
+                    adv(cur)
+                    nb.push(e)
+                    tailSet = true
+                    go = false
+                } else {
+                    var es = mk("Expr")
+                    es.push(e)
+                    nb.push(es)
+                }
+            }
+        }
+        if cur.load() == p0 {
+            adv(cur)
+        }
+    }
+    if !tailSet {
+        var nn = mk("None")
+        nb.push(nn)
+    }
+    return nb
+}

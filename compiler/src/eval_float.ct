@@ -1,0 +1,393 @@
+// =====================================================================
+// eval_float.ct —— Float 域(十进制定点打包 t = m·10^s,镜像 rt fmt 可观测语义)
+// vD 构造/df_p10·df_digits·df_pack·df_split 编解码/df_bin 四则/df_vcmp 序/
+// df_add1·df_g·df_show 文本化/df_al·df_text·df_can·df_pm·df_ps 助手。
+// =====================================================================
+// ---------------- Float 域(十进制定点,镜像 rt fmt 可观测语义) ----------------
+// 值 ["D", 规范十进制文本](规范: [-]int[.frac],frac 尾零修剪,零恒为 "0")。
+// 宿主 double 的二进制舍入细节挂账;工作精度 9 位有效(scale ≤ 9)。
+fn vD(t: Str) -> List[Str] {
+    var v = List[Str]()
+    v.push("D")
+    v.push(t)
+    return v
+}
+fn df_p10(k: I32) -> I64 {
+    var r: I64 = 1
+    var i: I32 = 0
+    while i < k {
+        r = r * 10
+        i += 1
+    }
+    return r
+}
+fn df_digits(a: I64) -> I32 {
+    var n: I32 = 0
+    var x: I64 = a
+    if x < 0 {
+        x = 0 - x
+    }
+    if x == 0 {
+        return 1
+    }
+    while x > 0 {
+        x = x / 10
+        n += 1
+    }
+    return n
+}
+fn df_pack(m: I64, s: I32) -> Str {
+    return m.to_string() + "@" + s.to_string()
+}
+fn df_pm(p: Str) -> I64 {
+    var m: I64 = 0
+    var i: I32 = 0
+    var neg = false
+    if byte_at(p, 0) == 45 {
+        neg = true
+        i = 1
+    }
+    while i < p.len {
+        var c = byte_at(p, i)
+        if c == 64 {
+            if neg {
+                m = 0 - m
+            }
+            return m
+        }
+        m = m * 10 + (c - 48)
+        i += 1
+    }
+    if neg {
+        m = 0 - m
+    }
+    return m
+}
+fn df_ps(p: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    var seen = false
+    while i < p.len {
+        var c = byte_at(p, i)
+        if c == 64 {
+            seen = true
+        } else {
+            if seen {
+                v = v * 10 + (c - 48)
+            }
+        }
+        i += 1
+    }
+    return v
+}
+// 字面量文本 → 规范对(pack):[-]int[.frac],frac 截至多 15 位
+fn df_split(t: Str) -> Str {
+    var sgn: I64 = 1
+    var body = t
+    if body.len > 0 && byte_at(body, 0) == 45 {
+        sgn = 0 - 1
+        body = byte_slice(body, 1, body.len)
+    }
+    var ip = ""
+    var fp = ""
+    var dot = false
+    var i: I32 = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 46 {
+            dot = true
+        } else {
+            if !dot {
+                ip = ip + byte_slice(body, i, i + 1)
+            } else {
+                if fp.len < 15 {
+                    fp = fp + byte_slice(body, i, i + 1)
+                }
+            }
+        }
+        i += 1
+    }
+    if ip == "" {
+        ip = "0"
+    }
+    var m: I64 = 0
+    var j: I32 = 0
+    while j < ip.len {
+        m = m * 10 + (byte_at(ip, j) - 48)
+        j += 1
+    }
+    j = 0
+    while j < fp.len {
+        m = m * 10 + (byte_at(fp, j) - 48)
+        j += 1
+    }
+    m = m * sgn
+    return df_pack(m, fp.len)
+}
+fn df_al(m: I64, s: I32, t: I32) -> I64 {
+    var r: I64 = m
+    var i: I32 = s
+    while i < t {
+        r = r * 10
+        i += 1
+    }
+    return r
+}
+// (m, s) → 规范十进制文本(scale ≤ 9,有效位 ≤ 9,尾零修剪,零 → "0")
+fn df_text(m: I64, s: I32) -> Str {
+    var neg = m < 0
+    var a: I64 = m
+    if neg {
+        a = 0 - a
+    }
+    var sc: I32 = s
+    while sc > 9 {
+        a = a / 10
+        sc -= 1
+    }
+    while a > 0 && sc > 0 && a % 10 == 0 {
+        a = a / 10
+        sc -= 1
+    }
+    while df_digits(a) > 9 && sc > 0 {
+        a = a / 10
+        sc -= 1
+    }
+    if a == 0 {
+        return "0"
+    }
+    var ds = a.to_string()
+    var t = ""
+    if neg {
+        t = "-"
+    }
+    if sc == 0 {
+        return t + ds
+    }
+    if ds.len <= sc {
+        var pad = "0."
+        var z: I32 = 0
+        while z < sc - ds.len {
+            pad = pad + "0"
+            z += 1
+        }
+        return t + pad + ds
+    }
+    return t + byte_slice(ds, 0, ds.len - sc) + "." + byte_slice(ds, ds.len - sc, ds.len)
+}
+fn df_can(t: Str) -> Str {
+    var p = df_split(t)
+    return df_text(df_pm(p), df_ps(p))
+}
+fn df_bin(op: Str, ta: Str, tb: Str) -> Str {
+    var pa = df_split(ta)
+    var pb = df_split(tb)
+    var m1 = df_pm(pa)
+    var s1 = df_ps(pa)
+    var m2 = df_pm(pb)
+    var s2 = df_ps(pb)
+    if or2(op == "Add", op == "Sub") {
+        var s: I32 = s1
+        if s2 > s {
+            s = s2
+        }
+        var x = df_al(m1, s1, s)
+        var y = df_al(m2, s2, s)
+        if op == "Sub" {
+            return df_text(x - y, s)
+        }
+        return df_text(x + y, s)
+    }
+    if op == "Mul" {
+        return df_text(m1 * m2, s1 + s2)
+    }
+    if op == "Div" {
+        if m2 == 0 {
+            panic("float div by zero")
+            return "0"
+        }
+        var k: I32 = 17 - df_digits(m1)
+        if k < 0 {
+            k = 0
+        }
+        var num: I64 = m1 * df_p10(k)
+        var q: I64 = num / m2
+        var rm: I64 = num - q * m2
+        if rm < 0 {
+            rm = 0 - rm
+        }
+        var m2a: I64 = m2
+        if m2a < 0 {
+            m2a = 0 - m2a
+        }
+        var qinc: I64 = 1
+        if q < 0 {
+            qinc = 0 - 1
+        }
+        if m2a != 0 && rm * 2 >= m2a {
+            q = q + qinc
+        }
+        return df_text(q, s1 - s2 + k)
+    }
+    panic("df_bin:" + op)
+    return "0"
+}
+fn df_vcmp(ta: Str, tb: Str) -> I32 {
+    var pa = df_split(ta)
+    var pb = df_split(tb)
+    var m1 = df_pm(pa)
+    var s1 = df_ps(pa)
+    var m2 = df_pm(pb)
+    var s2 = df_ps(pb)
+    var s: I32 = s1
+    if s2 > s {
+        s = s2
+    }
+    var x = df_al(m1, s1, s)
+    var y = df_al(m2, s2, s)
+    if x < y {
+        return -1
+    }
+    if x > y {
+        return 1
+    }
+    return 0
+}
+fn df_add1(ds: Str) -> Str {
+    var digits = "0123456789"
+    var i: I32 = ds.len - 1
+    while i >= 0 {
+        var c = byte_at(ds, i)
+        if c == 57 {
+            i -= 1
+        } else {
+            var head = byte_slice(ds, 0, i)
+            var mid = byte_slice(digits, c - 47, c - 46)
+            var tail = ""
+            var z: I32 = 0
+            while z < ds.len - i - 1 {
+                tail = tail + "0"
+                z += 1
+            }
+            return head + mid + tail
+        }
+    }
+    var out = "1"
+    var z2: I32 = 0
+    while z2 < ds.len {
+        out = out + "0"
+        z2 += 1
+    }
+    return out
+}
+// %g(6 位有效,镜像 C printf;十进制定点近似,二进制舍入细节挂账)
+fn df_g(t: Str) -> Str {
+    var neg = byte_at(t, 0) == 45
+    var body = t
+    if neg {
+        body = byte_slice(t, 1, t.len)
+    }
+    var ip = ""
+    var fp = ""
+    var dot = false
+    var i: I32 = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 46 {
+            dot = true
+        } else {
+            if !dot {
+                ip = ip + byte_slice(body, i, i + 1)
+            } else {
+                fp = fp + byte_slice(body, i, i + 1)
+            }
+        }
+        i += 1
+    }
+    var digits = ip + fp
+    while digits.len > 1 && byte_at(digits, 0) == 48 {
+        digits = byte_slice(digits, 1, digits.len)
+    }
+    var xe: I32 = 0
+    if ip == "0" {
+        var z: I32 = 0
+        while z < fp.len && byte_at(fp, z) == 48 {
+            z += 1
+        }
+        xe = 0 - z - 1
+    } else {
+        xe = ip.len - 1
+    }
+    var keep = digits
+    if keep.len > 6 {
+        var rest = byte_at(keep, 6)
+        keep = byte_slice(keep, 0, 6)
+        if rest >= 53 {
+            keep = df_add1(keep)
+        }
+    }
+    while keep.len > 1 && byte_at(keep, keep.len - 1) == 48 {
+        keep = byte_slice(keep, 0, keep.len - 1)
+    }
+    var e: I32 = xe
+    if keep.len > 6 {
+        e = xe + 1
+        keep = byte_slice(keep, 0, 1) + byte_slice(keep, 1, 6)
+    }
+    var sgn = ""
+    if neg {
+        sgn = "-"
+    }
+    if or2(e < -4, e >= 6) {
+        var mant = byte_slice(keep, 0, 1)
+        if keep.len > 1 {
+            mant = mant + "." + byte_slice(keep, 1, keep.len)
+        }
+        var ae = e
+        var es = "+"
+        if ae < 0 {
+            es = "-"
+            ae = 0 - ae
+        }
+        var es2 = ae.to_string()
+        while es2.len < 2 {
+            es2 = "0" + es2
+        }
+        return sgn + mant + "e" + es + es2
+    }
+    if e >= 0 {
+        var pnt = e + 1
+        if keep.len <= pnt {
+            var r = keep
+            var z2: I32 = keep.len
+            while z2 < pnt {
+                r = r + "0"
+                z2 += 1
+            }
+            return sgn + r
+        }
+        return sgn + byte_slice(keep, 0, pnt) + "." + byte_slice(keep, pnt, keep.len)
+    }
+    var pad = "0."
+    var z3: I32 = 0
+    while z3 < 0 - e - 1 {
+        pad = pad + "0"
+        z3 += 1
+    }
+    return sgn + pad + keep
+}
+// 可打印形式:整值 %.1f,否则 %g(rt fmt_val 同款)
+fn df_show(t: Str) -> Str {
+    var dot = false
+    var i: I32 = 0
+    while i < t.len {
+        if byte_at(t, i) == 46 {
+            dot = true
+        }
+        i += 1
+    }
+    if !dot {
+        return t + ".0"
+    }
+    return df_g(t)
+}

@@ -1,0 +1,244 @@
+// =====================================================================
+// sem_exh.ct —— E2030:match 穷尽(scrutinee 类型→枚举/Option/Result 变体表;臂覆盖)
+// seq/variants_of/ex_resolve 助手;xe/xb 下钻;sem_exh 产诊断串。
+// =====================================================================
+// ---- E2030:match 穷尽(scrutinee 类型→枚举/Option/Result 变体表;臂覆盖) ----
+fn seq(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var j: I32 = 0
+    while j < a.len {
+        if byte_at(a, j) != byte_at(b, j) { return false }
+        j += 1
+    }
+    return true
+}
+fn variants_of(file: List[Str], ty: List[Str]) -> List[Str] {
+    var vs = List[Str]()
+    if ty.len == 0 { return vs }
+    var t = ty[0]
+    if t == "Optional" {
+        vs.push("Some")
+        vs.push("None")
+        return vs
+    }
+    if t == "Named" {
+        var n = ty[1]
+        if or2(n == "Option", n == "Result") {
+            if n == "Option" {
+                vs.push("Some")
+                vs.push("None")
+            } else {
+                vs.push("Ok")
+                vs.push("Err")
+            }
+            return vs
+        }
+        var en = decl_node(file, "Enum", n)
+        if en.len > 0 {
+            var vars = en[3]
+            var i: I32 = 1
+            while i < vars.len {
+                vs.push(vars[i][1])
+                i += 1
+            }
+        }
+    }
+    return vs
+}
+fn ex_resolve(file: List[Str], scrut: List[Str], envN: List[Str], envT: List[Str]) -> List[Str] {
+    if scrut.len > 0 && scrut[0] == "Ident" {
+        var i = envN.len - 1
+        while i >= 0 {
+            if seq(envN[i], scrut[1]) {
+                return envT[i]
+            }
+            i -= 1
+        }
+    }
+    return List[Str]()
+}
+fn xe(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var t = e[0]
+    if t == "Match" {
+        var ty = ex_resolve(file, e[1], envN, envT)
+        var vs = variants_of(file, ty)
+        if vs.len > 0 {
+            var covered = List[Str]()
+            var whole = false
+            var arms = e[2]
+            var ai: I32 = 1
+            while ai < arms.len && !whole {
+                var arm = arms[ai]
+                var pat = arm[1]
+                if or2(pat[0] == "PatWild", pat[0] == "PatId") {
+                    whole = true
+                } else if pat[0] == "PatAgg" {
+                    covered.push(pat[1])
+                }
+                ai += 1
+            }
+            if !whole {
+                var miss = List[Str]()
+                var vi: I32 = 0
+                while vi < vs.len {
+                    var hit = false
+                    var ci: I32 = 0
+                    while ci < covered.len {
+                        if seq(covered[ci], vs[vi]) { hit = true }
+                        ci += 1
+                    }
+                    if !hit { miss.push(vs[vi]) }
+                    vi += 1
+                }
+                if miss.len > 0 {
+                    var buf = ""
+                    var mi: I32 = 0
+                    while mi < miss.len {
+                        if mi > 0 { buf = buf + " " }
+                        buf = buf + miss[mi]
+                        mi += 1
+                    }
+                    diags.push("E2030@" + nline(e) + ": match 不穷尽(not exhaustive):缺变体 " + buf)
+                }
+            }
+        }
+        // 继续递归
+        xe(file, e[1], envN, envT, diags)
+        var arms2 = e[2]
+        var aj: I32 = 1
+        while aj < arms2.len {
+            xe(file, arms2[aj][2], envN, envT, diags)
+            aj += 1
+        }
+        return
+    }
+    if t == "Call" {
+        xe(file, e[1], envN, envT, diags)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            xe(file, ag[i], envN, envT, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        xe(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Binary" {
+        xe(file, e[2], envN, envT, diags)
+        xe(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Unary" {
+        xe(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Index" {
+        xe(file, e[1], envN, envT, diags)
+        xe(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        xe(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "Try" {
+        xe(file, e[1], envN, envT, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            xe(file, e[i2], envN, envT, diags)
+            i2 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        xb(file, e[1], envN, envT, diags)
+        return
+    }
+    if t == "If" {
+        xe(file, e[1], envN, envT, diags)
+        xb(file, e[2], envN, envT, diags)
+        xe(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Closure" {
+        xe(file, e[3], envN, envT, diags)
+        return
+    }
+    if t == "Own" {
+        xb(file, e[2], envN, envT, diags)
+        return
+    }
+    if t == "Scope" {
+        xb(file, e[2], envN, envT, diags)
+        return
+    }
+}
+fn xb(file: List[Str], b: List[Str], envN: List[Str], envT: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            xe(file, st[1], envN, envT, diags)
+        } else if t == "Expr" {
+            xe(file, st[1], envN, envT, diags)
+        } else if t == "Let" {
+            var ann = st[3]
+            var pat = st[2]
+            if pat[0] == "PatId" {
+                if ann.len > 0 && ann[0] != "None" {
+                    envN.push(pat[1])
+                    envT.push(ann)
+                } else {
+                    envN.push(pat[1])
+                    envT.push(unk())
+                }
+            }
+            xe(file, st[4], envN, envT, diags)
+        } else if t == "While" {
+            xe(file, st[1], envN, envT, diags)
+            xb(file, st[2], envN, envT, diags)
+        } else if t == "For" {
+            xe(file, st[2], envN, envT, diags)
+            xb(file, st[3], envN, envT, diags)
+        } else if t == "Assign" {
+            xe(file, st[3], envN, envT, diags)
+        }
+        i += 1
+    }
+    xe(file, b[b.len - 1], envN, envT, diags)
+}
+fn sem_exh(file: List[Str], d: List[Str], tag: Str) -> Str {
+    var diags = List[Str]()
+    var envN = List[Str]()
+    var envT = List[Str]()
+    var body = d[2]
+    var ps = List[Str]()
+    if tag != "Test" {
+        body = d[5]
+        ps = d[3]
+    }
+    var k: I32 = 1
+    while k < ps.len {
+        var p = ps[k]
+        if p[0] == "Param" {
+            envN.push(p[2])
+            envT.push(p[3])
+        }
+        k += 1
+    }
+    xb(file, body, envN, envT, diags)
+    var out = ""
+    var q: I32 = 0
+    while q < diags.len {
+        out = out + diags[q] + "\n"
+        q += 1
+    }
+    return out
+}

@@ -1,0 +1,232 @@
+// =====================================================================
+// parse_pkg.ct —— 模块加载器 v0(§2):use 节点结构化 → pkg_dir_of 包路径展开
+// 读取 src 下模块文件 → 整模块合并(滤除 Use)→ 可见性检查(E2020)→ 栈式循环
+// 检测(E5020);pkg_check_caps/pkg_caps_allowed 能力声明核对(E4010)。
+// =====================================================================
+// ---------------- 模块加载器 v0(§2):use 解析 → 可见性 → 整模块合并 → 循环检测 ----------------
+fn pkg_dir_of(path: Str) -> Str {
+    var i = path.len - 1
+    while i >= 0 {
+        if byte_at(path, i) == 47 {
+            return byte_slice(path, 0, i)
+        }
+        i -= 1
+    }
+    return "."
+}
+
+// std.* 导入:stdlib 未实现,跳过加载(§7 std 可用性 v0 口径)
+fn segs_std(d: List[Str]) -> Bool {
+    if d[0] != "Use" {
+        return false
+    }
+    var segs = d[1]
+    if segs.len < 2 {
+        return false
+    }
+    return seq2(segs[1], "std")
+}
+
+fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
+    // E4010(§8.2):use std.<key>.<Name>(key ∈ {fs,time}) 且本文件有 &Name 参数,
+    // 而 Ctron.toml [caps] 未声明该 key
+    var i: I32 = 1
+    while i < mf.len {
+        var d = mf[i]
+        if d[0] == "Use" {
+            var segs = d[1]
+            var symsN = d[2]
+            if segs.len > 2 && seq2(segs[1], "std") {
+                var cap = segs[2]
+                if or2(seq2(cap, "fs"), seq2(cap, "time")) {
+                    var name = ""
+                    if symsN.len > 1 {
+                        name = symsN[1]
+                    } else {
+                        if segs.len > 3 {
+                            name = segs[3]
+                        }
+                    }
+                    if name.len > 0 {
+                        var hit = false
+                        var j: I32 = 1
+                        while j < mf.len && !hit {
+                            var dd = mf[j]
+                            if dd[0] == "Fn" {
+                                var ps = dd[3]
+                                var q: I32 = 1
+                                while q < ps.len {
+                                    var pr = ps[q]
+                                    if pr[0] == "Param" {
+                                        var pt = pr[3]
+                                        if pt[0] == "Ref" && pt[1][0] == "Named" && seq2(pt[1][1], name) {
+                                            hit = true
+                                        }
+                                    }
+                                    q += 1
+                                }
+                            }
+                            j += 1
+                        }
+                        if hit && !pkg_caps_allowed(dir, cap) {
+                            diags.push("E4010: 使用 " + cap + " 能力超出 manifest(caps) 声明:参数 &" + name)
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+}
+
+fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
+    var toml = read_file(dir + "/../Ctron.toml")
+    match toml {
+        Some(t) => {
+            var insec = false
+            var i: I32 = 0
+            while i < t.len {
+                var c = byte_at(t, i)
+                if c == 91 {
+                    var sec = ""
+                    i += 1
+                    while i < t.len && byte_at(t, i) != 93 {
+                        sec = sec + byte_slice(t, i, i + 1)
+                        i += 1
+                    }
+                    insec = seq2(sec, "caps")
+                } else if c == 10 {
+                    i += 1
+                } else {
+                    var key = ""
+                    var i0 = i
+                    while i < t.len && byte_at(t, i) != 61 && byte_at(t, i) != 10 {
+                        if byte_at(t, i) != 32 {
+                            key = key + byte_slice(t, i, i + 1)
+                        }
+                        i += 1
+                    }
+                    if i == i0 {
+                        i += 1
+                    }
+                    if insec && key.len > 0 && seq2(key, cap) {
+                        return true
+                    }
+                }
+            }
+            return false
+        }
+        None => {
+            return true
+        }
+    }
+}
+
+fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -> List[Str] {
+    pkg_check_caps(file, dir, diags)
+    if diags.len > 0 {
+        return file
+    }
+    var out = file
+    var i: I32 = 1
+    while i < out.len {
+        var d = out[i]
+        if or2(d[0] != "Use", segs_std(d)) {
+            // 非 Use,或 std.* 导入(stdlib 未落地,忽略)
+        } else {
+            // 节点形态:[Use, Segs, Syms](全列表;无花括号时 Syms 空 symbolic=Segs 末段)
+            // std.* 前缀:stdlib 未落地,保持既有"忽略 use"语义(单文件语料兼容)
+            var segs = d[1]
+            var symsN = d[2]
+            var syms = List[Str]()
+            var k: I32 = 1
+            while k < symsN.len {
+                syms.push(symsN[k])
+                k += 1
+            }
+            if syms.len == 0 {
+                syms.push(segs[segs.len - 1])
+            }
+            // 模块相对路径:跳过包名段(首段),其余按目录展开
+            var rel = ""
+            var j2: I32 = 2
+            while j2 < segs.len {
+                rel = rel + "/" + segs[j2]
+                j2 += 1
+            }
+            var mpath = dir + rel + ".ct"
+            if in_list(stack, mpath) {
+                diags.push("E5020: 模块循环导入(circular):" + mpath)
+                return out
+            }
+            var src = read_file(mpath)
+            match src {
+                Some(ms) => {
+                    var toks2 = List[Str]()
+                    var lns2 = List[Str]()
+                    scan(ms, toks2, lns2)
+                    var cur2 = Atomic[I32](0)
+                    var mf = p_file(toks2, cur2, lns2)
+                    pkg_check_caps(mf, dir, diags)
+                    // 可见性:请求符号必须存在且为 pub(v0:FnPub)
+                    var k: I32 = 0
+                    while k < syms.len {
+                        var sn = syms[k]
+                        var found = false
+                        var vis = false
+                        var m2: I32 = 1
+                        while m2 < mf.len {
+                            var md = mf[m2]
+                            if md.len > 1 && md[1] == sn {
+                                found = true
+                                if md[0] == "FnPub" {
+                                    vis = true
+                                }
+                            }
+                            m2 += 1
+                        }
+                        if !found {
+                            diags.push("E2020: use 导入未找到符号:" + sn)
+                        } else if !vis {
+                            diags.push("E2020: use 导入的符号未公开(pub):" + sn)
+                        }
+                        k += 1
+                    }
+                    if diags.len > 0 {
+                        return out
+                    }
+                    var stack2 = stack
+                    stack2.push(mpath)
+                    mf = pkg_load_use(mf, dir, stack2, diags)
+                    if diags.len > 0 {
+                        return out
+                    }
+                    // 合并:双侧滤除 Use(模块自身的 use 已递归展开)
+                    var merged = mk("File")
+                    var j3: I32 = 1
+                    while j3 < out.len {
+                        if out[j3][0] != "Use" {
+                            merged.push(out[j3])
+                        }
+                        j3 += 1
+                    }
+                    var j4: I32 = 1
+                    while j4 < mf.len {
+                        if mf[j4][0] != "Use" {
+                            merged.push(mf[j4])
+                        }
+                        j4 += 1
+                    }
+                    out = merged
+                    i = 1
+                }
+                None => {
+                    diags.push("E2020: use 模块文件不可读:" + mpath)
+                    return out
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}

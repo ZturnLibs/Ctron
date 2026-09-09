@@ -1,0 +1,147 @@
+// =====================================================================
+// eval_pat.ct —— 绑定克隆/原地写(镜像 rt.c env_let/ST_ASSIGN:bind_of/u_set_ip/
+// u_field)+ pat_match 模式匹配(字面量·通配·绑定·变体,SubTup 解构)。
+// =====================================================================
+// ---------------- 绑定克隆与原地写(镜像 rt.c env_let/ST_ASSIGN) ----------------
+// rt env_let:结构体值(非类)深克隆后才入绑定槽;类/List/标量保持引用。
+// 成员写经绑定槽原地生效:结构体无别名(绑定时已克隆)→ 原地 == 重建;
+// 类共享 → 原地写对别名可见。
+fn bind_of(file: List[Str], v: List[Str]) -> List[Str] {
+    if v[0] == "U" && !is_class(file, v[1]) {
+        return vdeep(v)
+    }
+    return v
+}
+fn u_set_ip(u: List[Str], nm: Str, nv: List[Str]) -> Bool {
+    var i: I32 = 2
+    while i + 1 < u.len {
+        if seq2(u[i], nm) {
+            u[i + 1] = nv
+            return true
+        }
+        i += 2
+    }
+    return false
+}
+fn u_field(u: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 2
+    while i + 1 < u.len {
+        if seq2(u[i], nm) {
+            return u[i + 1]
+        }
+        i += 2
+    }
+    return List[Str]()
+}
+fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
+    var t = pat[0]
+    if t == "PatWild" {
+        return pm2("1", env)
+    }
+    if t == "PatLitI" {
+        if v[0] == "I" && dvi(v[1]) == dvi(pat[1]) {
+            return pm2("1", env)
+        }
+        return pm2("0", env)
+    }
+    if t == "PatLitS" {
+        if v[0] == "S" && seq2(v[1], pat[1]) {
+            return pm2("1", env)
+        }
+        return pm2("0", env)
+    }
+    if t == "PatLitB" {
+        if v[0] == "B" && seq2(v[1], pat[1]) {
+            return pm2("1", env)
+        }
+        return pm2("0", env)
+    }
+    if t == "PatAgg" {
+        var sub = pat[2]
+        if v[0] == "U" && seq2(v[1], pat[1]) && sub[0] == "SubSt" {
+            var env2 = env
+            var ok3 = true
+            var k: I32 = 1
+            while k < sub.len && ok3 {
+                var pf = sub[k]
+                var nm2 = pf[1]
+                var fv2 = u_field(v, nm2)
+                if fv2.len == 0 {
+                    ok3 = false
+                } else {
+                    if pf[2][0] == "None" {
+                        env2 = env_add(env2, nm2, fv2)
+                    } else {
+                        var pr3 = pat_match(pf[2], fv2, env2)
+                        if !seq2(pr3[0], "1") {
+                            ok3 = false
+                        } else {
+                            env2 = pr3[1]
+                        }
+                    }
+                }
+                k += 1
+            }
+            if ok3 {
+                return pm2("1", env2)
+            }
+            return pm2("0", env)
+        }
+        if v[0] == "T" && seq2(v[1], pat[1]) {
+            if sub[0] == "SubUnit" {
+                if v.len == 2 {
+                    return pm2("1", env)
+                }
+                return pm2("0", env)
+            }
+            if sub[0] == "SubTup" {
+                var np = sub.len - 1
+                var npv = v.len - 2
+                if np == npv {
+                    var env3 = env
+                    var ok2 = true
+                    var k: I32 = 1
+                    while k < sub.len && ok2 {
+                        var pp = sub[k]
+                        var pv = v[k + 1]
+                        var pr2 = pat_match(pp, pv, env3)
+                        if !seq2(pr2[0], "1") {
+                            ok2 = false
+                        } else {
+                            env3 = pr2[1]
+                        }
+                        k += 1
+                    }
+                    if ok2 {
+                        return pm2("1", env3)
+                    }
+                }
+                return pm2("0", env)
+            }
+        }
+        return pm2("0", env)
+    }
+    if t == "PatId" {
+        return pm2("1", env_add(env, pat[1], v))
+    }
+    if t == "PatTup" {
+        if v[0] != "P" {
+            return pm2("0", env)
+        }
+        if pat.len - 1 != v.len - 1 {
+            return pm2("0", env)
+        }
+        var env4 = env
+        var k4: I32 = 1
+        while k4 < pat.len {
+            var pr4 = pat_match(pat[k4], v[k4], env4)
+            if !seq2(pr4[0], "1") {
+                return pm2("0", env)
+            }
+            env4 = pr4[1]
+            k4 += 1
+        }
+        return pm2("1", env4)
+    }
+    return pm2("0", env)
+}

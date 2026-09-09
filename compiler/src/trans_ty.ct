@@ -1,0 +1,278 @@
+// =====================================================================
+// trans_ty.ct —— 发射器符号/类型基础:运算符表 ct_op·ct_aop、类型码 ct_ty_code·
+// ct_ctype(i/s/b/f/L/A/N/a<v>/u:<名>)、fn 签名 ct_fn_ret·ct_fn_pcodes·ct_params_str、
+// 发射期环境 env_bind·ct_env_ty·ct_typeof、C 字符串转义 ct_cstr·bsn。
+// 约定:用户符号 t_ 前缀;运行时辅助 ctron_* 前缀;所有字符串模板中的 { 均写作
+// \{(插值转义,镜像 C 词法器);\n 用 bs() 拼接。
+// =====================================================================
+
+fn bsn() -> Str {
+    return "\\" + "n"
+}
+
+fn ct_op(op: Str) -> Str {
+    if op == "Add" { return "+" }
+    if op == "Sub" { return "-" }
+    if op == "Mul" { return "*" }
+    if op == "Div" { return "/" }
+    if op == "Mod" { return "%" }
+    if op == "Lt" { return "<" }
+    if op == "Gt" { return ">" }
+    if op == "Le" { return "<=" }
+    if op == "Ge" { return ">=" }
+    if op == "Eq" { return "==" }
+    if op == "Ne" { return "!=" }
+    if op == "AndAnd" { return "&&" }
+    panic("ct_op:" + op)
+    return "?"
+}
+
+fn ct_aop(op: Str) -> Str {
+    if op == "Eq" { return "=" }
+    if op == "AddEq" { return "+=" }
+    if op == "SubEq" { return "-=" }
+    if op == "MulEq" { return "*=" }
+    if op == "DivEq" { return "/=" }
+    if op == "ModEq" { return "%=" }
+    panic("ct_aop:" + op)
+    return "?"
+}
+
+// 符号表: env 条目形如 "name:ty"(ty 为类型码);查找按 "name:" 前缀精确匹配,
+// 新绑定插在表头 → 先命中(遮蔽语义)
+fn ct_env_ty(env: List[Str], nm: Str) -> Str {
+    var key = nm + ":"
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if en.len >= key.len && byte_slice(en, 0, key.len) == key {
+            return byte_slice(en, key.len, en.len)
+        }
+        i += 1
+    }
+    return "i"
+}
+
+fn env_bind(env: List[Str], nm: Str, ty: Str) -> List[Str] {
+    var out = List[Str]()
+    out.push(nm + ":" + ty)
+    var i: I32 = 0
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+
+// Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
+fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
+    if nt[0] != "Named" { return "i" }
+    if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
+    if nt[1] == "Str" { return "s" }
+    if nt[1] == "Bool" { return "b" }
+    if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
+    if nt[1] == "I64" { return "6" }
+    if nt[1] == "List" { return "L" }
+    if nt[1] == "Atomic" { return "A" }
+    return "i"
+}
+
+// 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
+fn ct_ctype(code: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        return "t_" + byte_slice(code, 2, code.len)
+    }
+    if code == "s" { return "const char*" }
+    if code == "N" { return "const char*" }
+    if code == "b" { return "int" }
+    if code == "f" { return "double" }
+    if code == "L" { return "ctron_list*" }
+    if code == "A" { return "ctron_cell*" }
+    if code == "6" { return "int64_t" }
+    if code == "v" { return "void" }
+    return "int32_t"
+}
+
+// 用户 fn 返回类型码
+fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
+            var r = d[4]
+            if r[0] == "None" { return "v" }
+            if r[0] != "Named" { return "i" }
+            return ct_ty_code(r, file)
+        }
+        i += 1
+    }
+    return "i"
+}
+
+// 用户 fn 形参类型码表(按 Param 顺序)
+fn ct_fn_pcodes(file: List[Str], nm: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
+            var ps = d[3]
+            var k: I32 = 1
+            while k < ps.len {
+                var pr = ps[k]
+                if pr[0] == "Param" {
+                    out.push(ct_ty_code(pr[3], file))
+                }
+                k += 1
+            }
+            return out
+        }
+        i += 1
+    }
+    return out
+}
+
+// fn 声明的 C 形参表(仅类型与名,用于原型前置与定义)
+fn ct_params_str(d: List[Str], file: List[Str]) -> Str {
+    var ps = d[3]
+    var params = ""
+    var k: I32 = 1
+    var first = true
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            if !first { params = params + ", " }
+            params = params + ct_ctype(ct_ty_code(pr[3], file)) + " t_" + pr[2]
+            first = false
+        }
+        k += 1
+    }
+    return params
+}
+
+// 调用点实参转换:按形参类型码包转换(N→L/A 提升为指针,L→N/s 降为 char*)
+fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
+    if pc == "L" && ac != "L" { return "(ctron_list*)(" + x + ")" }
+    if pc == "A" && ac != "A" { return "(ctron_cell*)(" + x + ")" }
+    if or2(pc == "s", pc == "N") && ac == "L" { return "(char*)(" + x + ")" }
+    return x
+}
+
+// 表达式类型码: i/s/b/f/L/A/N;数组沿用 a<N><码> 编码
+fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var t = e[0]
+    if t == "Int" { return "i" }
+    if t == "Str" { return "s" }
+    if t == "Bool" { return "b" }
+    if t == "Float" { return "f" }
+    if t == "Ident" { return ct_env_ty(env, e[1]) }
+    if t == "Unary" {
+        if e[1] == "Neg" { return ct_typeof(e[2], env, file) }
+        return "b"
+    }
+    if t == "Binary" {
+        var arith = or2(e[1] == "Add", or3(e[1] == "Sub", or2(e[1] == "Mul", e[1] == "Div"), e[1] == "Mod"))
+        if arith {
+            // 算术:任一操作数为浮点 → f;任一为 Str/节点引用(仅 Add 拼接)→ s;否则 i
+            var l = ct_typeof(e[2], env, file)
+            var r = ct_typeof(e[3], env, file)
+            if or2(l == "f", r == "f") { return "f" }
+            if or2(l == "s", r == "s") { return "s" }
+            if or2(l == "N", r == "N") { return "s" }
+            return "i"
+        }
+        return "b"
+    }
+    if t == "StructLit" {
+        return "u:" + e[1]
+    }
+    if t == "If" {
+        var th = e[2]
+        if th.len == 2 && th[1][0] != "None" {
+            return ct_typeof(th[1], env, file)
+        }
+        return "i"
+    }
+    if t == "Member" {
+        if e[3] == "len" { return "i" }
+        if e[3] == "to_string" { return "s" }
+        var oft = ct_typeof(e[1], env, file)
+        if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
+            return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
+        }
+    }
+    if t == "ArrLit" {
+        var et = ct_typeof(e[1], env, file)
+        return "a" + (e.len - 1).to_string() + et
+    }
+    if t == "Index" {
+        var ot = ct_typeof(e[1], env, file)
+        if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
+            return a_elem(ot)
+        }
+        if or2(ot == "L", ot == "N") { return "N" }
+        return "i"
+    }
+    if t == "Call" {
+        var cal = e[1]
+        if cal[0] == "TypeArgs" {
+            var base = cal[1]
+            if base[0] == "Ident" && base[1] == "List" { return "L" }
+            if base[0] == "Ident" && base[1] == "Atomic" { return "A" }
+            return "i"
+        }
+        if cal[0] == "Member" {
+            var m = cal[3]
+            if m == "load" { return "i" }
+            if m == "to_string" { return "s" }
+            if m == "push" { return "v" }
+            if m == "store" { return "v" }
+            return ct_fn_ret(file, m)
+        }
+        if cal[0] == "Ident" {
+            if cal[1] == "ctron_entry" { return "s" }
+            if cal[1] == "read_file" { return "s" }
+            if cal[1] == "read_dir" { return "s" }
+            if cal[1] == "byte_at" { return "i" }
+            if cal[1] == "byte_slice" { return "s" }
+            return ct_fn_ret(file, cal[1])
+        }
+    }
+    return "i"
+}
+
+// Text 载荷 → C 字符串字面量内容:转义序列逐字透传(\n/\t/\\" 在 C 同义),
+// 仅 \{ 坍缩为 {、孤立 " 加反斜杠、真实换行转 \n(unesc 在此不可用:它会把
+// \n 解析成真实换行打进 C 字面量,预处理直接断行)
+fn ct_cstr(raw: Str) -> Str {
+    var acc = ""
+    var i: I32 = 0
+    while i < raw.len {
+        var b = byte_at(raw, i)
+        if b == 34 {
+            acc = acc + bs() + "\""
+            i += 1
+        } else if b == 92 {
+            if i + 1 < raw.len {
+                var nb = byte_at(raw, i + 1)
+                if nb == 123 {
+                    acc = acc + "\{"
+                    i += 2
+                } else {
+                    acc = acc + bs() + byte_slice(raw, i + 1, i + 2)
+                    i += 2
+                }
+            } else {
+                acc = acc + bs()
+                i += 1
+            }
+        } else if b == 10 {
+            acc = acc + bs() + "n"
+            i += 1
+        } else {
+            acc = acc + byte_slice(raw, i, i + 1)
+            i += 1
+        }
+    }
+    return acc
+}

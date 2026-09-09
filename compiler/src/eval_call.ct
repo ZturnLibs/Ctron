@@ -1,0 +1,752 @@
+// =====================================================================
+// eval_call.ct —— 调用域:fn 值/声明调用(call_decl_vals/call_cv/call_id)、
+// 成员与内建方法分派 call_mem(List/String/Option/Result/Scope/Channel/Mutex/
+// Atomic/parallel/Simd…)、eval_call 入口、variant_arity/conv_as 显式转换、
+// ns_map_reduce、utf8_cont/str_contains。
+// =====================================================================
+fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> List[Str] {
+    var ps = d[3]
+    var nenv = List[Str]()
+    var k: I32 = 1
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            nenv = env_add(nenv, pr[2], bind_of(file, vals[k - 1]))
+        }
+        k += 1
+    }
+    var br = run_block(file, nenv, out, d[5], false)
+    var fl = "k"
+    if br[0] == "a" {
+        fl = "a"
+    }
+    return e4(fl, env, br[3], br[2])
+}
+fn call_cv(file: List[Str], env: List[Str], out: Str, v: List[Str], vals: List[Str]) -> List[Str] {
+    if seq2(v[0], "F") {
+        var d = find_decl(file, v[1])
+        if d.len == 0 {
+            panic("no fn:" + v[1])
+            return e4("a", env, vV2(), out)
+        }
+        return call_decl_vals(file, env, out, d, vals)
+    }
+    if seq2(v[0], "C") {
+        var cap = v[3]
+        var cp = v[1]
+        var nenv = cap
+        var k: I32 = 1
+        while k < cp.len {
+            nenv = env_add(nenv, cp[k][2], vals[k - 1])
+            k += 1
+        }
+        var br = eval_expr(file, nenv, out, v[2])
+        return e4(br[0], env, br[2], br[3])
+    }
+    panic("call value")
+    return e4("a", env, vV2(), out)
+}
+fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> List[Str] {
+    if seq2(nm, "print") {
+        if vals.len == 1 {
+            return e4("k", env, vV2(), out + fmt(vals[0]))
+        }
+        panic("print arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "println") {
+        if vals.len == 1 {
+            return e4("k", env, vV2(), out + fmt(vals[0]) + "\n")
+        }
+        panic("println arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "assert") {
+        if vals.len == 1 {
+            if truth(vals[0]) {
+                return e4("k", env, vV2(), out)
+            }
+            return e4("a", env, vS("assert failed"), out)
+        }
+        panic("assert arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "assert_eq") {
+        if vals.len == 2 {
+            if veq(vals[0], vals[1]) {
+                return e4("k", env, vV2(), out)
+            }
+            return e4("a", env, vS("assert_eq failed: " + fmt(vals[0]) + " != " + fmt(vals[1])), out)
+        }
+        panic("assert_eq arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "assert_ne") {
+        if vals.len == 2 {
+            if !veq(vals[0], vals[1]) {
+                return e4("k", env, vV2(), out)
+            }
+            return e4("a", env, vS("assert_ne failed: " + fmt(vals[0]) + " != " + fmt(vals[1])), out)
+        }
+        panic("assert_ne arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "read_file") {
+        if vals.len == 1 && vals[0][0] == "S" {
+            var rr = read_file(vals[0][1])
+            match rr {
+                Some(s) => {
+                    var tv = List[Str]()
+                    tv.push("T")
+                    tv.push("Some")
+                    tv.push(vS(s))
+                    return e4("k", env, tv, out)
+                }
+                None => {
+                    var tw = List[Str]()
+                    tw.push("T")
+                    tw.push("None")
+                    return e4("k", env, tw, out)
+                }
+            }
+        }
+        panic("read_file args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "read_dir") {
+        if vals.len == 1 && vals[0][0] == "S" {
+            var rd = read_dir(vals[0][1])
+            match rd {
+                Some(s2) => {
+                    var tv2 = List[Str]()
+                    tv2.push("T")
+                    tv2.push("Some")
+                    tv2.push(vS(s2))
+                    return e4("k", env, tv2, out)
+                }
+                None => {
+                    var tw2 = List[Str]()
+                    tw2.push("T")
+                    tw2.push("None")
+                    return e4("k", env, tw2, out)
+                }
+            }
+        }
+        panic("read_dir args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "byte_at") {
+        if vals.len == 2 && vals[0][0] == "S" && vals[1][0] == "I" {
+            return e4("k", env, vI(byte_at(vals[0][1], dvi(vals[1][1]))), out)
+        }
+        panic("byte_at arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "byte_slice") {
+        if vals.len == 3 && vals[0][0] == "S" && vals[1][0] == "I" && vals[2][0] == "I" {
+            return e4("k", env, vS(byte_slice(vals[0][1], dvi(vals[1][1]), dvi(vals[2][1]))), out)
+        }
+        panic("byte_slice arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "panic") {
+        if vals.len == 1 {
+            return e4("a", env, vS(fmt(vals[0])), out)
+        }
+        panic("panic arity")
+        return e4("a", env, vV2(), out)
+    }
+    if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) {
+        var tv = List[Str]()
+        tv.push("T")
+        tv.push(nm)
+        var qq: I32 = 0
+        while qq < vals.len {
+            tv.push(vals[qq])
+            qq += 1
+        }
+        return e4("k", env, tv, out)
+    }
+    var evb = env_at(env, nm)
+    if evb.len > 0 {
+        var kv = evb[1]
+        if or2(seq2(kv[0], "C"), seq2(kv[0], "F")) {
+            return call_cv(file, env, out, kv, vals)
+        }
+    }
+    var d = find_decl(file, nm)
+    if d.len == 0 {
+        var va = variant_arity(file, nm)
+        if va >= 0 {
+            if va == vals.len {
+                var tv3 = List[Str]()
+                tv3.push("T")
+                tv3.push(nm)
+                var q3: I32 = 0
+                while q3 < vals.len {
+                    tv3.push(vals[q3])
+                    q3 += 1
+                }
+                return e4("k", env, tv3, out)
+            }
+            panic("variant arity:" + nm)
+            return e4("a", env, vV2(), out)
+        }
+        // extern "c" 声明:解释器无 FFI 口径 → 明确指引(§9.6,发射+链接 c_src 后运行)
+        if decl_node(file, "FnExt", nm).len > 0 {
+            panic("extern fn 仅原生口径可用:" + nm + "(经 ctron-emit + cc 链接 c_src 后运行)")
+        }
+        panic("no fn:" + nm)
+        return e4("a", env, vV2(), out)
+    }
+    return call_decl_vals(file, env, out, d, vals)
+}
+// 变体载荷元数:非变体 → -1;KUnit → 0;KTuple → 类型个数
+fn variant_arity(file: List[Str], nm: Str) -> I32 {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" {
+            var vs = d[3]
+            var j: I32 = 1
+            while j < vs.len {
+                var vt = vs[j]
+                if seq2(vt[1], nm) {
+                    var kd = vt[2]
+                    if kd[0] == "KTuple" {
+                        return kd.len - 1
+                    }
+                    return 0
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+// T 快捷构造(枚举变体/Option/Result 值)
+fn vT(vt: Str, p: List[Str]) -> List[Str] {
+    var v = List[Str]()
+    v.push("T")
+    v.push(vt)
+    v.push(p)
+    return v
+}
+// as[T]() 显式转换:浮转整截断;整窄化按宽度回绕;宽整型维持 I32 域
+fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
+    if or2(tgt == "F64", tgt == "F32") {
+        if or2(v[0] == "I", v[0] == "W") {
+            return vD(df_can(v[1]))
+        }
+        return v
+    }
+    if or2(tgt == "U8", or2(tgt == "I8", or2(tgt == "U16", tgt == "I16"))) {
+        var wl = "u8"
+        if tgt == "I8" {
+            wl = "i8"
+        }
+        if tgt == "U16" {
+            wl = "u16"
+        }
+        if tgt == "I16" {
+            wl = "i16"
+        }
+        var iv = 0
+        if v[0] == "D" {
+            iv = d_intpart(v[1])
+        } else {
+            iv = dvi(v[1])
+        }
+        var s: I32 = 1
+        var k: I32 = 0
+        while k < w_bits(wl) {
+            s = s * 2
+            k += 1
+        }
+        var m = iv % s
+        if m < 0 {
+            m += s
+        }
+        if w_signed(wl) && m > w_max(wl) {
+            m -= s
+        }
+        return vW(wl, m)
+    }
+    if v[0] == "D" {
+        return vI(d_intpart(v[1]))
+    }
+    if v[0] == "W" {
+        return vI(dvi(v[1]))
+    }
+    return v
+}
+// 十进制定点文本 → 截断整数(取小数点前)
+fn d_intpart(t: Str) -> I32 {
+    var i: I32 = 0
+    var n = t.len
+    while i < n {
+        if byte_at(t, i) == 46 {
+            n = i
+        }
+        i += 1
+    }
+    return dvi(byte_slice(t, 0, n))
+}
+// parallel.map/reduce(顺序化:闭包逐元素即刻执行)
+fn ns_map_reduce(file: List[Str], ob: List[Str], vals: List[Str], ismap: Bool) -> List[Str] {
+    var av = vals[0]
+    if !or2(av[0] == "A", av[0] == "L") {
+        panic("parallel target")
+        return e4("a", ob[1], vV2(), ob[3])
+    }
+    if ismap {
+        var outv = List[Str]()
+        outv.push(av[0])
+        var i: I32 = 1
+        while i < av.len {
+            var fa = List[Str]()
+            fa.push(av[i])
+            var er = call_cv(file, ob[1], ob[3], vals[1], fa)
+            if er[0] != "k" {
+                return er
+            }
+            outv.push(er[2])
+            i += 1
+        }
+        return e4("k", ob[1], outv, ob[3])
+    }
+    var acc = vals[1]
+    var i2: I32 = 1
+    while i2 < av.len {
+        var fa2 = List[Str]()
+        fa2.push(acc)
+        fa2.push(av[i2])
+        var er2 = call_cv(file, ob[1], ob[3], vals[2], fa2)
+        if er2[0] != "k" {
+            return er2
+        }
+        acc = er2[2]
+        i2 += 1
+    }
+    return e4("k", ob[1], acc, ob[3])
+}
+// UTF-8 续字节:0x80..0xBF
+fn utf8_cont(s: Str, k: I32) -> Bool {
+    var c = byte_at(s, k)
+    return c >= 128 && c < 192
+}
+// 子串包含(朴素匹配)
+fn str_contains(s: Str, sub: Str) -> Bool {
+    var n = s.len
+    var m = sub.len
+    if m == 0 {
+        return true
+    }
+    var i: I32 = 0
+    while i + m <= n {
+        var j: I32 = 0
+        var ok = true
+        while j < m && ok {
+            if byte_at(s, i + j) != byte_at(sub, j) {
+                ok = false
+            }
+            j += 1
+        }
+        if ok {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+// Option/Result 组合子(recv = ["T", "Some/None/Ok/Err", payload?])
+fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: List[Str]) -> List[Str] {
+    var ob = eval_expr(file, env, out, cal[1])
+    if ob[0] != "k" {
+        return ob
+    }
+    var recv = ob[2]
+    var m = cal[3]
+    if seq2(m, "to_string") {
+        if vals.len == 0 {
+            return e4("k", ob[1], vS(fmt(recv)), ob[3])
+        }
+        panic("to_string arity")
+        return e4("a", env, vV2(), out)
+    }
+    // 并发域(顺序化模拟:spawn 即刻完整执行;结果与调度无关的测试面)
+    if recv[0] == "SCOPE" && seq2(m, "spawn") && vals.len == 1 {
+        var noargs = List[Str]()
+        var sr = call_cv(file, ob[1], ob[3], vals[0], noargs)
+        var tk = List[Str]()
+        tk.push("TASK")
+        if sr[0] == "a" {
+            tk.push("P")
+            tk.push(sr[3])
+        } else {
+            tk.push("K")
+            tk.push(sr[2])
+        }
+        return e4("k", ob[1], tk, ob[3] + sr[3])
+    }
+    if recv[0] == "TASK" && seq2(m, "join") && vals.len == 0 {
+        if seq2(recv[1], "P") {
+            return e4("a", ob[1], recv[2], ob[3])
+        }
+        return e4("k", ob[1], recv[2], ob[3])
+    }
+    if recv[0] == "TASK" && seq2(m, "join_or") && vals.len == 0 {
+        var jr = List[Str]()
+        jr.push("T")
+        if seq2(recv[1], "P") {
+            jr.push("Err")
+            jr.push(vS("task panic"))
+        } else {
+            jr.push("Ok")
+            jr.push(recv[2])
+        }
+        return e4("k", ob[1], jr, ob[3])
+    }
+    if or2(recv[0] == "MUX", recv[0] == "M") && or2(seq2(m, "with_mut"), seq2(m, "with")) && vals.len == 1 {
+        var fa2 = List[Str]()
+        if recv[0] == "M" && seq2(m, "with_mut") {
+            fa2.push(recv)
+        } else {
+            fa2.push(recv[1])
+        }
+        return call_cv(file, ob[1], ob[3], vals[0], fa2)
+    }
+    if recv[0] == "M" && seq2(m, "fetch_add") && vals.len == 1 {
+        var oldm = recv[1]
+        recv[1] = val_arith("Add", oldm, vals[0])
+        return e4("k", ob[1], oldm, ob[3])
+    }
+    if recv[0] == "NS" && seq2(m, "map") && vals.len == 2 {
+        return ns_map_reduce(file, ob, vals, true)
+    }
+    if recv[0] == "NS" && seq2(m, "reduce") && vals.len == 3 {
+        return ns_map_reduce(file, ob, vals, false)
+    }
+    if recv[0] == "CH" && seq2(m, "send") && vals.len == 1 {
+        var capn = dvi(recv[3][1])
+        if capn >= 0 && recv[1].len >= capn {
+            return e4("k", ob[1], vT("Err", vS("ScopeCancelled")), ob[3])
+        }
+        recv[1].push(vals[0])
+        return e4("k", ob[1], vT("Ok", vV2()), ob[3])
+    }
+    if recv[0] == "CH" && seq2(m, "recv") && vals.len == 0 {
+        var cur = recv[2]
+        var q2 = recv[1]
+        var idx = dvi(cur[1])
+        if idx >= q2.len {
+            return e4("k", ob[1], vT("Err", vS("ScopeCancelled")), ob[3])
+        }
+        cur[1] = (idx + 1).to_string()
+        return e4("k", ob[1], vT("Ok", q2[idx]), ob[3])
+    }
+    if recv[0] == "SIMD" && seq2(m, "splat") && vals.len == 1 {
+        var vc = List[Str]()
+        vc.push("VEC")
+        var n = dvi(recv[2])
+        var vi: I32 = 0
+        while vi < n {
+            vc.push(vals[0])
+            vi += 1
+        }
+        return e4("k", ob[1], vc, ob[3])
+    }
+    if recv[0] == "VEC" && seq2(m, "lane") && vals.len == 1 {
+        return e4("k", ob[1], recv[dvi(vals[0][1]) + 1], ob[3])
+    }
+    if recv[0] == "VEC" && seq2(m, "to_array") && vals.len == 0 {
+        var arr2 = List[Str]()
+        arr2.push("A")
+        var ai: I32 = 1
+        while ai < recv.len {
+            arr2.push(recv[ai])
+            ai += 1
+        }
+        return e4("k", ob[1], arr2, ob[3])
+    }
+    if seq2(m, "slice") {
+        if vals.len == 1 && recv[0] == "S" && vals[0][0] == "R" {
+            var rv = vals[0]
+            var lo = dvi(rv[2][1])
+            var hi = dvi(rv[3][1])
+            if seq2(rv[1], "true") {
+                hi += 1
+            }
+            var ln = recv[1].len
+            // UTF-8 边界(§3.3):切点不得落在续字节上
+            if lo > 0 && lo < ln && utf8_cont(recv[1], lo) {
+                return e4("a", ob[1], vS("invalid utf8 boundary"), ob[3])
+            }
+            if hi > 0 && hi < ln && utf8_cont(recv[1], hi) {
+                return e4("a", ob[1], vS("invalid utf8 boundary"), ob[3])
+            }
+            if lo < 0 {
+                lo = 0
+            }
+            if hi > ln {
+                hi = ln
+            }
+            if hi < lo {
+                hi = lo
+            }
+            return e4("k", ob[1], vS(byte_slice(recv[1], lo, hi)), ob[3])
+        }
+        panic("slice args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(m, "load") {
+        if recv[0] == "M" && vals.len == 0 {
+            return e4("k", ob[1], recv[1], ob[3])
+        }
+    }
+    if seq2(m, "store") {
+        if recv[0] == "M" && vals.len == 1 {
+            recv[1] = vals[0]
+            return e4("k", ob[1], vV2(), ob[3])
+        }
+    }
+    if seq2(m, "push") {
+        if recv[0] == "L" && vals.len == 1 {
+            recv.push(vals[0])
+            return e4("k", ob[1], vV2(), ob[3])
+        }
+    }
+    if seq2(m, "into_gc") {
+        if recv[0] == "L" && vals.len == 0 {
+            return e4("k", ob[1], vdeep(recv), ob[3])
+        }
+    }
+    if seq2(m, "contains") && recv[0] == "L" && vals.len == 1 {
+        var fnd2 = false
+        var li: I32 = 1
+        while li < recv.len && !fnd2 {
+            if or2(recv[li][0] == "S", recv[li][0] == "L") {
+                if str_contains(fmt(recv[li]), fmt(vals[0])) {
+                    fnd2 = true
+                }
+            } else {
+                if veq(recv[li], vals[0]) {
+                    fnd2 = true
+                }
+            }
+            li += 1
+        }
+        return e4("k", ob[1], vB(fnd2), ob[3])
+    }
+    // Option/Result 组合子(recv = ["T", "Some/None/Ok/Err", payload?])
+    if recv[0] == "T" {
+        if seq2(m, "or") && vals.len == 1 {
+            if or2(seq2(recv[1], "Some"), seq2(recv[1], "Ok")) {
+                if recv.len == 3 {
+                    return e4("k", ob[1], recv[2], ob[3])
+                }
+                return e4("k", ob[1], recv, ob[3])
+            }
+            return e4("k", ob[1], vals[0], ob[3])
+        }
+        if seq2(m, "expect") && vals.len == 1 && vals[0][0] == "S" {
+            if or2(seq2(recv[1], "Some"), seq2(recv[1], "Ok")) {
+                if recv.len == 3 {
+                    return e4("k", ob[1], recv[2], ob[3])
+                }
+                return e4("k", ob[1], recv, ob[3])
+            }
+            return e4("a", ob[1], vS(vals[0][1]), ob[3])
+        }
+        if seq2(m, "is_some") && vals.len == 0 {
+            return e4("k", ob[1], vB(or2(seq2(recv[1], "Some"), seq2(recv[1], "Ok"))), ob[3])
+        }
+        if seq2(m, "map") && vals.len == 1 {
+            if seq2(recv[1], "Some") && recv.len == 3 {
+                var fa = List[Str]()
+                fa.push(recv[2])
+                var mr = call_cv(file, ob[1], ob[3], vals[0], fa)
+                if mr[0] != "k" {
+                    return mr
+                }
+                var tv = List[Str]()
+                tv.push("T")
+                tv.push("Some")
+                tv.push(mr[2])
+                return e4("k", mr[1], tv, mr[3])
+            }
+            return e4("k", ob[1], recv, ob[3])
+        }
+        if seq2(m, "context") && vals.len == 1 && vals[0][0] == "S" {
+            if seq2(recv[1], "Err") {
+                var p = recv
+                if recv.len == 3 {
+                    p = recv[2]
+                }
+                var cs = List[Str]()
+                cs.push("T")
+                cs.push("Some")
+                cs.push(p)
+                var eb = List[Str]()
+                eb.push("U")
+                eb.push("AnyError")
+                eb.push("message")
+                eb.push(vS(vals[0][1]))
+                eb.push("cause")
+                eb.push(cs)
+                eb.push("trace")
+                var trl = List[Str]()
+                trl.push("L")
+                trl.push(vS("ctx:" + vals[0][1]))
+                eb.push(trl)
+                var te = List[Str]()
+                te.push("T")
+                te.push("Err")
+                te.push(eb)
+                return e4("k", ob[1], te, ob[3])
+            }
+            return e4("k", ob[1], recv, ob[3])
+        }
+    }
+    if recv[0] == "U" && seq2(m, "show") && vals.len == 0 {
+        return e4("k", ob[1], vS("<" + recv[1] + ">"), ob[3])
+    }
+    // C9f②:类实例方法/trait 默认方法(镜像 rt.c V_STRUCT&&is_class 先于 UFCS;
+    // 类找不到方法直接 panic,不落 UFCS)
+    if recv[0] == "U" && is_class(file, recv[1]) {
+        var mth = find_impl_method(file, recv[1], m)
+        if mth.len > 0 {
+            return call_method_vals(file, ob[1], ob[3], mth, recv, vals)
+        }
+        panic("unknown method:" + m)
+        return e4("a", env, vV2(), out)
+    }
+    var ddx = find_decl(file, m)
+    if ddx.len > 0 {
+        var fvv = List[Str]()
+        fvv.push(recv)
+        var qq: I32 = 0
+        while qq < vals.len {
+            fvv.push(vals[qq])
+            qq += 1
+        }
+        return call_decl_vals(file, ob[1], ob[3], ddx, fvv)
+    }
+    panic("method:" + m)
+    return e4("a", env, vV2(), out)
+}
+fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+    var ag = e[2]
+    var vals = List[Str]()
+    var env2 = env
+    var out2 = out
+    var i: I32 = 1
+    while i < ag.len {
+        var ar = eval_expr(file, env2, out2, ag[i])
+        if ar[0] != "k" {
+            return ar
+        }
+        env2 = ar[1]
+        out2 = ar[3]
+        vals.push(ar[2])
+        i += 1
+    }
+    var cal = e[1]
+    if cal[0] == "Ident" {
+        return call_id(file, env2, out2, cal[1], vals)
+    }
+    if cal[0] == "Member" {
+        return call_mem(file, env2, out2, cal, vals)
+    }
+    // C9f①:List 构造 List[T]()(rt.c:同参忽略,恒空表;arena.list[T]() 同)
+    if cal[0] == "TypeArgs" {
+        var base = cal[1]
+        // as[T]() 显式转换(窄化截断,浮转整截断)
+        if base[0] == "Member" && seq2(base[3], "as") {
+            var ar = eval_expr(file, env2, out2, base[1])
+            if ar[0] != "k" {
+                return ar
+            }
+            var tgt = ""
+            if cal[2].len > 1 {
+                tgt = ty_head(cal[2][1])
+            }
+            return e4("k", ar[1], conv_as(ar[2], tgt), ar[3])
+        }
+        if base[0] == "Ident" && seq2(base[1], "Channel") {
+            var cap = vals[0]
+            var q = List[Str]()
+            var cur = List[Str]()
+            cur.push("M")
+            cur.push("0")
+            var tx = List[Str]()
+            tx.push("CH")
+            tx.push(q)
+            tx.push(cur)
+            tx.push(cap)
+            var rx = List[Str]()
+            rx.push("CH")
+            rx.push(q)
+            rx.push(cur)
+            rx.push(cap)
+            var pr = List[Str]()
+            pr.push("P")
+            pr.push(tx)
+            pr.push(rx)
+            return e4("k", env2, pr, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Global") {
+            var gv = List[Str]()
+            gv.push("M")
+            if vals.len > 1 {
+                gv.push(vals[1])
+            } else {
+                gv.push(vV2())
+            }
+            return e4("k", env2, gv, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Box") {
+            var bv = List[Str]()
+            bv.push("BOX")
+            if vals.len > 0 {
+                bv.push(vals[0])
+            } else {
+                bv.push(vV2())
+            }
+            return e4("k", env2, bv, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Mutex") {
+            var mx = List[Str]()
+            mx.push("MUX")
+            if vals.len > 0 {
+                mx.push(vals[0])
+            } else {
+                mx.push(vV2())
+            }
+            return e4("k", env2, mx, out2)
+        }
+        var islist = false
+        if base[0] == "Ident" && seq2(base[1], "List") {
+            islist = true
+        }
+        if base[0] == "Member" && seq2(base[2], "Nm") && seq2(base[3], "list") && base[1][0] == "Ident" && seq2(base[1][1], "arena") {
+            islist = true
+        }
+        if islist {
+            return e4("k", env2, vL(), out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Atomic") {
+            var mv = List[Str]()
+            mv.push("M")
+            if vals.len > 0 {
+                mv.push(vals[0])
+            } else {
+                mv.push(vV2())
+            }
+            return e4("k", env2, mv, out2)
+        }
+    }
+    panic("call target")
+    return e4("a", env, vV2(), out)
+}

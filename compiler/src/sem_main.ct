@@ -1,0 +1,170 @@
+// =====================================================================
+// sem_main.ct —— 语义检查主控:sem_walk2(file) → 诊断串(空串 = 通过)
+// 12 项全集(与 C 版 ctronc 逐字差分):W8010 浅拷贝 / W8020 must-use / E4030 no_spawn /
+//   E3020 跨线程 Send / E3031 spawn 形参 / E3060 own 内 GC 可变写 / E4020·E6020 pure·comptime
+//   能力 / E3010 spawn 闭包捕获非 Send / E3050 own 内 arena use-after-move /
+//   E2030 match 穷尽 / E3040 分配效果。各检查实现分居 sem_walk/send/own/pure/spawn/
+//   move/exh/alloc/type/calls/comptime/ceval/closure.ct;逐条 "CODE@行: msg\n"。
+// =====================================================================
+fn sem_walk2(file: List[Str]) -> Str {
+    var out = ""
+    var diags = List[Str]()
+    // 预扫描:class 名、fn 名+ret、attr
+    var cls = List[Str]()
+    var fns = List[Str]()
+    var rets = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        var t = d[0]
+        if t == "Class" {
+            cls.push(d[1])
+        } else if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", t == "FnExt"))) {
+            fns.push(d[1])
+            rets.push(d[4])
+        } else if t == "Method" {
+            fns.push(d[1])
+            rets.push(d[4])
+        } else if t == "Static" && d[2] == "true" {
+            diags.push("E3030@" + nline(d) + ": static var 不存在;用 static let 或 Global[T]:" + d[1])
+        }
+        i += 1
+    }
+    // 声明序遍历
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        var t = d[0]
+        if t == "Struct" {
+            var nm = d[1]
+            var hit = false
+            var hn = ""
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len && !hit {
+                var f = fs[j]
+                var ty = f[3]
+                if ty[0] == "Named" {
+                    var h = ty[1]
+                    var k: I32 = 0
+                    while k < cls.len && !hit {
+                        if cls[k] == h {
+                            hit = true
+                            hn = f[2]
+                        }
+                        k += 1
+                    }
+                }
+                j += 1
+            }
+            if hit {
+                diags.push("W8010@" + nline(d) + ": struct 含类引用字段(浅拷贝):" + nm + "." + hn)
+            }
+        } else if or2(t == "Fn", or2(t == "FnC", t == "FnPub")) {
+            var ns = false
+            if d.len >= 7 && d[6] == "no_spawn" {
+                ns = true
+            }
+            walk_b(file, d[5], ns, fns, rets, diags)
+            var e6 = sem_e3060(file, d, t)
+            if e6 != "" {
+                diags.push(byte_slice(e6, 0, e6.len - 1))
+            }
+            var ckind = ""
+            if d.len >= 7 && d[6] == "pure" {
+                ckind = "E4020: pure 函数含能力调用(pure)"
+            } else if t == "FnC" {
+                ckind = "E6020: comptime 函数含能力调用(comptime)"
+            }
+            if ckind != "" {
+                var ec = sem_cap(file, d, ckind)
+                if ec != "" {
+                    diags.push(byte_slice(ec, 0, ec.len - 1))
+                }
+            }
+            if !(d.len >= 7 && d[6] == "no_spawn") {
+                var es = sem_spawn2(file, d, t)
+                if es != "" {
+                    diags.push(byte_slice(es, 0, es.len - 1))
+                }
+            }
+            var mv = sem_mv(file, d, t)
+            if mv != "" {
+                diags.push(byte_slice(mv, 0, mv.len - 1))
+            }
+            var ex = sem_exh(file, d, t)
+            if ex != "" {
+                diags.push(byte_slice(ex, 0, ex.len - 1))
+            }
+            var ac = sem_alloc(file, d, t)
+            if ac != "" {
+                diags.push(byte_slice(ac, 0, ac.len - 1))
+            }
+        } else if t == "Test" {
+            walk_b(file, d[2], false, fns, rets, diags)
+            var e6b = sem_e3060(file, d, "Test")
+            if e6b != "" {
+                diags.push(byte_slice(e6b, 0, e6b.len - 1))
+            }
+            var es2 = sem_spawn2(file, d, "Test")
+            if es2 != "" {
+                diags.push(byte_slice(es2, 0, es2.len - 1))
+            }
+            var mv2 = sem_mv(file, d, "Test")
+            if mv2 != "" {
+                diags.push(byte_slice(mv2, 0, mv2.len - 1))
+            }
+            var ex2 = sem_exh(file, d, "Test")
+            if ex2 != "" {
+                diags.push(byte_slice(ex2, 0, ex2.len - 1))
+            }
+            var ac2 = sem_alloc(file, d, "Test")
+            if ac2 != "" {
+                diags.push(byte_slice(ac2, 0, ac2.len - 1))
+            }
+        } else if t == "Static" {
+            if !send_of(file, d[3], 0) {
+                diags.push("E3031@" + nline(d) + ": static 存储非 Send(Send):" + d[1])
+            }
+        } else if t == "Impl" {
+            var tr = d[2]
+            var trname = ""
+            if tr.len > 0 && tr[0] == "Named" {
+                trname = tr[1]
+            }
+            var its = d[4]
+            var mi: I32 = 1
+            while mi < its.len {
+                var md = its[mi]
+                if md[0] == "Method" {
+                    var mna = or2(has_noalloc(md), trait_method_noalloc(file, trname, md[1]))
+                    if mna {
+                        var dl = List[Str]()
+                        var ab = List[Str]()
+                        var gl = List[Str]()
+                        al_b(file, md[5], false, true, ab, gl, dl)
+                        var qq: I32 = 0
+                        while qq < dl.len {
+                            diags.push(dl[qq])
+                            qq += 1
+                        }
+                    }
+                }
+                mi += 1
+            }
+        }
+        i += 1
+    }
+    // E2020/E2010:名字解析与类型统一 v1(见文件尾新节)
+    sem_calls_all(file, diags)
+    // E3070:闭包可变捕获(两遍式,见文件尾新节)
+    sem_closures(file, diags)
+    // E6020/E6010:comptime 副作用扫描 + const/static-let 编译期试求值(见文件尾新节)
+    sem_comp(file, diags)
+    var kk: I32 = 0
+    while kk < diags.len {
+        out = out + diags[kk] + "\n"
+        kk += 1
+    }
+    return out
+}

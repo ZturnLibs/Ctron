@@ -1,0 +1,226 @@
+// =====================================================================
+// eval_env.ct —— 环境/fmt/文本工具:env_at·env_add·env_set·env_drop·env_dedupe
+// 作用域链;fmt 值→文本(v 域标签分发);e4/s4;expr_of_text 插值表达式复解析;
+// find_decl/unesc;eval_str 插值串求值;pm2/enum_var。
+// =====================================================================
+fn fmt(v: List[Str]) -> Str {
+    var k = v[0]
+    if k == "I" {
+        return v[1]
+    }
+    if k == "W" {
+        return v[1]
+    }
+    if k == "B" {
+        return v[1]
+    }
+    if k == "S" {
+        return v[1]
+    }
+    if k == "D" {
+        return df_show(v[1])
+    }
+    if k == "V" {
+        return ""
+    }
+    return "<value>"
+}
+fn env_at(env: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if seq2(en[0], nm) {
+            return en
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn env_add(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var en = List[Str]()
+    en.push(nm)
+    en.push(val)
+    out.push(en)
+    var i: I32 = 0
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+fn env_set(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var done = false
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if !done && seq2(en[0], nm) {
+            var nb = List[Str]()
+            nb.push(nm)
+            nb.push(val)
+            out.push(nb)
+            done = true
+        } else {
+            out.push(en)
+        }
+        i += 1
+    }
+    return out
+}
+fn env_drop(env: List[Str], n: I32) -> List[Str] {
+    var out = List[Str]()
+    var i = n
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+// keep 块的前 n 项按名去重(保留最新):while 体绑定有界累积,新者优先查找不变
+fn env_dedupe(env: List[Str], n: I32) -> List[Str] {
+    var keep = List[Str]()
+    var i: I32 = 0
+    while i < n && i < env.len {
+        var en = env[i]
+        var seen = false
+        var j: I32 = 0
+        while j < keep.len {
+            if seq2(keep[j][0], en[0]) {
+                seen = true
+            }
+            j += 1
+        }
+        if !seen {
+            keep.push(en)
+        }
+        i += 1
+    }
+    var out = keep
+    i = n
+    while i < env.len {
+        out.push(env[i])
+        i += 1
+    }
+    return out
+}
+fn e4(fl: Str, env: List[Str], vv: List[Str], out: Str) -> List[Str] {
+    var r = List[Str]()
+    r.push(fl)
+    r.push(env)
+    r.push(vv)
+    r.push(out)
+    return r
+}
+fn s4(fl: Str, env: List[Str], out: Str, vv: List[Str]) -> List[Str] {
+    var r = List[Str]()
+    r.push(fl)
+    r.push(env)
+    r.push(out)
+    r.push(vv)
+    return r
+}
+fn expr_of_text(s: Str) -> List[Str] {
+    var toks = List[Str]()
+    var lns = List[Str]()
+    scan(s, toks, lns)
+    var cur = Atomic[I32](0)
+    return p_stmt_expr(toks, cur, lns, "1")
+}
+fn find_decl(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        var tt = d[0]
+        if seq2(d[1], nm) && or3(seq2(tt, "Fn"), seq2(tt, "FnPub"), seq2(tt, "FnC")) {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+fn unesc(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    var n = s.len
+    while i < n {
+        var c = byte_at(s, i)
+        if c == 92 && i + 1 < n {
+            var e = byte_at(s, i + 1)
+            if e == 110 {
+                out = out + "\n"
+                i += 2
+            } else if e == 116 {
+                out = out + "\t"
+                i += 2
+            } else if e == 114 {
+                out = out + "\r"
+                i += 2
+            } else if e == 123 {
+                out = out + "\{"
+                i += 2
+            } else if e == 34 {
+                out = out + "\""
+                i += 2
+            } else if e == 92 {
+                out = out + "\\"
+                i += 2
+            } else {
+                out = out + byte_slice(s, i, i + 2)
+                i += 2
+            }
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
+
+fn eval_str(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+    var parts = e[1]
+    var acc = ""
+    var env2 = env
+    var j: I32 = 1
+    while j < parts.len {
+        var p = parts[j]
+        if p[0] == "Text" {
+            acc = acc + unesc(p[1])
+        } else {
+            var ex = expr_of_text(p[1])
+            var er = eval_expr(file, env2, out, ex)
+            out = er[3]
+            if er[0] != "k" {
+                return er
+            }
+            env2 = er[1]
+            acc = acc + fmt(er[2])
+        }
+        j += 1
+    }
+    return e4("k", env2, vS(acc), out)
+}
+fn pm2(ok: Str, env: List[Str]) -> List[Str] {
+    var r = List[Str]()
+    r.push(ok)
+    r.push(env)
+    return r
+}
+fn enum_var(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" {
+            var vs = d[3]
+            var k: I32 = 1
+            while k < vs.len {
+                if seq2(vs[k][1], nm) {
+                    return true
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return false
+}
