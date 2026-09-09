@@ -1942,6 +1942,10 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             panic("variant arity:" + nm)
             return e4("a", env, vV2(), out)
         }
+        // extern "c" 声明:解释器无 FFI 口径 → 明确指引(§9.6,发射+链接 c_src 后运行)
+        if decl_node(file, "FnExt", nm).len > 0 {
+            panic("extern fn 仅原生口径可用:" + nm + "(经 ctron-emit + cc 链接 c_src 后运行)")
+        }
         panic("no fn:" + nm)
         return e4("a", env, vV2(), out)
     }
