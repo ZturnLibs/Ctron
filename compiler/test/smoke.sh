@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=195' "$T/chk.out" && ok "自检 cc_run 绿,decls=195" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=208' "$T/chk.out" && ok "自检 cc_run 绿,decls=208" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -54,6 +54,19 @@ if [ $jrc -eq 1 ] && grep -q '"code":"W8010"' "$T/js.out" \
 else
     bad "JSON 诊断面异常(rc=$jrc): $(cat "$T/js.out")"
 fi
+echo "== 2c) 类型检查 v1 负例(E2020 全量/E2010 统一/变体 arity) =="
+tc_fx() { # <夹具名> <期望诊断片段>
+    "$COMP/ctc.sh" check "$COMP/test/$1.ct" > "$T/tc_$1.out" 2>&1
+    rc=$?
+    if [ $rc -eq 1 ] && grep -q "$2" "$T/tc_$1.out"; then
+        ok "$1 拦截($2)"
+    else
+        bad "$1 异常(rc=$rc): $(cat "$T/tc_$1.out")"
+    fi
+}
+tc_fx fx_unresolved_read_neg "E2020: 未解析的名称"
+tc_fx fx_type_neg "E2010: let 初始化类型不匹配"
+tc_fx fx_variant_neg "E2010: 调用实参数不匹配"
 "$COMP/ctc.sh" check "$COMP/test/fx_forlist.ct" --format=json > "$T/js2.out" 2>&1
 jrc2=$?
 if [ $jrc2 -eq 0 ] && [ "$(cat "$T/js2.out")" = '{"diagnostics":[]}' ]; then

@@ -1,0 +1,9 @@
+// fx_variant_neg.ct —— E2010 变体构造 arity:Active 载荷 1 个,实参 2 个
+enum Status {
+    Active(I32)
+}
+fn main() -> I32 {
+    let a = Active(1, 2)
+    println(a)
+    return 0
+}

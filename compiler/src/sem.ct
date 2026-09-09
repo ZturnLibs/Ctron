@@ -1936,9 +1936,13 @@ fn seq2(a: Str, b: Str) -> Bool {
     return true
 }
 
-// ---------------- E2020/E2010:调用目标解析与 arity(类型检查 v0) ----------------
-// 范围(P0):仅 bare 调用(callee 根为 Ident/TypeArgs)。成员调用(UFCS/方法)与
-// 内建/前奏 arity 不查,留类型检查器 v1。loc 只增不清:绑定集过近似,宁漏报不误报。
+
+// ---------------- E2020/E2010:名字解析与类型统一 v1(2026-09-09) ----------------
+// 范围:bare 调用目标 + Ident 读解析 + 基础类型统一(let/return/实参/二元/条件/? )。
+// 成员调用面(UFCS/方法表解析)与内建类型留 v2。保守可证:任一侧类型未知即放行;
+// 字面量按期望整/浮自适应(§3.7);T→T?、String→Str、T[N]→T[] 按 §3.6 白名单放行。
+// tc 打包:tc[0]=fns tc[1]=ars tc[2]=rets tc[3]=prms tc[4]=stN tc[5]=stT
+//          tc[6]=vars tc[7]=varAr tc[8]=enums
 fn prelude_ok(nm: Str) -> Bool {
     if or2(seq2(nm, "print"), or2(seq2(nm, "println"), seq2(nm, "panic"))) { return true }
     if or2(seq2(nm, "assert"), or2(seq2(nm, "assert_eq"), seq2(nm, "assert_ne"))) { return true }
@@ -1950,6 +1954,17 @@ fn prelude_ok(nm: Str) -> Bool {
     return or2(seq2(nm, "Option"), or2(seq2(nm, "Result"), seq2(nm, "AnyError")))
 }
 
+fn value_ok(nm: Str) -> Bool {
+    if prelude_ok(nm) { return true }
+    return or2(seq2(nm, "parallel"), seq2(nm, "arena"))
+}
+
+fn prelude_arity(nm: Str) -> I32 {
+    if or2(seq2(nm, "Some"), or2(seq2(nm, "Ok"), seq2(nm, "Err"))) { return 1 }
+    if seq2(nm, "None") { return 0 }
+    return -1
+}
+
 fn root_name(e: List[Str]) -> Str {
     var t = e[0]
     if t == "Ident" { return e[1] }
@@ -1957,122 +1972,458 @@ fn root_name(e: List[Str]) -> Str {
     return ""
 }
 
-fn pat_name_push(pp: List[Str], out: List[Str]) {
+fn bind_pat(pp: List[Str], loc: List[Str], envT: List[Str], tn: List[Str]) {
     var t = pp[0]
     if t == "PatId" {
-        out.push(pp[1])
+        loc.push(pp[1])
+        envT.push(tn)
     } else if t == "PatTup" {
         var i: I32 = 1
         while i < pp.len {
-            pat_name_push(pp[i], out)
+            bind_pat(pp[i], loc, envT, List[Str]())
             i += 1
+        }
+    } else if t == "PatAgg" {
+        if pp.len > 2 {
+            var sub = pp[2]
+            var j: I32 = 1
+            while j < sub.len {
+                var c = sub[j]
+                if seq2(c[0], "PatFld") {
+                    if c[2].len > 1 {
+                        bind_pat(c[2], loc, envT, List[Str]())
+                    } else {
+                        loc.push(c[1])
+                        envT.push(List[Str]())
+                    }
+                } else {
+                    bind_pat(c, loc, envT, List[Str]())
+                }
+                j += 1
+            }
         }
     }
 }
 
-fn uce(file: List[Str], e: List[Str], fns: List[Str], ars: List[Str], loc: List[Str], diags: List[Str]) {
+// 类型 kind(§3.1):n:<名> / opt:<内> / ref:<内> / slice / arr / tup / fn / ""=未知
+fn ty_kind(ty: List[Str]) -> Str {
+    var t = ty[0]
+    if t == "Named" {
+        return "n:" + ty[1]
+    }
+    if t == "Optional" {
+        return "opt:" + ty_kind(ty[1])
+    }
+    if t == "Ref" {
+        return "ref:" + ty_kind(ty[1])
+    }
+    if t == "Slice" {
+        return "slice"
+    }
+    if t == "ArrayT" {
+        return "arr"
+    }
+    if t == "TupleT" {
+        return "tup"
+    }
+    if or2(t == "FnT", t == "FnType") {
+        return "fn"
+    }
+    return ""
+}
+
+fn k_int5(k: Str) -> Bool {
+    return or2(seq2(k, "n:I8"), or2(seq2(k, "n:I16"), or2(seq2(k, "n:I32"), or2(seq2(k, "n:I64"), seq2(k, "n:ISize")))))
+}
+
+fn k_uint5(k: Str) -> Bool {
+    return or2(seq2(k, "n:U8"), or2(seq2(k, "n:U16"), or2(seq2(k, "n:U32"), or2(seq2(k, "n:U64"), seq2(k, "n:USize")))))
+}
+
+fn k_int(k: Str) -> Bool {
+    return or2(k_int5(k), k_uint5(k))
+}
+
+fn k_num(k: Str) -> Bool {
+    if k_int(k) {
+        return true
+    }
+    return or2(seq2(k, "n:F32"), seq2(k, "n:F64"))
+}
+
+fn k_strish(k: Str) -> Bool {
+    return or2(seq2(k, "n:Str"), seq2(k, "n:String"))
+}
+
+// 相容性:未知放行;相等放行;Int 字面量适配数值期望、Float 字面量适配浮期望(§3.7);
+// T→T?、String→Str、T[N]→T[] 隐式(§3.6);其余不相容。
+// 常量字面量折叠表达式(Int/一元负号/二元算术全字面量)——按 §3.7 自适应数值期望
+fn all_int_lit(e: List[Str]) -> Bool {
+    var t = e[0]
+    if t == "Int" {
+        return true
+    }
+    if t == "Unary" {
+        return all_int_lit(e[2])
+    }
+    if seq2(t, "Binary") {
+        var op = e[1]
+        if or2(seq2(op, "Add"), or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "WrapAdd"), seq2(op, "WrapSub"))))))) {
+            return all_int_lit(e[2]) && all_int_lit(e[3])
+        }
+    }
+    return false
+}
+
+fn compat(exp: Str, act: Str, e: List[Str]) -> Bool {
+    if exp.len == 0 {
+        return true
+    }
+    if act.len == 0 {
+        return true
+    }
+    if seq2(exp, act) {
+        return true
+    }
+    if all_int_lit(e) {
+        return k_num(exp)
+    }
+    var t = e[0]
+    if t == "Int" {
+        return k_num(exp)
+    }
+    if t == "Float" {
+        return or2(seq2(exp, "n:F32"), seq2(exp, "n:F64"))
+    }
+    if exp.len >= 4 && seq2(byte_slice(exp, 0, 4), "opt:") {
+        return seq2(exp, "opt:" + act)
+    }
+    if seq2(exp, "n:Str") {
+        return seq2(act, "n:String")
+    }
+    if seq2(exp, "slice") {
+        return seq2(act, "arr")
+    }
+    if seq2(exp, "ref:slice") {
+        return or2(seq2(act, "slice"), seq2(act, "arr"))
+    }
+    return false
+}
+
+fn idx_of(ls: List[Str], nm: Str) -> I32 {
+    var i: I32 = 0
+    while i < ls.len {
+        if seq2(ls[i], nm) {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn fn_ret_of(tc: List[Str], nm: Str) -> List[Str] {
+    var g: I32 = 0
+    while g < tc[0].len {
+        if seq2(tc[0][g], nm) {
+            return tc[2][g]
+        }
+        g += 1
+    }
+    return List[Str]()
+}
+
+fn ex_ty(e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str]) -> Str {
+    var t = e[0]
+    if t == "Int" {
+        return "n:I32"
+    }
+    if t == "Float" {
+        return "n:F64"
+    }
+    if t == "Str" {
+        return "n:Str"
+    }
+    if t == "Bool" {
+        return "n:Bool"
+    }
+    if t == "Void" {
+        return "void"
+    }
+    if t == "Range" {
+        return "range"
+    }
+    if t == "Ident" {
+        var nm = e[1]
+        var b = env_ty(loc, envT, nm)
+        if b.len > 0 {
+            return ty_kind(b)
+        }
+        var g = env_ty(tc[4], tc[5], nm)
+        if g.len > 0 {
+            return ty_kind(g)
+        }
+        if in_list(tc[0], nm) {
+            return "fn"
+        }
+        return ""
+    }
+    if t == "Closure" {
+        return "fn"
+    }
+    if t == "StructLit" {
+        return "n:" + e[1]
+    }
+    if t == "Call" {
+        var rt = root_name(e[1])
+        if rt.len > 0 {
+            var r = fn_ret_of(tc, rt)
+            if r.len > 0 {
+                return ty_kind(r)
+            }
+        }
+        return ""
+    }
+    if t == "Unary" {
+        if seq2(e[1], "Not") {
+            return "n:Bool"
+        }
+        return ex_ty(e[2], tc, loc, envT)
+    }
+    if t == "If" {
+        var a = ex_ty(e[2], tc, loc, envT)
+        var b2 = ex_ty(e[3], tc, loc, envT)
+        if seq2(a, b2) {
+            return a
+        }
+        return ""
+    }
+    if t == "Binary" {
+        var op = e[1]
+        if is_cmp_op(op) {
+            return "n:Bool"
+        }
+        if seq2(op, "AndAnd") {
+            return "n:Bool"
+        }
+        var lt = ex_ty(e[2], tc, loc, envT)
+        var rt2 = ex_ty(e[3], tc, loc, envT)
+        if seq2(op, "Add") && k_strish(lt) && k_strish(rt2) {
+            return "n:Str"
+        }
+        if k_num(lt) && k_num(rt2) {
+            if seq2(lt, rt2) {
+                return lt
+            }
+            return ""
+        }
+        if seq2(lt, rt2) {
+            return lt
+        }
+        return ""
+    }
+    return ""
+}
+
+fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str], retK: List[Str], diags: List[Str]) {
     var t = e[0]
     if t == "Call" {
         var cal = e[1]
         var rt = root_name(cal)
         var ag = e[2]
+        var got = ag.len - 1
         if rt.len > 0 && !in_list(loc, rt) && !in_list(diags, "E2020: 未解析的名称(unresolved):" + rt) {
-            if !in_list(fns, rt) && !prelude_ok(rt) {
+            if !in_list(tc[0], rt) && !prelude_ok(rt) && !in_list(tc[6], rt) {
                 diags.push("E2020: 未解析的名称(unresolved):" + rt)
             } else {
                 var g: I32 = 0
-                while g < fns.len {
-                    if seq2(fns[g], rt) && ars[g].len > 0 {
-                        var got = ag.len - 1
-                        if got != dvi(ars[g]) {
-                            diags.push("E2010: 调用实参数不匹配(arity):" + rt + " 期望 " + ars[g] + " 实得 " + got.to_string())
+                while g < tc[0].len {
+                    if seq2(tc[0][g], rt) && tc[1][g].len > 0 {
+                        if got != dvi(tc[1][g]) {
+                            diags.push("E2010: 调用实参数不匹配(arity):" + rt + " 期望 " + tc[1][g] + " 实得 " + got.to_string())
+                        }
+                        var ps = tc[3][g]
+                        var i: I32 = 1
+                        while i < ps.len && i <= got {
+                            var prm = ps[i]
+                            if prm[0] == "Param" {
+                                var pk = ty_kind(prm[3])
+                                var ak = ex_ty(ag[i], tc, loc, envT)
+                                if !compat(pk, ak, ag[i]) {
+                                    diags.push("E2010: 实参类型不匹配(type):" + rt + " 第 " + i.to_string() + " 实参 期望 " + pk + " 实得 " + ak)
+                                }
+                            }
+                            i += 1
                         }
                     }
                     g += 1
                 }
+                if !in_list(tc[0], rt) {
+                    var pa = prelude_arity(rt)
+                    if pa >= 0 && got != pa {
+                        diags.push("E2010: 调用实参数不匹配(arity):" + rt + " 期望 " + pa.to_string() + " 实得 " + got.to_string())
+                    }
+                    var vi = idx_of(tc[6], rt)
+                    if vi >= 0 {
+                        if got != dvi(tc[7][vi]) {
+                            diags.push("E2010: 调用实参数不匹配(arity):" + rt + " 期望 " + tc[7][vi] + " 实得 " + got.to_string())
+                        }
+                    }
+                }
             }
         }
-        uce(file, cal, fns, ars, loc, diags)
-        var i: I32 = 1
-        while i < ag.len {
-            uce(file, ag[i], fns, ars, loc, diags)
-            i += 1
-        }
-        return
-    }
-    if t == "Member" {
-        uce(file, e[1], fns, ars, loc, diags)
-        return
-    }
-    if t == "Binary" {
-        uce(file, e[2], fns, ars, loc, diags)
-        uce(file, e[3], fns, ars, loc, diags)
-        return
-    }
-    if t == "Unary" {
-        uce(file, e[2], fns, ars, loc, diags)
-        return
-    }
-    if t == "Range" {
-        uce(file, e[2], fns, ars, loc, diags)
-        uce(file, e[3], fns, ars, loc, diags)
-        return
-    }
-    if t == "Index" {
-        uce(file, e[1], fns, ars, loc, diags)
-        uce(file, e[2], fns, ars, loc, diags)
-        return
-    }
-    if t == "TypeArgs" {
-        uce(file, e[1], fns, ars, loc, diags)
-        return
-    }
-    if t == "Try" {
-        uce(file, e[1], fns, ars, loc, diags)
-        return
-    }
-    if or2(t == "TupleE", t == "ArrLit") {
+        tce(file, cal, tc, loc, envT, retK, diags)
         var i2: I32 = 1
-        while i2 < e.len {
-            uce(file, e[i2], fns, ars, loc, diags)
+        while i2 < ag.len {
+            tce(file, ag[i2], tc, loc, envT, retK, diags)
             i2 += 1
         }
         return
     }
+    if t == "Ident" {
+        var nm = e[1]
+        if !in_list(loc, nm) && !in_list(tc[0], nm) && !in_list(tc[4], nm) && !in_list(tc[6], nm) && !in_list(tc[8], nm) && !value_ok(nm) {
+            var m = "E2020: 未解析的名称(unresolved):" + nm
+            if !in_list(diags, m) {
+                diags.push(m)
+            }
+        }
+        return
+    }
+    if t == "Member" {
+        tce(file, e[1], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "Binary" {
+        var op = e[1]
+        var lt = ex_ty(e[2], tc, loc, envT)
+        var rt2 = ex_ty(e[3], tc, loc, envT)
+        var bad = false
+        var m = ""
+        if or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), or2(seq2(op, "Mod"), seq2(op, "WrapSub"))))) {
+            if or2(k_strish(lt), k_strish(rt2)) {
+                bad = true
+                m = "E2010: 算术运算遇 Str(type):" + op
+            }
+        }
+        if seq2(op, "Add") {
+            var lunk = seq2(lt, "")
+            var runk = seq2(rt2, "")
+            if !lunk && !runk {
+                if k_strish(lt) != k_strish(rt2) {
+                    bad = true
+                    m = "E2010: Str 拼接需两侧皆 Str(type):+"
+                }
+            }
+        }
+        if or2(seq2(op, "Add"), or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), seq2(op, "Mod"))))) {
+            if or2(seq2(lt, "n:Bool"), seq2(rt2, "n:Bool")) {
+                bad = true
+                m = "E2010: 算术运算遇 Bool(type):" + op
+            }
+        }
+        if seq2(op, "AndAnd") {
+            if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
+                bad = true
+                m = "E2010: 逻辑与需 Bool 操作数(type):&&"
+            }
+        }
+        if bad {
+            diags.push(m)
+        }
+        tce(file, e[2], tc, loc, envT, retK, diags)
+        tce(file, e[3], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "Unary" {
+        tce(file, e[2], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "Range" {
+        tce(file, e[2], tc, loc, envT, retK, diags)
+        tce(file, e[3], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "Index" {
+        tce(file, e[1], tc, loc, envT, retK, diags)
+        tce(file, e[2], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "TypeArgs" {
+        tce(file, e[1], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "Try" {
+        if retK.len > 0 {
+            var rk = ty_kind(retK)
+            if rk.len > 0 {
+                var okr = false
+                if rk.len >= 4 {
+                    okr = seq2(byte_slice(rk, 0, 4), "opt:")
+                }
+                okr = or2(okr, or2(seq2(rk, "n:Result"), or2(seq2(rk, "n:AnyError"), seq2(rk, "n:Option"))))
+                if !okr {
+                    diags.push("E2010: ? 传播用于非 Option/Result 返回(type):" + rk)
+                }
+            }
+        }
+        tce(file, e[1], tc, loc, envT, retK, diags)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i3: I32 = 1
+        while i3 < e.len {
+            tce(file, e[i3], tc, loc, envT, retK, diags)
+            i3 += 1
+        }
+        return
+    }
     if t == "BlockExpr" {
-        ucb(file, e[1], fns, ars, loc, diags)
+        tcb(file, e[1], tc, loc, envT, retK, diags)
         return
     }
     if t == "If" {
-        uce(file, e[1], fns, ars, loc, diags)
-        ucb(file, e[2], fns, ars, loc, diags)
-        uce(file, e[3], fns, ars, loc, diags)
+        var ck = ex_ty(e[1], tc, loc, envT)
+        if ck.len > 0 && !seq2(ck, "n:Bool") {
+            diags.push("E2010: 条件需 Bool(type):if")
+        }
+        tce(file, e[1], tc, loc, envT, retK, diags)
+        tcb(file, e[2], tc, loc, envT, retK, diags)
+        tce(file, e[3], tc, loc, envT, retK, diags)
         return
     }
     if t == "Match" {
-        uce(file, e[1], fns, ars, loc, diags)
+        tce(file, e[1], tc, loc, envT, retK, diags)
         var arms = e[2]
-        var i3: I32 = 1
-        while i3 < arms.len {
-            var a = arms[i3]
-            pat_name_push(a[1], loc)
-            uce(file, a[2], fns, ars, loc, diags)
-            i3 += 1
+        var i4: I32 = 1
+        while i4 < arms.len {
+            var a = arms[i4]
+            bind_pat(a[1], loc, envT, List[Str]())
+            tce(file, a[2], tc, loc, envT, retK, diags)
+            i4 += 1
         }
         return
     }
     if t == "Closure" {
         var cp = e[1]
-        var i4: I32 = 1
-        while i4 < cp.len {
-            loc.push(cp[i4][1])
-            i4 += 1
+        var i5: I32 = 1
+        while i5 < cp.len {
+            loc.push(cp[i5][2])
+            envT.push(List[Str]())
+            i5 += 1
         }
-        uce(file, e[3], fns, ars, loc, diags)
+        tce(file, e[3], tc, loc, envT, retK, diags)
         return
     }
-    if or2(t == "Own", t == "Scope") {
-        ucb(file, e[2], fns, ars, loc, diags)
+    if t == "Own" {
+        loc.push(e[1])
+        envT.push(List[Str]())
+        tcb(file, e[2], tc, loc, envT, retK, diags)
+        return
+    }
+    if t == "Scope" {
+        loc.push(e[1])
+        envT.push(List[Str]())
+        tcb(file, e[2], tc, loc, envT, retK, diags)
         return
     }
     if t == "StructLit" {
@@ -2081,54 +2432,85 @@ fn uce(file: List[Str], e: List[Str], fns: List[Str], ars: List[Str], loc: List[
         while i6 < lf.len {
             var c = lf[i6]
             if seq2(c[0], "LField") {
-                uce(file, c[2], fns, ars, loc, diags)
+                tce(file, c[2], tc, loc, envT, retK, diags)
             }
             i6 += 1
         }
         return
     }
-    // Str(含 Parts/Text/Interp 原始文本段)、Ident、字面量等其余 tag:无 bare 调用可下钻
+    // Str(含 Parts/Interp 原始文本)、字面量、成员名等:无进一步下钻
 }
 
-fn ucb(file: List[Str], b: List[Str], fns: List[Str], ars: List[Str], loc: List[Str], diags: List[Str]) {
+fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[Str], retK: List[Str], diags: List[Str]) {
     var i: I32 = 1
     while i < b.len {
         var s = b[i]
         var t = s[0]
         if t == "Let" {
-            pat_name_push(s[2], loc)
-            uce(file, s[4], fns, ars, loc, diags)
+            var ann = s[3]
+            var hasann = ann.len > 0 && !seq2(ann[0], "None")
+            if hasann {
+                var act = ex_ty(s[4], tc, loc, envT)
+                if !compat(ty_kind(ann), act, s[4]) {
+                    diags.push("E2010: let 初始化类型不匹配(type):期望 " + ty_kind(ann) + " 实得 " + act)
+                }
+            }
+            tce(file, s[4], tc, loc, envT, retK, diags)
+            var tn = List[Str]()
+            if hasann {
+                tn = ann
+            }
+            bind_pat(s[2], loc, envT, tn)
         } else if t == "While" {
-            uce(file, s[1], fns, ars, loc, diags)
-            ucb(file, s[2], fns, ars, loc, diags)
+            var ck = ex_ty(s[1], tc, loc, envT)
+            if ck.len > 0 && !seq2(ck, "n:Bool") {
+                diags.push("E2010: 条件需 Bool(type):while")
+            }
+            tce(file, s[1], tc, loc, envT, retK, diags)
+            tcb(file, s[2], tc, loc, envT, retK, diags)
         } else if t == "For" {
-            pat_name_push(s[1], loc)
-            uce(file, s[2], fns, ars, loc, diags)
-            ucb(file, s[3], fns, ars, loc, diags)
+            bind_pat(s[1], loc, envT, List[Str]())
+            tce(file, s[2], tc, loc, envT, retK, diags)
+            tcb(file, s[3], tc, loc, envT, retK, diags)
         } else if t == "Return" {
-            if s[1].len > 1 { uce(file, s[1], fns, ars, loc, diags) }
+            if s[1].len > 1 {
+                if retK.len > 0 && !seq2(retK[0], "None") {
+                    var act = ex_ty(s[1], tc, loc, envT)
+                    if !compat(ty_kind(retK), act, s[1]) {
+                        diags.push("E2010: 返回类型不匹配(type):期望 " + ty_kind(retK) + " 实得 " + act)
+                    }
+                }
+                tce(file, s[1], tc, loc, envT, retK, diags)
+            }
         } else if t == "Assign" {
-            uce(file, s[1], fns, ars, loc, diags)
-            uce(file, s[3], fns, ars, loc, diags)
+            var tk = ex_ty(s[1], tc, loc, envT)
+            var vk = ex_ty(s[3], tc, loc, envT)
+            if !compat(tk, vk, s[3]) {
+                diags.push("E2010: 赋值类型不匹配(type):目标 " + tk + " 实得 " + vk)
+            }
+            tce(file, s[1], tc, loc, envT, retK, diags)
+            tce(file, s[3], tc, loc, envT, retK, diags)
         } else if t == "Expr" {
-            uce(file, s[1], fns, ars, loc, diags)
+            tce(file, s[1], tc, loc, envT, retK, diags)
         } else if seq2(t, "None") && s.len == 1 {
-            // 块尾值标记:跳过
+            // 块尾值标记
         } else {
-            uce(file, s, fns, ars, loc, diags)
+            tce(file, s, tc, loc, envT, retK, diags)
         }
         i += 1
     }
 }
 
-fn fn_params_push(ps: List[Str], out: List[Str]) {
+fn fn_params_push(ps: List[Str], loc: List[Str], envT: List[Str]) {
     var i: I32 = 1
     while i < ps.len {
         var p = ps[i]
         if p[0] == "Param" {
-            out.push(p[2])
+            loc.push(p[2])
+            envT.push(p[3])
         } else if p[0] == "Receiver" {
-            out.push("self")
+            loc.push("self")
+            envT.push(List[Str]())
         }
         i += 1
     }
@@ -2137,6 +2519,13 @@ fn fn_params_push(ps: List[Str], out: List[Str]) {
 fn sem_calls_all(file: List[Str], diags: List[Str]) {
     var fns = List[Str]()
     var ars = List[Str]()
+    var rets = List[Str]()
+    var prms = List[Str]()
+    var stN = List[Str]()
+    var stT = List[Str]()
+    var vars = List[Str]()
+    var varAr = List[Str]()
+    var enums = List[Str]()
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
@@ -2144,19 +2533,61 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
         if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", t == "Method"))) {
             fns.push(d[1])
             ars.push((d[3].len - 1).to_string())
+            rets.push(d[4])
+            prms.push(d[3])
+        } else if t == "Static" {
+            stN.push(d[1])
+            stT.push(d[3])
+        } else if t == "Const" {
+            stN.push(d[1])
+            stT.push(d[2])
+        } else if t == "Enum" {
+            enums.push(d[1])
+            var vs = d[3]
+            var j: I32 = 1
+            while j < vs.len {
+                var v = vs[j]
+                vars.push(v[1])
+                varAr.push((v[2].len - 1).to_string())
+                j += 1
+            }
         }
         i += 1
     }
+    var tc = List[Str]()
+    tc.push(fns)
+    tc.push(ars)
+    tc.push(rets)
+    tc.push(prms)
+    tc.push(stN)
+    tc.push(stT)
+    tc.push(vars)
+    tc.push(varAr)
+    tc.push(enums)
     i = 1
     while i < file.len {
         var d = file[i]
         var t = d[0]
         if or2(t == "Fn", or2(t == "FnC", or2(t == "FnPub", t == "Method"))) {
             var loc = List[Str]()
-            fn_params_push(d[3], loc)
-            ucb(file, d[5], fns, ars, loc, diags)
+            var envT = List[Str]()
+            fn_params_push(d[3], loc, envT)
+            tcb(file, d[5], tc, loc, envT, d[4], diags)
+        } else if t == "Impl" {
+            var its = d[4]
+            var mi: I32 = 1
+            while mi < its.len {
+                var md = its[mi]
+                if md[0] == "Method" {
+                    var mloc = List[Str]()
+                    var menv = List[Str]()
+                    fn_params_push(md[3], mloc, menv)
+                    tcb(file, md[5], tc, mloc, menv, md[4], diags)
+                }
+                mi += 1
+            }
         } else if t == "Test" {
-            ucb(file, d[2], fns, ars, List[Str](), diags)
+            tcb(file, d[2], tc, List[Str](), List[Str](), List[Str](), diags)
         }
         i += 1
     }

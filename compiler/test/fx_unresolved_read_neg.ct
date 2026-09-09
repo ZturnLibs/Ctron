@@ -1,0 +1,7 @@
+// fx_unresolved_read_neg.ct —— E2020 全量:Ident 读未解析(conuter 未定义)
+fn main() -> I32 {
+    var n: I32 = 0
+    n = conuter + 1
+    println(n.to_string())
+    return 0
+}

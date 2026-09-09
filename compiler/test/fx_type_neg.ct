@@ -1,0 +1,7 @@
+// fx_type_neg.ct —— E2010 let 注解矛盾:Str 期望 / Int 字面量实得
+// 注意:整字面量对数值期望自适应,对 Str 期望必报(§3.7/§3.6)
+fn main() -> I32 {
+    let s: Str = 42
+    println(s)
+    return 0
+}

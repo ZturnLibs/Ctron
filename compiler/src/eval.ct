@@ -2203,19 +2203,19 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(rv[1], "true") {
                 hi += 1
             }
-            var L = recv[1].len
+            var ln = recv[1].len
             // UTF-8 边界(§3.3):切点不得落在续字节上
-            if lo > 0 && lo < L && utf8_cont(recv[1], lo) {
+            if lo > 0 && lo < ln && utf8_cont(recv[1], lo) {
                 return e4("a", ob[1], vS("invalid utf8 boundary"), ob[3])
             }
-            if hi > 0 && hi < L && utf8_cont(recv[1], hi) {
+            if hi > 0 && hi < ln && utf8_cont(recv[1], hi) {
                 return e4("a", ob[1], vS("invalid utf8 boundary"), ob[3])
             }
             if lo < 0 {
                 lo = 0
             }
-            if hi > L {
-                hi = L
+            if hi > ln {
+                hi = ln
             }
             if hi < lo {
                 hi = lo
