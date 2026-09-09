@@ -106,6 +106,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 `List.contains`(Str 子串语义)、derive(Show) 兜底、`parallel.map/reduce`、
 `Simd.splat/lane/to_array` 元素级白名单算术、impl Drop 作用域退出逆序触发。
 
+第八批(2026-09-09,发射面 trans v5:值位 if + 插值):**值位 if**(§4.6 if 是
+表达式)——fn 尾与 let 初值位的 if 发射为 C 三元;两分支须为纯表达式块(else
+的 BlockExpr 包装形态已适配,嵌套 if-else 链递归),否则命中即 panic(文档化,
+fn 尾值此前被静默丢弃的发射缺陷随之修复)。**字符串插值**(§4.11)——发射器
+内联调用解析器把 Interp 片段解析为表达式,按类型转 C 串(i/6/b/s/N;float
+panic)后 ctron_str_concat 链接;纯 Text 串输出逐字节不变(固定点保持)。
+夹具 trans_v5 往返逐字一致。剩余发射缺口:枚举/闭包/并发/值位 match 泛化。
+
 第七批(2026-09-09,发射面 struct 支持/trans v4):**用户 struct 值类型可发射**——
 `u:<名>` 类型码贯通(ct_ty_code/typeof/env/形参/返回),C 端 `t_<名>` typedef
 (driver_emit 于运行时助手后前置发射),构造字面量 → C99 复合字面量(指定初始化),

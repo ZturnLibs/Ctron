@@ -192,6 +192,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "StructLit" {
         return "u:" + e[1]
     }
+    if t == "If" {
+        var th = e[2]
+        if th.len == 2 && th[1][0] != "None" {
+            return ct_typeof(th[1], env, file)
+        }
+        return "i"
+    }
     if t == "Member" {
         if e[3] == "len" { return "i" }
         if e[3] == "to_string" { return "s" }
@@ -281,18 +288,45 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Float" { return e[1] }
     if t == "Str" {
         var parts = e[1]
-        var acc = "\""
+        var acc = ""
         var j: I32 = 1
         while j < parts.len {
             var p = parts[j]
-            if p[0] != "Text" {
-                panic("ct_expr:str interp")
-                return ""
+            var frag = ""
+            if p[0] == "Text" {
+                frag = "\"" + ct_cstr(p[1]) + "\""
+            } else {
+                // 插值(§4.11):发射器内联解析片段 → 按类型转 C 串
+                var toks2 = List[Str]()
+                scan(p[1], toks2)
+                var cur2 = Atomic[I32](0)
+                var ie = p_stmt_expr(toks2, cur2, "1")
+                var ik = ct_typeof(ie, env, file)
+                var core = ct_expr(ie, env, file)
+                if or2(ik == "s", ik == "N") {
+                    frag = "(" + core + ")"
+                } else if ik == "i" {
+                    frag = "ctron_i32_to_string((int32_t)(" + core + "))"
+                } else if ik == "6" {
+                    frag = "ctron_i64_to_string((int64_t)(" + core + "))"
+                } else if ik == "b" {
+                    frag = "((" + core + ") ? \"true\" : \"false\")"
+                } else {
+                    panic("ct_expr:interp 类型")
+                    return ""
+                }
             }
-            acc = acc + ct_cstr(p[1])
+            if acc == "" {
+                acc = frag
+            } else {
+                acc = "ctron_str_concat(" + acc + ", " + frag + ")"
+            }
             j += 1
         }
-        return acc + "\""
+        if acc == "" {
+            return "\"\""
+        }
+        return acc
     }
     if t == "Bool" {
         if e[1] == "true" { return "1" }
@@ -371,6 +405,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             j += 1
         }
         return acc + "}"
+    }
+    if t == "If" {
+        return ct_if_value(e, env, file)
     }
     if t == "ArrLit" {
         panic("ct_expr:ArrLit 仅 let 初值位")
@@ -790,6 +827,40 @@ fn ct_block(b: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
 // 尾槽 match 作值经 t_mr 中转)
 // 尾槽是否为值形态(语句类黑名单;Match/If 尾按语句发射 —— 值位 match 仅 fn 尾特判,
 // 值位 if 尾挂账)
+// 值位 if(§4.6 if 是表达式):两分支均为纯表达式块 → C 三元;否则 panic(文档化)
+fn ct_simple(b: List[Str], env: List[Str], file: List[Str]) -> Str {
+    if b.len > 2 {
+        return ""
+    }
+    var tl = b[b.len - 1]
+    if tl[0] == "None" {
+        return ""
+    }
+    return ct_expr(tl, env, file)
+}
+
+fn ct_if_value(e: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var t1 = ct_simple(e[2], env, file)
+    if t1 == "" {
+        panic("ct_expr:if 值位需纯表达式分支")
+        return ""
+    }
+    var t2 = ""
+    if e[3][0] == "If" {
+        t2 = ct_if_value(e[3], env, file)
+    } else if e[3][0] == "BlockExpr" {
+        // p_if 的 else 分支包 BlockExpr(与 then 的裸 Block 不对称)
+        t2 = ct_simple(e[3][1], env, file)
+    } else {
+        t2 = ct_simple(e[3], env, file)
+    }
+    if t2 == "" {
+        panic("ct_expr:if 值位需纯表达式分支")
+        return ""
+    }
+    return "(" + ct_expr(e[1], env, file) + " ? " + t1 + " : " + t2 + ")"
+}
+
 fn ct_is_value(tg: Str) -> Bool {
     if tg == "Match" { return false }
     if tg == "If" { return false }
@@ -819,6 +890,8 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         } else if tl[0] == "Match" {
             ct_match_value(tl, env2, file, rc, hreg)
             println("return t_mr;")
+        } else if tl[0] == "If" {
+            println("return " + ct_if_value(tl, env2, file) + ";")
         } else {
             println("return " + ct_expr(tl, env2, file) + ";")
         }
