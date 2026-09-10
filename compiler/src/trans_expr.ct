@@ -76,11 +76,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             var anm = "ct_ad_L" + nline(e)
             if seq2(ct_pass(env), "1") {
-                var asig = ""
+                var asig = "void* _cp"
                 var ai: I32 = 0
                 while ai < pcs5.len {
-                    if ai > 0 { asig = asig + ", " }
-                    asig = asig + "ct_i _p" + ai.to_string()
+                    asig = asig + ", ct_i _p" + ai.to_string()
                     ai += 1
                 }
                 println("static ct_i " + anm + "(" + asig + ") \{")
@@ -94,7 +93,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 println("return (ct_i)t_" + e[1] + "(" + acall + ");")
                 println("}")
             }
-            return "(ct_fn" + pcs5.len.to_string() + ")" + anm
+            return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = 0; _c; })"
         }
         return "t_" + e[1]
     }
@@ -158,9 +157,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return ""
     }
     if t == "Closure" {
-        var cnp = e[1].len - 1
-        var cnm = ct_emit_clo(e, e, env, file, cnp)
-        return "(ct_fn" + cnp.to_string() + ")" + cnm
+        var cvv = ct_emit_clov(e, e, env, file)
+        return cvv
     }
     if t == "StructLit" {
         if !ct_is_struct(file, e[1]) {
@@ -371,14 +369,16 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var fvt = ct_env_ty(env, cal[1])
             if fvt.len > 1 && byte_at(fvt, 0) == 70 {
                 var far = byte_at(fvt, 1) - 48
-                var fargs = "0"
-                if ag.len > 1 { fargs = ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) }
+                var fv = "(t_" + cal[1] + ")"
+                var fargs = "((ct_clop)" + fv + ")->env"
+                if ag.len > 1 { fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) }
                 var fk: I32 = 2
                 while fk <= far {
                     if ag.len > fk { fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[fk], env, file), ct_expr(ag[fk], env, file)) } else { fargs = fargs + ", 0" }
                     fk += 1
                 }
-                return "((" + ct_ctype(fvt) + ")(t_" + cal[1] + "))(" + fargs + ")"
+                var fhead = "((ct_cfn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
+                return fhead + "(" + fargs + ")"
             }
         }
         // 用户枚举变体构造(Phase 5):(ct_enum_E){ idx, { p0, p1 } }

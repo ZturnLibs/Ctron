@@ -1,0 +1,17 @@
+// fx_cloval.ct —— Phase 5:带捕获闭包值(创建时快照;存变量/作实参/间接调用)
+fn invoke(f: fn(I32) -> I32, v: I32) -> I32 {
+    return f(v)
+}
+fn main() -> I32 {
+    var base = 100
+    var g = |x| x + base
+    var r1 = g(7)
+    var r2 = invoke(g, 5)
+    var limit = 9
+    var h = |x| x * x + limit
+    var r3 = invoke(h, 4)
+    println(r1.to_string())
+    println(r2.to_string())
+    println(r3.to_string())
+    return 0
+}

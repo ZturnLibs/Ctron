@@ -195,7 +195,7 @@ fn ct_ctype(code: Str) -> Str {
         return "ct_enum_" + byte_slice(code, 2, code.len)
     }
     if or2(code == "F1", or2(code == "F2", code == "F3")) {
-        return "ct_fn" + byte_slice(code, 1, code.len)
+        return "ct_clop"
     }
     if code == "g" { return "ct_scope*" }
     if code == "k" { return "ct_task*" }
@@ -327,6 +327,11 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     }
     if t == "StructLit" {
         return "u:" + e[1]
+    }
+    if t == "Closure" {
+        var cvn = e[1].len - 1
+        if or2(cvn < 1, cvn > 3) { return "i" }
+        return "F" + cvn.to_string()
     }
     if t == "If" {
         var th = e[2]

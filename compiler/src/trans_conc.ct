@@ -331,3 +331,99 @@ fn ct_emit_scope_stmt(site: List[Str], env: List[Str], file: List[Str], rc: Str,
     }
     return env
 }
+
+// 一等闭包值(带捕获):值 = ct_clop(fn+env 装箱对)。pass1 直出静态 fn
+// (首参 _cp = 捕获数组);pass2 返回构造表达式。捕获 = 创建时快照(镜像 eval env 引用)。
+fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var body = clo[3]
+    if body[0] == "BlockExpr" {
+        body = body[1]
+    }
+    var cps = clo[1]
+    var np = cps.len - 1
+    if or2(np < 1, np > 3) {
+        panic("emit:闭包值 arity")
+        return ""
+    }
+    var raw = List[Str]()
+    if body[0] == "Block" {
+        clb(file, body, raw)
+    } else {
+        cle(file, body, raw)
+    }
+    var caps = List[Str]()
+    var codes = List[Str]()
+    var pnames = List[Str]()
+    var qi: I32 = 1
+    while qi < cps.len {
+        pnames.push(cps[qi][2])
+        qi += 1
+    }
+    qi = 0
+    while qi < raw.len {
+        var nm = raw[qi]
+        if !in_list(caps, nm) && !in_list(pnames, nm) && ct_env_has(env, nm) {
+            caps.push(nm)
+            codes.push(ct_env_ty(env, nm))
+        }
+        qi += 1
+    }
+    if caps.len > 8 {
+        panic("emit:闭包值捕获>8")
+        return ""
+    }
+    var ix = nline(site)
+    var shim = "ct_clo_L" + ix
+    if seq2(ct_pass(env), "1") {
+        var sig = "void* _cp"
+        var pi: I32 = 0
+        while pi < np {
+            sig = sig + ", ct_i _p" + pi.to_string()
+            pi += 1
+        }
+        println("static ct_i " + shim + "(" + sig + ") \{")
+        println("ct_i* _e = (ct_i*)_cp;")
+        var ci2: I32 = 0
+        while ci2 < caps.len {
+            println(ct_cap_decl(codes[ci2], caps[ci2], ci2))
+            ci2 += 1
+        }
+        var env2 = env
+        var pj: I32 = 0
+        while pj < np {
+            var pn = cps[pj + 1][2]
+            println("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
+            env2 = env_bind(env2, pn, "i")
+            pj += 1
+        }
+        var benv = env_bind(env2, "#p", "2")
+        benv = env_bind(benv, "#shim", "2")
+        if body[0] == "Block" {
+            var renv = ct_stmts(body, benv, file, "", List[Str]())
+            var tl = body[body.len - 1]
+            if tl[0] != "None" {
+                if or2(tl[0] == "Match", tl[0] == "If") {
+                    ct_stmt(tl, renv, file, List[Str]())
+                } else {
+                    var tx = ct_expr(tl, renv, file)
+                    println("return (ct_i)(" + tx + ");")
+                }
+            } else {
+                println("return 0;")
+            }
+        } else {
+            var vx = ct_expr(body, benv, file)
+            println("return (ct_i)(" + vx + ");")
+        }
+        println("}")
+        return "0"
+    }
+    var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
+    var ci3: I32 = 0
+    while ci3 < caps.len {
+        acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = " + ct_wrap_i(codes[ci3], "t_" + caps[ci3]) + ";"
+        ci3 += 1
+    }
+    acc = acc + " ct_clop _c" + ix + " = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c" + ix + "->fn = (void*)" + shim + "; _c" + ix + "->env = _e" + ix + "; _c" + ix + "; })"
+    return acc
+}
