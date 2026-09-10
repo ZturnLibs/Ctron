@@ -26,9 +26,9 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-10,Apple Silicon)**:smoke --full 54/54;suite 51/51 双侧;
-decls=243;自举固定点(seed 发射 vs native 发射)逐字节复现;native 发射
-cc_run(13752 行 C)0.07s vs seed 10.2s = 145×;代码生成比解释快 15–100×
+**基线(2026-09-10,Apple Silicon)**:smoke --full 57/57(3b 夹具 + 3e 示例应用);
+suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
+native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
 
 ## 3. 架构不变量(新会话必读)
@@ -66,13 +66,22 @@ cc_run(13752 行 C)0.07s vs seed 10.2s = 145×;代码生成比解释快 15–100
 - **sem 遍历器下钻清单**:新增块类节点(如 Own)须在 tcb(sem_type)、ucb
   (sem_calls)、al_b、cscan_b 各遍历器补下钻,否则 E2020/E3070 误报/漏报。
 - **打包同路径双写**:run_timed 捕获文件与产物文件同路径会互踩截断。
+- **插值内字符串字面量 segfault**:`{"ab"}`(字符串字面量作插值片段)令解释器
+  段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
+- **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
+  解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
+- **decls 锁现为 244**(fmt_struct 入 CORE);smoke 3b 夹具名单含 derive。
 
 ## 5. 挂账(按优先级,均为独立切片)
 
 1. **泛型深水区**:泛型 struct 方法、泛型体内嵌泛型调用、嵌套泛型
-   (`Fn` 返回 `Fn`)、bound/derive 体系(@derive(Show) 需 show() 生成,
-   03e 语料依赖宿主 derive,自举侧未实现)。单态化机制已备好
-   (AST 替换 + pass1 直出),扩展点在 trans_expr TypeArgs 尾部与
+   (`Fn` 返回 `Fn`)、bound/derive 体系(**@derive(Show) 已落地 55adfae**:
+   eval fmt_struct + emit ct_show_frag_dp 双面逐字对齐,fx_derive 夹具;
+   顺带修复 driver 把泛型 fn 声明当具体 fn 发射的垃圾体、单行逗号字段解析、
+   print(Str) 缺括号)。仍挂账:@derive(Eq) 方法生成、bound 强制检查
+   (现为解析保留不 enforcement)、泛型体内对 TPar 调 show 的 run 面已通、
+   emit 面走显式 TypeArgs。单态化机制已备好
+   (AST 替换 + pass1 直出 + 形参 env 绑定),扩展点在 trans_expr TypeArgs 尾部与
    ct_mono_subst_ty。
 2. **arena API 发射**:own 块已透明发射(41b7751),但 `arena.array[T](n)` /
    `.push` / `.into_gc` 等方法仍 panic(05_own 语料原生不可跑)。
