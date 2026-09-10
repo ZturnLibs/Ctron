@@ -26,7 +26,7 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-10,Apple Silicon)**:smoke --full 57/57(3b 夹具 + 3e 示例应用);
+**基线(2026-09-10,Apple Silicon)**:smoke --full 58/58(3b 夹具 + 2c 负例 + 3e 示例应用);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
@@ -70,7 +70,7 @@ native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 245**(fmt_struct/eq_val 入 CORE);smoke 3b 夹具名单含 derive。
+- **decls 锁现为 250**(fmt_struct/eq_val + bound 检查 5 fn 入 CORE);smoke 3b 夹具名单含 derive,2c 含 fx_bound_neg。
 
 ## 5. 挂账(按优先级,均为独立切片)
 
@@ -78,9 +78,10 @@ native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15
    (`Fn` 返回 `Fn`)、bound/derive 体系(**@derive(Show) 55adfae、
    @derive(Eq) 402a65c 已落地**:eval/emit 双面逐字对齐,fx_derive 夹具;
    派生为结构化——字段全可显示/可比较即有 .show()/.eq(),注解仍声明性;
-   顺带修复 driver 把泛型 fn 声明当具体 fn 发射的垃圾体、单行逗号字段解析、
-   print(Str) 缺括号)。仍挂账:bound 强制检查(现为解析保留不 enforcement;
-   实施时把"结构化可显示/可比较"谓词接到 TPar bound 上即可)、
+   print(Str) 缺括号)。**bound 强制检查已落地 f3ef54a**:E2050 于显式 TypeArgs
+   调用点核对 TPar bounds(sem_type.bound_sat 结构化谓词,与派生能力面一致;
+   fx_bound_neg 负例;README 码表已登记)。仍挂账:泛型 struct 注解实例化点的
+   bound 核对(现为 fn 调用点 only)、嵌套泛型 TPar 实参的传递核对(v0 放行)、
    @derive(Json) 等更多插件。单态化机制已备好
    (AST 替换 + pass1 直出 + 形参 env 绑定),扩展点在 trans_expr TypeArgs 尾部与
    ct_mono_subst_ty。
