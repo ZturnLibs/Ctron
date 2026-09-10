@@ -182,6 +182,26 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ""
         }
         var lf = e[2]
+        // 泛型 struct 实例化:场值型别按声明序推断 → 实例化码
+        if ct_struct_tps(file, e[1]).len > 0 {
+            var codes = List[Str]()
+            var gj: I32 = 1
+            while gj < lf.len {
+                codes.push(ct_typeof(lf[gj][2], env, file))
+                gj += 1
+            }
+            var inst = ct_struct_inst_code(e[1], codes)
+            var gacc = "(t_" + byte_slice(inst, 2, inst.len) + ")\{"
+            gj = 1
+            var firstg = true
+            while gj < lf.len {
+                if !firstg { gacc = gacc + ", " }
+                firstg = false
+                gacc = gacc + "." + lf[gj][1] + " = " + ct_expr(lf[gj][2], env, file)
+                gj += 1
+            }
+            return gacc + "}"
+        }
         var acc = "(t_" + e[1] + ")\{"
         var j: I32 = 1
         while j < lf.len {

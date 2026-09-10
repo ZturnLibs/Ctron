@@ -168,6 +168,18 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         return fk + fa.to_string()
     }
     if nt[0] != "Named" { return "i" }
+    if nt[0] == "Named" && nt[2].len > 1 {
+        // 泛型 struct 实例化注解优先于具体 struct 分支
+        if ct_struct_tps(file, nt[1]).len > 0 {
+            var cs = List[Str]()
+            var k1: I32 = 1
+            while k1 < nt[2].len {
+                cs.push(ct_ty_code(nt[2][k1], file))
+                k1 += 1
+            }
+            return ct_struct_inst_code(nt[1], cs)
+        }
+    }
     if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
     if ct_is_enum(file, nt[1]) { return "E:" + nt[1] }
     if nt[1] == "Str" { return "s" }
@@ -175,6 +187,18 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
     if nt[1] == "I64" { return "6" }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
+    if nt[0] == "Named" && nt[2].len > 1 {
+        // 泛型 struct 实例化注解:Pair[I32, Str] → u:Pair__I_S(实参限标量/Str)
+        if ct_struct_tps(file, nt[1]).len > 0 {
+            var cs = List[Str]()
+            var k1: I32 = 1
+            while k1 < nt[2].len {
+                cs.push(ct_ty_code(nt[2][k1], file))
+                k1 += 1
+            }
+            return ct_struct_inst_code(nt[1], cs)
+        }
+    }
     if nt[1] == "List" {
         // List[I32] → LI(元素槽 int;TArgs 装类型节点)
         if nt[2].len > 1 {
@@ -301,6 +325,37 @@ fn ct_params_str(d: List[Str], file: List[Str]) -> Str {
     return params
 }
 
+// 实例化 struct 域类型:接收者码 u:<名>__<尾缀> 解码 + TPar 槽代入
+fn ct_field_ty_inst(file: List[Str], inst: Str, fname: Str) -> Str {
+    var info = ct_struct_inst_split(inst)
+    var bar = 0
+    var i: I32 = 0
+    while i < info.len {
+        if byte_at(info, i) == 124 { bar = i }
+        i += 1
+    }
+    var snm = byte_slice(info, 0, bar)
+    var codes = byte_slice(info, bar + 1, info.len)
+    var tps = ct_struct_tps(file, snm)
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && d[1] == snm {
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len {
+                var fd = fs[j]
+                if fd[2] == fname {
+                    return ct_field_code_inst(file, fd[3], snm, codes)
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return "i"
+}
+
 // 调用点实参转换:按形参类型码包转换(N→L/A 提升为指针,L→N/s 降为 char*)
 fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
     if pc == "L" && ac != "L" { return "(ctron_list*)(" + x + ")" }
@@ -362,6 +417,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var oft0 = ct_typeof(e[1], env, file)
         var oft = ct_strip_p(oft0)
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
+            if ct_struct_tps(file, ct_struct_name_of(oft)).len > 0 {
+                return ct_field_ty_inst(file, oft, e[3])
+            }
             return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
         }
         // Phase 4 并发成员
@@ -528,4 +586,101 @@ fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] 
         }
     }
     return t
+}
+
+// 泛型 struct 型参名表(非泛型 → 空表)
+fn ct_struct_tps(file: List[Str], nm: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && d[1] == nm {
+            var j: I32 = 1
+            while j < d[3].len {
+                out.push(d[3][j][1])
+                j += 1
+            }
+            return out
+        }
+        i += 1
+    }
+    return out
+}
+
+// 实例化码 → 尾缀(标量/Str:i→I s→S b→B 6→L;其余 panic)
+fn ct_inst_encode(code: Str) -> Str {
+    if code == "i" { return "I" }
+    if code == "s" { return "S" }
+    if code == "b" { return "B" }
+    if code == "6" { return "L" }
+    panic("emit:泛型 struct 载荷限标量/Str:" + code)
+    return ""
+}
+
+// 尾缀 → 码(解码逆映射)
+fn ct_inst_decode(ch: Str) -> Str {
+    if ch == "I" { return "i" }
+    if ch == "S" { return "s" }
+    if ch == "B" { return "b" }
+    if ch == "L" { return "6" }
+    panic("emit:泛型 struct 尾缀不可解码:" + ch)
+    return ""
+}
+
+// 实例化 struct 码:u:<名>__<尾缀>
+fn ct_struct_inst_code(nm: Str, codes: List[Str]) -> Str {
+    var suf = ""
+    var i: I32 = 0
+    while i < codes.len {
+        suf = suf + ct_inst_encode(codes[i])
+        i += 1
+    }
+    return "u:" + nm + "__" + suf
+}
+
+// 实例化码解码 → (名, 码表):u:Pair__I_S → Pair / [i, s]
+fn ct_struct_inst_split(code: Str) -> Str {
+    // 返回 "名|码1,码2" 复合串(单返回值约束)
+    var head = 0
+    var i: I32 = 2
+    var nm = ""
+    var sep = -1
+    var done = false
+    while i < code.len && !done {
+        if byte_at(code, i) == 95 && i + 1 < code.len && byte_at(code, i + 1) == 95 {
+            nm = byte_slice(code, 2, i)
+            sep = i + 2
+            done = true
+        }
+        i += 1
+    }
+    if sep < 0 { return "|" }
+    return nm + "|" + byte_slice(code, sep, code.len)
+}
+
+// 实例化码 → struct 名(u:Pair__I_S → Pair;非实例化 u:X → X)
+fn ct_struct_name_of(code: Str) -> Str {
+    var i: I32 = 2
+    while i + 1 < code.len {
+        if byte_at(code, i) == 95 && byte_at(code, i + 1) == 95 {
+            return byte_slice(code, 2, i)
+        }
+        i += 1
+    }
+    return byte_slice(code, 2, code.len)
+}
+
+// 实例化域字段码:TPar 名槽 → 对应实参码;具体型别 → 原码
+fn ct_field_code_inst(file: List[Str], ty: List[Str], snm: Str, encs: Str) -> Str {
+    var tps = ct_struct_tps(file, snm)
+    if ty[0] == "Named" {
+        var k: I32 = 0
+        while k < tps.len {
+            if seq2(ty[1], tps[k]) {
+                return ct_inst_decode(byte_slice(encs, k, k + 1))
+            }
+            k += 1
+        }
+    }
+    return ct_ty_code(ty, file)
 }

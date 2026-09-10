@@ -1,0 +1,17 @@
+// fx_gstruct.ct —— Phase 5:泛型 struct 单态化(注解驱动实例化)
+struct Pair[A, B] {
+    let first: A
+    let second: B
+}
+fn describe(p: Pair[I32, Str]) -> I32 {
+    var n = p.first
+    return n
+}
+fn main() -> I32 {
+    var p: Pair[I32, Str] = Pair { first: 1, second: "x" }
+    var q: Pair[I32, Str] = Pair { first: 40, second: "y" }
+    var n = describe(p) + describe(q) + p.second.len
+    println(n.to_string())
+    println(p.second)
+    return 0
+}

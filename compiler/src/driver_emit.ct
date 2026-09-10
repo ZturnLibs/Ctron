@@ -118,6 +118,86 @@ fn main() -> I32 {
                 }
                 si += 1
             }
+            // 泛型 struct 实例化 typedef 预扫(注解驱动:fn 参数/返回 + let 注解)
+            var insts = List[Str]()
+            var ii: I32 = 1
+            while ii < file.len {
+                var gd = file[ii]
+                if gd[0] == "Fn" {
+                    var gk: I32 = 1
+                    while gk < gd[3].len {
+                        var pr = gd[3][gk]
+                        if pr[0] == "Param" {
+                            if pr[3][0] == "Named" {
+                                if ct_struct_tps(file, pr[3][1]).len > 0 {
+                                    if pr[3][2].len > 1 {
+                                        var cs2 = List[Str]()
+                                        var q2: I32 = 1
+                                        while q2 < pr[3][2].len {
+                                            cs2.push(ct_ty_code(pr[3][2][q2], file))
+                                            q2 += 1
+                                        }
+                                        var ic2 = ct_struct_inst_code(pr[3][1], cs2)
+                                        if !in_list(insts, ic2) {
+                                            insts.push(ic2)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        gk += 1
+                    }
+                    if gd[4][0] == "Named" {
+                        if ct_struct_tps(file, gd[4][1]).len > 0 {
+                            if gd[4][2].len > 1 {
+                                var cs3 = List[Str]()
+                                var q3: I32 = 1
+                                while q3 < gd[4][2].len {
+                                    cs3.push(ct_ty_code(gd[4][2][q3], file))
+                                    q3 += 1
+                                }
+                                var ic3 = ct_struct_inst_code(gd[4][1], cs3)
+                                if !in_list(insts, ic3) {
+                                    insts.push(ic3)
+                                }
+                            }
+                        }
+                    }
+                }
+                ii += 1
+            }
+            var pi3: I32 = 0
+            while pi3 < insts.len {
+                var info = ct_struct_inst_split(insts[pi3])
+                var bar = 0
+                var ci: I32 = 0
+                while ci < info.len {
+                    if byte_at(info, ci) == 124 { bar = ci }
+                    ci += 1
+                }
+                var snm = byte_slice(info, 0, bar)
+                var encs = byte_slice(info, bar + 1, info.len)
+                var tps = ct_struct_tps(file, snm)
+                var ii2: I32 = 1
+                while ii2 < file.len {
+                    var sd2 = file[ii2]
+                    if sd2[0] == "Struct" && sd2[1] == snm {
+                        var fs2 = sd2[4]
+                        var line2 = "typedef struct \{ "
+                        var fj2: I32 = 1
+                        while fj2 < fs2.len {
+                            var fd2 = fs2[fj2]
+                            var dc = ct_field_code_inst(file, fd2[3], snm, encs)
+                            line2 = line2 + ct_ctype(dc) + " " + fd2[2] + "; "
+                            fj2 += 1
+                        }
+                        line2 = line2 + "} " + ct_ctype(insts[pi3]) + ";"
+                        println(line2)
+                    }
+                    ii2 += 1
+                }
+                pi3 += 1
+            }
             // 文件级 static let(Phase 4 自举闭环:发射层缓冲静态自身也需要被发射):
             // 零初始化声明 + ctron_statics_init() 运行期赋值(文件域函数调用初始化非法)
             var stq: I32 = 1
