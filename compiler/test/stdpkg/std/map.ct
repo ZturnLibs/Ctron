@@ -1,45 +1,55 @@
-// std/map.ct —— IntMap 种子(List 偶奇键值槽;函数式:put 返回新映射)
-pub fn new() -> List[I32] {
-    return List[I32]()
+// std/map.ct —— Map[K, V] 种子(双 List 平行槽;函数式:put 返回新映射)
+// K 需可 ==(bound Eq:标量原生可等/派生结构体逐字段);调用点经显式 TypeArgs 实例化(v0)
+struct Map[K, V] {
+    let ks: List[K]
+    let vs: List[V]
 }
-pub fn put(m: List[I32], k: I32, v: I32) -> List[I32] {
-    var out = List[I32]()
+
+pub fn map_new[K, V]() -> Map[K, V] {
+    return Map { ks: List[K](), vs: List[V]() }
+}
+
+pub fn put[K: Eq, V](m: Map[K, V], k: K, v: V) -> Map[K, V] {
+    var nks = List[K]()
+    var nvs = List[V]()
     var i: I32 = 0
     var hit = false
-    while i < m.len {
-        if m[i] == k {
-            out.push(k)
-            out.push(v)
+    while i < m.ks.len {
+        if m.ks[i] == k {
+            nks.push(k)
+            nvs.push(v)
             hit = true
         } else {
-            out.push(m[i])
-            out.push(m[i + 1])
+            nks.push(m.ks[i])
+            nvs.push(m.vs[i])
         }
-        i = i + 2
+        i = i + 1
     }
     if !hit {
-        out.push(k)
-        out.push(v)
+        nks.push(k)
+        nvs.push(v)
     }
-    return out
+    return Map { ks: nks, vs: nvs }
 }
-pub fn get(m: List[I32], k: I32, dft: I32) -> I32 {
+
+pub fn get[K: Eq, V](m: Map[K, V], k: K, dft: V) -> V {
     var i: I32 = 0
-    while i < m.len {
-        if m[i] == k {
-            return m[i + 1]
+    while i < m.ks.len {
+        if m.ks[i] == k {
+            return m.vs[i]
         }
-        i = i + 2
+        i = i + 1
     }
     return dft
 }
-pub fn has(m: List[I32], k: I32) -> Bool {
+
+pub fn has[K: Eq, V](m: Map[K, V], k: K) -> Bool {
     var i: I32 = 0
-    while i < m.len {
-        if m[i] == k {
+    while i < m.ks.len {
+        if m.ks[i] == k {
             return true
         }
-        i = i + 2
+        i = i + 1
     }
     return false
 }

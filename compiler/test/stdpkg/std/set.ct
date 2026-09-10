@@ -1,30 +1,46 @@
-// std/set.ct —— IntSet 种子(List 成员;函数式:add 返回新集合)
-pub fn new() -> List[I32] {
-    return List[I32]()
+// std/set.ct —— Set[V] 种子(List 成员;函数式:add 返回新集合)
+// V 需可 ==(add 去重 bound Eq);泛型体内嵌泛型调用属挂账深水区,add 内联去重扫描
+struct Set[V] {
+    let items: List[V]
 }
-pub fn mem(s: List[I32], v: I32) -> Bool {
+
+pub fn set_new[V]() -> Set[V] {
+    return Set { items: List[V]() }
+}
+
+pub fn mem[V](s: Set[V], v: V) -> Bool {
     var i: I32 = 0
-    while i < s.len {
-        if s[i] == v {
+    while i < s.items.len {
+        if s.items[i] == v {
             return true
         }
         i = i + 1
     }
     return false
 }
-pub fn add(s: List[I32], v: I32) -> List[I32] {
-    if mem(s, v) {
-        return s
-    }
-    var out = List[I32]()
+
+pub fn add[V: Eq](s: Set[V], v: V) -> Set[V] {
+    var found = false
     var i: I32 = 0
-    while i < s.len {
-        out.push(s[i])
+    while i < s.items.len {
+        if s.items[i] == v {
+            found = true
+        }
         i = i + 1
     }
-    out.push(v)
-    return out
+    if found {
+        return s
+    }
+    var nitems = List[V]()
+    var j: I32 = 0
+    while j < s.items.len {
+        nitems.push(s.items[j])
+        j = j + 1
+    }
+    nitems.push(v)
+    return Set { items: nitems }
 }
-pub fn len(s: List[I32]) -> I32 {
-    return s.len
+
+pub fn len[V](s: Set[V]) -> I32 {
+    return s.items.len
 }

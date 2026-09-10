@@ -469,9 +469,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             if base[0] == "Ident" && base[1] == "List" {
-                // List[I32] → LI(元素槽 int);其余 → L(Str 槽语义)。实参槽 = p_typ Named 节点
+                // List[I32] → LI(元素槽 int);型参实参经 env 替换码(单态化体);其余 → L
                 if cal[2].len > 1 {
-                    if cal[2][1][0] == "Named" && cal[2][1][1] == "I32" { return "LI" }
+                    if cal[2][1][0] == "Named" {
+                        if seq2(cal[2][1][1], "I32") { return "LI" }
+                        if ct_env_has(env, cal[2][1][1]) {
+                            var ec7 = ct_env_ty(env, cal[2][1][1])
+                            if seq2(ec7, "i") { return "LI" }
+                        }
+                    }
                 }
                 return "L"
             }
@@ -584,7 +590,7 @@ fn ct_generic_retcode(file: List[Str], nm: Str, tpsn: List[Str], tys: List[Str])
     return ct_ty_code(rt, file)
 }
 
-// 类型槽替换:Named(TPar 名) → 实参类型节点;包装/具体型别原样
+// 类型槽替换:Named(TPar 名) → 实参类型节点;容器注解(Map[K, V])实参递归下钻
 fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] {
     if t[0] == "Named" {
         var k: I32 = 0
@@ -593,6 +599,18 @@ fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] 
                 return tys[k]
             }
             k += 1
+        }
+        if t[2].len > 1 {
+            var nt = mk("Named")
+            nt.push(t[1])
+            var ta = mk("TArgs")
+            var m2: I32 = 1
+            while m2 < t[2].len {
+                ta.push(ct_mono_subst_ty(t[2][m2], tpsn, tys))
+                m2 += 1
+            }
+            nt.push(ta)
+            return nt
         }
     }
     return t
@@ -690,6 +708,20 @@ fn ct_field_code_inst(file: List[Str], ty: List[Str], snm: Str, encs: Str) -> St
                 return ct_inst_decode(byte_slice(encs, k, k + 1))
             }
             k += 1
+        }
+        // 嵌套型参下钻:List[K] 字段按元素实参码定型别槽(K→i → LI;其余 → L)
+        if seq2(ty[1], "List") && ty[2].len > 1 {
+            if ty[2][1][0] == "Named" {
+                var k2: I32 = 0
+                while k2 < tps.len {
+                    if seq2(ty[2][1][1], tps[k2]) {
+                        var elc = ct_inst_decode(byte_slice(encs, k2, k2 + 1))
+                        if seq2(elc, "i") { return "LI" }
+                        return "L"
+                    }
+                    k2 += 1
+                }
+            }
         }
     }
     return ct_ty_code(ty, file)

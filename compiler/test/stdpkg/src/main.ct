@@ -1,16 +1,20 @@
-use std.map.{new, put, get, has}
-use std.set.{add, mem, len}
+use std.map.{map_new, put, get, has}
+use std.set.{set_new, add, mem, len}
 
 fn main() -> I32 {
-    var m = new()
-    m = put(m, 1, 10)
-    m = put(m, 2, 20)
-    m = put(m, 1, 30)
-    var s = add(add(new(), 5), 5)
-    var total = get(m, 1, 0) + get(m, 2, 0) + get(m, 9, 7)
+    var m = map_new[I32, I32]()
+    m = put[I32, I32](m, 1, 10)
+    m = put[I32, I32](m, 2, 20)
+    m = put[I32, I32](m, 1, 30)
+    var total = get[I32, I32](m, 1, 0) + get[I32, I32](m, 2, 0) + get[I32, I32](m, 9, 7)
     println(total.to_string())
-    println(len(s).to_string())
-    println(has(m, 2).to_string())
-    println(mem(s, 5).to_string())
+    println(has[I32, I32](m, 2).to_string())
+    var s = add[I32](add[I32](set_new[I32](), 5), 5)
+    println(len[I32](s).to_string())
+    println(mem[I32](s, 5).to_string())
+    var w = map_new[I32, Str]()
+    w = put[I32, Str](w, 7, "seven")
+    println(get[I32, Str](w, 7, "?"))
+    println(get[I32, Str](w, 8, "?"))
     return 0
 }

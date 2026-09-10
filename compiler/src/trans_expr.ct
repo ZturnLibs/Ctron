@@ -185,15 +185,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ""
         }
         var lf = e[2]
-        // 泛型 struct 实例化:场值型别按声明序推断 → 实例化码
+        // 泛型 struct 实例化:实例码优先取 env "#名"(单态化体:签名已钉实例),
+        // 否则场值型别按声明序推断(调用点具体上下文)
         if ct_struct_tps(file, e[1]).len > 0 {
-            var codes = List[Str]()
+            var inst = ""
+            var inm7 = "#" + e[1]
             var gj: I32 = 1
-            while gj < lf.len {
-                codes.push(ct_typeof(lf[gj][2], env, file))
-                gj += 1
+            if ct_env_has(env, inm7) {
+                inst = ct_env_ty(env, inm7)
+            } else {
+                var codes = List[Str]()
+                gj = 1
+                while gj < lf.len {
+                    codes.push(ct_typeof(lf[gj][2], env, file))
+                    gj += 1
+                }
+                inst = ct_struct_inst_code(e[1], codes)
             }
-            var inst = ct_struct_inst_code(e[1], codes)
             var gacc = "(t_" + byte_slice(inst, 2, inst.len) + ")\{"
             gj = 1
             var firstg = true
@@ -304,6 +312,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
                         spec.push(gdecl[5])
                         var rcs = ct_ty_code(spec[4], file)
+                        // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
+                        var pk3: I32 = 1
+                        while pk3 < ps2.len {
+                            if ps2[pk3][0] == "Param" {
+                                ct_emit_inst_typedef(file, ps2[pk3][3])
+                            }
+                            pk3 += 1
+                        }
+                        ct_emit_inst_typedef(file, spec[4])
+                        println("#ifndef CT_SPEC_" + mg)
+                        println("#define CT_SPEC_" + mg)
                         println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
                         // 形参 env:替换后型别码绑定(镜像 ct_fn),体内 Member/字段访问按静态型别分派
                         var genv = List[Str]()
@@ -315,7 +334,28 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             }
                             gk2 += 1
                         }
+                        // 型参名 → 实参码(体内 List[K] 等 typeof 依据)+ 结构实例 → "#名" 绑定
+                        var tk2: I32 = 1
+                        while tk2 < tpsn.len {
+                            genv = env_bind(genv, tpsn[tk2], ct_ty_code(tys[tk2], file))
+                            tk2 += 1
+                        }
+                        pk3 = 1
+                        while pk3 < ps2.len {
+                            if ps2[pk3][0] == "Param" {
+                                var ic5 = ct_inst_of_ty(file, ps2[pk3][3])
+                                if ic5.len > 0 {
+                                    genv = env_bind(genv, "#" + ct_struct_name_of(ic5), ic5)
+                                }
+                            }
+                            pk3 += 1
+                        }
+                        var ic6 = ct_inst_of_ty(file, spec[4])
+                        if ic6.len > 0 {
+                            genv = env_bind(genv, "#" + ct_struct_name_of(ic6), ic6)
+                        }
                         ct_body(spec[5], env_bind(genv, "#p", "2"), file, rcs)
+                        println("#endif")
                     }
                     var gargs = ""
                     var ga: I32 = 1
@@ -871,4 +911,73 @@ fn ct_eq_expr_dp(a: Str, b: Str, ty: Str, env: List[Str], file: List[Str], dp: I
     }
     panic("emit:eq 字段型别:" + ty)
     return ""
+}
+
+// 单态化支撑:具体实例型别节点 → 实例码(非实例/无实参 → "")
+fn ct_inst_of_ty(file: List[Str], nt: List[Str]) -> Str {
+    if nt[0] == "Named" {
+        if nt[2].len > 1 {
+            if ct_struct_tps(file, nt[1]).len > 0 {
+                var cs = List[Str]()
+                var q: I32 = 1
+                while q < nt[2].len {
+                    cs.push(ct_ty_code(nt[2][q], file))
+                    q += 1
+                }
+                return ct_struct_inst_code(nt[1], cs)
+            }
+        }
+    }
+    return ""
+}
+
+// 单态化点实例 typedef 直出(C 重复 typedef 合法,免去去重状态);
+// 实参为嵌套实例时递归。pass1 内调用,先于 pass2 引用。
+fn ct_emit_inst_typedef(file: List[Str], nt: List[Str]) {
+    if nt[0] != "Named" {
+        return
+    }
+    if nt[2].len > 1 {
+        var q2: I32 = 1
+        while q2 < nt[2].len {
+            ct_emit_inst_typedef(file, nt[2][q2])
+            q2 += 1
+        }
+    }
+    var ic = ct_inst_of_ty(file, nt)
+    if ic.len == 0 {
+        return
+    }
+    // 匿名 struct 重复 typedef 亦是重定义 → 预处理卫兵去重(同型多调用点)
+    var tn = ct_ctype(ic)
+    println("#ifndef CT_TDEF_" + tn)
+    println("#define CT_TDEF_" + tn)
+    var info = ct_struct_inst_split(ic)
+    var bar = 0
+    var ci: I32 = 0
+    while ci < info.len {
+        if byte_at(info, ci) == 124 { bar = ci }
+        ci += 1
+    }
+    var snm = byte_slice(info, 0, bar)
+    var encs = byte_slice(info, bar + 1, info.len)
+    var ii: I32 = 1
+    while ii < file.len {
+        var sd = file[ii]
+        if sd[0] == "Struct" && sd[1] == snm {
+            var fs = sd[4]
+            var line = "typedef struct \{ "
+            var fj: I32 = 1
+            while fj < fs.len {
+                var fd = fs[fj]
+                var dc = ct_field_code_inst(file, fd[3], snm, encs)
+                line = line + ct_ctype(dc) + " " + fd[2] + "; "
+                fj += 1
+            }
+            line = line + "} " + tn + ";"
+            println(line)
+            println("#endif")
+        }
+        ii += 1
+    }
 }

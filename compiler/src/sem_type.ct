@@ -747,12 +747,19 @@ fn subst_tpar_ty(ty: List[Str], tps: List[Str], args: List[Str]) -> List[Str] {
 
 // 型别满足 Show/Eq bound:结构体且全部字段为标量/Str/可满足的结构体(递归,深度限 6)。
 // 型参(TPar)实参即嵌套泛型体的传递场景,v0 放行由外层 bound 负责。
-fn bound_sat(file: List[Str], ty: List[Str], dp: I32) -> Bool {
+fn bound_sat(file: List[Str], ty: List[Str], tr: Str, dp: I32) -> Bool {
     if dp > 6 {
         return false
     }
     if ty[0] != "Named" {
         return false
+    }
+    // Eq 的标量面:数值/Bool/Str 原生可 ==(Show 无此面:.show() 仅结构体派生)
+    if seq2(tr, "Eq") {
+        var nm0 = ty[1]
+        if or2(seq2(nm0, "I32"), or2(seq2(nm0, "I64"), or2(seq2(nm0, "Bool"), seq2(nm0, "Str")))) {
+            return true
+        }
     }
     var sd = find_sdecl(file, ty[1])
     if sd.len == 0 {
@@ -775,7 +782,7 @@ fn bound_sat(file: List[Str], ty: List[Str], dp: I32) -> Bool {
         }
         var prim = or2(seq2(ft[1], "I32"), or2(seq2(ft[1], "I64"), or2(seq2(ft[1], "Bool"), seq2(ft[1], "Str"))))
         if !prim {
-            if !bound_sat(file, ft, dp + 1) {
+            if !bound_sat(file, ft, tr, dp + 1) {
                 return false
             }
         }
@@ -805,7 +812,7 @@ fn check_tpar_bounds(file: List[Str], e: List[Str], cal: List[Str], rt: Str, dia
         var bi: I32 = 1
         while bi < bds.len {
             if or2(seq2(bds[bi], "Show"), seq2(bds[bi], "Eq")) {
-                if !bound_sat(file, tas[k], 0) {
+                if !bound_sat(file, tas[k], bds[bi], 0) {
                     var anm = "?"
                     if tas[k][0] == "Named" {
                         anm = tas[k][1]
