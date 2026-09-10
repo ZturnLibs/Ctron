@@ -70,17 +70,18 @@ native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 244**(fmt_struct 入 CORE);smoke 3b 夹具名单含 derive。
+- **decls 锁现为 245**(fmt_struct/eq_val 入 CORE);smoke 3b 夹具名单含 derive。
 
 ## 5. 挂账(按优先级,均为独立切片)
 
 1. **泛型深水区**:泛型 struct 方法、泛型体内嵌泛型调用、嵌套泛型
-   (`Fn` 返回 `Fn`)、bound/derive 体系(**@derive(Show) 已落地 55adfae**:
-   eval fmt_struct + emit ct_show_frag_dp 双面逐字对齐,fx_derive 夹具;
+   (`Fn` 返回 `Fn`)、bound/derive 体系(**@derive(Show) 55adfae、
+   @derive(Eq) 402a65c 已落地**:eval/emit 双面逐字对齐,fx_derive 夹具;
+   派生为结构化——字段全可显示/可比较即有 .show()/.eq(),注解仍声明性;
    顺带修复 driver 把泛型 fn 声明当具体 fn 发射的垃圾体、单行逗号字段解析、
-   print(Str) 缺括号)。仍挂账:@derive(Eq) 方法生成、bound 强制检查
-   (现为解析保留不 enforcement)、泛型体内对 TPar 调 show 的 run 面已通、
-   emit 面走显式 TypeArgs。单态化机制已备好
+   print(Str) 缺括号)。仍挂账:bound 强制检查(现为解析保留不 enforcement;
+   实施时把"结构化可显示/可比较"谓词接到 TPar bound 上即可)、
+   @derive(Json) 等更多插件。单态化机制已备好
    (AST 替换 + pass1 直出 + 形参 env 绑定),扩展点在 trans_expr TypeArgs 尾部与
    ct_mono_subst_ty。
 2. **arena API 发射**:own 块已透明发射(41b7751),但 `arena.array[T](n)` /
