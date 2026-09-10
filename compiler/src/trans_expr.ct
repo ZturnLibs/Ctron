@@ -223,6 +223,79 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { cap = ct_expr(ag[1], env, file) }
                 return "((ct_chan*)ct_ch_make((int)(" + cap + ")))"
             }
+            if base[0] == "Ident" {
+                // 泛型实例化(Phase 5):显式 TypeArgs 调用 → 按型别单态特化
+                var gdecl = ct_fn_decl(file, base[1])
+                if gdecl.len > 0 && gdecl[2].len > 1 {
+                    var tpsn = List[Str]()
+                    var tys = List[Str]()
+                    var gk: I32 = 1
+                    while gk < gdecl[2].len {
+                        tpsn.push(gdecl[2][gk][1])
+                        gk += 1
+                    }
+                    gk = 1
+                    while gk < cal[2].len {
+                        tys.push(cal[2][gk])
+                        gk += 1
+                    }
+                    if tpsn.len != tys.len {
+                        panic("emit:泛型实参数")
+                        return ""
+                    }
+                    var mg = "t_" + base[1] + "__"
+                    gk = 0
+                    while gk < tys.len {
+                        var tc = ct_ty_code(tys[gk], file)
+                        var ms = ""
+                        var mb: I32 = 0
+                        while mb < tc.len {
+                            var bc = byte_at(tc, mb)
+                            if bc == 58 { ms = ms + "_" } else { ms = ms + byte_slice(tc, mb, mb + 1) }
+                            mb += 1
+                        }
+                        mg = mg + ms
+                        if gk < tys.len - 1 { mg = mg + "_" }
+                        gk += 1
+                    }
+                    if seq2(ct_pass(env), "1") {
+                        var spec = mk("Fn")
+                        spec.push(mg)
+                        spec.push(mk("TPs"))
+                        var ps2 = mk("Ps")
+                        var pk: I32 = 1
+                        while pk < gdecl[3].len {
+                            var pr = gdecl[3][pk]
+                            if pr[0] == "Param" {
+                                var np = mk("Param")
+                                np.push(pr[1])
+                                np.push(pr[2])
+                                np.push(ct_mono_subst_ty(pr[3], tpsn, tys))
+                                ps2.push(np)
+                            } else {
+                                ps2.push(pr)
+                            }
+                            pk += 1
+                        }
+                        spec.push(ps2)
+                        spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
+                        spec.push(gdecl[5])
+                        var rcs = ct_ty_code(spec[4], file)
+                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
+                        ct_body(spec[5], env_bind(env, "#p", "2"), file, rcs)
+                    }
+                    var gargs = ""
+                    var ga: I32 = 1
+                    while ga < ag.len {
+                        if ga > 1 { gargs = gargs + ", " }
+                        gargs = gargs + ct_expr(ag[ga], env, file)
+                        ga += 1
+                    }
+                    var grc = ct_generic_retcode(file, base[1], tpsn, tys)
+                    if or2(grc == "L", grc == "LI") { gargs = "(ctron_list*)(" + gargs + ")" }
+                    return mg + "(" + gargs + ")"
+                }
+            }
             if base[0] == "Ident" && base[1] == "Mutex" {
                 var minit = "0"
                 if ag.len > 1 { minit = ct_expr(ag[1], env, file) }

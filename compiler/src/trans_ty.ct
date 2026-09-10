@@ -391,6 +391,25 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var cal = e[1]
         if cal[0] == "TypeArgs" {
             var base = cal[1]
+            if base[0] == "Ident" {
+                // 泛型实例化返回码:TPar 名 → 实参型别
+                var gdecl2 = ct_fn_decl(file, base[1])
+                if gdecl2.len > 0 && gdecl2[2].len > 1 {
+                    var gtpsn = List[Str]()
+                    var gtys = List[Str]()
+                    var gg: I32 = 1
+                    while gg < gdecl2[2].len {
+                        gtpsn.push(gdecl2[2][gg][1])
+                        gg += 1
+                    }
+                    gg = 1
+                    while gg < cal[2].len {
+                        gtys.push(cal[2][gg])
+                        gg += 1
+                    }
+                    return ct_generic_retcode(file, base[1], gtpsn, gtys)
+                }
+            }
             if base[0] == "Ident" && base[1] == "List" {
                 // List[I32] → LI(元素槽 int);其余 → L(Str 槽语义)。实参槽 = p_typ Named 节点
                 if cal[2].len > 1 {
@@ -474,4 +493,39 @@ fn ct_cstr(raw: Str) -> Str {
         }
     }
     return acc
+}
+
+// 泛型 fn 声明查找(Fn/FnPub;未命中 → 空表)
+fn ct_fn_decl(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", d[0] == "FnPub") && d[1] == nm {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+
+// 泛型实例化的返回类型码:ret 槽中 TPar 名 → 对应实参型别
+fn ct_generic_retcode(file: List[Str], nm: Str, tpsn: List[Str], tys: List[Str]) -> Str {
+    var gdecl = ct_fn_decl(file, nm)
+    if gdecl.len == 0 { return "i" }
+    var rt = ct_mono_subst_ty(gdecl[4], tpsn, tys)
+    return ct_ty_code(rt, file)
+}
+
+// 类型槽替换:Named(TPar 名) → 实参类型节点;包装/具体型别原样
+fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] {
+    if t[0] == "Named" {
+        var k: I32 = 0
+        while k < tpsn.len {
+            if seq2(t[1], tpsn[k]) {
+                return tys[k]
+            }
+            k += 1
+        }
+    }
+    return t
 }

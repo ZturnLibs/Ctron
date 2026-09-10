@@ -1,0 +1,15 @@
+// fx_generic.ct —— Phase 5:泛型 fn 单态化发射(显式 TypeArgs;无 bound/derive)
+fn identity[T](v: T) -> T {
+    return v
+}
+fn pick[T](a: T, b: T, useA: Bool) -> T {
+    if useA { return a }
+    return b
+}
+fn main() -> I32 {
+    println(identity[I32](21).to_string())
+    println(pick[I32](1, 2, true).to_string())
+    println(pick[Str]("x", "y", false))
+    println(identity[Str]("ok"))
+    return 0
+}

@@ -53,7 +53,7 @@
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in> [--profile=bare]` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
 | | `bench.sh` | 性能基线:微基准三路 + 前端 check + 后端发射 + 黄金解释(基线见 BOOTSTRAP.md §2b) |
-| | `test/smoke.sh` | 验收冒烟(52 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(53 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -144,6 +144,13 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第二十五批(2026-09-10,泛型 fn 单态化发射 v0):显式 TypeArgs 调用点按型别
+单态特化——pass1 直出特化定义(AST 型别替换:Named(TPar) → 实参型节点;
+mangle t_name__<码>),pass2 调用点引特化名;返回码经 TPar 替换推导
+(identity[I32]→i / [Str]→s);eval 侧 TypeArgs 擦除动态派发(语义一致)。
+fx_generic 四实例化(i/s × identity/pick)seed==native 逐字;smoke --full
+53/53。v0 挂账:泛型体内嵌泛型调用、bound/derive 体系、泛型 struct。
 
 第二十四批(2026-09-10,own 块发射):own (名) { 体 } 透明语义落地——语句位体
 平铺,let 初值位尾值声明式捕获;sem tcb 补 Own 块下钻(块内绑定/引用不再误报

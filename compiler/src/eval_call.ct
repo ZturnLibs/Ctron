@@ -760,6 +760,10 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             }
             return e4("k", env2, mv, out2)
         }
+        // 泛型 fn 调用(显式 TypeArgs):擦除型参,按名动态派发
+        if base[0] == "Ident" {
+            return call_id(file, env, out, base[1], vals)
+        }
     }
     panic("call target")
     return e4("a", env, vV2(), out)
