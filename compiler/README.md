@@ -52,7 +52,7 @@
 | 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
-| | `test/smoke.sh` | 验收冒烟(42 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(43 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -143,6 +143,13 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第十九批(2026-09-10,Phase 5 切片三:带捕获闭包值):fn 值表示升级为
+ct_clop = ct_clo{fn,env} 装箱对;间接调用走 ct_cfnK(env 首参);具名 fn 适配器
+同步装箱;ct_emit_clov 生成带捕获静态 fn(捕获 → env 数组,创建时快照,镜像
+eval env 引用语义)。parallel/spawn/with 的原始 fnptr 路径不变。fx_cloval
+(存变量/作实参/多捕获)seed==native 逐字;smoke --full 43/43。挂账:fn 返回
+fn(F 码不含返回型)。
 
 第十八批(2026-09-10,Phase 5 切片:枚举 + 一等 fn 值发射):**用户枚举发射**——
 每枚举 ct_enum_<E>{variant,p[2]},裸变体名/单元变体 Ident 构造,match variant 下标
