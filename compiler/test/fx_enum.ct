@@ -1,0 +1,52 @@
+// fx_enum.ct —— Phase 5 发射面:用户枚举(构造/类型化 let/match 载荷绑定)
+enum Shape {
+    Point
+    Circle(I32)
+    Rect(I32, I32)
+}
+
+fn area(s: Shape) -> I32 {
+    return 0
+}
+
+fn main() -> I32 {
+    var a = Circle(5)
+    var b = Rect(3, 4)
+    var u = Point
+    var sum = 0
+    match a {
+        Point => {
+            sum = sum + 0
+        }
+        Circle(r) => {
+            sum = sum + r * r
+        }
+        Rect(w, h) => {
+            sum = sum + w * h
+        }
+    }
+    match b {
+        Point => {
+            sum = sum + 0
+        }
+        Circle(r) => {
+            sum = sum + r
+        }
+        Rect(w, h) => {
+            sum = sum + w * h
+        }
+    }
+    match u {
+        Point => {
+            sum = sum + 100
+        }
+        Circle(r) => {
+            sum = sum + r
+        }
+        Rect(w, h) => {
+            sum = sum + w
+        }
+    }
+    println(sum.to_string())
+    return 0
+}

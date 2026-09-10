@@ -55,10 +55,18 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "0"
     }
     if t == "Ident" {
-        var icd = ct_env_ty(env, e[1])
-        if icd.len > 1 && byte_at(icd, 0) == 80 {
-            // P<内> 伪码:with_mut 体内参数 = 内值指针 → 解引用
-            return "(*t_" + e[1] + ")"
+        if ct_env_has(env, e[1]) {
+            var icd = ct_env_ty(env, e[1])
+            if icd.len > 1 && byte_at(icd, 0) == 80 {
+                // P<内> 伪码:with_mut 体内参数 = 内值指针 → 解引用
+                return "(*t_" + e[1] + ")"
+            }
+            return "t_" + e[1]
+        }
+        var ien = ct_enum_of_variant(file, e[1])
+        if ien.len > 0 {
+            var iidx = ct_variant_index(file, ien, e[1])
+            return "(ct_enum_" + ien + ")\{ " + iidx.to_string() + ", \{ 0, 0 } }"
         }
         return "t_" + e[1]
     }
@@ -329,6 +337,36 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // 用户枚举变体构造(Phase 5):(ct_enum_E){ idx, { p0, p1 } }
+        var ven = ct_enum_of_variant(file, callee)
+        if ven.len > 0 {
+            var vidx = ct_variant_index(file, ven, callee)
+            var vpcs = ct_variant_pcodes(file, ven, callee)
+            var nargs = ag.len - 1
+            if nargs != vpcs.len {
+                panic("emit:variant arity:" + callee)
+                return ""
+            }
+            if nargs > 2 {
+                panic("emit:变体载荷>2")
+                return ""
+            }
+            var lit = "(ct_enum_" + ven + ")\{ " + vidx.to_string() + ", \{ "
+            var pk: I32 = 0
+            var firstv = true
+            while pk < 2 {
+                if !firstv { lit = lit + ", " }
+                firstv = false
+                if pk < nargs {
+                    lit = lit + ct_wrap_i(vpcs[pk], ct_expr(ag[pk + 1], env, file))
+                } else {
+                    lit = lit + "0"
+                }
+                pk += 1
+            }
+            lit = lit + " } }"
+            return lit
+        }
         // extern "c" 声明:C 侧符号无 t_ 前缀(§9.6)
         var isext = false
         var ie: I32 = 1

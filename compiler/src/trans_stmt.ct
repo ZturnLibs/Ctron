@@ -523,6 +523,57 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             return env
         }
+        // 用户枚举模型(Phase 5):variant 下标 if/else 链 + 载荷槽绑定
+        var menm = ct_env_ename(ct_typeof(st[1], env, file))
+        if menm.len > 0 {
+            var meuq = nline(st)
+            var me = "t_me" + meuq
+            eln("ct_enum_" + menm + " " + me + " = " + ct_expr(st[1], env, file) + ";", env)
+            var m_arms = st[2]
+            var mi2: I32 = 1
+            var firsta = true
+            while mi2 < m_arms.len {
+                var ma = m_arms[mi2]
+                var mpt = ma[1]
+                var mvn = mpt[1]
+                var vidx2 = ct_variant_index(file, menm, mvn)
+                var vpcs2 = ct_variant_pcodes(file, menm, mvn)
+                if firsta {
+                    eln("if (" + me + ".variant == " + vidx2.to_string() + ") \{", env)
+                    firsta = false
+                } else {
+                    eln("else if (" + me + ".variant == " + vidx2.to_string() + ") \{", env)
+                }
+                var aenv = env
+                if mpt[2][0] == "SubTup" {
+                    var sk: I32 = 1
+                    while sk < mpt[2].len {
+                        var sp = mpt[2][sk]
+                        if sp[0] == "PatId" && sp[1] != "_" {
+                            var pct = vpcs2[sk - 1]
+                            var pc = ct_ctype(pct)
+                            if !or2(pct == "i", or2(pct == "b", pct == "6")) {
+                                eln(pc + " t_" + sp[1] + " = (" + pc + ")(long)" + me + ".p[" + (sk - 1).to_string() + "];", env)
+                            } else {
+                                eln(pc + " t_" + sp[1] + " = (" + pc + ")" + me + ".p[" + (sk - 1).to_string() + "];", env)
+                            }
+                            aenv = env_bind(aenv, sp[1], pct)
+                        }
+                        sk += 1
+                    }
+                }
+                var abe = ma[2]
+                if abe[0] == "BlockExpr" {
+                    ct_block(abe[1], aenv, file, hreg)
+                } else {
+                    panic("ct_stmt:enum match arm body")
+                    return env
+                }
+                eln("}", env)
+                mi2 += 1
+            }
+            return env
+        }
         // Option[Str] 模型:read_file → char*(NULL=None);单 match 每函数(t_mv)
         eln("const char* t_mv = (const char*)(" + ct_expr(st[1], env, file) + ");", env)
         var arms = st[2]

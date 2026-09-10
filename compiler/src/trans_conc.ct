@@ -20,18 +20,6 @@ fn ct_pass(env: List[Str]) -> Str {
     return ct_env_ty(env, "#p")
 }
 
-fn ct_env_has(env: List[Str], nm: Str) -> Bool {
-    var key = nm + ":"
-    var i: I32 = 0
-    while i < env.len {
-        if env[i].len >= key.len && byte_slice(env[i], 0, key.len) == key {
-            return true
-        }
-        i += 1
-    }
-    return false
-}
-
 // mcell C 标签:类型码 "u:Acc" 中的冒号非法 → "uAcc"
 fn ct_mcell_tag(inner: Str) -> Str {
     if inner.len > 2 && byte_slice(inner, 0, 2) == "u:" {

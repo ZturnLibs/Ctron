@@ -38,6 +38,18 @@ fn ct_aop(op: Str) -> Str {
     return "?"
 }
 
+fn ct_env_has(env: List[Str], nm: Str) -> Bool {
+    var key = nm + ":"
+    var i: I32 = 0
+    while i < env.len {
+        if env[i].len >= key.len && byte_slice(env[i], 0, key.len) == key {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
 // 符号表: env 条目形如 "name:ty"(ty 为类型码);查找按 "name:" 前缀精确匹配,
 // 新绑定插在表头 → 先命中(遮蔽语义)
 fn ct_env_ty(env: List[Str], nm: Str) -> Str {
@@ -64,10 +76,92 @@ fn env_bind(env: List[Str], nm: Str, ty: Str) -> List[Str] {
     return out
 }
 
+// 用户枚举查询:变体名 → 所属枚举名(未命中 → "");镜像 eval variant_arity 扫描
+fn ct_enum_of_variant(file: List[Str], nm: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" {
+            var vs = d[3]
+            var j: I32 = 1
+            while j < vs.len {
+                if seq2(vs[j][1], nm) {
+                    return d[1]
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 变体在枚举内的序(构造字面量的 variant 下标)
+fn ct_variant_index(file: List[Str], enm: Str, vnm: Str) -> I32 {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" && d[1] == enm {
+            var vs = d[3]
+            var j: I32 = 1
+            while j < vs.len {
+                if seq2(vs[j][1], vnm) {
+                    return j - 1
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn ct_is_enum(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" && d[1] == nm {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// 变体载荷槽类型码(KTuple 逐槽;KUnit → 空表)
+fn ct_variant_pcodes(file: List[Str], enm: Str, vnm: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" && d[1] == enm {
+            var vs = d[3]
+            var j: I32 = 1
+            while j < vs.len {
+                if seq2(vs[j][1], vnm) {
+                    var kd = vs[j][2]
+                    if kd[0] == "KTuple" {
+                        var k: I32 = 1
+                        while k < kd.len {
+                            out.push(ct_ty_code(kd[k], file))
+                            k += 1
+                        }
+                    }
+                    return out
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
 // Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
 fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[0] != "Named" { return "i" }
     if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
+    if ct_is_enum(file, nt[1]) { return "E:" + nt[1] }
     if nt[1] == "Str" { return "s" }
     if nt[1] == "Bool" { return "b" }
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
@@ -92,6 +186,9 @@ fn ct_ctype(code: Str) -> Str {
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "v" { return "void" }
+    if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
+        return "ct_enum_" + byte_slice(code, 2, code.len)
+    }
     if code == "g" { return "ct_scope*" }
     if code == "k" { return "ct_task*" }
     if code == "h" { return "ct_chan*" }
@@ -107,6 +204,14 @@ fn ct_ctype(code: Str) -> Str {
         return ct_ctype(byte_slice(code, 1, code.len)) + "*"
     }
     return "int32_t"
+}
+
+// 枚举类型码剥前缀:E:<名> → <名>;非枚举码 → ""
+fn ct_env_ename(code: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
+        return byte_slice(code, 2, code.len)
+    }
+    return ""
 }
 
 // 伪码归一:P<内> → 内(成员访问/字段域按内值型别解析)
@@ -189,7 +294,12 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Str" { return "s" }
     if t == "Bool" { return "b" }
     if t == "Float" { return "f" }
-    if t == "Ident" { return ct_env_ty(env, e[1]) }
+    if t == "Ident" {
+        if ct_env_has(env, e[1]) { return ct_env_ty(env, e[1]) }
+        var uen = ct_enum_of_variant(file, e[1])
+        if uen.len > 0 { return "E:" + uen }
+        return "i"
+    }
     if t == "Unary" {
         if e[1] == "Neg" { return ct_typeof(e[2], env, file) }
         return "b"
@@ -279,6 +389,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ct_fn_ret(file, m)
         }
         if cal[0] == "Ident" {
+            var ten = ct_enum_of_variant(file, cal[1])
+            if ten.len > 0 { return "E:" + ten }
             if cal[1] == "ctron_entry" { return "s" }
             if cal[1] == "read_file" { return "s" }
             if cal[1] == "read_dir" { return "s" }
