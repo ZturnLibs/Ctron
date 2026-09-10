@@ -427,3 +427,15 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
     acc = acc + " ct_clop _c" + ix + " = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c" + ix + "->fn = (void*)" + shim + "; _c" + ix + "->env = _e" + ix + "; _c" + ix + "; })"
     return acc
 }
+
+// Result/Option 载荷入 ct_res.v:用户枚举装箱(amalloc),指针/标量直入
+fn ct_res_wrap(code: Str, x: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
+        var ct = ct_ctype(code)
+        return "(\{ " + ct + "* _b = (" + ct + "*)ctron_amalloc(sizeof(" + ct + ")); *_b = " + x + "; (ct_i)(long)_b; })"
+    }
+    if or2(code == "s", code == "N") {
+        return "(ct_i)(long)(" + x + ")"
+    }
+    return "(ct_i)(" + x + ")"
+}

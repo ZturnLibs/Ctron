@@ -1,0 +1,48 @@
+// fx_enumres.ct —— Phase 5:用户枚举作为 Result 载荷(装箱) + Ok/Err 构造 + 嵌套模式
+enum MathErr {
+    DivByZero
+    NegSqrt(I32)
+}
+fn check(v: I32) -> Result[I32, MathErr] {
+    if v < 0 { return Err(NegSqrt(v)) }
+    if v == 0 { return Err(DivByZero) }
+    return Ok(v)
+}
+fn main() -> I32 {
+    var sum = 0
+    match check(9) {
+        Ok(v) => {
+            sum = sum + v
+        }
+        Err(DivByZero) => {
+            sum = sum + 1
+        }
+        Err(NegSqrt(k)) => {
+            sum = sum + 100 + k
+        }
+    }
+    match check(0) {
+        Ok(v) => {
+            sum = sum + v
+        }
+        Err(DivByZero) => {
+            sum = sum + 1
+        }
+        Err(NegSqrt(k)) => {
+            sum = sum + 100 + k
+        }
+    }
+    match check(-4) {
+        Ok(v) => {
+            sum = sum + v
+        }
+        Err(DivByZero) => {
+            sum = sum + 1
+        }
+        Err(NegSqrt(k)) => {
+            sum = sum + 100 + k
+        }
+    }
+    println(sum.to_string())
+    return 0
+}

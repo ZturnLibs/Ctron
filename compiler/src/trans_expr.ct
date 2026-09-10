@@ -63,6 +63,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "t_" + e[1]
         }
+        if seq2(e[1], "None") {
+            return "(\{ ct_res _r; _r.variant = 1; _r.v = 0; _r; })"
+        }
         var ien = ct_enum_of_variant(file, e[1])
         if ien.len > 0 {
             var iidx = ct_variant_index(file, ien, e[1])
@@ -364,6 +367,26 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // Option/Result 构造(Phase 5):Ok/Err/Some(expr) → ct_res(载荷按型别包装)
+        if cal[0] == "Ident" {
+            if or2(cal[1] == "Ok", or2(cal[1] == "Err", cal[1] == "Some")) {
+                if ag.len < 2 {
+                    panic("emit:" + cal[1] + " 需载荷")
+                    return ""
+                }
+                var rcode = ct_typeof(ag[1], env, file)
+                if rcode.len > 2 && byte_slice(rcode, 0, 2) == "E:" {
+                    if ag[1][0] != "Call" && ag[1][0] != "Ident" {
+                        panic("emit:枚举载荷需变体构造")
+                        return ""
+                    }
+                }
+                var vx = ct_res_wrap(rcode, ct_expr(ag[1], env, file))
+                var vr = "0"
+                if cal[1] == "Err" { vr = "1" }
+                return "(\{ ct_res _r; _r.variant = " + vr + "; _r.v = " + vx + "; _r; })"
+            }
+        }
         // fn 值间接调用(env 命中 F<arity>):( (ct_fnK)t_f )( 实参... )
         if cal[0] == "Ident" && ct_env_has(env, cal[1]) {
             var fvt = ct_env_ty(env, cal[1])

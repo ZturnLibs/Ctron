@@ -159,6 +159,7 @@ fn ct_variant_pcodes(file: List[Str], enm: Str, vnm: Str) -> List[Str] {
 
 // Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
 fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
+    if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "FnType" {
         var fa = nt[1].len - 1
         if or2(fa < 1, fa > 3) { return "i" }
@@ -303,6 +304,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Bool" { return "b" }
     if t == "Float" { return "f" }
     if t == "Ident" {
+        if seq2(e[1], "None") { return "R" }
         if ct_env_has(env, e[1]) { return ct_env_ty(env, e[1]) }
         var uen = ct_enum_of_variant(file, e[1])
         if uen.len > 0 { return "E:" + uen }
@@ -402,6 +404,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ct_fn_ret(file, m)
         }
         if cal[0] == "Ident" {
+            if or2(cal[1] == "Ok", or2(cal[1] == "Err", cal[1] == "Some")) { return "R" }
             var ten = ct_enum_of_variant(file, cal[1])
             if ten.len > 0 { return "E:" + ten }
             if cal[1] == "ctron_entry" { return "s" }

@@ -469,7 +469,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // ct_res 模型(Phase 4):send/recv/join_or 的 Result —— variant 0=Ok/1=Err,
         // 载荷单槽 v(Ok=元素值,Err="task panic"/"ScopeCancelled" 串指针)
         if ct_typeof(st[1], env, file) == "R" {
-            eln("ct_res t_mrr = " + ct_expr(st[1], env, file) + ";", env)
+            var ruq = nline(st)
+            var rme = "t_mrr" + ruq
+            eln("ct_res " + rme + " = " + ct_expr(st[1], env, file) + ";", env)
             var rarms = st[2]
             var okIx: I32 = -1
             var errIx: I32 = -1
@@ -485,10 +487,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 var oa = rarms[okIx]
                 var opt = oa[1]
                 var obe = oa[2]
-                eln("if (t_mrr.variant == 0) \{", env)
+                eln("if (" + rme + ".variant == 0) \{", env)
                 var oenv = env
                 if opt[2].len > 1 && opt[2][1][0] == "PatId" && opt[2][1][1] != "_" {
-                    eln("int32_t t_" + opt[2][1][1] + " = (int32_t)t_mrr.v;", env)
+                    eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
                     oenv = env_bind(env, opt[2][1][1], "i")
                 }
                 if obe[0] == "BlockExpr" {
@@ -500,24 +502,79 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln("}", env)
             }
             if errIx >= 0 {
-                var ea = rarms[errIx]
-                var ept = ea[1]
-                var ebe = ea[2]
                 if okIx >= 0 {
                     eln("else \{", env)
                 } else {
-                    eln("if (t_mrr.variant != 0) \{", env)
+                    eln("if (" + rme + ".variant != 0) \{", env)
                 }
-                var eenv = env
-                if ept[2].len > 1 && ept[2][1][0] == "PatId" && ept[2][1][1] != "_" {
-                    eln("const char* t_" + ept[2][1][1] + " = (const char*)t_mrr.v;", env)
-                    eenv = env_bind(env, ept[2][1][1], "s")
-                }
-                if ebe[0] == "BlockExpr" {
-                    ct_block(ebe[1], eenv, file, hreg)
-                } else {
-                    panic("ct_stmt:match R arm body")
-                    return env
+                // 逐 Err 臂:嵌套用户枚举(PatAgg/裸变体 Ident) → t_mn variant 链;
+                // PatId(非变体名) → char* 绑定;PatWild → 直落。穷尽性由 sem E2030 保证。
+                var firstE = true
+                var mnDeclared = false
+                var ri2: I32 = 1
+                while ri2 < rarms.len {
+                    var ea = rarms[ri2]
+                    var ept = ea[1]
+                    var ebe = ea[2]
+                    if ept[0] == "PatAgg" && ept[1] == "Err" {
+                        var nested = false
+                        var npn = ""
+                        if ept[2].len > 1 && ept[2][1][0] == "PatAgg" {
+                            nested = true
+                            npn = ept[2][1][1]
+                        }
+                        if ept[2].len > 1 && ept[2][1][0] == "PatId" {
+                            if ct_enum_of_variant(file, ept[2][1][1]).len > 0 {
+                                nested = true
+                                npn = ept[2][1][1]
+                            }
+                        }
+                        var eenv = env
+                        var armHead = ""
+                        if firstE { armHead = "if (" } else { armHead = "else if (" }
+                        if nested {
+                            var nen = ct_enum_of_variant(file, npn)
+                            if nen.len == 0 {
+                                panic("ct_stmt:嵌套模式需用户枚举变体")
+                                return env
+                            }
+                            if !mnDeclared {
+                                eln("ct_enum_" + nen + "* t_mn = (ct_enum_" + nen + "*)(long)" + rme + ".v;", env)
+                                mnDeclared = true
+                            }
+                            var nidx = ct_variant_index(file, nen, npn)
+                            eln(armHead + "t_mn->variant == " + nidx.to_string() + ") \{", env)
+                            if ept[2][1][0] == "PatAgg" {
+                                var npcs = ct_variant_pcodes(file, nen, npn)
+                                var nk: I32 = 1
+                                while nk < ept[2][1][2].len {
+                                    var nsp = ept[2][1][2][nk]
+                                    if nsp[0] == "PatId" && nsp[1] != "_" {
+                                        var pct = npcs[nk - 1]
+                                        var pc = ct_ctype(pct)
+                                        eln(pc + " t_" + nsp[1] + " = (" + pc + ")t_mn->p[" + (nk - 1).to_string() + "];", env)
+                                        eenv = env_bind(eenv, nsp[1], pct)
+                                    }
+                                    nk += 1
+                                }
+                            }
+                        } else {
+                            if ept[2].len > 1 && ept[2][1][0] == "PatId" && ept[2][1][1] != "_" {
+                                eln("const char* t_" + ept[2][1][1] + " = (const char*)" + rme + ".v;", env)
+                                eenv = env_bind(env, ept[2][1][1], "s")
+                            }
+                            eln(armHead + rme + ".variant != 0) \{", env)
+                        }
+                        if ebe[0] == "BlockExpr" {
+                            ct_block(ebe[1], eenv, file, hreg)
+                        } else {
+                            panic("ct_stmt:match R arm body")
+                            return env
+                        }
+                        eln("}", env)
+                        firstE = false
+                    }
+                    ri2 += 1
                 }
                 eln("}", env)
             }
