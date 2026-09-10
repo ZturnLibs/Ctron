@@ -239,13 +239,13 @@ fn main() -> I32 {
                     ct_fn(d1, file, "1")
                 } else if d1[0] == "Test" {
                     var penv1 = env_bind(List[Str](), "#p", "1")
-                    ct_stmts(d1[2], penv1, file, "", List[Str]())
+                    var tenv1 = ct_stmts(d1[2], penv1, file, "", List[Str]())
                     var tl1 = d1[2][d1[2].len - 1]
                     if tl1[0] != "None" {
                         var es1 = List[Str]()
                         es1.push("Expr")
                         es1.push(tl1)
-                        ct_stmt(es1, penv1, file, List[Str]())
+                        ct_stmt(es1, tenv1, file, List[Str]())
                     }
                 }
                 di += 1
