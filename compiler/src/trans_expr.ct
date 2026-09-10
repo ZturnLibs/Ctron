@@ -127,6 +127,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
             if e[1][0] == "Ident" { return "t_" + e[1][1] + "[" + ct_expr(e[2], env, file) + "]" }
         }
+        if ot == "LI" {
+            // List[I32] 索引:槽经 long 取回标量
+            return "((int32_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
+        }
         if or2(ot == "L", ot == "N") {
             // List/节点索引:元素槽即 char*(节点 = 动态转型的 ctron_list*)
             return "((const char*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
@@ -145,7 +149,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             var ot3 = ct_typeof(e[1], env, file)
-            if ot3 == "L" {
+            if or2(ot3 == "L", ot3 == "LI") {
                 return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n"
             }
             if ot3 == "N" {
@@ -238,7 +242,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     var marr = ct_expr(ag[1], env, file)
                     var mart = ct_typeof(ag[1], env, file)
-                    if mart != "L" {
+                    if or2(mart == "L", mart == "LI") {
+                    } else {
                         panic("emit:parallel 目标限 List")
                         return ""
                     }
@@ -310,8 +315,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { a0 = ct_expr(ag[1], env, file) }
                 var a0t = "i"
                 if ag.len > 1 { a0t = ct_typeof(ag[1], env, file) }
+                var objt6 = ct_typeof(cal[1], env, file)
                 var pv = ct_arg_cast(a0t, "s", a0)
-                if !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))) {
+                if or2(objt6 == "LI", !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R"))))))) {
                     // 标量元素:槽为 char*,经 long 中转(镜像 List 元素槽模型)
                     pv = "(const char*)(long)(" + a0 + ")"
                 }
@@ -328,6 +334,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     panic("emit:struct to_string")
                     return ""
                 }
+                if objt == "b" { return "((" + obj + ") ? \"true\" : \"false\")" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
@@ -569,7 +576,7 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
                     } else {
                         ty = ct_typeof(st[4], ew, file)
                     }
-                    if ty != "L" && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") {
+                    if ty != "L" && ty != "LI" && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") {
                         out.push(pat[1] + ":" + ty)
                         ew = env_bind(ew, pat[1], ty)
                     }

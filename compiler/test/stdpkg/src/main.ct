@@ -1,0 +1,16 @@
+use std.map.{new, put, get, has}
+use std.set.{add, mem, len}
+
+fn main() -> I32 {
+    var m = new()
+    m = put(m, 1, 10)
+    m = put(m, 2, 20)
+    m = put(m, 1, 30)
+    var s = add(add(new(), 5), 5)
+    var total = get(m, 1, 0) + get(m, 2, 0) + get(m, 9, 7)
+    println(total.to_string())
+    println(len(s).to_string())
+    println(has(m, 2).to_string())
+    println(mem(s, 5).to_string())
+    return 0
+}

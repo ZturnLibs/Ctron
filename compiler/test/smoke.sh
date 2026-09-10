@@ -125,7 +125,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
-for cv in fnval cloval enumres fnret try; do
+for cv in fnval cloval enumres fnret try tlist; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
@@ -156,6 +156,15 @@ if [ $? -eq 0 ]; then
     ok "full 档同源通过(档位门控生效)"
 else
     bad "full 档误拦"
+fi
+echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
+if "$COMP/bin/ctron-emit" run "$COMP/test/stdpkg/src/main.ct" > "$T/sd_native.c" 2>/dev/null; then
+    cc -O1 -w -o "$T/sd.bin" "$T/sd_native.c" 2>/dev/null
+    "$COMP/ctc.sh" "$COMP/test/stdpkg/src/main.ct" > "$T/sd_seed.out" 2>&1
+    timeout 15 "$T/sd.bin" > "$T/sd.got" 2>&1
+    diff -q "$T/sd.got" "$T/sd_seed.out" > /dev/null 2>&1 && ok "std 包 原生==解释 逐字一致" || bad "std 包 分歧"
+else
+    bad "std 包 发射失败"
 fi
 for cv in uhex; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \

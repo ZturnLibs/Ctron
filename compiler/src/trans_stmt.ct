@@ -372,7 +372,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 return env_bind(env, pat[1], ty)
             }
             var rhs = ct_expr(st[4], env, file)
-            if ty == "L" { rhs = "(ctron_list*)(" + rhs + ")" }
+            if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
             return env_bind(env, pat[1], ty)
@@ -414,7 +414,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("(*t_" + tgt[1] + ") " + ct_aop(st[2]) + " " + rhs2 + ";", env)
             return env
         }
-        if tt == "L" { rhs2 = "(ctron_list*)(" + rhs2 + ")" }
+        if or2(tt == "L", tt == "LI") { rhs2 = "(ctron_list*)(" + rhs2 + ")" }
         if tt == "A" { rhs2 = "(ctron_cell*)(" + rhs2 + ")" }
         eln("t_" + tgt[1] + " " + ct_aop(st[2]) + " " + rhs2 + ";", env)
         return env
@@ -718,6 +718,16 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             return env
         }
         var ity = ct_typeof(it, env, file)
+        if ity == "LI" {
+            // for x in List[I32]:槽经 long 取标量
+            var larr = ct_expr(it, env, file)
+            eln("ctron_list* t_li = (ctron_list*)(" + larr + ");", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
+            eln("    int32_t t_" + v0 + " = (int32_t)(long)t_li->items[ctron_i];", env)
+            ct_block(body, env_bind(env, v0, "i"), file, hreg)
+            eln("}", env)
+            return env
+        }
         if ity.len >= 3 && byte_slice(ity, 0, 1) == "a" {
             // for x in <定长数组>:按 env 长度编码展开
             var n = byte_slice(ity, 1, ity.len - 1)

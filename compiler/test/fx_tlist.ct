@@ -1,0 +1,18 @@
+// fx_tlist.ct —— Phase 5:typed List[I32](LI 码:for-in/索引/push 标量槽)
+fn sum(xs: List[I32]) -> I32 {
+    var acc = 0
+    for x in xs {
+        acc = acc + x
+    }
+    return acc
+}
+fn main() -> I32 {
+    var xs = List[I32]()
+    xs.push(3)
+    xs.push(9)
+    xs.push(14)
+    var s1 = sum(xs)
+    var s2 = xs[0] + xs[2]
+    println((s1 + s2).to_string())
+    return 0
+}

@@ -1,0 +1,30 @@
+// std/set.ct —— IntSet 种子(List 成员;函数式:add 返回新集合)
+pub fn new() -> List[I32] {
+    return List[I32]()
+}
+pub fn mem(s: List[I32], v: I32) -> Bool {
+    var i: I32 = 0
+    while i < s.len {
+        if s[i] == v {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+pub fn add(s: List[I32], v: I32) -> List[I32] {
+    if mem(s, v) {
+        return s
+    }
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(s[i])
+        i = i + 1
+    }
+    out.push(v)
+    return out
+}
+pub fn len(s: List[I32]) -> I32 {
+    return s.len
+}

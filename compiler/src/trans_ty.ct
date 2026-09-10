@@ -159,7 +159,6 @@ fn ct_variant_pcodes(file: List[Str], enm: Str, vnm: Str) -> List[Str] {
 
 // Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
 fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
-    if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "FnType" {
         // F<arity>=返回标量;G<arity>=返回 fn 值(闭包)——返回型维度入码
         var fa = nt[1].len - 1
@@ -175,7 +174,14 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[1] == "Bool" { return "b" }
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
     if nt[1] == "I64" { return "6" }
-    if nt[1] == "List" { return "L" }
+    if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
+    if nt[1] == "List" {
+        // List[I32] → LI(元素槽 int;TArgs 装类型节点)
+        if nt[2].len > 1 {
+            if nt[2][1][0] == "Named" && nt[2][1][1] == "I32" { return "LI" }
+        }
+        return "L"
+    }
     if nt[1] == "Atomic" { return "A" }
     return "i"
 }
@@ -191,7 +197,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "N" { return "const char*" }
     if code == "b" { return "int" }
     if code == "f" { return "double" }
-    if code == "L" { return "ctron_list*" }
+    if or2(code == "L", code == "LI") { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "v" { return "void" }
@@ -377,6 +383,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
             return a_elem(ot)
         }
+        if ot == "LI" { return "i" }
         if or2(ot == "L", ot == "N") { return "N" }
         return "i"
     }
@@ -384,7 +391,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var cal = e[1]
         if cal[0] == "TypeArgs" {
             var base = cal[1]
-            if base[0] == "Ident" && base[1] == "List" { return "L" }
+            if base[0] == "Ident" && base[1] == "List" {
+                // List[I32] → LI(元素槽 int);其余 → L(Str 槽语义)。实参槽 = p_typ Named 节点
+                if cal[2].len > 1 {
+                    if cal[2][1][0] == "Named" && cal[2][1][1] == "I32" { return "LI" }
+                }
+                return "L"
+            }
             if base[0] == "Ident" && base[1] == "Atomic" { return "A" }
             if base[0] == "Ident" && base[1] == "Channel" { return "h" }
             if base[0] == "Ident" && base[1] == "Global" { return "A" }

@@ -53,7 +53,7 @@
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in> [--profile=bare]` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
 | | `bench.sh` | 性能基线:微基准三路 + 前端 check + 后端发射 + 黄金解释(基线见 BOOTSTRAP.md §2b) |
-| | `test/smoke.sh` | 验收冒烟(49 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(51 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -144,6 +144,16 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第二十三批(2026-09-10,CI 门禁 + typed List + std 种子包):**ci.sh 一条命令
+全量门禁**(meta → 拼接 → smoke --full → native → suite → bench)+ GitHub
+Actions workflow。**typed List[I32]**——LI 类型码贯穿 typeof/ctype/Index
+(标量槽读)/for-in(发射器 List 迭代从无到有)/push(标量槽 cast)/hoist 排除。
+**std 种子包**——pkg_load_use 解除 std.* 跳过(→ 入口包旁 std/ 目录;缺失
+忽略,语料兼容),修复合并两缺陷(未展开 Use 被滤除、重启扫描索引偏移)、
+跨模块同名 decl 首个胜出、pkg_check_caps eager 索引修复;stdpkg(IntMap/
+IntSet 函数式容器)seed==native 逐字。Bool.to_string true/false 形态补齐。
+smoke --full 51/51;suite 51/51;固定点复现。
 
 第二十二批(2026-09-10,Phase 5 收尾:fn 返回 fn + ? 传播发射):
 **fn 返回 fn**——FnType 返回型维度入码(F<ar>=返标量 / G<ar>=返 fn 值;
