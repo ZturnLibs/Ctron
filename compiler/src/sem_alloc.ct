@@ -395,12 +395,13 @@ fn al_b(file: List[Str], b: List[Str], ow: Bool, na: Bool, arenaB: List[Str], gc
     }
     al_e(file, b[b.len - 1], ow, na, arenaB, gcL, diags)
 }
-fn sem_alloc(file: List[Str], d: List[Str], tag: Str) -> Str {
+fn sem_alloc(file: List[Str], d: List[Str], tag: Str, prof: Str) -> Str {
     var diags = List[Str]()
     var arenaB = List[Str]()
     var gcL = List[Str]()
     var body = d[2]
     var na = false
+    if seq2(prof, "bare") { na = true }
     if tag != "Test" {
         body = d[5]
         if has_noalloc(d) { na = true }

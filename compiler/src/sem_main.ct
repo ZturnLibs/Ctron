@@ -6,7 +6,8 @@
 //   E2030 match 穷尽 / E3040 分配效果。各检查实现分居 sem_walk/send/own/pure/spawn/
 //   move/exh/alloc/type/calls/comptime/ceval/closure.ct;逐条 "CODE@行: msg\n"。
 // =====================================================================
-fn sem_walk2(file: List[Str]) -> Str {
+// prof:full(默认)/bare —— bare 档文件级 no_alloc 上下文(隐式分配一律 E3040)
+fn sem_walk2(file: List[Str], prof: Str) -> Str {
     var out = ""
     var diags = List[Str]()
     // 预扫描:class 名、fn 名+ret、attr
@@ -96,7 +97,7 @@ fn sem_walk2(file: List[Str]) -> Str {
             if ex != "" {
                 diags.push(byte_slice(ex, 0, ex.len - 1))
             }
-            var ac = sem_alloc(file, d, t)
+            var ac = sem_alloc(file, d, t, prof)
             if ac != "" {
                 diags.push(byte_slice(ac, 0, ac.len - 1))
             }
@@ -118,7 +119,7 @@ fn sem_walk2(file: List[Str]) -> Str {
             if ex2 != "" {
                 diags.push(byte_slice(ex2, 0, ex2.len - 1))
             }
-            var ac2 = sem_alloc(file, d, "Test")
+            var ac2 = sem_alloc(file, d, "Test", prof)
             if ac2 != "" {
                 diags.push(byte_slice(ac2, 0, ac2.len - 1))
             }

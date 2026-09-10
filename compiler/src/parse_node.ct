@@ -23,17 +23,23 @@ fn qtext(raw: Str) -> Str {
     while j < n {
         var c = byte_at(raw, j)
         if c == 92 && j + 1 < n && byte_at(raw, j + 1) == 117 {
+            // \u{HEX} 通用解码(1-6 位;经 utf8_enc 内建出 UTF-8 字节)
             var hx = ""
+            var cp: I32 = 0
             var pp = j + 2
             var mapped = false
             if pp < n && byte_at(raw, pp) == 123 {
                 pp += 1
                 while pp < n && byte_at(raw, pp) != 125 {
-                    hx = hx + byte_slice(raw, pp, pp + 1)
+                    var hc = byte_at(raw, pp)
+                    if is_hex(hc) {
+                        hx = hx + byte_slice(raw, pp, pp + 1)
+                        cp = cp * 16 + digit_of(hc)
+                    }
                     pp += 1
                 }
-                if hx == "4E2D" {
-                    out = out + "中"
+                if hx.len > 0 {
+                    out = out + utf8_enc(cp)
                     mapped = true
                 }
             }

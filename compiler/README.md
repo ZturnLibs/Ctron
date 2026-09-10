@@ -50,9 +50,9 @@
 | | `src/driver_check.ct` | 入口(检查):parse → 语义检查即止,文本面 `check OK decls=N`;`--format=json` 出 §10.2 冻结 schema 诊断(span 为 v0 近似定位) |
 | | `src/driver_emit.ct` | 入口(发射):parse → 生成等价 C(产物 gcc 可编译,`<bin> run <file>` 覆锚) |
 | 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
-| | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
+| | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in> [--profile=bare]` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
-| | `test/smoke.sh` | 验收冒烟(44 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(47 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -143,6 +143,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第二十一批(2026-09-10,Phase 5 切片五:--profile 档位 + \u{HEX} 通用解码):
+**--profile 档位(检查面)**——ctc.sh check --profile=bare:sem_walk2 线程 prof,
+bare 档 = 文件级 no_alloc 上下文(隐式 GC 分配一律 E3040;ANCHORPROFILE 锚注入);
+full 档同源通过(门控生效),run 面不受影响。**\u{HEX} 通用解码**——qtext 的
+单映射硬编码(4E2D→中)升级为 1-6 位 HEX → 码点 → utf8_enc 内建出 UTF-8 字节
+(宿主 rt_eval 新增 utf8_enc;发射器样板 ctron_utf8_enc;ASCII/BMP/增补平面
+全可);fx_uhex 四行 seed==native 逐字。smoke --full 47/47。
 
 第二十批(2026-09-10,Phase 5 切片四:用户枚举 × Result 载荷 + Option/Result 构造):
 Named Result/Option → R 码;Ok/Err/Some(expr)/None 构造发射(载荷按型别包装:

@@ -1,0 +1,8 @@
+// fx_uhex.ct —— Phase 5:\u{HEX} 通用解码(词法面;ASCII/BMP/增补平面)
+fn main() -> I32 {
+    println("\u{48}\u{49}")
+    println("\u{4E2D}\u{6587}")
+    println("\u{1F600}")
+    println("x\u{21}")
+    return 0
+}

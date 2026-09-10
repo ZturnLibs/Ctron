@@ -143,6 +143,30 @@ if "$COMP/ctc.sh" emit "$COMP/test/fx_enum.ct" "$T/en.c" > /dev/null 2>&1 \
 else
     bad "用户枚举 发射/编译失败"
 fi
+echo "== 3c) --profile bare 档(文件级 no_alloc → E3040)+ \\u{HEX} 解码 =="
+"$COMP/ctc.sh" check "$COMP/test/fx_bare_neg.ct" --profile=bare > "$T/bare.out" 2>&1
+brc=$?
+if [ $brc -eq 1 ] && grep -q 'E3040' "$T/bare.out"; then
+    ok "bare 档隐式分配拦截(E3040, rc=1)"
+else
+    bad "bare 档未拦截(rc=$brc)"
+fi
+"$COMP/ctc.sh" check "$COMP/test/fx_bare_neg.ct" > "$T/baref.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "full 档同源通过(档位门控生效)"
+else
+    bad "full 档误拦"
+fi
+for cv in uhex; do
+    if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
+       && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
+        timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
+        "$COMP/ctc.sh" "$COMP/test/fx_$cv.ct" > "$T/cn_$cv.iv" 2>&1
+        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧"
+    else
+        bad "conc_$cv 发射/编译失败"
+    fi
+done
 
 if [ "${1:-}" = "--full" ]; then
     echo "== 4) 自发射收官(发射 run 驱动编译器 → 原生解释器) =="

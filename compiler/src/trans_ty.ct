@@ -408,6 +408,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var ten = ct_enum_of_variant(file, cal[1])
             if ten.len > 0 { return "E:" + ten }
             if cal[1] == "ctron_entry" { return "s" }
+            if cal[1] == "utf8_enc" { return "s" }
             if cal[1] == "read_file" { return "s" }
             if cal[1] == "read_dir" { return "s" }
             if cal[1] == "byte_at" { return "i" }

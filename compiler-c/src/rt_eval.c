@@ -883,6 +883,20 @@ val eval_expr(rt* R, cexpr* e) {
                 one[0] = v_str_own(R, ar);
                 return v_tag("Some", one, 1);
             }
+            if (!strcmp(nm, "utf8_enc")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "utf8_enc 实参");
+                val cv = eval_expr(R, e->elems[0]);
+                long long cp = (long long)cv.i;
+                if (cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) cp = 0xFFFD;
+                unsigned char b[5]; int un = 0;
+                if (cp < 0x80) { b[un++] = (unsigned char)cp; }
+                else if (cp < 0x800) { b[un++] = (unsigned char)(0xC0 | (cp >> 6)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); }
+                else if (cp < 0x10000) { b[un++] = (unsigned char)(0xE0 | (cp >> 12)); b[un++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); }
+                else { b[un++] = (unsigned char)(0xF0 | (cp >> 18)); b[un++] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F)); b[un++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); }
+                b[un] = 0;
+                char* ar = ctron_arena_strndup(R->a, (char*)b, (size_t)un);
+                return v_str_own(R, ar);
+            }
             if (!strcmp(nm, "read_line")) {
                 // stdin 读一行(去尾部 \n/\r);EOF 返回空串。LSP/管道程序用。
                 size_t cap = 256, n = 0;

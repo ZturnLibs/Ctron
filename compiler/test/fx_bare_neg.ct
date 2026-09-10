@@ -1,0 +1,7 @@
+// fx_bare_neg.ct —— Phase 5:--profile bare 档(文件级 no_alloc:隐式 GC 分配一律 E3040)
+fn main() -> I32 {
+    var xs = List[Str]()
+    xs.push("a")
+    println(xs.len.to_string())
+    return 0
+}

@@ -366,6 +366,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "read_dir" { return "ctron_read_dir(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "utf8_enc" {
+            var u0 = "0"
+            if ag.len > 1 { u0 = ct_expr(ag[1], env, file) }
+            return "ctron_utf8_enc((int)(" + u0 + "))"
+        }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Option/Result 构造(Phase 5):Ok/Err/Some(expr) → ct_res(载荷按型别包装)
         if cal[0] == "Ident" {

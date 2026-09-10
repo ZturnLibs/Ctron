@@ -193,7 +193,7 @@ fn main() -> I32 {
                 }
                 return 1
             }
-            var sems = sem_walk2(file)
+            var sems = sem_walk2(file, "ANCHORPROFILE")
             if seq2("ANCHORFMT", "1") {
                 print("\{\"diagnostics\":[")
                 if !seq2(sems, "") {
