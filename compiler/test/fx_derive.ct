@@ -1,0 +1,34 @@
+// fx_derive —— @derive(Show)(§3d):.show()/插值/泛型 bound fn 三通道,
+// 原生发射 == 解释执行 逐字一致;嵌套 struct/I64/Bool/Str 字段全型别覆盖。
+@derive(Show)
+struct Pixel {
+    let x: I32
+    let y: I32
+}
+
+@derive(Show, Eq)
+struct Wrap {
+    let tag: Str
+    let p: Pixel
+    let n: I64
+    let ok: Bool
+}
+
+fn render[T: Show](v: T) -> Str {
+    return v.show()
+}
+
+test "derive show" {
+    let p = Pixel { x: 1, y: 2 }
+    println(p.show())
+    let w = Wrap { tag: "t", p: p, n: 9, ok: true }
+    println(w.show())
+    println("{w}")
+    println(render[Pixel](p))
+    if p.show() == "Pixel(x=1,y=2)" {
+        println("eq1")
+    }
+    if w.show() == "Wrap(tag=t,p=Pixel(x=1,y=2),n=9,ok=true)" {
+        println("eq2")
+    }
+}

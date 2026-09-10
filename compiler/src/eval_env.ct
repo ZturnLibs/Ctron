@@ -23,7 +23,28 @@ fn fmt(v: List[Str]) -> Str {
     if k == "V" {
         return ""
     }
+    if k == "U" {
+        return fmt_struct(v)
+    }
     return "<value>"
+}
+
+// @derive(Show)(§3d):U 值结构化格式 Name(f=v,...) —— show 方法/插值两通道同族;
+// 字段值经 fmt 递归(嵌套 struct 自动下钻,与 emit 侧 ct_show_frag_dp 逐字对齐)
+fn fmt_struct(v: List[Str]) -> Str {
+    var s = v[1] + "("
+    var i: I32 = 2
+    var first = true
+    while i < v.len {
+        if first {
+            first = false
+        } else {
+            s = s + ","
+        }
+        s = s + v[i] + "=" + fmt(v[i + 1])
+        i += 2
+    }
+    return s + ")"
 }
 fn env_at(env: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 0

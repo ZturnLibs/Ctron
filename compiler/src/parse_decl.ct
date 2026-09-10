@@ -114,6 +114,10 @@ fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -
         }
         if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
             fs.push(p_field(toks, cur, lns))
+            // 单行字段:可选逗号分隔(宿主同形;换行面不受影响)
+            if tok(toks, cur) == "," {
+                adv(cur)
+            }
         }
     }
     adv(cur)
@@ -180,6 +184,10 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> 
             }
             v.push(kind)
             vs.push(v)
+            // 单行变体:可选逗号分隔(KStruct 臂已内建)
+            if tok(toks, cur) == "," {
+                adv(cur)
+            }
         }
     }
     adv(cur)

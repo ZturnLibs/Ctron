@@ -33,6 +33,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     frag = "ctron_i64_to_string((int64_t)(" + core + "))"
                 } else if ik == "b" {
                     frag = "((" + core + ") ? \"true\" : \"false\")"
+                } else if ik.len > 2 && byte_slice(ik, 0, 2) == "u:" {
+                    // struct 插值:合成 Name(f=v,...)(eval fmt_struct 同族)
+                    frag = ct_show_frag_dp(core, ik, env, file, 0)
                 } else {
                     panic("ct_expr:interp 类型")
                     return ""
@@ -136,7 +139,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "((const char*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
         }
 
-        panic("ct_expr:index 目标非 List/数组")
+        panic("ct_expr:index 目标非 List/数组:" + ot + " @行" + nline(e))
         return ""
     }
     if t == "Member" {
@@ -302,7 +305,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         spec.push(gdecl[5])
                         var rcs = ct_ty_code(spec[4], file)
                         println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
-                        ct_body(spec[5], env_bind(env, "#p", "2"), file, rcs)
+                        // 形参 env:替换后型别码绑定(镜像 ct_fn),体内 Member/字段访问按静态型别分派
+                        var genv = List[Str]()
+                        var gk2: I32 = 1
+                        while gk2 < ps2.len {
+                            var gr2 = ps2[gk2]
+                            if gr2[0] == "Param" {
+                                genv = env_bind(genv, gr2[2], ct_ty_code(gr2[3], file))
+                            }
+                            gk2 += 1
+                        }
+                        ct_body(spec[5], env_bind(genv, "#p", "2"), file, rcs)
                     }
                     var gargs = ""
                     var ga: I32 = 1
@@ -435,6 +448,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
+            if m == "show" {
+                // @derive(Show)(§3d):结构接收者 → 合成 Name(f=v,...) 串接链(eval fmt_struct 逐字对齐)
+                if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {
+                    return ct_show_frag_dp(obj, objt, env, file, 0)
+                }
+                panic("emit:show 非结构接收者")
+                return ""
+            }
             // UFCS:文件自由 fn 首参调用
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
@@ -459,7 +480,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:print struct")
                 return ""
             }
-            if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + ");" }
+            if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "));" }
             if at2 == "6" { return "printf(\"%lld\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
@@ -730,4 +751,57 @@ fn a_elem(code: Str) -> Str {
         i += 1
     }
     return "i"
+}
+
+// @derive(Show) 合成(§3d):值 C 表达式 x(静态码 ty)→ 显示文本 C 表达式。
+// 标量/Str 按插值同型转换;struct 按声明序递归展开字段 —— 串接链
+// "Name(" + ("f=<v>",)*n + ")" 与 eval 侧 fmt_struct 逐字对齐。深度限 6(镜像宿主)。
+fn ct_show_frag_dp(x: Str, ty: Str, env: List[Str], file: List[Str], dp: I32) -> Str {
+    if or2(ty == "s", ty == "N") { return "(" + x + ")" }
+    if ty == "i" { return "ctron_i32_to_string((int32_t)(" + x + "))" }
+    if ty == "6" { return "ctron_i64_to_string((int64_t)(" + x + "))" }
+    if ty == "b" { return "((" + x + ") ? \"true\" : \"false\")" }
+    if dp < 6 {
+        if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
+            var snm = ct_struct_name_of(ty)
+            var gen = false
+            if ct_struct_tps(file, snm).len > 0 {
+                gen = true
+            }
+            var fs = List[Str]()
+            var i: I32 = 1
+            while i < file.len {
+                var d = file[i]
+                if d[0] == "Struct" && d[1] == snm {
+                    fs = d[4]
+                }
+                i += 1
+            }
+            var acc = "\"" + ct_cstr(snm) + "(\""
+            var j: I32 = 1
+            var first = true
+            while j < fs.len {
+                var fd = fs[j]
+                var fty = ""
+                if gen {
+                    fty = ct_field_ty_inst(file, ty, fd[2])
+                } else {
+                    fty = ct_field_ty(file, snm, fd[2])
+                }
+                var fx = ct_show_frag_dp("(" + x + ")." + fd[2], fty, env, file, dp + 1)
+                if first {
+                    first = false
+                } else {
+                    acc = "ctron_str_concat(" + acc + ", \",\")"
+                }
+                acc = "ctron_str_concat(" + acc + ", \"" + ct_cstr(fd[2]) + "=\")"
+                acc = "ctron_str_concat(" + acc + ", " + fx + ")"
+                j += 1
+            }
+            acc = "ctron_str_concat(" + acc + ", \")\")"
+            return acc
+        }
+    }
+    panic("emit:show 字段型别:" + ty)
+    return ""
 }
