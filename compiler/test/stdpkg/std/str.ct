@@ -1,0 +1,107 @@
+// std/str.ct —— Str 工具种子(words/contains/lines/count_ch;字节级,UTF-8 透传)
+
+// 空白分隔切词(空格/制表/换行/回车;与 wc 词口径一致)
+pub fn words(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var cur = ""
+    var inword = false
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isws = false
+        if c == 32 { isws = true }
+        if c == 9 { isws = true }
+        if c == 10 { isws = true }
+        if c == 13 { isws = true }
+        if isws {
+            if inword {
+                out.push(cur)
+                inword = false
+                cur = ""
+            }
+        } else {
+            cur = cur + byte_slice(s, i, i + 1)
+            inword = true
+        }
+        i += 1
+    }
+    if inword {
+        out.push(cur)
+    }
+    return out
+}
+
+// 子串包含(空子串恒真)
+pub fn contains(s: Str, sub: Str) -> Bool {
+    var sn = sub.len
+    if sn == 0 { return true }
+    var hn = s.len
+    if hn < sn { return false }
+    var i: I32 = 0
+    while i + sn <= hn {
+        var ok = true
+        var k: I32 = 0
+        while k < sn {
+            if byte_at(s, i + k) != byte_at(sub, k) { ok = false }
+            k += 1
+        }
+        if ok { return true }
+        i += 1
+    }
+    return false
+}
+
+// 按换行切行(保留末尾不带换行的行)
+pub fn lines(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 10 {
+            out.push(byte_slice(s, start, i))
+            start = i + 1
+        }
+        i += 1
+    }
+    if start < s.len {
+        out.push(byte_slice(s, start, s.len))
+    }
+    return out
+}
+
+// 字节出现计数
+pub fn count_ch(s: Str, ch: I32) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == ch { n += 1 }
+        i += 1
+    }
+    return n
+}
+
+test "words splits on whitespace" {
+    var ws = words("hello  world\n\tctron")
+    assert(ws.len == 3)
+    assert(ws[0] == "hello")
+    assert(ws[1] == "world")
+    assert(ws[2] == "ctron")
+}
+
+test "contains finds substring" {
+    assert(contains("ctron", "tro"))
+    assert(!contains("ctron", "xyz"))
+    assert(contains("abc", ""))
+}
+
+test "lines splits keeping last partial" {
+    var ls = lines("a\nb\nc")
+    assert(ls.len == 3)
+    assert(ls[0] == "a")
+    assert(ls[2] == "c")
+}
+
+test "count_ch counts newlines" {
+    assert(count_ch("a\nb\nc\n", 10) == 3)
+    assert(count_ch("abc", 10) == 0)
+}

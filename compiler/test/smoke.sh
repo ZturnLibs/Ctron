@@ -166,6 +166,24 @@ if "$COMP/bin/ctron-emit" run "$COMP/test/stdpkg/src/main.ct" > "$T/sd_native.c"
 else
     bad "std 包 发射失败"
 fi
+echo "== 3e) 示例应用 examples/ctwc(wc 式统计,与真 wc 对数)+ str 种子单测 =="
+CTWC="$ROOT/examples/ctwc"
+SAMPLE="$T/sample.txt"
+printf 'the quick brown fox\njumps over the lazy dog\nthe end\n' > "$SAMPLE"
+if "$COMP/bin/ctron-emit" run "$CTWC/src/main.ct" > "$T/ctwc.c" 2>/dev/null \
+   && cc -O1 -w -o "$T/ctwc.bin" "$T/ctwc.c" 2>/dev/null; then
+    timeout 15 "$T/ctwc.bin" run "$SAMPLE" > "$T/ctwc.got" 2>&1
+    WANT=$(wc "$SAMPLE" | awk '{print $1" "$2" "$3" "$4}')
+    GOT=$(cat "$T/ctwc.got")
+    [ "$GOT" = "$WANT" ] && ok "ctwc 与真 wc 对数一致($GOT)" || bad "ctwc 分歧: got[$GOT] want[$WANT]"
+else
+    bad "ctwc 发射/编译失败"
+fi
+if "$COMP/bin/ctron-cc" run "$CTWC/std/str.ct" > /dev/null 2>&1; then
+    ok "str 种子单测通过(原生解释)"
+else
+    bad "str 种子单测失败"
+fi
 for cv in uhex; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then

@@ -1,0 +1,24 @@
+// ctwc —— wc 式统计工具(自举 Ctron 示例应用)
+// 用法:ctwc run <file> → "<行数> <词数> <字节数> <路径>"
+// 行数 = 换行字节计数(与 wc -l 口径一致);词 = 空白分隔;字节 = 文件字节数。
+use std.str.{words, count_ch}
+
+fn main() -> I32 {
+    var path = ctron_entry()
+    if path == "" {
+        println("ctwc: usage: ctwc run <file>")
+        return 1
+    }
+    match read_file(path) {
+        Some(s) => {
+            var nw = words(s).len
+            var nl = count_ch(s, 10)
+            println(nl.to_string() + " " + nw.to_string() + " " + s.len.to_string() + " " + path)
+        }
+        None => {
+            println("ctwc: cannot open " + path)
+            return 1
+        }
+    }
+    return 0
+}
