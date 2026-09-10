@@ -28,7 +28,7 @@ compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 
 **基线(2026-09-10,Apple Silicon)**:smoke --full 58/58(3b 夹具 + 2c 负例 + 3e 示例应用);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
-native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15–100×
+native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
 
 ## 3. 架构不变量(新会话必读)
@@ -70,7 +70,7 @@ native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 250**(fmt_struct/eq_val + bound 检查 5 fn 入 CORE);smoke 3b 夹具名单含 derive,2c 含 fx_bound_neg。
+- **decls 锁现为 250**(CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化的 2 fn 在 TRANS 不入 cc_run 锁);smoke 3b 夹具名单含 derive,2c 含 fx_bound_neg。
 
 ## 5. 挂账(按优先级,均为独立切片)
 
@@ -83,8 +83,9 @@ native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15
    fx_bound_neg 负例;README 码表已登记)。仍挂账:泛型 struct 注解实例化点的
    bound 核对(现为 fn 调用点 only)、嵌套泛型 TPar 实参的传递核对(v0 放行)、
    @derive(Json) 等更多插件。单态化机制已备好
-   (AST 替换 + pass1 直出 + 形参 env 绑定),扩展点在 trans_expr TypeArgs 尾部与
-   ct_mono_subst_ty。
+   (AST 替换 + pass1 直出 + 形参 env 绑定 + '#实例' env 绑定),扩展点在
+   trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
+   bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。
 2. **arena API 发射**:own 块已透明发射(41b7751),但 `arena.array[T](n)` /
    `.push` / `.into_gc` 等方法仍 panic(05_own 语料原生不可跑)。
 3. **`?` 传播 Option[Str] NULL 模型**、**装箱载荷(用户枚举入 Result)别名
@@ -112,7 +113,10 @@ native 发射 cc_run(13837 行 C)0.08s vs seed 13.2s;代码生成比解释快 15
 
 - **继续发射器深水区**:先读 §3/§4,从 bound/derive 体系切入(泛型语料
   03e 的唯一宿主依赖)。
-- **标准库线**:泛型 struct 覆盖后把 stdpkg 的 IntMap/IntSet 泛型化为
-  Map[K,V]/Set[V];`use std.*` 解析已通。
+- **标准库线:已完成 7eee4be**。stdpkg 现为 Map[K,V]/Set[V](双 List 平行槽,
+  函数式 API,K/V 需 Eq bound;调用点显式 TypeArgs 实例化)。顺带补全发射面
+  单态化深水区:subst 嵌套下钻、List[K] 字段/构造的元素码、StructLit '#实例'
+  env 绑定、#ifndef 特化去重、typedef 直出前置。仍挂账:泛型体内嵌泛型调用
+  (set.add 因此内联去重)、同型多实例 struct 数组等更深组合。
 - **新方向**:LSP(lsp/ 已有 Ctron 实现的功能完备 LSP)、性能(bench.sh
   已入 CI 尾段)、或把这批能力写进语言规范 v0.6 文档。
