@@ -157,7 +157,7 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
 fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str], np: I32) -> Str {
     var cps = clo[1]
     if cps.len != np + 1 {
-        panic("emit:closure 参数个数")
+        panic("emit:closure 参数个数:" + cps.len.to_string() + "/np=" + np.to_string())
         return ""
     }
     var cbody = clo[3]

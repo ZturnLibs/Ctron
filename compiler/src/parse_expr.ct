@@ -295,6 +295,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
     if t == "|" {
         adv(cur)
         var cl = mk("Closure")
+        var cln = lns[cur.load()]
         var cp = mk("CPs")
         var more = true
         while more {
@@ -327,6 +328,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         cl.push(cp)
         cl.push(ret)
         cl.push(p_stmt_expr(toks, cur, lns, "1"))
+        nstamp(cl, cln)
         return cl
     }
     if t == "scope" {

@@ -68,6 +68,34 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var iidx = ct_variant_index(file, ien, e[1])
             return "(ct_enum_" + ien + ")\{ " + iidx.to_string() + ", \{ 0, 0 } }"
         }
+        var pcs5 = ct_fn_pcodes(file, e[1])
+        if pcs5.len > 0 {
+            if pcs5.len > 3 {
+                panic("emit:fn 值 arity>3")
+                return ""
+            }
+            var anm = "ct_ad_L" + nline(e)
+            if seq2(ct_pass(env), "1") {
+                var asig = ""
+                var ai: I32 = 0
+                while ai < pcs5.len {
+                    if ai > 0 { asig = asig + ", " }
+                    asig = asig + "ct_i _p" + ai.to_string()
+                    ai += 1
+                }
+                println("static ct_i " + anm + "(" + asig + ") \{")
+                var acall = ""
+                ai = 0
+                while ai < pcs5.len {
+                    if ai > 0 { acall = acall + ", " }
+                    acall = acall + "(int32_t)_p" + ai.to_string()
+                    ai += 1
+                }
+                println("return (ct_i)t_" + e[1] + "(" + acall + ");")
+                println("}")
+            }
+            return "(ct_fn" + pcs5.len.to_string() + ")" + anm
+        }
         return "t_" + e[1]
     }
     if t == "Unary" {
@@ -130,8 +158,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return ""
     }
     if t == "Closure" {
-        panic("ct_expr:Closure 仅 spawn/with/parallel 实参位")
-        return ""
+        var cnp = e[1].len - 1
+        var cnm = ct_emit_clo(e, e, env, file, cnp)
+        return "(ct_fn" + cnp.to_string() + ")" + cnm
     }
     if t == "StructLit" {
         if !ct_is_struct(file, e[1]) {
@@ -337,6 +366,21 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // fn 值间接调用(env 命中 F<arity>):( (ct_fnK)t_f )( 实参... )
+        if cal[0] == "Ident" && ct_env_has(env, cal[1]) {
+            var fvt = ct_env_ty(env, cal[1])
+            if fvt.len > 1 && byte_at(fvt, 0) == 70 {
+                var far = byte_at(fvt, 1) - 48
+                var fargs = "0"
+                if ag.len > 1 { fargs = ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) }
+                var fk: I32 = 2
+                while fk <= far {
+                    if ag.len > fk { fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[fk], env, file), ct_expr(ag[fk], env, file)) } else { fargs = fargs + ", 0" }
+                    fk += 1
+                }
+                return "((" + ct_ctype(fvt) + ")(t_" + cal[1] + "))(" + fargs + ")"
+            }
+        }
         // 用户枚举变体构造(Phase 5):(ct_enum_E){ idx, { p0, p1 } }
         var ven = ct_enum_of_variant(file, callee)
         if ven.len > 0 {

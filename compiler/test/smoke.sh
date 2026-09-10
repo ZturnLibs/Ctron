@@ -125,6 +125,16 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
+for cv in fnval; do
+    if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
+       && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
+        timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
+        "$COMP/ctc.sh" "$COMP/test/fx_$cv.ct" > "$T/cn_$cv.iv" 2>&1
+        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧"
+    else
+        bad "conc_$cv 发射/编译失败"
+    fi
+done
 if "$COMP/ctc.sh" emit "$COMP/test/fx_enum.ct" "$T/en.c" > /dev/null 2>&1 \
    && cc -O1 -w -o "$T/en.bin" "$T/en.c" 2>/dev/null; then
     timeout 15 "$T/en.bin" > "$T/en.got" 2>&1

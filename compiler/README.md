@@ -52,7 +52,7 @@
 | 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
-| | `test/smoke.sh` | 验收冒烟(40 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(42 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -143,6 +143,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第十八批(2026-09-10,Phase 5 切片:枚举 + 一等 fn 值发射):**用户枚举发射**——
+每枚举 ct_enum_<E>{variant,p[2]},裸变体名/单元变体 Ident 构造,match variant 下标
+链 + KTuple 载荷绑定(trans_ty 新增枚举查询族 + 类型码 E:<名>)。**一等 fn 值**——
+fn(I32)->I32 类型码 F<arity>(ct_fn1–3),具名 fn 实参 → 签名适配 thunk(pass1 直出),
+闭包字面量 → 静态 fn(Closure 节点补行号戳,命名跨遍确定),fn 值间接调用。挂账:
+带捕获闭包值、用户枚举作为 Option/Result 载荷、同行双闭包命名冲突。fx_fnval/fx_enum
+seed==native 逐字;smoke --full 42/42;suite 51/51;固定点复现。
 
 第十七批(2026-09-10,Phase 4 真并发运行时):**发射侧 pthread 真并发落地**——
 scope/spawn(捕获闭包 → ct_i env 数组 + shim)/join/join_or/Channel(send·recv,有界

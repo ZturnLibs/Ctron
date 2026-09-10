@@ -159,6 +159,11 @@ fn ct_variant_pcodes(file: List[Str], enm: Str, vnm: Str) -> List[Str] {
 
 // Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
 fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
+    if nt[0] == "FnType" {
+        var fa = nt[1].len - 1
+        if or2(fa < 1, fa > 3) { return "i" }
+        return "F" + fa.to_string()
+    }
     if nt[0] != "Named" { return "i" }
     if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
     if ct_is_enum(file, nt[1]) { return "E:" + nt[1] }
@@ -188,6 +193,9 @@ fn ct_ctype(code: Str) -> Str {
     if code == "v" { return "void" }
     if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
         return "ct_enum_" + byte_slice(code, 2, code.len)
+    }
+    if or2(code == "F1", or2(code == "F2", code == "F3")) {
+        return "ct_fn" + byte_slice(code, 1, code.len)
     }
     if code == "g" { return "ct_scope*" }
     if code == "k" { return "ct_task*" }

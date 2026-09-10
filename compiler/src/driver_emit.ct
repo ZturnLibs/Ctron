@@ -85,6 +85,7 @@ fn main() -> I32 {
             println("static ct_res ct_ch_recv(ct_chan* c) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == 0) \{ ct_scope* sc = ct_tls_task ? ct_tls_task->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } pthread_cond_wait(&c->cv_empty, &c->mu); } res.variant = 0; res.v = c->buf[c->head]; c->head = (c->head + 1) % 64; c->cnt -= 1; pthread_cond_broadcast(&c->cv_full); pthread_mutex_unlock(&c->mu); return res; }")
             println("typedef ct_i (*ct_fn1)(ct_i);")
             println("typedef ct_i (*ct_fn2)(ct_i, ct_i);")
+            println("typedef ct_i (*ct_fn3)(ct_i, ct_i, ct_i);")
             println("static ctron_list* ct_parallel_mapL(ctron_list* a, ct_fn1 f) \{ ctron_list* r = ctron_list_new(); int i; for (i = 0; i < a->n; i++) \{ ctron_list_push(r, (const char*)(long)f((ct_i)(long)a->items[i])); } return r; }")
             println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ ct_i acc = init; int i; for (i = 0; i < a->n; i++) \{ acc = f(acc, (ct_i)(long)a->items[i]); } return acc; }")
             println("static const char* ctron_cli_input = NULL;")
