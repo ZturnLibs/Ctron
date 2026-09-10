@@ -1,0 +1,29 @@
+// fx_try.ct —— Phase 5:? 传播发射(ct_res 解包 + Err 短路 return)
+fn maybe(v: I32) -> Result[I32, AnyError] {
+    if v < 0 { return Err("neg") }
+    return Ok(v * 2)
+}
+fn run(v: I32) -> Result[I32, AnyError] {
+    let a = maybe(v)?
+    let b = maybe(a)?
+    return Ok(b)
+}
+fn main() -> I32 {
+    match run(5) {
+        Ok(v) => {
+            println(v.to_string())
+        }
+        Err(_) => {
+            println("err")
+        }
+    }
+    match run(-1) {
+        Ok(v) => {
+            println(v.to_string())
+        }
+        Err(_) => {
+            println("err")
+        }
+    }
+    return 0
+}

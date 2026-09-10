@@ -1,0 +1,15 @@
+// fx_fnret.ct —— Phase 5:fn 返回 fn(G 码;闭包捕获构造参数)
+fn mk(k: I32) -> fn(I32) -> I32 {
+    return |x| x * k
+}
+fn invoke(f: fn(I32) -> I32, v: I32) -> I32 {
+    return f(v)
+}
+fn main() -> I32 {
+    var c3 = mk(3)
+    var r = invoke(c3, 6)
+    var r2 = invoke(mk(5), 2)
+    println(r.to_string())
+    println(r2.to_string())
+    return 0
+}

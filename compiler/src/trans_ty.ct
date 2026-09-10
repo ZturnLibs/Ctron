@@ -161,9 +161,12 @@ fn ct_variant_pcodes(file: List[Str], enm: Str, vnm: Str) -> List[Str] {
 fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "FnType" {
+        // F<arity>=返回标量;G<arity>=返回 fn 值(闭包)——返回型维度入码
         var fa = nt[1].len - 1
         if or2(fa < 1, fa > 3) { return "i" }
-        return "F" + fa.to_string()
+        var fk = "F"
+        if nt[2][0] == "FnType" { fk = "G" }
+        return fk + fa.to_string()
     }
     if nt[0] != "Named" { return "i" }
     if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
@@ -196,6 +199,9 @@ fn ct_ctype(code: Str) -> Str {
         return "ct_enum_" + byte_slice(code, 2, code.len)
     }
     if or2(code == "F1", or2(code == "F2", code == "F3")) {
+        return "ct_clop"
+    }
+    if or2(code == "G1", or2(code == "G2", code == "G3")) {
         return "ct_clop"
     }
     if code == "g" { return "ct_scope*" }
@@ -239,6 +245,7 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
         if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
             var r = d[4]
             if r[0] == "None" { return "v" }
+            if r[0] == "FnType" { return ct_ty_code(r, file) }
             if r[0] != "Named" { return "i" }
             return ct_ty_code(r, file)
         }
@@ -330,6 +337,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "StructLit" {
         return "u:" + e[1]
     }
+    if t == "Try" { return "R" }
     if t == "Closure" {
         var cvn = e[1].len - 1
         if or2(cvn < 1, cvn > 3) { return "i" }

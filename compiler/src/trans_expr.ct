@@ -93,7 +93,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     acall = acall + "(int32_t)_p" + ai.to_string()
                     ai += 1
                 }
-                println("return (ct_i)t_" + e[1] + "(" + acall + ");")
+                var aret = ct_fn_ret(file, e[1])
+                if aret.len > 1 && byte_at(aret, 0) == 71 {
+                    println("return (ct_i)(long)t_" + e[1] + "(" + acall + ");")
+                } else {
+                    println("return (ct_i)t_" + e[1] + "(" + acall + ");")
+                }
                 println("}")
             }
             return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = 0; _c; })"
@@ -406,7 +411,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     fk += 1
                 }
                 var fhead = "((ct_cfn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
-                return fhead + "(" + fargs + ")"
+                var fcast = ""
+                if byte_at(fvt, 0) == 71 { fcast = "(ct_clop)" }
+                return fcast + fhead + "(" + fargs + ")"
             }
         }
         // 用户枚举变体构造(Phase 5):(ct_enum_E){ idx, { p0, p1 } }

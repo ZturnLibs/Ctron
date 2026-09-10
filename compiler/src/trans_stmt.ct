@@ -208,6 +208,7 @@ fn ct_if_value(e: List[Str], env: List[Str], file: List[Str]) -> Str {
 
 fn ct_is_value(tg: Str) -> Bool {
     if tg == "Match" { return false }
+    if tg == "Try" { return false }
     if tg == "If" { return false }
     if tg == "While" { return false }
     if tg == "For" { return false }
@@ -319,6 +320,14 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     }
                 }
             }
+        }
+        // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷 i32)
+        if pat[0] == "PatId" && st[4][0] == "Try" {
+            var qv = "t_q" + nline(st)
+            eln("ct_res " + qv + " = " + ct_expr(st[4][1], env, file) + ";", env)
+            eln("if (" + qv + ".variant != 0) \{ return " + qv + "; }", env)
+            eln("int32_t t_" + pat[1] + " = (int32_t)" + qv + ".v;", env)
+            return env_bind(env, pat[1], "i")
         }
         // Phase 4:let (tx, rx) = Channel[T](cap) —— 双名同一 ct_chan*
         if pat[0] == "PatTup" {
@@ -760,6 +769,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // Phase 4:语句位 scope / with / with_mut(ANF,无中间值)
         if e[0] == "Scope" {
             var senv2 = ct_emit_scope_stmt(e, env, file, "", hreg)
+            return env
+        }
+        if e[0] == "Try" {
+            var qv2 = "t_q" + nline(st)
+            eln("ct_res " + qv2 + " = " + ct_expr(e[1], env, file) + ";", env)
+            eln("if (" + qv2 + ".variant != 0) \{ return " + qv2 + "; }", env)
             return env
         }
         if e[0] == "Call" {

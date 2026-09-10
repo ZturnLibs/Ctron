@@ -52,7 +52,7 @@
 | 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in> [--profile=bare]` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
-| | `test/smoke.sh` | 验收冒烟(47 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(49 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -143,6 +143,14 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第二十二批(2026-09-10,Phase 5 收尾:fn 返回 fn + ? 传播发射):
+**fn 返回 fn**——FnType 返回型维度入码(F<ar>=返标量 / G<ar>=返 fn 值;
+ct_fn_ret 认 FnType),G 调用结果 cast ct_clop,适配器按返回型经 long;
+mk(k)->fn(I32)->I32 闭包捕获构造参数,invoke(mk(5),2) 全通。**? 传播
+发射**——Try 节点语句/let 初值位 ANF:ct_res 暂存 + variant!=0 → 短路
+return t_q,载荷 i32 绑定;ct_is_value 黑名单入 Try。fx_fnret/fx_try
+seed==native 逐字(18 10 / 20 err);smoke --full 49/49;suite 51/51。
 
 第二十一批(2026-09-10,Phase 5 切片五:--profile 档位 + \u{HEX} 通用解码):
 **--profile 档位(检查面)**——ctc.sh check --profile=bare:sem_walk2 线程 prof,
