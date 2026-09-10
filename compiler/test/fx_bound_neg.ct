@@ -1,0 +1,19 @@
+// fx_bound_neg.ct —— E2050 bound 不满足:显式 TypeArgs 实参不满足型参 bound
+// render 需 Show:原语不满足(仅结构体派生);Flagged 的枚举字段不可比较 → 不满足
+enum Color {
+    Red
+    Green
+}
+
+struct Flagged {
+    let c: Color
+}
+
+fn render[T: Show](v: T) -> Str {
+    return v.show()
+}
+
+test "bound" {
+    println(render[I32](5).len)
+    println(render[Flagged](Flagged { c: Color.Red }).len)
+}

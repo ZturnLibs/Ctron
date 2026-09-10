@@ -398,6 +398,10 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                     }
                     g += 1
                 }
+                if cal[0] == "TypeArgs" {
+                    // bound 强制检查(E2050):显式 TypeArgs 调用点逐型参核对
+                    check_tpar_bounds(file, e, cal, rt, diags)
+                }
                 if !in_list(tc[0], rt) {
                     var pa = prelude_arity(rt)
                     if pa >= 0 && got != pa {
@@ -683,5 +687,134 @@ fn fn_params_push(ps: List[Str], loc: List[Str], envT: List[Str]) {
             envT.push(unk())
         }
         i += 1
+    }
+}
+
+// ---- bound 强制检查(§3d bound/derive,E2050)----
+// 结构化谓词:Show/Eq 由"字段全可比较的结构体"满足(与 .show()/.eq() 派生能力面
+// 一致);原语/枚举/类不满足。AST 空间实现(sem 属 CORE,不可依赖 trans 型别码)。
+fn find_sdecl(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && seq2(d[1], nm) {
+            return d
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+
+fn find_gdecl(file: List[Str], nm: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", d[0] == "FnPub") {
+            if seq2(d[1], nm) {
+                return d
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+
+// TPar 名 → 实参型别按声明序对位替换;嵌套实例化实参递归下钻
+fn subst_tpar_ty(ty: List[Str], tps: List[Str], args: List[Str]) -> List[Str] {
+    if ty[0] == "Named" {
+        var k: I32 = 1
+        while k < tps.len {
+            if seq2(ty[1], tps[k][1]) {
+                return args[k]
+            }
+            k += 1
+        }
+        if ty[2].len > 1 {
+            var nt = mk("Named")
+            nt.push(ty[1])
+            var ta = mk("TArgs")
+            var m: I32 = 1
+            while m < ty[2].len {
+                ta.push(subst_tpar_ty(ty[2][m], tps, args))
+                m += 1
+            }
+            nt.push(ta)
+            return nt
+        }
+    }
+    return ty
+}
+
+// 型别满足 Show/Eq bound:结构体且全部字段为标量/Str/可满足的结构体(递归,深度限 6)。
+// 型参(TPar)实参即嵌套泛型体的传递场景,v0 放行由外层 bound 负责。
+fn bound_sat(file: List[Str], ty: List[Str], dp: I32) -> Bool {
+    if dp > 6 {
+        return false
+    }
+    if ty[0] != "Named" {
+        return false
+    }
+    var sd = find_sdecl(file, ty[1])
+    if sd.len == 0 {
+        return false
+    }
+    var tps = sd[3]
+    var args = ty[2]
+    if tps.len > 1 && args.len != tps.len {
+        return false
+    }
+    var fs = sd[4]
+    var j: I32 = 1
+    while j < fs.len {
+        var ft = fs[j][3]
+        if tps.len > 1 {
+            ft = subst_tpar_ty(ft, tps, args)
+        }
+        if ft[0] != "Named" {
+            return false
+        }
+        var prim = or2(seq2(ft[1], "I32"), or2(seq2(ft[1], "I64"), or2(seq2(ft[1], "Bool"), seq2(ft[1], "Str"))))
+        if !prim {
+            if !bound_sat(file, ft, dp + 1) {
+                return false
+            }
+        }
+        j += 1
+    }
+    return true
+}
+
+// 显式 TypeArgs 调用点:逐型参核对 Bounds(Show/Eq;未知 bound 名 v0 不查)
+fn check_tpar_bounds(file: List[Str], e: List[Str], cal: List[Str], rt: Str, diags: List[Str]) {
+    var gd = find_gdecl(file, rt)
+    // 注意:or2/&& 均为急切求值,空表守卫必须拆嵌套(血泪清单)
+    if gd.len == 0 {
+        return
+    }
+    if gd[2].len < 2 {
+        return
+    }
+    var tps = gd[2]
+    var tas = cal[2]
+    if tas.len != tps.len {
+        return
+    }
+    var k: I32 = 1
+    while k < tps.len {
+        var bds = tps[k][3]
+        var bi: I32 = 1
+        while bi < bds.len {
+            if or2(seq2(bds[bi], "Show"), seq2(bds[bi], "Eq")) {
+                if !bound_sat(file, tas[k], 0) {
+                    var anm = "?"
+                    if tas[k][0] == "Named" {
+                        anm = tas[k][1]
+                    }
+                    diags.push("E2050@" + nline(e) + ": bound 不满足(bound):" + rt + " 型参 " + tps[k][1] + " 需 " + bds[bi] + " 实参 " + anm)
+                }
+            }
+            bi += 1
+        }
+        k += 1
     }
 }

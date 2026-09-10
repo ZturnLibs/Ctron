@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=245' "$T/chk.out" && ok "自检 cc_run 绿,decls=245" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=250' "$T/chk.out" && ok "自检 cc_run 绿,decls=250" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -68,6 +68,7 @@ tc_fx() { # <夹具名> <期望诊断片段>
 tc_fx fx_unresolved_read_neg "E2020: 未解析的名称"
 tc_fx fx_type_neg "E2010: let 初始化类型不匹配"
 tc_fx fx_variant_neg "E2010: 调用实参数不匹配"
+tc_fx fx_bound_neg "E2050"
 tc_fx fx_unused_neg "W8030: 未使用绑定"
 tc_fx fx_shadow_neg "W8040: 遮蔽前奏符号"
 tc_fx fx_capture_mut_neg "E3070: 闭包可变捕获"

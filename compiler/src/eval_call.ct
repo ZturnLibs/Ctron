@@ -624,9 +624,11 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         }
     }
     if recv[0] == "U" && seq2(m, "eq") {
-        // @derive(Eq)(§3d):结构接收者逐字段相等
-        if vals.len == 1 && vals[0][0] == "U" {
-            return e4("k", ob[1], vB(eq_val(recv, vals[0])), ob[3])
+        // @derive(Eq)(§3d):结构接收者逐字段相等(守卫拆嵌套:索引不得入急切复合条件)
+        if vals.len == 1 {
+            if vals[0][0] == "U" {
+                return e4("k", ob[1], vB(eq_val(recv, vals[0])), ob[3])
+            }
         }
         panic("eq 需同型结构实参")
         return e4("a", env, vV2(), out)
