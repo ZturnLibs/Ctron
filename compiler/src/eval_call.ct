@@ -135,6 +135,20 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("read_dir args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "ctron_entry") {
+        if vals.len != 0 {
+            panic("ctron_entry arity")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("k", env, vS(ctron_entry()), out)
+    }
+    if seq2(nm, "utf8_enc") {
+        if vals.len == 1 && vals[0][0] == "I" {
+            return e4("k", env, vS(utf8_enc(vals[0][1])), out)
+        }
+        panic("utf8_enc arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "byte_at") {
         if vals.len == 2 && vals[0][0] == "S" && vals[1][0] == "I" {
             return e4("k", env, vI(byte_at(vals[0][1], dvi(vals[1][1]))), out)

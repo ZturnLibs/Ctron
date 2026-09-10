@@ -52,6 +52,7 @@
 | 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in> [--profile=bare]` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
+| | `bench.sh` | 性能基线:微基准三路 + 前端 check + 后端发射 + 黄金解释(基线见 BOOTSTRAP.md §2b) |
 | | `test/smoke.sh` | 验收冒烟(49 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
@@ -300,5 +301,7 @@ if/while/match 条件上下文中比较表达式被吞(01g 类测试静默失败
 - 发射器能力面 = `fixtures/trans_v0–v5` + `fx_conc_*` 七件(并发真 pthread)+
   编译器自发射;剩余缺口:枚举字面量/一等闭包值/并发调度确定性差分按 Phase 5 排期;
 - `pkg_chk.ct`(模块级检查 + E6010 comptime 预算)属包管理 oracle,未纳入;
+- `#[trusted]` 现为解析兼容 + FFI 边界信任占位(caps 检查豁免位,语义化待 caps v2);
+  Result 载荷中的用户枚举为装箱指针,绑定名即指针(别名语义细化挂账);
 - 宿主 seed(`compiler-c/build/ctronc`)仅承担首次引导,bootstrap/ladder 流程仍在
   `selfhosted/`。

@@ -48,6 +48,18 @@ G2' 原生编译器 bin/ctron-cc(运行驱动:parse → 语义 12 项 → 解释
 宿主 seed 的**唯一职责**是把 `cc_emit.ct` 变成第一个原生发射器(native.sh 内部的
 `ctc.sh emit`,做一次 ANCHORINPUT 换靶)。此后一切编译动作由 Ctron 编译器自己完成。
 
+## 2b. 性能基线(bench.sh,2026-09-10,Apple Silicon 实测)
+
+| 阶段 | 形态 | 实测 |
+|---|---|---|
+| S1 微基准(fib/loop/str/list,3 取最小) | 原生代码生成 | 比解释快 **15–100×**(fib 0.005s vs seed 0.075s / native 0.128s) |
+| S2 前端 check(cc_run,decls=243) | seed 解释检查驱动 6.3s;全深度(native 解释检查驱动)10.4s | 全深度/种子 = 1.65(双层解释叠加,符合预期) |
+| S3 后端发射(cc_run 完整 C,13752 行) | seed 10.2s vs **native 0.07s = 145×** | 两形态产物**逐字节一致** ✓ |
+| S4 黄金解释(cc_run 解释 input_cc) | seed 0.13s vs native 0.01s | 输出一致 ✓ |
+
+结论:首次引导后,编译器的日常形态 = native 发射(0.07s 级)+ gcc;
+seed 解释形态仅存续于 bootstrap 链与 ctc.sh 的默认慢路。
+
 ## 3. 关键机制
 
 ### 3.1 单文件程序模型 → 确定性拼接
