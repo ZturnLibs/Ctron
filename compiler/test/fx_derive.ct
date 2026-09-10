@@ -18,6 +18,10 @@ fn render[T: Show](v: T) -> Str {
     return v.show()
 }
 
+fn same[T: Eq](a: T, b: T) -> Bool {
+    return a.eq(b)
+}
+
 test "derive show" {
     let p = Pixel { x: 1, y: 2 }
     println(p.show())
@@ -30,5 +34,28 @@ test "derive show" {
     }
     if w.show() == "Wrap(tag=t,p=Pixel(x=1,y=2),n=9,ok=true)" {
         println("eq2")
+    }
+}
+
+test "derive eq" {
+    let a = Pixel { x: 1, y: 2 }
+    let b = Pixel { x: 1, y: 2 }
+    let c = Pixel { x: 1, y: 3 }
+    if a.eq(b) {
+        println("eq3")
+    }
+    if !a.eq(c) {
+        println("ne1")
+    }
+    if same[Pixel](a, b) {
+        println("eq4")
+    }
+    let w = Wrap { tag: "t", p: a, n: 9, ok: true }
+    let w2 = Wrap { tag: "t", p: b, n: 9, ok: true }
+    if w.eq(w2) {
+        println("eq5")
+    }
+    if !w.eq(Wrap { tag: "u", p: a, n: 9, ok: true }) {
+        println("ne2")
     }
 }

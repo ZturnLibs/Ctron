@@ -456,6 +456,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:show 非结构接收者")
                 return ""
             }
+            if m == "eq" {
+                // @derive(Eq)(§3d):结构接收者逐字段相等;实参须同静态型别(eval eq_val 对齐)
+                if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {
+                    if ag.len < 2 {
+                        panic("emit:eq 缺实参")
+                        return ""
+                    }
+                    var b0t = ct_typeof(ag[1], env, file)
+                    if !seq2(b0t, objt) {
+                        panic("emit:eq 实参型别:" + b0t)
+                        return ""
+                    }
+                    return ct_eq_expr_dp(obj, ct_expr(ag[1], env, file), objt, env, file, 0)
+                }
+                panic("emit:eq 非结构接收者")
+                return ""
+            }
             // UFCS:文件自由 fn 首参调用
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
@@ -803,5 +820,55 @@ fn ct_show_frag_dp(x: Str, ty: Str, env: List[Str], file: List[Str], dp: I32) ->
         }
     }
     panic("emit:show 字段型别:" + ty)
+    return ""
+}
+
+// @derive(Eq) 合成(§3d):a/b 的 C 表达式(静态码 ty)→ 逐字段相等 C 布尔式。
+// 标量 ==、Str strcmp、嵌套 struct 递归展开;"&&" 为 C 输出文本,
+// 与 eval 侧 eq_val 逐字对齐。深度限 6(镜像 show)。
+fn ct_eq_expr_dp(a: Str, b: Str, ty: Str, env: List[Str], file: List[Str], dp: I32) -> Str {
+    if ty == "s" { return "(strcmp((const char*)(" + a + "), (const char*)(" + b + ")) == 0)" }
+    if or2(ty == "i", or2(ty == "6", ty == "b")) { return "((" + a + ") == (" + b + "))" }
+    if dp < 6 {
+        if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
+            var snm = ct_struct_name_of(ty)
+            var gen = false
+            if ct_struct_tps(file, snm).len > 0 {
+                gen = true
+            }
+            var fs = List[Str]()
+            var i: I32 = 1
+            while i < file.len {
+                var d = file[i]
+                if d[0] == "Struct" && d[1] == snm {
+                    fs = d[4]
+                }
+                i += 1
+            }
+            var acc = ""
+            var j: I32 = 1
+            while j < fs.len {
+                var fd = fs[j]
+                var fty = ""
+                if gen {
+                    fty = ct_field_ty_inst(file, ty, fd[2])
+                } else {
+                    fty = ct_field_ty(file, snm, fd[2])
+                }
+                var fc = ct_eq_expr_dp("(" + a + ")." + fd[2], "(" + b + ")." + fd[2], fty, env, file, dp + 1)
+                if acc == "" {
+                    acc = fc
+                } else {
+                    acc = "(" + acc + " && " + fc + ")"
+                }
+                j += 1
+            }
+            if acc == "" {
+                return "1"
+            }
+            return acc
+        }
+    }
+    panic("emit:eq 字段型别:" + ty)
     return ""
 }

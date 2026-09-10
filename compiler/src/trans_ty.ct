@@ -494,6 +494,11 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var srt = ct_strip_p(ct_typeof(cal[1], env, file))
                 if srt.len > 2 && byte_slice(srt, 0, 2) == "u:" { return "s" }
             }
+            if m == "eq" {
+                // @derive(Eq)(§3d):结构接收者的 eq 调用返回 Bool
+                var crt = ct_strip_p(ct_typeof(cal[1], env, file))
+                if crt.len > 2 && byte_slice(crt, 0, 2) == "u:" { return "b" }
+            }
             if m == "push" { return "v" }
             if m == "store" { return "v" }
             if m == "spawn" { return "k" }

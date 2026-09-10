@@ -623,6 +623,14 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             return e4("k", ob[1], recv, ob[3])
         }
     }
+    if recv[0] == "U" && seq2(m, "eq") {
+        // @derive(Eq)(§3d):结构接收者逐字段相等
+        if vals.len == 1 && vals[0][0] == "U" {
+            return e4("k", ob[1], vB(eq_val(recv, vals[0])), ob[3])
+        }
+        panic("eq 需同型结构实参")
+        return e4("a", env, vV2(), out)
+    }
     if recv[0] == "U" && seq2(m, "show") && vals.len == 0 {
         return e4("k", ob[1], vS(fmt(recv)), ob[3])
     }

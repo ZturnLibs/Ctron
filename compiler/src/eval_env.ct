@@ -46,6 +46,33 @@ fn fmt_struct(v: List[Str]) -> Str {
     }
     return s + ")"
 }
+
+// @derive(Eq)(§3d):U 值结构化逐字段相等 —— emit 侧 ct_eq_expr_dp 同族对齐;
+// 标量按规范文本比较(解释器标量值即文本),嵌套 struct 递归;型别名不同 → 不等;
+// 不支持的字段型别 panic(与发射面同界:标量/Str/嵌套 struct 之外不派生)
+fn eq_val(a: List[Str], b: List[Str]) -> Bool {
+    if !seq2(a[0], b[0]) {
+        return false
+    }
+    if or2(a[0] == "S", or2(a[0] == "I", or2(a[0] == "W", a[0] == "B"))) {
+        return seq2(a[1], b[1])
+    }
+    if a[0] == "U" {
+        if !seq2(a[1], b[1]) {
+            return false
+        }
+        var i: I32 = 2
+        while i < a.len {
+            if !eq_val(a[i + 1], b[i + 1]) {
+                return false
+            }
+            i += 2
+        }
+        return true
+    }
+    panic("eq 字段型别:" + a[0])
+    return false
+}
 fn env_at(env: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 0
     while i < env.len {
