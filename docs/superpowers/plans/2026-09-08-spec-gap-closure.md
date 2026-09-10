@@ -24,7 +24,7 @@
 | Phase 1 类型检查器 v0 | E2020 全量（变量读）、E2010 基础类型统一（注解/字面量/实参）、解析器 span 标注替换 JSON probe 定位、W8030/W8040、`?` 合法性检查 | **已落**(2026-09-09,含 Phase 1.5 span 标注) |
 | Phase 2 comptime CVM | comptime fn 编译期执行、const 编译期求值、E6010 预算、E6030 parametricity、泛型单态化 v0 + 实例预算 | 同上 |
 | Phase 3 模块与包 | use 生效、多文件程序、pub(pkg)/字段可见性、E5010 孤儿、E5020 循环依赖、Ctron.toml | **7/7 已落**(2026-09-09:use 合并/可见性 E2020/循环 E5020/pub(pkg)/E5010 孤儿/E4010 caps/E6010 runaway 前置 + FFI extern "c"·c_src 链接;与宿主 pkg oracle 7/7 对齐) |
-| Phase 4 真并发运行时 | 发射侧 pthread 真线程/真 Channel/Mutex/Atomic、结构化取消传播（可参考 compiler-rust 的 trans.rs 运行时） | 未启动(解释器顺序化模拟口径不变;2026-09-09 状态核对) |
+| Phase 4 真并发运行时 | 发射侧 pthread 真线程/真 Channel/Mutex/Atomic、结构化取消传播（可参考 compiler-rust 的 trans.rs 运行时） | **已落**(2026-09-10:spawn 捕获闭包/join·join_or/Channel/Mutex·with_mut/Atomic·Global/parallel/取消广播;fx_conc_* 七夹具原生==解释逐字,smoke 40/40;见 2026-09-10-phase4-concurrency-runtime.md) |
 | Phase 5 档位与 FFI | --profile full/web/bare、extern "c" 解析+发射、#[trusted]、发射器全语言覆盖（struct/闭包/并发/插值）、\u{HEX} 通用解码（需宿主内建 utf8_enc 配套） | 同上 |
 
 ---

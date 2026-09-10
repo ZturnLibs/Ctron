@@ -52,15 +52,15 @@ println → **静态缓冲**(`static let CT_OUT/CT_PEND/CT_TMP/CT_MODE` + `eln`/
 
 ## Tasks
 
-- [ ] T1 trans_conc.ct:静态缓冲(eln/etgt)+ 类型码 `g/k/h/R/m/P`(trans_ty)+ Ident `P` 解引用
-- [ ] T2 driver_emit:pthread/setjmp 运行时(ct_scope/ct_task/ct_chan/ct_res/ct_fnptr/
+- [x] T1 trans_conc.ct:静态缓冲(eln/etgt)+ 类型码 `g/k/h/R/m/P`(trans_ty)+ Ident `P` 解引用
+- [x] T2 driver_emit:pthread/setjmp 运行时(ct_scope/ct_task/ct_chan/ct_res/ct_fnptr/
       ct_spawn/ct_join/ct_join_or/ct_panic/ct_ch_send·recv/取消广播/glock)+ Static 发射 + 缓冲 flush
-- [ ] T3 println→eln 全量替换(trans_stmt/trans_emit/driver 测试包装);产物逐字节回归
-- [ ] T4 构造与成员发射:Channel/Mutex/Global 构造;spawn(捕获 env+shim)/join/join_or/
+- [x] T3 println→eln 全量替换(trans_stmt/trans_emit/driver 测试包装);产物逐字节回归
+- [x] T4 构造与成员发射:Channel/Mutex/Global 构造;spawn(捕获 env+shim)/join/join_or/
       send/recv/with/with_mut/fetch_add/expect/is_err/parallel.map·reduce;Scope 块
-- [ ] T5 struct 字段赋值(with_mut 体需要)+ match/ct_res Ok·Err 臂 + hoist 排除新码
-- [ ] T6 夹具 ×7(fx_conc_*)+ smoke 新节(逐夹具:seed 解释 == 原生执行逐字)
-- [ ] T7 全量回归:smoke --full + suite.py 51/51;decls 锁定更新;README/BOOTSTRAP/计划勾账
+- [x] T5 struct 字段赋值(with_mut 体需要)+ match/ct_res Ok·Err 臂 + hoist 排除新码
+- [x] T6 夹具 ×7(fx_conc_*)+ smoke 新节(逐夹具:seed 解释 == 原生执行逐字)
+- [x] T7 全量回归:smoke --full + suite.py 51/51;decls 锁定更新;README/BOOTSTRAP/计划勾账
 
 ## 验收
 

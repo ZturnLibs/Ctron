@@ -2,6 +2,9 @@
 // driver_emit.ct —— 编译器入口(代码生成模式)
 // parse(锚 read_file("ANCHORINPUT"),构建脚本换靶)→ 发射等价 C 到 stdout;
 // 产物自带 main(argc,argv):`<bin> run <file>` 可覆盖输入锚(通用二进制)。
+// Phase 4:函数体经静态缓冲(CT_OUT/CT_PEND)发射——文件作用域件(spawn shim、
+// mcell typedef)先于函数体 flush;并发运行时(ct_scope/ct_task/ct_chan/ct_res)
+// 常驻样板;文件级 static let → 零初始化 + ctron_statics_init()(自举闭环)。
 // =====================================================================
 
 fn main() -> I32 {
@@ -37,6 +40,8 @@ fn main() -> I32 {
             println("#include <string.h>")
             println("#include <stdlib.h>")
             println("#include <dirent.h>")
+            println("#include <pthread.h>")
+            println("#include <setjmp.h>")
             println("static char* ctron_abase = 0;")
             println("static size_t ctron_aoff = 0;")
             println("static size_t ctron_acap = 0;")
@@ -57,7 +62,31 @@ fn main() -> I32 {
             println("static const char* ctron_byte_slice(const char* s, int a, int b) \{ int n = b - a; char* r = (char*)ctron_amalloc((size_t)n + 1); memcpy(r, s + a, (size_t)n); r[n] = 0; return r; }")
             println("static const char* ctron_read_file(const char* path) \{ FILE* f = fopen(path, \"rb\"); if (!f) \{ return NULL; } fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); char* r = (char*)ctron_amalloc((size_t)n + 1); size_t rd = fread(r, 1, (size_t)n, f); r[rd] = 0; fclose(f); return r; }")
             println("static const char* ctron_read_dir(const char* path) \{ DIR* d = opendir(path); if (!d) \{ return NULL; } size_t cap = 256; size_t len = 0; char* r = (char*)malloc(cap); r[0] = 0; struct dirent* de; while ((de = readdir(d)) != NULL) \{ if (strcmp(de->d_name, \".\") == 0 || strcmp(de->d_name, \"..\") == 0) \{ continue; } size_t bl = strlen(de->d_name); while (len + bl + 2 > cap) \{ cap *= 2; } char* nb = (char*)realloc(r, cap); r = nb; memcpy(r + len, de->d_name, bl); len += bl; r[len] = 10; len += 1; } closedir(d); r[len] = 0; return r; }")
-            println("static void ctron_panic(const char* m) \{ fprintf(stderr, \"%s" + bs() + "n\", m); exit(1); }")
+            println("typedef int64_t ct_i;")
+            println("typedef struct \{ int variant; ct_i v; } ct_res;")
+            println("typedef struct ct_scope \{ int cancelled; pthread_mutex_t mu; } ct_scope;")
+            println("static ct_scope* ct_scope_new(void) \{ ct_scope* s = (ct_scope*)calloc(1, sizeof(ct_scope)); pthread_mutex_init(&s->mu, 0); return s; }")
+            println("static pthread_mutex_t ct_gm = PTHREAD_MUTEX_INITIALIZER;")
+            println("static void ct_glock(void) \{ pthread_mutex_lock(&ct_gm); }")
+            println("static void ct_gunlock(void) \{ pthread_mutex_unlock(&ct_gm); }")
+            println("typedef struct ct_task \{ pthread_t th; void* env; void* (*shim)(void*); ct_i result; int state; char pmsg[128]; ct_scope* scope; jmp_buf jmp; } ct_task;")
+            println("static __thread ct_task* ct_tls_task = 0;")
+            println("typedef struct ct_chan \{ pthread_mutex_t mu; pthread_cond_t cv_full, cv_empty; ct_i buf[64]; int head, tail, cnt, cap; } ct_chan;")
+            println("static ct_chan* ct_chans[64]; static int ct_nchans = 0;")
+            println("static void ct_cancel_broadcast(void) \{ int i; for (i = 0; i < ct_nchans; i++) \{ pthread_cond_broadcast(&ct_chans[i]->cv_full); pthread_cond_broadcast(&ct_chans[i]->cv_empty); } }")
+            println("static void ctron_panic(const char* m) \{ ct_task* _tp = ct_tls_task; if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } fprintf(stderr, \"%s" + bs() + "n\", m); exit(1); }")
+            // Phase 4 并发运行时(函数部):任务 trampoline/spawn/join/Channel/parallel
+            println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; ct_tls_task = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } return 0; }")
+            println("static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) \{ ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); t->shim = shim; t->env = env; t->scope = sc; pthread_create(&t->th, 0, ct_shim_tramp, t); return t; }")
+            println("static ct_i ct_join(ct_task* t) \{ void* r; pthread_join(t->th, &r); if (t->state == 2) \{ ctron_panic(t->pmsg); } return t->result; }")
+            println("static ct_res ct_join_or(ct_task* t) \{ void* r; pthread_join(t->th, &r); ct_res res; if (t->state == 2) \{ res.variant = 1; res.v = (ct_i)(long)\"task panic\"; } else \{ res.variant = 0; res.v = t->result; } return res; }")
+            println("static ct_chan* ct_ch_make(int cap) \{ if (cap <= 0 || cap > 64) \{ cap = 64; } ct_chan* c = (ct_chan*)calloc(1, sizeof(ct_chan)); pthread_mutex_init(&c->mu, 0); pthread_cond_init(&c->cv_full, 0); pthread_cond_init(&c->cv_empty, 0); c->cap = cap; if (ct_nchans < 64) \{ ct_chans[ct_nchans] = c; ct_nchans += 1; } return c; }")
+            println("static ct_res ct_ch_send(ct_chan* c, ct_i v) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == c->cap) \{ ct_scope* sc = ct_tls_task ? ct_tls_task->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } pthread_cond_wait(&c->cv_full, &c->mu); } c->buf[c->tail] = v; c->tail = (c->tail + 1) % 64; c->cnt += 1; pthread_cond_broadcast(&c->cv_empty); pthread_mutex_unlock(&c->mu); res.variant = 0; res.v = 0; return res; }")
+            println("static ct_res ct_ch_recv(ct_chan* c) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == 0) \{ ct_scope* sc = ct_tls_task ? ct_tls_task->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } pthread_cond_wait(&c->cv_empty, &c->mu); } res.variant = 0; res.v = c->buf[c->head]; c->head = (c->head + 1) % 64; c->cnt -= 1; pthread_cond_broadcast(&c->cv_full); pthread_mutex_unlock(&c->mu); return res; }")
+            println("typedef ct_i (*ct_fn1)(ct_i);")
+            println("typedef ct_i (*ct_fn2)(ct_i, ct_i);")
+            println("static ctron_list* ct_parallel_mapL(ctron_list* a, ct_fn1 f) \{ ctron_list* r = ctron_list_new(); int i; for (i = 0; i < a->n; i++) \{ ctron_list_push(r, (const char*)(long)f((ct_i)(long)a->items[i])); } return r; }")
+            println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ ct_i acc = init; int i; for (i = 0; i < a->n; i++) \{ acc = f(acc, (ct_i)(long)a->items[i]); } return acc; }")
             println("static const char* ctron_cli_input = NULL;")
             println("static const char* ctron_entry(void) \{ return ctron_cli_input ? ctron_cli_input : \"\"; }")
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
@@ -80,6 +109,22 @@ fn main() -> I32 {
                 }
                 si += 1
             }
+            // 文件级 static let(Phase 4 自举闭环:发射层缓冲静态自身也需要被发射):
+            // 零初始化声明 + ctron_statics_init() 运行期赋值(文件域函数调用初始化非法)
+            var stq: I32 = 1
+            var sinit = ""
+            while stq < file.len {
+                var st = file[stq]
+                if st[0] == "Static" && st[2] == "false" {
+                    var scode = ct_ty_code(st[3], file)
+                    println("static " + ct_ctype(scode) + " t_" + st[1] + " = 0;")
+                    sinit = sinit + " t_" + st[1] + " = " + ct_expr(st[4], List[Str](), file) + ";"
+                }
+                stq += 1
+            }
+            if sinit != "" {
+                println("static void ctron_statics_init(void) \{" + sinit + " }")
+            }
             // 原型前置:C 需先声明后用(语料存在前向引用/递归);extern 声明仅原型(§9.6)
             var pj: I32 = 1
             while pj < file.len {
@@ -95,17 +140,39 @@ fn main() -> I32 {
             var hasmain = false
             var ntest: I32 = 0
             var testcalls = ""
+            // pass1:shim/typedef 发现与直出(函数体不发射,eln 门控丢弃)
+            di = 1
+            while di < file.len {
+                var d1 = file[di]
+                if d1[0] == "Fn" {
+                    ct_fn(d1, file, "1")
+                } else if d1[0] == "Test" {
+                    var penv1 = env_bind(List[Str](), "#p", "1")
+                    ct_stmts(d1[2], penv1, file, "", List[Str]())
+                    var tl1 = d1[2][d1[2].len - 1]
+                    if tl1[0] != "None" {
+                        var es1 = List[Str]()
+                        es1.push("Expr")
+                        es1.push(tl1)
+                        ct_stmt(es1, penv1, file, List[Str]())
+                    }
+                }
+                di += 1
+            }
+            // pass2:函数体发射
+            di = 1
             while di < file.len {
                 var d = file[di]
                 if d[0] == "Fn" {
                     if d[1] == "main" {
                         hasmain = true
                     }
-                    ct_fn(d, file)
+                    ct_fn(d, file, "2")
                 } else if d[0] == "Test" {
                     // test 块 → int fn:断言失败 return 1(语句位 assert 发射),成功 return 0
-                    println("static int32_t t_test_" + ntest.to_string() + "(void) \{")
-                    var tenv = ct_stmts(d[2], List[Str](), file, "", List[Str]())
+                    var penv2 = env_bind(List[Str](), "#p", "2")
+                    eln("static int32_t t_test_" + ntest.to_string() + "(void) \{", penv2)
+                    var tenv = ct_stmts(d[2], penv2, file, "", List[Str]())
                     var tl = d[2][d[2].len - 1]
                     if tl[0] != "None" {
                         var es = List[Str]()
@@ -113,17 +180,21 @@ fn main() -> I32 {
                         es.push(tl)
                         ct_stmt(es, tenv, file, List[Str]())
                     }
-                    println("return 0;")
-                    println("}")
+                    eln("return 0;", penv2)
+                    eln("}", penv2)
                     testcalls = testcalls + "if (t_test_" + ntest.to_string() + "()) \{ return 1; } "
                     ntest += 1
                 }
                 di += 1
             }
+            var scall = ""
+            if sinit != "" {
+                scall = "ctron_statics_init(); "
+            }
             if hasmain {
-                println("int main(int argc, char** argv) \{ if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
+                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
             } else {
-                println("int main(int argc, char** argv) \{ " + "if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + testcalls + "return 0; " + "}")
+                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + testcalls + "return 0; " + "}")
             }
             return 0
         }

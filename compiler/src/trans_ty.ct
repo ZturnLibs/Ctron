@@ -78,6 +78,8 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
 }
 
 // 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
+// Phase 4 并发:g=ct_scope* / k=ct_task* / h=ct_chan* / R=ct_res(Result 值) /
+//   m<内>=Mutex 单元(ct_mcell_<内>*)/ P<内>=内值指针伪码(with_mut 体内 Ident 解引用)
 fn ct_ctype(code: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         return "t_" + byte_slice(code, 2, code.len)
@@ -90,7 +92,29 @@ fn ct_ctype(code: Str) -> Str {
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "v" { return "void" }
+    if code == "g" { return "ct_scope*" }
+    if code == "k" { return "ct_task*" }
+    if code == "h" { return "ct_chan*" }
+    if code == "R" { return "ct_res" }
+    if code.len > 1 && byte_at(code, 0) == 109 {
+        var ir = byte_slice(code, 1, code.len)
+        if ir.len > 2 && byte_slice(ir, 0, 2) == "u:" {
+            ir = "u" + byte_slice(ir, 2, ir.len)
+        }
+        return "ct_mcell_" + ir + "*"
+    }
+    if code.len > 1 && byte_at(code, 0) == 80 {
+        return ct_ctype(byte_slice(code, 1, code.len)) + "*"
+    }
     return "int32_t"
+}
+
+// 伪码归一:P<内> → 内(成员访问/字段域按内值型别解析)
+fn ct_strip_p(code: Str) -> Str {
+    if code.len > 1 && byte_at(code, 0) == 80 {
+        return byte_slice(code, 1, code.len)
+    }
+    return code
 }
 
 // 用户 fn 返回类型码
@@ -196,10 +220,20 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Member" {
         if e[3] == "len" { return "i" }
         if e[3] == "to_string" { return "s" }
-        var oft = ct_typeof(e[1], env, file)
+        var oft0 = ct_typeof(e[1], env, file)
+        var oft = ct_strip_p(oft0)
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
             return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
         }
+        // Phase 4 并发成员
+        if e[3] == "spawn" { return "k" }
+        if e[3] == "join" { return "i" }
+        if or2(e[3] == "join_or", or2(e[3] == "send", e[3] == "recv")) { return "R" }
+        if e[3] == "fetch_add" { return "i" }
+        if e[3] == "with_mut" { return "v" }
+        if e[3] == "map" { return "L" }
+        if or2(e[3] == "reduce", or2(e[3] == "expect", or2(e[3] == "with", e[3] == "fetch_add"))) { return "i" }
+        if or2(e[3] == "is_err", e[3] == "is_ok") { return "b" }
     }
     if t == "ArrLit" {
         var et = ct_typeof(e[1], env, file)
@@ -219,6 +253,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var base = cal[1]
             if base[0] == "Ident" && base[1] == "List" { return "L" }
             if base[0] == "Ident" && base[1] == "Atomic" { return "A" }
+            if base[0] == "Ident" && base[1] == "Channel" { return "h" }
+            if base[0] == "Ident" && base[1] == "Global" { return "A" }
+            if base[0] == "Ident" && base[1] == "Mutex" {
+                var mit = "i"
+                if e[2].len > 1 { mit = ct_typeof(e[2][1], env, file) }
+                return "m" + mit
+            }
             return "i"
         }
         if cal[0] == "Member" {
@@ -227,6 +268,14 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "to_string" { return "s" }
             if m == "push" { return "v" }
             if m == "store" { return "v" }
+            if m == "spawn" { return "k" }
+            if e[3] == "join" { return "i" }
+            if or2(m == "join_or", or2(m == "send", m == "recv")) { return "R" }
+            if m == "fetch_add" { return "i" }
+            if m == "with_mut" { return "v" }
+            if m == "map" { return "L" }
+            if or2(m == "reduce", or2(m == "expect", m == "with")) { return "i" }
+            if or2(m == "is_err", m == "is_ok") { return "b" }
             return ct_fn_ret(file, m)
         }
         if cal[0] == "Ident" {

@@ -1,0 +1,24 @@
+// fx_conc_chan.ct —— Phase 4:Channel send/recv(有界队列;结果与调度序无关)
+fn main() -> I32 {
+    var total = scope { |sc|
+        let (tx, rx) = Channel[I32](4)
+        var prod = sc.spawn(|| {
+            tx.send(1).expect("s")
+            tx.send(4).expect("s")
+            tx.send(9).expect("s")
+            tx.send(16).expect("s")
+            return 0
+        })
+        var cons = sc.spawn(|| {
+            var a = rx.recv().expect("r")
+            var b = rx.recv().expect("r")
+            var c = rx.recv().expect("r")
+            var d = rx.recv().expect("r")
+            return a + b + c + d
+        })
+        prod.join()
+        cons.join()
+    }
+    println(total.to_string())
+    return 0
+}

@@ -1,0 +1,25 @@
+// fx_conc_joinor.ct —— Phase 4:任务 panic → join_or 捕获 Err("task panic")
+fn main() -> I32 {
+    var r = 0
+    var out = scope { |sc|
+        var bad = sc.spawn(|| {
+            panic("boom")
+            return 0
+        })
+        var good = sc.spawn(|| {
+            return 21
+        })
+        good.join()
+        match bad.join_or() {
+            Ok(v) => {
+                r = 100
+            }
+            Err(_) => {
+                r = 1
+            }
+        }
+        r
+    }
+    println(out.to_string())
+    return 0
+}

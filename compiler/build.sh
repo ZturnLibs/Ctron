@@ -23,7 +23,7 @@ $SRC/sem_move.ct $SRC/sem_exh.ct $SRC/sem_alloc.ct $SRC/sem_main.ct $SRC/sem_typ
 $SRC/sem_calls.ct $SRC/sem_comptime.ct $SRC/sem_ceval.ct $SRC/sem_closure.ct \
 $SRC/eval_val.ct $SRC/eval_width.ct $SRC/eval_float.ct $SRC/eval_env.ct $SRC/eval_trait.ct \
 $SRC/eval_pat.ct $SRC/eval_expr.ct $SRC/eval_call.ct $SRC/eval_run.ct"
-TRANS="$SRC/trans_ty.ct $SRC/trans_expr.ct $SRC/trans_stmt.ct $SRC/trans_emit.ct"
+TRANS="$SRC/trans_ty.ct $SRC/trans_expr.ct $SRC/trans_stmt.ct $SRC/trans_conc.ct $SRC/trans_emit.ct"
 cat $CORE "$SRC/driver_run.ct"   > "$OUT/cc_run.ct"
 cat $CORE "$SRC/driver_check.ct" > "$OUT/cc_check.ct"
 cat $CORE $TRANS "$SRC/driver_emit.ct" > "$OUT/cc_emit.ct"

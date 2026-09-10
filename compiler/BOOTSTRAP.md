@@ -35,7 +35,7 @@ G2' 原生编译器 bin/ctron-cc(运行驱动:parse → 语义 12 项 → 解释
 | `src/parse_*.ct`(5) | 解析器:树节点/表达式/语句/声明/模块加载,入口 `p_file`(parse_decl.ct) |
 | `src/sem_*.ct`(14) | 语义检查:一检查码一文件,主控 `sem_walk2`(sem_main.ct) |
 | `src/eval_*.ct`(9) | 树行走求值器:值域/宽度/Float/环境/trait/模式/表达式/调用/语句 |
-| `src/trans_*.ct`(4) | C 代码生成器 v3:类型基础/表达式/语句/函数样板;`t_` 用户符号 / `ctron_*` 运行时 / 类型码 i·s·b·f·L·A·N |
+| `src/trans_*.ct`(5) | C 代码生成器 v3:类型基础/表达式/语句/并发闭包(双遍协议)/函数样板;`t_` 用户符号 / `ctron_*` 运行时 / 类型码 i·s·b·f·L·A·N + g·k·h·R·m·P(并发) |
 | `src/driver_run.ct` | 运行驱动入口:parse → 语义 12 项 → 解释执行 main/test |
 | `src/driver_check.ct` | 检查驱动入口:parse → 语义 12 项即止,打印 `check OK decls=N` |
 | `src/driver_emit.ct` | 发射驱动入口:parse → 生成等价 C(产物带 `main(argc,argv)` CLI) |

@@ -1,0 +1,15 @@
+// fx_conc_atomic.ct —— Phase 4:Atomic fetch_add(旧值)/load/store + Global with_mut
+fn main() -> I32 {
+    var n = Atomic[I32](10)
+    var old = n.fetch_add(5)
+    var g = Global[I32]("counter", 0)
+    g.with_mut(|var c| {
+        c += 7
+    })
+    var gv = g.with(|v| v)
+    n.store(n.load() + old)
+    println(old.to_string())
+    println(n.load().to_string())
+    println(gv.to_string())
+    return 0
+}

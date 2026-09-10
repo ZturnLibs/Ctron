@@ -1,0 +1,12 @@
+// fx_conc_parallel.ct —— Phase 4:parallel.map / reduce(List;fnptr 串行,镜像 eval)
+fn main() -> I32 {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    xs.push(4)
+    var doubled = parallel.map(xs, |x| x * 2)
+    var sum = parallel.reduce(doubled, 0, |acc, x| acc + x)
+    println(sum.to_string())
+    return 0
+}

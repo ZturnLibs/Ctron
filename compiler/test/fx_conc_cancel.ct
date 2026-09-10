@@ -1,0 +1,25 @@
+// fx_conc_cancel.ct —— Phase 4:结构化取消传播(兄弟 panic → 阻塞 send 得 Err,不悬挂)
+fn main() -> I32 {
+    var out = scope { |sc|
+        let (tx, rx) = Channel[I32](1)
+        tx.send(7).expect("fill")
+        var blocker = sc.spawn(|| {
+            match tx.send(8) {
+                Ok(_) => {
+                    return 0
+                }
+                Err(_) => {
+                    return 1
+                }
+            }
+        })
+        var p = sc.spawn(|| {
+            panic("cancel")
+            return 0
+        })
+        p.join_or()
+        blocker.join()
+    }
+    println(out.to_string())
+    return 0
+}

@@ -113,6 +113,19 @@ for v in v0 v1 v2 v3 v4 v5; do
     fi
 done
 
+echo "== 3b) 并发发射面(Phase 4:spawn/Channel/Mutex/Atomic/parallel/cancel) =="
+for cv in spawn chan mutex atomic parallel joinor cancel; do
+    FXC="$COMP/test/fx_conc_$cv.ct"
+    if "$COMP/ctc.sh" emit "$FXC" "$T/cn_$cv.c" > /dev/null 2>&1 \
+       && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
+        timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
+        "$COMP/ctc.sh" "$FXC" > "$T/cn_$cv.iv" 2>&1
+        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧"
+    else
+        bad "conc_$cv 发射/编译失败"
+    fi
+done
+
 if [ "${1:-}" = "--full" ]; then
     echo "== 4) 自发射收官(发射 run 驱动编译器 → 原生解释器) =="
     if "$COMP/ctc.sh" emit "$COMP/build/cc_run.ct" "$T/cc_self.c" > /dev/null 2>&1 \

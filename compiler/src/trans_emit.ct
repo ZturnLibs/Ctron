@@ -3,7 +3,7 @@
 // ct_str_payload 字面量载荷、ct_find_main_anchor/ct_swap_anchor main 锚替换、
 // bs 样板文本(原型区/运行时助手/无 main 包的测试 main 生成)。
 // =====================================================================
-fn ct_fn(d: List[Str], file: List[Str]) {
+fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     var ps = d[3]
     var k: I32 = 1
     var env = List[Str]()
@@ -15,8 +15,11 @@ fn ct_fn(d: List[Str], file: List[Str]) {
         k += 1
     }
     var rc = ct_fn_ret(file, d[1])
-    println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
-    ct_body(d[5], env, file, rc)
+    if seq2(pass, "2") {
+        println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
+    }
+    var penv = env_bind(env, "#p", pass)
+    ct_body(d[5], penv, file, rc)
 }
 
 // Str 节点 Text 载荷原样拼接(不做转义还原)

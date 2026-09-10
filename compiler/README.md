@@ -42,6 +42,7 @@
 | | `src/eval_call.ct` | 调用分派:fn 值/UFCS/成员内建(call_mem) |
 | | `src/eval_run.ct` | 语句/块/statics_env/run_tests |
 | 发射 | `src/trans_ty.ct` | 符号/运算符/类型码/环境/C 字符串转义 |
+| | `src/trans_conc.ct` | 并发/闭包发射(Phase 4):双遍协议、spawn 捕获 env+shim、with/with_mut、parallel |
 | | `src/trans_expr.ct` | 表达式发射(ct_expr/实参/提升/数组码) |
 | | `src/trans_stmt.ct` | struct 表/块/语句/match/if 值位发射 |
 | | `src/trans_emit.ct` | 函数发射/main 锚替换/文件样板 |
@@ -51,7 +52,7 @@
 | 脚本 | `build.sh` | 确定性拼接出单文件产物(宿主 seed 可解释的 `.ct`) |
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in>` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
-| | `test/smoke.sh` | 验收冒烟(33 项;`--full` 加自发射收官与固定点) |
+| | `test/smoke.sh` | 验收冒烟(40 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
@@ -142,6 +143,16 @@ Scope/spawn/join/join_or + Channel(send/recv,共享队列 + 读游标)顺序化�
 parse 5 层;trans 4 发射单元),沿原分节横幅连续切段,函数零改动、fn 总数不变;
 build.sh 以 CORE/TRANS 保序拼接。产物与拆分前逐行 diff **仅注释头差异**(机械证明
 "只搬家");smoke --full 33/33、suite 51/51 双侧对齐、modules 7/7、自举固定点逐字节复现。
+
+第十七批(2026-09-10,Phase 4 真并发运行时):**发射侧 pthread 真并发落地**——
+scope/spawn(捕获闭包 → ct_i env 数组 + shim)/join/join_or/Channel(send·recv,有界
+队列)/Mutex(with 值拷贝·with_mut 指针可见写)/Atomic fetch_add/Global/parallel
+(map·reduce)/任务 panic → 结构化取消广播 → 阻塞 send 得 Err(ScopeCancelled)。
+架构:**双遍发射**(ct_fn 以 env "#p" 跑两遍——pass1 直出文件作用域件(shim/typedef),
+pass2 发射函数体;eln 按 env 门控),零静态、自举闭环安全;发射器新增 Static 声明
+支持。smoke --full 40/40(七并发夹具原生==解释逐字 + 固定点复现)、suite 51/51。
+v0 限制:嵌套 spawn、一等闭包值、struct 值捕获、用户枚举发射挂账 Phase 5;
+`&&`/`||` 求值不短路,eager 索引守卫需嵌套 if(教训入册)。
 
 第十五批(2026-09-09,FFI 解释口径收口):解释器调用 extern 声明 → 明确指引
 "extern fn 仅原生口径可用(经 ctron-emit + cc 链接 c_src 后运行)"(此前为
@@ -248,8 +259,8 @@ if/while/match 条件上下文中比较表达式被吞(01g 类测试静默失败
 - 类型检查 v0 已落(E2020 全量 + E2010 基础统一,保守可证);仍无完整统一器:
   泛型单态化、成员调用面(方法表解析)、跨语句流类型细化(窄化/收敛)留类型检查 v1;
   解析器 span 标注(JSON 诊断精确定位)留 Phase 1.5(见 docs/superpowers/plans)。
-- 发射器能力面 = `fixtures/trans_v0–v3` + 编译器自发射;"编译任意 Ctron 程序"
-  (struct/闭包/并发/插值/值位 if·match)仍按 selfhosted 排期;
+- 发射器能力面 = `fixtures/trans_v0–v5` + `fx_conc_*` 七件(并发真 pthread)+
+  编译器自发射;剩余缺口:枚举字面量/一等闭包值/并发调度确定性差分按 Phase 5 排期;
 - `pkg_chk.ct`(模块级检查 + E6010 comptime 预算)属包管理 oracle,未纳入;
 - 宿主 seed(`compiler-c/build/ctronc`)仅承担首次引导,bootstrap/ladder 流程仍在
   `selfhosted/`。

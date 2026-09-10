@@ -1,0 +1,26 @@
+// fx_conc_mutex.ct —— Phase 4:Mutex with_mut(可见写)/ with(只读)
+struct Acc {
+    let total: I32
+}
+fn main() -> I32 {
+    var m = Mutex[Acc](Acc { total: 0 })
+    var out = scope { |sc|
+        var w1 = sc.spawn(|| {
+            m.with_mut(|var acc| {
+                acc.total = acc.total + 3
+            })
+            return 0
+        })
+        var w2 = sc.spawn(|| {
+            m.with_mut(|var acc| {
+                acc.total = acc.total + 4
+            })
+            return 0
+        })
+        w1.join()
+        w2.join()
+        m.with(|v| v.total)
+    }
+    println(out.to_string())
+    return 0
+}

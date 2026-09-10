@@ -1,0 +1,345 @@
+// =====================================================================
+// trans_conc.ct —— 并发/闭包发射(Phase 4):双遍发射 + spawn 捕获闭包(env 数组 +
+// shim)+ with/with_mut(Mutex/Atomic 内值锁定)+ parallel(fnptr 串行)。
+// 双遍协议:ct_fn 以 env 绑定 "#p"=1/1 跑两遍;第一遍 eln 全门控(不产出行),
+// 仅 spawn/闭包站点直出文件作用域件(shim/typedef);第二遍正常发射函数体。
+// 语义锚 = eval 顺序化模拟的可观察行为;取消传播 = 任务 panic → scope cancelled
+// → 阻塞 send/recv 得 Err(ScopeCancelled)。类型码:g=ct_scope* k=ct_task*
+// h=ct_chan* R=ct_res m<内>=Mutex 单元 P<内>=内值指针伪码。
+// =====================================================================
+
+// 行发射:pass1("#p"=1)丢弃,pass2 原样 println(与历史发射流逐字一致)
+fn eln(s: Str, env: List[Str]) {
+    if seq2(ct_env_ty(env, "#p"), "1") {
+        return
+    }
+    println(s)
+}
+
+fn ct_pass(env: List[Str]) -> Str {
+    return ct_env_ty(env, "#p")
+}
+
+fn ct_env_has(env: List[Str], nm: Str) -> Bool {
+    var key = nm + ":"
+    var i: I32 = 0
+    while i < env.len {
+        if env[i].len >= key.len && byte_slice(env[i], 0, key.len) == key {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// mcell C 标签:类型码 "u:Acc" 中的冒号非法 → "uAcc"
+fn ct_mcell_tag(inner: Str) -> Str {
+    if inner.len > 2 && byte_slice(inner, 0, 2) == "u:" {
+        return "u" + byte_slice(inner, 2, inner.len)
+    }
+    return inner
+}
+
+// Mutex 单元 typedef:仅在 pass1 于构造站点发射一次(C11 下重复亦合法,此处去重
+// 交由站点唯一性;跨 fn 顺序由"全部 pass1 先于全部 pass2"保证)
+fn ct_mcell_emit(inner: Str) {
+    var tg = ct_mcell_tag(inner)
+    println("typedef struct \{ pthread_mutex_t mu; " + ct_ctype(inner) + " v; } ct_mcell_" + tg + ";")
+}
+
+// 捕获/回传值包 ct_i:指针域经 long 中转;struct 值/Mutex 不入本片
+fn ct_wrap_i(code: Str, x: Str) -> Str {
+    if or2(code == "s", code == "N") {
+        return "(ct_i)(long)(" + x + ")"
+    }
+    if or2(code == "L", or2(code == "A", or2(code == "g", or2(code == "k", or2(code == "h", code == "R"))))) {
+        return "(ct_i)(long)(" + x + ")"
+    }
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        panic("emit:并发值含 struct 值传递")
+        return ""
+    }
+    return "(ct_i)(" + x + ")"
+}
+
+// shim 内捕获解包声明
+fn ct_cap_decl(code: Str, nm: Str, i: I32) -> Str {
+    var ct = ct_ctype(code)
+    if or2(code == "s", code == "N") {
+        return ct + " t_" + nm + " = (" + ct + ")(long)_e[" + i.to_string() + "];"
+    }
+    if or2(code == "L", or2(code == "A", or2(code == "g", or2(code == "k", or2(code == "h", code == "R"))))) {
+        return ct + " t_" + nm + " = (" + ct + ")(long)_e[" + i.to_string() + "];"
+    }
+    if code.len > 1 && byte_at(code, 0) == 109 {
+        return "ct_mcell_" + ct_mcell_tag(byte_slice(code, 1, code.len)) + "* t_" + nm + " = (ct_mcell_" + ct_mcell_tag(byte_slice(code, 1, code.len)) + "*)(long)_e[" + i.to_string() + "];"
+    }
+    if code == "6" {
+        return ct + " t_" + nm + " = (int64_t)_e[" + i.to_string() + "];"
+    }
+    return ct + " t_" + nm + " = (int32_t)_e[" + i.to_string() + "];"
+}
+
+// spawn:捕获闭包 → env 数组 + shim。pass1:直出 shim(命名取站点行号,跨遍确定);
+// pass2:仅返回调用表达式。捕获按值浅拷贝(ct_i 逐槽;struct 值不在本片)。
+// shim 体内 return → 写任务结果 + return 0("#shim"=1);嵌套 spawn 不支持(v0 挂账)。
+fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var body = clo[3]
+    var cps = clo[1]
+    if cps.len != 1 {
+        panic("emit:spawn 闭包零参")
+        return ""
+    }
+    if body[0] == "BlockExpr" {
+        body = body[1]
+    }
+    var raw = List[Str]()
+    if body[0] == "Block" {
+        clb(file, body, raw)
+    } else {
+        cle(file, body, raw)
+    }
+    var caps = List[Str]()
+    var codes = List[Str]()
+    var qi: I32 = 0
+    while qi < raw.len {
+        var nm = raw[qi]
+        if !in_list(caps, nm) && ct_env_has(env, nm) {
+            caps.push(nm)
+            codes.push(ct_env_ty(env, nm))
+        }
+        qi += 1
+    }
+    if caps.len > 8 {
+        panic("emit:spawn 捕获>8")
+        return ""
+    }
+    var ix = nline(site)
+    var shim = "ct_shim_L" + ix
+    if seq2(ct_pass(env), "1") {
+        println("static void* " + shim + "(void* _ep) \{")
+        println("ct_i* _e = (ct_i*)_ep;")
+        var ci2: I32 = 0
+        while ci2 < caps.len {
+            println(ct_cap_decl(codes[ci2], caps[ci2], ci2))
+            ci2 += 1
+        }
+        var senv = env_bind(env_bind(env, "#p", "2"), "#shim", "1")
+        if body[0] == "Block" {
+            var senv2 = ct_stmts(body, senv, file, "", List[Str]())
+            var stl = body[body.len - 1]
+            if stl[0] != "None" {
+                if or2(stl[0] == "Match", stl[0] == "If") {
+                    ct_stmt(stl, senv2, file, List[Str]())
+                } else {
+                    var stt = ct_typeof(stl, senv2, file)
+                    var stx = ct_expr(stl, senv2, file)
+                    if or2(stt == "s", stt == "N") {
+                        println("ct_tls_task->result = (ct_i)(long)(" + stx + ");")
+                    } else {
+                        println("ct_tls_task->result = (ct_i)(" + stx + ");")
+                    }
+                }
+            }
+        } else {
+            var bx = ct_expr(body, senv, file)
+            var bt = ct_typeof(body, senv, file)
+            if or2(bt == "s", bt == "N") {
+                println("ct_tls_task->result = (ct_i)(long)(" + bx + ");")
+            } else {
+                println("ct_tls_task->result = (ct_i)(" + bx + ");")
+            }
+            println("return 0;")
+        }
+        println("}")
+        return "0"
+    }
+    var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
+    var ci3: I32 = 0
+    while ci3 < caps.len {
+        acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = " + ct_wrap_i(codes[ci3], "t_" + caps[ci3]) + ";"
+        ci3 += 1
+    }
+    acc = acc + " (ct_task*)ct_spawn(" + shim + ", _e" + ix + ", " + obj + "); })"
+    return acc
+}
+
+// 非捕获闭包 → 静态 fn(fnptr;捕获 → panic,一等闭包值挂账)。命名取站点行号。
+// "#shim"=2:体内 return → return (ct_i)(expr)
+fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str], np: I32) -> Str {
+    var cps = clo[1]
+    if cps.len != np + 1 {
+        panic("emit:closure 参数个数")
+        return ""
+    }
+    var cbody = clo[3]
+    if cbody[0] == "BlockExpr" {
+        cbody = cbody[1]
+    }
+    var raw = List[Str]()
+    if cbody[0] == "Block" {
+        clb(file, cbody, raw)
+    } else {
+        cle(file, cbody, raw)
+    }
+    var qi: I32 = 0
+    while qi < raw.len {
+        if ct_env_has(env, raw[qi]) {
+            panic("emit:非捕获闭包含捕获")
+            return ""
+        }
+        qi += 1
+    }
+    var ix = nline(site)
+    var cname = "ct_clo_L" + ix
+    if seq2(ct_pass(env), "1") {
+        var sig0 = ""
+        var pi0: I32 = 0
+        while pi0 < np {
+            if pi0 > 0 { sig0 = sig0 + ", " }
+            sig0 = sig0 + "ct_i _p" + pi0.to_string()
+            pi0 += 1
+        }
+        println("static ct_i " + cname + "(" + sig0 + ") \{")
+        var pj2: I32 = 0
+        var env2 = env_bind(env_bind(env, "#p", "2"), "#shim", "2")
+        while pj2 < np {
+            var pn = cps[pj2 + 1][2]
+            println("int32_t t_" + pn + " = (int32_t)_p" + pj2.to_string() + ";")
+            env2 = env_bind(env2, pn, "i")
+            pj2 += 1
+        }
+        if cbody[0] == "Block" {
+            var renv2 = ct_stmts(cbody, env2, file, "", List[Str]())
+            var ctl = cbody[cbody.len - 1]
+            if ctl[0] != "None" {
+                if or2(ctl[0] == "Match", ctl[0] == "If") {
+                    ct_stmt(ctl, renv2, file, List[Str]())
+                } else {
+                    var ctx = ct_expr(ctl, renv2, file)
+                    println("return (ct_i)(" + ctx + ");")
+                }
+            }
+        } else {
+            var bx2 = ct_expr(cbody, env2, file)
+            println("return (ct_i)(" + bx2 + ");")
+        }
+        println("}")
+        return "0"
+    }
+    return cname
+}
+
+// with/with_mut 语句位发射(ANF:值落在 rc 变量;with_mut 无值)。
+// Mutex(m<内>):pthread 锁;Atomic/Global(A):glock。with 值拷贝(写不可见),
+// with_mut 指针绑定 P<内>(写可见)——镜像 eval recv[1] 语义。
+fn ct_emit_with_stmt(site: List[Str], obj: Str, objt: Str, clo: List[Str], env: List[Str], file: List[Str], ismut: Bool, rc: Str, hreg: List[Str], rcdecl: Str) -> List[Str] {
+    var inner = "i"
+    var acc = ""
+    var lockL = ""
+    var unlockL = ""
+    var uq = nline(site)
+    if objt.len > 1 && byte_at(objt, 0) == 109 {
+        inner = byte_slice(objt, 1, objt.len)
+        var mtg = ct_mcell_tag(inner)
+        lockL = "ct_mcell_" + mtg + "* _p" + uq + " = (ct_mcell_" + mtg + "*)(" + obj + "); pthread_mutex_lock(&_p" + uq + "->mu);"
+        unlockL = "pthread_mutex_unlock(&_p" + uq + "->mu);"
+        acc = "_p" + uq + "->v"
+    } else if objt == "A" {
+        lockL = "ctron_cell* _p" + uq + " = (ctron_cell*)(" + obj + "); ct_glock();"
+        unlockL = "ct_gunlock();"
+        acc = "_p" + uq + "->v"
+    } else {
+        panic("emit:with 接收者")
+        return env
+    }
+    var cps = clo[1]
+    if cps.len != 2 {
+        panic("emit:with 闭包单参")
+        return env
+    }
+    var pname = cps[1][2]
+    var cbody = clo[3]
+    if cbody[0] == "BlockExpr" {
+        cbody = cbody[1]
+    }
+    eln(lockL, env)
+    var head = ""
+    var env2 = env
+    if ismut {
+        eln(ct_ctype(inner) + "* t_" + pname + " = &" + acc + ";", env)
+        env2 = env_bind(env, pname, "P" + inner)
+    } else {
+        eln(ct_ctype(inner) + " t_" + pname + " = " + acc + ";", env)
+        env2 = env_bind(env, pname, inner)
+    }
+    if rc != "" {
+        if seq2(rcdecl, "1") {
+            eln(ct_ctype(rc) + " " + rc + ";", env)
+        }
+    }
+    if cbody[0] == "Block" {
+        var renv = ct_stmts(cbody, env2, file, "", hreg)
+        var tl = cbody[cbody.len - 1]
+        if rc != "" {
+            var tail = ct_zero(rc)
+            if tl[0] != "None" {
+                tail = ct_expr(tl, renv, file)
+            }
+            eln(rc + " = " + tail + ";", env)
+        } else {
+            if tl[0] != "None" {
+                var tx = ct_expr(tl, renv, file)
+                eln(tx + ";", env)
+            }
+        }
+    } else {
+        var vx = ct_expr(cbody, env2, file)
+        if rc != "" {
+            eln(rc + " = " + vx + ";", env)
+        } else {
+            eln(vx + ";", env)
+        }
+    }
+    eln(unlockL, env)
+    return env
+}
+
+// scope 块语句位发射(ANF):ct_scope_new + s 绑 g;块值落在 rc(可空)
+fn ct_emit_scope_stmt(site: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: List[Str]) -> List[Str] {
+    var sn = site[1]
+    var scb = site[2]
+    eln("ct_scope* t_" + sn + " = ct_scope_new();", env)
+    var senv = env_bind(env, sn, "g")
+    if rc != "" {
+        eln(ct_ctype(rc) + " " + rc + ";", env)
+    }
+    var senv2 = ct_stmts(scb, senv, file, "", hreg)
+    var tl = scb[scb.len - 1]
+    // 尾槽为 with 调用 → 递归 ANF(值直接落 rc)
+    if tl[0] == "Call" {
+        if tl[1][0] == "Member" {
+            if tl[1][3] == "with" {
+                var ot6 = ct_typeof(tl[1][1], senv2, file)
+                if or2(ot6 == "A", ot6.len > 1 && byte_at(ot6, 0) == 109) {
+                    var ob6 = ct_expr(tl[1][1], senv2, file)
+                    ct_emit_with_stmt(tl, ob6, ot6, tl[2][1], senv2, file, false, rc, hreg, "0")
+                    return env
+                }
+            }
+        }
+    }
+    if rc != "" {
+        var tail = ct_zero(rc)
+        if tl[0] != "None" {
+            tail = ct_expr(tl, senv2, file)
+        }
+        eln(rc + " = " + tail + ";", env)
+    } else {
+        if tl[0] != "None" {
+            var tx = ct_expr(tl, senv2, file)
+            eln(tx + ";", env)
+        }
+    }
+    return env
+}

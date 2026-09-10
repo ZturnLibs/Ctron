@@ -54,7 +54,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if e[1] == "true" { return "1" }
         return "0"
     }
-    if t == "Ident" { return "t_" + e[1] }
+    if t == "Ident" {
+        var icd = ct_env_ty(env, e[1])
+        if icd.len > 1 && byte_at(icd, 0) == 80 {
+            // P<内> 伪码:with_mut 体内参数 = 内值指针 → 解引用
+            return "(*t_" + e[1] + ")"
+        }
+        return "t_" + e[1]
+    }
     if t == "Unary" {
         if e[1] == "Neg" { return "(-" + ct_expr(e[2], env, file) + ")" }
         return "(!" + ct_expr(e[2], env, file) + ")"
@@ -104,11 +111,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "strlen((const char*)(" + ct_expr(e[1], env, file) + "))"
         }
-        var oft = ct_typeof(e[1], env, file)
+        var oft = ct_strip_p(ct_typeof(e[1], env, file))
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
-            // struct 字段读取(§6.1 值类型)
+            // struct 字段读取(§6.1 值类型;P<内> 解引用后同型)
             return "(" + ct_expr(e[1], env, file) + ")." + e[3]
         }
+    }
+    if t == "Scope" {
+        panic("ct_expr:scope 仅语句位(let/Expr)")
+        return ""
+    }
+    if t == "Closure" {
+        panic("ct_expr:Closure 仅 spawn/with/parallel 实参位")
+        return ""
     }
     if t == "StructLit" {
         if !ct_is_struct(file, e[1]) {
@@ -146,17 +161,118 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { init = ct_expr(ag[1], env, file) }
                 return "ctron_cell_new(" + init + ")"
             }
+            if base[0] == "Ident" && base[1] == "Global" {
+                // Global[T](name, init):init 取第二实参(镜像 eval vals[1])
+                var ginit = "0"
+                if ag.len > 2 { ginit = ct_expr(ag[2], env, file) }
+                return "ctron_cell_new(" + ginit + ")"
+            }
+            if base[0] == "Ident" && base[1] == "Channel" {
+                var cap = "64"
+                if ag.len > 1 { cap = ct_expr(ag[1], env, file) }
+                return "((ct_chan*)ct_ch_make((int)(" + cap + ")))"
+            }
+            if base[0] == "Ident" && base[1] == "Mutex" {
+                var minit = "0"
+                if ag.len > 1 { minit = ct_expr(ag[1], env, file) }
+                var mi = "i"
+                if ag.len > 1 { mi = ct_typeof(ag[1], env, file) }
+                if seq2(ct_pass(env), "1") {
+                    ct_mcell_emit(mi)
+                }
+                var mtg = ct_mcell_tag(mi)
+                return "(\{ ct_mcell_" + mtg + "* _p = (ct_mcell_" + mtg + "*)malloc(sizeof(ct_mcell_" + mtg + ")); pthread_mutex_init(&_p->mu, 0); _p->v = " + minit + "; _p; })"
+            }
         }
         if cal[0] == "Member" {
+            var m = cal[3]
+            if cal[1][0] == "Ident" && cal[1][1] == "parallel" {
+                // parallel 命名空间:map(arr, clo1) / reduce(arr, init, clo2) —— 串行逐元素(镜像 eval)
+                if m == "map" {
+                    if ag.len < 3 {
+                        panic("emit:parallel.map 实参")
+                        return ""
+                    }
+                    var marr = ct_expr(ag[1], env, file)
+                    var mart = ct_typeof(ag[1], env, file)
+                    if mart != "L" {
+                        panic("emit:parallel 目标限 List")
+                        return ""
+                    }
+                    var mclo = ct_emit_clo(e, ag[2], env, file, 1)
+                    return "ct_parallel_mapL((ctron_list*)(" + marr + "), " + mclo + ")"
+                }
+                if m == "reduce" {
+                    if ag.len < 4 {
+                        panic("emit:parallel.reduce 实参")
+                        return ""
+                    }
+                    var rarr = ct_expr(ag[1], env, file)
+                    var rinit = ct_expr(ag[2], env, file)
+                    var rclo = ct_emit_clo(e, ag[3], env, file, 2)
+                    return "ct_parallel_reduceL((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + ")"
+                }
+                panic("emit:parallel." + m)
+                return ""
+            }
             var obj = ct_expr(cal[1], env, file)
             var objt = ct_typeof(cal[1], env, file)
-            var m = cal[3]
+            if m == "spawn" {
+                if objt != "g" {
+                    panic("emit:spawn 需 scope 接收者")
+                    return ""
+                }
+                if ag.len < 2 {
+                    panic("emit:spawn 需闭包字面量")
+                    return ""
+                }
+                if ag[1][0] != "Closure" {
+                    panic("emit:spawn 需闭包字面量")
+                    return ""
+                }
+                return ct_emit_spawn(cal, obj, ag[1], env, file)
+            }
+            if m == "join" { return "(int32_t)ct_join((ct_task*)(" + obj + "))" }
+            if m == "join_or" { return "ct_join_or((ct_task*)(" + obj + "))" }
+            if m == "send" {
+                if ag.len < 2 {
+                    panic("emit:send 实参")
+                    return ""
+                }
+                var s0t = ct_typeof(ag[1], env, file)
+                return "ct_ch_send((ct_chan*)(" + obj + "), " + ct_wrap_i(s0t, ct_expr(ag[1], env, file)) + ")"
+            }
+            if m == "recv" { return "ct_ch_recv((ct_chan*)(" + obj + "))" }
+            if m == "fetch_add" {
+                var f0 = "0"
+                if ag.len > 1 { f0 = ct_expr(ag[1], env, file) }
+                return "(\{ ctron_cell* _p = (ctron_cell*)(" + obj + "); ct_glock(); int32_t _o = _p->v; _p->v = (int32_t)((int64_t)_o + (int64_t)(" + f0 + ")); ct_gunlock(); _o; })"
+            }
+            if m == "expect" {
+                var emsg = "\"expect failed\""
+                if ag.len > 1 { emsg = ct_expr(ag[1], env, file) }
+                return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } _r.v; })"
+            }
+            if or2(m == "is_err", m == "is_ok") {
+                var neg = ""
+                if m == "is_ok" { neg = "!" }
+                return "(" + neg + "(" + obj + ").variant)"
+            }
+            if or2(m == "with", m == "with_mut") {
+                panic("emit:with 仅语句位(let/Expr)")
+                return ""
+            }
             if m == "push" {
                 var a0 = ""
                 if ag.len > 1 { a0 = ct_expr(ag[1], env, file) }
                 var a0t = "i"
                 if ag.len > 1 { a0t = ct_typeof(ag[1], env, file) }
-                return "ctron_list_push((ctron_list*)(" + obj + "), " + ct_arg_cast(a0t, "s", a0) + ")"
+                var pv = ct_arg_cast(a0t, "s", a0)
+                if !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))) {
+                    // 标量元素:槽为 char*,经 long 中转(镜像 List 元素槽模型)
+                    pv = "(const char*)(long)(" + a0 + ")"
+                }
+                return "ctron_list_push((ctron_list*)(" + obj + "), " + pv + ")"
             }
             if m == "load" { return "((ctron_cell*)(" + obj + "))->v" }
             if m == "store" {
@@ -336,7 +452,7 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
                     } else {
                         ty = ct_typeof(st[4], ew, file)
                     }
-                    if ty != "L" && ty != "A" && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") {
+                    if ty != "L" && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") {
                         out.push(pat[1] + ":" + ty)
                         ew = env_bind(ew, pat[1], ty)
                     }

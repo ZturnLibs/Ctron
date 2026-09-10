@@ -1,0 +1,19 @@
+// fx_conc_spawn.ct —— Phase 4 发射面:spawn 捕获闭包 + join(真 pthread;结果与调度序无关)
+fn main() -> I32 {
+    var a = 5
+    var total = scope { |sc|
+        var t1 = sc.spawn(|| {
+            return 10
+        })
+        var t2 = sc.spawn(|| {
+            return a * 2
+        })
+        var t3 = sc.spawn(|| {
+            var x = 12
+            return x
+        })
+        t1.join() + t2.join() + t3.join()
+    }
+    println(total.to_string())
+    return 0
+}

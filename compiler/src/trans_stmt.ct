@@ -84,8 +84,8 @@ fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: 
 
 // match 作值(当前仅 fn 体尾槽位):Option[Str] 两臂,结果写入 t_mr(<rc> 型)
 fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: List[Str]) -> List[Str] {
-    println("const char* t_mv = (const char*)(" + ct_expr(e[1], env, file) + ");")
-    println(ct_ctype(rc) + " t_mr;")
+    eln("const char* t_mv = (const char*)(" + ct_expr(e[1], env, file) + ");", env)
+    eln(ct_ctype(rc) + " t_mr;", env)
     var arms = e[2]
     var someIx: I32 = -1
     var noneIx: I32 = -1
@@ -105,12 +105,12 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
         var armS = arms[someIx]
         var pt = armS[1]
         var be = armS[2]
-        println("if (t_mv != NULL) \{")
+        eln("if (t_mv != NULL) \{", env)
         var env3 = env
         if pt[2][0] == "SubTup" {
             var b0 = pt[2][1]
             if b0[0] == "PatId" {
-                println("const char* t_" + b0[1] + " = t_mv;")
+                eln("const char* t_" + b0[1] + " = t_mv;", env)
                 env3 = env_bind(env3, b0[1], "s")
             }
         }
@@ -122,19 +122,19 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
                 panic("ct_match_value:arm 无值")
                 return env
             }
-            println("t_mr = " + ct_expr(tl, env3, file) + ";")
+            eln("t_mr = " + ct_expr(tl, env3, file) + ";", env)
         } else {
-            println("t_mr = " + ct_expr(be, env3, file) + ";")
+            eln("t_mr = " + ct_expr(be, env3, file) + ";", env)
         }
-        println("}")
+        eln("}", env)
     }
     if noneIx >= 0 {
         var armN = arms[noneIx]
         var be2 = armN[2]
         if someIx >= 0 {
-            println("else \{")
+            eln("else \{", env)
         } else {
-            println("if (t_mv == NULL) \{")
+            eln("if (t_mv == NULL) \{", env)
         }
         if be2[0] == "BlockExpr" {
             var bl2 = be2[1]
@@ -144,17 +144,17 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
                 panic("ct_match_value:arm 无值")
                 return env
             }
-            println("t_mr = " + ct_expr(tl2, env4, file) + ";")
+            eln("t_mr = " + ct_expr(tl2, env4, file) + ";", env)
         } else {
-            println("t_mr = " + ct_expr(be2, env, file) + ";")
+            eln("t_mr = " + ct_expr(be2, env, file) + ";", env)
         }
-        println("}")
+        eln("}", env)
     }
     return env
 }
 
 fn ct_block(b: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> List[Str] {
-    println("\{")
+    eln("\{", env)
     var env2 = ct_stmts(b, env, file, "", hreg)
     // 尾槽:p_block 末元素为裸尾表达式(无 "None" 哨兵时),按语句发射
     var tl = b[b.len - 1]
@@ -164,7 +164,7 @@ fn ct_block(b: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         es.push(tl)
         env2 = ct_stmt(es, env2, file, hreg)
     }
-    println("}")
+    eln("}", env)
     return env2
 }
 
@@ -221,9 +221,37 @@ fn ct_is_value(tg: Str) -> Bool {
 
 fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] {
     var hreg = List[Str]()
-    println("\{")
+    var p1 = seq2(ct_pass(env), "1")
+    if !p1 {
+        eln("\{", env)
+    }
     var env2 = ct_stmts(b, env, file, "", hreg)
     var tl = b[b.len - 1]
+    if p1 {
+        // pass1:与 pass2 同构分派,输出由 eln 门控丢弃,仅为 shim/typedef 发现遍历
+        if tl[0] != "None" {
+            if tl[0] == "Match" {
+                ct_expr(tl[1], env2, file)
+                var arms1 = tl[2]
+                var ai1: I32 = 1
+                while ai1 < arms1.len {
+                    var ab1 = arms1[ai1][2]
+                    if ab1[0] == "BlockExpr" {
+                        ct_stmts(ab1[1], env, file, "", hreg)
+                    }
+                    ai1 += 1
+                }
+            } else if or2(rc == "v", !ct_is_value(tl[0])) {
+                var es1 = List[Str]()
+                es1.push("Expr")
+                es1.push(tl)
+                ct_stmt(es1, env2, file, hreg)
+            } else {
+                ct_expr(tl, env2, file)
+            }
+        }
+        return env2
+    }
     if tl[0] != "None" {
         // p_block 尾槽 = NL 折叠后紧跟 } 的表达式 —— 完整语句后跟空行也入尾槽,
         // 故语句类尾槽(如末位 match)仍按语句发射(臂内 return 负责退出)
@@ -234,30 +262,32 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
             env2 = ct_stmt(es, env2, file, hreg)
         } else if tl[0] == "Match" {
             ct_match_value(tl, env2, file, rc, hreg)
-            println("return t_mr;")
+            eln("return t_mr;", env)
         } else if tl[0] == "If" {
-            println("return " + ct_if_value(tl, env2, file) + ";")
+            eln("return " + ct_if_value(tl, env2, file) + ";", env)
         } else {
-            println("return " + ct_expr(tl, env2, file) + ";")
+            eln("return " + ct_expr(tl, env2, file) + ";", env)
         }
     }
-    println("}")
+    if !p1 {
+        eln("}", env)
+    }
     return env2
 }
 
 fn ct_if_stmt(e: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) {
-    println("if (" + ct_expr(e[1], env, file) + ") \{")
+    eln("if (" + ct_expr(e[1], env, file) + ") \{", env)
     ct_block(e[2], env, file, hreg)
-    println("}")
+    eln("}", env)
     var els = e[3]
     if els[0] != "None" {
-        println("else \{")
+        eln("else \{", env)
         if els[0] == "If" {
             ct_if_stmt(els, env, file, hreg)
         } else {
             ct_block(els[1], env, file, hreg)
         }
-        println("}")
+        eln("}", env)
     }
 }
 
@@ -265,6 +295,50 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
     var t = st[0]
     if t == "Let" {
         var pat = st[2]
+        // Phase 4:scope/with 仅语句位 —— let 初值位按 ANF 展开(值落 t_<名>)
+        if pat[0] == "PatId" && st[4][0] == "Scope" {
+            var rc4 = "t_" + pat[1]
+            var renv4 = ct_emit_scope_stmt(st[4], env, file, rc4, hreg)
+            return env_bind(renv4, pat[1], "g")
+        }
+        if pat[0] == "PatId" {
+            if st[4][0] == "Call" {
+                if st[4][1][0] == "Member" {
+                    if st[4][1][3] == "with" {
+                        var objt4 = ct_typeof(st[4][1][1], env, file)
+                        if or2(objt4 == "A", objt4.len > 1 && byte_at(objt4, 0) == 109) {
+                            var rc4 = "t_" + pat[1]
+                            var ty4 = "i"
+                            if st[3][0] != "None" {
+                                ty4 = ct_ty_code(st[3], file)
+                            }
+                            var obj4 = ct_expr(st[4][1][1], env, file)
+                            var renv4 = ct_emit_with_stmt(st[4], obj4, objt4, st[4][2][1], env, file, false, rc4, hreg, "1")
+                            return env_bind(renv4, pat[1], ty4)
+                        }
+                    }
+                }
+            }
+        }
+        // Phase 4:let (tx, rx) = Channel[T](cap) —— 双名同一 ct_chan*
+        if pat[0] == "PatTup" {
+            if pat.len == 3 {
+                if st[4][0] == "Call" {
+                    if st[4][1][0] == "TypeArgs" {
+                        if st[4][1][1][0] == "Ident" {
+                            if st[4][1][1][1] == "Channel" {
+                                var chx = ct_expr(st[4], env, file)
+                                var cn1 = pat[1][1]
+                                var cn2 = pat[2][1]
+                                eln("ct_chan* t_" + cn1 + " = " + chx + ";", env)
+                                eln("ct_chan* t_" + cn2 + " = t_" + cn1 + ";", env)
+                                return env_bind(env_bind(env, cn1, "h"), cn2, "h")
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // PatId 或 PatAgg-SubUnit(单大写标识符如 var L,解析器按变体模式收,rt 动态当绑定)
         if or2(pat[0] == "PatId", pat[0] == "PatAgg" && pat[2][0] == "SubUnit") {
             var ty = "i"
@@ -285,13 +359,13 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     acc = acc + ct_expr(al[j], env, file)
                     j += 1
                 }
-                println(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};")
+                eln(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};", env)
                 return env_bind(env, pat[1], ty)
             }
             var rhs = ct_expr(st[4], env, file)
             if ty == "L" { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
-            println(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";")
+            eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
             return env_bind(env, pat[1], ty)
         }
         panic("ct_stmt:let pat:" + pat[0])
@@ -307,18 +381,33 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             var tv = ct_expr(tgt[1], env, file)
             var vt = ct_typeof(st[3], env, file)
-            println("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(vt, "s", ct_expr(st[3], env, file)) + ";")
+            eln("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(vt, "s", ct_expr(st[3], env, file)) + ";", env)
             return env
         }
         if tgt[0] == "Member" {
+            // struct 字段赋值(v4 挂账解除,with_mut 体依赖):含 P<内> 解引用接收者
+            var oft = ct_strip_p(ct_typeof(tgt[1], env, file))
+            if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
+                if st[2] != "Eq" {
+                    panic("ct_stmt:字段复合赋值")
+                    return env
+                }
+                eln("(" + ct_expr(tgt[1], env, file) + ")." + tgt[3] + " = " + ct_expr(st[3], env, file) + ";", env)
+                return env
+            }
             panic("ct_stmt:struct 字段赋值未支持")
             return env
         }
         var tt = ct_env_ty(env, tgt[1])
         var rhs2 = ct_expr(st[3], env, file)
+        if tt.len > 1 && byte_at(tt, 0) == 80 {
+            // P<内>:with_mut 体参数是内值指针 → 解引用赋值
+            eln("(*t_" + tgt[1] + ") " + ct_aop(st[2]) + " " + rhs2 + ";", env)
+            return env
+        }
         if tt == "L" { rhs2 = "(ctron_list*)(" + rhs2 + ")" }
         if tt == "A" { rhs2 = "(ctron_cell*)(" + rhs2 + ")" }
-        println("t_" + tgt[1] + " " + ct_aop(st[2]) + " " + rhs2 + ";")
+        eln("t_" + tgt[1] + " " + ct_aop(st[2]) + " " + rhs2 + ";", env)
         return env
     }
     if t == "While" {
@@ -351,7 +440,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 reg += 1
             }
             if prev == "" {
-                println(ct_ctype(ty) + " t_" + nm + " = " + ct_zero(ty) + ";")
+                eln(ct_ctype(ty) + " t_" + nm + " = " + ct_zero(ty) + ";", env)
                 hreg.push(nm + ":" + ty)
                 hl.push(nm + ":" + ty)
                 envw = env_bind(envw, nm, ty)
@@ -364,7 +453,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             hi += 1
         }
-        println("while (" + ct_expr(st[1], envw, file) + ") \{")
+        eln("while (" + ct_expr(st[1], envw, file) + ") \{", env)
         var benv = ct_stmts(body, envw, file, hl, hreg)
         var tl = body[body.len - 1]
         if tl[0] != "None" {
@@ -373,12 +462,69 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             es.push(tl)
             ct_stmt(es, benv, file, hreg)
         }
-        println("}")
+        eln("}", env)
         return envw
     }
     if t == "Match" {
+        // ct_res 模型(Phase 4):send/recv/join_or 的 Result —— variant 0=Ok/1=Err,
+        // 载荷单槽 v(Ok=元素值,Err="task panic"/"ScopeCancelled" 串指针)
+        if ct_typeof(st[1], env, file) == "R" {
+            eln("ct_res t_mrr = " + ct_expr(st[1], env, file) + ";", env)
+            var rarms = st[2]
+            var okIx: I32 = -1
+            var errIx: I32 = -1
+            var ri: I32 = 1
+            while ri < rarms.len {
+                var rarm = rarms[ri]
+                var rpt = rarm[1]
+                if rpt[0] == "PatAgg" && rpt[1] == "Ok" { okIx = ri }
+                if rpt[0] == "PatAgg" && rpt[1] == "Err" { errIx = ri }
+                ri += 1
+            }
+            if okIx >= 0 {
+                var oa = rarms[okIx]
+                var opt = oa[1]
+                var obe = oa[2]
+                eln("if (t_mrr.variant == 0) \{", env)
+                var oenv = env
+                if opt[2].len > 1 && opt[2][1][0] == "PatId" && opt[2][1][1] != "_" {
+                    eln("int32_t t_" + opt[2][1][1] + " = (int32_t)t_mrr.v;", env)
+                    oenv = env_bind(env, opt[2][1][1], "i")
+                }
+                if obe[0] == "BlockExpr" {
+                    ct_block(obe[1], oenv, file, hreg)
+                } else {
+                    panic("ct_stmt:match R arm body")
+                    return env
+                }
+                eln("}", env)
+            }
+            if errIx >= 0 {
+                var ea = rarms[errIx]
+                var ept = ea[1]
+                var ebe = ea[2]
+                if okIx >= 0 {
+                    eln("else \{", env)
+                } else {
+                    eln("if (t_mrr.variant != 0) \{", env)
+                }
+                var eenv = env
+                if ept[2].len > 1 && ept[2][1][0] == "PatId" && ept[2][1][1] != "_" {
+                    eln("const char* t_" + ept[2][1][1] + " = (const char*)t_mrr.v;", env)
+                    eenv = env_bind(env, ept[2][1][1], "s")
+                }
+                if ebe[0] == "BlockExpr" {
+                    ct_block(ebe[1], eenv, file, hreg)
+                } else {
+                    panic("ct_stmt:match R arm body")
+                    return env
+                }
+                eln("}", env)
+            }
+            return env
+        }
         // Option[Str] 模型:read_file → char*(NULL=None);单 match 每函数(t_mv)
-        println("const char* t_mv = (const char*)(" + ct_expr(st[1], env, file) + ");")
+        eln("const char* t_mv = (const char*)(" + ct_expr(st[1], env, file) + ");", env)
         var arms = st[2]
         var someIx: I32 = -1
         var noneIx: I32 = -1
@@ -398,12 +544,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var armS = arms[someIx]
             var pt = armS[1]
             var be = armS[2]
-            println("if (t_mv != NULL) \{")
+            eln("if (t_mv != NULL) \{", env)
             var env3 = env
             if pt[2][0] == "SubTup" {
                 var b0 = pt[2][1]
                 if b0[0] == "PatId" {
-                    println("const char* t_" + b0[1] + " = t_mv;")
+                    eln("const char* t_" + b0[1] + " = t_mv;", env)
                     env3 = env_bind(env3, b0[1], "s")
                 }
             }
@@ -413,15 +559,15 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 panic("ct_stmt:match arm body")
                 return env
             }
-            println("}")
+            eln("}", env)
         }
         if noneIx >= 0 {
             var armN = arms[noneIx]
             var be2 = armN[2]
             if someIx >= 0 {
-                println("else \{")
+                eln("else \{", env)
             } else {
-                println("if (t_mv == NULL) \{")
+                eln("if (t_mv == NULL) \{", env)
             }
             if be2[0] == "BlockExpr" {
                 ct_block(be2[1], env, file, hreg)
@@ -429,7 +575,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 panic("ct_stmt:match arm body")
                 return env
             }
-            println("}")
+            eln("}", env)
         }
         return env
     }
@@ -449,9 +595,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var hi = ct_expr(it[3], env, file)
             var op2 = " < "
             if incl == "true" { op2 = " <= " }
-            println("for (int64_t t_" + v0 + " = " + lo + "; t_" + v0 + op2 + hi + "; t_" + v0 + "++) \{")
+            eln("for (int64_t t_" + v0 + " = " + lo + "; t_" + v0 + op2 + hi + "; t_" + v0 + "++) \{", env)
             ct_block(body, env_bind(env, v0, "i"), file, hreg)
-            println("}")
+            eln("}", env)
             return env
         }
         var ity = ct_typeof(it, env, file)
@@ -460,25 +606,66 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var n = byte_slice(ity, 1, ity.len - 1)
             var ec = byte_slice(ity, ity.len - 1, ity.len)
             var arr = ct_expr(it, env, file)
-            println("for (int64_t ctron_i = 0; ctron_i < " + n + "; ctron_i++) \{")
-            println("    " + ct_ctype(ec) + " t_" + v0 + " = " + arr + "[ctron_i];")
+            eln("for (int64_t ctron_i = 0; ctron_i < " + n + "; ctron_i++) \{", env)
+            eln("    " + ct_ctype(ec) + " t_" + v0 + " = " + arr + "[ctron_i];", env)
             ct_block(body, env_bind(env, v0, ec), file, hreg)
-            println("}")
+            eln("}", env)
             return env
         }
         panic("ct_stmt:for iter:" + it[0])
         return env
     }
     if t == "Return" {
-        if st[1][0] == "None" {
-            println("return;")
+        // Phase 4:spawn shim 体内 return → 写任务结果 + return 0;fnptr 闭包 → return (ct_i)
+        if seq2(ct_env_ty(env, "#shim"), "1") {
+            if st[1][0] == "None" {
+                eln("return 0;", env)
+                return env
+            }
+            var rv1 = ct_expr(st[1], env, file)
+            var rt1 = ct_typeof(st[1], env, file)
+            if or2(rt1 == "s", rt1 == "N") {
+                eln("ct_tls_task->result = (ct_i)(long)(" + rv1 + ");", env)
+            } else {
+                eln("ct_tls_task->result = (ct_i)(" + rv1 + ");", env)
+            }
+            eln("return 0;", env)
             return env
         }
-        println("return " + ct_expr(st[1], env, file) + ";")
+        if seq2(ct_env_ty(env, "#shim"), "2") {
+            if st[1][0] == "None" {
+                eln("return 0;", env)
+                return env
+            }
+            eln("return (ct_i)(" + ct_expr(st[1], env, file) + ");", env)
+            return env
+        }
+        if st[1][0] == "None" {
+            eln("return;", env)
+            return env
+        }
+        eln("return " + ct_expr(st[1], env, file) + ";", env)
         return env
     }
     if t == "Expr" {
         var e = st[1]
+        // Phase 4:语句位 scope / with / with_mut(ANF,无中间值)
+        if e[0] == "Scope" {
+            var senv2 = ct_emit_scope_stmt(e, env, file, "", hreg)
+            return env
+        }
+        if e[0] == "Call" {
+            if e[1][0] == "Member" {
+                if or2(e[1][3] == "with", e[1][3] == "with_mut") {
+                    var objt5 = ct_typeof(e[1][1], env, file)
+                    if or2(objt5 == "A", objt5.len > 1 && byte_at(objt5, 0) == 109) {
+                        var obj5 = ct_expr(e[1][1], env, file)
+                        var wenv2 = ct_emit_with_stmt(e, obj5, objt5, e[2][1], env, file, e[1][3] == "with_mut", "", hreg, "1")
+                        return env
+                    }
+                }
+            }
+        }
         if e[0] == "If" {
             ct_if_stmt(e, env, file, hreg)
             return env
@@ -489,7 +676,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert" && e[2].len == 2 {
             // rt assert 失败 panic 退出;生成码失败即 return 1(stdout 面 fixture 全过,逐字等价)
-            println("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ return 1; }")
+            eln("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ return 1; }", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert_eq" && e[2].len == 3 {
@@ -502,46 +689,46 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             } else {
                 cmp = "((" + ct_expr(a0, env, file) + ") == (" + ct_expr(a1, env, file) + "))"
             }
-            println("if (!" + cmp + ") \{ return 1; }")
+            eln("if (!" + cmp + ") \{ return 1; }", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "println" {
             var at = ct_typeof(e[2][1], env, file)
             if or2(at == "s", at == "N") {
-                println("printf(\"%s" + bs() + "n\", (const char*)(" + ct_expr(e[2][1], env, file) + "));")
+                eln("printf(\"%s" + bs() + "n\", (const char*)(" + ct_expr(e[2][1], env, file) + "));", env)
                 return env
             }
             if at == "b" {
-                println("printf(\"%s" + bs() + "n\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");")
+                eln("printf(\"%s" + bs() + "n\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");", env)
                 return env
             }
             if at == "f" {
                 // rt fmt_val:整值 %.1f,否则 %g(实参三次文本展开,仅限简单表达式)
                 var fx = ct_expr(e[2][1], env, file)
-                println("printf((" + fx + " == (double)(long long)(" + fx + ")) ? \"%.1f" + bs() + "n\" : \"%g" + bs() + "n\", " + fx + ");")
+                eln("printf((" + fx + " == (double)(long long)(" + fx + ")) ? \"%.1f" + bs() + "n\" : \"%g" + bs() + "n\", " + fx + ");", env)
                 return env
             }
             if at == "6" {
-                println("printf(\"%lld" + bs() + "n\", (long long)(" + ct_expr(e[2][1], env, file) + "));")
+                eln("printf(\"%lld" + bs() + "n\", (long long)(" + ct_expr(e[2][1], env, file) + "));", env)
                 return env
             }
-            println("printf(\"%d" + bs() + "n\", (int)(" + ct_expr(e[2][1], env, file) + "));")
+            eln("printf(\"%d" + bs() + "n\", (int)(" + ct_expr(e[2][1], env, file) + "));", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "print" {
             var at = ct_typeof(e[2][1], env, file)
             if or2(at == "s", at == "N") {
-                println("printf(\"%s\", (const char*)(" + ct_expr(e[2][1], env, file) + "));")
+                eln("printf(\"%s\", (const char*)(" + ct_expr(e[2][1], env, file) + "));", env)
                 return env
             }
             if at == "b" {
-                println("printf(\"%s\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");")
+                eln("printf(\"%s\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");", env)
                 return env
             }
-            println("printf(\"%d\", (int)(" + ct_expr(e[2][1], env, file) + "));")
+            eln("printf(\"%d\", (int)(" + ct_expr(e[2][1], env, file) + "));", env)
             return env
         }
-        println(ct_expr(e, env, file) + ";")
+        eln(ct_expr(e, env, file) + ";", env)
         return env
     }
     panic("ct_stmt:" + t)
