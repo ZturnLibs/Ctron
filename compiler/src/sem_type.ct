@@ -629,6 +629,8 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 }
             }
             bind_pat(s[2], loc, envT, tn)
+        } else if t == "Own" {
+            tcb(file, s[2], tc, loc, envT, retK, diags)
         } else if t == "While" {
             var ck = ex_ty(s[1], tc, loc, envT)
             if ck.len > 0 && !seq2(ck, "n:Bool") {

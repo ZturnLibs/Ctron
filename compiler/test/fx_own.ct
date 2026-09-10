@@ -1,0 +1,14 @@
+// fx_own.ct —— Phase 5:own 块发射(透明语义;显式生命周期注记)
+fn main() -> I32 {
+    var a = 0
+    own (ar) {
+        var t = 5
+        a = t * 2
+    }
+    var b = own (ar) {
+        var t2 = 7
+        t2 * 3
+    }
+    println((a + b).to_string())
+    return 0
+}

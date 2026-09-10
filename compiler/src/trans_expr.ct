@@ -168,6 +168,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         panic("ct_expr:scope 仅语句位(let/Expr)")
         return ""
     }
+    if t == "Own" {
+        panic("ct_expr:own 仅语句位(let/Expr)")
+        return ""
+    }
     if t == "Closure" {
         var cvv = ct_emit_clov(e, e, env, file)
         return cvv

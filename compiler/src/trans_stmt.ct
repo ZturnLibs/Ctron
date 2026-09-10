@@ -321,6 +321,21 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 }
             }
         }
+        // Phase 5:own 块(透明语义):体平铺,尾值即块值
+        if pat[0] == "PatId" && st[4][0] == "Own" {
+            var obody = st[4][2]
+            var orenv = ct_stmts(obody, env, file, "", hreg)
+            var otl = obody[obody.len - 1]
+            if otl[0] == "None" {
+                panic("emit:own 块无值")
+                return env
+            }
+            var oty = ct_typeof(otl, orenv, file)
+            var ovx = ct_expr(otl, orenv, file)
+            if or2(oty == "L", or2(oty == "LI", oty == "A")) { ovx = "(" + ct_ctype(oty) + ")(" + ovx + ")" }
+            eln(ct_ctype(oty) + " t_" + pat[1] + " = " + ovx + ";", env)
+            return env_bind(env, pat[1], oty)
+        }
         // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷 i32)
         if pat[0] == "PatId" && st[4][0] == "Try" {
             var qv = "t_q" + nline(st)
@@ -779,6 +794,15 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // Phase 4:语句位 scope / with / with_mut(ANF,无中间值)
         if e[0] == "Scope" {
             var senv2 = ct_emit_scope_stmt(e, env, file, "", hreg)
+            return env
+        }
+        if e[0] == "Own" {
+            var ocbody = e[2]
+            var orenv2 = ct_stmts(ocbody, env, file, "", hreg)
+            var otl2 = ocbody[ocbody.len - 1]
+            if otl2[0] != "None" {
+                eln(ct_expr(otl2, orenv2, file) + ";", env)
+            }
             return env
         }
         if e[0] == "Try" {
