@@ -74,7 +74,7 @@ fn main() -> I32 {
             println("static __thread ct_task* ct_tls_task = 0;")
             println("typedef struct ct_chan \{ pthread_mutex_t mu; pthread_cond_t cv_full, cv_empty; ct_i buf[64]; int head, tail, cnt, cap; } ct_chan;")
             println("static ct_chan* ct_chans[64]; static int ct_nchans = 0;")
-            println("static void ct_cancel_broadcast(void) \{ int i; for (i = 0; i < ct_nchans; i++) \{ pthread_cond_broadcast(&ct_chans[i]->cv_full); pthread_cond_broadcast(&ct_chans[i]->cv_empty); } }")
+            println("static void ct_cancel_broadcast(void) \{ int i; for (i = 0; i < ct_nchans; i++) \{ pthread_mutex_lock(&ct_chans[i]->mu); pthread_cond_broadcast(&ct_chans[i]->cv_full); pthread_cond_broadcast(&ct_chans[i]->cv_empty); pthread_mutex_unlock(&ct_chans[i]->mu); } }")
             println("static void ctron_panic(const char* m) \{ ct_task* _tp = ct_tls_task; if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } fprintf(stderr, \"%s" + bs() + "n\", m); exit(1); }")
             // Phase 4 并发运行时(函数部):任务 trampoline/spawn/join/Channel/parallel
             println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; ct_tls_task = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } return 0; }")
