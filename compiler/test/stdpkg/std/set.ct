@@ -1,5 +1,5 @@
 // std/set.ct —— Set[V] 种子(List 成员;函数式:add 返回新集合)
-// V 需可 ==(add 去重 bound Eq);泛型体内嵌泛型调用属挂账深水区,add 内联去重扫描
+// V 需可 ==(add 去重 bound Eq);add 体内嵌套调用 mem[V](单态化嵌套解析)
 struct Set[V] {
     let items: List[V]
 }
@@ -20,15 +20,7 @@ pub fn mem[V](s: Set[V], v: V) -> Bool {
 }
 
 pub fn add[V: Eq](s: Set[V], v: V) -> Set[V] {
-    var found = false
-    var i: I32 = 0
-    while i < s.items.len {
-        if s.items[i] == v {
-            found = true
-        }
-        i = i + 1
-    }
-    if found {
+    if mem[V](s, v) {
         return s
     }
     var nitems = List[V]()

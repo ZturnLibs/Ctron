@@ -267,7 +267,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     gk = 1
                     while gk < cal[2].len {
-                        tys.push(cal[2][gk])
+                        // 嵌套泛型调用:型参实参经 env 解析为具体型别(外层单态化绑定)
+                        tys.push(ct_targ_env(cal[2][gk], env))
                         gk += 1
                     }
                     if tpsn.len != tys.len {
@@ -289,7 +290,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         if gk < tys.len - 1 { mg = mg + "_" }
                         gk += 1
                     }
-                    if seq2(ct_pass(env), "1") {
+                    // 定义发射判定:pass1/预提升模式 且 非特化体内(体内只发调用,定义由预提升落文件作用域)
+                    var emit_def = false
+                    if !ct_env_has(env, "#spec") {
+                        if or2(seq2(ct_pass(env), "1"), ct_env_has(env, "#ph")) {
+                            emit_def = true
+                        }
+                    }
+                    if emit_def {
+                        var sp = "0"
+                        if ct_env_has(env, "#spec") { sp = "1" }
+                        var ph = "0"
+                        if ct_env_has(env, "#ph") { ph = "1" }
+                        println("//DD:" + mg + " p=" + ct_pass(env) + " spec=" + sp + " ph=" + ph)
                         var spec = mk("Fn")
                         spec.push(mg)
                         spec.push(mk("TPs"))
@@ -312,18 +325,6 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
                         spec.push(gdecl[5])
                         var rcs = ct_ty_code(spec[4], file)
-                        // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
-                        var pk3: I32 = 1
-                        while pk3 < ps2.len {
-                            if ps2[pk3][0] == "Param" {
-                                ct_emit_inst_typedef(file, ps2[pk3][3])
-                            }
-                            pk3 += 1
-                        }
-                        ct_emit_inst_typedef(file, spec[4])
-                        println("#ifndef CT_SPEC_" + mg)
-                        println("#define CT_SPEC_" + mg)
-                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
                         // 形参 env:替换后型别码绑定(镜像 ct_fn),体内 Member/字段访问按静态型别分派
                         var genv = List[Str]()
                         var gk2: I32 = 1
@@ -334,13 +335,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             }
                             gk2 += 1
                         }
-                        // 型参名 → 实参码(体内 List[K] 等 typeof 依据)+ 结构实例 → "#名" 绑定
-                        var tk2: I32 = 1
+                        // 型参名 → 实参码(体内 List[K] 等 typeof 依据;tpsn/tys 为 push 构建 0 基!)
+                        var tk2: I32 = 0
                         while tk2 < tpsn.len {
                             genv = env_bind(genv, tpsn[tk2], ct_ty_code(tys[tk2], file))
                             tk2 += 1
                         }
-                        pk3 = 1
+                        var pk3: I32 = 1
                         while pk3 < ps2.len {
                             if ps2[pk3][0] == "Param" {
                                 var ic5 = ct_inst_of_ty(file, ps2[pk3][3])
@@ -354,19 +355,30 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         if ic6.len > 0 {
                             genv = env_bind(genv, "#" + ct_struct_name_of(ic6), ic6)
                         }
-                        ct_body(spec[5], env_bind(genv, "#p", "2"), file, rcs)
+                        // 嵌套预提升:#p=1 静默遍历特化体,体内嵌套单态化的定义直出文件作用域
+                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "1"), "#ph", "1"), file, rcs)
+                        // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
+                        pk3 = 1
+                        while pk3 < ps2.len {
+                            if ps2[pk3][0] == "Param" {
+                                ct_emit_inst_typedef(file, ps2[pk3][3])
+                            }
+                            pk3 += 1
+                        }
+                        ct_emit_inst_typedef(file, spec[4])
+                        println("#ifndef CT_SPEC_" + mg)
+                        println("#define CT_SPEC_" + mg)
+                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
+                        // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)
+                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), file, rcs)
                         println("#endif")
                     }
-                    var gargs = ""
-                    var ga: I32 = 1
-                    while ga < ag.len {
-                        if ga > 1 { gargs = gargs + ", " }
-                        gargs = gargs + ct_expr(ag[ga], env, file)
-                        ga += 1
-                    }
+                    // TypeArgs 调用实参自槽 1 起(成员调用槽 1 为接收者,此处无)
+                    var gargs = ct_call_args(ag, 1, env, file, base[1])
                     var grc = ct_generic_retcode(file, base[1], tpsn, tys)
-                    if or2(grc == "L", grc == "LI") { gargs = "(ctron_list*)(" + gargs + ")" }
-                    return mg + "(" + gargs + ")"
+                    var gcall = mg + "(" + gargs + ")"
+                    if or2(grc == "L", grc == "LI") { gcall = "(ctron_list*)(" + gcall + ")" }
+                    return gcall
                 }
             }
             if base[0] == "Ident" && base[1] == "Mutex" {

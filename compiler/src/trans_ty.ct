@@ -726,3 +726,25 @@ fn ct_field_code_inst(file: List[Str], ty: List[Str], snm: Str, encs: Str) -> St
     }
     return ct_ty_code(ty, file)
 }
+
+// 嵌套泛型调用:型参实参经 env 解析(外层单态化点绑定的型参名 → 具体标量/Str 节点;
+// 载荷限标量/Str 与实例码字母表同口径)
+fn ct_scalar_ty(nm: Str) -> List[Str] {
+    var nt = mk("Named")
+    nt.push(nm)
+    nt.push(mk("TArgs"))
+    return nt
+}
+
+fn ct_targ_env(ty: List[Str], env: List[Str]) -> List[Str] {
+    if ty[0] == "Named" {
+        if ct_env_has(env, ty[1]) {
+            var ec = ct_env_ty(env, ty[1])
+            if seq2(ec, "i") { return ct_scalar_ty("I32") }
+            if seq2(ec, "s") { return ct_scalar_ty("Str") }
+            if seq2(ec, "b") { return ct_scalar_ty("Bool") }
+            if seq2(ec, "6") { return ct_scalar_ty("I64") }
+        }
+    }
+    return ty
+}

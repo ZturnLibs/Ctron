@@ -1,4 +1,5 @@
 // fx_generic.ct —— Phase 5:泛型 fn 单态化发射(显式 TypeArgs;无 bound/derive)
+// head_twice/push2/head:嵌套泛型调用(泛型体内调泛型 fn,型参实参经 env 解析)
 fn identity[T](v: T) -> T {
     return v
 }
@@ -6,10 +7,32 @@ fn pick[T](a: T, b: T, useA: Bool) -> T {
     if useA { return a }
     return b
 }
+fn push2[V](xs: List[V], v: V) -> List[V] {
+    var out = List[V]()
+    var i: I32 = 0
+    while i < xs.len {
+        out.push(xs[i])
+        i = i + 1
+    }
+    out.push(v)
+    out.push(v)
+    return out
+}
+fn head[V](xs: List[V], dft: V) -> V {
+    if xs.len == 0 {
+        return dft
+    }
+    return xs[0]
+}
+fn head_twice[V](v: V) -> V {
+    return head[V](push2[V](List[V](), v), v)
+}
 fn main() -> I32 {
     println(identity[I32](21).to_string())
     println(pick[I32](1, 2, true).to_string())
     println(pick[Str]("x", "y", false))
     println(identity[Str]("ok"))
+    println(head_twice[I32](9).to_string())
+    println(head_twice[Str]("a"))
     return 0
 }
