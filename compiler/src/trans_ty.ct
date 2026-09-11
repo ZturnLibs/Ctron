@@ -365,6 +365,68 @@ fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
 }
 
 // 表达式类型码: i/s/b/f/L/A/N;数组沿用 a<N><码> 编码
+// StructLit 泛型实例化码:'#<名>' env 钉定优先(单态化体签名已钉);
+// 否则场值码按"声明字段 → 型参槽"对齐推断槽码(裸 TPar 直取值码;
+// List[TPar] 值码 LI→元素 i,其余→元素 s);非泛型 struct → ""
+fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
+    if ct_struct_tps(file, e[1]).len == 0 { return "" }
+    var inm7 = "#" + e[1]
+    if ct_env_has(env, inm7) {
+        return ct_env_ty(env, inm7)
+    }
+    var tpsg = ct_struct_tps(file, e[1])
+    var lf = e[2]
+    var slots = List[Str]()
+    var zg: I32 = 0
+    while zg < tpsg.len {
+        slots.push("")
+        zg += 1
+    }
+    var gj: I32 = 1
+    while gj < lf.len {
+        var vc = ct_typeof(lf[gj][2], env, file)
+        var dj: I32 = 1
+        while dj < file.len {
+            var dd = file[dj]
+            if dd[0] == "Struct" && dd[1] == e[1] {
+                var fs3 = dd[4]
+                var fj3: I32 = 1
+                while fj3 < fs3.len {
+                    if fs3[fj3][2] == lf[gj][1] {
+                        var fty3 = fs3[fj3][3]
+                        if fty3[0] == "Named" {
+                            var k3: I32 = 0
+                            while k3 < tpsg.len {
+                                if seq2(fty3[1], tpsg[k3]) {
+                                    slots[k3] = vc
+                                }
+                                k3 += 1
+                            }
+                            if fty3[1] == "List" && fty3[2].len > 1 && fty3[2][1][0] == "Named" {
+                                var k4: I32 = 0
+                                while k4 < tpsg.len {
+                                    if seq2(fty3[2][1][1], tpsg[k4]) {
+                                        if vc == "LI" {
+                                            slots[k4] = "i"
+                                        } else {
+                                            slots[k4] = "s"
+                                        }
+                                    }
+                                    k4 += 1
+                                }
+                            }
+                        }
+                    }
+                    fj3 += 1
+                }
+            }
+            dj += 1
+        }
+        gj += 1
+    }
+    return ct_struct_inst_code(e[1], slots)
+}
+
 fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" { return "i" }
@@ -396,6 +458,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "b"
     }
     if t == "StructLit" {
+        var gi = ct_structlit_inst(file, e, env)
+        if gi != "" { return gi }
         return "u:" + e[1]
     }
     if t == "Try" { return ct_try_elem(file, e, env) }

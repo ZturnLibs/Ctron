@@ -196,20 +196,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         // 泛型 struct 实例化:实例码优先取 env "#名"(单态化体:签名已钉实例),
         // 否则场值型别按声明序推断(调用点具体上下文)
         if ct_struct_tps(file, e[1]).len > 0 {
-            var inst = ""
-            var inm7 = "#" + e[1]
+            var inst = ct_structlit_inst(file, e, env)
             var gj: I32 = 1
-            if ct_env_has(env, inm7) {
-                inst = ct_env_ty(env, inm7)
-            } else {
-                var codes = List[Str]()
-                gj = 1
-                while gj < lf.len {
-                    codes.push(ct_typeof(lf[gj][2], env, file))
-                    gj += 1
-                }
-                inst = ct_struct_inst_code(e[1], codes)
-            }
             var gacc = "(t_" + byte_slice(inst, 2, inst.len) + ")\{"
             gj = 1
             var firstg = true

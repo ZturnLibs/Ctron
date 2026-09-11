@@ -1,0 +1,65 @@
+// fx_gprobe.ct —— 标准库泛型化前置探针:TPar 相等比较 + 泛型 struct 持 typed List
+// 探针 1:泛型 fn 体内对 TPar 做 ==(Map.get/has 的核心依赖)
+// 探针 2:泛型 struct 字段为 List[K]/List[V](Map[K,V] 的载体形态)
+// 探针 3:泛型 fn 以 [K, V] 双参单态化,K/V 异型(I32/Str)
+struct Box[K, V] {
+    let keys: List[K]
+    let vals: List[V]
+}
+
+fn find[K](xs: List[K], k: K) -> Bool {
+    var i: I32 = 0
+    while i < xs.len {
+        if xs[i] == k {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn box_get[K, V](b: Box[K, V], k: K, dft: V) -> V {
+    var i: I32 = 0
+    while i < b.keys.len {
+        if b.keys[i] == k {
+            return b.vals[i]
+        }
+        i = i + 1
+    }
+    return dft
+}
+
+fn box_put[K, V](b: Box[K, V], k: K, v: V) -> Box[K, V] {
+    var out = Box { keys: List[K](), vals: List[V]() }
+    var i: I32 = 0
+    var hit = false
+    while i < b.keys.len {
+        if b.keys[i] == k {
+            out.keys.push(k)
+            out.vals.push(v)
+            hit = true
+        } else {
+            out.keys.push(b.keys[i])
+            out.vals.push(b.vals[i])
+        }
+        i = i + 1
+    }
+    if !hit {
+        out.keys.push(k)
+        out.vals.push(v)
+    }
+    return out
+}
+
+fn main() -> I32 {
+    var b = Box { keys: List[I32](), vals: List[Str]() }
+    b.keys.push(1)
+    b.vals.push("one")
+    b = box_put[I32, Str](b, 2, "two")
+    println(find[I32](b.keys, 2).to_string())
+    println(find[I32](b.keys, 9).to_string())
+    println(box_get[I32, Str](b, 1, "?"))
+    println(box_get[I32, Str](b, 2, "?"))
+    println(box_get[I32, Str](b, 9, "?"))
+    return 0
+}
