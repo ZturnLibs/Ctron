@@ -1,0 +1,223 @@
+// std/str.ct —— Str 工具种子(words/contains/lines/count_ch;字节级,UTF-8 透传)
+
+// 空白分隔切词(空格/制表/换行/回车;与 wc 词口径一致)
+pub fn words(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var cur = ""
+    var inword = false
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isws = false
+        if c == 32 { isws = true }
+        if c == 9 { isws = true }
+        if c == 10 { isws = true }
+        if c == 13 { isws = true }
+        if isws {
+            if inword {
+                out.push(cur)
+                inword = false
+                cur = ""
+            }
+        } else {
+            cur = cur + byte_slice(s, i, i + 1)
+            inword = true
+        }
+        i += 1
+    }
+    if inword {
+        out.push(cur)
+    }
+    return out
+}
+
+// 子串包含(空子串恒真)
+pub fn contains(s: Str, sub: Str) -> Bool {
+    var sn = sub.len
+    if sn == 0 { return true }
+    var hn = s.len
+    if hn < sn { return false }
+    var i: I32 = 0
+    while i + sn <= hn {
+        var ok = true
+        var k: I32 = 0
+        while k < sn {
+            if byte_at(s, i + k) != byte_at(sub, k) { ok = false }
+            k += 1
+        }
+        if ok { return true }
+        i += 1
+    }
+    return false
+}
+
+// 按换行切行(保留末尾不带换行的行)
+pub fn lines(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 10 {
+            out.push(byte_slice(s, start, i))
+            start = i + 1
+        }
+        i += 1
+    }
+    if start < s.len {
+        out.push(byte_slice(s, start, s.len))
+    }
+    return out
+}
+
+// 字节出现计数
+pub fn count_ch(s: Str, ch: I32) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == ch { n += 1 }
+        i += 1
+    }
+    return n
+}
+
+// 以 sep 串接(parts 空返回空串;单元素不加 sep)
+pub fn join(parts: List[Str], sep: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < parts.len {
+        if i > 0 {
+            out = out + sep
+        }
+        out = out + parts[i]
+        i += 1
+    }
+    return out
+}
+
+// 前缀匹配(空前缀恒真)
+pub fn starts_with(s: Str, pre: Str) -> Bool {
+    var pn = pre.len
+    if pn == 0 { return true }
+    if s.len < pn { return false }
+    var i: I32 = 0
+    while i < pn {
+        if byte_at(s, i) != byte_at(pre, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+// 后缀匹配(空后缀恒真)
+pub fn ends_with(s: Str, suf: Str) -> Bool {
+    var sn = suf.len
+    if sn == 0 { return true }
+    if s.len < sn { return false }
+    var start = s.len - sn
+    var i: I32 = 0
+    while i < sn {
+        if byte_at(s, start + i) != byte_at(suf, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+// 去两端 ASCII 空白(全空白返回空串)
+pub fn trim(s: Str) -> Str {
+    var start: I32 = 0
+    var end = s.len
+    var head = true
+    while head {
+        if start >= end {
+            head = false
+        } else {
+            var c = byte_at(s, start)
+            var isws = false
+            if c == 32 { isws = true }
+            if c == 9 { isws = true }
+            if c == 10 { isws = true }
+            if c == 13 { isws = true }
+            if isws {
+                start += 1
+            } else {
+                head = false
+            }
+        }
+    }
+    var tail = true
+    while tail {
+        if end <= start {
+            tail = false
+        } else {
+            var c = byte_at(s, end - 1)
+            var isws = false
+            if c == 32 { isws = true }
+            if c == 9 { isws = true }
+            if c == 10 { isws = true }
+            if c == 13 { isws = true }
+            if isws {
+                end -= 1
+            } else {
+                tail = false
+            }
+        }
+    }
+    return byte_slice(s, start, end)
+}
+
+test "words splits on whitespace" {
+    var ws = words("hello  world\n\tctron")
+    assert(ws.len == 3)
+    assert(ws[0] == "hello")
+    assert(ws[1] == "world")
+    assert(ws[2] == "ctron")
+}
+
+test "contains finds substring" {
+    assert(contains("ctron", "tro"))
+    assert(!contains("ctron", "xyz"))
+    assert(contains("abc", ""))
+}
+
+test "lines splits keeping last partial" {
+    var ls = lines("a\nb\nc")
+    assert(ls.len == 3)
+    assert(ls[0] == "a")
+    assert(ls[2] == "c")
+}
+
+test "count_ch counts newlines" {
+    assert(count_ch("a\nb\nc\n", 10) == 3)
+    assert(count_ch("abc", 10) == 0)
+}
+
+test "join with separator" {
+    var xs = List[Str]()
+    xs.push("a")
+    xs.push("b")
+    xs.push("c")
+    assert(join(xs, ",") == "a,b,c")
+    assert(join(xs, "") == "abc")
+    var empty = List[Str]()
+    assert(join(empty, "-") == "")
+    var one = List[Str]()
+    one.push("solo")
+    assert(join(one, "-") == "solo")
+}
+
+test "starts_with / ends_with" {
+    assert(starts_with("ctron lang", "ctron"))
+    assert(!starts_with("ctron", "lang"))
+    assert(ends_with("main.ct", ".ct"))
+    assert(!ends_with("main.ct", ".go"))
+    assert(starts_with("abc", ""))
+    assert(ends_with("abc", ""))
+    assert(!starts_with("ab", "abc"))
+}
+
+test "trim strips ascii space" {
+    assert(trim("  hi  ") == "hi")
+    assert(trim("\t\nhi\r\n") == "hi")
+    assert(trim("   ") == "")
+    assert(trim("no-trim") == "no-trim")
+}
+

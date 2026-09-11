@@ -230,7 +230,7 @@ else
 fi
 
 
-echo "== 3g) 示例应用 examples/ctwf(词频统计,对 sort/uniq 对数)+ fmap/sort 种子单测 =="
+echo "== 3g2) 示例应用 examples/ctwf(词频统计,对 sort/uniq 对数)+ fmap/sort 种子单测 =="
 CTWF="$ROOT/examples/ctwf"
 if "$COMP/bin/ctron-emit" run "$CTWF/src/main.ct" > "$T/ctwf.c" 2>/dev/null    && cc -O1 -w -o "$T/ctwf.bin" "$T/ctwf.c" 2>/dev/null; then
     timeout 15 "$T/ctwf.bin" run "$SAMPLE" > "$T/ctwf.got" 2>&1
@@ -256,7 +256,7 @@ if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/sort.ct" > /dev/null 2>&1; th
 else
     bad "sort 种子单测失败"
 fi
-echo "== 3h) vendored std 一致性(examples 随包副本与 stdpkg 同步) =="
+echo "== 3i) vendored std 一致性(examples 随包副本与 stdpkg 同步) =="
 vend_ok=1
 for pair in "ctwf:str" "ctwf:fmap" "ctwf:sort" "ctwc:str"; do
     app=${pair%%:*}

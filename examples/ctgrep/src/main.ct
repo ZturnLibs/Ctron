@@ -1,0 +1,48 @@
+// ctgrep —— grep 式子串搜索工具(自举 Ctron 示例应用)
+// 用法:ctgrep run "<pattern> <file>" —— ctron_entry 单串入口模型(镜像 ctwc/ctwf),
+// 首个空格分隔模式与路径;路径可含空格,模式不可含空格。
+// 语义 = grep -F -n 口径:固定串匹配(非正则)、行号 1 起、逐行输出 "行号:内容";
+// 退出码 0=有命中,1=无命中(无输出),2=用法错误/文件打不开。
+// 实现要点:首空格定位用嵌套 if(避开 && 不短路的运行时坑,HANDOFF §4)。
+use std.str.{lines, contains}
+
+fn main() -> I32 {
+    var entry = ctron_entry()
+    var sep: I32 = -1
+    var i: I32 = 0
+    while i < entry.len {
+        if byte_at(entry, i) == 32 {
+            if sep < 0 { sep = i }
+        }
+        i += 1
+    }
+    if sep < 0 {
+        println("ctgrep: usage: ctgrep run <pattern> <file>")
+        return 2
+    }
+    var pat = byte_slice(entry, 0, sep)
+    var path = byte_slice(entry, sep + 1, entry.len)
+    match read_file(path) {
+        Some(s) => {
+            var ls = lines(s)
+            var n: I32 = 0
+            var hits: I32 = 0
+            while n < ls.len {
+                if contains(ls[n], pat) {
+                    var no = n + 1
+                    println(no.to_string() + ":" + ls[n])
+                    hits += 1
+                }
+                n += 1
+            }
+            if hits > 0 {
+                return 0
+            }
+            return 1
+        }
+        None => {
+            println("ctgrep: cannot open " + path)
+            return 2
+        }
+    }
+}
