@@ -235,13 +235,14 @@ CTWF="$ROOT/examples/ctwf"
 if "$COMP/bin/ctron-emit" run "$CTWF/src/main.ct" > "$T/ctwf.c" 2>/dev/null    && cc -O1 -w -o "$T/ctwf.bin" "$T/ctwf.c" 2>/dev/null; then
     timeout 15 "$T/ctwf.bin" run "$SAMPLE" > "$T/ctwf.got" 2>&1
     WANT=$(tr -s '[:space:]' '\n' < "$SAMPLE" | grep -v '^$' | sort | uniq -c | awk '{print $2" "$1}' | sort)
-    GOT=$(grep -v '^distinct=' "$T/ctwf.got" | sort)
+    GOT=$(grep -v '^distinct=' "$T/ctwf.got" | grep -v '^top:' | sort)
     [ "$GOT" = "$WANT" ] && ok "ctwf 词频与 sort/uniq 对数一致" || bad "ctwf 词频分歧: got[$GOT] want[$WANT]"
     DW=$(tr -s '[:space:]' '\n' < "$SAMPLE" | grep -v '^$' | sort | uniq | wc -l | tr -d ' ')
     TW=$(tr -s '[:space:]' '\n' < "$SAMPLE" | grep -v '^$' | wc -l | tr -d ' ')
     grep -q "distinct=$DW|total=$TW|$SAMPLE" "$T/ctwf.got" && ok "ctwf 汇总行对数(distinct=$DW total=$TW)" || bad "ctwf 汇总行分歧"
     timeout 15 "$T/ctwf.bin" run "$SAMPLE" > "$T/ctwf.got2" 2>&1
     diff -q "$T/ctwf.got" "$T/ctwf.got2" > /dev/null 2>&1 && ok "ctwf 确定性双跑逐字一致" || bad "ctwf 双跑分歧"
+    grep -q "^top:the=3,quick=1,over=1$" "$T/ctwf.got" && ok "ctwf top3 对数(count 降序,同 count 字典序降序)" || bad "ctwf top3 分歧: $(grep '^top:' "$T/ctwf.got")"
 else
     bad "ctwf 发射/编译失败"
 fi

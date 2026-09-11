@@ -2,7 +2,20 @@
 // 用法:ctwf run <file> → 每行 "<词> <次数>"(插入序,确定性)+ 末行汇总。
 // 汇总行 "distinct=<N>|total=<M>|<路径>" 经 std.str.join 组装(锚定 join 发射面)。
 use std.str.{words, join}
-use std.fmap.{fnew, fput, fget, flen, fwords}
+use std.fmap.{fnew, fput, fget, flen, fwords, fvals}
+use std.sort.{sorted_by_desc}
+
+// 词频查值(线性;闭包捕获两平行 List——struct 值不入 ct_i 包装,故不直接捕获 m)
+fn cnt_of(ks: List[Str], vs: List[I32], w: Str) -> I32 {
+    var i: I32 = 0
+    while i < ks.len {
+        if ks[i] == w {
+            return vs[i]
+        }
+        i += 1
+    }
+    return 0
+}
 
 fn main() -> I32 {
     var path = ctron_entry()
@@ -30,6 +43,31 @@ fn main() -> I32 {
             parts.push("total=" + ws.len.to_string())
             parts.push(path)
             println(join(parts, "|"))
+            // Top-3:零填充键技巧——count 补零前缀 + 词,纯 sorted[Str] 字典序
+            // 即"count 降序、词升序",无比较器闭包(闭包捕获 List 值挂账,见 HANDOFF)
+            var padded = List[Str]()
+            var j2: I32 = 0
+            while j2 < vocab.len {
+                var cnt = fget[I32](m, vocab[j2], 0).to_string()
+                while cnt.len < 6 {
+                    cnt = "0" + cnt
+                }
+                padded.push(cnt + vocab[j2])
+                j2 += 1
+            }
+            var bycount = sorted_desc[Str](padded)
+            var topk = 3
+            if bycount.len < topk {
+                topk = bycount.len
+            }
+            var tops = List[Str]()
+            var k2: I32 = 0
+            while k2 < topk {
+                var w2 = byte_slice(bycount[k2], 6, bycount[k2].len)
+                tops.push(w2 + "=" + fget[I32](m, w2, 0).to_string())
+                k2 += 1
+            }
+            println("top:" + join(tops, ","))
         }
         None => {
             println("ctwf: cannot open " + path)
