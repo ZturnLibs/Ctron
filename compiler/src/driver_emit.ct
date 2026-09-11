@@ -67,7 +67,7 @@ fn main() -> I32 {
             println("static int ctron_fs_exists(const char* path) \{ FILE* f = fopen(path, \"rb\"); if (!f) \{ return 0; } fclose(f); return 1; }")
             println("static int ctron_fs_write(const char* path, const char* data) \{ FILE* f = fopen(path, \"wb\"); if (!f) \{ return 0; } size_t n = strlen(data); size_t w = fwrite(data, 1, n, f); fclose(f); return w == n; }")
             println("static int ctron_fs_delete(const char* path) \{ return remove(path) == 0; }")
-            println("static double ctron_now_ms(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0; }")
+            println("static int64_t ctron_now_ms(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; }")
             println("static const char* ctron_now_ms_text(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; char* r = (char*)ctron_amalloc(32); snprintf(r, 32, \"%lld\", ms); return r; }")
             println("typedef int64_t ct_i;")
             println("typedef struct \{ int variant; ct_i v; } ct_res;")

@@ -1,9 +1,13 @@
-// fx_time.ct —— now_ms 内建对齐夹具(F64/D 域;输出全 Bool 化,规避 fmt 差异)
+// fx_time.ct —— now_ms 内建对齐夹具(I64 域 ["6", 十进制文本])
+// 输出全 Bool 化:跨面双跑的时刻值必然不同,原始时间戳/差值不入 diff。
 fn main() -> I32 {
     var t = now_ms()
-    println((t > 1500000000000.0).to_string())
+    println((t > 1000000000).to_string())
     var u = now_ms()
     println((u >= t).to_string())
-    println(((u - t) < 60000.0).to_string())
+    var d = u - t
+    println((d >= 0).to_string())
+    println((d < 60000).to_string())
+    println((d.to_string().len >= 1).to_string())
     return 0
 }

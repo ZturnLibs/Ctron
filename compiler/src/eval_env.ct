@@ -11,6 +11,9 @@ fn fmt(v: List[Str]) -> Str {
     if k == "W" {
         return v[1]
     }
+    if k == "6" {
+        return v[1]
+    }
     if k == "B" {
         return v[1]
     }

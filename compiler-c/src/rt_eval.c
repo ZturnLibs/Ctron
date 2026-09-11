@@ -924,8 +924,12 @@ val eval_expr(rt* R, cexpr* e) {
             if (!strcmp(nm, "now_ms")) {
                 struct timespec ts;
                 clock_gettime(CLOCK_REALTIME, &ts);
-                double ms = (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
-                return v_flt(ms);
+                long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+                val v = {0};
+                v.k = V_INT;
+                v.i = (__int128)ms;
+                v.bits = 64;
+                return v;
             }
             if (!strcmp(nm, "utf8_enc")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "utf8_enc 实参");

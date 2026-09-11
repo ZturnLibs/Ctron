@@ -623,7 +623,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "read_file" { return "s" }
             if cal[1] == "read_dir" { return "s" }
             if or2(cal[1] == "fs_exists", or2(cal[1] == "fs_write", cal[1] == "fs_delete")) { return "b" }
-            if cal[1] == "now_ms" { return "f" }
+            if cal[1] == "now_ms" { return "6" }
             if cal[1] == "now_ms_text" { return "s" }
             if cal[1] == "byte_at" { return "i" }
             if cal[1] == "byte_slice" { return "s" }

@@ -389,11 +389,42 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             ci2 += 1
         }
         var env2 = env
+        var clcodes = ""
+        if ct_env_has(env, "#clcodes") {
+            clcodes = ct_env_ty(env, "#clcodes")
+        }
         var pj: I32 = 0
         while pj < np {
             var pn = cps[pj + 1][2]
-            println("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
-            env2 = env_bind(env2, pn, "i")
+            var pc = "i"
+            if clcodes.len > 0 {
+                // '#clcodes' 第 pj 段(逗号分隔);指针码经 long 中转(ct_i 64 位)
+                println("//CTD2 len=" + clcodes.len.to_string() + " pj=" + pj.to_string())
+                var si: I32 = 0
+                var cur: I32 = 0
+                var k: I32 = 0
+                while k <= clcodes.len {
+                    println("//CTD3 k=" + k.to_string())
+                    if or2(k == clcodes.len, byte_at(clcodes, k) == 44) {
+                        if cur == pj {
+                            pc = byte_slice(clcodes, si, k)
+                            k = clcodes.len + 1
+                        } else {
+                            cur += 1
+                            si = k + 1
+                            k += 1
+                        }
+                    } else {
+                        k += 1
+                    }
+                }
+            }
+            if pc == "i" {
+                println("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
+            } else {
+                println(ct_ctype(pc) + " t_" + pn + " = (" + ct_ctype(pc) + ")(long)_p" + pj.to_string() + ";")
+            }
+            env2 = env_bind(env2, pn, pc)
             pj += 1
         }
         var benv = env_bind(env2, "#p", "2")

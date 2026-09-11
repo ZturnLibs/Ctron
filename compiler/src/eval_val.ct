@@ -208,12 +208,206 @@ fn scmp(a: Str, b: Str) -> I32 {
     }
     return 0
 }
+// ---------------- I64 域(值 ["6", 规范十进制文本];符号支持) ----------------
+fn v6(t: Str) -> List[Str] {
+    var v = List[Str]()
+    v.push("6")
+    v.push(t)
+    return v
+}
+
+fn c6can(t: Str) -> Str {
+    var neg = false
+    var i: I32 = 0
+    if t.len > 0 {
+        if byte_at(t, 0) == 45 {
+            neg = true
+            i = 1
+        }
+    }
+    var strip = true
+    while strip {
+        if i >= t.len - 1 {
+            strip = false
+        } else {
+            if byte_at(t, i) != 48 {
+                strip = false
+            } else {
+                i += 1
+            }
+        }
+    }
+    var m = byte_slice(t, i, t.len)
+    if neg {
+        if m == "0" {
+            return "0"
+        }
+        return "-" + m
+    }
+    if m == "" {
+        return "0"
+    }
+    return m
+}
+
+fn c6abscmp(a: Str, b: Str) -> I32 {
+    if a.len != b.len {
+        if a.len > b.len {
+            return 1
+        }
+        return -1
+    }
+    var i: I32 = 0
+    while i < a.len {
+        var x = byte_at(a, i)
+        var y = byte_at(b, i)
+        if x > y {
+            return 1
+        }
+        if x < y {
+            return -1
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn c6cmp(a: Str, b: Str) -> I32 {
+    var aneg = false
+    var bneg = false
+    if a.len > 0 {
+        if byte_at(a, 0) == 45 {
+            aneg = true
+        }
+    }
+    if b.len > 0 {
+        if byte_at(b, 0) == 45 {
+            bneg = true
+        }
+    }
+    if aneg {
+        if bneg {
+            return c6abscmp(b, a)
+        }
+        return -1
+    }
+    if bneg {
+        return 1
+    }
+    return c6abscmp(a, b)
+}
+
+fn c6add(a: Str, b: Str) -> Str {
+    var out = ""
+    var ia = a.len
+    var ib = b.len
+    var carry: I32 = 0
+    while ia > 0 {
+        ia -= 1
+        var d = byte_at(a, ia) - 48 + carry
+        if ib > 0 {
+            ib -= 1
+            d += byte_at(b, ib) - 48
+        }
+        if d > 9 {
+            d -= 10
+            carry = 1
+        } else {
+            carry = 0
+        }
+        out = byte_slice("0123456789", d, d + 1) + out
+    }
+    while ib > 0 {
+        ib -= 1
+        var d2 = byte_at(b, ib) - 48 + carry
+        if d2 > 9 {
+            d2 -= 10
+            carry = 1
+        } else {
+            carry = 0
+        }
+        out = byte_slice("0123456789", d2, d2 + 1) + out
+    }
+    if carry == 1 {
+        out = "1" + out
+    }
+    return c6can(out)
+}
+
+fn c6submag(a: Str, b: Str) -> Str {
+    var out = ""
+    var ia = a.len
+    var ib = b.len
+    var borrow: I32 = 0
+    while ia > 0 {
+        ia -= 1
+        var d = byte_at(a, ia) - 48 - borrow
+        if ib > 0 {
+            ib -= 1
+            d -= byte_at(b, ib) - 48
+        }
+        if d < 0 {
+            d += 10
+            borrow = 1
+        } else {
+            borrow = 0
+        }
+        out = byte_slice("0123456789", d, d + 1) + out
+    }
+    return c6can(out)
+}
+
+fn c6sub(a: Str, b: Str) -> Str {
+    var aneg = false
+    var bneg = false
+    if a.len > 0 {
+        if byte_at(a, 0) == 45 {
+            aneg = true
+        }
+    }
+    if b.len > 0 {
+        if byte_at(b, 0) == 45 {
+            bneg = true
+        }
+    }
+    if or2(aneg, bneg) {
+        if aneg {
+            if bneg {
+                return c6sub(byte_slice(a, 1, a.len), byte_slice(b, 1, b.len))
+            }
+            return "-" + c6add(byte_slice(a, 1, a.len), b)
+        }
+        return c6add(a, byte_slice(b, 1, b.len))
+    }
+    var c = c6abscmp(a, b)
+    if c == 0 {
+        return "0"
+    }
+    if c > 0 {
+        return c6submag(a, b)
+    }
+    return "-" + c6submag(b, a)
+}
+
 fn vcmp(a: List[Str], b: List[Str]) -> I32 {
     if a[0] == "S" && b[0] == "S" {
         return scmp(a[1], b[1])
     }
     if or2(a[0] == "D", b[0] == "D") {
         return df_vcmp(a[1], b[1])
+    }
+    if or2(a[0] == "6", or2(b[0] == "6", or2(a[0] == "I", b[0] == "I"))) {
+        if or2(a[0] == "6", b[0] == "6") {
+            var at = a[1]
+            var bt = b[1]
+            if a[0] == "I" {
+                at = dvi(a[1]).to_string()
+            }
+            if b[0] == "I" {
+                bt = dvi(b[1]).to_string()
+            }
+            return c6cmp(at, bt)
+        }
     }
     var x = dvi(a[1])
     var y = dvi(b[1])
@@ -267,6 +461,22 @@ fn ari(op: Str, x: I32, y: I32) -> I32 {
 fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
     if or2(a[0] == "D", b[0] == "D") {
         return vD(df_bin(op, a[1], b[1]))
+    }
+    // I64 域:["6", 十进制文本],支持 Add/Sub(文本十进制运算)
+    if or2(a[0] == "6", b[0] == "6") {
+        if a[0] != "6" {
+            a = v6(a[1])
+        }
+        if b[0] != "6" {
+            b = v6(b[1])
+        }
+        if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
+            return v6(c6sub(a[1], b[1]))
+        }
+        if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
+            return v6(c6add(a[1], b[1]))
+        }
+        panic("I64 arithmetic: 仅 Add/Sub v0")
     }
     // 除零永不关闭(§4.5:ARM64 等硬件静默回 0,必须显式检查)
     if or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "DivEq"), seq2(op, "ModEq")))) {
