@@ -26,7 +26,7 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-11,Apple Silicon)**:smoke --full 82/82(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
+**基线(2026-09-11,Apple Silicon)**:smoke --full 87/87(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
 + 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort/map/set/fs 单测 + 2c 负例含递归泛型 emit 面拦截);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
