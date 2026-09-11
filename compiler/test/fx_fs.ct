@@ -1,0 +1,26 @@
+// fx_fs.ct —— fs 内建对齐夹具:fs_write / fs_exists / fs_delete + read_file 往返
+// 输出全 Bool 化(.to_string()),固定 /tmp 路径,末尾自清理。
+fn main() -> I32 {
+    var p = "/tmp/ctron_fx_fs_sample.txt"
+    if fs_exists(p) {
+        fs_delete(p)
+    }
+    println(fs_exists(p).to_string())
+    println(fs_write(p, "alpha\nbeta\n").to_string())
+    println(fs_exists(p).to_string())
+    match read_file(p) {
+        Some(s) => {
+            println((s == "alpha\nbeta\n").to_string())
+            println(s.len.to_string())
+        }
+        None => {
+            println(false)
+            println("0")
+        }
+    }
+    println(fs_delete(p).to_string())
+    println(fs_exists(p).to_string())
+    println(fs_write(p, "again").to_string())
+    fs_delete(p)
+    return 0
+}

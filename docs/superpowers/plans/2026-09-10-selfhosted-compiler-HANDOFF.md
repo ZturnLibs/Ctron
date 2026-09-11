@@ -26,7 +26,7 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-11,Apple Silicon)**:smoke --full 72/72(3b 夹具含 optstr/gprobe2/gprobe/fmap 探针
+**基线(2026-09-11,Apple Silicon)**:smoke --full 72/72(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
 + 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort 单测 + 2c 负例含递归泛型 emit 面拦截);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
@@ -67,6 +67,11 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   统一:裸 TPar 直取值码,List[TPar] 值码 LI→元素 i/其余→元素 s),typeof(StructLit)
   同源取码;fx_gprobe 回归夹具锁定。已知损失:List[TPar] 槽值码非 LI 一律归
   元素 s(List[Bool]/List[struct] 字段与 List[Str] 同槽码,v0 文档化)。
+- **fs 内建已入前奏(feat/std-stdlib)**:fs_exists/fs_write/fs_delete(Bool 域)
+  四层对齐:宿主 rt_eval + cc eval_call + trans 分发 + driver_emit 运行时;
+  sem 前奏两处名单已同步。新增内建的完整清单(五处:前奏两处/eval/分发/运行时)
+  即新增内建 SOP。**now_ms 挂账**:宿主 val.i 为 __int128 可容 I64,但 cc eval
+  的 I64 值域与 to_string 对齐需专片(现 fixture 以 Bool 化输出规避 fmt 风险)。
 - **Ctron 无 `continue`/`break`**:循环退出用标志位;无 `;` 分隔;无多返回值
   (用 List 或 env 变量)。
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。

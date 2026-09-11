@@ -135,6 +135,36 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("read_dir args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "fs_exists") {
+        if vals.len == 1 && vals[0][0] == "S" {
+            if fs_exists(vals[0][1]) {
+                return e4("k", env, vB(true), out)
+            }
+            return e4("k", env, vB(false), out)
+        }
+        panic("fs_exists args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "fs_write") {
+        if vals.len == 2 && vals[0][0] == "S" && vals[1][0] == "S" {
+            if fs_write(vals[0][1], vals[1][1]) {
+                return e4("k", env, vB(true), out)
+            }
+            return e4("k", env, vB(false), out)
+        }
+        panic("fs_write args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "fs_delete") {
+        if vals.len == 1 && vals[0][0] == "S" {
+            if fs_delete(vals[0][1]) {
+                return e4("k", env, vB(true), out)
+            }
+            return e4("k", env, vB(false), out)
+        }
+        panic("fs_delete args")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "ctron_entry") {
         if vals.len != 0 {
             panic("ctron_entry arity")

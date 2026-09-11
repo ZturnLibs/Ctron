@@ -883,6 +883,34 @@ val eval_expr(rt* R, cexpr* e) {
                 one[0] = v_str_own(R, ar);
                 return v_tag("Some", one, 1);
             }
+            if (!strcmp(nm, "fs_exists")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "fs_exists 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                FILE* f = fopen(path, "rb");
+                if (!f) return v_bool(0);
+                fclose(f);
+                return v_bool(1);
+            }
+            if (!strcmp(nm, "fs_write")) {
+                if (e->nelems != 2) rt_abort(R, RT_ERROR, "fs_write 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                val cv = eval_expr(R, e->elems[1]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                const char* data = (cv.k == V_STR && cv.s) ? cv.s : "";
+                FILE* f = fopen(path, "wb");
+                if (!f) return v_bool(0);
+                size_t dn = strlen(data);
+                size_t w = fwrite(data, 1, dn, f);
+                fclose(f);
+                return v_bool(w == dn);
+            }
+            if (!strcmp(nm, "fs_delete")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "fs_delete 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                return v_bool(remove(path) == 0);
+            }
             if (!strcmp(nm, "utf8_enc")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "utf8_enc 实参");
                 val cv = eval_expr(R, e->elems[0]);
