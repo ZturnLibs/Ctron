@@ -11,6 +11,10 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
         var pr = ps[k]
         if pr[0] == "Param" {
             env = env_bind(env, pr[2], ct_ty_code(pr[3], file))
+            var elc = ct_opt_elem_strict(file, pr[3])
+            if elc.len > 0 {
+                env = env_bind(env, "#elem:" + pr[2], elc)
+            }
         }
         k += 1
     }

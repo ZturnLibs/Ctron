@@ -345,6 +345,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             var gr2 = ps2[gk2]
                             if gr2[0] == "Param" {
                                 genv = env_bind(genv, gr2[2], ct_ty_code(gr2[3], file))
+                                var elc9 = ct_opt_elem_strict(file, gr2[3])
+                                if elc9.len > 0 {
+                                    genv = env_bind(genv, "#elem:" + gr2[2], elc9)
+                                }
                             }
                             gk2 += 1
                         }
@@ -681,6 +685,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
+    }
+    if t == "Try" {
+        // 表达式位 ?(§5 NULL 模型):ct_res 解包,Err/None 短路 return,载荷按元素码转型
+        var ec = ct_try_elem(file, e, env)
+        var qv = "t_q" + nline(e)
+        return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
     }
     panic("ct_expr:" + t)
     return ""

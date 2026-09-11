@@ -398,7 +398,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "StructLit" {
         return "u:" + e[1]
     }
-    if t == "Try" { return "R" }
+    if t == "Try" { return ct_try_elem(file, e, env) }
     if t == "Closure" {
         var cvn = e[1].len - 1
         if or2(cvn < 1, cvn > 3) { return "i" }
@@ -530,6 +530,75 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "byte_at" { return "i" }
             if cal[1] == "byte_slice" { return "s" }
             return ct_fn_ret(file, cal[1])
+        }
+    }
+    return "i"
+}
+
+// Try 表达式的载荷型别码:被调声明的 Option/Result 首实参(Option[Str]→s;
+// Result[I32,E]→i);泛型调用经替换后取;无法解析 → i(v0 载荷限标量/Str)
+fn ct_opt_elem_strict(file: List[Str], nt: List[Str]) -> Str {
+    if nt[0] == "Named" {
+        if or2(seq2(nt[1], "Option"), seq2(nt[1], "Result")) {
+            if nt[2].len > 1 {
+                return ct_ty_code(nt[2][1], file)
+            }
+        }
+    }
+    return ""
+}
+
+fn ct_opt_elem_of(file: List[Str], nt: List[Str]) -> Str {
+    if nt[0] == "Named" {
+        if or2(seq2(nt[1], "Option"), seq2(nt[1], "Result")) {
+            if nt[2].len > 1 {
+                return ct_ty_code(nt[2][1], file)
+            }
+        }
+    }
+    return "i"
+}
+
+fn ct_try_elem(file: List[Str], e: List[Str], env: List[Str]) -> Str {
+    return ct_opt_elem_expr(file, e[1], env)
+}
+
+fn ct_opt_elem_expr(file: List[Str], inner: List[Str], env: List[Str]) -> Str {
+    if inner[0] == "Ident" {
+        // 参数/绑定:定义点绑定的 "#elem:<名>" 侧条目(Option/Result 实参元素码)
+        var elv = "#elem:" + inner[1]
+        if ct_env_has(env, elv) {
+            return ct_env_ty(env, elv)
+        }
+        return "i"
+    }
+    if inner[0] == "Call" {
+        var cal = inner[1]
+        if cal[0] == "Ident" {
+            var gd = ct_fn_decl(file, cal[1])
+            if gd.len > 0 {
+                return ct_opt_elem_of(file, gd[4])
+            }
+        }
+        if cal[0] == "TypeArgs" {
+            if cal[1][0] == "Ident" {
+                var gd2 = ct_fn_decl(file, cal[1][1])
+                if gd2.len > 0 && gd2[2].len > 1 && cal[2].len == gd2[2].len {
+                    var tpsn = List[Str]()
+                    var tys = List[Str]()
+                    var g1: I32 = 1
+                    while g1 < gd2[2].len {
+                        tpsn.push(gd2[2][g1][1])
+                        g1 += 1
+                    }
+                    var g2: I32 = 1
+                    while g2 < cal[2].len {
+                        tys.push(cal[2][g2])
+                        g2 += 1
+                    }
+                    return ct_opt_elem_of(file, ct_mono_subst_ty(gd2[4], tpsn, tys))
+                }
+            }
         }
     }
     return "i"

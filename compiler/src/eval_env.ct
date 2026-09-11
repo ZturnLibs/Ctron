@@ -23,6 +23,13 @@ fn fmt(v: List[Str]) -> Str {
     if k == "V" {
         return ""
     }
+    if k == "T" {
+        // Option/Result 值:变体名(无载荷 None/Err)或 变体(载荷)
+        if v.len == 3 {
+            return v[1] + "(" + fmt(v[2]) + ")"
+        }
+        return v[1]
+    }
     if k == "U" {
         return fmt_struct(v)
     }

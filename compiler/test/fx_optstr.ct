@@ -1,0 +1,32 @@
+fn pick(i: I32) -> Option[Str] {
+    if i > 0 {
+        return Some("yes")
+    }
+    return None
+}
+fn first_positive(i: I32) -> Option[Str] {
+    return Some(pick(i)?)
+}
+fn shout(i: I32) -> Option[Str] {
+    let s = pick(i)?
+    return Some(s + "!")
+}
+fn name_or(i: I32, d: Str) -> Str {
+    match pick(i) {
+        Some(s) => s
+        None => d
+    }
+}
+test "opt str null" {
+    println(name_or(1, "dft"))
+    println(name_or(0, "dft"))
+    assert_eq(name_or(1, "dft"), "yes")
+    assert_eq(name_or(0, "dft"), "dft")
+    println(name_or2(shout(1)))
+}
+fn name_or2(o: Option[Str]) -> Str {
+    match o {
+        Some(s) => s
+        None => "none"
+    }
+}

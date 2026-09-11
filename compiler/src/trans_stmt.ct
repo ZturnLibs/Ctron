@@ -339,10 +339,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷 i32)
         if pat[0] == "PatId" && st[4][0] == "Try" {
             var qv = "t_q" + nline(st)
+            var ec2 = ct_try_elem(file, st[4], env)
             eln("ct_res " + qv + " = " + ct_expr(st[4][1], env, file) + ";", env)
             eln("if (" + qv + ".variant != 0) \{ return " + qv + "; }", env)
-            eln("int32_t t_" + pat[1] + " = (int32_t)" + qv + ".v;", env)
-            return env_bind(env, pat[1], "i")
+            eln(ct_ctype(ec2) + " t_" + pat[1] + " = (" + ct_ctype(ec2) + ")" + qv + ".v;", env)
+            return env_bind(env, pat[1], ec2)
         }
         // Phase 4:let (tx, rx) = Channel[T](cap) —— 双名同一 ct_chan*
         if pat[0] == "PatTup" {
@@ -499,13 +500,47 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var rarms = st[2]
             var okIx: I32 = -1
             var errIx: I32 = -1
+            var someIx: I32 = -1
+            var noneIx: I32 = -1
             var ri: I32 = 1
             while ri < rarms.len {
                 var rarm = rarms[ri]
                 var rpt = rarm[1]
                 if rpt[0] == "PatAgg" && rpt[1] == "Ok" { okIx = ri }
                 if rpt[0] == "PatAgg" && rpt[1] == "Err" { errIx = ri }
+                // Option[Str] NULL 模型(§5):Some/None 臂与 Ok/Err 同走 ct_res
+                if rpt[0] == "PatAgg" && rpt[1] == "Some" { someIx = ri }
+                if or2(rpt[0] == "PatId" && rpt[1] == "None", rpt[0] == "PatAgg" && rpt[1] == "None") { noneIx = ri }
                 ri += 1
+            }
+            if someIx >= 0 {
+                var sa = rarms[someIx]
+                var spt = sa[1]
+                var sbe = sa[2]
+                var sec = ct_opt_elem_expr(file, st[1], env)
+                eln("if (" + rme + ".variant == 0) \{", env)
+                var senv = env
+                if spt[2].len > 1 && spt[2][1][0] == "PatId" && spt[2][1][1] != "_" {
+                    eln(ct_ctype(sec) + " t_" + spt[2][1][1] + " = (" + ct_ctype(sec) + ")(long)(" + rme + ".v);", env)
+                    senv = env_bind(env, spt[2][1][1], sec)
+                }
+                if sbe[0] == "BlockExpr" {
+                    ct_block(sbe[1], senv, file, hreg)
+                } else {
+                    eln("return " + ct_expr(sbe, senv, file) + ";", env)
+                }
+                eln("}", env)
+            }
+            if noneIx >= 0 {
+                var na9 = rarms[noneIx]
+                var nbe = na9[2]
+                eln("if (" + rme + ".variant != 0) \{", env)
+                if nbe[0] == "BlockExpr" {
+                    ct_block(nbe[1], env, file, hreg)
+                } else {
+                    eln("return " + ct_expr(nbe, env, file) + ";", env)
+                }
+                eln("}", env)
             }
             if okIx >= 0 {
                 var oa = rarms[okIx]

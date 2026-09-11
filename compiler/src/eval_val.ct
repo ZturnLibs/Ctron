@@ -168,6 +168,19 @@ fn veq(a: List[Str], b: List[Str]) -> Bool {
     if ka == "S" && kb == "S" {
         return seq2(a[1], b[1])
     }
+    if ka == "T" && kb == "T" {
+        // Option/Result 结构相等:变体同名 + 载荷递归 veq(None/Err 无载荷)
+        if !seq2(a[1], b[1]) {
+            return false
+        }
+        if a.len == 3 {
+            if b.len != 3 {
+                return false
+            }
+            return veq(a[2], b[2])
+        }
+        return b.len == 2
+    }
     return false
 }
 fn scmp(a: Str, b: Str) -> I32 {
