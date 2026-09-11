@@ -6,6 +6,21 @@ fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> Li
     return p_or(toks, cur, lns, al)
 }
 
+// 或模式:p1 | p2 | ... —— PatOr 节点(各替身依序试配;绑定替身 v0 限同名单一)
+fn p_pattern_or(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    var first = p_pattern(toks, cur)
+    if tok(toks, cur) != "|" {
+        return first
+    }
+    var po = mk("PatOr")
+    po.push(first)
+    while tok(toks, cur) == "|" {
+        adv(cur)
+        po.push(p_pattern(toks, cur))
+    }
+    return po
+}
+
 fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var t = tok(toks, cur)
     if t == "_" {
@@ -128,9 +143,20 @@ fn p_match(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
         }
         if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
             var ma = mk("Arm")
-            ma.push(p_pattern(toks, cur))
+            ma.push(p_pattern_or(toks, cur))
+            var hasg = false
+            var gd = mk("None")
+            if tok(toks, cur) == "if" {
+                // 模式守卫(R-P3c):pat if cond => body;守卫臂不参与穷尽(§4.6)
+                adv(cur)
+                gd = p_stmt_expr(toks, cur, lns, "1")
+                hasg = true
+            }
             adv(cur)
             ma.push(p_stmt_expr(toks, cur, lns, "1"))
+            if hasg {
+                ma.push(gd)
+            }
             arms.push(ma)
         }
     }

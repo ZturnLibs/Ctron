@@ -385,7 +385,16 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         while i2 < arms.len && !found {
             var arm = arms[i2]
             var pm = pat_match(arm[1], sr[2], sr[1])
-            if seq2(pm[0], "1") {
+            var hit = seq2(pm[0], "1")
+            if hit && arm.len > 3 {
+                // 模式守卫(R-P3c):绑定环境下求守卫,不成立落下一臂
+                var gr = eval_expr(file, pm[1], sr[3], arm[3])
+                if gr[0] != "k" {
+                    return gr
+                }
+                hit = truth(gr[2])
+            }
+            if hit {
                 var ae = eval_expr(file, pm[1], sr[3], arm[2])
                 res = ae
                 found = true

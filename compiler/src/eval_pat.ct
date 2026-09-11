@@ -35,6 +35,18 @@ fn u_field(u: List[Str], nm: Str) -> List[Str] {
 }
 fn pat_match(pat: List[Str], v: List[Str], env: List[Str]) -> List[Str] {
     var t = pat[0]
+    if t == "PatOr" {
+        // 或模式(R-P3c):各替身依序试配,首个成功即成(绑定随成功替身)
+        var k5: I32 = 1
+        while k5 < pat.len {
+            var pr9 = pat_match(pat[k5], v, env)
+            if seq2(pr9[0], "1") {
+                return pr9
+            }
+            k5 += 1
+        }
+        return pm2("0", env)
+    }
     if t == "PatWild" {
         return pm2("1", env)
     }
