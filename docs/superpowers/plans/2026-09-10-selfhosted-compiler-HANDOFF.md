@@ -26,7 +26,7 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-10,Apple Silicon)**:smoke --full 58/58(3b 夹具 + 2c 负例 + 3e 示例应用);
+**基线(2026-09-10,Apple Silicon)**:smoke --full 59/59(3b 夹具 + 2c 负例含递归泛型 emit 面拦截 + 3e 示例应用);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
@@ -120,7 +120,8 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   env 绑定、#ifndef 特化去重、typedef 直出前置。**泛型体内嵌泛型调用已落地
   fb65b2b**:ct_targ_env 型参实参 env 解析 + 嵌套单态化预提升(#ph 静默遍历
   直出定义/#spec 体只发调用),set.add 已恢复嵌套调 mem[V],fx_generic 有
-  嵌套链用例。仍挂账:递归泛型(特化无 seen 集会无限预提升)、TPar 实参的
-  bound 传递核对(sem 侧 v0 放行)。
+  嵌套链用例。**递归泛型防护 + TPar bound 传递已收口 af6fd95**(预提升深度门限 3 超限
+  panic '递归超限';bound_sat 顶层无声明名视为外层型参放行,原语/枚举/类仍拦)。
+  泛型深水区至此全部收口。
 - **新方向**:LSP(lsp/ 已有 Ctron 实现的功能完备 LSP)、性能(bench.sh
   已入 CI 尾段)、或把这批能力写进语言规范 v0.6 文档。
