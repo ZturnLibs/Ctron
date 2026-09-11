@@ -162,4 +162,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   出 C stub。**`?` 传播 Option[Str] NULL 模型已落地 635d7f4**(表达式位 Try/let 位载荷泛化/
   Option 臂匹配/veq·fmt 补 T;fx_optstr 双面逐字)。**`#[trusted]` 已语义化 2aaaee3**:extern 缺标记 W8050/trusted 放非 extern
   E4040/check --trusted 审计枚举(注册表已入 spec §10 与 README §4)。
-  剩余:LSP(lsp/)、性能、CI 远端例行化、装箱载荷别名语义细化。
+  **装箱载荷别名语义已细化 5e007e5/e8ea6e9**:Box 赋值/传参共享堆 cell,
+经别名的可变字段写全可见(自动解引用贯通读写;用户声明 Box struct 时内建
+让位通用泛型路径);fx_boxalias 双面逐字。剩余:LSP(lsp/)、性能、
+CI 远端例行化。
