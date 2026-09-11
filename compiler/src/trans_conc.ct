@@ -40,7 +40,7 @@ fn ct_wrap_i(code: Str, x: Str) -> Str {
     if or2(code == "s", code == "N") {
         return "(ct_i)(long)(" + x + ")"
     }
-    if or2(code == "L", or2(code == "A", or2(code == "g", or2(code == "k", or2(code == "h", code == "R"))))) {
+    if or2(code == "L", or2(code == "LI", or2(code == "A", or2(code == "g", or2(code == "k", or2(code == "h", code == "R")))))) {
         return "(ct_i)(long)(" + x + ")"
     }
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
@@ -56,7 +56,7 @@ fn ct_cap_decl(code: Str, nm: Str, i: I32) -> Str {
     if or2(code == "s", code == "N") {
         return ct + " t_" + nm + " = (" + ct + ")(long)_e[" + i.to_string() + "];"
     }
-    if or2(code == "L", or2(code == "A", or2(code == "g", or2(code == "k", or2(code == "h", code == "R"))))) {
+    if or2(code == "L", or2(code == "LI", or2(code == "A", or2(code == "g", or2(code == "k", or2(code == "h", code == "R")))))) {
         return ct + " t_" + nm + " = (" + ct + ")(long)_e[" + i.to_string() + "];"
     }
     if code.len > 1 && byte_at(code, 0) == 109 {

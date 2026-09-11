@@ -234,13 +234,14 @@ test "sorted_by stable equal keys keep order" {
     assert(s[2] == 3)
 }
 
-test "sorted_by_desc str by length" {
-    var ws = List[Str]()
-    ws.push("pear")
-    ws.push("fig")
-    ws.push("apple")
-    var s = sorted_by_desc[Str](ws, |a, b| a.len < b.len)
-    assert(s[0] == "apple")
-    assert(s[1] == "pear")
-    assert(s[2] == "fig")
+test "sorted_by_desc by distance from 100" {
+    var xs = List[I32]()
+    xs.push(98)
+    xs.push(105)
+    xs.push(99)
+    var s = sorted_by_desc[I32](xs, |a, b| (a - 100) * (a - 100) < (b - 100) * (b - 100))
+    // 离 100 远者先:105(25) 98(4) 99(1)
+    assert(s[0] == 105)
+    assert(s[1] == 98)
+    assert(s[2] == 99)
 }

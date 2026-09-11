@@ -26,7 +26,7 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-11,Apple Silicon)**:smoke --full 81/81(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
+**基线(2026-09-11,Apple Silicon)**:smoke --full 82/82(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
 + 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort/map/set/fs 单测 + 2c 负例含递归泛型 emit 面拦截);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
@@ -81,10 +81,13 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   宿主 double,故双内建)。**新教训**:新增内建第六处——ct_typeof 内建返回型别表
   (漏配 now_ms 时局部按 i32 推,double 截断溢出,fx_time 首跑踩中)。
   I64 用户级值域仍挂账(eval 值模型无独立 I64 kind)。
-- **闭包捕获 List 类型值:emit 面挂账**(feat/std-time 发现):求值面动态正常;
-  emit 的捕获码对泛型 fn 返回的 List 局部变量记 "i" → 环境数组 (int32_t) 截断
-  指针(报 incompatible integer to pointer)。纯闭包/标量/Str 捕获不受影响。
-  变通:捕获平行 List 句柄或改零填充键 + 纯排序(ctwf Top-3 即此口径)。
+- **闭包捕获 typed List(LI):已修(feat/std-time)**——真凶不是捕获码计算,
+  而是 ct_cap_decl/ct_wrap_i 的指针域白名单缺 "LI"(typed List 码),decl 侧
+  掉 (int32_t) 截断。已并入 L 分支。残余限制:**闭包(ct_clop)形参 ABI 为
+  32 位 ct_i**——Str/List 实参经形参传递仍是截断 UB(排序谓词请用 I32 索引
+  闭包 + 捕获句柄的口径,ctwf Top-3 即此);32→64 位 ABI 升级挂账。
+  **排障教训**:'捕获坏了'一度是 vendored 副本漂移 + 陈旧 bin 的叠加假象,
+  最小包先复现再下结论。
 - **Ctron 无 `continue`/`break`**:循环退出用标志位;无 `;` 分隔;无多返回值
   (用 List 或 env 变量)。
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
@@ -133,10 +136,10 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    fmap fvals[V]、std/fs.ct(read_or/exists 便利层,+单测);stdpkg main 全覆盖。
    **时间原语已落地**:now_ms() -> F64(五层 SOP+typeof 型别表)。
    **谓词排序已落地**:sorted_by[K]/sorted_by_desc[K](less: fn(K,K)->Bool,
-   稳定插入排序;fn 类型参数经单态化 + ct_clop 间接调用,K=I32/Str 双面验证;
-   结构体 K 挂 ct_wrap_i 限制)。ctwf Top-3 实战(零填充键 + sorted_desc[Str],
-   smoke 3g 专项断言)。
-   余项:闭包捕获 List 值的 emit 修复(§4)、I64 用户级值域专片、CI 例行化到远端。
+   稳定插入排序;fn 类型参数经单态化 + ct_clop 间接调用;闭包形参限 I32/Bool,
+   Str 经形参为截断 UB——用 I32 索引闭包 + 捕获句柄口径)。ctwf Top-3 实战
+   (索引比较器 + 捕获三个 List 句柄,smoke 3g 专项断言;3h vendored 同步检查)。
+   余项:闭包 ABI 32→64 位升级、I64 用户级值域专片、CI 例行化到远端。
 
 ## 6. 关键文件地图
 

@@ -242,7 +242,7 @@ if "$COMP/bin/ctron-emit" run "$CTWF/src/main.ct" > "$T/ctwf.c" 2>/dev/null    &
     grep -q "distinct=$DW|total=$TW|$SAMPLE" "$T/ctwf.got" && ok "ctwf 汇总行对数(distinct=$DW total=$TW)" || bad "ctwf 汇总行分歧"
     timeout 15 "$T/ctwf.bin" run "$SAMPLE" > "$T/ctwf.got2" 2>&1
     diff -q "$T/ctwf.got" "$T/ctwf.got2" > /dev/null 2>&1 && ok "ctwf 确定性双跑逐字一致" || bad "ctwf 双跑分歧"
-    grep -q "^top:the=3,quick=1,over=1$" "$T/ctwf.got" && ok "ctwf top3 对数(count 降序,同 count 字典序降序)" || bad "ctwf top3 分歧: $(grep '^top:' "$T/ctwf.got")"
+    grep -q "^top:the=3,quick=1,brown=1$" "$T/ctwf.got" && ok "ctwf top3 对数(count 降序,同 count 稳定)" || bad "ctwf top3 分歧: $(grep '^top:' "$T/ctwf.got")"
 else
     bad "ctwf 发射/编译失败"
 fi
@@ -255,6 +255,18 @@ if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/sort.ct" > /dev/null 2>&1; th
     ok "sort 种子单测通过(原生解释)"
 else
     bad "sort 种子单测失败"
+fi
+echo "== 3h) vendored std 一致性(examples 随包副本与 stdpkg 同步) =="
+vend_ok=1
+for pair in "ctwf:str" "ctwf:fmap" "ctwf:sort" "ctwc:str"; do
+    app=${pair%%:*}
+    mod=${pair##*:}
+    diff -q "$COMP/test/stdpkg/std/$mod.ct" "$ROOT/examples/$app/std/$mod.ct" >/dev/null 2>&1 || vend_ok=0
+done
+if [ $vend_ok -eq 1 ]; then
+    ok "vendored std 与 stdpkg 同步"
+else
+    bad "vendored std 漂移(cp compiler/test/stdpkg/std/*.ct examples/<app>/std/ 同步)"
 fi
 for st in map set fs; do
     if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/$st.ct" > /dev/null 2>&1; then

@@ -43,28 +43,26 @@ fn main() -> I32 {
             parts.push("total=" + ws.len.to_string())
             parts.push(path)
             println(join(parts, "|"))
-            // Top-3:零填充键技巧——count 补零前缀 + 词,纯 sorted[Str] 字典序
-            // 即"count 降序、词升序",无比较器闭包(闭包捕获 List 值挂账,见 HANDOFF)
-            var padded = List[Str]()
+            // Top-3:索引排序(sorted_by_desc[I32],闭包形参限 32 位 ct_i ABI——
+            // 捕获词表/值表/全表三个 List 句柄,count 比较经 cnt_of)
+            var ks = fwords[I32](m)
+            var vs = fvals[I32](m)
+            var idxs = List[I32]()
             var j2: I32 = 0
             while j2 < vocab.len {
-                var cnt = fget[I32](m, vocab[j2], 0).to_string()
-                while cnt.len < 6 {
-                    cnt = "0" + cnt
-                }
-                padded.push(cnt + vocab[j2])
+                idxs.push(j2)
                 j2 += 1
             }
-            var bycount = sorted_desc[Str](padded)
+            var byidx = sorted_by_desc[I32](idxs, |a, b| cnt_of(ks, vs, vocab[a]) < cnt_of(ks, vs, vocab[b]))
             var topk = 3
-            if bycount.len < topk {
-                topk = bycount.len
+            if byidx.len < topk {
+                topk = byidx.len
             }
             var tops = List[Str]()
             var k2: I32 = 0
             while k2 < topk {
-                var w2 = byte_slice(bycount[k2], 6, bycount[k2].len)
-                tops.push(w2 + "=" + fget[I32](m, w2, 0).to_string())
+                var w2 = vocab[byidx[k2]]
+                tops.push(w2 + "=" + cnt_of(ks, vs, w2).to_string())
                 k2 += 1
             }
             println("top:" + join(tops, ","))
