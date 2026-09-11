@@ -219,6 +219,19 @@ fn main() -> I32 {
                 return 1
             }
             println("check OK decls=" + (file.len - 1).to_string())
+            if seq2("ANCHORTAUSTED", "1") {
+                // 信任边界审计(§9.6):枚举全部 #[trusted] extern
+                var ai: I32 = 1
+                while ai < file.len {
+                    var ad = file[ai]
+                    if ad[0] == "FnExt" {
+                        if ad.len > 7 {
+                            println("trusted: " + ad[1] + "@" + nline(ad))
+                        }
+                    }
+                    ai += 1
+                }
+            }
             return 0
         }
         None => {

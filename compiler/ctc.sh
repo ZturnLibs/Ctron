@@ -15,12 +15,14 @@ HOST="$ROOT/compiler-c/build/ctronc"
 
 mode=run
 PROF=full
+TAUSTED=0
 case ${1:-} in
     check|emit) mode=$1; shift ;;
 esac
 for a in "$@"; do
     case $a in
         --profile=*) PROF=${a#--profile=} ;;
+        --trusted) TAUSTED=1 ;;
     esac
 done
 if [ ! -x "$HOST" ]; then
@@ -54,7 +56,7 @@ case $mode in
         done
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" "$DIR/build/cc_check.ct" > "$TMP"
+        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORTAUSTED|$TAUSTED|" "$DIR/build/cc_check.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;

@@ -1,0 +1,9 @@
+// fx_trusted_fn_neg.ct —— E4040:#[trusted] 仅限 extern 声明
+#[trusted]
+fn f() -> I32 {
+    return 1
+}
+
+test "t" {
+    println(f())
+}

@@ -158,6 +158,24 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
     }
     // E2020/E2010:名字解析与类型统一 v1(见文件尾新节)
     sem_calls_all(file, diags, prof)
+    // #[trusted] 语义化(§9.6):extern "c" 必须标记(信任边界,可枚举审计);
+    // trusted 仅限 extern 声明(放别处 = E4040)
+    var ti: I32 = 1
+    while ti < file.len {
+        var td = file[ti]
+        if td[0] == "FnExt" {
+            // 带 #[trusted] 的 FnExt:len 8(尾部 anm + nstamp 行号);无标记 len 7
+            if td.len < 8 {
+                diags.push("W8050@" + nline(td) + ": extern 未标记 #[trusted](信任边界):" + td[1])
+            }
+        } else if or2(td[0] == "Fn", td[0] == "FnPub") {
+            // fn 带 #[trusted]:# 分支 push anm 后补 nstamp(len 7,nline 安全)
+            if td.len > 6 && seq2(td[6], "trusted") {
+                diags.push("E4040@" + nline(td) + ": #[trusted] 仅限 extern 声明:" + td[1])
+            }
+        }
+        ti += 1
+    }
     // E3070:闭包可变捕获(两遍式,见文件尾新节)
     sem_closures(file, diags)
     // E6020/E6010:comptime 副作用扫描 + const/static-let 编译期试求值(见文件尾新节)

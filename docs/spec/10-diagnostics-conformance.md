@@ -22,6 +22,8 @@
 | E4010 | 能力使用超出 manifest 声明 | §8.2 | 预留 |
 | E4020 | `#[pure]` 含副作用 | §8.3 | `07_pure.neg.ct` |
 | E4030 | `#[no_spawn]` 上下文 spawn | §8.3 | 预留 |
+| E4040 | `#[trusted]` 仅限 extern "c" 声明 | §9.6(v0.6) | `compiler/test/fx_trusted_fn_neg.ct` |
+| W8050 | extern "c" 未标记 `#[trusted]`(信任边界) | §9.6(v0.6) | `compiler/test/fx_trusted_neg.ct` |
 | E5010 | trait 孤儿规则违规 | §2.5 | 多文件(预留) |
 | E5020 | 循环依赖 | §2.6 | 多文件(预留) |
 | E6010 | comptime 预算超限 | §8.4 | 预留 |

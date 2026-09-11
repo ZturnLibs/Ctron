@@ -1,0 +1,6 @@
+// fx_trusted_neg.ct —— W8050:extern "c" 未标记 #[trusted](§9.6 信任边界)
+extern "c" fn raw_add(a: I32, b: I32) -> I32
+
+test "t" {
+    println(raw_add(1, 2))
+}

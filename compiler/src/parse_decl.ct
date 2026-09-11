@@ -416,6 +416,7 @@ fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
 
 // extern "c" fn 声明(§9.6):无函数体;仅支持 "c"(v0);anm = 前置 #[attr] 名(可空)
 fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], anm: Str) -> List[Str] {
+    var ln0 = lns[cur.load()]
     adv(cur)
     adv(cur)
     while tok(toks, cur) == "NL" {
@@ -425,6 +426,7 @@ fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], anm: Str) -> List
     if anm != "" {
         fd.push(anm)
     }
+    nstamp(fd, ln0)
     return fd
 }
 
@@ -458,6 +460,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
             } else {
                 var fd = p_fn2(toks, cur, lns, "Fn")
                 fd.push(anm)
+                nstamp(fd, lns[cur.load()])
                 nf.push(fd)
             }
         } else if t == "pub" {
