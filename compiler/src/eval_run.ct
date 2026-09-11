@@ -79,6 +79,10 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 return s4("a", env, out, vV2())
             }
             var ov = en[1]
+            if ov[0] == "BOX" {
+                // Box 自动解引用写(§6.1):内层 U 原地改,别名共享可见
+                ov = ov[1]
+            }
             if ov[0] != "U" {
                 panic("member assign target")
                 return s4("a", env, out, vV2())

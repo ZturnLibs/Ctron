@@ -387,6 +387,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};", env)
                 return env_bind(env, pat[1], ty)
             }
+            println("//DBG-letty:" + ty)
             var rhs = ct_expr(st[4], env, file)
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
@@ -423,6 +424,15 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     return env
                 }
                 eln("(" + ct_expr(tgt[1], env, file) + ")." + tgt[3] + " = " + ct_expr(st[3], env, file) + ";", env)
+                return env
+            }
+            if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
+                // Box 自动解引用字段赋值(§6.1):接收者为堆 cell 指针,别名共享可见
+                if st[2] != "Eq" {
+                    panic("ct_stmt:字段复合赋值")
+                    return env
+                }
+                eln("(" + ct_expr(tgt[1], env, file) + ")->" + tgt[3] + " = " + ct_expr(st[3], env, file) + ";", env)
                 return env
             }
             panic("ct_stmt:struct 字段赋值未支持")

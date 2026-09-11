@@ -169,6 +169,14 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     }
     if nt[0] != "Named" { return "i" }
     if nt[0] == "Named" && nt[2].len > 1 {
+        // Box[P] 注解 → B:P(堆单值指针;与构造点 typeof 同码)
+        if seq2(nt[1], "Box") {
+            if nt[2][1][0] == "Named" {
+                return "B:" + nt[2][1][1]
+            }
+        }
+    }
+    if nt[0] == "Named" && nt[2].len > 1 {
         // 泛型 struct 实例化注解优先于具体 struct 分支
         if ct_struct_tps(file, nt[1]).len > 0 {
             var cs = List[Str]()
@@ -216,6 +224,10 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
 fn ct_ctype(code: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         return "t_" + byte_slice(code, 2, code.len)
+    }
+    if code.len > 2 && byte_slice(code, 0, 2) == "B:" {
+        // Box[T]:堆单值指针(t_P*);自动解引用由 Member/Assign 位处理
+        return "t_" + byte_slice(code, 2, code.len) + "*"
     }
     if code == "s" { return "const char*" }
     if code == "N" { return "const char*" }
@@ -486,6 +498,10 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
         }
+        if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
+            // Box 自动解引用字段读:载荷 struct 的字段码
+            return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
+        }
         // Phase 4 并发成员
         if e[3] == "spawn" { return "k" }
         if e[3] == "join" { return "i" }
@@ -531,6 +547,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     return ct_generic_retcode(file, base[1], gtpsn, gtys)
                 }
+            }
+            if base[0] == "Ident" && base[1] == "Box" {
+                // Box[P](v) → B:P(堆单值指针;载荷 v0 限值类型)
+                if cal[2].len > 1 {
+                    if cal[2][1][0] == "Named" {
+                        return "B:" + cal[2][1][1]
+                    }
+                }
+                return "B:V"
             }
             if base[0] == "Ident" && base[1] == "List" {
                 // List[I32] → LI(元素槽 int);型参实参经 env 替换码(单态化体);其余 → L

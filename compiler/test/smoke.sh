@@ -135,7 +135,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
-for cv in fnval cloval enumres fnret try tlist own generic gstruct derive optstr gprobe2 gprobe fmap fs; do
+for cv in fnval cloval enumres fnret try tlist own generic gstruct derive optstr boxalias gprobe2 gprobe fmap fs; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
@@ -262,6 +262,40 @@ for st in map set fs; do
         bad "$st 种子单测失败"
     fi
 done
+echo "== 3h) 示例应用 examples/ctgrep(子串 grep,与 grep -F -n 对数 + 退出码语义) =="
+CTGREP="$ROOT/examples/ctgrep"
+GSAMPLE="$T/gsample.txt"
+printf 'the quick brown fox\njumps over the lazy dog\nthe end\nnothing here\n' > "$GSAMPLE"
+if "$COMP/bin/ctron-emit" run "$CTGREP/src/main.ct" > "$T/ctgrep.c" 2>/dev/null \
+   && cc -O1 -w -o "$T/ctgrep.bin" "$T/ctgrep.c" 2>/dev/null; then
+    timeout 15 "$T/ctgrep.bin" run "the $GSAMPLE" > "$T/ctgrep.got" 2>&1
+    GRC=$?
+    grep -F -n "the" "$GSAMPLE" > "$T/ctgrep.want" 2>/dev/null
+    if [ $GRC -eq 0 ] && diff -q "$T/ctgrep.want" "$T/ctgrep.got" > /dev/null 2>&1; then
+        ok "ctgrep 与 grep -F -n 对数一致"
+    else
+        bad "ctgrep 分歧(rc=$GRC): got[$(cat "$T/ctgrep.got")] want[$(cat "$T/ctgrep.want")]"
+    fi
+    timeout 15 "$T/ctgrep.bin" run "zzz $GSAMPLE" > "$T/ctgrep.none" 2>&1
+    if [ $? -eq 1 ] && [ ! -s "$T/ctgrep.none" ]; then
+        ok "ctgrep 无命中 rc=1 无输出(grep 口径)"
+    else
+        bad "ctgrep 无命中语义分歧"
+    fi
+    timeout 15 "$T/ctgrep.bin" run "no-space-arg" > /dev/null 2>&1
+    if [ $? -eq 2 ]; then
+        ok "ctgrep 用法拦截 rc=2"
+    else
+        bad "ctgrep 用法语义分歧"
+    fi
+    if "$COMP/bin/ctron-cc" run "$CTGREP/std/str.ct" > /dev/null 2>&1; then
+        ok "ctgrep str 种子单测通过(原生解释)"
+    else
+        bad "ctgrep str 种子单测失败"
+    fi
+else
+    bad "ctgrep 发射/编译失败"
+fi
 for cv in uhex; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then

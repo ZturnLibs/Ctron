@@ -174,6 +174,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // struct 字段读取(§6.1 值类型;P<内> 解引用后同型)
             return "(" + ct_expr(e[1], env, file) + ")." + e[3]
         }
+        if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
+            // Box 自动解引用字段读(§6.1)
+            return "(" + ct_expr(e[1], env, file) + ")->" + e[3]
+        }
     }
     if t == "Scope" {
         panic("ct_expr:scope 仅语句位(let/Expr)")
@@ -244,6 +248,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var ginit = "0"
                 if ag.len > 2 { ginit = ct_expr(ag[2], env, file) }
                 return "ctron_cell_new(" + ginit + ")"
+            }
+            if base[0] == "Ident" && base[1] == "Box" {
+                // Box[P](v)(§6.1):GC 堆单值 cell,赋值/传参共享引用(别名可见)
+                if ag.len < 2 {
+                    panic("emit:Box 需载荷")
+                    return ""
+                }
+                var bxt = ct_typeof(ag[1], env, file)
+                if bxt.len > 2 && byte_slice(bxt, 0, 2) == "u:" {
+                    var btn = "t_" + byte_slice(bxt, 2, bxt.len)
+                    return "(\{ " + btn + "* _b = (" + btn + "*)ctron_amalloc(sizeof(" + btn + ")); *_b = " + ct_expr(ag[1], env, file) + "; _b; })"
+                }
+                panic("emit:Box 载荷限值类型")
+                return ""
             }
             if base[0] == "Ident" && base[1] == "Channel" {
                 var cap = "64"

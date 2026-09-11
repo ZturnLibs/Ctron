@@ -1,0 +1,23 @@
+// fx_boxalias —— Box 别名共享语义(§6.1 v0.6 细化):赋值共享堆 cell,
+// 经任一别名的可变字段写全可见;拷贝 struct(不含 Box)互不影响。
+struct P {
+    var x: I32
+}
+struct Snap {
+    let v: I32
+}
+fn set_x(p: Box[P], nv: I32) -> I32 {
+    p.x = nv
+    return p.x
+}
+test "box alias shared" {
+    let a = Box[P](P { x: 5 })
+    let b = a
+    a.x = 7
+    assert_eq(b.x, 7)
+    assert_eq(set_x(b, 9), 9)
+    assert_eq(a.x, 9)
+    let s = Snap { v: 1 }
+    let s2 = s
+    println(s2.v)
+}
