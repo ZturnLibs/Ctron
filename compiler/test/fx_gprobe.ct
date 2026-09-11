@@ -2,7 +2,7 @@
 // 探针 1:泛型 fn 体内对 TPar 做 ==(Map.get/has 的核心依赖)
 // 探针 2:泛型 struct 字段为 List[K]/List[V](Map[K,V] 的载体形态)
 // 探针 3:泛型 fn 以 [K, V] 双参单态化,K/V 异型(I32/Str)
-struct Box[K, V] {
+struct KVBox[K, V] {
     let keys: List[K]
     let vals: List[V]
 }
@@ -18,7 +18,7 @@ fn find[K](xs: List[K], k: K) -> Bool {
     return false
 }
 
-fn box_get[K, V](b: Box[K, V], k: K, dft: V) -> V {
+fn box_get[K, V](b: KVBox[K, V], k: K, dft: V) -> V {
     var i: I32 = 0
     while i < b.keys.len {
         if b.keys[i] == k {
@@ -29,8 +29,8 @@ fn box_get[K, V](b: Box[K, V], k: K, dft: V) -> V {
     return dft
 }
 
-fn box_put[K, V](b: Box[K, V], k: K, v: V) -> Box[K, V] {
-    var out = Box { keys: List[K](), vals: List[V]() }
+fn box_put[K, V](b: KVBox[K, V], k: K, v: V) -> KVBox[K, V] {
+    var out = KVBox { keys: List[K](), vals: List[V]() }
     var i: I32 = 0
     var hit = false
     while i < b.keys.len {
@@ -52,7 +52,7 @@ fn box_put[K, V](b: Box[K, V], k: K, v: V) -> Box[K, V] {
 }
 
 fn main() -> I32 {
-    var b = Box { keys: List[I32](), vals: List[Str]() }
+    var b = KVBox { keys: List[I32](), vals: List[Str]() }
     b.keys.push(1)
     b.vals.push("one")
     b = box_put[I32, Str](b, 2, "two")
