@@ -160,5 +160,6 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   钉子 19–21。**`--profile web` 已语义化 3cf2999f→3cf299f**:stdweb.dom 最小 API
   检查/运行面可用(10_web_dom.ct web 档转绿;full 档 E2020 拦截),发射面
   出 C stub。**`?` 传播 Option[Str] NULL 模型已落地 635d7f4**(表达式位 Try/let 位载荷泛化/
-  Option 臂匹配/veq·fmt 补 T;fx_optstr 双面逐字)。剩余:LSP(lsp/)、性能、
-  `#[trusted]` 语义化、CI 远端例行化、装箱载荷别名语义细化。
+  Option 臂匹配/veq·fmt 补 T;fx_optstr 双面逐字)。**`#[trusted]` 已语义化 2aaaee3**:extern 缺标记 W8050/trusted 放非 extern
+  E4040/check --trusted 审计枚举(注册表已入 spec §10 与 README §4)。
+  剩余:LSP(lsp/)、性能、CI 远端例行化、装箱载荷别名语义细化。
