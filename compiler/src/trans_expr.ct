@@ -123,6 +123,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1] == "Eq" { return "(" + c + " == 0)" }
             return "(" + c + " != 0)"
         }
+        if or2(e[1] == "Lt", or2(e[1] == "Gt", or2(e[1] == "Le", e[1] == "Ge"))) && or2(lt == "s", lt == "N") {
+            // Str 关系运算:strcmp 字节序(镜像 eval vcmp/scmp;裸 < 是指针比较)
+            var c2 = "strcmp((const char*)(" + ct_expr(e[2], env, file) + "), (const char*)(" + ct_expr(e[3], env, file) + "))"
+            if e[1] == "Lt" { return "(" + c2 + " < 0)" }
+            if e[1] == "Gt" { return "(" + c2 + " > 0)" }
+            if e[1] == "Le" { return "(" + c2 + " <= 0)" }
+            return "(" + c2 + " >= 0)"
+        }
         return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"
     }
     if t == "Index" {

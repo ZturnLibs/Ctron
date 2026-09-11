@@ -1,5 +1,7 @@
 use std.map.{map_new, put, get, has}
 use std.set.{set_new, add, mem, len}
+use std.fmap.{fnew, fput, fget, flen, fwords}
+use std.sort.{sorted, sorted_desc, reversed}
 
 fn main() -> I32 {
     var m = map_new[I32, I32]()
@@ -16,5 +18,33 @@ fn main() -> I32 {
     w = put[I32, Str](w, 7, "seven")
     println(get[I32, Str](w, 7, "?"))
     println(get[I32, Str](w, 8, "?"))
+
+    // FMap[I32]:djb2 开放寻址;覆盖写 / 插入序词表
+    var fm = fnew[I32]()
+    fm = fput[I32](fm, "apple", 3)
+    fm = fput[I32](fm, "pear", 5)
+    fm = fput[I32](fm, "apple", 8)
+    println(fget[I32](fm, "apple", 0).to_string())
+    println(fget[I32](fm, "pear", 0).to_string())
+    println(fget[I32](fm, "fig", 0).to_string())
+    println(flen[I32](fm).to_string())
+    var fw = fwords[I32](fm)
+    println(fw[0] + "=" + fget[I32](fm, fw[0], 0).to_string() + "," + fw[1] + "=" + fget[I32](fm, fw[1], 0).to_string())
+
+    // sort:泛型稳定排序(I32 标量比较 / Str strcmp 字节序)
+    var nums = List[I32]()
+    nums.push(3)
+    nums.push(1)
+    nums.push(2)
+    var asc = sorted[I32](nums)
+    println(asc[0].to_string() + asc[1].to_string() + asc[2].to_string())
+    var desc = sorted_desc[I32](nums)
+    println(desc[0].to_string() + desc[1].to_string() + desc[2].to_string())
+    var ws2 = List[Str]()
+    ws2.push("pear")
+    ws2.push("apple")
+    var sasc = sorted[Str](ws2)
+    println(sasc[0] + "," + sasc[1])
+    println(reversed[I32](nums)[0].to_string())
     return 0
 }

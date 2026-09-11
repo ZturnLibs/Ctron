@@ -1,0 +1,137 @@
+// std/sort.ct —— 排序工具(泛型 K:I32/Str;稳定插入排序,确定性)
+// 依赖 K 可比较(< >):单态化后按具体类型派发(I32 标量比较,Str strcmp 字节序)。
+pub fn sorted[K](xs: List[K]) -> List[K] {
+    var out = List[K]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        // 尾部扫描:末位起找第一个 <= v 的插入位(等值不越过 → 稳定)
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                if out[j - 1] > v {
+                    j -= 1
+                } else {
+                    placed = true
+                }
+            }
+        }
+        var nxt = List[K]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        i += 1
+    }
+    return out
+}
+
+// 降序(等值不越过 → 稳定;非 reverse(asc) 的平局序)
+pub fn sorted_desc[K](xs: List[K]) -> List[K] {
+    var out = List[K]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                if out[j - 1] < v {
+                    j -= 1
+                } else {
+                    placed = true
+                }
+            }
+        }
+        var nxt = List[K]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        i += 1
+    }
+    return out
+}
+
+// 原序反转(新表)
+pub fn reversed[K](xs: List[K]) -> List[K] {
+    var out = List[K]()
+    var i = xs.len
+    while i > 0 {
+        out.push(xs[i - 1])
+        i -= 1
+    }
+    return out
+}
+
+test "sorted asc ints stable" {
+    var xs = List[I32]()
+    xs.push(3)
+    xs.push(1)
+    xs.push(2)
+    xs.push(1)
+    var s = sorted[I32](xs)
+    assert(s.len == 4)
+    assert(s[0] == 1)
+    assert(s[1] == 1)
+    assert(s[2] == 2)
+    assert(s[3] == 3)
+}
+
+test "sorted strs lexicographic" {
+    var xs = List[Str]()
+    xs.push("pear")
+    xs.push("apple")
+    xs.push("fig")
+    var s = sorted[Str](xs)
+    assert(s[0] == "apple")
+    assert(s[1] == "fig")
+    assert(s[2] == "pear")
+}
+
+test "sorted_desc ints" {
+    var xs = List[I32]()
+    xs.push(3)
+    xs.push(1)
+    xs.push(2)
+    var s = sorted_desc[I32](xs)
+    assert(s[0] == 3)
+    assert(s[1] == 2)
+    assert(s[2] == 1)
+}
+
+test "reversed" {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    var r = reversed[I32](xs)
+    assert(r[0] == 3)
+    assert(r[2] == 1)
+    var empty = List[I32]()
+    assert(reversed[I32](empty).len == 0)
+    var one = List[I32]()
+    one.push(9)
+    assert(sorted[I32](one)[0] == 9)
+}

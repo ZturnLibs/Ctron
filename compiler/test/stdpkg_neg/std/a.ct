@@ -1,0 +1,3 @@
+pub fn new() -> I32 {
+    return 1
+}

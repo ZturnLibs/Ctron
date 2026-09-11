@@ -1,0 +1,6 @@
+pub fn new() -> I32 {
+    return 2
+}
+pub fn hello() -> I32 {
+    return 3
+}

@@ -406,7 +406,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             var tv = ct_expr(tgt[1], env, file)
             var vt = ct_typeof(st[3], env, file)
-            eln("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(vt, "s", ct_expr(st[3], env, file)) + ";", env)
+            var vtxt = ct_arg_cast(vt, "s", ct_expr(st[3], env, file))
+            var tc = ct_typeof(tgt[1], env, file)
+            if tc == "LI" {
+                vtxt = "(const char*)(long)(" + ct_expr(st[3], env, file) + ")"
+            }
+            eln("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + vtxt + ";", env)
             return env
         }
         if tgt[0] == "Member" {

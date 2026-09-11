@@ -133,7 +133,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
-for cv in fnval cloval enumres fnret try tlist own generic gstruct derive optstr; do
+for cv in fnval cloval enumres fnret try tlist own generic gstruct derive optstr gprobe2 fmap; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
@@ -174,6 +174,13 @@ if "$COMP/bin/ctron-emit" run "$COMP/test/stdpkg/src/main.ct" > "$T/sd_native.c"
 else
     bad "std 包 发射失败"
 fi
+echo "== 3d-) use 撞名拦截(E5030,原静默遮蔽) =="
+"$COMP/ctc.sh" check "$COMP/test/stdpkg_neg/src/main.ct" > "$T/n5030.out" 2>&1
+if [ $? -eq 1 ] && grep -q "E5030" "$T/n5030.out"; then
+    ok "use 撞名拦截(E5030)"
+else
+    bad "use 撞名未拦截: $(cat "$T/n5030.out")"
+fi
 echo "== 3e) 示例应用 examples/ctwc(wc 式统计,与真 wc 对数)+ str 种子单测 =="
 CTWC="$ROOT/examples/ctwc"
 SAMPLE="$T/sample.txt"
@@ -213,6 +220,32 @@ else
     bad "web 运行面异常: $(cat "$T/w3.out")"
 fi
 
+
+echo "== 3g) 示例应用 examples/ctwf(词频统计,对 sort/uniq 对数)+ fmap/sort 种子单测 =="
+CTWF="$ROOT/examples/ctwf"
+if "$COMP/bin/ctron-emit" run "$CTWF/src/main.ct" > "$T/ctwf.c" 2>/dev/null    && cc -O1 -w -o "$T/ctwf.bin" "$T/ctwf.c" 2>/dev/null; then
+    timeout 15 "$T/ctwf.bin" run "$SAMPLE" > "$T/ctwf.got" 2>&1
+    WANT=$(tr -s '[:space:]' '\n' < "$SAMPLE" | grep -v '^$' | sort | uniq -c | awk '{print $2" "$1}' | sort)
+    GOT=$(grep -v '^distinct=' "$T/ctwf.got" | sort)
+    [ "$GOT" = "$WANT" ] && ok "ctwf 词频与 sort/uniq 对数一致" || bad "ctwf 词频分歧: got[$GOT] want[$WANT]"
+    DW=$(tr -s '[:space:]' '\n' < "$SAMPLE" | grep -v '^$' | sort | uniq | wc -l | tr -d ' ')
+    TW=$(tr -s '[:space:]' '\n' < "$SAMPLE" | grep -v '^$' | wc -l | tr -d ' ')
+    grep -q "distinct=$DW|total=$TW|$SAMPLE" "$T/ctwf.got" && ok "ctwf 汇总行对数(distinct=$DW total=$TW)" || bad "ctwf 汇总行分歧"
+    timeout 15 "$T/ctwf.bin" run "$SAMPLE" > "$T/ctwf.got2" 2>&1
+    diff -q "$T/ctwf.got" "$T/ctwf.got2" > /dev/null 2>&1 && ok "ctwf 确定性双跑逐字一致" || bad "ctwf 双跑分歧"
+else
+    bad "ctwf 发射/编译失败"
+fi
+if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/fmap.ct" > /dev/null 2>&1; then
+    ok "fmap 种子单测通过(原生解释)"
+else
+    bad "fmap 种子单测失败"
+fi
+if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/sort.ct" > /dev/null 2>&1; then
+    ok "sort 种子单测通过(原生解释)"
+else
+    bad "sort 种子单测失败"
+fi
 for cv in uhex; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then

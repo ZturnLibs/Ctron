@@ -1,0 +1,16 @@
+// fx_gprobe2.ct —— 探针 2:泛型 fn 签名携带实例化 struct(标量字段,隔离 typedef 预扫问题)
+struct Pair2[A, B] {
+    let first: A
+    let second: B
+}
+
+fn swap2[A, B](p: Pair2[A, B]) -> Pair2[B, A] {
+    return Pair2 { first: p.second, second: p.first }
+}
+
+fn main() -> I32 {
+    var r = swap2[I32, Str](Pair2 { first: 1, second: "x" })
+    println(r.first)
+    println(r.second.to_string())
+    return 0
+}

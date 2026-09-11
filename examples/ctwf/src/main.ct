@@ -1,0 +1,40 @@
+// ctwf —— 词频统计工具(自举 Ctron 示例应用;R-P2b 出口:纯 Ctron CLI 程序)
+// 用法:ctwf run <file> → 每行 "<词> <次数>"(插入序,确定性)+ 末行汇总。
+// 汇总行 "distinct=<N>|total=<M>|<路径>" 经 std.str.join 组装(锚定 join 发射面)。
+use std.str.{words, join}
+use std.fmap.{fnew, fput, fget, flen, fwords}
+
+fn main() -> I32 {
+    var path = ctron_entry()
+    if path == "" {
+        println("ctwf: usage: ctwf run <file>")
+        return 1
+    }
+    match read_file(path) {
+        Some(s) => {
+            var ws = words(s)
+            var m = fnew[I32]()
+            var i: I32 = 0
+            while i < ws.len {
+                m = fput[I32](m, ws[i], fget[I32](m, ws[i], 0) + 1)
+                i += 1
+            }
+            var vocab = fwords[I32](m)
+            var j: I32 = 0
+            while j < vocab.len {
+                println(vocab[j] + " " + fget[I32](m, vocab[j], 0).to_string())
+                j += 1
+            }
+            var parts = List[Str]()
+            parts.push("distinct=" + flen[I32](m).to_string())
+            parts.push("total=" + ws.len.to_string())
+            parts.push(path)
+            println(join(parts, "|"))
+        }
+        None => {
+            println("ctwf: cannot open " + path)
+            return 1
+        }
+    }
+    return 0
+}

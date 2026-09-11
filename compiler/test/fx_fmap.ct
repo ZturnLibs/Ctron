@@ -1,0 +1,153 @@
+// fx_fmap.ct —— FMap[V](Str 键哈希映射)发射面对齐夹具
+// 镜像 stdpkg/std/fmap.ct 的实现(djb2 mod 100003 / 256 槽开放寻址 / 函数式 fput);
+// 覆盖:覆盖写 / 缺失缺省 / fhas / flen / 插入序词表 / 40 键自然碰撞探查。
+struct FMap[V] {
+    let slots: List[I32]
+    let keys: List[Str]
+    let vals: List[V]
+}
+
+fn fnew[V]() -> FMap[V] {
+    var s = List[I32]()
+    var i: I32 = 0
+    while i < 256 {
+        s.push(-1)
+        i += 1
+    }
+    return FMap { slots: s, keys: List[Str](), vals: List[V]() }
+}
+
+fn fidx(s: Str) -> I32 {
+    var h: I32 = 5381
+    var i: I32 = 0
+    while i < s.len {
+        h = (h * 33 + byte_at(s, i)) % 100003
+        i += 1
+    }
+    return ((h % 256) + 256) % 256
+}
+
+fn fslot[V](m: FMap[V], k: Str) -> I32 {
+    var idx = fidx(k)
+    var n: I32 = 0
+    while n < 256 {
+        var s = m.slots[idx]
+        if s < 0 {
+            return -1
+        }
+        if m.keys[s] == k {
+            return s
+        }
+        idx += 1
+        if idx == 256 { idx = 0 }
+        n += 1
+    }
+    return -1
+}
+
+fn fput[V](m: FMap[V], k: Str, v: V) -> FMap[V] {
+    var hit = fslot[V](m, k)
+    var nslots = List[I32]()
+    var nkeys = List[Str]()
+    var nvals = List[V]()
+    var i: I32 = 0
+    while i < m.slots.len {
+        nslots.push(m.slots[i])
+        i += 1
+    }
+    if hit >= 0 {
+        i = 0
+        while i < m.vals.len {
+            if i == hit {
+                nvals.push(v)
+            } else {
+                nvals.push(m.vals[i])
+            }
+            i += 1
+        }
+        i = 0
+        while i < m.keys.len {
+            nkeys.push(m.keys[i])
+            i += 1
+        }
+        return FMap { slots: nslots, keys: nkeys, vals: nvals }
+    }
+    i = 0
+    while i < m.keys.len {
+        nkeys.push(m.keys[i])
+        i += 1
+    }
+    i = 0
+    while i < m.vals.len {
+        nvals.push(m.vals[i])
+        i += 1
+    }
+    var idx = fidx(k)
+    var n: I32 = 0
+    var slot = -1
+    while n < 256 {
+        if nslots[idx] < 0 {
+            slot = idx
+            n = 256
+        } else {
+            idx += 1
+            if idx == 256 { idx = 0 }
+            n += 1
+        }
+    }
+    if slot < 0 {
+        return m
+    }
+    nslots[slot] = nkeys.len
+    nkeys.push(k)
+    nvals.push(v)
+    return FMap { slots: nslots, keys: nkeys, vals: nvals }
+}
+
+fn fget[V](m: FMap[V], k: Str, dft: V) -> V {
+    var s = fslot[V](m, k)
+    if s < 0 {
+        return dft
+    }
+    return m.vals[s]
+}
+
+fn fhas[V](m: FMap[V], k: Str) -> Bool {
+    if fslot[V](m, k) < 0 {
+        return false
+    }
+    return true
+}
+
+fn flen[V](m: FMap[V]) -> I32 {
+    return m.keys.len
+}
+
+fn fwords[V](m: FMap[V]) -> List[Str] {
+    return m.keys
+}
+
+fn main() -> I32 {
+    var m = fnew[I32]()
+    m = fput[I32](m, "apple", 3)
+    m = fput[I32](m, "pear", 5)
+    m = fput[I32](m, "apple", 8)
+    println(fget[I32](m, "apple", 0).to_string())
+    println(fget[I32](m, "pear", 0).to_string())
+    println(fget[I32](m, "fig", 0).to_string())
+    println(flen[I32](m).to_string())
+    println(fhas[I32](m, "pear").to_string())
+    var fw = fwords[I32](m)
+    println(fw[0] + "=" + fget[I32](m, fw[0], 0).to_string() + "," + fw[1] + "=" + fget[I32](m, fw[1], 0).to_string())
+    var big = fnew[I32]()
+    var i: I32 = 0
+    while i < 40 {
+        big = fput[I32](big, "w" + i.to_string(), i * 2)
+        i += 1
+    }
+    println(flen[I32](big).to_string())
+    println(fget[I32](big, "w7", -1).to_string())
+    println(fget[I32](big, "w39", -1).to_string())
+    println(fget[I32](big, "nope", -1).to_string())
+    return 0
+}

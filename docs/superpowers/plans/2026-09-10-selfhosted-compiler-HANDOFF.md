@@ -57,6 +57,14 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   求值 b[1] → 越界。一律拆嵌套 if。
 - **字符串字面量**:裸 `{` 开启插值(未终止 → 解析死循环/误报),必须 `\{`;
   `\}` 是非法转义(裸 `}` 即可)。批量修复脚本模式见本会话(逐字符状态机扫描)。
+- **eval 对 `*`/`+` 溢出有守卫(直接 panic)**:大数算术/哈希一律 mod 小素数
+  (fmap 的 djb2 mod 100003 即此因);`+%`/`-%` 是回绕加/减,无回绕乘。
+- **use 撞名现为 E5030 拦截**(feat/std-stdlib 起):同名 decl 曾"首个胜出"静默
+  遮蔽,现为装载期错误;未来若需 shadowing 语义须显式设计(如 as 重命名导入)。
+- **泛型 struct 构造点具体 typed List 字段限标量/Str**:非泛型位的字面量值推断
+  走 ct_typeof 具体码(LI)→ 载荷编码 panic(fx_gprobe 用例;泛型体内经 TPar 替换
+  路径不受限,fmap/map 均可用)。feat/std-containers a4f5b4d 曾以"规范化实例化码
+  (按替换后字段型别编码)"整体解决,方案可参考移植。
 - **Ctron 无 `continue`/`break`**:循环退出用标志位;无 `;` 分隔;无多返回值
   (用 List 或 env 变量)。
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
@@ -92,7 +100,16 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
 3. **`?` 传播 Option[Str] NULL 模型**、**装箱载荷(用户枚举入 Result)别名
    语义细化**、**`#[trusted]` 语义化**(现为解析兼容 + FFI 信任占位)。
 4. **--profile web 语义化**(现为 full 别名;发射 C11 可走 Emscripten/wasm32)。
-5. **R-P2 对应**:std 容器泛型化(待泛型 struct 覆盖)、CI 例行化到远端。
+5. **R-P2 对应**:std 容器泛型化已落地(7eee4be);**feat/std-stdlib 续片**:
+   `std/fmap.ct`(FMap[V] Str 键哈希映射:djb2 mod 100003,256 槽开放寻址,
+   slots 存索引规避泛型零值,函数式 fput,迭代序=插入序,f 前缀命名避撞名)、
+   `std/sort.ct`(sorted[K]/sorted_desc[K] 泛型稳定插入排序 + reversed[K])、
+   `std/str.ct` 扩面(join/starts_with/ends_with/trim + 单测)、
+   **examples/ctwf 词频统计示例**(R-P2b 出口兑现:词频对 sort/uniq 黄金,
+   汇总行 distinct/total,双跑确定性)。随片发射修复:**Str 关系运算 strcmp 化**
+   (Lt/Gt/Le/Ge——裸 `<` 曾是指针比较)、**LI 索引写装箱**((const char*)(long)
+   镜像读侧)、**实例化 typedef 预扫卫兵**(CT_TDEF_ 与特化点同宏互斥)。
+   余项:sort_by(fn 值比较器泛型,深水)、CI 例行化到远端。
 
 ## 6. 关键文件地图
 
@@ -114,7 +131,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
 
 - **继续发射器深水区**:先读 §3/§4,从 bound/derive 体系切入(泛型语料
   03e 的唯一宿主依赖)。
-- **标准库线:已完成 7eee4be**。stdpkg 现为 Map[K,V]/Set[V](双 List 平行槽,
+- **标准库线:7eee4be + feat/std-stdlib(fmap/sort/str 扩面/ctwf/E5030)**。stdpkg 现为 Map[K,V]/Set[V](双 List 平行槽,
   函数式 API,K/V 需 Eq bound;调用点显式 TypeArgs 实例化)。顺带补全发射面
   单态化深水区:subst 嵌套下钻、List[K] 字段/构造的元素码、StructLit '#实例'
   env 绑定、#ifndef 特化去重、typedef 直出前置。**泛型体内嵌泛型调用已落地

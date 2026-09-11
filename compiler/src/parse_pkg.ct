@@ -226,9 +226,12 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                                     }
                                     j5 += 1
                                 }
-                                if !dup {
-                                    merged.push(mf[j4])
+                                if dup {
+                                    // E5030:同名 decl 曾"首个胜出"静默遮蔽 → 现拦截
+                                    diags.push("E5030: use 导入同名 decl:" + mf[j4][1] + "(与已合并模块/入口同名;请重命名或收敛导入)")
+                                    return out
                                 }
+                                merged.push(mf[j4])
                             }
                             j4 += 1
                         }

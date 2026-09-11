@@ -1,0 +1,8 @@
+use std.a.{new}
+use std.b.{hello}
+
+fn main() -> I32 {
+    println(new().to_string())
+    println(hello().to_string())
+    return 0
+}

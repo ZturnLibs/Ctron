@@ -181,6 +181,10 @@ fn main() -> I32 {
                 var snm = byte_slice(info, 0, bar)
                 var encs = byte_slice(info, bar + 1, info.len)
                 var tps = ct_struct_tps(file, snm)
+                // 预处理卫兵:与特化点 ct_emit_inst_typedef 同宏互斥(匿名 struct
+                // 重复 typedef 亦是重定义)
+                println("#ifndef CT_TDEF_" + ct_ctype(insts[pi3]))
+                println("#define CT_TDEF_" + ct_ctype(insts[pi3]))
                 var ii2: I32 = 1
                 while ii2 < file.len {
                     var sd2 = file[ii2]
@@ -199,6 +203,7 @@ fn main() -> I32 {
                     }
                     ii2 += 1
                 }
+                println("#endif")
                 pi3 += 1
             }
             // 文件级 static let(Phase 4 自举闭环:发射层缓冲静态自身也需要被发射):
