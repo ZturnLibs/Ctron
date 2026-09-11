@@ -70,7 +70,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 250**(CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化的 2 fn 在 TRANS 不入 cc_run 锁);smoke 3b 夹具名单含 derive,2c 含 fx_bound_neg。
+- **decls 锁现为 250**(CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS 不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + 递归泛型 emit 面拦截、3f 为 web 档三面。
 
 ## 5. 挂账(按优先级,均为独立切片)
 
@@ -125,5 +125,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   泛型深水区至此全部收口。
 - **规范 v0.6 已成文(2026-09-11)**:`docs/spec/` README bump v0.6 +
   03-types §3.9/§3.11(泛型/derive 语义成文)+ §10 补 E2050 + tests/README
-  钉子 19–21。剩余新方向:LSP(lsp/)、性能、`--profile web` 语义化、
-  `?` 传播 Option[Str] NULL 模型、`#[trusted]` 语义化。
+  钉子 19–21。**`--profile web` 已语义化 3cf2999f→3cf299f**:stdweb.dom 最小 API
+  检查/运行面可用(10_web_dom.ct web 档转绿;full 档 E2020 拦截),发射面
+  出 C stub。剩余:LSP(lsp/)、性能、`?` 传播 Option[Str] NULL 模型、
+  `#[trusted]` 语义化、CI 远端例行化。
