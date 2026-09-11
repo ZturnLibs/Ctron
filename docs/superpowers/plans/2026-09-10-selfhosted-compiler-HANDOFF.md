@@ -26,7 +26,7 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-10,Apple Silicon)**:smoke --full 59/59(3b 夹具 + 2c 负例含递归泛型 emit 面拦截 + 3e 示例应用);
+**基线(2026-09-10,Apple Silicon)**:smoke --full 63/63(3b 夹具含 optstr + 2c 负例 + 3e 示例 + 3f web 档);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
@@ -127,5 +127,6 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   03-types §3.9/§3.11(泛型/derive 语义成文)+ §10 补 E2050 + tests/README
   钉子 19–21。**`--profile web` 已语义化 3cf2999f→3cf299f**:stdweb.dom 最小 API
   检查/运行面可用(10_web_dom.ct web 档转绿;full 档 E2020 拦截),发射面
-  出 C stub。剩余:LSP(lsp/)、性能、`?` 传播 Option[Str] NULL 模型、
-  `#[trusted]` 语义化、CI 远端例行化。
+  出 C stub。**`?` 传播 Option[Str] NULL 模型已落地 635d7f4**(表达式位 Try/let 位载荷泛化/
+  Option 臂匹配/veq·fmt 补 T;fx_optstr 双面逐字)。剩余:LSP(lsp/)、性能、
+  `#[trusted]` 语义化、CI 远端例行化、装箱载荷别名语义细化。
