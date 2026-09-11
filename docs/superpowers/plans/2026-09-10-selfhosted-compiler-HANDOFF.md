@@ -88,6 +88,16 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   闭包 + 捕获句柄的口径,ctwf Top-3 即此);32→64 位 ABI 升级挂账。
   **排障教训**:'捕获坏了'一度是 vendored 副本漂移 + 陈旧 bin 的叠加假象,
   最小包先复现再下结论。
+- **闭包形参 32 位限制的 ABI 调研结论(feat/closure-abi)**:ct_i 实为 int64
+  (emitted `typedef int64_t ct_i`),传输层 64 位无恙;截断仅发生在 trans_conc
+  闭包 shim 的形参声明硬编码 `int32_t t_x = (int32_t)_pN` + env 绑定 "i"。
+  升级方案草案已验证到"自发射可过":TypeArgs 调用点把目标 fn 型形参的替换后
+  内参码经 env '#clcodes'(逗号串)提示传入 shim,按码生成形参声明
+  (ct_ctype + (long) 中转)。**止损原因**:提示需穿过预提升/#spec 多层 env,
+  叠加自发射回归排查成本超出单片边界;正式升级建议:shim 形参码化 +
+  spawn shim 同步 + ct_cap_decl/ct_call_args 全链审计,由熟悉闭包机制的
+  lane 主导。另:Ctron 逻辑或是关键字 or(p_or 匹配 'or' 记号),
+  '||' 非语法——新代码一律 or2/or3。
 - **Ctron 无 `continue`/`break`**:循环退出用标志位;无 `;` 分隔;无多返回值
   (用 List 或 env 变量)。
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
@@ -139,7 +149,10 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    稳定插入排序;fn 类型参数经单态化 + ct_clop 间接调用;闭包形参限 I32/Bool,
    Str 经形参为截断 UB——用 I32 索引闭包 + 捕获句柄口径)。ctwf Top-3 实战
    (索引比较器 + 捕获三个 List 句柄,smoke 3g 专项断言;3h vendored 同步检查)。
-   余项:闭包 ABI 32→64 位升级、I64 用户级值域专片、CI 例行化到远端。
+   **键排序已落地**:sorted_by_keys[V](xs, keys: List[Str], desc)——I32 索引
+   比较 + Str 键字典序(调用方保证键宽度一致:数字补零/ISO 时间),完全避开
+   闭包形参 ABI。余项:闭包 ABI 32→64 位升级(§4 草案)、I64 用户级值域专片、
+   CI 例行化到远端。
 
 ## 6. 关键文件地图
 
