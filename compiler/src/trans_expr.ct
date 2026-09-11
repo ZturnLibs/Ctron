@@ -249,8 +249,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 2 { ginit = ct_expr(ag[2], env, file) }
                 return "ctron_cell_new(" + ginit + ")"
             }
-            if base[0] == "Ident" && base[1] == "Box" {
-                // Box[P](v)(§6.1):GC 堆单值 cell,赋值/传参共享引用(别名可见)
+            if base[0] == "Ident" && base[1] == "Box" && ct_struct_tps(file, "Box").len == 0 {
+                // Box[P](v)(§6.1):GC 堆单值 cell,赋值/传参共享引用(别名可见);
+                // 用户声明 Box struct 时走通用泛型实例路径
                 if ag.len < 2 {
                     panic("emit:Box 需载荷")
                     return ""

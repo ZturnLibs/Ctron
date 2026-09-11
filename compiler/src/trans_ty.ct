@@ -169,10 +169,13 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     }
     if nt[0] != "Named" { return "i" }
     if nt[0] == "Named" && nt[2].len > 1 {
-        // Box[P] 注解 → B:P(堆单值指针;与构造点 typeof 同码)
+        // Box[P] 注解 → B:P(堆单值指针;与构造点 typeof 同码);
+        // 用户声明 Box struct 时走通用泛型实例路径
         if seq2(nt[1], "Box") {
-            if nt[2][1][0] == "Named" {
-                return "B:" + nt[2][1][1]
+            if ct_struct_tps(file, "Box").len == 0 {
+                if nt[2][1][0] == "Named" {
+                    return "B:" + nt[2][1][1]
+                }
             }
         }
     }
@@ -549,13 +552,16 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             if base[0] == "Ident" && base[1] == "Box" {
-                // Box[P](v) → B:P(堆单值指针;载荷 v0 限值类型)
-                if cal[2].len > 1 {
-                    if cal[2][1][0] == "Named" {
-                        return "B:" + cal[2][1][1]
+                // 用户声明了 Box struct(如 std 泛型化前探针)→ 走通用泛型实例路径
+                if ct_struct_tps(file, "Box").len == 0 {
+                    // Box[P](v) → B:P(堆单值指针;载荷 v0 限值类型)
+                    if cal[2].len > 1 {
+                        if cal[2][1][0] == "Named" {
+                            return "B:" + cal[2][1][1]
+                        }
                     }
+                    return "B:V"
                 }
-                return "B:V"
             }
             if base[0] == "Ident" && base[1] == "List" {
                 // List[I32] → LI(元素槽 int);型参实参经 env 替换码(单态化体);其余 → L
