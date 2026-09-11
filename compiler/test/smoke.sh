@@ -69,6 +69,13 @@ tc_fx fx_unresolved_read_neg "E2020: 未解析的名称"
 tc_fx fx_type_neg "E2010: let 初始化类型不匹配"
 tc_fx fx_variant_neg "E2010: 调用实参数不匹配"
 tc_fx fx_bound_neg "E2050"
+"$COMP/ctc.sh" emit "$COMP/test/fx_genrec_neg.ct" "$T/gr.c" > "$T/gr.out" 2>&1
+grc=$?
+if [ $grc -eq 1 ] && grep -q "递归超限" "$T/gr.out"; then
+    ok "递归泛型拦截(递归超限, rc=1)"
+else
+    bad "递归泛型异常(rc=$grc): $(cat "$T/gr.out")"
+fi
 tc_fx fx_unused_neg "W8030: 未使用绑定"
 tc_fx fx_shadow_neg "W8040: 遮蔽前奏符号"
 tc_fx fx_capture_mut_neg "E3070: 闭包可变捕获"

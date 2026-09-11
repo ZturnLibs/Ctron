@@ -1,0 +1,10 @@
+// fx_genrec_neg.ct —— 递归泛型:预提升深度超限 → emit 期拦截("递归超限",rc=1)
+// 递归特化无 seen 集,预提升不设终点;深度 8 显式 panic(语义挂账,非终态设计)
+fn loopr[T](x: T) -> T {
+    return loopr[T](x)
+}
+
+fn main() -> I32 {
+    println(loopr[I32](1))
+    return 0
+}

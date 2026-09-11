@@ -27,6 +27,12 @@ fn head[V](xs: List[V], dft: V) -> V {
 fn head_twice[V](v: V) -> V {
     return head[V](push2[V](List[V](), v), v)
 }
+fn tag[T: Eq](v: T) -> T {
+    return v
+}
+fn pass[T: Eq](v: T) -> T {
+    return tag[T](v)
+}
 fn main() -> I32 {
     println(identity[I32](21).to_string())
     println(pick[I32](1, 2, true).to_string())
@@ -34,5 +40,6 @@ fn main() -> I32 {
     println(identity[Str]("ok"))
     println(head_twice[I32](9).to_string())
     println(head_twice[Str]("a"))
+    println(pass[I32](3).to_string())
     return 0
 }

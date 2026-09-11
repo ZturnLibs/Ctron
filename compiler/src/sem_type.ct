@@ -763,6 +763,28 @@ fn bound_sat(file: List[Str], ty: List[Str], tr: Str, dp: I32) -> Bool {
     }
     var sd = find_sdecl(file, ty[1])
     if sd.len == 0 {
+        // 顶层无声明名:原语不满足;枚举/类不派生;其余视为外层型参(TPar)→ 传递放行,
+        // 由实参处的外层 bound 负责(嵌套字段位无 TPar 语境,仍不满足)
+        if dp == 0 {
+            var nm9 = ty[1]
+            var isprim = or2(seq2(nm9, "I32"), or2(seq2(nm9, "I64"), or2(seq2(nm9, "Bool"), or2(seq2(nm9, "Str"), or2(seq2(nm9, "F64"), seq2(nm9, "F32"))))))
+            if !isprim {
+                var i9: I32 = 1
+                var isdecl = false
+                while i9 < file.len {
+                    var d9 = file[i9]
+                    if or2(d9[0] == "Enum", d9[0] == "Class") {
+                        if seq2(d9[1], nm9) {
+                            isdecl = true
+                        }
+                    }
+                    i9 += 1
+                }
+                if !isdecl {
+                    return true
+                }
+            }
+        }
         return false
     }
     var tps = sd[3]

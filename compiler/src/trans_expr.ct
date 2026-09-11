@@ -290,19 +290,32 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         if gk < tys.len - 1 { mg = mg + "_" }
                         gk += 1
                     }
-                    // 定义发射判定:pass1/预提升模式 且 非特化体内(体内只发调用,定义由预提升落文件作用域)
+                    // 定义发射判定:非特化体内,且(预提升模式 或 pass1)。
+                    // "#ph<深度>" 递增计数(预提升 phenv 的 "#p"=1 不走 pass1 分支),
+                    // 超限 = 递归泛型(无 seen 集,预提升不设终点)→ 显式拦截
                     var emit_def = false
-                    if !ct_env_has(env, "#spec") {
-                        if or2(seq2(ct_pass(env), "1"), ct_env_has(env, "#ph")) {
-                            emit_def = true
+                    var phd: I32 = 0
+                    var pk9: I32 = 1
+                    while pk9 <= 3 {
+                        if ct_env_has(env, "#ph" + pk9.to_string()) {
+                            phd = pk9
+                        }
+                        pk9 += 1
+                    }
+                    if phd > 0 {
+                        if phd >= 3 {
+                            panic("emit:泛型特化递归超限:" + mg)
+                            return ""
+                        }
+                        emit_def = true
+                    } else {
+                        if !ct_env_has(env, "#spec") {
+                            if seq2(ct_pass(env), "1") {
+                                emit_def = true
+                            }
                         }
                     }
                     if emit_def {
-                        var sp = "0"
-                        if ct_env_has(env, "#spec") { sp = "1" }
-                        var ph = "0"
-                        if ct_env_has(env, "#ph") { ph = "1" }
-                        println("//DD:" + mg + " p=" + ct_pass(env) + " spec=" + sp + " ph=" + ph)
                         var spec = mk("Fn")
                         spec.push(mg)
                         spec.push(mk("TPs"))
@@ -356,7 +369,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             genv = env_bind(genv, "#" + ct_struct_name_of(ic6), ic6)
                         }
                         // 嵌套预提升:#p=1 静默遍历特化体,体内嵌套单态化的定义直出文件作用域
-                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "1"), "#ph", "1"), file, rcs)
+                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), file, rcs)
                         // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
                         pk3 = 1
                         while pk3 < ps2.len {
@@ -366,6 +379,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             pk3 += 1
                         }
                         ct_emit_inst_typedef(file, spec[4])
+                        println("//DD2:" + mg + " phd=" + phd.to_string())
                         println("#ifndef CT_SPEC_" + mg)
                         println("#define CT_SPEC_" + mg)
                         println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
