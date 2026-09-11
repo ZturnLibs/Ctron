@@ -2,6 +2,7 @@ use std.map.{map_new, put, get, has}
 use std.set.{set_new, add, mem, len}
 use std.fmap.{fnew, fput, fget, flen, fwords}
 use std.sort.{sorted, sorted_desc, reversed}
+use std.fs.{read_or, exists}
 
 fn main() -> I32 {
     var m = map_new[I32, I32]()
@@ -46,5 +47,30 @@ fn main() -> I32 {
     var sasc = sorted[Str](ws2)
     println(sasc[0] + "," + sasc[1])
     println(reversed[I32](nums)[0].to_string())
+
+    // 迭代面:map keys/values(首插序,覆盖写不移位;用 w: Map[I32, Str])
+    w = put[I32, Str](w, 8, "eight")
+    var mk = keys[I32, Str](w)
+    var mv = values[I32, Str](w)
+    println(mk[0].to_string() + "=" + mv[0] + "," + mk[1].to_string() + "=" + mv[1])
+
+    // set tolist/fromlist(去重往返)
+    s = add[I32](s, 9)
+    var tl = tolist[I32](s)
+    println(tl[0].to_string() + "," + tl[1].to_string())
+
+    // fmap fvals(与 fwords 一一对应)
+    var fv = fvals[I32](fm)
+    println(fv[0].to_string() + "," + fv[1].to_string())
+
+    // fs 便利层:read_or 命中/缺省
+    var fpath = "/tmp/ctron_stdpkg_fs.txt"
+    if exists(fpath) {
+        fs_delete(fpath)
+    }
+    println(read_or(fpath, "none").to_string())
+    println(fs_write(fpath, "saved").to_string())
+    println(read_or(fpath, "none"))
+    fs_delete(fpath)
     return 0
 }

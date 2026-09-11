@@ -246,6 +246,13 @@ if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/sort.ct" > /dev/null 2>&1; th
 else
     bad "sort 种子单测失败"
 fi
+for st in map set fs; do
+    if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/$st.ct" > /dev/null 2>&1; then
+        ok "$st 种子单测通过(原生解释)"
+    else
+        bad "$st 种子单测失败"
+    fi
+done
 for cv in uhex; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then

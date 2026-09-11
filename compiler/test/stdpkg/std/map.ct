@@ -53,3 +53,26 @@ pub fn has[K: Eq, V](m: Map[K, V], k: K) -> Bool {
     }
     return false
 }
+
+// 键表/值表(首插序;覆盖写不移位)。返回内部 List 的克隆(读即深克隆语义锚)。
+pub fn keys[K, V](m: Map[K, V]) -> List[K] {
+    return m.ks
+}
+
+pub fn values[K, V](m: Map[K, V]) -> List[V] {
+    return m.vs
+}
+
+test "keys/values insertion order, replace keeps slot" {
+    var m = map_new[I32, Str]()
+    m = put[I32, Str](m, 2, "two")
+    m = put[I32, Str](m, 1, "one")
+    m = put[I32, Str](m, 2, "TWO")
+    var ks = keys[I32, Str](m)
+    var vs = values[I32, Str](m)
+    assert(ks.len == 2)
+    assert(ks[0] == 2)
+    assert(ks[1] == 1)
+    assert(vs[0] == "TWO")
+    assert(vs[1] == "one")
+}

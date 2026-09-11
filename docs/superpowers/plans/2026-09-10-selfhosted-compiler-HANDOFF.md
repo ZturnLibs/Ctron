@@ -26,8 +26,8 @@ python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考�
 compiler/ctc.sh check compiler/build/cc_run.ct   # decls=243 锁
 ```
 
-**基线(2026-09-11,Apple Silicon)**:smoke --full 72/72(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
-+ 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort 单测 + 2c 负例含递归泛型 emit 面拦截);
+**基线(2026-09-11,Apple Silicon)**:smoke --full 76/76(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
++ 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort/map/set/fs 单测 + 2c 负例含递归泛型 emit 面拦截);
 suite 51/51 双侧;decls=244;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
@@ -62,6 +62,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   (fmap 的 djb2 mod 100003 即此因);`+%`/`-%` 是回绕加/减,无回绕乘。
 - **use 撞名现为 E5030 拦截**(feat/std-stdlib 起):同名 decl 曾"首个胜出"静默
   遮蔽,现为装载期错误;未来若需 shadowing 语义须显式设计(如 as 重命名导入)。
+- **bound 传递显式化**:TPar→TPar 传参(如 fromlist[V] 调 add[V: Eq])要求外层
+  fn 自带同名 bound,否则 E2050——容器便利 fn 签名须与被调 bound 对齐。
+- **Str 接收者的 .to_string()**:eval 恒等(vS(fmt));emit 原缺 "s"/"N" 分支
+  (曾掉 i32 兜底打印指针低位)——已补恒等发射。
+- **多文件包调试铁律**:bin/ 陈旧与 ctc.sh emit 无 path 回退会叠加出
+  't_xxx undeclared/型别错乱'假象——排障前先 native.sh + bin/ctron-emit run。
 - **泛型 struct 构造点具体 typed List 字段:已解(feat/std-stdlib)**——
   ct_structlit_inst 槽对齐('#<名>' env 钉定优先;场值码经"声明字段 → 型参槽"
   统一:裸 TPar 直取值码,List[TPar] 值码 LI→元素 i/其余→元素 s),typeof(StructLit)
@@ -116,7 +122,9 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    汇总行 distinct/total,双跑确定性)。随片发射修复:**Str 关系运算 strcmp 化**
    (Lt/Gt/Le/Ge——裸 `<` 曾是指针比较)、**LI 索引写装箱**((const char*)(long)
    镜像读侧)、**实例化 typedef 预扫卫兵**(CT_TDEF_ 与特化点同宏互斥)。
-   余项:sort_by(fn 值比较器泛型,深水)、CI 例行化到远端。
+   **迭代面已收口**:map keys[K,V]/values[K,V]、set tolist[V]/fromlist[V: Eq]、
+   fmap fvals[V]、std/fs.ct(read_or/exists 便利层,+单测);stdpkg main 全覆盖。
+   余项:sort_by(fn 值比较器泛型,深水)、now_ms(I64 值域专片)、CI 例行化到远端。
 
 ## 6. 关键文件地图
 

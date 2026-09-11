@@ -511,6 +511,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return ""
                 }
                 if objt == "b" { return "((" + obj + ") ? \"true\" : \"false\")" }
+                if or2(objt == "s", objt == "N") { return "(const char*)(" + obj + ")" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
