@@ -495,6 +495,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var m = cal[3]
             if m == "load" { return "i" }
             if m == "to_string" { return "s" }
+            if m == "title" { return "s" }
+            if m == "set_title" { return "v" }
             if m == "show" {
                 // @derive(Show)(§3d):结构接收者的 show 调用返回 Str(非结构仍走 UFCS 视角)
                 var srt = ct_strip_p(ct_typeof(cal[1], env, file))

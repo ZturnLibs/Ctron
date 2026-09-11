@@ -62,7 +62,7 @@ fn main() -> I32 {
                 }
                 return 1
             }
-            var sems = sem_walk2(file, "full")
+            var sems = sem_walk2(file, "ANCHORPROFILE")
             if !seq2(sems, "") {
                 print(strip_at(sems))
                 return 1

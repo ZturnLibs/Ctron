@@ -27,7 +27,7 @@ fn interp_hit(txt: Str, nm: Str) -> Bool {
     return false
 }
 
-fn sem_calls_all(file: List[Str], diags: List[Str]) {
+fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     var fns = List[Str]()
     var ars = List[Str]()
     var rets = List[Str]()
@@ -118,6 +118,10 @@ fn sem_calls_all(file: List[Str], diags: List[Str]) {
     prel.push("Iter")
     prel.push("parallel")
     prel.push("arena")
+    if seq2(prof, "web") {
+        // web 档(§9.2):stdweb.dom 内建命名空间(dom.set_title/dom.title)→ 值名集
+        vars.push("dom")
+    }
     var lets = List[Str]()
     var reads = List[Str]()
     var isrc = List[Str]()

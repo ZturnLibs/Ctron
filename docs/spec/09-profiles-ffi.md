@@ -16,6 +16,7 @@
 - 后端 WasmGC;GC 用宿主;任务挂起经 JSPI/栈切换;wasm threads 启用时恢复全量 Send 检查(§7.8)。
 - JS 桥:类型化(无 `any` 泄漏);JS 异常在边界转为 `Result`;JS 回调按 web 档 Send 近似规则;DOM/Canvas/Fetch 经 `stdweb`。
 - **stdweb 最小 API(v0.5 钉死,P1-D 起可用)**:`use stdweb.dom` 后——`dom.set_title(Str) -> Void`、`dom.title() -> Str`。其余 DOM/Canvas/Fetch 以此模式逐版扩充(锚定测试:`10_web_dom.ct`)。
+- **自举侧现状(v0.6 注记)**:`--profile=web` 下 `stdweb.dom` 检查面与运行面已可用(`dom` 为内建命名空间,标题存运行态;full 档 = E2020 拦截);发射面产出 `ctron_dom_set_title/ctron_dom_title` C stub,真实 JS 桥由 WasmGC 后端(P1-D)替换。
 
 ## 9.3 bare 档
 

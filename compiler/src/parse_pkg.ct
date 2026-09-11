@@ -15,7 +15,7 @@ fn pkg_dir_of(path: Str) -> Str {
     return "."
 }
 
-// std.* 导入:stdlib 未实现,跳过加载(§7 std 可用性 v0 口径)
+// std.*/stdweb.* 导入:stdlib 未实现跳过加载;stdweb 为内建命名空间,由 sem 按档位解析(§9.2)
 fn segs_std(d: List[Str]) -> Bool {
     if d[0] != "Use" {
         return false
@@ -24,7 +24,7 @@ fn segs_std(d: List[Str]) -> Bool {
     if segs.len < 2 {
         return false
     }
-    return seq2(segs[1], "std")
+    return or2(seq2(segs[1], "std"), seq2(segs[1], "stdweb"))
 }
 
 fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {

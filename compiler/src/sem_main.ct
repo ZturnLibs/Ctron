@@ -157,7 +157,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
         i += 1
     }
     // E2020/E2010:名字解析与类型统一 v1(见文件尾新节)
-    sem_calls_all(file, diags)
+    sem_calls_all(file, diags, prof)
     // E3070:闭包可变捕获(两遍式,见文件尾新节)
     sem_closures(file, diags)
     // E6020/E6010:comptime 副作用扫描 + const/static-let 编译期试求值(见文件尾新节)

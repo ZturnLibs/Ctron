@@ -436,6 +436,30 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         recv[1] = val_arith("Add", oldm, vals[0])
         return e4("k", ob[1], oldm, ob[3])
     }
+    if recv[0] == "NS" && seq2(recv[1], "dom") {
+        // web 档(§9.2)stdweb.dom 最小 API;标题存 env 保留名(运行态无全局通道)
+        if seq2(m, "set_title") && vals.len == 1 {
+            // upsert:env_set 只换已存在键,首写须 env_add
+            var dk = env_at(env, "#dom:title")
+            var denv = env
+            if dk.len > 0 {
+                denv = env_set(env, "#dom:title", vals[0])
+            } else {
+                denv = env_add(env, "#dom:title", vals[0])
+            }
+            return e4("k", denv, vV2(), out)
+        }
+        if seq2(m, "title") && vals.len == 0 {
+            var te = env_at(env, "#dom:title")
+            var tv = vS("")
+            if te.len > 1 {
+                tv = te[1]
+            }
+            return e4("k", env, tv, out)
+        }
+        panic("dom 方法:" + m)
+        return e4("a", env, vV2(), out)
+    }
     if recv[0] == "NS" && seq2(m, "map") && vals.len == 2 {
         return ns_map_reduce(file, ob, vals, true)
     }

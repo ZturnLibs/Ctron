@@ -97,6 +97,9 @@ fn main() -> I32 {
             println("static const char* ctron_cli_input = NULL;")
             println("static const char* ctron_entry(void) \{ return ctron_cli_input ? ctron_cli_input : \"\"; }")
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
+            println("static const char* ctron_dom_title_buf = \"\";")
+            println("static void ctron_dom_set_title(const char* s) \{ ctron_dom_title_buf = s; }")
+            println("static const char* ctron_dom_title(void) \{ return ctron_dom_title_buf; }")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
             // 用户 struct 值类型(§6.1):typedef 先于原型与函数体
             var si: I32 = 1

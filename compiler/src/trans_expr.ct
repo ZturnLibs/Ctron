@@ -514,6 +514,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
+            if or2(m == "set_title", m == "title") {
+                // web 档(§9.2)stdweb.dom 最小 API → C stub(真实 WasmGC 后端经 JS 桥替换)
+                if cal[1][0] == "Ident" && cal[1][1] == "dom" {
+                    if m == "set_title" {
+                        if ag.len < 2 {
+                            panic("emit:dom.set_title 实参")
+                            return ""
+                        }
+                        return "ctron_dom_set_title(" + ct_call_args(ag, 1, env, file, "") + ")"
+                    }
+                    return "ctron_dom_title()"
+                }
+            }
             if m == "show" {
                 // @derive(Show)(§3d):结构接收者 → 合成 Name(f=v,...) 串接链(eval fmt_struct 逐字对齐)
                 if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {

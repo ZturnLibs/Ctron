@@ -57,6 +57,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             ns.push("parallel")
             return e4("k", env, ns, out)
         }
+        if seq2(e[1], "dom") {
+            var ns = List[Str]()
+            ns.push("NS")
+            ns.push("dom")
+            return e4("k", env, ns, out)
+        }
         panic("unbound:" + e[1])
         return e4("a", env, vV2(), out)
     }

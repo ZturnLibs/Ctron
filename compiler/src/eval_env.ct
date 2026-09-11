@@ -180,8 +180,11 @@ fn find_decl(file: List[Str], nm: Str) -> List[Str] {
     while i < file.len {
         var d = file[i]
         var tt = d[0]
-        if seq2(d[1], nm) && or3(seq2(tt, "Fn"), seq2(tt, "FnPub"), seq2(tt, "FnC")) {
-            return d
+        // tag 先行:Use 节点的 d[1] 是段列表(非 Str),急切 seq2 会 rt abort
+        if or3(seq2(tt, "Fn"), seq2(tt, "FnPub"), seq2(tt, "FnC")) {
+            if seq2(d[1], nm) {
+                return d
+            }
         }
         i += 1
     }

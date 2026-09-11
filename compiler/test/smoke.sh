@@ -192,6 +192,27 @@ if "$COMP/bin/ctron-cc" run "$CTWC/std/str.ct" > /dev/null 2>&1; then
 else
     bad "str 种子单测失败"
 fi
+echo "== 3f) web 档(stdweb.dom 最小 API,§9.2) =="
+"$COMP/ctc.sh" check "$ROOT/tests/10_web_dom.ct" --profile=web > "$T/w1.out" 2>&1
+if [ $? -eq 0 ] && grep -q "check OK" "$T/w1.out"; then
+    ok "web check 面通过(dom 解析)"
+else
+    bad "web check 异常: $(cat "$T/w1.out")"
+fi
+"$COMP/ctc.sh" check "$ROOT/tests/10_web_dom.ct" > "$T/w2.out" 2>&1
+wrc=$?
+if [ $wrc -eq 1 ] && grep -q "E2020" "$T/w2.out"; then
+    ok "full 档 stdweb 拦截(E2020, rc=1)"
+else
+    bad "full 档未拦截(rc=$wrc): $(cat "$T/w2.out")"
+fi
+"$COMP/ctc.sh" "$ROOT/tests/10_web_dom.ct" --profile=web > "$T/w3.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "web 运行面 dom 往返"
+else
+    bad "web 运行面异常: $(cat "$T/w3.out")"
+fi
+
 for cv in uhex; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then

@@ -14,9 +14,15 @@ ROOT=$(dirname "$DIR")
 HOST="$ROOT/compiler-c/build/ctronc"
 
 mode=run
+PROF=full
 case ${1:-} in
     check|emit) mode=$1; shift ;;
 esac
+for a in "$@"; do
+    case $a in
+        --profile=*) PROF=${a#--profile=} ;;
+    esac
+done
 if [ ! -x "$HOST" ]; then
     echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
@@ -33,7 +39,7 @@ case $mode in
     run)
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed "s|\.\./selfhosted/input_cc\.ct|$IN|" "$DIR/build/cc_run.ct" > "$TMP"
+        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORPROFILE|$PROF|" "$DIR/build/cc_run.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
