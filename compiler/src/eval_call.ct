@@ -165,6 +165,13 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("fs_delete args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "now_ms") {
+        if vals.len != 0 {
+            panic("now_ms arity")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("k", env, vD(df_can(now_ms_text())), out)
+    }
     if seq2(nm, "ctron_entry") {
         if vals.len != 0 {
             panic("ctron_entry arity")

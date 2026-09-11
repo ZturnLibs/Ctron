@@ -76,8 +76,11 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
 - **fs 内建已入前奏(feat/std-stdlib)**:fs_exists/fs_write/fs_delete(Bool 域)
   四层对齐:宿主 rt_eval + cc eval_call + trans 分发 + driver_emit 运行时;
   sem 前奏两处名单已同步。新增内建的完整清单(五处:前奏两处/eval/分发/运行时)
-  即新增内建 SOP。**now_ms 挂账**:宿主 val.i 为 __int128 可容 I64,但 cc eval
-  的 I64 值域与 to_string 对齐需专片(现 fixture 以 Bool 化输出规避 fmt 风险)。
+  即新增内建 SOP。**now_ms 已落地(feat/std-time)**:now_ms() -> F64(D 域)+
+  伴生 now_ms_text()(规范十进制文本→vD 包装;cc eval 无法在 Ctron 侧格式化
+  宿主 double,故双内建)。**新教训**:新增内建第六处——ct_typeof 内建返回型别表
+  (漏配 now_ms 时局部按 i32 推,double 截断溢出,fx_time 首跑踩中)。
+  I64 用户级值域仍挂账(eval 值模型无独立 I64 kind)。
 - **Ctron 无 `continue`/`break`**:循环退出用标志位;无 `;` 分隔;无多返回值
   (用 List 或 env 变量)。
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
@@ -124,7 +127,8 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    镜像读侧)、**实例化 typedef 预扫卫兵**(CT_TDEF_ 与特化点同宏互斥)。
    **迭代面已收口**:map keys[K,V]/values[K,V]、set tolist[V]/fromlist[V: Eq]、
    fmap fvals[V]、std/fs.ct(read_or/exists 便利层,+单测);stdpkg main 全覆盖。
-   余项:sort_by(fn 值比较器泛型,深水)、now_ms(I64 值域专片)、CI 例行化到远端。
+   **时间原语已落地**:now_ms() -> F64(五层 SOP+typeof 型别表)。
+   余项:sort_by(fn 值比较器泛型,深水)、I64 用户级值域专片、CI 例行化到远端。
 
 ## 6. 关键文件地图
 

@@ -91,6 +91,8 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("fs_exists")
     prel.push("fs_write")
     prel.push("fs_delete")
+    prel.push("now_ms")
+    prel.push("now_ms_text")
     prel.push("byte_at")
     prel.push("byte_slice")
     prel.push("Some")

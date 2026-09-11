@@ -1,4 +1,5 @@
 #include "rt_internal.h"
+#include <time.h>
 
 // rt_eval.c —— 域辅助(和类型/数组/类/并发)+ 表达式求值(C4-i)
 // ================= 前向 =================
@@ -910,6 +911,21 @@ val eval_expr(rt* R, cexpr* e) {
                 val pv = eval_expr(R, e->elems[0]);
                 const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
                 return v_bool(remove(path) == 0);
+            }
+            if (!strcmp(nm, "now_ms_text")) {
+                // now_ms 的求值面伴生:返回毫秒的规范十进制文本(cc D 域 vD 包装)
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%lld", ms);
+                return v_str_own(R, ctron_arena_strndup(R, buf, strlen(buf)));
+            }
+            if (!strcmp(nm, "now_ms")) {
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                double ms = (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+                return v_flt(ms);
             }
             if (!strcmp(nm, "utf8_enc")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "utf8_enc 实参");

@@ -1,0 +1,9 @@
+// fx_time.ct —— now_ms 内建对齐夹具(F64/D 域;输出全 Bool 化,规避 fmt 差异)
+fn main() -> I32 {
+    var t = now_ms()
+    println((t > 1500000000000.0).to_string())
+    var u = now_ms()
+    println((u >= t).to_string())
+    println(((u - t) < 60000.0).to_string())
+    return 0
+}

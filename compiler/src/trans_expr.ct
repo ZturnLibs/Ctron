@@ -613,6 +613,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "fs_exists" { return "(ctron_fs_exists(" + ct_call_args(ag, 1, env, file, "") + ")?1:0)" }
         if callee == "fs_write" { return "(ctron_fs_write(" + ct_call_args(ag, 1, env, file, "") + ")?1:0)" }
         if callee == "fs_delete" { return "(ctron_fs_delete(" + ct_call_args(ag, 1, env, file, "") + ")?1:0)" }
+        if callee == "now_ms" { return "ctron_now_ms()" }
+        if callee == "now_ms_text" { return "ctron_now_ms_text()" }
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "utf8_enc" {
