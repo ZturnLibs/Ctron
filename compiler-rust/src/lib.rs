@@ -6,6 +6,8 @@ pub mod sem;
 pub mod lexer;
 pub mod parser;
 pub mod token;
+pub mod testing;
+pub mod fmt;
 
 pub use lexer::lex;
 pub use parser::parse_tokens;

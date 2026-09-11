@@ -143,6 +143,170 @@ fn main() -> ExitCode {
             }
             if failed > 0 { eprintln!("{failed} 个测试失败"); ExitCode::from(1) } else { ExitCode::SUCCESS }
         }
+        Some("test") => {
+            // R-P2c:ctron test <file|pkg目录> [--filter pat] [--format=json] [--deterministic]
+            let mut path = String::new();
+            let mut filter: Option<String> = None;
+            let mut json = false;
+            let mut a = args.iter().skip(2);
+            while let Some(arg) = a.next() {
+                if arg == "--filter" { filter = a.next().cloned(); }
+                else if arg == "--format=json" { json = true; }
+                else if arg == "--format" { json = a.next().map(|v| v == "json").unwrap_or(false); }
+                // --deterministic:interp 本征顺序执行(任务按 spawn 序号串行),接受占位;
+                // 真调度冻结随原生后端并发落地
+                else if arg == "--deterministic" {}
+                else if !arg.starts_with('-') && path.is_empty() { path = arg.clone(); }
+            }
+            if path.is_empty() {
+                eprintln!("usage: ctron test <file|pkg目录> [--filter pat] [--format=json] [--deterministic]");
+                return ExitCode::from(2);
+            }
+            let src = if std::path::Path::new(&path).is_dir() {
+                // pkg 模式:src/*.ct 按文件名序拼接为单源(v0 不去重跨文件 test 名)
+                let dir = std::path::Path::new(&path);
+                let src_dir = if dir.join("src").is_dir() { dir.join("src") } else { dir.to_path_buf() };
+                let mut parts: Vec<String> = Vec::new();
+                match std::fs::read_dir(&src_dir) {
+                    Ok(es) => {
+                        let mut cts: Vec<std::path::PathBuf> = es.flatten().map(|e| e.path())
+                            .filter(|p| p.extension().is_some_and(|x| x == "ct")).collect();
+                        cts.sort();
+                        for c in &cts {
+                            match std::fs::read_to_string(c) {
+                                Ok(s) => parts.push(s),
+                                Err(e) => { eprintln!("无法读取 {}: {e}", c.display()); return ExitCode::from(2); }
+                            }
+                        }
+                    }
+                    Err(e) => { eprintln!("无法读取目录 {}: {e}", src_dir.display()); return ExitCode::from(2); }
+                }
+                parts.join("\n")
+            } else {
+                match std::fs::read_to_string(&path) {
+                    Ok(s) => s,
+                    Err(_) => { eprintln!("无法读取 {path}"); return ExitCode::from(2); }
+                }
+            };
+            let profile = if path.contains("bare") { ctron::sem::Profile::Bare }
+                else if path.contains("web") { ctron::sem::Profile::Web }
+                else { ctron::sem::Profile::Full };
+            let report = ctron::testing::test_report(&src, profile, filter.as_deref());
+            if !report.diags.is_empty() {
+                for d in &report.diags {
+                    println!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
+                }
+                return ExitCode::from(1);
+            }
+            if json {
+                let total = report.results.len();
+                println!("{{");
+                println!("  \"total\": {total},");
+                println!("  \"passed\": {},", report.passed());
+                println!("  \"failed\": {},", report.failed());
+                println!("  \"results\": [");
+                for (i, r) in report.results.iter().enumerate() {
+                    let comma = if i + 1 < total { "," } else { "" };
+                    let name = ctron::testing::json_escape(&r.name);
+                    match &r.message {
+                        Some(m) => println!("    {{\"name\": \"{name}\", \"status\": \"{}\", \"message\": \"{}\"}}{comma}",
+                            r.status.as_str(), ctron::testing::json_escape(m)),
+                        None => println!("    {{\"name\": \"{name}\", \"status\": \"{}\"}}{comma}", r.status.as_str()),
+                    }
+                }
+                println!("  ]");
+                println!("}}");
+            } else {
+                for r in &report.results {
+                    match (&r.status, &r.message) {
+                        (ctron::testing::TestStatus::Pass, _) => println!("ok   {}", r.name),
+                        (ctron::testing::TestStatus::PanicOk, Some(m)) => println!("panic-ok {}: {m}", r.name),
+                        (ctron::testing::TestStatus::PanicOk, None) => println!("panic-ok {}", r.name),
+                        (ctron::testing::TestStatus::Fail, Some(m)) => println!("FAIL {}: {m}", r.name),
+                        (ctron::testing::TestStatus::Fail, None) => println!("FAIL {}", r.name),
+                    }
+                }
+                let total = report.results.len();
+                println!("{} passed, {} failed ({} total)", report.passed(), report.failed(), total);
+            }
+            if report.failed() > 0 {
+                eprintln!("{} 个测试失败", report.failed());
+                return ExitCode::from(1);
+            }
+            ExitCode::SUCCESS
+        }
+        Some("fmt") => {
+            // R-P2d:ctron fmt <file|pkg目录> [-w] [--check];默认打印格式化结果到 stdout
+            let mut path = String::new();
+            let mut write_in_place = false;
+            let mut check = false;
+            let mut a = args.iter().skip(2);
+            while let Some(arg) = a.next() {
+                if arg == "-w" || arg == "--write" { write_in_place = true; }
+                else if arg == "--check" { check = true; }
+                else if !arg.starts_with('-') && path.is_empty() { path = arg.clone(); }
+            }
+            if path.is_empty() {
+                eprintln!("usage: ctron fmt <file|pkg目录> [-w] [--check]");
+                return ExitCode::from(2);
+            }
+            // 目标文件集:单文件,或 pkg 目录的 src/*.ct(无 src 则目录直下)
+            let mut targets: Vec<std::path::PathBuf> = Vec::new();
+            let p = std::path::Path::new(&path);
+            if p.is_dir() {
+                let src_dir = if p.join("src").is_dir() { p.join("src") } else { p.to_path_buf() };
+                match std::fs::read_dir(&src_dir) {
+                    Ok(es) => {
+                        for e in es.flatten() {
+                            let ep = e.path();
+                            if ep.extension().is_some_and(|x| x == "ct") { targets.push(ep); }
+                        }
+                    }
+                    Err(e) => { eprintln!("无法读取目录 {}: {e}", src_dir.display()); return ExitCode::from(2); }
+                }
+                targets.sort();
+            } else {
+                targets.push(p.to_path_buf());
+            }
+            let mut unformatted = 0usize;
+            let mut errors = 0usize;
+            for t in &targets {
+                let Ok(src) = std::fs::read_to_string(t) else {
+                    eprintln!("无法读取 {}", t.display()); errors += 1; continue;
+                };
+                match ctron::fmt::fmt_src(&src) {
+                    Ok(formatted) => {
+                        if check {
+                            if formatted != src {
+                                println!("{}", t.display());
+                                unformatted += 1;
+                            }
+                        } else if write_in_place {
+                            if formatted != src {
+                                if let Err(e) = std::fs::write(t, &formatted) {
+                                    eprintln!("写入失败 {}: {e}", t.display()); errors += 1; continue;
+                                }
+                            }
+                            println!("{}", t.display());
+                        } else {
+                            print!("{formatted}");
+                        }
+                    }
+                    Err(msg) => {
+                        eprintln!("{}: {msg}", t.display()); errors += 1;
+                    }
+                }
+            }
+            if errors > 0 { return ExitCode::from(1); }
+            if check {
+                if unformatted > 0 {
+                    eprintln!("{unformatted} 个文件待格式化");
+                    return ExitCode::from(1);
+                }
+                return ExitCode::SUCCESS;
+            }
+            ExitCode::SUCCESS
+        }
         Some("build") => {
             // 转译 + cc:一行得到原生二进制
             let mut path = String::new();
@@ -270,7 +434,7 @@ fn main() -> ExitCode {
             if diags.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
         }
         _ => {
-            eprintln!("usage: ctron <version|lex|parse|check> [args]");
+            eprintln!("usage: ctron <version|lex|parse|check|run|test|build|trans|fmt> [args]");
             ExitCode::from(2)
         }
     }

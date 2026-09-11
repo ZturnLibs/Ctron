@@ -158,6 +158,22 @@ impl<'a> Interp<'a> {
                 results.push((t.name.clone(), r));
             }
         }
+        // R-P2c 发现面:零参 fn test_* 与 test 块同一机制执行(返回值忽略)
+        for d in &file.decls {
+            if let ast::Decl::Fn(f) = d {
+                if f.name.starts_with("test_") && f.params.is_empty() {
+                    if let Some(body) = &f.body {
+                        let env = Env::child(&self.globals);
+                        let r = match self.check_block(body, &env) {
+                            Ok(_) | Err(Flow::EarlyReturn(_)) => Ok(()),
+                            Err(Flow::Panic(m)) => Err(m),
+                            Err(_) => Err("异常控制流".into()),
+                        };
+                        results.push((f.name.clone(), r));
+                    }
+                }
+            }
+        }
         results
     }
 
