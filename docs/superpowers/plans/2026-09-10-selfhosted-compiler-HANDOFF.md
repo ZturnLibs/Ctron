@@ -123,5 +123,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   嵌套链用例。**递归泛型防护 + TPar bound 传递已收口 af6fd95**(预提升深度门限 3 超限
   panic '递归超限';bound_sat 顶层无声明名视为外层型参放行,原语/枚举/类仍拦)。
   泛型深水区至此全部收口。
-- **新方向**:LSP(lsp/ 已有 Ctron 实现的功能完备 LSP)、性能(bench.sh
-  已入 CI 尾段)、或把这批能力写进语言规范 v0.6 文档。
+- **规范 v0.6 已成文(2026-09-11)**:`docs/spec/` README bump v0.6 +
+  03-types §3.9/§3.11(泛型/derive 语义成文)+ §10 补 E2050 + tests/README
+  钉子 19–21。剩余新方向:LSP(lsp/)、性能、`--profile web` 语义化、
+  `?` 传播 Option[Str] NULL 模型、`#[trusted]` 语义化。

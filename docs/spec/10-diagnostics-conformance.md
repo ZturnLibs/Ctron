@@ -10,6 +10,7 @@
 | E2010 | 类型不匹配 | §3 | 通用 |
 | E2020 | 未解析的名称 | §2.4 | 通用 |
 | E2030 | match 不穷尽 | §4.6 | `02_match_exhaustive.neg.ct` |
+| E2050 | bound 不满足(泛型实参不满足型参 bound,诊断携带实参型别名) | §3.9.2(v0.6) | `compiler/test/fx_bound_neg.ct` |
 | E3010 | spawn 捕获非 Send | §7.4 | `06_spawn_nonsend.neg.ct` |
 | E3020 | channel 收发非 Send 类型 | §7.4 | `06_channel_nonsend.neg.ct` |
 | E3030 | `static var` 不存在(解析器对 `static var` 做恢复并专门产出本码,而非 E1xxx——对 AI 迭代友好) | §7.6 | `06_static_var.neg.ct` |

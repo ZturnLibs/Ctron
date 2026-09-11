@@ -53,6 +53,9 @@
 16. **bare 档**:分配器作参数传递;`Arena.fixed(n)` 构造静态 arena;一切隐式分配 = E3040。
 17. **`static let` 合法,`static var` 不存在**(E3030);可变全局唯一路径是 `Global[T]`(§7.3)。
 18. **属性访问无括号**:`xs.len`、`e.message`(读属性);方法调用带括号。
+19. **`@derive(Show, Eq)` 结构化方法(v0.6)**:值类型具备 `.show() -> Str`(`名(字段=值,...)`,声明序,双通道逐字)与 `.eq(other) -> Bool`(逐字段,同静态型别);派生为结构化(字段全标量/Str/可派生 struct),注解 v0 为声明性,详见 `docs/spec/03-types.md` §3.11。
+20. **bound 核对(E2050,v0.6)**:`[T: Show + Eq]` 于显式 TypeArgs 调用点核对;满足谓词结构化(标量/Str/嵌套 struct;原语/枚举/类不满足;Eq 标量原生可等);TPar 实参传递放行;未知 bound 名 v0 不查。
+21. **泛型调用点显式 TypeArgs(v0 契约)**:`f[I32](x)`;无调用点推断;嵌套泛型调用经外层型参解析;递归特化 = emit 期诊断"递归超限"。std 容器为 `Map[K, V]`/`Set[V]`(函数式 API,`compiler/test/stdpkg/`)。
 
 ## 4. 错误码注册表(v0 种子;与 `meta_check.py` 中的注册表保持同步)
 

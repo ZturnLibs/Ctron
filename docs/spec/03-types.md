@@ -126,13 +126,36 @@ trait:Show Eq Error Cap Clone Hash Iter
 - 命名冲突裁决:`Mutex.with`(只读)与 `with_mut`(可变)成对——测试钉子 14 的 `m.with(|var a| ...)` 自 v0.4 起统一为 `with_mut`,`with` 仅只读。
 - 本表是**最小集**而非封闭集;stdlib 其余模块(`iter`/`net`/`fs`/...)不属于前奏,需 `use`。
 
-## 3.9 泛型
+## 3.9 泛型(v0.6 修订:实例化/bound/嵌套语义)
 
 - 语法 `fn f[T, V](...)` / `struct Pair[A, B]`;**方括号**。
 - 实现方式:**单态化**默认(静态分发,零成本);单态化爆炸由编译预算约束(§8.5),超限提示改 `&Trait`。
 - 值参数为 comptime(定长数组维度等,§8.4);类型级 comptime 预留。
 - 泛型参数无生命周期参与(内存安全由 GC/Send 体系保证,非生命周期)。
 
+### 3.9.1 实例化(v0.6)
+
+- **泛型 fn**:调用点**显式 TypeArgs**(v0 契约,无调用点推断):`render[Pixel](p)`。每个不同的实参型别组合产生一个特化(`t_名__<实参码>`,如 `t_get__i_s`);同组合多调用点共享一份特化。
+- **泛型 struct**:两路实例化——(a)**注解驱动**:`var m: Map[I32, Str] = Map { ... }`(注解型别钉实例);(b)泛型 fn 体内按签名实例化(体内 `Map { ... }` 字面量与签名同实例)。**实例化实参当前限标量/Str**(实例码字母表 I/S/B/L)。
+- **嵌套泛型调用**:泛型 fn 体内可调泛型 fn,型参实参经外层绑定解析:`fn add[V: Eq](s: Set[V], v: V) { mem[V](s, v) }` 中 `mem[V]` 随外层 V 特化。
+- **递归特化必须诊断**:泛型 fn 体内(直接或间接)调用自身同实例 → 编译期诊断"递归超限"(实现以预提升深度限表达;放宽需 seen 集,走 RFC)。
+
+### 3.9.2 bound(v0.6)
+
+- 语法:`fn render[T: Show](v: T)`、`struct Pair[A: Show + Eq, B: Show + Eq]`;`+` 连接多 bound。
+- **检查点**:显式 TypeArgs 调用点,逐型参核对;违反 = **E2050**(诊断携带实参型别名)。
+- **满足谓词(结构化)**:`Show`/`Eq` 由"字段全为标量(I32/I64/Bool/Str)或可满足的值类型"的 struct 满足(递归,深度限 6);原语、枚举、类不满足。`Eq` 额外认可标量原生可等(顶层)。谓词与 `.show()`/`.eq()` 的派生能力面一致(§3.11)。
+- **TPar 传递**:调用点实参为外层型参名(无声明的名字)→ 放行,由实参处的外层 bound 负责;嵌套字段位不适用。
+- 未知 bound 名(trait 体系落地前的预留)v0 不核对。
+
 ## 3.10 与测试集的对应
 
-`tests/03_values_refs.ct`(值/引用/Box)、`tests/04_generics_comptime.ct`(泛型/数组退化)、`tests/07_capabilities.ct`(trait/prop/impl)。
+`tests/03_values_refs.ct`(值/引用/Box)、`tests/04_generics_comptime.ct`(泛型/数组退化)、`tests/07_capabilities.ct`(trait/prop/impl)、`tests/03e_generics_types.ct`(bound/derive,宿主↔自举一致)。
+
+## 3.11 `@derive(Show, Eq)` 与结构化方法(v0.6 新增)
+
+- **方法面**:值类型接收者可调 `.show() -> Str` 与 `.eq(other) -> Bool`(恰一实参)。
+- **派生口径 = 结构化**:凡字段全为标量/Str/可派生值类型的 struct 即具备两方法;`@derive(...)` 注解 v0 为**声明性**(解析保留、不门控),语义由 bound(§3.9.2)核对承载。待 derive 插件体系(设计文档 §10)落地后收严为注解门控。
+- **格式(规范性,双通道逐字一致)**:`.show()` 产出 `名(字段=值,字段=值)`——字段声明序、逗号分隔、`字段=值`;嵌套值类型递归同格式;标量按插值同型转换(§4.11)。`.eq(other)` 为逐字段相等(型别名相同且字段全等);实参须同静态型别。
+- **能力边界**:List/Atomic/枚举/类字段不可派生(两侧同界:解释与发射一致诊断)。
+- `@derive(Json)` 及其余插件派生:预留(§8.4/设计文档 §10)。
