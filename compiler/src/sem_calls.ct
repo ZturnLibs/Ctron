@@ -236,7 +236,6 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
 fn chk_break(file: List[Str], n: List[Str], depth: I32, loopbase: I32, outer: I32, drops: List[Str], diags: List[Str]) {
     var t = n[0]
     if t == "Break" {
-        println("[dbg] chk_break visit: depth=" + depth.to_string() + " outer=" + outer.to_string() + " drops=" + drops.len.to_string())
         if depth == 0 {
             if outer > 0 {
                 diags.push("E2072@" + nline(n) + ": break 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)")

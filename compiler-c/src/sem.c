@@ -751,6 +751,21 @@ static int receiver_is_capability_trait(ctx* c, cexpr* callee) {
 static void check_expr(ctx* c, cexpr* e);
 
 static int brk_depth = 0; // v0.7 修订二:E2070 循环深度(sem 单遍单线程)
+static int brk_outer = 0;        // v0.7:E2072 —— 闭包外层是否存在循环
+static int fn_has_drop_local = 0; // v0.7:E2071 —— 本函数含注解 Drop 局部(保守函数级口径)
+// v0.7:E2071 —— 注解类型是否带用户 Drop impl(镜像 rt type_has_drop)
+static int sem_has_drop_impl(const sym* s, const char* ty) {
+    if (!ty || !s || !s->f) return 0;
+    for (size_t i = 0; i < s->f->ndecls; i++) {
+        const cdecl* d = &s->f->decls[i];
+        if (d->kind != D_IMPL) continue;
+        const char* tr = head_name(d->impl.trait_ty);
+        const char* fo = head_name(d->impl.for_ty);
+        if (tr && fo && strcmp(tr, "Drop") == 0 && strcmp(fo, ty) == 0) return 1;
+    }
+    return 0;
+}
+
 static void check_block(ctx* c, cblock* b) {
     if (!b) return;
     for (size_t i = 0; i < b->nstmts; i++) {
@@ -760,6 +775,10 @@ static void check_block(ctx* c, cblock* b) {
             // 单标识符模式 → 绑定
             if (st->pat && st->pat->kind == PAT_IDENT && st->pat->name) {
                 cty* ty = st->ty ? st->ty : derive_type(c, st->e);
+                // v0.7 E2071(保守函数级):注解带 Drop impl → 本函数内 break/continue 一律拒绝
+                if (st->ty && st->ty->kind == TY_NAMED && st->ty->npath == 1
+                    && sem_has_drop_impl(c->s, st->ty->path[0]))
+                    fn_has_drop_local = 1;
                 // E2010(保守):注解原语类别 vs 初值类别(字面量直接归类;其余推导,推得出才判)
                 if (st->ty) {
                     const char* ann = (st->ty->kind == TY_NAMED && st->ty->npath == 1) ? st->ty->path[0] : NULL;
@@ -849,9 +868,17 @@ static void check_block(ctx* c, cblock* b) {
             break;
         case ST_BREAK:
         case ST_CONTINUE:
-            if (brk_depth == 0)
-                diag(c->k, "E2070", (st->kind == ST_BREAK ? "break" : "continue"),
-                     "出现在循环外(绑定同函数体最近循环)");
+            if (brk_depth == 0) {
+                if (brk_outer)
+                    diag(c->k, "E2072", (st->kind == ST_BREAK ? "break" : "continue"),
+                         "不得穿越闭包边界(闭包体是独立函数)");
+                else
+                    diag(c->k, "E2070", (st->kind == ST_BREAK ? "break" : "continue"),
+                         "出现在循环外(绑定同函数体最近循环)");
+            } else if (fn_has_drop_local) {
+                diag(c->k, "E2071", (st->kind == ST_BREAK ? "break" : "continue"),
+                     "需越过带 Drop 局部的作用域(v1 静态拒绝)");
+            }
             break;
         case ST_ASSIGN: {
             // own 块内对类值成员的可变写 → E3060
@@ -1030,7 +1057,17 @@ static void check_expr(ctx* c, cexpr* e) {
         for (size_t i = 0; i < e->ncparams; i++)
             if (e->cparams[i].name)
                 bind_push(&c->env, e->cparams[i].name, e->cparams[i].ty, c->depth);
-        check_expr(c, e->cbody);
+        {
+            // v0.7 E2072:闭包体是独立函数边界——深度清零,外层循环存在性穿透
+            int sd = brk_depth;
+            int so = brk_outer;
+            if (sd > 0) so = 1;
+            brk_depth = 0;
+            brk_outer = so;
+            check_expr(c, e->cbody);
+            brk_depth = sd;
+            brk_outer = so;
+        }
         return;
     }
     case EX_SCOPE: {
@@ -1127,6 +1164,8 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
             bind_push(&sub.env, pr->name, pr->ty, 1);
         }
     }
+    fn_has_drop_local = 0;
+    brk_outer = 0;
     if (f->body) check_block(&sub, f->body);
     bind_free(sub.env);
 }
@@ -1174,6 +1213,8 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             tc.env = NULL;
             tc.depth = 1;
             tc.fn_noalloc = (profile == SEM_BARE);
+            fn_has_drop_local = 0;
+            brk_outer = 0;
             check_block(&tc, d->test.body);
             bind_free(tc.env);
             break;
