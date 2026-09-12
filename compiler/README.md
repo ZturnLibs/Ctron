@@ -248,6 +248,18 @@ C 侧符号无 t_ 前缀)、**语句位 assert 家族已有发射**(沿 return 1
 坑:字符串字面量内裸 `{` 开启插值(未终止即 E1001),发射模板一律 `\{` 转义
 且逐字面量配平。
 
+第十二批(2026-09-12,R 线 feat/cli-test-fmt;自举移植待闭包 ABI 合入):
+**v0.7 三项松绑 + 新诊断码**——`||` 逻辑或(第 0 优先级,起始位零参闭包位置消歧,
+§4.0 运算符宪法)、break/continue 转正(语句级,绑最近循环)、泛型调用点推断
+(Go 式仅实参,显式 TypeArgs 恒合法)。新码:**E2060** 无法推断类型实参
+(仅当有具体实参信息;实参类型不可得时宽松)、**E2061** 类型实参候选冲突、
+**E2070** break/continue 在循环外、**E2072** break/continue 穿越闭包边界
+(E2071 越过 Drop 局部待检查面 Drop 建模后启用)。设计全文:
+docs/superpowers/specs/2026-09-12-v07-operator-constitution.md;
+R 线实现:compiler-rust(oror/breakc/infer 三 suite + fixtures)。
+R 线同批:check 侧 prelude 内建族登记、标量 to_string、&&/|| prim_cat
+宽松口径对齐 C sem——check_suite 全绿。
+
 第十一批(2026-09-09,模块检查补全):**E5010 孤儿规则**(impl 的 trait 与 for
 类型均非本包声明即拦截)、**E4010 caps**(use std.<fs|time>.<Name> + 本文件
 &Name 参数而 Ctron.toml [caps] 未声明)、**E6010 前置拦截**(无终止守卫的
