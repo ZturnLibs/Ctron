@@ -68,3 +68,5 @@
   2. 错误擦除类型钉死:前奏 `AnyError`(class,实现 Error);`context(msg) -> Result[T, AnyError]`;`?` 向 AnyError 返回型自动擦除(§5.3 "可转换"的唯一内建形态);`Error` trait 增 `prop trace: Str`;位置链改为**记录/物化两段式**(§5.3)。
   3. 前奏补钉:`Simd[E, N].splat/lane/to_array` + 元素级白名单运算、`Str.contains`;§9.2 钉死 stdweb 最小 API(`dom.set_title/title`)。
   4. 测试:第四批补齐 Simd/trace/stdweb 锚/FFI(c_src)/`} else {` 排版/显式 Void;`05i_deep_cause.ct` 的 `middle` 签名随 AnyError 设计修正;多文件格式新增 `c_src/` 规则(README §6)。覆盖口径分三层:语言符合性(.ct)= 100%,工具链行为归 compiler 集成测试,性能/体积归 CI 门禁。
+
+- **登记(2026-09-12,实现口径,非语言修订)**:§3.1.1 新增 **I64 值域(v0 实现口径)**——规范十进制文本值模型、截断除法 C99 语义(商向零取整/余数随被除数)、字面量经 I32 域解析(超宽 panic)、算术 v0 无溢出检查(超 int64 宽度双实现分歧)四点成文。实现出处 feat/i64-arith(d2f6b1d)。

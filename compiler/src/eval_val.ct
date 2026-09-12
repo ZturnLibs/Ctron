@@ -1069,7 +1069,7 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
             }
             return v6(mag)
         }
-        // 除/模:截断除法(镜像 C99)——v0 负数入 panic
+        // 除/模:截断除法(镜像 C99)——商向零取整(符号异或),余数符号随被除数;除零 panic
         if or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "DivEq"), seq2(op, "ModEq")))) {
             if b[1] == "0" {
                 panic("division by zero")
@@ -1130,7 +1130,7 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
             return v6(r)
         }
 
-        panic("I64 arithmetic: 仅 Add/Sub v0")
+        panic("I64 arithmetic: 不支持的算符")
 
     }
 
