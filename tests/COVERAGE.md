@@ -1,5 +1,14 @@
 # 测试覆盖审计(v0.5 规范 ↔ 测试集)
 
+> **第六批补测已落地(2026-09-12,v0.7 三项松绑;规范已修订至 v0.7)。**
+> R 线 compiler-rust 新增三 suite:oror(4,`||` 真值表/优先级/位置消歧/续行)、
+> breakc(8,break/continue 绑最近循环/E2070/E2071/E2072/fmt/C 发射)、
+> infer(5,调用点推断/E2060/E2061/显式并存);夹具 `compiler-rust/tests/fixtures/`
+> (R 线本地,移植自举线时提升共享)。spec 修订:§1.3/§1.5/§1.6/§3.7/§3.9.1/
+> §4.0(新)/§4.2/§4.3/§4.4/§4.7 + §10 五个新码。
+> 设计:`docs/superpowers/specs/2026-09-12-v07-operator-constitution.md`。
+>
+
 > **第五批补测已落地(2026-09-07):路线图锚点语料 `tests/roadmap/`。** R 线(R-P2…R-P7)测试先行,
 > 22 个单文件 + 2 个多文件用例钉死容器/std 能力/捕获闭包/迭代器/模式守卫/fmt 夹具/panic 源位置/
 > arena Send/comptime 常量尺寸/path 依赖的语法与语义裁决;由 `roadmap_suite.rs` 表驱动锚定状态

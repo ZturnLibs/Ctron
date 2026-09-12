@@ -72,4 +72,22 @@ cargo test 全绿(除上述先行失败持平)+ 三语料断言全过 + main.rs 
 - **语料门禁实战**:全语料 54 文件 48 个待规范化(行尾注释对齐空格折叠为主);
   门禁抓到并修复真 bug:`return!(...)`/`&&!b`——前缀 `!`/`&` 紧贴规则误置于 cur 侧(补回归测试)。
 - **遗留**:链断行采用「逐 Dot 原始间隙」判定(首点链整链统一断行为 v1 选项);
-  `--deterministic` 占位;pkg 模式跨文件 test 名不去重;R 线语料 `or` 中缀漂移待独立切片。
+  `--deterministic` 占位;pkg 模式跨文件 test 名不去重。
+
+## v0.7 修订落地(2026-09-12 续;提案见 specs/2026-09-12-v07-operator-constitution.md)
+
+- **修订一 `||`**:R 线全量落地(lex 最长匹配/§1.6 延续集/parser 第 0 层+
+  起始位闭包角色分离/interp 短路/trans C 发射/fmt token 表);顺带对齐 C oracle
+  两笔漂移(or 取默认解包载荷 + or 操作数不限型)——run_suite 转绿。
+- **修订二 break/continue**:预留字转正;E2070/E2072 静态门 + **E2071 落地**
+  (loop_scope_base 基线扫描 Drop 局部,ty_has_drop 镜像 interp);interp Flow
+  捕获路径补齐 drop 栈(顺带修旧缺口);trans 直映 C。
+- **修订三 调用点推断**:局部替换表(避让全局 subs);Go 式仅实参决策表;
+  E2060(仅当有具体实参信息)/E2061;显式 TypeArgs 从降级 Err 转为对位检查;
+  interp 用户泛型 fn TypeArgs 调用修复。
+- **语料同步**:check 登记 prelude 内建族 + 标量 to_string + &&/|| prim_cat
+  宽松口径——check_suite 全绿(2/2)。
+- **文档**:spec v0.6→v0.7(§1.3/§1.5/§1.6/§3.7/§3.9.1/§4.0 新/§4.2/§4.3/§4.4/
+  §4.7/§10 五新码)、compiler-rust README(v0.7 节)、fmt-spec(|| 空格)、
+  COVERAGE 第六批、compiler/README 码表第十二批。
+- **剩余**:自举线移植(等闭包 ABI 合入;届时 fixtures 提升共享)。

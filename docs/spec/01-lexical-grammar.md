@@ -31,7 +31,7 @@ prop true false void self
 ```
 
 - **保留运算符字**(不可作标识符):`or`(取默认中缀,§4.4)。
-- **预留字**(当前为语法错误,为演进保留):`break continue do async await interface module`。
+- **预留字**(当前为语法错误,为演进保留):`do async await interface module`(v0.7 起 `break continue` 转正为关键字,§4.2)。
 - `as` **不是关键字**——数值显式转换是数值类型的前奏方法 `x.as[U64]()`(§3.6)。`arena`、`Box`、`List`、`String`、`Channel`、`Mutex`、`Arena`、`Option`、`Result` 等是前奏类型/绑定,不是关键字。
 - 禁用的标点(语法错误):`;` `::`。`!` 仅作一元非;`&` 仅出现在类型中;`?` 仅作后缀。
 
@@ -54,6 +54,7 @@ prop true false void self
 == != <  >  <= >=    比较
 =                    赋值(仅语句,§4.2)
 &&                   逻辑与(short-circuit)
+||                   逻辑或(short-circuit,v0.7;§4.4)
 or                   中缀取默认(Option/Result,§5.2);非逻辑或
 .. ..=               range(左闭右开/双闭)
 ..                   切片类型/省略(见语法)
@@ -75,7 +76,7 @@ Ctron 无分号。**换行是语句/字段/变体/match 臂的终止符**,除非
 1. 行尾 token 属于延续集(该行语义未完成):
 
 ```
-,  =  ->  =>  &&  or  ..  ..=  +  -  *  /  %  +%  -%  ==  !=  <  >  <=  >=  (  [  {  |
+,  =  ->  =>  &&  ||  or  ..  ..=  +  -  *  /  %  +%  -%  ==  !=  <  >  <=  >=  (  [  {  |
 ```(`?` 不在延续集:它是后缀,总终结语句)
 
 2. **下一行以 `.` 或二元运算符开头**(支持链式调用的"首点排版":
@@ -164,7 +165,8 @@ PathPattern = IDENT { "." IDENT } ;   (* 枚举变体 / 具名类型 *)
 FieldPattern= IDENT | IDENT ":" Pattern ;
 
 (* ---------- 表达式(按优先级升序,详见 §4.3) ---------- *)
-Expr        = LogicOr ;
+Expr        = LogicOrOr ;
+LogicOrOr   = LogicOr { "||" LogicOr } ;    (* v0.7:第 0 层;起始位置 || 为零参闭包起始,见 §4.7 角色分离 *)
 LogicOr     = LogicAnd { "or" LogicAnd } ;
 LogicAnd    = Compare { "&&" Compare } ;
 Compare     = Range [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) Range ] ;   (* 不可链 *)
