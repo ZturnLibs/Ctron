@@ -1,5 +1,6 @@
 //! 语义检查:双向类型检查、Send 三检查点、分配效果、穷尽性、pure/caps/comptime。
-//! 诊断码:E2010/E2020/E2030/E3010/E3020/E3031/E3040/E3060/E4010/E4020/E4030/E6010/E6020/W8020。
+//! 诊断码:E2010/E2020/E2030/E2060/E2061/E2070/E2071/E2072/E3010/E3020/E3031/E3040/E3060/E4010/E4020/E4030/E6010/E6020/W8020。
+//! (E2060/E2061=v0.7 修订三 调用点推断;E2070/E2071/E2072=v0.7 修订二 break/continue)
 
 use crate::ast::{self, Expr};
 use crate::sem::{self, DefId, DefKind, IntW, Profile, Sema, Symbol, Ty};
@@ -1520,6 +1521,30 @@ impl<'a> Checker<'a> {
                         };
                     }
                 }
+                // v0.7 修订三:显式 TypeArgs 的泛型 fn 调用(原降级 Ty::Err;现按声明序对位替换后检查)
+                if let Expr::Ident(name) = &**expr {
+                    if let Some(Symbol::Fn(id)) = self.lookup_fn_global(name) {
+                        let has_tps = !self.sema.fns[id].type_params.is_empty();
+                        if has_tps {
+                            let (fps, fret, tpvars) = (
+                                self.sema.fns[id].params.clone(),
+                                self.sema.fns[id].ret.clone(),
+                                self.sema.fns[id].tparam_vars.clone(),
+                            );
+                            let targs: Vec<Ty> = type_args.iter().map(|t| self.lower_local_ty(t)).collect();
+                            if targs.len() != tpvars.len() {
+                                self.err("E2020", format!("类型实参数量不符:期望 {},实际 {}", tpvars.len(), targs.len()), Span::new(1, 1, 0, 0));
+                            }
+                            let m: HashMap<u32, Ty> = tpvars.iter().cloned().zip(targs).collect();
+                            for (pf, a) in fps.iter().map(|(_, t)| t).zip(args) {
+                                let hint = self.subst_tys(pf, &m);
+                                let h = if self.ty_has_var(&hint) { None } else { Some(hint) };
+                                self.expr(a, h.as_ref());
+                            }
+                            return self.subst_tys(&fret, &m);
+                        }
+                    }
+                }
                 Ty::Err
             }
             Expr::Member { obj, target: ast::MemberTarget::Name(m) } => {
@@ -1616,6 +1641,40 @@ impl<'a> Checker<'a> {
                         }
                         let f = &self.sema.fns[id];
                         if f.is_comptime && self.is_comptime_call_self(name) { /* 自递归在预算期处理 */ }
+                        // v0.7 修订三:省略 TypeArgs 的泛型调用——仅从实参推断(Go 式,
+                        // 提案 §5 决策表)。局部替换表(不动全局 self.subs,跨调用点不串扰)。
+                        if !f.type_params.is_empty() {
+                            let (fps, fret, tpvars, tpnames) =
+                                (f.params.clone(), f.ret.clone(), f.tparam_vars.clone(), f.type_params.clone());
+                            let mut m: HashMap<u32, Ty> = HashMap::new();
+                            let mut amb = false;
+                            let mut saw_concrete = false;
+                            for (pf, a) in fps.iter().map(|(_, t)| t).zip(args) {
+                                // 形参含未解 Var 时不作 hint(字面量走默认型别,§5.1)
+                                let hint = if self.ty_has_var(pf) { None } else { Some(pf.clone()) };
+                                let at = self.expr(a, hint.as_ref());
+                                // walker 与 saw_concrete 统一用 resolve 后类型:全局 subs 可能
+                                // 已把实参 Var 具体化(如 struct 字面量统一),那是检查器的已知信息
+                                let at_res = self.resolve(&at);
+                                if !matches!(at_res, Ty::Err | Ty::Var(_)) { saw_concrete = true; }
+                                self.infer_tpar_walk(pf, &at_res, &mut m, &mut amb);
+                            }
+                            if amb {
+                                self.err("E2061", "无法唯一推断类型实参(候选冲突);请显式标注 `名[类型](…)`".into(), Span::new(1, 1, 0, 0));
+                            } else {
+                                let missing: Vec<&str> = tpvars.iter().zip(tpnames.iter())
+                                    .filter(|(v, _)| !m.contains_key(*v))
+                                    .map(|(_, n)| n.as_str())
+                                    .collect();
+                                // E2060 仅在「有具体实参信息但 TPar 仍无候选」时成立;
+                                // 实参类型整体不可得(Err)时保持宽松(保守子集检查器,Var 沿旧路传播)
+                                if !missing.is_empty() && saw_concrete {
+                                    self.err("E2060", format!("无法推断类型实参 `{}`(未出现于实参位);请显式标注,如 `{}[类型](…)`", missing.join("`, `"), name), Span::new(1, 1, 0, 0));
+                                }
+                            }
+                            let ret2 = self.subst_tys(&fret, &m);
+                            return ret2;
+                        }
                         let ps: Vec<Ty> = f.params.iter().map(|(_, t)| t.clone()).collect();
                         let ret = f.ret.clone();
                         self.check_args_against(&ps, &ret, args, hint);
@@ -1639,8 +1698,80 @@ impl<'a> Checker<'a> {
 
     fn is_comptime_call_self(&self, _name: &str) -> bool { false }
 
-    fn check_args_against(&mut self, params: &[Ty], ret: &Ty, args: &[ast::Expr], hint: Option<&Ty>) -> Ty {
-        let ret = self.resolve(ret);
+    // ---------- v0.7 修订三:调用点类型推断助手(局部替换表,不动全局 self.subs) ----------
+
+    fn ty_has_var(&self, t: &Ty) -> bool {
+        match t {
+            Ty::Var(_) => true,
+            Ty::Named { args, .. } | Ty::Ctor { args, .. } | Ty::Tuple(args) => args.iter().any(|a| self.ty_has_var(a)),
+            Ty::MutSlice(x) | Ty::RoSlice(x) | Ty::Ref(x) | Ty::Array(x) | Ty::Optional(x)
+            | Ty::Simd(x) | Ty::Range(x) => self.ty_has_var(x),
+            Ty::FnTy { params, ret } => params.iter().any(|p| self.ty_has_var(p)) || self.ty_has_var(ret),
+            _ => false,
+        }
+    }
+
+    fn subst_tys(&self, t: &Ty, m: &HashMap<u32, Ty>) -> Ty {
+        match t {
+            Ty::Var(v) => m.get(v).cloned().unwrap_or_else(|| t.clone()),
+            Ty::Named { def, args } => Ty::Named { def: *def, args: args.iter().map(|a| self.subst_tys(a, m)).collect() },
+            Ty::Ctor { def, args } => Ty::Ctor { def: *def, args: args.iter().map(|a| self.subst_tys(a, m)).collect() },
+            Ty::Tuple(xs) => Ty::Tuple(xs.iter().map(|x| self.subst_tys(x, m)).collect()),
+            Ty::MutSlice(x) => Ty::MutSlice(Box::new(self.subst_tys(x, m))),
+            Ty::RoSlice(x) => Ty::RoSlice(Box::new(self.subst_tys(x, m))),
+            Ty::Ref(x) => Ty::Ref(Box::new(self.subst_tys(x, m))),
+            Ty::Array(x) => Ty::Array(Box::new(self.subst_tys(x, m))),
+            Ty::Optional(x) => Ty::Optional(Box::new(self.subst_tys(x, m))),
+            Ty::Simd(x) => Ty::Simd(Box::new(self.subst_tys(x, m))),
+            Ty::Range(x) => Ty::Range(Box::new(self.subst_tys(x, m))),
+            Ty::FnTy { params, ret } => Ty::FnTy {
+                params: params.iter().map(|p| self.subst_tys(p, m)).collect(),
+                ret: Box::new(self.subst_tys(ret, m)),
+            },
+            other => other.clone(),
+        }
+    }
+
+    /// 决策表(提案 §5.2):同形结构递归收集候选;同一 Var 二次候选不等 → 置 amb(E2061);
+    /// 异形不给约束(Go 式浅层);Err 实参跳过
+    fn infer_tpar_walk(&self, formal: &Ty, actual: &Ty, m: &mut HashMap<u32, Ty>, amb: &mut bool) {
+        match (formal, actual) {
+            (Ty::Var(v), actual) => {
+                if matches!(actual, Ty::Var(_) | Ty::Err) { return; }
+                match m.get(v) {
+                    Some(bound) => {
+                        if bound != actual && !matches!((bound, actual), (Ty::Err, _) | (_, Ty::Err)) {
+                            *amb = true;
+                        }
+                    }
+                    None => { m.insert(*v, actual.clone()); }
+                }
+            }
+            (Ty::Named { def: d1, args: a1 }, Ty::Named { def: d2, args: a2 }) if d1 == d2 => {
+                for (x, y) in a1.iter().zip(a2.iter()) { self.infer_tpar_walk(x, y, m, amb); }
+            }
+            (Ty::Ctor { def: d1, args: a1 }, Ty::Ctor { def: d2, args: a2 }) if d1 == d2 => {
+                for (x, y) in a1.iter().zip(a2.iter()) { self.infer_tpar_walk(x, y, m, amb); }
+            }
+            (Ty::MutSlice(x), Ty::MutSlice(y))
+            | (Ty::RoSlice(x), Ty::RoSlice(y))
+            | (Ty::Ref(x), Ty::Ref(y))
+            | (Ty::Array(x), Ty::Array(y))
+            | (Ty::Optional(x), Ty::Optional(y))
+            | (Ty::Simd(x), Ty::Simd(y))
+            | (Ty::Range(x), Ty::Range(y)) => self.infer_tpar_walk(x, y, m, amb),
+            (Ty::Tuple(xs), Ty::Tuple(ys)) if xs.len() == ys.len() => {
+                for (x, y) in xs.iter().zip(ys.iter()) { self.infer_tpar_walk(x, y, m, amb); }
+            }
+            (Ty::FnTy { params: p1, ret: r1 }, Ty::FnTy { params: p2, ret: r2 }) if p1.len() == p2.len() => {
+                for (x, y) in p1.iter().zip(p2.iter()) { self.infer_tpar_walk(x, y, m, amb); }
+                self.infer_tpar_walk(r1, r2, m, amb);
+            }
+            _ => {}
+        }
+    }
+
+    fn check_args_against(&mut self, params: &[Ty], ret: &Ty, args: &[ast::Expr], hint: Option<&Ty>) -> Ty {        let ret = self.resolve(ret);
         let ret = match (&ret, hint) {
             (Ty::Named { .. }, Some(h)) => { let h = self.resolve(h); if matches!(h, Ty::Named { .. }) { let _ = self.unify(&ret, &h); h } else { ret } }
             _ => ret,

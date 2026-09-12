@@ -664,7 +664,12 @@ impl<'a> Interp<'a> {
                             let receiver = Value::Chan { id: ch_id, sender: false };
                             Ok(Value::Tuple(vec![sender, receiver]))
                         }
-                        _ => Ok(Value::Void),
+                        _ => {
+                            // v0.7 修订三:用户泛型 fn 的显式 TypeArgs 调用——动态求值忽略型别实参
+                            // (原落 Void;vals 弃用重求值仅发生在原已失效的路径上)
+                            let f = self.expr(inner, env)?;
+                            self.call_fn_value_ast(&f, args, env)
+                        }
                     };
                 }
                 // 2) inner = Member(泛型方法):arena.list[I32](), x.as[I8]() 等

@@ -1,0 +1,12 @@
+// 04f_infer_ambig.neg.ct —— v0.7 修订三:同一 TPar 候选冲突 → E2061 歧义
+//@ fail: E2061
+//@ msg: 无法唯一推断
+
+fn pick2[V](a: V, b: V) -> V {
+    return a
+}
+
+test "conflicting candidates are ambiguous" {
+    let r = pick2(1, "a")
+    let _ = r
+}

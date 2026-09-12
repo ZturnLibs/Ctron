@@ -54,6 +54,8 @@ pub struct FnDef {
     pub name: String,
     pub vis: ast::Vis,
     pub type_params: Vec<String>,
+    /// 与 type_params 同序的统一变量 id(声明期分配;v0.7 修订三:调用点推断用)
+    pub tparam_vars: Vec<u32>,
     pub params: Vec<(String, Ty)>,
     pub ret: Ty,
     pub is_comptime: bool,
@@ -606,6 +608,16 @@ fn bind_params(lower: &mut Lower, tps: &[ast::TypeParam]) -> HashMap<String, Ty>
 fn lower_fn_def(lower: &mut Lower, pf: &ParsedFile, m: &ast::FnDecl) -> FnDef {
     let saved = lower.params.clone();
     let tps = bind_params(lower, &m.type_params);
+    // v0.7 修订三:TPar 名→Var 按声明序成对保存(推断求解与显式实参对位用)
+    let mut tparam_names = Vec::new();
+    let mut tparam_vars = Vec::new();
+    for tp in &m.type_params {
+        if tp.is_comptime { continue; }
+        if let Some(Ty::Var(v)) = tps.get(&tp.name) {
+            tparam_names.push(tp.name.clone());
+            tparam_vars.push(*v);
+        }
+    }
     let mut params = Vec::new();
     for p in &m.params {
         if let ast::Param::Param { name, ty, .. } = p {
@@ -616,7 +628,7 @@ fn lower_fn_def(lower: &mut Lower, pf: &ParsedFile, m: &ast::FnDecl) -> FnDef {
     lower.params = saved;
     FnDef {
         module: pf.module.clone(), name: m.name.clone(), vis: m.vis.clone(),
-        type_params: tps.keys().cloned().collect(), params, ret,
+        type_params: tparam_names, tparam_vars, params, ret,
         is_comptime: m.is_comptime,
         no_alloc: m.attrs.iter().any(|a| a.name == "no_alloc"),
         no_spawn: m.attrs.iter().any(|a| a.name == "no_spawn"),

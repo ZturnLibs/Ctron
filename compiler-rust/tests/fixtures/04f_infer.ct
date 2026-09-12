@@ -1,0 +1,33 @@
+// 04f_infer.ct —— v0.7 修订三:调用点类型推断(Go 式仅实参;省略 TypeArgs)
+
+fn identity[V](x: V) -> V {
+    return x
+}
+
+fn first_of[V](xs: List[V], i: I32) -> V {
+    return xs[i]
+}
+
+test "infer from argument" {
+    let a = identity(42)
+    assert_eq(a, 42)
+    let s = identity("hi")
+    assert_eq(s, "hi")
+}
+
+test "infer through container shape" {
+    let xs = List[I32]()
+    xs.push(7)
+    let v = first_of(xs, 0)
+    assert_eq(v, 7)
+}
+
+test "explicit typeargs still work" {
+    let b = identity[I32](5)
+    assert_eq(b, 5)
+}
+
+test "literal default drives inference" {
+    let f = identity(2.5)
+    assert_eq(f, 2.5)
+}
