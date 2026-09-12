@@ -183,9 +183,7 @@ fn lit_fit_gate(expk: Str, e: List[Str], ln: Str, diags: List[Str]) {
     if lit[2].len > 0 {
         return
     }
-    if !lit_is_dec(lit[1]) {
-        return
-    }
+    var dec = lit_to_dec(lit[1])
     var bound = ""
     if k_int5(expk) {
         // 有符号:正界 2^(w-1)-1,负字面量幅度界 2^(w-1)
@@ -241,7 +239,7 @@ fn lit_fit_gate(expk: Str, e: List[Str], ln: Str, diags: List[Str]) {
     if bound.len == 0 {
         return
     }
-    if c6abscmp(lit_digits(lit[1]), bound) <= 0 {
+    if c6abscmp(dec, bound) <= 0 {
         return
     }
     diags.push("E2040@" + ln + ": 字面量超出期望整数类型宽度(期望 " + expk + "):" + lit[1])

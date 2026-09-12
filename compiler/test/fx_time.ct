@@ -30,5 +30,12 @@ fn main() -> I32 {
     var mbig: I64 = -9007199254740993
     println((mbig == 0 - big).to_string())
     println((mbig / 1000 == -9007199254740).to_string())
+    // 进制宽字面量同口径直入 6 域(0x/0o/0b;下划线分隔)
+    var hmax: I64 = 0x7FFFFFFFFFFFFFFF
+    println(hmax.to_string())
+    println((hmax % 1000000007 == 291172003).to_string())
+    println((-hmax == -9223372036854775807).to_string())
+    var omin: I64 = -0o1000000000000000000000
+    println((omin == -9223372036854775808).to_string())
     return 0
 }

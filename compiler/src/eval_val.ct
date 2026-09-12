@@ -548,7 +548,7 @@ fn c6abscmp(a: Str, b: Str) -> I32 {
 
 
 
-// 字面量域判定(§3.1.1):纯十进制(无 0x/0o/0b 前缀)/超出 I32 宽度;下划线分隔符剥离
+// 字面量域判定(§3.1.1):进制识别/十进制归一/超 I32 宽度;下划线分隔符剥离
 fn lit_digits(t: Str) -> Str {
     var out = ""
     var i: I32 = 0
@@ -574,11 +574,45 @@ fn lit_is_dec(t: Str) -> Bool {
     return true
 }
 
-fn lit_wide_i32(t: Str) -> Bool {
-    if !lit_is_dec(t) {
-        return false
+// 0x/0o/0b 字面量 → 规范十进制文本(逐位 acc*radix+d,c6 文本域算术)
+fn lit_radix_dec(t: Str) -> Str {
+    var radix: I32 = 16
+    if byte_at(t, 1) == 111 {
+        radix = 8
     }
-    return c6abscmp(lit_digits(t), "2147483647") > 0
+    if byte_at(t, 1) == 98 {
+        radix = 2
+    }
+    var rs = "16"
+    if radix == 8 {
+        rs = "8"
+    }
+    if radix == 2 {
+        rs = "2"
+    }
+    var acc = "0"
+    var i: I32 = 2
+    while i < t.len {
+        var c = byte_at(t, i)
+        if c != 95 {
+            var dv = digit_of(c)
+            acc = c6add(c6mul(acc, rs), byte_slice("00010203040506070809101112131415", dv * 2, dv * 2 + 2))
+        }
+        i += 1
+    }
+    return c6can(acc)
+}
+
+// 字面量 → 规范十进制文本(十进制剥下划线;进制转十进制)
+fn lit_to_dec(t: Str) -> Str {
+    if lit_is_dec(t) {
+        return c6can(lit_digits(t))
+    }
+    return lit_radix_dec(t)
+}
+
+fn lit_wide_i32(t: Str) -> Bool {
+    return c6abscmp(lit_to_dec(t), "2147483647") > 0
 }
 
 fn c6cmp(a: Str, b: Str) -> I32 {

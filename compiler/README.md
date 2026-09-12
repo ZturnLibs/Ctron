@@ -323,16 +323,18 @@ struct 的 print/to_string、字段赋值、class 字面量;发射面其余缺�
 流级失败产出诊断;E6010 按 spec 保留给"预算超限"锚点)、**const 注解标量核对**
 (E2010)。v0 限制:无步数预算,comptime fn 死循环会挂起 check。
 
-第五批(2026-09-12,I64 宽字面量直入 6 域 + 字面量宽度门):**宽十进制字面量
-直入 I64 域**(§3.1.1——eval Int 超过 I32 宽度时取 v6(c6can(数字)),不再
-txt_num 溢出 panic;Unary Neg 6 域符号翻转;发射侧宽字面量加 `LL` 后缀 +
+第五批(2026-09-12,I64 宽字面量直入 6 域 + 字面量宽度门):**宽字面量直入
+I64 域**(§3.1.1——eval Int 超过 I32 宽度时取 v6(lit_to_dec(数字)),不再
+txt_num 溢出 panic;十进制与 0x/0o/0b 同口径,lit_radix_dec 进制转十进制
+文本域累算;Unary Neg 6 域符号翻转;发射侧宽字面量转十进制加 `LL` 后缀 +
 ct_typeof 推断 "6",下划线分隔符剥离)、**E2040 字面量超出期望整数类型宽度**
-(let 注解/赋值/返回/实参四点 compat 伴随门;仅纯十进制无后缀字面量,
-0x/0o/0b、comptime 域、二进制折叠表达式、带后缀字面量 v0 不查)、
+(let 注解/赋值/返回/实参四点 compat 伴随门;无后缀字面量十进制/进制同口径,
+comptime 域、二进制折叠表达式、带后缀字面量 v0 不查)、
 **conv_as 补 6 域入口**(conv_as_6:二补截断 v mod 2^N,8/16 位落 W、
 32 位落 I 镜像自举 U32=I32 存储口径、64 位留 6 域——宽字面量切片曾暴露
-as[U32] 不截断的 suite 03b 分歧,本批修复);fx_time 扩宽字面量块、
-fx_litfit_neg 负例;decls 锁 269。
+as[U32] 不截断的 suite 03b 分歧,本批修复);fx_time 扩宽字面量/进制块、
+fx_litfit_neg 负例;decls 锁 271。已知存量词法缺陷(非本批引入):含 E/e 的
+十六进制字面量(0xDEADBEEF)被解析器浮点检测误判为 Float。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/

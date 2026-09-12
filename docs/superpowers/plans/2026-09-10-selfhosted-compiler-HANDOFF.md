@@ -23,7 +23,7 @@ compiler/test/smoke.sh --full         # 54 项(发射面夹具 seed==native 逐�
 compiler/native.sh                    # 重建 bin/ctron-cc / bin/ctron-emit ← 改源后必跑!
 python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考宿主
 ./ci.sh                               # 一条命令全量(meta/拼接/smoke/native/suite/bench)
-compiler/ctc.sh check compiler/build/cc_run.ct   # decls=268 锁
+compiler/ctc.sh check compiler/build/cc_run.ct   # decls=271 锁
 ```
 
 **基线(2026-09-12,Apple Silicon)**:smoke --full 88/88(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
@@ -128,7 +128,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
 - **改 src 后 bin/ 是旧的**:`native.sh` 不跑,一切 native 测试都在测旧代码。
 - **timeit/重定向双 open 互踩**:捕获文件与产物文件不得同路径。
-- **decls 锁**:smoke 锁 `decls=268`(cc_run 顶层 decl 数),加 fn/Static 须同步。
+- **decls 锁**:smoke 锁 `decls=271`(cc_run 顶层 decl 数),加 fn/Static 须同步。
 - **sem 遍历器下钻清单**:新增块类节点(如 Own)须在 tcb(sem_type)、ucb
   (sem_calls)、al_b、cscan_b 各遍历器补下钻,否则 E2020/E3070 误报/漏报。
 - **打包同路径双写**:run_timed 捕获文件与产物文件同路径会互踩截断。
@@ -136,7 +136,15 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 268**(feat/i64-arith I64 域 + match 守卫 + 宽字面量切片 lit_is_dec/lit_wide_i32/lit_fit_gate;CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS 不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + fx_litfit_neg + 递归泛型 emit 面拦截、3f 为 web 档三面。
+- **decls 锁现为 271**(feat/i64-arith I64 域 + match 守卫 + 宽字面量切片
+  lit_is_dec/lit_digits/lit_wide_i32/lit_fit_gate/lit_radix_dec/lit_to_dec/conv_as_6;
+  CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS
+  不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + fx_litfit_neg +
+  递归泛型 emit 面拦截、3f 为 web 档三面。
+- **含 E/e 的十六进制字面量误判 Float(存量词法缺陷,未修)**:parse_expr
+  数字 token 的浮点检测按 'e'/'E' 判 isf,0xDEADBEEF 类字面量被建成 Float 节点
+  → E2010。规避:十六进制字面量避开 E(0xDEADBEef 同样中招,'e' 也检);
+  修复须把 isf 检测限定在非 0x 前缀或含 '.'。
 
 ## 5. 挂账(按优先级,均为独立切片)
 

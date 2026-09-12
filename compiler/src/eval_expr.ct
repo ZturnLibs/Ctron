@@ -13,10 +13,10 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 return e4("k", env, vW(sfx, txt_num(e[1])), out)
             }
         }
-        // 宽十进制字面量直入 I64 域(§3.1.1):仅无后缀;带后缀沿用原域语义
+        // 宽字面量直入 I64 域(§3.1.1):仅无后缀;十进制/0x/0o/0b 同口径
         if e[2].len == 0 {
             if lit_wide_i32(e[1]) {
-                return e4("k", env, v6(c6can(lit_digits(e[1]))), out)
+                return e4("k", env, v6(lit_to_dec(e[1])), out)
             }
         }
         return e4("k", env, vI(txt_num(e[1])), out)

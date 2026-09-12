@@ -6,11 +6,11 @@
 fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" {
-        // 宽字面量(I32 装不下,§3.1.1)加 LL 后缀——sem E2040 已保证窄类型语境不达此;
-        // 仅无后缀(带后缀沿用原域);下划线剥离(C 字面量不允许分隔符)
+        // 宽字面量(I32 装不下,§3.1.1)转十进制加 LL 后缀——sem E2040 已保证
+        // 窄类型语境不达此;仅无后缀(C 进制常量超宽 ill-formed)
         if e[2].len == 0 {
             if lit_wide_i32(e[1]) {
-                return lit_digits(e[1]) + "LL"
+                return lit_to_dec(e[1]) + "LL"
             }
         }
         return e[1]
