@@ -5,7 +5,7 @@ static const char* const TOK_NAMES[TOK_KIND_COUNT] = {
     "Int", "Float", "Str",
     "Ident",
     "Fn", "Let", "Var", "Const", "Static", "Comptime",
-    "If", "Else", "Match", "While", "For", "In", "Return",
+    "If", "Else", "Match", "While", "For", "In", "Return", "Break", "Continue",
     "Struct", "Class", "Enum", "Trait", "Impl", "Own", "Scope",
     "Test", "Use", "Pub", "Extern", "Prop",
     "True", "False", "Void", "Self",
