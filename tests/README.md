@@ -66,6 +66,11 @@
 | E2020 | 未解析的名称 |
 | E2030 | match 不穷尽 |
 | E2050 | bound 不满足(泛型实参不满足型参 bound) |
+| E2060 | 无法推断类型实参(v0.7;请显式标注) |
+| E2061 | 类型实参候选冲突(v0.7) |
+| E2070 | break/continue 出现在循环外(v0.7) |
+| E2071 | break/continue 越过带 Drop 局部的作用域(v0.7) |
+| E2072 | break/continue 穿越闭包边界(v0.7) |
 | E4040 | `#[trusted]` 仅限 extern "c" 声明 |
 | W8050 | extern "c" 未标记 `#[trusted]`(信任边界须可枚举审计) |
 | E3010 | spawn 捕获了非 Send 值 |

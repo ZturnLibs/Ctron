@@ -15,6 +15,13 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
         }
         return s4("r", er[1], er[3], er[2])
     }
+    if t == "Break" {
+        // v0.7 修订二:状态种 "b"/"c" 向最近 enclosing 循环传播(run_block 泛化透传)
+        return s4("b", env, out, vV2())
+    }
+    if t == "Continue" {
+        return s4("c", env, out, vV2())
+    }
     if t == "Let" {
         var pat = st[2]
         if pat[0] == "PatId" {
@@ -181,14 +188,22 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             outw = cr[3]
             if truth(cr[2]) {
                 var br = run_block(file, envw, outw, st[2], true)
-                if br[0] != "k" {
+                if br[0] == "b" {
+                    envw = br[1]
+                    outw = br[2]
+                    go = false
+                } else if br[0] == "c" {
+                    envw = br[1]
+                    outw = br[2]
+                } else if br[0] != "k" {
                     return s4(br[0], br[1], br[2], br[3])
-                }
-                envw = br[1]
-                outw = br[2]
-                // keep 累积压缩:新增段按名去重回基线,防跨轮线性增长(env_add 全量拷贝 → O(n²))
-                if envw.len > base {
-                    envw = env_dedupe(envw, envw.len - base)
+                } else {
+                    envw = br[1]
+                    outw = br[2]
+                    // keep 累积压缩:新增段按名去重回基线,防跨轮线性增长(env_add 全量拷贝 → O(n²))
+                    if envw.len > base {
+                        envw = env_dedupe(envw, envw.len - base)
+                    }
                 }
             } else {
                 go = false
@@ -214,7 +229,10 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             while c2 < it.len {
                 var eit = env_add(envw3, nm, it[c2])
                 var br = run_block(file, eit, outw3, st[3], false)
-                if br[0] != "k" {
+                if br[0] == "b" {
+                    return s4("k", env_drop(br[1], 1), br[2], vV2())
+                }
+                if br[0] != "k" && br[0] != "c" {
                     return s4(br[0], br[1], br[2], br[3])
                 }
                 envw3 = env_drop(br[1], 1)
@@ -230,7 +248,10 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             while ci < it.len {
                 var eit = env_add(envl, nm, it[ci])
                 var br = run_block(file, eit, outl, st[3], false)
-                if br[0] != "k" {
+                if br[0] == "b" {
+                    return s4("k", env_drop(br[1], 1), br[2], vV2())
+                }
+                if br[0] != "k" && br[0] != "c" {
                     return s4(br[0], br[1], br[2], br[3])
                 }
                 envl = env_drop(br[1], 1)

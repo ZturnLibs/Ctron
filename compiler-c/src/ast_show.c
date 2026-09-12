@@ -334,6 +334,12 @@ static void show_stmt(FILE* o, cstmt* s) {
         show_block(o, s->body);
         fputc('}', o);
         break;
+    case ST_BREAK:
+        fputs("Break", o);
+        break;
+    case ST_CONTINUE:
+        fputs("Continue", o);
+        break;
     case ST_WHILE:
         fputs("While { cond: ", o);
         show_expr(o, s->e);

@@ -721,6 +721,12 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
             sb_free(&r);
         }
         return;
+    case ST_BREAK:
+        sb_s(o, "break;\n");
+        return;
+    case ST_CONTINUE:
+        sb_s(o, "continue;\n");
+        return;
     case ST_WHILE: {
         sb cond = {0};
         emit_expr(c, st->e, &cond);

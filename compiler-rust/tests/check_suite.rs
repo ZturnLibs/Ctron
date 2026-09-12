@@ -40,6 +40,7 @@ fn expectations() -> Vec<(&'static str, Vec<&'static str>)> {
         ("08b_nospawn.neg.ct", vec!["E4030"]),
         ("08d_comptime_effect.neg.ct", vec!["E6020"]),
         ("08_bare_alloc.neg.ct", vec!["E3040"]),
+        ("04e_break_outside.neg.ct", vec!["E2070"]),
     ]
 }
 

@@ -38,6 +38,8 @@ void eval_stmt(rt* R, cstmt* st) {
     switch (st->kind) {
     case ST_LET: eval_let(R, st); break;
     case ST_RET: R->ret = st->e ? eval_expr(R, st->e) : v_void(); R->has_ret = 1; break;
+    case ST_BREAK: R->has_brk = 1; break;
+    case ST_CONTINUE: R->has_cont = 1; break;
     case ST_EXPR: (void)eval_expr(R, st->e); break;
     case ST_ASSIGN: {
         // 索引目标:arr[i] = v / arr[i] op= v(写透共享后备)
@@ -177,12 +179,16 @@ void eval_stmt(rt* R, cstmt* st) {
                 if (iv) iv->slot = v_int(cur, 32, 0);
                 (void)eval_block(R, st->body);
                 if (R->has_ret) break;
+                if (R->has_brk) { R->has_brk = 0; break; }
+                R->has_cont = 0;
             }
         } else if (it.k == V_ARR || it.k == V_TUPLE) {
             for (size_t i = 0; i < it.nitems; i++) {
                 if (iv) iv->slot = it.items[i];
                 (void)eval_block(R, st->body);
                 if (R->has_ret) break;
+                if (R->has_brk) { R->has_brk = 0; break; }
+                R->has_cont = 0;
             }
         } else {
             env_pop(R);
@@ -192,11 +198,16 @@ void eval_stmt(rt* R, cstmt* st) {
         break;
     }
     case ST_WHILE: {
-        while (!R->has_ret) {
+        R->has_brk = 0;
+        R->has_cont = 0;
+        while (!R->has_ret && !R->has_brk) {
             val c = eval_expr(R, st->e);
             if (!truthy(c)) break;
             (void)eval_block(R, st->body);
+            R->has_cont = 0;
         }
+        R->has_brk = 0;
+        R->has_cont = 0;
         break;
     }
     }
@@ -228,9 +239,11 @@ val eval_block(rt* R, cblock* b) {
     val tail = v_void();
     if (!b) return tail;
     env_push(R);
-    for (size_t i = 0; i < b->nstmts && !R->has_ret; i++)
+    for (size_t i = 0; i < b->nstmts && !R->has_ret && !R->has_brk && !R->has_cont; i++)
         eval_stmt(R, b->stmts[i]);
-    if (!R->has_ret && b->tail) tail = eval_expr(R, b->tail);
+    // v0.7 修订二:has_brk/has_cont 同样终止块内后继语句与尾表达式;
+    // drop_scope 照跑(RAII 不受控制流影响)
+    if (!R->has_ret && !R->has_brk && !R->has_cont && b->tail) tail = eval_expr(R, b->tail);
     drop_scope(R); // 本帧声明逆序 drop
     env_pop(R);
     return R->has_ret ? R->ret : tail;

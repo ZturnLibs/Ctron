@@ -90,6 +90,8 @@ typedef struct {
     env* top;
     val ret;
     int has_ret;
+    int has_brk;
+    int has_cont;
     jmp_buf jb;
     rt_status st;
     char msg[512];

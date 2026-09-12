@@ -257,6 +257,16 @@ fn p_block(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
             fo.push(it)
             fo.push(fb)
             nb.push(fo)
+        } else if t == "break" {
+            adv(cur)
+            var bk = mk("Break")
+            nstamp(bk, ln0)
+            nb.push(bk)
+        } else if t == "continue" {
+            adv(cur)
+            var cn = mk("Continue")
+            nstamp(cn, ln0)
+            nb.push(cn)
         } else {
             var e = p_stmt_expr(toks, cur, lns, "1")
             var t2 = tok(toks, cur)

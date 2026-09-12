@@ -105,6 +105,7 @@ static ctron_tok_kind keyword_of(const char* s) {
         {"const", TOK_CONST}, {"static", TOK_STATIC}, {"comptime", TOK_COMPTIME},
         {"if", TOK_IF}, {"else", TOK_ELSE}, {"match", TOK_MATCH},
         {"while", TOK_WHILE}, {"for", TOK_FOR}, {"in", TOK_IN},
+        {"break", TOK_BREAK}, {"continue", TOK_CONTINUE},
         {"return", TOK_RETURN}, {"struct", TOK_STRUCT}, {"class", TOK_CLASS},
         {"enum", TOK_ENUM}, {"trait", TOK_TRAIT}, {"impl", TOK_IMPL},
         {"own", TOK_OWN}, {"scope", TOK_SCOPE}, {"test", TOK_TEST},

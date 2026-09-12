@@ -750,6 +750,7 @@ static int receiver_is_capability_trait(ctx* c, cexpr* callee) {
 // ---------- 表达式 ----------
 static void check_expr(ctx* c, cexpr* e);
 
+static int brk_depth = 0; // v0.7 修订二:E2070 循环深度(sem 单遍单线程)
 static void check_block(ctx* c, cblock* b) {
     if (!b) return;
     for (size_t i = 0; i < b->nstmts; i++) {
@@ -833,14 +834,24 @@ static void check_block(ctx* c, cblock* b) {
             break;
         case ST_FOR:
             if (st->iter) check_expr(c, st->iter);
+            brk_depth++;
             if (st->body) check_block(c, st->body);
+            brk_depth--;
             break;
         case ST_WHILE:
             if (st->e) {
                 check_cond_bool(c, st->e, "while");
                 check_expr(c, st->e);
             }
+            brk_depth++;
             if (st->body) check_block(c, st->body);
+            brk_depth--;
+            break;
+        case ST_BREAK:
+        case ST_CONTINUE:
+            if (brk_depth == 0)
+                diag(c->k, "E2070", (st->kind == ST_BREAK ? "break" : "continue"),
+                     "出现在循环外(绑定同函数体最近循环)");
             break;
         case ST_ASSIGN: {
             // own 块内对类值成员的可变写 → E3060

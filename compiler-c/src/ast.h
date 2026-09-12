@@ -145,7 +145,7 @@ typedef struct cmatcharm { cpat* pat; cexpr* expr; } cmatcharm;
 
 // ---------- 块与语句 ----------
 
-typedef enum { ST_LET, ST_RET, ST_FOR, ST_WHILE, ST_ASSIGN, ST_EXPR } cstmt_kind;
+typedef enum { ST_LET, ST_RET, ST_FOR, ST_WHILE, ST_ASSIGN, ST_EXPR, ST_BREAK, ST_CONTINUE } cstmt_kind;
 typedef enum { A_EQ, A_ADDEQ, A_SUBEQ, A_MULEQ, A_DIVEQ, A_MODEQ } cassignop;
 
 typedef struct cstmt {

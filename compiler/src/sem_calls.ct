@@ -208,6 +208,96 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
         } else if t == "Test" {
             tcb(file, d[2], tc, List[Str](), List[Str](), List[Str](), diags)
         }
+        if t == "Fn" {
+            // v0.7 修订二 E2070:break/continue 绑定同函数体最近循环
+            chk_break(d[5], 0, diags)
+        } else if t == "Impl" {
+            var bits = d[4]
+            var bmi: I32 = 1
+            while bmi < bits.len {
+                var bmd = bits[bmi]
+                if bmd[0] == "Method" {
+                    chk_break(bmd[5], 0, diags)
+                }
+                bmi += 1
+            }
+        } else if t == "Test" {
+            chk_break(d[2], 0, diags)
+        }
         i += 1
+    }
+}
+
+// =====================================================================
+// v0.7 修订二 E2070 —— break/continue 合法性预检
+// 泛化子节点下钻(字符串叶子自然终止);Closure 体是独立函数边界,不下钻
+// (穿越闭包边界的 E2072 待后续切片);E2071(越过 Drop 局部)同批待后续。
+// =====================================================================
+fn chk_break(n: List[Str], depth: I32, diags: List[Str]) {
+    var t = n[0]
+    if t == "Break" {
+        if depth == 0 {
+            diags.push("E2070@" + nline(n) + ": break 出现在循环外(绑定同函数体最近循环)")
+        }
+        return
+    }
+    if t == "Continue" {
+        if depth == 0 {
+            diags.push("E2070@" + nline(n) + ": continue 出现在循环外(绑定同函数体最近循环)")
+        }
+        return
+    }
+    // 闭包体是独立函数边界:不下钻(E2072 穿越闭包边界待后续切片)
+    if t == "Closure" {
+        return
+    }
+    var nd = depth
+    if or2(t == "While", t == "For") {
+        nd = depth + 1
+    }
+    // 形状驱动下钻:只走已知块槽位(节点其余槽为字符串叶子,不可索引)
+    if t == "Block" {
+        var i: I32 = 1
+        while i < n.len - 1 {
+            chk_break(n[i], nd, diags)
+            i += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        chk_break(n[1], nd, diags)
+        return
+    }
+    if t == "While" {
+        chk_break(n[2], nd, diags)
+        return
+    }
+    if t == "For" {
+        chk_break(n[3], nd, diags)
+        return
+    }
+    if t == "If" {
+        chk_break(n[2], nd, diags)
+        var els = n[3]
+        if els.len > 1 {
+            chk_break(els, nd, diags)
+        }
+        return
+    }
+    if t == "Match" {
+        var arms = n[2]
+        var ai: I32 = 1
+        while ai < arms.len {
+            var arm = arms[ai]
+            if arm.len > 2 {
+                chk_break(arm[2], nd, diags)
+            }
+            ai += 1
+        }
+        return
+    }
+    if or2(t == "Own", t == "Scope") {
+        chk_break(n[2], nd, diags)
+        return
     }
 }

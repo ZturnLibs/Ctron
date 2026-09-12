@@ -706,6 +706,17 @@ cblock* parse_block_after_lbrace(cparser* p) {
             if (at_k(p, TOK_NEWLINE)) skip_newlines(p);
             else if (at_k(p, TOK_RBRACE) || at_k(p, TOK_EOF)) { /* ok */ }
             else err_here(p, "E1001", "语句后应为换行,实际 %s", tok_desc(p));
+        } else if (k == TOK_BREAK || k == TOK_CONTINUE) {
+            // v0.7 修订二:语句级,无值;合法性由 sem E2070 把关
+            bump_tok(p);
+            cstmt* st = (cstmt*)ctron_arena_alloc(p->arena, sizeof(cstmt));
+            slist_push(&ss, st);
+            st->kind = (k == TOK_BREAK) ? ST_BREAK : ST_CONTINUE;
+            st->e = NULL; st->body = NULL; st->pat = NULL; st->iter = NULL;
+            st->target = NULL; st->value = NULL;
+            if (at_k(p, TOK_NEWLINE)) skip_newlines(p);
+            else if (at_k(p, TOK_RBRACE) || at_k(p, TOK_EOF)) { /* ok */ }
+            else err_here(p, "E1001", "语句后应为换行,实际 %s", tok_desc(p));
         } else {
             cexpr* e = parse_expr(p);
             cassignop aop;

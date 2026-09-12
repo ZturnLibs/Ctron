@@ -1,0 +1,35 @@
+// 04e_break_continue.ct —— v0.7 修订二:break/continue(语句级,绑同函数体最近循环)
+// E2071(越过 Drop 局部)待检查面 Drop 建模后启用,本文件不含 Drop 类型。
+
+test "while break and continue" {
+    var sum: I32 = 0
+    var i: I32 = 0
+    while i < 10 {
+        i += 1
+        if i % 2 == 0 { continue }
+        if i > 7 { break }
+        sum += i
+    }
+    assert_eq(sum, 16)
+}
+
+test "for break and continue" {
+    var total: I32 = 0
+    for x in 0..10 {
+        if x % 2 == 0 { continue }
+        if x > 7 { break }
+        total += x
+    }
+    assert_eq(total, 16)
+}
+
+test "nested loop binds nearest" {
+    var hits: I32 = 0
+    for a in 0..3 {
+        for b in 0..3 {
+            if b == 1 { break }
+            hits += 1
+        }
+    }
+    assert_eq(hits, 3)
+}
