@@ -548,6 +548,39 @@ fn c6abscmp(a: Str, b: Str) -> I32 {
 
 
 
+// 字面量域判定(§3.1.1):纯十进制(无 0x/0o/0b 前缀)/超出 I32 宽度;下划线分隔符剥离
+fn lit_digits(t: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < t.len {
+        var c = byte_at(t, i)
+        if c != 95 {
+            out = out + byte_slice(t, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+fn lit_is_dec(t: Str) -> Bool {
+    if t.len > 1 {
+        if byte_at(t, 0) == 48 {
+            var c2 = byte_at(t, 1)
+            if or2(c2 == 120, or2(c2 == 111, c2 == 98)) {
+                return false
+            }
+        }
+    }
+    return true
+}
+
+fn lit_wide_i32(t: Str) -> Bool {
+    if !lit_is_dec(t) {
+        return false
+    }
+    return c6abscmp(lit_digits(t), "2147483647") > 0
+}
+
 fn c6cmp(a: Str, b: Str) -> I32 {
 
     var aneg = false

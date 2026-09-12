@@ -156,6 +156,97 @@ fn all_int_lit(e: List[Str]) -> Bool {
     return false
 }
 
+// E2040 字面量宽度门(§3.7 自适应的宽度约束):Int/一元负 Int 字面量须落在
+// 期望整数类型界内。v0 口径:仅纯十进制、无后缀字面量;二进制折叠表达式、
+// 0x/0o/0b、comptime 域不查(§3.1.1)。
+fn lit_fit_gate(expk: Str, e: List[Str], ln: Str, diags: List[Str]) {
+    if expk.len < 3 {
+        return
+    }
+    if !seq2(byte_slice(expk, 0, 2), "n:") {
+        return
+    }
+    var tn = byte_slice(expk, 2, expk.len)
+    var neg = false
+    var lit = e
+    if seq2(e[0], "Unary") {
+        if or2(!seq2(e[1], "Neg"), e.len < 3) {
+            return
+        }
+        neg = true
+        lit = e[2]
+    }
+    if !seq2(lit[0], "Int") {
+        return
+    }
+    // Int 节点恒为 ["Int", 文本, 后缀];带后缀字面量 v0 不查
+    if lit[2].len > 0 {
+        return
+    }
+    if !lit_is_dec(lit[1]) {
+        return
+    }
+    var bound = ""
+    if k_int5(expk) {
+        // 有符号:正界 2^(w-1)-1,负字面量幅度界 2^(w-1)
+        if seq2(tn, "I8") {
+            bound = "127"
+            if neg {
+                bound = "128"
+            }
+        }
+        if seq2(tn, "I16") {
+            bound = "32767"
+            if neg {
+                bound = "32768"
+            }
+        }
+        if seq2(tn, "I32") {
+            bound = "2147483647"
+            if neg {
+                bound = "2147483648"
+            }
+        }
+        if seq2(tn, "I64") {
+            bound = "9223372036854775807"
+            if neg {
+                bound = "9223372036854775808"
+            }
+        }
+        if seq2(tn, "ISize") {
+            bound = "9223372036854775807"
+            if neg {
+                bound = "9223372036854775808"
+            }
+        }
+    }
+    if k_uint5(expk) {
+        // 无符号:单一上界;负字面量 v0 不查(放行)
+        if seq2(tn, "U8") {
+            bound = "255"
+        }
+        if seq2(tn, "U16") {
+            bound = "65535"
+        }
+        if seq2(tn, "U32") {
+            bound = "4294967295"
+        }
+        if or2(seq2(tn, "U64"), seq2(tn, "USize")) {
+            bound = "18446744073709551615"
+        }
+        if neg {
+            bound = ""
+        }
+    }
+    if bound.len == 0 {
+        return
+    }
+    if c6abscmp(lit_digits(lit[1]), bound) <= 0 {
+        return
+    }
+    diags.push("E2040@" + ln + ": 字面量超出期望整数类型宽度(期望 " + expk + "):" + lit[1])
+}
+
 fn compat(exp: Str, act: Str, e: List[Str], file: List[Str], tc: List[Str]) -> Bool {
     if exp.len == 0 {
         return true
@@ -397,6 +488,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                                 if !compat(pk, ak, ag[i], file, tc) {
                                     diags.push("E2010@" + nline(ag[i]) + ": 实参类型不匹配(type):" + rt + " 第 " + i.to_string() + " 实参 " + root_name(ag[i]) + " 期望 " + pk + " 实得 " + ak)
                                 }
+                                lit_fit_gate(pk, ag[i], "0", diags)
                             }
                             i += 1
                         }
@@ -697,6 +789,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 if !compat(ty_kind(ann), act, s[4], file, tc) {
                     diags.push("E2010@" + nline(s) + ": let 初始化类型不匹配(type):期望 " + ty_kind(ann) + " 实得 " + act)
                 }
+                lit_fit_gate(ty_kind(ann), s[4], nline(s), diags)
             }
             tce(file, s[4], tc, loc, envT, retK, diags)
             var tn = List[Str]()
@@ -733,6 +826,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                     if !compat(ty_kind(retK), act, s[1], file, tc) {
                         diags.push("E2010@" + nline(s) + ": 返回类型不匹配(type):期望 " + ty_kind(retK) + " 实得 " + act)
                     }
+                    lit_fit_gate(ty_kind(retK), s[1], nline(s), diags)
                 }
                 tce(file, s[1], tc, loc, envT, retK, diags)
             }
@@ -742,6 +836,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
             if !compat(tk, vk, s[3], file, tc) {
                 diags.push("E2010@" + nline(s) + ": 赋值类型不匹配(type):目标 " + tk + " 实得 " + vk)
             }
+            lit_fit_gate(tk, s[3], nline(s), diags)
             tce(file, s[1], tc, loc, envT, retK, diags)
             tce(file, s[3], tc, loc, envT, retK, diags)
         } else if t == "Expr" {

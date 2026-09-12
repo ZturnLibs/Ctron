@@ -445,7 +445,15 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
 
 fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
-    if t == "Int" { return "i" }
+    if t == "Int" {
+        // 宽字面量按 I64 域推断(§3.1.1;与 eval 直入 6 域同源,仅无后缀)
+        if e[2].len == 0 {
+            if lit_wide_i32(e[1]) {
+                return "6"
+            }
+        }
+        return "i"
+    }
     if t == "Str" { return "s" }
     if t == "Bool" { return "b" }
     if t == "Float" { return "f" }

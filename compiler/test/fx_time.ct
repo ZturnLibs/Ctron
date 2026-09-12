@@ -21,5 +21,14 @@ fn main() -> I32 {
     println((nd < 0).to_string())
     println((nr <= 0).to_string())
     println((nd * 1000 + nr == neg).to_string())
+    // 宽字面量直入 6 域(§3.1.1:I32 装不下的十进制字面量;int64 宽度内两实现一致)
+    var big: I64 = 9007199254740993
+    println(big.to_string())
+    println((big * 2 == 18014398509481986).to_string())
+    println((big / 2 == 4503599627370496).to_string())
+    println((big % 1000003 == 224294).to_string())
+    var mbig: I64 = -9007199254740993
+    println((mbig == 0 - big).to_string())
+    println((mbig / 1000 == -9007199254740).to_string())
     return 0
 }

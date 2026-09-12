@@ -285,7 +285,90 @@ fn vT(vt: Str, p: List[Str]) -> List[Str] {
     return v
 }
 // as[T]() 显式转换:浮转整截断;整窄化按宽度回绕;宽整型维持 I32 域
+// 6 域显式转换(§3.6 窄化=截断):二补截断 = v mod 2^N(负数取数学模),
+// 有符号目标再调回符号区间;8/16 位落 W 域,32 位落 I 域(镜像自举 U32=I32
+// 存储口径,与编译侧回绕语义一致),64 位留在 6 域
+fn conv_as_6(v: List[Str], tgt: Str) -> List[Str] {
+    var mag = c6can(v[1])
+    var neg = false
+    if mag.len > 0 {
+        if byte_at(mag, 0) == 45 {
+            neg = true
+            mag = byte_slice(mag, 1, mag.len)
+        }
+    }
+    var modv = ""
+    var smax = ""
+    var wl = ""
+    if or2(tgt == "U8", tgt == "I8") {
+        modv = "256"
+        wl = "u8"
+        if tgt == "I8" {
+            wl = "i8"
+            smax = "127"
+        }
+    }
+    if or2(tgt == "U16", tgt == "I16") {
+        modv = "65536"
+        wl = "u16"
+        if tgt == "I16" {
+            wl = "i16"
+            smax = "32767"
+        }
+    }
+    if or2(tgt == "U32", tgt == "I32") {
+        modv = "4294967296"
+        wl = "i"
+        if tgt == "I32" {
+            smax = "2147483647"
+        }
+    }
+    if or2(tgt == "I64", or2(tgt == "U64", or2(tgt == "ISize", tgt == "USize"))) {
+        modv = "18446744073709551616"
+        wl = "6"
+        if or2(tgt == "I64", tgt == "ISize") {
+            smax = "9223372036854775807"
+        }
+    }
+    if modv.len == 0 {
+        if or2(tgt == "F64", tgt == "F32") {
+            return vD(df_can(v[1]))
+        }
+        return v
+    }
+    var qr = c6divmod(mag, modv)
+    var bar = 0
+    var ci = 0
+    while ci < qr.len {
+        if byte_at(qr, ci) == 124 {
+            bar = ci
+        }
+        ci += 1
+    }
+    var m = byte_slice(qr, bar + 1, qr.len)
+    if neg {
+        if m != "0" {
+            m = c6sub(modv, m)
+        }
+    }
+    if smax.len > 0 {
+        if c6abscmp(m, smax) > 0 {
+            m = c6sub(m, modv)
+        }
+    }
+    if wl == "i" {
+        return vI(dvi(m))
+    }
+    if wl == "6" {
+        return v6(c6can(m))
+    }
+    return vW(wl, dvi(m))
+}
+
 fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
+    if v[0] == "6" {
+        return conv_as_6(v, tgt)
+    }
     if or2(tgt == "F64", tgt == "F32") {
         if or2(v[0] == "I", v[0] == "W") {
             return vD(df_can(v[1]))

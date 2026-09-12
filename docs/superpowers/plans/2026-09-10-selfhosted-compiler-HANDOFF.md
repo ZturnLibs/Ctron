@@ -23,12 +23,12 @@ compiler/test/smoke.sh --full         # 54 项(发射面夹具 seed==native 逐�
 compiler/native.sh                    # 重建 bin/ctron-cc / bin/ctron-emit ← 改源后必跑!
 python3 compiler/test/suite.py        # tests/ 一致性 51/51 对照 C 参考宿主
 ./ci.sh                               # 一条命令全量(meta/拼接/smoke/native/suite/bench)
-compiler/ctc.sh check compiler/build/cc_run.ct   # decls=264 锁
+compiler/ctc.sh check compiler/build/cc_run.ct   # decls=268 锁
 ```
 
-**基线(2026-09-12,Apple Silicon)**:smoke --full 87/87(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
-+ 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort/map/set/fs 单测 + 2c 负例含递归泛型 emit 面拦截);
-suite 58/58 双侧;decls=264;自举固定点(seed 发射 vs native 发射)逐字节复现;
+**基线(2026-09-12,Apple Silicon)**:smoke --full 88/88(3b 夹具含 optstr/gprobe2/gprobe/fmap/fs 探针
++ 3d std 包泛型容器 + 3d- use 撞名 E5030 + 3e ctwc + 3f web 档 + 3g ctwf/fmap/sort/map/set/fs 单测 + 2c 负例含 fx_litfit_neg E2040 + 递归泛型 emit 面拦截);
+suite 58/58 双侧;decls=268;自举固定点(seed 发射 vs native 发射)逐字节复现;
 native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);代码生成比解释快 15–100×
 (bench.sh 四阶段,基线表见 BOOTSTRAP.md §2b)。
 
@@ -89,10 +89,15 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   本轮已纠正(注释 + 兜底消息"仅 Add/Sub v0"→"不支持的算符")。
   **值模型精确口径**:seed 侧规范十进制文本(c6can 去前导零、-0 归 0),
   发射侧 int64_t(trans_ty 码表);**算术无溢出检查**(文本域自然不溢出,
-  发射侧未查)→ 超 int64 宽度双实现分歧,v0 夹具限宽度内;**字面量入口限
-  I32 宽度**(eval_expr 整数字面量统一 vI(txt_num),逐位检查算术超宽即
-  panic,大值须算术生长)。以上已成文 spec §3.1.1。to_string/fmt 走十进制
-  文本恒等。decls 锁 264。
+  发射侧未查)→ 超 int64 宽度双实现分歧,v0 夹具限宽度内。**宽字面量直入
+  6 域已落地**:纯十进制无后缀字面量超过 I32 宽度时 eval 取 v6(c6can(数字)),
+  发射侧加 LL 后缀 + ct_typeof 推断 "6"(下划线分隔符剥离);**E2040 字面量
+  宽度门**(let 注解/赋值/返回/实参四点;0x/0o/0b、comptime 域、二进制折叠
+  表达式、带后缀字面量 v0 不查);**conv_as 补 6 域入口**(conv_as_6 二补
+  截断:8/16 位落 W、32 位落 I、64 位留 6 域;as[U32] 不截断曾致 suite 03b
+  分歧,已修);fx_litfit_neg 负例。
+  以上已成文 spec §3.1.1/§10。to_string/fmt 走十进制
+  文本恒等。decls 锁 269。
 - **闭包捕获 typed List(LI):已修(feat/std-time)**——真凶不是捕获码计算,
   而是 ct_cap_decl/ct_wrap_i 的指针域白名单缺 "LI"(typed List 码),decl 侧
   掉 (int32_t) 截断。已并入 L 分支。残余限制:**闭包(ct_clop)形参 ABI 为
@@ -123,7 +128,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
 - **改 src 后 bin/ 是旧的**:`native.sh` 不跑,一切 native 测试都在测旧代码。
 - **timeit/重定向双 open 互踩**:捕获文件与产物文件不得同路径。
-- **decls 锁**:smoke 锁 `decls=264`(cc_run 顶层 decl 数),加 fn/Static 须同步。
+- **decls 锁**:smoke 锁 `decls=268`(cc_run 顶层 decl 数),加 fn/Static 须同步。
 - **sem 遍历器下钻清单**:新增块类节点(如 Own)须在 tcb(sem_type)、ucb
   (sem_calls)、al_b、cscan_b 各遍历器补下钻,否则 E2020/E3070 误报/漏报。
 - **打包同路径双写**:run_timed 捕获文件与产物文件同路径会互踩截断。
@@ -131,7 +136,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 264**(feat/i64-arith I64 域 + match 守卫合入,9a67180 同步 261→264;CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS 不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + 递归泛型 emit 面拦截、3f 为 web 档三面。
+- **decls 锁现为 268**(feat/i64-arith I64 域 + match 守卫 + 宽字面量切片 lit_is_dec/lit_wide_i32/lit_fit_gate;CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS 不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + fx_litfit_neg + 递归泛型 emit 面拦截、3f 为 web 档三面。
 
 ## 5. 挂账(按优先级,均为独立切片)
 
@@ -176,9 +181,10 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    ① **闭包 ABI 32→64 位升级**——§4 草案与阻塞点(A 块自发射回归)仍有效;
       0291aa2 快照纯空行无实质代码,续推须 lane 重新落盘(§4)。
    ② **I64 用户级值域专片已落地**(d2f6b1d:Add/Sub/Mul/Div/Mod 全算符,
-      负数 Div/Mod C99 截断已实现并运行时验证,见 §4 值模型口径);残余:
-      字面量仍限 I32 宽度(直入 6 域未做)、发射侧溢出未检查/超 int64 宽度
-      双实现分歧收敛。
+      负数 Div/Mod C99 截断已实现并运行时验证,见 §4 值模型口径);**宽字面量
+      直入 6 域 + E2040 宽度门 + conv_as_6 截断已落地**(见 §4);残余:
+      0x/0o/0b 宽字面量与 comptime 域不进门(v0 口径)、发射侧溢出未检查/
+      超 int64 宽度双实现分歧收敛。
    ③ **spec 文档化已落地**(本轮):docs/spec/03-types §3.1.1(I64 值域 v0
       实现口径)+ README 修订记录"登记"条。
    ④ CI 例行化到远端。
@@ -222,6 +228,6 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   **装箱载荷别名语义已细化 5e007e5/e8ea6e9**:Box 赋值/传参共享堆 cell,
 经别名的可变字段写全可见(自动解引用贯通读写;用户声明 Box struct 时内建
 让位通用泛型路径);fx_boxalias 双面逐字。剩余:LSP(lsp/)、性能、
-CI 远端例行化。**I64 域残项(2026-09-12 入册)**:字面量直入 6 域(解除
-I32 宽度上限)、发射侧溢出检查与超 int64 宽度双实现分歧收敛——spec
-§3.1.1 已按 v0 实现口径成文,升级时同步改该节。
+CI 远端例行化。**I64 域残项(2026-09-12 入册,宽字面量切片后更新)**:0x/0o/0b 宽字面量
+与 comptime 域入门、发射侧溢出检查与超 int64 宽度双实现分歧收敛——spec
+§3.1.1/§10 已按 v0 实现口径成文,升级时同步改。

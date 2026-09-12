@@ -27,7 +27,7 @@
 | | `src/sem_move.ct` | E3050 own 内 arena 句柄 use-after-move |
 | | `src/sem_exh.ct` | E2030 match 穷尽 |
 | | `src/sem_alloc.ct` | E3040 分配效果(own/#[no_alloc]/契约) |
-| | `src/sem_type.ct` | E2010 类型统一 v1(含 E2020 前奏助手) |
+| | `src/sem_type.ct` | E2010 类型统一 v1(含 E2020 前奏助手)+ E2040 字面量宽度门 |
 | | `src/sem_calls.ct` | E2020 调用目标解析 |
 | | `src/sem_comptime.ct` | E6020 comptime 副作用扫描 |
 | | `src/sem_ceval.ct` | E6010 步数预算求值器 ceval + E5010 助手 |
@@ -322,6 +322,17 @@ struct 的 print/to_string、字段赋值、class 字面量;发射面其余缺�
 (镜像 statics_env 顺序迭代,失败不再静默吞绑定:panic 以原文中止编译 rc=1,
 流级失败产出诊断;E6010 按 spec 保留给"预算超限"锚点)、**const 注解标量核对**
 (E2010)。v0 限制:无步数预算,comptime fn 死循环会挂起 check。
+
+第五批(2026-09-12,I64 宽字面量直入 6 域 + 字面量宽度门):**宽十进制字面量
+直入 I64 域**(§3.1.1——eval Int 超过 I32 宽度时取 v6(c6can(数字)),不再
+txt_num 溢出 panic;Unary Neg 6 域符号翻转;发射侧宽字面量加 `LL` 后缀 +
+ct_typeof 推断 "6",下划线分隔符剥离)、**E2040 字面量超出期望整数类型宽度**
+(let 注解/赋值/返回/实参四点 compat 伴随门;仅纯十进制无后缀字面量,
+0x/0o/0b、comptime 域、二进制折叠表达式、带后缀字面量 v0 不查)、
+**conv_as 补 6 域入口**(conv_as_6:二补截断 v mod 2^N,8/16 位落 W、
+32 位落 I 镜像自举 U32=I32 存储口径、64 位留 6 域——宽字面量切片曾暴露
+as[U32] 不截断的 suite 03b 分歧,本批修复);fx_time 扩宽字面量块、
+fx_litfit_neg 负例;decls 锁 269。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/

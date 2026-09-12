@@ -13,6 +13,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 return e4("k", env, vW(sfx, txt_num(e[1])), out)
             }
         }
+        // 宽十进制字面量直入 I64 域(§3.1.1):仅无后缀;带后缀沿用原域语义
+        if e[2].len == 0 {
+            if lit_wide_i32(e[1]) {
+                return e4("k", env, v6(c6can(lit_digits(e[1]))), out)
+            }
+        }
         return e4("k", env, vI(txt_num(e[1])), out)
     }
     if t == "Bool" {
@@ -82,6 +88,10 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                     }
                 }
                 return e4("k", ur[1], vD(dt), ur[3])
+            }
+            // 6 域取负:文本符号翻转(c6can 归一 -0)
+            if ur[2][0] == "6" {
+                return e4("k", ur[1], v6(c6can("-" + ur[2][1])), ur[3])
             }
             return e4("k", ur[1], vI(0 - dvi(ur[2][1])), ur[3])
         }
