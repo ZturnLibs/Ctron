@@ -124,7 +124,7 @@ static void str_parts_show(FILE* o, ctron_str_part* sp, size_t n) {
 
 static const char* binop_name(cbinop op) {
     switch (op) {
-    case B_OR: return "Or"; case B_AND: return "AndAnd";
+    case B_OROR: return "OrOr"; case B_OR: return "Or"; case B_AND: return "AndAnd";
     case B_EQ: return "Eq"; case B_NE: return "Ne";
     case B_LT: return "Lt"; case B_GT: return "Gt";
     case B_LE: return "Le"; case B_GE: return "Ge";

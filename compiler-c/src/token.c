@@ -13,7 +13,7 @@ static const char* const TOK_NAMES[TOK_KIND_COUNT] = {
     "WrapPlus", "WrapMinus",
     "PlusEq", "MinusEq", "StarEq", "SlashEq", "PercentEq",
     "EqEq", "NotEq", "Lt", "Gt", "LtEq", "GtEq", "Assign",
-    "AndAnd", "Or",
+    "AndAnd", "OrOr", "Or",
     "DotDot", "DotDotEq", "Arrow", "FatArrow", "Question",
     "Dot", "Comma", "Colon",
     "LBracket", "RBracket", "LParen", "RParen",

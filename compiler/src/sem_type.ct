@@ -348,6 +348,9 @@ fn ex_ty(e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str]) -> Str {
         if seq2(op, "AndAnd") {
             return "n:Bool"
         }
+        if seq2(op, "OrOr") {
+            return "n:Bool"
+        }
         var lt = ex_ty(e[2], tc, loc, envT)
         var rt2 = ex_ty(e[3], tc, loc, envT)
         if seq2(op, "Add") && k_strish(lt) && k_strish(rt2) {
@@ -478,6 +481,12 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
             if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
                 bad = true
                 m = "E2010@" + nline(e) + ": 逻辑与需 Bool 操作数(type):&&"
+            }
+        }
+        if seq2(op, "OrOr") {
+            if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
+                bad = true
+                m = "E2010@" + nline(e) + ": 逻辑或需 Bool 操作数(type):||"
             }
         }
         if bad {

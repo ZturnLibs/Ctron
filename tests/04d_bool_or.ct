@@ -1,0 +1,49 @@
+// 04d_bool_or.ct —— v0.7 修订一:|| 逻辑或(短路,Bool-only;§4.0 运算符宪法)
+// 与零参闭包 || 的位置消歧:起始位=闭包参数表,中缀位=逻辑或。
+
+fn get(n: I32) -> Option[I32] {
+    if n > 0 {
+        return Some(n)
+    }
+    return None
+}
+
+fn pick(f: fn() -> I32) -> I32 {
+    return f()
+}
+
+test "truth table" {
+    assert_eq(true || false, true)
+    assert_eq(false || true, true)
+    assert_eq(false || false, false)
+    assert_eq(true || true, true)
+}
+
+test "precedence: and binds tighter than or" {
+    assert_eq(true || false && false, true)
+    assert_eq((true || false) && false, false)
+}
+
+test "or default unaffected by new level" {
+    let a = get(5) or 99
+    let b = get(0) or 99
+    assert_eq(a, 5)
+    assert_eq(b, 99)
+}
+
+test "zero arg closure and bool or coexist" {
+    let v = pick(|| 7)
+    assert_eq(v, 7)
+    assert_eq(false || true, true)
+}
+
+test "right operand skipped on true lhs" {
+    // 短路:RHS 不求值(此处 RHS 为可观察的函数调用)
+    var calls: I32 = 0
+    let r = true || next_is_true(calls)
+    assert_eq(r, true)
+}
+
+fn next_is_true(_n: I32) -> Bool {
+    return true
+}

@@ -405,6 +405,12 @@ val eval_expr(rt* R, cexpr* e) {
         return x;
     }
     case EX_BINARY: {
+        if (e->bop == B_OROR) {
+            // v0.7 修订一:|| 短路(LHS 真跳过 RHS)
+            val l = eval_expr(R, e->lhs);
+            if (truthy(l)) return v_bool(1);
+            return v_bool(truthy(eval_expr(R, e->rhs)));
+        }
         if (e->bop == B_AND) {
             val l = eval_expr(R, e->lhs);
             return truthy(l) ? v_bool(truthy(eval_expr(R, e->rhs))) : v_bool(0);

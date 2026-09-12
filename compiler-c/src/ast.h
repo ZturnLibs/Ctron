@@ -72,7 +72,7 @@ typedef enum {
 
 typedef enum { UN_NEG = 0, UN_NOT } cunop;
 typedef enum {
-    B_OR, B_AND, B_EQ, B_NE, B_LT, B_GT, B_LE, B_GE,
+    B_OROR, B_OR, B_AND, B_EQ, B_NE, B_LT, B_GT, B_LE, B_GE,
     B_ADD, B_SUB, B_WADD, B_WSUB, B_MUL, B_DIV, B_MOD,
 } cbinop;
 

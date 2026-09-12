@@ -152,6 +152,7 @@ cexpr* parse_if(cparser* p);
 cexpr* parse_match(cparser* p);
 cexpr* parse_multiplicative(cparser* p, int allow_struct);
 cexpr* parse_or(cparser* p, int allow_struct);
+cexpr* parse_oror(cparser* p, int allow_struct);
 cexpr* parse_own(cparser* p);
 cpat* parse_pattern(cparser* p);
 cexpr* parse_postfix(cparser* p, int allow_struct);

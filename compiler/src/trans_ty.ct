@@ -23,6 +23,7 @@ fn ct_op(op: Str) -> Str {
     if op == "Eq" { return "==" }
     if op == "Ne" { return "!=" }
     if op == "AndAnd" { return "&&" }
+    if op == "OrOr" { return "||" }
     panic("ct_op:" + op)
     return "?"
 }

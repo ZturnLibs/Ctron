@@ -456,7 +456,7 @@ static cty* derive_type(ctx* c, cexpr* e) {
         return derive_type(c, e->ux);
     case EX_BINARY: {
         switch (e->bop) {
-        case B_OR: case B_AND: case B_EQ: case B_NE: case B_LT: case B_GT: case B_LE: case B_GE:
+        case B_OROR: case B_OR: case B_AND: case B_EQ: case B_NE: case B_LT: case B_GT: case B_LE: case B_GE:
             return mk_named(c->k->arena, "Bool", NULL, 0);
         default:
             return derive_type(c, e->lhs); // 算术沿左操作数
@@ -928,12 +928,13 @@ static void check_expr(ctx* c, cexpr* e) {
         return;
     }
     case EX_BINARY: {
-        if (e->bop == B_AND || e->bop == B_OR) {
+        if (e->bop == B_AND || e->bop == B_OR || e->bop == B_OROR) {
             cty* lt = derive_type(c, e->lhs);
             cty* rt = derive_type(c, e->rhs);
             int lc = prim_cat(head_name(lt)), rc = prim_cat(head_name(rt));
-            if (e->bop == B_AND && ((lc && lc != 2) || (rc && rc != 2)))
-                diag(c->k, "E2010", "&& 需要 Bool");
+            // v0.7 修订一:|| 与 && 同口径(仅已知非 Bool 标量类别报错)
+            if ((e->bop == B_AND || e->bop == B_OROR) && ((lc && lc != 2) || (rc && rc != 2)))
+                diag(c->k, "E2010", "%s 需要 Bool", e->bop == B_AND ? "&&" : "||");
             check_expr(c, e->lhs);
             check_expr(c, e->rhs);
             return;

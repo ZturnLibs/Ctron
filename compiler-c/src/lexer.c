@@ -422,6 +422,7 @@ static int lex_punct(lexer* lx, size_t start, uint32_t line, uint32_t col, ctron
     else if (TWO('<', '=')) { k = TOK_LT_EQ; ntake = 2; }
     else if (TWO('>', '=')) { k = TOK_GT_EQ; ntake = 2; }
     else if (TWO('&', '&')) { k = TOK_AND_AND; ntake = 2; }
+    else if (TWO('|', '|')) { k = TOK_OR_OR; ntake = 2; } // v0.7 修订一
     else if (THREE('.', '.', '=')) { k = TOK_DOT_DOT_EQ; ntake = 3; } // 最长匹配 ..=
     else if (TWO('.', '.')) { k = TOK_DOT_DOT; ntake = 2; }
     else if (TWO('-', '>')) { k = TOK_ARROW; ntake = 2; }
@@ -524,7 +525,7 @@ static int lexer_next(lexer* lx, ctron_token* out, bvec* bytes) {
 static int line_end_continues(ctron_tok_kind k) {
     switch (k) {
     case TOK_COMMA: case TOK_ASSIGN: case TOK_ARROW: case TOK_FAT_ARROW:
-    case TOK_AND_AND: case TOK_OR: case TOK_DOT_DOT: case TOK_DOT_DOT_EQ:
+    case TOK_AND_AND: case TOK_OR_OR: case TOK_OR: case TOK_DOT_DOT: case TOK_DOT_DOT_EQ:
     case TOK_PLUS: case TOK_MINUS: case TOK_STAR: case TOK_SLASH: case TOK_PERCENT:
     case TOK_WRAP_PLUS: case TOK_WRAP_MINUS: case TOK_EQ_EQ: case TOK_NOT_EQ:
     case TOK_LT: case TOK_GT: case TOK_LT_EQ: case TOK_GT_EQ:
@@ -536,6 +537,7 @@ static int line_end_continues(ctron_tok_kind k) {
 
 static int continues_next_line(ctron_tok_kind k) {
     switch (k) {
+    case TOK_OR_OR:
     case TOK_DOT: case TOK_PLUS: case TOK_MINUS: case TOK_STAR: case TOK_SLASH:
     case TOK_PERCENT: case TOK_WRAP_PLUS: case TOK_WRAP_MINUS: case TOK_EQ_EQ:
     case TOK_NOT_EQ: case TOK_LT: case TOK_GT: case TOK_LT_EQ: case TOK_GT_EQ:

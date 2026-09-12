@@ -3,7 +3,7 @@
 // (字面量/绑定/变体/元组/通配)、p_match/p_if 语句与值位、p_block 块(停滞守卫)。
 // =====================================================================
 fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    return p_or(toks, cur, lns, al)
+    return p_oror(toks, cur, lns, al)
 }
 
 // 或模式:p1 | p2 | ... —— PatOr 节点(各替身依序试配;绑定替身 v0 限同名单一)

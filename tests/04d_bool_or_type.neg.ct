@@ -1,0 +1,7 @@
+// 04d_bool_or_type.neg.ct —— v0.7 修订一:|| 仅接受 Bool(§4.0 宪法一义一符)
+//@ fail: E2010
+
+test "int or is a type error" {
+    let x = 1 || 2
+    assert_eq(x, 1)
+}

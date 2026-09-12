@@ -166,7 +166,22 @@ cty* parse_type(cparser* p) {
 
 
 cexpr* parse_expr_flags(cparser* p, int allow_struct) {
-    return parse_or(p, allow_struct);
+    return parse_oror(p, allow_struct);
+}
+
+// v0.7 修订一:第 0 层 || 逻辑或(中缀位);起始位 || 为零参闭包(parse_primary 分派)
+cexpr* parse_oror(cparser* p, int allow_struct) {
+    cexpr* lhs = parse_or(p, allow_struct);
+    while (at_k(p, TOK_OR_OR)) {
+        bump_tok(p);
+        cexpr* rhs = parse_or(p, allow_struct);
+        cexpr* b = mk_expr(p, EX_BINARY);
+        b->bop = B_OROR;
+        b->lhs = lhs;
+        b->rhs = rhs;
+        lhs = b;
+    }
+    return lhs;
 }
 
 cexpr* parse_or(cparser* p, int allow_struct) {
@@ -639,6 +654,17 @@ cexpr* parse_primary_inner(cparser* p, int allow_struct) {
     case TOK_SCOPE: return parse_scope(p);
     case TOK_OWN: return parse_own(p);
     case TOK_PIPE: return parse_closure(p);
+    case TOK_OR_OR: {
+        // v0.7 修订一:起始位 || = 零参闭包(§4.7 角色分离)
+        bump_tok(p);
+        cexpr* c = mk_expr(p, EX_CLOSURE);
+        cplist cps = {0};
+        c->cparams = cplist_done(&cps, p->arena, &c->ncparams);
+        c->cret = NULL;
+        if (eat_k(p, TOK_ARROW)) c->cret = parse_type(p);
+        c->cbody = parse_expr(p);
+        return c;
+    }
     default:
         err_here(p, "E1001", "意外的记号 %s 在表达式位置", tok_desc(p));
         bump_tok(p);

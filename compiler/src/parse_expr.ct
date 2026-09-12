@@ -4,6 +4,28 @@
 // (原子:字面量/Ident/Call/Member/Index/括号/struct 字面量,allow_struct 门控);
 // p_tpars/p_typ 类型;p_* 均携带 lns 做 span 行号戳。
 // =====================================================================
+// v0.7 修订一:第 0 层 || 逻辑或(§4.3;中缀位为运算符,起始位在 p_pri 为零参闭包)
+fn p_oror(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+    var l = p_or(toks, cur, lns, al)
+    var go = true
+    while go {
+        if tok(toks, cur) == "||" {
+            adv(cur)
+            var r = p_or(toks, cur, lns, al)
+            var nb = mk("Binary")
+            nb.push("OrOr")
+            nb.push(l)
+            nb.push(r)
+            // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
+            nstamp(nb, lns[cur.load()])
+            l = nb
+        } else {
+            go = false
+        }
+    }
+    return l
+}
+
 fn p_and(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
     var l = p_cmp(toks, cur, lns, al)
     var go = true
@@ -15,6 +37,8 @@ fn p_and(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
             nb.push("AndAnd")
             nb.push(l)
             nb.push(r)
+            // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
+            nstamp(nb, lns[cur.load()])
             l = nb
         } else { go = false }
     }
@@ -40,6 +64,8 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
             nb.push(op)
             nb.push(l)
             nb.push(r)
+            // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
+            nstamp(nb, lns[cur.load()])
             l = nb
         }
     }
@@ -82,6 +108,8 @@ fn p_add(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
             nb.push(op)
             nb.push(l)
             nb.push(r)
+            // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
+            nstamp(nb, lns[cur.load()])
             l = nb
         }
     }
@@ -104,6 +132,8 @@ fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
             nb.push(op)
             nb.push(l)
             nb.push(r)
+            // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
+            nstamp(nb, lns[cur.load()])
             l = nb
         }
     }
@@ -292,6 +322,22 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         ow.push(p_block(toks, cur, lns))
         return ow
     }
+    if t == "||" {
+        // v0.7 修订一:起始位 || = 零参闭包(§4.7 角色分离);ret 标注与 |x| 闭包同构
+        adv(cur)
+        var cl = mk("Closure")
+        var cln0 = lns[cur.load()]
+        cl.push(mk("CPs"))
+        var ret0 = mk("None")
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            ret0 = p_typ(toks, cur, lns)
+        }
+        cl.push(ret0)
+        cl.push(p_stmt_expr(toks, cur, lns, "1"))
+        nstamp(cl, cln0)
+        return cl
+    }
     if t == "|" {
         adv(cur)
         var cl = mk("Closure")
@@ -370,7 +416,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
     }
     if t == "(" {
         adv(cur)
-        var e0 = p_or(toks, cur, lns, "1")
+        var e0 = p_oror(toks, cur, lns, "1")
         if tok(toks, cur) == "," {
             var tn = mk("TupleE")
             tn.push(e0)
@@ -581,6 +627,8 @@ fn p_or(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str]
             nb.push("Or")
             nb.push(l)
             nb.push(r)
+            // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
+            nstamp(nb, lns[cur.load()])
             l = nb
         } else {
             go = false

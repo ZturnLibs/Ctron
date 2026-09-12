@@ -62,6 +62,7 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
     if t == "Binary" {
         var op = e[1]
         if seq2(op, "AndAnd") { return cun() }
+        if seq2(op, "OrOr") { return cun() }
         var l = ceval_expr(file, e[2], cenvN, cenvV, st)
         if l[0] != "k" { return l }
         var r = ceval_expr(file, e[3], cenvN, cenvV, st)

@@ -252,6 +252,10 @@ fn scan(src: Str, toks: List[Str], lns: List[Str]) {
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 rpush(raw, rlines, line, "&&")
                 i += 2
+            } else if b == 124 && i + 1 < n && byte_at(src, i + 1) == 124 {
+                // v0.7 修订一:|| 最长匹配(起始位零参闭包由 parse 角色分离,§4.0)
+                rpush(raw, rlines, line, "||")
+                i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
                 rpush(raw, rlines, line, "+%")
                 i += 2

@@ -89,6 +89,20 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     }
     if t == "Binary" {
         var op = e[1]
+        if seq2(op, "OrOr") {
+            var lor = eval_expr(file, env, out, e[2])
+            if lor[0] != "k" {
+                return lor
+            }
+            if truth(lor[2]) {
+                return e4("k", lor[1], vB(true), lor[3])
+            }
+            var ror = eval_expr(file, lor[1], lor[3], e[3])
+            if ror[0] != "k" {
+                return ror
+            }
+            return e4("k", ror[1], vB(truth(ror[2])), ror[3])
+        }
         if seq2(op, "AndAnd") {
             var lr = eval_expr(file, env, out, e[2])
             if lr[0] != "k" {

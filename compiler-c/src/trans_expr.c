@@ -336,6 +336,16 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         return x;
     }
     case EX_BINARY: {
+        if (e->bop == B_OROR) {
+            // v0.7 修订一:|| 直映 C(C 原生短路);镜像 && 括号化
+            sb l2 = {0}, r2 = {0};
+            emit_expr(c, e->lhs, &l2);
+            emit_expr(c, e->rhs, &r2);
+            sb_f(o, "((%s) || (%s))", l2.d ? l2.d : "0", r2.d ? r2.d : "0");
+            sb_free(&l2);
+            sb_free(&r2);
+            return ty_unk();
+        }
         if (e->bop == B_AND) {
             sb l = {0}, r = {0};
             ty lt = emit_expr(c, e->lhs, &l);
