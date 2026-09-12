@@ -253,8 +253,9 @@ C 侧符号无 t_ 前缀)、**语句位 assert 家族已有发射**(沿 return 1
 §4.0 运算符宪法)、break/continue 转正(语句级,绑最近循环)、泛型调用点推断
 (Go 式仅实参,显式 TypeArgs 恒合法)。新码:**E2060** 无法推断类型实参
 (仅当有具体实参信息;实参类型不可得时宽松)、**E2061** 类型实参候选冲突、
-**E2070** break/continue 在循环外、**E2072** break/continue 穿越闭包边界
-(E2071 越过 Drop 局部待检查面 Drop 建模后启用)。设计全文:
+**E2070** break/continue 在循环外、**E2072** break/continue 穿越闭包边界、
+**E2071** break/continue 越过带 Drop 局部的作用域(loop_scope_base 基线扫描,
+R 线已启用;C 直映发射的 RAII 前提)。设计全文:
 docs/superpowers/specs/2026-09-12-v07-operator-constitution.md;
 R 线实现:compiler-rust(oror/breakc/infer 三 suite + fixtures)。
 R 线同批:check 侧 prelude 内建族登记、标量 to_string、&&/|| prim_cat

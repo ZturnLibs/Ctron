@@ -45,6 +45,22 @@ fn break_through_closure_reports_e2072() {
 }
 
 #[test]
+fn break_crossing_drop_local_reports_e2071() {
+    let src = std::fs::read_to_string(fixture_dir().join("04e_break_drop.neg.ct")).unwrap();
+    let diags = ctron::check_src(&src, Profile::Full);
+    assert!(diags.iter().any(|d| d.code == "E2071" && d.message.contains("Drop")),
+        "应报 E2071,实际: {diags:?}");
+}
+
+#[test]
+fn break_without_drop_locals_stays_clean() {
+    // 正向对照:无 Drop 局部的循环 break 不触发 E2071(04e 正例已覆盖行为,此处查诊断面)
+    let src = "test \"t\" {\n    var i: I32 = 0\n    while i < 5 {\n        i += 1\n        if i == 3 { break }\n    }\n}\n";
+    let diags = ctron::check_src(src, Profile::Full);
+    assert!(diags.iter().all(|d| d.code != "E2071"), "不得误报 E2071: {diags:?}");
+}
+
+#[test]
 fn fmt_keeps_break_continue_layout() {
     let src = "test \"t\" {\n    var i: I32 = 0\n    while i < 5 {\n        i += 1\n        if i == 3 { break }\n        if i == 1 { continue }\n    }\n}\n";
     assert_eq!(ctron::fmt::fmt_src(src).unwrap(), src);

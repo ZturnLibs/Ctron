@@ -120,6 +120,8 @@ pub struct Checker<'a> {
     /// v0.7 修订二:当前函数内循环嵌套深度;闭包体检查时清零并压栈外层值
     loop_depth: usize,
     fn_loop_depths: Vec<usize>,
+    /// v0.7 修订二 E2071:各层循环体的作用域基线(scopes 索引)
+    loop_scope_base: Vec<usize>,
 }
 
 impl<'a> Checker<'a> {
@@ -133,7 +135,7 @@ impl<'a> Checker<'a> {
             pure_ctx: false, comptime_ctx: false, depth: 0,
             caps_used: HashSet::new(), gc_alloc_fns: HashMap::new(), any_alloc_fns: HashMap::new(),
             trait_method_alloc_map,
-            loop_depth: 0, fn_loop_depths: Vec::new(),
+            loop_depth: 0, fn_loop_depths: Vec::new(), loop_scope_base: Vec::new(),
         };
         // 分配效果定点求解(全部用户 fn)
         let ids: Vec<usize> = (0..sema.fns.len()).collect();
@@ -876,7 +878,9 @@ impl<'a> Checker<'a> {
                 let binds = self.check_pattern(pattern, Some(&elem));
                 self.scopes.last_mut().unwrap().extend(binds);
                 self.loop_depth += 1; // v0.7 修订二
+                self.loop_scope_base.push(self.scopes.len()); // 体作用域基线(模式作用域除外:循环变量逐轮 drop)
                 self.check_block(body);
+                self.loop_scope_base.pop();
                 self.loop_depth -= 1;
                 self.scopes.pop();
             }
@@ -886,18 +890,28 @@ impl<'a> Checker<'a> {
                     self.err("E2010", format!("while 条件应为 Bool,实际 {}", self.type_name(&cty)), Span::new(1, 1, 0, 0));
                 }
                 self.loop_depth += 1; // v0.7 修订二
+                self.loop_scope_base.push(self.scopes.len()); // 体作用域基线
                 self.check_block(body);
+                self.loop_scope_base.pop();
                 self.loop_depth -= 1;
             }
             // v0.7 修订二:break/continue 合法性(E2070 循环外 / E2072 穿越闭包边界;
             // E2071 越过 Drop 局部待检查面 Drop 建模,interp 动态 drop 现已声音)
             ast::Stmt::Break | ast::Stmt::Continue => {
+                let kw = if matches!(s, ast::Stmt::Break) { "break" } else { "continue" };
                 if self.loop_depth == 0 {
-                    let kw = if matches!(s, ast::Stmt::Break) { "break" } else { "continue" };
                     if self.fn_loop_depths.iter().any(|&d| d > 0) {
                         self.err("E2072", format!("{kw} 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)"), Span::new(1, 1, 0, 0));
                     } else {
                         self.err("E2070", format!("{kw} 出现在循环外"), Span::new(1, 1, 0, 0));
+                    }
+                } else if let Some(&base) = self.loop_scope_base.last() {
+                    // v0.7 E2071:break/continue 需越过带 Drop 局部的作用域 → 静态拒绝
+                    // (C 直映发射无 cleanup 路径;RAII 合同优先。Drop 局部移入内层块或重构)
+                    let crosses_drop = self.scopes[base..].iter()
+                        .any(|sc| sc.values().any(|l| self.ty_has_drop(&l.ty)));
+                    if crosses_drop {
+                        self.err("E2071", format!("{kw} 需越过带 Drop 局部的作用域(RAII 清理无 cleanup 路径);将 Drop 局部移入内层块或重构循环"), Span::new(1, 1, 0, 0));
                     }
                 }
             }
@@ -1703,6 +1717,17 @@ impl<'a> Checker<'a> {
     }
 
     fn is_comptime_call_self(&self, _name: &str) -> bool { false }
+
+    /// 类型头部是否带用户 Drop impl(interp def_has_drop 的检查面镜像)
+    fn ty_has_drop(&self, t: &Ty) -> bool {
+        match self.resolve(t) {
+            Ty::Named { def, .. } => {
+                let n = self.sema.defs[def].name.clone();
+                self.sema.impls.iter().any(|im| im.trait_name == "Drop" && im.for_type == n)
+            }
+            _ => false,
+        }
+    }
 
     /// 标量类别(对齐 C sem prim_cat):0 未知/聚合,1 数值,2 Bool,3 Str
     fn prim_cat(&self, t: &Ty) -> u8 {
