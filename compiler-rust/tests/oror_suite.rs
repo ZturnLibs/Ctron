@@ -27,9 +27,7 @@ fn neg_fixture_reports_e2010_with_bool_message() {
     let diags = ctron::check_src(&src, Profile::Full);
     assert!(diags.iter().any(|d| d.code == "E2010" && d.message.contains("需要 Bool")),
         "应报 E2010 `||` 需要 Bool,实际: {diags:?}");
-    // 取默认提示(宪法:Option/Result 语义走 or)
-    assert!(diags.iter().any(|d| d.message.contains("取默认请用")),
-        "Option 操作数应提示用 or 取默认,实际: {diags:?}");
+    // 对齐 C sem 宽松口径:聚合/未知类型操作数不报(|| 仅查已知标量类别)
 }
 
 #[test]

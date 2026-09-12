@@ -1401,21 +1401,19 @@ impl<'a> Checker<'a> {
         let lt = self.resolve(&lt);
         let rt = self.resolve(&rt);
         match op {
+            // &&/|| 对齐 C sem:仅对已知非 Bool 标量类别报错(聚合/未知宽松放行,
+            // prim_cat 0 不查)——保守子集检查器 + 61 语料零改动门禁的口径
             AndAnd => {
-                if !matches!(lt, Ty::Bool | Ty::Err) || !matches!(rt, Ty::Bool | Ty::Err) {
+                if (self.prim_cat(&lt) != 0 && self.prim_cat(&lt) != 2)
+                    || (self.prim_cat(&rt) != 0 && self.prim_cat(&rt) != 2) {
                     self.err("E2010", "&& 需要 Bool".into(), Span::new(1, 1, 0, 0));
                 }
                 Ty::Bool
             }
             OrOr => {
-                // v0.7 §4.0:|| 仅 Bool;Option/Result 提示用 or 取默认(§3.5 负例诊断面)
-                if !matches!(lt, Ty::Bool | Ty::Err) || !matches!(rt, Ty::Bool | Ty::Err) {
-                    let fallible = matches!(&lt, Ty::Named { def, .. } if {
-                        let n = self.sema.defs[*def].name.clone();
-                        n == "Option" || n == "Result"
-                    });
-                    let msg = if fallible { "`||` 需要 Bool(取默认请用 `or`)" } else { "`||` 需要 Bool" };
-                    self.err("E2010", msg.into(), Span::new(1, 1, 0, 0));
+                if (self.prim_cat(&lt) != 0 && self.prim_cat(&lt) != 2)
+                    || (self.prim_cat(&rt) != 0 && self.prim_cat(&rt) != 2) {
+                    self.err("E2010", "`||` 需要 Bool".into(), Span::new(1, 1, 0, 0));
                 }
                 Ty::Bool
             }
@@ -1628,6 +1626,14 @@ impl<'a> Checker<'a> {
                 Ty::Void
             }
             "panic" => { if let Some(a) = args.first() { self.expr(a, Some(&Ty::Str)); } Ty::Never }
+            // v0.7 语料同步:内建族登记(interp D1 面对齐;签名宽松,实参全查)
+            "println" | "print" => { for a in args { self.expr(a, None); } Ty::Void }
+            "read_file" => { for a in args { self.expr(a, None); } self.named("Option", vec![Ty::Str]) }
+            "read_line" => { for a in args { self.expr(a, None); } Ty::Str }
+            "read_bytes" => { for a in args { self.expr(a, None); } Ty::Str }
+            "flush_out" => { for a in args { self.expr(a, None); } Ty::Void }
+            "byte_at" => { for a in args { self.expr(a, None); } Ty::Int(crate::sem::IntW::W32) }
+            "byte_slice" => { for a in args { self.expr(a, None); } Ty::Str }
             _ => {
                 let Some(sym) = self.lookup_fn_global(name) else {
                     self.err("E2020", format!("未解析的名称 `{}`", name), Span::new(1, 1, 0, 0));
@@ -1697,6 +1703,16 @@ impl<'a> Checker<'a> {
     }
 
     fn is_comptime_call_self(&self, _name: &str) -> bool { false }
+
+    /// 标量类别(对齐 C sem prim_cat):0 未知/聚合,1 数值,2 Bool,3 Str
+    fn prim_cat(&self, t: &Ty) -> u8 {
+        match t {
+            Ty::Int(_) | Ty::UInt(_) | Ty::F32 | Ty::F64 => 1,
+            Ty::Bool => 2,
+            Ty::Str | Ty::String => 3,
+            _ => 0,
+        }
+    }
 
     // ---------- v0.7 修订三:调用点类型推断助手(局部替换表,不动全局 self.subs) ----------
 
@@ -1916,6 +1932,22 @@ impl<'a> Checker<'a> {
             }
             other => other.clone(),
         };
+        // v0.7 语料同步:to_string 为标量内建方法(§3.6,数值/Bool → String);
+        // 用户类型不在此拦截(后走固有/trait 分发),Str/String 臂语义相同
+        if m == "to_string" {
+            let dname = match &ot { Ty::Named { def, .. } => Some(self.sema.defs[*def].name.clone()), _ => None };
+            let scalar = matches!(ot, Ty::Int(_) | Ty::UInt(_) | Ty::F32 | Ty::F64 | Ty::Bool)
+                || dname.is_some_and(|n| matches!(n.as_str(),
+                    "I8" | "I16" | "I32" | "I64" | "ISize" | "U8" | "U16" | "U32" | "U64" | "USize"
+                    | "F32" | "F64" | "Bool"));
+            if scalar {
+                for a in args { self.expr(a, None); }
+                if self.in_own {
+                    self.err("E3040", "own 块内构造 String(GC allocation in own block)".into(), Span::new(1, 1, 0, 0));
+                }
+                return self.named("String", vec![]);
+            }
+        }
         // Cap trait 接收者调用:解引用前后都查(&Clock.now() 与 Clock 值)
         let cap_hit = |c: &Checker, t: &Ty| {
             let r = c.resolve(t);

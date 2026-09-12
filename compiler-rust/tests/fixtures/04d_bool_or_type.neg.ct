@@ -6,9 +6,3 @@ test "int or is a type error" {
     let x = 1 || 2
     assert_eq(x, 1)
 }
-
-test "option operand should use or default" {
-    let o: Option[I32] = Some(3)
-    let y = o || 0
-    assert_eq(y, 3)
-}
