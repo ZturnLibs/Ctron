@@ -868,16 +868,14 @@ static void check_block(ctx* c, cblock* b) {
             break;
         case ST_BREAK:
         case ST_CONTINUE:
+            const char* bkw = (st->kind == ST_BREAK ? "break" : "continue");
             if (brk_depth == 0) {
                 if (brk_outer)
-                    diag(c->k, "E2072", (st->kind == ST_BREAK ? "break" : "continue"),
-                         "不得穿越闭包边界(闭包体是独立函数)");
+                    diag(c->k, "E2072", "%s 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)", bkw);
                 else
-                    diag(c->k, "E2070", (st->kind == ST_BREAK ? "break" : "continue"),
-                         "出现在循环外(绑定同函数体最近循环)");
+                    diag(c->k, "E2070", "%s 出现在循环外(绑定同函数体最近循环)", bkw);
             } else if (fn_has_drop_local) {
-                diag(c->k, "E2071", (st->kind == ST_BREAK ? "break" : "continue"),
-                     "需越过带 Drop 局部的作用域(v1 静态拒绝)");
+                diag(c->k, "E2071", "%s 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)", bkw);
             }
             break;
         case ST_ASSIGN: {
