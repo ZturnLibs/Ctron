@@ -91,3 +91,26 @@ cargo test 全绿(除上述先行失败持平)+ 三语料断言全过 + main.rs 
   §4.7/§10 五新码)、compiler-rust README(v0.7 节)、fmt-spec(|| 空格)、
   COVERAGE 第六批、compiler/README 码表第十二批。
 - **剩余**:自举线移植(等闭包 ABI 合入;届时 fixtures 提升共享)。
+
+## 自举线移植落地(2026-09-12 续;分支 feat/v07-bootstrap-port,已合并 main)
+
+实测侦察推翻「待闭包 ABI」预判:移植路径与 eval_val.ct WIP 零文件交集,直接开工。
+
+- **修订二**(9d56b73):parse 臂/eval 状态种 b·c/trans 直映/sem chk_break E2070;
+  C 线最小面(token/parser/rt has_brk·has_cont/sem E2070/trans)含 **eval_block
+  流跳过修复**(原仅认 has_ret——差分实证的语义洞);smoke 87/87 + suite 53/53。
+- **修订一**(15e5b00):lex OROR/p_oror 第 0 层/起始位零参闭包(含 -> Ret)/
+  eval 短路/sem E2010 宽松口径/**全 Binary nstamp 修复**(E2010 的 nline 依赖
+  末位行号戳,旧 && 检查潜伏 byte_at 崩溃——stash 实证旧账);C 线 10 文件同步;
+  suite 55/55。
+- **修订三**(866cb1b):裸型参位名级推断(E2060/E2061 + sawc 宽松口径;
+  bound v1 放行);C rt TypeArgs 用户 fn 直调臂;suite 56/56。
+- **语料提升**:04d/04e/04f 行为与 neg 共享;E2060-E2072 入 meta_check 码表
+  与 tests/README §4;R 线 check_suite 期望表登记。
+- **移植实证经验**:①自举 AST 子槽可能是字符串叶子,泛化节点递归对 Str 做
+  [n] 索引即运行时崩——语义预检必须形状驱动;②多入口解析器上,角色分离设计
+  须逐入口改挂(语句级入口漏挂 p_oror 曾致 || 被拆为 let 截断 + 零参闭包);
+  ③C tok_desc 平行表随枚举中位插入错位,新 token 须同步 token.c TOK_NAMES;
+  ④零参闭包臂易漏 -> Ret 标注(三线各漏一次,R 线因公共尾部同构幸免)。
+- **剩余**:E2071(自举 Drop 建模)/E2072(闭包边界)、修订三结构化形态
+  (待 ex_ty 保留实参)、C 线推断 neg 面、三家 E2010 文案统一。

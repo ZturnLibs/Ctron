@@ -183,7 +183,7 @@ suite 证明语言能力面对齐可执行规范。**改动 compiler/src 后三�
   print/to_string/字段赋值、非纯表达式分支的值位 if 命中即 panic。
 - 节点形态不对称备忘:if 的 else 分支被 p_if 包为 BlockExpr(then 是裸 Block)
   ——消费 If 节点的代码必须两形态都处理。
-- 自举线无 break/continue(语言层 v0.7 已转正为关键字,R 线已落地;自举移植前解析器仍静默收为 Ident、运行期才炸——移植切片须同步词法关键字表)
+- break/continue 已自举落地(v0.7 修订二,9d56b73:关键字 + parse 臂 + eval 状态种 b·c + E2070;E2071/E2072 门待补——移植实证:自举 AST 子槽可能是字符串叶子,泛化节点递归对 Str 做 [n] 索引即运行时崩,语义预检必须形状驱动)
   (2026-09-09 两度踩之);or2/or3 是函数不短路,副作用条件必须拆开写。
 - compiler-c Makefile 不追踪头文件以外的新依赖变更,改 .c 后 make 可能
   "Nothing to be done"——touch 源文件强制重链。

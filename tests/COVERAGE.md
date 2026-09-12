@@ -4,7 +4,7 @@
 > R 线 compiler-rust 新增三 suite:oror(4,`||` 真值表/优先级/位置消歧/续行)、
 > breakc(8,break/continue 绑最近循环/E2070/E2071/E2072/fmt/C 发射)、
 > infer(5,调用点推断/E2060/E2061/显式并存);夹具 `compiler-rust/tests/fixtures/`
-> (R 线本地,移植自举线时提升共享)。spec 修订:§1.3/§1.5/§1.6/§3.7/§3.9.1/
+> (04d/04e/04f 已提升共享 tests/,自举+宿主双过;04f 结构化形态、04d/04f 负例、04e 闭包/Drop 负例留 R 线 fixtures)。spec 修订:§1.3/§1.5/§1.6/§3.7/§3.9.1/
 > §4.0(新)/§4.2/§4.3/§4.4/§4.7 + §10 五个新码。
 > 设计:`docs/superpowers/specs/2026-09-12-v07-operator-constitution.md`。
 >

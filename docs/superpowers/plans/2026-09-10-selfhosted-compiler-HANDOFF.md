@@ -102,7 +102,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   spawn shim 同步 + ct_cap_decl/ct_call_args 全链审计,由熟悉闭包机制的
   lane 主导。另:Ctron 逻辑或是关键字 or(p_or 匹配 'or' 记号),
   '||' 非语法——新代码一律 or2/or3。
-- **自举线无 `continue`/`break`(语言层 v0.7 已转正,R 线已落地;自举移植待闭包 ABI 合入,届时循环退出可直接用 break/continue)**:现循环退出用标志位;无 `;` 分隔;无多返回值
+- **`continue`/`break` 已自举落地(v0.7 修订二,9d56b73:parse/eval 状态种 b·c/trans 直映/sem E2070;E2071/E2072 门待补)**:旧语料循环退出仍用标志位;无 `;` 分隔;无多返回值
   (用 List 或 env 变量)。
 - **发射产物给 cc 必须以 `.c` 结尾**:`.ct`/`.em` → ld "unknown file type"。
 - **改 src 后 bin/ 是旧的**:`native.sh` 不跑,一切 native 测试都在测旧代码。
