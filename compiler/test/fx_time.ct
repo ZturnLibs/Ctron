@@ -37,5 +37,10 @@ fn main() -> I32 {
     println((-hmax == -9223372036854775807).to_string())
     var omin: I64 = -0o1000000000000000000000
     println((omin == -9223372036854775808).to_string())
+    // hex-E 修复锚:含 E/e 的十六进制字面量不再误判 Float
+    var dead: I64 = 0xDEADBEEF
+    println(dead.to_string())
+    var cafe: I64 = 0xdeadbeefcafe
+    println(cafe.to_string())
     return 0
 }

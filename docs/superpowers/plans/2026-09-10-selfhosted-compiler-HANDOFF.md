@@ -141,10 +141,10 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS
   不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + fx_litfit_neg +
   递归泛型 emit 面拦截、3f 为 web 档三面。
-- **含 E/e 的十六进制字面量误判 Float(存量词法缺陷,未修)**:parse_expr
-  数字 token 的浮点检测按 'e'/'E' 判 isf,0xDEADBEEF 类字面量被建成 Float 节点
-  → E2010。规避:十六进制字面量避开 E(0xDEADBEef 同样中招,'e' 也检);
-  修复须把 isf 检测限定在非 0x 前缀或含 '.'。
+- **含 E/e 的十六进制字面量误判 Float(已修,本会话词法切片)**:parse_expr
+  数字 token 的浮点检测曾按 'e'/'E' 判 isf,0xDEADBEEF 类字面量被建成 Float
+  节点 → E2010。现 0x 前缀整字面量不作浮点指数判定(isf 仅 '.'/非 hex 的
+  e/E);fx_time 含 dead/cafe 双锚。
 
 ## 5. 挂账(按优先级,均为独立切片)
 

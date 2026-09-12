@@ -277,10 +277,26 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         var nb = mk("Int")
         var isf = false
         var tx = num_text(t)
+        // 0x 前缀无浮点形态:e/E 是十六进制数字位,不作浮点指数判定(hex-E 词法缺陷修复)
+        var hexint = false
+        if tx.len > 1 {
+            if byte_at(tx, 0) == 48 {
+                if byte_at(tx, 1) == 120 {
+                    hexint = true
+                }
+            }
+        }
         var jj: I32 = 0
         while jj < tx.len {
             var cc = byte_at(tx, jj)
-            if or2(cc == 46, or2(cc == 101, cc == 69)) { isf = true }
+            if cc == 46 {
+                isf = true
+            }
+            if !hexint {
+                if or2(cc == 101, cc == 69) {
+                    isf = true
+                }
+            }
             jj += 1
         }
         if isf { nb = mk("Float") }
