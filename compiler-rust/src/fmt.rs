@@ -122,7 +122,7 @@ fn tok_text(t: &Tok) -> &'static str {
         Tok::PercentEq => "%=",
         Tok::EqEq => "==", Tok::NotEq => "!=", Tok::Lt => "<", Tok::Gt => ">",
         Tok::LtEq => "<=", Tok::GtEq => ">=", Tok::Assign => "=",
-        Tok::AndAnd => "&&", Tok::Or => "or",
+        Tok::AndAnd => "&&", Tok::OrOr => "||", Tok::Or => "or",
         Tok::DotDot => "..", Tok::DotDotEq => "..=", Tok::Arrow => "->", Tok::FatArrow => "=>",
         Tok::Question => "?", Tok::Dot => ".", Tok::Comma => ",", Tok::Colon => ":",
         Tok::LBracket => "[", Tok::RBracket => "]", Tok::LParen => "(", Tok::RParen => ")",

@@ -1963,20 +1963,24 @@ impl<'a> Interp<'a> {
 
     fn eval_binop(&mut self, op: &ast::BinOp, a: &Value, rhs: &ast::Expr, env: &Rc<Env>) -> EvalResult {
         use ast::BinOp::*;
-        // Option/Result 取默认中缀
+        // Option/Result 取默认中缀(对齐 C rt:Some/Ok 且恰 1 载荷 → 取载荷;其余一律取默认)
         if *op == Or {
-            let failed = match a {
-                Value::Enum { variant, .. } => *variant == 1,
-                _ => false,
+            let unwrapped = match a {
+                Value::Enum { variant: 0, payload, .. } if payload.len() == 1 => Some(payload[0].clone()),
+                _ => None,
             };
-            if failed {
-                return self.expr(rhs, env);
-            }
-            return Ok(a.clone());
+            if let Some(v) = unwrapped { return Ok(v); }
+            return self.expr(rhs, env);
         }
         // && 短路:LHS 假时不求值 RHS(对齐 C rt;守卫型 RHS 可含越界等副作用,T1 关联)
         if *op == AndAnd {
             if !truthy(a) { return Ok(Value::Bool(false)); }
+            let b = self.expr(rhs, env)?;
+            return Ok(Value::Bool(truthy(&b)));
+        }
+        // || 短路:LHS 真时不求值 RHS(v0.7 修订一)
+        if *op == OrOr {
+            if truthy(a) { return Ok(Value::Bool(true)); }
             let b = self.expr(rhs, env)?;
             return Ok(Value::Bool(truthy(&b)));
         }
@@ -1995,6 +1999,7 @@ impl<'a> Interp<'a> {
         }
         match op {
             AndAnd => Ok(Value::Bool(truthy(a) && truthy(&b))),
+            OrOr => Ok(Value::Bool(truthy(a) || truthy(&b))),
             Eq | Ne | Lt | Gt | Le | Ge => {
                 let ord = compare_values(a, &b);
                 let r = match op {

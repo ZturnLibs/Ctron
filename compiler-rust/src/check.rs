@@ -1353,22 +1353,15 @@ impl<'a> Checker<'a> {
     fn check_binary(&mut self, op: &ast::BinOp, lhs: &ast::Expr, rhs: &ast::Expr, _hint: Option<&Ty>) -> Ty {
         use ast::BinOp::*;
         if *op == BinOp::Or {
-            // Option/Result 取默认中缀
+            // Option/Result 取默认中缀;操作数类型不设限(对齐 C sem——宽松回退,非 Option 值回落默认)
             let lt = self.expr(lhs, None);
-            let def_ok = match self.resolve(&lt) {
-                Ty::Named { def, args } => {
-                    let n = self.sema.defs[def].name.clone();
-                    if n == "Option" || n == "Result" {
-                        let default = args.first().cloned().unwrap_or(Ty::Err);
-                        self.expr(rhs, Some(&default));
-                        return default;
-                    }
-                    false
+            if let Ty::Named { def, args } = self.resolve(&lt) {
+                let n = self.sema.defs[def].name.clone();
+                if n == "Option" || n == "Result" {
+                    let default = args.first().cloned().unwrap_or(Ty::Err);
+                    self.expr(rhs, Some(&default));
+                    return default;
                 }
-                _ => false,
-            };
-            if !def_ok {
-                self.err("E2010", "`or` 只能用于 Option/Result".into(), Span::new(1, 1, 0, 0));
             }
             self.expr(rhs, None);
             return Ty::Err;
@@ -1381,6 +1374,18 @@ impl<'a> Checker<'a> {
             AndAnd => {
                 if !matches!(lt, Ty::Bool | Ty::Err) || !matches!(rt, Ty::Bool | Ty::Err) {
                     self.err("E2010", "&& 需要 Bool".into(), Span::new(1, 1, 0, 0));
+                }
+                Ty::Bool
+            }
+            OrOr => {
+                // v0.7 §4.0:|| 仅 Bool;Option/Result 提示用 or 取默认(§3.5 负例诊断面)
+                if !matches!(lt, Ty::Bool | Ty::Err) || !matches!(rt, Ty::Bool | Ty::Err) {
+                    let fallible = matches!(&lt, Ty::Named { def, .. } if {
+                        let n = self.sema.defs[*def].name.clone();
+                        n == "Option" || n == "Result"
+                    });
+                    let msg = if fallible { "`||` 需要 Bool(取默认请用 `or`)" } else { "`||` 需要 Bool" };
+                    self.err("E2010", msg.into(), Span::new(1, 1, 0, 0));
                 }
                 Ty::Bool
             }

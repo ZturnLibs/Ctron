@@ -721,7 +721,18 @@ impl Parser {
 
     pub fn parse_expr(&mut self) -> Expr { self.parse_expr_flags(true) }
 
-    fn parse_expr_flags(&mut self, allow_struct: bool) -> Expr { self.parse_or(allow_struct) }
+    fn parse_expr_flags(&mut self, allow_struct: bool) -> Expr { self.parse_oror(allow_struct) }
+
+    // v0.7 第 0 层:|| 逻辑或(§4.3;§4.0 角色分离律——中缀位为运算符,起始位在 primary 分派为闭包)
+    fn parse_oror(&mut self, allow_struct: bool) -> Expr {
+        let mut lhs = self.parse_or(allow_struct);
+        while self.at(&Tok::OrOr) {
+            self.bump();
+            let rhs = self.parse_or(allow_struct);
+            lhs = Expr::Binary { op: BinOp::OrOr, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+        }
+        lhs
+    }
 
     fn parse_or(&mut self, allow_struct: bool) -> Expr {
         let mut lhs = self.parse_and(allow_struct);
@@ -965,6 +976,8 @@ impl Parser {
             Tok::Scope => self.parse_scope(),
             Tok::Own => self.parse_own(),
             Tok::Pipe => self.parse_closure(),
+            // v0.7:起始位 || = 零参闭包(角色分离律,§4.2)
+            Tok::OrOr => { self.bump(); self.parse_closure_tail(Vec::new()) }
             other => {
                 self.err_here("E1001", format!("意外的记号 {:?} 在表达式位置", other));
                 self.bump();
@@ -1069,6 +1082,11 @@ impl Parser {
             }
         }
         self.expect(&Tok::Pipe, "闭包参数结束");
+        self.parse_closure_tail(params)
+    }
+
+    /// 闭包参数表之后的公共尾部(返回标注 + 体);零参闭包(||)复用
+    fn parse_closure_tail(&mut self, params: Vec<ClosureParam>) -> Expr {
         let ret = if self.eat(&Tok::Arrow) { Some(Box::new(self.parse_type())) } else { None };
         let body = Box::new(self.parse_expr());
         Expr::Closure { params, ret, body }
@@ -1284,7 +1302,7 @@ fn tok_display(t: &Tok) -> &'static str {
         Tok::PlusEq => "+=", Tok::MinusEq => "-=", Tok::StarEq => "*=", Tok::SlashEq => "/=",
         Tok::PercentEq => "%=", Tok::EqEq => "==", Tok::NotEq => "!=", Tok::Lt => "<",
         Tok::Gt => ">", Tok::LtEq => "<=", Tok::GtEq => ">=", Tok::Assign => "=",
-        Tok::AndAnd => "&&", Tok::Or => "or", Tok::DotDot => "..", Tok::DotDotEq => "..=",
+        Tok::AndAnd => "&&", Tok::OrOr => "||", Tok::Or => "or", Tok::DotDot => "..", Tok::DotDotEq => "..=",
         Tok::Arrow => "->", Tok::FatArrow => "=>", Tok::Question => "?", Tok::Dot => ".",
         Tok::Comma => ",", Tok::Colon => ":", Tok::LBracket => "[", Tok::RBracket => "]",
         Tok::LParen => "(", Tok::RParen => ")", Tok::LBrace => "{", Tok::RBrace => "}",

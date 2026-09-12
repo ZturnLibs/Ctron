@@ -329,6 +329,7 @@ impl<'src> Lexer<'src> {
         else if two(b'<', b'=') { self.bump(); self.bump(); Tok::LtEq }
         else if two(b'>', b'=') { self.bump(); self.bump(); Tok::GtEq }
         else if two(b'&', b'&') { self.bump(); self.bump(); Tok::AndAnd }
+        else if two(b'|', b'|') { self.bump(); self.bump(); Tok::OrOr } // v0.7:最长匹配优先于两个单 |(起始位零参闭包由 parser 角色分离,§4.0)
         else if three(b'.', b'.', b'=') { self.bump(); self.bump(); self.bump(); Tok::DotDotEq } // 最长匹配 ..=(§1.5)
         else if two(b'.', b'.') { self.bump(); self.bump(); Tok::DotDot }
         else if two(b'-', b'>') { self.bump(); self.bump(); Tok::Arrow }
@@ -424,7 +425,7 @@ fn filter_newlines(raw: Vec<Token>) -> Vec<Token> {
 
 fn line_end_continues(t: &Tok) -> bool {
     matches!(t, Tok::Comma | Tok::Assign | Tok::Arrow | Tok::FatArrow | Tok::AndAnd
-        | Tok::Or | Tok::DotDot | Tok::DotDotEq | Tok::Plus | Tok::Minus | Tok::Star
+        | Tok::OrOr | Tok::Or | Tok::DotDot | Tok::DotDotEq | Tok::Plus | Tok::Minus | Tok::Star
         | Tok::Slash | Tok::Percent | Tok::WrapPlus | Tok::WrapMinus | Tok::EqEq
         | Tok::NotEq | Tok::Lt | Tok::Gt | Tok::LtEq | Tok::GtEq | Tok::LParen
         | Tok::LBracket | Tok::LBrace | Tok::Pipe)
@@ -433,7 +434,7 @@ fn line_end_continues(t: &Tok) -> bool {
 fn continues_next_line(t: &Tok) -> bool {
     matches!(t, Tok::Dot | Tok::Plus | Tok::Minus | Tok::Star | Tok::Slash
         | Tok::Percent | Tok::WrapPlus | Tok::WrapMinus | Tok::EqEq | Tok::NotEq
-        | Tok::Lt | Tok::Gt | Tok::LtEq | Tok::GtEq | Tok::AndAnd | Tok::Or
+        | Tok::Lt | Tok::Gt | Tok::LtEq | Tok::GtEq | Tok::AndAnd | Tok::OrOr | Tok::Or
         | Tok::DotDot | Tok::DotDotEq)
 }
 

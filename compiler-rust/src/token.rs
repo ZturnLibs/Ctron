@@ -28,7 +28,7 @@ pub enum Tok {
     Plus, Minus, Star, Slash, Percent, WrapPlus, WrapMinus,
     PlusEq, MinusEq, StarEq, SlashEq, PercentEq,
     EqEq, NotEq, Lt, Gt, LtEq, GtEq, Assign,
-    AndAnd, Or,           // or = 取默认中缀(保留运算符字)
+    AndAnd, OrOr, Or,     // OrOr = 逻辑或(v0.7);or = 取默认中缀(保留运算符字)
     DotDot, DotDotEq, Arrow, FatArrow, Question, Dot, Comma, Colon,
     LBracket, RBracket, LParen, RParen, LBrace, RBrace, Pipe, Amp,
     Hash, At, Underscore, Bang,

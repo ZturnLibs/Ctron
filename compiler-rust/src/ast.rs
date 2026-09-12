@@ -86,7 +86,7 @@ pub enum MemberTarget { Name(String), TupleIndex(u32) }
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnOp { Neg, Not }
 #[derive(Debug, Clone, PartialEq)]
-pub enum BinOp { Or, AndAnd, Eq, Ne, Lt, Gt, Le, Ge, Add, Sub, WrapAdd, WrapSub, Mul, Div, Mod }
+pub enum BinOp { OrOr, Or, AndAnd, Eq, Ne, Lt, Gt, Le, Ge, Add, Sub, WrapAdd, WrapSub, Mul, Div, Mod }
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClosureParam { pub is_var: bool, pub name: String, pub ty: Option<Type> }
 #[derive(Debug, Clone, PartialEq)]

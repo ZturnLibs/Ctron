@@ -2623,6 +2623,7 @@ impl Trans {
         }
         match op {
             AndAnd => Ok((format!("(({}) && ({}))", lc, rc), VTy::Bool)),
+            OrOr => Ok((format!("(({}) || ({}))", lc, rc), VTy::Bool)),
             Eq | Ne | Lt | Gt | Le | Ge => {
                 if lt == VTy::Str && rt == VTy::Str {
                     if !matches!(op, Eq | Ne) { return Err("trans:Str 仅可 ==/!=".into()); }
