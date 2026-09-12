@@ -407,6 +407,75 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                     // bound 强制检查(E2050):显式 TypeArgs 调用点逐型参核对
                     check_tpar_bounds(file, e, cal, rt, diags)
                 }
+                if cal[0] == "Ident" {
+                    // v0.7 修订三:省略 TypeArgs 的泛型调用——裸型参位按实参名级型别推断
+                    // (Go 式仅实参;E2060 仅当有具体实参信息;bound 核对 v1 放行,同 R 线口径;
+                    //  结构化推断 List[V] 形态待型别串保留实参后启用)
+                    var gd2 = find_gdecl(file, rt)
+                    if gd2.len > 0 && gd2[2].len >= 2 {
+                        var tps2 = gd2[2]
+                        var ps2 = gd2[3]
+                        var binds: List[Str] = List[Str]()
+                        var bvals: List[Str] = List[Str]()
+                        var amb2 = false
+                        var sawc = false
+                        var pi2: I32 = 1
+                        while pi2 < ps2.len && pi2 <= got {
+                            var prm2 = ps2[pi2]
+                            if prm2[0] == "Param" {
+                                var ft = prm2[3]
+                                var ak2 = ex_ty(ag[pi2], tc, loc, envT)
+                                if ak2.len > 0 {
+                                    sawc = true
+                                }
+                                var tn = ""
+                                if or2(ft[0] == "Ident", ft[0] == "Named") {
+                                    // 裸型参位:V 解析为 Ident 或单段 Named,按名匹配型参表
+                                    var k2: I32 = 1
+                                    while k2 < tps2.len {
+                                        if seq2(tps2[k2][1], ft[1]) {
+                                            tn = ft[1]
+                                        }
+                                        k2 += 1
+                                    }
+                                }
+                                if tn.len > 0 && ak2.len > 0 {
+                                    if in_list(binds, tn) {
+                                        var hit2: I32 = 0
+                                        var bi2: I32 = 0
+                                        while bi2 < binds.len {
+                                            if seq2(binds[bi2], tn) { hit2 = bi2 }
+                                            bi2 += 1
+                                        }
+                                        if !seq2(bvals[hit2], ak2) {
+                                            amb2 = true
+                                        }
+                                    } else {
+                                        binds.push(tn)
+                                        bvals.push(ak2)
+                                    }
+                                }
+                            }
+                            pi2 += 1
+                        }
+                        if amb2 {
+                            diags.push("E2061@" + nline(e) + ": 无法唯一推断类型实参(候选冲突);请显式标注 " + rt + "[类型](…)")
+                        } else {
+                            var miss = ""
+                            var k3: I32 = 1
+                            while k3 < tps2.len {
+                                if !in_list(binds, tps2[k3][1]) {
+                                    if miss.len > 0 { miss = miss + ", " }
+                                    miss = miss + tps2[k3][1]
+                                }
+                                k3 += 1
+                            }
+                            if miss.len > 0 && sawc {
+                                diags.push("E2060@" + nline(e) + ": 无法推断类型实参 `" + miss + "`(未出现于实参位);请显式标注,如 " + rt + "[类型](…)")
+                            }
+                        }
+                    }
+                }
                 if !in_list(tc[0], rt) {
                     var pa = prelude_arity(rt)
                     if pa >= 0 && got != pa {

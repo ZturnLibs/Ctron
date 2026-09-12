@@ -248,11 +248,14 @@ C 侧符号无 t_ 前缀)、**语句位 assert 家族已有发射**(沿 return 1
 坑:字符串字面量内裸 `{` 开启插值(未终止即 E1001),发射模板一律 `\{` 转义
 且逐字面量配平。
 
-第十二批(2026-09-12,R 线 feat/cli-test-fmt;**修订二自举移植已落地**
-——feat/v07-bootstrap-port:parse/eval_run 状态种 b·c/trans 直映/
-sem chk_break E2070;C 线 oracle 最小面同步(token/parser/rt 流标志/
-sem E2070/trans;eval_block 流跳过修复),smoke 87/87 + suite 53/53 +
-meta_check 91 文件全绿;修订一/三自举移植待续,E2071/E2072 待后续):
+第十二批(2026-09-12,R 线 feat/cli-test-fmt + feat/v07-bootstrap-port;
+**修订一/二自举移植已落地**——修订二:parse/eval_run 状态种 b·c/trans 直映/
+sem chk_break E2070;修订一:lex OROR/p_oror 第 0 层+起始位零参闭包/
+eval 短路/trans 直映/sem E2010 宽松口径 + 全 Binary nstamp 修复;
+**修订三自举已落地(裸型参位名级推断,E2060/E2061;结构化形态待型别串
+保留实参)**;C 线 oracle 同步(两修订最小面 + eval_block 流跳过修复 +
+TypeArgs 用户 fn 直调);smoke 87/87 + suite 56/56 + meta_check 93 文件
+全绿;E2071/E2072、C 线推断 neg 面待后续):
 **v0.7 三项松绑 + 新诊断码**——`||` 逻辑或(第 0 优先级,起始位零参闭包位置消歧,
 §4.0 运算符宪法)、break/continue 转正(语句级,绑最近循环)、泛型调用点推断
 (Go 式仅实参,显式 TypeArgs 恒合法)。新码:**E2060** 无法推断类型实参

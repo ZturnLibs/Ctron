@@ -750,6 +750,11 @@ val eval_expr(rt* R, cexpr* e) {
             rcv.us = 0;
             return v_tuple(R, snd, rcv);
         }
+        // v0.7 修订三:用户泛型 fn 的显式 TypeArgs 调用——动态求值忽略型别实参
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT) {
+            const cdecl* gfn = file_fn(R, cal->obj->text);
+            if (gfn) return call_decl(R, gfn, e->elems, e->nelems);
+        }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && (strcmp(cal->obj->text, "Mutex") == 0 || strcmp(cal->obj->text, "Global") == 0)) {
             if (e->nelems < 1 || e->nelems > 2) rt_abort(R, RT_ERROR, "%s 实参", cal->obj->text);
