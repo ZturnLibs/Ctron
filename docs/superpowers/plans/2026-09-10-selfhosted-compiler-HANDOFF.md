@@ -91,8 +91,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
 - **闭包形参 32 位限制的 ABI 调研结论(feat/closure-abi)**:ct_i 实为 int64
   (emitted `typedef int64_t ct_i`),传输层 64 位无恙;截断仅发生在 trans_conc
   闭包 shim 的形参声明硬编码 `int32_t t_x = (int32_t)_pN` + env 绑定 "i"。
-  升级方案草案已验证到"自发射可过":TypeArgs 调用点把目标 fn 型形参的替换后
-  内参码经 env '#clcodes'(逗号串)提示传入 shim,按码生成形参声明
+  升级方案草案:TypeArgs 调用点把目标 fn 型形参的替换后内参码经 env
+  '#clcodes'(逗号串)提示传入 shim,按码生成形参声明。
+  **已知阻塞(feat/closure-abi 实测)**:该提示块进 trans_expr 后,
+  cc_emit 自发射在 Let 型别推断路径触发 "byte_at 目标需 Str"(与块内逻辑
+  是否执行无关,疑似与 pass1 遍历/ps2 作用域交互)——根因未钉死前,
+  A 块保持移除;Str/List 过闭包形参继续用 I32 索引闭包 + 捕获句柄口径
   (ct_ctype + (long) 中转)。**止损原因**:提示需穿过预提升/#spec 多层 env,
   叠加自发射回归排查成本超出单片边界;正式升级建议:shim 形参码化 +
   spawn shim 同步 + ct_cap_decl/ct_call_args 全链审计,由熟悉闭包机制的
