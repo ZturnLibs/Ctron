@@ -183,7 +183,7 @@ suite 证明语言能力面对齐可执行规范。**改动 compiler/src 后三�
   print/to_string/字段赋值、非纯表达式分支的值位 if 命中即 panic。
 - 节点形态不对称备忘:if 的 else 分支被 p_if 包为 BlockExpr(then 是裸 Block)
   ——消费 If 节点的代码必须两形态都处理。
-- 语言无 break/continue(保留字无实现)——解析器静默收为 Ident,运行期才炸
+- 自举线无 break/continue(语言层 v0.7 已转正为关键字,R 线已落地;自举移植前解析器仍静默收为 Ident、运行期才炸——移植切片须同步词法关键字表)
   (2026-09-09 两度踩之);or2/or3 是函数不短路,副作用条件必须拆开写。
 - compiler-c Makefile 不追踪头文件以外的新依赖变更,改 .c 后 make 可能
   "Nothing to be done"——touch 源文件强制重链。

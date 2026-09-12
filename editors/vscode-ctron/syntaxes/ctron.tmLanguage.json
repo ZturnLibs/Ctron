@@ -117,7 +117,7 @@
       "patterns": [
         {
           "name": "keyword.control.ctron",
-          "match": "\\b(if|else|match|while|for|in|return|scope|own)\\b"
+          "match": "\\b(if|else|match|while|for|in|return|scope|own|break|continue)\\b"
         },
         {
           "name": "storage.type.function.ctron",
@@ -275,7 +275,7 @@
         },
         {
           "name": "keyword.operator.logical.ctron",
-          "match": "&&|!"
+          "match": "&&|\\|\\||!"
         },
         {
           "name": "keyword.operator.range.ctron",
@@ -327,7 +327,7 @@
         },
         {
           "name": "invalid.illegal.reserved.ctron",
-          "match": "\\b(break|continue|do|async|await|interface|module)\\b"
+          "match": "\\b(do|async|await|interface|module)\\b"
         }
       ]
     }
