@@ -209,20 +209,20 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
             tcb(file, d[2], tc, List[Str](), List[Str](), List[Str](), diags)
         }
         if t == "Fn" {
-            // v0.7 修订二 E2070:break/continue 绑定同函数体最近循环
-            chk_break(d[5], 0, diags)
+            // v0.7 修订二 E2070/E2071/E2072:break/continue 合法性预检
+            chk_break(file, d[5], 0, 0, 0, List[Str](), diags)
         } else if t == "Impl" {
             var bits = d[4]
             var bmi: I32 = 1
             while bmi < bits.len {
                 var bmd = bits[bmi]
                 if bmd[0] == "Method" {
-                    chk_break(bmd[5], 0, diags)
+                    chk_break(file, bmd[5], 0, 0, 0, List[Str](), diags)
                 }
                 bmi += 1
             }
         } else if t == "Test" {
-            chk_break(d[2], 0, diags)
+            chk_break(file, d[2], 0, 0, 0, List[Str](), diags)
         }
         i += 1
     }
@@ -233,54 +233,93 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
 // 泛化子节点下钻(字符串叶子自然终止);Closure 体是独立函数边界,不下钻
 // (穿越闭包边界的 E2072 待后续切片);E2071(越过 Drop 局部)同批待后续。
 // =====================================================================
-fn chk_break(n: List[Str], depth: I32, diags: List[Str]) {
+fn chk_break(file: List[Str], n: List[Str], depth: I32, loopbase: I32, outer: I32, drops: List[Str], diags: List[Str]) {
     var t = n[0]
     if t == "Break" {
+        println("[dbg] chk_break visit: depth=" + depth.to_string() + " outer=" + outer.to_string() + " drops=" + drops.len.to_string())
         if depth == 0 {
-            diags.push("E2070@" + nline(n) + ": break 出现在循环外(绑定同函数体最近循环)")
+            if outer > 0 {
+                diags.push("E2072@" + nline(n) + ": break 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)")
+            } else {
+                diags.push("E2070@" + nline(n) + ": break 出现在循环外(绑定同函数体最近循环)")
+            }
+        } else if drops.len > loopbase {
+            diags.push("E2071@" + nline(n) + ": break 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)")
         }
         return
     }
     if t == "Continue" {
         if depth == 0 {
-            diags.push("E2070@" + nline(n) + ": continue 出现在循环外(绑定同函数体最近循环)")
+            if outer > 0 {
+                diags.push("E2072@" + nline(n) + ": continue 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)")
+            } else {
+                diags.push("E2070@" + nline(n) + ": continue 出现在循环外(绑定同函数体最近循环)")
+            }
+        } else if drops.len > loopbase {
+            diags.push("E2071@" + nline(n) + ": continue 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)")
         }
         return
     }
-    // 闭包体是独立函数边界:不下钻(E2072 穿越闭包边界待后续切片)
+    // 闭包体是独立函数边界:深度清零,外层是否存在循环以 outer 穿透(E2072 判定依据)
     if t == "Closure" {
+        var nouter = outer
+        if depth > 0 { nouter = 1 }
+        chk_break(file, n[3], 0, loopbase, nouter, drops, diags)
         return
     }
     var nd = depth
     if or2(t == "While", t == "For") {
         nd = depth + 1
     }
-    // 形状驱动下钻:只走已知块槽位(节点其余槽为字符串叶子,不可索引)
     if t == "Block" {
+        // 块内共享一份 drops 副本(兄弟声明互见);块出口丢弃副本 = 块内
+        // 声明的 Drop 局部离开作用域(prelude 无 List.pop,以拷贝语义等价)
+        var cur: List[Str] = List[Str]()
+        var ci: I32 = 0
+        while ci < drops.len {
+            cur.push(drops[ci])
+            ci += 1
+        }
         var i: I32 = 1
         while i < n.len - 1 {
-            chk_break(n[i], nd, diags)
+            chk_break(file, n[i], nd, loopbase, outer, cur, diags)
             i += 1
         }
         return
     }
+    if t == "Let" {
+        // 注解型 let 且类型带 Drop impl → 记入当前作用域 Drop 局部(§6.4)
+        if n[3].len > 1 && n[3][0] == "Named" {
+            if impl_has_drop(file, n[3][1]) {
+                if n[2][0] == "PatId" {
+                    drops.push(n[2][1])
+                }
+            }
+        }
+        if n[4].len > 1 {
+            chk_break(file, n[4], nd, loopbase, outer, drops, diags)
+        }
+        return
+    }
     if t == "BlockExpr" {
-        chk_break(n[1], nd, diags)
+        chk_break(file, n[1], nd, loopbase, outer, drops, diags)
         return
     }
     if t == "While" {
-        chk_break(n[2], nd, diags)
+        var lb = drops.len
+        chk_break(file, n[2], nd, lb, outer, drops, diags)
         return
     }
     if t == "For" {
-        chk_break(n[3], nd, diags)
+        var lb = drops.len
+        chk_break(file, n[3], nd, lb, outer, drops, diags)
         return
     }
     if t == "If" {
-        chk_break(n[2], nd, diags)
+        chk_break(file, n[2], nd, loopbase, outer, drops, diags)
         var els = n[3]
         if els.len > 1 {
-            chk_break(els, nd, diags)
+            chk_break(file, els, nd, loopbase, outer, drops, diags)
         }
         return
     }
@@ -290,14 +329,44 @@ fn chk_break(n: List[Str], depth: I32, diags: List[Str]) {
         while ai < arms.len {
             var arm = arms[ai]
             if arm.len > 2 {
-                chk_break(arm[2], nd, diags)
+                chk_break(file, arm[2], nd, loopbase, outer, drops, diags)
             }
             ai += 1
         }
         return
     }
     if or2(t == "Own", t == "Scope") {
-        chk_break(n[2], nd, diags)
+        chk_break(file, n[2], nd, loopbase, outer, drops, diags)
         return
     }
+    if t == "Expr" {
+        chk_break(file, n[1], nd, loopbase, outer, drops, diags)
+        return
+    }
+    if t == "Return" {
+        if n[1].len > 1 {
+            chk_break(file, n[1], nd, loopbase, outer, drops, diags)
+        }
+        return
+    }
+    if t == "Assign" {
+        chk_break(file, n[1], nd, loopbase, outer, drops, diags)
+        chk_break(file, n[3], nd, loopbase, outer, drops, diags)
+        return
+    }
+}
+
+// 类型名是否带用户 Drop impl(镜像 rt 侧 find_impl_method 的检查面口径)
+fn impl_has_drop(file: List[Str], tyname: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" && d[2].len > 1 && d[3].len > 1 {
+            if seq2(d[2][1], "Drop") && seq2(d[3][1], tyname) {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
 }
