@@ -1,517 +1,1033 @@
 // =====================================================================
+
 // eval_val.ct —— 值域基础:进制字面量解析(digit_of/txt_num/dvi)、值构造器
+
 // (vI/vB/vS/vV2/vL/vdeep,V 标签定义处)、truth/veq/scmp/vcmp 真值·相等·序、
+
 // ari/val_arith 算术分派。宽度域与 Float 域见 eval_width/eval_float.ct。
+
 // =====================================================================
+
 // ---------------- 数值与文本基础(进制字面量/digit_of/txt_num) ----------------
+
 fn digit_of(c: I32) -> I32 {
+
     if c >= 48 && c <= 57 { return c - 48 }
+
     if c >= 97 && c <= 102 { return c - 97 + 10 }
+
     if c >= 65 && c <= 70 { return c - 65 + 10 }
+
     return 0
+
 }
+
 fn txt_num(t: Str) -> I32 {
+
     // 支持 0x/0b/0o/十进制(去下划线)
+
     var i: I32 = 0
+
     var n = t.len
+
     var radix: I32 = 10
+
     if n >= 2 && byte_at(t, 0) == 48 && byte_at(t, 1) == 120 {
+
         radix = 16
+
         i = 2
+
     }
+
     if n >= 2 && byte_at(t, 0) == 48 && byte_at(t, 1) == 111 {
+
         radix = 8
+
         i = 2
+
     }
+
     if n >= 2 && byte_at(t, 0) == 48 && byte_at(t, 1) == 98 {
+
         radix = 2
+
         i = 2
+
     }
+
     var acc: I32 = 0
+
     while i < n {
+
         var c = byte_at(t, i)
+
         if c == 95 {
+
             i += 1
+
         } else {
+
             acc = acc * radix + digit_of(c)
+
             i += 1
+
         }
+
     }
+
     return acc
+
 }
+
 // ---------------- 树行走求值器(表达式/语句/作用域/控制流) ----------------
+
 // 值 = List[Str]:[0]=类别 I(Int文本)/B(true|false)/S(文本)/V(void)/R(range)
+
 // env = 绑定 List(新在前);表达式求值线程 env/out;返回 [flow,env,val,out]
+
 // flow:k 正常 / r return / a 断言失败;run_stmt/run_block 返回 [flow,env,out,val]
 
+
+
 fn vI(x: I32) -> List[Str] {
+
     var v = List[Str]()
+
     v.push("I")
+
     v.push(x.to_string())
+
     return v
+
 }
+
 fn vB(b: Bool) -> List[Str] {
+
     var v = List[Str]()
+
     v.push("B")
+
     if b {
+
         v.push("true")
+
     } else {
+
         v.push("false")
+
     }
+
     return v
+
 }
+
 fn vS(s: Str) -> List[Str] {
+
     var v = List[Str]()
+
     v.push("S")
+
     v.push(s)
+
     return v
+
 }
+
 fn vV2() -> List[Str] {
+
     var v = List[Str]()
+
     v.push("V")
+
     return v
+
 }
+
 // C9f①:List 域 —— 客体 List 直接持有宿主 List 对象(引用语义,push 原地变、别名可见,
+
 // 镜像 rt.c listnode);布局 ["L", item…](同 A:类别槽后逐元素)。
+
 fn vL() -> List[Str] {
+
     var v = List[Str]()
+
     v.push("L")
+
     return v
+
 }
+
 // into_gc 深拷贝(镜像 rt.c clone_val):按种类分发,U 域名/值交错、A/L 值槽递归,
+
 // 标量/T/F/C 逐槽重建(槽内容不窥探 —— 字符串载荷不可索引)
+
 fn vdeep(v: List[Str]) -> List[Str] {
+
     var k0 = v[0]
+
     // M(Atomic/Global 共享单元)保持身份:克隆不得切断别名
+
     if k0 == "M" {
+
         return v
+
     }
+
     if k0 == "U" {
+
         var ou = List[Str]()
+
         ou.push("U")
+
         ou.push(v[1])
+
         var iu: I32 = 2
+
         while iu + 1 < v.len {
+
             ou.push(v[iu])
+
             ou.push(vdeep(v[iu + 1]))
+
             iu += 2
+
         }
+
         return ou
+
     }
+
     if or2(k0 == "A", k0 == "L") {
+
         var oa = List[Str]()
+
         oa.push(k0)
+
         var ia: I32 = 1
+
         while ia < v.len {
+
             oa.push(vdeep(v[ia]))
+
             ia += 1
+
         }
+
         return oa
+
     }
+
     var out = List[Str]()
+
     out.push(v[0])
+
     var i: I32 = 1
+
     while i < v.len {
+
         out.push(v[i])
+
         i += 1
+
     }
+
     return out
+
 }
+
 fn dvi(t: Str) -> I32 {
+
     var neg = false
+
     var k: I32 = 0
+
     if t.len > 0 && byte_at(t, 0) == 45 {
+
         neg = true
+
         k = 1
+
     }
+
     var acc: I32 = 0
+
     while k < t.len {
+
         acc = acc * 10 + byte_at(t, k) - 48
+
         k += 1
+
     }
+
     if neg {
+
         return 0 - acc
+
     }
+
     return acc
+
 }
+
 fn truth(v: List[Str]) -> Bool {
+
     var k = v[0]
+
     if k == "B" {
+
         return seq2(v[1], "true")
+
     }
+
     if k == "I" {
+
         return dvi(v[1]) != 0
+
     }
+
     if k == "D" {
+
         return v[1] != "0"
+
     }
+
     return true
+
 }
+
 fn veq(a: List[Str], b: List[Str]) -> Bool {
+
     var ka = a[0]
+
     var kb = b[0]
+
     if or2(ka == "D", kb == "D") {
+
         return vcmp(a, b) == 0
+
     }
+
     if ka == "I" && kb == "I" {
+
         return dvi(a[1]) == dvi(b[1])
+
     }
+
     if or2(ka == "W", kb == "W") {
+
         if or2(ka == "I", ka == "W") && or2(kb == "I", kb == "W") {
+
             return dvi(a[1]) == dvi(b[1])
+
         }
+
         return false
+
     }
+
     if ka == "B" && kb == "B" {
+
         return seq2(a[1], b[1])
+
     }
+
     if ka == "S" && kb == "S" {
+
         return seq2(a[1], b[1])
+
     }
+
     if ka == "T" && kb == "T" {
+
         // Option/Result 结构相等:变体同名 + 载荷递归 veq(None/Err 无载荷)
+
         if !seq2(a[1], b[1]) {
+
             return false
+
         }
+
         if a.len == 3 {
+
             if b.len != 3 {
+
                 return false
+
             }
+
             return veq(a[2], b[2])
+
         }
+
         return b.len == 2
+
     }
+
     return false
+
 }
+
 fn scmp(a: Str, b: Str) -> I32 {
+
     var n = a.len
+
     if b.len < n {
+
         n = b.len
+
     }
+
     var i: I32 = 0
+
     while i < n {
+
         var x = byte_at(a, i)
+
         var y = byte_at(b, i)
+
         if x < y {
+
             return -1
+
         }
+
         if x > y {
+
             return 1
+
         }
+
         i += 1
+
     }
+
     if a.len < b.len {
+
         return -1
+
     }
+
     if a.len > b.len {
+
         return 1
+
     }
+
     return 0
+
 }
+
 // ---------------- I64 域(值 ["6", 规范十进制文本];符号支持) ----------------
+
 fn v6(t: Str) -> List[Str] {
+
     var v = List[Str]()
+
     v.push("6")
+
     v.push(t)
+
     return v
+
 }
+
+
 
 fn c6can(t: Str) -> Str {
+
     var neg = false
+
     var i: I32 = 0
+
     if t.len > 0 {
+
         if byte_at(t, 0) == 45 {
+
             neg = true
+
             i = 1
+
         }
+
     }
+
     var strip = true
+
     while strip {
+
         if i >= t.len - 1 {
+
             strip = false
+
         } else {
+
             if byte_at(t, i) != 48 {
+
                 strip = false
+
             } else {
+
                 i += 1
+
             }
+
         }
+
     }
+
     var m = byte_slice(t, i, t.len)
+
     if neg {
+
         if m == "0" {
+
             return "0"
+
         }
+
         return "-" + m
+
     }
+
     if m == "" {
+
         return "0"
+
     }
+
     return m
+
 }
+
+
 
 fn c6abscmp(a: Str, b: Str) -> I32 {
+
     if a.len != b.len {
+
         if a.len > b.len {
+
             return 1
+
         }
+
         return -1
+
     }
+
     var i: I32 = 0
+
     while i < a.len {
+
         var x = byte_at(a, i)
+
         var y = byte_at(b, i)
+
         if x > y {
+
             return 1
+
         }
+
         if x < y {
+
             return -1
+
         }
+
         i += 1
+
     }
+
     return 0
+
 }
+
+
 
 fn c6cmp(a: Str, b: Str) -> I32 {
+
     var aneg = false
+
     var bneg = false
+
     if a.len > 0 {
+
         if byte_at(a, 0) == 45 {
+
             aneg = true
+
         }
+
     }
+
     if b.len > 0 {
+
         if byte_at(b, 0) == 45 {
+
             bneg = true
+
         }
+
     }
+
     if aneg {
+
         if bneg {
+
             return c6abscmp(b, a)
+
         }
+
         return -1
+
     }
+
     if bneg {
+
         return 1
+
     }
+
     return c6abscmp(a, b)
+
 }
+
+
 
 fn c6add(a: Str, b: Str) -> Str {
+
     var out = ""
+
     var ia = a.len
+
     var ib = b.len
+
     var carry: I32 = 0
+
     while ia > 0 {
+
         ia -= 1
+
         var d = byte_at(a, ia) - 48 + carry
+
         if ib > 0 {
+
             ib -= 1
+
             d += byte_at(b, ib) - 48
+
         }
+
         if d > 9 {
+
             d -= 10
+
             carry = 1
+
         } else {
+
             carry = 0
+
         }
+
         out = byte_slice("0123456789", d, d + 1) + out
+
     }
+
     while ib > 0 {
+
         ib -= 1
+
         var d2 = byte_at(b, ib) - 48 + carry
+
         if d2 > 9 {
+
             d2 -= 10
+
             carry = 1
+
         } else {
+
             carry = 0
+
         }
+
         out = byte_slice("0123456789", d2, d2 + 1) + out
+
     }
+
     if carry == 1 {
+
         out = "1" + out
+
     }
+
     return c6can(out)
+
 }
+
+
 
 fn c6submag(a: Str, b: Str) -> Str {
+
     var out = ""
+
     var ia = a.len
+
     var ib = b.len
+
     var borrow: I32 = 0
+
     while ia > 0 {
+
         ia -= 1
+
         var d = byte_at(a, ia) - 48 - borrow
+
         if ib > 0 {
+
             ib -= 1
+
             d -= byte_at(b, ib) - 48
+
         }
+
         if d < 0 {
+
             d += 10
+
             borrow = 1
+
         } else {
+
             borrow = 0
+
         }
+
         out = byte_slice("0123456789", d, d + 1) + out
+
     }
+
     return c6can(out)
+
 }
+
+
 
 fn c6sub(a: Str, b: Str) -> Str {
+
     var aneg = false
+
     var bneg = false
+
     if a.len > 0 {
+
         if byte_at(a, 0) == 45 {
+
             aneg = true
+
         }
+
     }
+
     if b.len > 0 {
+
         if byte_at(b, 0) == 45 {
+
             bneg = true
+
         }
+
     }
+
     if or2(aneg, bneg) {
+
         if aneg {
+
             if bneg {
+
                 return c6sub(byte_slice(a, 1, a.len), byte_slice(b, 1, b.len))
+
             }
+
             return "-" + c6add(byte_slice(a, 1, a.len), b)
+
         }
+
         return c6add(a, byte_slice(b, 1, b.len))
+
     }
+
     var c = c6abscmp(a, b)
+
     if c == 0 {
+
         return "0"
+
     }
+
     if c > 0 {
+
         return c6submag(a, b)
+
     }
+
     return "-" + c6submag(b, a)
+
 }
 
+
+
 fn vcmp(a: List[Str], b: List[Str]) -> I32 {
+
     if a[0] == "S" && b[0] == "S" {
+
         return scmp(a[1], b[1])
+
     }
+
     if or2(a[0] == "D", b[0] == "D") {
+
         return df_vcmp(a[1], b[1])
+
     }
+
     if or2(a[0] == "6", or2(b[0] == "6", or2(a[0] == "I", b[0] == "I"))) {
+
         if or2(a[0] == "6", b[0] == "6") {
+
             var at = a[1]
+
             var bt = b[1]
+
             if a[0] == "I" {
+
                 at = dvi(a[1]).to_string()
+
             }
+
             if b[0] == "I" {
+
                 bt = dvi(b[1]).to_string()
+
             }
+
             return c6cmp(at, bt)
+
         }
+
     }
+
     var x = dvi(a[1])
+
     var y = dvi(b[1])
+
     if x < y {
+
         return -1
+
     }
+
     if x > y {
+
         return 1
+
     }
+
     return 0
+
 }
+
 fn ari(op: Str, x: I32, y: I32) -> I32 {
+
     if op == "Add" {
+
         return x + y
+
     }
+
     if op == "Sub" {
+
         return x - y
+
     }
+
     if op == "Mul" {
+
         return x * y
+
     }
+
     if op == "Div" {
+
         return x / y
+
     }
+
     if op == "Mod" {
+
         return x % y
+
     }
+
     if op == "WrapAdd" {
+
         return x + y
+
     }
+
     if op == "WrapSub" {
+
         return x - y
+
     }
+
     if op == "AddEq" {
+
         return x + y
+
     }
+
     if op == "SubEq" {
+
         return x - y
+
     }
+
     if op == "MulEq" {
+
         return x * y
+
     }
+
     if op == "DivEq" {
+
         return x / y
+
     }
+
     if op == "ModEq" {
+
         return x % y
+
     }
+
     return 0
+
 }
+
 fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
+
     if or2(a[0] == "D", b[0] == "D") {
+
         return vD(df_bin(op, a[1], b[1]))
+
     }
+
     // I64 域:["6", 十进制文本],支持 Add/Sub(文本十进制运算)
+
     if or2(a[0] == "6", b[0] == "6") {
+
         if a[0] != "6" {
+
             a = v6(a[1])
+
         }
+
         if b[0] != "6" {
+
             b = v6(b[1])
+
         }
+
         if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
+
             return v6(c6sub(a[1], b[1]))
+
         }
+
         if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
+
             return v6(c6add(a[1], b[1]))
+
         }
+
         panic("I64 arithmetic: 仅 Add/Sub v0")
+
     }
+
     // 除零永不关闭(§4.5:ARM64 等硬件静默回 0,必须显式检查)
+
     if or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "DivEq"), seq2(op, "ModEq")))) {
+
         if dvi(b[1]) == 0 {
+
             panic("division by zero")
+
         }
+
     }
+
     if or2(a[0] == "W", b[0] == "W") {
+
         return w_arith(op, a, b)
+
     }
+
     if a[0] == "VEC" && b[0] == "VEC" {
+
         var vr = List[Str]()
+
         vr.push("VEC")
+
         var vi2: I32 = 1
+
         while vi2 < a.len {
+
             vr.push(vD(df_bin(op, a[vi2][1], b[vi2][1])))
+
             vi2 += 1
+
         }
+
         return vr
+
     }
+
     // I32 检查算术(镜像 rt:溢出 panic;Wrap* 走宽度域之外的宿主回绕)
+
     if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
+
         if iadd_ov(dvi(a[1]), dvi(b[1])) {
+
             panic("integer overflow (+)")
+
         }
+
     }
+
     if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
+
         if isub_ov(dvi(a[1]), dvi(b[1])) {
+
             panic("integer overflow (-)")
+
         }
+
     }
+
     if or2(seq2(op, "Mul"), seq2(op, "MulEq")) {
+
         if imul_ov(dvi(a[1]), dvi(b[1]), 2147483647, 0 - 2147483647 - 1) {
+
             panic("integer overflow (*)")
+
         }
+
     }
+
     return vI(ari(op, dvi(a[1]), dvi(b[1])))
+
 }
