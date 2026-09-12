@@ -116,6 +116,9 @@ pub struct Checker<'a> {
     gc_alloc_fns: HashMap<usize, bool>,
     any_alloc_fns: HashMap<usize, bool>,
     trait_method_alloc_map: HashMap<(String, String), bool>,
+    /// v0.7 修订二:当前函数内循环嵌套深度;闭包体检查时清零并压栈外层值
+    loop_depth: usize,
+    fn_loop_depths: Vec<usize>,
 }
 
 impl<'a> Checker<'a> {
@@ -129,6 +132,7 @@ impl<'a> Checker<'a> {
             pure_ctx: false, comptime_ctx: false, depth: 0,
             caps_used: HashSet::new(), gc_alloc_fns: HashMap::new(), any_alloc_fns: HashMap::new(),
             trait_method_alloc_map,
+            loop_depth: 0, fn_loop_depths: Vec::new(),
         };
         // 分配效果定点求解(全部用户 fn)
         let ids: Vec<usize> = (0..sema.fns.len()).collect();
@@ -349,6 +353,7 @@ impl<'a> Checker<'a> {
 
     fn scan_stmt_gc(&self, s: &ast::Stmt, seen: &mut HashSet<String>) -> bool {
         match s {
+            ast::Stmt::Break | ast::Stmt::Continue => false,
             ast::Stmt::Let { expr, .. } => self.scan_expr_gc(expr, seen),
             ast::Stmt::Return(e) => e.as_ref().map(|e| self.scan_expr_gc(e, seen)).unwrap_or(false),
             ast::Stmt::For { iter, body, .. } => self.scan_expr_gc(iter, seen) || self.scan_stmts_gc(body.stmts.as_slice(), body.tail.as_deref(), seen),
@@ -415,6 +420,7 @@ impl<'a> Checker<'a> {
 
     fn scan_stmt_any(&self, s: &ast::Stmt, seen: &mut HashSet<String>) -> bool {
         match s {
+            ast::Stmt::Break | ast::Stmt::Continue => false,
             ast::Stmt::Let { expr, .. } => self.scan_expr_any(expr, seen),
             ast::Stmt::Return(e) => e.as_ref().map(|e| self.scan_expr_any(e, seen)).unwrap_or(false),
             ast::Stmt::For { iter, body, .. } => self.scan_expr_any(iter, seen) || self.scan_stmts_any(body.stmts.as_slice(), body.tail.as_deref(), seen),
@@ -868,7 +874,9 @@ impl<'a> Checker<'a> {
                 self.scopes.push(HashMap::new());
                 let binds = self.check_pattern(pattern, Some(&elem));
                 self.scopes.last_mut().unwrap().extend(binds);
+                self.loop_depth += 1; // v0.7 修订二
                 self.check_block(body);
+                self.loop_depth -= 1;
                 self.scopes.pop();
             }
             ast::Stmt::While { cond, body } => {
@@ -876,7 +884,21 @@ impl<'a> Checker<'a> {
                 if !matches!(self.resolve(&cty), Ty::Bool | Ty::Err) {
                     self.err("E2010", format!("while 条件应为 Bool,实际 {}", self.type_name(&cty)), Span::new(1, 1, 0, 0));
                 }
+                self.loop_depth += 1; // v0.7 修订二
                 self.check_block(body);
+                self.loop_depth -= 1;
+            }
+            // v0.7 修订二:break/continue 合法性(E2070 循环外 / E2072 穿越闭包边界;
+            // E2071 越过 Drop 局部待检查面 Drop 建模,interp 动态 drop 现已声音)
+            ast::Stmt::Break | ast::Stmt::Continue => {
+                if self.loop_depth == 0 {
+                    let kw = if matches!(s, ast::Stmt::Break) { "break" } else { "continue" };
+                    if self.fn_loop_depths.iter().any(|&d| d > 0) {
+                        self.err("E2072", format!("{kw} 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)"), Span::new(1, 1, 0, 0));
+                    } else {
+                        self.err("E2070", format!("{kw} 出现在循环外"), Span::new(1, 1, 0, 0));
+                    }
+                }
             }
             ast::Stmt::Assign { target, op: _, value } => {
                 let tty = self.expr(target, None);
@@ -1186,7 +1208,14 @@ impl<'a> Checker<'a> {
                 }
                 let body_hint = fn_hint.as_ref().map(|(_, r)| r.clone());
                 self.scopes.push(binds);
+                // v0.7 修订二:闭包体是独立函数边界——清零循环深度,外层深度入栈(E2072 判定依据)
+                let saved_depth = self.loop_depth;
+                let saved_fns = std::mem::take(&mut self.fn_loop_depths);
+                if saved_depth > 0 { self.fn_loop_depths.push(saved_depth); }
+                self.loop_depth = 0;
                 let bt = self.expr(body, body_hint.as_ref());
+                self.loop_depth = saved_depth;
+                self.fn_loop_depths = saved_fns;
                 self.scopes.pop();
                 Ty::FnTy { params: param_tys, ret: Box::new(bt) }
             }
@@ -2169,6 +2198,7 @@ fn collect_captures_block(b: &ast::Block, local: &mut HashSet<String>, outer: &H
                 bind_pattern(pattern, local);
             }
             ast::Stmt::Return(e) => if let Some(e) = e { collect_captures(e, local, outer, caps); }
+            ast::Stmt::Break | ast::Stmt::Continue => {}
             ast::Stmt::For { pattern, iter, body } => {
                 collect_captures(iter, local, outer, caps);
                 let mut l2 = local.clone();

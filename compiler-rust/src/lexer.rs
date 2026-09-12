@@ -93,6 +93,8 @@ impl<'src> Lexer<'src> {
             "if" => Tok::If, "else" => Tok::Else, "match" => Tok::Match,
             "while" => Tok::While, "for" => Tok::For, "in" => Tok::In,
             "return" => Tok::Return, "struct" => Tok::Struct, "class" => Tok::Class,
+            // v0.7 修订二:预留字转正(原按 Ident 处理)
+            "break" => Tok::Break, "continue" => Tok::Continue,
             "enum" => Tok::Enum, "trait" => Tok::Trait, "impl" => Tok::Impl,
             "own" => Tok::Own, "scope" => Tok::Scope, "test" => Tok::Test,
             "use" => Tok::Use, "pub" => Tok::Pub, "extern" => Tok::Extern, "prop" => Tok::Prop,

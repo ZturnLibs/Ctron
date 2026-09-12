@@ -1,0 +1,7 @@
+// 04e_break_outside.neg.ct —— v0.7 修订二:循环外 break(E2070)
+//@ fail: E2070
+//@ msg: break
+
+test "break outside loop is rejected" {
+    break
+}

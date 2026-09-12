@@ -95,6 +95,9 @@ pub enum Flow {
     Panic(String),
     Blocked,
     EarlyReturn(Value),
+    // v0.7 修订二:绑最近 enclosing 循环,由 For/While 执行器捕获
+    Break,
+    Continue,
 }
 
 pub struct Interp<'a> {
@@ -258,6 +261,9 @@ impl<'a> Interp<'a> {
                 let v = match e { Some(e) => self.expr(e, env)?, None => Value::Void };
                 Err(Flow::EarlyReturn(v))
             }
+            // v0.7 修订二:向最近 enclosing 循环传播(For/While 执行器捕获)
+            ast::Stmt::Break => Err(Flow::Break),
+            ast::Stmt::Continue => Err(Flow::Continue),
             ast::Stmt::For { pattern, iter, body } => {
                 let it = self.expr(iter, env)?;
                 let items: Vec<Value> = match &it {
@@ -269,20 +275,33 @@ impl<'a> Interp<'a> {
                 for item in items {
                     self.scopes_push_bind(pattern, &item, env);
                     let mut sub = Vec::new();
-                    self.exec_stmts(body.stmts.as_slice(), env, &mut sub)?;
-                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                    let r = self.exec_stmts(body.stmts.as_slice(), env, &mut sub);
+                    // break/continue(及既有 EarlyReturn/panic 路径)也先跑本轮 drop
                     for (v, def) in sub.iter().rev() { self.run_drop(v, *def); }
+                    match r {
+                        Err(Flow::Break) => break,
+                        Err(Flow::Continue) => continue,
+                        Err(e) => return Err(e),
+                        Ok(()) => {}
+                    }
+                    if let Some(t) = &body.tail { self.expr(t, env)?; }
                 }
                 Ok(())
             }
             ast::Stmt::While { cond, body } => {
-                loop {
+                'outer: loop {
                     let c = self.expr(cond, env)?;
                     if !truthy(&c) { break; }
                     let mut sub = Vec::new();
-                    self.exec_stmts(body.stmts.as_slice(), env, &mut sub)?;
-                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                    let r = self.exec_stmts(body.stmts.as_slice(), env, &mut sub);
                     for (v, def) in sub.iter().rev() { self.run_drop(v, *def); }
+                    match r {
+                        Err(Flow::Break) => break 'outer,
+                        Err(Flow::Continue) => continue,
+                        Err(e) => return Err(e),
+                        Ok(()) => {}
+                    }
+                    if let Some(t) = &body.tail { self.expr(t, env)?; }
                 }
                 Ok(())
             }
@@ -1268,6 +1287,7 @@ impl<'a> Interp<'a> {
             Err(Flow::Panic(m)) => Err(Flow::Panic(m)),
             Err(Flow::Blocked) => Err(Flow::Blocked),
             Err(Flow::None) => Ok(Value::Void),
+            Err(Flow::Break | Flow::Continue) => Err(Flow::Panic("控制流越界: break/continue 穿越调用边界".into())),
         }
     }
 
@@ -1370,6 +1390,7 @@ impl<'a> Interp<'a> {
             Err(Flow::Panic(m)) => Err(Flow::Panic(m)),
             Err(Flow::Blocked) => Err(Flow::Blocked),
             Err(Flow::None) => Ok(Value::Void),
+            Err(Flow::Break | Flow::Continue) => Err(Flow::Panic("控制流越界: break/continue 穿越调用边界".into())),
         }
     }
 
@@ -1421,6 +1442,11 @@ impl<'a> Interp<'a> {
                 Err(Flow::EarlyReturn(v)) => { tb.status = TaskStatus::Completed; tb.result = Some(v); }
                 Err(Flow::Blocked) => { tb.status = TaskStatus::Blocked; }
                 Err(Flow::None) => { tb.status = TaskStatus::Completed; tb.result = Some(Value::Void); }
+                // break/continue 不得穿越任务边界(检查面 E2072 把关;防御性按 panic 收敛)
+                Err(Flow::Break | Flow::Continue) => {
+                    tb.status = TaskStatus::Panicked;
+                    tb.panic_msg = Some("控制流越界: break/continue 穿越任务边界".into());
+                }
             }
         } else if status == TaskStatus::Pending {
             self.run_task(tid);

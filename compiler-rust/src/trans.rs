@@ -1458,6 +1458,9 @@ impl Trans {
                 self.w(1, &format!("(void)({});", c));
                 Ok(())
             }
+            // v0.7 修订二:直映 C break/continue(E2071 Drop 门落地前由检查面把关)
+            ast::Stmt::Break => { self.w(1, "break;"); Ok(()) }
+            ast::Stmt::Continue => { self.w(1, "continue;"); Ok(()) }
             ast::Stmt::While { cond, body } => {
                 let (c, ty) = self.expr(cond)?;
                 if !matches!(ty, VTy::Bool | VTy::Unknown) {

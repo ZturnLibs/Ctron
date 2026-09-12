@@ -111,6 +111,7 @@ fn tok_text(t: &Tok) -> &'static str {
         Tok::Fn => "fn", Tok::Let => "let", Tok::Var => "var", Tok::Const => "const",
         Tok::Static => "static", Tok::Comptime => "comptime", Tok::If => "if", Tok::Else => "else",
         Tok::Match => "match", Tok::While => "while", Tok::For => "for", Tok::In => "in",
+        Tok::Break => "break", Tok::Continue => "continue",
         Tok::Return => "return", Tok::Struct => "struct", Tok::Class => "class", Tok::Enum => "enum",
         Tok::Trait => "trait", Tok::Impl => "impl", Tok::Own => "own", Tok::Scope => "scope",
         Tok::Test => "test", Tok::Use => "use", Tok::Pub => "pub", Tok::Extern => "extern",

@@ -1,0 +1,13 @@
+// 04e_break_closure.neg.ct —— v0.7 修订二:break 穿越闭包边界(E2072)
+//@ fail: E2072
+//@ msg: 闭包
+
+test "break through closure boundary is rejected" {
+    for x in 0..3 {
+        let f = || {
+            break
+        }
+        let _ = x
+        let _ = f
+    }
+}

@@ -1142,6 +1142,9 @@ impl Parser {
                     stmts.push(Stmt::While { cond, body });
                     self.require_stmt_end();
                 }
+                // v0.7 修订二:break/continue 语句(绑同函数体最近循环)
+                Tok::Break => { self.bump(); stmts.push(Stmt::Break); self.require_stmt_end(); }
+                Tok::Continue => { self.bump(); stmts.push(Stmt::Continue); self.require_stmt_end(); }
                 _ => {
                     let e = self.parse_expr();
                     let aop = match self.peek() {
@@ -1291,7 +1294,7 @@ fn tok_display(t: &Tok) -> &'static str {
         Tok::Int { .. } => "整数字面量", Tok::Float { .. } => "浮点字面量", Tok::Str { .. } => "字符串",
         Tok::Ident(_) => "标识符", Tok::Fn => "fn", Tok::Let => "let", Tok::Var => "var",
         Tok::Const => "const", Tok::Static => "static", Tok::Comptime => "comptime",
-        Tok::If => "if", Tok::Else => "else", Tok::Match => "match", Tok::While => "while",
+        Tok::Break => "break", Tok::Continue => "continue", Tok::If => "if", Tok::Else => "else", Tok::Match => "match", Tok::While => "while",
         Tok::For => "for", Tok::In => "in", Tok::Return => "return", Tok::Struct => "struct",
         Tok::Class => "class", Tok::Enum => "enum", Tok::Trait => "trait", Tok::Impl => "impl",
         Tok::Own => "own", Tok::Scope => "scope", Tok::Test => "test", Tok::Use => "use",

@@ -102,6 +102,9 @@ pub enum Stmt {
     While { cond: Expr, body: Block },
     Assign { target: Expr, op: AssignOp, value: Expr },
     Expr(Expr),
+    // v0.7 修订二:语句级、无值、绑同函数体最近循环(§4 提案)
+    Break,
+    Continue,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignOp { Eq, AddEq, SubEq, MulEq, DivEq, ModEq }

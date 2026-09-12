@@ -24,6 +24,8 @@ pub enum Tok {
     Fn, Let, Var, Const, Static, Comptime, If, Else, Match, While, For, In,
     Return, Struct, Class, Enum, Trait, Impl, Own, Scope, Test, Use, Pub, Extern,
     Prop, True, False, Void, SelfKw,
+    // v0.7 修订二:由预留字转正(§1.3)
+    Break, Continue,
     // 运算符与标点(§1.5)
     Plus, Minus, Star, Slash, Percent, WrapPlus, WrapMinus,
     PlusEq, MinusEq, StarEq, SlashEq, PercentEq,
