@@ -313,7 +313,9 @@ fn veq(a: List[Str], b: List[Str]) -> Bool {
         return dvi(a[1]) == dvi(b[1])
 
     }
-
+    if or2(ka == "6", kb == "6") {
+        return c6cmp(c6can(a[1]), c6can(b[1])) == 0
+    }
     if or2(ka == "W", kb == "W") {
 
         if or2(ka == "I", ka == "W") && or2(kb == "I", kb == "W") {
@@ -597,7 +599,40 @@ fn c6cmp(a: Str, b: Str) -> I32 {
 
 
 fn c6add(a: Str, b: Str) -> Str {
+    var aneg = false
+    var bneg = false
+    if a.len > 0 {
+        if byte_at(a, 0) == 45 {
+            aneg = true
+        }
+    }
+    if b.len > 0 {
+        if byte_at(b, 0) == 45 {
+            bneg = true
+        }
+    }
+    var am = c6can(a)
+    var bm = c6can(b)
+    if aneg {
+        am = byte_slice(am, 1, am.len)
+    }
+    if bneg {
+        bm = byte_slice(bm, 1, bm.len)
+    }
+    if aneg {
+        if bneg {
+            return "-" + c6addmag(am, bm)
+        }
+        return c6submag(bm, am)
+    }
+    if bneg {
+        return c6submag(am, bm)
+    }
+    return c6addmag(am, bm)
+}
 
+// 非负十进制加法(核心,无符号处理)
+fn c6addmag(a: Str, b: Str) -> Str {
     var out = ""
 
     var ia = a.len
@@ -778,7 +813,55 @@ fn c6sub(a: Str, b: Str) -> Str {
 
 }
 
+// 非负竖式乘法(逐位乘累加;单步数值 <= 89,I32 安全)
+fn c6mul(a: Str, b: Str) -> Str {
+    var acc = "0"
+    var ib = b.len
+    while ib > 0 {
+        ib -= 1
+        var d = byte_at(b, ib) - 48
+        var part = ""
+        var carry: I32 = 0
+        var ia = a.len
+        while ia > 0 {
+            ia -= 1
+            var p = (byte_at(a, ia) - 48) * d + carry
+            carry = p / 10
+            part = byte_slice("0123456789", p % 10, p % 10 + 1) + part
+        }
+        while carry > 0 {
+            part = byte_slice("0123456789", carry % 10, carry % 10 + 1) + part
+            carry = carry / 10
+        }
+        var zeros = b.len - 1 - ib
+        var z: I32 = 0
+        while z < zeros {
+            part = part + "0"
+            z += 1
+        }
+        acc = c6add(acc, part)
+    }
+    return c6can(acc)
+}
 
+// 长除试商:返回 "商|余数"(复合串,镜像 ct_struct_inst_split 先例)
+fn c6divmod(a: Str, b: Str) -> Str {
+    var q = ""
+    var rem = "0"
+    var i: I32 = 0
+    while i < a.len {
+        // rem * 10 + digit(a[i])(文本拼接即十进制左移)
+        rem = c6can(rem + byte_slice(a, i, i + 1))
+        var qd: I32 = 0
+        while c6abscmp(rem, b) >= 0 {
+            rem = c6submag(rem, b)
+            qd += 1
+        }
+        q = q + byte_slice("0123456789", qd, qd + 1)
+        i += 1
+    }
+    return q + "|" + rem
+}
 
 fn vcmp(a: List[Str], b: List[Str]) -> I32 {
 
@@ -952,6 +1035,99 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
 
             return v6(c6add(a[1], b[1]))
 
+        }
+        // 乘:符号异或(先去符号位,竖式纯非负)
+        if or2(seq2(op, "Mul"), seq2(op, "MulEq")) {
+            var at = a[1]
+            var bt = b[1]
+            var aneg = false
+            var bneg = false
+            if at.len > 0 {
+                if byte_at(at, 0) == 45 {
+                    aneg = true
+                    at = byte_slice(at, 1, at.len)
+                }
+            }
+            if bt.len > 0 {
+                if byte_at(bt, 0) == 45 {
+                    bneg = true
+                    bt = byte_slice(bt, 1, bt.len)
+                }
+            }
+            var mag = c6mul(c6can(at), c6can(bt))
+            if mag == "0" {
+                return v6("0")
+            }
+            if aneg {
+                if bneg {
+                    return v6(mag)
+                }
+                return v6("-" + mag)
+            }
+            if bneg {
+                return v6("-" + mag)
+            }
+            return v6(mag)
+        }
+        // 除/模:截断除法(镜像 C99)——v0 负数入 panic
+        if or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "DivEq"), seq2(op, "ModEq")))) {
+            if b[1] == "0" {
+                panic("division by zero")
+            }
+            var aneg2 = false
+            var bneg2 = false
+            if a[1].len > 0 {
+                if byte_at(a[1], 0) == 45 {
+                    aneg2 = true
+                }
+            }
+            if b[1].len > 0 {
+                if byte_at(b[1], 0) == 45 {
+                    bneg2 = true
+                }
+            }
+            var at = a[1]
+            var bt = b[1]
+            if aneg2 {
+                at = byte_slice(at, 1, at.len)
+            }
+            if bneg2 {
+                bt = byte_slice(bt, 1, bt.len)
+            }
+            var qr = c6divmod(at, bt)
+            var bar: I32 = 0
+            var ci: I32 = 0
+            while ci < qr.len {
+                if byte_at(qr, ci) == 124 {
+                    bar = ci
+                }
+                ci += 1
+            }
+            var q = byte_slice(qr, 0, bar)
+            var r = byte_slice(qr, bar + 1, qr.len)
+            // 商符号 = 符号异或;余数符号随被除数(C99)
+            if aneg2 {
+                if bneg2 {
+                    if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                        return v6(q)
+                    }
+                    return v6("-" + r)
+                }
+                if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                    return v6("-" + q)
+                }
+                return v6("-" + r)
+            }
+            if bneg2 {
+                if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                    return v6("-" + q)
+                }
+                return v6(r)
+            }
+            if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                return v6(q)
+            }
+            return v6(r)
         }
 
         panic("I64 arithmetic: 仅 Add/Sub v0")

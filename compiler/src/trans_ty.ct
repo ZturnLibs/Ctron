@@ -469,6 +469,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if or2(l == "f", r == "f") { return "f" }
             if or2(l == "s", r == "s") { return "s" }
             if or2(l == "N", r == "N") { return "s" }
+            if or2(l == "6", r == "6") { return "6" }
             return "i"
         }
         return "b"

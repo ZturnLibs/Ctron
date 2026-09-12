@@ -143,6 +143,11 @@ pub fn fvals[V](m: FMap[V]) -> List[V] {
     return m.vals
 }
 
+// 值表(插入序,与 fwords 一一对应)
+pub fn fvals[V](m: FMap[V]) -> List[V] {
+    return m.vals
+}
+
 test "fput/fget/fhas basics" {
     var m = fnew[I32]()
     assert(flen[I32](m) == 0)

@@ -221,3 +221,85 @@ test "trim strips ascii space" {
     assert(trim("no-trim") == "no-trim")
 }
 
+
+// 按单字符分隔(与 lines/words 同族;sep 为 I32 字节值)
+pub fn split(s: Str, sep: I32) -> List[Str] {
+    var out = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == sep {
+            out.push(byte_slice(s, start, i))
+            start = i + 1
+        }
+        i += 1
+    }
+    out.push(byte_slice(s, start, s.len))
+    return out
+}
+
+// 反转 Str
+pub fn reverse(s: Str) -> Str {
+    var out = ""
+    var i = s.len
+    while i > 0 {
+        out = out + byte_slice(s, i - 1, i)
+        i -= 1
+    }
+    return out
+}
+
+// 子串替换(全部替换;新串与旧串等长不限)
+pub fn replace(s: Str, from: Str, to: Str) -> Str {
+    if from.len == 0 {
+        return s
+    }
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        if i + from.len <= s.len {
+            var ok = true
+            var k: I32 = 0
+            while k < from.len {
+                if byte_at(s, i + k) != byte_at(from, k) {
+                    ok = false
+                }
+                k += 1
+            }
+            if ok {
+                out = out + to
+                i += from.len
+                i -= 1
+            } else {
+                out = out + byte_slice(s, i, i + 1)
+            }
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+test "split by separator" {
+    var ps = split("a,b,c", 44)
+    assert(ps.len == 3)
+    assert(ps[0] == "a")
+    assert(ps[1] == "b")
+    assert(ps[2] == "c")
+    var no_sep = split("abc", 44)
+    assert(no_sep.len == 1)
+    assert(no_sep[0] == "abc")
+}
+
+test "reverse string" {
+    assert(reverse("abc") == "cba")
+    assert(reverse("") == "")
+    assert(reverse("a") == "a")
+}
+
+test "replace all occurrences" {
+    assert(replace("hello world", "o", "0") == "hell0 w0rld")
+    assert(replace("aaa", "aa", "b") == "ba")
+    assert(replace("abc", "xyz", "q") == "abc")
+}

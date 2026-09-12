@@ -80,7 +80,10 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   伴生 now_ms_text()(规范十进制文本→vD 包装;cc eval 无法在 Ctron 侧格式化
   宿主 double,故双内建)。**新教训**:新增内建第六处——ct_typeof 内建返回型别表
   (漏配 now_ms 时局部按 i32 推,double 截断溢出,fx_time 首跑踩中)。
-  I64 用户级值域仍挂账(eval 值模型无独立 I64 kind)。
+  **I64 值域已落地(feat/i64-arith)**:["6", 规范十进制文本],v6/c6can/c6cmp
+  /c6add/c6sub 之外补 c6mul(竖式)+c6divmod(长除试商,"商|余数"复合串)+
+  val_arith Mul/Div/Mod 分支(除零 panic 镜像 I32;负数 Div/Mod v0 入 panic,
+  Mul 支持符号)。to_string/fmt 走十进制文本恒等。decls 锁 260。
 - **闭包捕获 typed List(LI):已修(feat/std-time)**——真凶不是捕获码计算,
   而是 ct_cap_decl/ct_wrap_i 的指针域白名单缺 "LI"(typed List 码),decl 侧
   掉 (int32_t) 截断。已并入 L 分支。残余限制:**闭包(ct_clop)形参 ABI 为

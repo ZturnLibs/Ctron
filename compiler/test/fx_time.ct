@@ -9,5 +9,17 @@ fn main() -> I32 {
     println((d >= 0).to_string())
     println((d < 60000).to_string())
     println((d.to_string().len >= 1).to_string())
+    // I64 算术:秒换算(除法)+ 反乘回 + 模
+    var secs = t / 1000
+    println((secs > 1500000000).to_string())
+    println((secs * 1000 <= t).to_string())
+    println((t % 1000 < 1000).to_string())
+    // I64 负数(C99 截断:商向零取整,余数符号随被除数)
+    var neg = 0 - t
+    var nd = neg / 1000
+    var nr = neg % 1000
+    println((nd < 0).to_string())
+    println((nr <= 0).to_string())
+    println((nd * 1000 + nr == neg).to_string())
     return 0
 }

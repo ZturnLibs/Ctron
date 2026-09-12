@@ -178,6 +178,20 @@ test "fmap insertion order stable" {
     assert(fget[I32](m, "a", 0) == 9)
 }
 
+test "fvals matches fwords" {
+    var m = fnew[I32]()
+    m = fput[I32](m, "x", 10)
+    m = fput[I32](m, "y", 20)
+    var w = fwords[I32](m)
+    var v = fvals[I32](m)
+    assert(w.len == 2)
+    assert(v.len == 2)
+    assert(w[0] == "x")
+    assert(v[0] == 10)
+    assert(w[1] == "y")
+    assert(v[1] == 20)
+}
+
 test "fmap saturates at 256 (silent drop, v0)" {
     var m = fnew[I32]()
     var i: I32 = 0
