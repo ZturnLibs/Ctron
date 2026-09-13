@@ -1,0 +1,66 @@
+// std/set.ct —— Set[V] 种子(List 成员;函数式:add 返回新集合)
+// V 需可 ==(add 去重 bound Eq);add 体内嵌套调用 mem[V](单态化嵌套解析)
+struct Set[V] {
+    let items: List[V]
+}
+
+pub fn set_new[V]() -> Set[V] {
+    return Set { items: List[V]() }
+}
+
+pub fn mem[V](s: Set[V], v: V) -> Bool {
+    var i: I32 = 0
+    while i < s.items.len {
+        if s.items[i] == v {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+pub fn add[V: Eq](s: Set[V], v: V) -> Set[V] {
+    if mem[V](s, v) {
+        return s
+    }
+    var nitems = List[V]()
+    var j: I32 = 0
+    while j < s.items.len {
+        nitems.push(s.items[j])
+        j = j + 1
+    }
+    nitems.push(v)
+    return Set { items: nitems }
+}
+
+pub fn len[V](s: Set[V]) -> I32 {
+    return s.items.len
+}
+
+// 集合 → List(插入序);List → 集合(依序 add 去重)
+pub fn tolist[V](s: Set[V]) -> List[V] {
+    return s.items
+}
+
+pub fn fromlist[V: Eq](xs: List[V]) -> Set[V] {
+    var out = set_new[V]()
+    var i: I32 = 0
+    while i < xs.len {
+        out = add[V](out, xs[i])
+        i += 1
+    }
+    return out
+}
+
+test "tolist/fromlist roundtrip dedupes" {
+    var xs = List[I32]()
+    xs.push(5)
+    xs.push(5)
+    xs.push(7)
+    var s = fromlist[I32](xs)
+    assert(len[I32](s) == 2)
+    var back = tolist[I32](s)
+    assert(back.len == 2)
+    assert(back[0] == 5)
+    assert(back[1] == 7)
+}

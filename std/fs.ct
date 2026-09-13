@@ -1,0 +1,35 @@
+// std/fs.ct —— fs 便利层(fs_exists/read_file 内建之上;纯 Ctron)
+// 命名 r 前缀族避免与内建/其他模块撞名(use 合并单一命名空间)。
+
+// 读文件;不存在或不可读返回 dft
+pub fn read_or(path: Str, dft: Str) -> Str {
+    if !fs_exists(path) {
+        return dft
+    }
+    match read_file(path) {
+        Some(s) => {
+            return s
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+// 文件是否存在(语义化别名,转发内建)
+pub fn exists(path: Str) -> Bool {
+    return fs_exists(path)
+}
+
+test "read_or hits and defaults" {
+    var p = "/tmp/ctron_std_fs_test.txt"
+    if fs_exists(p) {
+        fs_delete(p)
+    }
+    assert(read_or(p, "dft") == "dft")
+    assert(fs_write(p, "hello"))
+    assert(read_or(p, "dft") == "hello")
+    assert(exists(p))
+    assert(fs_delete(p))
+    assert(!exists(p))
+}

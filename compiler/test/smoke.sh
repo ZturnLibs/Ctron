@@ -173,6 +173,20 @@ else
     bad "full 档误拦"
 fi
 echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
+drift=0
+for f in "$ROOT"/std/*.ct; do
+    b=$(basename "$f")
+    diff -q "$f" "$COMP/test/stdpkg/std/$b" > /dev/null 2>&1 || drift=1
+done
+for f in "$COMP"/test/stdpkg/std/*.ct; do
+    b=$(basename "$f")
+    if [ ! -f "$ROOT/std/$b" ]; then drift=1; fi
+done
+if [ $drift -eq 0 ]; then
+    ok "std 规范源与种子副本一致(无漂移)"
+else
+    bad "std 漂移:std/ 与 compiler/test/stdpkg/std 不一致,先同步"
+fi
 if "$COMP/bin/ctron-emit" run "$COMP/test/stdpkg/src/main.ct" > "$T/sd_native.c" 2>/dev/null; then
     cc -O1 -w -o "$T/sd.bin" "$T/sd_native.c" 2>/dev/null
     "$COMP/ctc.sh" "$COMP/test/stdpkg/src/main.ct" > "$T/sd_seed.out" 2>&1

@@ -1,0 +1,391 @@
+// std/str.ct —— Str 工具种子(words/contains/lines/count_ch;字节级,UTF-8 透传)
+
+// 空白分隔切词(空格/制表/换行/回车;与 wc 词口径一致)
+pub fn words(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var cur = ""
+    var inword = false
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isws = false
+        if c == 32 { isws = true }
+        if c == 9 { isws = true }
+        if c == 10 { isws = true }
+        if c == 13 { isws = true }
+        if isws {
+            if inword {
+                out.push(cur)
+                inword = false
+                cur = ""
+            }
+        } else {
+            cur = cur + byte_slice(s, i, i + 1)
+            inword = true
+        }
+        i += 1
+    }
+    if inword {
+        out.push(cur)
+    }
+    return out
+}
+
+// 子串包含(空子串恒真)
+pub fn contains(s: Str, sub: Str) -> Bool {
+    var sn = sub.len
+    if sn == 0 { return true }
+    var hn = s.len
+    if hn < sn { return false }
+    var i: I32 = 0
+    while i + sn <= hn {
+        var ok = true
+        var k: I32 = 0
+        while k < sn {
+            if byte_at(s, i + k) != byte_at(sub, k) { ok = false }
+            k += 1
+        }
+        if ok { return true }
+        i += 1
+    }
+    return false
+}
+
+// 按换行切行(保留末尾不带换行的行)
+pub fn lines(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 10 {
+            out.push(byte_slice(s, start, i))
+            start = i + 1
+        }
+        i += 1
+    }
+    if start < s.len {
+        out.push(byte_slice(s, start, s.len))
+    }
+    return out
+}
+
+// 字节出现计数
+pub fn count_ch(s: Str, ch: I32) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == ch { n += 1 }
+        i += 1
+    }
+    return n
+}
+
+// 以 sep 串接(parts 空返回空串;单元素不加 sep)
+pub fn join(parts: List[Str], sep: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < parts.len {
+        if i > 0 {
+            out = out + sep
+        }
+        out = out + parts[i]
+        i += 1
+    }
+    return out
+}
+
+// 前缀匹配(空前缀恒真)
+pub fn starts_with(s: Str, pre: Str) -> Bool {
+    var pn = pre.len
+    if pn == 0 { return true }
+    if s.len < pn { return false }
+    var i: I32 = 0
+    while i < pn {
+        if byte_at(s, i) != byte_at(pre, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+// 后缀匹配(空后缀恒真)
+pub fn ends_with(s: Str, suf: Str) -> Bool {
+    var sn = suf.len
+    if sn == 0 { return true }
+    if s.len < sn { return false }
+    var start = s.len - sn
+    var i: I32 = 0
+    while i < sn {
+        if byte_at(s, start + i) != byte_at(suf, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+// 去两端 ASCII 空白(全空白返回空串)
+pub fn trim(s: Str) -> Str {
+    var start: I32 = 0
+    var end = s.len
+    var head = true
+    while head {
+        if start >= end {
+            head = false
+        } else {
+            var c = byte_at(s, start)
+            var isws = false
+            if c == 32 { isws = true }
+            if c == 9 { isws = true }
+            if c == 10 { isws = true }
+            if c == 13 { isws = true }
+            if isws {
+                start += 1
+            } else {
+                head = false
+            }
+        }
+    }
+    var tail = true
+    while tail {
+        if end <= start {
+            tail = false
+        } else {
+            var c = byte_at(s, end - 1)
+            var isws = false
+            if c == 32 { isws = true }
+            if c == 9 { isws = true }
+            if c == 10 { isws = true }
+            if c == 13 { isws = true }
+            if isws {
+                end -= 1
+            } else {
+                tail = false
+            }
+        }
+    }
+    return byte_slice(s, start, end)
+}
+
+test "words splits on whitespace" {
+    var ws = words("hello  world\n\tctron")
+    assert(ws.len == 3)
+    assert(ws[0] == "hello")
+    assert(ws[1] == "world")
+    assert(ws[2] == "ctron")
+}
+
+test "contains finds substring" {
+    assert(contains("ctron", "tro"))
+    assert(!contains("ctron", "xyz"))
+    assert(contains("abc", ""))
+}
+
+test "lines splits keeping last partial" {
+    var ls = lines("a\nb\nc")
+    assert(ls.len == 3)
+    assert(ls[0] == "a")
+    assert(ls[2] == "c")
+}
+
+test "count_ch counts newlines" {
+    assert(count_ch("a\nb\nc\n", 10) == 3)
+    assert(count_ch("abc", 10) == 0)
+}
+
+test "join with separator" {
+    var xs = List[Str]()
+    xs.push("a")
+    xs.push("b")
+    xs.push("c")
+    assert(join(xs, ",") == "a,b,c")
+    assert(join(xs, "") == "abc")
+    var empty = List[Str]()
+    assert(join(empty, "-") == "")
+    var one = List[Str]()
+    one.push("solo")
+    assert(join(one, "-") == "solo")
+}
+
+test "starts_with / ends_with" {
+    assert(starts_with("ctron lang", "ctron"))
+    assert(!starts_with("ctron", "lang"))
+    assert(ends_with("main.ct", ".ct"))
+    assert(!ends_with("main.ct", ".go"))
+    assert(starts_with("abc", ""))
+    assert(ends_with("abc", ""))
+    assert(!starts_with("ab", "abc"))
+}
+
+test "trim strips ascii space" {
+    assert(trim("  hi  ") == "hi")
+    assert(trim("\t\nhi\r\n") == "hi")
+    assert(trim("   ") == "")
+    assert(trim("no-trim") == "no-trim")
+}
+
+
+// 按单字符分隔(与 lines/words 同族;sep 为 I32 字节值)
+pub fn split(s: Str, sep: I32) -> List[Str] {
+    var out = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == sep {
+            out.push(byte_slice(s, start, i))
+            start = i + 1
+        }
+        i += 1
+    }
+    out.push(byte_slice(s, start, s.len))
+    return out
+}
+
+// 反转 Str
+pub fn reverse(s: Str) -> Str {
+    var out = ""
+    var i = s.len
+    while i > 0 {
+        out = out + byte_slice(s, i - 1, i)
+        i -= 1
+    }
+    return out
+}
+
+// 子串替换(全部替换;新串与旧串等长不限)
+pub fn replace(s: Str, from: Str, to: Str) -> Str {
+    if from.len == 0 {
+        return s
+    }
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        if i + from.len <= s.len {
+            var ok = true
+            var k: I32 = 0
+            while k < from.len {
+                if byte_at(s, i + k) != byte_at(from, k) {
+                    ok = false
+                }
+                k += 1
+            }
+            if ok {
+                out = out + to
+                i += from.len
+                i -= 1
+            } else {
+                out = out + byte_slice(s, i, i + 1)
+            }
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+test "split by separator" {
+    var ps = split("a,b,c", 44)
+    assert(ps.len == 3)
+    assert(ps[0] == "a")
+    assert(ps[1] == "b")
+    assert(ps[2] == "c")
+    var no_sep = split("abc", 44)
+    assert(no_sep.len == 1)
+    assert(no_sep[0] == "abc")
+}
+
+test "reverse string" {
+    assert(reverse("abc") == "cba")
+    assert(reverse("") == "")
+    assert(reverse("a") == "a")
+}
+
+test "replace all occurrences" {
+    assert(replace("hello world", "o", "0") == "hell0 w0rld")
+    assert(replace("aaa", "aa", "b") == "ba")
+    assert(replace("abc", "xyz", "q") == "abc")
+}
+
+// ASCII 大小写转换(查找表方案;非 ASCII 字节透传)
+pub fn to_lower(s: Str) -> Str {
+    var lower = "abcdefghijklmnopqrstuvwxyz"
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var ch = byte_slice(s, i, i + 1)
+        var isupper = false
+        if c >= 65 {
+            if c <= 90 {
+                isupper = true
+            }
+        }
+        if isupper {
+            var pos = c - 65
+            ch = byte_slice(lower, pos, pos + 1)
+        }
+        out = out + ch
+        i += 1
+    }
+    return out
+}
+
+pub fn to_upper(s: Str) -> Str {
+    var upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var ch = byte_slice(s, i, i + 1)
+        var islower = false
+        if c >= 97 {
+            if c <= 122 {
+                islower = true
+            }
+        }
+        if islower {
+            var pos = c - 97
+            ch = byte_slice(upper, pos, pos + 1)
+        }
+        out = out + ch
+        i += 1
+    }
+    return out
+}
+
+pub fn pad_left(s: Str, width: I32, pad: Str) -> Str {
+    var out = s
+    while out.len < width {
+        out = pad + out
+    }
+    return out
+}
+
+pub fn pad_right(s: Str, width: I32, pad: Str) -> Str {
+    var out = s
+    while out.len < width {
+        out = out + pad
+    }
+    return out
+}
+
+pub fn char_at(s: Str, i: I32) -> Str {
+    return byte_slice(s, i, i + 1)
+}
+
+test "to_lower / to_upper ascii" {
+    assert(to_lower("Hello World") == "hello world")
+    assert(to_upper("hello world") == "HELLO WORLD")
+    assert(to_lower("") == "")
+    assert(to_upper("123abc") == "123ABC")
+}
+
+test "pad_left / pad_right" {
+    assert(pad_left("7", 3, "0") == "007")
+    assert(pad_right("7", 3, "0") == "700")
+    assert(pad_left("1234", 3, "0") == "1234")
+    assert(pad_right("", 2, "-") == "--")
+}
+
+test "char_at" {
+    assert(char_at("hello", 0) == "h")
+    assert(char_at("hello", 4) == "o")
+}

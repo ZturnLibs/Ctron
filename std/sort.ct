@@ -1,0 +1,326 @@
+// std/sort.ct —— 排序工具(泛型 K:I32/Str;稳定插入排序,确定性)
+// 依赖 K 可比较(< >):单态化后按具体类型派发(I32 标量比较,Str strcmp 字节序)。
+pub fn sorted[K](xs: List[K]) -> List[K] {
+    var out = List[K]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        // 尾部扫描:末位起找第一个 <= v 的插入位(等值不越过 → 稳定)
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                if out[j - 1] > v {
+                    j -= 1
+                } else {
+                    placed = true
+                }
+            }
+        }
+        var nxt = List[K]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        i += 1
+    }
+    return out
+}
+
+// 降序(等值不越过 → 稳定;非 reverse(asc) 的平局序)
+pub fn sorted_desc[K](xs: List[K]) -> List[K] {
+    var out = List[K]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                if out[j - 1] < v {
+                    j -= 1
+                } else {
+                    placed = true
+                }
+            }
+        }
+        var nxt = List[K]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        i += 1
+    }
+    return out
+}
+
+// 原序反转(新表)
+pub fn reversed[K](xs: List[K]) -> List[K] {
+    var out = List[K]()
+    var i = xs.len
+    while i > 0 {
+        out.push(xs[i - 1])
+        i -= 1
+    }
+    return out
+}
+
+test "sorted asc ints stable" {
+    var xs = List[I32]()
+    xs.push(3)
+    xs.push(1)
+    xs.push(2)
+    xs.push(1)
+    var s = sorted[I32](xs)
+    assert(s.len == 4)
+    assert(s[0] == 1)
+    assert(s[1] == 1)
+    assert(s[2] == 2)
+    assert(s[3] == 3)
+}
+
+test "sorted strs lexicographic" {
+    var xs = List[Str]()
+    xs.push("pear")
+    xs.push("apple")
+    xs.push("fig")
+    var s = sorted[Str](xs)
+    assert(s[0] == "apple")
+    assert(s[1] == "fig")
+    assert(s[2] == "pear")
+}
+
+test "sorted_desc ints" {
+    var xs = List[I32]()
+    xs.push(3)
+    xs.push(1)
+    xs.push(2)
+    var s = sorted_desc[I32](xs)
+    assert(s[0] == 3)
+    assert(s[1] == 2)
+    assert(s[2] == 1)
+}
+
+test "reversed" {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    var r = reversed[I32](xs)
+    assert(r[0] == 3)
+    assert(r[2] == 1)
+    var empty = List[I32]()
+    assert(reversed[I32](empty).len == 0)
+    var one = List[I32]()
+    one.push(9)
+    assert(sorted[I32](one)[0] == 9)
+}
+
+// 稳定排序,比较走 less 谓词(less(a, b) = a 应排在 b 之前)。
+// K 为 I32/Str(闭包经 ct_i 包装;结构体 K 挂账:ct_wrap_i 不收 struct 值)。
+pub fn sorted_by[K](xs: List[K], less: fn(K, K) -> Bool) -> List[K] {
+    var out = List[K]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                if less(v, out[j - 1]) {
+                    j -= 1
+                } else {
+                    placed = true
+                }
+            }
+        }
+        var nxt = List[K]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        i += 1
+    }
+    return out
+}
+
+// 稳定降序(less 同义复用:谓词为"v 应在 prev 前")
+pub fn sorted_by_desc[K](xs: List[K], less: fn(K, K) -> Bool) -> List[K] {
+    var out = List[K]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                if less(out[j - 1], v) {
+                    j -= 1
+                } else {
+                    placed = true
+                }
+            }
+        }
+        var nxt = List[K]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        i += 1
+    }
+    return out
+}
+
+test "sorted_by predicate key (squares)" {
+    var xs = List[I32]()
+    xs.push(3)
+    xs.push(-10)
+    xs.push(2)
+    var s = sorted_by[I32](xs, |a, b| a * a < b * b)
+    assert(s[0] == 2)
+    assert(s[1] == 3)
+    assert(s[2] == -10)
+}
+
+test "sorted_by stable equal keys keep order" {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    var s = sorted_by[I32](xs, |a, b| a % 2 < b % 2)
+    // 奇偶键升序:偶组 {2} 先,奇组保序 {1,3} 后
+    assert(s[0] == 2)
+    assert(s[1] == 1)
+    assert(s[2] == 3)
+}
+
+test "sorted_by_desc by distance from 100" {
+    var xs = List[I32]()
+    xs.push(98)
+    xs.push(105)
+    xs.push(99)
+    var s = sorted_by_desc[I32](xs, |a, b| (a - 100) * (a - 100) < (b - 100) * (b - 100))
+    // 离 100 远者先:105(25) 98(4) 99(1)
+    assert(s[0] == 105)
+    assert(s[1] == 98)
+    assert(s[2] == 99)
+}
+
+// 键排序(无闭包形参,规避 32 位 ct_i ABI):keys 与 xs 等长,按 keys 字典序
+// 对 xs 稳定排序。键由调用方构造(数字补零/ISO 时间等宽度一致文本)。
+pub fn sorted_by_keys[V](xs: List[V], keys: List[Str], desc: Bool) -> List[V] {
+    var idxs = List[I32]()
+    var i: I32 = 0
+    while i < xs.len {
+        idxs.push(i)
+        i += 1
+    }
+    var out = List[I32]()
+    var n: I32 = 0
+    while n < idxs.len {
+        var v = idxs[n]
+        var j = out.len
+        var placed = false
+        while !placed {
+            if j == 0 {
+                placed = true
+            } else {
+                var prevk = keys[out[j - 1]]
+                var curk = keys[v]
+                if desc {
+                    if prevk < curk {
+                        j -= 1
+                    } else {
+                        placed = true
+                    }
+                } else {
+                    if prevk > curk {
+                        j -= 1
+                    } else {
+                        placed = true
+                    }
+                }
+            }
+        }
+        var nxt = List[I32]()
+        var k: I32 = 0
+        while k < out.len {
+            if k == j {
+                nxt.push(v)
+            }
+            nxt.push(out[k])
+            k += 1
+        }
+        if j == out.len {
+            nxt.push(v)
+        }
+        out = nxt
+        n += 1
+    }
+    var res = List[V]()
+    var m: I32 = 0
+    while m < out.len {
+        res.push(xs[out[m]])
+        m += 1
+    }
+    return res
+}
+
+test "sorted_by_keys asc/desc with padded counts" {
+    var xs = List[Str]()
+    xs.push("the")
+    xs.push("quick")
+    xs.push("end")
+    var ks = List[Str]()
+    ks.push("000003")
+    ks.push("000001")
+    ks.push("000002")
+    var asc = sorted_by_keys[Str](xs, ks, false)
+    assert(asc[0] == "quick")
+    assert(asc[1] == "end")
+    assert(asc[2] == "the")
+    var desc = sorted_by_keys[Str](xs, ks, true)
+    assert(desc[0] == "the")
+    assert(desc[1] == "end")
+    assert(desc[2] == "quick")
+}

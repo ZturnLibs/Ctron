@@ -1,0 +1,205 @@
+// std/fmap.ct —— FMap[V]:Str 键哈希映射(开放寻址,定容 256 槽,线性探查)
+// 哈希 = djb2 mod 100003(全程 < 2^31,不触 eval 乘法溢出守卫,双面精确一致);
+// 槽位 = 哈希 % 256。
+// 函数式 API(fput 返回新映射,镜像 eval 结构体读即深克隆的语义锚)。
+// vals 追加式增长(slots 存索引,-1 空)规避泛型 V 零值构造。
+// 命名 f 前缀:use 合并单一命名空间,避免与 std.map 的 put/get/has 撞名
+// (同名 decl 首个胜出 = 静默遮蔽,见 HANDOFF §4)。
+// v0:无删除;满表(256 键)fput 原样返回。迭代序 = 插入序(fwords),确定性。
+struct FMap[V] {
+    let slots: List[I32]
+    let keys: List[Str]
+    let vals: List[V]
+}
+
+pub fn fnew[V]() -> FMap[V] {
+    var s = List[I32]()
+    var i: I32 = 0
+    while i < 256 {
+        s.push(-1)
+        i += 1
+    }
+    return FMap { slots: s, keys: List[Str](), vals: List[V]() }
+}
+
+// djb2 mod 100003 → 槽位 0..255
+pub fn fidx(s: Str) -> I32 {
+    var h: I32 = 5381
+    var i: I32 = 0
+    while i < s.len {
+        h = (h * 33 + byte_at(s, i)) % 100003
+        i += 1
+    }
+    return ((h % 256) + 256) % 256
+}
+
+// 键 → vals 索引;不存在返回 -1(至多探查 256 步)
+pub fn fslot[V](m: FMap[V], k: Str) -> I32 {
+    var idx = fidx(k)
+    var n: I32 = 0
+    while n < 256 {
+        var s = m.slots[idx]
+        if s < 0 {
+            return -1
+        }
+        if m.keys[s] == k {
+            return s
+        }
+        idx += 1
+        if idx == 256 { idx = 0 }
+        n += 1
+    }
+    return -1
+}
+
+// 覆盖写:键存在则替换值;否则探测空槽插入;满表原样返回
+pub fn fput[V](m: FMap[V], k: Str, v: V) -> FMap[V] {
+    var hit = fslot[V](m, k)
+    var nslots = List[I32]()
+    var nkeys = List[Str]()
+    var nvals = List[V]()
+    var i: I32 = 0
+    while i < m.slots.len {
+        nslots.push(m.slots[i])
+        i += 1
+    }
+    if hit >= 0 {
+        i = 0
+        while i < m.vals.len {
+            if i == hit {
+                nvals.push(v)
+            } else {
+                nvals.push(m.vals[i])
+            }
+            i += 1
+        }
+        i = 0
+        while i < m.keys.len {
+            nkeys.push(m.keys[i])
+            i += 1
+        }
+        return FMap { slots: nslots, keys: nkeys, vals: nvals }
+    }
+    i = 0
+    while i < m.keys.len {
+        nkeys.push(m.keys[i])
+        i += 1
+    }
+    i = 0
+    while i < m.vals.len {
+        nvals.push(m.vals[i])
+        i += 1
+    }
+    var idx = fidx(k)
+    var n: I32 = 0
+    var slot = -1
+    while n < 256 {
+        if nslots[idx] < 0 {
+            slot = idx
+            n = 256
+        } else {
+            idx += 1
+            if idx == 256 { idx = 0 }
+            n += 1
+        }
+    }
+    if slot < 0 {
+        return m
+    }
+    nslots[slot] = nkeys.len
+    nkeys.push(k)
+    nvals.push(v)
+    return FMap { slots: nslots, keys: nkeys, vals: nvals }
+}
+
+// 取值:键不存在返回 dft
+pub fn fget[V](m: FMap[V], k: Str, dft: V) -> V {
+    var s = fslot[V](m, k)
+    if s < 0 {
+        return dft
+    }
+    return m.vals[s]
+}
+
+pub fn fhas[V](m: FMap[V], k: Str) -> Bool {
+    if fslot[V](m, k) < 0 {
+        return false
+    }
+    return true
+}
+
+// 键数(替换不增长,即 keys.len)
+pub fn flen[V](m: FMap[V]) -> I32 {
+    return m.keys.len
+}
+
+// 词表(插入序;供迭代:配合 fget 逐键取值)
+pub fn fwords[V](m: FMap[V]) -> List[Str] {
+    return m.keys
+}
+
+// 值表(插入序,与 fwords 一一对应)
+pub fn fvals[V](m: FMap[V]) -> List[V] {
+    return m.vals
+}
+
+test "fput/fget/fhas basics" {
+    var m = fnew[I32]()
+    assert(flen[I32](m) == 0)
+    m = fput[I32](m, "apple", 1)
+    m = fput[I32](m, "banana", 2)
+    assert(flen[I32](m) == 2)
+    assert(fget[I32](m, "apple", 0) == 1)
+    assert(fget[I32](m, "banana", 0) == 2)
+    assert(fget[I32](m, "cherry", 9) == 9)
+    assert(fhas[I32](m, "apple"))
+    assert(!fhas[I32](m, "cherry"))
+}
+
+test "fput replaces same key" {
+    var m = fnew[I32]()
+    m = fput[I32](m, "k", 1)
+    m = fput[I32](m, "k", 7)
+    assert(flen[I32](m) == 1)
+    assert(fget[I32](m, "k", 0) == 7)
+}
+
+test "fmap insertion order stable" {
+    var m = fnew[I32]()
+    m = fput[I32](m, "b", 2)
+    m = fput[I32](m, "a", 1)
+    m = fput[I32](m, "c", 3)
+    m = fput[I32](m, "a", 9)
+    var ws = fwords[I32](m)
+    assert(ws.len == 3)
+    assert(ws[0] == "b")
+    assert(ws[1] == "a")
+    assert(ws[2] == "c")
+    assert(fget[I32](m, "a", 0) == 9)
+}
+
+test "fvals matches fwords" {
+    var m = fnew[I32]()
+    m = fput[I32](m, "x", 10)
+    m = fput[I32](m, "y", 20)
+    var w = fwords[I32](m)
+    var v = fvals[I32](m)
+    assert(w.len == 2)
+    assert(v.len == 2)
+    assert(w[0] == "x")
+    assert(v[0] == 10)
+    assert(w[1] == "y")
+    assert(v[1] == 20)
+}
+
+test "fmap saturates at 256 (silent drop, v0)" {
+    var m = fnew[I32]()
+    var i: I32 = 0
+    while i < 300 {
+        m = fput[I32](m, "w" + i.to_string(), i)
+        i += 1
+    }
+    assert(flen[I32](m) == 256)
+    assert(fget[I32](m, "w0", -1) == 0)
+    assert(fget[I32](m, "w299", -1) == -1)
+}
