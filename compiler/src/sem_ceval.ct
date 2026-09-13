@@ -46,6 +46,29 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
         }
         return cok(vI(dvi(num_text(e[1]))))
     }
+    if t == "Str" {
+        // 纯 Text 字面量折叠(含插值 → cun 回退全量求值)
+        var parts = e[1]
+        var pld = ""
+        var okp = true
+        var i5: I32 = 1
+        while i5 < parts.len {
+            var pp = parts[i5]
+            if pp[0] == "Text" {
+                pld = pld + unesc(pp[1])
+            } else {
+                okp = false
+            }
+            i5 += 1
+        }
+        if okp {
+            return cok(vS(pld))
+        }
+        return cun()
+    }
+    if t == "Float" {
+        return cok(vD(df_can(e[1])))
+    }
     if t == "Ident" {
         var i: I32 = 0
         while i < cenvN.len {

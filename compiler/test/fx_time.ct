@@ -3,9 +3,13 @@
 // const I64(comptime 折叠 + 发射面直出)含于本夹具。
 const TICK: I64 = 9007199254740993
 const HALF: I64 = TICK / 2
+const TAG: Str = "fx \"time\""
+const SCALE: F64 = 2.5
 fn main() -> I32 {
     println(TICK.to_string())
     println((HALF == 4503599627370496).to_string())
+    println(TAG)
+    println((SCALE * 2 == 5).to_string())
     var t = now_ms()
     println((t > 1000000000).to_string())
     var u = now_ms()

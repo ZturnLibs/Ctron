@@ -184,6 +184,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    **struct 泛型注解实例化点 bound 核对已落地(2026-09-13,P0-A)**:
    tcb Let 注解位经 find_sdecl/bound_sat 核对 TPar bounds(E2050,
    fx_bound_ann_neg 锚;调用点 check_tpar_bounds 同构)。
+   **S/D 域 const 穿发射已落地(2026-09-13,P0-C)**:ceval 补 Str(纯 Text,
+   经 unesc 解转义——parse 存原始转义文本,曾致发射值含 \\ 错位)/Float
+   折叠;driver_emit S 直出经 ct_str_cquote C 转义(bs() 构造,源码零
+   反斜杠字面量),D 直出 double 字面量;fx_comp_ok/fx_time 锚。
+   **F64.to_string 发射缺 f 分支(存量,未修)**:seed D 域文本恒等,
+   发射侧需数值格式化(格式对齐需设计,%g/定点取一口径);语料已避。
    (AST 替换 + pass1 直出 + 形参/型参/'#实例' env 绑定 + 嵌套预提升 #ph/#spec),
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。

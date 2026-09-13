@@ -253,6 +253,12 @@ fn main() -> I32 {
                             if vt1 == "true" { bv = "1" }
                             println("static int32_t t_" + st[1] + " = " + bv + ";")
                         }
+                        if vt == "S" {
+                            println("static const char* t_" + st[1] + " = " + ct_str_cquote(vt1) + ";")
+                        }
+                        if vt == "D" {
+                            println("static double t_" + st[1] + " = " + vt1 + ";")
+                        }
                     }
                 }
                 stq += 1

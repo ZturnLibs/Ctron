@@ -10,8 +10,12 @@ comptime fn rep(s: Str, n: I32) -> Str {
 }
 const N: I32 = sq(7)
 const S: Str = rep("ab", 3)
+const GREET: Str = "hi \"ctron\""
+const RATE: F64 = 0.75
 fn main() -> I32 {
     println(N.to_string())
     println(S)
+    println(GREET)
+    println((RATE == 0.75).to_string())
     return 0
 }

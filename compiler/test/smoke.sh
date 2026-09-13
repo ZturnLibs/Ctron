@@ -94,9 +94,9 @@ else
     bad "fx_comp_ok 异常: $(cat "$T/cp.out")"
 fi
 "$COMP/ctc.sh" "$COMP/test/fx_comp_ok.ct" > "$T/cpr.out" 2>&1
-printf '49\nababab\n' > "$T/cp.exp"
+printf '49\nababab\nhi "ctron"\ntrue\n' > "$T/cp.exp"
 if diff -q "$T/cp.exp" "$T/cpr.out" > /dev/null 2>&1; then
-    ok "fx_comp_ok 运行输出 49/ababab"
+    ok "fx_comp_ok 运行输出 49/ababab/hi\"ctron\"/true"
 else
     bad "fx_comp_ok 运行分歧: $(cat "$T/cpr.out")"
 fi

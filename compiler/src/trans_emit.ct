@@ -39,6 +39,31 @@ fn ct_str_payload(e: List[Str]) -> Str {
     return acc
 }
 
+// 字符串值 → C 字符串字面量(含引号;转义 " 反斜杠 换行 制表 回车)
+fn ct_str_cquote(s: Str) -> Str {
+    var e = bs()
+    var out = "\""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 34 {
+            out = out + e + "\""
+        } else if c == 92 {
+            out = out + e + e
+        } else if c == 10 {
+            out = out + e + "n"
+        } else if c == 9 {
+            out = out + e + "t"
+        } else if c == 13 {
+            out = out + e + "r"
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out + "\""
+}
+
 // 输入 main 首个 let read_file(Str 字面量) 的载荷(cc/selfcomp 模块的输入锚);未命中返回 ""
 fn ct_find_main_anchor(file: List[Str]) -> Str {
     var i: I32 = 1

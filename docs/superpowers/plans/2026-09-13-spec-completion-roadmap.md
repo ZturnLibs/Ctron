@@ -55,7 +55,7 @@ compiler-rust 对应面核对。
 **Verify:** suite 58/58 且能力缺口清单不再含推断条目;负例双侧拦截。
 **依赖:** 需先读 compiler-c 的检查结构(侦察 0.5 天)。**规模:** 1-2 天。
 
-### 切片 P0-C:S/D 域 const 穿发射
+### 切片 P0-C:S/D 域 const 穿发射(✅ 已完成 2026-09-13)
 
 **Spec:** §3.3(String)/§8.4(const 编译期求值);现状 I/6/B 已穿,S/D 缺。
 **Scope:** driver_emit const 折叠直出扩展——S:运行时字符串值经 C 转义辅助
