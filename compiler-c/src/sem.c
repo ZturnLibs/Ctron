@@ -388,6 +388,61 @@ static int fn_may_alloc_summary(const cfile* f, const char* name) {
 // 前向
 static void check_expr(ctx* c, cexpr* e);
 static void check_block(ctx* c, cblock* b);
+
+// ---------- v0.7 修订三:调用点推断诊断(E2060/E2061,最小面) ----------
+static cty* derive_type(ctx* c, cexpr* e);
+// 型参是否出现于类型节点(递归;保守:同名 Named 即命中)
+static int ty_has_tp(const cty* t, const char* tp, int depth) {
+    if (!t || depth > 8) return 0;
+    if (t->kind == TY_NAMED && strcmp(head_name(t), tp) == 0) return 1;
+    for (size_t i = 0; i < t->nargs; i++)
+        if (ty_has_tp(t->args[i], tp, depth + 1)) return 1;
+    if (ty_has_tp(t->sub, tp, depth + 1)) return 1;
+    if (ty_has_tp(t->elem, tp, depth + 1)) return 1;
+    for (size_t i = 0; i < t->nelems; i++)
+        if (ty_has_tp(t->elems[i], tp, depth + 1)) return 1;
+    if (ty_has_tp(t->fret, tp, depth + 1)) return 1;
+    return 0;
+}
+
+// 泛型无 TypeArgs 调用的推断诊断:
+//   E2060——某型参不出现在任何实参位参数型中(无法推断,要求显式);
+//   E2061——同一型参在多个实参位推出不同类别(候选冲突)。
+// 宽松口径:实参类型不可得(derive_type NULL)时跳过该候选。
+static void check_call_infer(ctx* c, const cexpr* e, const char* name) {
+    const cdecl* d = find_fn(c->s->f, name);
+    if (!d || d->kind != D_FN) return;
+    if (d->fn_.ntype_params == 0) return;
+    if (e->callee && e->callee->kind == EX_TYPEARGS && e->callee->ntargs > 0) return; // 显式实参
+    if (e->nelems != d->fn_.nparams) return; // 实参数不符(保守:交给其它检查)
+    int reported = 0;
+    for (size_t t = 0; t < d->fn_.ntype_params && !reported; t++) {
+        const char* tp = d->fn_.type_params[t].name;
+        int occurs = 0;
+        const char* cand[8];
+        size_t ncand = 0;
+        for (size_t i = 0; i < d->fn_.nparams; i++) {
+            if (!ty_has_tp(d->fn_.params[i].ty, tp, 0)) continue;
+            occurs = 1;
+            if (i >= e->nelems) continue;
+            cty* at = derive_type(c, e->elems[i]);
+            const char* an = head_name(at);
+            if (!an) continue;
+            int seen = 0;
+            for (size_t q = 0; q < ncand; q++)
+                if (strcmp(cand[q], an) == 0) { seen = 1; break; }
+            if (!seen && ncand < 8) cand[ncand++] = an;
+        }
+        if (!occurs) {
+            diag(c->k, "E2060", "无法推断类型实参:%s 型参 %s 不出现于实参位,请显式标注", name, tp);
+            reported = 1;
+        } else if (ncand >= 2) {
+            diag(c->k, "E2061", "无法唯一推断类型实参:%s 型参 %s 候选冲突", name, tp);
+            reported = 1;
+        }
+    }
+}
+
 static cty* derive_type(ctx* c, cexpr* e);
 
 // ---------- 表达式根标识符(用于 arena move 与发送捕获) ----------
@@ -992,6 +1047,14 @@ static void check_expr(ctx* c, cexpr* e) {
             const char* root = expr_root_name(e->callee);
             check_alloc_ctx(c, root ? root : "调用");
             return;
+        }
+        // 泛型无 TypeArgs 调用的推断诊断(v0.7 修订三)
+        if (e->callee && ((e->callee->kind == EX_IDENT && e->callee->text)
+            || (e->callee->kind == EX_TYPEARGS && e->callee->obj
+                && e->callee->obj->kind == EX_IDENT && e->callee->obj->text))) {
+            const char* cname = (e->callee->kind == EX_IDENT)
+                ? e->callee->text : e->callee->obj->text;
+            check_call_infer(c, e, cname);
         }
         // Channel[T](cap):元素须 Send(E3020)
         if (e->callee && e->callee->kind == EX_TYPEARGS && e->callee->obj

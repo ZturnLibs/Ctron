@@ -44,7 +44,7 @@ compiler/test/fx_bound_ann_neg.ct(新)、smoke.sh(tc_fx 行)。
 **Verify:** 负例 check 拦截 E2050;正例 emit 双面逐字;全量门禁。
 **依赖:** 无。**规模:** 0.5 天。
 
-### 切片 P0-B:调用点推断 C 线 neg 面
+### 切片 P0-B:调用点推断 C 线 neg 面(✅ 已完成 2026-09-13)
 
 **Spec:** v0.7 修订三(E2060/E2061)——自举/R 线已落,C 宿主缺 neg 判定。
 **Scope:** compiler-c 语义检查补 E2060(无法推断)/E2061(候选冲突)最小面;
