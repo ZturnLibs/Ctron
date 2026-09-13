@@ -201,6 +201,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    Impl 扫描)命中即计为已读(§6.4 作用域退出隐式消费)。
    验证:trait impl 方法(c.hi())/UFCS(c.bump(2))/Drop 探针
    (scope 退出 + fn 尾逆序 drop)seed 全绿;decls 锁 273。
+   **发射面 Drop 尝试已回退(同日)**:Impl 方法合成发射
+   (t_<For>__<m>)+ 调用点分派 + ct_str_cquote 转义直出的组合在自发射
+   (seed emit cc_emit.ct)触发 ct_expr:BlockExpr 与转义词法错位——自举
+   传播交互超出单片边界,已回退至最近绿态。后续设计前置:①预扫尾表达式
+   的 BlockExpr/嵌套块遍历矩阵;②转义帮手与自举词法的相互作用口径;
+   ③return/panic 路径的 cleanup 机制。
    (AST 替换 + pass1 直出 + 形参/型参/'#实例' env 绑定 + 嵌套预提升 #ph/#spec),
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。
