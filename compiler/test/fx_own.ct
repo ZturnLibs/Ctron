@@ -1,4 +1,17 @@
 // fx_own.ct —— Phase 5:own 块发射(透明语义;显式生命周期注记)
+// arena.list/into_gc 原生可跑(§5.3:arena 数据出块唯一入口 = 显式 into_gc)
+fn evens(n: I32) -> List[I32] {
+    own (ar) {
+        var out = arena.list[I32]()
+        var i: I32 = 0
+        while i < n {
+            if i % 2 == 0 { out.push(i) }
+            i += 1
+        }
+        return out.into_gc()
+    }
+}
+
 fn main() -> I32 {
     var a = 0
     own (ar) {
@@ -10,5 +23,8 @@ fn main() -> I32 {
         t2 * 3
     }
     println((a + b).to_string())
+    var xs = evens(10)
+    println(xs.len.to_string())
+    println(xs[4].to_string())
     return 0
 }

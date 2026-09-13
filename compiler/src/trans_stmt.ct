@@ -242,6 +242,9 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
                     }
                     ai1 += 1
                 }
+            } else if tl[0] == "Own" {
+                // own 块尾位:体平铺发现遍历(与 pass2 同构,输出门控丢弃)
+                ct_stmts(tl[2], env, file, "", hreg)
             } else if or2(rc == "v", !ct_is_value(tl[0])) {
                 var es1 = List[Str]()
                 es1.push("Expr")
@@ -266,6 +269,16 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
             eln("return t_mr;", env)
         } else if tl[0] == "If" {
             eln("return " + ct_if_value(tl, env2, file) + ";", env)
+        } else if tl[0] == "Own" {
+            // own 块尾位(§4.9):体平铺;own 尾值即块值,体尾 return 已由语句发射退出
+            var ocbody3 = tl[2]
+            var orenv3 = ct_stmts(ocbody3, env2, file, "", hreg)
+            var otl3 = ocbody3[ocbody3.len - 1]
+            if otl3[0] != "None" {
+                if otl3[0] != "Return" {
+                    eln("return " + ct_expr(otl3, orenv3, file) + ";", env)
+                }
+            }
         } else {
             eln("return " + ct_expr(tl, env2, file) + ";", env)
         }

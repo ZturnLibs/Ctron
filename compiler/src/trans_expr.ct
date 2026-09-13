@@ -247,6 +247,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if cal[0] == "TypeArgs" {
             var base = cal[1]
             if base[0] == "Ident" && base[1] == "List" { return "ctron_list_new()" }
+            // arena.list[T]():镜像 eval(arena 透明,List 即 GC 堆表)
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "arena" && base[2] == "Nm" && base[3] == "list" {
+                return "ctron_list_new()"
+            }
             if base[0] == "Ident" && base[1] == "Atomic" {
                 var init = "0"
                 if ag.len > 1 { init = ct_expr(ag[1], env, file) }
@@ -513,6 +517,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if or2(m == "with", m == "with_mut") {
                 panic("emit:with 仅语句位(let/Expr)")
                 return ""
+            }
+            if m == "into_gc" {
+                // arena 数据出块唯一入口(§5.3);发射侧 List 恒在 GC 堆 → 恒等(镜像 eval)
+                return "(" + obj + ")"
             }
             if m == "push" {
                 var a0 = ""

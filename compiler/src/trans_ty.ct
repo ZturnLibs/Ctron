@@ -586,6 +586,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
                 return "L"
             }
+            // arena.list[T]():与 List[T] 同型别(透明 arena,§5.3)
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "arena" && base[2] == "Nm" && base[3] == "list" {
+                if cal[2].len > 1 {
+                    if cal[2][1][0] == "Named" {
+                        if seq2(cal[2][1][1], "I32") { return "LI" }
+                    }
+                }
+                return "L"
+            }
             if base[0] == "Ident" && base[1] == "Atomic" { return "A" }
             if base[0] == "Ident" && base[1] == "Channel" { return "h" }
             if base[0] == "Ident" && base[1] == "Global" { return "A" }

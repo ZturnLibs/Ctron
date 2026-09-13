@@ -161,8 +161,13 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。
    **改 trans 源后测 bin 路径前必跑 native.sh**(本轮三次踩陈旧二进制)。
-2. **arena API 发射**:own 块已透明发射(41b7751),但 `arena.array[T](n)` /
-   `.push` / `.into_gc` 等方法仍 panic(05_own 语料原生不可跑)。
+2. **arena API 发射(部分收口)**:`arena.list[T]()`/`.into_gc()` 已原生可跑
+   (发射面 arena.list 复用 ctron_list_new + ct_typeof LI 推断;into_gc 恒等
+   镜像 seed vdeep 的观察等价;own 块尾位展平已补——own 作为 fn 体尾语句
+   曾 ct_expr panic,05_own 语料正是此形态);fx_own 扩 evens 块
+   (arena.list+push+into_gc+索引,seed==native 逐字)。仍挂账:
+   `arena.array[T](n)` 正语义 seed/发射双侧均未定义(现双面 panic,语料仅在
+   负例出现)、arena 档位语义化(现为透明 no-op)。
 3. **`?` 传播 Option[Str] NULL 模型**、**装箱载荷(用户枚举入 Result)别名
    语义细化**、**`#[trusted]` 语义化**(现为解析兼容 + FFI 信任占位)。
 4. **--profile web 语义化**(现为 full 别名;发射 C11 可走 Emscripten/wasm32)。

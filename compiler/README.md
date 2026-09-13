@@ -335,7 +335,11 @@ comptime 域、二进制折叠表达式、带后缀字面量 v0 不查)、
 as[U32] 不截断的 suite 03b 分歧,本批修复);fx_time 扩宽字面量/进制块、
 fx_litfit_neg 负例;decls 锁 271。**hex-E 词法缺陷修复(同批)**:数字 token
 浮点检测对 0x 前缀不再判 e/E 为指数(0xDEADBEEF/0xdeadbeefcafe 曾误判
-Float → E2010);fx_time 含双锚。
+Float → E2010);fx_time 含双锚。**arena.list/into_gc 原生可跑(同批)**:
+发射面 arena.list[T]() 复用 ctron_list_new + ct_typeof LI 推断、into_gc
+恒等(镜像 seed vdeep 观察等价)、own 块尾位展平(own 作为 fn 体尾语句曾
+panic,05_own 语料正是此形态);fx_own 扩 evens 块 seed==native 逐字;
+arena.array[T](n) 仍挂账(双侧正语义未定义)。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/
