@@ -788,6 +788,38 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                     diags.push("E2010@" + nline(s) + ": let 初始化类型不匹配(type):期望 " + ty_kind(ann) + " 实得 " + act)
                 }
                 lit_fit_gate(ty_kind(ann), s[4], nline(s), diags)
+                // struct 泛型注解实例化点 bound 核对(§3.9.2;调用点
+                // check_tpar_bounds 同构,复用 bound_sat 结构化谓词)
+                var abk = ann[0]
+                if abk == "Named" {
+                    var asd = find_sdecl(file, ann[1])
+                    if asd.len > 0 {
+                        var atps = asd[3]
+                        if atps.len > 1 && atps[0] == "TPs" {
+                            var atas = ann[2]
+                            if atas.len == atps.len {
+                                var ak: I32 = 1
+                                while ak < atps.len {
+                                    var abds = atps[ak][3]
+                                    var abi: I32 = 1
+                                    while abi < abds.len {
+                                        if or2(seq2(abds[abi], "Show"), seq2(abds[abi], "Eq")) {
+                                            if !bound_sat(file, atas[ak], abds[abi], 0) {
+                                                var anm2 = "?"
+                                                if atas[ak][0] == "Named" {
+                                                    anm2 = atas[ak][1]
+                                                }
+                                                diags.push("E2050@" + nline(s) + ": bound 不满足(bound):" + ann[1] + " 型参 " + atps[ak][1] + " 需 " + abds[abi] + " 实参 " + anm2)
+                                            }
+                                        }
+                                        abi += 1
+                                    }
+                                    ak += 1
+                                }
+                            }
+                        }
+                    }
+                }
             }
             tce(file, s[4], tc, loc, envT, retK, diags)
             var tn = List[Str]()

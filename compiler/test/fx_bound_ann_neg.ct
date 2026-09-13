@@ -1,0 +1,18 @@
+// fx_bound_ann_neg.ct —— E2050 struct 泛型注解实例化点 bound 核对(§3.9.2)
+// Boxed 的 T 需 Show:原语不满足(仅结构体派生/字段全可显示的值类型)
+struct Boxed[T: Show] {
+    let v: T
+}
+
+struct Point {
+    let x: I32
+    let y: I32
+}
+
+fn main() -> I32 {
+    let ok: Boxed[Point] = Boxed { v: Point { x: 1, y: 2 } }
+    println(ok.v.x.to_string())
+    let bad: Boxed[I32] = Boxed { v: 3 }
+    println(bad.v.to_string())
+    return 0
+}
