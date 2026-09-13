@@ -77,6 +77,14 @@ D:df_can 规范文本核对(仅接受合法 C double 字面量形态,含 `-`/小
 panic 展开保证执行;类引用不触发;Arena 整体释放。
 **现状:** seed 解释侧已实现(run_block 逆序 drop);发射侧无 cleanup 路径
 (E2071 的存在根据);panic 走 longjmp 不展开。
+**⚠️ 2026-09-13 前置发现(范围扩大):struct 的 impl 方法/UFCS 方法调用在
+双实现均失败**——`impl Counter { fn base2(self) -> I32 }` 与顶层 fn
+`bump(self: Counter, d)` 经 `c.bump(2)` 调用,双实现运行期 rc=1
+(宿主索引守卫"索引目标非数组";call_mem 分派:impl 方法仅对 is_class
+类实例生效,struct 落 UFCS 兜底后仍失败——self 绑定/字段索引环节有缺口)。
+字段访问与"普通 fn 显式传参"正常(fx_gstruct 风格不受影响;语料因此从未
+触达)。**Drop on struct 依赖方法调用,故 P1-A 前置 = struct 方法/UFCS
+分派修复(建议 seed 优先定位 self 绑定环节)→ 再做发射面 cleanup。**
 **设计要点(实施前 0.5 天设计记录):**
 - 作用域退出:含 Drop 的 let 在其作用域收尾处内联 `ctron_drop_T(&t_x);` 调用;
   多退出点(return/break/continue/panic)需要 cleanup 区块或 setjmp 复用。

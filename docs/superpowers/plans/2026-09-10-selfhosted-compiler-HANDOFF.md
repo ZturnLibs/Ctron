@@ -190,6 +190,11 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    反斜杠字面量),D 直出 double 字面量;fx_comp_ok/fx_time 锚。
    **F64.to_string 发射缺 f 分支(存量,未修)**:seed D 域文本恒等,
    发射侧需数值格式化(格式对齐需设计,%g/定点取一口径);语料已避。
+   **struct impl 方法/UFCS 方法调用双实现失败(2026-09-13 发现,P1-A 前置)**:
+   `impl Counter { fn base2(self) }` 与顶层 fn 的 `c.bump(2)` 均运行期
+   rc=1(宿主索引守卫"索引目标非数组";字段访问/显式传参正常,fx_gstruct
+   不受影响);call_mem 分派 impl 方法仅对 is_class 类实例生效,struct 落
+   UFCS 兜底后仍失败——Drop on struct(P1-A)前置。
    (AST 替换 + pass1 直出 + 形参/型参/'#实例' env 绑定 + 嵌套预提升 #ph/#spec),
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。
