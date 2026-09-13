@@ -21,5 +21,9 @@ fn main() -> I32 {
     println(longs[1])
     var ones = pick(xs, |s: Str| s == "be")
     println(ones[0])
+    // 无注解闭包形参:#clcodes 调用点提示路径(A 块生产侧)
+    var anys = pick(xs, |s| s.len >= 2)
+    println(anys.len.to_string())
+    println(anys[2])
     return 0
 }

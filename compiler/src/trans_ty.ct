@@ -788,6 +788,46 @@ fn ct_generic_retcode(file: List[Str], nm: Str, tpsn: List[Str], tys: List[Str])
 }
 
 // 类型槽替换:Named(TPar 名) → 实参类型节点;容器注解(Map[K, V])实参递归下钻
+// fn 型形参的内参码逗号串(A 块生产侧,§4 闭包 ABI):被调 callee 第 want 个
+// 形参若为 FnType,返回内参码逗号串(如 "s" / "i,i");不适用 → ""。
+// 防御口径:仅显式 FnType 形参参与;内参含未替换型参时按 ct_ty_code 兜底
+// (通常落 "i",与旧行为一致);闭包实参之外的调用面永不触达
+fn ct_fntype_pcodes(file: List[Str], callee: Str, want: I32) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == callee {
+            var ps = d[3]
+            var k: I32 = 1
+            var n: I32 = 0
+            while k < ps.len {
+                var pr = ps[k]
+                if pr[0] == "Param" {
+                    if n == want {
+                        if pr[3][0] != "FnType" { return "" }
+                        var ft = pr[3][1]
+                        var acc = ""
+                        var j: I32 = 1
+                        var first = true
+                        while j < ft.len {
+                            if !first { acc = acc + "," }
+                            acc = acc + ct_ty_code(ft[j], file)
+                            first = false
+                            j += 1
+                        }
+                        return acc
+                    }
+                    n += 1
+                }
+                k += 1
+            }
+            return ""
+        }
+        i += 1
+    }
+    return ""
+}
+
 fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] {
     if t[0] == "Named" {
         var k: I32 = 0

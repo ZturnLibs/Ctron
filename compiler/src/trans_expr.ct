@@ -769,7 +769,22 @@ fn ct_call_args(ag: List[Str], from: I32, env: List[Str], file: List[Str], calle
         var ac = ct_typeof(ag[i], env, file)
         var pc = "i"
         if callee != "" && i - 1 < pcs.len { pc = pcs[i - 1] }
-        args = args + ct_arg_cast(ac, pc, ct_expr(ag[i], env, file))
+        var aenv = env
+        // fn 型形参 + 闭包字面量实参:绑 '#clcodes'(shim 形参码提示,§4 闭包 ABI;
+        // 防御口径:仅 'F'/'G' 码 + Closure 实参触发,内参码取不到则不绑,回落注解/"i")
+        if callee != "" {
+            if pc.len > 0 {
+                if byte_at(pc, 0) == 70 {
+                    if ag[i][0] == "Closure" {
+                        var cc = ct_fntype_pcodes(file, callee, i - 1)
+                        if cc != "" {
+                            aenv = env_bind(env, "#clcodes", cc)
+                        }
+                    }
+                }
+            }
+        }
+        args = args + ct_arg_cast(ac, pc, ct_expr(ag[i], aenv, file))
         i += 1
     }
     if callee != "" {

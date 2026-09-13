@@ -409,21 +409,29 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             var pc = "i"
             if clcodes.len > 0 {
                 // '#clcodes' 第 pj 段(逗号分隔);指针码经 long 中转(ct_i 64 位)
+                // 注意 or2 不短路:边界迭代须先判 k==len 再取 byte_at
                 var si: I32 = 0
                 var cur: I32 = 0
                 var k: I32 = 0
                 while k <= clcodes.len {
-                    if or2(k == clcodes.len, byte_at(clcodes, k) == 44) {
+                    if k == clcodes.len {
                         if cur == pj {
                             pc = byte_slice(clcodes, si, k)
-                            k = clcodes.len + 1
+                        }
+                        k = clcodes.len + 1
+                    } else {
+                        if byte_at(clcodes, k) == 44 {
+                            if cur == pj {
+                                pc = byte_slice(clcodes, si, k)
+                                k = clcodes.len + 1
+                            } else {
+                                cur += 1
+                                si = k + 1
+                                k += 1
+                            }
                         } else {
-                            cur += 1
-                            si = k + 1
                             k += 1
                         }
-                    } else {
-                        k += 1
                     }
                 }
             }
