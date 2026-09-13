@@ -99,8 +99,13 @@ fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], s
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            nenv = env_add(nenv, pr[2], bind_of(file, vals[ai]))
-            ai += 1
+            // self 形参绑定接收者(不消耗实参);其余按值形参顺序取实参
+            if seq2(pr[2], "self") {
+                nenv = env_add(nenv, "self", bind_of(file, sv))
+            } else {
+                nenv = env_add(nenv, pr[2], bind_of(file, vals[ai]))
+                ai += 1
+            }
         }
         k += 1
     }

@@ -29,9 +29,19 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
             var pn = tok(toks, cur)
             adv(cur)
             if pn == "self" {
-                var rc = mk("Receiver")
-                rc.push(isv)
-                ps.push(rc)
+                // self 形参:按普通 Param 落树(名字 "self",可选 ": Type"——
+                // impl 方法可省,类型来自 impl for 型)。曾产出无名字/无类型的
+                // Receiver 节点,致 self 绑定缺失、方法体字段访问崩(索引守卫)
+                var pty = mk("None")
+                if tok(toks, cur) == ":" {
+                    adv(cur)
+                    pty = p_typ(toks, cur, lns)
+                }
+                var par = mk("Param")
+                par.push(isv)
+                par.push(pn)
+                par.push(pty)
+                ps.push(par)
             } else {
                 adv(cur)
                 var pty = p_typ(toks, cur, lns)

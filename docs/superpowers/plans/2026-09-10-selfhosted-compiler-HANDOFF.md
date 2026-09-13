@@ -190,11 +190,17 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    反斜杠字面量),D 直出 double 字面量;fx_comp_ok/fx_time 锚。
    **F64.to_string 发射缺 f 分支(存量,未修)**:seed D 域文本恒等,
    发射侧需数值格式化(格式对齐需设计,%g/定点取一口径);语料已避。
-   **struct impl 方法/UFCS 方法调用双实现失败(2026-09-13 发现,P1-A 前置)**:
-   `impl Counter { fn base2(self) }` 与顶层 fn 的 `c.bump(2)` 均运行期
-   rc=1(宿主索引守卫"索引目标非数组";字段访问/显式传参正常,fx_gstruct
-   不受影响);call_mem 分派 impl 方法仅对 is_class 类实例生效,struct 落
-   UFCS 兜底后仍失败——Drop on struct(P1-A)前置。
+   **struct impl 方法/UFCS 方法调用失败——已修(2026-09-13)**:根因链三处——
+   ①parse_decl 把名为 self 的形参特殊化为无名字/无类型的 Receiver 节点
+   (self 分支不推进不解析类型),self 从未进入环境;②call_method_vals 把
+   self 形参当值形参消耗实参(空实参表越界);③call_mem 的 impl 分派仅对
+   is_class 类实例生效。修复:①self 按普通 Param 落树(名字 "self" +
+   可选 ": Type",impl 方法可省类型);②call_method_vals 对名为 self 的
+   Param 绑定接收者不消耗实参;③struct 值同样走 impl 分派(无匹配方法且
+   非类才落 UFCS)。**W8030 对 Drop 绑定误报已修**:has_drop_impl(sem 侧
+   Impl 扫描)命中即计为已读(§6.4 作用域退出隐式消费)。
+   验证:trait impl 方法(c.hi())/UFCS(c.bump(2))/Drop 探针
+   (scope 退出 + fn 尾逆序 drop)seed 全绿;decls 锁 273。
    (AST 替换 + pass1 直出 + 形参/型参/'#实例' env 绑定 + 嵌套预提升 #ph/#spec),
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。

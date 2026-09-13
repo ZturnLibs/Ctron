@@ -834,6 +834,18 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 if in_list(tc[12], vn) {
                     diags.push("W8040@" + nline(s) + ": 遮蔽前奏符号(shadow prelude):" + vn)
                 }
+                // Drop 绑定隐式被作用域退出消费(§6.4):计为已读,免 W8030 误报
+                var dty = ""
+                if hasann {
+                    dty = ty_kind(ann)
+                } else {
+                    dty = ex_ty(s[4], tc, loc, envT)
+                }
+                if dty.len > 3 && byte_slice(dty, 0, 2) == "n:" {
+                    if has_drop_impl(file, byte_slice(dty, 2, dty.len)) {
+                        tc[10].push(vn)
+                    }
+                }
             }
             bind_pat(s[2], loc, envT, tn)
         } else if t == "Own" {
@@ -908,6 +920,25 @@ fn find_sdecl(file: List[Str], nm: Str) -> List[Str] {
         i += 1
     }
     return List[Str]()
+}
+
+// 类型是否有 Drop impl(§6.4):扫描 Impl 声明(for 类型头匹配 + trait 头为 Drop)
+fn has_drop_impl(file: List[Str], tnm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" {
+            var trh = ty_head(d[2])
+            if seq2(trh, "Drop") {
+                var fh = ty_head(d[3])
+                if seq2(fh, tnm) {
+                    return true
+                }
+            }
+        }
+        i += 1
+    }
+    return false
 }
 
 fn find_gdecl(file: List[Str], nm: Str) -> List[Str] {
