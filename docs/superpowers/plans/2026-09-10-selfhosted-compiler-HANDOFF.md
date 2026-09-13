@@ -116,8 +116,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   **嵌套闭包发射已支持(2026-09-13)**:三个 shim 发射器(捕获/非捕获/spawn)
   均改为「qlines 缓冲头部/形参行 → #p=1 预扫体内(eln 全门控丢弃,内层闭包
   发射器见 pass1 直出 shim)→ 冲刷 → #p=2 正常体走」,内层定义先于外层落盘
-  (C 先声明后用)。遗留:泛型被调的 fn 型内参含未替换型参时按 ct_ty_code
-  兜底落 "i"(与旧行为一致,泛型内参精确替换挂账);宿主侧闭包 ABI 未同步。
+  (C 先声明后用)。**泛型内参精确替换已接通(2026-09-13)**:ct_call_args_tg
+  在泛型实例化调用点传 TypeArgs,ct_fntype_pcodes_tg 经 ct_mono_subst_ty
+  把 FnType 内参的型参替换为调用点实参码(如 gcount[Str] 的 |s| 闭包 shim
+  得 const char*;显式 TypeArgs 时精确,推断调用回落 "i")。实现注意:
+  TypeArgs 节点标签为 "TArgs<计数>"(非 "TypeArgs"),tys 须剥头槽后 0 基
+  对齐 tpsn。遗留:宿主侧闭包 ABI 未同步。
 - **seed spawn 输出重放 bug 已修(2026-09-13,新测试抓出)**:spawn 返回
   `ob[3] + sr[3]`,而 sr[3](call_cv 闭包求值的 out 累加器)已含 ob[3]——
   前置输出被拼接重放一遍(scope 前有打印即触发;fx_conc_* 前置无打印,

@@ -359,7 +359,10 @@ A 块复活)**:ct_fntype_pcodes(被调 fn 显式 FnType 形参内参码)+ ct_cal
 提示透明传递;自发射固定点通过;泛型内参未替换型参兜底 "i" 挂账。**嵌套闭包发射已支持
 (同批)**:三 shim 发射器(捕获/非捕获/spawn)重构为「qlines 缓冲 → #p=1
 预扫(内层 shim 先行直出)→ 冲刷 → #p=2 体走」,闭包体内可再定义闭包;
-fx_clostr spawn 嵌套用例双面逐字。
+fx_clostr spawn 嵌套用例双面逐字。**泛型内参精确替换(同批)**:
+ct_call_args_tg 传 TypeArgs + ct_fntype_pcodes_tg 经 ct_mono_subst_ty 替换
+FnType 内参型参——gcount[Str] 的 |s| 闭包 shim 得 const char*(此前兜底
+"i" 截断段错误);注意 TypeArgs 节点标签为 "TArgs<计数>"。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/

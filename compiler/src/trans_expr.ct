@@ -443,7 +443,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         println("#endif")
                     }
                     // TypeArgs 调用实参自槽 1 起(成员调用槽 1 为接收者,此处无)
-                    var gargs = ct_call_args(ag, 1, env, file, base[1])
+                    var gargs = ct_call_args_tg(ag, 1, env, file, base[1], cal[2])
                     var grc = ct_generic_retcode(file, base[1], tpsn, tys)
                     var gcall = mg + "(" + gargs + ")"
                     if or2(grc == "L", grc == "LI") { gcall = "(ctron_list*)(" + gcall + ")" }
@@ -761,6 +761,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
 // 实参不足按 0 补齐到形参数(镜像 cc.ct 潜伏的缺参调用,如 ty_head 的 2 参 or3 —— 种子
 // 一旦执行即 panic,补 0 仅保证产物可编译,崩路无差分意义)
 fn ct_call_args(ag: List[Str], from: I32, env: List[Str], file: List[Str], callee: Str) -> Str {
+    return ct_call_args_tg(ag, from, env, file, callee, mk("None"))
+}
+
+// 带 TypeArgs 变体:fn 型形参 + 闭包实参时,内参码经调用点实参精确替换
+// (泛型被调,§3.9.1;闭包 ABI §4)
+fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], callee: Str, targs: List[Str]) -> Str {
     var pcs = ct_fn_pcodes(file, callee)
     var args = ""
     var i: I32 = from
@@ -776,7 +782,8 @@ fn ct_call_args(ag: List[Str], from: I32, env: List[Str], file: List[Str], calle
             if pc.len > 0 {
                 if byte_at(pc, 0) == 70 {
                     if ag[i][0] == "Closure" {
-                        var cc = ct_fntype_pcodes(file, callee, i - 1)
+                        var cc = ct_fntype_pcodes_tg(file, callee, i - 1, targs)
+                        println("//DBGHINT cc=" + cc)
                         if cc != "" {
                             aenv = env_bind(env, "#clcodes", cc)
                         }

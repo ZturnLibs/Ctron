@@ -11,6 +11,17 @@ fn pick(xs: List[Str], keep: fn(Str) -> Bool) -> List[Str] {
     return out
 }
 
+// 泛型被调 + 无注解闭包:内参 TPar 经调用点 TypeArgs 精确替换(§3.9.1)
+fn gcount[T](xs: List[T], keep: fn(T) -> Bool) -> I32 {
+    var n = 0
+    var i: I32 = 0
+    while i < xs.len {
+        if keep(xs[i]) { n += 1 }
+        i += 1
+    }
+    return n
+}
+
 fn count_cap(xs: List[Str], cap: fn(Str, I32) -> Bool) -> I32 {
     var n = 0
     var i: I32 = 0
@@ -70,6 +81,8 @@ fn main() -> I32 {
     ns.push(9)
     println(apply(ns, |lst| lst.len).to_string())
     println(apply(ns, |lst| lst[0] + lst[1]).to_string())
+    println(gcount[Str](xs, |s| s.len >= 4).to_string())
+    println(gcount[I32](ns, |v| v > 5).to_string())
     println(cmp2[I32](2, 5, |x, y| x < y).to_string())
     println(cmp2[I32](7, 5, |x, y| x < y).to_string())
     // spawn 任务体 × 嵌套闭包(任务体内再定义闭包谓词——嵌套 shim 直出)
