@@ -453,6 +453,19 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         var tt = ct_env_ty(env, tgt[1])
         var rhs2 = ct_expr(st[3], env, file)
+        // 6 域复合赋值:经溢出检查帮手(镜像 eval;裸 += 发射无检查)
+        if tt == "6" {
+            var h6 = ""
+            if st[2] == "AddEq" { h6 = "ctron_i64_add" }
+            if st[2] == "SubEq" { h6 = "ctron_i64_sub" }
+            if st[2] == "MulEq" { h6 = "ctron_i64_mul" }
+            if st[2] == "DivEq" { h6 = "ctron_i64_div" }
+            if st[2] == "ModEq" { h6 = "ctron_i64_mod" }
+            if h6 != "" {
+                eln("t_" + tgt[1] + " = " + h6 + "(t_" + tgt[1] + ", " + rhs2 + ");", env)
+                return env
+            }
+        }
         if tt.len > 1 && byte_at(tt, 0) == 80 {
             // P<内>:with_mut 体参数是内值指针 → 解引用赋值
             eln("(*t_" + tgt[1] + ") " + ct_aop(st[2]) + " " + rhs2 + ";", env)

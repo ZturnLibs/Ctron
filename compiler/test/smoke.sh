@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=271' "$T/chk.out" && ok "自检 cc_run 绿,decls=271" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=272' "$T/chk.out" && ok "自检 cc_run 绿,decls=272" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -333,6 +333,23 @@ if [ "${1:-}" = "--full" ]; then
         grep -q 'W8010' "$T/n_neg.out" && ok "原生负例拦截" || bad "原生负例未拦截"
     else
         bad "自发射/编译失败"
+    fi
+    echo "== 4b) I64 溢出检查(seed 与原生发射双面一致,§4.5 检查算术) =="
+    cat > "$T/ov.ct" <<'P'
+fn main() -> I32 {
+    var a: I64 = 9223372036854775807
+    var b: I64 = a + a
+    println(b.to_string())
+    return 0
+}
+P
+    "$COMP/ctc.sh" "$T/ov.ct" > "$T/ov_s.out" 2>&1
+    grep -q 'integer overflow' "$T/ov_s.out" && ok "I64 溢出 seed 拦截" || bad "I64 溢出 seed 未拦截: $(tail -1 "$T/ov_s.out")"
+    if "$COMP/ctc.sh" emit "$T/ov.ct" "$T/ov.c" > /dev/null 2>&1 && cc -O2 -o "$T/ov_bin" "$T/ov.c" 2>/dev/null; then
+        "$T/ov_bin" > "$T/ov_n.out" 2>&1
+        grep -q 'integer overflow' "$T/ov_n.out" && ok "I64 溢出原生拦截" || bad "I64 溢出原生未拦截: $(tail -1 "$T/ov_n.out")"
+    else
+        bad "I64 溢出发射编译失败"
     fi
     echo "== 5) 自举固定点(原生发射器 vs seed 发射器,逐字节) =="
     if "$COMP/ctc.sh" emit "$COMP/build/cc_emit.ct" "$T/cc_emit.c" > /dev/null 2>&1 \

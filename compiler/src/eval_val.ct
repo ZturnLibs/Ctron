@@ -562,6 +562,23 @@ fn lit_digits(t: Str) -> Str {
     return out
 }
 
+// int64 界门(§4.5 检查算术):规范十进制文本是否落在 [MIN, MAX];
+// 发射侧 ctron_i64_* 帮手镜像
+fn c6_in_i64(r: Str) -> Bool {
+    var neg = false
+    var m = r
+    if m.len > 0 {
+        if byte_at(m, 0) == 45 {
+            neg = true
+            m = byte_slice(m, 1, m.len)
+        }
+    }
+    if neg {
+        return c6abscmp(m, "9223372036854775808") <= 0
+    }
+    return c6abscmp(m, "9223372036854775807") <= 0
+}
+
 fn lit_is_dec(t: Str) -> Bool {
     if t.len > 1 {
         if byte_at(t, 0) == 48 {
@@ -1094,13 +1111,21 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
 
         if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
 
-            return v6(c6sub(a[1], b[1]))
+            var rs = c6sub(a[1], b[1])
+            if !c6_in_i64(rs) {
+                panic("integer overflow (-)")
+            }
+            return v6(rs)
 
         }
 
         if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
 
-            return v6(c6add(a[1], b[1]))
+            var ra = c6add(a[1], b[1])
+            if !c6_in_i64(ra) {
+                panic("integer overflow (+)")
+            }
+            return v6(ra)
 
         }
         // 乘:符号异或(先去符号位,竖式纯非负)
@@ -1122,6 +1147,9 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
                 }
             }
             var mag = c6mul(c6can(at), c6can(bt))
+            if !c6_in_i64(mag) {
+                panic("integer overflow (*)")
+            }
             if mag == "0" {
                 return v6("0")
             }
@@ -1140,6 +1168,15 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
         if or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "DivEq"), seq2(op, "ModEq")))) {
             if b[1] == "0" {
                 panic("division by zero")
+            }
+            // MIN / -1 与 MIN % -1 均溢出(两补域);发射侧 ctron_i64_div/mod 镜像
+            if b[1] == "-1" {
+                if a[1] == "-9223372036854775808" {
+                    if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                        panic("integer overflow (/)")
+                    }
+                    panic("integer overflow (%)")
+                }
             }
             var aneg2 = false
             var bneg2 = false

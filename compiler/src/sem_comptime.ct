@@ -237,6 +237,11 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
                     diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr[2][0])
                     return
                 }
+                // I64 const 值域界门(§3.1.1):折叠值超 int64 → E2040
+                if seq2(vr[2][0], "6") && !c6_in_i64(vr[2][1]) {
+                    diags.push("E2040: const 字面量超出 I64 宽度(值域):" + nm)
+                    return
+                }
                 env = env_add(env, nm, vr[2])
                 done = true
             }
@@ -248,6 +253,10 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
                 }
                 if knd.len > 0 && !vtag_ok(knd, vr2[2][0]) {
                     diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr2[2][0])
+                    return
+                }
+                if seq2(vr2[2][0], "6") && !c6_in_i64(vr2[2][1]) {
+                    diags.push("E2040: const 字面量超出 I64 宽度(值域):" + nm)
                     return
                 }
                 env = env_add(env, nm, vr2[2])

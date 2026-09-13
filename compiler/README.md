@@ -344,7 +344,13 @@ arena.array[T](n) 仍挂账(双侧正语义未定义)。**comptime 域宽字面�
 比较经 vcmp(与运行期同口径)、vtag_ok 放行 n:I64↔6;**const 穿发射已修**
 (存量缺口:const 引用在发射面是未定义符号——driver_emit ceval 折叠值直出
 C 常量定义 I/6/B 域 + 跨 decl const 环境累积 + ct_typeof 按注解查 Const);
-S/D 域 const 穿发射挂账。
+S/D 域 const 穿发射挂账。**I64 溢出检查收敛(同批)**:seed c6_in_i64 界门
+(Add/Sub/Mul 超界 panic、MIN÷-1 与 MIN%-1 与 -MIN panic)+ 发射侧
+ctron_i64_add/sub/mul/div/mod/neg 帮手(__builtin_*_overflow + 除零/MIN÷-1
+镜像)+ 复合赋值 6 域走帮手 + const 折叠值超 int64 E2040;smoke 4b 双面
+拦截断言;MIN 字面量取负用 (-9223372036854775807LL - 1) C 惯用法直出。
+实现教训:emitted C 字符串里 `\}` 是非法转义(裸 `}`),六帮手行曾致
+seed 词法 E1001、native.sh 静默失败。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/

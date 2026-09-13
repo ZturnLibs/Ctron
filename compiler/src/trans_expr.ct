@@ -118,7 +118,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "t_" + e[1]
     }
     if t == "Unary" {
-        if e[1] == "Neg" { return "(-" + ct_expr(e[2], env, file) + ")" }
+        if e[1] == "Neg" {
+            // -Int 宽字面量:恰为 2^63 时是 I64 MIN,用 C 惯用法直出(常量本身超 LLONG_MAX)
+            var nd = e[2]
+            if nd[0] == "Int" && nd[2].len == 0 {
+                if lit_to_dec(nd[1]) == "9223372036854775808" {
+                    return "(-9223372036854775807LL - 1)"
+                }
+            }
+            if ct_typeof(nd, env, file) == "6" {
+                return "ctron_i64_neg((int64_t)(" + ct_expr(nd, env, file) + "))"
+            }
+            return "(-" + ct_expr(nd, env, file) + ")"
+        }
         return "(!" + ct_expr(e[2], env, file) + ")"
     }
     if t == "Binary" {
@@ -139,6 +151,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1] == "Gt" { return "(" + c2 + " > 0)" }
             if e[1] == "Le" { return "(" + c2 + " <= 0)" }
             return "(" + c2 + " >= 0)"
+        }
+        // 6 域算术:溢出检查帮手(镜像 eval 界门,§4.5 检查算术)
+        var rt6 = ct_typeof(e[3], env, file)
+        if or2(lt == "6", rt6 == "6") {
+            var a6 = "(int64_t)(" + ct_expr(e[2], env, file) + ")"
+            var b6 = "(int64_t)(" + ct_expr(e[3], env, file) + ")"
+            if e[1] == "Add" { return "ctron_i64_add(" + a6 + ", " + b6 + ")" }
+            if e[1] == "Sub" { return "ctron_i64_sub(" + a6 + ", " + b6 + ")" }
+            if e[1] == "Mul" { return "ctron_i64_mul(" + a6 + ", " + b6 + ")" }
+            if e[1] == "Div" { return "ctron_i64_div(" + a6 + ", " + b6 + ")" }
+            if e[1] == "Mod" { return "ctron_i64_mod(" + a6 + ", " + b6 + ")" }
         }
         return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"
     }

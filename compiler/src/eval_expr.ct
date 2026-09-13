@@ -89,9 +89,13 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 }
                 return e4("k", ur[1], vD(dt), ur[3])
             }
-            // 6 域取负:文本符号翻转(c6can 归一 -0)
+            // 6 域取负:文本符号翻转(c6can 归一 -0);MIN 取负溢出(§4.5)
             if ur[2][0] == "6" {
-                return e4("k", ur[1], v6(c6can("-" + ur[2][1])), ur[3])
+                var nt6 = c6can("-" + ur[2][1])
+                if !c6_in_i64(nt6) {
+                    panic("integer overflow (-)")
+                }
+                return e4("k", ur[1], v6(nt6), ur[3])
             }
             return e4("k", ur[1], vI(0 - dvi(ur[2][1])), ur[3])
         }

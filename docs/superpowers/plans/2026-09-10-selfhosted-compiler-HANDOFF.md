@@ -199,8 +199,14 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
       (见 §4;const 折叠走 lit_to_dec/val_arith/vcmp 与运行期同口径,
       vtag_ok 放行 n:I64↔6;**const 穿发射已修**——driver_emit ceval 折叠
       直出 C 常量定义(I/6/B 域,跨 decl const 环境累积)+ ct_typeof 按注解
-      查 Const,此前 const 引用在发射面是未定义符号);残余:发射侧溢出
-      未检查/超 int64 宽度双实现分歧收敛、S/D 域 const 不穿发射(挂账)。
+      查 Const,此前 const 引用在发射面是未定义符号);**I64 溢出检查已收敛**
+      (seed c6_in_i64 界门:Add/Sub/Mul 结果超 [MIN,MAX] panic、Div/Mod 的
+      MIN÷-1 与 MIN%-1 panic、Unary Neg MIN panic;发射侧 ctron_i64_add/sub/
+      mul/div/mod/neg 帮手 __builtin_*_overflow + 除零/MIN÷-1 镜像,复合赋值
+      6 域走帮手;const 折叠值超 int64 → E2040;smoke 4b 双面拦截断言);
+      残余:宿主 i64 为 64 位 W 域不同模型(无检查,parity 挂账)、无注解超宽
+      字面量参与算术的双实现分歧(夹具不覆盖)、I32 发射面无溢出/除零检查
+      (存量口径)、S/D 域 const 不穿发射(挂账)。
    ③ **spec 文档化已落地**(本轮):docs/spec/03-types §3.1.1(I64 值域 v0
       实现口径)+ README 修订记录"登记"条。
    ④ CI 例行化到远端。
@@ -244,7 +250,7 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   **装箱载荷别名语义已细化 5e007e5/e8ea6e9**:Box 赋值/传参共享堆 cell,
 经别名的可变字段写全可见(自动解引用贯通读写;用户声明 Box struct 时内建
 让位通用泛型路径);fx_boxalias 双面逐字。剩余:LSP(lsp/)、性能、
-CI 远端例行化。**I64 域残项(2026-09-13 入册,comptime 切片后更新)**:发射侧溢出检查与
-超 int64 宽度双实现分歧收敛(需 seed 2^63 界门 + 发射 overflow 内建 +
-宿主 parity 三线)、S/D 域 const 穿发射——spec §3.1.1/§10 已按 v0 实现口径
-成文,升级时同步改。
+CI 远端例行化。**I64 域残项(2026-09-13 入册,溢出检查切片后更新)**:宿主 i64 parity
+(64 位 W 域模型、无检查)、无注解超宽字面量参与算术的双实现分歧、I32
+发射面无溢出/除零检查(存量口径)、S/D 域 const 穿发射——spec §3.1.1/§10
+已按 v0 实现口径成文,升级时同步改。
