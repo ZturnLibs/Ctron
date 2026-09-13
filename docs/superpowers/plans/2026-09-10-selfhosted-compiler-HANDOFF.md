@@ -121,9 +121,9 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   `ob[3] + sr[3]`,而 sr[3](call_cv 闭包求值的 out 累加器)已含 ob[3]——
   前置输出被拼接重放一遍(scope 前有打印即触发;fx_conc_* 前置无打印,
   从未暴露)。已改为直返 sr[3]。
-- **W8030 疑似误报一例(未根因)**:探针形状(scope 体 + 前置打印 +
-  `part.to_string()` Member 基读)误判 part 未用;同形的 fx_conc_spawn
-  不触发。不咬门禁语料,待根因。
+- **W8030"误报"已撤案(2026-09-13)**:复核发现探针 sc_p1 本身未读取
+  part(scope 后直接 println("C")),W8030 判定正确;带读变体
+  (println(part.to_string()))全部干净。非 bug。
 - **闭包形参 32 位限制的 ABI 调研结论(feat/closure-abi)**:ct_i 实为 int64
   (emitted `typedef int64_t ct_i`),传输层 64 位无恙;截断仅发生在 trans_conc
   闭包 shim 的形参声明硬编码 `int32_t t_x = (int32_t)_pN` + env 绑定 "i"。
