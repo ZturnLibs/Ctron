@@ -351,6 +351,35 @@ P
     else
         bad "I64 溢出发射编译失败"
     fi
+    # 复合赋值与乘法路径(帮手路由 + c6 界门镜像)
+    cat > "$T/ov2.ct" <<'P'
+fn main() -> I32 {
+    var c: I64 = 9223372036854775807
+    c += 1
+    println(c.to_string())
+    return 0
+}
+P
+    cat > "$T/ov3.ct" <<'P'
+fn main() -> I32 {
+    var m: I64 = 3037000500
+    var q = m * m
+    println(q.to_string())
+    return 0
+}
+P
+    "$COMP/ctc.sh" "$T/ov2.ct" > "$T/ov2_s.out" 2>&1
+    grep -q 'integer overflow' "$T/ov2_s.out" && ok "I64 复合赋值溢出 seed 拦截" || bad "I64 复合赋值溢出 seed 未拦截"
+    "$COMP/ctc.sh" "$T/ov3.ct" > "$T/ov3_s.out" 2>&1
+    grep -q 'integer overflow' "$T/ov3_s.out" && ok "I64 乘法溢出 seed 拦截" || bad "I64 乘法溢出 seed 未拦截"
+    if "$COMP/ctc.sh" emit "$T/ov2.ct" "$T/ov2.c" > /dev/null 2>&1 && cc -O2 -o "$T/ov2_bin" "$T/ov2.c" 2>/dev/null && "$COMP/ctc.sh" emit "$T/ov3.ct" "$T/ov3.c" > /dev/null 2>&1 && cc -O2 -o "$T/ov3_bin" "$T/ov3.c" 2>/dev/null; then
+        "$T/ov2_bin" > "$T/ov2_n.out" 2>&1
+        grep -q 'integer overflow' "$T/ov2_n.out" && ok "I64 复合赋值溢出原生拦截" || bad "I64 复合赋值溢出原生未拦截"
+        "$T/ov3_bin" > "$T/ov3_n.out" 2>&1
+        grep -q 'integer overflow' "$T/ov3_n.out" && ok "I64 乘法溢出原生拦截" || bad "I64 乘法溢出原生未拦截"
+    else
+        bad "I64 溢出扩展发射编译失败"
+    fi
     echo "== 5) 自举固定点(原生发射器 vs seed 发射器,逐字节) =="
     if "$COMP/ctc.sh" emit "$COMP/build/cc_emit.ct" "$T/cc_emit.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cc_emitter.bin" "$T/cc_emit.c" 2>/dev/null; then

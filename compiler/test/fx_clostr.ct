@@ -1,5 +1,6 @@
 // fx_clostr.ct —— 闭包形参 ABI:带注解 Str 形参经 ct_clop 64 位槽位透明传递
 // (此前 shim 硬编码 int32 截断,Str 实参是指针 UB;现在按 ClosureParam 注解生成声明)
+// 无注解形参走 #clcodes 调用点提示(A 块生产侧);多形参覆盖逗号切分路径
 fn pick(xs: List[Str], keep: fn(Str) -> Bool) -> List[Str] {
     var out = List[Str]()
     var i: I32 = 0
@@ -8,6 +9,24 @@ fn pick(xs: List[Str], keep: fn(Str) -> Bool) -> List[Str] {
         i += 1
     }
     return out
+}
+
+fn count_cap(xs: List[Str], cap: fn(Str, I32) -> Bool) -> I32 {
+    var n = 0
+    var i: I32 = 0
+    while i < xs.len {
+        if cap(xs[i], i) { n += 1 }
+        i += 1
+    }
+    return n
+}
+
+fn dbl(x: I64, f: fn(I64) -> I64) -> I64 {
+    return f(f(x))
+}
+
+fn apply(xs: List[I32], f: fn(List[I32]) -> I32) -> I32 {
+    return f(xs)
 }
 
 fn main() -> I32 {
@@ -25,5 +44,16 @@ fn main() -> I32 {
     var anys = pick(xs, |s| s.len >= 2)
     println(anys.len.to_string())
     println(anys[2])
+    // 多形参:内参码 "s,i"(逗号切分路径,第二参取索引用)
+    println(count_cap(xs, |s, k| s.len > 2).to_string())
+    println(count_cap(xs, |t, k| k == 1).to_string())
+    // 6 码形参:64 位整型直传
+    println(dbl(5, |v| v * 2).to_string())
+    // LI 码形参:List 指针透明传递
+    var ns = List[I32]()
+    ns.push(7)
+    ns.push(9)
+    println(apply(ns, |lst| lst.len).to_string())
+    println(apply(ns, |lst| lst[0] + lst[1]).to_string())
     return 0
 }
