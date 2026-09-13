@@ -350,7 +350,10 @@ ctron_i64_add/sub/mul/div/mod/neg 帮手(__builtin_*_overflow + 除零/MIN÷-1
 镜像)+ 复合赋值 6 域走帮手 + const 折叠值超 int64 E2040;smoke 4b 双面
 拦截断言;MIN 字面量取负用 (-9223372036854775807LL - 1) C 惯用法直出。
 实现教训:emitted C 字符串里 `\}` 是非法转义(裸 `}`),六帮手行曾致
-seed 词法 E1001、native.sh 静默失败。
+seed 词法 E1001、native.sh 静默失败。**闭包形参注解 ABI(同批)**:带注解
+闭包形参(`|s: Str|`)的 shim 声明按 ClosureParam 注解生成(双 shim;无
+#clcodes 提示时回落注解),Str 形参经 64 位槽位透明传递——此前硬编码
+int32 截断为指针 UB;fx_clostr 双面逐字;无注解形参仍回落 int32。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/

@@ -105,6 +105,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   闭包 + 捕获句柄的口径,ctwf Top-3 即此);32→64 位 ABI 升级挂账。
   **排障教训**:'捕获坏了'一度是 vendored 副本漂移 + 陈旧 bin 的叠加假象,
   最小包先复现再下结论。
+- **闭包形参 ABI:注解路径已修(2026-09-13)**:带注解闭包形参(`|s: Str| …`)
+  的 shim 声明现按 ClosureParam 注解生成(捕获/非捕获双 shim;无 #clcodes
+  提示时回落注解;#clcodes 调用点提示优先级仍最高,生产侧仍未接——A 块
+  自发射阻塞点维持挂账);Str/List 实参经 64 位槽位透明传递,
+  fx_clostr 双面逐字(smoke 3b)。无注解闭包形参仍回落 int32(调用点
+  fn 型推断挂账);遗留 //CTD 调试痕迹已清。
 - **闭包形参 32 位限制的 ABI 调研结论(feat/closure-abi)**:ct_i 实为 int64
   (emitted `typedef int64_t ct_i`),传输层 64 位无恙;截断仅发生在 trans_conc
   闭包 shim 的形参声明硬编码 `int32_t t_x = (int32_t)_pN` + env 绑定 "i"。

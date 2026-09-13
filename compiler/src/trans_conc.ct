@@ -193,8 +193,18 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
         var env2 = env_bind(env_bind(env, "#p", "2"), "#shim", "2")
         while pj2 < np {
             var pn = cps[pj2 + 1][2]
-            println("int32_t t_" + pn + " = (int32_t)_p" + pj2.to_string() + ";")
-            env2 = env_bind(env2, pn, "i")
+            // ClosureParam 注解优先(§4.7):Str/List 形参经 64 位槽位透明传递
+            var pc0 = "i"
+            var pty0 = cps[pj2 + 1][3]
+            if pty0[0] != "None" {
+                pc0 = ct_ty_code(pty0, file)
+            }
+            if pc0 == "i" {
+                println("int32_t t_" + pn + " = (int32_t)_p" + pj2.to_string() + ";")
+            } else {
+                println(ct_ctype(pc0) + " t_" + pn + " = (" + ct_ctype(pc0) + ")(long)_p" + pj2.to_string() + ";")
+            }
+            env2 = env_bind(env2, pn, pc0)
             pj2 += 1
         }
         if cbody[0] == "Block" {
@@ -399,12 +409,10 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             var pc = "i"
             if clcodes.len > 0 {
                 // '#clcodes' 第 pj 段(逗号分隔);指针码经 long 中转(ct_i 64 位)
-                println("//CTD2 len=" + clcodes.len.to_string() + " pj=" + pj.to_string())
                 var si: I32 = 0
                 var cur: I32 = 0
                 var k: I32 = 0
                 while k <= clcodes.len {
-                    println("//CTD3 k=" + k.to_string())
                     if or2(k == clcodes.len, byte_at(clcodes, k) == 44) {
                         if cur == pj {
                             pc = byte_slice(clcodes, si, k)
@@ -417,6 +425,13 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                     } else {
                         k += 1
                     }
+                }
+            }
+            // 无调用点提示时回落 ClosureParam 注解(§4.7;形参 ABI 64 位槽位)
+            if pc == "i" {
+                var pty1 = cps[pj + 1][3]
+                if pty1[0] != "None" {
+                    pc = ct_ty_code(pty1, file)
                 }
             }
             if pc == "i" {

@@ -1,0 +1,25 @@
+// fx_clostr.ct —— 闭包形参 ABI:带注解 Str 形参经 ct_clop 64 位槽位透明传递
+// (此前 shim 硬编码 int32 截断,Str 实参是指针 UB;现在按 ClosureParam 注解生成声明)
+fn pick(xs: List[Str], keep: fn(Str) -> Bool) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < xs.len {
+        if keep(xs[i]) { out.push(xs[i]) }
+        i += 1
+    }
+    return out
+}
+
+fn main() -> I32 {
+    var xs = List[Str]()
+    xs.push("alpha")
+    xs.push("be")
+    xs.push("gamma")
+    var longs = pick(xs, |s: Str| s.len >= 4)
+    println(longs.len.to_string())
+    println(longs[0])
+    println(longs[1])
+    var ones = pick(xs, |s: Str| s == "be")
+    println(ones[0])
+    return 0
+}
