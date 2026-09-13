@@ -1,6 +1,11 @@
 // fx_time.ct —— now_ms 内建对齐夹具(I64 域 ["6", 十进制文本])
 // 输出全 Bool 化:跨面双跑的时刻值必然不同,原始时间戳/差值不入 diff。
+// const I64(comptime 折叠 + 发射面直出)含于本夹具。
+const TICK: I64 = 9007199254740993
+const HALF: I64 = TICK / 2
 fn main() -> I32 {
+    println(TICK.to_string())
+    println((HALF == 4503599627370496).to_string())
     var t = now_ms()
     println((t > 1000000000).to_string())
     var u = now_ms()

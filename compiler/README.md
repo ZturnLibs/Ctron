@@ -339,7 +339,12 @@ Float → E2010);fx_time 含双锚。**arena.list/into_gc 原生可跑(同批)**
 发射面 arena.list[T]() 复用 ctron_list_new + ct_typeof LI 推断、into_gc
 恒等(镜像 seed vdeep 观察等价)、own 块尾位展平(own 作为 fn 体尾语句曾
 panic,05_own 语料正是此形态);fx_own 扩 evens 块 seed==native 逐字;
-arena.array[T](n) 仍挂账(双侧正语义未定义)。
+arena.array[T](n) 仍挂账(双侧正语义未定义)。**comptime 域宽字面量入门
+(同批)**:ceval Int 宽字面量直入 6 域、Unary Neg/Binary 算术经 val_arith、
+比较经 vcmp(与运行期同口径)、vtag_ok 放行 n:I64↔6;**const 穿发射已修**
+(存量缺口:const 引用在发射面是未定义符号——driver_emit ceval 折叠值直出
+C 常量定义 I/6/B 域 + 跨 decl const 环境累积 + ct_typeof 按注解查 Const);
+S/D 域 const 穿发射挂账。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/

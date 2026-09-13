@@ -152,6 +152,11 @@ fn scb(file: List[Str], b: List[Str], diags: List[Str], fnm: Str) {
 // 值标签 vs 注解 kind(标量族;命名/未知 v0 放行)
 fn vtag_ok(k: Str, vt: Str) -> Bool {
     if k_int(k) {
+        if seq2(k, "n:I64") {
+            if seq2(vt, "6") {
+                return true
+            }
+        }
         return or2(seq2(vt, "I"), seq2(vt, "W"))
     }
     if or2(seq2(k, "n:Str"), seq2(k, "n:String")) {

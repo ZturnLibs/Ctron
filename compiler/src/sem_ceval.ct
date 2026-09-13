@@ -38,6 +38,12 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
     }
     var t = e[0]
     if t == "Int" {
+        // 宽字面量直入 6 域(§3.1.1;与 eval 同源,仅无后缀)
+        if e[2].len == 0 {
+            if lit_wide_i32(e[1]) {
+                return cok(v6(lit_to_dec(e[1])))
+            }
+        }
         return cok(vI(dvi(num_text(e[1]))))
     }
     if t == "Ident" {
@@ -56,7 +62,12 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
             if seq2(x[0], "over") { return x }
             return x
         }
-        if x[2][0] != "I" { return cun() }
+        if x[2][0] != "I" {
+            if x[2][0] == "6" {
+                return cok(v6(c6can("-" + x[2][1])))
+            }
+            return cun()
+        }
         return cok(vI(0 - dvi(x[2][1])))
     }
     if t == "Binary" {
@@ -67,6 +78,25 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
         if l[0] != "k" { return l }
         var r = ceval_expr(file, e[3], cenvN, cenvV, st)
         if r[0] != "k" { return r }
+        // 6 域参与:算术经 val_arith(与运行期同口径,含 C99 截断 Div/Mod);
+        // 比较经 vcmp(I↔6 混合已接);其余算符静默回退
+        if or2(l[2][0] == "6", r[2][0] == "6") {
+            if is_cmp_op(op) {
+                var cv = vcmp(l[2], r[2])
+                var rb = false
+                if seq2(op, "Lt") { rb = cv < 0 }
+                if seq2(op, "Gt") { rb = cv > 0 }
+                if seq2(op, "Le") { rb = cv <= 0 }
+                if seq2(op, "Ge") { rb = cv >= 0 }
+                if seq2(op, "Eq") { rb = cv == 0 }
+                if seq2(op, "Ne") { rb = cv != 0 }
+                return cok(vB(rb))
+            }
+            if or2(seq2(op, "Add"), or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), seq2(op, "Mod"))))) {
+                return cok(val_arith(op, l[2], r[2]))
+            }
+            return cun()
+        }
         if or2(l[2][0] != "I", r[2][0] != "I") { return cun() }
         var a = dvi(l[2][1])
         var b2 = dvi(r[2][1])

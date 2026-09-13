@@ -216,12 +216,38 @@ fn main() -> I32 {
             // 零初始化声明 + ctron_statics_init() 运行期赋值(文件域函数调用初始化非法)
             var stq: I32 = 1
             var sinit = ""
+            var ccN = List[Str]()
+            var ccV = List[Str]()
             while stq < file.len {
                 var st = file[stq]
                 if st[0] == "Static" && st[2] == "false" {
                     var scode = ct_ty_code(st[3], file)
                     println("static " + ct_ctype(scode) + " t_" + st[1] + " = 0;")
                     sinit = sinit + " t_" + st[1] + " = " + ct_expr(st[4], List[Str](), file) + ";"
+                }
+                // const 穿发射(§8.4 comptime):ceval 折叠值直出 C 常量定义
+                // (const 环境跨 decl 累积,镜像 sem_comptime;v0 数值域 I/6/B)
+                if st[0] == "Const" {
+                    var cst2 = List[Str]()
+                    cst2.push("0")
+                    var cvr = ceval_expr(file, st[3], ccN, ccV, cst2)
+                    if cvr[0] == "k" {
+                        var vt = cvr[2][0]
+                        var vt1 = cvr[2][1]
+                        ccN.push(st[1])
+                        ccV.push(cvr[2])
+                        if vt == "I" {
+                            println("static int32_t t_" + st[1] + " = " + vt1 + ";")
+                        }
+                        if vt == "6" {
+                            println("static int64_t t_" + st[1] + " = " + vt1 + "LL;")
+                        }
+                        if vt == "B" {
+                            var bv = "0"
+                            if vt1 == "true" { bv = "1" }
+                            println("static int32_t t_" + st[1] + " = " + bv + ";")
+                        }
+                    }
                 }
                 stq += 1
             }

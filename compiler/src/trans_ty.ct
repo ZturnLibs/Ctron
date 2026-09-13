@@ -460,6 +460,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Ident" {
         if seq2(e[1], "None") { return "R" }
         if ct_env_has(env, e[1]) { return ct_env_ty(env, e[1]) }
+        // 全局 const:按注解型别(定义由 driver_emit 折叠直出)
+        var ccn: I32 = 1
+        while ccn < file.len {
+            var cd = file[ccn]
+            if cd[0] == "Const" && cd[1] == e[1] {
+                return ct_ty_code(cd[2], file)
+            }
+            ccn += 1
+        }
         var uen = ct_enum_of_variant(file, e[1])
         if uen.len > 0 { return "E:" + uen }
         return "i"
