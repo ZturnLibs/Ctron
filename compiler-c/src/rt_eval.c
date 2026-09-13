@@ -1233,10 +1233,11 @@ val eval_expr(rt* R, cexpr* e) {
                     return mutex_with(R, recv, f, !strcmp(cal->mname, "with_mut"));
                 rt_abort(R, RT_ERROR, "互斥方法不支持: %s", cal->mname);
             }
-            if (recv.k == V_STRUCT && recv.is_class && cal->mname) {
+            if (recv.k == V_STRUCT && cal->mname) {
+                // impl 方法:类实例与 struct 值统一走 impl 分派(§4.8)
                 const cfn* F = cls_method(R, recv.type, cal->mname);
                 if (F) return call_method_body(R, F, recv, e->elems, e->nelems);
-                rt_abort(R, RT_ERROR, "未知方法/UFCS: %s", cal->mname);
+                if (recv.is_class) rt_abort(R, RT_ERROR, "未知方法/UFCS: %s", cal->mname);
             }
             cexpr** arg2 = (cexpr**)ctron_arena_alloc(R->a, (e->nelems + 1) * sizeof(cexpr*));
             arg2[0] = cal->obj;

@@ -241,6 +241,13 @@ cfn* parse_fn(cparser* p, cattr** attrs, size_t nattrs, int top_level) {
             bump_tok(p); bump_tok(p);
             cparam* pr = prlist_new(&prs, p->arena);
             pr->is_receiver = 1; pr->is_var = 1; pr->name = NULL; pr->ty = NULL;
+        } else if (at_k(p, TOK_SELF)) {
+            // 裸 self(v0.7 §4.7):类型可省(impl for 型),名字固定 self
+            bump_tok(p);
+            cparam* pr = prlist_new(&prs, p->arena);
+            pr->is_receiver = 1; pr->is_var = 0;
+            pr->name = dup_text(p, "self");
+            pr->ty = eat_k(p, TOK_COLON) ? parse_type(p) : NULL;
         } else {
             cparam* pr = prlist_new(&prs, p->arena);
             pr->is_receiver = 0;

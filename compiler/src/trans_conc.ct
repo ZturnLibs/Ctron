@@ -71,6 +71,22 @@ fn ct_cap_decl(code: Str, nm: Str, i: I32) -> Str {
 // spawn:捕获闭包 → env 数组 + shim。pass1:直出 shim(命名取站点行号,跨遍确定);
 // pass2:仅返回调用表达式。捕获按值浅拷贝(ct_i 逐槽;struct 值不在本片)。
 // shim 体内 return → 写任务结果 + return 0("#shim"=1);嵌套 spawn 不支持(v0 挂账)。
+// 预扫尾表达式:Match/If 走语句发射(门控),BlockExpr 递归进内层块,其余走表达式
+fn ct_prescan_tail(tl: List[Str], penv: List[Str], file: List[Str]) {
+    if tl[0] == "None" { return }
+    if or2(tl[0] == "Match", tl[0] == "If") {
+        ct_stmt(tl, penv, file, List[Str]())
+        return
+    }
+    if tl[0] == "BlockExpr" {
+        ct_stmts(tl[1], penv, file, "", List[Str]())
+        var itl = tl[1][tl[1].len - 1]
+        ct_prescan_tail(itl, penv, file)
+        return
+    }
+    ct_expr(tl, penv, file)
+}
+
 fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file: List[Str]) -> Str {
     var body = clo[3]
     var cps = clo[1]
@@ -117,14 +133,7 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
         var senvp = env_bind(env_bind(env, "#p", "1"), "#prescan", "1")
         if body[0] == "Block" {
             ct_stmts(body, senvp, file, "", List[Str]())
-            var stl = body[body.len - 1]
-            if stl[0] != "None" {
-                if or2(stl[0] == "Match", stl[0] == "If") {
-                    ct_stmt(stl, senvp, file, List[Str]())
-                } else {
-                    ct_expr(stl, senvp, file)
-                }
-            }
+            ct_prescan_tail(body[body.len - 1], senvp, file)
         } else {
             ct_expr(body, senvp, file)
         }
@@ -233,14 +242,7 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
         var penv0 = env_bind(env2, "#p", "1")
         if cbody[0] == "Block" {
             ct_stmts(cbody, penv0, file, "", List[Str]())
-            var ctl = cbody[cbody.len - 1]
-            if ctl[0] != "None" {
-                if or2(ctl[0] == "Match", ctl[0] == "If") {
-                    ct_stmt(ctl, penv0, file, List[Str]())
-                } else {
-                    ct_expr(ctl, penv0, file)
-                }
-            }
+            ct_prescan_tail(cbody[cbody.len - 1], penv0, file)
         } else {
             ct_expr(cbody, penv0, file)
         }
@@ -500,14 +502,7 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
         var penv = env_bind(env2, "#p", "1")
         if body[0] == "Block" {
             ct_stmts(body, penv, file, "", List[Str]())
-            var ptl = body[body.len - 1]
-            if ptl[0] != "None" {
-                if or2(ptl[0] == "Match", ptl[0] == "If") {
-                    ct_stmt(ptl, penv, file, List[Str]())
-                } else {
-                    ct_expr(ptl, penv, file)
-                }
-            }
+            ct_prescan_tail(body[body.len - 1], penv, file)
         } else {
             ct_expr(body, penv, file)
         }

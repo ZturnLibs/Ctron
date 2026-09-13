@@ -499,6 +499,15 @@ impl Parser {
             } else if self.at(&Tok::Var) && matches!(self.peek2(), Tok::SelfKw) {
                 self.bump(); self.bump();
                 params.push(Param::Receiver { is_var: true });
+            } else if self.at(&Tok::SelfKw) {
+                // 裸 self(v0.7 §4.7):类型可省(impl for 型);带类型时落普通 Param
+                self.bump();
+                if self.eat(&Tok::Colon) {
+                    let ty = self.parse_type();
+                    params.push(Param::Param { is_var: false, name: "self".into(), ty });
+                } else {
+                    params.push(Param::Receiver { is_var: false });
+                }
             } else {
                 let is_var = self.eat(&Tok::Var);
                 let pname = self.expect_ident("参数");

@@ -1,0 +1,30 @@
+// 04g_methods.ct —— struct impl 方法与 UFCS 方法调用(§3.4/§4.8)
+// 语义承诺:trait impl 方法按接收者动态型别分派;UFCS 以接收者为首参调用顶层 fn
+
+struct Counter {
+    let base: I32
+}
+
+trait Greet {
+    fn hi(self) -> Str
+}
+
+impl Greet for Counter {
+    fn hi(self) -> Str {
+        return "hi:" + self.base.to_string()
+    }
+}
+
+fn bump(me: Counter, d: I32) -> I32 {
+    return me.base + d
+}
+
+test "trait impl method dispatch" {
+    let c = Counter { base: 40 }
+    assert_eq(c.hi(), "hi:40")
+}
+
+test "ufcs method call" {
+    let c = Counter { base: 40 }
+    assert_eq(c.bump(2), 42)
+}
