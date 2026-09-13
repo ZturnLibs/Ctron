@@ -11,7 +11,7 @@
 | E2020 | 未解析的名称 | §2.4 | 通用 |
 | E2030 | match 不穷尽 | §4.6 | `02_match_exhaustive.neg.ct` |
 | E2040 | 字面量超出期望整数类型宽度(§3.7 自适应的宽度约束;let 注解/赋值/返回/实参四点;无后缀字面量,十进制与 0x/0o/0b 同口径,v0) | §3.1.1 | `compiler/test/fx_litfit_neg.ct` 等四件(含 as/ret/arg 挂点) |
-| E2050 | bound 不满足(泛型实参不满足型参 bound,诊断携带实参型别名) | §3.9.2(v0.6) | `compiler/test/fx_bound_neg.ct` |
+| E2050 | bound 不满足(泛型实参不满足型参 bound,诊断携带实参型别名) | §3.9.2(v0.6) | `compiler/test/fx_bound_neg.ct` + `fx_bound_ann_neg.ct`(注解位) |
 | E2060 | 无法推断类型实参(型参未出现于实参位且实参有具体信息;请显式标注) | §3.9.1(v0.7) | `compiler-rust/tests/fixtures/04f_infer_missing.neg.ct` |
 | E2061 | 类型实参候选冲突(同一型参多候选不一致) | §3.9.1(v0.7) | `compiler-rust/tests/fixtures/04f_infer_ambig.neg.ct` |
 | E2070 | break/continue 出现在循环外 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_outside.neg.ct` |

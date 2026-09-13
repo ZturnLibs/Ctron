@@ -179,9 +179,11 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    派生为结构化——字段全可显示/可比较即有 .show()/.eq(),注解仍声明性;
    print(Str) 缺括号)。**bound 强制检查已落地 f3ef54a**:E2050 于显式 TypeArgs
    调用点核对 TPar bounds(sem_type.bound_sat 结构化谓词,与派生能力面一致;
-   fx_bound_neg 负例;README 码表已登记)。仍挂账:泛型 struct 注解实例化点的
-   bound 核对(现为 fn 调用点 only)、嵌套泛型 TPar 实参的传递核对(v0 放行)、
-   @derive(Json) 等更多插件。单态化机制已备好
+   fx_bound_neg 负例;README 码表已登记)。仍挂账:嵌套泛型 TPar 实参的传递核对(v0 放行)、
+   @derive(Json) 等更多插件。单态化机制已备好。
+   **struct 泛型注解实例化点 bound 核对已落地(2026-09-13,P0-A)**:
+   tcb Let 注解位经 find_sdecl/bound_sat 核对 TPar bounds(E2050,
+   fx_bound_ann_neg 锚;调用点 check_tpar_bounds 同构)。
    (AST 替换 + pass1 直出 + 形参/型参/'#实例' env 绑定 + 嵌套预提升 #ph/#spec),
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。
