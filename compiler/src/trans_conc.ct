@@ -105,12 +105,33 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
     var ix = nline(site)
     var shim = "ct_shim_L" + ix
     if seq2(ct_pass(env), "1") {
-        println("static void* " + shim + "(void* _ep) \{")
-        println("ct_i* _e = (ct_i*)_ep;")
+        // 嵌套闭包支持:预扫(#p=1 门控体内输出,内层闭包 shim 先行直出)后冲刷
+        var qlines = List[Str]()
+        qlines.push("static void* " + shim + "(void* _ep) \{")
+        qlines.push("ct_i* _e = (ct_i*)_ep;")
         var ci2: I32 = 0
         while ci2 < caps.len {
-            println(ct_cap_decl(codes[ci2], caps[ci2], ci2))
+            qlines.push(ct_cap_decl(codes[ci2], caps[ci2], ci2))
             ci2 += 1
+        }
+        var senvp = env_bind(env_bind(env, "#p", "1"), "#prescan", "1")
+        if body[0] == "Block" {
+            ct_stmts(body, senvp, file, "", List[Str]())
+            var stl = body[body.len - 1]
+            if stl[0] != "None" {
+                if or2(stl[0] == "Match", stl[0] == "If") {
+                    ct_stmt(stl, senvp, file, List[Str]())
+                } else {
+                    ct_expr(stl, senvp, file)
+                }
+            }
+        } else {
+            ct_expr(body, senvp, file)
+        }
+        var qw: I32 = 0
+        while qw < qlines.len {
+            println(qlines[qw])
+            qw += 1
         }
         var senv = env_bind(env_bind(env, "#p", "2"), "#shim", "1")
         if body[0] == "Block" {
@@ -188,9 +209,11 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
             sig0 = sig0 + "ct_i _p" + pi0.to_string()
             pi0 += 1
         }
-        println("static ct_i " + cname + "(" + sig0 + ") \{")
+        // 嵌套闭包支持:预扫(内层 shim 先行直出)后冲刷头部/形参行(同捕获 shim)
+        var qlines0 = List[Str]()
+        qlines0.push("static ct_i " + cname + "(" + sig0 + ") \{")
         var pj2: I32 = 0
-        var env2 = env_bind(env_bind(env, "#p", "2"), "#shim", "2")
+        var env2 = env
         while pj2 < np {
             var pn = cps[pj2 + 1][2]
             // ClosureParam 注解优先(§4.7):Str/List 形参经 64 位槽位透明传递
@@ -200,15 +223,35 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
                 pc0 = ct_ty_code(pty0, file)
             }
             if pc0 == "i" {
-                println("int32_t t_" + pn + " = (int32_t)_p" + pj2.to_string() + ";")
+                qlines0.push("int32_t t_" + pn + " = (int32_t)_p" + pj2.to_string() + ";")
             } else {
-                println(ct_ctype(pc0) + " t_" + pn + " = (" + ct_ctype(pc0) + ")(long)_p" + pj2.to_string() + ";")
+                qlines0.push(ct_ctype(pc0) + " t_" + pn + " = (" + ct_ctype(pc0) + ")(long)_p" + pj2.to_string() + ";")
             }
             env2 = env_bind(env2, pn, pc0)
             pj2 += 1
         }
+        var penv0 = env_bind(env2, "#p", "1")
         if cbody[0] == "Block" {
-            var renv2 = ct_stmts(cbody, env2, file, "", List[Str]())
+            ct_stmts(cbody, penv0, file, "", List[Str]())
+            var ctl = cbody[cbody.len - 1]
+            if ctl[0] != "None" {
+                if or2(ctl[0] == "Match", ctl[0] == "If") {
+                    ct_stmt(ctl, penv0, file, List[Str]())
+                } else {
+                    ct_expr(ctl, penv0, file)
+                }
+            }
+        } else {
+            ct_expr(cbody, penv0, file)
+        }
+        var qi0: I32 = 0
+        while qi0 < qlines0.len {
+            println(qlines0[qi0])
+            qi0 += 1
+        }
+        var renv0 = env_bind(env_bind(env2, "#p", "2"), "#shim", "2")
+        if cbody[0] == "Block" {
+            var renv2 = ct_stmts(cbody, renv0, file, "", List[Str]())
             var ctl = cbody[cbody.len - 1]
             if ctl[0] != "None" {
                 if or2(ctl[0] == "Match", ctl[0] == "If") {
@@ -219,7 +262,7 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
                 }
             }
         } else {
-            var bx2 = ct_expr(cbody, env2, file)
+            var bx2 = ct_expr(cbody, renv0, file)
             println("return (ct_i)(" + bx2 + ");")
         }
         println("}")
@@ -391,11 +434,15 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             sig = sig + ", ct_i _p" + pi.to_string()
             pi += 1
         }
-        println("static ct_i " + shim + "(" + sig + ") \{")
-        println("ct_i* _e = (ct_i*)_cp;")
+        // 嵌套闭包支持:先构建形参环境,再以 #p=1 预扫体内(eln 全门控丢弃,
+        // 而内层闭包发射器见 pass1 直出 shim)——内层定义先于本 shim 落盘
+        // (C 先声明后用),之后才冲刷本 shim 头部/形参行
+        var qlines = List[Str]()
+        qlines.push("static ct_i " + shim + "(" + sig + ") \{")
+        qlines.push("ct_i* _e = (ct_i*)_cp;")
         var ci2: I32 = 0
         while ci2 < caps.len {
-            println(ct_cap_decl(codes[ci2], caps[ci2], ci2))
+            qlines.push(ct_cap_decl(codes[ci2], caps[ci2], ci2))
             ci2 += 1
         }
         var env2 = env
@@ -443,12 +490,31 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                 }
             }
             if pc == "i" {
-                println("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
+                qlines.push("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
             } else {
-                println(ct_ctype(pc) + " t_" + pn + " = (" + ct_ctype(pc) + ")(long)_p" + pj.to_string() + ";")
+                qlines.push(ct_ctype(pc) + " t_" + pn + " = (" + ct_ctype(pc) + ")(long)_p" + pj.to_string() + ";")
             }
             env2 = env_bind(env2, pn, pc)
             pj += 1
+        }
+        var penv = env_bind(env2, "#p", "1")
+        if body[0] == "Block" {
+            ct_stmts(body, penv, file, "", List[Str]())
+            var ptl = body[body.len - 1]
+            if ptl[0] != "None" {
+                if or2(ptl[0] == "Match", ptl[0] == "If") {
+                    ct_stmt(ptl, penv, file, List[Str]())
+                } else {
+                    ct_expr(ptl, penv, file)
+                }
+            }
+        } else {
+            ct_expr(body, penv, file)
+        }
+        var qi: I32 = 0
+        while qi < qlines.len {
+            println(qlines[qi])
+            qi += 1
         }
         var benv = env_bind(env2, "#p", "2")
         benv = env_bind(benv, "#shim", "2")

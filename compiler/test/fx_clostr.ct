@@ -72,14 +72,14 @@ fn main() -> I32 {
     println(apply(ns, |lst| lst[0] + lst[1]).to_string())
     println(cmp2[I32](2, 5, |x, y| x < y).to_string())
     println(cmp2[I32](7, 5, |x, y| x < y).to_string())
-    // spawn 任务体 × Str/List(任务体调顶层 fn;闭包体内嵌套闭包定义为
-    // 发射器挂账——pass1 shim 直出不支持嵌套,需延迟出队机制)
+    // spawn 任务体 × 嵌套闭包(任务体内再定义闭包谓词——嵌套 shim 直出)
     var part = scope { |sc|
         var t = sc.spawn(|| {
             var words = List[Str]()
             words.push("aa")
             words.push("bbbb")
-            return long_count(words)
+            var hits = pick(words, |w| w.len >= 3)
+            return hits.len
         })
         t.join()
     }

@@ -356,7 +356,10 @@ seed 词法 E1001、native.sh 静默失败。**闭包形参注解 ABI(同批)**:
 int32 截断为指针 UB;fx_clostr 双面逐字;无注解形参仍回落 int32。**#clcodes 生产侧已接通(同批,
 A 块复活)**:ct_fntype_pcodes(被调 fn 显式 FnType 形参内参码)+ ct_call_args
 门控绑定(仅 F/G 码 + Closure 实参触发),无注解闭包(`|s| …`)经调用点
-提示透明传递;自发射固定点通过;泛型内参未替换型参兜底 "i" 挂账。
+提示透明传递;自发射固定点通过;泛型内参未替换型参兜底 "i" 挂账。**嵌套闭包发射已支持
+(同批)**:三 shim 发射器(捕获/非捕获/spawn)重构为「qlines 缓冲 → #p=1
+预扫(内层 shim 先行直出)→ 冲刷 → #p=2 体走」,闭包体内可再定义闭包;
+fx_clostr spawn 嵌套用例双面逐字。
 
 第四批(2026-09-09,类型检查 v0/Phase 1):**E2020 全量**(Ident 读解析,callable/value
 双名集)、**E2010 基础类型统一**(let 注解/return/bare 实参/赋值/二元 Str·Bool/
