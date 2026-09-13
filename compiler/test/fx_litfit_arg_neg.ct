@@ -1,0 +1,8 @@
+// fx_litfit_arg_neg.ct —— E2040 实参位挂点:窄形参收超宽字面量
+fn take(b: U8) -> U8 {
+    return b
+}
+
+test "litfit-arg" {
+    println(take(300).to_string())
+}

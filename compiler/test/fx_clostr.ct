@@ -29,6 +29,21 @@ fn apply(xs: List[I32], f: fn(List[I32]) -> I32) -> I32 {
     return f(xs)
 }
 
+// 泛型被调 + 无注解闭包:内参含未替换型参,clcodes 兜底落 "i"(钉住回落行为)
+fn cmp2[T](a: T, b: T, f: fn(T, T) -> Bool) -> Bool {
+    return f(a, b)
+}
+
+fn long_count(xs: List[Str]) -> I32 {
+    var n = 0
+    var i: I32 = 0
+    while i < xs.len {
+        if xs[i].len >= 3 { n += 1 }
+        i += 1
+    }
+    return n
+}
+
 fn main() -> I32 {
     var xs = List[Str]()
     xs.push("alpha")
@@ -55,5 +70,19 @@ fn main() -> I32 {
     ns.push(9)
     println(apply(ns, |lst| lst.len).to_string())
     println(apply(ns, |lst| lst[0] + lst[1]).to_string())
+    println(cmp2[I32](2, 5, |x, y| x < y).to_string())
+    println(cmp2[I32](7, 5, |x, y| x < y).to_string())
+    // spawn 任务体 × Str/List(任务体调顶层 fn;闭包体内嵌套闭包定义为
+    // 发射器挂账——pass1 shim 直出不支持嵌套,需延迟出队机制)
+    var part = scope { |sc|
+        var t = sc.spawn(|| {
+            var words = List[Str]()
+            words.push("aa")
+            words.push("bbbb")
+            return long_count(words)
+        })
+        t.join()
+    }
+    println(part.to_string())
     return 0
 }

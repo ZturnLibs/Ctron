@@ -1,0 +1,6 @@
+// fx_litfit_as_neg.ct —— E2040 赋值位挂点:窄类型目标赋超宽字面量
+test "litfit-assign" {
+    var c: U8 = 0
+    c = 300
+    println(c.to_string())
+}

@@ -110,10 +110,20 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   注解生成(捕获/非捕获双 shim);无注解形参走 `#clcodes` 调用点提示——
   生产侧 ct_fntype_pcodes(被调 fn 显式 FnType 形参的内参码逗号串)+
   ct_call_args 门控绑定(仅 'F'/'G' 码 + Closure 实参触发,取不到码不绑),
-  fx_clostr 含无注解用例(`|s| s.len >= 2`)双面逐字;**自发射固定点通过
+  fx_clostr 含无注解用例(`|s| s.len >= 2`)、多形参 "s,i"(逗号切分)、6/LI 码
+  形参与 spawn 任务体 × Str 用例,双面逐字;**自发射固定点通过
   (A 块旧阻塞未复现——防御口径下块在自发射面不触达)**。遗留:泛型被调
   的 fn 型内参含未替换型参时按 ct_ty_code 兜底落 "i"(与旧行为一致,
-  泛型内参精确替换挂账);spawn 场景未单独测;宿主侧闭包 ABI 未同步。
+  泛型内参精确替换挂账);**闭包体内嵌套闭包定义为发射器挂账**(pass1 shim
+  直出不支持嵌套定义,需 shim 延迟出队机制;fx_clostr 的 spawn 用例因此
+  改为任务体调顶层 fn);宿主侧闭包 ABI 未同步。
+- **seed spawn 输出重放 bug 已修(2026-09-13,新测试抓出)**:spawn 返回
+  `ob[3] + sr[3]`,而 sr[3](call_cv 闭包求值的 out 累加器)已含 ob[3]——
+  前置输出被拼接重放一遍(scope 前有打印即触发;fx_conc_* 前置无打印,
+  从未暴露)。已改为直返 sr[3]。
+- **W8030 疑似误报一例(未根因)**:探针形状(scope 体 + 前置打印 +
+  `part.to_string()` Member 基读)误判 part 未用;同形的 fx_conc_spawn
+  不触发。不咬门禁语料,待根因。
 - **闭包形参 32 位限制的 ABI 调研结论(feat/closure-abi)**:ct_i 实为 int64
   (emitted `typedef int64_t ct_i`),传输层 64 位无恙;截断仅发生在 trans_conc
   闭包 shim 的形参声明硬编码 `int32_t t_x = (int32_t)_pN` + env 绑定 "i"。
@@ -145,10 +155,11 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
   段错误(2026-09-10 发现,未修);`{7}`/`{true}`/`{struct 字段}` 正常。
 - **bench.sh S4 的 CWD 依赖**:以仓库根为 cwd 时 seed 面锚 `../selfhosted/`
   解析到仓外 → "双形态输出分歧"误报(信息面不计门禁;实际两路输出一致)。
-- **decls 锁现为 271**(feat/i64-arith I64 域 + match 守卫 + 宽字面量切片
-  lit_is_dec/lit_digits/lit_wide_i32/lit_fit_gate/lit_radix_dec/lit_to_dec/conv_as_6;
-  CORE 侧 fmt_struct/eq_val + bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS
-  不入 cc_run 锁);smoke 3b 含 derive、2c 含 fx_bound_neg + fx_litfit_neg +
+- **decls 锁现为 272**(feat/i64-arith I64 域 + match 守卫 + 宽字面量切片
+  lit_is_dec/lit_digits/lit_wide_i32/lit_fit_gate/lit_radix_dec/lit_to_dec/conv_as_6
+  + c6_in_i64;ct_fntype_pcodes 在 TRANS 不入锁;CORE 侧 fmt_struct/eq_val +
+  bound 检查 5 fn;std 泛型化/web 档的新 fn 全在 TRANS 不入 cc_run 锁);
+  smoke 3b 含 derive、2c 含 fx_bound_neg + fx_litfit_neg 三挂点件 +
   递归泛型 emit 面拦截、3f 为 web 档三面。
 - **含 E/e 的十六进制字面量误判 Float(已修,本会话词法切片)**:parse_expr
   数字 token 的浮点检测曾按 'e'/'E' 判 isf,0xDEADBEEF 类字面量被建成 Float

@@ -1,0 +1,8 @@
+// fx_litfit_ret_neg.ct —— E2040 返回位挂点:窄返回类型超宽字面量
+fn bad_ret() -> U8 {
+    return 300
+}
+
+test "litfit-ret" {
+    println(bad_ret().to_string())
+}

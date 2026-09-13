@@ -513,6 +513,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
     if recv[0] == "SCOPE" && seq2(m, "spawn") && vals.len == 1 {
         var noargs = List[Str]()
         var sr = call_cv(file, ob[1], ob[3], vals[0], noargs)
+        // sr[3] 已含 ob[3](out 累加器透传),不得再拼 ob[3](曾致前置输出重放)
         var tk = List[Str]()
         tk.push("TASK")
         if sr[0] == "a" {
@@ -522,7 +523,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             tk.push("K")
             tk.push(sr[2])
         }
-        return e4("k", ob[1], tk, ob[3] + sr[3])
+        return e4("k", ob[1], tk, sr[3])
     }
     if recv[0] == "TASK" && seq2(m, "join") && vals.len == 0 {
         if seq2(recv[1], "P") {
