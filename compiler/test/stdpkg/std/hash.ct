@@ -1,0 +1,93 @@
+// std/hash.ct —— 确定性 32 位哈希(djb2/fnv1a32;算法钉死可复现;逐字节)
+// since: std-0.2 stability: experimental
+// 口径:返回值以 I64 承载 32 位无符号值([0,4294967296));迭代序无关(顺序扫描);
+// 实现约束(C10):mod 2^32 用减法循环;fnv 逐字节异或走低 8 位小循环;
+// crc32(需 nibble 表)移交 v0.3——解释面逐位实现超时/OOM,登记能力缺口
+
+// [0,2^32) 规范化(减法循环)+ 出口强制宽域(模块内助手,非 pub)
+fn hnorm(x: I64) -> I64 {
+    var v = x
+    while v >= 4294967296 {
+        v = v - 4294967296
+    }
+    var w: I64 = 4294967296
+    return v * (w / w)
+}
+
+// 低 8 位异或助手(h 高 24 位不变;8 次小值域迭代)
+fn hxorbyte(h: I64, c: I32) -> I64 {
+    var lo = h % 256
+    var hi = h - lo
+    var k: I32 = 0
+    var p: I32 = 1
+    var acc: I32 = 0
+    while k < 8 {
+        var ba = lo % 2
+        var bb = c % 2
+        if ba != bb {
+            acc = acc + p
+        }
+        lo = (lo - ba) / 2
+        c = (c - bb) / 2
+        p = p * 2
+        k += 1
+    }
+    return hi + acc
+}
+
+// djb2:h = h*33 + c,mod 2^32,初值 5381
+pub fn djb2(s: Str) -> I64 {
+    // C10:累加器以宽域零播种(W-W),否则乘法按 2^31 门控溢出
+    var w: I64 = 4294967296
+    var h: I64 = w - w + 5381
+    var i: I32 = 0
+    while i < s.len {
+        var c: I64 = byte_at(s, i)
+        h = hnorm(h * 33 + c)
+        i += 1
+    }
+    return h
+}
+
+// FNV-1a 32 位:偏移 2166136261,素数 16777619,逐字节异或
+pub fn fnv1a32(s: Str) -> I64 {
+    // h*16777619 mod 2^32:16 位肢解(h = hi*65536 + lo;P = 256*65536 + 403)
+    var w: I64 = 4294967296
+    var h: I64 = w - w + 2166136261
+    var i: I32 = 0
+    while i < s.len {
+        h = hnorm(hxorbyte(h, byte_at(s, i)))
+        var lo = h % 65536
+        var hi = (h - lo) / 65536
+        var hiTerm = ((hi * 403) % 65536) * 65536
+        var loTerm = ((lo * 256) % 65536) * 65536 + lo * 403
+        h = hnorm(hiTerm + loTerm)
+        i += 1
+    }
+    return h
+}
+
+test "djb2 vectors" {
+    assert_eq(djb2(""), 5381)
+    assert_eq(djb2("a"), 177670)
+    assert_eq(djb2("ab"), 5863208)
+    assert_eq(djb2("foobar"), 4259602622)
+}
+
+test "fnv1a32 vectors" {
+    assert_eq(fnv1a32(""), 2166136261)
+    assert_eq(fnv1a32("a"), 3826002220)
+    assert_eq(fnv1a32("ab"), 1294271946)
+    assert_eq(fnv1a32("foobar"), 3214735720)
+}
+
+test "hash determinism and long input" {
+    var s = ""
+    var i: I32 = 0
+    while i < 100 {
+        s = s + "xyz"
+        i += 1
+    }
+    assert_eq(djb2(s), djb2(s))
+    assert_eq(fnv1a32(s), fnv1a32(s))
+}
