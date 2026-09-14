@@ -1,0 +1,205 @@
+// std/unicode.ct —— UTF-8 解码面(码点读取/合法性/计数;字节级纪律的码点侧补充)
+// since: std-0.2 stability: experimental
+// 口径:非法序列返回 -1 / false(不 panic);过约简检查;显式非目标:字素分割/
+// 大小写映射/宽度表(需 Unicode 数据表,等真实需求);编码方向用内建 utf8_enc
+
+// i 处码点(须为序列首字节);非法/越界 -1
+pub fn cp_at(s: Str, i: I32) -> I32 {
+    if i < 0 {
+        return -1
+    }
+    if i >= s.len {
+        return -1
+    }
+    var b0 = byte_at(s, i)
+    if b0 < 128 {
+        return b0
+    }
+    if b0 < 192 {
+        return -1
+    }
+    if b0 < 224 {
+        if i + 1 >= s.len {
+            return -1
+        }
+        var b1 = byte_at(s, i + 1)
+        if b1 < 128 {
+            return -1
+        }
+        if b1 >= 192 {
+            return -1
+        }
+        var cp = (b0 - 192) * 64 + (b1 - 128)
+        if cp < 128 {
+            return -1
+        }
+        return cp
+    }
+    if b0 < 240 {
+        if i + 2 >= s.len {
+            return -1
+        }
+        var b1 = byte_at(s, i + 1)
+        var b2 = byte_at(s, i + 2)
+        if b1 < 128 {
+            return -1
+        }
+        if b1 >= 192 {
+            return -1
+        }
+        if b2 < 128 {
+            return -1
+        }
+        if b2 >= 192 {
+            return -1
+        }
+        var cp = (b0 - 224) * 4096 + (b1 - 128) * 64 + (b2 - 128)
+        if cp < 2048 {
+            return -1
+        }
+        return cp
+    }
+    if b0 < 248 {
+        if i + 3 >= s.len {
+            return -1
+        }
+        var b1 = byte_at(s, i + 1)
+        var b2 = byte_at(s, i + 2)
+        var b3 = byte_at(s, i + 3)
+        if b1 < 128 {
+            return -1
+        }
+        if b1 >= 192 {
+            return -1
+        }
+        if b2 < 128 {
+            return -1
+        }
+        if b2 >= 192 {
+            return -1
+        }
+        if b3 < 128 {
+            return -1
+        }
+        if b3 >= 192 {
+            return -1
+        }
+        var cp = (b0 - 240) * 262144 + (b1 - 128) * 4096 + (b2 - 128) * 64 + (b3 - 128)
+        if cp < 65536 {
+            return -1
+        }
+        return cp
+    }
+    return -1
+}
+
+// 字节是否序列首字节(非 10xxxxxx 续字节)
+pub fn cp_is_start(b: I32) -> Bool {
+    if b < 0 {
+        return false
+    }
+    if b >= 248 {
+        return false
+    }
+    if b >= 128 && b < 192 {
+        return false
+    }
+    return true
+}
+
+// 全串合法 UTF-8(长度/续字节/过约简)
+// 序列字节长(按首字节;非法按 1 前进)
+fn uclen(b0: I32) -> I32 {
+    if b0 < 128 {
+        return 1
+    }
+    if b0 < 192 {
+        return 1
+    }
+    if b0 < 224 {
+        return 2
+    }
+    if b0 < 240 {
+        return 3
+    }
+    return 4
+}
+
+pub fn cp_valid_utf8(s: Str) -> Bool {
+    var i: I32 = 0
+    while i < s.len {
+        if cp_at(s, i) < 0 {
+            return false
+        }
+        i = i + uclen(byte_at(s, i))
+    }
+    return true
+}
+
+// 逐码点表(按首字节推进;非法序列以 -1 占一位)
+pub fn cp_iter(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(cp_at(s, i))
+        i = i + uclen(byte_at(s, i))
+    }
+    return out
+}
+
+// 码点数(首字节计数;与前奏 char_len 同口径)
+pub fn cp_count(s: Str) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        n += 1
+        i = i + uclen(byte_at(s, i))
+    }
+    return n
+}
+
+test "ascii passthrough" {
+    assert_eq(cp_at("abc", 0), 97)
+    assert_eq(cp_at("abc", 2), 99)
+    assert(cp_valid_utf8("abc"))
+    assert(cp_valid_utf8(""))
+    assert_eq(cp_count("abc"), 3)
+}
+
+test "two three four byte sequences" {
+    var h = "héllo"
+    assert_eq(h.len, 6)
+    assert_eq(cp_count(h), 5)
+    assert_eq(cp_at(h, 1), 233)
+    var e = "€"
+    assert_eq(e.len, 3)
+    assert_eq(cp_at(e, 0), 8364)
+    var t = "h" + e + "!"
+    assert_eq(cp_count(t), 3)
+    assert_eq(cp_at(t, 1), 8364)
+}
+
+test "invalid sequences" {
+    var e = "é"
+    assert_eq(e.len, 2)
+    var cont = byte_slice(e, 1, 2)
+    assert(!cp_is_start(byte_at(cont, 0)))
+    assert(cp_is_start(65))
+    assert(cp_is_start(200))
+    var lead = byte_slice(e, 0, 1)
+    assert(!cp_valid_utf8(lead))
+    var cut = byte_slice("héllo", 0, 2)
+    assert(!cp_valid_utf8(cut))
+    assert_eq(cp_at(cut, 1), -1)
+    assert(!cp_valid_utf8("é" + lead))
+}
+
+test "iter matches count and char_len" {
+    var s = "héllo €!"
+    var cps = cp_iter(s)
+    assert_eq(cps.len, cp_count(s))
+    assert_eq(cps.len, s.char_len)
+    assert_eq(cps[0], 104)
+    assert_eq(cps[1], 233)
+    assert_eq(cps[6], 8364)
+}
