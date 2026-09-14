@@ -26,6 +26,27 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     ct_body(d[5], penv, file, rc)
 }
 
+// Drop 方法发射(§6.4):impl Drop for T 的 drop 方法 → static void t_<T>__drop(t_<T> t_self)
+// 值接收者:作用域出口处绑定行将消亡,字段写不可观察;Atomic 共享单元经指针透写(镜像 eval 免克隆)
+fn ct_drop_fn(d: List[Str], file: List[Str], pass: Str) {
+    var ftn = ty_head(d[3])
+    if d[1].len > 1 && d[1][0] == "TPs" {
+        panic("emit:泛型 impl Drop 未支持:" + ftn)
+    }
+    var mi: I32 = 1
+    while mi < d[4].len {
+        var it = d[4][mi]
+        if it[0] == "Method" && seq2(it[1], "drop") {
+            if seq2(pass, "2") {
+                println("static void t_" + ftn + "__drop(t_" + ftn + " t_self) ")
+            }
+            var menv = env_bind(env_bind(List[Str](), "self", "u:" + ftn), "#p", pass)
+            ct_body(it[5], menv, file, "v")
+        }
+        mi += 1
+    }
+}
+
 // Str 节点 Text 载荷原样拼接(不做转义还原)
 fn ct_str_payload(e: List[Str]) -> Str {
     var parts = e[1]
