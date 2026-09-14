@@ -324,3 +324,94 @@ test "sorted_by_keys asc/desc with padded counts" {
     assert(desc[1] == "end")
     assert(desc[2] == "quick")
 }
+
+// ============ v0.2 扩张(since: std-0.2) ============
+
+// 稳定插入排序,比较器注入(cmp < 0 = 前者在前);返回新 List
+pub fn sort_by[T](xs: List[T], cmp: fn(T, T) -> I32) -> List[T] {
+    var out = List[T]()
+    var i: I32 = 0
+    while i < xs.len {
+        var v = xs[i]
+        out.push(v)
+        var j = out.len - 1
+        while j > 0 {
+            if cmp(out[j - 1], v) > 0 {
+                out[j] = out[j - 1]
+                j -= 1
+            } else {
+                break
+            }
+        }
+        out[j] = v
+        i += 1
+    }
+    return out
+}
+
+// 升序前提的二分查找;命中下标,未命中 -1(v0 口径,不返回插入点)
+pub fn binary_search_by[T](xs: List[T], key: T, cmp: fn(T, T) -> I32) -> I32 {
+    var lo: I32 = 0
+    var hi = xs.len
+    while lo < hi {
+        var mid = lo + (hi - lo) / 2
+        var c = cmp(xs[mid], key)
+        if c == 0 {
+            return mid
+        }
+        if c < 0 {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    }
+    return -1
+}
+
+// 数值比较器(v0.2 扩张测试与示例用;非 pub)
+fn num_cmp2(a: I32, b: I32) -> I32 {
+    if a < b {
+        return -1
+    }
+    if a > b {
+        return 1
+    }
+    return 0
+}
+
+fn num_cmp2_desc(a: I32, b: I32) -> I32 {
+    return num_cmp2(b, a)
+}
+
+test "sort_by comparator and stability" {
+    var ns = List[I32]()
+    ns.push(4)
+    ns.push(1)
+    ns.push(3)
+    ns.push(1)
+    var asc = sort_by[I32](ns, num_cmp2)
+    assert_eq(asc[0], 1)
+    assert_eq(asc[1], 1)
+    assert_eq(asc[2], 3)
+    assert_eq(asc[3], 4)
+    var desc = sort_by[I32](ns, num_cmp2_desc)
+    assert_eq(desc[0], 4)
+    assert_eq(desc[3], 1)
+    assert_eq(ns[0], 4)
+}
+
+test "binary_search_by hit and miss" {
+    var xs = List[I32]()
+    xs.push(1)
+    xs.push(3)
+    xs.push(5)
+    xs.push(7)
+    xs.push(9)
+    assert_eq(binary_search_by[I32](xs, 5, num_cmp2), 2)
+    assert_eq(binary_search_by[I32](xs, 1, num_cmp2), 0)
+    assert_eq(binary_search_by[I32](xs, 9, num_cmp2), 4)
+    assert_eq(binary_search_by[I32](xs, 4, num_cmp2), -1)
+    assert_eq(binary_search_by[I32](xs, 0, num_cmp2), -1)
+    var e = List[I32]()
+    assert_eq(binary_search_by[I32](e, 1, num_cmp2), -1)
+}
