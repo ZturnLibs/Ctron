@@ -1,0 +1,294 @@
+// std/time.ct —— 纯历法(days 域;公历;Clock 单调时钟为 v0.3,依赖运行时面)
+// since: std-0.2 stability: experimental
+// 口径:days since 1970-01-01(1970-01-01 = 0);年份域 [1,9999];全部纯函数,
+// 无时钟依赖(宪章 8);Hinnant 民历算法;I32 除法幅度 ≤1.5e6(C3 安全)
+
+// 公历日期(值类型;字段 let)
+struct CivilDate {
+    let y: I32
+    let m: I32
+    let d: I32
+}
+
+// 公历闰年:四年一闰、百年不闰、四百年再闰
+pub fn leap_is_leap(y: I32) -> Bool {
+    if y % 4 != 0 {
+        return false
+    }
+    if y % 100 != 0 {
+        return true
+    }
+    return y % 400 == 0
+}
+
+// 月天数;m 越界返回 0(文档化)
+pub fn leap_days_in_month(y: I32, m: I32) -> I32 {
+    if m < 1 {
+        return 0
+    }
+    if m > 12 {
+        return 0
+    }
+    if m == 2 {
+        if leap_is_leap(y) {
+            return 29
+        }
+        return 28
+    }
+    if m == 4 {
+        return 30
+    }
+    if m == 6 {
+        return 30
+    }
+    if m == 9 {
+        return 30
+    }
+    if m == 11 {
+        return 30
+    }
+    return 31
+}
+
+// 公历日期 → days since 1970-01-01;m/d 越界返回 -1(文档化)
+pub fn days_from_civil(y: I32, m: I32, d: I32) -> I32 {
+    if m < 1 {
+        return -1
+    }
+    if m > 12 {
+        return -1
+    }
+    if d < 1 {
+        return -1
+    }
+    if d > leap_days_in_month(y, m) {
+        return -1
+    }
+    // Hinnant 民历算法(天数域;y ∈ [1,9999] 时全部中间量 I32 安全)
+    var yy = y
+    if m <= 2 {
+        yy = y - 1
+    }
+    var era: I32 = 0
+    if yy >= 0 {
+        era = yy / 400
+    } else {
+        era = (yy - 399) / 400
+    }
+    var yoe = yy - era * 400
+    var mp: I32 = 0
+    if m > 2 {
+        mp = m - 3
+    } else {
+        mp = m + 9
+    }
+    var doy = (153 * mp + 2) / 5 + d - 1
+    var doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    return era * 146097 + doe - 719468
+}
+
+// days → 公历日期(逆变换;z 域见年份域)
+pub fn civil_from_days(z: I32) -> CivilDate {
+    var z2 = z + 719468
+    var era: I32 = 0
+    if z2 >= 0 {
+        era = z2 / 146097
+    } else {
+        era = (z2 - 146096) / 146097
+    }
+    var doe = z2 - era * 146097
+    var yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    var yy = yoe + era * 400
+    var doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    var mp = (5 * doy + 2) / 153
+    var dd = doy - (153 * mp + 2) / 5 + 1
+    var mm: I32 = 0
+    if mp < 10 {
+        mm = mp + 3
+    } else {
+        mm = mp - 9
+    }
+    if mm <= 2 {
+        yy = yy + 1
+    }
+    return CivilDate { y: yy, m: mm, d: dd }
+}
+
+// 星期:0=星期日 … 6=星期六;1970-01-01 = 4(星期四)
+pub fn weekday(z: I32) -> I32 {
+    var w = z % 7
+    if w < 0 {
+        w = w + 7
+    }
+    var r = w + 4
+    if r >= 7 {
+        r = r - 7
+    }
+    return r
+}
+
+// "YYYY-MM-DD"(4 位零填充;年份域外返回空串)
+pub fn date_format(z: I32) -> Str {
+    var cd = civil_from_days(z)
+    if cd.y < 1 {
+        return ""
+    }
+    if cd.y > 9999 {
+        return ""
+    }
+    var ys = cd.y.to_string()
+    while ys.len < 4 {
+        ys = "0" + ys
+    }
+    var ms = cd.m.to_string()
+    if ms.len < 2 {
+        ms = "0" + ms
+    }
+    var ds = cd.d.to_string()
+    if ds.len < 2 {
+        ds = "0" + ds
+    }
+    return ys + "-" + ms + "-" + ds
+}
+
+// 严格 "YYYY-MM-DD"(10 字节、合规月日含闰);非法 None
+fn t_digits2(s: Str, i: I32) -> I32 {
+    var a = byte_at(s, i)
+    var b = byte_at(s, i + 1)
+    if a < 48 {
+        return -1
+    }
+    if a > 57 {
+        return -1
+    }
+    if b < 48 {
+        return -1
+    }
+    if b > 57 {
+        return -1
+    }
+    return (a - 48) * 10 + (b - 48)
+}
+
+fn t_digits4(s: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < 4 {
+        var c = byte_at(s, i)
+        if c < 48 {
+            return -1
+        }
+        if c > 57 {
+            return -1
+        }
+        v = v * 10 + (c - 48)
+        i += 1
+    }
+    return v
+}
+
+pub fn date_parse(s: Str) -> Option[I32] {
+    if s.len != 10 {
+        return None
+    }
+    if byte_at(s, 4) != 45 {
+        return None
+    }
+    if byte_at(s, 7) != 45 {
+        return None
+    }
+    var y = t_digits4(s)
+    var m = t_digits2(s, 5)
+    var d = t_digits2(s, 8)
+    if y < 1 {
+        return None
+    }
+    if y > 9999 {
+        return None
+    }
+    if m < 1 {
+        return None
+    }
+    if m > 12 {
+        return None
+    }
+    if d < 1 {
+        return None
+    }
+    if d > leap_days_in_month(y, m) {
+        return None
+    }
+    return Some(days_from_civil(y, m, d))
+}
+
+test "leap year four cases" {
+    assert(!leap_is_leap(1900))
+    assert(leap_is_leap(2000))
+    assert(!leap_is_leap(2100))
+    assert(leap_is_leap(2024))
+    assert(!leap_is_leap(2023))
+}
+
+test "days in month" {
+    assert_eq(leap_days_in_month(2024, 2), 29)
+    assert_eq(leap_days_in_month(2023, 2), 28)
+    assert_eq(leap_days_in_month(2024, 1), 31)
+    assert_eq(leap_days_in_month(2024, 4), 30)
+    assert_eq(leap_days_in_month(2024, 12), 31)
+    assert_eq(leap_days_in_month(2024, 0), 0)
+    assert_eq(leap_days_in_month(2024, 13), 0)
+}
+
+test "epoch and civil round trip" {
+    assert_eq(days_from_civil(1970, 1, 1), 0)
+    var cd = civil_from_days(0)
+    assert_eq(cd.y, 1970)
+    assert_eq(cd.m, 1)
+    assert_eq(cd.d, 1)
+    assert_eq(days_from_civil(2000, 3, 1), 11017)
+    var z: I32 = 0
+    while z < 2000 {
+        var c = civil_from_days(z)
+        assert_eq(days_from_civil(c.y, c.m, c.d), z)
+        z += 7
+    }
+}
+
+test "civil invalid month day" {
+    assert_eq(days_from_civil(2024, 13, 1), -1)
+    assert_eq(days_from_civil(2024, 0, 1), -1)
+    assert_eq(days_from_civil(2023, 2, 29), -1)
+    assert_eq(days_from_civil(2024, 2, 29), 19782)
+    assert_eq(days_from_civil(2024, 4, 31), -1)
+}
+
+test "weekday known anchors" {
+    assert_eq(weekday(0), 4)
+    assert_eq(weekday(-1), 3)
+    assert_eq(weekday(1), 5)
+    var z: I32 = 0
+    while z < 400 {
+        assert(weekday(z) >= 0)
+        assert(weekday(z) <= 6)
+        z += 1
+    }
+}
+
+test "format parse round trip" {
+    assert_eq(date_format(0), "1970-01-01")
+    assert_eq(date_format(19782), "2024-02-29")
+    assert_eq(date_parse("1970-01-01").or(-1), 0)
+    assert_eq(date_parse("2024-02-29").or(-1), 19782)
+    assert(!date_parse("2023-02-29").is_some())
+    assert(!date_parse("2024-13-01").is_some())
+    assert(!date_parse("2024-00-10").is_some())
+    assert(!date_parse("2024-1-01").is_some())
+    assert(!date_parse("20240101").is_some())
+    assert(!date_parse("").is_some())
+    var z: I32 = 0
+    while z < 2000 {
+        var f = date_format(z)
+        assert_eq(date_parse(f).or(-999999), z)
+        z += 7
+    }
+}
