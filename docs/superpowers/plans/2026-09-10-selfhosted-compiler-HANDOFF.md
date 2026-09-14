@@ -215,6 +215,18 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    传播交互超出单片边界,已回退至最近绿态。后续设计前置:①预扫尾表达式
    的 BlockExpr/嵌套块遍历矩阵;②转义帮手与自举词法的相互作用口径;
    ③return/panic 路径的 cleanup 机制。
+   **发射面 Drop/RAII 已落地(2026-09-14,P1-A,计划 2026-09-14-p1a-drop-raii.md)**:
+   Drop 方法合成(ct_drop_fn,t_<T>__drop 值接收者)+ Drop 层栈(env "#dls" 串栈,
+   ct_block/ct_body/BlockExpr/match 臂/test 体五边界 push/emit/pop)+ Let 登记
+   (has_drop_impl)+ return 全层逆序弹栈(dls_return_emit;弹层排他前缀死循环已修)
+   + 尾值先落临时(t_rv/t_blk)再发 drops + 裸块语句/值位发射(前置①消解:
+   BlockExpr 分支带戳节点行号站点名,未带戳兄弟同作用域极端重名由 gcc 响亮拦截;
+   前置②消解:合成代码全走 eln/println 常规通道)。fx_drop 三方逐字
+   (seed 解释 == seed 发射 == native 发射);smoke 100 ok;suite 61/61;固定点逐字节
+   (compiler/src 无 impl 块,Drop 合成不影响自举产物)。**余量挂账 → P1-A2**
+   (panic 路径 Drop 展开 + E2071 解除);**v0 命中即停**:while 体非提升 Drop 局部/
+   own 体 Drop 局部/类引用 Drop/泛型 impl Drop;新增发现 P0-E:自举解析器非法
+   标点 SIGSEGV(native 对含 `;` 输入 rc=139,seed 正确 E1001)。
    (AST 替换 + pass1 直出 + 形参/型参/'#实例' env 绑定 + 嵌套预提升 #ph/#spec),
    扩展点在 trans_expr TypeArgs 尾部与 ct_mono_subst_ty。多文件包发射必须用
    bin/ctron-emit(ctc.sh emit 无 path 回退,driver_emit 注释已文档化)。

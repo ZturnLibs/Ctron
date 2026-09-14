@@ -34,7 +34,7 @@ compiler-rust(R 线)、smoke/suite/meta_check 三层门禁。
 
 ## P0 立即可做(小切片、无设计依赖)
 
-### 切片 P0-A:struct 泛型注解实例化点 bound 核对
+### 切片 P0-A:struct 泛型注解实例化点 bound 核对(✅ 已完成,0f0957d)
 
 **Spec:** §3.9.2(v0.6 修订遗留挂账,fn 调用点已有 bound_sat,struct 注解点缺)。
 **Scope:** `let p: Pair[I32, NoShow] = ...` 注解位的 TypeArgs bound 核对,复用 bound_sat
@@ -69,32 +69,38 @@ D:df_can 规范文本核对(仅接受合法 C double 字面量形态,含 `-`/小
 
 ---
 
-## P1 发射面语义对齐(中等,方向既定)
+## P1 运行面/发射面语义对齐(中等,方向既定)
 
-### 切片 P1-A:发射面 Drop/RAII(§6.4)
+### 切片 P1-A:发射面 Drop/RAII(§6.4)(✅ 已完成 2026-09-14,计划见
+### 2026-09-14-p1a-drop-raii.md;前置 struct 方法/UFCS 分派已由 d614eaf 三线修复)
 
-**Spec 要求:** Drop 的 `fn drop(var self)` 确定性执行——作用域退出按声明逆序、
-panic 展开保证执行;类引用不触发;Arena 整体释放。
-**现状:** seed 解释侧已实现(run_block 逆序 drop);发射侧无 cleanup 路径
-(E2071 的存在根据);panic 走 longjmp 不展开。
-**⚠️ 2026-09-13 前置发现(范围扩大):struct 的 impl 方法/UFCS 方法调用在
-双实现均失败**——`impl Counter { fn base2(self) -> I32 }` 与顶层 fn
-`bump(self: Counter, d)` 经 `c.bump(2)` 调用,双实现运行期 rc=1
-(宿主索引守卫"索引目标非数组";call_mem 分派:impl 方法仅对 is_class
-类实例生效,struct 落 UFCS 兜底后仍失败——self 绑定/字段索引环节有缺口)。
-字段访问与"普通 fn 显式传参"正常(fx_gstruct 风格不受影响;语料因此从未
-触达)。**Drop on struct 依赖方法调用,故 P1-A 前置 = struct 方法/UFCS
-分派修复(建议 seed 优先定位 self 绑定环节)→ 再做发射面 cleanup。**
-**设计要点(实施前 0.5 天设计记录):**
-- 作用域退出:含 Drop 的 let 在其作用域收尾处内联 `ctron_drop_T(&t_x);` 调用;
-  多退出点(return/break/continue/panic)需要 cleanup 区块或 setjmp 复用。
-- panic 展开:ct_panic 路径在 longjmp 前执行当前 shim/fn 已登记的 drop 列表
-  (任务结构持栈式登记,或编译期静态链)。
-- break/continue 越过 Drop 作用域:现 E2071 静态拒绝——若 cleanup 内联可行,
-  可按 spec 明文解除(纯增量)。
-**Verify:** fx_drop 夹具(正常退出/早退 return/panic 展开/嵌套作用域逆序)
-双面逐字;R 线同步。
-**规模:** 3-5 天(发射器语义最深的一块,建议独立会话)。
+**已落地:** Drop 方法合成发射(`t_<T>__drop` 值接收者)+ Drop 层栈(env `#dls` 串栈:
+ct_block/ct_body/BlockExpr/match 臂/test 体五个 C 作用域边界 push/emit/pop)+ Let 分支
+`has_drop_impl` 登记 + return 路径全层逆序弹栈 + 尾值先落临时(`t_rv`/`t_blk`)再发 drops
++ 裸块语句/值位发射(消 `ct_expr:BlockExpr` 回退爆点)。fx_drop 三方逐字
+(seed 解释 == seed 发射 == native 发射);smoke 100 ok;suite 61/61;固定点逐字节。
+**v0 命中即停(响亮拒发):** while 体非提升 Drop 局部、own 体内 Drop 局部、
+类引用 Drop(§6.4 类引用不触发;eval 统一 "U" 的三线分歧另挂账)、泛型 impl Drop。
+**R 线:** 发射侧已有 emit_scope_drops(trans.rs),本片为其自举镜像,无需回移。
+
+### 切片 P1-A2:panic 路径 Drop 展开 + E2071 解除评估(§6.4 余量)
+
+**Spec 要求:** panic 展开保证 drop 执行;break/continue 越过 Drop 作用域不拒绝。
+**现状:** ctron_panic 走 longjmp/exit,无 cleanup(E2071 静态门兜底);
+break/continue 越过 Drop 局部仍被 E2071 拒绝(sem_calls.ct)。
+**设计要点:** ct_task 持栈式 drop 登记(fns 在入口注册、出口注销)或编译期静态链;
+longjmp 前逆序执行。E2071 解除为纯增量,需先证 break/continue 跳转路径的 cleanup 完备。
+**Verify:** panic 展开夹具(任务内 panic → drop 序可观察)+ break 越界正例双侧逐字。
+**规模:** 2-4 天。
+
+### 切片 P0-E(新增,2026-09-14 发现):自举解析器非法输入韧性
+
+**现象:** 含非法标点(如 `;`)的 .ct 过 `compiler/bin/ctron-cc run` 直接 SIGSEGV(rc=139),
+seed 宿主正确报 E1001(禁用的标点)。native.sh 重建后仍复现(非陈旧二进制)。
+**Scope:** 自举 lex/parse 对禁用标点/畸形 token 的守卫与诊断路径(E1001 面),
+镜像 seed 词法器的禁用标点检查;补负例夹具。
+**Verify:** 非法标点夹具 native check 报 E1001 rc=1(与 seed 逐字),不再崩。
+**规模:** 0.5-1 天。
 
 ### 切片 P1-B:ISize/USize/U64 定宽存储(§3.1)
 
@@ -113,6 +119,30 @@ U64 值截断(已登记)。
 **Scope:** 盘点 eval/trans 的 Simd 现状(前奏 splat/lane/to_array 已钉);
 决策:标量模拟口径成文(spec 允许实现口径)或补齐向量发射。
 **Verify:** Simd 夹具双面逐字。**规模:** 盘点 0.5 天,补齐视决策 1-3 天。
+
+### 切片 P1-D:切片 T[] / &T[] 运行面(§3.1/§3.6/§3.8.2/§7.4)
+
+**Spec 要求(冻结范围,v0.4 起规范):** `T[]` 可变视图(长度+指针;元素可写仅当绑定根为
+`var`;**恒非 Send**);`&T[]` 只读视图(Send 当且仅当 T Send);隐式转换 `T[N] → T[]`
+(定长退化;数组字面量 `[a,b,c]` 直接类型为 `T[N]`)与 `T[] → &T[]`(只读化,Send 判定
+随之切换);前奏 API `len`(prop)/`iter()`/索引 `[i]`(越界 panic);`parallel.map` 入参
+`&T[]`(§7.4)。
+**现状:** 解析 + sem 三件套已落——`parse_expr.ct:604-624`(Slice 节点)、`sem_type.ct`
+(kind 映射/let-compat)、`sem_send.ct:115-120`(可变恒非 Send/只读随元素);**eval/trans
+零覆盖**——含切片的程序过检查但跑不了/发不了。`tests/roadmap/r3b_adapters.ct` 等
+红锚正以 `I32[]` 为语料载具。
+**设计要点(实施前 0.5 天设计记录):**
+- 值表示:切片 = (底层存储指针, 偏移, 长度) 视图;`T[N]` 原地退化为视图,不拷贝;
+- 语义点:`T[] → &T[]` 隐式只读化;元素可写性跟随绑定根 `var`(非 var 根的元素写
+  需诊断——新码或复用既有码,走「spec §10 登记 + 码表 + 负例锚」SOP);
+  索引读/写/`.len`/for-in/`iter()`;
+- 发射面:C 表示 `struct {ptr,len}`(或指针+长度双参透传);与 typed List(LI 码)的
+  关系需设计裁定——建议 v0 仅定长数组退化,List 退化挂后续(引用语义纠缠);
+- 侦察前置(0.5 天):盘点 compiler-c 宿主 rt 与 R 线对切片的支持现状,定三线一致基线。
+**依赖:** 无(独立于 P1-A/B/C);若引入新诊断码先走 §10 登记。**规模:** 3-5 天。
+**Verify:** 切片夹具(定长退化/只读化隐式转换/var 根写门/越界 panic)双实现逐字 +
+R 线同步;`r3b_adapters` 的切片载具用例随适配器域(iter/map/filter)另行评估,
+本切片不承诺翻转该红锚,以新夹具为准。
 
 ---
 
@@ -165,14 +195,14 @@ smoke 3d 加逐字节漂移断言;示例 vendored 副本为钉定快照允许落
 ## 执行顺序建议
 
 ```
-P0-A(0.5d) → P0-C(1d) → P0-B(1-2d)   ← 一周内可全部落地
-P1-A(3-5d,独立会话) → P1-B(3-5d) → P1-C(0.5-3d)
+P0-A/P0-B/P0-C(✅) → P0-E(0.5-1d,新增:自举解析器非法输入韧性)
+P1-D(3-5d) / P1-B(3-5d) / P1-C(0.5-3d) → P1-A2(2-4d,panic 展开+E2071 解除)
 P2 各 spike 穿插在门禁等待期
 ```
 
 ## 自查记录
 
-- 规范覆盖:§2.5/§3.5/§7.3 已实现(核实撤案);§2.7/§3.1/§3.9/§4.5/§5.4/§6.4/
+- 规范覆盖:§2.5/§3.5/§7.3 已实现(核实撤案);§2.7/§3.1/§3.6/§3.9/§4.5/§5.4/§6.4/
   §6.5/§8.4/§9.5/§10.2 各有条目;§9 后端矩阵属远期标注 ✓。
 - 类型一致性:切片间共享机制(#clcodes/预扫/bound_sat/ct_targ_env)均已在
   main 落地,本计划只消费 ✓。
