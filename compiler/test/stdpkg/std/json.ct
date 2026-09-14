@@ -39,10 +39,10 @@ pub fn esc(s: Str) -> Str {
 
 // ============ 解析助手(先于调用者排列) ============
 
-// 可打印 ASCII 表(\u 解码用)——排除 " \ { 三个词法敌对字符,
-// 对应码点的 \u 解码保留原样(v0 口径);下标 = 码点 - 32 - 前置排除数
+// 字母数字表(\u 解码用;A-Z a-z 0-9 共 62 字符,零词法风险)。
+// \u 解码覆盖字母数字码点;其余(符号/控制/代理对)保留原样(v0 口径)
 fn jprint() -> Str {
-    return " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz|}~"
+    return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 }
 
 // 4 位十六进制 → 码点(非法字符按 0 计)
@@ -81,16 +81,21 @@ pub fn junesc(s: Str) -> Str {
             var d = byte_at(s, i + 1)
             if d == 34 { out = out + q } else if d == 92 { out = out + e } else if d == 47 { out = out + "/" } else if d == 110 { out = out + "\n" } else if d == 116 { out = out + "\t" } else if d == 114 { out = out + "\r" } else if d == 117 && i + 5 < s.len {
                 var cp = hex4(s, i + 2)
-                var excl = 0
-                if cp > 34 { excl += 1 }
-                if cp > 92 { excl += 1 }
-                if cp > 123 { excl += 1 }
-                if cp != 34 && cp != 92 && cp != 123 {
-                    out = out + byte_slice(jprint(), cp - 32 - excl, cp - 31 - excl)
-                } else {
-                    out = out + byte_slice(s, i, i + 6)
+                var ch = ""
+                if cp >= 48 && cp <= 57 {
+                    ch = byte_slice(jprint(), cp - 48, cp - 47)
+                } else if cp >= 65 && cp <= 90 {
+                    ch = byte_slice(jprint(), cp - 55, cp - 54)
+                } else if cp >= 97 && cp <= 122 {
+                    ch = byte_slice(jprint(), cp - 87, cp - 86)
                 }
-                i += 6
+                if ch == "" {
+                    out = out + byte_slice(s, i, i + 6)
+                    i += 6
+                } else {
+                    out = out + ch
+                    i += 6
+                }
             } else {
                 out = out + byte_slice(s, i, i + 2)
                 i += 2
