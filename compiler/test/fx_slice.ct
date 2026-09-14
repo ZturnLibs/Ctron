@@ -1,0 +1,21 @@
+// fx_slice.ct —— P1-D 切片视图(§3.6):写透过/退化/len/for-in/参数传递
+fn total(xs: &I32[]) -> I32 {
+    var s: I32 = 0
+    for x in xs {
+        s = s + x
+    }
+    return s
+}
+
+fn main() -> I32 {
+    var buf: I32[3] = [1, 2, 3]
+    var view: I32[] = buf
+    view[1] = 20
+    println(buf[1])
+    let ro: &I32[] = view
+    println(ro.len)
+    println(total(buf))
+    let lit: I32[] = [7, 8, 9]
+    println(lit[2])
+    return 0
+}
