@@ -397,6 +397,10 @@ fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
     if pc == "L" && ac != "L" { return "(ctron_list*)(" + x + ")" }
     if pc == "A" && ac != "A" { return "(ctron_cell*)(" + x + ")" }
     if or2(pc == "s", pc == "N") && ac == "L" { return "(char*)(" + x + ")" }
+    // §3.6 退化传参:内联定长数组实参 → 视图(首址+长度复合字面量,零拷贝)
+    if pc.len > 1 && byte_at(pc, 0) == 118 && ac.len > 2 && byte_at(ac, 0) == 97 {
+        return "(" + ct_ctype(pc) + ")\{ " + x + ", " + a_count(ac) + " \}"
+    }
     return x
 }
 

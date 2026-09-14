@@ -573,6 +573,34 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};", env)
                 return env_bind(env, pat[1], ty)
             }
+            if ty.len > 1 && byte_at(ty, 0) == 118 {
+                // 切片视图 let(§3.6,P1-D):初值三分支——数组字面量(堆)/内联数组退化/其余直发
+                var vt = ct_ctype(ty)
+                var vec = ct_ctype(byte_slice(ty, 1, ty.len))
+                if st[4][0] == "ArrLit" {
+                    var al2 = st[4]
+                    var n2: I32 = al2.len - 1
+                    eln(vt + " t_" + pat[1] + ";", env)
+                    eln("t_" + pat[1] + ".n = " + n2.to_string() + ";", env)
+                    eln("t_" + pat[1] + ".d = (" + vec + "*)ctron_amalloc(sizeof(" + vec + ") * " + n2.to_string() + ");", env)
+                    var k5: I32 = 1
+                    while k5 < al2.len {
+                        eln("t_" + pat[1] + ".d[" + (k5 - 1).to_string() + "] = " + ct_expr(al2[k5], env, file) + ";", env)
+                        k5 += 1
+                    }
+                    return env_bind(env, pat[1], ty)
+                }
+                if st[4][0] == "Ident" {
+                    var ity = ct_env_ty(env, st[4][1])
+                    if ity.len >= 3 && byte_at(ity, 0) == 97 {
+                        // T[N] → T[] 退化:复合字面量取内联数组首址,写透过(d 指向原存储)
+                        eln(vt + " t_" + pat[1] + " = \{ t_" + st[4][1] + ", " + a_count(ity) + " \};", env)
+                        return env_bind(env, pat[1], ty)
+                    }
+                }
+                eln(vt + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";", env)
+                return env_bind(env, pat[1], ty)
+            }
             println("//DBG-letty:" + ty)
             var rhs = ct_expr(st[4], env, file)
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
