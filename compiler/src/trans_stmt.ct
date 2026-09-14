@@ -128,7 +128,33 @@ fn dls_pop_emit(env: List[Str], file: List[Str]) -> List[Str] {
             pos = comma
         }
     }
-    return dls_set(env, dls_head(cur))
+    // 弹层:去掉最后一个 ';'(含其前的当前层)——排他前缀,单层弹至空串
+    var cut = -1
+    var k3: I32 = 0
+    while k3 < cur.len {
+        if byte_at(cur, k3) == 59 { cut = k3 }
+        k3 += 1
+    }
+    var rest = ""
+    if cut >= 0 { rest = byte_slice(cur, 0, cut) }
+    return dls_set(env, rest)
+}
+
+// return 路径:穿透所有开层逆序发射(每层内部声明逆序;内层→外层),弹空层栈
+fn dls_return_emit(env: List[Str], file: List[Str]) -> List[Str] {
+    var cur = dls_of(env)
+    while cur.len > 0 {
+        var has = false
+        var k: I32 = 0
+        while k < cur.len {
+            if byte_at(cur, k) == 59 { has = true }
+            k += 1
+        }
+        if !has { break }
+        env = dls_pop_emit(env, file)
+        cur = dls_of(env)
+    }
+    return env
 }
 
 fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: List[Str]) -> List[Str] {
@@ -354,16 +380,21 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
     if tl[0] != "None" {
         // p_block 尾槽 = NL 折叠后紧跟 } 的表达式 —— 完整语句后跟空行也入尾槽,
         // 故语句类尾槽(如末位 match)仍按语句发射(臂内 return 负责退出)
+        // RAII(§6.4):尾值先落临时再发 drops(t_rv 沿 t_mr 固定名先例),随后返回
         if or2(rc == "v", !ct_is_value(tl[0])) {
             var es = List[Str]()
             es.push("Expr")
             es.push(tl)
             env2 = ct_stmt(es, env2, file, hreg)
+            env2 = dls_pop_emit(env2, file)
         } else if tl[0] == "Match" {
             ct_match_value(tl, env2, file, rc, hreg)
+            env2 = dls_pop_emit(env2, file)
             eln("return t_mr;", env)
         } else if tl[0] == "If" {
-            eln("return " + ct_if_value(tl, env2, file) + ";", env)
+            eln(ct_ctype(rc) + " t_rv = " + ct_if_value(tl, env2, file) + ";", env)
+            env2 = dls_pop_emit(env2, file)
+            eln("return t_rv;", env)
         } else if tl[0] == "Own" {
             // own 块尾位(§4.9):体平铺;own 尾值即块值,体尾 return 已由语句发射退出
             var ocbody3 = tl[2]
@@ -374,12 +405,13 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
                     eln("return " + ct_expr(otl3, orenv3, file) + ";", env)
                 }
             }
+            env2 = dls_pop_emit(env2, file)
         } else {
-            eln("return " + ct_expr(tl, env2, file) + ";", env)
+            eln(ct_ctype(rc) + " t_rv = " + ct_expr(tl, env2, file) + ";", env)
+            env2 = dls_pop_emit(env2, file)
+            eln("return t_rv;", env)
         }
-    }
-    // RAII(§6.4):fn 体出口按声明逆序 drop(pass1 的 env 随丢弃,不参与)
-    if !p1 {
+    } else {
         env2 = dls_pop_emit(env2, file)
     }
     if !p1 {
@@ -949,6 +981,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         return env
     }
     if t == "Return" {
+        // RAII(§6.4):return 穿透所有开层,逆序补发各层 drops(内层→外层)
+        env = dls_return_emit(env, file)
         // Phase 4:spawn shim 体内 return → 写任务结果 + return 0;fnptr 闭包 → return (ct_i)
         if seq2(ct_env_ty(env, "#shim"), "1") {
             if st[1][0] == "None" {
