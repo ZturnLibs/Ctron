@@ -40,6 +40,97 @@ fn ct_field_ty(file: List[Str], sname: Str, fname: Str) -> Str {
     return "i"
 }
 
+// ===== Drop 层栈(§6.4 发射面) =====
+// env "#dls" 条目 = 层串:层间 ';',层内条目间 ',',条目 = "名@型码"。
+// 串恒以 ';' 结尾(除空串);当前层 = 最后一个 ';' 之后的后缀。
+fn dls_of(env: List[Str]) -> Str {
+    var i: I32 = 0
+    while i < env.len {
+        var en = env[i]
+        if en.len >= 5 && byte_slice(en, 0, 5) == "#dls:" {
+            return byte_slice(en, 5, en.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn dls_set(env: List[Str], v: Str) -> List[Str] {
+    return env_bind(env, "#dls", v)
+}
+
+fn dls_push(env: List[Str]) -> List[Str] {
+    return dls_set(env, dls_of(env) + ";")
+}
+
+fn dls_head(cur: Str) -> Str {
+    var cut = -1
+    var k: I32 = 0
+    while k < cur.len {
+        if byte_at(cur, k) == 59 { cut = k }
+        k += 1
+    }
+    if cut >= 0 {
+        return byte_slice(cur, 0, cut + 1)
+    }
+    return ""
+}
+
+fn dls_last(cur: Str) -> Str {
+    var cut = -1
+    var k: I32 = 0
+    while k < cur.len {
+        if byte_at(cur, k) == 59 { cut = k }
+        k += 1
+    }
+    if cut >= 0 {
+        return byte_slice(cur, cut + 1, cur.len)
+    }
+    return cur
+}
+
+// 当前层登记一个 Drop 局部(声明序;发射时逆序)
+fn dls_add(env: List[Str], nm: Str, ty: Str) -> List[Str] {
+    var cur = dls_of(env)
+    var last = dls_last(cur)
+    var entry = nm + "@" + ty
+    if last != "" { entry = last + "," + entry }
+    return dls_set(env, dls_head(cur) + entry)
+}
+
+// 逆序发射当前层 drop 调用(声明逆序 = 条目从尾向头)并弹层
+fn dls_pop_emit(env: List[Str], file: List[Str]) -> List[Str] {
+    var cur = dls_of(env)
+    var last = dls_last(cur)
+    if last != "" {
+        var pos = last.len
+        while pos > 0 {
+            var comma = -1
+            var k: I32 = 0
+            while k < pos {
+                if byte_at(last, k) == 44 { comma = k }
+                k += 1
+            }
+            var seg = byte_slice(last, comma + 1, pos)
+            var at = -1
+            var k2: I32 = 0
+            while k2 < seg.len {
+                if byte_at(seg, k2) == 64 { at = k2 }
+                k2 += 1
+            }
+            if at > 0 {
+                var tyn = byte_slice(seg, at + 1, seg.len)
+                if tyn.len > 2 && byte_slice(tyn, 0, 2) == "u:" {
+                    var cn = byte_slice(seg, 0, at)
+                    eln("t_" + byte_slice(tyn, 2, tyn.len) + "__drop(t_" + cn + ");", env)
+                }
+            }
+            pos = comma
+        }
+    }
+    return dls_set(env, dls_head(cur))
+}
+
 fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: List[Str]) -> List[Str] {
     var i: I32 = 1
     var env2 = env
@@ -155,7 +246,8 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
 
 fn ct_block(b: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> List[Str] {
     eln("\{", env)
-    var env2 = ct_stmts(b, env, file, "", hreg)
+    var denv = dls_push(env)
+    var env2 = ct_stmts(b, denv, file, "", hreg)
     // 尾槽:p_block 末元素为裸尾表达式(无 "None" 哨兵时),按语句发射
     var tl = b[b.len - 1]
     if tl[0] != "None" {
@@ -164,6 +256,8 @@ fn ct_block(b: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         es.push(tl)
         env2 = ct_stmt(es, env2, file, hreg)
     }
+    // RAII(§6.4):作用域退出按声明逆序 drop
+    env2 = dls_pop_emit(env2, file)
     eln("}", env)
     return env2
 }
@@ -226,7 +320,8 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
     if !p1 {
         eln("\{", env)
     }
-    var env2 = ct_stmts(b, env, file, "", hreg)
+    var denv = dls_push(env)
+    var env2 = ct_stmts(b, denv, file, "", hreg)
     var tl = b[b.len - 1]
     if p1 {
         // pass1:与 pass2 同构分派,输出由 eln 门控丢弃,仅为 shim/typedef 发现遍历
@@ -282,6 +377,10 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         } else {
             eln("return " + ct_expr(tl, env2, file) + ";", env)
         }
+    }
+    // RAII(§6.4):fn 体出口按声明逆序 drop(pass1 的 env 随丢弃,不参与)
+    if !p1 {
+        env2 = dls_pop_emit(env2, file)
     }
     if !p1 {
         eln("}", env)
@@ -405,6 +504,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
+            // RAII(§6.4):struct 值绑定实现 Drop → 当前层登记,作用域出口逆序发射
+            if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
+                if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
+                    env = dls_add(env, pat[1], ty)
+                }
+            }
             return env_bind(env, pat[1], ty)
         }
         panic("ct_stmt:let pat:" + pat[0])

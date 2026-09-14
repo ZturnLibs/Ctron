@@ -753,6 +753,35 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var qv = "t_q" + nline(e)
         return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
     }
+    if t == "BlockExpr" {
+        // 裸块值位(§4.6;R 线 trans.rs 同口径):临时变量在花括号外声明,
+        // 尾值先落临时,块内 drops 先于使用点执行。
+        // 站点名:尾表达式属带行号戳节点族(批次九 10 类)时取行号,否则 "0"
+        // (未带戳兄弟裸块同 C 作用域的极端重名由 gcc 响亮拦截,不静默错译)
+        var bl = e[1]
+        var tl2 = bl[bl.len - 1]
+        var tcode = ct_typeof(tl2, env, file)
+        if tcode == "" {
+            panic("ct_expr:BlockExpr 尾值无型")
+            return ""
+        }
+        var site = "0"
+        var t0 = tl2[0]
+        if or2(t0 == "Call", t0 == "Match") { site = nline(tl2) }
+        if or2(t0 == "StructLit", t0 == "Try") { site = nline(tl2) }
+        if t0 == "Member" { site = nline(tl2) }
+        var tmp = "t_blk" + site
+        eln(ct_ctype(tcode) + " " + tmp + ";", env)
+        eln("\{", env)
+        var denv = dls_push(env)
+        var env2 = ct_stmts(bl, denv, file, "", List[Str]())
+        if tl2[0] != "None" {
+            eln(tmp + " = " + ct_expr(tl2, env2, file) + ";", env)
+        }
+        dls_pop_emit(env2, file)
+        eln("}", env)
+        return tmp
+    }
     panic("ct_expr:" + t)
     return ""
 }
