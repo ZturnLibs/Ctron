@@ -290,7 +290,7 @@ fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     return nc
 }
 
-fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str]) -> List[Str] {
     adv(cur)
     var ni = mk("Impl")
     var tp = mk("TPs")
@@ -299,11 +299,47 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     }
     ni.push(tp)
     ni.push(p_typ(toks, cur, lns))
-    adv(cur)
-    ni.push(p_typ(toks, cur, lns))
-    adv(cur)
+    // §2 镜像 seed eat_k(TOK_FOR) 守卫:缺 for 报 E1001(不消费);
+    // 类型位遇非类型起始 token 报"预期类型,实际 X"并消费一枚(parse_type 恢复语义)
+    while tok(toks, cur) == "NL" {
+        adv(cur)
+    }
+    if tok(toks, cur) != "for" {
+        pdiag(pdiags, lns, cols, cur, "E1001", "impl 缺少 for")
+        if type_start(tok(toks, cur)) {
+            ni.push(p_typ(toks, cur, lns))
+        } else {
+            pdiag(pdiags, lns, cols, cur, "E1001", "预期类型,实际 " + tok(toks, cur))
+            adv(cur)
+            ni.push(mk("None"))
+        }
+    } else {
+        adv(cur)
+        ni.push(p_typ(toks, cur, lns))
+    }
+    // 镜像 seed eat_k(TOK_LBRACE):体缺左花括号报 E1001(不消费,p_items 容错续走)
+    while tok(toks, cur) == "NL" {
+        adv(cur)
+    }
+    if tok(toks, cur) != "\{" {
+        pdiag(pdiags, lns, cols, cur, "E1001", "impl 体缺少 \{")
+    } else {
+        adv(cur)
+    }
     ni.push(p_items(toks, cur, lns, "impl"))
     return ni
+}
+
+// 类型起始 token 判定(p_typ 可消费面:标识符/关键字型 与 ( & fn [)
+fn type_start(t: Str) -> Bool {
+    if t.len == 0 {
+        return false
+    }
+    var c = byte_at(t, 0)
+    if or2(or2(c >= 97 && c <= 122, c >= 65 && c <= 90), c == 95) {
+        return true
+    }
+    return or2(or3(t == "(", t == "&", t == "fn"), t == "[")
 }
 
 fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
@@ -440,7 +476,7 @@ fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], anm: Str) -> List
     return fd
 }
 
-fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str]) -> List[Str] {
     var nf = mk("File")
     var go = true
     while go {
@@ -532,7 +568,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
         } else if t == "class" {
             nf.push(p_class(toks, cur, lns))
         } else if t == "impl" {
-            nf.push(p_impl(toks, cur, lns))
+            nf.push(p_impl(toks, cur, lns, cols, pdiags))
         } else if t == "trait" {
             nf.push(p_trait(toks, cur, lns))
         } else if t == "use" {

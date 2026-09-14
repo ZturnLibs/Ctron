@@ -173,9 +173,11 @@ fn main() -> I32 {
         Some(s) => {
             var toks = List[Str]()
             var lns = List[Str]()
-            scan(s, toks, lns)
+            var cols = List[Str]()
+            var pdiags = List[Str]()
+            scan4(s, toks, lns, cols, pdiags)
             var cur = Atomic[I32](0)
-            var file = p_file(toks, cur, lns)
+            var file = p_file(toks, cur, lns, cols, pdiags)
             // 模块加载器(§2):use 解析 → 可见性 → 合并;无 use 时为无感直通
             var ldiags = List[Str]()
             var lstack = List[Str]()
@@ -184,6 +186,15 @@ fn main() -> I32 {
                 epath = path
             }
             lstack.push(epath)
+            // 词法/解析诊断(镜像 seed:PATH:LINE:COL CODE: MSG)→ 止于 rc=1
+            if pdiags.len > 0 {
+                var pi: I32 = 0
+                while pi < pdiags.len {
+                    println(epath + ":" + pdiags[pi])
+                    pi += 1
+                }
+                return 1
+            }
             file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
             if ldiags.len > 0 {
                 var li: I32 = 0

@@ -166,9 +166,11 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                 Some(ms) => {
                         var toks2 = List[Str]()
                         var lns2 = List[Str]()
-                        scan(ms, toks2, lns2)
+                        var cols2 = List[Str]()
+                        var pd2 = List[Str]()
+                        scan4(ms, toks2, lns2, cols2, pd2)
                         var cur2 = Atomic[I32](0)
-                        var mf = p_file(toks2, cur2, lns2)
+                        var mf = p_file(toks2, cur2, lns2, cols2, pd2)
                         pkg_check_caps(mf, dir, diags)
                         // 可见性:请求符号必须存在且为 pub(v0:FnPub)
                         var k3: I32 = 0

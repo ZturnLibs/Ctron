@@ -103,7 +103,7 @@ fn nl_set_next(t: Str) -> Bool {
     }
     return false
 }
-fn filter_nl(raw: List[Str], rlines: List[Str], toks: List[Str], lns: List[Str]) {
+fn filter_nl(raw: List[Str], rlines: List[Str], rcols: List[Str], toks: List[Str], lns: List[Str], cols: List[Str]) {
     var i: I32 = 0
     while i < raw.len && raw[i] == "NL" {
         i += 1
@@ -112,6 +112,7 @@ fn filter_nl(raw: List[Str], rlines: List[Str], toks: List[Str], lns: List[Str])
         if raw[i] != "NL" {
             toks.push(raw[i])
             lns.push(rlines[i])
+            cols.push(rcols[i])
             i += 1
         } else {
             var run = i
@@ -132,24 +133,44 @@ fn filter_nl(raw: List[Str], rlines: List[Str], toks: List[Str], lns: List[Str])
             if !suppressed {
                 toks.push("NL")
                 lns.push(rlines[i])
+                cols.push(rcols[i])
             }
             i = run
         }
     }
 }
-fn scan(src: Str, toks: List[Str], lns: List[Str]) {
+
+// 诊断入口(镜像 seed lx_err/err_here 的 text 形态:PATH:LINE:COL CODE: MSG)
+// pdiags 条目 = "LINE:COL CODE: msg",路径由驱动拼前缀
+fn pdiag(pdiags: List[Str], lns: List[Str], cols: List[Str], cur: Atomic[I32], code: Str, msg: Str) {
+    var i = cur.load()
+    var ln = "0"
+    if i < lns.len { ln = lns[i] }
+    var cl = "0"
+    if i < cols.len { cl = cols[i] }
+    pdiags.push(ln + ":" + cl + " " + code + ": " + msg)
+}
+
+// scan4:scan + 逐 token 列号(cols 与 toks 平行)+ 词法诊断(pdiags)
+// 镜像 seed 词法器守卫:`;`/`::` 禁用标点与无法识别字符报 E1001(`;`/未知字符丢弃记号续扫)
+fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: List[Str]) {
     var raw = List[Str]()
     var rlines = List[Str]()
+    var rcols = List[Str]()
     var line: I32 = 1
+    var lst: I32 = 0
     var n = src.len
     var i: I32 = 0
     while i < n {
         var b = byte_at(src, i)
+        var c0 = i - lst + 1
         if b == 10 {
             raw.push("NL")
             rlines.push(line.to_string())
+            rcols.push(c0.to_string())
             line += 1
             i += 1
+            lst = i
         } else if or2(b == 32, or2(b == 9, b == 13)) {
             i += 1
         } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 47 {
@@ -171,11 +192,11 @@ fn scan(src: Str, toks: List[Str], lns: List[Str]) {
                     i += 1
                 }
             }
-            rpush(raw, rlines, line, byte_slice(src, q0, i))
+            rpush(raw, rlines, rcols, line, c0, byte_slice(src, q0, i))
         } else if is_al(b) {
             var start = i
             while i < n && is_ac(byte_at(src, i)) { i += 1 }
-            rpush(raw, rlines, line, byte_slice(src, start, i))
+            rpush(raw, rlines, rcols, line, c0, byte_slice(src, start, i))
         } else if is_digit(b) {
             var tstart = i
             var radix: I32 = 0
@@ -223,74 +244,106 @@ fn scan(src: Str, toks: List[Str], lns: List[Str]) {
             var sl = suffix_len(src, n, i)
             if sl > 0 { tk = tk + byte_slice(src, i, i + sl) }
             i += sl
-            rpush(raw, rlines, line, tk)
+            rpush(raw, rlines, rcols, line, c0, tk)
         } else {
             if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
-                rpush(raw, rlines, line, "..=")
+                rpush(raw, rlines, rcols, line, c0, "..=")
                 i += 3
             } else if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {
-                rpush(raw, rlines, line, "..")
+                rpush(raw, rlines, rcols, line, c0, "..")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 62 {
-                rpush(raw, rlines, line, "->")
+                rpush(raw, rlines, rcols, line, c0, "->")
                 i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 62 {
-                rpush(raw, rlines, line, "=>")
+                rpush(raw, rlines, rcols, line, c0, "=>")
                 i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "==")
+                rpush(raw, rlines, rcols, line, c0, "==")
                 i += 2
             } else if b == 33 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "!=")
+                rpush(raw, rlines, rcols, line, c0, "!=")
                 i += 2
             } else if b == 60 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "<=")
+                rpush(raw, rlines, rcols, line, c0, "<=")
                 i += 2
             } else if b == 62 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, ">=")
+                rpush(raw, rlines, rcols, line, c0, ">=")
                 i += 2
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
-                rpush(raw, rlines, line, "&&")
+                rpush(raw, rlines, rcols, line, c0, "&&")
                 i += 2
             } else if b == 124 && i + 1 < n && byte_at(src, i + 1) == 124 {
                 // v0.7 修订一:|| 最长匹配(起始位零参闭包由 parse 角色分离,§4.0)
-                rpush(raw, rlines, line, "||")
+                rpush(raw, rlines, rcols, line, c0, "||")
                 i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
-                rpush(raw, rlines, line, "+%")
+                rpush(raw, rlines, rcols, line, c0, "+%")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 37 {
-                rpush(raw, rlines, line, "-%")
+                rpush(raw, rlines, rcols, line, c0, "-%")
                 i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "+=")
+                rpush(raw, rlines, rcols, line, c0, "+=")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "-=")
+                rpush(raw, rlines, rcols, line, c0, "-=")
                 i += 2
             } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "*=")
+                rpush(raw, rlines, rcols, line, c0, "*=")
                 i += 2
             } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "/=")
+                rpush(raw, rlines, rcols, line, c0, "/=")
                 i += 2
             } else if b == 37 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, line, "%=")
+                rpush(raw, rlines, rcols, line, c0, "%=")
                 i += 2
+            } else if b == 58 && i + 1 < n && byte_at(src, i + 1) == 58 {
+                // 禁用标点 :: (镜像 seed:报 E1001,恢复为单个冒号继续)
+                rpush(raw, rlines, rcols, line, c0, ":")
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: 禁用的标点 ::")
+                i += 2
+            } else if b == 59 {
+                // 禁用标点 ; (镜像 seed:报 E1001 并丢弃记号,主循环续扫)
+                i += 1
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: 禁用的标点 ;")
+            } else if lex_single(b) {
+                rpush(raw, rlines, rcols, line, c0, byte_slice(src, i, i + 1))
+                i += 1
             } else {
-                rpush(raw, rlines, line, byte_slice(src, i, i + 1))
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: 无法识别的字符 '" + byte_slice(src, i, i + 1) + "'")
                 i += 1
             }
         }
     }
-    filter_nl(raw, rlines, toks, lns)
+    filter_nl(raw, rlines, rcols, toks, lns, cols)
     toks.push("#EOF")
     lns.push(line.to_string())
+    cols.push("0")
 }
 
-fn rpush(raw: List[Str], rlines: List[Str], line: I32, t: Str) {
+// 单字符标点集(镜像 seed 词法器 switch;集合外 = 无法识别字符)
+// 注:源码串内花括号须 \{ \} 转义(裸 { 开启插值,批次十二教训)
+fn lex_single(b: I32) -> Bool {
+    var ks = "+-*/%=<>?!.,:[]()\{}|&#@"
+    var k: I32 = 0
+    while k < ks.len {
+        if byte_at(ks, k) == b { return true }
+        k += 1
+    }
+    return false
+}
+
+fn scan(src: Str, toks: List[Str], lns: List[Str]) {
+    var cols = List[Str]()
+    var pd = List[Str]()
+    scan4(src, toks, lns, cols, pd)
+}
+
+fn rpush(raw: List[Str], rlines: List[Str], rcols: List[Str], line: I32, col: I32, t: Str) {
     raw.push(t)
     rlines.push(line.to_string())
+    rcols.push(col.to_string())
 }
 
 fn tok(toks: List[Str], cur: Atomic[I32]) -> Str {
