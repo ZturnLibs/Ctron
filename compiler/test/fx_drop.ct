@@ -1,0 +1,40 @@
+// fx_drop.ct —— 发射面 Drop/RAII(§6.4):作用域退出逆序 + return 路径 + 尾值先求值
+struct Ticket {
+    let id: I32
+}
+
+impl Drop for Ticket {
+    fn drop(var self) {
+        println("drop:" + self.id.to_string())
+    }
+}
+
+fn early() -> I32 {
+    let a: Ticket = Ticket { id: 1 }
+    if true {
+        let b: Ticket = Ticket { id: 2 }
+        return 7
+    }
+    return 0
+}
+
+fn tailval() -> I32 {
+    let c: Ticket = Ticket { id: 3 }
+    // 尾值必须先于 drop 求值:输出顺序应为 drop:3 之后才见返回值使用
+    return c.id * 10
+}
+
+fn main() -> I32 {
+    let t1: Ticket = Ticket { id: 10 }
+    {
+        let t2: Ticket = Ticket { id: 20 }
+        let t3: Ticket = Ticket { id: 30 }
+        println("inner")
+    }
+    let r = early()
+    println(r)
+    let v = tailval()
+    println(v)
+    println("end")
+    return 0
+}
