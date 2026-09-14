@@ -1,0 +1,383 @@
+// std/enc.ct —— 编码工具(hex/base64/percent;RFC 4648/3986 口径)
+// since: std-0.2 stability: experimental
+// 口径:编码方向字节透传;解码输出限**可打印 ASCII**(32-126),否则 None——
+// C8 约束(解释面 Str 只能由源码字面量切片构建,见 v0.2 API 规范 §0;
+// String/字节构建面落地后升版放宽到全 UTF-8);解码长度/字符集非法 → None
+
+// 可打印 ASCII 表,两段规避字面量裸 `{`(C9:词法器禁裸 `{`,与 `}` 同串更会挂死):
+// 段一 32..122,段二 124..126(模块内助手,非 pub)
+fn etable1() -> Str {
+    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz"
+}
+
+fn etable2() -> Str {
+    return "|}~"
+}
+
+// 字节值 → 单字节 Str(仅 32..126 且非 123;123 由调用方拒绝)
+fn ebyte(b: I32) -> Str {
+    if b < 123 {
+        var t = etable1()
+        return byte_slice(t, b - 32, b - 31)
+    }
+    var t2 = etable2()
+    return byte_slice(t2, b - 124, b - 123)
+}
+
+fn ehex() -> Str {
+    return "0123456789abcdef"
+}
+
+fn ehexup() -> Str {
+    return "0123456789ABCDEF"
+}
+
+fn eb64() -> Str {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+}
+
+fn eval_hex_ch(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 65 + 10
+    }
+    return -1
+}
+
+// 6 位值 → base64 字符(表先绑局部)
+fn eb64ch(v: I32) -> Str {
+    var t = eb64()
+    return byte_slice(t, v, v + 1)
+}
+
+// base64 字符 → 6 位值;非法 -1;'=' 由调用方特判
+fn eb64val(c: I32) -> I32 {
+    var t = eb64()
+    var i: I32 = 0
+    while i < 64 {
+        if byte_at(t, i) == c {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+pub fn hex_encode(s: Str) -> Str {
+    var h = ehex()
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        out = out + byte_slice(h, c / 16, c / 16 + 1) + byte_slice(h, c % 16, c % 16 + 1)
+        i += 1
+    }
+    return out
+}
+
+pub fn hex_decode(s: Str) -> Option[Str] {
+    if s.len % 2 != 0 {
+        return None
+    }
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var hi = eval_hex_ch(byte_at(s, i))
+        var lo = eval_hex_ch(byte_at(s, i + 1))
+        if hi < 0 {
+            return None
+        }
+        if lo < 0 {
+            return None
+        }
+        var b = hi * 16 + lo
+        if b < 32 {
+            return None
+        }
+        if b > 126 {
+            return None
+        }
+        if b == 123 {
+            return None
+        }
+        out = out + ebyte(b)
+        i += 2
+    }
+    return Some(out)
+}
+
+pub fn b64_encode(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var b0 = byte_at(s, i)
+        var has1 = i + 1 < s.len
+        var has2 = i + 2 < s.len
+        var b1: I32 = 0
+        var b2: I32 = 0
+        if has1 {
+            b1 = byte_at(s, i + 1)
+        }
+        if has2 {
+            b2 = byte_at(s, i + 2)
+        }
+        var v = b0 * 65536 + b1 * 256 + b2
+        var c0 = v / 262144
+        var r0 = v % 262144
+        var c1 = r0 / 4096
+        var r1 = r0 % 4096
+        var c2 = r1 / 64
+        var c3 = r1 % 64
+        out = out + eb64ch(c0) + eb64ch(c1)
+        if has1 {
+            out = out + eb64ch(c2)
+        } else {
+            out = out + "="
+        }
+        if has2 {
+            out = out + eb64ch(c3)
+        } else {
+            out = out + "="
+        }
+        i += 3
+    }
+    return out
+}
+
+pub fn b64_decode(s: Str) -> Option[Str] {
+    if s.len % 4 != 0 {
+        return None
+    }
+    if s.len == 0 {
+        return Some("")
+    }
+    var bytes = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        var c0 = byte_at(s, i)
+        var c1 = byte_at(s, i + 1)
+        var c2 = byte_at(s, i + 2)
+        var c3 = byte_at(s, i + 3)
+        var pad: I32 = 0
+        if c0 == 61 {
+            return None
+        }
+        if c1 == 61 {
+            return None
+        }
+        if c2 == 61 {
+            if c3 != 61 {
+                return None
+            }
+            pad = 2
+        } else {
+            if c3 == 61 {
+                pad = 1
+            }
+        }
+        if pad > 0 {
+            if i + 4 != s.len {
+                return None
+            }
+        }
+        var d0 = eb64val(c0)
+        var d1 = eb64val(c1)
+        var d2: I32 = 0
+        var d3: I32 = 0
+        if pad < 2 {
+            d2 = eb64val(c2)
+            if d2 < 0 {
+                return None
+            }
+        }
+        if pad < 1 {
+            d3 = eb64val(c3)
+            if d3 < 0 {
+                return None
+            }
+        }
+        if d0 < 0 {
+            return None
+        }
+        if d1 < 0 {
+            return None
+        }
+        var v = d0 * 262144 + d1 * 4096 + d2 * 64 + d3
+        var b0 = v / 65536
+        var r0 = v % 65536
+        var b1 = r0 / 256
+        var b2 = r0 % 256
+        if b0 < 32 {
+            return None
+        }
+        if b0 > 126 {
+            return None
+        }
+        if b0 == 123 {
+            return None
+        }
+        bytes.push(b0)
+        if pad < 2 {
+            if b1 < 32 {
+                return None
+            }
+            if b1 > 126 {
+                return None
+            }
+            if b1 == 123 {
+                return None
+            }
+            bytes.push(b1)
+        }
+        if pad < 1 {
+            if b2 < 32 {
+                return None
+            }
+            if b2 > 126 {
+                return None
+            }
+            if b2 == 123 {
+                return None
+            }
+            bytes.push(b2)
+        }
+        i += 4
+    }
+    var out = ""
+    var k: I32 = 0
+    while k < bytes.len {
+        out = out + ebyte(bytes[k])
+        k += 1
+    }
+    return Some(out)
+}
+
+pub fn pct_encode(s: Str) -> Str {
+    var h = ehexup()
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        var un = false
+        if c >= 48 && c <= 57 {
+            un = true
+        }
+        if c >= 65 && c <= 90 {
+            un = true
+        }
+        if c >= 97 && c <= 122 {
+            un = true
+        }
+        if c == 45 {
+            un = true
+        }
+        if c == 46 {
+            un = true
+        }
+        if c == 95 {
+            un = true
+        }
+        if c == 126 {
+            un = true
+        }
+        if un {
+            out = out + byte_slice(s, i, i + 1)
+        } else {
+            out = out + "%" + byte_slice(h, c / 16, c / 16 + 1) + byte_slice(h, c % 16, c % 16 + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn pct_decode(s: Str) -> Option[Str] {
+    var bytes = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 37 {
+            if i + 2 >= s.len {
+                return None
+            }
+            var hi = eval_hex_ch(byte_at(s, i + 1))
+            var lo = eval_hex_ch(byte_at(s, i + 2))
+            if hi < 0 {
+                return None
+            }
+            if lo < 0 {
+                return None
+            }
+            c = hi * 16 + lo
+            i += 2
+        }
+        if c < 32 {
+            return None
+        }
+        if c > 126 {
+            return None
+        }
+        if c == 123 {
+            return None
+        }
+        bytes.push(c)
+        i += 1
+    }
+    var out = ""
+    var k: I32 = 0
+    while k < bytes.len {
+        out = out + ebyte(bytes[k])
+        k += 1
+    }
+    return Some(out)
+}
+
+test "hex round trip and vectors" {
+    assert_eq(hex_encode(""), "")
+    assert_eq(hex_encode("a"), "61")
+    assert_eq(hex_encode("AB"), "4142")
+    assert_eq(hex_decode("4142").or("?"), "AB")
+    assert_eq(hex_decode("616263").or("?"), "abc")
+    assert(!hex_decode("abc").is_some())
+    assert(!hex_decode("zz").is_some())
+    assert(!hex_decode("4").is_some())
+    assert(!hex_decode("00").is_some())
+    assert(!hex_decode("7b").is_some())
+    assert_eq(hex_decode(hex_encode("foobar")).or("?"), "foobar")
+}
+
+test "b64 RFC 4648 vectors" {
+    assert_eq(b64_encode(""), "")
+    assert_eq(b64_encode("f"), "Zg==")
+    assert_eq(b64_encode("fo"), "Zm8=")
+    assert_eq(b64_encode("foo"), "Zm9v")
+    assert_eq(b64_encode("foob"), "Zm9vYg==")
+    assert_eq(b64_encode("fooba"), "Zm9vYmE=")
+    assert_eq(b64_encode("foobar"), "Zm9vYmFy")
+    assert_eq(b64_decode("Zg==").or("?"), "f")
+    assert_eq(b64_decode("Zm9vYmE=").or("?"), "fooba")
+    assert_eq(b64_decode("Zm9vYmFy").or("?"), "foobar")
+    assert(!b64_decode("Zm9vYmF").is_some())
+    assert(!b64_decode("Zm9=YmFy").is_some())
+    assert(!b64_decode("Zg=").is_some())
+}
+
+test "b64 rejects non printable payload" {
+    assert(!b64_decode("//8=").is_some())
+}
+
+test "pct component round trip" {
+    assert_eq(pct_encode("a b/c~d.e-f_g"), "a%20b%2Fc~d.e-f_g")
+    assert_eq(pct_decode("a%20b%2Fc~d.e-f_g").or("?"), "a b/c~d.e-f_g")
+    assert_eq(pct_encode(""), "")
+    assert_eq(pct_decode("").or("?"), "")
+    assert_eq(pct_decode("%41%42").or("?"), "AB")
+    assert(!pct_decode("%4").is_some())
+    assert(!pct_decode("%4G").is_some())
+    assert(!pct_decode("100%").is_some())
+    assert_eq(pct_decode(pct_encode("foo?bar=1")).or("?"), "foo?bar=1")
+}
