@@ -186,6 +186,12 @@ native 发射 cc_run 0.08s vs seed ~13s(行数随 TRANS 演进,ci 实测为准);
    fx_bound_ann_neg 锚;调用点 check_tpar_bounds 同构)。
    **标准库规范源已建立(2026-09-13)**:仓库根 std/(六模块 + README 组织
    宪章);stdpkg/std 转同步副本 + smoke 漂移断言;示例 vendored 钉定。
+   **std/json.ct 已加入(同日)**:esc/unesc(junesc)/parse(路径展平 DOM:
+   [路径,标签,值] 条目,qtag/qval 查询)/数字 ABNF 严格化/深度限 512/
+   \u 字母数字解码表(62 字符零词法风险);5 测试块 seed 全绿。
+   **词法口径登记**:字符串内禁裸 { 与 ;(\{ 转义死循环、; 禁用标点
+   连字符串内容一起扫);C 宿主 run 无 main 的 test 块回退缺失;lex.ct
+   \\" 转义对需专项验证。
    **S/D 域 const 穿发射已落地(2026-09-13,P0-C)**:ceval 补 Str(纯 Text,
    经 unesc 解转义——parse 存原始转义文本,曾致发射值含 \\ 错位)/Float
    折叠;driver_emit S 直出经 ct_str_cquote C 转义(bs() 构造,源码零
