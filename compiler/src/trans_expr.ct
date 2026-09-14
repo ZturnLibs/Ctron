@@ -170,6 +170,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
             if e[1][0] == "Ident" { return "t_" + e[1][1] + "[" + ct_expr(e[2], env, file) + "]" }
         }
+        if ot.len > 1 && byte_at(ot, 0) == 118 {
+            // 切片视图索引(§4.5):越界 panic 镜像 eval("index out of bounds");
+            // GNU 语句表达式(Try 分支同款),固定名 t_vx 靠语句表达式作用域隔离,接收者限 Ident
+            if e[1][0] != "Ident" {
+                panic("ct_expr:视图索引接收者限 Ident")
+                return ""
+            }
+            return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); \} (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); \})"
+        }
         if ot == "LI" {
             // List[I32] 索引:槽经 long 取回标量
             return "((int32_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
@@ -187,6 +196,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // 定长数组:len 编码在 env 类型码里(a<N><码> → N)
             if e[1][0] == "Ident" {
                 var ot2 = ct_env_ty(env, e[1][1])
+                if ot2.len > 1 && byte_at(ot2, 0) == 118 {
+                    // 切片视图:len = .n(镜像 eval I32 域)
+                    return "(int32_t)(t_" + e[1][1] + ".n)"
+                }
                 if ot2.len >= 3 && byte_slice(ot2, 0, 1) == "a" {
                     return a_count(ot2)
                 }

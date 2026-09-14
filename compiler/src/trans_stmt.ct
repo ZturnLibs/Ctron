@@ -630,6 +630,17 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 panic("ct_stmt:index 复合赋值")
                 return env
             }
+            var tc0 = ct_typeof(tgt[1], env, file)
+            if tc0.len > 1 && byte_at(tc0, 0) == 118 {
+                // 切片视图元素写(§3.6):越界守卫 + d[i] 直写(写透过,镜像 eval 原地)
+                if tgt[1][0] != "Ident" {
+                    panic("ct_stmt:视图索引写接收者限 Ident")
+                    return env
+                }
+                eln("if (" + ct_expr(tgt[2], env, file) + " < 0 || " + ct_expr(tgt[2], env, file) + " >= t_" + tgt[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); \}", env)
+                eln("t_" + tgt[1][1] + ".d[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(ct_typeof(st[3], env, file), byte_slice(tc0, 1, tc0.len), ct_expr(st[3], env, file)) + ";", env)
+                return env
+            }
             var tv = ct_expr(tgt[1], env, file)
             var vt = ct_typeof(st[3], env, file)
             var vtxt = ct_arg_cast(vt, "s", ct_expr(st[3], env, file))
@@ -1036,6 +1047,18 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
             eln("    int32_t t_" + v0 + " = (int32_t)(long)t_li->items[ctron_i];", env)
             ct_block(body, env_bind(env, v0, "i"), file, hreg)
+            eln("}", env)
+            return env
+        }
+        if ity.len > 1 && byte_at(ity, 0) == 118 {
+            // for x in <切片视图>(§4.6):计数循环遍历 d[0..n)
+            if it[0] != "Ident" {
+                panic("ct_stmt:for 视图迭代限 Ident")
+                return env
+            }
+            eln("for (int64_t ctron_i = 0; ctron_i < t_" + it[1] + ".n; ctron_i++) \{", env)
+            eln("    " + ct_ctype(byte_slice(ity, 1, ity.len)) + " t_" + v0 + " = t_" + it[1] + ".d[ctron_i];", env)
+            ct_block(body, env_bind(env, v0, byte_slice(ity, 1, ity.len)), file, hreg)
             eln("}", env)
             return env
         }
