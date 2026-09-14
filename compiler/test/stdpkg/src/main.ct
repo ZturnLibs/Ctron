@@ -3,6 +3,14 @@ use std.set.{set_new, add, mem, len}
 use std.fmap.{fnew, fput, fget, flen, fwords}
 use std.sort.{sorted, sorted_desc, reversed}
 use std.fs.{read_or, exists}
+use std.path.{path_join, path_normalize}
+use std.str.{index_of, strip_suffix}
+use std.enc.{hex_encode, hex_decode, b64_encode, b64_decode, pct_encode}
+use std.hash.{djb2, fnv1a32}
+use std.rand.{rng_fresh, rng_next}
+use std.strconv.{parse_i64, parse_bool}
+use std.time.{date_format, date_parse, weekday}
+use std.unicode.{cp_count, cp_valid_utf8}
 
 fn main() -> I32 {
     var m = map_new[I32, I32]()
@@ -72,5 +80,29 @@ fn main() -> I32 {
     println(fs_write(fpath, "saved").to_string())
     println(read_or(fpath, "none"))
     fs_delete(fpath)
+
+    // ============ v0.2 扩张消费面(std-0.2;C1-C6 安全形态) ============
+    // split_str 下标/csv 索引/opt 闭包组合在发射面触发解释器缺陷(登记 C13),
+    // 由各模块 test 块承载,不入消费面
+    println(path_join("a", "b"))
+    println(path_normalize("a/./b/../c"))
+    println(index_of("hello world", "world").to_string())
+    println(strip_suffix("main.ct", ".ct").or("?"))
+    println(hex_encode("AB"))
+    println(hex_decode("4142").or("?"))
+    println(b64_encode("foobar"))
+    println(b64_decode("Zm9vYmFy").or("?"))
+    println(pct_encode("a b"))
+    println(djb2("abc").to_string())
+    println(fnv1a32("abc").to_string())
+    var rs = rng_fresh()
+    println(rng_next(rs).to_string())
+    println(parse_i64("-42").or(0).to_string())
+    println(parse_bool("true").or(false).to_string())
+    println(date_format(0))
+    println(date_parse("2024-02-29").or(-1).to_string())
+    println(weekday(0).to_string())
+    println(cp_count("ok").to_string())
+    println(cp_valid_utf8("ok").to_string())
     return 0
 }

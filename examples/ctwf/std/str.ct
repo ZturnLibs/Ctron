@@ -389,3 +389,229 @@ test "char_at" {
     assert(char_at("hello", 0) == "h")
     assert(char_at("hello", 4) == "o")
 }
+
+// ============ v0.2 扩张(since: std-0.2) ============
+
+// 首次出现 sub 的字节下标;无 -1;空 sub = 0
+pub fn index_of(s: Str, sub: Str) -> I32 {
+    return index_of_from(s, sub, 0)
+}
+
+// 从 from 起找;from 越界 -1
+pub fn index_of_from(s: Str, sub: Str, from: I32) -> I32 {
+    var sn = sub.len
+    var hn = s.len
+    if sn == 0 {
+        return 0
+    }
+    if from < 0 {
+        return -1
+    }
+    if from > hn {
+        return -1
+    }
+    var i = from
+    while i + sn <= hn {
+        var ok = true
+        var k: I32 = 0
+        while k < sn {
+            if byte_at(s, i + k) != byte_at(sub, k) {
+                ok = false
+            }
+            k += 1
+        }
+        if ok {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 串分隔(始终 ≥1 段;sep 空返回原串单段)
+pub fn split_str(s: Str, sep: Str) -> List[Str] {
+    var out = List[Str]()
+    if sep.len == 0 {
+        out.push(s)
+        return out
+    }
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if index_of_from(s, sep, i) == i {
+            out.push(byte_slice(s, start, i))
+            i += sep.len
+            start = i
+        } else {
+            i += 1
+        }
+    }
+    out.push(byte_slice(s, start, s.len))
+    return out
+}
+
+// 重复 n 次;n ≤ 0 返回空串
+pub fn repeat(s: Str, n: I32) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < n {
+        out = out + s
+        i += 1
+    }
+    return out
+}
+
+// 字节类判定(ASCII)
+pub fn is_ascii_digit(b: I32) -> Bool {
+    return b >= 48 && b <= 57
+}
+
+pub fn is_ascii_alpha(b: I32) -> Bool {
+    if b >= 65 && b <= 90 {
+        return true
+    }
+    return b >= 97 && b <= 122
+}
+
+pub fn is_ascii_space(b: I32) -> Bool {
+    if b == 32 {
+        return true
+    }
+    if b == 9 {
+        return true
+    }
+    if b == 10 {
+        return true
+    }
+    return b == 13
+}
+
+// 前缀/后缀剥离;不匹配 None
+pub fn strip_prefix(s: Str, pre: Str) -> Option[Str] {
+    if !starts_with(s, pre) {
+        return None
+    }
+    return Some(byte_slice(s, pre.len, s.len))
+}
+
+pub fn strip_suffix(s: Str, suf: Str) -> Option[Str] {
+    if !ends_with(s, suf) {
+        return None
+    }
+    return Some(byte_slice(s, 0, s.len - suf.len))
+}
+
+// 非重叠出现计数;空 sub = 0
+pub fn count_sub(s: Str, sub: Str) -> I32 {
+    if sub.len == 0 {
+        return 0
+    }
+    var n: I32 = 0
+    var i: I32 = 0
+    while i <= s.len {
+        var p = index_of_from(s, sub, i)
+        if p < 0 {
+            return n
+        }
+        n += 1
+        i = p + sub.len
+    }
+    return n
+}
+
+// ASCII 大小写不敏感相等;长度不等 false
+pub fn eq_ignore_ascii_case(a: Str, b: Str) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var i: I32 = 0
+    while i < a.len {
+        var ca = byte_at(a, i)
+        var cb = byte_at(b, i)
+        if ca >= 65 && ca <= 90 {
+            ca += 32
+        }
+        if cb >= 65 && cb <= 90 {
+            cb += 32
+        }
+        if ca != cb {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+test "index_of positions" {
+    assert_eq(index_of("hello world", "world"), 6)
+    assert_eq(index_of("hello", "lol"), -1)
+    assert_eq(index_of("hello", ""), 0)
+    assert_eq(index_of("", "a"), -1)
+    assert_eq(index_of("aaa", "aa"), 0)
+    assert_eq(index_of_from("abcabc", "bc", 2), 4)
+    assert_eq(index_of_from("abc", "a", 99), -1)
+}
+
+test "split_str keeps empties" {
+    var a = split_str("a,b,c", ",")
+    assert_eq(a.len, 3)
+    assert_eq(a[1], "b")
+    var e = split_str("a,,c", ",")
+    assert_eq(e.len, 3)
+    assert_eq(e[1], "")
+    var t = split_str(",x", ",")
+    assert_eq(t.len, 2)
+    assert_eq(t[0], "")
+    var n = split_str("abc", ",")
+    assert_eq(n.len, 1)
+    var s = split_str("abc", "")
+    assert_eq(s.len, 1)
+    assert_eq(s[0], "abc")
+    var m = split_str("a::b", ":")
+    assert_eq(m.len, 3)
+}
+
+test "repeat zero and many" {
+    assert_eq(repeat("ab", 3), "ababab")
+    assert_eq(repeat("ab", 1), "ab")
+    assert_eq(repeat("ab", 0), "")
+    assert_eq(repeat("ab", -1), "")
+    assert_eq(repeat("", 5), "")
+}
+
+test "ascii class predicates" {
+    assert(is_ascii_digit(48))
+    assert(is_ascii_digit(57))
+    assert(!is_ascii_digit(47))
+    assert(is_ascii_alpha(65))
+    assert(is_ascii_alpha(97))
+    assert(!is_ascii_alpha(91))
+    assert(is_ascii_space(32))
+    assert(is_ascii_space(9))
+    assert(!is_ascii_space(65))
+}
+
+test "strip prefix suffix" {
+    assert_eq(strip_prefix("main.ct", "main").or("?"), ".ct")
+    assert(!strip_prefix("main.ct", "nope").is_some())
+    assert_eq(strip_prefix("abc", "").or("?"), "abc")
+    var s = strip_suffix("main.ct", ".ct")
+    assert_eq(s.or("?"), "main")
+    assert(!strip_suffix("main.ct", ".go").is_some())
+    assert(!strip_suffix("abc", "abcd").is_some())
+}
+
+test "count_sub non overlapping" {
+    assert_eq(count_sub("aaa", "aa"), 1)
+    assert_eq(count_sub("ababab", "ab"), 3)
+    assert_eq(count_sub("abc", ""), 0)
+    assert_eq(count_sub("abc", "xyz"), 0)
+}
+
+test "eq ignore ascii case" {
+    assert(eq_ignore_ascii_case("Hello", "hello"))
+    assert(eq_ignore_ascii_case("", ""))
+    assert(!eq_ignore_ascii_case("Hello", "hell"))
+    assert(eq_ignore_ascii_case("café", "café"))
+    assert(!eq_ignore_ascii_case("Hello", "HELLO!"))
+}

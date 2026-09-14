@@ -6,14 +6,25 @@
 
 ## 模块清单
 
-| 模块 | 内容 | 依赖 |
-|---|---|---|
-| `str.ct` | 字符串工具:words/contains/lines/count_ch 等(字节级,UTF-8 透传) | 无 |
-| `sort.ct` | 排序:sorted/sorted_desc/reversed(稳定插入排序) | 无 |
-| `map.ct` | Map[K, V]:函数式不可变映射(双 List 平行槽) | 无 |
-| `set.ct` | Set[T]:函数式不可变集合 | 无 |
-| `fmap.ct` | FMap[V]:Str 键哈希映射(djb2 mod 质数,开放寻址) | 无 |
-| `fs.ct` | 文件系统便利层:read_or/exists 等(内建 fs_* 之上) | 无 |
+| 模块 | 内容 | 依赖 | since |
+|---|---|---|---|
+| `str.ct` | 字符串工具:words/contains/lines + v0.2 扩张(index_of/split_str/strip_*/count_sub 等) | 无 | 0.1 |
+| `sort.ct` | 排序:sorted/sorted_desc/reversed + v0.2 扩张(sort_by/binary_search_by,比较器注入) | 无 | 0.1 |
+| `map.ct` | Map[K, V]:函数式不可变映射(双 List 平行槽) | 无 | 0.1 |
+| `set.ct` | Set[T]:函数式不可变集合 | 无 | 0.1 |
+| `fmap.ct` | FMap[V]:Str 键哈希映射(djb2 mod 质数,开放寻址) | 无 | 0.1 |
+| `fs.ct` | 文件系统便利层:read_or/exists 等(内建 fs_* 之上;r* 前缀) | 无 | 0.1 |
+| `json.ct` | JSON 解析(路径展平 DOM)+序列化转义(RFC 8259 ABNF 严格) | 无 | 0.1 |
+| `path.ct` | 路径纯函数:join/dir/base/ext/normalize(Unix `/` 口径) | 无 | 0.2 |
+| `enc.ct` | 编码:hex/base64(RFC 4648)/percent;解码输出限可打印 ASCII(C8) | 无 | 0.2 |
+| `hash.ct` | 确定性 32 位哈希:djb2/fnv1a32(算法钉死;crc32 待 v0.3) | 无 | 0.2 |
+| `rand.ct` | 确定性 PRNG:MINSTD/Park–Miller(Schrage;I64 承载,C10) | 无 | 0.2 |
+| `strconv.ct` | parse_i64/parse_bool(format_hex/bin 待 P1-B,C10 死区) | 无 | 0.2 |
+| `time.ct` | 纯历法:days 域 civil↔date/weekday(Hinnant 算法;Clock 待 v0.3) | 无 | 0.2 |
+| `csv.ct` | CSV(RFC 4180 子集;引号转义/CRLF;write∘parse=id) | 无 | 0.2 |
+| `unicode.ct` | UTF-8 解码面:cp_at/valid/iter/count(字素/宽度表显式非目标) | 无 | 0.2 |
+| `opt.ct` | Option/Result 组合子:and_then/or_else/map2/to_result | 无 | 0.2 |
+| `heap.ct` | 二叉堆:比较器注入小顶堆(push/pop/peek/sorted;函数式) | 无 | 0.2 |
 
 ## 组织宪章
 
@@ -26,7 +37,8 @@
 6. **测试随模块**:每模块含 `test` 块(§4.10),`ctron-cc run std/<名>.ct` 独立可跑,
    失败 rc=1;消费面测试在 `compiler/test/stdpkg/src/main.ct`(use 全量消费)。
 7. **字节级纪律**:Str 按字节处理(UTF-8 透传,不做码点拆分),与 wc 等工具口径一致。
-8. **无副作用**:std 不做 IO(除 `fs.ct`)、不依赖真实时钟;排序稳定、哈希确定性。
+8. **无副作用**:std 不做 IO(除 `fs.ct`/`time.ct` 的 Clock 面)、不依赖真实时钟;排序稳定、哈希确定性。
+9. **实现约束 C1–C12**(v0.2 API 规范 §0 登记):禁 as[]/F64 消费面/顶层 `||`/负值宽算术等解释面缺口纪律,详见 `docs/superpowers/specs/2026-09-14-stdlib-v02-api-spec.md`。
 
 ## 分发与同步
 
