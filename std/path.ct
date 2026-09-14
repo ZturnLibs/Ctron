@@ -1,0 +1,183 @@
+// std/path.ct —— 路径纯函数(join/dir/base/ext/is_abs/normalize;Unix `/` 口径)
+// since: std-0.2 stability: experimental
+// 口径:字节级;不触碰文件系统;normalize 越根 `..` 丢弃;空路径 = "."
+
+// 最后一次出现字节 ch 的下标;无 -1(模块内助手,非 pub)
+fn str_last_index_of(s: Str, ch: I32) -> I32 {
+    var i = s.len - 1
+    while i >= 0 {
+        if byte_at(s, i) == ch {
+            return i
+        }
+        i -= 1
+    }
+    return -1
+}
+
+// 拼接:a 空返回 b;b 绝对路径(以 / 开头)整体返回(最高优先);b 空返回 a;
+// a 以 / 结尾直接接 b;否则 a + "/" + b(os.path.join 口径:abs-b 赢,无需归一)
+pub fn path_join(a: Str, b: Str) -> Str {
+    if a.len == 0 {
+        return b
+    }
+    if path_is_abs(b) {
+        return b
+    }
+    if b.len == 0 {
+        return a
+    }
+    if byte_at(a, a.len - 1) == 47 {
+        return a + b
+    }
+    return a + "/" + b
+}
+
+// 目录部分:带尾斜杠 = 末段是目录,返回去尾结果("a/b/"→"a/b");
+// 否则取最后一段之前("a/b"→"a";"/a"→"/";"a"→".")
+pub fn path_dir(p: Str) -> Str {
+    if p.len > 1 && byte_at(p, p.len - 1) == 47 {
+        return byte_slice(p, 0, p.len - 1)
+    }
+    var i = str_last_index_of(p, 47)
+    if i < 0 {
+        return "."
+    }
+    if i == 0 {
+        return "/"
+    }
+    return byte_slice(p, 0, i)
+}
+
+// 文件名部分:最后一段;"a/b/"→"b";"/"→""
+pub fn path_base(p: Str) -> Str {
+    var s = p
+    if s.len > 1 && byte_at(s, s.len - 1) == 47 {
+        s = byte_slice(s, 0, s.len - 1)
+    }
+    var i = str_last_index_of(s, 47)
+    if i < 0 {
+        return s
+    }
+    return byte_slice(s, i + 1, s.len)
+}
+
+// 扩展名(含点):"a.tar.gz"→".gz";隐藏文件/无点 → ""
+pub fn path_ext(p: Str) -> Str {
+    var b = path_base(p)
+    var i = str_last_index_of(b, 46)
+    if i <= 0 {
+        return ""
+    }
+    return byte_slice(b, i, b.len)
+}
+
+// 是否绝对路径(以 / 开头)
+pub fn path_is_abs(p: Str) -> Bool {
+    return p.len > 0 && byte_at(p, 0) == 47
+}
+
+// 规范化:消 `.` 段与 `..` 段(越根 `..` 一律丢弃,相对路径同);空返回 "."
+// O(n²):弹出时重建段表(append-only List 无法按计数截断,勿改回"计数弹出")
+pub fn path_normalize(p: Str) -> Str {
+    if p.len == 0 {
+        return "."
+    }
+    var abs = path_is_abs(p)
+    var segs = List[Str]()
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < p.len {
+        var j = i
+        while j < p.len && byte_at(p, j) != 47 {
+            j += 1
+        }
+        var seg = byte_slice(p, i, j)
+        if seg.len > 0 && seg != "." {
+            if seg == ".." {
+                if n > 0 {
+                    var ns = List[Str]()
+                    var k: I32 = 0
+                    while k < n - 1 {
+                        ns.push(segs[k])
+                        k += 1
+                    }
+                    segs = ns
+                    n -= 1
+                }
+            } else {
+                segs.push(seg)
+                n += 1
+            }
+        }
+        i = j + 1
+    }
+    if n == 0 {
+        if abs {
+            return "/"
+        }
+        return "."
+    }
+    var out = ""
+    var k: I32 = 0
+    while k < n {
+        if k > 0 {
+            out = out + "/"
+        }
+        out = out + segs[k]
+        k += 1
+    }
+    if abs {
+        return "/" + out
+    }
+    return out
+}
+
+test "join empty abs relative" {
+    assert_eq(path_join("", "b"), "b")
+    assert_eq(path_join("a", "/b"), "/b")
+    assert_eq(path_join("a", "b"), "a/b")
+    assert_eq(path_join("a/", "b"), "a/b")
+    assert_eq(path_join("a", ""), "a")
+    assert_eq(path_join("a/", "/b"), "/b")
+    assert_eq(path_join("", ""), "")
+}
+
+test "dir base root cases" {
+    assert_eq(path_dir("a/b"), "a")
+    assert_eq(path_dir("/a"), "/")
+    assert_eq(path_dir("a"), ".")
+    assert_eq(path_dir("/a/b"), "/a")
+    assert_eq(path_dir("a/b/"), "a/b")
+    assert_eq(path_base("a/b"), "b")
+    assert_eq(path_base("a/b/"), "b")
+    assert_eq(path_base("/"), "")
+    assert_eq(path_base("a"), "a")
+    assert_eq(path_base("/a"), "a")
+}
+
+test "ext keeps dot hides hidden" {
+    assert_eq(path_ext("a.txt"), ".txt")
+    assert_eq(path_ext("a.tar.gz"), ".gz")
+    assert_eq(path_ext("a"), "")
+    assert_eq(path_ext(".hidden"), "")
+    assert_eq(path_ext("dir.x/a"), "")
+}
+
+test "is_abs" {
+    assert(path_is_abs("/a/b"))
+    assert(!path_is_abs("a/b"))
+    assert(!path_is_abs(""))
+}
+
+test "normalize dots and dotdot" {
+    assert_eq(path_normalize("a/./b"), "a/b")
+    assert_eq(path_normalize("a/b/.."), "a")
+    assert_eq(path_normalize("/../a"), "/a")
+    assert_eq(path_normalize("../a"), "a")
+    assert_eq(path_normalize(""), ".")
+    assert_eq(path_normalize("a//b"), "a/b")
+    assert_eq(path_normalize("a/b/"), "a/b")
+    assert_eq(path_normalize("/"), "/")
+    assert_eq(path_normalize("."), ".")
+    assert_eq(path_normalize("a/../../c"), "c")
+}
