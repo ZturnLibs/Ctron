@@ -1,0 +1,194 @@
+// std/heap.ct —— 二叉堆(比较器注入;小顶;函数式返回新 List,宪章 3)
+// since: std-0.2 stability: experimental
+// 口径:cmp(a,b) < 0 表示 a 优先级高(在前);push/pop 每次重建 O(n) 拷贝 +
+// O(log n) 筛(文档化,v0 接受);堆序:cmp(xs[i], xs[父]) ≥ 0
+
+// 空堆(即空 List)
+pub fn heap_new[T]() -> List[T] {
+    return List[T]()
+}
+
+// 入堆:拷贝 + 追加 + 上滤;返回新 List,原值不变
+pub fn heap_push[T](xs: List[T], v: T, cmp: fn(T, T) -> I32) -> List[T] {
+    var out = List[T]()
+    var i: I32 = 0
+    while i < xs.len {
+        out.push(xs[i])
+        i += 1
+    }
+    out.push(v)
+    var j = out.len - 1
+    var climbing = true
+    while climbing {
+        if j <= 0 {
+            climbing = false
+        } else {
+            var parent = (j - 1) / 2
+            if cmp(out[j], out[parent]) < 0 {
+                var tmp = out[j]
+                out[j] = out[parent]
+                out[parent] = tmp
+                j = parent
+            } else {
+                climbing = false
+            }
+        }
+    }
+    return out
+}
+
+// 出堆(移除堆顶):空堆原样返回;尾换顶 + 下滤;返回新 List
+pub fn heap_pop[T](xs: List[T], cmp: fn(T, T) -> I32) -> List[T] {
+    if xs.len <= 1 {
+        return List[T]()
+    }
+    var out = List[T]()
+    var i: I32 = 0
+    while i < xs.len - 1 {
+        out.push(xs[i])
+        i += 1
+    }
+    out[0] = xs[xs.len - 1]
+    var down = true
+    var j: I32 = 0
+    while down {
+        var l = j * 2 + 1
+        var r = l + 1
+        var small = j
+        if l < out.len {
+            if cmp(out[l], out[small]) < 0 {
+                small = l
+            }
+        }
+        if r < out.len {
+            if cmp(out[r], out[small]) < 0 {
+                small = r
+            }
+        }
+        if small == j {
+            down = false
+        } else {
+            var tmp = out[j]
+            out[j] = out[small]
+            out[small] = tmp
+            j = small
+        }
+    }
+    return out
+}
+
+// 堆顶
+pub fn heap_peek[T](xs: List[T]) -> Option[T] {
+    if xs.len == 0 {
+        return None
+    }
+    return Some(xs[0])
+}
+
+// 依次弹出收集(升序 = cmp 序;不动原 List)
+pub fn heap_sorted[T](xs: List[T], cmp: fn(T, T) -> I32) -> List[T] {
+    var res = List[T]()
+    var cur = xs
+    while cur.len > 0 {
+        res.push(cur[0])
+        cur = heap_pop[T](cur, cmp)
+    }
+    return res
+}
+
+fn num_cmp(a: I32, b: I32) -> I32 {
+    if a < b {
+        return -1
+    }
+    if a > b {
+        return 1
+    }
+    return 0
+}
+
+fn num_desc(a: I32, b: I32) -> I32 {
+    return num_cmp(b, a)
+}
+
+test "push peek ordering" {
+    var h = heap_new[I32]()
+    assert(!heap_peek[I32](h).is_some())
+    h = heap_push[I32](h, 5, num_cmp)
+    assert_eq(heap_peek[I32](h).or(0), 5)
+    h = heap_push[I32](h, 3, num_cmp)
+    assert_eq(heap_peek[I32](h).or(0), 3)
+    h = heap_push[I32](h, 8, num_cmp)
+    h = heap_push[I32](h, 1, num_cmp)
+    assert_eq(heap_peek[I32](h).or(0), 1)
+    assert_eq(h.len, 4)
+}
+
+test "pop drains ascending" {
+    var h = heap_new[I32]()
+    h = heap_push[I32](h, 5, num_cmp)
+    h = heap_push[I32](h, 3, num_cmp)
+    h = heap_push[I32](h, 8, num_cmp)
+    h = heap_push[I32](h, 1, num_cmp)
+    h = heap_push[I32](h, 9, num_cmp)
+    h = heap_push[I32](h, 2, num_cmp)
+    var want = List[I32]()
+    want.push(1)
+    want.push(2)
+    want.push(3)
+    want.push(5)
+    want.push(8)
+    want.push(9)
+    var i: I32 = 0
+    while h.len > 0 {
+        assert_eq(heap_peek[I32](h).or(-1), want[i])
+        i += 1
+        h = heap_pop[I32](h, num_cmp)
+    }
+    assert_eq(i, 6)
+    var e = heap_pop[I32](h, num_cmp)
+    assert_eq(e.len, 0)
+}
+
+test "comparator direction" {
+    var h = heap_new[I32]()
+    h = heap_push[I32](h, 5, num_desc)
+    h = heap_push[I32](h, 9, num_desc)
+    h = heap_push[I32](h, 2, num_desc)
+    assert_eq(heap_peek[I32](h).or(0), 9)
+    var hp = heap_pop[I32](h, num_desc)
+    assert_eq(hp.len, 2)
+}
+
+test "functional immutability" {
+    var h = heap_new[I32]()
+    h = heap_push[I32](h, 4, num_cmp)
+    var h2 = heap_push[I32](h, 1, num_cmp)
+    assert_eq(h.len, 1)
+    assert_eq(h2.len, 2)
+    var s = heap_sorted[I32](h2, num_cmp)
+    assert_eq(s[0], 1)
+    assert_eq(s[1], 4)
+    assert_eq(h2.len, 2)
+}
+
+// 字符串比较器(fn 值;闭包经泛型 fn 参数链调用触发解释器怪病,故 fn 化)
+fn str_cmp(a: Str, b: Str) -> I32 {
+    if a < b {
+        return -1
+    }
+    if a > b {
+        return 1
+    }
+    return 0
+}
+
+test "sort via heap on strings" {
+    var h = heap_new[Str]()
+    h = heap_push[Str](h, "pear", str_cmp)
+    h = heap_push[Str](h, "apple", str_cmp)
+    h = heap_push[Str](h, "fig", str_cmp)
+    var s = heap_sorted[Str](h, str_cmp)
+    assert_eq(s[0], "apple")
+    assert_eq(s[1], "fig")
+    assert_eq(s[2], "pear")
+}
