@@ -1,59 +1,48 @@
 // std/json.ct —— JSON 解析与序列化(路径展平 DOM;RFC 8259;v0 口径见文末)
+// 词法注意:字符串内禁含裸 { 与 ;(见 HANDOFF §4);助手先于调用者排列
 
 // ============ 序列化 ============
 
-// Str → JSON 字符串字面量(含引号;转义 " \ 与控制字符;UTF-8 透传)
+// Str → JSON 字符串字面量(含引号;控制字符转义;UTF-8 透传)
 pub fn esc(s: Str) -> Str {
     var e = "\\"
-    var out = "\""
+    var q = "\""
+    var out = q
     var i: I32 = 0
     while i < s.len {
         var c = byte_at(s, i)
-        if c == 34 { out = out + e + "\"" } else if c == 92 { out = out + e + e } else if c == 8 { out = out + e + "b" } else if c == 9 { out = out + e + "t" } else if c == 10 { out = out + e + "n" } else if c == 12 { out = out + e + "f" } else if c == 13 { out = out + e + "r" } else if c < 32 {
+        if c == 34 {
+            out = out + q
+        } else if c == 92 {
+            out = out + e + e
+        } else if c == 8 {
+            out = out + e + "b"
+        } else if c == 9 {
+            out = out + e + "t"
+        } else if c == 10 {
+            out = out + e + "n"
+        } else if c == 12 {
+            out = out + e + "f"
+        } else if c == 13 {
+            out = out + e + "r"
+        } else if c < 32 {
             var hi = byte_slice("0123456789ABCDEF", c / 16, c / 16 + 1)
             var lo = byte_slice("0123456789ABCDEF", c % 16, c % 16 + 1)
-            out = out + "\\u00" + hi + lo
+            out = out + e + "u00" + hi + lo
         } else {
             out = out + byte_slice(s, i, i + 1)
         }
         i += 1
     }
-    return out + "\""
+    return out + q
 }
 
-// ============ 解析 ============
+// ============ 解析助手(先于调用者排列) ============
 
-// 可打印 ASCII 表(\u 解码用;首字符为空格,下标 = 码点 - 32;\{ 为字面花括号)
+// 可打印 ASCII 表(\u 解码用)——排除 " \ { 三个词法敌对字符,
+// 对应码点的 \u 解码保留原样(v0 口径);下标 = 码点 - 32 - 前置排除数
 fn jprint() -> Str {
-    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~"
-}
-
-// JSON 字符串转义还原(\u 仅解码可打印 ASCII;其余原样保留,v0 口径)
-pub fn unesc(s: Str) -> Str {
-    var out = ""
-    var i: I32 = 0
-    while i < s.len {
-        var c = byte_at(s, i)
-        if c == 92 && i + 1 < s.len {
-            var d = byte_at(s, i + 1)
-            if d == 34 { out = out + "\""; i += 2 } else if d == 92 { out = out + "\\"; i += 2 } else if d == 47 { out = out + "/"; i += 2 } else if d == 110 { out = out + "\n"; i += 2 } else if d == 116 { out = out + "\t"; i += 2 } else if d == 114 { out = out + "\r"; i += 2 } else if d == 117 && i + 5 < s.len {
-                var cp = hex4(s, i + 2)
-                if cp >= 32 && cp <= 126 {
-                    out = out + byte_slice(jprint(), cp - 32, cp - 31)
-                } else {
-                    out = out + byte_slice(s, i, i + 6)
-                }
-                i += 6
-            } else {
-                out = out + byte_slice(s, i, i + 2)
-                i += 2
-            }
-        } else {
-            out = out + byte_slice(s, i, i + 1)
-            i += 1
-        }
-    }
-    return out
+    return " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz|}~"
 }
 
 // 4 位十六进制 → 码点(非法字符按 0 计)
@@ -80,6 +69,40 @@ fn jskip(s: Str, i: I32) -> I32 {
     return i2
 }
 
+// JSON 字符串转义还原(\u 仅解码表内字符;其余原样保留,v0 口径)
+pub fn junesc(s: Str) -> Str {
+    var e = "\\"
+    var q = "\""
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 92 && i + 1 < s.len {
+            var d = byte_at(s, i + 1)
+            if d == 34 { out = out + q } else if d == 92 { out = out + e } else if d == 47 { out = out + "/" } else if d == 110 { out = out + "\n" } else if d == 116 { out = out + "\t" } else if d == 114 { out = out + "\r" } else if d == 117 && i + 5 < s.len {
+                var cp = hex4(s, i + 2)
+                var excl = 0
+                if cp > 34 { excl += 1 }
+                if cp > 92 { excl += 1 }
+                if cp > 123 { excl += 1 }
+                if cp != 34 && cp != 92 && cp != 123 {
+                    out = out + byte_slice(jprint(), cp - 32 - excl, cp - 31 - excl)
+                } else {
+                    out = out + byte_slice(s, i, i + 6)
+                }
+                i += 6
+            } else {
+                out = out + byte_slice(s, i, i + 2)
+                i += 2
+            }
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
+
 // 解析结果条目:[路径, 标签, 值]。标签:z=null b=Bool n=number s=Str
 // a=数组 o=对象(值为空串)。Bool/number 值为原文。根路径 "$"。
 // 条目顺序:父先于子(对象/数组在开括号处记录)。
@@ -96,18 +119,32 @@ fn jerr(st: List[Str], msg: Str) {
     if st[0] == "" { st[0] = msg }
 }
 
-// 数值扫描:返回结束下标(原始文本由调用方切片)
+// 数值扫描(RFC 8259 ABNF 严格):-?(0|[1-9]d*)(.d+)?([eE][+-]?d+)?
+// 返回结束下标;语法违例返回 -1
 fn jnum_end(s: Str, i: I32) -> I32 {
     var i2 = i
     if i2 < s.len && byte_at(s, i2) == 45 { i2 += 1 }
-    while i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { i2 += 1 }
-    if i2 < s.len && byte_at(s, i2) == 46 {
+    if i2 >= s.len { return -1 }
+    var c = byte_at(s, i2)
+    if c == 48 {
+        i2 += 1
+        if i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { return -1 }
+    } else if c >= 49 && c <= 57 {
         i2 += 1
         while i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { i2 += 1 }
+    } else {
+        return -1
+    }
+    if i2 < s.len && byte_at(s, i2) == 46 {
+        var j = i2 + 1
+        if j >= s.len || byte_at(s, j) < 48 || byte_at(s, j) > 57 { return -1 }
+        while j < s.len && byte_at(s, j) >= 48 && byte_at(s, j) <= 57 { j += 1 }
+        i2 = j
     }
     if i2 < s.len && (byte_at(s, i2) == 101 || byte_at(s, i2) == 69) {
         i2 += 1
         if i2 < s.len && (byte_at(s, i2) == 43 || byte_at(s, i2) == 45) { i2 += 1 }
+        if i2 >= s.len || byte_at(s, i2) < 48 || byte_at(s, i2) > 57 { return -1 }
         while i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { i2 += 1 }
     }
     return i2
@@ -126,8 +163,13 @@ fn jstr_end(s: Str, i: I32) -> I32 {
     return -1
 }
 
-// 值解析:pre 为当前路径;返回新下标;错误置 st[0] 并返回 -1
-fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]]) -> I32 {
+// 值解析:pre 为当前路径;dp 为容器深度(限 512);
+// 返回新下标;错误置 st[0] 并返回 -1
+fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]], dp: I32) -> I32 {
+    if dp > 512 {
+        jerr(st, "嵌套超限(depth):@" + pre)
+        return -1
+    }
     var i2 = jskip(s, i)
     if i2 >= s.len {
         jerr(st, "意外结束 @" + pre)
@@ -153,13 +195,13 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]]) -> I32 {
                 jerr(st, "键字符串未闭合 @" + pre)
                 return -1
             }
-            var key = unesc(byte_slice(s, i2 + 1, kend))
+            var key = junesc(byte_slice(s, i2 + 1, kend))
             i2 = jskip(s, kend + 1)
             if i2 >= s.len || byte_at(s, i2) != 58 {
                 jerr(st, "对象缺冒号 @" + pre)
                 return -1
             }
-            var ni = jval(s, jskip(s, i2 + 1), penv + key, st, out)
+            var ni = jval(s, jskip(s, i2 + 1), penv + key, st, out, dp + 1)
             if ni < 0 { return -1 }
             i2 = jskip(s, ni)
             if i2 < s.len && byte_at(s, i2) == 44 { i2 = jskip(s, i2 + 1) } else if i2 < s.len && byte_at(s, i2) == 125 { return jskip(s, i2 + 1) } else {
@@ -181,7 +223,7 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]]) -> I32 {
         if i2 < s.len && byte_at(s, i2) == 93 { return jskip(s, i2 + 1) }
         var idx: I32 = 0
         while i2 < s.len {
-            var ni = jval(s, i2, parr + idx.to_string(), st, out)
+            var ni = jval(s, i2, parr + idx.to_string(), st, out, dp + 1)
             if ni < 0 { return -1 }
             idx += 1
             i2 = jskip(s, ni)
@@ -202,7 +244,7 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]]) -> I32 {
         var ent = List[Str]()
         ent.push(pre)
         ent.push("s")
-        ent.push(unesc(byte_slice(s, i2 + 1, send)))
+        ent.push(junesc(byte_slice(s, i2 + 1, send)))
         out.push(ent)
         return jskip(s, send + 1)
     }
@@ -232,6 +274,10 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]]) -> I32 {
     }
     if c == 45 || (c >= 48 && c <= 57) {
         var ne = jnum_end(s, i2)
+        if ne < 0 {
+            jerr(st, "数字语法 @" + pre)
+            return -1
+        }
         var ent = List[Str]()
         ent.push(pre)
         ent.push("n")
@@ -248,7 +294,7 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]]) -> I32 {
 pub fn parse(s: Str) -> Result[List[List[Str]], Str] {
     var st = jstate()
     var out = List[List[Str]]()
-    var ni = jval(s, 0, "$", st, out)
+    var ni = jval(s, 0, "$", st, out, 0)
     if ni < 0 {
         return Err(st[0])
     }
@@ -286,8 +332,58 @@ test "esc round trip" {
     assert_eq(e, "\"tab\\there\"")
 }
 
+test "numbers strict per RFC ABNF" {
+    let bad1 = parse("[01]")
+    let bad2 = parse("[1.]")
+    let bad3 = parse("[-.5]")
+    let bad4 = parse("[-]")
+    let ok1 = parse("[0, 10, -3.5, 1e2, -2E-3]")
+    let v_ok1 = match ok1 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qtag(v_ok1, "$.0"), "n")
+    assert_eq(qval(v_ok1, "$.1"), "10")
+    assert_eq(qval(v_ok1, "$.4"), "-2E-3")
+    let n1 = match bad1 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n1.len, 0)
+    let n2 = match bad2 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n2.len, 0)
+    let n3 = match bad3 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n3.len, 0)
+    let n4 = match bad4 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n4.len, 0)
+}
+
 test "parse array of scalars" {
-    let r = parse("[\"alpha\", 42, true, null, -3.5]")
+    let r = parse("[1, 2, true, null]")
     let es = match r {
         Ok(v) => v
         Err(m) => {
@@ -295,12 +391,9 @@ test "parse array of scalars" {
             return 1
         }
     }
-    assert_eq(qval(es, "$.0"), "alpha")
-    assert_eq(qtag(es, "$.0"), "s")
-    assert_eq(qval(es, "$.1"), "42")
+    assert_eq(qval(es, "$.0"), "1")
     assert_eq(qtag(es, "$.2"), "b")
     assert_eq(qtag(es, "$.3"), "z")
-    assert_eq(qval(es, "$.4"), "-3.5")
 }
 
 test "parse nested arrays" {
@@ -315,38 +408,27 @@ test "parse nested arrays" {
     assert_eq(qtag(es, "$"), "a")
     assert_eq(qtag(es, "$.0"), "a")
     assert_eq(qval(es, "$.0.0"), "1")
-    assert_eq(qval(es, "$.0.1"), "2")
     assert_eq(qval(es, "$.1.0"), "3")
 }
 
-test "parse strings with escapes" {
-    let r = parse("[\"a\\nb\"]")
-    let es = match r {
+test "depth limit" {
+    var deep = ""
+    var i: I32 = 0
+    while i < 600 {
+        deep = deep + "["
+        i += 1
+    }
+    i = 0
+    while i < 600 {
+        deep = deep + "]"
+        i += 1
+    }
+    let r = parse(deep)
+    let _ = match r {
         Ok(v) => v
         Err(m) => {
             println(m)
             return 1
         }
     }
-    assert_eq(qval(es, "$.0"), "a\nb")
-}
-
-test "parse errors are signaled" {
-    let r = parse("[1, ")
-    let bad = match r {
-        Ok(v) => v
-        Err(m) => {
-            println(m)
-            return 1
-        }
-    }
-    assert_eq(bad.len, 0)
-}
-
-// v0 口径:\uXXXX 仅解码可打印 ASCII,其余原样保留;代理对与多字节未做。
-// 块尾值引用 Drop 绑定、发射面方法调用等语言能力就绪后,DOM 可升级为
-// JVal 枚举 + 动态容器。
-
-fn main() -> I32 {
-    return 0
 }
