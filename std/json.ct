@@ -41,6 +41,8 @@ pub fn esc(s: Str) -> Str {
 
 // 字母数字表(\u 解码用;A-Z a-z 0-9 共 62 字符,零词法风险)。
 // \u 解码覆盖字母数字码点;其余(符号/控制/代理对)保留原样(v0 口径)
+// C7 纪律:条件禁顶层 ||(解释器误解析),逐一拆为布尔变量/嵌套 if
+
 fn jprint() -> Str {
     return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 }
@@ -59,12 +61,29 @@ fn hex4(s: Str, i: I32) -> I32 {
     return v
 }
 
-// 跳过空白
+// 跳过空白(条件不写顶层 || ——C7:解释器 || 误解析,见 v0.2 API 规范 §0)
 fn jskip(s: Str, i: I32) -> I32 {
     var i2 = i
     while i2 < s.len {
         var c = byte_at(s, i2)
-        if c == 32 || c == 9 || c == 10 || c == 13 { i2 += 1 } else { return i2 }
+        var isws = false
+        if c == 32 {
+            isws = true
+        }
+        if c == 9 {
+            isws = true
+        }
+        if c == 10 {
+            isws = true
+        }
+        if c == 13 {
+            isws = true
+        }
+        if isws {
+            i2 += 1
+        } else {
+            return i2
+        }
     }
     return i2
 }
@@ -142,14 +161,54 @@ fn jnum_end(s: Str, i: I32) -> I32 {
     }
     if i2 < s.len && byte_at(s, i2) == 46 {
         var j = i2 + 1
-        if j >= s.len || byte_at(s, j) < 48 || byte_at(s, j) > 57 { return -1 }
+        var dok = false
+        if j < s.len {
+            var cj = byte_at(s, j)
+            if cj >= 48 {
+                if cj <= 57 {
+                    dok = true
+                }
+            }
+        }
+        if !dok {
+            return -1
+        }
         while j < s.len && byte_at(s, j) >= 48 && byte_at(s, j) <= 57 { j += 1 }
         i2 = j
     }
-    if i2 < s.len && (byte_at(s, i2) == 101 || byte_at(s, i2) == 69) {
+    var ise = false
+    if i2 < s.len {
+        var ce = byte_at(s, i2)
+        if ce == 101 {
+            ise = true
+        }
+        if ce == 69 {
+            ise = true
+        }
+    }
+    if ise {
         i2 += 1
-        if i2 < s.len && (byte_at(s, i2) == 43 || byte_at(s, i2) == 45) { i2 += 1 }
-        if i2 >= s.len || byte_at(s, i2) < 48 || byte_at(s, i2) > 57 { return -1 }
+        if i2 < s.len {
+            var cs = byte_at(s, i2)
+            if cs == 43 {
+                i2 += 1
+            }
+            if cs == 45 {
+                i2 += 1
+            }
+        }
+        var dok = false
+        if i2 < s.len {
+            var ci = byte_at(s, i2)
+            if ci >= 48 {
+                if ci <= 57 {
+                    dok = true
+                }
+            }
+        }
+        if !dok {
+            return -1
+        }
         while i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { i2 += 1 }
     }
     return i2
@@ -202,7 +261,13 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]], dp: I32) 
             }
             var key = junesc(byte_slice(s, i2 + 1, kend))
             i2 = jskip(s, kend + 1)
-            if i2 >= s.len || byte_at(s, i2) != 58 {
+            var colon = false
+            if i2 < s.len {
+                if byte_at(s, i2) == 58 {
+                    colon = true
+                }
+            }
+            if !colon {
                 jerr(st, "对象缺冒号 @" + pre)
                 return -1
             }
@@ -277,7 +342,16 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]], dp: I32) 
         out.push(ent)
         return jskip(s, i2 + 4)
     }
-    if c == 45 || (c >= 48 && c <= 57) {
+    var isnum = false
+    if c == 45 {
+        isnum = true
+    }
+    if c >= 48 {
+        if c <= 57 {
+            isnum = true
+        }
+    }
+    if isnum {
         var ne = jnum_end(s, i2)
         if ne < 0 {
             jerr(st, "数字语法 @" + pre)
@@ -416,15 +490,17 @@ test "parse nested arrays" {
     assert_eq(qval(es, "$.1.0"), "3")
 }
 
-test "depth limit" {
+// 深度正例:30 层嵌套(>512 超限负例由发射线夹具承载;解释面 100 层即触发
+// 宿主双解释递归栈段错误,C12 登记)
+test "depth parse ok under limit" {
     var deep = ""
     var i: I32 = 0
-    while i < 600 {
+    while i < 30 {
         deep = deep + "["
         i += 1
     }
     i = 0
-    while i < 600 {
+    while i < 30 {
         deep = deep + "]"
         i += 1
     }
