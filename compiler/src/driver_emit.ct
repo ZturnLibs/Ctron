@@ -339,6 +339,7 @@ fn main() -> I32 {
                 } else if d[0] == "Test" {
                     // test 块 → int fn:断言失败 return 1(语句位 assert 发射),成功 return 0
                     var penv2 = env_bind(List[Str](), "#p", "2")
+                    penv2 = dls_push(penv2)
                     eln("static int32_t t_test_" + ntest.to_string() + "(void) \{", penv2)
                     var tenv = ct_stmts(d[2], penv2, file, "", List[Str]())
                     var tl = d[2][d[2].len - 1]
@@ -348,6 +349,7 @@ fn main() -> I32 {
                         es.push(tl)
                         ct_stmt(es, tenv, file, List[Str]())
                     }
+                    dls_pop_emit(tenv, file)
                     eln("return 0;", penv2)
                     eln("}", penv2)
                     testcalls = testcalls + "if (t_test_" + ntest.to_string() + "()) \{ return 1; } "

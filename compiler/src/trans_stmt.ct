@@ -157,6 +157,43 @@ fn dls_return_emit(env: List[Str], file: List[Str]) -> List[Str] {
     return env
 }
 
+// 块体 Drop 局部扫描:hl 豁免名(提升挂外层)之外,实现 Drop 的 let 一律响亮拒发
+fn dls_reject_unhoisted(body: List[Str], env: List[Str], file: List[Str], hl: List[Str], ctx: Str) {
+    var i: I32 = 1
+    while i < body.len - 1 {
+        var st = body[i]
+        if st[0] == "Let" && or2(st[2][0] == "PatId", st[2][0] == "PatAgg" && st[2][2][0] == "SubUnit") {
+            var nm = st[2][1]
+            var inhl = false
+            var hk: I32 = 0
+            while hk < hl.len {
+                var colon = -1
+                var k: I32 = 0
+                while k < hl[hk].len {
+                    if byte_at(hl[hk], k) == 58 { colon = k }
+                    k += 1
+                }
+                if colon > 0 && byte_slice(hl[hk], 0, colon) == nm { inhl = true }
+                hk += 1
+            }
+            if !inhl {
+                var ty = ""
+                if st[3][0] != "None" {
+                    ty = ct_ty_code(st[3], file)
+                } else {
+                    ty = ct_typeof(st[4], env, file)
+                }
+                if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
+                    if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
+                        panic(ctx + ":Drop 局部未支持(移入内层裸块):" + nm)
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+}
+
 fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: List[Str]) -> List[Str] {
     var i: I32 = 1
     var env2 = env
@@ -223,7 +260,7 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
         var pt = armS[1]
         var be = armS[2]
         eln("if (t_mv != NULL) \{", env)
-        var env3 = env
+        var env3 = dls_push(env)
         if pt[2][0] == "SubTup" {
             var b0 = pt[2][1]
             if b0[0] == "PatId" {
@@ -243,6 +280,7 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
         } else {
             eln("t_mr = " + ct_expr(be, env3, file) + ";", env)
         }
+        dls_pop_emit(env3, file)
         eln("}", env)
     }
     if noneIx >= 0 {
@@ -253,9 +291,10 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
         } else {
             eln("if (t_mv == NULL) \{", env)
         }
+        var armn = dls_push(env)
         if be2[0] == "BlockExpr" {
             var bl2 = be2[1]
-            var env4 = ct_stmts(bl2, env, file, "", hreg)
+            var env4 = ct_stmts(bl2, armn, file, "", hreg)
             var tl2 = bl2[bl2.len - 1]
             if tl2[0] == "None" {
                 panic("ct_match_value:arm 无值")
@@ -263,8 +302,9 @@ fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: 
             }
             eln("t_mr = " + ct_expr(tl2, env4, file) + ";", env)
         } else {
-            eln("t_mr = " + ct_expr(be2, env, file) + ";", env)
+            eln("t_mr = " + ct_expr(be2, armn, file) + ";", env)
         }
+        dls_pop_emit(armn, file)
         eln("}", env)
     }
     return env
@@ -398,6 +438,7 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         } else if tl[0] == "Own" {
             // own 块尾位(§4.9):体平铺;own 尾值即块值,体尾 return 已由语句发射退出
             var ocbody3 = tl[2]
+            dls_reject_unhoisted(ocbody3, env2, file, List[Str](), "emit:own 块")
             var orenv3 = ct_stmts(ocbody3, env2, file, "", hreg)
             var otl3 = ocbody3[ocbody3.len - 1]
             if otl3[0] != "None" {
@@ -468,6 +509,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // Phase 5:own 块(透明语义):体平铺,尾值即块值
         if pat[0] == "PatId" && st[4][0] == "Own" {
             var obody = st[4][2]
+            dls_reject_unhoisted(obody, env, file, List[Str](), "emit:own 块")
             var orenv = ct_stmts(obody, env, file, "", hreg)
             var otl = obody[obody.len - 1]
             if otl[0] == "None" {
@@ -537,6 +579,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
             // RAII(§6.4):struct 值绑定实现 Drop → 当前层登记,作用域出口逆序发射
+            if ty.len > 2 && byte_slice(ty, 0, 2) == "B:" {
+                if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
+                    panic("emit:类引用 Drop 未支持(§6.4 类引用不触发;eval 统一 U 分歧挂账):" + pat[1])
+                }
+            }
             if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
                 if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
                     env = dls_add(env, pat[1], ty)
@@ -647,6 +694,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 hreg.push(nm + ":" + ty)
                 hl.push(nm + ":" + ty)
                 envw = env_bind(envw, nm, ty)
+                if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
+                    if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
+                        // while 体绑定泄漏到外层(eval keep=true):drop 挂外层,循环出口不发
+                        envw = dls_add(envw, nm, ty)
+                    }
+                }
             } else {
                 if prev == ty {
                     hl.push(nm + ":" + ty)
@@ -656,6 +709,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             hi += 1
         }
+        // 非提升 Drop 局部响亮拒发(C 花括号出口时序 ≠ eval 泄漏语义)
+        dls_reject_unhoisted(body, envw, file, hl, "emit:while 体")
         eln("while (" + ct_expr(st[1], envw, file) + ") \{", env)
         var benv = ct_stmts(body, envw, file, hl, hreg)
         var tl = body[body.len - 1]
@@ -1023,6 +1078,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         if e[0] == "Own" {
             var ocbody = e[2]
+            dls_reject_unhoisted(ocbody, env, file, List[Str](), "emit:own 块")
             var orenv2 = ct_stmts(ocbody, env, file, "", hreg)
             var otl2 = ocbody[ocbody.len - 1]
             if otl2[0] != "None" {
