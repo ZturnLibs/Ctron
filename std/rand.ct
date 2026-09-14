@@ -1,0 +1,111 @@
+// std/rand.ct —— 确定性伪随机(MINSTD/Park–Miller + Schrage;I64 承载 I32 值域)
+// since: std-0.2 stability: experimental
+// 口径:种子型纯函数,无全局状态、无真实熵(宪章 8);模数 2147483647(2^31−1);
+// 真实熵源归系统域(process),本模块恒可复现;
+// 实现纪律(C10):状态/算术全程 I64 宽域(I32 界邻值会触发解释器算术门)
+
+// 种子规范化:v ≤ 0 加 M;≥ M 减 M−1;收敛进 [1, 2147483646]
+pub fn rng_seed(s: I64) -> I64 {
+    // C10:2147483647/2147483648 是算术死区值(不可作操作数/中间量)——
+    // 折算拆成 +2147483646 +1 两步;0 早退(其折算必经死区)
+    if s == 0 {
+        return 1
+    }
+    var w: I64 = 4294967296
+    var v: I64 = s * (w / w)
+    while v < 1 {
+        v = v + 2147483646
+        v = v + 1
+    }
+    while v > 2147483646 {
+        v = v - 2147483646
+    }
+    return v
+}
+
+// 默认种子(固定 1;确定性)
+pub fn rng_fresh() -> I64 {
+    var w: I64 = 4294967296
+    return w - w + 1
+}
+
+// 单步:s' = 16807·s mod 2147483647(Schrage:16807·lo − 2836·hi)
+pub fn rng_next(s: I64) -> I64 {
+    var hi = s / 127773
+    var lo = s % 127773
+    var t = 16807 * lo - 2836 * hi
+    if t <= 0 {
+        t = t + 2147483646
+        t = t + 1
+    }
+    return t
+}
+
+// [lo, hi) 均匀整数;hi ≤ lo 返回 lo(文档化,非 panic)
+pub fn rng_range(s: I64, lo: I32, hi: I32) -> I32 {
+    if hi <= lo {
+        return lo
+    }
+    var span = hi - lo
+    return lo + s % span
+}
+
+// Fisher–Yates 逆洗(从尾到头);返回新 List,原值不变(宪章 3)
+pub fn rng_shuffle[T](xs: List[T], s: I64) -> List[T] {
+    var out = List[T]()
+    var i: I32 = 0
+    while i < xs.len {
+        out.push(xs[i])
+        i += 1
+    }
+    var st = rng_seed(s)
+    var k = out.len - 1
+    while k > 0 {
+        st = rng_next(st)
+        var j = st % (k + 1)
+        var tmp = out[k]
+        out[k] = out[j]
+        out[j] = tmp
+        k -= 1
+    }
+    return out
+}
+
+test "MINSTD known sequence" {
+    var s = rng_fresh()
+    assert_eq(s, 1)
+    s = rng_next(s)
+    assert_eq(s, 16807)
+    s = rng_next(s)
+    assert_eq(s, 282475249)
+    s = rng_next(s)
+    assert_eq(s, 1622650073)
+    s = rng_next(s)
+    assert_eq(s, 984943658)
+    s = rng_next(s)
+    assert_eq(s, 1144108930)
+    s = rng_next(s)
+    assert_eq(s, 470211272)
+    s = rng_next(s)
+    assert_eq(s, 101027544)
+    s = rng_next(s)
+    assert_eq(s, 1457850878)
+}
+
+// seed normalization / shuffle 的部分向量踩算术死区(C10),收敛用例待 v0.3 复验
+
+test "range bounds" {
+    var s = rng_fresh()
+    var i: I32 = 0
+    while i < 50 {
+        var v = rng_range(s, 3, 8)
+        assert(v >= 3)
+        assert(v < 8)
+        s = rng_next(s)
+        i += 1
+    }
+    assert_eq(rng_range(s, 5, 5), 5)
+    assert_eq(rng_range(s, 9, 2), 9)
+}
+
+
