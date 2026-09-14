@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=273' "$T/chk.out" && ok "自检 cc_run 绿,decls=273" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=277' "$T/chk.out" && ok "自检 cc_run 绿,decls=277" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -44,6 +44,17 @@ check_decl "$SH/sem_chk.ct"    109
 check_decl "$SH/parsetree.ct"   57
 check_decl "$SH/ev2.ct"        107
 check_decl "$SH/cc.ct"         175
+
+echo "== 2e) 自举解析器韧性(P0-E:非法输入报 E1001 不崩,native 面) =="
+for pf in 01i_semicolon 01j_impl_for; do
+    "$COMP/bin/ctron-cc" run "$ROOT/tests/$pf.neg.ct" > "$T/pe_$pf.out" 2>&1
+    prc=$?
+    if [ $prc -eq 1 ] && grep -q 'E1001' "$T/pe_$pf.out"; then
+        ok "native $pf E1001 拦截(rc=1,不崩)"
+    else
+        bad "native $pf 异常(rc=$prc): $(cat "$T/pe_$pf.out")"
+    fi
+done
 
 echo "== 2b) JSON 诊断契约(§10.2 v0) =="
 "$COMP/ctc.sh" check "$COMP/test/fx_json_neg.ct" --format=json > "$T/js.out" 2>&1

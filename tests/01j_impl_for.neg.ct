@@ -1,0 +1,16 @@
+// 01j_impl_for.neg.ct —— P0-E:impl 缺少 for 解析守卫(E1001,与 seed 逐字;曾致 native 段万能)
+//@ fail: E1001
+//@ msg: impl 缺少 for
+struct C {
+    let x: I32
+}
+
+impl C {
+    fn m(self) -> I32 {
+        return self.x
+    }
+}
+
+fn main() -> I32 {
+    return 0
+}

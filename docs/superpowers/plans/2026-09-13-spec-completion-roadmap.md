@@ -93,14 +93,19 @@ longjmp 前逆序执行。E2071 解除为纯增量,需先证 break/continue 跳�
 **Verify:** panic 展开夹具(任务内 panic → drop 序可观察)+ break 越界正例双侧逐字。
 **规模:** 2-4 天。
 
-### 切片 P0-E(新增,2026-09-14 发现):自举解析器非法输入韧性
+### 切片 P0-E(新增,2026-09-14 发现):自举解析器非法输入韧性(✅ 已完成 2026-09-14,4da955f)
 
-**现象:** 含非法标点(如 `;`)的 .ct 过 `compiler/bin/ctron-cc run` 直接 SIGSEGV(rc=139),
-seed 宿主正确报 E1001(禁用的标点)。native.sh 重建后仍复现(非陈旧二进制)。
-**Scope:** 自举 lex/parse 对禁用标点/畸形 token 的守卫与诊断路径(E1001 面),
-镜像 seed 词法器的禁用标点检查;补负例夹具。
-**Verify:** 非法标点夹具 native check 报 E1001 rc=1(与 seed 逐字),不再崩。
-**规模:** 0.5-1 天。
+**现象:** 含非法标点(如 `;`)或 inherent impl(缺 `for`)的 .ct 过 `bin/ctron-cc run`
+直接 SIGSEGV(rc=139;盲进 adv + p_typ 兜底吞 token + toks[cur+2] 越界直读),
+seed 宿主正确报 E1001。native.sh 重建后仍复现(非陈旧二进制)。
+**已落地:** 词法器列号跟踪(cols 与 toks 平行)+ 三守卫镜像 seed(`;` 报后丢弃续扫/
+`::` 报后降级单冒号/集合外字符报"无法识别的字符")+ p_impl 三连守卫
+(缺 for 不消费/类型位非起始报"预期类型,实际 X"消费一枚/体缺 `{` 不消费,
+NL 跳过对齐)+ 三驱动打印 `PATH:LINE:COL CODE: MSG` 止于 rc=1。
+诊断行与 seed 逐字(含组合场景);负例 01i/01j 双侧入 suite(63/63);
+smoke 102 ok;固定点逐字节;decls 锁 273→277(+pdiag/lex_single/type_start/scan4)。
+**边界:** 宿主 check 汇总行("N diagnostics")native 面不打——与既有 sem 负例的
+native 口径一致; suitescope 负例协议只核 rc+码+消息子串,不受影响。
 
 ### 切片 P1-B:ISize/USize/U64 定宽存储(§3.1)
 
@@ -195,7 +200,7 @@ smoke 3d 加逐字节漂移断言;示例 vendored 副本为钉定快照允许落
 ## 执行顺序建议
 
 ```
-P0-A/P0-B/P0-C(✅) → P0-E(0.5-1d,新增:自举解析器非法输入韧性)
+P0-A/P0-B/P0-C/P0-E(✅)
 P1-D(3-5d) / P1-B(3-5d) / P1-C(0.5-3d) → P1-A2(2-4d,panic 展开+E2071 解除)
 P2 各 spike 穿插在门禁等待期
 ```

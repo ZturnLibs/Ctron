@@ -1,0 +1,7 @@
+// 01i_semicolon.neg.ct —— P0-E:禁用标点 ; 词法拦截(E1001,与 seed 逐字;曾致 native 段万能)
+//@ fail: E1001
+//@ msg: 禁用的标点 ;
+fn main() -> I32 {
+    let x: I32 = 1;
+    return 0
+}
