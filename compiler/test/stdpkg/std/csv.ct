@@ -1,0 +1,214 @@
+// std/csv.ct —— CSV(RFC 4180 子集;引号转义;CRLF/LF 行界;确定性行序)
+// since: std-0.2 stability: experimental
+// 口径:解析严格化——引号必须闭合,否则 None;字段中段引号按字面(宽松 v0);
+// 写出按需加引号!(含 , " CR LF 的字段);行界 LF
+
+// 解析 CSV 文本 → 行×字段网格;引号不闭合 None
+pub fn csv_parse(text: Str) -> Option[List[List[Str]]] {
+    var grid = List[List[Str]]()
+    var row = List[Str]()
+    var cur = ""
+    var inq = false
+    var i: I32 = 0
+    while i < text.len {
+        var c = byte_at(text, i)
+        if inq {
+            if c == 34 {
+                if i + 1 < text.len {
+                    if byte_at(text, i + 1) == 34 {
+                        cur = cur + "\""
+                        i += 2
+                    } else {
+                        inq = false
+                        i += 1
+                    }
+                } else {
+                    inq = false
+                    i += 1
+                }
+            } else {
+                cur = cur + byte_slice(text, i, i + 1)
+                i += 1
+            }
+        } else {
+            if c == 34 {
+                inq = true
+                i += 1
+            } else {
+                if c == 44 {
+                    row.push(cur)
+                    cur = ""
+                    i += 1
+                } else {
+                    if c == 13 {
+                        if i + 1 < text.len {
+                            if byte_at(text, i + 1) == 10 {
+                                row.push(cur)
+                                cur = ""
+                                grid.push(row)
+                                row = List[Str]()
+                                i += 2
+                            } else {
+                                cur = cur + byte_slice(text, i, i + 1)
+                                i += 1
+                            }
+                        } else {
+                            cur = cur + byte_slice(text, i, i + 1)
+                            i += 1
+                        }
+                    } else {
+                        if c == 10 {
+                            row.push(cur)
+                            cur = ""
+                            grid.push(row)
+                            row = List[Str]()
+                            i += 1
+                        } else {
+                            cur = cur + byte_slice(text, i, i + 1)
+                            i += 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if inq {
+        return None
+    }
+    if cur.len > 0 {
+        row.push(cur)
+    }
+    if row.len > 0 {
+        grid.push(row)
+    }
+    return Some(grid)
+}
+
+// 取行内第 i 列;越界返回空串(便利取列)
+pub fn csv_field(row: List[Str], i: I32) -> Str {
+    if i < 0 {
+        return ""
+    }
+    if i >= row.len {
+        return ""
+    }
+    return row[i]
+}
+
+// 行×字段网格 → CSV 文本(需要时加引号;"" 转义;LF 行界)
+// 字段写出:含 , " CR LF 时加引号("" 转义)
+fn cw_field(f: Str) -> Str {
+    var need = false
+    var i: I32 = 0
+    while i < f.len {
+        var c = byte_at(f, i)
+        if c == 44 {
+            need = true
+        }
+        if c == 34 {
+            need = true
+        }
+        if c == 10 {
+            need = true
+        }
+        if c == 13 {
+            need = true
+        }
+        i += 1
+    }
+    if !need {
+        return f
+    }
+    var out = "\""
+    i = 0
+    while i < f.len {
+        var c = byte_at(f, i)
+        if c == 34 {
+            out = out + "\"\""
+        } else {
+            out = out + byte_slice(f, i, i + 1)
+        }
+        i += 1
+    }
+    return out + "\""
+}
+
+pub fn csv_write(rows: List[List[Str]]) -> Str {
+    var out = ""
+    var r: I32 = 0
+    while r < rows.len {
+        var row = rows[r]
+        var c: I32 = 0
+        while c < row.len {
+            if c > 0 {
+                out = out + ","
+            }
+            out = out + cw_field(row[c])
+            c += 1
+        }
+        out = out + "\n"
+        r += 1
+    }
+    return out
+}
+
+test "classic three traps" {
+    var r = csv_parse("name,age\n\"Smith, John\",33\n\"He said \"\"hi\"\"\",7")
+    var g = r.or(List[List[Str]]())
+    assert_eq(g.len, 3)
+    assert_eq(g[1][0], "Smith, John")
+    assert_eq(g[1][1], "33")
+    assert_eq(g[2][0], "He said \"hi\"")
+    assert_eq(g[2][1], "7")
+}
+
+test "quoted newline inside field" {
+    var r = csv_parse("a,\"x\ny\",z")
+    var g = r.or(List[List[Str]]())
+    assert_eq(g.len, 1)
+    assert_eq(g[0][0], "a")
+    assert_eq(g[0][1], "x\ny")
+    assert_eq(g[0][2], "z")
+}
+
+test "crlf and empty fields and last line" {
+    var r = csv_parse("a,,b\r\nc,d,\r\ne,f,g")
+    var g = r.or(List[List[Str]]())
+    assert_eq(g.len, 3)
+    assert_eq(g[0][0], "a")
+    assert_eq(g[0][1], "")
+    assert_eq(g[1][2], "")
+    assert_eq(g[2][2], "g")
+}
+
+test "unclosed quote is none" {
+    assert(!csv_parse("a,\"bc").is_some())
+    assert(!csv_parse("\"").is_some())
+}
+
+test "write parse round trip" {
+    var g = List[List[Str]]()
+    var r1 = List[Str]()
+    r1.push("name")
+    r1.push("note")
+    var r2 = List[Str]()
+    r2.push("a,b")
+    r2.push("say \"hi\"\nmultiline")
+    g.push(r1)
+    g.push(r2)
+    var text = csv_write(g)
+    var back = csv_parse(text).or(List[List[Str]]())
+    assert_eq(back.len, 2)
+    assert_eq(back[1][0], "a,b")
+    assert_eq(back[1][1], "say \"hi\"\nmultiline")
+}
+
+test "field convenience" {
+    var row = List[Str]()
+    row.push("x")
+    assert_eq(csv_field(row, 0), "x")
+    assert_eq(csv_field(row, 5), "")
+    var e = List[List[Str]]()
+    var r = csv_parse("")
+    assert_eq(r.or(e).len, 0)
+}
