@@ -168,6 +168,22 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         if nt[2][0] == "FnType" { fk = "G" }
         return fk + fa.to_string()
     }
+    if nt[0] == "Slice" {
+        // §3.6 切片视图码:v<元素码>(单字符前缀,余串即元素码)
+        return "v" + ct_ty_code(nt[1], file)
+    }
+    if nt[0] == "Ref" && nt[1].len > 1 && nt[1][0] == "Slice" {
+        // &T[] 只读视图:v0 与可变视图同 C 表示(Send 区分在检查面)
+        return "v" + ct_ty_code(nt[1][1], file)
+    }
+    if nt[0] == "ArrayT" {
+        // T[N] 定长注解 → 既有 a<N><ec> 内联码
+        var an = "1"
+        if nt[2].len > 1 && nt[2][0] == "Int" {
+            an = num_text(nt[2][1])
+        }
+        return "a" + an + ct_ty_code(nt[1], file)
+    }
     if nt[0] != "Named" { return "i" }
     if nt[0] == "Named" && nt[2].len > 1 {
         // Box[P] 注解 → B:P(堆单值指针;与构造点 typeof 同码);
@@ -241,6 +257,10 @@ fn ct_ctype(code: Str) -> Str {
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "v" { return "void" }
+    if code.len > 1 && byte_at(code, 0) == 118 {
+        // 视图码 v<ec>(§3.6 切片):ctron_view_<元素C型>;与单字符 void "v" 不冲突
+        return "ctron_view_" + ct_ctype(byte_slice(code, 1, code.len))
+    }
     if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
         return "ct_enum_" + byte_slice(code, 2, code.len)
     }
