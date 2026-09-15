@@ -217,6 +217,16 @@ std 包 main 双引擎 rc=0 逐字一致。**余量仅 vendored 快照同步(std
 **P1-A3 定口径(2026-09-15):** 宿主发射器 Drop 零支持 + 宿主 rt panic 不跑 Drop,
 E2071 解除需宿主先行,跨线协同暂缓(bootstrap 发射侧 cleanup 机制已具备)。
 
+### GC spike(§6.2,✅ 设计记录完成 2026-09-15,见 specs/2026-09-15-gc-contract-design.md)
+
+**结论:§6.2 语言语义面 = 四条性质**(无手动 free/全档内存安全/无 finalizer 交互/
+资源持有 lint),收集算法与停顿目标属"可插拔"运行时工程,语义零影响。现状 bump
+arena = 合法实现口径(永不回收 arena,回收时机不可观察,代价=长驻进程内存单调
+增长,v0 明示取舍)。**随片落地 E4050**(§10 登记 + fx_res_class_neg 负例):
+类直接持有 Mutex/Channel 资源字段 → E 级拦截;Field 节点补行号尾槽(修 nline
+未带戳崩溃);真实收集迁移路径(shadow-stack 精确 GC)登记远期 P3,依赖类型
+信息精细化,语言层零改动(无 finalizer ⇒ 清扫只还内存不调 Drop)。
+
 ---
 
 ## P2 需设计 spike(先出设计记录再排期)
