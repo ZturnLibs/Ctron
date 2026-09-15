@@ -1050,7 +1050,7 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
                     } else {
                         ty = ct_typeof(st[4], ew, file)
                     }
-                    if ty != "L" && ty != "LI" && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") {
+                    if ty != "L" && ty != "LI" && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") && !(ty.len > 1 && or2(or3(byte_at(ty, 0) == 117, byte_at(ty, 0) == 66, byte_at(ty, 0) == 69), byte_at(ty, 0) == 119)) {
                         out.push(pat[1] + ":" + ty)
                         ew = env_bind(ew, pat[1], ty)
                     }
