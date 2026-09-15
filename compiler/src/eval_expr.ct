@@ -6,11 +6,15 @@
 fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
     var t = e[0]
     if t == "Int" {
-        // 宽度后缀:u8/i8/u16/i16 → W 值;其余(含 i32/u32/i64/u64)沿用 I32 域
+        // 宽度后缀:u8/i8/u16/i16 → W 值;u64/usize → "7" 无符号 64 文本域(P1-B);
+        // 其余(含 i32/u32/i64/isize)沿用 I32 域
         if e.len > 2 {
             var sfx = e[2]
             if or2(sfx == "u8", or2(sfx == "i8", or2(sfx == "u16", sfx == "i16"))) {
                 return e4("k", env, vW(sfx, txt_num(e[1])), out)
+            }
+            if or2(sfx == "u64", sfx == "usize") {
+                return e4("k", env, v7(lit_to_dec(e[1])), out)
             }
         }
         // 宽字面量直入 I64 域(§3.1.1):仅无后缀;十进制/0x/0o/0b 同口径

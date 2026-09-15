@@ -56,7 +56,9 @@ fn txt_num(t: Str) -> I32 {
 
     }
 
-    var acc: I32 = 0
+    var acc7 = "0"
+
+    var rtxt = dvi_str(radix)
 
     while i < n {
 
@@ -68,7 +70,7 @@ fn txt_num(t: Str) -> I32 {
 
         } else {
 
-            acc = acc * radix + digit_of(c)
+            acc7 = c6add(c6mul(acc7, rtxt), dvi_str(digit_of(c)))
 
             i += 1
 
@@ -76,7 +78,97 @@ fn txt_num(t: Str) -> I32 {
 
     }
 
-    return acc
+    return wrap_i32(acc7)
+
+}
+
+// I32 数值 → 十进制文本(dvi 的逆;免 to_string 分派)
+fn dvi_str(v: I32) -> Str {
+
+    if v == 0 {
+
+        return "0"
+
+    }
+
+    var neg = false
+
+    var x = v
+
+    if x < 0 {
+
+        neg = true
+
+        x = 0 - x
+
+    }
+
+    var d = ""
+
+    while x > 0 {
+
+        var q: I32 = x / 10
+
+        var r: I32 = x - q * 10
+
+        d = byte_slice("0123456789", r, r + 1) + d
+
+        x = q
+
+    }
+
+    if neg {
+
+        return "-" + d
+
+    }
+
+    return d
+
+}
+
+// 十进制文本(非负)→ 规范 I32 文本:先模 2^32,≥2^31 折回负半区
+fn wrap_i32(u: Str) -> I32 {
+
+    var m = c6can(u)
+
+    if m.len > 0 {
+
+        if byte_at(m, 0) == 45 {
+
+            m = byte_slice(m, 1, m.len)
+
+        }
+
+    }
+
+    var qr = c6divmod(m, "4294967296")
+
+    var bar: I32 = 0
+
+    var ci: I32 = 0
+
+    while ci < qr.len {
+
+        if byte_at(qr, ci) == 124 {
+
+            bar = ci
+
+        }
+
+        ci += 1
+
+    }
+
+    var r = byte_slice(qr, bar + 1, qr.len)
+
+    if c6abscmp(r, "2147483647") > 0 {
+
+        r = c6sub(r, "4294967296")
+
+    }
+
+    return dvi(r)
 
 }
 
@@ -238,6 +330,9 @@ fn vdeep(v: List[Str]) -> List[Str] {
 
 fn dvi(t: Str) -> I32 {
 
+    // P1-B:十进制文本 → I32。"7" 域文本精确累加 → mod 2^32 → 负半区折回 →
+    // MIN 特判(0-2147483647-1 惯用法)→ 幅值安全累加(免界门/免递归)
+
     var neg = false
 
     var k: I32 = 0
@@ -250,23 +345,87 @@ fn dvi(t: Str) -> I32 {
 
     }
 
-    var acc: I32 = 0
+    var acc7 = "0"
 
     while k < t.len {
 
-        acc = acc * 10 + byte_at(t, k) - 48
+        acc7 = c6add(c6mul(acc7, "10"), dvi_str(digit_of(byte_at(t, k))))
 
         k += 1
 
     }
 
-    if neg {
+    var qr = c6divmod(acc7, "4294967296")
 
-        return 0 - acc
+    var bar: I32 = 0
+
+    var ci: I32 = 0
+
+    while ci < qr.len {
+
+        if byte_at(qr, ci) == 124 {
+
+            bar = ci
+
+        }
+
+        ci += 1
 
     }
 
-    return acc
+    var r = byte_slice(qr, bar + 1, qr.len)
+
+    if neg {
+
+        if r != "0" {
+
+            r = c6sub("4294967296", r)
+
+        }
+
+    }
+
+    if c6abscmp(r, "2147483647") > 0 {
+
+        r = "-" + c6sub("4294967296", r)
+
+    }
+
+    if seq2(r, "-2147483648") {
+
+        return 0 - 2147483647 - 1
+
+    }
+
+    var res: I32 = 0
+
+    var k2: I32 = 0
+
+    var neg2 = false
+
+    if r.len > 0 && byte_at(r, 0) == 45 {
+
+        neg2 = true
+
+        k2 = 1
+
+    }
+
+    while k2 < r.len {
+
+        res = res * 10 + digit_of(byte_at(r, k2))
+
+        k2 += 1
+
+    }
+
+    if neg2 {
+
+        res = 0 - res
+
+    }
+
+    return res
 
 }
 
@@ -434,6 +593,19 @@ fn v6(t: Str) -> List[Str] {
 
 }
 
+// U64/USize 域(P1-B):["7", 无符号十进制文本],0..2^64-1 精确承载
+fn v7(t: Str) -> List[Str] {
+
+    var v = List[Str]()
+
+    v.push("7")
+
+    v.push(c6can(t))
+
+    return v
+
+}
+
 
 
 fn c6can(t: Str) -> Str {
@@ -564,8 +736,17 @@ fn lit_digits(t: Str) -> Str {
 
 // int64 界门(§4.5 检查算术):规范十进制文本是否落在 [MIN, MAX];
 // 发射侧 ctron_i64_* 帮手镜像
-fn c6_in_i64(r: Str) -> Bool {
-    var neg = false
+// U64 界门(P1-B):非负且 ≤ 2^64-1
+fn c6_in_u64(r: Str) -> Bool {
+    if r.len > 0 {
+        if byte_at(r, 0) == 45 {
+            return false
+        }
+    }
+    return c6abscmp(r, "18446744073709551615") <= 0
+}
+
+fn c6_in_i64(r: Str) -> Bool {    var neg = false
     var m = r
     if m.len > 0 {
         if byte_at(m, 0) == 45 {
@@ -987,6 +1168,29 @@ fn vcmp(a: List[Str], b: List[Str]) -> I32 {
 
     }
 
+    // U64/USize 比较域(P1-B):同域/跨 I/6 直文本幅值比较(负值混比语料避,挂账)
+    if or2(a[0] == "7", b[0] == "7") {
+
+        var at7 = a[1]
+
+        var bt7 = b[1]
+
+        if a[0] == "W" {
+
+            at7 = dvi(a[1]).to_string()
+
+        }
+
+        if b[0] == "W" {
+
+            bt7 = dvi(b[1]).to_string()
+
+        }
+
+        return c6abscmp(at7, bt7)
+
+    }
+
     var x = dvi(a[1])
 
     var y = dvi(b[1])
@@ -1235,6 +1439,101 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
         }
 
         panic("I64 arithmetic: 不支持的算符")
+
+    }
+
+    // U64/USize 域(P1-B):定宽 + 检查算术,界 2^64 字符串比较(宿主 ck_int 同口径)
+    if or2(a[0] == "7", b[0] == "7") {
+
+        if a[0] != "7" {
+
+            a = v7(a[1])
+
+        }
+
+        if b[0] != "7" {
+
+            b = v7(b[1])
+
+        }
+
+        if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
+
+            if c6abscmp(a[1], b[1]) < 0 {
+
+                panic("integer overflow (-)")
+
+            }
+
+            return v7(c6sub(a[1], b[1]))
+
+        }
+
+        if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
+
+            var r7a = c6add(a[1], b[1])
+
+            if !c6_in_u64(r7a) {
+
+                panic("integer overflow (+)")
+
+            }
+
+            return v7(r7a)
+
+        }
+
+        if or2(seq2(op, "Mul"), seq2(op, "MulEq")) {
+
+            var m7 = c6mul(a[1], b[1])
+
+            if !c6_in_u64(m7) {
+
+                panic("integer overflow (*)")
+
+            }
+
+            return v7(m7)
+
+        }
+
+        if or2(seq2(op, "Div"), or2(seq2(op, "Mod"), or2(seq2(op, "DivEq"), seq2(op, "ModEq")))) {
+
+            if b[1] == "0" {
+
+                panic("division by zero")
+
+            }
+
+            var qr7 = c6divmod(a[1], b[1])
+
+            var bar7: I32 = 0
+
+            var ci7: I32 = 0
+
+            while ci7 < qr7.len {
+
+                if byte_at(qr7, ci7) == 124 {
+
+                    bar7 = ci7
+
+                }
+
+                ci7 += 1
+
+            }
+
+            if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+
+                return v7(byte_slice(qr7, 0, bar7))
+
+            }
+
+            return v7(byte_slice(qr7, bar7 + 1, qr7.len))
+
+        }
+
+        panic("U64 算术: 不支持的算符")
 
     }
 

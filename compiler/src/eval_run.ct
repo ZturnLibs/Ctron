@@ -29,7 +29,8 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             if er[0] != "k" {
                 return s4(er[0], er[1], er[3], er[2])
             }
-            // 宽度注解:let x: U8/I8/U16/I16 = <整值> → 值带宽标签
+            // 宽度注解:let x: U8/I8/U16/I16 = <整值> → 值带宽标签;
+            // U64/USize → "7" 无符号 64 文本域;ISize → "6" 域(§3.1 定宽,P1-B)
             var vv = bind_of(file, er[2])
             if or2(er[2][0] == "I", er[2][0] == "W") && st[3][0] == "Named" {
                 var h = ty_head(st[3])
@@ -45,6 +46,19 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                         wl = "i16"
                     }
                     vv = vW(wl, dvi(er[2][1]))
+                }
+                if or2(h == "U64", h == "USize") {
+                    vv = v7(er[2][1])
+                }
+                if h == "ISize" {
+                    vv = v6(er[2][1])
+                }
+            }
+            if er[2][0] == "6" && st[3][0] == "Named" {
+                var h2 = ty_head(st[3])
+                if or2(h2 == "U64", h2 == "USize") {
+                    // 6 域宽字面量落 U64 绑定:十进制文本已精确,仅换签
+                    vv = v7(er[2][1])
                 }
             }
             return s4("k", env_add(er[1], pat[1], vv), er[3], vV2())

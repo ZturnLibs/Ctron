@@ -360,13 +360,21 @@ fn conv_as_6(v: List[Str], tgt: Str) -> List[Str] {
         return vI(dvi(m))
     }
     if wl == "6" {
+        // U64/USize 目标(P1-B):产 "7" 无符号域;I64/ISize 仍 "6"
+        if or2(tgt == "U64", tgt == "USize") {
+            return v7(c6can(m))
+        }
         return v6(c6can(m))
     }
     return vW(wl, dvi(m))
 }
 
 fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
-    if v[0] == "6" {
+    if or2(v[0] == "6", v[0] == "7") {
+        return conv_as_6(v, tgt)
+    }
+    if or2(tgt == "U64", tgt == "USize") {
+        // X.as[U64]/as[USize]:任意源经 6 域模 2^64 路径(P1-B)
         return conv_as_6(v, tgt)
     }
     if or2(tgt == "F64", tgt == "F32") {
