@@ -130,8 +130,19 @@ native 口径一致; suitescope 负例协议只核 rc+码+消息子串,不受影
 - **Verify:** fx_u64/fx_u64_ovf(上溢 panic 探针)bootstrap 双面一致;03b 双通道绿
   (host 2/2 + bootstrap);smoke 101 ok;suite 63/63;固定点逐字节;decls 277→281。
 **挂账:** 宿主 rt 64 位无符号 Add 缺上界检查(big+1 不 panic 而打印 2^64——host
-ck_int 仅判 x≥0,emit/eval 均按 spec panic,宿主缺陷待修);W 域(8/16 位)发射面
-仍 int32 擦除(独立欠账);u32/u64 后缀的发射面(语料无;fx_u64 避)。
+ck_int 仅判 x≥0,emit/eval 均按 spec panic,宿主缺陷待修);u32 后缀的发射面
+(语料无;fx_u64 避)。
+
+### 切片 P1-B2:W 域(U8/I8/U16/I16)发射面定宽(§3.1)(✅ 已完成 2026-09-15)
+
+**已落地:** 类型码 `w8u/w8s/w16u/w16s`(ct_ty_code Named 臂 + ct_ctype 定宽 C 型);
+`ctron_w_add/sub/mul` 检查帮手(int32 中间量 + 宽度界 [0,255]/[-128,127]/[0,65535]/
+[-32768,32767],panic 消息镜像 w_arith)+ div/mod 除零门(镜像 eval ari 口径);
+Binary 取双操作数较宽宽度域(w_code_wider 镜像 w_rank);Let/复合赋值 W 臂
+(Int 字面量转十进制——0b/0o 原文非法 C);u8/i8/u16/i16 后缀 typeof → w 码;
+as[U8] 等强转泛化。fx_w8 三方逐字(满界/字面量进制/检查算术/比较/as);
+fx_w8_ovf 上溢 panic 双面一致;03b 双通道绿;smoke 107 ok;suite 63/63;固定点逐字节。
+**§3.1 定宽整数自举线全量收口**(I8..I64/ISize/U8..U64/USize 十档解析/sem/eval/发射贯通)。
 
 ### 切片 P1-C:Simd 运算面盘点与口径(§9.5)(✅ 盘点+决策完成 2026-09-14;补齐拆 P1-C2)
 
