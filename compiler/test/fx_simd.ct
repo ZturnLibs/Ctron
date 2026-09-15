@@ -1,0 +1,14 @@
+// fx_simd.ct —— P1-C2 Simd 发射(§9.5;标量模拟口径):splat/白名单算术/lane/to_array
+fn main() -> I32 {
+    let a = Simd[F32, 4].splat(2.0)
+    let b = Simd[F32, 4].splat(3.0)
+    let c = a * b + a
+    assert_eq(c.lane(0), 8.0)
+    assert_eq(c.lane(3), 8.0)
+    let d = Simd[F32, 4].splat(5.0)
+    assert_eq((c * d).lane(1), 40.0)
+    let arr = c.to_array()
+    assert_eq(arr.len, 4)
+    assert_eq(arr[3], 8.0)
+    return 0
+}

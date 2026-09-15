@@ -258,8 +258,14 @@ fn ct_ctype(code: Str) -> Str {
     if code == "6" { return "int64_t" }
     if code == "v" { return "void" }
     if code.len > 1 && byte_at(code, 0) == 118 {
-        // 视图码 v<ec>(§3.6 切片):ctron_view_<元素C型>;与单字符 void "v" 不冲突
-        return "ctron_view_" + ct_ctype(byte_slice(code, 1, code.len))
+        // 视图码 v<ec>(§3.6 切片):typedef 名 = ctron_view_<元素码原文>(与 driver_emit 预发 typedef 对应)
+        return "ctron_view_" + byte_slice(code, 1, code.len)
+    }
+    if code.len > 2 && byte_at(code, 0) == 113 {
+        // SIMD 码 q<N><ec>(P1-C2 标量模拟):C 表示与视图同形
+        var qi: I32 = 1
+        while qi < code.len && is_digit(byte_at(code, qi)) { qi += 1 }
+        return "ctron_view_" + byte_slice(code, qi, code.len)
     }
     if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
         return "ct_enum_" + byte_slice(code, 2, code.len)
@@ -399,7 +405,7 @@ fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
     if or2(pc == "s", pc == "N") && ac == "L" { return "(char*)(" + x + ")" }
     // §3.6 退化传参:内联定长数组实参 → 视图(首址+长度复合字面量,零拷贝)
     if pc.len > 1 && byte_at(pc, 0) == 118 && ac.len > 2 && byte_at(ac, 0) == 97 {
-        return "(" + ct_ctype(pc) + ")\{ " + x + ", " + a_count(ac) + " \}"
+        return "(" + ct_ctype(pc) + ")\{ " + x + ", " + a_count(ac) + " }"
     }
     return x
 }
@@ -507,6 +513,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // 算术:任一操作数为浮点 → f;任一为 Str/节点引用(仅 Add 拼接)→ s;否则 i
             var l = ct_typeof(e[2], env, file)
             var r = ct_typeof(e[3], env, file)
+            if l.len > 1 && byte_at(l, 0) == 113 { return l }
+            if r.len > 1 && byte_at(r, 0) == 113 { return r }
             if or2(l == "f", r == "f") { return "f" }
             if or2(l == "s", r == "s") { return "s" }
             if or2(l == "N", r == "N") { return "s" }
@@ -536,6 +544,28 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Member" {
         if e[3] == "len" { return "i" }
         if e[3] == "to_string" { return "s" }
+        if e[3] == "lane" {
+            var qrt = ct_typeof(e[1], env, file)
+            if qrt.len > 1 && byte_at(qrt, 0) == 113 {
+                // SIMD lane → 元素码(q<N><ec> 剥 N)
+                var qi2: I32 = 1
+                while qi2 < qrt.len && is_digit(byte_at(qrt, qi2)) { qi2 += 1 }
+                return byte_slice(qrt, qi2, qrt.len)
+            }
+        }
+        if e[3] == "splat" {
+            var srt = ct_typeof(e[1], env, file)
+            if srt.len > 1 && byte_at(srt, 0) == 113 { return srt }
+        }
+        if e[3] == "to_array" {
+            var art = ct_typeof(e[1], env, file)
+            if art.len > 1 && byte_at(art, 0) == 113 {
+                // to_array → 视图码 v<ec>(发射恒等,标量模拟口径)
+                var ai3: I32 = 1
+                while ai3 < art.len && is_digit(byte_at(art, ai3)) { ai3 += 1 }
+                return "v" + byte_slice(art, ai3, art.len)
+            }
+        }
         var oft0 = ct_typeof(e[1], env, file)
         var oft = ct_strip_p(oft0)
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
@@ -557,6 +587,18 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if e[3] == "map" { return "L" }
         if or2(e[3] == "reduce", or2(e[3] == "expect", or2(e[3] == "with", e[3] == "fetch_add"))) { return "i" }
         if or2(e[3] == "is_err", e[3] == "is_ok") { return "b" }
+    }
+    if t == "TypeArgs" {
+        // Simd[E,N](§9.5):q<N><ec> 向量码(P1-C2 标量模拟;C 表示复用 ctron_view_<ec>)
+        if e[1].len > 1 && seq2(e[1][1], "Simd") && e[2].len > 2 {
+            var qec = ct_ty_code(e[2][1], file)
+            var qn = "4"
+            if e[2][2].len > 1 {
+                qn = num_text(e[2][2][1])
+            }
+            return "q" + qn + qec
+        }
+        return "i"
     }
     if t == "ArrLit" {
         var et = ct_typeof(e[1], env, file)
@@ -640,6 +682,27 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if cal[0] == "Member" {
             var m = cal[3]
+            if m == "splat" {
+                // Simd[F32,N].splat(v)(P1-C2):接收者为 TypeArgs-Simd → 同码传播
+                var crt2 = ct_typeof(cal[1], env, file)
+                if crt2.len > 1 && byte_at(crt2, 0) == 113 { return crt2 }
+            }
+            if m == "lane" {
+                var lrt = ct_typeof(cal[1], env, file)
+                if lrt.len > 1 && byte_at(lrt, 0) == 113 {
+                    var li2: I32 = 1
+                    while li2 < lrt.len && is_digit(byte_at(lrt, li2)) { li2 += 1 }
+                    return byte_slice(lrt, li2, lrt.len)
+                }
+            }
+            if m == "to_array" {
+                var trt = ct_typeof(cal[1], env, file)
+                if trt.len > 1 && byte_at(trt, 0) == 113 {
+                    var ti3: I32 = 1
+                    while ti3 < trt.len && is_digit(byte_at(trt, ti3)) { ti3 += 1 }
+                    return "v" + byte_slice(trt, ti3, trt.len)
+                }
+            }
             if m == "load" { return "i" }
             if m == "to_string" { return "s" }
             if m == "title" { return "s" }

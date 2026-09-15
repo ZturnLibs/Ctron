@@ -156,6 +156,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1] == "Le" { return "(" + c2 + " <= 0)" }
             return "(" + c2 + " >= 0)"
         }
+        // SIMD 元素级白名单算术(§9.5;P1-C2 标量模拟):逐元素循环,q 前缀域
+        if lt.len > 1 && byte_at(lt, 0) == 113 {
+            if or2(or3(e[1] == "Add", e[1] == "Sub", e[1] == "Mul"), or2(e[1] == "Div", e[1] == "Mod")) {
+                var qct = ct_ctype(lt)
+                var qec = lt
+                var qi3: I32 = 1
+                while qi3 < qec.len && is_digit(byte_at(qec, qi3)) { qi3 += 1 }
+                qec = byte_slice(qec, qi3, qec.len)
+                var qsct = ct_ctype(qec)
+                return "(\{ " + qct + " t_ql = " + ct_expr(e[2], env, file) + "; " + qct + " t_qr = " + ct_expr(e[3], env, file) + "; " + qct + " t_qo; t_qo.n = t_ql.n; t_qo.d = (" + qsct + "*)ctron_amalloc(sizeof(" + qsct + ") * t_ql.n); \{ int64_t t_qi; for (t_qi = 0; t_qi < t_ql.n; t_qi++) \{ t_qo.d[t_qi] = t_ql.d[t_qi] " + ct_op(e[1]) + " t_qr.d[t_qi]; } } t_qo; })"
+            }
+            panic("emit:Simd 算术白名单外:" + e[1])
+            return ""
+        }
         // 6 域算术:溢出检查帮手(镜像 eval 界门,§4.5 检查算术)
         var rt6 = ct_typeof(e[3], env, file)
         if or2(lt == "6", rt6 == "6") {
@@ -192,7 +206,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "((const char*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
         }
 
-        panic("ct_expr:index 目标非 List/数组:" + ot + " @行" + nline(e))
+        panic("ct_expr:index 目标非 List/数组:" + ot)
         return ""
     }
     if t == "Member" {
@@ -511,8 +525,41 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:parallel." + m)
                 return ""
             }
+            if cal[1][0] == "TypeArgs" && cal[1][1].len > 1 && seq2(cal[1][1][1], "Simd") {
+                // Simd[E,N].splat(v)(§9.5;P1-C2 标量模拟):arena 分配 + 填充循环
+                if m != "splat" {
+                    panic("emit:Simd." + m)
+                    return ""
+                }
+                if ag.len < 2 {
+                    panic("emit:splat 实参")
+                    return ""
+                }
+                var sEc = ct_ty_code(cal[1][2][1], file)
+                var sN = "4"
+                if cal[1][2].len > 2 && cal[1][2][2].len > 1 {
+                    sN = num_text(cal[1][2][2][1])
+                }
+                var sct = ct_ctype(sEc)
+                return "(\{ ctron_view_" + sEc + " t_sv; t_sv.n = " + sN + "; t_sv.d = (" + sct + "*)ctron_amalloc(sizeof(" + sct + ") * " + sN + "); \{ int64_t t_si; for (t_si = 0; t_si < " + sN + "; t_si++) \{ t_sv.d[t_si] = (" + sct + ")(" + ct_expr(ag[1], env, file) + "); } } t_sv; })"
+            }
             var obj = ct_expr(cal[1], env, file)
             var objt = ct_typeof(cal[1], env, file)
+            if objt.len > 1 && byte_at(objt, 0) == 113 {
+                // SIMD 成员(§9.5;P1-C2):lane 越界守卫直取 / to_array 恒等视图
+                if m == "lane" {
+                    if ag.len < 2 {
+                        panic("emit:lane 实参")
+                        return ""
+                    }
+                    return "(\{ int64_t t_lx = " + ct_expr(ag[1], env, file) + "; if (t_lx < 0 || t_lx >= (" + obj + ").n) \{ ctron_panic(\"index out of bounds\"); } (" + obj + ").d[t_lx]; })"
+                }
+                if m == "to_array" {
+                    return "(" + obj + ")"
+                }
+                panic("emit:Simd." + m)
+                return ""
+            }
             if m == "spawn" {
                 if objt != "g" {
                     panic("emit:spawn 需 scope 接收者")
