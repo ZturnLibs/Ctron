@@ -221,12 +221,15 @@ E2071 解除需宿主先行,跨线协同暂缓(bootstrap 发射侧 cleanup 机�
 
 ## P2 需设计 spike(先出设计记录再排期)
 
-### 切片 P2-A:comptime 完整形态(§8.4)
+### 切片 P2-A:comptime 完整形态(§8.4)(✅ 语句/循环已落地 2026-09-15,
+### 设计记录+实施见 2026-09-15-p2a-comptime-stmt.md)
 
-现状:单表达式体 comptime fn + If 值位 + const 折叠(语句/循环未做)。
-**Spike 问题:** ceval 扩展语句/循环的步数语义;comptime 值容器(List/Str 构造
-在编译期堆模型);预算口径(1s/编译单元如何映射到 1200 步)。
-**产出:** 设计记录 → ceval 扩展切片。
+**已落地:** ceval_block 补 Let/Assign(Eq)/While/For(range) 四分支——每迭代/每语句
+计步(既有 1200 步池,无限循环必然 E6010),Break/Continue/非 I 值/非 Eq 复合赋值 →
+静默回退全量求值(既有口径);**顺带修复 Ident 查找正向扫描取最旧绑定的错位**
+(改反向扫描取最新,与 Assign 写入槽一致);const 折叠自动获得语句/循环能力。
+fx_comp_stmt(wsum/fac)三方逐字;smoke 108 ok;suite 63/63;固定点逐字节。
+**余量:** 容器值域(List/Str 构造的编译期堆模型)与 Break/Continue 支持 → 按需另片。
 
 ### 切片 P2-B:Ctron.toml 解析与包元数据语义(§2.7)
 
