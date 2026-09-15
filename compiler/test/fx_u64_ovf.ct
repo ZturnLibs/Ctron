@@ -1,0 +1,7 @@
+// fx_u64_ovf.ct —— P1-B:U64 加法上溢检查算术(镜像宿主 ck_int panic 口径)
+fn main() -> I32 {
+    let big: U64 = 18446744073709551615
+    let r = big + 1
+    println(r)
+    return 0
+}

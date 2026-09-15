@@ -170,6 +170,16 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             panic("emit:Simd 算术白名单外:" + e[1])
             return ""
         }
+        // U64/USize 域(P1-B):uint64_t 检查帮手(镜像 eval 界门,panic 消息同宿主)
+        if or2(lt == "7", ct_typeof(e[3], env, file) == "7") {
+            var a7 = "(uint64_t)(" + ct_expr(e[2], env, file) + ")"
+            var b7 = "(uint64_t)(" + ct_expr(e[3], env, file) + ")"
+            if e[1] == "Add" { return "ctron_u64_add(" + a7 + ", " + b7 + ")" }
+            if e[1] == "Sub" { return "ctron_u64_sub(" + a7 + ", " + b7 + ")" }
+            if e[1] == "Mul" { return "ctron_u64_mul(" + a7 + ", " + b7 + ")" }
+            if e[1] == "Div" { return "ctron_u64_div(" + a7 + ", " + b7 + ")" }
+            if e[1] == "Mod" { return "ctron_u64_mod(" + a7 + ", " + b7 + ")" }
+        }
         // 6 域算术:溢出检查帮手(镜像 eval 界门,§4.5 检查算术)
         var rt6 = ct_typeof(e[3], env, file)
         if or2(lt == "6", rt6 == "6") {
@@ -300,6 +310,21 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var ag = e[2]
         if cal[0] == "TypeArgs" {
             var base = cal[1]
+            // as[T]() 显式转换(P1-B;§3.6 窄化=截断):C 强转,镜像 eval TypeArgs 位拦截
+            if base[0] == "Member" && seq2(base[3], "as") {
+                var aobj = ct_expr(base[1], env, file)
+                var tgtc = "i"
+                if cal[2].len > 1 {
+                    tgtc = ct_ty_code(cal[2][1], file)
+                }
+                if tgtc == "7" { return "(uint64_t)(" + aobj + ")" }
+                if tgtc == "6" { return "(int64_t)(" + aobj + ")" }
+                if tgtc == "i" { return "(int32_t)(" + aobj + ")" }
+                if tgtc == "b" { return "(int)(" + aobj + ")" }
+                if tgtc == "f" { return "(double)(" + aobj + ")" }
+                panic("emit:as 目标:" + tgtc)
+                return ""
+            }
             if base[0] == "Ident" && base[1] == "List" { return "ctron_list_new()" }
             // arena.list[T]():镜像 eval(arena 透明,List 即 GC 堆表)
             if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "arena" && base[2] == "Nm" && base[3] == "list" {

@@ -214,6 +214,8 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[1] == "Bool" { return "b" }
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
     if nt[1] == "I64" { return "6" }
+    if or2(nt[1] == "U64", nt[1] == "USize") { return "7" }
+    if nt[1] == "ISize" { return "6" }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "Named" && nt[2].len > 1 {
         // 泛型 struct 实例化注解:Pair[I32, Str] → u:Pair__I_S(实参限标量/Str)
@@ -256,6 +258,7 @@ fn ct_ctype(code: Str) -> Str {
     if or2(code == "L", code == "LI") { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
+    if code == "7" { return "uint64_t" }
     if code == "v" { return "void" }
     if code.len > 1 && byte_at(code, 0) == 118 {
         // 视图码 v<ec>(§3.6 切片):typedef 名 = ctron_view_<元素码原文>(与 driver_emit 预发 typedef 对应)

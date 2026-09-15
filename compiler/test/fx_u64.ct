@@ -1,0 +1,17 @@
+// fx_u64.ct —— P1-B U64/USize/ISize 定宽存储与检查算术(§3.1/§4.5)
+fn main() -> I32 {
+    let big: U64 = 18446744073709551615
+    let down: U64 = big - 1
+    assert_eq(down, 18446744073709551614)
+    let small: U64 = 5
+    assert_eq(small + small, 10)
+    let prod: U64 = small * small
+    assert_eq(prod, 25)
+    let sz: USize = 7
+    assert_eq(sz, 7)
+    let trunc: U64 = 4294967297
+    assert_eq(trunc.as[U32](), 1)
+    let fromi: U64 = 42
+    assert_eq(fromi, 42)
+    return 0
+}

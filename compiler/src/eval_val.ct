@@ -475,6 +475,9 @@ fn veq(a: List[Str], b: List[Str]) -> Bool {
     if or2(ka == "6", kb == "6") {
         return c6cmp(c6can(a[1]), c6can(b[1])) == 0
     }
+    if or2(ka == "7", kb == "7") {
+        return vcmp(a, b) == 0
+    }
     if or2(ka == "W", kb == "W") {
 
         if or2(ka == "I", ka == "W") && or2(kb == "I", kb == "W") {

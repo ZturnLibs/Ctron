@@ -102,6 +102,12 @@ fn main() -> I32 {
             println("static int64_t ctron_i64_div(int64_t a, int64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } if (b == -1 && a == (-9223372036854775807LL - 1)) \{ ctron_panic(\"integer overflow (/)\"); } return a / b; }")
             println("static int64_t ctron_i64_mod(int64_t a, int64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } if (b == -1 && a == (-9223372036854775807LL - 1)) \{ ctron_panic(\"integer overflow (%)\"); } return a % b; }")
             println("static int64_t ctron_i64_neg(int64_t a) \{ int64_t r; if (__builtin_sub_overflow(0, a, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
+            // U64/USize 定宽槽检查帮手(P1-B):uint64_t,panic 消息镜像宿主
+            println("static uint64_t ctron_u64_add(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_add_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
+            println("static uint64_t ctron_u64_sub(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_sub_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
+            println("static uint64_t ctron_u64_mul(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_mul_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")
+            println("static uint64_t ctron_u64_div(uint64_t a, uint64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } return a / b; }")
+            println("static uint64_t ctron_u64_mod(uint64_t a, uint64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } return a % b; }")
             println("static const char* ctron_i64_to_string(int64_t v) \{ char* r = (char*)ctron_amalloc(32); snprintf(r, 32, \"%lld\", (long long)v); return r; }")
             // Phase 4 并发运行时(函数部):任务 trampoline/spawn/join/Channel/parallel
             println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; ct_tls_task = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } return 0; }")
@@ -129,11 +135,11 @@ fn main() -> I32 {
             println("static const char* ctron_dom_title(void) \{ return ctron_dom_title_buf; }")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
             // 切片视图 typedef(§3.6,P1-D):标量元素码全集无条件前置(宿主 ctron_arr_*/R 线 ct_arr 同形)
-            println("typedef struct \{ int32_t* d; int64_t n; \} ctron_view_i;")
-            println("typedef struct \{ int64_t* d; int64_t n; \} ctron_view_6;")
-            println("typedef struct \{ int* d; int64_t n; \} ctron_view_b;")
-            println("typedef struct \{ const char** d; int64_t n; \} ctron_view_s;")
-            println("typedef struct \{ double* d; int64_t n; \} ctron_view_f;")
+            println("typedef struct \{ int32_t* d; int64_t n; } ctron_view_i;")
+            println("typedef struct \{ int64_t* d; int64_t n; } ctron_view_6;")
+            println("typedef struct \{ int* d; int64_t n; } ctron_view_b;")
+            println("typedef struct \{ const char** d; int64_t n; } ctron_view_s;")
+            println("typedef struct \{ double* d; int64_t n; } ctron_view_f;")
             // 用户 struct 值类型(§6.1):typedef 先于原型与函数体
             var si: I32 = 1
             while si < file.len {
