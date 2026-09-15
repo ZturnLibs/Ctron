@@ -119,7 +119,28 @@ U64 值截断(已登记)。
 需设计记录)。**Verify:** 03b 宽度全集从「宿主通过」转双侧绿;新增 U64 算术夹具。
 **规模:** 3-5 天。
 
-### 切片 P1-C:Simd 运算面盘点与口径(§9.5)
+### 切片 P1-C:Simd 运算面盘点与口径(§9.5)(✅ 盘点+决策完成 2026-09-14;补齐拆 P1-C2)
+
+**盘点结论(2026-09-14):**
+- eval 侧已按**标量模拟**实现:`Simd[E,N]` TypeArgs → "SIMD" 值(eval_expr.ct:439-447,
+  携元素头名+N)、`.splat(v)` → "VEC" 逐元素值(eval_call.ct:608-619)、VEC `.lane(i)`/
+  `.to_array()` → "A" 数组(eval_call.ct:620-633)。tests/09_simd.ct(白名单算术
+  `a * b + a` + lane + to_array)解释面绿(在 suite 63 件内)。
+- 发射侧零覆盖:TypeArgs-Simd 无臂(ct_ty_code 无分支)、VEC Binary 无元素级循环、
+  lane/to_array 无发射;R 线已有 ct_farr{float* d} 句柄(trans.rs:860)。
+**口径决策(成文):标量模拟。** spec §9.5 明文允许实现口径;自举发射器以 C 标量循环
+模拟向量语义(与 eval 同构),不做 SIMD intrinsics(与自举"C 可编译产物"定位一致,
+R 线 ct_farr 同为标量句柄)。f32 语义经既有"浮点二进制舍入/f32 精度"挂账统一承担
+(eval 为十进制定点域,发射为 C double,语料值域内观察等价)。
+**补齐拆 P1-C2(1-2 天,规格已明):** ①ct_expr TypeArgs-Simd + Member splat →
+arena 分配 + 填充循环(GNU 语句表达式);②Binary 白名单(* + - /)对 SIMD 码 →
+元素级循环;③lane → 越界守卫直取;④to_array → 视图恒等(文档化);⑤SIMD 码
+`q<N><ec>`(C 表示复用 ctron_view_<ec>,n 场承载 N,与切片视图不冲突——Binary 臂
+以 q 前缀区分);⑥fx_simd 三方夹具(镜像 09_simd.ct)。
+
+---
+
+### 旧 P1-C 原文(已被上条取代)
 
 **Scope:** 盘点 eval/trans 的 Simd 现状(前奏 splat/lane/to_array 已钉);
 决策:标量模拟口径成文(spec 允许实现口径)或补齐向量发射。
@@ -212,7 +233,7 @@ smoke 3d 加逐字节漂移断言;示例 vendored 副本为钉定快照允许落
 
 ```
 P0-A/P0-B/P0-C/P0-E/P0-F(✅) → P0-G(1-3d,发射面 std 新域适配,与 std 泳道协同)
-P1-A(✅) / P1-D(✅) → P1-B(3-5d) / P1-C(0.5-3d) → P1-A2(2-4d,panic 展开+E2071 解除)
+P1-A(✅) / P1-D(✅) / P1-C(✅ 盘点+决策) → P1-C2(1-2d,Simd 发射补齐) / P1-B(3-5d) → P1-A2(2-4d)
 P2 各 spike 穿插在门禁等待期
 ```
 
