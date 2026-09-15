@@ -1,0 +1,129 @@
+// std/opt.ct —— Option/Result 组合子补齐(前奏 map/or/expect 之外的链式缺口)
+// since: std-0.2 stability: experimental
+// 口径:与 `?`/`or` 语义对齐(§4.4/§5.3);命名无同义别名(运算符宪法精神)
+
+// 单子绑定:Some(v) → f(v);None → None
+pub fn opt_and_then[T, U](o: Option[T], f: fn(T) -> Option[U]) -> Option[U] {
+    match o {
+        Some(v) => {
+            return f(v)
+        }
+        None => {
+            return None
+        }
+    }
+}
+
+// 惰性取默认:None 时才调用 f
+pub fn opt_or_else[T](o: Option[T], f: fn() -> Option[T]) -> Option[T] {
+    match o {
+        Some(v) => {
+            return Some(v)
+        }
+        None => {
+            return f()
+        }
+    }
+}
+
+// 双 lift:任一 None → None
+pub fn opt_map2[T, U, V](a: Option[T], b: Option[U], f: fn(T, U) -> V) -> Option[V] {
+    match a {
+        Some(x) => {
+            match b {
+                Some(y) => {
+                    return Some(f(x, y))
+                }
+                None => {
+                    return None
+                }
+            }
+        }
+        None => {
+            return None
+        }
+    }
+}
+
+// Option → Result(None 附消息)
+pub fn opt_to_result[T](o: Option[T], msg: Str) -> Result[T, Str] {
+    match o {
+        Some(v) => {
+            return Ok(v)
+        }
+        None => {
+            return Err(msg)
+        }
+    }
+}
+
+// 测试用 fn 值(闭包经发射面有已知缺陷,统一 fn 化——C13)
+fn opt_double(x: I32) -> Option[I32] {
+    return Some(x * 2)
+}
+
+fn opt_half_if_even(x: I32) -> Option[I32] {
+    if x % 2 == 0 {
+        return Some(x / 2)
+    }
+    return None
+}
+
+fn opt_zero() -> Option[I32] {
+    return Some(0)
+}
+
+fn opt_three() -> Option[I32] {
+    return Some(3)
+}
+
+fn opt_add(a: I32, b: I32) -> I32 {
+    return a + b
+}
+
+test "and then chains" {
+    var r = opt_and_then[I32, I32](Some(5), opt_double)
+    assert_eq(r.or(0), 10)
+    var n = opt_and_then[I32, I32](None, opt_double)
+    assert(!n.is_some())
+    var half = opt_and_then[I32, I32](Some(9), opt_half_if_even)
+    assert(!half.is_some())
+}
+
+// E3070:闭包不可变捕获 var 局部——惰性验证改用值语义(f 返回标记值)
+test "or else defaults by value" {
+    var hit = opt_or_else[I32](Some(7), opt_zero)
+    assert_eq(hit.or(0), 7)
+    var miss = opt_or_else[I32](None, opt_three)
+    assert_eq(miss.or(0), 3)
+}
+
+test "map2 both present" {
+    var sum = opt_map2[I32, I32, I32](Some(2), Some(3), opt_add)
+    assert_eq(sum.or(0), 5)
+    var miss = opt_map2[I32, I32, I32](Some(2), None, opt_add)
+    assert(!miss.is_some())
+    var miss2 = opt_map2[I32, I32, I32](None, Some(3), opt_add)
+    assert(!miss2.is_some())
+}
+
+test "to result carries message" {
+    var ok = opt_to_result[I32](Some(4), "missing")
+    match ok {
+        Ok(v) => {
+            assert_eq(v, 4)
+        }
+        Err(m) => {
+            assert_eq(m, "unreachable")
+        }
+    }
+    var bad = opt_to_result[I32](None, "missing")
+    match bad {
+        Ok(v) => {
+            assert_eq(v, -999999)
+        }
+        Err(m) => {
+            assert_eq(m, "missing")
+        }
+    }
+}

@@ -1,0 +1,259 @@
+// [挂起 2026-09-15] C17:宿主 byte_slice 越界(见 v0.2 API 规范 §0),修复后 mv 回 std/json_write.ct 即可
+// 算法已经 python 逐向量验证,测试块齐备
+// std/json_write.ct —— JSON 写出与成员枚举(与 json.ct 配对的写出半边;
+// 路径展平 DOM(esc/junesc 逆操作 + qkeys)按条目 DFS 重放为 JSON 文本)
+// since: std-0.3 stability: experimental
+// 口径:输入为 json.ct parse 产物(父先子后 DFS 条目,路径以 "." 分段,
+// 根为 "$");键与字符串值写出时经 esc 重转义;数字/布尔/null 按原文;
+// 独立模块理由(C17):json.ct decl 数逼近宿主敏感阈值,拆分规避
+
+// Str → JSON 字符串字面量(含引号;控制字符转义;UTF-8 透传;与 json.ct esc 同构)
+pub fn wesc(s: Str) -> Str {
+    var e = "\\"
+    var q = "\""
+    var out = q
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 34 {
+            out = out + q
+        } else if c == 92 {
+            out = out + e + e
+        } else if c == 8 {
+            out = out + e + "b"
+        } else if c == 9 {
+            out = out + e + "t"
+        } else if c == 10 {
+            out = out + e + "n"
+        } else if c == 12 {
+            out = out + e + "f"
+        } else if c == 13 {
+            out = out + e + "r"
+        } else if c < 32 {
+            var hi = byte_slice("0123456789ABCDEF", c / 16, c / 16 + 1)
+            var lo = byte_slice("0123456789ABCDEF", c % 16, c % 16 + 1)
+            out = out + e + "u00" + hi + lo
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out + q
+}
+
+// 路径深度 = '.' 计数(根 "$" 为 0)
+pub fn jw_depth(path: Str) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < path.len {
+        if byte_at(path, i) == 46 {
+            n += 1
+        }
+        i += 1
+    }
+    return n
+}
+
+// child 是否为 parent 的直接成员(前缀匹配且深度恰 +1)
+fn jw_child(child: Str, parent: Str, pd: I32) -> Bool {
+    if jw_depth(child) != pd + 1 {
+        return false
+    }
+    var pl = parent.len
+    if child.len <= pl {
+        return false
+    }
+    if byte_at(child, pl) != 46 {
+        return false
+    }
+    var i: I32 = 0
+    while i < pl {
+        if byte_at(child, i) != byte_at(parent, i) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 路径最后一段(对象键名或数组下标文本)
+fn jw_lastseg(path: Str) -> Str {
+    var i = path.len - 1
+    while i >= 0 {
+        if byte_at(path, i) == 46 {
+            return byte_slice(path, i + 1, path.len)
+        }
+        i -= 1
+    }
+    return path
+}
+
+// 枚举 path 的直接成员名(对象=键序列,数组=下标序列"0","1",…)
+pub fn jw_keys(entries: List[List[Str]], path: Str) -> List[Str] {
+    var out = List[Str]()
+    var pd = jw_depth(path)
+    var i: I32 = 0
+    while i < entries.len {
+        if jw_child(entries[i][0], path, pd) {
+            out.push(jw_lastseg(entries[i][0]))
+        }
+        i += 1
+    }
+    return out
+}
+
+// 递归写出:ni 为当前值条目下标,depth 为其深度;返回下一个未消费下标
+fn jw_val(entries: List[List[Str]], ni: I32, depth: I32, out: List[Str]) -> I32 {
+    var tag = entries[ni][1]
+    var val = entries[ni][2]
+    if tag == "s" {
+        out.push(wesc(val))
+        return ni + 1
+    }
+    if tag == "n" {
+        out.push(val)
+        return ni + 1
+    }
+    if tag == "b" {
+        out.push(val)
+        return ni + 1
+    }
+    if tag == "z" {
+        out.push("null")
+        return ni + 1
+    }
+    var open_c = "{"
+    var close_c = "}"
+    if tag == "a" {
+        open_c = "["
+        close_c = "]"
+    }
+    out.push(open_c)
+    var j = ni + 1
+    var first = true
+    var parent = entries[ni][0]
+    while j < entries.len {
+        if !jw_child(entries[j][0], parent, depth) {
+            break
+        }
+        if !first {
+            out.push(",")
+        }
+        first = false
+        if tag == "o" {
+            out.push("\"" + wesc(jw_lastseg(entries[j][0])) + "\":")
+        }
+        j = jw_val(entries, j, depth + 1, out)
+    }
+    out.push(close_c)
+    return j
+}
+
+// 写出:entries(json.ct parse 产物)→ 紧凑 JSON 文本;空表 → None
+pub fn write_json(entries: List[List[Str]]) -> Option[Str] {
+    if entries.len == 0 {
+        return None
+    }
+    var out = List[Str]()
+    jw_val(entries, 0, 0, out)
+    var s = ""
+    var i: I32 = 0
+    while i < out.len {
+        s = s + out[i]
+        i += 1
+    }
+    return Some(s)
+}
+
+test "write json round trip via json.parse" {
+    let r = parse("[1, 2, true, null]")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            return 1
+        }
+    }
+    assert_eq(text, "[1,2,true,null]")
+    let r2 = parse(text)
+    let es2 = match r2 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qval(es2, "$.1"), "2")
+}
+
+test "write json object with strings" {
+    let r = parse("{\"name\": \"张三\", \"n\": -3.5}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            return 1
+        }
+    }
+    assert_eq(text, "{\"name\":\"张三\",\"n\":-3.5}")
+}
+
+test "write json nested types preserved" {
+    let r = parse("{\"a\": [1, {\"b\": null}], \"s\": \"x\\ty\"}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            return 1
+        }
+    }
+    let r2 = parse(text)
+    let es2 = match r2 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qval(es2, "$.a.1.b"), "null")
+    assert_eq(qtag(es2, "$.s"), "s")
+    assert_eq(qval(es, "$.s"), qval(es2, "$.s"))
+}
+
+test "jw_keys enumerates members" {
+    let r = parse("{\"b\": 1, \"a\": true, \"c\": [9]}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let ks = jw_keys(es, "$")
+    assert_eq(ks.len, 3)
+    assert_eq(ks[0], "b")
+    assert_eq(ks[1], "a")
+    assert_eq(ks[2], "c")
+    let inner = jw_keys(es, "$.c")
+    assert_eq(inner.len, 1)
+    assert_eq(inner[0], "0")
+    assert_eq(jw_keys(es, "$.b").len, 0)
+}
