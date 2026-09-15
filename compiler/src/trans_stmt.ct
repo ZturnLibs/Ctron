@@ -677,6 +677,18 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln(vt + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";", env)
                 return env_bind(env, pat[1], ty)
             }
+            if ty.len > 2 && byte_at(ty, 0) == 119 {
+                // W 域 let(§3.1 定宽,P1-B2):Int 字面量转十进制(0b/0o 原文非法 C),其余强转
+                var vt = ct_ctype(ty)
+                var rhs = ""
+                if st[4][0] == "Int" {
+                    rhs = lit_to_dec(st[4][1])
+                } else {
+                    rhs = ct_expr(st[4], env, file)
+                }
+                eln(vt + " t_" + pat[1] + " = (" + vt + ")(" + rhs + ");", env)
+                return env_bind(env, pat[1], ty)
+            }
             println("//DBG-letty:" + ty)
             var rhs = ct_expr(st[4], env, file)
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
@@ -767,6 +779,31 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if st[2] == "ModEq" { h6 = "ctron_i64_mod" }
             if h6 != "" {
                 eln("t_" + tgt[1] + " = " + h6 + "(t_" + tgt[1] + ", " + rhs2 + ");", env)
+                return env
+            }
+        }
+        // W 域复合赋值(P1-B2):定宽检查帮手
+        if tt.len > 2 && byte_at(tt, 0) == 119 {
+            var wlo = "0"
+            var whi = "255"
+            if tt == "w8s" {
+                wlo = "-128"
+                whi = "127"
+            }
+            if tt == "w16u" {
+                wlo = "0"
+                whi = "65535"
+            }
+            if tt == "w16s" {
+                wlo = "-32768"
+                whi = "32767"
+            }
+            var h8 = ""
+            if st[2] == "AddEq" { h8 = "ctron_w_add" }
+            if st[2] == "SubEq" { h8 = "ctron_w_sub" }
+            if st[2] == "MulEq" { h8 = "ctron_w_mul" }
+            if h8 != "" {
+                eln("t_" + tgt[1] + " = " + h8 + "(t_" + tgt[1] + ", (int32_t)(" + rhs2 + "), " + wlo + ", " + whi + ");", env)
                 return env
             }
         }

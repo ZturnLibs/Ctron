@@ -170,6 +170,31 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             panic("emit:Simd 算术白名单外:" + e[1])
             return ""
         }
+        // W 域定宽检查算术(§3.1/§4.5;P1-B2):宽者定界,界门 panic 镜像 w_arith
+        if lt.len > 2 && byte_at(lt, 0) == 119 {
+            var wl = w_code_wider(lt, ct_typeof(e[3], env, file))
+            var wlo = "0"
+            var whi = "255"
+            if wl == "w8s" {
+                wlo = "-128"
+                whi = "127"
+            }
+            if wl == "w16u" {
+                wlo = "0"
+                whi = "65535"
+            }
+            if wl == "w16s" {
+                wlo = "-32768"
+                whi = "32767"
+            }
+            var a9 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
+            var b9 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
+            if e[1] == "Add" { return "ctron_w_add(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
+            if e[1] == "Sub" { return "ctron_w_sub(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
+            if e[1] == "Mul" { return "ctron_w_mul(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
+            if e[1] == "Div" { return "ctron_w_div(" + a9 + ", " + b9 + ")" }
+            if e[1] == "Mod" { return "ctron_w_mod(" + a9 + ", " + b9 + ")" }
+        }
         // U64/USize 域(P1-B):uint64_t 检查帮手(镜像 eval 界门,panic 消息同宿主)
         if or2(lt == "7", ct_typeof(e[3], env, file) == "7") {
             var a7 = "(uint64_t)(" + ct_expr(e[2], env, file) + ")"
@@ -326,6 +351,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if tgtc == "i" { return "(int32_t)(" + aobj + ")" }
                 if tgtc == "b" { return "(int)(" + aobj + ")" }
                 if tgtc == "f" { return "(double)(" + aobj + ")" }
+                if tgtc.len > 2 && byte_at(tgtc, 0) == 119 {
+                    return "(" + ct_ctype(tgtc) + ")(" + aobj + ")"
+                }
                 panic("emit:as 目标:" + tgtc)
                 return ""
             }

@@ -214,6 +214,10 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[1] == "Bool" { return "b" }
     if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
     if nt[1] == "I64" { return "6" }
+    if nt[1] == "U8" { return "w8u" }
+    if nt[1] == "I8" { return "w8s" }
+    if nt[1] == "U16" { return "w16u" }
+    if nt[1] == "I16" { return "w16s" }
     if or2(nt[1] == "U64", nt[1] == "USize") { return "7" }
     if nt[1] == "ISize" { return "6" }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
@@ -259,6 +263,10 @@ fn ct_ctype(code: Str) -> Str {
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "7" { return "uint64_t" }
+    if code == "w8u" { return "uint8_t" }
+    if code == "w8s" { return "int8_t" }
+    if code == "w16u" { return "uint16_t" }
+    if code == "w16s" { return "int16_t" }
     if code == "v" { return "void" }
     if code.len > 1 && byte_at(code, 0) == 118 {
         // 视图码 v<ec>(§3.6 切片):typedef 名 = ctron_view_<元素码原文>(与 driver_emit 预发 typedef 对应)
@@ -402,6 +410,21 @@ fn ct_field_ty_inst(file: List[Str], inst: Str, fname: Str) -> Str {
 }
 
 // 调用点实参转换:按形参类型码包转换(N→L/A 提升为指针,L→N/s 降为 char*)
+// W 域位宽提取("w8u"→8,"w16s"→16;非 w 码 → 0)
+fn w_bits_of(c: Str) -> I32 {
+    if c.len > 1 && byte_at(c, 0) == 119 {
+        if byte_at(c, 1) == 49 { return 16 }
+        if byte_at(c, 1) == 56 { return 8 }
+    }
+    return 0
+}
+
+// 双操作数取较宽宽度域(镜像 eval w_arith 的 w_rank 规则)
+fn w_code_wider(a: Str, b: Str) -> Str {
+    if w_bits_of(b) > w_bits_of(a) { return b }
+    return a
+}
+
 fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
     if pc == "L" && ac != "L" { return "(ctron_list*)(" + x + ")" }
     if pc == "A" && ac != "A" { return "(ctron_cell*)(" + x + ")" }
@@ -479,7 +502,13 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
 fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" {
-        // 宽字面量按 I64 域推断(§3.1.1;与 eval 直入 6 域同源,仅无后缀)
+        // 宽度后缀 → W 域码(P1-B2)
+        if e[2].len == 3 {
+            if seq2(e[2], "u8") { return "w8u" }
+            if seq2(e[2], "i8") { return "w8s" }
+            if seq2(e[2], "u16") { return "w16u" }
+            if seq2(e[2], "i16") { return "w16s" }
+        }
         if e[2].len == 0 {
             if lit_wide_i32(e[1]) {
                 return "6"

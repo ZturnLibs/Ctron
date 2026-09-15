@@ -1,0 +1,8 @@
+// fx_w8_ovf.ct —— P1-B2:U8 加法上溢检查算术(镜像 w_arith panic 口径)
+fn main() -> I32 {
+    let a: U8 = 200
+    let b: U8 = 100
+    let r = a + b
+    println(r)
+    return 0
+}

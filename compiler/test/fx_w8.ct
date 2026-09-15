@@ -1,0 +1,19 @@
+// fx_w8.ct —— P1-B2 W 域发射(§3.1 定宽):注解/字面量/检查算术/比较/转换
+fn main() -> I32 {
+    let tiny: I8 = -128
+    let maxi: U16 = 65535
+    let b: U8 = 0b1010u8
+    assert_eq(b, 10)
+    assert_eq(tiny, -128)
+    assert_eq(maxi, 65535)
+    let c: U8 = 100
+    let d: U8 = 100
+    assert_eq(c + d, 200)
+    let n: I16 = -300
+    assert_eq(n / 2, -150)
+    let w: U8 = 44
+    assert_eq(w.as[I32](), 44)
+    let m: I16 = -32768
+    assert_eq(m, -32768)
+    return 0
+}

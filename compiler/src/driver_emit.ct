@@ -111,6 +111,12 @@ fn main() -> I32 {
             println("static int64_t ctron_i64_mod(int64_t a, int64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } if (b == -1 && a == (-9223372036854775807LL - 1)) \{ ctron_panic(\"integer overflow (%)\"); } return a % b; }")
             println("static int64_t ctron_i64_neg(int64_t a) \{ int64_t r; if (__builtin_sub_overflow(0, a, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
             // U64/USize 定宽槽检查帮手(P1-B):uint64_t,panic 消息镜像宿主
+            // W 域定宽检查帮手(P1-B2):int32 中间量 + 宽度界门,panic 镜像 w_arith
+            println("static int32_t ctron_w_add(int32_t a, int32_t b, int32_t lo, int32_t hi) \{ int32_t r = a + b; if (r < lo || r > hi) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
+            println("static int32_t ctron_w_sub(int32_t a, int32_t b, int32_t lo, int32_t hi) \{ int32_t r = a - b; if (r < lo || r > hi) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
+            println("static int32_t ctron_w_mul(int32_t a, int32_t b, int32_t lo, int32_t hi) \{ int32_t r = a * b; if (r < lo || r > hi) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")
+            println("static int32_t ctron_w_div(int32_t a, int32_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } return a / b; }")
+            println("static int32_t ctron_w_mod(int32_t a, int32_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } return a % b; }")
             println("static uint64_t ctron_u64_add(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_add_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
             println("static uint64_t ctron_u64_sub(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_sub_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
             println("static uint64_t ctron_u64_mul(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_mul_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")
