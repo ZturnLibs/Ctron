@@ -107,17 +107,28 @@ smoke 102 ok;固定点逐字节;decls 锁 273→277(+pdiag/lex_single/type_start
 **边界:** 宿主 check 汇总行("N diagnostics")native 面不打——与既有 sem 负例的
 native 口径一致; suitescope 负例协议只核 rc+码+消息子串,不受影响。
 
-### 切片 P1-B:ISize/USize/U64 定宽存储(§3.1)
+### 切片 P1-B:ISize/USize/U64 定宽存储(§3.1)(✅ 已完成 2026-09-15,
+### 计划见 2026-09-14-p1b-u64-widths.md)
 
-**Spec 要求:** U64/ISize/USize 与目标指针同宽(64 位);当前发射类型擦除 int32,
-U64 值截断(已登记)。
-**设计要点:** 64 位存储槽(U64/ISize/USize → int64_t,独立于 "6" 的语义——
-定宽回绕 vs 6 域不回绕);检查算术边界 2^64(无符号);as 转义链全宽度矩阵;
-字面量直入宽度槽(解除 I32 入口限制的最后一段)。
-**依赖警示:** 与「I32 发射面检查被自举传播阻断」同族——发射检查会进编译器自身,
-定宽槽落地后 txt_num/dvi 等内部回绕点需一并迁移(或引入内部专用无检查路径,
-需设计记录)。**Verify:** 03b 宽度全集从「宿主通过」转双侧绿;新增 U64 算术夹具。
-**规模:** 3-5 天。
+**已落地:**
+- 解释侧新增 **"7" 值域**(U64/USize:无符号十进制文本,0..2^64-1 精确承载,复用 6 域
+  c6 竖式算术全家,界门 `c6_in_u64` ≤ 2^64-1 字符串比较);val_arith/vcmp/veq/fmt 四处
+  分派补齐;let 注解消费扩 U64/USize→v7、ISize→"6"(与 I64 同宽同检查);u64/usize
+  后缀字面量 → v7(lit_to_dec 文本累算精确);conv_as 7↔全类型(as[U32] 既有回绕产物
+  不变,03b 巧合相等点复核保持)。
+- 发射侧:`ct_ty_code` U64/USize→"7"、ISize→"6";`ct_ctype` "7"→uint64_t;
+  driver_emit 预发 ctron_u64_add/sub/mul/div/mod(__builtin_*_overflow + panic 消息
+  镜像宿主);Binary/复合赋值 "7" 路由;as[U64]/as[USize] 发射 = TypeArgs 位拦截 →
+  `(uint64_t)(x)`(§3.6 窄化=截断)。
+- **顺带修复(自举传播缺陷,roadmap 预警项):** txt_num/dvi 的 I32 直接累加在
+  seed-rt 检查算术下对超 I32 文本必炸("integer overflow (*)",ctc.sh 路径从未跑过
+  03b 故潜伏)——迁移为 "7" 域文本累加 + mod 2^32 + MIN 特判(真 I32 回绕语义,
+  免界门/免递归);as[U64] 发射缺口随片闭环。
+- **Verify:** fx_u64/fx_u64_ovf(上溢 panic 探针)bootstrap 双面一致;03b 双通道绿
+  (host 2/2 + bootstrap);smoke 101 ok;suite 63/63;固定点逐字节;decls 277→281。
+**挂账:** 宿主 rt 64 位无符号 Add 缺上界检查(big+1 不 panic 而打印 2^64——host
+ck_int 仅判 x≥0,emit/eval 均按 spec panic,宿主缺陷待修);W 域(8/16 位)发射面
+仍 int32 擦除(独立欠账);u32/u64 后缀的发射面(语料无;fx_u64 避)。
 
 ### 切片 P1-C:Simd 运算面盘点与口径(§9.5)(✅ 盘点+决策完成 2026-09-14;补齐拆 P1-C2)
 
@@ -235,7 +246,7 @@ smoke 3d 加逐字节漂移断言;示例 vendored 副本为钉定快照允许落
 
 ```
 P0-A/P0-B/P0-C/P0-E/P0-F(✅) → P0-G(1-3d,发射面 std 新域适配,与 std 泳道协同)
-P1-A(✅) / P1-D(✅) / P1-C(✅ 盘点+决策) → P1-C2(1-2d,Simd 发射补齐) / P1-B(3-5d) → P1-A2(2-4d)
+P1-A / P1-D / P1-C / P1-C2 / P1-B(✅) → P1-A2(2-4d,panic 展开+E2071 解除)
 P2 各 spike 穿插在门禁等待期
 ```
 
