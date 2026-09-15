@@ -141,14 +141,24 @@ int64_t n}` 视图 typedef(标量五码前置,宿主 ctron_arr_*/R 线 ct_arr �
 嵌套视图;已发现并转登记 **P0-F**:fn 值适配器 `ct_ad_L<nline(Ident)>` 命名恒 "0"
 (Ident 无行号戳),同文件 ≥2 fn 值引用即重定义——并行 std 泳道新 sort 语料首次触达。
 
-### 切片 P0-F(新增,2026-09-14):fn 值适配器命名冲突
+### 切片 P0-F(新增,2026-09-14):fn 值适配器命名冲突(✅ 已完成 2026-09-14,734c4f8)
 
 **现象:** `ct_ad_L` + nline(Ident)(trans_expr.ct:92)恒得 "0"(Ident 不在批次九
 行号戳节点族),同文件多个 fn 值引用 → 多个 `ct_ad_L0` 文件级定义,gcc 重定义。
-**Scope:** 适配器命名改内容可区分(调用点唯一化:闭包先例的站点行号不可得时,按被调名
-+ pass1 定义去重 env 集合,或 fn 值 Ident 位补行号戳),fx 多 fn 值夹具双侧锚。
-**Verify:** 同文件多 fn 值引用(≥3 个不同被调 + 同被调多次)发射编译运行绿。
-**规模:** 0.5-1 天。
+**已落地:** 适配器按被调名命名(`ct_ad_<被调>`;Ctron 无重载,名即签名)+ `#ifndef
+CT_AD_DEF_<被调>` include 守卫去重(同被调多处引用仅落地一份定义)。fx_fnval_multi
+(6 处 fn 值引用:不同被调 + 同被调多次)三方逐字;suite 63/63;固定点逐字节。
+
+### 切片 P0-G(新增,2026-09-14):发射面 std 新域适配(并行 std 泳道触发)
+
+**现象:** std 泳道新模块撞发射面三个缺口——`json.ct` 撞 **值位 Match**
+(批次八挂账"值位 match 仅 fn 尾特判"的泛化面)、`unicode.ct` 撞 `ct_expr:Member`
+(未知接收者)、`csv.ct` 撞 `byte_at 目标需 Str`(emit 崩,疑似 typeof 空码路径)。
+其余十模块(str/sort/enc/hash/heap/opt/path/rand/strconv/time)发射全绿。
+**Scope:** 三形态逐个定位(值位 Match 泛化 or json 语料规避,与泳道协商口径;
+Member 接收者补臂;csv 崩点修守卫),fx 夹具随片。
+**Verify:** json/unicode/csv 三模块 emit → gcc → 运行与解释逐字。
+**规模:** 1-3 天(值位 Match 泛化另计)。
 
 ---
 
@@ -201,7 +211,7 @@ smoke 3d 加逐字节漂移断言;示例 vendored 副本为钉定快照允许落
 ## 执行顺序建议
 
 ```
-P0-A/P0-B/P0-C/P0-E(✅) → P0-F(0.5-1d,fn 值适配器命名)
+P0-A/P0-B/P0-C/P0-E/P0-F(✅) → P0-G(1-3d,发射面 std 新域适配,与 std 泳道协同)
 P1-A(✅) / P1-D(✅) → P1-B(3-5d) / P1-C(0.5-3d) → P1-A2(2-4d,panic 展开+E2071 解除)
 P2 各 spike 穿插在门禁等待期
 ```
