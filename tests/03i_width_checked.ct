@@ -29,4 +29,8 @@ test "explicit as across widths" {
     assert_eq(w.as[I32](), 44)
     let n: I32 = 7
     assert_eq(n.as[U64](), 7)
+    let s64: U64 = 42u64
+    let s32: USize = 9usize
+    assert_eq(s64, 42)
+    assert_eq(s32, 9)
 }
