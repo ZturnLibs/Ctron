@@ -83,15 +83,18 @@ ct_block/ct_body/BlockExpr/match 臂/test 体五个 C 作用域边界 push/emit/
 类引用 Drop(§6.4 类引用不触发;eval 统一 "U" 的三线分歧另挂账)、泛型 impl Drop。
 **R 线:** 发射侧已有 emit_scope_drops(trans.rs),本片为其自举镜像,无需回移。
 
-### 切片 P1-A2:panic 路径 Drop 展开 + E2071 解除评估(§6.4 余量)
+### 切片 P1-A2:panic 路径 Drop 展开(§6.4 余量)(✅ 已完成 2026-09-15,faa8986)
 
-**Spec 要求:** panic 展开保证 drop 执行;break/continue 越过 Drop 作用域不拒绝。
-**现状:** ctron_panic 走 longjmp/exit,无 cleanup(E2071 静态门兜底);
-break/continue 越过 Drop 局部仍被 E2071 拒绝(sem_calls.ct)。
-**设计要点:** ct_task 持栈式 drop 登记(fns 在入口注册、出口注销)或编译期静态链;
-longjmp 前逆序执行。E2071 解除为纯增量,需先证 break/continue 跳转路径的 cleanup 完备。
-**Verify:** panic 展开夹具(任务内 panic → drop 序可观察)+ break 越界正例双侧逐字。
-**规模:** 2-4 天。
+**已落地:** 运行时 drop 栈(ct_drent{fn,obj} 指针条目,2048 深;指针语义天然跟随
+重赋值/循环重注册) + 每类型 thunk(`ctron_dth_<T>`,与 drop 原型同扫描生成) +
+`ctron_panic` 入口先 `ctron_drop_unwind()`(弹后再调,嵌套 panic 有界)再
+longjmp/exit;let/while 提升 → push,作用域出口内联 drop → 配对 pop(运行时 LIFO
+与发射逆序一致);驱动 panic 流补输出累积 out(Drop 体 println 可观察);
+非任务 panic 消息统一 stdout 无换行(与 eval 逐字对齐)。fx_drop_unwind 三方逐字
+(boom → drop:2 → drop:1 → drop:10,rc=1);smoke 101 ok;suite 63/63;固定点逐字节。
+**挂账:** 并发任务共享 drop 栈(任务隔离需 tls 化,语料避——spawn 本就拒 struct 捕获);
+宿主 rt panic 不跑 Drop(与 U64 上界同族宿主落后点);**E2071 解除拆 P1-A3**
+(break/continue cleanup 需循环基线深度追踪 + popn 计数,独立增量)。
 
 ### 切片 P0-E(新增,2026-09-14 发现):自举解析器非法输入韧性(✅ 已完成 2026-09-14,4da955f)
 
@@ -246,7 +249,7 @@ smoke 3d 加逐字节漂移断言;示例 vendored 副本为钉定快照允许落
 
 ```
 P0-A/P0-B/P0-C/P0-E/P0-F(✅) → P0-G(1-3d,发射面 std 新域适配,与 std 泳道协同)
-P1-A / P1-D / P1-C / P1-C2 / P1-B(✅) → P1-A2(2-4d,panic 展开+E2071 解除)
+P1-A / P1-A2 / P1-D / P1-C / P1-C2 / P1-B(✅) → P1-A3(1-2d,E2071 解除+break cleanup)
 P2 各 spike 穿插在门禁等待期
 ```
 
