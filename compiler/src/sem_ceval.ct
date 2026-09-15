@@ -70,12 +70,13 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
         return cok(vD(df_can(e[1])))
     }
     if t == "Ident" {
-        var i: I32 = 0
-        while i < cenvN.len {
+        // P2-A:反向扫描取最新绑定(push 追加式;语句/循环引入遮蔽后必须取尾)
+        var i: I32 = cenvN.len - 1
+        while i >= 0 {
             if seq2(cenvN[i], e[1]) {
                 return cok(cenvV[i])
             }
-            i += 1
+            i -= 1
         }
         return cun()
     }
@@ -195,7 +196,124 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
             }
             return cun()
         }
-        if t == "Expr" {
+        if t == "Let" {
+            // P2-A:comptime 体内 let(I 域;注解忽略;非 I 值 → 回退)
+            var p7 = st2[2]
+            if p7[0] != "PatId" {
+                return cun()
+            }
+            var v7 = ceval_expr(file, st2[4], cenvN, cenvV, st)
+            if v7[0] != "k" {
+                return v7
+            }
+            if v7[2][0] != "I" {
+                return cun()
+            }
+            cenvN.push(p7[1])
+            cenvV.push(v7[2])
+        } else if t == "Assign" {
+            // P2-A:纯 Eq 覆写最后出现绑定(复合赋值/未知名 → 回退)
+            var tgt7 = st2[1]
+            if tgt7[0] != "Ident" {
+                return cun()
+            }
+            if st2[2] != "Eq" {
+                return cun()
+            }
+            var v7 = ceval_expr(file, st2[3], cenvN, cenvV, st)
+            if v7[0] != "k" {
+                return v7
+            }
+            if v7[2][0] != "I" {
+                return cun()
+            }
+            var f7: I32 = -1
+            var k7: I32 = 0
+            while k7 < cenvN.len {
+                if seq2(cenvN[k7], tgt7[1]) {
+                    f7 = k7
+                }
+                k7 += 1
+            }
+            if f7 < 0 {
+                return cun()
+            }
+            cenvV[f7] = v7[2]
+        } else if t == "While" {
+            // P2-A:条件每迭代计步,预算耗尽 → E6010;Break/Continue 体 → cun 回退
+            var g7 = true
+            while g7 {
+                if !ce_budget(st) {
+                    return cover()
+                }
+                var cv = ceval_expr(file, st2[1], cenvN, cenvV, st)
+                if cv[0] != "k" {
+                    return cv
+                }
+                if !truth(cv[2]) {
+                    g7 = false
+                } else {
+                    var wb7 = st2[2]
+                    if wb7[0] == "BlockExpr" {
+                        wb7 = wb7[1]
+                    }
+                    var br7 = ceval_block(file, wb7, cenvN, cenvV, st)
+                    if br7[0] == "over" {
+                        return br7
+                    }
+                    if br7[0] == "k" {
+                        return br7
+                    }
+                }
+            }
+        } else if t == "For" {
+            // P2-A:for-in-range(含 ..=);每迭代计步
+            var pat8 = st2[1]
+            if pat8[0] != "PatId" {
+                return cun()
+            }
+            var it8 = st2[2]
+            if it8[0] != "Range" {
+                return cun()
+            }
+            var lov = ceval_expr(file, it8[2], cenvN, cenvV, st)
+            if lov[0] != "k" {
+                return lov
+            }
+            var hiv = ceval_expr(file, it8[3], cenvN, cenvV, st)
+            if hiv[0] != "k" {
+                return hiv
+            }
+            var lo8 = dvi(lov[2][1])
+            var hi8 = dvi(hiv[2][1])
+            if seq2(it8[1], "true") {
+                hi8 += 1
+            }
+            var k8 = lo8
+            while k8 < hi8 {
+                if !ce_budget(st) {
+                    return cover()
+                }
+                cenvN.push(pat8[1])
+                cenvV.push(vI(k8))
+                var body8 = st2[3]
+                if body8[0] == "BlockExpr" {
+                    body8 = body8[1]
+                }
+                var br8 = ceval_block(file, body8, cenvN, cenvV, st)
+                if br8[0] == "over" {
+                    return br8
+                }
+                if br8[0] == "k" {
+                    return br8
+                }
+                k8 += 1
+            }
+        } else if t == "Break" {
+            return cun()
+        } else if t == "Continue" {
+            return cun()
+        } else if t == "Expr" {
             var v = ceval_expr(file, st2[1], cenvN, cenvV, st)
             if v[0] != "k" {
                 return v

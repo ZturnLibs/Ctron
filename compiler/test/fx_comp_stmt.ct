@@ -1,0 +1,27 @@
+// fx_comp_stmt.ct —— P2-A:comptime 体内语句/循环(let/assign/while/for,预算内折叠)
+comptime fn wsum(n: I32) -> I32 {
+    var acc: I32 = 0
+    var k: I32 = 1
+    while k <= n {
+        acc = acc + k
+        k = k + 1
+    }
+    return acc
+}
+
+comptime fn fac(n: I32) -> I32 {
+    var r: I32 = 1
+    for k in 1..=n {
+        r = r * k
+    }
+    return r
+}
+
+const WS: I32 = wsum(100)
+const F5: I32 = fac(5)
+
+fn main() -> I32 {
+    println(WS.to_string())
+    println(F5.to_string())
+    return 0
+}
