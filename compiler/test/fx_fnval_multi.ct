@@ -1,0 +1,22 @@
+// fx_fnval_multi.ct —— P0-F:同文件多 fn 值引用(不同被调 + 同被调多次)适配器去重
+fn inc(x: I32) -> I32 {
+    return x + 1
+}
+
+fn dbl(x: I32) -> I32 {
+    return x * 2
+}
+
+fn apply(f: fn(I32) -> I32, x: I32) -> I32 {
+    return f(x)
+}
+
+fn main() -> I32 {
+    println(apply(inc, 5))
+    println(apply(dbl, 5))
+    let g: fn(I32) -> I32 = inc
+    println(g(10))
+    println(g(20))
+    println(apply(inc, 100))
+    return 0
+}

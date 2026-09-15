@@ -89,7 +89,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:fn 值 arity>3")
                 return ""
             }
-            var anm = "ct_ad_L" + nline(e)
+            var anm = "ct_ad_" + e[1]
             if seq2(ct_pass(env), "1") {
                 var asig = "void* _cp"
                 var ai: I32 = 0
@@ -97,6 +97,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     asig = asig + ", ct_i _p" + ai.to_string()
                     ai += 1
                 }
+                // 被调名命名 + include 守卫去重(P0-F):同一被调多处 fn 值引用仅落地一份定义
+                println("#ifndef CT_AD_DEF_" + e[1])
+                println("#define CT_AD_DEF_" + e[1])
                 println("static ct_i " + anm + "(" + asig + ") \{")
                 var acall = ""
                 ai = 0
@@ -112,6 +115,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     println("return (ct_i)t_" + e[1] + "(" + acall + ");")
                 }
                 println("}")
+                println("#endif")
             }
             return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = 0; _c; })"
         }
@@ -177,7 +181,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("ct_expr:视图索引接收者限 Ident")
                 return ""
             }
-            return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); \} (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); \})"
+            return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); } (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); })"
         }
         if ot == "LI" {
             // List[I32] 索引:槽经 long 取回标量
