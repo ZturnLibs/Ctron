@@ -203,3 +203,36 @@ test "fmap saturates at 256 (silent drop, v0)" {
     assert(fget[I32](m, "w0", -1) == 0)
     assert(fget[I32](m, "w299", -1) == -1)
 }
+
+
+// ============ v0.3 完备性:删除(函数式,返回新映射;槽位紧缩不保序——
+// 开放寻址删除 Tombstone 会破坏探测链,采用"取活词表重建"策略,迭代序=v2 哈希序) ============
+
+// 删除键:不存在时原样返回
+pub fn fdel[V](m: FMap[V], k: Str) -> FMap[V] {
+    if !fhas[V](m, k) {
+        return m
+    }
+    var w = fwords[V](m)
+    var out = fnew[V]()
+    var i: I32 = 0
+    while i < w.len {
+        if w[i] != k {
+            out = fput[V](out, w[i], fget[V](m, w[i], 0))
+        }
+        i += 1
+    }
+    return out
+}
+
+test "fdel removes key" {
+    var m = fnew[I32]()
+    m = fput[I32](m, "a", 1)
+    m = fput[I32](m, "b", 2)
+    m = fdel[I32](m, "a")
+    assert_eq(flen[I32](m), 1)
+    assert(fhas[V](m, "b"))
+    assert(!fhas[V](m, "a"))
+    var m2 = fdel[I32](m, "a")
+    assert_eq(flen[I32](m2), 1)
+}
