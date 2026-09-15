@@ -523,6 +523,81 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln(ct_ctype(oty) + " t_" + pat[1] + " = " + ovx + ";", env)
             return env_bind(env, pat[1], oty)
         }
+        // P0-G:let x/_ = match R { Ok(v) => v, Err(m) => {…} } —— ANF,目标即临时
+        if or2(pat[0] == "PatId", pat[0] == "PatWild") && st[4][0] == "Match" {
+            if ct_typeof(st[4][1], env, file) == "R" {
+                var dn7 = "_d" + nline(st)
+                if pat[0] == "PatId" {
+                    dn7 = pat[1]
+                }
+                var ruq = nline(st)
+                var rme = "t_mrr" + ruq
+                eln("ct_res " + rme + " = " + ct_expr(st[4][1], env, file) + ";", env)
+                var sec = ct_opt_elem_expr(file, st[4][1], env)
+                eln(ct_ctype(sec) + " t_" + dn7 + ";", env)
+                var rarms = st[4][2]
+                var ok7: I32 = -1
+                var some7: I32 = -1
+                var err7: I32 = -1
+                var none7: I32 = -1
+                var ri7: I32 = 1
+                while ri7 < rarms.len {
+                    var rpt7 = rarms[ri7][1]
+                    if rpt7[0] == "PatAgg" && rpt7[1] == "Ok" { ok7 = ri7 }
+                    if rpt7[0] == "PatAgg" && rpt7[1] == "Some" { some7 = ri7 }
+                    if rpt7[0] == "PatAgg" && rpt7[1] == "Err" { err7 = ri7 }
+                    if or2(rpt7[0] == "PatId" && rpt7[1] == "None", rpt7[0] == "PatAgg" && rpt7[1] == "None") { none7 = ri7 }
+                    ri7 += 1
+                }
+                var vi7: I32 = -1
+                if ok7 >= 0 { vi7 = ok7 }
+                if some7 >= 0 {
+                    vi7 = some7
+                }
+                if vi7 >= 0 {
+                    var va = rarms[vi7]
+                    var vpt = va[1]
+                    var vbe = va[2]
+                    eln("if (" + rme + ".variant == 0) \{", env)
+                    var venv = env
+                    if vpt[2].len > 1 && vpt[2][1][0] == "PatId" && vpt[2][1][1] != "_" {
+                        eln(ct_ctype(sec) + " t_" + vpt[2][1][1] + " = (" + ct_ctype(sec) + ")(long)(" + rme + ".v);", env)
+                        venv = env_bind(env, vpt[2][1][1], sec)
+                    }
+                    if vbe[0] == "BlockExpr" {
+                        var venv2 = ct_block(vbe[1], venv, file, hreg)
+                        eln("t_" + dn7 + " = " + ct_expr(vbe[1][vbe[1].len - 1], venv2, file) + ";", env)
+                    } else {
+                        eln("t_" + dn7 + " = " + ct_expr(vbe, venv, file) + ";", env)
+                    }
+                    eln("}", env)
+                }
+                eln("if (" + rme + ".variant != 0) \{", env)
+                var ei7: I32 = -1
+                if err7 >= 0 { ei7 = err7 }
+                if none7 >= 0 { ei7 = none7 }
+                if ei7 >= 0 {
+                    var ea = rarms[ei7]
+                    var ebe = ea[2]
+                    var eenv = env
+                    if ea[1][2].len > 1 && ea[1][2][1][0] == "PatId" && ea[1][2][1][1] != "_" {
+                        var eec = "s"
+                        eln("const char* t_" + ea[1][2][1][1] + " = (const char*)(long)(" + rme + ".v);", env)
+                        eenv = env_bind(env, ea[1][2][1][1], eec)
+                    }
+                    if ebe[0] == "BlockExpr" {
+                        ct_block(ebe[1], eenv, file, hreg)
+                    } else {
+                        eln("t_" + pat[1] + " = " + ct_expr(ebe, eenv, file) + ";", env)
+                    }
+                }
+                eln("}", env)
+                if pat[0] == "PatId" {
+                    return env_bind(env, pat[1], sec)
+                }
+                return env
+            }
+        }
         // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷 i32)
         if pat[0] == "PatId" && st[4][0] == "Try" {
             var qv = "t_q" + nline(st)
@@ -727,6 +802,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         var cand = ct_hoists(body, env, file)
         var hl = List[Str]()
         var envw = env
+        if cand.len > 0 {
+            eln("\{", env)
+        }
         var hi: I32 = 0
         while hi < cand.len {
             var en = cand[hi]
@@ -761,6 +839,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 }
             } else {
                 if prev == ty {
+                    // 同名同型:前次声明可能在兄弟块作用域,本站点亦发零初始化声明(C 遮蔽安全)
+                    eln(ct_ctype(ty) + " t_" + nm + " = " + ct_zero(ty) + ";", env)
                     hl.push(nm + ":" + ty)
                     envw = env_bind(envw, nm, ty)
                 }
@@ -780,6 +860,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             ct_stmt(es, benv, file, hreg)
         }
         eln("}", env)
+        if cand.len > 0 {
+            eln("}", env)
+        }
         return envw
     }
     if t == "Match" {

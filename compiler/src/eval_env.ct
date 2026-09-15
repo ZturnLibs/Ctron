@@ -14,6 +14,10 @@ fn fmt(v: List[Str]) -> Str {
     if k == "6" {
         return v[1]
     }
+    if k == "7" {
+        // U64/USize 域(P1-B):十进制文本直出
+        return v[1]
+    }
     if k == "B" {
         return v[1]
     }
@@ -61,6 +65,10 @@ fn fmt_struct(v: List[Str]) -> Str {
 // 标量按规范文本比较(解释器标量值即文本),嵌套 struct 递归;型别名不同 → 不等;
 // 不支持的字段型别 panic(与发射面同界:标量/Str/嵌套 struct 之外不派生)
 fn eq_val(a: List[Str], b: List[Str]) -> Bool {
+    // U64/USize("7")跨域数值相等(P1-B):经 vcmp 幅值比较(I/6/W 文本皆可)
+    if or2(a[0] == "7", b[0] == "7") {
+        return vcmp(a, b) == 0
+    }
     if !seq2(a[0], b[0]) {
         return false
     }

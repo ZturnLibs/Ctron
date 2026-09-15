@@ -545,6 +545,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "i"
     }
     if t == "Member" {
+        if e[3] == "char_len" { return "i" }
         if e[3] == "len" { return "i" }
         if e[3] == "to_string" { return "s" }
         if e[3] == "lane" {
@@ -685,6 +686,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if cal[0] == "Member" {
             var m = cal[3]
+            if m == "or" {
+                // .or(默认值)型别 = 默认实参型(P0-G)
+                if e[2].len > 1 {
+                    var oor = ct_typeof(e[2][1], env, file)
+                    if oor.len > 0 {
+                        return oor
+                    }
+                }
+            }
             if m == "splat" {
                 // Simd[F32,N].splat(v)(P1-C2):接收者为 TypeArgs-Simd → 同码传播
                 var crt2 = ct_typeof(cal[1], env, file)

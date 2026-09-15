@@ -220,6 +220,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return ""
     }
     if t == "Member" {
+        if e[3] == "char_len" {
+            // §3.1.1 前奏 Str API:UTF-8 首字节计数(非续字节)
+            return "ctron_char_len((const char*)(" + ct_expr(e[1], env, file) + "))"
+        }
         if e[3] == "len" {
             // 定长数组:len 编码在 env 类型码里(a<N><码> → N)
             if e[1][0] == "Ident" {
@@ -570,6 +574,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             var obj = ct_expr(cal[1], env, file)
             var objt = ct_typeof(cal[1], env, file)
+            if or2(m == "is_some", m == "is_ok") {
+                if objt == "R" { return "(" + obj + ".variant == 0)" }
+            }
+            if m == "is_err" {
+                if objt == "R" { return "(" + obj + ".variant != 0)" }
+            }
+            if m == "or" {
+                // Option/Result.or(默认值)(P0-G):variant 0 取载荷,否则默认(ct_i 槽往返)
+                if ag.len < 2 {
+                    panic("emit:or 实参")
+                    return ""
+                }
+                var dflt = ct_expr(ag[1], env, file)
+                var dt = ct_typeof(ag[1], env, file)
+                var dct = ct_ctype(dt)
+                return "(" + dct + ")((" + obj + ").variant == 0 ? (ct_i)(long)(" + obj + ").v : (ct_i)(long)(" + dflt + "))"
+            }
             if objt.len > 1 && byte_at(objt, 0) == 113 {
                 // SIMD 成员(§9.5;P1-C2):lane 越界守卫直取 / to_array 恒等视图
                 if m == "lane" {

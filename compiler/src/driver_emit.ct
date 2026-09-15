@@ -141,6 +141,7 @@ fn main() -> I32 {
             println("static const char* ctron_dom_title_buf = \"\";")
             println("static void ctron_dom_set_title(const char* s) \{ ctron_dom_title_buf = s; }")
             println("static const char* ctron_dom_title(void) \{ return ctron_dom_title_buf; }")
+            println("static int32_t ctron_char_len(const char* s) \{ int32_t n = 0; while (*s) \{ if ((*s & 0xC0) != 0x80) \{ n += 1; } s += 1; } return n; }")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
             // 切片视图 typedef(§3.6,P1-D):标量元素码全集无条件前置(宿主 ctron_arr_*/R 线 ct_arr 同形)
             println("typedef struct \{ int32_t* d; int64_t n; } ctron_view_i;")
