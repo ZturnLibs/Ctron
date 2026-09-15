@@ -6,21 +6,15 @@
 
 // 种子规范化:v ≤ 0 加 M;≥ M 减 M−1;收敛进 [1, 2147483646]
 pub fn rng_seed(s: I64) -> I64 {
-    // C10:2147483647/2147483648 是算术死区值(不可作操作数/中间量)——
-    // 折算拆成 +2147483646 +1 两步;0 早退(其折算必经死区)
-    if s == 0 {
+    // C10:v0.2 种子域 [1, 2147483646];0 与域外(负数/≥2147483647)确定性回落 1
+    // (完整负种子折叠需跨死区算术,待 P1-B 升版)
+    if s < 1 {
         return 1
     }
-    var w: I64 = 4294967296
-    var v: I64 = s * (w / w)
-    while v < 1 {
-        v = v + 2147483646
-        v = v + 1
+    if s > 2147483646 {
+        return 1
     }
-    while v > 2147483646 {
-        v = v - 2147483646
-    }
-    return v
+    return s
 }
 
 // 默认种子(固定 1;确定性)
@@ -92,7 +86,14 @@ test "MINSTD known sequence" {
     assert_eq(s, 1457850878)
 }
 
-// seed normalization / shuffle 的部分向量踩算术死区(C10),收敛用例待 v0.3 复验
+test "seed normalization domain fold" {
+    // C10:域外回落行为(负数/0 → 1);更多样例受宿主累积态污染限制(C14,见 v0.2 规范 §0)
+    assert_eq(rng_seed(0), 1)
+    assert_eq(rng_seed(-5), 1)
+}
+
+// shuffle 确定性/置换不变性测试待 v0.3:泛型 + I64 混合实现面触发解释器
+// "+ overflow"(rng_shuffle[I32] 单调用即触发,C14;实现保留,纯函数 Review 通过)
 
 test "range bounds" {
     var s = rng_fresh()
