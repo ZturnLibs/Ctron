@@ -132,11 +132,13 @@ U64 值截断(已登记)。
 模拟向量语义(与 eval 同构),不做 SIMD intrinsics(与自举"C 可编译产物"定位一致,
 R 线 ct_farr 同为标量句柄)。f32 语义经既有"浮点二进制舍入/f32 精度"挂账统一承担
 (eval 为十进制定点域,发射为 C double,语料值域内观察等价)。
-**补齐拆 P1-C2(1-2 天,规格已明):** ①ct_expr TypeArgs-Simd + Member splat →
-arena 分配 + 填充循环(GNU 语句表达式);②Binary 白名单(* + - /)对 SIMD 码 →
-元素级循环;③lane → 越界守卫直取;④to_array → 视图恒等(文档化);⑤SIMD 码
-`q<N><ec>`(C 表示复用 ctron_view_<ec>,n 场承载 N,与切片视图不冲突——Binary 臂
-以 q 前缀区分);⑥fx_simd 三方夹具(镜像 09_simd.ct)。
+**补齐拆 P1-C2(✅ 已完成 2026-09-14,f3d9080,规格全兑现):** ①ct_expr TypeArgs-Simd
++ Member splat → arena 分配 + 填充循环(GNU 语句表达式);②Binary 白名单(* + - / Mod)
+对 SIMD 码 → 元素级循环;③lane → 越界守卫直取;④to_array → 视图恒等(文档化);
+⑤SIMD 码 `q<N><ec>`(ct_typeof TypeArgs/Binary 传播/lane·splat·to_array 返回臂 +
+ct_ctype 复用 ctron_view_<ec>);⑥fx_simd 三方逐字(镜像 09_simd.ct);
+**顺带修复**:成员调用 typeof 尾 `ct_fn_ret` 未知名崩溃路径 + Index panic 的
+nline(未带戳节点)陷阱。smoke 100 ok(3 红全为 P0-G std 泳道项);suite 63/63;固定点逐字节。
 
 ---
 
