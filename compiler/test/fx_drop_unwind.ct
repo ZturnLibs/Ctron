@@ -1,0 +1,23 @@
+// fx_drop_unwind.ct —— P1-A2(§6.4):panic 展开保证 Drop 执行
+struct Ticket {
+    let id: I32
+}
+
+impl Drop for Ticket {
+    fn drop(var self) {
+        println("drop:" + self.id.to_string())
+    }
+}
+
+fn boom() -> I32 {
+    let a: Ticket = Ticket { id: 1 }
+    let b: Ticket = Ticket { id: 2 }
+    panic("boom")
+    return 0
+}
+
+fn main() -> I32 {
+    let t: Ticket = Ticket { id: 10 }
+    boom()
+    return 0
+}

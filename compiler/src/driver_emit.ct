@@ -95,7 +95,15 @@ fn main() -> I32 {
             println("typedef struct ct_chan \{ pthread_mutex_t mu; pthread_cond_t cv_full, cv_empty; ct_i buf[64]; int head, tail, cnt, cap; } ct_chan;")
             println("static ct_chan* ct_chans[64]; static int ct_nchans = 0;")
             println("static void ct_cancel_broadcast(void) \{ int i; for (i = 0; i < ct_nchans; i++) \{ pthread_mutex_lock(&ct_chans[i]->mu); pthread_cond_broadcast(&ct_chans[i]->cv_full); pthread_cond_broadcast(&ct_chans[i]->cv_empty); pthread_mutex_unlock(&ct_chans[i]->mu); } }")
-            println("static void ctron_panic(const char* m) \{ ct_task* _tp = ct_tls_task; if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } fprintf(stderr, \"%s" + bs() + "n\", m); exit(1); }")
+            // Drop 运行时栈(P1-A2,§6.4 panic 展开):指针条目 + 每类型 thunk;
+            // ctron_panic 先取所有权逆序展开再 longjmp/exit(弹后再调,嵌套 panic 有界)
+            println("typedef struct \{ void (*fn)(void*); void* obj; } ct_drent;")
+            println("static ct_drent ct_drstack[2048];")
+            println("static int ct_drn = 0;")
+            println("static void ctron_drop_push(void (*fn)(void*), void* obj) \{ if (ct_drn < 2048) \{ ct_drstack[ct_drn].fn = fn; ct_drstack[ct_drn].obj = obj; ct_drn += 1; } }")
+            println("static void ctron_drop_pop(void) \{ if (ct_drn > 0) \{ ct_drn -= 1; } }")
+            println("static void ctron_drop_unwind(void) \{ while (ct_drn > 0) \{ ct_drn -= 1; ct_drstack[ct_drn].fn(ct_drstack[ct_drn].obj); } }")
+            println("static void ctron_panic(const char* m) \{ ctron_drop_unwind(); ct_task* _tp = ct_tls_task; if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } printf(\"%s\", m); exit(1); }")
             println("static int64_t ctron_i64_add(int64_t a, int64_t b) \{ int64_t r; if (__builtin_add_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
             println("static int64_t ctron_i64_sub(int64_t a, int64_t b) \{ int64_t r; if (__builtin_sub_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
             println("static int64_t ctron_i64_mul(int64_t a, int64_t b) \{ int64_t r; if (__builtin_mul_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")
@@ -315,6 +323,7 @@ fn main() -> I32 {
                     var qf = ty_head(qd[3])
                     if qd[1].len < 2 {
                         println("static void t_" + qf + "__drop(t_" + qf + " t_self);")
+                        println("static void ctron_dth_" + qf + "(void* p) \{ t_" + qf + "__drop(*((t_" + qf + "*)p)); }")
                     }
                 }
                 dq += 1

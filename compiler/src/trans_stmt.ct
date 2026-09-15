@@ -123,6 +123,7 @@ fn dls_pop_emit(env: List[Str], file: List[Str]) -> List[Str] {
                 if tyn.len > 2 && byte_slice(tyn, 0, 2) == "u:" {
                     var cn = byte_slice(seg, 0, at)
                     eln("t_" + byte_slice(tyn, 2, tyn.len) + "__drop(t_" + cn + ");", env)
+                    eln("ctron_drop_pop();", env)
                 }
             }
             pos = comma
@@ -607,6 +608,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
             // RAII(§6.4):struct 值绑定实现 Drop → 当前层登记,作用域出口逆序发射
+            if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
+                if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
+                    eln("ctron_drop_push(ctron_dth_" + byte_slice(ty, 2, ty.len) + ", &t_" + pat[1] + ");", env)
+                }
+            }
             if ty.len > 2 && byte_slice(ty, 0, 2) == "B:" {
                 if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
                     panic("emit:类引用 Drop 未支持(§6.4 类引用不触发;eval 统一 U 分歧挂账):" + pat[1])
@@ -750,6 +756,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
                         // while 体绑定泄漏到外层(eval keep=true):drop 挂外层,循环出口不发
                         envw = dls_add(envw, nm, ty)
+                        eln("ctron_drop_push(ctron_dth_" + byte_slice(ty, 2, ty.len) + ", &t_" + nm + ");", env)
                     }
                 }
             } else {
