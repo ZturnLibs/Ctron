@@ -208,8 +208,14 @@ CT_AD_DEF_<被调>` include 守卫去重(同被调多处引用仅落地一份定
 - **顺带修复(while 提升声明跨兄弟块作用域缺陷):** 提升声明原发于首个 while 站点的
   嵌套块,同 fn 后续循环复用 hreg 不发声明 → 未定义标识符;现每站点块作用域内
   各发零初始化声明(C 遮蔽安全),提升声明与 while 同包一块。
-**余量(在册):** `json.ct` 发射编译已通但**运行期段万能**(重递归+arena 压力,
-需 gdb 定位);ctwc/ctwf vendored 快照随泳道同步。
+**json 运行期已修复(2026-09-15):** 段万能三连根因——①`ct_opt_elem_of` 对
+Result[List[…],E] 载荷回落 "i"(指针 int32 截断,符号扩展段万能)→ 补 List 臂;
+②let R 码绑定未挂 `#elem:<名>` 侧条目(Ident 接收者载荷码不可查)→ Call 初始化
+即绑;③test 块内用户 return 在 eval 语义=提前退出且通过,发射侧误作判定值 →
+`#intest` 区分,用户 return 发 `return 0`(断言失败仍 return 1)。json 模块与
+std 包 main 双引擎 rc=0 逐字一致。**余量仅 vendored 快照同步(std 泳道义务)。**
+**P1-A3 定口径(2026-09-15):** 宿主发射器 Drop 零支持 + 宿主 rt panic 不跑 Drop,
+E2071 解除需宿主先行,跨线协同暂缓(bootstrap 发射侧 cleanup 机制已具备)。
 
 ---
 
