@@ -73,28 +73,73 @@ pub fn parse_bool(s: Str) -> Option[Bool] {
     return None
 }
 
+// 发射面安全 Option 助手(match 形;C13a)
+pub fn sc_get_l(o: Option[I64], dft: I64) -> I64 {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn sc_get_b(o: Option[Bool], dft: Bool) -> Bool {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn sc_some_l(o: Option[I64]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
+pub fn sc_some_b(o: Option[Bool]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
 test "parse_i64 round trip and signs" {
-    assert_eq(parse_i64("0").or(-1), 0)
-    assert_eq(parse_i64("42").or(-1), 42)
-    assert_eq(parse_i64("-42").or(-1), -42)
-    assert_eq(parse_i64("+7").or(-1), 7)
-    assert_eq(parse_i64("007").or(-1), 7)
-    assert_eq(parse_i64("9223372036854775807").or(0), 9223372036854775807)
-    assert_eq(parse_i64("-9223372036854775807").or("bad").to_string(), "-9223372036854775807")
-    assert(!parse_i64("").is_some())
-    assert(!parse_i64("-").is_some())
-    assert(!parse_i64("12a").is_some())
-    assert(!parse_i64("9223372036854775808").is_some())
-    assert(!parse_i64("-9223372036854775809").is_some())
+    assert_eq(sc_get_l(parse_i64("0"), -1), 0)
+    assert_eq(sc_get_l(parse_i64("42"), -1), 42)
+    assert_eq(sc_get_l(parse_i64("-42"), -1), -42)
+    assert_eq(sc_get_l(parse_i64("+7"), -1), 7)
+    assert_eq(sc_get_l(parse_i64("007"), -1), 7)
+    assert_eq(sc_get_l(parse_i64("9223372036854775807"), 0), 9223372036854775807)
+    assert_eq(sc_get_l(parse_i64("-9223372036854775807"), 0).to_string(), "-9223372036854775807")
+    assert(!sc_some_l(parse_i64("")))
+    assert(!sc_some_l(parse_i64("-")))
+    assert(!sc_some_l(parse_i64("12a")))
+    assert(!sc_some_l(parse_i64("9223372036854775808")))
+    assert(!sc_some_l(parse_i64("-9223372036854775809")))
     var s = "1234567"
-    assert_eq(parse_i64(s).or(0).to_string(), "1234567")
+    assert_eq(sc_get_l(parse_i64(s), 0).to_string(), "1234567")
 }
 
 test "parse_bool exact" {
-    assert_eq(parse_bool("true").or(false), true)
-    assert_eq(parse_bool("false").or(true), false)
-    assert(!parse_bool("TRUE").is_some())
-    assert(!parse_bool("").is_some())
-    assert(!parse_bool("1").is_some())
+    assert_eq(sc_get_b(parse_bool("true"), false), true)
+    assert_eq(sc_get_b(parse_bool("false"), true), false)
+    assert(!sc_some_b(parse_bool("TRUE")))
+    assert(!sc_some_b(parse_bool("")))
+    assert(!sc_some_b(parse_bool("1")))
 }
 

@@ -81,30 +81,53 @@ fn opt_add(a: I32, b: I32) -> I32 {
     return a + b
 }
 
+// 发射面安全 Option 助手(match 形;C13a)
+pub fn opt_get_i(o: Option[I32], dft: I32) -> I32 {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn opt_some_i(o: Option[I32]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
 test "and then chains" {
     var r = opt_and_then[I32, I32](Some(5), opt_double)
-    assert_eq(r.or(0), 10)
+    assert_eq(opt_get_i(r, 0), 10)
     var n = opt_and_then[I32, I32](None, opt_double)
-    assert(!n.is_some())
+    assert(!opt_some_i(n))
     var half = opt_and_then[I32, I32](Some(9), opt_half_if_even)
-    assert(!half.is_some())
+    assert(!opt_some_i(half))
 }
 
 // E3070:闭包不可变捕获 var 局部——惰性验证改用值语义(f 返回标记值)
 test "or else defaults by value" {
     var hit = opt_or_else[I32](Some(7), opt_zero)
-    assert_eq(hit.or(0), 7)
+    assert_eq(opt_get_i(hit, 0), 7)
     var miss = opt_or_else[I32](None, opt_three)
-    assert_eq(miss.or(0), 3)
+    assert_eq(opt_get_i(miss, 0), 3)
 }
 
 test "map2 both present" {
     var sum = opt_map2[I32, I32, I32](Some(2), Some(3), opt_add)
-    assert_eq(sum.or(0), 5)
+    assert_eq(opt_get_i(sum, 0), 5)
     var miss = opt_map2[I32, I32, I32](Some(2), None, opt_add)
-    assert(!miss.is_some())
+    assert(!opt_some_i(miss))
     var miss2 = opt_map2[I32, I32, I32](None, Some(3), opt_add)
-    assert(!miss2.is_some())
+    assert(!opt_some_i(miss2))
 }
 
 test "to result carries message" {

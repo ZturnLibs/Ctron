@@ -152,9 +152,32 @@ pub fn csv_write(rows: List[List[Str]]) -> Str {
     return out
 }
 
+// 发射面安全 Option 助手(match 形;C13a)
+pub fn csv_get(o: Option[List[List[Str]]], dft: List[List[Str]]) -> List[List[Str]] {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn csv_some(o: Option[List[List[Str]]]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
 test "classic three traps" {
     var r = csv_parse("name,age\n\"Smith, John\",33\n\"He said \"\"hi\"\"\",7")
-    var g = r.or(List[List[Str]]())
+    var g = csv_get(r, List[List[Str]]())
     assert_eq(g.len, 3)
     assert_eq(g[1][0], "Smith, John")
     assert_eq(g[1][1], "33")
@@ -164,7 +187,7 @@ test "classic three traps" {
 
 test "quoted newline inside field" {
     var r = csv_parse("a,\"x\ny\",z")
-    var g = r.or(List[List[Str]]())
+    var g = csv_get(r, List[List[Str]]())
     assert_eq(g.len, 1)
     assert_eq(g[0][0], "a")
     assert_eq(g[0][1], "x\ny")
@@ -173,7 +196,7 @@ test "quoted newline inside field" {
 
 test "crlf and empty fields and last line" {
     var r = csv_parse("a,,b\r\nc,d,\r\ne,f,g")
-    var g = r.or(List[List[Str]]())
+    var g = csv_get(r, List[List[Str]]())
     assert_eq(g.len, 3)
     assert_eq(g[0][0], "a")
     assert_eq(g[0][1], "")
@@ -182,8 +205,8 @@ test "crlf and empty fields and last line" {
 }
 
 test "unclosed quote is none" {
-    assert(!csv_parse("a,\"bc").is_some())
-    assert(!csv_parse("\"").is_some())
+    assert(!csv_some(csv_parse("a,\"bc")))
+    assert(!csv_some(csv_parse("\"")))
 }
 
 test "write parse round trip" {
@@ -197,7 +220,7 @@ test "write parse round trip" {
     g.push(r1)
     g.push(r2)
     var text = csv_write(g)
-    var back = csv_parse(text).or(List[List[Str]]())
+    var back = csv_get(csv_parse(text), List[List[Str]]())
     assert_eq(back.len, 2)
     assert_eq(back[1][0], "a,b")
     assert_eq(back[1][1], "say \"hi\"\nmultiline")
@@ -210,5 +233,5 @@ test "field convenience" {
     assert_eq(csv_field(row, 5), "")
     var e = List[List[Str]]()
     var r = csv_parse("")
-    assert_eq(r.or(e).len, 0)
+    assert_eq(csv_get(r, e).len, 0)
 }

@@ -70,32 +70,29 @@ test "tolist/fromlist roundtrip dedupes" {
 
 // 删除元素:不存在时原样返回
 pub fn set_del[T](s: Set[T], v: T) -> Set[T] {
-    var out = set_new[T]()
+    if !mem[T](s, v) {
+        return s
+    }
+    var keep = List[T]()
     var i: I32 = 0
-    var hit = false
-    var all = tolist[T](s)
-    while i < all.len {
-        if all[i] == v {
-            hit = true
-        } else {
-            out = add[T](out, all[i])
+    while i < s.items.len {
+        var cur: T = s.items[i]
+        if cur != v {
+            keep.push(cur)
         }
         i += 1
     }
-    if !hit {
-        return s
-    }
-    return out
+    return Set { items: keep }
 }
 
 // 并集:a ∪ b
 pub fn set_union[T](a: Set[T], b: Set[T]) -> Set[T] {
     var out = a
-    var bs = tolist[T](b)
     var i: I32 = 0
-    while i < bs.len {
-        if !mem[T](out, bs[i]) {
-            out = add[T](out, bs[i])
+    while i < b.items.len {
+        var cur: T = b.items[i]
+        if !mem[T](out, cur) {
+            out = add[T](out, cur)
         }
         i += 1
     }
@@ -105,11 +102,11 @@ pub fn set_union[T](a: Set[T], b: Set[T]) -> Set[T] {
 // 交集:a ∩ b(结果保持 a 的元素序)
 pub fn set_inter[T](a: Set[T], b: Set[T]) -> Set[T] {
     var out = set_new[T]()
-    var as_ = tolist[T](a)
     var i: I32 = 0
-    while i < as_.len {
-        if mem[T](b, as_[i]) {
-            out = add[T](out, as_[i])
+    while i < a.items.len {
+        var cur: T = a.items[i]
+        if mem[T](b, cur) {
+            out = add[T](out, cur)
         }
         i += 1
     }
@@ -119,11 +116,11 @@ pub fn set_inter[T](a: Set[T], b: Set[T]) -> Set[T] {
 // 差集:a − b(结果保持 a 的元素序)
 pub fn set_diff[T](a: Set[T], b: Set[T]) -> Set[T] {
     var out = set_new[T]()
-    var as_ = tolist[T](a)
     var i: I32 = 0
-    while i < as_.len {
-        if !mem[T](b, as_[i]) {
-            out = add[T](out, as_[i])
+    while i < a.items.len {
+        var cur: T = a.items[i]
+        if !mem[T](b, cur) {
+            out = add[T](out, cur)
         }
         i += 1
     }
@@ -132,10 +129,9 @@ pub fn set_diff[T](a: Set[T], b: Set[T]) -> Set[T] {
 
 // 子集判定:a ⊆ b
 pub fn set_subset[T](a: Set[T], b: Set[T]) -> Bool {
-    var as_ = tolist[T](a)
     var i: I32 = 0
-    while i < as_.len {
-        if !mem[T](b, as_[i]) {
+    while i < a.items.len {
+        if !mem[T](b, a.items[i]) {
             return false
         }
         i += 1

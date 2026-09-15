@@ -68,6 +68,30 @@ fn eb64val(c: I32) -> I32 {
     return -1
 }
 
+// 发射面安全的 Option 解包/判定助手(match 形;.or/.is_some 成员调用在发射面
+// 会产出悬逗号/未声明符号——C13a,见 v0.2 API 规范 §0)
+pub fn enc_get(o: Option[Str], dft: Str) -> Str {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn enc_some(o: Option[Str]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
 pub fn hex_encode(s: Str) -> Str {
     var h = ehex()
     var out = ""
@@ -340,14 +364,14 @@ test "hex round trip and vectors" {
     assert_eq(hex_encode(""), "")
     assert_eq(hex_encode("a"), "61")
     assert_eq(hex_encode("AB"), "4142")
-    assert_eq(hex_decode("4142").or("?"), "AB")
-    assert_eq(hex_decode("616263").or("?"), "abc")
-    assert(!hex_decode("abc").is_some())
-    assert(!hex_decode("zz").is_some())
-    assert(!hex_decode("4").is_some())
-    assert(!hex_decode("00").is_some())
-    assert(!hex_decode("7b").is_some())
-    assert_eq(hex_decode(hex_encode("foobar")).or("?"), "foobar")
+    assert_eq(enc_get(hex_decode("4142"), "?"), "AB")
+    assert_eq(enc_get(hex_decode("616263"), "?"), "abc")
+    assert(!enc_some(hex_decode("abc")))
+    assert(!enc_some(hex_decode("zz")))
+    assert(!enc_some(hex_decode("4")))
+    assert(!enc_some(hex_decode("00")))
+    assert(!enc_some(hex_decode("7b")))
+    assert_eq(enc_get(hex_decode(hex_encode("foobar")), "?"), "foobar")
 }
 
 test "b64 RFC 4648 vectors" {
@@ -358,26 +382,26 @@ test "b64 RFC 4648 vectors" {
     assert_eq(b64_encode("foob"), "Zm9vYg==")
     assert_eq(b64_encode("fooba"), "Zm9vYmE=")
     assert_eq(b64_encode("foobar"), "Zm9vYmFy")
-    assert_eq(b64_decode("Zg==").or("?"), "f")
-    assert_eq(b64_decode("Zm9vYmE=").or("?"), "fooba")
-    assert_eq(b64_decode("Zm9vYmFy").or("?"), "foobar")
-    assert(!b64_decode("Zm9vYmF").is_some())
-    assert(!b64_decode("Zm9=YmFy").is_some())
-    assert(!b64_decode("Zg=").is_some())
+    assert_eq(enc_get(b64_decode("Zg=="), "?"), "f")
+    assert_eq(enc_get(b64_decode("Zm9vYmE="), "?"), "fooba")
+    assert_eq(enc_get(b64_decode("Zm9vYmFy"), "?"), "foobar")
+    assert(!enc_some(b64_decode("Zm9vYmF")))
+    assert(!enc_some(b64_decode("Zm9=YmFy")))
+    assert(!enc_some(b64_decode("Zg=")))
 }
 
 test "b64 rejects non printable payload" {
-    assert(!b64_decode("//8=").is_some())
+    assert(!enc_some(b64_decode("//8=")))
 }
 
 test "pct component round trip" {
     assert_eq(pct_encode("a b/c~d.e-f_g"), "a%20b%2Fc~d.e-f_g")
-    assert_eq(pct_decode("a%20b%2Fc~d.e-f_g").or("?"), "a b/c~d.e-f_g")
+    assert_eq(enc_get(pct_decode("a%20b%2Fc~d.e-f_g"), "?"), "a b/c~d.e-f_g")
     assert_eq(pct_encode(""), "")
-    assert_eq(pct_decode("").or("?"), "")
-    assert_eq(pct_decode("%41%42").or("?"), "AB")
-    assert(!pct_decode("%4").is_some())
-    assert(!pct_decode("%4G").is_some())
-    assert(!pct_decode("100%").is_some())
-    assert_eq(pct_decode(pct_encode("foo?bar=1")).or("?"), "foo?bar=1")
+    assert_eq(enc_get(pct_decode(""), "?"), "")
+    assert_eq(enc_get(pct_decode("%41%42"), "?"), "AB")
+    assert(!enc_some(pct_decode("%4")))
+    assert(!enc_some(pct_decode("%4G")))
+    assert(!enc_some(pct_decode("100%")))
+    assert_eq(enc_get(pct_decode(pct_encode("foo?bar=1")), "?"), "foo?bar=1")
 }
