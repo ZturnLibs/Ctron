@@ -221,6 +221,29 @@ pub fn date_parse(s: Str) -> Option[I32] {
     return Some(days_from_civil(y, m, d))
 }
 
+// 发射面安全 Option 助手(match 形;C13a)
+pub fn time_get(o: Option[I32], dft: I32) -> I32 {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn time_some(o: Option[I32]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
 test "leap year four cases" {
     assert(!leap_is_leap(1900))
     assert(leap_is_leap(2000))
@@ -277,18 +300,34 @@ test "weekday known anchors" {
 test "format parse round trip" {
     assert_eq(date_format(0), "1970-01-01")
     assert_eq(date_format(19782), "2024-02-29")
-    assert_eq(date_parse("1970-01-01").or(-1), 0)
-    assert_eq(date_parse("2024-02-29").or(-1), 19782)
-    assert(!date_parse("2023-02-29").is_some())
-    assert(!date_parse("2024-13-01").is_some())
-    assert(!date_parse("2024-00-10").is_some())
-    assert(!date_parse("2024-1-01").is_some())
-    assert(!date_parse("20240101").is_some())
-    assert(!date_parse("").is_some())
+    assert_eq(time_get(date_parse("1970-01-01"), -1), 0)
+    assert_eq(time_get(date_parse("2024-02-29"), -1), 19782)
+    assert(!time_some(date_parse("2023-02-29")))
+    assert(!time_some(date_parse("2024-13-01")))
+    assert(!time_some(date_parse("2024-00-10")))
+    assert(!time_some(date_parse("2024-1-01")))
+    assert(!time_some(date_parse("20240101")))
+    assert(!time_some(date_parse("")))
     var z: I32 = 0
     while z < 2000 {
         var f = date_format(z)
-        assert_eq(date_parse(f).or(-999999), z)
+        assert_eq(time_get(date_parse(f), -999999), z)
         z += 7
     }
+}
+
+
+// ============ v0.3 epoch 秒域(I64 承载;P1-B 值域贯通) ============
+
+// 公历日期 → Unix epoch 秒(I64;年域 [1,9999])
+pub fn time_to_epoch_s(y: I32, m: I32, d: I32) -> I64 {
+    var days = days_from_civil(y, m, d)
+    var w: I64 = 4294967296
+    var es: I64 = w - w + days
+    return es * 86400
+}
+
+test "epoch seconds" {
+    assert_eq(time_to_epoch_s(1970, 1, 1), 0)
+    assert_eq(time_to_epoch_s(2024, 1, 1), 1704067200)
 }

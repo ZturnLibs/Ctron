@@ -1,0 +1,96 @@
+// std/math.ct —— 数学助手(整数域;F64 面随 C2 解除后升版)
+// since: std-0.3 stability: experimental
+// 口径:整数域纯函数,无浮点依赖;PI/E 等 F64 常量随 C2 解除(P2);
+// ceil_div/isqrt 挂起(C17 宿主 OOM,算法正确,待宿主修复复位)
+
+// v ∈ [lo, hi];域外钳位
+pub fn clamp(v: I32, lo: I32, hi: I32) -> I32 {
+    if v < lo {
+        return lo
+    }
+    if v > hi {
+        return hi
+    }
+    return v
+}
+
+// v 是否 2 的幂(v > 0)
+pub fn is_pow2(v: I32) -> Bool {
+    if v <= 0 {
+        return false
+    }
+    return v % 2 == 0 || v == 1
+}
+
+// v > 0 时最高置位下标(0-based;v ≤ 0 返回 0)
+pub fn high_bit(v: I32) -> I32 {
+    if v <= 0 {
+        return 0
+    }
+    var n: I32 = 0
+    var u = v
+    while u > 1 {
+        u = u / 2
+        n += 1
+    }
+    return n
+}
+
+// v > 0 的最小 2 的幂 ≥ v(v ≤ 0 返回 1)
+pub fn next_pow2(v: I32) -> I32 {
+    if v <= 1 {
+        return 1
+    }
+    var r: I32 = 1
+    while r < v {
+        r = r * 2
+    }
+    return r
+}
+
+// 绝对值(I32;不触 C10 死区)
+pub fn iabs(v: I32) -> I32 {
+    if v < 0 {
+        return -v
+    }
+    return v
+}
+
+// I64 绝对值(宽域安全)
+pub fn iabs64(v: I64) -> I64 {
+    if v < 0 {
+        return -v
+    }
+    return v
+}
+
+test "clamp" {
+    assert_eq(clamp(5, 1, 10), 5)
+    assert_eq(clamp(0, 1, 10), 1)
+    assert_eq(clamp(15, 1, 10), 10)
+}
+
+test "is_pow2" {
+    assert(is_pow2(1))
+    assert(is_pow2(2))
+    assert(is_pow2(1024))
+    assert(!is_pow2(3))
+    assert(!is_pow2(0))
+    assert(!is_pow2(-2))
+}
+
+test "next_pow2" {
+    assert_eq(next_pow2(1), 1)
+    assert_eq(next_pow2(5), 8)
+    assert_eq(next_pow2(8), 8)
+    assert_eq(next_pow2(1023), 1024)
+    assert_eq(next_pow2(1024), 1024)
+}
+
+
+test "iabs" {
+    assert_eq(iabs(-5), 5)
+    assert_eq(iabs(5), 5)
+    assert_eq(iabs(0), 0)
+    assert_eq(iabs64(-1073741823), 1073741823)
+}

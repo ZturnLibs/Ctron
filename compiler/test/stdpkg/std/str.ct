@@ -591,14 +591,37 @@ test "ascii class predicates" {
     assert(!is_ascii_space(65))
 }
 
+// 发射面安全 Option 助手(match 形;成员调用 .or/.is_some 发射有缺陷 C13a)
+pub fn str_get(o: Option[Str], dft: Str) -> Str {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn str_some(o: Option[Str]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
 test "strip prefix suffix" {
-    assert_eq(strip_prefix("main.ct", "main").or("?"), ".ct")
-    assert(!strip_prefix("main.ct", "nope").is_some())
-    assert_eq(strip_prefix("abc", "").or("?"), "abc")
+    assert_eq(str_get(strip_prefix("main.ct", "main"), "?"), ".ct")
+    assert(!str_some(strip_prefix("main.ct", "nope")))
+    assert_eq(str_get(strip_prefix("abc", ""), "?"), "abc")
     var s = strip_suffix("main.ct", ".ct")
-    assert_eq(s.or("?"), "main")
-    assert(!strip_suffix("main.ct", ".go").is_some())
-    assert(!strip_suffix("abc", "abcd").is_some())
+    assert_eq(str_get(s, "?"), "main")
+    assert(!str_some(strip_suffix("main.ct", ".go")))
+    assert(!str_some(strip_suffix("abc", "abcd")))
 }
 
 test "count_sub non overlapping" {
