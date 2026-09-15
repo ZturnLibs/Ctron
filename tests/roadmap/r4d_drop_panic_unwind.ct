@@ -1,0 +1,28 @@
+// r4d_drop_panic_unwind.ct —— panic 展开保证 Drop 执行(§6.4;P1-A2 收口判据)
+// 语义承诺:panic 穿透帧时,已声明 Drop 局部按声明逆序执行,先于 panic 消息
+// 锚点:宿主 rt panic 不跑 Drop(仅打印消息)→ 红;宿主补展开转绿
+//       (自举解释/发射双面已逐字:boom → drop:2 → drop:1 → drop:10)
+//@ panic: boom
+
+struct Ticket {
+    let id: I32
+}
+
+impl Drop for Ticket {
+    fn drop(var self) {
+        println("drop:" + self.id.to_string())
+    }
+}
+
+fn boom() -> I32 {
+    let a: Ticket = Ticket { id: 1 }
+    let b: Ticket = Ticket { id: 2 }
+    panic("boom")
+    return 0
+}
+
+fn main() -> I32 {
+    let t: Ticket = Ticket { id: 10 }
+    boom()
+    return 0
+}

@@ -1,0 +1,32 @@
+// 03i_width_checked.ct —— 定宽检查算术与全宽度显式转换(§3.1/§4.5;P1-B/P1-B2 收口)
+// 语义承诺:8/16/64 位定宽算术检查(溢出 panic,消息 integer overflow ±*);
+//          as[U64]/as[USize] 全宽度转换(窄化=截断,负值模 2^64)
+
+test "u8 checked arithmetic in range" {
+    let a: U8 = 100
+    let b: U8 = 100
+    assert_eq(a + b, 200)
+    assert_eq(a - b, 0)
+    let m: I16 = -300
+    assert_eq(m / 2, -150)
+    assert_eq(m * 2, -600)
+}
+
+test "u64 wide arithmetic" {
+    let big: U64 = 18446744073709551615
+    let down: U64 = big - 1
+    assert_eq(down, 18446744073709551614)
+    let small: U64 = 5
+    assert_eq(small * small, 25)
+    let sz: USize = 7
+    assert_eq(sz, 7)
+}
+
+test "explicit as across widths" {
+    let t: U64 = 4294967297
+    assert_eq(t.as[U32](), 1)
+    let w: U8 = 44
+    assert_eq(w.as[I32](), 44)
+    let n: I32 = 7
+    assert_eq(n.as[U64](), 7)
+}

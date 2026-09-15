@@ -1,0 +1,14 @@
+// r6b_res_class.neg.ct —— 类直接持有资源字段(§6.2 硬规则;E4050,GC spike)
+// 语义承诺:类字段类型为 Mutex/Channel → E 级拦截(资源须值句柄或能力对象)
+// 锚点:宿主 sem 无此检查 → 红;宿主补齐转绿(自举线已拦截)
+//@ fail: E4050
+//@ msg: 类直接持有资源字段
+
+class Res {
+    let m: Mutex[I32]
+    let ch: Channel[Str]
+}
+
+fn main() -> I32 {
+    return 0
+}

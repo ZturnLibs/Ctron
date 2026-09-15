@@ -158,3 +158,21 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 **P3——基建先行:**
 多文件格式定义 + `tests/modules/`(E5010/E5020/E4010/可见性/use)、E1xxx 注册 + `01c_parse.neg.ct`、doc-test 样例;FFI/P2 后端就绪后补 `09_*`。
+
+---
+
+## 2026-09-15 增补(P1-B/B2/A2/P2-A/GC spike 收口语料)
+
+上文补测 backlog(P0-P3 各项)已全部落地;本次随定宽存储/panic 展开/comptime
+语句循环/E4050 资源 lint 收口,新增:
+
+- `03i_width_checked.ct` —— 8/16/64 位定宽检查算术 + as[U64]/as[USize] 全宽度转换
+- `03j_width_overflow.panic.ct` —— U8 加法上溢 panic(integer overflow +)
+- `04h_comptime_stmt.ct` —— comptime 体内 var/while/for 语句与赋值(§8.4)
+- `roadmap/r4d_drop_panic_unwind.ct` —— panic 展开 Drop 逆序(红:宿主 rt panic 不跑 Drop)
+- `roadmap/r6a_u64_overflow.panic.ct` —— U64 加法上溢(红:宿主 64 位无符号 Add 缺上界)
+- `roadmap/r6b_res_class.neg.ct` —— 类持有资源字段 E4050(红:宿主 sem 无此检查)
+- `roadmap/r6c_as_u64_negsrc.ct` —— 负值源 as[U64] 模 2^64(红:宿主 conv 误用 2^128 模)
+
+计分:suite 66/66 双侧(66 文件;panic 桶 4);roadmap 锚 25(全部在自举线按设计
+表现,红 = 宿主/R 线落后点,见 roadmap 文件头"锚点"行)。

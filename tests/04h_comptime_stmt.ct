@@ -1,0 +1,31 @@
+// 04h_comptime_stmt.ct —— comptime 体内语句/循环(§8.4;P2-A)
+// 语义承诺:comptime fn 体支持 var/while/for(range)与赋值;const 初始化在
+//          编译期求值(预算内;超预算 E6010)
+comptime fn wsum(n: I32) -> I32 {
+    var acc: I32 = 0
+    var k: I32 = 1
+    while k <= n {
+        acc = acc + k
+        k = k + 1
+    }
+    return acc
+}
+
+comptime fn fac(n: I32) -> I32 {
+    var r: I32 = 1
+    for k in 1..=n {
+        r = r * k
+    }
+    return r
+}
+
+const WS: I32 = wsum(100)
+const F5: I32 = fac(5)
+
+test "comptime while accumulation" {
+    assert_eq(WS, 5050)
+}
+
+test "comptime for product" {
+    assert_eq(F5, 120)
+}

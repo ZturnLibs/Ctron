@@ -1,0 +1,8 @@
+// 03j_width_overflow.panic.ct —— 定宽检查算术上溢(§4.5 默认检查;镜像 w_arith)
+//@ panic: integer overflow
+
+test "u8 addition overflow panics" {
+    let a: U8 = 200
+    let b: U8 = 100
+    let _ = a + b
+}
