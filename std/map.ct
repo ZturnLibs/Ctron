@@ -76,3 +76,61 @@ test "keys/values insertion order, replace keeps slot" {
     assert(vs[0] == "TWO")
     assert(vs[1] == "one")
 }
+
+
+// ============ v0.3 完备性:大小与删除(函数式,返回新映射) ============
+
+// 键值对数
+pub fn map_len[K, V](m: Map[K, V]) -> I32 {
+    return m.ks.len
+}
+
+// 删除键:不存在时原样返回(函数式,原映射不变)
+pub fn map_del[K, V](m: Map[K, V], k: K) -> Map[K, V] {
+    var nks = List[K]()
+    var nvs = List[V]()
+    var i: I32 = 0
+    var hit = false
+    while i < m.ks.len {
+        if m.ks[i] == k {
+            hit = true
+        } else {
+            nks.push(m.ks[i])
+            nvs.push(m.vs[i])
+        }
+        i = i + 1
+    }
+    if !hit {
+        return m
+    }
+    return Map { ks: nks, vs: nvs }
+}
+
+test "map_len counts pairs" {
+    var m = map_new[I32, Str]()
+    assert_eq(map_len[I32, Str](m), 0)
+    m = put[I32, Str](m, 1, "a")
+    m = put[I32, Str](m, 2, "b")
+    assert_eq(map_len[I32, Str](m), 2)
+    m = put[I32, Str](m, 1, "a2")
+    assert_eq(map_len[I32, Str](m), 2)
+}
+
+test "map_del removes and keeps others" {
+    var m = map_new[I32, Str]()
+    m = put[I32, Str](m, 1, "a")
+    m = put[I32, Str](m, 2, "b")
+    m = put[I32, Str](m, 3, "c")
+    m = map_del[I32, Str](m, 2)
+    assert_eq(map_len[I32, Str](m), 2)
+    assert(has[I32, Str](m, 1))
+    assert(!has[I32, Str](m, 2))
+    assert(has[I32, Str](m, 3))
+    // 删除不存在的键:原样返回
+    var m2 = map_del[I32, Str](m, 99)
+    assert_eq(map_len[I32, Str](m2), 2)
+    // 删空
+    m = map_del[I32, Str](m, 1)
+    m = map_del[I32, Str](m, 3)
+    assert_eq(map_len[I32, Str](m), 0)
+}

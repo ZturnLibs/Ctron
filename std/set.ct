@@ -64,3 +64,122 @@ test "tolist/fromlist roundtrip dedupes" {
     assert(back[0] == 5)
     assert(back[1] == 7)
 }
+
+
+// ============ v0.3 完备性:删除与集合代数(函数式,原集合不变) ============
+
+// 删除元素:不存在时原样返回
+pub fn set_del[T](s: Set[T], v: T) -> Set[T] {
+    var out = set_new[T]()
+    var i: I32 = 0
+    var hit = false
+    var all = tolist[T](s)
+    while i < all.len {
+        if all[i] == v {
+            hit = true
+        } else {
+            out = add[T](out, all[i])
+        }
+        i += 1
+    }
+    if !hit {
+        return s
+    }
+    return out
+}
+
+// 并集:a ∪ b
+pub fn set_union[T](a: Set[T], b: Set[T]) -> Set[T] {
+    var out = a
+    var bs = tolist[T](b)
+    var i: I32 = 0
+    while i < bs.len {
+        if !mem[T](out, bs[i]) {
+            out = add[T](out, bs[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+// 交集:a ∩ b(结果保持 a 的元素序)
+pub fn set_inter[T](a: Set[T], b: Set[T]) -> Set[T] {
+    var out = set_new[T]()
+    var as_ = tolist[T](a)
+    var i: I32 = 0
+    while i < as_.len {
+        if mem[T](b, as_[i]) {
+            out = add[T](out, as_[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+// 差集:a − b(结果保持 a 的元素序)
+pub fn set_diff[T](a: Set[T], b: Set[T]) -> Set[T] {
+    var out = set_new[T]()
+    var as_ = tolist[T](a)
+    var i: I32 = 0
+    while i < as_.len {
+        if !mem[T](b, as_[i]) {
+            out = add[T](out, as_[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+// 子集判定:a ⊆ b
+pub fn set_subset[T](a: Set[T], b: Set[T]) -> Bool {
+    var as_ = tolist[T](a)
+    var i: I32 = 0
+    while i < as_.len {
+        if !mem[T](b, as_[i]) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+test "set_del removes and passes through" {
+    var s = set_new[I32]()
+    s = add[I32](s, 1)
+    s = add[I32](s, 2)
+    s = add[I32](s, 3)
+    s = set_del[I32](s, 2)
+    assert_eq(len[I32](s), 2)
+    assert(mem[I32](s, 1))
+    assert(!mem[I32](s, 2))
+    assert(mem[I32](s, 3))
+    var s2 = set_del[I32](s, 99)
+    assert_eq(len[I32](s2), 2)
+}
+
+test "set union inter diff subset" {
+    var a = set_new[I32]()
+    a = add[I32](a, 1)
+    a = add[I32](a, 2)
+    a = add[I32](a, 3)
+    var b = set_new[I32]()
+    b = add[I32](b, 3)
+    b = add[I32](b, 4)
+    var u = set_union[I32](a, b)
+    assert_eq(len[I32](u), 4)
+    assert(mem[I32](u, 1))
+    assert(mem[I32](u, 4))
+    var i12 = set_inter[I32](a, b)
+    assert_eq(len[I32](i12), 1)
+    assert(mem[I32](i12, 3))
+    var d = set_diff[I32](a, b)
+    assert_eq(len[I32](d), 2)
+    assert(mem[I32](d, 1))
+    assert(mem[I32](d, 2))
+    assert(!mem[I32](d, 3))
+    var sub = set_new[I32]()
+    sub = add[I32](sub, 1)
+    assert(set_subset[I32](sub, a))
+    assert(!set_subset[I32](a, sub))
+    assert(set_subset[I32](set_new[I32](), b))
+}
