@@ -810,6 +810,10 @@ fn ct_opt_elem_of(file: List[Str], nt: List[Str]) -> Str {
                 return ct_ty_code(nt[2][1], file)
             }
         }
+        // 前奏泛型容器作载荷(P0-G):Result[List[…], E] → L 指针槽
+        if seq2(nt[1], "List") {
+            return "L"
+        }
     }
     return "i"
 }

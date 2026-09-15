@@ -382,6 +382,7 @@ fn main() -> I32 {
                 } else if d[0] == "Test" {
                     // test 块 → int fn:断言失败 return 1(语句位 assert 发射),成功 return 0
                     var penv2 = env_bind(List[Str](), "#p", "2")
+                    penv2 = env_bind(penv2, "#intest", "1")
                     penv2 = dls_push(penv2)
                     eln("static int32_t t_test_" + ntest.to_string() + "(void) \{", penv2)
                     var tenv = ct_stmts(d[2], penv2, file, "", List[Str]())

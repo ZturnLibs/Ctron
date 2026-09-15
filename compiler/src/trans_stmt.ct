@@ -689,6 +689,13 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln(vt + " t_" + pat[1] + " = (" + vt + ")(" + rhs + ");", env)
                 return env_bind(env, pat[1], ty)
             }
+            if ty == "R" && st[4][0] == "Call" && st[4][1][0] == "Ident" {
+                // R 码绑定挂 #elem 侧条目(P0-G):let x = parse(…) 的载荷型别可查
+                var gd7 = ct_fn_decl(file, st[4][1][1])
+                if gd7.len > 0 {
+                    env = env_bind(env, "#elem:" + pat[1], ct_opt_elem_of(file, gd7[4]))
+                }
+            }
             println("//DBG-letty:" + ty)
             var rhs = ct_expr(st[4], env, file)
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
@@ -1229,6 +1236,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
     if t == "Return" {
         // RAII(§6.4):return 穿透所有开层,逆序补发各层 drops(内层→外层)
         env = dls_return_emit(env, file)
+        // test 块内用户 return:eval 语义 = 提前退出且通过(仅断言失败判负,镜像 run_tests)
+        if seq2(ct_env_ty(env, "#intest"), "1") {
+            eln("return 0;", env)
+            return env
+        }
         // Phase 4:spawn shim 体内 return → 写任务结果 + return 0;fnptr 闭包 → return (ct_i)
         if seq2(ct_env_ty(env, "#shim"), "1") {
             if st[1][0] == "None" {
