@@ -1,0 +1,10 @@
+// r6d_trusted_unmarked.neg.ct —— extern "c" 未标记 #[trusted](§9.6;W8050 信任边界)
+// 语义承诺:extern "c" 未标记 #[trusted] → W8050
+// 锚点:宿主 sem 无 W8050 → 红;宿主补齐转绿(自举线已拦)
+//@ fail: W8050
+
+extern "c" fn abs2(x: I32) -> I32
+
+fn main() -> I32 {
+    return 0
+}

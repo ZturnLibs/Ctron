@@ -1,0 +1,13 @@
+// r6e_trusted_nonextern.neg.ct —— #[trusted] 仅限 extern 声明(§9.6;E4040)
+// 语义承诺:非 extern fn 标记 #[trusted] → E4040
+// 锚点:宿主 sem 无 E4040 → 红;宿主补齐转绿(自举线已拦)
+//@ fail: E4040
+
+#[trusted]
+fn local(x: I32) -> I32 {
+    return x
+}
+
+fn main() -> I32 {
+    return 0
+}

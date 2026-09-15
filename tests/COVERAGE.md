@@ -176,3 +176,16 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 计分:suite 66/66 双侧(66 文件;panic 桶 4);roadmap 锚 25(全部在自举线按设计
 表现,红 = 宿主/R 线落后点,见 roadmap 文件头"锚点"行)。
+
+## 2026-09-15 审计增补(二)——trust 边界/续行/预算负例
+
+- `01k_op_continuation.ct` —— §1.6 二元运算符开头续行(01e 首点式的姊妹形态)
+- `roadmap/r6d_trusted_unmarked.neg.ct` —— W8050 extern 未标记 #[trusted](红:宿主无此检查)
+- `roadmap/r6e_trusted_nonextern.neg.ct` —— E4040 #[trusted] 仅限 extern(红:宿主无此检查)
+- `roadmap/r6f_comptime_budget.neg.ct` —— E6010 comptime 预算超限不挂起(红:宿主 check 不评 comptime const)
+- `roadmap/r6g_trusted_extern.ct` —— #[trusted] extern 检查面正例(红:单文件 extern 宿主 test 无法链接;FFI 运行面由 modules/ffi_math 覆盖)
+
+计分:suite 67/67 双侧;roadmap 锚 29;smoke 109 ok(唯一红 = std 泳道 drift)。
+审计结论:自举线已实现特性的语料覆盖到位;剩余"未绿"均对应宿主/R 线落后点
+或远期项(r2a 容器/r2b 环境/r2d fmt/r3b 适配器/iter/r4b 位置/r5a const-size),
+每个红锚文件头含语义承诺与翻转判据。

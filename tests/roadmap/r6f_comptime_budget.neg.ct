@@ -1,0 +1,18 @@
+// r6f_comptime_budget.neg.ct —— comptime 预算超限(§8.4;E6010,P2-A 步数语义判据)
+// 语义承诺:comptime fn 死循环在 const 求值中耗尽 1200 步预算 → E6010(不挂起)
+// 锚点:宿主 check 不评 comptime const(静默放过)→ 红;宿主接入预算求值转绿
+//@ fail: E6010
+
+comptime fn loopf(n: I32) -> I32 {
+    var k: I32 = 0
+    while k >= 0 {
+        k = k + 1
+    }
+    return k
+}
+
+const X: I32 = loopf(0)
+
+fn main() -> I32 {
+    return 0
+}

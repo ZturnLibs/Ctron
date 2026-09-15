@@ -1,0 +1,9 @@
+// 01k_op_continuation.ct —— 换行规则 §1.6:下一行以二元运算符开头 → 上一表达式延续
+test "binary-operator leading continuation" {
+    let a: I32 = 10
+        + 5
+    let s = "he"
+        + "y"
+    assert_eq(a, 15)
+    assert_eq(s, "hey")
+}

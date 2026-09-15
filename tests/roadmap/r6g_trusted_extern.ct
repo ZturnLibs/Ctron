@@ -1,0 +1,10 @@
+// r6g_trusted_extern.ct —— #[trusted] extern "c"(§9.6):信任边界标记检查面正例
+// 语义承诺:extern "c" 标记 #[trusted] 即通过;W8050 只拦未标记的外部声明
+// 锚点:单文件 extern 无法在宿主 test 阶段链接(无 C 实现)→ 红;
+//      FFI 运行面由 modules/ffi_math(c_src 多文件包)覆盖;自举 check 双面绿
+#[trusted]
+extern "c" fn abs2(x: I32) -> I32
+
+fn main() -> I32 {
+    return 0
+}
