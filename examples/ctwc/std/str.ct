@@ -638,3 +638,227 @@ test "eq ignore ascii case" {
     assert(eq_ignore_ascii_case("café", "café"))
     assert(!eq_ignore_ascii_case("Hello", "HELLO!"))
 }
+
+
+// ============ v0.3 补齐:方向性/受限/谓词扩展 ============
+
+// 去左端空白(空格/制表/换行/回车)
+pub fn trim_left(s: Str) -> Str {
+    var start: I32 = 0
+    while start < s.len {
+        if is_ascii_space(byte_at(s, start)) {
+            start += 1
+        } else {
+            return byte_slice(s, start, s.len)
+        }
+        start += 1
+    }
+    return ""
+}
+
+// 去右端空白
+pub fn trim_right(s: Str) -> Str {
+    var end = s.len
+    while end > 0 {
+        if is_ascii_space(byte_at(s, end - 1)) {
+            end -= 1
+        } else {
+            return byte_slice(s, 0, end)
+        }
+        end -= 1
+    }
+    return ""
+}
+
+// 三段切分:首次出现 sep 处切为 [前, sep, 后];无 sep 返回 [s, "", ""]
+pub fn partition(s: Str, sep: Str) -> List[Str] {
+    var p = index_of(s, sep)
+    var out = List[Str]()
+    if p < 0 {
+        out.push(s)
+        out.push("")
+        out.push("")
+        return out
+    }
+    out.push(byte_slice(s, 0, p))
+    out.push(sep)
+    out.push(byte_slice(s, p + sep.len, s.len))
+    return out
+}
+
+// 反向查找:最后一次出现 sub 的下标;无 -1;空 sub = s.len
+pub fn rindex(s: Str, sub: Str) -> I32 {
+    var sn = sub.len
+    var hn = s.len
+    if sn == 0 {
+        return hn
+    }
+    if sn > hn {
+        return -1
+    }
+    var i = hn - sn
+    while i >= 0 {
+        var ok = true
+        var k: I32 = 0
+        while k < sn {
+            if byte_at(s, i + k) != byte_at(sub, k) {
+                ok = false
+            }
+            k += 1
+        }
+        if ok {
+            return i
+        }
+        i -= 1
+    }
+    return -1
+}
+
+// 限段替换:最多 n 次(从左到右);n ≤ 0 不替换
+pub fn replace_n(s: Str, from: Str, to: Str, n: I32) -> Str {
+    if n <= 0 {
+        return s
+    }
+    if from.len == 0 {
+        return s
+    }
+    var out = ""
+    var i: I32 = 0
+    var done: I32 = 0
+    while i < s.len {
+        var matched = false
+        if done < n {
+            if i + from.len <= s.len {
+                var ok = true
+                var k: I32 = 0
+                while k < from.len {
+                    if byte_at(s, i + k) != byte_at(from, k) {
+                        ok = false
+                    }
+                    k += 1
+                }
+                matched = ok
+            }
+        }
+        if matched {
+            out = out + to
+            i = i + from.len
+            done = done + 1
+        }
+        if !matched {
+            out = out + byte_slice(s, i, i + 1)
+            i = i + 1
+        }
+    }
+    return out
+}
+
+// 限段切分:最多 max 段(余下归末段);max ≤ 0 返回空表
+pub fn split_n(s: Str, sep: Str, max: I32) -> List[Str] {
+    if max <= 0 {
+        return List[Str]()
+    }
+    var all = split_str(s, sep)
+    if all.len <= max {
+        return all
+    }
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < max - 1 {
+        out.push(all[i])
+        i += 1
+    }
+    // 末段合并剩余(sep 也拼回)
+    var rest = all[i]
+    i += 1
+    while i < all.len {
+        rest = rest + sep + all[i]
+        i += 1
+    }
+    out.push(rest)
+    return out
+}
+
+pub fn is_ascii_upper(b: I32) -> Bool {
+    return b >= 65 && b <= 90
+}
+
+pub fn is_ascii_lower(b: I32) -> Bool {
+    return b >= 97 && b <= 122
+}
+
+pub fn is_ascii_xdigit(b: I32) -> Bool {
+    if b >= 48 && b <= 57 {
+        return true
+    }
+    if b >= 65 && b <= 70 {
+        return true
+    }
+    return b >= 97 && b <= 102
+}
+
+test "trim left right" {
+    assert_eq(trim_left("  hello"), "hello")
+    assert_eq(trim_left("hello"), "hello")
+    assert_eq(trim_right("hello  "), "hello")
+    assert_eq(trim_right("hello"), "hello")
+    assert_eq(trim_left("\t\n  "), "")
+    assert_eq(trim_right("  \r\n"), "")
+    assert_eq(trim_left(""), "")
+    assert_eq(trim_right(""), "")
+}
+
+test "partition three way" {
+    var a = partition("key=value", "=")
+    assert_eq(a.len, 3)
+    assert_eq(a[0], "key")
+    assert_eq(a[1], "=")
+    assert_eq(a[2], "value")
+    var b = partition("no-sep", "=")
+    assert_eq(b.len, 3)
+    assert_eq(b[0], "no-sep")
+    assert_eq(b[1], "")
+    assert_eq(b[2], "")
+    var c = partition("a=b=c", "=")
+    assert_eq(c[0], "a")
+    assert_eq(c[2], "b=c")
+}
+
+test "rindex last occurrence" {
+    assert_eq(rindex("hello world", "o"), 7)
+    assert_eq(rindex("aaa", "a"), 2)
+    assert_eq(rindex("hello", "z"), -1)
+    assert_eq(rindex("hello", ""), 5)
+    assert_eq(rindex("", "a"), -1)
+}
+
+test "replace_n limited" {
+    assert_eq(replace_n("aaa", "a", "X", 2), "XXa")
+    assert_eq(replace_n("aaa", "a", "X", 0), "aaa")
+    assert_eq(replace_n("aaa", "a", "X", 3), "XXX")
+    assert_eq(replace_n("abc", "z", "X", 5), "abc")
+}
+
+test "split_n limited segments" {
+    var a = split_n("a,b,c,d", ",", 2)
+    assert_eq(a.len, 2)
+    assert_eq(a[0], "a")
+    assert_eq(a[1], "b,c,d")
+    var b = split_n("a,b,c", ",", 0)
+    assert_eq(b.len, 0)
+    var c = split_n("a,b,c", ",", 10)
+    assert_eq(c.len, 3)
+}
+
+test "is ascii upper lower xdigit" {
+    assert(is_ascii_upper(65))
+    assert(is_ascii_upper(90))
+    assert(!is_ascii_upper(91))
+    assert(is_ascii_lower(97))
+    assert(is_ascii_lower(122))
+    assert(!is_ascii_lower(96))
+    assert(is_ascii_xdigit(48))
+    assert(is_ascii_xdigit(65))
+    assert(is_ascii_xdigit(97))
+    assert(!is_ascii_xdigit(71))
+}
