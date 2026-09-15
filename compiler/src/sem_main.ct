@@ -173,6 +173,20 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             if td.len > 6 && seq2(td[6], "trusted") {
                 diags.push("E4040@" + nline(td) + ": #[trusted] 仅限 extern 声明:" + td[1])
             }
+        } else if td[0] == "Class" {
+            // §6.2 硬规则(P0-G/GC spike):类直接持有需确定性释放的资源字段 → E4050
+            var rfs = td[3]
+            var rj: I32 = 1
+            while rj < rfs.len {
+                var rfd = rfs[rj]
+                if rfd.len > 3 && rfd[0] == "Field" {
+                    var rh = ty_head(rfd[3])
+                    if or2(seq2(rh, "Mutex"), seq2(rh, "Channel")) {
+                        diags.push("E4050@" + nline(rfd) + ": 类直接持有资源字段(§6.2;资源须值句柄或能力对象):" + td[1] + "." + rfd[2])
+                    }
+                }
+                rj += 1
+            }
         }
         ti += 1
     }

@@ -1,0 +1,11 @@
+// fx_res_class_neg.ct —— §6.2 硬规则(P0-G/GC spike):类直接持有资源字段 → E4050
+//@ fail: E4050
+//@ msg: 类直接持有资源字段
+class Res {
+    let m: Mutex[I32]
+    let ch: Channel[Str]
+}
+
+fn main() -> I32 {
+    return 0
+}

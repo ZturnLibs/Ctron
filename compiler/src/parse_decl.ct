@@ -90,6 +90,7 @@ fn p_test(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
 fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var isv = "false"
     var t = tok(toks, cur)
+    var ln0 = lns[cur.load()]
     if t == "var" { isv = "true" }
     if or2(t == "let", t == "var") { adv(cur) }
     var nm = tok(toks, cur)
@@ -99,6 +100,7 @@ fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     f.push(isv)
     f.push(nm)
     f.push(p_typ(toks, cur, lns))
+    nstamp(f, ln0)
     return f
 }
 
