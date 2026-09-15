@@ -186,16 +186,19 @@ int64_t n}` 视图 typedef(标量五码前置,宿主 ctron_arr_*/R 线 ct_arr �
 CT_AD_DEF_<被调>` include 守卫去重(同被调多处引用仅落地一份定义)。fx_fnval_multi
 (6 处 fn 值引用:不同被调 + 同被调多次)三方逐字;suite 63/63;固定点逐字节。
 
-### 切片 P0-G(新增,2026-09-14):发射面 std 新域适配(并行 std 泳道触发)
+### 切片 P0-G:发射面 std 新域适配(✅ 大部分完成 2026-09-15,a143164;json 运行期余量在册)
 
-**现象:** std 泳道新模块撞发射面三个缺口——`json.ct` 撞 **值位 Match**
-(批次八挂账"值位 match 仅 fn 尾特判"的泛化面)、`unicode.ct` 撞 `ct_expr:Member`
-(未知接收者)、`csv.ct` 撞 `byte_at 目标需 Str`(emit 崩,疑似 typeof 空码路径)。
-其余十模块(str/sort/enc/hash/heap/opt/path/rand/strconv/time)发射全绿。
-**Scope:** 三形态逐个定位(值位 Match 泛化 or json 语料规避,与泳道协商口径;
-Member 接收者补臂;csv 崩点修守卫),fx 夹具随片。
-**Verify:** json/unicode/csv 三模块 emit → gcc → 运行与解释逐字。
-**规模:** 1-3 天(值位 Match 泛化另计)。
+**已落地:**
+- `char_len` prop 发射(Str UTF-8 首字节计数,ctron_char_len 帮手,§3.1.1 前奏 API);
+- `.or(默认)` 组合子 typeof + 发射(ct_i 槽往返,variant 0 取载荷);
+- `is_some/is_ok/is_err` 发射臂(variant 判定);
+- `let x = match R {…}` let 初值位 R-match ANF(Ok/Some 绑定写值 + Err/None 块,
+  PatWild 丢弃目标);csv/unicode 双模块 emit→gcc→运行与解释逐字一致。
+- **顺带修复(while 提升声明跨兄弟块作用域缺陷):** 提升声明原发于首个 while 站点的
+  嵌套块,同 fn 后续循环复用 hreg 不发声明 → 未定义标识符;现每站点块作用域内
+  各发零初始化声明(C 遮蔽安全),提升声明与 while 同包一块。
+**余量(在册):** `json.ct` 发射编译已通但**运行期段万能**(重递归+arena 压力,
+需 gdb 定位);ctwc/ctwf vendored 快照随泳道同步。
 
 ---
 
