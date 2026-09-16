@@ -1,0 +1,4 @@
+// tests/ffi/abi_bad.neg.ct —— E1001:extern ABI 仅支持 "c"(§9.6;镜像宿主 parser_decl)
+//@ fail: E1001
+#[trusted]
+extern "rust" fn mystery(x: I32) -> I32

@@ -16,6 +16,27 @@ fn is_opt_ret(ty: List[Str]) -> Bool {
 fn is_cmp_op(op: Str) -> Bool {
     return or2(op == "Lt", or2(op == "Gt", or2(op == "Le", or2(op == "Ge", or2(op == "Eq", op == "Ne")))))
 }
+
+// 该名是否为带 fn 类型形参的 extern "c" 声明(E4042 门控;闭包实参冷路径才调用)
+fn ext_cb_target(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "FnExt" && d[1] == nm {
+            var ps = d[3]
+            var k: I32 = 1
+            while k < ps.len {
+                if ps[k][0] == "Param" && ps[k][3][0] == "FnType" {
+                    return true
+                }
+                k += 1
+            }
+            return false
+        }
+        i += 1
+    }
+    return false
+}
 fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
     var t = e[0]
     if t == "Call" {
@@ -32,6 +53,23 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
                 if !send_of(file, el, 0) {
                     out.push("E3020@" + nline(e) + ": channel 元素非 Send(Send):Channel 元素类型")
                 }
+            }
+        }
+        // E4042(§9.6 v0.6):捕获闭包实参传入 extern "c" 的 fn 指针形参——C 回调
+        // 无 env 槽,闭包上下文无法跨边界;仅裸 fn 名(无捕获)可作 C-ABI 回调。
+        // 门控:任一实参为 Closure 字面量才扫 extern 表(冷路径,零摊销)。
+        if cal[0] == "Ident" {
+            var agx = e[2]
+            var hasclo = false
+            var qi: I32 = 1
+            while qi < agx.len && !hasclo {
+                if agx[qi][0] == "Closure" {
+                    hasclo = true
+                }
+                qi += 1
+            }
+            if hasclo && ext_cb_target(file, cal[1]) {
+                out.push("E4042@" + nline(e) + ": 捕获闭包不可作 C-ABI 回调实参(无 env 槽):" + cal[1])
             }
         }
         walk_e(file, cal, ns, fns, rets, out)

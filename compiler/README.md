@@ -17,9 +17,9 @@
 | 解析 | `src/parse_node.ct` | 树节点助手 + 插值原文切分(qtext/parts_of) |
 | | `src/parse_expr.ct` | 表达式优先级链(p_or→…→p_pri)+ 类型 + or 层 |
 | | `src/parse_stmt.ct` | 语句/模式/if/match/block |
-| | `src/parse_decl.ct` | 声明(fn/struct/enum/class/trait/use…)与入口 `p_file` |
+| | `src/parse_decl.ct` | 声明(fn/struct/enum/class/trait/use/extern "c" ABI 校验/#[attr] struct·enum 路由)与入口 `p_file` |
 | | `src/parse_pkg.ct` | 模块加载器 v0(use 解析/可见性/循环检测/caps) |
-| 语义 | `src/sem_main.ct` | 主控 `sem_walk2`:12 项全集编排(接口:→ 诊断串) |
+| 语义 | `src/sem_main.ct` | 主控 `sem_walk2`:12 项全集编排(接口:→ 诊断串);FFI 治理面(E4041/E4042/W8051-53,§9.6 v0.6) |
 | | `src/sem_walk.ct` | W8020 must-use / E4030 no_spawn / E3020(树上行走) |
 | | `src/sem_send.ct` | Send 内核(send_of;E3020/E3031/E3010 共用) |
 | | `src/sem_own.ct` | E3060 own 内 GC 可变写 |
@@ -54,8 +54,9 @@
 | | `ctc.sh` | 统一驱动:`ctc.sh <in>` 运行 / `ctc.sh check <in> [--profile=bare]` 检查 / `ctc.sh emit <in> [out.c]` 发射 |
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
 | | `bench.sh` | 性能基线:微基准三路 + 前端 check + 后端发射 + 黄金解释(基线见 BOOTSTRAP.md §2b) |
+| | `test/bench_ffi.sh` | FFI 边界微基准(§9.4):标量调用/回调/struct 按值/Str 编组 vs 纯 C 基线 |
 | | `test/smoke.sh` | 验收冒烟(54 项;`--full` 加自发射收官与固定点) |
-| | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主 |
+| | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主;含 `modules/` 与 `ffi/`(§9.8)小节 |
 
 Ctron 当前为单文件程序模型(无本地多文件模块),模块化以**确定性拼接**实现:
 `cc_run.ct` = lex + parse_* + sem_* + eval_* + driver_run;`cc_check.ct` 换 driver_check;

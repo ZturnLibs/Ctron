@@ -1,0 +1,155 @@
+// tests/ffi/bench —— FFI 边界微基准(§9.4 性能口径;驱动:compiler/test/bench_ffi.sh)
+// 四场景 × 双向:ffi_X = Ctron 发射面逐次过界;c_X = 纯 C 循环同构基线(经一次边界
+// 整批计时)。每场景预热 + 计时 3 轮取最小;ns/op = Δms × 1e6 / N。
+// 求和累积防 DCE;extern 热函数 noinline(C 侧),与真实跨 TU FFI 同形。
+#[repr(c)]
+struct BPt {
+    var a: I64
+    var b: F64
+    var c: I64
+    var d: I64
+}
+
+#[trusted]
+extern "c" fn b_add(a: I64, b: I64) -> I64
+
+#[trusted]
+extern "c" fn b_loop_calls(n: I64, x: I64) -> I64
+
+#[trusted]
+extern "c" fn b_apply(f: fn(I64) -> I64, x: I64) -> I64
+
+#[trusted]
+extern "c" fn b_loop_cb(n: I64, x: I64) -> I64
+
+#[trusted]
+extern "c" fn b_pt_sum(p: BPt) -> F64
+
+#[trusted]
+extern "c" fn b_loop_struct(n: I64, a: I64, b: F64, c: I64, d: I64) -> F64
+
+#[trusted]
+extern "c" fn b_buf() -> Str
+
+#[trusted]
+extern "c" fn b_loop_str(n: I64) -> I64
+
+fn inc(x: I64) -> I64 {
+    return x + 1
+}
+
+fn best_of(prev: I64, dt: I64) -> I64 {
+    if prev < 0 {
+        return dt
+    }
+    if dt < prev {
+        return dt
+    }
+    return prev
+}
+
+fn bench_calls() {
+    var w = b_loop_calls(1000000, 0)
+    var best: I64 = -1
+    var k: I32 = 0
+    while k < 3 {
+        var t0 = now_ms()
+        var acc: I64 = 0
+        var i: I64 = 0
+        while i < 200000000 {
+            acc = b_add(acc, 1)
+            i += 1
+        }
+        var t1 = now_ms()
+        best = best_of(best, t1 - t0)
+        w = w + acc
+        k += 1
+    }
+    println("ffi_call " + ((best * 100000000) / 200000000).to_string() + " " + w.to_string())
+    var t0 = now_ms()
+    var acc = b_loop_calls(200000000, 0)
+    var t1 = now_ms()
+    println("c_call " + (((t1 - t0) * 100000000) / 200000000).to_string() + " " + acc.to_string())
+}
+
+fn bench_cb() {
+    var w = b_loop_cb(1000000, 0)
+    var best: I64 = -1
+    var k: I32 = 0
+    while k < 3 {
+        var t0 = now_ms()
+        var acc: I64 = 0
+        var i: I64 = 0
+        while i < 200000000 {
+            acc = b_apply(inc, acc)
+            i += 1
+        }
+        var t1 = now_ms()
+        best = best_of(best, t1 - t0)
+        w = w + acc
+        k += 1
+    }
+    println("ffi_cb " + ((best * 100000000) / 200000000).to_string() + " " + w.to_string())
+    var t0 = now_ms()
+    var acc = b_loop_cb(50000000, 0)
+    var t1 = now_ms()
+    println("c_cb " + (((t1 - t0) * 100000000) / 200000000).to_string() + " " + acc.to_string())
+}
+
+fn bench_struct() {
+    var w: F64 = 0.0
+    var p = BPt { a: 1, b: 2.0, c: 3, d: 4 }
+    var w2 = b_loop_struct(1000000, 1, 2.0, 3, 4)
+    var best: I64 = -1
+    var accf: F64 = 0.0
+    var k: I32 = 0
+    while k < 3 {
+        var t0 = now_ms()
+        var i: I64 = 0
+        while i < 150000000 {
+            accf = b_pt_sum(p)
+            i += 1
+        }
+        var t1 = now_ms()
+        best = best_of(best, t1 - t0)
+        w = w + accf
+        k += 1
+    }
+    println("ffi_struct " + ((best * 100000000) / 150000000).to_string() + " " + w.to_string() + " " + w2.to_string())
+    var t0 = now_ms()
+    var acc = b_loop_struct(150000000, 1, 2.0, 3, 4)
+    var t1 = now_ms()
+    println("c_struct " + (((t1 - t0) * 100000000) / 150000000).to_string() + " " + acc.to_string())
+}
+
+fn bench_str() {
+    var w = b_loop_str(100000)
+    var best: I64 = -1
+    var acc: I32 = 0
+    var k: I32 = 0
+    while k < 3 {
+        var t0 = now_ms()
+        var i: I64 = 0
+        while i < 2000000 {
+            var s: Str = str_from_c(b_buf())
+            acc += byte_at(s, 0)
+            i += 1
+        }
+        var t1 = now_ms()
+        best = best_of(best, t1 - t0)
+        k += 1
+    }
+    println("ffi_str " + ((best * 100000000) / 2000000).to_string() + " " + acc.to_string() + " " + w.to_string())
+    var t0 = now_ms()
+    var acc2 = b_loop_str(2000000)
+    var t1 = now_ms()
+    println("c_str " + (((t1 - t0) * 100000000) / 2000000).to_string() + " " + acc2.to_string())
+}
+
+fn main() -> I32 {
+    bench_calls()
+    bench_cb()
+    bench_struct()
+    bench_str()
+    return 0
+}

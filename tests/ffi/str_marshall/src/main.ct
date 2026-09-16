@@ -1,0 +1,31 @@
+// tests/ffi/str_marshall —— Str 编组(§9.6 v0.6)
+// 承诺:Str 即 const char* 直通(Ctron→C 借用零拷贝);C→Ctron 经 str_from_c
+// 深拷入 arena(Ctron-owned,免 free,独立于 C 侧缓冲寿命);C-owned 串的所有权
+// 三约定(§9.6)由包装层显式化。注:libc size_t 与发射 uint64_t 在 Darwin 是
+// 不同类型别名(声明冲突),size_t 面经 c_src 垫片(c_strlen)过界。
+#[trusted]
+extern "c" fn c_strlen(s: Str) -> I64
+
+#[trusted]
+extern "c" fn c_count_vowels(s: Str) -> I64
+
+#[trusted]
+extern "c" fn c_shout(s: Str) -> Str
+
+#[trusted]
+extern "c" fn c_static_greet() -> Str
+
+test "Str into C: borrowed read + strlen shim" {
+    assert_eq(c_strlen("hello"), 5)
+    assert_eq(c_count_vowels("Ctron FFI"), 2)
+}
+
+test "Str from C: str_from_c copies into arena, outlives the call" {
+    var a: Str = str_from_c(c_static_greet())
+    var b: Str = str_from_c(c_shout("ffi"))
+    assert_eq(a, "hello from C")
+    assert_eq(b, "FFI")
+    // 副本独立性:再过一次边界仍可读,证明不依赖 C 侧缓冲
+    assert_eq(c_count_vowels(a), 3)
+    assert_eq(c_strlen(b), 3)
+}

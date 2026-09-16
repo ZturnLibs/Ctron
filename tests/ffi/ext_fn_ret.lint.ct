@@ -1,0 +1,9 @@
+// tests/ffi/ext_fn_ret.lint.ct —— W8053:extern 返回 fn 类型暂不支持
+// (v0 仅形参向;返回侧需值域约定,见 docs/ffi-analysis.md 缺口清单)
+//@ warn: W8053
+#[trusted]
+extern "c" fn get_cb() -> fn(I64) -> I64
+
+test "declaration lints but compiles" {
+    assert_eq(3, 3)
+}

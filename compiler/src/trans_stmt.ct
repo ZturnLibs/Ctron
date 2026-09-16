@@ -696,7 +696,6 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     env = env_bind(env, "#elem:" + pat[1], ct_opt_elem_of(file, gd7[4]))
                 }
             }
-            println("//DBG-letty:" + ty)
             var rhs = ct_expr(st[4], env, file)
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }

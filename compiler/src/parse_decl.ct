@@ -104,7 +104,7 @@ fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     return f
 }
 
-fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
+fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm: Str) -> List[Str] {
     var ln0 = lns[cur.load()]
     adv(cur)
     var nm = tok(toks, cur)
@@ -134,16 +134,20 @@ fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -
     }
     adv(cur)
     ns.push(fs)
+    // #[attr] 名先于行号戳入尾槽(镜像 fn 的 anm@6/stamp@7;repr 见 §9.6)
+    if anm != "" {
+        ns.push(anm)
+    }
     nstamp(ns, ln0)
     return ns
 }
 
 fn p_struct(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var dr0 = mk("Drvs")
-    return p_struct2(toks, cur, lns, dr0)
+    return p_struct2(toks, cur, lns, dr0, "")
 }
 
-fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
+fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -204,6 +208,10 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> 
     }
     adv(cur)
     ne.push(vs)
+    // #[attr] 名入尾槽(行号戳缺席,与 p_enum 现状一致;repr 误用由 sem 拦)
+    if anm != "" {
+        ne.push(anm)
+    }
     return ne
 }
 
@@ -373,7 +381,7 @@ fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
 
 fn p_enum(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var dr0 = mk("Drvs")
-    return p_enum2(toks, cur, lns, dr0)
+    return p_enum2(toks, cur, lns, dr0, "")
 }
 
 fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
@@ -462,11 +470,19 @@ fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     return ns
 }
 
-// extern "c" fn 声明(§9.6):无函数体;仅支持 "c"(v0);anm = 前置 #[attr] 名(可空)
-fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], anm: Str) -> List[Str] {
+// extern "c" fn 声明(§9.6):无函数体;ABI 须为 "c" 字符串(v0;缺省 = 裸 extern,
+// 镜像宿主 ast.h abi 可 NULL);anm = 前置 #[attr] 名(可空)
+fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str], anm: Str) -> List[Str] {
     var ln0 = lns[cur.load()]
     adv(cur)
-    adv(cur)
+    if byte_at(tok(toks, cur), 0) == 34 {
+        // ABI 字符串字面量:仅 "c"(§9.6);其余 E1001(镜像宿主 parser_decl "extern ABI 应为字符串")
+        var abi = tok(toks, cur)
+        adv(cur)
+        if !seq2(qtext(byte_slice(abi, 1, abi.len - 1)), "c") {
+            pdiag(pdiags, lns, cols, cur, "E1001", "extern ABI 应为 \"c\" 字符串")
+        }
+    }
     while tok(toks, cur) == "NL" {
         adv(cur)
     }
@@ -504,7 +520,12 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
                 adv(cur)
             }
             if tok(toks, cur) == "extern" {
-                nf.push(p_extern(toks, cur, lns, anm))
+                nf.push(p_extern(toks, cur, lns, cols, pdiags, anm))
+            } else if tok(toks, cur) == "struct" {
+                // #[attr] struct:属性名入尾槽(v0.6 #[repr(c)] §9.6)
+                nf.push(p_struct2(toks, cur, lns, mk("Drvs"), anm))
+            } else if tok(toks, cur) == "enum" {
+                nf.push(p_enum2(toks, cur, lns, mk("Drvs"), anm))
             } else {
                 var fd = p_fn2(toks, cur, lns, "Fn")
                 fd.push(anm)
@@ -551,9 +572,9 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
             }
             var t2 = tok(toks, cur)
             if t2 == "struct" {
-                nf.push(p_struct2(toks, cur, lns, dr2))
+                nf.push(p_struct2(toks, cur, lns, dr2, ""))
             } else if t2 == "enum" {
-                nf.push(p_enum2(toks, cur, lns, dr2))
+                nf.push(p_enum2(toks, cur, lns, dr2, ""))
             } else if t2 == "trait" {
                 nf.push(p_trait(toks, cur, lns))
             } else {
@@ -562,7 +583,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         } else if t == "test" {
             nf.push(p_test(toks, cur, lns))
         } else if t == "extern" {
-            nf.push(p_extern(toks, cur, lns, ""))
+            nf.push(p_extern(toks, cur, lns, cols, pdiags, ""))
         } else if t == "enum" {
             nf.push(p_enum(toks, cur, lns))
         } else if t == "struct" {

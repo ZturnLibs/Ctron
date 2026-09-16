@@ -1,0 +1,12 @@
+// tests/ffi/repr_unsafe_field.lint.ct —— W8051:repr(c) struct 含非 C-ABI 字段
+// (容器/能力类型不得入 C 布局;镜像 Rust improper_ctypes 警示面)
+//@ warn: W8051
+#[repr(c)]
+struct Bad {
+    var xs: List[I32]
+    var n: I32
+}
+
+test "struct itself compiles (layout governance is lint-only)" {
+    assert_eq(1, 1)
+}

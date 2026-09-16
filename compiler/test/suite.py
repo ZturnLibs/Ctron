@@ -179,6 +179,66 @@ print(f"自举 {mpass[0]}/{mpass[1]} | 宿主pkg {hpass[0]}/{hpass[1]}")
 for n in mnotes:
     print("  " + n)
 
+# ---------- ffi/(§9.6·§9.8 FFI 用例,自举发射面专测)----------
+# 行为目录(含 c_src/):emit → cc 链接 → 原生运行(解释器无 FFI 口径);
+# 根下 *.neg.ct / *.lint.ct:bin/ctron-cc run 诊断码(lint rc 不判)。
+# tests/ffi/run.sh 为同口径独立驱动。
+print(f"\n== ffi/ FFI 用例(§9.6·§9.8)==")
+fpass, ftotal, fnote = [0, 0], [0, 0], []
+import subprocess as sp2, tempfile
+
+def ffi_emit_run(case, entry, mk, kind):
+    with tempfile.TemporaryDirectory() as td:
+        em = os.path.join(td, "out.c")
+        binp = os.path.join(td, "app")
+        emit_bin = CC.replace("ctron-cc", "ctron-emit")
+        p1 = sp2.run([emit_bin, "run", entry], capture_output=True, text=True, timeout=60, cwd=ROOT)
+        if p1.returncode != 0:
+            return False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
+        open(em, "w").write(p1.stdout)
+        srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c")))
+        p2 = sp2.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, timeout=60)
+        if p2.returncode != 0:
+            return False, f"cc 失败: {first_line(p2.stderr)}"
+        p3 = sp2.run([binp, "run", entry], capture_output=True, text=True, timeout=20, cwd=ROOT)
+        return verdict(kind, mk, p3.returncode, p3.stdout + p3.stderr)
+
+ffi_dir = os.path.join(TESTS, "ffi")
+if os.path.isdir(ffi_dir):
+    for case in sorted(glob.glob(os.path.join(ffi_dir, "*"))):
+        if os.path.isdir(case) and os.path.isdir(os.path.join(case, "c_src")):
+            if os.path.basename(case) == "bench":
+                continue  # 微基准夹具由 compiler/test/bench_ffi.sh 驱动,不入行为面
+            entry = os.path.join(case, "src", "main.ct")
+            if not os.path.exists(entry):
+                fnote.append(f"{os.path.basename(case)}: 无 src/main.ct(跳过)")
+                continue
+            mk = markers(entry)
+            kind = "neg" if mk.get("fail") else ("lint" if mk.get("warn") else ("panic" if mk.get("panic") else "behavior"))
+            fpass[1] += 1
+            ok, why = ffi_emit_run(case, entry, mk, kind)
+            if ok:
+                fpass[0] += 1
+            else:
+                fnote.append(f"[{kind}] {os.path.basename(case)} — {why}")
+    for path in sorted(glob.glob(os.path.join(ffi_dir, "*.neg.ct")) + glob.glob(os.path.join(ffi_dir, "*.lint.ct"))):
+        base = os.path.basename(path)
+        kind = "neg" if base.endswith(".neg.ct") else "lint"
+        mk = markers(path)
+        fpass[1] += 1
+        rc, out = run(CC, path, "run")
+        ok, why = verdict(kind, mk, rc, out)
+        if kind == "lint":
+            ok = all(c in out for c in mk.get("warn", []))
+            why = "" if ok else "缺警告码"
+        if ok:
+            fpass[0] += 1
+        else:
+            fnote.append(f"[{kind}] {base} — {why}")
+print(f"自举 {fpass[0]}/{fpass[1]}")
+for n in fnote:
+    print("  " + n)
+
 total = sum(v[1] for v in score.values())
 print(f"== tests/ 一致性测试集 × bin/ctron-cc(对照 C 参考宿主)==")
 print(f"{'类别':<10}{'自举cc':<12}{'C 宿主':<12}")

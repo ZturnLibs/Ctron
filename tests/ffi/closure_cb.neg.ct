@@ -1,0 +1,11 @@
+// tests/ffi/closure_cb.neg.ct —— E4042:捕获闭包不可作 C-ABI 回调实参(§9.6 v0.6;
+// C 函数指针无 env 槽,上下文无法跨边界——Rust 同口径仅许非捕获)
+//@ fail: E4042
+#[trusted]
+extern "c" fn apply_twice(f: fn(I64) -> I64, x: I64) -> I64
+
+fn main() -> I32 {
+    var r = apply_twice(|x| x + 1, 5)
+    println(r)
+    return 0
+}

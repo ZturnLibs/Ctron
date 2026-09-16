@@ -1,0 +1,6 @@
+// tests/ffi/repr_on_fn.neg.ct —— E4041:#[repr(c)] 仅限 struct 声明(§9.6 v0.6)
+//@ fail: E4041
+#[repr(c)]
+fn f(x: I32) -> I32 {
+    return x
+}

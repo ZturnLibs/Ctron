@@ -99,7 +99,9 @@ diff -q "$T/em_seed.c" "$T/em_nc.c" >/dev/null 2>&1 && echo "两形态发射产�
 
 echo ""
 echo "== S4) 黄金解释:seed 解释 cc_run 跑 input_cc vs native ctron-cc 同源 =="
-run_timed "$T/g_seed.out" 900 "$SEED" run "$DIR/build/cc_run.ct"
+# seed 的 read_file 锚按 CWD 解析:须在 compiler/ 内运行(cc_run.ct 锚 "../selfhosted/...")
+# 否则读文件失败打 "read-failed" 造成假分歧(曾以仓库根为 CWD 触发)
+run_timed "$T/g_seed.out" 900 sh -c "cd \"$DIR\" && \"$SEED\" run \"$DIR/build/cc_run.ct\""
 t1=$RT
 run_timed "$T/g_nc.out" 900 "$NC" run "$ROOT/selfhosted/input_cc.ct"
 t2=$RT

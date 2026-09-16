@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=281' "$T/chk.out" && ok "自检 cc_run 绿,decls=283" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=283' "$T/chk.out" && ok "自检 cc_run 绿,decls=283" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -350,6 +350,28 @@ for cv in uhex; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
+
+echo "== 3j) FFI 发射链接面(§9.6·§9.8,tests/ffi/) =="
+ffi_case() { # <目录名>
+    local d="$ROOT/tests/ffi/$1"
+    if "$COMP/bin/ctron-emit" run "$d/src/main.ct" > "$T/ffi_$1.c" 2>/dev/null \
+       && cc -O1 -w -o "$T/ffi_$1.bin" "$T/ffi_$1.c" "$d"/c_src/*.c 2>/dev/null \
+       && "$T/ffi_$1.bin" run "$d/src/main.ct" > "$T/ffi_$1.out" 2>&1; then
+        ok "ffi/$1 emit+链接+原生运行"
+    else
+        bad "ffi/$1 发射链接运行失败: $(head -c 100 "$T/ffi_$1.out" 2>/dev/null)"
+    fi
+}
+ffi_case callback
+ffi_case repr_c
+"$COMP/bin/ctron-cc" run "$ROOT/tests/ffi/closure_cb.neg.ct" > "$T/ffi_neg.out" 2>&1; rc=$?
+if [ $rc -eq 1 ] && grep -q "E4042" "$T/ffi_neg.out"; then
+    ok "FFI 负例拦截(捕获闭包回调 E4042, rc=1)"
+else
+    bad "FFI 负例未拦截(rc=$rc)"
+fi
+"$COMP/bin/ctron-cc" run "$ROOT/tests/ffi/ext_nonabi_param.lint.ct" > "$T/ffi_lint.out" 2>&1
+grep -q "W8052" "$T/ffi_lint.out" && ok "FFI lint 警示(extern 非 C-ABI 形参 W8052)" || bad "FFI lint 缺 W8052"
 
 if [ "${1:-}" = "--full" ]; then
     echo "== 4) 自发射收官(发射 run 驱动编译器 → 原生解释器) =="

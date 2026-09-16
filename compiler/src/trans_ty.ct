@@ -378,6 +378,34 @@ fn ct_params_str(d: List[Str], file: List[Str]) -> Str {
     return params
 }
 
+// extern "c" 边界 C 类型(§9.6 v0.6):fn 类型(F<arity>)映射裸 C 函数指针
+// ct_fn1/2/3(Ctron 侧具名 fn 的地址零包装直传;捕获闭包已被 sem E4042 拦),
+// 其余与内部表示一致(标量同宽;Str = char* 直通)
+fn ct_abi_ctype(code: Str) -> Str {
+    if code == "F1" { return "ct_fn1" }
+    if code == "F2" { return "ct_fn2" }
+    if code == "F3" { return "ct_fn3" }
+    return ct_ctype(code)
+}
+
+// extern 声明的 C 形参表:fn 指针形参按边界映射(ct_fnK;区别于内部闭包对 ct_clop)
+fn ct_params_str_ext(d: List[Str], file: List[Str]) -> Str {
+    var ps = d[3]
+    var params = ""
+    var k: I32 = 1
+    var first = true
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            if !first { params = params + ", " }
+            params = params + ct_abi_ctype(ct_ty_code(pr[3], file)) + " t_" + pr[2]
+            first = false
+        }
+        k += 1
+    }
+    return params
+}
+
 // 实例化 struct 域类型:接收者码 u:<名>__<尾缀> 解码 + TPar 槽代入
 fn ct_field_ty_inst(file: List[Str], inst: Str, fname: Str) -> Str {
     var info = ct_struct_inst_split(inst)
@@ -784,6 +812,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "now_ms_text" { return "s" }
             if cal[1] == "byte_at" { return "i" }
             if cal[1] == "byte_slice" { return "s" }
+            if cal[1] == "str_from_c" { return "s" }
             return ct_fn_ret(file, cal[1])
         }
     }

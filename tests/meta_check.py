@@ -14,6 +14,7 @@ ROOT = Path(__file__).parent
 ERROR_CODES = {
     "E1001": "解析错误(通用语法违规;含比较不可链)",
     "E2010": "类型不匹配",
+    "E2050": "bound 不满足(泛型实参不满足型参 bound)",
     "E2020": "未解析的名称",
     "E2030": "match 不穷尽",
     "E2060": "无法推断类型实参(v0.7;请显式标注)",
@@ -32,12 +33,20 @@ ERROR_CODES = {
     "E4010": "能力使用超出 manifest 声明",
     "E4020": "#[pure] 函数含副作用",
     "E4030": "#[no_spawn] 上下文 spawn",
+    "E4040": "#[trusted] 用于非 extern 声明(§9.6)",
+    "E4041": "#[repr(c)] 用于非 struct 声明(§9.6 v0.6)",
+    "E4042": "捕获闭包作 C-ABI 回调实参(无 env 槽;§9.6 v0.6)",
+    "E4050": "类直接持有需确定性释放的资源字段(§6.2)",
     "E5010": "trait 孤儿规则违规",
     "E5020": "循环依赖",
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",
     "W8010": "struct 含可变类引用字段(浅共享)",
     "W8020": "must-use 结果被丢弃",
+    "W8050": "extern 未标记 #[trusted](信任边界;§9.6)",
+    "W8051": "repr(c) struct 含非 C-ABI 字段(§9.6 v0.6)",
+    "W8052": "extern 形参/返回非 C-ABI 类型(§9.6 v0.6)",
+    "W8053": "extern 返回 fn 类型 v0 不支持(§9.6 v0.6)",
 }
 
 MARKER_RE = re.compile(r"^//@\s*(\w+)\s*:\s*(.+?)\s*$")
@@ -74,8 +83,10 @@ def check_file(path: Path) -> list[str]:
 
     has_test_block = 'test "' in path.read_text(encoding="utf-8")
 
-    # 多文件用例(tests/modules/<case>/):类型由标记决定,源码文件跳过
-    in_modules = "modules" in path.relative_to(ROOT).parts
+    # 多文件用例(tests/modules/<case>/ 与 tests/ffi/<case>/src/):类型由标记决定,
+    # 源码文件跳过(bench/ 夹具为普通 main 程序,由 bench_ffi.sh 驱动)
+    relparts = path.relative_to(ROOT).parts
+    in_modules = "modules" in relparts or ("ffi" in relparts and "src" in relparts)
     if in_modules:
         if not (path.parent.parent / "Ctron.toml").exists():
             errors.append("modules 用例缺少 Ctron.toml(项目根)")
@@ -148,9 +159,13 @@ def main() -> int:
     failures = 0
 
     for path in all_files:
+        rel = path.relative_to(ROOT)
+        # roadmap/ 锚点语料不按主流规则元检查(README §9:主流套件与 campaign 跳过
+        # roadmap/ 前缀;锚点状态由 roadmap_suite 锚点表承载)
+        if rel.parts and rel.parts[0] == "roadmap":
+            continue
         kind = kind_of(path) or "other"
         stats[kind] = stats.get(kind, 0) + 1
-        rel = path.relative_to(ROOT)
         for err in check_file(path):
             failures += 1
             print(f"[FAIL] {rel}: {err}")

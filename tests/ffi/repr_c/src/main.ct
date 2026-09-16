@@ -1,0 +1,44 @@
+// tests/ffi/repr_c —— #[repr(c)] struct 跨边界(§9.6 v0.6)
+// 承诺:repr(c) struct 按声明序直出 C struct,与 C 侧同型定义即 ABI 兼容
+// (含混合宽度字段的填充布局:I64/F64/I32 → 8/8/4+4pad = 24 字节);
+// 值语义双向按值传/按值返;非标注 struct 同布局(默认对 FFI 导出)。
+#[repr(c)]
+struct Point {
+    var x: I64
+    var y: F64
+    var tag: I32
+}
+
+#[trusted]
+extern "c" fn pt_make(x: I64, y: F64, tag: I32) -> Point
+
+#[trusted]
+extern "c" fn pt_sum(p: Point) -> F64
+
+#[trusted]
+extern "c" fn pt_bump(p: Point) -> Point
+
+#[trusted]
+extern "c" fn pt_sizeof() -> I64
+
+test "repr(c) struct by-value: C builds, Ctron reads (layout compat)" {
+    var p = pt_make(3, 1.5, 7)
+    assert_eq(p.x, 3)
+    assert_eq(p.tag, 7)
+    assert_eq(pt_sizeof(), 24)
+}
+
+test "repr(c) struct by-value: Ctron builds literal, C reads" {
+    var q = Point { x: 10, y: 2.5, tag: 1 }
+    assert_eq(pt_sum(q), 12.5)
+    var p = pt_make(3, 1.5, 7)
+    assert_eq(pt_sum(p), 4.5)
+}
+
+test "repr(c) struct roundtrip: by-value in and out" {
+    var p = pt_make(3, 1.5, 7)
+    var r = pt_bump(p)
+    assert_eq(r.tag, 8)
+    assert_eq(r.x, 3)
+    assert_eq(p.tag, 7)
+}

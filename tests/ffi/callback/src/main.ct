@@ -1,0 +1,42 @@
+// tests/ffi/callback —— C-ABI 回调(§9.6 v0.6):extern "c" fn 指针形参 ← 裸 fn 名零包装
+// 承诺:具名 fn(无捕获)的 C 地址直传 ct_fnK;C 侧可存柄、循环回调、经切片视图回写数组。
+// 比较器形参用 I64(发射边界统一 ct_i 宽度,C 侧经原型隐式升宽);捕获闭包走 E4042
+// 拦截(见 ../closure_cb.neg.ct)。注:发射器 I64 定长数组计数解析有缺陷(a36),夹具用 I32 数组。
+#[trusted]
+extern "c" fn apply_n(f: fn(I64) -> I64, x: I64, n: I64) -> I64
+
+#[trusted]
+extern "c" fn sort_i32(data: &I32[], cmp: fn(I64, I64) -> I64) -> Void
+
+fn inc(x: I64) -> I64 {
+    return x + 1
+}
+
+fn dbl(x: I64) -> I64 {
+    return x * 2
+}
+
+fn asc(a: I64, b: I64) -> I64 {
+    return a - b
+}
+
+fn desc(a: I64, b: I64) -> I64 {
+    return b - a
+}
+
+test "named fn as C callback (repeated apply)" {
+    assert_eq(apply_n(inc, 10, 5), 15)
+    assert_eq(apply_n(dbl, 1, 10), 1024)
+    assert_eq(apply_n(inc, 0, 0), 0)
+}
+
+test "C sort calls back into Ctron comparator (view write-through)" {
+    var buf: I32[5] = [5, 3, 1, 4, 2]
+    sort_i32(buf, asc)
+    assert_eq(buf[0], 1)
+    assert_eq(buf[2], 3)
+    assert_eq(buf[4], 5)
+    sort_i32(buf, desc)
+    assert_eq(buf[0], 5)
+    assert_eq(buf[4], 1)
+}

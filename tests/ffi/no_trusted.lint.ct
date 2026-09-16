@@ -1,0 +1,7 @@
+// tests/ffi/no_trusted.lint.ct —— W8050:extern 未标记 #[trusted](信任边界,§9.6)
+//@ warn: W8050
+extern "c" fn naked(x: I32) -> I32
+
+test "declaration lints but compiles" {
+    assert_eq(4, 4)
+}

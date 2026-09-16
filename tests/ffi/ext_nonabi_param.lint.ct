@@ -1,0 +1,8 @@
+// tests/ffi/ext_nonabi_param.lint.ct —— W8052:extern 形参非 C-ABI 类型(§9.6 v0.6)
+//@ warn: W8052
+#[trusted]
+extern "c" fn take_list(xs: List[I32]) -> I32
+
+test "declaration lints but compiles" {
+    assert_eq(2, 2)
+}

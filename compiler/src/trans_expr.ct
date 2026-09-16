@@ -795,6 +795,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "now_ms_text" { return "ctron_now_ms_text()" }
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned;解释器侧恒等)
+        if callee == "str_from_c" { return "ctron_str_from_c(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "utf8_enc" {
             var u0 = "0"
             if ag.len > 1 { u0 = ct_expr(ag[1], env, file) }
@@ -870,7 +872,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             lit = lit + " } }"
             return lit
         }
-        // extern "c" 声明:C 侧符号无 t_ 前缀(§9.6)
+        // extern "c" 声明:C 侧符号无 t_ 前缀(§9.6);fn 指针形参按边界映射强转
+        // (裸 fn 名取 C 地址零包装;fn 值摘 ct_clop.fn 槽;捕获闭包 emit 级硬拦——
+        // ctron-emit 不跑语义,双保险防错误码静默过 C 编译)
         var isext = false
         var ie: I32 = 1
         while ie < file.len {
@@ -881,7 +885,28 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             ie += 1
         }
         if isext {
-            return callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
+            var epcs = ct_fn_pcodes(file, callee)
+            var eargs = ""
+            var ei: I32 = 1
+            while ei < ag.len {
+                if ei > 1 { eargs = eargs + ", " }
+                var eac = ct_typeof(ag[ei], env, file)
+                var epc = "i"
+                if ei - 1 < epcs.len { epc = epcs[ei - 1] }
+                var eex = ct_expr(ag[ei], env, file)
+                if or2(epc == "F1", or2(epc == "F2", epc == "F3")) {
+                    eargs = eargs + "(" + ct_abi_ctype(epc) + ")" + ct_cb_ref(file, ag[ei], eac, eex, epc)
+                } else {
+                    eargs = eargs + ct_arg_cast(eac, epc, eex)
+                }
+                ei += 1
+            }
+            var miss2 = epcs.len - (ag.len - 1)
+            while miss2 > 0 {
+                eargs = eargs + ", 0"
+                miss2 -= 1
+            }
+            return callee + "(" + eargs + ")"
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }
@@ -924,6 +949,40 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     return ""
 }
 
+// C-ABI 回调实参发射(§9.6 v0.6):裸 fn 名 → 其 C 地址零包装(元数须与 fn 指针
+// 形参一致,emit 级守卫);fn 值(局部绑定,ct_clop 装箱)→ 摘 fn 槽(裸 fn 名装箱
+// env 恒 0,签名即 ct_fnK);捕获闭包/其余表达式 → 硬失败(语义面 E4042 之外的
+// emit 级双保险——ctron-emit 不跑语义检查)
+fn ct_cb_ref(file: List[Str], ae: List[Str], ac: Str, ex: Str, pc: Str) -> Str {
+    var want = byte_at(pc, 1) - 48
+    if ac.len > 0 && byte_at(ac, 0) == 71 {
+        panic("emit:捕获闭包不可作 C-ABI 回调(E4042;无 env 槽)")
+        return ""
+    }
+    if ae[0] == "Ident" {
+        var nm = ae[1]
+        var di: I32 = 1
+        while di < file.len {
+            var d = file[di]
+            if or2(d[0] == "Fn", or2(d[0] == "FnPub", d[0] == "FnC")) && d[1] == nm {
+                if ct_fn_pcodes(file, nm).len != want {
+                    panic("emit:回调实参元数不符:" + nm)
+                    return ""
+                }
+                return "(t_" + nm + ")"
+            }
+            if d[0] == "FnExt" && d[1] == nm {
+                panic("emit:extern 声明无函数体,不可作回调值:" + nm)
+                return ""
+            }
+            di += 1
+        }
+        return "((void*)((ct_clop)(" + ex + "))->fn)"
+    }
+    panic("emit:C-ABI 回调实参需裸 fn 名或 fn 值")
+    return ""
+}
+
 // 实参串:从 ag[from] 起逐个发射,用户 fn 时按形参码插转换;
 // 实参不足按 0 补齐到形参数(镜像 cc.ct 潜伏的缺参调用,如 ty_head 的 2 参 or3 —— 种子
 // 一旦执行即 panic,补 0 仅保证产物可编译,崩路无差分意义)
@@ -950,7 +1009,6 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
                 if byte_at(pc, 0) == 70 {
                     if ag[i][0] == "Closure" {
                         var cc = ct_fntype_pcodes_tg(file, callee, i - 1, targs)
-                        println("//DBGHINT cc=" + cc)
                         if cc != "" {
                             aenv = env_bind(env, "#clcodes", cc)
                         }

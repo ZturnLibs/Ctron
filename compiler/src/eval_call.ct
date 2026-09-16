@@ -200,6 +200,14 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("byte_slice arity")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "str_from_c") {
+        // Str 编组(§9.6 v0.6):解释域无 C 堆,编组为恒等;发射面为 arena 深拷
+        if vals.len == 1 && vals[0][0] == "S" {
+            return e4("k", env, vS(vals[0][1]), out)
+        }
+        panic("str_from_c arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "panic") {
         if vals.len == 1 {
             return e4("a", env, vS(fmt(vals[0])), out)

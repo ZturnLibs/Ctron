@@ -72,7 +72,13 @@
 | E2071 | break/continue 越过带 Drop 局部的作用域(v0.7) |
 | E2072 | break/continue 穿越闭包边界(v0.7) |
 | E4040 | `#[trusted]` 仅限 extern "c" 声明 |
+| E4041 | `#[repr(c)]` 仅限 struct 声明(v0.6 §9.6) |
+| E4042 | 捕获闭包作 C-ABI 回调实参(C 函数指针无 env 槽;v0.6 §9.6) |
+| E4050 | 类直接持有需确定性释放的资源字段(§6.2) |
 | W8050 | extern "c" 未标记 `#[trusted]`(信任边界须可枚举审计) |
+| W8051 | repr(c) struct 含非 C-ABI 字段(容器/能力类型;v0.6 §9.6) |
+| W8052 | extern 形参/返回非 C-ABI 类型(容器/能力类型;v0.6 §9.6) |
+| W8053 | extern 返回 fn 类型 v0 不支持(仅形参向;v0.6 §9.6) |
 | E3010 | spawn 捕获了非 Send 值 |
 | E3020 | channel 收发非 Send 类型 |
 | E3030 | `static var` 不存在 |
@@ -106,6 +112,16 @@
 - neg/lint/panic 的判定作用于**整个包**的编译/运行结果;行为用例如常跑 `test` 块。
 - 用例目录可含 **`c_src/*.c`**:随包编译并链接(FFI 用例,`extern "c"` 声明语法见规范 §9.6;锚定用例:`modules/ffi_math/`)。
 - `meta_check.py` 对每个用例校验 `Ctron.toml` 存在性与标记规则。
+
+## 6b. FFI 用例(tests/ffi/)
+
+规范 §9.8 承诺的 FFI 用例落点(自举发射面专测;解释器无 FFI 口径,不跑运行面):
+
+- **行为夹具**(子目录含 `c_src/`,入口 `src/main.ct`):`ctron-emit` 发射 C → `cc` 同批编译 `c_src/*.c`(编译期符号链接)→ 原生运行 `test` 块;包约定同 §6(`Ctron.toml`)。
+- **根下 `*.neg.ct` / `*.lint.ct`**:与 §1/§2 同标记语义,经 `bin/ctron-cc run` 判定。
+- 验收:`sh tests/ffi/run.sh`(独立)与 `compiler/test/suite.py` 的 `ffi/` 小节(同口径);CI 冒烟见 `compiler/test/smoke.sh` §3j;性能见 `compiler/test/bench_ffi.sh`。
+- C 侧 ABI 契约:`tests/ffi/ctron_abi.h` 镜像发射器预发 typedef(`ct_i`/`ct_fn1..3`/`ctron_view_*`),发射面为唯一真源。
+- 锚定用例:`callback/`(C-ABI 回调)、`repr_c/`(`#[repr(c)]` 按值往返)、`str_marshall/`(Str 编组)、`abi_width/`(逐宽度映射)。
 
 ## 7. std 的可用性
 

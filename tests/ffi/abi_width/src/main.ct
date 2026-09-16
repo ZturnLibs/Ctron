@@ -1,0 +1,43 @@
+// tests/ffi/abi_width —— C ABI 类型映射逐宽度回环(spec §9.6 映射表)
+// 承诺:定宽整数/浮点/Bool/Str 声明宽度跨边界不混淆;Bool 以 int 落界
+// (三实现线统一口径,与规范 bool(C99) 措辞的差异见 docs/ffi-analysis.md);
+// USize 对齐 size_t(LP64 同宽 uint64)。
+#[trusted]
+extern "c" fn w_i8(v: I8) -> I8
+
+#[trusted]
+extern "c" fn w_u8(v: U8) -> U8
+
+#[trusted]
+extern "c" fn w_i16(v: I16) -> I16
+
+#[trusted]
+extern "c" fn w_u16(v: U16) -> U16
+
+#[trusted]
+extern "c" fn w_i64(v: I64) -> I64
+
+#[trusted]
+extern "c" fn w_u64(v: U64) -> U64
+
+#[trusted]
+extern "c" fn w_f64(v: F64) -> F64
+
+#[trusted]
+extern "c" fn w_bool(v: Bool) -> Bool
+
+#[trusted]
+extern "c" fn w_str(s: Str) -> Str
+
+test "ABI width roundtrips (§9.6 mapping)" {
+    assert_eq(w_i8(-3), -3)
+    assert_eq(w_u8(250), 250)
+    assert_eq(w_i16(-300), -300)
+    assert_eq(w_u16(65000), 65000)
+    assert_eq(w_i64(-5000000000), -5000000000)
+    assert_eq(w_u64(18000000000), 18000000000)
+    assert_eq(w_f64(2.5), 2.5)
+    assert_eq(w_bool(true), true)
+    assert_eq(w_bool(false), false)
+    assert_eq(w_str("abi"), "abi")
+}
