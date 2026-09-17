@@ -1,0 +1,9 @@
+pkg {
+    manifest_version = 1
+    name = "pathapp"
+    version = "0.1.0"
+}
+
+dep "libmath" {
+    path = "../lib"
+}

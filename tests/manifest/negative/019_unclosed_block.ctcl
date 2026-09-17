@@ -1,0 +1,3 @@
+// expect-error: E5040, E5047
+pkg {
+    manifest_version = 1

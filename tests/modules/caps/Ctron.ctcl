@@ -1,0 +1,6 @@
+pkg {
+    manifest_version = 1
+    name = "app"
+    version = "0.1.0"
+    caps = ["time"]
+}

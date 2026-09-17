@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "ffimath"
+    version = "0.1.0"
+}

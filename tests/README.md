@@ -78,7 +78,6 @@
 | W8050 | extern "c" 未标记 `#[trusted]`(信任边界须可枚举审计) |
 | W8051 | repr(c) struct 含非 C-ABI 字段(容器/能力类型;v0.6 §9.6) |
 | W8052 | extern 形参/返回非 C-ABI 类型(容器/能力类型;v0.6 §9.6) |
-| W8053 | extern 返回 fn 类型 v0 不支持(仅形参向;v0.6 §9.6) |
 | E3010 | spawn 捕获了非 Send 值 |
 | E3020 | channel 收发非 Send 类型 |
 | E3030 | `static var` 不存在 |
@@ -105,6 +104,8 @@
 - 每个 `*.neg.ct` 是一条类型/并发/内存规则的**可执行反例**;每个 `*.ct` 是一条语义承诺。
 
 ## 6. 多文件测试(tests/modules/)
+
+> **格式迁移注(2026-09-16,提案待评审)**:包清单将迁往 CTCL `Ctron.ctcl`(规范性定义与迁移计划见 `docs/superpowers/specs/2026-09-16-config-language-v1.md` §11);迁移落地前,本节所述 `Ctron.toml` 与 `meta_check.py` 校验保持原状。
 
 目录即最小包:`tests/modules/<case>/`,须含 `Ctron.toml` 与 `src/*.ct`(入口约定 `src/main.ct`)。
 

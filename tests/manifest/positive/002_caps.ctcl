@@ -1,0 +1,6 @@
+pkg {
+    manifest_version = 1
+    name = "caps-app"
+    version = "0.1.0"
+    caps = ["fs", "time"]        // 集合语义:规范形态按字节序排
+}

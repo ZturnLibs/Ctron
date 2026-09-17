@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "stdpkg-neg"
+    version = "0.1.0"
+}

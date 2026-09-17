@@ -1,6 +1,0 @@
-[package]
-name = "pathapp"
-version = "0.1.0"
-
-[deps]
-libmath = { path = "../lib" }         // R-P7:path 依赖(钉 v0.6 依赖格式;git 依赖同形)

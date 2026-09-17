@@ -1,0 +1,10 @@
+// expect-error: E5040
+pkg {
+    manifest_version = 1
+    name = "x"
+    version = "0.1.0"
+}
+
+comptime {
+    budget_ms = 1.5
+}

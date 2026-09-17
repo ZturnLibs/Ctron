@@ -1,0 +1,9 @@
+// 块前注释归 pkg
+pkg {
+    // 独立注释归其后第一个字段
+    manifest_version = 1
+    name = "own"
+    version = "0.1.0"   // 行尾注释归本行
+}
+
+// 文件尾悬挂注释归文件

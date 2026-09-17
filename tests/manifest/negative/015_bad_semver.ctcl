@@ -1,0 +1,6 @@
+// expect-error: E5046
+pkg {
+    manifest_version = 1
+    name = "x"
+    version = "1.0"
+}

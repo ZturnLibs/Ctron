@@ -1,0 +1,6 @@
+// expect-error: E5042
+pkg {
+    manifest_version = 1
+    name = "x" # hi
+    version = "0.1.0"
+}

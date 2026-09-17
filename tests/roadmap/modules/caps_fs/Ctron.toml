@@ -1,6 +1,0 @@
-[package]
-name = "capsfs"
-version = "0.1.0"
-
-[caps]
-time = true                           // 只声明 time,未声明 fs

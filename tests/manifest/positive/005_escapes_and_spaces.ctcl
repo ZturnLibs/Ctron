@@ -1,0 +1,9 @@
+pkg {
+    manifest_version = 1
+    name = "edge"
+    version = "0.1.0"
+}
+
+dep "wintool" {
+    path = "C:\\tools\\my libs"  // 转义 \\ 与空格路径
+}

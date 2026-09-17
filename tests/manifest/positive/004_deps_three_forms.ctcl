@@ -1,0 +1,18 @@
+pkg {
+    manifest_version = 1
+    name = "app"
+    version = "1.0.0"
+}
+
+dep "libmath" {
+    path = "../lib"
+}
+
+dep "ctron-http" {
+    git = "https://github.com/ctron/http"
+    rev = "v1.2.0"
+}
+
+dep "ctron-csv" {
+    version = "1.2"
+}

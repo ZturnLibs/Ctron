@@ -1,0 +1,6 @@
+// expect-error: E5043, E5047
+pkg {
+    manifest_version = 1
+    nam = "x"
+    version = "0.1.0"
+}

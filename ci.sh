@@ -6,6 +6,9 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 echo "[1/6] 解析器/测试集自检"
 python3 tests/meta_check.py
+python3 tests/manifest/run.py
+python3 tests/manifest/diff.py
+python3 tools/ctcl_check.py --selftest
 
 echo "[2/6] 模块拼接"
 sh "$DIR/compiler/build.sh"

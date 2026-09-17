@@ -1,0 +1,6 @@
+// expect-error: E5048
+pkg {
+    manifest_version = 1
+    name = 'x'
+    version = "0.1.0"
+}

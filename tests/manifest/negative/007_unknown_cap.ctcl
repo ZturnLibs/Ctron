@@ -1,0 +1,7 @@
+// expect-error: E5043
+pkg {
+    manifest_version = 1
+    name = "x"
+    version = "0.1.0"
+    caps = ["net"]
+}

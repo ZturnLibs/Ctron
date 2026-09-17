@@ -1,0 +1,5 @@
+// expect-error: E5050
+pkg {
+    name = "x"
+    version = "0.1.0"
+}

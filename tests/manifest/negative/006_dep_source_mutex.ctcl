@@ -1,0 +1,11 @@
+// expect-error: E5049
+pkg {
+    manifest_version = 1
+    name = "x"
+    version = "0.1.0"
+}
+
+dep "a" {
+    path = "../a"
+    version = "1.0"
+}

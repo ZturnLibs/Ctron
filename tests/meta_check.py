@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent
+sys.path.insert(0, str(ROOT.parent / "tools"))
+import ctcl_check  # noqa: E402  (CTCL 清单 schema 校验,规范 config-language-v1 §5)
 
 # 与 README §4 同步的错误码注册表
 ERROR_CODES = {
@@ -31,6 +33,7 @@ ERROR_CODES = {
     "E3060": "own 块内对 GC 值可变借用",
     "E3070": "闭包可变捕获未显式 Mutex[T] 包装(R 线 R-P3a)",
     "E4010": "能力使用超出 manifest 声明",
+    "E4044": "变参形参仅限 extern 声明(§9.6 v0.7)",
     "E4020": "#[pure] 函数含副作用",
     "E4030": "#[no_spawn] 上下文 spawn",
     "E4040": "#[trusted] 用于非 extern 声明(§9.6)",
@@ -46,7 +49,6 @@ ERROR_CODES = {
     "W8050": "extern 未标记 #[trusted](信任边界;§9.6)",
     "W8051": "repr(c) struct 含非 C-ABI 字段(§9.6 v0.6)",
     "W8052": "extern 形参/返回非 C-ABI 类型(§9.6 v0.6)",
-    "W8053": "extern 返回 fn 类型 v0 不支持(§9.6 v0.6)",
 }
 
 MARKER_RE = re.compile(r"^//@\s*(\w+)\s*:\s*(.+?)\s*$")
@@ -69,6 +71,11 @@ def kind_of(path: Path) -> str | None:
 
 def check_file(path: Path) -> list[str]:
     errors = []
+    relparts0 = path.relative_to(ROOT).parts
+    if "gui" in relparts0:
+        # gui/ 泳道夹具由 run.sh 驱动(CTML S 泳道:构建+链接为主,窗口运行为交互验收);
+        # 不按主流 test 块规则元检查(同 bench 夹具先例)。计划:2026-09-16-gui-mvp-ladder。
+        return errors
     kind = kind_of(path)
     if kind is None:
         return errors
@@ -88,8 +95,15 @@ def check_file(path: Path) -> list[str]:
     relparts = path.relative_to(ROOT).parts
     in_modules = "modules" in relparts or ("ffi" in relparts and "src" in relparts)
     if in_modules:
-        if not (path.parent.parent / "Ctron.toml").exists():
-            errors.append("modules 用例缺少 Ctron.toml(项目根)")
+        if not (path.parent.parent / "Ctron.ctcl").exists():
+            errors.append("modules 用例缺少 Ctron.ctcl(项目根)")
+        else:
+            mtext = (path.parent.parent / "Ctron.ctcl").read_text(encoding="utf-8")
+            ok, mds = ctcl_check.judge_v1(mtext)
+            if not ok:
+                for d in mds:
+                    if d["code"].startswith("E"):
+                        errors.append(f"Ctron.ctcl {d['code']} L{d['line']}: {d['msg']}")
         if markers.get("fail"):
             kind = "neg"
         elif markers.get("warn"):

@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "ctwf"
+    version = "0.1.0"
+}

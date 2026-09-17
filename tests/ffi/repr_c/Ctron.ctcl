@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "ffi_repr_c"
+    version = "0.1.0"
+}
