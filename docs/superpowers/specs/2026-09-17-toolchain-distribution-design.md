@@ -132,9 +132,19 @@ ctc build            # 项目模式:读 Ctron.toml(name/入口/caps/c_src)
 ctc test             # test 块两阶段口径
 ctc new myapp        # 脚手架:hello.ct + Ctron.toml
 ctc --version        # ctron 0.1.0 (bootstrap <sha>, <os>/<arch>)
+ctc --help           # 总用法(= ctc help / -h);ctc help <cmd> 看子命令详助
 ```
 
 环境变量:`CC`(mac/linux 默认 `cc`;Windows 默认 `gcc`)、`CTRON_STDPATH`(覆盖标准库位置)。
+
+**帮助与用法面**(sh/PS 双驱动同文,进 conformance 用例):
+
+- `ctc --help` / `-h` / `ctc help` → 总用法:子命令一行一条、环境变量、rc 约定摘要,rc=0;
+- `ctc help <cmd>` 与 `ctc <cmd> --help` → 子命令详助(参数、产物位置、示例),rc=0;
+- `ctc` 裸调与未知子命令 → 用法摘要 + "详见 ctc --help",rc=2(用法错误属 ctc 自身
+  前置面,与 rc 约定一致);
+- 帮助文本两版内容一致(conformance 归一化空白后比对);帮助由 ctc 层负责,
+  三个 `ctron-*` 二进制的裸 `run <file>` 契约不变、不加帮助分支。
 
 平台差异(全部收在驱动层):
 
@@ -198,7 +208,8 @@ per-platform 发布容错:任一平台验收失败不阻塞其余平台过验收
 1. 解压即用:`ctc run` examples 三件输出正确;`ctc build` 出可执行且输出与解释一致;
 2. **工作目录 ≠ 安装目录**用例(打 std 解析回归):任意 cwd 下 `use std.*` 命中装机路径;
    同名碰撞 `E5030` 负例拦截;装机路径 std 缺失产生告警(非静默);
-3. 负例拦截 rc=1;`ctc --version` 正确;
+3. 负例拦截 rc=1;`ctc --version` 正确;`ctc --help` / `ctc help build` rc=0 且内容
+   含全部子命令,未知子命令 rc=2 并提示 `ctc --help`;
 4. 源码线:`make` → 三二进制 → 同套用例绿;
 5. **无 cc 预检**:PATH 隔离用例下 `ctc build` 仍产出 `.c` 且 rc=2、消息含平台指引与
    `.c` 位置;同环境 `ctc run` 不受影响。
@@ -208,7 +219,7 @@ Windows 专项(在 1–5 之上追加):
 6. 并发夹具(spawn/Channel/Mutex,winpthreads 通路);
 7. 深递归夹具(栈链接参数生效验证);
 8. CRLF 夹具(第 8 项改造的回归);
-9. 驱动 conformance:ctc.ps1 与 sh 版同参数面。
+9. 驱动 conformance:ctc.ps1 与 sh 版同参数面,`--help` 文本归一化后一致。
 
 ## 8. 边界(v0 明确不做)
 
