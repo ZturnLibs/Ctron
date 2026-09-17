@@ -100,7 +100,7 @@ ctron-src/
 
 | 路 | mac/linux | Windows |
 |---|---|---|
-| 一键 | `curl -fsSL <releases>/install.sh \| sh`:uname 检测 → 下载 tar.gz → sha256 校验 → 解压到 `${CTRON_INSTALL_DIR:-$HOME/.ctron}` → 打印 PATH 提示。依赖:POSIX sh + curl + tar,零 root | —(`install.ps1` 挂账 §10) |
+| 一键 | `curl -fsSL <releases>/install.sh \| sh`:uname 检测 → 下载 tar.gz → sha256 校验 → 解压到 `${CTRON_INSTALL_DIR:-$HOME/.ctron}` → 打印 PATH 提示。顺带检测本机 cc,缺失则给平台化指引(`xcode-select --install` / 发行版 gcc / mingw)。依赖:POSIX sh + curl + tar,零 root | —(`install.ps1` 挂账 §10) |
 | 手动 | 解压 + `export PATH=<目录>/ctron/bin:$PATH` | 解压到 `%LOCALAPPDATA%\ctron` + `setx PATH` 或系统设置 |
 | 源码 | `make && make install PREFIX=…` | MSYS2 shell 里 `make && make install` |
 
@@ -201,4 +201,5 @@ Windows 专项(在 1–4 之上追加):
 ## 10. 后续挂账(v0.1 之后)
 
 Ctron 自写原生 ctc 驱动(需运行时子进程能力)、Homebrew/winget 分发、
-`install.ps1` 一键装、Developer ID 公证、windows aarch64、MSVC 评估、`ctc doc`/补全。
+`install.ps1` 一键装、Developer ID 公证、windows aarch64、MSVC 评估、`ctc doc`/补全、
+消除 `build` 的 cc 依赖(捆绑微型 C 编译器如 tcc,或内置机器码后端——大工程另立项)。
