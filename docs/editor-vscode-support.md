@@ -1,6 +1,10 @@
 # Ctron 编辑器支持分析:VSCode 语法高亮、智能提示与工具链集成
 
 状态:**v0.3.0 已交付**(2026-09-05;交接文档见 `superpowers/plans/2026-09-05-editor-lane-HANDOFF.md`)
+- **v0.5.0 增补(2026-09-17)**:CTML(`.ctml`)与 CTCL(`.ctcl`/`Ctron.lock`)编辑器支持落地——
+  各自 TextMate 语法(CTML 绑定/插值内嵌 `source.ctron`;CTCL 按 §6 常见错法标红)+ language-configuration
+  + snippets + 扩展侧本地注册表补全/悬浮(`src/ctml.js`/`src/ctcl.js`,数据源为两份冻结规范;
+  LSP 与 `ctronc check` 不服务这两种语言)。设计记录:`superpowers/specs/2026-09-17-editor-ctml-ctcl-support.md`。
 - 扩展:`editors/vscode-ctron/`(grammar/language-configuration/snippets/手写零依赖 LSP 客户端/check 包装/打包流水线)
 - LSP:**用 Ctron 语言实现**(`lsp/src/main.ct`,`ctronc run` 解释执行;架构与解释器域约束见 `lsp/README.md`)
 - 能力:词法诊断(E1001 族)+ 保存时语义诊断(`ctronc check --format=json`)、大纲、hover、补全、定义、同文件 rename/references/highlight、signatureHelp、形参名 inlay hints、缩进格式化、花括号折叠、快速修复(`;` 删除/`::`→`.` + fixes[] 通道)
@@ -34,7 +38,7 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Layer 3  工具链集成:测试 CodeLens / AST 视图 /        │
-│           Ctron.toml 校验 / doc-test / formatter        │
+│           CTCL 校验 / doc-test / formatter        │
 ├─────────────────────────────────────────────────────────┤
 │  Layer 2  LSP server(ctron-lsp):诊断 / 补全 /        │
 │           hover / 定义 / 引用 / 语义 tokens / inlay     │
@@ -161,7 +165,7 @@ editors/
   doc-test 块(§10.4)同样可跑——"文档即回归"从编辑器一步触达。
 - **AST 视图**:Webview 渲染 `ctronc parse --ast` 的 C-AST v1 确定性文本
   (对编译器开发者自身就是生产力工具,自举差分调试直接看树)。
-- **`Ctron.toml`**:贡献 JSON schema,manifest 字段(能力声明等 §8.2)校验与补全。
+- **`Ctron.ctcl`(CTCL)**:配置语言 LSP 校验与补全——schema 来自 CTCL 注册表(非 JSON schema);迁移前暂以现 `Ctron.toml` 为对象。
 - **错误码悬浮文档**:诊断 hover 链接到 §10.1 注册表锚点。
 
 ---

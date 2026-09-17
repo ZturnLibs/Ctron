@@ -7,6 +7,8 @@ const vscode = require('vscode');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const ctclSupport = require('./ctcl');
+const ctmlSupport = require('./ctml');
 
 let client = null;
 let outputChannel = null;
@@ -701,6 +703,23 @@ function activate(context) {
             provideCodeActions: (doc, range, ctx) => checkRunner ? checkRunner.codeActions(doc, ctx.diagnostics) : []
         })
     );
+
+    // CTML/CTCL:扩展侧本地补全与悬浮(注册表驱动;LSP 服务器只服务 ctron)
+    for (const [lang, mod] of [['ctml', ctmlSupport], ['ctcl', ctclSupport]]) {
+        const sel = { language: lang };
+        context.subscriptions.push(
+            vscode.languages.registerCompletionItemProvider(sel, {
+                provideCompletionItems: (doc, pos) => {
+                    try { return mod.complete(doc, pos); } catch (e) { log(`[${lang}] 补全失败: ${e.message}`); return null; }
+                }
+            }),
+            vscode.languages.registerHoverProvider(sel, {
+                provideHover: (doc, pos) => {
+                    try { return mod.hover(doc, pos); } catch (e) { log(`[${lang}] hover 失败: ${e.message}`); return null; }
+                }
+            })
+        );
+    }
 
     // 已打开的 .ct 文档在激活时补发
     for (const ed of vscode.window.visibleTextEditors) {

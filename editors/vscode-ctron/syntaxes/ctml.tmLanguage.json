@@ -1,0 +1,218 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Ctron Markup Language (CTML)",
+  "scopeName": "source.ctml",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#invalid" },
+    { "include": "#use-decl" },
+    { "include": "#style-decl" },
+    { "include": "#view-decl" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.ctml",
+          "match": "///.*$"
+        },
+        {
+          "name": "comment.line.double-slash.ctml",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "invalid": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.blockcomment.ctml",
+          "match": "/\\*"
+        },
+        {
+          "name": "invalid.illegal.htmlcomment.ctml",
+          "match": "<!--"
+        }
+      ]
+    },
+    "use-decl": {
+      "name": "meta.use.ctml",
+      "match": "^\\s*(use)\\s+([a-zA-Z_][A-Za-z0-9_.]*)",
+      "captures": {
+        "1": { "name": "keyword.control.import.ctml" },
+        "2": { "name": "entity.name.namespace.ctml" }
+      }
+    },
+    "view-decl": {
+      "name": "meta.view.ctml",
+      "begin": "\\b(?:(pub)\\s+)?(view)\\s+([A-Z][A-Za-z0-9_]*)(\\s*\\((?:[^()]|\\([^()]*\\))*\\))?\\s*\\{",
+      "beginCaptures": {
+        "1": { "name": "storage.modifier.ctml" },
+        "2": { "name": "storage.type.view.ctml" },
+        "3": { "name": "entity.name.type.ctml" },
+        "4": {
+          "name": "meta.view.props.ctml",
+          "patterns": [ { "include": "source.ctron" } ]
+        }
+      },
+      "end": "\\}",
+      "patterns": [
+        { "include": "#markup" }
+      ]
+    },
+    "style-decl": {
+      "name": "meta.style.ctml",
+      "begin": "\\b(?:(pub)\\s+)?(style)\\s+([a-z][a-z0-9_-]*)(?:\\s+(extends)\\s+([a-z][a-z0-9_-]*))?\\s*\\{",
+      "beginCaptures": {
+        "1": { "name": "storage.modifier.ctml" },
+        "2": { "name": "storage.type.style.ctml" },
+        "3": { "name": "entity.other.attribute-name.class.ctml" },
+        "4": { "name": "keyword.control.extends.ctml" },
+        "5": { "name": "entity.other.attribute-name.class.ctml" }
+      },
+      "end": "\\}",
+      "patterns": [
+        { "include": "#style-body" }
+      ]
+    },
+    "style-body": {
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "name": "meta.property.ctml",
+          "match": "([a-z][a-z0-9-]*)\\s*(:)",
+          "captures": {
+            "1": { "name": "support.type.property-name.ctml" },
+            "2": { "name": "punctuation.separator.key-value.ctml" }
+          }
+        },
+        {
+          "name": "punctuation.terminator.statement.ctml",
+          "match": ";"
+        },
+        { "include": "#style-values" }
+      ]
+    },
+    "style-values": {
+      "patterns": [
+        {
+          "name": "constant.other.color.rgb.ctml",
+          "match": "#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\\b"
+        },
+        { "include": "#strings" },
+        {
+          "name": "constant.numeric.ctml",
+          "match": "-?[0-9][0-9_]*"
+        },
+        {
+          "name": "variable.other.constant.ctml",
+          "match": "\\b[A-Z_][A-Z0-9_]*\\b"
+        },
+        {
+          "name": "support.constant.property-value.ctml",
+          "match": "\\b[a-z][a-z0-9-]*\\b"
+        }
+      ]
+    },
+    "markup": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#invalid" },
+        { "include": "#tag-close" },
+        { "include": "#tag-open" },
+        { "include": "#expr" }
+      ]
+    },
+    "tag-open": {
+      "patterns": [
+        {
+          "name": "meta.tag.open.ctml",
+          "begin": "(<)(each|when|slot|vbox|hbox|label|button|input|checkbox|spacer|img)\\b",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.tag.begin.ctml" },
+            "2": { "name": "entity.name.tag.ctml" }
+          },
+          "end": "(/?>)",
+          "endCaptures": { "1": { "name": "punctuation.definition.tag.end.ctml" } },
+          "patterns": [ { "include": "#tag-attrs" } ]
+        },
+        {
+          "name": "meta.tag.open.component.ctml",
+          "begin": "(<)([A-Z][A-Za-z0-9_]*)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.tag.begin.ctml" },
+            "2": { "name": "entity.name.class.ctml" }
+          },
+          "end": "(/?>)",
+          "endCaptures": { "1": { "name": "punctuation.definition.tag.end.ctml" } },
+          "patterns": [ { "include": "#tag-attrs" } ]
+        }
+      ]
+    },
+    "tag-close": {
+      "name": "meta.tag.close.ctml",
+      "match": "(</)([a-zA-Z][A-Za-z0-9_-]*)(/?>)",
+      "captures": {
+        "1": { "name": "punctuation.definition.tag.begin.ctml" },
+        "2": { "name": "entity.name.tag.ctml" },
+        "3": { "name": "punctuation.definition.tag.end.ctml" }
+      }
+    },
+    "tag-attrs": {
+      "patterns": [
+        {
+          "name": "keyword.control.ctml",
+          "match": "\\bin\\b"
+        },
+        {
+          "name": "variable.other.ctml",
+          "match": "[a-z_][A-Za-z0-9_]*(?=\\s+in\\b)"
+        },
+        {
+          "name": "meta.attribute.event.ctml",
+          "match": "(on:)([a-zA-Z][A-Za-z0-9_-]*)",
+          "captures": {
+            "1": { "name": "punctuation.separator.event.ctml" },
+            "2": { "name": "entity.other.attribute-name.ctml" }
+          }
+        },
+        {
+          "name": "entity.other.attribute-name.ctml",
+          "match": "[a-zA-Z_][A-Za-z0-9_-]*"
+        },
+        {
+          "name": "keyword.operator.assignment.ctml",
+          "match": "="
+        },
+        { "include": "#strings" },
+        { "include": "#expr" }
+      ]
+    },
+    "expr": {
+      "name": "meta.interpolation.ctml",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.ctml" } },
+      "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.ctml" } },
+      "patterns": [
+        { "include": "source.ctron" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.ctml",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.ctml" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.ctml" } },
+          "patterns": [
+            {
+              "name": "constant.character.escape.ctml",
+              "match": "\\\\[ntr\\\\\"0\\{]|\\\\u\\{[0-9a-fA-F_]+\\}"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

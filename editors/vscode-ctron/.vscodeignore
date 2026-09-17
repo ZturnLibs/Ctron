@@ -1,5 +1,6 @@
 .vscode/**
 src/**/*.zip
 .gitignore
-Makefile
+scripts
+dist
 **/*.vsix

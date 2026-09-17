@@ -1,0 +1,102 @@
+{
+  "View component": {
+    "prefix": "view",
+    "body": [
+      "view ${1:Name}(${2:props: Str}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "view 组件(props 全必填,缺失/多余 = E8100)"
+  },
+  "Public view": {
+    "prefix": "pubview",
+    "body": [
+      "pub view ${1:Name}(${2:props: Str}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "导出 view(跨文件 use 引用须 pub)"
+  },
+  "Style class": {
+    "prefix": "style",
+    "body": [
+      "style ${1:name} { ${2:padding}: ${3:8 16}; $0 }"
+    ],
+    "description": "样式类(CSS 子集;默认文件私有)"
+  },
+  "Style extends": {
+    "prefix": "styleext",
+    "body": [
+      "style ${1:name} extends ${2:base} { $0 }"
+    ],
+    "description": "样式派生(单亲、限本文件、只覆写属性)"
+  },
+  "Each loop": {
+    "prefix": "each",
+    "body": [
+      "<each ${1:item} in={${2:list}}>",
+      "\t$0",
+      "</each>"
+    ],
+    "description": "列表渲染(key={…} 可选,须满足 Eq)"
+  },
+  "When conditional": {
+    "prefix": "when",
+    "body": [
+      "<when cond={${1:cond}}>",
+      "\t$0",
+      "</when>"
+    ],
+    "description": "条件渲染"
+  },
+  "Slot (default)": {
+    "prefix": "slot",
+    "body": ["<slot/>"],
+    "description": "默认 slot 内容分发占位"
+  },
+  "Slot (named)": {
+    "prefix": "slotname",
+    "body": ["<slot name=\"${1:name}\"/>"],
+    "description": "具名 slot"
+  },
+  "Button": {
+    "prefix": "button",
+    "body": ["<button class=\"${1:class}\" on:click={${2:handler}}>${3:文本}</button>"],
+    "description": "按钮 + 事件绑定"
+  },
+  "Label": {
+    "prefix": "label",
+    "body": ["<label class=\"${1:class}\">${2:text}</label>"],
+    "description": "文本标签(支持 {expr} 插值)"
+  },
+  "Input (controlled)": {
+    "prefix": "input",
+    "body": ["<input bind={${1:model.draft}} placeholder=\"${2:…}\" on:submit={${3:handler}}/>"],
+    "description": "受控输入(bind 双向绑定)"
+  },
+  "Checkbox": {
+    "prefix": "checkbox",
+    "body": ["<checkbox checked={${1:flag}} on:toggle={${2:handler}}/>"],
+    "description": "复选框"
+  },
+  "VBox": {
+    "prefix": "vbox",
+    "body": ["<vbox class=\"${1:class}\">", "\t$0", "</vbox>"],
+    "description": "垂直布局容器"
+  },
+  "HBox": {
+    "prefix": "hbox",
+    "body": ["<hbox class=\"${1:class}\">", "\t$0", "</hbox>"],
+    "description": "水平布局容器"
+  },
+  "Image": {
+    "prefix": "img",
+    "body": ["<img src=\"${1:path}\"/>"],
+    "description": "图片(相对 assets/ 解析)"
+  },
+  "Use import": {
+    "prefix": "use",
+    "body": ["use ${1:module}.${2:Name}"],
+    "description": "跨文件组件导入(pub view 导出)"
+  }
+}

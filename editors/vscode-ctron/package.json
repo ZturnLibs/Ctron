@@ -1,8 +1,8 @@
 {
   "name": "ctron-lang",
   "displayName": "Ctron Language Support",
-  "description": "Ctron 语言支持:语法高亮、智能提示、诊断、跳转(LSP 由 Ctron 自身实现,经 ctronc 解释运行)",
-  "version": "0.4.0",
+  "description": "Ctron 语言支持:语法高亮、智能提示、诊断、跳转(LSP 由 Ctron 自身实现,经 ctronc 解释运行);含 CTML(.ctml GUI 标记)与 CTCL(.ctcl/.lock 配置)支持",
+  "version": "0.5.0",
   "publisher": "ctron",
   "license": "MIT",
   "engines": {
@@ -25,6 +25,33 @@
           ".ct"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "ctml",
+        "aliases": [
+          "CTML",
+          "ctml",
+          "Ctron Markup"
+        ],
+        "extensions": [
+          ".ctml"
+        ],
+        "configuration": "./language-configuration.ctml.json"
+      },
+      {
+        "id": "ctcl",
+        "aliases": [
+          "CTCL",
+          "ctcl",
+          "Ctron Config"
+        ],
+        "extensions": [
+          ".ctcl"
+        ],
+        "filenames": [
+          "Ctron.lock"
+        ],
+        "configuration": "./language-configuration.ctcl.json"
       }
     ],
     "grammars": [
@@ -32,12 +59,30 @@
         "language": "ctron",
         "scopeName": "source.ctron",
         "path": "./syntaxes/ctron.tmLanguage.json"
+      },
+      {
+        "language": "ctml",
+        "scopeName": "source.ctml",
+        "path": "./syntaxes/ctml.tmLanguage.json"
+      },
+      {
+        "language": "ctcl",
+        "scopeName": "source.ctcl",
+        "path": "./syntaxes/ctcl.tmLanguage.json"
       }
     ],
     "snippets": [
       {
         "language": "ctron",
         "path": "./snippets/ctron.json"
+      },
+      {
+        "language": "ctml",
+        "path": "./snippets/ctml.json"
+      },
+      {
+        "language": "ctcl",
+        "path": "./snippets/ctcl.json"
       }
     ],
     "configuration": {
@@ -78,7 +123,12 @@
       }
     ]
   },
-  "scripts": {},
+  "scripts": {
+    "package": "node scripts/package.mjs",
+    "sync": "node scripts/package.mjs sync",
+    "clean": "node scripts/package.mjs clean",
+    "install:vsix": "node scripts/package.mjs install"
+  },
   "devDependencies": {},
   "dependencies": {}
 }

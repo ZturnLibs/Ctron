@@ -895,7 +895,7 @@ fn find_decl(text: Str, word: Str, hit: DeclHit) {
 
 // ============ 7. 静态知识表(关键字 / 前奏 / 成员,§1.3 §3.8.2) ============
 
-const KW_ALL: Str = "fn|let|var|const|static|comptime|if|else|match|while|for|in|return|struct|class|enum|trait|impl|own|scope|test|use|pub|extern|prop|true|false|void|self|or"
+const KW_ALL: Str = "fn|let|var|const|static|comptime|if|else|match|while|for|in|return|break|continue|struct|class|enum|trait|impl|own|scope|test|use|pub|extern|prop|true|false|void|self|or"
 const PT_ALL: Str = "Bool|I8|I16|I32|I64|ISize|U8|U16|U32|U64|USize|F32|F64|Str|String|Void|Option|Result|List|Box|Channel|Mutex|Atomic|Global|Arena|Task|Simd|Show|Eq|Error|Cap|Drop|AnyError"
 const MEM_ALL: Str = "len|char_len|contains|slice|to_string|iter|map|or|expect|is_some|is_none|is_ok|is_err|context|push|pop|new|with|with_mut|join|join_or|send|recv|load|store|fetch_add|splat|lane|to_array|abs|min|max|into_gc|as|message|cause|trace|show|eq|drop"
 
@@ -926,7 +926,9 @@ fn kw_hover(w: Str) -> Str {
     if w == "prop" { return "属性声明/实现:无括号访问(env.name)" }
     if w == "comptime" { return "编译期执行:comptime fn 在 CVM 求值,const 初始化即 comptime" }
     if w == "self" { return "impl 内指代实现类型;receiver:&self(只读)/ var self(可变)" }
-    if w == "or" { return "中缀取默认(Option/Result),非逻辑或;逻辑或写作 !(!a && !b)" }
+    if w == "or" { return "中缀取默认(Option/Result);逻辑或是 ||(v0.7)" }
+    if w == "break" { return "退出最近 enclosing 循环;不得越出闭包边界(E2072)/越过 Drop 局部(E2071)" }
+    if w == "continue" { return "跳到最近 enclosing 循环的下一轮;边界规则同 break" }
     return "Ctron 关键字(§1.3)"
 }
 

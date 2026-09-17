@@ -1,0 +1,71 @@
+{
+  "Package manifest": {
+    "prefix": "pkg",
+    "body": [
+      "pkg {",
+      "\tmanifest_version = 1",
+      "\tname = \"${1:name}\"",
+      "\tversion = \"${2:0.1.0}\"",
+      "\tcaps = [${3:\"fs\"}]",
+      "}"
+    ],
+    "description": "包清单根块(manifest_version 必须居首且 = 1)"
+  },
+  "Comptime budget": {
+    "prefix": "comptime",
+    "body": [
+      "comptime {",
+      "\tbudget_ms = ${1:2000}",
+      "}"
+    ],
+    "description": "comptime 求值预算块(毫秒;超时 = E6010)"
+  },
+  "Dependency (path)": {
+    "prefix": "deppath",
+    "body": [
+      "dep \"${1:name}\" {",
+      "\tpath = \"${2:../lib}\"",
+      "}"
+    ],
+    "description": "依赖:本地路径来源(三形互斥之一)"
+  },
+  "Dependency (git+rev)": {
+    "prefix": "depgit",
+    "body": [
+      "dep \"${1:name}\" {",
+      "\tgit = \"${2:https://github.com/example/repo}\"",
+      "\trev = \"${3:v1.0.0}\"",
+      "}"
+    ],
+    "description": "依赖:git 来源(必须伴随 rev 钉死)"
+  },
+  "Dependency (version)": {
+    "prefix": "depver",
+    "body": [
+      "dep \"${1:name}\" {",
+      "\tversion = \"${2:1.0}\"",
+      "}"
+    ],
+    "description": "依赖:semver 来源(实际版本由 lockfile 固定)"
+  },
+  "Keyed block": {
+    "prefix": "block",
+    "body": [
+      "${1:block} \"${2:name}\" {",
+      "\t$0",
+      "}"
+    ],
+    "description": "键控块(树形数据:路径实参,深度恒 1)"
+  },
+  "Tool config (fmt)": {
+    "prefix": "fmt",
+    "body": [
+      "fmt {",
+      "\tconfig_version = 1",
+      "\tuse_color = ${1|true,false|}",
+      "\tmax_width = ${2:100}",
+      "}"
+    ],
+    "description": "工具配置根块(根块 = 工具名)"
+  }
+}

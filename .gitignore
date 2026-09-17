@@ -33,6 +33,7 @@ bin/
 # ===== Node / VSCode 扩展 =====
 node_modules/
 npm-debug.log*
+editors/vscode-ctron/dist/
 
 # ===== 会话 / 临时 =====
 .superpowers/
