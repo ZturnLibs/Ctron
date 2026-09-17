@@ -284,6 +284,7 @@ fn main() -> I32 {
                     var cst2 = List[Str]()
                     cst2.push("0")
                     var cvr = ceval_expr(file, st[3], ccN, ccV, cst2)
+                    println("//CV:" + st[1] + ":" + cvr[0])
                     if cvr[0] == "k" {
                         var vt = cvr[2][0]
                         var vt1 = cvr[2][1]
@@ -314,6 +315,34 @@ fn main() -> I32 {
                 println("static void ctron_statics_init(void) \{" + sinit + " }")
                 println("static int ctron_exp_init = 0;")
             }
+            // #[link(name = "x")](§9.6 v0.8):链接依赖以 ctron:link 注释落产物,
+            // 驱动层读取后传 cc(发射器职责止于 C 文本,不直接调用链接器)
+            var lq2: I32 = 1
+            while lq2 < file.len {
+                var ld2 = file[lq2]
+                if ld2[0] == "FnExt" {
+                    println("// DBGL " + ld2[1] + " len=" + ld2.len.to_string() + " slot6=" + ld2[6])
+                }
+                if ld2[0] == "FnExt" && ld2.len > 7 && attr_has(ld2[6], "link") {
+                    var larg = attr_arg(ld2[6])
+                    var eqp2 = -1
+                    var q4: I32 = 0
+                    while q4 < larg.len {
+                        if byte_at(larg, q4) == 61 {
+                            eqp2 = q4
+                        }
+                        q4 += 1
+                    }
+                    if eqp2 > 0 {
+                        var lib = ct_trim(byte_slice(larg, eqp2 + 1, larg.len))
+                        if lib.len > 1 && byte_at(lib, 0) == 34 {
+                            lib = byte_slice(lib, 1, lib.len - 1)
+                        }
+                        println("// ctron:link -l" + lib)
+                    }
+                }
+                lq2 += 1
+            }
             // 原型前置:C 需先声明后用(语料存在前向引用/递归);extern 声明仅原型(§9.6)
             var pj: I32 = 1
             while pj < file.len {
@@ -342,7 +371,11 @@ fn main() -> I32 {
                         // #[link_name(x)] → 以 x 出原型(v0.7 符号重命名)
                         var esym = pd[1]
                         if lsym != "" { esym = lsym }
-                        println("extern " + ct_abi_ctype(ct_fn_ret(file, pd[1])) + " " + esym + "(" + ct_params_str_ext(pd, file) + ");")
+                        var eret = ct_abi_ctype(ct_fn_ret(file, pd[1]))
+                        if ct_ext_ret_optstr(file, pd[1]) {
+                            eret = "const char*"
+                        }
+                        println("extern " + eret + " " + esym + "(" + ct_params_str_ext(pd, file) + ");")
                     }
                 } else if or2(pd[0] == "Fn", pd[0] == "FnPub") {
                     // 泛型 fn 无具体原型;特化定义在 pass1 直出且先于引用

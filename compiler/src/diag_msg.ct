@@ -1,0 +1,164 @@
+// =====================================================================
+// diag_msg.ct —— 诊断单一出口(错误码目录 + 插值发射)
+// 设计:docs/superpowers/specs/2026-09-17-diag-i18n-error-code-audit.md
+// - 目录键 = "CODE" 或 "CODE.变体"(输出前缀取 '.' 前的码);同码多文案以变体分键。
+// - 文本面逐字节兼容旧直推:"CODE[@行]: 文案";无行号传 ""。
+// - 槽位 %0..%9;%% 转义字面 %;标识符等动态量一律作实参,不写进模板。
+// - v1 仅 zh 表;en 表与 ANCHORLANG 构建锚随 P2 落地。
+// =====================================================================
+
+// 目录(zh):键 → 模板。码先进 §10.1 注册表再入此表(meta_check R1 守护覆盖)
+fn diag_tpl(key: Str) -> Str {
+    // —— 批① sem_main.ct(§9.6 FFI 声明面 + 声明级检查)——
+    if seq2(key, "E3030") { return "static var 不存在;用 static let 或 Global[T]:%0" }
+    if seq2(key, "W8010") { return "struct 含类引用字段(浅拷贝):%0.%1" }
+    if seq2(key, "E3031") { return "static 存储非 Send(Send):%0" }
+    if seq2(key, "W8050") { return "extern 未标记 #[trusted](信任边界):%0" }
+    if seq2(key, "E4041") { return "#[repr(c)] 仅限 struct 声明:%0" }
+    if seq2(key, "W8052.param") { return "extern 形参非 C-ABI 类型(§9.6):%0.%1" }
+    if seq2(key, "W8052.ret") { return "extern 返回非 C-ABI 类型(§9.6):%0" }
+    if seq2(key, "E4040") { return "#[trusted] 仅限 extern 声明:%0" }
+    if seq2(key, "E4044") { return "变参形参(...)仅限 extern 声明:%0" }
+    if seq2(key, "W8051") { return "repr(c) struct 含非 C-ABI 字段(§9.6):%0.%1" }
+    if seq2(key, "E4050") { return "类直接持有资源字段(§6.2;资源须值句柄或能力对象):%0.%1" }
+    return ""
+}
+
+// 槽位替换:'%'+数字 → args[数字];'%%' → '%';其余逐字节直出
+fn diag_subst(tpl: Str, args: List[Str]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    var n = tpl.len
+    while i < n {
+        var c = byte_at(tpl, i)
+        if c == 37 && i + 1 < n {
+            var d = byte_at(tpl, i + 1)
+            if d >= 48 && d <= 57 {
+                var k = d - 48
+                if k < args.len {
+                    out = out + args[k]
+                }
+                i += 2
+                continue
+            }
+            if d == 37 {
+                out = out + "%"
+                i += 2
+                continue
+            }
+        }
+        out = out + byte_slice(tpl, i, i + 1)
+        i += 1
+    }
+    return out
+}
+
+// 键 → 输出码:取 '.' 前段("W8052.param" → "W8052")
+fn diag_code(key: Str) -> Str {
+    var i: I32 = 0
+    var n = key.len
+    while i < n {
+        if byte_at(key, i) == 46 {
+            return byte_slice(key, 0, i)
+        }
+        i += 1
+    }
+    return key
+}
+
+// 仅文案(已插值):lex pdiag 等自管拼装顺序的调用点用
+fn diag_text(key: Str, args: List[Str]) -> Str {
+    return diag_subst(diag_tpl(key), args)
+}
+
+// 整条渲染:"CODE[@行]: 文案"
+fn diag_render(key: Str, line: Str, args: List[Str]) -> Str {
+    var msg = diag_subst(diag_tpl(key), args)
+    var code = diag_code(key)
+    if line.len > 0 {
+        return code + "@" + line + ": " + msg
+    }
+    return code + ": " + msg
+}
+
+// 发射(固定元数包装:调用点零列表字面量)
+fn diag_emit(diags: List[Str], key: Str, line: Str, args: List[Str]) {
+    diags.push(diag_render(key, line, args))
+}
+
+fn diag0(diags: List[Str], key: Str, line: Str) {
+    diag_emit(diags, key, line, List[Str]())
+}
+
+fn diag1(diags: List[Str], key: Str, line: Str, a0: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    diag_emit(diags, key, line, a)
+}
+
+fn diag2(diags: List[Str], key: Str, line: Str, a0: Str, a1: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    a.push(a1)
+    diag_emit(diags, key, line, a)
+}
+
+fn diag3(diags: List[Str], key: Str, line: Str, a0: Str, a1: Str, a2: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    a.push(a1)
+    a.push(a2)
+    diag_emit(diags, key, line, a)
+}
+
+fn diag4(diags: List[Str], key: Str, line: Str, a0: Str, a1: Str, a2: Str, a3: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    a.push(a1)
+    a.push(a2)
+    a.push(a3)
+    diag_emit(diags, key, line, a)
+}
+
+fn diag5(diags: List[Str], key: Str, line: Str, a0: Str, a1: Str, a2: Str, a3: Str, a4: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    a.push(a1)
+    a.push(a2)
+    a.push(a3)
+    a.push(a4)
+    diag_emit(diags, key, line, a)
+}
+
+// 去重发射:整条串已存在则跳过(探针与发射同源,根除手拼探针的格式漂移)
+fn diag_once(diags: List[Str], key: Str, line: Str, args: List[Str]) {
+    var s = diag_render(key, line, args)
+    if !in_list(diags, s) {
+        diags.push(s)
+    }
+}
+
+fn donce0(diags: List[Str], key: Str, line: Str) {
+    diag_once(diags, key, line, List[Str]())
+}
+
+fn donce1(diags: List[Str], key: Str, line: Str, a0: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    diag_once(diags, key, line, a)
+}
+
+fn donce2(diags: List[Str], key: Str, line: Str, a0: Str, a1: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    a.push(a1)
+    diag_once(diags, key, line, a)
+}
+
+fn donce3(diags: List[Str], key: Str, line: Str, a0: Str, a1: Str, a2: Str) {
+    var a = List[Str]()
+    a.push(a0)
+    a.push(a1)
+    a.push(a2)
+    diag_once(diags, key, line, a)
+}

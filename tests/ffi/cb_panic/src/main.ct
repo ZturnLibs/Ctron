@@ -1,0 +1,15 @@
+// tests/ffi/cb_panic —— panic 跨边界策略钉子(§9.6 v0.8,非 task 态)
+// 承诺:C 回调进入的 Ctron fn 发生 panic(此处:除零)时,非 task 态当前策略 =
+// ctron_panic 打印消息 + exit(1)(不越 C 帧 longjmp;task 态约定待钉,见分析文档)。
+#[trusted]
+extern "c" fn run_cb(f: fn(I64) -> I64, x: I64) -> I64
+
+fn boom(x: I64) -> I64 {
+    return x / 0
+}
+
+//@ panic: division by zero
+test "panic inside C callback (non-task): message + exit" {
+    let r = run_cb(boom, 10)
+    assert_eq(r, 0)
+}

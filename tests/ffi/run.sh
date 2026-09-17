@@ -29,6 +29,7 @@ for d in "$DIR"/*/; do
     [ -d "$d/c_src" ] || continue
     name=$(basename "$d")
     [ "$name" = "bench" ] && continue  # 微基准由 compiler/test/bench_ffi.sh 驱动
+    [ "$name" = "link_math" ] && continue  # #[link] 面由下方 link_math 专道驱动(无 c_src)
     e="$d/src/main.ct"
     if [ "$name" = "cimport" ]; then
         # cimport 端到端:头文件 → 绑定生成(宿主 seed 驱动;自举 sem 对该源型崩溃在册)
@@ -89,14 +90,42 @@ for d in "$DIR"/*/; do
         fail=$((fail + 1))
         continue
     fi
-    if "$T/$name.bin" run "$e" > "$T/$name.out" 2>&1; then
+    "$T/$name.bin" run "$e" > "$T/$name.out" 2>&1
+    rrc=$?
+    pmark=$(grep -o '^//@ panic: .*' "$e" | head -1 | sed 's|^//@ panic: ||')
+    if [ $rrc -eq 0 ] && [ -z "$pmark" ]; then
         echo "  [ok] $name"
         pass=$((pass + 1))
+    elif [ -n "$pmark" ] && [ $rrc -ne 0 ] && grep -q "$pmark" "$T/$name.out"; then
+        echo "  [ok] $name(panic 语义: $pmark)"
+        pass=$((pass + 1))
     else
-        echo "  [FAIL] $name — 运行 rc=$?: $(head -c 120 "$T/$name.out")"
+        echo "  [FAIL] $name — 运行 rc=$rrc: $(head -c 120 "$T/$name.out")"
         fail=$((fail + 1))
     fi
 done
+
+# ---- link_math:#[link] 标记 → cc 参数(无 c_src;libm 系统库) ----
+ld="$DIR/link_math"
+if [ -d "$ld/src" ]; then
+    e="$ld/src/main.ct"
+    if "$EMIT" run "$e" > "$T/link_math.c" 2>"$T/link_math.emiterr" \
+       && grep -q "ctron:link -lm" "$T/link_math.c"; then
+        lflags=$(grep -o "ctron:link -l[^ ]*" "$T/link_math.c" | awk '{print $2}' | tr '\n' ' ')
+        cc -O1 -w -o "$T/link_math.bin" "$T/link_math.c" $lflags 2>"$T/link_math.ccerr" \
+            && "$T/link_math.bin" run "$e" > "$T/link_math.out" 2>&1
+        if [ $? -eq 0 ]; then
+            echo "  [ok] link_math(#[link] 标记 → $lflags)"
+            pass=$((pass + 1))
+        else
+            echo "  [FAIL] link_math — 标记/链接/运行失败: $(head -c 120 "$T/link_math.out" 2>/dev/null)$(head -1 "$T/link_math.ccerr" 2>/dev/null)"
+            fail=$((fail + 1))
+        fi
+    else
+        echo "  [FAIL] link_math — emit 失败或缺 ctron:link 标记"
+        fail=$((fail + 1))
+    fi
+fi
 
 # ---- 负例 / lint:诊断码 ----
 for f in "$DIR"/*.neg.ct "$DIR"/*.lint.ct; do

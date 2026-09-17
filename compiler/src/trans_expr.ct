@@ -929,7 +929,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 miss2 -= 1
             }
             // 符号解析(§9.6 v0.7):#[link_name(x)] → x;#[dlsym] → ct_dyn_<名> thunk
-            return ct_ext_sym(file, callee) + "(" + eargs + ")"
+            // Option[Str] 返回(§9.6 v0.8):const char* → ct_res 包装(NULL ↔ None)
+            var esym2 = ct_ext_sym(file, callee)
+            var ecall = esym2 + "(" + eargs + ")"
+            if ct_ext_ret_optstr(file, callee) {
+                var eo = "t_exto" + nline(e)
+                return "(\{ ct_res " + eo + "; const char* _ep = " + ecall + "; " + eo + ".variant = (_ep == 0); " + eo + ".v = (ct_i)(long)_ep; " + eo + "; })"
+            }
+            return ecall
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }

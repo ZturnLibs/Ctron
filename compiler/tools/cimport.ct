@@ -93,6 +93,125 @@ fn cimp_toks(s: Str) -> List[Str] {
     return out
 }
 
+// 十进制数字串 +1(恒等长度增长;负数域不支持——枚举自增从 0/显式值起)
+fn cimp_add1(s: Str) -> Str {
+    var d = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        d.push(byte_slice(s, i, i + 1))
+        i += 1
+    }
+    var carry = 1
+    var k = d.len
+    while k > 0 && carry > 0 {
+        k -= 1
+        var v = (byte_at(d[k], 0) - 48) + carry
+        if v == 10 {
+            d[k] = byte_slice("0", 0, 1)
+            carry = 1
+        } else {
+            d[k] = byte_slice("0123456789", v, v + 1)
+            carry = 0
+        }
+    }
+    var out = ""
+    if carry > 0 {
+        out = "1"
+    }
+    i = 0
+    while i < d.len {
+        out = out + d[i]
+        i += 1
+    }
+    return out
+}
+
+// 整数字面量 → 规范十进制串(十进制/0x 十六进制/前导负号);非整数字面量 → ""
+fn cimp_int_lit(s: Str) -> Str {
+    var neg = false
+    var t = cimp_trim(s)
+    if t.len > 0 && byte_at(t, 0) == 45 {
+        neg = true
+        t = cimp_trim(byte_slice(t, 1, t.len))
+    }
+    if t.len == 0 {
+        return ""
+    }
+    var hex = false
+    if t.len > 2 && byte_at(t, 0) == 48 && (byte_at(t, 1) == 88 || byte_at(t, 1) == 120) {
+        hex = true
+    }
+    var out = "0"
+    if hex {
+        out = ""
+        var i: I32 = 2
+        while i < t.len {
+            var c = byte_at(t, i)
+            if c >= 48 && c <= 57 {
+                var v: I32 = 0
+                out = cimp_mul_add(out, 16, c - 48, v)
+            } else if c >= 97 && c <= 102 {
+                var v2: I32 = 0
+                out = cimp_mul_add(out, 16, c - 97 + 10, v2)
+            } else if c >= 65 && c <= 70 {
+                var v3: I32 = 0
+                out = cimp_mul_add(out, 16, c - 65 + 10, v3)
+            } else {
+                return ""
+            }
+            i += 1
+        }
+        if out == "" {
+            out = "0"
+        }
+    } else {
+        var i2: I32 = 0
+        while i2 < t.len {
+            var c2 = byte_at(t, i2)
+            if c2 < 48 || c2 > 57 {
+                return ""
+            }
+            i2 += 1
+        }
+        var lead = 0
+        while lead + 1 < t.len && byte_at(t, lead) == 48 {
+            lead += 1
+        }
+        out = byte_slice(t, lead, t.len)
+    }
+    if neg {
+        out = "-" + out
+    }
+    return out
+}
+
+// 十进制串 × m + a(逐位;枚举 0x 解码用)
+fn cimp_mul_add(s: Str, m: I32, a: I32, unused: I32) -> Str {
+    var acc = a
+    var out = ""
+    var i = s.len
+    var carry: I32 = 0
+    var digs = List[Str]()
+    while i > 0 {
+        i -= 1
+        var v = (byte_at(s, i) - 48) * m + carry
+        var dgt = v % 10
+        carry = (v - dgt) / 10
+        digs.push(byte_slice("0123456789", dgt, dgt + 1))
+    }
+    while carry > 0 {
+        var dgt2 = carry % 10
+        carry = (carry - dgt2) / 10
+        digs.push(byte_slice("0123456789", dgt2, dgt2 + 1))
+    }
+    var k = digs.len
+    while k > 0 {
+        k -= 1
+        out = out + digs[k]
+    }
+    return out
+}
+
 fn cimp_is_ident_start(c: I32) -> Bool {
     if c >= 97 && c <= 122 {
         return true
@@ -132,7 +251,27 @@ fn cimp_is_tyword(w: Str) -> Bool {
 }
 
 // ---------------- 类型映射:C 型别词序列 → Ctron 型别("" = 不支持) ----------------
-fn cimp_ty(t: Str) -> Str {
+fn cimp_sig_of(tds: List[Str], nm: Str) -> Str {
+    var i: I32 = 0
+    while i < tds.len {
+        var e = tds[i]
+        var bar = -1
+        var q: I32 = 0
+        while q < e.len {
+            if byte_at(e, q) == 124 {
+                bar = q
+            }
+            q += 1
+        }
+        if bar > 0 && byte_slice(e, 0, bar) == nm {
+            return byte_slice(e, bar + 1, e.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn cimp_ty(t: Str, tds: List[Str]) -> Str {
     var tk = cimp_toks(t)
     var base = List[Str]()
     var star = false
@@ -185,16 +324,73 @@ fn cimp_ty(t: Str) -> Str {
     if (nm == "double") { return "F64" }
     if (nm == "_Bool") { return "Bool" }
     if (nm == "bool") { return "Bool" }
+    if base.len == 1 {
+        var tsig = cimp_sig_of(tds, base[0])
+        if tsig.len > 0 {
+            return tsig
+        }
+    }
     return ""
 }
 
 // 形参/字段分解:文本 → "名: 型"("" = 不支持);无名合成 <syn>
-fn cimp_param(t: Str, syn: Str) -> Str {
-    // 函数指针(括号)与数组(方括号)不支持
+fn cimp_param(t: Str, syn: Str, tds: List[Str]) -> Str {
+    // 函数指针形参:RET (*NAME)(ARGS) → NAME: fn(...) -> RET(v0.8;标量/Str 内参)
+    var p1 = -1
+    var q2: I32 = 0
+    while q2 + 1 < t.len {
+        if byte_at(t, q2) == 40 && byte_at(t, q2 + 1) == 42 {
+            p1 = q2
+            q2 = t.len
+        }
+        q2 += 1
+    }
+    if p1 >= 0 {
+        var rp1 = -1
+        var i3: I32 = p1 + 1
+        while i3 < t.len {
+            if byte_at(t, i3) == 41 {
+                rp1 = i3
+                i3 = t.len
+            }
+            i3 += 1
+        }
+        var nm = cimp_trim(byte_slice(t, p1 + 2, rp1))
+        var lp2 = -1
+        var rp2 = -1
+        var i4: I32 = rp1 + 1
+        while i4 < t.len {
+            if byte_at(t, i4) == 40 {
+                lp2 = i4
+            }
+            if byte_at(t, i4) == 41 {
+                rp2 = i4
+            }
+            i4 += 1
+        }
+        if nm.len > 0 && cimp_is_ident_start(byte_at(nm, 0)) && lp2 > rp1 && rp2 > lp2 {
+            var rett = cimp_trim(byte_slice(t, 0, p1))
+            var retv = cimp_ty(rett, tds)
+            var rtv = cimp_toks(rett)
+            if retv.len == 0 && rtv.len == 1 && rtv[0] == "void" {
+                retv = ""
+            }
+            if rett.len > 0 && retv.len == 0 {
+                return ""
+            }
+            var inner = cimp_param_list(byte_slice(t, lp2 + 1, rp2), tds)
+            var sig = "fn(" + inner + ")"
+            if retv.len > 0 {
+                sig = sig + " -> " + retv
+            }
+            return nm + ": " + sig
+        }
+        return ""
+    }
+    // 数组(方括号)不支持
     var q: I32 = 0
     while q < t.len {
-        var c = byte_at(t, q)
-        if c == 40 || c == 91 {
+        if byte_at(t, q) == 91 {
             return ""
         }
         q += 1
@@ -224,9 +420,12 @@ fn cimp_param(t: Str, syn: Str) -> Str {
     if !isname {
         tyt = t
     }
-    var ct = cimp_ty(tyt)
+    var ct = cimp_ty(tyt, tds)
     if ct.len == 0 {
         return ""
+    }
+    if syn == "-" {
+        return ct
     }
     var use_nm = syn
     if isname {
@@ -236,7 +435,7 @@ fn cimp_param(t: Str, syn: Str) -> Str {
 }
 
 // ---------------- 原型 → #[trusted] extern 绑定 ----------------
-fn cimp_proto(item: Str) -> Str {
+fn cimp_proto(item: Str, tds: List[Str]) -> Str {
     var pd: I32 = 0
     var lp = -1
     var rp = -1
@@ -278,7 +477,7 @@ fn cimp_proto(item: Str) -> Str {
         }
         j += 1
     }
-    var retv = cimp_ty(rett)
+    var retv = cimp_ty(rett, tds)
     if retv.len == 0 {
         var rt = cimp_toks(rett)
         var isvoid = false
@@ -325,7 +524,7 @@ fn cimp_proto(item: Str) -> Str {
         } else if (pv == "void") && ps.len == 1 {
             // (void) → 无参
         } else {
-            var pa = cimp_param(pv, "p" + syn.to_string())
+            var pa = cimp_param(pv, "p" + syn.to_string(), tds)
             if pa.len == 0 {
                 return "// cimport: 跳过(形参不支持): " + item
             }
@@ -353,7 +552,7 @@ fn cimp_proto(item: Str) -> Str {
 }
 
 // ---------------- struct → #[repr(c)] struct(标量字段) ----------------
-fn cimp_struct(item: Str) -> Str {
+fn cimp_struct(item: Str, tds: List[Str]) -> Str {
     // 定位首个 '{' 与配对 '}'
     var lb = -1
     var rb = -1
@@ -415,7 +614,7 @@ fn cimp_struct(item: Str) -> Str {
         if c == 59 {
             var ftxt = cimp_trim(cur)
             if ftxt.len > 0 {
-                var pa = cimp_param(ftxt, "f" + i.to_string())
+                var pa = cimp_param(ftxt, "f" + i.to_string(), tds)
                 if pa.len == 0 {
                     out = out + "    // cimport: 跳过字段(类型不支持): " + ftxt + "\n"
                 } else {
@@ -434,6 +633,349 @@ fn cimp_struct(item: Str) -> Str {
     }
     out = out + "}"
     return out
+}
+
+// enum typedef 名探测(tail 尾词;无 → "")
+fn cimp_enum_typedef_name(item: Str) -> Str {
+    var hasenum = false
+    var hasbrace = false
+    var q: I32 = 0
+    var et = cimp_toks(item)
+    while q < et.len {
+        if et[q] == "enum" {
+            hasenum = true
+        }
+        q += 1
+    }
+    q = 0
+    while q < item.len {
+        if byte_at(item, q) == 123 {
+            hasbrace = true
+        }
+        q += 1
+    }
+    if !hasenum || !hasbrace {
+        return ""
+    }
+    var rb = -1
+    var dep: I32 = 0
+    var i2: I32 = 0
+    while i2 < item.len {
+        var c = byte_at(item, i2)
+        if c == 123 {
+            dep += 1
+        }
+        if c == 125 {
+            dep -= 1
+            if dep == 0 && rb < 0 {
+                rb = i2
+            }
+        }
+        i2 += 1
+    }
+    if rb < 0 {
+        return ""
+    }
+    var tt = cimp_toks(cimp_trim(byte_slice(item, rb + 1, item.len)))
+    if tt.len > 0 {
+        var cand = tt[tt.len - 1]
+        if cand == ";" && tt.len > 1 {
+            cand = tt[tt.len - 2]
+        }
+        if cimp_is_ident_start(byte_at(cand, 0)) {
+            return cand
+        }
+    }
+    return ""
+}
+
+// ---------------- enum → const 常量组(自增/显式值/0x;表达式值 → 整体跳过) ----------------
+fn cimp_enum(item: Str) -> Str {
+    var lb = -1
+    var rb = -1
+    var dep: I32 = 0
+    var i: I32 = 0
+    while i < item.len {
+        var c = byte_at(item, i)
+        if c == 123 {
+            if dep == 0 && lb < 0 {
+                lb = i
+            }
+            dep += 1
+        }
+        if c == 125 {
+            dep -= 1
+            if dep == 0 && rb < 0 {
+                rb = i
+            }
+        }
+        i += 1
+    }
+    if lb < 0 || rb < lb {
+        return ""
+    }
+    var head = cimp_trim(byte_slice(item, 0, lb))
+    var body = byte_slice(item, lb + 1, rb)
+    var tail = cimp_trim(byte_slice(item, rb + 1, item.len))
+    var nm = ""
+    var tt = cimp_toks(tail)
+    if tt.len > 0 {
+        var cand = tt[tt.len - 1]
+        if cand == ";" && tt.len > 1 {
+            cand = tt[tt.len - 2]
+        }
+        if cimp_is_ident_start(byte_at(cand, 0)) {
+            nm = cand
+        }
+    }
+    if nm == "" {
+        var ht = cimp_toks(head)
+        var hq: I32 = 0
+        var seen_enum = false
+        while hq < ht.len {
+            if ht[hq] == "enum" {
+                seen_enum = true
+            } else if seen_enum && cimp_is_ident_start(byte_at(ht[hq], 0)) {
+                nm = ht[hq]
+            }
+            hq += 1
+        }
+    }
+    if nm == "" {
+        return "// cimport: 跳过(匿名 enum): " + item
+    }
+    var out = ""
+    var cur = "0"
+    var cur_str = ""
+    var entries = List[Str]()
+    var cur_e = ""
+    i = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 44 {
+            var e = cimp_trim(cur_e)
+            if e.len > 0 {
+                entries.push(e)
+            }
+            cur_e = ""
+        } else {
+            cur_e = cur_e + byte_slice(body, i, i + 1)
+        }
+        i += 1
+    }
+    var last = cimp_trim(cur_e)
+    if last.len > 0 {
+        entries.push(last)
+    }
+    var k: I32 = 0
+    while k < entries.len {
+        var e = entries[k]
+        var eqp = -1
+        var q: I32 = 0
+        while q < e.len {
+            if byte_at(e, q) == 61 {
+                eqp = q
+            }
+            q += 1
+        }
+        var enm = ""
+        var vexpr = ""
+        if eqp >= 0 {
+            enm = cimp_trim(byte_slice(e, 0, eqp))
+            vexpr = cimp_trim(byte_slice(e, eqp + 1, e.len))
+        } else {
+            enm = cimp_trim(e)
+        }
+        if eqp >= 0 {
+            var lit = cimp_int_lit(vexpr)
+            if lit.len == 0 {
+                return "// cimport: 跳过(枚举值非整数字面量): " + item
+            }
+            cur_str = lit
+        } else {
+            cur_str = cur
+        }
+        if !cimp_is_ident_start(byte_at(enm, 0)) {
+            return "// cimport: 跳过(枚举名非法): " + item
+        }
+        out = out + "const " + enm + ": I64 = " + cur_str + "\n"
+        cur = cimp_add1(cur_str)
+        k += 1
+    }
+    return out
+}
+
+// ---------------- typedef 函数签名:name|签名 表项("" = 非函数指针 typedef) ----------------
+fn cimp_fntypedef(item: Str, tds: List[Str]) -> Str {
+    if item.len < 9 || byte_slice(item, 0, 7) != "typedef" {
+        return ""
+    }
+    var p1 = -1
+    var i: I32 = 0
+    while i + 1 < item.len {
+        if byte_at(item, i) == 40 && byte_at(item, i + 1) == 42 {
+            p1 = i
+            i = item.len
+        }
+        i += 1
+    }
+    if p1 < 0 {
+        return ""
+    }
+    var rp1 = -1
+    i = p1 + 1
+    while i < item.len {
+        if byte_at(item, i) == 41 {
+            rp1 = i
+            i = item.len
+        }
+        i += 1
+    }
+    var nm = cimp_trim(byte_slice(item, p1 + 2, rp1))
+    var lp2 = -1
+    var rp2 = -1
+    i = rp1 + 1
+    while i < item.len {
+        if byte_at(item, i) == 40 {
+            lp2 = i
+        }
+        if byte_at(item, i) == 41 {
+            rp2 = i
+        }
+        i += 1
+    }
+    if nm.len == 0 || lp2 < 0 || rp2 < lp2 {
+        return ""
+    }
+    var rett = cimp_trim(byte_slice(item, 7, p1))
+    var retv = cimp_ty(rett, tds)
+    if retv.len == 0 {
+        var rt = cimp_toks(rett)
+        if rt.len == 1 && rt[0] == "void" {
+            retv = ""
+        } else {
+            return ""
+        }
+    }
+    var sig = "fn(" + cimp_param_list_nameless(byte_slice(item, lp2 + 1, rp2), tds) + ")"
+    if retv.len > 0 {
+        sig = sig + " -> " + retv
+    }
+    return nm + "|" + sig
+}
+
+// 形参表文本 → Ctron 形参串(仅标量/Str;fn 指针/数组 → 整体 "")
+fn cimp_param_list(t: Str, tds: List[Str]) -> Str {
+    var t2 = cimp_trim(t)
+    if t2.len == 0 || t2 == "void" {
+        return ""
+    }
+    var out = ""
+    var cur = ""
+    var first = true
+    var syn: I32 = 1
+    var i: I32 = 0
+    while i < t2.len {
+        var c = byte_at(t2, i)
+        if c == 44 {
+            var pa = cimp_plain_param(cimp_trim(cur), syn.to_string(), tds)
+            if pa.len == 0 {
+                return ""
+            }
+            if !first {
+                out = out + ", "
+            }
+            out = out + pa
+            first = false
+            syn += 1
+            cur = ""
+        } else {
+            cur = cur + byte_slice(t2, i, i + 1)
+        }
+        i += 1
+    }
+    var pa2 = cimp_plain_param(cimp_trim(cur), syn.to_string(), tds)
+    if pa2.len == 0 {
+        return ""
+    }
+    if !first {
+        out = out + ", "
+    }
+    out = out + pa2
+    return out
+}
+
+// 无名形参表(fn 类型签名字面用;"-" 触发无名模式)
+fn cimp_param_list_nameless(t: Str, tds: List[Str]) -> Str {
+    var t2 = cimp_trim(t)
+    if t2.len == 0 || t2 == "void" {
+        return ""
+    }
+    var out = ""
+    var cur = ""
+    var first = true
+    var i: I32 = 0
+    while i < t2.len {
+        var c = byte_at(t2, i)
+        if c == 44 {
+            var pa = cimp_plain_param(cimp_trim(cur), "-", tds)
+            if pa.len == 0 {
+                return ""
+            }
+            if !first {
+                out = out + ", "
+            }
+            out = out + pa
+            first = false
+            cur = ""
+        } else {
+            cur = cur + byte_slice(t2, i, i + 1)
+        }
+        i += 1
+    }
+    var pa2 = cimp_plain_param(cimp_trim(cur), "-", tds)
+    if pa2.len == 0 {
+        return ""
+    }
+    if !first {
+        out = out + ", "
+    }
+    out = out + pa2
+    return out
+}
+
+// 无名合成版单形参(仅型别,无 fn 指针嵌套)
+fn cimp_plain_param(t: Str, syn: Str, tds: List[Str]) -> Str {
+    var q: I32 = 0
+    while q < t.len {
+        var c = byte_at(t, q)
+        if c == 40 || c == 91 {
+            return ""
+        }
+        q += 1
+    }
+    var tk = cimp_toks(t)
+    if tk.len == 0 {
+        return ""
+    }
+    var nm = tk[tk.len - 1]
+    var isname = false
+    if cimp_is_ident_start(byte_at(nm, 0)) && !cimp_is_tyword(nm) && nm != ";" {
+        isname = true
+    }
+    var tyt = t
+    if isname && tk.len > 1 {
+        tyt = cimp_trim(byte_slice(t, 0, t.len - nm.len))
+    }
+    var ct = cimp_ty(tyt, tds)
+    if ct.len == 0 {
+        return ""
+    }
+    var use_nm = syn
+    if isname {
+        use_nm = nm
+    }
+    return use_nm + ": " + ct
 }
 
 // ---------------- #define → const ----------------
@@ -490,7 +1032,7 @@ fn cimp_define(line: Str) -> Str {
 }
 
 // ---------------- 顶层项分派 ----------------
-fn cimp_item(item: Str) -> Str {
+fn cimp_item(item: Str, tds: List[Str]) -> Str {
     if item.len == 0 {
         return ""
     }
@@ -499,6 +1041,19 @@ fn cimp_item(item: Str) -> Str {
             return cimp_define(item)
         }
         return "// cimport: 跳过(预处理指令): " + item
+    }
+    // typedef 函数签名:类型别名不入产物(经 tds 表在形参/返回内联展开)
+    var ftd = cimp_fntypedef(item, tds)
+    if ftd.len > 0 {
+        var fbar = -1
+        var fq: I32 = 0
+        while fq < ftd.len {
+            if byte_at(ftd, fq) == 124 {
+                fbar = fq
+            }
+            fq += 1
+        }
+        return "// cimport: fn 类型别名 " + byte_slice(ftd, 0, fbar) + "(经表内联展开)"
     }
     // 含 '{' → struct/union/enum 候选
     var hasbrace = false
@@ -510,7 +1065,23 @@ fn cimp_item(item: Str) -> Str {
         q += 1
     }
     if hasbrace {
-        var st = cimp_struct(item)
+        var isenum = false
+        var et = cimp_toks(item)
+        var eq: I32 = 0
+        while eq < et.len {
+            if et[eq] == "enum" {
+                isenum = true
+            }
+            eq += 1
+        }
+        if isenum {
+            var en = cimp_enum(item)
+            if en.len > 0 {
+                return en
+            }
+            return "// cimport: 跳过(enum): " + item
+        }
+        var st = cimp_struct(item, tds)
         if st.len > 0 {
             return st
         }
@@ -526,7 +1097,7 @@ fn cimp_item(item: Str) -> Str {
         q += 1
     }
     if hasparen {
-        var pr = cimp_proto(item)
+        var pr = cimp_proto(item, tds)
         if pr.len > 0 {
             return pr
         }
@@ -609,9 +1180,23 @@ fn main() -> I32 {
             var out = "// 由 compiler/tools/cimport.ct 生成(§9.6 v0.7 decl 级子集)\n"
             out = out + "// 覆盖:函数原型 / #define 常量 / #[repr(c)] struct(标量字段)\n\n"
             var items = cimp_items(clean)
+            var tds = List[Str]()
             var i: I32 = 0
             while i < items.len {
-                var text = cimp_item(items[i])
+                var td = cimp_fntypedef(items[i], tds)
+                if td.len > 0 {
+                    tds.push(td)
+                } else {
+                    var en = cimp_enum_typedef_name(items[i])
+                    if en.len > 0 {
+                        tds.push(en + "|I64")
+                    }
+                }
+                i += 1
+            }
+            i = 0
+            while i < items.len {
+                var text = cimp_item(items[i], tds)
                 if text.len > 0 {
                     out = out + text + "\n\n"
                 }

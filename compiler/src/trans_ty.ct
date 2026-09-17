@@ -446,6 +446,44 @@ fn ct_params_str_bare(d: List[Str], file: List[Str]) -> Str {
     return params
 }
 
+// 空白trim(#[link] 实参清理用)
+fn ct_trim(s: Str) -> Str {
+    var a: I32 = 0
+    var b = s.len
+    while a < b && or2(or2(byte_at(s, a) == 32, byte_at(s, a) == 9), byte_at(s, a) == 10) {
+        a += 1
+    }
+    while b > a {
+        var d = byte_at(s, b - 1)
+        if or2(d == 32, or2(d == 9, d == 10)) {
+            b -= 1
+        } else {
+            return byte_slice(s, a, b)
+        }
+    }
+    return ""
+}
+
+// extern 返回 Option[Str](§9.6 v0.8):C 侧真返回 const char*(NULL ↔ None),
+// Ctron 侧落 ct_res 经既有 Option 机制消费
+fn ct_ext_ret_optstr(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "FnExt" && d[1] == nm {
+            var r = d[4]
+            if r[0] == "Named" && seq2(r[1], "Option") {
+                if r[2].len > 1 && r[2][1][0] == "Named" && seq2(r[2][1][1], "Str") {
+                    return true
+                }
+            }
+            return false
+        }
+        i += 1
+    }
+    return false
+}
+
 // extern "c" 声明的 C 符号名(v0.7 §9.6):默认裸名;#[link_name(x)] → x(符号重命名,
 // 撞名/版本化免 c_src 垫片);#[dlsym] → 运行期解析 thunk ct_dyn_<名>(dlopen 面)
 fn ct_ext_sym(file: List[Str], nm: Str) -> Str {

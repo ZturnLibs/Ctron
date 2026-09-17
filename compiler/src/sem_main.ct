@@ -27,7 +27,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             fns.push(d[1])
             rets.push(d[4])
         } else if t == "Static" && d[2] == "true" {
-            diags.push("E3030@" + nline(d) + ": static var 不存在;用 static let 或 Global[T]:" + d[1])
+                diag1(diags, "E3030", nline(d), d[1])
         }
         i += 1
     }
@@ -59,7 +59,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 j += 1
             }
             if hit {
-                diags.push("W8010@" + nline(d) + ": struct 含类引用字段(浅拷贝):" + nm + "." + hn)
+                diag2(diags, "W8010", nline(d), nm, hn)
             }
         } else if or2(t == "Fn", or2(t == "FnC", t == "FnPub")) {
             var ns = false
@@ -125,7 +125,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             }
         } else if t == "Static" {
             if !send_of(file, d[3], 0) {
-                diags.push("E3031@" + nline(d) + ": static 存储非 Send(Send):" + d[1])
+                diag1(diags, "E3031", nline(d), d[1])
             }
         } else if t == "Impl" {
             var tr = d[2]
@@ -167,10 +167,10 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
         if td[0] == "FnExt" {
             // 带 #[trusted] 的 FnExt:len 8(尾部 anm + nstamp 行号);无标记 len 7
             if td.len < 8 {
-                diags.push("W8050@" + nline(td) + ": extern 未标记 #[trusted](信任边界):" + td[1])
+                diag1(diags, "W8050", nline(td), td[1])
             }
             if td.len > 7 && attr_is(td[6], "repr") {
-                diags.push("E4041@" + nline(td) + ": #[repr(c)] 仅限 struct 声明:" + td[1])
+                diag1(diags, "E4041", nline(td), td[1])
             }
             // C-ABI 类型治理(v0.6):容器/能力类型不得跨界;返回 fn 类型 v0.7 起支持
             //(边界 ct_fnK + 绑定面装箱)
@@ -179,26 +179,32 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             while ek < eps.len {
                 var epr = eps[ek]
                 if epr[0] == "Param" && ext_nonabi_ty(epr[3]) {
-                    diags.push("W8052@" + nline(td) + ": extern 形参非 C-ABI 类型(§9.6):" + td[1] + "." + epr[2])
+                    diag2(diags, "W8052.param", nline(td), td[1], epr[2])
                 }
                 ek += 1
             }
             if ext_nonabi_ty(td[4]) {
-                diags.push("W8052@" + nline(td) + ": extern 返回非 C-ABI 类型(§9.6):" + td[1])
+                diag1(diags, "W8052.ret", nline(td), td[1])
             }
         } else if or2(td[0] == "Fn", td[0] == "FnPub") {
             // fn 带 #[trusted]:# 分支 push anm 后补 nstamp(len 7,nline 安全)
             if td.len > 6 && seq2(td[6], "trusted") {
-                diags.push("E4040@" + nline(td) + ": #[trusted] 仅限 extern 声明:" + td[1])
+                diag1(diags, "E4040", nline(td), td[1])
             } else if td.len > 6 && attr_is(td[6], "repr") {
-                diags.push("E4041@" + nline(td) + ": #[repr(c)] 仅限 struct 声明:" + td[1])
+                diag1(diags, "E4041", nline(td), td[1])
             }
             // E4044(v0.7 §9.6):变参形参仅限 extern "c" 声明
             var vps = td[3]
             var vk: I32 = 1
             while vk < vps.len {
                 if vps[vk][0] == "VaArgs" {
-                    diags.push("E4044@" + nline(td) + ": 变参形参(...)仅限 extern 声明:" + td[1])
+                    // 行号:仅带属性戳的 fn(len>7,尾槽=stamp)可 nline;裸 fn 无戳,
+                    // 回退 "0"(与 Enum 的 E4041@0 同款;p_fn2 统一补戳后可收回)
+                    var vln = "0"
+                    if td.len > 7 {
+                        vln = nline(td)
+                    }
+                    diag1(diags, "E4044", vln, td[1])
                 }
                 vk += 1
             }
@@ -213,7 +219,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 while rj < rfs.len {
                     var rfd = rfs[rj]
                     if rfd.len > 3 && rfd[0] == "Field" && ext_nonabi_ty(rfd[3]) {
-                        diags.push("W8051@" + nline(td) + ": repr(c) struct 含非 C-ABI 字段(§9.6):" + td[1] + "." + rfd[2])
+                        diag2(diags, "W8051", nline(td), td[1], rfd[2])
                     }
                     rj += 1
                 }
@@ -221,7 +227,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
         } else if td[0] == "Enum" {
             // Enum 节点无行号戳(nline 回退 "0");#[attr] 名在尾槽([4])
             if td.len > 4 && attr_is(td[4], "repr") {
-                diags.push("E4041@0: #[repr(c)] 仅限 struct 声明:" + td[1])
+                diag1(diags, "E4041", "0", td[1])
             }
         } else if td[0] == "Class" {
             // §6.2 硬规则(P0-G/GC spike):类直接持有需确定性释放的资源字段 → E4050
@@ -232,7 +238,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 if rfd.len > 3 && rfd[0] == "Field" {
                     var rh = ty_head(rfd[3])
                     if or2(seq2(rh, "Mutex"), seq2(rh, "Channel")) {
-                        diags.push("E4050@" + nline(rfd) + ": 类直接持有资源字段(§6.2;资源须值句柄或能力对象):" + td[1] + "." + rfd[2])
+                        diag2(diags, "E4050", nline(rfd), td[1], rfd[2])
                     }
                 }
                 rj += 1
@@ -286,8 +292,8 @@ fn attr_has(v: Str, name: Str) -> Bool {
 
 // 属性实参提取:"名(实参)" → 实参(嵌套括号含内层原文);非带参属性 → ""
 fn attr_arg(v: Str) -> Str {
-    var i: I32 = 0
     var bar = -1
+    var i: I32 = 0
     while i < v.len {
         if byte_at(v, i) == 40 {
             bar = i
@@ -298,7 +304,23 @@ fn attr_arg(v: Str) -> Str {
     if bar < 0 {
         return ""
     }
-    return byte_slice(v, bar + 1, v.len - 1)
+    // 堆叠属性下实参止于配对 ')'(不能切到串尾——尾槽还有后续段)
+    var dep: I32 = 1
+    var j = bar + 1
+    while j < v.len {
+        var c = byte_at(v, j)
+        if c == 40 {
+            dep += 1
+        }
+        if c == 41 {
+            dep -= 1
+            if dep == 0 {
+                return byte_slice(v, bar + 1, j)
+            }
+        }
+        j += 1
+    }
+    return ""
 }
 
 // C-ABI 类型治理(§9.6 v0.6):容器/能力类型不得跨 extern 边界(镜像 Rust
@@ -309,7 +331,15 @@ fn ext_nonabi_ty(ty: List[Str]) -> Bool {
     var t = ty[0]
     if t == "Named" {
         var h = ty[1]
-        if or2(seq2(h, "List"), or2(seq2(h, "Atomic"), or2(seq2(h, "Option"), or2(seq2(h, "Result"), or2(seq2(h, "Box"), or2(seq2(h, "Mutex"), or2(seq2(h, "Channel"), seq2(h, "Global")))))))) {
+        if seq2(h, "Option") {
+            // Option[Str] 放行(v0.8 §9.6):extern 返回 NULL ↔ None 编组面;
+            // 其余载荷仍拒(值域 ct_i 无 NULL 语义)
+            if ty.len > 2 && ty[2].len > 1 && ty[2][1][0] == "Named" && seq2(ty[2][1][1], "Str") {
+                return false
+            }
+            return true
+        }
+        if or2(seq2(h, "List"), or2(seq2(h, "Atomic"), or2(seq2(h, "Result"), or2(seq2(h, "Box"), or2(seq2(h, "Mutex"), or2(seq2(h, "Channel"), seq2(h, "Global"))))))) {
             return true
         }
         return false

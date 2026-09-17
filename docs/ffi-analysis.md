@@ -89,7 +89,16 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **USize→size_t** | 独立码 "z" → C `size_t`(target 真类型);libc strlen 可直接声明(Darwin 别名冲突消解);eval 值域仍共享 "7" 分层不动 |
 | **布局变体** | `#[repr(packed)]` / `#[repr(align(N))]` → GNU 属性直出;属性实参解析支持嵌套括号(`repr(align(8))`)。锚定:`tests/ffi/layout/`(packed sizeof=17/align sizeof=32 边界对数) |
 
-仍未落地(诚实口径):errno→Result 边界转换、panic 跨边界策略、pkg-config/构建集成、context-pointer 闭包模式糖、C 位域/union、float 形参精度约定、cimport 的 enum/函数指针/typedef 函数签名面。
+仍未落地(诚实口径):errno→Result 边界转换(Option[Str] NULL 编组已落地为首步)、pkg-config/构建集成、context-pointer 闭包模式糖、C 位域/union、float 形参精度约定。
+
+### v0.8 增补(2026-09-17 下午)
+
+| 能力 | 落地 |
+|---|---|
+| **cimport 深化** | enum → const 常量组(自增/显式值/0x 解码);typedef 函数签名表(经形参/返回/struct 字段内联展开,fn 类型签名字面无名化);函数指针形参 `RET (*name)(ARGS)` → `name: fn(...) -> RET`;enum typedef 名入表(`Mode` → I64) |
+| **错误传播首步** | extern 返回 `Option[Str]`:C 侧 const char* NULL ↔ None 边界编组(原型出 const char*,调用点 ct_res 包装;`?`/match/`.or` 全套 Option 机制原样可用);`ext_nonabi_ty` 放行 Option[Str] |
+| **#[link(name)]** | 链接依赖以 `// ctron:link -l<名>` 注释落产物;驱动层(tests/ffi/run.sh link_math 专道)读取传 cc;发射器职责止于 C 文本 |
+| **panic 跨边界钉子** | `cb_panic/` 夹具钉住非 task 态策略:C 回调中 panic → 消息 + exit(1)(不越 C 帧);task 态约定待钉 |
 
 
 ---
@@ -137,7 +146,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 8 | 宿主线(compiler-c)未同步 E4041/E4042/E4044/W8051-52 | 低 | C 宿主 sem 端口(负例在 tests/ffi,不入宿主差分,无阻断) |
 | 9 | 错误传播约定(errno → Result) | 中 | std.ffi 包装层先行 |
 | 10 | 自举守卫:发射的 C 形参缺省(漏实参)静默通过(Ctron 侧无 arity 检查;`p_enum2` 漏传曾踩中) | 低 | 发射器 fn 调用 arity 断言(emit 期 panic) |
-| 11 | **自举 sem 崩溃在册**:`cimp_toks`+`cimp_proto` 同文件时 native sem(walk_e)野指针崩溃;宿主 seed 双面绿——cimport 工具暂由 seed 驱动 | 中 | 疑 E2010 统一面/诊断期跨 fn 干扰;复现:`compiler/tools/cimport.ct` 前 8 个 fn + `ctron-cc run` |
+| 11 | **自举解析器在册**(v0.8 收窄):① while 条件 `&& (` 括号化或链 + 循环内 `if 三词或链 { } else` 组合 → 解析树错位(下游 `List[Str]` 签名被当表达式/`StructLit 非值类型` panic);最小形 `par_bug2.ct`(双循环+三词或链+else);现工作面(ct_trim)以 or2 调用改写绕开。② `cimp_toks`+`cimp_proto` 同文件 native sem(walk_e)野指针崩溃;seed 双面绿,cimport 工具走 seed | 中 | 解析器条件尾/结构字面量歧义(allow_struct 线程化漏洞);归解析器 owner |
 | 12 | panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧) | 中 | 非 task 态已安全(exit);task 态回调约定待钉 |
 | 13 | cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参 | 低 | 按需扩面;未识别一律注释占位不静默 |
 | 14 | pkg-config/构建集成、context-pointer 闭包模式糖、C 位域 | 低 | 随构建系统批次 |

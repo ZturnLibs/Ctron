@@ -1,0 +1,14 @@
+// tests/ffi/opt_return —— 错误传播约定(§9.6 v0.8):extern 返回 Option[Str]
+// 承诺:C 侧 const char*(NULL ↔ None)经边界自动落 ct_res;`?`/match/.or 全套
+// Option 机制原样可用——C 的"返回 NULL 表示失败"惯用法不再需要手写包装。
+#[trusted]
+extern "c" fn cfg_maybe(i: I32) -> Option[Str]
+
+test "NULL → None;非空 → Some(经 .or 消费)" {
+    var s = cfg_maybe(0)
+    assert_eq(s.or("fallback"), "fallback")
+    var t = cfg_maybe(1)
+    assert_eq(t.or("fallback"), "configured")
+    var u = cfg_maybe(2)
+    assert_eq(u.or("fallback"), "configured")
+}

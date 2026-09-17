@@ -1,0 +1,10 @@
+// tests/ffi/link_math —— #[link(name)] 构建标记(§9.6 v0.8)
+// 承诺:extern 声明的链接依赖以 `ctron:link` 注释落进发射产物,
+// 驱动层(run.sh/suite)读取后传给 cc(sqrt 需要 -lm 的平台)。
+#[link(name = "m")]
+#[trusted]
+extern "c" fn sqrt(x: F64) -> F64
+
+test "link marker + libm sqrt" {
+    assert_eq(sqrt(4.0), 2.0)
+}
