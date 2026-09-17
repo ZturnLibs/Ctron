@@ -146,7 +146,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 8 | 宿主线(compiler-c)未同步 E4041/E4042/E4044/W8051-52 | 低 | C 宿主 sem 端口(负例在 tests/ffi,不入宿主差分,无阻断) |
 | 9 | 错误传播约定(errno → Result) | 中 | std.ffi 包装层先行 |
 | 10 | 自举守卫:发射的 C 形参缺省(漏实参)静默通过(Ctron 侧无 arity 检查;`p_enum2` 漏传曾踩中) | 低 | 发射器 fn 调用 arity 断言(emit 期 panic) |
-| 11 | **自举解析器在册**(v0.8 收窄):① while 条件 `&& (` 括号化或链 + 循环内 `if 三词或链 { } else` 组合 → 解析树错位(下游 `List[Str]` 签名被当表达式/`StructLit 非值类型` panic);最小形 `par_bug2.ct`(双循环+三词或链+else);现工作面(ct_trim)以 or2 调用改写绕开。② `cimp_toks`+`cimp_proto` 同文件 native sem(walk_e)野指针崩溃;seed 双面绿,cimport 工具走 seed | 中 | 解析器条件尾/结构字面量歧义(allow_struct 线程化漏洞);归解析器 owner |
+| 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃(联合效应:任意 6/7 语句子集仍崩);已删除解阻塞(5af89bd 后续提交),impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② while 条件 `&& (` 括号化或链 + 循环内 `if 三词或链 { } else` 组合 → `StructLit 非值类型` panic(最小形:双循环+三词或链+else);工作面以 or2 调用改写绕开。③ `cimp_toks`+`cimp_proto` 同文件 native sem(walk_e)野指针崩溃;seed 双面绿,cimport 工具走 seed | 中 | ①已处置;②③归解析器 owner(allow_struct 线程化漏洞嫌疑) |
 | 12 | panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧) | 中 | 非 task 态已安全(exit);task 态回调约定待钉 |
 | 13 | cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参 | 低 | 按需扩面;未识别一律注释占位不静默 |
 | 14 | pkg-config/构建集成、context-pointer 闭包模式糖、C 位域 | 低 | 随构建系统批次 |
