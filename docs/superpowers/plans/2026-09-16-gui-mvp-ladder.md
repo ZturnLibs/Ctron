@@ -144,11 +144,13 @@ tests/gui/{s1_smoke/, s2_ab/, s3_clay/, s4_events/, s5_golden/, s6_demo/, run.sh
       包级 use 集成随 P2-B(夹具暂内嵌快照)
 - [x] 全阶梯回归:S1–S7 七夹具连续全绿(2026-09-16)
 
-### S0 状态(2026-09-16 更新)
+### S0 状态(2026-09-17 销账)
 
-FFI 套件 9 过/7 败——并行泳道 Ctron.ctcl 迁移中间态(tests/ffi 新增
-dyn_link/export/variadic/layout 等 WIP 夹具在红,编译器三线大改未落库)。
-**落库继续搁置**;GUI 阶梯不受影响(夹具不依赖 ctcl 配置面)。
+FFI 泳道已自行落库并扩张到位:**tests/ffi 20 过 / 0 败**(11 → 20 夹具:新增
+variadic/export/dyn_link/layout/opt_return/cb_panic/link_math 等),S0 无需代提交。
+⚠ 新在飞批次(诊断 i18n/错误码审计,2026-09-17 spec)正占用编译器前端
+(lex/parse_decl/parse_pkg + 全部 sem_*),**W1 仍待其落库**;
+GUI 阶梯 S1–S7 对最新发射器回归 7/7 绿(兼容性追踪 ✓)。
 
 ### S6 实现发现(登记)
 
