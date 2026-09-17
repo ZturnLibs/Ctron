@@ -210,6 +210,80 @@ fn full_corpus_behavior_matrix_unchanged() {
 
 // ---------- CLI 级:ctron fmt ----------
 
+#[test]
+fn cli_manifest_writeback_preserves_comments() {
+    let base = std::env::temp_dir().join(format!("ctcl_wb_{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let p = base.join("Ctron.ctcl");
+    let src = "// 头注释归 pkg\npkg {\n    name = \"z\"\n    // 格式版本,勿动\n    manifest_version = 1\n    version = \"0.1.0\"\n}\n";
+    std::fs::write(&p, src).unwrap();
+    let (_, _, code) = run_cli(&["manifest", p.to_str().unwrap(), "-w"]);
+    assert_eq!(code, Some(0));
+    let out = std::fs::read_to_string(&p).unwrap();
+    assert_eq!(
+        out,
+        "// 头注释归 pkg\npkg {\n    // 格式版本,勿动\n    manifest_version = 1\n    name = \"z\"\n    version = \"0.1.0\"\n}\n"
+    );
+    let (sout2, _, code2) = run_cli(&["manifest", p.to_str().unwrap(), "-w"]);
+    assert_eq!(code2, Some(0));
+    assert!(sout2.contains("already canonical"), "sout={sout2:?}");
+    std::fs::write(&p, "pkg {\n    name = \"z\"\n}\n").unwrap();
+    let (_, _, code3) = run_cli(&["manifest", p.to_str().unwrap(), "-w"]);
+    assert_eq!(code3, Some(1), "存在 E 级诊断拒绝写回");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn cli_manifest_add_dep_sorts_and_refuses_dup() {
+    let base = std::env::temp_dir().join(format!("ctcl_add_{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let p = base.join("Ctron.ctcl");
+    std::fs::write(
+        &p,
+        "pkg {\n    manifest_version = 1\n    name = \"app\"\n    version = \"0.1.0\"\n}\n\ndep \"zlib\" {\n    path = \"../zlib\"\n}\n",
+    )
+    .unwrap();
+    let (_, _, code) = run_cli(&["manifest", p.to_str().unwrap(), "--add-dep=libmath=../lib"]);
+    assert_eq!(code, Some(0));
+    let out = std::fs::read_to_string(&p).unwrap();
+    let i_lib = out.find("dep \"libmath\"").expect("libmath 应存在");
+    let i_z = out.find("dep \"zlib\"").expect("zlib 应存在");
+    assert!(i_lib < i_z, "新增依赖应按名排序:\n{out}");
+    assert!(out.contains("path = \"../lib\""));
+    let (_, _, code2) = run_cli(&["manifest", p.to_str().unwrap(), "--add-dep=libmath=../other"]);
+    assert_eq!(code2, Some(1), "同名键控块禁止追加");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn cli_manifest_caps_and_remove_ops() {
+    let base = std::env::temp_dir().join(format!("ctcl_ops_{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let p = base.join("Ctron.ctcl");
+    std::fs::write(
+        &p,
+        "pkg {\n    manifest_version = 1\n    name = \"app\"\n    version = \"0.1.0\"\n    caps = [\"fs\"]\n}\n\ndep \"zlib\" {\n    path = \"../zlib\"\n}\n",
+    )
+    .unwrap();
+    let (_, _, c1) = run_cli(&["manifest", p.to_str().unwrap(), "--add-cap=time"]);
+    assert_eq!(c1, Some(0));
+    let out = std::fs::read_to_string(&p).unwrap();
+    assert!(out.contains("caps = [\"fs\", \"time\"]"), "\n{out}");
+    let (_, _, c2) = run_cli(&["manifest", p.to_str().unwrap(), "--add-cap=net"]);
+    assert_eq!(c2, Some(1));
+    let (_, _, c3) = run_cli(&["manifest", p.to_str().unwrap(), "--remove-cap=fs"]);
+    assert_eq!(c3, Some(0));
+    let out = std::fs::read_to_string(&p).unwrap();
+    assert!(out.contains("caps = [\"time\"]"), "\n{out}");
+    let (_, _, c4) = run_cli(&["manifest", p.to_str().unwrap(), "--remove-dep=nope"]);
+    assert_eq!(c4, Some(1));
+    let (_, _, c5) = run_cli(&["manifest", p.to_str().unwrap(), "--remove-dep=zlib"]);
+    assert_eq!(c5, Some(0));
+    let out = std::fs::read_to_string(&p).unwrap();
+    assert!(!out.contains("dep \"zlib\""), "\n{out}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 fn run_cli(args: &[&str]) -> (String, String, Option<i32>) {
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_ctron"))
         .args(args)
@@ -261,7 +335,7 @@ fn cli_fmt_pkg_dir_checks_all_sources() {
     let base = std::env::temp_dir().join(format!("ctron_fmt_pkg_{}", std::process::id()));
     let src_dir = base.join("src");
     std::fs::create_dir_all(&src_dir).unwrap();
-    std::fs::write(base.join("Ctron.toml"), "name = \"mylib\"\n").unwrap();
+    std::fs::write(base.join("Ctron.ctcl"), "pkg {\n    manifest_version = 1\n    name = \"mylib\"\n}\n").unwrap();
     std::fs::write(src_dir.join("a.ct"), "let a=1\n").unwrap();
     std::fs::write(src_dir.join("b.ct"), "let b = 2\n").unwrap();
     let (_, _, code) = run_cli(&["fmt", base.to_str().unwrap(), "--check"]);

@@ -1,4 +1,4 @@
-// suite_pkg.c —— C3-c 模块级验收:遍历 <root>/modules/*(含 Ctron.toml 的包),
+// suite_pkg.c —— C3-c 模块级验收:遍历 <root>/modules/*(含 Ctron.ctcl 的包),
 // 对每个包做 pkg 检查,按各源文件 marker 评分(仅模块级码 E5010/E5020/E2020/E4010/E6010)。
 #include <dirent.h>
 #include <stdio.h>
@@ -9,7 +9,7 @@
 
 static int has_toml(const char* dir) {
     char p[4096];
-    snprintf(p, sizeof p, "%s/Ctron.toml", dir);
+    snprintf(p, sizeof p, "%s/Ctron.ctcl", dir);
     FILE* f = fopen(p, "r");
     if (!f) return 0;
     fclose(f);

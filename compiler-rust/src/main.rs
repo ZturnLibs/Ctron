@@ -92,6 +92,154 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("manifest") => {
+            // CTCL 清单诊断 + 语义字段 + 规范形态(三线黄金对拍口径,规范 §9)
+            let path = match args.get(2) {
+                Some(p) if !p.starts_with("--") => p.clone(),
+                _ => { eprintln!("usage: ctron manifest <file.ctcl>"); return ExitCode::from(2); }
+            };
+            let Ok(src) = std::fs::read_to_string(&path) else {
+                eprintln!("无法读取 {path}");
+                return ExitCode::from(2);
+            };
+            let (manifest, diags, mut tree, tail) = ctron::check::parse_manifest_full(&src);
+            for d in &diags {
+                if let Some(rest) = d.strip_prefix("Ctron.ctcl: ") {
+                    println!("{rest}");
+                }
+            }
+            println!("---");
+            if let Some(n) = &manifest.name { println!("name: {n}"); }
+            if let Some(v) = &manifest.version { println!("version: {v}"); }
+            let mut caps: Vec<String> = manifest.caps.keys().cloned().collect();
+            caps.sort();
+            if !caps.is_empty() { println!("caps: {}", caps.join(",")); }
+            if manifest.has_comptime {
+                println!("budget: {}", manifest.comptime_budget_steps / 1000);
+            }
+            println!("---");
+            // --add-dep <name>=<path>:命令化依赖添加;渲染自动按名排序落位(§8)
+            let mut add_dep: Option<(String, String)> = None;
+            let mut add_cap: Option<String> = None;
+            let mut remove_cap: Option<String> = None;
+            let mut remove_dep: Option<String> = None;
+            for a in &args {
+                if let Some(rest) = a.strip_prefix("--add-dep=") {
+                    if let Some((n, p2)) = rest.split_once('=') {
+                        add_dep = Some((n.to_string(), p2.to_string()));
+                    }
+                }
+                if let Some(rest) = a.strip_prefix("--add-cap=") {
+                    add_cap = Some(rest.to_string());
+                }
+                if let Some(rest) = a.strip_prefix("--remove-cap=") {
+                    remove_cap = Some(rest.to_string());
+                }
+                if let Some(rest) = a.strip_prefix("--remove-dep=") {
+                    remove_dep = Some(rest.to_string());
+                }
+            }
+            if let Some((dn, dp)) = &add_dep {
+                for b in &tree {
+                    if b.name == "dep" && b.arg.as_deref() == Some(dn.as_str()) {
+                        eprintln!("E5045 重复的 dep \"{dn}\";同名键控块禁止追加");
+                        return ExitCode::from(1);
+                    }
+                }
+                tree.push(ctron::check::MBlock {
+                    name: "dep".into(),
+                    arg: Some(dn.clone()),
+                    head_trail: None,
+                    lead: Vec::new(),
+                    free: Vec::new(),
+                    fields: vec![ctron::check::MField {
+                        key: "path".into(),
+                        val: ctron::check::MVal::S(dp.clone()),
+                        trail: None,
+                        lead: Vec::new(),
+                    }],
+                });
+            }
+            if let Some(cn) = &add_cap {
+                if cn != "fs" && cn != "time" {
+                    eprintln!("E5043 未知能力 {cn};合法:fs, time(能力是安全边界,未知即拒绝)");
+                    return ExitCode::from(1);
+                }
+                let Some(pb) = tree.iter_mut().find(|b| b.name == "pkg") else {
+                    eprintln!("E5047 缺 pkg 块");
+                    return ExitCode::from(1);
+                };
+                match pb.fields.iter_mut().find(|f| f.key == "caps") {
+                    Some(cf) => {
+                        if let ctron::check::MVal::L(items) = &mut cf.val {
+                            if !items.contains(cn) {
+                                items.push(cn.clone());
+                            }
+                        } else {
+                            eprintln!("E5046 caps 的类型应为 list");
+                            return ExitCode::from(1);
+                        }
+                    }
+                    None => {
+                        pb.fields.push(ctron::check::MField {
+                            key: "caps".into(),
+                            val: ctron::check::MVal::L(vec![cn.clone()]),
+                            trail: None,
+                            lead: Vec::new(),
+                        });
+                    }
+                }
+            }
+            if let Some(cn) = &remove_cap {
+                let mut found = false;
+                for b in tree.iter_mut() {
+                    if b.name == "pkg" {
+                        for f in b.fields.iter_mut() {
+                            if f.key == "caps" {
+                                if let ctron::check::MVal::L(items) = &mut f.val {
+                                    let before = items.len();
+                                    items.retain(|x| x != cn);
+                                    found = items.len() != before;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !found {
+                    eprintln!("E5043 未知能力 {cn};合法:fs, time(能力是安全边界,未知即拒绝)");
+                    return ExitCode::from(1);
+                }
+            }
+            if let Some(dn) = &remove_dep {
+                let before = tree.len();
+                tree.retain(|b| !(b.name == "dep" && b.arg.as_deref() == Some(dn.as_str())));
+                if tree.len() == before {
+                    eprintln!("E5045 未知 dep \"{dn}\";合法块:comptime, dep, pkg");
+                    return ExitCode::from(1);
+                }
+            }
+            let canonical = ctron::check::render_canonical(&tree, &tail);
+            let has_e = diags.iter().any(|d| d.contains(": E"));
+            if add_dep.is_some() || add_cap.is_some() || remove_cap.is_some() || remove_dep.is_some() {
+                std::fs::write(&path, &canonical).unwrap();
+                println!("written: {path}");
+            } else if args.iter().any(|a| a == "-w") {
+                // 机器写回(§7):仅干净文件;注释按所有权保真(黄金对拍 §10.4 验证)
+                if has_e {
+                    eprintln!("存在 E 级诊断,拒绝写回(先修正再 fmt)");
+                    return ExitCode::from(1);
+                }
+                if canonical != src {
+                    std::fs::write(&path, &canonical).unwrap();
+                    println!("formatted: {path}");
+                } else {
+                    println!("already canonical: {path}");
+                }
+            } else {
+                print!("{canonical}");
+            }
+            ExitCode::SUCCESS
+        }
         Some("run") => {
             // 解释器运行:执行全部 test 块
             let path = match args.get(2) {
@@ -378,13 +526,15 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
-            // 包级检查:<目录>(含 Ctron.toml + src/*.ct)
+            // 包级检查:<目录>(含 Ctron.ctcl + src/*.ct)
             if std::path::Path::new(&path).is_dir() {
                 let dir = std::path::Path::new(&path);
-                let toml = std::fs::read_to_string(dir.join("Ctron.toml")).unwrap_or_default();
-                let manifest = ctron::check::parse_manifest(&toml);
-                let pkg = toml.lines().find_map(|l| l.trim().strip_prefix("name = "))
-                    .map(|s| s.trim_matches('"').to_string())
+                let ctcl = std::fs::read_to_string(dir.join("Ctron.ctcl")).unwrap_or_default();
+                let (manifest, manifest_diags) = ctron::check::parse_manifest(&ctcl);
+                for m in &manifest_diags {
+                    println!("{m}");
+                }
+                let pkg = manifest.name.clone()
                     .unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
                 let src_dir = if dir.join("src").is_dir() { dir.join("src") } else { dir.to_path_buf() };
                 let mut files: Vec<(String, String)> = Vec::new();
@@ -410,6 +560,9 @@ fn main() -> ExitCode {
                         println!("{mpath}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
                         if d.code.starts_with('E') { err_count += 1; }
                     }
+                }
+                if manifest_diags.iter().any(|m| m.contains(": E")) {
+                    err_count += 1;
                 }
                 if err_count == 0 {
                     println!("0 errors({} 文件)", files.len());

@@ -187,9 +187,9 @@ fn section_package() {
         };
         files.push((format!("perfchain.m_{i}"), src));
     }
-    let manifest_toml = "[package]\nname = \"perfchain\"\nversion = \"0.1.0\"\n";
+    let manifest_ctcl = "pkg {\n    manifest_version = 1\n    name = \"perfchain\"\n    version = \"0.1.0\"\n}\n";
     let ms = median_ms(5, || {
-        let manifest = ctron::check::parse_manifest(manifest_toml);
+        let (manifest, _) = ctron::check::parse_manifest(manifest_ctcl);
         let d = ctron::check_package(&files, Some(manifest), ctron::sem::Profile::Full);
         let n_diags: usize = d.iter().map(|(_, v)| v.len()).sum();
         assert!(n_diags == 0, "合成包必须零诊断");

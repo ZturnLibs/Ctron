@@ -167,7 +167,7 @@ fn cli_pkg_dir_runs_sorted_sources() {
     let base = std::env::temp_dir().join(format!("ctron_test_pkg_{}", std::process::id()));
     let src_dir = base.join("src");
     std::fs::create_dir_all(&src_dir).unwrap();
-    std::fs::write(base.join("Ctron.toml"), "name = \"mylib\"\n").unwrap();
+    std::fs::write(base.join("Ctron.ctcl"), "pkg {\n    manifest_version = 1\n    name = \"mylib\"\n}\n").unwrap();
     std::fs::write(src_dir.join("a_math.ct"), "test \"pkg math\" {\n    assert_eq(1, 1)\n}\n").unwrap();
     std::fs::write(src_dir.join("b_str.ct"), "test \"pkg str\" {\n    assert_eq(\"a\", \"a\")\n}\n").unwrap();
     let (stdout, _, code) = run_cli(&["test", base.to_str().unwrap()]);

@@ -83,7 +83,7 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | doc-test 集成(§10.4) | ❌(Go 有 example) | ✅(rust doc-test) | ❌ ⛔ 同上;**Ctron 规范已内置,做了即是卖点** |
 | AST/结构视图 | ✅(rust: SSA/IR 视图) | ✅ | ❌ C-AST v1 Webview 视图(服务自举差分,§4-A3) |
 | 调试器(DAP) | ✅ delve | ✅ lldb | ❌(远期;解释器级 stepping 另议) |
-| Ctron.toml 校验/补全 | ✅ go.mod | ✅ Cargo.toml | ❌(json.schema 贡献即可起步) |
+| CTCL 配置校验/补全 | ✅ go.mod | ✅ Cargo.toml | ❌(json.schema 贡献即可起步) |
 | 项目脚手架命令 | ✅ | ✅ | ❌(低成本) |
 
 ## 3. 与同体量插件比,当前的真实位置
@@ -125,7 +125,7 @@ zls/ols 的共同教训:早期把力气花在**格式化、跳转、补全、诊
 | P2 | `ctronc test --filter` CLI → 测试 CodeLens/Test Explorer | A | CLI 新子命令 | 2~4 天 |
 | P3 | 工作区索引 → 跨文件 def/refs/workspace symbol/自动 use | C | index 或多文件 run | 1~2 周 |
 | P3 | 类型感知补全/hover 推断类型/go-to-impl | C | sem 进 LSP(或 C10 转译) | 随编译器 |
-| P3 | AST 视图 / Ctron.toml schema / 脚手架命令 | A | 无 | 各 0.5~1 天 |
+| P3 | AST 视图 / CTCL 配置语言校验(LSP)/ 脚手架命令 | A | 无 | 各 0.5~1 天 |
 | 远期 | postfix 补全、extract/inline 重构族、调用层级、DAP | C | 上述基建 | — |
 
 **差异化卖点(Ctron 独有,竞品没有的)**:Send/alloc 效果随 hover 展示(规范 P5 承诺)、能力 manifest 越界诊断联动、doc-test CodeLens(§10.4 文档即回归)、own 块分配域着色、C-AST 视图。建议随对应基建顺路实现,不单开战线。

@@ -46,7 +46,8 @@
   smoke 含逐字节漂移断言——修改 std/ 后必须同步副本,否则门禁红。
 - **示例**:examples/* 的 `std/` 副本是**钉定快照**(按需子集),允许落后;
   升级示例属示例维护,不强制同步。
-- 未来包管理器(§2.7 Ctron.toml 语义落地后)以本目录为上游注册表形态。
+- `config.ct`(2026-09-17):CTCL 清单校验内核(`config_diags`),黄金对拍第四线内核同源(selfhosted/ctcl_chk.ct 为驱动镜像,两处须同步修改)。
+- 未来包管理器(CTCL 清单语义落地后,见 docs/superpowers/specs/2026-09-16-config-language-v1.md)以本目录为上游注册表形态。
 
 ## 演进纪律
 

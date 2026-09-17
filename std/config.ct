@@ -1,0 +1,910 @@
+// std/config.ct —— CTCL(Ctron Config Language)标准库模块(§9 支持路线 L1/L2)
+// 规范:docs/superpowers/specs/2026-09-16-config-language-v1.md
+// API:config_diags(src) -> List[Str](逐条 "E504x 消息全文";合法清单 = 空列表)
+// 本模块为黄金对拍第四线(selfhosted/ctcl_chk.ct)的同源内核:
+// 修改校验语义须两处同步,并以 tests/manifest/diff.py 全量对拍验收。
+// 快照纪律:使用方按 std/README 钉定快照惯例拷贝本文件。
+
+fn cfg_or2(a: Bool, b: Bool) -> Bool { return !(!a && !b) }
+
+fn cfg_seq2(a: Str, b: Str) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 花括号字面量经自身源码切片取得(种子字符串插值禁止裸花括号)
+fn cfg_anchor_src() -> Str {
+    var t = ""
+    match read_file("../selfhosted/ctcl_chk.ct") {
+        Some(x) => {
+            t = x
+        }
+        None => {}
+    }
+    return t
+}
+
+fn cfg_lb() -> Str {
+    var t = cfg_anchor_src()
+    var i: I32 = 0
+    while i < t.len {
+        if cfg_at(t, i, "BRACE_ANCHOR:") {
+            var j = i
+            while j < t.len && byte_at(t, j) != 123 {
+                j += 1
+            }
+            return byte_slice(t, j, j + 1)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn cfg_rb() -> Str {
+    var t = cfg_anchor_src()
+    var i: I32 = 0
+    while i < t.len {
+        if cfg_at(t, i, "BRACE_ANCHOR:") {
+            var j = i
+            while j < t.len && byte_at(t, j) != 123 {
+                j += 1
+            }
+            while j < t.len && byte_at(t, j) != 125 {
+                j += 1
+            }
+            return byte_slice(t, j, j + 1)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn cfg_dots() -> Str {
+    return cfg_lb() + " ... " + cfg_rb()
+}
+
+fn cfg_block_hint() -> Str {
+    return "pkg " + cfg_lb() + " ... " + cfg_rb() + " / dep \"名\" " + cfg_lb() + " ... " + cfg_rb()
+}
+
+fn cfg_print_ln(ds: List[Str], i: I32) -> I32 {
+    print(ds[i])
+    print("\n")
+    return 0
+}
+
+fn cfg_at(t: Str, i: I32, key: Str) -> Bool {
+    var k: I32 = 0
+    while k < key.len {
+        if i + k >= t.len || byte_at(t, i + k) != byte_at(key, k) {
+            return false
+        }
+        k += 1
+    }
+    return true
+}
+
+fn cfg_pre(t: Str, i: I32) -> Bool {
+    if i == 0 {
+        return true
+    }
+    var p = byte_at(t, i - 1)
+    if (p >= 97 && p <= 122) || p == 95 || (p >= 48 && p <= 57) {
+        return false
+    }
+    return true
+}
+
+fn cfg_ident_len(t: Str, i: I32) -> I32 {
+    if i >= t.len {
+        return 0
+    }
+    var c = byte_at(t, i)
+    if !((c >= 97 && c <= 122) || c == 95) {
+        return 0
+    }
+    var n: I32 = 0
+    while i + n < t.len {
+        var d = byte_at(t, i + n)
+        if (d >= 97 && d <= 122) || d == 95 || (d >= 48 && d <= 57) {
+            n += 1
+        } else {
+            return n
+        }
+    }
+    return n
+}
+
+fn cfg_trim(s: Str) -> Str {
+    var a: I32 = 0
+    var b = s.len
+    while a < b && (byte_at(s, a) == 32 || byte_at(s, a) == 9) {
+        a += 1
+    }
+    while b > a && (byte_at(s, b - 1) == 32 || byte_at(s, b - 1) == 9 || byte_at(s, b - 1) == 13) {
+        b -= 1
+    }
+    return byte_slice(s, a, b)
+}
+
+fn cfg_split_nl(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 10 {
+            out.push(byte_slice(s, start, i))
+            start = i + 1
+        }
+        i += 1
+    }
+    if start < s.len {
+        out.push(byte_slice(s, start, s.len))
+    }
+    return out
+}
+
+fn cfg_is_int(v: Str) -> Bool {
+    if v.len == 0 {
+        return false
+    }
+    var i: I32 = 0
+    if byte_at(v, 0) == 45 {
+        i = 1
+    }
+    if i >= v.len {
+        return false
+    }
+    if byte_at(v, i) == 48 {
+        return v.len == i + 1
+    }
+    if byte_at(v, i) < 49 || byte_at(v, i) > 57 {
+        return false
+    }
+    while i < v.len {
+        if byte_at(v, i) < 48 || byte_at(v, i) > 57 {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn cfg_is_float(v: Str) -> Bool {
+    if v.len == 0 {
+        return false
+    }
+    var i: I32 = 0
+    if byte_at(v, 0) == 45 {
+        i = 1
+    }
+    while i < v.len && byte_at(v, i) >= 48 && byte_at(v, i) <= 57 {
+        i += 1
+    }
+    if i + 1 >= v.len || byte_at(v, i) != 46 {
+        return false
+    }
+    return byte_at(v, i + 1) >= 48 && byte_at(v, i + 1) <= 57
+}
+
+fn cfg_lev(a: Str, b: Str) -> I32 {
+    var la = a.len
+    var lb = b.len
+    if la > 40 {
+        la = 40
+    }
+    if lb > 40 {
+        lb = 40
+    }
+    var prev = List[I32]()
+    var cur = List[I32]()
+    var j: I32 = 0
+    while j <= lb {
+        prev.push(j)
+        cur.push(0)
+        j += 1
+    }
+    var i: I32 = 1
+    while i <= la {
+        cur[0] = i
+        j = 1
+        while j <= lb {
+            var cost: I32 = 1
+            if byte_at(a, i - 1) == byte_at(b, j - 1) {
+                cost = 0
+            }
+            var m = prev[j] + 1
+            if cur[j - 1] + 1 < m {
+                m = cur[j - 1] + 1
+            }
+            if prev[j - 1] + cost < m {
+                m = prev[j - 1] + cost
+            }
+            cur[j] = m
+            j += 1
+        }
+        j = 0
+        while j <= lb {
+            prev[j] = cur[j]
+            j += 1
+        }
+        i += 1
+    }
+    return prev[lb]
+}
+
+// 返回建议键;无建议返回 ""
+fn cfg_close(k: Str, keys: List[Str]) -> Str {
+    var bestd: I32 = 99
+    var best = ""
+    var i: I32 = 0
+    while i < keys.len {
+        var d = cfg_lev(k, keys[i])
+        if d < bestd {
+            bestd = d
+            best = keys[i]
+        }
+        i += 1
+    }
+    if bestd <= 2 {
+        return best
+    }
+    return ""
+}
+
+// 剥注释:返回 [代码段, 注释文本, 是否截断] 三元素
+fn cfg_strip(line: Str) -> List[Str] {
+    var code = ""
+    var trail = ""
+    var cut = 0
+    var in_str = false
+    var esc = false
+    var i: I32 = 0
+    var stopped = 0
+    while i < line.len {
+        var c = byte_at(line, i)
+        if in_str {
+            code = code + byte_slice(line, i, i + 1)
+            if esc {
+                esc = false
+            } else if c == 92 {
+                esc = true
+            } else if c == 34 {
+                in_str = false
+            }
+            i += 1
+        } else if c == 34 {
+            in_str = true
+            code = code + byte_slice(line, i, i + 1)
+            i += 1
+        } else if c == 47 && i + 1 < line.len && byte_at(line, i + 1) == 47 {
+            trail = cfg_trim(byte_slice(line, i + 2, line.len))
+            stopped = 1
+            break
+        } else if c == 35 {
+            trail = cfg_trim(byte_slice(line, i + 1, line.len))
+            cut = 1
+            stopped = 1
+            break
+        } else {
+            code = code + byte_slice(line, i, i + 1)
+            i += 1
+        }
+    }
+    if in_str {
+        stopped = 2
+    }
+    var out = List[Str]()
+    out.push(code)
+    out.push(trail)
+    if cut > 0 {
+        out.push("1")
+    } else {
+        out.push("0")
+    }
+    if stopped == 2 {
+        out.push("unclosed")
+    }
+    return out
+}
+
+// 整值字符串:返回 [是否字符串值(0/1), 内容]
+fn cfg_str_val(v: Str) -> List[Str] {
+    var out = List[Str]()
+    if v.len < 2 || byte_at(v, 0) != 34 || byte_at(v, v.len - 1) != 34 {
+        out.push("0")
+        out.push("")
+        return out
+    }
+    var body = byte_slice(v, 1, v.len - 1)
+    var out2 = ""
+    var i: I32 = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 92 {
+            if i + 1 >= body.len {
+                out.push("0")
+                out.push("")
+                return out
+            }
+            var n = byte_at(body, i + 1)
+            if n != 34 && n != 92 {
+                out.push("0")
+                out.push("")
+                return out
+            }
+            out2 = out2 + byte_slice(body, i + 1, i + 2)
+            i += 2
+        } else if c == 34 {
+            out.push("0")
+            out.push("")
+            return out
+        } else {
+            out2 = out2 + byte_slice(body, i, i + 1)
+            i += 1
+        }
+    }
+    out.push("1")
+    out.push(out2)
+    return out
+}
+
+// 值分类:0=str 1=int 2=bool 3=list;-1=非法(已诊断)。列表内容写入 items。
+fn cfg_classify(v: Str, ds: List[Str], ln: I32, items: List[Str]) -> I32 {
+    if cfg_seq2(v, "true") || cfg_seq2(v, "false") {
+        return 2
+    }
+    if byte_at(v, 0) == 39 {
+        ds.push("E5048 不支持单引号字符串(唯一拼写:双引号)")
+        return -1
+    }
+    if byte_at(v, 0) == 34 {
+        var r = cfg_str_val(v)
+        if cfg_seq2(r[0], "1") {
+            items.push(r[1])
+            return 0
+        }
+        ds.push("E5048 非法字符串值(转义只允许 反斜杠加引号 与 双反斜杠)")
+        return -1
+    }
+    if cfg_is_int(v) {
+        if v.len > 18 {
+            ds.push("E5048 整数超出 I64")
+            return -1
+        }
+        items.push(v)
+        return 1
+    }
+    if cfg_is_float(v) {
+        ds.push("E5040 不支持浮点;数值配置一律定点整数(如 85 表 85%)")
+        return -1
+    }
+    if byte_at(v, 0) == 123 {
+        ds.push("E5040 不支持内联表;复杂记录请用键控块表达(块 \"名\" " + cfg_lb() + " ... " + cfg_rb() + ")")
+        return -1
+    }
+    if byte_at(v, 0) == 91 {
+        if byte_at(v, v.len - 1) != 93 {
+            ds.push("E5040 列表必须单行且以 ] 结尾;若元素是复杂结构,请改用键控块(块 \"名\" " + cfg_lb() + " ... " + cfg_rb() + ")而非多行列表")
+            return -1
+        }
+        var inner = byte_slice(v, 1, v.len - 1)
+        var t2 = cfg_trim(inner)
+        if t2.len == 0 {
+            return 3
+        }
+        if byte_at(t2, t2.len - 1) == 44 {
+            ds.push("E5048 列表不允许尾逗号(最后元素后直接 ']')")
+            return -1
+        }
+        var parts = List[Str]()
+        var start: I32 = 0
+        var i: I32 = 0
+        while i < t2.len {
+            if byte_at(t2, i) == 44 {
+                parts.push(cfg_trim(byte_slice(t2, start, i)))
+                start = i + 1
+            }
+            i += 1
+        }
+        parts.push(cfg_trim(byte_slice(t2, start, t2.len)))
+        var bad = 0
+        i = 0
+        while i < parts.len {
+            var r = cfg_str_val(parts[i])
+            if cfg_seq2(r[0], "1") {
+                items.push(r[1])
+            } else {
+                ds.push("E5048 列表元素必须是双引号字符串;复杂结构请用键控块")
+                bad = 1
+                break
+            }
+            i += 1
+        }
+        if bad > 0 {
+            // 清回退:整列表非法
+            while items.len > 0 {
+                items.pop()
+            }
+            return -1
+        }
+        return 3
+    }
+    ds.push("E5040 无法识别的值:" + v)
+    return -1
+}
+
+pub fn config_diags(src: Str) -> List[Str] {
+    var t = src
+    var ds = List[Str]()
+    var block = ""
+    var skipping = false
+    var bal: I32 = 0
+    var saw_pkg = false
+    var saw_name = false
+    var saw_version = false
+    var has_mver = false
+    var mver_ok = false
+    var dep_active = false
+    var has_path = 0
+    var has_git = 0
+    var has_rev = 0
+    var has_version = 0
+    var seen_keys = List[Str]()
+    var seen_deps = List[Str]()
+    var seen_dep_ln = List[I32]()
+    var comptime_seen = false
+    var budget_ok = false
+    var budget: I32 = 0
+
+    var lines = cfg_split_nl(t)
+    var ln: I32 = 0
+    while ln < lines.len {
+        ln += 1
+        var parts = cfg_strip(lines[ln - 1])
+        if parts.len > 3 {
+            ds.push("E5040 字符串未闭合")
+            continue
+        }
+        if cfg_seq2(parts[2], "1") {
+            ds.push("E5042 本语言注释是 // 而非 #(与宿主语言一致);本行已按 // 恢复")
+        }
+        var line = cfg_trim(parts[0])
+        if line.len == 0 {
+            continue
+        }
+
+        if block.len > 0 && skipping {
+            var i: I32 = 0
+            while i < line.len {
+                if byte_at(line, i) == 123 {
+                    bal += 1
+                }
+                if byte_at(line, i) == 125 {
+                    bal -= 1
+                }
+                i += 1
+            }
+            if bal <= 0 {
+                skipping = false
+            }
+            continue
+        }
+
+        if block.len > 0 {
+            if cfg_seq2(line, "}") {
+                if dep_active {
+                    var np: I32 = 0
+                    var first = ""
+                    var second = ""
+                    if has_path > 0 {
+                        if np == 0 {
+                            first = "path"
+                        } else if np == 1 {
+                            second = "path"
+                        }
+                        np += 1
+                    }
+                    var g2 = 0
+                    if has_git > 0 && has_rev > 0 {
+                        g2 = 1
+                    }
+                    if g2 > 0 {
+                        if np == 0 {
+                            first = "git+rev"
+                        } else {
+                            second = "git+rev"
+                        }
+                        np += 1
+                    }
+                    if has_version > 0 {
+                        if np == 0 {
+                            second = "version"
+                        } else if np == 1 {
+                            second = "version"
+                        }
+                        np += 1
+                    }
+                    if np >= 2 {
+                        ds.push("E5049 dep 来源互斥:" + first + " 与 " + second + " 同现")
+                    } else if np == 0 {
+                        ds.push("E5049 dep 需要且仅需要一种来源:path | git+rev | version")
+                    }
+                    dep_active = false
+                }
+                block = ""
+                continue
+            }
+            var has_brace = false
+            var i2: I32 = 0
+            while i2 < line.len {
+                if byte_at(line, i2) == 123 || byte_at(line, i2) == 125 {
+                    has_brace = true
+                }
+                i2 += 1
+            }
+            if has_brace {
+                ds.push("E5040 块内禁止嵌套块/单行块(深度恒 1);此块已被跳过")
+                skipping = true
+                bal = 0
+                i2 = 0
+                while i2 < line.len {
+                    if byte_at(line, i2) == 123 {
+                        bal += 1
+                    }
+                    if byte_at(line, i2) == 125 {
+                        bal -= 1
+                    }
+                    i2 += 1
+                }
+                continue
+            }
+        }
+
+        if block.len == 0 {
+            if byte_at(line, 0) == 91 {
+                ds.push("E5040 本语言不用 [section] 段头;请用块:" + cfg_block_hint())
+                continue
+            }
+            var il = cfg_ident_len(line, 0)
+            if il == 0 {
+                ds.push("E5040 块外只允许块头(NAME [\"名\"]) " + cfg_lb())
+                continue
+            }
+            var id = byte_slice(line, 0, il)
+            var rest_raw = byte_slice(line, il, line.len)
+            var rs = cfg_trim(rest_raw)
+            var rest_first: I32 = -1
+            var z: I32 = 0
+            while z < rest_raw.len {
+                if byte_at(rest_raw, z) != 32 && byte_at(rest_raw, z) != 9 {
+                    rest_first = z
+                    z = rest_raw.len
+                }
+                z += 1
+            }
+            var has_arg = rs.len > 0 && byte_at(rs, 0) == 34
+            if has_arg && rest_first >= 0 && byte_at(rest_raw, rest_first) != 34 {
+                // 首个非空白不是引号 → 无实参或非法;仅当实参存在且紧贴时才报空格
+            }
+            var spaced = rest_raw.len > 0 && (byte_at(rest_raw, 0) == 32 || byte_at(rest_raw, 0) == 9)
+            if has_arg && !spaced {
+                ds.push("E5040 块名与名字实参之间需要空格:dep \"名\"")
+            }
+            var rest = rs
+            var arg = ""
+            var tail = rest
+            if rest.len > 0 && byte_at(rest, 0) == 34 {
+                var q = List[Str]()
+                q.push("")
+                var qi: I32 = 1
+                var closed = 0
+                while qi < rest.len {
+                    if byte_at(rest, qi) == 92 && qi + 1 < rest.len {
+                        q.push(byte_slice(rest, qi + 1, qi + 2))
+                        qi += 2
+                    } else if byte_at(rest, qi) == 34 {
+                        closed = 1
+                        qi += 1
+                        break
+                    } else {
+                        q.push(byte_slice(rest, qi, qi + 1))
+                        qi += 1
+                    }
+                }
+                if closed == 0 {
+                    ds.push("E5040 非法的名字实参")
+                    continue
+                }
+                var qq: I32 = 1
+                while qq < q.len {
+                    arg = arg + q[qq]
+                    qq += 1
+                }
+                tail = cfg_trim(byte_slice(rest, qi, rest.len))
+            }
+            var tail_ok = tail.len > 0 && byte_at(tail, tail.len - 1) == 123
+            if !tail_ok {
+                ds.push("E5040 块外只允许块头(NAME [\"名\"]) " + cfg_lb())
+                continue
+            }
+            if !cfg_or2(cfg_seq2(id, "pkg"), cfg_or2(cfg_seq2(id, "comptime"), cfg_seq2(id, "dep"))) {
+                ds.push("E5044 未知块 " + id + ";合法块:comptime, dep, pkg")
+                block = "skip"
+                continue
+            }
+            seen_keys = List[Str]()
+            if cfg_seq2(id, "dep") {
+                if arg.len == 0 {
+                    ds.push("E5041 dep 是键控块:dep \"名\" " + cfg_lb() + " ... " + cfg_rb())
+                    block = "skip"
+                    continue
+                }
+                var dupi: I32 = -1
+                var i3: I32 = 0
+                while i3 < seen_deps.len {
+                    if cfg_seq2(seen_deps[i3], arg) {
+                        dupi = i3
+                    }
+                    i3 += 1
+                }
+                if dupi >= 0 {
+                    ds.push("E5045 重复的 dep \"" + arg + "\"(首次在第 " + seen_dep_ln[dupi].to_string() + " 行);同名块禁止追加")
+                } else {
+                    seen_deps.push(arg)
+                    seen_dep_ln.push(ln)
+                }
+                dep_active = true
+                has_path = 0
+                has_git = 0
+                has_rev = 0
+                has_version = 0
+            } else if cfg_seq2(id, "pkg") && arg.len > 0 {
+                ds.push("E5041 pkg 是记录块,不带名字实参")
+                block = "skip"
+                continue
+            }
+            if cfg_seq2(id, "pkg") {
+                saw_pkg = true
+            }
+            block = id
+            continue
+        }
+
+        // 字段:IDENT = value
+        var eq: I32 = -1
+        var z4: I32 = 0
+        while z4 < line.len {
+            if byte_at(line, z4) == 61 {
+                eq = z4
+            }
+            z4 += 1
+        }
+        if eq < 0 {
+            ds.push("E5040 块内每行必须是 键 = 值")
+            continue
+        }
+        var key = cfg_trim(byte_slice(line, 0, eq))
+        var klen = cfg_ident_len(key, 0)
+        if klen != key.len {
+            ds.push("E5040 块内每行必须是 键 = 值")
+            continue
+        }
+        var val = cfg_trim(byte_slice(line, eq + 1, line.len))
+
+        // 值词法分类
+        var items = List[Str]()
+        var int_txt = ""
+        var vkind: I32 = -1
+        if cfg_seq2(val, "true") || cfg_seq2(val, "false") {
+            vkind = 2
+        } else if byte_at(val, 0) == 39 {
+            ds.push("E5048 不支持单引号字符串(唯一拼写:双引号)")
+            vkind = -1
+        } else if byte_at(val, 0) == 34 {
+            var r = cfg_str_val(val)
+            if cfg_seq2(r[0], "1") {
+                vkind = 0
+                items.push(r[1])
+            } else {
+                ds.push("E5048 非法字符串值(转义只允许 反斜杠加引号 与 双反斜杠)")
+                vkind = -1
+            }
+        } else if cfg_is_int(val) {
+            if val.len > 18 {
+                ds.push("E5048 整数超出 I64")
+                vkind = -1
+            } else {
+                vkind = 1
+                int_txt = val
+            }
+        } else if cfg_is_float(val) {
+            ds.push("E5040 不支持浮点;数值配置一律定点整数(如 85 表 85%)")
+            vkind = -1
+        } else if byte_at(val, 0) == 123 {
+            ds.push("E5040 不支持内联表;复杂记录请用键控块表达(块 \"名\" " + cfg_lb() + " ... " + cfg_rb() + ")")
+            vkind = -1
+        } else if byte_at(val, 0) == 91 {
+            if byte_at(val, val.len - 1) != 93 {
+                ds.push("E5040 列表必须单行且以 ] 结尾;若元素是复杂结构,请改用键控块(块 \"名\" " + cfg_lb() + " ... " + cfg_rb() + ")而非多行列表")
+                vkind = -1
+            } else {
+                var inner = cfg_trim(byte_slice(val, 1, val.len - 1))
+                if inner.len == 0 {
+                    vkind = 3
+                } else if byte_at(inner, inner.len - 1) == 44 {
+                    ds.push("E5048 列表不允许尾逗号(最后元素后直接 ']')")
+                    vkind = -1
+                } else {
+                    var bad = 0
+                    var start: I32 = 0
+                    var i5: I32 = 0
+                    while i5 <= inner.len {
+                        if i5 == inner.len || byte_at(inner, i5) == 44 {
+                            var elem = cfg_trim(byte_slice(inner, start, i5))
+                            if elem.len == 0 {
+                                ds.push("E5048 列表元素必须是双引号字符串;复杂结构请用键控块")
+                                bad = 1
+                                break
+                            }
+                            var r5 = cfg_str_val(elem)
+                            if cfg_seq2(r5[0], "1") {
+                                items.push(r5[1])
+                            } else {
+                                ds.push("E5048 列表元素必须是双引号字符串;复杂结构请用键控块")
+                                bad = 1
+                                break
+                            }
+                            start = i5 + 1
+                        }
+                        i5 += 1
+                    }
+                    if bad == 0 {
+                        vkind = 3
+                    } else {
+                        vkind = -1
+                    }
+                }
+            }
+        } else {
+            ds.push("E5040 无法识别的值:" + val)
+            vkind = -1
+        }
+
+        // 重复键
+        var dup = 0
+        var i6: I32 = 0
+        while i6 < seen_keys.len {
+            if cfg_seq2(seen_keys[i6], key) {
+                dup = 1
+            }
+            i6 += 1
+        }
+        if dup > 0 {
+            ds.push("E5045 重复键 " + key + "(同名键只允许一次)")
+            continue
+        }
+        seen_keys.push(key)
+
+        if cfg_seq2(block, "pkg") {
+            var known = cfg_or2(cfg_or2(cfg_seq2(key, "manifest_version"), cfg_seq2(key, "name")), cfg_or2(cfg_seq2(key, "version"), cfg_seq2(key, "caps")))
+            if !known {
+                var hint = ""
+                var keys_l = List[Str]()
+                keys_l.push("manifest_version")
+                keys_l.push("name")
+                keys_l.push("version")
+                keys_l.push("caps")
+                var d = cfg_close(key, keys_l)
+                if d.len > 0 {
+                    hint = ";你是不是想要 " + d + "?"
+                }
+                ds.push("E5043 块 pkg 中未知键 " + key + hint + ";合法键:manifest_version, name, version, caps")
+                continue
+            }
+            if cfg_seq2(key, "manifest_version") {
+                has_mver = true
+                if vkind == -1 {
+                    continue
+                }
+                if vkind == 1 {
+                    if int_txt != "1" {
+                        ds.push("E5050 manifest_version 必须为 1")
+                    } else {
+                        mver_ok = true
+                    }
+                } else {
+                    ds.push("E5046 manifest_version 的类型应为 int")
+                }
+            } else if cfg_seq2(key, "name") {
+                saw_name = true
+                if vkind == -1 {
+                    continue
+                }
+                if vkind == 0 {
+                    // 内容在 items[0];name 语义由编译器自取,这里仅需类型正确
+                } else {
+                    ds.push("E5046 name 的类型应为 str")
+                }
+            } else if cfg_seq2(key, "version") {
+                saw_version = true
+                if vkind == -1 {
+                    continue
+                }
+                if vkind != 0 {
+                    ds.push("E5046 version 的类型应为 str")
+                }
+            } else {
+                if vkind == 3 {
+                    var i7: I32 = 0
+                    while i7 < items.len {
+                        var x = items[i7]
+                        if !cfg_or2(cfg_seq2(x, "fs"), cfg_seq2(x, "time")) {
+                            ds.push("E5043 未知能力 " + x + ";合法:fs, time(能力是安全边界,未知即拒绝)")
+                        }
+                        i7 += 1
+                    }
+                } else {
+                    ds.push("E5046 caps 的类型应为 list")
+                }
+            }
+        } else if cfg_seq2(block, "comptime") {
+            if cfg_seq2(key, "budget_ms") {
+                comptime_seen = true
+                if vkind == -1 {
+                    continue
+                }
+                if vkind == 1 {
+                    budget_ok = true
+                    budget = prs_i(int_txt)
+                } else {
+                    ds.push("E5046 budget_ms 的类型应为 int")
+                }
+            } else {
+                ds.push("E5043 块 comptime 中未知键 " + key + ";合法键:budget_ms")
+            }
+        } else {
+            var known2 = cfg_or2(cfg_or2(cfg_seq2(key, "path"), cfg_seq2(key, "git")), cfg_or2(cfg_seq2(key, "rev"), cfg_seq2(key, "version")))
+            if !known2 {
+                ds.push("E5043 块 dep 中未知键 " + key + ";合法键:path, git, rev, version")
+                continue
+            }
+            if cfg_seq2(key, "path") {
+                has_path = 1
+            } else if cfg_seq2(key, "git") {
+                has_git = 1
+            } else if cfg_seq2(key, "rev") {
+                has_rev = 1
+            } else {
+                has_version = 1
+            }
+        }
+    }
+
+    if !saw_pkg {
+        ds.push("E5047 缺 pkg 块")
+    } else {
+        if !has_mver {
+            ds.push("E5050 pkg 缺语言版本键 manifest_version(必须存在且 = 1)")
+        } else if !mver_ok {
+            ds.push("E5050 manifest_version 必须为 1")
+        }
+        if !saw_name {
+            ds.push("E5047 pkg 缺必填键 name")
+        }
+        if !saw_version {
+            ds.push("E5047 pkg 缺必填键 version")
+        }
+    }
+    return ds
+}
+

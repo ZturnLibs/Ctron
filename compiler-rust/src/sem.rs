@@ -100,6 +100,9 @@ impl Profile {
 
 pub struct Manifest {
     pub caps: HashMap<String, bool>,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub has_comptime: bool,
     #[allow(dead_code)]
     pub comptime_budget_steps: u64,
 }

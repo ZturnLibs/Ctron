@@ -102,13 +102,12 @@ fn module_cases_check_per_expectation() {
         let dir = root.join(case);
         let mut cts = Vec::new();
         walk_ct(&dir, &mut cts);
-        let toml_path = dir.join("Ctron.toml");
-        let toml = std::fs::read_to_string(&toml_path).unwrap_or_default();
-        let manifest = ctron::check::parse_manifest(&toml);
+        let ctcl_path = dir.join("Ctron.ctcl");
+        let ctcl = std::fs::read_to_string(&ctcl_path).unwrap_or_default();
+        let (manifest, _mdiags) = ctron::check::parse_manifest(&ctcl);
 
-        // 包名与模块路径:Ctron.toml name 或目录名
-        let pkg = toml.lines().find_map(|l| l.trim().strip_prefix("name = "))
-            .map(|s| s.trim_matches('"').to_string())
+        // 包名与模块路径:Ctron.ctcl name 或目录名
+        let pkg = manifest.name.clone()
             .unwrap_or_else(|| case.as_str().to_string());
 
         let mut files: Vec<(String, String)> = Vec::new();

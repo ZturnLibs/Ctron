@@ -47,7 +47,7 @@
 |---|---|---|---|
 | **Go 1.0**(2012) | 全电池:~35 个顶级包,`net/http`+`encoding/json`+`fmt` 一步到位 | 「Go 1 兼容承诺」自 1.0 冻结全部公开 API;RE2 口径的 `regexp`、`time.Format` 的历史包袱被永久锁死 | std 的**有用性**来自 json/fs/fmt 三个域;**债务**来自过早的兼容承诺。Ctron:v1 前一律 experimental,冻结只发生在 API 经过两轮真实消费之后 |
 | **Rust 0.9→1.0**(2015) | 1.0 前大清洗:删 green runtime(RFC 0230),`rand`/`uuid`/`url` 移出 std;std 收缩为「语言配套」 | 教训是**先减后冻**:不稳定的域宁可移出 std 交给生态;`std::net` 1.0 时甚至未稳定 | Ctron 无生态,vendored 模式下「移出 std」= 移出 `std/` 清单。net/async 这类域**明确不进** std 近期清单,进「一等第三方模块」层 |
-| **Zig 0.10–0.15** | std 大而全(fs/json/http/crypto),但纪律统一:**显式 allocator 参数**贯穿全部容器;std 同时是编译器自身的代码库 | 自举是 std 质量的第一驱动:编译器要解析 json → `std.json` 必须真;显式资源参数让 std 天然分层(bare 可用子集) | Ctron 已有同构机制:own/Arena 显式分配(§6.3)+ alloc effect;且 `json.ct` 已被 Ctron.toml(P2-B)预定为自举消费方。**把"自举第一用户"作为域优先级判据** |
+| **Zig 0.10–0.15** | std 大而全(fs/json/http/crypto),但纪律统一:**显式 allocator 参数**贯穿全部容器;std 同时是编译器自身的代码库 | 自举是 std 质量的第一驱动:编译器要解析 json → `std.json` 必须真;显式资源参数让 std 天然分层(bare 可用子集) | Ctron 已有同构机制:own/Arena 显式分配(§6.3)+ alloc effect;且 `json.ct` 已被配置语言(CTCL)预定为自举消费方。**把"自举第一用户"作为域优先级判据** |
 | **Odin**(当前) | `core:`(小而完备,纯自含)+ `vendor:`(C 库绑定分离) | core 每模块自含、互不依赖;绑定永远不混入 core | 与 std/ 组织宪章第 2 条(模块独立不互 use)同构;**F 案维持**,另立 `vendor/` 形态承载 FFI 包装(CBox 等-bindgen 产物),不污染 std |
 | **V vlib**(当前) | 自举全量吃 vlib,域很广(net/web/orm) | 域铺得快但 API 反复破坏,文档与实现漂移 | 反面教材:**域的扩张速度必须慢于语言能力的落地速度**;每个新模块必须过"test 块独立跑绿 + 消费面 + 三线一致"门禁(宪章已有,坚持) |
 | **Lua 5.1–5.4** | 最小核心 8 模块(base/string/table/math/io/os/coroutine/debug) | 嵌入场景的"最小完备面";string 内建模式匹配是唯一"越界"域 | 验证"小核心 + 确定性"路线可行;Ctron 的 core/bare 层目标面可以此为上界参照 |
@@ -55,7 +55,7 @@
 
 六条提炼准则(方案的全部裁决都由它们推出):
 
-1. **自举第一用户优先**:编译器/工具链要消费的能力最先做真(json → Ctron.toml;
+1. **自举第一用户优先**:编译器/工具链要消费的能力最先做真(json → 配置语言 CTCL;
    path → 工具;test 块 → std 自身)。
 2. **域分层对齐档位**:每模块标注所属层(core/alloc/std/stdweb)与可用档位;
    bare 可用子集 = 纯计算域,永不隐式扩大。
@@ -109,10 +109,10 @@ README 清单按域分组。每模块头标注:层(`core/alloc/std/stdweb`)、�
 
 | 模块 | 具体能力 | 语言依赖 | 备注 |
 |---|---|---|---|
-| `json.ct`(已有,收口) | 已有:解析(路径展平 DOM)+序列化转义+ABNF 严格化。收口项:写路径 `write_json(dom) -> Option[Str]`(现仅转义?)、深度/宽度边界文档化、与 toml-lite 的测试互引 | 无 | 自举第一用户(P2-B Ctron.toml 不直接用它,但工具链 json 面用它) |
+| `json.ct`(已有,收口) | 已有:解析(路径展平 DOM)+序列化转义+ABNF 严格化。收口项:写路径 `write_json(dom) -> Option[Str]`(现仅转义?)、深度/宽度边界文档化、与 config.ct 的测试互引 | 无 | 自举第一用户(P2-B CTCL 清单不直接用它,但工具链 json 面用它) |
 | `enc.ct`(新) | `hex_encode/hex_decode -> Option[Str]`、`base64_encode/decode -> Option[Str]`(RFC 4648 标准 alphabet,`-` padding 口径钉死)、`percent_encode/decode -> Option[Str]`(URL 组件口径) | 无 | 输入输出均为 Str 文本形态;**二进制文件读写不在此域**(D5 依赖 U8[] 域,缓) |
 | `csv.ct`(新) | RFC 4180 子集:解析(引号/转义/CRLF)、写(自动引号)、首行 header 开关;`List[List[Str]]` 形态 | 无 | 纯文本域,当前方言即可;确定性行序 |
-| `toml.ct`(缓,联动 P2-B) | Ctron.toml 所需**子集**:表/键值/字符串/整数/布尔/数组;诊断带行列 | 与 P2-B spike 同期设计(解析器用 Ctron 写,自举一致) | 不承诺完整 TOML;ABNF 与 json.ct 同规格纪律(登记进 §10 语义面) |
+| `config.ct`(新,**取代原计划的 `toml.ct`**) | CTCL(`Ctron.ctcl`)解析/规范渲染/访问 API;文法与三线解析器契约一致,诊断 E504x 三线同文 | CTCL 提案(2026-09-16 config-language-v1 §9 支持路线 L1/L2) | 自举第一用户(编译器清单检查与 stdlib 同源);ABNF 与 json.ct 同规格纪律(登记进 §10 语义面);原 `toml.ct`(TOML 子集)方案作废 |
 
 ### D4 时间域(层:std;档位:full/web;bare 限纯函数部分)
 
@@ -160,7 +160,7 @@ bit → strconv → hash → rand → math → path → str 扩张 → enc → t
 - 每模块 0.5–2 天;全部当前三线可跑(解释面为准,发射面逐字一致随门禁)。
 - `math.sqrt/pow` 若走纯实现则本轮全绿;若登记内建则解释侧先行、发射侧后补,
   夹具按「能力缺口清单」口径登记。
-- 收益:ctgrep/ctwc/ctwf 三个示例立即消费 path/str/enc;Ctron.toml(P2-B)
+- 收益:ctgrep/ctwc/ctwf 三个示例立即消费 path/str/enc;CTCL 清单(P2-B,按 config-language-v1 提案)
   与工具链的直接弹药。
 
 ### std v0.3「能力注入轮」(依赖 R-P2b/R-P3b 与内建登记)
@@ -175,7 +175,7 @@ iter(trait 正式化, r3b 锚转绿) → process.Env 全面 → time.Clock 接�
 ### std v0.4「发射面成熟轮」(依赖 P1-A Drop 发射、P1-B 定宽、P4 并发运行时)
 
 ```
-bytes 域(U8[]/Box 落地后立项) → parallel(map/reduce/fold) → deque → iter-parallel(评估) → toml(与 P2-B 联动)
+bytes 域(U8[]/Box 落地后立项) → parallel(map/reduce/fold) → deque → iter-parallel(评估) → config(CTCL,与 P2-B 联动;取代原 toml 计划)
 ```
 
 - `bytes` 立项前置裁决:Str 二进制口径(binary-safe Str vs `Bytes` 类型)——

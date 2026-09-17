@@ -243,6 +243,8 @@ fx_comp_stmt(wsum/fac)三方逐字;smoke 108 ok;suite 63/63;固定点逐字节�
 
 ### 切片 P2-B:Ctron.toml 解析与包元数据语义(§2.7)
 
+> **supersede 注(2026-09-16)**:清单格式已裁决迁往 CTCL(`Ctron.ctcl`),本切片解析目标改为 CTCL 文法(块式/四类值/注册表校验),TOML 子集方案作废;见 `docs/superpowers/specs/2026-09-16-config-language-v1.md` §9/§11。
+
 **Spike 问题:** 元数据哪些键进语言语义(包名/版本/依赖)?解析器用 Ctron 写
 (自举一致性)还是宿主?依赖解析与 §2.6 循环检测的关系。
 **产出:** 设计记录 → 解析切片(+诊断码)。

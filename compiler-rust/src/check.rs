@@ -8,30 +8,798 @@ use crate::ast::BinOp;
 use crate::token::{Diagnostic, Span};
 use std::collections::{HashMap, HashSet};
 
-pub fn parse_manifest(src: &str) -> sem::Manifest {
-    let mut caps = HashMap::new();
-    let mut budget = 100_000u64;
-    let mut section = String::new();
-    for line in src.lines() {
-        let line = line.trim();
-        if line.starts_with('[') && line.ends_with(']') {
-            section = line[1..line.len() - 1].to_string();
-            continue;
+// CTCL 清单解析(v1;规范 2026-09-16 config-language-v1 §4/§5)。
+// 作用域诊断:E5042/E5043/E5044/E5045/E5047/E5049/E5050(与 C 线 ctcl_load 同口径);
+// 结构性错误(E5040/E5041/E5046/E5048)本阶段静默跳读恢复,L2 对齐。
+#[derive(Clone)]
+pub enum MVal {
+    S(String),
+    I(i64),
+    B(bool),
+    L(Vec<String>),
+}
+
+pub struct MField {
+    pub key: String,
+    pub val: MVal,
+    pub trail: Option<String>,
+    pub lead: Vec<String>,
+}
+
+pub struct MBlock {
+    pub name: String,
+    pub arg: Option<String>,
+    pub head_trail: Option<String>,
+    pub lead: Vec<String>,
+    pub free: Vec<Option<String>>,
+    pub fields: Vec<MField>,
+}
+
+fn lev(a: &str, b: &str) -> usize {
+    let x: Vec<char> = a.chars().collect();
+    let y: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=y.len()).collect();
+    for i in 1..=x.len() {
+        let mut cur = vec![i];
+        for j in 1..=y.len() {
+            let cost = if x[i - 1] == y[j - 1] { 0 } else { 1 };
+            let m = *prev.get(j).unwrap_or(&usize::MAX);
+            let m2 = cur[j - 1] + 1;
+            let m3 = prev[j - 1] + cost;
+            cur.push(m.min(m2).min(m3));
         }
-        if let Some((k, v)) = line.split_once('=') {
-            let k = k.trim().to_string();
-            let v = v.trim().trim_matches('"').to_string();
-            match section.as_str() {
-                "caps" => caps.insert(k, v == "true"),
-                "comptime" if k == "budget_ms" => {
-                    budget = v.parse().unwrap_or(100_000) * 1000;
-                    None
-                }
-                _ => None,
-            };
+        prev = cur;
+    }
+    prev[y.len()]
+}
+
+fn close_match(k: &str, keys: &[&str]) -> Option<String> {
+    let mut best: Option<(usize, &str)> = None;
+    for cand in keys {
+        let d = lev(k, cand);
+        if best.map_or(true, |(bd, _)| d < bd) {
+            best = Some((d, cand));
         }
     }
-    sem::Manifest { caps, comptime_budget_steps: budget }
+    match best {
+        Some((d, c)) if d <= 2 => Some(c.to_string()),
+        _ => None,
+    }
+}
+
+const NAME_PAT: &str = "[a-z][a-z0-9_-]*";
+const SEMVER_PAT: &str =
+    "(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?";
+
+fn is_name(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.is_empty() || !b[0].is_ascii_lowercase() {
+        return false;
+    }
+    b[1..]
+        .iter()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_' || *c == b'-')
+}
+
+fn is_semver(s: &str) -> bool {
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    for comp in 0..3 {
+        if comp > 0 {
+            if b.get(i) != Some(&b'.') {
+                return false;
+            }
+            i += 1;
+        }
+        match b.get(i) {
+            Some(&b'0') => i += 1,
+            Some(&c) if c.is_ascii_digit() => {
+                i += 1;
+                while i < b.len() && b[i].is_ascii_digit() {
+                    i += 1;
+                }
+            }
+            _ => return false,
+        }
+    }
+    if b.get(i) == Some(&b'-') {
+        i += 1;
+        let st = i;
+        while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'-' || b[i] == b'.') {
+            i += 1;
+        }
+        if i == st {
+            return false;
+        }
+    }
+    if b.get(i) == Some(&b'+') {
+        i += 1;
+        let st = i;
+        while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'-' || b[i] == b'.') {
+            i += 1;
+        }
+        if i == st {
+            return false;
+        }
+    }
+    i == b.len()
+}
+
+fn classify(val: &str) -> MVal {
+    let t = val.trim();
+    if t == "true" {
+        return MVal::B(true);
+    }
+    if t == "false" {
+        return MVal::B(false);
+    }
+    if let Some(s) = unquote(t) {
+        return MVal::S(s);
+    }
+    if let Ok(n) = t.parse::<i64>() {
+        return MVal::I(n);
+    }
+    if t.starts_with('[') && t.ends_with(']') {
+        let items = t[1..t.len() - 1]
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|it| unquote(it).unwrap_or_default())
+            .collect();
+        return MVal::L(items);
+    }
+    MVal::S(t.to_string())
+}
+
+pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock>, Vec<String>) {
+    let mut cap_list: Vec<String> = Vec::new();
+    let mut budget = 100_000u64;
+    let mut name: Option<String> = None;
+    let mut version: Option<String> = None;
+    let mut diags: Vec<String> = Vec::new();
+    let mut block = String::new(); // "" = 块外;"skip" = 错误构造跳读
+    let mut seen_keys: Vec<String> = Vec::new();
+    let mut seen_deps: Vec<(String, usize)> = Vec::new();
+    let mut saw_pkg = false;
+    let mut saw_name = false;
+    let mut saw_version = false;
+    let mut has_mver = false;
+    let mut mver_ok = false;
+    let mut has_comptime = false;
+    let mut dep_active = false;
+    let mut dep = [false; 4]; // path / git / rev / version
+    let mut tree: Vec<MBlock> = Vec::new();
+    let mut cur: Option<usize> = None;
+    let mut lead: Vec<Option<String>> = Vec::new();
+    let mut skipping = false;
+    let mut bal: i32 = 0;
+    let mut pend: Vec<String> = Vec::new();
+    let mut b_saw_pkg = false;
+    let mut b_saw_name = false;
+    let mut b_saw_version = false;
+    let mut b_has_mver = false;
+    let mut b_mver_ok = false; // 块级诊断:'}' 提交,未闭合丢弃(镜像 Python 块不可见语义)
+
+    for (ln0, raw) in src.lines().enumerate() {
+        // 字符串感知剥注释:strings 外的 // 截断;# 视为 // 并记 E5042
+        let chars: Vec<char> = raw.chars().collect();
+        let mut code = String::new();
+        let mut in_str = false;
+        let mut esc = false;
+        let mut i = 0usize;
+        let mut saw_hash = false;
+        let mut trail: Option<String> = None;
+        while i < chars.len() {
+            let c = chars[i];
+            if in_str {
+                code.push(c);
+                if esc {
+                    esc = false;
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == '"' {
+                    in_str = false;
+                }
+                i += 1;
+            } else if c == '"' {
+                in_str = true;
+                code.push(c);
+                i += 1;
+            } else if c == '/' && i + 1 < chars.len() && chars[i + 1] == '/' {
+                trail = Some(chars[i + 2..].iter().collect::<String>().trim().to_string());
+                break;
+            } else if c == '#' {
+                saw_hash = true;
+                trail = Some(chars[i + 1..].iter().collect::<String>().trim().to_string());
+                break;
+            } else {
+                code.push(c);
+                i += 1;
+            }
+        }
+        if saw_hash {
+            diags.push("Ctron.ctcl: E5042 本语言注释是 // 而非 #(与宿主语言一致);本行已按 // 恢复".into());
+        }
+        if in_str {
+            diags.push("Ctron.ctcl: E5040 字符串未闭合".into());
+            continue;
+        }
+        let line = code.trim().to_string();
+        if line.is_empty() {
+            // 空行 → None 界界;整行注释 → 文本;按所有权挂载(§7)
+            if !block.is_empty() {
+                if let Some(ti) = cur {
+                    tree[ti].free.push(trail);
+                }
+            } else {
+                lead.push(trail);
+            }
+            continue;
+        }
+
+        // 块内跳读:按括号平衡吞到错误构造闭合,一构造一报(F6)
+        if !block.is_empty() && skipping {
+            bal += line.matches('{').count() as i32 - line.matches('}').count() as i32;
+            if bal <= 0 {
+                skipping = false;
+            }
+            continue;
+        }
+
+        if !block.is_empty() {
+            if line == "}" {
+                if b_saw_pkg {
+                    saw_pkg = true;
+                }
+                if b_saw_name {
+                    saw_name = true;
+                }
+                if b_saw_version {
+                    saw_version = true;
+                }
+                if b_has_mver {
+                    has_mver = true;
+                }
+                if b_mver_ok {
+                    mver_ok = true;
+                }
+                b_saw_pkg = false;
+                b_saw_name = false;
+                b_saw_version = false;
+                b_has_mver = false;
+                b_mver_ok = false;
+                diags.extend(pend.drain(..));
+                if dep_active {
+                    let labels = ["path", "git+rev", "version"];
+                    let g = [dep[0], dep[1] && dep[2], dep[3]];
+                    let present: Vec<&str> =
+                        labels.iter().zip(g.iter()).filter(|(_, ok)| **ok).map(|(l, _)| *l).collect();
+                    if present.len() >= 2 {
+                        diags.push(format!(
+                            "Ctron.ctcl: E5049 dep 来源互斥:{} 与 {} 同现",
+                            present[0], present[1]
+                        ));
+                    } else if present.is_empty() {
+                        diags.push(
+                            "Ctron.ctcl: E5049 dep 需要且仅需要一种来源:path | git+rev | version".into(),
+                        );
+                    }
+                    dep_active = false;
+                }
+                block.clear();
+                cur = None;
+                continue;
+            }
+            if line.contains('{') || line.contains('}') {
+                // 嵌套/单行块:专码 + 括号平衡跳读(E5040)
+                diags.push("Ctron.ctcl: E5040 块内禁止嵌套块/单行块(深度恒 1);此块已被跳过".into());
+                skipping = true;
+                bal = line.matches('{').count() as i32 - line.matches('}').count() as i32;
+                continue;
+            }
+        }
+
+        if block.is_empty() {
+            if line.starts_with('[') {
+                diags.push(
+                    "Ctron.ctcl: E5040 本语言不用 [section] 段头;请用块:pkg { ... } / dep \"名\" { ... }".into(),
+                );
+                continue;
+            }
+            let Some(after_id) = ident_prefix(&line) else {
+                diags.push(
+                    "Ctron.ctcl: E5040 块外只允许块头(NAME [\"名\"]) {".into(),
+                );
+                continue;
+            };
+            let id = line[..after_id].to_string();
+            let rest_raw = &line[after_id..];
+            let has_arg = rest_raw.trim_start().starts_with('"');
+            if has_arg && !rest_raw.starts_with(' ') && !rest_raw.starts_with('\t') {
+                diags.push(
+                    "Ctron.ctcl: E5040 块名与名字实参之间需要空格:dep \"名\"".into(),
+                );
+            }
+            let rest = rest_raw.trim_start();
+            let mut arg: Option<String> = None;
+            let mut tail = rest;
+            if rest.starts_with('"') {
+                match qtoken(rest) {
+                    Some((a, after)) => {
+                        arg = Some(a);
+                        tail = after.trim_start();
+                    }
+                    None => {
+                        diags.push("Ctron.ctcl: E5040 非法的名字实参".into());
+                        continue;
+                    }
+                }
+            }
+            let Some(head) = tail.strip_suffix('{').map(|h| h.trim()) else {
+                diags.push(
+                    "Ctron.ctcl: E5040 块外只允许块头(NAME [\"名\"]) {".into(),
+                );
+                continue;
+            };
+            if !head.is_empty() {
+                diags.push(
+                    "Ctron.ctcl: E5040 块外只允许块头(NAME [\"名\"]) {".into(),
+                );
+                continue;
+            }
+            if id != "pkg" && id != "comptime" && id != "dep" {
+                diags.push(format!("Ctron.ctcl: E5044 未知块 {id};合法块:comptime, dep, pkg"));
+                block = "skip".into();
+                continue;
+            }
+            seen_keys.clear();
+            if id == "dep" {
+                let Some(a) = arg.clone() else {
+                    diags.push("Ctron.ctcl: E5041 dep 是键控块:dep \"名\" { ... }".into());
+                    block = "skip".into();
+                    continue;
+                };
+                if !is_name(&a) {
+                    pend.push(format!("Ctron.ctcl: E5048 键控块名 '{a}' 不符合包名规则"));
+                }
+                if let Some((_, first_ln)) = seen_deps.iter().find(|(nm, _)| nm == &a) {
+                    diags.push(format!(
+                        "Ctron.ctcl: E5045 重复的 dep \"{a}\"(首次在第 {first_ln} 行);同名块禁止追加"
+                    ));
+                } else {
+                    seen_deps.push((a, ln0 + 1));
+                }
+                dep_active = true;
+                dep = [false; 4];
+            } else if id == "pkg" && arg.is_some() {
+                diags.push("Ctron.ctcl: E5041 pkg 是记录块,不带名字实参".into());
+                block = "skip".into();
+                continue;
+            }
+            if id == "pkg" {
+                b_saw_pkg = true;
+            }
+            tree.push(MBlock {
+                name: id.clone(),
+                arg: arg.clone(),
+                head_trail: trail.clone(),
+                lead: lead.drain(..).filter_map(|o| o).collect(),
+                free: Vec::new(),
+                fields: Vec::new(),
+            });
+            cur = Some(tree.len() - 1);
+            block = id;
+            continue;
+        }
+
+        // 字段:IDENT = value
+        let Some(eq) = line.find('=') else {
+            diags.push("Ctron.ctcl: E5040 块内每行必须是 键 = 值".into());
+            continue;
+        };
+        let key = line[..eq].trim().to_string();
+        if !key.chars().next().map_or(false, |c| c.is_ascii_lowercase() || c == '_') {
+            diags.push("Ctron.ctcl: E5040 块内每行必须是 键 = 值".into());
+            continue;
+        }
+        let val = line[eq + 1..].trim().to_string();
+
+        // 值词法分类(顺序镜像 Python parse_value;E5048/E5040 于本阶段产出)
+        let mut val_err = false;
+        let mut val_str: Option<String> = None;
+        let mut val_int: Option<i64> = None;
+        let mut val_bool: Option<bool> = None;
+        let mut val_list: Option<Vec<String>> = None;
+        if val == "true" {
+            val_bool = Some(true);
+        } else if val == "false" {
+            val_bool = Some(false);
+        } else if val.starts_with('\'') {
+            diags.push("Ctron.ctcl: E5048 不支持单引号字符串(唯一拼写:双引号)".into());
+            val_err = true;
+        } else if val.starts_with('"') {
+            match unquote(&val) {
+                Some(sv) => val_str = Some(sv),
+                None => {
+                    diags.push("Ctron.ctcl: E5048 非法字符串值(转义只允许 反斜杠加引号 与 双反斜杠)".into());
+                    val_err = true;
+                }
+            }
+        } else if is_int(&val) {
+            match val.parse::<i64>() {
+                Ok(n) => val_int = Some(n),
+                Err(_) => {
+                    diags.push("Ctron.ctcl: E5048 整数超出 I64".into());
+                    val_err = true;
+                }
+            }
+        } else if is_float(&val) {
+            diags.push("Ctron.ctcl: E5040 不支持浮点;数值配置一律定点整数(如 85 表 85%)".into());
+            val_err = true;
+        } else if val.starts_with('{') {
+            diags.push("Ctron.ctcl: E5040 不支持内联表;复杂记录请用键控块表达(块 \"名\" { ... })".into());
+            val_err = true;
+        } else if val.starts_with('[') {
+            if !val.ends_with(']') {
+                diags.push("Ctron.ctcl: E5040 列表必须单行且以 ] 结尾;若元素是复杂结构,请改用键控块(块 \"名\" { ... })而非多行列表".into());
+                val_err = true;
+            } else {
+                let inner = val[1..val.len() - 1].trim();
+                if inner.is_empty() {
+                    val_list = Some(Vec::new());
+                } else {
+                    let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
+                    if parts.last() == Some(&"") {
+                        diags.push("Ctron.ctcl: E5048 列表不允许尾逗号(最后元素后直接 ']')".into());
+                        val_err = true;
+                    } else {
+                        let mut out = Vec::new();
+                        let mut bad = false;
+                        for p2 in parts {
+                            match unquote(p2) {
+                                Some(sv) => out.push(sv),
+                                None => {
+                                    diags.push("Ctron.ctcl: E5048 列表元素必须是双引号字符串;复杂结构请用键控块".into());
+                                    bad = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !bad {
+                            val_list = Some(out);
+                        }
+                    }
+                }
+            }
+        } else {
+            diags.push(format!("Ctron.ctcl: E5040 无法识别的值:{val}"));
+            val_err = true;
+        }
+
+        let dup = seen_keys.contains(&key);
+        if dup {
+            pend.push(format!("Ctron.ctcl: E5045 重复键 {key}(同名键只允许一次)"));
+        }
+        seen_keys.push(key.clone());
+        if let Some(ti) = cur {
+            if !skipping {
+                // 注释所有权:独立注释归其后第一个字段(§7.1)
+                let mut fl: Vec<String> = Vec::new();
+                let free = &mut tree[ti].free;
+                while let Some(Some(c)) = free.last() {
+                    fl.insert(0, c.clone());
+                    free.pop();
+                }
+                while matches!(free.last(), Some(None)) {
+                    free.pop();
+                }
+                if !val_err {
+                    tree[ti].fields.push(MField {
+                        key: key.clone(),
+                        val: classify(&val),
+                        trail: trail.clone(),
+                        lead: fl,
+                    });
+                }
+            }
+        }
+
+        if block == "pkg" {
+            match key.as_str() {
+                "manifest_version" => {
+                    b_has_mver = true;
+                    if val_err {
+                        // 已报;键存在,无 E5050
+                    } else if let Some(n) = val_int {
+                        mver_ok = n == 1;
+                        if !mver_ok {
+                            pend.push("Ctron.ctcl: E5050 manifest_version 必须为 1".into());
+                        }
+                    } else {
+                        pend.push("Ctron.ctcl: E5046 manifest_version 的类型应为 int".into());
+                    }
+                }
+                "name" => {
+                    b_saw_name = true;
+                    if val_err {
+                    } else if let Some(sv) = val_str.clone() {
+                        name = Some(sv.clone());
+                        if !is_name(&sv) {
+                            pend.push(format!(
+                                "Ctron.ctcl: E5046 键 name 值 '{sv}' 不符合 {NAME_PAT}"
+                            ));
+                        }
+                    } else {
+                        pend.push("Ctron.ctcl: E5046 name 的类型应为 str".into());
+                    }
+                }
+                "version" => {
+                    b_saw_version = true;
+                    if val_err {
+                    } else if let Some(sv) = val_str.clone() {
+                        version = Some(sv.clone());
+                        if !is_semver(&sv) {
+                            pend.push(format!(
+                                "Ctron.ctcl: E5046 键 version 值 '{sv}' 不符合 {SEMVER_PAT}"
+                            ));
+                        }
+                    } else {
+                        pend.push("Ctron.ctcl: E5046 version 的类型应为 str".into());
+                    }
+                }
+                "caps" => {
+                    if val_err {
+                    } else if let Some(items) = val_list {
+                        for x in &items {
+                            if x != "fs" && x != "time" {
+                                pend.push(format!(
+                                    "Ctron.ctcl: E5043 未知能力 {x};合法:fs, time(能力是安全边界,未知即拒绝)"
+                                ));
+                            } else if !cap_list.contains(x) {
+                                cap_list.push(x.clone());
+                            }
+                        }
+                    } else {
+                        diags.push("Ctron.ctcl: E5046 caps 的类型应为 list".into());
+                    }
+                }
+                _ => {
+                    let hint = match close_match(&key, &["manifest_version", "name", "version", "caps"]) {
+                        Some(c) => format!(";你是不是想要 {c}?"),
+                        None => String::new(),
+                    };
+                    pend.push(format!(
+                        "Ctron.ctcl: E5043 块 pkg 中未知键 {key}{hint};合法键:manifest_version, name, version, caps"
+                    ));
+                }
+            }
+        } else if block == "comptime" {
+            if key == "budget_ms" {
+                if val_err {
+                } else if let Some(n) = val_int {
+                    has_comptime = true;
+                    budget = if n > 0 { n as u64 } else { 0 };
+                    if n < 1 {
+                        pend.push("Ctron.ctcl: E5046 键 budget_ms 必须 >= 1".into());
+                    }
+                } else {
+                    pend.push("Ctron.ctcl: E5046 budget_ms 的类型应为 int".into());
+                }
+            } else {
+                pend.push(format!(
+                    "Ctron.ctcl: E5043 块 comptime 中未知键 {key};合法键:budget_ms"
+                ));
+            }
+        } else if block == "dep" {
+            match key.as_str() {
+                "path" => dep[0] = true,
+                "git" => dep[1] = true,
+                "rev" => dep[2] = true,
+                "version" => dep[3] = true,
+                _ => pend.push(format!(
+                    "Ctron.ctcl: E5043 块 dep 中未知键 {key};合法键:path, git, rev, version"
+                )),
+            }
+        }
+    }
+
+    if !block.is_empty() {
+        pend.clear(); // 未闭合块不可见:块级诊断随块丢弃(镜像 Python)
+        if cur.is_some() {
+            tree.pop(); // 未闭合块不进规范形态
+        }
+        diags.push("Ctron.ctcl: E5040 块未闭合(缺 })".into());
+    }
+    if !saw_pkg {
+        diags.push("Ctron.ctcl: E5047 缺 pkg 块".into());
+    } else {
+        if !has_mver {
+            diags.push("Ctron.ctcl: E5050 pkg 缺语言版本键 manifest_version(必须存在且 = 1)".into());
+        } else if !mver_ok {
+            diags.push("Ctron.ctcl: E5050 manifest_version 必须为 1".into());
+        }
+        if !saw_name {
+            diags.push("Ctron.ctcl: E5047 pkg 缺必填键 name".into());
+        }
+        if !saw_version {
+            diags.push("Ctron.ctcl: E5047 pkg 缺必填键 version".into());
+        }
+    }
+
+    let tail: Vec<String> = lead.drain(..).filter_map(|o| o).collect();
+    let mut caps = HashMap::new();
+    for c in cap_list {
+        caps.insert(c, true);
+    }
+    (
+        sem::Manifest {
+            caps,
+            comptime_budget_steps: budget * 1000,
+            name,
+            version,
+            has_comptime,
+        },
+        diags,
+        tree,
+        tail,
+    )
+}
+
+fn is_int(s: &str) -> bool {
+    let b = s.as_bytes();
+    let mut i = 0;
+    if b.first() == Some(&b'-') {
+        i = 1;
+    }
+    if i >= b.len() {
+        return false;
+    }
+    if b[i] == b'0' {
+        return i + 1 == b.len();
+    }
+    if !b[i].is_ascii_digit() {
+        return false;
+    }
+    b[i..].iter().all(|c| c.is_ascii_digit())
+}
+
+fn is_float(s: &str) -> bool {
+    // 前缀匹配 Python re:`-?[0-9]*\.[0-9]`
+    let b = s.as_bytes();
+    let mut i = 0;
+    if b.first() == Some(&b'-') {
+        i = 1;
+    }
+    while i < b.len() && b[i].is_ascii_digit() {
+        i += 1;
+    }
+    i < b.len() && b[i] == b'.' && i + 1 < b.len() && b[i + 1].is_ascii_digit()
+}
+
+pub fn parse_manifest(src: &str) -> (sem::Manifest, Vec<String>) {
+    let (m, d, _, _) = parse_manifest_full(src);
+    (m, d)
+}
+
+// 规范形态渲染(§8)。块序/键序镜像 tools/ctcl_manifest_schema.ctcl 声明序(L2 三线对齐)。
+// 注释所有权已随本函数移植(§7 三规则):lead/trail/free/文件尾,与 Python 参考实现逐字节一致。
+pub fn render_canonical(blocks: &[MBlock], tail: &[String]) -> String {
+    let order = |n: &str| match n {
+        "pkg" => 0,
+        "comptime" => 1,
+        "dep" => 2,
+        _ => 9,
+    };
+    let key_order = |b: &str, k: &str| -> usize {
+        let keys: &[&str] = match b {
+            "pkg" => &["manifest_version", "name", "version", "caps"],
+            "comptime" => &["budget_ms"],
+            "dep" => &["path", "git", "rev", "version"],
+            _ => &[],
+        };
+        keys.iter().position(|x| *x == k).unwrap_or(99)
+    };
+    let esc = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
+    let mut bs: Vec<&MBlock> = blocks.iter().collect();
+    bs.sort_by(|x, y| order(&x.name).cmp(&order(&y.name)).then(x.arg.cmp(&y.arg)));
+    let mut chunks: Vec<String> = Vec::new();
+    for b in bs {
+        let mut lines = Vec::new();
+        for c in &b.lead {
+            lines.push(format!("// {c}"));
+        }
+        let head = match &b.arg {
+            Some(a) => format!("{} {} {{", b.name, esc(a)),
+            None => format!("{} {{", b.name),
+        };
+        match &b.head_trail {
+            Some(t) => lines.push(format!("{head}  // {t}")),
+            None => lines.push(head),
+        }
+        let mut fs: Vec<&MField> = b.fields.iter().collect();
+        fs.sort_by(|x, y| key_order(&b.name, &x.key).cmp(&key_order(&b.name, &y.key)));
+        for f in fs {
+            for c in &f.lead {
+                lines.push(format!("    // {c}"));
+            }
+            let vs = match &f.val {
+                MVal::S(sv) => esc(sv),
+                MVal::I(n) => n.to_string(),
+                MVal::B(t) => (if *t { "true" } else { "false" }).to_string(),
+                MVal::L(items) => {
+                    let mut it = items.clone();
+                    if b.name == "pkg" && f.key == "caps" {
+                        it.sort();
+                    }
+                    format!("[{}]", it.iter().map(|sv| esc(sv)).collect::<Vec<_>>().join(", "))
+                }
+            };
+            let row = format!("    {} = {}", f.key, vs);
+            match &f.trail {
+                Some(t) => lines.push(format!("{row}  // {t}")),
+                None => lines.push(row),
+            }
+        }
+        for c in b.free.iter().flatten() {
+            lines.push(format!("    // {c}"));
+        }
+        lines.push("}".into());
+        chunks.push(lines.join("\n"));
+    }
+    let mut out = chunks.join("\n\n");
+    if !tail.is_empty() {
+        out.push_str("\n\n");
+        for c in tail {
+            out.push_str(&format!("// {c}\n"));
+        }
+        out.pop();
+    }
+    out.push('\n');
+    out
+}
+
+fn ident_prefix(s: &str) -> Option<usize> {
+    let b = s.as_bytes();
+    if b.is_empty() || !(b[0].is_ascii_lowercase() || b[0] == b'_') {
+        return None;
+    }
+    let mut i = 1;
+    while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+        i += 1;
+    }
+    Some(i)
+}
+
+// 引号词法:解析 "…"(仅 \" 与 \\ 转义);返回内容与收尾引号之后的切片
+fn qtoken(s: &str) -> Option<(String, &str)> {
+    let b = s.as_bytes();
+    if b.first() != Some(&b'"') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut i = 1;
+    while i < b.len() && b[i] != b'"' {
+        if b[i] == b'\\' && i + 1 < b.len() && (b[i + 1] == b'"' || b[i + 1] == b'\\') {
+            out.push(b[i + 1] as char);
+            i += 2;
+        } else {
+            out.push(b[i] as char);
+            i += 1;
+        }
+    }
+    if i >= b.len() {
+        return None;
+    }
+    Some((out, &s[i + 1..]))
+}
+
+fn unquote(s: &str) -> Option<String> {
+    let (v, after) = qtoken(s.trim_start())?;
+    if after.trim().is_empty() {
+        Some(v)
+    } else {
+        None
+    }
 }
 
 pub fn check_src(src: &str, profile: Profile) -> Vec<Diagnostic> {
@@ -189,7 +957,7 @@ impl<'a> Checker<'a> {
                 if !m.caps.get(key).copied().unwrap_or(false) {
                     self.diags.push(Diagnostic {
                         code: "E4010",
-                        message: format!("能力使用超出 manifest 声明:{key}(缺声明;在 Ctron.toml [caps] 增加 {key} = true)"),
+                        message: format!("能力使用超出清单声明:{key}(缺声明;在 Ctron.ctcl 的 pkg 块 caps 列表加入 \"{key}\")"),
                         span: Span::new(1, 1, 0, 0),
                     });
                 }

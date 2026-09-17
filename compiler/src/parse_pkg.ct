@@ -83,47 +83,78 @@ fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
     }
 }
 
-fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
-    var toml = read_file(dir + "/../Ctron.toml")
-    match toml {
-        Some(t) => {
-            var insec = false
-            var i: I32 = 0
-            while i < t.len {
-                var c = byte_at(t, i)
-                if c == 91 {
-                    var sec = ""
-                    i += 1
-                    while i < t.len && byte_at(t, i) != 93 {
-                        sec = sec + byte_slice(t, i, i + 1)
-                        i += 1
-                    }
-                    insec = seq2(sec, "caps")
-                } else if c == 10 {
-                    i += 1
-                } else {
-                    var key = ""
-                    var i0 = i
-                    while i < t.len && byte_at(t, i) != 61 && byte_at(t, i) != 10 {
-                        if byte_at(t, i) != 32 {
-                            key = key + byte_slice(t, i, i + 1)
-                        }
-                        i += 1
-                    }
-                    if i == i0 {
-                        i += 1
-                    }
-                    if insec && key.len > 0 && seq2(key, cap) {
-                        return true
-                    }
-                }
-            }
+// CTCL 清单 caps 提取(v1;规范 config-language-v1 §4/§5):
+// 在 Ctron.ctcl 中定位 caps 键(键首词边界 + = [),收集引号词判定成员。
+// 注:phase-1 仅面向规范形态清单(无块外干扰);fail-closed 诊断由 C/Rust 线与 tools 承担。
+fn pkg_ctcl_at(t: Str, i: I32, key: Str) -> Bool {
+    var k: I32 = 0
+    while k < key.len {
+        if or2(i + k >= t.len, byte_at(t, i + k) != byte_at(key, k)) {
             return false
+        }
+        k += 1
+    }
+    return true
+}
+
+fn pkg_ctcl_pre(t: Str, i: I32) -> Bool {
+    if i == 0 {
+        return true
+    }
+    var p = byte_at(t, i - 1)
+    if or2(or2(p >= 97 && p <= 122, p == 95), p >= 48 && p <= 57) {
+        return false
+    }
+    return true
+}
+
+fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
+    var t = ""
+    match read_file(dir + "/../Ctron.ctcl") {
+        Some(x) => {
+            t = x
         }
         None => {
             return true
         }
     }
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "caps") && pkg_ctcl_pre(t, i) {
+            var j = i + 4
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 61 {
+                j += 1
+                while j < t.len && byte_at(t, j) == 32 {
+                    j += 1
+                }
+                if j < t.len && byte_at(t, j) == 91 {
+                    j += 1
+                    while j < t.len && byte_at(t, j) != 93 {
+                        if byte_at(t, j) == 34 {
+                            var nm = ""
+                            j += 1
+                            while j < t.len && byte_at(t, j) != 34 {
+                                nm = nm + byte_slice(t, j, j + 1)
+                                j += 1
+                            }
+                            j += 1
+                            if seq2(nm, cap) {
+                                return true
+                            }
+                        } else {
+                            j += 1
+                        }
+                    }
+                    return false
+                }
+            }
+        }
+        i += 1
+    }
+    return false
 }
 
 fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -> List[Str] {

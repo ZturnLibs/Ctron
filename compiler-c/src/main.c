@@ -244,6 +244,36 @@ static int cmd_pkg(int argc, char** argv) {
     return ok ? 0 : 1;
 }
 
+static int cmd_manifest(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc manifest <file.ctcl>\n");
+        return 2;
+    }
+    ctron_manifest m = ctron_manifest_check(argv[2]);
+    for (size_t i = 0; i < m.diags.n; i++)
+        printf("%s %s\n", m.diags.d[i].code, m.diags.d[i].msg);
+    printf("---\n");
+    if (m.name) printf("name: %s\n", m.name);
+    if (m.version) printf("version: %s\n", m.version);
+    if (m.ncaps) {
+        for (size_t i = 0; i + 1 < m.ncaps; i++)
+            for (size_t j = 0; j + 1 < m.ncaps - i; j++)
+                if (strcmp(m.caps[j], m.caps[j + 1]) > 0) {
+                    char* t = m.caps[j]; m.caps[j] = m.caps[j + 1]; m.caps[j + 1] = t;
+                }
+        printf("caps: ");
+        for (size_t i = 0; i < m.ncaps; i++) printf("%s%s", i ? "," : "", m.caps[i]);
+        printf("\n");
+    }
+    if (m.has_comptime && m.budget_ok) printf("budget: %ld\n", m.budget_ms);
+    printf("---\n");
+    size_t errs = 0;
+    for (size_t i = 0; i < m.diags.n; i++)
+        if (m.diags.d[i].code[0] == 'E') errs++;
+    ctron_manifest_free(&m);
+    return errs ? 1 : 0;
+}
+
 static int cmd_run(int argc, char** argv) {
     if (argc < 3) {
         fprintf(stderr, "usage: ctronc run <file> [--profile bare|web|full]\n");
@@ -408,6 +438,7 @@ int main(int argc, char** argv) {
     if (strcmp(sub, "parse") == 0) return cmd_parse(argc, argv);
     if (strcmp(sub, "check") == 0) return cmd_check(argc, argv);
     if (strcmp(sub, "pkg") == 0) return cmd_pkg(argc, argv);
+    if (strcmp(sub, "manifest") == 0) return cmd_manifest(argc, argv);
     if (strcmp(sub, "run") == 0) return cmd_run(argc, argv);
     if (strcmp(sub, "test") == 0) return cmd_test(argc, argv);
     if (strcmp(sub, "trans") == 0) return cmd_trans(argc, argv);

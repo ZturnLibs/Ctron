@@ -11,7 +11,7 @@
 | `parsetree.ct` | 全语法结构化 AST(节点=List 数据树)+ 走树打印 C-AST v1 | 49/49 语料逐字节一致 |
 | `parse_ast.ct` | 文本 AST 差分轨道(备份) | 49/49 |
 | `sem_chk.ct` | 单文件语义检查 **12 项全集**(W8010/W8020/E4030/E3020/E3031/E3060/E4020/E6020/E3010/E3050/E2030/E3040) | 49/49 与 C 逐字一致 |
-| `pkg_chk.ct` | 模块级检查 **逐字 oracle**:toml 解析(Ctron.toml)+ E5010/E2020/E4010/E5020(树形 DFS)+ **E6010 comptime 预算**(纯 int 求值器,steps/depth 超限;spin 命中) | 与 `ctronc pkg` 逐字一致(seq=8,7 包) |
+| `pkg_chk.ct` | 模块级检查 **逐字 oracle**:CTCL 解析(Ctron.ctcl;config-language-v1)+ E5010/E2020/E4010/E5020(树形 DFS)+ **E6010 comptime 预算**(纯 int 求值器,steps/depth 超限;spin 命中) | 与 `ctronc pkg` 逐字一致(seq=8,7 包) |
 | `ev_num.ct` | 执行种子:树上数值求值(17/256/-15/3) | C9b-0 |
 | `ev2.ct` | **Ctron 求值器扩面**:纯函数式树行走解释器(Bool/Str/变量+块作用域/if/while/for/递归/test+assert/输出),主模式+测试模式自判 | C9b① seq5/6 与 C rt 逐字一致 |
 | `ev2.ct`(续) | **运行域对齐**:match(字面量/通配/绑定)+ 数组(字面量/索引/.len/for-over-array) | C9d① seq=5 与 C rt 逐字一致 |

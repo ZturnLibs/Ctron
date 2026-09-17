@@ -178,8 +178,8 @@ fn roadmap_module_cases() {
     // caps_fs:今天即应产出 E4010(E4010 机制已实现,caps 先例同型)
     {
         let dir = root.join("caps_fs");
-        let toml = std::fs::read_to_string(dir.join("Ctron.toml")).unwrap_or_default();
-        let manifest = ctron::check::parse_manifest(&toml);
+        let ctcl = std::fs::read_to_string(dir.join("Ctron.ctcl")).unwrap_or_default();
+        let (manifest, _mdiags) = ctron::check::parse_manifest(&ctcl);
         let mut cts = Vec::new();
         collect_ct(&dir, &mut cts);
         let files: Vec<(String, String)> = cts.iter()
@@ -195,8 +195,8 @@ fn roadmap_module_cases() {
     // path_dep/app:跨包解析未实现(R-P7 锚)—— 必须以 E2020 失败
     {
         let dir = root.join("path_dep/app");
-        let toml = std::fs::read_to_string(dir.join("Ctron.toml")).unwrap_or_default();
-        let manifest = ctron::check::parse_manifest(&toml);
+        let ctcl = std::fs::read_to_string(dir.join("Ctron.ctcl")).unwrap_or_default();
+        let (manifest, _mdiags) = ctron::check::parse_manifest(&ctcl);
         let mut cts = Vec::new();
         collect_ct(&dir, &mut cts);
         let files: Vec<(String, String)> = cts.iter()
@@ -214,8 +214,8 @@ fn roadmap_module_cases() {
     // path_dep/lib:被依赖包自身必须零诊断(今天与将来都成立)
     {
         let dir = root.join("path_dep/lib");
-        let toml = std::fs::read_to_string(dir.join("Ctron.toml")).unwrap_or_default();
-        let manifest = ctron::check::parse_manifest(&toml);
+        let ctcl = std::fs::read_to_string(dir.join("Ctron.ctcl")).unwrap_or_default();
+        let (manifest, _mdiags) = ctron::check::parse_manifest(&ctcl);
         let mut cts = Vec::new();
         collect_ct(&dir, &mut cts);
         let files: Vec<(String, String)> = cts.iter()

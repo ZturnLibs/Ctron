@@ -16,7 +16,7 @@
 ## 2. 判定准则(进 std 的五条,按序裁决)
 
 1. **语言承诺配套**:语言规范引用的类型/机制(Option/Result/迭代器/fmt/test 块)必须在 std——不是选择,是规范义务;
-2. **自举第一用户**:编译器/工具链消费的(json/path/str/toml)优先做真——Zig 教训:std 是编译器的代码库;
+2. **自举第一用户**:编译器/工具链消费的(json/path/str/config-CTCL)优先做真——Zig 教训:std 是编译器的代码库;
 3. **全平台一致面**:std 只覆盖 full/web/bare 三档语义一致的能力;平台特化(移动/GPU/浏览器深集成)走 stdweb/平台包;
 4. **安全基线**:安全默认值进 std(SipHash 防泛洪、常量时间比较、恒定种子策略),加密算法族整体不进(依赖链+审计成本);
 5. **退出成本**:进 std = 冻结风险(Go 1 教训)。提级 stable 的准入 = 两个真实消费方 + 一次更名预演 + 三线门禁连续绿。
@@ -36,7 +36,7 @@ Option/Result/迭代器 trait/str 基础(ASCII+解码面)/math 基础与常量/h
 - **time**:Clock(real/monotonic,§8.1 注入形)/Duration/时刻与 UTC 历法;时区走数据包(D);
 - **io**:Reader/Writer trait + 缓冲/行扫(依赖 §9.5 统一层);
 - **process**:Env/args/exit/熵源/spawn(B);
-- **encoding**:json(含写出/数值类型/流式)/csv/toml(P2-B 配套)/hex/base64/varint/定宽编解码;
+- **encoding**:json(含写出/数值类型/流式)/csv/config(CTCL,P2-B 配套)/hex/base64/varint/定宽编解码;
 - **hash**:SipHash-1-3(HashMap 二代默认)/sha256(C 档复活)/crc32;
 - **log**:级别+kv+可注入 sink(§8.1 Log);
 - **test**:金样/过滤/属性 lite。

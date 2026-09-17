@@ -1,4 +1,4 @@
-// pkg.c —— C3-c 模块级检查(包目录 + Ctron.toml)。
+// pkg.c —— C3-c 模块级检查(包目录 + Ctron.ctcl,CTCL 清单解析见 ctcl_load)。
 // 实现:E5010 孤儿规则 / E5020 模块循环 / E2020 导入可见性
 //      / E4010 caps 越权 / E6010 comptime 预算。
 #include "pkg.h"
@@ -51,10 +51,12 @@ typedef struct {
     mod* m;
     size_t n;
     char* pkg_name;
+    char* pkg_version;
     char** caps;
     size_t ncaps;
     int has_comptime;
     long budget_ms;
+    int budget_ok;
 } pkg;
 
 static char* read_file_str(const char* path, size_t* out_len) {
@@ -80,53 +82,530 @@ static void trim(char* s) {
     while (n && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r')) s[--n] = '\0';
 }
 
-static void toml_load(pkg* p, const char* root) {
-    char path[4096];
-    snprintf(path, sizeof path, "%s/Ctron.toml", root);
+// ---------- CTCL 清单解析(v1;规范 2026-09-16 config-language-v1 §4/§5) ----------
+// 作用域诊断:E5042/E5043/E5044/E5045/E5047/E5049/E5050。
+// 结构性错误(E5040/E5041/E5046/E5048)本阶段静默跳读恢复,不由 C 线产出(L2 对齐)。
+#define CTCL_MAXKEYS 32
+
+static int ctcl_ident(const char* s, char* out, size_t outsz) {
+    size_t i = 0;
+    if (!(islower((unsigned char)s[0]) || s[0] == '_')) return 0;
+    while (s[i] && (isalnum((unsigned char)s[i]) || s[i] == '_')) i++;
+    if (i == 0 || i >= outsz) return 0;
+    memcpy(out, s, i);
+    out[i] = '\0';
+    return (int)i;
+}
+
+// 字符串感知剥注释: strings 外的 // 截断;# 视为 // 并置 saw_hash(E5042 恢复口径)
+static void ctcl_strip(const char* line, char* out, size_t outsz, int* saw_hash, int* unclosed) {
+    size_t o = 0;
+    int in_str = 0, esc = 0;
+    for (const char* q = line; *q && o + 1 < outsz; q++) {
+        char c = *q;
+        if (in_str) {
+            out[o++] = c;
+            if (esc) esc = 0;
+            else if (c == '\\') esc = 1;
+            else if (c == '"') in_str = 0;
+        } else if (c == '"') {
+            in_str = 1;
+            out[o++] = c;
+        } else if (c == '/' && q[1] == '/') {
+            break;
+        } else if (c == '#') {
+            *saw_hash = 1;
+            break;
+        } else {
+            out[o++] = c;
+        }
+    }
+    out[o] = '\0';
+    *unclosed = in_str;
+}
+
+// 引号词法:解析 "…"(仅 \" 与 \\ 转义);*endp = 收尾引号之后
+static int ctcl_qtoken(const char* v, char* out, size_t outsz, const char** endp) {
+    if (*v != '"') return 0;
+    size_t o = 0;
+    const char* q = v + 1;
+    while (*q && *q != '"') {
+        char c = *q;
+        if (c == '\\') {
+            q++;
+            if (*q != '"' && *q != '\\') return 0;
+            c = *q;
+        }
+        if (o + 1 < outsz) out[o++] = c;
+        q++;
+    }
+    if (*q != '"') return 0;
+    out[o] = '\0';
+    *endp = q + 1;
+    return 1;
+}
+
+// 整值位置的字符串(必须整体为一对引号)
+static int ctcl_str(const char* v, char* out, size_t outsz) {
+    const char* endp = NULL;
+    if (!ctcl_qtoken(v, out, outsz, &endp)) return 0;
+    while (*endp == ' ' || *endp == '\t') endp++;
+    return *endp == '\0';
+}
+
+// 整数字面量:-?(0|[1-9][0-9]*)
+static int ctcl_is_int(const char* v) {
+    size_t i = 0;
+    if (v[0] == '-') i = 1;
+    if (v[i] == '\0') return 0;
+    if (v[i] == '0') return v[i + 1] == '\0';
+    if (!isdigit((unsigned char)v[i])) return 0;
+    for (; v[i]; i++)
+        if (!isdigit((unsigned char)v[i])) return 0;
+    return 1;
+}
+
+// 浮点前缀:Python re `-?[0-9]*\.[0-9]`
+static int ctcl_is_float(const char* v) {
+    size_t i = 0;
+    if (v[0] == '-') i = 1;
+    while (isdigit((unsigned char)v[i])) i++;
+    if (v[i] != '.' || !isdigit((unsigned char)v[i + 1])) return 0;
+    return 1;
+}
+
+// Levenshtein 距离(键名短串,≤40 截断);规则与 Python/Rust 线一致:≤2 才建议
+static int ctcl_lev(const char* a, const char* b) {
+    size_t la = strlen(a), lb = strlen(b);
+    if (la > 40) la = 40;
+    if (lb > 40) lb = 40;
+    int prev[41], cur[41];
+    for (size_t j = 0; j <= lb; j++) prev[j] = (int)j;
+    for (size_t i = 1; i <= la; i++) {
+        cur[0] = (int)i;
+        for (size_t j = 1; j <= lb; j++) {
+            int cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+            int m = prev[j] + 1;
+            if (cur[j - 1] + 1 < m) m = cur[j - 1] + 1;
+            if (prev[j - 1] + cost < m) m = prev[j - 1] + cost;
+            cur[j] = m;
+        }
+        memcpy(prev, cur, sizeof(int) * (lb + 1));
+    }
+    return prev[lb];
+}
+
+static int ctcl_close(const char* k, const char** keys, size_t n, char* out, size_t outsz) {
+    int bestd = 99;
+    const char* best = NULL;
+    for (size_t i = 0; i < n; i++) {
+        int d = ctcl_lev(k, keys[i]);
+        if (d < bestd) {
+            bestd = d;
+            best = keys[i];
+        }
+    }
+    if (best && bestd <= 2) {
+        snprintf(out, outsz, "%s", best);
+        return 1;
+    }
+    return 0;
+}
+
+static const char* PKG_KEYS[] = {"manifest_version", "name", "version", "caps"};
+static const char* COMPTIME_KEYS[] = {"budget_ms"};
+static const char* DEP_KEYS[] = {"path", "git", "rev", "version"};
+
+static const char* NAME_PAT = "[a-z][a-z0-9_-]*";
+static const char* SEMVER_PAT =
+    "(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?";
+
+static int c_is_name(const char* v) {
+    if (!v[0] || !islower((unsigned char)v[0])) return 0;
+    for (size_t i = 1; v[i]; i++)
+        if (!(islower((unsigned char)v[i]) || isdigit((unsigned char)v[i]) || v[i] == '_' || v[i] == '-'))
+            return 0;
+    return 1;
+}
+
+static int c_is_semver(const char* v) {
+    size_t i = 0;
+    for (int comp = 0; comp < 3; comp++) {
+        if (comp > 0) {
+            if (v[i] != '.') return 0;
+            i++;
+        }
+        if (v[i] == '0') {
+            i++;
+        } else if (v[i] >= '1' && v[i] <= '9') {
+            i++;
+            while (isdigit((unsigned char)v[i])) i++;
+        } else {
+            return 0;
+        }
+    }
+    if (v[i] == '-') {
+        i++;
+        if (!v[i]) return 0;
+        while (isalnum((unsigned char)v[i]) || v[i] == '-' || v[i] == '.') i++;
+    }
+    if (v[i] == '+') {
+        i++;
+        if (!v[i]) return 0;
+        while (isalnum((unsigned char)v[i]) || v[i] == '-' || v[i] == '.') i++;
+    }
+    return v[i] == '\0';
+}
+
+static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
     size_t len;
     char* s = read_file_str(path, &len);
     if (!s) return;
-    char section[32] = {0};
-    char* line = s;
-    while (line && *line) {
-        char* nl = strchr(line, '\n');
-        if (nl) *nl = '\0';
-        char* cm = strstr(line, "//");
-        if (cm) *cm = '\0';
-        trim(line);
-        char* t = line;
-        if (*t == '[') {
-            char* end = strchr(t, ']');
-            if (end) { *end = '\0'; snprintf(section, sizeof section, "%s", t + 1); }
-        } else if (*t) {
-            char* eq = strchr(t, '=');
-            if (eq) {
-                *eq = '\0';
-                trim(t);
-                char* v = eq + 1;
-                while (*v == ' ') v++;
-                char* vc = strdup(v);
-                trim(vc);
-                size_t vl = strlen(vc);
-                if (vl >= 2 && vc[0] == '"' && vc[vl - 1] == '"') {
-                    memmove(vc, vc + 1, vl - 2);
-                    vc[vl - 2] = '\0';
-                }
-                if (strcmp(section, "package") == 0 && strcmp(t, "name") == 0)
-                    p->pkg_name = strdup(vc);
-                else if (strcmp(section, "caps") == 0) {
-                    // 键是能力名(值 true/false)
-                    char* key = strdup(t);
-                    p->caps = (char**)realloc(p->caps, (p->ncaps + 1) * sizeof(char*));
-                    p->caps[p->ncaps++] = key;
-                } else if (strcmp(section, "comptime") == 0) {
-                    p->has_comptime = 1;
-                    if (strcmp(t, "budget_ms") == 0) p->budget_ms = atol(vc);
-                }
-                free(vc);
-            }
+    char raw[4096], line[4096];
+    char block[32] = {0};        // "" = 块外;"skip" = 错误构造跳读
+    char seen_keys[CTCL_MAXKEYS][32];
+    char seen_deps[CTCL_MAXKEYS][64];
+    int seen_dep_ln[CTCL_MAXKEYS];
+    int nseen = 0, ndeps = 0;
+    int saw_pkg = 0, saw_name = 0, saw_version = 0, has_mver = 0, mver_ok = 0;
+    int dep_active = 0, has_path = 0, has_git = 0, has_rev = 0, has_version = 0;
+    int skipping = 0, bal = 0;
+    pkg_res pend = {0};
+    int b_saw_pkg = 0, b_has_mver = 0, b_mver_ok = 0, b_saw_name = 0, b_saw_version = 0;
+    int b_comptime_seen = 0, b_budget_ok = 0;
+    long b_budget = 0;
+
+    char* cursor = s;
+    int ln_num = 0;
+    while (*cursor) {
+        ln_num++;
+        char* nl = strchr(cursor, '\n');
+        size_t ll = nl ? (size_t)(nl - cursor) : strlen(cursor);
+        size_t cp = ll < sizeof raw - 1 ? ll : sizeof raw - 1;
+        memcpy(raw, cursor, cp);
+        raw[cp] = '\0';
+        cursor = nl ? nl + 1 : cursor + ll;
+
+        int saw_hash = 0;
+        int unclosed = 0;
+        ctcl_strip(raw, line, sizeof line, &saw_hash, &unclosed);
+        if (unclosed) {
+            push(r, "Ctron.ctcl", "E5040", "字符串未闭合");
+            continue;
         }
-        line = nl ? nl + 1 : NULL;
+        if (saw_hash)
+            push(r, "Ctron.ctcl", "E5042", "本语言注释是 // 而非 #(与宿主语言一致);本行已按 // 恢复");
+        trim(line);
+        if (!line[0]) continue;
+
+        if (block[0] && skipping) {
+            // F6:跳读按括号平衡吞到错误构造闭合,一构造一报
+            for (const char* q2 = line; *q2; q2++) {
+                if (*q2 == '{') bal++;
+                if (*q2 == '}') bal--;
+            }
+            if (bal <= 0) skipping = 0;
+            continue;
+        }
+
+        if (!block[0]) {
+            if (line[0] == '[') {
+                push(r, "Ctron.ctcl", "E5040", "本语言不用 [section] 段头;请用块:pkg { ... } / dep \"名\" { ... }");
+                continue;
+            }
+            // 块头:IDENT [STR] {
+            char id[32];
+            int il = ctcl_ident(line, id, sizeof id);
+            if (!il) {
+                push(r, "Ctron.ctcl", "E5040", "块外只允许块头(NAME [\"名\"]) {");
+                continue;
+            }
+            const char* rest_raw = line + il;
+            const char* rs = rest_raw;
+            while (*rs == ' ' || *rs == '\t') rs++;
+            int has_arg = (rs[0] == '"');
+            if (has_arg && rest_raw[0] != ' ' && rest_raw[0] != '\t')
+                push(r, "Ctron.ctcl", "E5040", "块名与名字实参之间需要空格:dep \"名\"");
+            const char* rest = rest_raw;
+            while (*rest == ' ' || *rest == '\t') rest++;
+            char arg[64] = {0};
+            const char* after = rest;
+            if (*rest == '"') {
+                if (!ctcl_qtoken(rest, arg, sizeof arg, &after)) {
+                    push(r, "Ctron.ctcl", "E5040", "非法的名字实参");
+                    continue;
+                }
+                while (*after == ' ' || *after == '\t') after++;
+            }
+            if (*after != '{' || after[1] != '\0') {
+                push(r, "Ctron.ctcl", "E5040", "块外只允许块头(NAME [\"名\"]) {");
+                continue;
+            }
+            if (strcmp(id, "pkg") != 0 && strcmp(id, "comptime") != 0 && strcmp(id, "dep") != 0) {
+                push(r, "Ctron.ctcl", "E5044", "未知块 %s;合法块:comptime, dep, pkg", id);
+                snprintf(block, sizeof block, "skip");
+                continue;
+            }
+            nseen = 0;
+            if (strcmp(id, "dep") == 0) {
+                if (!has_arg) {
+                    push(r, "Ctron.ctcl", "E5041", "dep 是键控块:dep \"名\" { ... }");
+                    snprintf(block, sizeof block, "skip");
+                    continue;
+                }
+                if (!c_is_name(arg)) {
+                    push(&pend, "Ctron.ctcl", "E5048", "键控块名 '%s' 不符合包名规则", arg);
+                    snprintf(block, sizeof block, "skip");
+                    continue;
+                }
+                int dupi = -1;
+                for (int i = 0; i < ndeps; i++)
+                    if (strcmp(seen_deps[i], arg) == 0) dupi = i;
+                if (dupi >= 0)
+                    push(&pend, "Ctron.ctcl", "E5045", "重复的 dep \"%s\"(首次在第 %d 行);同名块禁止追加", arg, seen_dep_ln[dupi]);
+                else if (ndeps < CTCL_MAXKEYS) {
+                    snprintf(seen_deps[ndeps], 64, "%s", arg);
+                    seen_dep_ln[ndeps] = ln_num;
+                    ndeps++;
+                }
+            }
+            if (strcmp(id, "pkg") == 0 && has_arg) {
+                push(r, "Ctron.ctcl", "E5041", "pkg 是记录块,不带名字实参");
+                snprintf(block, sizeof block, "skip");
+                continue;
+            }
+            if (strcmp(id, "pkg") == 0) b_saw_pkg = 1;
+            if (strcmp(id, "dep") == 0) {
+                dep_active = 1;
+                has_path = has_git = has_rev = has_version = 0;
+            }
+            snprintf(block, sizeof block, "%s", id);
+            continue;
+        }
+
+        if (strcmp(line, "}") == 0) {
+            for (size_t qi = 0; qi < pend.n; qi++) {
+                push(r, pend.d[qi].rel, pend.d[qi].code, "%s", pend.d[qi].msg);
+            }
+            if (pend.n) {
+                free(pend.d);
+                pend.d = NULL;
+                pend.n = 0;
+            }
+            if (b_saw_pkg) saw_pkg = 1;
+            if (b_has_mver) has_mver = 1;
+            if (b_mver_ok) mver_ok = 1;
+            if (b_saw_name) saw_name = 1;
+            if (b_saw_version) saw_version = 1;
+            if (b_comptime_seen) p->has_comptime = 1;
+            if (b_budget_ok) {
+                p->budget_ok = 1;
+                p->budget_ms = b_budget;
+            }
+            b_saw_pkg = b_has_mver = b_mver_ok = b_saw_name = b_saw_version = 0;
+            b_comptime_seen = b_budget_ok = 0;
+            if (dep_active) {
+                const char* labels[3] = {"path", "git+rev", "version"};
+                int g[3] = {has_path, has_git && has_rev, has_version};
+                int present[3], np = 0;
+                for (int gi = 0; gi < 3; gi++)
+                    if (g[gi]) present[np++] = gi;
+                if (np >= 2)
+                    push(r, "Ctron.ctcl", "E5049", "dep 来源互斥:%s 与 %s 同现", labels[present[0]], labels[present[1]]);
+                else if (np == 0)
+                    push(r, "Ctron.ctcl", "E5049", "dep 需要且仅需要一种来源:path | git+rev | version");
+                dep_active = 0;
+            }
+            block[0] = '\0';
+            continue;
+        }
+
+        if (strchr(line, '{') || strchr(line, '}')) {
+            push(r, "Ctron.ctcl", "E5040", "块内禁止嵌套块/单行块(深度恒 1);此块已被跳过");
+            skipping = 1;
+            bal = 0;
+            for (const char* q2 = line; *q2; q2++) {
+                if (*q2 == '{') bal++;
+                if (*q2 == '}') bal--;
+            }
+            continue;
+        }
+
+        // 字段:IDENT = value
+        char* eq = strchr(line, '=');
+        if (!eq) {
+            push(r, "Ctron.ctcl", "E5040", "块内每行必须是 键 = 值");
+            continue;
+        }
+        *eq = '\0';
+        char key[32];
+        if (!ctcl_ident(line, key, sizeof key)) {
+            push(r, "Ctron.ctcl", "E5040", "块内每行必须是 键 = 值");
+            continue;
+        }
+        char* v = eq + 1;
+        while (*v == ' ' || *v == '\t') v++;
+        char vc[1024];
+        char sv[1024];
+        long iv = 0;
+        int vkind = -1; // 0=str 1=int 2=bool 3=list;-1=非法(已诊断)
+        char litems[16][128];
+        int nlitems = 0;
+
+        // 值词法分类(顺序镜像 Python parse_value;E5048/E5040 于本阶段产出)
+        if (strcmp(v, "true") == 0) {
+            vkind = 2;
+        } else if (strcmp(v, "false") == 0) {
+            vkind = 2;
+        } else if (v[0] == '\'') {
+            push(&pend, "Ctron.ctcl", "E5048", "不支持单引号字符串(唯一拼写:双引号)");
+        } else if (v[0] == '"') {
+            if (ctcl_str(v, sv, sizeof sv)) {
+                vkind = 0;
+                snprintf(vc, sizeof vc, "%s", sv);
+            } else {
+                push(&pend, "Ctron.ctcl", "E5048", "非法字符串值(转义只允许 反斜杠加引号 与 双反斜杠)");
+            }
+        } else if (ctcl_is_int(v)) {
+            vkind = 1;
+            iv = strtol(v, NULL, 10);
+        } else if (ctcl_is_float(v)) {
+                push(r, "Ctron.ctcl", "E5040", "不支持浮点;数值配置一律定点整数(如 85 表 85%%)");
+        } else if (v[0] == '{') {
+            push(r, "Ctron.ctcl", "E5040", "不支持内联表;复杂记录请用键控块表达(块 \"名\" { ... })");
+        } else if (v[0] == '[') {
+            size_t vn = strlen(v);
+            if (v[vn - 1] != ']') {
+                push(r, "Ctron.ctcl", "E5040", "列表必须单行且以 ] 结尾;若元素是复杂结构,请改用键控块(块 \"名\" { ... })而非多行列表");
+            } else {
+                char buf[1024];
+                snprintf(buf, sizeof buf, "%.*s", (int)(vn - 2), v + 1);
+                size_t bl = strlen(buf);
+                while (bl && (buf[bl - 1] == ' ' || buf[bl - 1] == '\t')) buf[--bl] = '\0';
+                if (bl == 0) {
+                    vkind = 3;
+                } else if (buf[bl - 1] == ',') {
+                    push(&pend, "Ctron.ctcl", "E5048", "列表不允许尾逗号(最后元素后直接 ']')");
+                } else {
+                    int bad = 0;
+                    char* tok = strtok(buf, ",");
+                    while (tok) {
+                        trim(tok);
+                        char cap2[128];
+                        if (*tok && ctcl_str(tok, cap2, sizeof cap2)) {
+                            if (nlitems < 16) snprintf(litems[nlitems++], 128, "%s", cap2);
+                        } else {
+                            push(&pend, "Ctron.ctcl", "E5048", "列表元素必须是双引号字符串;复杂结构请用键控块");
+                            bad = 1;
+                            break;
+                        }
+                        tok = strtok(NULL, ",");
+                    }
+                    if (!bad) vkind = 3;
+                }
+            }
+        } else {
+            push(r, "Ctron.ctcl", "E5040", "无法识别的值:%s", v);
+        }
+
+        int dup = 0;
+        for (int i = 0; i < nseen; i++)
+            if (strcmp(seen_keys[i], key) == 0) dup = 1;
+        if (dup) {
+            push(&pend, "Ctron.ctcl", "E5045", "重复键 %s(同名键只允许一次)", key);
+            continue;
+        }
+        if (nseen < CTCL_MAXKEYS) snprintf(seen_keys[nseen++], 32, "%s", key);
+
+        if (strcmp(block, "pkg") == 0) {
+            if (strcmp(key, "manifest_version") == 0) {
+                b_has_mver = 1;
+                if (vkind == 1) {
+                    b_mver_ok = (iv == 1);
+                    if (!b_mver_ok)
+                        push(&pend, "Ctron.ctcl", "E5050", "manifest_version 必须为 1");
+                } else if (vkind >= 0) {
+                    push(&pend, "Ctron.ctcl", "E5046", "manifest_version 的类型应为 int");
+                }
+            } else if (strcmp(key, "name") == 0) {
+                b_saw_name = 1;
+                if (vkind == 0) {
+                    free(p->pkg_name);
+                    p->pkg_name = strdup(vc);
+                    if (!c_is_name(vc))
+                        push(&pend, "Ctron.ctcl", "E5046", "键 name 值 '%s' 不符合 %s", vc, NAME_PAT);
+                } else if (vkind > 0) {
+                    push(&pend, "Ctron.ctcl", "E5046", "name 的类型应为 str");
+                }
+            } else if (strcmp(key, "version") == 0) {
+                b_saw_version = 1;
+                if (vkind == 0) {
+                    free(p->pkg_version);
+                    p->pkg_version = strdup(vc);
+                    if (!c_is_semver(vc))
+                        push(&pend, "Ctron.ctcl", "E5046", "键 version 值 '%s' 不符合 %s", vc, SEMVER_PAT);
+                } else if (vkind > 0) {
+                    push(&pend, "Ctron.ctcl", "E5046", "version 的类型应为 str");
+                }
+            } else if (strcmp(key, "caps") == 0) {
+                if (vkind == 3) {
+                    for (int i2 = 0; i2 < nlitems; i2++) {
+                        int known = strcmp(litems[i2], "fs") == 0 || strcmp(litems[i2], "time") == 0;
+                        if (!known) {
+                            push(&pend, "Ctron.ctcl", "E5043", "未知能力 %s;合法:fs, time(能力是安全边界,未知即拒绝)", litems[i2]);
+                        } else {
+                            int already = 0;
+                            for (size_t c = 0; c < p->ncaps; c++)
+                                if (strcmp(p->caps[c], litems[i2]) == 0) already = 1;
+                            if (!already) {
+                                p->caps = (char**)realloc(p->caps, (p->ncaps + 1) * sizeof(char*));
+                                p->caps[p->ncaps++] = strdup(litems[i2]);
+                            }
+                        }
+                    }
+                } else if (vkind >= 0) {
+                    push(&pend, "Ctron.ctcl", "E5046", "caps 的类型应为 list");
+                }
+            } else {
+                char hint[128] = {0}, close[32];
+                if (ctcl_close(key, PKG_KEYS, 4, close, sizeof close))
+                    snprintf(hint, sizeof hint, ";你是不是想要 %s?", close);
+                push(&pend, "Ctron.ctcl", "E5043", "块 pkg 中未知键 %s%s;合法键:manifest_version, name, version, caps", key, hint);
+            }
+        } else if (strcmp(block, "comptime") == 0) {
+            if (strcmp(key, "budget_ms") == 0) {
+                b_comptime_seen = 1;
+                if (vkind == 1) {
+                    b_budget = iv;
+                    b_budget_ok = 1;
+                    if (iv < 1)
+                        push(&pend, "Ctron.ctcl", "E5046", "键 budget_ms 必须 >= 1");
+                } else if (vkind >= 0) {
+                    push(&pend, "Ctron.ctcl", "E5046", "budget_ms 的类型应为 int");
+                }
+            } else {
+                push(&pend, "Ctron.ctcl", "E5043", "块 comptime 中未知键 %s;合法键:budget_ms", key);
+            }
+        } else if (strcmp(block, "dep") == 0) {
+            if (strcmp(key, "path") == 0) has_path = 1;
+            else if (strcmp(key, "git") == 0) has_git = 1;
+            else if (strcmp(key, "rev") == 0) has_rev = 1;
+            else if (strcmp(key, "version") == 0) has_version = 1;
+            else push(&pend, "Ctron.ctcl", "E5043", "块 dep 中未知键 %s;合法键:path, git, rev, version", key);
+        }
+    }
+
+    if (block[0])
+        push(r, "Ctron.ctcl", "E5040", "块未闭合(缺 })");
+    if (!saw_pkg) {
+        push(r, "Ctron.ctcl", "E5047", "缺 pkg 块");
+    } else {
+        if (!has_mver)
+            push(r, "Ctron.ctcl", "E5050", "pkg 缺语言版本键 manifest_version(必须存在且 = 1)");
+        else if (!mver_ok)
+            push(r, "Ctron.ctcl", "E5050", "manifest_version 必须为 1");
+        if (!saw_name) push(r, "Ctron.ctcl", "E5047", "pkg 缺必填键 name");
+        if (!saw_version) push(r, "Ctron.ctcl", "E5047", "pkg 缺必填键 version");
     }
     free(s);
 }
@@ -154,13 +633,16 @@ static void pkg_free(pkg* p) {
     }
     free(p->m);
     free(p->pkg_name);
+    free(p->pkg_version);
     for (size_t i = 0; i < p->ncaps; i++) free(p->caps[i]);
     free(p->caps);
     memset(p, 0, sizeof *p);
 }
 
-static void pkg_load(pkg* p, const char* root) {
-    toml_load(p, root);
+static void pkg_load(pkg* p, const char* root, pkg_res* r) {
+    char mpath[4096];
+    snprintf(mpath, sizeof mpath, "%s/Ctron.ctcl", root);
+    ctcl_load(p, mpath, r);
     char dir[4096];
     snprintf(dir, sizeof dir, "%s/src", root);
     DIR* d = opendir(dir);
@@ -366,7 +848,7 @@ static void check_caps(pkg_res* r, const pkg* p, const mod* m) {
                         for (size_t c = 0; c < p->ncaps; c++)
                             if (strcmp(p->caps[c], key) == 0) allowed = 1;
                         if (!allowed)
-                            push(r, m->rel, "E4010", "使用 %s 能力超出 manifest(caps) 声明:参数 &%s", key, name);
+                            push(r, m->rel, "E4010", "使用 %s 能力超出清单(caps)声明:参数 &%s", key, name);
                     }
                 }
             }
@@ -504,7 +986,7 @@ static void check_comptime_budget(pkg_res* r, pkg* p) {
 pkg_res ctron_pkg_check(const char* root) {
     pkg_res r = {0};
     pkg p = {0};
-    pkg_load(&p, root);
+    pkg_load(&p, root, &r);
     if (!p.pkg_name) { pkg_free(&p); return r; } // 缺 [package] name 不检查
     for (size_t i = 0; i < p.n; i++) {
         check_orphan(&r, &p, &p.m[i]);
@@ -515,4 +997,31 @@ pkg_res ctron_pkg_check(const char* root) {
     check_comptime_budget(&r, &p);
     pkg_free(&p);
     return r;
+}
+
+// —— CTCL 单文件检查(manifest 子命令)——
+ctron_manifest ctron_manifest_check(const char* path) {
+    ctron_manifest m = {0};
+    pkg p = {0};
+    pkg_res r = {0};
+    ctcl_load(&p, path, &r);
+    m.name = p.pkg_name; p.pkg_name = NULL;
+    m.version = p.pkg_version; p.pkg_version = NULL;
+    m.caps = p.caps; m.ncaps = p.ncaps; p.caps = NULL; p.ncaps = 0;
+    m.has_comptime = p.has_comptime;
+    m.budget_ok = p.budget_ok;
+    m.budget_ms = p.budget_ms;
+    m.diags = r;
+    pkg_free(&p);
+    return m;
+}
+
+void ctron_manifest_free(ctron_manifest* m) {
+    if (!m) return;
+    free(m->name);
+    free(m->version);
+    for (size_t i = 0; i < m->ncaps; i++) free(m->caps[i]);
+    free(m->caps);
+    ctron_pkg_res_free(&m->diags);
+    memset(m, 0, sizeof *m);
 }

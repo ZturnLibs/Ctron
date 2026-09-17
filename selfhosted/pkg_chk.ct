@@ -2268,83 +2268,119 @@ fn has_ref(toks: List[Str], nm: Str) -> Bool {
     }
     return false
 }
-// toml 解析(镜像 C toml_load):返回 [pkgname, caps列表, has_comptime("0"/"1"), budget_ms文本]
-fn toml_load2(base: Str) -> List[Str] {
+// CTCL 清单解析(v1,镜像 C/Rust 线 ctcl_load 口径):返回 [pkgname, caps列表, has_comptime("0"/"1"), budget_ms文本]
+// 键定位 = 词首边界 + = + 值(引号词/裸词);caps 为块内引号词列表。
+fn ctcl_at(t: Str, i: I32, key: Str) -> Bool {
+    var k: I32 = 0
+    while k < key.len {
+        if or2(i + k >= t.len, byte_at(t, i + k) != byte_at(key, k)) {
+            return false
+        }
+        k += 1
+    }
+    return true
+}
+
+fn ctcl_pre(t: Str, i: I32) -> Bool {
+    if i == 0 {
+        return true
+    }
+    var p = byte_at(t, i - 1)
+    if or2(or2(p >= 97 && p <= 122, p == 95), p >= 48 && p <= 57) {
+        return false
+    }
+    return true
+}
+
+fn ctcl_key_val(t: Str, key: Str) -> Str {
+    var i: I32 = 0
+    while i < t.len {
+        if ctcl_at(t, i, key) && ctcl_pre(t, i) {
+            var j = i + key.len
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 61 {
+                j += 1
+                while j < t.len && byte_at(t, j) == 32 {
+                    j += 1
+                }
+                var v = ""
+                if j < t.len && byte_at(t, j) == 34 {
+                    j += 1
+                    while j < t.len && byte_at(t, j) != 34 {
+                        v = v + byte_slice(t, j, j + 1)
+                        j += 1
+                    }
+                    return v
+                }
+                while j < t.len && byte_at(t, j) != 10 && !(byte_at(t, j) == 47 && j + 1 < t.len && byte_at(t, j + 1) == 47) {
+                    v = v + byte_slice(t, j, j + 1)
+                    j += 1
+                }
+                return v
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn ctcl_load2(base: Str) -> List[Str] {
     var r = List[Str]()
     var pn = ""
     var caps = List[Str]()
     var hc = "0"
     var bm = "0"
     var txt = ""
-    match read_file(base + "/Ctron.toml") {
+    match read_file(base + "/Ctron.ctcl") {
         Some(x) => {
             txt = x
         }
         None => {}
     }
-    var sec = ""
-    var ls = split_nl(txt)
-    var i: I32 = 0
-    while i < ls.len {
-        var ln = ls[i]
-        var cm = -1
-        var z: I32 = 0
-        while z + 1 < ln.len {
-            if byte_at(ln, z) == 47 && byte_at(ln, z + 1) == 47 {
-                cm = z
-            }
-            z += 1
+    if txt.len > 0 {
+        var nv = ctcl_key_val(txt, "name")
+        if nv.len > 0 {
+            pn = nv
         }
-        if cm >= 0 {
-            ln = byte_slice(ln, 0, cm)
+        var bv = ctcl_key_val(txt, "budget_ms")
+        if bv.len > 0 {
+            hc = "1"
+            bm = bv
         }
-        ln = trim_line(ln)
-        var b0 = 0
-        if ln.len > 0 {
-            b0 = byte_at(ln, 0)
-        }
-        if b0 == 91 {
-            var end = -1
-            var z2: I32 = 1
-            while z2 < ln.len {
-                if byte_at(ln, z2) == 93 {
-                    end = z2
+        var i: I32 = 0
+        while i < txt.len {
+            if ctcl_at(txt, i, "caps") && ctcl_pre(txt, i) {
+                var j = i + 4
+                while j < txt.len && byte_at(txt, j) == 32 {
+                    j += 1
                 }
-                z2 += 1
-            }
-            if end > 0 {
-                sec = byte_slice(ln, 1, end)
-            }
-        } else if ln.len > 0 {
-            var eq = -1
-            var z3: I32 = 0
-            while z3 < ln.len {
-                if byte_at(ln, z3) == 61 {
-                    eq = z3
-                }
-                z3 += 1
-            }
-            if eq > 0 {
-                var k = trim_line(byte_slice(ln, 0, eq))
-                var v = trim_line(byte_slice(ln, eq + 1, ln.len))
-                if v.len >= 2 && byte_at(v, 0) == 34 && byte_at(v, v.len - 1) == 34 {
-                    v = byte_slice(v, 1, v.len - 1)
-                }
-                if seq2(sec, "package") && seq2(k, "name") {
-                    pn = v
-                }
-                if seq2(sec, "caps") {
-                    caps.push(k)
-                }
-                if seq2(sec, "comptime") {
-                    hc = "1"
-                    if seq2(k, "budget_ms") {
-                        bm = v
+                if j < txt.len && byte_at(txt, j) == 61 {
+                    j += 1
+                    while j < txt.len && byte_at(txt, j) == 32 {
+                        j += 1
+                    }
+                    if j < txt.len && byte_at(txt, j) == 91 {
+                        j += 1
+                        while j < txt.len && byte_at(txt, j) != 93 {
+                            if byte_at(txt, j) == 34 {
+                                var nm = ""
+                                j += 1
+                                while j < txt.len && byte_at(txt, j) != 34 {
+                                    nm = nm + byte_slice(txt, j, j + 1)
+                                    j += 1
+                                }
+                                caps.push(nm)
+                            }
+                            j += 1
+                        }
+                        i = j
                     }
                 }
             }
+            i += 1
         }
-        i += 1
     }
     r.push(pn)
     r.push(caps)
@@ -2352,6 +2388,7 @@ fn toml_load2(base: Str) -> List[Str] {
     r.push(bm)
     return r
 }
+
 // ---------------- E6010 comptime 预算(镜像 C pkg.c ceval:步骤/深度预算) ----------------
 fn env_g(env: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 0
@@ -2623,7 +2660,7 @@ fn scmp_stem(a: Str, b: Str) -> I32 {
     return 0
 }
 fn pkg_check(base: Str) -> Str {
-    var tml = toml_load2(base)
+    var tml = ctcl_load2(base)
     var caps = tml[1]
     var hasComp = seq2(tml[2], "1")
     var budgetMs = prs_i(tml[3])
