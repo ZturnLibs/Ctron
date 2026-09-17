@@ -1,0 +1,72 @@
+// CTCL Schema:包清单注册表 v1(规范 §5 的规范性镜像;本文件即"注册表的唯一事实源")
+// schema-as-CTCL(§9 支持路线 L2):模式本身用 CTCL 写,加载器 = tools/ctcl_check.py。
+// 加一个键/一类配置 = 改本文件,文法(§4)与三线解析器零改动(D7)。
+// 路径寻址(regkey "pkg.name")沿用 D11 树形约定——模式语言自己吃自己的狗粮。
+
+schema {
+    schema_version = 1
+}
+
+// ---------- 块声明 ----------
+
+reg "pkg" {
+    kind = "record"
+    required = true            // 必须存在;单一(E5045)
+}
+
+reg "comptime" {
+    kind = "record"
+}
+
+reg "dep" {
+    kind = "keyed"
+    name_pattern = "[a-z][a-z0-9_-]*"        // 键控块名 = 包名;重复名 = E5045
+    mutex = ["path", "git+rev", "version"]   // 三来源互斥:恰取一组完整出现(E5049)
+}
+
+// ---------- 键声明(regkey "块.键";声明序 = 规范形态键序) ----------
+
+regkey "pkg.manifest_version" {
+    type = "int"
+    const = 1
+    first = true               // 规范形态必须居首(错序 = W5051)
+}
+
+regkey "pkg.name" {
+    type = "str"
+    pattern = "[a-z][a-z0-9_-]*"
+    required = true
+}
+
+regkey "pkg.version" {
+    type = "str"
+    pattern = "(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?"
+    required = true            // 完整 semver(R1);lockfile 固定(§2.7)
+}
+
+regkey "pkg.caps" {
+    type = "list"
+    members = ["fs", "time"]   // 封闭集:未知能力 = E5043(能力是安全边界)
+    sorted = true              // 集合语义:规范形态排序
+}
+
+regkey "comptime.budget_ms" {
+    type = "int"
+    min = 1
+}
+
+regkey "dep.path" {
+    type = "str"
+}
+
+regkey "dep.git" {
+    type = "str"
+}
+
+regkey "dep.rev" {
+    type = "str"
+}
+
+regkey "dep.version" {
+    type = "str"
+}
