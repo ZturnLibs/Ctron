@@ -139,6 +139,7 @@ void drop_scope(rt* R);
 bind* env_find(rt* R, const char* name);
 void env_let(rt* R, const char* name, val v);
 void env_pop(rt* R);
+void rt_panic_unwind(rt* R); // P1-A2 镜像:panic 沿帧链逆序展开 Drop(§6.4)
 void env_push(rt* R);
 const char* err_head_of(const cty* t);
 val eval_block(rt* R, cblock* b);

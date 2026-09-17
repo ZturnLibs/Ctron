@@ -1,6 +1,6 @@
 // r6a_u64_overflow.panic.ct —— U64 加法上溢检查算术(§4.5;P1-B 收口判据)
 // 语义承诺:U64 加法超 2^64-1 → panic "integer overflow (+)"
-// 锚点:宿主 rt 64 位无符号 Add 缺上界检查(打印 2^64 不 panic)→ 红;宿主修复转绿
+// 状态:已转绿(2026-09-15 宿主 fits 上界修复;bootstrap/发射此前已正确)
 //@ panic: integer overflow
 
 test "u64 addition overflow panics" {

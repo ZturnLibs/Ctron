@@ -32,6 +32,7 @@ void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
     vsnprintf(R->msg, sizeof R->msg, fmt, ap);
     va_end(ap);
     R->st = st;
+    if (st == RT_PANIC) rt_panic_unwind(R); // §6.4 panic 展开保证 Drop 执行(P1-A2 镜像)
     longjmp(R->jb, 1);
 }
 void rt_puts(rt* R, const char* s) {  // 缓冲输出;LSP 经 flush_out 主动落盘
@@ -106,7 +107,10 @@ void fmt_val(rt* R, val v, sb* b) {
 
 // ================= 数值辅助 =================
 int fits(__int128 x, int bits, int us) {
-    if (bits >= 64) return us ? x >= 0 : x >= -((__int128)1 << 63) && x <= ((__int128)1 << 63) - 1;
+    if (bits >= 64) {
+        if (us) return x >= 0 && x <= ((__int128)1 << 64) - 1; // P1-B:U64 上界(2^64 溢出可观察)
+        return x >= -((__int128)1 << 63) && x <= ((__int128)1 << 63) - 1;
+    }
     if (us) return x >= 0 && x < ((__int128)1 << bits);
     __int128 hi = ((__int128)1 << (bits - 1)) - 1;
     return x >= -hi - 1 && x <= hi;

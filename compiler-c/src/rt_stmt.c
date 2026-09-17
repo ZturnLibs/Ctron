@@ -226,13 +226,22 @@ int type_has_drop(const rt* R, const char* ty) {
     }
     return 0;
 }
-void drop_scope(rt* R) {
-    if (!R->top) return;
-    for (bind* b = R->top->head; b; b = b->next) {
+static void drop_frame(rt* R, env* f) {
+    for (bind* b = f->head; b; b = b->next) {
         if (b->slot.k != V_STRUCT || !type_has_drop(R, b->slot.type)) continue;
         const cfn* F = cls_method(R, b->slot.type, "drop");
         if (F && F->body) (void)call_method_body(R, F, b->slot, NULL, 0);
     }
+    f->head = NULL; // 展开后清空:嵌套 panic 不重复展开(幂等)
+}
+
+void drop_scope(rt* R) {
+    if (R->top) drop_frame(R, R->top);
+}
+
+// P1-A2 镜像(§6.4):panic 沿帧链自内向外逆序展开 Drop
+void rt_panic_unwind(rt* R) {
+    for (env* f = R->top; f; f = f->up) drop_frame(R, f);
 }
 
 val eval_block(rt* R, cblock* b) {
