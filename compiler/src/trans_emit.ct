@@ -3,6 +3,50 @@
 // ct_str_payload 字面量载荷、ct_find_main_anchor/ct_swap_anchor main 锚替换、
 // bs 样板文本(原型区/运行时助手/无 main 包的测试 main 生成)。
 // =====================================================================
+// Impl 方法 → 合成 Fn 节点表(名字 t_<ForType>__<method>,self 类型注解
+// 缺失时取 impl for 型,值语义 v0)
+fn ct_impl_method_fns(d: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    if d[3].len < 2 || d[3][0] != "Named" {
+        return out
+    }
+    var forh = ty_head(d[3])
+    var its = d[4]
+    var k: I32 = 1
+    while k < its.len {
+        var it = its[k]
+        if it[0] == "Method" {
+            var fnn = mk("Fn")
+            fnn.push(forh + "__" + it[1])
+            fnn.push(mk("TPs"))
+            var nps = mk("Ps")
+            var pr: I32 = 1
+            while pr < it[3].len {
+                var pa = it[3][pr]
+                if pa[0] == "Param" && pa[2] == "self" && pa[3][0] == "None" {
+                    var stn = mk("Named")
+                    stn.push(forh)
+                    stn.push(mk("TArgs"))
+                    var npa = mk("Param")
+                    npa.push(pa[1])
+                    npa.push(pa[2])
+                    npa.push(stn)
+                    nps.push(npa)
+                } else {
+                    nps.push(pa)
+                }
+                pr += 1
+            }
+            fnn.push(nps)
+            fnn.push(it[4])
+            fnn.push(it[5])
+            out.push(fnn)
+        }
+        k += 1
+    }
+    return out
+}
+
 fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     var ps = d[3]
     var k: I32 = 1
