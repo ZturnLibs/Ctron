@@ -53,10 +53,18 @@ ctron/
 │   ├── ctron-cc
 │   ├── ctron-chk
 │   └── ctron-emit
-├── lib/ctron/std/     # 标准库全部 .ct 源码
+├── lib/ctron/std/     # 标准库全部 .ct 源码(见下方"为何是源码")
 ├── share/doc/         # README、语言规范速览、BOOTSTRAP 摘要、examples/
 └── VERSION            # "0.1.0 <git-sha> <构建日期>"
 ```
+
+**为何 std 以源码分发(结构性必要,非文档性附带)**:`use std.X` 的消费方式是
+编译期读源码 → 解析 → 与用户程序**合并成单一 AST**(`pkg_load_use`,单文件程序模型),
+解释路径解释该 AST,发射路径把 std 以 C 形态内联进产物——不存在"预编译 std"这种
+产物形态;消灭源码分发需先发明 AST/字节码缓存格式(语言级工程,挂账级)。业界常态
+同此:Python/Node/Ruby/Go 的 stdlib 均以可读源码躺在用户机器上,反例
+(Rust rlib / Java jimage)都是有稳定预编译产物格式的编译模型。成本:208KB/1.2 万行,
+每次编译重复解析在 v0 规模可忽略;安装时预编译缓存留作未来优化。
 
 ### 2.2 预编译线(Windows,`ctron-vX.Y.Z-windows-x86_64.zip`)
 
