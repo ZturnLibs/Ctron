@@ -1,0 +1,7 @@
+view Counter
+  root vbox cls=root
+  el label cls= text=16
+  el button cls=btn text=6
+style root direction=column gap=8 padding=16
+style btn bg=#c83c3c
+s5 ctml: parse+layout ok

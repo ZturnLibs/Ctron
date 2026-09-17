@@ -1,0 +1,9 @@
+// 注:按钮文本用 ASCII——默认字体无 CJK 字形,中文渲染随 M3 FreeType 管线
+view Counter {
+  <vbox class="root">
+    <label>count: {count}</label>
+    <button class="btn" on:click={inc}>+1</button>
+  </vbox>
+}
+style root { direction: column; gap: 8; padding: 16 }
+style btn { bg: "#2563eb" }

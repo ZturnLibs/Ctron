@@ -1,0 +1,8 @@
+view Counter {
+  <vbox class="root">
+    <label>ctron gui 界面</label>
+    <button class="btn">点我</button>
+  </vbox>
+}
+style root { direction: column; gap: 8; padding: 16 }
+style btn { bg: "#c83c3c" }

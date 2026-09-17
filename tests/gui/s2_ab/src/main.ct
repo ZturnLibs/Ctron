@@ -1,0 +1,46 @@
+// tests/gui/s2_ab —— GUI 泳道 S2:repr(c) GUI struct 过 C ABI 定点验证(计划 S2)
+// Color(raylib = 4×U8)/ Vector2(2×F32)按值双向;无窗口、纯 ABI、可全自动。
+// 这是 §3.3-1(repr(c) 切片)在 GUI 类型形状上的定点验收。
+
+#[repr(c)]
+struct Color { r: U8, g: U8, b: U8, a: U8 }
+
+#[repr(c)]
+struct Vector2 { x: F32, y: F32 }
+
+// C 侧探针(c_src/gui_abi.c):构造/回读双向
+#[trusted]
+extern "c" fn gui_make_color(r: I32, g: I32, b: I32) -> Color
+
+#[trusted]
+extern "c" fn gui_probe_color(c: Color, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_probe_vector2(v: Vector2, x: F32, y: F32) -> I32
+
+test "repr(c) Color:C 构造 → Ctron 字段读(返回按值)" {
+    var c: Color = gui_make_color(255, 128, 0)
+    assert_eq(c.r, 255)
+    assert_eq(c.g, 128)
+    assert_eq(c.b, 0)
+    assert_eq(c.a, 255)
+}
+
+test "repr(c) Color:Ctron 构造 → C 回读(传参按值)" {
+    var c = Color { r: 24, g: 24, b: 32, a: 255 }
+    assert_eq(gui_probe_color(c, 24, 24, 32, 255), 1)
+}
+
+test "repr(c) Color:C 构造 → Ctron 回传 → C 再读(往返)" {
+    var c: Color = gui_make_color(230, 230, 235)
+    assert_eq(gui_probe_color(c, 230, 230, 235, 255), 1)
+}
+
+test "repr(c) Vector2:Ctron 构造 → C 回读(F32 域)" {
+    var v = Vector2 { x: 60.0, y: 80.0 }
+    assert_eq(gui_probe_vector2(v, 60.0, 80.0), 1)
+}
+
+fn main() -> I32 {
+    return 0
+}

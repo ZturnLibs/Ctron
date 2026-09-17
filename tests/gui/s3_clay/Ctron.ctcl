@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "gui_s3_clay"
+    version = "0.1.0"
+}

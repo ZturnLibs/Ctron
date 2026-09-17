@@ -1,0 +1,170 @@
+// tests/gui/s4_events —— GUI 泳道 S4:事件 + 测试注入(计划 S4)
+// 交互状态机闭环:注入 → 事件翻译 → handler 改 model → 重布局 → 颜色/计数读回断言。
+// 全自动无窗口;命中测试在 Ctron 侧按命令几何做(§11.3:命中归运行时)。
+// shim 码表:事件 1=KeyDown 2=Click;dir/mode/命令码同 s3。
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_count() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_bg_r(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_bg_g(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_key(key: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_poll_event() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_key() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_x() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_y() -> I32
+
+// 一帧布局:标题 + 状态色块(100×40;红=200,60,60 / 绿=60,200,60)
+fn draw_frame(red: Bool) -> I32 {
+    var rr: I32 = 200
+    var gg: I32 = 60
+    if !red {
+        rr = 60
+        gg = 200
+    }
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(1, 8, 16, 16, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0)
+    gui_text("space or click toggles", 20, 230, 230, 235, 255)
+    gui_open()
+    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, rr, gg, 60, 255)
+    gui_close()
+    gui_close()
+    return gui_end_layout()
+}
+
+// 命中测试:块固定 (16,54)-(116,94)(文本高 20×1.25=25 + gap 8 + pad 16 → y=49? 以实测为锚)
+fn hit_rect(px: I32, py: I32) -> Bool {
+    var x_in: Bool = false
+    var y_in: Bool = false
+    if px >= 16 {
+        if px < 116 { x_in = true }
+    }
+    if py >= 49 {
+        if py < 89 { y_in = true }
+    }
+    if x_in {
+        if y_in { return true }
+    }
+    return false
+}
+
+fn main() -> I32 {
+    gui_clay_init(320, 200)
+    var red: Bool = true
+    var clicks: I32 = 0
+
+    // 帧 1:红色
+    draw_frame(red)
+
+    // 注入空格(KEY_SPACE=32)→ 翻转为绿
+    gui_inject_key(32)
+    var evt: I32 = gui_poll_event()
+    assert_eq(evt, 1)
+    assert_eq(gui_evt_key(), 32)
+    if gui_evt_key() == 32 {
+        red = !red
+    }
+    draw_frame(red)
+    var i: I32 = 0
+    while i < gui_cmd_count() {
+        if gui_cmd_type(i) == 2 {
+            if gui_cmd_w100(i) == 10000 {
+                assert_eq(gui_cmd_bg_r(i), 60)
+                assert_eq(gui_cmd_bg_g(i), 200)
+            }
+        }
+        i += 1
+    }
+
+    // 注入点击(块内)→ 翻转回红 + 计数
+    gui_inject_click(50, 60)
+    evt = gui_poll_event()
+    assert_eq(evt, 2)
+    assert_eq(gui_evt_x(), 50)
+    assert_eq(gui_evt_y(), 60)
+    if hit_rect(gui_evt_x(), gui_evt_y()) {
+        red = !red
+        clicks += 1
+    }
+    draw_frame(red)
+    i = 0
+    while i < gui_cmd_count() {
+        if gui_cmd_type(i) == 2 {
+            if gui_cmd_w100(i) == 10000 {
+                assert_eq(gui_cmd_bg_r(i), 200)
+                assert_eq(gui_cmd_bg_g(i), 60)
+            }
+        }
+        i += 1
+    }
+    assert_eq(clicks, 1)
+
+    // 注入点击(块外 300,10)→ 无命中,状态不变
+    gui_inject_click(300, 10)
+    evt = gui_poll_event()
+    assert_eq(evt, 2)
+    if hit_rect(gui_evt_x(), gui_evt_y()) {
+        red = !red
+        clicks += 1
+    }
+    draw_frame(red)
+    assert_eq(clicks, 1)
+    i = 0
+    while i < gui_cmd_count() {
+        if gui_cmd_type(i) == 2 {
+            if gui_cmd_w100(i) == 10000 {
+                assert_eq(gui_cmd_bg_r(i), 200)
+            }
+        }
+        i += 1
+    }
+
+    println("s4 events: toggle/hit/miss all ok")
+    return 0
+}

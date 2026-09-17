@@ -1,0 +1,91 @@
+// tests/gui/s3_clay —— GUI 泳道 S3:Clay 布局桥(headless 布局 + 命令断言;计划 S3)
+// 全量重放 + 确定性测量 → 命令黄金断言;窗口渲染 flush(ctron_gui_flush)随 S6 demo 交互验收。
+// shim 码表:dir 0=左右 1=上下;mode 0=fit 1=grow 2=fixed;命令 1=TEXT 2=RECTANGLE
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_count() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_x100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_y100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_h100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_len(i: I32) -> I32
+
+fn main() -> I32 {
+    gui_clay_init(320, 200)
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(1, 8, 16, 16, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0)             // 根:纵向 grow,无背景
+    gui_text("ctron clay", 24, 230, 230, 235, 255)                    // 文本 24 号
+    gui_open()
+    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, 200, 60, 60, 255)       // 固定 100×40 红块
+    gui_close()
+    gui_close()
+    var n: I32 = gui_end_layout()
+    println("s3: commands =")
+    println(n)
+
+    // 断言:扫命令流,找文本与红块,验几何确定性(几何 ×100 整数口径)
+    assert(n >= 2)
+    var i: I32 = 0
+    var saw_text: I32 = 0
+    var saw_red: I32 = 0
+    while i < n {
+        var t: I32 = gui_cmd_type(i)
+        if t == 1 {
+            if gui_cmd_text_len(i) == 10 {
+                saw_text = 1
+                assert_eq(gui_cmd_x100(i), 1600)   // 根 padding 原点 16.0
+                assert_eq(gui_cmd_y100(i), 1600)
+            }
+        }
+        if t == 2 {
+            if gui_cmd_w100(i) == 10000 {          // 固定 100.0
+                saw_red = 1
+                // 文本高 24×1.25=30,gap 8,padding 16 → y = 16+30+8 = 54.0
+                assert_eq(gui_cmd_y100(i), 5400)
+                assert_eq(gui_cmd_h100(i), 4000)
+            }
+        }
+        i += 1
+    }
+    assert_eq(saw_text, 1)
+    assert_eq(saw_red, 1)
+    println("s3 clay: layout ok, commands ok")
+    return 0
+}

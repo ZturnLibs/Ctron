@@ -1,0 +1,52 @@
+// tests/gui/s1_smoke —— GUI 泳道 S1:raylib 绑定冒烟(计划 2026-09-16-gui-mvp-ladder S1)
+// 开窗 → 清屏 → 画 "ctron gui" → 300 帧后 rc=0 退出;自动化验 rc + 帧计数。
+// 窗口运行为交互验收(run.sh 默认只构建链接;--run 才启动窗口)。
+// raylib 绑定引用 std/gui/bind/raylib.ct 的同一组 extern(夹具内自带,S1 阶段不入库编译)。
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+// c_src/gui_shim.c —— 测试缝与标量封装(§12.3d 前身)
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_draw_text(s: Str, x: I32, y: I32, size: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_frame_count() -> I32
+
+fn main() -> I32 {
+    InitWindow(320, 200, "ctron gui s1")
+    SetTargetFPS(60)
+    var frames: I32 = 0
+    while frames < 300 {
+        BeginDrawing()
+        gui_clear(24, 24, 32)
+        gui_draw_text("ctron gui", 60, 80, 24)
+        EndDrawing()
+        frames = gui_frame_count()
+    }
+    CloseWindow()
+    if frames == 300 {
+        println("s1 smoke: 300 frames ok")
+        return 0
+    }
+    println("s1 smoke: frame count mismatch")
+    return 1
+}
