@@ -27,8 +27,9 @@
 - **不改布局算法**:Clay flex 子集维持 §13.2 冻结,本文纯增观测与验证层;
 - **不做绝对几何的编译期预演**(裁决 3,§2);
 - **inspector 不做面板内编辑**:改样式走热重载,改代码即改外观是既有心智;
-- **不解冻公共浮层语义**:浮动检视卡走 dev-only 内部浮层(§6.3),
-  `dialog`/`tooltip` 等 popup 类组件维持 T2 推迟裁决(§13.1)。
+- **模态输入语义不进布局层**:浮动检视卡走 dev-only 内部浮层(§6.3);
+  2026-09-17 引擎对齐裁决后浮层原语公共化(§11 裁决 2),但 dialog 的
+  焦点锁/模态捕获归运行时输入层,M3+ 设计。
 
 ## 2. 裁决记录
 
@@ -105,8 +106,8 @@ class ProvReason{ var axis: Axis; var rule: ProvRule; var inputs: List[ProvInput
 
 浮动卡的层级由 **inspector 状态机私有机制**承载:帧尾**最后绘制**、命中由
 inspector 自管(不进 app 命中测试)、卡内容仍是 CTML view(inspector 整体
-用 CTML 写,dogfooding)。该机制**不进公共组件集、不暴露为布局/样式语义**,
-不构成对 T2 popup 推迟裁决的解冻。
+用 CTML 写,dogfooding)。(2026-09-17 引擎对齐裁决后,公共浮层原语进 M2
+——见 §11 裁决 2;inspector 浮动卡迁移至公共原语,内部通道仅作先行验证与回退。)
 
 ### 6.4 落地顺序
 
@@ -150,14 +151,22 @@ release 构建两模式一并剔除。
 ## 11. 能力评审补记(2026-09-17,规格审阅期)
 
 对 §13.2 flex 子集做了能力边界推演(视觉稿存档 `.superpowers/brainstorm/`,
-主题 layout-capability;下列两项为**推荐默认,终审可改**):
+主题 layout-capability)。三项裁决:裁决 1 为评审期推荐默认(随裁决 2 定案),
+裁决 2 为**用户引擎对齐指令**,裁决 3 为其推论:
 
 - **能力结论**:工具型软件(IDE 三栏/聊天/邮件主从/设置表单/卡片墙/播放器)
-  flex 全覆盖——主流桌面应用本身多为 flex 实现。真实边界四项,均有裁决路径:
-  二维网格(bento)与瀑布流 → grid 触发条款;浮层(角标/tooltip/modal)→
-  T2 推迟(inspector dev-only 内部浮层为先例通道);固定宽高比 → 本节裁决 2;
+  flex 全覆盖——主流桌面应用本身多为 flex 实现。真实边界四项,处置见下;
 - **裁决 1 margin 不设**:§5.1 原列 margin,但 Clay 无 margin 概念——从子集
-  删除,间距一律 gap + padding + spacer 表达,不设脱糖(最小子集原则);
-  已回填 §5.1;
-- **裁决 2 aspect-ratio / masonry 归入 grid 触发条款**:需求实证后再评;
-  aspect 为单属性低成本候选(Clay 原生支持),媒体场景实证即补。
+  删除,间距一律 gap + padding + spacer 表达,不设脱糖;
+- **裁决 2 引擎对齐(2026-09-17 用户裁决:暴露面 = Clay 能力面全量映射)**:
+  aspect-ratio、锚定浮层(attachTo 父/指定 id/窗口根,含浮层层内 zIndex、
+  pointerCapture、clipTo)、percent/min-max sizing、四边 padding、四角 radius、
+  四边 border + betweenChildren、水平 scroll、文本扩展(text-align/
+  letter-spacing/line-height/wrap)、元素 id 全部**进子集**(§5.1 已改写);
+  "实证触发条款"废止。**边界**:Clay query/debug API 不暴露——命中/焦点/
+  失效归运行时(§12.2 单一真源),查询 API 仅作 provenance/inspector 内部
+  数据源。浮层原语公共化登记 M2,dialog 模态输入语义维持 M3+(Clay
+  pointerCapture 仅覆盖命中层,焦点锁/捕获归运行时);
+- **裁决 3 grid 明示不做**:Clay v0.14 无 grid 能力,引擎对齐下即"无"。
+  bento = 浮层原语上算好矩形绝对摆放(库级布局函数);瀑布流 masonry = gui 域
+  库组件(上一帧几何列平衡);provenance 顺带增 `rule=anchor`。
