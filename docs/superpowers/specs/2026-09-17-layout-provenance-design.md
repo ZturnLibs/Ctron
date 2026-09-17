@@ -146,3 +146,18 @@ release 构建两模式一并剔除。
 | comptime 绝对几何预布局 | 文本测量依赖运行时字体(FreeType vs S3 启发式数值不同),编译期不可判 |
 | inspector 三种顶层形态独立实现 | A/C 本质是停靠区内部密度差;重复机制 |
 | inspector 面板内编辑样式 | 与热重载开发循环重复;改代码即改外观是既有心智 |
+
+## 11. 能力评审补记(2026-09-17,规格审阅期)
+
+对 §13.2 flex 子集做了能力边界推演(视觉稿存档 `.superpowers/brainstorm/`,
+主题 layout-capability;下列两项为**推荐默认,终审可改**):
+
+- **能力结论**:工具型软件(IDE 三栏/聊天/邮件主从/设置表单/卡片墙/播放器)
+  flex 全覆盖——主流桌面应用本身多为 flex 实现。真实边界四项,均有裁决路径:
+  二维网格(bento)与瀑布流 → grid 触发条款;浮层(角标/tooltip/modal)→
+  T2 推迟(inspector dev-only 内部浮层为先例通道);固定宽高比 → 本节裁决 2;
+- **裁决 1 margin 不设**:§5.1 原列 margin,但 Clay 无 margin 概念——从子集
+  删除,间距一律 gap + padding + spacer 表达,不设脱糖(最小子集原则);
+  已回填 §5.1;
+- **裁决 2 aspect-ratio / masonry 归入 grid 触发条款**:需求实证后再评;
+  aspect 为单属性低成本候选(Clay 原生支持),媒体场景实证即补。
