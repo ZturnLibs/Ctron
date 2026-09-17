@@ -1,8 +1,11 @@
-// tests/ffi/str_marshall —— Str 编组(§9.6 v0.6)
+// tests/ffi/str_marshall —— Str 编组(§9.6 v0.6/v0.7)
 // 承诺:Str 即 const char* 直通(Ctron→C 借用零拷贝);C→Ctron 经 str_from_c
 // 深拷入 arena(Ctron-owned,免 free,独立于 C 侧缓冲寿命);C-owned 串的所有权
-// 三约定(§9.6)由包装层显式化。注:libc size_t 与发射 uint64_t 在 Darwin 是
-// 不同类型别名(声明冲突),size_t 面经 c_src 垫片(c_strlen)过界。
+// 三约定(§9.6)由包装层显式化。v0.7:USize→size_t 后 libc strlen 可直接声明
+// (v0.6 因 Darwin size_t 别名冲突需 c_strlen 垫片,垫片保留作对照)。
+#[trusted]
+extern "c" fn strlen(s: Str) -> USize
+
 #[trusted]
 extern "c" fn c_strlen(s: Str) -> I64
 
@@ -15,7 +18,8 @@ extern "c" fn c_shout(s: Str) -> Str
 #[trusted]
 extern "c" fn c_static_greet() -> Str
 
-test "Str into C: borrowed read + strlen shim" {
+test "Str into C: libc strlen direct (size_t boundary) + shim" {
+    assert_eq(strlen("hello"), 5)
     assert_eq(c_strlen("hello"), 5)
     assert_eq(c_count_vowels("Ctron FFI"), 2)
 }

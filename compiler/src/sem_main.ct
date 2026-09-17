@@ -169,10 +169,11 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             if td.len < 8 {
                 diags.push("W8050@" + nline(td) + ": extern 未标记 #[trusted](信任边界):" + td[1])
             }
-            if td.len > 7 && seq2(td[6], "repr") {
+            if td.len > 7 && attr_is(td[6], "repr") {
                 diags.push("E4041@" + nline(td) + ": #[repr(c)] 仅限 struct 声明:" + td[1])
             }
-            // C-ABI 类型治理(v0.6):容器/能力类型不得跨界;返回 fn 类型暂仅形参向
+            // C-ABI 类型治理(v0.6):容器/能力类型不得跨界;返回 fn 类型 v0.7 起支持
+            //(边界 ct_fnK + 绑定面装箱)
             var eps = td[3]
             var ek: I32 = 1
             while ek < eps.len {
@@ -185,21 +186,28 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             if ext_nonabi_ty(td[4]) {
                 diags.push("W8052@" + nline(td) + ": extern 返回非 C-ABI 类型(§9.6):" + td[1])
             }
-            if td[4][0] == "FnType" {
-                diags.push("W8053@" + nline(td) + ": extern 返回 fn 类型暂不支持(v0 仅形参向):" + td[1])
-            }
         } else if or2(td[0] == "Fn", td[0] == "FnPub") {
             // fn 带 #[trusted]:# 分支 push anm 后补 nstamp(len 7,nline 安全)
             if td.len > 6 && seq2(td[6], "trusted") {
                 diags.push("E4040@" + nline(td) + ": #[trusted] 仅限 extern 声明:" + td[1])
-            } else if td.len > 6 && seq2(td[6], "repr") {
+            } else if td.len > 6 && attr_is(td[6], "repr") {
                 diags.push("E4041@" + nline(td) + ": #[repr(c)] 仅限 struct 声明:" + td[1])
             }
+            // E4044(v0.7 §9.6):变参形参仅限 extern "c" 声明
+            var vps = td[3]
+            var vk: I32 = 1
+            while vk < vps.len {
+                if vps[vk][0] == "VaArgs" {
+                    diags.push("E4044@" + nline(td) + ": 变参形参(...)仅限 extern 声明:" + td[1])
+                }
+                vk += 1
+            }
         } else if td[0] == "Struct" {
-            // #[repr(c)] struct(v0.6):发射面本就按声明序直出 C struct(布局 = C 声明序,
+            // #[repr(...)] struct(v0.6/v0.7):发射面按声明序直出 C struct(布局 = C 声明序,
             // 与 C 侧同型定义即 ABI 兼容);属性为显式 FFI 导出标记,字段含非 C-ABI 类型 = W8051
-            // (镜像 Rust improper_ctypes 警示面)。Struct 节点 [5]=anm [6]=stamp。
-            if td.len > 6 && seq2(td[5], "repr") {
+            // (镜像 Rust improper_ctypes 警示面);packed/align(N) 变体直出 GNU 属性。
+            // Struct 节点 [5]=anm [6]=stamp。
+            if td.len > 6 && attr_is(td[5], "repr") {
                 var rfs = td[4]
                 var rj: I32 = 1
                 while rj < rfs.len {
@@ -212,7 +220,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             }
         } else if td[0] == "Enum" {
             // Enum 节点无行号戳(nline 回退 "0");#[attr] 名在尾槽([4])
-            if td.len > 4 && seq2(td[4], "repr") {
+            if td.len > 4 && attr_is(td[4], "repr") {
                 diags.push("E4041@0: #[repr(c)] 仅限 struct 声明:" + td[1])
             }
         } else if td[0] == "Class" {
@@ -242,6 +250,55 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
         kk += 1
     }
     return out
+}
+
+// 属性名匹配(§9.6 v0.7):裸名或带实参 "名(...)"——前缀 + '(' 收口;等值即真
+fn attr_is(v: Str, name: Str) -> Bool {
+    if seq2(v, name) {
+        return true
+    }
+    if v.len > name.len + 1 {
+        if byte_at(v, name.len) == 40 {
+            return seq2(byte_slice(v, 0, name.len), name)
+        }
+    }
+    return false
+}
+
+// 堆叠属性成员判(§9.6 v0.7):"trusted,dlsym" 形式的逗号分段,逐段 attr_is
+fn attr_has(v: Str, name: Str) -> Bool {
+    var i: I32 = 0
+    var seg = ""
+    while i < v.len {
+        var c = byte_at(v, i)
+        if c == 44 {
+            if attr_is(seg, name) {
+                return true
+            }
+            seg = ""
+        } else {
+            seg = seg + byte_slice(v, i, i + 1)
+        }
+        i += 1
+    }
+    return attr_is(seg, name)
+}
+
+// 属性实参提取:"名(实参)" → 实参(嵌套括号含内层原文);非带参属性 → ""
+fn attr_arg(v: Str) -> Str {
+    var i: I32 = 0
+    var bar = -1
+    while i < v.len {
+        if byte_at(v, i) == 40 {
+            bar = i
+            i = v.len
+        }
+        i += 1
+    }
+    if bar < 0 {
+        return ""
+    }
+    return byte_slice(v, bar + 1, v.len - 1)
 }
 
 // C-ABI 类型治理(§9.6 v0.6):容器/能力类型不得跨 extern 边界(镜像 Rust

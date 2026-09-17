@@ -74,6 +74,7 @@
 | E4040 | `#[trusted]` 仅限 extern "c" 声明 |
 | E4041 | `#[repr(c)]` 仅限 struct 声明(v0.6 §9.6) |
 | E4042 | 捕获闭包作 C-ABI 回调实参(C 函数指针无 env 槽;v0.6 §9.6) |
+| E4044 | 变参形参仅限 extern 声明(v0.7 §9.6) |
 | E4050 | 类直接持有需确定性释放的资源字段(§6.2) |
 | W8050 | extern "c" 未标记 `#[trusted]`(信任边界须可枚举审计) |
 | W8051 | repr(c) struct 含非 C-ABI 字段(容器/能力类型;v0.6 §9.6) |
@@ -122,7 +123,7 @@
 - **根下 `*.neg.ct` / `*.lint.ct`**:与 §1/§2 同标记语义,经 `bin/ctron-cc run` 判定。
 - 验收:`sh tests/ffi/run.sh`(独立)与 `compiler/test/suite.py` 的 `ffi/` 小节(同口径);CI 冒烟见 `compiler/test/smoke.sh` §3j;性能见 `compiler/test/bench_ffi.sh`。
 - C 侧 ABI 契约:`tests/ffi/ctron_abi.h` 镜像发射器预发 typedef(`ct_i`/`ct_fn1..3`/`ctron_view_*`),发射面为唯一真源。
-- 锚定用例:`callback/`(C-ABI 回调)、`repr_c/`(`#[repr(c)]` 按值往返)、`str_marshall/`(Str 编组)、`abi_width/`(逐宽度映射)。
+- 锚定用例:`callback/`(C-ABI 回调)、`repr_c/`(`#[repr(c)]` 按值往返)、`str_marshall/`(Str 编组)、`abi_width/`(逐宽度映射)、`variadic/`(变参 extern)、`dyn_link/`(dlsym 动态面)、`export/`(导出嵌入面)、`ext_fn_ret/`(extern 返回 fn)、`layout/`(packed/align 布局)、`cimport/`(头文件绑定生成端到端)。
 
 ## 7. std 的可用性
 

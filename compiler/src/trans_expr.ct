@@ -195,8 +195,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1] == "Div" { return "ctron_w_div(" + a9 + ", " + b9 + ")" }
             if e[1] == "Mod" { return "ctron_w_mod(" + a9 + ", " + b9 + ")" }
         }
-        // U64/USize 域(P1-B):uint64_t 检查帮手(镜像 eval 界门,panic 消息同宿主)
-        if or2(lt == "7", ct_typeof(e[3], env, file) == "7") {
+        // U64/USize 域(P1-B):uint64_t 检查帮手(镜像 eval 界门,panic 消息同宿主);
+        // "z"(USize→size_t,v0.7)同宽,经隐式转换走同一帮手
+        if or3(lt == "7", lt == "z", or2(ct_typeof(e[3], env, file) == "7", ct_typeof(e[3], env, file) == "z")) {
             var a7 = "(uint64_t)(" + ct_expr(e[2], env, file) + ")"
             var b7 = "(uint64_t)(" + ct_expr(e[3], env, file) + ")"
             if e[1] == "Add" { return "ctron_u64_add(" + a7 + ", " + b7 + ")" }
@@ -241,7 +242,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "((const char*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
         }
 
-        panic("ct_expr:index 目标非 List/数组:" + ot)
+        panic("ct_expr:index 目标非 List/数组:" + ot + " 名:" + e[1][1] + " 下标:" + e[2][1] + " 节点元数:" + e.len.to_string() + " 尾槽tag:" + e[e.len - 1][0])
         return ""
     }
     if t == "Member" {
@@ -797,6 +798,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned;解释器侧恒等)
         if callee == "str_from_c" { return "ctron_str_from_c(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // 动态链接面(§9.6 v0.7):句柄为 ct_i 载荷;dlopen 固定 RTLD_NOW
+        if callee == "dlopen" {
+            var dp = ct_expr(ag[1], env, file)
+            return "(ct_i)(long)dlopen(" + dp + ", RTLD_NOW)"
+        }
+        if callee == "dlclose" { return "(int32_t)dlclose((void*)(long)(" + ct_expr(ag[1], env, file) + "))" }
+        if callee == "dlsym" {
+            var dh = ct_expr(ag[1], env, file)
+            var dn = ct_expr(ag[2], env, file)
+            return "(ct_i)(long)dlsym((void*)(long)(" + dh + "), " + dn + ")"
+        }
         if callee == "utf8_enc" {
             var u0 = "0"
             if ag.len > 1 { u0 = ct_expr(ag[1], env, file) }
@@ -839,7 +851,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var fhead = "((ct_cfn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
                 var fcast = ""
                 if byte_at(fvt, 0) == 71 { fcast = "(ct_clop)" }
-                return fcast + fhead + "(" + fargs + ")"
+                // 双路径(v0.7 §9.6):env==(void*)1 = 裸 C 函数指针哨兵(extern 返回的
+                // 回调装箱)→ ct_fnK 直调不传 env;否则闭包 shim(env-first)原路径
+                var rargs = ""
+                var rk: I32 = 2
+                while rk <= far {
+                    if ag.len > rk { rargs = rargs + ", " + ct_wrap_i(ct_typeof(ag[rk], env, file), ct_expr(ag[rk], env, file)) } else { rargs = rargs + ", 0" }
+                    rk += 1
+                }
+                if ag.len > 1 { rargs = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs } else { rargs = "(ct_i)0" + rargs }
+                var rhead = "((ct_fn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
+                return fcast + "(((ct_clop)" + fv + ")->env == (void*)1 ? " + rhead + "(" + rargs + ") : " + fhead + "(" + fargs + "))"
             }
         }
         // 用户枚举变体构造(Phase 5):(ct_enum_E){ idx, { p0, p1 } }
@@ -906,7 +928,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 eargs = eargs + ", 0"
                 miss2 -= 1
             }
-            return callee + "(" + eargs + ")"
+            // 符号解析(§9.6 v0.7):#[link_name(x)] → x;#[dlsym] → ct_dyn_<名> thunk
+            return ct_ext_sym(file, callee) + "(" + eargs + ")"
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }
@@ -945,7 +968,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         eln("}", env)
         return tmp
     }
-    panic("ct_expr:" + t)
+    // stash(三线 WIP)侧改动并入:兜底 panic 携带行号(诊断面增强)
+    panic("ct_expr:" + t + "@" + nline(e))
     return ""
 }
 

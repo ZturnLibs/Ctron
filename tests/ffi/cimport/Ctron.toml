@@ -1,0 +1,3 @@
+[package]
+name = "ffi_cimport"
+version = "0.1.0"

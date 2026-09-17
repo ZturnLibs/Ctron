@@ -218,7 +218,11 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[1] == "I8" { return "w8s" }
     if nt[1] == "U16" { return "w16u" }
     if nt[1] == "I16" { return "w16s" }
-    if or2(nt[1] == "U64", nt[1] == "USize") { return "7" }
+    // USize 独立码 "z"(v0.7 §9.6):发射 size_t(target 真类型;U64 仍 uint64_t——
+    // 二者宽度同但类型别名不同,直连 libc(size_t 形参/返回)不再重定义冲突;
+    // eval 值域仍共享 "7",分层不动)
+    if nt[1] == "USize" { return "z" }
+    if nt[1] == "U64" { return "7" }
     if nt[1] == "ISize" { return "6" }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "Named" && nt[2].len > 1 {
@@ -263,6 +267,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "7" { return "uint64_t" }
+    if code == "z" { return "size_t" }
     if code == "w8u" { return "uint8_t" }
     if code == "w8s" { return "int8_t" }
     if code == "w16u" { return "uint16_t" }
@@ -388,14 +393,19 @@ fn ct_abi_ctype(code: Str) -> Str {
     return ct_ctype(code)
 }
 
-// extern 声明的 C 形参表:fn 指针形参按边界映射(ct_fnK;区别于内部闭包对 ct_clop)
+// extern 声明的 C 形参表:fn 指针形参按边界映射(ct_fnK;区别于内部闭包对 ct_clop);
+// VaArgs 尾标 → C "..."/.../ §9.6 v0.7 变参 extern
 fn ct_params_str_ext(d: List[Str], file: List[Str]) -> Str {
     var ps = d[3]
     var params = ""
     var k: I32 = 1
     var first = true
+    var hasva = false
     while k < ps.len {
         var pr = ps[k]
+        if pr[0] == "VaArgs" {
+            hasva = true
+        }
         if pr[0] == "Param" {
             if !first { params = params + ", " }
             params = params + ct_abi_ctype(ct_ty_code(pr[3], file)) + " t_" + pr[2]
@@ -403,7 +413,108 @@ fn ct_params_str_ext(d: List[Str], file: List[Str]) -> Str {
         }
         k += 1
     }
+    if hasva {
+        if !first { params = params + ", " }
+        params = params + "..."
+    }
     return params
+}
+
+// 无名形参表(fn 指针 cast 用;C 抽象声明符不容形参名):"int64_t, int64_t" / 变参尾 "..."
+fn ct_params_str_bare(d: List[Str], file: List[Str]) -> Str {
+    var ps = d[3]
+    var params = ""
+    var k: I32 = 1
+    var first = true
+    var hasva = false
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "VaArgs" {
+            hasva = true
+        }
+        if pr[0] == "Param" {
+            if !first { params = params + ", " }
+            params = params + ct_abi_ctype(ct_ty_code(pr[3], file))
+            first = false
+        }
+        k += 1
+    }
+    if hasva {
+        if !first { params = params + ", " }
+        params = params + "..."
+    }
+    return params
+}
+
+// extern "c" 声明的 C 符号名(v0.7 §9.6):默认裸名;#[link_name(x)] → x(符号重命名,
+// 撞名/版本化免 c_src 垫片);#[dlsym] → 运行期解析 thunk ct_dyn_<名>(dlopen 面)
+fn ct_ext_sym(file: List[Str], nm: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "FnExt" && d[1] == nm {
+            if d.len > 7 {
+                if attr_has(d[6], "link_name") {
+                    return attr_arg(d[6])
+                }
+                if attr_has(d[6], "dlsym") {
+                    return "ct_dyn_" + nm
+                }
+            }
+            return nm
+        }
+        i += 1
+    }
+    return nm
+}
+
+// #[export] fn(v0.7 §9.6):导出包装的实参名串("t_a, t_b";调用直透 t_<名>)
+fn ct_export_args(d: List[Str]) -> Str {
+    var ps = d[3]
+    var args = ""
+    var k: I32 = 1
+    var first = true
+    while k < ps.len {
+        var pr = ps[k]
+        if pr[0] == "Param" {
+            if !first { args = args + ", " }
+            args = args + "t_" + pr[2]
+            first = false
+        }
+        k += 1
+    }
+    return args
+}
+
+// #[repr(...)] 变体的 C 属性后缀(§9.6 v0.7):packed → __attribute__((packed));
+// align(N) → __attribute__((aligned(N)));普通/无属性 → ""(声明序布局不受影响)
+fn ct_struct_attr_suffix(sd: List[Str]) -> Str {
+    if sd.len < 7 {
+        return ""
+    }
+    if !attr_is(sd[5], "repr") {
+        return ""
+    }
+    var rarg = attr_arg(sd[5])
+    if seq2(rarg, "packed") {
+        return "__attribute__((packed)) "
+    }
+    if rarg.len > 6 && seq2(byte_slice(rarg, 0, 6), "align(") {
+        // align(N):取括号内数字串(N 可含嵌套前缀,此处仅收数字)
+        var ai: I32 = 6
+        var anum = ""
+        while ai < rarg.len {
+            var ac = byte_at(rarg, ai)
+            if ac >= 48 && ac <= 57 {
+                anum = anum + byte_slice(rarg, ai, ai + 1)
+            }
+            ai += 1
+        }
+        if anum.len > 0 {
+            return "__attribute__((aligned(" + anum + "))) "
+        }
+    }
+    return ""
 }
 
 // 实例化 struct 域类型:接收者码 u:<名>__<尾缀> 解码 + TPar 槽代入

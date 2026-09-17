@@ -1,0 +1,42 @@
+// tests/ffi/layout —— 布局变体(§9.6 v0.7):#[repr(packed)] / #[repr(align(N))]
+// 承诺:GNU 属性直出(pack 去填充、align 抬对齐),声明序不变;C 侧同属性同型定义
+// 互为镜像,sizeof 经边界对数。repr(c)(默认声明序)不受影响(见 ../repr_c/)。
+#[repr(packed)]
+struct Packed {
+    var a: I64
+    var b: I8
+    var c: I64
+}
+
+#[repr(align(32))]
+struct Wide {
+    var v: I64
+}
+
+#[trusted]
+extern "c" fn pk_sizeof() -> I64
+
+#[trusted]
+extern "c" fn pk_read(p: Packed) -> I64
+
+#[trusted]
+extern "c" fn wd_sizeof() -> I64
+
+#[trusted]
+extern "c" fn wd_align() -> I64
+
+test "repr(packed): sizeof = 17, fields unaligned but readable cross-boundary" {
+    var p = Packed { a: 7, b: 3, c: 9 }
+    assert_eq(pk_sizeof(), 17)
+    assert_eq(pk_read(p), 7 + 3 + 9)
+    assert_eq(p.c, 9)
+}
+
+test "repr(align(32)): alignment raised, sizeof padded to multiple" {
+    assert_eq(wd_sizeof(), 32)
+    if wd_align() < 32 {
+        panic("align(32) 未生效")
+    }
+    var w = Wide { v: 42 }
+    assert_eq(w.v, 42)
+}

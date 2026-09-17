@@ -58,6 +58,7 @@ fn main() -> I32 {
             println("#include <pthread.h>")
             println("#include <setjmp.h>")
             println("#include <time.h>")
+            println("#include <dlfcn.h>")
             println("static char* ctron_abase = 0;")
             println("static size_t ctron_aoff = 0;")
             println("static size_t ctron_acap = 0;")
@@ -158,7 +159,8 @@ fn main() -> I32 {
             println("typedef struct \{ int* d; int64_t n; } ctron_view_b;")
             println("typedef struct \{ const char** d; int64_t n; } ctron_view_s;")
             println("typedef struct \{ double* d; int64_t n; } ctron_view_f;")
-            // 用户 struct 值类型(§6.1):typedef 先于原型与函数体
+            // 用户 struct 值类型(§6.1):typedef 先于原型与函数体;#[repr(...)] 变体
+            // (packed/align(N),v0.7 §9.6)直出 GNU 属性(声明序布局不变)
             var si: I32 = 1
             while si < file.len {
                 var sd = file[si]
@@ -171,7 +173,7 @@ fn main() -> I32 {
                         line = line + ct_ctype(ct_ty_code(fd[3], file)) + " " + fd[2] + "; "
                         fj += 1
                     }
-                    line = line + "} t_" + sd[1] + ";"
+                    line = line + "} " + ct_struct_attr_suffix(sd) + "t_" + sd[1] + ";"
                     println(line)
                 } else if sd[0] == "Enum" {
                     println("typedef struct \{ int variant; ct_i p[2]; } ct_enum_" + sd[1] + ";")
@@ -310,16 +312,38 @@ fn main() -> I32 {
             }
             if sinit != "" {
                 println("static void ctron_statics_init(void) \{" + sinit + " }")
+                println("static int ctron_exp_init = 0;")
             }
             // 原型前置:C 需先声明后用(语料存在前向引用/递归);extern 声明仅原型(§9.6)
             var pj: I32 = 1
             while pj < file.len {
                 var pd = file[pj]
                 if pd[0] == "FnExt" {
-                    // extern 声明(§9.6):外部链接原型(裸符号,定义在 C 侧/c_src);
-                    // static 会把符号钉在本 TU 内——跨 TU 链接是未定义行为,旧实现靠
-                    // 链接器宽容才可用;形参按边界映射(fn 指针 ct_fnK)
-                    println("extern " + ct_abi_ctype(ct_fn_ret(file, pd[1])) + " " + pd[1] + "(" + ct_params_str_ext(pd, file) + ");")
+                    var isdls = false
+                    var lsym = ""
+                    if pd.len > 7 {
+                        if attr_has(pd[6], "dlsym") { isdls = true }
+                        if attr_has(pd[6], "link_name") { lsym = attr_arg(pd[6]) }
+                    }
+                    if isdls {
+                        // #[dlsym] thunk(§9.6 v0.7):静态链接改运行期解析——dlsym(RTLD_DEFAULT)
+                        // 首调缓存,缺符号 ctron_panic;经 fn 指针按边界类型直调(变参表自然透传)
+                        var tret = ct_abi_ctype(ct_fn_ret(file, pd[1]))
+                        var tps = ct_params_str_ext(pd, file)
+                        var targs = ct_export_args(pd)
+                        var tcall = "((" + tret + "(*)(" + ct_params_str_bare(pd, file) + "))ct_dls)(" + targs + ");"
+                        var tbody = "return " + tcall
+                        if seq2(tret, "void") { tbody = tcall }
+                        println("static " + tret + " ct_dyn_" + pd[1] + "(" + tps + ") \{ static void* ct_dls = 0; if (ct_dls == 0) \{ ct_dls = dlsym(RTLD_DEFAULT, \"" + pd[1] + "\"); if (ct_dls == 0) \{ ctron_panic(\"dlsym 未解析符号: " + pd[1] + "\"); } } " + tbody + " }")
+                    } else {
+                        // extern 声明(§9.6):外部链接原型(裸符号,定义在 C 侧/c_src);
+                        // static 会把符号钉在本 TU 内——跨 TU 链接是未定义行为,旧实现靠
+                        // 链接器宽容才可用;形参按边界映射(fn 指针 ct_fnK);
+                        // #[link_name(x)] → 以 x 出原型(v0.7 符号重命名)
+                        var esym = pd[1]
+                        if lsym != "" { esym = lsym }
+                        println("extern " + ct_abi_ctype(ct_fn_ret(file, pd[1])) + " " + esym + "(" + ct_params_str_ext(pd, file) + ");")
+                    }
                 } else if or2(pd[0] == "Fn", pd[0] == "FnPub") {
                     // 泛型 fn 无具体原型;特化定义在 pass1 直出且先于引用
                     if pd[2].len < 2 {
@@ -384,6 +408,19 @@ fn main() -> I32 {
                     // 只经调用点 TypeArgs 单态化特化(4cb9809)存在
                     if d[2].len < 2 {
                         ct_fn(d, file, "2")
+                        // #[export](§9.6 v0.7):非静态 C 符号包装——C 工程直链 Ctron 函数
+                        //(嵌入面);直透 t_<名>,文件有 static let 时首调过初始化守卫
+                        if d.len > 6 && seq2(d[6], "export") {
+                            var wret = ct_abi_ctype(ct_fn_ret(file, d[1]))
+                            var wcall = "t_" + d[1] + "(" + ct_export_args(d) + ");"
+                            var wbody = wcall
+                            if !seq2(wret, "void") { wbody = "return " + wcall }
+                            var wguard = ""
+                            if sinit != "" {
+                                wguard = "if (ctron_exp_init == 0) \{ ctron_exp_init = 1; ctron_statics_init(); } "
+                            }
+                            println(wret + " " + d[1] + "(" + ct_params_str(d, file) + ") \{ " + wguard + wbody + " }")
+                        }
                     }
                 } else if d[0] == "Test" {
                     // test 块 → int fn:断言失败 return 1(语句位 assert 发射),成功 return 0

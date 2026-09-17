@@ -1,0 +1,20 @@
+// tests/ffi/variadic —— 变参 extern(§9.6 v0.7):形参表尾 "..." 直出 C 变参原型
+// 承诺:具名形参 + 变参尾;调用点超出声明形参的实参按 C 默认提升过界;
+// 非 extern 声明用变参 = E4044(见 ../variadic_nonext.neg.ct)。
+#[trusted]
+extern "c" fn sum_all(n: I32, ...) -> I64
+
+test "variadic extern: C va_arg sums trailing I64s" {
+    var a: I64 = 10
+    var b: I64 = 20
+    var c: I64 = 30
+    var d: I64 = 16
+    var e: I64 = -1
+    var f: I64 = -2
+    var g: I64 = -3
+    var h: I64 = 7
+    assert_eq(sum_all(3, a, b, c), 60)
+    assert_eq(sum_all(1, h), 7)
+    assert_eq(sum_all(0), 0)
+    assert_eq(sum_all(4, e, f, g, d), 10)
+}

@@ -71,6 +71,27 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 
   注(AArch64/Apple Silicon):cb 比值是**循环形状差**而非过界开销——两侧同为 2 次调用/op(包装 noinline + 间接回调),基线被 gcc doloop 变换为 `b.ne` 零开销分支,Ctron `while` 为 `cmp/b.lt`,绝对差 ~0.7ns/次。标量调用与 struct 按值 **与手写 C 完全同速**,达成 §9.4 "own/热点档与 C 互有 5% 内"在 FFI 面的口径。
 
+
+---
+
+## 二·五、v0.7 批次:第一/二档缺口落地(2026-09-17)
+
+按 §三 的差距判读,本批次清掉第一档全部五项中的四项与第二档三项:
+
+| 能力 | 落地 |
+|---|---|
+| **C 头自动消费** | `compiler/tools/cimport.ct`:decl 级子集(函数原型/`#define` 常量/`#[repr(c)]` struct 标量字段);union/enum/函数指针形参/float 形参以注释占位不静默丢弃。实测:**真实系统 math.h 生成 71 个绑定**(sqrt/fabs/pow/floor 全对);`tests/ffi/cimport/` 头→绑定→编译→运行端到端。驱动:宿主 seed(自举 sem 对该源型崩溃,见 §四 #11) |
+| **动态加载** | `#[dlsym]` extern → 发射 `ct_dyn_<名>` 运行期 thunk(`dlsym(RTLD_DEFAULT)` 首调缓存,缺符号 panic);`dlopen/dlclose/dlsym` 内建(I64 句柄直连 dlfcn;解释器口径拒绝)。锚定:`tests/ffi/dyn_link/` |
+| **变参 extern** | 形参表尾 `...`(词法器新增 "..." 记号)→ C 变参原型直出;非 extern 用变参 = E4044。锚定:`tests/ffi/variadic/` |
+| **符号重命名** | `#[link_name(x)]` → 原型与调用点以 x 出符号;堆叠属性 `#[trusted] #[dlsym]` 支持(逗号拼接 + `attr_has` 分段判) |
+| **导出面(嵌入)** | `#[export]` fn → 非静态 C 符号包装(直透 `t_<名>`,statics 首调守卫);C 工程 `-Dmain` 让位后直链。锚定:`tests/ffi/export/`(C main 直调 magic/tally/based) |
+| **extern 返回 fn 解禁** | 声明位自动装箱(env=(void*)1 哨兵标记裸 C 函数);间接调用双路径(env 哨兵 → ct_fnK 直调,否则闭包 shim);回调再传 C 摘 fn 槽不受影响。W8053 移除。锚定:`tests/ffi/ext_fn_ret/` |
+| **USize→size_t** | 独立码 "z" → C `size_t`(target 真类型);libc strlen 可直接声明(Darwin 别名冲突消解);eval 值域仍共享 "7" 分层不动 |
+| **布局变体** | `#[repr(packed)]` / `#[repr(align(N))]` → GNU 属性直出;属性实参解析支持嵌套括号(`repr(align(8))`)。锚定:`tests/ffi/layout/`(packed sizeof=17/align sizeof=32 边界对数) |
+
+仍未落地(诚实口径):errno→Result 边界转换、panic 跨边界策略、pkg-config/构建集成、context-pointer 闭包模式糖、C 位域/union、float 形参精度约定、cimport 的 enum/函数指针/typedef 函数签名面。
+
+
 ---
 
 ## 三、与主流语言 FFI 支持对比
@@ -106,16 +127,20 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 
 | # | 缺陷/缺口 | 严重度 | 建议 |
 |---|---|---|---|
-| 1 | 无 C 头自动绑定(@cImport/bindgen) | 高 | P2:发射器复用解析器做 decl-level cimport(C 解析器宿主已有) |
-| 2 | dlopen/`dlsym` 动态面 | 高 | P1.5:`extern "c" fn ... = dlsym(...)` 声明式动态符号 |
-| 3 | 变参 extern(`...`) | 中 | 发射面直出 C 变参原型即可;sem 拦非 c ABI |
-| 4 | `#[link_name]`/符号重命名 | 中 | FnExt 节点加尾槽;发射/审计随 trusted 面 |
-| 5 | extern 返回 fn / struct 内 fn 指针字段 | 中 | W8053 解除:ret 映射 ct_fnK + 绑定面薄包装 |
-| 6 | USize↔size_t 类型别名冲突(Darwin) | 中 | 边界码 `7` 按 target 映射 `size_t`(需 target 三元组进发射器) |
+| 1 | ~~C 头自动绑定~~ | ✅ v0.7 | `tools/cimport.ct`(decl 级子集;真实 math.h 实测) |
+| 2 | ~~dlopen/dlsym 动态面~~ | ✅ v0.7 | `#[dlsym]` thunk + dlopen/dlclose/dlsym 内建 |
+| 3 | ~~变参 extern~~ | ✅ v0.7 | `...` 直出 C 变参原型;E4044 拦非 extern |
+| 4 | ~~#[link_name]/符号重命名~~ | ✅ v0.7 | 属性实参捕获 + attr_has |
+| 5 | ~~extern 返回 fn~~ | ✅ v0.7 | 声明位装箱 + env 哨兵双路径;W8053 移除 |
+| 6 | ~~USize↔size_t 别名冲突~~ | ✅ v0.7 | 码 "z" → size_t;libc strlen 直连 |
 | 7 | I64 定长数组发射计数解析缺陷(`a36` 码,count 吞元素码) | 中 | 数组码改 `a<N>:<ec>` 分隔;连带 03f 全家 |
-| 8 | 宿主线(compiler-c)未同步 E4041/E4042/W8051-53 | 低 | C 宿主 sem 端口(负例在 tests/ffi,不入宿主差分,无阻断) |
-| 9 | 错误传播约定(errno → Result) | 低 | std.ffi 包装层先行 |
-| 10 | 自举守卫:发射的 C 形参缺省(漏实参)静默通过(Ctron 侧无 arity 检查;本次 `p_enum2` 漏传踩中) | 低 | 发射器 fn 调用 arity 断言(emit 期 panic) |
+| 8 | 宿主线(compiler-c)未同步 E4041/E4042/E4044/W8051-52 | 低 | C 宿主 sem 端口(负例在 tests/ffi,不入宿主差分,无阻断) |
+| 9 | 错误传播约定(errno → Result) | 中 | std.ffi 包装层先行 |
+| 10 | 自举守卫:发射的 C 形参缺省(漏实参)静默通过(Ctron 侧无 arity 检查;`p_enum2` 漏传曾踩中) | 低 | 发射器 fn 调用 arity 断言(emit 期 panic) |
+| 11 | **自举 sem 崩溃在册**:`cimp_toks`+`cimp_proto` 同文件时 native sem(walk_e)野指针崩溃;宿主 seed 双面绿——cimport 工具暂由 seed 驱动 | 中 | 疑 E2010 统一面/诊断期跨 fn 干扰;复现:`compiler/tools/cimport.ct` 前 8 个 fn + `ctron-cc run` |
+| 12 | panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧) | 中 | 非 task 态已安全(exit);task 态回调约定待钉 |
+| 13 | cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参 | 低 | 按需扩面;未识别一律注释占位不静默 |
+| 14 | pkg-config/构建集成、context-pointer 闭包模式糖、C 位域 | 低 | 随构建系统批次 |
 
 ### 本次顺带修复的既有问题
 

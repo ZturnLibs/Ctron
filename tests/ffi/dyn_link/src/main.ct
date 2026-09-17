@@ -1,0 +1,23 @@
+// tests/ffi/dyn_link —— 动态链接面(§9.6 v0.7)
+// 承诺:#[dlsym] extern 不做静态链接引用,运行期 dlsym(RTLD_DEFAULT) 首调解析
+// (缺符号 ctron_panic);dlopen/dlclose/dlsym 内建以 I64 句柄直连 dlfcn
+// (解释器口径拒绝)。夹具口径:c_src 与产物同批链接(符号在本进程全局域,
+// RTLD_DEFAULT 可达),但 dyn_add 经 thunk 运行期解析——链接期无引用。
+#[trusted]
+#[dlsym]
+extern "c" fn dyn_add(a: I64, b: I64) -> I64
+
+#[trusted]
+extern "c" fn static_mul(a: I64, b: I64) -> I64
+
+test "dlsym thunk resolves at runtime (RTLD_DEFAULT)" {
+    assert_eq(dyn_add(20, 22), 42)
+    assert_eq(dyn_add(-5, 5), 0)
+    assert_eq(static_mul(6, 7), 42)
+}
+
+test "dlopen error path: missing lib yields 0, dlclose rejects null handle" {
+    let bad = dlopen("/nonexistent_ctron_plugin.so")
+    assert_eq(bad, 0)
+    assert(dlclose(bad) != 0)
+}

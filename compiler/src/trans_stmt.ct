@@ -697,6 +697,23 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 }
             }
             var rhs = ct_expr(st[4], env, file)
+            // extern 返回 fn(v0.7 §9.6):声明位装箱——ct_fnK 裸指针 → ct_clop
+            //(fn 槽存裸地址,env 恒 0),绑定后经既有 ct_clop 间接调用与回调摘槽路径
+            // 统一工作;仅声明位(RHS 为 FnExt 调用)触发,fn 值直赋不二次装箱
+            if or2(ty == "F1", or2(ty == "F2", ty == "F3")) {
+                if st[4][0] == "Call" && st[4][1][0] == "Ident" {
+                    var bnm = st[4][1][1]
+                    var bi: I32 = 1
+                    while bi < file.len {
+                        var bd = file[bi]
+                        if bd[0] == "FnExt" && bd[1] == bnm {
+                            rhs = "(\{ ct_clop _cbx = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _cbx->fn = (void*)(" + rhs + "); _cbx->env = (void*)1; _cbx; })"
+                            bi = file.len
+                        }
+                        bi += 1
+                    }
+                }
+            }
             if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
@@ -813,8 +830,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 return env
             }
         }
-        // U64/USize 复合赋值(P1-B):uint64_t 检查帮手
-        if tt == "7" {
+        // U64/USize 复合赋值(P1-B):uint64_t 检查帮手;"z"(USize)同宽并入(v0.7)
+        if or2(tt == "7", tt == "z") {
             var h7 = ""
             if st[2] == "AddEq" { h7 = "ctron_u64_add" }
             if st[2] == "SubEq" { h7 = "ctron_u64_sub" }

@@ -55,6 +55,7 @@
 | | `native.sh` | 编译出原生编译器二进制 `bin/ctron-cc` 与 `bin/ctron-emit` |
 | | `bench.sh` | 性能基线:微基准三路 + 前端 check + 后端发射 + 黄金解释(基线见 BOOTSTRAP.md §2b) |
 | | `test/bench_ffi.sh` | FFI 边界微基准(§9.4):标量调用/回调/struct 按值/Str 编组 vs 纯 C 基线 |
+| | `tools/cimport.ct` | C 头 → Ctron 绑定生成器(§9.6 v0.7 decl 级子集:原型/#define/标量 struct;锚替换驱动) |
 | | `test/smoke.sh` | 验收冒烟(54 项;`--full` 加自发射收官与固定点) |
 | | `test/suite.py` | 用 `tests/` 一致性测试集(可执行规范)验证本编译器,对照 C 宿主;含 `modules/` 与 `ffi/`(§9.8)小节 |
 

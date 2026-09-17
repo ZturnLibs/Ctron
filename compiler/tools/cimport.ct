@@ -1,0 +1,629 @@
+// =====================================================================
+// cimport.ct —— C 头文件 → Ctron 绑定生成器(§9.6 v0.7;decl 级子集)
+// 覆盖:函数原型(定宽标量/char*→Str/变参形参)、#define 常量(整/浮/串)、
+// #[repr(c)] struct(标量字段)。其余(union/enum/函数指针形参/float 形参/
+// 数组字段)以注释占位,不静默丢弃。
+// 用法(ctc.sh 锚替换惯例,宿主 seed 或原生 ctron-cc 均可驱动):
+//   sed -e "s|ANCHORHEADER|<头文件路径>|" -e "s|ANCHOROUT|<绑定输出路径>|" \
+//     compiler/tools/cimport.ct > /tmp/cimp.ct && compiler-c/build/ctronc run /tmp/cimp.ct
+// =====================================================================
+// ---------------- 注释剥离:// 与 /* */ → 空格(保留换行) ----------------
+fn cimp_strip_comments(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    var n = s.len
+    while i < n {
+        var c = byte_at(s, i)
+        if c == 47 && i + 1 < n && byte_at(s, i + 1) == 47 {
+            while i < n && byte_at(s, i) != 10 {
+                out = out + " "
+                i += 1
+            }
+        } else if c == 47 && i + 1 < n && byte_at(s, i + 1) == 42 {
+            out = out + "  "
+            i += 2
+            while i + 1 < n && !(byte_at(s, i) == 42 && byte_at(s, i + 1) == 47) {
+                if byte_at(s, i) == 10 {
+                    out = out + "\n"
+                } else {
+                    out = out + " "
+                }
+                i += 1
+            }
+            out = out + "  "
+            i += 2
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
+
+// ---------------- trim:去两端空白 ----------------
+fn cimp_trim(s: Str) -> Str {
+    var a: I32 = 0
+    var b = s.len
+    while a < b && (byte_at(s, a) == 32 || byte_at(s, a) == 10 || byte_at(s, a) == 9) {
+        a += 1
+    }
+    while b > a {
+        var d = byte_at(s, b - 1)
+        if d == 32 || d == 10 || d == 9 {
+            b -= 1
+        } else {
+            return byte_slice(s, a, b)
+        }
+    }
+    return ""
+}
+
+// ---------------- 空白切词('*' 独立成词) ----------------
+fn cimp_toks(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var cur = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 32 || c == 10 || c == 9 {
+            if cur.len > 0 {
+                out.push(cur)
+            }
+            cur = ""
+        } else if c == 42 {
+            if cur.len > 0 {
+                out.push(cur)
+            }
+            out.push("*")
+            cur = ""
+        } else if c == 59 {
+            if cur.len > 0 {
+                out.push(cur)
+            }
+            out.push(";")
+            cur = ""
+        } else {
+            cur = cur + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    if cur.len > 0 {
+        out.push(cur)
+    }
+    return out
+}
+
+fn cimp_is_ident_start(c: I32) -> Bool {
+    if c >= 97 && c <= 122 {
+        return true
+    }
+    if c >= 65 && c <= 90 {
+        return true
+    }
+    if c == 95 {
+        return true
+    }
+    return false
+}
+
+// 型别关键词(判断末词是否名字用)
+fn cimp_is_tyword(w: Str) -> Bool {
+    var tw = List[Str]()
+    tw.push("int")
+    tw.push("char")
+    tw.push("long")
+    tw.push("double")
+    tw.push("void")
+    tw.push("short")
+    tw.push("unsigned")
+    tw.push("signed")
+    tw.push("float")
+    tw.push("const")
+    tw.push("struct")
+    tw.push("bool")
+    var j: I32 = 0
+    while j < tw.len {
+        if (w == tw[j]) {
+            return true
+        }
+        j += 1
+    }
+    return false
+}
+
+// ---------------- 类型映射:C 型别词序列 → Ctron 型别("" = 不支持) ----------------
+fn cimp_ty(t: Str) -> Str {
+    var tk = cimp_toks(t)
+    var base = List[Str]()
+    var star = false
+    var j: I32 = 0
+    while j < tk.len {
+        var w = tk[j]
+        if w == "*" {
+            star = true
+        } else if !((w == "const") || (w == "volatile") || (w == "restrict") || (w == "signed")) {
+            base.push(w)
+        }
+        j += 1
+    }
+    var nm = ""
+    j = 0
+    while j < base.len {
+        if j > 0 {
+            nm = nm + " "
+        }
+        nm = nm + base[j]
+        j += 1
+    }
+    if star {
+        if (nm == "char") {
+            return "Str"
+        }
+        return ""
+    }
+    if (nm == "void") { return "" }
+    if (nm == "int") { return "I32" }
+    if (nm == "long long") { return "I64" }
+    if (nm == "long") { return "I64" }
+    if (nm == "short") { return "I16" }
+    if (nm == "char") { return "I8" }
+    if (nm == "unsigned char") { return "U8" }
+    if (nm == "unsigned short") { return "U16" }
+    if (nm == "unsigned int") { return "U32" }
+    if (nm == "unsigned long") { return "U64" }
+    if (nm == "unsigned long long") { return "U64" }
+    if (nm == "int8_t") { return "I8" }
+    if (nm == "int16_t") { return "I16" }
+    if (nm == "int32_t") { return "I32" }
+    if (nm == "int64_t") { return "I64" }
+    if (nm == "uint8_t") { return "U8" }
+    if (nm == "uint16_t") { return "U16" }
+    if (nm == "uint32_t") { return "U32" }
+    if (nm == "uint64_t") { return "U64" }
+    if (nm == "size_t") { return "USize" }
+    if (nm == "ptrdiff_t") { return "I64" }
+    if (nm == "double") { return "F64" }
+    if (nm == "_Bool") { return "Bool" }
+    if (nm == "bool") { return "Bool" }
+    return ""
+}
+
+// 形参/字段分解:文本 → "名: 型"("" = 不支持);无名合成 <syn>
+fn cimp_param(t: Str, syn: Str) -> Str {
+    // 函数指针(括号)与数组(方括号)不支持
+    var q: I32 = 0
+    while q < t.len {
+        var c = byte_at(t, q)
+        if c == 40 || c == 91 {
+            return ""
+        }
+        q += 1
+    }
+    var tk = cimp_toks(t)
+    if tk.len == 0 {
+        return ""
+    }
+    var nm = tk[tk.len - 1]
+    var isname = false
+    if cimp_is_ident_start(byte_at(nm, 0)) && !cimp_is_tyword(nm) {
+        isname = true
+    }
+    var tyt = ""
+    var kend = tk.len
+    if isname && tk.len > 1 {
+        kend = tk.len - 1
+    }
+    var j: I32 = 0
+    while j < kend {
+        if j > 0 {
+            tyt = tyt + " "
+        }
+        tyt = tyt + tk[j]
+        j += 1
+    }
+    if !isname {
+        tyt = t
+    }
+    var ct = cimp_ty(tyt)
+    if ct.len == 0 {
+        return ""
+    }
+    var use_nm = syn
+    if isname {
+        use_nm = nm
+    }
+    return use_nm + ": " + ct
+}
+
+// ---------------- 原型 → #[trusted] extern 绑定 ----------------
+fn cimp_proto(item: Str) -> Str {
+    var pd: I32 = 0
+    var lp = -1
+    var rp = -1
+    var i: I32 = 0
+    while i < item.len {
+        var c = byte_at(item, i)
+        if c == 40 {
+            if pd == 0 && lp < 0 {
+                lp = i
+            }
+            pd += 1
+        }
+        if c == 41 {
+            pd -= 1
+            if pd == 0 && rp < 0 {
+                rp = i
+            }
+        }
+        i += 1
+    }
+    if lp < 1 || rp < lp {
+        return ""
+    }
+    var lhs = cimp_trim(byte_slice(item, 0, lp))
+    var mid = cimp_trim(byte_slice(item, lp + 1, rp))
+    var lt = cimp_toks(lhs)
+    if lt.len < 2 {
+        return ""
+    }
+    var name = lt[lt.len - 1]
+    var rett = ""
+    var j: I32 = 0
+    while j < lt.len - 1 {
+        if !((lt[j] == "extern") || (lt[j] == "static") || (lt[j] == "inline")) {
+            if rett.len > 0 {
+                rett = rett + " "
+            }
+            rett = rett + lt[j]
+        }
+        j += 1
+    }
+    var retv = cimp_ty(rett)
+    if retv.len == 0 {
+        var rt = cimp_toks(rett)
+        var isvoid = false
+        if rt.len == 1 && (rt[0] == "void") {
+            isvoid = true
+        }
+        if !isvoid {
+            return "// cimport: 跳过(返回类型不支持): " + item
+        }
+    }
+    // 形参切分(深度 0 逗号)
+    var ps = List[Str]()
+    var cur = ""
+    var d: I32 = 0
+    i = 0
+    while i < mid.len {
+        var c = byte_at(item, lp + 1 + i)
+        if c == 40 {
+            d += 1
+        }
+        if c == 41 {
+            d -= 1
+        }
+        if c == 44 && d == 0 {
+            ps.push(cimp_trim(cur))
+            cur = ""
+        } else {
+            cur = cur + byte_slice(item, lp + 1 + i, lp + 2 + i)
+        }
+        i += 1
+    }
+    if cimp_trim(mid).len > 0 {
+        ps.push(cimp_trim(cur))
+    }
+    var args = ""
+    var variadic = false
+    var k: I32 = 0
+    var first = true
+    var syn: I32 = 1
+    while k < ps.len {
+        var pv = ps[k]
+        if (pv == "...") {
+            variadic = true
+        } else if (pv == "void") && ps.len == 1 {
+            // (void) → 无参
+        } else {
+            var pa = cimp_param(pv, "p" + syn.to_string())
+            if pa.len == 0 {
+                return "// cimport: 跳过(形参不支持): " + item
+            }
+            if !first {
+                args = args + ", "
+            }
+            args = args + pa
+            first = false
+            syn += 1
+        }
+        k += 1
+    }
+    var sig = args
+    if variadic {
+        if !first {
+            sig = sig + ", "
+        }
+        sig = sig + "..."
+    }
+    var head = "#[trusted]\nextern \"c\" fn " + name + "(" + sig + ")"
+    if retv.len > 0 {
+        head = head + " -> " + retv
+    }
+    return head
+}
+
+// ---------------- struct → #[repr(c)] struct(标量字段) ----------------
+fn cimp_struct(item: Str) -> Str {
+    // 定位首个 '{' 与配对 '}'
+    var lb = -1
+    var rb = -1
+    var dep: I32 = 0
+    var i: I32 = 0
+    while i < item.len {
+        var c = byte_at(item, i)
+        if c == 123 {
+            if dep == 0 && lb < 0 {
+                lb = i
+            }
+            dep += 1
+        }
+        if c == 125 {
+            dep -= 1
+            if dep == 0 && rb < 0 {
+                rb = i
+            }
+        }
+        i += 1
+    }
+    if lb < 0 || rb < lb {
+        return ""
+    }
+    var head = cimp_trim(byte_slice(item, 0, lb))
+    var body = byte_slice(item, lb + 1, rb)
+    var tail = cimp_trim(byte_slice(item, rb + 1, item.len))
+    var ht = cimp_toks(head)
+    var hasunion = false
+    var hasenum = false
+    var hq: I32 = 0
+    while hq < ht.len {
+        if (ht[hq] == "union") { hasunion = true }
+        if (ht[hq] == "enum") { hasenum = true }
+        hq += 1
+    }
+    if hasunion || hasenum {
+        return "// cimport: 跳过(union/enum): " + item
+    }
+    // 名字:尾词(tail 的最后一个标识符);无名(typedef 前置名不在尾)→ 跳过
+    var tt = cimp_toks(tail)
+    if tt.len == 0 {
+        return "// cimport: 跳过(匿名 struct): " + item
+    }
+    var snm = tt[tt.len - 1]
+    if snm == ";" && tt.len > 1 {
+        snm = tt[tt.len - 2]
+    }
+    if !cimp_is_ident_start(byte_at(snm, 0)) {
+        return "// cimport: 跳过(匿名 struct): " + item
+    }
+    // 字段切分 ';'
+    var out = "#[repr(c)]\nstruct " + snm + " \{\n"
+    var cur = ""
+    var ffirst = true
+    i = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 59 {
+            var ftxt = cimp_trim(cur)
+            if ftxt.len > 0 {
+                var pa = cimp_param(ftxt, "f" + i.to_string())
+                if pa.len == 0 {
+                    out = out + "    // cimport: 跳过字段(类型不支持): " + ftxt + "\n"
+                } else {
+                    if !ffirst {
+                        // 字段间空行不需要;仅排序
+                    }
+                    out = out + "    var " + pa + "\n"
+                    ffirst = false
+                }
+            }
+            cur = ""
+        } else {
+            cur = cur + byte_slice(body, i, i + 1)
+        }
+        i += 1
+    }
+    out = out + "}"
+    return out
+}
+
+// ---------------- #define → const ----------------
+fn cimp_define(line: Str) -> Str {
+    // "#define NAME value"(函数宏:NAME 后紧跟 '(' → 跳过)
+    var rest = cimp_trim(byte_slice(line, 7, line.len))
+    var tk = cimp_toks(rest)
+    if tk.len < 2 {
+        return "// cimport: 跳过(空宏): " + line
+    }
+    var nm = tk[0]
+    if !cimp_is_ident_start(byte_at(nm, 0)) {
+        return "// cimport: 跳过(宏名非法): " + line
+    }
+    var val = cimp_trim(byte_slice(rest, nm.len, rest.len))
+    if val.len == 0 {
+        return "// cimport: 跳过(空宏): " + line
+    }
+    if byte_at(val, 0) == 40 {
+        return "// cimport: 跳过(函数宏): " + line
+    }
+    // 分类:串 / 浮 / 整(含 0x/0o/0b 与负号);其余(表达式)跳过
+    var c0 = byte_at(val, 0)
+    if c0 == 34 {
+        return "const " + nm + ": Str = " + val
+    }
+    var isnum = true
+    var q: I32 = 0
+    var dots = 0
+    while q < val.len {
+        var c = byte_at(val, q)
+        if c == 46 {
+            dots += 1
+        } else {
+            var ok = false
+            if c >= 48 && c <= 57 { ok = true }
+            if c >= 97 && c <= 102 { ok = true }
+            if c >= 65 && c <= 70 { ok = true }
+            if c == 45 && q == 0 { ok = true }
+            if c == 88 || c == 120 || c == 79 || c == 111 || c == 66 || c == 98 || c == 76 { ok = true }
+            if !ok {
+                isnum = false
+            }
+        }
+        q += 1
+    }
+    if !isnum {
+        return "// cimport: 跳过(表达式宏): " + line
+    }
+    if dots > 0 {
+        return "const " + nm + ": F64 = " + val
+    }
+    return "const " + nm + ": I64 = " + val
+}
+
+// ---------------- 顶层项分派 ----------------
+fn cimp_item(item: Str) -> Str {
+    if item.len == 0 {
+        return ""
+    }
+    if byte_at(item, 0) == 35 {
+        if item.len > 7 && byte_slice(item, 0, 7) == "#define" {
+            return cimp_define(item)
+        }
+        return "// cimport: 跳过(预处理指令): " + item
+    }
+    // 含 '{' → struct/union/enum 候选
+    var hasbrace = false
+    var q: I32 = 0
+    while q < item.len {
+        if byte_at(item, q) == 123 {
+            hasbrace = true
+        }
+        q += 1
+    }
+    if hasbrace {
+        var st = cimp_struct(item)
+        if st.len > 0 {
+            return st
+        }
+        return "// cimport: 跳过(复合声明): " + item
+    }
+    // 含 '(' → 原型
+    var hasparen = false
+    q = 0
+    while q < item.len {
+        if byte_at(item, q) == 40 {
+            hasparen = true
+        }
+        q += 1
+    }
+    if hasparen {
+        var pr = cimp_proto(item)
+        if pr.len > 0 {
+            return pr
+        }
+        return "// cimport: 跳过(原型不可解析): " + item
+    }
+    return "// cimport: 跳过(未识别): " + item
+}
+
+// ---------------- 顶层项切分:';'(深度 0)或 '}' 收口;# 行前置抽取 ----------------
+fn cimp_items(s: Str) -> List[Str] {
+    var items = List[Str]()
+    var cur = ""
+    var pd: I32 = 0
+    var bd: I32 = 0
+    var i: I32 = 0
+    var n = s.len
+    var line = ""
+    var midbrace = false
+    var flushline = false
+    while i < n {
+        var c = byte_at(s, i)
+        if c == 10 {
+            var t = cimp_trim(line)
+            if t.len > 0 && byte_at(t, 0) == 35 {
+                // 预处理行:#define 入项流;常见守卫静默丢弃;其余留作跳过注释
+                if t.len > 7 && byte_slice(t, 0, 7) == "#define" {
+                    items.push(t)
+                } else if t.len > 7 && byte_slice(t, 0, 7) == "#ifndef" {
+                } else if t.len > 6 && byte_slice(t, 0, 6) == "#endif" {
+                } else if t.len > 8 && byte_slice(t, 0, 8) == "#include" {
+                } else if t.len > 7 && byte_slice(t, 0, 7) == "#pragma" {
+                } else if t.len > 3 && byte_slice(t, 0, 3) == "#if" {
+                } else {
+                    items.push(t)
+                }
+                line = ""
+            } else {
+                cur = cur + line
+                line = ""
+            }
+        } else {
+            line = line + byte_slice(s, i, i + 1)
+        }
+        var emit = false
+        if c == 40 {
+            pd += 1
+        } else if c == 41 && pd > 0 {
+            pd -= 1
+        } else if c == 123 {
+            bd += 1
+            midbrace = true
+        } else if c == 125 {
+            bd -= 1
+            if bd == 0 {
+                midbrace = false
+                flushline = true
+            }
+        } else if c == 59 && pd == 0 && !midbrace && !flushline {
+            emit = true
+        }
+        if emit || (flushline && c == 10) {
+            var t2 = cimp_trim(cur + line)
+            if t2.len > 0 {
+                items.push(t2)
+            }
+            cur = ""
+            line = ""
+            flushline = false
+        }
+        i += 1
+    }
+    return items
+}
+
+fn main() -> I32 {
+    let src = read_file("ANCHORHEADER")
+    match src {
+        Some(s) => {
+            var clean = cimp_strip_comments(s)
+            var out = "// 由 compiler/tools/cimport.ct 生成(§9.6 v0.7 decl 级子集)\n"
+            out = out + "// 覆盖:函数原型 / #define 常量 / #[repr(c)] struct(标量字段)\n\n"
+            var items = cimp_items(clean)
+            var i: I32 = 0
+            while i < items.len {
+                var text = cimp_item(items[i])
+                if text.len > 0 {
+                    out = out + text + "\n\n"
+                }
+                i += 1
+            }
+            fs_write("ANCHOROUT", out)
+            println("cimport: 绑定已写出(" + (out.len).to_string() + " 字节)")
+            return 0
+        }
+        None => {
+            println("cimport: 读不到头文件 ANCHORHEADER")
+            return 1
+        }
+    }
+}

@@ -1,0 +1,14 @@
+// tests/ffi/cimport —— cimport 端到端(§9.6 v0.7)
+// 本文件是"使用体"(由 run.sh 拼在生成绑定之后):绑定面见 sample.h → cimport 生成。
+// 承诺:生成绑定可直接编译——struct/常量/原型跨边界全通。
+fn main() -> I32 {
+    var p = SamplePoint { x: 9, weight: 0.75, label: "pt", flags: 7 }
+    let sum = sample_add(p.x, SAMPLE_VERSION)
+    assert_eq(sum, 51)
+    assert_eq(sample_scale(p.weight, 2) > 1.0, true)
+    assert_eq(sample_count(p.label, 10), 2)
+    assert_eq(p.flags, 7)
+    assert_eq(SAMPLE_NAME, "ctron")
+    println("cimport e2e OK")
+    return 0
+}

@@ -246,7 +246,11 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
             i += sl
             rpush(raw, rlines, rcols, line, c0, tk)
         } else {
-            if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
+            if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 46 {
+                // "..." 变参标记(§9.6 v0.7:extern 形参表尾)
+                rpush(raw, rlines, rcols, line, c0, "...")
+                i += 3
+            } else if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
                 rpush(raw, rlines, rcols, line, c0, "..=")
                 i += 3
             } else if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {

@@ -1,0 +1,25 @@
+// tests/ffi/export —— 导出面(§9.6 v0.7):#[export] 发射非静态 C 符号包装
+// 承诺:Ctron fn 可被 C 工程直链(嵌入面);包装直透 t_<名>,文件含 static let 时
+// 首调过 ctron_statics_init 守卫。验证口径:发射 C 以 -Dmain 重命名其测试 main,
+// C 侧自备 main 直调导出符号(见 c_src/embed.c;由 tests/ffi/run.sh 驱动)。
+#[export]
+fn magic(x: I64) -> I64 {
+    return x * 3 + 1
+}
+
+#[export]
+fn tally(a: I64, b: I64, c: I64) -> I64 {
+    return a + b * 10 + c * 100
+}
+
+static let BASE: I64 = 1000
+
+#[export]
+fn based(x: I64) -> I64 {
+    return BASE + x
+}
+
+test "internal consistency (exports are additive surface)" {
+    assert_eq(magic(4), 13)
+    assert_eq(based(1), 1001)
+}

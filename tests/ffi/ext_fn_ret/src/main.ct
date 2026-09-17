@@ -1,0 +1,15 @@
+// tests/ffi/ext_fn_ret —— extern 返回 fn 类型(§9.6 v0.7 解禁,原 W8053 挂账项)
+// 承诺:extern 以 ct_fnK 裸指针返回回调;let 声明位自动装箱(ct_clop,env 恒 0),
+// 绑定后既可本地直调,也可再传回 C 边界(ct_cb_ref 摘 fn 槽)。
+#[trusted]
+extern "c" fn get_inc() -> fn(I64) -> I64
+
+#[trusted]
+extern "c" fn apply_twice(f: fn(I64) -> I64, x: I64) -> I64
+
+test "extern-returned callback: bind, call locally, re-pass across boundary" {
+    let f: fn(I64) -> I64 = get_inc()
+    assert_eq(f(5), 6)
+    assert_eq(f(0), 1)
+    assert_eq(apply_twice(f, 10), 12)
+}

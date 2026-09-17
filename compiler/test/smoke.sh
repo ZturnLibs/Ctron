@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=285' "$T/chk.out" && ok "自检 cc_run 绿,decls=283" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=286' "$T/chk.out" && ok "自检 cc_run 绿,decls=283" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -364,6 +364,16 @@ ffi_case() { # <目录名>
 }
 ffi_case callback
 ffi_case repr_c
+ffi_case variadic
+ffi_case dyn_link
+ffi_case layout
+ffi_case ext_fn_ret
+"$COMP/bin/ctron-cc" run "$ROOT/tests/ffi/variadic_nonext.neg.ct" > "$T/ffi_va.out" 2>&1; rc=$?
+if [ $rc -eq 1 ] && grep -q "E4044" "$T/ffi_va.out"; then
+    ok "FFI 负例拦截(变参非 extern E4044, rc=1)"
+else
+    bad "FFI 变参负例未拦截(rc=$rc)"
+fi
 "$COMP/bin/ctron-cc" run "$ROOT/tests/ffi/closure_cb.neg.ct" > "$T/ffi_neg.out" 2>&1; rc=$?
 if [ $rc -eq 1 ] && grep -q "E4042" "$T/ffi_neg.out"; then
     ok "FFI 负例拦截(捕获闭包回调 E4042, rc=1)"

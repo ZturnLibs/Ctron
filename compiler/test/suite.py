@@ -207,8 +207,13 @@ ffi_dir = os.path.join(TESTS, "ffi")
 if os.path.isdir(ffi_dir):
     for case in sorted(glob.glob(os.path.join(ffi_dir, "*"))):
         if os.path.isdir(case) and os.path.isdir(os.path.join(case, "c_src")):
-            if os.path.basename(case) == "bench":
+            name = os.path.basename(case)
+            if name == "bench":
                 continue  # 微基准夹具由 compiler/test/bench_ffi.sh 驱动,不入行为面
+            if name == "export":
+                continue  # 嵌入面:链接 C main,由 tests/ffi/run.sh -Dmain 路径驱动
+            if name == "cimport":
+                continue  # 绑定生成面:由 tests/ffi/run.sh cimport 路径驱动
             entry = os.path.join(case, "src", "main.ct")
             if not os.path.exists(entry):
                 fnote.append(f"{os.path.basename(case)}: 无 src/main.ct(跳过)")

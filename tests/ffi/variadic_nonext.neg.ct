@@ -1,0 +1,5 @@
+// tests/ffi/variadic_nonext.neg.ct —— E4044:变参形参仅限 extern 声明(§9.6 v0.7)
+//@ fail: E4044
+fn bad_va(a: I32, ...) -> I32 {
+    return a
+}

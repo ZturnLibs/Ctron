@@ -18,7 +18,13 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
     var ps = mk("Ps")
     var more = true
     while more {
-        if tok(toks, cur) == ")" { more = false } else {
+        if tok(toks, cur) == "..." {
+            // "..." 变参尾标(v0.7 §9.6):仅 extern 声明合法(否则 sem E4044);
+            // 落 Ps 尾部标记节点,发射面据此补 C "...";ct_fn_pcodes 自然跳过
+            adv(cur)
+            ps.push(mk("VaArgs"))
+            more = false
+        } else if tok(toks, cur) == ")" { more = false } else {
             var isv = "false"
             var t0 = tok(toks, cur)
             if t0 == "var" { isv = "true" }
@@ -506,15 +512,66 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         if t == "#EOF" {
             go = false
         } else if t == "#" {
-            adv(cur)
-            adv(cur)
-            var anm = tok(toks, cur)
-            adv(cur)
-            while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
-                adv(cur)
-            }
-            if tok(toks, cur) == "]" {
-                adv(cur)
+            // 属性捕获(§9.6 v0.7):可堆叠 #[a] #[b](逗号拼接);每段 名+可选括号
+            // 实参(嵌套计深);裸名属性保持原文(trusted/pure/no_spawn 等值判兼容)
+            var anm = ""
+            var moreattr = true
+            while moreattr {
+                var skipnl = true
+                while skipnl {
+                    var nt = tok(toks, cur)
+                    if nt == "NL" {
+                        adv(cur)
+                    } else {
+                        skipnl = false
+                    }
+                }
+                if tok(toks, cur) != "#" {
+                    moreattr = false
+                } else {
+                    adv(cur)
+                    adv(cur)
+                    var g = tok(toks, cur)
+                    adv(cur)
+                    if tok(toks, cur) == "(" {
+                        g = g + "("
+                        var dep: I32 = 1
+                        adv(cur)
+                        var morea = true
+                        while morea {
+                            var at = tok(toks, cur)
+                            if at == "#EOF" {
+                                morea = false
+                            } else if at == "(" {
+                                dep += 1
+                                g = g + at
+                                adv(cur)
+                            } else if at == ")" {
+                                dep -= 1
+                                adv(cur)
+                                if dep == 0 {
+                                    morea = false
+                                } else {
+                                    g = g + ")"
+                                }
+                            } else {
+                                g = g + at
+                                adv(cur)
+                            }
+                        }
+                        g = g + ")"
+                    }
+                    while tok(toks, cur) != "]" && tok(toks, cur) != "#EOF" {
+                        adv(cur)
+                    }
+                    if tok(toks, cur) == "]" {
+                        adv(cur)
+                    }
+                    if anm != "" {
+                        anm = anm + ","
+                    }
+                    anm = anm + g
+                }
             }
             while tok(toks, cur) == "NL" {
                 adv(cur)
