@@ -134,6 +134,19 @@ ctc --version        # ctron 0.1.0 (bootstrap <sha>, <os>/<arch>)
 文档口径:`run`/`check` 成熟路径;`build` 标 **beta**(发射器能力面仍有 README 记载的
 挂账,部分形态命中即 panic);Windows 整体标 beta。
 
+**`ctc build` 的 cc 缺失路径**(环境前置失败,与程序诊断分离):
+
+1. 预检 = cc 编译冒烟,不是存在性检查:`echo 'int main(){return 0;}' | $CC -x c - -o <tmp>`——
+   只查 `command -v` 不够(macOS 无 CLT 时 `/usr/bin/cc` 是存在但必报错的垫片;PATH 坏、
+   头文件缺同理);
+2. 预检失败**仍发射 C**(发射 <0.1s 且本身是合法产物),错误信息一次性给出两条出路:
+   ① 平台化安装指引(mac `xcode-select --install` / linux 发行版 gcc / windows MSYS2
+   或 w64devkit);② 已生成的 `.c` 位置(单文件模式:`<stem>.c` 与源同目录;项目模式:
+   `build/`)——可手动编译,或拿到任何有 cc 的机器上编译;
+3. rc 约定:`0` 成功 / `1` 程序诊断失败(含负例拦截)/ `2` ctc 自身环境前置缺失
+   (cc 不可用、std 找不到等)——沿用 ctc.sh 现有"缺宿主 seed rc=2"惯例;
+4. `run`/`check`/`test`/`new` 均不经过 cc,此故障隔离在 build 路径。
+
 ## 5. 仓库改造清单
 
 | # | 改造 | 位置 | 平台 | 说明 |
@@ -170,14 +183,16 @@ per-platform 发布容错:任一平台验收失败不阻塞其余平台过验收
 1. 解压即用:`ctc run` examples 三件输出正确;`ctc build` 出可执行且输出与解释一致;
 2. **工作目录 ≠ 安装目录**用例(打 std 解析回归):任意 cwd 下 `use std.*` 命中装机路径;
 3. 负例拦截 rc=1;`ctc --version` 正确;
-4. 源码线:`make` → 三二进制 → 同套用例绿。
+4. 源码线:`make` → 三二进制 → 同套用例绿;
+5. **无 cc 预检**:PATH 隔离用例下 `ctc build` 仍产出 `.c` 且 rc=2、消息含平台指引与
+   `.c` 位置;同环境 `ctc run` 不受影响。
 
-Windows 专项(在 1–4 之上追加):
+Windows 专项(在 1–5 之上追加):
 
-5. 并发夹具(spawn/Channel/Mutex,winpthreads 通路);
-6. 深递归夹具(栈链接参数生效验证);
-7. CRLF 夹具(第 8 项改造的回归);
-8. 驱动 conformance:ctc.ps1 与 sh 版同参数面。
+6. 并发夹具(spawn/Channel/Mutex,winpthreads 通路);
+7. 深递归夹具(栈链接参数生效验证);
+8. CRLF 夹具(第 8 项改造的回归);
+9. 驱动 conformance:ctc.ps1 与 sh 版同参数面。
 
 ## 8. 边界(v0 明确不做)
 
