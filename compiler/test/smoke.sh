@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=286' "$T/chk.out" && ok "自检 cc_run 绿,decls=283" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=312' "$T/chk.out" && ok "自检 cc_run 绿,decls=283" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -88,6 +88,20 @@ tc_fx fx_litfit_arg_neg "E2040"
 tc_fx fx_bound_ann_neg "E2050"
 tc_fx fx_trusted_neg "W8050"
 tc_fx fx_trusted_fn_neg "E4040"
+echo "== 2d) 诊断 i18n(§10.8;ANCHORLANG 构建锚) =="
+"$COMP/ctc.sh" check "$COMP/test/fx_type_neg.ct" --lang=en > "$T/tc_en.out" 2>&1
+erc=$?
+if [ $erc -eq 1 ] && grep -q "let initializer type mismatch" "$T/tc_en.out"; then
+    ok "诊断 i18n en 面(--lang=en,E2010.let 英文文案)"
+else
+    bad "诊断 i18n en 异常(rc=$erc): $(cat "$T/tc_en.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/fx_type_neg.ct" > "$T/tc_zh.out" 2>&1
+if grep -q "let 初始化类型不匹配" "$T/tc_zh.out"; then
+    ok "诊断 i18n 缺省 zh(不随 en 用例漂移)"
+else
+    bad "诊断 i18n 缺省语言异常: $(cat "$T/tc_zh.out")"
+fi
 "$COMP/ctc.sh" emit "$COMP/test/fx_genrec_neg.ct" "$T/gr.c" > "$T/gr.out" 2>&1
 grc=$?
 if [ $grc -eq 1 ] && grep -q "递归超限" "$T/gr.out"; then
