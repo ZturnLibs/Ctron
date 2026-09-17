@@ -75,6 +75,17 @@
 
 ## 第二波(编译器集成,S6 后排期)
 
+> **W1 施工预案(2026-09-16 细化,FFI 泳道落库即可开工)**:
+> 1. 新增 `compiler/src/gui_parse.ct`——块扫描器:在 token 流上做平衡大括号扫描
+>    (词法已把字符串收为单 token,**token 级平衡扫描对 `{count}` 类文本安全**,
+>    无需字符串感知),产出 view/style 块的 token 区间表;
+> 2. `compiler/src/parse_decl.ct` p_file——顶层 IDENT=="view"/"style" 时移交
+>    gui_parse(关键字认领 = 一个字符串分支,**lex.ct 零改动**);
+> 3. `compiler/src/driver_check.ct`——`--dump-gui` 调试口径:块区间 → IR dump
+>    (黄金差分锚点);sem 12 项对 gui 块直通(W3 才接入 E8xxx);
+> 4. 验收:`check` 口径自编译不崩 + dump 黄金 + 既有 63 suite 全绿。
+> ⚠ 重叠预警:parse_decl.ct 当前被 FFI 泳道工作区占用(M)——W1 待其落库后开工。
+
 - W1 语言关键字认领:`view`/`style` 块边界进解析器(§11.1 C2 裁决),块内容移交 gui 前端;
 - W2 `gui_lower` comptime 折叠:令牌求值/extends 展开/多类合并/颜色格式校验;
 - W3 E8xxx 检查面进 `ctc check`(负例语料 `tests/09_gui/`,逐字诊断差分);
