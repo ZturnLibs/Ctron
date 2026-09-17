@@ -386,6 +386,12 @@ letter-spacing/line-height/wrap**)、伪类(`:hover`/`:active`/`:focus`)、
 pointerCapture + clipTo)、元素 `id` 属性(浮层锚定;M4 语义树复用)、image、
 CUSTOM 自绘逃生口。
 
+**语义钉死(2026-09-17 可读性评审)**:`gap` = **主轴**子间距(vbox=行间、
+hbox=列间),非 CSS 双轴;wrap 换行方向间距 Clay 无原生(登记缺口,引擎升级
+再评),当前配方 = 行容器交替 padding。`padding` 只允许单值(四边同值)或具名
+四边(`padding-left` 等),**不做 CSS 多值简写**(无 TRBL 记忆坑)。长度一律
+逻辑像素整数,单位隐含(C4)。
+
 **不支持(红线 = Clay 没有的语义)**:cascade 与 specificity 计算、元素/后代
 选择器、`!important`、继承链、grid(Clay 无此能力,引擎对齐即"无")、动画/过渡、
 `@media`(断点后置于容器查询形态另议)、margin(不设脱糖)、瀑布流 masonry
@@ -412,6 +418,9 @@ CUSTOM 自绘逃生口。
 
    颜色串由 gui_lower 在 comptime 校验 `#RRGGBB` / `#RRGGBBAA` 格式,非法 = E8130;
    间距等长度为 I32 逻辑像素(§5.1)。
+   **style 块作用域(2026-09-17 可读性评审)**:与绑定作用域同一规则(§4.2 要点 2′)
+   ——所在编译单元的顶层声明(fn/const,含 `use` 导入);默认主题经显式
+   `use gui.theme` 导入,无隐式注入。
 
 2. **共享样式 = `pub style` + `use`**:组件文件内 `style` 默认文件私有,`pub` 即导出;
    消费方 `use` 导入——解析规则"本地优先,再查导入",确定名字查找替代 specificity。
@@ -614,6 +623,13 @@ pub class Todo     { var title: Str; var done: Bool }
 pub class Model {
     var todos: List[Todo] = List[Todo]()
     var draft: Str = ""
+}
+```
+
+```ct
+// src/main.ct(同步更新——props 必填,缺失 = E8100;`use gui` 不变)
+fn main() -> I32 {
+    gui.run(TodoApp(model: Model()))
 }
 ```
 
@@ -924,7 +940,14 @@ Cairo/NanoVG(渲染自绘)、webview/JS 引擎、独立图像解码库(M0 用 ra
    + 文本渲染实现;
 4. **通用 props 约定(全组件,规范性)**:`class`(样式类);`disabled`(交互组件禁用,
    运行时自动合并 `disabled` 类,不新增伪类);`visible`(显隐,编译为布局跳过、
-   不占位);事件统一 `on:xxx={handler}`;双向绑定统一 `bind={model.field}`。
+   不占位;选用规则:**单元素显隐用 `visible`,结构性分支/列表段用 `<when>`**
+   ——2026-09-17 可读性评审);事件统一 `on:xxx={handler}`(自动闭包,§4.2
+   要点 3);双向绑定统一 `bind={model.field}`。
+
+**零样式默认表(2026-09-17 可读性评审,规范性)**:任何组件不写任何样式 =
+**尺寸 hug×hug、无 padding/gap**,方向按组件语义(vbox/panel = 列,hbox = 行,
+scroll 同宿主容器)。例外:**无**——"不写样式 = 自然尺寸"全局成立(原 label
+宽 grow 默认废止,见 T1 表)。
 
 **T0 容器(M0)**
 
@@ -932,14 +955,14 @@ Cairo/NanoVG(渲染自绘)、webview/JS 引擎、独立图像解码库(M0 用 ra
 |---|---|---|
 | `vbox` / `hbox` | 布局走样式 | 线性容器(direction 语法糖:column/row) |
 | `spacer` | — | 弹性空白(fill 尺寸语法糖) |
-| `panel` | — | 通用容器:背景/边框/裁剪(clip) |
+| `panel` | — | 通用容器:背景/边框/裁剪(clip);**= 带默认样式的 vbox**(2026-09-17 可读性评审:容器同基不同默认样式——vbox/hbox 同样可带视觉样式,无特权) |
 | `scroll` | 滚动位置=运行时本地 | 滚动容器:裁剪 + 滚轮/拖动(§12.3c 滚动命令) |
 
 **T1 基础交互(M0–M1)**
 
 | 组件 | props | 事件 | 注 |
 |---|---|---|---|
-| `label` | 插值文本 | — | 宽 grow 为默认(防意外换行,§13.2 注记);容器约束下的换行=自然行为 |
+| `label` | 插值文本 | — | 宽默认 **hug**(= 文本自然宽;2026-09-17 可读性评审修订——原 grow 默认与 hug 容器组合必触 E8192);撑满走主题 `.grow` 类或显式 grow;容器约束下的换行=自然行为 |
 | `button` | 内容 = slot | `on:click` | hover/active 伪类;disabled |
 | `checkbox` | `bind`(Bool) | `on:toggle` | 受控;勾选视觉自绘 |
 | `input` | `bind`(Str)、`placeholder` | `on:submit`(Enter 合成)、`on:change` | 受控;M0–M2 上屏可达/无组词(§6.4 边界),M3 完整 IME |
