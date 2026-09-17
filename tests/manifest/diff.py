@@ -132,6 +132,10 @@ def main():
                 sh_sections[cur] = []
             elif cur is not None and line.strip():
                 sh_sections[cur].append(line.strip())
+        if not sh_sections:
+            # 第四臂静默失效防护:零输出 = 驱动异常,拒绝降级为三线对拍
+            print("FAIL:第四臂(自举线)零输出——ctcl_chk 运行异常,拒绝静默降级")
+            return 1
 
     bad = skip = 0
     total = 0

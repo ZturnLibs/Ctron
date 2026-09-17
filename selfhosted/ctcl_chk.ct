@@ -152,6 +152,74 @@ fn c_split_nl(s: Str) -> List[Str] {
     return out
 }
 
+fn c_is_name(v: Str) -> Bool {
+    if v.len == 0 {
+        return false
+    }
+    if byte_at(v, 0) < 97 || byte_at(v, 0) > 122 {
+        return false
+    }
+    var i: I32 = 0
+    while i < v.len {
+        var c = byte_at(v, i)
+        if !((c >= 97 && c <= 122) || c == 95 || (c >= 48 && c <= 57) || c == 45) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn c_semver_pat() -> Str {
+    return "(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?"
+}
+
+fn c_is_semver(v: Str) -> Bool {
+    var np: I32 = 0
+    var i: I32 = 0
+    while i < v.len {
+        var c = byte_at(v, i)
+        if c == 46 {
+            np += 1
+            i += 1
+        } else if c >= 48 && c <= 57 {
+            i += 1
+        } else {
+            return false
+        }
+    }
+    if np != 2 {
+        return false
+    }
+    var segs = List[Str]()
+    var st: I32 = 0
+    var k: I32 = 0
+    while k < v.len {
+        if byte_at(v, k) == 46 {
+            segs.push(byte_slice(v, st, k))
+            st = k + 1
+        }
+        k += 1
+    }
+    segs.push(byte_slice(v, st, v.len))
+    var si: I32 = 0
+    while si < 3 {
+        var seg = segs[si]
+        if seg.len == 0 {
+            return false
+        }
+        if seg.len == 1 && byte_at(seg, 0) == 48 {
+            si += 1
+            continue
+        }
+        if byte_at(seg, 0) < 49 || byte_at(seg, 0) > 57 {
+            return false
+        }
+        si += 1
+    }
+    return true
+}
+
 fn c_is_int(v: Str) -> Bool {
     if v.len == 0 {
         return false
@@ -452,6 +520,11 @@ fn validate_text(t: Str) -> List[Str] {
     var saw_version = false
     var has_mver = false
     var mver_ok = false
+    var b_saw_pkg = false
+    var b_saw_name = false
+    var b_saw_version = false
+    var b_has_mver = false
+    var b_mver_ok = false
     var dep_active = false
     var has_path = 0
     var has_git = 0
@@ -500,6 +573,26 @@ fn validate_text(t: Str) -> List[Str] {
 
         if block.len > 0 {
             if seq2(line, "}") {
+            if b_saw_pkg {
+                saw_pkg = true
+            }
+            if b_saw_name {
+                saw_name = true
+            }
+            if b_saw_version {
+                saw_version = true
+            }
+            if b_has_mver {
+                has_mver = true
+            }
+            if b_mver_ok {
+                mver_ok = true
+            }
+            b_saw_pkg = false
+            b_saw_name = false
+            b_saw_version = false
+            b_has_mver = false
+            b_mver_ok = false
                 if dep_active {
                     var np: I32 = 0
                     var first = ""
@@ -647,6 +740,11 @@ fn validate_text(t: Str) -> List[Str] {
                     block = "skip"
                     continue
                 }
+                if !c_is_name(arg) {
+                    ds.push("E5048 键控块名 '" + arg + "' 不符合包名规则")
+                    block = "skip"
+                    continue
+                }
                 var dupi: I32 = -1
                 var i3: I32 = 0
                 while i3 < seen_deps.len {
@@ -672,7 +770,7 @@ fn validate_text(t: Str) -> List[Str] {
                 continue
             }
             if seq2(id, "pkg") {
-                saw_pkg = true
+                b_saw_pkg = true
             }
             block = id
             continue
@@ -810,7 +908,7 @@ fn validate_text(t: Str) -> List[Str] {
                 continue
             }
             if seq2(key, "manifest_version") {
-                has_mver = true
+                b_has_mver = true
                 if vkind == -1 {
                     continue
                 }
@@ -818,28 +916,32 @@ fn validate_text(t: Str) -> List[Str] {
                     if int_txt != "1" {
                         ds.push("E5050 manifest_version 必须为 1")
                     } else {
-                        mver_ok = true
+                        b_mver_ok = true
                     }
                 } else {
                     ds.push("E5046 manifest_version 的类型应为 int")
                 }
             } else if seq2(key, "name") {
-                saw_name = true
+                b_saw_name = true
                 if vkind == -1 {
                     continue
                 }
                 if vkind == 0 {
-                    // 内容在 items[0];name 语义由编译器自取,这里仅需类型正确
+                    if !c_is_name(items[0]) {
+                        ds.push("E5046 键 name 值 '" + items[0] + "' 不符合 [a-z][a-z0-9_-]*")
+                    }
                 } else {
                     ds.push("E5046 name 的类型应为 str")
                 }
             } else if seq2(key, "version") {
-                saw_version = true
+                b_saw_version = true
                 if vkind == -1 {
                     continue
                 }
                 if vkind != 0 {
                     ds.push("E5046 version 的类型应为 str")
+                } else if !c_is_semver(items[0]) {
+                    ds.push("E5046 键 version 值 '" + items[0] + "' 不符合 " + c_semver_pat())
                 }
             } else {
                 if vkind == 3 {
@@ -851,7 +953,7 @@ fn validate_text(t: Str) -> List[Str] {
                         }
                         i7 += 1
                     }
-                } else {
+                } else if vkind >= 0 {
                     ds.push("E5046 caps 的类型应为 list")
                 }
             }
@@ -861,9 +963,34 @@ fn validate_text(t: Str) -> List[Str] {
                 if vkind == -1 {
                     continue
                 }
+                if vkind == 1 && (byte_at(val, 0) == 45 || seq2(val, "0")) {
+                    ds.push("E5046 键 budget_ms 必须 >= 1")
+                }
                 if vkind == 1 {
                     budget_ok = true
-                    budget = prs_i(int_txt)
+                    budget = 0
+
+                    var sign: I32 = 1
+
+                    var bi: I32 = 0
+
+                    if byte_at(int_txt, 0) == 45 {
+
+                        sign = -1
+
+                        bi = 1
+
+                    }
+
+                    while bi < int_txt.len {
+
+                        budget = budget * 10 + (byte_at(int_txt, bi) - 48)
+
+                        bi += 1
+
+                    }
+
+                    budget = sign * budget
                 } else {
                     ds.push("E5046 budget_ms 的类型应为 int")
                 }
@@ -888,6 +1015,9 @@ fn validate_text(t: Str) -> List[Str] {
         }
     }
 
+    if block != "" {
+        ds.push("E5040 块未闭合(缺 })")
+    }
     if !saw_pkg {
         ds.push("E5047 缺 pkg 块")
     } else {
@@ -927,7 +1057,7 @@ fn c_cmp(a: Str, b: Str) -> I32 {
 }
 
 fn main() -> I32 {
-    var root = "/tmp/s9dir"
+    var root = "../tests/manifest/all"
     var raw = ""
     match read_dir(root) {
         Some(s) => {
