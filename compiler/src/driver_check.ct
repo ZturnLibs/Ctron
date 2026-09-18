@@ -204,8 +204,16 @@ fn main() -> I32 {
                 }
                 return 1
             }
-            var sems = sem_walk2(file, "ANCHORPROFILE")
-            if seq2("ANCHORFMT", "1") {
+            var chk_fmt = ctron_cli_flag("format")
+            if chk_fmt.len == 0 {
+                chk_fmt = "ANCHORFMT"
+            }
+            var chk_prof = ctron_cli_flag("profile")
+            if chk_prof.len == 0 {
+                chk_prof = "ANCHORPROFILE"
+            }
+            var sems = sem_walk2(file, chk_prof)
+            if or2(seq2(chk_fmt, "1"), seq2(chk_fmt, "json")) {
                 print("\{\"diagnostics\":[")
                 if !seq2(sems, "") {
                     var i: I32 = 0
@@ -230,7 +238,11 @@ fn main() -> I32 {
                 return 1
             }
             println("check OK decls=" + (file.len - 1).to_string())
-            if seq2("ANCHORTAUSTED", "1") {
+            var chk_trusted = ctron_cli_flag("trusted")
+            if chk_trusted.len == 0 {
+                chk_trusted = "ANCHORTAUSTED"
+            }
+            if seq2(chk_trusted, "1") {
                 // 信任边界审计(§9.6):枚举全部 #[trusted] extern
                 var ai: I32 = 1
                 while ai < file.len {
