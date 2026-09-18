@@ -153,6 +153,11 @@ fn main() -> I32 {
             println("static const char* ctron_dom_title(void) \{ return ctron_dom_title_buf; }")
             println("static int32_t ctron_char_len(const char* s) \{ int32_t n = 0; while (*s) \{ if ((*s & 0xC0) != 0x80) \{ n += 1; } s += 1; } return n; }")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
+            println("static const char* ctron_version = \"ANCHORVERSION\";")
+            println("static const char* ctron_cli_fmt = NULL;")
+            println("static const char* ctron_cli_prof = NULL;")
+            println("static const char* ctron_cli_trusted = NULL;")
+            println("static const char* ctron_cli_flag(const char* n) \{ if (!strcmp(n, \"format\")) \{ return ctron_cli_fmt ? ctron_cli_fmt : \"\"; } if (!strcmp(n, \"profile\")) \{ return ctron_cli_prof ? ctron_cli_prof : \"\"; } if (!strcmp(n, \"trusted\")) \{ return ctron_cli_trusted ? ctron_cli_trusted : \"\"; } return \"\"; }")
             // 切片视图 typedef(§3.6,P1-D):标量元素码全集无条件前置(宿主 ctron_arr_*/R 线 ct_arr 同形)
             println("typedef struct \{ int32_t* d; int64_t n; } ctron_view_i;")
             println("typedef struct \{ int64_t* d; int64_t n; } ctron_view_6;")
@@ -484,9 +489,9 @@ fn main() -> I32 {
                 scall = "ctron_statics_init(); "
             }
             if hasmain {
-                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
+                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 2 && !strcmp(argv[1], \"--version\")) \{ puts(ctron_version); return 0; } \{ int ctron_ai; for (ctron_ai = 3; ctron_ai < argc; ctron_ai++) \{ if (!strncmp(argv[ctron_ai], \"--format=\", 9)) \{ ctron_cli_fmt = argv[ctron_ai] + 9; } else if (!strncmp(argv[ctron_ai], \"--profile=\", 10)) \{ ctron_cli_prof = argv[ctron_ai] + 10; } else if (!strcmp(argv[ctron_ai], \"--trusted\")) \{ ctron_cli_trusted = \"1\"; } } } \u{0A}#if defined(_WIN32) \u{0A}SetConsoleOutputCP(CP_UTF8); \u{0A}#endif\u{0A} if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
             } else {
-                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + testcalls + "return 0; " + "}")
+                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 2 && !strcmp(argv[1], \"--version\")) \{ puts(ctron_version); return 0; } \{ int ctron_ai; for (ctron_ai = 3; ctron_ai < argc; ctron_ai++) \{ if (!strncmp(argv[ctron_ai], \"--format=\", 9)) \{ ctron_cli_fmt = argv[ctron_ai] + 9; } else if (!strncmp(argv[ctron_ai], \"--profile=\", 10)) \{ ctron_cli_prof = argv[ctron_ai] + 10; } else if (!strcmp(argv[ctron_ai], \"--trusted\")) \{ ctron_cli_trusted = \"1\"; } } } \u{0A}#if defined(_WIN32) \u{0A}SetConsoleOutputCP(CP_UTF8); \u{0A}#endif\u{0A} if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + testcalls + "return 0; " + "}")
             }
             return 0
         }
