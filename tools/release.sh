@@ -38,6 +38,9 @@ cp -R "$DIR/compiler/src" "$SRC/compiler-src"
 cp -R "$DIR/std" "$SRC/std"
 cp "$DIST/prebuilt/"*.c "$SRC/prebuilt/"
 cp "$DIR/ctc" "$SRC/"; cp "$DIR/Makefile" "$SRC/"; cp "$README" "$SRC/"
+# P2-4 挂账补录:spec §2.3(L102)源码线布局含 ctc.ps1/ctc.cmd——Windows 在 MSYS2 里
+# 走 cc-only make 时驱动同包可得,src 件命令面三驱动齐备
+cp "$DIR/ctc.ps1" "$SRC/"; cp "$DIR/ctc.cmd" "$SRC/"
 cp "$DIR/install.sh" "$SRC/" 2>/dev/null || true
 printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$SRC/VERSION"
 

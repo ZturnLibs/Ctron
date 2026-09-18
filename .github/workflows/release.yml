@@ -1,0 +1,121 @@
+# release.yml —— 双阶段发布 workflow(tag 推送触发;spec 工具链分发 §6,计划 2 Task 5)
+#
+#   Stage 1  prebuilt  固定点基准平台(macos-14)出三件预发射 C
+#            natives   四平台 matrix:自举链全链 → 固定点跨平台逐字节 diff(发布承诺)
+#                      → release.sh 单平台打包 → tests/dist/accept.sh(§7 第 1-5 项)
+#   Stage 2  windows   cc-only 构建预发射 C(绕过 seed,即验源码线 mingw 通路)
+#                      → 组装 zip(§2.2)→ tests/dist/accept_windows.sh(§7 第 6-9 项
+#                      + P2-2 移交的编码三向/ps1 语法门/rc 矩阵)
+#            publish   全绿门(计划 2 Global Constraints:任一平台失败不发版)→
+#                      五平台产物 + src + SHA256SUMS → GitHub Release
+#
+# 首跑真验证在用户打 tag 时(runner 标签以当日可用性为准:macos-13 为末代 intel,
+# 若届时退役,darwin-x86_64 臂需改交叉编译或摘除,首跑即证伪机制)。本地门禁 =
+# YAML 可解析 + accept.sh 对本机打包产物全绿(tests/dist/ 两脚本 sh -n 过)。
+name: release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  prebuilt:
+    runs-on: macos-14            # 固定点基准平台
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C compiler-c && sh compiler/build.sh
+      - name: 发射三件预发射 C
+        run: |
+          mkdir -p prebuilt
+          compiler/ctc.sh emit compiler/build/cc_run.ct   prebuilt/ctron-cc.c
+          compiler/ctc.sh emit compiler/build/cc_check.ct prebuilt/ctron-chk.c
+          compiler/ctc.sh emit compiler/build/cc_emit.ct  prebuilt/ctron-emit.c
+      - uses: actions/upload-artifact@v4
+        with: { name: prebuilt, path: prebuilt/ }
+
+  natives:
+    needs: prebuilt
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,       platform: darwin-arm64 }
+          - { os: macos-13,       platform: darwin-x86_64 }
+          - { os: ubuntu-24.04,   platform: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: prebuilt, path: prebuilt }
+      - run: make -C compiler-c                      # linux 首跑风险点:seed 侧 glibc/cc 差异
+      - run: sh compiler/native.sh                   # 自举链出四件套
+      - name: 固定点承诺——本平台发射与基准逐字节 diff
+        run: |
+          for P in cc_run:ctron-cc cc_check:ctron-chk cc_emit:ctron-emit; do
+            src=${P%%:*}; out=${P##*:}
+            compiler/ctc.sh emit compiler/build/$src.ct /tmp/$out.c
+            diff /tmp/$out.c prebuilt/$out.c
+          done
+      - name: 打包 + 验收(解压即用/装机路径/无 cc/负例/help)
+        run: |
+          VER=${GITHUB_REF_NAME#v}
+          sh tools/release.sh "$VER"
+          sh tests/dist/accept.sh "dist/ctron-$VER-${{ matrix.platform }}.tar.gz"
+          # 收敛上传面至发布载荷:暂存树/prebuilt/逐平台 SHA256SUMS 不入 artifact;
+          # src 件以基准平台(darwin-arm64)一份为准,避免四平台同名件合并歧义
+          rm -rf dist/ctron "dist/ctron-src-$VER" dist/prebuilt
+          rm -f dist/SHA256SUMS
+          [ "${{ matrix.platform }}" = "darwin-arm64" ] || rm -f "dist/ctron-$VER-src.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with: { name: "rel-${{ matrix.platform }}", path: dist/ }
+
+  windows:
+    needs: prebuilt
+    runs-on: windows-latest
+    # 注意块式写法:flow 形 `defaults: { run: { shell: msys2 {0} } }` 因 `{` 为
+    # flow 指示符不可解析(任务书原稿的已验缺陷,本处以块式修正)
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with: { msystem: MINGW64, update: false, install: 'mingw-w64-x86_64-gcc make git' }
+      - uses: actions/download-artifact@v4
+        with: { name: prebuilt, path: prebuilt }
+      - name: cc-only 构建(绕过 seed;编译器三件 16MB 栈)
+        run: |
+          mkdir -p bin
+          gcc -O2 -w -pthread -Wl,--stack,16777216 -o bin/ctron-cc.exe   prebuilt/ctron-cc.c
+          gcc -O2 -w -pthread -Wl,--stack,16777216 -o bin/ctron-chk.exe  prebuilt/ctron-chk.c
+          gcc -O2 -w -pthread -Wl,--stack,16777216 -o bin/ctron-emit.exe prebuilt/ctron-emit.c
+      - name: 组装 zip(spec §2.2 布局)
+        run: |
+          VER=${GITHUB_REF_NAME#v}
+          mkdir -p ctron/bin ctron/lib/ctron ctron/share/doc
+          cp bin/*.exe ctron/bin/; cp ctc.ps1 ctc.cmd ctron/bin/
+          cp -R std ctron/lib/ctron/std
+          printf '%s %s\n' "$VER" "$(git rev-parse --short HEAD)" > ctron/VERSION
+          powershell -Command "Compress-Archive -Path ctron -DestinationPath dist-windows.zip -Force"
+      - name: 验收(并发/深递归/CRLF/help conformance/编码三向/ps1 语法门/rc 矩阵)
+        run: sh tests/dist/accept_windows.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: rel-windows-x86_64, path: dist-windows.zip }
+
+  publish:
+    needs: [prebuilt, natives, windows]            # 全绿门:任一平台失败不发版
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: rel-*, merge-multiple: true, path: rel }
+      - name: 汇总 + SHA256SUMS
+        run: |
+          VER=${GITHUB_REF_NAME#v}
+          cd rel
+          mv dist-windows.zip ctron-$VER-windows-x86_64.zip
+          sha256sum ctron-$VER* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: rel/*
