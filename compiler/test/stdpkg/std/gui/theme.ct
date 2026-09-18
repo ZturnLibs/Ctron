@@ -1,0 +1,11 @@
+// std/gui/theme.ct —— 默认主题令牌(§13.3;用户 theme 经 use 整体替换)
+// 颜色一律 Str 字面量 #RRGGBB(C1 裁决);间距为 I32 逻辑像素(§5.1)
+
+pub const COLOR_BG:     Str = "#181820"
+pub const COLOR_TEXT:   Str = "#e6e6eb"
+pub const COLOR_ACCENT: Str = "#2563eb"
+pub const COLOR_DANGER: Str = "#c83c3c"
+
+pub const SPACE_SM: I32 = 4
+pub const SPACE_MD: I32 = 8
+pub const SPACE_LG: I32 = 16
