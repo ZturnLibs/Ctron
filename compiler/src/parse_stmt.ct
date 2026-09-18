@@ -169,7 +169,9 @@ fn p_match(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
 fn p_if(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     var ni = mk("If")
-    ni.push(p_and(toks, cur, lns, "0"))
+    // 条件走完整布尔链(v0.8 修:原 p_and 不消费 ||——if 条件含 || 即解析错位,
+    // 后续 token 被吞/结构字面量误判;语料零覆盖故长期隐形;while 用 p_stmt_expr 本就对)
+    ni.push(p_oror(toks, cur, lns, "0"))
     adv(cur)
     ni.push(p_block(toks, cur, lns))
     var els = mk("None")

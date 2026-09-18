@@ -464,6 +464,53 @@ fn ct_trim(s: Str) -> Str {
     return ""
 }
 
+// 调用实参个数断言用(§四 #10):返回 "min|max"(max=-1 = 变参,实际须 ≥ min);未声明 → ""
+// 十进制串 → I32(arity 串解析用;容负号)
+fn ct_arity_parse(s: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    var neg = false
+    if s.len > 0 && byte_at(s, 0) == 45 {
+        neg = true
+        i = 1
+    }
+    while i < s.len {
+        v = v * 10 + (byte_at(s, i) - 48)
+        i += 1
+    }
+    if neg {
+        return 0 - v
+    }
+    return v
+}
+
+fn ct_arity_range(file: List[Str], nm: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(or2(d[0] == "Fn", d[0] == "FnPub"), or2(d[0] == "FnC", d[0] == "FnExt")) && d[1] == nm {
+            var ps = d[3]
+            var n: I32 = 0
+            var va = false
+            var k: I32 = 1
+            while k < ps.len {
+                if ps[k][0] == "VaArgs" {
+                    va = true
+                } else if ps[k][0] == "Param" {
+                    n += 1
+                }
+                k += 1
+            }
+            if va {
+                return n.to_string() + "|-1"
+            }
+            return n.to_string() + "|" + n.to_string()
+        }
+        i += 1
+    }
+    return ""
+}
+
 // extern 返回 Option[Str](§9.6 v0.8):C 侧真返回 const char*(NULL ↔ None),
 // Ctron 侧落 ct_res 经既有 Option 机制消费
 fn ct_ext_ret_optstr(file: List[Str], nm: Str) -> Bool {

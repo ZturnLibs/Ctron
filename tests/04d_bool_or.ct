@@ -47,3 +47,27 @@ test "right operand skipped on true lhs" {
 fn next_is_true(_n: I32) -> Bool {
     return true
 }
+
+// v0.8 回归锚:if 条件含 || 链(曾因 p_if 走 p_and 不消费 || 而解析错位,
+// 发射面报 StructLit 非值类型;语料此前零覆盖)
+fn or_if(t: I32) -> I32 {
+    var b: I32 = 10
+    while b > 0 {
+        var d = byte_at("x y", 0)
+        if d == 32 || d == 9 {
+            b -= 1
+        } else {
+            return b + t
+        }
+    }
+    return t
+}
+
+test "if condition with || chain parses and runs" {
+    assert_eq(1 == 1 || 2 == 3, true)
+    assert_eq(1 == 2 || 2 == 3, false)
+}
+
+test "if || inside loop with else" {
+    assert_eq(or_if(1), 11)
+}

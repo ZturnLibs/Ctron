@@ -296,6 +296,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     }
     if t == "StructLit" {
         if !ct_is_struct(file, e[1]) {
+            
             panic("ct_expr:StructLit 非值类型")
             return ""
         }
@@ -907,6 +908,29 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             ie += 1
         }
         if isext {
+            var ear = ct_arity_range(file, callee)
+            if ear.len > 0 {
+                var ebar = -1
+                var eq: I32 = 0
+                while eq < ear.len {
+                    if byte_at(ear, eq) == 124 {
+                        ebar = eq
+                    }
+                    eq += 1
+                }
+                var emin = byte_slice(ear, 0, ebar)
+                var emax = byte_slice(ear, ebar + 1, ear.len)
+                var egot = ag.len - 1
+                var ebad = false
+                if emax == "-1" {
+                    if egot < ct_arity_parse(emin) { ebad = true }
+                } else if egot != ct_arity_parse(emin) {
+                    ebad = true
+                }
+                if ebad {
+                    panic("emit:调用实参个数不符:" + callee + " 期望 " + emin + " 实得 " + egot.to_string())
+                }
+            }
             var epcs = ct_fn_pcodes(file, callee)
             var eargs = ""
             var ei: I32 = 1
@@ -1025,6 +1049,33 @@ fn ct_call_args(ag: List[Str], from: I32, env: List[Str], file: List[Str], calle
 // (泛型被调,§3.9.1;闭包 ABI §4)
 fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], callee: Str, targs: List[Str]) -> Str {
     var pcs = ct_fn_pcodes(file, callee)
+    // 实参个数断言(§四 #10):声明在案的被调,个数不符 = 发射期硬失败
+    //(旧"补 0"垫片会把缺参洗成合法 C,静默垃圾);内建/未声明被调不查
+    if callee != "" {
+        var ar = ct_arity_range(file, callee)
+        if ar.len > 0 {
+            var bar9 = -1
+            var q9: I32 = 0
+            while q9 < ar.len {
+                if byte_at(ar, q9) == 124 {
+                    bar9 = q9
+                }
+                q9 += 1
+            }
+            var min9 = byte_slice(ar, 0, bar9)
+            var max9 = byte_slice(ar, bar9 + 1, ar.len)
+            var got9 = ag.len - from
+            var bad9 = false
+            if max9 == "-1" {
+                if got9 < ct_arity_parse(min9) { bad9 = true }
+            } else if got9 != ct_arity_parse(min9) {
+                bad9 = true
+            }
+            if bad9 {
+                panic("emit:调用实参个数不符:" + callee + " 期望 " + min9 + " 实得 " + got9.to_string())
+            }
+        }
+    }
     var args = ""
     var i: I32 = from
     while i < ag.len {
