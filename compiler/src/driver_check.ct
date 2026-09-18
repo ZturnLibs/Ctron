@@ -168,7 +168,9 @@ fn strip_at(s: Str) -> Str {
 }
 fn main() -> I32 {
     let path = "../selfhosted/input_cc.ct"
-    let src = read_file(path)
+    // read_file 实参必须是 Str 字面量:发射时 ct_swap_anchor 换为 CLI 标记,
+    // 原生 ctron-chk 才能响应 `run <file>` 覆盖(seed 面由 ctc.sh sed 换靶,双口径同源)。
+    let src = read_file("../selfhosted/input_cc.ct")
     match src {
         Some(s) => {
             var toks = List[Str]()
@@ -222,7 +224,7 @@ fn main() -> I32 {
                         var e: I32 = i
                         while e < sems.len && byte_at(sems, e) != 10 { e += 1 }
                         if e > i {
-                            json_diag(path, s, byte_slice(sems, i, e), first)
+                            json_diag(epath, s, byte_slice(sems, i, e), first)
                             first = false
                         }
                         i = e + 1
