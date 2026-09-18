@@ -757,6 +757,11 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         var uen = ct_enum_of_variant(file, e[1])
         if uen.len > 0 { return "E:" + uen }
+        // 裸 fn 名值位置(§4.7):F<arity> 码——let 绑定/实参/间接调用全链类型化
+        var fpc = ct_fn_pcodes(file, e[1])
+        if or2(fpc.len == 1, or2(fpc.len == 2, fpc.len == 3)) {
+            return "F" + fpc.len.to_string()
+        }
         return "i"
     }
     if t == "Unary" {

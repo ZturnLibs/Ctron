@@ -1,0 +1,18 @@
+// 03h_fn_values.ct —— 裸 fn 值全链(v0.8 §4.7;let 绑定/实参/间接调用/再传 C 边界)
+// 语义承诺:let g = fn 名 装箱为 C-ABI 蹦床(env 哨兵),let 绑定/间接调用/
+// 实参传递/再传 extern 边界类型全链一致(此前 typeof 回落 i32 致发射坏码)
+
+fn dbl(x: I64) -> I64 {
+    return x * 2
+}
+
+fn apply(f: fn(I64) -> I64, x: I64) -> I64 {
+    return f(f(x))
+}
+
+test "let-bound fn value: call, pass, re-pass" {
+    let g = dbl
+    assert_eq(g(5), 10)
+    assert_eq(apply(dbl, 3), 12)
+    assert_eq(apply(g, 4), 16)
+}

@@ -89,23 +89,29 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:fn 值 arity>3")
                 return ""
             }
-            var anm = "ct_ad_" + e[1]
+            // 裸 fn 值装箱(v0.8 锐边收口):fn 槽存 C-ABI 蹦床 ct_cbtr_<名>
+            //(全宽 ct_i 实参,替代旧 ct_ad shim 的 int32 截断),env = (void*)1
+            // 哨兵——Ctron 侧间接调用走哨兵直路,再传 C 边界自带蹦床
+            //(task 态 panic 策略全覆盖)
+            var anm = "ct_cbtr_" + e[1]
             if seq2(ct_pass(env), "1") {
-                var asig = "void* _cp"
+                var asig = ""
                 var ai: I32 = 0
+                var first9 = true
                 while ai < pcs5.len {
-                    asig = asig + ", ct_i _p" + ai.to_string()
+                    if !first9 { asig = asig + ", " }
+                    asig = asig + "ct_i _cbp" + ai.to_string()
+                    first9 = false
                     ai += 1
                 }
-                // 被调名命名 + include 守卫去重(P0-F):同一被调多处 fn 值引用仅落地一份定义
-                println("#ifndef CT_AD_DEF_" + e[1])
-                println("#define CT_AD_DEF_" + e[1])
+                println("#ifndef CT_CBTR_" + e[1])
+                println("#define CT_CBTR_" + e[1])
                 println("static ct_i " + anm + "(" + asig + ") \{")
                 var acall = ""
                 ai = 0
                 while ai < pcs5.len {
                     if ai > 0 { acall = acall + ", " }
-                    acall = acall + "(int32_t)_p" + ai.to_string()
+                    acall = acall + "_cbp" + ai.to_string()
                     ai += 1
                 }
                 var aret = ct_fn_ret(file, e[1])
@@ -117,7 +123,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 println("}")
                 println("#endif")
             }
-            return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = 0; _c; })"
+            return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = (void*)1; _c; })"
         }
         return "t_" + e[1]
     }
@@ -1060,7 +1066,7 @@ fn ct_cb_ref(file: List[Str], ae: List[Str], ac: Str, ex: Str, pc: Str) -> Str {
                 }
                 println("#ifndef CT_CBTR_" + nm)
                 println("#define CT_CBTR_" + nm)
-                println("static ct_i ct_cbtr_" + nm + "(" + asig9 + ") \{ ctron_cb_depth++; ct_i _r = t_" + nm + "(" + aargs9 + "); ctron_cb_depth--; return _r; \}")
+                println("static ct_i ct_cbtr_" + nm + "(" + asig9 + ") \{ ctron_cb_depth++; ct_i _r = t_" + nm + "(" + aargs9 + "); ctron_cb_depth--; return _r; }")
                 println("#endif")
                 return "(ct_cbtr_" + nm + ")"
             }
