@@ -1040,7 +1040,29 @@ fn ct_cb_ref(file: List[Str], ae: List[Str], ac: Str, ex: Str, pc: Str) -> Str {
                     panic("emit:回调实参元数不符:" + nm)
                     return ""
                 }
-                return "(t_" + nm + ")"
+                // C→Ctron 回调入口蹦床(§9.6 v0.8):入口置 ctron_cb_depth,ctron_panic
+                // 据此判定语境——回调内 panic = 消息 + exit(1),不越 C 帧 longjmp
+                //(Rust "extern fn 内 panic = abort" 同款约定;非 task 态行为不变)
+                var ps9 = ct_fn_pcodes(file, nm)
+                var asig9 = ""
+                var aargs9 = ""
+                var ai9: I32 = 0
+                var first9 = true
+                while ai9 < ps9.len {
+                    if !first9 {
+                        asig9 = asig9 + ", "
+                        aargs9 = aargs9 + ", "
+                    }
+                    asig9 = asig9 + "ct_i _cbp" + ai9.to_string()
+                    aargs9 = aargs9 + "_cbp" + ai9.to_string()
+                    first9 = false
+                    ai9 += 1
+                }
+                println("#ifndef CT_CBTR_" + nm)
+                println("#define CT_CBTR_" + nm)
+                println("static ct_i ct_cbtr_" + nm + "(" + asig9 + ") \{ ctron_cb_depth++; ct_i _r = t_" + nm + "(" + aargs9 + "); ctron_cb_depth--; return _r; \}")
+                println("#endif")
+                return "(ct_cbtr_" + nm + ")"
             }
             if d[0] == "FnExt" && d[1] == nm {
                 panic("emit:extern 声明无函数体,不可作回调值:" + nm)

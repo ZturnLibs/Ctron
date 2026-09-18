@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "ffi_cb_panic_task"
+    version = "0.1.0"
+}

@@ -1,0 +1,21 @@
+// tests/ffi/cb_panic_task —— panic 跨边界策略(§9.6 v0.8,task 态)
+// 承诺:task 内经 C 回调触发的 Ctron panic,不越 C 帧 longjmp(未定义行为)——
+// 回调入口蹦床置 ctron_cb_depth,ctron_panic 判定语境 = 消息 + exit(1)
+// (Rust "extern fn 内 panic = abort" 同款约定;进程整体退出,join 不可达)。
+#[trusted]
+extern "c" fn run_cb(f: fn(I64) -> I64, x: I64) -> I64
+
+fn boom(x: I64) -> I64 {
+    return x / 0
+}
+
+fn main() -> I32 {
+    scope { |s|
+        s.spawn(|| {
+            let r = run_cb(boom, 10)
+            println(r.to_string())
+        })
+    }
+    println("unreachable")
+    return 0
+}

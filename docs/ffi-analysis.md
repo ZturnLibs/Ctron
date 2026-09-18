@@ -98,7 +98,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **cimport 深化** | enum → const 常量组(自增/显式值/0x 解码);typedef 函数签名表(经形参/返回/struct 字段内联展开,fn 类型签名字面无名化);函数指针形参 `RET (*name)(ARGS)` → `name: fn(...) -> RET`;enum typedef 名入表(`Mode` → I64) |
 | **错误传播首步** | extern 返回 `Option[Str]`:C 侧 const char* NULL ↔ None 边界编组(原型出 const char*,调用点 ct_res 包装;`?`/match/`.or` 全套 Option 机制原样可用);`ext_nonabi_ty` 放行 Option[Str] |
 | **#[link(name)]** | 链接依赖以 `// ctron:link -l<名>` 注释落产物;驱动层(tests/ffi/run.sh link_math 专道)读取传 cc;发射器职责止于 C 文本 |
-| **panic 跨边界钉子** | `cb_panic/` 夹具钉住非 task 态策略:C 回调中 panic → 消息 + exit(1)(不越 C 帧);task 态约定待钉 |
+| **panic 跨边界策略** | **全语境落地**——回调入口蹦床(`ct_cbtr_<名>`:入口置 `ctron_cb_depth`,退出递减,ifndef 去重)+ `ctron_panic` 语境判定(深度 > 0 = 消息 + exit(1),不越 C 帧 longjmp;Rust "extern fn 内 panic = abort" 同款约定);`cb_panic/`(非 task)+ `cb_panic_task/`(task 态,join 不可达/进程退出)双夹具钉死 |
 | **cimport 原生化 + 修复** | `cimp_mul_add` carry-in 修正(0x 解码此前漏 +a);run.sh cimport 工具切自举 ctron-cc 原生驱动(seed 退化备用);#11③ 确认 = #11② 重复,随解析器修复关闭 |
 | **#11② 根因修复** | `p_if` 条件改 `p_oror`(原 p_and 不消费 `||`)——if 条件含 `||` 即解析错位的一族症状(StructLit panic/签名吞没/List[Str] 野节点)全部归零;04d_bool_or 补回归锚(语料此前零覆盖) |
 | **#10 arity 断言** | `ct_arity_range/ct_arity_parse` 发射期个数断言(声明在案被调,不符硬失败;变参 ≥ min);旧"补 0"垫片实证会把缺参洗成合法 C |
