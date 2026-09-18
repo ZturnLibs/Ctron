@@ -1,6 +1,8 @@
 ﻿# ctc.ps1 —— Ctron 工具链用户驱动(Windows 版;命令面基准 = sh 版 ctc,spec §7.9 驱动 conformance)
 # rc 约定:0 成功 / 1 程序诊断失败 / 2 ctc 环境或用法错误(exit code 同 sh)
 # 注意:本文件必须保持 UTF-8 with BOM —— Windows PowerShell 5.1 对无 BOM 脚本按 ANSI 解码,中文帮助文本会乱码
+# 重定向/管道下 powershell.exe 的 stdout 默认按 OEM CP 编码,中文帮助/诊断会变 '?',子进程输出解码同样失真;显式收口为 UTF8
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $ErrorActionPreference = 'Stop'
 $Bin = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $Bin
@@ -67,7 +69,9 @@ function Build-File($f) {
 	$dir = Split-Path -Parent $full
 	$leaf = Split-Path -Leaf $full
 	if ($leaf.EndsWith('.ct')) { $stem = $leaf.Substring(0, $leaf.Length - 3) } else { $stem = $leaf }
-	& (Join-Path $Bin 'ctron-emit.exe') run $full | Set-Content -Path (Join-Path $dir "$stem.c") -Encoding Ascii
+	# 产物不经管道字符串化,直接以无 BOM UTF8 写行(PS5.1 的 Set-Content -Encoding Ascii 会把非 ASCII 串打成 '?')
+	$tmpOut = & (Join-Path $Bin 'ctron-emit.exe') run $full
+	[IO.File]::WriteAllLines((Join-Path $dir "$stem.c"), $tmpOut, (New-Object Text.UTF8Encoding($false)))
 	if ($LASTEXITCODE -ne 0) { exit 1 }
 	if (-not (Have-Cc)) { Cc-Missing (Join-Path $dir "$stem.c"); exit 2 }
 	Push-Location $dir
@@ -86,7 +90,8 @@ function Build-Proj {
 	if (-not $name) { $name = Split-Path -Leaf (Get-Location).Path }
 	if (-not (Test-Path 'src/main.ct')) { [Console]::Error.WriteLine('ctc: 缺入口 src/main.ct'); exit 2 }
 	New-Item -ItemType Directory -Force -Path build | Out-Null
-	& (Join-Path $Bin 'ctron-emit.exe') run (Resolve-Path 'src/main.ct').Path | Set-Content -Path "build/$name.c" -Encoding Ascii
+	$tmpOut = & (Join-Path $Bin 'ctron-emit.exe') run (Resolve-Path 'src/main.ct').Path
+	[IO.File]::WriteAllLines((Join-Path (Get-Location).Path "build/$name.c"), $tmpOut, (New-Object Text.UTF8Encoding($false)))
 	if ($LASTEXITCODE -ne 0) { exit 1 }
 	if (-not (Have-Cc)) { Cc-Missing "build/$name.c"; exit 2 }
 	$srcs = @(Get-ChildItem -Path 'c_src/*.c' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
