@@ -1069,6 +1069,27 @@ static void check_expr(ctx* c, cexpr* e) {
             if (c->fn_pure) diag(c->k, "E4020", "pure 函数含能力调用(pure)");
             else diag(c->k, "E6020", "comptime 函数含能力调用(comptime)");
         }
+        // E4042(§9.6 v0.6):捕获闭包实参传入 extern "c" 的 fn 指针形参——
+        // C 回调无 env 槽;仅裸 fn 名(无捕获)可作 C-ABI 回调(镜像自举 ext_cb_target)
+        if (e->callee && e->callee->kind == EX_IDENT && e->callee->text) {
+            const cdecl* extd = find_kind(c->s->f, D_FN, e->callee->text);
+            if (extd && extd->kind == D_FN && extd->fn_.abi && extd->fn_.body == NULL) {
+                int hasfnty = 0;
+                for (size_t pi = 0; pi < extd->fn_.nparams; pi++) {
+                    const cparam* pp = &extd->fn_.params[pi];
+                    if (pp->ty && pp->ty->kind == TY_FN) hasfnty = 1;
+                }
+                if (hasfnty) {
+                    for (size_t ai = 0; ai < e->nelems; ai++) {
+                        if (e->elems[ai] && e->elems[ai]->kind == EX_CLOSURE) {
+                            diag(c->k, "E4042", "捕获闭包不可作 C-ABI 回调实参(无 env 槽):%s",
+                                 e->callee->text);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         // or:只能用于 Option/Result(§4)
         if (e->callee && e->callee->kind == EX_MEMBER && e->callee->m_is_name
             && e->callee->mname && strcmp(e->callee->mname, "or") == 0
@@ -1232,6 +1253,74 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
 }
 
 // ---------- 顶层 ----------
+// ---------- FFI 诊断面(§9.6 v0.6/v0.7/v0.8;与自举线 sem_main 对齐) ----------
+// C-ABI 类型治理:容器/能力类型不得跨 extern 边界(镜像自举 ext_nonabi_ty);
+// Option[Str] 放行(NULL↔None 编组面,v0.8);fn 类型 = C 函数指针,合法
+static int ffi_nonabi(const cty* t, int depth) {
+    if (!t || depth > 8) return 0;
+    if (t->kind == TY_NAMED) {
+        const char* h = t->npath > 0 ? t->path[t->npath - 1] : "";
+        if (strcmp(h, "Option") == 0) {
+            if (t->nargs == 1 && t->args[0]->kind == TY_NAMED
+                && t->args[0]->npath > 0
+                && strcmp(t->args[0]->path[t->args[0]->npath - 1], "Str") == 0)
+                return 0;
+            return 1;
+        }
+        if (strcmp(h, "List") == 0 || strcmp(h, "Atomic") == 0
+            || strcmp(h, "Result") == 0 || strcmp(h, "Box") == 0
+            || strcmp(h, "Mutex") == 0 || strcmp(h, "Channel") == 0
+            || strcmp(h, "Global") == 0) return 1;
+        return 0;
+    }
+    if (t->kind == TY_FN) return 0;
+    if (t->kind == TY_REF || t->kind == TY_SLICE || t->kind == TY_OPT)
+        return ffi_nonabi(t->sub, depth + 1);
+    if (t->kind == TY_ARRAY)
+        return ffi_nonabi(t->elem, depth + 1);
+    return 0;
+}
+
+static void check_ffi_decls(ck* k, const cfile* f) {
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind == D_FN) {
+            const cfn* fn = &d->fn_;
+            int is_ext = fn->abi && !fn->body;
+            if (is_ext && !has_attr(fn->attrs, fn->nattrs, "trusted"))
+                diag(k, "W8050", "extern 未标记 #[trusted](信任边界):%s", fn->name);
+            if (!is_ext && has_attr(fn->attrs, fn->nattrs, "trusted"))
+                diag(k, "E4040", "#[trusted] 用于非 extern 声明:%s", fn->name);
+            if (has_attr(fn->attrs, fn->nattrs, "repr"))
+                diag(k, "E4041", "#[repr(c)] 用于非 struct 声明:%s", fn->name);
+            if (fn->variadic && !is_ext)
+                diag(k, "E4044", "变参形参(...)仅限 extern 声明:%s", fn->name);
+            if (is_ext) {
+                for (size_t pi = 0; pi < fn->nparams; pi++) {
+                    const cparam* pp = &fn->params[pi];
+                    if (pp->ty && ffi_nonabi(pp->ty, 0))
+                        diag(k, "W8052", "extern 形参非 C-ABI 类型(§9.6):%s.%s",
+                             fn->name, pp->name ? pp->name : "?");
+                }
+                if (fn->ret && ffi_nonabi(fn->ret, 0))
+                    diag(k, "W8052", "extern 返回非 C-ABI 类型(§9.6):%s", fn->name);
+            }
+        } else if (d->kind == D_STRUCT) {
+            if (has_attr(d->strukt.attrs, d->strukt.nattrs, "repr")) {
+                for (size_t fi = 0; fi < d->strukt.nfields; fi++) {
+                    const cfield* fl = &d->strukt.fields[fi];
+                    if (fl->ty && ffi_nonabi(fl->ty, 0))
+                        diag(k, "W8051", "repr(c) struct 含非 C-ABI 字段(§9.6):%s.%s",
+                             d->strukt.name, fl->name);
+                }
+            }
+        } else if (d->kind == D_ENUM) {
+            if (has_attr(d->en.attrs, d->en.nattrs, "repr"))
+                diag(k, "E4041", "#[repr(c)] 用于非 struct 声明(enum):%s", d->en.name);
+        }
+    }
+}
+
 ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int profile) {
     ck k = {0};
     k.arena = arena;
@@ -1241,6 +1330,9 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
     c.s = &s;
     c.depth = 1;
     c.profile = profile;
+
+    // FFI 诊断面(§9.6;与自举线对齐)
+    check_ffi_decls(&k, f);
 
     // 顶层 fn 体
     for (size_t i = 0; i < f->ndecls; i++) {

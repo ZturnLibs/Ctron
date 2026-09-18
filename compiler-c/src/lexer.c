@@ -423,6 +423,7 @@ static int lex_punct(lexer* lx, size_t start, uint32_t line, uint32_t col, ctron
     else if (TWO('>', '=')) { k = TOK_GT_EQ; ntake = 2; }
     else if (TWO('&', '&')) { k = TOK_AND_AND; ntake = 2; }
     else if (TWO('|', '|')) { k = TOK_OR_OR; ntake = 2; } // v0.7 修订一
+    else if (THREE('.', '.', '.')) { k = TOK_ELLIPSIS; ntake = 3; } // 变参 ...(§9.6 v0.7)
     else if (THREE('.', '.', '=')) { k = TOK_DOT_DOT_EQ; ntake = 3; } // 最长匹配 ..=
     else if (TWO('.', '.')) { k = TOK_DOT_DOT; ntake = 2; }
     else if (TWO('-', '>')) { k = TOK_ARROW; ntake = 2; }

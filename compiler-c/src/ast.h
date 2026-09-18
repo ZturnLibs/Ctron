@@ -225,6 +225,7 @@ struct cfn {
     cvis vis;
     int is_comptime;
     char* abi;               // extern "c" 的 "c"(可 NULL)
+    int variadic;            // 形参表尾 "..."(§9.6 v0.7)
     char* name;
     ctypeparam* type_params;
     size_t ntype_params;

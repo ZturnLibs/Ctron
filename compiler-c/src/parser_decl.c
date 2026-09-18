@@ -231,8 +231,15 @@ cfn* parse_fn(cparser* p, cattr** attrs, size_t nattrs, int top_level) {
     }
     if (!eat_k(p, TOK_LPAREN)) err_here(p, "E1001", "参数表缺少 (");
     prlist prs = {0};
+    int is_variadic = 0;
     for (;;) {
         if (at_k(p, TOK_RPAREN)) break;
+        if (at_k(p, TOK_ELLIPSIS)) {
+            // "..." 变参尾标(§9.6 v0.7):仅 extern 声明合法(否则 sem E4044)
+            bump_tok(p);
+            is_variadic = 1;
+            break;
+        }
         if (at_k(p, TOK_AMP) && tok_at(p, 1) == TOK_SELF) {
             bump_tok(p); bump_tok(p);
             cparam* pr = prlist_new(&prs, p->arena);
@@ -274,6 +281,7 @@ cfn* parse_fn(cparser* p, cattr** attrs, size_t nattrs, int top_level) {
     f->vis = vis;
     f->is_comptime = is_comptime;
     f->abi = abi;
+    f->variadic = is_variadic;
     f->name = name;
     f->type_params = tplist_done(&tps, p->arena, &f->ntype_params);
     f->params = prlist_done(&prs, p->arena, &f->nparams);
