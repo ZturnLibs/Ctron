@@ -102,6 +102,11 @@ cmd_build_proj() {
 
 [ $# -lt 1 ] && { usage; exit 2; }
 CMD=$1; shift
+# <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
+case $CMD in
+    run|check|build|test|new)
+        case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
+esac
 case $CMD in
     --help|-h|help) if [ $# -ge 1 ]; then help_cmd "$1"; else usage; fi; exit 0 ;;
     --version|-V)
