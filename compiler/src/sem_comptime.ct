@@ -19,14 +19,12 @@ fn scan_comp(file: List[Str], e: List[Str], diags: List[Str], fnm: Str) {
     if t == "Call" {
         var cal = e[1]
         var rt = root_name(cal)
-        if comp_banned_call(rt) && !in_list(diags, "E6020: comptime 函数含副作用(effect):" + rt) {
-            diags.push("E6020@" + nline(e) + ": comptime 函数含副作用(effect):" + fnm + " 调用 " + rt)
+        if comp_banned_call(rt) {
+            // C4 修复:旧探针串缺 "@行" 段永不命中,去重失效;donce 探针与发射同源
+            donce2(diags, "E6020.effect", nline(e), fnm, rt)
         }
         if cal[0] == "Member" && cal[2] == "Nm" && comp_banned_mem(cal[3]) {
-            var mn = "E6020@" + nline(e) + ": comptime 函数含副作用(effect):" + fnm + " 调用 ." + cal[3]
-            if !in_list(diags, mn) {
-                diags.push(mn)
-            }
+            donce2(diags, "E6020.effect", nline(e), fnm, "." + cal[3])
         }
         scan_comp(file, cal, diags, fnm)
         var ag = e[2]
@@ -184,7 +182,7 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
             var tyn = ty_head(d[3])
             if tn.len > 0 && tyn.len > 0 {
                 if !local_type_or_trait(file, tn) && !local_type_or_trait(file, tyn) {
-                    diags.push("E5010: 孤儿 impl(orphan):" + tn + " for " + tyn + " 的 trait 与类型均不属本包")
+                    diag2(diags, "E5010", "", tn, tyn)
                 }
             }
         }
@@ -228,18 +226,18 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
             var cenvV = List[Str]()
             var vr = ceval_expr(file, expr, cenvN, cenvV, st)
             if seq2(vr[0], "over") {
-                diags.push("E6010: comptime 预算超限(budget):" + nm)
+                diag1(diags, "E6010", "", nm)
                 return
             }
             var done = false
             if seq2(vr[0], "k") {
                 if knd.len > 0 && !vtag_ok(knd, vr[2][0]) {
-                    diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr[2][0])
+                    diag3(diags, "E2010.const", "", nm, knd, vr[2][0])
                     return
                 }
                 // I64 const 值域界门(§3.1.1):折叠值超 int64 → E2040
                 if seq2(vr[2][0], "6") && !c6_in_i64(vr[2][1]) {
-                    diags.push("E2040: const 字面量超出 I64 宽度(值域):" + nm)
+                    diag1(diags, "E2040.const", "", nm)
                     return
                 }
                 env = env_add(env, nm, vr[2])
@@ -252,11 +250,11 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
                     return
                 }
                 if knd.len > 0 && !vtag_ok(knd, vr2[2][0]) {
-                    diags.push("E2010: const 类型不匹配(type):" + nm + " 期望 " + knd + " 实得 " + vr2[2][0])
+                    diag3(diags, "E2010.const", "", nm, knd, vr2[2][0])
                     return
                 }
                 if seq2(vr2[2][0], "6") && !c6_in_i64(vr2[2][1]) {
-                    diags.push("E2040: const 字面量超出 I64 宽度(值域):" + nm)
+                    diag1(diags, "E2040.const", "", nm)
                     return
                 }
                 env = env_add(env, nm, vr2[2])

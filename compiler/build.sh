@@ -17,6 +17,7 @@ mkdir -p "$OUT"
 #   eval_*    树行走求值器:值域 → 环境/方法/模式 → 表达式 → 调用 → 语句
 #   trans_*   C 代码生成器:类型基础 → 表达式 → 语句 → 函数/样板(仅 cc_emit)
 CORE="$SRC/lex.ct \
+$SRC/diag_msg.ct \
 $SRC/parse_node.ct $SRC/parse_expr.ct $SRC/parse_stmt.ct $SRC/parse_decl.ct $SRC/parse_pkg.ct \
 $SRC/sem_walk.ct $SRC/sem_send.ct $SRC/sem_own.ct $SRC/sem_pure.ct $SRC/sem_spawn.ct \
 $SRC/sem_move.ct $SRC/sem_exh.ct $SRC/sem_alloc.ct $SRC/sem_main.ct $SRC/sem_type.ct \

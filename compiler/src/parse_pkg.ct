@@ -73,7 +73,7 @@ fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
                             j += 1
                         }
                         if hit && !pkg_caps_allowed(dir, cap) {
-                            diags.push("E4010: 使用 " + cap + " 能力超出 manifest(caps) 声明:参数 &" + name)
+                            diag2(diags, "E4010", "", cap, name)
                         }
                     }
                 }
@@ -189,7 +189,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
             }
             var mpath = dir + rel + ".ct"
             if in_list(stack, mpath) {
-                diags.push("E5020: 模块循环导入(circular):" + mpath)
+                diag1(diags, "E5020.circ", "", mpath)
                 return out
             }
             var src = read_file(mpath)
@@ -219,9 +219,9 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                                 m2 += 1
                             }
                             if !found {
-                                diags.push("E2020: use 导入未找到符号:" + sn)
+                                diag1(diags, "E2020.use.miss", "", sn)
                             } else if !vis {
-                                diags.push("E2020: use 导入的符号未公开(pub):" + sn)
+                                diag1(diags, "E2020.use.priv", "", sn)
                             }
                             k3 += 1
                         }
@@ -261,7 +261,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                                 }
                                 if dup {
                                     // E5030:同名 decl 曾"首个胜出"静默遮蔽 → 现拦截
-                                    diags.push("E5030: use 导入同名 decl:" + mf[j4][1] + "(与已合并模块/入口同名;请重命名或收敛导入)")
+                                    diag1(diags, "E5030", "", mf[j4][1])
                                     return out
                                 }
                                 merged.push(mf[j4])
@@ -273,7 +273,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                     }
                 None => {
                     if !isstd {
-                        diags.push("E2020: use 模块文件不可读:" + mpath)
+                        diag1(diags, "E2020.use.read", "", mpath)
                         return out
                     }
                 }

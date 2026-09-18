@@ -16,6 +16,7 @@ HOST="$ROOT/compiler-c/build/ctronc"
 mode=run
 PROF=full
 TAUSTED=0
+DIAGLANG=zh
 case ${1:-} in
     check|emit) mode=$1; shift ;;
 esac
@@ -23,6 +24,7 @@ for a in "$@"; do
     case $a in
         --profile=*) PROF=${a#--profile=} ;;
         --trusted) TAUSTED=1 ;;
+        --lang=*) DIAGLANG=${a#--lang=} ;;
     esac
 done
 if [ ! -x "$HOST" ]; then
@@ -41,7 +43,7 @@ case $mode in
     run)
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORPROFILE|$PROF|" "$DIR/build/cc_run.ct" > "$TMP"
+        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_run.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
@@ -56,7 +58,7 @@ case $mode in
         done
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORTAUSTED|$TAUSTED|" "$DIR/build/cc_check.ct" > "$TMP"
+        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORTAUSTED|$TAUSTED|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_check.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
@@ -64,7 +66,7 @@ case $mode in
         OUTC=${1:-$(basename "${IN%.ct}").c}
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" > "$TMP"
+        sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" > "$TMP"
         "$HOST" run "$TMP" > "$OUTC"
         rc=$?
         [ $rc -eq 0 ] && echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"

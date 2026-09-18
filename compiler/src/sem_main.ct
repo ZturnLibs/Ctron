@@ -73,9 +73,9 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             }
             var ckind = ""
             if d.len >= 7 && d[6] == "pure" {
-                ckind = "E4020: pure 函数含能力调用(pure)"
+                ckind = "E4020.cap"
             } else if t == "FnC" {
-                ckind = "E6020: comptime 函数含能力调用(comptime)"
+                ckind = "E6020.cap"
             }
             if ckind != "" {
                 var ec = sem_cap(file, d, ckind)

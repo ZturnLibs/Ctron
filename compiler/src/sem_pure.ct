@@ -32,7 +32,7 @@ fn pwalk_e(file: List[Str], e: List[Str], code: Str, envN: List[Str], envT: List
             if obj[0] == "Ident" {
                 var ty = env_ty(envN, envT, obj[1])
                 if cap_ty(file, ty) {
-                    diags.push(code + "@" + nline(e))
+                    diags.push(diag_render0(code, nline(e)))
                 }
             }
             pwalk_e(file, cal[1], code, envN, envT, diags)

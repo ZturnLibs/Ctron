@@ -7,8 +7,97 @@
 // - v1 仅 zh 表;en 表与 ANCHORLANG 构建锚随 P2 落地。
 // =====================================================================
 
-// 目录(zh):键 → 模板。码先进 §10.1 注册表再入此表(meta_check R1 守护覆盖)
+// 语言锚:ctc.sh 以 sed 注入 "zh"/"en"(ANCHORLANG);非 sed 路径字面 token 视为 zh
+fn diag_lang() -> Str {
+    return "ANCHORLANG"
+}
+
+// 目录派发:en 先查 en 表,缺条目回落 zh(诚实降级;meta_check R1 守护 zh 全覆盖)
 fn diag_tpl(key: Str) -> Str {
+    if seq2(diag_lang(), "en") {
+        var e = diag_tpl_en(key)
+        if e.len > 0 {
+            return e
+        }
+    }
+    return diag_tpl_zh(key)
+}
+
+// 目录(en):键与 zh 表一一对应
+fn diag_tpl_en(key: Str) -> Str {
+    if seq2(key, "E3030") { return "static var does not exist; use static let or Global[T]:%0" }
+    if seq2(key, "W8010") { return "struct contains class-reference field (shallow copy):%0.%1" }
+    if seq2(key, "E3031") { return "static storage is non-Send (Send):%0" }
+    if seq2(key, "W8050") { return "extern missing #[trusted] (trust boundary):%0" }
+    if seq2(key, "E4041") { return "#[repr(c)] only allowed on struct declarations:%0" }
+    if seq2(key, "W8052.param") { return "extern parameter is not a C-ABI type (§9.6):%0.%1" }
+    if seq2(key, "W8052.ret") { return "extern return type is not a C-ABI type (§9.6):%0" }
+    if seq2(key, "E4040") { return "#[trusted] only allowed on extern declarations:%0" }
+    if seq2(key, "E4044") { return "variadic parameter (...) only allowed on extern declarations:%0" }
+    if seq2(key, "W8051") { return "repr(c) struct has a non-C-ABI field (§9.6):%0.%1" }
+    if seq2(key, "E4050") { return "class directly holds a resource field (§6.2; resources must be value handles or capability objects):%0.%1" }
+    if seq2(key, "E2040") { return "integer literal exceeds expected type width (expected %0):%1" }
+    if seq2(key, "E2020.name") { return "unresolved name (unresolved):%0" }
+    if seq2(key, "E2010.arity") { return "call argument count mismatch (arity):%0 expected %1 got %2" }
+    if seq2(key, "E2010.arg") { return "argument type mismatch (type):%0 arg %1 (%2) expected %3 got %4" }
+    if seq2(key, "E2061") { return "cannot uniquely infer type arguments (candidate conflict); annotate explicitly: %0[T](…)" }
+    if seq2(key, "E2060") { return "cannot infer type argument `%0` (not in argument position); annotate explicitly, e.g. %1[T](…)" }
+    if seq2(key, "E2010.arith.str") { return "arithmetic on Str (type):%0" }
+    if seq2(key, "E2010.concat") { return "Str concatenation requires both sides to be Str (type):+" }
+    if seq2(key, "E2010.arith.bool") { return "arithmetic on Bool (type):%0" }
+    if seq2(key, "E2010.op.and") { return "logical AND requires Bool operands (type):&&" }
+    if seq2(key, "E2010.op.or") { return "logical OR requires Bool operands (type):||" }
+    if seq2(key, "E2010.prop") { return "`?` in a function not returning Option/Result (type):%0" }
+    if seq2(key, "E2010.cond.if") { return "condition must be Bool (type):if" }
+    if seq2(key, "E2010.let") { return "let initializer type mismatch (type):expected %0 got %1" }
+    if seq2(key, "E2050") { return "bound not satisfied (bound):%0 param %1 requires %2 got %3" }
+    if seq2(key, "W8040") { return "shadows a prelude symbol (shadow prelude):%0" }
+    if seq2(key, "E2010.cond.while") { return "condition must be Bool (type):while" }
+    if seq2(key, "E2010.ret") { return "return type mismatch (type):expected %0 got %1" }
+    if seq2(key, "E2010.assign") { return "assignment type mismatch (type):target %0 got %1" }
+    if seq2(key, "W8030") { return "unused binding (unused):%0" }
+    if seq2(key, "E2072.brk") { return "break must not cross a closure boundary (closure body is a separate function; cannot break/continue the outer loop)" }
+    if seq2(key, "E2070.brk") { return "break outside a loop (binds to the nearest loop in the same function body)" }
+    if seq2(key, "E2071.brk") { return "break crosses a scope holding Drop locals (v1 static rejection; move Drop locals into an inner block or restructure the loop)" }
+    if seq2(key, "E2072.cont") { return "continue must not cross a closure boundary (closure body is a separate function; cannot break/continue the outer loop)" }
+    if seq2(key, "E2070.cont") { return "continue outside a loop (binds to the nearest loop in the same function body)" }
+    if seq2(key, "E2071.cont") { return "continue crosses a scope holding Drop locals (v1 static rejection; move Drop locals into an inner block or restructure the loop)" }
+    if seq2(key, "E6020.effect") { return "comptime function has a side effect (effect):%0 calls %1" }
+    if seq2(key, "E5010") { return "orphan impl (orphan):%0 for %1 — neither the trait nor the type belongs to this package" }
+    if seq2(key, "E6010") { return "comptime budget exceeded (budget):%0" }
+    if seq2(key, "E2010.const") { return "const type mismatch (type):%0 expected %1 got %2" }
+    if seq2(key, "E2040.const") { return "const literal exceeds I64 width (range):%0" }
+    if seq2(key, "E4030") { return "spawn inside a #[no_spawn] context" }
+    if seq2(key, "E3020.elem") { return "channel element is non-Send (Send):channel element type" }
+    if seq2(key, "E4042") { return "capturing closure cannot be used as a C-ABI callback (no env slot):%0" }
+    if seq2(key, "E1001.chain") { return "comparison operators cannot be chained: write a < b && b < c" }
+    if seq2(key, "W8020") { return "dropped result (must-use):%0 returns Option/Result" }
+    if seq2(key, "E4010") { return "capability %0 used beyond the manifest (caps) declaration: parameter &%1" }
+    if seq2(key, "E5020.circ") { return "circular module import (circular):%0" }
+    if seq2(key, "E2020.use.miss") { return "use import: symbol not found:%0" }
+    if seq2(key, "E2020.use.priv") { return "use import: symbol is not public (pub):%0" }
+    if seq2(key, "E5030") { return "use import name collision:%0 (duplicates a merged module/entry; rename or consolidate imports)" }
+    if seq2(key, "E2020.use.read") { return "use: module file unreadable:%0" }
+    if seq2(key, "E3050.umove") { return "use-after-move (moved):arena handle %0" }
+    if seq2(key, "E3040.own") { return "GC allocation inside an own block (allocation):%0" }
+    if seq2(key, "E3040.noalloc") { return "GC allocation in a no_alloc context (allocation):%0" }
+    if seq2(key, "E3010") { return "spawn captures a non-Send value (Send):%0" }
+    if seq2(key, "E2030") { return "match not exhaustive (not exhaustive):missing variant %0" }
+    if seq2(key, "E3070") { return "closure mutable capture without an explicit Mutex[T] wrapper:%0 (suggest: use Mutex[T].with_mut)" }
+    if seq2(key, "E4020.cap") { return "capability call in a #[pure] function (pure)" }
+    if seq2(key, "E6020.cap") { return "capability call in a comptime function (comptime)" }
+    if seq2(key, "E1001.punct.colon") { return "disabled punctuation ::" }
+    if seq2(key, "E1001.punct.semi") { return "disabled punctuation ;" }
+    if seq2(key, "E1001.badchar") { return "unrecognized character '%0'" }
+    if seq2(key, "E1001.impl.for") { return "impl missing for" }
+    if seq2(key, "E1001.exptype") { return "expected type, got %0" }
+    if seq2(key, "E1001.impl.body") { return "impl body missing \{" }
+    if seq2(key, "E1001.abi") { return "extern ABI must be the \"c\" string" }
+    return ""
+}
+
+// 目录(zh):键 → 模板。码先进 §10.1 注册表再入此表(meta_check R1 守护覆盖)
+fn diag_tpl_zh(key: Str) -> Str {
     // —— 批① sem_main.ct(§9.6 FFI 声明面 + 声明级检查)——
     if seq2(key, "E3030") { return "static var 不存在;用 static let 或 Global[T]:%0" }
     if seq2(key, "W8010") { return "struct 含类引用字段(浅拷贝):%0.%1" }
@@ -21,6 +110,67 @@ fn diag_tpl(key: Str) -> Str {
     if seq2(key, "E4044") { return "变参形参(...)仅限 extern 声明:%0" }
     if seq2(key, "W8051") { return "repr(c) struct 含非 C-ABI 字段(§9.6):%0.%1" }
     if seq2(key, "E4050") { return "类直接持有资源字段(§6.2;资源须值句柄或能力对象):%0.%1" }
+    // —— 批② sem_type.ct(类型统一 v1)——
+    if seq2(key, "E2040") { return "字面量超出期望整数类型宽度(期望 %0):%1" }
+    if seq2(key, "E2020.name") { return "未解析的名称(unresolved):%0" }
+    if seq2(key, "E2010.arity") { return "调用实参数不匹配(arity):%0 期望 %1 实得 %2" }
+    if seq2(key, "E2010.arg") { return "实参类型不匹配(type):%0 第 %1 实参 %2 期望 %3 实得 %4" }
+    if seq2(key, "E2061") { return "无法唯一推断类型实参(候选冲突);请显式标注 %0[类型](…)" }
+    if seq2(key, "E2060") { return "无法推断类型实参 `%0`(未出现于实参位);请显式标注,如 %1[类型](…)" }
+    if seq2(key, "E2010.arith.str") { return "算术运算遇 Str(type):%0" }
+    if seq2(key, "E2010.concat") { return "Str 拼接需两侧皆 Str(type):+" }
+    if seq2(key, "E2010.arith.bool") { return "算术运算遇 Bool(type):%0" }
+    if seq2(key, "E2010.op.and") { return "逻辑与需 Bool 操作数(type):&&" }
+    if seq2(key, "E2010.op.or") { return "逻辑或需 Bool 操作数(type):||" }
+    if seq2(key, "E2010.prop") { return "? 传播用于非 Option/Result 返回(type):%0" }
+    if seq2(key, "E2010.cond.if") { return "条件需 Bool(type):if" }
+    if seq2(key, "E2010.let") { return "let 初始化类型不匹配(type):期望 %0 实得 %1" }
+    if seq2(key, "E2050") { return "bound 不满足(bound):%0 型参 %1 需 %2 实参 %3" }
+    if seq2(key, "W8040") { return "遮蔽前奏符号(shadow prelude):%0" }
+    if seq2(key, "E2010.cond.while") { return "条件需 Bool(type):while" }
+    if seq2(key, "E2010.ret") { return "返回类型不匹配(type):期望 %0 实得 %1" }
+    if seq2(key, "E2010.assign") { return "赋值类型不匹配(type):目标 %0 实得 %1" }
+    // —— 批③ sem_calls/sem_comptime/sem_walk ——
+    if seq2(key, "W8030") { return "未使用绑定(unused):%0" }
+    if seq2(key, "E2072.brk") { return "break 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)" }
+    if seq2(key, "E2070.brk") { return "break 出现在循环外(绑定同函数体最近循环)" }
+    if seq2(key, "E2071.brk") { return "break 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)" }
+    if seq2(key, "E2072.cont") { return "continue 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)" }
+    if seq2(key, "E2070.cont") { return "continue 出现在循环外(绑定同函数体最近循环)" }
+    if seq2(key, "E2071.cont") { return "continue 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)" }
+    if seq2(key, "E6020.effect") { return "comptime 函数含副作用(effect):%0 调用 %1" }
+    if seq2(key, "E5010") { return "孤儿 impl(orphan):%0 for %1 的 trait 与类型均不属本包" }
+    if seq2(key, "E6010") { return "comptime 预算超限(budget):%0" }
+    if seq2(key, "E2010.const") { return "const 类型不匹配(type):%0 期望 %1 实得 %2" }
+    if seq2(key, "E2040.const") { return "const 字面量超出 I64 宽度(值域):%0" }
+    if seq2(key, "E4030") { return "no_spawn 上下文中的 spawn" }
+    if seq2(key, "E3020.elem") { return "channel 元素非 Send(Send):Channel 元素类型" }
+    if seq2(key, "E4042") { return "捕获闭包不可作 C-ABI 回调实参(无 env 槽):%0" }
+    if seq2(key, "E1001.chain") { return "比较运算符不可链:写 a < b && b < c" }
+    if seq2(key, "W8020") { return "结果被丢弃(must-use):%0 返回 Option/Result" }
+    // —— 批④ parse_pkg/sem_alloc/sem_move/sem_spawn/sem_exh/sem_closure ——
+    if seq2(key, "E4010") { return "使用 %0 能力超出 manifest(caps) 声明:参数 &%1" }
+    if seq2(key, "E5020.circ") { return "模块循环导入(circular):%0" }
+    if seq2(key, "E2020.use.miss") { return "use 导入未找到符号:%0" }
+    if seq2(key, "E2020.use.priv") { return "use 导入的符号未公开(pub):%0" }
+    if seq2(key, "E5030") { return "use 导入同名 decl:%0(与已合并模块/入口同名;请重命名或收敛导入)" }
+    if seq2(key, "E2020.use.read") { return "use 模块文件不可读:%0" }
+    if seq2(key, "E3050.umove") { return "use-after-move(moved):arena 句柄 %0" }
+    if seq2(key, "E3040.own") { return "own 块内 GC 分配(allocation):%0" }
+    if seq2(key, "E3040.noalloc") { return "no_alloc 上下文 GC 分配(allocation):%0" }
+    if seq2(key, "E3010") { return "spawn 捕获非 Send(Send):%0" }
+    if seq2(key, "E2030") { return "match 不穷尽(not exhaustive):缺变体 %0" }
+    if seq2(key, "E3070") { return "闭包可变捕获未显式 Mutex[T] 包装:%0(建议:改用 Mutex[T].with_mut)" }
+    // —— 批⑤ lex/parse_decl(解析面 E1001 族;变体键)——
+    if seq2(key, "E1001.punct.colon") { return "禁用的标点 ::" }
+    if seq2(key, "E1001.punct.semi") { return "禁用的标点 ;" }
+    if seq2(key, "E1001.badchar") { return "无法识别的字符 '%0'" }
+    if seq2(key, "E1001.impl.for") { return "impl 缺少 for" }
+    if seq2(key, "E1001.exptype") { return "预期类型,实际 %0" }
+    if seq2(key, "E1001.impl.body") { return "impl 体缺少 \{" }
+    if seq2(key, "E1001.abi") { return "extern ABI 应为 \"c\" 字符串" }
+    if seq2(key, "E4020.cap") { return "pure 函数含能力调用(pure)" }
+    if seq2(key, "E6020.cap") { return "comptime 函数含能力调用(comptime)" }
     return ""
 }
 
@@ -71,6 +221,16 @@ fn diag_text(key: Str, args: List[Str]) -> Str {
     return diag_subst(diag_tpl(key), args)
 }
 
+fn diag_text0(key: Str) -> Str {
+    return diag_text(key, List[Str]())
+}
+
+fn diag_text1(key: Str, a0: Str) -> Str {
+    var a = List[Str]()
+    a.push(a0)
+    return diag_text(key, a)
+}
+
 // 整条渲染:"CODE[@行]: 文案"
 fn diag_render(key: Str, line: Str, args: List[Str]) -> Str {
     var msg = diag_subst(diag_tpl(key), args)
@@ -79,6 +239,17 @@ fn diag_render(key: Str, line: Str, args: List[Str]) -> Str {
         return code + "@" + line + ": " + msg
     }
     return code + ": " + msg
+}
+
+// 渲染(固定元数):m 链等"先成串后发射"的调用点用
+fn diag_render0(key: Str, line: Str) -> Str {
+    return diag_render(key, line, List[Str]())
+}
+
+fn diag_render1(key: Str, line: Str, a0: Str) -> Str {
+    var a = List[Str]()
+    a.push(a0)
+    return diag_render(key, line, a)
 }
 
 // 发射(固定元数包装:调用点零列表字面量)

@@ -19,6 +19,7 @@ ERROR_CODES = {
     "E2050": "bound 不满足(泛型实参不满足型参 bound)",
     "E2020": "未解析的名称",
     "E2030": "match 不穷尽",
+    "E2040": "字面量超出期望整数类型宽度(§3.7;let/赋值/返回/实参四点)",
     "E2060": "无法推断类型实参(v0.7;请显式标注)",
     "E2061": "类型实参候选冲突(v0.7)",
     "E2070": "break/continue 出现在循环外(v0.7)",
@@ -33,7 +34,6 @@ ERROR_CODES = {
     "E3060": "own 块内对 GC 值可变借用",
     "E3070": "闭包可变捕获未显式 Mutex[T] 包装(R 线 R-P3a)",
     "E4010": "能力使用超出 manifest 声明",
-    "E4044": "变参形参仅限 extern 声明(§9.6 v0.7)",
     "E4020": "#[pure] 函数含副作用",
     "E4030": "#[no_spawn] 上下文 spawn",
     "E4040": "#[trusted] 用于非 extern 声明(§9.6)",
@@ -43,13 +43,18 @@ ERROR_CODES = {
     "E4050": "类直接持有需确定性释放的资源字段(§6.2)",
     "E5010": "trait 孤儿规则违规",
     "E5020": "循环依赖",
+    "E5030": "use 导入同名 decl",
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",
+    "E6030": "comptime 反射泛型运行时类型(parametricity)",
     "W8010": "struct 含可变类引用字段(浅共享)",
     "W8020": "must-use 结果被丢弃",
+    "W8030": "未使用绑定",
+    "W8040": "遮蔽前奏符号",
     "W8050": "extern 未标记 #[trusted](信任边界;§9.6)",
     "W8051": "repr(c) struct 含非 C-ABI 字段(§9.6 v0.6)",
     "W8052": "extern 形参/返回非 C-ABI 类型(§9.6 v0.6)",
+    "W8053": "extern 返回 fn 类型(dormant:v0.7 返回向合法化,码位保留)",
 }
 
 MARKER_RE = re.compile(r"^//@\s*(\w+)\s*:\s*(.+?)\s*$")
@@ -168,6 +173,31 @@ def check_file(path: Path) -> list[str]:
     return errors
 
 
+CODE_LIT_RE = re.compile(r'"([EW]\d{4})(?:\.[A-Za-z0-9_.]+)?"')
+
+
+def check_diag_catalog() -> list[str]:
+    """§10.8 R1:诊断目录覆盖守卫——发射面用到的每个码,diag_msg.ct zh 表必须有键。"""
+    errs: list[str] = []
+    dm = ROOT.parent / "compiler" / "src" / "diag_msg.ct"
+    if not dm.exists():
+        return ["缺 diag_msg.ct(诊断单一出口;设计见 specs/2026-09-17-diag-i18n-error-code-audit.md)"]
+    catalog = set(CODE_LIT_RE.findall(dm.read_text(encoding="utf-8")))
+    emitted: set[str] = set()
+    for p in sorted((ROOT.parent / "compiler" / "src").glob("*.ct")):
+        if p.name == "diag_msg.ct":
+            continue
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            s = ln.strip()
+            if s.startswith("//"):
+                continue  # 注释里的码(如 dormant W8053)不要求目录覆盖
+            emitted |= set(CODE_LIT_RE.findall(ln))
+    missing = sorted(emitted - catalog)
+    if missing:
+        errs.append("诊断码未入目录(先加 diag_msg.ct diag_tpl_zh 再使用): " + ",".join(missing))
+    return errs
+
+
 def main() -> int:
     all_files = sorted(p for p in ROOT.rglob("*.ct") if p.is_file())
     stats: dict[str, int] = {}
@@ -184,6 +214,10 @@ def main() -> int:
         for err in check_file(path):
             failures += 1
             print(f"[FAIL] {rel}: {err}")
+
+    for err in check_diag_catalog():
+        failures += 1
+        print(f"[FAIL] diag_msg.ct: {err}")
 
     print()
     print(f"测试文件: {len(all_files)} 个 " + " ".join(f"{k}={v}" for k, v in sorted(stats.items())))

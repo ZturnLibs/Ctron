@@ -65,6 +65,7 @@
 | E2010 | 类型不匹配 |
 | E2020 | 未解析的名称 |
 | E2030 | match 不穷尽 |
+| E2040 | 字面量超出期望整数类型宽度(§3.7 自适应的宽度约束;let/赋值/返回/实参四点) |
 | E2050 | bound 不满足(泛型实参不满足型参 bound) |
 | E2060 | 无法推断类型实参(v0.7;请显式标注) |
 | E2061 | 类型实参候选冲突(v0.7) |
@@ -79,6 +80,7 @@
 | W8050 | extern "c" 未标记 `#[trusted]`(信任边界须可枚举审计) |
 | W8051 | repr(c) struct 含非 C-ABI 字段(容器/能力类型;v0.6 §9.6) |
 | W8052 | extern 形参/返回非 C-ABI 类型(容器/能力类型;v0.6 §9.6) |
+| W8053 | extern 返回 fn 类型(dormant:v0.7 返回向合法化,码位保留;v0.6 §9.6) |
 | E3010 | spawn 捕获了非 Send 值 |
 | E3020 | channel 收发非 Send 类型 |
 | E3030 | `static var` 不存在 |
@@ -92,12 +94,16 @@
 | E4030 | `#[no_spawn]` 上下文 spawn |
 | E5010 | trait 孤儿规则违规 |
 | E5020 | 循环依赖 |
+| E5030 | use 导入同名 decl(多文件;曾"首个胜出"静默遮蔽,现拦截) |
 | E6010 | comptime 预算超限 |
 | E6020 | comptime 副作用/不确定 |
+| E6030 | comptime 反射泛型运行时类型(parametricity) |
 | W8010 | struct 含可变类引用字段(拷贝为浅共享) |
 | W8020 | must-use 结果被丢弃 |
+| W8030 | 未使用绑定 |
+| W8040 | 遮蔽前奏符号 |
 
-(错误码分段:E1xxx 解析;E2xxx 类型;E3xxx 内存/并发;E4xxx 效果;E5xxx 模块;E6xxx comptime;W8xxx lint。新码先加注册表再使用。)
+(错误码分段:E1xxx 解析;E2xxx 类型;E3xxx 内存/并发;E4xxx 效果;E5xxx 模块与配置;E6xxx comptime;E7xxx FFI/ABI;W8xxx lint。新码先加注册表再使用。)
 
 ## 5. 与规范的关系
 

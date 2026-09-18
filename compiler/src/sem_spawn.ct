@@ -157,7 +157,7 @@ fn wse(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: L
                 while ci < caps.len && !done {
                     var nm = caps[ci]
                     if !send_env(file, nm, envN, envT) {
-                        diags.push("E3010@" + nline(e) + ": spawn 捕获非 Send(Send):" + nm)
+                        diag1(diags, "E3010", nline(e), nm)
                         done = true
                     }
                     ci += 1

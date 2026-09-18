@@ -304,9 +304,8 @@ fn cscan(node: List[Str], muts: List[Str], diags: List[Str]) {
         var i: I32 = 0
         while i < names.len {
             var nm = names[i]
-            var m = "E3070: 闭包可变捕获未显式 Mutex[T] 包装:" + nm + "(建议:改用 Mutex[T].with_mut)"
-            if in_list(muts, nm) && !in_list(diags, m) {
-                diags.push(m)
+            if in_list(muts, nm) {
+                donce1(diags, "E3070", "", nm)
             }
             i += 1
         }

@@ -242,7 +242,7 @@ fn lit_fit_gate(expk: Str, e: List[Str], ln: Str, diags: List[Str]) {
     if c6abscmp(dec, bound) <= 0 {
         return
     }
-    diags.push("E2040@" + ln + ": 字面量超出期望整数类型宽度(期望 " + expk + "):" + lit[1])
+    diag2(diags, "E2040", ln, expk, lit[1])
 }
 
 fn compat(exp: Str, act: Str, e: List[Str], file: List[Str], tc: List[Str]) -> Bool {
@@ -468,13 +468,13 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         var got = ag.len - 1
         if rt.len > 0 && !in_list(loc, rt) && !in_list(diags, "E2020@" + nline(e) + ": 未解析的名称(unresolved):" + rt) {
             if !in_list(tc[0], rt) && !prelude_ok(rt) && !in_list(tc[6], rt) {
-                diags.push("E2020@" + nline(e) + ": 未解析的名称(unresolved):" + rt)
+                diag1(diags, "E2020.name", nline(e), rt)
             } else {
                 var g: I32 = 0
                 while g < tc[0].len {
                     if seq2(tc[0][g], rt) && tc[1][g].len > 0 {
                         if got != dvi(tc[1][g]) {
-                            diags.push("E2010@" + nline(e) + ": 调用实参数不匹配(arity):" + rt + " 期望 " + tc[1][g] + " 实得 " + got.to_string())
+                            diag3(diags, "E2010.arity", nline(e), rt, tc[1][g], got.to_string())
                         }
                         var ps = tc[3][g]
                         var i: I32 = 1
@@ -484,7 +484,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                                 var pk = ty_kind(prm[3])
                                 var ak = ex_ty(ag[i], tc, loc, envT)
                                 if !compat(pk, ak, ag[i], file, tc) {
-                                    diags.push("E2010@" + nline(ag[i]) + ": 实参类型不匹配(type):" + rt + " 第 " + i.to_string() + " 实参 " + root_name(ag[i]) + " 期望 " + pk + " 实得 " + ak)
+                                    diag5(diags, "E2010.arg", nline(ag[i]), rt, i.to_string(), root_name(ag[i]), pk, ak)
                                 }
                                 lit_fit_gate(pk, ag[i], "0", diags)
                             }
@@ -549,7 +549,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                             pi2 += 1
                         }
                         if amb2 {
-                            diags.push("E2061@" + nline(e) + ": 无法唯一推断类型实参(候选冲突);请显式标注 " + rt + "[类型](…)")
+                            diag1(diags, "E2061", nline(e), rt)
                         } else {
                             var miss = ""
                             var k3: I32 = 1
@@ -561,7 +561,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                                 k3 += 1
                             }
                             if miss.len > 0 && sawc {
-                                diags.push("E2060@" + nline(e) + ": 无法推断类型实参 `" + miss + "`(未出现于实参位);请显式标注,如 " + rt + "[类型](…)")
+                                diag2(diags, "E2060", nline(e), miss, rt)
                             }
                         }
                     }
@@ -569,12 +569,12 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 if !in_list(tc[0], rt) {
                     var pa = prelude_arity(rt)
                     if pa >= 0 && got != pa {
-                        diags.push("E2010@" + nline(e) + ": 调用实参数不匹配(arity):" + rt + " 期望 " + pa.to_string() + " 实得 " + got.to_string())
+                        diag3(diags, "E2010.arity", nline(e), rt, pa.to_string(), got.to_string())
                     }
                     var vi = idx_of(tc[6], rt)
                     if vi >= 0 {
                         if got != dvi(tc[7][vi]) {
-                            diags.push("E2010@" + nline(e) + ": 调用实参数不匹配(arity):" + rt + " 期望 " + tc[7][vi] + " 实得 " + got.to_string())
+                            diag3(diags, "E2010.arity", nline(e), rt, tc[7][vi], got.to_string())
                         }
                     }
                 }
@@ -597,10 +597,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         var nm = e[1]
         tc[10].push(nm)
         if !in_list(loc, nm) && !in_list(tc[0], nm) && !in_list(tc[4], nm) && !in_list(tc[6], nm) && !in_list(tc[8], nm) && !value_ok(nm) {
-            var m = "E2020@" + nline(e) + ": 未解析的名称(unresolved):" + nm
-            if !in_list(diags, m) {
-                diags.push(m)
-            }
+            donce1(diags, "E2020.name", nline(e), nm)
         }
         return
     }
@@ -617,7 +614,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         if or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), or2(seq2(op, "Mod"), seq2(op, "WrapSub"))))) {
             if or2(k_strish(lt), k_strish(rt2)) {
                 bad = true
-                m = "E2010@" + nline(e) + ": 算术运算遇 Str(type):" + op
+                m = diag_render1("E2010.arith.str", nline(e), op)
             }
         }
         if seq2(op, "Add") {
@@ -626,26 +623,26 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
             if !lunk && !runk {
                 if k_strish(lt) != k_strish(rt2) {
                     bad = true
-                    m = "E2010@" + nline(e) + ": Str 拼接需两侧皆 Str(type):+"
+                    m = diag_render0("E2010.concat", nline(e))
                 }
             }
         }
         if or2(seq2(op, "Add"), or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), seq2(op, "Mod"))))) {
             if or2(seq2(lt, "n:Bool"), seq2(rt2, "n:Bool")) {
                 bad = true
-                m = "E2010@" + nline(e) + ": 算术运算遇 Bool(type):" + op
+                m = diag_render1("E2010.arith.bool", nline(e), op)
             }
         }
         if seq2(op, "AndAnd") {
             if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
                 bad = true
-                m = "E2010@" + nline(e) + ": 逻辑与需 Bool 操作数(type):&&"
+                m = diag_render0("E2010.op.and", nline(e))
             }
         }
         if seq2(op, "OrOr") {
             if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
                 bad = true
-                m = "E2010@" + nline(e) + ": 逻辑或需 Bool 操作数(type):||"
+                m = diag_render0("E2010.op.or", nline(e))
             }
         }
         if bad {
@@ -683,7 +680,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 }
                 okr = or2(okr, or2(seq2(rk, "n:Result"), or2(seq2(rk, "n:AnyError"), seq2(rk, "n:Option"))))
                 if !okr {
-                    diags.push("E2010@" + nline(e) + ": ? 传播用于非 Option/Result 返回(type):" + rk)
+                    diag1(diags, "E2010.prop", nline(e), rk)
                 }
             }
         }
@@ -705,7 +702,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
     if t == "If" {
         var ck = ex_ty(e[1], tc, loc, envT)
         if ck.len > 0 && !seq2(ck, "n:Bool") {
-            diags.push("E2010@" + nline(e) + ": 条件需 Bool(type):if")
+            diag0(diags, "E2010.cond.if", nline(e))
         }
         tce(file, e[1], tc, loc, envT, retK, diags)
         tcb(file, e[2], tc, loc, envT, retK, diags)
@@ -785,7 +782,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
             if hasann {
                 var act = ex_ty(s[4], tc, loc, envT)
                 if !compat(ty_kind(ann), act, s[4], file, tc) {
-                    diags.push("E2010@" + nline(s) + ": let 初始化类型不匹配(type):期望 " + ty_kind(ann) + " 实得 " + act)
+                    diag2(diags, "E2010.let", nline(s), ty_kind(ann), act)
                 }
                 lit_fit_gate(ty_kind(ann), s[4], nline(s), diags)
                 // struct 泛型注解实例化点 bound 核对(§3.9.2;调用点
@@ -809,7 +806,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                                                 if atas[ak][0] == "Named" {
                                                     anm2 = atas[ak][1]
                                                 }
-                                                diags.push("E2050@" + nline(s) + ": bound 不满足(bound):" + ann[1] + " 型参 " + atps[ak][1] + " 需 " + abds[abi] + " 实参 " + anm2)
+                                                diag4(diags, "E2050", nline(s), ann[1], atps[ak][1], abds[abi], anm2)
                                             }
                                         }
                                         abi += 1
@@ -832,7 +829,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 var vn = s[2][1]
                 tc[9].push(vn)
                 if in_list(tc[12], vn) {
-                    diags.push("W8040@" + nline(s) + ": 遮蔽前奏符号(shadow prelude):" + vn)
+                    diag1(diags, "W8040", nline(s), vn)
                 }
                 // Drop 绑定隐式被作用域退出消费(§6.4):计为已读,免 W8030 误报
                 var dty = ""
@@ -853,7 +850,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
         } else if t == "While" {
             var ck = ex_ty(s[1], tc, loc, envT)
             if ck.len > 0 && !seq2(ck, "n:Bool") {
-                diags.push("E2010@" + nline(s) + ": 条件需 Bool(type):while")
+                diag0(diags, "E2010.cond.while", nline(s))
             }
             tce(file, s[1], tc, loc, envT, retK, diags)
             tcb(file, s[2], tc, loc, envT, retK, diags)
@@ -866,7 +863,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 if retK.len > 0 && !seq2(retK[0], "None") {
                     var act = ex_ty(s[1], tc, loc, envT)
                     if !compat(ty_kind(retK), act, s[1], file, tc) {
-                        diags.push("E2010@" + nline(s) + ": 返回类型不匹配(type):期望 " + ty_kind(retK) + " 实得 " + act)
+                        diag2(diags, "E2010.ret", nline(s), ty_kind(retK), act)
                     }
                     lit_fit_gate(ty_kind(retK), s[1], nline(s), diags)
                 }
@@ -876,7 +873,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
             var tk = ex_ty(s[1], tc, loc, envT)
             var vk = ex_ty(s[3], tc, loc, envT)
             if !compat(tk, vk, s[3], file, tc) {
-                diags.push("E2010@" + nline(s) + ": 赋值类型不匹配(type):目标 " + tk + " 实得 " + vk)
+                diag2(diags, "E2010.assign", nline(s), tk, vk)
             }
             lit_fit_gate(tk, s[3], nline(s), diags)
             tce(file, s[1], tc, loc, envT, retK, diags)
@@ -1075,7 +1072,7 @@ fn check_tpar_bounds(file: List[Str], e: List[Str], cal: List[Str], rt: Str, dia
                     if tas[k][0] == "Named" {
                         anm = tas[k][1]
                     }
-                    diags.push("E2050@" + nline(e) + ": bound 不满足(bound):" + rt + " 型参 " + tps[k][1] + " 需 " + bds[bi] + " 实参 " + anm)
+                    diag4(diags, "E2050", nline(e), rt, tps[k][1], bds[bi], anm)
                 }
             }
             bi += 1

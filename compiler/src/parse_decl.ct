@@ -321,11 +321,11 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         adv(cur)
     }
     if tok(toks, cur) != "for" {
-        pdiag(pdiags, lns, cols, cur, "E1001", "impl 缺少 for")
+        pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.impl.for"))
         if type_start(tok(toks, cur)) {
             ni.push(p_typ(toks, cur, lns))
         } else {
-            pdiag(pdiags, lns, cols, cur, "E1001", "预期类型,实际 " + tok(toks, cur))
+            pdiag(pdiags, lns, cols, cur, "E1001", diag_text1("E1001.exptype", tok(toks, cur)))
             adv(cur)
             ni.push(mk("None"))
         }
@@ -338,7 +338,7 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         adv(cur)
     }
     if tok(toks, cur) != "\{" {
-        pdiag(pdiags, lns, cols, cur, "E1001", "impl 体缺少 \{")
+        pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.impl.body"))
     } else {
         adv(cur)
     }
@@ -486,7 +486,7 @@ fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], 
         var abi = tok(toks, cur)
         adv(cur)
         if !seq2(qtext(byte_slice(abi, 1, abi.len - 1)), "c") {
-            pdiag(pdiags, lns, cols, cur, "E1001", "extern ABI 应为 \"c\" 字符串")
+            pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.abi"))
         }
     }
     while tok(toks, cur) == "NL" {

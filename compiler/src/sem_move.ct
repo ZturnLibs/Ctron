@@ -39,7 +39,7 @@ fn me(file: List[Str], e: List[Str], moved: List[Str], arenaB: List[Str], diags:
     var t = e[0]
     if t == "Ident" {
         if in_list(moved, e[1]) {
-            diags.push("E3050@" + nline(e) + ": use-after-move(moved):arena 句柄 " + e[1])
+            diag1(diags, "E3050.umove", nline(e), e[1])
         }
         return
     }
@@ -157,7 +157,7 @@ fn mb(file: List[Str], b: List[Str], moved: List[Str], arenaB: List[Str], diags:
                     }
                     handled = true
                 } else if in_list(moved, src) {
-                    diags.push("E3050: use-after-move(moved):arena 句柄 " + src)
+                    diag1(diags, "E3050.umove", "", src)
                     handled = true
                 }
             }

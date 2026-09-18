@@ -305,17 +305,17 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
             } else if b == 58 && i + 1 < n && byte_at(src, i + 1) == 58 {
                 // 禁用标点 :: (镜像 seed:报 E1001,恢复为单个冒号继续)
                 rpush(raw, rlines, rcols, line, c0, ":")
-                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: 禁用的标点 ::")
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + diag_text0("E1001.punct.colon"))
                 i += 2
             } else if b == 59 {
                 // 禁用标点 ; (镜像 seed:报 E1001 并丢弃记号,主循环续扫)
                 i += 1
-                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: 禁用的标点 ;")
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + diag_text0("E1001.punct.semi"))
             } else if lex_single(b) {
                 rpush(raw, rlines, rcols, line, c0, byte_slice(src, i, i + 1))
                 i += 1
             } else {
-                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: 无法识别的字符 '" + byte_slice(src, i, i + 1) + "'")
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + diag_text1("E1001.badchar", byte_slice(src, i, i + 1)))
                 i += 1
             }
         }

@@ -190,7 +190,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
                             isu = true
                         }
                         if !isu {
-                            diags.push("W8030: 未使用绑定(unused):" + un)
+                            diag1(diags, "W8030", "", un)
                         }
                     }
                 }
@@ -242,24 +242,24 @@ fn chk_break(file: List[Str], n: List[Str], depth: I32, loopbase: I32, outer: I3
     if t == "Break" {
         if depth == 0 {
             if outer > 0 {
-                diags.push("E2072@" + nline(n) + ": break 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)")
+                diag0(diags, "E2072.brk", nline(n))
             } else {
-                diags.push("E2070@" + nline(n) + ": break 出现在循环外(绑定同函数体最近循环)")
+                diag0(diags, "E2070.brk", nline(n))
             }
         } else if drops.len > loopbase {
-            diags.push("E2071@" + nline(n) + ": break 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)")
+            diag0(diags, "E2071.brk", nline(n))
         }
         return
     }
     if t == "Continue" {
         if depth == 0 {
             if outer > 0 {
-                diags.push("E2072@" + nline(n) + ": continue 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)")
+                diag0(diags, "E2072.cont", nline(n))
             } else {
-                diags.push("E2070@" + nline(n) + ": continue 出现在循环外(绑定同函数体最近循环)")
+                diag0(diags, "E2070.cont", nline(n))
             }
         } else if drops.len > loopbase {
-            diags.push("E2071@" + nline(n) + ": continue 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)")
+            diag0(diags, "E2071.cont", nline(n))
         }
         return
     }

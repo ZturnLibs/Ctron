@@ -43,7 +43,7 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
         var cal = e[1]
         // E4030:.spawn 调用
         if ns && cal[0] == "Member" && cal[3] == "spawn" {
-            out.push("E4030@" + nline(e) + ": no_spawn 上下文中的 spawn")
+            out.push(diag_render0("E4030", nline(e)))
         }
         // W8020:丢弃 Option/Result 返回值(仅 Expr 语句层,见 stmt)
         if cal[0] == "TypeArgs" && cal[1].len > 0 && cal[1][0] == "Ident" && cal[1][1] == "Channel" {
@@ -51,7 +51,7 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
             if ag2.len > 1 {
                 var el = ag2[1]
                 if !send_of(file, el, 0) {
-                    out.push("E3020@" + nline(e) + ": channel 元素非 Send(Send):Channel 元素类型")
+                    out.push(diag_render0("E3020.elem", nline(e)))
                 }
             }
         }
@@ -69,7 +69,7 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
                 qi += 1
             }
             if hasclo && ext_cb_target(file, cal[1]) {
-                out.push("E4042@" + nline(e) + ": 捕获闭包不可作 C-ABI 回调实参(无 env 槽):" + cal[1])
+                out.push(diag_render1("E4042", nline(e), cal[1]))
             }
         }
         walk_e(file, cal, ns, fns, rets, out)
@@ -88,7 +88,7 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
     if t == "Binary" {
         // E1001:比较运算符不可链(a < b < c;钉子 §2,镜像 C 词法同款拦截)
         if is_cmp_op(e[1]) && e[2][0] == "Binary" && is_cmp_op(e[2][1]) {
-            out.push("E1001@" + nline(e) + "(parse): 比较运算符不可链:写 a < b && b < c")
+            out.push("E1001@" + nline(e) + "(parse): " + diag_text0("E1001.chain"))
         }
         walk_e(file, e[2], ns, fns, rets, out)
         walk_e(file, e[3], ns, fns, rets, out)
@@ -189,7 +189,7 @@ fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[St
                         if fns[k] == nm2 {
                             hit = true
                             if is_opt_ret(rets[k]) {
-                                out.push("W8020@" + nline(ce) + ": 结果被丢弃(must-use):" + nm2 + " 返回 Option/Result")
+                                out.push(diag_render1("W8020", nline(ce), nm2))
                             }
                         }
                         k += 1

@@ -229,9 +229,9 @@ fn al_e(file: List[Str], e: List[Str], ow: Bool, na: Bool, arenaB: List[Str], gc
         }
         if alloc {
             if ow {
-                diags.push("E3040@" + nline(e) + ": own 块内 GC 分配(allocation):" + kind)
+                diag1(diags, "E3040.own", nline(e), kind)
             } else {
-                diags.push("E3040@" + nline(e) + ": no_alloc 上下文 GC 分配(allocation):" + kind)
+                diag1(diags, "E3040.noalloc", nline(e), kind)
             }
             return
         }
@@ -241,9 +241,9 @@ fn al_e(file: List[Str], e: List[Str], ow: Bool, na: Bool, arenaB: List[Str], gc
         var cn = e[1]
         if decl_node(file, "Class", cn).len > 0 {
             if ow {
-                diags.push("E3040@" + nline(e) + ": own 块内 GC 分配(allocation):类构造")
+                diag1(diags, "E3040.own", nline(e), "类构造")
             } else {
-                diags.push("E3040@" + nline(e) + ": no_alloc 上下文 GC 分配(allocation):类构造")
+                diag1(diags, "E3040.noalloc", nline(e), "类构造")
             }
             return
         }

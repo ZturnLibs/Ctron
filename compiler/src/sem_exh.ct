@@ -116,7 +116,7 @@ fn xe(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: Li
                         buf = buf + miss[mi]
                         mi += 1
                     }
-                    diags.push("E2030@" + nline(e) + ": match 不穷尽(not exhaustive):缺变体 " + buf)
+                    diag1(diags, "E2030", nline(e), buf)
                 }
             }
         }
