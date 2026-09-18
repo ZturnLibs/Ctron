@@ -1,0 +1,48 @@
+#!/bin/sh
+# release.sh —— 单平台打包(release 工程每平台各跑一次)
+#   用法: tools/release.sh <version>
+#   产物: dist/ctron-<ver>-<os>-<arch>.tar.gz
+#         dist/ctron-<ver>-src.tar.gz
+#         dist/prebuilt/{ctron-cc,ctron-chk,ctron-emit}.c
+#         dist/SHA256SUMS(VERSION 落两包根:dist/ctron/VERSION 与 src 件根)
+set -eu
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+VER=${1:?用法: release.sh <version>}; VER=${VER#v}
+OS=$(uname -s | tr '[:upper:]' '[:lower:]'); M=$(uname -m)
+case $M in arm64|aarch64) ARCH=arm64 ;; x86_64) ARCH=x86_64 ;; *) echo "不支持的架构 $M" >&2; exit 2 ;; esac
+DIST="$DIR/dist"; PKG="$DIST/ctron"
+rm -rf "$DIST" && mkdir -p "$PKG/bin" "$PKG/lib/ctron" "$PKG/share/doc" "$DIST/prebuilt"
+
+# README 单点解析:git 仓库根现无 README.md(文档在 compiler/README.md),回落取之;
+# 真 release 摆入根 README 后自动优先生效(两落点同源,装机包与 src 件不缺页)
+README="$DIR/README.md"; [ -f "$README" ] || README="$DIR/compiler/README.md"
+
+sh "$DIR/compiler/build.sh"
+sh "$DIR/compiler/native.sh"
+install -m 755 "$DIR/compiler/bin/ctron-cc" "$DIR/compiler/bin/ctron-chk" "$DIR/compiler/bin/ctron-emit" "$PKG/bin/"
+install -m 755 "$DIR/ctc" "$PKG/bin/ctc"
+cp -R "$DIR/std/." "$PKG/lib/ctron/std/"
+cp "$README" "$PKG/share/doc/"
+cp -R "$DIR/examples" "$PKG/share/doc/examples"
+printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$PKG/VERSION"
+
+# 预发射 C(固定点:任何平台发射应逐字节一致,workflow 内跨平台 diff 验证)
+TMP=$(mktemp -d /tmp/ctron_rel.XXXXXX) && trap 'rm -rf "$TMP"' EXIT
+"$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_run.ct"   "$DIST/prebuilt/ctron-cc.c"   >/dev/null
+"$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_check.ct" "$DIST/prebuilt/ctron-chk.c"  >/dev/null
+"$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_emit.ct"  "$DIST/prebuilt/ctron-emit.c" >/dev/null
+
+# 源码 tarball 组装件(仅打包,不重复构建;布局对齐源码线 Makefile:prebuilt/ std/ ctc Makefile)
+SRC="$DIST/ctron-src-$VER"; mkdir -p "$SRC/prebuilt"
+cp -R "$DIR/compiler/src" "$SRC/compiler-src"
+cp -R "$DIR/std" "$SRC/std"
+cp "$DIST/prebuilt/"*.c "$SRC/prebuilt/"
+cp "$DIR/ctc" "$SRC/"; cp "$DIR/Makefile" "$SRC/"; cp "$README" "$SRC/"
+cp "$DIR/install.sh" "$SRC/" 2>/dev/null || true
+printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$SRC/VERSION"
+
+tar -C "$DIST" -czf "$DIST/ctron-$VER-$OS-$ARCH.tar.gz" ctron
+tar -C "$DIST" -czf "$DIST/ctron-$VER-src.tar.gz" "ctron-src-$VER"
+cd "$DIST" && shasum -a 256 ctron-$VER-*.tar.gz > SHA256SUMS
+echo "release.sh: 产物在 $DIST/"
+ls -la "$DIST"
