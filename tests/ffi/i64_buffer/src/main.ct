@@ -1,0 +1,16 @@
+// tests/ffi/i64_buffer —— I64 定长数组过界(§四 #7 修复:a<计数><元素码> 回溯拆分)
+// 承诺:I64[4] 发射 int64_t[4](旧实现误发 int32_t[36]);T[N] → 视图退化过界;
+// C 侧经 ctron_view_6 读回。
+#[trusted]
+extern "c" fn sum_i64(data: &I64[]) -> I64
+
+#[trusted]
+extern "c" fn first_i64(data: &I64[]) -> I64
+
+test "I64 array view across boundary (element type + count correct)" {
+    var buf: I64[4] = [10, 20, 30, 40]
+    assert_eq(sum_i64(buf), 100)
+    assert_eq(first_i64(buf), 10)
+    buf[3] = 60
+    assert_eq(sum_i64(buf), 120)
+}

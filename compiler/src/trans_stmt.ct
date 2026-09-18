@@ -757,10 +757,19 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln("t_" + tgt[1][1] + ".d[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(ct_typeof(st[3], env, file), byte_slice(tc0, 1, tc0.len), ct_expr(st[3], env, file)) + ";", env)
                 return env
             }
+            var tc = ct_typeof(tgt[1], env, file)
+            // 定长 C 数组元素写(§四 #7 修复):t_buf[i] 直写 + 声明计数越界守卫
+            if tc.len >= 3 && byte_at(tc, 0) == 97 {
+                var anm = tgt[1][1]
+                var acnt = a_count(tc)
+                var aec = a_elem(tc)
+                eln("if (" + ct_expr(tgt[2], env, file) + " < 0 || " + ct_expr(tgt[2], env, file) + " >= " + acnt + ") \{ ctron_panic(\"index out of bounds\"); }", env)
+                eln("t_" + anm + "[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(ct_typeof(st[3], env, file), aec, ct_expr(st[3], env, file)) + ";", env)
+                return env
+            }
             var tv = ct_expr(tgt[1], env, file)
             var vt = ct_typeof(st[3], env, file)
             var vtxt = ct_arg_cast(vt, "s", ct_expr(st[3], env, file))
-            var tc = ct_typeof(tgt[1], env, file)
             if tc == "LI" {
                 vtxt = "(const char*)(long)(" + ct_expr(st[3], env, file) + ")"
             }

@@ -1,0 +1,3 @@
+[package]
+name = "ffi_i64_buffer"
+version = "0.1.0"
