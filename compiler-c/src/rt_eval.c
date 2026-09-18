@@ -873,6 +873,24 @@ val eval_expr(rt* R, cexpr* e) {
                 o.s = "";
                 return o;
             }
+            if (!strcmp(nm, "ctron_exe_path")) {
+                val o = {0};
+                o.k = V_STR;
+                o.s = "";
+                return o;
+            }
+            if (!strcmp(nm, "env_get")) {
+                val o = {0};
+                o.k = V_STR;
+                o.s = "";
+                return o;
+            }
+            if (!strcmp(nm, "ctron_cli_flag")) {
+                val o = {0};
+                o.k = V_STR;
+                o.s = "";
+                return o;
+            }
             if (!strcmp(nm, "read_file")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_file 实参");
                 val pv = eval_expr(R, e->elems[0]);

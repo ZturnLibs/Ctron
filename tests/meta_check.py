@@ -82,6 +82,10 @@ def check_file(path: Path) -> list[str]:
         # gui/ 泳道夹具由 run.sh 驱动(CTML S 泳道:构建+链接为主,窗口运行为交互验收);
         # 不按主流 test 块规则元检查(同 bench 夹具先例)。计划:2026-09-16-gui-mvp-ladder。
         return errors
+    if "dist" in relparts0:
+        # dist/ 分发夹具为普通 main 程序,由 ctc.sh/ctron-cc 直驱 + expected/*.out 黄金对照
+        # (工具链分发线);不按主流 test 块规则元检查(同 gui/ 泳道先例)。
+        return errors
     kind = kind_of(path)
     if kind is None:
         return errors

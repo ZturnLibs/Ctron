@@ -1,0 +1,10 @@
+// fx_distinfo —— 分发三内建:seed 恒空/native 实值
+fn main() {
+    if ctron_exe_path().len > 0 {
+        println("exe:nonempty")
+    } else {
+        println("exe:empty")
+    }
+    println("env:" + env_get("CTRON_DIST_PROBE").len.to_string())
+    println("flag:" + ctron_cli_flag("format").len.to_string())
+}

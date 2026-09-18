@@ -1002,6 +1002,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "ctron_entry" { return "s" }
             if cal[1] == "utf8_enc" { return "s" }
             if cal[1] == "read_file" { return "s" }
+            if cal[1] == "ctron_exe_path" { return "s" }
+            if cal[1] == "env_get" { return "s" }
+            if cal[1] == "ctron_cli_flag" { return "s" }
             if cal[1] == "read_dir" { return "s" }
             if or2(cal[1] == "fs_exists", or2(cal[1] == "fs_write", cal[1] == "fs_delete")) { return "b" }
             if cal[1] == "now_ms" { return "6" }
