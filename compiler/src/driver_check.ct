@@ -240,6 +240,13 @@ fn main() -> I32 {
                 return 1
             }
             println("check OK decls=" + (file.len - 1).to_string())
+            var chk_dump = ctron_cli_flag("dumpgui")
+            if chk_dump.len == 0 {
+                chk_dump = "ANCHORDUMPGUI"
+            }
+            if chk_dump == "1" {
+                gui_dump_file(file)
+            }
             var chk_trusted = ctron_cli_flag("trusted")
             if chk_trusted.len == 0 {
                 chk_trusted = "ANCHORTAUSTED"

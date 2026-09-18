@@ -49,16 +49,17 @@ case $mode in
         ;;
     check)
         FMT=0
+        DUMPGUI=0
         PROF=full
         for a in "$@"; do
-            case $a in --format=json) FMT=1 ;; esac
+            case $a in --format=json) FMT=1 ;; --dump-gui) DUMPGUI=1 ;; esac
         done
         for a in "$@"; do
             case $a in --profile=*) PROF=${a#--profile=} ;; esac
         done
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
-        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORTAUSTED|$TAUSTED|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_check.ct" > "$TMP"
+        sed -e "s|\.\./selfhosted/input_cc\.ct|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORTAUSTED|$TAUSTED|" -e "s|ANCHORDUMPGUI|$DUMPGUI|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_check.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
