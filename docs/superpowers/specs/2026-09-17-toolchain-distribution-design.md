@@ -181,7 +181,7 @@ ctc --help           # 总用法(= ctc help / -h);ctc help <cmd> 看子命令详
 | 5 | ctc 驱动 sh 版 | 新 | POSIX | §4 全部子命令;build 负责发射 → 调 CC →(可选)链 c_src |
 | 6 | ctc 驱动 PS 版 + cmd 垫片 | 新 | Windows | 同命令面;conformance 用例锁定两版参数兼容 |
 | 7 | `_WIN32` 样板补丁 | `driver_emit.ct` | Windows | `main` 入口 `SetConsoleOutputCP(CP_UTF8)`(UTF-8 输出不被控制台代码页吃掉) |
-| 8 | lex `\r` 过滤 | `lex.ct` | 全(Windows 受益) | CRLF 源可解析;黄金逐字不变验证。否则记事本存个 CRLF 文件即解析炸 |
+| 8 | ~~lex `\r` 过滤~~ 已满足(双侧词法既有),本项仅 CRLF 回归夹具(已落 `tests/06_crlf.ct`) | `lex.ct` | 全(Windows 受益) | CRLF 源可解析;黄金逐字不变验证。否则记事本存个 CRLF 文件即解析炸 |
 | 9 | 栈链接参数 | `ctc` 两版 + `native.sh` | Windows 为主 | §4 所列 bytes |
 | 10 | `tools/release.sh` | 新 | 全 | 一键出 6 产物 + SHA256SUMS;本地可跑,CI 复用 |
 | 11 | Release workflow(双阶段) | `.github/workflows/` | 全 | §6 |

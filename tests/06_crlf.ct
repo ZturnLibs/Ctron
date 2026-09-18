@@ -1,0 +1,11 @@
+// 06_crlf.ct —— CRLF 行尾源回归夹具(工具链分发 spec §5 第 8 项)
+// 词法双侧已把 CR 与空格同列跳过(lex.ct 扫描循环 / lexer.c:92);本件以真 CRLF 源钉死防回归:
+// 词法若不再跳 CR,本文件编译即拦截;CR 若泄入字面量,下方 len/eq 断言即炸。
+test "crlf line endings" {
+    let s = "crlf ok"
+    assert_eq(s.len, 7)
+    assert_eq(s, "crlf ok")
+}
+fn main() {
+    println("crlf ok")
+}
