@@ -48,6 +48,7 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E2010.op.and") { return "logical AND requires Bool operands (type):&&" }
     if seq2(key, "E2010.op.or") { return "logical OR requires Bool operands (type):||" }
     if seq2(key, "E2010.op.not") { return "logical NOT requires Bool operand (type):!" }
+    if seq2(key, "E2010.op.neg") { return "unary minus requires numeric operand (type):-" }
     if seq2(key, "E2010.prop") { return "`?` in a function not returning Option/Result (type):%0" }
     if seq2(key, "E2010.cond.if") { return "condition must be Bool (type):if" }
     if seq2(key, "E2010.let") { return "let initializer type mismatch (type):expected %0 got %1" }
@@ -124,6 +125,7 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E2010.op.and") { return "逻辑与需 Bool 操作数(type):&&" }
     if seq2(key, "E2010.op.or") { return "逻辑或需 Bool 操作数(type):||" }
     if seq2(key, "E2010.op.not") { return "逻辑非需 Bool 操作数(type):!" }
+    if seq2(key, "E2010.op.neg") { return "一元负号需数值操作数(type):-" }
     if seq2(key, "E2010.prop") { return "? 传播用于非 Option/Result 返回(type):%0" }
     if seq2(key, "E2010.cond.if") { return "条件需 Bool(type):if" }
     if seq2(key, "E2010.let") { return "let 初始化类型不匹配(type):期望 %0 实得 %1" }

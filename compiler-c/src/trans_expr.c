@@ -351,7 +351,10 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             ty lt = emit_expr(c, e->lhs, &l);
             ty rt = emit_expr(c, e->rhs, &r);
             if (c->err) { sb_free(&l); sb_free(&r); return ty_unk(); }
-            if ((lt.k != T_BOOL && lt.k != T_UNK) || (rt.k != T_BOOL && rt.k != T_UNK))
+            // v0.8 口径对齐(§4.4):仅已知非 Bool 标量(数值/Str)拒;聚合(T_SUM 等)/UNK 放行
+            // ——镜像 sem prim_cat 口径;原"非 T_BOOL/T_UNK 即拒"把聚合误拒(04c false && get(9) or 7)
+            if ((lt.k == T_INT || lt.k == T_FLT || lt.k == T_STR)
+                || (rt.k == T_INT || rt.k == T_FLT || rt.k == T_STR))
                 terr(c, "v1:&& 需 Bool");
             sb_f(o, "((%s) && (%s))", l.d ? l.d : "0", r.d ? r.d : "0");
             sb_free(&l);
@@ -366,11 +369,11 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (c->err) { sb_free(&l3); return ty_unk(); }
             if (lt7.k != T_SUM) {
                 sb r3 = {0};
-                emit_expr(c, e->rhs, &r3);
+                ty rt7 = emit_expr(c, e->rhs, &r3);
                 if (c->err) { sb_free(&l3); sb_free(&r3); return ty_unk(); }
                 sb_f(o, "((void)(%s), (%s))", l3.d ? l3.d : "0", r3.d ? r3.d : "0");
                 sb_free(&l3); sb_free(&r3);
-                return ty_unk();
+                return rt7;
             }
             int is_opt3 = !strncmp(lt7.tname, "ctron_opt_", 10);
             const char* good3 = is_opt3 ? "CTRON_OPT_SOME" : "CTRON_RES_OK";

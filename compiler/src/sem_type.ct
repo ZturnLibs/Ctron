@@ -657,10 +657,26 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
     }
     if t == "Unary" {
         // v0.8 修:! 逻辑非仅接受 Bool(§4.4 明文化;对齐 C sem UN_NOT/Rust check 口径)
+        // 行号提取对 Str 字面量节点跳过——其末元素为插值 parts 子列表,nline 的 byte_at 不安全
         if seq2(e[1], "Not") {
             var nt = ex_ty(e[2], tc, loc, envT)
             if or2(k_num(nt), k_strish(nt)) {
-                diags.push(diag_render0("E2010.op.not", nline(e[2])))
+                var nln = ""
+                if !seq2(e[2][0], "Str") {
+                    nln = nline(e[2])
+                }
+                diags.push(diag_render0("E2010.op.not", nln))
+            }
+        }
+        // v0.8 修:一元 - 需数值(对齐 C sem UN_NEG/Rust check 口径;Str/Bool 拒,未知/聚合放行)
+        if seq2(e[1], "Neg") {
+            var ng = ex_ty(e[2], tc, loc, envT)
+            if or2(k_strish(ng), seq2(ng, "n:Bool")) {
+                var gln = ""
+                if !seq2(e[2][0], "Str") {
+                    gln = nline(e[2])
+                }
+                diags.push(diag_render0("E2010.op.neg", gln))
             }
         }
         tce(file, e[2], tc, loc, envT, retK, diags)

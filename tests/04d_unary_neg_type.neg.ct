@@ -1,0 +1,13 @@
+// 04d_unary_neg_type.neg.ct —— v0.8:一元 - 需数值(§4.3 层 7;对齐 C sem UN_NEG/Rust check 口径;
+// 主线补齐前仅 C/Rust 两线拦截)
+//@ fail: E2010
+
+test "neg on bool is a type error" {
+    let x = -true
+    assert_eq(x, 0)
+}
+
+test "neg on str is a type error" {
+    let y = -"s"
+    assert_eq(y, 0)
+}
