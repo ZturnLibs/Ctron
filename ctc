@@ -28,7 +28,7 @@ ctc —— Ctron 工具链驱动
   ctc build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
   ctc build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
   ctc test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
-  ctc new <dir>              脚手架:hello + Ctron.toml
+  ctc new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctc --version              版本
   ctc --help | help [cmd]    帮助(亦可 ctc <cmd> --help)
 环境变量:CC(默认 cc)、CTRON_STDPATH(覆盖标准库位置)
@@ -49,7 +49,7 @@ H
     check) echo "ctc check <file.ct> [--format=json] [--profile=bare] —— 静态检查,不改任何文件";;
     run) echo "ctc run <file.ct> —— 解释执行;不需要 C 编译器";;
     test) echo "ctc test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账";;
-    new) echo "ctc new <dir> —— 生成 <dir>/Ctron.toml + src/main.ct(hello)";;
+    new) echo "ctc new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)";;
     *) usage;;
 esac
 }
@@ -130,7 +130,8 @@ case $CMD in
     new)
         [ $# -ge 1 ] || die2 "new 需要目录名"
         mkdir -p "$1/src" || exit 2
-        printf 'name = "%s"\n\n[caps]\n' "$(basename "$1")" > "$1/Ctron.toml"
+        printf 'name = "%s"\n' "$(basename "$1")" > "$1/Ctron.toml"
+        printf 'pkg {\n    manifest_version = 1\n    name = "%s"\n    version = "0.1.0"\n}\n' "$(basename "$1")" > "$1/Ctron.ctcl"
         printf 'fn main() {\n    println("hello, ctron")\n}\n' > "$1/src/main.ct"
         echo "ctc: 已生成 $1/(ctc run $1/src/main.ct 试跑)"
         ;;

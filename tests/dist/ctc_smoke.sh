@@ -10,6 +10,9 @@
 #   6) 无 cc 路径:CC 指向不存在的绝对路径 + PATH 收窄,build rc=2 且 .c
 #      先于预检产出且 stderr 含双出路指引("安装编译器");同环境 run rc=0
 #      (隔离锁在 build 路径,解释臂不受 cc 影响)
+#   7) 分发三内建 fx_distinfo(native/dev 布局面):exe:nonempty/env:0/flag:0
+#   8) stdpath 两态:①CTRON_STDPATH 指路 → 1;缺省走③回落 → 2
+#      (①态需 env_get 实值面,仅 native 可观察;seed 面归 ci.sh 既有链路)
 # 前置:仓库根 ctc + compiler/bin/ctron-{cc,chk,emit}
 #       (ci.sh [4/7] native.sh 产出;dev 回落由 ctc 内建,本脚本不依赖 PATH)。
 set -eu
@@ -54,8 +57,8 @@ fi
 
 echo "== 4) 全链:new → run → check → build 单文件 → build 项目模式 =="
 rc=0; ( cd "$T" && "$CTC" new probe ) > "$T/new.out" 2>&1 || rc=$?
-if [ $rc -eq 0 ] && [ -f "$T/probe/Ctron.toml" ] && [ -f "$T/probe/src/main.ct" ]; then
-    ok "new 脚手架(Ctron.toml + src/main.ct)"
+if [ $rc -eq 0 ] && [ -f "$T/probe/Ctron.toml" ] && [ -f "$T/probe/Ctron.ctcl" ] && [ -f "$T/probe/src/main.ct" ]; then
+    ok "new 脚手架(Ctron.toml + Ctron.ctcl + src/main.ct)"
 else
     bad "new rc=$rc 或缺脚手架文件"
 fi
@@ -124,6 +127,32 @@ if [ $rc -eq 0 ] && grep -q 'hello, ctron' "$T/nocc_run.out"; then
     ok "无 cc 同环境 run rc=0(解释臂隔离,不受 cc 影响)"
 else
     bad "无 cc run rc=$rc out=[$(cat "$T/nocc_run.out")]"
+fi
+
+echo "== 7) 分发三内建:ctc run fx_distinfo(native/dev 布局面) =="
+# dev 下 exe 旁无 lib → std 走③回落;fx_distinfo 不用 std,不受影响。
+# seed 面(compiler/ctc.sh 宿主 env_get 恒空)不入本脚本:依赖 seed 构建,归 ci.sh 既有链路。
+rc=0; "$CTC" run "$ROOT/tests/dist/fx_distinfo.ct" > "$T/dist.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q '^exe:nonempty$' "$T/dist.out" \
+    && grep -q '^env:0$' "$T/dist.out" && grep -q '^flag:0$' "$T/dist.out"; then
+    ok "fx_distinfo 三内建:exe:nonempty/env:0/flag:0"
+else
+    bad "fx_distinfo rc=$rc out=[$(cat "$T/dist.out")]"
+fi
+
+echo "== 8) stdpath 两态:①CTRON_STDPATH 指路 / 缺省③回落 =="
+rc=0; CTRON_STDPATH="$ROOT/tests/modules/stdpath/fakestd" "$CTC" run "$ROOT/tests/modules/stdpath/src/main.ct" > "$T/sp1.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q '^1$' "$T/sp1.out"; then
+    ok "CTRON_STDPATH=fakestd 命中①(不分词):输出 1"
+else
+    bad "stdpath ①态 rc=$rc out=[$(cat "$T/sp1.out")]"
+fi
+
+rc=0; "$CTC" run "$ROOT/tests/modules/stdpath/src/main.ct" > "$T/sp2.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q '^2$' "$T/sp2.out"; then
+    ok "缺省走③回落(真分词):输出 2"
+else
+    bad "stdpath 缺省态 rc=$rc out=[$(cat "$T/sp2.out")]"
 fi
 
 echo "ctc_smoke: $pass ok / $fail fail"
