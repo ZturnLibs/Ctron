@@ -511,7 +511,12 @@ fn main() -> I32 {
                 scall = "ctron_statics_init(); "
             }
             if hasmain {
-                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 2 && !strcmp(argv[1], \"--version\")) \{ puts(ctron_version); return 0; } \{ int ctron_ai; for (ctron_ai = 3; ctron_ai < argc; ctron_ai++) \{ if (!strncmp(argv[ctron_ai], \"--format=\", 9)) \{ ctron_cli_fmt = argv[ctron_ai] + 9; } else if (!strncmp(argv[ctron_ai], \"--profile=\", 10)) \{ ctron_cli_prof = argv[ctron_ai] + 10; } else if (!strcmp(argv[ctron_ai], \"--trusted\")) \{ ctron_cli_trusted = \"1\"; } } } \u{0A}#if defined(_WIN32) \u{0A}SetConsoleOutputCP(CP_UTF8); \u{0A}#endif\u{0A} if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } return (int)t_main(); }")
+                // 裸 fn main()(无 -> I32)返回 void:包装不得 cast void(C 约束违规,
+                // emit 面对裸 main 直接 cc 不过)——与 export 包装同口径:void 直呼 + return 0
+                var mret = ct_abi_ctype(ct_fn_ret(file, "main"))
+                var mcall = "return (int)t_main(); }"
+                if seq2(mret, "void") { mcall = "t_main(); return 0; }" }
+                println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 2 && !strcmp(argv[1], \"--version\")) \{ puts(ctron_version); return 0; } \{ int ctron_ai; for (ctron_ai = 3; ctron_ai < argc; ctron_ai++) \{ if (!strncmp(argv[ctron_ai], \"--format=\", 9)) \{ ctron_cli_fmt = argv[ctron_ai] + 9; } else if (!strncmp(argv[ctron_ai], \"--profile=\", 10)) \{ ctron_cli_prof = argv[ctron_ai] + 10; } else if (!strcmp(argv[ctron_ai], \"--trusted\")) \{ ctron_cli_trusted = \"1\"; } } } \u{0A}#if defined(_WIN32) \u{0A}SetConsoleOutputCP(CP_UTF8); \u{0A}#endif\u{0A} if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + mcall)
             } else {
                 println("int main(int argc, char** argv) \{ " + scall + "if (argc >= 2 && !strcmp(argv[1], \"--version\")) \{ puts(ctron_version); return 0; } \{ int ctron_ai; for (ctron_ai = 3; ctron_ai < argc; ctron_ai++) \{ if (!strncmp(argv[ctron_ai], \"--format=\", 9)) \{ ctron_cli_fmt = argv[ctron_ai] + 9; } else if (!strncmp(argv[ctron_ai], \"--profile=\", 10)) \{ ctron_cli_prof = argv[ctron_ai] + 10; } else if (!strcmp(argv[ctron_ai], \"--trusted\")) \{ ctron_cli_trusted = \"1\"; } } } \u{0A}#if defined(_WIN32) \u{0A}SetConsoleOutputCP(CP_UTF8); \u{0A}#endif\u{0A} if (argc >= 3 && strcmp(argv[1], \"run\") == 0) \{ ctron_cli_input = argv[2]; } " + testcalls + "return 0; " + "}")
             }
