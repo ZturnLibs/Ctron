@@ -99,6 +99,9 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **错误传播首步** | extern 返回 `Option[Str]`:C 侧 const char* NULL ↔ None 边界编组(原型出 const char*,调用点 ct_res 包装;`?`/match/`.or` 全套 Option 机制原样可用);`ext_nonabi_ty` 放行 Option[Str] |
 | **#[link(name)]** | 链接依赖以 `// ctron:link -l<名>` 注释落产物;驱动层(tests/ffi/run.sh link_math 专道)读取传 cc;发射器职责止于 C 文本 |
 | **panic 跨边界钉子** | `cb_panic/` 夹具钉住非 task 态策略:C 回调中 panic → 消息 + exit(1)(不越 C 帧);task 态约定待钉 |
+| **cimport 原生化 + 修复** | `cimp_mul_add` carry-in 修正(0x 解码此前漏 +a);run.sh cimport 工具切自举 ctron-cc 原生驱动(seed 退化备用);#11③ 确认 = #11② 重复,随解析器修复关闭 |
+| **#11② 根因修复** | `p_if` 条件改 `p_oror`(原 p_and 不消费 `||`)——if 条件含 `||` 即解析错位的一族症状(StructLit panic/签名吞没/List[Str] 野节点)全部归零;04d_bool_or 补回归锚(语料此前零覆盖) |
+| **#10 arity 断言** | `ct_arity_range/ct_arity_parse` 发射期个数断言(声明在案被调,不符硬失败;变参 ≥ min);旧"补 0"垫片实证会把缺参洗成合法 C |
 
 
 ---
@@ -146,7 +149,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 8 | 宿主线(compiler-c)未同步 E4041/E4042/E4044/W8051-52 | 低 | C 宿主 sem 端口(负例在 tests/ffi,不入宿主差分,无阻断) |
 | 9 | 错误传播约定(errno → Result) | 中 | std.ffi 包装层先行 |
 | 10 | ~~发射的形参缺省静默通过~~ **已修复**——"补 0"垫片会把缺参洗成合法 C(cc rc=0 实证);现 ct_arity_range/ct_arity_parse 发射期断言(声明在案的被调个数不符即硬失败;变参 ≥ min;内建/未声明不查);编译器自身三拼接在守卫下全过(无潜伏 arity bug) | ✅ v0.8 | — |
-| 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃;已删除解阻塞,impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② ~~if 条件 `||` 解析错位~~ **已修复**——根因:`p_if` 条件误用 `p_and`(不消费 `\|\|`),`if` 条件含 `\|\|` 即解析错位(下游 `StructLit 非值类型`/签名吞没);语料对 if 条件 `\|\|` 零覆盖故长期隐形(while 走 p_stmt_expr→p_oror 本就对)。修复:p_if 改 `p_oror` + 04d_bool_or 回归锚。③ `cimp_toks`+`cimp_proto` 同文件 native sem(walk_e)野指针崩溃;seed 双面绿,cimport 工具走 seed | 中 | ①②已处置;③归解析器 owner |
+| 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃;已删除解阻塞,impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② ~~if 条件 `||` 解析错位~~ **已修复**——根因:`p_if` 条件误用 `p_and`(不消费 `\|\|`),`if` 条件含 `\|\|` 即解析错位(下游 `StructLit 非值类型`/签名吞没);语料对 if 条件 `\|\|` 零覆盖故长期隐形(while 走 p_stmt_expr→p_oror 本就对)。修复:p_if 改 `p_oror` + 04d_bool_or 回归锚。③ ~~`cimp_toks`+`cimp_proto` 同文件 native sem 崩溃~~ **已关闭(=②重复)**——该源型含 `if 三词或链`,②修复后 ctron-cc 原生驱动 cimport rc=0(输出与 seed 逐字一致);run.sh 已切原生驱动优先、seed 退化备用 | 中 | ①②③全部处置 |
 | 12 | panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧) | 中 | 非 task 态已安全(exit);task 态回调约定待钉 |
 | 13 | cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参 | 低 | 按需扩面;未识别一律注释占位不静默 |
 | 14 | pkg-config/构建集成、context-pointer 闭包模式糖、C 位域 | 低 | 随构建系统批次 |

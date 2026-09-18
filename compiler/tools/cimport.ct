@@ -187,20 +187,20 @@ fn cimp_int_lit(s: Str) -> Str {
 
 // 十进制串 × m + a(逐位;枚举 0x 解码用)
 fn cimp_mul_add(s: Str, m: I32, a: I32, unused: I32) -> Str {
-    var acc = a
+    // s*m + a(Horner 低位起点:右端首位carry_in = a)
     var out = ""
-    var i = s.len
-    var carry: I32 = 0
     var digs = List[Str]()
+    var i = s.len
+    var carry: I32 = a
     while i > 0 {
         i -= 1
         var v = (byte_at(s, i) - 48) * m + carry
-        var dgt = v % 10
+        var dgt = v - (v / 10) * 10
         carry = (v - dgt) / 10
         digs.push(byte_slice("0123456789", dgt, dgt + 1))
     }
     while carry > 0 {
-        var dgt2 = carry % 10
+        var dgt2 = carry - (carry / 10) * 10
         carry = (carry - dgt2) / 10
         digs.push(byte_slice("0123456789", dgt2, dgt2 + 1))
     }

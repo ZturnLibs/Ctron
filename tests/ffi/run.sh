@@ -32,12 +32,14 @@ for d in "$DIR"/*/; do
     [ "$name" = "link_math" ] && continue  # #[link] 面由下方 link_math 专道驱动(无 c_src)
     e="$d/src/main.ct"
     if [ "$name" = "cimport" ]; then
-        # cimport 端到端:头文件 → 绑定生成(宿主 seed 驱动;自举 sem 对该源型崩溃在册)
-        # → 绑定 + 使用体拼接 → 发射 → 链接 → 运行。使用体单独不可编译(引用生成面)。
+        # cimport 端到端:头文件 → 绑定生成(自举 ctron-cc 原生驱动;#11② 修复后
+        # 崩溃消除,seed 退化备用)→ 绑定 + 使用体拼接 → 发射 → 链接 → 运行。
+        # 使用体单独不可编译(引用生成面)。
         HOST="${CTRON_HOST:-$ROOT/compiler-c/build/ctronc}"
         sed -e "s|ANCHORHEADER|$d/sample.h|" -e "s|ANCHOROUT|$T/$name.bind.ct|" \
             "$ROOT/compiler/tools/cimport.ct" > "$T/$name.tool.ct"
-        if ! "$HOST" run "$T/$name.tool.ct" > /dev/null 2>"$T/$name.cimperr"; then
+        if ! "$CC_BIN" run "$T/$name.tool.ct" > /dev/null 2>"$T/$name.cimperr" \
+           && ! "$HOST" run "$T/$name.tool.ct" > /dev/null 2>>"$T/$name.cimperr"; then
             echo "  [FAIL] $name — cimport 工具失败: $(head -1 "$T/$name.cimperr")"
             fail=$((fail + 1))
             continue
