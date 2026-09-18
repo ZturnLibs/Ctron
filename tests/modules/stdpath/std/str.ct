@@ -1,0 +1,23 @@
+// std/str.ct —— stdpath 夹具回落副本(③ dir/../std):最小真分词 words,
+// 与 std/str.ct 的 words 同口径(空白切词),保证不设 CTRON_STDPATH 时输出 2。
+pub fn words(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var cur = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 32 {
+            if cur.len > 0 {
+                out.push(cur)
+                cur = ""
+            }
+        } else {
+            cur = cur + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    if cur.len > 0 {
+        out.push(cur)
+    }
+    return out
+}

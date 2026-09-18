@@ -1,0 +1,6 @@
+// fakestd/str.ct —— 最小仿 std(①CTRON_STDPATH 命中面):words 不分词,整串单元素返回
+pub fn words(s: Str) -> List[Str] {
+    var out = List[Str]()
+    out.push(s)
+    return out
+}

@@ -1,0 +1,9 @@
+// stdpath —— std 三级解析顺序(§dist):①CTRON_STDPATH ②exe 旁 ../lib/ctron/std ③回落 ../std
+// 两态差分:设 CTRON_STDPATH=<repo>/tests/modules/stdpath/fakestd 时命中①,fakestd 的
+// words 不分词 → 输出 1;不设时 seed/native 开发树无②布局,走③本目录 std/(真分词)→ 输出 2。
+// (注:①需 env_get 实值面 —— native bin/ctron-cc 可观察;seed 宿主 env_get 恒空,两态同②③口径。)
+use std.str.{words}
+
+fn main() {
+    println(words("a b").len.to_string())
+}

@@ -157,6 +157,51 @@ fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
     return false
 }
 
+// pkg_exe_dir —— 取可执行文件所在目录(无分隔符则空串;与 pkg_dir_of 的 "." 缺省区分)
+fn pkg_exe_dir(exe: Str) -> Str {
+    var i = exe.len - 1
+    while i >= 0 {
+        if byte_at(exe, i) == 47 {
+            return byte_slice(exe, 0, i)
+        }
+        i -= 1
+    }
+    return ""
+}
+
+// pkg_std_installed —— std 是否处于"装机/显式指路"态:①CTRON_STDPATH 已设,或
+// ②exe 旁 ../lib/ctron/std 实存(探测 str.ct)。两者皆否(种子/源码树回落态)为 false,
+// 使③回落路径缺失维持静默(种子语料兼容;std.iter/stdweb 等 sem 内建命名空间不误伤)。
+fn pkg_std_installed(dir: Str) -> Bool {
+    if env_get("CTRON_STDPATH").len > 0 {
+        return true
+    }
+    var exe = ctron_exe_path()
+    if exe.len > 0 {
+        var root = pkg_exe_dir(exe) + "/../lib/ctron/std"
+        if fs_exists(root + "/str.ct") {
+            return true
+        }
+    }
+    return false
+}
+
+// pkg_std_root —— std 根三级查找:①CTRON_STDPATH ②exe 旁 ../lib/ctron/std ③回落 ../std(种子约定)
+fn pkg_std_root(dir: Str) -> Str {
+    var envp = env_get("CTRON_STDPATH")
+    if envp.len > 0 {
+        return envp
+    }
+    var exe = ctron_exe_path()
+    if exe.len > 0 {
+        var root = pkg_exe_dir(exe) + "/../lib/ctron/std"
+        if fs_exists(root + "/str.ct") {
+            return root
+        }
+    }
+    return dir + "/../std"
+}
+
 fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
@@ -180,14 +225,32 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
             if syms.len == 0 {
                 syms.push(segs[segs.len - 1])
             }
-            var rel = ""
-            if isstd { rel = "/../std" }
-            var j2: I32 = 2
-            while j2 < segs.len {
-                rel = rel + "/" + segs[j2]
-                j2 += 1
+            var mpath = ""
+            if isstd {
+                mpath = pkg_std_root(dir)
+                var j2: I32 = 2
+                while j2 < segs.len {
+                    mpath = mpath + "/" + segs[j2]
+                    j2 += 1
+                }
+                mpath = mpath + ".ct"
+                if !fs_exists(mpath) {
+                    if pkg_std_installed(dir) {
+                        // W8901:装机/显式指路态下 std 模块缺失(驱动 W/E 同视 rc=1——
+                        // use std.* 而 std 缺失本就无从编译,响亮失败;③回落缺失不在此列,维持静默)
+                        diags.push("W8901: std 模块缺失:" + mpath + "(安装损坏或 CTRON_STDPATH 配错)")
+                        return out
+                    }
+                }
+            } else {
+                var rel = ""
+                var j2b: I32 = 2
+                while j2b < segs.len {
+                    rel = rel + "/" + segs[j2b]
+                    j2b += 1
+                }
+                mpath = dir + rel + ".ct"
             }
-            var mpath = dir + rel + ".ct"
             if in_list(stack, mpath) {
                 diag1(diags, "E5020.circ", "", mpath)
                 return out
@@ -250,8 +313,8 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                                 var dup = false
                                 var j5: I32 = 1
                                 while j5 < merged.len {
-                                    if or2(merged[j5][0] == "Fn", or2(merged[j5][0] == "FnPub", or2(merged[j5][0] == "Struct", or2(merged[j5][0] == "Enum", merged[j5][0] == "FnExt")))) {
-                                        if or2(mf[j4][0] == "Fn", or2(mf[j4][0] == "FnPub", or2(mf[j4][0] == "Struct", or2(mf[j4][0] == "Enum", mf[j4][0] == "FnExt")))) {
+                                    if or2(merged[j5][0] == "Fn", or2(merged[j5][0] == "FnPub", or2(merged[j5][0] == "Struct", or2(merged[j5][0] == "Enum", or2(merged[j5][0] == "FnExt", or2(merged[j5][0] == "Static", merged[j5][0] == "Const")))))) {
+                                        if or2(mf[j4][0] == "Fn", or2(mf[j4][0] == "FnPub", or2(mf[j4][0] == "Struct", or2(mf[j4][0] == "Enum", or2(mf[j4][0] == "FnExt", or2(mf[j4][0] == "Static", mf[j4][0] == "Const")))))) {
                                             if mf[j4].len > 1 && merged[j5].len > 1 && merged[j5][1] == mf[j4][1] {
                                                 dup = true
                                             }

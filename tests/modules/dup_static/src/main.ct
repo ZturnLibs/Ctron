@@ -1,0 +1,10 @@
+//@ fail: E5030
+//@ msg: marker
+
+use app.duplib.{marker}              // E5030:use 导入与本地 Static 同名(E5030 补面:Static/Const 入集)
+
+static let marker: I32 = 1
+
+fn main() {
+    println(marker.to_string())
+}
