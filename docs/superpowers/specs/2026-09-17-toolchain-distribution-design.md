@@ -1,7 +1,9 @@
 # 自举版 Ctron 工具链分发设计(五平台 v0.1.0)
 
 > 日期:2026-09-17
-> 状态:设计评审中
+> 状态:已实施(计划1 4f8f1d1..ff52ec3 + 计划2 至 861689d)
+> 修订:2026-09-19 计划2 Task6 按实现同步——§2.1 VERSION 两字段、§2.3 tarball 无 bootstrap、
+> §4 test/项目模式/--version 实际口径、§5.8 钉法措辞、§9 补发布首跑风险
 > 范围:自举编译器(`compiler/`,现役自举版本)对外发布的打包、安装、运行与 CI 工程化。
 > 不含:包管理器/第三方依赖解析、LSP/编辑器插件分发(另行立项)。
 
@@ -55,7 +57,7 @@ ctron/
 │   └── ctron-emit
 ├── lib/ctron/std/     # 标准库全部 .ct 源码(见下方"为何是源码")
 ├── share/doc/         # README、语言规范速览、BOOTSTRAP 摘要、examples/
-└── VERSION            # "0.1.0 <git-sha> <构建日期>"
+└── VERSION            # "0.1.0 <git-sha>"(两字段,release.sh 生成;ctc --version 直出)
 ```
 
 **为何 std 以源码分发(结构性必要,非文档性附带)**:`use std.X` 的消费方式是
@@ -100,14 +102,14 @@ ctron-src/
 │   ├── ctron-chk.c
 │   └── ctron-emit.c
 ├── ctc / ctc.ps1 / ctc.cmd
-├── Makefile               # make: cc 三件 → bin/;make install PREFIX=…;make bootstrap(可选)
+├── Makefile               # make: cc 三件 → bin/;make install PREFIX=…(cc-only;无 bootstrap 目标)
 ├── install.sh             # (+ install.ps1 可选)
 └── VERSION
 ```
 
 **`make` 只需要 cc**——直接编译 `prebuilt/*.c` 即得完整工具链,不经过 C 宿主 seed。
-`make bootstrap`(从 .ct 源走 seed 重建发射器)保留给贡献者;Windows 上 `make bootstrap`
-不支持(在 MSYS2 shell 里 `make` 走预发射通路即可)。stage0 发布法:seed 只活在信任链起点。
+tarball 无 bootstrap 目标(源码线 cc-only);seed 引导(从 .ct 源走 seed 重建发射器)
+走 git 仓库,属贡献者场景,不进 tarball。stage0 发布法:seed 只活在信任链起点。
 
 ## 3. 安装方式
 
@@ -128,14 +130,22 @@ macOS Gatekeeper:ad-hoc 签名 + 文档 `xattr -cr` 指引;Developer ID 公证�
 ctc run main.ct      # 解释执行,不需要 cc —— 最快上手路径
 ctc check main.ct    # 静态检查(文本 / --format=json 诊断)
 ctc build main.ct    # ctron-emit 发射 C → 本机 cc → 出可执行(FFI 项目按 Ctron.toml 链接 c_src)
-ctc build            # 项目模式:读 Ctron.toml(name/入口/caps/c_src)
-ctc test             # test 块两阶段口径
-ctc new myapp        # 脚手架:hello.ct + Ctron.toml
-ctc --version        # ctron 0.1.0 (bootstrap <sha>, <os>/<arch>)
+ctc build            # 项目模式:读 Ctron.toml(name/c_src)+ Ctron.ctcl(caps,见下)
+ctc test             # test 块执行:无 main 走解释;含 main 文件的 test 块挂账(见下)
+ctc new myapp        # 脚手架:src/main.ct + Ctron.toml + Ctron.ctcl(两件齐写)
+ctc --version        # ctron 0.1.0 <git-sha>(VERSION 两字段直出)
 ctc --help           # 总用法(= ctc help / -h);ctc help <cmd> 看子命令详助
 ```
 
 环境变量:`CC`(mac/linux 默认 `cc`;Windows 默认 `gcc`)、`CTRON_STDPATH`(覆盖标准库位置)。
+
+**项目模式 caps 口径(按实现)**:项目 = **双文件**——`Ctron.toml`(name、c_src 链接,
+ctc 层消费)+ **`Ctron.ctcl`**(CTCL 清单,`caps` 声明由编译器 `pkg_caps_allowed` 消费,
+与编译器同一解析源,越权即 `E4010` 拦截);`ctc new` 两件齐写。
+
+**`ctc test` 口径(按实现)**:无 main 文件的 test 块由解释器直接执行;**含 main 文件的
+test 块执行挂账**——解释器(含 main 即走 main)与发射面均无此路,宿主(仓库自测)以
+check/test 两阶段兜底(BOOTSTRAP.md 口径),用户面 `ctc test` 暂同解释口径。
 
 **帮助与用法面**(sh/PS 双驱动同文,进 conformance 用例):
 
@@ -181,7 +191,7 @@ ctc --help           # 总用法(= ctc help / -h);ctc help <cmd> 看子命令详
 | 5 | ctc 驱动 sh 版 | 新 | POSIX | §4 全部子命令;build 负责发射 → 调 CC →(可选)链 c_src |
 | 6 | ctc 驱动 PS 版 + cmd 垫片 | 新 | Windows | 同命令面;conformance 用例锁定两版参数兼容 |
 | 7 | `_WIN32` 样板补丁 | `driver_emit.ct` | Windows | `main` 入口 `SetConsoleOutputCP(CP_UTF8)`(UTF-8 输出不被控制台代码页吃掉) |
-| 8 | ~~lex `\r` 过滤~~ 已满足(双侧词法既有),本项仅 CRLF 回归夹具(已落 `tests/06_crlf.ct`) | `lex.ct` | 全(Windows 受益) | CRLF 源可解析;黄金逐字不变验证。否则记事本存个 CRLF 文件即解析炸 |
+| 8 | ~~lex `\r` 过滤~~ 已满足(双侧词法既有),本项仅 CRLF 回归夹具(已落 `tests/06_crlf.ct`) | `lex.ct` | 全(Windows 受益) | CRLF 源可解析;夹具以语言内自钉钉死(词法不再跳 CR 即编译拦截,CR 泄入字面量即 len/eq 断言炸)。否则记事本存个 CRLF 文件即解析炸 |
 | 9 | 栈链接参数 | `ctc` 两版 + `native.sh` | Windows 为主 | §4 所列 bytes |
 | 10 | `tools/release.sh` | 新 | 全 | 一键出 6 产物 + SHA256SUMS;本地可跑,CI 复用 |
 | 11 | Release workflow(双阶段) | `.github/workflows/` | 全 | §6 |
@@ -239,6 +249,7 @@ Windows 专项(在 1–5 之上追加):
 | GetModuleFileNameA 路径分隔符 | 低 | Win32 API 接受混用分隔符;验收 2 兜底;异常再归一化 |
 | 固定点跨平台不逐字节(如 cc 版本差异影响发射文本) | 低 | 发射文本只由编译器源决定,与 cc 无关;Stage 1 diff 验证即证伪机制 |
 | ctc 双驱动命令面漂移 | 中 | conformance 用例(验收 8)进两平台门禁 |
+| 发布 workflow 首跑风险:macos-13 runner 退役可能、accept_windows 零执行史、linux 双臂 glibc 首跑 | 中 | 首跑即验证轮;per-platform 容错 + pre-release 标记兜底(§6),windows 运行级门禁归 CI job |
 
 ## 10. 后续挂账(v0.1 之后)
 
