@@ -1,0 +1,135 @@
+#!/bin/sh
+# ctc —— Ctron 工具链用户驱动(v0.1;命令面基准,ctc.ps1 与此同文)
+# rc 约定:0 成功 / 1 程序诊断失败 / 2 ctc 环境或用法错误
+#
+# 二进制定位:正式形态为安装布局(本脚本与 ctron-{cc,chk,emit} 同目录)。
+# dev 场景(脚本在仓库根、二进制在 compiler/bin/)可用以下任一方式:
+#   PATH=compiler/bin:$PATH 后不生效于本脚本(exec 走 BIN 同目录),
+#   故脚本内置回落:BIN 下找不到 ctron-cc 时回落 <脚本目录>/compiler/bin;
+#   或将四件套软链至仓库根。回落不含任何 std 路径逻辑(std 解析全在编译器内)。
+set -u
+BIN=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(dirname "$BIN")
+# dev 兼容回落:仅当同目录无二进制、且仓库 dev 布局命中时才切换,安装布局不受影响
+if [ ! -x "$BIN/ctron-cc" ] && [ -x "$BIN/compiler/bin/ctron-cc" ]; then
+    BIN="$BIN/compiler/bin"
+fi
+CC_BIN=${CC:-cc}
+
+die2() { echo "ctc: $*" >&2; exit 2; }
+
+usage() {
+cat <<'USAGE'
+ctc —— Ctron 工具链驱动
+用法:
+  ctc run <file.ct>          解释执行(不需要 C 编译器)
+  ctc check <file.ct> [--format=json] [--profile=bare]
+                             静态检查
+  ctc build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
+  ctc build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
+  ctc test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
+  ctc new <dir>              脚手架:hello + Ctron.toml
+  ctc --version              版本
+  ctc --help | help [cmd]    帮助(亦可 ctc <cmd> --help)
+环境变量:CC(默认 cc)、CTRON_STDPATH(覆盖标准库位置)
+rc 约定:0 成功 / 1 程序诊断失败 / 2 ctc 环境或用法错误
+USAGE
+}
+
+help_cmd() {
+case $1 in
+    build) cat <<'H'
+ctc build —— 发射 C 并编译为可执行
+  ctc build <file.ct>   产物 <stem> 与 <stem>.c(与源同目录)
+  ctc build             项目模式:入口 src/main.ct,产物 build/<name>;
+                        Ctron.toml 声明的 c_src/*.c 一并链接
+前置:本机 C 编译器(可用 CC 覆盖);缺失时 C 照常发射,并给出两条出路
+H
+;;
+    check) echo "ctc check <file.ct> [--format=json] [--profile=bare] —— 静态检查,不改任何文件";;
+    run) echo "ctc run <file.ct> —— 解释执行;不需要 C 编译器";;
+    test) echo "ctc test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账";;
+    new) echo "ctc new <dir> —— 生成 <dir>/Ctron.toml + src/main.ct(hello)";;
+    *) usage;;
+esac
+}
+
+have_cc() {
+    TMPCC=$(mktemp /tmp/ctc_ccp.XXXXXX)
+    printf 'int main(void){return 0;}' > "$TMPCC.c"
+    if "$CC_BIN" -O0 -w -o "$TMPCC" "$TMPCC.c" >/dev/null 2>&1; then
+        rm -rf "$TMPCC" "$TMPCC.c"; return 0
+    fi
+    rm -rf "$TMPCC" "$TMPCC.c"; return 1
+}
+
+cc_missing_guidance() {
+    echo "ctc: 未找到可用的 C 编译器('$CC_BIN' 冒烟失败)—— ctc build 需要。" >&2
+    echo "  两条出路:" >&2
+    echo "  ① 安装编译器后重跑:macOS 'xcode-select --install' / linux 发行版 gcc / windows MSYS2 或 w64devkit" >&2
+    echo "  ② C 已发射到 $1 —— 可手动编译,或拿到任何有 cc 的机器上: cc -O2 -w $1 -o <名>" >&2
+}
+
+cmd_build() {
+    IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
+    STEM=$(basename "${IN%.ct}")
+    OUTDIR=$(dirname "$IN")
+    "$BIN/ctron-emit" run "$IN" > "$OUTDIR/$STEM.c" || exit 1
+    if ! have_cc; then
+        cc_missing_guidance "$OUTDIR/$STEM.c"
+        exit 2
+    fi
+    (CDPATH= cd -- "$OUTDIR" && "$CC_BIN" -O2 -w -pthread "$STEM.c" -o "$STEM") || exit 2
+    echo "ctc: 已构建 $OUTDIR/$STEM"
+}
+
+cmd_build_proj() {
+    [ -f Ctron.toml ] || die2 "项目模式需 Ctron.toml"
+    NAME=$(sed -n 's/^name *= *"\(.*\)"/\1/p' Ctron.toml | head -1)
+    [ -n "$NAME" ] || NAME=$(basename "$PWD")
+    [ -f src/main.ct ] || die2 "缺入口 src/main.ct"
+    mkdir -p build
+    "$BIN/ctron-emit" run "$PWD/src/main.ct" > build/$NAME.c || exit 1
+    if ! have_cc; then
+        cc_missing_guidance "build/$NAME.c"
+        exit 2
+    fi
+    SRCS=""
+    for C in c_src/*.c; do [ -f "$C" ] && SRCS="$SRCS $C"; done
+    "$CC_BIN" -O2 -w -pthread build/$NAME.c $SRCS -o build/$NAME || exit 2
+    echo "ctc: 已构建 build/$NAME"
+}
+
+[ $# -lt 1 ] && { usage; exit 2; }
+CMD=$1; shift
+case $CMD in
+    --help|-h|help) if [ $# -ge 1 ]; then help_cmd "$1"; else usage; fi; exit 0 ;;
+    --version|-V)
+        if [ -f "$ROOT/VERSION" ]; then echo "ctron $(cat "$ROOT/VERSION")"; else echo "ctron dev"; fi
+        exit 0 ;;
+    run)
+        [ $# -ge 1 ] || die2 "run 需要输入文件"
+        exec "$BIN/ctron-cc" run "$1"
+        ;;
+    check)
+        [ $# -ge 1 ] || die2 "check 需要输入文件"
+        IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1"); shift
+        exec "$BIN/ctron-chk" run "$IN" "$@"
+        ;;
+    build)
+        if [ $# -ge 1 ]; then cmd_build "$1"; else cmd_build_proj; fi ;;
+    test)
+        [ $# -ge 1 ] || die2 "test 需要输入文件"
+        exec "$BIN/ctron-cc" run "$1"
+        ;;
+    new)
+        [ $# -ge 1 ] || die2 "new 需要目录名"
+        mkdir -p "$1/src" || exit 2
+        printf 'name = "%s"\n\n[caps]\n' "$(basename "$1")" > "$1/Ctron.toml"
+        printf 'fn main() {\n    println("hello, ctron")\n}\n' > "$1/src/main.ct"
+        echo "ctc: 已生成 $1/(ctc run $1/src/main.ct 试跑)"
+        ;;
+    *)
+        echo "ctc: 未知子命令 '$CMD'(详见 ctc --help)" >&2
+        exit 2 ;;
+esac
