@@ -6,12 +6,17 @@
 # 前置(cwd = 仓库根,release workflow windows job 已就位):
 #   bin/ctron-{cc,chk,emit}.exe    cc-only 构建(预发射 C 直接 gcc,绕过 seed)
 #   ctron/                          zip 载荷目录:bin/{ctc.cmd,ctc.ps1,ctron-*.exe}
-#                                   + lib/ctron/std + share/doc + VERSION(spec §2.2)
+#                                   + lib/ctron/std + share/doc/README.md + VERSION(spec §2.2)
+#   dist-windows.zip                发布物本体(A2 段 Expand-Archive 解包自证)
 #   ctc                             sh 版驱动(仓库根检出件;帮助文本 conformance 基准)
 #   tests/06_crlf.ct                CRLF 回归夹具(检出件,真 CRLF 字节)
 #
 # 断言面(失败计数,末尾非零退出):
-#   A) zip 载荷布局(spec §2.2):bin 五件 + lib/ctron/std(str.ct 探针)+ VERSION
+#   A) zip 载荷布局(spec §2.2,暂存树):bin 五件 + lib/ctron/std(str.ct 探针)
+#      + share/doc/README.md + VERSION
+#   A2) zip 自证:dist-windows.zip 经 Expand-Archive 解包到 scratch,对解包出的
+#      ctron/ 复验同一组布局断言(暂存树齐 ≠ zip 本体齐——Compress-Archive 丢空
+#      目录即此形态,zip 本体才是用户拿到的发布物)
 #   B) BOM 门:ctc.ps1 首三字节 = EF BB BF(PS 5.1 无 BOM 按 ANSI 解码,中文帮助乱码)
 #   C) ps1 语法门:[scriptblock]::Create 全文解析(P2-2 移交:本机无 pwsh,语法验证落 CI)
 #   D) 编码三向断言(P2-2 审查移交 CI 必查第一项;归一化禁止 strip 非 ASCII):
@@ -42,9 +47,11 @@
 #      无 cc build rc=2 且 .c 已产出(CC=/nonexistent/cc 法,同 accept.sh)
 #
 # 已知边界(语义注明,不在断言面):W8901 整库缺失盲区(安装损坏到 str.ct 探针
-# 自身失效时静默回落 E2020,语义同 accept.sh 注);Windows zip 的 share/doc 本
-# 任务书组装步为空,examples 面不入 Windows 断言;E5030 碰撞与 std 缺失告警面
-# 同 accept.sh 姿态不入(见其头注)。
+# 自身失效时静默回落 E2020,语义见 accept.sh 头注);examples 面不入 Windows 断言
+# (zip 载荷 share/doc 仅 README.md,无 examples)。E5030 导入同名拦截与 W8901 告警
+# (STDPATH 显式指路态)的负例断言归 accept.sh 闭环:两驱动同源自本仓同一编译器,
+# 诊断面一致,windows 面不重复;§7.4 源码线 make 的验证归属亦同——本机 P2-3/P2-4
+# 已验 + src 件随 release 供用户自建,本脚本入参只有 cc-only 构建的 zip,无源码线面。
 set -u
 
 pass=0; fail=0
@@ -59,15 +66,30 @@ ps1() { powershell -NoProfile -ExecutionPolicy Bypass -File "$PKG/bin/ctc.ps1" "
 # ctc.cmd 垫片(用户入口;cd 至同目录规避 msys2 对含反斜杠参数的转换歧义)
 shim() { ( cd "$PKG/bin" && cmd //c ctc.cmd "$@" ); }
 
-echo "== A) zip 载荷布局(spec §2.2)== "
+echo "== A) zip 载荷布局(spec §2.2,暂存树)== "
 PKG="$PWD/ctron"
 if [ -f "$PKG/bin/ctc.ps1" ] && [ -f "$PKG/bin/ctc.cmd" ] \
     && [ -f "$PKG/bin/ctron-cc.exe" ] && [ -f "$PKG/bin/ctron-chk.exe" ] \
     && [ -f "$PKG/bin/ctron-emit.exe" ] && [ -f "$PKG/lib/ctron/std/str.ct" ] \
-    && [ -d "$PKG/share/doc" ] && [ -f "$PKG/VERSION" ]; then
-    ok "载荷齐:bin 五件 + std/str.ct + share/doc + VERSION"
+    && [ -f "$PKG/share/doc/README.md" ] && [ -f "$PKG/VERSION" ]; then
+    ok "载荷齐:bin 五件 + std/str.ct + share/doc/README.md + VERSION"
 else
     bad "载荷缺件(spec §2.2):$PKG"
+fi
+
+echo "== A2) zip 自证(Expand-Archive 解包发布物本体,复验同组断言)== "
+# 全程相对路径(zip/$W 内),规避 msys2 对 -Command 串内 POSIX 路径不转换的歧义
+cp dist-windows.zip "$W/zip.zip" || cp "$PWD/dist-windows.zip" "$W/zip.zip"
+rc=0
+( cd "$W" && powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path zip.zip -DestinationPath zipcheck -Force" ) > "$W/zipx.log" 2>&1 || rc=$?
+ZPKG="$W/zipcheck/ctron"
+if [ $rc -eq 0 ] && [ -f "$ZPKG/bin/ctc.ps1" ] && [ -f "$ZPKG/bin/ctc.cmd" ] \
+    && [ -f "$ZPKG/bin/ctron-cc.exe" ] && [ -f "$ZPKG/bin/ctron-chk.exe" ] \
+    && [ -f "$ZPKG/bin/ctron-emit.exe" ] && [ -f "$ZPKG/lib/ctron/std/str.ct" ] \
+    && [ -f "$ZPKG/share/doc/README.md" ] && [ -f "$ZPKG/VERSION" ]; then
+    ok "zip 本体裁荷齐(bin 五件 + std/str.ct + share/doc/README.md + VERSION)"
+else
+    bad "zip 本体裁荷缺件或解包失败 rc=$rc:$ZPKG($(head -3 "$W/zipx.log"))"
 fi
 
 echo "== B) BOM 门(ctc.ps1 首三字节 EF BB BF)== "
@@ -176,17 +198,26 @@ else
     bad "deep build rc=$rc:$(head -3 "$W/db.log")"
 fi
 
-echo "== G) CRLF 夹具(§5.8 回归)== "
+echo "== G) CRLF 夹具(§5.8 回归;夹具真 CRLF 字节 + 产物无 CR)== "
 # 夹具复制进 scratch(build 产物不落入检出树;cp 保真 CRLF 字节)
 cp tests/06_crlf.ct "$W/06_crlf.ct"
-crlfbytes=$(head -c 200 tests/06_crlf.ct | od -An -tx1 | tr -d ' \n')
-crlfnote=异常
-case $crlfbytes in *0d0a*) crlfnote=确认 ;; esac
+# 真断言一:检出件必含 CR 字节(od -c 输出字面 \r),否则本组回归前提失效
+if od -c "$W/06_crlf.ct" | grep -q '\\r'; then
+    ok "夹具为真 CRLF 字节(od -c 见 \\r)"
+else
+    bad "夹具无 CR 字节(检出件已非 CRLF,本组回归前提失效)"
+fi
 rc=0; ps1 build "$W/06_crlf.ct" > "$W/cl.log" 2>&1 || rc=$?
 if [ $rc -eq 0 ]; then
+    # 真断言二:CRLF 源经发射必须归一化,产物 .c 不含 CR 字节
+    if [ -f "$W/06_crlf.c" ] && ! od -c "$W/06_crlf.c" | grep -q '\\r'; then
+        ok "build 产物 06_crlf.c 无 CR 字节(CRLF 源发射归一化)"
+    else
+        bad "build 产物 06_crlf.c 含 CR 字节或未产出(CRLF 未归一化)"
+    fi
     rc=0; CR_OUT=$(cd "$W" && ./06_crlf.exe 2>&1) || rc=$?
     if [ $rc -eq 0 ] && [ "$CR_OUT" = "crlf ok" ]; then
-        ok "CRLF 源 build+run:crlf ok(检出件 CRLF 字节:$crlfnote)"
+        ok "CRLF 源 build+run:crlf ok"
     else
         bad "06_crlf.exe rc=$rc out=[$CR_OUT]"
     fi

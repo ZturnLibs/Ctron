@@ -18,16 +18,25 @@
 #      先于预检产出且 stderr 含出路指引;同环境 ctc run rc=0(解释臂与 cc 隔离)
 #      —— 隔离用 CC=/nonexistent/cc 法:macOS 无 CLT 时 /usr/bin/cc 是存在但必报错
 #      的垫片,纯 PATH 隔离打不穿(计划 1 Task 7 实测),与 ctc_smoke.sh 同法
-#   8) 负例拦截(§7.3):未解析名称经 check → rc=1 且 stderr 非空
-#   9) ctc --help rc=0 含 run/build/check 三词;help build rc=0 非空
-#  10) 未知子命令 rc=2 且 stderr 提示 ctc --help
+#   8) 负例拦截(§7.3):未解析名称经 check → rc=1 且诊断非空
+#   9) E5030 导入同名 decl 拦截(§9):入口 use std.str.{words} + 同名 Static
+#      (tests/modules/dup_static 同形态,内联最小件)→ check rc=1 且含 E5030
+#  10) W8901 告警(§9,CTRON_STDPATH 显式指路态):STDPATH 指空目录 + use std.*
+#      的件 → run rc=1 且含 W8901(仅 STDPATH/装机态响,回落态静默是 ③ 种子
+#      语料兼容的设计面,parse_pkg.ct pkg_std_installed——回落静默本身不断言)
+#  11) ctc --help rc=0 含 run/build/check/test/new 五子命令词;help build rc=0 非空
+#  12) 未知子命令 rc=2 且 stderr 提示 ctc --help
+#
+# §7.4(源码线 make)的验证归属(闭环注记):不在本脚本——本脚本入参只有二进制
+# tarball,无源码线面。其验证 = ①本机 P2-3/P2-4 已验(src 件解压 make 出三件套,
+# 字节数与固定点记录一致)+ ②源码件(ctron-<ver>-src.tar.gz)随 release 发布供
+# 用户自建;两驱动(ps1/cmd)诊断面与 sh 版同源,负例断言以本脚本为准。
 #
 # 已知边界(语义注明,不在本脚本断言面):W8901 整库缺失盲区——若安装损坏到
-# "str.ct 探针自身失效"(pkg_std_installed 返 false),std 缺失静默回落 ③ 落
+# 「str.ct 探针自身失效」(pkg_std_installed 返 false),std 缺失静默回落 ③ 落
 # E2020 而非 W8901 告警(parse_pkg.ct:pkg_std_installed 探测以 str.ct 为锚)。
-# 本脚本不断言该形态;装机路径 std 模块级缺失(探针在、模块缺)的 W8901 亦不入
-# CI 断言(需临时损坏安装面,与本脚本"只读安装面"的验收姿态冲突,语义见
-# parse_pkg.ct W8901 注释)。
+# 本脚本不断言该形态;断言 10 走 STDPATH 显式指路态(空指路目录,不触碰安装面,
+# 与本脚本「只读安装面」的验收姿态相容)。
 set -u
 [ $# -ge 1 ] || { echo "用法: accept.sh <ctron-<ver>-<os>-<arch>.tar.gz>" >&2; exit 2; }
 TARBALL=$1
@@ -140,11 +149,43 @@ else
     bad "负例 check rc=$rc err=[$NEG_ERR]"
 fi
 
-echo "== 9) --help 面(§7.3)== "
+echo "== 9) E5030 导入同名 decl 拦截(§9;dup_static 同形态,内联最小件)== "
+# use 导入符号与入口 Static 同名:合并期拦截(parse_pkg.ct E5030);诊断并流捕获,
+# 同 §8 注(chk 诊断走 stdout)
+cat > "$W/dup.ct" <<'EOF'
+use std.str.{words}
+
+static let words: I32 = 1
+
+fn main() {
+    println(words.to_string())
+}
+EOF
+rc=0; DUP=$( (cd "$W" && "$CTC" check dup.ct) 2>&1 ) || rc=$?
+if [ $rc -eq 1 ] && printf '%s' "$DUP" | grep -q 'E5030'; then
+    ok "E5030 负例 check rc=1:$(printf '%s' "$DUP" | head -1)"
+else
+    bad "E5030 负例 rc=$rc out=[$DUP]"
+fi
+
+echo "== 10) W8901 告警(§9,CTRON_STDPATH 显式指路态)== "
+# 仅 STDPATH/装机态响,回落态静默(parse_pkg.ct pkg_std_installed)——就测指路态:
+# STDPATH 指空目录 + use std.* 的件 → run rc=1 响亮失败(不触碰安装面)
+mkdir -p "$W/nostd"
+printf 'use std.str.{trim}\n\nfn main() {\n    println("w8901")\n}\n' > "$W/wp.ct"
+rc=0; WP=$( (cd "$W" && CTRON_STDPATH="$W/nostd" "$CTC" run wp.ct) 2>&1 ) || rc=$?
+if [ $rc -eq 1 ] && printf '%s' "$WP" | grep -q 'W8901'; then
+    ok "W8901 告警 run rc=1:$(printf '%s' "$WP" | head -1)"
+else
+    bad "W8901 rc=$rc out=[$WP]"
+fi
+
+echo "== 11) --help 面(§7.3)== "
 rc=0; HLP=$( (cd "$W" && "$CTC" --help) 2>&1 ) || rc=$?
 if [ $rc -eq 0 ] && printf '%s' "$HLP" | grep -q 'run' && printf '%s' "$HLP" | grep -q 'build' \
-    && printf '%s' "$HLP" | grep -q 'check'; then
-    ok "--help rc=0 含 run/build/check"
+    && printf '%s' "$HLP" | grep -q 'check' && printf '%s' "$HLP" | grep -q 'test' \
+    && printf '%s' "$HLP" | grep -q 'new'; then
+    ok "--help rc=0 含 run/build/check/test/new(五子命令)"
 else
     bad "--help rc=$rc 或缺命令词"
 fi
@@ -156,7 +197,7 @@ else
     bad "help build rc=$rc out=[$HB]"
 fi
 
-echo "== 10) 未知子命令 rc=2(§7.3)== "
+echo "== 12) 未知子命令 rc=2(§7.3)== "
 rc=0; UNK=$( (cd "$W" && "$CTC" frobnicate) 2>&1 >/dev/null ) || rc=$?
 if [ $rc -eq 2 ] && printf '%s' "$UNK" | grep -q 'ctc --help'; then
     ok "未知子命令 rc=2 且提示 ctc --help"

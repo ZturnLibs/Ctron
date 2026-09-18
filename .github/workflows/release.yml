@@ -54,7 +54,7 @@ jobs:
           for P in cc_run:ctron-cc cc_check:ctron-chk cc_emit:ctron-emit; do
             src=${P%%:*}; out=${P##*:}
             compiler/ctc.sh emit compiler/build/$src.ct /tmp/$out.c
-            diff /tmp/$out.c prebuilt/$out.c
+            cmp /tmp/$out.c prebuilt/$out.c
           done
       - name: 打包 + 验收(解压即用/装机路径/无 cc/负例/help)
         run: |
@@ -95,9 +95,13 @@ jobs:
           mkdir -p ctron/bin ctron/lib/ctron ctron/share/doc
           cp bin/*.exe ctron/bin/; cp ctc.ps1 ctc.cmd ctron/bin/
           cp -R std ctron/lib/ctron/std
+          # share/doc 落地:仓库根现无 README,以 compiler/README.md 兜底(与 release.sh 同解析序);
+          # 空目录会被 Compress-Archive 丢弃,故必须有件
+          cp compiler/README.md ctron/share/doc/ 2>/dev/null || cp README.md ctron/share/doc/ 2>/dev/null || true
           printf '%s %s\n' "$VER" "$(git rev-parse --short HEAD)" > ctron/VERSION
           powershell -Command "Compress-Archive -Path ctron -DestinationPath dist-windows.zip -Force"
-      - name: 验收(并发/深递归/CRLF/help conformance/编码三向/ps1 语法门/rc 矩阵)
+      - name: 验收(zip 自证/载荷布局/并发/深递归/CRLF/help conformance/编码三向/ps1 语法门/rc 矩阵)
+        # zip 自证 = 脚本 A2 段:Expand-Archive 解包发布物本体,复验同一组布局断言
         run: sh tests/dist/accept_windows.sh
       - uses: actions/upload-artifact@v4
         with: { name: rel-windows-x86_64, path: dist-windows.zip }
