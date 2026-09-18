@@ -172,7 +172,7 @@ fn main() -> I32 {
             println("static char ctron_exe_buf[4096];")
             println("static const char* ctron_exe_path(void) \{")
             println("#if defined(_WIN32)")
-            println("DWORD ctron_en = GetModuleFileNameA(NULL, ctron_exe_buf, 4096); return ctron_en > 0 ? ctron_exe_buf : \"\";")
+            println("DWORD ctron_en = GetModuleFileNameA(NULL, ctron_exe_buf, 4096); return (ctron_en > 0 && ctron_en < 4096) ? ctron_exe_buf : \"\";")
             println("#elif defined(__APPLE__)")
             println("uint32_t ctron_esz = 4096; return _NSGetExecutablePath(ctron_exe_buf, &ctron_esz) == 0 ? ctron_exe_buf : \"\";")
             println("#elif defined(__linux__)")
