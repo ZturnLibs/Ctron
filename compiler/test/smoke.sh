@@ -143,7 +143,7 @@ else
 fi
 
 echo "== 3) 发射往返(C 代码生成 → gcc → 原生执行,fixtures 全扫) =="
-for v in v0 v1 v2 v3 v4 v5; do
+for v in v0 v1 v2 v3 v4 v5 v6; do
     if "$COMP/ctc.sh" emit "$SH/fixtures/trans_$v.ct" "$T/tr_$v.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/tr_$v.bin" "$T/tr_$v.c" 2>/dev/null; then
         ( cd "$ROOT" && "$T/tr_$v.bin" > "$T/tr_$v.got" 2>&1 )

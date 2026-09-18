@@ -138,6 +138,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "(!" + ct_expr(e[2], env, file) + ")"
     }
     if t == "Binary" {
+        // v0.8:or 中缀取默认(§4.4)——与 .or(默认) 方法同形(variant 0 取载荷,否则默认);
+        // 非 Option/Result 左侧对齐 eval/rt 宽松口径:求值后回落默认。须在 ct_op 前拦截(Or 无 C 符号)
+        if e[1] == "Or" {
+            var olo = ct_expr(e[2], env, file)
+            var olot = ct_typeof(e[2], env, file)
+            if olot != "R" {
+                return "((void)(" + olo + "), (" + ct_expr(e[3], env, file) + "))"
+            }
+            var od = ct_expr(e[3], env, file)
+            var odt = ct_typeof(e[3], env, file)
+            var odct = ct_ctype(odt)
+            return "(" + odct + ")((" + olo + ").variant == 0 ? (ct_i)(long)(" + olo + ").v : (ct_i)(long)(" + od + "))"
+        }
         var op = ct_op(e[1])
         var lt = ct_typeof(e[2], env, file)
         if e[1] == "Add" && or2(lt == "s", lt == "N") {
@@ -1213,43 +1226,54 @@ fn ct_zero(code: Str) -> Str {
     return "0"
 }
 
-// 定长数组码 a<N><元素码>:元素码自 v4 起可多字符(如 u:Point)
-fn a_count(code: Str) -> Str {
-    var i: I32 = 1
-    while i < code.len {
-        var c = byte_at(code, i)
-        var dig = true
-        if c < 48 {
-            dig = false
+// 定长数组码 a<N><元素码> 拆分(§四 #7 修复):元素码可为数字形态(6=I64/7=U64),
+// 旧贪心数字解析把 a36(3×I64)读成 36×I32 且元素回落 i。现回溯式:计数取最长
+// 数字前缀,余下须以合法元素码首字符开头;合法首字符全集 = 单字符码 + 多字符码首字
+fn a_split(code: Str) -> I32 {
+    var d = code.len
+    var k = d - 1
+    while k > 1 {
+        var c = byte_at(code, k)
+        var ok = false
+        var set = "isbf67NghRALvuwBEmP"
+        var t: I32 = 0
+        while t < set.len {
+            if byte_at(set, t) == c {
+                ok = true
+            }
+            t += 1
         }
-        if c > 57 {
-            dig = false
+        if ok {
+            var alldig = true
+            var u: I32 = 1
+            while u < k {
+                var cc = byte_at(code, u)
+                if cc < 48 || cc > 57 {
+                    alldig = false
+                }
+                u += 1
+            }
+            if alldig {
+                return k
+            }
         }
-        if !dig {
-            return byte_slice(code, 1, i)
-        }
-        i += 1
+        k -= 1
     }
-    return byte_slice(code, 1, code.len)
+    return 2
+}
+
+fn a_count(code: Str) -> Str {
+    if code.len < 2 {
+        return "0"
+    }
+    return byte_slice(code, 1, a_split(code))
 }
 
 fn a_elem(code: Str) -> Str {
-    var i: I32 = 1
-    while i < code.len {
-        var c = byte_at(code, i)
-        var dig = true
-        if c < 48 {
-            dig = false
-        }
-        if c > 57 {
-            dig = false
-        }
-        if !dig {
-            return byte_slice(code, i, code.len)
-        }
-        i += 1
+    if code.len < 2 {
+        return "i"
     }
-    return "i"
+    return byte_slice(code, a_split(code), code.len)
 }
 
 // @derive(Show) 合成(§3d):值 C 表达式 x(静态码 ty)→ 显示文本 C 表达式。

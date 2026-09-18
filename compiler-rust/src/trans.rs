@@ -2678,7 +2678,21 @@ impl Trans {
                 let f = if *op == WrapAdd { "ct_wadd" } else { "ct_wsub" };
                 Ok((format!("{}({}, {}, {}, {})", f, lc, rc, bits, us), VTy::Int(w)))
             }
-            Or => Err("trans:`or` 仅用于 Option(数值域外)".into()),
+            Or => {
+                // or 中缀取默认(§4.4):与 .or(默认) 方法同形(variant 0 取载荷,否则默认);
+                // 非 Sum 左侧对齐 interp/rt 宽松口径——求值后回落默认
+                if matches!(lt, VTy::Sum(..) | VTy::SumErr(..)) {
+                    if !rt.is_num() { return Err("trans:or 默认值需数值".into()); }
+                    let slot = if rt.is_float() { "f" } else { "i" };
+                    let cast = if rt == VTy::F32 { "(float)" } else { "" };
+                    Ok((format!(
+                        "({{ ct_sum t = ({}); (t.variant == 0) ? {}t.p[0].{} : {}{}; }})",
+                        lc, cast, slot, cast, rc),
+                     rt))
+                } else {
+                    Ok((format!("((void)({}), ({}))", lc, rc), rt))
+                }
+            }
         }
     }
 }

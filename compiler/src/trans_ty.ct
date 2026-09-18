@@ -764,6 +764,10 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "b"
     }
     if t == "Binary" {
+        // v0.8:or 取默认(§4.4)——结果类型随默认值(即载荷域);须在 Bool 兜底前拦截
+        if e[1] == "Or" {
+            return ct_typeof(e[3], env, file)
+        }
         var arith = or2(e[1] == "Add", or3(e[1] == "Sub", or2(e[1] == "Mul", e[1] == "Div"), e[1] == "Mod"))
         if arith {
             // 算术:任一操作数为浮点 → f;任一为 Str/节点引用(仅 Add 拼接)→ s;否则 i

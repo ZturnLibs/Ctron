@@ -1,0 +1,31 @@
+// trans_v6.ct —— 发射面与或非(§4.4):||/&&/! 短路 + or 中缀取默认(与 .or() 方法语义唯一)
+// 短路哨兵:RHS 除零若被求值即 panic——发射 C、宿主解释、自举解释三面同锚
+fn get(n: I32) -> Option[I32] {
+    if n > 0 {
+        return Some(n)
+    }
+    return None
+}
+fn parse(n: I32) -> Result[I32, Str] {
+    if n >= 0 {
+        return Ok(n)
+    }
+    return Err("neg")
+}
+fn b2s(v: Bool) -> Str {
+    return if v { "T" } else { "F" }
+}
+fn main() -> I32 {
+    println(b2s(true || false))
+    println(b2s(false || true))
+    println(b2s(true && false))
+    println(b2s(!true))
+    println(b2s(false && 1 / 0 == 1))
+    println(b2s(true || 1 / 0 == 1))
+    println((get(5) or 99).to_string())
+    println((get(0 - 1) or 99).to_string())
+    println((get(5).or(99)).to_string())
+    println((parse(3) or 7).to_string())
+    println((parse(0 - 1) or 7).to_string())
+    return 0
+}
