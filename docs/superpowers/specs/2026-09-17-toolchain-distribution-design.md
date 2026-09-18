@@ -56,7 +56,7 @@ ctron/
 │   ├── ctron-chk
 │   └── ctron-emit
 ├── lib/ctron/std/     # 标准库全部 .ct 源码(见下方"为何是源码")
-├── share/doc/         # README、语言规范速览、BOOTSTRAP 摘要、examples/
+├── share/doc/         # README(根 README 优先、compiler/README.md 兜底)+ examples/
 └── VERSION            # "0.1.0 <git-sha>"(两字段,release.sh 生成;ctc --version 直出)
 ```
 
@@ -94,7 +94,7 @@ ctron\
 ### 2.3 源码线(`ctron-vX.Y.Z-src.tar.gz`)
 
 ```
-ctron-src/
+ctron-src-<ver>/
 ├── compiler/src/*.ct      # 36 模块编译器源
 ├── std/*.ct
 ├── prebuilt/
@@ -160,7 +160,7 @@ check/test 两阶段兜底(BOOTSTRAP.md 口径),用户面 `ctc test` 暂同解�
 
 - cc 统一参数 `-O2 -w -pthread`(glibc < 2.34 需要 -pthread;clang 接受无害);
 - Windows 链接加 `-Wl,--stack,<bytes>`:**编译器三件 16MB**、`ctc build` 用户产物默认
-  8MB(`--stack=N` 可覆盖)。依据:Windows 主线程默认栈 1MB(mac/linux 8MB),ceval 已知
+  8MB(栈大小覆盖参数挂账,现不可覆盖)。依据:Windows 主线程默认栈 1MB(mac/linux 8MB),ceval 已知
   ~1800 步深递归击穿 8MB 宿主栈(BOOTSTRAP.md §7)——1MB 下必炸,不是可选项;
 - Windows `build` 产物带 `.exe` 后缀。
 
@@ -192,7 +192,7 @@ check/test 两阶段兜底(BOOTSTRAP.md 口径),用户面 `ctc test` 暂同解�
 | 6 | ctc 驱动 PS 版 + cmd 垫片 | 新 | Windows | 同命令面;conformance 用例锁定两版参数兼容 |
 | 7 | `_WIN32` 样板补丁 | `driver_emit.ct` | Windows | `main` 入口 `SetConsoleOutputCP(CP_UTF8)`(UTF-8 输出不被控制台代码页吃掉) |
 | 8 | ~~lex `\r` 过滤~~ 已满足(双侧词法既有),本项仅 CRLF 回归夹具(已落 `tests/06_crlf.ct`) | `lex.ct` | 全(Windows 受益) | CRLF 源可解析;夹具以语言内自钉钉死(词法不再跳 CR 即编译拦截,CR 泄入字面量即 len/eq 断言炸)。否则记事本存个 CRLF 文件即解析炸 |
-| 9 | 栈链接参数 | `ctc` 两版 + `native.sh` | Windows 为主 | §4 所列 bytes |
+| 9 | 栈链接参数 | `ctc.ps1` + release workflow windows job | Windows | §4 所列 bytes——用户产物 8MB 在 ctc.ps1 链接行,编译器三件 16MB 在 workflow windows job 的 gcc 行;native.sh 无栈旗标 |
 | 10 | `tools/release.sh` | 新 | 全 | 一键出 6 产物 + SHA256SUMS;本地可跑,CI 复用 |
 | 11 | Release workflow(双阶段) | `.github/workflows/` | 全 | §6 |
 | 12 | examples 就位 | `examples/` | 全 | ctgrep/ctwc/ctwf 作为发布验收与文档素材 |
@@ -210,8 +210,9 @@ check/test 两阶段兜底(BOOTSTRAP.md 口径),用户面 `ctc test` 暂同解�
 mac/linux;同时即验证了源码线在 mingw 下成立 → MSYS2 bash 里跑 §7 验收(sh 可用,
 测试面统一)→ 打 zip → 汇总预编译五件 + src + SHA256SUMS 上 GitHub Release。
 
-per-platform 发布容错:任一平台验收失败不阻塞其余平台过验收,但 Release 标记
-`pre-release` 直至全绿。
+发布门禁(按实现,严于初稿的"per-platform 容错 + pre-release 标记"):publish job
+`needs: [prebuilt, natives, windows]` 全绿门——全平台 job 绿才 publish,任一红不发版,
+无 pre-release 降级路径(workflow 注释同记)。
 
 ## 7. 验收门禁(每个平台产物上 Release 前必过)
 
@@ -220,7 +221,9 @@ per-platform 发布容错:任一平台验收失败不阻塞其余平台过验收
    同名碰撞 `E5030` 负例拦截;装机路径 std 缺失产生告警(非静默);
 3. 负例拦截 rc=1;`ctc --version` 正确;`ctc --help` / `ctc help build` rc=0 且内容
    含全部子命令,未知子命令 rc=2 并提示 `ctc --help`;
-4. 源码线:`make` → 三二进制 → 同套用例绿;
+4. 源码线:`make` → 三二进制 → 同套用例绿(验证归属注:不在 CI 验收脚本内——
+   accept.sh 入参仅二进制 tarball;由本机 P2-3/P2-4 已验 + src 件随发布承载,
+   accept.sh 头注闭环注记同此口径);
 5. **无 cc 预检**:PATH 隔离用例下 `ctc build` 仍产出 `.c` 且 rc=2、消息含平台指引与
    `.c` 位置;同环境 `ctc run` 不受影响。
 
@@ -249,7 +252,7 @@ Windows 专项(在 1–5 之上追加):
 | GetModuleFileNameA 路径分隔符 | 低 | Win32 API 接受混用分隔符;验收 2 兜底;异常再归一化 |
 | 固定点跨平台不逐字节(如 cc 版本差异影响发射文本) | 低 | 发射文本只由编译器源决定,与 cc 无关;Stage 1 diff 验证即证伪机制 |
 | ctc 双驱动命令面漂移 | 中 | conformance 用例(验收 8)进两平台门禁 |
-| 发布 workflow 首跑风险:macos-13 runner 退役可能、accept_windows 零执行史、linux 双臂 glibc 首跑 | 中 | 首跑即验证轮;per-platform 容错 + pre-release 标记兜底(§6),windows 运行级门禁归 CI job |
+| 发布 workflow 首跑风险:macos-13 runner 退役可能、accept_windows 零执行史、linux 双臂 glibc 首跑 | 中 | 首跑即验证轮;全平台 job 绿才 publish、任一红不发版兜底(§6),windows 运行级门禁归 CI job |
 
 ## 10. 后续挂账(v0.1 之后)
 

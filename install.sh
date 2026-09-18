@@ -11,7 +11,7 @@ case $M in arm64|aarch64) arch=arm64 ;; x86_64|amd64) arch=x86_64 ;; *) echo "in
 if [ -z "$VER" ]; then
     VER=$(curl -fsSL "https://api.github.com/repos/Zturn/Ctron/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
 fi
-[ -n "$VER" ] || { echo "install.sh: 取版本失败(可设 CTON_VERSION=x.y.z 重试)" >&2; exit 2; }
+[ -n "$VER" ] || { echo "install.sh: 取版本失败(可设 CTRON_VERSION=x.y.z 重试)" >&2; exit 2; }
 TARBALL="ctron-${VER#v}-${os}-${arch}.tar.gz"
 echo "install.sh: 下载 $BASE/$TARBALL"
 TMP=$(mktemp -d /tmp/ctron_install.XXXXXX)

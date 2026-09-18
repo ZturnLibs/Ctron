@@ -95,9 +95,9 @@ jobs:
           mkdir -p ctron/bin ctron/lib/ctron ctron/share/doc
           cp bin/*.exe ctron/bin/; cp ctc.ps1 ctc.cmd ctron/bin/
           cp -R std ctron/lib/ctron/std
-          # share/doc 落地:仓库根现无 README,以 compiler/README.md 兜底(与 release.sh 同解析序);
+          # share/doc 落地:根 README 优先、compiler/README.md 兜底(与 release.sh 同解析序);
           # 空目录会被 Compress-Archive 丢弃,故必须有件
-          cp compiler/README.md ctron/share/doc/ 2>/dev/null || cp README.md ctron/share/doc/ 2>/dev/null || true
+          cp README.md ctron/share/doc/ 2>/dev/null || cp compiler/README.md ctron/share/doc/ 2>/dev/null || true
           printf '%s %s\n' "$VER" "$(git rev-parse --short HEAD)" > ctron/VERSION
           powershell -Command "Compress-Archive -Path ctron -DestinationPath dist-windows.zip -Force"
       - name: 验收(zip 自证/载荷布局/并发/深递归/CRLF/help conformance/编码三向/ps1 语法门/rc 矩阵)
