@@ -55,6 +55,7 @@ prop true false void self
 =                    赋值(仅语句,§4.2)
 &&                   逻辑与(short-circuit)
 ||                   逻辑或(short-circuit,v0.7;§4.4)
+-  !                  一元:负号 / 逻辑非(仅 Bool;§4.3 层 7,§4.4)
 or                   中缀取默认(Option/Result,§5.2);非逻辑或
 .. ..=               range(左闭右开/双闭)
 ..                   切片类型/省略(见语法)

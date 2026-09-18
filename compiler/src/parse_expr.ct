@@ -440,7 +440,9 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
             while more {
                 if tok(toks, cur) == "," {
                     adv(cur)
-                    tn.push(p_and(toks, cur, lns, "1"))
+                    // v0.8 修:元组第 2 起元素走完整布尔链——原 p_and 不消费 ||,
+                    // (a, b || c) 与 if 条件同病(5b6fa5e);语料零覆盖
+                    tn.push(p_oror(toks, cur, lns, "1"))
                 } else {
                     more = false
                 }

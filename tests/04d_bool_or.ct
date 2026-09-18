@@ -71,3 +71,10 @@ test "if condition with || chain parses and runs" {
 test "if || inside loop with else" {
     assert_eq(or_if(1), 11)
 }
+
+// v0.8 回归锚:元组第 2 起元素含 || 链(曾因元组元素走 p_and 不消费 || 而解析错位,同 if 条件病)
+test "tuple element with || chain parses fully" {
+    var t = (1 == 1, 2 == 3 || 4 == 4)
+    assert_eq(t.0, true)
+    assert_eq(t.1, true)
+}

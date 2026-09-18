@@ -1,8 +1,8 @@
 // 04b_logic.ct —— &&/!/德摩根、% 符号语义、复合赋值、遮蔽、range 值、else-if 链
-// 语义承诺:逻辑或唯一写法 = 德摩根;!a && !b;结果符号随被除数
+// 语义承诺:逻辑或唯一写法 = ||(v0.7,§4.0 一义一符);本测以德摩根锚定 !/&& 语义;结果符号随被除数
 
 fn or_dm(a: Bool, b: Bool) -> Bool {
-    return !(!a && !b)                // 德摩根:等价 a || b(v0.3+ 无 ||)
+    return !(!a && !b)                // 德摩根:等价 a || b(等价性锚;v0.7 起可直接写 a || b)
 }
 
 test "de morgan or via truth table" {

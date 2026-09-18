@@ -358,7 +358,8 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_free(&r);
             return ty_bool();
         }
-        if (e->bop == B_OR) { terr(c, "v1:|| 不存在(用 or2 德摩根)"); return ty_unk(); }
+        // B_OR = or 取默认(§4.4;run 解释执行支持,直映发射 v1 未接)
+        if (e->bop == B_OR) { terr(c, "v1:or 取默认未接直映发射(§4.4);用 run 解释执行"); return ty_unk(); }
         sb l = {0}, r = {0};
         ty lt = emit_expr(c, e->lhs, &l);
         ty rt = emit_expr(c, e->rhs, &r);

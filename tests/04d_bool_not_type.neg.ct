@@ -1,0 +1,13 @@
+// 04d_bool_not_type.neg.ct —— v0.8:! 逻辑非仅接受 Bool(§4.4 明文化);
+// && 浮点操作数同口径(主线 E2010 判定对齐 C sem prim_cat/Rust check:已知非 Bool 标量类别报错)
+//@ fail: E2010
+
+test "not on int is a type error" {
+    let x = !1
+    assert_eq(x, false)
+}
+
+test "and on float is a type error" {
+    let y = 1.5 && true
+    assert_eq(y, false)
+}

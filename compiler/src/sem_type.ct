@@ -634,14 +634,16 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 m = diag_render1("E2010.arith.bool", nline(e), op)
             }
         }
+        // v0.8 修:口径对齐 C sem prim_cat/Rust check——已知非 Bool 标量类别(数值/Str 系)报错,
+        // Bool 与未知/聚合放行(§4.4);原仅查 Str+整数,浮点操作数漏报
         if seq2(op, "AndAnd") {
-            if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
+            if or2(k_num(lt), or2(k_strish(lt), or2(k_num(rt2), k_strish(rt2)))) {
                 bad = true
                 m = diag_render0("E2010.op.and", nline(e))
             }
         }
         if seq2(op, "OrOr") {
-            if or2(seq2(lt, "n:Str"), or2(seq2(rt2, "n:Str"), or2(k_int(lt), k_int(rt2)))) {
+            if or2(k_num(lt), or2(k_strish(lt), or2(k_num(rt2), k_strish(rt2)))) {
                 bad = true
                 m = diag_render0("E2010.op.or", nline(e))
             }
@@ -654,6 +656,13 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         return
     }
     if t == "Unary" {
+        // v0.8 修:! 逻辑非仅接受 Bool(§4.4 明文化;对齐 C sem UN_NOT/Rust check 口径)
+        if seq2(e[1], "Not") {
+            var nt = ex_ty(e[2], tc, loc, envT)
+            if or2(k_num(nt), k_strish(nt)) {
+                diags.push(diag_render0("E2010.op.not", nline(e[2])))
+            }
+        }
         tce(file, e[2], tc, loc, envT, retK, diags)
         return
     }
