@@ -589,6 +589,11 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
                 nstamp(fd, lns[cur.load()])
                 nf.push(fd)
             }
+        } else if t == "view" {
+            // GUI 块认领(W1,§11.1):GuiBlock 子节点,sem/eval 直通
+            nf.push(gui_block(toks, cur, "view"))
+        } else if t == "style" {
+            nf.push(gui_block(toks, cur, "style"))
         } else if t == "pub" {
             adv(cur)
             if tok(toks, cur) == "(" {

@@ -144,6 +144,16 @@ tests/gui/{s1_smoke/, s2_ab/, s3_clay/, s4_events/, s5_golden/, s6_demo/, run.sh
       包级 use 集成随 P2-B(夹具暂内嵌快照)
 - [x] 全阶梯回归:S1–S7 七夹具连续全绿(2026-09-16)
 
+### W1 完工与发射分歧登记(2026-09-17)
+
+- **W1 完成**:gui_parse.ct(块平衡扫描,GuiBlock 子节点)+ parse_decl 认领分支 +
+  build.sh 拼接 + smoke 锁定 315→316;验收 = w1_block 夹具黄金(check OK decls=4)+
+  run 口径 rc=0 + 负例"块未闭合" rc=1 + 自编译 316 + smoke 111/0 + GUI 阶梯 7/7;
+- **新发射分歧(转交 P0-G/发射泳道)**:注释内花括号字符在发射口径词法未隔离
+  (C 主机绿、发射红,自编译 cc.ct 在注释行 E1001)——gui_parse 注释已去花括号
+  规避;建议 lex 三线对拍增加"注释含花括号"语料;
+- dump 口径(--dump-gui)移交 W2(消费 W2 的 IR,避免旗标管道过早扩面)。
+
 ### S0 状态(2026-09-17 销账)
 
 FFI 泳道已自行落库并扩张到位:**tests/ffi 20 过 / 0 败**(11 → 20 夹具:新增

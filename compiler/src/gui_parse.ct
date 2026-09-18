@@ -1,0 +1,46 @@
+// =====================================================================
+// gui_parse.ct —— GUI 块认领(W1;规范 specs/2026-09-16-gui-ctml-design.md §11.1)
+// 职责:顶层 view 名加花括号块 / style 名加花括号块 在 token 流上的平衡扫描认领,
+//       记为 File 子节点 GuiBlock([1]=kind [2]=name [3]=块内 token 数)。
+// 契约:词法层字符串已收为单 token,token 级平衡扫描对插值类文本安全;
+//       sem 12 项对 GuiBlock 直通(W3 接入 E8xxx);块体 W2 起才参与 IR/comptime。
+// =====================================================================
+
+fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+    var nd = mk("GuiBlock")
+    nd.push(kind)
+    adv(cur)
+    var name: Str = tok(toks, cur)
+    adv(cur)
+    nd.push(name)
+    var depth: I32 = 0
+    var toks_n: I32 = 0
+    var started: Bool = false
+    while true {
+        var t: Str = tok(toks, cur)
+        if t == "#EOF" {
+            panic("gui: 块未闭合 " + kind + " " + name)
+        }
+        // 花括号字面量不可词法化(会触发插值扫描吞引号,E1001)——用字节码比较
+        var one: Bool = t.len == 1
+        if one {
+            if byte_at(t, 0) == 123 {
+                depth += 1
+                started = true
+            } else {
+                if byte_at(t, 0) == 125 {
+                    depth -= 1
+                }
+            }
+        }
+        adv(cur)
+        if started {
+            toks_n += 1
+            if depth == 0 {
+                break
+            }
+        }
+    }
+    nd.push(toks_n.to_string())
+    return nd
+}
