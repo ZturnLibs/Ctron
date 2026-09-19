@@ -13,11 +13,11 @@ python3 tools/ctcl_check.py --selftest
 echo "[2/7] 模块拼接"
 sh "$DIR/compiler/build.sh"
 
-echo "[3/7] 验收冒烟(--full,含并发/枚举/fn 值发射与自举固定点)"
-sh "$DIR/compiler/test/smoke.sh" --full
-
-echo "[4/7] 原生二进制重建 + tests/ 一致性测试集(对照 C 参考宿主)"
+echo "[3/7] 自举出原生四件套(ctron-cc/chk/emit;冒烟与测试集的原生臂前置)"
 sh "$DIR/compiler/native.sh"
+
+echo "[4/7] 验收冒烟(--full,含并发/枚举/fn 值发射与自举固定点)+ tests/ 一致性测试集(对照 C 参考宿主)"
+sh "$DIR/compiler/test/smoke.sh" --full
 python3 "$DIR/compiler/test/suite.py"
 
 echo "[5/7] ctc 驱动冒烟(run/check/build/help/无 cc 路径)"
