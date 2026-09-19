@@ -30,4 +30,9 @@ mkdir -p "$DST"
 for F in "$SRC"/*.md; do
     { printf '%s\n' "$FM"; cat "$F"; } | rewrite_repo_links > "$DST/$(basename "$F")"
 done
+# 陈旧件清理:源已删除的同步件一并移除(--check 的 Only in 亦可拦,此处免手工)
+for OLD in "$DST"/*.md; do
+    B=$(basename "$OLD")
+    [ -f "$SRC/$B" ] || rm -f "$OLD"
+done
 echo "sync_site_spec: 已同步 $(ls "$DST" | wc -l | tr -d ' ') 件 → website/docs/spec/"

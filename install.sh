@@ -22,8 +22,12 @@ curl -fsSL "$BASE/$TARBALL" -o "$TMP/$TARBALL"
 # 离线 file:// 目录)按平铺文件解析同样正确。取不到(404/无网络)则静默跳过校验,
 # 不阻塞安装。
 curl -fsSL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS" 2>/dev/null || true
-if [ -s "$TMP/SHA256SUMS" ] && command -v shasum >/dev/null 2>&1; then
-    (cd "$TMP" && grep "$TARBALL" SHA256SUMS | shasum -a 256 -c -)
+if [ -s "$TMP/SHA256SUMS" ]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        (cd "$TMP" && grep "$TARBALL" SHA256SUMS | sha256sum -c -)
+    elif command -v shasum >/dev/null 2>&1; then
+        (cd "$TMP" && grep "$TARBALL" SHA256SUMS | shasum -a 256 -c -)
+    fi
 fi
 mkdir -p "$DIR"
 tar xzf "$TMP/$TARBALL" -C "$TMP"

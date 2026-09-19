@@ -89,14 +89,14 @@ cmd_build_proj() {
     [ -n "$NAME" ] || NAME=$(basename "$PWD")
     [ -f src/main.ct ] || die2 "缺入口 src/main.ct"
     mkdir -p build
-    "$BIN/ctron-emit" run "$PWD/src/main.ct" > build/$NAME.c || exit 1
+    "$BIN/ctron-emit" run "$PWD/src/main.ct" > "build/$NAME.c" || exit 1
     if ! have_cc; then
         cc_missing_guidance "build/$NAME.c"
         exit 2
     fi
     SRCS=""
     for C in c_src/*.c; do [ -f "$C" ] && SRCS="$SRCS $C"; done
-    "$CC_BIN" -O2 -w -pthread build/$NAME.c $SRCS -o build/$NAME || exit 2
+    "$CC_BIN" -O2 -w -pthread "build/$NAME.c" $SRCS -o "build/$NAME" || exit 2
     echo "ctc: 已构建 build/$NAME"
 }
 
