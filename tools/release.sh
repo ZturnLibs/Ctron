@@ -18,7 +18,16 @@ rm -rf "$DIST" && mkdir -p "$PKG/bin" "$PKG/lib/ctron" "$PKG/share/doc" "$DIST/p
 README="$DIR/README.md"; [ -f "$README" ] || README="$DIR/compiler/README.md"
 
 sh "$DIR/compiler/build.sh"
-sh "$DIR/compiler/native.sh"
+# CTRON_FROM_PREBUILT=1:跳过 seed 自举(Windows/linux 走此路——linux 上 seed 解释器
+# 内存冲破 runner 上限,见台账编译器线挂账),直接 cc 编译预发射 C;产物与自举链逐字节同源
+if [ "${CTRON_FROM_PREBUILT:-0}" = "1" ] && [ -f "$DIR/prebuilt/ctron-cc.c" ]; then
+    mkdir -p "$DIR/compiler/bin"
+    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-cc"   "$DIR/prebuilt/ctron-cc.c"
+    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-chk"  "$DIR/prebuilt/ctron-chk.c"
+    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-emit" "$DIR/prebuilt/ctron-emit.c"
+else
+    sh "$DIR/compiler/native.sh"
+fi
 install -m 755 "$DIR/compiler/bin/ctron-cc" "$DIR/compiler/bin/ctron-chk" "$DIR/compiler/bin/ctron-emit" "$PKG/bin/"
 install -m 755 "$DIR/ctc" "$PKG/bin/ctc"
 cp -R "$DIR/std/." "$PKG/lib/ctron/std/"
@@ -27,10 +36,16 @@ cp -R "$DIR/examples" "$PKG/share/doc/examples"
 printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$PKG/VERSION"
 
 # 预发射 C(固定点:任何平台发射应逐字节一致,workflow 内跨平台 diff 验证)
+# prebuilt 模式:artifact 携带的预发射 C 即权威产物,原样采用(linux 上 seed emit 会
+# 冲破内存上限,见台账编译器线挂账);darwin 自举链模式:由 seed 链现发射
 TMP=$(mktemp -d /tmp/ctron_rel.XXXXXX) && trap 'rm -rf "$TMP"' EXIT
-"$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_run.ct"   "$DIST/prebuilt/ctron-cc.c"   >/dev/null
-"$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_check.ct" "$DIST/prebuilt/ctron-chk.c"  >/dev/null
-"$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_emit.ct"  "$DIST/prebuilt/ctron-emit.c" >/dev/null
+if [ "${CTRON_FROM_PREBUILT:-0}" = "1" ]; then
+    cp "$DIR/prebuilt/"ctron-*.c "$DIST/prebuilt/"
+else
+    "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_run.ct"   "$DIST/prebuilt/ctron-cc.c"   >/dev/null
+    "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_check.ct" "$DIST/prebuilt/ctron-chk.c"  >/dev/null
+    "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_emit.ct"  "$DIST/prebuilt/ctron-emit.c" >/dev/null
+fi
 
 # 源码 tarball 组装件(仅打包,不重复构建;布局对齐源码线 Makefile:prebuilt/ std/ ctc Makefile)
 SRC="$DIST/ctron-src-$VER"; mkdir -p "$SRC/prebuilt"

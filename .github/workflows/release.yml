@@ -39,7 +39,8 @@ jobs:
       matrix:
         include:
           - { os: macos-14,       platform: darwin-arm64 }
-          - { os: macos-13,       platform: darwin-x86_64 }
+          # darwin-x86_64 暂缓(v0.0.1):macos-13 runner 已退役排队永不到达;
+          # Intel Mac 用户走源码线(prebuilt C 任意平台可编),跨编译方案挂账
           - { os: ubuntu-24.04,   platform: linux-x86_64 }
           - { os: ubuntu-24.04-arm, platform: linux-arm64 }
     runs-on: ${{ matrix.os }}
@@ -47,15 +48,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: prebuilt, path: prebuilt }
-      - run: make -C compiler-c                      # linux 首跑风险点:seed 侧 glibc/cc 差异
-      - run: sh compiler/native.sh                   # 自举链出四件套
-      - name: 固定点承诺——本平台发射与基准逐字节 diff
+      # linux 走 prebuilt 直编(seed 自举在 linux glibc 下内存冲破 runner 上限,
+      # 四连确定性 shutdown,编译器线挂账);darwin-arm64 保留全自举链作三线互证
+      - name: 构建(自举链或 prebuilt 直编)
         run: |
-          for P in cc_run:ctron-cc cc_check:ctron-chk cc_emit:ctron-emit; do
-            src=${P%%:*}; out=${P##*:}
-            compiler/ctc.sh emit compiler/build/$src.ct /tmp/$out.c
-            cmp /tmp/$out.c prebuilt/$out.c
-          done
+          if [ -f prebuilt/ctron-cc.c ] && [ "$(uname -s)" = "Linux" ]; then
+            mkdir -p compiler/bin
+            cc -O2 -w -pthread -o compiler/bin/ctron-cc   prebuilt/ctron-cc.c
+            cc -O2 -w -pthread -o compiler/bin/ctron-chk  prebuilt/ctron-chk.c
+            cc -O2 -w -pthread -o compiler/bin/ctron-emit prebuilt/ctron-emit.c
+            echo "CTRON_FROM_PREBUILT=1" >> "$GITHUB_ENV"
+          else
+            make -C compiler-c
+            sh compiler/native.sh
+          fi
+      - name: 固定点承诺——本平台发射器再发射与基准逐字节 diff
+        run: |
+          sh compiler/build.sh
+          ./compiler/bin/ctron-emit run compiler/build/cc_run.ct > /tmp/re_emit.c
+          cmp /tmp/re_emit.c prebuilt/ctron-cc.c
       - name: 打包 + 验收(解压即用/装机路径/无 cc/负例/help)
         run: |
           VER=${GITHUB_REF_NAME#v}
@@ -80,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
-        with: { msystem: MINGW64, update: false, install: 'mingw-w64-x86_64-gcc make git' }
+        with: { msystem: MINGW64, update: false, install: 'mingw-w64-x86_64-gcc make git diffutils' }
       - uses: actions/download-artifact@v4
         with: { name: prebuilt, path: prebuilt }
       - name: cc-only 构建(绕过 seed;编译器三件 16MB 栈)

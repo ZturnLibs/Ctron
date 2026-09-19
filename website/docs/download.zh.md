@@ -12,18 +12,19 @@ curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.s
 
 ## 产物矩阵
 
-每次发布出 8 个资产,全部可经 `https://github.com/ZturnLibs/Ctron/releases/latest/download/<资产名>` 直达。版本号不带 `v` 前缀,下表以 v0.0.1 为例:
+每次发布出 7 个资产,全部可经 `https://github.com/ZturnLibs/Ctron/releases/latest/download/<资产名>` 直达。版本号不带 `v` 前缀,下表以 v0.0.1 为例:
 
 | 资产 | 平台 / 用途 |
 |---|---|
 | [ctron-0.0.1-darwin-arm64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-darwin-arm64.tar.gz) | macOS Apple Silicon |
-| [ctron-0.0.1-darwin-x86_64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-darwin-x86_64.tar.gz) | macOS Intel |
 | [ctron-0.0.1-linux-x86_64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-linux-x86_64.tar.gz) | Linux x86_64 |
 | [ctron-0.0.1-linux-arm64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-linux-arm64.tar.gz) | Linux arm64 |
 | [ctron-0.0.1-windows-x86_64.zip](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-windows-x86_64.zip) | Windows x86_64(β) |
 | [ctron-0.0.1-src.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-src.tar.gz) | 源码线(附预发射 C,cc-only) |
-| [SHA256SUMS](https://github.com/ZturnLibs/Ctron/releases/latest/download/SHA256SUMS) | 六个发布件的 SHA-256 校验单 |
+| [SHA256SUMS](https://github.com/ZturnLibs/Ctron/releases/latest/download/SHA256SUMS) | 发布件的 SHA-256 校验单 |
 | [install.sh](https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh) | 一键安装脚本 |
+
+> macOS Intel:v0.0.1 暂无预编译包——请走源码线(`ctron-0.0.1-src.tar.gz`,任意 cc `make` 即可)。
 
 预编译包布局:`ctron/bin/`(`ctc` 驱动 + `ctron-cc` / `ctron-chk` / `ctron-emit` 三个原生二进制)、`ctron/lib/ctron/std/`(标准库源码)、`ctron/share/doc/`(README 与 examples)、`ctron/VERSION`(版本 + git-sha)。
 

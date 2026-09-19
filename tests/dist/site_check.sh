@@ -66,24 +66,24 @@ for REAL in index.md getting-started.md download.md; do
     fi
 done
 
-echo "== [3] 下载页八资产 与 分发线口径对照 =="
-ASSETS="ctron-0.0.1-darwin-arm64.tar.gz ctron-0.0.1-darwin-x86_64.tar.gz \
+echo "== [3] 下载页七资产 与 分发线口径对照 =="
+ASSETS="ctron-0.0.1-darwin-arm64.tar.gz \
 ctron-0.0.1-linux-x86_64.tar.gz ctron-0.0.1-linux-arm64.tar.gz \
 ctron-0.0.1-windows-x86_64.zip ctron-0.0.1-src.tar.gz SHA256SUMS install.sh"
 for A in $ASSETS; do
     if grep -qF "$A" "$DOCS/download.md" && grep -qF "$A" "$DOCS/download.zh.md"; then
-        ok "八资产之一在 en/zh 下载页:$A"
+        ok "七资产之一在 en/zh 下载页:$A"
     else
         bad "资产 $A 在下载页缺位(en/zh 至少其一)"
     fi
 done
-# en 下载页 latest/download 直链唯一名恰为八(资产名字符集;`<asset>` 占位写法被字符集滤空)
+# en 下载页 latest/download 直链唯一名恰为七(资产名字符集;`<asset>` 占位写法被字符集滤空)
 GOT=$(grep -o 'releases/latest/download/[A-Za-z0-9._-]*' "$DOCS/download.md" | sed 's|.*/||' | sort -u)
 NGOT=$(printf '%s\n' "$GOT" | grep -c .)
-if [ "$NGOT" -eq 8 ]; then
-    ok "en 下载页 latest/download 直链唯一名恰 8 个"
+if [ "$NGOT" -eq 7 ]; then
+    ok "en 下载页 latest/download 直链唯一名恰 7 个"
 else
-    bad "en 下载页直链唯一名 $NGOT ≠ 8"
+    bad "en 下载页直链唯一名 $NGOT ≠ 7"
 fi
 for A in $ASSETS; do
     printf '%s\n' "$GOT" | grep -qxF "$A" || bad "直链集合缺 $A(页面直链与资产矩阵漂移)"
