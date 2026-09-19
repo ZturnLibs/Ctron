@@ -75,7 +75,7 @@ function Build-File($f) {
 	if ($LASTEXITCODE -ne 0) { exit 1 }
 	if (-not (Have-Cc)) { Cc-Missing (Join-Path $dir "$stem.c"); exit 2 }
 	Push-Location $dir
-	& $Cc -O2 -w -pthread -Wl,--stack,8388608 "$stem.c" -o "$stem.exe"
+	& $Cc -O2 -w -pthread "-Wl,--stack,8388608" "$stem.c" -o "$stem.exe"
 	$rc = $LASTEXITCODE
 	Pop-Location
 	if ($rc -ne 0) { exit 2 }
@@ -95,7 +95,7 @@ function Build-Proj {
 	if ($LASTEXITCODE -ne 0) { exit 1 }
 	if (-not (Have-Cc)) { Cc-Missing "build/$name.c"; exit 2 }
 	$srcs = @(Get-ChildItem -Path 'c_src/*.c' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-	& $Cc -O2 -w -pthread -Wl,--stack,8388608 "build/$name.c" @srcs -o "build/$name.exe"
+	& $Cc -O2 -w -pthread "-Wl,--stack,8388608" "build/$name.c" @srcs -o "build/$name.exe"
 	if ($LASTEXITCODE -ne 0) { exit 2 }
 	Write-Output "ctc: 已构建 build/$name.exe"
 }

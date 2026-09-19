@@ -1,0 +1,19 @@
+name: probe
+on: workflow_dispatch
+jobs:
+  p:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C compiler-c
+      - name: native.sh + 内存/进程采样
+        run: |
+          (while true; do date +%T; free -m | sed -n '2p'; ps -eo rss,comm --sort=-rss | head -4; echo ---; sleep 5; done) &
+          /usr/bin/time -v sh compiler/native.sh 2>&1 | tail -25
+          exit 0
+      - name: 事后取证
+        if: always()
+        run: |
+          sudo dmesg | grep -iE "killed process|oom" | tail -5 || echo "无 OOM 记录"
+          df -h / /tmp
+          free -m
