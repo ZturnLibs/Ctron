@@ -138,6 +138,31 @@ fn gui_parse_color(v: Str) -> I32 {
 
 // 视图块折叠:<' tag attrs '>' content '</' tag '>';返回 IR 行(已含缩进)
 // attrs:class="x" 与 on:名={handler};叶子文本:字面量 token* + 至多一个 {ident}
+fn gui_dump_file(file: List[Str]) -> I32 {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "GuiBlock" {
+            var tks = List[Str]()
+            gui_split(d[4], tks)
+            var cur = Atomic[I32](0)
+            var out = List[Str]()
+            if d[1] == "view" {
+                gui_lower_view(tks, cur, "  ", out)
+            } else {
+                if d[1] == "style" {
+                    gui_lower_style(tks, cur, "  ", out)
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+// ==================== gui_lower:折叠为 IR 文本 ====================
+
+// 元素折叠:<' tag attrs '>' content '</' tag '>'(限深 1 递归;子元素自递归)
 fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
     if eat_tok(tks, cur) != "<" {
         panic("gui E8100: 期待 <")
@@ -189,9 +214,6 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
     out.push(line)
     var lit: Str = ""
     while true {
-        if cur.load() >= tks.len {
-            panic("gui E8100: 未终止")
-        }
         if tks[cur.load()] == "<" {
             if tks[cur.load() + 1] == "/" {
                 break
@@ -204,10 +226,10 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             }
             gui_lower_element(tks, cur, ind + "  ", out)
         } else {
-            var w: Str = eat_tok(tks, cur)
-            if w == "#EOF" {
+            if tks[cur.load()] == "#EOF" {
                 panic("gui E8100: 未终止")
             }
+            var w: Str = eat_tok(tks, cur)
             if lit != "" {
                 lit = lit + " "
             }
