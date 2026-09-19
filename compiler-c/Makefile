@@ -1,7 +1,7 @@
 # Ctron 编译器 C 版 —— Makefile
 # 独立于 Rust 版 compiler/,共享 docs/spec 规范与仓库根 tests/ 语料。
 CC      ?= cc
-CFLAGS  ?= -std=c11 -O2 -g -Wall -Wextra -Wpedantic
+CFLAGS  ?= -std=c11 -D_DEFAULT_SOURCE -O2 -g -Wall -Wextra -Wpedantic
 INC      = -Isrc
 BUILD    = build
 BIN      = $(BUILD)/ctronc
