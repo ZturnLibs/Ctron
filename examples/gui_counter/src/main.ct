@@ -792,15 +792,110 @@ fn main() -> I32 {
         gui_inject_click(300, 190)
         chk(gui_poll_event(), 2, "evt")
         chk(handle_click(tags, ev_el, ev_name, ev_fn, rects, 300, 190, syms), 0, "no hit")
+        // ---- W4-E3 探针:进程内原址替换(不重启;骨架更新 + 状态保留) ----
+        var rsrc: Str = env_get("CTRON_GUI_RELOAD_SRC")
+        if rsrc != "" {
+            dispatch("inc", syms)
+            dispatch("inc", syms)
+            chk(draw_frame(tags, cls, pre, bid, post, bid_sym, syms, sk, sv), 5, "cmds pre-reload")
+            assert_text("count: 2")
+            var src2: Str = read_file(rsrc)
+            if src2 == src {
+                println("gui_counter: E3 探针跳过(重载源与当前一致)")
+                return 0
+            }
+            // 快照旧几何(命令索引重解析指向当前缓冲,重布局后旧值即失——必须先取)
+            var yold: I32 = gui_cmd_y100(rects[0])
+            var t2 = List[Str]()
+            var c2 = List[Str]()
+            var p2 = List[Str]()
+            var b2 = List[Str]()
+            var o2 = List[Str]()
+            var e2el = List[I32]()
+            var e2nm = List[Str]()
+            var e2fn = List[Str]()
+            var k2 = List[Str]()
+            var v2 = List[Str]()
+            var cur2 = Atomic[I32](0)
+            parse_all(src2, cur2, t2, c2, p2, b2, o2, e2el, e2nm, e2fn, k2, v2)
+            var bs2 = List[I32]()
+            var q2: I32 = 0
+            while q2 < t2.len {
+                if b2[q2] == "" {
+                    bs2.push(-1)
+                } else {
+                    bs2.push(sym_find(sym_names, b2[q2]))
+                }
+                q2 += 1
+            }
+            chk(draw_frame(t2, c2, p2, b2, o2, bs2, syms, k2, v2), 5, "cmds post-reload")
+            assert_text("count: 2")
+            var r2 = List[I32]()
+            collect_rects(5, r2)
+            chk(r2.len, 2, "rects post-reload")
+            if gui_cmd_y100(r2[0]) == yold {
+                panic("gui_counter: E3 骨架未更新(gap 变更未生效) y新=" + gui_cmd_y100(r2[0]).to_string()
+                      + " y旧=" + yold.to_string()
+                      + " gap新=" + style_get(k2, v2, "root.gap", "?"))
+            }
+            println("gui_counter: E3 原址替换全绿(gap 8→20 生效,count=2 状态保留)")
+            return 0
+        }
         println("gui_counter: headless 断言全绿(+1 ×3 → count: 3;clear → count: 0;空白区不命中)")
         return 0
     }
 
     // ---- 窗口口径:poll 合并真实鼠标 → 命中分发 → 重布局 → flush(§12.3d 唯一绘制口) ----
     // 本 demo 几何静态(固定窗口/fixed 按钮),rects 只收集一次;动态几何场景应每帧重收集
+    // W4-E3:每 60 帧内容比对 app.ctml,变更即进程内原址重解析(syms 状态保留,不重启)
     InitWindow(320, 200, "ctron gui counter")
     SetTargetFPS(60)
+    var frames: I32 = 0
     while !WindowShouldClose() {
+        frames += 1
+        if frames == 60 {
+            frames = 0
+            var src2: Str = read_file("app.ctml")
+            if src2 != src {
+                var t2 = List[Str]()
+                var c2 = List[Str]()
+                var p2 = List[Str]()
+                var b2 = List[Str]()
+                var o2 = List[Str]()
+                var e2el = List[I32]()
+                var e2nm = List[Str]()
+                var e2fn = List[Str]()
+                var k2 = List[Str]()
+                var v2 = List[Str]()
+                var cur2 = Atomic[I32](0)
+                parse_all(src2, cur2, t2, c2, p2, b2, o2, e2el, e2nm, e2fn, k2, v2)
+                var bs2 = List[I32]()
+                var q2: I32 = 0
+                while q2 < t2.len {
+                    if b2[q2] == "" {
+                        bs2.push(-1)
+                    } else {
+                        bs2.push(sym_find(sym_names, b2[q2]))
+                    }
+                    q2 += 1
+                }
+                tags = t2
+                cls = c2
+                pre = p2
+                bid = b2
+                post = o2
+                ev_el = e2el
+                ev_name = e2nm
+                ev_fn = e2fn
+                sk = k2
+                sv = v2
+                bid_sym = bs2
+                var n2: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, syms, sk, sv)
+                rects = List[I32]()
+                collect_rects(n2, rects)
+                src = src2
+            }
+        }
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             handle_click(tags, ev_el, ev_name, ev_fn, rects, gui_evt_x(), gui_evt_y(), syms)

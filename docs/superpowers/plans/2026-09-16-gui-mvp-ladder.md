@@ -109,8 +109,10 @@
   native.sh 链域库符号源——shim + whole-archive raylib + force_load/rdynamic),
   E2 夹具 tests/gui/w4_interp 解释执行 Clay 桥全绿(阶梯 11/11);实证坑记录见
   docs/superpowers/plans/2026-09-19-w4-extern-bridge.md §0′(`\}` 非法转义/宿主
-  跨行参数表/macOS -noall_load 移除)。**余项 = E3 热重载环**(ctron-cc 常驻 +
-  gui_parse 原址替换,§6.3 验收)。
+  跨行参数表/macOS -noall_load 移除)。**E3 已交付(demo 级,2026-09-19)**:
+  gui_counter 窗口循环每 60 帧内容比对 app.ctml,变更即进程内原址重解析(syms 状态
+  保留,不重启);headless 探针(app2.ctml,gap 8→20)断言骨架更新 + count 保留
+  全自动往返。解释口径热重载在当前能力面闭环。
 - W5 CI:命令缓冲快照回归进 make test;Linux xvfb 渲染冒烟。
   **【2026-09-19 部分销账】**聚合门禁实证为 ci.sh(非 make test):GUI 阶梯挂载为
   ci.sh [8/8](步骤号 7→8 全量顺延,沿 toolchain-dist 先例)——macOS 直接跑;

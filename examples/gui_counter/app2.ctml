@@ -1,0 +1,12 @@
+// W4-E3 重载探针源:与 app.ctml 同构,gap 8→20(headless 探针断言骨架变更生效)
+// 注:编译器内嵌形态 style 属性间不可用 ;(E1001——与运行时形态的语法分歧,已登记)
+view Counter {
+  <vbox class="root">
+    <label>count: {count}</label>
+    <button class="btn" on:click={inc}>+1</button>
+    <button class="btn-danger" on:click={clear}>clear</button>
+  </vbox>
+}
+style root { direction: column gap: 20 padding: 16 }
+style btn { bg: "#2563eb" }
+style btn-danger { bg: "#c83c3c" }

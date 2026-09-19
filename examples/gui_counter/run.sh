@@ -36,6 +36,11 @@ OUT=$(CTRON_GUI_STATE="count=7" CTRON_GUI_HEADLESS=1 "$T/gui_counter.bin")
 echo "$OUT" | grep -q "CTRON_GUI_STATE count=7" || { echo "gui_counter: 快照恢复往返失败" >&2; exit 1; }
 echo "gui_counter: 快照恢复往返 OK(count=7 → 恢复 → 回传 7)"
 
+# W4-E3 进程内原址替换探针:重载 app2.ctml(gap 8→20)→ 断言骨架更新 + count=2 保留
+CTRON_GUI_RELOAD_SRC="app2.ctml" CTRON_GUI_HEADLESS=1 "$T/gui_counter.bin" | grep -q "E3 原址替换全绿" \
+    || { echo "gui_counter: E3 原址替换探针失败" >&2; exit 1; }
+echo "gui_counter: E3 原址替换 OK(gap 变更生效,count 保留)"
+
 if [ "${1:-}" = "--hot" ]; then
     mtime() {
         if [ "$(uname)" = "Darwin" ]; then stat -f %m "$DIR/app.ctml" 2>/dev/null || echo 0
