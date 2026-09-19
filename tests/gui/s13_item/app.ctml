@@ -1,0 +1,15 @@
+// tests/gui/s13_item —— M1-b2:each 行级按钮(逐项事件句柄;checkbox/TodoItem 地基)
+// each 体含 button,行内 on:click={handler} 按【点击行号】分派(句柄带行下标)
+view Demo {
+  <vbox class="root">
+    <label>picked: {picked}</label>
+    <each t in={todos}>
+      <hbox class="row">
+        <button class="pick" on:click={pick}>go</button>
+        <label>{t}</label>
+      </hbox>
+    </each>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style pick { bg: "#2563eb" }

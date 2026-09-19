@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "gui_s13_item"
+    version = "0.1.0"
+}
