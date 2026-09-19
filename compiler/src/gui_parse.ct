@@ -512,6 +512,9 @@ fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
             } else {
                 if d[1] == "style" {
                     var nm: Str = eat_tok(tks, cur)
+                        if nm == "" {
+                            gdiags.push("E8130: style 缺少名称")
+                        }
                     while cur.load() < tks.len {
                         var pp: Str = eat_tok(tks, cur)
                         if eat_tok(tks, cur) != ":" {
