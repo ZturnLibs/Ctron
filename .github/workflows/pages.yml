@@ -1,0 +1,37 @@
+# pages.yml —— 网站发布 workflow(网站文档线 Task 5)
+#
+#   build   spec 漂移门(sync_site_spec --check,防 fork 漂移)→ mkdocs strict 构建 →
+#           upload-pages-artifact(strict 下断链/警告即红)
+#   deploy  GitHub Pages 官方 deploy-pages 通路(environment url 回写)
+#
+# 触发面:website/**、docs/spec/**(spec 同步源头)与两件同步/生成工具,加 workflow_dispatch 手动门。
+# environment.url 的 ${{ }} 内嵌表达式必须引号包起(flow 映射里裸 { 不可解析)。
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: ['website/**', 'docs/spec/**', 'tools/sync_site_spec.sh', 'tools/std_doc.py']
+  workflow_dispatch:
+permissions: {contents: read, pages: write, id-token: write}
+concurrency: {group: pages, cancel-in-progress: false}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.x'}
+      - run: pip install mkdocs-material mkdocs-static-i18n
+      - name: spec 漂移检查
+        run: sh tools/sync_site_spec.sh --check
+      - name: 构建(strict)
+        run: mkdocs build --strict
+        working-directory: website
+      - uses: actions/upload-pages-artifact@v3
+        with: {path: website/site}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: {name: github-pages, url: '${{ steps.deployment.outputs.page_url }}'}
+    steps:
+      - {id: deployment, uses: actions/deploy-pages@v4}

@@ -7,7 +7,7 @@
 #                      → 组装 zip(§2.2)→ tests/dist/accept_windows.sh(§7 第 6-9 项
 #                      + P2-2 移交的编码三向/ps1 语法门/rc 矩阵)
 #            publish   全绿门(计划 2 Global Constraints:任一平台失败不发版)→
-#                      五平台产物 + src + SHA256SUMS → GitHub Release
+#                      五平台产物 + src + SHA256SUMS + install.sh → GitHub Release
 #
 # 首跑真验证在用户打 tag 时(runner 标签以当日可用性为准:macos-13 为末代 intel,
 # 若届时退役,darwin-x86_64 臂需改交叉编译或摘除,首跑即证伪机制)。本地门禁 =
@@ -113,9 +113,15 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: { pattern: rel-*, merge-multiple: true, path: rel }
+      - uses: actions/checkout@v4
+        # 下游修正(相对任务书):publish job 原 workspace 无 checkout,而 install.sh
+        # 不在 rel-* artifact 内,不补 checkout 则下方 cp 无源必挂
       - name: 汇总 + SHA256SUMS
         run: |
           VER=${GITHUB_REF_NAME#v}
+          # 网站下载页与 install 一行指向 latest/download/install.sh——发布载荷补齐第八资产;
+          # install.sh 无 ctron-$VER 前缀,天然不入下方 sha256sum 校验单(与下载页口径一致:校验单只盖六个版本化载荷)
+          cp install.sh rel/
           cd rel
           mv dist-windows.zip ctron-$VER-windows-x86_64.zip
           sha256sum ctron-$VER* > SHA256SUMS
