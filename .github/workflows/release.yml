@@ -130,13 +130,9 @@ jobs:
       - name: 汇总 + SHA256SUMS
         run: |
           VER=${GITHUB_REF_NAME#v}
-          # 网站下载页与 install 一行指向 latest/download/install.sh——发布载荷补齐第八资产;
-          # install.sh 无 ctron-$VER 前缀,天然不入下方 sha256sum 校验单(与下载页口径一致:校验单只盖六个版本化载荷)
           cp install.sh rel/
-          cd rel
-          mv dist-windows.zip ctron-$VER-windows-x86_64.zip
-          sha256sum ctron-$VER* > SHA256SUMS
-          cat SHA256SUMS
+          mv dist-windows.zip rel/ctron-$VER-windows-x86_64.zip
+          (cd rel && sha256sum ctron-$VER* > SHA256SUMS && cat SHA256SUMS)
       - uses: softprops/action-gh-release@v2
         with:
           files: rel/*
