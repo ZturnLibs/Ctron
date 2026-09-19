@@ -91,6 +91,11 @@
 - W3 E8xxx 检查面进 `ctc check`(负例语料 `tests/09_gui/`,逐字诊断差分);
 - W4 热重载(解释口径原址替换)+ 原生口径 snapshot/restore(裁决 1A);
 - W5 CI:命令缓冲快照回归进 make test;Linux xvfb 渲染冒烟。
+  **【2026-09-19 部分销账】**聚合门禁实证为 ci.sh(非 make test):GUI 阶梯挂载为
+  ci.sh [8/8](步骤号 7→8 全量顺延,沿 toolchain-dist 先例)——macOS 直接跑;
+  Linux 缺 X11/GL 开发头时**显式 skip 并指路**(非静默假绿),apt 包名待 Linux CI
+  首验钉死回填 ci.yml。阶梯 runner 同步收编 s9(9/9 绿)。余项:xvfb 窗口冒烟
+  (headless 阶梯本就无显示依赖,仅未来 --run 自动化所需)。
 - W6 **bind 层偿还(2026-09-19 登记,§11.2 目标增补/§1.1 目标 7)**:
   `std/gui/bind/{clay,ft}.ct` extern + safe 包装替换 c_src 窄接口桥——Clay 大 struct
   进 repr(c)(S2 已证按值过 ABI)、measure 回调走 C-ABI 函数指针(tests/ffi 已证)、
