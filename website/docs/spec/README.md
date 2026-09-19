@@ -1,3 +1,75 @@
-# Language Spec
+<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
+# Ctron 语言规范 v0.7
 
-(占位:由 docs/spec 十章同步生成,Task 2 覆盖。)
+状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](https://github.com/Zturn/Ctron/blob/main/tests/README.md) 为验收标准。
+
+> **v0.6 修订(2026-09-11)**:泛型体系成文——§3.9 实例化/bound/嵌套语义(显式 TypeArgs 调用点、E2050 结构化 bound 核对、TPar 传递、递归特化诊断),新增 §3.11 `@derive(Show, Eq)` 结构化方法与格式契约,§10 注册表补 E2050。依据:自举编译器(`compiler/`)泛型深水区实现 + `tests/03e_generics_types.ct`、`compiler/test/fx_derive.ct`、`fx_generic.ct`、`fx_bound_neg.ct`、`fx_genrec_neg.ct` 语料。v0.5 冻结范围不受影响;§4.7(v0.6 草案,E3070)仍为草案。
+
+> **v0.7 修订(2026-09-12)**:三项书写松绑 + §4.0 运算符宪法——① 新增 **§4.0 运算符宪法**(一义一符/符号·关键字分工律/永不挪用律/角色分离律);② **`||` 逻辑或**(§4.3 第 0 优先级、§4.4 重写并附否决注记、§1.5 记号表与 §1.6 延续集扩充;零参闭包按语法位置消歧,§4.7);③ **break/continue 转正**(§1.3 预留字清单收缩、§4.2 循环语义、E2070/E2071/E2072 三道静态门);④ **泛型调用点类型推断**(§3.9.1 两段式契约,Go 式仅实参,E2060/E2061)。设计全文与备选方案否决记录:`docs/superpowers/specs/2026-09-12-v07-operator-constitution.md`。落地状态:**三线全量落地**——R 线(oror/breakc/infer 三 suite)、自举线(修订一 15e5b00/修订二 9d56b73/修订三 866cb1b,裸型参位名级推断;结构化形态待 ex_ty 保留实参)、C 线 oracle(两修订最小面 + eval_block 流跳过修复 + TypeArgs 用户 fn 直调);E2071/E2072 与 C 线推断 neg 面待后续。v0.6 冻结范围不受影响(全部为新增扩展位)。
+
+## 规范性约定
+
+- **必须 / 禁止**:对实现与程序的硬性要求,违反 = 编译错误或运行时契约破坏。
+- **应当**:默认要求,允许显式豁免(豁免点在文中列明,如 `#[trusted]`)。
+- **可以**:允许的自由度。
+- "诊断"指编译器产出的错误/警告,一律携带稳定错误码(§10)。
+- 与历史文档的关系:设计文档 v0.2(`docs/superpowers/specs/2026-09-04-ctron-language-design.md`)记录设计动机;测试钉子(`tests/README.md` §3)与本文档冲突处以**本文档**为准。
+
+## 章节地图
+
+| 章 | 内容 | 一句话 |
+|---|---|---|
+| §1 | 词法与语法 | 源码编码、记号、完整 EBNF、换行终止规则 |
+| §2 | 名字与模块 | 包/模块、可见性、导入、孤儿规则、循环依赖禁止 |
+| §3 | 类型系统 | 类型种类、trait、泛型、推断、标准前奏 |
+| §4 | 表达式 | 优先级、控制流、闭包、match、UFCS、test 块 |
+| §5 | 错误模型 | Option/Result、`?`、panic、Error trait、错误链 |
+| §6 | 内存模型 | 值/引用二分、GC 契约、RAII、own 块、分配效果、bare 档 |
+| §7 | 并发 | 任务、结构化作用域、通道、Mutex、Send 三检查点 |
+| §8 | 效果与 comptime | 能力对象、注解契约、编译期执行 |
+| §9 | 档位与互操作 | full/web/bare、目标矩阵、C ABI/FFI、JS 桥 |
+| §10 | 诊断与符合性 | 错误码注册表、JSON 诊断契约、规范↔测试映射、冻结范围 |
+
+## 冻结范围声明(v0.4)
+
+以下为**规范性(normative)**,实现必须遵守:§1–§7 全部(含 v0.4 新增的函数类型与切片二分);§8 的 `#[pure]`/`#[no_alloc]`/`#[no_spawn]`、Cap 标记机制与 comptime 常量求值;§9 的三档模型与 C ABI 所有权约定;§10 的错误码与诊断 schema;§3.8.2 前奏 API 最小清单。
+
+以下**预留(non-normative,不阻塞 P1)**:类型级 comptime(类型产出函数,§8.4)、GPU/`kernel` 块、editions 演进细节、Unicode 标识符、raw 字符串、owned trait object(`Box[&Trait]`)、`&Trait` 动态 Send 位、`debug_assert`。
+
+## 术语速查
+
+| 术语 | 定义 |
+|---|---|
+| 档位 profile | `full` / `web` / `bare` 三档运行时配置(§9.1) |
+| 值类型 / 引用类型 | `struct` 赋值拷贝 / `class` 赋值共享(§6.1) |
+| Send | 可跨任务迁移的编译期类型属性(§7.4) |
+| 分配属性 | 函数的 `alloc`/`no_alloc` 推断属性(§6.5) |
+| 能力对象 | 显式注入的 I/O 权限值(§8.1) |
+| own 块 | 作用域所有权子集,无 GC 内存(§6.3) |
+| 钉子 | 测试集先于实现钉死的语法裁决(已并入本规范) |
+
+## 修订记录
+
+- **v0.3 → v0.4(2026-09-04,评审修订:表达完备性与三方一致性)**:
+  1. **函数类型**(§3.1/§4.7/EBNF):新增 `fn(Params) -> Ret` 类型语法(仅参数/返回位)——修复"闭包参数类型无法表达、前奏无法声明"的空洞;`Mutex` 拆为 `with`(只读)/`with_mut`(可变)。
+  2. **切片二分**(§3.1/§3.6/§4.2/§7.4):`T[]` 可变视图(根 `var` 可写、**恒非 Send**)/ `&T[]` 只读视图(元素 Send 即 Send),`T[] → &T[]` 隐式;`parallel.map` 入参 `&T[]`——消除"可变视图跨任务"的数据竞争漏洞。
+  3. **`&Trait` Send 保守化**(§7.4):v0.4 恒非 Send(动态 Send 位预留),保住"三检查点全部静态可判"的承诺;非 Send 静态存储独立为 **E3031**。
+  4. **`static let` 三方矛盾消解**(§6.5/§7.6):E3040 强制点收窄为 bare 档;full/web 允许 `#[pure]` 惰性初始化分配。
+  5. **关键字表修正**(§1.3):清除残留行;`as` 非关键字(`.as[U64]()` 合法);`or` 归入保留运算符字;新增预留字清单。
+  6. **换行规则补全**(§1.6):新增"下一行以 `.` 或二元运算符开头则不终止"——多行方法链(首点式)合法,行尾 `.` 非法。
+  7. **德摩根修正**(§4.4):逻辑或的正确写法是 `!(!a && !b)`(原文 `!(a && b)` 为数学错误)。
+  8. **能力判定机制**(§3.8.2/§8.3):前奏标记 `trait Cap`,能力 trait 须继承;`#[pure]` = 无 `&Cap` 调用——E4020 从此可判定;`parallel` 闭包纯度改为推断。
+  9. **前奏 API 最小清单**(§3.8.2,规范性):Option/Result/Show/Eq/Error/Cap/Arena/Mutex/Channel/Task/fmt 等 P1 必备成员;`Task[T]` 补入前奏。
+  10. **EBNF 完整化**(§1.7):`pub(pkg)` 可见性、`@derive`/属性接入类型声明、trait 超trait(`:` Bound)、`PathPattern` 去冗余;§1.8 重写 `IDENT {`(恒构造字面量)与 `IDENT [`(紧跟 `(`/`{` 即泛型实例化)消歧规则。
+  11. **E3030 可达性**(§10.1):规定解析器对 `static var` 恢复并产出 E3030(而非 E1xxx)。
+  12. **杂项**:`%` 符号随被除数(§4.5);`barer`→`bare` 笔误;ISize/USize 注释归位(§3.1);meta_check 移除未文档化 `profile` 键;测试修复——`06_concurrency.ct` Mutex 用例原断言为调度相关(52/74 恒败),改为读终态;`07_*.ct` 的 `Clock` 标注 `: Cap`。
+
+- **v0.4 → v0.5(2026-09-04,覆盖收尾钉子,目标 = 语言符合性测试 100%)**:
+  1. FFI 语法入规范:`extern` 进关键字表;EBNF `FnDecl` 支持 `"extern" STRING_LIT` 并允许省略函数体;§9.6 附声明示例。
+  2. 错误擦除类型钉死:前奏 `AnyError`(class,实现 Error);`context(msg) -> Result[T, AnyError]`;`?` 向 AnyError 返回型自动擦除(§5.3 "可转换"的唯一内建形态);`Error` trait 增 `prop trace: Str`;位置链改为**记录/物化两段式**(§5.3)。
+  3. 前奏补钉:`Simd[E, N].splat/lane/to_array` + 元素级白名单运算、`Str.contains`;§9.2 钉死 stdweb 最小 API(`dom.set_title/title`)。
+  4. 测试:第四批补齐 Simd/trace/stdweb 锚/FFI(c_src)/`} else {` 排版/显式 Void;`05i_deep_cause.ct` 的 `middle` 签名随 AnyError 设计修正;多文件格式新增 `c_src/` 规则(README §6)。覆盖口径分三层:语言符合性(.ct)= 100%,工具链行为归 compiler 集成测试,性能/体积归 CI 门禁。
+
+- **登记(2026-09-12,实现口径,非语言修订)**:§3.1.1 新增 **I64 值域(v0 实现口径)**——规范十进制文本值模型、截断除法 C99 语义(商向零取整/余数随被除数)、字面量经 I32 域解析(超宽 panic)、算术 v0 无溢出检查(超 int64 宽度双实现分歧)四点成文。实现出处 feat/i64-arith(d2f6b1d)。
+
+- **登记(2026-09-16,提案待评审,非语言修订)**:包清单格式由 TOML 方言(`Ctron.toml`)迁往 **CTCL(Ctron Config Language,`Ctron.ctcl`)**——规范性定义与迁移计划见 `docs/superpowers/specs/2026-09-16-config-language-v1.md`;§2.2/§2.7 已挂修订注,迁移落地前三线解析器与在库 `Ctron.toml` 保持原状。设计动因:在库三套解析器三种语义、`//` 方言漂移实证、静默默认违背诊断宪法(详见该文 §1 证据表)。
