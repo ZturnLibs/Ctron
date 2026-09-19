@@ -32,3 +32,11 @@ if [ ! -f build/libfreetype.a ]; then
         echo "freetype build FAIL(需 subprojects/dlg stubs,已随 vendor 提交)" >&2; exit 1; }
 fi
 echo "build/libfreetype.a OK"
+
+# ---- sheenbidi(M3 bidi/shaping;unity 单翻译单元,一次 cc) ----
+if [ ! -f build/libsheenbidi.a ] || [ "sheenbidi/Source/SheenBidi.c" -nt "build/libsheenbidi.a" ]; then
+    cc -O1 -w -fPIC -DSB_CONFIG_UNITY -Isheenbidi/Source -Isheenbidi/Headers \
+       -c sheenbidi/Source/SheenBidi.c -o build/sheenbidi.o
+    ar rcs build/libsheenbidi.a build/sheenbidi.o
+fi
+echo "build/libsheenbidi.a OK"

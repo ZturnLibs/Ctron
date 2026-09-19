@@ -1,9 +1,12 @@
-// tests/gui/s10_hotreload —— W4:热重载机制证明(最简形态)
+// tests/gui/w4_hotreload —— W4:热重载机制证明(最简形态)
 // app.txt 的内容直接显示在窗口;修改文件 → 窗口实时更新(不重启)
 // 状态保持:counter 是 main 局部变量,重读文件不影响它
 
 #[trusted]
-extern "c" fn gui_file_mtime(path: Str) -> I32
+extern "c" fn gui_file_mtime_ms(path: Str) -> I64
+
+#[trusted]
+extern "c" fn gui_sleep_ms(ms: I32) -> Void
 
 #[trusted]
 extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
@@ -41,24 +44,39 @@ extern "c" fn IsMouseButtonPressed(btn: I32) -> Bool
 fn main() -> I32 {
     var text: Str = read_file("app.txt")
     var count: I32 = 0
-    var mt: I32 = gui_file_mtime("app.txt")
+    var mt: I64 = gui_file_mtime_ms("app.txt")
     var headless: Bool = false
-    var h: Str = env_get("S10_HEADLESS")
+    var h: Str = env_get("W4_HOTRELOAD")
     if h == "1" {
         headless = true
     }
 
     if headless {
-        // headless 断言:渲染到 shim 的离屏 buffer,不依赖窗口
-        gui_render_offscreen(text, 230, 230, 235)
-        println("s10 headless: text rendered ok")
-        return 0
+        // headless 单进程热重载证明:启动 → 轮询 mtime → 外部改写 → 重读 → 新文本上屏
+        if gui_render_offscreen(text, 230, 230, 235) != 1 {
+            println("w4_hotreload headless: 初始文本为空")
+            return 2
+        }
+        println("initial: " + text)
+        var waited: I32 = 0
+        while waited < 5000 {
+            var mt2: I64 = gui_file_mtime_ms("app.txt")
+            if mt2 != mt {
+                text = read_file("app.txt")
+                println("reloaded: " + text)
+                return 0
+            }
+            gui_sleep_ms(50)
+            waited += 50
+        }
+        println("reloaded: <timeout>")
+        return 1
     }
 
     InitWindow(320, 200, "ctron hot-reload")
     SetTargetFPS(60)
     while !WindowShouldClose() {
-        var mt2: I32 = gui_file_mtime("app.txt")
+        var mt2: I64 = gui_file_mtime_ms("app.txt")
         if mt2 != mt {
             mt = mt2
             text = read_file("app.txt")
@@ -74,6 +92,6 @@ fn main() -> I32 {
         EndDrawing()
     }
     CloseWindow()
-    println("s10 hot-reload: exited ok")
+    println("w4_hotreload hot-reload: exited ok")
     return 0
 }
