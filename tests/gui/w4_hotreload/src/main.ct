@@ -9,6 +9,9 @@ extern "c" fn gui_file_mtime_ms(path: Str) -> I64
 extern "c" fn gui_sleep_ms(ms: I32) -> Void
 
 #[trusted]
+extern "c" fn gui_touch(path: Str) -> Void
+
+#[trusted]
 extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
 
 #[trusted]
@@ -58,6 +61,7 @@ fn main() -> I32 {
             return 2
         }
         println("initial: " + text)
+        gui_touch(env_get("W4_READY"))
         var waited: I32 = 0
         while waited < 5000 {
             var mt2: I64 = gui_file_mtime_ms("app.txt")

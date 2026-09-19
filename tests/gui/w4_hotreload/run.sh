@@ -21,12 +21,33 @@ cc -O1 -w -I"$ROOT/vendor/gui/raylib" -o "$T/w4_hotreload.bin" \
 
 echo "w4_hotreload: 构建+链接 OK"
 
+# --run:窗口交互验收(mtime 轮询重载 + 状态保持,肉眼确认面)
+if [ "${1:-}" = "--run" ]; then
+    cd "$DIR"
+    echo "Hello" > "$DIR/app.txt"
+    echo "w4_hotreload: 窗口已启动 —— 编辑 tests/gui/w4_hotreload/app.txt 看实时刷新;点击窗口看 clicks 计数跨重载保持;关窗退出"
+    exec "$T/w4_hotreload.bin"
+fi
+
 # headless 热重载证明:单进程内 mtime 轮询 → 外部改写 → 重读生效
 cd "$DIR"
+W4_READY="$T/ready"
+export W4_READY
+rm -f "$W4_READY"
 echo "Hello" > "$DIR/app.txt"
 W4_HOTRELOAD=1 "$T/w4_hotreload.bin" > "$T/out.txt" 2>&1 &
 BIN=$!
-sleep 0.6
+# 就绪握手:初始 mtime 读定后再改写(启动慢于改写则轮询必超时,曾 0.6s sleep 踩中)
+READY=0
+for i in $(seq 1 100); do
+    [ -f "$W4_READY" ] && { READY=1; break; }
+    sleep 0.1
+done
+if [ "$READY" != 1 ]; then
+    echo "w4_hotreload: 子进程未就绪" >&2
+    kill $BIN 2>/dev/null || true
+    exit 1
+fi
 echo "World" > "$DIR/app.txt"
 wait $BIN || true
 

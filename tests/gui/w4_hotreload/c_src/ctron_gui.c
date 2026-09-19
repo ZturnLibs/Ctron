@@ -2,6 +2,7 @@
 #include <raylib.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <stdio.h>
 
 long long gui_file_mtime_ms(const char* path) {
     struct stat st;
@@ -20,6 +21,14 @@ void gui_sleep_ms(int ms) {
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
     nanosleep(&ts, NULL);
+}
+
+void gui_touch(const char* path) {
+    /* 就绪信号:headless 握手用——初始 mtime 读定后通知驱动方再改写(消除启动竞态) */
+    if (path && path[0]) {
+        FILE* f = fopen(path, "w");
+        if (f) { fclose(f); }
+    }
 }
 
 int gui_rect(int x, int y, int w, int h, int rr, int r, int g, int b) {
