@@ -1,6 +1,5 @@
 # Download
 
-> **Coming soon**: Releases have not been published yet. The direct links below go live with the first release (v0.0.1). Until then, build from source as described in [Getting Started](getting-started.md).
 
 ## One-liner install (macOS / Linux)
 

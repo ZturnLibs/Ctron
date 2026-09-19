@@ -1,6 +1,5 @@
 # 下载
 
-> **即将发布**:Releases 尚未上线,以下直链在首次发布(v0.0.1)后生效。当前请按[入门](getting-started.md)的源码路径构建。
 
 ## 一键安装(macOS / Linux)
 
