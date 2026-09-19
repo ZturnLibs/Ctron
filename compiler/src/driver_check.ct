@@ -247,6 +247,18 @@ fn main() -> I32 {
             }
             if chk_dump == "1" {
                 gui_dump_file(file)
+                // W3 检查面(挂 dumpgui 旗标下;C 宿主 sem 对 gui_ck 助手参数的
+                // E2020 分歧解决后,再评估移入默认 check 路径)
+                var gdiags = List[Str]()
+                gui_check_file(file, gdiags)
+                var gi: I32 = 0
+                while gi < gdiags.len {
+                    println(gdiags[gi])
+                    gi += 1
+                }
+                if gdiags.len > 0 {
+                    return 1
+                }
             }
             var chk_trusted = ctron_cli_flag("trusted")
             if chk_trusted.len == 0 {

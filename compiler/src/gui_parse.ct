@@ -405,6 +405,20 @@ fn gui_ck_leaf(tks: List[Str], cur: Atomic[I32], sn: List[Str], gdiags: List[Str
 }
 
 fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
+    // 前置:收集 style 块名(class 引用校验的样式名表)
+    var sn = List[Str]()
+    var si: I32 = 1
+    while si < file.len {
+        var ds = file[si]
+        if ds[0] == "GuiBlock" {
+            if ds[1] == "style" {
+                var stks = List[Str]()
+                gui_split(ds[4], stks)
+                sn.push(stks[0])
+            }
+        }
+        si += 1
+    }
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
