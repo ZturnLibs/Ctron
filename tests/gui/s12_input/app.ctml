@@ -1,0 +1,8 @@
+// tests/gui/s12_input —— M1-c:input 受控输入(bind Str;单输入恒焦点首版)
+view Demo {
+  <vbox class="root">
+    <label>draft: {draft}</label>
+    <input bind={draft} class="fld" />
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }

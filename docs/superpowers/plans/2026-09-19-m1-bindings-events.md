@@ -7,7 +7,7 @@
 
 ## 切片
 
-### M1-a `when` 条件渲染(最薄,先行)
+### M1-a `when` 条件渲染(最薄,先行)【已交付 2026-09-19:s10_when 全绿,阶梯收编】
 - 语法:`<when cond={flag}> leaf* </when>`(限深:when 只包叶子;cond = 符号名,I32 0/1 真值)
 - 解析:parse_view 子元素循环分派 when/leaf;when 的 cond 名入 cond_nm 表,
   子叶子平铺进既有平行表(tags/cls/pre/bid/post/ev_*),el 编号连续
@@ -18,14 +18,17 @@
   隐藏后旧坐标点击不命中(几何回流负例)、恢复后再现、when 内按钮事件可达
 - 交付物:tests/gui/s10_when/(内嵌解析器快照 + 扩展),收编阶梯
 
-### M1-b `each` 列表渲染
+### M1-b `each` 列表渲染【已交付 2026-09-19:s11_each 全绿——计数截断模型(语言面
+  无 pop),{var} 绑定 -2 标记;逐项事件句柄随 M1-b2 登记】
 - 语法:`<each item in={items}> leaf* </each>`(items = List[Str] 绑定;item 文本插值)
 - 模型扩展:syms 表从标量表扩展为可含 List 值(绑定值类型化——E8110 的地基);
   draw_frame 对 each 展开为 N 份叶子
 - key 语义:首版按索引对齐(规范 §6.1 允许,前提=each 体无输入控件;E8193 随 M1-d)
 - 验收:s11_each——按钮 push/remove 列表项,断言命令序列与文本逐字节
 
-### M1-c `input` 受控输入
+### M1-c `input` 受控输入【已交付 2026-09-19:s12_input 全绿——字符注入/UTF-8 收编
+  (utf8_enc)/backspace 按字节删(码点化随 M3)/bind={str} 回显;域库 shim 增 type 3
+  TextInput 事件 + GetCharPressed 合并 + gui_inject_char】
 - 语义:bind Str + 焦点(运行时本地态,§4.3 契约 5)+ 键盘事件(§12.3b 翻译表
   KeyDown→字符;M0–M2 口径:上屏文本可达、IME 组词不可见即定义形态)
 - 依赖 shim:KeyDown 事件携带键码/字符(现 shim 事件表有 key 字段,S4 已建)

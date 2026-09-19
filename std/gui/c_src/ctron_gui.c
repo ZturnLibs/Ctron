@@ -12,26 +12,33 @@
 
 static Clay_RenderCommandArray g_cmds = { 0 };
 
-// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click) ----
+// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput) ----
+// 容量 256:进程累计、不回卷——gui_calc headless 全场景 ~70 次注入,64 会静默丢尾。
 typedef struct { int type; int key; int x; int y; } GuiEvent;
-static GuiEvent g_queue[64];
+static GuiEvent g_queue[256];
 static int g_qhead = 0;
 static int g_qtail = 0;
 static GuiEvent g_cur = { 0, 0, 0, 0 };
 
 void gui_inject_key(int key) {
-    if (g_qtail < 64) { g_queue[g_qtail] = (GuiEvent){ 1, key, 0, 0 }; g_qtail++; }
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 1, key, 0, 0 }; g_qtail++; }
+}
+void gui_inject_char(int ch) {
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 3, ch, 0, 0 }; g_qtail++; }
 }
 void gui_inject_click(int x, int y) {
-    if (g_qtail < 64) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
 }
 // 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
+// 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本)
 int gui_poll_event(void) {
     if (g_qhead < g_qtail) {
         g_cur = g_queue[g_qhead];
         g_qhead++;
         return g_cur.type;
     }
+    int c = GetCharPressed();
+    if (c > 0) { g_cur = (GuiEvent){ 3, c, 0, 0 }; return 3; }
     int k = GetKeyPressed();
     if (k != 0) { g_cur = (GuiEvent){ 1, k, 0, 0 }; return 1; }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
