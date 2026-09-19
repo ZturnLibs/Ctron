@@ -1,12 +1,16 @@
-# Ctron
+# Ctron: an AI Native systems programming language
 
-**Ctron** is a self-hosted systems programming language: its compiler is written in Ctron itself (`compiler/`, 39 modules). Programs run under interpretation with zero external dependencies, and can also be emitted as **equivalent C source** that the platform's C compiler turns into a native executable with one command. One source tree, two execution paths.
+Ctron is designed from day one for AI code generation as the primary authoring workflow. The syntax, type system, error model, and diagnostic format are each shaped by a single premise: **AI writes, humans review.**
 
-```bash
-curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
-```
+## Design principles
 
-> Releases have not been published yet. Until the first release (v0.0.1) lands, build from a clone — see [Getting Started](getting-started.md).
+**AI writes, humans read.** AI-generated code is structurally correct but fails in the details — misspelled identifiers, type mismatches, missed edge cases. Ctron catches these at compile time: every diagnostic carries a stable error code, diagnostics are structured output, and type inference follows explicit rules. AI receives the error code and can fix precisely — no guessing intent from prose.
+
+**Semantics are clear. What you see is what you mean.** An assignment doesn't trigger constructors or custom operators. No null, no implicit numeric conversion, no macros, no undefined behavior. Code does what it looks like it does.
+
+**No magic.** The standard library is Ctron source, not a compiled binary. The compiler is Ctron too. AI can read stdlib source to understand API behavior — no documentation needed.
+
+**As concise as clarity allows.** `?` for error propagation, `scope` for structured concurrency, `use` for imports. Each language construct does one thing.
 
 ## Three commands
 
@@ -16,17 +20,17 @@ ctc check main.ct    # static checks; --format=json for structured diagnostics
 ctc build main.ct    # emit C → local cc → native executable
 ```
 
-`ctc` is the thin driver shipped with the toolchain — a POSIX sh and a PowerShell implementation sharing one command surface — and the only entry point you need to remember. Toolchain versions are decoupled from language milestones; the release line starts at v0.0.1.
-All three paths are instant: no build step, no dependencies, nothing to configure first.
+The interpretation path has zero external dependencies. The emit path is self-contained — the runtime is fully inlined with system headers only. Same source, no language switch between development and deployment.
 
-## Why it's worth a look
+## Genuinely self-hosted
 
-- **Genuinely self-hosted**: the entire compiler is Ctron source. The three-stage bootstrap fixed point is scriptably reproducible — C emitted on different platforms is **byte-for-byte identical**, and that is verified as a release promise in CI.
-- **Zero-dependency by default**: `ctc run` and `ctc check` are pure interpretation paths that never touch a C compiler; only `ctc build` borrows the local cc.
-- **C is the backend**: emitted programs are self-contained — the `ctron_*` runtime is inlined, with system headers only. Any platform with a cc is a target: macOS (arm64 / x86_64), Linux (x86_64 / arm64), and Windows (x86_64, beta).
-- **Structured concurrency & error chains**: tasks run under `scope` / `spawn` / `join` — block-scoped, with cancellation propagating out of the scope — and failures flow as `Result` error chains carrying `message` / `cause` / `trace`.
-- **The standard library ships as source**: `use std.*` reads source at compile time and merges it with your program into a single AST — as readable and hackable as Python's stdlib, with no precompiled black box.
-- **Examples are deliverables**: ctgrep, ctwc, and ctwf in `examples/` are complete CLI tools, and the release acceptance runs right through them.
+The entire compiler is Ctron source. The three-stage bootstrap fixed point is scriptably reproducible — C emitted on different platforms is byte-for-byte identical, verified as a release promise in CI.
+
+The standard library is also Ctron source. AI can read stdlib source to understand API behavior — no documentation needed.
+
+## Structured concurrency & error chains
+
+Tasks run under `scope` / `spawn` / `join` — block-scoped, with cancellation propagating out of the scope — and failures flow as `Result` error chains carrying `message` / `cause` / `trace`. `Send` checks happen at compile time.
 
 ## Where to go next
 
