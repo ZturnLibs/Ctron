@@ -98,6 +98,41 @@
   flush 留 C 侧但随 `std/gui` 包构建(用户源码树不可见)。**交付口径 = 应用/夹具/示例
   源码树零 C**;完成后 S1–S9 的 `c_src/*.c` 形态退役,examples 同步删除 shim。
 
+> **W6 施工预案(2026-09-19 细化;域库单一真源先行,bind/*.ct 模块化随 P2-B)**:
+> 事实盘点:s7 shim ⊇ s6;s4 = s7 ∪ {inject_key, evt_key, GetKeyPressed 合并 poll,
+> bg_r/g/b 探针, h100};s5 探针面 ⊆ s4;s3 的 float 几何探针无消费方(弃);
+> s8 只用 ft 探针、不用纹理签名(与 s9 统一无冲突);FFI 指针形参发射面未落地 →
+> flush 按登记留 C 侧。
+> 1. 建 `std/gui/c_src/{ctron_gui.c, ft_shim.c}` **域库单一真源**——ctron_gui =
+>    s7 ∪ s4(键注入/键读 + GetKeyPressed 合并 poll + 背景探针 + h100);ft_shim =
+>    s9 + ft_last_w/ft_last_h/ft_probe_nonzero(s8 的 ft_buf_* 改名承接);
+> 2. 换面:examples 与 s3–s9 删各自 c_src,run.sh 改链 `$ROOT/std/gui/c_src/<具体文件>`
+>    (**不 glob**——ctron_gui 与 ft_shim 的 gui_clear 签名不同,防双链冲突);
+>    s8 main 三探针改名(ft_buf_w/h/nonempty → ft_last_w/ft_last_h/ft_probe_nonzero,
+>    nonempty==1 断言改 >0);
+> 3. 豁免登记:s1/s2 的 c_src 是 FFI 边界测试的**被测物本身**(C 侧探针 = 测试夹具),
+>    不属域库 shim,保留;
+> 4. 验收:阶梯 8/8 + s9 + 两示例 headless 全绿(换面只动链接路径与探针名,
+>    断言零改动——s8 除三处改名外零改动)。
+> bind/{clay,ft}.ct 独立模块化(extern 声明出 main.ct)随 P2-B 包级 use 落地后收编。
+
+### W6-a 换面完工(2026-09-19 当日)
+
+- **域库单一真源落库**:`std/gui/c_src/{ctron_gui.c, ft_shim.c}`——ctron_gui =
+  s7 ∪ s4(键注入/键读 + GetKeyPressed 合并 poll + bg_r/g/b 探针 + h100);
+  ft_shim = s9 ∪ 三探针(ft_last_w/ft_last_h/ft_probe_nonzero);阶梯修复同步
+  落点唯一化(§1.1 目标 7①:域库内部固定桥,用户不写不携带);
+- **换面**:s3–s7 链域库 ctron_gui;s8/s9 链域库 ft_shim;examples 双删 c_src——
+  夹具/示例源码树零 C;run.sh 链**具体文件**不 glob(ctron_gui 与 ft_shim 的
+  gui_clear 签名不同,防双链冲突);
+- **两处适配**:s4 gui_cfg 迁 packed 口径(14 参 → 11 参;历史签名分歧——14 参实参
+  对 11 形参在 C 侧未定义行为,换面把分歧显式化);s8 探针改名承接域库命名
+  (断言语义零变化,nonempty==1 → >0 计数口径);
+- **豁免登记**:s1/s2 c_src 保留(FFI 边界测试的被测物本身,非域库 shim);
+- 验收:阶梯 8/8 + s9 构建 + 两示例 headless 全绿(2026-09-19);
+- 余项:bind/{clay,ft}.ct 模块化收编 extern 声明随 P2-B;flush 重写 Ctron 待
+  FFI 指针形参发射面。
+
 ## 交付物清单(文件级)
 
 ```

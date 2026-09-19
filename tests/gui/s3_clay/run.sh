@@ -19,6 +19,6 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/s3.bin" \
-   "$T/s3.c" "$DIR"/c_src/*.c "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/s3.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 "$T/s3.bin" run "$DIR/src/main.ct"
 echo "s3: Clay 布局桥全绿(headless)"

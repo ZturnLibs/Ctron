@@ -31,8 +31,8 @@ GUI 泳道能力面已到"可演示"级(S6 绑定竖切 + S7 真窗口 + S9 中�
 
 | 决策点 | 定案 | 依据 |
 |---|---|---|
-| 自包含形态 | 每示例自带 src/ + c_src/ + app.ctml + run.sh | 夹具同款已验证模式;P2-B 落地后统一切 `use gui` |
-| 同源登记 | shim/解析器文件头注明同步自 s6/s7/s9 | 防漂移:阶梯更新时示例随之手动同步 |
+| 自包含形态 | 每示例自带 src/ + app.ctml + run.sh;C 链域库单一真源 `std/gui/c_src/`(W6 换面后,示例树零 C) | 域库内部固定桥不进用户树(§1.1 目标 7①);P2-B 落地后统一切 `use gui` |
+| 同源登记 | 解析器快照文件头注明同步自 s6/s7/s9;C 已收编域库单一真源(W6 换面) | 防漂移:阶梯更新时 C 侧唯一落点 `std/gui/c_src/`,示例随 run.sh 自动受益 |
 | headless 开关 | `env_get("CTRON_GUI_HEADLESS")` | 发射/解释双口径已支持 env_get;**不占 argv**——`run <file>` 是编译器自举锚约定,会顶替 main 首个 read_file 锚 |
 | read_file 锚 | gui_counter 的 main 首语句 = `read_file("app.ctml")` | 与 s5/s6 夹具同机制:无 `run` 参数时按 CWD 相对读取(run.sh 已 cd 示例目录) |
 | 命中测试 | 从 Clay 命令缓冲收集 RECT 命中(s6/s7 写死矩形泛化) | 示例应展示真实模式:几何来自布局回填,双按钮可区分 |
@@ -49,8 +49,7 @@ gui_counter/
   README.md           是什么/怎么跑/能力边界
   app.ctml            view Counter:label "count: {count}" + button "+1"(btn)+ button "clear"(btn-danger)
   src/main.ct         双模式入口(蓝本 s6 headless 断言 + s7 窗口循环)
-  c_src/ctron_gui.c   s7 shim 副本(超集:inject 队列 + raylib 合并 poll + Clay 桥 + cmd 探针 + flush)
-  run.sh              emit → cc 链接 vendored raylib;默认 headless;--run 开窗
+  run.sh              emit → cc 链接 vendored raylib + 域库 ctron_gui.c;默认 headless;--run 开窗
 ```
 
 headless 口径(自动):初始帧 label 字节断言 "count: 0" → inject 点击 btn1 ×3 →
@@ -67,8 +66,7 @@ gui_cjk/
   Ctron.ctcl          pkg 清单(name = "gui_cjk")
   README.md
   src/main.ct         双模式入口(蓝本 s9;headless 冒烟 + 窗口交互)
-  c_src/ft_shim.c     s9 shim 副本 + 3 探针(读渲染缓冲宽/高/非零 alpha 计数)
-  run.sh              默认:构建 + headless 冒烟(无 CJK 字体则 skip 打印);--run 开窗
+  run.sh              默认:构建 + headless 冒烟(无 CJK 字体则 skip);--run 开窗
 ```
 
 headless 口径:`ft_load_cjk(24)` 失败 → "skip" rc=0;成功 → `ft_render("Ctron 中文窗口")`
@@ -88,10 +86,12 @@ headless 口径:`ft_load_cjk(24)` 失败 → "skip" rc=0;成功 → `ft_render("
 ## 5. 漂移对策与后续演进
 
 - shim/解析器为 s6/s7/s9 的登记副本:阶梯修复(如 emit 缺口修复、F32 边界恢复)时
-  随 PR 手动同步两示例;文件头注释为同步指令的落点;
+  随 PR 手动同步两示例;文件头注释为同步指令的落点;**【W6 换面后已失效——C 已收编
+  域库单一真源 `std/gui/c_src/`,示例树零 C,同步落点唯一化】**;
 - **shim 定性为过渡形态(2026-09-19 目标增补,GUI 规范 §1.1 目标 7/§11.2)**:
   用户面零 C 为交付口径——bind 层(MVP 阶梯 W6)落地后删除两示例的 c_src,
-  示例源码树零 C;用户写 C 仅剩第三方接入逃生口场景;
+  示例源码树零 C;用户写 C 仅剩第三方接入逃生口场景;**【已兑现:W6-a 换面落库,
+  s3–s9 与两示例 c_src 全删,s4 gui_cfg 迁 packed 口径,s8 探针承接域库命名】**;
 - P2-B 包级 `use gui` 落地 → 两示例切换为正式形态(删自包含快照),本文件随之销账;
 - M3 Clay TEXT → FreeType 集成落地 → gui_counter 的 app.ctml 文本切中文,
   与 gui_cjk 合流为单一综合示例的评估点。

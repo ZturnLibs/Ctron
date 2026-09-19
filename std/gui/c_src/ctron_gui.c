@@ -1,6 +1,8 @@
-// ctron_gui.c —— gui_counter 示例 shim(同步自 tests/gui/s7_window;阶梯修复时随 PR 手动同步)
-// 示例副本增量:gui_cmd_h100(headless 几何命中需要;上游夹具暂未用)
-// 窗口循环下 gui_poll_event 的 raylib 合并路径生效(真实鼠标点击)
+// ctron_gui.c —— GUI 域库单一真源(§1.1 目标 7①:域库内部固定桥,用户不写不携带)
+// W6 换面(2026-09-19):本文件 = s7 全集 ∪ s4(键注入/键读 + GetKeyPressed 合并 poll
+// + 背景探针)∪ h100;阶梯修复时在此唯一落点同步,夹具/示例经 run.sh 链接本文件。
+// Clay 大 struct 留 C 侧,对 Ctron 只暴露标量窄接口(FFI 指针形参发射面未落地前不变);
+// flush 为 §12.3d 唯一 raylib 绘制口。窗口循环下 gui_poll_event 的 raylib 合并路径生效。
 #define CLAY_IMPLEMENTATION
 #include "clay.h"
 #include "raylib.h"
@@ -10,22 +12,28 @@
 
 static Clay_RenderCommandArray g_cmds = { 0 };
 
-// ---- 事件注入队列(S4 测试缝) ----
+// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click) ----
 typedef struct { int type; int key; int x; int y; } GuiEvent;
 static GuiEvent g_queue[64];
 static int g_qhead = 0;
 static int g_qtail = 0;
 static GuiEvent g_cur = { 0, 0, 0, 0 };
 
+void gui_inject_key(int key) {
+    if (g_qtail < 64) { g_queue[g_qtail] = (GuiEvent){ 1, key, 0, 0 }; g_qtail++; }
+}
 void gui_inject_click(int x, int y) {
     if (g_qtail < 64) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
 }
+// 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
 int gui_poll_event(void) {
     if (g_qhead < g_qtail) {
         g_cur = g_queue[g_qhead];
         g_qhead++;
         return g_cur.type;
     }
+    int k = GetKeyPressed();
+    if (k != 0) { g_cur = (GuiEvent){ 1, k, 0, 0 }; return 1; }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 p = GetMousePosition();
         g_cur = (GuiEvent){ 2, 0, (int)p.x, (int)p.y };
@@ -37,6 +45,7 @@ int gui_clear(int r, int g, int b) {
     ClearBackground((Color){ (unsigned char)r, (unsigned char)g, (unsigned char)b, 255 });
     return 0;
 }
+int gui_evt_key(void) { return g_cur.key; }
 int gui_evt_x(void) { return g_cur.x; }
 int gui_evt_y(void) { return g_cur.y; }
 
@@ -140,6 +149,10 @@ int gui_cmd_text_byte(int i, int j) {
     if (j < 0 || j >= s.length) { return -1; }
     return (unsigned char)s.chars[j];
 }
+// 背景色读回(S4/S5 断言用;Clay_Color 分量 = 0..255 浮点)
+int gui_cmd_bg_r(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.r; }
+int gui_cmd_bg_g(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.g; }
+int gui_cmd_bg_b(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.b; }
 
 // ---- 绘制 flush(§12.3d 唯一绘制口;窗口口径) ----
 void ctron_gui_flush(void) {

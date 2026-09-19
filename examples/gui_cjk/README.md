@@ -17,9 +17,9 @@ sh run.sh --run    # 追加启动真实窗口,真实点击交互
 
 - `src/main.ct` —— 入口:`CTRON_GUI_HEADLESS` 环境变量切换 headless 冒烟 / 窗口循环;
   字体探测(macOS Hiragino/PingFang/Songti,Linux Noto/WQY)在 shim 内
-- `c_src/ft_shim.c` —— FreeType 两遍渲染(测量/合成)→ RGBA → raylib 纹理注册表
-  (同步自 tests/gui/s9_window_cjk,增量 `ft_last_w/ft_last_h/ft_probe_nonzero`
-  供 headless 冒烟读回;阶梯修复时随 PR 手动同步)
+- C shim **不在示例树内**:run.sh 链接域库单一真源 `std/gui/c_src/ft_shim.c`
+  (FreeType 两遍渲染 → RGBA → raylib 纹理注册表;含 headless 探针
+  `ft_last_w/ft_last_h/ft_probe_nonzero`)
 
 ## 当前能力边界(如实)
 
@@ -27,5 +27,5 @@ sh run.sh --run    # 追加启动真实窗口,真实点击交互
 - 无 IME 组词(preedit)——M0–M2 定义形态;composer 随 M3
 - shaping(HarfBuzz)/混排退绕随 M3 后续切片
 - 解析器/绑定与本示例无关(直绘路径);严格验证归 `tests/gui` 阶梯(s8/s9)
-- `c_src/` shim 为**过渡形态**(GUI 规范 §11.2 增补):bind 层(MVP 阶梯 W6)落地后
-  删除——目标应用源码树零 C;用户写 C 仅剩第三方接入逃生口场景
+- C 链接域库单一真源 `std/gui/c_src/`(W6 换面已落):示例树零 C;bind 层把 extern
+  声明收编为 `std/gui` 模块随 P2-B,用户写 C 仅剩第三方接入逃生口场景

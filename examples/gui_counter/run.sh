@@ -20,7 +20,7 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/gui_counter.bin" \
-   "$T/gui_counter.c" "$DIR"/c_src/*.c "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/gui_counter.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 echo "gui_counter: 构建+链接 OK"
 
 cd "$DIR"

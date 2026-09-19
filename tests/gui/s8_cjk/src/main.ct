@@ -1,6 +1,8 @@
 // tests/gui/s8_cjk —— GUI 泳道 M3 第一片:FreeType 中文渲染(计划 M3-prep)
 // headless 断言:CJK 字体加载 + UTF-8 行渲染位图非空(不依赖窗口);
-// --run 变体开窗绘制(交互验收)。字体路径列表内置于 shim(macOS/Linux)。
+// --run 变体开窗绘制(交互验收)。字体路径列表内置于域库 shim(std/gui/c_src/ft_shim.c)。
+// W6 换面(2026-09-19):探针承接域库命名——ft_buf_w/h/nonempty → ft_last_w/ft_last_h/
+// ft_probe_nonzero(非空断言改计数 >0 口径);链接改域库单一真源,断言语义零变化。
 
 #[trusted]
 extern "c" fn ft_load_cjk(px: I32) -> I32
@@ -9,13 +11,13 @@ extern "c" fn ft_load_cjk(px: I32) -> I32
 extern "c" fn ft_render(s: Str, r: I32, g: I32, b: I32) -> I32
 
 #[trusted]
-extern "c" fn ft_buf_w() -> I32
+extern "c" fn ft_last_w() -> I32
 
 #[trusted]
-extern "c" fn ft_buf_h() -> I32
+extern "c" fn ft_last_h() -> I32
 
 #[trusted]
-extern "c" fn ft_buf_nonempty() -> I32
+extern "c" fn ft_probe_nonzero() -> I32
 
 fn main() -> I32 {
     if ft_load_cjk(24) != 0 {
@@ -24,21 +26,18 @@ fn main() -> I32 {
     }
     // 中文行渲染:位图非空 + 宽度合理(6 码点 × 24px 量级)
     ft_render("中文渲染测试", 230, 230, 235)
-    chk(ft_buf_nonempty(), 1, "bitmap nonempty")
-    if ft_buf_w() < 100 {
+    if ft_probe_nonzero() <= 0 {
+        panic("s8 assert bitmap nonempty")
+    }
+    if ft_last_w() < 100 {
         println("s8 cjk: 宽度过小")
         return 1
     }
     // ASCII 混排
     ft_render("ctron 中文 gui", 230, 230, 235)
-    chk(ft_buf_nonempty(), 1, "ascii+cjk bitmap")
-    println("s8 cjk: FreeType 中文渲染全绿(headless)")
-    return 0
-}
-
-fn chk(a: I32, b: I32, tag: Str) -> I32 {
-    if a != b {
-        panic("s8 assert " + tag + ": " + a.to_string() + " != " + b.to_string())
+    if ft_probe_nonzero() <= 0 {
+        panic("s8 assert ascii+cjk bitmap")
     }
+    println("s8 cjk: FreeType 中文渲染全绿(headless)")
     return 0
 }

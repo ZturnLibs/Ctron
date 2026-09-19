@@ -1,4 +1,6 @@
-// ft_shim.c —— S9:FreeType 中文纹理 + 矩形绘制(M3 窗口口;§12.3d 同口)
+// ft_shim.c —— GUI 域库单一真源:FreeType 中文纹理 + 矩形绘制(§1.1 目标 7①)
+// W6 换面(2026-09-19):本文件 = s9 全集 ∪ headless 探针(ft_last_w/ft_last_h/
+// ft_probe_nonzero,s8 的 ft_buf_* 改名承接);阶梯修复时在此唯一落点同步。
 // 纹理注册表:ft_render → ft_tex_upload(id) → ft_tex_draw(id,x,y)
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -92,6 +94,18 @@ int ft_render(const char* utf8, int r, int g, int b) {
         pen += (int)(sl->advance.x >> 6);
     }
     return 0;
+}
+
+// ---- headless 探针:最近一次 ft_render 的缓冲读出口 ----
+int ft_last_w(void) { return g_bw; }
+int ft_last_h(void) { return g_bh; }
+// 非零 alpha 像素计数(位图非空断言;对齐 s8 口径)
+int ft_probe_nonzero(void) {
+    if (!g_buf) { return 0; }
+    int n = 0;
+    long total = (long)g_bw * g_bh;
+    for (long i = 0; i < total; i++) { if (g_buf[i * 4 + 3]) { n++; } }
+    return n;
 }
 
 // ---- 纹理注册表(id → Texture2D;ft_render 后需 ft_tex_upload 刷新) ----

@@ -18,7 +18,7 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/s6.bin" \
-   "$T/s6.c" "$DIR"/c_src/*.c "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/s6.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 cd "$DIR"
 "$T/s6.bin"
