@@ -1,6 +1,6 @@
 // examples/todo —— 规范 §10 Todo 演绎的当前能力版(M1-e)
 // 已支持:input 受控输入 / each 列表 / when 空态 / on:click / 标量绑定
-// 差集(登记):checkbox(以 del 末项按钮替代)、逐项事件句柄(M1-b2)、IME 组词(M3)
+// 已支持:checkbox 语义(行级 done 切换按钮 + 状态前缀,M1-b2)// 差集(登记):IME 组词(M3)
 view Todo {
   <vbox class="root">
     <label>todo: {n}</label>
@@ -11,10 +11,14 @@ view Todo {
       <label class="empty">nothing yet</label>
     </when>
     <each t in={todos}>
-      <label class="row">{t}</label>
+      <hbox class="row">
+        <button class="chk" on:click={toggle}>done</button>
+        <label>{t}</label>
+      </hbox>
     </each>
   </vbox>
 }
 style root { direction: column gap: 8 padding: 16 }
 style btn { bg: "#2563eb" }
 style btn2 { bg: "#c83c3c" }
+style chk { bg: "#3c8c3c" }

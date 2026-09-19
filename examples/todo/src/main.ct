@@ -544,22 +544,55 @@ fn parse_each(src: Str, cur: Atomic[I32], el: I32, cond_nm: List[Str],
     lit(src, cur, 125)
     ws(src, cur)
     lit(src, cur, 62)
-    while true {
-        ws(src, cur)
-        if byte_at(src, cur.load()) == 60 {
-            if byte_at(src, cur.load() + 1) == 47 {
-                break
-            }
-        }
-        lit(src, cur, 60)
-        var tg: Str = word(src, cur)
-        parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+    // 体:行模板 = hbox(行容器,含 button+label)或单叶子
+    ws(src, cur)
+    lit(src, cur, 60)
+    var rowtag: Str = word(src, cur)
+    if rowtag == "hbox" {
+        // 行组:容器 + 子元素全部记 each_nm;事件关联行容器 el
+        var rc: Str = attrs(src, cur, el, ev_el, ev_name, ev_fn)
+        lit(src, cur, 62)
+        tags.push("hbox")
+        cls.push(rc)
+        pre.push("")
+        bid.push("")
+        post.push("")
         cond_nm.push("")
         each_nm.push(vn)
         each_lst.push(ln)
-        println("  each var=" + vn + " list=" + ln)
+        println("  row hbox cls=" + rc)
+        el += 1
+        while true {
+            ws(src, cur)
+            if byte_at(src, cur.load()) == 60 {
+                if byte_at(src, cur.load() + 1) == 47 {
+                    break
+                }
+            }
+            lit(src, cur, 60)
+            var tg: Str = word(src, cur)
+            parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+            cond_nm.push("")
+            each_nm.push(vn)
+            each_lst.push(ln)
+            el += 1
+        }
+        // 行模板闭合
+        lit(src, cur, 60)
+        lit(src, cur, 47)
+        var rt: Str = word(src, cur)
+        if rt != "hbox" {
+            panic("todo: 行模板闭合不匹配 " + rt)
+        }
+        lit(src, cur, 62)
+    } else {
+        parse_leaf_tag(rowtag, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+        cond_nm.push("")
+        each_nm.push(vn)
+        each_lst.push(ln)
         el += 1
     }
+    ws(src, cur)
     lit(src, cur, 60)
     lit(src, cur, 47)
     var et: Str = word(src, cur)
@@ -725,7 +758,7 @@ fn sym_find(names: List[Str], name: Str) -> I32 {
 // 绑定种类:bid_sym -1 无 / >=0 标量 sym / -2 each 变量 / -3 draft(Str 绑定)
 fn draw_frame(tags: List[Str], cls: List[Str], pre: List[Str], bid: List[Str],
               post: List[Str], bid_sym: List[I32], cond_ix: List[I32], each_nm: List[Str],
-              todos: List[Str], draft: Str, syms: List[I32],
+              todos: List[Str], flags: List[I32], draft: Str, syms: List[I32],
               sk: List[Str], sv: List[Str]) -> I32 {
     gui_begin_layout(320, 240)
     gui_open()
@@ -736,48 +769,90 @@ fn draw_frame(tags: List[Str], cls: List[Str], pre: List[Str], bid: List[Str],
     var k: I32 = 0
     while k < tags.len {
         if k >= 1 {
+            var en: Str = each_nm[k]
             var vis: I32 = 1
             if cond_ix[k] >= 0 {
                 if syms[cond_ix[k]] == 0 {
                     vis = 0
                 }
             }
-            if vis == 1 {
-                gui_open()
-                var bgp: I32 = 0
-                if tags[k] == "button" {
-                    var bgv: Str = style_get(sk, sv, cls[k] + ".bg", "")
-                    if bgv != "" {
-                        bgp = parse_color(bgv)
-                    }
-                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, bgp)
-                } else {
-                    gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0)
-                }
-                var n: I32 = 1
-                var en: Str = each_nm[k]
-                if en != "" {
-                    n = syms[0]
-                }
-                var i: I32 = 0
-                while i < n {
-                    var txt: Str = pre[k]
-                    if bid_sym[k] == -2 {
-                        txt = txt + todos[i] + post[k]
+            if vis == 0 {
+                // 隐藏:无命令
+            } else {
+                if en == "" {
+                    // 单实例元素(label/input/button)
+                    gui_open()
+                    var bgp: I32 = 0
+                    if tags[k] == "button" {
+                        var bgv: Str = style_get(sk, sv, cls[k] + ".bg", "")
+                        if bgv != "" {
+                            bgp = parse_color(bgv)
+                        }
+                        gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, bgp)
                     } else {
-                        if bid_sym[k] == -3 {
-                            txt = draft
-                        } else {
-                            if bid_sym[k] >= 0 {
-                                var v: I32 = syms[bid_sym[k]]
-                                txt = txt + v.to_string() + post[k]
-                            }
+                        gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0)
+                    }
+                    var txt0: Str = pre[k]
+                    if bid_sym[k] == -3 {
+                        txt0 = draft
+                    } else {
+                        if bid_sym[k] >= 0 {
+                            var v0: I32 = syms[bid_sym[k]]
+                            txt0 = txt0 + v0.to_string() + post[k]
                         }
                     }
-                    gui_text(txt, 20, 230, 230, 235, 255)
-                    i += 1
+                    gui_text(txt0, 20, 230, 230, 235, 255)
+                    gui_close()
+                } else {
+                    if tags[k] == "hbox" {
+                        // 行组:容器每实例开合,子模板随实例 emit;文本 = done 前缀 + 项文本
+                        var n: I32 = syms[0]
+                        var j: I32 = k + 1
+                        var i: I32 = 0
+                        while i < n {
+                            gui_open()
+                            gui_cfg(0, 4, 0, 0, 0, 0, 1, 0, 1, 0, 0)
+                            j = k + 1
+                            while j < tags.len {
+                                var en2: Str = each_nm[j]
+                                if en2 == "" {
+                                    break
+                                }
+                                gui_open()
+                                var bgp2: I32 = 0
+                                if tags[j] == "button" {
+                                    var bgv: Str = style_get(sk, sv, cls[j] + ".bg", "")
+                                    if bgv != "" {
+                                        bgp2 = parse_color(bgv)
+                                    }
+                                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 60, 2, 40, bgp2)
+                                } else {
+                                    gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0)
+                                }
+                                var txt: Str = pre[j]
+                                if bid_sym[j] == -2 {
+                                    var f: I32 = flags[i]
+                                    if f == 1 {
+                                        txt = "[x] " + todos[i]
+                                    } else {
+                                        txt = "[ ] " + todos[i]
+                                    }
+                                } else {
+                                    if bid_sym[j] >= 0 {
+                                        var v: I32 = syms[bid_sym[j]]
+                                        txt = txt + v.to_string() + post[j]
+                                    }
+                                }
+                                gui_text(txt, 20, 230, 230, 235, 255)
+                                gui_close()
+                                j += 1
+                            }
+                            gui_close()
+                            i += 1
+                        }
+                        k = j - 1
+                    }
                 }
-                gui_close()
             }
         }
         k += 1
@@ -786,7 +861,7 @@ fn draw_frame(tags: List[Str], cls: List[Str], pre: List[Str], bid: List[Str],
     return gui_end_layout()
 }
 
-// ==================== 命中(几何回填;按钮均为顶层可见元素) ====================
+// ==================== 命中(几何回填;按钮实例 = RECT 命令) ====================
 
 fn collect_rects(cmds: I32, out: List[I32]) -> I32 {
     var i: I32 = 0
@@ -811,34 +886,46 @@ fn hit_rect(j: I32, rects: List[I32], px: I32, py: I32) -> I32 {
     return 0
 }
 
-// 点击命中:j 个 RECT 对应 j 个 button 叶子;返回 handler 名(未命中 "")
-fn handle_click(tags: List[Str], ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str],
+// 点击命中:j 个 RECT 对应 j 个【可见 button 实例】(模板序 = 实例序);
+// 顶层 handler 返回 "add"/"del";行级 toggle 返回 "toggle:实例下标"(未命中 "")
+fn handle_click(tags: List[Str], each_nm: List[Str], syms: List[I32], ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str],
                 rects: List[I32], px: I32, py: I32) -> Str {
     var j: I32 = 0
     while j < rects.len {
         if hit_rect(j, rects, px, py) == 1 {
-            var leaf: I32 = -1
-            var k: I32 = 1
+            // 第 j 个 RECT = 第 j 个可见按钮实例;找它的 handler:
+            // 模板按钮(ev_el 里 tag 名单)按出现序展开 n 份
+            var bi: I32 = 0
             var seen: I32 = 0
+            var k: I32 = 1
             while k < tags.len {
                 if tags[k] == "button" {
-                    if seen == j {
-                        leaf = k
+                    var n: I32 = 1
+                    var en: Str = each_nm[k]
+                    if en != "" {
+                        n = syms[0]
                     }
-                    seen += 1
-                }
-                k += 1
-            }
-            if leaf >= 0 {
-                var e: I32 = 0
-                while e < ev_el.len {
-                    if ev_el[e] == leaf {
-                        if ev_name[e] == "click" {
-                            return ev_fn[e]
+                    if j < seen + n {
+                        bi = k
+                        // 行级:实例下标 = j - seen
+                        var e: I32 = 0
+                        while e < ev_el.len {
+                            if ev_el[e] == bi {
+                                if ev_name[e] == "click" {
+                                    if en != "" {
+                                        var idx: I32 = j - seen
+                                        var nm: Str = ev_fn[e] + ":"
+                                        return nm + idx.to_string()
+                                    }
+                                    return ev_fn[e]
+                                }
+                            }
+                            e += 1
                         }
                     }
-                    e += 1
+                    seen = seen + n
                 }
+                k += 1
             }
         }
         j += 1
@@ -891,6 +978,7 @@ fn main() -> I32 {
     sym_names.push("empty")
     syms.push(1)
     var todos = List[Str]()
+    var flags = List[I32]()
     var draft: Str = ""
 
     var bid_sym = List[I32]()
@@ -927,7 +1015,7 @@ fn main() -> I32 {
     gui_clay_init(320, 240)
 
     // headless 验收脚本(注入驱动全链路;与 --run 共用 apply 分支语义)
-    var n: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    var n: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
     chk(n, 6, "cmds init")
     assert_cmd_text(0, "todo: 0")
     assert_cmd_text(5, "nothing yet")
@@ -947,7 +1035,7 @@ fn main() -> I32 {
     draft = draft + utf8_enc(gui_evt_key())
     chk(gui_poll_event(), 3, "evt b")
     draft = draft + utf8_enc(gui_evt_key())
-    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
     chk(n, 7, "cmds typed")
     assert_cmd_text(1, "ab")
     rects = List[I32]()
@@ -958,23 +1046,29 @@ fn main() -> I32 {
     dy = gui_cmd_y100(rects[1]) / 100 + 20
 
     // 点击 add → 行 "ab" 入列,draft 清空,空态消失
+    // (add1 后行组出现:chk RECT + 2 TEXT/行;文本 = "[ ] "/"[x] " 前缀 + 项文本)
     gui_inject_click(ax, ay)
     chk(gui_poll_event(), 2, "evt add")
-    var hn: Str = handle_click(tags, ev_el, ev_name, ev_fn, rects, ax, ay)
+    var hn: Str = handle_click(tags, each_nm, syms, ev_el, ev_name, ev_fn, rects, ax, ay)
     if hn == "add" {
         if draft.len > 0 {
             todos.push(draft)
+            flags.push(0)
             draft = ""
             syms[0] = todos.len
             syms[1] = 0
         }
     }
-    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
-    chk(n, 6, "cmds add1")
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
+    chk(n, 8, "cmds add1")
     assert_cmd_text(0, "todo: 1")
-    assert_cmd_text(5, "ab")
+    assert_cmd_text(6, "done")
+    assert_cmd_text(7, "[ ] ab")
     rects = List[I32]()
     collect_rects(n, rects)
+    chk(rects.len, 3, "rects add1")
+    ax = gui_cmd_x100(rects[0]) / 100 + 50
+    ay = gui_cmd_y100(rects[0]) / 100 + 20
     dx = gui_cmd_x100(rects[1]) / 100 + 50
     dy = gui_cmd_y100(rects[1]) / 100 + 20
 
@@ -985,43 +1079,68 @@ fn main() -> I32 {
     draft = draft + utf8_enc(gui_evt_key())
     chk(gui_poll_event(), 3, "evt d")
     draft = draft + utf8_enc(gui_evt_key())
-    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
-    chk(n, 7, "cmds typed2")
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
+    chk(n, 9, "cmds typed2")
+    assert_cmd_text(1, "cd")
     rects = List[I32]()
     collect_rects(n, rects)
     ax = gui_cmd_x100(rects[0]) / 100 + 50
     ay = gui_cmd_y100(rects[0]) / 100 + 20
     dx = gui_cmd_x100(rects[1]) / 100 + 50
     dy = gui_cmd_y100(rects[1]) / 100 + 20
-    rects = List[I32]()
-    collect_rects(n, rects)
-    ax = gui_cmd_x100(rects[0]) / 100 + 50
-    ay = gui_cmd_y100(rects[0]) / 100 + 20
     gui_inject_click(ax, ay)
     chk(gui_poll_event(), 2, "evt add2")
-    hn = handle_click(tags, ev_el, ev_name, ev_fn, rects, ax, ay)
+    hn = handle_click(tags, each_nm, syms, ev_el, ev_name, ev_fn, rects, ax, ay)
     if hn == "add" {
         if draft.len > 0 {
             todos.push(draft)
+            flags.push(0)
             draft = ""
             syms[0] = todos.len
             syms[1] = 0
         }
     }
-    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
-    chk(n, 7, "cmds add2")
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
+    chk(n, 11, "cmds add2")
     assert_cmd_text(0, "todo: 2")
-    assert_cmd_text(5, "ab")
+    assert_cmd_text(6, "done")
+    assert_cmd_text(7, "[ ] ab")
+    assert_cmd_text(9, "done")
+    assert_cmd_text(10, "[ ] cd")
+
+    // checkbox 语义(M1-b2):点击第 0 行 chk 按钮 → 该行 [x]
+    rects = List[I32]()
+    collect_rects(n, rects)
+    chk(rects.len, 4, "rects add2")
+    var cx: I32 = gui_cmd_x100(rects[2]) / 100 + 30
+    var cy: I32 = gui_cmd_y100(rects[2]) / 100 + 20
+    gui_inject_click(cx, cy)
+    chk(gui_poll_event(), 2, "evt toggle")
+    hn = handle_click(tags, each_nm, syms, ev_el, ev_name, ev_fn, rects, cx, cy)
+    if byte_slice(hn, 0, 7) == "toggle:" {
+        var idx: I32 = s2i(byte_slice(hn, 7, hn.len))
+        if idx < syms[0] {
+            var fv: I32 = flags[idx]
+            if fv == 1 {
+                flags[idx] = 0
+            } else {
+                flags[idx] = 1
+            }
+        }
+    }
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
+    chk(n, 11, "cmds toggle")
+    assert_cmd_text(7, "[x] ab")
+    assert_cmd_text(10, "[ ] cd")
+
+    // del ×2 → 清空,空态回归(截断模型:移除末行,余行状态保留)
     rects = List[I32]()
     collect_rects(n, rects)
     dx = gui_cmd_x100(rects[1]) / 100 + 50
     dy = gui_cmd_y100(rects[1]) / 100 + 20
-    assert_cmd_text(6, "cd")
-
-    // del ×2 → 清空,空态回归
     gui_inject_click(dx, dy)
     chk(gui_poll_event(), 2, "evt del1")
-    hn = handle_click(tags, ev_el, ev_name, ev_fn, rects, dx, dy)
+    hn = handle_click(tags, each_nm, syms, ev_el, ev_name, ev_fn, rects, dx, dy)
     if hn == "del" {
         if syms[0] > 0 {
             syms[0] = syms[0] - 1
@@ -1030,9 +1149,10 @@ fn main() -> I32 {
             }
         }
     }
-    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
-    chk(n, 6, "cmds del1")
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
+    chk(n, 8, "cmds del1")
     assert_cmd_text(0, "todo: 1")
+    assert_cmd_text(6, "done")
     rects = List[I32]()
     collect_rects(n, rects)
     dx = gui_cmd_x100(rects[1]) / 100 + 50
@@ -1041,7 +1161,7 @@ fn main() -> I32 {
     // del 第 2 次 → 清空,空态回归
     gui_inject_click(dx, dy)
     chk(gui_poll_event(), 2, "evt del2")
-    hn = handle_click(tags, ev_el, ev_name, ev_fn, rects, dx, dy)
+    hn = handle_click(tags, each_nm, syms, ev_el, ev_name, ev_fn, rects, dx, dy)
     if hn == "del" {
         if syms[0] > 0 {
             syms[0] = syms[0] - 1
@@ -1050,12 +1170,12 @@ fn main() -> I32 {
             }
         }
     }
-    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
     chk(n, 6, "cmds del2")
     assert_cmd_text(0, "todo: 0")
     assert_cmd_text(5, "nothing yet")
 
-    println("todo: headless 全链路全绿(键入/添加/列表/空态/删除)")
+    println("todo: headless 全链路全绿(键入/添加/checkbox 切换/列表/空态/删除)")
 
     if env_get("CTRON_GUI_RUN") != "" {
         // ---- 窗口口径(--run):真实键入 + 点击(交互验收) ----
@@ -1074,13 +1194,14 @@ fn main() -> I32 {
                     }
                 } else {
                     if evt == 2 {
-                        var n2: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+                        var n2: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
                         var r2 = List[I32]()
                         collect_rects(n2, r2)
-                        hn = handle_click(tags, ev_el, ev_name, ev_fn, r2, gui_evt_x(), gui_evt_y())
+                        hn = handle_click(tags, each_nm, syms, ev_el, ev_name, ev_fn, r2, gui_evt_x(), gui_evt_y())
                         if hn == "add" {
                             if draft.len > 0 {
                                 todos.push(draft)
+                                flags.push(0)
                                 draft = ""
                                 syms[0] = todos.len
                                 syms[1] = 0
@@ -1094,10 +1215,21 @@ fn main() -> I32 {
                                 }
                             }
                         }
+                        if byte_slice(hn, 0, 7) == "toggle:" {
+                            var idx: I32 = s2i(byte_slice(hn, 7, hn.len))
+                            if idx < syms[0] {
+                                var fv: I32 = flags[idx]
+                                if fv == 1 {
+                                    flags[idx] = 0
+                                } else {
+                                    flags[idx] = 1
+                                }
+                            }
+                        }
                     }
                 }
             }
-            draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+            draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, flags, draft, syms, sk, sv)
             BeginDrawing()
             gui_clear(24, 24, 32)
             ctron_gui_flush()
