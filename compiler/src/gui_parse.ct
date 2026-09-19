@@ -4,7 +4,7 @@
 //    [1]=kind [2]=name [3]=块内 token 数 [4]=块内 token 空格连接串(词法 token 无空格,无损)
 // W2:gui_lower 折叠——token 串 → 结构化 IR 文本 dump(--dump-gui 口径);
 //    颜色 #RRGGBB 格式校验(E8130 前身,W3 接诊断面);令牌查用户常量随 W3(sem 表)。
-// 契约:花括号字面量不可词法化(触发插值扫描吞引号,E1001)——一律字节码比较;
+// 契约:eat_tok 助手(花括号字面量不可词法化)(触发插值扫描吞引号,E1001)——一律字节码比较;
 //       注释中不放花括号字符(发射口径词法分歧,见计划文档登记)。
 // =====================================================================
 
@@ -15,11 +15,10 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     var name: Str = tok(toks, cur)
     adv(cur)
     nd.push(name)
-    var joined: Str = ""
+    var joined: Str = name
     var depth: I32 = 0
-    var toks_n: I32 = 0
+    var toks_n: I32 = 1
     var started: Bool = false
-    var first: Bool = true
     while true {
         var t: Str = tok(toks, cur)
         if t == "#EOF" {
@@ -39,26 +38,21 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
         if is_open {
             depth += 1
             started = true
+            if depth == 1 {
+                adv(cur)
+                continue
+            }
         } else {
             if is_close {
                 depth -= 1
+                if depth == 0 {
+                    adv(cur)
+                    break
+                }
             }
         }
-        var keep: Bool = false
         if started {
-            if depth == 0 {
-                adv(cur)
-                break
-            }
-            keep = true
-        }
-        if keep {
-            if first {
-                joined = t
-                first = false
-            } else {
-                joined = joined + " " + t
-            }
+            joined = joined + " " + t
             toks_n += 1
         }
         adv(cur)
@@ -110,6 +104,23 @@ fn gui_hex1(b: I32) -> I32 {
 }
 
 // 颜色串校验(E8130 前身):#RRGGBB;返回打包色
+fn gui_unq(v: Str) -> Str {
+    if v.len >= 2 {
+        if byte_at(v, 0) == 34 {
+            if byte_at(v, v.len - 1) == 34 {
+                return byte_slice(v, 1, v.len - 1)
+            }
+        }
+    }
+    return v
+}
+
+fn eat_tok(tks: List[Str], cur: Atomic[I32]) -> Str {
+    var t: Str = tks[cur.load()]
+    cur.store(cur.load() + 1)
+    return t
+}
+
 fn gui_parse_color(v: Str) -> I32 {
     if v.len != 7 {
         panic("gui E8130: 颜色须 #RRGGBB,得 " + v)
@@ -127,49 +138,46 @@ fn gui_parse_color(v: Str) -> I32 {
 
 // 视图块折叠:<' tag attrs '>' content '</' tag '>';返回 IR 行(已含缩进)
 // attrs:class="x" 与 on:名={handler};叶子文本:字面量 token* + 至多一个 {ident}
-fn gui_lower_view(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
-    var name: Str = tks[cur.load()]
-    cur.store(cur.load() + 1)
-    println(ind + "gui view " + name)
-    out.push("view " + name)
-    gui_lower_element(tks, cur, ind + "  ", out)
-    return 0
-}
-
 fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
-    var i: I32 = cur.load()
-    var t: Str = tks[i]
-    if t != "<" {
-        panic("gui E8100: 期待 <,得 " + t)
+    if eat_tok(tks, cur) != "<" {
+        panic("gui E8100: 期待 <")
     }
-    i += 1
-    var tag: Str = tks[i]
-    i += 1
+    var tag: Str = eat_tok(tks, cur)
     var c: Str = ""
     var onn: Str = ""
     var onf: Str = ""
-    while tks[i] != ">" {
-        var an: Str = tks[i]
-        i += 1
+    while tks[cur.load()] != ">" {
+        var an: Str = eat_tok(tks, cur)
         if an == "on" {
-            i += 1              // ':'
-            var evn: Str = tks[i]
-            i += 1              // '='
-            i += 1              // '{'
-            var fnn: Str = tks[i]
-            i += 1              // '}'
-            onn = evn
-            onf = fnn
+            if eat_tok(tks, cur) != ":" {
+                panic("gui E8100: on 期待冒号")
+            }
+            onn = eat_tok(tks, cur)
+            if eat_tok(tks, cur) != "=" {
+                panic("gui E8100: on 期待等号")
+            }
+            var ob: Str = eat_tok(tks, cur)
+            if ob.len != 1 {
+                panic("gui E8100: on 期待块开")
+            }
+            if byte_at(ob, 0) != 123 {
+                panic("gui E8100: on 期待块开")
+            }
+            onf = eat_tok(tks, cur)
+            if eat_tok(tks, cur) != "}" {
+                panic("gui E8100: on 期待块闭")
+            }
         } else {
-            i += 1              // '='
-            var av: Str = tks[i]
-            i += 1
+            if eat_tok(tks, cur) != "=" {
+                panic("gui E8100: 属性期待等号")
+            }
+            var av: Str = gui_unq(eat_tok(tks, cur))
             if an == "class" {
                 c = av
             }
         }
     }
-    i += 1
+    eat_tok(tks, cur)
     var line: Str = ind + "el " + tag
     if c != "" {
         line = line + " cls=" + c
@@ -179,81 +187,67 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
     }
     println(line)
     out.push(line)
-    // 叶子文本:字面量 token(至 '</' 前的 '{')+ 至多一个 {ident} + 尾字面量 token*
     var lit: Str = ""
-    var bid: Str = ""
-    var done: Bool = false
-    while !done {
-        var w: Str = tks[i]
-        var one: Bool = w.len == 1
-        if one {
-            if byte_at(w, 0) == 60 {
-                done = true
+    while true {
+        if tks[cur.load()] == "<" {
+            if tks[cur.load() + 1] == "/" {
+                break
             }
-        }
-        if !done {
-            if one {
-                if byte_at(w, 0) == 123 {
-                    done = true
-                    i += 1
-                    bid = tks[i]
-                    i += 1
-                    if tks[i] != "}" {
-                        panic("gui E8100: 绑定未闭合")
-                    }
-                    i += 1
-                } else {
-                    if lit != "" {
-                        lit = lit + " "
-                    }
-                    lit = lit + w
-                    i += 1
-                }
-            } else {
-                if lit != "" {
-                    lit = lit + " "
-                }
-                lit = lit + w
-                i += 1
+            if lit != "" {
+                var tl: Str = ind + "  " + tag + " text=\"" + lit + "\""
+                println(tl)
+                out.push(tl)
+                lit = ""
             }
+            gui_lower_element(tks, cur, ind + "  ", out)
+        } else {
+            if tks[cur.load()] == "#EOF" {
+                panic("gui E8100: 未终止")
+            }
+            var w: Str = eat_tok(tks, cur)
+            if lit != "" {
+                lit = lit + " "
+            }
+            lit = lit + w
         }
     }
-    var tline: Str = ind + "  " + tag + " text=\"" + lit + "\""
-    if bid != "" {
-        tline = tline + " bind=" + bid
+    if lit != "" {
+        var tline: Str = ind + "  " + tag + " text=\"" + lit + "\""
+        println(tline)
+        out.push(tline)
     }
-    println(tline)
-    out.push(tline)
-    if tks[i] != "</" {
-        panic("gui E8100: 期待闭合,得 " + tks[i])
+    eat_tok(tks, cur)
+    eat_tok(tks, cur)
+    var et: Str = eat_tok(tks, cur)
+    if et != tag {
+        panic("gui E8100: 闭合标签不匹配 " + et)
     }
-    i += 1
-    if tks[i] != tag {
-        panic("gui E8100: 闭合标签不匹配 " + tks[i])
-    }
-    i += 1
-    if tks[i] != ">" {
-        panic("gui E8100: 期待 >,得 " + tks[i])
-    }
-    i += 1
-    cur.store(i)
+    eat_tok(tks, cur)
     return 0
 }
 
-// 样式块折叠:IDENT ':' value(';'?)*;bg 做 #RRGGBB 校验(E8130)
+fn gui_lower_view(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
+    var name: Str = tks[cur.load()]
+    cur.store(cur.load() + 1)
+    println(ind + "gui view " + name)
+    out.push("view " + name)
+    gui_lower_element(tks, cur, ind + "  ", out)
+    return 0
+}
+
 fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
     var name: Str = tks[cur.load()]
     cur.store(cur.load() + 1)
     println(ind + "gui style " + name)
     out.push("style " + name)
-    while tks[cur.load()] != "}" {
+    while cur.load() < tks.len {
         var p: Str = tks[cur.load()]
         cur.store(cur.load() + 1)
         if tks[cur.load()] != ":" {
             panic("gui E8130: 期待 :,得 " + tks[cur.load()])
         }
         cur.store(cur.load() + 1)
-        var v: Str = tks[cur.load()]
+        var v: Str = gui_unq(tks[cur.load()])
         cur.store(cur.load() + 1)
         if p == "bg" {
             var packed: I32 = gui_parse_color(v)
@@ -263,8 +257,10 @@ fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -
         }
         println(ind + "  " + p + "=" + v)
         out.push(p + "=" + v)
-        if tks[cur.load()] == ";" {
-            cur.store(cur.load() + 1)
+        if cur.load() < tks.len {
+            if tks[cur.load()] == ";" {
+                cur.store(cur.load() + 1)
+            }
         }
     }
     cur.store(cur.load() + 1)
