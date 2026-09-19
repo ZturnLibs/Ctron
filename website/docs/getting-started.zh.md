@@ -7,11 +7,11 @@
 **一键(macOS / Linux)**——自动检测平台与架构、下载匹配 tarball、按 `SHA256SUMS` 校验、解压到 `${CTRON_INSTALL_DIR:-$HOME/.ctron}`,结尾打印 PATH 提示:
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 export PATH="$HOME/.ctron/ctron/bin:$PATH"   # 按脚本提示写入 shell 配置
 ```
 
-**手动**——从 [Releases](https://github.com/Zturn/Ctron/releases) 下载 `ctron-<版本>-<平台>.tar.gz`,解压后把其中的 `ctron/bin` 加入 `PATH` 即可(见[下载](download.md)的产物矩阵)。
+**手动**——从 [Releases](https://github.com/ZturnLibs/Ctron/releases) 下载 `ctron-<版本>-<平台>.tar.gz`,解压后把其中的 `ctron/bin` 加入 `PATH` 即可(见[下载](download.md)的产物矩阵)。
 
 **源码**——源码 tarball 附带预发射 C(`prebuilt/*.c`),构建只需要 cc:
 

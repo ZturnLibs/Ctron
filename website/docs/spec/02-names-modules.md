@@ -42,7 +42,7 @@
 
 ## 2.7 包元数据(`Ctron.toml`)
 
-> **修订注(2026-09-16,提案待评审,非语言修订)**:清单格式由 TOML 方言(`Ctron.toml`)迁往 **CTCL(Ctron Config Language,`Ctron.ctcl`)**。本节下方 TOML 示例仅作历史记录;规范性定义以 [`docs/superpowers/specs/2026-09-16-config-language-v1.md`](https://github.com/Zturn/Ctron/blob/main/docs/superpowers/specs/2026-09-16-config-language-v1.md) 为准(含块式文法、fail-closed 注册表、`caps = ["fs"]` 列表形、deps 三互斥形、三线解析器契约与迁移计划)。迁移落地前,现行三线解析器与在库 `Ctron.toml` 保持原状。
+> **修订注(2026-09-16,提案待评审,非语言修订)**:清单格式由 TOML 方言(`Ctron.toml`)迁往 **CTCL(Ctron Config Language,`Ctron.ctcl`)**。本节下方 TOML 示例仅作历史记录;规范性定义以 [`docs/superpowers/specs/2026-09-16-config-language-v1.md`](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/2026-09-16-config-language-v1.md) 为准(含块式文法、fail-closed 注册表、`caps = ["fs"]` 列表形、deps 三互斥形、三线解析器契约与迁移计划)。迁移落地前,现行三线解析器与在库 `Ctron.toml` 保持原状。
 
 ```toml
 [package]

@@ -1,6 +1,6 @@
 # Lane: feat/cli-test-fmt — R-P2c `ctron test` + R-P2d `ctron fmt`
 
-日期:2026-09-12 · 线:compiler-rust(R 线唯一产品线) · 分支:`feat/cli-test-fmt` · worktree:`/Users/zyj/Zturn/Ctron-cli`
+日期:2026-09-12 · 线:compiler-rust(R 线唯一产品线) · 分支:`feat/cli-test-fmt` · worktree:`/Users/zyj/ZturnLibs/Ctron-cli`
 
 ## 与其他 lane 的分工(并行协调)
 

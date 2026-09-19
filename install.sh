@@ -2,14 +2,14 @@
 # install.sh —— 一键安装(curl -fsSL <releases>/install.sh | sh)
 # 平台检测 → 下载 tarball → sha256 校验 → 解压到 ${CTRON_INSTALL_DIR:-$HOME/.ctron}
 set -eu
-BASE=${CTRON_RELEASE_BASE:-https://github.com/Zturn/Ctron/releases/latest/download}
+BASE=${CTRON_RELEASE_BASE:-https://github.com/ZturnLibs/Ctron/releases/latest/download}
 VER=${CTRON_VERSION:-}
 DIR=${CTRON_INSTALL_DIR:-$HOME/.ctron}
 OS=$(uname -s); M=$(uname -m)
 case $OS in Darwin) os=darwin ;; Linux) os=linux ;; *) echo "install.sh: 不支持的平台 $OS" >&2; exit 2 ;; esac
 case $M in arm64|aarch64) arch=arm64 ;; x86_64|amd64) arch=x86_64 ;; *) echo "install.sh: 不支持的架构 $M" >&2; exit 2 ;; esac
 if [ -z "$VER" ]; then
-    VER=$(curl -fsSL "https://api.github.com/repos/Zturn/Ctron/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+    VER=$(curl -fsSL "https://api.github.com/repos/ZturnLibs/Ctron/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
 fi
 [ -n "$VER" ] || { echo "install.sh: 取版本失败(可设 CTRON_VERSION=x.y.z 重试)" >&2; exit 2; }
 TARBALL="ctron-${VER#v}-${os}-${arch}.tar.gz"

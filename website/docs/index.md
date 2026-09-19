@@ -3,7 +3,7 @@
 **Ctron** is a self-hosted systems programming language: its compiler is written in Ctron itself (`compiler/`, 39 modules). Programs run under interpretation with zero external dependencies, and can also be emitted as **equivalent C source** that the platform's C compiler turns into a native executable with one command. One source tree, two execution paths.
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 ```
 
 > Releases have not been published yet. Until the first release (v0.0.1) lands, build from a clone — see [Getting Started](getting-started.md).
@@ -38,4 +38,4 @@ All three paths are instant: no build step, no dependencies, nothing to configur
 | [Language Spec](spec/README.md) | v0.7 frozen draft; diagnostics carry stable error codes |
 | [Std Reference](std/README.md) | Per-module signature tables |
 
-Repository: [Zturn/Ctron](https://github.com/Zturn/Ctron) · Design and implementation notes live in `docs/superpowers/specs/` and `compiler/BOOTSTRAP.md`.
+Repository: [ZturnLibs/Ctron](https://github.com/ZturnLibs/Ctron) · Design and implementation notes live in `docs/superpowers/specs/` and `compiler/BOOTSTRAP.md`.

@@ -3,7 +3,7 @@
 **Ctron** 是一门自举的系统编程语言:编译器本身用 Ctron 写成(`compiler/`,39 个模块),解释执行零外部依赖;也能把程序发射为**等价的 C 源码**,交给平台 C 编译器一条命令出原生可执行。同一份源码,两条执行路径。
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 ```
 
 > Releases 尚未发布——首次发布(v0.0.1)上线前,请按[入门](getting-started.md)的源码路径构建。
@@ -38,4 +38,4 @@ ctc build main.ct    # 发射 C → 本机 cc → 原生可执行
 | [语言规范](spec/README.md) | v0.7 冻结草案,诊断一律带稳定错误码 |
 | [标准库参考](std/README.md) | 模块签名表 |
 
-仓库:[Zturn/Ctron](https://github.com/Zturn/Ctron) · 设计与实现细节见 `docs/superpowers/specs/` 与 `compiler/BOOTSTRAP.md`。
+仓库:[ZturnLibs/Ctron](https://github.com/ZturnLibs/Ctron) · 设计与实现细节见 `docs/superpowers/specs/` 与 `compiler/BOOTSTRAP.md`。

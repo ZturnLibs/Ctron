@@ -2,7 +2,7 @@
 <!-- 英文待翻:中文占位 -->
 # Ctron 语言规范 v0.7
 
-状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](https://github.com/Zturn/Ctron/blob/main/tests/README.md) 为验收标准。
+状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](https://github.com/ZturnLibs/Ctron/blob/main/tests/README.md) 为验收标准。
 
 > **v0.6 修订(2026-09-11)**:泛型体系成文——§3.9 实例化/bound/嵌套语义(显式 TypeArgs 调用点、E2050 结构化 bound 核对、TPar 传递、递归特化诊断),新增 §3.11 `@derive(Show, Eq)` 结构化方法与格式契约,§10 注册表补 E2050。依据:自举编译器(`compiler/`)泛型深水区实现 + `tests/03e_generics_types.ct`、`compiler/test/fx_derive.ct`、`fx_generic.ct`、`fx_bound_neg.ct`、`fx_genrec_neg.ct` 语料。v0.5 冻结范围不受影响;§4.7(v0.6 草案,E3070)仍为草案。
 

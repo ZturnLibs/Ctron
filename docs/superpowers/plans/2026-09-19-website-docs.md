@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 仓库 slug 统一写 `Zturn/Ctron`(建仓时若实际 user/org 不同,`grep -rl 'Zturn/Ctron' website/ .github/workflows/pages.yml` 一次性替换)。
+- 仓库 slug 统一写 `ZturnLibs/Ctron`(建仓时若实际 user/org 不同,`grep -rl 'ZturnLibs/Ctron' website/ .github/workflows/pages.yml` 一次性替换)。
 - 文件形态铁律:en(默认)无后缀,中文 `.zh` 后缀;**每个页面必须有无后缀文件**(en 树完整,strict 构建无死链);待翻页的无后缀文件以中文占位 + front matter `<!-- 英文待翻:中文占位 -->` 注记。
 - 站点内容口径与分发线一致:`ctc run`/`check` 零依赖;`ctc build` 需本机 cc;Windows 需 mingw-w64;版本 v0.0.1。
 - 构建质量门:`mkdocs build --strict`(警告即错)。
@@ -43,9 +43,9 @@ website/.venv/bin/pip install mkdocs-material mkdocs-static-i18n
 
 ```yaml
 site_name: Ctron
-site_url: https://zturn.github.io/Ctron/
-repo_url: https://github.com/Zturn/Ctron
-repo_name: Zturn/Ctron
+site_url: https://zturnlibs.github.io/Ctron/
+repo_url: https://github.com/ZturnLibs/Ctron
+repo_name: ZturnLibs/Ctron
 theme:
   name: material
   language: en
@@ -92,7 +92,7 @@ nav:
 一个自举的系统编程语言:编译器用 Ctron 自己写成,发射等价 C,由平台 C 编译器出机器码。
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 ```
 
 (内容页 Task 4 填充;本占位保证 en 树完整。)
@@ -106,7 +106,7 @@ curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | 
 一个自举的系统编程语言:编译器用 Ctron 自己写成,发射等价 C,由平台 C 编译器出机器码。
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 ```
 ```
 
@@ -246,7 +246,7 @@ git commit -m "feat(site): std 参考生成器与 20+ 模块页——pub fn 签�
 
 **要点(内容语风示例,正文各 40-80 行,以分发线事实为准):**
 - 入门:安装(install.sh 一行/手动/源码 make 三法)→ hello(ctc new/run)→ build 出可执行 → 项目模式;run/check 零依赖、build 需 cc、Windows mingw。
-- 下载:产物矩阵表(`ctron-<ver>-{darwin,linux}-{arm64,x86_64}.tar.gz`、`ctron-<ver>-windows-x86_64.zip`、`ctron-<ver>-src.tar.gz`、`SHA256SUMS`、`install.sh`,全部链 `https://github.com/Zturn/Ctron/releases/latest/download/<名>`)+ Releases 未发时首行"即将发布"。
+- 下载:产物矩阵表(`ctron-<ver>-{darwin,linux}-{arm64,x86_64}.tar.gz`、`ctron-<ver>-windows-x86_64.zip`、`ctron-<ver>-src.tar.gz`、`SHA256SUMS`、`install.sh`,全部链 `https://github.com/ZturnLibs/Ctron/releases/latest/download/<名>`)+ Releases 未发时首行"即将发布"。
 - 示例:ctgrep/ctwc/ctwf 源码片段 + 复现命令。
 - en 版:首页/入门/下载三页写真英文;examples 待翻占位。
 

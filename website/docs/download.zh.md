@@ -5,33 +5,33 @@
 ## 一键安装(macOS / Linux)
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 ```
 
 脚本依次做四件事:`uname` 检测平台与架构 → 下载匹配的 tarball → 按 `SHA256SUMS` 校验 → 解压到 `${CTRON_INSTALL_DIR:-$HOME/.ctron}`。结尾打印 PATH 提示,并顺带检测本机 cc——缺失时给出平台化安装指引(不阻塞 `run` / `check`)。可调环境变量:`CTRON_INSTALL_DIR`(安装根)、`CTRON_VERSION`(钉版本)、`CTRON_RELEASE_BASE`(镜像源)。依赖仅 POSIX sh + curl + tar,零 root。
 
 ## 产物矩阵
 
-每次发布出 8 个资产,全部可经 `https://github.com/Zturn/Ctron/releases/latest/download/<资产名>` 直达。版本号不带 `v` 前缀,下表以 v0.0.1 为例:
+每次发布出 8 个资产,全部可经 `https://github.com/ZturnLibs/Ctron/releases/latest/download/<资产名>` 直达。版本号不带 `v` 前缀,下表以 v0.0.1 为例:
 
 | 资产 | 平台 / 用途 |
 |---|---|
-| [ctron-0.0.1-darwin-arm64.tar.gz](https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-darwin-arm64.tar.gz) | macOS Apple Silicon |
-| [ctron-0.0.1-darwin-x86_64.tar.gz](https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-darwin-x86_64.tar.gz) | macOS Intel |
-| [ctron-0.0.1-linux-x86_64.tar.gz](https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-linux-x86_64.tar.gz) | Linux x86_64 |
-| [ctron-0.0.1-linux-arm64.tar.gz](https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-linux-arm64.tar.gz) | Linux arm64 |
-| [ctron-0.0.1-windows-x86_64.zip](https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-windows-x86_64.zip) | Windows x86_64(β) |
-| [ctron-0.0.1-src.tar.gz](https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-src.tar.gz) | 源码线(附预发射 C,cc-only) |
-| [SHA256SUMS](https://github.com/Zturn/Ctron/releases/latest/download/SHA256SUMS) | 六个发布件的 SHA-256 校验单 |
-| [install.sh](https://github.com/Zturn/Ctron/releases/latest/download/install.sh) | 一键安装脚本 |
+| [ctron-0.0.1-darwin-arm64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-darwin-arm64.tar.gz) | macOS Apple Silicon |
+| [ctron-0.0.1-darwin-x86_64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-darwin-x86_64.tar.gz) | macOS Intel |
+| [ctron-0.0.1-linux-x86_64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-linux-x86_64.tar.gz) | Linux x86_64 |
+| [ctron-0.0.1-linux-arm64.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-linux-arm64.tar.gz) | Linux arm64 |
+| [ctron-0.0.1-windows-x86_64.zip](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-windows-x86_64.zip) | Windows x86_64(β) |
+| [ctron-0.0.1-src.tar.gz](https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-src.tar.gz) | 源码线(附预发射 C,cc-only) |
+| [SHA256SUMS](https://github.com/ZturnLibs/Ctron/releases/latest/download/SHA256SUMS) | 六个发布件的 SHA-256 校验单 |
+| [install.sh](https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh) | 一键安装脚本 |
 
 预编译包布局:`ctron/bin/`(`ctc` 驱动 + `ctron-cc` / `ctron-chk` / `ctron-emit` 三个原生二进制)、`ctron/lib/ctron/std/`(标准库源码)、`ctron/share/doc/`(README 与 examples)、`ctron/VERSION`(版本 + git-sha)。
 
 ## 手动安装
 
 ```bash
-curl -fsSLO https://github.com/Zturn/Ctron/releases/latest/download/SHA256SUMS
-curl -fsSLO https://github.com/Zturn/Ctron/releases/latest/download/ctron-0.0.1-darwin-arm64.tar.gz
+curl -fsSLO https://github.com/ZturnLibs/Ctron/releases/latest/download/SHA256SUMS
+curl -fsSLO https://github.com/ZturnLibs/Ctron/releases/latest/download/ctron-0.0.1-darwin-arm64.tar.gz
 shasum -a 256 -c SHA256SUMS | grep OK
 tar xzf ctron-0.0.1-darwin-arm64.tar.gz
 export PATH="$PWD/ctron/bin:$PATH"      # 写入 shell 配置

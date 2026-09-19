@@ -7,11 +7,11 @@ From install to your first native executable in 10-15 minutes. `ctc` is the tool
 **One-liner (macOS / Linux)** — detects platform and architecture, downloads the matching tarball, verifies it against `SHA256SUMS`, and extracts to `${CTRON_INSTALL_DIR:-$HOME/.ctron}`, printing a PATH hint at the end:
 
 ```bash
-curl -fsSL https://github.com/Zturn/Ctron/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
 export PATH="$HOME/.ctron/ctron/bin:$PATH"   # add to your shell config as instructed
 ```
 
-**Manual** — grab `ctron-<version>-<platform>.tar.gz` from [Releases](https://github.com/Zturn/Ctron/releases) and put its `ctron/bin` directory on your `PATH` (see the asset matrix under [Download](download.md)).
+**Manual** — grab `ctron-<version>-<platform>.tar.gz` from [Releases](https://github.com/ZturnLibs/Ctron/releases) and put its `ctron/bin` directory on your `PATH` (see the asset matrix under [Download](download.md)).
 
 **From source** — the source tarball ships the pre-emitted C (`prebuilt/*.c`), so building only needs a cc:
 

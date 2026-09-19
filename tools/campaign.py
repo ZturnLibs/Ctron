@@ -3,7 +3,7 @@
 import subprocess, sys, re, os
 from pathlib import Path
 
-ROOT = Path("/Users/zyj/Zturn/Ctron")
+ROOT = Path("/Users/zyj/ZturnLibs/Ctron")
 CT = ROOT / "compiler-rust/target/debug/ctron"
 TESTS = ROOT / "tests"
 TMP = Path("/tmp/ctron_campaign")

@@ -1,7 +1,7 @@
 site_name: Ctron
-site_url: https://zturn.github.io/Ctron/
-repo_url: https://github.com/Zturn/Ctron
-repo_name: Zturn/Ctron
+site_url: https://zturnlibs.github.io/Ctron/
+repo_url: https://github.com/ZturnLibs/Ctron
+repo_name: ZturnLibs/Ctron
 theme:
   name: material
   language: en

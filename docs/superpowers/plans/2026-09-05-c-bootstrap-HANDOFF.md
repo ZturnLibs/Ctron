@@ -4,7 +4,7 @@
 > `docs/superpowers/plans/2026-09-05-c-bootstrap.md`(里程碑全史)与 `git log --oneline -25`。
 
 ## 0. 仓库与命令
-- 仓库根:`/Users/zyj/Zturn/Ctron`,分支:`discuss-c-implementation`
+- 仓库根:`/Users/zyj/ZturnLibs/Ctron`,分支:`discuss-c-implementation`
 - 构建/验收:`cd compiler-c && make test`(约 10 秒;208 diff cases + 若干 suite)
 - ASan:`cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc -o build/asan/suite_diff tests/suite_diff.c src/*.c && ./build/asan/suite_diff ../selfhosted`
 - 直接跑 Ctron 模块:`cd compiler-c && ./build/ctronc run ../selfhosted/<mod>.ct`

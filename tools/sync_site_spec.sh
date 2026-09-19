@@ -12,8 +12,8 @@ FM='<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workf
 # 改写为 GitHub 绝对链接。逐链接白名单:源新增外指链接时 strict 构建会拦下,届时在此补一行。
 rewrite_repo_links() {
     sed \
-        -e 's#](\.\./\.\./tests/#](https://github.com/Zturn/Ctron/blob/main/tests/#g' \
-        -e 's#](\.\./superpowers/specs/#](https://github.com/Zturn/Ctron/blob/main/docs/superpowers/specs/#g'
+        -e 's#](\.\./\.\./tests/#](https://github.com/ZturnLibs/Ctron/blob/main/tests/#g' \
+        -e 's#](\.\./superpowers/specs/#](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/#g'
 }
 
 if [ "${1:-}" = "--check" ]; then
