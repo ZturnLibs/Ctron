@@ -1,0 +1,14 @@
+// tests/gui/s10_when —— M1-a:when 条件渲染(when 只包叶子;cond = I32 0/1 绑定)
+view Demo {
+  <vbox class="root">
+    <label>count: {count}</label>
+    <button class="btn" on:click={toggle}>toggle</button>
+    <when cond={show}>
+      <label class="detail">detail visible</label>
+      <button class="btn2" on:click={inc}>+1</button>
+    </when>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style btn { bg: "#2563eb" }
+style btn2 { bg: "#2563eb" }

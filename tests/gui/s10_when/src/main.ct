@@ -1,0 +1,826 @@
+// tests/gui/s10_when —— GUI 泳道 M1-a:when 条件渲染(计划 M1-a;规范 §6.1/§13)
+// 语法:<when cond={flag}> leaf* </when>(when 只包叶子;cond = 符号名,I32 0/1 真值)。
+// 实现:parse_view 子元素循环分派 when/leaf;when 子叶子平铺进既有平行表,
+// cond 名入 cond_nm 表(el 对齐),绑定解析后 cond_ix;draw_frame 跳过隐藏叶子
+// (不产命令);事件/命中天然正确——隐藏按钮无 RECT 命令,几何命中不命中,
+// 后续元素几何自动回流(命令缓冲回填红利)。
+// headless 断言:toggle 翻转 show → 命令数增减、旧坐标点击不命中(回流负例)、
+// when 内按钮事件可达、count 跨 when 翻转保留。
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32, wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_x100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_y100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_h100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_len(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_byte(i: I32, j: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_poll_event() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_x() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_y() -> I32
+
+// ==================== 迷你词法(同步自 gui_counter;阶梯修复时随 PR 手动同步) ====================
+
+fn ws(src: Str, cur: Atomic[I32]) -> I32 {
+    var n: I32 = src.len
+    while cur.load() < n {
+        var b: I32 = byte_at(src, cur.load())
+        if b == 47 {
+            if cur.load() + 1 < n {
+                if byte_at(src, cur.load() + 1) == 47 {
+                    cur.store(cur.load() + 2)
+                    while cur.load() < n {
+                        if byte_at(src, cur.load()) == 10 {
+                            break
+                        }
+                        cur.store(cur.load() + 1)
+                    }
+                    continue
+                }
+            }
+        }
+        if b == 32 {
+            cur.store(cur.load() + 1)
+        } else {
+            if b == 10 {
+                cur.store(cur.load() + 1)
+            } else {
+                if b == 13 {
+                    cur.store(cur.load() + 1)
+                } else {
+                    if b == 9 {
+                        cur.store(cur.load() + 1)
+                    } else {
+                        return 0
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn word(src: Str, cur: Atomic[I32]) -> Str {
+    ws(src, cur)
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        var al: Bool = b >= 65 && b <= 90
+        var low: Bool = b >= 97 && b <= 122
+        var dg: Bool = b >= 48 && b <= 57
+        if al {
+            i += 1
+        } else {
+            if low {
+                i += 1
+            } else {
+                if b == 95 {
+                    i += 1
+                } else {
+                    if b == 45 {
+                        i += 1
+                    } else {
+                        if dg {
+                            i += 1
+                        } else {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cur.store(i)
+    if i > start {
+        return byte_slice(src, start, i)
+    }
+    panic("s10: 期待标识符 @byte " + cur.load().to_string())
+    return ""
+}
+
+fn lit(src: Str, cur: Atomic[I32], c: I32) -> I32 {
+    ws(src, cur)
+    if byte_at(src, cur.load()) != c {
+        panic("s10: 期待字符码 " + c.to_string() + " @byte " + cur.load().to_string())
+    }
+    cur.store(cur.load() + 1)
+    return 0
+}
+
+fn str_lit(src: Str, cur: Atomic[I32]) -> Str {
+    lit(src, cur, 34)
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == 34 {
+            break
+        }
+        i += 1
+    }
+    cur.store(i + 1)
+    return byte_slice(src, start, i)
+}
+
+// 到 stop 字节为止(右开),首尾去空白;游标停在 stop
+fn span_until(src: Str, cur: Atomic[I32], stop: I32) -> Str {
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == stop {
+            break
+        }
+        i += 1
+    }
+    var e: I32 = i
+    while start < e {
+        var c0: I32 = byte_at(src, start)
+        if c0 == 32 {
+            start += 1
+        } else {
+            if c0 == 10 {
+                start += 1
+            } else {
+                if c0 == 9 {
+                    start += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    while e > start {
+        var c1: I32 = byte_at(src, e - 1)
+        if c1 == 32 {
+            e -= 1
+        } else {
+            if c1 == 10 {
+                e -= 1
+            } else {
+                if c1 == 9 {
+                    e -= 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    cur.store(i)
+    if e > start {
+        return byte_slice(src, start, e)
+    }
+    return ""
+}
+
+// ==================== 颜色 ====================
+
+fn hex1(b: I32) -> I32 {
+    if b >= 48 {
+        if b <= 57 {
+            return b - 48
+        }
+    }
+    if b >= 97 {
+        if b <= 102 {
+            return b - 87
+        }
+    }
+    if b >= 65 {
+        if b <= 70 {
+            return b - 55
+        }
+    }
+    panic("s10: 非法十六进制")
+    return 0
+}
+
+fn parse_color(v: Str) -> I32 {
+    if byte_at(v, 0) == 35 {
+        if v.len != 7 {
+            panic("s10: 颜色须 #RRGGBB,得 " + v)
+        }
+        var r: I32 = hex1(byte_at(v, 1)) * 16 + hex1(byte_at(v, 2))
+        var g: I32 = hex1(byte_at(v, 3)) * 16 + hex1(byte_at(v, 4))
+        var b: I32 = hex1(byte_at(v, 5)) * 16 + hex1(byte_at(v, 6))
+        return r * 65536 + g * 256 + b
+    }
+    panic("s10: 未知令牌 " + v)
+    return 0
+}
+
+fn s2i(s: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        v = v * 10 + (byte_at(s, i) - 48)
+        i += 1
+    }
+    return v
+}
+
+// ==================== 解析(M1-a 面:view + vbox/hbox + label/button + when +
+// class + on:事件 + 叶子文本绑定 + style;when 只包叶子) ====================
+
+// 属性:class="..." 与 on:名={handler};返回 class 值
+fn attrs(src: Str, cur: Atomic[I32], el: I32, ev_el: List[I32],
+         ev_name: List[Str], ev_fn: List[Str]) -> Str {
+    var out: Str = ""
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 62 {
+            break
+        }
+        var an: Str = word(src, cur)
+        if an == "on" {
+            lit(src, cur, 58)
+            var evn: Str = word(src, cur)
+            lit(src, cur, 61)
+            lit(src, cur, 123)
+            var fnn: Str = word(src, cur)
+            lit(src, cur, 125)
+            ev_el.push(el)
+            ev_name.push(evn)
+            ev_fn.push(fnn)
+        } else {
+            lit(src, cur, 61)
+            var av: Str = str_lit(src, cur)
+            if an == "class" {
+                out = av
+            }
+        }
+    }
+    return out
+}
+
+// 叶子文本:前缀字面量 + 至多一个 {ident} + 后缀字面量
+fn leaf_text(src: Str, cur: Atomic[I32], pre: List[Str], bid: List[Str],
+             post: List[Str]) -> I32 {
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if b == 123 {
+            break
+        }
+        if b == 60 {
+            break
+        }
+        i += 1
+    }
+    var e: I32 = i
+    var has_bind: Bool = false
+    if i < n {
+        if byte_at(src, i) == 123 {
+            has_bind = true
+        }
+    }
+    while start < e {
+        var c0: I32 = byte_at(src, start)
+        if c0 == 32 {
+            start += 1
+        } else {
+            if c0 == 10 {
+                start += 1
+            } else {
+                if c0 == 9 {
+                    start += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    if !has_bind {
+        while e > start {
+            var c1: I32 = byte_at(src, e - 1)
+            if c1 == 32 {
+                e -= 1
+            } else {
+                if c1 == 10 {
+                    e -= 1
+                } else {
+                    if c1 == 9 {
+                        e -= 1
+                    } else {
+                        break
+                    }
+                }
+            }
+        }
+    }
+    var p0: Str = ""
+    if e > start {
+        p0 = byte_slice(src, start, e)
+    }
+    cur.store(i)
+    var b: Str = ""
+    var p1: Str = ""
+    if has_bind {
+        cur.store(cur.load() + 1)
+        b = word(src, cur)
+        lit(src, cur, 125)
+        p1 = span_until(src, cur, 60)
+    }
+    pre.push(p0)
+    bid.push(b)
+    post.push(p1)
+    return 0
+}
+
+// 叶子(label/button;tag 已读)
+fn parse_leaf_tag(tag: Str, src: Str, cur: Atomic[I32], el: I32, tags: List[Str], cls: List[Str],
+                  pre: List[Str], bid: List[Str], post: List[Str],
+                  ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    if tag != "label" {
+        if tag != "button" {
+            panic("s10: 子元素仅 label/button,得 " + tag)
+        }
+    }
+    var c: Str = attrs(src, cur, el, ev_el, ev_name, ev_fn)
+    lit(src, cur, 62)
+    if byte_at(src, cur.load()) == 60 {
+        if byte_at(src, cur.load() + 1) != 47 {
+            panic("s10: 限深 1")
+        }
+    }
+    leaf_text(src, cur, pre, bid, post)
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    if et != tag {
+        panic("s10: 闭合标签不匹配 " + et)
+    }
+    lit(src, cur, 62)
+    println("  el " + tag + " cls=" + c)
+    tags.push(tag)
+    cls.push(c)
+    return 0
+}
+
+// when 条件块(M1-a):已读 '<' "when";cond={name};子叶子平铺,el 编号连续;
+// 返回更新后的 el。cond 名记入 cond_nm(与 tags 对齐)。
+fn parse_when(src: Str, cur: Atomic[I32], el: I32, cond_nm: List[Str], tags: List[Str],
+              cls: List[Str], pre: List[Str], bid: List[Str], post: List[Str],
+              ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    ws(src, cur)
+    var an: Str = word(src, cur)
+    if an != "cond" {
+        panic("s10: when 仅支持 cond,得 " + an)
+    }
+    lit(src, cur, 61)
+    lit(src, cur, 123)
+    var cnm: Str = word(src, cur)
+    lit(src, cur, 125)
+    ws(src, cur)
+    lit(src, cur, 62)
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 60 {
+            if byte_at(src, cur.load() + 1) == 47 {
+                break
+            }
+        }
+        lit(src, cur, 60)
+        var tg: Str = word(src, cur)
+        parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+        cond_nm.push(cnm)
+        println("  when cond=" + cnm)
+        el += 1
+    }
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    if et != "when" {
+        panic("s10: when 闭合标签不匹配 " + et)
+    }
+    lit(src, cur, 62)
+    return el
+}
+
+fn parse_view(src: Str, cur: Atomic[I32], tags: List[Str], cls: List[Str],
+              pre: List[Str], bid: List[Str], post: List[Str], cond_nm: List[Str],
+              ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    var name: Str = word(src, cur)
+    println("view " + name)
+    ws(src, cur)
+    lit(src, cur, 123)
+    ws(src, cur)
+    lit(src, cur, 60)
+    var tag: Str = word(src, cur)
+    if tag != "vbox" {
+        if tag != "hbox" {
+            panic("s10: 根容器仅 vbox/hbox,得 " + tag)
+        }
+    }
+    var rootcls: Str = attrs(src, cur, 0, ev_el, ev_name, ev_fn)
+    lit(src, cur, 62)
+    println("  root " + tag + " cls=" + rootcls)
+    tags.push(tag)
+    cls.push(rootcls)
+    pre.push("")
+    bid.push("")
+    post.push("")
+    cond_nm.push("")
+    var el: I32 = 1
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 60 {
+            if byte_at(src, cur.load() + 1) == 47 {
+                break
+            }
+        }
+        lit(src, cur, 60)
+        var tg: Str = word(src, cur)
+        if tg == "when" {
+            el = parse_when(src, cur, el, cond_nm, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+        } else {
+            parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+            cond_nm.push("")
+            el += 1
+        }
+    }
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    lit(src, cur, 62)
+    ws(src, cur)
+    lit(src, cur, 125)
+    return 0
+}
+
+fn parse_style(src: Str, cur: Atomic[I32], sk: List[Str], sv: List[Str]) -> I32 {
+    var name: Str = word(src, cur)
+    var line: Str = "style " + name
+    ws(src, cur)
+    lit(src, cur, 123)
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 125 {
+            break
+        }
+        var p: Str = word(src, cur)
+        lit(src, cur, 58)
+        ws(src, cur)
+        var v: Str = ""
+        if byte_at(src, cur.load()) == 34 {
+            v = str_lit(src, cur)
+        } else {
+            v = word(src, cur)
+        }
+        if p == "bg" {
+            var packed: I32 = parse_color(v)
+            if packed < 0 {
+                panic("s10: 颜色解析失败")
+            }
+        }
+        line = line + " " + p + "=" + v
+        sk.push(name + "." + p)
+        sv.push(v)
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 59 {
+            lit(src, cur, 59)
+        }
+    }
+    lit(src, cur, 125)
+    println(line)
+    return 0
+}
+
+fn parse_all(src: Str, cur: Atomic[I32], tags: List[Str], cls: List[Str],
+             pre: List[Str], bid: List[Str], post: List[Str], cond_nm: List[Str],
+             ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str],
+             sk: List[Str], sv: List[Str]) -> I32 {
+    var n: I32 = src.len
+    while cur.load() < n {
+        ws(src, cur)
+        if cur.load() >= n {
+            break
+        }
+        var w: Str = word(src, cur)
+        if w == "view" {
+            parse_view(src, cur, tags, cls, pre, bid, post, cond_nm, ev_el, ev_name, ev_fn)
+        } else {
+            if w == "style" {
+                parse_style(src, cur, sk, sv)
+            } else {
+                panic("s10: 顶层仅 view/style,得 " + w)
+            }
+        }
+    }
+    return 0
+}
+
+fn style_get(sk: List[Str], sv: List[Str], key: Str, dflt: Str) -> Str {
+    var i: I32 = 0
+    while i < sk.len {
+        if sk[i] == key {
+            return sv[i]
+        }
+        i += 1
+    }
+    return dflt
+}
+
+// ==================== 符号表与 handler 分发 ====================
+
+fn sym_find(names: List[Str], name: Str) -> I32 {
+    var i: I32 = 0
+    while i < names.len {
+        if names[i] == name {
+            return i
+        }
+        i += 1
+    }
+    panic("s10: 未知符号 " + name)
+    return 0
+}
+
+// handler 分发:syms[0]=count,syms[1]=show(M1-a 条件绑定)
+fn dispatch(name: Str, syms: List[I32]) -> I32 {
+    if name == "inc" {
+        syms[0] = syms[0] + 1
+        return 0
+    }
+    if name == "toggle" {
+        if syms[1] == 1 {
+            syms[1] = 0
+        } else {
+            syms[1] = 1
+        }
+        return 0
+    }
+    panic("s10: 未知 handler " + name)
+    return 0
+}
+
+// ==================== 布局与命中(几何来自布局回填;隐藏叶子不产命令) ====================
+
+// 一帧布局(绑定求值 + 条件过滤 → Clay 重放),返回命令数
+fn draw_frame(tags: List[Str], cls: List[Str], pre: List[Str], bid: List[Str],
+              post: List[Str], bid_sym: List[I32], cond_ix: List[I32], syms: List[I32],
+              sk: List[Str], sv: List[Str]) -> I32 {
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(1, s2i(style_get(sk, sv, "root.gap", "8")),
+            s2i(style_get(sk, sv, "root.padding", "16")),
+            s2i(style_get(sk, sv, "root.padding", "16")),
+            0, 0, 1, 0, 1, 0, 0)
+    var k: I32 = 0
+    while k < tags.len {
+        if k >= 1 {
+            var vis: I32 = 1
+            if cond_ix[k] >= 0 {
+                if syms[cond_ix[k]] == 0 {
+                    vis = 0
+                }
+            }
+            if vis == 1 {
+                gui_open()
+                var bgp: I32 = 0
+                if tags[k] == "button" {
+                    var bgv: Str = style_get(sk, sv, cls[k] + ".bg", "")
+                    if bgv != "" {
+                        bgp = parse_color(bgv)
+                    }
+                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, bgp)
+                } else {
+                    gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0)
+                }
+                var txt: Str = pre[k]
+                if bid_sym[k] >= 0 {
+                    var v: I32 = syms[bid_sym[k]]
+                    txt = txt + v.to_string() + post[k]
+                }
+                gui_text(txt, 20, 230, 230, 235, 255)
+                gui_close()
+            }
+        }
+        k += 1
+    }
+    gui_close()
+    return gui_end_layout()
+}
+
+// 收集按钮矩形命令索引(按钮是唯一带 bg 的元素 → RECT 命令;顺序 = 可见按钮声明序)
+fn collect_rects(cmds: I32, out: List[I32]) -> I32 {
+    var i: I32 = 0
+    while i < cmds {
+        if gui_cmd_type(i) == 2 {
+            out.push(i)
+        }
+        i += 1
+    }
+    return 0
+}
+
+// 点击点(px,py)是否命中第 j 个按钮矩形(几何 ×100 整数域比较)
+fn hit_rect(j: I32, rects: List[I32], px: I32, py: I32) -> I32 {
+    var ci: I32 = rects[j]
+    var px100: I32 = px * 100
+    var py100: I32 = py * 100
+    if px100 >= gui_cmd_x100(ci) && px100 < gui_cmd_x100(ci) + gui_cmd_w100(ci) {
+        if py100 >= gui_cmd_y100(ci) && py100 < gui_cmd_y100(ci) + gui_cmd_h100(ci) {
+            return 1
+        }
+    }
+    return 0
+}
+
+// 处理一次点击:几何命中 → 第 j 个 RECT 对应第 j 个【可见】button 叶子
+// → 事件表分发;返回是否命中。隐藏按钮无 RECT,天然不命中。
+fn handle_click(tags: List[Str], cond_ix: List[I32], ev_el: List[I32], ev_name: List[Str],
+                ev_fn: List[Str], rects: List[I32], px: I32, py: I32, syms: List[I32]) -> I32 {
+    var j: I32 = 0
+    while j < rects.len {
+        if hit_rect(j, rects, px, py) == 1 {
+            var leaf: I32 = -1
+            var k: I32 = 1
+            var seen: I32 = 0
+            while k < tags.len {
+                if tags[k] == "button" {
+                    var vis: I32 = 1
+                    if cond_ix[k] >= 0 {
+                        if syms[cond_ix[k]] == 0 {
+                            vis = 0
+                        }
+                    }
+                    if vis == 1 {
+                        if seen == j {
+                            leaf = k
+                        }
+                        seen += 1
+                    }
+                }
+                k += 1
+            }
+            if leaf >= 0 {
+                var e: I32 = 0
+                while e < ev_el.len {
+                    if ev_el[e] == leaf {
+                        if ev_name[e] == "click" {
+                            dispatch(ev_fn[e], syms)
+                            return 1
+                        }
+                    }
+                    e += 1
+                }
+            }
+        }
+        j += 1
+    }
+    return 0
+}
+
+// 第 idx 个命令的文本逐字节断言
+fn assert_cmd_text(idx: I32, expect: Str) -> I32 {
+    chk(gui_cmd_text_len(idx), expect.len, "text len")
+    var j: I32 = 0
+    while j < expect.len {
+        chk(gui_cmd_text_byte(idx, j), byte_at(expect, j), "text byte")
+        j += 1
+    }
+    return 0
+}
+
+fn chk(a: I32, b: I32, tag: Str) -> I32 {
+    if a != b {
+        panic("s10 assert " + tag + ": " + a.to_string() + " != " + b.to_string())
+    }
+    return 0
+}
+
+// ==================== main:解析 → 条件绑定 → headless 交互脚本 ====================
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var cur = Atomic[I32](0)
+    var tags = List[Str]()
+    var cls = List[Str]()
+    var pre = List[Str]()
+    var bid = List[Str]()
+    var post = List[Str]()
+    var cond_nm = List[Str]()
+    var ev_el = List[I32]()
+    var ev_name = List[Str]()
+    var ev_fn = List[Str]()
+    var sk = List[Str]()
+    var sv = List[Str]()
+    parse_all(src, cur, tags, cls, pre, bid, post, cond_nm, ev_el, ev_name, ev_fn, sk, sv)
+
+    // model:syms[0]=count,syms[1]=show(条件绑定;I32 0/1 真值)
+    var sym_names = List[Str]()
+    var syms = List[I32]()
+    sym_names.push("count")
+    syms.push(0)
+    sym_names.push("show")
+    syms.push(1)
+    var bid_sym = List[I32]()
+    var cond_ix = List[I32]()
+    var k: I32 = 0
+    while k < tags.len {
+        if bid[k] == "" {
+            bid_sym.push(-1)
+        } else {
+            bid_sym.push(sym_find(sym_names, bid[k]))
+        }
+        if cond_nm[k] == "" {
+            cond_ix.push(-1)
+        } else {
+            cond_ix.push(sym_find(sym_names, cond_nm[k]))
+        }
+        k += 1
+    }
+
+    gui_clay_init(320, 200)
+
+    // 初始帧(show=1):label TEXT + btn-toggle RECT,TEXT + detail TEXT + btn-inc RECT,TEXT = 6
+    var rects = List[I32]()
+    var n: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, syms, sk, sv)
+    chk(n, 6, "cmds init")
+    collect_rects(n, rects)
+    chk(rects.len, 2, "rects init")
+    assert_cmd_text(3, "detail visible")
+
+    // 注入点从几何推导(rects[0]=btn-toggle,rects[1]=when 内 btn-inc)
+    var bx1: I32 = gui_cmd_x100(rects[0]) / 100 + 50
+    var by1: I32 = gui_cmd_y100(rects[0]) / 100 + 20
+    var ox: I32 = gui_cmd_x100(rects[1]) / 100 + 50
+    var oy: I32 = gui_cmd_y100(rects[1]) / 100 + 20
+
+    // 显示态:when 内按钮事件可达,count 0→1
+    gui_inject_click(ox, oy)
+    chk(gui_poll_event(), 2, "evt")
+    chk(handle_click(tags, cond_ix, ev_el, ev_name, ev_fn, rects, ox, oy, syms), 1, "hit inc")
+    chk(draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, syms, sk, sv), 6, "cmds shown")
+    assert_cmd_text(0, "count: 1")
+
+    // toggle → 隐藏:detail 与 btn-inc(when 内)消失,仅剩 label + btn-toggle = 3 命令
+    gui_inject_click(bx1, by1)
+    chk(gui_poll_event(), 2, "evt")
+    chk(handle_click(tags, cond_ix, ev_el, ev_name, ev_fn, rects, bx1, by1, syms), 1, "hit toggle")
+    chk(draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, syms, sk, sv), 3, "cmds hidden")
+    var r2 = List[I32]()
+    collect_rects(3, r2)
+    chk(r2.len, 1, "rects hidden")
+    // 回流负例:旧 btn-inc 坐标点击不命中(when 隐藏后该处无元素)
+    gui_inject_click(ox, oy)
+    chk(gui_poll_event(), 2, "evt")
+    chk(handle_click(tags, cond_ix, ev_el, ev_name, ev_fn, r2, ox, oy, syms), 0, "reflow no hit")
+
+    // toggle → 恢复:6 命令,count=1 跨 when 翻转保留
+    gui_inject_click(bx1, by1)
+    chk(gui_poll_event(), 2, "evt")
+    chk(handle_click(tags, cond_ix, ev_el, ev_name, ev_fn, r2, bx1, by1, syms), 1, "hit toggle back")
+    chk(draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, syms, sk, sv), 6, "cmds shown")
+    assert_cmd_text(3, "detail visible")
+    assert_cmd_text(0, "count: 1")
+
+    println("s10: when 条件渲染全绿(隐藏/回流负例/when 内事件/count 保留)")
+    return 0
+}
