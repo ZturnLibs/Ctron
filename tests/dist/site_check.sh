@@ -2,8 +2,9 @@
 # site_check.sh —— 全站本地验收(网站文档线 Task 5 Step 3;用法:sh tests/dist/site_check.sh,仓库内任意 cwd)
 #
 # 断言清单(退出码聚合:除 [5] 降级外,任一 FAIL → 退出 1):
-#   [1] en 树完整   —— mkdocs.yml nav 每个目标的无后缀件在 website/docs/ 下存在(i18n suffix 结构:en 无后缀/zh 带 .zh)
-#   [2] 待翻注记    —— en 占位页含「英文待翻」标记(现存占位:examples.md);
+#   [1] en 树完整   —— mkdocs.yml nav 每个目标的无后缀件在 website/docs/ 下存在(i18n suffix 结构:en 无后缀/zh 带 .zh;
+#                      nav 含 Language Spec 嵌套子节,解析不限缩进层)
+#   [2] 待翻注记    —— en 占位页含「英文待翻」标记(现存占位:examples.md + spec/ 同步 11 件,后者由 sync FM 注入);
 #                      反向:真英文页(index/getting-started/download)不得被占位覆盖
 #   [3] 下载页八资产 —— download.md/download.zh.md 对八资产名逐一 grep;en 页 latest/download 直链
 #                      唯一名恰为八;并与 release.yml 分发口径对照(四平台 + windows zip + src +
@@ -29,8 +30,8 @@ BLD=""
 cleanup() { [ -n "$BLD" ] && rm -rf "$BLD"; return 0; }
 trap cleanup EXIT
 
-echo "== [1] en 树完整(nav 六目标无后缀件) =="
-NAV=$(sed -n '/^nav:/,$p' "$WEB/mkdocs.yml" | sed -n 's/^  - .*:[[:space:]]*//p' | tr -d '"')
+echo "== [1] en 树完整(nav 全目标无后缀件:顶层 5 页 + spec 11 件) =="
+NAV=$(sed -n '/^nav:/,$p' "$WEB/mkdocs.yml" | sed -n 's/^[[:space:]]*- .*:[[:space:]]*//p' | tr -d '"')
 if [ -z "$NAV" ]; then
     bad "mkdocs.yml nav 解析为空"
 fi
@@ -39,7 +40,7 @@ for T in $NAV; do
     NAV_N=$((NAV_N + 1))
     if [ -f "$DOCS/$T" ]; then ok "docs/$T 存在(nav 目标)"; else bad "docs/$T 缺失(nav 断链)"; fi
 done
-if [ "$NAV_N" -eq 6 ]; then ok "nav 目标数 6/6"; else bad "nav 目标数 $NAV_N ≠ 6"; fi
+if [ "$NAV_N" -eq 16 ]; then ok "nav 目标数 16/16(顶层 5 + spec 11)"; else bad "nav 目标数 $NAV_N ≠ 16"; fi
 
 echo "== [2] 待翻注记 =="
 if grep -q '英文待翻' "$DOCS/examples.md"; then
@@ -47,6 +48,16 @@ if grep -q '英文待翻' "$DOCS/examples.md"; then
 else
     bad "examples.md 为 en 占位页但缺「英文待翻」注记"
 fi
+SPEC_N=0
+for S in "$DOCS"/spec/*.md; do
+    SPEC_N=$((SPEC_N + 1))
+    if grep -q '英文待翻' "$S"; then
+        ok "spec 同步件含「英文待翻」注记:$(basename "$S")"
+    else
+        bad "spec 同步件缺「英文待翻」注记:$(basename "$S")"
+    fi
+done
+if [ "$SPEC_N" -eq 11 ]; then ok "spec/ 同步件数 11/11 均查注记"; else bad "spec/ 同步件数 $SPEC_N ≠ 11"; fi
 for REAL in index.md getting-started.md download.md; do
     if grep -q '英文待翻' "$DOCS/$REAL"; then
         bad "$REAL 应为真英文页,却含占位注记(被占位覆盖?)"

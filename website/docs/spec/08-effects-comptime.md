@@ -1,4 +1,5 @@
 <!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
+<!-- 英文待翻:中文占位 -->
 # §8 效果系统与 comptime
 
 ## 8.1 能力对象(capabilities)——I/O 效果建模

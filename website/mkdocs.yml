@@ -30,7 +30,18 @@ plugins:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - Language Spec: spec/README.md
+  - Language Spec:
+      - Overview: spec/README.md
+      - 1 词法与语法: spec/01-lexical-grammar.md
+      - 2 名字与模块: spec/02-names-modules.md
+      - 3 类型系统: spec/03-types.md
+      - 4 表达式与控制流: spec/04-expressions.md
+      - 5 错误模型: spec/05-errors.md
+      - 6 内存模型: spec/06-memory.md
+      - 7 并发: spec/07-concurrency.md
+      - 8 效果系统与 comptime: spec/08-effects-comptime.md
+      - 9 档位与互操作: spec/09-profiles-ffi.md
+      - 10 诊断契约与符合性: spec/10-diagnostics-conformance.md
   - Std Reference: std/README.md
   - Examples: examples.md
   - Download: download.md

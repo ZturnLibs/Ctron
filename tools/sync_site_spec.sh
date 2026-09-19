@@ -5,7 +5,8 @@ set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SRC="$DIR/docs/spec"
 DST="$DIR/website/docs/spec"
-FM='<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->'
+FM='<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
+<!-- 英文待翻:中文占位 -->'
 
 # 站点仅发布 website/docs/;指回仓库内部(tests/、docs/superpowers/)的相对链接在站点上永远断链,
 # 改写为 GitHub 绝对链接。逐链接白名单:源新增外指链接时 strict 构建会拦下,届时在此补一行。

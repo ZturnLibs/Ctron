@@ -1,4 +1,5 @@
 <!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
+<!-- 英文待翻:中文占位 -->
 # Ctron 语言规范 v0.7
 
 状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](https://github.com/Zturn/Ctron/blob/main/tests/README.md) 为验收标准。
