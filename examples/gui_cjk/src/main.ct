@@ -1,0 +1,139 @@
+// examples/gui_cjk —— Ctron GUI 中文一等正式示例(蓝本:tests/gui/s9_window_cjk)
+// FreeType 中文纹理渲染 + 真实点击计数:标题纹理(静态)+ 计数纹理(变更时重渲)
+// + 圆角矩形按钮(真实点击命中)。直绘路径(不经 Clay;Clay TEXT→FreeType 集成随 M3)。
+// 双运行口径(设计:docs/superpowers/specs/2026-09-19-gui-examples-design.md):
+//   CTRON_GUI_HEADLESS=1 → 纯 CPU 光栅化冒烟(无 GL/窗口;字体缺失 skip,严格断言归 s8 夹具);
+//   缺省 → 真实窗口循环(交互验收:点蓝色按钮,中文计数增长)。
+
+#[repr(c)]
+struct Color { r: U8, g: U8, b: U8, a: U8 }
+
+#[repr(c)]
+struct Vector2 { x: F32, y: F32 }
+
+#[repr(c)]
+struct Rectangle { x: F32, y: F32, w: F32, h: F32 }
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn DrawRectangleRounded(rect: Rectangle, round: F32, seg: I32, color: Color) -> Void
+
+#[trusted]
+extern "c" fn IsMouseButtonPressed(btn: I32) -> Bool
+
+#[trusted]
+extern "c" fn GetMousePosition() -> Vector2
+
+// ft_shim(FreeType 文本 + 矩形)
+#[trusted]
+extern "c" fn ft_load_cjk(px: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_render(s: Str, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_tex_upload(id: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_tex_draw(id: I32, x: I32, y: I32) -> I32
+
+// headless 冒烟探针(示例副本增量)
+#[trusted]
+extern "c" fn ft_last_w() -> I32
+
+#[trusted]
+extern "c" fn ft_last_h() -> I32
+
+#[trusted]
+extern "c" fn ft_probe_nonzero() -> I32
+
+#[trusted]
+extern "c" fn gui_rect(x: I32, y: I32, w: I32, h: I32, rr: I32, r: I32, g: I32, b: I32) -> I32
+
+fn main() -> I32 {
+    var headless: Bool = env_get("CTRON_GUI_HEADLESS") != ""
+    if ft_load_cjk(24) != 0 {
+        if headless {
+            println("gui_cjk: 无可用 CJK 字体,headless 冒烟 skip(严格断言归 tests/gui/s8)")
+            return 0
+        }
+        println("gui_cjk: 无可用 CJK 字体")
+        return 1
+    }
+    if headless {
+        // 纯 CPU 光栅化冒烟:位图非空 + 宽高 sane(对齐 s8 口径)
+        ft_render("Ctron 中文窗口", 235, 235, 240)
+        if ft_last_w() <= 0 {
+            panic("gui_cjk: 渲染宽度异常")
+        }
+        if ft_last_h() <= 0 {
+            panic("gui_cjk: 渲染高度异常")
+        }
+        if ft_probe_nonzero() <= 0 {
+            panic("gui_cjk: 位图全空")
+        }
+        println("gui_cjk: headless 冒烟全绿(w=" + ft_last_w().to_string()
+                + " h=" + ft_last_h().to_string()
+                + " 非零alpha像素=" + ft_probe_nonzero().to_string() + ")")
+        return 0
+    }
+    // 窗口口径:标题纹理(id 0,静态)栅格化在开窗前(纯 CPU),上传必须在 InitWindow 后(GL 上下文)
+    ft_render("Ctron 中文窗口", 235, 235, 240)
+    InitWindow(320, 200, "ctron gui 中文")
+    SetTargetFPS(60)
+    ft_tex_upload(0)
+    var count: I32 = 0
+    var dirty: Bool = true
+    while !WindowShouldClose() {
+        // 真实点击:按钮区 (16,64)-(116,104)(直绘路径坐标自持,无布局回填)
+        if IsMouseButtonPressed(0) {
+            var p: Vector2 = GetMousePosition()
+            if p.x >= 16.0 {
+                if p.x < 116.0 {
+                    if p.y >= 64.0 {
+                        if p.y < 104.0 {
+                            count += 1
+                            dirty = true
+                        }
+                    }
+                }
+            }
+        }
+        if dirty {
+            var txt: Str = "count: "
+            txt = txt + count.to_string()
+            ft_render(txt, 235, 235, 240)
+            ft_tex_upload(1)
+            dirty = false
+        }
+        BeginDrawing()
+        gui_clear(24, 24, 32, 255)
+        ft_tex_draw(0, 16, 16)
+        gui_rect(16, 64, 100, 40, 15, 37, 99, 235)
+        ft_tex_draw(1, 16, 112)
+        EndDrawing()
+    }
+    CloseWindow()
+    println("gui_cjk: 窗口退出 count = " + count.to_string())
+    return 0
+}
