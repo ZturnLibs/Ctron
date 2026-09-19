@@ -7,9 +7,19 @@ Clay 布局 → 命令缓冲 flush 绘制。两个按钮(+1 / clear)演示多元
 ## 运行
 
 ```sh
-sh run.sh          # 构建 + headless 断言(无显示依赖,全自动)
+sh run.sh          # 构建 + headless 断言 + 快照恢复往返证明(无显示依赖,全自动)
 sh run.sh --run    # 追加启动真实窗口,真实点击交互
+sh run.sh --hot    # 热重载环:编辑 app.ctml 保存 → 自动重编译+重启,计数经快照恢复
 ```
+
+## 热重载(W4 原生口径,裁决 1A)
+
+`--hot` 演示"保存即重编译+重启,model 经快照恢复":应用启动时自
+`CTRON_GUI_STATE=count=N` 环境恢复 model,退出前经 stdout 回传快照;`--hot` 环监听
+`app.ctml` 变更 → 杀进程 → 重编译 → 注入上次快照重启。计数跨重载不丢。
+状态走环境握手而非 argv——`run <file>` 是编译器自举锚约定(会顶替 read_file 锚)。
+解释口径热重载(状态树原址替换,不重启)随解释器 extern 直调桥落地(登记 W4 余项;
+解释器现对 extern 按 §9.6 明确拒绝)。
 
 ## 文件导览
 

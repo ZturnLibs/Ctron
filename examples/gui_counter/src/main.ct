@@ -697,6 +697,29 @@ fn chk(a: I32, b: I32, tag: Str) -> I32 {
     return 0
 }
 
+// ==================== W4 原生口径快照(裁决 1A;§11.5)====================
+// 状态自环境握手注入(CTRON_GUI_STATE=count=N);退出前 println 回传快照,
+// run.sh --hot 捕获回传并在重编译+重启后注入——状态跨重启恢复。
+// 为什么走环境不走 argv:argv 的 `run <file>` 是编译器自举锚约定(会顶替 read_file 锚)。
+fn state_restore(syms: List[I32]) -> I32 {
+    var st: Str = env_get("CTRON_GUI_STATE")
+    var eq: I32 = -1
+    var i: I32 = 0
+    while i < st.len {
+        if byte_at(st, i) == 61 {
+            eq = i
+            i = st.len
+        } else {
+            i += 1
+        }
+    }
+    if eq > 0 {
+        syms[0] = s2i(byte_slice(st, eq + 1, st.len))
+        return syms[0]
+    }
+    return -1
+}
+
 // ==================== main:解析 → 双口径 ====================
 
 fn main() -> I32 {
@@ -729,6 +752,7 @@ fn main() -> I32 {
         }
         k += 1
     }
+    var restored: I32 = state_restore(syms)
 
     gui_clay_init(320, 200)
     var rects = List[I32]()
@@ -739,6 +763,12 @@ fn main() -> I32 {
 
     if env_get("CTRON_GUI_HEADLESS") != "" {
         // ---- headless:注入点击脚本,断言全走命令缓冲读回 ----
+        if restored >= 0 {
+            // W4 原生口径往返证明:注入 N → 首帧即 count:N → 回传快照
+            assert_text("count: " + restored.to_string())
+            println("CTRON_GUI_STATE count=" + syms[0].to_string())
+            return 0
+        }
         // 注入点从布局回填几何推导(不写死坐标;+50/+20 = 100×40 按钮半宽半高)
         var bx: I32 = gui_cmd_x100(rects[0]) / 100 + 50
         var by1: I32 = gui_cmd_y100(rects[0]) / 100 + 20
@@ -783,5 +813,6 @@ fn main() -> I32 {
     }
     CloseWindow()
     println("gui_counter: 窗口退出 count = " + syms[0].to_string())
+    println("CTRON_GUI_STATE count=" + syms[0].to_string())
     return 0
 }

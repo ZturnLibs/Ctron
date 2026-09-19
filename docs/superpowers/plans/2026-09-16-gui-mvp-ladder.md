@@ -99,7 +99,14 @@
   E8110/E8120/E8140/E8160–E8193 需 M1 面(each/when/类型化属性/组件/sizing)先落地,
   现行语法面无可检对象;语料路径以 tests/gui/e8_corpus/ 为准(规范 §11.7 的
   tests/09_gui/ 为早期口径)。
-- W4 热重载(解释口径原址替换)+ 原生口径 snapshot/restore(裁决 1A);
+- W4 热重载(解释口径原址替换)+ 原生口径 snapshot/restore(裁决 1A)。
+  **【2026-09-19 原生口径切片交付(demo 级)】**examples/gui_counter 落
+  snapshot/restore:状态经 `CTRON_GUI_STATE` 环境握手注入(不走 argv——`run <file>`
+  是自举锚约定),退出前 stdout 回传快照;run.sh `--hot` = watch(app.ctml mtime)
+  → 杀进程 → 重编译 → 注入快照重启。headless 自动证明往返(count=7 → 首帧恢复
+  逐字节断言 → 回传 7)。**余项 = 解释口径原址替换**,其前置 = 解释器 extern 直调桥
+  ——实证现状:解释器对 extern 明确拒绝(eval_call.ct:282,§9.6 口径),该桥为
+  编译器核心面改动,维持 W4 主登记。
 - W5 CI:命令缓冲快照回归进 make test;Linux xvfb 渲染冒烟。
   **【2026-09-19 部分销账】**聚合门禁实证为 ci.sh(非 make test):GUI 阶梯挂载为
   ci.sh [8/8](步骤号 7→8 全量顺延,沿 toolchain-dist 先例)——macOS 直接跑;
