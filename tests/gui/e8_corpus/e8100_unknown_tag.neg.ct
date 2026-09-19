@@ -1,0 +1,7 @@
+// gui expect: E8100 —— 未声明标签(S5 限深面外;W3 检查面接入后转红)
+view P {
+  <vbox class="root">
+    <frobnicator>x</frobnicator>
+  </vbox>
+}
+style root { direction: column }

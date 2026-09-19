@@ -1,0 +1,7 @@
+// gui expect: E8150 —— class 引用了不存在的样式
+view P {
+  <vbox class="root">
+    <button class="ghost">x</button>
+  </vbox>
+}
+style root { direction: column }

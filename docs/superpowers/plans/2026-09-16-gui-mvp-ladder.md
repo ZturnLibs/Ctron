@@ -154,6 +154,24 @@ tests/gui/{s1_smoke/, s2_ab/, s3_clay/, s4_events/, s5_golden/, s6_demo/, run.sh
   规避;建议 lex 三线对拍增加"注释含花括号"语料;
 - dump 口径(--dump-gui)移交 W2(消费 W2 的 IR,避免旗标管道过早扩面)。
 
+## 泳道协作与 W2 状态(2026-09-18)
+
+**协作协议**:GUI dump 修复(gui_parse.ct 叶游标)由并行会话持牌;本会话推进零冲突项
+(vendor M3-prep / E8xxx 语料 / 验收基建),经 `tests/gui/peer_status.sh` 定期检查,
+对端完成后集成联测(w2_fold 黄金 + 全阶梯)。
+
+**W2 状态**:dump 管道已落库(f493ead host 路径 + bf653f3 原生样板),
+叶游标 bug 仍在(症状:gui view 名吃 `{`、cls 带引号、叶入口 OOB)。
+**已定案的修复设计**(eat 助手统一推进、终止符显式消费、字节码校验 `{`
+——`"{"` 字面量不可词法化),探针基础设施:/tmp/w2probe/(leaf_eat.ct 可复跑)。
+
+**新发现(转交发射泳道)**:`eat` 函数(Army 参数 + Str 返回)的 C 定义未被发射
+(17 处调用 / 0 处定义,gui_parse 在树时 native.sh 必败;移除后即时恢复)——
+发射器 fn 枚举对某类 fn 签名存在遗漏,复现:HEAD + gui_parse(含 eat)→ native.sh。
+
+**本轮交付**:vendor/gui/freetype 2.13.3(12MB,FTL 许可,configure+make 验证通过);
+tests/gui/e8_corpus/(W3 gated 负例语料 ×3);tests/gui/peer_status.sh。
+
 ### S0 状态(2026-09-17 销账)
 
 FFI 泳道已自行落库并扩张到位:**tests/ffi 20 过 / 0 败**(11 → 20 夹具:新增

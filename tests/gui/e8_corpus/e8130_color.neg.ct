@@ -1,0 +1,8 @@
+// gui expect: E8130 —— 颜色串非 #RRGGBB[AA]
+view P {
+  <vbox class="root">
+    <button class="b">x</button>
+  </vbox>
+}
+style root { direction: column }
+style b { bg: "#ff00ff00xx" }
