@@ -1,0 +1,1110 @@
+// examples/todo —— 规范 §10 Todo 演绎的当前能力版(M1-e;上游 specs/2026-09-16-gui-ctml-design.md §10)
+// 能力面:input 受控输入(bind Str)+ each 列表渲染 + when 空态 + on:click + 标量绑定
+// 差集(登记):checkbox(以 del 末项替代)、逐项事件句柄(M1-b2)、IME 组词(M3)、
+//   when/each 内嵌按钮(todo 的增删按钮在 when/each 外,顶层元素)
+// 双口径:默认 headless 全脚本断言;--run 真实窗口(键入 + 点击)
+// 注:main 首个 read_file 字面量为发射锚(默认烘焙 "app.ctml",run.sh 已 cd 本目录);
+//    argv 的 run <file> 是自举锚约定,勿作他用。注释内不放花括号(发射词法)。
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32, wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_x100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_y100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_h100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_len(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_byte(i: I32, j: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_char(ch: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_key(key: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_poll_event() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_key() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_x() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_y() -> I32
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn ctron_gui_flush() -> I32
+
+// ==================== 迷你词法(同步自 s12;阶梯修复时随 PR 手动同步) ====================
+
+fn ws(src: Str, cur: Atomic[I32]) -> I32 {
+    var n: I32 = src.len
+    while cur.load() < n {
+        var b: I32 = byte_at(src, cur.load())
+        if b == 47 {
+            if cur.load() + 1 < n {
+                if byte_at(src, cur.load() + 1) == 47 {
+                    cur.store(cur.load() + 2)
+                    while cur.load() < n {
+                        if byte_at(src, cur.load()) == 10 {
+                            break
+                        }
+                        cur.store(cur.load() + 1)
+                    }
+                    continue
+                }
+            }
+        }
+        if b == 32 {
+            cur.store(cur.load() + 1)
+        } else {
+            if b == 10 {
+                cur.store(cur.load() + 1)
+            } else {
+                if b == 13 {
+                    cur.store(cur.load() + 1)
+                } else {
+                    if b == 9 {
+                        cur.store(cur.load() + 1)
+                    } else {
+                        return 0
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn word(src: Str, cur: Atomic[I32]) -> Str {
+    ws(src, cur)
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        var al: Bool = b >= 65 && b <= 90
+        var low: Bool = b >= 97 && b <= 122
+        var dg: Bool = b >= 48 && b <= 57
+        if al {
+            i += 1
+        } else {
+            if low {
+                i += 1
+            } else {
+                if b == 95 {
+                    i += 1
+                } else {
+                    if b == 45 {
+                        i += 1
+                    } else {
+                        if dg {
+                            i += 1
+                        } else {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cur.store(i)
+    if i > start {
+        return byte_slice(src, start, i)
+    }
+    panic("todo: 期待标识符 @byte " + cur.load().to_string())
+    return ""
+}
+
+fn lit(src: Str, cur: Atomic[I32], c: I32) -> I32 {
+    ws(src, cur)
+    if byte_at(src, cur.load()) != c {
+        panic("todo: 期待字符码 " + c.to_string() + " @byte " + cur.load().to_string())
+    }
+    cur.store(cur.load() + 1)
+    return 0
+}
+
+fn str_lit(src: Str, cur: Atomic[I32]) -> Str {
+    lit(src, cur, 34)
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == 34 {
+            break
+        }
+        i += 1
+    }
+    cur.store(i + 1)
+    return byte_slice(src, start, i)
+}
+
+// 到 stop 字节为止(右开),首尾去空白;游标停在 stop
+fn span_until(src: Str, cur: Atomic[I32], stop: I32) -> Str {
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == stop {
+            break
+        }
+        i += 1
+    }
+    var e: I32 = i
+    while start < e {
+        var c0: I32 = byte_at(src, start)
+        if c0 == 32 {
+            start += 1
+        } else {
+            if c0 == 10 {
+                start += 1
+            } else {
+                if c0 == 9 {
+                    start += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    while e > start {
+        var c1: I32 = byte_at(src, e - 1)
+        if c1 == 32 {
+            e -= 1
+        } else {
+            if c1 == 10 {
+                e -= 1
+            } else {
+                if c1 == 9 {
+                    e -= 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    cur.store(i)
+    if e > start {
+        return byte_slice(src, start, e)
+    }
+    return ""
+}
+
+// ==================== 颜色 ====================
+
+fn hex1(b: I32) -> I32 {
+    if b >= 48 {
+        if b <= 57 {
+            return b - 48
+        }
+    }
+    if b >= 97 {
+        if b <= 102 {
+            return b - 87
+        }
+    }
+    if b >= 65 {
+        if b <= 70 {
+            return b - 55
+        }
+    }
+    panic("todo: 非法十六进制")
+    return 0
+}
+
+fn parse_color(v: Str) -> I32 {
+    if byte_at(v, 0) == 35 {
+        if v.len != 7 {
+            panic("todo: 颜色须 #RRGGBB,得 " + v)
+        }
+        var r: I32 = hex1(byte_at(v, 1)) * 16 + hex1(byte_at(v, 2))
+        var g: I32 = hex1(byte_at(v, 3)) * 16 + hex1(byte_at(v, 4))
+        var b: I32 = hex1(byte_at(v, 5)) * 16 + hex1(byte_at(v, 6))
+        return r * 65536 + g * 256 + b
+    }
+    panic("todo: 未知令牌 " + v)
+    return 0
+}
+
+fn s2i(s: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        v = v * 10 + (byte_at(s, i) - 48)
+        i += 1
+    }
+    return v
+}
+
+// ==================== 解析(M1 累计面:label/button/input/when/each + 绑定 + 事件) ====================
+
+// 属性:class="..." 与 on:名=(handler);返回 class 值(bind 由 input 专属循环处理)
+fn attrs(src: Str, cur: Atomic[I32], el: I32, ev_el: List[I32],
+         ev_name: List[Str], ev_fn: List[Str]) -> Str {
+    var out: Str = ""
+    while true {
+        ws(src, cur)
+        var b0: I32 = byte_at(src, cur.load())
+        if b0 == 62 {
+            break
+        }
+        if b0 == 47 {
+            break
+        }
+        var an: Str = word(src, cur)
+        if an == "on" {
+            lit(src, cur, 58)
+            var evn: Str = word(src, cur)
+            lit(src, cur, 61)
+            lit(src, cur, 123)
+            var fnn: Str = word(src, cur)
+            lit(src, cur, 125)
+            ev_el.push(el)
+            ev_name.push(evn)
+            ev_fn.push(fnn)
+        } else {
+            lit(src, cur, 61)
+            var av: Str = str_lit(src, cur)
+            if an == "class" {
+                out = av
+            }
+        }
+    }
+    return out
+}
+
+// 叶子文本:前缀字面量 + 至多一个 (ident) 绑定 + 后缀字面量
+fn leaf_text(src: Str, cur: Atomic[I32], pre: List[Str], bid: List[Str],
+             post: List[Str]) -> I32 {
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if b == 123 {
+            break
+        }
+        if b == 60 {
+            break
+        }
+        i += 1
+    }
+    var e: I32 = i
+    var has_bind: Bool = false
+    if i < n {
+        if byte_at(src, i) == 123 {
+            has_bind = true
+        }
+    }
+    while start < e {
+        var c0: I32 = byte_at(src, start)
+        if c0 == 32 {
+            start += 1
+        } else {
+            if c0 == 10 {
+                start += 1
+            } else {
+                if c0 == 9 {
+                    start += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    if !has_bind {
+        while e > start {
+            var c1: I32 = byte_at(src, e - 1)
+            if c1 == 32 {
+                e -= 1
+            } else {
+                if c1 == 10 {
+                    e -= 1
+                } else {
+                    if c1 == 9 {
+                        e -= 1
+                    } else {
+                        break
+                    }
+                }
+            }
+        }
+    }
+    var p0: Str = ""
+    if e > start {
+        p0 = byte_slice(src, start, e)
+    }
+    cur.store(i)
+    var b: Str = ""
+    var p1: Str = ""
+    if has_bind {
+        cur.store(cur.load() + 1)
+        b = word(src, cur)
+        lit(src, cur, 125)
+        p1 = span_until(src, cur, 60)
+    }
+    pre.push(p0)
+    bid.push(b)
+    post.push(p1)
+    return 0
+}
+
+// 叶子(label/button;tag 已读)
+fn parse_leaf_tag(tag: Str, src: Str, cur: Atomic[I32], el: I32, tags: List[Str], cls: List[Str],
+                  pre: List[Str], bid: List[Str], post: List[Str],
+                  ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    if tag != "label" {
+        if tag != "button" {
+            panic("todo: 子元素仅 label/button,得 " + tag)
+        }
+    }
+    var c: Str = attrs(src, cur, el, ev_el, ev_name, ev_fn)
+    lit(src, cur, 62)
+    if byte_at(src, cur.load()) == 60 {
+        if byte_at(src, cur.load() + 1) != 47 {
+            panic("todo: 限深 1")
+        }
+    }
+    leaf_text(src, cur, pre, bid, post)
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    if et != tag {
+        panic("todo: 闭合标签不匹配 " + et)
+    }
+    lit(src, cur, 62)
+    println("  el " + tag + " cls=" + c)
+    tags.push(tag)
+    cls.push(c)
+    return 0
+}
+
+// input 自闭合(M1-c):已读 '<' "input";bind 为 Str 绑定名;class 可选
+fn parse_input(src: Str, cur: Atomic[I32], el: I32, tags: List[Str], cls: List[Str],
+               pre: List[Str], bid: List[Str], post: List[Str],
+               ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    var c: Str = ""
+    var bnm: Str = ""
+    while true {
+        ws(src, cur)
+        var b0: I32 = byte_at(src, cur.load())
+        if b0 == 62 {
+            break
+        }
+        if b0 == 47 {
+            break
+        }
+        var an: Str = word(src, cur)
+        if an == "bind" {
+            lit(src, cur, 61)
+            lit(src, cur, 123)
+            bnm = word(src, cur)
+            lit(src, cur, 125)
+        } else {
+            if an == "class" {
+                lit(src, cur, 61)
+                c = str_lit(src, cur)
+            } else {
+                panic("todo: input 仅支持 bind/class,得 " + an)
+            }
+        }
+    }
+    ws(src, cur)
+    if byte_at(src, cur.load()) == 62 {
+        lit(src, cur, 62)
+    } else {
+        lit(src, cur, 47)
+        lit(src, cur, 62)
+    }
+    println("  el input cls=" + c + " bind=" + bnm)
+    tags.push("input")
+    cls.push(c)
+    pre.push("")
+    bid.push(bnm)
+    post.push("")
+    return 0
+}
+
+// when 条件块(M1-a):已读 '<' "when";cond 为 I32 0/1 绑定名;子叶子平铺
+fn parse_when(src: Str, cur: Atomic[I32], el: I32, cond_nm: List[Str],
+              each_nm: List[Str], each_lst: List[Str], tags: List[Str],
+              cls: List[Str], pre: List[Str], bid: List[Str], post: List[Str],
+              ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    ws(src, cur)
+    var an: Str = word(src, cur)
+    if an != "cond" {
+        panic("todo: when 仅支持 cond,得 " + an)
+    }
+    lit(src, cur, 61)
+    lit(src, cur, 123)
+    var cnm: Str = word(src, cur)
+    lit(src, cur, 125)
+    ws(src, cur)
+    lit(src, cur, 62)
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 60 {
+            if byte_at(src, cur.load() + 1) == 47 {
+                break
+            }
+        }
+        lit(src, cur, 60)
+        var tg: Str = word(src, cur)
+        parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+        cond_nm.push(cnm)
+        each_nm.push("")
+        each_lst.push("")
+        println("  when cond=" + cnm)
+        el += 1
+    }
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    if et != "when" {
+        panic("todo: when 闭合标签不匹配 " + et)
+    }
+    lit(src, cur, 62)
+    return el
+}
+
+// each 列表块(M1-b):已读 '<' "each";var in=(list 名);子叶子平铺
+fn parse_each(src: Str, cur: Atomic[I32], el: I32, cond_nm: List[Str],
+              each_nm: List[Str], each_lst: List[Str],
+              tags: List[Str], cls: List[Str], pre: List[Str], bid: List[Str], post: List[Str],
+              ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    ws(src, cur)
+    var vn: Str = word(src, cur)
+    ws(src, cur)
+    var kw: Str = word(src, cur)
+    if kw != "in" {
+        panic("todo: each 期待 in,得 " + kw)
+    }
+    lit(src, cur, 61)
+    lit(src, cur, 123)
+    var ln: Str = word(src, cur)
+    lit(src, cur, 125)
+    ws(src, cur)
+    lit(src, cur, 62)
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 60 {
+            if byte_at(src, cur.load() + 1) == 47 {
+                break
+            }
+        }
+        lit(src, cur, 60)
+        var tg: Str = word(src, cur)
+        parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+        cond_nm.push("")
+        each_nm.push(vn)
+        each_lst.push(ln)
+        println("  each var=" + vn + " list=" + ln)
+        el += 1
+    }
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    if et != "each" {
+        panic("todo: each 闭合标签不匹配 " + et)
+    }
+    lit(src, cur, 62)
+    return el
+}
+
+fn parse_view(src: Str, cur: Atomic[I32], tags: List[Str], cls: List[Str],
+              pre: List[Str], bid: List[Str], post: List[Str], cond_nm: List[Str],
+              each_nm: List[Str], each_lst: List[Str],
+              ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str]) -> I32 {
+    var name: Str = word(src, cur)
+    println("view " + name)
+    ws(src, cur)
+    lit(src, cur, 123)
+    ws(src, cur)
+    lit(src, cur, 60)
+    var tag: Str = word(src, cur)
+    if tag != "vbox" {
+        if tag != "hbox" {
+            panic("todo: 根容器仅 vbox/hbox,得 " + tag)
+        }
+    }
+    var rootcls: Str = attrs(src, cur, 0, ev_el, ev_name, ev_fn)
+    lit(src, cur, 62)
+    println("  root " + tag + " cls=" + rootcls)
+    tags.push(tag)
+    cls.push(rootcls)
+    pre.push("")
+    bid.push("")
+    post.push("")
+    cond_nm.push("")
+    each_nm.push("")
+    each_lst.push("")
+    var el: I32 = 1
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 60 {
+            if byte_at(src, cur.load() + 1) == 47 {
+                break
+            }
+        }
+        lit(src, cur, 60)
+        var tg: Str = word(src, cur)
+        if tg == "when" {
+            el = parse_when(src, cur, el, cond_nm, each_nm, each_lst, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+        } else {
+            if tg == "each" {
+                el = parse_each(src, cur, el, cond_nm, each_nm, each_lst, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+            } else {
+                if tg == "input" {
+                    parse_input(src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+                } else {
+                    parse_leaf_tag(tg, src, cur, el, tags, cls, pre, bid, post, ev_el, ev_name, ev_fn)
+                }
+                cond_nm.push("")
+                each_nm.push("")
+                each_lst.push("")
+                el += 1
+            }
+        }
+    }
+    lit(src, cur, 60)
+    lit(src, cur, 47)
+    var et: Str = word(src, cur)
+    lit(src, cur, 62)
+    ws(src, cur)
+    lit(src, cur, 125)
+    return 0
+}
+
+fn parse_style(src: Str, cur: Atomic[I32], sk: List[Str], sv: List[Str]) -> I32 {
+    var name: Str = word(src, cur)
+    var line: Str = "style " + name
+    ws(src, cur)
+    lit(src, cur, 123)
+    while true {
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 125 {
+            break
+        }
+        var p: Str = word(src, cur)
+        lit(src, cur, 58)
+        ws(src, cur)
+        var v: Str = ""
+        if byte_at(src, cur.load()) == 34 {
+            v = str_lit(src, cur)
+        } else {
+            v = word(src, cur)
+        }
+        if p == "bg" {
+            var packed: I32 = parse_color(v)
+            if packed < 0 {
+                panic("todo: 颜色解析失败")
+            }
+        }
+        line = line + " " + p + "=" + v
+        sk.push(name + "." + p)
+        sv.push(v)
+        ws(src, cur)
+        if byte_at(src, cur.load()) == 59 {
+            lit(src, cur, 59)
+        }
+    }
+    lit(src, cur, 125)
+    println(line)
+    return 0
+}
+
+fn parse_all(src: Str, cur: Atomic[I32], tags: List[Str], cls: List[Str],
+             pre: List[Str], bid: List[Str], post: List[Str], cond_nm: List[Str],
+             each_nm: List[Str], each_lst: List[Str],
+             ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str],
+             sk: List[Str], sv: List[Str]) -> I32 {
+    var n: I32 = src.len
+    while cur.load() < n {
+        ws(src, cur)
+        if cur.load() >= n {
+            break
+        }
+        var w: Str = word(src, cur)
+        if w == "view" {
+            parse_view(src, cur, tags, cls, pre, bid, post, cond_nm, each_nm, each_lst, ev_el, ev_name, ev_fn)
+        } else {
+            if w == "style" {
+                parse_style(src, cur, sk, sv)
+            } else {
+                panic("todo: 顶层仅 view/style,得 " + w)
+            }
+        }
+    }
+    return 0
+}
+
+fn style_get(sk: List[Str], sv: List[Str], key: Str, dflt: Str) -> Str {
+    var i: I32 = 0
+    while i < sk.len {
+        if sk[i] == key {
+            return sv[i]
+        }
+        i += 1
+    }
+    return dflt
+}
+
+fn sym_find(names: List[Str], name: Str) -> I32 {
+    var i: I32 = 0
+    while i < names.len {
+        if names[i] == name {
+            return i
+        }
+        i += 1
+    }
+    panic("todo: 未知符号 " + name)
+    return 0
+}
+
+// ==================== 布局(条件过滤 + each 展开 + input 渲染绑定值) ====================
+
+// 绑定种类:bid_sym -1 无 / >=0 标量 sym / -2 each 变量 / -3 draft(Str 绑定)
+fn draw_frame(tags: List[Str], cls: List[Str], pre: List[Str], bid: List[Str],
+              post: List[Str], bid_sym: List[I32], cond_ix: List[I32], each_nm: List[Str],
+              todos: List[Str], draft: Str, syms: List[I32],
+              sk: List[Str], sv: List[Str]) -> I32 {
+    gui_begin_layout(320, 240)
+    gui_open()
+    gui_cfg(1, s2i(style_get(sk, sv, "root.gap", "8")),
+            s2i(style_get(sk, sv, "root.padding", "16")),
+            s2i(style_get(sk, sv, "root.padding", "16")),
+            0, 0, 1, 0, 1, 0, 0)
+    var k: I32 = 0
+    while k < tags.len {
+        if k >= 1 {
+            var vis: I32 = 1
+            if cond_ix[k] >= 0 {
+                if syms[cond_ix[k]] == 0 {
+                    vis = 0
+                }
+            }
+            if vis == 1 {
+                gui_open()
+                var bgp: I32 = 0
+                if tags[k] == "button" {
+                    var bgv: Str = style_get(sk, sv, cls[k] + ".bg", "")
+                    if bgv != "" {
+                        bgp = parse_color(bgv)
+                    }
+                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, bgp)
+                } else {
+                    gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0)
+                }
+                var n: I32 = 1
+                var en: Str = each_nm[k]
+                if en != "" {
+                    n = syms[0]
+                }
+                var i: I32 = 0
+                while i < n {
+                    var txt: Str = pre[k]
+                    if bid_sym[k] == -2 {
+                        txt = txt + todos[i] + post[k]
+                    } else {
+                        if bid_sym[k] == -3 {
+                            txt = draft
+                        } else {
+                            if bid_sym[k] >= 0 {
+                                var v: I32 = syms[bid_sym[k]]
+                                txt = txt + v.to_string() + post[k]
+                            }
+                        }
+                    }
+                    gui_text(txt, 20, 230, 230, 235, 255)
+                    i += 1
+                }
+                gui_close()
+            }
+        }
+        k += 1
+    }
+    gui_close()
+    return gui_end_layout()
+}
+
+// ==================== 命中(几何回填;按钮均为顶层可见元素) ====================
+
+fn collect_rects(cmds: I32, out: List[I32]) -> I32 {
+    var i: I32 = 0
+    while i < cmds {
+        if gui_cmd_type(i) == 2 {
+            out.push(i)
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn hit_rect(j: I32, rects: List[I32], px: I32, py: I32) -> I32 {
+    var ci: I32 = rects[j]
+    var px100: I32 = px * 100
+    var py100: I32 = py * 100
+    if px100 >= gui_cmd_x100(ci) && px100 < gui_cmd_x100(ci) + gui_cmd_w100(ci) {
+        if py100 >= gui_cmd_y100(ci) && py100 < gui_cmd_y100(ci) + gui_cmd_h100(ci) {
+            return 1
+        }
+    }
+    return 0
+}
+
+// 点击命中:j 个 RECT 对应 j 个 button 叶子;返回 handler 名(未命中 "")
+fn handle_click(tags: List[Str], ev_el: List[I32], ev_name: List[Str], ev_fn: List[Str],
+                rects: List[I32], px: I32, py: I32) -> Str {
+    var j: I32 = 0
+    while j < rects.len {
+        if hit_rect(j, rects, px, py) == 1 {
+            var leaf: I32 = -1
+            var k: I32 = 1
+            var seen: I32 = 0
+            while k < tags.len {
+                if tags[k] == "button" {
+                    if seen == j {
+                        leaf = k
+                    }
+                    seen += 1
+                }
+                k += 1
+            }
+            if leaf >= 0 {
+                var e: I32 = 0
+                while e < ev_el.len {
+                    if ev_el[e] == leaf {
+                        if ev_name[e] == "click" {
+                            return ev_fn[e]
+                        }
+                    }
+                    e += 1
+                }
+            }
+        }
+        j += 1
+    }
+    return ""
+}
+
+fn chk(a: I32, b: I32, tag: Str) -> I32 {
+    if a != b {
+        panic("todo assert " + tag + ": " + a.to_string() + " != " + b.to_string())
+    }
+    return 0
+}
+
+fn assert_cmd_text(idx: I32, expect: Str) -> I32 {
+    chk(gui_cmd_text_len(idx), expect.len, "len@" + idx.to_string())
+    var j: I32 = 0
+    while j < expect.len {
+        chk(gui_cmd_text_byte(idx, j), byte_at(expect, j), "byte@" + idx.to_string())
+        j += 1
+    }
+    return 0
+}
+
+// ==================== main:解析 → model → headless 脚本 / 窗口口径 ====================
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var cur = Atomic[I32](0)
+    var tags = List[Str]()
+    var cls = List[Str]()
+    var pre = List[Str]()
+    var bid = List[Str]()
+    var post = List[Str]()
+    var cond_nm = List[Str]()
+    var each_nm = List[Str]()
+    var each_lst = List[Str]()
+    var ev_el = List[I32]()
+    var ev_name = List[Str]()
+    var ev_fn = List[Str]()
+    var sk = List[Str]()
+    var sv = List[Str]()
+    parse_all(src, cur, tags, cls, pre, bid, post, cond_nm, each_nm, each_lst, ev_el, ev_name, ev_fn, sk, sv)
+
+    // model:syms[0]=n(todos 数量镜像),syms[1]=empty(空态条件);todos/draft 为数据
+    var sym_names = List[Str]()
+    var syms = List[I32]()
+    sym_names.push("n")
+    syms.push(0)
+    sym_names.push("empty")
+    syms.push(1)
+    var todos = List[Str]()
+    var draft: Str = ""
+
+    var bid_sym = List[I32]()
+    var cond_ix = List[I32]()
+    var k: I32 = 0
+    while k < tags.len {
+        var bk: Str = bid[k]
+        var en: Str = each_nm[k]
+        if bk == "" {
+            bid_sym.push(-1)
+        } else {
+            if en != "" {
+                if bk == en {
+                    bid_sym.push(-2)
+                } else {
+                    panic("todo: each 体仅支持变量绑定 " + bk)
+                }
+            } else {
+                if tags[k] == "input" {
+                    bid_sym.push(-3)
+                } else {
+                    bid_sym.push(sym_find(sym_names, bk))
+                }
+            }
+        }
+        if cond_nm[k] == "" {
+            cond_ix.push(-1)
+        } else {
+            cond_ix.push(sym_find(sym_names, cond_nm[k]))
+        }
+        k += 1
+    }
+
+    gui_clay_init(320, 240)
+
+    // headless 验收脚本(注入驱动全链路;与 --run 共用 apply 分支语义)
+    var n: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 6, "cmds init")
+    assert_cmd_text(0, "todo: 0")
+    assert_cmd_text(5, "nothing yet")
+
+    var rects = List[I32]()
+    collect_rects(n, rects)
+    chk(rects.len, 2, "rects init")
+    var ax: I32 = gui_cmd_x100(rects[0]) / 100 + 50
+    var ay: I32 = gui_cmd_y100(rects[0]) / 100 + 20
+    var dx: I32 = gui_cmd_x100(rects[1]) / 100 + 50
+    var dy: I32 = gui_cmd_y100(rects[1]) / 100 + 20
+
+    // 键入 "ab"(两个字符事件)→ input 回显
+    gui_inject_char(97)
+    gui_inject_char(98)
+    chk(gui_poll_event(), 3, "evt a")
+    draft = draft + utf8_enc(gui_evt_key())
+    chk(gui_poll_event(), 3, "evt b")
+    draft = draft + utf8_enc(gui_evt_key())
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 7, "cmds typed")
+    assert_cmd_text(1, "ab")
+    rects = List[I32]()
+    collect_rects(n, rects)
+    ax = gui_cmd_x100(rects[0]) / 100 + 50
+    ay = gui_cmd_y100(rects[0]) / 100 + 20
+    dx = gui_cmd_x100(rects[1]) / 100 + 50
+    dy = gui_cmd_y100(rects[1]) / 100 + 20
+
+    // 点击 add → 行 "ab" 入列,draft 清空,空态消失
+    gui_inject_click(ax, ay)
+    chk(gui_poll_event(), 2, "evt add")
+    var hn: Str = handle_click(tags, ev_el, ev_name, ev_fn, rects, ax, ay)
+    if hn == "add" {
+        if draft.len > 0 {
+            todos.push(draft)
+            draft = ""
+            syms[0] = todos.len
+            syms[1] = 0
+        }
+    }
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 6, "cmds add1")
+    assert_cmd_text(0, "todo: 1")
+    assert_cmd_text(5, "ab")
+    rects = List[I32]()
+    collect_rects(n, rects)
+    dx = gui_cmd_x100(rects[1]) / 100 + 50
+    dy = gui_cmd_y100(rects[1]) / 100 + 20
+
+    // 再键入 "cd" + add → 两行
+    gui_inject_char(99)
+    gui_inject_char(100)
+    chk(gui_poll_event(), 3, "evt c")
+    draft = draft + utf8_enc(gui_evt_key())
+    chk(gui_poll_event(), 3, "evt d")
+    draft = draft + utf8_enc(gui_evt_key())
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 7, "cmds typed2")
+    rects = List[I32]()
+    collect_rects(n, rects)
+    ax = gui_cmd_x100(rects[0]) / 100 + 50
+    ay = gui_cmd_y100(rects[0]) / 100 + 20
+    dx = gui_cmd_x100(rects[1]) / 100 + 50
+    dy = gui_cmd_y100(rects[1]) / 100 + 20
+    rects = List[I32]()
+    collect_rects(n, rects)
+    ax = gui_cmd_x100(rects[0]) / 100 + 50
+    ay = gui_cmd_y100(rects[0]) / 100 + 20
+    gui_inject_click(ax, ay)
+    chk(gui_poll_event(), 2, "evt add2")
+    hn = handle_click(tags, ev_el, ev_name, ev_fn, rects, ax, ay)
+    if hn == "add" {
+        if draft.len > 0 {
+            todos.push(draft)
+            draft = ""
+            syms[0] = todos.len
+            syms[1] = 0
+        }
+    }
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 7, "cmds add2")
+    assert_cmd_text(0, "todo: 2")
+    assert_cmd_text(5, "ab")
+    rects = List[I32]()
+    collect_rects(n, rects)
+    dx = gui_cmd_x100(rects[1]) / 100 + 50
+    dy = gui_cmd_y100(rects[1]) / 100 + 20
+    assert_cmd_text(6, "cd")
+
+    // del ×2 → 清空,空态回归
+    gui_inject_click(dx, dy)
+    chk(gui_poll_event(), 2, "evt del1")
+    hn = handle_click(tags, ev_el, ev_name, ev_fn, rects, dx, dy)
+    if hn == "del" {
+        if syms[0] > 0 {
+            syms[0] = syms[0] - 1
+            if syms[0] == 0 {
+                syms[1] = 1
+            }
+        }
+    }
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 6, "cmds del1")
+    assert_cmd_text(0, "todo: 1")
+    rects = List[I32]()
+    collect_rects(n, rects)
+    dx = gui_cmd_x100(rects[1]) / 100 + 50
+    dy = gui_cmd_y100(rects[1]) / 100 + 20
+
+    // del 第 2 次 → 清空,空态回归
+    gui_inject_click(dx, dy)
+    chk(gui_poll_event(), 2, "evt del2")
+    hn = handle_click(tags, ev_el, ev_name, ev_fn, rects, dx, dy)
+    if hn == "del" {
+        if syms[0] > 0 {
+            syms[0] = syms[0] - 1
+            if syms[0] == 0 {
+                syms[1] = 1
+            }
+        }
+    }
+    n = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+    chk(n, 6, "cmds del2")
+    assert_cmd_text(0, "todo: 0")
+    assert_cmd_text(5, "nothing yet")
+
+    println("todo: headless 全链路全绿(键入/添加/列表/空态/删除)")
+
+    if env_get("CTRON_GUI_RUN") != "" {
+        // ---- 窗口口径(--run):真实键入 + 点击(交互验收) ----
+        InitWindow(320, 240, "ctron todo")
+        SetTargetFPS(60)
+        while !WindowShouldClose() {
+            var evt: I32 = gui_poll_event()
+            if evt == 3 {
+                draft = draft + utf8_enc(gui_evt_key())
+            } else {
+                if evt == 1 {
+                    if gui_evt_key() == 259 {
+                        if draft.len > 0 {
+                            draft = byte_slice(draft, 0, draft.len - 1)
+                        }
+                    }
+                } else {
+                    if evt == 2 {
+                        var n2: I32 = draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+                        var r2 = List[I32]()
+                        collect_rects(n2, r2)
+                        hn = handle_click(tags, ev_el, ev_name, ev_fn, r2, gui_evt_x(), gui_evt_y())
+                        if hn == "add" {
+                            if draft.len > 0 {
+                                todos.push(draft)
+                                draft = ""
+                                syms[0] = todos.len
+                                syms[1] = 0
+                            }
+                        }
+                        if hn == "del" {
+                            if syms[0] > 0 {
+                                syms[0] = syms[0] - 1
+                                if syms[0] == 0 {
+                                    syms[1] = 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            draw_frame(tags, cls, pre, bid, post, bid_sym, cond_ix, each_nm, todos, draft, syms, sk, sv)
+            BeginDrawing()
+            gui_clear(24, 24, 32)
+            ctron_gui_flush()
+            EndDrawing()
+        }
+        CloseWindow()
+        println("todo: 窗口退出,todos = " + syms[0].to_string())
+    }
+    return 0
+}
