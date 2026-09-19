@@ -1,0 +1,129 @@
+// tests/gui/s17_bidi_layout —— M3 整合:bidi run 切分(SheenBidi FFI)→ Clay 定位排布
+// "Hi سلام" 逻辑序两段 run(Latin level 0 / Arabic level 1);LTR 基向 visual 序 = 逻辑序,
+// hbox 顺序排布即视觉序。宽度确定性:std/gui 启发式 measure(bytes×size×0.55)两侧同式可预测,
+// Ctron 侧自算落点断言(无需开窗)。shim 码表沿 s3:命令 1=TEXT;dir 0=左右
+
+#[trusted]
+extern "c" fn sb_open(text: Str) -> I64
+
+#[trusted]
+extern "c" fn sb_paragraph(alg: I64, len: I32) -> I64
+
+#[trusted]
+extern "c" fn sb_line(para: I64) -> I64
+
+#[trusted]
+extern "c" fn sb_run_count(line: I64) -> I32
+
+#[trusted]
+extern "c" fn sb_run_offset(line: I64, i: I32) -> I32
+
+#[trusted]
+extern "c" fn sb_run_length(line: I64, i: I32) -> I32
+
+#[trusted]
+extern "c" fn sb_run_level(line: I64, i: I32) -> I32
+
+#[trusted]
+extern "c" fn sb_close(line: I64, para: I64, alg: I64) -> Void
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_count() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_x100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_y100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_len(i: I32) -> I32
+
+// 启发式宽 ×100:C 侧是浮点(length×size×0.55f,不取整)——×100 恰为整数式 bytes×size×55
+fn hwidth100(bytes: I32, size: I32) -> I32 {
+    return bytes * size * 55
+}
+
+// 找文本长 len 的 TEXT 命令下标
+fn find_text(n: I32, len: I32) -> I32 {
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            if gui_cmd_text_len(i) == len {
+                return i
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var text: Str = "Hi سلام"
+    var alg: I64 = sb_open(text)
+    var para: I64 = sb_paragraph(alg, text.len)
+    var line: I64 = sb_line(para)
+
+    assert_eq(sb_run_count(line), 2)
+    assert_eq(sb_run_level(line, 0), 0)
+    assert_eq(sb_run_level(line, 1), 1)
+
+    // 按 run 字节区间切片,顺序作为 hbox 子元素(visual 序)
+    var s0: I32 = sb_run_offset(line, 0)
+    var e0: I32 = s0 + sb_run_length(line, 0)
+    var s1: I32 = sb_run_offset(line, 1)
+    var e1: I32 = s1 + sb_run_length(line, 1)
+    var run0: Str = byte_slice(text, s0, e0)
+    var run1: Str = byte_slice(text, s1, e1)
+    assert_eq(run0.len, 3)
+    assert_eq(run1.len, 8)
+    sb_close(line, para, alg)
+
+    gui_clay_init(320, 200)
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(0, 0, 16, 16, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0)   // 根:横向 grow,gap 0,padding 16
+    gui_text(run0, 24, 230, 230, 235, 255)
+    gui_text(run1, 24, 230, 230, 235, 255)
+    gui_close()
+    var n: I32 = gui_end_layout()
+
+    // 落点断言:run0 于 padding 原点;run1 紧随其启发式宽之后;y 同行
+    var i0: I32 = find_text(n, 3)
+    var i1: I32 = find_text(n, 8)
+    assert(i0 >= 0)
+    assert(i1 >= 0)
+    assert_eq(gui_cmd_x100(i0), 1600)
+    assert_eq(gui_cmd_y100(i0), 1600)
+    var w0x100: I32 = hwidth100(3, 24)
+    assert_eq(gui_cmd_x100(i1), 1600 + w0x100)
+    assert_eq(gui_cmd_y100(i1), 1600)
+    println("s17_bidi_layout: bidi run → Clay 定位排布全绿(run1 x = " + ((1600 + w0x100) / 100).to_string() + ")")
+    return 0
+}

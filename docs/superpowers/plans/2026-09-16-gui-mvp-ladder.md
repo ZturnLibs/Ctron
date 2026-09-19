@@ -253,6 +253,24 @@ tests/gui/{s1_smoke/, s2_ab/, s3_clay/, s4_events/, s5_golden/, s6_demo/, run.sh
 **本轮交付**:vendor/gui/freetype 2.13.3(12MB,FTL 许可,configure+make 验证通过);
 tests/gui/e8_corpus/(W3 gated 负例语料 ×3);tests/gui/peer_status.sh。
 
+### M3 地基与 W4 收口(2026-09-19)
+
+- **SheenBidi 落地**:上游 repo 已迁 TariqPCA→Tehreer(旧地址 404 之谜),v3.0.0
+  codeload 拉通;仅 Headers/+Source/,unity 单编译单元入 build.sh;s14_bidi(C 层
+  冒烟)+ s15_bidi_ct(Ctron FFI 驱动,句柄 I64 直通)双证。
+- **文本测量桥**:s16_measure —— fixture 本地重设 Clay_SetMeasureTextFunction 为
+  FT glyph advance 实测('iiiii'/'中文宽度' 双向断言盒宽 == 实测且 != 启发式);
+  共享 std/gui 的 0.55 桩升级为 FT 实测留对端节奏(fixture-local hook 不动共享面)。
+- **整合**:s17_bidi_layout —— bidi run 切分 → byte_slice → Clay hbox 定位,
+  x 落点断言(启发式 measure 是浮点 ×100 整数式 bytes×size×55 同值)。
+- **W4 热重载**:w4_hotreload 单进程 mtime 轮询→重读证明(就绪握手消启动竞态,
+  毫秒 mtime 消同秒漏检);--run 窗口交互验收已由用户完成(实时刷新 + clicks
+  计数跨重载保持)。s10_hotreload 更名 w4_hotreload(s10 槽位归 s10_when)。
+- **w2_fold 转绿**:对端 bin 收敛后黄金差分通过,已入阶梯。
+- **新发现(转交运行时/发射泳道)**:用户程序 assert 失败时消息因 stdout 缓冲
+  未刷而丢失(重定向到文件时输出为空、仅 rc=1)——失败路径应 fflush 或走 stderr。
+  复现:s17 任一 assert_eq 置败即现。
+
 ### S0 状态(2026-09-17 销账)
 
 FFI 泳道已自行落库并扩张到位:**tests/ffi 20 过 / 0 败**(11 → 20 夹具:新增
