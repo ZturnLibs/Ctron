@@ -132,7 +132,7 @@ jobs:
         run: |
           VER=${GITHUB_REF_NAME#v}
           cp install.sh rel/
-          mv dist-windows.zip rel/ctron-$VER-windows-x86_64.zip
+          mv rel/dist-windows.zip rel/ctron-$VER-windows-x86_64.zip
           (cd rel && sha256sum ctron-$VER* > SHA256SUMS && cat SHA256SUMS)
       - uses: softprops/action-gh-release@v2
         with:
