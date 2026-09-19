@@ -1,4 +1,4 @@
-# 自举版 Ctron 工具链分发设计(五平台 v0.1.0)
+# 自举版 Ctron 工具链分发设计(五平台 v0.0.1)
 
 > 日期:2026-09-17
 > 状态:已实施(计划1 4f8f1d1..ff52ec3 + 计划2 至 861689d)
@@ -39,7 +39,7 @@
 | 预编译平台 | **darwin arm64/x86_64 + linux x86_64/aarch64 + windows x86_64(β)** | 发射后端是 C,可移植性天然好;Windows 见 §8 mingw 路线 |
 | 用户 CLI | **薄驱动脚本 `ctc`**:POSIX sh 版(mac/linux)+ PowerShell 版 + cmd 垫片(Windows) | 零编译器面新增风险;Ctron 自写驱动需运行时新增子进程能力(现无),挂账 v0 后 |
 | Windows 工具链 | **mingw-w64**,MSVC 不入 v0 | 发射 C 含 `pthread.h`/`dirent.h`,MSVC 两样皆无;winpthreads/dirent 在 mingw-w64 齐备。MSVC = 并发运行时重写,挂账 |
-| 版本号 | `v0.1.0` 起,工具链版本与语言 milestone 解耦 | 避免语义负担 |
+| 版本号 | `v0.0.1` 起,工具链版本与语言 milestone 解耦 | 避免语义负担 |
 
 ## 2. 发布产物与包布局
 
@@ -57,7 +57,7 @@ ctron/
 │   └── ctron-emit
 ├── lib/ctron/std/     # 标准库全部 .ct 源码(见下方"为何是源码")
 ├── share/doc/         # README(根 README 优先、compiler/README.md 兜底)+ examples/
-└── VERSION            # "0.1.0 <git-sha>"(两字段,release.sh 生成;ctc --version 直出)
+└── VERSION            # "0.0.1 <git-sha>"(两字段,release.sh 生成;ctc --version 直出)
 ```
 
 **为何 std 以源码分发(结构性必要,非文档性附带)**:`use std.X` 的消费方式是
@@ -133,7 +133,7 @@ ctc build main.ct    # ctron-emit 发射 C → 本机 cc → 出可执行(FFI �
 ctc build            # 项目模式:读 Ctron.toml(name/c_src)+ Ctron.ctcl(caps,见下)
 ctc test             # test 块执行:无 main 走解释;含 main 文件的 test 块挂账(见下)
 ctc new myapp        # 脚手架:src/main.ct + Ctron.toml + Ctron.ctcl(两件齐写)
-ctc --version        # ctron 0.1.0 <git-sha>(VERSION 两字段直出)
+ctc --version        # ctron 0.0.1 <git-sha>(VERSION 两字段直出)
 ctc --help           # 总用法(= ctc help / -h);ctc help <cmd> 看子命令详助
 ```
 
@@ -254,7 +254,7 @@ Windows 专项(在 1–5 之上追加):
 | ctc 双驱动命令面漂移 | 中 | conformance 用例(验收 8)进两平台门禁 |
 | 发布 workflow 首跑风险:macos-13 runner 退役可能、accept_windows 零执行史、linux 双臂 glibc 首跑 | 中 | 首跑即验证轮;全平台 job 绿才 publish、任一红不发版兜底(§6),windows 运行级门禁归 CI job |
 
-## 10. 后续挂账(v0.1 之后)
+## 10. 后续挂账(v0.0.1 之后)
 
 Ctron 自写原生 ctc 驱动(需运行时子进程能力)、Homebrew/winget 分发、
 `install.ps1` 一键装、Developer ID 公证、windows aarch64、MSVC 评估、`ctc doc`/补全、

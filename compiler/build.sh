@@ -29,7 +29,7 @@ cat $CORE "$SRC/driver_run.ct"   > "$OUT/cc_run.ct"
 cat $CORE "$SRC/driver_check.ct" > "$OUT/cc_check.ct"
 cat $CORE $TRANS "$SRC/driver_emit.ct" > "$OUT/cc_emit.ct"
 # ANCHORVERSION 注入:三产物同源版本串(黄金语料不含该锚,逐字不受影响)
-VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.1.0-dev")
+VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.0.1-dev")
 for P in cc_run cc_check cc_emit; do
     sed "s|ANCHORVERSION|$VER|" "$OUT/$P.ct" > "$OUT/$P.ct.tmp" && mv "$OUT/$P.ct.tmp" "$OUT/$P.ct"
 done

@@ -13,7 +13,7 @@
 - 自举源(`compiler/src/*.ct`)语法纪律:**无 `||` 中缀**(用 `or2`/`or3` 助手);**单行 if 块内不容 `return`**(含 return 的块一律多行);字符串内 `{` 写 `\{`(只有 `\{` 是合法转义);宿主 seed 是最严口径(构建过 ≠ 宿主可跑)。
 - **黄金逐字不变**:本计划任何改动不得改变 `selfhosted/input_cc{,2,3}` 黄金输出与既有夹具的 seed==native 逐字一致性;每任务收尾跑 `sh compiler/test/smoke.sh`(必要时 `--full`)。
 - **工作树前置**:仓库当前有未提交的 FFI 批次改动(rt_core.c、sem_main.ct、trans_*.ct 等)。**Task 0 必须先处理**,否则后续 `git add` 会把在途工作混入本线提交。
-- 版本串:源 `git describe --tags --always`(失败回退 `0.1.0-dev`),经 `ANCHORVERSION` 锚由 build.sh 注入。
+- 版本串:源 `git describe --tags --always`(失败回退 `0.0.1-dev`),经 `ANCHORVERSION` 锚由 build.sh 注入。
 - rc 约定(贯穿 ctc):`0` 成功 / `1` 程序诊断失败 / `2` ctc 环境或用法错误。
 - 新内建的 C 符号一律 `ctron_` 前缀:`ctron_exe_path`、`ctron_env_get`、`ctron_cli_flag`(Ctron 侧调用名分别为 `ctron_exe_path` / `env_get` / `ctron_cli_flag`)。
 - seed 侧三个新内建**恒返回空串**(镜像 `ctron_entry` 先例):seed 路径走锚回落,行为与 ctc.sh 现状逐字兼容。
@@ -77,7 +77,7 @@ Run: `sh ci.sh`
 
 ```sh
 # ANCHORVERSION 注入:三产物同源版本串(黄金语料不含该锚,逐字不受影响)
-VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.1.0-dev")
+VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.0.1-dev")
 for P in cc_run cc_check cc_emit; do
     sed "s|ANCHORVERSION|$VER|" "$OUT/$P.ct" > "$OUT/$P.ct.tmp" && mv "$OUT/$P.ct.tmp" "$OUT/$P.ct"
 done
@@ -557,7 +557,7 @@ git commit -m "test(dist): CRLF 源回归夹具——词法双侧已支持,钉�
 
 ```sh
 #!/bin/sh
-# ctc —— Ctron 工具链用户驱动(v0.1;命令面基准,ctc.ps1 与此同文)
+# ctc —— Ctron 工具链用户驱动(v0.0.1;命令面基准,ctc.ps1 与此同文)
 # rc 约定:0 成功 / 1 程序诊断失败 / 2 ctc 环境或用法错误
 set -u
 BIN=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

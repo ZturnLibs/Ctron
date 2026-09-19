@@ -1,4 +1,4 @@
-﻿# ctc.ps1 —— Ctron 工具链用户驱动(Windows 版;命令面基准 = sh 版 ctc,spec §7.9 驱动 conformance)
+﻿# ctc.ps1 —— Ctron 工具链用户驱动(v0.0.1;Windows 版,命令面基准 = sh 版 ctc,spec §7.9 驱动 conformance)
 # rc 约定:0 成功 / 1 程序诊断失败 / 2 ctc 环境或用法错误(exit code 同 sh)
 # 注意:本文件必须保持 UTF-8 with BOM —— Windows PowerShell 5.1 对无 BOM 脚本按 ANSI 解码,中文帮助文本会乱码
 # 重定向/管道下 powershell.exe 的 stdout 默认按 OEM CP 编码,中文帮助/诊断会变 '?',子进程输出解码同样失真;显式收口为 UTF8
