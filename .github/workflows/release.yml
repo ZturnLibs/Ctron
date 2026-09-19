@@ -86,9 +86,9 @@ jobs:
       - name: cc-only 构建(绕过 seed;编译器三件 16MB 栈)
         run: |
           mkdir -p bin
-          gcc -O2 -w -pthread -Wl,--stack,16777216 -o bin/ctron-cc.exe   prebuilt/ctron-cc.c
-          gcc -O2 -w -pthread -Wl,--stack,16777216 -o bin/ctron-chk.exe  prebuilt/ctron-chk.c
-          gcc -O2 -w -pthread -Wl,--stack,16777216 -o bin/ctron-emit.exe prebuilt/ctron-emit.c
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o bin/ctron-cc.exe   prebuilt/ctron-cc.c
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o bin/ctron-chk.exe  prebuilt/ctron-chk.c
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o bin/ctron-emit.exe prebuilt/ctron-emit.c
       - name: 组装 zip(spec §2.2 布局)
         run: |
           VER=${GITHUB_REF_NAME#v}
