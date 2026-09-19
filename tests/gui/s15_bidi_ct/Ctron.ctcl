@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "gui_s15_bidi_ct"
+    version = "0.1.0"
+}

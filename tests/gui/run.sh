@@ -9,7 +9,7 @@ pass=0
 fail=0
 failed=""
 
-for s in s1_smoke s2_ab s3_clay s4_events s5_golden s6_demo s7_window s8_cjk s9_window_cjk e8_corpus w2_fold w4_interp s10_when s11_each s12_input s13_item w4_hotreload s14_bidi; do
+for s in s1_smoke s2_ab s3_clay s4_events s5_golden s6_demo s7_window s8_cjk s9_window_cjk e8_corpus w2_fold w4_interp s10_when s11_each s12_input s13_item w4_hotreload s14_bidi s15_bidi_ct; do
     if sh "$DIR/$s/run.sh" > /tmp/gui_ladder_$s.log 2>&1; then
         echo "  [ok] $s"
         pass=$((pass + 1))
