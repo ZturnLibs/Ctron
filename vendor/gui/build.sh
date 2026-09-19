@@ -24,3 +24,11 @@ for f in $RAY_SUBSET; do
 done
 ar rcs build/libraylib.a $OBJS
 echo "vendor/gui/build/libraylib.a OK"
+
+# ---- freetype(M3 文本管线;configure+make 一次,产物入 build/) ----
+if [ ! -f build/libfreetype.a ]; then
+    (cd freetype && ./configure --disable-shared --enable-static --with-zlib=no --with-brotli=no --with-bzip2=no --with-png=no --with-harfbuzz=no >/dev/null 2>&1 && make -j4 >/dev/null 2>&1)
+    cp freetype/objs/.libs/libfreetype.a build/libfreetype.a 2>/dev/null || {
+        echo "freetype build FAIL(需 subprojects/dlg stubs,已随 vendor 提交)" >&2; exit 1; }
+fi
+echo "build/libfreetype.a OK"

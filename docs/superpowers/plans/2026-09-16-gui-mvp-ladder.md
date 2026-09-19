@@ -154,6 +154,18 @@ tests/gui/{s1_smoke/, s2_ab/, s3_clay/, s4_events/, s5_golden/, s6_demo/, run.sh
   规避;建议 lex 三线对拍增加"注释含花括号"语料;
 - dump 口径(--dump-gui)移交 W2(消费 W2 的 IR,避免旗标管道过早扩面)。
 
+## M3 第一片:FreeType 中文渲染(2026-09-19 交付)
+
+- **vendor/gui/freetype 2.13.3**:官方 release 包(configure 可执行,避开 git 包的
+  dlg 子模块钩子);可选依赖全关(zlib/brotli/bzip2/png/harfbuzz——链接零残留,
+  nm 实证);libfreetype.a 3.7MB 入 build/;SheenBidi 下载未通(VENDORED 待重试)
+- **tests/gui/s8_cjk**:headless 中文渲染断言全绿——CJK 字体路径列表
+  (macOS Hiragino/PingFang/Songti;Linux Noto/WQY)+ UTF-8 解码 + FreeType
+  两遍渲染(测量/合成)→ RGBA buffer;"中文渲染测试"位图非空、宽度断言、
+  ASCII 混排 ✓;阶梯 runner 收编(s1–s8 = 8 过/0 败)
+- 窗口口 ft_tex_draw(LoadTextureFromImage 缓存 + DrawTexture)已备,
+  交互验收随下次 --run;shaping(HarfBuzz)按 §12.1 后置
+
 ## 泳道协作与 W2 状态(2026-09-18)
 
 **协作协议**:GUI dump 修复(gui_parse.ct 叶游标)由并行会话持牌;本会话推进零冲突项
