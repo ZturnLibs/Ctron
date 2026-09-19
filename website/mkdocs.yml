@@ -1,0 +1,36 @@
+site_name: Ctron
+site_url: https://zturn.github.io/Ctron/
+repo_url: https://github.com/Zturn/Ctron
+repo_name: Zturn/Ctron
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/weather-night, name: 暗色}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/weather-sunny, name: 亮色}
+  features:
+    - content.code.copy
+    - navigation.sections
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Language Spec: spec/README.md
+  - Std Reference: std/README.md
+  - Examples: examples.md
+  - Download: download.md
