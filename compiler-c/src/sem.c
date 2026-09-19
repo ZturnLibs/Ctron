@@ -922,7 +922,7 @@ static void check_block(ctx* c, cblock* b) {
             brk_depth--;
             break;
         case ST_BREAK:
-        case ST_CONTINUE:
+        case ST_CONTINUE: {
             const char* bkw = (st->kind == ST_BREAK ? "break" : "continue");
             if (brk_depth == 0) {
                 if (brk_outer)
@@ -933,6 +933,7 @@ static void check_block(ctx* c, cblock* b) {
                 diag(c->k, "E2071", "%s 需越过带 Drop 局部的作用域(v1 静态拒绝;将 Drop 局部移入内层块或重构循环)", bkw);
             }
             break;
+        }
         case ST_ASSIGN: {
             // own 块内对类值成员的可变写 → E3060
             if (c->in_own && st->target && st->target->kind == EX_MEMBER) {
