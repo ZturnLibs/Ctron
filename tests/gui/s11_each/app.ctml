@@ -1,0 +1,15 @@
+// tests/gui/s11_each —— M1-b:each 列表渲染(each 只包叶子;in={list} 绑定 List[Str];
+// {var} 文本绑定解析为 -2 标记,draw 按 List 逐项展开;逐项事件句柄随 M1-b2 登记)
+view Demo {
+  <vbox class="root">
+    <label>items: {n}</label>
+    <button class="btn" on:click={add}>add</button>
+    <button class="btn2" on:click={del}>del</button>
+    <each item in={items}>
+      <label class="row">{item}</label>
+    </each>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style btn { bg: "#2563eb" }
+style btn2 { bg: "#2563eb" }
