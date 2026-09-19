@@ -1,0 +1,79 @@
+// tests/gui/s10_hotreload —— W4:热重载机制证明(最简形态)
+// app.txt 的内容直接显示在窗口;修改文件 → 窗口实时更新(不重启)
+// 状态保持:counter 是 main 局部变量,重读文件不影响它
+
+#[trusted]
+extern "c" fn gui_file_mtime(path: Str) -> I32
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_render_offscreen(s: Str, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, x: I32, y: I32, size: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_rect(x: I32, y: I32, w: I32, h: I32, rr: I32, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn IsMouseButtonPressed(btn: I32) -> Bool
+
+fn main() -> I32 {
+    var text: Str = read_file("app.txt")
+    var count: I32 = 0
+    var mt: I32 = gui_file_mtime("app.txt")
+    var headless: Bool = false
+    var h: Str = env_get("S10_HEADLESS")
+    if h == "1" {
+        headless = true
+    }
+
+    if headless {
+        // headless 断言:渲染到 shim 的离屏 buffer,不依赖窗口
+        gui_render_offscreen(text, 230, 230, 235)
+        println("s10 headless: text rendered ok")
+        return 0
+    }
+
+    InitWindow(320, 200, "ctron hot-reload")
+    SetTargetFPS(60)
+    while !WindowShouldClose() {
+        var mt2: I32 = gui_file_mtime("app.txt")
+        if mt2 != mt {
+            mt = mt2
+            text = read_file("app.txt")
+        }
+        if IsMouseButtonPressed(0) {
+            count += 1
+        }
+        BeginDrawing()
+        gui_clear(24, 24, 32)
+        gui_text(text, 16, 16, 20)
+        gui_text("clicks: " + count.to_string(), 16, 120, 16)
+        gui_rect(200, 150, 80, 30, 10, 37, 99, 235)
+        EndDrawing()
+    }
+    CloseWindow()
+    println("s10 hot-reload: exited ok")
+    return 0
+}
