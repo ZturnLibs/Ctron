@@ -69,7 +69,6 @@ fn main() -> I32 {
             println("#if defined(__linux__)")
             println("#include <unistd.h>")
             println("#endif")
-            println("#include <dlfcn.h>")
             println("static char* ctron_abase = 0;")
             println("static size_t ctron_aoff = 0;")
             println("static size_t ctron_acap = 0;")
@@ -168,6 +167,8 @@ fn main() -> I32 {
             // W4 E1:解释口径 extern 直调桥(帧编码 "i:<int>"/"s:<str>",空帧终止;
             // dlsym(RTLD_DEFAULT) 直调宿主进程链接符号——bin/ctron-cc 由 native.sh
             // 链 vendored 库(whole-archive + rdynamic);用户二进制无引用,死码消除)
+            // Windows 无 dlfcn:整段桥按 _WIN32 排除,桩保持响亮失败(β 口径)
+            println("#if !defined(_WIN32)")
             println("static long ctron_ext_dispatch0(const char* nm, int n, const char** fr) \{")
             println("    void* p; long u[12]; int i; int k = 0;")
             println("    for (i = 0; i < n; i++) \{")
@@ -199,6 +200,9 @@ fn main() -> I32 {
             println("    fr[6] = a6; fr[7] = a7; fr[8] = a8; fr[9] = a9; fr[10] = a10; fr[11] = a11;")
             println("    return (int)ctron_ext_dispatch0(nm, 12, fr);")
             println("}")
+            println("#else")
+            println("int ctron_ext_dispatch(const char* nm, const char* a0, const char* a1, const char* a2, const char* a3, const char* a4, const char* a5, const char* a6, const char* a7, const char* a8, const char* a9, const char* a10, const char* a11) \{ (void)nm; (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; (void)a8; (void)a9; (void)a10; (void)a11; ctron_panic(\"extern 解释口径:Windows β 不支持\"); return 0; }")
+            println("#endif")
             println("static const char* ctron_version = \"ANCHORVERSION\";")
             println("static const char* ctron_cli_fmt = NULL;")
             println("static const char* ctron_cli_prof = NULL;")
