@@ -26,4 +26,6 @@ sh run.sh --run    # 追加启动真实窗口,真实点击交互
 - 窗口文本用 ASCII:Clay TEXT 命令走 raylib 默认字体,无 CJK 字形——中文渲染见
   `examples/gui_cjk`;Clay→FreeType 渲染集成随 M3
 - 解析器为自包含快照:包级 `use gui` 随 P2-B 落地后切换为正式形态
+- `c_src/` shim 为**过渡形态**(GUI 规范 §11.2 增补):bind 层(MVP 阶梯 W6)落地后
+  删除——目标应用源码树零 C;用户写 C 仅剩第三方接入逃生口场景
 - 严格验证归 tests/gui 阶梯(s6 绑定竖切 / s7 窗口);本示例是门面,不是回归夹具

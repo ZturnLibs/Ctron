@@ -27,3 +27,5 @@ sh run.sh --run    # 追加启动真实窗口,真实点击交互
 - 无 IME 组词(preedit)——M0–M2 定义形态;composer 随 M3
 - shaping(HarfBuzz)/混排退绕随 M3 后续切片
 - 解析器/绑定与本示例无关(直绘路径);严格验证归 `tests/gui` 阶梯(s8/s9)
+- `c_src/` shim 为**过渡形态**(GUI 规范 §11.2 增补):bind 层(MVP 阶梯 W6)落地后
+  删除——目标应用源码树零 C;用户写 C 仅剩第三方接入逃生口场景

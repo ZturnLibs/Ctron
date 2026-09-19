@@ -91,6 +91,12 @@
 - W3 E8xxx 检查面进 `ctc check`(负例语料 `tests/09_gui/`,逐字诊断差分);
 - W4 热重载(解释口径原址替换)+ 原生口径 snapshot/restore(裁决 1A);
 - W5 CI:命令缓冲快照回归进 make test;Linux xvfb 渲染冒烟。
+- W6 **bind 层偿还(2026-09-19 登记,§11.2 目标增补/§1.1 目标 7)**:
+  `std/gui/bind/{clay,ft}.ct` extern + safe 包装替换 c_src 窄接口桥——Clay 大 struct
+  进 repr(c)(S2 已证按值过 ABI)、measure 回调走 C-ABI 函数指针(tests/ffi 已证)、
+  flush 以 Ctron 绑定 Clay_RenderCommandArray + raylib 绘制 extern 重写;measure 桥与
+  flush 留 C 侧但随 `std/gui` 包构建(用户源码树不可见)。**交付口径 = 应用/夹具/示例
+  源码树零 C**;完成后 S1–S9 的 `c_src/*.c` 形态退役,examples 同步删除 shim。
 
 ## 交付物清单(文件级)
 
