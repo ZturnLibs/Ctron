@@ -1,0 +1,84 @@
+// tests/gui/s16_measure —— M3:FreeType 实测宽度驱动 Clay 布局(std/gui 0.55 桩 → 真实字形 advance)
+// 断言口径:TEXT 命令盒宽 == gui_ft_measure 实测(×100 整数),且 ≠ 0.55 启发式——证桥已接管
+// shim 码表沿 s3:dir 0=左右 1=上下;mode 0=fit 1=grow 2=fixed;命令 1=TEXT 2=RECTANGLE
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_measure_install() -> I32
+
+#[trusted]
+extern "c" fn gui_measure_hook(px: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_ft_measure(s: Str, size: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_count() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_len(i: I32) -> I32
+
+fn check_text(n: I32, want: Str, size: I32) -> I32 {
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            if gui_cmd_text_len(i) == want.len {
+                var measured: I32 = gui_ft_measure(want, size)
+                // 盒宽 == FreeType 实测宽(×100 整数口径)
+                assert_eq(gui_cmd_w100(i), measured * 100)
+                // 且 ≠ 0.55 启发式(窄字符拉丁串必不同;桥确实接管)
+                var heuristic: I32 = want.len * size * 55 / 100
+                assert(measured != heuristic)
+                return 1
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    gui_clay_init(320, 200)
+    assert_eq(gui_measure_install(), 0)
+    assert_eq(gui_measure_hook(24), 0)
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(1, 8, 16, 16, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0)          // 根:纵向 grow
+    gui_text("iiiii", 24, 230, 230, 235, 255)                     // 窄字符:启发式显著偏大
+    gui_text("中文宽度", 24, 230, 230, 235, 255)                  // CJK 全宽字形
+    gui_close()
+    var n: I32 = gui_end_layout()
+
+    assert_eq(check_text(n, "iiiii", 24), 1)
+    assert_eq(check_text(n, "中文宽度", 24), 1)
+    println("s16_measure: FreeType 实测宽度驱动 Clay 布局全绿")
+    return 0
+}
