@@ -71,7 +71,7 @@ function Build-File($f) {
 	if ($leaf.EndsWith('.ct')) { $stem = $leaf.Substring(0, $leaf.Length - 3) } else { $stem = $leaf }
 	# 产物不经管道字符串化,直接以无 BOM UTF8 写行(PS5.1 的 Set-Content -Encoding Ascii 会把非 ASCII 串打成 '?')
 	$tmpOut = & (Join-Path $Bin 'ctron-emit.exe') run $full
-	[IO.File]::WriteAllLines((Join-Path $dir "$stem.c"), $tmpOut, (New-Object Text.UTF8Encoding($false)))
+	[IO.File]::WriteAllText((Join-Path $dir "$stem.c"), ($tmpOut -join "`n") + "`n", (New-Object Text.UTF8Encoding($false)))
 	if ($LASTEXITCODE -ne 0) { exit 1 }
 	if (-not (Have-Cc)) { Cc-Missing (Join-Path $dir "$stem.c"); exit 2 }
 	Push-Location $dir
@@ -91,7 +91,7 @@ function Build-Proj {
 	if (-not (Test-Path 'src/main.ct')) { [Console]::Error.WriteLine('ctc: 缺入口 src/main.ct'); exit 2 }
 	New-Item -ItemType Directory -Force -Path build | Out-Null
 	$tmpOut = & (Join-Path $Bin 'ctron-emit.exe') run (Resolve-Path 'src/main.ct').Path
-	[IO.File]::WriteAllLines((Join-Path (Get-Location).Path "build/$name.c"), $tmpOut, (New-Object Text.UTF8Encoding($false)))
+	[IO.File]::WriteAllText((Join-Path (Get-Location).Path "build/$name.c"), ($tmpOut -join "`n") + "`n", (New-Object Text.UTF8Encoding($false)))
 	if ($LASTEXITCODE -ne 0) { exit 1 }
 	if (-not (Have-Cc)) { Cc-Missing "build/$name.c"; exit 2 }
 	$srcs = @(Get-ChildItem -Path 'c_src/*.c' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
