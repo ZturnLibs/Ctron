@@ -1,6 +1,6 @@
 # 入门
 
-从安装到第一个可执行,大约五分钟。`ctc` 是工具链唯一的用户入口:`run` / `check` 不依赖任何 C 工具链,只有 `build` 需要本机 C 编译器。
+从安装到第一个可执行,约一刻钟。`ctc` 是工具链唯一的用户入口:`run` / `check` 不依赖任何 C 工具链,只有 `build` 需要本机 C 编译器。
 
 ## 安装
 
@@ -24,7 +24,7 @@ make && make install PREFIX="$HOME/.ctron"
 
 ## Hello, Ctron
 
-`ctc new` 生成项目骨架:`Ctron.toml`(项目名、`c_src/*.c` 链接声明)+ `Ctron.ctcl`(CTCL 清单,caps 能力声明)+ `src/main.ct`(hello 程序)。`ctc run` 是纯解释执行——解析、语义检查、直接求值一条龙,零外部依赖,也是最快的上手路径:
+`ctc new` 生成项目骨架:`Ctron.toml`(目前只有 `name` 一个字段)+ `Ctron.ctcl`(能力声明清单)+ `src/main.ct`(hello 程序)。`ctc run` 是纯解释执行——解析、语义检查、直接求值一条龙,零外部依赖,也是最快的上手路径:
 
 ```bash
 $ ctc new hello && cd hello

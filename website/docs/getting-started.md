@@ -1,6 +1,6 @@
 # Getting Started
 
-From install to your first native executable in about five minutes. `ctc` is the toolchain's only user-facing entry point: `run` and `check` never touch a C toolchain; only `build` needs a local C compiler.
+From install to your first native executable in 10-15 minutes. `ctc` is the toolchain's only user-facing entry point: `run` and `check` never touch a C toolchain; only `build` needs a local C compiler.
 
 ## Install
 
@@ -24,7 +24,7 @@ make && make install PREFIX="$HOME/.ctron"
 
 ## Hello, Ctron
 
-`ctc new` scaffolds a project: `Ctron.toml` (project name and `c_src/*.c` link declarations), `Ctron.ctcl` (a CTCL manifest with capability declarations), and `src/main.ct` (a hello program). `ctc run` is pure interpretation — parse, check, evaluate in one pass with zero external dependencies, and the fastest way in. (Driver messages are Chinese in v0.0.x; the checker's summary line is English.)
+`ctc new` scaffolds a project: `Ctron.toml` (currently just the project `name` field), `Ctron.ctcl` (the capability-declaration manifest), and `src/main.ct` (a hello program). `ctc run` is pure interpretation — parse, check, evaluate in one pass with zero external dependencies, and the fastest way in. (Driver messages are Chinese in v0.0.x; the checker's summary line is English.)
 
 ```bash
 $ ctc new hello && cd hello
