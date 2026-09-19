@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "gui_s9_window_cjk"
+    version = "0.1.0"
+}

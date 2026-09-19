@@ -1,0 +1,104 @@
+// tests/gui/s9_window_cjk —— GUI 泳道 M3 窗口口:FreeType 中文渲染 + 真实点击(计划 M3)
+// 窗口循环(S7 形态)+ FreeType 纹理文本(S8 管线)+ 真实鼠标命中/计数(S4 语义)。
+// 结构:标题纹理(静态)+ 计数纹理(变更时重渲)+ 圆角矩形按钮(真实点击命中)。
+
+#[repr(c)]
+struct Color { r: U8, g: U8, b: U8, a: U8 }
+
+#[repr(c)]
+struct Vector2 { x: F32, y: F32 }
+
+#[repr(c)]
+struct Rectangle { x: F32, y: F32, w: F32, h: F32 }
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn DrawRectangleRounded(rect: Rectangle, round: F32, seg: I32, color: Color) -> Void
+
+#[trusted]
+extern "c" fn IsMouseButtonPressed(btn: I32) -> Bool
+
+#[trusted]
+extern "c" fn GetMousePosition() -> Vector2
+
+// ft_shim(FreeType 文本 + 矩形)
+#[trusted]
+extern "c" fn ft_load_cjk(px: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_render(s: Str, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_tex_upload(id: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_tex_draw(id: I32, x: I32, y: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_rect(x: I32, y: I32, w: I32, h: I32, rr: I32, r: I32, g: I32, b: I32) -> I32
+
+fn main() -> I32 {
+    if ft_load_cjk(24) != 0 {
+        println("s9: 无可用 CJK 字体")
+        return 1
+    }
+    // 标题纹理(id 0,静态):栅格化在开窗前(纯 CPU),上传必须在 InitWindow 后(GL 上下文)
+    ft_render("Ctron 中文窗口", 235, 235, 240)
+    InitWindow(320, 200, "ctron gui 中文")
+    SetTargetFPS(60)
+    ft_tex_upload(0)
+    var count: I32 = 0
+    var dirty: Bool = true
+    while !WindowShouldClose() {
+        // 真实点击:按钮区 (16,64)-(116,104)
+        if IsMouseButtonPressed(0) {
+            var p: Vector2 = GetMousePosition()
+            if p.x >= 16.0 {
+                if p.x < 116.0 {
+                    if p.y >= 64.0 {
+                        if p.y < 104.0 {
+                            count += 1
+                            dirty = true
+                        }
+                    }
+                }
+            }
+        }
+        if dirty {
+            var txt: Str = "count: "
+            txt = txt + count.to_string()
+            ft_render(txt, 235, 235, 240)
+            ft_tex_upload(1)
+            dirty = false
+        }
+        BeginDrawing()
+        gui_clear(24, 24, 32, 255)
+        ft_tex_draw(0, 16, 16)
+        gui_rect(16, 64, 100, 40, 15, 37, 99, 235)
+        ft_tex_draw(1, 16, 112)
+        EndDrawing()
+    }
+    CloseWindow()
+    println("s9 window cjk: exited ok")
+    return 0
+}
