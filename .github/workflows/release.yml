@@ -122,11 +122,12 @@ jobs:
     runs-on: ubuntu-24.04
     permissions: { contents: write }
     steps:
+      # checkout 必须先于 download-artifact:checkout 的 clean 会清空工作区,
+      # 后下载的 rel/ 会被抹掉(第七轮 publish 首败根因,时序实证)
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { pattern: rel-*, merge-multiple: true, path: rel }
-      - uses: actions/checkout@v4
-        # 下游修正(相对任务书):publish job 原 workspace 无 checkout,而 install.sh
-        # 不在 rel-* artifact 内,不补 checkout 则下方 cp 无源必挂
+        # install.sh 不在 rel-* artifact 内,checkout 提供 cp 源
       - name: 汇总 + SHA256SUMS
         run: |
           VER=${GITHUB_REF_NAME#v}
