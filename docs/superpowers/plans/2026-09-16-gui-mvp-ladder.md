@@ -88,7 +88,17 @@
 
 - W1 语言关键字认领:`view`/`style` 块边界进解析器(§11.1 C2 裁决),块内容移交 gui 前端;
 - W2 `gui_lower` comptime 折叠:令牌求值/extends 展开/多类合并/颜色格式校验;
-- W3 E8xxx 检查面进 `ctc check`(负例语料 `tests/09_gui/`,逐字诊断差分);
+- W3 E8xxx 检查面进 `ctc check`(负例语料 `tests/09_gui/`,逐字诊断差分)。
+  **【2026-09-19 部分销账】**E8100/E8130/E8150 已落地(现行 S6 面:标签白名单/颜色
+  与冒号/class 引用;挂 `--dump-gui` 旗标下),语料 `tests/gui/e8_corpus/` 期望码断言
+  3/3 且已收编阶梯 runner(第 10 夹具)。**换面验收发现并修复三缺陷**——①gui_dump_file
+  重复定义(W3 提交残留副本,HEAD 自举不过);②style 路径游标未跳名字 token,属性错位
+  致 `index out of bounds` 崩检查**丢全部诊断**(e8130 此前"通过"实为错位误报的 E8130,
+  修复后走 gui_ck_color 真实判定);③on:分支盲吃 5 token 漏收尾 `}`(镜像 gui_lower
+  对齐 6 token),另补属性/叶子循环界内守卫(防畸形输入崩检查)。**余码登记**:
+  E8110/E8120/E8140/E8160–E8193 需 M1 面(each/when/类型化属性/组件/sizing)先落地,
+  现行语法面无可检对象;语料路径以 tests/gui/e8_corpus/ 为准(规范 §11.7 的
+  tests/09_gui/ 为早期口径)。
 - W4 热重载(解释口径原址替换)+ 原生口径 snapshot/restore(裁决 1A);
 - W5 CI:命令缓冲快照回归进 make test;Linux xvfb 渲染冒烟。
   **【2026-09-19 部分销账】**聚合门禁实证为 ci.sh(非 make test):GUI 阶梯挂载为

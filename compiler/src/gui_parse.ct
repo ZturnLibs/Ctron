@@ -292,29 +292,6 @@ fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -
     return 0
 }
 
-// File 子节点遍历 dump(--dump-gui 消费口;driver_check 调用)
-fn gui_dump_file(file: List[Str]) -> I32 {
-    var i: I32 = 1
-    while i < file.len {
-        var d = file[i]
-        if d[0] == "GuiBlock" {
-            var tks = List[Str]()
-            gui_split(d[4], tks)
-            var cur = Atomic[I32](0)
-            var out = List[Str]()
-            if d[1] == "view" {
-                gui_lower_view(tks, cur, "  ", out)
-            } else {
-                if d[1] == "style" {
-                    gui_lower_style(tks, cur, "  ", out)
-                }
-            }
-        }
-        i += 1
-    }
-    return 0
-}
-
 // ==================== gui_check:检查面(W3;§4.4 E8xxx 语料验收)====================
 // 收集式(不 panic/不打印):诊断行入 gdiags("E8xxx: msg"),块内首错即止。
 // 结构口径与 dump lower 一致(限深 1:根=容器,子=叶子)。
@@ -389,41 +366,61 @@ fn gui_ck_leaf(tks: List[Str], cur: Atomic[I32], sn: List[Str], gdiags: List[Str
     cur.store(cur.load() + 1)
     var bad: I32 = gui_ck_tag(tag, gdiags)
     var c: Str = ""
-    while tks[cur.load()] != ">" {
+    while cur.load() < tks.len {
+        if tks[cur.load()] == ">" {
+            break
+        }
         var an: Str = tks[cur.load()]
         cur.store(cur.load() + 1)
         if an == "on" {
+            // on:名={fn} —— 镜像 gui_lower 的 6 token 结构走;曾盲跳 5 漏收尾 },越界崩检查
             cur.store(cur.load() + 1)
             cur.store(cur.load() + 1)
             cur.store(cur.load() + 1)
             cur.store(cur.load() + 1)
             cur.store(cur.load() + 1)
+            cur.store(cur.load() + 1)
+            if cur.load() < tks.len {
+                if tks[cur.load()] == "}" {
+                    cur.store(cur.load() + 1)
+                }
+            }
         } else {
             cur.store(cur.load() + 1)
-            var av: Str = gui_unq(tks[cur.load()])
-            cur.store(cur.load() + 1)
-            if an == "class" {
-                c = av
+            if cur.load() < tks.len {
+                var av: Str = gui_unq(tks[cur.load()])
+                cur.store(cur.load() + 1)
+                if an == "class" {
+                    c = av
+                }
             }
         }
     }
-    cur.store(cur.load() + 1)
+    if cur.load() < tks.len {
+        cur.store(cur.load() + 1)
+    }
     if c != "" {
         if !gui_ck_has_style(sn, c) {
             gdiags.push("E8150: class 引用未定义样式 " + c)
             bad = -1
         }
     }
-    while tks[cur.load()] != "<" {
+    while cur.load() < tks.len {
+        if tks[cur.load()] == "<" {
+            break
+        }
         cur.store(cur.load() + 1)
     }
-    cur.store(cur.load() + 1)
-    cur.store(cur.load() + 1)
-    var et: Str = tks[cur.load()]
-    cur.store(cur.load() + 1)
-    if et != tag {
-        gdiags.push("E8100: 闭合标签不匹配 " + et)
-        bad = -1
+    // 闭合:'</' tag '>';界外即结构异常,交由主循环界内终止
+    if cur.load() + 2 < tks.len {
+        cur.store(cur.load() + 1)
+        cur.store(cur.load() + 1)
+        var et: Str = tks[cur.load()]
+        cur.store(cur.load() + 1)
+        if et != tag {
+            gdiags.push("E8100: 闭合标签不匹配 " + et)
+            bad = -1
+        }
     }
     return bad
 }
@@ -456,14 +453,24 @@ fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
                 } else {
                     var tag: Str = eat_tok(tks, cur)
                     gui_ck_tag(tag, gdiags)
-                    while tks[cur.load()] != ">" {
+                    while cur.load() < tks.len {
+                        if tks[cur.load()] == ">" {
+                            break
+                        }
                         var an: Str = eat_tok(tks, cur)
                         if an == "on" {
+                            // on:名={fn} —— 镜像 gui_lower 对齐 6 token(曾盲吃 5 漏 },错位越界)
                             eat_tok(tks, cur)
                             eat_tok(tks, cur)
                             eat_tok(tks, cur)
                             eat_tok(tks, cur)
                             eat_tok(tks, cur)
+                            eat_tok(tks, cur)
+                            if cur.load() < tks.len {
+                                if tks[cur.load()] == "}" {
+                                    eat_tok(tks, cur)
+                                }
+                            }
                         } else {
                             if eat_tok(tks, cur) != "=" {
                                 gdiags.push("E8100: 属性期待 =")
@@ -477,18 +484,31 @@ fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
                             }
                         }
                     }
-                    while tks[cur.load()] != "<" {
+                    while cur.load() < tks.len {
+                        if tks[cur.load()] == "<" {
+                            break
+                        }
                         cur.store(cur.load() + 1)
                     }
                     var guard: I32 = 0
                     while guard < 64 {
-                        if tks[cur.load()] == "<" {
-                            if tks[cur.load() + 1] == "/" {
-                                cur.store(cur.load() + 2)
+                        if cur.load() < tks.len {
+                            if tks[cur.load()] == "<" {
+                                if cur.load() + 1 < tks.len {
+                                    if tks[cur.load() + 1] == "/" {
+                                        cur.store(cur.load() + 2)
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        if cur.load() < tks.len {
+                            if tks[cur.load()] == "<" {
+                                cur.store(cur.load() + 1)
+                                gui_ck_leaf(tks, cur, sn, gdiags)
+                            } else {
                                 break
                             }
-                            cur.store(cur.load() + 1)
-                            gui_ck_leaf(tks, cur, sn, gdiags)
                         } else {
                             break
                         }
@@ -497,6 +517,9 @@ fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
                 }
             } else {
                 if d[1] == "style" {
+                    // joined 以名字开头(tks[0]),与 view 路径同样跳过——
+                    // 否则属性错位一位:冒号误报 + 游标越界,整个检查崩溃丢诊断(W3 修复)
+                    cur.store(1)
                     while cur.load() < tks.len {
                         var pp: Str = eat_tok(tks, cur)
                         if eat_tok(tks, cur) != ":" {
