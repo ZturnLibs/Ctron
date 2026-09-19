@@ -4,6 +4,13 @@
 // Atomic/parallel/Simd…)、eval_call 入口、variant_arity/conv_as 显式转换、
 // ns_map_reduce、utf8_cont/str_contains。
 // =====================================================================
+
+// W4 E1:解释口径 extern 直调桥宿主口(实现在发射运行时 boilerplate,
+// driver_emit.ct 侧 ctron_ext_dispatch;dlsym 直调宿主链接的 vendored 符号)。
+// 注:参数表必须单行——C 宿主解析器不支持跨行参数表(2026-09-19 实证)
+#[trusted]
+extern "c" fn ctron_ext_dispatch(nm: Str, a0: Str, a1: Str, a2: Str, a3: Str, a4: Str, a5: Str, a6: Str, a7: Str, a8: Str, a9: Str, a10: Str, a11: Str) -> I32
+
 fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> List[Str] {
     var ps = d[3]
     var nenv = List[Str]()
@@ -277,9 +284,62 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             panic("variant arity:" + nm)
             return e4("a", env, vV2(), out)
         }
-        // extern "c" 声明:解释器无 FFI 口径 → 明确指引(§9.6,发射+链接 c_src 后运行)
+        // extern "c" 声明:W4 E1 解释口径直调桥(§11.5;I32/Bool/Str 标量子集,
+        // 帧 "i:<int>"/"s:<str>";仅前 12 参;Void 返回 0;Str 返回暂缺随 E3 登记)。
+        // dlsym 直调宿主进程链接符号(bin/ctron-cc 链 vendored 库;C 宿主未链 → 符号缺失错)
         if decl_node(file, "FnExt", nm).len > 0 {
-            panic("extern fn 仅原生口径可用:" + nm + "(经 ctron-emit + cc 链接 c_src 后运行)")
+            var f0: Str = ""
+            var f1: Str = ""
+            var f2: Str = ""
+            var f3: Str = ""
+            var f4: Str = ""
+            var f5: Str = ""
+            var f6: Str = ""
+            var f7: Str = ""
+            var f8: Str = ""
+            var f9: Str = ""
+            var f10: Str = ""
+            var f11: Str = ""
+            var q: I32 = 0
+            while q < vals.len {
+                var tg: Str = vals[q][0]
+                var pl: Str = vals[q][1]
+                if tg == "S" {
+                    pl = "s:" + pl
+                } else {
+                    if tg == "B" {
+                        if pl == "true" {
+                            pl = "i:1"
+                        } else {
+                            pl = "i:0"
+                        }
+                    } else {
+                        if tg == "I" {
+                            pl = "i:" + pl
+                        } else {
+                            panic("extern 解释口径:不支持参数类型 " + tg)
+                        }
+                    }
+                }
+                if q == 0 { f0 = pl }
+                if q == 1 { f1 = pl }
+                if q == 2 { f2 = pl }
+                if q == 3 { f3 = pl }
+                if q == 4 { f4 = pl }
+                if q == 5 { f5 = pl }
+                if q == 6 { f6 = pl }
+                if q == 7 { f7 = pl }
+                if q == 8 { f8 = pl }
+                if q == 9 { f9 = pl }
+                if q == 10 { f10 = pl }
+                if q == 11 { f11 = pl }
+                if q > 11 {
+                    panic("extern 解释口径:参数超 12")
+                }
+                q += 1
+            }
+            var rr: I32 = ctron_ext_dispatch(nm, f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11)
+            return e4("k", env, vI(rr), out)
         }
         panic("no fn:" + nm)
         return e4("a", env, vV2(), out)

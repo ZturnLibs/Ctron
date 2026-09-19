@@ -104,9 +104,13 @@
   snapshot/restore:状态经 `CTRON_GUI_STATE` 环境握手注入(不走 argv——`run <file>`
   是自举锚约定),退出前 stdout 回传快照;run.sh `--hot` = watch(app.ctml mtime)
   → 杀进程 → 重编译 → 注入快照重启。headless 自动证明往返(count=7 → 首帧恢复
-  逐字节断言 → 回传 7)。**余项 = 解释口径原址替换**,其前置 = 解释器 extern 直调桥
-  ——实证现状:解释器对 extern 明确拒绝(eval_call.ct:282,§9.6 口径),该桥为
-  编译器核心面改动,维持 W4 主登记。
+  逐字节断言 → 回传 7)。**E1+E2 已交付(2026-09-19 当日)**:解释口径 extern 直调桥
+  落库(通用 12 参帧编码 ctron_ext_dispatch + dlsym RTLD_DEFAULT;bin/ctron-cc 由
+  native.sh 链域库符号源——shim + whole-archive raylib + force_load/rdynamic),
+  E2 夹具 tests/gui/w4_interp 解释执行 Clay 桥全绿(阶梯 11/11);实证坑记录见
+  docs/superpowers/plans/2026-09-19-w4-extern-bridge.md §0′(`\}` 非法转义/宿主
+  跨行参数表/macOS -noall_load 移除)。**余项 = E3 热重载环**(ctron-cc 常驻 +
+  gui_parse 原址替换,§6.3 验收)。
 - W5 CI:命令缓冲快照回归进 make test;Linux xvfb 渲染冒烟。
   **【2026-09-19 部分销账】**聚合门禁实证为 ci.sh(非 make test):GUI 阶梯挂载为
   ci.sh [8/8](步骤号 7→8 全量顺延,沿 toolchain-dist 先例)——macOS 直接跑;
