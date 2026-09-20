@@ -100,21 +100,13 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
     }
     if seq2(nm, "read_file") {
         if vals.len == 1 && vals[0][0] == "S" {
+            // 直返 Str(缺失 → 空串)——与原生发射口径对齐(SL-0.6 ⑯:此前返回
+            // T/Some 包装,解释口径 var s: Str = read_file(...) 直用 .len 即 panic,
+            // 同代码两口径语义分裂;rf.ct 最小复现 2026-09-20)
             var rr = read_file(vals[0][1])
             match rr {
-                Some(s) => {
-                    var tv = List[Str]()
-                    tv.push("T")
-                    tv.push("Some")
-                    tv.push(vS(s))
-                    return e4("k", env, tv, out)
-                }
-                None => {
-                    var tw = List[Str]()
-                    tw.push("T")
-                    tw.push("None")
-                    return e4("k", env, tw, out)
-                }
+                Some(s) => { return e4("k", env, vS(s), out) }
+                None => { return e4("k", env, vS(""), out) }
             }
         }
         panic("read_file args")

@@ -169,7 +169,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             }
             var idx = dvi(ixr[2][1])
             if or2(idx < 0, idx >= cont.len - 1) {
-                panic("index out of bounds")
+                panic("index out of bounds idx=" + idx.to_string() + " contlen=" + (cont.len - 1).to_string() + " cont0=" + cont[0])
                 return s4("a", env, out, vV2())
             }
             var vr = eval_expr(file, env, out, st[3])

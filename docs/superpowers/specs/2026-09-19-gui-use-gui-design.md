@@ -285,6 +285,7 @@ test "键盘 7*6=42" { … t.type_keys("7*6=") … }
 | ⑪ | **字段默认值缺失**(class/struct 字段 `= expr` 两宿主同拒;构造必须全字段字面量) | Todo Model 的 `todos/draft/next_id` 默认;过渡配方 = `make()` 构造器 fn(§10 v10 model.ct) | SL-0 探针实证(2026-09-19);语言工效项 |
 | ⑯ | **read_file 跨宿主语义分歧**:解释口径返回 T/Some 包装(必须 match 解构),原生口径直返 Str——同一份用户代码无法双口径正确。最小复现:`var s: Str = read_file("app.ctml")` + `s.len` → 解释口径 panic "len target recv=T/Some"、原生 LEN:295 ✓ | GUI 开发快路径(解释口径热重载)被阻;修复归 C 宿主泳道(interp read_file 对齐 native 直返 Str,或 native 补 Option 语义——二选一须评审) | SL-2v 验证过程实证(2026-09-20,rf.ct 复现);gui 域包当前以原生口径为验收路径 |
 | ⑰ | **闭包/fn 值参数限指针宽度**(struct 按值穿不过闭包槽);**闭包体 If 语句**发射非法 C;**空闭包体**解释口径段错误 | Driver 经 Box[Driver] 装箱;控制流提具名 fn;避免空体——三条配方已绕行 | SL-2v/SL-4 实证(2026-09-20) |
+| ⑱ | **解释口径 struct 携带 List 的读取为副本语义**(`var l = t.nfc` 得副本而非引用,链接写入被丢弃;后续索引越界);原生口径为引用语义 ✓。连带:struct 成员链索引赋值解释口径不支持(assign target:Index) | gui 域包树构建(fc/ns)依赖 struct 携带 List 的引用变异 → **std.gui 应用当前以原生口径为准**(发布路径 ✓);解释口径 dev-loop 待宿主值模型对齐 | SL-2v 解释口径验证实证(2026-09-20,w2.ct 单文件复现 + eval_run OOB 上下文插桩) |
 
 ①②阻塞 L1 的**形态整洁**(不阻塞功能);③④⑤只影响业务代码写法,与 L1/L2 排期解耦。
 
