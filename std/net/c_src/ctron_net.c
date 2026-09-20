@@ -9,6 +9,9 @@
  *   - C-owned 串返回经 thread-local 静态缓冲,Ctron 侧 str_from_c 深拷;
  *   - 错误统一置 thread-local errno 槽(ct_err/ct_werr)后返回 -1,
  *     Ctron 侧经 ctron_net_last_errno / ctron_net_strerror 取详情。
+ * P2-C 混合化:五停车点(read_t / write·write_str 发送核 / sleep_ms /
+ * udp_recvfrom / shutdown 写等待 —— 最后一处 P1 无 EAGAIN 面,无点可改)
+ * 见下方"协程停车面"注;裸线程(未链 rt)P1 原路径逐字节不变。
  */
 #include <stdint.h>
 #include <errno.h>
@@ -50,12 +53,19 @@ typedef ssize_t ct_ssize_t;
 
 static CT_TLS int64_t ct_net_errno_v = 0;
 
-int64_t ctron_net_last_errno(void) { return ct_net_errno_v; }
+/* errno 槽一律经 noinline 访问器读写:darwin/arm64 clang 会把 _Thread_local
+ * 的 TLV 槽位解析结果缓存在 callee-saved 寄存器里,而协程跨 worker 迁移后
+ * rt_swap 恢复的是旧线程的寄存器镜像 ⇒ 直读/直写槽位可能命中别的线程的块
+ * (P2-C 实证:ETIMEDOUT 写入旧块,last_errno 读到 0)。noinline 强制每次
+ * 调用在当前线程重新解析。ctron_rt.c 同款约束与对策,已登记。 */
+__attribute__((noinline)) static int64_t* ct_err_slot(void) { return &ct_net_errno_v; }
+
+int64_t ctron_net_last_errno(void) { return *ct_err_slot(); }
 
 #ifdef _WIN32
-#define ct_err() (ct_net_errno_v = (int64_t)WSAGetLastError(), -1)
+#define ct_err() (*ct_err_slot() = (int64_t)WSAGetLastError(), -1)
 #else
-static int64_t ct_err(void) { ct_net_errno_v = (int64_t)errno; return -1; }
+static int64_t ct_err(void) { *ct_err_slot() = (int64_t)errno; return -1; }
 #endif
 
 /* Box64 镜像 Ctron struct Box64 { var v: I64 }(声明序 = C 声明序,单 I64 字段;
@@ -76,7 +86,7 @@ static int ct_wsa_once(void) {
     static int wsa_ok = 0;
     if (!wsa_ok) {
         if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-            ct_net_errno_v = (int64_t)WSAGetLastError();
+            *ct_err_slot() = (int64_t)WSAGetLastError();
             return -1;
         }
         wsa_ok = 1;
@@ -87,6 +97,44 @@ static int ct_wsa_once(void) {
 #else
 #define CT_WSA() 0
 #endif
+
+/* ---- P2-C 协程停车面(net 垫片混合化) ----
+ * ctron_rt 三符号以"弱定义哑元"垫底:未链 rt 时即此哑元(6 夹具只链本文件);
+ * 链入 rt 时 ctron_rt.c 的强定义在链接期整体顶替弱定义(ELF/Mach-O 标准语义,
+ * darwin arm64 -O1/-O2 已实证:哑元态判据恒 0、强链态判据在协程内为 1 且无
+ * 同 TU 常量折叠)。为何不用 weak extern 声明:Mach-O 无 undefined-weak→NULL
+ * 链接语义(weak/weak_import 纯 extern 声明均链接期报 undefined,已实证),
+ * 弱定义强顶弱是双侧唯一免链接旗标的机制。
+ * 停车判据(冻结口径)= wait_fd 已链 && current() 非空:哑元 current 恒 NULL
+ * ⇒ 判据恒假 ⇒ P1 原路径逐字节不变(6 夹具回归门);判据为真仅当真 rt 已链
+ * 且当前处于协程上下文。
+ * 限制登记:rt 若经静态库归档链接且无其他拉入引用,弱垫底不被顶替(静默回退
+ * P1,不致错);本仓 rt 一律以源/.o 直链(c_src/*.c glob),不受影响。
+ * _WIN32 无 rt(POSIX-only),停车面整体裁掉,P1 行为不变。 */
+#if !defined(_WIN32)
+__attribute__((weak)) void ctron_rt_wait_fd(int fd, int write_side, int64_t timeout_ms) {
+    (void)fd; (void)write_side; (void)timeout_ms;
+}
+__attribute__((weak)) void* ctron_rt_current(void) { return 0; }
+__attribute__((weak)) void ctron_rt_sleep_ms(int64_t ms) { (void)ms; }
+#endif
+
+/* 停车判据:垫片符号已链(非哑元态不可能是真,哑元 current 恒 NULL)+ 协程上下文 */
+static int ct_rt_parkable(void) {
+#if !defined(_WIN32)
+    return (ctron_rt_wait_fd != 0) && (ctron_rt_current() != 0);
+#else
+    return 0;
+#endif
+}
+
+static int ct_rt_sleep_parkable(void) {
+#if !defined(_WIN32)
+    return (ctron_rt_sleep_ms != 0) && (ctron_rt_current() != 0);
+#else
+    return 0;
+#endif
+}
 
 /* §11.3 TCP 默认面:accept/connect 出口统一开 NODELAY + KEEPALIVE */
 static void ct_tcp_defaults(ct_sock fd) {
@@ -124,12 +172,18 @@ int64_t ctron_net_now_ns(void) {
          + (int64_t)((t.QuadPart % f.QuadPart) * 1000000000LL / f.QuadPart);
 #else
     struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) { ct_net_errno_v = errno; return -1; }
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) { *ct_err_slot() = errno; return -1; }
     return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 #endif
 }
 
 void ctron_net_sleep_ms(int64_t ms) {
+    /* P2-C 停车点④:协程上下文(且 rt 已链)→ 定时器堆停车(worker 不滞留);
+     * 裸线程 → 原 nanosleep 回退,逐字节不变。 */
+    if (ct_rt_sleep_parkable()) {
+        ctron_rt_sleep_ms(ms);
+        return;
+    }
 #ifdef _WIN32
     Sleep((DWORD)ms);
 #else
@@ -138,6 +192,20 @@ void ctron_net_sleep_ms(int64_t ms) {
     req.tv_nsec = (long)((ms % 1000) * 1000000L);
     while (nanosleep(&req, &req) != 0 && errno == EINTR) { }
 #endif
+}
+
+/* 协程停车等待 fd 就绪/超时:deadline=0 表永久(rt 口径 timeout<0)。
+ * 返回 1 = 已停车并醒(调用方重试 syscall —— 就绪是提示非保证,冻结契约);
+ * 返回 0 = 已到 deadline(调用方置 ETIMEDOUT 返回)。 */
+static int ct_rt_park_until(int64_t fd, int write_side, uint64_t deadline) {
+    int64_t rem = -1;
+    if (deadline != 0) {
+        uint64_t now = (uint64_t)ctron_net_now_ns();
+        if (now >= deadline) return 0;
+        rem = (int64_t)((deadline - now) / 1000000ull) + 1;
+    }
+    ctron_rt_wait_fd((int)fd, write_side, rem);
+    return 1;
 }
 
 const char* ctron_net_strerror(int64_t e) {
@@ -167,7 +235,7 @@ int64_t ctron_net_tcp_listen(const char* host, int64_t port, Box64* out) {
     a.sin_port = htons((uint16_t)port);
     if (!ct_host4(host, &a.sin_addr)) {
         ct_close(fd);
-        ct_net_errno_v = EINVAL;
+        *ct_err_slot() = EINVAL;
         return -1;
     }
     if (bind(fd, (struct sockaddr*)&a, sizeof(a)) != 0) { ct_close(fd); return ct_err(); }
@@ -213,7 +281,7 @@ int64_t ctron_net_tcp_connect(const char* host, int64_t port, Box64* out) {
     a.sin_port = htons((uint16_t)port);
     if (!ct_host4(host, &a.sin_addr)) {
         ct_close(fd);
-        ct_net_errno_v = EINVAL;
+        *ct_err_slot() = EINVAL;
         return -1;
     }
     if (connect(fd, (struct sockaddr*)&a, sizeof(a)) != 0) { ct_close(fd); return ct_err(); }
@@ -222,10 +290,53 @@ int64_t ctron_net_tcp_connect(const char* host, int64_t port, Box64* out) {
 }
 
 /* 读:poll() 超时门(timeout_ms <= 0 = 永久阻塞)>0 n / 0 eof / <0 err(超时
- * 置 ETIMEDOUT)。字节逐条写入 int64 lane。 */
+ * 置 ETIMEDOUT)。字节逐条写入 int64 lane。
+ * P2-C 停车点①:协程上下文走专用路径(0 超时 poll 探针 + EAGAIN → wait_fd
+ * 停车重试,deadline 收敛保 ETIMEDOUT 语义,worker 线程全程不滞留);裸线程
+ * (未链 rt / current 为空)走下方 P1 poll 门原路径,逐字节不变。 */
 int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms) {
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
+    if (ct_rt_parkable()) {
+        unsigned char tmp[CT_CHUNK];
+        int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
+        uint64_t deadline = timeout_ms > 0
+            ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
+        for (;;) {
+            struct pollfd p;
+            ct_ssize_t n;
+            int pr;
+            memset(&p, 0, sizeof p);
+            p.fd = (ct_sock)fd;
+            p.events = POLLIN;
+            pr = ct_poll(&p, 1, 0);                  /* 非阻塞探针:线程不滞留 */
+            if (pr < 0) {
+                if (errno == EINTR) continue;
+                return ct_err();
+            }
+            if (pr == 0) {                           /* 未就绪:停车等就绪/超时 */
+                if (!ct_rt_park_until(fd, 0, deadline)) {
+                    *ct_err_slot() = ETIMEDOUT;
+                    return -1;
+                }
+                continue;                            /* 醒后重探(就绪是提示) */
+            }
+            n = recv((ct_sock)fd, (char*)tmp, (size_t)want, 0);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                if ((errno == EAGAIN || errno == EWOULDBLOCK)) { /* 假就绪竞态:停车重试 */
+                    if (!ct_rt_park_until(fd, 0, deadline)) {
+                        *ct_err_slot() = ETIMEDOUT;
+                        return -1;
+                    }
+                    continue;
+                }
+                return ct_err();
+            }
+            for (int64_t i = 0; i < (int64_t)n; i++) buf.d[i] = (int64_t)tmp[i];
+            return (int64_t)n;
+        }
+    }
     if (timeout_ms > 0) {
         struct pollfd p;
         p.fd = (ct_sock)fd;
@@ -242,7 +353,7 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
 #endif
             }
             if (pr == 0) {
-                ct_net_errno_v = ETIMEDOUT;
+                *ct_err_slot() = ETIMEDOUT;
                 return -1;
             }
             break;
@@ -265,7 +376,10 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
     }
 }
 
-/* 写缓冲视图 lane:read_t/write 共用 —— write 逐条取 (char)lane[i] */
+/* 写缓冲视图 lane:read_t/write 共用 —— write 逐条取 (char)lane[i]
+ * P2-C 停车点②/③(write/write_str 共此发送核):EAGAIN 且协程上下文 →
+ * wait_fd 等可写后重试(P1 write 为阻塞发完语义、无超时面,故永久等);
+ * 裸线程 → 原 ct_err() 回退,逐字节不变。 */
 static int64_t ct_send_all(int64_t fd, const unsigned char* src, int64_t n) {
     int64_t off = 0;
     while (off < n) {
@@ -276,6 +390,10 @@ static int64_t ct_send_all(int64_t fd, const unsigned char* src, int64_t n) {
             return ct_err();
 #else
             if (errno == EINTR) continue;
+            if ((errno == EAGAIN || errno == EWOULDBLOCK) && ct_rt_parkable()) {
+                ct_rt_park_until(fd, 1, 0);
+                continue;                            /* 醒后重试(就绪是提示) */
+            }
             return ct_err();
 #endif
         }
@@ -348,7 +466,7 @@ int64_t ctron_net_udp_bind(int64_t fd, const char* host, int64_t port, Box64* ou
     a.sin_family = AF_INET;
     a.sin_port = htons((uint16_t)port);
     if (!ct_host4(host, &a.sin_addr)) {
-        ct_net_errno_v = EINVAL;
+        *ct_err_slot() = EINVAL;
         return -1;
     }
     if (bind((ct_sock)fd, (struct sockaddr*)&a, sizeof(a)) != 0) return ct_err();
@@ -364,7 +482,7 @@ int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
     a.sin_family = AF_INET;
     a.sin_port = htons((uint16_t)port);
     if (!ct_host4(host, &a.sin_addr)) {
-        ct_net_errno_v = EINVAL;
+        *ct_err_slot() = EINVAL;
         return -1;
     }
     unsigned char tmp[CT_CHUNK];
@@ -388,6 +506,48 @@ int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
 int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms) {
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
+    /* P2-C 停车点⑤:协程上下文专用路径(与 read_t 同形:0 超时探针 + EAGAIN
+     * 停车重试 + deadline 收敛);裸线程走下方 P1 原路径逐字节不变。 */
+    if (ct_rt_parkable()) {
+        unsigned char tmp[CT_CHUNK];
+        int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
+        uint64_t deadline = timeout_ms > 0
+            ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
+        for (;;) {
+            struct pollfd p;
+            ct_ssize_t n;
+            int pr;
+            memset(&p, 0, sizeof p);
+            p.fd = (ct_sock)fd;
+            p.events = POLLIN;
+            pr = ct_poll(&p, 1, 0);
+            if (pr < 0) {
+                if (errno == EINTR) continue;
+                return ct_err();
+            }
+            if (pr == 0) {
+                if (!ct_rt_park_until(fd, 0, deadline)) {
+                    *ct_err_slot() = ETIMEDOUT;
+                    return -1;
+                }
+                continue;
+            }
+            n = recvfrom((ct_sock)fd, (char*)tmp, (size_t)want, 0, NULL, NULL);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    if (!ct_rt_park_until(fd, 0, deadline)) {
+                        *ct_err_slot() = ETIMEDOUT;
+                        return -1;
+                    }
+                    continue;
+                }
+                return ct_err();
+            }
+            for (int64_t i = 0; i < (int64_t)n; i++) buf.d[i] = (int64_t)tmp[i];
+            return (int64_t)n;
+        }
+    }
     if (timeout_ms > 0) {
         struct pollfd p;
         p.fd = (ct_sock)fd;
@@ -404,7 +564,7 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t ti
 #endif
             }
             if (pr == 0) {
-                ct_net_errno_v = ETIMEDOUT;
+                *ct_err_slot() = ETIMEDOUT;
                 return -1;
             }
             break;
@@ -439,13 +599,13 @@ const char* ctron_net_resolve_first(const char* host) {
     hints.ai_socktype = SOCK_STREAM;
     int rc = getaddrinfo(host, NULL, &hints, &res);
     if (rc != 0 || res == NULL) {
-        ct_net_errno_v = rc;
+        *ct_err_slot() = rc;
         return "";
     }
     const void* src = &((const struct sockaddr_in*)(const void*)res->ai_addr)->sin_addr;
     if (!inet_ntop(AF_INET, src, ct_res_buf, (ct_socklen)sizeof(ct_res_buf))) {
         freeaddrinfo(res);
-        ct_net_errno_v = errno;
+        *ct_err_slot() = errno;
         return "";
     }
     freeaddrinfo(res);

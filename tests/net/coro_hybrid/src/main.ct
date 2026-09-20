@@ -1,0 +1,84 @@
+// coro_hybrid —— net 垫片混合化(P2-C)默认面夹具(裸线程;Task 4 经模板分支
+// 翻 CTRON_RT=coro)。钉住:本夹具 c_src 双链 ctron_net.c + ctron_rt.c(rt 已链
+// 入但主线程 current()==NULL)⇒ 停车判据恒假 ⇒ P1 原路径逐字节不变——与既有
+// 6 夹具同矩阵位,证"链而不活"不漂移。协程停车面由 c_smoke.c(C 级冒烟,经
+// run.sh 专属块承载)实证。
+// CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
+use std.net.{Net_probe}
+
+test "hybrid bare-plane: tcp roundtrip + timeout gate + half-close + sleep + udp" {
+    let net = Net_probe()
+
+    // ---- TCP:bind :0 → sockname 回读实际端口 ----
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    let rc = net_tcp_listen(net, "127.0.0.1", 0, lfd_box)
+    if rc != 0 {
+        panic(last_net_error().message)
+    }
+    let port_box = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_sockname(net, lfd_box.v, port_box) == 0)
+    let port = port_box.v
+    assert(port > 0)
+    let ln = TcpListener { fd: lfd_box.v, port: port.as[I32]() }
+
+    // ---- connect/accept ----
+    let cfd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_connect(net, "127.0.0.1", port, cfd_box) == 0)
+    let st = TcpStream { fd: cfd_box.v }
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_accept(net, ln.fd, afd_box) == 0)
+    let srv = TcpStream { fd: afd_box.v }
+
+    // ---- poll 超时门:静默 socket 50ms 到期 → rc<0 + errno 置位(P1 门) ----
+    var buf: I64[4096] = [0, 0, 0, 0]
+    let tr = net_read_t(net, srv.fd, buf, 4096, 50)
+    assert(tr < 0)
+    assert(ctron_net_last_errno() != 0)
+
+    // ---- write/read 回环 ----
+    let wn = net_write_str(net, st.fd, "hybrid")
+    assert(wn == 6)
+    let rn = net_read_t(net, srv.fd, buf, 4096, 1000)
+    assert(rn == 6)
+    assert(buf[0] == 104)
+    assert(buf[5] == 100)
+    let wn2 = net_write(net, srv.fd, buf, rn)
+    assert(wn2 == 6)
+    let bn = net_read_t(net, st.fd, buf, 4096, 1000)
+    assert(bn == 6)
+
+    // ---- sleep_ms 裸面回退(nanosleep):下界 25ms(余量口径同 clock_sanity) ----
+    let t1 = ctron_net_now_ns()
+    ctron_net_sleep_ms(30)
+    let t2 = ctron_net_now_ns()
+    assert(t2 >= t1)
+    assert(t2 - t1 >= 25000000)
+
+    // ---- half-close:shutdown_write → 对端 eof(0) ----
+    assert(net_shutdown_write(net, st.fd) == 0)
+    let en = net_read_t(net, srv.fd, buf, 4096, 1000)
+    assert(en == 0)
+
+    // ---- UDP 自发自收(停车点⑤的裸面) ----
+    let ufd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_udp_socket(net, ufd_box) == 0)
+    let uport_box = Box[Box64](Box64 { v: 0 })
+    assert(net_udp_bind(net, ufd_box.v, "127.0.0.1", 0, uport_box) == 0)
+    assert(uport_box.v > 0)
+    var ud = UdpSock { fd: ufd_box.v }
+    var ubuf: I64[2048] = [0, 0]
+    ubuf[0] = 117
+    ubuf[1] = 100
+    let us = net_udp_sendto(net, ud.fd, "127.0.0.1", uport_box.v, ubuf, 2)
+    assert(us == 2)
+    ubuf[0] = 0
+    ubuf[1] = 0
+    let ur = net_udp_recvfrom(net, ud.fd, ubuf, 2048, 1000)
+    assert(ur == 2)
+    assert(ubuf[0] == 117)
+    assert(ubuf[1] == 100)
+    assert(net_close(net, ud.fd) == 0)
+    ud.fd = -1
+    assert(ud.fd == -1)
+    // TCP 句柄(ln/st/srv)作用域出口 Drop RAII 统一回收
+}
