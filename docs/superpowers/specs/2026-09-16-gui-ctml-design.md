@@ -134,12 +134,39 @@ Ctron 的 GUI 开发采用 **web 式体验**:标签组织结构、CSS(子集)写
     全部免费继承,规避"DSL 无工具链即死"(P4);
   - **独立形态(M2 起)**:`.ctml` 独立文件,供设计者协作与 agent 生成;经 `use` 导入。
   - 两形态同语法同编译路径,差别仅在物理位置。
-- Ctron.toml 包配置按 `.ctml` 后缀收集(glob 规则随 P2-B 定)。
+- 包配置按 `.ctml` 后缀收集(glob 规则随 P2-B 定;清单文件 = `Ctron.ctcl`,v1 提案)。
+- **UI 入口声明(2026-09-19 增补,J18,源:gui-master-design §10.6)**:包清单 `Ctron.ctcl`
+  增 `gui` 节声明 UI 入口,构建期烘焙为 gui 域默认锚——应用代码零文件感知:
+
+  ```ct
+  // Ctron.ctcl
+  pkg {
+      manifest_version = 1
+      name = "gui_calc"
+      version = "0.1.0"
+  }
+  gui {
+      entry = "ui/calc.ctml"      // 相对包根
+  }
+  ```
+
+  - **三级优先级(规范性)**:显式 `run_file(src, …)` > 清单 `gui.entry` > 默认
+    `"app.ctml"`(零配置约定)。三级各司其职:自定义内容 / 包级声明 / 快速起步;
+  - **机制 = 构建期烘焙**:emit 驱动读清单键 → 烘焙为 `run_d`/`run_kb_d` 家族默认锚;
+    产物**不反向运行期读清单**(清单是构建元数据,避免新 CWD 依赖)。路径声明为默认,
+    内容内嵌(真单二进制)随 dist 域裁决;
+  - **收益**:dist 打包读同键即知携带物(UI 文件单一真源);多 view/多窗口经
+    `views = [...]` 自然扩展;L2 骨架编译期化后键不废弃,语义降级为"开发期源文件
+    位置"(热重载监听目标);
+  - **落点**:emit 驱动读清单键(ctcl 键定位复用 caps 检查基建),随 P2-B CTCL 清单
+    合流。此前的"main 首个 read_file 字面量锚"约定降级为无清单声明时的回落默认。
 
 ### 4.2 语法(规范性草案)
 
 ```text
-File        → (ViewDecl | StyleDecl)*
+File        → (UseDecl | ViewDecl | StyleDecl)*
+              // UseDecl(v10 增补,2026-09-19):独立 .ctml 顶层 use,供绑定/事件
+              // 表达式引用域操作(作用域规则同 §4.2 要点 2′);内嵌形态免此行
 ViewDecl    → "view" IDENT PropList? Block
 PropList    → "(" Prop ("," Prop)* ")"             // props 必填(§4.3 契约 2)
 Prop        → IDENT ":" Type
@@ -568,6 +595,14 @@ M4 完整读屏对标 AccessKit 量级,P3 缓。
 ## 10. 演绎:从零开发一个 Todo 应用
 
 > 以下为**目标形态演绎**(设计验证用例,非现状可运行代码;命令按 §9.7 终态 CLI 表达)。
+>
+> **v10 修订(2026-09-19,用户裁决):本演绎定为 GUI 域的终形态统一验收锚点**——
+> M1-e(现状能力版)、L2 SL-8(表达式事件)与渲染回归同以此为准,"照抄能跑"是唯一
+> 完成判据。清单语言定案 `Ctron.ctcl`(config-language v1;否决 toml)。v10 修正:
+> 三元表达式改为 if 表达式(语言无 `?:`)、each 含输入控件补 `key`(§6.1)、
+> List 无删除原语 → 过滤重建配方(删除原语登记 stdlib 缺口)、补 view 导入与
+> 主题导入行、新增 headless 测试段(§11.7)。**文件组织定案:按领域分文件**
+> (model.ct = 数据 + 领域操作;todo.ctml = 视图;main.ct = 装配),不按种类拆分。
 
 ### 10.1 建包
 
@@ -575,19 +610,28 @@ M4 完整读屏对标 AccessKit 量级,P3 缓。
 ctron new todo && cd todo
 ```
 
-```toml
-# Ctron.toml
-[package]
-name = "todo"
-[dependencies]
-gui = { std = true }        # gui 域(M0 起)
+```ct
+// Ctron.ctcl(包清单,config-language v1;J18:gui 节声明 UI 入口)
+pkg {
+    manifest_version = 1
+    name = "todo"
+    version = "0.1.0"
+}
+gui {
+    entry = "src/todo.ctml"      // UI 入口:热重载监听目标;dist 打包携带物(§4.1)
+}
+dependencies {
+    gui { std = true }           // gui 域(M0 起);ctc 据此自动链接 vendored 依赖
+}
 ```
 
 ### 10.2 第一步(M0):静态骨架 + 样式,保存即见
 
 ```ct
-// src/main.ct
+// src/main.ct(v10:补 view 导入行与主题导入行)
 use gui
+use gui.theme                    // 默认主题令牌(§5.2:显式导入,无隐式注入)
+use todo.{TodoApp}               // .ctml 经 P2-B glob 收集,文件名 = 模块名(§4.1)
 
 fn main() -> I32 {
     gui.run(TodoApp())
@@ -620,25 +664,53 @@ Clay(布局);全部零回调路径。改 `style title` 的 `font-size` 保存 �
 ### 10.3 第二步(M1):状态 + 绑定 + 事件
 
 ```ct
-// src/model.ct
-use gui
-
-pub class Todo     { var title: Str; var done: Bool }
+// src/model.ct —— 领域文件:数据 + 领域操作同文件(v10 裁决:按领域分文件,
+// 不按种类——操作离开 Model 无意义,内聚单元 = model.ct;复用粒度是 fn 不是文件)
+pub class Todo     { var id: I32; var title: Str; var done: Bool }
 pub class Model {
-    var todos: List[Todo] = List[Todo]()
-    var draft: Str = ""
+    var todos: List[Todo]
+    var draft: Str
+    var next_id: I32
+}
+// v10 注:字段默认值未支持(收敛设计 §7-⑪),构造走 make() 配方;
+// 方法声明在类型体外(trait+impl / UFCS / 模块 fn,§4.3.3 行为通道)
+pub fn make() -> Model {
+    return Model { todos: List[Todo](), draft: "", next_id: 1 }
+}
+pub fn add_todo(m: Model) {
+    if m.draft.len == 0 { return }
+    m.todos.push(Todo(id: m.next_id, title: m.draft, done: false))
+    m.next_id = m.next_id + 1
+    m.draft = ""
+}
+pub fn flip(t: Todo) { t.done = !t.done }
+pub fn remove(m: Model, t: Todo) {
+    // List 删除原语未落地(收敛设计 §7-⑩),过滤重建配方;原语落地后收回一行
+    var kept = List[Todo]()
+    for x in m.todos {
+        if x.id != t.id { kept.push(x) }
+    }
+    m.todos = kept
 }
 ```
 
 ```ct
 // src/main.ct(同步更新，props 必填,缺失 = E8100;`use gui` 不变)
+use gui
+use model.{make}
+use todo.{TodoApp}
+
 fn main() -> I32 {
-    gui.run(TodoApp(model: Model()))
+    gui.run(TodoApp(model: make()))
 }
 ```
 
 ```ct
-// src/todo.ctml(增补)
+// src/todo.ctml(增补;v10:each 体含输入控件 → 必须带 key,§6.1;
+// 顶层 use 允许(v10 文法澄清:File → (UseDecl | ViewDecl | StyleDecl)*),
+// 绑定/事件表达式的作用域含 use 导入,§4.2 要点 2′)
+use model.{add_todo, flip, remove}
+
 view TodoApp(model: Model) {
   <vbox class="root">
     <hbox class="toolbar">
@@ -646,10 +718,10 @@ view TodoApp(model: Model) {
              on:submit={add_todo(model)} class="draft"/>
       <button on:click={add_todo(model)} disabled={model.draft.len == 0}>添加</button>
     </hbox>
-    <each todo in={model.todos}>
+    <each todo in={model.todos} key={todo.id}>
       <hbox class="item">
         <checkbox checked={todo.done} on:toggle={flip(todo)}/>
-        <label class={todo.done ? "done" : "undone"}>{todo.title}</label>
+        <label class={if todo.done { "done" } else { "undone" }}>{todo.title}</label>
         <spacer/>
         <button class="ghost" on:click={remove(model, todo)}>×</button>
       </hbox>
@@ -661,20 +733,42 @@ view TodoApp(model: Model) {
 }
 ```
 
-```ct
-// src/actions.ct ， 逻辑就是普通 Ctron,无框架魔法
-pub fn add_todo(m: Model) {
-    if m.draft.len == 0 { return }
-    m.todos.push(Todo(title: m.draft, done: false))
-    m.draft = ""
-}
-pub fn flip(t: Todo) { t.done = !t.done }
-pub fn remove(m: Model, t: Todo) { m.todos.remove_item(t) }
-```
-
 **幕后**:`<each>` 编译为对 `model.todos` 的长度订阅，push/remove 触发该槽失效,
 仅重排受影响的子树;`bind={model.draft}` 使 input 成为受控组件;`disabled={…}` 是
 Bool 类型检查下的绑定槽,E8110 在编译期拦类型错误。
+
+> 注(里程碑对齐):checkbox 属 T1(M0–M1 目录);M1-e 前以 toggle 按钮替代演绎,
+> 本节为终形态目标面。
+
+### 10.3.5 验收脚本(v10 新增;headless 全自动,§11.7/M1-e 统一锚)
+
+```ct
+// src/todo_test.ct —— "照抄能跑"的终态判据:无需窗口,CI 直跑
+use gui.{test}
+use model.{make}
+use todo.{TodoApp}
+
+test "添加 → 勾选 → 删除,列表与空态正确" {
+    var m = make()
+    test(TodoApp(model: m), |t| {
+        t.type_into("draft", "写周报")
+        t.click("add")
+        t.type_into("draft", "交报表")
+        t.click("add")
+        t.expect_text("写周报")
+        t.expect_item_count(2)
+        t.click_item("todo-1", "remove")     // key 寻址:元素 id + 动作名
+        t.expect_item_count(1)
+        t.expect_text("交报表")
+        t.expect_text("今天没有安排", when_empty = false)
+    })
+}
+```
+
+- 驱动面按 **ctml 声明寻址**(`bind` 名 / `key` 值 / 动作名),不写死坐标——
+  几何来自布局回填,与运行时同一命中路径;
+- 断言走命令缓冲文本/计数,渲染黄金帧差分(F2)另测视觉;
+- 此脚本与 M1-e 的 Todo 夹具、L2 SL-8 的验收共用同一份源。
 
 ### 10.4 第三步(M2):热重载开发循环
 
