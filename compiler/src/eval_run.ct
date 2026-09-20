@@ -415,4 +415,3 @@ fn run_tests(file: List[Str]) -> List[Str] {
     }
     return s4("k", List[Str](), acc, vV2())
 }
-                panic("index out of bounds idx=" + ixr[2][1].to_string() + " base=" + tg[1][1])
