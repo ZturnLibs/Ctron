@@ -19,8 +19,16 @@ for d in "$DIR"/*/; do
     name=$(basename "$d"); [ "$name" = "bench" ] && continue
     e="$d/src/main.ct"
     [ -f "$e" ] || continue              # 纯 C 冒烟目录(rt_*_smoke)无 main.ct:不入主环
+    # P2-D coro 矩阵:CTRON_RT=coro 时给未自链 rt 的夹具统一补链 ctron_rt.c
+    #(已自链者如 coro_hybrid/coro_conc 不重链——重复强定义链接报错);默认环境
+    # RTSRC 为空,链接行与 P2-C 前同形。主环 cc 补 -pthread(rt 用 pthread)+
+    # -I(rt.h 解析;ctron_net.c 自 P2-D 收账 include ctron_rt.h)。
+    RTSRC=""
+    if [ -n "${CTRON_RT:-}" ] && [ ! -e "$d/c_src/ctron_rt.c" ]; then
+        RTSRC="$ROOT/std/net/c_src/ctron_rt.c"
+    fi
     if "$EMIT" run "$e" > "$T/$name.c" 2>"$T/$name.err"; then
-        if cc -O1 -w -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c 2>"$T/$name.cc.err"; then
+        if cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC 2>"$T/$name.cc.err"; then
             if "$T/$name" run "$e" >"$T/$name.out" 2>&1; then
                 pass=$((pass+1)); echo "  PASS $name"
             else
@@ -37,7 +45,9 @@ done
 # workers=1 与 4 各整跑(1 = 停车严格证:垫片若滞留 worker,进度协程即饿死)。
 # .ct 部分已入主环(裸线程面,rt 链入但 current()==NULL → P1 原路径)。
 smoke="$DIR/coro_hybrid/c_smoke.c"
-if [ -f "$smoke" ]; then
+if [ ! -f "$smoke" ]; then
+    fail=$((fail+1)); echo "  FAIL coro_hybrid_c_smoke (c_smoke.c 缺席:静默跳过守卫,P2-C 收账)"
+else
     name="coro_hybrid_c_smoke"
     if cc -O1 -w -pthread -o "$T/$name" "$smoke" "$DIR"/coro_hybrid/c_src/*.c 2>"$T/$name.cc.err"; then
         for W in 1 4; do

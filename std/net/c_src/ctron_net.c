@@ -17,6 +17,9 @@
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
+/* P2-C 收账:rt 垫底三符号取冻结声明自 ctron_rt.h(强定义同头),防 ABI 漂移
+ * (签名失配时编译期即报,不再静默弱顶弱) */
+#include "ctron_rt.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN

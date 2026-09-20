@@ -1,0 +1,70 @@
+// coro_conc —— P2-D 并发模板模式分支夹具:spawn/join/Channel/scope 取消经弱定义
+// 哑元改道 ctron_rt 协程面(CTRON_RT=coro)与 P1 pthread 面(默认)双跑同果。
+// c_src 只链 ctron_rt.c(无 net)——矩阵位 = 模板七触点的协程面直证:
+//   1) channel 往返(spawn 生产 × spawn 消费):消费侧空读协程停车 → 生产侧
+//      成功路径 wake-all(协程口径的 cond_broadcast 等价面)唤醒;
+//   2) spawn/join 结果值(total=30);
+//   3) scope 取消唤醒停车协程:满通道停车 sender(得 Err 返 1)+ 空通道停车
+//      receiver(得 Err 返 2),兄弟 panic → cancelled 广播 + rt wake_all →
+//      Err(ScopeCancelled) 语义(镜像 tests/06_concurrency / fx_conc_cancel)。
+// CI 纪律:仅回环、零外联(tests/net/run.sh 同口径)。
+fn main() -> I32 {
+    var out = scope { |sc|
+        let (tx, rx) = Channel[I32](4)
+        var prod = sc.spawn(|| {
+            tx.send(1).expect("s")
+            tx.send(4).expect("s")
+            tx.send(9).expect("s")
+            tx.send(16).expect("s")
+            return 0
+        })
+        var cons = sc.spawn(|| {
+            var a = rx.recv().expect("r")
+            var b = rx.recv().expect("r")
+            var c = rx.recv().expect("r")
+            var d = rx.recv().expect("r")
+            return a + b + c + d
+        })
+        prod.join()
+        var total = cons.join()
+        assert(total == 30)
+
+        // 取消面:满通道(cap 1 已占位)停车 sender;空通道停车 receiver;
+        // panicker 触发 scope 取消,双停车者须各得 Err 且不悬挂。
+        let (bx, brx) = Channel[I32](1)
+        bx.send(7).expect("fill")
+        var blocker = sc.spawn(|| {
+            match bx.send(8) {
+                Ok(_) => {
+                    return 0
+                }
+                Err(_) => {
+                    return 1
+                }
+            }
+        })
+        let (px, prx) = Channel[I32](1)
+        var parkedrecv = sc.spawn(|| {
+            match prx.recv() {
+                Ok(_) => {
+                    return 0
+                }
+                Err(_) => {
+                    return 2
+                }
+            }
+        })
+        var p = sc.spawn(|| {
+            panic("cancel")
+            return 0
+        })
+        p.join_or()
+        var b = blocker.join()
+        var r = parkedrecv.join()
+        assert(b == 1)
+        assert(r == 2)
+        total + b + r
+    }
+    println(out.to_string())
+    return 0
+}
