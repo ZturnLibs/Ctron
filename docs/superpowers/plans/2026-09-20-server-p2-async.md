@@ -19,7 +19,7 @@
 
 ---
 
-### Task P2-A: ctron_rt 协程核心 + 单元冒烟(纯 C,先于一切集成)
+### Task 1 (P2-A): ctron_rt 协程核心 + 单元冒烟(纯 C,先于一切集成)
 
 **Files:**
 - Create: `std/net/c_src/ctron_rt.h`、`std/net/c_src/ctron_rt.c`
@@ -60,7 +60,7 @@ int64_t ctron_rt_yield_bench(int rounds);      /* 微基准:rounds 次 yield 配
 
 ---
 
-### Task P2-B: reactor(kqueue/epoll/poll 回退)+ wait_fd 接入
+### Task 2 (P2-B): reactor(kqueue/epoll/poll 回退)+ wait_fd 接入
 
 **Files:**
 - Modify: `std/net/c_src/ctron_rt.c`(reactor 线程 + fd 注册表)
@@ -76,7 +76,7 @@ int64_t ctron_rt_yield_bench(int rounds);      /* 微基准:rounds 次 yield 配
 
 ---
 
-### Task P2-C: net 垫片混合化(协程无色挂起 / 裸线程 P1 回退)
+### Task 3 (P2-C): net 垫片混合化(协程无色挂起 / 裸线程 P1 回退)
 
 **Files:**
 - Modify: `std/net/c_src/ctron_net.c`(read_t/write/shutdown 前的写等待/sleep_ms/udp_recvfrom 五处停车点)
@@ -102,7 +102,7 @@ if ((rc < 0) && would_block()) {
 
 ---
 
-### Task P2-D: 发射模板模式分支(weak extern + CTRON_RT 改道)
+### Task 4 (P2-D): 发射模板模式分支(weak extern + CTRON_RT 改道)
 
 **Files:**
 - Modify: `compiler/src/driver_emit.ct`(并发模板区:ct_spawn/ct_join/ct_join_or/ct_ch_send/ct_ch_recv/ct_cancel_broadcast/ct_shim_tramp 尾部通知 七个触点)
@@ -137,7 +137,7 @@ extern void ctron_rt_cancel_wake_all(void) __attribute__((weak));
 
 ---
 
-### Task P2-E: 确定性调度器 + 1000 种子
+### Task 5 (P2-E): 确定性调度器 + 1000 种子
 
 **Files:**
 - Modify: `std/net/c_src/ctron_rt.c`(CTRON_RT_SEED → 单 worker + 种子化就绪序)
@@ -149,7 +149,7 @@ extern void ctron_rt_cancel_wake_all(void) __attribute__((weak));
 
 ---
 
-### Task P2-F: 门禁三件 + 登记收口
+### Task 6 (P2-F): 门禁三件 + 登记收口
 
 **Files:**
 - Create: `tests/net/c10k/{src/main.ct, c_src, run.sh}`(本地/nightly,不入 CI 主环)
