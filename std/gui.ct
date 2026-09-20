@@ -541,7 +541,6 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     var bstart: I32 = binds.len
     var sstart: I32 = strs.len
     var c: Str = gt_attrs(src, cur, t, conds, binds, strs)
-    glit(src, cur, 62)
     var id: I32 = t.ntag.len
     if is_input {
         // 自闭合:<input ... />;bind 名 → nbid,placeholder → npre
@@ -567,6 +566,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
         t.nflag.push("")
         return id
     }
+    glit(src, cur, 62)
     if is_leaf {
         if byte_at(src, cur.load()) == 60 {
             if byte_at(src, cur.load() + 1) != 47 {
