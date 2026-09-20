@@ -1,0 +1,44 @@
+// examples/gui_calc —— 仿 macOS 基础计算器。
+// 注:运算符字形 ÷ × ± 在 raylib 默认字体 Latin-1 范围(32..255)内可渲染;
+// 减号用 ASCII '-'(U+2212 超出字形面)。中文渲染见 examples/gui_cjk(M3 后合流)。
+view Calc {
+  <vbox class="root">
+    <label class="display">{display}</label>
+    <hbox class="row">
+      <button class="fn" on:click={ac}>AC</button>
+      <button class="fn" on:click={neg}>±</button>
+      <button class="fn" on:click={pct}>%</button>
+      <button class="op" on:click={div}>÷</button>
+    </hbox>
+    <hbox class="row">
+      <button class="num" on:click={d7}>7</button>
+      <button class="num" on:click={d8}>8</button>
+      <button class="num" on:click={d9}>9</button>
+      <button class="op" on:click={mul}>×</button>
+    </hbox>
+    <hbox class="row">
+      <button class="num" on:click={d4}>4</button>
+      <button class="num" on:click={d5}>5</button>
+      <button class="num" on:click={d6}>6</button>
+      <button class="op" on:click={sub}>-</button>
+    </hbox>
+    <hbox class="row">
+      <button class="num" on:click={d1}>1</button>
+      <button class="num" on:click={d2}>2</button>
+      <button class="num" on:click={d3}>3</button>
+      <button class="op" on:click={add}>+</button>
+    </hbox>
+    <hbox class="row">
+      <button class="num zero" on:click={d0}>0</button>
+      <button class="num" on:click={dot}>.</button>
+      <button class="op" on:click={eq}>=</button>
+    </hbox>
+  </vbox>
+}
+style root { gap: 10; padding: 12 }
+style display { size: 40; fg: "#ffffff"; align: right; h: 76 }
+style row { direction: row; gap: 10; h: 54 }
+style num { bg: "#4a4a4c"; fg: "#ffffff"; size: 26; w: 66; h: 54 }
+style fn { bg: "#a5a5a5"; fg: "#1b1b1d"; size: 26; w: 66; h: 54 }
+style op { bg: "#ff9f0a"; fg: "#ffffff"; size: 28; w: 66; h: 54 }
+style zero { w: 142 }

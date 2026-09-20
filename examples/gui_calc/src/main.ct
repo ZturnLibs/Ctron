@@ -1,0 +1,991 @@
+// examples/gui_calc/src/main.ct —— L1 域包形态(SL-4 切包)
+// 用户树 = app.ctml + 本文件:十进制字符串算术 + 状态机 + 装配(958 行,原 1958)。
+// 平台(解析/布局/命中/循环/extern)全部在 std/gui 域包;测试走域包 test()(headless)。
+// 已知配方约束(SL-0.6 前):闭包体保持单调用(控制流提具名 fn);批量点击走 click_rep。
+
+use std.gui.{run_kb_d, test, d_click, d_frame, d_expect_text}
+
+// ==================== 十进制字符串算术(规范形:无前导零/尾零;零="0";负号仅非零) ====================
+
+fn dch(d: I32) -> Str {
+    return byte_slice("0123456789", d, d + 1)
+}
+
+fn digitat(s: Str, i: I32) -> I32 {
+    return byte_at(s, i) - 48
+}
+
+// 规范化组装:neg + 整数段 + 小数段
+fn djoin(neg: Bool, ip: Str, fp: Str) -> Str {
+    var i: Str = ip
+    var f: Str = fp
+    if i.len == 0 {
+        i = "0"
+    }
+    while i.len > 1 {
+        if byte_at(i, 0) == 48 {
+            i = byte_slice(i, 1, i.len)
+        } else {
+            break
+        }
+    }
+    while f.len > 0 {
+        if byte_at(f, f.len - 1) == 48 {
+            f = byte_slice(f, 0, f.len - 1)
+        } else {
+            break
+        }
+    }
+    if i == "0" {
+        if f.len == 0 {
+            return "0"
+        }
+        if neg {
+            return "-0." + f
+        }
+        return "0." + f
+    }
+    var s: Str = i
+    if f.len > 0 {
+        s = s + "." + f
+    }
+    if neg {
+        return "-" + s
+    }
+    return s
+}
+
+fn dzero(a: Str) -> Bool {
+    return a == "0"
+}
+
+fn dneg(a: Str) -> Str {
+    if dzero(a) {
+        return "0"
+    }
+    if byte_at(a, 0) == 45 {
+        return byte_slice(a, 1, a.len)
+    }
+    return "-" + a
+}
+
+fn d_negof(a: Str) -> Bool {
+    if a.len > 0 {
+        if byte_at(a, 0) == 45 {
+            return true
+        }
+    }
+    return false
+}
+
+// 规范形 → 幅值整数段/小数段
+fn d_intp(a: Str) -> Str {
+    var t: Str = a
+    if d_negof(t) {
+        t = byte_slice(t, 1, t.len)
+    }
+    var k: I32 = 0
+    while k < t.len {
+        if byte_at(t, k) == 46 {
+            return byte_slice(t, 0, k)
+        }
+        k += 1
+    }
+    return t
+}
+
+fn d_fracp(a: Str) -> Str {
+    var t: Str = a
+    if d_negof(t) {
+        t = byte_slice(t, 1, t.len)
+    }
+    var k: I32 = 0
+    while k < t.len {
+        if byte_at(t, k) == 46 {
+            return byte_slice(t, k + 1, t.len)
+        }
+        k += 1
+    }
+    return ""
+}
+
+// 幅值比较(入参可为带符号规范形,内部先剥符号)
+fn dcmp(a: Str, b: Str) -> I32 {
+    var ma: Str = a
+    var mb: Str = b
+    if d_negof(ma) {
+        ma = byte_slice(ma, 1, ma.len)
+    }
+    if d_negof(mb) {
+        mb = byte_slice(mb, 1, mb.len)
+    }
+    var ai: Str = d_intp(ma)
+    var af: Str = d_fracp(ma)
+    var bi: Str = d_intp(mb)
+    var bf: Str = d_fracp(mb)
+    if ai.len != bi.len {
+        if ai.len > bi.len {
+            return 1
+        }
+        return -1
+    }
+    var k: I32 = 0
+    while k < ai.len {
+        if digitat(ai, k) != digitat(bi, k) {
+            if digitat(ai, k) > digitat(bi, k) {
+                return 1
+            }
+            return -1
+        }
+        k += 1
+    }
+    var tot: I32 = af.len
+    if bf.len > tot {
+        tot = bf.len
+    }
+    k = 0
+    while k < tot {
+        var da: I32 = 0
+        var db: I32 = 0
+        if k < af.len {
+            da = digitat(af, k)
+        }
+        if k < bf.len {
+            db = digitat(bf, k)
+        }
+        if da != db {
+            if da > db {
+                return 1
+            }
+            return -1
+        }
+        k += 1
+    }
+    return 0
+}
+
+// 对齐位取数:fl = 对齐后小数长;j = 自右起位数;整数段更短的一侧补 0
+fn dAt(ip: Str, fp: Str, fl: I32, j: I32) -> I32 {
+    if j < fl {
+        return digitat(fp, fl - 1 - j)
+    }
+    var k: I32 = j - fl
+    if k < ip.len {
+        return digitat(ip, ip.len - 1 - k)
+    }
+    return 0
+}
+
+// 幅值加(入参无符号规范形;返回无符号规范形)
+fn mag_add(a: Str, b: Str) -> Str {
+    var ai: Str = d_intp(a)
+    var af: Str = d_fracp(a)
+    var bi: Str = d_intp(b)
+    var bf: Str = d_fracp(b)
+    var fl: I32 = af.len
+    if bf.len > fl {
+        fl = bf.len
+    }
+    var fap: Str = af
+    var fbp: Str = bf
+    while fap.len < fl {
+        fap = fap + "0"
+    }
+    while fbp.len < fl {
+        fbp = fbp + "0"
+    }
+    var carry: I32 = 0
+    var out: Str = ""
+    var total: I32 = ai.len
+    if bi.len > total {
+        total = bi.len
+    }
+    total = total + fl
+    var j: I32 = 0
+    while j < total {
+        var s: I32 = dAt(ai, fap, fl, j) + dAt(bi, fbp, fl, j) + carry
+        if s >= 10 {
+            s -= 10
+            carry = 1
+        } else {
+            carry = 0
+        }
+        out = dch(s) + out
+        j += 1
+    }
+    if carry > 0 {
+        out = "1" + out
+    }
+    var ip: Str = byte_slice(out, 0, out.len - fl)
+    var fp: Str = ""
+    if fl > 0 {
+        fp = byte_slice(out, out.len - fl, out.len)
+    }
+    return djoin(false, ip, fp)
+}
+
+// 幅值减(a ≥ b,均无符号规范形;a ≥ b ⇒ ai.len ≥ bi.len)
+fn mag_sub(a: Str, b: Str) -> Str {
+    var ai: Str = d_intp(a)
+    var af: Str = d_fracp(a)
+    var bi: Str = d_intp(b)
+    var bf: Str = d_fracp(b)
+    var fl: I32 = af.len
+    if bf.len > fl {
+        fl = bf.len
+    }
+    var fap: Str = af
+    var fbp: Str = bf
+    while fap.len < fl {
+        fap = fap + "0"
+    }
+    while fbp.len < fl {
+        fbp = fbp + "0"
+    }
+    var borrow: I32 = 0
+    var out: Str = ""
+    var total: I32 = ai.len + fl
+    var j: I32 = 0
+    while j < total {
+        var s: I32 = dAt(ai, fap, fl, j) - dAt(bi, fbp, fl, j) - borrow
+        if s < 0 {
+            s += 10
+            borrow = 1
+        } else {
+            borrow = 0
+        }
+        out = dch(s) + out
+        j += 1
+    }
+    var ip: Str = byte_slice(out, 0, out.len - fl)
+    var fp: Str = ""
+    if fl > 0 {
+        fp = byte_slice(out, out.len - fl, out.len)
+    }
+    return djoin(false, ip, fp)
+}
+
+// 带符号加(减法经取负复用)
+fn dadd(a: Str, b: Str) -> Str {
+    var na: Bool = d_negof(a)
+    var nb: Bool = d_negof(b)
+    var ma: Str = a
+    var mb: Str = b
+    if na {
+        ma = byte_slice(ma, 1, ma.len)
+    }
+    if nb {
+        mb = byte_slice(mb, 1, mb.len)
+    }
+    if na == nb {
+        var r0: Str = mag_add(ma, mb)
+        if na {
+            return dneg(r0)
+        }
+        return r0
+    }
+    var c: I32 = dcmp(ma, mb)
+    if c == 0 {
+        return "0"
+    }
+    if c > 0 {
+        var r1: Str = mag_sub(ma, mb)
+        if na {
+            return dneg(r1)
+        }
+        return r1
+    }
+    var r2: Str = mag_sub(mb, ma)
+    if nb {
+        return dneg(r2)
+    }
+    return r2
+}
+
+// 带符号乘(竖式;小数位数 = 两因子小数位之和)
+fn dmul(a: Str, b: Str) -> Str {
+    var na: Bool = d_negof(a)
+    var nb: Bool = d_negof(b)
+    var ma: Str = a
+    var mb: Str = b
+    if na {
+        ma = byte_slice(ma, 1, ma.len)
+    }
+    if nb {
+        mb = byte_slice(mb, 1, mb.len)
+    }
+    var ai: Str = d_intp(ma)
+    var af: Str = d_fracp(ma)
+    var bi: Str = d_intp(mb)
+    var bf: Str = d_fracp(mb)
+    var n: I32 = ai.len + af.len
+    var m2: I32 = bi.len + bf.len
+    var A = List[I32]()
+    var B = List[I32]()
+    var k: I32 = 0
+    while k < ai.len {
+        A.push(digitat(ai, k))
+        k += 1
+    }
+    k = 0
+    while k < af.len {
+        A.push(digitat(af, k))
+        k += 1
+    }
+    k = 0
+    while k < bi.len {
+        B.push(digitat(bi, k))
+        k += 1
+    }
+    k = 0
+    while k < bf.len {
+        B.push(digitat(bf, k))
+        k += 1
+    }
+    var prod = List[I32]()
+    k = 0
+    while k < n + m2 {
+        prod.push(0)
+        k += 1
+    }
+    var i2: I32 = 0
+    while i2 < n {
+        var j2: I32 = 0
+        while j2 < m2 {
+            prod[i2 + j2] = prod[i2 + j2] + A[n - 1 - i2] * B[m2 - 1 - j2]
+            j2 += 1
+        }
+        i2 += 1
+    }
+    k = 0
+    while k < n + m2 - 1 {
+        prod[k + 1] = prod[k + 1] + prod[k] / 10
+        prod[k] = prod[k] % 10
+        k += 1
+    }
+    var top: I32 = n + m2 - 1
+    while top > 0 {
+        if prod[top] == 0 {
+            top -= 1
+        } else {
+            break
+        }
+    }
+    var digits: Str = ""
+    k = top
+    while k >= 0 {
+        digits = digits + dch(prod[k])
+        k -= 1
+    }
+    var fl: I32 = af.len + bf.len
+    var ip: Str = "0"
+    var fp: Str = ""
+    if digits.len > fl {
+        ip = byte_slice(digits, 0, digits.len - fl)
+        if fl > 0 {
+            fp = byte_slice(digits, digits.len - fl, digits.len)
+        }
+    } else {
+        var z: I32 = 0
+        while z < fl - digits.len {
+            fp = fp + "0"
+            z += 1
+        }
+        fp = fp + digits
+    }
+    return djoin(na != nb, ip, fp)
+}
+
+// 去前导零("" = 0)
+fn s_trim_lead(s: Str) -> Str {
+    var t: Str = s
+    while t.len > 0 {
+        if byte_at(t, 0) == 48 {
+            t = byte_slice(t, 1, t.len)
+        } else {
+            break
+        }
+    }
+    return t
+}
+
+// 无符号数字串比较("" = 0;均无前导零)
+fn s_cmp(a: Str, b: Str) -> I32 {
+    if a.len != b.len {
+        if a.len > b.len {
+            return 1
+        }
+        return -1
+    }
+    var k: I32 = 0
+    while k < a.len {
+        if digitat(a, k) != digitat(b, k) {
+            if digitat(a, k) > digitat(b, k) {
+                return 1
+            }
+            return -1
+        }
+        k += 1
+    }
+    return 0
+}
+
+// 无符号数字串减(a ≥ b,均无前导零)
+fn s_sub(a: Str, b: Str) -> Str {
+    var out: Str = ""
+    var borrow: I32 = 0
+    var off: I32 = a.len - b.len
+    var i: I32 = a.len - 1
+    while i >= 0 {
+        var db: I32 = 0
+        if i - off >= 0 {
+            db = digitat(b, i - off)
+        }
+        var s: I32 = digitat(a, i) - db - borrow
+        if s < 0 {
+            s += 10
+            borrow = 1
+        } else {
+            borrow = 0
+        }
+        out = dch(s) + out
+        i -= 1
+    }
+    return s_trim_lead(out)
+}
+
+// 无符号数字串 × 单个数字(无前导零)
+fn s_mul_small(a: Str, d: I32) -> Str {
+    if a.len == 0 {
+        return ""
+    }
+    var carry: I32 = 0
+    var out: Str = ""
+    var i: I32 = a.len - 1
+    while i >= 0 {
+        var s: I32 = digitat(a, i) * d + carry
+        carry = s / 10
+        out = dch(s % 10) + out
+        i -= 1
+    }
+    while carry > 0 {
+        out = dch(carry % 10) + out
+        carry = carry / 10
+    }
+    return s_trim_lead(out)
+}
+
+// 带符号除:长除法,商取 kmax+1 位小数,再四舍五入到 kmax 位。
+// 精确除尽时尾零由 djoin 剥除;除以零由调用方先行检查(dzero)。
+fn ddiv(a: Str, b: Str, kmax: I32) -> Str {
+    var na: Bool = d_negof(a)
+    var nb: Bool = d_negof(b)
+    var ma: Str = a
+    var mb: Str = b
+    if na {
+        ma = byte_slice(ma, 1, ma.len)
+    }
+    if nb {
+        mb = byte_slice(mb, 1, mb.len)
+    }
+    var extra: I32 = kmax + 1
+    var nstr: Str = d_intp(ma) + d_fracp(ma)
+    var z: I32 = 0
+    while z < extra {
+        nstr = nstr + "0"
+        z += 1
+    }
+    var dstr: Str = s_trim_lead(d_intp(mb) + d_fracp(mb))
+    var rem: Str = ""
+    var qs: Str = ""
+    var pos: I32 = 0
+    while pos < nstr.len {
+        // 余数 ×10 + 下一位
+        if rem.len > 0 {
+            rem = rem + byte_slice(nstr, pos, pos + 1)
+        } else {
+            if byte_at(nstr, pos) != 48 {
+                rem = byte_slice(nstr, pos, pos + 1)
+            }
+        }
+        var d: I32 = 9
+        while d > 0 {
+            if s_cmp(rem, s_mul_small(dstr, d)) >= 0 {
+                break
+            }
+            d -= 1
+        }
+        if d > 0 {
+            rem = s_sub(rem, s_mul_small(dstr, d))
+        }
+        qs = qs + dch(d)
+        pos += 1
+    }
+    // 小数点位置:q = (a/b) × 10^shift,shift = 点右侧位数
+    var shift: I32 = d_fracp(ma).len + extra - d_fracp(mb).len
+    var ip: Str = "0"
+    var fp: Str = ""
+    if shift >= qs.len {
+        z = 0
+        while z < shift - qs.len {
+            fp = fp + "0"
+            z += 1
+        }
+        fp = fp + qs
+    } else {
+        if shift > 0 {
+            ip = byte_slice(qs, 0, qs.len - shift)
+            fp = byte_slice(qs, qs.len - shift, qs.len)
+        } else {
+            ip = qs
+            z = 0
+            while z < -shift {
+                ip = ip + "0"
+                z += 1
+            }
+        }
+    }
+    return drnd(djoin(na != nb, ip, fp), kmax)
+}
+
+// 四舍五入到 kmax 位小数(半升;|负值| 同样远离零)
+fn drnd(s: Str, kmax: I32) -> Str {
+    var f: Str = d_fracp(s)
+    if f.len <= kmax {
+        return s
+    }
+    var keep: Str = byte_slice(f, 0, kmax)
+    var nxt: I32 = digitat(f, kmax)
+    var r: Str = djoin(d_negof(s), d_intp(s), keep)
+    if nxt >= 5 {
+        var unit: Str = "0."
+        var zz: I32 = 0
+        while zz < kmax - 1 {
+            unit = unit + "0"
+            zz += 1
+        }
+        unit = unit + "1"
+        if d_negof(s) {
+            return dadd(r, dneg(unit))
+        }
+        return dadd(r, unit)
+    }
+    return r
+}
+
+// 整数部分位数(溢出判定用)
+fn dintlen(s: Str) -> I32 {
+    return d_intp(s).len
+}
+
+// 输入串(可带打字中间态:尾点)→ 规范形
+fn dcanon(s: Str) -> Str {
+    var neg: Bool = false
+    var t: Str = s
+    if t.len > 0 {
+        if byte_at(t, 0) == 45 {
+            neg = true
+            t = byte_slice(t, 1, t.len)
+        }
+    }
+    while t.len > 0 {
+        if byte_at(t, t.len - 1) == 46 {
+            t = byte_slice(t, 0, t.len - 1)
+        } else {
+            break
+        }
+    }
+    var ip: Str = t
+    var fp: Str = ""
+    var k: I32 = 0
+    while k < t.len {
+        if byte_at(t, k) == 46 {
+            ip = byte_slice(t, 0, k)
+            fp = byte_slice(t, k + 1, t.len)
+            k = t.len
+        } else {
+            k += 1
+        }
+    }
+    return djoin(neg, ip, fp)
+}
+
+// ==================== 计算器状态机(macOS 立即执行口径) ====================
+
+struct Model {
+    var disp: Str      // 打字中 = 输入串;否则 = 规范结果;err 时 = "Error"
+    var acc: Str       // 累加器(规范形)
+    var op: Str        // "" / "+" / "-" / "*" / "/"
+    var typing: Bool
+    var err: Bool
+}
+
+// 有效数字位数(点与负号除外)
+fn sig_count(s: Str) -> I32 {
+    var k: I32 = 0
+    var n: I32 = 0
+    while k < s.len {
+        var b: I32 = byte_at(s, k)
+        if b >= 48 {
+            if b <= 57 {
+                n += 1
+            }
+        }
+        k += 1
+    }
+    return n
+}
+
+// 小数位位数
+fn frac_len(s: Str) -> I32 {
+    var k: I32 = 0
+    while k < s.len {
+        if byte_at(s, k) == 46 {
+            return s.len - 1 - k
+        }
+        k += 1
+    }
+    return -1
+}
+
+fn press_digit(m: Box[Model], d: Str) -> I32 {
+    if m.err {
+        return 0
+    }
+    if !m.typing {
+        m.disp = d
+        m.typing = true
+        return 0
+    }
+    if m.disp == "0" {
+        m.disp = d
+        return 0
+    }
+    if sig_count(m.disp) >= 10 {
+        return 0
+    }
+    var fl: I32 = frac_len(m.disp)
+    if fl >= 12 {
+        return 0
+    }
+    m.disp = m.disp + d
+    return 0
+}
+
+fn press_dot(m: Box[Model]) -> I32 {
+    if m.err {
+        return 0
+    }
+    if !m.typing {
+        m.disp = "0."
+        m.typing = true
+        return 0
+    }
+    if frac_len(m.disp) >= 0 {
+        return 0
+    }
+    if sig_count(m.disp) >= 10 {
+        return 0
+    }
+    m.disp = m.disp + "."
+    return 0
+}
+
+// 运算应用;除零/溢出置 m.err 并返回 "Error"
+fn apply(m: Box[Model], sym: Str, a: Str, b: Str) -> Str {
+    if sym == "+" {
+        return drnd(dadd(a, b), 12)
+    }
+    if sym == "-" {
+        return drnd(dadd(a, dneg(b)), 12)
+    }
+    if sym == "*" {
+        return drnd(dmul(a, b), 12)
+    }
+    if dzero(b) {
+        m.err = true
+        return "Error"
+    }
+    return ddiv(a, b, 12)
+}
+
+// 结果落盘:溢出(整数部分 > 10 位)→ Error
+fn settle(m: Box[Model], r: Str) -> I32 {
+    if m.err {
+        m.disp = "Error"
+        return 0
+    }
+    if dintlen(r) > 10 {
+        m.err = true
+        m.disp = "Error"
+        return 0
+    }
+    m.disp = r
+    return 0
+}
+
+// 运算符:待运算链先折叠(2 + 3 + → 显示 5),非输入中替换运算符
+fn press_op(m: Box[Model], sym: Str) -> I32 {
+    if m.err {
+        return 0
+    }
+    var v: Str = dcanon(m.disp)
+    if m.op != "" {
+        settle(m, apply(m, m.op, m.acc, v))
+        if m.err {
+            return 0
+        }
+        m.acc = m.disp
+    } else {
+        m.acc = v
+    }
+    m.op = sym
+    m.typing = false
+    return 0
+}
+
+fn press_eq(m: Box[Model]) -> I32 {
+    if m.err {
+        return 0
+    }
+    if m.op == "" {
+        return 0
+    }
+    var v: Str = dcanon(m.disp)
+    settle(m, apply(m, m.op, m.acc, v))
+    m.op = ""
+    m.typing = false
+    return 0
+}
+
+fn press_pct(m: Box[Model]) -> I32 {
+    if m.err {
+        return 0
+    }
+    var v: Str = dcanon(m.disp)
+    settle(m, apply(m, "/", v, "100"))
+    m.typing = false
+    return 0
+}
+
+fn press_neg(m: Box[Model]) -> I32 {
+    if m.err {
+        return 0
+    }
+    m.disp = dneg(dcanon(m.disp))
+    return 0
+}
+
+fn press_ac(m: Box[Model]) -> I32 {
+    m.disp = "0"
+    m.acc = "0"
+    m.op = ""
+    m.typing = false
+    m.err = false
+    return 0
+}
+
+// handler 分发(注册式 if-chain;on:click 名与键盘映射共用)
+fn dispatch(name: Str, m: Box[Model]) -> I32 {
+    if name == "ac" {
+        return press_ac(m)
+    }
+    if name == "neg" {
+        return press_neg(m)
+    }
+    if name == "pct" {
+        return press_pct(m)
+    }
+    if name == "div" {
+        return press_op(m, "/")
+    }
+    if name == "mul" {
+        return press_op(m, "*")
+    }
+    if name == "sub" {
+        return press_op(m, "-")
+    }
+    if name == "add" {
+        return press_op(m, "+")
+    }
+    if name == "eq" {
+        return press_eq(m)
+    }
+    if name == "dot" {
+        return press_dot(m)
+    }
+    if name == "d0" {
+        return press_digit(m, "0")
+    }
+    if name == "d1" {
+        return press_digit(m, "1")
+    }
+    if name == "d2" {
+        return press_digit(m, "2")
+    }
+    if name == "d3" {
+        return press_digit(m, "3")
+    }
+    if name == "d4" {
+        return press_digit(m, "4")
+    }
+    if name == "d5" {
+        return press_digit(m, "5")
+    }
+    if name == "d6" {
+        return press_digit(m, "6")
+    }
+    if name == "d7" {
+        return press_digit(m, "7")
+    }
+    if name == "d8" {
+        return press_digit(m, "8")
+    }
+    if name == "d9" {
+        return press_digit(m, "9")
+    }
+    panic("gui_calc: 未知 handler " + name)
+    return 0
+}
+
+// 键码 → handler 名(raylib GetKeyPressed 口径);未映射返回 ""
+fn key_handler(k: I32) -> Str {
+    if k >= 48 {
+        if k <= 57 {
+            return "d" + (k - 48).to_string()
+        }
+    }
+    if k == 46 {
+        return "dot"
+    }
+    if k == 43 {
+        return "add"
+    }
+    if k == 45 {
+        return "sub"
+    }
+    if k == 42 {
+        return "mul"
+    }
+    if k == 47 {
+        return "div"
+    }
+    if k == 61 {
+        return "eq"
+    }
+    if k == 257 {
+        return "eq"
+    }
+    if k == 256 {
+        return "ac"
+    }
+    if k == 37 {
+        return "pct"
+    }
+    return ""
+}
+
+// ==================== 装配与验收 ====================
+
+// 批量点击(经 dispatch 直驱;几何命中已由单点场景覆盖)
+fn click_rep(t: Box[Driver], name: Str, n: I32, m: Box[Model]) {
+    var i: I32 = 0
+    while i < n {
+        dispatch(name, m)
+        i += 1
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[Model](Model { disp: "0", acc: "0", op: "", typing: false, err: false })
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        var rc: I32 = test(src, 320, 420,
+            |buf| buf.push(m.disp),
+            |name| dispatch(name, m),
+            |k| dispatch(key_handler(k), m),
+            |t, act, key| {
+                d_expect_text(t, "0")
+                act(d_click(t, "d1"))
+                act(d_click(t, "d2"))
+                act(d_click(t, "add"))
+                act(d_click(t, "d3"))
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "15")
+                act(d_click(t, "div"))
+                act(d_click(t, "d0"))
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "Error")
+                act(d_click(t, "ac"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "0")
+                act(d_click(t, "d0"))
+                act(d_click(t, "dot"))
+                act(d_click(t, "d1"))
+                act(d_click(t, "add"))
+                act(d_click(t, "d0"))
+                act(d_click(t, "dot"))
+                act(d_click(t, "d2"))
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "0.3")
+                act(d_click(t, "ac"))
+                act(d_click(t, "d1"))
+                act(d_click(t, "div"))
+                act(d_click(t, "d3"))
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "0.333333333333")
+                act(d_click(t, "ac"))
+                act(d_click(t, "d5"))
+                act(d_click(t, "d0"))
+                act(d_click(t, "pct"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "0.5")
+                act(d_click(t, "d5"))
+                act(d_click(t, "neg"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "-5")
+                act(d_click(t, "d2"))
+                act(d_click(t, "add"))
+                act(d_click(t, "d3"))
+                act(d_click(t, "add"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "5")
+                act(d_click(t, "d4"))
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "9")
+                key(d_press_key(t, 55))
+                key(d_press_key(t, 42))
+                key(d_press_key(t, 54))
+                key(d_press_key(t, 61))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "42")
+                act(d_click(t, "ac"))
+                click_rep(t, "d9", 10, m)
+                act(d_click(t, "mul"))
+                click_rep(t, "d9", 10, m)
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "Error")
+                act(d_click(t, "ac"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "0")
+                act(d_click(t, "d1"))
+                act(d_click(t, "d2"))
+                act(d_click(t, "mul"))
+                act(d_click(t, "d5"))
+                act(d_click(t, "eq"))
+                d_frame(t, |buf| buf.push(m.disp))
+                d_expect_text(t, "60")
+            })
+        return rc
+    }
+    return run_kb_d("ctron calculator", 320, 420,
+        |buf| buf.push(m.disp),
+        |name| dispatch(name, m),
+        |k| dispatch(key_handler(k), m))
+}
