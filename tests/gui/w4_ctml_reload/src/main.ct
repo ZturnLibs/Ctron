@@ -1,0 +1,400 @@
+// tests/gui/w4_ctml_reload —— W4 完整版:CTML 解析模型驱动的热重载(w4_hotreload 是裸文本口径)
+// 链路:mtime 轮询 → 重读 .ctml → 重解析(结构+样式模型)→ Clay 全量重放 → 新布局上屏
+// 解析子集:view 体叶子平铺(限深 1,沿 gui_check 口径)+ <tag class="..">内联单行文本</tag>
+// (label 消费)+ style key:value;嵌套容器等复杂语法面归 M1 泳道
+// 状态保持:重解析只换模型,窗口循环局部状态不受影响(--run 口径)
+
+#[trusted]
+extern "c" fn w4r_mtime_ms(path: Str) -> I64
+
+#[trusted]
+extern "c" fn w4r_sleep_ms(ms: I32) -> Void
+
+#[trusted]
+extern "c" fn w4r_touch(path: Str) -> Void
+
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn ctron_gui_flush() -> I32
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+// ==================== CTML 子集解析 ====================
+
+fn p_ws(src: Str, cur: Atomic[I32]) -> I32 {
+    while cur.load() < src.len {
+        var b: I32 = byte_at(src, cur.load())
+        if b == 32 || b == 10 || b == 9 || b == 13 {
+            cur.store(cur.load() + 1)
+        } else {
+            break
+        }
+    }
+    return 0
+}
+
+fn p_word(src: Str, cur: Atomic[I32]) -> Str {
+    p_ws(src, cur)
+    var s: I32 = cur.load()
+    while cur.load() < src.len {
+        var b: I32 = byte_at(src, cur.load())
+        var ok: Bool = b >= 97 && b <= 122
+        if !ok {
+            ok = b >= 65 && b <= 90
+        }
+        if !ok {
+            ok = b >= 48 && b <= 57
+        }
+        if !ok {
+            ok = b == 95
+        }
+        if !ok {
+            break
+        }
+        cur.store(cur.load() + 1)
+    }
+    return byte_slice(src, s, cur.load())
+}
+
+fn p_lit(src: Str, cur: Atomic[I32], c: I32) -> I32 {
+    p_ws(src, cur)
+    if cur.load() < src.len {
+        if byte_at(src, cur.load()) == c {
+            cur.store(cur.load() + 1)
+            return 0
+        }
+    }
+    return -1
+}
+
+fn p_str(src: Str, cur: Atomic[I32]) -> Str {
+    p_ws(src, cur)
+    var s: I32 = cur.load()
+    if cur.load() < src.len {
+        if byte_at(src, cur.load()) == 34 {
+            cur.store(cur.load() + 1)
+            var q0: I32 = cur.load()
+            while cur.load() < src.len {
+                if byte_at(src, cur.load()) == 34 {
+                    break
+                }
+                cur.store(cur.load() + 1)
+            }
+            var v: Str = byte_slice(src, q0, cur.load())
+            if cur.load() < src.len {
+                cur.store(cur.load() + 1)
+            }
+            return v
+        }
+    }
+    while cur.load() < src.len {
+        var b: I32 = byte_at(src, cur.load())
+        if b == 32 || b == 62 || b == 60 {
+            break
+        }
+        cur.store(cur.load() + 1)
+    }
+    return byte_slice(src, s, cur.load())
+}
+
+// 模型:labels = 叶子文本有序表(label);sk/sv = 样式键值平表
+fn parse_ctml(src: Str, cur: Atomic[I32], labels: List[Str], sk: List[Str], sv: List[Str]) -> I32 {
+    while true {
+        p_ws(src, cur)
+        if cur.load() >= src.len {
+            break
+        }
+        var kw: Str = p_word(src, cur)
+        if kw == "view" {
+            p_word(src, cur)
+            if p_lit(src, cur, 123) != 0 {
+                return -1
+            }
+            var done: Bool = false
+            while !done {
+                p_ws(src, cur)
+                if cur.load() >= src.len {
+                    return -1
+                }
+                if byte_at(src, cur.load()) == 125 {
+                    cur.store(cur.load() + 1)
+                    break
+                }
+                if byte_at(src, cur.load()) != 60 {
+                    return -1
+                }
+                cur.store(cur.load() + 1)
+                var tag: Str = p_word(src, cur)
+                while true {
+                    p_ws(src, cur)
+                    if cur.load() >= src.len {
+                        return -1
+                    }
+                    var b: I32 = byte_at(src, cur.load())
+                    if b == 62 {
+                        cur.store(cur.load() + 1)
+                        break
+                    }
+                    var an: Str = p_word(src, cur)
+                    if p_lit(src, cur, 61) != 0 {
+                        return -1
+                    }
+                    if an == "class" {
+                        p_str(src, cur)
+                    } else {
+                        p_str(src, cur)
+                    }
+                }
+                var ts: I32 = cur.load()
+                while cur.load() < src.len {
+                    if byte_at(src, cur.load()) == 60 {
+                        break
+                    }
+                    cur.store(cur.load() + 1)
+                }
+                var txt: Str = byte_slice(src, ts, cur.load())
+                if tag == "label" {
+                    labels.push(txt)
+                }
+                if p_lit(src, cur, 60) != 0 {
+                    return -1
+                }
+                if p_lit(src, cur, 47) != 0 {
+                    return -1
+                }
+                var et: Str = p_word(src, cur)
+                if et != tag {
+                    return -1
+                }
+                if p_lit(src, cur, 62) != 0 {
+                    return -1
+                }
+            }
+        } else {
+            if kw == "style" {
+                p_word(src, cur)
+                if p_lit(src, cur, 123) != 0 {
+                    return -1
+                }
+                while true {
+                    p_ws(src, cur)
+                    if cur.load() >= src.len {
+                        return -1
+                    }
+                    if byte_at(src, cur.load()) == 125 {
+                        cur.store(cur.load() + 1)
+                        break
+                    }
+                    var key: Str = p_word(src, cur)
+                    if p_lit(src, cur, 58) != 0 {
+                        return -1
+                    }
+                    p_ws(src, cur)
+                    var vs: I32 = cur.load()
+                    while cur.load() < src.len {
+                        var b2: I32 = byte_at(src, cur.load())
+                        if b2 == 59 || b2 == 125 {
+                            break
+                        }
+                        cur.store(cur.load() + 1)
+                    }
+                    var ve: I32 = cur.load()
+                    while ve > vs {
+                        var lb: I32 = byte_at(src, ve - 1)
+                        if lb == 32 || lb == 10 || lb == 9 {
+                            ve -= 1
+                        } else {
+                            break
+                        }
+                    }
+                    var v: Str = byte_slice(src, vs, ve)
+                    if v.len >= 2 {
+                        if byte_at(v, 0) == 34 {
+                            if byte_at(v, v.len - 1) == 34 {
+                                v = byte_slice(v, 1, v.len - 1)
+                            }
+                        }
+                    }
+                    sk.push(key)
+                    sv.push(v)
+                    if cur.load() < src.len {
+                        if byte_at(src, cur.load()) == 59 {
+                            cur.store(cur.load() + 1)
+                        }
+                    }
+                }
+            } else {
+                return -1
+            }
+        }
+    }
+    return 0
+}
+
+fn sty(sk: List[Str], sv: List[Str], key: Str, dflt: Str) -> Str {
+    var i: I32 = 0
+    while i < sk.len {
+        if sk[i] == key {
+            return sv[i]
+        }
+        i += 1
+    }
+    return dflt
+}
+
+fn s2i(s: Str) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b < 48 {
+            break
+        }
+        if b > 57 {
+            break
+        }
+        n = n * 10 + (b - 48)
+        i += 1
+    }
+    return n
+}
+
+// ==================== 布局(模型 → Clay 全量重放)====================
+
+fn layout(labels: List[Str], sk: List[Str], sv: List[Str]) -> I32 {
+    var gap: I32 = s2i(sty(sk, sv, "gap", "8"))
+    var pad: I32 = s2i(sty(sk, sv, "padding", "16"))
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(1, gap, pad, pad, 0, 0, 1, 0, 1, 0, 36, 41, 46, 255)
+    var i: I32 = 0
+    while i < labels.len {
+        gui_text(labels[i], 20, 230, 230, 235, 255)
+        i += 1
+    }
+    gui_close()
+    return gui_end_layout()
+}
+
+fn parse_fresh(path: Str, labels: List[Str], sk: List[Str], sv: List[Str]) -> I32 {
+    var src: Str = read_file(path)
+    var cur = Atomic[I32](0)
+    return parse_ctml(src, cur, labels, sk, sv)
+}
+
+// ==================== 主流程:解析 → 重载环 ====================
+
+fn main() -> I32 {
+    var headless: Bool = env_get("W4R_HEADLESS") == "1"
+    var labels = List[Str]()
+    var sk = List[Str]()
+    var sv = List[Str]()
+    if parse_fresh("app.ctml", labels, sk, sv) != 0 {
+        println("w4_ctml_reload: 初始解析失败")
+        return 2
+    }
+    if labels.len == 0 {
+        println("w4_ctml_reload: 无 label 叶子")
+        return 2
+    }
+    var mt: I64 = w4r_mtime_ms("app.ctml")
+    gui_clay_init(320, 200)
+
+    if headless {
+        // headless:解析模型 → 布局 → 报告;就绪握手后等待外部改写 → 重解析 → 新模型上屏
+        var n: I32 = layout(labels, sk, sv)
+        assert(n >= 2)
+        println("before: " + labels[0])
+        w4r_touch(env_get("W4R_READY"))
+        var waited: I32 = 0
+        while waited < 5000 {
+            var mt2: I64 = w4r_mtime_ms("app.ctml")
+            if mt2 != mt {
+                var l2 = List[Str]()
+                var k2 = List[Str]()
+                var v2 = List[Str]()
+                if parse_fresh("app.ctml", l2, k2, v2) != 0 {
+                    println("w4_ctml_reload: 重解析失败")
+                    return 2
+                }
+                var n2: I32 = layout(l2, k2, v2)
+                assert(n2 >= 2)
+                println("after: " + l2[0])
+                return 0
+            }
+            w4r_sleep_ms(50)
+            waited += 50
+        }
+        println("w4_ctml_reload: <timeout>")
+        return 1
+    }
+
+    // --run 窗口:改 app.ctml 实时重排(解析模型驱动);全量重放逐帧布局
+    InitWindow(320, 200, "ctron ctml hot-reload")
+    SetTargetFPS(60)
+    while !WindowShouldClose() {
+        var mt2: I64 = w4r_mtime_ms("app.ctml")
+        if mt2 != mt {
+            mt = mt2
+            var l2 = List[Str]()
+            var k2 = List[Str]()
+            var v2 = List[Str]()
+            if parse_fresh("app.ctml", l2, k2, v2) == 0 {
+                if l2.len > 0 {
+                    labels = l2
+                    sk = k2
+                    sv = v2
+                }
+            }
+        }
+        BeginDrawing()
+        gui_clear(24, 24, 32)
+        layout(labels, sk, sv)
+        ctron_gui_flush()
+        EndDrawing()
+    }
+    CloseWindow()
+    println("w4_ctml_reload: windowed exited ok")
+    return 0
+}

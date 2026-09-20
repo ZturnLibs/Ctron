@@ -266,6 +266,12 @@ tests/gui/e8_corpus/(W3 gated 负例语料 ×3);tests/gui/peer_status.sh。
 - **W4 热重载**:w4_hotreload 单进程 mtime 轮询→重读证明(就绪握手消启动竞态,
   毫秒 mtime 消同秒漏检);--run 窗口交互验收已由用户完成(实时刷新 + clicks
   计数跨重载保持)。s10_hotreload 更名 w4_hotreload(s10 槽位归 s10_when)。
+- **W4 完整版落地**:w4_ctml_reload —— CTML 解析模型驱动的热重载(mtime 轮询 →
+  重读 → 重解析 → 模型 → Clay 全量重放),headless 单进程双阶段断言
+  (label alpha→beta hot,第二叶 static-two 保持不变证精确 diff),--run 窗口实时重排。
+  解析子集口径:view 体叶子平铺(限深 1,沿 gui_check 先例);嵌套容器归 M1 泳道。
+  夹具本地三坑存档:p_word 不吃前导空白(view 名读空)、Clay 调用前漏 gui_clay_init
+  (空上下文 EXC_BAD_ACCESS)、启发式 measure 为浮点(落点预测须 ×100 整数域)。
 - **w2_fold 转绿**:对端 bin 收敛后黄金差分通过,已入阶梯。
 - **新发现(转交运行时/发射泳道)**:用户程序 assert 失败时消息因 stdout 缓冲
   未刷而丢失(重定向到文件时输出为空、仅 rc=1)——失败路径应 fflush 或走 stderr。

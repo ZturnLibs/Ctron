@@ -1,0 +1,5 @@
+view V {
+  <label>beta hot</label>
+  <label>static-two</label>
+}
+style root { gap: 8; padding: 16 }
