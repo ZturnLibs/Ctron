@@ -70,6 +70,23 @@
  *   F_GETFD 与摘除之间,登记限制)。fd close 而等待者仍 park:kqueue/epoll
  *   无事件、靠超时醒(登记限制);poll 回退以 POLLNVAL 交付。
  *
+ * ══ P2-E 确定性调度(CTRON_RT_SEED)══
+ *   CTRON_RT_SEED=<n>(非空且 strtoul 全串可解,init 时解析一次)→ 单
+ *   worker + 就绪队弹出位由种子 LCG 决定:≥2 就绪时 pop = draw % 队长 抽取
+ *   (每 pop 恰消耗一次抽取;单就绪直取、不消耗抽取)。契约面:同种子 ⇒
+ *   同就绪交错 ⇒ 程序输出逐字节同——只覆盖调度序,且仅纯 spawn/channel
+ *   程序(定时器到期、IO 到达、reactor 交付仍是真实时间,不在契约内)。
+ *   串行化机制(spawn 闸):裸线程(main)的 ctron_rt_join_key 是 spawn
+ *   风暴的终点信号——闸开前 worker 不弹出(idle 退避空转);否则 main 的
+ *   spawn 入队与 worker 弹出并发,任一 pop 时刻的就绪集合本身非确定,任何
+ *   抽取法都救不回。闸开后队列唯一变更者 = 单 worker 自身(finalize/
+ *   wake-all/定时器全在其 G 临界区内),弹出序 = 确定性 LCG 序。
+ *   登记限制:①裸线程先于首个 join 停车在通道上(模板 P1 condvar 面,不经
+ *   rt)会令闸永不打开 → SEED 模式挂起;契约图式 = spawn→join(模板 scope
+ *   图式,coro_det 夹具口径)。②非法/空 SEED → 非种子模式:默认路径
+ *   (多 worker、FIFO pop)逐字节同 SEED 机制引入前,单就绪快路径在种子
+ *   模式下也无新增行为。
+ *
  * 锁纪律:G 绝不跨切换持有(park/yield 在切换前解锁;worker 循环在切换前
  *   解锁),故无"锁随上下文迁移"的跨线程 unlock UB。worker 循环每轮迭代
  *   重新加锁 —— finalize/timers/pop 与 popper 认领全部在锁内串行。
@@ -295,6 +312,12 @@ static int   g_npool = 0;
 static _Atomic long g_hwm_stack = 0;        /* 高水位登记(仅登记,不强制) */
 static _Atomic unsigned g_backoff;          /* 空闲退避档位(良性竞争) */
 
+/* P2-E 确定性调度(见文件头注):SEED 模式下单 worker + 种子化弹出序。
+ * 三者均 G 内读写;g_seed_state 仅在 ready_pop 的抽取路径推进。 */
+static int      g_seed_mode = 0;            /* CTRON_RT_SEED 非空且可解析 */
+static uint64_t g_seed_state = 0;           /* LCG 状态(种子即初态) */
+static int      g_gate_open = 0;            /* spawn 闸:裸线程 join 前不弹出 */
+
 static _Thread_local rt_coro  *tls_cur    = NULL;
 static _Thread_local rt_worker *tls_worker = NULL;
 
@@ -339,14 +362,39 @@ static void ready_push(rt_coro *c)
     g_ready_tail = c;
 }
 
+/* P2-E:种子 LCG 一步(Numerical Recipes 参数;加法项保证 seed=0 也产非零
+ * 流),右移丢弃短周期的低位。仅 G 内调用 ⇒ 推进序 = 弹出序,可重放。 */
+static uint64_t seed_draw_locked(void)
+{
+    g_seed_state = g_seed_state * 6364136223846793005ull + 1442695040888963407ull;
+    return g_seed_state >> 16;
+}
+
 static rt_coro *ready_pop(void)
 {
     rt_coro *c = g_ready_head;
-    if (c) {
-        g_ready_head = c->qnext;
-        if (!g_ready_head) g_ready_tail = NULL;
+    if (!c) return NULL;
+    if (g_seed_mode && c->qnext) {
+        /* P2-E:≥2 就绪 → 弹出位 = draw % 队长(确定性交错面)。单就绪走
+         * 下方原快路径,不消耗抽取;非种子模式完全不进此分支,行为逐字节
+         * 同引入前。队长 O(n) 一遍(单 worker 下短队;SEED 模式性能不在
+         * 契约面)。 */
+        rt_coro *p, *prev = NULL;
+        uint64_t n = 0, k;
+        for (p = c; p; p = p->qnext) n++;
+        k = seed_draw_locked() % n;
+        p = c;
+        while (k) { prev = p; p = p->qnext; k--; }
+        c = p;
+        if (prev) prev->qnext = c->qnext;    /* 队中摘链 */
+        else      g_ready_head = c->qnext;
+        if (g_ready_tail == c) g_ready_tail = prev;
         c->qnext = NULL;
+        return c;
     }
+    g_ready_head = c->qnext;
+    if (!g_ready_head) g_ready_tail = NULL;
+    c->qnext = NULL;
     return c;
 }
 
@@ -589,7 +637,10 @@ static void *worker_main(void *p)
             just_desched = NULL;
         }
         timers_fire_locked();
-        c = ready_pop();
+        /* P2-E spawn 闸:种子模式下,裸线程首个 join_key 前不弹出(见文件
+         * 头注)——否则 main 的 spawn 入队与弹出并发,就绪集合时刻非确定。
+         * 闸关时走下方空队路径(idle 退避/retire 回收照常)。 */
+        c = (g_seed_mode && !g_gate_open) ? NULL : ready_pop();
         if (!c) {
             if (retire) {                /* (P2-B 修复) 空队也照常回收,不再丢弃 */
                 rt_unlock();
@@ -853,6 +904,18 @@ void ctron_rt_init(int workers)
     int i;
     rt_lock();
     if (g_inited) { rt_unlock(); return; }           /* 幂等 */
+    {   /* P2-E:CTRON_RT_SEED 非空且全串可解析 → 种子模式(单 worker +
+         * 种子化弹出序);空串/含尾随垃圾 → 非种子模式(默认行为)。 */
+        const char *e = getenv("CTRON_RT_SEED");
+        if (e && *e) {
+            char *end = NULL;
+            unsigned long v = strtoul(e, &end, 10);
+            if (end && *end == '\0') {
+                g_seed_mode = 1;
+                g_seed_state = (uint64_t)v;
+            }
+        }
+    }
     if (workers <= 0) {
         long n = sysconf(_SC_NPROCESSORS_ONLN);
         if (n <= 0) n = 2;
@@ -860,6 +923,8 @@ void ctron_rt_init(int workers)
     }
     if (workers > RT_MAX_WORKERS) workers = RT_MAX_WORKERS;
     if (workers < 1) workers = 1;
+    if (g_seed_mode) workers = 1;                    /* 种子契约:单 worker
+                                                        (多 worker 本身即非确定源;压过调用方/env 的任何 worker 数) */
     g_nworkers = workers;
     for (i = 0; i < workers; i++) {
         if (pthread_create(&g_workers[i].th, NULL, worker_main, &g_workers[i]) != 0)
@@ -941,6 +1006,9 @@ void ctron_rt_join_key(void *key)
     rt_coro *c, *self;
     if (!key) return;
     rt_lock();
+    /* P2-E spawn 闸开闸点:裸线程(main)进 join = spawn 风暴终点信号。
+     * 在所有早退路径之前置位(闸开前无可协程已完成,首个 join 必达此处)。 */
+    if (g_seed_mode && !rt_tls_cur()) g_gate_open = 1;
     c = map_get_locked(key);
     if (!c) { rt_unlock(); return; }                 /* 未知 key:视为无需等待 */
     if (atomic_load_explicit(&c->done, memory_order_acquire)) { rt_unlock(); return; }

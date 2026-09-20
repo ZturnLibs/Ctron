@@ -1,0 +1,82 @@
+// coro_det —— P2-E 确定性调度夹具:2 生产者 × 2 消费者争用同一工作通道
+// (cap 2 → 满/空双停车面,唤醒走模板 chan 成功路径 wake-all),每个任务在
+// 运行点把事件 id 发入事件通道(cap 32 ≥ 全部 16 事件 ⇒ 日志发送零停车,
+// 日志 FIFO 序 = 单 worker 执行序)。main join 全部后逐行 drain 打印——
+// 输出即调度指纹。无 sleep、无 fd、无取消、无顺序断言:非确定源 = 纯调度,
+// 默认 pthread 面与 coro 无种子面输出可变(仅要求完成);同种子逐字节同
+// 的断言面在 run.sh(spawn→join 图式,rt spawn 闸的契约口径)。
+// 事件编码:P1 发送 101..104(载荷 11..14)/ P2 发送 201..204(载荷 21..24)
+//          / C1 收到 v 记 1000+v / C2 收到 v 记 2000+v。
+fn main() -> I32 {
+    var out = scope { |sc|
+        let (log, logr) = Channel[I32](32)
+        let (wx, wrx) = Channel[I32](2)
+        var p1 = sc.spawn(|| {
+            log.send(101).expect("l")
+            wx.send(11).expect("w")
+            log.send(102).expect("l")
+            wx.send(12).expect("w")
+            log.send(103).expect("l")
+            wx.send(13).expect("w")
+            log.send(104).expect("l")
+            wx.send(14).expect("w")
+            return 0
+        })
+        var p2 = sc.spawn(|| {
+            log.send(201).expect("l")
+            wx.send(21).expect("w")
+            log.send(202).expect("l")
+            wx.send(22).expect("w")
+            log.send(203).expect("l")
+            wx.send(23).expect("w")
+            log.send(204).expect("l")
+            wx.send(24).expect("w")
+            return 0
+        })
+        var c1 = sc.spawn(|| {
+            var a = wrx.recv().expect("r")
+            log.send(1000 + a).expect("l")
+            var b = wrx.recv().expect("r")
+            log.send(1000 + b).expect("l")
+            var c = wrx.recv().expect("r")
+            log.send(1000 + c).expect("l")
+            var d = wrx.recv().expect("r")
+            log.send(1000 + d).expect("l")
+            return 0
+        })
+        var c2 = sc.spawn(|| {
+            var a = wrx.recv().expect("r")
+            log.send(2000 + a).expect("l")
+            var b = wrx.recv().expect("r")
+            log.send(2000 + b).expect("l")
+            var c = wrx.recv().expect("r")
+            log.send(2000 + c).expect("l")
+            var d = wrx.recv().expect("r")
+            log.send(2000 + d).expect("l")
+            return 0
+        })
+        p1.join()
+        p2.join()
+        c1.join()
+        c2.join()
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        println(logr.recv().expect("d").to_string())
+        0
+    }
+    println(out.to_string())
+    return 0
+}
