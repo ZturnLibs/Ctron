@@ -1,0 +1,110 @@
+// tcp_echo —— loopback 回环验收(§11.3;Task 6)
+// 钉住::0 监听 + sockname 回读实际端口、connect/accept、NODELAY 默认开、
+// write/read 回环、poll 超时门、half-close eof、resolve、UDP 自发自收、
+// 句柄 Drop RAII(作用域出口关 fd)与显式 close + fd=-1 纪律(置 -1 后 Drop 跳过)。
+// 形态(发射面事实,Task 6 登记):门面 = 免费函数 + net: StdNet 按值首参
+// (trait 方法不发射;&Net 引用形参发射即坏);错误面 = rc(0 成/<0 败)+
+// last_net_error();缓冲 = &I64[] 视图 lane(每字节一条 lane)。
+// CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
+use std.net.{Net_probe}
+
+test "tcp echo roundtrip + udp self-talk" {
+    let net = Net_probe()
+
+    // ---- TCP:bind :0 → sockname 回读实际端口 ----
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    let rc = net_tcp_listen(net, "127.0.0.1", 0, lfd_box)
+    if rc != 0 {
+        panic(last_net_error().message)
+    }
+    let port_box = Box[Box64](Box64 { v: 0 })
+    let rc2 = net_tcp_sockname(net, lfd_box.v, port_box)
+    assert(rc2 == 0)
+    let port = port_box.v
+    assert(port > 0)
+    let ln = TcpListener { fd: lfd_box.v, port: port.as[I32]() }
+    assert(ln.port > 0)
+
+    // ---- addr 纯解析与真实端口互证 ----
+    let addr = addr_format("127.0.0.1", port)
+    assert_eq(addr_host(addr), "127.0.0.1")
+    assert_eq(addr_port(addr), port)
+
+    // ---- connect(默认面:NODELAY/KEEPALIVE 于 connect/accept 出口开) ----
+    let cfd_box = Box[Box64](Box64 { v: 0 })
+    let rc3 = net_tcp_connect(net, "127.0.0.1", port, cfd_box)
+    if rc3 != 0 {
+        panic(last_net_error().message)
+    }
+    assert(cfd_box.v >= 0)
+    let st = TcpStream { fd: cfd_box.v }
+
+    // ---- accept(backlog 承接 connect;出口开默认面) ----
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    let rc4 = net_tcp_accept(net, ln.fd, afd_box)
+    assert(rc4 == 0)
+    assert(afd_box.v >= 0)
+    let srv = TcpStream { fd: afd_box.v }
+    assert(net_get_nodelay(net, srv.fd) == 1)
+
+    // ---- poll 超时门:静默 socket 50ms 到期 → rc<0 + errno 置位 ----
+    var buf: I64[4096] = [0, 0, 0, 0]
+    let tr = net_read_t(net, srv.fd, buf, 4096, 50)
+    assert(tr < 0)
+    assert(ctron_net_last_errno() != 0)
+
+    // ---- write/read 回环 ----
+    let wn = net_write_str(net, st.fd, "ping")
+    assert(wn == 4)
+    let rn = net_read_t(net, srv.fd, buf, 4096, 1000)
+    assert(rn == 4)
+    assert(buf[0] == 112)
+    assert(buf[3] == 103)
+    let wn2 = net_write(net, srv.fd, buf, rn)
+    assert(wn2 == 4)
+    let bn = net_read_t(net, st.fd, buf, 4096, 1000)
+    assert(bn == 4)
+
+    // ---- NODELAY 关-读-开(set/get 面) ----
+    assert(net_set_nodelay(net, st.fd, 0) == 0)
+    assert(net_get_nodelay(net, st.fd) == 0)
+    assert(net_set_nodelay(net, st.fd, 1) == 0)
+    assert(net_get_nodelay(net, st.fd) == 1)
+
+    // ---- resolve:数值快路径逐字,localhost 非空 ----
+    assert(net_resolve(net, "127.0.0.1") == "127.0.0.1")
+    assert(net_resolve(net, "localhost").len > 0)
+
+    // ---- half-close:shutdown_write → 对端 eof(0) ----
+    let sr = net_shutdown_write(net, st.fd)
+    assert(sr == 0)
+    let en = net_read_t(net, srv.fd, buf, 4096, 1000)
+    assert(en == 0)
+
+    // ---- UDP 三件 + bind:单 socket 自发自收 ----
+    let ufd_box = Box[Box64](Box64 { v: 0 })
+    let rcu = net_udp_socket(net, ufd_box)
+    assert(rcu == 0)
+    let uport_box = Box[Box64](Box64 { v: 0 })
+    let rcub = net_udp_bind(net, ufd_box.v, "127.0.0.1", 0, uport_box)
+    assert(rcub == 0)
+    assert(uport_box.v > 0)
+    var ud = UdpSock { fd: ufd_box.v }
+    var ubuf: I64[2048] = [0, 0]
+    ubuf[0] = 104
+    ubuf[1] = 105
+    let us = net_udp_sendto(net, ud.fd, "127.0.0.1", uport_box.v, ubuf, 2)
+    assert(us == 2)
+    ubuf[0] = 0
+    ubuf[1] = 0
+    let ur = net_udp_recvfrom(net, ud.fd, ubuf, 2048, 1000)
+    assert(ur == 2)
+    assert(ubuf[0] == 104)
+    assert(ubuf[1] == 105)
+
+    // ---- 显式 close + fd=-1 纪律(置 -1 后作用域出口 Drop 跳过) ----
+    assert(net_close(net, ud.fd) == 0)
+    ud.fd = -1
+    assert(ud.fd == -1)
+    // TCP 句柄(ln/st/srv)不显式关 —— 作用域出口 Drop RAII 统一回收
+}

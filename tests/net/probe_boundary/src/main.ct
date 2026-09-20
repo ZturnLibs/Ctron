@@ -3,6 +3,13 @@
 // 实际衰减通道 = &T[] 视图(T[N] 实参 → (首址,长度) 复合,零拷贝可写回,
 // 仅 i/6/b/s/f 五种预发 typedef);出参按引用唯一通道 = Box[struct]
 // (t_Box64* 堆胞指针)。Task 5/6 垫片签名按此登记选择。
+// Task 6 微探针增登(V/m5,/tmp 实证,不入库活探针):
+//   &Struct 引用形参(Ref+Named)不可用——形参发射 int32_t、实参发射非法 C
+//   (`t_&`,cc 报 expected expression);trans_ty.ct ct_ty_code 仅处理
+//   Ref+Slice。→ Task 6 传输门面首参 net: StdNet 按值;能力审计锚仍为
+//   &Net 引用形参 fn(caps_net/r7b)。同轮证:Result[struct,_] 的 Ok 绑定
+//   成员访问发射 panic(ct_expr:Member)→ 错误面走 rc + last_net_error();
+//   Result 整体绑定传 fn 可用但成员必经路,不采用。
 struct Box64 {
     var v: I64
 }
