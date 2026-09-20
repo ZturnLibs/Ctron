@@ -8,6 +8,24 @@
  *   5. yield_bench(100000) 打印总 ns 与 ns/yield(≤200ns 为 P2-G 门禁预演)。
  *
  * 全程 60s 看门狗:任何 lost-wakeup 类挂死 → 退出码 97,CI 不悬挂。
+ *
+ * ══ 为什么 ctron_rt 弃用 ucontext(最小复现存档,P2-A 实证)══
+ *   darwin/arm64(macOS 15.x, Xcode clang)的 getcontext/makecontext/
+ *   swapcontext 已弃用且标注 "No longer supported";按标准 N:M 用法构造:
+ *     2 个 worker pthread,各自 getcontext 持有 sched 上下文;
+ *     2 个协程(各自 64KB mmap 栈 + makecontext);
+ *     一把 pthread_mutex 保护的全局就绪队列;worker pop 后
+ *     swapcontext(&sched, &coro->ctx),协程 yield 时
+ *     swapcontext(&coro->ctx, &sched);
+ *   即复现:SIGBUS/SIGSEGV(崩溃点漂移:worker 循环、condvar 路径、
+ *   pthread_mutex 内部),并伴随堆写穿(相邻 rt_coro 记录字段被改成
+ *   0x8762e 一类乱值、崩溃报告报 "possible pointer authentication
+ *   failure")。单 worker 跑同一负载永不复现(≥60 次);换成自绘汇编切换
+ *   (仅 SysV callee-saved + sp/pc,信号掩码不随切换——已登记 P2 限制)
+ *   后同一负载 60/60 稳定。另注意独立坑:编译器会把 _Thread_local 的
+ *   TLV 槽位地址缓存在 callee-saved 寄存器里,协程跨 worker 迁移后读到
+ *   别线程的单元 —— TLS 必须经 noinline 访问器在当前线程重新解析
+ *   (ctron_rt.c 的 rt_tls_* 系列)。
  */
 #include <assert.h>
 #include <pthread.h>

@@ -101,8 +101,13 @@ typedef struct rt_ctx {
 #if defined(__aarch64__)
     unsigned long x19, x20, x21, x22, x23, x24, x25, x26, x27, x28;
     unsigned long fp, lr, sp;
+    /* AAPCS64:V8–V15 的低 64 位为 callee-saved(高 64 位 caller-saved),
+     * 故仅存 d8–d15(+64B);不吃这笔账会在切回后污染 FP 活跃值。 */
+    unsigned long d8, d9, d10, d11, d12, d13, d14, d15;
 #elif defined(__x86_64__)
-    unsigned long sp;   /* 伪帧:[r15][r14][r13][r12][rbx][rbp][pc](升序) */
+    unsigned long sp;   /* 伪帧(升序):[r15][r14][r13][r12][rbx][rbp][pc][pad]
+                           8 槽:6 次弹出 + ret 弹 pc 后 rsp=top-8 ≡ 8 (mod 16),
+                           符合 SysV 调用入口(见 rt_ctx_init) */
 #endif
 } rt_ctx;
 
@@ -126,6 +131,10 @@ __asm__(
     "    stp x29, x30, [x0, #80]\n"
     "    mov x9, sp\n"
     "    str x9, [x0, #96]\n"
+    "    stp d8, d9, [x0, #104]\n"
+    "    stp d10, d11, [x0, #120]\n"
+    "    stp d12, d13, [x0, #136]\n"
+    "    stp d14, d15, [x0, #152]\n"
     "    ldp x19, x20, [x1]\n"
     "    ldp x21, x22, [x1, #16]\n"
     "    ldp x23, x24, [x1, #32]\n"
@@ -133,9 +142,14 @@ __asm__(
     "    ldp x27, x28, [x1, #64]\n"
     "    ldp x29, x30, [x1, #80]\n"
     "    ldr x9, [x1, #96]\n"
+    "    ldp d8, d9, [x1, #104]\n"
+    "    ldp d10, d11, [x1, #120]\n"
+    "    ldp d12, d13, [x1, #136]\n"
+    "    ldp d14, d15, [x1, #152]\n"
     "    mov sp, x9\n"
     "    ret\n"
-);/* 初始 ctx:进入 tramp(sp 16 对齐;lr=tramp;x19-x28 清零)。 */
+);
+/* 初始 ctx:进入 tramp(sp 16 对齐;lr=tramp;x19-x28/d8-d15 清零)。 */
 static void rt_ctx_init(rt_ctx *c, void *stack_low, size_t stack_size, void (*tramp)(void))
 {
     (void)stack_size;
@@ -165,15 +179,18 @@ __asm__(
     "    pop %rbp\n"
     "    ret\n"
 );
-/* 初始 ctx:伪帧(升序)[r15][r14][r13][r12][rbx][rbp][pc=tramp]。
- * ret 进入 tramp 时 rsp ≡ 8 (mod 16),符合 SysV 调用入口。 */
+/* 初始 ctx:8 槽伪帧(升序)[r15][r14][r13][r12][rbx][rbp][pc=tramp][pad]。
+ * 6 次弹出后 rsp=f+48,ret 从 f+48 弹 pc → 入口 rsp=f+56=top-8 ≡ 8 (mod 16),
+ * 符合 SysV 调用入口(函数入口 rsp 恰为调用方 push 返回地址后的形态)。
+ * (评审必修 1:旧 7 槽布局入口 rsp ≡ 0,违反 SysV。) */
 static void rt_ctx_init(rt_ctx *c, void *stack_low, size_t stack_size, void (*tramp)(void))
 {
     memset(c, 0, sizeof *c);
     unsigned long top = ((unsigned long)stack_low + stack_size) & ~(unsigned long)15;
-    unsigned long *f = (unsigned long *)(top - 7 * sizeof(unsigned long));
+    unsigned long *f = (unsigned long *)(top - 8 * sizeof(unsigned long));
     f[0] = 0; f[1] = 0; f[2] = 0; f[3] = 0; f[4] = 0; f[5] = 0;
     f[6] = (unsigned long)tramp;
+    f[7] = 0;                                        /* 对齐 pad */
     c->sp = (unsigned long)f;
 }
 #endif /* __aarch64__/__x86_64__ 切换实现 */
@@ -404,8 +421,10 @@ static void stack_retire(rt_coro *c)
 {
     unsigned char *lo = c->stack + rt_pagesize();
     long used = 0;
-    for (size_t i = 0; i < RT_STACK_SIZE; i++) {
-        if (lo[i] != 0xA5) { used = (long)i; break; }    /* 栈底向生长方向首个脏字节 */
+    /* 栈自高端(top)向低端(guard)生长:已用字节 = top 端前缀。
+     * 自 top-1 向下找首个 0xA5 脏字节,used = top - 该字节(评审 Minor 4b)。 */
+    for (size_t i = RT_STACK_SIZE; i > 0; i--) {
+        if (lo[i - 1] != 0xA5) { used = (long)(RT_STACK_SIZE - (i - 1)); break; }
     }
     long prev = atomic_load_explicit(&g_hwm_stack, memory_order_relaxed);
     while (used > prev &&
@@ -719,14 +738,10 @@ void ctron_rt_cancel_wake_all(void)
 {
     rt_coro *c;
     rt_lock();
-    for (c = g_all; c; c = c->allnext) {
-        if (c->state == RT_ST_PARKED) {
-            c->state = RT_ST_READY;
-            ready_push(c);
-        } else if (c->state != RT_ST_DONE && c->state != RT_ST_READY) {
-            c->wake_pending = 1;
-        }
-    }
+    for (c = g_all; c; c = c->allnext)
+        coro_wake_locked(c);     /* PARKED→清 armed+入队;RUNNING/DESCHED→pending;
+                                    READY/DONE 吸收(评审 Minor 4:清 armed 防
+                                    幽灵定时器唤醒污染后续 park) */
     rt_unlock();
 }
 

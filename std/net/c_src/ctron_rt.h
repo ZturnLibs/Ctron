@@ -3,19 +3,22 @@
  * 冻结接口(P2-C/D/E 全依赖,签名不可改;内部实现可自由演化):
  *   - task/chan 以 opaque key(调用方私有指针,如模板侧 ct_task*)挂接;
  *     rt 从不解引用/检视 key 内容,仅作等值比较与哈希键。
- *   - 模型: N worker 线程 × 就绪队列 + 定时器最小堆;协程 = ucontext
- *     (getcontext/makecontext/swapcontext),每协程 64KB mmap 栈 + 空闲池复用。
+ *   - 模型: N worker 线程 × 就绪队列 + 定时器最小堆;协程为自绘上下文切换
+ *     (SysV callee-saved 寄存器 + sp/pc 手工保存,arm64/x86_64 同一段汇编,
+ *     不经 ucontext——后者在 darwin/arm64 多线程 N:M 下实证不稳定,见
+ *     ctron_rt.c 头注;已登记 P2 限制:信号掩码不随切换保存),每协程
+ *     64KB mmap 栈 + 空闲池复用。
  *   - 线程口径: 协程上下文内为"协程模式"(ctron_rt_current()!=NULL);
  *     裸 pthread 内为"裸线程模式"(current()==NULL),join/sleep 走自旋/nanosleep 回退。
  *   - 本任务(Template Task 1 / P2-A)wait_fd 为 stub:登记-noop 后立即返回,
  *     reactor 于 Task 2 (P2-B) 接入 —— 调用方按契约在超时/错误后重试 syscall。
  *
  * 并发不变量(lost-wakeup 分析见 ctron_rt.c 头注):
- *   状态推进全部在全局调度锁 G 内;协程离场(swapcontext 出栈)前持锁置
- *   DESCHED,同线程 worker 循环收回控制权后置 suspended=1 再定稿状态
- *   (PARKED/READY/DONE)。任何"可被 resume"的状态(READY/PARKED)只在
- *   suspended=1 之后于 G 内写入 ⇒ 唤醒方在 G 内看到 PARKED 时,目标栈已
- *   确定性离场,跨线程 swapcontext 安全,且 park 前唤醒以 pending 旗标粘滞,
+ *   状态推进全部在全局调度锁 G 内;协程离场(上下文切出)前持锁置 DESCHED,
+ *   同线程 worker 循环收回控制权后于 G 内定稿状态(PARKED/READY/DONE,
+ *   completer 是运行期唯一写入点)。任何"可被 resume"的状态(READY/PARKED)
+ *   只在 completer 定稿后于 G 内写入 ⇒ 唤醒方在 G 内看到 PARKED 时,目标栈
+ *   已确定性离场,跨线程恢复安全,且 park 前唤醒以 pending 旗标粘滞,
  *   不丢唤醒。
  */
 #ifndef CTRON_RT_H
