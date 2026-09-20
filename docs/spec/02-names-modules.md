@@ -53,6 +53,9 @@ ctron-http = "1.2"          # 严格 semver;lockfile 固定
 [caps]                      # 能力声明(§8.2):越权使用 = 编译错误
 fs.read = true
 net.listen = true
+net.connect = true
+net.resolve = true
+db.connect = true
 
 [profile]                   # 档位与目标(§9)
 default = "full"

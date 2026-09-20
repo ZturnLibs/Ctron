@@ -16,6 +16,7 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 ## 8.2 能力审计
 
 - 包清单声明能力上限(§2.7 `[caps]`);程序实际使用集 ⊆ 声明集,超出 = E4010。
+- 服务器档键集(v0.8):`net.listen` / `net.connect` / `net.resolve`(§11.1)、`db.connect`(§12.1)——语义同 fs 键:manifest 声明上限,实际使用集 ⊆ 声明集,超出 = E4010;`#[pure]` 触达 = E4020。
 - main 的能力由**运行时初始化**按 manifest 授予(启动期失败优于运行期越权)。
 - `Global[T]` 可变全局纳入审计视图(§7.6)。
 
