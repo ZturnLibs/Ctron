@@ -1,0 +1,49 @@
+// fd_churn —— fd 泄漏冒烟(Task 7)
+// 钉住:500 轮 connect/accept/close,每轮两端显式 net_close(连 rc 一并断言);
+// 任一轮泄漏一个 fd(每轮 +2),默认 soft limit(macOS 256 / Linux 常见 1024)
+// 内即耗尽 → connect/accept 返 <0 → panic,轮次走完 + 末轮补一次握手成功
+// 即"无泄漏"实证。裸 fd 纪律:句柄 struct 不入环(while 体 Drop 局部不可
+// 发射,"移入内层裸块"缺口,Task 7 微探针登记);Box 出参通道非 Drop 局部,
+// 入环已证可发射(p5 探针)。
+use std.net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_close, last_net_error}
+
+test "500 connect/accept/close cycles without fd leak" {
+    let net = Net_probe()
+
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    let rc = net_tcp_listen(net, "127.0.0.1", 0, lfd_box)
+    if rc != 0 {
+        panic(last_net_error().message)
+    }
+    let port_box = Box[Box64](Box64 { v: 0 })
+    let rc2 = net_tcp_sockname(net, lfd_box.v, port_box)
+    assert(rc2 == 0)
+    let port = port_box.v
+    assert(port > 0)
+
+    var i: I64 = 0
+    while i < 500 {
+        let cfd_box = Box[Box64](Box64 { v: 0 })
+        if net_tcp_connect(net, "127.0.0.1", port, cfd_box) != 0 {
+            panic(last_net_error().message)
+        }
+        let afd_box = Box[Box64](Box64 { v: 0 })
+        if net_tcp_accept(net, lfd_box.v, afd_box) != 0 {
+            panic(last_net_error().message)
+        }
+        assert(net_close(net, cfd_box.v) == 0)
+        assert(net_close(net, afd_box.v) == 0)
+        i += 1
+    }
+
+    // ---- 终验:500 轮后监听 fd 仍活,再来一次完整握手 ----
+    let cfd2 = Box[Box64](Box64 { v: 0 })
+    if net_tcp_connect(net, "127.0.0.1", port, cfd2) != 0 {
+        panic(last_net_error().message)
+    }
+    let afd2 = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_accept(net, lfd_box.v, afd2) == 0)
+    assert(net_close(net, cfd2.v) == 0)
+    assert(net_close(net, afd2.v) == 0)
+    assert(net_close(net, lfd_box.v) == 0)
+}

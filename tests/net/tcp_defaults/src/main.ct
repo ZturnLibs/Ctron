@@ -1,0 +1,49 @@
+// tcp_defaults —— §11.3 默认面验收(Task 7)
+// 钉住:新鲜连接 connect 与 accept 两侧 NODELAY 默认开(get==1,垫片于
+// connect/accept 出口开启);显式关(set 0)→ get==0 → 显式开(set 1)→
+// get==1。off→get→on→get,两次 get 之间无读(M-T6-7 口径)。
+// 形态(tcp_echo 同款,依 c5281b8 门面):免费函数 + net: StdNet 按值首参;
+// 错误面 = rc(0 成/<0 败)+ last_net_error();句柄 Drop RAII。
+use std.net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_set_nodelay, net_get_nodelay, last_net_error}
+
+test "nodelay default on, explicit off/on roundtrip" {
+    let net = Net_probe()
+
+    // ---- 监听 :0 → sockname 回读实际端口 ----
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    let rc = net_tcp_listen(net, "127.0.0.1", 0, lfd_box)
+    if rc != 0 {
+        panic(last_net_error().message)
+    }
+    let port_box = Box[Box64](Box64 { v: 0 })
+    let rc2 = net_tcp_sockname(net, lfd_box.v, port_box)
+    assert(rc2 == 0)
+    let port = port_box.v
+    assert(port > 0)
+    let ln = TcpListener { fd: lfd_box.v, port: port.as[I32]() }
+
+    // ---- connect + accept(backlog 承接;出口各自开默认面) ----
+    let cfd_box = Box[Box64](Box64 { v: 0 })
+    let rc3 = net_tcp_connect(net, "127.0.0.1", port, cfd_box)
+    if rc3 != 0 {
+        panic(last_net_error().message)
+    }
+    let st = TcpStream { fd: cfd_box.v }
+
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    let rc4 = net_tcp_accept(net, ln.fd, afd_box)
+    assert(rc4 == 0)
+    let srv = TcpStream { fd: afd_box.v }
+
+    // ---- 默认面:新鲜连接两侧均 NODELAY==1 ----
+    assert(net_get_nodelay(net, st.fd) == 1)
+    assert(net_get_nodelay(net, srv.fd) == 1)
+
+    // ---- 显式关→查→开→查(中间无读;钉 set/get 往返面) ----
+    assert(net_set_nodelay(net, st.fd, 0) == 0)
+    assert(net_get_nodelay(net, st.fd) == 0)
+    assert(net_set_nodelay(net, st.fd, 1) == 0)
+    assert(net_get_nodelay(net, st.fd) == 1)
+
+    // ---- 三句柄 Drop RAII(ln/st/srv 作用域出口统一关 fd) ----
+}

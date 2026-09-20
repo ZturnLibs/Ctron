@@ -1,0 +1,66 @@
+// udp_roundtrip —— UDP 回环往返验收(§11.3;Task 7)
+// 钉住:双 socket 各绑 :0(bind 回读实际端口)→ A→B 送 2 字节 → B 回 A
+// 2 字节,双向 recvfrom 均按字节断言('h''i'=104/105,'o''k'=111/107)。
+// 区别于 tcp_echo 的单 socket 自发自收:本夹具钉跨 socket 往返(端口协调
+// 经 :0 回读闭环,仍仅回环、零外联,CI 抖动风险已消)。
+// 形态(tcp_echo 同款,依 c5281b8 门面):免费函数 + net: StdNet 按值首参;
+// 错误面 = rc(0 成/<0 败)+ last_net_error();缓冲 = I64[N] 视图 lane
+// (每字节一条 lane,112/103 断言式);句柄 Drop RAII(作用域出口关 fd)。
+use std.net.{Net_probe, net_udp_socket, net_udp_bind, net_udp_sendto, net_udp_recvfrom, last_net_error}
+
+test "udp loopback roundtrip, two sockets both directions" {
+    let net = Net_probe()
+
+    // ---- socket A:绑 :0 → 回读实际端口 ----
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    let rca = net_udp_socket(net, afd_box)
+    if rca != 0 {
+        panic(last_net_error().message)
+    }
+    let aport_box = Box[Box64](Box64 { v: 0 })
+    let rcab = net_udp_bind(net, afd_box.v, "127.0.0.1", 0, aport_box)
+    if rcab != 0 {
+        panic(last_net_error().message)
+    }
+    assert(aport_box.v > 0)
+    let a = UdpSock { fd: afd_box.v }
+
+    // ---- socket B:绑 :0 → 回读实际端口(与 A 端口互异 = 内核各自分配) ----
+    let bfd_box = Box[Box64](Box64 { v: 0 })
+    let rcb = net_udp_socket(net, bfd_box)
+    assert(rcb == 0)
+    let bport_box = Box[Box64](Box64 { v: 0 })
+    let rcbb = net_udp_bind(net, bfd_box.v, "127.0.0.1", 0, bport_box)
+    assert(rcbb == 0)
+    assert(bport_box.v > 0)
+    assert(bport_box.v != aport_box.v)
+    let b = UdpSock { fd: bfd_box.v }
+
+    // ---- A→B:'h''i' 2 字节 → B 清零后按字节收回 ----
+    var ab: I64[64] = [0, 0]
+    ab[0] = 104
+    ab[1] = 105
+    let s1 = net_udp_sendto(net, a.fd, "127.0.0.1", bport_box.v, ab, 2)
+    assert(s1 == 2)
+    ab[0] = 0
+    ab[1] = 0
+    let r1 = net_udp_recvfrom(net, b.fd, ab, 64, 1000)
+    assert(r1 == 2)
+    assert(ab[0] == 104)
+    assert(ab[1] == 105)
+
+    // ---- B→A:'o''k' 2 字节 → A 清零后按字节收回(真"往返") ----
+    var ba: I64[64] = [0, 0]
+    ba[0] = 111
+    ba[1] = 107
+    let s2 = net_udp_sendto(net, b.fd, "127.0.0.1", aport_box.v, ba, 2)
+    assert(s2 == 2)
+    ba[0] = 0
+    ba[1] = 0
+    let r2 = net_udp_recvfrom(net, a.fd, ba, 64, 1000)
+    assert(r2 == 2)
+    assert(ba[0] == 111)
+    assert(ba[1] == 107)
+
+    // ---- 双句柄 Drop RAII(a/b 作用域出口统一关 fd) ----
+}

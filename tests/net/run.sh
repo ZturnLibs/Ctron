@@ -31,4 +31,6 @@ for d in "$DIR"/*/; do
     fi
 done
 echo "net/run: pass=$pass fail=$fail"
+# M-T4-2:空集口径——一例未跑(pass=0)与全败同罪,防夹具被静默跳过
+[ "$pass" -gt 0 ] || { echo "net/run: no cases ran"; exit 1; }
 [ "$fail" = 0 ]

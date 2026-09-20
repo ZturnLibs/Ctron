@@ -1,0 +1,58 @@
+// ctecho —— thread-per-connection echo server(P1 blocking baseline;Task 7)
+// 用法:CTECHO_PORT=8080 ./ctecho(缺省 8080;仅绑 127.0.0.1)。
+// 同形不变式夹具:并发形态 = 每连接一线程,P2 协程运行时下本文件零改动。
+// 形态注(Task 7 发射面实证,探针 p1-p5):
+//   ① spawn 边界仅过标量(连接 fd 裸值移交;struct 值跨 spawn 即拒,
+//      "并发值含 struct 值传递")→ handler 内自建 Net_probe() 能力值;
+//   ② 被 spawn 的 fn 必须有返回值(void 版 cc 报 task result 槽赋值错);
+//   ③ accept 环内不构造 Drop 句柄(while 体 Drop 局部不可发射)——监听
+//      句柄落 main 体(函数体 Drop 已支持),连接侧全程裸 fd + handler
+//      内 net_close;
+//   ④ 门面 = 免费函数 + net: StdNet 按值首参;rc 0 成/<0 败 + last_net_error()。
+use std.net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_read_t, net_write, net_close, last_net_error}
+use std.strconv.{parse_i64, sc_get_l}
+
+// 单连接回环:读到 eof/错即止;逐段回写(n!=w 断链);出口 net_close。
+// 返回值 = task result 槽所需(②)。
+fn handle(fd: I64) -> I64 {
+    let net = Net_probe()
+    var buf: I64[4096] = [0, 0, 0, 0]
+    while true {
+        let n = net_read_t(net, fd, buf, 4096, 300000)
+        if n <= 0 {
+            break
+        }
+        let w = net_write(net, fd, buf, n)
+        if w != n {
+            break
+        }
+    }
+    net_close(net, fd)
+    return 0
+}
+
+fn main() {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("CTECHO_PORT")), 8080)
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd_box) != 0 {
+        panic(last_net_error().message)
+    }
+    let port_box = Box[Box64](Box64 { v: 0 })
+    if net_tcp_sockname(net, lfd_box.v, port_box) != 0 {
+        panic(last_net_error().message)
+    }
+    let real = port_box.v
+    let ln = TcpListener { fd: lfd_box.v, port: real.as[I32]() }
+    println("ctecho listening on 127.0.0.1:" + real.to_string())
+    scope { |s|
+        while true {
+            let afd_box = Box[Box64](Box64 { v: 0 })
+            if net_tcp_accept(net, ln.fd, afd_box) != 0 {
+                break
+            }
+            let fd = afd_box.v
+            s.spawn(|| handle(fd))
+        }
+    }
+}
