@@ -284,3 +284,17 @@ Ctron 自写原生 ctc 驱动(需运行时子进程能力)、Homebrew/winget 分
 trans 调用点)增加"模块限定名"一路,use 的 Syms 挂到模块命名空间而非平铺进全局;
 落地后无限定导入可保留为糖(碰撞面自然收窄)。与 §10.1 同层(都动 `pkg_load_use`
 /名字解析),立项时同期评估。
+
+## 11. v0.0.1 首发实录(2026-09-19,与设计的偏差与理由)
+
+首跑九轮迭代后发布成功(ZturnLibs/Ctron,Release v0.0.1,六 job 全绿)。与原设计的偏差:
+
+| 偏差 | 理由 | 后续 |
+|---|---|---|
+| 预编译矩阵 4→3:darwin-x86_64 暂缓 | macos-13 runner 退役,排队永不到达;Intel Mac 走源码线(src 资产,任意 cc 可编) | 跨编译(-arch x86_64 + Rosetta 验收)评估后恢复 |
+| linux 发布与 CI 切 prebuilt 直编(`CTRON_FROM_PREBUILT=1`),固定点改由"linux 编译 prebuilt 发射器再发射 diff"承载 | linux glibc 下 seed 解释器内存 ~15GB(macOS 2.4GB),四连确定性击穿 runner;证据与排除表见 `docs/linux-seed-memory-evidence.md` | 编译器线修复内存爆炸后回归全自举链 |
+| Windows 首发实测边界 | 并发夹具 winpthreads 路径 segfault(accept_windows 记 XFAIL);β 口径维持 | 编译器线挂账 |
+| 仓库/组织 | ZturnLibs(用户命名空间约束:Zturn 为既有个人账号) | — |
+
+新落地的工程事实:固定点承诺以两种形态被 CI 持续验证(darwin-arm64 全自举链 + linux
+prebuilt 发射器再发射逐字节 diff);windows zip 自证段(Expand-Archive 解包复验)进验收。
