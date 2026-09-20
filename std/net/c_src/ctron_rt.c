@@ -46,6 +46,30 @@
  *   世代号使过期定时器(manual wake 已先行 / 协程已重新武装)被静默丢弃,
  *   不产生串扰 pending。
  *
+ * ══ P2-B reactor(wait_fd 就绪后台线程)══
+ *   专用 reactor 线程,首次协程 wait_fd 惰性创建,进程生命周期常驻不 join
+ *   (与 worker 同口径)。后端三选一(编译期):kqueue(darwin,EVFILT_READ/
+ *   WRITE)/ epoll(linux,EPOLLIN|OUT)/ POSIX poll 循环(其他,100ms 轮询节奏
+ *   ——已登记限制;Windows 移植需换 WSAPoll)。一律水平触发(ET/one-shot+rearm
+ *   列 P9),kevent/epoll_wait 统一压 100ms 上限——新登记的"注册时即就绪"事件
+ *   不依赖后端对挂起等待的即时唤醒语义,最坏 100ms 兜底交付。
+ *   fd+方向 → key 登记表与后端兴趣增删全部在全局锁 G 内(与 park/wake 同锁,
+ *   无第二把锁、无锁序问题)。wait_fd:登记 + 后端注册(park 前同一次 G 持有内
+ *   完成)→ coro_suspend(DESCHED_PARK);reactor 就绪 → 摘登记 → coro_wake_locked
+ *   (三窗口握手内交付,不变量 II 直接覆盖,无丢唤醒窗口;交付可落在 park 前
+ *   ——fd 已就绪,pending 消费立即返回,调用方重试自见成功)。超时复用定时器堆
+ *   (armed/arm_seq 世代):到点统一 wake 路径醒,调用方重试 syscall 自见超时/
+ *   错误 ⇒ wait_fd 返回 ≠ fd 就绪(粘滞误醒/cancel/顶替均提前返回),调用方
+ *   必须重试 syscall(冻结契约)。timeout_ms 口径:0=非阻塞探测立即返回,<0=
+ *   无限等,>0=等待下界。裸线程:无 park,直接 poll() 等就绪/超时(同契约)。
+ *   同 (fd,dir) 并发 wait_fd:last-wins 顶替(被顶者不补 wake——补醒会造成两
+ *   协程互顶活锁;其靠自身超时/取消/后续就绪醒)。登记清理:醒来后摘"仍属本
+ *   协程"的登记;reactor 交付即摘(防持久就绪让 reactor 空转);(fd,dir) 无登记
+ *   时从后端摘除对应滤波器(fd 已 close 经 F_GETFD 探测跳过删除,内核已自动
+ *   摘 knote/节点,并规避 fd 号复用 ABA;残留窗口:close+重开同号发生在
+ *   F_GETFD 与摘除之间,登记限制)。fd close 而等待者仍 park:kqueue/epoll
+ *   无事件、靠超时醒(登记限制);poll 回退以 POLLNVAL 交付。
+ *
  * 锁纪律:G 绝不跨切换持有(park/yield 在切换前解锁;worker 循环在切换前
  *   解锁),故无"锁随上下文迁移"的跨线程 unlock UB。worker 循环每轮迭代
  *   重新加锁 —— finalize/timers/pop 与 popper 认领全部在锁内串行。
@@ -70,7 +94,14 @@
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>                               /* F_GETFD:摘后端兴趣前探 fd 存活 */
+#include <poll.h>                                /* 裸线程 wait_fd 回退 + poll 后端 */
 #include <sys/mman.h>
+#if defined(__APPLE__)
+#include <sys/event.h>                           /* kqueue(P2-B reactor 后端) */
+#elif defined(__linux__)
+#include <sys/epoll.h>                           /* epoll(P2-B reactor 后端) */
+#endif
 
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
@@ -416,15 +447,18 @@ static unsigned char *stack_alloc(size_t *map_sz)
 }
 
 /* 仅在协程 DONE(FOREVER completer,栈已确定性离场)后调用。
- * 登记 64KB 栈高水位(自栈底远端向上找首个被改写字节),然后入池/释放。 */
+ * 登记 64KB 栈高水位(自栈顶向下找首个仍干净的 0xA5 字节,其上方即已用前缀),
+ * 然后入池/释放。 */
 static void stack_retire(rt_coro *c)
 {
     unsigned char *lo = c->stack + rt_pagesize();
-    long used = 0;
+    long used = (long)RT_STACK_SIZE;                 /* 全脏兜底:整栈用满 */
     /* 栈自高端(top)向低端(guard)生长:已用字节 = top 端前缀。
-     * 自 top-1 向下找首个 0xA5 脏字节,used = top - 该字节(评审 Minor 4b)。 */
+     * 自 top-1 向下扫首个 ==0xA5 的干净字节,其上方 [i..top) 全为脏字节,
+     * used = RT_STACK_SIZE - i(P2-B 评审修复:旧谓词找 !=0xA5,自顶扫第一个
+     * 字节即中招,used 恒为最小值,高水位统计形同虚设)。 */
     for (size_t i = RT_STACK_SIZE; i > 0; i--) {
-        if (lo[i - 1] != 0xA5) { used = (long)(RT_STACK_SIZE - (i - 1)); break; }
+        if (lo[i - 1] == 0xA5) { used = (long)(RT_STACK_SIZE - i); break; }
     }
     long prev = atomic_load_explicit(&g_hwm_stack, memory_order_relaxed);
     while (used > prev &&
@@ -540,9 +574,13 @@ static void *worker_main(void *p)
 {
     rt_worker *ws = (rt_worker*)p;
     rt_coro *just_desched = NULL;
+    rt_coro *retire = NULL;          /* (P2-B 修复) FOREVER 离场待回收,跨迭代保留:
+                                        原声明在循环体内,若 finalize-FOREVER 恰逢
+                                        空队迭代(idle_backoff+continue),retire 被
+                                        丢弃 → 栈永不入池/释放、高水位永不登记。 */
     rt_tls_set_worker(ws);
     for (;;) {
-        rt_coro *retire = NULL, *c;
+        rt_coro *c;
         rt_lock();                       /* 每轮迭代持 G:finalize/timers/pop 全在锁内 */
         if (just_desched) {              /* 与 pop 合并一次加锁(收益路径) */
             coro_finalize_locked(just_desched);
@@ -553,18 +591,260 @@ static void *worker_main(void *p)
         timers_fire_locked();
         c = ready_pop();
         if (!c) {
+            if (retire) {                /* (P2-B 修复) 空队也照常回收,不再丢弃 */
+                rt_unlock();
+                stack_retire(retire);
+                retire = NULL;
+                continue;                /* 循环头重锁 */
+            }
             idle_backoff();              /* 放 G 退避;循环头重锁 */
             continue;
         }
         atomic_store_explicit(&g_backoff, 0, memory_order_relaxed);
         c->state = RT_ST_RUNNING;        /* 出队即认领:单 runner 保证 */
         rt_unlock();                     /* G 绝不跨上下文切换 */
-        if (retire) stack_retire(retire);
+        if (retire) { stack_retire(retire); retire = NULL; }
         rt_tls_set_cur(c);               /* current() 口径;tramp 首入口读它 */
         rt_swap(&ws->sched, &c->ctx);
         rt_tls_set_cur(NULL);
         just_desched = c;
     }
+}
+
+/* ═══════════════ P2-B reactor:fd 就绪后台线程(wait_fd) ═══════════════ */
+enum { RT_FD_READ = 0, RT_FD_WRITE = 1 };
+
+typedef struct rt_fdwait {
+    int              fd;
+    int              dir;        /* RT_FD_* */
+    void            *key;        /* 等待协程 key(仅等值比较,同 rt 契约) */
+    struct rt_fdwait *hnext;     /* (fd,dir) 哈希桶链 */
+} rt_fdwait;
+
+#define RT_FDMAP_BUCKETS 512                  /* 2 的幂 */
+
+static rt_fdwait *g_fdmap[RT_FDMAP_BUCKETS];  /* 登记表(G 内读写) */
+
+#if defined(__APPLE__)
+# define RT_BACKEND_KQUEUE 1
+#elif defined(__linux__)
+# define RT_BACKEND_EPOLL 1
+#else
+# define RT_BACKEND_POLL 1                    /* POSIX poll 循环(Windows 移植需换 WSAPoll;登记限制) */
+#endif
+
+static int       g_rb_fd = -1;                /* kqueue/epoll 描述符;poll 回退恒为 -1 */
+static int       g_reactor_started = 0;       /* G 内读写 */
+static pthread_t g_reactor_th;
+
+static size_t fd_bucket(int fd, int dir)
+{
+    uint64_t x = (uint64_t)(uint32_t)(unsigned)fd * 2u + (unsigned)dir;
+    x *= 0x9E3779B97F4A7C15ull;
+    return (size_t)(x >> 32) & (RT_FDMAP_BUCKETS - 1);
+}
+
+static rt_fdwait *fdwait_find_locked(int fd, int dir)
+{
+    rt_fdwait *e;
+    for (e = g_fdmap[fd_bucket(fd, dir)]; e; e = e->hnext)
+        if (e->fd == fd && e->dir == dir) return e;
+    return NULL;
+}
+
+/* 摘除 (fd,dir) 登记(不 free);找不到返回 NULL。 */
+static rt_fdwait *fdwait_take_locked(int fd, int dir)
+{
+    rt_fdwait **pp = &g_fdmap[fd_bucket(fd, dir)];
+    while (*pp) {
+        rt_fdwait *e = *pp;
+        if (e->fd == fd && e->dir == dir) {
+            *pp = e->hnext;
+            e->hnext = NULL;
+            return e;
+        }
+        pp = &e->hnext;
+    }
+    return NULL;
+}
+
+/* G 内:按登记表剩余兴趣收敛后端注册——无登记的滤波器从后端摘除。
+ * 必要性:水平触发下"登记已撤但后端仍注册"的持久就绪会让 reactor 线程
+ * 空转(每次唤醒都查无此人)。fd 已 close → 内核已自动摘除,跳过显式删除
+ * (并规避 close 后 fd 号被复用的 ABA 误删;登记限制:close+重开同号若发生
+ * 在 F_GETFD 与摘除之间,理论可误删新主,窗口为一次 syscall,见文件头注)。 */
+static void fdwait_unwatch_locked(int fd)
+{
+    if (fcntl(fd, F_GETFD) < 0) return;       /* 已关闭:内核侧已清理 */
+#if defined(RT_BACKEND_KQUEUE)
+    int d;
+    for (d = 0; d < 2; d++) {
+        if (fdwait_find_locked(fd, d)) continue;
+        struct kevent ke;
+        EV_SET(&ke, (uintptr_t)fd, d == RT_FD_WRITE ? EVFILT_WRITE : EVFILT_READ,
+               EV_DELETE, 0, 0, NULL);
+        (void)kevent(g_rb_fd, &ke, 1, NULL, 0, NULL);   /* ENOENT(未注册过)静默 */
+    }
+#elif defined(RT_BACKEND_EPOLL)
+    struct epoll_event ev;
+    int mask = (fdwait_find_locked(fd, RT_FD_READ)  ? EPOLLIN  : 0)
+             | (fdwait_find_locked(fd, RT_FD_WRITE) ? EPOLLOUT : 0);
+    if (mask == 0) {
+        (void)epoll_ctl(g_rb_fd, EPOLL_CTL_DEL, fd, NULL);   /* ENOENT 静默 */
+        return;
+    }
+    memset(&ev, 0, sizeof ev);
+    ev.events = (uint32_t)mask;
+    ev.data.u64 = (uint64_t)(uint32_t)fd;
+    (void)epoll_ctl(g_rb_fd, EPOLL_CTL_MOD, fd, &ev);
+#else
+    (void)fd;                                  /* poll 回退:每轮自登记表重建,无需摘除 */
+#endif
+}
+
+/* G 内:摘除 (fd,dir) 登记并收敛后端;返回摘下的 entry(调用方 free)。 */
+static rt_fdwait *fdwait_remove_locked(int fd, int dir)
+{
+    rt_fdwait *e = fdwait_take_locked(fd, dir);
+    if (e) fdwait_unwatch_locked(fd);
+    return e;
+}
+
+/* G 内:把 (fd,dir) 兴趣注册进后端(水平触发)。返回 0=成功,-1=后端拒绝
+ * (fd 已坏)——调用方将不 park 直接返回,让调用方重试 syscall 见错。 */
+static int fdwait_watch_locked(int fd, int dir)
+{
+#if defined(RT_BACKEND_KQUEUE)
+    struct kevent ke;
+    EV_SET(&ke, (uintptr_t)fd, dir == RT_FD_WRITE ? EVFILT_WRITE : EVFILT_READ,
+           EV_ADD, 0, 0, NULL);
+    return kevent(g_rb_fd, &ke, 1, NULL, 0, NULL) == 0 ? 0 : -1;   /* 重复 ADD 幂等更新 */
+#elif defined(RT_BACKEND_EPOLL)
+    struct epoll_event ev;
+    int mask = (dir == RT_FD_WRITE ? EPOLLOUT : EPOLLIN)               /* 掩码按登记表整体重算 */
+             | (fdwait_find_locked(fd, RT_FD_READ)  ? EPOLLIN  : 0)    /* (同一 fd 双方向共用一条注册) */
+             | (fdwait_find_locked(fd, RT_FD_WRITE) ? EPOLLOUT : 0);
+    int had_other = fdwait_find_locked(fd, dir == RT_FD_WRITE ? RT_FD_READ : RT_FD_WRITE) != NULL;
+    memset(&ev, 0, sizeof ev);
+    ev.events = (uint32_t)mask;
+    ev.data.u64 = (uint64_t)(uint32_t)fd;
+    if (epoll_ctl(g_rb_fd, had_other ? EPOLL_CTL_MOD : EPOLL_CTL_ADD, fd, &ev) == 0) return 0;
+    if (errno == EEXIST)                   /* 同向旧注册残留:升级为 MOD */
+        return epoll_ctl(g_rb_fd, EPOLL_CTL_MOD, fd, &ev) == 0 ? 0 : -1;
+    return -1;
+#else
+    (void)fd; (void)dir;
+    return 0;                              /* poll 回退:登记表即后端状态 */
+#endif
+}
+
+/* G 内:就绪交付——先摘登记(防持久就绪空转)再按三窗口握手唤醒登记者。
+ * 查无此人 = 事件无主(等待者超时/cancel 已醒/登记被顶替),吞掉不补投。 */
+static void reactor_deliver_locked(int fd, int dir)
+{
+    rt_fdwait *e = fdwait_take_locked(fd, dir);
+    rt_coro *c;
+    if (!e) return;
+    fdwait_unwatch_locked(fd);
+    c = map_get_locked(e->key);
+    if (c) coro_wake_locked(c);            /* PARKED→入队;DESCHED/RUNNING→pending;
+                                              READY/DONE 吸收(不变量 II) */
+    free(e);
+}
+
+#if defined(RT_BACKEND_KQUEUE)
+static void *reactor_main(void *unused)
+{
+    struct kevent evs[64];
+    struct timespec tick;                  /* 100ms 上限:新登记的"注册即就绪"兜底 */
+    (void)unused;
+    tick.tv_sec = 0;
+    tick.tv_nsec = 100 * 1000 * 1000;
+    for (;;) {
+        int n = kevent(g_rb_fd, NULL, 0, evs, 64, &tick);
+        int i;
+        if (n <= 0) continue;              /* tick / EINTR:重挂等 */
+        rt_lock();
+        for (i = 0; i < n; i++)
+            reactor_deliver_locked((int)evs[i].ident,
+                                   evs[i].filter == EVFILT_WRITE ? RT_FD_WRITE : RT_FD_READ);
+        rt_unlock();
+    }
+}
+#elif defined(RT_BACKEND_EPOLL)
+static void *reactor_main(void *unused)
+{
+    struct epoll_event evs[64];
+    (void)unused;
+    for (;;) {
+        int n = epoll_wait(g_rb_fd, evs, 64, 100);
+        int i;
+        if (n <= 0) continue;              /* tick / EINTR */
+        rt_lock();
+        for (i = 0; i < n; i++) {
+            int      fd = (int)evs[i].data.u64;
+            uint32_t e  = evs[i].events;
+            if (e & (EPOLLIN  | EPOLLERR | EPOLLHUP)) reactor_deliver_locked(fd, RT_FD_READ);
+            if (e & (EPOLLOUT | EPOLLERR | EPOLLHUP)) reactor_deliver_locked(fd, RT_FD_WRITE);
+        }
+        rt_unlock();
+    }
+}
+#else /* RT_BACKEND_POLL */
+static void *reactor_main(void *unused)
+{
+    struct pollfd pfds[256];               /* 每轮自登记表重建(去重 fd,合并双向) */
+    (void)unused;
+    for (;;) {
+        int n = 0, j, b, r;
+        rt_lock();
+        for (b = 0; b < RT_FDMAP_BUCKETS && n < 256; b++) {
+            rt_fdwait *e;
+            for (e = g_fdmap[b]; e && n < 256; e = e->hnext) {
+                for (j = 0; j < n; j++)
+                    if (pfds[j].fd == e->fd) break;
+                if (j == n) {
+                    pfds[n].fd = e->fd;
+                    pfds[n].events = 0;
+                    pfds[n].revents = 0;
+                    n++;
+                }
+                pfds[j].events |= (short)(e->dir == RT_FD_WRITE ? POLLOUT : POLLIN);
+            }
+        }
+        rt_unlock();
+        r = poll(pfds, (nfds_t)n, 100);    /* 100ms 轮询节奏(登记限制)+ 新登记兜底 */
+        if (r <= 0) continue;
+        rt_lock();
+        for (j = 0; j < n; j++) {
+            short rev = pfds[j].revents;
+            int   fd  = pfds[j].fd;
+            if (!rev) continue;
+            if (rev & (POLLIN  | POLLERR | POLLHUP | POLLNVAL))
+                reactor_deliver_locked(fd, RT_FD_READ);
+            if (rev & (POLLOUT | POLLERR | POLLHUP | POLLNVAL))
+                reactor_deliver_locked(fd, RT_FD_WRITE);
+        }
+        rt_unlock();
+    }
+}
+#endif
+
+/* G 内:惰性启动(首次协程 wait_fd);常驻不 join,与 worker 同口径。
+ * 后端/线程创建失败 → abort(与 ctron_rt_init / stack_alloc 惯例一致)。 */
+static void reactor_start_locked(void)
+{
+    if (g_reactor_started) return;
+#if defined(RT_BACKEND_KQUEUE)
+    g_rb_fd = kqueue();
+    if (g_rb_fd < 0) abort();
+#elif defined(RT_BACKEND_EPOLL)
+    g_rb_fd = epoll_create1(0);
+    if (g_rb_fd < 0) abort();
+#endif
+    if (pthread_create(&g_reactor_th, NULL, reactor_main, NULL) != 0) abort();
+    g_reactor_started = 1;                 /* pthread_create 先行 ⇒ reactor_main 读
+                                              g_rb_fd 已同步可见 */
 }
 
 /* ───────────────────────── 冻结 API ───────────────────────── */
@@ -729,9 +1009,71 @@ void ctron_rt_sleep_ms(int64_t ms)
 
 void ctron_rt_wait_fd(int fd, int write_side, int64_t timeout_ms)
 {
-    (void)fd; (void)write_side; (void)timeout_ms;
-    /* P2-A stub:登记-noop + 立即返回。reactor 于 P2-B(Task 2)落地后,
-     * 此处向 fd→key 注册就绪兴趣并 park;调用方按冻结契约在返回后重试 syscall。 */
+    int dir = write_side ? RT_FD_WRITE : RT_FD_READ;
+
+    if (fd < 0) return;
+    if (!rt_tls_cur()) {                   /* 裸线程:无 park,直接 poll 等就绪/超时
+                                              (契约同:醒后由调用方重试 syscall;
+                                              revents 不看——重试自见可读/可写/错误) */
+        struct pollfd p;
+        int64_t t = timeout_ms;
+        int r;
+        if (t > 2147483647) t = 2147483647;
+        memset(&p, 0, sizeof p);
+        p.fd = fd;
+        p.events = (short)(dir == RT_FD_WRITE ? POLLOUT : POLLIN);
+        do {
+            r = poll(&p, 1, (int)(t < 0 ? -1 : t));
+        } while (r < 0 && errno == EINTR); /* EINTR 重启整个时限(登记限制) */
+        return;
+    }
+    if (timeout_ms == 0) return;           /* 非阻塞探测:登记无意义,调用方 syscall 即判 */
+    {
+        rt_coro *self = rt_tls_cur();
+        rt_fdwait *e;
+        rt_lock();
+        self->armed = 0;                   /* 卫生:作废残留旧世代定时器(登记 Minor:
+                                              sleep_ms 提前醒路径遗留 armed 堆条目;
+                                              仅限本函数入口,不触碰 sleep_ms 契约) */
+        reactor_start_locked();
+        /* last-wins:同 (fd,dir) 旧登记直接顶替(不补 wake——防两协程互顶活锁;
+         * 被顶者靠自身超时/取消/后续就绪醒,文件头注已登记语义) */
+        {
+            rt_fdwait *old = fdwait_remove_locked(fd, dir);
+            if (old) free(old);
+        }
+        e = (rt_fdwait *)calloc(1, sizeof *e);
+        if (!e) { rt_unlock(); return; }   /* ENOMEM 降级:立即返回,调用方重试 */
+        e->fd = fd;
+        e->dir = dir;
+        e->key = self->key;
+        e->hnext = g_fdmap[fd_bucket(fd, dir)];
+        g_fdmap[fd_bucket(fd, dir)] = e;
+        if (fdwait_watch_locked(fd, dir) != 0) {
+            /* 后端拒绝(fd 已坏):不 park,让调用方重试 syscall 直接见错 */
+            free(fdwait_remove_locked(fd, dir));
+            rt_unlock();
+            return;
+        }
+        if (timeout_ms > 0) {              /* 超时复用定时器堆(arm_seq 世代防串扰):
+                                              到点统一 wake 路径醒,调用方重试自见超时 */
+            self->armed = 1;
+            self->arm_seq++;
+            heap_push(now_ns() + (uint64_t)timeout_ms * 1000000ull, self, self->arm_seq);
+        }
+        rt_unlock();
+        coro_suspend(DESCHED_PARK);        /* 三窗口握手(文件头注不变量 II):
+                                              登记与后端注册均在 park 前 G 内完成 ⇒
+                                              reactor 交付只能命中 提前醒(pending 消费,
+                                              fd 已就绪)/ DESCHED(completer 回队)/
+                                              PARKED(直接入队),无丢唤醒窗口 */
+        /* 醒来(就绪/超时/cancel/粘滞误醒一视同仁):清理仍属本协程的登记;
+         * 被顶替的登记不碰(属后来者)。 */
+        rt_lock();
+        if (fdwait_find_locked(fd, dir) && fdwait_find_locked(fd, dir)->key == self->key)
+            free(fdwait_remove_locked(fd, dir));
+        rt_unlock();
+    }
 }
 
 void ctron_rt_cancel_wake_all(void)
