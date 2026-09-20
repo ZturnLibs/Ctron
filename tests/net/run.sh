@@ -1,6 +1,7 @@
 #!/bin/sh
 # tests/net/run.sh —— 服务器泳道回环验收(§11;CI 纪律:仅回环、:0、零外联)
-# 口径:行为夹具(目录含 c_src/):ctron-emit → cc 链 c_src/*.c → 原生运行
+# 口径:行为夹具(目录含 c_src/ 且含 src/main.ct):ctron-emit → cc 链 c_src/*.c → 原生运行;
+#       纯 C 冒烟目录(rt_core_smoke/rt_reactor_smoke,无 main.ct)由各自 run.sh 承载,不入主环
 # 前置:compiler/native.sh、cc
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -16,6 +17,7 @@ for d in "$DIR"/*/; do
     [ -d "$d/c_src" ] || continue
     name=$(basename "$d"); [ "$name" = "bench" ] && continue
     e="$d/src/main.ct"
+    [ -f "$e" ] || continue              # 纯 C 冒烟目录(rt_*_smoke)无 main.ct:不入主环
     if "$EMIT" run "$e" > "$T/$name.c" 2>"$T/$name.err"; then
         if cc -O1 -w -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c 2>"$T/$name.cc.err"; then
             if "$T/$name" run "$e" >"$T/$name.out" 2>&1; then

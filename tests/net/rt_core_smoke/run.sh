@@ -1,7 +1,7 @@
 #!/bin/sh
 # rt_core_smoke —— P2-A 冒烟驱动:build(cc -O1 -pthread,只链 ctron_rt.c + main.c,
-# 不链 ctron_net.c)+ run + 断言;退出码即结果。不进 tests/net/run.sh 主环
-# (主环只处理含 src/main.ct 的目录)。
+# 不链 ctron_net.c)+ run + 断言;退出码即结果。不入 tests/net/run.sh 主环:
+# 纯 C 冒烟目录(无 src/main.ct)被主环守卫跳过,由本 run.sh 承载。
 set -eu
 cd "$(dirname "$0")"
 
