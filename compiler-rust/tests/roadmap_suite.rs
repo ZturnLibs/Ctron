@@ -55,6 +55,9 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         // ---- R-P5 comptime ----
         ("r5a_const_size.ct", "R-P5a", Status::Green),
         ("r5a_semantics.ct", "R-P5a", Status::Green),
+        // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播未实现,RunRed 空泛成立;
+        // P1 std/net 门面已落地(免费函数面 + &Net 审计锚),R 线纯度/解析就绪后翻转 NegGreen("E4020")
+        ("r7b_pure_net.neg.ct", "R-P7b", Status::RunRed),
     ]
 }
 
