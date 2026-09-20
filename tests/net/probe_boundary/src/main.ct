@@ -1,0 +1,34 @@
+// probe_boundary —— I8[N] 衰减 + 出参边界探针(发射面 §9.6)
+// 事实登记(执行记录):裸 I8[64] 形参发射 int32_t(发射面缺口,非衰减);
+// 实际衰减通道 = &T[] 视图(T[N] 实参 → (首址,长度) 复合,零拷贝可写回,
+// 仅 i/6/b/s/f 五种预发 typedef);出参按引用唯一通道 = Box[struct]
+// (t_Box64* 堆胞指针)。Task 5/6 垫片签名按此登记选择。
+struct Box64 {
+    var v: I64
+}
+
+#[trusted]
+extern "c" fn ctron_probe_out_box(b: Box[Box64]) -> I64
+
+#[trusted]
+extern "c" fn ctron_probe_fill(buf: &I64[], cap: I64) -> I64
+
+test "i64 out-param via Box" {
+    let b = Box[Box64](Box64 { v: 0 })
+    let rc = ctron_probe_out_box(b)
+    assert(rc == 0)
+    // C 写 *b = 42 经堆胞指针落回 —— 42 即按引用出参成立的直接证据
+    assert(b.v == 42)
+}
+
+test "array decay probe" {
+    var buf: I64[64] = [0, 0, 0, 0]
+    let n = ctron_probe_fill(buf, 64)
+    if n == 2 {
+        assert(buf[0] == 111)
+        assert(buf[1] == 107)
+    } else {
+        // 数组未按指针衰减(值拷贝进 C 栈,读回无效)→ 登记备选路径
+        assert(n == -2)
+    }
+}
