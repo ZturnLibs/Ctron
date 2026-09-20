@@ -28,7 +28,7 @@ fn segs_std(d: List[Str]) -> Bool {
 }
 
 fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
-    // E4010(§8.2):use std.<key>.<Name>(key ∈ {fs,time}) 且本文件有 &Name 参数,
+    // E4010(§8.2):use std.<key>.<Name>(key ∈ {fs,time,net,db}) 且本文件有 &Name 参数,
     // 而 Ctron.toml [caps] 未声明该 key
     var i: I32 = 1
     while i < mf.len {
@@ -38,7 +38,7 @@ fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
             var symsN = d[2]
             if segs.len > 2 && seq2(segs[1], "std") {
                 var cap = segs[2]
-                if or2(seq2(cap, "fs"), seq2(cap, "time")) {
+                if or2(or2(seq2(cap, "fs"), seq2(cap, "time")), or2(seq2(cap, "net"), seq2(cap, "db"))) {
                     var name = ""
                     if symsN.len > 1 {
                         name = symsN[1]

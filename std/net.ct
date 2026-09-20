@@ -1,0 +1,20 @@
+// std/net.ct —— 服务器档传输门面(§11;P1 阻塞口径)
+// 本文件为 S0 stub:仅供 caps 键扩展的 E4010 负例解析 use std.net.Net;
+// P1 Task 5/6 在此扩展时钟/睡眠与 TCP/UDP/DNS 全门面。
+
+pub trait Net: Cap {
+    fn probe(&self) -> I32
+}
+
+pub class StdNet {
+}
+
+impl Net for StdNet {
+    fn probe(&self) -> I32 {
+        return 0
+    }
+}
+
+pub fn Net_probe() -> StdNet {
+    return StdNet { }
+}
