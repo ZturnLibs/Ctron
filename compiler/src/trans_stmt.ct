@@ -1275,9 +1275,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var rv1 = ct_expr(st[1], env, file)
             var rt1 = ct_typeof(st[1], env, file)
             if or2(rt1 == "s", rt1 == "N") {
-                eln("ct_tls_task->result = (ct_i)(long)(" + rv1 + ");", env)
+                eln("ct_task_self()->result = (ct_i)(long)(" + rv1 + ");", env)
             } else {
-                eln("ct_tls_task->result = (ct_i)(" + rv1 + ");", env)
+                eln("ct_task_self()->result = (ct_i)(" + rv1 + ");", env)
             }
             eln("return 0;", env)
             return env

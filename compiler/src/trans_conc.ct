@@ -165,9 +165,9 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
                     var stt = ct_typeof(stl, senv2, file)
                     var stx = ct_expr(stl, senv2, file)
                     if or2(stt == "s", stt == "N") {
-                        println("ct_tls_task->result = (ct_i)(long)(" + stx + ");")
+                        println("ct_task_self()->result = (ct_i)(long)(" + stx + ");")
                     } else {
-                        println("ct_tls_task->result = (ct_i)(" + stx + ");")
+                        println("ct_task_self()->result = (ct_i)(" + stx + ");")
                     }
                 }
             }
@@ -175,9 +175,9 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
             var bx = ct_expr(body, senv, file)
             var bt = ct_typeof(body, senv, file)
             if or2(bt == "s", bt == "N") {
-                println("ct_tls_task->result = (ct_i)(long)(" + bx + ");")
+                println("ct_task_self()->result = (ct_i)(long)(" + bx + ");")
             } else {
-                println("ct_tls_task->result = (ct_i)(" + bx + ");")
+                println("ct_task_self()->result = (ct_i)(" + bx + ");")
             }
             println("return 0;")
         }

@@ -108,9 +108,59 @@ fn main() -> I32 {
             println("static void ct_gunlock(void) \{ pthread_mutex_unlock(&ct_gm); }")
             println("typedef struct ct_task \{ pthread_t th; void* env; void* (*shim)(void*); ct_i result; int state; char pmsg[128]; ct_scope* scope; jmp_buf jmp; } ct_task;")
             println("static __thread ct_task* ct_tls_task = 0;")
+            println("__attribute__((noinline)) static ct_task** ct_tls_slot(void) \{ return &ct_tls_task; }")
             println("typedef struct ct_chan \{ pthread_mutex_t mu; pthread_cond_t cv_full, cv_empty; ct_i buf[64]; int head, tail, cnt, cap; } ct_chan;")
             println("static ct_chan* ct_chans[64]; static int ct_nchans = 0;")
-            println("static void ct_cancel_broadcast(void) \{ int i; for (i = 0; i < ct_nchans; i++) \{ pthread_mutex_lock(&ct_chans[i]->mu); pthread_cond_broadcast(&ct_chans[i]->cv_full); pthread_cond_broadcast(&ct_chans[i]->cv_empty); pthread_mutex_unlock(&ct_chans[i]->mu); } }")
+            // P2-D 并发模板模式分支:rt 七符号以"弱定义哑元"垫底(机制同 ctron_net.c——
+            // Mach-O 无 undefined-weak→NULL 链接语义,weak extern 声明链接期报 undefined,
+            // Task 3 实证;弱定义哑元 + ctron_rt.c 强定义链接期整体顶替,ELF/Mach-O 双侧
+            // 标准语义,无同 TU 常量折叠)。未链 rt ⇒ 哑元 active 恒 0 ⇒ 七触点全走
+            // P1 pthread 原路径(默认分支逐字保留);链入 rt 且 CTRON_RT=coro ⇒ 协程改道。
+            // _WIN32 无 rt(POSIX-only):哑元整段裁掉,判据恒 0,P1 行为不变。
+            println("#if !defined(_WIN32)")
+            println("__attribute__((weak)) int ctron_rt_active(void) \{ return 0; }")
+            println("__attribute__((weak)) void ctron_rt_init(int workers) \{ (void)workers; }")
+            println("__attribute__((weak)) void* ctron_rt_run(void (*fn)(void*), void* arg, void* key) \{ (void)fn; (void)arg; (void)key; return 0; }")
+            println("__attribute__((weak)) void ctron_rt_join_key(void* key) \{ (void)key; }")
+            println("__attribute__((weak)) void ctron_rt_park(void) \{ }")
+            println("__attribute__((weak)) void ctron_rt_wake(void* key) \{ (void)key; }")
+            println("__attribute__((weak)) void ctron_rt_notify_done(void* key) \{ (void)key; }")
+            println("__attribute__((weak)) void ctron_rt_cancel_wake_all(void) \{ }")
+            println("__attribute__((weak)) void* ctron_rt_current(void) \{ return 0; }")
+            println("#endif")
+            // 判据冻结口径:ct_rt_active = 真 rt 已链且 CTRON_RT=coro;ct_rt_coro_ctx =
+            // 再加 current() 非空(协程上下文)——口径同 ctron_net.c ct_rt_parkable,
+            // 因 park 对裸线程是契约外 no-op,裸线程调用面(如 main)保持 pthread 原语。
+            println("static int ct_rt_active(void) \{")
+            println("#if !defined(_WIN32)")
+            println("    return ctron_rt_active();")
+            println("#else")
+            println("    return 0;")
+            println("#endif")
+            println("}")
+            println("static int ct_rt_coro_ctx(void) \{")
+            println("#if !defined(_WIN32)")
+            println("    return ctron_rt_active() && ctron_rt_current() != 0;")
+            println("#else")
+            println("    return 0;")
+            println("#endif")
+            println("}")
+            // 首个 spawn 的惰性 init:active() 要求真 rt 已 init(getenv==coro 且 g_inited),
+            // 而 rt_run 的惰性 init 在 active() 门后 —— 模板侧按冻结口径(getenv
+            // CTRON_RT=="coro")自探,仅协程环境才 init(默认环境不建 worker 线程)。
+            println("static int ct_rt_env_coro(void) \{ const char* e = getenv(\"CTRON_RT\"); return e != 0 && strcmp(e, \"coro\") == 0; }")
+            // 任务自取:协程模式以 rt current()(= spawn 时挂的 key=ct_task*)为准,
+            // 对 N:M 迁移免疫;裸线程回退 __thread 槽(P1 口径,主线程恒 0)。
+            // 全部 TLS 直访经 noinline 槽访问器(ctron_rt.c:301 同款已登记约束:
+            // darwin/arm64 把 TLV 槽地址缓存在 callee-saved 寄存器,跨 park 迁移后
+            // rt_swap 恢复旧镜像 ⇒ 直访串块——实证 shim 结果写 NULL->result 段错误)。
+            println("static ct_task* ct_task_self(void) \{")
+            println("#if !defined(_WIN32)")
+            println("    if (ctron_rt_active()) \{ void* _k = ctron_rt_current(); if (_k) \{ return (ct_task*)_k; } }")
+            println("#endif")
+            println("    return *ct_tls_slot();")
+            println("}")
+            println("static void ct_cancel_broadcast(void) \{ int i; for (i = 0; i < ct_nchans; i++) \{ pthread_mutex_lock(&ct_chans[i]->mu); pthread_cond_broadcast(&ct_chans[i]->cv_full); pthread_cond_broadcast(&ct_chans[i]->cv_empty); pthread_mutex_unlock(&ct_chans[i]->mu); } if (ct_rt_active()) ctron_rt_cancel_wake_all(); }")
             // Drop 运行时栈(P1-A2,§6.4 panic 展开):指针条目 + 每类型 thunk;
             // ctron_panic 先取所有权逆序展开再 longjmp/exit(弹后再调,嵌套 panic 有界)
             println("typedef struct \{ void (*fn)(void*); void* obj; } ct_drent;")
@@ -120,7 +170,7 @@ fn main() -> I32 {
             println("static void ctron_drop_pop(void) \{ if (ct_drn > 0) \{ ct_drn -= 1; } }")
             println("static void ctron_drop_unwind(void) \{ while (ct_drn > 0) \{ ct_drn -= 1; ct_drstack[ct_drn].fn(ct_drstack[ct_drn].obj); } }")
             println("static int ctron_cb_depth = 0;")
-            println("static void ctron_panic(const char* m) \{ ctron_drop_unwind(); if (ctron_cb_depth > 0) \{ printf(\"%s\", m); exit(1); } ct_task* _tp = ct_tls_task; if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } printf(\"%s\", m); exit(1); }")
+            println("static void ctron_panic(const char* m) \{ ctron_drop_unwind(); if (ctron_cb_depth > 0) \{ printf(\"%s\", m); exit(1); } ct_task* _tp = ct_task_self(); if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } printf(\"%s\", m); exit(1); }")
             println("static int64_t ctron_i64_add(int64_t a, int64_t b) \{ int64_t r; if (__builtin_add_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
             println("static int64_t ctron_i64_sub(int64_t a, int64_t b) \{ int64_t r; if (__builtin_sub_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
             println("static int64_t ctron_i64_mul(int64_t a, int64_t b) \{ int64_t r; if (__builtin_mul_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")
@@ -141,13 +191,13 @@ fn main() -> I32 {
             println("static uint64_t ctron_u64_mod(uint64_t a, uint64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } return a % b; }")
             println("static const char* ctron_i64_to_string(int64_t v) \{ char* r = (char*)ctron_amalloc(32); snprintf(r, 32, \"%lld\", (long long)v); return r; }")
             // Phase 4 并发运行时(函数部):任务 trampoline/spawn/join/Channel/parallel
-            println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; ct_tls_task = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } return 0; }")
-            println("static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) \{ ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); t->shim = shim; t->env = env; t->scope = sc; pthread_create(&t->th, 0, ct_shim_tramp, t); return t; }")
-            println("static ct_i ct_join(ct_task* t) \{ void* r; pthread_join(t->th, &r); if (t->state == 2) \{ ctron_panic(t->pmsg); } return t->result; }")
-            println("static ct_res ct_join_or(ct_task* t) \{ void* r; pthread_join(t->th, &r); ct_res res; if (t->state == 2) \{ res.variant = 1; res.v = (ct_i)(long)\"task panic\"; } else \{ res.variant = 0; res.v = t->result; } return res; }")
+            println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; *ct_tls_slot() = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } if (ct_rt_active()) ctron_rt_notify_done((void*)t); return 0; }")
+            println("static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) \{ ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); t->shim = shim; t->env = env; t->scope = sc; if (!ct_rt_active() && ct_rt_env_coro()) ctron_rt_init(0); if (ct_rt_active()) \{ ctron_rt_run((void (*)(void*))ct_shim_tramp, t, (void*)t); return t; } pthread_create(&t->th, 0, ct_shim_tramp, t); return t; }")
+            println("static ct_i ct_join(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } if (t->state == 2) \{ ctron_panic(t->pmsg); } return t->result; }")
+            println("static ct_res ct_join_or(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } ct_res res; if (t->state == 2) \{ res.variant = 1; res.v = (ct_i)(long)\"task panic\"; } else \{ res.variant = 0; res.v = t->result; } return res; }")
             println("static ct_chan* ct_ch_make(int cap) \{ if (cap <= 0 || cap > 64) \{ cap = 64; } ct_chan* c = (ct_chan*)calloc(1, sizeof(ct_chan)); pthread_mutex_init(&c->mu, 0); pthread_cond_init(&c->cv_full, 0); pthread_cond_init(&c->cv_empty, 0); c->cap = cap; if (ct_nchans < 64) \{ ct_chans[ct_nchans] = c; ct_nchans += 1; } return c; }")
-            println("static ct_res ct_ch_send(ct_chan* c, ct_i v) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == c->cap) \{ ct_scope* sc = ct_tls_task ? ct_tls_task->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } pthread_cond_wait(&c->cv_full, &c->mu); } c->buf[c->tail] = v; c->tail = (c->tail + 1) % 64; c->cnt += 1; pthread_cond_broadcast(&c->cv_empty); pthread_mutex_unlock(&c->mu); res.variant = 0; res.v = 0; return res; }")
-            println("static ct_res ct_ch_recv(ct_chan* c) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == 0) \{ ct_scope* sc = ct_tls_task ? ct_tls_task->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } pthread_cond_wait(&c->cv_empty, &c->mu); } res.variant = 0; res.v = c->buf[c->head]; c->head = (c->head + 1) % 64; c->cnt -= 1; pthread_cond_broadcast(&c->cv_full); pthread_mutex_unlock(&c->mu); return res; }")
+            println("static ct_res ct_ch_send(ct_chan* c, ct_i v) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == c->cap) \{ ct_task* _ct = ct_task_self(); ct_scope* sc = _ct ? _ct->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } if (ct_rt_coro_ctx()) \{ pthread_mutex_unlock(&c->mu); ctron_rt_park(); pthread_mutex_lock(&c->mu); continue; } pthread_cond_wait(&c->cv_full, &c->mu); } c->buf[c->tail] = v; c->tail = (c->tail + 1) % 64; c->cnt += 1; pthread_cond_broadcast(&c->cv_empty); pthread_mutex_unlock(&c->mu); if (ct_rt_active()) ctron_rt_cancel_wake_all(); res.variant = 0; res.v = 0; return res; }")
+            println("static ct_res ct_ch_recv(ct_chan* c) \{ ct_res res; pthread_mutex_lock(&c->mu); while (c->cnt == 0) \{ ct_task* _ct = ct_task_self(); ct_scope* sc = _ct ? _ct->scope : 0; if (sc && sc->cancelled) \{ pthread_mutex_unlock(&c->mu); res.variant = 1; res.v = (ct_i)(long)\"ScopeCancelled\"; return res; } if (ct_rt_coro_ctx()) \{ pthread_mutex_unlock(&c->mu); ctron_rt_park(); pthread_mutex_lock(&c->mu); continue; } pthread_cond_wait(&c->cv_empty, &c->mu); } res.variant = 0; res.v = c->buf[c->head]; c->head = (c->head + 1) % 64; c->cnt -= 1; pthread_cond_broadcast(&c->cv_full); pthread_mutex_unlock(&c->mu); if (ct_rt_active()) ctron_rt_cancel_wake_all(); return res; }")
             println("typedef ct_i (*ct_fn1)(ct_i);")
             println("typedef ct_i (*ct_fn2)(ct_i, ct_i);")
             println("typedef ct_i (*ct_fn3)(ct_i, ct_i, ct_i);")
