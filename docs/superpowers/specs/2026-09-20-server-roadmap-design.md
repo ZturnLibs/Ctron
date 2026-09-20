@@ -222,7 +222,7 @@ web 框架,而是证明 §7 的并发语义天然就是服务器语义。
 - **规范 v0.8 批次**:`11-net.md`/`12-db.md` 草案(已落库)**定稿**;§7 增"异步执行模型"节
   (无色语义、挂起点契约、协程与 Send 交互、§7.1 过渡口径注记);
   §2 `[caps]` 键集增 `net.listen` / `net.connect` / `net.resolve` / `db.connect`。
-- **锚点**:tests/roadmap/ `r7a_caps_net.neg.ct`(E4010 net/db 键)、`r7b_pure_net.neg.ct`(E4020)。
+- **锚点**:`tests/modules/caps_net`(E4010 net/db 键)、tests/roadmap/ `r7b_pure_net.neg.ct`(E4020)。
 - 出口:销账项上游绿 + 规范批次合入 + 锚点按测试先行转红登记。
 
 ### P1 阻塞基线:「先有」(4–6 天)

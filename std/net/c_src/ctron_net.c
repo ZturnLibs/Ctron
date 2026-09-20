@@ -113,14 +113,15 @@ static int ct_wsa_once(void) {
  * 且当前处于协程上下文。
  * 限制登记:rt 若经静态库归档链接且无其他拉入引用,弱垫底不被顶替(静默回退
  * P1,不致错);本仓 rt 一律以源/.o 直链(c_src/*.c glob),不受影响。
- * _WIN32 无 rt(POSIX-only),停车面整体裁掉,P1 行为不变。 */
-#if !defined(_WIN32)
+ * 哑元无条件发射(P2 终审收账):_WIN32 无 rt(POSIX-only),但 sleep_ms/
+ * wait_fd 的调用点只有运行期守卫(ct_rt_*_parkable 于 _WIN32 恒 0,仅 -O1
+ * 常量折叠消亡),-O0 下符号引用存活 → mingw 链接断;rt 永不在 _WIN32 链入,
+ * 哑元即终解,与发射模板侧九哑元无条件发射(e93bde9)同构。 */
 __attribute__((weak)) void ctron_rt_wait_fd(int fd, int write_side, int64_t timeout_ms) {
     (void)fd; (void)write_side; (void)timeout_ms;
 }
 __attribute__((weak)) void* ctron_rt_current(void) { return 0; }
 __attribute__((weak)) void ctron_rt_sleep_ms(int64_t ms) { (void)ms; }
-#endif
 
 /* 停车判据:垫片符号已链(非哑元态不可能是真,哑元 current 恒 NULL)+ 协程上下文 */
 static int ct_rt_parkable(void) {

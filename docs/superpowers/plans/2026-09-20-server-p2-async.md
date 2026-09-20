@@ -197,5 +197,33 @@ extern void ctron_rt_cancel_wake_all(void) __attribute__((weak));
 
 - **门禁三红归因**(非 harness 偏差:同客户端驱动、同源码双二进制、同 -O1、同 §11.3 默认面,唯一差异 = 运行时模式):coro 侧每阻塞读 = 0 超时 poll 探针 + reactor 登记/摘除(kqueue EV_ADD/EV_DELETE + F_GETFD)+ park/wake 切换对 + worker 空闲退避唤醒延迟(20→160µs 全局递增),合计 ~15µs/往返;P1 侧 = 单 poll 门 + recv(~13µs/往返)。门面共担成本(per-read poll 门 + 4KB 暂存 + lane 加宽,P1 在册归因)两端同担,不放大该比值。
 - **处置**:登记归因 + P3 优化项:(a) worker 唤醒改事件量/退避随唤醒交付复位;(b) kqueue 兴趣驻留 + one-shot rearm(已列 P9);(c) 视图直收绕过 4KB 暂存(P1 在册优化项同源)。**P2 出口 = 四绿一红,红项在册不粉饰**;运行时性能优化不属本收口任务范围,另行开题。
+- 门禁三处置细化(终审):探针消除与兴趣驻留为同一工作单元;P3 内设中间检查点 ≤1.5 复测后再评估 1.15 可达性;门值 1.15 维持不挪柱。
 - bench.sh 退出码口径统一(偏差注):P1 原形 ratio>1.05 即 rc=1,与「1.05–1.15 登记归因不强堵」语义矛盾(登记档常态红);统一为 >1.15 出口红 / 登记档 rc=0 带档注,门禁三 ≤1.15 为 P2 硬门。三端口改 $$ 派生(POSIX sh 空 RANDOM,P1 台账 M-T7-4 同款规避)。
 - run.sh 主环时长注:coro_det_replay 专属块入环 +~1.7s(审查 Important 明令,门禁三件不在此列——c10k/bench 均独立脚本,主环跳过实测:c10k 无 src/main.ct 被守卫跳过,bench 无 c_src 目录首守卫跳过)。
+
+### 终审收尾波(P2 终审判定 READY 的随附收账,2026-09-20)
+
+- **F1 垫片 WIN32 哑元无条件发射**(std/net/c_src/ctron_net.c):三弱定义哑元
+  (current/wait_fd/sleep_ms)原被 `#if !defined(_WIN32)` 裁切,而 sleep_ms/
+  wait_fd 的调用点(垫片停车路径)只有运行期守卫,`_WIN32` 下仅靠 -O1 常量折叠
+  消亡,-O0 引用存活 → mingw 链接断(与模板侧 e93bde9 同病)。改无条件发射:
+  rt POSIX-only 永不在 _WIN32 链入,哑元即终解。验证:cc -E -D_WIN32 预处理产物
+  中 ctron_rt_* 存活引用全有定义(实链归发布泳道,本机无 mingw)。
+- **F2 divergences 服务器面 (f) 耐久回写四条**(自 P2 终审升档):errno/TLS
+  迁移窗口(noinline 不治迁移语义,挂账按 key 分槽)、coro chan 成功路径
+  wake-all O(全体协程)(g_all append-only,P3/P9 定向唤醒或分槽)、G 内
+  syscall 串行 worker(P3 (b) 兴趣驻留后再评估)、getaddrinfo 阻塞面(P9:
+  池线程化或 rt_wait_fd 化)。
+- **F3 COVERAGE.md 九行滑差核查 = 零改动**:「九行」仅存于 1525a8a 提交信息,
+  未落文件;P2 表实为 8 行(263–270),全文 grep 九/9行 无他处滑差;主环计例
+  口径「行为夹具 9 + c_smoke 2 + coro_det_replay 1 = 12」核对无误。他泳道在途
+  块在其文件头区,本波未触碰该文件。
+- **F4 spec 锚点勘正**(2026-09-20-server-roadmap-design.md ~:225):P1 终审
+  遗留——`tests/roadmap/ r7a_caps_net.neg.ct` 系不存在字样,勘正为
+  `tests/modules/caps_net`(E4010 锚点实际所在;r7b_pure_net.neg.ct 核实在册)。
+- **F5 门禁三处置细化一句**(本段出口判定节,不修门):探针消除与兴趣驻留为
+  同一工作单元;P3 内设中间检查点 ≤1.5 复测后再评估 1.15 可达性;门值 1.15
+  维持不挪柱。
+- **F6 run.sh 补链条件收紧**(tests/net/run.sh,一行):`[ -n "${CTRON_RT:-}" ]`
+  → `[ "${CTRON_RT:-}" = "coro" ]`(评审登记项,消除其他 CTRON_RT 值的过匹配
+  补链)。复验:默认与 coro 矩阵各 12/12 全绿。

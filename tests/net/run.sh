@@ -23,8 +23,9 @@ for d in "$DIR"/*/; do
     #(已自链者如 coro_hybrid/coro_conc 不重链——重复强定义链接报错);默认环境
     # RTSRC 为空,链接行与 P2-C 前同形。主环 cc 补 -pthread(rt 用 pthread)+
     # -I(rt.h 解析;ctron_net.c 自 P2-D 收账 include ctron_rt.h)。
+    #(终审收账:补链条件收紧为仅 =coro,其他 CTRON_RT 值不再过匹配补链。)
     RTSRC=""
-    if [ -n "${CTRON_RT:-}" ] && [ ! -e "$d/c_src/ctron_rt.c" ]; then
+    if [ "${CTRON_RT:-}" = "coro" ] && [ ! -e "$d/c_src/ctron_rt.c" ]; then
         RTSRC="$ROOT/std/net/c_src/ctron_rt.c"
     fi
     if "$EMIT" run "$e" > "$T/$name.c" 2>"$T/$name.err"; then
