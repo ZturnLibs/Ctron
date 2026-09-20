@@ -348,7 +348,7 @@ fn gt_new() -> GuiTree {
     }
 }
 
-fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str]) -> Str {
+fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str]) -> Str {
     var out: Str = ""
     while true {
         gws(src, cur)
@@ -367,11 +367,15 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str]) -> Str {
             t.ev_fn.push(fnn)
         } else {
             glit(src, cur, 61)
-            // 花括号属性值(cond={名}):单词直取(绑定名,SL-5 when 通道)
+            // 花括号属性值(cond={名}/bind={model.draft}):点路径单词串
             var av: Str = ""
             if byte_at(src, cur.load()) == 123 {
                 glit(src, cur, 123)
                 av = gword(src, cur)
+                while byte_at(src, cur.load()) == 46 {
+                    glit(src, cur, 46)
+                    av = av + "." + gword(src, cur)
+                }
                 glit(src, cur, 125)
             } else {
                 av = gstr(src, cur)
@@ -381,6 +385,12 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str]) -> Str {
             }
             if an == "cond" {
                 conds.push(av)
+            }
+            if an == "bind" {
+                binds.push(av)
+            }
+            if an == "placeholder" {
+                strs.push(av)
             }
         }
     }
@@ -470,7 +480,20 @@ fn gt_cond_pick(conds: List[Str], cstart: I32) -> Str {
     return ""
 }
 
-fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32) -> I32 {
+// 列表索引/尾元素读取一律走 helper(按签名定型;嵌套分支/推断局部的直接索引
+// 会丢参型——trans env 缺口 ⑲,SL-2v 实证)
+fn gt_last(l: List[Str], start: I32) -> Str {
+    if l.len > start {
+        return l[l.len - 1]
+    }
+    return ""
+}
+
+fn gt_index(l: List[Str], i: I32) -> Str {
+    return l[i]
+}
+
+fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str], depth: I32) -> I32 {
     glit(src, cur, 60)
     var tag: Str = gword(src, cur)
     var is_leaf: Bool = false
@@ -488,12 +511,18 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
     if tag == "each" {
         is_each = true
     }
+    var is_input: Bool = false
+    if tag == "input" {
+        is_input = true
+    }
     if !is_leaf {
         if !is_when {
             if !is_each {
-                if tag != "vbox" {
-                    if tag != "hbox" {
-                        panic("gui: 未知元素 " + tag)
+                if !is_input {
+                    if tag != "vbox" {
+                        if tag != "hbox" {
+                            panic("gui: 未知元素 " + tag)
+                        }
                     }
                 }
             }
@@ -521,9 +550,32 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
     }
     var estart: I32 = t.ev_name.len
     var cstart: I32 = conds.len
-    var c: Str = gt_attrs(src, cur, t, conds)
+    var bstart: I32 = binds.len
+    var sstart: I32 = strs.len
+    var c: Str = gt_attrs(src, cur, t, conds, binds, strs)
     glit(src, cur, 62)
     var id: I32 = t.ntag.len
+    if is_input {
+        // 自闭合:<input ... />;bind 名 → nbid,placeholder → npre
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        var ph: Str = gt_last(strs, sstart)
+        var bn: Str = gt_last(binds, bstart)
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(ph)
+        t.nbid.push(bn)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push("")
+        if tag == "button" {
+            t.btns.push(id)
+        }
+        return id
+    }
     if is_leaf {
         if byte_at(src, cur.load()) == 60 {
             if byte_at(src, cur.load() + 1) != 47 {
@@ -567,7 +619,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
                     break
                 }
             }
-            var kid: I32 = gt_node(src, cur, t, conds, depth + 1)
+            var kid: I32 = gt_node(src, cur, t, conds, binds, strs, depth + 1)
             // 成员链索引赋值(t.nfc[id]=…)解释口径不支持(assign target:Index),
             // 取局部引用中转——List 引用语义下同一底层列表(SL-2v 实证配方)
             var fcl: List[I32] = t.nfc
@@ -634,7 +686,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
             gword(src, cur)
             gws(src, cur)
             glit(src, cur, 123)
-            gt_node(src, cur, t, conds, 1)
+            gt_node(src, cur, t, conds, binds, strs, 1)
             gws(src, cur)
             glit(src, cur, 125)
         } else {
@@ -703,7 +755,7 @@ pub fn rt_bind_items(bind: fn(List[Str]) -> Void, listname: Str) -> List[Str] {
     var out = List[Str]()
     var i: I32 = 1
     while i < buf.len {
-        out.push(buf[i])
+        out.push(gt_index(buf, i))
         i += 1
     }
     return out
@@ -714,7 +766,7 @@ fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
     buf.push(name)
     bind(buf)
     if buf.len > 1 {
-        return buf[buf.len - 1]
+        return gt_last(buf, 1)
     }
     return ""
 }
@@ -743,6 +795,22 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         gui_text(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)),
                  rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
     } else {
+        if tag == "input" {
+            // 受控输入:盒 + 绑定值文本(空 → placeholder);单输入恒焦点(v0)
+            var bgp: I32 = 0
+            var bgv: Str = gt_cls_prop(c, "bg", "#2a2a2e", t)
+            if bgv != "" {
+                bgp = g_parse_color(bgv)
+            }
+            gui_cfg(0, 0, 8, 0, 0, 1, 1, 0, 2, gs2i(gt_cls_prop(c, "h", "36", t)), bgp)
+            var txt: Str = rt_bind_text(bind, t.nbid[id])
+            if txt == "" {
+                txt = t.npre[id]
+            }
+            var sz: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
+            var fgp: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+            gui_text(txt, sz, rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
+        } else {
         if tag == "label" {
             var ax: I32 = 0
             var al: Str = gt_cls_prop(c, "align", "left", t)
@@ -920,6 +988,12 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                 if has_key {
                     key(gui_evt_key())
                 }
+            } else {
+                if evt == 3 {
+                    if has_key {
+                        key(gui_evt_key())
+                    }
+                }
             }
         }
         rt_draw_frame(t, bind, w, h)
@@ -968,6 +1042,12 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
             if evt == 1 {
                 if has_key {
                     key(gui_evt_key())
+                }
+            } else {
+                if evt == 3 {
+                    if has_key {
+                        key(gui_evt_key())
+                    }
                 }
             }
         }
@@ -1062,6 +1142,17 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
     return rt_draw_frame(t.t, bind, t.w, t.h)
 }
 
+// 注入字符事件(type 3),返回字符码(应用键钩子自行编辑模型)
+pub fn d_type_char(t: Box[Driver], k: I32) -> I32 {
+    gui_inject_char(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 3 {
+        panic("gui test: 字符事件丢失")
+        return -1
+    }
+    return gui_evt_key()
+}
+
 pub fn d_expect_text(t: Box[Driver], want: Str) -> I32 {
     return rt_expect_text(want)
 }
@@ -1133,4 +1224,78 @@ pub fn run_kb_d(title: Str, w: I32, h: I32,
     var src: Str = read_file("app.ctml")
     var t: GuiTree = gt_parse(src)
     return rt_run_kb_d(t, src, title, w, h, bind, act, key)
+}
+
+// ==================== 输入辅助 ====================
+
+// 字符码 → 单字符 Str(TextInput/type 3 事件;utf8_enc 透传)
+pub fn char_str(k: I32) -> Str {
+    return utf8_enc(k)
+}
+
+// 键码 → 语义名(raylib GetKeyPressed 口径;未映射 = "")
+pub fn key_name(k: I32) -> Str {
+    if k >= 48 {
+        if k <= 57 {
+            return byte_slice("0123456789", k - 48, k - 47)
+        }
+    }
+    if k >= 65 {
+        if k <= 90 {
+            var lo: I32 = k + 32
+            return byte_slice("abcdefghijklmnopqrstuvwxyz", lo - 97, lo - 96)
+        }
+    }
+    if k == 32 {
+        return "space"
+    }
+    if k == 256 {
+        return "escape"
+    }
+    if k == 257 {
+        return "enter"
+    }
+    if k == 258 {
+        return "tab"
+    }
+    if k == 259 {
+        return "backspace"
+    }
+    if k == 262 {
+        return "right"
+    }
+    if k == 263 {
+        return "left"
+    }
+    if k == 264 {
+        return "down"
+    }
+    if k == 265 {
+        return "up"
+    }
+    if k == 43 {
+        return "plus"
+    }
+    if k == 45 {
+        return "minus"
+    }
+    if k == 42 {
+        return "star"
+    }
+    if k == 47 {
+        return "slash"
+    }
+    if k == 46 {
+        return "dot"
+    }
+    if k == 61 {
+        return "equal"
+    }
+    if k == 37 {
+        return "percent"
+    }
+    if k == 44 {
+        return "comma"
+    }
+    return ""
 }
