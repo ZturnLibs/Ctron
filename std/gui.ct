@@ -189,7 +189,13 @@ fn gword(src: Str, cur: Atomic[I32]) -> Str {
 fn glit(src: Str, cur: Atomic[I32], c: I32) -> I32 {
     gws(src, cur)
     if byte_at(src, cur.load()) != c {
-        panic("gui: 期待字符码 " + c.to_string() + " @byte " + cur.load().to_string())
+        var around: Str = "?"
+        if cur.load() > 40 {
+            around = byte_slice(src, cur.load() - 40, cur.load())
+        } else {
+            around = byte_slice(src, 0, cur.load())
+        }
+        panic("gui: 期待字符码 " + c.to_string() + " @byte " + cur.load().to_string() + " srclen=" + src.len.to_string() + " 前文=[" + around + "]")
     }
     cur.store(cur.load() + 1)
     return 0
@@ -478,11 +484,17 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
     if tag == "when" {
         is_when = true
     }
+    var is_each: Bool = false
+    if tag == "each" {
+        is_each = true
+    }
     if !is_leaf {
         if !is_when {
-            if tag != "vbox" {
-                if tag != "hbox" {
-                    panic("gui: 未知元素 " + tag)
+            if !is_each {
+                if tag != "vbox" {
+                    if tag != "hbox" {
+                        panic("gui: 未知元素 " + tag)
+                    }
                 }
             }
         }
@@ -491,6 +503,21 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
         if depth >= 16 {
             panic("gui: 嵌套超限(16)")
         }
+    }
+    var itemvar: Str = ""
+    var listname: Str = ""
+    if is_each {
+        // 头:item in={listname}(先于 attrs)
+        itemvar = gword(src, cur)
+        var inkw: Str = gword(src, cur)
+        if inkw != "in" {
+            panic("gui: each 期待 in,得 " + inkw)
+        }
+        glit(src, cur, 61)
+        glit(src, cur, 123)
+        listname = gword(src, cur)
+        glit(src, cur, 125)
+        gws(src, cur)
     }
     var estart: I32 = t.ev_name.len
     var cstart: I32 = conds.len
@@ -524,8 +551,8 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
     } else {
         t.ntag.push(tag)
         t.ncls.push(c)
-        t.npre.push("")
-        t.nbid.push("")
+        t.npre.push(listname)
+        t.nbid.push(itemvar)
         t.npost.push("")
         t.nfc.push(-1)
         t.ns.push(-1)
@@ -668,6 +695,20 @@ fn rt_col_b(p: I32) -> I32 {
     return p % 256
 }
 
+// 列表询问:buf[0] = "each:名",用户逐项 push 标题;返回项文本列表
+pub fn rt_bind_items(bind: fn(List[Str]) -> Void, listname: Str) -> List[Str] {
+    var buf = List[Str]()
+    buf.push("each:" + listname)
+    bind(buf)
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < buf.len {
+        out.push(buf[i])
+        i += 1
+    }
+    return out
+}
+
 fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
     var buf = List[Str]()
     buf.push(name)
@@ -678,13 +719,14 @@ fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
     return ""
 }
 
-fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, id: I32) -> I32 {
+fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32) -> I32 {
     // when 条件:旗名经 bind 通道询问("when:名" → push "1"/"0");假 = 整子树跳过
     if t.nflag[id] != "" {
         var fv: Str = rt_bind_text(bind, "when:" + t.nflag[id])
         if fv != "1" {
             return 0
         }
+        println("WHEN-VISIBLE name=" + t.nflag[id] + " cmds=" + gui_cmd_count().to_string())
     }
     gui_open()
     var tag: Str = t.ntag[id]
@@ -714,7 +756,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, id: I32) -> I32 {
             gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gs2i(gt_cls_prop(c, "h", "40", t)), 0)
             var txt: Str = t.npre[id]
             if t.nbid[id] != "" {
-                txt = txt + rt_bind_text(bind, t.nbid[id]) + t.npost[id]
+                if t.nbid[id] == itemvar {
+                    // each 活动项:项文本直取(不经绑定通道)
+                    txt = txt + item + t.npost[id]
+                } else {
+                    txt = txt + rt_bind_text(bind, t.nbid[id]) + t.npost[id]
+                }
             } else {
                 txt = txt + t.npost[id]
             }
@@ -744,10 +791,25 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, id: I32) -> I32 {
                 bgp2 = g_parse_color(bgv2)
             }
             gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
-            var ch: I32 = t.nfc[id]
-            while ch >= 0 {
-                rt_emit(t, bind, ch)
-                ch = t.ns[ch]
+            if tag == "each" {
+                // 按项展开:询问 bind 通道("each:列表名" → 逐项 push 标题),
+                // 每项以 itemvar/item 绑定重放孩子子树
+                var items = rt_bind_items(bind, t.npre[id])
+                var ii: I32 = 0
+                while ii < items.len {
+                    var ch: I32 = t.nfc[id]
+                    while ch >= 0 {
+                        rt_emit(t, bind, t.nbid[id], items[ii], ch)
+                        ch = t.ns[ch]
+                    }
+                    ii += 1
+                }
+            } else {
+                var ch: I32 = t.nfc[id]
+                while ch >= 0 {
+                    rt_emit(t, bind, itemvar, item, ch)
+                    ch = t.ns[ch]
+                }
             }
         }
     }
@@ -757,7 +819,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, id: I32) -> I32 {
 
 pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32) -> I32 {
     gui_begin_layout(w, h)
-    rt_emit(t, bind, 0)
+    rt_emit(t, bind, "", "", 0)
     return gui_end_layout()
 }
 
