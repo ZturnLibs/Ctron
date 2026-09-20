@@ -267,20 +267,29 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                         var mf = p_file(toks2, cur2, lns2, cols2, pd2)
                         pkg_check_caps(mf, dir, diags)
                         // 可见性:请求符号必须存在且为 pub(v0:FnPub)
-                        var k3: I32 = 0
-                        while k3 < syms.len {
-                            var sn = syms[k3]
-                            var found = false
-                            var vis = false
-                            var m2: I32 = 1
-                            while m2 < mf.len {
-                                var md = mf[m2]
-                                if md.len > 1 && md[1] == sn {
-                                    found = true
-                                    if md[0] == "FnPub" { vis = true }
+                            var k3: I32 = 0
+                            while k3 < syms.len {
+                                var sn = syms[k3]
+                                var found = false
+                                var vis = false
+                                var m2: I32 = 1
+                                while m2 < mf.len {
+                                    var md = mf[m2]
+                                    if md.len > 1 && md[1] == sn {
+                                        found = true
+                                        if md[0] == "FnPub" { vis = true }
+                                        // SL-0.7:pub struct/enum/extern——解析器在节点
+                                        // 尾槽追加 "pub"(镜像 fn 的 anm/stamp 尾槽模式)
+                                        if md.len > 2 {
+                                            if md[md.len - 1] == "pub" {
+                                                if or2(md[0] == "Struct", or2(md[0] == "Enum", md[0] == "FnExt")) {
+                                                    vis = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                    m2 += 1
                                 }
-                                m2 += 1
-                            }
                             if !found {
                                 diag1(diags, "E2020.use.miss", "", sn)
                             } else if !vis {

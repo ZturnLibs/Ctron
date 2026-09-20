@@ -62,6 +62,18 @@ fn ct_cap_decl(code: Str, nm: Str, i: I32) -> Str {
     if code.len > 1 && byte_at(code, 0) == 109 {
         return "ct_mcell_" + ct_mcell_tag(byte_slice(code, 1, code.len)) + "* t_" + nm + " = (ct_mcell_" + ct_mcell_tag(byte_slice(code, 1, code.len)) + "*)(long)_e[" + i.to_string() + "];"
     }
+    // Box[T] 捕获:ct_ctype 已是指针(t_X*),经 long 中转解 env 槽;
+    // 此前落默认分支窄化为 int32_t(指针截断,gui L1 model 捕获踩中,SL-0 探针发现)
+    if code.len > 2 && byte_slice(code, 0, 2) == "B:" {
+        return ct + " t_" + nm + " = (" + ct + ")(long)_e[" + i.to_string() + "];"
+    }
+    // fn 值捕获(ct_clop 指针,同指针宽度中转)
+    if code.len > 1 {
+        var ch: I32 = byte_at(code, 0)
+        if or2(ch == 70, ch == 71) {
+            return ct + " t_" + nm + " = (" + ct + ")(long)_e[" + i.to_string() + "];"
+        }
+    }
     if code == "6" {
         return ct + " t_" + nm + " = (int64_t)_e[" + i.to_string() + "];"
     }
@@ -521,14 +533,24 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                     ct_stmt(tl, renv, file, List[Str]())
                 } else {
                     var tx = ct_expr(tl, renv, file)
-                    println("return (ct_i)(" + tx + ");")
+                    // Void 体(如 list.push 调用)不包 return——(ct_i)(void 表达式)
+                    // 是非法 C;此前无条件包裹,gui L1 绑定钩子踩中(SL-0 探针发现)
+                    if ct_typeof(tl, renv, file) == "v" {
+                        println(tx + ";")
+                    } else {
+                        println("return (ct_i)(" + tx + ");")
+                    }
                 }
             } else {
                 println("return 0;")
             }
         } else {
             var vx = ct_expr(body, benv, file)
-            println("return (ct_i)(" + vx + ");")
+            if ct_typeof(body, benv, file) == "v" {
+                println(vx + ";")
+            } else {
+                println("return (ct_i)(" + vx + ");")
+            }
         }
         println("}")
         return "0"

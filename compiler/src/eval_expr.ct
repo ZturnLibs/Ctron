@@ -246,7 +246,11 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 if recv[0] == "L" {
                     return e4("k", ob[1], vI(recv.len - 1), ob[3])
                 }
-                panic("len target")
+                var tn: Str = "?"
+                if recv.len > 1 { tn = recv[1] }
+                var en: Str = "?"
+                if e[1].len > 1 { en = e[1][0] + "/" + e[1][1] }
+                panic("len target recv=" + recv[0] + "/" + tn + " m=" + m + " recvexpr=" + en)
                 return e4("a", env, vV2(), out)
             }
             if recv[0] == "S" && seq2(m, "char_len") {

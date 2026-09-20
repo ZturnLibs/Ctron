@@ -286,11 +286,25 @@ fn ct_ctype(code: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
         return "ct_enum_" + byte_slice(code, 2, code.len)
     }
-    if or2(code == "F1", or2(code == "F2", code == "F3")) {
-        return "ct_clop"
-    }
-    if or2(code == "G1", or2(code == "G2", code == "G3")) {
-        return "ct_clop"
+    // fn 类型码 = F/G + 参数个数(十进制,任意位宽);F0(零参)/F4+ 与 F1-F3 同族,
+    // 首字符判定——此前只枚举 1..3,fn()/fn() -> T 等落到默认 int32_t(发射缺口,
+    // gui L1 注册表/零参钩子踩中,2026-09-19 SL-0 探针发现)
+    if code.len > 1 {
+        var fh: I32 = byte_at(code, 0)
+        if or2(fh == 70, fh == 71) {
+            var all_dg: Bool = true
+            var di: I32 = 1
+            while di < code.len {
+                if !is_digit(byte_at(code, di)) {
+                    all_dg = false
+                    di = code.len
+                }
+                di += 1
+            }
+            if all_dg {
+                return "ct_clop"
+            }
+        }
     }
     if code == "g" { return "ct_scope*" }
     if code == "k" { return "ct_task*" }

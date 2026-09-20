@@ -605,10 +605,33 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
             while tok(toks, cur) == "NL" {
                 adv(cur)
             }
-            if tok(toks, cur) == "fn" {
+            var t3 = tok(toks, cur)
+            if t3 == "fn" {
                 nf.push(p_fn2(toks, cur, lns, "FnPub"))
             } else {
-                nf.push(p_fn(toks, cur, lns))
+                if t3 == "struct" {
+                    // pub struct:此前无路由掉进 p_fn 吞掉后续声明流(SL-0.7 探针:
+                    // E2020.use.miss / List 幽灵 decl / 段错误三态)。尾槽追加 "pub"
+                    // 标记(镜像 fn 的 anm/stamp 尾槽;位置索引消费者不受影响),
+                    // loader 按尾标记判定可见性
+                    var ns3 = p_struct2(toks, cur, lns, mk("Drvs"), "")
+                    ns3.push("pub")
+                    nf.push(ns3)
+                } else {
+                    if t3 == "enum" {
+                        var ne3 = p_enum2(toks, cur, lns, mk("Drvs"), "")
+                        ne3.push("pub")
+                        nf.push(ne3)
+                    } else {
+                        if t3 == "extern" {
+                            var nx3 = p_extern(toks, cur, lns, cols, pdiags, "")
+                            nx3.push("pub")
+                            nf.push(nx3)
+                        } else {
+                            nf.push(p_fn(toks, cur, lns))
+                        }
+                    }
+                }
             }
         } else if t == "comptime" {
             adv(cur)
