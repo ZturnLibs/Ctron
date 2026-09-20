@@ -306,6 +306,7 @@ fn gs2i(s: Str) -> I32 {
 
 pub struct GuiTree {
     var ntag: List[Str]
+    var nflag: List[Str]
     var ncls: List[Str]
     var npre: List[Str]
     var nbid: List[Str]
@@ -336,11 +337,12 @@ fn gt_new() -> GuiTree {
         ev_fn: List[Str](),
         btns: List[I32](),
         sk: List[Str](),
-        sv: List[Str]()
+        sv: List[Str](),
+        nflag: List[Str]()
     }
 }
 
-fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree) -> Str {
+fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str]) -> Str {
     var out: Str = ""
     while true {
         gws(src, cur)
@@ -359,9 +361,20 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree) -> Str {
             t.ev_fn.push(fnn)
         } else {
             glit(src, cur, 61)
-            var av: Str = gstr(src, cur)
+            // 花括号属性值(cond={名}):单词直取(绑定名,SL-5 when 通道)
+            var av: Str = ""
+            if byte_at(src, cur.load()) == 123 {
+                glit(src, cur, 123)
+                av = gword(src, cur)
+                glit(src, cur, 125)
+            } else {
+                av = gstr(src, cur)
+            }
             if an == "class" {
                 out = av
+            }
+            if an == "cond" {
+                conds.push(av)
             }
         }
     }
@@ -442,7 +455,16 @@ fn gt_leaf_text(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
     return 0
 }
 
-fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
+
+// 本节点 cond 名(cstart 后最后一个;无 = "")
+fn gt_cond_pick(conds: List[Str], cstart: I32) -> Str {
+    if conds.len > cstart {
+        return conds[conds.len - 1]
+    }
+    return ""
+}
+
+fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32) -> I32 {
     glit(src, cur, 60)
     var tag: Str = gword(src, cur)
     var is_leaf: Bool = false
@@ -452,10 +474,16 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
     if tag == "button" {
         is_leaf = true
     }
+    var is_when: Bool = false
+    if tag == "when" {
+        is_when = true
+    }
     if !is_leaf {
-        if tag != "vbox" {
-            if tag != "hbox" {
-                panic("gui: 未知元素 " + tag)
+        if !is_when {
+            if tag != "vbox" {
+                if tag != "hbox" {
+                    panic("gui: 未知元素 " + tag)
+                }
             }
         }
     }
@@ -465,7 +493,8 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
         }
     }
     var estart: I32 = t.ev_name.len
-    var c: Str = gt_attrs(src, cur, t)
+    var cstart: I32 = conds.len
+    var c: Str = gt_attrs(src, cur, t, conds)
     glit(src, cur, 62)
     var id: I32 = t.ntag.len
     if is_leaf {
@@ -481,6 +510,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
         t.ns.push(-1)
         t.nes.push(estart)
         t.nec.push(t.ev_name.len - estart)
+        t.nflag.push(gt_cond_pick(conds, cstart))
         glit(src, cur, 60)
         glit(src, cur, 47)
         var et: Str = gword(src, cur)
@@ -501,6 +531,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
         t.ns.push(-1)
         t.nes.push(estart)
         t.nec.push(t.ev_name.len - estart)
+        t.nflag.push(gt_cond_pick(conds, cstart))
         var prev: I32 = -1
         while true {
             gws(src, cur)
@@ -509,7 +540,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
                     break
                 }
             }
-            var kid: I32 = gt_node(src, cur, t, depth + 1)
+            var kid: I32 = gt_node(src, cur, t, conds, depth + 1)
             // 成员链索引赋值(t.nfc[id]=…)解释口径不支持(assign target:Index),
             // 取局部引用中转——List 引用语义下同一底层列表(SL-2v 实证配方)
             var fcl: List[I32] = t.nfc
@@ -563,6 +594,7 @@ fn gt_style(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
 
 pub fn gt_parse(src: Str) -> GuiTree {
     var t: GuiTree = gt_new()
+    var conds = List[Str]()
     var cur = Atomic[I32](0)
     var n: I32 = src.len
     while cur.load() < n {
@@ -575,7 +607,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
             gword(src, cur)
             gws(src, cur)
             glit(src, cur, 123)
-            gt_node(src, cur, t, 1)
+            gt_node(src, cur, t, conds, 1)
             gws(src, cur)
             glit(src, cur, 125)
         } else {
@@ -586,7 +618,6 @@ pub fn gt_parse(src: Str) -> GuiTree {
             }
         }
     }
-    panic("PARSE-OK nodes=" + t.ntag.len.to_string())
     return t
 }
 
@@ -648,6 +679,13 @@ fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
 }
 
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, id: I32) -> I32 {
+    // when 条件:旗名经 bind 通道询问("when:名" → push "1"/"0");假 = 整子树跳过
+    if t.nflag[id] != "" {
+        var fv: Str = rt_bind_text(bind, "when:" + t.nflag[id])
+        if fv != "1" {
+            return 0
+        }
+    }
     gui_open()
     var tag: Str = t.ntag[id]
     var c: Str = t.ncls[id]
@@ -964,6 +1002,33 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
 
 pub fn d_expect_text(t: Box[Driver], want: Str) -> I32 {
     return rt_expect_text(want)
+}
+
+// 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
+pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
+    var n: I32 = gui_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            if gui_cmd_text_len(i) == want.len {
+                var ok: Bool = true
+                var j: I32 = 0
+                while j < want.len {
+                    if gui_cmd_text_byte(i, j) != byte_at(want, j) {
+                        ok = false
+                        j = want.len
+                    }
+                    j += 1
+                }
+                if ok {
+                    panic("gui test: 负断言失败,显示出现 [" + want + "]")
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
 }
 
 pub fn test(src: Str, w: I32, h: I32,
