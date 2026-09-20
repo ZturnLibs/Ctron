@@ -510,10 +510,14 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, depth: I32) -> I32 {
                 }
             }
             var kid: I32 = gt_node(src, cur, t, depth + 1)
+            // 成员链索引赋值(t.nfc[id]=…)解释口径不支持(assign target:Index),
+            // 取局部引用中转——List 引用语义下同一底层列表(SL-2v 实证配方)
+            var fcl: List[I32] = t.nfc
+            var nsl: List[I32] = t.ns
             if prev < 0 {
-                t.nfc[id] = kid
+                fcl[id] = kid
             } else {
-                t.ns[prev] = kid
+                nsl[prev] = kid
             }
             prev = kid
         }
@@ -582,6 +586,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
             }
         }
     }
+    panic("PARSE-OK nodes=" + t.ntag.len.to_string())
     return t
 }
 
