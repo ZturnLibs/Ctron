@@ -6,14 +6,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make -C compiler-c
-      - name: native.sh + 内存/进程采样
+      - name: 分相诊断 + 缓解实验(全部单步串行,采样进 stdout,死亡亦可读)
         run: |
-          (while true; do date +%T; free -m | sed -n '2p'; ps -eo rss,comm --sort=-rss | head -4; echo ---; sleep 5; done) &
-          /usr/bin/time -v sh compiler/native.sh 2>&1 | tail -25
+          (while true; do date +%T; ps -eo rss,comm --sort=-rss | head -3; free -m | sed -n '2p'; echo ---; sleep 5; done) &
+          echo "== 相 0:小文件解释基线(input_cc) =="
+          /usr/bin/time -v sh compiler/ctc.sh run selfhosted/input_cc.ct 2>&1 | grep -E "Maximum resident|Elapsed|ok" || echo "相 0 死亡"
+          echo "== 相 1:emit cc_run =="
+          /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_run.ct /tmp/p1.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "相 1 死亡"
+          echo "== 相 2:emit cc_check =="
+          /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_check.ct /tmp/p2.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "相 2 死亡"
+          echo "== 相 3:emit cc_emit =="
+          /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_emit.ct /tmp/p3.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "相 3 死亡"
+          echo "== 相 4:缓解实验——glibc mmap 阈值上调后重跑相 3 =="
+          export GLIBC_TUNABLES=glibc.malloc.mmap_threshold=33554432
+          export MALLOC_MMAP_THRESHOLD_=33554432
+          /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_emit.ct /tmp/p4.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "缓解无效"
           exit 0
-      - name: 事后取证
-        if: always()
-        run: |
-          sudo dmesg | grep -iE "killed process|oom" | tail -5 || echo "无 OOM 记录"
-          df -h / /tmp
-          free -m
