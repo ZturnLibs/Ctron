@@ -41,6 +41,12 @@ int gui_poll_event(void) {
     if (c > 0) { g_cur = (GuiEvent){ 3, c, 0, 0 }; return 3; }
     int k = GetKeyPressed();
     if (k != 0) { g_cur = (GuiEvent){ 1, k, 0, 0 }; return 1; }
+    float wv = GetMouseWheelMove();
+    if (wv != 0.0f) {
+        int iv = (int)wv;
+        g_cur = (GuiEvent){ 4, iv, 0, 0 };
+        return 4;
+    }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 p = GetMousePosition();
         g_cur = (GuiEvent){ 2, 0, (int)p.x, (int)p.y };
@@ -79,6 +85,7 @@ int gui_clay_init(int w, int h) {
     return (int)min;
 }
 
+
 int gui_begin_layout(int w, int h) {
     Clay_SetLayoutDimensions((Clay_Dimensions){ (float)w, (float)h });
     Clay_BeginLayout();
@@ -87,8 +94,8 @@ int gui_begin_layout(int w, int h) {
 int gui_open(void) { Clay__OpenElement(); return 0; }
 int gui_close(void) { Clay__CloseElement(); return 0; }
 
-int gui_cfg(int dir, int gap, int padx, int pady, int ax, int ay,
-            int wmode, int wval, int hmode, int hval, int bg_packed) {
+static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
+                        int wmode, int wval, int hmode, int hval, int bg_packed, int clipv, int offsetpx) {
     float wf = (float)wval;
     float hf = (float)hval;
     Clay_LayoutConfig lay = {
@@ -117,8 +124,23 @@ int gui_cfg(int dir, int gap, int padx, int pady, int ax, int ay,
                                          (float)((bg_packed >> 8) & 255),
                                          (float)(bg_packed & 255),
                                          (bg_packed == 0) ? 0.0f : 255.0f };
+    if (clipv) {
+        decl.clip = (Clay_ClipElementConfig){ false, true, { 0.0f, (float)-offsetpx } };
+    }
     Clay__ConfigureOpenElement(decl);
     return 0;
+}
+
+int gui_cfg(int dir, int gap, int padx, int pady, int ax, int ay,
+            int wmode, int wval, int hmode, int hval, int bg_packed) {
+    return gui_cfg_impl(dir, gap, padx, pady, ax, ay, wmode, wval, hmode, hval, bg_packed, 0, 0);
+}
+
+// 滚动能力(gui_cfg2):clipv = 垂直裁剪/滚动容器(§13 T0 scroll);
+// offsetpx = 运行时本地滚动偏移(§12.2;滚轮事件由应用侧累计,Clay 按偏移裁剪)
+int gui_cfg2(int dir, int gap, int padx, int pady, int ax, int ay,
+             int wmode, int wval, int hmode, int hval, int bg_packed, int clipv, int offsetpx) {
+    return gui_cfg_impl(dir, gap, padx, pady, ax, ay, wmode, wval, hmode, hval, bg_packed, clipv, offsetpx);
 }
 
 int gui_text(const char *s, int size, int r, int g, int b, int a) {

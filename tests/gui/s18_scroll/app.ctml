@@ -1,0 +1,27 @@
+// tests/gui/s18_scroll —— 滚动容器能力测试(20 行于 240 视口;滚轮裁剪断言)
+view Demo {
+  <vbox>
+    <scroll>
+    <label>row 00</label>
+    <label>row 01</label>
+    <label>row 02</label>
+    <label>row 03</label>
+    <label>row 04</label>
+    <label>row 05</label>
+    <label>row 06</label>
+    <label>row 07</label>
+    <label>row 08</label>
+    <label>row 09</label>
+    <label>row 10</label>
+    <label>row 11</label>
+    <label>row 12</label>
+    <label>row 13</label>
+    <label>row 14</label>
+    <label>row 15</label>
+    <label>row 16</label>
+    <label>row 17</label>
+    <label>row 18</label>
+    <label>row 19</label>
+    </scroll>
+  </vbox>
+}
