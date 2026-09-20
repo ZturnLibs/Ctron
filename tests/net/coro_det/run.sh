@@ -49,7 +49,8 @@ while [ "$s" -lt 100 ]; do
     cmp -s "$T/r1" "$T/r2" || { echo "coro_det FAIL: SEED=$s 重放漂移" >&2; exit 1; }
     s=$((s+1))
 done
-echo "== coro_det GREEN(同种子重放 102/102 全绿)=="
+# 证据计数:同种子双跑 cmp = SEED=42 一对 + 0..99 循环 100 对 = 101 对
+echo "== coro_det GREEN(同种子重放 cmp 101/101 全绿:SEED=42 ×1 + 循环 ×100)=="
 
 # nightly 口径(P2-E 验收"1000 种子"):CI 只抽 0..99;全量把上循环上界换
 # 1000 即可——

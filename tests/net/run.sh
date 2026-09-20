@@ -61,6 +61,20 @@ else
         fail=$((fail+1)); echo "  FAIL $name (cc)"; sed -n '1,5p' "$T/$name.cc.err"
     fi
 fi
+# coro_det 种子重放(P2-E 审查 Important 收口):确定性调度器的常设回归
+# 保护——本目录 run.sh 承载 SEED=42 双跑 cmp + 异种子/无种子完成性 + CI
+# 100 种子(0..99)双跑重放(nightly 1000 口径见其尾注)。专属块镜像上方
+# c_smoke 形:缺席响亮失败,计入 pass/fail(fail → run.sh 非零退出)。
+det="$DIR/coro_det/run.sh"
+if [ ! -f "$det" ]; then
+    fail=$((fail+1)); echo "  FAIL coro_det_replay (run.sh 缺席:静默跳过守卫)"
+else
+    if sh "$det" >"$T/coro_det_replay.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS coro_det_replay (同种子 cmp 101/101 全绿)"
+    else
+        fail=$((fail+1)); echo "  FAIL coro_det_replay (构建败或种子重放漂移)"; sed -n '1,5p' "$T/coro_det_replay.out"
+    fi
+fi
 echo "net/run: pass=$pass fail=$fail"
 # M-T4-2:空集口径——一例未跑(pass=0)与全败同罪,防夹具被静默跳过
 [ "$pass" -gt 0 ] || { echo "net/run: no cases ran"; exit 1; }

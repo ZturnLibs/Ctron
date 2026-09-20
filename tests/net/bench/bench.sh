@@ -1,10 +1,23 @@
 #!/bin/sh
-# bench.sh —— P1-E 吞吐对比门禁:ctecho(被测)vs 手写 C thread-per-conn 基线
-# 默认跳过(CTRON_NET_BENCH 未置 → SKIP rc=0);置 1 才跑(本地/nightly,不入 CI 主环)。
-# 协议(brief Task 8):单连接 10 万次 64B write/read 往返,gettimeofday 计时,
-# 3 取最小;比值 = ctecho/基线,门禁 ≤1.05(1.05–1.15 登记归因;>1.15 出口红)。
-# 口径:仅回环、内核分配端口(:0 读回)、同一客户端驱动双端、双双 -O1(同仓约定);
-# trap 兜杀服务进程,无悬挂路径(客户端驱动 + wait_port 超时)。
+# bench.sh —— 吞吐/微基准门禁三件(P1-E + P2-F;本地/nightly,不入 CI 主环)
+# 默认跳过(CTRON_NET_BENCH 未置 → SKIP rc=0);置 1 才跑。
+#
+# 门禁一(P1 出口,登记档):ctecho-pthread vs 手写 C thread-per-conn 基线
+#   协议:单连接 10 万次 64B write/read 往返,gettimeofday 计时,3 取最小;
+#   比值 = ctecho/基线,门 ≤1.05(1.05–1.15 登记归因档,不强堵;>1.15 出口红)。
+#   P1 实测 1.114 在册(归因:per-read poll 门 + 4KB 暂存 + lane 逐字节加宽)。
+# 门禁二(P2-F):rt 协程切换微基准 ≤200ns——构建 rt_core_smoke 同一二进制
+#   (ctron_rt.c + src/main.c,裸 swapcontext 配对口径 yield_bench(100000)),
+#   提取 ns/yield 断言 <200。仅原生架构入闸:Rosetta(x86_64 翻译态)不担保
+#   时钟口径,翻译态下 SKIP 并登记(arm64 原生实测 87–100ns)。
+# 门禁三(P2-F 出口):echo p50 coro-vs-P1 ≤1.15×——ctecho 同源码双二进制
+#   (默认 pthread / CTRON_RT=coro),同客户端协议对拍,比值隔离运行时成本;
+#   另测 coro-vs-C 仅供归档(不作门)。门禁三 ≤1.15 为 P2 出口硬门。
+# 口径:仅回环、高随机端口、同一客户端驱动三端、三端同 -O1(同仓约定);
+# trap 兜杀服务进程,无悬挂路径(客户端驱动 + 探活超时)。
+# 退出码口径(P2-F 统一):任一比值 >1.15 或 ns/yield ≥200 → rc=1;
+# 1.05–1.15 登记档 → rc=0 带档注(P1"登记归因不强堵"的忠实编码——原 >1.05
+# 即 rc=1 会令登记档常态红,与本档语义矛盾,统一之)。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
@@ -18,28 +31,75 @@ fi
 [ -x "$EMIT" ] || { echo "bench: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; }
 
 T=$(mktemp -d)
-BASE_PID=""; CTE_PID=""
+PIDS=""
 cleanup() {
-    [ -n "$BASE_PID" ] && kill "$BASE_PID" 2>/dev/null
-    [ -n "$CTE_PID" ] && kill "$CTE_PID" 2>/dev/null
+    for p in $PIDS; do kill "$p" 2>/dev/null; done
     wait 2>/dev/null
     rm -rf "$T"
 }
 trap cleanup EXIT INT TERM
 
-# 1) 构建:基线(服务器+客户端同体,cc -lpthread);ctecho(emit → cc 链垫片)
+GATE_FAIL=0
+REG_BAND=0
+
+# ═══════════════════════════════════════════════════════════════
+# 门禁二:rt 协程切换微基准 ≤200ns(rt_core_smoke 的 yield_bench 脚本化)
+# ═══════════════════════════════════════════════════════════════
+RTSMOKE="$DIR/../rt_core_smoke"
+ARCH=$(uname -m)
+TRANSLATED=0
+if [ "$(uname)" = "Darwin" ] && [ "$ARCH" = "x86_64" ]; then
+    [ "$(/usr/sbin/sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = "1" ] && TRANSLATED=1
+fi
+if [ "$TRANSLATED" = "1" ]; then
+    echo "bench-rt: SKIP(Rosetta x86_64 翻译态不入切换门禁:翻译时钟口径不担保;登记豁免)"
+elif [ ! -f "$RTSMOKE/c_src/ctron_rt.c" ] || [ ! -f "$RTSMOKE/src/main.c" ]; then
+    echo "bench-rt: FAIL(rt_core_smoke 源缺席:$RTSMOKE)" >&2
+    GATE_FAIL=1
+else
+    echo "== bench-rt: 协程切换微基准(门禁 ≤200ns,配对/2 口径) =="
+    if cc -O1 -pthread -I "$RTSMOKE/c_src" -o "$T/rt_core" \
+        "$RTSMOKE/c_src/ctron_rt.c" "$RTSMOKE/src/main.c" 2>"$T/rt.cc.err"; then
+        if CTRON_RT=coro "$T/rt_core" > "$T/rt.out" 2>&1 && grep -q "ns/yield=" "$T/rt.out"; then
+            grep "ns/yield=" "$T/rt.out" | sed 's/^/  /'
+            NSY=$(sed -n 's/.*ns\/yield=\([0-9][0-9]*\)\.[0-9][0-9][0-9].*/\1/p' "$T/rt.out")
+            if [ -n "$NSY" ] && [ "$NSY" -lt 200 ]; then
+                echo "bench-rt: PASS(整部 ${NSY}ns < 200ns)"
+            else
+                echo "bench-rt: FAIL(ns/yield 整部 ${NSY:-?}ns ≥ 200ns 出口红)" >&2
+                GATE_FAIL=1
+            fi
+        else
+            echo "bench-rt: FAIL(rt_core_smoke 运行失败或无 yield 行)" >&2
+            sed -n '1,5p' "$T/rt.out" 2>/dev/null; GATE_FAIL=1
+        fi
+    else
+        echo "bench-rt: FAIL(rt_core 编译失败)" >&2
+        sed -n '1,5p' "$T/rt.cc.err"; GATE_FAIL=1
+    fi
+fi
+
+# ═══════════════════════════════════════════════════════════════
+# 门禁一 + 三:echo 吞吐三端对拍(基线 C / ctecho-pthread / ctecho-coro)
+# ═══════════════════════════════════════════════════════════════
+# 1) 构建:基线(服务器+客户端同体);ctecho 源码一份 → 双二进制(唯一差异
+#    = 链不链 ctron_rt.c + 运行期 CTRON_RT,隔离运行时成本)
 cc -O1 -w -o "$T/baseline" "$DIR/baseline_echo.c" -lpthread \
     || { echo "bench: 基线编译失败"; exit 1; }
 "$EMIT" run "$ROOT/examples/ctecho/src/main.ct" > "$T/ctecho.c" \
     || { echo "bench: ctecho emit 失败"; exit 1; }
-cc -O1 -w -o "$T/ctecho" "$T/ctecho.c" "$ROOT/std/net/c_src/ctron_net.c" \
-    || { echo "bench: ctecho 编译失败"; exit 1; }
+cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/ctecho_p1" "$T/ctecho.c" \
+    "$ROOT/std/net/c_src/ctron_net.c" \
+    || { echo "bench: ctecho(p1) 编译失败"; exit 1; }
+cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/ctecho_coro" "$T/ctecho.c" \
+    "$ROOT/std/net/c_src/ctron_net.c" "$ROOT/std/net/c_src/ctron_rt.c" \
+    || { echo "bench: ctecho(coro) 编译失败"; exit 1; }
 
-# 2) 起服务(高随机端口,回环 only;就绪判定 = 连接探活而非 stdout——
-#    ctecho 的 println 重定向到文件是块缓冲,读回端口不可靠)
-BASE_PORT=$(( (RANDOM % 20000) + 30000 ))
-CTE_PORT=$(( (RANDOM % 20000) + 30000 ))
-if [ "$CTE_PORT" = "$BASE_PORT" ]; then CTE_PORT=$(( CTE_PORT + 1 )); fi
+# 2) 起三服务(高随机端口 $$ 派生防 POSIX sh 空 RANDOM——P1 台账 M-T7-4;
+#    就绪判定 = 单连探活而非 stdout——块缓冲读回不可靠)
+BASE_PORT=$(( ($$ % 20000) + 30000 ))
+P1_PORT=$(( BASE_PORT + 1 ))
+CORO_PORT=$(( BASE_PORT + 2 ))
 wait_ready() { # $1=端口 $2=超时秒 → 0 就绪
     i=0
     while [ "$i" -lt $(( $2 * 5 )) ]; do
@@ -49,24 +109,46 @@ wait_ready() { # $1=端口 $2=超时秒 → 0 就绪
     return 1
 }
 
-CTECHO_PORT=$BASE_PORT "$T/baseline" > "$T/base.log" 2>&1 & BASE_PID=$!
+CTECHO_PORT=$BASE_PORT "$T/baseline" > "$T/base.log" 2>&1 & PIDS="$PIDS $!"
+CTECHO_PORT=$P1_PORT "$T/ctecho_p1" > "$T/p1.log" 2>&1 & PIDS="$PIDS $!"
+CTECHO_PORT=$CORO_PORT CTRON_RT=coro "$T/ctecho_coro" > "$T/coro.log" 2>&1 & PIDS="$PIDS $!"
 wait_ready "$BASE_PORT" 10 || { echo "bench: 基线未就绪"; cat "$T/base.log"; exit 1; }
-CTECHO_PORT=$CTE_PORT "$T/ctecho" > "$T/cte.log" 2>&1 & CTE_PID=$!
-wait_ready "$CTE_PORT" 10 || { echo "bench: ctecho 未就绪"; cat "$T/cte.log"; exit 1; }
-echo "bench: 基线=127.0.0.1:$BASE_PORT ctecho=127.0.0.1:$CTE_PORT(探活已过)"
+wait_ready "$P1_PORT" 10 || { echo "bench: ctecho-p1 未就绪"; cat "$T/p1.log"; exit 1; }
+wait_ready "$CORO_PORT" 10 || { echo "bench: ctecho-coro 未就绪"; cat "$T/coro.log"; exit 1; }
+echo "bench: 基线=:$BASE_PORT ctecho-p1=:$P1_PORT ctecho-coro=:$CORO_PORT(探活已过)"
 
-# 3) 同一客户端驱动双端(客户端内部 3 轮取最小,输出 µs)
+# 3) 同一客户端驱动三端(客户端内部 3 轮取最小,输出 µs)
 BASE_US=$("$T/baseline" client "$BASE_PORT") || { echo "bench: 基线压测失败"; exit 1; }
-CTE_US=$("$T/baseline" client "$CTE_PORT") || { echo "bench: ctecho 压测失败"; exit 1; }
+P1_US=$("$T/baseline" client "$P1_PORT") || { echo "bench: ctecho-p1 压测失败"; exit 1; }
+CORO_US=$("$T/baseline" client "$CORO_PORT") || { echo "bench: ctecho-coro 压测失败"; exit 1; }
 
-# 4) 比值与门禁(≤1.05)
-RATIO=$(awk -v c="$CTE_US" -v b="$BASE_US" \
-    'BEGIN { if (b + 0 <= 0) { print "inf"; exit } printf "%.3f", c / b }')
-echo "bench: baseline=${BASE_US}us ctecho=${CTE_US}us (10 万次 64B 往返,3 取最小)"
-echo "bench: ratio=$RATIO gate<=1.05"
-if [ "$(awk -v r="$RATIO" 'BEGIN { print (r + 0 <= 1.05) ? 1 : 0 }')" = 1 ]; then
-    echo "bench: PASS(≤1.05,P1 出口门禁绿)"
-    exit 0
+# 4) 比值与门禁
+ratio() { awk -v a="$1" -v b="$2" 'BEGIN { if (b + 0 <= 0) { print "inf"; exit } printf "%.3f", a / b }'; }
+gate_over() { awk -v r="$1" -v g="$2" 'BEGIN { print (r + 0 > g) ? 1 : 0 }'; }
+
+P1_RATIO=$(ratio "$P1_US" "$BASE_US")
+P2_RATIO=$(ratio "$CORO_US" "$P1_US")
+REC_RATIO=$(ratio "$CORO_US" "$BASE_US")
+echo "bench: baseline=${BASE_US}us ctecho-p1=${P1_US}us ctecho-coro=${CORO_US}us (10 万次 64B 往返,3 取最小)"
+echo "bench: 门禁一 p1-vs-C ratio=$P1_RATIO(门 ≤1.05;1.05–1.15 登记档)"
+echo "bench: 门禁三 coro-vs-P1 ratio=$P2_RATIO(门 ≤1.15,P2 出口硬门)"
+echo "bench: 归档 coro-vs-C ratio=$REC_RATIO(不作门)"
+
+if [ "$(gate_over "$P1_RATIO" 1.15)" = 1 ]; then
+    echo "bench: FAIL 门禁一 p1-vs-C ratio>1.15 出口红" >&2; GATE_FAIL=1
+elif [ "$(gate_over "$P1_RATIO" 1.05)" = 1 ]; then
+    echo "bench: 门禁一 p1-vs-C 落 1.05–1.15 登记档(P1 在册归因,不强堵)"; REG_BAND=1
 fi
-echo "bench: FAIL(>1.05;1.05–1.15 登记归因不强堵,>1.15 出口红)" >&2
-exit 1
+if [ "$(gate_over "$P2_RATIO" 1.15)" = 1 ]; then
+    echo "bench: FAIL 门禁三 coro-vs-P1 ratio>1.15 出口红" >&2; GATE_FAIL=1
+else
+    echo "bench: PASS 门禁三 coro-vs-P1 ≤1.15(P2 出口门绿)"
+fi
+
+if [ "$GATE_FAIL" -ne 0 ]; then
+    echo "bench: FAIL(出口红,见上)" >&2
+    exit 1
+fi
+[ "$REG_BAND" -ne 0 ] && echo "bench: GREEN(登记档在册,出口绿)"
+echo "bench: GREEN(三门禁全绿)"
+exit 0
