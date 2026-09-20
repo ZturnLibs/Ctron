@@ -822,7 +822,7 @@ static void check_circular(pkg_res* r, pkg* p) {
 
 // ---------- E4010 caps ----------
 static void check_caps(pkg_res* r, const pkg* p, const mod* m) {
-    // 导入的 std 能力名:use std.<key>.<Name>
+    // 导入的 std 能力名:use std.<key>.<Name>(key ∈ {fs,time,net,db},§8.2)
     const cfile* f = m->pr.file;
     for (size_t j = 0; j < f->ndecls; j++) {
         const cdecl* d = &f->decls[j];
@@ -831,7 +831,8 @@ static void check_caps(pkg_res* r, const pkg* p, const mod* m) {
             const cimport* imp = &d->use.imports[k];
             if (imp->nsegs != 3 || strcmp(imp->segs[0], "std") != 0) continue;
             const char* key = imp->segs[1];
-            if (strcmp(key, "fs") != 0 && strcmp(key, "time") != 0) continue;
+            if (strcmp(key, "fs") != 0 && strcmp(key, "time") != 0 &&
+                strcmp(key, "net") != 0 && strcmp(key, "db") != 0) continue;
             const char* name = imp->segs[2];
             // 本模块内是否有 &Name 参数
             for (size_t a = 0; a < f->ndecls; a++) {
