@@ -7,9 +7,9 @@
 #   比值 = ctecho/基线,门 ≤1.05(1.05–1.15 登记归因档,不强堵;>1.15 出口红)。
 #   P1 实测 1.114 在册(归因:per-read poll 门 + 4KB 暂存 + lane 逐字节加宽)。
 # 门禁二(P2-F):rt 协程切换微基准 ≤200ns——构建 rt_core_smoke 同一二进制
-#   (ctron_rt.c + src/main.c,裸 swapcontext 配对口径 yield_bench(100000)),
+#   (ctron_rt.c + src/main.c,自绘上下文切换配对口径 yield_bench(100000)),
 #   提取 ns/yield 断言 <200。仅原生架构入闸:Rosetta(x86_64 翻译态)不担保
-#   时钟口径,翻译态下 SKIP 并登记(arm64 原生实测 87–100ns)。
+#   时钟口径,翻译态下 SKIP 并登记(arm64 原生实测 89–102ns,四跑)。
 # 门禁三(P2-F 出口):echo p50 coro-vs-P1 ≤1.15×——ctecho 同源码双二进制
 #   (默认 pthread / CTRON_RT=coro),同客户端协议对拍,比值隔离运行时成本;
 #   另测 coro-vs-C 仅供归档(不作门)。门禁三 ≤1.15 为 P2 出口硬门。

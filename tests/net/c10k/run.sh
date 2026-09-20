@@ -2,14 +2,16 @@
 # c10k —— P2-F 门禁一:C10K 并发连接(本地/nightly 专用,不入 CI 主环)。
 # 拓扑:本脚本构建 ctecho(emit → cc 链 net 垫片 + ctron_rt.c)与 c_src/driver.c
 # 驱动,后台起 CTRON_RT=coro 服务,驱动并发建 N 条连接(全程保持,并发度=N)
-# 各做一次 64B 回显。判据 = N/N 全部成功 + 服务存活/fd 无泄漏探活(收尾再
-# 单连一轮回显成功)。CI 可选冒烟:C10K_N=100(百连接级,秒级)。
+# 各做一次 64B 回显。判据 = N/N 全部成功 + 存活探活(收尾单连一轮回显,判
+# 存活不判泄漏——每连接漏一个 fd 时探活也必然通过)+ fd 计数判泄漏(负载
+# 前后服务端 fd 计数 delta ≤8;评审 Important-1:计数才是泄漏判据)。CI 可选冒烟:C10K_N=100(百连接级,秒级)。
 # 主环跳过口径:本目录无 src/main.ct(纯 C 目录,同 rt_*_smoke 守卫),
 # tests/net/run.sh 主环按 main.ct 守卫跳过;本脚本独立驱动。
 # ulimit 前置:软限默认 256(macOS)先于任何真实瓶颈挡住 10k——脚本尽力
 # 抬升(无 sudo 只能到硬限);抬不满则按 上限-128 封顶并发并登记 capped run
 # (部分通过口径,明示"满额 10k 需抬高 maxfiles")。
-# 用法: run.sh [N]   (N 缺省取 C10K_N,再缺省 10000;budget 秒 = C10K_BUDGET_S 缺省 180)
+# 用法: run.sh [N]   (N 缺省取 C10K_N,再缺省 10000;budget 秒 = C10K_BUDGET_S 缺省 180;
+#       LEAK_INJECT=<n> = 判据演练口,人为注入泄漏增量验证红路径,常规跑不设)
 set -u
 DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
@@ -80,24 +82,57 @@ while ! "$T/driver" "$PORT" 1 10 >/dev/null 2>&1; do
 done
 echo "c10k: ctecho(coro)= 127.0.0.1:$PORT 就绪"
 
+# ── fd 计数基线(负载前;lsof 计进程 fd 表;procfs/proc 面不可用时同以
+#    lsof 为准——macOS 自带,Linux 亦可装;两者皆缺则降级跳过并响亮登记)──
+FD_BASE=""
+if command -v lsof >/dev/null 2>&1; then
+    fd_count() { lsof -p "$1" 2>/dev/null | wc -l | tr -d ' '; }
+    FD_BASE=$(fd_count "$SRV")
+    # 就绪探活那一条连接的服务端收尾(EOF 唤醒 + net_close)等一拍再定基线
+    sleep 0.5
+    FD_BASE=$(fd_count "$SRV")
+    echo "c10k: fd 泄漏判据 armed(基线=$FD_BASE)"
+else
+    echo "c10k: SKIP-LEAK(无 lsof:fd 计数泄漏判据降级跳过,响亮登记;本轮仅探活判存活)"
+fi
+
 # ── 门禁主体:N 并发建连 + 各一轮回显 ──
 "$T/driver" "$PORT" "$CONC" "$BUDGET"
 RC=$?
 
-# ── 存活/fd 泄漏探活:负载清空后服务仍在,且还能完成一次全新回显 ──
+# ── 存活探活 + fd 计数泄漏判据:负载清空后服务仍在、新连接可用;
+#    fd 计数回采断言 delta ≤8(监听 + 垫片常驻面;驱动已关全部连接,
+#    服务端 EOF 唤醒 + net_close 收尾需几拍——轮询至回稳,上限 5s)──
 ALIVE=0
 if [ "$RC" -eq 0 ] && kill -0 "$SRV" 2>/dev/null && "$T/driver" "$PORT" 1 15 >/dev/null 2>&1; then
     ALIVE=1
+fi
+LEAK="skip"; DELTA=""
+if [ -n "$FD_BASE" ]; then
+    i=0
+    FD_AFTER=$(fd_count "$SRV")
+    while [ $((FD_AFTER - FD_BASE)) -gt 8 ] && [ "$i" -lt 25 ]; do
+        sleep 0.2; i=$((i + 1)); FD_AFTER=$(fd_count "$SRV")
+    done
+    if [ "${LEAK_INJECT:-0}" != "0" ]; then
+        # 判据演练口:人为注入泄漏增量,验证红路径真的会红(评审验证②)
+        FD_AFTER=$((FD_AFTER + LEAK_INJECT))
+        echo "c10k: LEAK_INJECT=$LEAK_INJECT(演练注入增量,非真实泄漏)"
+    fi
+    DELTA=$((FD_AFTER - FD_BASE))
+    if [ "$DELTA" -le 8 ]; then LEAK="ok"; else LEAK="leak"; fi
+    echo "c10k: fd 计数判泄漏 基线=$FD_BASE 回采=$FD_AFTER delta=$DELTA(门 ≤8)"
 fi
 kill "$SRV" 2>/dev/null
 SRV=""
 wait 2>/dev/null
 
-if [ "$RC" -eq 0 ] && [ "$ALIVE" -eq 1 ]; then
-    echo "c10k: PASS(并发 $CONC/$CONC 回显全绿 + 探活绿)$CAPPED"
+if [ "$RC" -eq 0 ] && [ "$ALIVE" -eq 1 ] && [ "$LEAK" != "leak" ]; then
+    echo "c10k: PASS(并发 $CONC/$CONC 回显全绿 + 探活存活 + fd 计数判泄漏[delta=${DELTA:-skip} ≤8])$CAPPED"
     exit 0
 fi
 [ "$RC" -ne 0 ] && echo "c10k: FAIL(驱动 rc=$RC,见上 driver 输出)" >&2
 [ "$ALIVE" -ne 1 ] && echo "c10k: FAIL(探活败:服务死亡或新连接不可用)" >&2
+[ "$LEAK" = "leak" ] && echo "c10k: FAIL(fd 泄漏判据红:delta=$DELTA > 8,负载连接未全部释放)" >&2
 sed -n '1,10p' "$T/srv.log" >&2 2>/dev/null || true
 exit 1
