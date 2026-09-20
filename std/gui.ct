@@ -70,6 +70,9 @@ extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 extern "c" fn gui_inject_key(key: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_inject_char(ch: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_poll_event() -> I32
 
 #[trusted]
@@ -348,11 +351,13 @@ fn gt_new() -> GuiTree {
     }
 }
 
-fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str]) -> Str {
+fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str]) -> Str {
     var out: Str = ""
     while true {
         gws(src, cur)
-        if byte_at(src, cur.load()) == 62 {
+        var b: I32 = byte_at(src, cur.load())
+        if b == 62 || b == 47 {
+            // > 结束;/ = 自闭合标记(input/>,留给调用方消费)
             break
         }
         var an: Str = gword(src, cur)
@@ -381,6 +386,12 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str]) -> Str {
             }
             if an == "cond" {
                 conds.push(av)
+            }
+            if an == "bind" {
+                binds.push(av)
+            }
+            if an == "placeholder" {
+                strs.push(av)
             }
         }
     }
@@ -470,7 +481,7 @@ fn gt_cond_pick(conds: List[Str], cstart: I32) -> Str {
     return ""
 }
 
-fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32) -> I32 {
+fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str], depth: I32) -> I32 {
     glit(src, cur, 60)
     var tag: Str = gword(src, cur)
     var is_leaf: Bool = false
@@ -488,12 +499,18 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
     if tag == "each" {
         is_each = true
     }
+    var is_input: Bool = false
+    if tag == "input" {
+        is_input = true
+    }
     if !is_leaf {
         if !is_when {
             if !is_each {
-                if tag != "vbox" {
-                    if tag != "hbox" {
-                        panic("gui: 未知元素 " + tag)
+                if !is_input {
+                    if tag != "vbox" {
+                        if tag != "hbox" {
+                            panic("gui: 未知元素 " + tag)
+                        }
                     }
                 }
             }
@@ -521,9 +538,35 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
     }
     var estart: I32 = t.ev_name.len
     var cstart: I32 = conds.len
-    var c: Str = gt_attrs(src, cur, t, conds)
+    var bstart: I32 = binds.len
+    var sstart: I32 = strs.len
+    var c: Str = gt_attrs(src, cur, t, conds, binds, strs)
     glit(src, cur, 62)
     var id: I32 = t.ntag.len
+    if is_input {
+        // 自闭合:<input ... />;bind 名 → nbid,placeholder → npre
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        var ph: Str = ""
+        if strs.len > sstart {
+            ph = strs[strs.len - 1]
+        }
+        var bn: Str = ""
+        if binds.len > bstart {
+            bn = binds[binds.len - 1]
+        }
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(ph)
+        t.nbid.push(bn)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push("")
+        return id
+    }
     if is_leaf {
         if byte_at(src, cur.load()) == 60 {
             if byte_at(src, cur.load() + 1) != 47 {
@@ -567,7 +610,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], depth: I32)
                     break
                 }
             }
-            var kid: I32 = gt_node(src, cur, t, conds, depth + 1)
+            var kid: I32 = gt_node(src, cur, t, conds, binds, strs, depth + 1)
             // 成员链索引赋值(t.nfc[id]=…)解释口径不支持(assign target:Index),
             // 取局部引用中转——List 引用语义下同一底层列表(SL-2v 实证配方)
             var fcl: List[I32] = t.nfc
@@ -621,6 +664,8 @@ fn gt_style(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
 
 pub fn gt_parse(src: Str) -> GuiTree {
     var t: GuiTree = gt_new()
+    var binds = List[Str]()
+    var strs = List[Str]()
     var conds = List[Str]()
     var cur = Atomic[I32](0)
     var n: I32 = src.len
@@ -634,7 +679,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
             gword(src, cur)
             gws(src, cur)
             glit(src, cur, 123)
-            gt_node(src, cur, t, conds, 1)
+            gt_node(src, cur, t, conds, binds, strs, 1)
             gws(src, cur)
             glit(src, cur, 125)
         } else {
@@ -1062,6 +1107,17 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
     return rt_draw_frame(t.t, bind, t.w, t.h)
 }
 
+// 注入字符事件(type 3),返回字符码(应用键钩子自行编辑模型)
+pub fn d_type_char(t: Box[Driver], k: I32) -> I32 {
+    gui_inject_char(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 3 {
+        panic("gui test: 字符事件丢失")
+        return -1
+    }
+    return gui_evt_key()
+}
+
 pub fn d_expect_text(t: Box[Driver], want: Str) -> I32 {
     return rt_expect_text(want)
 }
@@ -1133,4 +1189,11 @@ pub fn run_kb_d(title: Str, w: I32, h: I32,
     var src: Str = read_file("app.ctml")
     var t: GuiTree = gt_parse(src)
     return rt_run_kb_d(t, src, title, w, h, bind, act, key)
+}
+
+// ==================== 输入辅助 ====================
+
+// 字符码 → 单字符 Str(TextInput/type 3 事件;utf8_enc 透传)
+pub fn char_str(k: I32) -> Str {
+    return utf8_enc(k)
 }
