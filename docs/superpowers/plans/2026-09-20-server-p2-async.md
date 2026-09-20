@@ -171,3 +171,31 @@ extern void ctron_rt_cancel_wake_all(void) __attribute__((weak));
 - 设计覆盖:P2 全部出口项(同形/确定性/C10K/微基准/p50)映射 P2-D/E/F;无色化=P2-C;取消传播=P2-D 触点 4/5;§7.10 同形契约=ctecho 零改动机械验证。
 - 架构风险前置:weak extern 未链接行为(ELF/Mach-O)=P2-C 夹具矩阵实证;固定点门禁=P2-D 硬门禁;模板是编译泳道热区=hunk 隔离纪律。
 - 明确不做(P2 外):IOCP 真实现(poll 回退)、可增长栈(§7.1 完全符合=P9)、work-stealing、Ctron 面 API 变化、R 线协程口径(解释器无 rt,登记)。
+
+---
+
+## 执行记录
+
+### 任务台账(2026-09-20;逐任务细节见 .superpowers/sdd/p2-task-*-report.md)
+
+- **Task 1 (P2-A)** ad43419..23e5ba5:ctron_rt 核心。**架构变更:弃 ucontext**——darwin/arm64 弃用面在标准 N:M 用法(2 worker × 互斥队列 × 协程迁移)确定性崩溃,改自绘切换(SysV callee-saved + sp/pc,arm64/x86_64 双汇编);TLS 幽灵 resume → noinline 访问器;yield_bench 87–100ns(门 200ns 预演)。
+- **Task 2 (P2-B)** 23e5ba5..56b2295(+90b9c97 主环守卫):reactor(kqueue/epoll/poll 回退,水平触发 100ms 兜底)+ wait_fd;三窗口握手保形;顺修高水位谓词反置 + worker 空队迭代吞 FOREVER 回收。
+- **Task 3 (P2-C)** 6cfd0ef:垫片五停车点无色挂起(裸线程回退逐字节不变)。**Mach-O 无 undefined-weak**(链接期报 undefined,ELF 落 NULL)→ 架构定案 = 弱定义哑元 + 强定义顶替;errno 槽迁移串块 → noinline 访问器。
+- **Task 4 (P2-D)** 66abe59 + d2ccb03(并行泳道残片预修)+ e93bde9(WIN32 必修):模板模式分支七触点;TLS 直访全量收口(13 处);chan 成功路径 wake-all;固定点防火墙源级实证;**WIN32 九哑元无条件发射**(#if 裁切留存活符号引用致 mingw 链接断);ctecho 源码零改动双模 3/3(§7.10 同形)。
+- **Task 5 (P2-E)** 55c9032:CTRON_RT_SEED = 单 worker + 就绪 LCG 抽取 + spawn 闸(裸线程首 join 前不弹——就绪集非定纯抽取不可救);coro_det 夹具(2 生产×2 消费争用 + cap-32 日志通道调度指纹)。
+- **Task 6 (P2-F)** 本批:门禁三件脚本化 + 登记收口。落地:tests/net/c10k/(driver.c + run.sh,nightly);bench.sh 三门禁段(rt 微基准 + coro 维度);coro_det/run.sh 接入 net 主环专属块(审查 Important:此前无人跑 = 确定性无回归保护),主环 11→12 例;证据计数修正 102→101(cmp 对口径);rt.c 头注契约补句(spawn 闸单向,开闸后裸线程再 spawn 无声重引入风暴竞态)。
+
+### P2 出口判定(门禁逐项,2026-09-20 实测)
+
+| 门禁 | 口径 | 实测 | 判定 |
+|---|---|---|---|
+| 同形(§7.10) | ctecho 源码零改动 CTRON_RT=coro | net 主环默认 12/12 + coro 矩阵 12/12(rc=0);ctecho 双模 3/3(Task 4 实证) | 绿 |
+| 确定性 | 同种子双跑逐字节 cmp | coro_det:SEED=42 ×1 对 + 0..99 ×100 对 = **101/101 全绿**(多轮复验);异种子(7/99)/无种子完成性绿 | 绿 |
+| C10K(nightly) | coro ctecho + N 并发各一轮回显 + 存活/探活 | **10000/10000 全绿**(connect 0.4s,total 1.1s;探活绿);CI 冒烟档 C10K_N=100 绿 | 绿 |
+| 切换微基准 | yield_bench(100000) ns/yield ≤200 | 94.1 / 100.1 / 102.3 / 89.4 ns(四跑,arm64 原生;Rosetta 翻译态豁免在册) | 绿 |
+| echo coro-vs-P1 | ctecho 同源码双二进制,≤1.15× | **2.203 / 2.073 / 2.182(三跑)——超门** | **红,登记归因** |
+
+- **门禁三红归因**(非 harness 偏差:同客户端驱动、同源码双二进制、同 -O1、同 §11.3 默认面,唯一差异 = 运行时模式):coro 侧每阻塞读 = 0 超时 poll 探针 + reactor 登记/摘除(kqueue EV_ADD/EV_DELETE + F_GETFD)+ park/wake 切换对 + worker 空闲退避唤醒延迟(20→160µs 全局递增),合计 ~15µs/往返;P1 侧 = 单 poll 门 + recv(~13µs/往返)。门面共担成本(per-read poll 门 + 4KB 暂存 + lane 加宽,P1 在册归因)两端同担,不放大该比值。
+- **处置**:登记归因 + P3 优化项:(a) worker 唤醒改事件量/退避随唤醒交付复位;(b) kqueue 兴趣驻留 + one-shot rearm(已列 P9);(c) 视图直收绕过 4KB 暂存(P1 在册优化项同源)。**P2 出口 = 四绿一红,红项在册不粉饰**;运行时性能优化不属本收口任务范围,另行开题。
+- bench.sh 退出码口径统一(偏差注):P1 原形 ratio>1.05 即 rc=1,与「1.05–1.15 登记归因不强堵」语义矛盾(登记档常态红);统一为 >1.15 出口红 / 登记档 rc=0 带档注,门禁三 ≤1.15 为 P2 硬门。三端口改 $$ 派生(POSIX sh 空 RANDOM,P1 台账 M-T7-4 同款规避)。
+- run.sh 主环时长注:coro_det_replay 专属块入环 +~1.7s(审查 Important 明令,门禁三件不在此列——c10k/bench 均独立脚本,主环跳过实测:c10k 无 src/main.ct 被守卫跳过,bench 无 c_src 目录首守卫跳过)。

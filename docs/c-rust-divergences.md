@@ -147,5 +147,36 @@ nightly 承载 1k/规模面。
   发射面缺口关闭:I8/U8 视图 typedef、trait 方法分派发射、Result[Struct,_]
   Ok 成员访问(见 (a));收敛前以 std/net.ct 头注①–⑤ 为准。
 
+### (f) P2 执行发现(协程运行时,2026-09-20)
+
+P2 波(ctron_rt 协程运行时 + 垫片混合化 + 模板模式分支 + 确定性调度)实测的
+跨平台/跨面事实;细节见 `docs/superpowers/plans/2026-09-20-server-p2-async.md`
+执行记录与 `std/net/c_src/ctron_rt.c` 头注。
+
+- **darwin ucontext 不支持 N:M 迁移 → 自绘切换**:getcontext/makecontext/
+  swapcontext 在 darwin/arm64 已弃用且标注 "No longer supported";标准 N:M
+  用法(2 worker × 2 协程 × 互斥就绪队列,协程跨 worker 迁移)即确定性崩溃
+  (SIGBUS/SIGSEGV/协程记录被堆写穿;单 worker 同负载永不复现 ≥60 次)→
+  ctron_rt 自绘切换:仅保存/恢复 SysV callee-saved + sp/pc,信号掩码不随切换
+  (用户信号处理与协程混用 = 已登记限制);arm64/x86_64 同一段汇编覆盖
+  darwin/Linux。
+- **TLS/errno TLV 槽缓存三类串块 → noinline 收口口径**:`_Thread_local` 的
+  TLV 槽位地址被 callee-saved 寄存器缓存,协程跨 worker 迁移后读到别线程的
+  单元(实证三态:垫片结果写 NULL->result 段错误 / 漏取消悬挂 / 结果错值);
+  errno 槽同理。收口 = 全量 noinline 槽访问器(每次调用在当前线程重新解析),
+  协程态任务运行期自取 rt current()。
+- **weak-extern 在 Mach-O 缺失 → 弱定义哑元机制**:`__attribute__((weak))
+  extern` 未链接符号在 ELF 落 NULL,Mach-O 链接期即报 undefined(实证)→
+  改「弱定义哑元 + 强定义顶替」:哑元与真实现同为强符号位,链接期整档案
+  二选一(双平台标准语义,无同 TU 折叠实证);PE/COFF mingw 支持弱定义。
+- **WIN32 哑元须无条件发射**:哑元定义被 `#if` 裁切时,触点对 rt 符号的
+  引用仍存活(运行期守卫不裁符号引用本身)→ mingw 链接断;九哑元改无条件
+  发射(预处理产物九存活引用全有定义、nm -u 零未定义 ctron_rt_* 实证)。
+- **确定性契约 = spawn→join 单向闸**:CTRON_RT_SEED 的逐字节重放面仅覆盖
+  纯 spawn/channel 程序的调度序;裸线程首个 join 开闸前 worker 不弹出
+  (否则就绪集合本身非定,任何抽取法不可救)。闸单向:开闸后裸线程再度
+  spawn 无声重新引入风暴竞态(无报错,输出序退回非确定);IO 到达/定时器
+  到期仍是真实时间,不在契约内(虚拟时钟属后续)。
+
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。

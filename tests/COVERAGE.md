@@ -206,3 +206,14 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 | P1 | r7b pure 触网 E4020 | tests/roadmap/r7b_pure_net.neg.ct(RunRed;翻转待 R 线 std/net 解析/跨函数纯度传播,按翻转协议迁 NegGreen) |
 | P1 | 1k 回环冒烟无 fd 泄漏 | examples/ctecho + tests/net/fd_churn(500 轮双端);1k 满额归 nightly |
 | P1 | 吞吐 vs C ≤1.05× | tests/net/bench(ratio 1.114 已登记,落 1.05–1.15 归因档:per-read poll 门 + 4KB 暂存 + lane 逐字节加宽;P2 处置,不堵出口) |
+| P2 | rt 协程核心(自绘切换 arm64/x86_64,弃 ucontext;定时器堆+池化栈) | tests/net/rt_core_smoke(纯 C 冒烟,主环守卫跳过;yield_bench 87–102ns) |
+| P2 | reactor(kqueue/epoll/poll 回退)+ wait_fd 真实现 | tests/net/rt_reactor_smoke(8 协程×16 轮 socketpair 压力;超时/对端关闭/自关路径全绿) |
+| P2 | net 垫片混合化(五停车点协程无色挂起,裸线程 P1 回退逐字节不变) | tests/net/coro_hybrid(主环 main.ct + c_smoke 专属块 workers={1,4} 停车严格证) |
+| P2 | 发射模板 coro 模式分支(弱定义哑元机制,CTRON_RT=coro 改道) | tests/net/run.sh 环境矩阵(默认 12/12 + coro 矩阵 12/12);examples/ctecho 源码零改动双模(§7.10 同形) |
+| P2 | 确定性调度 CTRON_RT_SEED(单 worker + LCG 抽取 + spawn→join 单向闸) | tests/net/coro_det(主环 2 模 + 种子重放专属块:SEED=42 + 0..99 各双跑 cmp 101/101;nightly 1000 尾注) |
+| P2 | 门禁 C10K(nightly/本地) | tests/net/c10k(纯 C 目录主环跳过;实测 10000/10000 回显全绿 + 探活绿,connect 0.4s/total 1.1s;CI 冒烟档 C10K_N=100 绿) |
+| P2 | 门禁 切换微基准 ≤200ns | tests/net/bench/bench.sh rt 段(CTRON_NET_BENCH=1;实测 89–102ns 四跑全绿;Rosetta 翻译态豁免在册) |
+| P2 | 门禁 echo coro-vs-P1 ≤1.15× | bench.sh coro 维度(实测 2.073–2.203 三跑,**红,登记归因**见计划执行记录:每阻塞读 reactor 登记/摘除 + park/wake + 空闲退避唤醒 ~15µs/往返;coro-vs-C 2.33–2.47 归档) |
+
+P2 波提交域 48ed59c..<P2-F>(任务台账与门禁数字:计划执行记录);net 主环计
+例口径 = 行为夹具 9 + c_smoke 2 + coro_det_replay 1 = 12。
