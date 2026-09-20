@@ -100,5 +100,41 @@ read_line/read_bytes/flush_out、byte_at/byte_slice、`List[T]()` 构造器。
 C 版 sem 的 E2010/E3040 等为 Rust `check.rs` 的保守子集(推导不出不报),检查面
 更小——性能对比中 check 阶段 C 快 2.6× 有一部分源于此,不能全记为实现优势。
 
+## 服务器面(2026-09-20)
+
+服务器泳道(S0+P1,`tests/net/` 全绿)执行中实测的跨面事实登记;细节见
+`docs/superpowers/plans/2026-09-20-server-s0-p1.md` 执行记录(Task 4–9)。
+
+### (a) FFI 边界事实(Task 4 探针 + Task 5–7 垫片/ctecho 实证)
+
+- **可用签名白名单**:标量 / `Str` / `&I64[]`·`&I32[]`(视图复合字面量,零拷贝)/ `Box[struct]`(按值堆胞指针,`b->v` 与 `b.v` 互为镜像)。垫片与用户 extern 均按此选型。
+- **裸 `T[N]` extern 形参静默发射 `int32_t`**(ct_ctype 无 `a<N><码>` 映射)——不可作边界签名,且无诊断,静默错型。
+- **未初始化 `var buf: T[N]` 致 ctron-emit 段错误(exit 139)**——编译器缺陷,夹具一律带初始化器规避(转编译泳道在册)。
+- **`&Struct` 形参发射 `t_&`(非法 C)**——struct 按引用出参只走 `Box[struct]`。
+- **`Result[Struct, _]` 的 Ok 成员访问发射即 panic**;**trait 方法调用不发射**;**class 字面量不可发射** → 落 struct。
+- **spawn 仅标量过界且须有返回值**;**while 体内禁 Drop 局部**(emission 面限制,垫片以显式 close 规避)。
+
+### (b) C 宿主 caps 键集已收账(M-T3-1)
+
+`compiler-c/src/pkg.c` check_caps 的 E4010 键集原硬编码 `{fs,time}`,与自举侧
+`compiler/src/parse_pkg.ct`(Task 3 已放宽为 `{fs,time,net,db}`)不一致——
+宿主对 net/db 触网包静默放行(caps_net 宿主侧红)。2026-09-20 同口径放宽,
+modules 段宿主pkg 8/10 → 9/10,caps_net 双线绿;R 线 `check.rs` 的
+`caps_used` 本就按 `cap_key_by_def` 通用收集(无硬编码),三线键集口径自此一致。
+
+### (c) ctecho 解释口径不支持
+
+`examples/ctecho`(及 tests/net 全套)走 emit-only 验收(ctron-emit → cc →
+原生运行);解释器 W4 桥未含 net 垫片,`use std.net.*` 在解释口径无绑定——
+这不是缺陷而是口径边界:网络面在解释器内的支持未排期,夜间/CI 均走原生路径。
+
+### (d) R 线 caps 泛化与 r7b 翻转状态
+
+R 线 E4020(pure 触网)的 caps_used 收集已泛化(见 (b));`tests/roadmap/
+r7b_pure_net.neg.ct` 今天为 **RunRed**——跨函数纯度传播未实现(`#[pure]`
+经间接调用洗白能力调用不产 E4020),翻转待 R 线 std/net 解析就绪,按翻转
+协议迁 NegGreen(E4020)。另:UDP 真回环收发(端口协调面)归 nightly,
+本地门禁只钉调用面与 500 轮 fd_churn。
+
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。

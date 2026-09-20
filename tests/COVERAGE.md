@@ -195,3 +195,14 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 - `03i` 扩展 —— u64/usize 后缀字面量(§3.7 字面量自适应)
 - `roadmap/r1a_trailing_dot.neg.ct` —— 行尾 `.` 非法(§1.6;红:自举解析器吞点
   误放行,宿主正确拒绝——自举解析器守卫缺口,与新发现宿主缺陷同批在册)
+
+## §网络与服务器(服务器泳道,2026-09-20 起)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| S0 | caps 键集 net/db(E4010) | tests/modules/caps_net(绿:自举 + 宿主pkg 双线,宿主键集 M-T3-1 收账) |
+| S0 | 规范 v0.8(11-net 定稿/§7.10/键表) | docs/spec v0.8 |
+| P1 | std/net 阻塞基线(时钟/TCP/UDP/resolve/默认值) | tests/net/(probe_boundary/clock_sanity/tcp_echo/tcp_defaults/udp_roundtrip/fd_churn,6/6 绿) |
+| P1 | r7b pure 触网 E4020 | tests/roadmap/r7b_pure_net.neg.ct(RunRed;翻转待 R 线 std/net 解析/跨函数纯度传播,按翻转协议迁 NegGreen) |
+| P1 | 1k 回环冒烟无 fd 泄漏 | examples/ctecho + tests/net/fd_churn(500 轮双端);1k 满额归 nightly |
+| P1 | 吞吐 vs C ≤1.05× | tests/net/bench(ratio 1.114 已登记,落 1.05–1.15 归因档:per-read poll 门 + 4KB 暂存 + lane 逐字节加宽;P2 处置,不堵出口) |
