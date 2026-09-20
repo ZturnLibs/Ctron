@@ -116,8 +116,11 @@ fn main() -> I32 {
             // Task 3 实证;弱定义哑元 + ctron_rt.c 强定义链接期整体顶替,ELF/Mach-O 双侧
             // 标准语义,无同 TU 常量折叠)。未链 rt ⇒ 哑元 active 恒 0 ⇒ 七触点全走
             // P1 pthread 原路径(默认分支逐字保留);链入 rt 且 CTRON_RT=coro ⇒ 协程改道。
-            // _WIN32 无 rt(POSIX-only):哑元整段裁掉,判据恒 0,P1 行为不变。
-            println("#if !defined(_WIN32)")
+            // 哑元无条件发射(评审 Important 修):_WIN32 也裁不得——触点对 rt 符号的
+            // 引用仅运行期守卫(ct_rt_active/coro_ctx 恒 0,调用面永不执行),符号引用
+            // 本身存活;任何 #if 裁切都留 mingw 链接 undefined(init/cancel_wake_all/
+            // notify_done/join_key/run/park 共九处)。PE/COFF 弱定义 mingw gcc 受支持;
+            // rt 为 POSIX-only 永不在 _WIN32 链入,哑元即终解。
             println("__attribute__((weak)) int ctron_rt_active(void) \{ return 0; }")
             println("__attribute__((weak)) void ctron_rt_init(int workers) \{ (void)workers; }")
             println("__attribute__((weak)) void* ctron_rt_run(void (*fn)(void*), void* arg, void* key) \{ (void)fn; (void)arg; (void)key; return 0; }")
@@ -127,7 +130,6 @@ fn main() -> I32 {
             println("__attribute__((weak)) void ctron_rt_notify_done(void* key) \{ (void)key; }")
             println("__attribute__((weak)) void ctron_rt_cancel_wake_all(void) \{ }")
             println("__attribute__((weak)) void* ctron_rt_current(void) \{ return 0; }")
-            println("#endif")
             // 判据冻结口径:ct_rt_active = 真 rt 已链且 CTRON_RT=coro;ct_rt_coro_ctx =
             // 再加 current() 非空(协程上下文)——口径同 ctron_net.c ct_rt_parkable,
             // 因 park 对裸线程是契约外 no-op,裸线程调用面(如 main)保持 pthread 原语。
