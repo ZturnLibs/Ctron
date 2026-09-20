@@ -1,17 +1,34 @@
-// std/net.ct —— 服务器档传输门面(§11;P1 阻塞口径)
-// 本文件为 S0 stub:仅供 caps 键扩展的 E4010 负例解析 use std.net.Net;
-// P1 Task 5/6 在此扩展时钟/睡眠与 TCP/UDP/DNS 全门面。
+// std/net.ct —— 服务器档传输门面(§11;P1)
+// S0 stub(Task 3)基础上,Task 5 追加时钟/睡眠门面(垫片第一批)。
+// 注(发射/解析面事实,本任务 V-探针登记):
+// ① trait/class 不带 pub —— `pub trait`/`pub class` 落 p_fn 误解析路
+//    (parse_decl.ct pub 分支尾槽),误解析节点达发射段即段缺陷(exit 139);
+//    use 可见性只查被请求符号,trait 随合并静默入命名空间,唯一需要 pub
+//    的是构造器 Net_probe(FnPub)。
+// ② StdNet 用 struct 而非 class —— 发射面 StructLit 仅认 Struct 节点
+//    (trans_stmt.ct ct_structs),class 字面量达发射段即 panic
+//    (ct_expr:StructLit 非值类型);struct+trait impl 门面为 04g 同款形。
+// 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片(Task 6 扩 TCP/UDP/DNS 同款)。
+use std.net.bind.{ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno}
 
-pub trait Net: Cap {
+trait Net: Cap {
     fn probe(&self) -> I32
+    fn now_ns(&self) -> I64
+    fn sleep_ms(&self, ms: I64)
 }
 
-pub class StdNet {
+struct StdNet {
 }
 
 impl Net for StdNet {
     fn probe(&self) -> I32 {
         return 0
+    }
+    fn now_ns(&self) -> I64 {
+        return ctron_net_now_ns()
+    }
+    fn sleep_ms(&self, ms: I64) {
+        ctron_net_sleep_ms(ms)
     }
 }
 

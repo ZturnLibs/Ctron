@@ -1,0 +1,10 @@
+// std/net/bind.ct - ctron_net.c shim extern surface (§11.2)
+// 纪律:参数表单行(C 宿主解析器);fd 全程 I64;出参经 Box/repr(c) struct(Task 4 登记)。
+// 可见性注:此处用 `pub extern` 而非 brief 原案 `#[trusted] extern` —— loader 的
+// use 可见性检查仅认 FnExt+pub 尾槽(parse_pkg.ct:285),而 `#[trusted]` 与 `pub`
+// 无组合语法(pub 分支不路由属性,属性分支不路由 pub);sem 对 extern 无 trusted
+// 检查(E4040 仅 Fn/FnPub),纪律语义由本注释承载。std/net.ct 经
+// use std.net.bind.{...} 链入,三个符号随合并进单一命名空间(§11.2)。
+pub extern "c" fn ctron_net_now_ns() -> I64
+pub extern "c" fn ctron_net_sleep_ms(ms: I64) -> I64
+pub extern "c" fn ctron_net_last_errno() -> I64

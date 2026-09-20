@@ -1,0 +1,28 @@
+// clock_sanity —— 单调钟 + 睡眠行为夹具(§11.6;Task 5)
+// 钉住:now_ns 单调非降、sleep_ms(50) 下界 ≥40ms(nanosleep 语义余量)、
+// errno 槽初值 0(垫片已链入且未置错)。
+// 形态注(发射面缺口登记,见任务报告):
+// ① 走 test 块而非 fn main —— 裸 main 发射为 void 而断言直出 `return 1`
+//    (cc 报 return-mismatch);test 块发射为 int fn,是 run.sh 夹具正形。
+// ② 直调 bind.ct extern 而非 trait 方法 —— 方法调用发射缺口
+//    (t_m(recv,) 尾逗号 + 方法体不发射,最小复现登记在案);
+//    trait 门面本身 sem 全绿(chk decls=8),发射面补齐后可切换 net.now_ns()。
+// ③ use 括号形态解析 std/net.ct(点分 `use std.net.Net` 解析 std/net/Net.ct,
+//    目录态布局,非本仓形态);Net_probe 请求即验 pub 可见性,随合并带出 extern 面。
+use std.net.{Net_probe}
+
+test "clock monotonic + sleep lower bound" {
+    let t1 = ctron_net_now_ns()
+    ctron_net_sleep_ms(50)
+    let t2 = ctron_net_now_ns()
+    assert(t2 >= t1)
+    assert(t2 - t1 >= 40000000)
+    let e = ctron_net_last_errno()
+    assert(e == 0)
+}
+
+test "Net_probe ctor emits struct lit" {
+    let net = Net_probe()
+    let t = ctron_net_now_ns()
+    assert(t > 0)
+}
