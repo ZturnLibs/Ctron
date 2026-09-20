@@ -5,12 +5,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: make -C compiler-c
+      - run: make -C compiler-c && sh compiler/build.sh
       - name: 分相诊断 + 缓解实验(全部单步串行,采样进 stdout,死亡亦可读)
         run: |
           (while true; do date +%T; ps -eo rss,comm --sort=-rss | head -3; free -m | sed -n '2p'; echo ---; sleep 5; done) &
           echo "== 相 0:小文件解释基线(input_cc) =="
-          /usr/bin/time -v sh compiler/ctc.sh run selfhosted/input_cc.ct 2>&1 | grep -E "Maximum resident|Elapsed|ok" || echo "相 0 死亡"
+          /usr/bin/time -v sh compiler/ctc.sh selfhosted/input_cc.ct 2>&1 | grep -E "Maximum resident|Elapsed|ok" || echo "相 0 死亡"
           echo "== 相 1:emit cc_run =="
           /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_run.ct /tmp/p1.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "相 1 死亡"
           echo "== 相 2:emit cc_check =="
