@@ -110,7 +110,7 @@ C 版 sem 的 E2010/E3040 等为 Rust `check.rs` 的保守子集(推导不出不
 - **可用签名白名单**:标量 / `Str` / `&I64[]`·`&I32[]`(视图复合字面量,零拷贝)/ `Box[struct]`(按值堆胞指针,`b->v` 与 `b.v` 互为镜像)。垫片与用户 extern 均按此选型。
 - **裸 `T[N]` extern 形参静默发射 `int32_t`**(ct_ctype 无 `a<N><码>` 映射)——不可作边界签名,且无诊断,静默错型。
 - **未初始化 `var buf: T[N]` 致 ctron-emit 段错误(exit 139)**——编译器缺陷,夹具一律带初始化器规避(转编译泳道在册)。
-- **`&Struct` 形参发射 `t_&`(非法 C)**——struct 按引用出参只走 `Box[struct]`。
+- **`&Struct` 形参发射 `t_&`(非法 C)**——struct 按引用出参只走 `Box[struct]`(修正 Task 4 初记的 int32_t——形参位 int32_t、实参位 t_&,两说各为一半)。
 - **`Result[Struct, _]` 的 Ok 成员访问发射即 panic**;**trait 方法调用不发射**;**class 字面量不可发射** → 落 struct。
 - **spawn 仅标量过界且须有返回值**;**while 体内禁 Drop 局部**(emission 面限制,垫片以显式 close 规避)。
 
@@ -133,8 +133,19 @@ modules 段宿主pkg 8/10 → 9/10,caps_net 双线绿;R 线 `check.rs` 的
 R 线 E4020(pure 触网)的 caps_used 收集已泛化(见 (b));`tests/roadmap/
 r7b_pure_net.neg.ct` 今天为 **RunRed**——跨函数纯度传播未实现(`#[pure]`
 经间接调用洗白能力调用不产 E4020),翻转待 R 线 std/net 解析就绪,按翻转
-协议迁 NegGreen(E4020)。另:UDP 真回环收发(端口协调面)归 nightly,
-本地门禁只钉调用面与 500 轮 fd_churn。
+协议迁 NegGreen(E4020)。另:UDP 真回环已入本地门禁(`tests/net/udp_roundtrip`,
+双 socket :0 协调、字节断言,计入 6/6;500 轮 fd_churn 同在本地门禁);
+nightly 承载 1k/规模面。
+
+### (e) 终审必修登记(2026-09-20)
+
+- P1 caps 审计 = 锚点声明制:E4010 触发要求同文件含 `use std.net.*` 且存在
+  `&Net` 形参 fn(审计锚);漏写锚点即免审计(与 fs 键既有机制同构)。
+  强制审计/细粒度键归 R 线收口。
+- §11.2 冻结形态(trait 方法/Result+List[SocketAddr]/fd 禁触)与落地面
+  (自由函数+rc+last_net_error+raw fd 流通+resolve 首个 IPv4)的收敛条件 =
+  发射面缺口关闭:I8/U8 视图 typedef、trait 方法分派发射、Result[Struct,_]
+  Ok 成员访问(见 (a));收敛前以 std/net.ct 头注①–⑤ 为准。
 
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。

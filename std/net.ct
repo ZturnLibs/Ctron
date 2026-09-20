@@ -13,6 +13,8 @@
 //   ④ 句柄 = 值 struct + I64 fd + impl Drop(fd>=0 才关);var fd 允许显式
 //      close 后置 -1 防作用域出口二次关。缓冲 = &I64[] 视图 lane(每字节
 //      一条 I64 lane,Task 4 登记的 I8/U8 视图缺口绕行)。
+//   ⑤ 单次读/收调用至多搬运 4096 字节(垫片 CT_CHUNK 上限,cap 更大也被截到
+//      该值);UDP 单报文超限截断,EMSGSIZE 守卫列 P2。
 // 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/resolve 全量同文件。
 use std.net.bind.{ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first}
 
@@ -173,7 +175,7 @@ pub fn net_tcp_connect(net: StdNet, host: Str, port: I64, out_fd: Box[Box64]) ->
 }
 
 // 带超时读:timeout_ms <= 0 永久阻塞;>0 到时置 ETIMEDOUT 返 -1。
-// >0 n / 0 eof / <0 err;字节逐条入 lane。
+// >0 n / 0 eof / <0 err;字节逐条入 lane;单次调用至多搬运 4096 字节(头注⑤)。
 pub fn net_read_t(net: StdNet, fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_net_read_t(fd, buf, cap, timeout_ms)
 }
@@ -218,6 +220,7 @@ pub fn net_udp_sendto(net: StdNet, fd: I64, host: Str, port: I64, buf: &I64[], n
     return ctron_net_udp_sendto(fd, host, port, buf, n)
 }
 
+// 单次调用至多收回 4096 字节(单报文,超限截断;头注⑤ CT_CHUNK 上限)。
 pub fn net_udp_recvfrom(net: StdNet, fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_net_udp_recvfrom(fd, buf, cap, timeout_ms)
 }

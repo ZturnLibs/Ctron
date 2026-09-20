@@ -65,7 +65,9 @@ typedef struct { int64_t v; } Box64;
 /* I64 视图 lane 镜像:&I64[] 发射 ctron_view_6 { d, n } 按值(§9.6) */
 typedef struct { int64_t* d; int64_t n; } ct_view6;
 
-/* 视图 lane 缓冲一次搬运上限(栈上暂存;超过部分由调用方分次读写) */
+/* 视图 lane 缓冲一次搬运上限 4096(栈上暂存):TCP 写路径经分块循环,超限
+ * 分次 send 不丢;UDP sendto 超 4096 即按 4096 截断为单报文(EMSGSIZE 守卫
+ * 列 P2),recvfrom/read 同限单调用;当前所有 P1 消费面消息均 ≤2 字节,未触界。 */
 #define CT_CHUNK 4096
 
 #ifdef _WIN32

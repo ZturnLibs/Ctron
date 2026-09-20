@@ -1,6 +1,7 @@
 # §11 网络与服务器档
 
 > 状态:**定稿(v0.8,2026-09-20)**——随服务器路线 S0 批次并入规范冻结面;后续修订按 v0.8.x 注记。实现锚定:tests/modules/caps_net(E4010)、tests/net/(行为)。
+> 执行模型语义归 §7;本章定网络门面、传输语义、HTTP 档分层。规范性约定(必须/禁止/应当/可以)同规范 README。
 
 ## 11.1 能力键(规范性)
 
@@ -30,7 +31,7 @@ let addrs = caps.net.resolve(Dns.name("example.com")?)        // List[SocketAddr
 - `SocketAddr`:IPv4/IPv6 **双栈**(v6 不歧视);字面与解析两形态。
 - 值类型句柄:`TcpListener`、`TcpStream`、`UdpSocket`、`UnixListener`、`UnixStream`(Unix 族仅 posix 目标可用,windows 目标引用即 E 编译错)。**全部 `impl Drop`**(§6.4):作用域退出确定性关闭;类不得持有(§6.2 硬规则逐字适用)。
 - 语义形态:**门面 API 恒为"阻塞语义"**——read/write/connect 无回调、无 Future;实际并发由运行时承载(§11.4)。
-- 底层文件描述符/`SOCKET` 句柄**禁止**由程序直接触达(发射面拒绝导出;E 锚随 S0 登记)。
+- 底层文件描述符/`SOCKET` 句柄**禁止**由程序直接触达(发射面拒绝导出;E 锚随发射面收口波次登记,登记面见 divergences 服务器面)。
 
 ## 11.3 传输语义默认值(规范性)
 
@@ -72,4 +73,4 @@ let addrs = caps.net.resolve(Dns.name("example.com")?)        // List[SocketAddr
 
 ## 11.8 与测试集的对应
 
-`tests/net/`(回环纪律:`:0` 内核分端口、外部网络零依赖)、`tests/http/`;锚点 `r7a_caps_net.neg.ct`(E4010)、`r7b_pure_net.neg.ct`(E4020)、`r7c_http_caps.neg.ct`;同形兼容不变式夹具(examples/ctecho 源码跨运行时零改动)。
+`tests/net/`(回环纪律:`:0` 内核分端口、外部网络零依赖)、`tests/http/`;锚点 `tests/modules/caps_net`(E4010,多文件包负例)、`r7b_pure_net.neg.ct`(E4020)、`r7c_http_caps.neg.ct`;同形兼容不变式夹具(examples/ctecho 源码跨运行时零改动)。
