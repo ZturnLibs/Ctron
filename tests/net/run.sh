@@ -2,7 +2,9 @@
 # tests/net/run.sh —— 服务器泳道回环验收(§11;CI 纪律:仅回环、:0、零外联)
 # 口径:行为夹具(目录含 c_src/ 且含 src/main.ct):ctron-emit → cc 链 c_src/*.c → 原生运行;
 #       纯 C 冒烟目录(rt_core_smoke/rt_reactor_smoke,无 main.ct)由各自 run.sh 承载,不入主环;
-#       coro_hybrid 的 main.ct 入主环(裸线程面),其 c_smoke.c 由下方专属块承载(P2-C)
+#       coro_hybrid 的 main.ct 入主环(裸线程面),其 c_smoke.c 由下方专属块承载(P2-C);
+#       tls_smoke(P3-C)入主环:c_src 含 ctron_tls.c 的夹具自动补 mbedTLS 头/库与
+#       自签证书(见环内 TLCF/TLLB/TLENV 块),双矩阵随本脚本双跑各计一次
 # 前置:compiler/native.sh、cc
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -28,9 +30,38 @@ for d in "$DIR"/*/; do
     if [ "${CTRON_RT:-}" = "coro" ] && [ ! -e "$d/c_src/ctron_rt.c" ]; then
         RTSRC="$ROOT/std/net/c_src/ctron_rt.c"
     fi
+    # P3-C TLS 夹具:c_src 含 ctron_tls.c 时补 mbedTLS 头/库与自签证书。
+    # 证书 openssl req -x509 本机生成(临时目录,零外联),路径经环境变量
+    # 注入(std 无 getenv 面,夹具 c_src/ct_smoke_env.c 垫)。MBEDTLS_CONFIG_FILE
+    # 的引号宏经 -include 头注入(避 shell 引号穿越);库缺席响亮失败并指路
+    # vendor/tls/build.sh(非静默跳过)。链接序:垫片对象在前,三 .a 随后。
+    TLCF=""
+    TLLB=""
+    TLENV=""
+    if [ -e "$d/c_src/ctron_tls.c" ]; then
+        if [ ! -f "$ROOT/vendor/tls/build/lib/libmbedtls.a" ] \
+           || [ ! -f "$ROOT/vendor/tls/build/lib/libmbedx509.a" ] \
+           || [ ! -f "$ROOT/vendor/tls/build/lib/libmbedcrypto.a" ]; then
+            fail=$((fail+1)); echo "  FAIL $name (缺 vendor/tls/build/lib/*.a —— 先: sh vendor/tls/build.sh)"
+            continue
+        fi
+        printf '#define MBEDTLS_CONFIG_FILE "config-thread.h"\n' > "$T/$name.mbcfg.h"
+        TLCF="-I$ROOT/vendor/tls -I$ROOT/vendor/tls/mbedtls/include -include $T/$name.mbcfg.h"
+        TLLB="$ROOT/vendor/tls/build/lib/libmbedtls.a $ROOT/vendor/tls/build/lib/libmbedx509.a $ROOT/vendor/tls/build/lib/libmbedcrypto.a -lpthread"
+        mkdir -p "$T/$name.pki"
+        if ! openssl req -x509 -newkey rsa:2048 -nodes \
+             -keyout "$T/$name.pki/key.pem" -out "$T/$name.pki/cert.pem" \
+             -days 2 -subj "/CN=127.0.0.1" >/dev/null 2>&1; then
+            fail=$((fail+1)); echo "  FAIL $name (openssl 自签证书生成失败)"
+            continue
+        fi
+        cp "$T/$name.pki/cert.pem" "$T/$name.pki/ca.pem"
+        TLENV="CTRON_SMOKE_CERT=$T/$name.pki/cert.pem CTRON_SMOKE_KEY=$T/$name.pki/key.pem CTRON_SMOKE_CA=$T/$name.pki/ca.pem"
+    fi
     if "$EMIT" run "$e" > "$T/$name.c" 2>"$T/$name.err"; then
-        if cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC 2>"$T/$name.cc.err"; then
-            if "$T/$name" run "$e" >"$T/$name.out" 2>&1; then
+        if cc -O1 -w -pthread -I"$ROOT/std/net/c_src" $TLCF -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC $TLLB 2>"$T/$name.cc.err"; then
+            # 展开词不作赋值前缀(shell 语义)→ 经 env 注入夹具环境(TLENV 空 = 仅透传)
+            if env $TLENV "$T/$name" run "$e" >"$T/$name.out" 2>&1; then
                 pass=$((pass+1)); echo "  PASS $name"
             else
                 fail=$((fail+1)); echo "  FAIL $name (run)"; sed -n '1,5p' "$T/$name.out"
