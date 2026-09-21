@@ -1,0 +1,80 @@
+// tests/gui/s23_sk_native —— SL-7β3:发射口径骨架直通(零运行时 CTML 解析)
+// gui_sk_load() 由编译器发射为 C 静态构造(见 driver_emit β3 段),域包 test_sk 消费。
+// 断言:骨架树渲染 = 源烘焙渲染(d_expect_text 文本命中 + 几何正值 + 命令数下限)。
+// 解释口径:gui_sk_load 干净 panic(β2 ABI 评审中),本夹具按阶梯惯例走原生。
+use std.gui.{test_sk, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, GuiTree}
+
+view FrameApp {
+  <vbox class="root">
+    <label class="title">FRAME GOLDEN</label>
+    <button class="btn" on:click={noop}>ADD</button>
+    <when cond={show}>
+      <label class="sub">visible row</label>
+    </when>
+    <each item in={items}>
+      <label class="row">{item}</label>
+    </each>
+    <input bind={draft} placeholder="写点啥" class="field"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style sub { fg: "#22c55e" }
+style row { fg: "#cccccc" }
+style field { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+
+fn noop() {
+}
+
+fn bind_all(buf: List[Str]) {
+    if buf[0] == "when:show" {
+        buf.push("1")
+    }
+    if buf[0] == "each:items" {
+        buf.push("alpha")
+        buf.push("beta")
+    }
+    if buf[0] == "draft" {
+        buf.push("hi")
+    }
+}
+
+fn main() -> I32 {
+    var t: GuiTree = gui_sk_load()
+    var rc: I32 = test_sk(t, 320, 200,
+        |buf| bind_all(buf),
+        |name| { },
+        |k| { },
+        |drv, a, k2| {
+            d_frame(drv, |buf| bind_all(buf))
+            d_expect_text(drv, "FRAME GOLDEN")
+            d_expect_text(drv, "ADD")
+            d_expect_text(drv, "alpha")
+            d_expect_text(drv, "beta")
+            d_expect_text(drv, "visible row")
+            var n: I32 = d_cmd_count()
+            if n < 7 {
+                panic("s23: 命令数不足 " + n.to_string())
+            }
+            if d_cmd_type(0) != 1 {
+                panic("s23: cmd0 非 TEXT")
+            }
+            if d_cmd_x100(0) <= 0 {
+                panic("s23: cmd0 几何异常")
+            }
+            var rects: I32 = 0
+            var ri: I32 = 0
+            while ri < n {
+                if d_cmd_type(ri) == 2 {
+                    rects += 1
+                }
+                ri += 1
+            }
+            if rects < 2 {
+                panic("s23: RECT 不足(button+input) " + rects.to_string())
+            }
+            println("SK-NATIVE-GREEN cmds=" + n.to_string() + " rects=" + rects.to_string())
+        })
+    return rc
+}

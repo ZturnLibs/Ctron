@@ -514,6 +514,71 @@ fn main() -> I32 {
                 }
                 pj += 1
             }
+            // SL-7β3:骨架 C 静态构造(gui 程序专用;此刻 t_<Struct> typedef 已发射,
+            // 先于用户函数体——调用点前向可见)。编译期 gui_sk_build 的表 → 静态数组
+            // → gui_sk_load() 组装 t_GuiTree 返回,运行时零 CTML 解析
+            var has_gui: Bool = false
+            var gg: I32 = 1
+            while gg < file.len {
+                if file[gg][0] == "GuiBlock" {
+                    has_gui = true
+                }
+                gg += 1
+            }
+            if has_gui {
+                var ntag = List[Str]()
+                var nflag = List[Str]()
+                var ncls = List[Str]()
+                var npre = List[Str]()
+                var nbid = List[Str]()
+                var npost = List[Str]()
+                var nfc = List[I32]()
+                var ns = List[I32]()
+                var nes = List[I32]()
+                var nec = List[I32]()
+                var ev_name = List[Str]()
+                var ev_fn = List[Str]()
+                var btns = List[I32]()
+                var sk = List[Str]()
+                var sv = List[Str]()
+                gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, sk, sv)
+                println("static ctron_list* gui_sk_ls(int n, const char** v) \{ ctron_list* l = ctron_list_new(); int i; for (i = 0; i < n; i++) \{ ctron_list_push(l, v[i]); } return l; }")
+                println("static ctron_list* gui_sk_li(int n, const int32_t* v) \{ ctron_list* l = ctron_list_new(); int i; for (i = 0; i < n; i++) \{ ctron_list_push(l, (const char*)(long)v[i]); } return l; }")
+                println("static t_GuiTree gui_sk_load(void) \{")
+                println("t_GuiTree t;")
+                println(gui_sk_emit_str_arr(0, ntag))
+                println(gui_sk_emit_str_arr(1, nflag))
+                println(gui_sk_emit_str_arr(2, ncls))
+                println(gui_sk_emit_str_arr(3, npre))
+                println(gui_sk_emit_str_arr(4, nbid))
+                println(gui_sk_emit_str_arr(5, npost))
+                println(gui_sk_emit_int_arr(6, nfc))
+                println(gui_sk_emit_int_arr(7, ns))
+                println(gui_sk_emit_int_arr(8, nes))
+                println(gui_sk_emit_int_arr(9, nec))
+                println(gui_sk_emit_str_arr(10, ev_name))
+                println(gui_sk_emit_str_arr(11, ev_fn))
+                println(gui_sk_emit_int_arr(12, btns))
+                println(gui_sk_emit_str_arr(13, sk))
+                println(gui_sk_emit_str_arr(14, sv))
+                println("t.ntag = gui_sk_ls(" + ntag.len.to_string() + ", sk_t0);")
+                println("t.nflag = gui_sk_ls(" + nflag.len.to_string() + ", sk_t1);")
+                println("t.ncls = gui_sk_ls(" + ncls.len.to_string() + ", sk_t2);")
+                println("t.npre = gui_sk_ls(" + npre.len.to_string() + ", sk_t3);")
+                println("t.nbid = gui_sk_ls(" + nbid.len.to_string() + ", sk_t4);")
+                println("t.npost = gui_sk_ls(" + npost.len.to_string() + ", sk_t5);")
+                println("t.nfc = gui_sk_li(" + nfc.len.to_string() + ", sk_t6);")
+                println("t.ns = gui_sk_li(" + ns.len.to_string() + ", sk_t7);")
+                println("t.nes = gui_sk_li(" + nes.len.to_string() + ", sk_t8);")
+                println("t.nec = gui_sk_li(" + nec.len.to_string() + ", sk_t9);")
+                println("t.ev_name = gui_sk_ls(" + ev_name.len.to_string() + ", sk_t10);")
+                println("t.ev_fn = gui_sk_ls(" + ev_fn.len.to_string() + ", sk_t11);")
+                println("t.btns = gui_sk_li(" + btns.len.to_string() + ", sk_t12);")
+                println("t.sk = gui_sk_ls(" + sk.len.to_string() + ", sk_t13);")
+                println("t.sv = gui_sk_ls(" + sv.len.to_string() + ", sk_t14);")
+                println("return t;")
+                println("}")
+            }
             // Drop 方法原型(§6.4):impl Drop for T → t_<T>__drop 前置声明
             var dq: I32 = 1
             while dq < file.len {

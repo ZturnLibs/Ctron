@@ -901,6 +901,12 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
 fn gui_sk_word(tks: List[Str], cur: Atomic[I32]) -> Str {
     var t: Str = tks[cur.load()]
     cur.store(cur.load() + 1)
+    // 剥 W1 join 行尾标记 ~:gs2i 等数值解析不认("8~" → 158),样式/文本均受害
+    if t.len > 1 {
+        if byte_at(t, t.len - 1) == 126 {
+            t = byte_slice(t, 0, t.len - 1)
+        }
+    }
     return t
 }
 
@@ -1242,4 +1248,76 @@ fn gui_sk_dump_all(file: List[Str]) -> I32 {
     }
     println("sk-end")
     return 0
+}
+
+// SL-7β3:C 串字面量转义(自包含;不依赖 trans_ty 的 ct_cstr——cc_run 拼接无该符号)
+fn gui_sk_cesc(s: Str) -> Str {
+    var out: Str = ""
+    var i: I32 = 0
+    var start: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b == 34 {
+            if i > start {
+                out = out + byte_slice(s, start, i)
+            }
+            out = out + "\\"
+            out = out + "\""
+            i += 1
+            start = i
+        } else {
+            if b == 92 {
+                if i > start {
+                    out = out + byte_slice(s, start, i)
+                }
+                out = out + "\\"
+                out = out + "\\"
+                i += 1
+                start = i
+            } else {
+                if b == 10 {
+                    if i > start {
+                        out = out + byte_slice(s, start, i)
+                    }
+                    out = out + "\\"
+                    out = out + "n"
+                    i += 1
+                    start = i
+                } else {
+                    i += 1
+                }
+            }
+        }
+    }
+    if s.len > start {
+        out = out + byte_slice(s, start, s.len)
+    }
+    return out
+}
+
+// SL-7β3:C 静态数组发射文本(串表/整表;driver_emit 骨架构造用)
+fn gui_sk_emit_str_arr(id: I32, tbl: List[Str]) -> Str {
+    var arr: Str = "static const char* sk_t" + id.to_string() + "[] = \{"
+    var k2: I32 = 0
+    while k2 < tbl.len {
+        if k2 > 0 {
+            arr = arr + ","
+        }
+        arr = arr + " \"" + gui_sk_cesc(tbl[k2]) + "\""
+        k2 += 1
+    }
+    return arr + " };"
+}
+
+fn gui_sk_emit_int_arr(id: I32, tbl: List[I32]) -> Str {
+    var arr: Str = "static const int32_t sk_t" + id.to_string() + "[] = \{"
+    var k2: I32 = 0
+    while k2 < tbl.len {
+        if k2 > 0 {
+            arr = arr + ","
+        }
+        arr = arr + tbl[k2].to_string()
+        k2 += 1
+    }
+    return arr + " };"
 }
