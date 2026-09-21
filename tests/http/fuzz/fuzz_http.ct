@@ -1,0 +1,724 @@
+// fuzz_http.ct —— P4-D 结构化 fuzz 发生器 + 驱动(P4 收口;不入 CI 主环)
+// 口径(run.sh 头注详):
+//   - 结构化生成:合法/畸形/越界混合十类 —— 0/1 合法请求(随机方法/目标/头/
+//     CL 体/1.0/1.1)、2 合法响应、3 坏版本、4 走私面(TE+CL/重复 CL/obs-fold/
+//     裸 LF/值内 CTL/冒号前空白)、5 越限(缩限 HttpLimits 下长行/多头/长值/
+//     巨 CL)、6 chunked 异常(坏 hex/超位/缺 CRLF/裸 LF/trailer)、7 WS 帧边
+//     (rsv/opcode 域/掩码位/len7·16·64 边/控制帧)、8 纯随机垃圾、9 gzip 垃圾
+//     拆至 fuzz_gz.ct(emit 专臂 —— 解释口径 extern 桥不支持 lane 参,Arc=0
+//     载入即拒,enc x_ 同款结构性分工)。
+//   - 驱动:每 case 喂 http_parse_head / chunk_step / ws_step(gzip 归 gz 臂);
+//     全程只计 rc/err 直方图,零断言 —— 崩溃(非零退出)与挂死(run.sh
+//     watchdog 超时)即 fail;每 3~5 case 抽增量前缀喂(可重入压力,n 递增
+//     重扫)。确定性:种子 → MINSTD(rng_next)单链,同种子同流可复现。
+//   - 差分(CTRON_FUZZ_DIFF=1):parse 面case 以 "d <rc> <hex>" 逐行吐给
+//     pico_diff.c(同语料喂 picohttpparser),统计 pico-收我-拒(严格子集
+//     预期 >0:obs-fold/TE+CL/上限面)与我-收 pico-拒(应 =0,>0 即登记)。
+//   - 形态纪律:跨模块 struct 只走 getter(HttpHead/ChunkRet/WsRet);ChunkSt
+//     状态回组用字面量(corpus/r_chunk 同款);lane 进出 + 标量返回;无闭包/
+//     无 Drop 局部/无方法调用。
+use std.http.parse.{ http_parse_head, http_limits_default, http_rc, http_err_of }
+use std.http.message.{ chunk_st_new, chunk_step, cr_rc, cr_err, cr_consumed, cr_produced, cr_phase, cr_remain }
+use std.http.ws.{ ws_step, ws_st_new, wr_rc, wr_err, wr_consumed, wr_produced, wr_st }
+use std.rand.{ rng_next }
+use std.str.{ char_at }
+
+// ---- 小件:lane 写入(带 512 界护栏)+ 十六进制 ----
+
+fn put_byte(buf: &I64[], at: I64, b: I64) -> I64 {
+    if at < 0 || at >= 508 {
+        return at
+    }
+    buf[at] = b % 256
+    if buf[at] < 0 {
+        buf[at] = buf[at] + 256
+    }
+    return at + 1
+}
+
+fn put_str(buf: &I64[], at: I64, s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        let at2 = put_byte(buf, at + i.as[I64](), byte_at(s, i).as[I64]())
+        if at2 == at {
+            return at
+        }
+        i += 1
+    }
+    return at + s.len.as[I64]()
+}
+
+fn put_num(buf: &I64[], at: I64, v: I64) -> I64 {
+    if v < 0 {
+        return put_str(buf, at, "0")
+    }
+    var digits: I64[20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var nd: I64 = 0
+    var x = v
+    if x == 0 {
+        digits[0] = 48
+        nd = 1
+    }
+    while x > 0 {
+        digits[nd] = 48 + x % 10
+        nd += 1
+        x = x / 10
+    }
+    var at2 = at
+    var k = nd - 1
+    while k >= 0 {
+        at2 = put_byte(buf, at2, digits[k])
+        k -= 1
+    }
+    return at2
+}
+
+fn put_alnum(buf: &I64[], at: I64, n: I64, r0: I64) -> I64 {
+    var r = r0
+    var at2 = at
+    var j: I64 = 0
+    while j < n {
+        r = rng_next(r)
+        at2 = put_byte(buf, at2, 97 + r % 26)
+        j += 1
+    }
+    return at2
+}
+
+fn hex_of(buf: &I64[], n: I64) -> Str {
+    var out = ""
+    var i: I64 = 0
+    while i < n {
+        let b = buf[i]
+        out = out + char_at("0123456789abcdef", (b / 16).as[I32]())
+        out = out + char_at("0123456789abcdef", (b % 16).as[I32]())
+        i += 1
+    }
+    return out
+}
+
+// ---- 生成器(各自:入 seed → 写 buf/meta[0]=n(,meta[1]=辅) → 出 seed')----
+
+fn gen_valid_req(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    let m = r % 6
+    if m == 0 {
+        at = put_str(buf, at, "GET")
+    } else if m == 1 {
+        at = put_str(buf, at, "POST")
+    } else if m == 2 {
+        at = put_str(buf, at, "PUT")
+    } else if m == 3 {
+        at = put_str(buf, at, "HEAD")
+    } else if m == 4 {
+        at = put_str(buf, at, "DELETE")
+    } else {
+        at = put_str(buf, at, "OPTIONS")
+    }
+    at = put_str(buf, at, " /p/")
+    r = rng_next(r)
+    let tl = 2 + r % 16
+    at = put_alnum(buf, at, tl, r)
+    r = rng_next(r)
+    if r % 8 == 0 {
+        at = put_str(buf, at, " HTTP/1.0\r\n")
+    } else {
+        at = put_str(buf, at, " HTTP/1.1\r\n")
+    }
+    r = rng_next(r)
+    let hn = r % 5
+    var j: I64 = 0
+    while j < hn {
+        r = rng_next(r)
+        let hm = r % 5
+        if hm == 0 {
+            at = put_str(buf, at, "Host: h")
+        } else if hm == 1 {
+            at = put_str(buf, at, "User-Agent: fz")
+        } else if hm == 2 {
+            at = put_str(buf, at, "Accept: */*")
+        } else if hm == 3 {
+            at = put_str(buf, at, "X-Id: q")
+        } else {
+            at = put_str(buf, at, "Connection: keep-alive")
+        }
+        r = rng_next(r)
+        at = put_alnum(buf, at, 1 + r % 12, r)
+        at = put_str(buf, at, "\r\n")
+        j += 1
+    }
+    r = rng_next(r)
+    if r % 3 == 0 {
+        let bl = r % 32
+        at = put_str(buf, at, "Content-Length: ")
+        at = put_num(buf, at, bl)
+        at = put_str(buf, at, "\r\n\r\n")
+        var k: I64 = 0
+        while k < bl {
+            r = rng_next(r)
+            at = put_byte(buf, at, 97 + r % 26)
+            k += 1
+        }
+    } else {
+        at = put_str(buf, at, "\r\n")
+    }
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+fn gen_valid_resp(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    at = put_str(buf, at, "HTTP/1.1 ")
+    r = rng_next(r)
+    let st = 100 + r % 500
+    at = put_num(buf, at, st)
+    at = put_byte(buf, at, 32)
+    let rm = r % 3
+    if rm == 0 {
+        at = put_str(buf, at, "OK")
+    } else if rm == 1 {
+        at = put_str(buf, at, "Not Found")
+    }
+    at = put_str(buf, at, "\r\n")
+    r = rng_next(r)
+    let hn = r % 4
+    var j: I64 = 0
+    while j < hn {
+        r = rng_next(r)
+        if r % 2 == 0 {
+            at = put_str(buf, at, "Server: fz\r\n")
+        } else {
+            at = put_str(buf, at, "Content-Type: text/plain\r\n")
+        }
+        j += 1
+    }
+    r = rng_next(r)
+    if r % 3 == 0 {
+        at = put_str(buf, at, "Transfer-Encoding: chunked\r\n\r\n")
+    } else if r % 3 == 1 {
+        at = put_str(buf, at, "Content-Length: 3\r\n\r\nabc")
+    } else {
+        at = put_str(buf, at, "\r\n")
+    }
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+fn gen_badver(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    at = put_str(buf, at, "GET /x HTTP/")
+    let m = r % 7
+    if m == 0 {
+        at = put_str(buf, at, "2.0")
+    } else if m == 1 {
+        at = put_str(buf, at, "1.")
+    } else if m == 2 {
+        at = put_str(buf, at, "1.10")
+    } else if m == 3 {
+        at = put_str(buf, at, "0.9")
+    } else if m == 4 {
+        at = put_str(buf, at, "x.y")
+    } else if m == 5 {
+        at = put_str(buf, at, "1.1extra")
+    } else {
+        at = put_str(buf, at, "")
+    }
+    at = put_str(buf, at, "\r\nHost: a\r\n\r\n")
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+fn gen_smuggle(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    at = put_str(buf, at, "POST /x HTTP/1.1\r\nHost: a\r\n")
+    let m = r % 6
+    if m == 0 {
+        at = put_str(buf, at, "Transfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n0\r\n\r\n")
+    } else if m == 1 {
+        at = put_str(buf, at, "Content-Length: 5\r\nContent-Length: 6\r\n\r\nhello")
+    } else if m == 2 {
+        at = put_str(buf, at, "X-A: b\r\n folded\r\n\r\n")
+    } else if m == 3 {
+        at = put_str(buf, at, "X-B: v\n\r\n")
+    } else if m == 4 {
+        at = put_str(buf, at, "X-C: a")
+        at = put_byte(buf, at, 1)
+        at = put_str(buf, at, "b\r\n\r\n")
+    } else {
+        at = put_str(buf, at, "X-D : v\r\n\r\n")
+    }
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+fn gen_oversize(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    let m = r % 5
+    if m == 0 {
+        at = put_str(buf, at, "GET /")
+        var j: I64 = 0
+        while j < 300 {
+            at = put_byte(buf, at, 65)
+            j += 1
+        }
+        at = put_str(buf, at, " HTTP/1.1\r\n\r\n")
+    } else if m == 1 {
+        at = put_str(buf, at, "GET /x HTTP/1.1\r\n")
+        var j: I64 = 0
+        while j < 20 {
+            at = put_str(buf, at, "X-q: v\r\n")
+            j += 1
+        }
+        at = put_str(buf, at, "\r\n")
+    } else if m == 2 {
+        at = put_str(buf, at, "GET /x HTTP/1.1\r\nX-A: ")
+        var j: I64 = 0
+        while j < 300 {
+            at = put_byte(buf, at, 66)
+            j += 1
+        }
+        at = put_str(buf, at, "\r\n\r\n")
+    } else if m == 3 {
+        at = put_str(buf, at, "GET /x HTTP/1.1\r\nContent-Length: 99999999\r\n\r\n")
+    } else {
+        var j: I64 = 0
+        while j < 480 {
+            at = put_byte(buf, at, 65)
+            j += 1
+        }
+        at = put_str(buf, at, "\r\n\r\n")
+    }
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+fn gen_chunk(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    let pieces: I64[10] = [3, 1, 6, 0, 5, 7, 2, 8, 4, 9]
+    r = rng_next(r)
+    var np = 2 + r % 3
+    var j: I64 = 0
+    while j < np {
+        r = rng_next(r)
+        let p = pieces[r % 10]
+        if p == 0 {
+            at = put_str(buf, at, "3\r\nabc\r\n")
+        } else if p == 1 {
+            at = put_str(buf, at, "z\r\nxyz\r\n")
+        } else if p == 2 {
+            at = put_str(buf, at, "10\r\n0123456789abcdef\r\n")
+        } else if p == 3 {
+            at = put_str(buf, at, "0\r\n\r\n")
+        } else if p == 4 {
+            at = put_str(buf, at, "0\r\nX-T: v\r\n\r\n")
+        } else if p == 5 {
+            at = put_str(buf, at, "1\r\na\r\n1\r\nb\r\n0\r\n\r\n")
+        } else if p == 6 {
+            at = put_str(buf, at, "5\r\nabc")
+        } else if p == 7 {
+            at = put_str(buf, at, "00000000000000001\r\na\r\n0\r\n\r\n")
+        } else if p == 8 {
+            at = put_str(buf, at, "5\nabc\r\n")
+        } else {
+            at = put_str(buf, at, "2\r\nab\r\n")
+        }
+        j += 1
+    }
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+fn gen_ws(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    var at: I64 = 0
+    r = rng_next(r)
+    let expect = r % 2
+    // 帧头 1:fin/rsv/op/mask/len
+    r = rng_next(r)
+    var b0: I64 = 0
+    if r % 8 != 0 {
+        b0 = b0 + 128
+    }
+    if r % 6 == 0 {
+        b0 = b0 + 16 * (1 + (r / 6) % 7)
+    }
+    let opv = r % 12
+    if opv < 6 {
+        let ops: I64[6] = [0, 1, 2, 8, 9, 10]
+        b0 = b0 + ops[opv]
+    } else {
+        b0 = b0 + 3 + (r % 12)
+    }
+    r = rng_next(r)
+    let masked = r % 2
+    if masked == 1 {
+        b0 = b0 + 128
+    }
+    at = put_byte(buf, at, b0)
+    r = rng_next(r)
+    let lm = r % 8
+    var plen: I64 = 0
+    if lm < 5 {
+        plen = r % 126
+        at = put_byte(buf, at, plen)
+    } else if lm == 5 {
+        at = put_byte(buf, at, 126)
+        plen = r % 300
+        at = put_byte(buf, at, plen / 256)
+        at = put_byte(buf, at, plen % 256)
+    } else if lm == 6 {
+        at = put_byte(buf, at, 127)
+        var jb: I64 = 0
+        while jb < 8 {
+            at = put_byte(buf, at, 0)
+            jb += 1
+        }
+        plen = r % 200
+    } else {
+        at = put_byte(buf, at, 125)
+        plen = 125
+    }
+    if masked == 1 {
+        var mk: I64 = 0
+        while mk < 4 {
+            r = rng_next(r)
+            at = put_byte(buf, at, r % 256)
+            mk += 1
+        }
+    }
+    var j: I64 = 0
+    while j < plen {
+        r = rng_next(r)
+        at = put_byte(buf, at, r % 256)
+        j += 1
+    }
+    // 有时并第二帧(ping/pong 小帧)
+    r = rng_next(r)
+    if r % 3 == 0 && at < 460 {
+        at = put_byte(buf, at, 137)
+        at = put_byte(buf, at, 130)
+        at = put_byte(buf, at, 1)
+        at = put_byte(buf, at, 2)
+        at = put_byte(buf, at, 3)
+        at = put_byte(buf, at, 4)
+        at = put_byte(buf, at, 121)
+    }
+    meta[0] = at
+    meta[1] = expect
+    return r + 0 * at
+}
+
+fn gen_rand(r0: I64, buf: &I64[], meta: &I64[]) -> I64 {
+    var r = rng_next(r0)
+    r = rng_next(r)
+    let n = 24 + r % 380
+    var at: I64 = 0
+    var j: I64 = 0
+    let biased = r % 2
+    while j < n {
+        r = rng_next(r)
+        if biased == 0 {
+            at = put_byte(buf, at, 9 + r % 118)
+        } else {
+            at = put_byte(buf, at, r % 256)
+        }
+        j += 1
+    }
+    meta[0] = at
+    meta[1] = 0
+    return r + 0 * at
+}
+
+// ---- 环境(严格十进制,bench 同款)----
+
+fn env_num(name: Str, dft: I64) -> I64 {
+    let s = env_get(name)
+    if s.len == 0 {
+        return dft
+    }
+    var ok = 1
+    var v: I64 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let d = byte_at(s, i)
+        if d < 48 || d > 57 {
+            ok = 0
+        } else {
+            v = v * 10 + (d - 48).as[I64]()
+        }
+        i += 1
+    }
+    if ok == 1 && v > 0 {
+        return v
+    }
+    return dft
+}
+
+fn env_is1(name: Str) -> I64 {
+    if env_get(name) == "1" {
+        return 1
+    }
+    return 0
+}
+
+fn itoa(v: I64) -> Str {
+    return v.to_string()
+}
+
+// ---- 主驱动 ----
+
+fn main() -> I64 {
+    let seed0 = env_num("CTRON_FUZZ_SEED", 1)
+    var seed = seed0
+    if seed > 2147483646 {
+        seed = seed % 2147483646 + 1
+    }
+    let iters = env_num("CTRON_FUZZ_ITERS", 20000)
+    let diffmode = env_is1("CTRON_FUZZ_DIFF")
+    let diffn = env_num("CTRON_FUZZ_DIFF_N", 256)
+    let kind = env_get("CTRON_FUZZ_KIND")
+
+    var buf: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var meta: I64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var ehs: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var ehc: I64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var ehw: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    var i: I64 = 0
+    var emitted: I64 = 0
+    var cs: I64 = 0
+    var n_parse: I64 = 0
+    var p_ok: I64 = 0
+    var p_need: I64 = 0
+    var p_rej: I64 = 0
+    var c_ok: I64 = 0
+    var c_need: I64 = 0
+    var c_err: I64 = 0
+    var w_ok: I64 = 0
+    var w_need: I64 = 0
+    var w_err: I64 = 0
+
+    let run_iters = diffmode * (diffn * 24 + 64) + (1 - diffmode) * iters
+    let trace = env_is1("CTRON_FUZZ_TRACE")
+    while i < run_iters {
+        let r0 = rng_next(seed)
+        let cat = r0 % 10
+        if trace == 1 {
+            println("tr i=" + itoa(i) + " seed=" + itoa(seed) + " r0=" + itoa(r0) + " cat=" + itoa(cat))
+        }
+        if cat == 0 || cat == 1 {
+            seed = gen_valid_req(seed, buf, meta)
+        } else if cat == 2 {
+            seed = gen_valid_resp(seed, buf, meta)
+        } else if cat == 3 {
+            seed = gen_badver(seed, buf, meta)
+        } else if cat == 4 {
+            seed = gen_smuggle(seed, buf, meta)
+        } else if cat == 5 {
+            seed = gen_oversize(seed, buf, meta)
+        } else if cat == 6 {
+            seed = gen_chunk(seed, buf, meta)
+        } else if cat == 7 {
+            seed = gen_ws(seed, buf, meta)
+        } else if cat == 8 {
+            seed = gen_rand(seed, buf, meta)
+        } else {
+            // cat 9:gzip 垃圾归 fuzz_gz.ct(emit 专臂);本臂回退纯随机
+            seed = gen_rand(seed, buf, meta)
+        }
+        let n = meta[0]
+        if n < 0 {
+            meta[0] = 0
+        }
+        let m1 = meta[1]
+
+        var parse_face = 0
+        if cat <= 5 || cat == 8 || cat == 9 {
+            parse_face = 1
+        }
+
+        if parse_face == 1 {
+            n_parse += 1
+            var lim = http_limits_default()
+            if cat == 5 {
+                lim = HttpLimits { max_line: 128, max_headers: 8, max_header: 128, max_head: 512, max_body: 1024 }
+            }
+            let h = http_parse_head(buf, meta[0], lim)
+            let rc = http_rc(h)
+            cs = cs + rc + n
+            if rc == 1 {
+                p_ok += 1
+            } else if rc == 0 {
+                p_need += 1
+            } else {
+                p_rej += 1
+                let e = http_err_of(h)
+                cs = cs + e
+                if e >= 1 && e <= 15 {
+                    ehs[e] = ehs[e] + 1
+                }
+            }
+            if diffmode == 1 && emitted < diffn {
+                emitted += 1
+                println("d " + itoa(rc) + " " + hex_of(buf, meta[0]))
+            }
+            if i % 5 == 0 {
+                // 增量前缀重扫压力:n 递增重调,rc!=0 即止
+                var k: I64 = 1
+                var lastrc: I64 = 0
+                while k <= meta[0] && lastrc == 0 {
+                    let h2 = http_parse_head(buf, k, lim)
+                    lastrc = http_rc(h2)
+                    cs = cs + lastrc
+                    k += 1
+                }
+            }
+        } else if cat == 6 {
+            var st = chunk_st_new()
+            var pos: I64 = 0
+            var dfill: I64 = 0
+            var rounds: I64 = 0
+            var lastrc: I64 = 0
+            while rounds < 600 {
+                let r2 = chunk_step(buf, meta[0], pos, st, dst, dfill, 512)
+                lastrc = cr_rc(r2)
+                if lastrc == 1 {
+                    pos = pos + cr_consumed(r2)
+                    dfill = dfill + cr_produced(r2)
+                    cs = cs + pos + dfill
+                    st = ChunkSt { phase: cr_phase(r2), remain: cr_remain(r2), err: 0 }
+                } else {
+                    if lastrc == 0 {
+                        c_need += 1
+                    } else {
+                        c_err += 1
+                        let e = cr_err(r2)
+                        cs = cs + e
+                        if e >= 1 && e <= 4 {
+                            ehc[e] = ehc[e] + 1
+                        }
+                    }
+                    rounds = 999999
+                }
+                rounds += 1
+            }
+            c_ok += 1
+            cs = cs + lastrc
+            if i % 3 == 0 {
+                // 字节级重入:前缀 k 递增
+                var k: I64 = 1
+                var pst = chunk_st_new()
+                var ppos: I64 = 0
+                var pd: I64 = 0
+                while k <= meta[0] {
+                    let r3 = chunk_step(buf, k, ppos, pst, dst, pd, 512)
+                    let rc3 = cr_rc(r3)
+                    if rc3 == 1 {
+                        ppos = ppos + cr_consumed(r3)
+                        pd = pd + cr_produced(r3)
+                        pst = ChunkSt { phase: cr_phase(r3), remain: cr_remain(r3), err: 0 }
+                    } else if rc3 == -1 {
+                        k = meta[0] + 1
+                    }
+                    cs = cs + rc3
+                    k += 1
+                }
+            }
+        } else if cat == 7 {
+            var st = ws_st_new(m1)
+            var pos: I64 = 0
+            var dfill: I64 = 0
+            var rounds: I64 = 0
+            var lastrc: I64 = 0
+            while rounds < 600 {
+                let w = ws_step(buf, meta[0], pos, st, dst, dfill, 512)
+                lastrc = wr_rc(w)
+                if lastrc == 1 {
+                    pos = pos + wr_consumed(w)
+                    dfill = dfill + wr_produced(w)
+                    cs = cs + pos + dfill
+                    st = wr_st(w)
+                } else {
+                    if lastrc == 0 {
+                        w_need += 1
+                    } else {
+                        w_err += 1
+                        let e = wr_err(w)
+                        cs = cs + e
+                        if e >= 1 && e <= 15 {
+                            ehw[e] = ehw[e] + 1
+                        }
+                    }
+                    rounds = 999999
+                }
+                rounds += 1
+            }
+            w_ok += 1
+            cs = cs + lastrc
+            if i % 3 == 0 {
+                var k: I64 = 1
+                var pst = ws_st_new(m1)
+                var ppos: I64 = 0
+                var pd: I64 = 0
+                while k <= meta[0] {
+                    let w3 = ws_step(buf, k, ppos, pst, dst, pd, 512)
+                    let rc3 = wr_rc(w3)
+                    if rc3 == 1 {
+                        ppos = ppos + wr_consumed(w3)
+                        pd = pd + wr_produced(w3)
+                        pst = wr_st(w3)
+                    } else if rc3 == -1 {
+                        k = meta[0] + 1
+                    }
+                    cs = cs + rc3
+                    k += 1
+                }
+            }
+        }
+        i += 1
+    }
+
+    cs = cs + p_ok + p_need + p_rej + c_ok + c_need + c_err + w_ok + w_need + w_err + n_parse
+    var hj: I64 = 0
+    while hj < 16 {
+        cs = cs + ehs[hj] + ehw[hj]
+        hj += 1
+    }
+    hj = 0
+    while hj < 8 {
+        cs = cs + ehc[hj]
+        hj += 1
+    }
+    println("fuzz kind=" + kind + " seed=" + itoa(seed0) + " cases=" + itoa(i))
+    println("fuzz parse_n=" + itoa(n_parse) + " ok=" + itoa(p_ok) + " need=" + itoa(p_need) + " rej=" + itoa(p_rej))
+    println("fuzz chunk_ok=" + itoa(c_ok) + " need=" + itoa(c_need) + " err=" + itoa(c_err))
+    println("fuzz ws_ok=" + itoa(w_ok) + " need=" + itoa(w_need) + " err=" + itoa(w_err))
+    hj = 0
+    var hist = "fuzz hist_p="
+    while hj < 16 {
+        hist = hist + itoa(ehs[hj]) + ","
+        hj += 1
+    }
+    println(hist)
+    println("fuzz checksum=" + itoa(cs))
+    if diffmode == 1 {
+        println("fuzz diff emitted=" + itoa(emitted))
+    }
+    if cs == 0 {
+        return 9
+    }
+    return 0
+}
