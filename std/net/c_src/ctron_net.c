@@ -56,6 +56,15 @@ typedef ssize_t ct_ssize_t;
 
 static CT_TLS int64_t ct_net_errno_v = 0;
 
+/* P3-A 探针消除:协程停车面以 MSG_DONTWAIT 直试 recv/send/recvfrom 替代
+ * poll(0) 探针(per-call 非阻塞 —— fd 本体阻塞属性不动,P1 裸面逐字节不变;
+ * EAGAIN/EWOULDBLOCK 即无数据信号,停车等就绪后重试)。主目标平台
+ * darwin/linux/BSD 均有此旗标;缺面平台退化为 0(登记:该形态下协程路径
+ * 首试可能阻塞 worker,移植时须以 O_NONBLOCK 面补齐)。 */
+#ifndef MSG_DONTWAIT
+#define MSG_DONTWAIT 0
+#endif
+
 /* errno 槽一律经 noinline 访问器读写:darwin/arm64 clang 会把 _Thread_local
  * 的 TLV 槽位解析结果缓存在 callee-saved 寄存器里,而协程跨 worker 迁移后
  * rt_swap 恢复的是旧线程的寄存器镜像 ⇒ 直读/直写槽位可能命中别的线程的块
@@ -122,6 +131,8 @@ __attribute__((weak)) void ctron_rt_wait_fd(int fd, int write_side, int64_t time
 }
 __attribute__((weak)) void* ctron_rt_current(void) { return 0; }
 __attribute__((weak)) void ctron_rt_sleep_ms(int64_t ms) { (void)ms; }
+/* P3-A 兴趣驻留配套:fd 关闭钩子(摘 rt 驻留登记)。哑元无条件发射,同上。 */
+__attribute__((weak)) void ctron_rt_forget_fd(int64_t fd) { (void)fd; }
 
 /* 停车判据:垫片符号已链(非哑元态不可能是真,哑元 current 恒 NULL)+ 协程上下文 */
 static int ct_rt_parkable(void) {
@@ -295,9 +306,11 @@ int64_t ctron_net_tcp_connect(const char* host, int64_t port, Box64* out) {
 
 /* 读:poll() 超时门(timeout_ms <= 0 = 永久阻塞)>0 n / 0 eof / <0 err(超时
  * 置 ETIMEDOUT)。字节逐条写入 int64 lane。
- * P2-C 停车点①:协程上下文走专用路径(0 超时 poll 探针 + EAGAIN → wait_fd
- * 停车重试,deadline 收敛保 ETIMEDOUT 语义,worker 线程全程不滞留);裸线程
- * (未链 rt / current 为空)走下方 P1 poll 门原路径,逐字节不变。 */
+ * P2-C 停车点①;P3-A 探针消除:协程上下文 recv 以 MSG_DONTWAIT 直试
+ * (per-call 非阻塞,fd 阻塞属性不动、P1 裸面零改)—— EAGAIN → wait_fd
+ * 停车重试(deadline 收敛保 ETIMEDOUT 语义,worker 线程全程不滞留),省去
+ * 每读一笔 poll(0) syscall;裸线程(未链 rt / current 为空)走下方 P1 poll
+ * 门原路径,逐字节不变。 */
 int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms) {
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
@@ -307,33 +320,16 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
         uint64_t deadline = timeout_ms > 0
             ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
         for (;;) {
-            struct pollfd p;
             ct_ssize_t n;
-            int pr;
-            memset(&p, 0, sizeof p);
-            p.fd = (ct_sock)fd;
-            p.events = POLLIN;
-            pr = ct_poll(&p, 1, 0);                  /* 非阻塞探针:线程不滞留 */
-            if (pr < 0) {
-                if (errno == EINTR) continue;
-                return ct_err();
-            }
-            if (pr == 0) {                           /* 未就绪:停车等就绪/超时 */
-                if (!ct_rt_park_until(fd, 0, deadline)) {
-                    *ct_err_slot() = ETIMEDOUT;
-                    return -1;
-                }
-                continue;                            /* 醒后重探(就绪是提示) */
-            }
-            n = recv((ct_sock)fd, (char*)tmp, (size_t)want, 0);
+            n = recv((ct_sock)fd, (char*)tmp, (size_t)want, MSG_DONTWAIT);
             if (n < 0) {
                 if (errno == EINTR) continue;
-                if ((errno == EAGAIN || errno == EWOULDBLOCK)) { /* 假就绪竞态:停车重试 */
+                if ((errno == EAGAIN || errno == EWOULDBLOCK)) { /* 未就绪:停车等就绪/超时 */
                     if (!ct_rt_park_until(fd, 0, deadline)) {
                         *ct_err_slot() = ETIMEDOUT;
                         return -1;
                     }
-                    continue;
+                    continue;                        /* 醒后重试(就绪是提示) */
                 }
                 return ct_err();
             }
@@ -383,18 +379,22 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
 /* 写缓冲视图 lane:read_t/write 共用 —— write 逐条取 (char)lane[i]
  * P2-C 停车点②/③(write/write_str 共此发送核):EAGAIN 且协程上下文 →
  * wait_fd 等可写后重试(P1 write 为阻塞发完语义、无超时面,故永久等);
- * 裸线程 → 原 ct_err() 回退,逐字节不变。 */
+ * 裸线程 → 原 ct_err() 回退,逐字节不变。
+ * P3-A:协程上下文 send 以 MSG_DONTWAIT 直试(探针本来就没有,此改与
+ * read_t 对称 —— 阻塞 fd 上 send 满缓冲会滞留 worker,协程面必须 per-call
+ * 非阻塞;裸面旗标零改)。 */
 static int64_t ct_send_all(int64_t fd, const unsigned char* src, int64_t n) {
     int64_t off = 0;
+    int nb = ct_rt_parkable();           /* 协程上下文:per-call 非阻塞直试 */
     while (off < n) {
         ct_ssize_t w = send((ct_sock)fd, (const char*)(src + off),
-                            (size_t)(n - off), MSG_NOSIGNAL);
+                            (size_t)(n - off), MSG_NOSIGNAL | (nb ? MSG_DONTWAIT : 0));
         if (w < 0) {
 #ifdef _WIN32
             return ct_err();
 #else
             if (errno == EINTR) continue;
-            if ((errno == EAGAIN || errno == EWOULDBLOCK) && ct_rt_parkable()) {
+            if ((errno == EAGAIN || errno == EWOULDBLOCK) && nb) {
                 ct_rt_park_until(fd, 1, 0);
                 continue;                            /* 醒后重试(就绪是提示) */
             }
@@ -429,7 +429,11 @@ int64_t ctron_net_write_str(int64_t fd, const char* s) {
 }
 
 int64_t ctron_net_close(int64_t fd) {
-    if (ct_close((ct_sock)fd) != 0) return ct_err();
+    int r = ct_close((ct_sock)fd);
+    /* P3-A 兴趣驻留配套:close 后摘 rt 驻留登记(内核已在 close 时自动摘
+     * knote/epoll 节点,钩子只清登记表;未链 rt → 弱哑元 no-op。不动 errno) */
+    ctron_rt_forget_fd(fd);
+    if (r != 0) return ct_err();
     return 0;
 }
 
@@ -510,33 +514,16 @@ int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
 int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms) {
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
-    /* P2-C 停车点⑤:协程上下文专用路径(与 read_t 同形:0 超时探针 + EAGAIN
-     * 停车重试 + deadline 收敛);裸线程走下方 P1 原路径逐字节不变。 */
+    /* P2-C 停车点⑤;P3-A 探针消除:与 read_t 同形 —— MSG_DONTWAIT 直试 +
+     * EAGAIN 停车重试 + deadline 收敛;裸线程走下方 P1 原路径逐字节不变。 */
     if (ct_rt_parkable()) {
         unsigned char tmp[CT_CHUNK];
         int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
         uint64_t deadline = timeout_ms > 0
             ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
         for (;;) {
-            struct pollfd p;
             ct_ssize_t n;
-            int pr;
-            memset(&p, 0, sizeof p);
-            p.fd = (ct_sock)fd;
-            p.events = POLLIN;
-            pr = ct_poll(&p, 1, 0);
-            if (pr < 0) {
-                if (errno == EINTR) continue;
-                return ct_err();
-            }
-            if (pr == 0) {
-                if (!ct_rt_park_until(fd, 0, deadline)) {
-                    *ct_err_slot() = ETIMEDOUT;
-                    return -1;
-                }
-                continue;
-            }
-            n = recvfrom((ct_sock)fd, (char*)tmp, (size_t)want, 0, NULL, NULL);
+            n = recvfrom((ct_sock)fd, (char*)tmp, (size_t)want, MSG_DONTWAIT, NULL, NULL);
             if (n < 0) {
                 if (errno == EINTR) continue;
                 if ((errno == EAGAIN || errno == EWOULDBLOCK)) {

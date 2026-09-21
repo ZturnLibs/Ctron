@@ -67,6 +67,11 @@ void    ctron_rt_wait_fd(int fd, int write_side, int64_t timeout_ms);
 /* scope 取消广播:唤醒全部停车协程(DONE 协程除外) */
 void    ctron_rt_cancel_wake_all(void);
 
+/* (P3-A 新增,兴趣驻留配套)fd 关闭钩子:摘除该 fd 双方向的驻留兴趣登记。
+ * ctron_net_close 在 close 之后调用;直连 close(2) 的路径由注册时顺手桶
+ * 清扫兜底。未知 fd → no-op;不触碰后端(内核已在 close 时自动摘除)。 */
+void    ctron_rt_forget_fd(int64_t fd);
+
 /* 微基准:rounds 次 yield 配对(离场→重新入队→被 resume),返回总 ns;
  * ns/次 = 返回值 / (2*rounds)。裸线程回退 sched_yield 配对测量。 */
 int64_t ctron_rt_yield_bench(int rounds);
