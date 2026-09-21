@@ -1,0 +1,191 @@
+// tls_interop —— P3-D HTTPS 回环互操作矩阵(我们的 TLS 栈 vs 本机 openssl 双向)
+// 一个 .ct 双角色(INTEROP_ROLE=client/server 环境变量选择,ctecho env 注入同
+// 款;std 无 getenv 面 → env_get 内建,ctecho 先例):
+//   D1 client 模式:connect 对端 openssl s_server(-www -quiet,版本由对端
+//      -tls1_2/-tls1_3 强制,我方不设版本参 = 协商随对端)→ 握手(信任锚 =
+//      同一张自签证书,链验证 REQUIRED;对端 127.0.0.1 为 IP → 主机名 opt-out
+//      默认,链验证保留 —— ctron_tls.c「主机名口径」)→ ALPN 断言
+//      tls_alpn()==INTEROP_ALPN → HTTP-ish GET 一笔 → 读 s_server -www 状态页
+//      (首行前缀 "HTTP/1.0 200 ok" 断言)读到 eof(close_notify → 0)→ close。
+//      INTEROP_LOOP = 整周期循环数(bench_tls.sh 握手吞吐复用同一代码路径)。
+//   D2 server 模式:listen 127.0.0.1:0 → 依 INTEROP_CONNS 次 accept → 每连:
+//      TLS server 握手 + ALPN 断言 → 读一笔请求 → 固定应答
+//      "interop-pong-from-ctron\n" → tls_close。第 1 连 = run.sh 的 s_client
+//      探活(println = printf 块缓冲,重定向下 stdout 端口行不可作就绪判据,
+//      bench.sh「探活非 stdout」同口径),第 2 连 = 正式 cell。
+//      关闭序登记:openssl s_client -quiet 隐含 -ign_eof(stdin EOF 不关连接,
+//      等服务端先关)→ D2 采用服务端先关(应答 → close_notify → s_client
+//      收到即退 0),不对称于 tls_smoke 的客户端先关 eof 面 —— 本夹具 D2 不
+//      钉对端 eof,服务端 close 尽力发(ctron_tls.c「Drop 序」注)。
+// 发射面登记(本夹具新增实证):while 体 Drop 局部不可发射(emit 直报
+//   "while 体:Drop 局部未支持(移入内层裸块)";ctecho ③ 同族)→ 两侧循环体
+//   均移入内层裸块,句柄在裸块作用域内生灭;server 闭包内无 assert/panic
+//   语句、一律返回码(tls_smoke 同款),client 主面内联断言不受限。
+// 协程面:server handler 经 sc.spawn —— CTRON_RT=coro 下 TLS 握手/读写停车于
+//   net 垫片,对端为真实外部进程(openssl),混合化继承的外部对端证明;
+//   client 主面 P1 路径(同 tls_smoke 客户端与 coro_hybrid .ct 主环口径)。
+// 证书:run.sh openssl req -x509 自签(临时目录,零外联),路径经环境变量注入
+//   (变量名沿用主环 TLENV 口径 CTRON_SMOKE_CERT/KEY/CA)。基线公平口径:D2
+//   对端 s_client -CAfile 同一张证书(链验证开)且不给 -verify_hostname(=
+//   我方 opt-out 同口径)—— 双端验证策略对齐,bench_tls.sh 比值只隔离栈成本。
+// CI 纪律:仅回环、:0/高随机端口、零外联(run.sh 同口径)。
+use std.net.{Net_probe, last_net_error, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept}
+use std.tls.{tls_client, tls_server, tls_set_alpn, tls_handshake, tls_read, tls_write_str, tls_close, tls_alpn, tls_last_error}
+use std.strconv.{parse_i64, sc_get_l}
+
+fn main() -> I32 {
+    let role = env_get("INTEROP_ROLE")
+    let alpn = env_get("INTEROP_ALPN")      // 空串 = 不启用 ALPN(bench 口径)
+    let ca = env_get("CTRON_SMOKE_CA")
+    assert(ca.len > 0)
+
+    // ================= D1:our TLS client ↔ openssl s_server =================
+    if role == "client" {
+        let net = Net_probe()
+        let port = sc_get_l(parse_i64(env_get("INTEROP_PORT")), 0)
+        if port <= 0 {
+            panic("INTEROP_PORT 缺失")
+        }
+        let loop_n = sc_get_l(parse_i64(env_get("INTEROP_LOOP")), 1)
+        var i: I64 = 0
+        while i < loop_n {
+            // 内层裸块:while 体 Drop 局部不可发射(发射面登记,见头注)
+            {
+                let cfd_box = Box[Box64](Box64 { v: 0 })
+                if net_tcp_connect(net, "127.0.0.1", port, cfd_box) != 0 {
+                    panic("connect: " + last_net_error().message)
+                }
+                let st = TcpStream { fd: cfd_box.v }
+                let cctx = tls_client(net, st.fd, ca)
+                if cctx < 0 {
+                    panic("client ctx: " + tls_last_error().message)
+                }
+                var cc = TlsConn { ctx: cctx }
+                if alpn.len > 0 {
+                    if tls_set_alpn(net, cc, alpn) != 0 {
+                        panic("set_alpn: " + tls_last_error().message)
+                    }
+                }
+                if tls_handshake(net, cc, st.fd) != 0 {
+                    panic("handshake: " + tls_last_error().message)
+                }
+                if alpn.len > 0 {
+                    if tls_alpn(net, cc) != alpn {
+                        panic("alpn 选定 [" + tls_alpn(net, cc) + "] != 提供 [" + alpn + "]")
+                    }
+                }
+                let w = tls_write_str(net, cc, "GET /interop HTTP/1.0\r\n\r\n")
+                if w != 25 {
+                    panic("write GET: " + tls_last_error().message)
+                }
+                var buf: I64[4096] = [0, 0, 0, 0]
+                var first: I64 = 1
+                while true {
+                    let n = tls_read(net, cc, buf, 4096, 10000)
+                    if n < 0 {
+                        panic("read: " + tls_last_error().message)
+                    }
+                    if n == 0 {
+                        break           // s_server -www 应答后 close_notify → eof
+                    }
+                    if first == 1 {
+                        first = 0
+                        // 首行前缀 "HTTP/1.0 200 ok"(H T T P / 1 . 0 ␠ 2 0 0)
+                        if n < 15 {
+                            panic("响应短于状态行")
+                        }
+                        if buf[0] != 72 || buf[1] != 84 || buf[2] != 84 || buf[3] != 80 {
+                            panic("非 HTTP 应答")
+                        }
+                        if buf[9] != 50 || buf[10] != 48 || buf[11] != 48 {
+                            panic("非 200 应答")
+                        }
+                    }
+                }
+                tls_close(net, cc)
+                cc.ctx = -1
+            }
+            i = i + 1
+        }
+        return 0
+    }
+
+    // ============== D2:openssl s_client ↔ our TLS server(本进程) ==============
+    if role == "server" {
+        let net = Net_probe()
+        let cert = env_get("CTRON_SMOKE_CERT")
+        let key = env_get("CTRON_SMOKE_KEY")
+        assert(cert.len > 0)
+        assert(key.len > 0)
+        let conns = sc_get_l(parse_i64(env_get("INTEROP_CONNS")), 1)
+        let lfd_box = Box[Box64](Box64 { v: 0 })
+        // 端口交接:INTEROP_PORT > 0 → 定端口绑定(run.sh 随机高端口递入,
+        // ctecho env 口径 —— println 块缓冲发不出端口,探活对端须预知端口);
+        // 0 → :0 临时端口(独立调试用,端口走 stdout 信息行)
+        let want = sc_get_l(parse_i64(env_get("INTEROP_PORT")), 0)
+        if net_tcp_listen(net, "127.0.0.1", want, lfd_box) != 0 {
+            panic(last_net_error().message)
+        }
+        let port_box = Box[Box64](Box64 { v: 0 })
+        assert(net_tcp_sockname(net, lfd_box.v, port_box) == 0)
+        let port = port_box.v
+        assert(port > 0)
+        let lfd = lfd_box.v
+        // 信息行仅备查(块缓冲;就绪判据 = run.sh 的 s_client 探活,见头注)
+        println("ctron-tls-server listening on 127.0.0.1:" + port.to_string())
+        scope { |sc|
+            var srv = sc.spawn(|| {
+                let net2 = Net_probe()
+                var done: I64 = 0
+                while done < conns {
+                    // 内层裸块:while 体 Drop 局部不可发射(发射面登记,见头注)
+                    {
+                        let afd_box = Box[Box64](Box64 { v: 0 })
+                        if net_tcp_accept(net2, lfd, afd_box) != 0 {
+                            return 1
+                        }
+                        let srvst = TcpStream { fd: afd_box.v }
+                        let sctx = tls_server(net2, srvst.fd, cert, key)
+                        if sctx < 0 {
+                            return 2
+                        }
+                        var conn = TlsConn { ctx: sctx }
+                        if alpn.len > 0 {
+                            if tls_set_alpn(net2, conn, alpn) != 0 {
+                                return 3
+                            }
+                        }
+                        if tls_handshake(net2, conn, srvst.fd) != 0 {
+                            return 4
+                        }
+                        if alpn.len > 0 {
+                            if tls_alpn(net2, conn) != alpn {
+                                return 5
+                            }
+                        }
+                        var buf: I64[4096] = [0, 0, 0, 0]
+                        let n = tls_read(net2, conn, buf, 4096, 10000)
+                        if n <= 0 {
+                            return 6
+                        }
+                        let w = tls_write_str(net2, conn, "interop-pong-from-ctron\n")
+                        if w != 24 {
+                            return 7
+                        }
+                        tls_close(net2, conn)
+                        conn.ctx = -1
+                    }
+                    done = done + 1
+                }
+                return 0
+            })
+            let s = srv.join()
+            assert(s == 0)
+            return 0
+        }
+        return 0
+    }
+
+    panic("INTEROP_ROLE 必须为 client/server")
+    return 1
+}
