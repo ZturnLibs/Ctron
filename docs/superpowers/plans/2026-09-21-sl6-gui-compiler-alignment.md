@@ -88,7 +88,17 @@
   教训：编译器源码调试期，先用最小 GuiBlock 输入 + ctron-chk run --dump-gui 分离
   「builder 编译态」与「发射链健康度」；工作树对照实验必须仓库根 + 双态各重建。
 
-### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位）
+### β2 主体落地（da8cb00，2026-09-21 深夜）+ 组合渲染分歧登记
+
+- **gui_sk_load 解释口径打通**：vL/vS/vI 节点包裹装配（gui_sk_wrap_s/i），与 gt_parse
+  解释执行值形态同构——裸值直塞的 SEGV 根除。单构造（label/button/when/each/input）
+  解释口径渲染各自全绿；双口径树同构（interpret/native sk_dump 逐字节一致）。
+- **已登记分歧（β2 余项）**：when+each+input 组合的解释口径渲染 = 10 命令
+  （原生 7），容器多 RECT、each 第二项文本缺失。树数据双口径同构已证
+  （s22+直接 dump），分歧在 rt_emit 每项展开的解释执行路径——续接首查
+  compiler-c/src/arena.c（2c736fc 改过 arena 语义）+ rt_bind_items 缓冲生命周期。
+
+### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位；已被节点包裹方案根除）
 
 - **现象**：eval 内建 gui_sk_load 构造 U 值（ GuiTree 同形 list）→ 域包 sk_dump/test_sk
   消费 → 编译口径（ctron-cc）SEGV（gui_sk_intlist 读 0xffffffffffffffff）。
