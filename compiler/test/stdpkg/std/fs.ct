@@ -2,18 +2,13 @@
 // 命名 r 前缀族避免与内建/其他模块撞名(use 合并单一命名空间)。
 
 // 读文件;不存在或不可读返回 dft
+// 口径:read_file 终局语义为 Str(缺失 → 空串,SL-0.6 ⑯ 裁决),故先以
+// fs_exists 守卫再直读,不做 Option 匹配(自举解释口径 match Some/None 会落空)
 pub fn read_or(path: Str, dft: Str) -> Str {
     if !fs_exists(path) {
         return dft
     }
-    match read_file(path) {
-        Some(s) => {
-            return s
-        }
-        None => {
-            return dft
-        }
-    }
+    return read_file(path)
 }
 
 // 文件是否存在(语义化别名,转发内建)
