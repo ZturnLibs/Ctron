@@ -1,0 +1,40 @@
+use std.gui.{test, d_frame, d_expect_text, d_type_char}
+
+struct Model {
+    var draft: Str
+}
+
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 259 {
+        if m.draft.len > 0 {
+            m.draft = byte_slice(m.draft, 0, m.draft.len - 1)
+        }
+    } else {
+        if k >= 32 {
+            if k < 127 {
+                m.draft = m.draft + char_str(k)
+            }
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[Model](Model { draft: "" })
+    var rc: I32 = test(src, 320, 200,
+        |buf| buf.push(m.draft),
+        |name| { },
+        |k| on_key(k, m),
+        |t, act, key| {
+            key(d_type_char(t, 104))
+            key(d_type_char(t, 105))
+            d_frame(t, |buf| buf.push(m.draft))
+            d_expect_text(t, "hi")
+            key(d_type_char(t, 259))
+            d_frame(t, |buf| buf.push(m.draft))
+            d_expect_text(t, "h")
+            println("INPUT-ALL-GREEN")
+        })
+    println("sl5: rc=" + rc.to_string())
+    return rc
+}

@@ -1,0 +1,9 @@
+view DraftApp {
+  <vbox class="root">
+    <input bind={draft} placeholder="写点啥" class="field"/>
+    <label class="mirror">{draft}</label>
+  </vbox>
+}
+style root { gap: 8; padding: 16 }
+style field { bg: "#2a2a2e"; fg: "#ffffff"; size: 20; h: 36 }
+style mirror { size: 20; fg: "#aaaaaa"; h: 30 }
