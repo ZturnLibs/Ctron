@@ -8,8 +8,9 @@ BIN      = $(BUILD)/ctronc
 CORE     = src/arena.c src/token.c src/lexer.c \
            src/parser_core.c src/parser_decl.c src/parser_expr.c src/parser.c src/ast_show.c src/sem.c src/pkg.c \
            src/rt_core.c src/rt_eval.c src/rt_stmt.c \
-           src/trans_core.c src/trans_expr.c src/trans_conc.c src/trans_stmt.c src/trans_rt.c src/trans.c
-HDRS     = src/arena.h src/token.h src/lexer.h src/ast.h src/parser.h src/trans.h src/trans_internal.h
+           src/trans_core.c src/trans_expr.c src/trans_conc.c src/trans_stmt.c src/trans_rt.c src/trans.c \
+           src/fmt.c
+HDRS     = src/arena.h src/token.h src/lexer.h src/fmt.h src/ast.h src/parser.h src/trans.h src/trans_internal.h
 
 all: $(BIN)
 
@@ -65,9 +66,13 @@ $(BUILD)/suite_modules: tests/suite_modules.c $(CORE) $(HDRS)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_modules.c $(CORE)
 
-# 默认验收:单元 + 语料集成(词法+解析+语义+模块级)+ 执行层(C4-a 子集)
+$(BUILD)/suite_fmt: tests/suite_fmt.c $(CORE) $(HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/suite_fmt.c $(CORE)
 
-test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff $(BUILD)/suite_trans $(BUILD)/suite_corpus_trans $(BUILD)/suite_modules
+# 默认验收:单元 + 语料集成(词法+解析+语义+模块级)+ 执行层(C4-a 子集)+ fmt
+
+test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_parse $(BUILD)/suite_sem $(BUILD)/suite_pkg $(BUILD)/suite_rt $(BUILD)/suite_run $(BUILD)/suite_diff $(BUILD)/suite_trans $(BUILD)/suite_corpus_trans $(BUILD)/suite_modules $(BUILD)/suite_fmt
 	./$(BUILD)/test_lex
 	./$(BUILD)/suite_lex ../tests
 	./$(BUILD)/test_parse
@@ -80,6 +85,7 @@ test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_pa
 	./$(BUILD)/suite_trans tests/trans_fixtures
 	./$(BUILD)/suite_corpus_trans ../tests
 	./$(BUILD)/suite_modules ../tests/modules
+	./$(BUILD)/suite_fmt ../tests
 
 clean:
 	rm -rf $(BUILD)

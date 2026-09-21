@@ -1,12 +1,14 @@
 // main.c —— ctronc 命令行(C 版 Ctron 编译器)。
-// 子命令:version | lex | parse | check | run | pkg
+// 子命令:version | lex | parse | check | run | pkg | fmt | manifest | test | trans | build
 // check/pkg 支持 --format=json(规范 §10.2 冻结 schema:diagnostics[] =
 //   {code, severity, message, file, span{line_start,col_start,line_end,col_end}, notes[], fixes[]})。
 // 位置信息诚实输出:词法/解析诊断有行列;语义/模块级诊断当前无位置(span 全 0)。
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "fmt.h"
 #include "lexer.h"
 #include "parser.h"
 #include "pkg.h"
@@ -428,6 +430,119 @@ static int cmd_test(int argc, char** argv) {
     return 0;
 }
 
+// fmt —— R-P2d 双宿主移植:ctronc fmt <file|pkg目录> [-w] [--check]。
+// 语义逐条对齐 compiler-rust/src/main.rs fmt 分支:默认打印到 stdout;-w 原位写回
+// (打印路径,无论是否改动);--check 列出待格式化文件后非零退出;词法诊断 → stderr rc=1。
+static int cmp_strp(const void* a, const void* b) {
+    return strcmp(*(const char**)a, *(const char**)b);
+}
+
+static int ends_with_ct(const char* s) {
+    size_t n = strlen(s);
+    return n >= 3 && strcmp(s + n - 3, ".ct") == 0;
+}
+
+static int cmd_fmt(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "usage: ctronc fmt <file|pkg目录> [-w] [--check]\n");
+        return 2;
+    }
+    const char* path = NULL;
+    int write_in_place = 0, check = 0;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "-w") || !strcmp(argv[i], "--write")) write_in_place = 1;
+        else if (!strcmp(argv[i], "--check")) check = 1;
+        else if (argv[i][0] != '-' && !path) path = argv[i];
+    }
+    if (!path) {
+        fprintf(stderr, "usage: ctronc fmt <file|pkg目录> [-w] [--check]\n");
+        return 2;
+    }
+    // 目标文件集:单文件,或 pkg 目录的 src/*.ct(无 src 则目录直下),文件名序
+    char** targets = NULL;
+    size_t nt = 0, tcap = 0;
+    DIR* d = opendir(path);
+    if (d) {
+        char srcdir[4096];
+        snprintf(srcdir, sizeof srcdir, "%s/src", path);
+        DIR* sd = opendir(srcdir);
+        if (sd) { closedir(d); d = sd; strcpy(srcdir, ""); strcat(srcdir, path); strcat(srcdir, "/src"); }
+        else strcpy(srcdir, path);
+        struct dirent* e;
+        while ((e = readdir(d)) != NULL) {
+            if (!ends_with_ct(e->d_name)) continue;
+            if (nt == tcap) {
+                tcap = tcap ? tcap * 2 : 16;
+                targets = (char**)realloc(targets, tcap * sizeof(char*));
+                if (!targets) abort();
+            }
+            size_t need = strlen(srcdir) + strlen(e->d_name) + 2;
+            targets[nt] = (char*)malloc(need);
+            if (!targets[nt]) abort();
+            snprintf(targets[nt], need, "%s/%s", srcdir, e->d_name);
+            nt++;
+        }
+        closedir(d);
+        qsort(targets, nt, sizeof(char*), cmp_strp);
+    } else {
+        targets = (char**)malloc(sizeof(char*));
+        if (!targets) abort();
+        targets[0] = strdup(path);
+        nt = 1;
+    }
+    int errors = 0, unformatted = 0;
+    for (size_t i = 0; i < nt; i++) {
+        const char* t = targets[i];
+        size_t len;
+        char* src = read_file(t, &len);
+        if (!src) {
+            fprintf(stderr, "无法读取 %s\n", t);
+            errors++;
+            free(targets[i]);
+            continue;
+        }
+        ctron_fmt_result fr = ctron_fmt_src(src, len);
+        if (fr.ndiags > 0) {
+            for (size_t k = 0; k < fr.ndiags; k++)
+                fprintf(stderr, "%s:%u:%u %s: %s\n", t, fr.diags[k].line, fr.diags[k].col,
+                        fr.diags[k].code, fr.diags[k].message);
+            errors++;
+        } else if (check) {
+            if (strcmp(fr.out, src) != 0) {
+                printf("%s\n", t);
+                unformatted++;
+            }
+        } else if (write_in_place) {
+            if (strcmp(fr.out, src) != 0) {
+                FILE* fo = fopen(t, "wb");
+                if (!fo) {
+                    fprintf(stderr, "写入失败 %s\n", t);
+                    errors++;
+                    ctron_fmt_result_free(&fr);
+                    free(src);
+                    free(targets[i]);
+                    continue;
+                }
+                fwrite(fr.out, 1, strlen(fr.out), fo);
+                fclose(fo);
+            }
+            printf("%s\n", t);
+        } else {
+            printf("%s", fr.out);
+        }
+        ctron_fmt_result_free(&fr);
+        free(src);
+        free(targets[i]);
+    }
+    free(targets);
+    if (errors > 0) return 1;
+    if (check && unformatted > 0) {
+        fprintf(stderr, "%d 个文件待格式化\n", unformatted);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     const char* sub = argc > 1 ? argv[1] : "";
     if (strcmp(sub, "version") == 0) {
@@ -438,11 +553,12 @@ int main(int argc, char** argv) {
     if (strcmp(sub, "parse") == 0) return cmd_parse(argc, argv);
     if (strcmp(sub, "check") == 0) return cmd_check(argc, argv);
     if (strcmp(sub, "pkg") == 0) return cmd_pkg(argc, argv);
+    if (strcmp(sub, "fmt") == 0) return cmd_fmt(argc, argv);
     if (strcmp(sub, "manifest") == 0) return cmd_manifest(argc, argv);
     if (strcmp(sub, "run") == 0) return cmd_run(argc, argv);
     if (strcmp(sub, "test") == 0) return cmd_test(argc, argv);
     if (strcmp(sub, "trans") == 0) return cmd_trans(argc, argv);
     if (strcmp(sub, "build") == 0) return cmd_build(argc, argv);
-    fprintf(stderr, "usage: ctronc <version|lex|parse|check|pkg|run|test|trans|build> [args]\n");
+    fprintf(stderr, "usage: ctronc <version|lex|parse|check|pkg|fmt|run|test|trans|build> [args]\n");
     return 2;
 }
