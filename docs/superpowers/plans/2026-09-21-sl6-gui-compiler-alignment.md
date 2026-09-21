@@ -63,6 +63,19 @@
 - **切片序**：β1 ✅ 落库（a862e5b，树等价差分绿）；β2 ⛔ 已探明 ABI 阻塞（见下）；
   β3 cc_emit `static const GuiNode gui_sk_N[]` C 构造（发射口径换源）。
 
+### β3 代码就位待验证（2026-09-21 深夜，工作树未落库）
+
+- **已写**：driver_emit β3 块（has_gui 探测 → gui_sk_build → 15 张 `static const` 数组
+  + gui_sk_ls/gui_sk_li 助手 + gui_sk_load() 组装 t_GuiTree；插在前向声明循环后——
+  typedef 已发射、先于用户函数体）+ trans 分发/sem 白名单/eval 干净 panic 兜底。
+  gui_parse 增 gui_sk_emit_str_arr/gui_sk_emit_int_arr 发射辅助。
+- **验证被阻塞**：peer 在 compiler-c(rt_core/arena/fmt) + compiler/src/lex.ct 的在制品
+  编译进 ctron-emit → **任何 GuiBlock 程序发射中途 SEGV**（s20/s21 红；strlen(NULL)
+  @ lldb；无 β3 对照同崩，非本片代码问题）。suite/e8（seed 路径）不受影响仍绿。
+- **续接动作**：peer WIP 落库后 → 重建 → s23_sk_native 跑通即落库（夹具已写好）。
+  教训：编译器源码调试期，先用最小 GuiBlock 输入 + ctron-chk run --dump-gui 分离
+  「builder 编译态」与「发射链健康度」；工作树对照实验必须仓库根 + 双态各重建。
+
 ### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位）
 
 - **现象**：eval 内建 gui_sk_load 构造 U 值（ GuiTree 同形 list）→ 域包 sk_dump/test_sk
