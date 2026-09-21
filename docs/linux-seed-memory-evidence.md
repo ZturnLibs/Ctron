@@ -99,6 +99,23 @@ linux 验证:probe.yml 重跑 emit 工作负载 /usr/bin/time -v,峰值 <16GB �
   复测建议 -O0 探针构建取干净返回地址)。
 - ci.yml ubuntu 门禁解除条件:E2 级负载峰值 < 16GB(即完成 ct_struct 簇优化)。
 
+## 2026-09-21 终判:linux 复测全绿(run 35608572750 → 35611569919)——债务关闭
+
+drop_frame bind 回收落地后 ubuntu-24.04 实测:
+
+| 负载 | 修复前 | 修复后 | 备注 |
+|---|---|---|---|
+| E1 seed emit cc_run.ct | 15.4GB OOM 被杀 | **1.11GB / 57s** ✓ | −93% |
+| E2 seed emit cc_emit.ct(19k 行) | OOM(推算 ~18GB) | **1.87GB / 104s** ✓ | −90% |
+| 固定点 | — | 发射产物逐字节一致 ✓ | |
+
+结论:解释形态峰值 < 2GB,16GB runner 裕度 ~8×,**ci.yml ubuntu 门禁内存面解除**
+(ci.sh 其余红项:meta_check 语料(net 泳道)与 std 快照漂移(std 泳道)另账)。
+第二波根因复盘:`drop_frame` 的 RAII 幂等清空(f->head = NULL)曾把帧内 bind 节点
+直接丢弃、不入复用链——循环体逐轮重绑 let/var 的 bind 全部孤儿泄漏;让 drop 完成后
+节点入 free-list 即闭。ctl 面教训:-O2 内联使 __builtin_return_address 符号化失真,
+定位时用 -O0 探针构建一行即中。
+
 ## 2026-09-21 续二:drop_frame bind 回收——需求 13GB → 1.65GB(累计 −94%)
 
 第二波根因(-O0 探针构建取干净返回地址,一行定位):`drop_frame` 的 RAII 幂等清空
