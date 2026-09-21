@@ -1354,20 +1354,27 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
                 }
             }
             var mag = c6mul(c6can(at), c6can(bt))
-            if !c6_in_i64(mag) {
-                panic("integer overflow (*)")
-            }
             if mag == "0" {
                 return v6("0")
             }
+            var negr = false
             if aneg {
+                if !bneg {
+                    negr = true
+                }
+            } else {
                 if bneg {
-                    return v6(mag)
+                    negr = true
+                }
+            }
+            if negr {
+                if c6abscmp(mag, "9223372036854775808") > 0 {
+                    panic("integer overflow (*)")
                 }
                 return v6("-" + mag)
             }
-            if bneg {
-                return v6("-" + mag)
+            if c6abscmp(mag, "9223372036854775807") > 0 {
+                panic("integer overflow (*)")
             }
             return v6(mag)
         }
@@ -1414,8 +1421,8 @@ fn val_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
                 }
                 ci += 1
             }
-            var q = byte_slice(qr, 0, bar)
-            var r = byte_slice(qr, bar + 1, qr.len)
+            var q = c6can(byte_slice(qr, 0, bar))
+            var r = c6can(byte_slice(qr, bar + 1, qr.len))
             // 商符号 = 符号异或;余数符号随被除数(C99)
             if aneg2 {
                 if bneg2 {
