@@ -1,0 +1,321 @@
+// =====================================================================
+// driver_doc.ct —— 编译器入口(iface 投影模式,S0)
+// 闭源包分发 S0(docs/superpowers/specs/2026-09-21-closed-pkg-distribution-design.md
+// §10 S0 / §3.1):与 cc_check 同径(scan4 → p_file → pkg_load_use),在合并后
+// 单一 AST 上按源序倾倒包的 iface 面:
+//   pub 符号表  FnPub / pub Struct / pub Enum / pub FnExt(可见性裁决镜像
+//               loader parse_pkg.ct:FnPub 按 tag;Struct/Enum/FnExt 按尾槽 "pub")
+//   trait 面    trait 声明 + 方法/prop 签名(v0 无 pub trait 语法,整体列入,不入符号计数)
+//   impl 面     impl T for X 一行 + 方法签名缩进列(类型 API 面的一部分)
+// 头行 iface <entry> decls=N,尾行 iface symbols=M(M = 可 use 导入的 pub 符号数,
+// 与 loader 可导入集同口径)。Const/Static/私有 fn/test/gui 不入 iface 体,仅计 decls。
+// 输出为确定性文本(源序,逐字节可复现),供 ctron doc / agent 契约头消费;
+// E5030/E5020/E4010/E2020 经 pkg_load_use 与源码路径同判(spec §4 对照表)。
+// 输入锚:read_file("ANCHORINPUT") 中性锚(与 driver_check 同口径)。
+// =====================================================================
+fn doc_ty(t: List[Str]) -> Str {
+    if t[0] == "None" {
+        return ""
+    }
+    if t[0] == "Named" {
+        var out = t[1]
+        if t.len > 2 {
+            var ta = t[2]
+            if ta[0] == "TArgs" && ta.len > 1 {
+                out = out + "["
+                var j: I32 = 1
+                while j < ta.len {
+                    if j > 1 {
+                        out = out + ", "
+                    }
+                    out = out + doc_ty(ta[j])
+                    j += 1
+                }
+                out = out + "]"
+            }
+        }
+        return out
+    }
+    if t[0] == "Ref" {
+        return "&" + doc_ty(t[1])
+    }
+    if t[0] == "Optional" {
+        return doc_ty(t[1]) + "?"
+    }
+    if t[0] == "TupleT" {
+        var out = "("
+        var j: I32 = 1
+        while j < t.len {
+            if j > 1 {
+                out = out + ", "
+            }
+            out = out + doc_ty(t[j])
+            j += 1
+        }
+        return out + ")"
+    }
+    if t[0] == "Slice" {
+        return "[" + doc_ty(t[1]) + "]"
+    }
+    if t[0] == "ArrayT" {
+        // 尺寸表达式以 ".." 占位(v0:iface 面确定性优先,不渲染表达式)
+        return "[" + doc_ty(t[1]) + "; ..]"
+    }
+    if t[0] == "FnType" {
+        var ps = t[1]
+        var out = "fn("
+        var j: I32 = 1
+        while j < ps.len {
+            if j > 1 {
+                out = out + ", "
+            }
+            out = out + doc_ty(ps[j])
+            j += 1
+        }
+        out = out + ")"
+        if t[2][0] != "None" {
+            out = out + " -> " + doc_ty(t[2])
+        }
+        return out
+    }
+    return t[0]
+}
+
+fn doc_tps(tp: List[Str]) -> Str {
+    // [TPs, TPar[name, isc, Bounds]…];空泛型返回空串
+    if tp[0] != "TPs" || tp.len < 2 {
+        return ""
+    }
+    var out = "["
+    var j: I32 = 1
+    while j < tp.len {
+        if j > 1 {
+            out = out + ", "
+        }
+        var p = tp[j]
+        if p[2] == "true" {
+            out = out + "comptime "
+        }
+        out = out + p[1]
+        var bd = p[3]
+        if bd.len > 1 {
+            out = out + ": "
+            var k: I32 = 1
+            while k < bd.len {
+                if k > 1 {
+                    out = out + " + "
+                }
+                out = out + bd[k]
+                k += 1
+            }
+        }
+        j += 1
+    }
+    return out + "]"
+}
+
+fn doc_ps(ps: List[Str]) -> Str {
+    // [Ps, (Param[isv, name, ty] | VaArgs)…];ty 为 None 仅出名(self 可省型)
+    var out = ""
+    var j: I32 = 1
+    while j < ps.len {
+        if j > 1 {
+            out = out + ", "
+        }
+        var p = ps[j]
+        if p[0] == "VaArgs" {
+            out = out + "..."
+        } else {
+            if p[1] == "true" {
+                out = out + "var "
+            }
+            out = out + p[2]
+            if p[3][0] != "None" {
+                out = out + ": " + doc_ty(p[3])
+            }
+        }
+        j += 1
+    }
+    return out
+}
+
+fn doc_fn_core(d: List[Str]) -> Str {
+    // fn 形节点共用:[tag, name, TPs, Ps, ret, body, …]
+    var out = d[1] + doc_tps(d[2]) + "(" + doc_ps(d[3]) + ")"
+    if d[4][0] != "None" {
+        out = out + " -> " + doc_ty(d[4])
+    }
+    return out
+}
+
+fn doc_is_pub(d: List[Str]) -> Bool {
+    // 镜像 loader 可见性裁决(parse_pkg.ct):FnPub 按 tag;Struct/Enum/FnExt 按尾槽 "pub"
+    if d[0] == "FnPub" {
+        return true
+    }
+    if d.len > 2 {
+        if d[d.len - 1] == "pub" {
+            if or2(d[0] == "Struct", or2(d[0] == "Enum", d[0] == "FnExt")) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+fn doc_fields(fs: List[Str]) -> Str {
+    var out = ""
+    var j: I32 = 1
+    while j < fs.len {
+        if j > 1 {
+            out = out + ", "
+        }
+        var f = fs[j]
+        if f[1] == "true" {
+            out = out + "var "
+        } else {
+            out = out + "let "
+        }
+        out = out + f[2] + ": " + doc_ty(f[3])
+        j += 1
+    }
+    return out
+}
+
+fn doc_struct(d: List[Str]) -> Str {
+    return "pub struct " + d[1] + doc_tps(d[3]) + " \{ " + doc_fields(d[4]) + " }"
+}
+
+fn doc_enum(d: List[Str]) -> Str {
+    var out = "pub enum " + d[1] + " \{ "
+    var vs = d[3]
+    var j: I32 = 1
+    while j < vs.len {
+        if j > 1 {
+            out = out + ", "
+        }
+        var v = vs[j]
+        out = out + v[1]
+        var kind = v[2]
+        if kind[0] == "KTuple" {
+            out = out + "("
+            var k: I32 = 1
+            while k < kind.len {
+                if k > 1 {
+                    out = out + ", "
+                }
+                out = out + doc_ty(kind[k])
+                k += 1
+            }
+            out = out + ")"
+        } else if kind[0] == "KStruct" {
+            out = out + " \{ " + doc_fields(kind) + " }"
+        }
+        j += 1
+    }
+    return out + " }"
+}
+
+fn doc_items(it: List[Str]) {
+    // trait/impl 体:Method 与 fn 同形;PropSig/PropImpl 签名面
+    var j: I32 = 1
+    while j < it.len {
+        var m = it[j]
+        if m[0] == "Method" {
+            println("  fn " + doc_fn_core(m))
+        } else if or2(m[0] == "PropSig", m[0] == "PropImpl") {
+            println("  prop " + m[1] + ": " + doc_ty(m[2]))
+        }
+        j += 1
+    }
+}
+
+fn doc_trait(d: List[Str]) -> Str {
+    // [Trait, name, TPs, Bounds, Items];返回头行,体由 doc_items 打印
+    var out = "trait " + d[1] + doc_tps(d[2])
+    var bd = d[3]
+    if bd.len > 1 {
+        out = out + ": "
+        var k: I32 = 1
+        while k < bd.len {
+            if k > 1 {
+                out = out + " + "
+            }
+            out = out + bd[k]
+            k += 1
+        }
+    }
+    return out
+}
+
+fn main() -> I32 {
+    let path = "ANCHORINPUT"
+    let src = read_file("ANCHORINPUT")
+    match src {
+        Some(s) => {
+            var epath = ctron_entry()
+            if seq2(epath, "") {
+                epath = path
+            }
+            var toks = List[Str]()
+            var lns = List[Str]()
+            var cols = List[Str]()
+            var pdiags = List[Str]()
+            scan4(s, toks, lns, cols, pdiags)
+            var cur = Atomic[I32](0)
+            var file = p_file(toks, cur, lns, cols, pdiags)
+            if pdiags.len > 0 {
+                var pi: I32 = 0
+                while pi < pdiags.len {
+                    println(epath + ":" + pdiags[pi])
+                    pi += 1
+                }
+                return 1
+            }
+            var ldiags = List[Str]()
+            var lstack = List[Str]()
+            lstack.push(epath)
+            file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
+            if ldiags.len > 0 {
+                var li: I32 = 0
+                while li < ldiags.len {
+                    println(ldiags[li])
+                    li += 1
+                }
+                return 1
+            }
+            println("iface " + epath + " decls=" + (file.len - 1).to_string())
+            var syms: I32 = 0
+            var i: I32 = 1
+            while i < file.len {
+                var d = file[i]
+                var t = d[0]
+                if doc_is_pub(d) {
+                    syms += 1
+                    if t == "FnPub" {
+                        println("pub fn " + doc_fn_core(d))
+                    } else if t == "FnExt" {
+                        println("pub extern " + doc_fn_core(d))
+                    } else if t == "Struct" {
+                        println(doc_struct(d))
+                    } else if t == "Enum" {
+                        println(doc_enum(d))
+                    }
+                } else if t == "Trait" {
+                    println(doc_trait(d))
+                    doc_items(d[4])
+                } else if t == "Impl" {
+                    println("impl " + doc_ty(d[2]) + " for " + doc_ty(d[3]))
+                    doc_items(d[4])
+                }
+                i += 1
+            }
+            println("iface symbols=" + syms.to_string())
+            return 0
+        }
+        None => {
+            print("read-failed")
+            return 1
+        }
+    }
+}

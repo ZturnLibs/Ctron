@@ -29,6 +29,7 @@ cat $CORE "$SRC/driver_run.ct"   > "$OUT/cc_run.ct"
 cat $CORE "$SRC/driver_check.ct" > "$OUT/cc_check.ct"
 cat $CORE $TRANS "$SRC/driver_emit.ct" > "$OUT/cc_emit.ct"
 cat $CORE "$SRC/fmt.ct" "$SRC/driver_fmt.ct" > "$OUT/cc_fmt.ct"
+cat $CORE "$SRC/driver_doc.ct" > "$OUT/cc_doc.ct"
 # ANCHORVERSION 注入:三产物同源版本串(黄金语料不含该锚,逐字不受影响)
 VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.0.1-dev")
 for P in cc_run cc_check cc_emit cc_fmt; do
