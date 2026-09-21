@@ -442,10 +442,13 @@ int64_t ctron_net_write_str(int64_t fd, const char* s) {
 }
 
 int64_t ctron_net_close(int64_t fd) {
-    int r = ct_close((ct_sock)fd);
-    /* P3-A 兴趣驻留配套:close 后摘 rt 驻留登记(内核已在 close 时自动摘
-     * knote/epoll 节点,钩子只清登记表;未链 rt → 弱哑元 no-op。不动 errno) */
+    /* P4-A:摘 rt 驻留登记先于 close —— fd 号归还内核之前先撤 rt 侧兴趣与
+     * 登记表项,结构性关闭 ABA 复用窗(close 释放 fd 后同号被新连接即时复用、
+     * 旧登记项误伤新 fd 的窗口自此不存在)。内核侧 knote/epoll 节点仍由
+     * close 自动摘;未链 rt → 弱哑元 no-op。先摘亦使 errno 只归 ct_close
+     * (钩子不再可能污染 close 之后的 ct_err() 读取)。 */
     ctron_rt_forget_fd(fd);
+    int r = ct_close((ct_sock)fd);
     if (r != 0) return ct_err();
     return 0;
 }

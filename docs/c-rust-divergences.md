@@ -217,5 +217,25 @@ P3 波(vendored mbedTLS + std/tls 门面 + 互操作矩阵 + Unix socket + DNS �
   单命名空间解析(E5030 同名拦截恰为该机制的守卫);类型面独立、能力面
   贯穿。正解 = 加载器侧判定完成后允许 memo 化复用。(源:P3 Task 3)
 
+### (h) P4 执行发现(发射面跨模块 struct 形,2026-09-21)
+
+P4 波(std/http 协议半层落地)实测的发射面事实,皆编译器泳道挂账;最小复现
+= `.superpowers/sdd/p4-task-1-report.md` 探针记录。核心:跨模块 let 绑定位
+的型别信息丢失 → Member 出口径;同模块面全部无损。
+
+- **跨模块 fn 返回 struct 后,消费方成员读取不可发射**:`let h =
+  http_parse_head(...)` 后 `h.rc` 即 `ct_expr:Member@N` 落出到产物
+  (ct_typeof 对跨模块 let 绑定取不到 `u:` 型别)。**绿面**:同模块成员
+  读写、struct 按值跨模块流动、消费方把值作实参回传跨模块 fn、消费方侧
+  struct 字面量构造。绕行 = 成员访问留在所属模块,公开面 = struct 返回 +
+  标量 getter(std/http parse.ct 的 http_rc/sl_vs 面即此形;Box[Box64]
+  出参通道为另一已知好形)。
+- **Box[多字段 struct] 深链/整读/字段赋值不可发射**:`b.v.f` 链
+  (ct_expr:Member@N)、`let h = b.v` 整读、`out.v.f = x`(`ct_stmt:struct
+  字段赋值未支持`)、`out.v = StructLit` 整赋全红;绿面仅 Box64 标量出参
+  (`out.v = x`/`b.v`,`bind.ct` 形)与 `f(b.v)` 整传实参位。
+- 同模块局部 struct 字段赋值与嵌套成员链(`o.inner.f`)皆绿 —— 缺口精确
+  圈定在「跨模块类型解析」,不涉结构体布局/复制语义。
+
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。
