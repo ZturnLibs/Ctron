@@ -1,0 +1,537 @@
+// std/crypto.ct —— 密码学原语(纯 Ctron;§12 纯 Ctron 驱动的规范级前置)
+// since: std-0.5 stability: experimental
+// 口径:SHA-256 首件(FIPS 180-4);验收锚 = RFC 6234/FIPS 标准向量
+// 实现:语言无位运算(§4.5 bit 模块待建),位函数以 div/mod 位抽取实现;
+// 全部 32 位词以 I64 承载并经 z64 宽域播种(自举值标签随值走,I32 标签跨界
+// 2^31 假阳;U32 字面量标签同病,见登记分歧);消息调度用 16 滑窗具名局部,
+// 不经 List(发射面对 List 元素读无数值转换,登记缺口)
+// 预算:全向量内联测试需 CTRON_MAX_STEPS=0(D2 旋钮,四向量约 200 万步);
+// 自举解释口径无快速宽整型,整向量不可实用(登记),以函数级锚验证
+
+// 宽域零播种(strconv 同款):I64 变量以大字面量差分构造,值标签落在 6 域,
+// 避免自举口径对小值按 I32 界假阳(乘 2 跨 2 的 31 次方即误报)
+fn z64() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+// 2 的 k 次幂(k ∈ 0..31;I64 承载)
+fn p2(k: I32) -> I64 {
+    var r: I64 = z64() + 1
+    var i: I32 = 0
+    while i < k {
+        r = r * 2
+        i += 1
+    }
+    return r
+}
+
+// 32 位异或(值域恒 0 到 4294967295;逐位抽取合成)
+fn xor32(a: I64, b: I64) -> I64 {
+    var acc: I64 = z64()
+    var i: I32 = 0
+    var p: I64 = z64() + 1
+    while i < 32 {
+        var ba = a / p % 2
+        var bb = b / p % 2
+        var xb = ba + bb
+        if xb == 2 {
+            xb = 0
+        }
+        acc += xb * p
+        p = p * 2
+        i += 1
+    }
+    return acc
+}
+
+// 32 位与
+fn and32(a: I64, b: I64) -> I64 {
+    var acc: I64 = z64()
+    var i: I32 = 0
+    var p: I64 = z64() + 1
+    while i < 32 {
+        acc += (a / p % 2) * (b / p % 2) * p
+        p = p * 2
+        i += 1
+    }
+    return acc
+}
+
+// 32 位取反(满幅差即按位反;掩码经宽域播种防 U32 字面量标签假阳)
+fn not32(a: I64) -> I64 {
+    var mask: I64 = z64() + 4294967295
+    return mask - a
+}
+
+// 循环右移:低 32-n 位左移拼接高 n 位(纯算术;此为热路径,忌逐位循环)
+fn rotr32(v: I64, n: I32) -> I64 {
+    var pn: I64 = p2(n)
+    var high = v / pn
+    var low = v - high * pn
+    return low * p2(32 - n) + high
+}
+
+// 逻辑右移
+fn shr32(v: I64, n: I32) -> I64 {
+    return v / p2(n)
+}
+
+// 消息字节入 64 位域(自举口径无隐式拓宽,经 I64 加法中转)
+fn msgb(msg: Str, g: I32) -> I64 {
+    var t: I64 = z64()
+    t = t + byte_at(msg, g)
+    return t
+}
+
+// 十六进制小写数位
+fn hexch(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    if v == 1 {
+        return "1"
+    }
+    if v == 2 {
+        return "2"
+    }
+    if v == 3 {
+        return "3"
+    }
+    if v == 4 {
+        return "4"
+    }
+    if v == 5 {
+        return "5"
+    }
+    if v == 6 {
+        return "6"
+    }
+    if v == 7 {
+        return "7"
+    }
+    if v == 8 {
+        return "8"
+    }
+    if v == 9 {
+        return "9"
+    }
+    if v == 10 {
+        return "a"
+    }
+    if v == 11 {
+        return "b"
+    }
+    if v == 12 {
+        return "c"
+    }
+    if v == 13 {
+        return "d"
+    }
+    if v == 14 {
+        return "e"
+    }
+    return "f"
+}
+
+// 32 位词转 8 位十六进制小写串
+fn hex_word(h: I64) -> Str {
+    var out = ""
+    var pw: I64 = z64() + 268435456
+    var k7: I32 = 0
+    while k7 < 8 {
+        out = out + hexch(h / pw % 16)
+        pw = pw / 16
+        k7 += 1
+    }
+    return out
+}
+
+// 轮常量(前 64 素数立方根小数部分前 32 位;FIPS 180-4 4.2.2)
+fn kk_at(i: I32) -> I64 {
+    var v: I64 = z64()
+    if i == 0 {
+        v = 1116352408
+    }
+    if i == 1 {
+        v = 1899447441
+    }
+    if i == 2 {
+        v = 3049323471
+    }
+    if i == 3 {
+        v = 3921009573
+    }
+    if i == 4 {
+        v = 961987163
+    }
+    if i == 5 {
+        v = 1508970993
+    }
+    if i == 6 {
+        v = 2453635748
+    }
+    if i == 7 {
+        v = 2870763221
+    }
+    if i == 8 {
+        v = 3624381080
+    }
+    if i == 9 {
+        v = 310598401
+    }
+    if i == 10 {
+        v = 607225278
+    }
+    if i == 11 {
+        v = 1426881987
+    }
+    if i == 12 {
+        v = 1925078388
+    }
+    if i == 13 {
+        v = 2162078206
+    }
+    if i == 14 {
+        v = 2614888103
+    }
+    if i == 15 {
+        v = 3248222580
+    }
+    if i == 16 {
+        v = 3835390401
+    }
+    if i == 17 {
+        v = 4022224774
+    }
+    if i == 18 {
+        v = 264347078
+    }
+    if i == 19 {
+        v = 604807628
+    }
+    if i == 20 {
+        v = 770255983
+    }
+    if i == 21 {
+        v = 1249150122
+    }
+    if i == 22 {
+        v = 1555081692
+    }
+    if i == 23 {
+        v = 1996064986
+    }
+    if i == 24 {
+        v = 2554220882
+    }
+    if i == 25 {
+        v = 2821834349
+    }
+    if i == 26 {
+        v = 2952996808
+    }
+    if i == 27 {
+        v = 3210313671
+    }
+    if i == 28 {
+        v = 3336571891
+    }
+    if i == 29 {
+        v = 3584528711
+    }
+    if i == 30 {
+        v = 113926993
+    }
+    if i == 31 {
+        v = 338241895
+    }
+    if i == 32 {
+        v = 666307205
+    }
+    if i == 33 {
+        v = 773529912
+    }
+    if i == 34 {
+        v = 1294757372
+    }
+    if i == 35 {
+        v = 1396182291
+    }
+    if i == 36 {
+        v = 1695183700
+    }
+    if i == 37 {
+        v = 1986661051
+    }
+    if i == 38 {
+        v = 2177026350
+    }
+    if i == 39 {
+        v = 2456956037
+    }
+    if i == 40 {
+        v = 2730485921
+    }
+    if i == 41 {
+        v = 2820302411
+    }
+    if i == 42 {
+        v = 3259730800
+    }
+    if i == 43 {
+        v = 3345764771
+    }
+    if i == 44 {
+        v = 3516065817
+    }
+    if i == 45 {
+        v = 3600352804
+    }
+    if i == 46 {
+        v = 4094571909
+    }
+    if i == 47 {
+        v = 275423344
+    }
+    if i == 48 {
+        v = 430227734
+    }
+    if i == 49 {
+        v = 506948616
+    }
+    if i == 50 {
+        v = 659060556
+    }
+    if i == 51 {
+        v = 883997877
+    }
+    if i == 52 {
+        v = 958139571
+    }
+    if i == 53 {
+        v = 1322822218
+    }
+    if i == 54 {
+        v = 1537002063
+    }
+    if i == 55 {
+        v = 1747873779
+    }
+    if i == 56 {
+        v = 1955562222
+    }
+    if i == 57 {
+        v = 2024104815
+    }
+    if i == 58 {
+        v = 2227730452
+    }
+    if i == 59 {
+        v = 2361852424
+    }
+    if i == 60 {
+        v = 2428436474
+    }
+    if i == 61 {
+        v = 2756734187
+    }
+    if i == 62 {
+        v = 3204031479
+    }
+    if i == 63 {
+        v = 3329325298
+    }
+    return v
+}
+
+// 块内第 j 个消息词(g = 全局字节位;fin = 末块;qlen = 位长域内偏移,非位长域传 -1)
+fn block_word(msg: Str, g: I32, n: I32, fin: I32, qlen: I32, bits: I64) -> I64 {
+    var w0: I64 = z64()
+    var w1: I64 = z64()
+    var w2: I64 = z64()
+    var w3: I64 = z64()
+    if g < n {
+        w0 = msgb(msg, g)
+    }
+    if g + 1 < n {
+        w1 = msgb(msg, g + 1)
+    }
+    if g + 2 < n {
+        w2 = msgb(msg, g + 2)
+    }
+    if g + 3 < n {
+        w3 = msgb(msg, g + 3)
+    }
+    if g == n {
+        w0 = z64() + 128
+    }
+    if g + 1 == n {
+        w1 = z64() + 128
+    }
+    if g + 2 == n {
+        w2 = z64() + 128
+    }
+    if g + 3 == n {
+        w3 = z64() + 128
+    }
+    if fin == 1 {
+        if qlen >= 0 {
+            var sh: I64 = p2((7 - qlen) * 8)
+            w0 = bits / sh % 256
+            w1 = bits / (sh / 256) % 256
+            w2 = bits / (sh / 65536) % 256
+            w3 = bits / (sh / 16777216) % 256
+        }
+    }
+    return (w0 * 16777216 + w1 * 65536 + w2 * 256 + w3) % 4294967296
+}
+
+// SHA-256 摘要,小写 64 位十六进制串;消息按字节级
+pub fn sha256_hex(msg: Str) -> Str {
+    let m32: I64 = 4294967296
+    let n: I32 = msg.len
+    var nblocks: I32 = (n + 72) / 64
+    var bits: I64 = z64() + 8
+    bits = bits * n
+    var h0: I64 = 1779033703
+    var h1: I64 = 3144134277
+    var h2: I64 = 1013904242
+    var h3: I64 = 2773480762
+    var h4: I64 = 1359893119
+    var h5: I64 = 2600822924
+    var h6: I64 = 528734635
+    var h7: I64 = 1541459225
+    var bi: I32 = 0
+    while bi < nblocks {
+        var v0 = block_word(msg, bi * 64, n, 0, -1, bits)
+        var v1 = block_word(msg, bi * 64 + 4, n, 0, -1, bits)
+        var v2 = block_word(msg, bi * 64 + 8, n, 0, -1, bits)
+        var v3 = block_word(msg, bi * 64 + 12, n, 0, -1, bits)
+        var v4 = block_word(msg, bi * 64 + 16, n, 0, -1, bits)
+        var v5 = block_word(msg, bi * 64 + 20, n, 0, -1, bits)
+        var v6 = block_word(msg, bi * 64 + 24, n, 0, -1, bits)
+        var v7 = block_word(msg, bi * 64 + 28, n, 0, -1, bits)
+        var v8 = block_word(msg, bi * 64 + 32, n, 0, -1, bits)
+        var v9 = block_word(msg, bi * 64 + 36, n, 0, -1, bits)
+        var v10 = block_word(msg, bi * 64 + 40, n, 0, -1, bits)
+        var v11 = block_word(msg, bi * 64 + 44, n, 0, -1, bits)
+        var v12 = block_word(msg, bi * 64 + 48, n, 0, -1, bits)
+        var v13 = block_word(msg, bi * 64 + 52, n, 0, -1, bits)
+        var v14 = block_word(msg, bi * 64 + 56, n, 0, -1, bits)
+        var v15 = block_word(msg, bi * 64 + 60, n, 1, bi * 64 + 60 - (nblocks * 64 - 8), bits)
+        var a = h0
+        var b = h1
+        var c = h2
+        var d = h3
+        var e = h4
+        var f = h5
+        var gv = h6
+        var hh = h7
+        var ri: I32 = 0
+        while ri < 64 {
+            var wt: I64 = z64()
+            if ri == 0 {
+                wt = v0
+            }
+            if ri == 1 {
+                wt = v1
+            }
+            if ri == 2 {
+                wt = v2
+            }
+            if ri == 3 {
+                wt = v3
+            }
+            if ri == 4 {
+                wt = v4
+            }
+            if ri == 5 {
+                wt = v5
+            }
+            if ri == 6 {
+                wt = v6
+            }
+            if ri == 7 {
+                wt = v7
+            }
+            if ri == 8 {
+                wt = v8
+            }
+            if ri == 9 {
+                wt = v9
+            }
+            if ri == 10 {
+                wt = v10
+            }
+            if ri == 11 {
+                wt = v11
+            }
+            if ri == 12 {
+                wt = v12
+            }
+            if ri == 13 {
+                wt = v13
+            }
+            if ri == 14 {
+                wt = v14
+            }
+            if ri == 15 {
+                wt = v15
+            }
+            if ri >= 16 {
+                wt = (xor32(xor32(rotr32(v14, 17), rotr32(v14, 19)), shr32(v14, 10)) + v9 + xor32(xor32(rotr32(v1, 7), rotr32(v1, 18)), shr32(v1, 3)) + v0) % m32
+            }
+            var s1v = xor32(xor32(rotr32(e, 6), rotr32(e, 11)), rotr32(e, 25))
+            var chv = xor32(and32(e, f), and32(not32(e), gv))
+            var t1 = (hh + s1v + chv + kk_at(ri) + wt) % m32
+            var s0v = xor32(xor32(rotr32(a, 2), rotr32(a, 13)), rotr32(a, 22))
+            var mjv = xor32(xor32(and32(a, b), and32(a, c)), and32(b, c))
+            var t2 = (s0v + mjv) % m32
+            hh = gv
+            gv = f
+            f = e
+            e = (d + t1) % m32
+            d = c
+            c = b
+            b = a
+            a = (t1 + t2) % m32
+            if ri >= 16 {
+                v0 = v1
+                v1 = v2
+                v2 = v3
+                v3 = v4
+                v4 = v5
+                v5 = v6
+                v6 = v7
+                v7 = v8
+                v8 = v9
+                v9 = v10
+                v10 = v11
+                v11 = v12
+                v12 = v13
+                v13 = v14
+                v14 = v15
+                v15 = wt
+            }
+            ri += 1
+        }
+        h0 = (h0 + a) % m32
+        h1 = (h1 + b) % m32
+        h2 = (h2 + c) % m32
+        h3 = (h3 + d) % m32
+        h4 = (h4 + e) % m32
+        h5 = (h5 + f) % m32
+        h6 = (h6 + gv) % m32
+        h7 = (h7 + hh) % m32
+        bi += 1
+    }
+    return hex_word(h0) + hex_word(h1) + hex_word(h2) + hex_word(h3) + hex_word(h4) + hex_word(h5) + hex_word(h6) + hex_word(h7)
+}
+
+test "sha256 fips vectors" {
+    assert_eq(sha256_hex(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    assert_eq(sha256_hex("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    assert_eq(sha256_hex("The quick brown fox jumps over the lazy dog"), "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592")
+    assert_eq(sha256_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"), "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+}
