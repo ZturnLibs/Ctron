@@ -1,7 +1,10 @@
-// gui expect: OK —— 正例回归锁:on:click={fn} 结构走查(gui_ck_leaf/on 根属性
+// gui expect: OK —— 正例回归锁:on:click={fn} 结构走查(gui_ck_elem/on 根属性
 // 曾盲吃 5 token 漏收尾 } → 越界崩检查丢诊断;修复后须干净通过)
+// SL-6 起 on: 处理函数须在本文件 Fn 表声明(E8120)——inc 补声明。
 // 注:编译器内嵌形式 style 属性间不可用 ;(E1001 禁用标点——与运行时解析形态
 // 的语法分歧,登记 W3 注记);用空格分隔。
+fn inc() {
+}
 view P {
   <vbox class="root">
     <label>total: {n}</label>

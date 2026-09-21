@@ -1,4 +1,5 @@
-// W2:--dump-gui 折叠 IR 黄金(view + style;decls = view1 + style2 + main1 = 4)
+// W2:--dump-gui 折叠 IR 黄金(view + style;decls = view1 + style2 + inc1 + main1 = 5)
+// SL-6 起 on: 处理函数须在本文件 Fn 表声明(E8120)——inc 补声明,黄金 decls 4→5。
 view Counter {
   <vbox class="root">
     <button class="btn" on:click={inc}>+1</button>
@@ -6,6 +7,9 @@ view Counter {
 }
 style root { direction: column gap: 8 }
 style btn { bg: "#2563eb" }
+
+fn inc() {
+}
 
 fn main() -> I32 {
     return 0

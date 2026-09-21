@@ -249,12 +249,19 @@ fn main() -> I32 {
                 gui_dump_file(file)
                 // W3 检查面(挂 dumpgui 旗标下;C 宿主 sem 对 gui_ck 助手参数的
                 // E2020 分歧解决后,再评估移入默认 check 路径)
+                // SL-6(M1-d):gwarns 警告通道(E8193 警告级)——打印不置 rc
                 var gdiags = List[Str]()
-                gui_check_file(file, gdiags)
+                var gwarns = List[Str]()
+                gui_check_file(file, gdiags, gwarns)
                 var gi: I32 = 0
                 while gi < gdiags.len {
                     println(gdiags[gi])
                     gi += 1
+                }
+                var wi: I32 = 0
+                while wi < gwarns.len {
+                    println(gwarns[wi])
+                    wi += 1
                 }
                 if gdiags.len > 0 {
                     return 1

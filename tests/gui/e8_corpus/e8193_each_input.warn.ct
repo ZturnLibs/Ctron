@@ -1,0 +1,11 @@
+// gui expect: E8193 —— SL-6 警告级:each 体含 input(key 原语未落地,索引对齐重排串位)
+// warn 类口径:rc=0 且输出含期望码(§4.4 "警告级可关"——不置错)
+view P {
+  <vbox class="root">
+    <each item in={items}>
+      <input bind={draft} class="field"/>
+    </each>
+  </vbox>
+}
+style root { direction: column }
+style field { bg: "#2a2a2e" }

@@ -162,7 +162,9 @@ fn gui_dump_file(file: List[Str]) -> I32 {
 
 // ==================== gui_lower:折叠为 IR 文本 ====================
 
-// 元素折叠:<' tag attrs '>' content '</' tag '>'(限深 1 递归;子元素自递归)
+// 元素折叠:<' tag attrs '>' content '</' tag '>'(限深递归;子元素自递归)
+// SL-6a 认领:自闭合(input/>)、each item 位置头(in= 绑定列表名)、when cond 绑定名、
+// input bind 绑定名、花括号属性值(单词 = 绑定名通道,与域包解析器同构)
 fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
     if eat_tok(tks, cur) != "<" {
         panic("gui E8100: 期待 <")
@@ -171,7 +173,21 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
     var c: Str = ""
     var onn: Str = ""
     var onf: Str = ""
+    var bv: Str = ""
+    var itemvar: Str = ""
+    if tag == "each" {
+        itemvar = eat_tok(tks, cur)
+    }
+    var selfc: Bool = false
     while tks[cur.load()] != ">" {
+        var pk: Str = tks[cur.load()]
+        if pk.len == 1 {
+            if byte_at(pk, 0) == 47 {
+                cur.store(cur.load() + 1)
+                selfc = true
+                break
+            }
+        }
         var an: Str = eat_tok(tks, cur)
         if an == "on" {
             if eat_tok(tks, cur) != ":" {
@@ -196,22 +212,50 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             if eat_tok(tks, cur) != "=" {
                 panic("gui E8100: 属性期待等号")
             }
-            var av: Str = gui_unq(eat_tok(tks, cur))
+            var av: Str = ""
+            if tks[cur.load()].len == 1 {
+                if byte_at(tks[cur.load()], 0) == 123 {
+                    cur.store(cur.load() + 1)
+                    av = "\{" + eat_tok(tks, cur) + "}"
+                    cur.store(cur.load() + 1)
+                }
+            }
+            if av == "" {
+                av = gui_unq(eat_tok(tks, cur))
+            }
             if an == "class" {
                 c = av
+            }
+            if an == "cond" {
+                bv = av
+            }
+            if an == "bind" {
+                bv = av
+            }
+            if an == "in" {
+                bv = av
             }
         }
     }
     eat_tok(tks, cur)
     var line: Str = ind + "el " + tag
+    if itemvar != "" {
+        line = line + " item=" + itemvar
+    }
     if c != "" {
         line = line + " cls=" + c
+    }
+    if bv != "" {
+        line = line + " bind=" + bv
     }
     if onn != "" {
         line = line + " on:" + onn + "=" + onf
     }
     println(line)
     out.push(line)
+    if selfc {
+        return 0
+    }
     var lit: Str = ""
     while true {
         if tks[cur.load()] == "<" {
@@ -345,6 +389,7 @@ fn gui_ck_color(v: Str, gdiags: List[Str]) -> I32 {
 }
 
 fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
+    // 白名单对齐域包 rt_emit 认领面(std/gui.ct):容器/叶子/包装元素
     if tag == "vbox" {
         return 0
     }
@@ -357,76 +402,254 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
     if tag == "button" {
         return 0
     }
+    if tag == "when" {
+        return 0
+    }
+    if tag == "each" {
+        return 0
+    }
+    if tag == "input" {
+        return 0
+    }
     gdiags.push("E8100: 未声明标签 " + tag)
     return -1
 }
 
-fn gui_ck_leaf(tks: List[Str], cur: Atomic[I32], sn: List[Str], gdiags: List[Str]) -> I32 {
-    var tag: Str = tks[cur.load()]
-    cur.store(cur.load() + 1)
-    var bad: I32 = gui_ck_tag(tag, gdiags)
-    var c: Str = ""
-    while cur.load() < tks.len {
-        if tks[cur.load()] == ">" {
-            break
-        }
-        var an: Str = tks[cur.load()]
-        cur.store(cur.load() + 1)
-        if an == "on" {
-            // on:名={fn} —— 镜像 gui_lower 的 6 token 结构走;曾盲跳 5 漏收尾 },越界崩检查
-            cur.store(cur.load() + 1)
-            cur.store(cur.load() + 1)
-            cur.store(cur.load() + 1)
-            cur.store(cur.load() + 1)
-            cur.store(cur.load() + 1)
-            cur.store(cur.load() + 1)
-            if cur.load() < tks.len {
-                if tks[cur.load()] == "}" {
+// SL-6(M1-d 合流):递归元素走查(镜像 gui_lower 结构;限深 8 守卫)。
+// 认领:when cond 绑定名 / each item 位置头(in= 绑定列表名) / input bind 绑定名自闭合 /
+// 花括号属性值(单词 = 绑定名通道)。诊断:
+//   E8100 未知标签/闭合不匹配/props 缺失(when 无 cond、input 无 bind、each 无 in)
+//   E8110 cond/bind/in 属性契约形态(须花括号绑定名,字符串即绑定期物不符)
+//   E8120 on: 处理函数未在本文件 Fn/FnExt 声明表(签名级联动随 sem,登记非目标)
+//   E8193 each 体含 input 型控件(警告入 gwarns,不置 rc;key 原语未落地前索引对齐即串位)
+// sawin = 子树 input 计数累加器(Atomic;each 据此发 E8193,嵌套 each 各自报)。
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32]) -> I32 {
+    var bad: I32 = 0
+    if depth > 8 {
+        gdiags.push("E8100: 嵌套超限(限深 8)")
+        return -1
+    }
+    var tag: Str = eat_tok(tks, cur)
+    if gui_ck_tag(tag, gdiags) < 0 {
+        bad = -1
+    }
+    if tag == "input" {
+        sawin.store(sawin.load() + 1)
+    }
+    if tag == "each" {
+        // 位置头:item in={列表}(域包先于 attrs 解析,镜像)
+        if cur.load() < tks.len {
+            var it: Str = tks[cur.load()]
+            if it != ">" {
+                if it != "/" {
                     cur.store(cur.load() + 1)
                 }
             }
-        } else {
-            cur.store(cur.load() + 1)
-            if cur.load() < tks.len {
-                var av: Str = gui_unq(tks[cur.load()])
+        }
+    }
+    var has_cond: Bool = false
+    var has_bind: Bool = false
+    var has_in: Bool = false
+    var selfc: Bool = false
+    while cur.load() < tks.len {
+        var pk: Str = tks[cur.load()]
+        if pk.len == 1 {
+            var pb: I32 = byte_at(pk, 0)
+            if pb == 62 {
                 cur.store(cur.load() + 1)
+                break
+            }
+            if pb == 47 {
+                cur.store(cur.load() + 1)
+                selfc = true
+                break
+            }
+        }
+        var an: Str = eat_tok(tks, cur)
+        if an == "on" {
+            // on:名=花括号处理函数:逐 token 校验(曾盲吃 5 漏收尾闭,错位越界,W3 修复口径)
+            if eat_tok(tks, cur) != ":" {
+                gdiags.push("E8100: on 期待冒号")
+                bad = -1
+            }
+            var evn: Str = eat_tok(tks, cur)
+            var hn: Str = ""
+            if eat_tok(tks, cur) != "=" {
+                gdiags.push("E8100: on 期待等号")
+                bad = -1
+            } else {
+                var ob: Str = eat_tok(tks, cur)
+                if ob.len != 1 {
+                    gdiags.push("E8100: on 期待块开")
+                    bad = -1
+                } else {
+                    if byte_at(ob, 0) != 123 {
+                        gdiags.push("E8100: on 期待块开")
+                        bad = -1
+                    } else {
+                        hn = eat_tok(tks, cur)
+                        var cb: Str = eat_tok(tks, cur)
+                        if cb.len != 1 {
+                            gdiags.push("E8100: on 期待块闭")
+                            bad = -1
+                        } else {
+                            if byte_at(cb, 0) != 125 {
+                                gdiags.push("E8100: on 期待块闭")
+                                bad = -1
+                            }
+                        }
+                    }
+                }
+            }
+            if hn != "" {
+                if !gui_ck_has_style(fns, hn) {
+                    gdiags.push("E8120: 事件处理器未声明 " + hn + "(on:" + evn + ")")
+                    bad = -1
+                }
+            }
+        } else {
+            if eat_tok(tks, cur) != "=" {
+                gdiags.push("E8100: 属性期待 =")
+                bad = -1
+            } else {
+                var av: Str = ""
+                var brform: Bool = false
+                if cur.load() < tks.len {
+                    var pv: Str = tks[cur.load()]
+                    if pv.len == 1 {
+                        if byte_at(pv, 0) == 123 {
+                            cur.store(cur.load() + 1)
+                            av = eat_tok(tks, cur)
+                            var cbv: Str = eat_tok(tks, cur)
+                            if cbv.len != 1 {
+                                gdiags.push("E8100: 花括号属性期待闭")
+                                bad = -1
+                            } else {
+                                if byte_at(cbv, 0) != 125 {
+                                    gdiags.push("E8100: 花括号属性期待闭")
+                                    bad = -1
+                                }
+                            }
+                            brform = true
+                        }
+                    }
+                }
+                if !brform {
+                    if cur.load() < tks.len {
+                        av = gui_unq(eat_tok(tks, cur))
+                    }
+                }
                 if an == "class" {
-                    c = av
+                    if !gui_ck_has_style(sn, av) {
+                        gdiags.push("E8150: class 引用未定义样式 " + av)
+                        bad = -1
+                    }
+                }
+                if an == "cond" {
+                    has_cond = true
+                    if !brform {
+                        gdiags.push("E8110: cond 须花括号绑定名形态,得 " + av)
+                        bad = -1
+                    }
+                }
+                if an == "bind" {
+                    has_bind = true
+                    if !brform {
+                        gdiags.push("E8110: bind 须花括号绑定名形态,得 " + av)
+                        bad = -1
+                    }
+                }
+                if an == "in" {
+                    has_in = true
+                    if !brform {
+                        gdiags.push("E8110: in 须花括号绑定名形态,得 " + av)
+                        bad = -1
+                    }
                 }
             }
         }
     }
-    if cur.load() < tks.len {
-        cur.store(cur.load() + 1)
-    }
-    if c != "" {
-        if !gui_ck_has_style(sn, c) {
-            gdiags.push("E8150: class 引用未定义样式 " + c)
+    if tag == "when" {
+        if !has_cond {
+            gdiags.push("E8100: when 缺 cond")
             bad = -1
         }
     }
+    if tag == "input" {
+        if !has_bind {
+            gdiags.push("E8100: input 缺 bind")
+            bad = -1
+        }
+    }
+    if tag == "each" {
+        if !has_in {
+            gdiags.push("E8100: each 缺 in")
+            bad = -1
+        }
+    }
+    if selfc {
+        return bad
+    }
+    var in_before: I32 = sawin.load()
     while cur.load() < tks.len {
-        if tks[cur.load()] == "<" {
-            break
+        var pk2: Str = tks[cur.load()]
+        if pk2.len == 1 {
+            var b2: I32 = byte_at(pk2, 0)
+            if b2 == 60 {
+                // <:子元素或本元素闭合
+                if cur.load() + 1 < tks.len {
+                    var nk: Str = tks[cur.load() + 1]
+                    if nk.len == 1 {
+                        if byte_at(nk, 0) == 47 {
+                            cur.store(cur.load() + 2)
+                            if cur.load() < tks.len {
+                                var et: Str = eat_tok(tks, cur)
+                                if et != tag {
+                                    gdiags.push("E8100: 闭合标签不匹配 " + et)
+                                    bad = -1
+                                }
+                            }
+                            if cur.load() < tks.len {
+                                var gt: Str = tks[cur.load()]
+                                if gt.len == 1 {
+                                    if byte_at(gt, 0) == 62 {
+                                        cur.store(cur.load() + 1)
+                                    }
+                                }
+                            }
+                            break
+                        }
+                    }
+                }
+                cur.store(cur.load() + 1)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, depth + 1, sawin)
+                if cb < 0 {
+                    bad = -1
+                }
+            } else {
+                if b2 == 35 {
+                    gdiags.push("E8100: 未终止 " + tag)
+                    bad = -1
+                    break
+                }
+                cur.store(cur.load() + 1)
+            }
+        } else {
+            cur.store(cur.load() + 1)
         }
-        cur.store(cur.load() + 1)
     }
-    // 闭合:'</' tag '>';界外即结构异常,交由主循环界内终止
-    if cur.load() + 2 < tks.len {
-        cur.store(cur.load() + 1)
-        cur.store(cur.load() + 1)
-        var et: Str = tks[cur.load()]
-        cur.store(cur.load() + 1)
-        if et != tag {
-            gdiags.push("E8100: 闭合标签不匹配 " + et)
-            bad = -1
+    if tag == "each" {
+        if sawin.load() > in_before {
+            gwarns.push("E8193: each 体含 input,索引对齐重排将串位(key 原语未落地)")
         }
     }
     return bad
 }
 
-fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
+fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str]) -> I32 {
+    // 第一遍:样式名表 + Fn/FnExt 名表(E8120 处理函数存在性依据)
     var sn = List[Str]()
+    var fns = List[Str]()
     var si: I32 = 1
     while si < file.len {
         var ds = file[si]
@@ -435,6 +658,16 @@ fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
                 var stks = List[Str]()
                 gui_split(ds[4], stks)
                 sn.push(stks[0])
+            }
+        }
+        if ds[0] == "Fn" {
+            if ds.len > 1 {
+                fns.push(ds[1])
+            }
+        }
+        if ds[0] == "FnExt" {
+            if ds.len > 1 {
+                fns.push(ds[1])
             }
         }
         si += 1
@@ -451,69 +684,8 @@ fn gui_check_file(file: List[Str], gdiags: List[Str]) -> I32 {
                 if eat_tok(tks, cur) != "<" {
                     gdiags.push("E8100: view 期待 <")
                 } else {
-                    var tag: Str = eat_tok(tks, cur)
-                    gui_ck_tag(tag, gdiags)
-                    while cur.load() < tks.len {
-                        if tks[cur.load()] == ">" {
-                            break
-                        }
-                        var an: Str = eat_tok(tks, cur)
-                        if an == "on" {
-                            // on:名={fn} —— 镜像 gui_lower 对齐 6 token(曾盲吃 5 漏 },错位越界)
-                            eat_tok(tks, cur)
-                            eat_tok(tks, cur)
-                            eat_tok(tks, cur)
-                            eat_tok(tks, cur)
-                            eat_tok(tks, cur)
-                            eat_tok(tks, cur)
-                            if cur.load() < tks.len {
-                                if tks[cur.load()] == "}" {
-                                    eat_tok(tks, cur)
-                                }
-                            }
-                        } else {
-                            if eat_tok(tks, cur) != "=" {
-                                gdiags.push("E8100: 属性期待 =")
-                            } else {
-                                var av: Str = gui_unq(eat_tok(tks, cur))
-                                if an == "class" {
-                                    if !gui_ck_has_style(sn, av) {
-                                        gdiags.push("E8150: class 引用未定义样式 " + av)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    while cur.load() < tks.len {
-                        if tks[cur.load()] == "<" {
-                            break
-                        }
-                        cur.store(cur.load() + 1)
-                    }
-                    var guard: I32 = 0
-                    while guard < 64 {
-                        if cur.load() < tks.len {
-                            if tks[cur.load()] == "<" {
-                                if cur.load() + 1 < tks.len {
-                                    if tks[cur.load() + 1] == "/" {
-                                        cur.store(cur.load() + 2)
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        if cur.load() < tks.len {
-                            if tks[cur.load()] == "<" {
-                                cur.store(cur.load() + 1)
-                                gui_ck_leaf(tks, cur, sn, gdiags)
-                            } else {
-                                break
-                            }
-                        } else {
-                            break
-                        }
-                        guard += 1
-                    }
+                    var sawin = Atomic[I32](0)
+                    gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, 1, sawin)
                 }
             } else {
                 if d[1] == "style" {

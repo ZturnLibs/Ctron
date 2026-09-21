@@ -1,4 +1,4 @@
-check OK decls=4
+check OK decls=5
   gui view Counter
     el vbox cls=root
       el button cls=btn on:click=inc

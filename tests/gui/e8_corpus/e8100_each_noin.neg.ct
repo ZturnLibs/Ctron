@@ -1,0 +1,10 @@
+// gui expect: E8100 —— SL-6:each 缺 in 列表绑定(props 缺失族;位置头 item 合法消费)
+view P {
+  <vbox class="root">
+    <each item>
+      <label class="row">{item}</label>
+    </each>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }

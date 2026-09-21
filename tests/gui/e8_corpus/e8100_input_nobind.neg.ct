@@ -1,0 +1,8 @@
+// gui expect: E8100 —— SL-6:input 缺 bind(props 缺失族)
+view P {
+  <vbox class="root">
+    <input placeholder="写点啥" class="field"/>
+  </vbox>
+}
+style root { direction: column }
+style field { bg: "#2a2a2e" }

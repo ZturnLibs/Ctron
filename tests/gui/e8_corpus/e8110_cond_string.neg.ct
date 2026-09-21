@@ -1,0 +1,10 @@
+// gui expect: E8110 —— SL-6:cond 给字符串字面量(绑定契约须 {名} 形态)
+view P {
+  <vbox class="root">
+    <when cond="always">
+      <label class="row">x</label>
+    </when>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }

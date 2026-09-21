@@ -1,0 +1,22 @@
+// gui expect: OK —— SL-6 合成回归锁:when/each/input 自闭合/花括号属性值/each 位置头
+// 全走查认领,处理函数已声明(E8120 正路径),诊断与警告双无。
+fn inc() {
+}
+view P {
+  <vbox class="root">
+    <label>items: {n}</label>
+    <input bind={draft} placeholder="写点啥" class="field"/>
+    <button class="btn" on:click={inc}>+1</button>
+    <when cond={show}>
+      <label class="mirror">{draft}</label>
+    </when>
+    <each item in={items}>
+      <label class="row">{item}</label>
+    </each>
+  </vbox>
+}
+style root { direction: column gap: 8 }
+style field { bg: "#2a2a2e" }
+style btn { bg: "#2563eb" }
+style mirror { fg: "#aaaaaa" }
+style row { fg: "#ffffff" }

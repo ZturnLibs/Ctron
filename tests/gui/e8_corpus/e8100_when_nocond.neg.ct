@@ -1,0 +1,10 @@
+// gui expect: E8100 —— SL-6:when 缺 cond(props 缺失族)
+view P {
+  <vbox class="root">
+    <when>
+      <label class="row">x</label>
+    </when>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }

@@ -1,0 +1,8 @@
+// gui expect: E8120 —— SL-6:on:click 处理函数未在本文件 Fn/FnExt 声明表
+view P {
+  <vbox class="root">
+    <button class="btn" on:click={nosuch}>go</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }
