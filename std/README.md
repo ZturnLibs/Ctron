@@ -25,6 +25,7 @@
 | `unicode.ct` | UTF-8 解码面:cp_at/valid/iter/count(字素/宽度表显式非目标) | 无 | 0.2 |
 | `opt.ct` | Option/Result 组合子:and_then/or_else/map2/to_result | 无 | 0.2 |
 | `heap.ct` | 二叉堆:比较器注入小顶堆(push/pop/peek/sorted;函数式) | 无 | 0.2 |
+| `math.ct` | 数学助手(整数域):clamp/iabs/pow2 系 + v0.4 扩张(max/min/clamp64/64 位界端 + sat_* 饱和算术;sat_mul64 待 interp 修复) | 无 | 0.3 |
 
 ## 组织宪章
 

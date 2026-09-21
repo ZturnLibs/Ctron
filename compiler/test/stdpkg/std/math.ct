@@ -64,6 +64,165 @@ pub fn iabs64(v: I64) -> I64 {
     return v
 }
 
+// 两数较大值
+pub fn max(a: I32, b: I32) -> I32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+// 两数较小值
+pub fn min(a: I32, b: I32) -> I32 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// 两数较大值(I64)
+pub fn max64(a: I64, b: I64) -> I64 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+// 两数较小值(I64)
+pub fn min64(a: I64, b: I64) -> I64 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// 钳位(I64);v ∈ [lo, hi],域外取端点
+pub fn clamp64(v: I64, lo: I64, hi: I64) -> I64 {
+    if v < lo {
+        return lo
+    }
+    if v > hi {
+        return hi
+    }
+    return v
+}
+
+// 饱和加法:越上界得 I32 最大值,越下界得 I32 最小值,不触 C10 溢出死区
+pub fn sat_add(a: I32, b: I32) -> I32 {
+    let hi: I32 = 2147483647
+    let lo: I32 = -2147483647 - 1
+    if b >= 0 {
+        if a > hi - b {
+            return hi
+        }
+        return a + b
+    }
+    if a < lo - b {
+        return lo
+    }
+    return a + b
+}
+
+// 饱和减法:越上界得 I32 最大值,越下界得 I32 最小值,不触 C10 溢出死区
+pub fn sat_sub(a: I32, b: I32) -> I32 {
+    let hi: I32 = 2147483647
+    let lo: I32 = -2147483647 - 1
+    if b >= 0 {
+        if a < lo + b {
+            return lo
+        }
+        return a - b
+    }
+    if a > hi + b {
+        return hi
+    }
+    return a - b
+}
+
+// 饱和乘法:越上界得 I32 最大值,越下界得 I32 最小值,不触 C10 溢出死区;
+// 四象限界门判定的除法恒安全(除数非零,不出现最小值除以负一)
+pub fn sat_mul(a: I32, b: I32) -> I32 {
+    let hi: I32 = 2147483647
+    let lo: I32 = -2147483647 - 1
+    if a == 0 {
+        return 0
+    }
+    if b == 0 {
+        return 0
+    }
+    if a > 0 {
+        if b > 0 {
+            if a > hi / b {
+                return hi
+            }
+            return a * b
+        }
+        if b < lo / a {
+            return lo
+        }
+        return a * b
+    }
+    if b > 0 {
+        if a < lo / b {
+            return lo
+        }
+        return a * b
+    }
+    if a < hi / b {
+        return hi
+    }
+    return a * b
+}
+
+// I64 域上端(正极大字面量纯绑定,不经检查运算)
+fn hi64() -> I64 {
+    return 9223372036854775807
+}
+
+// I64 域下端(C 宿主检查运算不接受裸字面量操作数,须变量同宽中转构造)
+fn lo64() -> I64 {
+    let h: I64 = 9223372036854775807
+    let z: I64 = 0
+    let o: I64 = 1
+    return z - h - o
+}
+
+// 饱和加法(I64):越上界得 I64 最大值,越下界得 I64 最小值,不触 C10 溢出死区
+pub fn sat_add64(a: I64, b: I64) -> I64 {
+    let hi: I64 = hi64()
+    let lo: I64 = lo64()
+    if b >= 0 {
+        if a > hi - b {
+            return hi
+        }
+        return a + b
+    }
+    if a < lo - b {
+        return lo
+    }
+    return a + b
+}
+
+// 饱和减法(I64):越上界得 I64 最大值,越下界得 I64 最小值,不触 C10 溢出死区
+pub fn sat_sub64(a: I64, b: I64) -> I64 {
+    let hi: I64 = hi64()
+    let lo: I64 = lo64()
+    if b >= 0 {
+        if a < lo + b {
+            return lo
+        }
+        return a - b
+    }
+    if a > hi + b {
+        return hi
+    }
+    return a - b
+}
+
+// 饱和乘法(I64):押后登记——原生解释器对结果恰为 I64 最小值的乘法误报溢出
+// (探针实证 I64 最小值乘 1 即触发),修复前其永不触 C10 承诺不可验证,
+// 随 interp 线修复后按同型四象限实现落库
+
 test "clamp" {
     assert_eq(clamp(5, 1, 10), 5)
     assert_eq(clamp(0, 1, 10), 1)
@@ -93,4 +252,67 @@ test "iabs" {
     assert_eq(iabs(5), 5)
     assert_eq(iabs(0), 0)
     assert_eq(iabs64(-1073741823), 1073741823)
+}
+
+// ============ v0.4 扩张(since: std-0.4):数值便利与饱和算术 ============
+// sat_* 家族:结果越界时钳到域端,永不触 C10 溢出死区;
+// 先做界门判定再运算,判定式本身无溢出;I64 界端经 hi64/lo64 变量中转构造
+// (C 宿主 checked 运算对裸字面量按 I32 默认宽度求值,见登记分歧)
+
+test "max min" {
+    assert_eq(max(3, 7), 7)
+    assert_eq(max(7, 3), 7)
+    assert_eq(max(-3, -7), -3)
+    assert_eq(max(0, 0), 0)
+    assert_eq(min(3, 7), 3)
+    assert_eq(min(7, 3), 3)
+    assert_eq(min(-3, -7), -7)
+    assert_eq(max(2147483647, 5), 2147483647)
+    assert_eq(min(-2147483647 - 1, 5), -2147483647 - 1)
+}
+
+test "max64 min64 clamp64" {
+    assert_eq(max64(5000000000, 3), 5000000000)
+    assert_eq(max64(3, 5000000000), 5000000000)
+    let p5: I64 = 5000000000
+    let z: I64 = 0
+    let n5: I64 = z - p5
+    assert_eq(min64(n5, 3), n5)
+    assert_eq(clamp64(5, 1, 10), 5)
+    assert_eq(clamp64(0, 1, 10), 1)
+    assert_eq(clamp64(15, 1, 10), 10)
+    assert_eq(clamp64(5000000000, 1, 4000000000), 4000000000)
+}
+
+test "sat_add sat_sub" {
+    assert_eq(sat_add(2, 3), 5)
+    assert_eq(sat_add(2147483646, 1), 2147483647)
+    assert_eq(sat_add(2147483647, 1), 2147483647)
+    assert_eq(sat_add(-2147483647 - 1, -1), -2147483647 - 1)
+    assert_eq(sat_add(-2147483647, 1), -2147483646)
+    assert_eq(sat_sub(5, 3), 2)
+    assert_eq(sat_sub(-2147483647, 1), -2147483647 - 1)
+    assert_eq(sat_sub(-2147483647 - 1, 1), -2147483647 - 1)
+    assert_eq(sat_sub(2147483647, -1), 2147483647)
+    assert_eq(sat_sub(2147483646, -1), 2147483647)
+}
+
+test "sat_mul" {
+    assert_eq(sat_mul(3, 4), 12)
+    assert_eq(sat_mul(0, 2147483647), 0)
+    assert_eq(sat_mul(2147483647, 2), 2147483647)
+    assert_eq(sat_mul(2147483647, -2), -2147483647 - 1)
+    assert_eq(sat_mul(-2147483647 - 1, 2), -2147483647 - 1)
+    assert_eq(sat_mul(-2147483647 - 1, -1), 2147483647)
+    assert_eq(sat_mul(-2147483647 - 1, 1), -2147483647 - 1)
+    assert_eq(sat_mul(-1073741824, 2), -2147483647 - 1)
+    assert_eq(sat_mul(-3, -4), 12)
+}
+
+test "sat64" {
+    let hi: I64 = hi64()
+    let lo: I64 = lo64()
+    assert_eq(sat_add64(2, 3), 5)
+    assert_eq(sat_add64(hi, 1), hi)
+    assert_eq(sat_sub64(lo, 1), lo)
 }
