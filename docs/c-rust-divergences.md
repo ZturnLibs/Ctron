@@ -237,5 +237,51 @@ P4 波(std/http 协议半层落地)实测的发射面事实,皆编译器泳道�
 - 同模块局部 struct 字段赋值与嵌套成员链(`o.inner.f`)皆绿 —— 缺口精确
   圈定在「跨模块类型解析」,不涉结构体布局/复制语义。
 
+### (i) P4 执行发现续(解释器值域定宽实例 + 编译泳道移交收口,2026-09-21)
+
+P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移交编译器
+泳道的在册事实收口;细节见 `docs/superpowers/plans/2026-09-21-server-p4-http.md`
+执行记录与 `.superpowers/sdd/p4-task-{2,3}-report.md`。
+
+- **解释器按值域定宽算术(两实例族,均编译器泳道挂账;emit 侧 int64 恒正确,
+  双口径漂移)**:
+  1. *6 域 `c6sub` 双负操作数符号翻转*:`(-1) - (-86400)` 实证得 `-86399`;
+     根因 `compiler/src/eval_val.ct` c6sub 双负分支取 `c6sub(|a|,|b|)` 应为
+     `c6sub(|b|,|a|)`。(源:P4 Task 2,date.ct 已结构性规避)
+  2. *乘法按值域定宽判上溢*:声明 I64 而值落 I32 域的操作数相乘,解释器按
+     I32 宽度判溢出即 panic(`z * 86400` epoch 段炸,源:P4 Task 2;
+     std/time.ct `w - w + x` 提升惯例即此规避)。**P4-D fuzz 再证 std/http
+     四处同族**:chunk size 行 `acc*16`、CL 十进制 `acc*10`(值 ≥ ~2.1e8)、
+     WS len64 `acc*256`(首四字节 ≥ 00 80 00 00)、WS 掩码键首字节 `*2^24`
+     (≥ 0x80 即触发,50% 随机掩码键)—— 值跨 [2^28, 2^31) 带即炸;corpus
+     零值超位语料(17 个 0)不触发,盲区被 fuzz 结构化生成覆盖。修 =
+     std/http 四处 C10 宽域惯用法 `(x + 2^32 - 2^32) * k`(纯恒等,emit
+     无差);编译器侧正解 = 乘法宽度按声明类型/promotion 而非运行时值域
+     (P9 挂账)。(源:P4-D fuzz,seed 2 chunk 10-hex 用例)
+- **use 路径含 `-` 宿主崩溃**:模块名带 `-`(`use std.http.bind-deflate.{…}`)
+  使 ctron-cc/ctron-emit 双双 segv(rc=139)—— 词法对 use 段无 `-` 防御;
+  本波改名 `binddeflate.ct` 规避。正解 = 词法段字符合法化 + 响亮诊断。
+  (源:P4 Task 2)
+- **(h) 家族新证(P4-B/C)**:Option[struct] 变体载荷 match 与 List[struct]
+  push 发射错型(form.ct 头注③,交错 K/V 道绕行);TupleE(tuple of
+  structs)返回出口径;struct 的 Box 字段 StructLit 整赋/字段赋值出口径;
+  跨模块 struct 作字段(CxRead.head)出口径(改纯标量槽 + 消费侧重解析);
+  闭包内跨模块 struct 返回调用不可靠(http_net() → 传输壳去 io 参,裸标量)。
+  绿面/绕行同 (h) 结论。(源:P4 Task 3 §5.3、Task 2 §8.4)
+- **fmt × emit 不一致(scope 拆臂挂死)**:`ctron-fmt` 将
+  `var out = scope { |sc|` 重排为两行(`scope {` + 独立 `|sc|` 行)后,
+  `ctron-emit` 前端挂死(bootstrap 解释器不终止;单行形恒绿)。修法归属
+  fmt/emit 任一侧对齐。(源:P4 Task 3 §5.1)
+- **加载器严格树 E5020/E5030 加码实证**:任一文件的传递 use 树中每个模块
+  至多出现一次(栈式查环无 pop);同父双子共享任一叶子 = E5020;同名二次
+  合并 = E5030 ⇒ std/http 消费方 use 图必须严格互斥树(client 唯一 IO 面
+  ← {bind,parse,message};sse 纯叶;ws → crypto)。正解仍是 (g) 已挂账的
+  「加载器侧判定完成后 memo 化复用」。(源:P4 Task 3 §4)
+- **std/enc b64 C8 入参约束(依赖登记)**:std/enc `b64_encode` 受 C8
+  printable-ASCII 入参域约束,原始摘要字节不可作 Str 承载 ⇒ ws.ct 自出
+  lane-b64(RFC 4648 标准字母表 + '=' 填充);SSE/WS 非 ASCII 载荷、form
+  解码 Unicode 面同受 C8 域约束。std/enc 字节构建面放宽(C8/Str 构建面
+  升版)后 ws b64 可收编、form 需随动。(源:P4 Task 3 §3、Task 2 §8)
+
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。

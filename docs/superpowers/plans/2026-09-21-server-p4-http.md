@@ -68,3 +68,57 @@
 - 设计覆盖:§六 P4 全项(编解码/keep-alive/chunked/100-continue/上限/客户端/SSE/WS/压缩/日期/query-form/会话分层注记)有任务;query/form 并入 Task 2(std/enc pct_* 复用,薄);multipart 属 P6 框架面。
 - 风险前置:字节道 8× 宽度对解析基准的影响 = Task 4 实测定档;SHA-1 新增 = RFC 向量锚定;miniz vendor 沿用 mbedTLS 惯例。
 - 明确不做:P6 框架面(路由/中间件)、permessage-deflate(P9)、代理 CONNECT 隧道(简单代理转发列 P6 视需求)、h2(P9)。
+
+---
+
+## 执行记录(P4 出口判定,2026-09-21)
+
+### 执行轨迹(子代理驱动;评审 Approved)
+
+| 任务 | 提交 | 要点 |
+|---|---|---|
+| P4-A(Task 1) | `78adbe0`+`47c5985` | forget_fd 重排(ABA 收口)+ bench 三门禁/c10k 复验 + std/http {parse,message} + corpus 14 夹具 + 11-net v0.8.1 回写 |
+| P4-B(Task 2) | `a655488`+`9d405b4`+`82328e5` | miniz 3.1.2 vendored(provenance byte-perfect)+ gzip 纯 Ctron 组框 + 协商(`*;q=0` 排除 identity 评审必修)+ RFC 1123 + form;移交编译泳道四件 |
+| P4-C(Task 3) | `90240b4`+`2d7e47d` | client/sse/ws + std/crypto SHA-1 + 双 RT e2e;评审必修 = WS 三 MUST(分片序列/UTF-8 1007/version 13)+ len64 在库证据 + Minor 三件;修复波断言逮两真 bug(零长帧悬挂/len7 误算) |
+| P4-D(Task 4) | `136aeb2` + fuzz/docs 波 | 解析基准 + fuzz 结构化长跑 + 差分对拍 + 登记收口(本节) |
+
+### 出口判定门
+
+| 门 | 门限 | 实测 | 判定 |
+|---|---|---|---|
+| 解析吞吐 vs picohttpparser | ≤ 2× | ctron 209 ns/req vs pico 46 ns/req = **4.54×**(复跑 4.44×;N=1e6 ×3 取最小,字节 digest 双侧 pin) | **RED → 诚实登记**:解析器工作在 `&I64[]` 字节道,每字节一条 I64 lane;4.5× < 8× 悲观线性外推,仍在 lane 税量级(~4.8M parse/s ≈ 754 MB/s 语料吞吐);处置 = P9 I8-typedef(字节道换窄 lane 后重对拍本基准);不改数、不换语料、不粉饰(§Global Constraints 预案执行)。全请求周期 ≤1.05× 承诺按计划归 P6 出口复核 |
+| fuzz 零崩溃/零挂死 | 双臂 × seeds 零非零退出/零 watchdog 超时 | 本地 24 seeds × {interp 1500 + emit 50k + gz 50k + diff 256} = **120 段全绿**(≈11 min);结构化十类;差分 6144 样本:`we_accept_pico_rejects = 0`、`pico_accepts_we_reject = 1265`(严格子集预期差,登记) | **PASS**(nightly ≥30min 惯例入 run.sh 头注;不入 CI 主环) |
+| 双矩阵回归 | tests/http 全绿 | **57/57 双臂**(x_ e2e × {默认, CTRON_RT=coro}) | **PASS** |
+| 走私面/上限/RFC 9110 合规子集 | P4-A 全拒姿态保持 | 57/57 内含 obs-fold/TE+CL/重复 CL/裸 LF·裸 CR/值内 CTL 全拒 + 上限四类独立 err 码回归 | **PASS** |
+
+### fuzz 附带实证与修复
+
+fuzz 结构化生成(seed 2,chunk 10-hex 用例)实证**解释器按值域定宽乘法**
+在 std/http 四处同族触发(chunk size `acc*16` / CL `acc*10` / WS len64
+`acc*256` / WS 掩码键 `×2^24`;值跨 [2^28,2^31) 带即 panic,emit 侧 int64
+恒正确)—— 即 P4-B 移交编译泳道的在册缺陷新实例;修 = C10 宽域惯用法
+`(x + 2^32 - 2^32) * k` 四处结构性规避(纯恒等,time.ct 先例),编译器侧
+正解挂账 divergences (i)/P9。此为 fuzz 门「零崩溃」判据的首个实战捕获。
+
+### 捎带收口(P4-C 评审遗留 Minor)
+
+- sse `id:` NUL 整字段忽略 → 夹具常设钉(a_ssefmt.ct 新测试)✅ 本波
+- 单帧文本消费方 UTF-8 校验示范(1007 同规)→ x_ws_e2e.ct 新断言 ✅ 本波
+- 装饰性余项(typo `shar256`、`cx_slice_str` 拒 `{`、重试不分方法 PEDANTIC
+  档、301·308 与分片中控制帧覆盖补齐)→ 留档 P9/终审裁量(非协议 MUST 面)
+
+### 登记账
+
+- divergences:新增 **(i) P4 执行发现续**(值域定宽两实例族收口 + use 路径
+  `-` segv + (h) 家族新证 + fmt×emit scope 拆臂挂死 + 加载器严格树
+  E5020/E5030 加码 + std/enc b64 C8 约束依赖)。
+- COVERAGE:P4-A/B/C/D 四行 as-built 门数字。
+- 工具链在途注记:本波收口时点 `ctron-fmt --check` 对 canonical 既有文件
+  报 read-failed(并行编译泳道在途树状态,P4-C 报告 §5.4 同款漂移注记);
+  fuzz/bench 产物以 interp/emit 双臂实跑为准。
+
+### 明确不做(按计划)
+
+P6 框架面(路由/中间件)、permessage-deflate(P9)、代理 CONNECT(P6 视
+需求)、h2(P9)、zlib 容器与 FHCRC(登记未实现)、非 ASCII SSE/WS 载荷
+(随 C8/Str 构建面放宽同波)。
