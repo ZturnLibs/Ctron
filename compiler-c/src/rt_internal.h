@@ -82,12 +82,16 @@ struct scope_t { task_t* tasks; int cancelled; };
 
 // ================= 上下文 =================
 typedef struct bind { const char* name; val slot; struct bind* next; } bind;
-typedef struct env { bind* head; struct env* up; } env;
+// captured:闭包按指针捕获整条 env 链(val.cap);被捕获的帧 pop 时只摘链不复用,
+// 保证闭包读到的捕获内容与 arena 不可变语义一致
+typedef struct env { bind* head; struct env* up; int captured; } env;
 
 typedef struct {
     const cfile* f;
     ctron_arena* a;
     env* top;
+    env* env_free;  // 栈纪律复用链(pop 的未捕获帧;解释调用帧占解释形态需求大头)
+    bind* bind_free;
     val ret;
     int has_ret;
     int has_brk;

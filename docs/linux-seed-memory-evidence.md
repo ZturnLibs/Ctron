@@ -71,3 +71,20 @@
 **修复排序(预期收益):** ①lex.ct or2 链改 `||`/`&&` 运算符(≈-7GB);
 ②ct_struct 查询簇单遍化/预索引(≈-10GB);③nl_set_* 内联(≈-0.5GB);
 合计预期把 emit 需求压到 2-4GB,16GB runner 安全裕度内。余项见 FN 榜逐级清理。
+
+## 2026-09-21 续:rt 三件修复落地——需求 26GB → 13GB(−50%),RSS 1.2GB,输出逐字节一致
+
+实现(compiler-c/src,解释器值模型层;门禁 suite.py 0 红 + smoke 我方段全绿 + 输出逐字节一致):
+1. **字面量零分配快路径**(rt_core.c str_expr):纯 TEXT 单部件字面量直接别名解析期
+   NUL 常量(不可变,别名安全)——比较用字面量("Enum"/类型码等)此前每次求值都
+   sb+astr 双重分配;分配次数 2.1 亿 → 4847 万(−77%)。
+2. **env/bind 栈纪律复用**(env_push/pop/let):调用帧与绑定节点按 pop 入
+   free-list、push 取用;闭包按指针捕获整条链(val.cap),故创建闭包时沿链标
+   captured,pop 时被捕获帧只摘链不复用——语义与"arena 不可变"完全一致。
+   or2 类微调用每帧 600B → 84B(−86%)。
+3. **env_let 同帧同名原地覆写**:循环体逐轮重绑 let/var 不再逐轮新增 bind 节点。
+
+剩余(13GB 构成):ct_struct_tps/ct_structs/ct_is_enum/ct_enum_of_variant 簇仍 ~8GB
+(28k 次 × ~84KB,扫描循环内每迭代仍有 ~187B 未定界分配);RA 直方图探针已备
+(__builtin_return_address + 计数),-O2 内联致符号化失真,复测建议 -O0 探针构建。
+linux 验证:probe.yml 重跑 emit 工作负载 /usr/bin/time -v,峰值 <16GB 即解除 ci.yml 门禁。

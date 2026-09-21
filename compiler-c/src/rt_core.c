@@ -1,5 +1,6 @@
 #include "rt_internal.h"
 #include <stdlib.h>
+#include "arena.h"
 
 // rt_core.c —— 值构造/缓冲/数值辅助/环境 + 字符串插值 + 函数调用与断言域(C4)
 val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
@@ -13,7 +14,14 @@ val v_fn(const cdecl* d) { val v = {0}; v.k = V_FN; v.fnr = d; return v; }
 val v_obj(const char* type, int is_class, vfld* flds, size_t nf) {
     val v = {0}; v.k = V_STRUCT; v.type = type; v.is_class = is_class; v.flds = flds; v.nfld = nf; return v;
 }
-val v_closure(const cexpr* ce, struct env* cap) { val v = {0}; v.k = V_CLOSURE; v.clo = ce; v.cap = cap; return v; }
+val v_closure(const cexpr* ce, struct env* cap) {
+    for (struct env* q = cap; q; q = q->up) q->captured = 1; // 捕获链免于帧复用
+    val v = {0};
+    v.k = V_CLOSURE;
+    v.clo = ce;
+    v.cap = cap;
+    return v;
+}
 val v_ns(const char* name) { val v = {0}; v.k = V_NS; v.tag = name; return v; }
 unsigned long long rt_env_steps(void) {
     // D2:CTRON_MAX_STEPS 步上限(N = 上限;0/未设/非法 = 无限)。默认无限支撑自举负载。
@@ -196,11 +204,37 @@ const char* err_head_of(const cty* t) {
 
 // ================= 环境 =================
 void env_push(rt* R) {
-    env* e = (env*)ctron_arena_alloc(R->a, sizeof(env));
+    env* e = R->env_free;
+    if (e) {
+        R->env_free = e->up; // 复用链也走 up 域
+    } else {
+        e = (env*)ctron_arena_alloc(R->a, sizeof(env));
+    }
+    e->head = NULL;
+    e->captured = 0;
     e->up = R->top;
     R->top = e;
 }
-void env_pop(rt* R) { if (R->top) R->top = R->top->up; }
+void env_pop(rt* R) {
+    if (!R->top) return;
+    env* e = R->top;
+    env* up = e->up;
+    if (!e->captured) {
+        // 未被闭包捕获:bind 节点与帧体一并入复用链(调用帧占解释形态需求大头,
+        // 见 docs/linux-seed-memory-evidence.md 归因榜)
+        bind* b = e->head;
+        while (b) {
+            bind* nx = b->next; // 先存后改:头插复用链会覆写 next,原序遍历依赖它
+            b->next = R->bind_free;
+            R->bind_free = b;
+            b = nx;
+        }
+        e->head = NULL;
+        e->up = R->env_free;
+        R->env_free = e;
+    }
+    R->top = up;
+}
 bind* env_find(rt* R, const char* name) {
     for (env* e = R->top; e; e = e->up)
         for (bind* b = e->head; b; b = b->next)
@@ -208,7 +242,20 @@ bind* env_find(rt* R, const char* name) {
     return NULL;
 }
 void env_let(rt* R, const char* name, val v) {
-    bind* b = (bind*)ctron_arena_alloc(R->a, sizeof(bind));
+    // 同帧同名 → 原地覆写(循环体逐轮重绑 let/var 时零分配;可见性语义与头插一致:
+    // env_find 本就返回最新绑定,覆写即最新)
+    for (bind* ex = R->top->head; ex; ex = ex->next) {
+        if (ex->name == name || strcmp(ex->name, name) == 0) {
+            ex->slot = (v.k == V_STRUCT && !v.is_class) ? clone_val(R, v) : v;
+            return;
+        }
+    }
+    bind* b = R->bind_free;
+    if (b) {
+        R->bind_free = b->next;
+    } else {
+        b = (bind*)ctron_arena_alloc(R->a, sizeof(bind));
+    }
     b->name = name;
     b->slot = (v.k == V_STRUCT && !v.is_class) ? clone_val(R, v) : v;
     b->next = R->top->head;
@@ -240,6 +287,15 @@ val interp_raw(rt* R, const char* raw) {
 }
 
 val str_expr(rt* R, cexpr* e) {
+    // 纯文本字面量(单 TEXT 部件):直接别名解析期 NUL 常量,零分配。
+    // 字面量求值(比较用 "Enum"/"i"/类型码等)是解释形态分配的最大来源;
+    // parts[0].s 生命周期 = 解析 arena = 全程序,且字符串不可变,别名安全。
+    if (e->nsparts == 1 && e->sparts[0].kind == PART_TEXT && e->sparts[0].s) {
+        val out = {0};
+        out.k = V_STR;
+        out.s = e->sparts[0].s;
+        return out;
+    }
     sb b = {0};
     for (size_t i = 0; i < e->nsparts; i++) {
         const ctron_str_part* p = &e->sparts[i];
@@ -448,13 +504,16 @@ int pat_bind(rt* R, cpat* p, val s) {
     }
 }
 
-void ctron_fn_enter(const char* n);
+void ctron_fn_restore(const char* prev);
 val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     const cfn* F = &fn->fn_;
+    const char* saved_fn = NULL;
     {
         static int fat = -1;
         if (fat < 0) fat = getenv("CTRON_FN_TRACE") ? 1 : 0;
-        if (fat) ctron_fn_enter(F->name);
+        if (fat) {
+            saved_fn = ctron_fn_enter(F->name);
+        }
     }
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu",
                                    F->name, F->nparams, n);
@@ -485,6 +544,7 @@ val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     R->ret = save_retv;
     R->err_head = saved_eh;
     env_pop(R);
+    if (saved_fn) ctron_fn_restore(saved_fn);
     return res;
 }
 

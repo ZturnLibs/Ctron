@@ -15,6 +15,9 @@ static long g_mem_next = 0;    // 下一个进度标记阈值(256MB 步进)
 static int g_mem_on = -1;
 static int g_mem_blocks = 0;
 static long g_extend_liar = 0;
+static void* ras_src[256];
+static long cnts_src[256];
+static int ra_n = 0;
 static long g_hist[4];
 static long g_hist_n;
 // 按"当前 Ctron 函数"归因(CTRON_FN_TRACE=1):512 桶开地址散列,键=函数名指针
@@ -26,13 +29,16 @@ static long g_attr_bytes = 0;
 static long g_attr_miss = 0;
 static int g_dumped = 0;
 static int g_fn_dumped = 0;
-void ctron_fn_enter(const char* n) {
+const char* ctron_fn_enter(const char* n) {
+    const char* prev = g_cur_fn;
     unsigned h = (unsigned)((uintptr_t)n >> 4) & 511u;
     while (g_fnb[h].name && g_fnb[h].name != n) h = (h + 1) & 511u;
     g_fnb[h].name = n;
     g_fnb[h].calls++;
     g_cur_fn = n;
+    return prev;
 }
+void ctron_fn_restore(const char* prev) { g_cur_fn = prev; }
 typedef struct blk {
     struct blk* next;
     size_t cap;   // 本块可分配字节数
@@ -43,6 +49,13 @@ struct ctron_arena { blk* head; void* gnext; };
 static ctron_arena* g_arenas = NULL;
 
 static void mem_report(void);
+#if defined(__APPLE__)
+#include <stddef.h>
+const void* mach_header_base(void) {
+    extern void* _dyld_get_image_header(unsigned);
+    return (void*)_dyld_get_image_header(0);
+}
+#endif
 static void mem_final(void) {
     g_dumped = 1;
     mem_report();
@@ -53,6 +66,15 @@ static void mem_report(void) {
            g_attr_bytes >> 20, g_attr_miss >> 20);
     if (g_cur_fn_set == 1 && g_dumped && !g_fn_dumped) {
         g_fn_dumped = 1;
+#if defined(__APPLE__)
+        {
+            extern const void* mach_header_base(void);
+            fprintf(stderr, "SLIDE %p\n", (const void*)mach_header_base());
+        }
+#endif
+        for (int q = 0; q < 256; q++)
+            if (cnts_src[q] > 1000)
+                fprintf(stderr, "RA %p %ld\n", ras_src[q], cnts_src[q]);
         for (int t = 0; t < 20; t++) {
             int best = -1;
             for (int q = 0; q < 512; q++)
@@ -120,8 +142,19 @@ ctron_arena* ctron_arena_new(void) {
     return a;
 }
 
+void* ctron_arena_alloc_ra(void* ra, ctron_arena* a, size_t n);
 void* ctron_arena_alloc(ctron_arena* a, size_t n) {
+    return ctron_arena_alloc_ra(__builtin_return_address(0), a, n);
+}
+void* ctron_arena_alloc_ra(void* ra, ctron_arena* a, size_t n) {
     n = align_up(n ? n : 1);
+    if (g_mem_on && g_cur_fn_set == 1) {
+        // 调用方地址直方图(前 256 个不同地址;addr2line 符号化)
+        int q;
+        for (q = 0; q < ra_n; q++) if (ras_src[q] == ra) break;
+        if (q == ra_n && ra_n < 256) { ras_src[q] = ra; cnts_src[q] = 0; ra_n++; }
+        if (q < 256) cnts_src[q]++;
+    }
     if (!a->head) a->head = blk_new(n < ARENA_MIN_BLOCK ? ARENA_MIN_BLOCK : n);
     if (a->head->used + n > a->head->cap) {
         size_t c = a->head->cap * 2;

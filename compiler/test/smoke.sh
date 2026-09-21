@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=343' "$T/chk.out" && ok "自检 cc_run 绿,decls=343" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=347' "$T/chk.out" && ok "自检 cc_run 绿,decls=347" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -499,6 +499,7 @@ echo "== 3g) doc(iface 投影:S0 面——文本金样/幂等/JSON 形准/负例
 if [ $? -eq 0 ] && grep -q "decls=8$" "$T/doc1.out"; then
     tail -n +2 "$T/doc1.out" > "$T/doc1.body"
     cat > "$T/doc1.gold" <<'EOD'
+// doc_fix 入口夹具(iface 投影金样)
 pub struct Point { let x: I32, let y: I32 }
 pub enum Shape { Circle(I32), Rect { let w: I32, let h: I32 } }
 trait Show
@@ -525,6 +526,7 @@ fi
 "$COMP/ctc.sh" doc "$ROOT/tests/doc_fix/main.ct" --format=json > "$T/doc3.out" 2>&1
 if [ $? -eq 0 ] \
     && grep -qF '{"entry":' "$T/doc3.out" \
+    && grep -qF '"doc":"doc_fix' "$T/doc3.out" \
     && grep -q '"kind":"struct"' "$T/doc3.out" \
     && grep -q '"kind":"enum"' "$T/doc3.out" \
     && grep -q '"kind":"trait"' "$T/doc3.out" \
@@ -540,6 +542,13 @@ if [ $? -eq 1 ] && grep -q "E5030" "$T/doc4.out"; then
     ok "doc 负例拦截(E5030 同判, rc=1)"
 else
     bad "doc 负例未拦截: $(cat "$T/doc4.out")"
+fi
+
+"$COMP/ctc.sh" doc "$ROOT/tests/doc_fix/geom.ct" > "$T/doc5.out" 2>&1
+if [ $? -eq 0 ] && grep -qF '// 面积:Circle 取 r 平方,Rect 取 w*h' "$T/doc5.out" && grep -qF 'pub fn area(s: Shape) -> I32' "$T/doc5.out"; then
+    ok "doc per-fn 契约注释(§5.3 首片,name-keyed,紧邻注释块)"
+else
+    bad "doc per-fn 注释异常: $(cat "$T/doc5.out")"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

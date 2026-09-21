@@ -17,6 +17,8 @@ void ctron_arena_free(ctron_arena* a);
 
 /// 累计需求字节(CTRON_MEM_DEBUG=1 时有效;定界探针用,见 docs/linux-seed-memory-evidence.md)。
 long ctron_mem_total(void);
+const char* ctron_fn_enter(const char* n);
+void ctron_fn_restore(const char* prev);
 /// 逐块对账(cap vs used;CTRON_MEM_DEBUG=1 时有效)。
 void ctron_mem_audit(const ctron_arena* a);
 /// 若 p 是 arena 最后一次分配且余量足够,原地扩展到 new_len 字节并返 1(拼接零拷贝快路径)。
