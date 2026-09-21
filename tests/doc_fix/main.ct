@@ -1,3 +1,4 @@
+// doc_fix 入口夹具(iface 投影金样)
 use m.geom.{Point, Shape, area}
 
 fn main() -> I32 {

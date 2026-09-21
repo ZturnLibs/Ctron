@@ -82,3 +82,25 @@ peer 在途登记项:gui decls 重锁、std 副本同步)。教训:BSD grep 对 
 repetition,字面前缀检查用 `grep -F`。
 
 状态:✅ 完成(2026-09-21)。
+
+## S0.6(2026-09-21 续):用户 CLI 面 + §5.3 契约头首片 + S1 触发量化
+
+**范围:** ①用户 CLI(root `ctc` sh 版 + `ctc.ps1` 同文)增 `doc` 子命令——`ctron-doc` 直驱,
+旗标透传,help/usage/`<cmd> --help` 四入口齐;ctc.ps1 无 pwsh 本机面,案头校验落库,
+**登记待 Windows conformance**(β 口径)。②§5.3 契约注释抽取首片——模块头(入口源首个
+// 块)+ per-fn(紧邻 decl 行上方连续 // 块,name-keyed,仅行首 pub 拼写:pub fn/struct/
+enum/extern;空行断块;模块头整体跳过不附首 decl;私有 fn 不入账);文本面 `//` 前缀
+还原,JSON 面 schema 升 **v0.1**:顶层与 fn/extern/struct/enum item 各增 `"doc"` 字段。
+③S1 触发条件量化(§10.1 "重复解析占比显著"的实测基线):stdpkg 257 decls 下
+doc(parse+load)≈ 2.0s vs check(+sem)≈ 5.0s,**解析占比 ≈ 40%**;
+**S1 立项线登记:std 面积 ×3 或解析占比 > 60% 或出现无源码分发需求方,三者其一**。
+
+**语义细节(登记):** 契约抽取是入口源码行级启发(fmt 规范形态假设),非语义面——
+跨模块合并后无法归属文件,故仅入口源;导入符号的同名入口私有 decl 不误附
+(行首无 pub 不匹配)。std/str.ct 实测立现价值:38 fn 中已有 per-fn 注释直接出面。
+
+**验收:** str.ct/geom.ct 双面抽取正确(模块头单次、area.doc 命中、Point 未误附);
+root `ctc doc` 文本/JSON/`help doc` 三路通;native ctron-doc 重建后旗标生效;
+smoke **119 ok / 1 fail**(doc 腿扩至五查全绿;余 1 红 = std 副本漂移,peer 泳道待同步)。
+
+状态:✅ 完成(2026-09-21,S0.6)。

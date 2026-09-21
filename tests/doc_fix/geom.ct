@@ -22,6 +22,7 @@ impl Show for Point {
     }
 }
 
+// 面积:Circle 取 r 平方,Rect 取 w*h
 pub fn area(s: Shape) -> I32 {
     return 0
 }

@@ -25,6 +25,8 @@ ctc —— Ctron 工具链驱动
   ctc run <file.ct>          解释执行(不需要 C 编译器)
   ctc check <file.ct> [--format=json] [--profile=bare]
                              静态检查
+  ctc doc <file.ct> [--format=json]
+                             iface 投影:pub 符号表 + trait/impl 面 + 契约注释
   ctc build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
   ctc build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
   ctc test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
@@ -50,6 +52,7 @@ ctc build —— 发射 C 并编译为可执行
 H
 ;;
     check) echo "ctc check <file.ct> [--format=json] [--profile=bare] —— 静态检查,不改任何文件";;
+    doc) echo "ctc doc <file.ct> [--format=json] —— iface 投影:pub 符号表/trait/impl 面 + 模块头与 per-fn 契约注释(§5.3),不改任何文件";;
     run) echo "ctc run <file.ct> —— 解释执行;不需要 C 编译器";;
     test) echo "ctc test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账";;
     fmt) echo "ctc fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出";;
@@ -108,7 +111,7 @@ cmd_build_proj() {
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
 case $CMD in
-    run|check|build|test|new|fmt)
+    run|check|build|test|new|fmt|doc)
         case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
 esac
 case $CMD in
@@ -124,6 +127,11 @@ case $CMD in
         [ $# -ge 1 ] || die2 "check 需要输入文件"
         IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1"); shift
         exec "$BIN/ctron-chk" run "$IN" "$@"
+        ;;
+    doc)
+        [ $# -ge 1 ] || die2 "doc 需要输入文件"
+        IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1"); shift
+        exec "$BIN/ctron-doc" run "$IN" "$@"
         ;;
     build)
         if [ $# -ge 1 ]; then cmd_build "$1"; else cmd_build_proj; fi ;;

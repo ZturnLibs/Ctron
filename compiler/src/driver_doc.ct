@@ -320,7 +320,7 @@ fn doc_json_params(ps: List[Str]) -> Str {
     return out + "]"
 }
 
-fn doc_json_fnobj(d: List[Str]) -> Str {
+fn doc_json_fnobj(d: List[Str], dc: Str) -> Str {
     // 返回不带外层花括号的字段串(供 doc_json_item 与 kind 键内联拼接)
     var out = "\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":" + doc_json_tps(d[2]) + ",\"params\":" + doc_json_params(d[3])
     if d[4][0] == "None" {
@@ -328,6 +328,7 @@ fn doc_json_fnobj(d: List[Str]) -> Str {
     } else {
         out = out + ",\"ret\":\"" + doc_json_escape(doc_ty(d[4])) + "\""
     }
+    out = out + ",\"doc\":\"" + doc_json_escape(dc) + "\""
     return out
 }
 
@@ -351,11 +352,11 @@ fn doc_json_fields(fs: List[Str]) -> Str {
     return out + "]"
 }
 
-fn doc_json_struct(d: List[Str]) -> Str {
-    return "\{\"kind\":\"struct\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":" + doc_json_tps(d[3]) + ",\"fields\":" + doc_json_fields(d[4]) + "}"
+fn doc_json_struct(d: List[Str], dc: Str) -> Str {
+    return "\{\"kind\":\"struct\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":" + doc_json_tps(d[3]) + ",\"fields\":" + doc_json_fields(d[4]) + ",\"doc\":\"" + doc_json_escape(dc) + "\"}"
 }
 
-fn doc_json_enum(d: List[Str]) -> Str {
+fn doc_json_enum(d: List[Str], dc: Str) -> Str {
     var out = "\{\"kind\":\"enum\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":[],\"variants\":["
     var vs = d[3]
     var j: I32 = 1
@@ -383,7 +384,7 @@ fn doc_json_enum(d: List[Str]) -> Str {
         out = out + "}"
         j += 1
     }
-    return out + "]}"
+    return out + "],\"doc\":\"" + doc_json_escape(dc) + "\"}"
 }
 
 fn doc_json_sigs(it: List[Str]) -> Str {
@@ -410,23 +411,204 @@ fn doc_json_sigs(it: List[Str]) -> Str {
     return out + "]"
 }
 
-fn doc_json_item(d: List[Str]) -> Str {
+fn doc_json_item(d: List[Str], dc: Str) -> Str {
     if d[0] == "FnPub" {
-        return "\{\"kind\":\"fn\"," + doc_json_fnobj(d) + "}"
+        return "\{\"kind\":\"fn\"," + doc_json_fnobj(d, dc) + "}"
     }
     if d[0] == "FnExt" {
-        return "\{\"kind\":\"extern\"," + doc_json_fnobj(d) + "}"
+        return "\{\"kind\":\"extern\"," + doc_json_fnobj(d, dc) + "}"
     }
     if d[0] == "Struct" {
-        return doc_json_struct(d)
+        return doc_json_struct(d, dc)
     }
     if d[0] == "Enum" {
-        return doc_json_enum(d)
+        return doc_json_enum(d, dc)
     }
     if d[0] == "Trait" {
         return "\{\"kind\":\"trait\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"sigs\":" + doc_json_sigs(d[4]) + "}"
     }
     return "\{\"kind\":\"impl\",\"sig\":\"impl " + doc_json_escape(doc_ty(d[2])) + " for " + doc_json_escape(doc_ty(d[3])) + "\",\"sigs\":" + doc_json_sigs(d[4]) + "}"
+}
+
+// ---------------- 契约注释抽取(§5.3 首片;入口源码行级,name-keyed,fmt 规范形态假设)----------------
+// 模块头 = 入口源首个 // 块(第 1 行即 // 才计);per-fn = 紧邻 decl 行上方的连续 // 块,
+// 仅匹配行首 pub 拼写(pub fn / pub struct / pub enum / pub extern)。空行断块;
+// 私有 fn 不入账(行首无 pub 即不匹配,导入符号不被入口私有同名注释误附)。
+fn doc_starts(s: Str, p: Str) -> Bool {
+    if p.len > s.len {
+        return false
+    }
+    var i: I32 = 0
+    while i < p.len {
+        if byte_at(s, i) != byte_at(p, i) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn doc_hmap_get(k: List[Str], v: List[Str], key: Str) -> Str {
+    var i: I32 = 0
+    while i < k.len {
+        if k[i] == key {
+            return v[i]
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn doc_line_al(line: Str, from: I32) -> Str {
+    // 从 from 起读标识符段(字符集同 lex is_al)
+    var out = ""
+    var j = from
+    while j < line.len {
+        var c = byte_at(line, j)
+        if or2(or2(c >= 97 && c <= 122, c >= 65 && c <= 90), or2(c == 95, c >= 48 && c <= 57)) {
+            out = out + byte_slice(line, j, j + 1)
+            j += 1
+        } else {
+            return out
+        }
+    }
+    return out
+}
+
+fn doc_com_text(line: Str) -> Str {
+    // "// xxx" → "xxx";"//" → "";前缀必为 "//"(调用方已判)
+    var body = byte_slice(line, 2, line.len)
+    if body.len > 0 {
+        if byte_at(body, 0) == 32 {
+            return byte_slice(body, 1, body.len)
+        }
+    }
+    return body
+}
+
+fn doc_scan_docs(s: Str, k: List[Str], v: List[Str]) {
+    var com = ""
+    var line = ""
+    var i: I32 = 0
+    var n = s.len
+    // 模块头块整体跳过(头属模块,不附首个 decl;与 doc_module_doc 同判定)
+    if n >= 2 && byte_at(s, 0) == 47 && byte_at(s, 1) == 47 {
+        while i < n {
+            var j2 = i
+            while j2 < n && byte_at(s, j2) != 10 {
+                j2 += 1
+            }
+            if j2 - i >= 2 && byte_at(s, i) == 47 && byte_at(s, i + 1) == 47 {
+                i = j2 + 1
+            } else {
+                break
+            }
+        }
+    }
+    while i < n {
+        var c = byte_at(s, i)
+        if c == 10 {
+            if line.len >= 2 && byte_at(line, 0) == 47 && byte_at(line, 1) == 47 {
+                if com.len > 0 {
+                    com = com + "\n"
+                }
+                com = com + doc_com_text(line)
+            } else if line.len == 0 {
+                // 空行:注释块与 decl 之间断开
+                com = ""
+            } else if com.len > 0 {
+                // decl 行:按行首 pub 拼写落账
+                var name = ""
+                if doc_starts(line, "pub fn ") {
+                    name = doc_line_al(line, 7)
+                } else if doc_starts(line, "pub struct ") {
+                    name = doc_line_al(line, 11)
+                } else if doc_starts(line, "pub enum ") {
+                    name = doc_line_al(line, 9)
+                } else if doc_starts(line, "pub extern") {
+                    // pub extern ["c"] fn <name>(
+                    var q = 10
+                    var fnpos: I32 = -1
+                    while q + 4 <= line.len {
+                        if or2(byte_at(line, q) != 32, or2(byte_at(line, q + 1) != 102, or2(byte_at(line, q + 2) != 110, byte_at(line, q + 3) != 32))) {
+                            q += 1
+                        } else {
+                            fnpos = q + 4
+                            q = line.len
+                        }
+                    }
+                    if fnpos >= 0 {
+                        name = doc_line_al(line, fnpos)
+                    }
+                }
+                if name.len > 0 {
+                    k.push(name)
+                    v.push(com)
+                }
+                com = ""
+            }
+            line = ""
+        } else {
+            line = line + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+}
+
+fn doc_module_doc(s: Str) -> Str {
+    // 首个 // 块:第 1 行须以 // 开头,否则无模块头;连续 // 行收集,空行/非注释止
+    var out = ""
+    var i: I32 = 0
+    var n = s.len
+    if n < 2 || byte_at(s, 0) != 47 || byte_at(s, 1) != 47 {
+        return ""
+    }
+    var first = true
+    while i < n {
+        var j = i
+        while j < n && byte_at(s, j) != 10 {
+            j += 1
+        }
+        var line = byte_slice(s, i, j)
+        if line.len >= 2 && byte_at(line, 0) == 47 && byte_at(line, 1) == 47 {
+            if !first {
+                out = out + "\n"
+            }
+            first = false
+            out = out + doc_com_text(line)
+            i = j + 1
+        } else {
+            return out
+        }
+    }
+    return out
+}
+
+fn doc_print_doc(t: Str) {
+    // 文本面:// 前缀逐行还原;空串不出行
+    if t.len == 0 {
+        return
+    }
+    var cur = ""
+    var i: I32 = 0
+    var n = t.len
+    while i < n {
+        var c = byte_at(t, i)
+        if c == 10 {
+            if cur.len > 0 {
+                println("// " + cur)
+            } else {
+                println("//")
+            }
+            cur = ""
+        } else {
+            cur = cur + byte_slice(t, i, i + 1)
+        }
+        i += 1
+    }
+    if cur.len > 0 {
+        println("// " + cur)
+    }
 }
 
 fn main() -> I32 {
@@ -465,15 +647,20 @@ fn main() -> I32 {
                 }
                 return 1
             }
+            var mdoc = doc_module_doc(s)
+            var dk = List[Str]()
+            var dv = List[Str]()
+            doc_scan_docs(s, dk, dv)
             var dfmt = ctron_cli_flag("format")
             if dfmt.len == 0 {
                 dfmt = "ANCHORFMT"
             }
             var isjson = or2(seq2(dfmt, "1"), seq2(dfmt, "json"))
             if isjson {
-                print("\{\"entry\":\"" + doc_json_escape(epath) + "\",\"decls\":" + (file.len - 1).to_string() + ",\"iface\":[")
+                print("\{\"entry\":\"" + doc_json_escape(epath) + "\",\"decls\":" + (file.len - 1).to_string() + ",\"doc\":\"" + doc_json_escape(mdoc) + "\",\"iface\":[")
             } else {
                 println("iface " + epath + " decls=" + (file.len - 1).to_string())
+                doc_print_doc(mdoc)
             }
             var syms: I32 = 0
             var first = true
@@ -483,20 +670,24 @@ fn main() -> I32 {
                 var t = d[0]
                 if doc_is_pub(d) {
                     syms += 1
+                    var dc = doc_hmap_get(dk, dv, d[1])
                     if isjson {
                         if !first {
                             print(",")
                         }
                         first = false
-                        print(doc_json_item(d))
-                    } else if t == "FnPub" {
-                        println("pub fn " + doc_fn_core(d))
-                    } else if t == "FnExt" {
-                        println("pub extern " + doc_fn_core(d))
-                    } else if t == "Struct" {
-                        println(doc_struct(d))
-                    } else if t == "Enum" {
-                        println(doc_enum(d))
+                        print(doc_json_item(d, dc))
+                    } else {
+                        doc_print_doc(dc)
+                        if t == "FnPub" {
+                            println("pub fn " + doc_fn_core(d))
+                        } else if t == "FnExt" {
+                            println("pub extern " + doc_fn_core(d))
+                        } else if t == "Struct" {
+                            println(doc_struct(d))
+                        } else if t == "Enum" {
+                            println(doc_enum(d))
+                        }
                     }
                 } else if t == "Trait" {
                     if isjson {
@@ -504,7 +695,7 @@ fn main() -> I32 {
                             print(",")
                         }
                         first = false
-                        print(doc_json_item(d))
+                        print(doc_json_item(d, ""))
                     } else {
                         println(doc_trait(d))
                         doc_items(d[4])
@@ -515,7 +706,7 @@ fn main() -> I32 {
                             print(",")
                         }
                         first = false
-                        print(doc_json_item(d))
+                        print(doc_json_item(d, ""))
                     } else {
                         println("impl " + doc_ty(d[2]) + " for " + doc_ty(d[3]))
                         doc_items(d[4])

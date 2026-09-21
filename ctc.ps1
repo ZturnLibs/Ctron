@@ -16,6 +16,8 @@ ctc —— Ctron 工具链驱动
   ctc run <file.ct>          解释执行(不需要 C 编译器)
   ctc check <file.ct> [--format=json] [--profile=bare]
                              静态检查
+  ctc doc <file.ct> [--format=json]
+                             iface 投影:pub 符号表 + trait/impl 面 + 契约注释
   ctc build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
   ctc build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
   ctc test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
@@ -41,6 +43,8 @@ ctc build —— 发射 C 并编译为可执行
 '@
 	} elseif ($c -eq 'check') {
 		Write-Output 'ctc check <file.ct> [--format=json] [--profile=bare] —— 静态检查,不改任何文件'
+	} elseif ($c -eq 'doc') {
+		Write-Output 'ctc doc <file.ct> [--format=json] —— iface 投影:pub 符号表/trait/impl 面 + 模块头与 per-fn 契约注释(§5.3),不改任何文件'
 	} elseif ($c -eq 'run') {
 		Write-Output 'ctc run <file.ct> —— 解释执行;不需要 C 编译器'
 	} elseif ($c -eq 'test') {
@@ -108,7 +112,7 @@ function Build-Proj {
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
-if ($cmd -in 'run','check','build','test','new','fmt' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
+if ($cmd -in 'run','check','build','test','new','fmt','doc' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
 	Help-Cmd $cmd; exit 0
 }
 switch ($cmd) {
@@ -124,6 +128,10 @@ switch ($cmd) {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: check 需要输入文件'); exit 2 }
 		$full = (Resolve-Path $rest[0]).Path
 		& (Join-Path $Bin 'ctron-chk.exe') run $full @($rest | Select-Object -Skip 1); exit $LASTEXITCODE }
+	'doc' {
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: doc 需要输入文件'); exit 2 }
+		$full = (Resolve-Path $rest[0]).Path
+		& (Join-Path $Bin 'ctron-doc.exe') run $full @($rest | Select-Object -Skip 1); exit $LASTEXITCODE }
 	'test' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: test 需要输入文件'); exit 2 }
 		& (Join-Path $Bin 'ctron-cc.exe') run $rest[0]; exit $LASTEXITCODE }
