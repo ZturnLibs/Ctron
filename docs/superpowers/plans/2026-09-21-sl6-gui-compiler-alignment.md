@@ -3,6 +3,35 @@
 > 2026-09-21。设计依据：specs/2026-09-19-gui-use-gui-design.md §5.1/§5.3/§9 SL-6 行；
 > 诊断码规范 = specs/2026-09-16-gui-ctml-design.md §4.4；语法事实源 = std/gui.ct（域包解析器）。
 > 基线：430218c..17e0b22（suite 73/73、阶梯 24/24、e8_corpus 5 件）。
+> **状态：✅ 全部完成（19b41a3 检查面+语料 / bac800d 独立 .ctml）。e8_corpus 15/15。**
+
+## 已落地（与切片对应）
+
+- SL-6a+6b（19b41a3）：gui_ck_leaf 限深 1 → gui_ck_elem 递归走查（限深 8）；when/each/input
+  认领；E8100 props 缺失族/E8110 契约形态/E8120 处理函数声明表/E8193 警告级（gwarns
+  通道不置 rc）；dump 同步认领。
+- SL-6c（bac800d）：gui_ctml_tokens 标记 tokenizer + gui_ctml_file（复用 gui_block）+
+  driver_check 后缀分流；内嵌/独立同径走查；E8120 形态参数（indep 跳过——处理函数在伴生 .ct）。
+- SL-6d（两片携带）：e8_corpus 5→15（pos/neg/warn 三类 × 内嵌/独立双形态）；runner 警告类。
+
+## 坑位（已实证，续接必读）
+
+- 编译器源码字符串内开括号须 `\{` 转义（裸 `{` 触发插值扫描 E1001"未终止的插值"，
+  拼接产物行号实证）；花括号比较一律 byte_at 字节码（文件头契约注释的真义）。
+- w2_fold 黄金差分对 E8120 敏感：夹具 on: 处理函数须在文件内声明（黄金 decls 4→5 已同步）。
+- E8120 形态语义：内嵌 .ct 恒核对；独立 .ctml 跳过（fns 表语义上不可能有）——勿用
+  fns.len>0 判 form（把内嵌无 fn 声明的文件也放行了，e8120 语料实证）。
+
+## SL-7 入口设计笔记（下一片，未动工）
+
+- 骨架 IR：GuiNode[tag, style_id, child_fc, child_ns, ev_slot] + Slot[node, attr, expr_id]。
+  fc/ns 与域包 GuiTree 同表示——**runtime.ct 遍历零改动换数据源**（§5.1）。
+- 三产物分工：cc_check 已就位（本片）；cc_emit = `static const GuiNode gui_sk_N[]` +
+  样式表常量；cc_run = 解释口径从骨架建 GuiTree（替换 gt_parse 数据源）。
+- **前置协调面**：GuiNode C 布局落 shim（std/gui/c_src）属域库单一真源变更（§4.5 "L1
+  不动,L2 收缩"），与发射泳道共辆——动工前登记 roadmap。
+- 样式表常量化前置：gui_lower 需多类合并/令牌求值（现 gui_cls_prop 运行时逐查）。
+- 验收锚：§10.2 静态 Todo 形态可跑 + 渲染黄金帧差分绿（tests/gui 阶梯收编）。
 
 ## 语法事实（照抄域包解析器，不凭规范想象）
 

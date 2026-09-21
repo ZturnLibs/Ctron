@@ -17,12 +17,14 @@
 
 ```
 自举 suite         73/73（宿主列 06e_cancel 既有分歧不变）
-GUI 阶梯           24/24（新增 s19_input_d）
+GUI 阶梯           24/24（含 s19_input_d）
+e8_corpus          15/15（pos/neg/warn × 内嵌/独立双形态）
 gui_counter        ✓ (77 行域包形态)
 gui_calc           ✓ (991 行域包形态)
 when+each 组合探针  ✓ 原生全绿
 input 探针          ✓ 原生全绿 + 域包端到端 s19 落阶
-SL-0.6 缺口登记表  ⑯⑰⑱⑲ 全闭环（见下）
+SL-0.6 缺口登记表  ⑯⑰⑱⑲ 全闭环
+SL-6 (L2-1)        ✅ 检查面对齐 + 独立 .ctml（19b41a3/bac800d）
 ```
 
 ## 已落库提交（按序）
@@ -47,6 +49,9 @@ bbc7a90  fix(compile): SL-0.6 批次六修（⑰ If 路由 + clb If/Match 穿透
 430218c  fix(compile): SL-0.6-⑰ 收口——F0 零参 fn/闭包端到端放行
 681fd7b  fix(compile): SL-0.6-⑱ 解释口径 struct-List 字段索引写透
 06d112a  test(gui): SL-5 input 域包端到端落阶 s19_input_d（阶梯 24/24）
+17e0b22  docs(gui): 交接文档 P0-P3 收口更新
+19b41a3  feat(gui): SL-6a+6b+6d——检查面认领 + E8xxx + 语料 11 件
+bac800d  feat(gui): SL-6c——独立 .ctml 检查入口（双形态语料 15/15）
 ```
 
 ## 关键技术事实（省去重新发现的时间）
@@ -143,10 +148,16 @@ fn main() -> I32 {
 - 零参闭包 arity 门槛：430218c 已修
 - 附带实证：List 推断局部直接索引（var w = v; w[1]）双口径已绿，gt_index/gt_last helper 对该形态不再必需
 
-### P4：L2 SL-6..9（下一波，前置未满足）
+### P4：L2 SL-6..9（SL-6 ✅ 已收口 19b41a3+bac800d；SL-7 起待动工）
 
-- gui_parse/gui_lower 三产物管线（骨架 IR + 槽表 + E8xxx），§5 管线设计
-- **前置：发射泳道协调排期 + roadmap 登记（§9/§11）——动 compiler 词法/解析面前先过这道**
+- ~~SL-6 (L2-1)：gui_parse/gui_check 对齐 + M1-d 合流 + 独立 .ctml 检查~~ ✅ 完成：
+  gui_ck_elem 递归走查认领 when/each/input；E8100/E8110/E8120/E8193 注册；e8_corpus
+  15/15（pos/neg/warn × 内嵌/独立双形态）；坑位与 SL-7 入口设计见
+  plans/2026-09-21-sl6-gui-compiler-alignment.md
+- SL-7 (L2-2)：骨架 IR 三产物——**前置：GuiNode C 布局落 shim 属域库单一真源变更
+  （§4.5），与发射泳道共辆，动工前登记 roadmap**；入口设计已写在计划文档
+- SL-8 (L2-3)：{expr} 绑定 + on: 自动闭包；钩子/锚退役（前置 SL-7）
+- SL-9 (L2-4)：热重载宿主骨架化 + 渲染回归进 CI（前置 SL-8）
 - 终锚：Todo v10 照抄能跑
 
 ## 验证命令
