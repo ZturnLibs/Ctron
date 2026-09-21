@@ -109,6 +109,8 @@ pub fn gzip_compress(in: &I64[], in_n: I64, out: &I64[], cap: I64, level: I64) -
 // deflate);-4 CRC32 不符;-5 ISIZE 不符。
 // 注:FHCRC(头 CRC16)不校验(跳过;登记 —— 尾 CRC32 恒校验,流完整性由之
 // 承担;需要头校验的后继任务补)。
+// 注:单成员口径 —— 拼接成员(RFC 1952 §2.2 多成员串)不级联解,尾校验不符
+// -4 拒(实证;级联面后继任务按需补)。
 pub fn gzip_decompress(in: &I64[], in_n: I64, out: &I64[], cap: I64) -> I64 {
     if in_n < 20 || in_n > in.len || cap < 0 || cap > out.len {
         return -1
@@ -176,13 +178,16 @@ pub fn gzip_decompress(in: &I64[], in_n: I64, out: &I64[], cap: I64) -> I64 {
 //     x-gzip 为 gzip 弃用同义(RFC 9110 §8.4.1.1),两侧同归一。
 //   - q:0..1 三位小数封顶;畸形 q(缺值/>1/四位小数/尾随杂符)→ 该元素整条
 //     按【不存在】处理(RFC 7231 §5.3.1 建议拒);同 coding 多次出现 → 首现胜。
-//   - "*" 通配:对未被显式列出的非 identity coding 生效(q 取 "*" 的;
-//     "*" 畸形 q = 无通配)。identity 不受 "*" 覆盖(RFC 7231 §5.3.4:
-//     无 content-coding 表示仅被显式 identity;q=0 排除)。
+//   - "*" 通配:对未被显式列出的 coding 生效(q 取 "*" 的;"*" 畸形 q =
+//     无通配);**含 identity** —— identity;q=0 与 *;q=0(且无更具体的
+//     identity 条目)皆排除未编码表示(RFC 9110 §12.5.3 规则 2,自示例 #5)。
 //   - 选择:negotiate 返回 q 最高且 >0 的 have 成员(原形 token,服务端规范
 //     拼写);并列取 have 序(服务端偏好,mbedTLS ALPN 服务端序同款);无匹配
-//     → ""(identity)。identity 被显式拒(q=0)时调用方以
-//     content_coding_identity_ok 区分「identity 回退」与「应 415」。
+//     → ""(identity)。identity 被拒(显式 identity;q=0,或 *;q=0 且无
+//     更具体 identity 条目)时调用方以 content_coding_identity_ok 区分
+//     「identity 回退」与「应 415」。
+//   - 缓存注:凡依本头协商的响应,消费方须回 `Vary: Accept-Encoding`
+//     (RFC 9110 §12.5.3;P6 缓存面脚雷,登记)。
 // 元素遍历注:逗号无引号串面(Accept-Encoding token 无内嵌逗号,q 参数无
 // 串值 —— RFC 9110 §12.5.3 语法无 quoted-string),裸 split 即合法。
 
@@ -412,17 +417,21 @@ fn enc_explicit_q(accept: Str, target: Str) -> I64 {
     return found
 }
 
-// identity 是否仍可接受(RFC 7231 §5.3.4:identity 未显式列出 = 可接受;
-// "*" 不覆盖 identity —— 显式 identity;q=0 是唯一排除面)。
+// identity 是否仍可接受(RFC 9110 §12.5.3 规则 2:未编码表示默认可接受,
+// 除非被显式 identity;q=0,或被 *;q=0 且无更具体 identity 条目排除)。
 pub fn content_coding_identity_ok(accept_enc: Str) -> Bool {
-    if enc_explicit_q(accept_enc, "identity") == 0 {
+    let eq = enc_explicit_q(accept_enc, "identity")
+    if eq == 0 {
         return false
+    }
+    if eq < 0 && enc_star_q(accept_enc) == 0 {
+        return false // *;q=0 且无更具体 identity 条目
     }
     return true
 }
 
 // 协商主入口:返回应施加的 coding(have 中的原形 token);"" = identity
-// (胜出或回退;identity 被显式拒时调用方以 content_coding_identity_ok
+// (胜出或回退;identity 被拒时调用方以 content_coding_identity_ok
 // 区分)。q 最高者胜,并列取 have 序;q ≤ 0 不可接受。
 pub fn content_coding_negotiate(accept_enc: Str, have: Str) -> Str {
     let star_q = enc_star_q(accept_enc)

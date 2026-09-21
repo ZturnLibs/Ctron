@@ -1,6 +1,7 @@
 // tests/http/enc_fixtures/a_negotiate.ct —— Accept-Encoding 协商矩阵(P4-B)
 // 纯 Ctron 面(不触 extern):双臂(解释 + emit)同跑。矩阵覆盖大小写/OWS
-// 容忍、q 序、通配、x-gzip 归一、畸形 q 拒、identity 显式拒(415 区分面)。
+// 容忍、q 序、通配、x-gzip 归一、畸形 q 拒、identity 排除面(identity;q=0
+// 与 *;q=0 均拒,415 区分面;RFC 9110 §12.5.3 规则 2)。
 use std.http.enc.{ content_coding_negotiate, content_coding_identity_ok }
 
 test "negotiate basic matrix" {
@@ -63,10 +64,14 @@ test "negotiate malformed q and identity" {
     assert(content_coding_negotiate("gzip;q=0.5, deflate", have) == "deflate") // 畸形元素整条忽略
     // 空元素(双逗号)跳过
     assert(content_coding_negotiate(",gzip,", have) == "gzip")
-    // identity:未列出 = 可接受;显式 q=0 = 拒(调用方 415 区分面)
+    // identity(RFC 9110 §12.5.3 规则 2):未列出 = 可接受;排除面 = 显式
+    // identity;q=0,或 *;q=0 且无更具体 identity 条目
     assert(content_coding_identity_ok(""))
     assert(content_coding_identity_ok("gzip"))
-    assert(content_coding_identity_ok("*;q=0")) // 通配不覆盖 identity(RFC 7231 §5.3.4)
+    assert(!content_coding_identity_ok("*;q=0")) // 通配 q=0 排除未编码表示
+    assert(!content_coding_identity_ok("*;q=0, gzip")) // 同上,通配 + 具体编码并存
+    assert(content_coding_identity_ok("*;q=0, identity")) // 更具体 identity 条目胜通配
+    assert(content_coding_identity_ok("*;q=0, identity;q=0.5"))
     assert(!content_coding_identity_ok("identity;q=0"))
     assert(!content_coding_identity_ok("gzip, identity;q=0"))
     assert(content_coding_identity_ok("identity;q=0.5"))
