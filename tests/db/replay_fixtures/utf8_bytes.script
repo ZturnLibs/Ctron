@@ -1,0 +1,8 @@
+# multi-byte UTF-8 text cell: byte-exact face (P5-C)
+# cell bytes = UTF-8 of U+4E2D (e4b8ad); ascii getter fails closed,
+# hex/bytes getters carry exact payload (interp utf8_enc divergence)
+# seq: T(txt) D('中') C(SELECT 1) Z(idle)
+540000001c00017478740000000000000100000019ffffffffffff0000
+440000000d000100000003e4b8ad
+430000000d53454c454354203100
+5a0000000549

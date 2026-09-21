@@ -1,0 +1,99 @@
+// tests/db/corpus/d_error_surface.ct —— ErrorResponse 字段面 + NoticeResponse
+// 跳过(P5-C)。error_response.script:E(S/V=FATAL,C=42P01,M=relation..,
+// P=15)+ Z;查询侧 rc -1 err 5,SQLSTATE/severity/message 三槽传播;P 字段
+// 扫描跳过不扰。NoticeResponse(N)同字段格式 —— 查询/会话两侧跳过锚。
+// 内嵌字面量脚本用于 N/E 变体(回放源双入口同一核)。
+use std.db.pg.{pg_recv_frame_script, pg_handshake_script, pg_query_script, pg_err_data, pge_ok, pge_sev, pge_code, pge_msg, pgv_rc, pgv_type, pgv_body, pgs_rc, pgs_err, pgs_esev, pgs_ecode, pgs_emsg, pgr_rc, pgr_err, pgr_rows, pgr_tag, pgr_esev, pgr_ecode, pgr_emsg, pg_err_response}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "error response: SQLSTATE/severity/message propagation" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "error_response.script")
+    assert_eq(frames.len, 2)
+    let r = pg_query_script(frames, 0, "SELECT * FROM missing_table")
+    assert_eq(pgr_rc(r), -1)
+    assert_eq(pgr_err(r), pg_err_response())
+    assert_eq(pgr_esev(r), "FATAL")
+    assert_eq(pgr_ecode(r), "42P01")
+    assert_eq(pgr_emsg(r), "relation \"missing_table\" does not exist")
+    // 错误面结果体清空(部分状态不外泄)
+    assert_eq(pgr_rows(r), 0)
+    assert_eq(pgr_tag(r), "")
+}
+
+test "error response: full-field scan via pg_err_data" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "error_response.script")
+    let fr = pg_recv_frame_script(frames, 0)
+    assert_eq(pgv_rc(fr), 0)
+    assert_eq(pgv_type(fr), 69)
+    let d = pg_err_data(pgv_body(fr))
+    // S/V/C/M 全捕获;P(位置)字段扫描跳过;ok=1(终止 NUL 在)
+    assert_eq(pge_ok(d), 1)
+    assert_eq(pge_sev(d), "FATAL")
+    assert_eq(pge_code(d), "42P01")
+    assert_eq(pge_msg(d), "relation \"missing_table\" does not exist")
+}
+
+test "notice response skipped in query flow (same field format)" {
+    // N(S=NOTICE) + C(SELECT 0) + Z:通知不扰查询收口
+    var frames = List[Str]()
+    frames.push("4e0000000e53004e4f544943450000")
+    frames.push("430000000d53454c454354203000")
+    frames.push("5a0000000549")
+    let r = pg_query_script(frames, 0, "SELECT 0")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_rows(r), 0)
+    assert_eq(pgr_tag(r), "SELECT 0")
+    assert_eq(pgr_ecode(r), "")
+}
+
+test "handshake error path: E carries fields, err 5" {
+    var frames = List[Str]()
+    frames.push("450000004753464154414c0056464154414c00433432503031004d72656c6174696f6e20226d697373696e675f7461626c652220646f6573206e6f74206578697374005031350000")
+    frames.push("5a0000000549")
+    let sess = pg_handshake_script(frames, 0)
+    assert_eq(pgs_rc(sess), -1)
+    assert_eq(pgs_err(sess), pg_err_response())
+    assert_eq(pgs_esev(sess), "FATAL")
+    assert_eq(pgs_ecode(sess), "42P01")
+    assert_eq(pgs_emsg(sess), "relation \"missing_table\" does not exist")
+}
+
+test "malformed error body: missing terminator -> ok 0, empty fields" {
+    // E 体无终止 NUL:cstr 扫描越界 → ok=0(畸形容错,不崩溃)
+    var frames = List[Str]()
+    frames.push("450000000b5300464154414c")
+    let fr = pg_recv_frame_script(frames, 0)
+    assert_eq(pgv_rc(fr), 0)
+    let d = pg_err_data(pgv_body(fr))
+    assert_eq(pge_ok(d), 0)
+    // 未终止字段不捕获(扫描止于越界):ok=0 + 三槽空
+    assert_eq(pge_sev(d), "")
+    assert_eq(pge_code(d), "")
+    assert_eq(pge_msg(d), "")
+}

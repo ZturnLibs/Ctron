@@ -1,0 +1,101 @@
+// tests/db/corpus/c_query_rows.ct —— 简单查询回放:全行集 + 空结果集
+// (P5-C)。query_rows.script:T(id/name/active,oid 23/25/16)+ 3×D(全非
+// NULL)+ C("SELECT 3")+ Z;空集 empty_result.script:T 一列零 D。会话链
+// 路形态 = 握手 next 游标续查询(OOB 格面 → -1 锚)。
+use std.db.pg.{pg_handshake_script, pg_query_script, pgs_rc, pgs_next, pgr_rc, pgr_err, pgr_rows, pgr_cols, pgr_tag, pgr_colname, pgr_oid, pgr_cell, pgr_cell_hex, pgr_isnull, pgr_esev, pgr_ecode}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "simple query replay: 3x3 mixed-type rowset" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "query_rows.script")
+    assert_eq(frames.len, 6)
+    let r = pg_query_script(frames, 0, "SELECT id, name, active FROM users")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_err(r), 0)
+    assert_eq(pgr_rows(r), 3)
+    assert_eq(pgr_cols(r), 3)
+    assert_eq(pgr_tag(r), "SELECT 3")
+    // RowDescription:列名 + 类型 OID(int4 23 / text 25 / bool 16)
+    assert_eq(pgr_colname(r, 0), "id")
+    assert_eq(pgr_colname(r, 1), "name")
+    assert_eq(pgr_colname(r, 2), "active")
+    assert_eq(pgr_colname(r, 3), "")
+    assert_eq(pgr_colname(r, -1), "")
+    assert_eq(pgr_oid(r, 0), 23)
+    assert_eq(pgr_oid(r, 1), 25)
+    assert_eq(pgr_oid(r, 2), 16)
+    assert_eq(pgr_oid(r, 9), -1)
+    // DataRow 文本格值(全非 NULL)
+    assert_eq(pgr_cell(r, 0, 0), "1")
+    assert_eq(pgr_cell(r, 0, 1), "alice")
+    assert_eq(pgr_cell(r, 0, 2), "t")
+    assert_eq(pgr_cell(r, 1, 0), "2")
+    assert_eq(pgr_cell(r, 1, 1), "bob")
+    assert_eq(pgr_cell(r, 1, 2), "f")
+    assert_eq(pgr_cell(r, 2, 0), "3")
+    assert_eq(pgr_cell(r, 2, 1), "carol")
+    assert_eq(pgr_cell(r, 2, 2), "t")
+    assert_eq(pgr_isnull(r, 0, 0), 0)
+    assert_eq(pgr_isnull(r, 2, 2), 0)
+    assert_eq(pgr_cell_hex(r, 0, 0), "31")
+    // OOB 格面:isnull → -1,cell → ""
+    assert_eq(pgr_isnull(r, 3, 0), -1)
+    assert_eq(pgr_isnull(r, 0, 3), -1)
+    assert_eq(pgr_isnull(r, -1, 0), -1)
+    assert_eq(pgr_cell(r, 5, 5), "")
+    // 错误槽未触:空串
+    assert_eq(pgr_esev(r), "")
+    assert_eq(pgr_ecode(r), "")
+}
+
+test "chained session: handshake ok, then query on its own script" {
+    // 游标语义:next 属于各自脚本(握手游标不跨脚本携带 —— 真连接形态下
+    // 游标即 socket 位面,Task 6 fd 源接手)
+    let hs = load_frames(env_get("CT_DB_FIX"), "startup_ok.script")
+    let sess = pg_handshake_script(hs, 0)
+    assert_eq(pgs_rc(sess), 0)
+    let qs = load_frames(env_get("CT_DB_FIX"), "query_rows.script")
+    let r = pg_query_script(qs, 0, "SELECT 1")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_rows(r), 3)
+}
+
+test "empty result set: RowDescription present, zero rows" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "empty_result.script")
+    assert_eq(frames.len, 3)
+    let r = pg_query_script(frames, 0, "SELECT count FROM t WHERE false")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_rows(r), 0)
+    assert_eq(pgr_cols(r), 1)
+    assert_eq(pgr_colname(r, 0), "count")
+    assert_eq(pgr_oid(r, 0), 23)
+    assert_eq(pgr_tag(r), "SELECT 0")
+    // 零行面:格访问 OOB(-1)非 NULL
+    assert_eq(pgr_isnull(r, 0, 0), -1)
+    assert_eq(pgr_cell(r, 0, 0), "")
+}

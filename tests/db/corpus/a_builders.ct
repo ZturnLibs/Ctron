@@ -1,0 +1,109 @@
+// tests/db/corpus/a_builders.ct —— 客户端消息装配 + 十六进制面 + 帧面负例
+// (P5-C;tests/db/run.sh 双臂)。锚值 = gen_fixtures.py 同源 python 构造
+// (锚生成器纪律;预期十六进制字面量落盘,双向:builder→hex 断言 +
+// hex→decode→recv 断言)。消费面 = pgv_*/pg_hex_* 标量 getter((h) 族)。
+use std.db.pg.{pg_startup_msg, pg_query_msg, pg_password_msg, pg_terminate_msg, pg_hex_decode, pg_hex_encode, pg_recv_frame_script, pg_auth_kind, pgv_body, pgv_rc, pgv_err, pgv_next, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, pg_err_frame, pg_err_proto}
+
+test "startup msg: full params hex anchor" {
+    // user + database + application_name;len 含自身(8 + payload)
+    let m = pg_startup_msg("app", "mydb", "ctron-test")
+    assert_eq(pg_hex_encode(m), "0000003c000300007573657200617070006461746162617365006d796462006170706c69636174696f6e5f6e616d65006374726f6e2d746573740000")
+}
+
+test "startup msg: user only (empty params omitted)" {
+    let m = pg_startup_msg("svc", "", "")
+    assert_eq(pg_hex_encode(m), "000000120003000075736572007376630000")
+}
+
+test "query msg hex anchor" {
+    let m = pg_query_msg("SELECT 1")
+    assert_eq(pg_hex_encode(m), "510000000d53454c454354203100")
+}
+
+test "password msg hex anchor (cleartext stub face)" {
+    let m = pg_password_msg("secret")
+    assert_eq(pg_hex_encode(m), "700000000b73656372657400")
+}
+
+test "terminate msg hex anchor" {
+    let m = pg_terminate_msg()
+    assert_eq(pg_hex_encode(m), "5800000004")
+}
+
+test "hex decode/encode roundtrip + fail-closed negatives" {
+    var b = pg_hex_decode("00ff7b")
+    assert_eq(pg_hex_encode(b), "00ff7b")
+    // 奇长/非法数位/空串 → 空表
+    assert_eq(pg_hex_encode(pg_hex_decode("abc")), "")
+    assert_eq(pg_hex_encode(pg_hex_decode("zz")), "")
+    assert_eq(pg_hex_encode(pg_hex_decode("")), "")
+    // 大写数位规范化小写
+    assert_eq(pg_hex_encode(pg_hex_decode("FF")), "ff")
+}
+
+test "recv frame: valid AuthenticationOk frame" {
+    var frames = List[Str]()
+    frames.push("520000000800000000")
+    let r = pg_recv_frame_script(frames, 0)
+    assert_eq(pgv_rc(r), 0)
+    assert_eq(pgv_err(r), 0)
+    assert_eq(pgv_next(r), 1)
+    assert_eq(pgv_type(r), 82)
+    assert_eq(pgv_body_len(r), 4)
+    assert_eq(pgv_body_at(r, 3), 0)
+}
+
+test "recv frame edges: empty payload / 1-byte body / frame_max gate" {
+    // len 恰 4(空载荷):合法帧,body 空
+    var f0 = List[Str]()
+    f0.push("4e00000004")
+    let r0 = pg_recv_frame_script(f0, 0)
+    assert_eq(pgv_rc(r0), 0)
+    assert_eq(pgv_type(r0), 78)
+    assert_eq(pgv_body_len(r0), 0)
+    // len 5(1 字节载荷):帧合法;auth kind 解析越界 → -1
+    var f1 = List[Str]()
+    f1.push("5200000005aa")
+    let r1 = pg_recv_frame_script(f1, 0)
+    assert_eq(pgv_rc(r1), 0)
+    assert_eq(pgv_body_len(r1), 1)
+    assert_eq(pg_auth_kind(pgv_body(r1)), -1)
+    // 声明长 = frame_max + 1(0x100001,高位字节 0):域门在长度不符检查
+    // 之前触发 → err 2,无需载荷在场
+    var f2 = List[Str]()
+    f2.push("5200100001aa")
+    let r2 = pg_recv_frame_script(f2, 0)
+    assert_eq(pgv_rc(r2), -1)
+    assert_eq(pgv_err(r2), pg_err_proto())
+}
+
+test "recv frame negatives: eof / non-hex / len mismatch / len domain" {
+    var empty = List[Str]()
+    let e0 = pg_recv_frame_script(empty, 0)
+    assert_eq(pgv_rc(e0), -1)
+    assert_eq(pgv_err(e0), pg_err_eof())
+    let ecur = pg_recv_frame_script(empty, -1)
+    assert_eq(pgv_err(ecur), pg_err_eof())
+    // 非十六进制
+    var f1 = List[Str]()
+    f1.push("zz")
+    let r1 = pg_recv_frame_script(f1, 0)
+    assert_eq(pgv_err(r1), pg_err_frame())
+    // 声明长与实际不符(声明 8,载荷实 5)
+    var f2 = List[Str]()
+    f2.push("52000000080000000101")
+    let r2 = pg_recv_frame_script(f2, 0)
+    assert_eq(pgv_err(r2), pg_err_frame())
+    // 声明长 < 4(域门)
+    var f3 = List[Str]()
+    f3.push("5200000003")
+    let r3 = pg_recv_frame_script(f3, 0)
+    assert_eq(pgv_err(r3), pg_err_proto())
+    // 声明长高位字节非 0(>16MiB,乘前预门)
+    var f4 = List[Str]()
+    f4.push("5201000064aa")
+    let r4 = pg_recv_frame_script(f4, 0)
+    assert_eq(pgv_err(r4), pg_err_proto())
+    // 失败帧 next 仍推进(不滞留)
+    assert_eq(pgv_next(r4), 1)
+}

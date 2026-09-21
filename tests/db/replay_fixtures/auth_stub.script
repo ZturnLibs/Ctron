@@ -1,0 +1,6 @@
+# auth stub detection: cleartext(3) and SASL(10) kinds (P5-C; SCRAM = Task 4)
+# line 1: R kind=3 (cleartext)
+# line 2: R kind=10 + mechanism list 'SCRAM-SHA-256'
+# handshake from cursor 0 -> err 4 authkind 3; from cursor 1 -> err 4 authkind 10
+520000000800000003
+52000000170000000a534352414d2d5348412d3235360000

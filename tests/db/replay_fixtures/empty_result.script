@@ -1,0 +1,5 @@
+# empty result set: RowDescription present, zero DataRows (P5-C)
+# seq: T(count) C(SELECT 0) Z(idle)
+540000001e0001636f756e7400000000000001000000170004ffffffff0000
+430000000d53454c454354203000
+5a0000000549

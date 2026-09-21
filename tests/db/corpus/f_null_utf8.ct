@@ -1,0 +1,71 @@
+// tests/db/corpus/f_null_utf8.ct —— NULL 值(列级 -1 长)+ 多字节 UTF-8
+// 字节精确面(P5-C)。null_value.script:NULL 格 → isnull=1/cell=""/hex="";
+// 非 NULL 对照格 "t"。utf8_bytes.script:U+4E2D(e4b8ad)—— ASCII 解码面
+// fail-closed(cell=""),hex/bytes 面逐字节精确(解释器 utf8_enc 缺陷登记
+// 口径:文本格非 ASCII 解码待修复收敛,精确面由字节容器承载)。
+use std.db.pg.{pg_query_script, pgr_rc, pgr_rows, pgr_cols, pgr_tag, pgr_cell, pgr_cell_hex, pgr_cell_bytes, pgr_isnull}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "null value: column-level -1 length" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "null_value.script")
+    assert_eq(frames.len, 4)
+    let r = pg_query_script(frames, 0, "SELECT memo, flag FROM t")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_rows(r), 1)
+    assert_eq(pgr_cols(r), 2)
+    assert_eq(pgr_tag(r), "SELECT 1")
+    // NULL 格:len -1 → isnull=1,cell 空,hex 空
+    assert_eq(pgr_isnull(r, 0, 0), 1)
+    assert_eq(pgr_cell(r, 0, 0), "")
+    assert_eq(pgr_cell_hex(r, 0, 0), "")
+    assert_eq(pgr_cell_bytes(r, 0, 0).len, 0)
+    // 同行非 NULL 对照:"t"
+    assert_eq(pgr_isnull(r, 0, 1), 0)
+    assert_eq(pgr_cell(r, 0, 1), "t")
+    assert_eq(pgr_cell_hex(r, 0, 1), "74")
+}
+
+test "multi-byte utf-8 cell: byte-exact face, ascii face fails closed" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "utf8_bytes.script")
+    assert_eq(frames.len, 4)
+    let r = pg_query_script(frames, 0, "SELECT txt FROM t")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_rows(r), 1)
+    assert_eq(pgr_cols(r), 1)
+    // ASCII 面 fail-closed(非可打印/多字节 → "";登记口径)
+    assert_eq(pgr_isnull(r, 0, 0), 0)
+    assert_eq(pgr_cell(r, 0, 0), "")
+    // 精确字节面:U+4E2D = e4 b8 ad
+    assert_eq(pgr_cell_hex(r, 0, 0), "e4b8ad")
+    var b = pgr_cell_bytes(r, 0, 0)
+    assert_eq(b.len, 3)
+    assert_eq(b[0], 228)
+    assert_eq(b[1], 184)
+    assert_eq(b[2], 173)
+}

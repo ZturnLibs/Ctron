@@ -1,0 +1,87 @@
+// tests/db/corpus/b_handshake.ct —— 握手回放:startup_ok.script 全链
+// (P5-C)。脚本装载(读内建 + 行切分)→ pg_handshake_script:R(AuthOk)→
+// S 跳过 → K 记 pid/key → Z 记 status 收口;逐帧面断言(auth kind/类型
+// 字节);查询误用于非查询脚本 → 干净 eof。CT_DB_FIX = 夹具根(run.sh 设)。
+use std.db.pg.{pg_recv_frame_script, pg_handshake_script, pg_auth_kind, pg_ready_status, pg_query_script, pgv_rc, pgv_err, pgv_next, pgv_type, pgv_body_len, pgv_body, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgr_rc, pgr_err, pg_err_auth, pg_err_eof}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "handshake replay: ok-path frame-by-frame then session" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "startup_ok.script")
+    assert_eq(frames.len, 5)
+    // 逐帧:R(kind 0)/S/K/Z
+    let r0 = pg_recv_frame_script(frames, 0)
+    assert_eq(pgv_rc(r0), 0)
+    assert_eq(pgv_type(r0), 82)
+    assert_eq(pg_auth_kind(pgv_body(r0)), 0)
+    let s1 = pg_recv_frame_script(frames, 1)
+    assert_eq(pgv_type(s1), 83)
+    let k3 = pg_recv_frame_script(frames, 3)
+    assert_eq(pgv_type(k3), 75)
+    assert_eq(pgv_body_len(k3), 8)
+    let z4 = pg_recv_frame_script(frames, 4)
+    assert_eq(pgv_type(z4), 90)
+    assert_eq(pg_ready_status(pgv_body(z4)), 73)
+    // 会话面:R 续 / S 跳 / K 记 pid=4711 key=305419896 / Z('I'=73) 收口
+    let sess = pg_handshake_script(frames, 0)
+    assert_eq(pgs_rc(sess), 0)
+    assert_eq(pgs_err(sess), 0)
+    assert_eq(pgs_status(sess), 73)
+    assert_eq(pgs_pid(sess), 4711)
+    assert_eq(pgs_key(sess), 305419896)
+    assert_eq(pgs_next(sess), 5)
+    assert_eq(pgs_authkind(sess), 0)
+}
+
+test "query misapplied to handshake script -> clean eof" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "startup_ok.script")
+    let sess = pg_handshake_script(frames, 0)
+    let qr = pg_query_script(frames, pgs_next(sess), "SELECT 1")
+    assert_eq(pgr_rc(qr), -1)
+    assert_eq(pgr_err(qr), pg_err_eof())
+}
+
+test "auth stub detection: cleartext(3) and SASL(10)" {
+    let frames = load_frames(env_get("CT_DB_FIX"), "auth_stub.script")
+    assert_eq(frames.len, 2)
+    // 游标 0:Cleartext 检出 → err 4,authkind 3(存根文案点名 SCRAM Task 4)
+    let s0 = pg_handshake_script(frames, 0)
+    assert_eq(pgs_rc(s0), -1)
+    assert_eq(pgs_err(s0), pg_err_auth())
+    assert_eq(pgs_authkind(s0), 3)
+    assert_eq(pgs_emsg(s0), "auth kind 3 not supported in replay core (SCRAM: Task 4)")
+    // 游标 1:SASL 检出 → err 4,authkind 10(机制列表体不扰 kind 解析)
+    let s1 = pg_handshake_script(frames, 1)
+    assert_eq(pgs_rc(s1), -1)
+    assert_eq(pgs_err(s1), pg_err_auth())
+    assert_eq(pgs_authkind(s1), 10)
+    // 源耗尽 → err 3
+    let s2 = pg_handshake_script(frames, 2)
+    assert_eq(pgs_rc(s2), -1)
+    assert_eq(pgs_err(s2), pg_err_eof())
+}

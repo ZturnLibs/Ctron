@@ -1,0 +1,11 @@
+# protocol-violation frames: clean Err, no crash/hang (P5-C)
+# line 1: declared len 100 vs 1 payload byte (len/payload mismatch -> err 1)
+# line 2: declared len 3 < 4 (length domain -> err 2)
+# line 3: hi byte 0x01 = 16 MiB+ declared (domain gate -> err 2)
+# line 4: non-hex digit (frame bad -> err 1)
+# line 5: odd hex length (frame bad -> err 1)
+5200000064aa
+5200000003
+5201000064aa
+zz
+5

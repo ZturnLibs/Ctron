@@ -385,3 +385,43 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
 
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。
+
+### (i) 家族新证(P5-C 协议夹具回放 + Postgres wire v3,2026-09-22)
+
+- **(i) 解释器 `utf8_enc` 恒返 U+FFFD(emit 恒正确)**:自举解释口径下
+  任意码点 `utf8_enc(cp)` 恒产 3 字节替换符(EF BF BD;逐码点
+  `len/byte_at` 程序化实证 65/123/233/20013 四档;emit 臂同探针全绿)。
+  病灶在编译器自举 eval 链:eval_call.ct:271 `utf8_enc(vals[0][1])` 的
+  实参为 Str 槽值,发射 C 里 `(int)(u0)` 直转指针值 → 出 0..10FFFF 域 →
+  走 replacement 分支(ctron_utf8_enc 本体 driver_emit.ct:90 正确)。
+  连带:**词法面 `\u{…}` 逃逸经同一内建展开**(parse_node.ct:42),宿主
+  敏感语境下不可依赖(夹具表字面量因此弃用 `\u`,见 std/db/pg.ct
+  pgx_ascii_char)。连带失真:d_parse_nested(interp)在 `utf8_enc(123)`
+  产 3 字节垃圾前缀下仍绿——json parse 对文档前导垃圾宽容,该 corpus 的
+  utf8 面为**空覆盖**(emit 臂真锚)。修法 = eval 链 dvi 转换;修复后
+  pg 单元格 ASCII 面可收敛为全文本面(字节精确面 pgr_cell_hex/bytes
+  不受影响,锚不变)。(源:P5 Task 3 探针 pba/pb2–pb9)
+- **(i) 解释器内建 `byte_at`/`byte_slice` 拒收 I64 域标签("K")**:
+  内建解释分发严格按 `vals[i][0]=="I"`(I32 域)匹配,pgz 宽域播种值
+  (`z + b[i]`,"K" 标签)直入即 `byte_slice arity` panic;client.ct
+  cx_slice_str 之所以双臂绿,是其入参出自 lane 装载值(I32 域标签)。
+  纪律:内建字节面入参恒 I32 域表达式,宽域值经 `.as[I32]()`/直接
+  I32 形参中转。(源:P5 Task 3 std/db/pg.ct pgx_ascii_bytes 首版)
+- **emit 的 `List[I64]` struct 字段元素读坏(items 按 char* 出)**:
+  struct 字段为 `List[I64]` 时,发射 C 对元素读按 Str 表处理
+  (`(const char*)((ctron_list*)…)->items[i]` 直返 char*,cc 报
+  pointer-to-integer 转换错或产垃圾值);`List[Str]`/`List[I32]` 字段
+  双臂恒绿(探针 probe2/probe3)。纪律:struct 字段容器只用
+  `List[Str]`/`List[I32]`(I64 量以 I32 承或拆标量字段;pg.ct 头注②)。
+  修法 = 发射器按元素类型出 items 读法。(源:P5 Task 3 探针 probe2)
+- **标识符 `L` 不可用(E2020 未解析)**:`var L: I64 = u` 及后续引用
+  即 `E2020: 未解析的名称(unresolved):L`(最小复现 bisect2/bisect3,
+  同形改名 `n2` 即绿)——单字母大写 L 疑被词法/语义层保留。改名绕行
+  (pg.ct 用 `clen`)。(源:P5 Task 3)
+- **lane 视图 `.len` = 字面量显式槽数(非类型标注容量)**:
+  `var buf: I64[4096] = [0,0,0,0]` 的 `buf.len == 4`(初始化字面量槽数);
+  tcp_echo/client_fixtures 以逐槽写满字面量的约定规避(4096 个 0 显式
+  落盘)。读面按 `.len` 边界的代码(如 pg_recv_frame_fd 满缓冲门)必须
+  按此语义建 lane,extern 垫片 cap 另传显式值。(源:P5 Task 3
+  probe_lane;约定证实于 tests/net/tcp_echo main.ct:51 与
+  tests/http/client_fixtures x_client_e2e.ct:162)

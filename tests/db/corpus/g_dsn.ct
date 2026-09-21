@@ -1,0 +1,50 @@
+// tests/db/corpus/g_dsn.ct —— std/db 门面雏形:StdDb 能力 token + DSN 解析
+// (P5-C;§12.1 门面首参 db: StdDb 贯穿)。postgres://user:pass@host:port/db
+// 文法面:全形/缺省 5432/pass 或 name 可空/两前缀;负例 = 坏 scheme/缺
+// user/坏 port/空 port 段/name 内 '/'。百分号编码与 IPv6 字面量 v0 不支援
+// (门面头注登记)。
+use std.db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
+
+test "dsn parse: full form" {
+    let d = dsn_parse(db_std(), "postgres://alice:s3cret@db.host.lan:5433/appdb")
+    assert_eq(pgd_ok(d), 1)
+    assert_eq(pgd_user(d), "alice")
+    assert_eq(pgd_pass(d), "s3cret")
+    assert_eq(pgd_host(d), "db.host.lan")
+    assert_eq(pgd_port(d), 5433)
+    assert_eq(pgd_name(d), "appdb")
+}
+
+test "dsn parse: minimal form, defaults" {
+    let d = dsn_parse(db_std(), "postgres://bob@localhost/prod")
+    assert_eq(pgd_ok(d), 1)
+    assert_eq(pgd_user(d), "bob")
+    assert_eq(pgd_pass(d), "")
+    assert_eq(pgd_host(d), "localhost")
+    assert_eq(pgd_port(d), 5432)
+    assert_eq(pgd_name(d), "prod")
+    // 无 name 段(pass 空 + name 空,ok)
+    let d2 = dsn_parse(db_std(), "postgres://bob@h1")
+    assert_eq(pgd_ok(d2), 1)
+    assert_eq(pgd_name(d2), "")
+    // postgresql:// 前缀同收
+    let d3 = dsn_parse(db_std(), "postgresql://bob@h1/db")
+    assert_eq(pgd_ok(d3), 1)
+    assert_eq(pgd_name(d3), "db")
+}
+
+test "dsn parse: negatives fail closed" {
+    // 坏 scheme
+    assert_eq(pgd_ok(dsn_parse(db_std(), "mysql://u@h/d")), 0)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres:/u@h/d")), 0)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "")), 0)
+    // 缺 user(协议必填)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres://h1/db")), 0)
+    // 坏 port(非数字/超 65535/空段)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres://u@h:x/db")), 0)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres://u@h:70000/db")), 0)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres://u@h:/db")), 0)
+    // name 内 '/' 与 port 段带尾缀
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres://u@h/a/b")), 0)
+    assert_eq(pgd_ok(dsn_parse(db_std(), "postgres://u@h:5432nodb")), 0)
+}

@@ -1,0 +1,896 @@
+// std/db/pg.ct —— PostgreSQL 线协议 v3 核心(§12;P5-C;回放优先架构)
+// since: std-0.5 stability: experimental
+// ═══ 架构口径(控制器裁定;P5 计划 Task 3)═══
+//   协议核消费"注入源"帧:双薄源共驱一核——
+//     ① pg_recv_frame_script(回放源):List[Str] 十六进制帧逐帧出(录制/手工
+//        按协议文档构造;tests/db/replay_fixtures/*.script + README)——CI 零真库;
+//     ② pg_recv_frame_fd(真源):fd 直读(std/db 自有垫片 std/db/c_src/
+//        ctron_dbpg.c,镜像 ctron_net.c 约定;真 fd 冒烟 Task 6 nightly)。
+//   Ctron 无可发射 trait ⇒ 既定双入口形态:两入口 fn 共享核心解析器
+//   (pgx_*),统一产出 PgRecv(帧面)/PgRows/PgSess(会话面)。
+// ═══ 依赖纪律 ═══
+//   零 std 依赖叶(uuid.ct 同款):std/db 门面将同时消费 pg/crypto/uuid,
+//   严格互斥树(uuid×crypto 菱形先例)下 pg 自持十六进制/装配面;Task 4
+//   SCRAM 接 std/crypto 时亦只单子扩展。**不 use std.net**(Global
+//   Constraints):真源经 PgCell64 标量胞(本文件自有声明;与 net bind.ct
+//   的 Box64 同布局异名——同名 decl 二次合并 E5030,合并单命名空间纪律)
+//   传 fd,垫片符号前缀 ctron_dbpg_*。
+// ═══ 发射面/解释面纪律(divergences (f)-(i) + P5 新证)═══
+//   ① (h) 载荷通道:跨模块数值消费一律 struct 标量字段 + 自由 getter
+//      (client.ct HttpLoc/HttpResp 同款);Result 数值载荷禁跨模块。
+//   ② (i) C10:长度/计数算术一律宽域播种(pgz)后乘法;帧长域门
+//      [4, 1048576](2^20,远低 2^28 险带);BE 解析乘前高位预门;
+//      装配侧全走 div/mod(乘法仅 256 阶梯,值域 ≤2^20)。
+//      **发射面 List[I64] struct 字段元素读坏(items 按 char* 出)——探针
+//      实证 P5-C 登记 divergences;本文件 struct 字段只用 List[Str]/
+//      List[I32]**。
+//   ③ utf8_enc 解释口径坏(恒返 U+FFFD;自举 eval 值串未转 int——P5-C
+//      登记 divergences):单元格 Str 解码走**可打印 ASCII 表切片**
+//      (client.ct cx_slice_str 同款,双臂确定性;'{' 档 fail-closed);
+//      任意字节精确面 = pg_hex_encode/pgr_cell_hex(List[I32] 字节容器,
+//      crypto 面纪律);非 ASCII 文本解码待解释器修复后收敛(登记口径)。
+//      表切片内建收 I32 域标签:入参恒 I32,pgz 宽域值禁直入(解释口径
+//      arity 拒;client.ct lane 值同域先例)。
+//   ④ 无方法调用/无闭包/无 Tuple;while 体无 Drop 局部;状态随值携带
+//      (message.ct ChunkSt 重入口径);List 经形参 push 跨函数传播
+//      (parse_pkg.ct diags 同款已证形);"fn 内未用结果绑定"毒化纪律——
+//      绑定必消费,忽略返回值用裸语句形。
+//   ⑤ inline test 不落本文件(C17 宿主敏感,P5-A 口径);声明冒烟 +
+//      行为面全在 tests/db。
+// ═══ 线协议范围(本任务)═══
+//   startup(3.0 + 参数面)/AuthenticationOk 检测/Cleartext 检测(SCRAM 路径
+//   检出即 err 4 存根,Task 4 接管)/Query 简单查询/RowDescription/DataRow
+//   (文本格式)/CommandComplete/ReadyForQuery/ErrorResponse(全字段解析,
+//   暴露 severity+SQLSTATE+message)/NoticeResponse 跳过/ParameterStatus
+//   跳过/BackendKeyData 解析/Terminate。大端长度前缀帧:server 帧
+//   [type(1)|len(4,含自身)|payload];client 帧 startup 无 type 字节,
+//   Q/P/X 有。
+// ═══ err 码(PgRecv.err/PgRows.err/PgSess.err)═══
+//   1 帧面坏(非十六进制/空行)  2 协议违例(长度域/字段越界/计数不符)
+//   3 源耗尽(脚本走完/fd 对端关)  4 认证存根(Cleartext/MD5/SASL 检出)
+//   5 ErrorResponse 收到(SQLSTATE 在 ecode)  6 IO(fd 读写败;fd 源专面)
+//   rc 约定:0 成功 / <0 失败(net 门面同款)。
+
+pub extern "c" fn ctron_dbpg_read(fd: I64, buf: &I64[], cap: I64) -> I64
+pub extern "c" fn ctron_dbpg_write(fd: I64, buf: &I64[], n: I64) -> I64
+pub extern "c" fn ctron_dbpg_close(fd: I64) -> I64
+pub extern "c" fn ctron_dbpg_last_errno() -> I64
+
+// fd 出参标量胞(与 std/net bind.ct Box64 同布局异名;见头注依赖纪律)
+pub struct PgCell64 {
+    var v: I64
+}
+
+// ---- 帧长域与 err 码常量(值 fn 面;纯层无 static) ----
+
+pub fn pg_frame_max() -> I64 {
+    return 1048576
+}
+
+pub fn pg_err_frame() -> I64 { return 1 }
+pub fn pg_err_proto() -> I64 { return 2 }
+pub fn pg_err_eof() -> I64 { return 3 }
+pub fn pg_err_auth() -> I64 { return 4 }
+pub fn pg_err_response() -> I64 { return 5 }
+pub fn pg_err_io() -> I64 { return 6 }
+
+// ---- 宽域播种(crypto.ct z64 同款;值标签落 6 域防 I32 界假阳) ----
+
+fn pgz() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+// ---- 十六进制面(脚本源 I/O 与字节精确断言面;夹具边唯一入口) ----
+
+fn pg_hex_val(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 65 + 10
+    }
+    return -1
+}
+
+fn pg_hex_digit(v: I64) -> Str {
+    if v == 0 { return "0" }
+    if v == 1 { return "1" }
+    if v == 2 { return "2" }
+    if v == 3 { return "3" }
+    if v == 4 { return "4" }
+    if v == 5 { return "5" }
+    if v == 6 { return "6" }
+    if v == 7 { return "7" }
+    if v == 8 { return "8" }
+    if v == 9 { return "9" }
+    if v == 10 { return "a" }
+    if v == 11 { return "b" }
+    if v == 12 { return "c" }
+    if v == 13 { return "d" }
+    if v == 14 { return "e" }
+    return "f"
+}
+
+// 十六进制串 → 字节表(0..255);奇长/非法数位/空串 → 空表(fail-closed)
+pub fn pg_hex_decode(s: Str) -> List[I32] {
+    var out = List[I32]()
+    if s.len == 0 {
+        return out
+    }
+    if s.len % 2 != 0 {
+        return out
+    }
+    var i: I32 = 0
+    while i < s.len {
+        var hi = pg_hex_val(byte_at(s, i))
+        if hi < 0 {
+            return List[I32]()
+        }
+        var lo = pg_hex_val(byte_at(s, i + 1))
+        if lo < 0 {
+            return List[I32]()
+        }
+        out.push(hi * 16 + lo)
+        i += 2
+    }
+    return out
+}
+
+// 字节表 → 小写十六进制串(空表 → "")
+pub fn pg_hex_encode(b: List[I32]) -> Str {
+    var out = ""
+    var i: I64 = 0
+    while i < b.len {
+        var v: I64 = pgz() + b[i]
+        out = out + pg_hex_digit(v / 16) + pg_hex_digit(v % 16)
+        i += 1
+    }
+    return out
+}
+
+// ---- 可打印 ASCII 表切片(client.ct cx_slice_str 同款;头注③)----
+// 表 32..122 直排;'{'(123)源码字面量禁裸且 \u{} 逃逸经解释器坏 utf8_enc
+// (登记面)不可走 ⇒ 123 fail-closed;124..126 走 "|}~" 段。
+// 形参 I32:byte_slice/byte_at 内建解释口径收 I32 域标签(lane 值同域;
+// pgz 宽域值直入即 arity 拒)。
+fn pgx_ascii_char(c: I32) -> Str {
+    if c < 32 || c > 126 || c == 123 {
+        return ""
+    }
+    if c < 123 {
+        return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz", c - 32, c - 31)
+    }
+    return byte_slice("|}~", c - 124, c - 123)
+}
+
+// 字节表 [a,b) → Str;含非可打印字节 → ""(fail-closed;精确字节面走
+// pg_hex_encode/pgr_cell_hex)
+fn pgx_ascii_bytes(b: List[I32], a: I64, e: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < e {
+        var s = pgx_ascii_char(b[i])
+        if s.len == 0 {
+            return ""
+        }
+        out = out + s
+        i += 1
+    }
+    return out
+}
+
+// ---- 定宽读取(body 字节表;越界 → -1;宽域装配) ----
+
+fn pgx_u16be(b: List[I32], pos: I64) -> I64 {
+    if pos < 0 || pos + 1 >= b.len {
+        return -1
+    }
+    var acc: I64 = pgz() + b[pos]
+    acc = acc * 256 + pgz() + b[pos + 1]
+    return acc
+}
+
+fn pgx_u32be(b: List[I32], pos: I64) -> I64 {
+    if pos < 0 || pos + 3 >= b.len {
+        return -1
+    }
+    var acc: I64 = pgz() + b[pos]
+    acc = acc * 256 + pgz() + b[pos + 1]
+    acc = acc * 256 + pgz() + b[pos + 2]
+    acc = acc * 256 + pgz() + b[pos + 3]
+    return acc
+}
+
+// body 内 cstring 扫描:返回结束 NUL 下标;无 NUL → -1
+fn pgx_cstr_end(b: List[I32], pos: I64) -> I64 {
+    if pos < 0 || pos >= b.len {
+        return -1
+    }
+    var i = pos
+    while i < b.len {
+        if b[i] == 0 {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+// ---- 帧接收结果(双源统一产出;状态随值携带) ----
+
+pub struct PgRecv {
+    var rc: I64
+    var err: I64
+    var next: I64
+    var mtype: I32
+    var body: List[I32]
+}
+
+pub fn pgv_rc(r: PgRecv) -> I64 { return r.rc }
+pub fn pgv_err(r: PgRecv) -> I64 { return r.err }
+pub fn pgv_next(r: PgRecv) -> I64 { return r.next }
+pub fn pgv_type(r: PgRecv) -> I32 { return r.mtype }
+pub fn pgv_body_len(r: PgRecv) -> I64 { return r.body.len }
+pub fn pgv_body_at(r: PgRecv, i: I64) -> I32 { return r.body[i] }
+pub fn pgv_body(r: PgRecv) -> List[I32] { return r.body }
+
+fn pgx_recv_fail(err: I64, next: I64) -> PgRecv {
+    var r = PgRecv { rc: -1, err: err, next: next, mtype: 0, body: List[I32]() }
+    return r
+}
+
+// 帧面校验核(字节表;脚本源逐帧完整前提:声明长 == 总长-1):
+// 0 帧完整 / -1 长度域坏 / -2 帧长与实际不符。声明长域 [4, frame_max],
+// 高位字节乘前预门(C10;>16MiB 恒出域)。
+fn pgx_frame_check(bytes: List[I32]) -> I64 {
+    if bytes.len < 5 {
+        return -1
+    }
+    var hi: I64 = pgz() + bytes[1]
+    if hi != 0 {
+        return -1
+    }
+    var acc: I64 = pgz() + bytes[2]
+    acc = acc * 256 + pgz() + bytes[3]
+    acc = acc * 256 + pgz() + bytes[4]
+    if acc < 4 {
+        return -1
+    }
+    if acc > pg_frame_max() {
+        return -1
+    }
+    if acc != pgz() + bytes.len - 1 {
+        return -2
+    }
+    return 0
+}
+
+// ① 回放源:十六进制帧脚本逐帧出(List[Str] 一帧一行;cur 越界 → eof)
+pub fn pg_recv_frame_script(frames: List[Str], cur: I64) -> PgRecv {
+    if cur < 0 || cur >= frames.len {
+        return pgx_recv_fail(pg_err_eof(), cur)
+    }
+    var bytes = pg_hex_decode(frames[cur])
+    if bytes.len == 0 {
+        return pgx_recv_fail(pg_err_frame(), cur + 1)
+    }
+    var fc = pgx_frame_check(bytes)
+    if fc == -1 {
+        return pgx_recv_fail(pg_err_proto(), cur + 1)
+    }
+    if fc == -2 {
+        return pgx_recv_fail(pg_err_frame(), cur + 1)
+    }
+    var body = List[I32]()
+    var i: I64 = 5
+    while i < bytes.len {
+        body.push(bytes[i])
+        i += 1
+    }
+    var r = PgRecv { rc: 0, err: 0, next: cur + 1, mtype: bytes[0], body: body }
+    return r
+}
+
+// ② 真源:fd 直读(阻塞;真 fd 冒烟 Task 6 nightly;x_ 夹具 emit 臂专面)。
+// rbuf = 持续读缓冲 lane(须 ≥ frame_max+1 lane;调用方持有;view .len =
+// 字面量显式槽数——夹具逐槽写满字面量,tcp_echo 同款),fill = 缓冲
+// 填充位标量胞(PgCell64;跨调用持态),scr = 单读暂存 lane(垫片
+// CT_CHUNK=4096 口径)。声明长越域 → err 2;读败 → err 6;对端关 → err 3;
+// 守卫计数防滞留(长度域已门,滞留面只剩对端慢滴,nightly 面再演进)。
+pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: PgCell64, scr: &I64[]) -> PgRecv {
+    var guard: I64 = 0
+    while guard < 100000 {
+        guard += 1
+        if fill.v >= 5 {
+            var hi: I64 = pgz() + rbuf[1]
+            var acc: I64 = pgz() + rbuf[2]
+            acc = acc * 256 + pgz() + rbuf[3]
+            acc = acc * 256 + pgz() + rbuf[4]
+            if hi != 0 || acc < 4 || acc > pg_frame_max() {
+                return pgx_recv_fail(pg_err_proto(), 0)
+            }
+            var need = pgz() + 1 + acc
+            if fill.v >= need {
+                var body = List[I32]()
+                var i: I64 = 5
+                while i < need {
+                    body.push(rbuf[i])
+                    i += 1
+                }
+                var rest = fill.v - need
+                var k: I64 = 0
+                while k < rest {
+                    rbuf[k] = rbuf[need + k]
+                    k += 1
+                }
+                fill.v = rest
+                var r = PgRecv { rc: 0, err: 0, next: 0, mtype: rbuf[0].as[I32](), body: body }
+                return r
+            }
+        }
+        var n = ctron_dbpg_read(fd, scr, scr.len.as[I64]())
+        if n < 0 {
+            return pgx_recv_fail(pg_err_io(), 0)
+        }
+        if n == 0 {
+            return pgx_recv_fail(pg_err_eof(), 0)
+        }
+        var j: I64 = 0
+        while j < n && fill.v < rbuf.len {
+            rbuf[fill.v] = scr[j]
+            fill.v = fill.v + 1
+            j += 1
+        }
+    }
+    return pgx_recv_fail(pg_err_io(), 0)
+}
+
+// 客户端帧发送(fd 源;List → lane 暂存后整发;rc 0 成/<0 败;超暂存 → -1)
+pub fn pg_send_msg_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
+    if msg.len > scr.len {
+        return -1
+    }
+    var i: I64 = 0
+    while i < msg.len {
+        scr[i] = msg[i]
+        i += 1
+    }
+    var w = ctron_dbpg_write(fd, scr, pgz() + msg.len)
+    if w < 0 {
+        return -1
+    }
+    return 0
+}
+
+pub fn pg_fd_close(fd: I64) -> I64 {
+    return ctron_dbpg_close(fd)
+}
+
+pub fn pg_fd_last_errno() -> I64 {
+    return ctron_dbpg_last_errno()
+}
+
+// ---- 客户端消息装配(大端;len 含自身;宽域装配) ----
+
+fn pgx_push_be32(out: List[I32], v: I64) {
+    var w: I64 = pgz() + v
+    out.push(w / 16777216 % 256)
+    out.push(w / 65536 % 256)
+    out.push(w / 256 % 256)
+    out.push(w % 256)
+}
+
+fn pgx_push_cstr(out: List[I32], s: Str) {
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    out.push(0)
+}
+
+// startup 协议 3.0(版本 196608 = 3<<16):user 恒在;database/
+// application_name 非空才入参数面;尾 NUL 终止参数序列
+pub fn pg_startup_msg(user: Str, database: Str, app: Str) -> List[I32] {
+    var payload = List[I32]()
+    pgx_push_be32(payload, 196608)
+    pgx_push_cstr(payload, "user")
+    pgx_push_cstr(payload, user)
+    if database.len > 0 {
+        pgx_push_cstr(payload, "database")
+        pgx_push_cstr(payload, database)
+    }
+    if app.len > 0 {
+        pgx_push_cstr(payload, "application_name")
+        pgx_push_cstr(payload, app)
+    }
+    payload.push(0)
+    var msg = List[I32]()
+    // len 含自身(4):4 + payload(版本 4 + 参数对 + 终止 NUL)
+    pgx_push_be32(msg, pgz() + 4 + payload.len)
+    var i: I64 = 0
+    while i < payload.len {
+        msg.push(payload[i])
+        i += 1
+    }
+    return msg
+}
+
+// Query 简单查询帧('Q' + sql + NUL)
+pub fn pg_query_msg(sql: Str) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(81)
+    pgx_push_be32(msg, pgz() + 4 + sql.len + 1)
+    pgx_push_cstr(msg, sql)
+    return msg
+}
+
+// CleartextPassword 应答帧('p' + 密码 + NUL;存根面,Task 4 SCRAM 接管)
+pub fn pg_password_msg(pw: Str) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(112)
+    pgx_push_be32(msg, pgz() + 4 + pw.len + 1)
+    pgx_push_cstr(msg, pw)
+    return msg
+}
+
+// Terminate('X' + len 4)
+pub fn pg_terminate_msg() -> List[I32] {
+    var msg = List[I32]()
+    msg.push(88)
+    pgx_push_be32(msg, 4)
+    return msg
+}
+
+// ---- 服务端消息解析核(共享;body 字节表入参) ----
+
+// Authentication 消息体 → 认证方式(0 Ok/3 Cleartext/5 MD5/10 SASL/…;
+// 越界/畸形 → -1)
+pub fn pg_auth_kind(body: List[I32]) -> I64 {
+    return pgx_u32be(body, 0)
+}
+
+// ReadyForQuery 体 → 事务状态字节('I'/'T'/'E';畸形 → -1)
+pub fn pg_ready_status(body: List[I32]) -> I64 {
+    if body.len < 1 {
+        return -1
+    }
+    return pgz() + body[0]
+}
+
+// CommandComplete 体 → tag 文本(可打印 ASCII;畸形/非打印 → "")
+pub fn pg_tag(body: List[I32]) -> Str {
+    var e = pgx_cstr_end(body, 0)
+    if e < 0 {
+        return ""
+    }
+    return pgx_ascii_bytes(body, 0, e)
+}
+
+// ErrorResponse/NoticeResponse 字段面:code(1B) + cstring 值,0x00 终。
+// S/V → severity,C → SQLSTATE,M → message,其余字段跳过(全字段扫描,
+// 暴露面只取标准三槽)。无终止 NUL → ok=0。
+pub struct PgErrData {
+    var ok: I64
+    var sev: Str
+    var code: Str
+    var msg: Str
+}
+
+pub fn pge_ok(e: PgErrData) -> I64 { return e.ok }
+pub fn pge_sev(e: PgErrData) -> Str { return e.sev }
+pub fn pge_code(e: PgErrData) -> Str { return e.code }
+pub fn pge_msg(e: PgErrData) -> Str { return e.msg }
+
+pub fn pg_err_data(body: List[I32]) -> PgErrData {
+    var d = PgErrData { ok: 1, sev: "", code: "", msg: "" }
+    var pos: I64 = 0
+    var done: I64 = 0
+    while done == 0 {
+        if pos < 0 || pos >= body.len {
+            done = 1
+        } else {
+            var code: I64 = pgz() + body[pos]
+            if code == 0 {
+                done = 1
+            } else {
+                var e = pgx_cstr_end(body, pos + 1)
+                if e < 0 {
+                    d.ok = 0
+                    done = 1
+                } else {
+                    var val = pgx_ascii_bytes(body, pos + 1, e)
+                    if code == 83 || code == 86 {
+                        d.sev = val
+                    }
+                    if code == 67 {
+                        d.code = val
+                    }
+                    if code == 77 {
+                        d.msg = val
+                    }
+                    pos = e + 1
+                }
+            }
+        }
+    }
+    return d
+}
+
+// ---- 简单查询回放面(脚本源;T/D/C/Z/E 共驱核) ----
+
+// 查询结果(struct 通道;头注①)——cells/nulls 行主序平铺;
+// cbytes/coffs 承载逐格原始字节(精确面;ASCII 面经 pgx_ascii_bytes;
+// List[I64] 字段发射面坏 ⇒ offsets 用 List[I32],帧长域 2^20 内恒安全)
+pub struct PgRows {
+    var rc: I64
+    var err: I64
+    var nrows: I64
+    var ncols: I64
+    var tag: Str
+    var cols: List[Str]
+    var oids: List[I32]
+    var cells: List[Str]
+    var nulls: List[I32]
+    var cbytes: List[I32]
+    var coffs: List[I32]
+    var esev: Str
+    var ecode: Str
+    var emsg: Str
+}
+
+pub fn pgr_rc(r: PgRows) -> I64 { return r.rc }
+pub fn pgr_err(r: PgRows) -> I64 { return r.err }
+pub fn pgr_rows(r: PgRows) -> I64 { return r.nrows }
+pub fn pgr_cols(r: PgRows) -> I64 { return r.ncols }
+pub fn pgr_tag(r: PgRows) -> Str { return r.tag }
+pub fn pgr_colname(r: PgRows, i: I64) -> Str {
+    if i < 0 || i >= r.cols.len {
+        return ""
+    }
+    return r.cols[i]
+}
+// 类型 OID(u32 档 ≥2^31 按 I32 符号化呈现,头注②;OOB → -1)
+pub fn pgr_oid(r: PgRows, i: I64) -> I64 {
+    if i < 0 || i >= r.oids.len {
+        return -1
+    }
+    return pgz() + r.oids[i]
+}
+pub fn pgr_isnull(r: PgRows, row: I64, col: I64) -> I64 {
+    if row < 0 || col < 0 || row >= r.nrows || col >= r.ncols {
+        return -1
+    }
+    return pgz() + r.nulls[row * r.ncols + col]
+}
+pub fn pgr_cell(r: PgRows, row: I64, col: I64) -> Str {
+    if row < 0 || col < 0 || row >= r.nrows || col >= r.ncols {
+        return ""
+    }
+    return r.cells[row * r.ncols + col]
+}
+// 格精确字节面(十六进制;任意字节双臂可断言;OOB → "")
+pub fn pgr_cell_hex(r: PgRows, row: I64, col: I64) -> Str {
+    if row < 0 || col < 0 || row >= r.nrows || col >= r.ncols {
+        return ""
+    }
+    var a: I64 = pgz() + r.coffs[row * r.ncols + col]
+    var e: I64 = pgz() + r.coffs[row * r.ncols + col + 1]
+    var out = ""
+    var i = a
+    while i < e {
+        var v: I64 = pgz() + r.cbytes[i]
+        out = out + pg_hex_digit(v / 16) + pg_hex_digit(v % 16)
+        i += 1
+    }
+    return out
+}
+pub fn pgr_cell_bytes(r: PgRows, row: I64, col: I64) -> List[I32] {
+    var out = List[I32]()
+    if row < 0 || col < 0 || row >= r.nrows || col >= r.ncols {
+        return out
+    }
+    var a: I64 = pgz() + r.coffs[row * r.ncols + col]
+    var e: I64 = pgz() + r.coffs[row * r.ncols + col + 1]
+    var i = a
+    while i < e {
+        out.push(r.cbytes[i])
+        i += 1
+    }
+    return out
+}
+pub fn pgr_esev(r: PgRows) -> Str { return r.esev }
+pub fn pgr_ecode(r: PgRows) -> Str { return r.ecode }
+pub fn pgr_emsg(r: PgRows) -> Str { return r.emsg }
+
+fn pgx_rows_fail(err: I64, esev: Str, ecode: Str, emsg: Str) -> PgRows {
+    var r = PgRows { rc: -1, err: err, nrows: 0, ncols: 0, tag: "", cols: List[Str](), oids: List[I32](), cells: List[Str](), nulls: List[I32](), cbytes: List[I32](), coffs: List[I32](), esev: esev, ecode: ecode, emsg: emsg }
+    return r
+}
+
+// RowDescription('T')解析:nfields(2B) + 每列{name\0, 表 OID(4),
+// attnum(2), 类型 OID(4), typlen(2), typmod(4), format(2)}。畸形 → ok=0。
+struct PgDesc {
+    let ok: I64
+    let ncols: I64
+    let cols: List[Str]
+    let oids: List[I32]
+}
+
+fn pgx_parse_rowdesc(body: List[I32]) -> PgDesc {
+    var n = pgx_u16be(body, 0)
+    if n < 0 {
+        return PgDesc { ok: 0, ncols: 0, cols: List[Str](), oids: List[I32]() }
+    }
+    var cols = List[Str]()
+    var oids = List[I32]()
+    var pos: I64 = 2
+    var k: I64 = 0
+    while k < n {
+        var e = pgx_cstr_end(body, pos)
+        if e < 0 {
+            return PgDesc { ok: 0, ncols: 0, cols: List[Str](), oids: List[I32]() }
+        }
+        cols.push(pgx_ascii_bytes(body, pos, e))
+        // 名称 NUL 后:表 OID(4)+ attnum(2)→ 类型 OID 在 e+7
+        var oid = pgx_u32be(body, e + 7)
+        if oid < 0 {
+            return PgDesc { ok: 0, ncols: 0, cols: List[Str](), oids: List[I32]() }
+        }
+        if oid > 2147483647 {
+            oids.push(oid - 4294967296)
+        } else {
+            oids.push(oid)
+        }
+        pos = e + 1 + 18
+        k += 1
+    }
+    return PgDesc { ok: 1, ncols: n, cols: cols, oids: oids }
+}
+
+// DataRow('D')解析:ncols(2B) + 每列{len(4B 有符号;-1=NULL), bytes}。
+// 列数与 RowDescription 不符 / len < -1 / 越界 → 0(协议违例)。
+// 经形参 push 累加(头注④;调用方持累加结构),成功返 1。
+// 注意:off 闭端偏移由调用方在行成功后补 push(失败行不留闭端)。
+fn pgx_parse_datarow(body: List[I32], ncols: I64, cells: List[Str], nulls: List[I32], cbytes: List[I32], offs: List[I32]) -> I64 {
+    var n = pgx_u16be(body, 0)
+    if n < 0 || n != ncols {
+        return 0
+    }
+    var pos: I64 = 2
+    var k: I64 = 0
+    while k < n {
+        var u = pgx_u32be(body, pos)
+        if u < 0 {
+            return 0
+        }
+        var clen: I64 = u
+        if clen >= 2147483648 {
+            clen = clen - 4294967296
+        }
+        if clen == -1 {
+            cells.push("")
+            nulls.push(1)
+            offs.push(cbytes.len)
+            pos += 4
+        } else {
+            if clen < -1 || pos + 4 + clen > body.len {
+                return 0
+            }
+            cells.push(pgx_ascii_bytes(body, pos + 4, pos + 4 + clen))
+            nulls.push(0)
+            offs.push(cbytes.len)
+            var i: I64 = 0
+            while i < clen {
+                cbytes.push(body[pos + 4 + i])
+                i += 1
+            }
+            pos += 4 + clen
+        }
+        k += 1
+    }
+    return 1
+}
+
+// 简单查询回放(脚本源):发侧 pg_query_msg 由调用方构建/断言(回放源无
+// 下行信道);收侧逐帧:T→行描述,D→行(列数校验),C→tag,Z→收口(rc 0),
+// E→rc -1 err 5 + 字段面,N/S/K/其余→跳过(前向兼容)。源耗尽未见 Z →
+// err 3。无行集查询(BEGIN 等)v0 口径:rc 0 ncols 0 空面。
+pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
+    var ncols: I64 = -1
+    var nrows: I64 = 0
+    var tag = ""
+    var esev = ""
+    var ecode = ""
+    var emsg = ""
+    var cols = List[Str]()
+    var oids = List[I32]()
+    var cells = List[Str]()
+    var nulls = List[I32]()
+    var cbytes = List[I32]()
+    var offs = List[I32]()
+    // offs = 逐格起始偏移(格 c 起 = 格 c-1 止;闭端由行末补推)——
+    // 首格起 0 由首格 push 自带,勿预置(预置即全表错位)
+    var pos: I64 = cur
+    var done: I64 = 0
+    var rc: I64 = -1
+    var err: I64 = 0
+    while done == 0 {
+        var fr = pg_recv_frame_script(frames, pos)
+        if fr.rc != 0 {
+            rc = -1
+            err = fr.err
+            done = 1
+        } else {
+            pos = fr.next
+            var t: I64 = pgz() + fr.mtype
+            if t == 84 {
+                var d = pgx_parse_rowdesc(fr.body)
+                if d.ok == 0 {
+                    rc = -1
+                    err = pg_err_proto()
+                    done = 1
+                } else {
+                    ncols = d.ncols
+                    cols = d.cols
+                    oids = d.oids
+                }
+            } else {
+                if t == 68 {
+                    if ncols < 0 {
+                        rc = -1
+                        err = pg_err_proto()
+                        done = 1
+                    } else {
+                        var dr = pgx_parse_datarow(fr.body, ncols, cells, nulls, cbytes, offs)
+                        if dr == 0 {
+                            rc = -1
+                            err = pg_err_proto()
+                            done = 1
+                        } else {
+                            offs.push(cbytes.len)
+                            nrows += 1
+                        }
+                    }
+                } else {
+                    if t == 67 {
+                        tag = pg_tag(fr.body)
+                    } else {
+                        if t == 90 {
+                            rc = 0
+                            done = 1
+                        } else {
+                            if t == 69 {
+                                var ed = pg_err_data(fr.body)
+                                esev = ed.sev
+                                ecode = ed.code
+                                emsg = ed.msg
+                                rc = -1
+                                err = pg_err_response()
+                                done = 1
+                            }
+                            // N(78)/S(83)/K(75)/其余:跳过(前向兼容)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if rc != 0 {
+        return pgx_rows_fail(err, esev, ecode, emsg)
+    }
+    var fc2: I64 = ncols
+    if fc2 < 0 {
+        fc2 = 0
+    }
+    var r = PgRows { rc: 0, err: 0, nrows: nrows, ncols: fc2, tag: tag, cols: cols, oids: oids, cells: cells, nulls: nulls, cbytes: cbytes, coffs: offs, esev: esev, ecode: ecode, emsg: emsg }
+    return r
+}
+
+// ---- 会话握手回放面(脚本源) ----
+
+pub struct PgSess {
+    var rc: I64
+    var err: I64
+    var next: I64
+    var status: I64
+    var pid: I64
+    var key: I64
+    var authkind: I64
+    var esev: Str
+    var ecode: Str
+    var emsg: Str
+}
+
+pub fn pgs_rc(s: PgSess) -> I64 { return s.rc }
+pub fn pgs_err(s: PgSess) -> I64 { return s.err }
+pub fn pgs_next(s: PgSess) -> I64 { return s.next }
+pub fn pgs_status(s: PgSess) -> I64 { return s.status }
+pub fn pgs_pid(s: PgSess) -> I64 { return s.pid }
+pub fn pgs_key(s: PgSess) -> I64 { return s.key }
+pub fn pgs_authkind(s: PgSess) -> I64 { return s.authkind }
+pub fn pgs_esev(s: PgSess) -> Str { return s.esev }
+pub fn pgs_ecode(s: PgSess) -> Str { return s.ecode }
+pub fn pgs_emsg(s: PgSess) -> Str { return s.emsg }
+
+// 握手回放:startup 发侧由调用方构建/断言(回放源无下行信道);收侧
+// R(AuthenticationOk=0 续;Cleartext=3/MD5=5/SASL=10 检出 → err 4 存根并
+// 记 authkind;其余方式记 kind 后续帧再断),K 记 pid/key,E 记字段面,
+// Z 记 status 收口。源耗尽 → err 3。
+pub fn pg_handshake_script(frames: List[Str], cur: I64) -> PgSess {
+    var pos: I64 = cur
+    var done: I64 = 0
+    var rc: I64 = -1
+    var err: I64 = 0
+    var status: I64 = 0
+    var pid: I64 = -1
+    var key: I64 = -1
+    var authkind: I64 = -1
+    var esev = ""
+    var ecode = ""
+    var emsg = ""
+    while done == 0 {
+        var fr = pg_recv_frame_script(frames, pos)
+        if fr.rc != 0 {
+            rc = -1
+            err = fr.err
+            done = 1
+        } else {
+            pos = fr.next
+            var t: I64 = pgz() + fr.mtype
+            if t == 82 {
+                var kind = pg_auth_kind(fr.body)
+                if kind < 0 {
+                    rc = -1
+                    err = pg_err_proto()
+                    done = 1
+                } else {
+                    authkind = kind
+                    if kind == 3 || kind == 5 || kind == 10 {
+                        rc = -1
+                        err = pg_err_auth()
+                        emsg = "auth kind " + kind.to_string() + " not supported in replay core (SCRAM: Task 4)"
+                        done = 1
+                    }
+                    // kind 0(AuthOk)与其余方式:续帧(K/S/Z/E 断)
+                }
+            } else {
+                if t == 75 {
+                    var p = pgx_u32be(fr.body, 0)
+                    var k2 = pgx_u32be(fr.body, 4)
+                    if p < 0 || k2 < 0 {
+                        rc = -1
+                        err = pg_err_proto()
+                        done = 1
+                    } else {
+                        pid = p
+                        key = k2
+                    }
+                } else {
+                    if t == 90 {
+                        status = pg_ready_status(fr.body)
+                        rc = 0
+                        done = 1
+                    } else {
+                        if t == 69 {
+                            var ed = pg_err_data(fr.body)
+                            esev = ed.sev
+                            ecode = ed.code
+                            emsg = ed.msg
+                            rc = -1
+                            err = pg_err_response()
+                            done = 1
+                        }
+                        // S(83)/N(78)/其余:跳过(前向兼容)
+                    }
+                }
+            }
+        }
+    }
+    var s = PgSess { rc: rc, err: err, next: pos, status: status, pid: pid, key: key, authkind: authkind, esev: esev, ecode: ecode, emsg: emsg }
+    return s
+}

@@ -1,0 +1,22 @@
+// tests/db/corpus/x_fd_edge.ct —— fd 真源 IO 边(emit 臂专面;x_ 前缀,
+// crypto_vec x_uuid_live 同款结构性登记:interp 无 extern 运行时)。
+// fd = -1 → 垫片 recv EBADF → err 6;errno 槽 = 9(EBADF,darwin/linux 同
+// 值);发送/关闭路径同探。真库(fd 冒烟)Task 6 nightly。
+// 链接:tests/db/run.sh 本文件 emit 臂加 std/db/c_src/ctron_dbpg.c。
+use std.db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_fd_close, pg_fd_last_errno, pg_query_msg, pgv_rc, pgv_err, pg_err_io, PgCell64}
+
+test "fd edge: EBADF maps to io err with errno slot" {
+    var rbuf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var scr: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var fill = PgCell64 { v: 0 }
+    let r = pg_recv_frame_fd(-1, rbuf, fill, scr)
+    assert_eq(pgv_rc(r), -1)
+    assert_eq(pgv_err(r), pg_err_io())
+    assert_eq(pg_fd_last_errno(), 9)
+    // 发送路径:无效 fd → -1
+    let m = pg_query_msg("SELECT 1")
+    assert_eq(pg_send_msg_fd(-1, m, scr), -1)
+    assert_eq(pg_fd_last_errno(), 9)
+    // 关闭路径:无效 fd → -1
+    assert_eq(pg_fd_close(-1), -1)
+}
