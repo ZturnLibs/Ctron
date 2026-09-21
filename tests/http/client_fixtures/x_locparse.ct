@@ -1,0 +1,19 @@
+// x_client_e2e 系(P4-C)纯判件:Location 解析 + 缓存键哈希(client.ct 纯面)
+// 前缀 x_ = emit 专臂(interp 触 net/bind 子树即 W8052 rc=1 —— net 夹具同口径;
+// 本夹具虽不触 IO,但 client.ct 的 use 图必带 bind.ct,interp 臂不可入,登记)。
+use std.http.client.{ client_loc_resolve, loc_ok, loc_host, loc_port, loc_path, client_hash_host }
+
+test "client fixture loc resolve" {
+    let a = client_loc_resolve("/a/b?q=1", "127.0.0.1", 8080)
+    assert(loc_ok(a) == 1 && loc_host(a) == "127.0.0.1" && loc_port(a) == 8080 && loc_path(a) == "/a/b?q=1")
+    let b = client_loc_resolve("http://example.com:9090/x/y", "127.0.0.1", 8080)
+    assert(loc_ok(b) == 1 && loc_host(b) == "example.com" && loc_port(b) == 9090 && loc_path(b) == "/x/y")
+    let c = client_loc_resolve("http://example.com", "127.0.0.1", 8080)
+    assert(loc_ok(c) == 1 && loc_host(c) == "example.com" && loc_port(c) == 80 && loc_path(c) == "/")
+    let d = client_loc_resolve("other:80/x", "127.0.0.1", 8080)
+    assert(loc_ok(d) == 0)
+    let e = client_loc_resolve("https://s.io/x", "127.0.0.1", 8080)
+    assert(loc_ok(e) == 0)
+    assert(client_hash_host("a") == client_hash_host("a"))
+    assert(client_hash_host("a") != client_hash_host("b"))
+}

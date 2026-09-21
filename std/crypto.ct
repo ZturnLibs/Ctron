@@ -535,3 +535,179 @@ test "sha256 fips vectors" {
     assert_eq(sha256_hex("The quick brown fox jumps over the lazy dog"), "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592")
     assert_eq(sha256_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"), "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
 }
+
+// ---- SHA-1(FIPS 180-1 / RFC 3174;P4-C WebSocket 握手原语)----
+// 口径:与 sha256 同形(16 滑窗具名局部 + block_word 复用,几何同为 512 位块
+// + 64 位长尾);唯 SHA-1 专属件 = 或 / 循环左移 / 轮函数 / 轮常量,前缀 s1_。
+// 安全注记(必须随 API 走):SHA-1 已碰撞破(2017 SHAttered),此处仅服务
+// RFC 6455 握手等【协议指定】场景,不作安全承载原语 —— 安全摘要一律 sha256_hex。
+fn s1_or32(a: I64, b: I64) -> I64 {
+    return a + b - and32(a, b)
+}
+
+// 循环左移 = 循环右移取 32-n(复用 rotr32)
+fn s1_rotl(v: I64, n: I32) -> I64 {
+    return rotr32(v, 32 - n)
+}
+
+// 轮函数(RFC 3174 §3;0..19 选择 / 20..39 与 60..79 奇异 / 40..59 多数)
+fn s1_f(t: I32, b: I64, c: I64, d: I64) -> I64 {
+    if t < 20 {
+        return s1_or32(and32(b, c), and32(not32(b), d))
+    }
+    if t < 40 {
+        return xor32(xor32(b, c), d)
+    }
+    if t < 60 {
+        return s1_or32(s1_or32(and32(b, c), and32(b, d)), and32(c, d))
+    }
+    return xor32(xor32(b, c), d)
+}
+
+// 轮常量(FIPS 180-1 §4;2/3/5/10 的平方根小数部分前 32 位 × 2^32)
+fn s1_k(t: I32) -> I64 {
+    if t < 20 {
+        return 1518500249
+    }
+    if t < 40 {
+        return 1859775393
+    }
+    if t < 60 {
+        return 2400959708
+    }
+    return 3395469782
+}
+
+// SHA-1 摘要,小写 40 位十六进制串(160 位);消息按字节级。
+// 80 轮扩展:w_i = rotl1(w_{i-3} ^ w_{i-8} ^ w_{i-14} ^ w_{i-16}),16 滑窗位
+// v13/v8/v2/v0(shar256 的 v14/v9/v1/v0 错位一名,几何同)。
+pub fn sha1_hex(msg: Str) -> Str {
+    let m32: I64 = 4294967296
+    let n: I32 = msg.len
+    var nblocks: I32 = (n + 72) / 64
+    var bits: I64 = z64() + 8
+    bits = bits * n
+    var h0: I64 = 1732584193
+    var h1: I64 = 4023233417
+    var h2: I64 = 2562383102
+    var h3: I64 = 271733878
+    var h4: I64 = 3285377520
+    var bi: I32 = 0
+    while bi < nblocks {
+        var v0 = block_word(msg, bi * 64, n, 0, -1, bits)
+        var v1 = block_word(msg, bi * 64 + 4, n, 0, -1, bits)
+        var v2 = block_word(msg, bi * 64 + 8, n, 0, -1, bits)
+        var v3 = block_word(msg, bi * 64 + 12, n, 0, -1, bits)
+        var v4 = block_word(msg, bi * 64 + 16, n, 0, -1, bits)
+        var v5 = block_word(msg, bi * 64 + 20, n, 0, -1, bits)
+        var v6 = block_word(msg, bi * 64 + 24, n, 0, -1, bits)
+        var v7 = block_word(msg, bi * 64 + 28, n, 0, -1, bits)
+        var v8 = block_word(msg, bi * 64 + 32, n, 0, -1, bits)
+        var v9 = block_word(msg, bi * 64 + 36, n, 0, -1, bits)
+        var v10 = block_word(msg, bi * 64 + 40, n, 0, -1, bits)
+        var v11 = block_word(msg, bi * 64 + 44, n, 0, -1, bits)
+        var v12 = block_word(msg, bi * 64 + 48, n, 0, -1, bits)
+        var v13 = block_word(msg, bi * 64 + 52, n, 0, -1, bits)
+        var v14 = block_word(msg, bi * 64 + 56, n, 0, -1, bits)
+        var v15 = block_word(msg, bi * 64 + 60, n, 1, bi * 64 + 60 - (nblocks * 64 - 8), bits)
+        var a = h0
+        var b = h1
+        var c = h2
+        var d = h3
+        var e = h4
+        var ri: I32 = 0
+        while ri < 80 {
+            var wt: I64 = z64()
+            if ri == 0 {
+                wt = v0
+            }
+            if ri == 1 {
+                wt = v1
+            }
+            if ri == 2 {
+                wt = v2
+            }
+            if ri == 3 {
+                wt = v3
+            }
+            if ri == 4 {
+                wt = v4
+            }
+            if ri == 5 {
+                wt = v5
+            }
+            if ri == 6 {
+                wt = v6
+            }
+            if ri == 7 {
+                wt = v7
+            }
+            if ri == 8 {
+                wt = v8
+            }
+            if ri == 9 {
+                wt = v9
+            }
+            if ri == 10 {
+                wt = v10
+            }
+            if ri == 11 {
+                wt = v11
+            }
+            if ri == 12 {
+                wt = v12
+            }
+            if ri == 13 {
+                wt = v13
+            }
+            if ri == 14 {
+                wt = v14
+            }
+            if ri == 15 {
+                wt = v15
+            }
+            if ri >= 16 {
+                wt = s1_rotl(xor32(xor32(v13, v8), xor32(v2, v0)), 1)
+            }
+            var t1 = (e + s1_rotl(a, 5) + s1_f(ri, b, c, d) + s1_k(ri) + wt) % m32
+            e = d
+            d = c
+            c = s1_rotl(b, 30)
+            b = a
+            a = t1
+            if ri >= 16 {
+                v0 = v1
+                v1 = v2
+                v2 = v3
+                v3 = v4
+                v4 = v5
+                v5 = v6
+                v6 = v7
+                v7 = v8
+                v8 = v9
+                v9 = v10
+                v10 = v11
+                v11 = v12
+                v12 = v13
+                v13 = v14
+                v14 = v15
+                v15 = wt
+            }
+            ri += 1
+        }
+        h0 = (h0 + a) % m32
+        h1 = (h1 + b) % m32
+        h2 = (h2 + c) % m32
+        h3 = (h3 + d) % m32
+        h4 = (h4 + e) % m32
+        bi += 1
+    }
+    return hex_word(h0) + hex_word(h1) + hex_word(h2) + hex_word(h3) + hex_word(h4)
+}
+
+test "sha1 rfc 3174 vectors" {
+    assert_eq(sha1_hex(""), "da39a3ee5e6b4b0d3255bfef95601890afd80709")
+    assert_eq(sha1_hex("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d")
+    assert_eq(sha1_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"), "84983e441c3bd26ebaae4aa1f95129e5e54670f1")
+    assert_eq(sha1_hex("The quick brown fox jumps over the lazy dog"), "2fd4e1c67a2d28fced849ee1bb76e7391b93eb12")
+}

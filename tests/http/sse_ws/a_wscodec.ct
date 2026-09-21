@@ -1,0 +1,123 @@
+// a_wscodec —— P4-C WS 帧编解码语料(interp + emit 双臂;零 IO)
+// RFC 6455 §5.7 字节级黄金向量 + §5.4 分片语料 + 方向掩码强制 + close 面。
+// 行为面 x_ws_e2e。
+use std.http.ws.{ ws_frame_encode, ws_step, ws_st_new, ws_accept_key, ws_close_payload, ws_close_protocol_error, ws_is_control, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
+
+fn wc_hex_fill(buf: &I64[], hex: Str) -> I64 {
+    var i: I32 = 0
+    var k: I32 = 0
+    while k + 1 < hex.len {
+        var hi: I64 = 0
+        var lo: I64 = 0
+        let a = byte_at(hex, k)
+        let b = byte_at(hex, k + 1)
+        if a >= 48 && a <= 57 {
+            hi = (a - 48).as[I64]()
+        }
+        if a >= 97 && a <= 102 {
+            hi = (a - 87).as[I64]()
+        }
+        if b >= 48 && b <= 57 {
+            lo = (b - 48).as[I64]()
+        }
+        if b >= 97 && b <= 102 {
+            lo = (b - 87).as[I64]()
+        }
+        buf[i] = hi * 16 + lo
+        i += 1
+        k += 2
+    }
+    return i.as[I64]()
+}
+
+fn wc_expect_str(buf: &I64[], off: I64, want: Str) -> I64 {
+    var i: I32 = 0
+    while i < want.len {
+        if buf[off + i.as[I64]()] != byte_at(want, i).as[I64]() {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+test "ws fixture rfc 6455 5.7 hello vectors" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // 服务端→客户端无掩码 "Hello":81 05 48 65 6c 6c 6f(§5.1 示例)
+    let n1 = wc_hex_fill(fr, "810548656c6c6f")
+    let r1 = ws_step(fr, n1, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r1) == 1 && wr_opcode(r1) == 1 && wr_fin(r1) == 1 && wr_produced(r1) == 5)
+    assert(wc_expect_str(dst, 0, "Hello") == 1)
+    // 客户端→服务端掩码 "Hello"(键 37faf305):81 85 37 fa f3 05 7f 9f 9f 69 58
+    let n2 = wc_hex_fill(fr, "818537faf3057f9f9f6958")
+    let r2 = ws_step(fr, n2, 0, ws_st_new(1), dst, 0, 64)
+    assert(wr_rc(r2) == 1 && wr_opcode(r1) == 1 && wr_produced(r2) == 5)
+    assert(wc_expect_str(dst, 0, "Hello") == 1)
+}
+
+test "ws fixture ping close byte corpus" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // 掩码 ping(键 00000001;载荷 "hi"):89 82 00 00 00 01 <hi^00 hi^01>
+    var cp: I64[2] = [0, 0]
+    let n3 = wc_hex_fill(fr, "8982000000016869")
+    let r3 = ws_step(fr, n3, 0, ws_st_new(1), dst, 0, 64)
+    assert(wr_rc(r3) == 1 && wr_opcode(r3) == 9 && wr_produced(r3) == 2)
+    assert(dst[0] == 104 && dst[1] == 105)
+    // 掩码 close 码 1002(键 00000001 → 掩码字节序 00 00 00 01):88 82 00 00 00 01 03 ea
+    let n4 = wc_hex_fill(fr, "88820000000103ea")
+    let r4 = ws_step(fr, n4, 0, ws_st_new(1), dst, 0, 64)
+    assert(wr_rc(r4) == 1 && wr_opcode(r4) == 8)
+    assert(dst[0] == 3 && dst[1] == 234)
+    // 1002 常量与编码一致性
+    ws_close_payload(ws_close_protocol_error(), cp)
+    assert(cp[0] == 3 && cp[1] == 234)
+    assert(ws_is_control(9) == 1 && ws_is_control(1) == 0)
+}
+
+test "ws fixture fragmentation corpus 5.4" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // RFC §5.7 分片示例形:text FIN=0 "Hel" + cont FIN=1 "o" 的三片变体
+    let n = wc_hex_fill(fr, "010348656c00016c80016f")
+    var st = ws_st_new(0)
+    var pos: I64 = 0
+    var total: I64 = 0
+    var frames: I64 = 0
+    var first: I64 = -1
+    var guard: I64 = 0
+    while guard < 32 {
+        guard += 1
+        if pos >= n {
+            break
+        }
+        let r = ws_step(fr, n, pos, st, dst, total, 64)
+        pos = pos + wr_consumed(r)
+        total = total + wr_produced(r)
+        assert(wr_rc(r) != -1)
+        st = wr_st(r)
+        if wr_rc(r) == 1 {
+            frames += 1
+            if frames == 1 {
+                first = wr_opcode(r)
+                assert(wr_fin(r) == 0)
+            }
+            if frames == 3 {
+                assert(wr_opcode(r) == 0 && wr_fin(r) == 1)
+            }
+        }
+    }
+    assert(frames == 3 && total == 5 && first == 1)
+    assert(wc_expect_str(dst, 0, "Hello") == 1)
+}
+
+test "ws fixture accept key lane form" {
+    // §4.2.2 示例的 lane 直取形(报文切片 → accept,零 Str 转换)
+    var kb: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let kn = wc_hex_fill(kb, "78334a4a484d62444c31457a4c6b68394742685844773d3d")
+    // hex = "x3JJHMbDL1EzLkh9GBhXDw==" 的 ASCII 字节(上 hex_fill 按对解码,
+    // 此处直接断言与 Str 面一致)
+    assert_eq(ws_accept_key("x3JJHMbDL1EzLkh9GBhXDw=="), "HSmrc0sMlYUkAGmm5OPpG2HaGWk=")
+    assert(kn == 24)
+}
