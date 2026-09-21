@@ -1,0 +1,49 @@
+// tests/http/corpus/h_build_100.ct —— 报文构造 + 100-continue 钩子 + CL 剩余量
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+use std.http.message.{msg_hex, msg_request_line, msg_status_line, msg_header, msg_head_end, msg_cl_header, msg_request_head, msg_response_head, msg_chunk_header, msg_chunk_data_end, msg_last_chunk, msg_last_chunk_trailer, msg_continue, msg_expect_header, msg_should_expect, msg_body_remaining, chunk_st_new, chunk_step, st_phase, st_remain, cr_rc, cr_err, cr_consumed, cr_produced, cr_phase, cr_remain}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "builders exact forms" {
+    assert(msg_hex(255) == "ff" && msg_hex(0) == "0" && msg_hex(-5) == "")
+    assert(msg_request_line("GET", "/", 1) == "GET / HTTP/1.1\r\n")
+    assert(msg_status_line(1, 404, "Not Found") == "HTTP/1.1 404 Not Found\r\n")
+    assert(msg_status_line(0, 200, "") == "HTTP/1.0 200\r\n")
+    assert(msg_header("Host", "h") == "Host: h\r\n")
+    assert(msg_head_end() == "\r\n")
+    assert(msg_cl_header(7) == "Content-Length: 7\r\n")
+    assert(msg_request_head("GET", "/x", "e.com", 1, 3) == "GET /x HTTP/1.1\r\nHost: e.com\r\nContent-Length: 3\r\n\r\n")
+    assert(msg_response_head(1, 200, "OK", 0) == "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+    assert(msg_chunk_header(11) == "b\r\n")
+    assert(msg_chunk_data_end() == "\r\n")
+    assert(msg_last_chunk() == "0\r\n\r\n")
+    assert(msg_last_chunk_trailer("X-S", "1") == "0\r\nX-S: 1\r\n\r\n")
+}
+
+test "built request parses back" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let req = msg_request_head("POST", "/api", "srv", 1, 4)
+    let n = feed(buf, req + "wiki")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_clen(h) == 4)
+    assert(buf[http_head_end(h)] == 119)
+    assert(msg_body_remaining(http_head_end(h), http_clen(h), n) == 0)
+}
+
+test "continue hooks and threshold" {
+    assert(msg_continue() == "HTTP/1.1 100 Continue\r\n\r\n")
+    assert(msg_expect_header() == "Expect: 100-continue\r\n")
+    assert(msg_should_expect(4096, 4096) == 1)
+    assert(msg_should_expect(4095, 4096) == 0)
+    assert(msg_body_remaining(20, 10, 15) == 10)
+    assert(msg_body_remaining(20, 10, 14) == 10)
+    assert(msg_body_remaining(20, 10, 30) == 0)
+}

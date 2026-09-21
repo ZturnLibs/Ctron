@@ -1,0 +1,48 @@
+// tests/http/corpus/c_resp_status.ct —— 状态行:带/无原因短语、1.0、need-more
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "response with reason" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_is_resp(h) == 1)
+    assert(http_status_of(h) == 200)
+    assert(http_ver(h) == 1)
+    assert(http_nheaders(h) == 1)
+    assert(http_clen(h) == 0)
+}
+
+test "response no reason and v1.0" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "HTTP/1.0 404\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_status_of(h) == 404)
+    assert(http_ver(h) == 0)
+    assert(http_nheaders(h) == 0)
+}
+
+test "response incremental need more" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let full = "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+    let n1 = feed(buf, "HTTP/1.1 50")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    assert(http_rc(h1) == 0)
+    var i: I32 = 11
+    while i < full.len {
+        buf[i] = byte_at(full, i).as[I64]()
+        i += 1
+    }
+    let h2 = http_parse_head(buf, full.len.as[I64](), http_limits_default())
+    assert(http_rc(h2) == 1 && http_status_of(h2) == 500)
+}

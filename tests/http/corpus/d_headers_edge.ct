@@ -1,0 +1,46 @@
+// tests/http/corpus/d_headers_edge.ct —— 头值形态:OWS 修剪/空值/无空格形/迭代
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "value ows trimmed both ends" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "GET / HTTP/1.1\r\nX-A: \t spaced \t\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    let v = http_header_value(buf, h, "x-a")
+    assert(sl_rc(v) == 0 && sl_vl(v) == 6)
+    assert(buf[sl_vs(v)] == 115 && buf[sl_vs(v) + 5] == 100)
+}
+
+test "empty value and no space form" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "GET / HTTP/1.1\r\nX-E:\r\nX-B:compact\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1 && http_nheaders(h) == 2)
+    let e = http_header_value(buf, h, "X-E")
+    assert(sl_rc(e) == 0 && sl_vl(e) == 0)
+    let b = http_header_value(buf, h, "x-b")
+    assert(sl_vl(b) == 7 && buf[sl_vs(b)] == 99)
+}
+
+test "iteration in order" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "GET / HTTP/1.1\r\nHost: h\r\nA: 1\r\nB: 2\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_nheaders(h) == 3)
+    let h0 = http_header_at(buf, h, 0)
+    assert(sl_nl(h0) == 4)
+    let h1 = http_header_at(buf, h, 1)
+    assert(sl_nl(h1) == 1 && sl_vl(h1) == 1)
+    let h2 = http_header_at(buf, h, 2)
+    assert(sl_ns(h2) == sl_ns(h1) + 6)
+    assert(sl_rc(http_header_at(buf, h, 3)) == -1)
+}

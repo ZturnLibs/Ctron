@@ -1,0 +1,43 @@
+// tests/http/corpus/b_post_body.ct —— POST + Content-Length 分框:体界 = head_end
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "post cl framing" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let req = "POST /submit HTTP/1.1\r\nHost: h\r\nContent-Length: 5\r\n\r\nhello"
+    let n = feed(buf, req)
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_method_len(h) == 4)
+    assert(http_clen(h) == 5)
+    assert(http_body_kind(h) == 0)
+    assert(http_head_end(h) == n - 5)
+    assert(buf[http_head_end(h)] == 104 && buf[n - 1] == 111)
+}
+
+test "post cl zero and case insensitive find" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let req = "POST /x HTTP/1.1\r\ncOnTeNt-lEngTh: 0\r\n\r\n"
+    let n = feed(buf, req)
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_clen(h) == 0)
+    assert(http_header_find(buf, h, "content-length") == 0)
+    assert(http_header_find(buf, h, "CONTENT-LENGTH") == 0)
+}
+
+test "cl large value ok under default cap" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let req = "PUT /f HTTP/1.1\r\nContent-Length: 1048576\r\n\r\n"
+    let n = feed(buf, req)
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1 && http_clen(h) == 1048576)
+}

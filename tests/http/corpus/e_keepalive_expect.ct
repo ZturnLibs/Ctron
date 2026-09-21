@@ -1,0 +1,51 @@
+// tests/http/corpus/e_keepalive_expect.ct —— 连接语义与 Expect 检出
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "http11 default on close off" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = feed(buf, "GET / HTTP/1.1\r\n\r\n")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    assert(http_keep_alive(buf, h1) == 1)
+    let n2 = feed(buf, "GET / HTTP/1.1\r\nConnection: close\r\n\r\n")
+    let h2 = http_parse_head(buf, n2, http_limits_default())
+    assert(http_keep_alive(buf, h2) == 0)
+}
+
+test "http10 default off keeponly explicit" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = feed(buf, "GET / HTTP/1.0\r\n\r\n")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    assert(http_keep_alive(buf, h1) == 0)
+    let n2 = feed(buf, "GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n")
+    let h2 = http_parse_head(buf, n2, http_limits_default())
+    assert(http_keep_alive(buf, h2) == 1)
+}
+
+test "connection token list case insensitive" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "GET / HTTP/1.1\r\nConnection: gzip, CLOSE\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_keep_alive(buf, h) == 0)
+}
+
+test "expect detection and ignore others" {
+    var buf: I64[160] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = feed(buf, "POST /u HTTP/1.1\r\nExpect: 100-Continue\r\n\r\n")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    assert(http_is_expect_100(buf, h1) == 1)
+    let n2 = feed(buf, "POST /u HTTP/1.1\r\nExpect: 200-whatever\r\n\r\n")
+    let h2 = http_parse_head(buf, n2, http_limits_default())
+    assert(http_is_expect_100(buf, h2) == 0)
+    let n3 = feed(buf, "POST /u HTTP/1.1\r\n\r\n")
+    let h3 = http_parse_head(buf, n3, http_limits_default())
+    assert(http_is_expect_100(buf, h3) == 0)
+}

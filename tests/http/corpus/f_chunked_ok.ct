@@ -1,0 +1,86 @@
+// tests/http/corpus/f_chunked_ok.ct —— chunked 合法面:扩展/trailer/TE 组合/dst 满
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+use std.http.message.{msg_hex, msg_request_line, msg_status_line, msg_header, msg_head_end, msg_cl_header, msg_request_head, msg_response_head, msg_chunk_header, msg_chunk_data_end, msg_last_chunk, msg_last_chunk_trailer, msg_continue, msg_expect_header, msg_should_expect, msg_body_remaining, chunk_st_new, chunk_step, st_phase, st_remain, cr_rc, cr_err, cr_consumed, cr_produced, cr_phase, cr_remain}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn decode(buf: &I64[], n: I64, pos0: I64, dst: &I64[], cap: I64) -> I64 {
+    var st = chunk_st_new()
+    var pos = pos0
+    var total: I64 = 0
+    var guard: I64 = 0
+    while guard < 64 {
+        guard += 1
+        let r = chunk_step(buf, n, pos, st, dst, total, cap)
+        pos = pos + cr_consumed(r)
+        total = total + cr_produced(r)
+        if cr_rc(r) == -1 {
+            return -1
+        }
+        st = st_of(cr_phase(r), cr_remain(r))
+        if cr_phase(r) == 4 {
+            return total
+        }
+    }
+    return -2
+}
+
+fn st_of(p: I64, rem: I64) -> ChunkSt {
+    return ChunkSt { phase: p, remain: rem, err: 0 }
+}
+
+test "te gzip chunked combo legal" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "POST /c HTTP/1.1\r\nTransfer-Encoding: gzip, chunked\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1 && http_body_kind(h) == 1)
+}
+
+test "chunk ext trailer payload exact" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "2;q=1\r\nhi\r\n3\r\nbye\r\n0\r\nX-Sum: 5\r\n\r\n")
+    let total = decode(buf, n, 0, dst, 64)
+    assert(total == 5)
+    assert(dst[0] == 104 && dst[1] == 105 && dst[2] == 98 && dst[3] == 121 && dst[4] == 101)
+}
+
+test "dst full drain and resume" {
+var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var dst2: I64[2] = [0, 0]
+    let n = feed(buf, "5\r\nhello\r\n0\r\n\r\n")
+    var st = chunk_st_new()
+    var pos: I64 = 0
+    var total: I64 = 0
+    var fill: I64 = 0
+    var rounds: I64 = 0
+    var done = 0
+    while rounds < 32 {
+        rounds += 1
+        let r = chunk_step(buf, n, pos, st, dst2, fill, 2)
+        pos = pos + cr_consumed(r)
+        total = total + cr_produced(r)
+        fill = fill + cr_produced(r)
+        if cr_rc(r) == 2 {
+            // 排空 dst(消费侧示意:计满即清)
+            fill = 0
+        }
+        st = st_of(cr_phase(r), cr_remain(r))
+        if cr_phase(r) == 4 {
+            done = 1
+            break
+        }
+    }
+    assert(done == 1)
+    assert(total == 5)
+    assert(pos == 15)
+    assert(rounds == 3)
+}

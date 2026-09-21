@@ -1,0 +1,57 @@
+// tests/http/corpus/a_get_simple.ct —— 合法 GET:最小请求 + 切片提取 + 头迭代
+// 断言式夹具(tests/http 自有 run.sh;主口径 = 解释器,副 = emit 对拍)
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "minimal get complete" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "GET /hero HTTP/1.1\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_is_resp(h) == 0)
+    assert(http_ver(h) == 1)
+    assert(http_method_len(h) == 3)
+    assert(http_target_len(h) == 5)
+    assert(buf[http_target_start(h)] == 47)
+    assert(http_nheaders(h) == 0)
+    assert(http_clen(h) == 0)
+    assert(http_body_kind(h) == 0)
+    assert(http_head_end(h) == 22)
+    assert(n == 22)
+}
+
+test "get with headers slices" {
+    var buf: I64[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, "GET /a/b?q=1 HTTP/1.1\r\nHost: example.com\r\nX-Trace: t9\r\n\r\n")
+    let h = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_nheaders(h) == 2)
+    let host = http_header_value(buf, h, "Host")
+    assert(sl_rc(host) == 0)
+    assert(sl_vl(host) == 11)
+    assert(buf[sl_vs(host)] == 101 && buf[sl_vs(host) + 10] == 109)
+    let tr = http_header_at(buf, h, 1)
+    assert(sl_rc(tr) == 0 && sl_nl(tr) == 7 && sl_vl(tr) == 2)
+    assert(buf[sl_ns(tr)] == 88 && buf[sl_vs(tr)] == 116)
+    assert(sl_rc(http_header_at(buf, h, 2)) == -1)
+    assert(http_header_find(buf, h, "x-TRACE") == 1)
+    assert(http_header_find(buf, h, "absent") == -1)
+}
+
+test "target forms accepted" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = feed(buf, "GET * HTTP/1.1\r\n\r\n")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    assert(http_rc(h1) == 1 && http_target_len(h1) == 1 && buf[http_target_start(h1)] == 42)
+    let n2 = feed(buf, "GET http://h/p HTTP/1.1\r\n\r\n")
+    let h2 = http_parse_head(buf, n2, http_limits_default())
+    assert(http_rc(h2) == 1 && http_target_len(h2) == 10)
+}

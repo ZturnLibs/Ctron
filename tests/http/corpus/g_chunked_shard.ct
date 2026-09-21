@@ -1,0 +1,76 @@
+// tests/http/corpus/g_chunked_shard.ct —— 分片到达:头 3 片 + 体 2 片(可重入)
+use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+use std.http.message.{msg_hex, msg_request_line, msg_status_line, msg_header, msg_head_end, msg_cl_header, msg_request_head, msg_response_head, msg_chunk_header, msg_chunk_data_end, msg_last_chunk, msg_last_chunk_trailer, msg_continue, msg_expect_header, msg_should_expect, msg_body_remaining, chunk_st_new, chunk_step, st_phase, st_remain, cr_rc, cr_err, cr_consumed, cr_produced, cr_phase, cr_remain}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "head in three partial feeds" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let full = "POST /up HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+    let n1 = feed(buf, "POST /up HT")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    assert(http_rc(h1) == 0)
+    var i: I32 = 11
+    while i < 38 {
+        buf[i] = byte_at(full, i).as[I64]()
+        i += 1
+    }
+    let h2 = http_parse_head(buf, 38, http_limits_default())
+    assert(http_rc(h2) == 0)
+    while i < full.len {
+        buf[i] = byte_at(full, i).as[I64]()
+        i += 1
+    }
+    let h3 = http_parse_head(buf, full.len.as[I64](), http_limits_default())
+    assert(http_rc(h3) == 1)
+    assert(http_body_kind(h3) == 1)
+    assert(http_head_end(h3) == 49)
+}
+
+test "chunk body sharded with rewind" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+var dst: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let full = "4\r\nwind\r\n0\r\n\r\n"
+    let n = feed(buf, full)
+    var st = chunk_st_new()
+    var pos: I64 = 0
+    var total: I64 = 0
+    var fed: I64 = 0
+    var done = 0
+    var guard: I64 = 0
+    while guard < 16 {
+        guard += 1
+        if fed < n {
+            fed += 5
+            if fed > n {
+                fed = n
+            }
+        }
+        let r = chunk_step(buf, fed, pos, st, dst, total, 32)
+        pos = pos + cr_consumed(r)
+        total = total + cr_produced(r)
+        if cr_rc(r) == -1 {
+            assert(false)
+        }
+        st = st_of(cr_phase(r), cr_remain(r))
+        if cr_phase(r) == 4 {
+            done = 1
+            break
+        }
+    }
+    assert(done == 1)
+    assert(total == 4)
+    assert(dst[0] == 119 && dst[3] == 100)
+}
+
+fn st_of(p: I64, rem: I64) -> ChunkSt {
+    return ChunkSt { phase: p, remain: rem, err: 0 }
+}

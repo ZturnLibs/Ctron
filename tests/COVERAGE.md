@@ -293,6 +293,13 @@ P3 在册登记项:resolve 不可取消(取消广播不中断在途);AF_UNIX acc
 Drop 顺序 fd 复用 ABA caveat(超时兜底,文件头注);tls_read cap<=0 返 0;
 每块超时语义(ctron_tls_read 每调用重置 conf.read_timeout,握手钉 0)。
 
+### P4 行(HTTP/1.1 协议半层,2026-09-21)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| P4-A | std/http 协议半层首件(请求行/状态行/头部解析 + 报文构造/chunked 编解码/100-continue 钩子;零 use 纯 Ctron,同 tls.ct ⑥ 口径) | tests/http/run.sh **30/30**(std inline 2 + corpus 14 × 解释器/emit 双臂;走私面:obs-fold/TE+CL/重复 CL/裸 LF·裸 CR/值内 CTL 全拒;上限四类独立 err 码;分片到达可重入含 dst 满排空) |
+| P4-A | forget_fd 重排(摘 rt 驻留登记先于 close —— P3 在册 ABA caveat 结构性收口) | bench 三门禁复验(改前 1.055/1.128 → 改后 1.075–1.129/1.025–1.111,首跑单点红系并行泳道负载噪声,×3 复跑全绿;ns/yield 86 → 47–58);c10k N=100 fd 泄漏门 delta=0;双矩阵 14/14 × 2 不变;divergences 服务器面 (h) 登记(跨模块 struct 形发射缺口) |
+
 ## §ctron fmt 三宿主对齐(工具链泳道,2026-09-21)
 
 R-P2d `ctron fmt` 由 Rust 宿主移植至 C 宿主与自举编译器,三宿主同规范(docs/fmt-spec.md)同输出。
