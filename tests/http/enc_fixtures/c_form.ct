@@ -1,0 +1,122 @@
+// tests/http/enc_fixtures/c_form.ct —— query/form 解析与构造(P4-B)
+// 纯 Ctron 面(不触 extern):双臂(解释 + emit)同跑。
+// 覆盖:往返、'+/​%20' 双收(解码)与 %20 构造(登记的不对称)、bare key、
+// 空 token 跳过、首 '=' 分割、多对解析/构造、非法面(裸 %、短 %、越域字节
+// → C8 域拒绝,Unicode 即此路径,登记)。
+// API 注:form 不出 struct(发射缺口,form.ct 头注③)—— 单对面走
+// form_decode_k/v/ok,多对面走交错 K/V 道(form_key_at/form_val_at)。
+use std.http.form.{ form_parse, form_encode_pair, form_encode_pairs, form_pct_encode, form_decode_k, form_decode_v, form_decode_ok, form_parse_ok, form_count, form_key_at, form_val_at }
+
+fn dk(s: Str) -> Str {
+    return form_decode_k(s, "<none>")
+}
+
+fn dv(s: Str) -> Str {
+    return form_decode_v(s, "<none>")
+}
+
+test "form decode basics" {
+    // '+' 与 %20 双收(解码侧服务端姿态)
+    assert(dk("a=b+c") == "a")
+    assert(dv("a=b+c") == "b c")
+    assert(dv("a=b%20c") == "b c")
+    // 百分号大小写均可
+    assert(dv("a%2Fb=c%2Fd") == "c/d")
+    assert(dk("a%2Fb=c%2Fd") == "a/b")
+    assert(dv("k=%41%42") == "AB")
+    // 首 '=' 分割(值内 '=' 字面保留)
+    assert(dv("k=a=b") == "a=b")
+    // bare key(无 '=' → 值空)
+    assert(dk("flag") == "flag")
+    assert(dv("flag") == "")
+    // 空键空值
+    assert(dk("") == "")
+    assert(dv("") == "")
+    assert(dv("=v") == "v")
+    // 非法:裸 % / 短 % / 非十六进制(dft 落 <none>;k/v 各自独立判,
+    // 键合法即出键 —— 整对合法性走 form_decode_ok)
+    assert(dv("a=%") == "<none>")
+    assert(dv("a=%2") == "<none>")
+    assert(dv("a=%zz") == "<none>")
+    assert(dv("a=b%2G") == "<none>")
+    assert(dk("a=%") == "a")
+    assert(!form_decode_ok("a=%"))
+    assert(form_decode_ok("a=b+c"))
+    assert(!form_decode_ok("a=%zz"))
+}
+
+test "form decode c8 domain" {
+    // C8 域(可打印 ASCII 32..126,除 '{'):越域即拒 —— Unicode 百分号形
+    // (%E4%B8%AD 等 UTF-8 多字节)经此路径拒,登记(std/enc 同款约束)
+    assert(dv("u=%E4%B8%AD") == "<none>")
+    assert(dv("nul=%00") == "<none>")
+    assert(dv("del=%7F") == "<none>")
+    assert(dv("brace=%7B") == "<none>")
+    // 高位可打印仍可
+    assert(dv("b=%7D") == "}")
+    assert(dk("b%7E=x") == "b~")
+}
+
+test "form parse k v lane" {
+    // 多对解析:空 token 跳过;交错 K/V 道
+    let q = form_parse("a=1&b=two+words&c=&flag")
+    assert(form_parse_ok(q))
+    match q {
+        Some(ps) => {
+            assert(form_count(ps) == 4)
+            assert(form_key_at(ps, 0) == "a" && form_val_at(ps, 0) == "1")
+            assert(form_key_at(ps, 1) == "b" && form_val_at(ps, 1) == "two words")
+            assert(form_key_at(ps, 2) == "c" && form_val_at(ps, 2) == "")
+            assert(form_key_at(ps, 3) == "flag" && form_val_at(ps, 3) == "")
+        }
+        None => {
+            assert(false)
+        }
+    }
+    // 严:任一对非法 → 整体 None
+    assert(!form_parse_ok(form_parse("a=1&b=%2")))
+    // 空串 → 空道
+    let e = form_parse("")
+    assert(form_parse_ok(e))
+    match e {
+        Some(ps2) => {
+            assert(form_count(ps2) == 0)
+        }
+        None => {
+            assert(false)
+        }
+    }
+}
+
+test "form build roundtrip" {
+    // 构造:空格 → %20(登记不对称);往返经解码双收闭合
+    let e = form_encode_pair("na me", "va&l=ue")
+    assert(e == "na%20me=va%26l%3Due")
+    assert(form_decode_ok(e))
+    assert(dk(e) == "na me")
+    assert(dv(e) == "va&l=ue")
+    // pct_encode 面
+    assert(form_pct_encode("az AZ09-._~") == "az%20AZ09-._~")
+    assert(form_pct_encode("") == "")
+    // 交错道整体构造 → 解析回(等价往复)
+    var ps = List[Str]()
+    ps.push("name")
+    ps.push("Ann Lee")
+    ps.push("q")
+    ps.push("x&y")
+    let s = form_encode_pairs(ps)
+    assert(s == "name=Ann%20Lee&q=x%26y")
+    let back = form_parse(s)
+    assert(form_parse_ok(back))
+    match back {
+        Some(ps2) => {
+            assert(form_count(ps2) == 2)
+            assert(form_key_at(ps2, 0) == "name" && form_val_at(ps2, 0) == "Ann Lee")
+            assert(form_key_at(ps2, 1) == "q" && form_val_at(ps2, 1) == "x&y")
+            assert(form_encode_pairs(ps2) == s) // 构造幂等
+        }
+        None => {
+            assert(false)
+        }
+    }
+}

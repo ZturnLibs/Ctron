@@ -1,0 +1,178 @@
+// tests/http/enc_fixtures/x_gzip_round.ct —— gzip 容器(RFC 1952)往返与校验(P4-B)
+// x_ 前缀 = emit 臂专用(理由同 x_deflate_round.ct 头注)。
+// 组框面(gzip_compress/gzip_decompress)在 std/http/enc.ct 纯 Ctron;本夹具
+// 覆盖:往返(空/单/重复/随机)、头字节布局、FLG 遍历(FNAME 自组装成员)、
+// 尾校验(CRC32 篡改 -4 / ISIZE 篡改 -5)、魔数/CM 拒(-3)、炸弹护栏(-2)。
+use std.http.enc.{ gzip_compress, gzip_decompress, deflate_compress, crc32_update, crc32 }
+
+fn fill_rep(buf: &I64[], n: I64) -> I64 {
+    var i: I64 = 0
+    while i < n {
+        buf[i] = 65 + i % 23
+        i += 1
+    }
+    return n
+}
+
+fn fill_rnd(buf: &I64[], n: I64) -> I64 {
+    var s: I64 = 424242
+    var i: I64 = 0
+    while i < n {
+        s = (s * 1103515245 + 12345) % 2147483648
+        buf[i] = (s / 65536) % 256
+        i += 1
+    }
+    return n
+}
+
+fn same(a: &I64[], b: &I64[], n: I64) -> Bool {
+    var i: I64 = 0
+    while i < n {
+        if a[i] != b[i] {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+test "gzip roundtrip all shapes" {
+    var src: I64[16384] = [0]
+    var comp: I64[32768] = [0]
+    var back: I64[16384] = [0]
+    // 空 / 单字节 / 重复 / 随机 × level 1 / 6 / 9
+    let n = fill_rep(src, 16384)
+    var level: I64 = 1
+    while level <= 9 {
+        let c = gzip_compress(src, n, comp, 32768, level)
+        assert(c > 20)
+        let d = gzip_decompress(comp, c, back, 16384)
+        assert(d == n)
+        assert(same(src, back, n))
+        level += 3
+    }
+    let c0 = gzip_compress(src, 0, comp, 32768, 6)
+    assert(c0 > 0)
+    assert(gzip_decompress(comp, c0, back, 16384) == 0)
+    let c1 = gzip_compress(src, 1, comp, 32768, 6)
+    assert(gzip_decompress(comp, c1, back, 16384) == 1)
+    let nr = fill_rnd(src, 4096)
+    let cr = gzip_compress(src, nr, comp, 32768, 6)
+    assert(cr > 0)
+    assert(gzip_decompress(comp, cr, back, 16384) == nr)
+    assert(same(src, back, nr))
+}
+
+test "gzip header layout" {
+    var src: I64[128] = [0]
+    var comp: I64[512] = [0]
+    let n = fill_rep(src, 100)
+    let c = gzip_compress(src, n, comp, 512, 6)
+    assert(c > 0)
+    // RFC 1952 §2.3 头布局(FLG=0/MTIME=0/XFL=0/OS=255 口径,enc.ct 头注)
+    assert(comp[0] == 31) // ID1
+    assert(comp[1] == 139) // ID2
+    assert(comp[2] == 8) // CM = deflate
+    assert(comp[3] == 0) // FLG
+    assert(comp[4] == 0 && comp[5] == 0 && comp[6] == 0 && comp[7] == 0) // MTIME
+    assert(comp[8] == 0) // XFL
+    assert(comp[9] == 255) // OS = unknown
+    // 尾:ISIZE = 100(小端)
+    assert(comp[c - 4] == 100 && comp[c - 3] == 0 && comp[c - 2] == 0 && comp[c - 1] == 0)
+    // CRC32 尾 = 数据 crc
+    let want = crc32(src, n)
+    assert(comp[c - 8] == want % 256 && comp[c - 7] == (want / 256) % 256)
+}
+
+test "gzip member with FNAME flag" {
+    // 自组装 FNAME 成员:FLG=8 + 名 "log.txt\0" + raw deflate + 尾 —— 解侧面
+    // 的 FNAME 走位(enc.ct 组框逻辑)由 deflate_compress 原语供流
+    var src: I64[512] = [0]
+    let n = fill_rep(src, 300)
+    var raw: I64[1024] = [0]
+    var m: I64[1024] = [0]
+    let dl = deflate_compress(src, n, raw, 1024, 6)
+    assert(dl > 0)
+    let name = "log.txt"
+    m[0] = 31
+    m[1] = 139
+    m[2] = 8
+    m[3] = 8 // FNAME
+    var j: I64 = 0
+    while j < 4 {
+        m[4 + j] = 0 // MTIME
+        j += 1
+    }
+    m[8] = 0
+    m[9] = 255
+    var p: I64 = 10
+    var q: I32 = 0
+    while q < name.len {
+        m[p] = byte_at(name, q).as[I64]()
+        p += 1
+        q += 1
+    }
+    m[p] = 0
+    p += 1
+    var r: I64 = 0
+    while r < dl {
+        m[p + r] = raw[r]
+        r += 1
+    }
+    p += dl
+    let crc = crc32(src, n)
+    m[p] = crc % 256
+    m[p + 1] = (crc / 256) % 256
+    m[p + 2] = (crc / 65536) % 256
+    m[p + 3] = (crc / 16777216) % 256
+    m[p + 4] = n % 256
+    m[p + 5] = (n / 256) % 256
+    m[p + 6] = 0
+    m[p + 7] = 0
+    let total = p + 8
+    var back: I64[512] = [0]
+    let d = gzip_decompress(m, total, back, 512)
+    assert(d == n)
+    assert(same(src, back, n))
+}
+
+test "gzip reject paths" {
+    var src: I64[2048] = [0]
+    var comp: I64[4096] = [0]
+    var back: I64[2048] = [0]
+    let n = fill_rep(src, 2048)
+    let c = gzip_compress(src, n, comp, 4096, 6)
+    assert(c > 0)
+    // 魔数 / CM / 保留 FLG
+    comp[0] = 30
+    assert(gzip_decompress(comp, c, back, 2048) == -3)
+    comp[0] = 31
+    comp[2] = 9
+    assert(gzip_decompress(comp, c, back, 2048) == -3)
+    comp[2] = 8
+    comp[3] = 32
+    assert(gzip_decompress(comp, c, back, 2048) == -3)
+    comp[3] = 0
+    // CRC32 篡改 → -4(先翻压外尾;直接改尾字节)
+    let keep = comp[c - 8]
+    comp[c - 8] = (keep + 1) % 256
+    assert(gzip_decompress(comp, c, back, 2048) == -4)
+    comp[c - 8] = keep
+    // ISIZE 篡改 → -5
+    let keep2 = comp[c - 4]
+    comp[c - 4] = (keep2 + 1) % 256
+    assert(gzip_decompress(comp, c, back, 2048) == -5)
+    comp[c - 4] = keep2
+    // 炸弹护栏 → -2(解压面 cap 必填口径)
+    assert(gzip_decompress(comp, c, back, 8) == -2)
+    // 短流 / 截断
+    assert(gzip_decompress(comp, 10, back, 2048) == -1)
+    assert(gzip_decompress(comp, c - 1, back, 2048) < 0)
+    // 容量上限压缩:cap < 18 → -2;下限贴边(18 < 10+deflate+8)→ -2
+    assert(gzip_compress(src, n, comp, 17, 6) == -2)
+    assert(gzip_compress(src, n, comp, 18, 6) == -2)
+    // crc32 续算语义:分段 = 整段
+    let whole = crc32(src, n)
+    let half = crc32_update(0, src, 0, n / 2)
+    assert(crc32_update(half, src, n / 2, n - n / 2) == whole)
+}

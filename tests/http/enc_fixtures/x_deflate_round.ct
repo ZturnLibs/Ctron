@@ -1,0 +1,117 @@
+// tests/http/enc_fixtures/x_deflate_round.ct —— raw deflate 往返 + 护栏(P4-B)
+// x_ 前缀 = 触 ctron_deflate 垫片 extern(&I64[] lane):解释口径 extern 桥仅
+// 标量帧(eval_call.ct W4 E1)+ ctron-cc 未链本垫片 → 本夹具仅 emit 臂
+// (tests/http/run.sh enc 块口径;双臂分工登记于该块头注)。
+use std.http.enc.{ deflate_compress, deflate_decompress, enc_level_default }
+
+fn fill_rep(buf: &I64[], n: I64) -> I64 {
+    var i: I64 = 0
+    while i < n {
+        buf[i] = 97 + i % 26 // 重复文本:高压缩比
+        i += 1
+    }
+    return n
+}
+
+fn fill_rnd(buf: &I64[], n: I64) -> I64 {
+    var s: I64 = 12345
+    var i: I64 = 0
+    while i < n {
+        s = (s * 1103515245 + 12345) % 2147483648
+        buf[i] = (s / 65536) % 256 // LCG 伪随机:不可压仍须往返
+        i += 1
+    }
+    return n
+}
+
+fn same(a: &I64[], b: &I64[], n: I64) -> Bool {
+    var i: I64 = 0
+    while i < n {
+        if a[i] != b[i] {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+test "deflate roundtrip repetitive all levels" {
+    var src: I64[16384] = [0]
+    let n = fill_rep(src, 16384)
+    var comp: I64[32768] = [0]
+    var back: I64[16384] = [0]
+    let lv = enc_level_default()
+    assert(lv == 6)
+    var level: I64 = 0
+    while level <= 9 {
+        let c = deflate_compress(src, n, comp, 32768, level)
+        assert(c > 0)
+        if level >= 1 {
+            assert(c < n) // 重复文本必压
+        }
+        let d = deflate_decompress(comp, c, back, 16384)
+        assert(d == n)
+        assert(same(src, back, n))
+        level += 1
+    }
+}
+
+test "deflate roundtrip random empty one" {
+    var src: I64[4096] = [0]
+    let n = fill_rnd(src, 4096)
+    var comp: I64[8192] = [0]
+    var back: I64[4096] = [0]
+    let c = deflate_compress(src, n, comp, 8192, 6)
+    assert(c > 0)
+    let d = deflate_decompress(comp, c, back, 4096)
+    assert(d == n)
+    assert(same(src, back, n))
+    // 空 payload:合法 raw deflate 流(≥2 字节),往返恒成立
+    let c0 = deflate_compress(src, 0, comp, 8192, 6)
+    assert(c0 > 0)
+    let d0 = deflate_decompress(comp, c0, back, 4096)
+    assert(d0 == 0)
+    // 单字节
+    let c1 = deflate_compress(src, 1, comp, 8192, 6)
+    assert(c1 > 0)
+    let d1 = deflate_decompress(comp, c1, back, 4096)
+    assert(d1 == 1)
+    assert(back[0] == src[0])
+}
+
+test "deflate guards corrupt bomb bounds" {
+    var src: I64[4096] = [0]
+    let n = fill_rep(src, 4096)
+    var comp: I64[8192] = [0]
+    var back: I64[4096] = [0]
+    let c = deflate_compress(src, n, comp, 8192, 6)
+    assert(c > 0)
+    // 炸弹护栏:cap 给小,必 -2(出参 cap 必填口径的守护面)
+    assert(deflate_decompress(comp, c, back, 8) == -2)
+    // 损坏:翻转压缩流中部字节 → 非法(-3;翻转字节可能落进自适应边沿,
+    // 循环翻转直至响亮失败,全体失败即夹具红)
+    var flipped = false
+    var k: I64 = 0
+    while k < c {
+        let keep = comp[k]
+        comp[k] = (keep + 1) % 256
+        if deflate_decompress(comp, c, back, 4096) < 0 {
+            flipped = true
+        }
+        comp[k] = keep
+        if flipped {
+            k = c
+        } else {
+            k += 1
+        }
+    }
+    assert(flipped)
+    // 截断流 → 非法
+    assert(deflate_decompress(comp, c - 1, back, 4096) < 0)
+    // 参数域:level 10 / 负 cap
+    assert(deflate_compress(src, n, comp, 8192, 10) == -1)
+    assert(deflate_compress(src, n, comp, 8192, -1) == -1)
+    assert(deflate_compress(src, n, comp, 0, 6) == -2)
+    // 容量不足压缩 → -2(随机数据不可压,8 字节上限必溢出)
+    assert(deflate_compress(src, n, comp, 8, 6) == -2)
+}

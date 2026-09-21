@@ -1,0 +1,44 @@
+// tests/http/enc_fixtures/x_crc32.ct —— CRC-32 黄金向量与续算语义(P4-B)
+// x_ 前缀 = emit 臂专用(理由同 x_deflate_round.ct 头注)。
+// 向量源:zlib 参考实现(IEEE 802.3 多项式 0xEDB88320 反射形);miniz
+// mz_crc32 与之同算法,黄金向量防上游实现漂移。
+use std.http.enc.{ crc32, crc32_update }
+
+fn put(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "crc32 known vectors" {
+    var buf: I64[64] = [0]
+    // "" → 0(初值即终值)
+    assert(crc32(buf, 0) == 0)
+    // "123456789" → 0xCBF43926(标准检查向量)
+    let n = put(buf, "123456789")
+    assert(crc32(buf, n) == 3421780262) // 0xCBF43926
+    // "The quick brown fox jumps over the lazy dog" → 0x414FA339
+    let m = put(buf, "The quick brown fox jumps over the lazy dog")
+    assert(crc32(buf, m) == 1095738169) // 0x414FA339
+}
+
+test "crc32 continuation semantics" {
+    var buf: I64[64] = [0]
+    let n = put(buf, "The quick brown fox jumps over the lazy dog")
+    // 分段续算 = 整段(zlib crc32(crc, buf) 链式口径)
+    let h1 = crc32_update(0, buf, 0, 9)
+    let h2 = crc32_update(h1, buf, 9, 10)
+    let h3 = crc32_update(h2, buf, 19, n - 19)
+    assert(h3 == 1095738169)
+    // 单字节续算链(逐字节 = 整段)
+    var acc: I64 = 0
+    var i: I64 = 0
+    while i < n {
+        acc = crc32_update(acc, buf, i, 1)
+        i += 1
+    }
+    assert(acc == 1095738169)
+}

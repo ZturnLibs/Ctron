@@ -1,0 +1,80 @@
+// tests/http/enc_fixtures/b_date.ct —— RFC 1123 HTTP-date 黄金向量(P4-B)
+// 纯 Ctron 面(不触 extern):双臂(解释 + emit)同跑。
+// 覆盖:RFC 黄金向量、epoch 边界(0/-1/负元)、互逆(roundtrip)、闰年面、
+// 严格拒(RFC 850/asctime 形、UTC/Z 时区、星期不符、闰秒、越界、畸形)。
+use std.http.date.{ http_date_format, http_date_parse, http_date_get, http_date_some, http_date_weekday }
+
+test "date golden vectors" {
+    // RFC 9110 §5.6.7 示例(RFC 1123 经典向量)
+    assert(http_date_format(784111777) == "Sun, 06 Nov 1994 08:49:37 GMT")
+    assert(http_date_get(http_date_parse("Sun, 06 Nov 1994 08:49:37 GMT"), -1) == 784111777)
+    // epoch 起点 / 前一秒(floor-div 负域)
+    assert(http_date_format(0) == "Thu, 01 Jan 1970 00:00:00 GMT")
+    assert(http_date_format(-1) == "Wed, 31 Dec 1969 23:59:59 GMT")
+    assert(http_date_get(http_date_parse("Wed, 31 Dec 1969 23:59:59 GMT"), -2) == -1)
+    // 闰年 2000-02-29(400 闰)与 2024-02-29;星期一致性
+    assert(http_date_get(http_date_parse("Tue, 29 Feb 2000 12:00:00 GMT"), -1) == 951825600)
+    assert(http_date_format(951825600) == "Tue, 29 Feb 2000 12:00:00 GMT")
+    assert(http_date_get(http_date_parse("Thu, 29 Feb 2024 00:00:00 GMT"), -1) == 1709164800)
+    // 年域边界:0001-01-01(负 epoch 深域)与 9999-12-31
+    assert(http_date_format(-62135596800) == "Mon, 01 Jan 0001 00:00:00 GMT")
+    assert(http_date_get(http_date_parse("Mon, 01 Jan 0001 00:00:00 GMT"), -1) == -62135596800)
+    assert(http_date_format(253402300799) == "Fri, 31 Dec 9999 23:59:59 GMT")
+    // 星期(0 = 星期日)
+    assert(http_date_weekday(784111777) == 0)
+    assert(http_date_weekday(0) == 4)
+}
+
+test "date roundtrip sweep" {
+    // 全年逐日互逆(2001 平年 365 日;含月末/年末边沿)
+    var z: I64 = 11323 // 2001-01-01
+    var i: I64 = 0
+    while i < 365 {
+        let e = z * 86400 + 3600 * 13 + 60 * 37 + 21
+        let s = http_date_format(e)
+        assert(s.len == 29)
+        let back = http_date_parse(s)
+        assert(http_date_some(back))
+        assert(http_date_get(back, -1) == e)
+        i += 1
+        z += 1
+    }
+    // 每 400 年一跳(1583..9983 抽样;格里历 400 年周期性;步长 = 146097 日
+    // 的秒数,字面量直接 I64 十进制 —— 146097*86400 字面乘法落 I32 域溢出,
+    // C3 守卫响亮,登记)
+    var e2: I64 = -62135596800
+    while e2 < 253402300799 {
+        let s2 = http_date_format(e2)
+        assert(http_date_get(http_date_parse(s2), -2) == e2)
+        e2 += 12622780800
+    }
+}
+
+test "date strict rejects" {
+    // 遗留形(RFC 850 / asctime;RFC 9110 允许拒,生成恒 IMF-fixdate)
+    assert(!http_date_some(http_date_parse("Sunday, 06-Nov-94 08:49:37 GMT")))
+    assert(!http_date_some(http_date_parse("Sun Nov  6 08:49:37 1994")))
+    // 时区面:GMT 字面外拒(UT / Z / 数字时区)
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 08:49:37 UTC")))
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 08:49:37 Z")))
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 08:49:37 +0000")))
+    // 星期名与日期不符(取严)
+    assert(!http_date_some(http_date_parse("Mon, 06 Nov 1994 08:49:37 GMT")))
+    // 闰秒 / 时分越界
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 08:49:60 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 24:00:00 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 08:60:00 GMT")))
+    // 非闰 2 月 29(百年 2100 / 平年 2001);月日越界
+    assert(!http_date_some(http_date_parse("Mon, 29 Feb 2100 00:00:00 GMT")))
+    assert(!http_date_some(http_date_parse("Thu, 29 Feb 2001 00:00:00 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 32 Nov 1994 08:49:37 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 00 Nov 1994 08:49:37 GMT")))
+    // 长度 / 结构畸形(短、无逗号、月名小写、年三位、尾空格)
+    assert(!http_date_some(http_date_parse("")))
+    assert(!http_date_some(http_date_parse("Sun 06 Nov 1994 08:49:37 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 06 nov 1994 08:49:37 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 994 08:49:37 GMT")))
+    assert(!http_date_some(http_date_parse("Sun, 06 Nov 1994 08:49:37 GMT ")))
+    // 年域外(0000)
+    assert(!http_date_some(http_date_parse("Sat, 01 Jan 0000 00:00:00 GMT")))
+}

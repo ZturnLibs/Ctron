@@ -57,6 +57,49 @@ else
     echo "  [skip] emit 臂:缺 ctron-emit(先: compiler/native.sh)——不入计例,interp 臂已覆盖"
 fi
 
+# ── enc_fixtures(P4-B:压缩/HTTP 日期/query-form)──
+# 双臂分工(结构性登记,非临时态):x_ 前缀 = 触 ctron_deflate 垫片 extern
+# (&I64[] 视图 lane)——解释口径 extern 桥仅标量帧 "i:/s:"(eval_call.ct
+# W4 E1)+ ctron-cc 宿主未链本垫片(dlsym 无符号)→ x_ 仅 emit 臂,链垫片
+# + libminiz.a(缺席响亮失败并指路 vendor/deflate/build.sh,tests/net TLS
+# 夹具同款口径);非 x_(纯 Ctron:协商矩阵/日期/form)双臂同跑,interp 臂
+# 常设覆盖。压缩往返等价性 interp/emit 各自成立,emit 臂即对拍面。
+for f in "$DIR"/enc_fixtures/*.ct; do
+    name=$(basename "$f" .ct)
+    case "$name" in
+        x_*) continue ;;   # interp 无 lane extern 桥:emit 臂覆盖,不入计例
+    esac
+    if "$CC" run "$f" > "$T/$name.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS $name (interp)"
+    else
+        fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
+    fi
+done
+if [ -x "$EMIT" ]; then
+    for f in "$DIR"/enc_fixtures/*.ct; do
+        name=$(basename "$f" .ct)
+        MZCF=""
+        MZLB=""
+        case "$name" in
+            x_*)
+                if [ ! -f "$ROOT/vendor/deflate/build/lib/libminiz.a" ]; then
+                    fail=$((fail+1)); echo "  FAIL $name (缺 vendor/deflate/build/lib/libminiz.a —— 先: sh vendor/deflate/build.sh)"
+                    continue
+                fi
+                MZCF="-I$ROOT/vendor/deflate/miniz"
+                MZLB="$ROOT/std/http/c_src/ctron_deflate.c $ROOT/vendor/deflate/build/lib/libminiz.a"
+                ;;
+        esac
+        if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
+           && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" $MZCF $MZLB 2>"$T/$name.e.cc.err" \
+           && "$T/$name.e.bin" > "$T/$name.e.out" 2>&1; then
+            pass=$((pass+1)); echo "  PASS $name (emit)"
+        else
+            fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.e.out" "$T/$name.e.cc.err" "$T/$name.e.err" 2>/dev/null
+        fi
+    done
+fi
+
 echo "http/run: pass=$pass fail=$fail"
 # 空集口径:一例未跑与全败同罪
 [ "$pass" -gt 0 ] || { echo "http/run: no cases ran"; exit 1; }

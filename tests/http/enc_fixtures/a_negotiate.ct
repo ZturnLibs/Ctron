@@ -1,0 +1,73 @@
+// tests/http/enc_fixtures/a_negotiate.ct —— Accept-Encoding 协商矩阵(P4-B)
+// 纯 Ctron 面(不触 extern):双臂(解释 + emit)同跑。矩阵覆盖大小写/OWS
+// 容忍、q 序、通配、x-gzip 归一、畸形 q 拒、identity 显式拒(415 区分面)。
+use std.http.enc.{ content_coding_negotiate, content_coding_identity_ok }
+
+test "negotiate basic matrix" {
+    let have = "gzip, deflate"
+    // 无头(空串)→ identity
+    assert(content_coding_negotiate("", have) == "")
+    // 显式 gzip
+    assert(content_coding_negotiate("gzip", have) == "gzip")
+    // 多候选:q 序胜(q=0.5 deflate vs q=1 gzip → gzip?q 缺省 1 大于 0.5)
+    assert(content_coding_negotiate("deflate;q=0.5, gzip;q=0.7", have) == "gzip")
+    // q 序:显式更高者胜(与 have 序无关)
+    assert(content_coding_negotiate("gzip;q=0.7, deflate;q=0.8", have) == "deflate")
+    // q 并列 → have 序(服务端偏好)
+    assert(content_coding_negotiate("deflate;q=0.5, gzip;q=0.5", have) == "gzip")
+    // q=0 排除
+    assert(content_coding_negotiate("gzip;q=0, deflate", have) == "deflate")
+    // 全 q=0 → identity
+    assert(content_coding_negotiate("gzip;q=0, deflate;q=0", have) == "")
+}
+
+test "negotiate case and space tolerance" {
+    let have = "gzip, deflate"
+    // 大小写(token;RFC 9110 token 不分大小写)
+    assert(content_coding_negotiate("GZIP", have) == "gzip")
+    assert(content_coding_negotiate("GzIpEr", "gziper") == "gziper")
+    assert(content_coding_negotiate("DEFlate", have) == "deflate")
+    // OWS(空格/制表)容忍
+    assert(content_coding_negotiate("  gzip ;q=0.5 , deflate  ", have) == "deflate")
+    assert(content_coding_negotiate("\tdeflate\t", have) == "deflate")
+    // have 侧 OWS 剥除(token 拼写/大小写原形返回;空白不是拼写)
+    assert(content_coding_negotiate("gzip", "  GZIP , deflate") == "GZIP")
+}
+
+test "negotiate x-gzip alias and wildcard" {
+    // x-gzip ≡ gzip(弃用同义,RFC 9110 §8.4.1.1;两侧归一)
+    assert(content_coding_negotiate("x-gzip", "gzip") == "gzip")
+    assert(content_coding_negotiate("gzip", "x-gzip") == "x-gzip")
+    // 通配:未显式列出的 coding
+    assert(content_coding_negotiate("*", "gzip") == "gzip")
+    assert(content_coding_negotiate("*;q=0.5, gzip", "gzip, br") == "gzip")
+    // 通配 q 低于显式
+    assert(content_coding_negotiate("*;q=0.1, deflate;q=0.9", "gzip, deflate") == "deflate")
+    // 通配 q=0:未列出者全拒;列出者仍可用
+    assert(content_coding_negotiate("*;q=0, deflate", "gzip, deflate") == "deflate")
+    assert(content_coding_negotiate("*;q=0", "gzip, deflate") == "")
+    // 通配畸形 q = 无通配
+    assert(content_coding_negotiate("*;q=abc", "gzip") == "")
+    // have 无交集(无通配)→ identity
+    assert(content_coding_negotiate("br, zstd", "gzip, deflate") == "")
+}
+
+test "negotiate malformed q and identity" {
+    let have = "gzip, deflate"
+    // 畸形 q:缺值 / 越界 / 四位小数 / 尾随杂符 / 缺 'q'
+    assert(content_coding_negotiate("gzip;q=", have) == "")
+    assert(content_coding_negotiate("gzip;q=1.5", have) == "")
+    assert(content_coding_negotiate("gzip;q=0.1234", have) == "")
+    assert(content_coding_negotiate("gzip;q=0.5abc", have) == "")
+    assert(content_coding_negotiate("gzip;x=0.5", have) == "")
+    assert(content_coding_negotiate("gzip;q=0.5, deflate", have) == "deflate") // 畸形元素整条忽略
+    // 空元素(双逗号)跳过
+    assert(content_coding_negotiate(",gzip,", have) == "gzip")
+    // identity:未列出 = 可接受;显式 q=0 = 拒(调用方 415 区分面)
+    assert(content_coding_identity_ok(""))
+    assert(content_coding_identity_ok("gzip"))
+    assert(content_coding_identity_ok("*;q=0")) // 通配不覆盖 identity(RFC 7231 §5.3.4)
+    assert(!content_coding_identity_ok("identity;q=0"))
+    assert(!content_coding_identity_ok("gzip, identity;q=0"))
+    assert(content_coding_identity_ok("identity;q=0.5"))
+}
