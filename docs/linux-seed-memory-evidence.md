@@ -88,3 +88,13 @@
 (28k 次 × ~84KB,扫描循环内每迭代仍有 ~187B 未定界分配);RA 直方图探针已备
 (__builtin_return_address + 计数),-O2 内联致符号化失真,复测建议 -O0 探针构建。
 linux 验证:probe.yml 重跑 emit 工作负载 /usr/bin/time -v,峰值 <16GB 即解除 ci.yml 门禁。
+
+## 2026-09-21 linux 实证(run 35608572750,ubuntu-24.04)
+
+- **E1(seed emit cc_run.ct):修复生效**——修复前 15.4GB/60s OOM 被杀;修复后
+  峰值 **12,558,100KB(12.56GB)**、58s 完整跑完,记账曲线与 mac 同构。
+- **E2(seed emit cc_emit.ct,19k 行):仍 OOM(exit 143)**——需求 ≈ 13GB × (19/13.4)
+  ≈ 18GB > 16GB runner。缺口即 ct_struct 查询簇(~8GB,函数归因榜 Top2-5),
+  每扫描迭代 ~187B 未定界分配;RA 直方图探针已备(-O2 内联致 atos 符号化失真,
+  复测建议 -O0 探针构建取干净返回地址)。
+- ci.yml ubuntu 门禁解除条件:E2 级负载峰值 < 16GB(即完成 ct_struct 簇优化)。
