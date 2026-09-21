@@ -6,6 +6,8 @@
 #   ./ctc.sh check <input.ct>        # 检查:parse → 语义 12 项即止,打印 "check OK decls=N"
 #   ./ctc.sh emit <input.ct> [out.c] # 发射:parse → 生成等价 C(产物 gcc 可编译,`<bin> run <file>` 可覆锚)
 #   ./ctc.sh fmt <input.ct>          # 格式化:R-P2d token 流重排 → stdout(docs/fmt-spec.md;诊断 rc=1)
+#   ./ctc.sh doc <input.ct>          # iface 投影(闭源包分发 S0):pub 符号表 + trait/impl 面
+#                                    #   --format=json 走 JSON 面(schema v0,见 driver_doc.ct 头注)
 #
 # 宿主 seed(compiler-c/build/ctronc)仅充当 Ctron 解释器;输入路径经
 # read_file 锚换靶注入。自举完成后产物可自替换宿主(见 test/smoke.sh --full)。
@@ -19,7 +21,7 @@ PROF=full
 TAUSTED=0
 DIAGLANG=zh
 case ${1:-} in
-    check|emit|fmt) mode=$1; shift ;;
+    check|emit|fmt|doc) mode=$1; shift ;;
 esac
 for a in "$@"; do
     case $a in
@@ -33,7 +35,7 @@ if [ ! -x "$HOST" ]; then
     exit 2
 fi
 if [ $# -lt 1 ] || [ ! -f "$1" ]; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct>" >&2
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json]" >&2
     exit 2
 fi
 
@@ -77,6 +79,17 @@ case $mode in
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_fmt.XXXXXX)
         sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_fmt.ct" > "$TMP"
+        "$HOST" run "$TMP"
+        rc=$?
+        ;;
+    doc)
+        FMT=0
+        for a in "$@"; do
+            case $a in --format=json) FMT=1 ;; esac
+        done
+        "$DIR/build.sh" >/dev/null
+        TMP=$(mktemp /tmp/ctron_doc.XXXXXX)
+        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_doc.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;

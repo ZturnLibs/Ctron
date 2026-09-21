@@ -47,3 +47,32 @@ compiler/test/stdpkg(合并 257 decls,泛型 `[K: Eq, V]` 渲染正确)、全形
 (pub struct/enum + trait + impl + 私有/const 正确排除);④smoke 113 ok / 2 fail,
 两红均为在途泳道已登记项(cc_run decls=345 待重锁——实测 cc_run 含 0 个本片 decl;
 std/↔stdpkg 副本漂移——std 泳道待同步),本片零新增红。
+
+## S0.5(2026-09-21 续):用户面接入
+
+**Goal:** S0 驱动长出用户面——`ctc.sh doc` 子命令、`bin/ctron-doc` 原生化(第五产物)、
+JSON 输出面(`--format=json`,schema v0 冻结)。
+
+**JSON schema v0(冻结;文本面不动):**
+`{"entry":..,"decls":N,"iface":[item…]}` 源序;item 六形态:
+fn/extern `{"kind","name","generics","params":[{"name","type","mutable"}|{"vaargs":true}],"ret"}`
+(ret 空串 = 无返回);struct `{"kind","name","generics","fields"}`;enum `{"kind","name",
+"generics":[],"variants":[{"name,"tuple":[..]}|{"name,"fields":…}]}`(unit 变体仅 name);
+trait `{"kind","name","sigs":["fn .."|"prop .."]}`;impl `{"kind":"impl","sig","sigs"}`。
+旗标口径与 driver_check 同构:`--format=json|1` 旗标优先(native 经 ctron_cli_flag),
+缺省回落 ANCHORFMT 构建锚(ctc.sh doc sed 注入)。
+
+**实施教训(登记):** Ctron 字符串转义不对称——`\{` 合法(插值开括号转义)、`\}` 非法
+E1001,闭括号一律裸写;JSON 片段作子串拼接时须拆掉外层花括号内联(首次实现把 fnobj
+嵌成裸对象,json.loads 当场证伪)。
+
+**验收实录:** ①文本面字节兼容——ctc.sh doc 与 S0 基线内容行全同(仅入口路径经 ctc.sh
+规范化 `..` 差异);②JSON 面 python json.loads 全绿(str.ct 38 fn + 全形态夹具六 item);
+③native ctron-doc 文本/JSON 与 seed 输出深度相等,`--format=json` CLI 旗标生效;
+④双跑幂等;⑤负例经新路径依旧 E5030/E2020 双中;⑥smoke 113 ok / 2 fail 基线不变。
+
+**挂账(非本片):** 仓库根用户 CLI(`ctc.ps1`/打包 ctc)的 `doc` 子命令——归工具链泳道
+(Windows 面不可本机验证,须走 sh/ps1 conformance 流程);per-fn 契约头抽取——依赖
+lex 层注释保留(v0 scan4 丢注释),属编译器线单独决策,登记不排期。
+
+状态:✅ 完成(2026-09-21)。

@@ -32,7 +32,7 @@ cat $CORE "$SRC/fmt.ct" "$SRC/driver_fmt.ct" > "$OUT/cc_fmt.ct"
 cat $CORE "$SRC/driver_doc.ct" > "$OUT/cc_doc.ct"
 # ANCHORVERSION 注入:三产物同源版本串(黄金语料不含该锚,逐字不受影响)
 VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.0.1-dev")
-for P in cc_run cc_check cc_emit cc_fmt; do
+for P in cc_run cc_check cc_emit cc_fmt cc_doc; do
     sed "s|ANCHORVERSION|$VER|" "$OUT/$P.ct" > "$OUT/$P.ct.tmp" && mv "$OUT/$P.ct.tmp" "$OUT/$P.ct"
 done
-echo "build: cc_run=$(wc -l < "$OUT/cc_run.ct") 行 / cc_check=$(wc -l < "$OUT/cc_check.ct") 行 / cc_emit=$(wc -l < "$OUT/cc_emit.ct") 行 / cc_fmt=$(wc -l < "$OUT/cc_fmt.ct") 行"
+echo "build: cc_run=$(wc -l < "$OUT/cc_run.ct") 行 / cc_check=$(wc -l < "$OUT/cc_check.ct") 行 / cc_emit=$(wc -l < "$OUT/cc_emit.ct") 行 / cc_fmt=$(wc -l < "$OUT/cc_fmt.ct") 行 / cc_doc=$(wc -l < "$OUT/cc_doc.ct") 行"

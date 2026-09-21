@@ -248,6 +248,187 @@ fn doc_trait(d: List[Str]) -> Str {
     return out
 }
 
+// ---------------- JSON 输出面(S0.5;--format=json|1 旗标优先,缺省回落 ANCHORFMT 锚)----------------
+// schema v0(冻结):{"entry":..,"decls":N,"iface":[item…]},item 按源序:
+//   fn/extern  {"kind","name","generics":[..],"params":[{"name","type","mutable"}|"vaargs"],"ret"}
+//   struct     {"kind","name","generics","fields":[{"name","type","mutable"}]}
+//   enum       {"kind","name","generics":[] ,"variants":[{"name","tuple":[..]}|"fields"]}
+//   trait      {"kind","name","sigs":["fn .."|"prop .."]}
+//   impl       {"kind":"impl","sig":"impl X for Y","sigs":[..]}
+// 注:Ctron 字符串字面量内 JSON 花括号一律 \{ } 转义(插值语法,见 doc_struct 同因)。
+fn doc_json_escape(s: Str) -> Str {
+    var out = ""
+    var j: I32 = 0
+    var n = s.len
+    while j < n {
+        var c = byte_at(s, j)
+        if c == 34 {
+            out = out + "\\\""
+        } else if c == 92 {
+            out = out + "\\\\"
+        } else if c == 10 {
+            out = out + "\\n"
+        } else if c == 13 {
+            out = out + "\\r"
+        } else if c == 9 {
+            out = out + "\\t"
+        } else {
+            out = out + byte_slice(s, j, j + 1)
+        }
+        j += 1
+    }
+    return out
+}
+
+fn doc_json_tps(tp: List[Str]) -> Str {
+    if tp[0] != "TPs" || tp.len < 2 {
+        return "[]"
+    }
+    var out = "["
+    var j: I32 = 1
+    while j < tp.len {
+        if j > 1 {
+            out = out + ","
+        }
+        out = out + "\"" + doc_json_escape(tp[j][1]) + "\""
+        j += 1
+    }
+    return out + "]"
+}
+
+fn doc_json_params(ps: List[Str]) -> Str {
+    var out = "["
+    var j: I32 = 1
+    while j < ps.len {
+        if j > 1 {
+            out = out + ","
+        }
+        var p = ps[j]
+        if p[0] == "VaArgs" {
+            out = out + "\{\"vaargs\":true}"
+        } else {
+            out = out + "\{\"name\":\"" + doc_json_escape(p[2]) + "\",\"type\":\"" + doc_json_escape(doc_ty(p[3])) + "\",\"mutable\":"
+            if p[1] == "true" {
+                out = out + "true"
+            } else {
+                out = out + "false"
+            }
+            out = out + "}"
+        }
+        j += 1
+    }
+    return out + "]"
+}
+
+fn doc_json_fnobj(d: List[Str]) -> Str {
+    // 返回不带外层花括号的字段串(供 doc_json_item 与 kind 键内联拼接)
+    var out = "\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":" + doc_json_tps(d[2]) + ",\"params\":" + doc_json_params(d[3])
+    if d[4][0] == "None" {
+        out = out + ",\"ret\":\"\""
+    } else {
+        out = out + ",\"ret\":\"" + doc_json_escape(doc_ty(d[4])) + "\""
+    }
+    return out
+}
+
+fn doc_json_fields(fs: List[Str]) -> Str {
+    var out = "["
+    var j: I32 = 1
+    while j < fs.len {
+        if j > 1 {
+            out = out + ","
+        }
+        var f = fs[j]
+        out = out + "\{\"name\":\"" + doc_json_escape(f[2]) + "\",\"type\":\"" + doc_json_escape(doc_ty(f[3])) + "\",\"mutable\":"
+        if f[1] == "true" {
+            out = out + "true"
+        } else {
+            out = out + "false"
+        }
+        out = out + "}"
+        j += 1
+    }
+    return out + "]"
+}
+
+fn doc_json_struct(d: List[Str]) -> Str {
+    return "\{\"kind\":\"struct\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":" + doc_json_tps(d[3]) + ",\"fields\":" + doc_json_fields(d[4]) + "}"
+}
+
+fn doc_json_enum(d: List[Str]) -> Str {
+    var out = "\{\"kind\":\"enum\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"generics\":[],\"variants\":["
+    var vs = d[3]
+    var j: I32 = 1
+    while j < vs.len {
+        if j > 1 {
+            out = out + ","
+        }
+        var v = vs[j]
+        out = out + "\{\"name\":\"" + doc_json_escape(v[1]) + "\""
+        var kind = v[2]
+        if kind[0] == "KTuple" {
+            out = out + ",\"tuple\":["
+            var k: I32 = 1
+            while k < kind.len {
+                if k > 1 {
+                    out = out + ","
+                }
+                out = out + "\"" + doc_json_escape(doc_ty(kind[k])) + "\""
+                k += 1
+            }
+            out = out + "]"
+        } else if kind[0] == "KStruct" {
+            out = out + ",\"fields\":" + doc_json_fields(kind)
+        }
+        out = out + "}"
+        j += 1
+    }
+    return out + "]}"
+}
+
+fn doc_json_sigs(it: List[Str]) -> Str {
+    var out = "["
+    var first = true
+    var j: I32 = 1
+    while j < it.len {
+        var m = it[j]
+        if m[0] == "Method" {
+            if !first {
+                out = out + ","
+            }
+            first = false
+            out = out + "\"fn " + doc_json_escape(doc_fn_core(m)) + "\""
+        } else if or2(m[0] == "PropSig", m[0] == "PropImpl") {
+            if !first {
+                out = out + ","
+            }
+            first = false
+            out = out + "\"prop " + doc_json_escape(m[1]) + ": " + doc_json_escape(doc_ty(m[2])) + "\""
+        }
+        j += 1
+    }
+    return out + "]"
+}
+
+fn doc_json_item(d: List[Str]) -> Str {
+    if d[0] == "FnPub" {
+        return "\{\"kind\":\"fn\"," + doc_json_fnobj(d) + "}"
+    }
+    if d[0] == "FnExt" {
+        return "\{\"kind\":\"extern\"," + doc_json_fnobj(d) + "}"
+    }
+    if d[0] == "Struct" {
+        return doc_json_struct(d)
+    }
+    if d[0] == "Enum" {
+        return doc_json_enum(d)
+    }
+    if d[0] == "Trait" {
+        return "\{\"kind\":\"trait\",\"name\":\"" + doc_json_escape(d[1]) + "\",\"sigs\":" + doc_json_sigs(d[4]) + "}"
+    }
+    return "\{\"kind\":\"impl\",\"sig\":\"impl " + doc_json_escape(doc_ty(d[2])) + " for " + doc_json_escape(doc_ty(d[3])) + "\",\"sigs\":" + doc_json_sigs(d[4]) + "}"
+}
+
 fn main() -> I32 {
     let path = "ANCHORINPUT"
     let src = read_file("ANCHORINPUT")
@@ -284,15 +465,31 @@ fn main() -> I32 {
                 }
                 return 1
             }
-            println("iface " + epath + " decls=" + (file.len - 1).to_string())
+            var dfmt = ctron_cli_flag("format")
+            if dfmt.len == 0 {
+                dfmt = "ANCHORFMT"
+            }
+            var isjson = or2(seq2(dfmt, "1"), seq2(dfmt, "json"))
+            if isjson {
+                print("\{\"entry\":\"" + doc_json_escape(epath) + "\",\"decls\":" + (file.len - 1).to_string() + ",\"iface\":[")
+            } else {
+                println("iface " + epath + " decls=" + (file.len - 1).to_string())
+            }
             var syms: I32 = 0
+            var first = true
             var i: I32 = 1
             while i < file.len {
                 var d = file[i]
                 var t = d[0]
                 if doc_is_pub(d) {
                     syms += 1
-                    if t == "FnPub" {
+                    if isjson {
+                        if !first {
+                            print(",")
+                        }
+                        first = false
+                        print(doc_json_item(d))
+                    } else if t == "FnPub" {
                         println("pub fn " + doc_fn_core(d))
                     } else if t == "FnExt" {
                         println("pub extern " + doc_fn_core(d))
@@ -302,13 +499,33 @@ fn main() -> I32 {
                         println(doc_enum(d))
                     }
                 } else if t == "Trait" {
-                    println(doc_trait(d))
-                    doc_items(d[4])
+                    if isjson {
+                        if !first {
+                            print(",")
+                        }
+                        first = false
+                        print(doc_json_item(d))
+                    } else {
+                        println(doc_trait(d))
+                        doc_items(d[4])
+                    }
                 } else if t == "Impl" {
-                    println("impl " + doc_ty(d[2]) + " for " + doc_ty(d[3]))
-                    doc_items(d[4])
+                    if isjson {
+                        if !first {
+                            print(",")
+                        }
+                        first = false
+                        print(doc_json_item(d))
+                    } else {
+                        println("impl " + doc_ty(d[2]) + " for " + doc_ty(d[3]))
+                        doc_items(d[4])
+                    }
                 }
                 i += 1
+            }
+            if isjson {
+                println("]}")
+                return 0
             }
             println("iface symbols=" + syms.to_string())
             return 0
