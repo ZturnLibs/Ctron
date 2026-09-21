@@ -238,6 +238,12 @@ test "ws e2e upgrade frames fragmentation masking close" {
                         if f1.rc != 0 || f1.opcode != 1 || f1.fin != 1 || f1.produced != 5 {
                             return 6
                         }
+                        // 单帧文本消费面 UTF-8 校验演示(P4-C 评审 Minor 钉;此前仅
+                        // 分片重组路径(session A 3/session D)有校验 —— 单帧文本
+                        // 同为 RFC 6455 §8.1 close 1007 面,消费方重组完成处同规)
+                        if ws_utf8_valid(asm, 0, f1.produced) != 1 {
+                            return 28
+                        }
                         let n1 = ws_frame_encode(obuf, 0, 1024, ws_op_text(), 1, asm, 0, f1.produced, 0, 0)
                         if client_write(sock.fd, obuf, n1) != n1 {
                             return 7
