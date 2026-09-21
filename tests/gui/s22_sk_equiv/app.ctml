@@ -1,0 +1,19 @@
+view FrameApp {
+  <vbox class="root">
+    <label class="title">FRAME GOLDEN</label>
+    <button class="btn" on:click={noop}>ADD</button>
+    <when cond={show}>
+      <label class="sub">visible row</label>
+    </when>
+    <each item in={items}>
+      <label class="row">{item}</label>
+    </each>
+    <input bind={draft} placeholder="写点啥" class="field"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style sub { fg: "#22c55e" }
+style row { fg: "#cccccc" }
+style field { bg: "#2a2a2e" fg: "#ffffff" h: 36 }

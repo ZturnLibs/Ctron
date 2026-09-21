@@ -8,3 +8,11 @@ check OK decls=5
     gap=8~
   gui style btn
     bg=#2563eb
+n0 tag=vbox cls=root pre=- bid=- post=- flag=- fc=1 ns=-1 es=0 ec=0
+n1 tag=button cls=btn pre=+ 1~ bid=- post=- flag=- fc=-1 ns=-1 es=0 ec=1
+e0 on=click fn=inc
+btn id=1
+s root.direction=column
+s root.gap=8~
+s btn.bg=#2563eb
+sk-end

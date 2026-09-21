@@ -201,6 +201,8 @@ fn main() -> I32 {
                 println("check OK gui decls=" + (gfile.len - 1).to_string())
                 if cml_dump == "1" {
                     gui_dump_file(gfile)
+                    // SL-7β1:骨架表倾倒(与域包 sk_dump 双端差分,s22_sk_equiv)
+                    gui_sk_dump_all(gfile)
                 }
                 var cwi: I32 = 0
                 while cwi < cml_warns.len {
@@ -281,6 +283,7 @@ fn main() -> I32 {
                 // W3 检查面(挂 dumpgui 旗标下;C 宿主 sem 对 gui_ck 助手参数的
                 // E2020 分歧解决后,再评估移入默认 check 路径)
                 // SL-6(M1-d):gwarns 警告通道(E8193 警告级)——打印不置 rc
+                // SL-7β1:检查面先行(诊断 rc=1 即返,非法标记不做骨架倾倒)
                 var gdiags = List[Str]()
                 var gwarns = List[Str]()
                 gui_check_file(file, gdiags, gwarns, false)
@@ -289,13 +292,14 @@ fn main() -> I32 {
                     println(gdiags[gi])
                     gi += 1
                 }
+                if gdiags.len > 0 {
+                    return 1
+                }
+                gui_sk_dump_all(file)
                 var wi: I32 = 0
                 while wi < gwarns.len {
                     println(gwarns[wi])
                     wi += 1
-                }
-                if gdiags.len > 0 {
-                    return 1
                 }
             }
             var chk_trusted = ctron_cli_flag("trusted")

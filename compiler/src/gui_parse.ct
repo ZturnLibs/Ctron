@@ -889,3 +889,357 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
     }
     return 0
 }
+
+// ==================== SL-7β1:编译期骨架解析(镜像 std/gui.ct gt_parse)====================
+// GuiBlock token 流 → GuiTree 15 字段平行表。与运行时 gt_parse 的树等价由
+// s22_sk_equiv 夹具双端差分锁定(编译器 dump vs 域包 sk_dump)。语义镜像:
+// 节点 id = push 序;when = 带旗容器(cond 名自持);each 节点 npre=列表名 nbid=itemvar;
+// 叶文本 pre/bind/post 按 {ident} 三段(词流单空格拼接,词法切分标点文本为已登记偏差);
+// 事件槽 nes/nec = ev_name/ev_fn 的 [起,计) 切片;button 注册 btns;style sk=名.属性 sv=值。
+// 语法缝:token 流为裸切分形态(</ 与 ={ 无粘连,本 builder 按独立 token 消费)。
+
+fn gui_sk_word(tks: List[Str], cur: Atomic[I32]) -> Str {
+    var t: Str = tks[cur.load()]
+    cur.store(cur.load() + 1)
+    return t
+}
+
+fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: List[Str], out4: List[Str]) -> I32 {
+    // out4 预置 4 槽:[0]=class [1]=cond [2]=bind [3]=placeholder(末值覆盖,镜像末推)
+    while cur.load() < tks.len {
+        var pk: Str = tks[cur.load()]
+        if pk.len == 1 {
+            var pb: I32 = byte_at(pk, 0)
+            if pb == 62 {
+                break
+            }
+            if pb == 47 {
+                break
+            }
+        }
+        var an: Str = gui_sk_word(tks, cur)
+        if an == "on" {
+            gui_sk_word(tks, cur)
+            var evn: Str = gui_sk_word(tks, cur)
+            gui_sk_word(tks, cur)
+            gui_sk_word(tks, cur)
+            var fnn: Str = gui_sk_word(tks, cur)
+            gui_sk_word(tks, cur)
+            ev_name.push(evn)
+            ev_fn.push(fnn)
+        } else {
+            gui_sk_word(tks, cur)
+            var av: Str = ""
+            var brform: Bool = false
+            if cur.load() < tks.len {
+                var pv: Str = tks[cur.load()]
+                if pv.len == 1 {
+                    if byte_at(pv, 0) == 123 {
+                        cur.store(cur.load() + 1)
+                        av = gui_sk_word(tks, cur)
+                        gui_sk_word(tks, cur)
+                        brform = true
+                    }
+                }
+            }
+            if !brform {
+                if cur.load() < tks.len {
+                    av = gui_unq(gui_sk_word(tks, cur))
+                }
+            }
+            if an == "class" {
+                out4[0] = av
+            }
+            if an == "cond" {
+                out4[1] = av
+            }
+            if an == "bind" {
+                out4[2] = av
+            }
+            if an == "placeholder" {
+                out4[3] = av
+            }
+        }
+    }
+    return 0
+}
+
+fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[Str], ncls: List[Str], npre: List[Str], nbid: List[Str], npost: List[Str], nfc: List[I32], ns: List[I32], nes: List[I32], nec: List[I32], ev_name: List[Str], ev_fn: List[Str], btns: List[I32], depth: I32) -> I32 {
+    cur.store(cur.load() + 1)
+    var tag: Str = gui_sk_word(tks, cur)
+    var is_leaf: Bool = false
+    if tag == "label" {
+        is_leaf = true
+    }
+    if tag == "button" {
+        is_leaf = true
+    }
+    var is_input: Bool = false
+    if tag == "input" {
+        is_input = true
+    }
+    var itemvar: Str = ""
+    var listname: Str = ""
+    if tag == "each" {
+        // 头:item in={列表}(先于 attrs,镜像 gt_node;六 token:名 in = { 表 })
+        itemvar = gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        listname = gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+    }
+    var estart: I32 = ev_name.len
+    var out4 = List[Str]()
+    out4.push("")
+    out4.push("")
+    out4.push("")
+    out4.push("")
+    gui_sk_attrs(tks, cur, ev_name, ev_fn, out4)
+    var id: I32 = ntag.len
+    if is_input {
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        ntag.push(tag)
+        ncls.push(out4[0])
+        npre.push(out4[3])
+        nbid.push(out4[2])
+        npost.push("")
+        nfc.push(-1)
+        ns.push(-1)
+        nes.push(estart)
+        nec.push(ev_name.len - estart)
+        nflag.push("")
+        return id
+    }
+    gui_sk_word(tks, cur)
+    if is_leaf {
+        // 叶文本三段:词流(单空格拼接)至 { → bind 名 → 词流至 <
+        var p0: Str = ""
+        var b: Str = ""
+        var p1: Str = ""
+        var phase: I32 = 0
+        while cur.load() < tks.len {
+            var tk: Str = tks[cur.load()]
+            if tk.len == 1 {
+                var tb: I32 = byte_at(tk, 0)
+                if tb == 123 {
+                    cur.store(cur.load() + 1)
+                    phase = 1
+                    continue
+                }
+                if tb == 60 {
+                    break
+                }
+            }
+            if phase == 0 {
+                if p0 != "" {
+                    p0 = p0 + " "
+                }
+                p0 = p0 + tk
+            } else {
+                if phase == 1 {
+                    b = tk
+                    phase = 3
+                } else {
+                    if phase == 3 {
+                        // bind 闭括号 }:镜像 gt_leaf_text glit(125)——消费不入 post
+                        phase = 2
+                        if tk.len == 1 {
+                            if byte_at(tk, 0) == 125 {
+                                cur.store(cur.load() + 1)
+                                continue
+                            }
+                        }
+                    }
+                    if p1 != "" {
+                        p1 = p1 + " "
+                    }
+                    p1 = p1 + tk
+                }
+            }
+            cur.store(cur.load() + 1)
+        }
+        npre.push(p0)
+        nbid.push(b)
+        npost.push(p1)
+        ntag.push(tag)
+        ncls.push(out4[0])
+        nfc.push(-1)
+        ns.push(-1)
+        nes.push(estart)
+        nec.push(ev_name.len - estart)
+        nflag.push(out4[1])
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        if tag == "button" {
+            btns.push(id)
+        }
+        return id
+    }
+    ntag.push(tag)
+    ncls.push(out4[0])
+    npre.push(listname)
+    nbid.push(itemvar)
+    npost.push("")
+    nfc.push(-1)
+    ns.push(-1)
+    nes.push(estart)
+    nec.push(ev_name.len - estart)
+    nflag.push(out4[1])
+    var prev: I32 = -1
+    while cur.load() < tks.len {
+        var pk2: Str = tks[cur.load()]
+        if pk2.len == 1 {
+            if byte_at(pk2, 0) == 60 {
+                if cur.load() + 1 < tks.len {
+                    var nk: Str = tks[cur.load() + 1]
+                    if nk.len == 1 {
+                        if byte_at(nk, 0) == 47 {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        var kid: I32 = gui_sk_node(tks, cur, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, depth + 1)
+        var fcl: List[I32] = nfc
+        var nsl: List[I32] = ns
+        if prev < 0 {
+            fcl[id] = kid
+        } else {
+            nsl[prev] = kid
+        }
+        prev = kid
+    }
+    gui_sk_word(tks, cur)
+    gui_sk_word(tks, cur)
+    gui_sk_word(tks, cur)
+    gui_sk_word(tks, cur)
+    return id
+}
+
+fn gui_sk_style(tks: List[Str], cur: Atomic[I32], sk: List[Str], sv: List[Str]) -> I32 {
+    var name: Str = gui_sk_word(tks, cur)
+    while cur.load() < tks.len {
+        var pk: Str = tks[cur.load()]
+        if pk.len == 1 {
+            var pb: I32 = byte_at(pk, 0)
+            if pb == 59 {
+                cur.store(cur.load() + 1)
+                continue
+            }
+            if pb == 125 {
+                break
+            }
+        }
+        var p: Str = gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        var v: Str = ""
+        if cur.load() < tks.len {
+            var pv: Str = tks[cur.load()]
+            if pv.len > 1 {
+                if byte_at(pv, 0) == 34 {
+                    v = gui_unq(pv)
+                    cur.store(cur.load() + 1)
+                }
+            }
+        }
+        if v == "" {
+            if cur.load() < tks.len {
+                v = gui_sk_word(tks, cur)
+            }
+        }
+        sk.push(name + "." + p)
+        sv.push(v)
+    }
+    return 0
+}
+
+fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[Str], npre: List[Str], nbid: List[Str], npost: List[Str], nfc: List[I32], ns: List[I32], nes: List[I32], nec: List[I32], ev_name: List[Str], ev_fn: List[Str], btns: List[I32], sk: List[Str], sv: List[Str]) -> I32 {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "GuiBlock" {
+            var tks = List[Str]()
+            gui_split(d[4], tks)
+            var cur = Atomic[I32](0)
+            if d[1] == "view" {
+                cur.store(1)
+                if cur.load() < tks.len {
+                    gui_sk_node(tks, cur, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, 1)
+                }
+            } else {
+                if d[1] == "style" {
+                    gui_sk_style(tks, cur, sk, sv)
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+// 骨架表倾倒(格式与域包 std/gui.ct sk_dump 逐字节一致,双端差分用;空串以 - 表示)
+fn gui_sk_dump_all(file: List[Str]) -> I32 {
+    var ntag = List[Str]()
+    var nflag = List[Str]()
+    var ncls = List[Str]()
+    var npre = List[Str]()
+    var nbid = List[Str]()
+    var npost = List[Str]()
+    var nfc = List[I32]()
+    var ns = List[I32]()
+    var nes = List[I32]()
+    var nec = List[I32]()
+    var ev_name = List[Str]()
+    var ev_fn = List[Str]()
+    var btns = List[I32]()
+    var sk = List[Str]()
+    var sv = List[Str]()
+    gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, sk, sv)
+    var i: I32 = 0
+    while i < ntag.len {
+        var pre: Str = npre[i]
+        if pre == "" {
+            pre = "-"
+        }
+        var bid: Str = nbid[i]
+        if bid == "" {
+            bid = "-"
+        }
+        var post: Str = npost[i]
+        if post == "" {
+            post = "-"
+        }
+        var flag: Str = nflag[i]
+        if flag == "" {
+            flag = "-"
+        }
+        var cls: Str = ncls[i]
+        if cls == "" {
+            cls = "-"
+        }
+        println("n" + i.to_string() + " tag=" + ntag[i] + " cls=" + cls + " pre=" + pre + " bid=" + bid + " post=" + post + " flag=" + flag + " fc=" + nfc[i].to_string() + " ns=" + ns[i].to_string() + " es=" + nes[i].to_string() + " ec=" + nec[i].to_string())
+        i += 1
+    }
+    var k: I32 = 0
+    while k < ev_name.len {
+        println("e" + k.to_string() + " on=" + ev_name[k] + " fn=" + ev_fn[k])
+        k += 1
+    }
+    var b: I32 = 0
+    while b < btns.len {
+        println("btn id=" + btns[b].to_string())
+        b += 1
+    }
+    var s: I32 = 0
+    while s < sk.len {
+        println("s " + sk[s] + "=" + sv[s])
+        s += 1
+    }
+    println("sk-end")
+    return 0
+}
