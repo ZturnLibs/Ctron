@@ -98,3 +98,16 @@ linux 验证:probe.yml 重跑 emit 工作负载 /usr/bin/time -v,峰值 <16GB �
   每扫描迭代 ~187B 未定界分配;RA 直方图探针已备(-O2 内联致 atos 符号化失真,
   复测建议 -O0 探针构建取干净返回地址)。
 - ci.yml ubuntu 门禁解除条件:E2 级负载峰值 < 16GB(即完成 ct_struct 簇优化)。
+
+## 2026-09-21 续二:drop_frame bind 回收——需求 13GB → 1.65GB(累计 −94%)
+
+第二波根因(-O0 探针构建取干净返回地址,一行定位):`drop_frame` 的 RAII 幂等清空
+(`f->head = NULL`)把帧内 bind 节点直接丢弃、不入 env_let/env_pop 的复用链 →
+循环体逐轮重绑 `let/var` 的 bind 全部孤儿泄漏(bind_free 恒空,每迭代 1 次 arena 分配)。
+修复:drop 调用完成后节点入复用链再清空(嵌套 panic 幂等语义保持)。
+
+**实测(seed emit cc_run.ct):需求 25,971MB → 1,654MB(−94%),分配 2.1 亿 → 389 万(−98%)。**
+
+按此推算 E2(cc_emit.ct,19k 行)≈ 2.3GB,16GB runner 裕度充足 → ci.yml ubuntu 门禁
+的内存面解除。门禁:suite.py 0 红;编译器源词法暂被对端在途调试行
+(trans_stmt.ct 裸 `{`)挡住,与本片无关(双向对照排除)。

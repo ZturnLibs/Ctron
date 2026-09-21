@@ -232,6 +232,14 @@ static void drop_frame(rt* R, env* f) {
         const cfn* F = cls_method(R, b->slot.type, "drop");
         if (F && F->body) (void)call_method_body(R, F, b->slot, NULL, 0);
     }
+    // bind 节点入复用链(env_let/env_pop 的 free-list;bump arena 无逐对象回收,
+    // 帧销毁即节点可复用——循环体逐轮重绑 let/var 的分配主源)
+    for (bind* b = f->head; b; ) {
+        bind* nx = b->next;
+        b->next = R->bind_free;
+        R->bind_free = b;
+        b = nx;
+    }
     f->head = NULL; // 展开后清空:嵌套 panic 不重复展开(幂等)
 }
 
