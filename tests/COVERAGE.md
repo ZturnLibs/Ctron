@@ -269,7 +269,7 @@ impl-for 解析);fmt_suite 1 条(01i 分号语料 fmt 失败);native_suite 6 条
 | P2 | 门禁 切换微基准 ≤200ns | tests/net/bench/bench.sh rt 段(CTRON_NET_BENCH=1;实测 89–102ns 四跑全绿;Rosetta 翻译态豁免在册) |
 | P2 | 门禁 echo coro-vs-P1 ≤1.15× | bench.sh coro 维度(实测 2.073–2.203 三跑,**红,登记归因**见计划执行记录:每阻塞读 reactor 登记/摘除 + park/wake + 空闲退避唤醒 ~15µs/往返;coro-vs-C 2.33–2.47 归档;**P3-A 转绿 1.019–1.040,≤1.5 检查点与 ≤1.15 原门双过,见 P3 行**) |
 
-P2 波提交域 48ed59c..<P2-F>(任务台账与门禁数字:计划执行记录);net 主环计
+P2 波提交域 48ed59c..ce43e83(任务台账与门禁数字:计划执行记录);net 主环计
 例口径 = 行为夹具 9 + c_smoke 2 + coro_det_replay 1 = 12。
 
 ### P3 行(TLS + 传输补全 + 时延首件,2026-09-21)
@@ -284,7 +284,7 @@ P2 波提交域 48ed59c..<P2-F>(任务台账与门禁数字:计划执行记录);
 | P3 | Unix domain socket 四件(listen/accept/connect/unlink) | tests/net/unix_sock(回环/half-close 双向/陈旧重绑自愈/ENOENT/超限 EINVAL/协程面 resolve;路径上限 104;Drop 只关 fd 不摘文件;主环 13→14 双矩阵) |
 | P3 | DNS 异步化(2 线程 helper 池 + done 槽) | c_smoke T6 差分证(workers=1 最严:787 resolves/60ms 窗口、进度协程 ticks+12;红路径演练有牙)+ 裸线程面 P1 逐字节不变 |
 
-P3 波提交域 ce43e83..P3-F(1d7d90e / 687653d / 8339569 / 7a1465a / db2b4dd /
+P3 波提交域 ce43e83..29dcdb1(1d7d90e / 687653d / 8339569 / 7a1465a / db2b4dd /
 8a16854 + 收口两笔;任务台账与门禁数字:计划执行记录);net 主环计例口径
 12→14 = 行为夹具 9 + tls_smoke 1 + unix_sock 1 + c_smoke 2 + coro_det_replay 1。
 P3 在册登记项:resolve 不可取消(取消广播不中断在途);AF_UNIX accept/connect

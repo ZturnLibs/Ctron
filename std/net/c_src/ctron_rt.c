@@ -115,8 +115,9 @@
  *   被交付唤醒,被顶者靠自身超时/取消/后续就绪醒 —— 驻留下"后续就绪"= 新一
  *   轮武装后的交付);epoll one-shot 按 fd 整体,交付一方向后若反向仍 armed
  *   则以反向掩码重挂(kqueue 滤波器按方向独立,无连带);close→forget 之间
- *   同号 fd 复用的 ABA 窗口(受影响等待者由自身超时兜底)与 P2 头注 F_GETFD
- *   残留窗口同类,登记。
+ *   同号 fd 复用的 ABA 窗口(带超时等待者由自身超时兜底;无超时停车者
+ *   (如 TLS 握手 timeout=0)不受兜底——挂死形态,结构性消除见 P4 首件
+ *   (forget_fd 先于 close 重排))与 P2 头注 F_GETFD 残留窗口同类,登记。
  *
  * 锁纪律:G 绝不跨切换持有(park/yield 在切换前解锁;worker 循环在切换前
  *   解锁),故无"锁随上下文迁移"的跨线程 unlock UB。worker 循环每轮迭代
@@ -1249,7 +1250,9 @@ void ctron_rt_cancel_wake_all(void)
  * ctron_net_close 在 close 之后调用(内核已在 close 时自动摘 knote/epoll
  * 节点,只须清登记表内存,不触碰后端);直连 close(2) 的路径由注册时顺手
  * 桶清扫兜底。未知 fd → no-op。同号复用 ABA 窗口(close→本钩子之间新 fd
- * 同号注册被误摘)与 P2 头注 F_GETFD 残留窗口同类,登记(见文件头注)。 */
+ * 同号注册被误摘;带超时等待者靠自身超时兜底,无超时停车者(如 TLS 握手
+ * timeout=0)不受兜底——挂死形态,结构性消除见 P4 首件(forget_fd 先于
+ * close 重排))与 P2 头注 F_GETFD 残留窗口同类,登记(见文件头注)。 */
 void ctron_rt_forget_fd(int64_t fd64)
 {
     int fd = (int)fd64;
