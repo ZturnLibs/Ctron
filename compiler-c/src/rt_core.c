@@ -1,4 +1,5 @@
 #include "rt_internal.h"
+#include <stdlib.h>
 
 // rt_core.c —— 值构造/缓冲/数值辅助/环境 + 字符串插值 + 函数调用与断言域(C4)
 val v_int(__int128 x, int bits, int us) { val v = {0}; v.k = V_INT; v.i = x; v.bits = bits; v.us = us; return v; }
@@ -447,8 +448,14 @@ int pat_bind(rt* R, cpat* p, val s) {
     }
 }
 
+void ctron_fn_enter(const char* n);
 val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     const cfn* F = &fn->fn_;
+    {
+        static int fat = -1;
+        if (fat < 0) fat = getenv("CTRON_FN_TRACE") ? 1 : 0;
+        if (fat) ctron_fn_enter(F->name);
+    }
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu",
                                    F->name, F->nparams, n);
     /* 实参先在调用方环境求值(§4 调用语义:形参不得遮蔽调用方同名局部)。

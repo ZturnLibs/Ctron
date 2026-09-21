@@ -15,4 +15,11 @@ void* ctron_arena_alloc(ctron_arena* a, size_t n);
 char* ctron_arena_strndup(ctron_arena* a, const void* p, size_t n);
 void ctron_arena_free(ctron_arena* a);
 
+/// 累计需求字节(CTRON_MEM_DEBUG=1 时有效;定界探针用,见 docs/linux-seed-memory-evidence.md)。
+long ctron_mem_total(void);
+/// 逐块对账(cap vs used;CTRON_MEM_DEBUG=1 时有效)。
+void ctron_mem_audit(const ctron_arena* a);
+/// 若 p 是 arena 最后一次分配且余量足够,原地扩展到 new_len 字节并返 1(拼接零拷贝快路径)。
+int ctron_arena_try_extend(ctron_arena* a, void* p, size_t old_len, size_t new_len);
+
 #endif

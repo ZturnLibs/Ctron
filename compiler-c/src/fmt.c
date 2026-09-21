@@ -231,9 +231,9 @@ static void push_real(F* f, ctron_tok_kind k, size_t end) {
 static int needs_space(F* f, ctron_tok_kind cur) {
     if (!f->has_prev) return 0;
     ctron_tok_kind prev = f->prev;
-    // cur 侧紧贴
+    // cur 侧紧贴(含 ... 变参:Rust 侧按 Dot Dot Dot 发射,逗号后恒紧贴)
     if (cur == TOK_COMMA || cur == TOK_COLON || cur == TOK_RPAREN || cur == TOK_RBRACKET ||
-        cur == TOK_DOT || cur == TOK_QUESTION) return 0;
+        cur == TOK_DOT || cur == TOK_QUESTION || cur == TOK_ELLIPSIS) return 0;
     if (cur == TOK_RBRACE && prev == TOK_LBRACE) return 0; // 空块 {}
     if (cur == TOK_LBRACKET && (prev == TOK_IDENT || prev == TOK_RPAREN || prev == TOK_RBRACKET ||
                                 prev == TOK_QUESTION || prev == TOK_HASH)) return 0;
@@ -272,7 +272,8 @@ static void emit_comments_before(F* f, size_t before) {
         fmt_comment c = f->comments[f->ci];
         f->ci++;
         size_t te = c.end;
-        while (te > c.start && (f->src[te - 1] == ' ' || f->src[te - 1] == '\t')) te--;
+        while (te > c.start && (f->src[te - 1] == ' ' || f->src[te - 1] == '\t' ||
+                                f->src[te - 1] == '\r')) te--;
         size_t pre_free = free_newlines(f, f->last_end, c.start);
         if (pre_free >= 1) {
             // 独占行注释(前置有换行)

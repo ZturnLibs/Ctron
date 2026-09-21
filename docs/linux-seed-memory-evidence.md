@@ -39,3 +39,35 @@
 3. 短期缓解已在发布链落地:linux 发布与 CI 走 prebuilt 直编
    (`CTRON_FROM_PREBUILT=1` + `tools/release.sh`,见 release.yml natives linux 臂)。
    解除影响面:ci.yml ubuntu 门禁(现每 push 红于 [3/8] native.sh)、linux 全自举验证。
+
+## 2026-09-21 编译器线接棒:根因闭环 + 归因地图
+
+插桩(已落库,环境变量门控默认零成本):
+- `CTRON_MEM_DEBUG=1` → arena 记账(总需求/块阶梯/进度标记/退出逐块对账/尺寸直方图);
+- `CTRON_FN_TRACE=1` → 按"当前解释执行的 Ctron 函数"归因分配字节(atexit 出 Top 榜)。
+
+**实测(macOS 同工作负载,seed emit cc_run.ct):**
+- 逻辑需求 **25,971MB**,分配 **2.098 亿次**,其中 <1KB 小分配合计 **20,477MB**(占 99.6%);
+  逐块对账 used=21,346MB——需求是真实的、线性于解释执行的字符串微操作。
+- 机制:永不逐对象回收的 bump arena × 被解释 trans 的海量微分配。**macOS 靠页压缩把
+  RSS 隐到 1.5-3GB"侥幸"完成;linux 诚实按触页计数 → 400MB/s 线性爬升 → OOM。**
+  这同时解释了 glibc 调参无效(不是分配器驻留,是需求本身)与"编译形态有界"
+  (发射产物不经解释器值模型)。
+
+**函数归因 Top(修复地图):**
+
+| 函数 | 需求 | 调用数 | 病灶 |
+|---|---|---|---|
+| `or2`(lex.ct) | 7,395MB | 11,847,525 | 热路径 De Morgan 辅助函数,每调用帧 ~600B;v0.7 已有 `||` 运算符,历史写法可内联 |
+| `ct_struct_tps`/`ct_structs`/`ct_is_enum`/`ct_enum_of_variant`(trans_ty.ct) | ~10,000MB | 各 ~28k | 每次 ~95KB:对 449 decl 全树线性扫 + 临时分配;被 ct_typeof Ident 回退路径高频调用 |
+| `nl_set_line_end`/`nl_set_next`(lex.ct) | ~530MB | 各 12,288 | 每调用重建 22 元素 List[Str] |
+| `tok`/`rpush`/`ct_env_ty`/`env_bind`/`ct_expr` | ~1,500MB | — | 次级面 |
+
+**已证伪路径(避坑):**
+- arena 末次分配原地扩展(拼接零拷贝):**语义不可行**——`let b = a` 共享指针,
+  原地扩展破坏值语义不可变性(已回退)。
+- char 符号性 / list 克隆风暴 / glibc mmap-TRIM-ARENA_MAX:均排除。
+
+**修复排序(预期收益):** ①lex.ct or2 链改 `||`/`&&` 运算符(≈-7GB);
+②ct_struct 查询簇单遍化/预索引(≈-10GB);③nl_set_* 内联(≈-0.5GB);
+合计预期把 emit 需求压到 2-4GB,16GB runner 安全裕度内。余项见 FN 榜逐级清理。
