@@ -1,0 +1,155 @@
+// a_wsproto —— P4-C WS 协议 MUST 语料(interp + emit 双臂;零 IO)
+// 评审修复面:分片序列校验(err 9/10 → close 1002)、文本 UTF-8 校验
+// (ws_utf8_valid → close 1007 面;登记:分片中段非法字节延迟到重组完成
+// 才报 —— RFC 8.1 惰性校验档)、Sec-WebSocket-Version 恰 "13"、len64 头
+// 双向黄金向量、err 4/6/7 负例。
+use std.http.ws.{ ws_frame_head, ws_frame_encode, ws_step, ws_st_new, ws_utf8_valid, ws_upgrade_ok, wr_rc, wr_err, wr_produced, wr_fin, wr_opcode, wst_phase, wst_frag, wst_remain }
+
+fn wp_hex(buf: &I64[], hex: Str) -> I64 {
+    var i: I32 = 0
+    var k: I32 = 0
+    while k + 1 < hex.len {
+        var hi: I64 = 0
+        var lo: I64 = 0
+        let a = byte_at(hex, k)
+        let b = byte_at(hex, k + 1)
+        if a >= 48 && a <= 57 {
+            hi = (a - 48).as[I64]()
+        }
+        if a >= 97 && a <= 102 {
+            hi = (a - 87).as[I64]()
+        }
+        if a >= 65 && a <= 70 {
+            hi = (a - 55).as[I64]()
+        }
+        if b >= 48 && b <= 57 {
+            lo = (b - 48).as[I64]()
+        }
+        if b >= 97 && b <= 102 {
+            lo = (b - 87).as[I64]()
+        }
+        if b >= 65 && b <= 70 {
+            lo = (b - 55).as[I64]()
+        }
+        buf[i] = hi * 16 + lo
+        i += 1
+        k += 2
+    }
+    return i.as[I64]()
+}
+
+test "wsproto frag sequence matrix" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // CONT 无进行中分片 → err 10(close 1002 面)
+    let n1 = wp_hex(fr, "80016f")
+    var r = ws_step(fr, n1, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 10)
+    // 良构链:text fin0 → cont fin0 → cont fin1;frag 随帧推进/清零
+    let na = wp_hex(fr, "010348656c")
+    r = ws_step(fr, na, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 1)
+    let nb = wp_hex(fr, "00016c")
+    r = ws_step(fr, nb, 0, wr_st(r), dst, 3, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 1)
+    let nc = wp_hex(fr, "80016f")
+    r = ws_step(fr, nc, 0, wr_st(r), dst, 4, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 0)
+    // binary fin0 发起 → 分片中来新 TEXT(fin=1 亦然)→ err 9
+    let nd = wp_hex(fr, "020141")
+    r = ws_step(fr, nd, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 2)
+    let ne = wp_hex(fr, "810142")
+    r = ws_step(fr, ne, 0, wr_st(r), dst, 1, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 9)
+    // 控制帧插续不受限:binary fin0 进行中收 ping → 正常完成
+    let nf = wp_hex(fr, "020141")
+    r = ws_step(fr, nf, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 2)
+    let ng = wp_hex(fr, "8900")
+    r = ws_step(fr, ng, 0, wr_st(r), dst, 1, 64)
+    assert(wr_rc(r) == 1 && wr_opcode(r) == 9)
+    let nh = wp_hex(fr, "800141")
+    r = ws_step(fr, nh, 0, wr_st(r), dst, 1, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 0)
+}
+
+test "wsproto utf8 vectors" {
+    var u8: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // ASCII / 二字节 / 三字节 / 四字节良构
+    let n1 = wp_hex(u8, "48656c6c6f")
+    assert(ws_utf8_valid(u8, 0, n1) == 1)
+    let n2 = wp_hex(u8, "c3a9")
+    assert(ws_utf8_valid(u8, 0, n2) == 1)
+    let n3 = wp_hex(u8, "e4b8ad")
+    assert(ws_utf8_valid(u8, 0, n3) == 1)
+    let n4 = wp_hex(u8, "f09f9880")
+    assert(ws_utf8_valid(u8, 0, n4) == 1)
+    // 违例:游离续项 / 过长 C0 80 / 代理 ED A0 80 / 超 U+10FFFF F4 90 80 80 /
+    // F5 / 截断 E4 B8
+    let x1 = wp_hex(u8, "80")
+    assert(ws_utf8_valid(u8, 0, x1) == 0)
+    let x2 = wp_hex(u8, "c080")
+    assert(ws_utf8_valid(u8, 0, x2) == 0)
+    let x3 = wp_hex(u8, "eda080")
+    assert(ws_utf8_valid(u8, 0, x3) == 0)
+    let x4 = wp_hex(u8, "f4908080")
+    assert(ws_utf8_valid(u8, 0, x4) == 0)
+    let x5 = wp_hex(u8, "f580808080")
+    assert(ws_utf8_valid(u8, 0, x5) == 0)
+    let x6 = wp_hex(u8, "e4b8")
+    assert(ws_utf8_valid(u8, 0, x6) == 0)
+    // 空载荷良构
+    assert(ws_utf8_valid(u8, 0, 0) == 1)
+}
+
+test "wsproto len64 header goldens and upgrade version" {
+    var out: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // encode:len64 头 10 字节(70000 = 0x11170)
+    let hn = ws_frame_head(out, 0, 16, 2, 1, 70000, 0, 0)
+    assert(hn == 10)
+    assert(out[0] == 130 && out[1] == 127)
+    assert(out[2] == 0 && out[3] == 0 && out[4] == 0 && out[5] == 0)
+    assert(out[6] == 0 && out[7] == 1 && out[8] == 17 && out[9] == 112)
+    // decode:同头喂入 → 相位 5 + remain 70000
+    var dst: I64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = wp_hex(out, "827f0000000000011170")
+    let r = ws_step(out, n, 0, ws_st_new(0), dst, 0, 8)
+    assert(wr_rc(r) == 0 && wr_opcode(r) == 2 && wr_fin(r) == 1)
+    assert(wst_phase(wr_st(r)) == 5 && wst_remain(wr_st(r)) == 70000)
+    // upgrade:version 非 13 拒、恰 13 收
+    var u: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var c: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var k: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var v: I64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let un = wp_hex(u, "576562536f636b6574")
+    let cn = wp_hex(c, "55706772616465")
+    let kn = wp_hex(k, "78334a4a484d62444c31457a4c6b68394742685844773d3d")
+    let vn = wp_hex(v, "3133")
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, kn, v, 0, vn) == 1)
+    let vn8 = wp_hex(v, "38")
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, kn, v, 0, vn8) == 0)
+    let vn13x = wp_hex(v, "313330")
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, kn, v, 0, vn13x) == 0)
+}
+
+test "wsproto decode err 4 6 7 negatives" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // err 4:控制帧 16 位长度
+    let n1 = wp_hex(fr, "897e0005")
+    var r = ws_step(fr, n1, 0, ws_st_new(1), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 4)
+    // err 6:掩码帧以服务端帧(expect=0)解读
+    let n2 = wp_hex(fr, "818537faf3057f9f9f6958")
+    r = ws_step(fr, n2, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 6)
+    // err 7:len64 符号位
+    let n3 = wp_hex(fr, "827f8000000000000000")
+    r = ws_step(fr, n3, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 7)
+    // err 5:未掩码客户端帧
+    let n4 = wp_hex(fr, "810548656c6c6f")
+    r = ws_step(fr, n4, 0, ws_st_new(1), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 5)
+}

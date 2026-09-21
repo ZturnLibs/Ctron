@@ -220,8 +220,20 @@ pub fn sse_step(src: &I64[], n: I64, pos: I64, st: SseSt) -> SseRet {
         if fname.len == 0 && flen > 0 {
             return ss_ret(-1, 1, ls - pos, "", "", "", SseSt { name: name, data: data, id: id })
         }
+        // id 值含 NUL(U+0000)→ 整字段忽略(WHATWG 处理模型;先扫原始域,
+        // 避免 NUL 先行触发值域 err)
+        var id_nul = 0
+        if fname == "id" {
+            var k3 = vs
+            while k3 < vs + vlen {
+                if src[k3] == 0 {
+                    id_nul = 1
+                }
+                k3 += 1
+            }
+        }
         var fval = ss_slice_str(src, vs, vs + vlen)
-        if vlen > 0 && fval.len == 0 {
+        if vlen > 0 && fval.len == 0 && id_nul == 0 {
             return ss_ret(-1, 1, ls - pos, "", "", "", SseSt { name: name, data: data, id: id })
         }
         // 字段分派(未知字段/畸形 retry 忽略 —— spec 口径)
@@ -232,7 +244,9 @@ pub fn sse_step(src: &I64[], n: I64, pos: I64, st: SseSt) -> SseRet {
                 data = data + fval + "\n"
             } else {
                 if fname == "id" {
-                    id = fval
+                    if id_nul == 0 {
+                        id = fval
+                    }
                 }
             }
         }

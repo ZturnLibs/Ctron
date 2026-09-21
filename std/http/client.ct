@@ -305,6 +305,10 @@ fn cx_read_resp(fd: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64, timeout_
         var guard: I64 = 0
         while done == 0 && guard < 100000 {
             guard += 1
+            if guard == 99999 {
+                // 步进守卫耗尽 = 恶意/损坏流(非干净终止)→ 协议错
+                return cx_rd(-4, n, 0, 0)
+            }
             let r = chunk_step(buf, n, pos, st, buf, dfill, cap)
             pos = pos + cr_consumed(r)
             dfill = dfill + cr_produced(r)

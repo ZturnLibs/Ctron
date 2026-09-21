@@ -22,8 +22,15 @@
 //      保留 opcode(err 2)、控制帧 FIN=0(err 3,§5.5)、控制帧载荷 >125
 //      (err 4,§5.5)、【应掩码面未掩码】(err 5 —— 服务端读客户端帧必掩码,
 //      §5.1 MUST)/【服务端帧带掩码】(err 6,§5.1 MUST NOT)、len64 符号位
-//      置位(err 7,§5.2)。方向性经 ws_st_new(expect) 注入(expect=1 解码
-//      客户端帧,=0 解码服务端帧)。
+//      置位(err 7,§5.2)、【DATA 帧遇进行中分片】(err 9,§5.4 MUST)/
+//      【CONT 无进行中分片】(err 10,§5.4 MUST;控制帧插续不受限)。方向性
+//      经 ws_st_new(expect) 注入(expect=1 解码客户端帧,=0 解码服务端帧);
+//      消息态 frag(0 = 无进行中分片,否则 = 发起 opcode)随 WsSt 携带,
+//      fin=1 数据/续帧完成即清零。
+//   ⑤b 文本 UTF-8(§8.1,close 1007 面):ws_utf8_valid 全量校验器(拒续
+//      项游离/C0 C1 过长/代理区/超 U+10FFFF/F5..FF);校验点 = 消费方重组
+//      完成处(增量宽松档:分片中段非法字节延迟到完成才报 —— RFC 8.1
+//      Auto 惰性校验档,登记)。
 //   ⑥ close 语义:关闭码白名单 ws_close_code_ok(1000..1003 / 1007..1011 /
 //      3000..4999 私用段;1004/1005/1006/1015 不得上线);回声面 = 收 close
 //      后以其码回 close(消费方经 ws_close_payload 出 2 字节 BE 载荷)。
@@ -159,8 +166,9 @@ fn wu_token_has(lane: &I64[], s: I64, n: I64, want: Str) -> I64 {
 }
 
 // 升级判(§4.2.1 从严子集):1 = 可升级;0 = 拒(消费方应 400)。
-// upgrade 值 CI "websocket" / connection 逗号表 CI 含 "upgrade" / key 恰 24 字节。
-pub fn ws_upgrade_ok(upg: &I64[], us: I64, ul: I64, conn: &I64[], cs: I64, cl: I64, key: &I64[], ks: I64, kl: I64) -> I64 {
+// upgrade 值 CI "websocket" / connection 逗号表 CI 含 "upgrade" / key 恰 24
+// 字节 / version 值恰 "13"(§4.2.1.6 MUST 验版,非 13 → fail)。
+pub fn ws_upgrade_ok(upg: &I64[], us: I64, ul: I64, conn: &I64[], cs: I64, cl: I64, key: &I64[], ks: I64, kl: I64, ver: &I64[], vs: I64, vl: I64) -> I64 {
     if wu_ci_eq(upg, us, ul, "websocket") != 1 {
         return 0
     }
@@ -168,6 +176,9 @@ pub fn ws_upgrade_ok(upg: &I64[], us: I64, ul: I64, conn: &I64[], cs: I64, cl: I
         return 0
     }
     if kl != 24 {
+        return 0
+    }
+    if wu_ci_eq(ver, vs, vl, "13") != 1 {
         return 0
     }
     return 1
@@ -275,9 +286,10 @@ fn wu_mask_byte(mk: I64, idx: I64) -> I64 {
     return mk / sh % 256
 }
 
-// 编码一帧:FIN/opcode/len(7/16/64)/[mask]/payload;返回总长。
+// 编码帧头(FIN/opcode/len 7/16/64/[掩码键]);返回头长。
 // -1 容量不足;-3 控制帧载荷 >125(§5.5)。masked=1 时 mkey = 32 位掩码键。
-pub fn ws_frame_encode(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I64, payload: &I64[], off: I64, plen: I64, masked: I64, mkey: I64) -> I64 {
+// len64 档(>65535)10 字节头在此单点,黄金向量测试锚。
+pub fn ws_frame_head(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I64, plen: I64, masked: I64, mkey: I64) -> I64 {
     if ws_is_control(opcode) == 1 && plen > 125 {
         return -3
     }
@@ -292,7 +304,7 @@ pub fn ws_frame_encode(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I6
     if masked == 1 {
         hdr += 4
     }
-    if hdr + plen > cap {
+    if hdr > cap {
         return -1
     }
     var b0 = opcode % 16
@@ -300,7 +312,15 @@ pub fn ws_frame_encode(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I6
         b0 += 128
     }
     out[out_off] = b0
+    // len7:0..125 直载;126/127 = 16/64 位扩展标记值(非截断低位)
     var b1 = plen % 128
+    if plen > 65535 {
+        b1 = 127
+    } else {
+        if plen > 125 {
+            b1 = 126
+        }
+    }
     if masked == 1 {
         b1 += 128
     }
@@ -329,6 +349,18 @@ pub fn ws_frame_encode(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I6
         out[out_off + p + 3] = mkey % 256
         p += 4
     }
+    return p
+}
+
+// 编码一帧 = 帧头 + 载荷(掩码内联);返回总长。
+pub fn ws_frame_encode(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I64, payload: &I64[], off: I64, plen: I64, masked: I64, mkey: I64) -> I64 {
+    let p = ws_frame_head(out, out_off, cap, opcode, fin, plen, masked, mkey)
+    if p < 0 {
+        return p
+    }
+    if p + plen > cap {
+        return -1
+    }
     var j: I64 = 0
     while j < plen {
         if masked == 1 {
@@ -341,15 +373,85 @@ pub fn ws_frame_encode(out: &I64[], out_off: I64, cap: I64, opcode: I64, fin: I6
     return p + plen
 }
 
+// ---- UTF-8 校验(§8.1;close 1007 面;全量档,消费方重组完成处调用)----
+
+fn wu_is_cont(b: I64) -> I64 {
+    if b >= 128 && b < 192 {
+        return 1
+    }
+    return 0
+}
+
+// 校验 src[off..off+n) 为良构 UTF-8:1 = 全良构 / 0 = 有违(游离续项、
+// C0 C1 过长、E0 ED F0 F4 边界外、代理区 ED A0..BF、> U+10FFFF、F5..FF)。
+pub fn ws_utf8_valid(src: &I64[], off: I64, n: I64) -> I64 {
+    var i: I64 = 0
+    while i < n {
+        let b = src[off + i]
+        if b < 128 {
+            i += 1
+        } else {
+            if b < 194 {
+                return 0
+            }
+            if b < 224 {
+                if i + 1 >= n || wu_is_cont(src[off + i + 1]) != 1 {
+                    return 0
+                }
+                i += 2
+            } else {
+                if b < 240 {
+                    if i + 2 >= n {
+                        return 0
+                    }
+                    let c1 = src[off + i + 1]
+                    if wu_is_cont(c1) != 1 || wu_is_cont(src[off + i + 2]) != 1 {
+                        return 0
+                    }
+                    if b == 224 && (c1 < 160 || c1 > 191) {
+                        return 0
+                    }
+                    if b == 237 && (c1 < 128 || c1 > 159) {
+                        return 0
+                    }
+                    i += 3
+                } else {
+                    if b < 245 {
+                        if i + 3 >= n {
+                            return 0
+                        }
+                        let c1 = src[off + i + 1]
+                        if wu_is_cont(c1) != 1 || wu_is_cont(src[off + i + 2]) != 1 || wu_is_cont(src[off + i + 3]) != 1 {
+                            return 0
+                        }
+                        if b == 240 && (c1 < 144 || c1 > 191) {
+                            return 0
+                        }
+                        if b == 244 && (c1 < 128 || c1 > 143) {
+                            return 0
+                        }
+                        i += 4
+                    } else {
+                        return 0
+                    }
+                }
+            }
+        }
+    }
+    return 1
+}
+
 // ---- 帧解码(可重入状态机)----
 
-// 相:0 头1 / 1 头2 / 2 len16 / 3 len64 / 4 掩码键 / 5 载荷
+// 相:0 头1 / 1 头2 / 2 len16 / 3 len64 / 4 掩码键 / 5 载荷;
+// frag = 消息态(0 无进行中分片,否则发起 opcode —— §5.4 分片序列校验)
 pub struct WsSt {
     let phase: I64
     let fin: I64
     let opcode: I64
     let masked: I64
     let expect: I64
+    let frag: I64
     let remain: I64
     let plen: I64
     let mk: I64
@@ -367,12 +469,15 @@ pub struct WsRet {
 }
 
 pub fn ws_st_new(expect: I64) -> WsSt {
-    return WsSt { phase: 0, fin: 0, opcode: 0, masked: 0, expect: expect, remain: 0, plen: 0, mk: 0 }
+    return WsSt { phase: 0, fin: 0, opcode: 0, masked: 0, expect: expect, frag: 0, remain: 0, plen: 0, mk: 0 }
 }
 
 pub fn wst_phase(st: WsSt) -> I64 { return st.phase }
 pub fn wst_opcode(st: WsSt) -> I64 { return st.opcode }
 pub fn wst_fin(st: WsSt) -> I64 { return st.fin }
+pub fn wst_frag(st: WsSt) -> I64 { return st.frag }
+pub fn wst_remain(st: WsSt) -> I64 { return st.remain }
+pub fn wst_plen(st: WsSt) -> I64 { return st.plen }
 pub fn wr_rc(r: WsRet) -> I64 { return r.rc }
 pub fn wr_err(r: WsRet) -> I64 { return r.err }
 pub fn wr_consumed(r: WsRet) -> I64 { return r.consumed }
@@ -385,8 +490,8 @@ fn wu_ret(rc: I64, err: I64, consumed: I64, produced: I64, fin: I64, opcode: I64
     return WsRet { rc: rc, err: err, consumed: consumed, produced: produced, fin: fin, opcode: opcode, st: st }
 }
 
-fn wu_mkst(phase: I64, fin: I64, opcode: I64, masked: I64, expect: I64, remain: I64, plen: I64, mk: I64) -> WsSt {
-    return WsSt { phase: phase, fin: fin, opcode: opcode, masked: masked, expect: expect, remain: remain, plen: plen, mk: mk }
+fn wu_mkst(phase: I64, fin: I64, opcode: I64, masked: I64, expect: I64, frag: I64, remain: I64, plen: I64, mk: I64) -> WsSt {
+    return WsSt { phase: phase, fin: fin, opcode: opcode, masked: masked, expect: expect, frag: frag, remain: remain, plen: plen, mk: mk }
 }
 
 // 一步:src[pos..n) → dst[dfill..dcap)。协议错 err 码见头注⑤。
@@ -396,6 +501,7 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
     var fin = st.fin
     var opcode = st.opcode
     var masked = st.masked
+    var frag = st.frag
     var remain = st.remain
     var plen = st.plen
     var mk = st.mk
@@ -408,16 +514,26 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
             let rsv = b / 16 % 8
             opcode = b % 16
             if rsv != 0 {
-                return wu_ret(-1, 1, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                return wu_ret(-1, 1, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
             }
             if opcode >= 3 && opcode <= 7 {
-                return wu_ret(-1, 2, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                return wu_ret(-1, 2, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
             }
             if opcode >= 11 {
-                return wu_ret(-1, 2, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                return wu_ret(-1, 2, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
             }
             if ws_is_control(opcode) == 1 && fin == 0 {
-                return wu_ret(-1, 3, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                return wu_ret(-1, 3, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
+            }
+            // 分片序列校验(§5.4 MUST):新 DATA 遇进行中分片(CONT 走 err 10;
+            // 控制帧插续不受限)
+            if opcode == 1 || opcode == 2 {
+                if frag != 0 {
+                    return wu_ret(-1, 9, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
+                }
+            }
+            if opcode == 0 && frag == 0 {
+                return wu_ret(-1, 10, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
             }
             phase = 1
         } else {
@@ -427,13 +543,13 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
                 masked = b / 128
                 let l7 = b % 128
                 if ws_is_control(opcode) == 1 && l7 > 125 {
-                    return wu_ret(-1, 4, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                    return wu_ret(-1, 4, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                 }
                 if masked != st.expect {
                     if masked == 0 {
-                        return wu_ret(-1, 5, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                        return wu_ret(-1, 5, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                     }
-                    return wu_ret(-1, 6, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                    return wu_ret(-1, 6, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                 }
                 if l7 == 126 {
                     phase = 2
@@ -453,7 +569,7 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
             } else {
                 if phase == 2 {
                     if i + 1 >= n {
-                        return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                        return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                     }
                     remain = src[i] * 256 + src[i + 1]
                     plen = remain
@@ -466,16 +582,17 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
                 } else {
                     if phase == 3 {
                         if i + 7 >= n {
-                            return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                            return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
+                        }
+                        // 符号位首查(先于累加 —— 累加本身即溢出面)
+                        if src[i] >= 128 {
+                            return wu_ret(-1, 7, i + 8 - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                         }
                         var acc: I64 = 0
                         var k2: I64 = 0
                         while k2 < 8 {
                             acc = acc * 256 + src[i + k2]
                             k2 += 1
-                        }
-                        if acc < 0 {
-                            return wu_ret(-1, 7, i + 8 - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
                         }
                         remain = acc
                         plen = acc
@@ -488,16 +605,31 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
                     } else {
                         if phase == 4 {
                             if i + 3 >= n {
-                                return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                                return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                             }
                             mk = src[i] * 16777216 + src[i + 1] * 65536 + src[i + 2] * 256 + src[i + 3]
                             i += 4
                             phase = 5
                         } else {
                             // phase 5:载荷(掩码内联卸载;掩码索引 = 载荷全局位)
+                            if remain == 0 {
+                                // 零长载荷帧(空 ping/close 等)即完成 —— 否则
+                                // 永远等不到拷贝,rc 恒 0(本波实测修复)
+                                var nfrag0 = frag
+                                if ws_is_control(opcode) == 0 {
+                                    if fin == 1 {
+                                        nfrag0 = 0
+                                    } else {
+                                        if opcode != 0 {
+                                            nfrag0 = opcode
+                                        }
+                                    }
+                                }
+                                return wu_ret(1, 0, i - pos, out, fin, opcode, wu_mkst(0, fin, opcode, masked, st.expect, nfrag0, 0, plen, mk))
+                            }
                             let room = dcap - dfill - out
                             if room <= 0 {
-                                return wu_ret(2, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                                return wu_ret(2, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                             }
                             var avail = n - i
                             var k = remain
@@ -520,19 +652,45 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
                             i += k
                             remain -= k
                             if remain == 0 {
-                                return wu_ret(1, 0, i - pos, out, fin, opcode, wu_mkst(0, fin, opcode, masked, st.expect, 0, plen, mk))
+                                // 帧完成:消息态更新(控制帧不影响;fin=1 数据/
+                                // 续帧清零;fin=0 数据帧发起分片记发起 opcode)
+                                var nfrag = frag
+                                if ws_is_control(opcode) == 0 {
+                                    if fin == 1 {
+                                        nfrag = 0
+                                    } else {
+                                        if opcode != 0 {
+                                            nfrag = opcode
+                                        }
+                                    }
+                                }
+                                return wu_ret(1, 0, i - pos, out, fin, opcode, wu_mkst(0, fin, opcode, masked, st.expect, nfrag, 0, plen, mk))
                             }
                             if i >= n {
-                                return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                                return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                             }
-                            return wu_ret(2, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+                            return wu_ret(2, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                         }
                     }
                 }
             }
         }
     }
-    return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, remain, plen, mk))
+    // 输入尽兜底:phase 5 且 remain 0 = 帧恰在输入尾完整(零长载荷面)
+    if phase == 5 && remain == 0 && i >= n {
+        var nfrag1 = frag
+        if ws_is_control(opcode) == 0 {
+            if fin == 1 {
+                nfrag1 = 0
+            } else {
+                if opcode != 0 {
+                    nfrag1 = opcode
+                }
+            }
+        }
+        return wu_ret(1, 0, i - pos, out, fin, opcode, wu_mkst(0, fin, opcode, masked, st.expect, nfrag1, 0, plen, mk))
+    }
+    return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
 }
 
 // ---- inline tests(纯面自检;RFC 黄金向量;行为面见 tests/http/sse_ws)----
@@ -544,6 +702,40 @@ fn wst_fill(buf: &I64[], s: Str) -> I64 {
         i += 1
     }
     return s.len.as[I64]()
+}
+
+// 十六进制串 → lane(测试语料用)
+fn wt_hex(buf: &I64[], hex: Str) -> I64 {
+    var i: I32 = 0
+    var k: I32 = 0
+    while k + 1 < hex.len {
+        var hi: I64 = -1
+        var lo: I64 = -1
+        let a = byte_at(hex, k)
+        let b = byte_at(hex, k + 1)
+        if a >= 48 && a <= 57 {
+            hi = (a - 48).as[I64]()
+        }
+        if a >= 97 && a <= 102 {
+            hi = (a - 87).as[I64]()
+        }
+        if a >= 65 && a <= 70 {
+            hi = (a - 55).as[I64]()
+        }
+        if b >= 48 && b <= 57 {
+            lo = (b - 48).as[I64]()
+        }
+        if b >= 97 && b <= 102 {
+            lo = (b - 87).as[I64]()
+        }
+        if b >= 65 && b <= 70 {
+            lo = (b - 55).as[I64]()
+        }
+        buf[i] = hi * 16 + lo
+        i += 1
+        k += 2
+    }
+    return i.as[I64]()
 }
 
 test "ws accept key rfc 6455 vectors" {
@@ -560,21 +752,26 @@ test "ws upgrade validation" {
     var u: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     var c: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     var k: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var vv: I64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
     let un = wst_fill(u, "WebSocket")
     let cn = wst_fill(c, "keep-alive, Upgrade")
     let kn = wst_fill(k, "x3JJHMbDL1EzLkh9GBhXDw==")
-    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, kn) == 1)
+    let vn = wst_fill(vv, "13")
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, kn, vv, 0, vn) == 1)
     // 值大小写不敏感
     let un2 = wst_fill(u, "websocket")
-    assert(ws_upgrade_ok(u, 0, un2, c, 0, cn, k, 0, kn) == 1)
+    assert(ws_upgrade_ok(u, 0, un2, c, 0, cn, k, 0, kn, vv, 0, vn) == 1)
     // upgrade 值错
     let un3 = wst_fill(u, "h2c")
-    assert(ws_upgrade_ok(u, 0, un3, c, 0, cn, k, 0, kn) == 0)
+    assert(ws_upgrade_ok(u, 0, un3, c, 0, cn, k, 0, kn, vv, 0, vn) == 0)
     // connection 表缺 upgrade
     let cn2 = wst_fill(c, "keep-alive")
-    assert(ws_upgrade_ok(u, 0, un, c, 0, cn2, k, 0, kn) == 0)
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn2, k, 0, kn, vv, 0, vn) == 0)
     // key 长度非 24
-    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, 23) == 0)
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, 23, vv, 0, vn) == 0)
+    // version 非 13(§4.2.1.6 MUST)
+    let vn2 = wst_fill(vv, "8")
+    assert(ws_upgrade_ok(u, 0, un, c, 0, cn, k, 0, kn, vv, 0, vn2) == 0)
 }
 
 test "ws frame encode rfc 6455 5.7" {
@@ -707,4 +904,101 @@ test "ws len16 len64 close payload and codes" {
     assert(ws_close_code_ok(1000) == 1 && ws_close_code_ok(1002) == 1)
     assert(ws_close_code_ok(1004) == 0 && ws_close_code_ok(1005) == 0 && ws_close_code_ok(1015) == 0)
     assert(ws_close_code_ok(3000) == 1 && ws_close_code_ok(4999) == 1 && ws_close_code_ok(999) == 0)
+}
+
+test "ws utf8 validator vectors" {
+    var u8: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = wst_fill(u8, "Hello")
+    assert(ws_utf8_valid(u8, 0, n1) == 1)
+    // 两/三/四字节良构(é / 中 / U+1F600 形)
+    u8[0] = 195
+    u8[1] = 169
+    assert(ws_utf8_valid(u8, 0, 2) == 1)
+    u8[0] = 228
+    u8[1] = 184
+    u8[2] = 173
+    assert(ws_utf8_valid(u8, 0, 3) == 1)
+    u8[0] = 240
+    u8[1] = 159
+    u8[2] = 152
+    u8[3] = 128
+    assert(ws_utf8_valid(u8, 0, 4) == 1)
+    // 违例:游离续项 / C0 过长 / ED A0 代理 / F4 90 超界 / F5 / 截断
+    u8[0] = 128
+    assert(ws_utf8_valid(u8, 0, 1) == 0)
+    u8[0] = 192
+    u8[1] = 175
+    assert(ws_utf8_valid(u8, 0, 2) == 0)
+    u8[0] = 237
+    u8[1] = 160
+    u8[2] = 128
+    assert(ws_utf8_valid(u8, 0, 3) == 0)
+    u8[0] = 244
+    u8[1] = 144
+    u8[2] = 128
+    u8[3] = 128
+    assert(ws_utf8_valid(u8, 0, 4) == 0)
+    u8[0] = 245
+    u8[1] = 128
+    assert(ws_utf8_valid(u8, 0, 2) == 0)
+    u8[0] = 195
+    assert(ws_utf8_valid(u8, 0, 1) == 0)
+}
+
+test "ws fragmentation sequence validation" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // CONT 无进行中分片 → err 10
+    let n1 = wt_hex(fr, "80016f")
+    var r = ws_step(fr, n1, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 10)
+    // DATA fin=0 发起分片 → frag = opcode;后续 DATA(无论 fin)→ err 9
+    let n2 = wt_hex(fr, "010348656c")
+    r = ws_step(fr, n2, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 1)
+    let n3 = wt_hex(fr, "81026869")
+    r = ws_step(fr, n3, 0, wr_st(r), dst, 3, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 9)
+    // fin=1 CONT 完成清零;随后正常 DATA 恢复
+    let n4 = wt_hex(fr, "800161")
+    r = ws_step(fr, n4, 0, wr_st(r), dst, 3, 64)
+    assert(wr_rc(r) == 1 && wst_frag(wr_st(r)) == 0)
+    let n5 = wt_hex(fr, "810161")
+    r = ws_step(fr, n5, 0, wr_st(r), dst, 4, 64)
+    assert(wr_rc(r) == 1 && wr_opcode(r) == 1 && wst_frag(wr_st(r)) == 0)
+}
+
+test "ws len64 header goldens both directions" {
+    var out: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // encode:len64 头 10 字节(70000 = 0x11170;python 交叉计算)
+    let hn = ws_frame_head(out, 0, 16, 2, 1, 70000, 0, 0)
+    assert(hn == 10)
+    assert(out[0] == 130 && out[1] == 127)
+    assert(out[2] == 0 && out[3] == 0 && out[4] == 0 && out[5] == 0)
+    assert(out[6] == 0 && out[7] == 1 && out[8] == 17 && out[9] == 112)
+    // decode:同一 10 字节头喂入(70000 字节文本帧头)→ 相位与长度
+    var dst: I64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = wt_hex(out, "827f0000000000011170")
+    assert(n == 10)
+    let r = ws_step(out, n, 0, ws_st_new(0), dst, 0, 8)
+    assert(wr_rc(r) == 0)
+    assert(wr_opcode(r) == 2 && wr_fin(r) == 1)
+    assert(wst_phase(wr_st(r)) == 5 && wst_remain(wr_st(r)) == 70000)
+}
+
+test "ws decode err 4 6 7 negatives" {
+    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // err 4:控制帧走 16 位长度(89 7e 00 05 …)—— l7=126 > 125
+    let n1 = wt_hex(fr, "897e0005")
+    var r = ws_step(fr, n1, 0, ws_st_new(1), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 4)
+    // err 6:掩码帧以 expect=0(服务端帧)解读
+    let n2 = wt_hex(fr, "818537faf3057f9f9f6958")
+    r = ws_step(fr, n2, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 6)
+    // err 7:len64 符号位置位(首长度字节 ≥ 0x80)
+    let n3 = wt_hex(fr, "827f8000000000000000")
+    r = ws_step(fr, n3, 0, ws_st_new(0), dst, 0, 64)
+    assert(wr_rc(r) == -1 && wr_err(r) == 7)
 }
