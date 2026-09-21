@@ -891,10 +891,24 @@ fn c6add(a: Str, b: Str) -> Str {
         if bneg {
             return "-" + c6addmag(am, bm)
         }
+        var c = c6abscmp(am, bm)
+        if c == 0 {
+            return "0"
+        }
+        if c > 0 {
+            return "-" + c6submag(am, bm)
+        }
         return c6submag(bm, am)
     }
     if bneg {
-        return c6submag(am, bm)
+        var c2 = c6abscmp(am, bm)
+        if c2 == 0 {
+            return "0"
+        }
+        if c2 > 0 {
+            return c6submag(am, bm)
+        }
+        return "-" + c6submag(bm, am)
     }
     return c6addmag(am, bm)
 }
