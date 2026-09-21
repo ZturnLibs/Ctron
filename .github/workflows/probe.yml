@@ -6,12 +6,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make -C compiler-c && sh compiler/build.sh
-      - name: glibc 调参缓解矩阵(逐项守卫,死亡即止但日志可读)
+      - name: 修复后 linux 复测(emit 工作负载;C=== 记账, peak RSS 为判据)
         run: |
-          echo "== T1: MMAP 阈值 256MB =="
-          MALLOC_MMAP_THRESHOLD_=268435456 /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_run.ct /tmp/t1.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "T1 死亡"
-          echo "== T2: MMAP+TRIM 阈值 256MB =="
-          MALLOC_MMAP_THRESHOLD_=268435456 MALLOC_TRIM_THRESHOLD_=268435456 /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_run.ct /tmp/t2.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "T2 死亡"
-          echo "== T3: M_ARENA_MAX=1 =="
-          MALLOC_ARENA_MAX=1 /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_run.ct /tmp/t3.c 2>&1 | grep -E "Maximum resident|Elapsed" || echo "T3 死亡"
+          echo "== E1: seed emit cc_run.ct(峰值判据;修复前 ~15.4GB OOM) =="
+          CTRON_MEM_DEBUG=1 /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_run.ct /tmp/e1.c 2>&1 | grep -E "Maximum resident|Elapsed|MEM total" || echo "E1 死亡"
+          echo "== E2: seed emit cc_emit.ct(更大负载) =="
+          CTRON_MEM_DEBUG=1 /usr/bin/time -v sh compiler/ctc.sh emit compiler/build/cc_emit.ct /tmp/e2.c 2>&1 | grep -E "Maximum resident|Elapsed|MEM total" || echo "E2 死亡"
+          echo "== E3: 双产物固定点(修复前后发射一致性自证) =="
+          sh compiler/native.sh > /dev/null 2>&1
+          compiler/bin/ctron-emit run compiler/build/cc_run.ct > /tmp/e3_native.c 2>/dev/null
+          cmp -s /tmp/e1.c /tmp/e3_native.c && echo "固定点一致" || echo "固定点分歧"
           exit 0
