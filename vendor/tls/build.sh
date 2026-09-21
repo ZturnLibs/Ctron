@@ -52,18 +52,27 @@ OBJS_TLS=$(parse_objs TLS)
     echo "build.sh FAIL: 上游 $MF 清单解析为空(Makefile 结构变了?)" >&2; exit 1; }
 
 # ---- 3rdparty 对象清单(everest/p256-m,默认配置空壳;路径同上游 Makefile.inc) ----
-THIRD_OBJS=$(awk '
-    /THIRDPARTY_CRYPTO_OBJECTS\+=/ { grab = 1; next }
-    grab {
-        line = $0
-        cont = (line ~ /\\[ \t]*$/)
-        sub(/\\[ \t]*$/, "", line)
-        sub(/^.*THIRDPARTY_DIR\)./, "", line)  # 文本形如 $(THIRDPARTY_DIR)/x.o:剥到 ")/" 为止
-        n = split(line, tok, /[ \t]+/)
-        for (i = 1; i <= n; i++)
-            if (tok[i] ~ /^[A-Za-z0-9_./-]+\.o$/) print tok[i]
-        if (!cont) exit
-    }' mbedtls/3rdparty/everest/Makefile.inc mbedtls/3rdparty/p256-m/Makefile.inc)
+# P3-C 收账修复(半解析):awk 的 `if (!cont) exit` 在清单块结束时终止【整个】
+# awk——传入两个 Makefile.inc 时 everest 块结束即退,p256-m 的 2 个对象从不被
+# 解析(静默半清单)。改为逐文件各跑一遍 awk(exit 语义不变:每文件首块即停),
+# 外层拼接。修后 5 个 3rdparty 对象齐(p256-m_driver_entrypoints / p256-m 均入
+# libmbedcrypto.a,同上游 OBJS_CRYPTO += THIRDPARTY_CRYPTO_OBJECTS 惯例;默认
+# 配置下两者无引用,驱动入口 #if 门为空壳、p256-m 本体是死代码,入档无害)。
+THIRD_OBJS=""
+for inc in mbedtls/3rdparty/everest/Makefile.inc mbedtls/3rdparty/p256-m/Makefile.inc; do
+    THIRD_OBJS="$THIRD_OBJS $(awk '
+        /THIRDPARTY_CRYPTO_OBJECTS\+=/ { grab = 1; next }
+        grab {
+            line = $0
+            cont = (line ~ /\\[ \t]*$/)
+            sub(/\\[ \t]*$/, "", line)
+            sub(/^.*THIRDPARTY_DIR\)./, "", line)  # 文本形如 $(THIRDPARTY_DIR)/x.o:剥到 ")/" 为止
+            n = split(line, tok, /[ \t]+/)
+            for (i = 1; i <= n; i++)
+                if (tok[i] ~ /^[A-Za-z0-9_./-]+\.o$/) print tok[i]
+            if (!cont) exit
+        }' "$inc")"
+done
 
 # ---- 守卫:library/*.c 必须被三清单全覆盖(上游加源漏配 → 响亮失败) ----
 # ALLOW_NOT_BUILT:上游 Makefile 有意不编的兼容空壳源(见 ecp_curves_new.c 头注:
@@ -89,7 +98,10 @@ CFLAGS_SUBSET="-O2 -I$ROOT -Imbedtls/include -Imbedtls/library \
  -DMBEDTLS_CONFIG_FILE=\"config-thread.h\" -D_FILE_OFFSET_BITS=64"
 
 compile() { # $1=源文件路径(相对 vendor/tls) $2=产物 .o(相对 vendor/tls)
-    if [ ! -f "$2" ] || [ "$1" -nt "$2" ]; then
+    # P3-C 收账修复(陈旧度):-DMBEDTLS_CONFIG_FILE 指向的 config-thread.h 参与
+    # 每个翻译单元,却不在 $1 -nt 判据里——配置头一改,.o 全数陈旧不重编。补
+    # 第三判据:配置头比产物新即重编(空树冷建时 [ ! -f ] 已短路,语义不变)。
+    if [ ! -f "$2" ] || [ "$1" -nt "$2" ] || [ config-thread.h -nt "$2" ]; then
         cc $CFLAGS_SUBSET -c "$1" -o "$2"
     fi
 }
