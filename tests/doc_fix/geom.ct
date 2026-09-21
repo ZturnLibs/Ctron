@@ -1,0 +1,33 @@
+// doc_fix 几何夹具(iface 投影金样源;全形态:pub struct/enum + trait + impl + 私有/const)
+pub struct Point {
+    let x: I32
+    let y: I32
+}
+
+pub enum Shape {
+    Circle(I32)
+    Rect {
+        let w: I32
+        let h: I32
+    }
+}
+
+trait Show {
+    fn show(self) -> Str
+}
+
+impl Show for Point {
+    fn show(self) -> Str {
+        return "pt"
+    }
+}
+
+pub fn area(s: Shape) -> I32 {
+    return 0
+}
+
+fn _hidden() -> I32 {
+    return 1
+}
+
+const MAXW: I32 = 100

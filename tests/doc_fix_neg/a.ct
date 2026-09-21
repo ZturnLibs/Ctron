@@ -1,0 +1,3 @@
+pub fn dup_name() -> I32 {
+    return 1
+}

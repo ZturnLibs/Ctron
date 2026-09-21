@@ -494,6 +494,54 @@ else
     bad "词法脏异常(rc=$fnrc)"
 fi
 
+echo "== 3g) doc(iface 投影:S0 面——文本金样/幂等/JSON 形准/负例) =="
+"$COMP/ctc.sh" doc "$ROOT/tests/doc_fix/main.ct" > "$T/doc1.out" 2>&1
+if [ $? -eq 0 ] && grep -q "decls=8$" "$T/doc1.out"; then
+    tail -n +2 "$T/doc1.out" > "$T/doc1.body"
+    cat > "$T/doc1.gold" <<'EOD'
+pub struct Point { let x: I32, let y: I32 }
+pub enum Shape { Circle(I32), Rect { let w: I32, let h: I32 } }
+trait Show
+  fn show(self) -> Str
+impl Show for Point
+  fn show(self) -> Str
+pub fn area(s: Shape) -> I32
+iface symbols=3
+EOD
+    if diff -q "$T/doc1.gold" "$T/doc1.body" > /dev/null 2>&1; then
+        ok "doc 文本金样逐字一致(全形态夹具)"
+    else
+        bad "doc 文本金样分歧: $(head -3 "$T/doc1.body")"
+    fi
+else
+    bad "doc 文本面异常: $(cat "$T/doc1.out")"
+fi
+"$COMP/ctc.sh" doc "$ROOT/tests/doc_fix/main.ct" > "$T/doc2.out" 2>&1
+if diff -q "$T/doc1.out" "$T/doc2.out" > /dev/null 2>&1; then
+    ok "幂等:doc(x)==doc(x)"
+else
+    bad "doc 非幂等"
+fi
+"$COMP/ctc.sh" doc "$ROOT/tests/doc_fix/main.ct" --format=json > "$T/doc3.out" 2>&1
+if [ $? -eq 0 ] \
+    && grep -qF '{"entry":' "$T/doc3.out" \
+    && grep -q '"kind":"struct"' "$T/doc3.out" \
+    && grep -q '"kind":"enum"' "$T/doc3.out" \
+    && grep -q '"kind":"trait"' "$T/doc3.out" \
+    && grep -q '"kind":"impl"' "$T/doc3.out" \
+    && grep -q '"kind":"fn"' "$T/doc3.out" \
+    && tail -c 3 "$T/doc3.out" | grep -q '\]}'; then
+    ok "doc JSON 形准(六形态齐,首尾闭合)"
+else
+    bad "doc JSON 面异常: $(head -c 120 "$T/doc3.out")"
+fi
+"$COMP/ctc.sh" doc "$ROOT/tests/doc_fix_neg/main.ct" > "$T/doc4.out" 2>&1
+if [ $? -eq 1 ] && grep -q "E5030" "$T/doc4.out"; then
+    ok "doc 负例拦截(E5030 同判, rc=1)"
+else
+    bad "doc 负例未拦截: $(cat "$T/doc4.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

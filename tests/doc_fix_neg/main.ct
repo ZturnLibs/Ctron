@@ -1,0 +1,6 @@
+use m.a.{dup_name}
+use m.b.{dup_name}
+
+fn main() -> I32 {
+    return 0
+}

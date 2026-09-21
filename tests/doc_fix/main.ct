@@ -1,0 +1,7 @@
+use m.geom.{Point, Shape, area}
+
+fn main() -> I32 {
+    var s = Shape.Circle(3)
+    println("r")
+    return 0
+}

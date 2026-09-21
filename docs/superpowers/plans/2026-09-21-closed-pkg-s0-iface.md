@@ -75,4 +75,10 @@ E1001,闭括号一律裸写;JSON 片段作子串拼接时须拆掉外层花括�
 (Windows 面不可本机验证,须走 sh/ps1 conformance 流程);per-fn 契约头抽取——依赖
 lex 层注释保留(v0 scan4 丢注释),属编译器线单独决策,登记不排期。
 
+**smoke 常设腿(S0.5 收尾):** 夹具 `tests/doc_fix/`(全形态)与 `tests/doc_fix_neg/`
+(E5030),smoke 3g 节四查——文本金样逐字(头行路径归一后 body diff)/双跑幂等/
+JSON 形准(六形态 + 首尾闭合,E 依赖)/负例拦截;smoke 117 ok / 2 fail(余两红均为
+peer 在途登记项:gui decls 重锁、std 副本同步)。教训:BSD grep 对 `\{` 报 invalid
+repetition,字面前缀检查用 `grep -F`。
+
 状态:✅ 完成(2026-09-21)。
