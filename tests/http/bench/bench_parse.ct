@@ -1,0 +1,134 @@
+// bench_parse.ct —— P4-D 解析基准 Ctron 侧(emit 专臂;fn main 直跑)
+// 口径(tests/http/bench/README.md 详):
+//   - 语料三报文(GET 无体 / POST+CL 体 / chunked 响应)与 bench_pico.c 逐字节
+//     同源;公平性由【字节 digest 双侧对 pin】承担(bench.sh 断言一致才计时)。
+//   - digest/校验和全部用【有界模乘】(h*31+b ≤ 3.2e10):Ctron 整数乘法上溢
+//     即 panic(03j 口径),无回绕算术可用 —— FNV 式乘 2^64 会炸。
+//   - 计时 = ctron_net_now_ns()(CLOCK_MONOTONIC,垫片实现);热身 1000 轮
+//     不计时;正式轮 N(默认 100000,env CTRON_HTTP_BENCH_N 覆盖)× 3 报文。
+//   - 解析语义面:rc==1(完整)恒立 —— 语料皆为完整报文;每轮以标量 getter
+//     求和进校验和(防 DCE;(h) 缺口下消费方本就只触 getter 面)。
+//   - 本夹具为 emit 专臂(触 std.net/bind 子树 → 解释口径 W8052 rc=1,同
+//     client x_ 夹具口径);由 bench.sh 构建,不入 tests/http/run.sh 计例。
+use std.http.parse.{ http_parse_head, http_limits_default, http_rc, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_status_of, http_method_len, http_target_len, http_is_resp }
+use std.net.{ Net_probe }
+
+fn bc_fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// 语料字节 digest(与 bench_pico.c 同算法:全语料单流,h = (h*31 + b + idx) % 1000000007)
+fn bc_digest(b1: &I64[], n1: I64, b2: &I64[], n2: I64, b3: &I64[], n3: I64) -> I64 {
+    var h: I64 = 17
+    var idx: I64 = 0
+    var i: I64 = 0
+    while i < n1 {
+        h = (h * 31 + b1[i] + idx) % 1000000007
+        idx += 1
+        i += 1
+    }
+    i = 0
+    while i < n2 {
+        h = (h * 31 + b2[i] + idx) % 1000000007
+        idx += 1
+        i += 1
+    }
+    i = 0
+    while i < n3 {
+        h = (h * 31 + b3[i] + idx) % 1000000007
+        idx += 1
+        i += 1
+    }
+    return h
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    // ---- 语料(与 bench_pico.c CORPUS 三串逐字节同文) ----
+    var b1: I64[176] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var b2: I64[192] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var b3: I64[144] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = bc_fill(b1, "GET /index.html?q=ctron&v=2 HTTP/1.1\r\nHost: example.com\r\nUser-Agent: ctron-bench/1.0\r\nAccept: text/html,application/xhtml+xml\r\nAccept-Language: en-US,en;q=0.9\r\n\r\n")
+    let n2 = bc_fill(b2, "POST /api/v1/submit HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 34\r\nX-Trace-Id: 7f3a9c2e51b8d4\r\n\r\nname=ctron&value=42&flag=ok&pad=xx")
+    let n3 = bc_fill(b3, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nServer: ctron-bench\r\n\r\na\r\n0123456789\r\na\r\nabcdefghij\r\n0\r\n\r\n")
+    let lim = http_limits_default()
+
+    // ---- 正确性钉(热身外):三报文皆 rc==1 且字段落位 ----
+    let h1 = http_parse_head(b1, n1, lim)
+    let h2 = http_parse_head(b2, n2, lim)
+    let h3 = http_parse_head(b3, n3, lim)
+    if http_rc(h1) != 1 || http_method_len(h1) != 3 || http_target_len(h1) != 23 || http_nheaders(h1) != 4 {
+        return 1
+    }
+    if http_rc(h2) != 1 || http_clen(h2) != 34 || http_nheaders(h2) != 4 {
+        return 2
+    }
+    if http_rc(h3) != 1 || http_is_resp(h3) != 1 || http_status_of(h3) != 200 || http_body_kind(h3) != 1 {
+        return 3
+    }
+
+    let digest = bc_digest(b1, n1, b2, n2, b3, n3)
+
+    // ---- 热身(不计时) ----
+    var w: I64 = 0
+    while w < 1000 {
+        let a = http_parse_head(b1, n1, lim)
+        let b = http_parse_head(b2, n2, lim)
+        let c = http_parse_head(b3, n3, lim)
+        if http_rc(a) + http_rc(b) + http_rc(c) != 3 {
+            return 4
+        }
+        w += 1
+    }
+
+    // ---- 正式计时 ----
+    var iters: I64 = 100000
+    let ns_env = env_get("CTRON_HTTP_BENCH_N")
+    if ns_env.len > 0 {
+        // env 严格十进制(空/非数 → 缺省)
+        var ok = 1
+        var v: I64 = 0
+        var i: I32 = 0
+        while i < ns_env.len {
+            let d = byte_at(ns_env, i)
+            if d < 48 || d > 57 {
+                ok = 0
+            } else {
+                v = v * 10 + (d - 48).as[I64]()
+            }
+            i += 1
+        }
+        if ok == 1 && v > 0 {
+            iters = v
+        }
+    }
+    var cs: I64 = 0
+    let t0 = ctron_net_now_ns()
+    var k: I64 = 0
+    while k < iters {
+        let a = http_parse_head(b1, n1, lim)
+        cs = cs + http_rc(a) + http_nheaders(a) + http_head_end(a) + http_method_len(a) + http_target_len(a)
+        let b = http_parse_head(b2, n2, lim)
+        cs = cs + http_rc(b) + http_nheaders(b) + http_head_end(b) + http_clen(b)
+        let c = http_parse_head(b3, n3, lim)
+        cs = cs + http_rc(c) + http_status_of(c) + http_head_end(c) + http_body_kind(c) + http_ver(c)
+        k += 1
+    }
+    let t1 = ctron_net_now_ns()
+
+    let total_ns = t1 - t0
+    let reqs = iters * 3
+    println("kind=ctron")
+    println("digest=" + digest.to_string())
+    println("iters=" + iters.to_string())
+    println("reqs=" + reqs.to_string())
+    println("ns_total=" + total_ns.to_string())
+    println("ns_per_req=" + (total_ns / reqs).to_string())
+    println("checksum=" + cs.to_string())
+    return 0
+}
