@@ -404,6 +404,471 @@ pub fn qval(entries: List[List[Str]], path: Str) -> Str {
     return ""
 }
 
+// ============ 类型化访问器(数值/布尔保真;P5 前置) ============
+// 消费方 = 行映射(P5)/请求体绑定(P6)。错误载荷统一形态 "<kind>@<路径>",
+// jerr_kind 取 kind 段(kind 恒不含 '@';'@' 可存于键名,故取首段仍安全)。
+// 三分判别:缺路径 noent/标签 null/标签不符 type;null 正向判别 = qtag=="z"。
+// jget_i64:仅整数语法形态(-?数字串);小数点/指数形态 → frac;
+//   I64 域越界 → range(非 silent 回绕;C10:宽域零播种 + 正负分途
+//   累加 + 乘前阈值比较,同 strconv.parse_i64 惯用法)。
+// jget_f64:量级窗 |值| ≤ I64_MAX(解释器值域定宽 (i) 族:F64 整值越 2^63
+//   乘法即 panic——为双臂一致语义钳窗,emit 臂真 double 全域可算,窗即 v0
+//   口径);出窗 → range;下溢(≈1e-340 档)钳 0。精度口径:尾数取
+//   ≤17 位有效数字 + 逐步 ×10/÷10 单舍入,较 strtod 可差 1–2 ulp(2^53+1
+//   读回 2^53 可检);本文件及消费方夹具小数字面量禁指数形态、禁 F64 转
+//   Str(解释器 e 形字面量误析、emit F64 to_string 乱值,见 divergences (i))。
+// 发射面结构(h) 族:emit 的 Result/Option union 载荷槽 32 位——Ok(I64) 截断
+//   /Ok(F64) 错值(2^63-1 读回 -1 实证;Err-Str 与 Bool 载荷绿),故跨模块
+//   数值消费走 JNum/JReal 结构通道(struct 标量字段 + plain 标量 getter,
+//   std/http parse.ct getter 面 prior art),Result 面 jget_* 留同模块/
+//   解释口径与 Err 载荷原文面。消费速查:值 jv_*;kind jk_*(返回 "ok" 或
+//   kind 段);结构面 jnum_i64/jreal_f64 + jn_k/jn_v/jr_k/jr_v。
+
+struct JNum {
+    k: I64
+    v: I64
+}
+
+struct JReal {
+    k: I64
+    v: F64
+}
+
+fn jmkerr(kind: Str, path: Str) -> Str {
+    return kind + "@" + path
+}
+
+// kind 码 → 段名(k 恒非 0)
+fn jkname(k: I64) -> Str {
+    if k == 1 { return "noent" }
+    if k == 2 { return "null" }
+    if k == 3 { return "type" }
+    if k == 4 { return "frac" }
+    if k == 5 { return "range" }
+    return "syn"
+}
+
+// 错误载荷 kind 段(首个 '@' 前;无 '@' 时原样返回)
+pub fn jerr_kind(e: Str) -> Str {
+    var i: I32 = 0
+    while i < e.len {
+        if byte_at(e, i) == 64 { return byte_slice(e, 0, i) }
+        i += 1
+    }
+    return e
+}
+
+// I64_MAX/10 哨兵:乘 10 前界门(C10;i 族 F64 整值越域乘法解释器即炸)
+fn jf_sent() -> F64 {
+    return 922337203685477580.0
+}
+
+// 整数语法形态数值原文 → JNum(k: 0=ok/4=frac/5=range/6=syn;值仅 k=0 有效)
+fn jint64(s: Str) -> JNum {
+    var neg = false
+    var i: I32 = 0
+    if s.len > 0 {
+        if byte_at(s, 0) == 45 {
+            neg = true
+            i = 1
+        }
+    }
+    if i >= s.len {
+        var e0 = JNum { k: 6, v: 0 }
+        return e0
+    }
+    var i0 = i
+    // C10:宽域零播种;正负分开累加,无取负(NEG 会触发算术腐蚀)
+    var w: I64 = 4294967296
+    var acc: I64 = w - w
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isd = false
+        if c >= 48 {
+            if c <= 57 {
+                isd = true
+            }
+        }
+        if !isd {
+            var ef = JNum { k: 4, v: 0 }
+            return ef
+        }
+        var d: I64 = c - 48
+        if neg {
+            if acc < -922337203685477580 {
+                var er = JNum { k: 5, v: 0 }
+                return er
+            }
+            if acc == -922337203685477580 {
+                if d > 8 {
+                    var er2 = JNum { k: 5, v: 0 }
+                    return er2
+                }
+            }
+            acc = acc * 10 - d
+        } else {
+            if acc > 922337203685477580 {
+                var er3 = JNum { k: 5, v: 0 }
+                return er3
+            }
+            if acc == 922337203685477580 {
+                if d > 7 {
+                    var er4 = JNum { k: 5, v: 0 }
+                    return er4
+                }
+            }
+            acc = acc * 10 + d
+        }
+        i += 1
+    }
+    // 前导零防御(parse 已按 RFC 拒;直构条目兜底;置于形态判别后,
+    // 使 "0.5" 归 frac 而非 syn)
+    if byte_at(s, i0) == 48 {
+        if s.len > i0 + 1 {
+            var ez = JNum { k: 6, v: 0 }
+            return ez
+        }
+    }
+    var okn = JNum { k: 0, v: acc }
+    return okn
+}
+
+// 数值原文 → JReal(k: 0=ok/6=syn/5=range;值仅 k=0 有效)
+fn jf64(s: Str) -> JReal {
+    var neg = false
+    var i: I32 = 0
+    if s.len > 0 {
+        if byte_at(s, 0) == 45 {
+            neg = true
+            i = 1
+        }
+    }
+    if i >= s.len {
+        var e0 = JReal { k: 6, v: 0.0 }
+        return e0
+    }
+    var m: F64 = 0.0
+    var e: I32 = 0
+    var sig: I32 = 0
+    var frac = false
+    var seen = false
+    var ine = false
+    var sent = jf_sent()
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isd = false
+        if c >= 48 {
+            if c <= 57 {
+                isd = true
+            }
+        }
+        if isd {
+            seen = true
+            var d: F64 = (c - 48).as[F64]()
+            var isz = false
+            if m == 0.0 {
+                if d == 0.0 {
+                    isz = true
+                }
+            }
+            if isz {
+                // 前导零不计有效位;小数侧仍逐位降幂(0.001 量级正确)
+                if frac {
+                    e -= 1
+                }
+            } else if sig < 17 {
+                m = m * 10.0 + d
+                sig += 1
+                if frac {
+                    e -= 1
+                }
+            } else {
+                // 尾数满:整数侧弃尾升幂保量级;小数侧权重已低于保留位(精度注)
+                if !frac {
+                    e += 1
+                }
+            }
+            i += 1
+        } else if c == 46 {
+            if frac {
+                var ed = JReal { k: 6, v: 0.0 }
+                return ed
+            }
+            frac = true
+            i += 1
+        } else if c == 101 {
+            // 指数段(101 == 'e';69 == 'E' 同形)
+            ine = true
+            i += 1
+            break
+        } else if c == 69 {
+            ine = true
+            i += 1
+            break
+        } else {
+            var eb = JReal { k: 6, v: 0.0 }
+            return eb
+        }
+    }
+    if !seen {
+        var es = JReal { k: 6, v: 0.0 }
+        return es
+    }
+    var ei: I32 = 0
+    if ine {
+        // 指数段解析(≤6 位计,超出位忽略——量级早已出窗);C10 宽域零播种
+        var eneg = false
+        if i < s.len {
+            var cs = byte_at(s, i)
+            if cs == 45 {
+                eneg = true
+                i += 1
+            } else if cs == 43 {
+                i += 1
+            }
+        }
+        if i >= s.len {
+            // "1e" 形态(RFC 已拒;直构兜底)
+            var ee = JReal { k: 6, v: 0.0 }
+            return ee
+        }
+        var w: I64 = 4294967296
+        var adj: I64 = w - w
+        var adjn: I32 = 0
+        while i < s.len {
+            var c2 = byte_at(s, i)
+            var isd2 = false
+            if c2 >= 48 {
+                if c2 <= 57 {
+                    isd2 = true
+                }
+            }
+            if !isd2 {
+                var eexp = JReal { k: 6, v: 0.0 }
+                return eexp
+            }
+            if adjn < 6 {
+                var d2: I64 = c2 - 48
+                adj = adj * 10 + d2
+                adjn += 1
+            }
+            i += 1
+        }
+        ei = adj.as[I32]()
+        if eneg {
+            ei = 0 - ei
+        }
+    }
+    var e2 = e + ei
+    if m == 0.0 {
+        var z0 = JReal { k: 0, v: 0.0 }
+        return z0
+    }
+    if e2 < -340 {
+        // 下溢钳 0(量级窗口径;避免超长除法循环)
+        var z1 = JReal { k: 0, v: 0.0 }
+        return z1
+    }
+    // 升幂:乘 10 前逐次哨兵界门(出窗 = Err,解释器值域内恒安全)
+    while e2 > 0 {
+        if m > sent {
+            var er = JReal { k: 5, v: 0.0 }
+            return er
+        }
+        m = m * 10.0
+        e2 -= 1
+    }
+    // 降幂:逐步单舍入(小数值走真 double 路径,解释器值域内恒安全)
+    while e2 < 0 {
+        m = m / 10.0
+        e2 += 1
+    }
+    if neg {
+        m = 0.0 - m
+    }
+    var okr = JReal { k: 0, v: m }
+    return okr
+}
+
+// ---- Result 面(jget_*;同模块/解释口径与 Err 载荷原文面;跨模块数值
+// 消费勿 match 其 Ok 载荷——(h) 族 union 载荷槽 32 位,见区块头注)----
+
+// 错误标签路径三分(kind 段 → 载荷原文)
+fn jtagk(tag: Str, path: Str, want: Str) -> Str {
+    if tag == "" {
+        return jmkerr("noent", path)
+    }
+    if tag == "z" {
+        return jmkerr("null", path)
+    }
+    if tag != want {
+        return jmkerr("type", path)
+    }
+    return ""
+}
+
+// 类型化读取:I64(标签须 n 且整数语法形态)
+pub fn jget_i64(entries: List[List[Str]], path: Str) -> Result[I64, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var r = jint64(qval(entries, path))
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(r.v)
+}
+
+// 类型化读取:F64(标签须 n;量级窗/精度口径见区块头注)
+pub fn jget_f64(entries: List[List[Str]], path: Str) -> Result[F64, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var r = jf64(qval(entries, path))
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(r.v)
+}
+
+// 类型化读取:Bool(标签须 b;Bool 载荷发射面绿,Result 面可用)
+pub fn jget_bool(entries: List[List[Str]], path: Str) -> Result[Bool, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "b")
+    if bad != "" {
+        return Err(bad)
+    }
+    var v = qval(entries, path)
+    if v == "true" {
+        return Ok(true)
+    }
+    if v == "false" {
+        return Ok(false)
+    }
+    return Err(jmkerr("syn", path))
+}
+
+// ---- 结构通道面(跨模块数值消费;发射面安全,见区块头注)----
+
+// 路径 → JNum(k/v;i64 定宽检测全量)
+pub fn jnum_i64(entries: List[List[Str]], path: Str) -> JNum {
+    var tag = qtag(entries, path)
+    if tag == "" {
+        var e1 = JNum { k: 1, v: 0 }
+        return e1
+    }
+    if tag == "z" {
+        var e2 = JNum { k: 2, v: 0 }
+        return e2
+    }
+    if tag != "n" {
+        var e3 = JNum { k: 3, v: 0 }
+        return e3
+    }
+    return jint64(qval(entries, path))
+}
+
+// 路径 → JReal(k/v;f64 全形态,量级窗见区块头注)
+pub fn jreal_f64(entries: List[List[Str]], path: Str) -> JReal {
+    var tag = qtag(entries, path)
+    if tag == "" {
+        var e1 = JReal { k: 1, v: 0.0 }
+        return e1
+    }
+    if tag == "z" {
+        var e2 = JReal { k: 2, v: 0.0 }
+        return e2
+    }
+    if tag != "n" {
+        var e3 = JReal { k: 3, v: 0.0 }
+        return e3
+    }
+    return jf64(qval(entries, path))
+}
+
+// 结构 getter(标量出参;消费方经此读 JNum/JReal)
+pub fn jn_k(n: JNum) -> I64 {
+    return n.k
+}
+
+pub fn jn_v(n: JNum) -> I64 {
+    return n.v
+}
+
+pub fn jr_k(r: JReal) -> I64 {
+    return r.k
+}
+
+pub fn jr_v(r: JReal) -> F64 {
+    return r.v
+}
+
+// ---- 带默认/kind 便捷面(jv_*/jk_*;发射面安全)----
+
+// 带默认读取:I64(错误面吞没取 dft;kind 查询用 jk_i64)
+pub fn jv_i64(entries: List[List[Str]], path: Str, dft: I64) -> I64 {
+    var n = jnum_i64(entries, path)
+    if n.k == 0 {
+        return n.v
+    }
+    return dft
+}
+
+// 带默认读取:F64
+pub fn jv_f64(entries: List[List[Str]], path: Str, dft: F64) -> F64 {
+    var r = jreal_f64(entries, path)
+    if r.k == 0 {
+        return r.v
+    }
+    return dft
+}
+
+// 带默认读取:Bool
+pub fn jv_bool(entries: List[List[Str]], path: Str, dft: Bool) -> Bool {
+    let r = jget_bool(entries, path)
+    match r {
+        Ok(v) => {
+            return v
+        }
+        Err(_) => {
+            return dft
+        }
+    }
+}
+
+// kind 查询:"ok" 或 noent/null/type/frac/range/syn(载荷原文经 jget_* Err)
+pub fn jk_i64(entries: List[List[Str]], path: Str) -> Str {
+    var n = jnum_i64(entries, path)
+    if n.k == 0 {
+        return "ok"
+    }
+    return jkname(n.k)
+}
+
+pub fn jk_f64(entries: List[List[Str]], path: Str) -> Str {
+    var r = jreal_f64(entries, path)
+    if r.k == 0 {
+        return "ok"
+    }
+    return jkname(r.k)
+}
+
+pub fn jk_bool(entries: List[List[Str]], path: Str) -> Str {
+    let r = jget_bool(entries, path)
+    match r {
+        Ok(_) => {
+            return "ok"
+        }
+        Err(e) => {
+            return jerr_kind(e)
+        }
+    }
+}
+
 // ============ 测试 ============
 
 test "esc round trip" {

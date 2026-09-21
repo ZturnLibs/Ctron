@@ -1,0 +1,25 @@
+// tests/json_fidelity/corpus/x_p53_rounding.ct —— F64 舍入可检负例锚
+// (x_ 前缀 = 仅 emit 臂入计,tests/http enc_fixtures 同款口径):
+// 2^53+1 的 f64 读回 2^53(IEEE double 舍入可检),i64 读原文精确——
+// 双读对证明两访问器定宽语义分立。解释臂不入计:解释器 F64 超 2^53 精确
+// 不舍入(宽于 IEEE double;与 emit 语义歧,(i) 登记 2026-09-21)。
+// 消费面 = jv_f64/jv_i64 标量 getter((h) 族:跨模块 Result[F64,_] match 禁用)。
+use std.json.{jv_f64, jv_i64}
+
+fn xent(p: Str, t: Str, v: Str) -> List[Str] {
+    var e = List[Str]()
+    e.push(p)
+    e.push(t)
+    e.push(v)
+    return e
+}
+
+test "2^53+1 f64 舍入可检双读对(仅 emit 臂语义)" {
+    var es = List[List[Str]]()
+    es.push(xent("$", "o", ""))
+    es.push(xent("$.p53", "n", "9007199254740993"))
+    // IEEE double:2^53+1 舍入到 2^53(emit 臂语义)
+    assert(jv_f64(es, "$.p53", 0.0) == 9007199254740992.0)
+    // 同一原文 i64 读原文精确 → 双读值分立 = 舍入可检
+    assert_eq(jv_i64(es, "$.p53", 0), 9007199254740993)
+}

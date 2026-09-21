@@ -1,0 +1,80 @@
+// tests/json_fidelity/corpus/a_i64_kinds.ct —— jget_i64 定宽检测:2^63 双侧
+// 边界(9223372036854775807 ok / ...808 Err(range) 非 silent 回绕)、20 位
+// 超长原文、小数/指数形态(frac)、三分判别(noent/null/type)、嵌套路径、
+// 键含 '@' 时 kind 段不受扰。断言式夹具(tests/json_fidelity/run.sh 双臂)。
+// 消费面 = jv_i64/jk_i64 标量 getter((h) 族:跨模块 Result match 收敛模块
+// 内);Err 载荷原文锚一处用 Ok-I64/Err-Str match(该两载荷发射面绿)。
+// 条目直构面:对象形态 JSON 文本经 utf8_enc 拼接(字符串字面量禁裸 { 与 ;),
+// 见 d_parse_nested.ct。
+use std.json.{jget_i64, jv_i64, jk_i64, jerr_kind}
+
+fn aent(p: Str, t: Str, v: Str) -> List[Str] {
+    var e = List[Str]()
+    e.push(p)
+    e.push(t)
+    e.push(v)
+    return e
+}
+
+fn atable() -> List[List[Str]] {
+    var es = List[List[Str]]()
+    es.push(aent("$", "o", ""))
+    es.push(aent("$.max", "n", "9223372036854775807"))
+    es.push(aent("$.min", "n", "-9223372036854775808"))
+    es.push(aent("$.over", "n", "9223372036854775808"))
+    es.push(aent("$.huge", "n", "99999999999999999999"))
+    es.push(aent("$.frac", "n", "1.5"))
+    es.push(aent("$.exp", "n", "1e2"))
+    es.push(aent("$.nul", "z", ""))
+    es.push(aent("$.str", "s", "42"))
+    es.push(aent("$.on", "b", "true"))
+    es.push(aent("$.sent", "n", "922337203685477580"))
+    es.push(aent("$.edge", "n", "9223372036854775800"))
+    es.push(aent("$.overf", "n", "92233720368547758080"))
+    es.push(aent("$.a@b", "n", "9223372036854775808"))
+    es.push(aent("$.deep", "o", ""))
+    es.push(aent("$.deep.count", "n", "-123"))
+    return es
+}
+
+test "jget_i64 定宽检测:2^63 双侧边界/kinds/嵌套/a@b kind 段" {
+    let es = atable()
+    // I64 域双侧边界:恰界 ok(含 I64_MIN;C10 正负分途累加)
+    assert_eq(jk_i64(es, "$.max"), "ok")
+    assert_eq(jv_i64(es, "$.max", 0), 9223372036854775807)
+    assert_eq(jk_i64(es, "$.min"), "ok")
+    assert_eq(jv_i64(es, "$.min", 0), -9223372036854775808)
+    // 越界一档即 Err(range):2^63 / 20 位超长 / I64_MAX 之上再进一位
+    assert_eq(jk_i64(es, "$.over"), "range")
+    assert_eq(jk_i64(es, "$.huge"), "range")
+    assert_eq(jk_i64(es, "$.overf"), "range")
+    // I64_MAX-7 恰在域内(定宽阈值比较法;非 silent 回绕面)
+    assert_eq(jk_i64(es, "$.edge"), "ok")
+    assert_eq(jv_i64(es, "$.edge", 0), 9223372036854775800)
+    assert_eq(jv_i64(es, "$.sent", 0), 922337203685477580)
+    // 非整数语法形态:小数 / 指数 → Err(frac)(jget_i64 仅收 -?数字串)
+    assert_eq(jk_i64(es, "$.frac"), "frac")
+    assert_eq(jk_i64(es, "$.exp"), "frac")
+    // 三分判别:null / 标签不符 / 缺路径;容器(根为 o)亦 type
+    assert_eq(jk_i64(es, "$.nul"), "null")
+    assert_eq(jk_i64(es, "$.str"), "type")
+    assert_eq(jk_i64(es, "$.on"), "type")
+    assert_eq(jk_i64(es, "$.absent"), "noent")
+    assert_eq(jk_i64(es, "$"), "type")
+    // kind 段 = 首个 '@' 前:键名含 '@' 时判别不受扰
+    assert_eq(jk_i64(es, "$.a@b"), "range")
+    // Err 载荷原文锚(Ok-I64/Err-Str match 发射面绿,见 (h) 探针)
+    let r = jget_i64(es, "$.a@b")
+    match r {
+        Err(e) => {
+            assert_eq(e, "range@$.a@b")
+            assert_eq(jerr_kind(e), "range")
+        }
+        Ok(_) => {
+            return 1
+        }
+    }
+    // 嵌套路径
+    assert_eq(jk_i64(es, "$.deep.count"), "ok")
+    assert_eq(jv_i64(es, "$.deep.count", 0), -123)
+}

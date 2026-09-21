@@ -1,0 +1,79 @@
+// tests/json_fidelity/corpus/b_f64_precision.ct —— jget_f64:小数/指数形态、
+// 量级窗(|值| ≤ I64_MAX;i 族解释器值域定宽——出窗 Err(range) 非 silent,
+// 双臂一致语义)、精度锚(0.1 单除精确 / 2^53 恰可表示双臂同值 / 1e2 精确)。
+// 消费面 = jv_f64/jk_f64 标量 getter((h) 族:跨模块 Result[F64,_] match
+// 绑定载荷错值,禁用;详见 std/json.ct 区块头注)。口径注:锚值均取双臂
+// 稳定面——2^53+1 的 f64 舍入可检面由 x_p53_rounding.ct 承载(解释器 F64
+// 超 2^53 精确不舍入,与 emit IEEE double 语义歧,登记 (i));夹具内 F64
+// 断言一律 ==/> 且禁 F64 转 Str(emit to_string 乱值,(i) 登记)。
+use std.json.{jv_f64, jk_f64, jv_i64}
+
+fn bent(p: Str, t: Str, v: Str) -> List[Str] {
+    var e = List[Str]()
+    e.push(p)
+    e.push(t)
+    e.push(v)
+    return e
+}
+
+fn btable() -> List[List[Str]] {
+    var es = List[List[Str]]()
+    es.push(bent("$", "o", ""))
+    es.push(bent("$.half", "n", "2.5"))
+    es.push(bent("$.tenth", "n", "0.1"))
+    es.push(bent("$.hundred", "n", "1e2"))
+    es.push(bent("$.tiny", "n", "1e-2"))
+    es.push(bent("$.quart", "n", "0.75"))
+    es.push(bent("$.negf", "n", "-3.25"))
+    es.push(bent("$.p53e", "n", "9007199254740992"))
+    es.push(bent("$.p53", "n", "9007199254740993"))
+    es.push(bent("$.big", "n", "1e19"))
+    es.push(bent("$.huge", "n", "1e400"))
+    es.push(bent("$.sent", "n", "90071992547409910"))
+    es.push(bent("$.edge", "n", "4611686018427387900"))
+    es.push(bent("$.overf", "n", "92233720368547758080"))
+    es.push(bent("$.nul", "z", ""))
+    es.push(bent("$.str", "s", "2.5"))
+    return es
+}
+
+test "jget_f64 形态/量级窗/精度锚(双臂稳定面)" {
+    let es = btable()
+    // 小数形态:尾数累积 + 逐步 ÷10(0.75=3/4、2.5 精确;0.1 单除舍入同字面量)
+    assert_eq(jk_f64(es, "$.half"), "ok")
+    assert(jv_f64(es, "$.half", 0.0) == 2.5)
+    assert_eq(jk_f64(es, "$.tenth"), "ok")
+    assert(jv_f64(es, "$.tenth", 0.0) == 0.1)
+    assert_eq(jk_f64(es, "$.quart"), "ok")
+    assert(jv_f64(es, "$.quart", 0.0) == 0.75)
+    assert_eq(jk_f64(es, "$.negf"), "ok")
+    assert(jv_f64(es, "$.negf", 0.0) == 0.0 - 3.25)
+    // 指数形态:1e2 精确;负指数 1e-2 == 0.01(两路同值)
+    assert_eq(jk_f64(es, "$.hundred"), "ok")
+    assert(jv_f64(es, "$.hundred", 0.0) == 100.0)
+    assert_eq(jk_f64(es, "$.tiny"), "ok")
+    assert(jv_f64(es, "$.tiny", 0.0) == 0.01)
+    // 精度:2^53 恰可表示,双臂同值;2^53+1 的舍入面归 x_ 夹具(见头注)
+    assert_eq(jk_f64(es, "$.p53e"), "ok")
+    assert(jv_f64(es, "$.p53e", 0.0) == 9007199254740992.0)
+    // 量级窗:出窗一档即 Err(range)——1e19 / 1e400 / I64_MAX×10 档
+    assert_eq(jk_f64(es, "$.big"), "range")
+    assert_eq(jk_f64(es, "$.huge"), "range")
+    assert_eq(jk_f64(es, "$.overf"), "range")
+    // 窗内值锚:16 位精确尾数 + 单次 ×10(单舍入,双臂恒等值;>2^53 档
+    // 多步缩放的 1 ulp 级双舍入漂移不入锚——strtod 逐正确舍入口径之外)。
+    // 19 位小数字面量禁用:解释器字面量解析即炸,(i) 登记。
+    assert_eq(jk_f64(es, "$.sent"), "ok")
+    assert(jv_f64(es, "$.sent", 0.0) == 90071992547409910.0)
+    // 窗内边界 kind 锚:I64_MAX/2 档 ok(哨兵 Knife-edge 值——恰等 I64_MAX/10
+    // 档——解释器精确算术与 emit 舍入在界门两侧分叉,不入锚,(i) 登记)
+    assert_eq(jk_f64(es, "$.edge"), "ok")
+    // 三分判别与跨型同读(整数原文亦 f64 可读)
+    assert_eq(jk_f64(es, "$.nul"), "null")
+    assert_eq(jk_f64(es, "$.str"), "type")
+    assert_eq(jk_f64(es, "$.absent"), "noent")
+    assert_eq(jk_f64(es, "$.p53"), "ok")
+    assert(jv_f64(es, "$.p53", 0.0) > 0.0)
+    // i64 双读对:同一原文两访问器各自定宽(i64 精确;f64 口径见头注)
+    assert_eq(jv_i64(es, "$.p53", 0), 9007199254740993)
+}

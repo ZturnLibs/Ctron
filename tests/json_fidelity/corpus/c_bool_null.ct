@@ -1,0 +1,57 @@
+// tests/json_fidelity/corpus/c_bool_null.ct —— jget_bool 与 null 判别三分:
+// true/false 精确读;null 路径三个访问器一致 Err(null@);标签不符 Err(type@);
+// 缺路径 Err(noent@);正向判别锚 = qtag=="z"(P5 行映射 NULL→Option 语义面)。
+// 消费面 = jv_bool/jk_bool 标量 getter;Err-Str 载荷 match 一处(发射面绿)。
+use std.json.{jget_i64, jv_bool, jk_bool, qtag, jerr_kind}
+
+fn cent(p: Str, t: Str, v: Str) -> List[Str] {
+    var e = List[Str]()
+    e.push(p)
+    e.push(t)
+    e.push(v)
+    return e
+}
+
+fn ctable() -> List[List[Str]] {
+    var es = List[List[Str]]()
+    es.push(cent("$", "o", ""))
+    es.push(cent("$.on", "b", "true"))
+    es.push(cent("$.off", "b", "false"))
+    es.push(cent("$.nul", "z", ""))
+    es.push(cent("$.num", "n", "1"))
+    es.push(cent("$.str", "s", "true"))
+    es.push(cent("$.arr", "a", ""))
+    es.push(cent("$.nested", "o", ""))
+    es.push(cent("$.nested.flag", "b", "false"))
+    return es
+}
+
+test "jget_bool 与 null 判别三分 + qtag 正向判别" {
+    let es = ctable()
+    // 布尔精读(true/false 之外的 Bool 原文不存在——parse 侧已保证)
+    assert_eq(jk_bool(es, "$.on"), "ok")
+    assert(jv_bool(es, "$.on", false))
+    assert_eq(jk_bool(es, "$.off"), "ok")
+    assert(!jv_bool(es, "$.off", true))
+    assert_eq(jk_bool(es, "$.nested.flag"), "ok")
+    assert(!jv_bool(es, "$.nested.flag", true))
+    // null 三访问器一致判 null(消费方映射 Option None 的 Err 面)
+    assert_eq(jk_bool(es, "$.nul"), "null")
+    let ri = jget_i64(es, "$.nul")
+    match ri {
+        Err(e) => {
+            assert_eq(e, "null@$.nul")
+            assert_eq(jerr_kind(e), "null")
+        }
+        Ok(_) => {
+            return 1
+        }
+    }
+    assert_eq(jk_bool(es, "$.num"), "type")
+    assert_eq(jk_bool(es, "$.str"), "type")
+    assert_eq(jk_bool(es, "$.arr"), "type")
+    assert_eq(jk_bool(es, "$.absent"), "noent")
+    // 正向 null 判别(不走 Err 面):qtag=="z"
+    assert_eq(qtag(es, "$.nul"), "z")
+    assert_eq(qtag(es, "$.on"), "b")
+}

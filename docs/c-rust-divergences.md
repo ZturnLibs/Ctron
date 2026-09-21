@@ -297,5 +297,46 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   解码 Unicode 面同受 C8 域约束。std/enc 字节构建面放宽(C8/Str 构建面
   升版)后 ws b64 可收编、form 需随动。(源:P4 Task 3 §3、Task 2 §8)
 
+### (h)/(i) 家族新证 + C17 续证(P5-A std/json 数值保真,2026-09-21)
+
+- **(h) emit 的 Result/Option union 载荷槽 32 位(I64/F64 载荷失真)**:
+  `Result[I64,Str]` 的 Ok 载荷跨 match 绑定按 32 位槽承载——`Ok(9223372036854775807)`
+  读回 `-1`(I32 截断),`Result[F64,_]` Ok 载荷错值(2.5 探针);同模块/
+  跨模块同病,Err-Str 与 Bool 载荷绿。**绕行 = 结构通道 + 标量 getter**
+  (std/http parse.ct getter 面 prior art):std/json 数值访问器内走
+  `JNum{k:I64,v:I64}` / `JReal{k:I64,v:F64}`(struct 标量字段 64 位实证绿,
+  plain I64/F64 返回绿),消费方经 `jv_*/jk_*` 或 `jn_*/jr_*` getter 取值;
+  `jget_*` Result 面留同模块/解释口径与 Err 原文面。修法 = emit 侧 union
+  载荷槽按载荷声明宽度(P9 挂账;strconv.parse_i64 的 Option[I64] 大值面
+  同疑受累,其单测未入 emit 臂故未暴露)。(源:P5 Task 1 探针 loc/mi/ml/mn)
+- **(i) 解释器 F64 值域定宽三实例 + 语义歧**(emit 真 double 恒正确,双口径
+  漂移,双臂一致语义钳窗口径见 std/json.ct 区块头注):
+  1. *F64 整值 ≥2^63 乘法 panic*:宿主按值域定宽判溢出,`1e18 * 1e18` 即
+     `integer overflow (*)` rc=1(0.1/2.5 等分数路径真 double 恒绿)→
+     std/json jf64 乘 10 前逐次哨兵界门(I64_MAX/10),量级窗 = |值| ≤
+     I64_MAX(双臂一致;emit 全域可算,窗即 v0 口径)。
+  2. *浮点字面量按值域溢出*:`let a: F64 = 9223372036854775800.0`(19 位,
+     值 < I64_MAX)即字面量解析 panic;≤18 位档绿 → 夹具禁 ≥19 位小数
+     字面量。
+  3. *e 形浮点字面量误析*:`1.0e3` 读回 1.533、`2.0e1` 读回 2.531(值失真
+     非 panic;emit 同面 1000/20 正确)→ 全库小数字面量平书禁指数形态。
+  4. *F64 超 2^53 精确不舍入*(语义歧非错):解释器宽于 IEEE double,
+     `9007199254740993` 累加读回原值,emit 舍入至 2^53——2^53+1 舍入可检
+     负例锚归 emit 专臂夹具(tests/json_fidelity x_p53_rounding,C12
+     「发射线夹具承载」先例),锚值选双臂稳定面。
+  5. *emit F64 to_string 乱值*:`922337203685477580.0` → `"51298592"`、
+     `2.5` → `"2"`(截断/乱码;`1e22` 形反而对)→ F64 断言一律 `==`/`>`
+     比较,禁 to_string(emit 臂)。
+  6. *f64 多步缩放双舍入漂移*:17 位尾数 + 逐步 ×10 与 strtod 逐正确舍入
+     在 >2^53 档可差 1 ulp(`922337203685477580` 锚 emit 失配实证)→ 锚值
+     限 ≤16 位精确尾数 + 单次缩放。(源:P5 Task 1 探针 p2–p18)
+- **C17 续证(宿主对 std/json.ct 测试段敏感)**:json.ct 追加 8 测试助手
+  + 4 test 块(37 decls)后,对文件 ANY 扰动(含 2 行 println 的调试性
+  编辑)即宿主 segv rc=139 启动即崩、无输出;还原至「访问器 8 decls、
+  测试外移」后双臂恒绿。对策:数值访问器留 std/json.ct 本体,inline 测试
+  外移 tests/json_fidelity(条目直构 + utf8_enc 括号拼接,兼避字符串禁裸
+  `{` 约束;json_write.ct C17 规避同款)。宿主 decl/字面量阈值归编译器
+  泳道。(源:P5 Task 1)
+
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。

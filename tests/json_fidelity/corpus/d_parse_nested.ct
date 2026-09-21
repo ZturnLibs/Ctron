@@ -1,0 +1,75 @@
+// tests/json_fidelity/corpus/d_parse_nested.ct —— parse 产物 → 类型化访问器
+// 全链:对象形态 JSON 文本(utf8_enc 拼接括号——字符串字面量禁裸 { 与 ;)+
+// 数组形态;嵌套对象/数组路径;行映射预演(P5 行→struct 运行时绑定的
+// 消费形态:列缺失/类型不符/null 三分 → Result 面)。
+// 消费面 = jv_*/jk_* 标量 getter((h) 族;跨模块 Result[F64,_] match 禁用)。
+use std.json.{parse, qtag, qval, jv_i64, jv_f64, jv_bool, jk_i64, jk_bool}
+
+test "parse → 访问器全链:嵌套/数组/行映射预演" {
+    // 对象形态文档(utf8_enc 内建;键序无重叠,路径唯一)
+    var ob = utf8_enc(123)
+    var cb = utf8_enc(125)
+    var doc = ob + "\"id\": 7, \"score\": 0.75, \"active\": true, \"nick\": null, \"tags\": [10, 20], \"sub\": " + ob + "\"depth\": -5" + cb + cb
+    let r = parse(doc)
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    // 标量三型各归其位(parse 的 Result[List[...],Str] match 发射面绿)
+    assert_eq(jk_i64(es, "$.id"), "ok")
+    assert_eq(jv_i64(es, "$.id", 0), 7)
+    assert(jv_f64(es, "$.score", 0.0) == 0.75)
+    assert(jv_bool(es, "$.active", false))
+    // 嵌套:对象内标量、数组下标路径
+    assert_eq(jv_i64(es, "$.sub.depth", 0), -5)
+    assert_eq(jv_i64(es, "$.tags.0", 0), 10)
+    assert_eq(jv_i64(es, "$.tags.1", 0), 20)
+    assert_eq(jk_i64(es, "$.tags"), "type")
+    assert_eq(qtag(es, "$.tags"), "a")
+    assert_eq(qtag(es, "$.sub"), "o")
+    // null 判别:qtag 正向 + 载荷形态(kind + 路径)
+    assert_eq(qtag(es, "$.nick"), "z")
+    assert_eq(qval(es, "$.nick"), "")
+    assert_eq(jk_i64(es, "$.nick"), "null")
+    assert_eq(jk_i64(es, "$.nope"), "noent")
+    // 行映射预演:数组行集,逐行定型读取(直列展开,不触循环 Drop 面)
+    var rob = utf8_enc(123)
+    var rcb = utf8_enc(125)
+    var rows = rob + "\"rows\": [" + rob + "\"id\": 1, \"score\": 0.5, \"ok\": true, \"memo\": null" + rcb + ", " + rob + "\"id\": 2, \"score\": 2.25, \"ok\": false, \"memo\": \"x\"" + rcb + "]" + rcb
+    let rr = parse(rows)
+    let rs = match rr {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(jv_i64(rs, "$.rows.0.id", 0), 1)
+    assert(jv_f64(rs, "$.rows.0.score", 0.0) == 0.5)
+    assert(jv_bool(rs, "$.rows.0.ok", false))
+    assert_eq(qtag(rs, "$.rows.0.memo"), "z")
+    assert_eq(jv_i64(rs, "$.rows.1.id", 0), 2)
+    assert(jv_f64(rs, "$.rows.1.score", 0.0) == 2.25)
+    assert(!jv_bool(rs, "$.rows.1.ok", true))
+    // 类型不符 → 运行时 Err(行映射负例面;D-P5-1 口径的类型不符前瞻锚)
+    assert_eq(jk_i64(rs, "$.rows.0.score"), "frac")
+    assert_eq(jk_i64(rs, "$.rows.0.ok"), "type")
+    assert_eq(jk_i64(rs, "$.rows.2.id"), "noent")
+    assert_eq(jk_bool(rs, "$.rows.1.memo"), "type")
+    // 数组形态全链(parse → 访问器)
+    let ar = parse("[1, 2.5, true, null]")
+    let aes = match ar {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(jv_i64(aes, "$.0", 0), 1)
+    assert(jv_f64(aes, "$.1", 0.0) == 2.5)
+    assert(jv_bool(aes, "$.2", false))
+    assert_eq(qtag(aes, "$.3"), "z")
+}
