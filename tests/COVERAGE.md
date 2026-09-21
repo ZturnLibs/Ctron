@@ -267,10 +267,31 @@ impl-for 解析);fmt_suite 1 条(01i 分号语料 fmt 失败);native_suite 6 条
 | P2 | 确定性调度 CTRON_RT_SEED(单 worker + LCG 抽取 + spawn→join 单向闸) | tests/net/coro_det(主环 2 模 + 种子重放专属块:SEED=42 + 0..99 各双跑 cmp 101/101;nightly 1000 尾注) |
 | P2 | 门禁 C10K(nightly/本地) | tests/net/c10k(纯 C 目录主环跳过;实测 10000/10000 回显全绿 + 探活绿,connect 0.4s/total 1.1s;CI 冒烟档 C10K_N=100 绿) |
 | P2 | 门禁 切换微基准 ≤200ns | tests/net/bench/bench.sh rt 段(CTRON_NET_BENCH=1;实测 89–102ns 四跑全绿;Rosetta 翻译态豁免在册) |
-| P2 | 门禁 echo coro-vs-P1 ≤1.15× | bench.sh coro 维度(实测 2.073–2.203 三跑,**红,登记归因**见计划执行记录:每阻塞读 reactor 登记/摘除 + park/wake + 空闲退避唤醒 ~15µs/往返;coro-vs-C 2.33–2.47 归档) |
+| P2 | 门禁 echo coro-vs-P1 ≤1.15× | bench.sh coro 维度(实测 2.073–2.203 三跑,**红,登记归因**见计划执行记录:每阻塞读 reactor 登记/摘除 + park/wake + 空闲退避唤醒 ~15µs/往返;coro-vs-C 2.33–2.47 归档;**P3-A 转绿 1.019–1.040,≤1.5 检查点与 ≤1.15 原门双过,见 P3 行**) |
 
 P2 波提交域 48ed59c..<P2-F>(任务台账与门禁数字:计划执行记录);net 主环计
 例口径 = 行为夹具 9 + c_smoke 2 + coro_det_replay 1 = 12。
+
+### P3 行(TLS + 传输补全 + 时延首件,2026-09-21)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| P3 | 时延首件(事件量交付 + 兴趣驻留 + 探针消除) | tests/net/bench/bench.sh 三门禁:coro-vs-P1 **1.019–1.040**(P2 红门转绿,≤1.5 检查点与 ≤1.15 原门双过;kick 主导 ≈24.5µs/往返分量实证)、yield 74.8–87.7ns(P2 在册 89–102ns 不退化)、门禁一 1.105–1.122;c10k 驻留 fd 生命周期复验 N=10000 全绿 delta=0(fd 泄漏门 LEAK_INJECT 证伪口径保持) |
+| P3 | vendored mbedTLS 3.6.7(子集构建,离线可重建) | vendor/tls/build.sh + smoke.sh(`TLS-OK 3.6.7`;.a 合计 ~1.29M;全量重建 13.1s,零网络,依赖仅 cc/ar/awk/POSIX sh) |
+| P3 | std/tls 门面(BIO-over-hybrid,零新停车点;client hostname opt-out 保留链验证) | tests/net/tls_smoke(入主环双矩阵自动双跑;CTRON_RT_WORKERS=1 停车严格证 2/2;ALPN 偏好序断言;eof/close_notify 钉住) |
+| P3 | 互操作矩阵(vs openssl s_server/s_client 双向,2×2×2) | tests/net/tls_interop/run.sh **8/8**(方向 D1/D2 × TLS1.2/1.3 × 双 RT 面;LibreSSL 3.3.6 零降格;ALPN 权威断言在我方;链验证双侧 REQUIRED 对称口径;HTTPS -www 回显 = D1 cell 内绿;不入主环,主环 13→14 口径不受扰) |
+| P3 | 握手吞吐门 ≤1.5× | tests/net/bench/bench_tls.sh(CTRON_NET_BENCH=1;ratio **0.503** 宽口径 / **0.750** 公平 ours_spawn 对照,均绿;基线 exec 支配已登记) |
+| P3 | Unix domain socket 四件(listen/accept/connect/unlink) | tests/net/unix_sock(回环/half-close 双向/陈旧重绑自愈/ENOENT/超限 EINVAL/协程面 resolve;路径上限 104;Drop 只关 fd 不摘文件;主环 13→14 双矩阵) |
+| P3 | DNS 异步化(2 线程 helper 池 + done 槽) | c_smoke T6 差分证(workers=1 最严:787 resolves/60ms 窗口、进度协程 ticks+12;红路径演练有牙)+ 裸线程面 P1 逐字节不变 |
+
+P3 波提交域 ce43e83..P3-F(1d7d90e / 687653d / 8339569 / 7a1465a / db2b4dd /
+8a16854 + 收口两笔;任务台账与门禁数字:计划执行记录);net 主环计例口径
+12→14 = 行为夹具 9 + tls_smoke 1 + unix_sock 1 + c_smoke 2 + coro_det_replay 1。
+P3 在册登记项:resolve 不可取消(取消广播不中断在途);AF_UNIX accept/connect
+无停车点(协程滞留 worker,同 TCP 口径,P2-C 扩面候选);_WIN32 分支推演未实证
+(AF_UNIX 哑元 + DNS 池全裁);Windows 证书库 P8(CA 走系统 bundle 文件路径);
+Drop 顺序 fd 复用 ABA caveat(超时兜底,文件头注);tls_read cap<=0 返 0;
+每块超时语义(ctron_tls_read 每调用重置 conf.read_timeout,握手钉 0)。
 
 ## §ctron fmt 三宿主对齐(工具链泳道,2026-09-21)
 

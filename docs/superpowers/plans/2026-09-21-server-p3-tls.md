@@ -104,3 +104,70 @@ void    ctron_tls_close(int64_t ctx);
 - 设计覆盖:§六 P3 全项(时延首件/mbedTLS/TLS 双向/Unix socket/DNS 异步)有任务;门禁三件(互操作/HTTPS 回显/握手 ≤1.5×)落 Task 4/6。
 - 风险前置:mbedTLS 下载已探通;BIO-over-hybrid 是本波唯一架构承重点(Task 3 冒烟直证);CA 走文件路径简化已登记(Windows 证书库 P8)。
 - 明确不做(本波外):nginx 对端(openssl 双向已构成矩阵)、Windows 证书库(P8)、h2 ALPN 实装(ALPN 协商本波,HTTP/2 语义 P9)、纯 Ctron ctls(志向)。
+
+---
+
+## 执行记录
+
+### 任务台账(2026-09-21;逐任务细节见 .superpowers/sdd/p3-task-{1..6}-report.md)
+
+- **Task 1 (P3-A)** bbc7a90..1d7d90e:事件量交付(cv 时限退避 + ready_push 踢醒,
+  worker 自推不踢;种子闸未开不踢)+ 兴趣驻留(one-shot 武装,armed 软旗标,
+  forget_fd 摘册)+ 垫片探针消除(MSG_DONTWAIT 直试 ×3)。coro-vs-P1
+  **2.018–2.169 → 1.019–1.040**;分量隔离:kick 主导 ≈24.5µs/往返(V-D 停用
+  踢醒 = 2.913/2.937),四分量归因 (iv)≫(ii)≈(i)≫(iii)。
+- **Task 2 (P3-B)** 687653d + 8339569(审查收账两件:3rdparty 清单半解析、
+  配置头陈旧度):mbedTLS 3.6.7 vendored(vendor 树 50M→8.3M;build/ 不进 git;
+  .a 合计 ~1.29M;全量重建 13.1s;离线,依赖仅 cc/ar/awk/POSIX sh)。
+- **Task 3 (P3-C)** 7a1465a:ctron_tls.c(BIO-over-hybrid,mbedTLS blocking 形
+  BIO 映射停车语义,**零新停车点**——`nm -u` 零 rt 符号实证)+ std/tls.ct 门面
+  (免费函数 + net 首参贯穿,不加新 caps 键)+ tls_smoke 夹具 + 主环 TLS 探测块。
+  client 握手默认 set_hostname(NULL) opt-out(上游 REQUIRED 契约,链验证保留);
+  EOF 双形(CONN_EOF/PEER_CLOSE_NOTIFY)同映 0。
+- **Task 4 (P3-D)** db2b4dd:tls_interop 一个 .ct 双角色(INTEROP_ROLE env),
+  8/8 = 方向{D1,D2} × 版本{TLS1.2,1.3} × 面{default,coro};bench_tls.sh
+  握手吞吐门(ratio 0.503 / 公平对照 0.750)。LibreSSL quirk 登记:`s_client
+  -quiet` stdout 指 /dev/null 必现 poll error。
+- **Task 5 (P3-E)** 8a16854:AF_UNIX 四件(unix listen/accept/connect/unlink;
+  路径上限 104 取 min;bind 前 unlink 陈旧自愈;Drop 只关 fd 不摘文件——后绑者
+  赢语义)+ DNS 异步化(2 线程 helper 池 + done 槽;release/acquire 槽所有权;
+  池线程不触 TLS errno 槽;建池全败内联兜底;裸面 P1 逐字节不变);unix_sock
+  夹具入主环(13→14);c_smoke T6 进度协程差分证(workers=1 最严,红路径演练有牙)。
+- **Task 6 (P3-F)** 本批:P3-F 收口。① F-A 必修(std/net/c_src/ctron_net.c
+  `ct_dns_submit`):返回值原在 unlock 之后读 `ct_dns_up`——丢失唤醒角窗(并发
+  首提交翻转后本调用者误判池可用返 0,job 已被失败路径内联清队 → 停车等永不来的
+  done)+ C11 数据竞争;改锁内取闩 `int ok = ct_dns_up` 再解锁返回。双矩阵复验
+  14/14 ×2。② F-B divergences 服务器面 (g) 四条耐久回写(spawn 闭包
+  assert/panic 发射缺口;闭包体 Drop 句柄禁令;while 体 Drop 禁令精确化 +
+  内层裸块惯用法;加载器菱形 use E5020)。③ F-C COVERAGE P3 行 + 本出口判定。
+
+### P3 出口判定(门禁逐项,2026-09-21 实测)
+
+计划出口 = 互操作矩阵绿 + HTTPS 回显绿 + 握手吞吐 ≤1.5× + net 双矩阵
+12→14/14 + 登记收口。
+
+| 门禁 | 口径 | 实测 | 判定 |
+|---|---|---|---|
+| 互操作矩阵 | vs openssl s_server/s_client 双向,2×2×2 | **8/8**(LibreSSL 3.3.6 零降格;链验证双侧 REQUIRED 对称口径;ALPN 权威断言在我方;coro 面 D2 = TLS 停车对真外进程证明) | 绿 |
+| HTTPS 回显 | D1 cell:GET → 状态页首行 → eof | `HTTP/1.0 200 ok` 前缀字节断言 + close_notify eof 钉住(矩阵内) | 绿 |
+| 握手吞吐 | bench_tls.sh ratio ≤1.5 硬门,无登记档 | **0.503** 宽口径 / **0.750** 公平 ours_spawn 对照(双侧同付 exec;基线 exec 支配已登记)——均 ≤1.5 | 绿 |
+| 时延检查点 | coro-vs-P1 ≤1.5 中间检查点;1.15 原门不挪柱 | **1.019–1.040 三跑**(P2 红门 2.073–2.203 转绿;**双门均过**;kick 主导 ≈24.5µs/往返实证) | 绿 |
+| bench 四数字 | yield ≤200ns / 门禁一 / 门禁三 / 检查点 | yield 74.8–87.7ns(P2 在册 89–102 不退化);门禁一 1.105–1.122;门禁三即上行;检查点即上行 | 绿 |
+| C10K + fd 泄漏门 | c10k N=10000 + delta ≤8(LEAK_INJECT 证伪口径) | 10000/10000 全绿 delta=0(驻留 fd 生命周期复验)——保持 | 绿 |
+| net 双矩阵 | 12→14/14 | 默认 **14/14** + coro **14/14**(P3-F 收口复验,resolve 路径覆盖 F-A 改动) | 绿 |
+| 登记收口 | COVERAGE P3 行 + divergences (g) + 本执行记录 | 本批落齐 | 绿 |
+
+**P3 出口 = 全绿(八项)**,无红项、无降格 cell。
+
+在册登记项(随波落账,处置期标注):
+- resolve 不可取消(取消广播不中断在途,最长等待 = getaddrinfo 本身;阻塞版同病);
+- AF_UNIX accept/connect 无停车点(协程滞留 worker,同 TCP 口径,P2-C 扩面候选);
+- _WIN32 分支推演未实证(AF_UNIX 哑元 + DNS 池 `#ifndef _WIN32` 全裁;本机无 mingw);
+- Windows 证书库 P8(CA 走系统 bundle 文件路径,win 无系统 CA 探针面);
+- Drop 顺序 fd 复用 ABA caveat(close→forget_fd 窗口,误摘者超时兜底,头注在册);
+- tls_read cap<=0 返 0;每块超时语义(ctron_tls_read 每调用按 timeout_ms 重置
+  conf.read_timeout,握手钉 0 阻塞)。
+
+编译器泳道挂账(F-B 四条,divergences (g) 在册):spawn 闭包 assert/panic
+发射缺口、闭包体 Drop 句柄禁令、while 体 Drop 禁令精确化(内层裸块惯用法)、
+加载器菱形 use E5020。

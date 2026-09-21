@@ -189,5 +189,33 @@ P2 波(ctron_rt 协程运行时 + 垫片混合化 + 模板模式分支 + 确定�
 - **getaddrinfo 阻塞面**:coro 口径为阻塞调用(占用 worker 至解析返回);
   P9 一行登记:池线程化或 rt_wait_fd 化。
 
+### (g) P3 执行发现(TLS/发射面/加载器,2026-09-21)
+
+P3 波(vendored mbedTLS + std/tls 门面 + 互操作矩阵 + Unix socket + DNS 异步)
+实测的发射面/加载器事实,皆编译器泳道挂账;细节见
+`docs/superpowers/plans/2026-09-21-server-p3-tls.md` 执行记录与
+`.superpowers/sdd/p3-task-{3,4,5}-report.md`。
+
+- **spawn 闭包内 assert/panic 语句发射缺口**:闭包(void* shim)体内的
+  assert/panic 语句发射裸 `return 1`(int 落指针返回位,cc 报);显式
+  `return <n>` 才正确走 result 槽 → 夹具绕行:协程体内全显式 return 码、
+  主面 join 后断言(tls_smoke 首证,tls_interop 同款;同源实证:StdNet 值
+  struct 入闭包捕获槽发射 int32 截断,协程内改自取 Net_probe())。
+  修法 = emit 侧按闭合数上下文选 return 形(挂账另开任务)。(源:P3 Task 3)
+- **含闭包 return 的函数体不可再有 Drop 句柄局部**:闭包 shim 误带外层函数
+  drop 表(`t_UnixStream__drop(t_srv)` undeclared 实证)→ 解法 = 闭包体拆为
+  独立的无 Drop 局部 fn(unix_sock 夹具 `resolve_coro_pair`)。(源:P3 Task 5)
+- **while 体 Drop 局部禁令精确化 + 内层裸块惯用法**:emit 直报
+  `emit:while 体:Drop 局部未支持(移入内层裸块)`——非 accept 环特有
+  ((a) 条旧记的精确化),任意 while 体同禁;修法循 emit 自带指引:循环体
+  移入内层裸块,句柄在裸块作用域内生灭。tls_interop 的
+  INTEROP_LOOP/INTEROP_CONNS 循环 = 该约束下首例「循环内 TLS 句柄 RAII」
+  实证。(源:P3 Task 4,登记族 db2b4dd)
+- **加载器菱形 use 误报 E5020**:跨模块菱形 use 一律 E5020(栈式查环无
+  pop):std/tls.ct→net.bind 之后消费方再 `use std.net` 即成"环" → 绕行 =
+  std/tls.ct 零 std.net import,`net: StdNet` 形参按名于 use 文本合并后的
+  单命名空间解析(E5030 同名拦截恰为该机制的守卫);类型面独立、能力面
+  贯穿。正解 = 加载器侧判定完成后允许 memo 化复用。(源:P3 Task 3)
+
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。
