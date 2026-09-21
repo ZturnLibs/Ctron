@@ -1,0 +1,47 @@
+// fx_fmt_golden.ct —— fmt 金样钉子(R-P2d 三宿主移植,2026-09-21)
+// 期望输出 = Rust 参考实现(compiler-rust fmt)生成后冻结;三宿主输出必须与本件逐字节一致。
+// 覆盖面:R1 空行折叠 / R2 缩进与内联块 / R3 } else 同行 / R4 链断行 /
+//        R5 空格表(闭包/range/一元/索引/调用) / R6 注释与 //@ 标记 / R7 字面量保真
+fn main() {
+// greet
+let x=1+2
+var s="hi \{x}"
+if x>0 {
+println(s)
+} else {
+println("bye")
+}
+}
+
+fn a() {}
+
+
+
+fn g(xs: List[I32]) -> I32 {
+return xs
+.map(twice)
+.filter(gt0)
+.len()
+}
+
+fn h(n: I32) -> Str {
+let label = if n > 0 { "pos" } else { "neg" }
+var t = 0
+for i in 0..n {
+t += -1 + i
+}
+if !false && !true {
+t = -t
+}
+var e = 0xFF
+var f = 2.5
+//@ panic: 标记逐字保留(campaign 语义,fmt 不得改动)
+var w = b or c
+return label
+}
+
+fn k(xs: List[I32]) {
+var y = xs[0]
+g(y, xs[1])
+noop() {}
+}

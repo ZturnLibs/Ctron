@@ -28,6 +28,9 @@ ctc —— Ctron 工具链驱动
   ctc build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
   ctc build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
   ctc test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
+  ctc fmt <file|pkg目录> [-w|--check]
+                             规范格式化(docs/fmt-spec.md):默认打印;-w 原位写回;
+                             --check 列出待格式化文件后非零退出
   ctc new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctc --version              版本
   ctc --help | help [cmd]    帮助(亦可 ctc <cmd> --help)
@@ -49,6 +52,7 @@ H
     check) echo "ctc check <file.ct> [--format=json] [--profile=bare] —— 静态检查,不改任何文件";;
     run) echo "ctc run <file.ct> —— 解释执行;不需要 C 编译器";;
     test) echo "ctc test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账";;
+    fmt) echo "ctc fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出";;
     new) echo "ctc new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)";;
     *) usage;;
 esac
@@ -104,7 +108,7 @@ cmd_build_proj() {
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
 case $CMD in
-    run|check|build|test|new)
+    run|check|build|test|new|fmt)
         case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
 esac
 case $CMD in
@@ -126,6 +130,51 @@ case $CMD in
     test)
         [ $# -ge 1 ] || die2 "test 需要输入文件"
         exec "$BIN/ctron-cc" run "$1"
+        ;;
+    fmt)
+        # R-P2d:ctc fmt <file|pkg目录> [-w|--check](语义对齐 compiler-rust main.rs fmt 分支)
+        [ $# -ge 1 ] || die2 "fmt 需要输入文件或 pkg 目录"
+        FMT_TARGET=$1; shift
+        FMT_W=0; FMT_CHECK=0
+        for a in "$@"; do
+            case $a in
+                -w|--write) FMT_W=1 ;;
+                --check) FMT_CHECK=1 ;;
+            esac
+        done
+        # 目标集:目录 → src/*.ct(无 src 则直下),文件名序;单文件直通
+        if [ -d "$FMT_TARGET" ]; then
+            FMT_DIR="$FMT_TARGET"
+            [ -d "$FMT_TARGET/src" ] && FMT_DIR="$FMT_TARGET/src"
+            FMT_FILES=$(find "$FMT_DIR" -maxdepth 1 -type f -name '*.ct' | LC_ALL=C sort)
+        else
+            FMT_FILES="$FMT_TARGET"
+        fi
+        FMT_ERR=0; FMT_UNF=0
+        FMT_TMP=$(mktemp /tmp/ctc_fmt.XXXXXX)
+        for f in $FMT_FILES; do
+            "$BIN/ctron-fmt" run "$f" > "$FMT_TMP"
+            if [ $? -ne 0 ]; then
+                cat "$FMT_TMP" >&2
+                FMT_ERR=1
+                continue
+            fi
+            if [ $FMT_CHECK -eq 1 ]; then
+                cmp -s "$FMT_TMP" "$f" || { echo "$f"; FMT_UNF=$((FMT_UNF+1)); }
+            elif [ $FMT_W -eq 1 ]; then
+                if ! cmp -s "$FMT_TMP" "$f"; then cp "$FMT_TMP" "$f"; fi
+                echo "$f"
+            else
+                cat "$FMT_TMP"
+            fi
+        done
+        rm -f "$FMT_TMP"
+        [ $FMT_ERR -eq 1 ] && exit 1
+        if [ $FMT_CHECK -eq 1 ] && [ $FMT_UNF -gt 0 ]; then
+            echo "$FMT_UNF 个文件待格式化" >&2
+            exit 1
+        fi
+        exit 0
         ;;
     new)
         [ $# -ge 1 ] || die2 "new 需要目录名"

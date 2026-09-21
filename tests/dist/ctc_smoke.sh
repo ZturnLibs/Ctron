@@ -23,6 +23,7 @@ CBIN="$ROOT/compiler/bin"
 
 [ -x "$CTC" ] || { echo "ctc_smoke: 缺少 $CTC" >&2; exit 2; }
 [ -x "$CBIN/ctron-cc" ] || { echo "ctc_smoke: 缺少 $CBIN/ctron-cc(先跑 compiler/native.sh)" >&2; exit 2; }
+[ -x "$CBIN/ctron-fmt" ] || { echo "ctc_smoke: 缺少 $CBIN/ctron-fmt(先跑 compiler/native.sh)" >&2; exit 2; }
 
 T=$(mktemp -d /tmp/ctc_smoke.XXXXXX)
 trap 'rm -rf "$T"' EXIT
@@ -153,6 +154,48 @@ if [ $rc -eq 0 ] && grep -q '^2$' "$T/sp2.out"; then
     ok "缺省走③回落(真分词):输出 2"
 else
     bad "stdpath 缺省态 rc=$rc out=[$(cat "$T/sp2.out")]"
+fi
+
+echo "== 9) fmt 契约(R-P2d:file/pkg 目录/-w/--check/负例) =="
+printf 'fn main() {\nlet x=1\n}\n' > "$T/fmt_a.ct"
+rc=0; "$CTC" fmt "$T/fmt_a.ct" > "$T/fmt_d.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && printf 'fn main() {\n    let x = 1\n}\n' | diff - "$T/fmt_d.out" > /dev/null 2>&1; then
+    ok "fmt 默认打印规范格式"
+else
+    bad "fmt 默认打印 rc=$rc out=[$(cat "$T/fmt_d.out")]"
+fi
+
+rc=0; "$CTC" fmt "$T/fmt_a.ct" --check > "$T/fmt_c.out" 2> "$T/fmt_c.err" || rc=$?
+if [ $rc -eq 1 ] && grep -q "$T/fmt_a.ct" "$T/fmt_c.out" && grep -q '待格式化' "$T/fmt_c.err"; then
+    ok "fmt --check 列出待格式化 + rc=1"
+else
+    bad "fmt --check rc=$rc out=[$(cat "$T/fmt_c.out")] err=[$(cat "$T/fmt_c.err")]"
+fi
+
+rc=0; "$CTC" fmt "$T/fmt_a.ct" -w > "$T/fmt_w.out" 2>&1 || rc=$?
+rc2=0; "$CTC" fmt "$T/fmt_a.ct" --check > /dev/null 2>&1 || rc2=$?
+if [ $rc -eq 0 ] && [ $rc2 -eq 0 ] && grep -q 'let x = 1' "$T/fmt_a.ct"; then
+    ok "fmt -w 原位写回,写后 --check rc=0"
+else
+    bad "fmt -w rc=$rc 写后 check rc=$rc2"
+fi
+
+mkdir -p "$T/fmt_pkg/src"
+printf 'fn a() {}\n' > "$T/fmt_pkg/src/lib.ct"
+printf 'fn m() {\nlet y=2\n}\n' > "$T/fmt_pkg/src/main.ct"
+rc=0; "$CTC" fmt "$T/fmt_pkg" --check > "$T/fmt_p.out" 2>&1 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'src/main.ct' "$T/fmt_p.out" && ! grep -q 'src/lib.ct' "$T/fmt_p.out"; then
+    ok "fmt pkg 目录(src/*.ct 展开,已格式化文件不列)"
+else
+    bad "fmt pkg --check rc=$rc out=[$(cat "$T/fmt_p.out")]"
+fi
+
+printf 'fn main() {\nvar x = 1;\n}\n' > "$T/fmt_neg.ct"
+rc=0; "$CTC" fmt "$T/fmt_neg.ct" > "$T/fmt_n.out" 2>&1 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'E1001' "$T/fmt_n.out"; then
+    ok "fmt 词法脏报错退出(规范 R8, rc=1)"
+else
+    bad "fmt 词法脏 rc=$rc out=[$(cat "$T/fmt_n.out")]"
 fi
 
 echo "ctc_smoke: $pass ok / $fail fail"

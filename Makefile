@@ -5,17 +5,17 @@ PREFIX ?= $(HOME)/.ctron
 DEST = $(PREFIX)/ctron
 
 .PHONY: all install clean
-all: bin/ctron-cc bin/ctron-chk bin/ctron-emit
+all: bin/ctron-cc bin/ctron-chk bin/ctron-emit bin/ctron-fmt
 
 bin:
 	mkdir -p bin
-# 词干映射:bin/ctron-cc ← prebuilt/ctron-cc.c(%=cc/chk/emit,前置再补 ctron-)
+# 词干映射:bin/ctron-cc ← prebuilt/ctron-cc.c(%=cc/chk/emit/fmt,前置再补 ctron-)
 bin/ctron-%: prebuilt/ctron-%.c | bin
 	$(CC) $(CFLAGS) -o $@ $<
 
 install: all
 	install -d $(DEST)/bin $(DEST)/lib/ctron/std $(DEST)/share/doc
-	install bin/ctron-cc bin/ctron-chk bin/ctron-emit ctc $(DEST)/bin/
+	install bin/ctron-cc bin/ctron-chk bin/ctron-emit bin/ctron-fmt ctc $(DEST)/bin/
 	cp -R std/. $(DEST)/lib/ctron/std/
 	[ ! -f VERSION ] || install VERSION $(DEST)/
 	install README.md docs/superpowers/specs/2026-09-17-toolchain-distribution-design.md $(DEST)/share/doc/ 2>/dev/null || true

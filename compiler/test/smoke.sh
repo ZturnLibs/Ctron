@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=331' "$T/chk.out" && ok "自检 cc_run 绿,decls=315" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=336' "$T/chk.out" && ok "自检 cc_run 绿,decls=336" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -464,6 +464,34 @@ P
     else
         bad "发射器自发射失败"
     fi
+fi
+
+echo "== 3f) fmt(R-P2d 自举面:金样/双口径/幂等/负例) =="
+"$COMP/ctc.sh" fmt "$COMP/test/fx_fmt_golden.ct" > "$T/fmt_g.out" 2>&1
+if diff -q "$COMP/test/fx_fmt_golden.expected" "$T/fmt_g.out" > /dev/null 2>&1; then
+    ok "金样逐字节(seed 面,期望=Rust 参考实现冻结)"
+else
+    bad "金样 seed 分歧: $(diff "$COMP/test/fx_fmt_golden.expected" "$T/fmt_g.out" | head -3)"
+fi
+"$COMP/bin/ctron-fmt" run "$COMP/test/fx_fmt_golden.ct" > "$T/fmt_n.out" 2>&1
+if diff -q "$T/fmt_g.out" "$T/fmt_n.out" > /dev/null 2>&1; then
+    ok "native==seed 双口径一致(ctron-fmt)"
+else
+    bad "native/seed 双口径分歧"
+fi
+"$COMP/ctc.sh" fmt "$COMP/test/fx_fmt_golden.expected" > "$T/fmt_idem.out" 2>&1
+if diff -q "$COMP/test/fx_fmt_golden.expected" "$T/fmt_idem.out" > /dev/null 2>&1; then
+    ok "幂等:fmt(fmt(x))==fmt(x)"
+else
+    bad "幂等分歧"
+fi
+printf 'fn main() {\nvar x = 1;\n}\n' > "$T/fmt_neg.ct"
+"$COMP/ctc.sh" fmt "$T/fmt_neg.ct" > "$T/fmt_neg.out" 2>&1
+fnrc=$?
+if [ $fnrc -eq 1 ] && grep -q 'E1001' "$T/fmt_neg.out"; then
+    ok "词法脏报错退出(规范 R8, rc=1)"
+else
+    bad "词法脏异常(rc=$fnrc)"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

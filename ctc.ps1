@@ -19,6 +19,9 @@ ctc —— Ctron 工具链驱动
   ctc build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
   ctc build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
   ctc test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
+  ctc fmt <file|pkg目录> [-w|--check]
+                             规范格式化(docs/fmt-spec.md):默认打印;-w 原位写回;
+                             --check 列出待格式化文件后非零退出
   ctc new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctc --version              版本
   ctc --help | help [cmd]    帮助(亦可 ctc <cmd> --help)
@@ -42,6 +45,8 @@ ctc build —— 发射 C 并编译为可执行
 		Write-Output 'ctc run <file.ct> —— 解释执行;不需要 C 编译器'
 	} elseif ($c -eq 'test') {
 		Write-Output 'ctc test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账'
+	} elseif ($c -eq 'fmt') {
+		Write-Output 'ctc fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出'
 	} elseif ($c -eq 'new') {
 		Write-Output 'ctc new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)'
 	} else { Usage }
@@ -103,7 +108,7 @@ function Build-Proj {
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
-if ($cmd -in 'run','check','build','test','new' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
+if ($cmd -in 'run','check','build','test','new','fmt' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
 	Help-Cmd $cmd; exit 0
 }
 switch ($cmd) {
@@ -122,6 +127,49 @@ switch ($cmd) {
 	'test' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: test 需要输入文件'); exit 2 }
 		& (Join-Path $Bin 'ctron-cc.exe') run $rest[0]; exit $LASTEXITCODE }
+	'fmt' {
+		# R-P2d:ctc fmt <file|pkg目录> [-w|--check](语义对齐 compiler-rust main.rs fmt 分支)
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: fmt 需要输入文件或 pkg 目录'); exit 2 }
+		$target = $rest[0]
+		$w = $false; $check = $false
+		foreach ($a in ($rest | Select-Object -Skip 1)) {
+			if ($a -in '-w','--write') { $w = $true } elseif ($a -eq '--check') { $check = $true }
+		}
+		if (Test-Path $target -PathType Container) {
+			$dir = $target
+			if (Test-Path (Join-Path $target 'src') -PathType Container) { $dir = Join-Path $target 'src' }
+			$files = @(Get-ChildItem -Path (Join-Path $dir '*.ct') -File | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+		} else {
+			$files = @($target)
+		}
+		# 字节级比较(规范化输出必须逐字节一致才算已格式化)
+		function Same-File($a, $b) {
+			$ba = [IO.File]::ReadAllBytes($a); $bb = [IO.File]::ReadAllBytes($b)
+			if ($ba.Length -ne $bb.Length) { return $false }
+			for ($i = 0; $i -lt $ba.Length; $i++) { if ($ba[$i] -ne $bb[$i]) { return $false } }
+			return $true
+		}
+		$errors = 0; $unf = 0
+		$tmp = [System.IO.Path]::GetTempFileName()
+		foreach ($f in $files) {
+			if (-not $check -and -not $w) {
+				& (Join-Path $Bin 'ctron-fmt.exe') run $f
+				if ($LASTEXITCODE -ne 0) { $errors++ }
+				continue
+			}
+			& (Join-Path $Bin 'ctron-fmt.exe') run $f > $tmp
+			if ($LASTEXITCODE -ne 0) { Get-Content $tmp | Write-Output; $errors++; continue }
+			if ($check) {
+				if (-not (Same-File $tmp $f)) { Write-Output $f; $unf++ }
+			} else {
+				if (-not (Same-File $tmp $f)) { Copy-Item $tmp $f -Force }
+				Write-Output $f
+			}
+		}
+		Remove-Item $tmp -ErrorAction SilentlyContinue
+		if ($errors -gt 0) { exit 1 }
+		if ($check -and $unf -gt 0) { [Console]::Error.WriteLine("$unf 个文件待格式化"); exit 1 }
+		exit 0 }
 	'build' { if ($rest.Count -ge 1) { Build-File $rest[0] } else { Build-Proj } }
 	'new' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: new 需要目录名'); exit 2 }

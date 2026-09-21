@@ -3,7 +3,7 @@
 #   用法: tools/release.sh <version>
 #   产物: dist/ctron-<ver>-<os>-<arch>.tar.gz
 #         dist/ctron-<ver>-src.tar.gz
-#         dist/prebuilt/{ctron-cc,ctron-chk,ctron-emit}.c
+#         dist/prebuilt/{ctron-cc,ctron-chk,ctron-emit,ctron-fmt}.c
 #         dist/SHA256SUMS(VERSION 落两包根:dist/ctron/VERSION 与 src 件根)
 set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -25,10 +25,11 @@ if [ "${CTRON_FROM_PREBUILT:-0}" = "1" ] && [ -f "$DIR/prebuilt/ctron-cc.c" ]; t
     cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-cc"   "$DIR/prebuilt/ctron-cc.c"
     cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-chk"  "$DIR/prebuilt/ctron-chk.c"
     cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-emit" "$DIR/prebuilt/ctron-emit.c"
+    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-fmt"  "$DIR/prebuilt/ctron-fmt.c"
 else
     sh "$DIR/compiler/native.sh"
 fi
-install -m 755 "$DIR/compiler/bin/ctron-cc" "$DIR/compiler/bin/ctron-chk" "$DIR/compiler/bin/ctron-emit" "$PKG/bin/"
+install -m 755 "$DIR/compiler/bin/ctron-cc" "$DIR/compiler/bin/ctron-chk" "$DIR/compiler/bin/ctron-emit" "$DIR/compiler/bin/ctron-fmt" "$PKG/bin/"
 install -m 755 "$DIR/ctc" "$PKG/bin/ctc"
 cp -R "$DIR/std/." "$PKG/lib/ctron/std/"
 cp "$README" "$PKG/share/doc/"
@@ -45,6 +46,7 @@ else
     "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_run.ct"   "$DIST/prebuilt/ctron-cc.c"   >/dev/null
     "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_check.ct" "$DIST/prebuilt/ctron-chk.c"  >/dev/null
     "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_emit.ct"  "$DIST/prebuilt/ctron-emit.c" >/dev/null
+    "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_fmt.ct"   "$DIST/prebuilt/ctron-fmt.c"  >/dev/null
 fi
 
 # 源码 tarball 组装件(仅打包,不重复构建;布局对齐源码线 Makefile:prebuilt/ std/ ctc Makefile)
