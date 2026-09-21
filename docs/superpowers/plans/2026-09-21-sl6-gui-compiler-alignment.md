@@ -39,7 +39,31 @@
 - w2_fold 红 = peer 未提交锚重构（`../selfhosted/input_cc.ct` → `ANCHORINPUT`）打断
   其 sed 假设——归 peer 随其重构收口。
 
-### SL-7 余下（骨架 IR 本体，未动工）
+### SL-7 渲染安全网已就位（2208e0f）
+
+- **s21_frame_golden**：合成应用（内嵌源+字面量 label/button+when+each+input+三组样式）
+  整帧命令缓冲逐条倾倒（type/box×100/text）黄金差分——骨架换源/绑定/热重载动渲染面前
+  必跑。阶梯 26/26。
+- gui_blocks_src 第 4 处域包词法适配：`={` 粘连（attr 值花括号探测裸字节）。
+  坑位三犯后定则：**花括号一律字节码，含前瞻比较 tks[k+1]=="{\""' 形态**。
+- std/gui 清 WHEN-VISIBLE 遗留调试 println（每帧污染 stdout）；d_cmd_x/y/w/h100 几何
+  访问器补齐。w2_fold sed 更新 ANCHORINPUT（peer 锚重构收尾顺手修）。
+
+### SL-7β（骨架 IR 本体·下一片开篇，未动工）
+
+- **目标**：编译期解析 GuiBlock → GuiTree 15 字段平行表常量；运行时不再 gt_parse。
+- **GuiTree 字段清单**（std/gui.ct:316，镜像源）：ntag/nflag/ncls/npre/nbid/npost
+  (List[Str]) + nfc/ns/nes/nec/btns (List[I32]) + ev_name/ev_fn/sk/sv (List[Str])。
+- **gt_parse 语义盘点**（移植须逐条镜像）：
+  ①节点 id = push 序；②when 子树平铺——子元素提升为 when 的兄弟、各自 nflag=cond 名
+  （rt_emit 按节点旗自查）；③each 节点 nbid=itemvar、npre=列表名，孩子=模板子树
+  （fc 链挂 each 节点）；④叶文本 pre/bind/post 按 {ident} 切分（重建源的 ={ 粘连形态
+  词法兼容）；⑤事件槽 nes/nec = 元素在 ev_name/ev_fn 的 [起,计) 切片；⑥button id
+  注册 btns；⑦style 块 → sk.push(名.属性)/sv.push(值)。
+- **切片序**：β1 编译期 builder + --dump-gui 结构化表 dump + 与 gt_parse 树等价差分
+  （域包侧 sk_dump 探针对照，等价即绿）；β2 eval 内建 gui_sk_load 返 U 值 + 域包 run_sk
+  入口（解释口径换源，s21 黄金必绿）；β3 cc_emit `static const GuiNode gui_sk_N[]` C
+  构造（发射口径换源；辅助 fn 须发在 struct typedef 之后）。
 
 - 骨架 IR：GuiNode[tag, style_id, child_fc, child_ns, ev_slot] + Slot[node, attr, expr_id]。
   fc/ns 与域包 GuiTree 同表示——**runtime.ct 遍历零改动换数据源**（§5.1）。
