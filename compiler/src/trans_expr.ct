@@ -882,7 +882,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     if ag.len > rk { rargs = rargs + ", " + ct_wrap_i(ct_typeof(ag[rk], env, file), ct_expr(ag[rk], env, file)) } else { rargs = rargs + ", 0" }
                     rk += 1
                 }
-                if ag.len > 1 { rargs = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs } else { rargs = "(ct_i)0" + rargs }
+                // far==0(零参 fn 值):ct_fn0 是 (void) 签名,实参表必须为空——
+                // 此前兜底 "(ct_i)0" 使零参直调多传一参(cc 报 too many arguments)
+                if far == 0 { rargs = "" } else { if ag.len > 1 { rargs = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs } else { rargs = "(ct_i)0" + rargs } }
                 var rhead = "((ct_fn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
                 return fcast + "(((ct_clop)" + fv + ")->env == (void*)1 ? " + rhead + "(" + rargs + ") : " + fhead + "(" + fargs + "))"
             }

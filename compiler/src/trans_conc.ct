@@ -408,7 +408,9 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
     }
     var cps = clo[1]
     var np = cps.len - 1
-    if or2(np < 1, np > 3) {
+    // np==0(零参闭包 || { }) 与 1-3 同族:shim 签名本就按 np 拼接(void* _cp 单参),
+    // 此前 <1 闸门 panic,gui 注册表/回调踩中(SL-0.6-⑰ 探针)
+    if or2(np < 0, np > 3) {
         panic("emit:闭包值 arity")
         return ""
     }

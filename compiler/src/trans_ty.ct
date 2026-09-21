@@ -163,7 +163,9 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[0] == "FnType" {
         // F<arity>=返回标量;G<arity>=返回 fn 值(闭包)——返回型维度入码
         var fa = nt[1].len - 1
-        if or2(fa < 1, fa > 3) { return "i" }
+        // F0(零参)与 F1-F3 同族:ct_ctype 首字符泛化已认 F0,此前 fa<1 打回 "i"
+        // 使 fn() -> T 形参/局部落 int32_t(发射缺口,p5_closures 探针实证)
+        if or2(fa < 0, fa > 3) { return "i" }
         var fk = "F"
         if nt[2][0] == "FnType" { fk = "G" }
         return fk + fa.to_string()
@@ -401,6 +403,7 @@ fn ct_params_str(d: List[Str], file: List[Str]) -> Str {
 // ct_fn1/2/3(Ctron 侧具名 fn 的地址零包装直传;捕获闭包已被 sem E4042 拦),
 // 其余与内部表示一致(标量同宽;Str = char* 直通)
 fn ct_abi_ctype(code: Str) -> Str {
+    if code == "F0" { return "ct_fn0" }
     if code == "F1" { return "ct_fn1" }
     if code == "F2" { return "ct_fn2" }
     if code == "F3" { return "ct_fn3" }
@@ -810,7 +813,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Try" { return ct_try_elem(file, e, env) }
     if t == "Closure" {
         var cvn = e[1].len - 1
-        if or2(cvn < 1, cvn > 3) { return "i" }
+        // 零参闭包 || { } → F0(与 FnType 闸门同口径;此前落 "i" 使赋值目标丢 fn 型)
+        if or2(cvn < 0, cvn > 3) { return "i" }
         return "F" + cvn.to_string()
     }
     if t == "If" {
