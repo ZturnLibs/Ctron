@@ -1321,3 +1321,24 @@ fn gui_sk_emit_int_arr(id: I32, tbl: List[I32]) -> Str {
     }
     return arr + " };"
 }
+
+// SL-7β2:裸值表 → 解释节点值表(vS/vI 包裹;与 gt_parse 解释执行值形态同构)
+fn gui_sk_wrap_s(src: List[Str]) -> List[Str] {
+    var out = vL()
+    var i: I32 = 0
+    while i < src.len {
+        out.push(vS(src[i]))
+        i += 1
+    }
+    return out
+}
+
+fn gui_sk_wrap_i(src: List[I32]) -> List[Str] {
+    var out = vL()
+    var i: I32 = 0
+    while i < src.len {
+        out.push(vI(src[i]))
+        i += 1
+    }
+    return out
+}
