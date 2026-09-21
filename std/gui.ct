@@ -994,13 +994,17 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         if frames >= 60 {
             frames = 0
             var src2: Str = read_file(reload)
-            if src2 != src {
-                var t2: GuiTree = gt_parse(src2)
-                t = t2
-                src = src2
-                n = rt_draw_frame(t, bind, w, h)
-                rects = List[I32]()
-                rt_collect_rects(n, rects)
+            // 空源守卫(SL-7α):文件缺失(内嵌兜底形态/运行中被删)不重解析——
+            // 此前 src2="" != src 会 gt_parse("") 清空 UI
+            if src2 != "" {
+                if src2 != src {
+                    var t2: GuiTree = gt_parse(src2)
+                    t = t2
+                    src = src2
+                    n = rt_draw_frame(t, bind, w, h)
+                    rects = List[I32]()
+                    rt_collect_rects(n, rects)
+                }
             }
         }
         var evt: I32 = gui_poll_event()
@@ -1122,6 +1126,23 @@ pub fn d_expect_text(t: Box[Driver], want: Str) -> I32 {
     return rt_expect_text(want)
 }
 
+// 命令缓冲诊断访问器(自断言钩子/夹具排查用;type: 1=TEXT 2=RECT)
+pub fn d_cmd_count() -> I32 {
+    return gui_cmd_count()
+}
+
+pub fn d_cmd_type(i: I32) -> I32 {
+    return gui_cmd_type(i)
+}
+
+pub fn d_cmd_text_len(i: I32) -> I32 {
+    return gui_cmd_text_len(i)
+}
+
+pub fn d_cmd_text_byte(i: I32, j: I32) -> I32 {
+    return gui_cmd_text_byte(i, j)
+}
+
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
 pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
     var n: I32 = gui_cmd_count()
@@ -1178,7 +1199,12 @@ pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
 // d 变体:默认锚 "app.ctml" + 热重载环(60 帧内容比对,变更原址重解析)
 pub fn run_d(title: Str, w: I32, h: I32,
              bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
+    // 独立二进制零 CWD 依赖)
     var src: Str = read_file("app.ctml")
+    if src == "" {
+        src = ctron_embedded()
+    }
     var t: GuiTree = gt_parse(src)
     return rt_run_d(t, src, title, w, h, bind, act)
 }
@@ -1187,6 +1213,9 @@ pub fn run_kb_d(title: Str, w: I32, h: I32,
                 bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
                 key: fn(I32) -> Void) -> I32 {
     var src: Str = read_file("app.ctml")
+    if src == "" {
+        src = ctron_embedded()
+    }
     var t: GuiTree = gt_parse(src)
     return rt_run_kb_d(t, src, title, w, h, bind, act, key)
 }

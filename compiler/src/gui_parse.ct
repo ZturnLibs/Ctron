@@ -336,6 +336,49 @@ fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -
     return 0
 }
 
+// SL-7α:程序自身 GuiBlock 重建为 CTML 文本(内嵌 view/style 块端到端的数据源)。
+// 形态 = 空格化 token(kind 名 { token* })——域包词法 glit 前置 gws,全容忍;
+// ctron_embedded 内建(eval/emit 双口径)据此返回,run_d 文件缺失时兜底。
+fn gui_blocks_src(file: List[Str]) -> Str {
+    var out: Str = ""
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "GuiBlock" {
+            out = out + d[1] + " " + d[2] + " \{"
+            var tks = List[Str]()
+            gui_split(d[4], tks)
+            var k: I32 = 1
+            while k < tks.len {
+                var tk: Str = tks[k]
+                // 剥行尾标记 ~:join 流的换行编码只服务 dump/check 面,域包词法
+                // 不认(gspan 值位 "8~" 会在 ~ 处断词 → 期待标识符)
+                if tk.len > 1 {
+                    if byte_at(tk, tk.len - 1) == 126 {
+                        tk = byte_slice(tk, 0, tk.len - 1)
+                    }
+                }
+                if tk == "<" {
+                    if k + 1 < tks.len {
+                        if tks[k + 1] == "/" {
+                            // </ 粘连:容器闭合探测是裸字节检查(gui.ct 子循环 peek2),
+                            // "< /" 会被误判为子元素开头 → gword("/") 期待标识符
+                            out = out + " </"
+                            k += 2
+                            continue
+                        }
+                    }
+                }
+                out = out + " " + tk
+                k += 1
+            }
+            out = out + " } "
+        }
+        i += 1
+    }
+    return out
+}
+
 // ==================== 独立 .ctml 检查入口(SL-6c;§5.1 语法缝)====================
 // 内嵌/独立同语法同路径:标记 tokenizer → 复用 gui_block 平衡认领 → GuiBlock File 节
 // → gui_dump_file/gui_check_file 同一走查。契约不变:GuiBlock[4]=空格连接串,

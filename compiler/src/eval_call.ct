@@ -178,6 +178,15 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         }
         return e4("k", env, vS(ctron_entry()), out)
     }
+    if seq2(nm, "ctron_embedded") {
+        // SL-7α:程序自身 GuiBlock 重建 CTML(内嵌形态数据源;file = 合并后整文件,
+        // 主源 GuiBlock 与域包声明同节点,调用点在哪个模块都能取到)
+        if vals.len != 0 {
+            panic("ctron_embedded arity")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("k", env, vS(gui_blocks_src(file)), out)
+    }
     if seq2(nm, "ctron_exe_path") {
         if vals.len != 0 {
             panic("ctron_exe_path arity")

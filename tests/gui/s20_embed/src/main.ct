@@ -1,0 +1,27 @@
+// tests/gui/s20_embed —— SL-7α:内嵌 view/style 块端到端(无 app.ctml 独立运行)
+// 源经 ctron_embedded() 取编译期 GuiBlock 重建(空格化 token + </ 粘连 + 剥 ~)。
+// 已知限制(登记):字面量叶文本含词法切分标点(冒号/逗号等)时,重建会按 token
+// 加空格(W1 join 丢邻接)——骨架 IR 槽表直通后根治;字面量文本用无标点形态。
+use std.gui.{test, d_frame, d_expect_text}
+
+view Counter {
+  <vbox class="root">
+    <label class="mirror">EMBED GREEN</label>
+  </vbox>
+}
+style root { direction: column gap: 8 }
+style mirror { fg: "#aaaaaa" }
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var rc: I32 = test(src, 320, 200,
+        |buf| buf.push("EMBED GREEN"),
+        |name| { },
+        |k| { },
+        |t, a, k2| {
+            d_frame(t, |buf| buf.push("EMBED GREEN"))
+            d_expect_text(t, "EMBED GREEN")
+            println("EMBED-ALL-GREEN")
+        })
+    return rc
+}

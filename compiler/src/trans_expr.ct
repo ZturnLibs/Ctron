@@ -803,6 +803,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "ctron_exe_path" { return "ctron_exe_path()" }
         if callee == "ctron_cli_flag" { return "ctron_cli_flag(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "env_get" { return "ctron_env_get(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "ctron_embedded" { return "ctron_embedded()" }
 
         if callee == "read_file" {
             if ag.len > 1 && ag[1][0] == "Str" && ct_str_payload(ag[1]) == "CTRONCLIINPUT" {

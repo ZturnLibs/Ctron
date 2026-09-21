@@ -215,6 +215,10 @@ fn main() -> I32 {
             println("static const char* ctron_cli_input = NULL;")
             println("static const char* ctron_entry(void) \{ return ctron_cli_input ? ctron_cli_input : \"\"; }")
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
+            // SL-7α 内嵌形态:程序自身 view/style GuiBlock 重建为 CTML 常量,
+            // ctron_embedded() 供域包 run_d 文件缺失时兜底(独立二进制零 CWD 依赖)
+            println("static const char* ctron_embed_src = \"" + ct_cstr(gui_blocks_src(file)) + "\";")
+            println("static const char* ctron_embedded(void) \{ return ctron_embed_src; }")
             println("static const char* ctron_dom_title_buf = \"\";")
             println("static void ctron_dom_set_title(const char* s) \{ ctron_dom_title_buf = s; }")
             println("static const char* ctron_dom_title(void) \{ return ctron_dom_title_buf; }")
