@@ -1,0 +1,77 @@
+// tests/gui/s21_frame_golden —— SL-7:渲染黄金帧差分(整帧命令缓冲 → 期望文件 diff)
+// 合成面:view 内嵌 + 字面量 label + button + when + each + input + 三组样式,
+// bind 通道分发(when:/each:/绑定名三形态,域包全语义),d_frame 后逐命令倾倒
+// type/box(×100)/text/bg。此黄金 = 后续骨架 IR 换源/绑定/热重载的渲染安全网(SL-7/8/9)。
+// 已知限制(登记):字面量叶文本不用词法切分标点(重建插空格,骨架 IR 根治)。
+use std.gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, d_cmd_y100, d_cmd_w100, d_cmd_h100}
+
+view FrameApp {
+  <vbox class="root">
+    <label class="title">FRAME GOLDEN</label>
+    <button class="btn" on:click={noop}>ADD</button>
+    <when cond={show}>
+      <label class="sub">visible row</label>
+    </when>
+    <each item in={items}>
+      <label class="row">{item}</label>
+    </each>
+    <input bind={draft} class="field"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style sub { fg: "#22c55e" }
+style row { fg: "#cccccc" }
+style field { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+
+fn noop() {
+}
+
+fn bind_all(buf: List[Str]) {
+    if buf[0] == "when:show" {
+        buf.push("1")
+    }
+    if buf[0] == "each:items" {
+        buf.push("alpha")
+        buf.push("beta")
+    }
+    if buf[0] == "draft" {
+        buf.push("hi")
+    }
+}
+
+fn dump_cmds() {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        var line: Str = "c" + i.to_string() + " t=" + d_cmd_type(i).to_string() + " box=" + d_cmd_x100(i).to_string() + "," + d_cmd_y100(i).to_string() + "," + d_cmd_w100(i).to_string() + "," + d_cmd_h100(i).to_string()
+        if d_cmd_type(i) == 1 {
+            var s: Str = ""
+            var j: I32 = 0
+            while j < d_cmd_text_len(i) {
+                s = s + utf8_enc(d_cmd_text_byte(i, j))
+                j += 1
+            }
+            line = line + " text=" + s
+        }
+        println(line)
+        i += 1
+    }
+    println("cmds=" + n.to_string())
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var rc: I32 = test(src, 320, 200,
+        |buf| bind_all(buf),
+        |name| { },
+        |k| { },
+        |t, a, k2| {
+            d_frame(t, |buf| bind_all(buf))
+            dump_cmds()
+            d_expect_text(t, "FRAME GOLDEN")
+            println("E21-OK")
+        })
+    return rc
+}

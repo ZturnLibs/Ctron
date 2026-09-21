@@ -369,6 +369,20 @@ fn gui_blocks_src(file: List[Str]) -> Str {
                         }
                     }
                 }
+                if tk == "=" {
+                    if k + 1 < tks.len {
+                        var nk2: Str = tks[k + 1]
+                        if nk2.len == 1 {
+                            if byte_at(nk2, 0) == 123 {
+                                // ={ 粘连:attr 值花括号探测同为裸字节检查(= 后直接看 {),
+                                // "= {" 会走 gstr 误期待引号串
+                                out = out + " =\{"
+                                k += 2
+                                continue
+                            }
+                        }
+                    }
+                }
                 out = out + " " + tk
                 k += 1
             }

@@ -15,7 +15,7 @@ for i in 1 2 3 4 5; do
     sleep 1
 done
 
-sed -e "s|\.\./selfhosted/input_cc\.ct|$DIR/src/main.ct|" \
+sed -e "s|ANCHORINPUT|$DIR/src/main.ct|" \
     -e "s|ANCHORFMT|0|" -e "s|ANCHORPROFILE|full|" -e "s|ANCHORTAUSTED|0|" \
     -e "s|ANCHORDUMPGUI|1|" -e "s|ANCHORLANG||" "$T/chk.ct" > "$T/chk_run.ct"
 

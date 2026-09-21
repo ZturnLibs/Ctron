@@ -1,0 +1,9 @@
+c0 t=1 box=1600,2100,15839,3000 text=FRAME GOLDEN
+c1 t=2 box=1600,6400,12000,4400
+c2 t=1 box=5455,6975,4290,3250 text=ADD
+c3 t=1 box=1600,11100,24200,5000 text=visible row
+c4 t=1 box=1600,15900,11000,5000 text=alpha
+c5 t=1 box=1600,19900,8800,5000 text=beta
+c6 t=2 box=1600,25200,28800,3600
+cmds=7
+E21-OK
