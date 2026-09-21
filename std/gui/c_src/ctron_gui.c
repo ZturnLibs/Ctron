@@ -91,11 +91,27 @@ int gui_begin_layout(int w, int h) {
     Clay_BeginLayout();
     return 0;
 }
-int gui_open(void) { Clay__OpenElement(); return 0; }
-int gui_close(void) { Clay__CloseElement(); return 0; }
+// ---- CTRON_GUI_TRACE=1:Clay 调用序列 trace(stderr 直出;双口径分叉定位用) ----
+static int gui_trace_on = -1;
+static int gui_trace(void) {
+    if (gui_trace_on < 0) { gui_trace_on = getenv("CTRON_GUI_TRACE") ? 1 : 0; }
+    return gui_trace_on;
+}
+static int gui_trace_n = 0;
+int gui_open(void) {
+    if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }
+    Clay__OpenElement();
+    return 0;
+}
+int gui_close(void) {
+    if (gui_trace()) { fprintf(stderr, "T%03d close\n", ++gui_trace_n); }
+    Clay__CloseElement();
+    return 0;
+}
 
 static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
                         int wmode, int wval, int hmode, int hval, int bg_packed, int clipv, int offsetpx) {
+    if (gui_trace()) { fprintf(stderr, "T%03d cfg dir=%d gap=%d padx=%d wmode=%d wval=%d hmode=%d hval=%d bg=%06x clip=%d\n", ++gui_trace_n, dir, gap, padx, wmode, wval, hmode, hval, bg_packed, clipv); }
     float wf = (float)wval;
     float hf = (float)hval;
     Clay_LayoutConfig lay = {
@@ -144,6 +160,7 @@ int gui_cfg2(int dir, int gap, int padx, int pady, int ax, int ay,
 }
 
 int gui_text(const char *s, int size, int r, int g, int b, int a) {
+    if (gui_trace()) { fprintf(stderr, "T%03d text size=%d len=%zu head=%.24s\n", ++gui_trace_n, size, strlen(s), s); }
     Clay_String str = { true, (int32_t)strlen(s), s };
     Clay_TextElementConfig cfg = {
         .textColor = { (float)r, (float)g, (float)b, (float)a },

@@ -93,10 +93,13 @@
 - **gui_sk_load 解释口径打通**：vL/vS/vI 节点包裹装配（gui_sk_wrap_s/i），与 gt_parse
   解释执行值形态同构——裸值直塞的 SEGV 根除。单构造（label/button/when/each/input）
   解释口径渲染各自全绿；双口径树同构（interpret/native sk_dump 逐字节一致）。
-- **已登记分歧（β2 余项）**：when+each+input 组合的解释口径渲染 = 10 命令
-  （原生 7），容器多 RECT、each 第二项文本缺失。树数据双口径同构已证
-  （s22+直接 dump），分歧在 rt_emit 每项展开的解释执行路径——续接首查
-  compiler-c/src/arena.c（2c736fc 改过 arena 语义）+ rt_bind_items 缓冲生命周期。
+- **已登记分歧（β2 余项）→ 根因实锤（args11.ct 最小复现）**：解释口径 extern 桥
+  **11 参调用编组错位**——gui_cfg(1..11) 落位 hval=0 bg=10（参 10 归零、参 11 参 10）。
+  组合渲染的全部症状（容器 gui_cfg hval=0/bg 错 → RECT 异常；部分文本丢失）皆此根因。
+  C 分发器 switch(k) 逐位核对无误——错位在 eval 侧帧填充/参计数的解释执行路径，
+  归解释运行时泳道（编译口径无此问题，s23 已证）。
+- **新增调试设施**：shim CTRON_GUI_TRACE=1（open/cfg/text/close 序列 stderr 直出，
+  双口径共用）+ driver_emit DISPATCH n/k 转储（同 env 门控）——常态零成本已入阶梯回归。
 
 ### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位；已被节点包裹方案根除）
 

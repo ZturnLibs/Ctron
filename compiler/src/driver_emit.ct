@@ -236,7 +236,8 @@ fn main() -> I32 {
             println("        if (fr[i][1] != ':') \{ ctron_panic(\"extern 帧损坏\"); }")
             println("        if (fr[i][0] == 'i') \{ u[k++] = strtol(fr[i] + 2, 0, 10); } else \{ if (fr[i][0] == 's') \{ u[k++] = (long)(fr[i] + 2); } else \{ ctron_panic(\"extern 解释口径:不支持参数类型\"); } }")
             println("    }")
-            println("    p = dlsym(RTLD_DEFAULT, nm);")
+            println("    if (getenv("CTRON_GUI_TRACE")) { fprintf(stderr, "DISPATCH nm=%s n=%d k=%d\n", nm, n, k); }
+    p = dlsym(RTLD_DEFAULT, nm);")
             println("    if (!p) \{ ctron_panic(\"extern 符号未找到(解释口径:符号须链接进解释器宿主)\"); }")
             println("    switch (k) \{")
             println("        case 0: return (long)((long (*)(void))p)();")
