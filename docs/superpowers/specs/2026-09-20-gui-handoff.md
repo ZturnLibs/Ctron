@@ -13,15 +13,16 @@
 3. `docs/superpowers/specs/2026-09-16-gui-ctml-design.md` — 基础规范（§4 语法/§6 运行时/§11 实现管线/§13 组件）
 4. `docs/superpowers/specs/2026-09-19-gui-user-surface-analysis.md` — 差距量化
 
-## 当前状态（全部绿）
+## 当前状态（全部绿，2026-09-21 P0-P3 收口后）
 
 ```
-自举 suite         73/73
-GUI 阶梯           23/23
-gui_counter        ✓ (913→77 行)
-gui_calc           ✓ (1958→991 行)
+自举 suite         73/73（宿主列 06e_cancel 既有分歧不变）
+GUI 阶梯           24/24（新增 s19_input_d）
+gui_counter        ✓ (77 行域包形态)
+gui_calc           ✓ (991 行域包形态)
 when+each 组合探针  ✓ 原生全绿
-input 探针          ✓ 原生全绿
+input 探针          ✓ 原生全绿 + 域包端到端 s19 落阶
+SL-0.6 缺口登记表  ⑯⑰⑱⑲ 全闭环（见下）
 ```
 
 ## 已落库提交（按序）
@@ -42,7 +43,10 @@ b5e419e  fix(gui): each 项文本直取
 1a9ff75  feat(gui): when 条件渲染（SL-5 首片）
 bc30e7a  feat(gui): 域包增量（热重载+key_name+Driver 装箱）
 0a28900  fix(compile): 索引越界 panic 增加目标变量名
-bbc7a90  fix(compile): SL-0.6 批次六修
+bbc7a90  fix(compile): SL-0.6 批次六修（⑰ If 路由 + clb If/Match 穿透在此）
+430218c  fix(compile): SL-0.6-⑰ 收口——F0 零参 fn/闭包端到端放行
+681fd7b  fix(compile): SL-0.6-⑱ 解释口径 struct-List 字段索引写透
+06d112a  test(gui): SL-5 input 域包端到端落阶 s19_input_d（阶梯 24/24）
 ```
 
 ## 关键技术事实（省去重新发现的时间）
@@ -53,14 +57,15 @@ bbc7a90  fix(compile): SL-0.6 批次六修
 |---|---|---|
 | F1 闭包（1 参 + Box 捕获） | ✅ 双宿主 | gui 域包全部钩子的基础 |
 | 闭包体单调用 | ✅ 原生 | Void 体已修（typeof 判 v） |
-| 闭包体 If 语句 | ✗ 原生 | shim 体受限发射器写 `ct_stmt:If` 到 C |
-| 空闭包体 `|| {}` | ✗ 解释段错误 | 解析器/发射器缺口 |
-| F0 零参 fn 类型 | ✗ typeof 归 "i" | trans_ty.ct:813 cvn<1 门槛 |
-| struct 字面量位 ctor | ✗ 发射 Index(List,Str) | `titles: List[Str]()` 触发 |
+| 闭包体 If 语句 | ✅ 双宿主 | bbc7a90 If 路由 + clb 穿透；p5 探针绿 |
+| 空闭包体 `|| {}` | ✅ 双宿主 | 430218c（发射 np 闸门 + F0）；解释口径同绿 |
+| F0 零参 fn 类型 | ✅ 双宿主 | 430218c 三闸门 + ct_fn0/ct_cfn0 + far==0 调用点 |
+| struct 字面量位 ctor | ✅ 双宿主 | ⑲ 已闭环（f0lit/f0lit2 嵌套乱序变体绿），配方可退役 |
 | pub struct/extern 导入 | ✅ 已修 | parse_decl 尾槽 pub + parse_pkg 判定 |
-| List 推断局部直接索引 | ✗ env 丢参型 | 配方 = gt_index/gt_last helper |
+| List 推断局部直接索引 | ✅ 双宿主 | li.ct 探针绿；gt_index/gt_last 对该形态不再必需 |
 | Member 读 List 字段引用 | ✅ 双宿主 | mi2.ct 实证 |
 | Box[Struct] 字段写 | ✅ 双宿主 | L1 Model 状态变异的基础 |
+| struct List 字段索引写 | ✅ 双宿主 | ⑱ 681fd7b（解释口径 Member 基座 Index 赋值） |
 
 ### 域包架构（std/gui.ct 单文件形态）
 
@@ -90,7 +95,7 @@ fn main() -> I32 {
 }
 ```
 
-### 通道配方（SL-0.6 前的约束，配方绕行）
+### 通道配方（SL-0.6 后大部分已退役；存量域包代码仍按配方写，新代码可用直形态）
 
 | 约束 | 配方 | 来源 |
 |---|---|---|
@@ -112,38 +117,36 @@ fn main() -> I32 {
 | read_file 对齐 | eval_call.ct | 直返 vS(s) 不走 T/Some |
 | Index 越界诊断 | eval_run.ct | panic 增 base/contlen |
 
-## 剩余任务（按优先级）
+## 剩余任务（按优先级，2026-09-21 更新）
 
-### P0：⑰ 闭包体 If/Match/空体发射修复
+### ~~P0：⑰ 闭包体 If/Match/空体发射修复~~ ✅ 已收口
 
-- 复现：`/tmp/sl0/p5_closures.ct`（If 体闭包 + 空体闭包）
-- 定位：trans_stmt.ct:1400 fallback（shim 体 If 语句无路由）+ sem_spawn.ct clb（If/Match 捕获不穿透）
-- 修复：ct_stmt 补 If 路由 → ct_if_stmt（1335 已有 If-as-Expr 路径可参考）；clb 补 If/Match 穿透
-- 验证：p5_closures.ct 原生 rc=0（If 体 ✓ 空体 ✓）
-- **已有部分修复**：trans_stmt.ct If 路由已加（未提交，工作树有）；clb If/Match 已加（已提交）
+- bbc7a90 落了 trans_stmt.ct If 路由 + sem_spawn.clb If/Match 穿透（交接旧文称"If 路由未提交在工作树"系笔误，实已随批落库）
+- 430218c 放行 F0 链：ct_ty_code/ct_typeof/Clov 三处 arity<1 闸门 + ct_fn0/ct_cfn0 typedef + far==0 调用点实参表置空 + extern 边界 F0
+- 验证：p5_closures.ct 原生 rc=0（If 体 ✓ 空体 ✓ 零参 ✓）；解释口径空体/零参同绿
 
-### P1：⑱ 解释口径 struct-List 值模型
+### ~~P1：⑱ 解释口径 struct-List 值模型~~ ✅ 已收口（681fd7b）
 
-- 复现：`var fcl: List[I32] = t.nfc; fcl[id] = kid` → 写入副本丢弃
-- 定位：eval Member 读 struct List 字段返回副本语义
-- 影响：域包多文件拆分 + each 嵌套在解释口径的正确性
-- 修复：eval Member 分支对 List 字段返回引用
+- 交接登记的别名形态（var fcl = t.nfc; fcl[id]=kid）探针实测已绿；真红是**直接形态** `t.nfc[id] = kid`（eval_run Assign 只认 Ident 基座，panic "assign target:Index"）
+- 修复：eval_run.ct 补 Index 基座=Member 分支（Member 读 BOX 自解引用 + u_field 共享节点原地写透）
+- 验证：mi4 三形态（直接/Box 中转/Str 别名）双口径全绿
 
-### P2：SL-5 input 端到端验收
+### ~~P2：SL-5 input 端到端验收~~ ✅ 已落阶（06d112a）
 
-- 代码 100% 就位（`/tmp/sl5/src/main.ct`）
-- 前置：⑰（闭包 If 体配方已有，可先绕行）
-- 验证：d_type_char 注入 + d_expect_text 断言
+- 落为 tests/gui/s19_input_d 常设夹具（域包形态，阶梯 23→24）
+- 验证：d_type_char 注入 h/i → d_expect_text "hi"；backspace 259 → "h"
 
-### P3：SL-0.6 余项
+### ~~P3：SL-0.6 余项~~ ✅ 全闭环（无需再动）
 
-- ⑲ 字面量位 ctor（提升配方绕行）
-- read_file 解释口径 T/Some（已修 ✓ 确认无回归）
+- ⑲ 字面量位 ctor：`titles: List[Str]()` 嵌套/乱序变体双口径实测已绿（f0lit/f0lit2 探针），配方可退役
+- read_file 解释口径 T/Some：RF-OK 无回归
+- 零参闭包 arity 门槛：430218c 已修
+- 附带实证：List 推断局部直接索引（var w = v; w[1]）双口径已绿，gt_index/gt_last helper 对该形态不再必需
 
-### P4：L2 SL-6..9
+### P4：L2 SL-6..9（下一波，前置未满足）
 
-- gui_parse/gui_lower 三产物管线（骨架 IR + 槽表 + E8xxx）
-- 前置：发射泳道评审 + L1 域包稳定
+- gui_parse/gui_lower 三产物管线（骨架 IR + 槽表 + E8xxx），§5 管线设计
+- **前置：发射泳道协调排期 + roadmap 登记（§9/§11）——动 compiler 词法/解析面前先过这道**
 - 终锚：Todo v10 照抄能跑
 
 ## 验证命令
