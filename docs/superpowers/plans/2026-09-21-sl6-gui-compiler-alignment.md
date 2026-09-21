@@ -63,7 +63,19 @@
 - **切片序**：β1 ✅ 落库（a862e5b，树等价差分绿）；β2 ⛔ 已探明 ABI 阻塞（见下）；
   β3 cc_emit `static const GuiNode gui_sk_N[]` C 构造（发射口径换源）。
 
-### β3 代码就位待验证（2026-09-21 深夜，工作树未落库）
+### β3 ✅ 落库（263cbf6，2026-09-21 深夜）
+
+- peer lex/rt WIP 落库后发射链恢复；复验时真凶现形：**gui_sk_word 未剥 W1 行尾 ~，
+  gs2i('8~')=158 炸布局**（cmd 切片=浮点 → 命令错位 → 样式值 ~，定位链三步）。
+- gui_sk_word 统一剥尾 ~（骨架表净值化）；gui_sk_emit_str/int_arr 自包含转义
+  （cc_run 拼接无 trans_ty 的 ct_cstr——驱动文件集差异坑）。
+- s23_sk_native 落阶：骨架树渲染断言全绿（7 命令 2 RECT = s21 黄金同构）。
+  w2_fold 黄金 sk 段净值同步。**SL-7 发射口径管线闭环**（α 源烘焙 → β1 等价 →
+  β3 静态构造零运行时解析）。
+- 残余：β2 解释口径（ABI 评审三路径待裁决，eval 侧现干净 panic）；~
+  标记与字面量文本的歧义（骨架表净值已消，W1 dump 面保留）。
+
+### β3 代码就位待验证（2026-09-21 深夜，已落库 supersede）
 
 - **已写**：driver_emit β3 块（has_gui 探测 → gui_sk_build → 15 张 `static const` 数组
   + gui_sk_ls/gui_sk_li 助手 + gui_sk_load() 组装 t_GuiTree；插在前向声明循环后——
