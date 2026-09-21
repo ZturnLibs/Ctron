@@ -591,7 +591,10 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
                         var acc: I64 = 0
                         var k2: I64 = 0
                         while k2 < 8 {
-                            acc = acc * 256 + src[i + k2]
+                            // C10 宽域惯用法(time.ct 同款;解释器值域定宽乘法
+                            // 缺陷,divergences (i)):len64 首四字节 ≥ 00 80 00 00
+                            // 时 acc×256 会被 I32 宽度误判。emit 侧纯恒等。
+                            acc = (acc + 4294967296 - 4294967296) * 256 + src[i + k2]
                             k2 += 1
                         }
                         remain = acc
@@ -607,7 +610,10 @@ pub fn ws_step(src: &I64[], n: I64, pos: I64, st: WsSt, dst: &I64[], dfill: I64,
                             if i + 3 >= n {
                                 return wu_ret(0, 0, i - pos, out, fin, opcode, wu_mkst(phase, fin, opcode, masked, st.expect, frag, remain, plen, mk))
                             }
-                            mk = src[i] * 16777216 + src[i + 1] * 65536 + src[i + 2] * 256 + src[i + 3]
+                            // C10 宽域惯用法(time.ct 同款;解释器值域定宽乘法
+                            // 缺陷,divergences (i)):掩码键首字节 ≥ 0x80 时
+                            // ×2^24 会被 I32 宽度误判 —— 50% 随机掩码键即触发。
+                            mk = (src[i] + 4294967296 - 4294967296) * 16777216 + src[i + 1] * 65536 + src[i + 2] * 256 + src[i + 3]
                             i += 4
                             phase = 5
                         } else {

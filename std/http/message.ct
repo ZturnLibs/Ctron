@@ -288,7 +288,11 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
                             if digits >= 16 {
                                 return ck_ret(-1, 2, i - pos, out, phase, remain)
                             }
-                            acc = acc * 16 + hv
+                            // C10 宽域惯用法(time.ct w-w+x 同款):acc 值域回落
+                            // I32 时,解释器按值域定宽判乘法上溢(已登记解释器缺陷,
+                            // divergences (i));+2^32-2^32 提升参与值域,乘法按 I64。
+                            // emit 侧无差(纯恒等);触发面 = chunk size ≥8 位 16 进制。
+                            acc = (acc + 4294967296 - 4294967296) * 16 + hv
                             digits += 1
                             i += 1
                         }
