@@ -11,7 +11,7 @@ use std.rand.{rng_fresh, rng_next}
 use std.strconv.{parse_i64, parse_bool}
 use std.time.{date_format, date_parse, weekday}
 use std.unicode.{cp_count, cp_valid_utf8}
-use std.math.{clamp, iabs, max, min, max64, min64, clamp64, sat_add, sat_sub, sat_mul, sat_add64, sat_sub64, sat_mul64}
+use std.math.{clamp, iabs, max, min, max64, min64, clamp64, sat_add, sat_sub, sat_mul, sat_add64, sat_sub64, sat_mul64, sat_abs, sat_abs64, abs_diff, abs_diff64, div_ceil, div_floor}
 
 fn main() -> I32 {
     var m = map_new[I32, I32]()
@@ -117,5 +117,9 @@ fn main() -> I32 {
     println(clamp64(0, 1, 4000000000).to_string())
     println(sat_add64(9223372036854775807, 1).to_string())
     println(sat_mul64(-9223372036854775807 - 1, 1).to_string())
+    println(sat_abs(-2147483647 - 1).to_string())
+    println(abs_diff(2, 7).to_string())
+    println(div_ceil(7, 2).to_string())
+    println(div_floor(-7, 2).to_string())
     return 0
 }
