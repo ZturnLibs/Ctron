@@ -15,6 +15,8 @@
  *   T4  停车点④:协程 ctron_net_sleep_ms(80) → 定时器堆醒,elapsed ≥75ms;
  *   T5  停车点⑤:协程 udp_recvfrom 永久,主线程 +60ms 发单报文 → 就绪唤醒,
  *       报文正确。
+ *   T6  P3-E DNS 异步化:协程 resolve("localhost") 60ms 墙钟循环,进度协程
+ *       持续推进(workers=1 最严:阻塞实现滞留 worker 即饿死红)。
  * run.sh 以 CTRON_RT_WORKERS=1 与 4 各整跑一遍(1 = 停车严格证,4 = 跨 worker
  * 唤醒形态)。全程 60s 看门狗:任何 lost-wakeup 类挂死 → 退出码 97。
  */
@@ -41,6 +43,7 @@ typedef struct { int64_t* d; int64_t n; } ct_view6;
 int64_t ctron_net_now_ns(void);
 void    ctron_net_sleep_ms(int64_t ms);
 int64_t ctron_net_last_errno(void);
+const char* ctron_net_resolve_first(const char* host);
 int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms);
 int64_t ctron_net_write(int64_t fd, ct_view6 buf, int64_t n);
 int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms);
@@ -147,6 +150,26 @@ static void sleep_body(void *p)
     uint64_t t0 = now_ns();
     ctron_net_sleep_ms(s->ms);
     s->elapsed = now_ns() - t0;
+}
+
+/* T6(P3-E DNS 异步化)载荷:60ms 墙钟窗口内连发 resolve("localhost")。
+ * 窗口按墙钟而非次数 —— 池化前后均跑满 60ms,差分只在 worker 是否滞留。 */
+typedef struct {
+    int      n;              /* 完成的 resolve 次数 */
+    int      ok;             /* 全部返回非空点分串 */
+    uint64_t elapsed;
+} dnsctx_t;
+static void resolve_body(void *p)
+{
+    dnsctx_t *d = (dnsctx_t*)p;
+    uint64_t t0 = now_ns();
+    d->ok = 1;
+    while (now_ns() - t0 < 60000000ull) {
+        const char* r = ctron_net_resolve_first("localhost");
+        if (r == NULL || r[0] == '\0') d->ok = 0;
+        d->n++;
+    }
+    d->elapsed = now_ns() - t0;
 }
 
 int main(void)
@@ -351,6 +374,28 @@ int main(void)
         close(ufd);
         printf("PASS T5 udp-park: woke at %.1fms with 'UDPXY', ticks+%d\n",
                ms_of(U.elapsed), ticks() - t_before);
+    }
+
+    /* ---- T6:P3-E DNS 异步化——协程内 resolve 循环(60ms 墙钟窗口),进度
+     * 协程持续推进(workers=1 最严:旧实现 getaddrinfo 滞留 worker ⇒ 进度
+     * 协程全窗饿死,本断言必红;现 resolve 逐次入 2 线程 helper 池 + park ⇒
+     * 深停车让出 worker,进度协程按 5ms 周期被调度)。窗口按墙钟 —— 差分只
+     * 在停车与否,不赌 getaddrinfo 快慢。CI 纪律:"localhost" 纯本地解析,
+     * 零外联。 ---- */
+    {
+        static dnsctx_t D;
+        memset(&D, 0, sizeof D);
+        int t_before = ticks();
+        ctron_rt_run(resolve_body, &D, (void*)(uintptr_t)0xA6);
+        ctron_rt_join_key((void*)(uintptr_t)0xA6);
+        CHECK(D.ok == 1, "T6: resolve(localhost) 返回空串");
+        CHECK(D.n >= 1, "T6: resolve 循环未执行");
+        CHECK(D.elapsed >= 55000000ull && D.elapsed < 2000000000ull,
+              "T6: resolve 窗口时序坏");
+        CHECK(ticks() - t_before >= 3,
+              "T6: resolve 期间进度协程饿死(worker 滞留 getaddrinfo)");
+        printf("PASS T6 dns-async: %d resolves in %.1fms, ticks+%d\n",
+               D.n, ms_of(D.elapsed), ticks() - t_before);
     }
 
     atomic_store(&g_alive, 0);

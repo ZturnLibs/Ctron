@@ -15,8 +15,8 @@
 //      一条 I64 lane,Task 4 登记的 I8/U8 视图缺口绕行)。
 //   ⑤ 单次读/收调用至多搬运 4096 字节(垫片 CT_CHUNK 上限,cap 更大也被截到
 //      该值);UDP 单报文超限截断,EMSGSIZE 守卫列 P2。
-// 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/resolve 全量同文件。
-use std.net.bind.{ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first}
+// 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/AF_UNIX/resolve 全量同文件。
+use std.net.bind.{ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
 
 // ---- 能力 trait(stub 面原样保留;sem 审计锚:E4010 看 &Net 引用形参) ----
 
@@ -64,6 +64,18 @@ struct UdpSock {
     var fd: I64
 }
 
+// P3-E:AF_UNIX 句柄(POSIX 专面;_WIN32 垫片显式 EAFNOSUPPORT)。path 仅
+// 记录面(Drop 不摘 socket 文件 —— 后绑者赢语义下"最后一个 Drop 摘路径"会
+// 误摘继任者的活路径;显式清理走 net_unix_unlink,夹具负责)。
+struct UnixListener {
+    var fd: I64
+    let path: Str
+}
+
+struct UnixStream {
+    var fd: I64
+}
+
 // RAII:作用域出口关 fd;显式 net_close 后须把 fd 置 -1(见下注),Drop 跳过。
 impl Drop for TcpListener {
     fn drop(var self) {
@@ -82,6 +94,22 @@ impl Drop for TcpStream {
 }
 
 impl Drop for UdpSock {
+    fn drop(var self) {
+        if self.fd >= 0 {
+            ctron_net_close(self.fd)
+        }
+    }
+}
+
+impl Drop for UnixListener {
+    fn drop(var self) {
+        if self.fd >= 0 {
+            ctron_net_close(self.fd)
+        }
+    }
+}
+
+impl Drop for UnixStream {
     fn drop(var self) {
         if self.fd >= 0 {
             ctron_net_close(self.fd)
@@ -225,7 +253,32 @@ pub fn net_udp_recvfrom(net: StdNet, fd: I64, buf: &I64[], cap: I64, timeout_ms:
     return ctron_net_udp_recvfrom(fd, buf, cap, timeout_ms)
 }
 
+// ---- AF_UNIX(P3-E;与 TCP 三件同形,差异点) ----
+// SO_REUSEADDR 不开(AF_UNIX 无端口占用语义;tcp_defaults 的 NODELAY 断言面
+// 同理不适用 —— AF_UNIX 无 NODELAY 可言);垫片 bind 前 unlink 清陈旧 socket
+// 文件(后绑者赢);路径上限 104(darwin sun_path 104 / linux 108 取 min,含
+// NUL):超限 EINVAL。accept/connect 阻塞形态与 tcp 同(无新停车点)。
+pub fn net_unix_listen(net: StdNet, path: Str, out_fd: Box[Box64]) -> I64 {
+    return ctron_net_unix_listen(path, out_fd)
+}
+
+pub fn net_unix_accept(net: StdNet, lfd: I64, out_fd: Box[Box64]) -> I64 {
+    return ctron_net_unix_accept(lfd, out_fd)
+}
+
+pub fn net_unix_connect(net: StdNet, path: Str, out_fd: Box[Box64]) -> I64 {
+    return ctron_net_unix_connect(path, out_fd)
+}
+
+// 显式移除 socket 文件(listener Drop 只关 fd 不摘文件,见 UnixListener 注;
+// 夹具/服务退出路径负责调用;ENOENT 亦 rc<0,幂等清理调用方自判)。
+pub fn net_unix_unlink(net: StdNet, path: Str) -> I64 {
+    return ctron_net_unix_unlink(path)
+}
+
 // 解析主机,返回首个 IPv4 点分串(C-owned → str_from_c 深拷);失败返回 ""。
+// P3-E 异步化:协程上下文经 2 线程 helper 池 + park 完成(不再阻塞调用协程
+// 所在 worker);裸线程面 P1 原路径。签名/返回不变。
 pub fn net_resolve(net: StdNet, host: Str) -> Str {
     return str_from_c(ctron_net_resolve_first(host))
 }

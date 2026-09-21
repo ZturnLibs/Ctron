@@ -1,0 +1,129 @@
+// unix_sock —— AF_UNIX 门面回环验收(P3-E)
+// 钉住:listen/accept/connect 三件、双向读写回环、half-close(shutdown
+// write 于 AF_UNIX darwin/linux 均效:对端 eof、本端仍可读)、陈旧 socket
+// 文件自愈(unlink-before-bind 后同路径重 listen)、显式 unlink 后 connect
+// ENOENT、超限路径(≥104 字节)EINVAL。SO_REUSEADDR/NODELAY 断言面不适用
+// (AF_UNIX 无端口占用/NODELAY 可言,tcp_defaults 同理不适用)。
+// 路径注入:std 无 getenv 面 → c_src/ct_unix_path.c 垫(TMPDIR + pid,进程
+// 唯一;上限 104 自适应,超限返 "" 首断言即响亮)。
+// 协程面:spawn 协程内 net_resolve 走 P3-E helper 池 + park(默认环境该
+// spawn 为 P1 pthread 面,resolve 直呼阻塞 —— 双模式同果)。
+// CI 纪律:仅本机文件系统 + localhost 解析、零外联(tests/net/run.sh 同口径)。
+use std.net.{Net_probe, last_net_error, net_unix_listen, net_unix_accept, net_unix_connect, net_unix_unlink, net_write_str, net_write, net_read_t, net_close, net_shutdown_write, net_resolve}
+
+#[trusted]
+extern "c" fn ctron_unix_sockpath() -> Str
+
+// 协程面 resolve(P3-E helper 池 + park):独立函数承载 —— 含闭包 return 的
+// 函数体不可再有 Drop 句柄局部(发射面避让:闭包 shim 会误带外层 drop 表,
+// 实证见本任务报告),本函数无 Drop 局部;闭包内无 assert/panic(tls_smoke
+// 同款),失败经返回码暴露。
+fn resolve_coro_pair() -> I32 {
+    var out = scope { |sc|
+        var r = sc.spawn(|| {
+            let net2 = Net_probe()
+            let a = net_resolve(net2, "localhost")
+            let b = net_resolve(net2, "localhost")
+            if a.len == 0 {
+                return 1
+            }
+            if a == b {
+                return 0
+            }
+            return 2
+        })
+        r.join()
+    }
+    return out
+}
+
+test "unix socket roundtrip + half-close + stale-file rebind" {
+    let net = Net_probe()
+    let path = ctron_unix_sockpath()
+    assert(path.len > 0)
+    assert(path.len < 104)
+
+    // ---- listen → connect → accept(backlog 承接) ----
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    if net_unix_listen(net, path, lfd_box) != 0 {
+        panic(last_net_error().message)
+    }
+    let ln = UnixListener { fd: lfd_box.v, path: path }
+
+    let cfd_box = Box[Box64](Box64 { v: 0 })
+    if net_unix_connect(net, path, cfd_box) != 0 {
+        panic(last_net_error().message)
+    }
+    let st = UnixStream { fd: cfd_box.v }
+
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_unix_accept(net, ln.fd, afd_box) == 0)
+    let srv = UnixStream { fd: afd_box.v }
+
+    // ---- 双向读写回环 ----
+    var buf: I64[4096] = [0, 0, 0, 0]
+    assert(net_write_str(net, st.fd, "ping") == 4)
+    let rn = net_read_t(net, srv.fd, buf, 4096, 1000)
+    assert(rn == 4)
+    assert(buf[0] == 112)
+    assert(buf[3] == 103)
+    assert(net_write(net, srv.fd, buf, rn) == 4)
+    let bn = net_read_t(net, st.fd, buf, 4096, 1000)
+    assert(bn == 4)
+
+    // ---- half-close:shutdown write → 对端 eof(0);本端仍可读 ----
+    assert(net_shutdown_write(net, st.fd) == 0)
+    assert(net_read_t(net, srv.fd, buf, 4096, 1000) == 0)
+    assert(net_write_str(net, srv.fd, "pong") == 4)
+    assert(net_read_t(net, st.fd, buf, 4096, 1000) == 4)
+    assert(buf[0] == 112)
+    assert(buf[3] == 103)
+
+    // ---- resolve(P3-E 异步化后签名/返回不变;主线程面直呼) ----
+    assert(net_resolve(net, "127.0.0.1") == "127.0.0.1")
+    assert(net_resolve(net, "localhost").len > 0)
+
+    // ---- 协程面 resolve(helper 池 + park):coro 矩阵下 spawn 协程内
+    //      resolve 改道池线程,主线程 worker 不滞留(默认环境该 spawn 为
+    //      P1 pthread 面,resolve 直呼阻塞 —— 双模式同果) ----
+    assert(resolve_coro_pair() == 0)
+
+    // ---- 显式 close + fd=-1 纪律(Drop 跳过)+ 显式 unlink 摘文件 ----
+    assert(net_close(net, ln.fd) == 0)
+    ln.fd = -1
+    assert(net_unix_unlink(net, path) == 0)
+    // st/srv 作用域出口 Drop RAII
+
+    // ---- 陈旧自愈再证:同路径重 listen → 新生命周期全通 ----
+    let lfd2_box = Box[Box64](Box64 { v: 0 })
+    assert(net_unix_listen(net, path, lfd2_box) == 0)
+    let ln2 = UnixListener { fd: lfd2_box.v, path: path }
+    let cfd2_box = Box[Box64](Box64 { v: 0 })
+    assert(net_unix_connect(net, path, cfd2_box) == 0)
+    let st2 = UnixStream { fd: cfd2_box.v }
+    let afd2_box = Box[Box64](Box64 { v: 0 })
+    assert(net_unix_accept(net, ln2.fd, afd2_box) == 0)
+    let srv2 = UnixStream { fd: afd2_box.v }
+    assert(net_write_str(net, st2.fd, "ok") == 2)
+    assert(net_read_t(net, srv2.fd, buf, 4096, 1000) == 2)
+    assert(buf[0] == 111)
+    assert(buf[1] == 107)
+    // ln2/st2/srv2 作用域出口 Drop RAII 统一回收
+
+    // ---- 摘文件后 connect → 失败(rc<0 + errno 置位,ENOENT 面) ----
+    assert(net_unix_unlink(net, path) == 0)
+    let cfd3_box = Box[Box64](Box64 { v: 0 })
+    assert(net_unix_connect(net, path, cfd3_box) != 0)
+    assert(ctron_net_last_errno() != 0)
+
+    // ---- 超限路径:≥104 字节 → EINVAL(rc<0;上限口径见垫片头注) ----
+    var long = ""
+    var i: I32 = 0
+    while i < 200 {
+        long = long + "x"
+        i += 1
+    }
+    let lfd4_box = Box[Box64](Box64 { v: 0 })
+    assert(net_unix_listen(net, long, lfd4_box) != 0)
+    assert(ctron_net_last_errno() != 0)
+}

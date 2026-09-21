@@ -12,11 +12,15 @@
  * P2-C 混合化:五停车点(read_t / write·write_str 发送核 / sleep_ms /
  * udp_recvfrom / shutdown 写等待 —— 最后一处 P1 无 EAGAIN 面,无点可改)
  * 见下方"协程停车面"注;裸线程(未链 rt)P1 原路径逐字节不变。
+ * P3-E:AF_UNIX listen/accept/connect/unlink 四件(POSIX 专面)与 DNS
+ * 异步化(resolve 协程面入 2 线程 helper 池 + done 槽,不再滞留 worker)
+ * 见各段头注。
  */
 #include <stdint.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 /* P2-C 收账:rt 垫底三符号取冻结声明自 ctron_rt.h(强定义同头),防 ABI 漂移
  * (签名失配时编译期即报,不再静默弱顶弱) */
 #include "ctron_rt.h"
@@ -40,11 +44,15 @@ typedef int ct_ssize_t;
 #include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <poll.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stddef.h>
 typedef int ct_sock;
 typedef socklen_t ct_socklen;
 typedef ssize_t ct_ssize_t;
@@ -133,6 +141,11 @@ __attribute__((weak)) void* ctron_rt_current(void) { return 0; }
 __attribute__((weak)) void ctron_rt_sleep_ms(int64_t ms) { (void)ms; }
 /* P3-A 兴趣驻留配套:fd 关闭钩子(摘 rt 驻留登记)。哑元无条件发射,同上。 */
 __attribute__((weak)) void ctron_rt_forget_fd(int64_t fd) { (void)fd; }
+/* P3-E DNS 异步化配套:park/wake 两符号同款弱垫底(resolve 协程停车等
+ * helper 池完成用)。哑元无条件发射(同上收账口径:_WIN32 恒不链 rt 且
+ * 调用点在 ct_rt_parkable 运行期守卫内,-O0 下符号引用存活)。 */
+__attribute__((weak)) void ctron_rt_park(void) { }
+__attribute__((weak)) void ctron_rt_wake(void* key) { (void)key; }
 
 /* 停车判据:垫片符号已链(非哑元态不可能是真,哑元 current 恒 NULL)+ 协程上下文 */
 static int ct_rt_parkable(void) {
@@ -578,27 +591,248 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t ti
     }
 }
 
-/* ---- resolve ---- */
+/* ---- AF_UNIX(P3-E;POSIX 专面,_WIN32 垫显式 EAFNOSUPPORT 哑元) ----
+ * 与 TCP 三件的镜像点及差异:
+ *   - SO_REUSEADDR 不开:AF_UNIX 无端口占用语义,路径占用不适用该旋钮;
+ *   - bind 前 unlink(path) 清陈旧 socket 文件(ENOENT 常态,忽略):语义 =
+ *     后绑者赢(live 监听者被夺路径后既有连接不受影响,新 connect 归新监听
+ *     者;文件级残留由下一次 bind 自愈)。摘文件不进 Drop(见 std/net.ct
+ *     net_unix_unlink 注),显式面交调用方;
+ *   - 路径上限:sun_path 容量 darwin 104 / linux 108 字节(含 NUL)—— 取
+ *     min = 104,strlen(path) >= 104 即 EINVAL(跨平台一致口径: darwin 合法
+ *     路径在 linux 必合法,linux 105..107 段登记为面收缩);
+ *   - accept/connect 阻塞形态与 tcp 同形(无新停车点;登记:协程上下文
+ *     accept/connect 滞留 worker 与 TCP 同口径,P2-C 五停车点扩面候选 ——
+ *     夹具 connect 先于 accept,backlog 承接即返不触界)。 */
+#ifndef _WIN32
+#define CT_UNIX_PATH_MAX 104 /* min(sizeof sun_path): darwin 104 / linux 108 */
 
-/* 首个 IPv4 点分串;C-owned(thread-local 静态),Ctron 侧 str_from_c 深拷。
- * 失败返回 ""(errno 槽置 getaddrinfo rc)。 */
-const char* ctron_net_resolve_first(const char* host) {
-    static CT_TLS char ct_res_buf[64];
+/* 路径 → sockaddr_un(已验长);超限置 EINVAL 返 -1 */
+static int ct_unix_fill(struct sockaddr_un* ua, const char* path) {
+    memset(ua, 0, sizeof(*ua));
+    ua->sun_family = AF_UNIX;
+    if (strlen(path) >= CT_UNIX_PATH_MAX) {
+        *ct_err_slot() = EINVAL;
+        return -1;
+    }
+    strcpy(ua->sun_path, path); /* 已验长(>= 104 拒) */
+    return 0;
+}
+
+int64_t ctron_net_unix_listen(const char* path, Box64* out) {
+    struct sockaddr_un a;
+    if (ct_unix_fill(&a, path) != 0) return -1;
+    int fd = (int)socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return ct_err();
+    (void)unlink(path); /* 陈旧 socket 文件自愈(ENOENT 常态;语义见上注) */
+    if (bind(fd, (struct sockaddr*)&a,
+             (ct_socklen)(offsetof(struct sockaddr_un, sun_path) + strlen(path) + 1)) != 0) {
+        ct_close(fd);
+        return ct_err();
+    }
+    if (listen(fd, 128) != 0) { ct_close(fd); return ct_err(); }
+    out->v = fd;
+    return 0;
+}
+
+int64_t ctron_net_unix_accept(int64_t lfd, Box64* out) {
+    for (;;) {
+        int cfd = (int)accept((ct_sock)lfd, NULL, NULL);
+        if (cfd < 0) {
+            if (errno == EINTR) continue;
+            return ct_err();
+        }
+        out->v = cfd; /* 无 tcp_defaults 面(NODELAY/KEEPALIVE 均不适用 AF_UNIX) */
+        return 0;
+    }
+}
+
+int64_t ctron_net_unix_connect(const char* path, Box64* out) {
+    struct sockaddr_un a;
+    if (ct_unix_fill(&a, path) != 0) return -1;
+    int fd = (int)socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return ct_err();
+    if (connect(fd, (struct sockaddr*)&a,
+                (ct_socklen)(offsetof(struct sockaddr_un, sun_path) + strlen(path) + 1)) != 0) {
+        ct_close(fd);
+        return ct_err();
+    }
+    out->v = fd;
+    return 0;
+}
+
+int64_t ctron_net_unix_unlink(const char* path) {
+    if (unlink(path) != 0) return ct_err();
+    return 0;
+}
+#else
+/* _WIN32 哑元:AF_UNIX 面 POSIX-only(登记);显式错误面即失败,不静默 */
+int64_t ctron_net_unix_listen(const char* path, Box64* out) {
+    (void)path; (void)out;
+    *ct_err_slot() = (int64_t)WSAEAFNOSUPPORT;
+    return -1;
+}
+int64_t ctron_net_unix_accept(int64_t lfd, Box64* out) {
+    (void)lfd; (void)out;
+    *ct_err_slot() = (int64_t)WSAEAFNOSUPPORT;
+    return -1;
+}
+int64_t ctron_net_unix_connect(const char* path, Box64* out) {
+    (void)path; (void)out;
+    *ct_err_slot() = (int64_t)WSAEAFNOSUPPORT;
+    return -1;
+}
+int64_t ctron_net_unix_unlink(const char* path) {
+    (void)path;
+    *ct_err_slot() = (int64_t)WSAEAFNOSUPPORT;
+    return -1;
+}
+#endif
+
+/* ---- resolve(P3-E 异步化) ---- */
+
+/* 首个 IPv4 → 点分串入 out(≥INET_ADDRSTRLEN);返回 0 成 / 非 0 = getaddrinfo
+ * rc(或 inet_ntop errno)。纯函数:不触碰 errno 槽/TLS —— 槽属执行线程,
+ * 池线程与裸面共用同一实现,错误数值经返回值由调用线程落自己的槽。 */
+static int64_t ct_getaddrinfo_v4(const char* host, char* out, size_t outn) {
     struct addrinfo hints, *res = NULL;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
+    out[0] = '\0';
     int rc = getaddrinfo(host, NULL, &hints, &res);
-    if (rc != 0 || res == NULL) {
-        *ct_err_slot() = rc;
-        return "";
-    }
+    if (rc != 0 || res == NULL) return (int64_t)rc;
     const void* src = &((const struct sockaddr_in*)(const void*)res->ai_addr)->sin_addr;
-    if (!inet_ntop(AF_INET, src, ct_res_buf, (ct_socklen)sizeof(ct_res_buf))) {
+    if (!inet_ntop(AF_INET, src, out, (ct_socklen)outn)) {
         freeaddrinfo(res);
-        *ct_err_slot() = errno;
-        return "";
+        return (int64_t)errno;
     }
     freeaddrinfo(res);
+    return 0;
+}
+
+#ifndef _WIN32
+/* ---- P3-E DNS helper 池:2 线程 + done 槽(协程面专用) ----
+ * 旧实现 getaddrinfo 直接跑在调用协程所在 worker:解析期间 worker 整体滞留
+ * (workers=1 时全 runtime 饿死,c_smoke T6 即此差分断言)。现形态:
+ *   resolve(host) 协程内 → 组 job 槽(宿主串拷贝 + 结果槽 + done 原子旗标 +
+ *   本协程 key)入 FIFO → ctron_rt_park 停车;池线程 getaddrinfo/inet_ntop 写
+ *   结果槽 → release 置 done → ctron_rt_wake(key)(粘滞 pending:先唤醒后
+ *   停车不丢)→ 协程醒后 acquire 轮 done,见 1 即独占读槽。
+ * 槽所有权(竞态隔离三要点):
+ *   1. job malloc/free 均在调用协程;池线程 release-store done 后除先取的
+ *      coro_key 局部副本外绝不再触槽 —— 协程见 done(acquire)即独占,free
+ *      与 wake 竞态被「先取副本后置旗标」切断;
+ *   2. errno 槽属 TLS:池线程绝不写(写了是池线程的槽),rc 携带于槽内,
+ *      协程醒后自行落本线程槽;
+ *   3. 虚假唤醒(scope cancel_wake_all 广播、pending 残留)以 while!done
+ *      再停车吸收;resolve 无超时面(签名不变)且 getaddrinfo 不可取消 ——
+ *      取消广播不中断在途 resolve(登记:最长等待 = 解析本身;CI 面 host 仅
+ *      localhost/数值,毫秒级)。
+ * 池生命周期:首次协程 resolve 惰性起 2 线程(detached,进程生命周期常驻,
+ * 无 shutdown 面);建池全败(线程创建失败)退化为调用面内联阻塞(旧语义,
+ * 降级不悬挂)。裸线程面(未链 rt / current()==NULL / _WIN32)P1 原路径
+ * 逐字节不变。线程预算(容量口径):workers(缺省 min(cpu,4))+ reactor 1
+ * (首次 wait_fd 惰性)+ 本池 2(首次协程 resolve 惰性;不用 resolve 则零)。
+ */
+struct ct_dns_job {
+    struct ct_dns_job* next;
+    char host[256];                 /* 拷贝解耦调用方串寿命(停车期间仍有效) */
+    char result[64];
+    int64_t rc;                     /* 0 成(result 有效);非 0 = gai rc/errno */
+    atomic_int done;                /* 池线程 release 置 1;协程 acquire 轮询 */
+    void* coro_key;                 /* 提交协程 key(wake 用;见所有权要点 1) */
+};
+
+static pthread_mutex_t ct_dns_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t ct_dns_cv = PTHREAD_COND_INITIALIZER;
+static struct ct_dns_job* ct_dns_head = NULL;
+static struct ct_dns_job** ct_dns_tail = &ct_dns_head;
+static int ct_dns_up = 0;           /* 池线程 ≥1 已起(mx 内读写;线程不退 ⇒ 不可逆) */
+
+static void* ct_dns_worker(void* arg) {
+    (void)arg;
+    for (;;) {
+        pthread_mutex_lock(&ct_dns_mx);
+        while (ct_dns_head == NULL) pthread_cond_wait(&ct_dns_cv, &ct_dns_mx);
+        struct ct_dns_job* j = ct_dns_head;
+        ct_dns_head = j->next;
+        if (ct_dns_head == NULL) ct_dns_tail = &ct_dns_head;
+        pthread_mutex_unlock(&ct_dns_mx);
+
+        j->rc = ct_getaddrinfo_v4(j->host, j->result, sizeof(j->result));
+
+        void* key = j->coro_key;   /* 先取副本:done 后槽归协程(free 竞态隔离) */
+        atomic_store_explicit(&j->done, 1, memory_order_release);
+        ctron_rt_wake(key);
+        /* j 此后绝不触碰 —— 所有权已移交唤醒协程 */
+    }
+}
+
+/* 入队;返回 0 = 池承接,1 = 池不可用(建池全败),调用方内联兜底 */
+static int ct_dns_submit(struct ct_dns_job* j) {
+    pthread_mutex_lock(&ct_dns_mx);
+    *ct_dns_tail = j;
+    ct_dns_tail = &j->next;
+    if (!ct_dns_up) {
+        /* 起池与入队同锁:并发首提交串行化,失败路径队列恰为本 job 一个 */
+        int started = 0;
+        for (int i = 0; i < 2; i++) {
+            pthread_t t;
+            pthread_attr_t at;
+            pthread_attr_init(&at);
+            pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+            if (pthread_create(&t, &at, ct_dns_worker, NULL) == 0) started = 1;
+            pthread_attr_destroy(&at);
+        }
+        ct_dns_up = started;
+        if (!started) {
+            ct_dns_head = NULL;
+            ct_dns_tail = &ct_dns_head;
+        }
+    }
+    pthread_cond_signal(&ct_dns_cv);
+    pthread_mutex_unlock(&ct_dns_mx);
+    return ct_dns_up ? 0 : 1;
+}
+#endif /* !_WIN32 */
+
+/* 首个 IPv4 点分串;C-owned(thread-local 静态),Ctron 侧 str_from_c 深拷。
+ * 失败返回 ""(errno 槽置 getaddrinfo rc)。
+ * P3-E:协程上下文 → 入 helper 池 + park(不滞留 worker,见上注);裸线程
+ * 面直接调用面阻塞(P1 原路径,结果串同槽同形)。 */
+const char* ctron_net_resolve_first(const char* host) {
+    static CT_TLS char ct_res_buf[64];
+#ifndef _WIN32
+    if (ct_rt_parkable()) {
+        struct ct_dns_job* j = (struct ct_dns_job*)malloc(sizeof(*j));
+        if (j == NULL) {
+            *ct_err_slot() = ENOMEM;
+            return "";
+        }
+        memset(j, 0, sizeof(*j));
+        strncpy(j->host, host, sizeof(j->host) - 1);
+        j->host[sizeof(j->host) - 1] = '\0';
+        j->coro_key = ctron_rt_current();
+        atomic_init(&j->done, 0);
+        if (ct_dns_submit(j) == 0) {
+            /* 停车等池;假醒(cancel 广播/pending 残留)→ 再验 done 再停 */
+            while (atomic_load_explicit(&j->done, memory_order_acquire) == 0) {
+                ctron_rt_park();
+            }
+            int64_t rc = j->rc;
+            strncpy(ct_res_buf, j->result, sizeof(ct_res_buf) - 1);
+            ct_res_buf[sizeof(ct_res_buf) - 1] = '\0';
+            free(j);               /* done 已见 ⇒ 槽归本协程独占 */
+            *ct_err_slot() = rc;   /* rc==0 时同旧路径清零错误槽 */
+            if (rc != 0 || ct_res_buf[0] == '\0') return "";
+            return ct_res_buf;
+        }
+        free(j);                   /* 池不可用:内联兜底(旧阻塞语义) */
+    }
+#endif
+    int64_t rc = ct_getaddrinfo_v4(host, ct_res_buf, sizeof(ct_res_buf));
+    *ct_err_slot() = rc;
+    if (rc != 0 || ct_res_buf[0] == '\0') return "";
     return ct_res_buf;
 }
