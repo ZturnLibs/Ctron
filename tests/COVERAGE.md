@@ -196,6 +196,60 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 - `roadmap/r1a_trailing_dot.neg.ct` —— 行尾 `.` 非法(§1.6;红:自举解析器吞点
   误放行,宿主正确拒绝——自举解析器守卫缺口,与新发现宿主缺陷同批在册)
 
+## 2026-09-18 审计增补(四)——插值负向面三线审计
+
+针对 §1.4/§4.11 插值的非法形态逐项三线探测(自举 `ctron-cc run` / C 宿主
+`ctronc run` / R 线 `ctron run`),并落锚:
+
+- `roadmap/r6h_interp_unclosed.neg.ct` —— 插值未闭合(`"v={n tail"`)。
+  宿主/R 线均 E1001「未终止的插值」;自举线 ad-hoc "unbound:n" 拒绝但不产出
+  E1001 → 红。已登记 roadmap_suite(NegGreen("E1001"))。
+- `roadmap/r6i_interp_nested_str.neg.ct` —— 片段内嵌套字符串字面量
+  (`"outer { "inner" } tail"`)。宿主/R 线均 E1001;自举线误报 E2020
+  (unresolved: inner,拒绝但码不符)→ 红。已登记 roadmap_suite(NegGreen)。
+
+**待规范所有者裁决(三线对照,先裁决再锚定/修实现):**
+
+| 形态 | 自举线 | C 宿主 | R 线 | §1.4/§4.11 口径 |
+|---|---|---|---|---|
+| 嵌套块 `"v={ {x} }"` | 接受(v=1) | 接受(v=1) | 接受(v=1) | 白名单外(不支持嵌套 `{}`) |
+| 空 `{}` | ad-hoc 拒绝(unbound:#EOF) | 接受(v=空) | 接受(v=void) | 白名单外 |
+| 片段内语句 | ad-hoc 拒绝(unbound:let) | 接受(v=空) | 接受(v=void) | 明文禁止 |
+
+三线一致的嵌套块可考虑升格进 spec(修订 §1.4 白名单),或三线统一按 E1001
+收口;C/R 接受语句片段与空 `{}` 为待修项候选。裁决前不落行为锚(避免钉死
+违规格面)。
+
+**在册事实:** E6030 为 spec §10 预留码(parametricity,未到实现期),非漏测。
+~~R 线 roadmap_suite 语料卫生自 09-15 r6 批次起滞后(7 件未登记,套件红)~~
+→ **2026-09-19 已清**:r6b–r6g/r1a 七件按 R 线实测行为补登(实测口径:r1a
+E1001 已拦 = NegGreen;r6b/r6d/r6e/r6f 检查未实现 = NegPending;r6c interp
+as[U64] 负源得 -1、r6g 无 test 块空泛成立 = RunRed)。roadmap_suite 2/2 绿
+(锚 31 = 绿 5 / 红 26);翻转时按文件头判据迁移主套件。
+
+## 2026-09-19 审计增补(五)——r6c R 线修复翻转 + R 线全量基线在册
+
+**r6c 修复与翻转(R 线):** 三线探针分离病灶——自举线一直正确(基准);R 线
+唯一病位是 interp 字面量求值:无后缀整数字面量经 i64 解析,U64 上界
+18446744073709551615 截为 -1(`let a: U64 = …` 靠后续强转侥幸正确,无期望
+类型的实参位露馅;`convert_as` 本身正确)。修复:interp `Expr::Int` 无后缀且
+超 i64 正程时保真为 `UInt`(parse_int 拆 parse_int_mag 复用)。r6c 翻转
+RunRed → Green(roadmap_suite 绿 6/红 25)。R 线 trans 的 as 发射引用
+`ct_as_ii` 助手但仓库内无定义,emit 面存疑在册(锚定面是 interp,未扩散)。
+
+**C 宿主 r6c 病灶细化(仍在册红):** ① `wrap_int` 对 bits≥64 直接透传,
+无 mod 2^64 掩码(as 侧 -1 透传,显示为 2^128-1);② as 调用实参位的
+U64 上界字面量 decl 检查按有符号宽判,误报 "integer overflow (decl)";
+③ 未标注 let 的自适应丢失 us 标志(实参位字面量得 -1)。
+
+**R 线全量基线(本批首跑全量 cargo test,均在册、先于本批):**
+check_suite 17 条 sem 落后(一元负 Bool/Str、E2060 推断、dist 域名称、
+impl-for 解析);fmt_suite 1 条(01i 分号语料 fmt 失败);native_suite 6 条
+(ffi extern cc 链接缺符号);run_suite 22 条(ffi 外部声明不可调用)。
+**本批净变化:** lex_suite 补 `*.neg.ct` 过滤(neg 语料判定面是 fail: 码,
+不入"全语料零词法诊断"断言)→ 绿;roadmap/lex/breakc/infer/oror/test
+六套件全绿;check/fmt/native/run 四套件红为既有债务,待各自责任面切片。
+
 ## §网络与服务器(服务器泳道,2026-09-20 起)
 
 | 波次 | 项 | 锚定 |
@@ -217,3 +271,17 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 P2 波提交域 48ed59c..<P2-F>(任务台账与门禁数字:计划执行记录);net 主环计
 例口径 = 行为夹具 9 + c_smoke 2 + coro_det_replay 1 = 12。
+
+## §ctron fmt 三宿主对齐(工具链泳道,2026-09-21)
+
+R-P2d `ctron fmt` 由 Rust 宿主移植至 C 宿主与自举编译器,三宿主同规范(docs/fmt-spec.md)同输出。
+
+| 面 | 项 | 锚定 |
+|---|---|---|
+| C 宿主 | `compiler-c/src/fmt.{c,h}` + `ctronc fmt`(完整 CLI 契约)+ `tests/suite_fmt.c` | 11 金样(R4 期望按 Rust 参考冻结)+ 语料幂等 160 + trans 等价代理 69 + 词法脏报错 1;`make -C compiler-c test` 挂载(test_lex 段错误为 HEAD 既有,与本面无关) |
+| 自举 | `compiler/src/fmt.ct` + `scan5`(lex.ct 加法改造:原始流+字节 span+注释 span)+ `driver_fmt.ct` → `bin/ctron-fmt` | 金样钉子 `compiler/test/fx_fmt_golden.{ct,expected}`(smoke 3f:金样逐字节/native==seed 双口径/幂等/R8 负例);`ctc fmt`(-w/--check/pkg 目录)契约 5 断言入 ctc_smoke 第 9 段 |
+| 对拍 | `tests/fmt/parity.sh` | 三宿主(Rust 参考/C 宿主/自举)tests 160 + std/examples 45 逐字节零分歧;词法脏一致报错 1 |
+| 语义对齐裁决 | `.or(` 成员位置紧贴(Rust lexer prev_is_dot 上下文)、CRLF 注释尾 `\r` 修剪、`...` 逗号后紧贴 | 以 Rust 参考实现输出为真值冻结;spec R4"链断行相对缩进 1 级"为 v1 遗留(现行实现=同缩进延续,r2d_fmt_chain 形态即权威) |
+
+已知红账(非本面):smoke conc_fs / std 快照漂移 / fs 种子单测(HEAD 既有,net·fs 泳道);
+fmt_suite 01i 分号语料(Rust 侧既有);test_lex 段错误(C 宿主既有)。
