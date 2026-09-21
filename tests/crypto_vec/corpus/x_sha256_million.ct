@@ -1,0 +1,14 @@
+// tests/crypto_vec/corpus/x_sha256_million.ct —— RFC 6234 百万 'a' 向量
+// (x_ = 仅 emit 臂:1M 字节 ≈ 15626 块压缩,interp 口径不可实用;
+//  emit 口径 ≈ 1s。锚 = python hashlib)。
+use std.crypto.{sha256_bytes, bytes_to_hex}
+
+test "sha256 million a" {
+    var m = List[I32]()
+    var i: I32 = 0
+    while i < 1000000 {
+        m.push(97)
+        i += 1
+    }
+    assert_eq(bytes_to_hex(sha256_bytes(m)), "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
+}

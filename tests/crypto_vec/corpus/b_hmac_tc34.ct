@@ -1,0 +1,39 @@
+// tests/crypto_vec/corpus/b_hmac_tc34.ct —— RFC 4231 HMAC-SHA256 TC3/TC4
+// (TC3:20×0xaa 键 + 50×0xdd 数据;TC4:1..25 递增键 + 50×0xcd 数据;双臂)。
+use std.crypto.{hmac_sha256, bytes_to_hex, bytes_from_hex}
+
+fn h2b(s: Str) -> List[I32] {
+    return bytes_from_hex(s)
+}
+
+test "rfc4231 tc3" {
+    var k = List[I32]()
+    var i: I32 = 0
+    while i < 20 {
+        k.push(170)
+        i += 1
+    }
+    var d = List[I32]()
+    var j: I32 = 0
+    while j < 50 {
+        d.push(221)
+        j += 1
+    }
+    assert_eq(bytes_to_hex(hmac_sha256(k, d)), "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe")
+}
+
+test "rfc4231 tc4" {
+    var k = List[I32]()
+    var i: I32 = 1
+    while i <= 25 {
+        k.push(i)
+        i += 1
+    }
+    var d = List[I32]()
+    var j: I32 = 0
+    while j < 50 {
+        d.push(205)
+        j += 1
+    }
+    assert_eq(bytes_to_hex(hmac_sha256(k, d)), "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b")
+}

@@ -1,0 +1,27 @@
+// tests/crypto_vec/corpus/c_pbkdf2_low.ct —— PBKDF2-HMAC-SHA256 低迭代向量
+// (RFC 6070 同参 c=1 口径 + 25B 长盐向量 c=1;dkLen 截取边 20/25/32;
+//  双臂。interp 堆不回收(P5-B 登记),c≥2 与 4096 档归 emit 专臂
+//  x_pbkdf2_hi.ct;锚值 = python hashlib.pbkdf2_hmac 生成)
+use std.crypto.{pbkdf2_sha256, bytes_to_hex, bytes_from_hex}
+
+fn h2b(s: Str) -> List[I32] {
+    return bytes_from_hex(s)
+}
+
+test "rfc6070-sha256 c1 dk20" {
+    var dk = pbkdf2_sha256(h2b("70617373776f7264"), h2b("73616c74"), 1, 20)
+    assert_eq(dk.len, 20)
+    assert_eq(bytes_to_hex(dk), "120fb6cffcf8b32c43e7225256c4f837a86548c9")
+}
+
+test "sha256-pbkdf2 long-salt c1 dk25" {
+    var dk = pbkdf2_sha256(h2b("70617373776f726450415353574f524470617373776f7264"), h2b("73616c7453414c5473616c7453414c5473616c7453414c5473616c7453414c5473616c74"), 1, 25)
+    assert_eq(dk.len, 25)
+    assert_eq(bytes_to_hex(dk), "051e945b44155846de9d879b8c062eee1f5fc6ef37e33c8a8e")
+}
+
+test "sha256-pbkdf2 dk32 full-block" {
+    var dk = pbkdf2_sha256(h2b("70617373"), h2b("73616c74"), 1, 32)
+    assert_eq(dk.len, 32)
+    assert_eq(bytes_to_hex(dk), "65acafe9655d154ebe7ca04e8b7ebdbc2bfd1684c07adfd2fe2ea072b5b9eedf")
+}

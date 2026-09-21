@@ -299,16 +299,29 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
 
 ### (h)/(i) 家族新证 + C17 续证(P5-A std/json 数值保真,2026-09-21)
 
-- **(h) emit 的 Result/Option union 载荷槽 32 位(I64/F64 载荷失真)**:
-  `Result[I64,Str]` 的 Ok 载荷跨 match 绑定按 32 位槽承载——`Ok(9223372036854775807)`
-  读回 `-1`(I32 截断),`Result[F64,_]` Ok 载荷错值(2.5 探针);同模块/
-  跨模块同病,Err-Str 与 Bool 载荷绿。**绕行 = 结构通道 + 标量 getter**
+- **(h) emit(C 线)的 Result/Option union 载荷跨 match 绑定 32 位截断
+  (I64 载荷失真)+ 载荷槽类型缺陷(F64 载荷失真,独立两项)**:
+  `Result[I64,Str]` 的 Ok 载荷跨 match 绑定读回 `-1`(`Ok(9223372036854775807)`
+  实证,I32 截断),`Result[F64,_]` Ok 载荷错值(2.5 探针);同模块/
+  跨模块同病,Err-Str 与 Bool 载荷绿。**机理勘误(P5-B 校勘,Task 1 复核
+  勘定)**:载荷槽本身已是宽槽——C 线 emit `typedef int64_t ct_i` +
+  `typedef struct { int variant; ct_i v; } ct_res`(compiler/src/
+  driver_emit.ct:102-103),失真点在 match 绑定的显式截断 cast:
+  `int32_t t_<名> = (int32_t)<matche>.v;`(compiler/src/trans_stmt.ct:996)
+  ——即「绑定变 int32、槽恒 ct_i」;而 F64 半是**另一项槽类型缺陷**
+  (ct_res 载荷槽整数型,无法承载 double;Rust 参考线 trans.rs 以
+  Pay::F→double 按载荷定型,即该缺陷的正确形态)。**两缺陷均仅 C 线
+  emit;Rust 线(trans.rs)整型 `__int128`/ct_i 承载 + 载荷定型,不受累。**
+  **绕行 = 结构通道 + 标量 getter**
   (std/http parse.ct getter 面 prior art):std/json 数值访问器内走
   `JNum{k:I64,v:I64}` / `JReal{k:I64,v:F64}`(struct 标量字段 64 位实证绿,
   plain I64/F64 返回绿),消费方经 `jv_*/jk_*` 或 `jn_*/jr_*` getter 取值;
-  `jget_*` Result 面留同模块/解释口径与 Err 原文面。修法 = emit 侧 union
-  载荷槽按载荷声明宽度(P9 挂账;strconv.parse_i64 的 Option[I64] 大值面
-  同疑受累,其单测未入 emit 臂故未暴露)。(源:P5 Task 1 探针 loc/mi/ml/mn)
+  `jget_*` Result 面留同模块/解释口径与 Err 原文面。修法 = emit 侧 match
+  绑定去 `(int32_t)` 截断、按载荷宽度重绑(I64 档;槽已宽无需改);
+  F64 档需载荷槽按载荷定型(Pay::F→double 形)——两项独立挂 P9
+  (strconv.parse_i64 的 Option[I64] 大值面同疑受累,其单测未入 emit 臂
+  故未暴露)。(源:P5 Task 1 探针 loc/mi/ml/mn;机理勘误:P5 Task 2 复核
+  trans_stmt.ct:996/driver_emit.ct:102-103/trans.rs:4,635)
 - **(i) 解释器 F64 值域定宽三实例 + 语义歧**(emit 真 double 恒正确,双口径
   漂移,双臂一致语义钳窗口径见 std/json.ct 区块头注):
   1. *F64 整值 ≥2^63 乘法 panic*:宿主按值域定宽判溢出,`1e18 * 1e18` 即
@@ -337,6 +350,38 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   外移 tests/json_fidelity(条目直构 + utf8_enc 括号拼接,兼避字符串禁裸
   `{` 约束;json_write.ct C17 规避同款)。宿主 decl/字面量阈值归编译器
   泳道。(源:P5 Task 1)
+
+### (i) 家族新证 + 解释器内存记账(P5-B std/crypto 二进制面 + std/uuid,2026-09-21)
+
+- **(i) 解释器「fn 内未用结果绑定」毒化消费调用点**:`var rc = <调用>`
+  绑定在**函数体内且 rc 从未使用**(伴随 W8030)时,该函数被 test 块调用
+  即**静默 rc=1、零输出**(连函数调用前 `println` 都不执行——测试块整体
+  不运行,非 assert 失败;失败面与「调用内是否就地变更」无关,
+  `var rc = g(); return 7` 纯调用同炸)。最小复现:
+  `fn g() -> I32 { return 7 }` + `fn h2(s: Str) -> I32 { var rc = g(); return s.len }`
+  + `test { println(h2("abcd")) }` → 无输出 rc=1。绿形:绑定被消费
+  (`if rc != 0 {…}`)、或裸语句调用 `g();`(无绑定)、或绑定在 test 块内
+  直接未用(同 W8030 不现)均绿;**emit 臂全形态恒绿(双口径漂移)**。
+  夹具纪律:任何绑定必须被消费;忽略返回值一律裸语句调用形。
+  (源:P5 Task 2 探针 dbg8–dbg15;最小复现 dbg15)
+- **解释器堆不回收定量(P5-A C17 的量化续证)**:解释域循环工作负载
+  每块压缩等效(64 轮 div/mod 合成)折 ~0.9s/约 1.5 GB 峰值,峰值随
+  调用量线性增长(20 次 sha256 = 40 块 → 33 GB;200 次即 macOS 内存压
+  力 SIGKILL rc=137)——循环型重负载在解释口径有硬性规模顶。emit 臂
+  同负载 41 µs/块(千倍差)且无此顶。口径落点:crypto_vec interp 逐
+  文件 ≤ ~10 块等效、高迭代档 PBKDF2(c=4096 ≈ 8192 块)与百万字节
+  SHA 归 emit 专臂(x_ 前缀,crypto.ct 头注「整向量不可实用」的定量版);
+  nightly 真靶以 emit 口径为准。(源:P5 Task 2 /usr/bin/time -l 实测)
+- **std/sort sorted 系 O(n²)(API 特性登记,非缺陷)**:`sorted`/
+  `sorted_desc` 为重建式稳定插入排序(每插一个元素整表重建),10 万枚
+  字符串即内存压力 SIGKILL(x_uuid_live 首跑实证)——大集合排序走夹具内
+  就地快排(下标读写 + `Str <` 比较均已证)或标升版 O(n log n)。
+  (源:P5 Task 2 x_uuid_live)
+- **emit 的 &I64[] lane 参数按槽计(Marshal 契约再确认)**:extern 垫片
+  的 `n` 语义恒「lane 数」而非「字节数」(lane = int64 槽,每 lane 承
+  一字节值;read_t/recv 同约定)——ctron_entropy_fill 首版按字节填,
+  16 lane 只得 2 lane 有效数据,uuid 随机面尽零(已修)。垫片侧契约
+  注记随文件头。(源:P5 Task 2 std/db/c_src/ctron_entropy.c 首版)
 
 ---
 维护约定:新发现分歧先记本档(附最小复现),修复后在条目标注 commit。

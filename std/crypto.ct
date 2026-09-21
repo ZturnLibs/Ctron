@@ -711,3 +711,462 @@ test "sha1 rfc 3174 vectors" {
     assert_eq(sha1_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"), "84983e441c3bd26ebaae4aa1f95129e5e54670f1")
     assert_eq(sha1_hex("The quick brown fox jumps over the lazy dog"), "2fd4e1c67a2d28fced849ee1bb76e7391b93eb12")
 }
+
+// ====================================================================
+// ---- 二进制面(P5-B;SCRAM-SHA-256 前置,RFC 2104/8018)----
+// 容器决策:字节 = List[I32](值域 0..255)。Str 不可承载任意字节(C8 约束:
+// 解释面 Str 仅源码字面量切片可构,std/enc 头注同款);&I64[] lane 是 FFI
+// 形(std/net bind),纯 Ctron 内部交换一律 List[I32](std/enc b64_decode
+// 字节构建同款,双臂实证绿)。
+// 实现注:不复用/不改 sha256_hex 的内联形式(C17 宿主敏感性,P5-A 登记:
+// 对既有 decl 扰动即 segv)——压缩核独立成 struct 态形,兼得 HMAC 中间态
+// (midstate):ipad/opad 块各压一次,PBKDF2 每迭代 2 压而非 4 压。
+// 位长域:沿用 block_word 的静默假设(位长 < 2^32,消息 < 512MB),此处
+// 显式记档;协议面消息远小于此界。
+// (i) 族纪律:计数/索引算术全程小值;位长经 z64 宽域播种乘(同 sha256_hex)。
+// ====================================================================
+
+// SHA-256 状态(8 × 32 位词,I64 承载;struct 标量字段按值传双臂绿,P5 Task 1)
+struct Sha256St {
+    h0: I64
+    h1: I64
+    h2: I64
+    h3: I64
+    h4: I64
+    h5: I64
+    h6: I64
+    h7: I64
+}
+
+fn s256_iv() -> Sha256St {
+    return Sha256St { h0: 1779033703, h1: 3144134277, h2: 1013904242, h3: 2773480762, h4: 1359893119, h5: 2600822924, h6: 528734635, h7: 1541459225 }
+}
+
+// 一块 64 轮压缩(FIPS 180-4 6.2.2;轮体与 sha256_hex 内环同式,词取自形参)
+fn s256_step(st: Sha256St, w0: I64, w1: I64, w2: I64, w3: I64, w4: I64, w5: I64, w6: I64, w7: I64, w8: I64, w9: I64, w10: I64, w11: I64, w12: I64, w13: I64, w14: I64, w15: I64) -> Sha256St {
+    let m32: I64 = 4294967296
+    var v0 = w0
+    var v1 = w1
+    var v2 = w2
+    var v3 = w3
+    var v4 = w4
+    var v5 = w5
+    var v6 = w6
+    var v7 = w7
+    var v8 = w8
+    var v9 = w9
+    var v10 = w10
+    var v11 = w11
+    var v12 = w12
+    var v13 = w13
+    var v14 = w14
+    var v15 = w15
+    var a = st.h0
+    var b = st.h1
+    var c = st.h2
+    var d = st.h3
+    var e = st.h4
+    var f = st.h5
+    var gv = st.h6
+    var hh = st.h7
+    var ri: I32 = 0
+    while ri < 64 {
+        var wt: I64 = z64()
+        if ri == 0 {
+            wt = v0
+        }
+        if ri == 1 {
+            wt = v1
+        }
+        if ri == 2 {
+            wt = v2
+        }
+        if ri == 3 {
+            wt = v3
+        }
+        if ri == 4 {
+            wt = v4
+        }
+        if ri == 5 {
+            wt = v5
+        }
+        if ri == 6 {
+            wt = v6
+        }
+        if ri == 7 {
+            wt = v7
+        }
+        if ri == 8 {
+            wt = v8
+        }
+        if ri == 9 {
+            wt = v9
+        }
+        if ri == 10 {
+            wt = v10
+        }
+        if ri == 11 {
+            wt = v11
+        }
+        if ri == 12 {
+            wt = v12
+        }
+        if ri == 13 {
+            wt = v13
+        }
+        if ri == 14 {
+            wt = v14
+        }
+        if ri == 15 {
+            wt = v15
+        }
+        if ri >= 16 {
+            wt = (xor32(xor32(rotr32(v14, 17), rotr32(v14, 19)), shr32(v14, 10)) + v9 + xor32(xor32(rotr32(v1, 7), rotr32(v1, 18)), shr32(v1, 3)) + v0) % m32
+        }
+        var s1v = xor32(xor32(rotr32(e, 6), rotr32(e, 11)), rotr32(e, 25))
+        var chv = xor32(and32(e, f), and32(not32(e), gv))
+        var t1 = (hh + s1v + chv + kk_at(ri) + wt) % m32
+        var s0v = xor32(xor32(rotr32(a, 2), rotr32(a, 13)), rotr32(a, 22))
+        var mjv = xor32(xor32(and32(a, b), and32(a, c)), and32(b, c))
+        var t2 = (s0v + mjv) % m32
+        hh = gv
+        gv = f
+        f = e
+        e = (d + t1) % m32
+        d = c
+        c = b
+        b = a
+        a = (t1 + t2) % m32
+        if ri >= 16 {
+            v0 = v1
+            v1 = v2
+            v2 = v3
+            v3 = v4
+            v4 = v5
+            v5 = v6
+            v6 = v7
+            v7 = v8
+            v8 = v9
+            v9 = v10
+            v10 = v11
+            v11 = v12
+            v12 = v13
+            v13 = v14
+            v14 = v15
+            v15 = wt
+        }
+        ri += 1
+    }
+    var o = Sha256St { h0: (st.h0 + a) % m32, h1: (st.h1 + b) % m32, h2: (st.h2 + c) % m32, h3: (st.h3 + d) % m32, h4: (st.h4 + e) % m32, h5: (st.h5 + f) % m32, h6: (st.h6 + gv) % m32, h7: (st.h7 + hh) % m32 }
+    return o
+}
+
+// List 字节入 64 位域(值域 0..255,由调用方保证;越界读禁入)
+fn s256_lbyte(msg: List[I32], k: I32) -> I64 {
+    var t: I64 = z64()
+    t = t + msg[k]
+    return t
+}
+
+// 64 字节对齐块内 o 位起 4 字节成词
+fn s256_w64(b: List[I32], o: I32) -> I64 {
+    var w0 = s256_lbyte(b, o)
+    var w1 = s256_lbyte(b, o + 1)
+    var w2 = s256_lbyte(b, o + 2)
+    var w3 = s256_lbyte(b, o + 3)
+    return (w0 * 16777216 + w1 * 65536 + w2 * 256 + w3) % 4294967296
+}
+
+// 块内第 j 个词(g = 绝对字节位;off = 已吸收前缀长 0/64;total = 全流长;
+// fin/qlen/bits 同 block_word:fin 恒 1、qlen < 0 时长度域惰性,
+// 末块 v15 槽 qlen = 4 恰载位长低 32 位;高 32 位随 v14 槽恒零 = 位长 < 2^32)
+fn s256_word(msg: List[I32], g: I32, off: I32, total: I32, qlen: I32, bits: I64) -> I64 {
+    var w0: I64 = z64()
+    var w1: I64 = z64()
+    var w2: I64 = z64()
+    var w3: I64 = z64()
+    if g < total {
+        w0 = s256_lbyte(msg, g - off)
+    }
+    if g + 1 < total {
+        w1 = s256_lbyte(msg, g + 1 - off)
+    }
+    if g + 2 < total {
+        w2 = s256_lbyte(msg, g + 2 - off)
+    }
+    if g + 3 < total {
+        w3 = s256_lbyte(msg, g + 3 - off)
+    }
+    if g == total {
+        w0 = z64() + 128
+    }
+    if g + 1 == total {
+        w1 = z64() + 128
+    }
+    if g + 2 == total {
+        w2 = z64() + 128
+    }
+    if g + 3 == total {
+        w3 = z64() + 128
+    }
+    if qlen >= 0 {
+        var sh: I64 = p2((7 - qlen) * 8)
+        w0 = bits / sh % 256
+        w1 = bits / (sh / 256) % 256
+        w2 = bits / (sh / 65536) % 256
+        w3 = bits / (sh / 16777216) % 256
+    }
+    return (w0 * 16777216 + w1 * 65536 + w2 * 256 + w3) % 4294967296
+}
+
+// 自 st 续吸 tail(off = tail 前已吸收字节;0 = 冷启)并终填,出 32 字节
+fn s256_absorb(st: Sha256St, tail: List[I32], off: I32) -> List[I32] {
+    var total: I32 = off + tail.len
+    var nba: I32 = (total + 72) / 64
+    var n: I32 = nba - off / 64
+    var bits: I64 = z64() + 8
+    bits = bits * total
+    var abstart: I32 = nba * 64 - 64
+    var bi: I32 = 0
+    while bi < n {
+        var bs = off + bi * 64
+        var q: I32 = bs + 60 - (abstart + 56)
+        var v0 = s256_word(tail, bs, off, total, -1, bits)
+        var v1 = s256_word(tail, bs + 4, off, total, -1, bits)
+        var v2 = s256_word(tail, bs + 8, off, total, -1, bits)
+        var v3 = s256_word(tail, bs + 12, off, total, -1, bits)
+        var v4 = s256_word(tail, bs + 16, off, total, -1, bits)
+        var v5 = s256_word(tail, bs + 20, off, total, -1, bits)
+        var v6 = s256_word(tail, bs + 24, off, total, -1, bits)
+        var v7 = s256_word(tail, bs + 28, off, total, -1, bits)
+        var v8 = s256_word(tail, bs + 32, off, total, -1, bits)
+        var v9 = s256_word(tail, bs + 36, off, total, -1, bits)
+        var v10 = s256_word(tail, bs + 40, off, total, -1, bits)
+        var v11 = s256_word(tail, bs + 44, off, total, -1, bits)
+        var v12 = s256_word(tail, bs + 48, off, total, -1, bits)
+        var v13 = s256_word(tail, bs + 52, off, total, -1, bits)
+        var v14 = s256_word(tail, bs + 56, off, total, -1, bits)
+        var v15 = s256_word(tail, bs + 60, off, total, q, bits)
+        st = s256_step(st, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15)
+        bi += 1
+    }
+    var out = List[I32]()
+    out.push(st.h0 / 16777216 % 256)
+    out.push(st.h0 / 65536 % 256)
+    out.push(st.h0 / 256 % 256)
+    out.push(st.h0 % 256)
+    out.push(st.h1 / 16777216 % 256)
+    out.push(st.h1 / 65536 % 256)
+    out.push(st.h1 / 256 % 256)
+    out.push(st.h1 % 256)
+    out.push(st.h2 / 16777216 % 256)
+    out.push(st.h2 / 65536 % 256)
+    out.push(st.h2 / 256 % 256)
+    out.push(st.h2 % 256)
+    out.push(st.h3 / 16777216 % 256)
+    out.push(st.h3 / 65536 % 256)
+    out.push(st.h3 / 256 % 256)
+    out.push(st.h3 % 256)
+    out.push(st.h4 / 16777216 % 256)
+    out.push(st.h4 / 65536 % 256)
+    out.push(st.h4 / 256 % 256)
+    out.push(st.h4 % 256)
+    out.push(st.h5 / 16777216 % 256)
+    out.push(st.h5 / 65536 % 256)
+    out.push(st.h5 / 256 % 256)
+    out.push(st.h5 % 256)
+    out.push(st.h6 / 16777216 % 256)
+    out.push(st.h6 / 65536 % 256)
+    out.push(st.h6 / 256 % 256)
+    out.push(st.h6 % 256)
+    out.push(st.h7 / 16777216 % 256)
+    out.push(st.h7 / 65536 % 256)
+    out.push(st.h7 / 256 % 256)
+    out.push(st.h7 % 256)
+    return out
+}
+
+// SHA-256 摘要字节(32B;RFC 6234 向量锚在 tests/crypto_vec)
+pub fn sha256_bytes(msg: List[I32]) -> List[I32] {
+    return s256_absorb(s256_iv(), msg, 0)
+}
+
+// HMAC 中间态对(RFC 2104 §2:K 规范化 + ipad/opad 各压一块;16 标量字段
+// 扁平形——嵌套 struct 按值未验证,扁平即已证面)
+struct HmacCtx {
+    i0: I64
+    i1: I64
+    i2: I64
+    i3: I64
+    i4: I64
+    i5: I64
+    i6: I64
+    i7: I64
+    o0: I64
+    o1: I64
+    o2: I64
+    o3: I64
+    o4: I64
+    o5: I64
+    o6: I64
+    o7: I64
+}
+
+fn hmac_ctx(key: List[I32]) -> HmacCtx {
+    var k0 = List[I32]()
+    if key.len > 64 {
+        k0 = sha256_bytes(key)
+    } else {
+        var i: I32 = 0
+        while i < key.len {
+            k0.push(key[i])
+            i += 1
+        }
+    }
+    while k0.len < 64 {
+        k0.push(0)
+    }
+    var ip = List[I32]()
+    var op = List[I32]()
+    var j: I32 = 0
+    while j < 64 {
+        var kbw: I64 = z64() + k0[j]
+        ip.push(xor32(kbw, 54))
+        op.push(xor32(kbw, 92))
+        j += 1
+    }
+    var iv = s256_iv()
+    var si = s256_step(iv, s256_w64(ip, 0), s256_w64(ip, 4), s256_w64(ip, 8), s256_w64(ip, 12), s256_w64(ip, 16), s256_w64(ip, 20), s256_w64(ip, 24), s256_w64(ip, 28), s256_w64(ip, 32), s256_w64(ip, 36), s256_w64(ip, 40), s256_w64(ip, 44), s256_w64(ip, 48), s256_w64(ip, 52), s256_w64(ip, 56), s256_w64(ip, 60))
+    var so = s256_step(iv, s256_w64(op, 0), s256_w64(op, 4), s256_w64(op, 8), s256_w64(op, 12), s256_w64(op, 16), s256_w64(op, 20), s256_w64(op, 24), s256_w64(op, 28), s256_w64(op, 32), s256_w64(op, 36), s256_w64(op, 40), s256_w64(op, 44), s256_w64(op, 48), s256_w64(op, 52), s256_w64(op, 56), s256_w64(op, 60))
+    return HmacCtx { i0: si.h0, i1: si.h1, i2: si.h2, i3: si.h3, i4: si.h4, i5: si.h5, i6: si.h6, i7: si.h7, o0: so.h0, o1: so.h1, o2: so.h2, o3: so.h3, o4: so.h4, o5: so.h5, o6: so.h6, o7: so.h7 }
+}
+
+fn hmac_do(cx: HmacCtx, msg: List[I32]) -> List[I32] {
+    var si = Sha256St { h0: cx.i0, h1: cx.i1, h2: cx.i2, h3: cx.i3, h4: cx.i4, h5: cx.i5, h6: cx.i6, h7: cx.i7 }
+    var so = Sha256St { h0: cx.o0, h1: cx.o1, h2: cx.o2, h3: cx.o3, h4: cx.o4, h5: cx.o5, h6: cx.o6, h7: cx.o7 }
+    var inner = s256_absorb(si, msg, 64)
+    return s256_absorb(so, inner, 64)
+}
+
+// HMAC-SHA256(RFC 2104;key > 64B 先散;RFC 4231 向量锚在 tests/crypto_vec)
+pub fn hmac_sha256(key: List[I32], msg: List[I32]) -> List[I32] {
+    var cx = hmac_ctx(key)
+    return hmac_do(cx, msg)
+}
+
+// PBKDF2-HMAC-SHA256(RFC 8018 §5.2;中间态外提:每迭代 2 压;
+// 迭代计数 (i) 族纪律:纯计数无乘,界内累加)
+pub fn pbkdf2_sha256(pass: List[I32], salt: List[I32], iters: I32, dklen: I32) -> List[I32] {
+    var cx = hmac_ctx(pass)
+    var nblk: I32 = (dklen + 31) / 32
+    if nblk < 1 {
+        nblk = 1
+    }
+    var out = List[I32]()
+    var bi: I32 = 1
+    while bi <= nblk {
+        var si = List[I32]()
+        var p: I32 = 0
+        while p < salt.len {
+            si.push(salt[p])
+            p += 1
+        }
+        si.push(bi / 16777216 % 256)
+        si.push(bi / 65536 % 256)
+        si.push(bi / 256 % 256)
+        si.push(bi % 256)
+        var u = hmac_do(cx, si)
+        var t = List[I32]()
+        var q: I32 = 0
+        while q < 32 {
+            t.push(u[q])
+            q += 1
+        }
+        var ci: I32 = 1
+        while ci < iters {
+            u = hmac_do(cx, u)
+            q = 0
+            while q < 32 {
+                var tw: I64 = z64() + t[q]
+                var uw: I64 = z64() + u[q]
+                t[q] = xor32(tw, uw)
+                q += 1
+            }
+            ci += 1
+        }
+        q = 0
+        while q < 32 {
+            out.push(t[q])
+            q += 1
+        }
+        bi += 1
+    }
+    var dk = List[I32]()
+    var k: I32 = 0
+    while k < dklen {
+        dk.push(out[k])
+        k += 1
+    }
+    return dk
+}
+
+// 字节 → 小写十六进制(测试/协议边助手;hexch 复用)
+pub fn bytes_to_hex(b: List[I32]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < b.len {
+        var hi: I64 = z64() + b[i] / 16
+        var lo: I64 = z64() + b[i] % 16
+        out = out + hexch(hi) + hexch(lo)
+        i += 1
+    }
+    return out
+}
+
+// 十六进制数位 → 值(0..15);非法 -1
+fn s256_hexval(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 65 + 10
+    }
+    return -1
+}
+
+// 十六进制合法性(偶长 + 全法数位;与 bytes_from_hex 配对的守卫)
+pub fn hex_valid(s: Str) -> Bool {
+    if s.len % 2 != 0 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        if s256_hexval(byte_at(s, i)) < 0 {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 十六进制 → 字节(值形;仅对 hex_valid 为真的输入有意义,非法位按 0 计——
+// 两段式免 out 参,规避「fn 内未用结果绑定」解释器毒化面(P5-B 登记):
+// 调用方守卫形 = assert hex_valid 后 bytes_from_hex)
+pub fn bytes_from_hex(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        var hi = s256_hexval(byte_at(s, i))
+        var lo = s256_hexval(byte_at(s, i + 1))
+        var b: I32 = 0
+        if hi >= 0 && lo >= 0 {
+            b = hi * 16 + lo
+        }
+        out.push(b)
+        i += 2
+    }
+    return out
+}

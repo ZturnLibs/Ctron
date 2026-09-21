@@ -1,0 +1,22 @@
+// tests/crypto_vec/corpus/b_hmac_tc12.ct —— RFC 4231 HMAC-SHA256 TC1/TC2
+// (TC1:20×0x0b 键 + "Hi There";TC2:"Jefe" 键 + 句子;双臂)。
+// midstate 形(HMAC 内核 2 压/次 + 键规范 2 压)。
+use std.crypto.{hmac_sha256, bytes_to_hex, bytes_from_hex}
+
+fn h2b(s: Str) -> List[I32] {
+    return bytes_from_hex(s)
+}
+
+test "rfc4231 tc1" {
+    var k = List[I32]()
+    var i: I32 = 0
+    while i < 20 {
+        k.push(11)
+        i += 1
+    }
+    assert_eq(bytes_to_hex(hmac_sha256(k, h2b("4869205468657265"))), "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7")
+}
+
+test "rfc4231 tc2" {
+    assert_eq(bytes_to_hex(hmac_sha256(h2b("4a656665"), h2b("7768617420646f2079612077616e7420666f72206e6f7468696e673f"))), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+}

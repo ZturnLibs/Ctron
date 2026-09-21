@@ -1,0 +1,42 @@
+// tests/crypto_vec/corpus/d_bytes_edge.ct —— 字节/hex 边(face 助手;
+// 双臂):hex_valid 两段守卫(奇长/非法位/大写)、bytes_from_hex 值形、
+// bytes_to_hex 前导零保位、空串。注意:fn 内不得留未用结果绑定
+// (interp 毒化面,P5-B 登记)——本文件全部绑定均消费。
+use std.crypto.{hex_valid, bytes_from_hex, bytes_to_hex}
+
+fn h2b(s: Str) -> List[I32] {
+    return bytes_from_hex(s)
+}
+
+test "hex_valid accept" {
+    assert_eq(hex_valid(""), true)
+    assert_eq(hex_valid("00"), true)
+    assert_eq(hex_valid("0a"), true)
+    assert_eq(hex_valid("DEADBEEF"), true)
+    assert_eq(hex_valid("616263"), true)
+}
+
+test "hex_valid reject" {
+    assert_eq(hex_valid("0"), false)
+    assert_eq(hex_valid("0g"), false)
+    assert_eq(hex_valid("zz"), false)
+    assert_eq(hex_valid(" 0"), false)
+}
+
+test "bytes roundtrip" {
+    var b = h2b("00ff10")
+    assert_eq(b.len, 3)
+    assert_eq(b[0], 0)
+    assert_eq(b[1], 255)
+    assert_eq(b[2], 16)
+    assert_eq(bytes_to_hex(b), "00ff10")
+    var up = h2b("DEADBEEF")
+    assert_eq(bytes_to_hex(up), "deadbeef")
+}
+
+test "bytes_to_hex leading zero" {
+    var b = List[I32]()
+    b.push(9)
+    b.push(240)
+    assert_eq(bytes_to_hex(b), "09f0")
+}

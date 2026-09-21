@@ -1,0 +1,226 @@
+// std/uuid.ct —— RFC 9562 UUID(v4 真熵 / v7 unix_ms 前缀;§12 纯 Ctron 驱动)
+// since: std-0.5 stability: experimental
+// 口径:零 std 依赖叶(不 use 任何 std 模块——加载器严格互斥树,std/db 将同时
+// 消费 uuid 与 crypto,uuid 用 crypto 即菱形 E5020);位装配以纯算术(div/mod
+// 掩码合成,字节值域 0..255 内无 (i) 族乘法风险)。
+// 熵源:ctron_entropy_fill extern 垫片(std/db/c_src/ctron_entropy.c;
+// getrandom(Linux)/arc4random_buf(Apple·BSD)/getrandom 失败回落
+// /dev/urandom)。垫片放 std/db/c_src 的理由:P5 db 泳道自有 c_src 邻位
+// (ctron_net.c 邻形),uuid 是 db 消费面、而 std/net 模块面不得被 db 依赖
+// (门面 db: StdDb 贯穿口径),故不随 net。
+// interp 口径无 extern 运行时:uuid_v4()/uuid_v7() 真熵面仅发射臂可跑
+// (tests/net 同款);纯形 uuid_v4_from/uuid_v7_from/format/parse 双臂可测。
+// v7 结构(RFC 9562 §5.2):48 位 unix_ms(大端)|| ver 7(半字节)|| 12 位
+// rand_a || var 10(2 位)|| 62 位 rand_b。v4(§5.1/RFC 4122):16 随机字节,
+// 第 7 字节高半字节 0100,第 9 字节高 2 位 10。
+
+// 熵源垫片 extern(失败 rc -1;成功 0)
+pub extern "c" fn ctron_entropy_fill(buf: &I64[], n: I64) -> I64
+
+// 随机字节取 n 个(0..255;失败/短取 = 空表,调用方 fail-closed)
+fn urand(n: I32) -> List[I32] {
+    var lane: I64[16] = [0, 0, 0, 0]
+    var w0: I64 = 4294967296
+    var r: I64 = w0 - w0 + n
+    var rc = ctron_entropy_fill(lane, r)
+    var out = List[I32]()
+    if rc != 0 {
+        return out
+    }
+    var i: I32 = 0
+    while i < n {
+        var b: I32 = lane[i] % 256
+        out.push(b)
+        i += 1
+    }
+    return out
+}
+
+// 16 字节 → 8-4-4-4-12 小写
+pub fn uuid_format(b: List[I32]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < 16 {
+        if i == 4 || i == 6 || i == 8 || i == 10 {
+            out = out + "-"
+        }
+        out = out + uhexch(b[i] / 16) + uhexch(b[i] % 16)
+        i += 1
+    }
+    return out
+}
+
+fn uhexch(v: I32) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    if v == 1 {
+        return "1"
+    }
+    if v == 2 {
+        return "2"
+    }
+    if v == 3 {
+        return "3"
+    }
+    if v == 4 {
+        return "4"
+    }
+    if v == 5 {
+        return "5"
+    }
+    if v == 6 {
+        return "6"
+    }
+    if v == 7 {
+        return "7"
+    }
+    if v == 8 {
+        return "8"
+    }
+    if v == 9 {
+        return "9"
+    }
+    if v == 10 {
+        return "a"
+    }
+    if v == 11 {
+        return "b"
+    }
+    if v == 12 {
+        return "c"
+    }
+    if v == 13 {
+        return "d"
+    }
+    if v == 14 {
+        return "e"
+    }
+    return "f"
+}
+
+// 16 随机字节 → v4(版本/变体位装配;不足 16 补零,文档化)
+pub fn uuid_v4_from(r: List[I32]) -> Str {
+    var b = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        var z: I32 = 0
+        if i < r.len {
+            z = r[i]
+        }
+        b.push(z)
+        i += 1
+    }
+    var v6: I32 = b[6] % 16 + 64
+    var v8: I32 = b[8] % 64 + 128
+    b[6] = v6
+    b[8] = v8
+    return uuid_format(b)
+}
+
+// unix_ms + 10 随机字节 → v7(rand_a 2B + rand_b 8B;不足补零;ms 截 48 位)
+pub fn uuid_v7_from(ms: I64, rand: List[I32]) -> Str {
+    var b = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        b.push(0)
+        i += 1
+    }
+    var t0: I32 = ms / 1099511627776 % 256
+    var t1: I32 = ms / 4294967296 % 256
+    var t2: I32 = ms / 16777216 % 256
+    var t3: I32 = ms / 65536 % 256
+    var t4: I32 = ms / 256 % 256
+    var t5: I32 = ms % 256
+    b[0] = t0
+    b[1] = t1
+    b[2] = t2
+    b[3] = t3
+    b[4] = t4
+    b[5] = t5
+    var k: I32 = 0
+    while k < 10 {
+        var z: I32 = 0
+        if k < rand.len {
+            z = rand[k]
+        }
+        if k == 0 {
+            var zk: I32 = z % 16 + 112
+            b[6] = zk
+        } else {
+            if k == 2 {
+                var zk2: I32 = z % 64 + 128
+                b[8] = zk2
+            } else {
+                var at: I32 = 6 + k
+                b[at] = z
+            }
+        }
+        k += 1
+    }
+    return uuid_format(b)
+}
+
+// v4 真熵(16B;发射臂面,见头注)
+pub fn uuid_v4() -> Str {
+    var r = urand(16)
+    if r.len != 16 {
+        return ""
+    }
+    return uuid_v4_from(r)
+}
+
+// v7 真熵(48 位 unix_ms + 10B 随机;发射臂面,见头注)
+pub fn uuid_v7() -> Str {
+    var ms: I64 = now_ms()
+    var r = urand(10)
+    if r.len != 10 {
+        return ""
+    }
+    return uuid_v7_from(ms, r)
+}
+
+// 解析 → 校验 → 规范化重排(8-4-4-4-12/连字符位/十六进制集;非法 = 空串;
+// 大写入参规范化为小写)
+pub fn uuid_parse(s: Str) -> Str {
+    if s.len != 36 {
+        return ""
+    }
+    if byte_at(s, 8) != 45 || byte_at(s, 13) != 45 || byte_at(s, 18) != 45 || byte_at(s, 23) != 45 {
+        return ""
+    }
+    var b = List[I32]()
+    var i: I32 = 0
+    while i < 36 {
+        var skip: I32 = 0
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            skip = 1
+        }
+        if skip == 0 {
+            var hi = uhexval(byte_at(s, i))
+            var lo = uhexval(byte_at(s, i + 1))
+            if hi < 0 || lo < 0 {
+                return ""
+            }
+            b.push(hi * 16 + lo)
+            i += 2
+        } else {
+            i += 1
+        }
+    }
+    return uuid_format(b)
+}
+
+// 十六进制数位 → 值(0..15);非法 -1
+fn uhexval(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 65 + 10
+    }
+    return -1
+}

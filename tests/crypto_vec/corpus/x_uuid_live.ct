@@ -1,0 +1,101 @@
+// tests/crypto_vec/corpus/x_uuid_live.ct —— std/uuid 真熵面(x_ = 仅 emit
+// 臂 + 链 std/db/c_src/ctron_entropy.c;interp 无 extern 运行时):
+// v4 十万枚全异 + 版本半字节 '4' / 变体 ∈ {8,9,a,b} 全量断言、v7 毫秒面
+// 单调 + parse 往返全量。
+// 去重 = 夹具内就地快排(ms 面枢轴)邻比——std/sort 的 sorted 系 O(n²)
+// 重建式插入排序,10 万枚不可用(P5-B 登记);仅用已证原语(下标读/写、
+// push、Str ==)。
+use std.uuid.{uuid_v4, uuid_v7, uuid_parse}
+
+fn qs(words: List[Str], lo: I32, hi: I32) -> I32 {
+    var i: I32 = lo
+    var j: I32 = hi
+    var steps: I32 = 0
+    if lo >= hi {
+        return 0
+    }
+    var piv = words[(lo + hi) / 2]
+    while i <= j {
+        while words[i] < piv {
+            i += 1
+            steps += 1
+        }
+        while words[j] > piv {
+            j -= 1
+            steps += 1
+        }
+        if i <= j {
+            var t = words[i]
+            words[i] = words[j]
+            words[j] = t
+            i += 1
+            j -= 1
+        }
+    }
+    var a = qs(words, lo, j)
+    var b = qs(words, i, hi)
+    return a + b + steps
+}
+
+test "uuid v4 100k uniqueness and bits" {
+    var xs = List[Str]()
+    var i: I32 = 0
+    while i < 100000 {
+        var s = uuid_v4()
+        assert_eq(s.len, 36)
+        // 版本半字节:第 15 字符(0 基 14)= '4'
+        assert_eq(byte_at(s, 14), 52)
+        // 变体字符:第 20 字符(0 基 19)∈ 8/9/a/b
+        var vc = byte_at(s, 19)
+        assert(vc == 56 || vc == 57 || vc == 97 || vc == 98)
+        xs.push(s)
+        i += 1
+    }
+    var steps = qs(xs, 0, 99999)
+    assert(steps > 0)
+    var dup = 0
+    var k: I32 = 1
+    while k < 100000 {
+        if xs[k] == xs[k - 1] {
+            dup += 1
+        }
+        k += 1
+    }
+    assert_eq(dup, 0)
+}
+
+test "uuid v7 monotonic ms and parse" {
+    var w2: I64 = 4294967296
+    var prevms: I64 = w2 - w2 - 1
+    var i: I32 = 0
+    while i < 1000 {
+        var s = uuid_v7()
+        assert_eq(s.len, 36)
+        var back = uuid_parse(s)
+        assert_eq(back, s)
+        assert_eq(byte_at(s, 14), 55)
+        var vc = byte_at(s, 19)
+        assert(vc == 56 || vc == 57 || vc == 97 || vc == 98)
+        // 毫秒面单调(48 位前缀;同钟源即不减)
+        var ms: I64 = w2 - w2
+        var b: I32 = 0
+        while b < 13 {
+            var hv: I64 = w2 - w2 + hexnv(byte_at(s, b))
+            ms = ms * 16 + hv
+            b += 1
+        }
+        assert(ms >= prevms)
+        prevms = ms
+        i += 1
+    }
+}
+
+fn hexnv(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    return 0
+}

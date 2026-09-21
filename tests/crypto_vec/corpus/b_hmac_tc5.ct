@@ -1,0 +1,21 @@
+// tests/crypto_vec/corpus/b_hmac_tc5.ct —— RFC 4231 HMAC-SHA256 TC5
+// (131×0xaa 超块键:先散路径 key>64 → sha256_bytes(k0);双臂;
+//  interp 预算 ≈ 7 块等效:键散 3 + 中间态 2 + 数据 1 + 外 1)
+use std.crypto.{hmac_sha256, bytes_to_hex}
+
+test "rfc4231 tc5 large key" {
+    var k = List[I32]()
+    var i: I32 = 0
+    while i < 131 {
+        k.push(170)
+        i += 1
+    }
+    var d = List[I32]()
+    var msg = "Test Using Larger Than Block-Size Key - Hash Key First"
+    var j: I32 = 0
+    while j < msg.len {
+        d.push(byte_at(msg, j))
+        j += 1
+    }
+    assert_eq(bytes_to_hex(hmac_sha256(k, d)), "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54")
+}

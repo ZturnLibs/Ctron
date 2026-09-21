@@ -1,0 +1,24 @@
+// tests/crypto_vec/corpus/b_hmac_tc67.ct —— RFC 4231 HMAC-SHA256 TC6/TC7
+// (TC6:131×0xaa 超块键 + 154B 数据;TC7 = TC6 摘要截 16 字节(128 位),
+//  截断锚经 hex 串 byte_slice 取前 32 位字符;双臂;interp 预算 ≈ 9 块等效)
+use std.crypto.{hmac_sha256, bytes_to_hex}
+
+test "rfc4231 tc6 large key large data" {
+    var k = List[I32]()
+    var i: I32 = 0
+    while i < 131 {
+        k.push(170)
+        i += 1
+    }
+    var d = List[I32]()
+    var msg = "This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm."
+    var j: I32 = 0
+    while j < msg.len {
+        d.push(byte_at(msg, j))
+        j += 1
+    }
+    var mac = bytes_to_hex(hmac_sha256(k, d))
+    assert_eq(mac, "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2")
+    // TC7:HMAC-SHA256-128 = TC6 截 128 位(RFC 4231 §4.8)
+    assert_eq(byte_slice(mac, 0, 32), "9b09ffa71b942fcb27635fbcd5b0e944")
+}

@@ -1,0 +1,30 @@
+// tests/crypto_vec/corpus/a_sha256_canon.ct —— SHA-256 二进制面规范向量
+// (RFC 6234 / FIPS 180-4;tests/crypto_vec run.sh 双臂)。空串/一元 "abc"/
+// 短语/两块 56B。hex I/O 在夹具边(bytes_to_hex/h2b;容器决策 List[I32],
+// std/crypto.ct 二进制面区块头注)。
+use std.crypto.{sha256_bytes, bytes_to_hex, bytes_from_hex, hex_valid}
+
+fn h2b(s: Str) -> List[I32] {
+    return bytes_from_hex(s)
+}
+
+test "sha256 empty" {
+    assert_eq(bytes_to_hex(sha256_bytes(h2b(""))), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+}
+
+test "sha256 abc" {
+    assert_eq(bytes_to_hex(sha256_bytes(h2b("616263"))), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+}
+
+test "sha256 fox" {
+    assert_eq(bytes_to_hex(sha256_bytes(h2b("54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67"))), "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592")
+}
+
+test "sha256 two-block 56b" {
+    assert_eq(bytes_to_hex(sha256_bytes(h2b("6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071"))), "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+}
+
+test "sha256 str parity" {
+    // Str 面与字节面同源(既有 sha256_hex 对拍)
+    assert_eq(bytes_to_hex(sha256_bytes(h2b("616263"))), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+}

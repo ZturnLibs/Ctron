@@ -1,0 +1,100 @@
+// tests/crypto_vec/corpus/e_uuid_pure.ct —— std/uuid 纯形(RFC 9562;
+// 双臂):v4 版本/变体位装配、v7 位布局(48B unix_ms + 12 rand_a + 62
+// rand_b,锚 = "017f22e2-79b0-7c31-98a4-dc0c0c07398f" 形,RFC 9562 Appx
+// 同族样例参数自算)、format/parse 往返 + 非法拒收。真熵 v4()/v7()
+// 面 = x_uuid_live(emit 专臂,链 ctron_entropy.c)。
+use std.uuid.{uuid_v4_from, uuid_v7_from, uuid_parse, uuid_format}
+
+fn seq16() -> List[I32] {
+    var r = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        r.push(i * 17)
+        i += 1
+    }
+    return r
+}
+
+test "uuid v4 bits fixed" {
+    // 00 11 22 ... ff → 装配后 00112233-4455-4677-8899-aabbccddeeff
+    // (byte6 = 0x66 → 0x46 ver'4';byte8 = 0x88 → 0x88 var 10xx)
+    var s = uuid_v4_from(seq16())
+    assert_eq(s, "00112233-4455-4677-8899-aabbccddeeff")
+}
+
+test "uuid v4 bits forced" {
+    // 版本/变体位独立于随机底层:byte6 低半字节保留 + 0x40;byte8 低 6 位 + 0x80
+    var r = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        r.push(255)
+        i += 1
+    }
+    var s = uuid_v4_from(r)
+    assert_eq(s, "ffffffff-ffff-4fff-bfff-ffffffffffff")
+    var z = List[I32]()
+    var j: I32 = 0
+    while j < 16 {
+        z.push(0)
+        j += 1
+    }
+    assert_eq(uuid_v4_from(z), "00000000-0000-4000-8000-000000000000")
+}
+
+test "uuid v7 layout fixed" {
+    // unix_ms = 1645557742000 (0x17F22E279B0);rand = cc 31 98 a4 dc 0c 0c 07 39 8f
+    // → 017f22e2-79b0-7c31-98a4-dc0c0c07398f
+    var w: I64 = 4294967296
+    var ms: I64 = w - w + 1645557742000
+    var r = List[I32]()
+    r.push(204)
+    r.push(49)
+    r.push(152)
+    r.push(164)
+    r.push(220)
+    r.push(12)
+    r.push(12)
+    r.push(7)
+    r.push(57)
+    r.push(143)
+    var s = uuid_v7_from(ms, r)
+    assert_eq(s, "017f22e2-79b0-7c31-98a4-dc0c0c07398f")
+    var back = uuid_parse(s)
+    assert_eq(back, s)
+}
+
+test "uuid v7 short rand zero pad" {
+    var w: I64 = 4294967296
+    var ms: I64 = w - w
+    var r = List[I32]()
+    var s = uuid_v7_from(ms, r)
+    assert_eq(s, "00000000-0000-7000-8000-000000000000")
+}
+
+test "uuid format hyphens" {
+    var b = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        b.push(1)
+        i += 1
+    }
+    var s = uuid_format(b)
+    assert_eq(s, "01010101-0101-0101-0101-010101010101")
+    assert_eq(byte_at(s, 8), 45)
+    assert_eq(byte_at(s, 13), 45)
+    assert_eq(byte_at(s, 18), 45)
+    assert_eq(byte_at(s, 23), 45)
+}
+
+test "uuid parse validate reformat" {
+    var good = "017f22e2-79b0-7c31-98a4-dc0c0c07398f"
+    assert_eq(uuid_parse(good), good)
+    // 大写规范化为小写
+    assert_eq(uuid_parse("017F22E2-79B0-7C31-98A4-DC0C0C07398F"), good)
+    // 长度/连字符位/数位集三拒
+    assert_eq(uuid_parse("017f22e2-79b0-7c31-98a4-dc0c0c07398"), "")
+    assert_eq(uuid_parse("017f22e2x79b0-7c31-98a4-dc0c0c07398f"), "")
+    assert_eq(uuid_parse("017f22e2-79b0-7c31-98g4-dc0c0c07398f"), "")
+    // 版本/变体位不因 parse 拒收(parse 面收全 16 字节形;位语义归生成面)
+    assert_eq(uuid_parse("00000000-0000-1000-0000-000000000000"), "00000000-0000-1000-0000-000000000000")
+}
