@@ -792,8 +792,11 @@ static int ct_dns_submit(struct ct_dns_job* j) {
         }
     }
     pthread_cond_signal(&ct_dns_cv);
+    /* 锁内取闩:解锁后 ct_dns_up 仍可被并发首提交翻转,锁外读既属数据竞争,
+     * 又会让调用者误判池可用返 0,实则失败路径已内联清队 → 停车等 done 永不来。 */
+    int ok = ct_dns_up;
     pthread_mutex_unlock(&ct_dns_mx);
-    return ct_dns_up ? 0 : 1;
+    return ok ? 0 : 1;
 }
 #endif /* !_WIN32 */
 
