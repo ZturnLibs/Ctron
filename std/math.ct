@@ -219,9 +219,40 @@ pub fn sat_sub64(a: I64, b: I64) -> I64 {
     return a - b
 }
 
-// 饱和乘法(I64):押后登记——原生解释器对结果恰为 I64 最小值的乘法误报溢出
-// (探针实证 I64 最小值乘 1 即触发),修复前其永不触 C10 承诺不可验证,
-// 随 interp 线修复后按同型四象限实现落库
+// 饱和乘法(I64):越上界得 I64 最大值,越下界得 I64 最小值,不触 C10 溢出死区;
+// 四象限界门判定的除法恒安全(除数非零,不出现最小值除以负一)
+pub fn sat_mul64(a: I64, b: I64) -> I64 {
+    let hi: I64 = hi64()
+    let lo: I64 = lo64()
+    if a == 0 {
+        return 0
+    }
+    if b == 0 {
+        return 0
+    }
+    if a > 0 {
+        if b > 0 {
+            if a > hi / b {
+                return hi
+            }
+            return a * b
+        }
+        if b < lo / a {
+            return lo
+        }
+        return a * b
+    }
+    if b > 0 {
+        if a < lo / b {
+            return lo
+        }
+        return a * b
+    }
+    if a < hi / b {
+        return hi
+    }
+    return a * b
+}
 
 test "clamp" {
     assert_eq(clamp(5, 1, 10), 5)
@@ -315,4 +346,11 @@ test "sat64" {
     assert_eq(sat_add64(2, 3), 5)
     assert_eq(sat_add64(hi, 1), hi)
     assert_eq(sat_sub64(lo, 1), lo)
+    assert_eq(sat_mul64(3, 4), 12)
+    assert_eq(sat_mul64(0, hi), 0)
+    assert_eq(sat_mul64(hi, 2), hi)
+    assert_eq(sat_mul64(lo, 1), lo)
+    assert_eq(sat_mul64(lo, -1), hi)
+    assert_eq(sat_mul64(lo, 2), lo)
+    assert_eq(sat_mul64(hi, -2), lo)
 }
