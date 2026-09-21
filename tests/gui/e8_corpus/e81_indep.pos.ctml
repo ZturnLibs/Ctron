@@ -1,0 +1,20 @@
+// gui expect: OK —— SL-6c 独立 .ctml 正例回归锁:when/each/input/自闭合/花括号绑定
+// 全认领;独立形态无 Fn 表(on: 处理函数在伴生 .ct),E8120 跳过。
+// 与 s19_input_d/app.ctml 同语法(内嵌/独立同语法同路径,§5.1)。
+view DraftApp {
+  <vbox class="root">
+    <input bind={draft} placeholder="写点啥" class="field"/>
+    <button class="btn" on:click={send}>发送</button>
+    <when cond={show}>
+      <label class="mirror">{draft}</label>
+    </when>
+    <each item in={items}>
+      <label class="row">{item}</label>
+    </each>
+  </vbox>
+}
+style root { gap: 8 padding: 16 }
+style field { bg: "#2a2a2e" fg: "#ffffff" }
+style btn { bg: "#2563eb" }
+style mirror { fg: "#aaaaaa" }
+style row { fg: "#ffffff" }

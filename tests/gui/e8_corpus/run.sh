@@ -46,5 +46,44 @@ for f in "$DIR"/*.warn.ct; do
         fail=$((fail + 1))
     fi
 done
+# SL-6c 独立 .ctml 双形态差分:同一期望码,独立 tokenizer 路径
+for f in "$DIR"/*.neg.ctml; do
+    name=$(basename "$f")
+    exp=$(grep -o "gui expect: [A-Z0-9]*" "$f" | awk '{print $3}')
+    out=$("$ROOT/compiler/ctc.sh" check "$f" --dump-gui 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ] && echo "$out" | grep -q "$exp"; then
+        echo "  [ok] $name (ctml $exp)"
+        pass=$((pass + 1))
+    else
+        echo "  [FAIL] $name — 期待 $exp,rc=$rc"
+        fail=$((fail + 1))
+    fi
+done
+for f in "$DIR"/*.pos.ctml; do
+    name=$(basename "$f")
+    out=$("$ROOT/compiler/ctc.sh" check "$f" --dump-gui 2>&1)
+    rc=$?
+    if [ "$rc" -eq 0 ] && ! echo "$out" | grep -q "E81"; then
+        echo "  [ok] $name (ctml 干净通过)"
+        pass=$((pass + 1))
+    else
+        echo "  [FAIL] $name — 期待干净通过,rc=$rc"
+        fail=$((fail + 1))
+    fi
+done
+for f in "$DIR"/*.warn.ctml; do
+    name=$(basename "$f")
+    exp=$(grep -o "gui expect: [A-Z0-9]*" "$f" | awk '{print $3}')
+    out=$("$ROOT/compiler/ctc.sh" check "$f" --dump-gui 2>&1)
+    rc=$?
+    if [ "$rc" -eq 0 ] && echo "$out" | grep -q "$exp"; then
+        echo "  [ok] $name (ctml warn $exp)"
+        pass=$((pass + 1))
+    else
+        echo "  [FAIL] $name — 期待 warn $exp,rc=$rc"
+        fail=$((fail + 1))
+    fi
+done
 echo "e8_corpus: $pass 过 / $fail 败"
 [ "$fail" -eq 0 ]

@@ -336,6 +336,120 @@ fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -
     return 0
 }
 
+// ==================== 独立 .ctml 检查入口(SL-6c;§5.1 语法缝)====================
+// 内嵌/独立同语法同路径:标记 tokenizer → 复用 gui_block 平衡认领 → GuiBlock File 节
+// → gui_dump_file/gui_check_file 同一走查。契约不变:GuiBlock[4]=空格连接串,
+// token 不得含空格(串字面量含空格即降级,与内嵌口径一致)。
+
+// 后缀判定:p 以 .ctml 结尾
+fn gui_is_ctml(p: Str) -> Bool {
+    if p.len < 5 {
+        return false
+    }
+    var i: I32 = 0
+    while i < 5 {
+        if byte_at(p, p.len - 5 + i) != byte_at(".ctml", i) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 标记 tokenizer:< > = : ; / 单字符;花括号单字符;串字面量(可含转义)一 token;
+// // 行注释跳过;词 = 非空白非特殊字节连续段(含 UTF-8 多字节)
+fn gui_ctml_tokens(src: Str, out: List[Str]) -> I32 {
+    var n: I32 = src.len
+    var i: I32 = 0
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if b == 32 || b == 9 || b == 10 || b == 13 {
+            i += 1
+        } else {
+            if b == 47 {
+                if i + 1 < n {
+                    if byte_at(src, i + 1) == 47 {
+                        while i < n {
+                            if byte_at(src, i) == 10 {
+                                break
+                            }
+                            i += 1
+                        }
+                        continue
+                    }
+                }
+                out.push("/")
+                i += 1
+            } else {
+                if b == 34 {
+                    var j: I32 = i + 1
+                    while j < n {
+                        var cb: I32 = byte_at(src, j)
+                        if cb == 92 {
+                            j += 2
+                            continue
+                        }
+                        if cb == 34 {
+                            break
+                        }
+                        j += 1
+                    }
+                    if j >= n {
+                        j = n - 1
+                    }
+                    out.push(byte_slice(src, i, j + 1))
+                    i = j + 1
+                } else {
+                    if b == 60 || b == 62 || b == 61 || b == 123 || b == 125 || b == 58 || b == 59 {
+                        out.push(byte_slice(src, i, i + 1))
+                        i += 1
+                    } else {
+                        var j2: I32 = i
+                        while j2 < n {
+                            var wb: I32 = byte_at(src, j2)
+                            if wb == 32 || wb == 9 || wb == 10 || wb == 13 {
+                                break
+                            }
+                            if wb == 60 || wb == 62 || wb == 61 || wb == 123 || wb == 125 || wb == 58 || wb == 59 || wb == 47 || wb == 34 {
+                                break
+                            }
+                            j2 += 1
+                        }
+                        if j2 > i {
+                            out.push(byte_slice(src, i, j2))
+                            i = j2
+                        } else {
+                            i += 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+// 独立 .ctml 源 → File 节(子 = GuiBlock;顶层扫 view/style 关键字交 gui_block 认领)
+fn gui_ctml_file(src: Str) -> List[Str] {
+    var toks = List[Str]()
+    gui_ctml_tokens(src, toks)
+    var file = mk("File")
+    var cur = Atomic[I32](0)
+    while cur.load() < toks.len {
+        var t: Str = toks[cur.load()]
+        if t == "view" {
+            file.push(gui_block(toks, cur, "view"))
+        } else {
+            if t == "style" {
+                file.push(gui_block(toks, cur, "style"))
+            } else {
+                cur.store(cur.load() + 1)
+            }
+        }
+    }
+    return file
+}
+
 // ==================== gui_check:检查面(W3;§4.4 E8xxx 语料验收)====================
 // 收集式(不 panic/不打印):诊断行入 gdiags("E8xxx: msg"),块内首错即止。
 // 结构口径与 dump lower 一致(限深 1:根=容器,子=叶子)。
@@ -423,7 +537,7 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
 //   E8120 on: 处理函数未在本文件 Fn/FnExt 声明表(签名级联动随 sem,登记非目标)
 //   E8193 each 体含 input 型控件(警告入 gwarns,不置 rc;key 原语未落地前索引对齐即串位)
 // sawin = 子树 input 计数累加器(Atomic;each 据此发 E8193,嵌套 each 各自报)。
-fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32]) -> I32 {
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool) -> I32 {
     var bad: I32 = 0
     if depth > 8 {
         gdiags.push("E8100: 嵌套超限(限深 8)")
@@ -502,9 +616,13 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                 }
             }
             if hn != "" {
-                if !gui_ck_has_style(fns, hn) {
-                    gdiags.push("E8120: 事件处理器未声明 " + hn + "(on:" + evn + ")")
-                    bad = -1
+                // indep = 独立 .ctml 形态(处理函数在伴生 .ct,跨文件解析 SL-7+)
+                // ——跳过存在性检查;内嵌形态恒严格核对(与 Fn 表有无无关)
+                if !indep {
+                    if !gui_ck_has_style(fns, hn) {
+                        gdiags.push("E8120: 事件处理器未声明 " + hn + "(on:" + evn + ")")
+                        bad = -1
+                    }
                 }
             }
         } else {
@@ -622,7 +740,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 cur.store(cur.load() + 1)
-                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, depth + 1, sawin)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, depth + 1, sawin, indep)
                 if cb < 0 {
                     bad = -1
                 }
@@ -646,7 +764,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     return bad
 }
 
-fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str]) -> I32 {
+fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: Bool) -> I32 {
     // 第一遍:样式名表 + Fn/FnExt 名表(E8120 处理函数存在性依据)
     var sn = List[Str]()
     var fns = List[Str]()
@@ -685,7 +803,7 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str]) -> I32 
                     gdiags.push("E8100: view 期待 <")
                 } else {
                     var sawin = Atomic[I32](0)
-                    gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, 1, sawin)
+                    gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, 1, sawin, indep)
                 }
             } else {
                 if d[1] == "style" {

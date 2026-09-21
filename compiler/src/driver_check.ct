@@ -174,6 +174,41 @@ fn main() -> I32 {
     let src = read_file("../selfhosted/input_cc.ct")
     match src {
         Some(s) => {
+            var epath = ctron_entry()
+            if seq2(epath, "") {
+                epath = path
+            }
+            if gui_is_ctml(epath) {
+                // 独立 .ctml 检查(SL-6c;§5.1 语法缝):标记 tokenizer → GuiBlock File 节
+                // → gui_check_file 同径走查,不经 .ct 词法/解析/语义。诊断先出(收集式
+                // 不中止),警告随 OK 行后印(E8193 警告级不置 rc)
+                var gfile = gui_ctml_file(s)
+                var cml_dump = ctron_cli_flag("dumpgui")
+                if cml_dump.len == 0 {
+                    cml_dump = "ANCHORDUMPGUI"
+                }
+                var cml_diags = List[Str]()
+                var cml_warns = List[Str]()
+                gui_check_file(gfile, cml_diags, cml_warns, true)
+                if cml_diags.len > 0 {
+                    var ci: I32 = 0
+                    while ci < cml_diags.len {
+                        println(cml_diags[ci])
+                        ci += 1
+                    }
+                    return 1
+                }
+                println("check OK gui decls=" + (gfile.len - 1).to_string())
+                if cml_dump == "1" {
+                    gui_dump_file(gfile)
+                }
+                var cwi: I32 = 0
+                while cwi < cml_warns.len {
+                    println(cml_warns[cwi])
+                    cwi += 1
+                }
+                return 0
+            }
             var toks = List[Str]()
             var lns = List[Str]()
             var cols = List[Str]()
@@ -184,10 +219,6 @@ fn main() -> I32 {
             // 模块加载器(§2):use 解析 → 可见性 → 合并;无 use 时为无感直通
             var ldiags = List[Str]()
             var lstack = List[Str]()
-            var epath = ctron_entry()
-            if seq2(epath, "") {
-                epath = path
-            }
             lstack.push(epath)
             // 词法/解析诊断(镜像 seed:PATH:LINE:COL CODE: MSG)→ 止于 rc=1
             if pdiags.len > 0 {
@@ -252,7 +283,7 @@ fn main() -> I32 {
                 // SL-6(M1-d):gwarns 警告通道(E8193 警告级)——打印不置 rc
                 var gdiags = List[Str]()
                 var gwarns = List[Str]()
-                gui_check_file(file, gdiags, gwarns)
+                gui_check_file(file, gdiags, gwarns, false)
                 var gi: I32 = 0
                 while gi < gdiags.len {
                     println(gdiags[gi])
