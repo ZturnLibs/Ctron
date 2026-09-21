@@ -1,0 +1,411 @@
+// =====================================================================
+// fmt.ct —— ctron fmt 自举侧(R-P2d 双宿主移植):token 流重排,不动 AST
+// 规范唯一权威:docs/fmt-spec.md(R1-R8);参考实现:compiler-rust/src/fmt.rs
+// 布局权威 = 原始源码间隙:scan5(lex.ct)提供原始流 + 字节 span + 注释 span,
+// 换行/空行/链断行/块多行性全部由 span 间隙驱动;字面量按 token 原文零改写。
+// 约束(双宿主分歧清单):无 struct(状态收进单 fn 局部变量)、无闭包、
+// 参数表单行;字符串字面量内开花括号必须转义 \{,注释内不放花括号。
+// 验收:compiler/test/smoke.sh fmt 段 + tests/fmt/parity.sh 三宿主逐字节对拍。
+// =====================================================================
+
+// 关键字集(镜像 fmt.rs Tok 关键字变体;is_ident 的排除面)
+fn fmt_kw(t: Str) -> Bool {
+    var ks = List[Str]()
+    ks.push("fn")
+    ks.push("let")
+    ks.push("var")
+    ks.push("const")
+    ks.push("static")
+    ks.push("comptime")
+    ks.push("if")
+    ks.push("else")
+    ks.push("match")
+    ks.push("while")
+    ks.push("for")
+    ks.push("in")
+    ks.push("break")
+    ks.push("continue")
+    ks.push("return")
+    ks.push("struct")
+    ks.push("class")
+    ks.push("enum")
+    ks.push("trait")
+    ks.push("impl")
+    ks.push("own")
+    ks.push("scope")
+    ks.push("test")
+    ks.push("use")
+    ks.push("pub")
+    ks.push("extern")
+    ks.push("prop")
+    ks.push("true")
+    ks.push("false")
+    ks.push("void")
+    ks.push("self")
+    var k: I32 = 0
+    while k < ks.len {
+        if ks[k] == t { return true }
+        k += 1
+    }
+    return false
+}
+
+fn fmt_is_digit0(t: Str) -> Bool {
+    if t.len == 0 { return false }
+    return is_digit(byte_at(t, 0))
+}
+
+// Ident 判定(镜像 Rust lexer.rs:106 的 or 上下文规则:成员位置的 or 是方法名)
+// before = t 的前一个实记号(prev_is_dot 等价物);原始串形态需自带上下文
+fn fmt_identk(t: Str, before: Str) -> Bool {
+    if t.len == 0 { return false }
+    if !is_al(byte_at(t, 0)) { return false }
+    if fmt_is_digit0(t) { return false }
+    if t == "or" { return before == "." }
+    if fmt_kw(t) { return false }
+    return true
+}
+
+// 操作数收尾(一元 +/- 判定;镜像 fmt.rs operand_end:
+// Int/Float/Str/Ident/RParen/RBracket/Question/True/False/Underscore/RBrace/Self)
+fn fmt_operand_end(prev: Str, has_prev: Bool, prev2: Str) -> Bool {
+    if !has_prev { return false }
+    if or2(prev == ")", or2(prev == "]", or2(prev == "}", or2(prev == "?", or2(prev == "_", or2(prev == "true", or2(prev == "false", prev == "self"))))))) { return true }
+    if or2(fmt_is_digit0(prev), byte_at(prev, 0) == 34) { return true }
+    if fmt_identk(prev, prev2) { return true }
+    return false
+}
+
+// 空格表(镜像 fmt.rs needs_space;行首缩进由发射循环处理)
+fn fmt_needs_space(prev: Str, has_prev: Bool, prev2: Str, cur: Str, pipe_open: Bool, sign_unary: Bool) -> Bool {
+    if !has_prev { return false }
+    if or2(cur == ",", or2(cur == ":", or2(cur == ")", or2(cur == "]", or2(cur == ".", or2(cur == "?", cur == "...")))))) { return false }
+    if cur == "}" && prev == "\{" { return false }
+    if cur == "[" {
+        if or2(fmt_identk(prev, prev2), or2(prev == ")", or2(prev == "]", or2(prev == "?", prev == "#")))) { return false }
+    }
+    if cur == "(" {
+        if or2(fmt_identk(prev, prev2), or2(prev == ")", or2(prev == "]", or2(prev == "?", prev == "self")))) { return false }
+    }
+    if or2(prev == "(", or2(prev == "[", or2(prev == ".", or2(prev == "@", or2(prev == "#", prev == "?"))))) { return false }
+    if or2(prev == "!", prev == "&") { return false }
+    if or2(prev == "-", prev == "+") {
+        if sign_unary { return false }
+    }
+    if prev == "|" {
+        if pipe_open { return false }
+    }
+    if or2(prev == "..", prev == "..=") { return false }
+    if or2(cur == "..", cur == "..=") { return false }
+    return true
+}
+
+// [from, to) 内自由换行数(扣除注释占据的换行;注释 end 不含行尾换行)
+fn fmt_free_nl(src: Str, cstarts: List[I32], cends: List[I32], from: I32, to: I32) -> I32 {
+    if to <= from { return 0 }
+    if to > src.len { to = src.len }
+    var count: I32 = 0
+    var i = from
+    while i < to {
+        if byte_at(src, i) == 10 {
+            var covered = false
+            var k: I32 = 0
+            while k < cstarts.len {
+                if cstarts[k] > i {
+                    k = cstarts.len
+                } else {
+                    if i < cends[k] { covered = true }
+                    k += 1
+                }
+            }
+            if !covered { count += 1 }
+        }
+        i += 1
+    }
+    return count
+}
+
+// 块多行性:匹配大括号之间的原始间隙含换行 → 拆行布局(镜像 fmt.rs block_multiline)
+fn fmt_block_ml(src: Str, tstarts: List[I32], tends: List[I32], partner: List[I32], i: I32) -> Bool {
+    var p = partner[i]
+    if p < 0 { return false }
+    var s = tends[i]
+    var e = tstarts[p]
+    if e > src.len { e = src.len }
+    var j = s
+    while j < e {
+        if byte_at(src, j) == 10 { return true }
+        j += 1
+    }
+    return false
+}
+
+fn fmt_ind(n: I32) -> Str {
+    var out = ""
+    var k: I32 = 0
+    while k < n {
+        out = out + "    "
+        k += 1
+    }
+    return out
+}
+
+// fmt 核心:src → 规范格式(诊断非空时 diags 逐条填充并返回空串,规范 R8)
+fn fmt_src(src: Str, diags: List[Str]) -> Str {
+    var toks = List[Str]()
+    var lns = List[Str]()
+    var cols = List[Str]()
+    var pd = List[Str]()
+    var tstarts = List[I32]()
+    var tends = List[I32]()
+    var cstarts = List[I32]()
+    var cends = List[I32]()
+    scan5(src, toks, lns, cols, pd, tstarts, tends, cstarts, cends)
+    if pd.len > 0 {
+        var d: I32 = 0
+        while d < pd.len {
+            diags.push(pd[d])
+            d += 1
+        }
+        return ""
+    }
+    var n = toks.len
+    // 括号配对(栈 = List[I32] + slen 计数;语言 List 无 pop)
+    var partner = List[I32]()
+    var pi: I32 = 0
+    while pi < n {
+        partner.push(-1)
+        pi += 1
+    }
+    var stack = List[I32]()
+    var slen: I32 = 0
+    var qi: I32 = 0
+    while qi < n {
+        var qt = toks[qi]
+        if qt == "\{" {
+            if slen < stack.len { stack[slen] = qi } else { stack.push(qi) }
+            slen += 1
+        } else if qt == "}" {
+            if slen > 0 {
+                slen -= 1
+                var open = stack[slen]
+                partner[open] = qi
+                partner[qi] = open
+            }
+        }
+        qi += 1
+    }
+    // 发射状态(全部收进本 fn 局部变量;镜像 fmt.rs Emitter)
+    var out = ""
+    var indent: I32 = 0
+    var at_ls = true
+    var extra: I32 = 0
+    var last_end: I32 = 0
+    var prev = ""
+    var prev2 = ""
+    var has_prev = false
+    var pipe_open = false
+    var sign_unary = false
+    var ci: I32 = 0
+    var nc = cstarts.len
+    var i: I32 = 0
+    while i < n {
+        var t = toks[i]
+        if t == "NL" {
+            i += 1
+            continue
+        }
+        var ts = tstarts[i]
+        var te = tends[i]
+        // 待处理注释:独占行(前置自由换行先落、按当前缩进、自终止)/行尾(挂当前行)
+        var more = true
+        while more {
+            more = false
+            if ci < nc && cstarts[ci] < ts {
+                var cs = cstarts[ci]
+                var ce = cends[ci]
+                ci += 1
+                var tec = ce
+                while tec > cs && or2(byte_at(src, tec - 1) == 32, or2(byte_at(src, tec - 1) == 9, byte_at(src, tec - 1) == 13)) { tec -= 1 }
+                var pf = fmt_free_nl(src, cstarts, cends, last_end, cs)
+                if pf >= 1 {
+                    if !at_ls {
+                        out = out + "\n"
+                        if pf >= 2 { out = out + "\n" }
+                        at_ls = true
+                        extra = 0
+                    } else if pf >= 2 {
+                        out = out + "\n"
+                    }
+                    out = out + fmt_ind(indent + extra)
+                    out = out + byte_slice(src, cs, tec)
+                    out = out + "\n"
+                    at_ls = true
+                } else {
+                    if !at_ls { out = out + " " }
+                    if at_ls {
+                        out = out + fmt_ind(indent + extra)
+                        at_ls = false
+                    }
+                    out = out + byte_slice(src, cs, tec)
+                }
+                last_end = ce
+                more = true
+            }
+        }
+        // 统一间隙换行:free ≥ 1 换行、free ≥ 2 加空行(至多 1 行);else 恒同行(R3)
+        if t != "else" {
+            var free = fmt_free_nl(src, cstarts, cends, last_end, ts)
+            if free >= 1 {
+                if !at_ls {
+                    out = out + "\n"
+                    if free >= 2 { out = out + "\n" }
+                    at_ls = true
+                    extra = 0
+                } else if free >= 2 {
+                    out = out + "\n"
+                }
+            }
+        }
+        // 发射一个记号;特殊形态单独走,其余落到通用尾段
+        if t == "\{" {
+            if !at_ls && fmt_needs_space(prev, has_prev, prev2, t, pipe_open, sign_unary) { out = out + " " }
+            if at_ls {
+                out = out + fmt_ind(indent + extra)
+                at_ls = false
+            }
+            out = out + "\{"
+            if fmt_block_ml(src, tstarts, tends, partner, i) {
+                indent += 1
+                out = out + "\n"
+                at_ls = true
+                extra = 0
+            }
+            prev2 = prev
+            prev = t
+            has_prev = true
+            last_end = te
+            i += 1
+            continue
+        }
+        if t == "}" {
+            var ml = false
+            if partner[i] >= 0 {
+                ml = fmt_block_ml(src, tstarts, tends, partner, partner[i])
+            }
+            if ml && indent > 0 { indent -= 1 }
+            if !at_ls && !ml && fmt_needs_space(prev, has_prev, prev2, t, pipe_open, sign_unary) { out = out + " " }
+            if at_ls {
+                out = out + fmt_ind(indent + extra)
+                at_ls = false
+            }
+            out = out + "}"
+            prev2 = prev
+            prev = t
+            has_prev = true
+            last_end = te
+            i += 1
+            continue
+        }
+        if t == "else" {
+            if !at_ls { out = out + " " }
+            if at_ls {
+                out = out + fmt_ind(indent + extra)
+                at_ls = false
+            }
+            out = out + "else"
+            prev2 = prev
+            prev = t
+            has_prev = true
+            last_end = te
+            i += 1
+            continue
+        }
+        if t == "|" {
+            var psp = true
+            if pipe_open {
+                psp = false
+                pipe_open = false
+            } else {
+                if or2(prev == ",", or2(prev == "(", or2(fmt_identk(prev, prev2), or2(prev == ")", prev == "[")))) { psp = false }
+                pipe_open = true
+            }
+            if !at_ls && psp { out = out + " " }
+            if at_ls {
+                out = out + fmt_ind(indent + extra)
+                at_ls = false
+            }
+            out = out + "|"
+            prev2 = prev
+            prev = t
+            has_prev = true
+            last_end = te
+            i += 1
+            continue
+        }
+        if t == "." {
+            // 链断行:前隙自由换行 → 换行 + 相对缩进(§1.6 重词法化滤除,流不变)
+            if !at_ls && fmt_free_nl(src, cstarts, cends, last_end, ts) >= 1 {
+                out = out + "\n"
+                at_ls = true
+                extra = 1
+            }
+        }
+        if or2(t == "-", t == "+") {
+            sign_unary = !fmt_operand_end(prev, has_prev, prev2)
+        }
+        var text = t
+        if fmt_is_digit0(t) {
+            text = num_text(t) + num_sfx(t)
+        }
+        if !at_ls && fmt_needs_space(prev, has_prev, prev2, t, pipe_open, sign_unary) { out = out + " " }
+        if at_ls {
+            out = out + fmt_ind(indent + extra)
+            at_ls = false
+        }
+        out = out + text
+        prev2 = prev
+        prev = t
+        has_prev = true
+        last_end = te
+        i += 1
+    }
+    // 尾部注释(Eof 只负责尾部注释)
+    while ci < nc {
+        var cs = cstarts[ci]
+        var ce = cends[ci]
+        ci += 1
+        var tec = ce
+        while tec > cs && or2(byte_at(src, tec - 1) == 32, or2(byte_at(src, tec - 1) == 9, byte_at(src, tec - 1) == 13)) { tec -= 1 }
+        var pf = fmt_free_nl(src, cstarts, cends, last_end, cs)
+        if pf >= 1 {
+            if !at_ls {
+                out = out + "\n"
+                if pf >= 2 { out = out + "\n" }
+                at_ls = true
+                extra = 0
+            } else if pf >= 2 {
+                out = out + "\n"
+            }
+            out = out + fmt_ind(indent + extra)
+            out = out + byte_slice(src, cs, tec)
+            out = out + "\n"
+            at_ls = true
+        } else {
+            if !at_ls { out = out + " " }
+            if at_ls {
+                out = out + fmt_ind(indent + extra)
+                at_ls = false
+            }
+            out = out + byte_slice(src, cs, tec)
+        }
+        last_end = ce
+    }
+    // 规范:无前导空行,文件以单个换行结束
+    var s: I32 = 0
+    var e = out.len
+    while s < e && byte_at(out, s) == 10 { s += 1 }
+    while e > s && or2(byte_at(out, e - 1) == 10, or2(byte_at(out, e - 1) == 32, byte_at(out, e - 1) == 9)) { e -= 1 }
+    if e == s { return "" }
+    return byte_slice(out, s, e) + "\n"
+}

@@ -1,0 +1,35 @@
+// =====================================================================
+// driver_fmt.ct —— 编译器入口(格式化模式,R-P2d 双宿主移植)
+// scan5 词法 → fmt_src token 流重排 → stdout;词法诊断逐条 "PATH:LINE:COL CODE: MSG"
+// 打印并止(rc=1),规范 R8:fmt 只服务合法语法面,不静默输出。
+// 输入锚:read_file("ANCHORINPUT") 中性锚,构建/运行脚本换靶(与 emit 驱动同款);
+// 原生 ctron-fmt 响应 `run <file>` 覆盖。CLI 契约(-w/--check/pkg 目录)由 ctc 层编排。
+// =====================================================================
+fn main() -> I32 {
+    let path = "ANCHORINPUT"
+    let src = read_file("ANCHORINPUT")
+    match src {
+        Some(s) => {
+            var epath = ctron_entry()
+            if seq2(epath, "") {
+                epath = path
+            }
+            var diags = List[Str]()
+            var out = fmt_src(s, diags)
+            if diags.len > 0 {
+                var i: I32 = 0
+                while i < diags.len {
+                    println(epath + ":" + diags[i])
+                    i += 1
+                }
+                return 1
+            }
+            print(out)
+            return 0
+        }
+        None => {
+            println("read-failed")
+            return 1
+        }
+    }
+}

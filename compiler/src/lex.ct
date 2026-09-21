@@ -151,12 +151,11 @@ fn pdiag(pdiags: List[Str], lns: List[Str], cols: List[Str], cur: Atomic[I32], c
     pdiags.push(ln + ":" + cl + " " + code + ": " + msg)
 }
 
-// scan4:scan + 逐 token 列号(cols 与 toks 平行)+ 词法诊断(pdiags)
-// 镜像 seed 词法器守卫:`;`/`::` 禁用标点与无法识别字符报 E1001(`;`/未知字符丢弃记号续扫)
-fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: List[Str]) {
-    var raw = List[Str]()
-    var rlines = List[Str]()
-    var rcols = List[Str]()
+// scan5:原始扫描(换行不过滤/注释不吞)——fmt(R-P2d 移植)的布局权威面
+// toks=原始流(含 "NL");tstarts/tends 与 toks 平行的字节 span(数值含后缀);
+// cstarts/cends=注释 span(end 不含行尾换行,换行留给统一间隙计数);返回结束行号。
+// 记号边界与诊断与 scan4 完全同源;scan4 = scan5 + §1.6 过滤 + #EOF 哨兵。
+fn scan5(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: List[Str], tstarts: List[I32], tends: List[I32], cstarts: List[I32], cends: List[I32]) -> I32 {
     var line: I32 = 1
     var lst: I32 = 0
     var n = src.len
@@ -165,16 +164,21 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
         var b = byte_at(src, i)
         var c0 = i - lst + 1
         if b == 10 {
-            raw.push("NL")
-            rlines.push(line.to_string())
-            rcols.push(c0.to_string())
+            toks.push("NL")
+            lns.push(line.to_string())
+            cols.push(c0.to_string())
+            tstarts.push(i)
+            tends.push(i + 1)
             line += 1
             i += 1
             lst = i
         } else if or2(b == 32, or2(b == 9, b == 13)) {
             i += 1
         } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 47 {
+            var cs = i
             while i < n && byte_at(src, i) != 10 { i += 1 }
+            cstarts.push(cs)
+            cends.push(i)
         } else if b == 34 {
             var q0 = i
             i += 1
@@ -192,11 +196,11 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
                     i += 1
                 }
             }
-            rpush(raw, rlines, rcols, line, c0, byte_slice(src, q0, i))
+            rpush(toks, lns, cols, tstarts, tends, line, c0, q0, i, byte_slice(src, q0, i))
         } else if is_al(b) {
             var start = i
             while i < n && is_ac(byte_at(src, i)) { i += 1 }
-            rpush(raw, rlines, rcols, line, c0, byte_slice(src, start, i))
+            rpush(toks, lns, cols, tstarts, tends, line, c0, start, i, byte_slice(src, start, i))
         } else if is_digit(b) {
             var tstart = i
             var radix: I32 = 0
@@ -244,75 +248,75 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
             var sl = suffix_len(src, n, i)
             if sl > 0 { tk = tk + byte_slice(src, i, i + sl) }
             i += sl
-            rpush(raw, rlines, rcols, line, c0, tk)
+            rpush(toks, lns, cols, tstarts, tends, line, c0, tstart, i, tk)
         } else {
             if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 46 {
                 // "..." 变参标记(§9.6 v0.7:extern 形参表尾)
-                rpush(raw, rlines, rcols, line, c0, "...")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 3, "...")
                 i += 3
             } else if b == 46 && i + 2 < n && byte_at(src, i + 1) == 46 && byte_at(src, i + 2) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "..=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 3, "..=")
                 i += 3
             } else if b == 46 && i + 1 < n && byte_at(src, i + 1) == 46 {
-                rpush(raw, rlines, rcols, line, c0, "..")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "..")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 62 {
-                rpush(raw, rlines, rcols, line, c0, "->")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "->")
                 i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 62 {
-                rpush(raw, rlines, rcols, line, c0, "=>")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "=>")
                 i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "==")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "==")
                 i += 2
             } else if b == 33 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "!=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "!=")
                 i += 2
             } else if b == 60 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "<=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "<=")
                 i += 2
             } else if b == 62 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, ">=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, ">=")
                 i += 2
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
-                rpush(raw, rlines, rcols, line, c0, "&&")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "&&")
                 i += 2
             } else if b == 124 && i + 1 < n && byte_at(src, i + 1) == 124 {
                 // v0.7 修订一:|| 最长匹配(起始位零参闭包由 parse 角色分离,§4.0)
-                rpush(raw, rlines, rcols, line, c0, "||")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "||")
                 i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
-                rpush(raw, rlines, rcols, line, c0, "+%")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "+%")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 37 {
-                rpush(raw, rlines, rcols, line, c0, "-%")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "-%")
                 i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "+=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "+=")
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "-=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "-=")
                 i += 2
             } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "*=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "*=")
                 i += 2
             } else if b == 47 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "/=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "/=")
                 i += 2
             } else if b == 37 && i + 1 < n && byte_at(src, i + 1) == 61 {
-                rpush(raw, rlines, rcols, line, c0, "%=")
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "%=")
                 i += 2
             } else if b == 58 && i + 1 < n && byte_at(src, i + 1) == 58 {
-                // 禁用标点 :: (镜像 seed:报 E1001,恢复为单个冒号继续)
-                rpush(raw, rlines, rcols, line, c0, ":")
+                // 禁用标点 :: (镜像 seed 词法器:报 E1001,恢复为单个冒号继续)
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, ":")
                 pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + diag_text0("E1001.punct.colon"))
                 i += 2
             } else if b == 59 {
-                // 禁用标点 ; (镜像 seed:报 E1001 并丢弃记号,主循环续扫)
+                // 禁用标点 ; (镜像 seed 词法器:报 E1001 并丢弃记号,主循环续扫)
                 i += 1
                 pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + diag_text0("E1001.punct.semi"))
             } else if lex_single(b) {
-                rpush(raw, rlines, rcols, line, c0, byte_slice(src, i, i + 1))
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 1, byte_slice(src, i, i + 1))
                 i += 1
             } else {
                 pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + diag_text1("E1001.badchar", byte_slice(src, i, i + 1)))
@@ -320,6 +324,18 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
             }
         }
     }
+    return line
+}
+
+fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: List[Str]) {
+    var raw = List[Str]()
+    var rlines = List[Str]()
+    var rcols = List[Str]()
+    var tstarts = List[I32]()
+    var tends = List[I32]()
+    var cstarts = List[I32]()
+    var cends = List[I32]()
+    var line = scan5(src, raw, rlines, rcols, pdiags, tstarts, tends, cstarts, cends)
     filter_nl(raw, rlines, rcols, toks, lns, cols)
     toks.push("#EOF")
     lns.push(line.to_string())
@@ -344,10 +360,12 @@ fn scan(src: Str, toks: List[Str], lns: List[Str]) {
     scan4(src, toks, lns, cols, pd)
 }
 
-fn rpush(raw: List[Str], rlines: List[Str], rcols: List[Str], line: I32, col: I32, t: Str) {
+fn rpush(raw: List[Str], rlines: List[Str], rcols: List[Str], tstarts: List[I32], tends: List[I32], line: I32, col: I32, s: I32, e: I32, t: Str) {
     raw.push(t)
     rlines.push(line.to_string())
     rcols.push(col.to_string())
+    tstarts.push(s)
+    tends.push(e)
 }
 
 fn tok(toks: List[Str], cur: Atomic[I32]) -> Str {

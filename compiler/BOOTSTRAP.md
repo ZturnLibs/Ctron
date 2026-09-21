@@ -74,8 +74,10 @@ Ctron 当前无本地多文件模块,模块化以 `cat` 拼接实现。顶层 de
 
 | 驱动 | 锚字面量 | 换靶方式 |
 |---|---|---|
-| driver_run / driver_check | `read_file("../selfhosted/input_cc.ct")` | `sed "s|\.\./selfhosted/input_cc\.ct|$IN|"` |
-| driver_emit | `read_file("ANCHORINPUT")` | `sed "s|ANCHORINPUT|$IN|"` |
+| driver_run / driver_check / driver_emit / driver_fmt | `read_file("ANCHORINPUT")` | `sed "s|ANCHORINPUT|$IN|"` |
+
+四驱动统一中性锚 `ANCHORINPUT`(2026-09-21 起;compiler/ 源码不依赖 selfhosted/,
+独立实现全部功能;换靶一律走同一 ANCHORINPUT sed,emit 原款)。
 
 **第二级换靶在产物里**:发射产物带 `main(argc,argv)`,`<bin> run <file>` 置
 `ctron_cli_input`,其后一切 `read_file` 一律返回该文件(C9j⑥)。因此原生发射器

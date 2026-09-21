@@ -2,7 +2,7 @@
 // driver_run.ct —— 编译器入口(解释执行模式)
 // parse → 单文件语义 12 项;有诊断 "CODE: msg" 打印并止(rc=1);
 // 干净则解释执行:文件含 fn main → 解释 main,否则解释 test 块(rc=0)。
-// 输入锚:main 内 read_file("../selfhosted/input_cc.ct"),构建/运行脚本换靶。
+// 输入锚:main 内 read_file("ANCHORINPUT") 中性锚,构建/运行脚本换靶(compiler/ 不依赖 selfhosted)。
 // =====================================================================
 // ---------------- 驱动:parse → 语义 12 项 → 运行 ----------------
 // 语义阶段:sems != "(Ctron sem_walk2 逐条 "CODE: msg")→ 打印并止(编译失败)
@@ -36,8 +36,8 @@ fn strip_at(s: Str) -> Str {
     return out
 }
 fn main() -> I32 {
-    let path = "../selfhosted/input_cc.ct"
-    let src = read_file("../selfhosted/input_cc.ct")
+    let path = "ANCHORINPUT"
+    let src = read_file("ANCHORINPUT")
     match src {
         Some(s) => {
             var toks = List[Str]()

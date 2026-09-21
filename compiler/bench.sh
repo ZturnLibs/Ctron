@@ -82,7 +82,7 @@ echo ""
 echo "== S2) 编译器前端:check 自编译面(cc_run.ct,decls 锁定) =="
 run_timed "$T/fe_seed.out" 900 "$DIR/ctc.sh" check "$DIR/build/cc_run.ct"
 t1=$RT; r1=$(grep -o 'decls=[0-9]*' "$T/fe_seed.out" | tail -1)
-sed -e "s|\.\./selfhosted/input_cc\.ct|$DIR/build/cc_run.ct|" -e "s|ANCHORFMT|0|" -e "s|ANCHORPROFILE|full|" "$DIR/build/cc_check.ct" > "$T/chk_native.ct"
+sed -e "s|ANCHORINPUT|$DIR/build/cc_run.ct|" -e "s|ANCHORFMT|0|" -e "s|ANCHORPROFILE|full|" "$DIR/build/cc_check.ct" > "$T/chk_native.ct"
 run_timed "$T/fe_nc.out" 900 "$NC" run "$T/chk_native.ct"
 t2=$RT; r2=$(grep -o 'decls=[0-9]*' "$T/fe_nc.out" | tail -1)
 perl -e "printf 'seed 解释检查驱动: %.2fs (%s)   全深度(native 解释检查驱动): %.2fs (%s)   全深度/种子 = %.2f', $t1, '$r1', $t2, '$r2', $t2/$t1" && echo ""
@@ -99,9 +99,9 @@ diff -q "$T/em_seed.c" "$T/em_nc.c" >/dev/null 2>&1 && echo "两形态发射产�
 
 echo ""
 echo "== S4) 黄金解释:seed 解释 cc_run 跑 input_cc vs native ctron-cc 同源 =="
-# seed 的 read_file 锚按 CWD 解析:须在 compiler/ 内运行(cc_run.ct 锚 "../selfhosted/...")
-# 否则读文件失败打 "read-failed" 造成假分歧(曾以仓库根为 CWD 触发)
-run_timed "$T/g_seed.out" 900 sh -c "cd \"$DIR\" && \"$SEED\" run \"$DIR/build/cc_run.ct\""
+# 输入锚为中性 ANCHORINPUT:seed 面须先 sed 换靶(无 CWD 依赖,不再有假分歧 footgun)
+sed "s|ANCHORINPUT|$ROOT/selfhosted/input_cc.ct|" "$DIR/build/cc_run.ct" > "$T/cc_run_seed.ct"
+run_timed "$T/g_seed.out" 900 sh -c "\"$SEED\" run \"$T/cc_run_seed.ct\""
 t1=$RT
 run_timed "$T/g_nc.out" 900 "$NC" run "$ROOT/selfhosted/input_cc.ct"
 t2=$RT

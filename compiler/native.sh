@@ -4,6 +4,8 @@
 #   bin/ctron-cc    编译器·运行驱动(parse → 语义 12 项 → 解释执行,<bin> run <file>)
 #   bin/ctron-emit  编译器·发射驱动(parse → 生成等价 C,<bin> run <file> > out.c)
 #   bin/ctron-chk   编译器·检查驱动(parse → 语义 12 项,<bin> run <file> [--format=json|--profile=bare|--trusted])
+#   bin/ctron-fmt   格式化驱动(R-P2d 移植:scan5 → token 流重排 → stdout,<bin> run <file>;
+#                   词法诊断 rc=1;-w/--check/pkg 目录由 ctc 层编排,docs/fmt-spec.md)
 #
 # 生成路径(自举链):发射器(cc_emit)编译编译器源 → C → 本机 cc。
 # 宿主 seed(compiler-c/build/ctronc)只在 ctc.sh emit 内部出现 —— 首次引导职责。
@@ -24,6 +26,7 @@ mkdir -p "$BIN"
 "$DIR/ctc.sh" emit "$DIR/build/cc_run.ct"  "$TMP/ctron_cc.c"   > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_emit.ct" "$TMP/ctron_emit.c" > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_check.ct" "$TMP/ctron_chk.c" > /dev/null
+"$DIR/ctc.sh" emit "$DIR/build/cc_fmt.ct"  "$TMP/ctron_fmt.c"  > /dev/null
 
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
@@ -57,3 +60,6 @@ echo "native: bin/ctron-emit(发射驱动)← $(wc -l < "$TMP/ctron_emit.c") 行
 
 cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c"
 echo "native: bin/ctron-chk(检查驱动)← $(wc -l < "$TMP/ctron_chk.c") 行 C"
+
+cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c"
+echo "native: bin/ctron-fmt(格式化驱动)← $(wc -l < "$TMP/ctron_fmt.c") 行 C"

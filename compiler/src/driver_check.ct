@@ -6,7 +6,7 @@
 // 缺省回落构建锚 ANCHORFMT("1"/"0" 由 sed 注入;字面未注入即文本面),
 // 输出冻结 schema:code/severity/message/file/span/notes/fixes。
 // span 为 v0 近似:以消息尾段名定位源码首含行(列恒 1);解析器 span 标注(类型检查 v1)落地后替换。
-// 输入锚:read_file("../selfhosted/input_cc.ct"),构建/运行脚本换靶。
+// 输入锚:read_file("ANCHORINPUT") 中性锚,构建/运行脚本换靶(compiler/ 不依赖 selfhosted)。
 // =====================================================================
 fn json_escape(s: Str) -> Str {
     var out = ""
@@ -168,10 +168,10 @@ fn strip_at(s: Str) -> Str {
     return out
 }
 fn main() -> I32 {
-    let path = "../selfhosted/input_cc.ct"
+    let path = "ANCHORINPUT"
     // read_file 实参必须是 Str 字面量:发射时 ct_swap_anchor 换为 CLI 标记,
     // 原生 ctron-chk 才能响应 `run <file>` 覆盖(seed 面由 ctc.sh sed 换靶,双口径同源)。
-    let src = read_file("../selfhosted/input_cc.ct")
+    let src = read_file("ANCHORINPUT")
     match src {
         Some(s) => {
             var epath = ctron_entry()
