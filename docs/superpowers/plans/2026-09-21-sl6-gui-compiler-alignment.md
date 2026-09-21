@@ -22,7 +22,24 @@
 - E8120 形态语义：内嵌 .ct 恒核对；独立 .ctml 跳过（fns 表语义上不可能有）——勿用
   fns.len>0 判 form（把内嵌无 fn 声明的文件也放行了，e8120 语料实证）。
 
-## SL-7 入口设计笔记（下一片，未动工）
+## SL-7 入口设计笔记（SL-7α 已落地 87e7fde）
+
+### SL-7α（2026-09-21，内嵌 view/style 块端到端）
+
+- ctron_embedded() 内建四面（eval/sem/trans/driver_emit 烘焙）；gui_blocks_src 重建器
+  （空格化 + `</` 粘连 + 剥 ~）；run_d/run_kb_d 文件优先+内嵌兜底；热重载空源守卫；
+  s20_embed 落阶（无 app.ctml 独立运行）。
+- **已知限制**：字面量叶文本含词法切分标点时重建插空格（W1 join 丢邻接，信息论极限）——
+  骨架 IR 槽表直通根治；夹具字面量文本用无标点形态。
+- **新登记红项**：域包 test() 驱动解释口径整体红（"index target"，⑳ 家族 struct-List
+  读残留；read_file 源同炸）——归解释/发射泳道或后续 ⑳ 收口切片。
+- **坑位**：peer stash-pop 冲突（UU trans_expr）按上游侧解决零损失；`git add` 路径外的
+  peer 暂存态会被 commit 卷入——**提交前必查 `git status` 暂存列，commit 后必对
+  `--stat` 核对文件清单**（本次 21 files 误卷已 soft-reset 拆分重提为 10 files）。
+- w2_fold 红 = peer 未提交锚重构（`../selfhosted/input_cc.ct` → `ANCHORINPUT`）打断
+  其 sed 假设——归 peer 随其重构收口。
+
+### SL-7 余下（骨架 IR 本体，未动工）
 
 - 骨架 IR：GuiNode[tag, style_id, child_fc, child_ns, ev_slot] + Slot[node, attr, expr_id]。
   fc/ns 与域包 GuiTree 同表示——**runtime.ct 遍历零改动换数据源**（§5.1）。
