@@ -112,6 +112,15 @@ fn clb(file: List[Str], b: List[Str], names: List[Str]) {
             clb(file, st[3], names)
         } else if t == "Assign" {
             cle(file, st[3], names)
+        } else if t == "If" {
+            // If/Match 分支内的捕获收集(SL-0.6-⑰:此前不穿透 If 体,捕获丢失)
+            cle(file, st[1], names)
+            clb(file, st[2], names)
+            if st[3][0] != "None" {
+                clb(file, st[3][2], names)
+            }
+        } else if t == "Match" {
+            cle(file, st[1], names)
         }
         i += 1
     }

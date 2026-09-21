@@ -1397,6 +1397,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         eln(ct_expr(e, env, file) + ";", env)
         return env
     }
+    // If 语句:此前无路由,shim 体 If 语句触发 panic 写入 C(SL-0.6-⑰ 探针)
+    if t == "If" {
+        ct_if_stmt(st, env, file, hreg)
+        return env
+    }
     panic("ct_stmt:" + t)
     return env
 }
