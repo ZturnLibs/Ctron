@@ -187,6 +187,43 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             cont[idx + 1] = nv3
             return s4("k", ixr[1], ixr[3], vV2())
         }
+        // C9f③:索引赋值 Member 基座 t.nfc[i] = v(SL-0.6-⑱:struct List 字段写透)。
+        // Member 读对 BOX 自动解引用、u_field 返回共享 L 节点(别名形态已证共享后备)
+        // ——原地写即字段后备写透,与 Ident 基座同语义
+        if tg[0] == "Index" && tg[1][0] == "Member" {
+            var mr = eval_expr(file, env, out, tg[1])
+            if mr[0] != "k" {
+                return s4(mr[0], mr[1], mr[3], mr[2])
+            }
+            var cont4 = mr[2]
+            if !or2(seq2(cont4[0], "A"), seq2(cont4[0], "L")) {
+                panic("index assign target")
+                return s4("a", env, out, vV2())
+            }
+            var ix4 = eval_expr(file, env, out, tg[2])
+            if ix4[0] != "k" {
+                return s4(ix4[0], ix4[1], ix4[3], ix4[2])
+            }
+            var id4 = dvi(ix4[2][1])
+            if or2(id4 < 0, id4 >= cont4.len - 1) {
+                var b4: Str = "?"
+                if tg[1][1][0] == "Ident" { b4 = tg[1][1][1] + "." + tg[1][3] }
+                panic("index out of bounds idx=" + id4.to_string() + " base=" + b4 + " contlen=" + (cont4.len - 1).to_string())
+                return s4("a", env, out, vV2())
+            }
+            var vr4 = eval_expr(file, env, out, st[3])
+            if vr4[0] != "k" {
+                return s4(vr4[0], vr4[1], vr4[3], vr4[2])
+            }
+            var op4 = st[2]
+            var nv4 = vr4[2]
+            if !seq2(op4, "Eq") {
+                var old4 = cont4[id4 + 1]
+                nv4 = vI(ari(op4, dvi(old4[1]), dvi(nv4[1])))
+            }
+            cont4[id4 + 1] = nv4
+            return s4("k", ix4[1], ix4[3], vV2())
+        }
         panic("assign target:" + tg[0])
         return s4("a", env, out, vV2())
     }
