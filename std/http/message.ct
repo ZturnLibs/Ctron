@@ -232,7 +232,9 @@ fn ck_find_crlf(src: &I64[], n: I64, start: I64) -> I64 {
 // 解码一步:src[pos..n) → dst[dfill..dcap)(dfill = dst 已存量,跨调用由
 // 调用方累进;写位 = dfill + 本次 produced)。size 行回卷重扫(无半行状态),
 // 行界:size 行 2112 字节、trailer 行 4096 字节;chunk 计数 16 hex 上限、
-// 1e18 界门(防累积溢出)。回卷提交界 = 未竟行起点(③ 契约)。
+// 乘前 2^59-1 界门(防 I64 溢出 panic/回绕——FFFFFFFFFFFFFFFE 远程 DoS
+// 收口,2026-09-21 终审)+ CR 处 1e18 界门(负值防御冗余档)。
+// 回卷提交界 = 未竟行起点(③ 契约)。
 pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill: I64, dcap: I64) -> ChunkRet {
     var i = pos
     var out: I64 = 0
@@ -259,7 +261,9 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
                     if digits == 0 {
                         return ck_ret(-1, 1, i - pos, out, phase, remain)
                     }
-                    if acc > 1000000000000000000 {
+                    // 负值防御(2026-09-21 终审必修):下方乘前界门已使 acc<0
+                    // 不可达,此为冗余档(算术语义若改回绕仍不失守);>1e18 界原样。
+                    if acc < 0 || acc > 1000000000000000000 {
                         return ck_ret(-1, 2, i - pos, out, phase, remain)
                     }
                     i += 2
@@ -286,6 +290,15 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
                                 return ck_ret(-1, 1, i - pos, out, phase, remain)
                             }
                             if digits >= 16 {
+                                return ck_ret(-1, 2, i - pos, out, phase, remain)
+                            }
+                            // 乘前 I64 界门(parse.ct hs_parse_dec 界内累加同款):
+                            // acc ≤ 2^59-1 ⇒ acc*16+hv ≤ I64_MAX 恒不溢出;越过
+                            // 即拒(err 槽 2),否则乘法在双臂(emit __builtin_
+                            // mul_overflow / interp 大数域界检)确定性 panic
+                            // rc=1 —— 恰 16 位 "FFFFFFFFFFFFFFFE" 语料实证的
+                            // 远程 DoS 面(2026-09-21 终审必修,r_chunkneg.ct 钉)。
+                            if acc > 576460752303423487 {
                                 return ck_ret(-1, 2, i - pos, out, phase, remain)
                             }
                             // C10 宽域惯用法(time.ct w-w+x 同款):acc 值域回落

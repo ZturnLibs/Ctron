@@ -185,7 +185,11 @@ pub fn client_loc_resolve(loc: Str, base_host: Str, base_port: I64) -> HttpLoc {
                     if c < 48 || c > 57 {
                         return HttpLoc { ok: 0, host: "", port: 0, path: "" }
                     }
-                    acc = acc * 10 + (c - 48).as[I64]()
+                    // C10 宽域惯用法(parse.ct:275 同款):acc 值域落 [2^28,2^31)
+                    // 带(端口 ≥9 位数字)时解释器按 I32 宽度误判 acc*10 上溢即
+                    // panic(divergences (i) 族第五处,2026-09-21 终审);+2^32-2^32
+                    // 提升参与值域,乘法按 I64。emit 行为恒等(纯恒等改写)。
+                    acc = (acc + 4294967296 - 4294967296) * 10 + (c - 48).as[I64]()
                     d += 1
                 }
                 pport = acc

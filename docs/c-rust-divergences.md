@@ -251,13 +251,27 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   2. *乘法按值域定宽判上溢*:声明 I64 而值落 I32 域的操作数相乘,解释器按
      I32 宽度判溢出即 panic(`z * 86400` epoch 段炸,源:P4 Task 2;
      std/time.ct `w - w + x` 提升惯例即此规避)。**P4-D fuzz 再证 std/http
-     四处同族**:chunk size 行 `acc*16`、CL 十进制 `acc*10`(值 ≥ ~2.1e8)、
+     五处同族**:chunk size 行 `acc*16`、CL 十进制 `acc*10`(值 ≥ ~2.1e8)、
      WS len64 `acc*256`(首四字节 ≥ 00 80 00 00)、WS 掩码键首字节 `*2^24`
-     (≥ 0x80 即触发,50% 随机掩码键)—— 值跨 [2^28, 2^31) 带即炸;corpus
-     零值超位语料(17 个 0)不触发,盲区被 fuzz 结构化生成覆盖。修 =
-     std/http 四处 C10 宽域惯用法 `(x + 2^32 - 2^32) * k`(纯恒等,emit
-     无差);编译器侧正解 = 乘法宽度按声明类型/promotion 而非运行时值域
-     (P9 挂账)。(源:P4-D fuzz,seed 2 chunk 10-hex 用例)
+     (≥ 0x80 即触发,50% 随机掩码键)、client.ct Location 端口 `acc*10`
+     (第五处,2026-09-21 终审补:端口 ≥10 位数字,interp 误判 panic /
+     emit 垃圾端口 fail-closed,双口径漂移)—— 值跨 [2^28, 2^31) 带即炸;
+     corpus 零值超位语料(17 个 0)不触发,盲区被 fuzz 结构化生成覆盖。修 =
+     std/http 五处 C10 宽域惯用法 `(x + 2^32 - 2^32) * k`(纯恒等,emit
+     无差;第五处 client.ct 端口行同波补);编译器侧正解 = 乘法宽度按声明
+     类型/promotion 而非运行时值域(P9 挂账)。(源:P4-D fuzz,seed 2
+     chunk 10-hex 用例;第五处源:P4 终审)
+- **chunked size 累加负值/溢出门(std/http 自身逻辑缺口,独立于上述溢出边,
+  2026-09-21 终审)**:恰 16 位 hex `FFFFFFFFFFFFFFFE`(15×F+'E';`digits>=16`
+  门在接受前检查,第 16 位放行)使 chunk size 累加在 `acc*16` 处越过 I64 域
+  —— 当前算术语义(emit `__builtin_mul_overflow` / interp 大数域界检)下
+  双臂**确定性 panic rc=1,单请求远程 DoS**;回绕语义下同一触发串使 acc
+  静默成负,CR 处 `acc > 1e18` 界门对负值失明 → remain<0 → 服务端形(dst
+  新缓冲)负下标 / 客户端形在地分框静默腐化 + produced 错报(双失效形态)。
+  修 = 乘前 I64 界门 `acc > 2^59-1` 即拒(parse.ct hs_parse_dec 界内累加
+  同款,err 槽 2;≤1e18 接受面零回归)+ CR 处补 `acc < 0` 防御冗余档;
+  语料钉 `tests/http/corpus/r_chunkneg.ct`(触发串在案:修前双臂红 rc=1,
+  修后双臂绿)。(源:P4 终审,2026-09-21 修)
 - **use 路径含 `-` 宿主崩溃**:模块名带 `-`(`use std.http.bind-deflate.{…}`)
   使 ctron-cc/ctron-emit 双双 segv(rc=139)—— 词法对 use 段无 `-` 防御;
   本波改名 `binddeflate.ct` 规避。正解 = 词法段字符合法化 + 响亮诊断。

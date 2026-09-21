@@ -89,7 +89,7 @@
 | 解析吞吐 vs picohttpparser | ≤ 2× | ctron 209 ns/req vs pico 46 ns/req = **4.54×**(复跑 4.44×;N=1e6 ×3 取最小,字节 digest 双侧 pin) | **RED → 诚实登记**:解析器工作在 `&I64[]` 字节道,每字节一条 I64 lane;4.5× < 8× 悲观线性外推,仍在 lane 税量级(~4.8M parse/s ≈ 754 MB/s 语料吞吐);处置 = P9 I8-typedef(字节道换窄 lane 后重对拍本基准);不改数、不换语料、不粉饰(§Global Constraints 预案执行)。全请求周期 ≤1.05× 承诺按计划归 P6 出口复核 |
 | fuzz 零崩溃/零挂死 | 双臂 × seeds 零非零退出/零 watchdog 超时 | 本地 24 seeds × {interp 1500 + emit 50k + gz 50k + diff 256} = **120 段全绿**(≈11 min);结构化十类;差分 6144 样本:`we_accept_pico_rejects = 0`、`pico_accepts_we_reject = 1265`(严格子集预期差,登记) | **PASS**(nightly ≥30min 惯例入 run.sh 头注;不入 CI 主环) |
 | 双矩阵回归 | tests/http 全绿 | **57/57 双臂**(x_ e2e × {默认, CTRON_RT=coro}) | **PASS** |
-| 走私面/上限/RFC 9110 合规子集 | P4-A 全拒姿态保持 | 57/57 内含 obs-fold/TE+CL/重复 CL/裸 LF·裸 CR/值内 CTL 全拒 + 上限四类独立 err 码回归 | **PASS** |
+| 走私面/上限/RFC 9110 合规子集 | P4-A 全拒姿态保持 | 57/57 内含 obs-fold/TE+CL/重复 CL/裸 LF·裸 CR/值内 CTL 全拒 + 上限四类独立 err 码回归 | **PASS**(2026-09-21 终审收尾复验:chunk 边 `FFFFFFFFFFFFFFFE` 溢出/负值面新钉 `r_chunkneg.ct` 后全绿 **59/59**,见「终审收尾波」) |
 
 ### fuzz 附带实证与修复
 
@@ -113,6 +113,12 @@ fuzz 结构化生成(seed 2,chunk 10-hex 用例)实证**解释器按值域定宽
   `-` segv + (h) 家族新证 + fmt×emit scope 拆臂挂死 + 加载器严格树
   E5020/E5030 加码 + std/enc b64 C8 约束依赖)。
 - COVERAGE:P4-A/B/C/D 四行 as-built 门数字。
+- 溢出边条目拆分(2026-09-21 终审收尾):(i) 乘法定宽/溢出边的 chunk size
+  面已修销账(乘前 `2^59-1` 界门 + CR 负值防御档,`r_chunkneg.ct` 钉,
+  divergences (i) 有条目);**CL 十进制 19 位 I64_MAX 邻域真溢出开口仍留
+  P9**(hs_parse_dec 界门 `acc > 922337203685477580` 放行等值情形,尾位
+  +digit 可越 I64_MAX —— 与 chunk 边同族不同面,随编译器侧乘法/加法定宽
+  正解同波处置)。
 - 工具链在途注记:本波收口时点 `ctron-fmt --check` 对 canonical 既有文件
   报 read-failed(并行编译泳道在途树状态,P4-C 报告 §5.4 同款漂移注记);
   fuzz/bench 产物以 interp/emit 双臂实跑为准。
@@ -122,3 +128,29 @@ fuzz 结构化生成(seed 2,chunk 10-hex 用例)实证**解释器按值域定宽
 P6 框架面(路由/中间件)、permessage-deflate(P9)、代理 CONNECT(P6 视
 需求)、h2(P9)、zlib 容器与 FHCRC(登记未实现)、非 ASCII SSE/WS 载荷
 (随 C8/Str 构建面放宽同波)。
+
+### 终审收尾波(2026-09-21)
+
+终审必修两件 + 登记三处,单提交收口(`fix(http): P4 终审必修`):
+
+- **chunk 边修复**(std/http/message.ct):恰 16 位 hex `FFFFFFFFFFFFFFFE`
+  (15×F+'E';`digits>=16` 门接受前检查,第 16 位放行)chunk size 实证
+  **远程 DoS**——当前算术语义(emit `__builtin_mul_overflow` / interp
+  大数域界检)下双臂在 `acc*16` 处确定性 panic rc=1,单请求杀进程;回绕
+  语义下同一触发串使 acc 静默成负,CR 处 `acc > 1e18` 对负值失明 →
+  remain<0 → 服务端形负下标 / 客户端形在地分框腐化(双失效形态,登记入
+  divergences)。修 = 乘前 I64 界门 `acc > 576460752303423487`(2^59-1,
+  parse.ct hs_parse_dec 界内累加同款)即拒 err 槽 2(≤1e18 接受面零回归)
+  + CR 处改 `acc < 0 || acc > 1e18`(负值防御冗余档);语料钉
+  `tests/http/corpus/r_chunkneg.ct`(触发串在案:修前双臂红 rc=1,修后
+  双臂绿)。
+- **client 端口第五处惯用法**(std/http/client.ct:Location 端口 `acc*10`,
+  (i) 族第五处):C10 宽域惯用法改写(端口 ≥10 位数字 interp 误判 panic /
+  emit 垃圾端口 fail-closed 的双口径漂移收口),emit 行为恒等;重定向
+  夹具 x_locparse / x_client_e2e(双 RT)复验绿。
+- 登记三处:divergences (i)「四处同族」→「五处」+ chunk 边独立条目;
+  bench/README.md 补两侧每请求语义功不等口径一句;出口表走私面 PASS 行
+  chunk 边复验注 + 登记账溢出边拆分(CL 19 位 I64_MAX 邻域开口留 P9
+  —— `9223372036854775808` 实证 add 溢出 panic,chunk 边已修销账)。
+- 回归:tests/http/run.sh 57/57 → **59/59**(r_chunkneg 双臂各计一例,
+  `http/run: pass=59 fail=0`)。

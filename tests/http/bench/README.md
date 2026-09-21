@@ -9,7 +9,9 @@
 - **语料**:三报文(GET 无体 162B / POST+CL 体 182B / chunked 响应 129B,
   合计 473B),`bench_parse.ct` 与 `bench_pico.c` 逐字节同文;**公平性由字节
   digest 双侧对 pin 承担**——两侧 digest= 不一致即 FAIL 禁止采数(round 内
-  再验一次防漂移);另以 checksum 非零防解析被折叠(DCE)。
+  再验一次防漂移);另以 checksum 非零防解析被折叠(DCE)。两侧每请求语义功
+  不等(pico 裸 parse 无上限/走私/严格档,ctron 侧全开),公平性由 digest
+  同文 + 同语料承担;RED 判定对该语义差(<15% 量级)不敏感。
 - **计时**:`ctron_net_now_ns()`(CLOCK_MONOTONIC)与 pico 侧
   `clock_gettime(CLOCK_MONOTONIC)` 同源;热身 1000 轮不计时;正式 N 轮
   (env `CTRON_HTTP_BENCH_N`,缺省 100000;登记采数用 1000000),每轮 3 报文

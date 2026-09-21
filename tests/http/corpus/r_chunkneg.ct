@@ -1,0 +1,31 @@
+// tests/http/corpus/r_chunkneg.ct —— chunked size 负值门(2026-09-21 终审必修):
+// 恰 16 位 hex "FFFFFFFFFFFFFFFE"(15×F+'E',digits>=16 门在第 17 位才拒)
+// 经 acc*16 回绕为负(emit I64 自然回绕;interp 侧 C10 惯用法后同形静默成
+// 负)→ 原 CR 门 `acc > 1e18` 对负值失明 → remain<0:服务端形(dst 新缓冲)
+// 负下标 emit exit(1) 确定性远程 DoS / 客户端形在地分框静默腐化。修后
+// CR 处 acc<0 同拒(err 槽 2,与超位/溢出面同槽);不入正集。
+use std.http.message.{chunk_st_new, chunk_step, cr_rc, cr_err}
+
+fn feed(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn first_err(s: Str, cap: I64) -> I64 {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = feed(buf, s)
+    let r = chunk_step(buf, n, 0, chunk_st_new(), dst, 0, cap)
+    if cr_rc(r) == -1 {
+        return cr_err(r)
+    }
+    return 0
+}
+
+test "16-hex wrap-negative chunk size rejected" {
+    assert(first_err("FFFFFFFFFFFFFFFE\r\n3\r\nabc\r\n0\r\n\r\n", 64) == 2)
+}
