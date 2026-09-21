@@ -60,10 +60,28 @@
   （fc 链挂 each 节点）；④叶文本 pre/bind/post 按 {ident} 切分（重建源的 ={ 粘连形态
   词法兼容）；⑤事件槽 nes/nec = 元素在 ev_name/ev_fn 的 [起,计) 切片；⑥button id
   注册 btns；⑦style 块 → sk.push(名.属性)/sv.push(值)。
-- **切片序**：β1 编译期 builder + --dump-gui 结构化表 dump + 与 gt_parse 树等价差分
-  （域包侧 sk_dump 探针对照，等价即绿）；β2 eval 内建 gui_sk_load 返 U 值 + 域包 run_sk
-  入口（解释口径换源，s21 黄金必绿）；β3 cc_emit `static const GuiNode gui_sk_N[]` C
-  构造（发射口径换源；辅助 fn 须发在 struct typedef 之后）。
+- **切片序**：β1 ✅ 落库（a862e5b，树等价差分绿）；β2 ⛔ 已探明 ABI 阻塞（见下）；
+  β3 cc_emit `static const GuiNode gui_sk_N[]` C 构造（发射口径换源）。
+
+### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位）
+
+- **现象**：eval 内建 gui_sk_load 构造 U 值（ GuiTree 同形 list）→ 域包 sk_dump/test_sk
+  消费 → 编译口径（ctron-cc）SEGV（gui_sk_intlist 读 0xffffffffffffffff）。
+- **根因**：编译后的编译器里 struct 声明 = 真实 C 结构体（t_GuiTree），而 U 列表是
+  解释值世界对象；`pub fn sk_dump(t: GuiTree)` 编译期即按 C 结构体 ABI 收参——U 列表
+  指针传入即字段读越界。值模型（节点）与结构体 ABI 两种表示在编译口径不互认。
+- **定性**：与 SL-0.6 登记的「fn 返回型编码需跨宿主 ABI 评审」同类——**eval 值 ⇄
+  原生结构体的边界跨越需要 ABI 评审裁决**，非 gui 单泳道可闭。
+- **可行路径（待评审裁决后择一）**：
+  ①gui_sk_load 返回骨架的「编码串」形态（如字段拼接文本），域包侧解码建树——
+  零 ABI 依赖但多一跳解析（本质退回 SL-7α 源烘焙，只省词法）；
+  ②编译器内建直接返回「逐字段 getter 族」（gui_sk_ntag(i) 等标量/串内建），
+  域包 run_sk 逐字段重组 GuiTree——零 ABI 跨越，15×N 次调用开销但换源语义完整；
+  ③β3 直接跳到 cc_emit C 静态构造（发射口径一步到位，原生 t_GuiTree 构造
+  是同 ABI 世界，反而无此阻塞），解释口径暂留 SL-7α 源烘焙。
+  **初步倾向 ③+②**：β3 先做（同 ABI 世界无阻塞、s21 黄金锁正确性），②作为
+  解释口径补齐随行。
+- 域包已备 test_sk 树入口（与 test 同口径，收 GuiTree；β3 落地即用）。
 
 - 骨架 IR：GuiNode[tag, style_id, child_fc, child_ns, ev_slot] + Slot[node, attr, expr_id]。
   fc/ns 与域包 GuiTree 同表示——**runtime.ct 遍历零改动换数据源**（§5.1）。

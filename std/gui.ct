@@ -1247,6 +1247,20 @@ pub fn test(src: Str, w: I32, h: I32,
     return 0
 }
 
+// SL-7β2:骨架直通测试入口——树已由编译期解析(gui_sk_load)给出,不再经
+// gt_parse;其余口径与 test 完全一致(d_* 驱动断言族全可用)
+pub fn test_sk(t: GuiTree, w: I32, h: I32,
+               bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+               key: fn(I32) -> Void,
+               script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    gui_clay_init(w, h)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h)
+    rt_collect_rects(n, d.rects)
+    script(d, act, key)
+    return 0
+}
+
 pub fn run(src: Str, title: Str, w: I32, h: I32,
            bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
     var t: GuiTree = gt_parse(src)
