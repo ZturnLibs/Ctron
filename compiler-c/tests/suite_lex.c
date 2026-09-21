@@ -35,7 +35,8 @@ static void walk(const char* dir, strvec* out) {
             if (strcmp(e->d_name, "roadmap") == 0) continue; // R 泳道阶段区(Rust roadmap_suite 门控,C 版随新语法实现后纳入)
             walk(path, out);
         }
-        else if (ends_with(e->d_name, ".ct")) sv_push(out, path);
+        else if (ends_with(e->d_name, ".ct") && !ends_with(e->d_name, ".neg.ct"))
+            sv_push(out, path); // *.neg.ct 过滤(对齐 Rust lex_suite):neg 语料判定面是诊断码,不入"全语料零词法诊断"断言
     }
     closedir(d);
 }
