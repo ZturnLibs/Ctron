@@ -1,0 +1,18 @@
+use app.util.{
+    double,
+    triple,
+    via_helper,
+}
+use app.extra.{
+    addpair
+}
+
+test "multiline use group with trailing comma" {
+    assert_eq(double(21), 42)
+    assert_eq(triple(14), 42)
+    assert_eq(via_helper(4), 50)
+}
+
+test "multiline use group without trailing comma" {
+    assert_eq(addpair(2, 3), 5)
+}

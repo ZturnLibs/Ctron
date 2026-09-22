@@ -235,6 +235,7 @@ impl Parser {
         if group {
             self.expect(&Tok::LBrace, "use 组");
             loop {
+                while self.at(&Tok::Newline) { self.bump(); } // 组项跨行/无尾逗号收组
                 if self.at(&Tok::RBrace) { break; }
                 let mut full = prefix.clone();
                 let seg = self.parse_dotted_path();
@@ -242,6 +243,7 @@ impl Parser {
                 imports.push(full);
                 if !self.eat(&Tok::Comma) { break; }
             }
+            while self.at(&Tok::Newline) { self.bump(); }
             self.expect(&Tok::RBrace, "use 组结束");
         } else {
             imports.push(std::mem::take(&mut prefix));

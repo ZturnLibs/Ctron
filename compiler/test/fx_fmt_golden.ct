@@ -45,3 +45,15 @@ var y = xs[0]
 g(y, xs[1])
 noop() {}
 }
+
+// R3 use 组:花括号多行性由原始间隙驱动(跨行保留/单行保留),项重排 1 级缩进
+use std.str.{
+lines,
+        contains,
+}
+
+use std.enc.{hex_encode
+}
+
+use std.hash.Hash
+use std.fs.{read_dir, write_dir}

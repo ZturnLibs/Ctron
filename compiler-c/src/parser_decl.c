@@ -324,6 +324,7 @@ void parse_use(cparser* p, cuse* u) {
     if (group) {
         if (!eat_k(p, TOK_LBRACE)) err_here(p, "E1001", "use 组缺少 {");
         for (;;) {
+            while (at_k(p, TOK_NEWLINE)) bump_tok(p); // 组项跨行/无尾逗号收组
             if (at_k(p, TOK_RBRACE)) break;
             cimport* imp = (cimport*)ctron_arena_alloc(p->arena, sizeof(cimport));
             // prefix + 段
@@ -341,6 +342,7 @@ void parse_use(cparser* p, cuse* u) {
             imports.d[imports.n++] = imp;
             if (!eat_k(p, TOK_COMMA)) break;
         }
+        while (at_k(p, TOK_NEWLINE)) bump_tok(p);
         if (!eat_k(p, TOK_RBRACE)) err_here(p, "E1001", "use 组缺少 }");
         u->nimports = imports.n;
         u->imports = NULL;

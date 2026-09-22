@@ -68,6 +68,7 @@ fn nl_set_line_end(t: Str) -> Bool {
     ops.push(">=")
     ops.push("(")
     ops.push("[")
+    ops.push("\{")
     ops.push("|")
     var i: I32 = 0
     while i < ops.len {

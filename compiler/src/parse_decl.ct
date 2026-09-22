@@ -398,6 +398,10 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var braced = false
     var more = true
     while more {
+        // use 语句内换行不敏感:组项跨行/无尾逗号收组、路径段跨行(对齐 seed §1.6 抑制面)
+        while tok(toks, cur) == "NL" {
+            adv(cur)
+        }
         var a = tok(toks, cur)
         if a == "." {
             adv(cur)
@@ -406,6 +410,9 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             braced = true
             var more2 = true
             while more2 {
+                while tok(toks, cur) == "NL" {
+                    adv(cur)
+                }
                 var b2 = tok(toks, cur)
                 if or2(b2 == "}", b2 == "#EOF") {
                     more2 = false
@@ -426,6 +433,9 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         } else {
             segs.push(a)
             adv(cur)
+            while tok(toks, cur) == "NL" {
+                adv(cur)
+            }
             var nx = tok(toks, cur)
             if nx != "." {
                 more = false
