@@ -1,0 +1,3 @@
+[package]
+name = "ffi_errno_basics"
+version = "0.1.0"

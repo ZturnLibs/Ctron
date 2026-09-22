@@ -26,10 +26,25 @@ echo "== tests/ffi FFI 用例(§9.6·§9.8)=="
 
 # ---- 行为夹具:发射 → 链接 → 原生运行 ----
 for d in "$DIR"/*/; do
-    [ -d "$d/c_src" ] || continue
+    [ -d "$d" ] || continue
     name=$(basename "$d")
     [ "$name" = "bench" ] && continue  # 微基准由 compiler/test/bench_ffi.sh 驱动
+    if [ ! -d "$d/src" ]; then continue; fi
     [ "$name" = "link_math" ] && continue  # #[link] 面由下方 link_math 专道驱动(无 c_src)
+    if [ ! -d "$d/c_src" ]; then
+        # 纯 libc 夹具(无 c_src):emit → cc → 运行(errno_basics 等)
+        e0="$d/src/main.ct"
+        if "$EMIT" run "$e0" > "$T/$name.c" 2>"$T/$name.emiterr" \
+           && cc -O1 -w -o "$T/$name.bin" "$T/$name.c" 2>"$T/$name.ccerr" \
+           && "$T/$name.bin" run "$e0" > "$T/$name.out" 2>&1; then
+            echo "  [ok] $name(纯 libc)"
+            pass=$((pass + 1))
+        else
+            echo "  [FAIL] $name — $(head -1 "$T/$name.ccerr" 2>/dev/null)$(head -1 "$T/$name.emiterr" 2>/dev/null)"
+            fail=$((fail + 1))
+        fi
+        continue
+    fi
     e="$d/src/main.ct"
     if [ "$name" = "cimport" ]; then
         # cimport 端到端:头文件 → 绑定生成(自举 ctron-cc 原生驱动;#11② 修复后

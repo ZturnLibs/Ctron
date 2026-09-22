@@ -295,6 +295,13 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("str_from_c arity")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "errno") {
+        if vals.len != 0 {
+            panic("errno arity")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("i", env, vI(errno()), out)
+    }
     if or2(seq2(nm, "clo_handle"), or2(seq2(nm, "clo_cb2"), seq2(nm, "clo_cb3"))) {
         // context-pointer 闭包糖(§9.6 v0.8):解释器口径拒绝(仅发射面)
         panic("clo_handle/clo_cb 仅原生口径可用(经 ctron-emit + cc 链接后运行)")

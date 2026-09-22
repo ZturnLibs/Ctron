@@ -1,0 +1,17 @@
+// tests/ffi/errno_basics —— errno 错误传播约定(§9.6 v0.8)
+// 承诺:errno() 读最近一次系统调用/库调用的错误码(线程局域,libc 直连零 c_src);
+// 包装作者可写:let r = close(fd); if r != 0 { ... errno() ... }。
+#[trusted]
+extern "c" fn close(fd: I32) -> I32
+
+test "libc close(-1) fails and sets EBADF(9)" {
+    let r = close(-1)
+    assert_eq(r, -1)
+    assert_eq(errno(), 9)
+}
+
+test "errno is thread-local per call sequence" {
+    let a = errno()
+    let b = errno()
+    assert_eq(a, b)
+}

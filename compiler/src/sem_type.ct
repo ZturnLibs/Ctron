@@ -35,6 +35,9 @@ fn prelude_ok(nm: Str) -> Bool {
     if or2(seq2(nm, "fmt"), or2(seq2(nm, "char_len"), or2(seq2(nm, "Box"), seq2(nm, "List")))) { return true }
     if or2(seq2(nm, "String"), or2(seq2(nm, "Channel"), or2(seq2(nm, "Mutex"), seq2(nm, "Atomic")))) { return true }
     if or2(seq2(nm, "Global"), or2(seq2(nm, "Task"), or2(seq2(nm, "Scope"), seq2(nm, "Simd")))) { return true }
+    if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "clo_handle"), or2(seq2(nm, "clo_cb2"), seq2(nm, "clo_cb3")))) { return true }
+    if or2(seq2(nm, "dlopen"), or2(seq2(nm, "dlclose"), seq2(nm, "dlsym"))) { return true }
+    if seq2(nm, "errno") { return true }
     return or2(seq2(nm, "Option"), or2(seq2(nm, "Result"), seq2(nm, "AnyError")))
 }
 

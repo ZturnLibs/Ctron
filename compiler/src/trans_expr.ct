@@ -825,6 +825,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned;解释器侧恒等)
         if callee == "str_from_c" { return "ctron_str_from_c(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // errno(§9.6 v0.8 错误传播):最近一次系统调用/库调用的错误码(线程局域)
+        if callee == "errno" { return "(int32_t)errno" }
         // context-pointer 闭包糖(§9.6 v0.8):闭包装箱句柄(void* 语义)
         if callee == "clo_handle" {
             if ag.len < 2 || ag[1][0] != "Closure" {
