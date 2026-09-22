@@ -104,3 +104,27 @@ root `ctc doc` 文本/JSON/`help doc` 三路通;native ctron-doc 重建后旗标
 smoke **119 ok / 1 fail**(doc 腿扩至五查全绿;余 1 红 = std 副本漂移,peer 泳道待同步)。
 
 状态:✅ 完成(2026-09-21,S0.6)。
+
+## S0.7(2026-09-22):`doc std.<module>` 形 + 用户 CLI 透传
+
+**范围(spec §5.3 点名的 agent 面):** `ctc doc std.str` 模块名形态——driver 侧锚读失败
+(原生 CLI 直参非文件)时按 std 根四级解析重读:①CTRON_STDPATH ②exe 旁
+`../lib/ctron/std` ③cwd `./std`(dev 仓库根)④cwd `../std`(种子约定 cwd 变体);
+命中后 entry 归一为实路径,契约抽取照常。root `ctc` 与 `ctc.ps1` 对无 `/` 无 `.ct`
+的 token 原样透传(不绝对化),std 解析仍全在编译器内(ctc 零 std 路径逻辑,守
+toolchain-design 既定原则)。
+
+**实施教训(登记两条):**
+1. **main 锚读的形态契约**:`ct_swap_anchor` 只认 main 内 `let x = read_file("字面量")`
+   形;锚读必须保持该形态(本次扁平化重构把锚读挪进 match scrutinee,发射产物即退化为
+   字面量读;幸而运行时另有 CLI 兜底使平面读不炸,但**形态契约不可依赖巧合兜底**)。
+2. **驱动验证先查二进制代际**:std.str 三轮排障实际是 bin/ctron-doc 未重建(仍 S0.6 代);
+   `ctc.sh emit <file>` 的语义是"发射 file 的 C"(file 进锚),不是"发射 cc_emit"——
+   排障时手动 emit 产物要先认领来源,否则机制考古全空转。
+
+**验收:** `./ctc doc std.str` 文本/JSON 双面通(JSON entry 归一 `std/str.ct`,38 items);
+`std.nosuchmod` rc=1;CTRON_STDPATH ①号探针 rc=0;smoke 3g 腿扩至六查全绿
+(+std.<module> 查)。全量套件在 peer 泳道高频落库期呈波动(gui β2 帧级调试、
+std/db P5-D 连发),红项集合逐轮漂移且均映射 peer 在途编辑;doc 腿各轮稳定全绿。
+
+状态:✅ 完成(2026-09-22,S0.7)。

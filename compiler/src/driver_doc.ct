@@ -611,119 +611,168 @@ fn doc_print_doc(t: Str) {
     }
 }
 
-fn main() -> I32 {
-    let path = "ANCHORINPUT"
-    let src = read_file("ANCHORINPUT")
-    match src {
-        Some(s) => {
-            var epath = ctron_entry()
-            if seq2(epath, "") {
-                epath = path
-            }
-            var toks = List[Str]()
-            var lns = List[Str]()
-            var cols = List[Str]()
-            var pdiags = List[Str]()
-            scan4(s, toks, lns, cols, pdiags)
-            var cur = Atomic[I32](0)
-            var file = p_file(toks, cur, lns, cols, pdiags)
-            if pdiags.len > 0 {
-                var pi: I32 = 0
-                while pi < pdiags.len {
-                    println(epath + ":" + pdiags[pi])
-                    pi += 1
-                }
-                return 1
-            }
-            var ldiags = List[Str]()
-            var lstack = List[Str]()
-            lstack.push(epath)
-            file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
-            if ldiags.len > 0 {
-                var li: I32 = 0
-                while li < ldiags.len {
-                    println(ldiags[li])
-                    li += 1
-                }
-                return 1
-            }
-            var mdoc = doc_module_doc(s)
-            var dk = List[Str]()
-            var dv = List[Str]()
-            doc_scan_docs(s, dk, dv)
-            var dfmt = ctron_cli_flag("format")
-            if dfmt.len == 0 {
-                dfmt = "ANCHORFMT"
-            }
-            var isjson = or2(seq2(dfmt, "1"), seq2(dfmt, "json"))
-            if isjson {
-                print("\{\"entry\":\"" + doc_json_escape(epath) + "\",\"decls\":" + (file.len - 1).to_string() + ",\"doc\":\"" + doc_json_escape(mdoc) + "\",\"iface\":[")
-            } else {
-                println("iface " + epath + " decls=" + (file.len - 1).to_string())
-                doc_print_doc(mdoc)
-            }
-            var syms: I32 = 0
-            var first = true
-            var i: I32 = 1
-            while i < file.len {
-                var d = file[i]
-                var t = d[0]
-                if doc_is_pub(d) {
-                    syms += 1
-                    var dc = doc_hmap_get(dk, dv, d[1])
-                    if isjson {
-                        if !first {
-                            print(",")
-                        }
-                        first = false
-                        print(doc_json_item(d, dc))
-                    } else {
-                        doc_print_doc(dc)
-                        if t == "FnPub" {
-                            println("pub fn " + doc_fn_core(d))
-                        } else if t == "FnExt" {
-                            println("pub extern " + doc_fn_core(d))
-                        } else if t == "Struct" {
-                            println(doc_struct(d))
-                        } else if t == "Enum" {
-                            println(doc_enum(d))
-                        }
-                    }
-                } else if t == "Trait" {
-                    if isjson {
-                        if !first {
-                            print(",")
-                        }
-                        first = false
-                        print(doc_json_item(d, ""))
-                    } else {
-                        println(doc_trait(d))
-                        doc_items(d[4])
-                    }
-                } else if t == "Impl" {
-                    if isjson {
-                        if !first {
-                            print(",")
-                        }
-                        first = false
-                        print(doc_json_item(d, ""))
-                    } else {
-                        println("impl " + doc_ty(d[2]) + " for " + doc_ty(d[3]))
-                        doc_items(d[4])
-                    }
-                }
-                i += 1
-            }
-            if isjson {
-                println("]}")
-                return 0
-            }
-            println("iface symbols=" + syms.to_string())
-            return 0
-        }
-        None => {
-            print("read-failed")
-            return 1
+
+fn doc_std_mod(ep: Str) -> Str {
+    // §5.3:"std.<module>" 形 → 实文件四级解析:①CTRON_STDPATH ②exe 旁 ../lib/ctron/std
+    // ③cwd ./std(dev 仓库根)④cwd ../std(pkg_std_root 种子约定的 cwd 变体)
+    var mod = byte_slice(ep, 4, ep.len)
+    var envp = env_get("CTRON_STDPATH")
+    if envp.len > 0 {
+        if fs_exists(envp + "/" + mod + ".ct") {
+            return envp + "/" + mod + ".ct"
         }
     }
+    var exe = ctron_exe_path()
+    if exe.len > 0 {
+        var r = pkg_exe_dir(exe) + "/../lib/ctron/std"
+        if fs_exists(r + "/" + mod + ".ct") {
+            return r + "/" + mod + ".ct"
+        }
+    }
+    if fs_exists("std/" + mod + ".ct") {
+        return "std/" + mod + ".ct"
+    }
+    if fs_exists("../std/" + mod + ".ct") {
+        return "../std/" + mod + ".ct"
+    }
+    return ""
+}
+
+fn main() -> I32 {
+    var path = "ANCHORINPUT"
+    var s = ""
+    var have = false
+    var epath = ctron_entry()
+    if seq2(epath, "") {
+        epath = path
+    }
+    match read_file("ANCHORINPUT") {
+        Some(x) => {
+            s = x
+            have = true
+        }
+        None => {}
+    }
+    if !have {
+        // §5.3:std.<module> 形(原生 CLI 直参;seed 面锚已 sed 换靶,不走此臂)
+        if epath.len > 0 {
+            if doc_starts(epath, "std.") {
+                var mp = doc_std_mod(epath)
+                if mp.len > 0 {
+                    match read_file(mp) {
+                        Some(x2) => {
+                            s = x2
+                            have = true
+                            epath = mp
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+    }
+    if !have {
+        print("read-failed")
+        return 1
+    }
+        var toks = List[Str]()
+        var lns = List[Str]()
+        var cols = List[Str]()
+        var pdiags = List[Str]()
+        scan4(s, toks, lns, cols, pdiags)
+        var cur = Atomic[I32](0)
+        var file = p_file(toks, cur, lns, cols, pdiags)
+        if pdiags.len > 0 {
+            var pi: I32 = 0
+            while pi < pdiags.len {
+                println(epath + ":" + pdiags[pi])
+                pi += 1
+            }
+            return 1
+        }
+        var ldiags = List[Str]()
+        var lstack = List[Str]()
+        lstack.push(epath)
+        file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
+        if ldiags.len > 0 {
+            var li: I32 = 0
+            while li < ldiags.len {
+                println(ldiags[li])
+                li += 1
+            }
+            return 1
+        }
+        var mdoc = doc_module_doc(s)
+        var dk = List[Str]()
+        var dv = List[Str]()
+        doc_scan_docs(s, dk, dv)
+        var dfmt = ctron_cli_flag("format")
+        if dfmt.len == 0 {
+            dfmt = "ANCHORFMT"
+        }
+        var isjson = or2(seq2(dfmt, "1"), seq2(dfmt, "json"))
+        if isjson {
+            print("\{\"entry\":\"" + doc_json_escape(epath) + "\",\"decls\":" + (file.len - 1).to_string() + ",\"doc\":\"" + doc_json_escape(mdoc) + "\",\"iface\":[")
+        } else {
+            println("iface " + epath + " decls=" + (file.len - 1).to_string())
+            doc_print_doc(mdoc)
+        }
+        var syms: I32 = 0
+        var first = true
+        var i: I32 = 1
+        while i < file.len {
+            var d = file[i]
+            var t = d[0]
+            if doc_is_pub(d) {
+                syms += 1
+                var dc = doc_hmap_get(dk, dv, d[1])
+                if isjson {
+                    if !first {
+                        print(",")
+                    }
+                    first = false
+                    print(doc_json_item(d, dc))
+                } else {
+                    doc_print_doc(dc)
+                    if t == "FnPub" {
+                        println("pub fn " + doc_fn_core(d))
+                    } else if t == "FnExt" {
+                        println("pub extern " + doc_fn_core(d))
+                    } else if t == "Struct" {
+                        println(doc_struct(d))
+                    } else if t == "Enum" {
+                        println(doc_enum(d))
+                    }
+                }
+            } else if t == "Trait" {
+                if isjson {
+                    if !first {
+                        print(",")
+                    }
+                    first = false
+                    print(doc_json_item(d, ""))
+                } else {
+                    println(doc_trait(d))
+                    doc_items(d[4])
+                }
+            } else if t == "Impl" {
+                if isjson {
+                    if !first {
+                        print(",")
+                    }
+                    first = false
+                    print(doc_json_item(d, ""))
+                } else {
+                    println("impl " + doc_ty(d[2]) + " for " + doc_ty(d[3]))
+                    doc_items(d[4])
+                }
+            }
+            i += 1
+        }
+        if isjson {
+            println("]}")
+            return 0
+        }
+        println("iface symbols=" + syms.to_string())
+    return 0
 }

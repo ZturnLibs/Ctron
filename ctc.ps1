@@ -130,7 +130,8 @@ switch ($cmd) {
 		& (Join-Path $Bin 'ctron-chk.exe') run $full @($rest | Select-Object -Skip 1); exit $LASTEXITCODE }
 	'doc' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: doc 需要输入文件'); exit 2 }
-		$full = (Resolve-Path $rest[0]).Path
+		# §5.3:std.<module> 形原样透传(无路径分隔),由 ctron-doc 四级 std 根解析(同 sh 版)
+		$full = if ($rest[0] -notmatch '[/\\]') { $rest[0] } else { (Resolve-Path $rest[0]).Path }
 		& (Join-Path $Bin 'ctron-doc.exe') run $full @($rest | Select-Object -Skip 1); exit $LASTEXITCODE }
 	'test' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctc: test 需要输入文件'); exit 2 }
