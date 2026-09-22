@@ -1,0 +1,122 @@
+// tests/db/nightly/redis_smoke.ct —— 真 Redis 冒烟(P5-F Task 6;nightly 专面,
+// 不入 tests/db 主环)。env CTRON_REDIS_URL(redis://host:port;v0 最小文法,
+// 无鉴权/无 db 段——登记)→ 垫片 connect → fd 句柄传驱动:SET/GET 回环 +
+// INCR ×3 计数 + DEL。URL 未设 → skip 行照跑(run.sh 负责靶探测与登记)。
+use std.db.redis.{ctron_dbredis_connect, ctron_dbredis_close, redis_send_cmd_fd, redis_recv_fd, redis_set_cmd, redis_get_cmd, redis_del_cmd, redis_incr_cmd, RdsCell64, rs_rc, rs_err, rs_kind, rs_sval, rs_ival}
+
+// 解析目标(struct 通道;getter 面 (h) 裁定)
+struct NlxTarget {
+    var ok: I64
+    var host: Str
+    var port: I64
+}
+
+// redis://host:port → (host, port) 最小文法解析(v0:前缀定长 8,尾 ':' 分割;
+// 畸形 → ok 0)
+fn nlx_parse(url: Str) -> NlxTarget {
+    var t = NlxTarget { ok: 0, host: "", port: 0 }
+    if url.len < 10 {
+        return t
+    }
+    if byte_slice(url, 0, 8) != "redis://" {
+        return t
+    }
+    var rest = byte_slice(url, 8, url.len)
+    var colon: I32 = -1
+    var k: I32 = rest.len - 1
+    while k >= 0 {
+        if byte_at(rest, k) == 58 {
+            colon = k
+            k = -1
+        } else {
+            k -= 1
+        }
+    }
+    if colon <= 0 || colon + 1 >= rest.len {
+        return t
+    }
+    t.host = byte_slice(rest, 0, colon)
+    var ps = byte_slice(rest, colon + 1, rest.len)
+    var acc: I64 = 0
+    var q: I32 = 0
+    while q < ps.len {
+        var c = byte_at(ps, q)
+        if c < 48 || c > 57 {
+            return t
+        }
+        acc = acc * 10 + (c - 48).as[I64]()
+        if acc > 65535 {
+            return t
+        }
+        q += 1
+    }
+    t.ok = 1
+    t.port = acc
+    return t
+}
+
+fn nlx_port(t: NlxTarget) -> I64 { return t.port }
+fn nlx_ok(t: NlxTarget) -> I64 { return t.ok }
+fn nlx_host(t: NlxTarget) -> Str { return t.host }
+
+test "redis nightly smoke: connect + set/get roundtrip + incr + del" {
+    var url = env_get("CTRON_REDIS_URL")
+    if url.len == 0 {
+        println("[skip] CTRON_REDIS_URL unset")
+    } else {
+        var t = nlx_parse(url)
+        println("[redis] url ok=" + nlx_ok(t).to_string() + " host=" + nlx_host(t) + " port=" + nlx_port(t).to_string())
+        assert_eq(nlx_ok(t), 1)
+        assert(nlx_host(t).len > 0)
+        assert(nlx_host(t).len < 256)
+        var hostl: I64[256] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        var i: I64 = 0
+        while i < nlx_host(t).len {
+            hostl[i] = byte_at(nlx_host(t), i).as[I64]()
+            i += 1
+        }
+        println("[redis] connecting ...")
+        var fd = ctron_dbredis_connect(hostl, nlx_port(t))
+        println("[redis] connect fd=" + fd.to_string())
+        assert(fd >= 0)
+        var rbuf: I64[256] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        var scr: I64[256] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        var fill = Box[RdsCell64](RdsCell64 { v: 0 })
+        assert_eq(redis_send_cmd_fd(fd, redis_set_cmd("ctron:smoke", "v1"), scr), 0)
+        var r1 = redis_recv_fd(fd, rbuf, fill, scr)
+        println("[redis] SET rc=" + rs_rc(r1).to_string() + " kind=" + rs_kind(r1).to_string() + " sval=" + rs_sval(r1))
+        assert_eq(rs_rc(r1), 0)
+        assert_eq(rs_kind(r1), 43)
+        assert_eq(rs_sval(r1), "OK")
+        assert_eq(redis_send_cmd_fd(fd, redis_get_cmd("ctron:smoke"), scr), 0)
+        var r2 = redis_recv_fd(fd, rbuf, fill, scr)
+        println("[redis] GET rc=" + rs_rc(r2).to_string() + " sval=" + rs_sval(r2))
+        assert_eq(rs_rc(r2), 0)
+        assert_eq(rs_kind(r2), 36)
+        assert_eq(rs_sval(r2), "v1")
+        assert_eq(rs_ival(r2), 2)
+        println("[redis] SET/GET roundtrip OK")
+        var n: I64 = 1
+        while n < 4 {
+            assert_eq(redis_send_cmd_fd(fd, redis_incr_cmd("ctron:ctr"), scr), 0)
+            var ri = redis_recv_fd(fd, rbuf, fill, scr)
+            println("[redis] INCR n=" + n.to_string() + " rc=" + rs_rc(ri).to_string() + " ival=" + rs_ival(ri).to_string())
+            assert_eq(rs_rc(ri), 0)
+            assert_eq(rs_kind(ri), 58)
+            assert_eq(rs_ival(ri), n)
+            n += 1
+        }
+        println("[redis] INCR x3 OK (1,2,3)")
+        assert_eq(redis_send_cmd_fd(fd, redis_del_cmd("ctron:smoke"), scr), 0)
+        var rd = redis_recv_fd(fd, rbuf, fill, scr)
+        assert_eq(rs_rc(rd), 0)
+        assert_eq(rs_ival(rd), 1)
+        assert_eq(redis_send_cmd_fd(fd, redis_del_cmd("ctron:ctr"), scr), 0)
+        var rd2 = redis_recv_fd(fd, rbuf, fill, scr)
+        assert_eq(rs_rc(rd2), 0)
+        assert_eq(rs_ival(rd2), 1)
+        println("[redis] DEL cleanup OK")
+        assert_eq(ctron_dbredis_close(fd), 0)
+        println("[redis] PASS: connect+set/get+incr+del")
+    }
+}

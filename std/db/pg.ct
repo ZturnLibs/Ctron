@@ -73,6 +73,9 @@ pub extern "c" fn ctron_dbpg_close(fd: I64) -> I64
 pub extern "c" fn ctron_dbpg_last_errno() -> I64
 pub extern "c" fn ctron_dbpg_socketpair(out: &I64[]) -> I64
 pub extern "c" fn ctron_dbpg_entropy(buf: &I64[], n: I64) -> I64
+// 真源 TCP 建连(P5-F nightly;host = ASCII 字节 lane,如 "127.0.0.1";
+// 阻塞 connect,无超时面 v0 登记;fd 或 -1,errno 槽同口径)
+pub extern "c" fn ctron_dbpg_connect(host: &I64[], port: I64) -> I64
 
 // fd 出参标量胞(与 std/net bind.ct Box64 同布局异名;见头注依赖纪律);
 // 出参持态一律 Box[PgCell64](net 出参 Box[Box64] 同款堆胞,跨调用可见)
@@ -200,6 +203,15 @@ fn pgx_ascii_bytes(b: List[I32], a: I64, e: I64) -> Str {
         i += 1
     }
     return out
+}
+
+// ASCII 文本面 pub 形(P5-F:fd 真源消费方/nightly 需 body → 文本,如
+// SCRAM server-first 提取)。界外/非可打印 → ""(fail-closed 同上)。
+pub fn pg_body_ascii(b: List[I32], a: I64, e: I64) -> Str {
+    if a < 0 || e < a || e > b.len {
+        return ""
+    }
+    return pgx_ascii_bytes(b, a, e)
 }
 
 // ---- 定宽读取(body 字节表;越界 → -1;宽域装配) ----
@@ -1091,6 +1103,107 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
     return r
 }
 
+// ② 真源查询收帧(P5-F nightly;pg_query_script 的 fd 薄源镜像——帧分派
+// 核同构:R84 行描述/D68 数据行/C67 tag/Z90 收口/E69 错误,其余帧跳过
+// 前向兼容;扩展查询响应面 1/2/t/n 同核)。发侧(Query/Sync/管线)由调用
+// 方经 pg_send_msg_fd 装配;本入口自 fd 收帧至 Z/E/源尽。next 恒 0(fd 源
+// 无脚本游标;留 fill/rbuf 持态续用)。阻塞 fd:pg_recv_frame_fd 循环至
+// 整帧。守卫计数防滞留(对端慢滴/僵连面由调用方超时策略兜,v0 登记)。
+pub fn pg_query_fd(fd: I64, rbuf: &I64[], fill: Box[PgCell64], scr: &I64[]) -> PgRows {
+    var ncols: I64 = -1
+    var nrows: I64 = 0
+    var tag = ""
+    var esev = ""
+    var ecode = ""
+    var emsg = ""
+    var cols = List[Str]()
+    var oids = List[I32]()
+    var cells = List[Str]()
+    var nulls = List[I32]()
+    var cbytes = List[I32]()
+    var offs = List[I32]()
+    var done: I64 = 0
+    var rc: I64 = -1
+    var err: I64 = 0
+    var status: I64 = 0
+    var guard: I64 = 0
+    while done == 0 && guard < 100000 {
+        guard += 1
+        var fr = pg_recv_frame_fd(fd, rbuf, fill, scr)
+        if fr.rc != 0 {
+            rc = -1
+            err = fr.err
+            done = 1
+        } else {
+            var t: I64 = pgz() + fr.mtype
+            if t == 84 {
+                var d = pgx_parse_rowdesc(fr.body)
+                if d.ok == 0 {
+                    rc = -1
+                    err = pg_err_proto()
+                    done = 1
+                } else {
+                    ncols = d.ncols
+                    cols = d.cols
+                    oids = d.oids
+                }
+            } else {
+                if t == 68 {
+                    if ncols < 0 {
+                        rc = -1
+                        err = pg_err_proto()
+                        done = 1
+                    } else {
+                        var dr = pgx_parse_datarow(fr.body, ncols, cells, nulls, cbytes, offs)
+                        if dr == 0 {
+                            rc = -1
+                            err = pg_err_proto()
+                            done = 1
+                        } else {
+                            offs.push(cbytes.len)
+                            nrows += 1
+                        }
+                    }
+                } else {
+                    if t == 67 {
+                        tag = pg_tag(fr.body)
+                    } else {
+                        if t == 90 {
+                            rc = 0
+                            status = pg_ready_status(fr.body)
+                            done = 1
+                        } else {
+                            if t == 69 {
+                                var ed = pg_err_data(fr.body)
+                                esev = ed.sev
+                                ecode = ed.code
+                                emsg = ed.msg
+                                rc = -1
+                                err = pg_err_response()
+                                done = 1
+                            }
+                            // N(78)/S(83)/K(75)/1(49)/2(50)/t(116)/n(110)/
+                            // 其余:跳过(前向兼容;扩展查询响应帧同核)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if done == 0 {
+        return pgx_rows_fail(pg_err_io(), 0, "", "", "pg_query_fd: frame guard exhausted")
+    }
+    if rc != 0 {
+        return pgx_rows_fail(err, 0, esev, ecode, emsg)
+    }
+    var fc2: I64 = ncols
+    if fc2 < 0 {
+        fc2 = 0
+    }
+    var r = PgRows { rc: 0, err: 0, nrows: nrows, ncols: fc2, tag: tag, cols: cols, oids: oids, cells: cells, nulls: nulls, cbytes: cbytes, coffs: offs, esev: esev, ecode: ecode, emsg: emsg, next: 0, status: status }
+    return r
+}
+
 // ---- 会话握手回放面(脚本源) ----
 
 pub struct PgSess {
@@ -1760,5 +1873,216 @@ pub fn pg_scram_handshake(frames: List[Str], cur: I64, user: Str, pass: Str, non
         }
     }
     var s = PgSess { rc: rc, err: err, next: pos, status: status, pid: pid, key: key, authkind: authkind, esev: esev, ecode: ecode, emsg: emsg, mechs: mechs, cfirst: cfirst, sfirst: sfirst, cfinal: cfinal, sigok: sigok }
+    return s
+}
+
+// ═══ fd 真源会话面(P5-F;真库冒烟 nightly;脚本源 walkers 的 fd 薄源
+// 镜像,帧分派核同构,信任门/相序门逐条同)═══
+
+// ② 真源 SCRAM-SHA-256 握手(fd 直读直发;pg_scram_handshake 的 fd 镜像
+// + 下行信道):调用方先 pg_send_msg_fd 发 startup,再入本入口。相序门
+// (R10→R11→R12→AuthOk/K/S→Z)/ 机制明档选择 / nonce 前缀校验 / 盐-迭代
+// (i) 门 / server-final v= 校验 / **Z 门 phase==3 信任面**(P5-D 评审
+// 必修同门:未见 R12 校验通过的收口一律 rc<0 err 4)/ kind 3/5 clean
+// Err 4 —— 全与脚本源逐条一致。fd 差分:R10 后**发** SASLInitialResponse
+// ("n,," + client-first-bare),R11 后**发** SASLResponse(client-final);
+// 发败 → err 6。kind 0 直达(trust 等)同脚本源口径:phase 门照收,不作
+// 成功面(Z 门拦截)。next 恒 0(fd 源无脚本游标)。
+pub fn pg_scram_handshake_fd(fd: I64, rbuf: &I64[], fill: Box[PgCell64], scr: &I64[], user: Str, pass: Str, nonce: Str) -> PgSess {
+    var done: I64 = 0
+    var rc: I64 = -1
+    var err: I64 = 0
+    var status: I64 = 0
+    var pid: I64 = -1
+    var key: I64 = -1
+    var authkind: I64 = -1
+    var esev = ""
+    var ecode = ""
+    var emsg = ""
+    var mechs = List[Str]()
+    var cfirst = ""
+    var sfirst = ""
+    var cfinal = ""
+    var sigok: I64 = -1
+    var phase: I64 = 0
+    var salted = List[I32]()
+    var noproof = ""
+    var cnonce = nonce
+    var guard: I64 = 0
+    if cnonce.len == 0 {
+        rc = -1
+        err = pg_err_auth()
+        emsg = "scram: client nonce required (pg_scram_nonce / pg_scram_nonce_from)"
+        done = 1
+    } else {
+        cfirst = pg_scram_first_bare(user, cnonce)
+    }
+    while done == 0 && guard < 100000 {
+        guard += 1
+        var fr = pg_recv_frame_fd(fd, rbuf, fill, scr)
+        if fr.rc != 0 {
+            rc = -1
+            err = fr.err
+            done = 1
+        } else {
+            var t: I64 = pgz() + fr.mtype
+            if t == 82 {
+                var kind = pg_auth_kind(fr.body)
+                if kind < 0 {
+                    rc = -1
+                    err = pg_err_proto()
+                    done = 1
+                } else {
+                    authkind = kind
+                    if kind == 10 {
+                        if phase != 0 {
+                            rc = -1
+                            err = pg_err_proto()
+                            done = 1
+                        } else {
+                            mechs = pgx_sasl_mechs(fr.body)
+                            if pgx_mech_pick(mechs) != 0 {
+                                rc = -1
+                                err = pg_err_auth()
+                                emsg = "scram: SCRAM-SHA-256 not offered (plus-only channel binding unsupported)"
+                                done = 1
+                            } else {
+                                var initial = pg_sasl_initial_msg("SCRAM-SHA-256", pg_str_bytes("n,," + cfirst))
+                                if pg_send_msg_fd(fd, initial, scr) != 0 {
+                                    rc = -1
+                                    err = pg_err_io()
+                                    done = 1
+                                } else {
+                                    phase = 1
+                                }
+                            }
+                        }
+                    } else {
+                        if kind == 11 {
+                            if phase != 1 {
+                                rc = -1
+                                err = pg_err_proto()
+                                done = 1
+                            } else {
+                                sfirst = pg_body_ascii(fr.body, 4, fr.body.len)
+                                var sf = pgx_parse_sfirst(sfirst)
+                                if sf.ok == 0 {
+                                    rc = -1
+                                    err = pg_err_auth()
+                                    emsg = "scram: server-first malformed"
+                                    done = 1
+                                } else {
+                                    if sf.nonce.len < cnonce.len || byte_slice(sf.nonce, 0, cnonce.len) != cnonce {
+                                        rc = -1
+                                        err = pg_err_auth()
+                                        emsg = "scram: server nonce prefix mismatch"
+                                        done = 1
+                                    } else {
+                                        var salt = pg_b64_decode(sf.saltb64)
+                                        var iters = pgx_parse_iters(sf.iterstr)
+                                        if salt.len == 0 || iters < 0 {
+                                            rc = -1
+                                            err = pg_err_auth()
+                                            emsg = "scram: salt/iterations malformed or out of domain"
+                                            done = 1
+                                        } else {
+                                            salted = pg_scram_salted(pass, salt, iters.as[I32]())
+                                            noproof = "c=biws,r=" + sf.nonce
+                                            var authmsg = cfirst + "," + sfirst + "," + noproof
+                                            var proof = pg_scram_proof(salted, authmsg)
+                                            cfinal = noproof + ",p=" + pg_b64_encode(proof)
+                                            var resp = pg_sasl_response_msg(pg_str_bytes(cfinal))
+                                            if pg_send_msg_fd(fd, resp, scr) != 0 {
+                                                rc = -1
+                                                err = pg_err_io()
+                                                done = 1
+                                            } else {
+                                                phase = 2
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if kind == 12 {
+                                if phase != 2 {
+                                    rc = -1
+                                    err = pg_err_proto()
+                                    done = 1
+                                } else {
+                                    var vmsg = pg_body_ascii(fr.body, 4, fr.body.len)
+                                    var authmsg = cfirst + "," + sfirst + "," + noproof
+                                    var expect = "v=" + pg_b64_encode(pg_scram_server_sig(salted, authmsg))
+                                    if vmsg == expect {
+                                        sigok = 1
+                                        phase = 3
+                                    } else {
+                                        sigok = 0
+                                        rc = -1
+                                        err = pg_err_auth()
+                                        emsg = "scram: server signature mismatch"
+                                        done = 1
+                                    }
+                                }
+                            } else {
+                                if kind == 3 || kind == 5 {
+                                    rc = -1
+                                    err = pg_err_auth()
+                                    emsg = "auth kind " + kind.to_string() + " not supported (cleartext/md5; core is SCRAM-SHA-256 only)"
+                                    done = 1
+                                }
+                                // kind 0(AuthOk)与其余方式:续帧
+                            }
+                        }
+                    }
+                }
+            } else {
+                if t == 75 {
+                    var p = pgx_u32be(fr.body, 0)
+                    var k2 = pgx_u32be(fr.body, 4)
+                    if p < 0 || k2 < 0 {
+                        rc = -1
+                        err = pg_err_proto()
+                        done = 1
+                    } else {
+                        pid = p
+                        key = k2
+                    }
+                } else {
+                    if t == 90 {
+                        // 信任面门(P5-D 同门):未见 server-final(R12)校验
+                        // 通过即中止(互认证缺口/迭代降级面)
+                        if phase != 3 {
+                            rc = -1
+                            err = pg_err_auth()
+                            emsg = "scram: handshake closed without verified server-final"
+                            done = 1
+                        } else {
+                            status = pg_ready_status(fr.body)
+                            rc = 0
+                            done = 1
+                        }
+                    } else {
+                        if t == 69 {
+                            var ed = pg_err_data(fr.body)
+                            esev = ed.sev
+                            ecode = ed.code
+                            emsg = ed.msg
+                            rc = -1
+                            err = pg_err_response()
+                            done = 1
+                        }
+                        // S(83)/N(78)/其余:跳过(前向兼容)
+                    }
+                }
+            }
+        }
+    }
+    if done == 0 {
+        rc = -1
+        err = pg_err_io()
+        emsg = "scram fd: frame guard exhausted"
+    }
+    var s = PgSess { rc: rc, err: err, next: 0, status: status, pid: pid, key: key, authkind: authkind, esev: esev, ecode: ecode, emsg: emsg, mechs: mechs, cfirst: cfirst, sfirst: sfirst, cfinal: cfinal, sigok: sigok }
     return s
 }

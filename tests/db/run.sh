@@ -121,6 +121,13 @@ if [ -x "$EMIT" ]; then
             # (ctron_dbpg_entropy 别名引 ctron_entropy_fill → 并链熵垫片)
             EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c $ROOT/std/db/c_src/ctron_entropy.c"
         fi
+        if [ "$name" = "x_pg_fd_session" ]; then
+            # PG fd 真源全会话(P5-F:SCRAM 下行双发 + 简单/扩展查询 +
+            # 事务状态)链 dbpg 垫片;ctron_dbpg_entropy 别名引
+            # ctron_entropy_fill → 并链熵垫片(nonce 面经 pg_scram_nonce
+            # 链接面;夹具定值 nonce 不触熵,符号面仍须全)
+            EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c $ROOT/std/db/c_src/ctron_entropy.c"
+        fi
         if [ "$name" = "x_scram_nonce" ]; then
             # nonce 真熵:ctron_dbpg_entropy 别名转发 → 并链熵垫片
             EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c $ROOT/std/db/c_src/ctron_entropy.c"

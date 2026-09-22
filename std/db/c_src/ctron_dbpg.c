@@ -37,6 +37,7 @@ int64_t ctron_entropy_fill(int64_t* buf, int64_t n);
 #if defined(_WIN32)
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <stdio.h>
 #define ct_dbpg_closefd(s) closesocket(s)
 static __thread int ct_dbpg_errno;
 static int ct_dbpg_err(void) {
@@ -47,6 +48,8 @@ static int ct_dbpg_err(void) {
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <stdio.h>
 #define ct_dbpg_closefd(s) close(s)
 static __thread int ct_dbpg_errno;
 static int ct_dbpg_err(void) {
@@ -164,4 +167,44 @@ int64_t ctron_dbpg_entropy(ct_dbpg_view buf, int64_t n) {
         return -1;
     }
     return ctron_entropy_fill(buf.d, n);
+}
+
+/* 真源 TCP 建连(P5-F nightly;阻塞 connect,无超时面 v0 登记)。host =
+ * ASCII 字节 lane(view 胞形,NUL 不入 lane);port = I64。getaddrinfo 遍
+ * 尝(AF_UNSPEC;::1/127.0.0.1 均可达),首个连通 fd 胜出;全败 → -1
+ * (errno 槽 = 首错误)。_WIN32 同面(WSA)。 */
+int64_t ctron_dbpg_connect(ct_dbpg_view host, int64_t port) {
+    if (host.d == NULL || host.n <= 0 || host.n > 255 || port <= 0 || port > 65535) {
+        ct_dbpg_errno = EFAULT;
+        return -1;
+    }
+    char node[256];
+    char service[16];
+    for (int64_t i = 0; i < host.n; i++) node[i] = (char)host.d[i];
+    node[host.n] = '\0';
+    snprintf(service, sizeof service, "%lld", (long long)port);
+    struct addrinfo hints, *res = NULL, *rp = NULL;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    int saved = 0;
+    if (getaddrinfo(node, service, &hints, &res) != 0 || res == NULL) {
+        ct_dbpg_errno = EHOSTUNREACH;
+        return -1;
+    }
+    int fd = -1;
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (fd < 0) { saved = errno; continue; }
+        if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0) break;
+        saved = errno;
+        ct_dbpg_closefd(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) {
+        ct_dbpg_errno = saved ? saved : ECONNREFUSED;
+        return -1;
+    }
+    return (int64_t)fd;
 }

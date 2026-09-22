@@ -1,0 +1,88 @@
+// tests/db/nightly/pg_smoke.ct —— 真 Postgres 冒烟(P5-F Task 6;nightly 专面,
+// 不入 tests/db 主环)。消费侧组合形态(db.ct 头注登记):env DSN → 垫片
+// connect → fd 句柄传驱动 → pg_scram_handshake_fd(SCRAM-SHA-256 全链,真熵
+// nonce)→ 简单查询 → 预编译管线 → 事务状态游水面 → Terminate。
+// 口令认证必需:trust/AuthOk 直达与 plus-only 按信任门拒收(err 4 显形,
+// RFC 5802 客户端 MUST;emsg 逐字透出,失败点由步骤行定位)。
+// CTRON_PG_DSN 未设 → skip 行照跑(零断言;run.sh 负责靶探测与登记)。
+use std.db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
+use std.db.pg.{ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_ext_pipeline, pg_terminate_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_err, pgs_emsg, pgs_sigok, pgs_status, pgr_rc, pgr_rows, pgr_cols, pgr_tag, pgr_cell, pgr_status, pgr_emsg}
+
+test "pg nightly smoke: connect + scram + simple + prepared + tx" {
+    var dsn = env_get("CTRON_PG_DSN")
+    if dsn.len == 0 {
+        println("[skip] CTRON_PG_DSN unset")
+    } else {
+        var d = dsn_parse(db_std(), dsn)
+        println("[pg] dsn ok=" + pgd_ok(d).to_string() + " user=" + pgd_user(d) + " host=" + pgd_host(d) + " port=" + pgd_port(d).to_string() + " db=" + pgd_name(d))
+        assert_eq(pgd_ok(d), 1)
+        var dbname = pgd_name(d)
+        if dbname.len == 0 {
+            dbname = pgd_user(d)
+        }
+        var hb = pg_str_bytes(pgd_host(d))
+        assert(hb.len > 0)
+        assert(hb.len < 256)
+        var hostl: I64[256] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        var i: I64 = 0
+        while i < hb.len {
+            hostl[i] = hb[i]
+            i += 1
+        }
+        println("[pg] connecting ...")
+        var fd = ctron_dbpg_connect(hostl, pgd_port(d))
+        println("[pg] connect fd=" + fd.to_string())
+        assert(fd >= 0)
+        var rbuf: I64[1024] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        var scr: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        var fill = Box[PgCell64](PgCell64 { v: 0 })
+        assert_eq(pg_send_msg_fd(fd, pg_startup_msg(pgd_user(d), dbname, "ctron-nightly"), scr), 0)
+        println("[pg] startup sent; scram handshake (nonce=real-entropy) ...")
+        var s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
+        println("[pg] scram rc=" + pgs_rc(s).to_string() + " err=" + pgs_err(s).to_string() + " sigok=" + pgs_sigok(s).to_string() + " status=" + pgs_status(s).to_string() + " emsg=" + pgs_emsg(s))
+        assert_eq(pgs_rc(s), 0)
+        assert_eq(pgs_sigok(s), 1)
+        assert_eq(pgs_status(s), 73)
+        println("[pg] scram OK (server signature verified)")
+        assert_eq(pg_send_msg_fd(fd, pg_query_msg("SELECT 1 AS one"), scr), 0)
+        var q = pg_query_fd(fd, rbuf, fill, scr)
+        println("[pg] simple rc=" + pgr_rc(q).to_string() + " rows=" + pgr_rows(q).to_string() + " cols=" + pgr_cols(q).to_string() + " tag=" + pgr_tag(q) + " emsg=" + pgr_emsg(q))
+        assert_eq(pgr_rc(q), 0)
+        assert_eq(pgr_rows(q), 1)
+        assert_eq(pgr_cell(q, 0, 0), "1")
+        assert_eq(pgr_status(q), 73)
+        println("[pg] simple query OK")
+        var oids = List[I32]()
+        oids.push(23)
+        var params = List[Str]()
+        params.push("41")
+        var nulls = List[I32]()
+        nulls.push(0)
+        assert_eq(pg_send_msg_fd(fd, pg_ext_pipeline("s1", "SELECT $1::int4 + 1 AS x", oids, "p1", params, nulls, 0), scr), 0)
+        var q2 = pg_query_fd(fd, rbuf, fill, scr)
+        println("[pg] prepared rc=" + pgr_rc(q2).to_string() + " tag=" + pgr_tag(q2) + " emsg=" + pgr_emsg(q2))
+        assert_eq(pgr_rc(q2), 0)
+        assert_eq(pgr_cell(q2, 0, 0), "42")
+        assert_eq(pgr_status(q2), 73)
+        println("[pg] prepared/extended OK (41+1=42)")
+        assert_eq(pg_send_msg_fd(fd, pg_query_msg("BEGIN"), scr), 0)
+        var b = pg_query_fd(fd, rbuf, fill, scr)
+        println("[pg] BEGIN rc=" + pgr_rc(b).to_string() + " status=" + pgr_status(b).to_string())
+        assert_eq(pgr_rc(b), 0)
+        assert_eq(pgr_status(b), 84)
+        assert_eq(pg_send_msg_fd(fd, pg_query_msg("SELECT 1"), scr), 0)
+        var t = pg_query_fd(fd, rbuf, fill, scr)
+        assert_eq(pgr_rc(t), 0)
+        assert_eq(pgr_status(t), 84)
+        println("[pg] in-tx SELECT OK (status T)")
+        assert_eq(pg_send_msg_fd(fd, pg_query_msg("COMMIT"), scr), 0)
+        var c = pg_query_fd(fd, rbuf, fill, scr)
+        println("[pg] COMMIT rc=" + pgr_rc(c).to_string() + " status=" + pgr_status(c).to_string())
+        assert_eq(pgr_rc(c), 0)
+        assert_eq(pgr_status(c), 73)
+        println("[pg] tx OK (I -> T -> T -> I)")
+        assert_eq(pg_send_msg_fd(fd, pg_terminate_msg(), scr), 0)
+        assert_eq(ctron_dbpg_close(fd), 0)
+        println("[pg] PASS: connect+scram+simple+prepared+tx")
+    }
+}

@@ -64,6 +64,9 @@ pub extern "c" fn ctron_dbredis_write(fd: I64, buf: &I64[], n: I64) -> I64
 pub extern "c" fn ctron_dbredis_close(fd: I64) -> I64
 pub extern "c" fn ctron_dbredis_last_errno() -> I64
 pub extern "c" fn ctron_dbredis_socketpair(out: &I64[]) -> I64
+// 真源 TCP 建连(P5-F nightly;host = ASCII 字节 lane;阻塞 connect,fd
+// 循环至整包口径;无超时面 v0 登记)
+pub extern "c" fn ctron_dbredis_connect(host: &I64[], port: I64) -> I64
 
 // fd 出参标量胞(与 pg.ct PgCell64 同布局异名——同名 decl 合并 E5030
 // 纪律;出参持态一律 Box[RdsCell64] 堆胞,跨调用可见)

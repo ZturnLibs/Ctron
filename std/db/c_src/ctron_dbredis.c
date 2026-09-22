@@ -44,6 +44,9 @@ static int ct_dbredis_err(void) {
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <stdio.h>
 #define ct_dbredis_closefd(s) close(s)
 static __thread int ct_dbredis_errno;
 static int ct_dbredis_err(void) {
@@ -166,4 +169,45 @@ int64_t ctron_dbredis_socketpair(ct_dbredis_view out) {
     out.d[1] = (int64_t)sv[1];
     return 0;
 #endif
+}
+
+/* 真源 TCP 建连(P5-F nightly;阻塞 connect,无超时面 v0 登记)。host =
+ * ASCII 字节 lane(view 胞形,NUL 不入 lane);port = I64;fd 为**阻塞**
+ * socket(redis_recv_fd 循环至整包语义;would-block -2 面仅非阻塞夹具
+ * socketpair 产)。getaddrinfo 遍尝,首个连通 fd 胜出;全败 → -1。
+ * _WIN32 同面(WSA)。 */
+int64_t ctron_dbredis_connect(ct_dbredis_view host, int64_t port) {
+    if (host.d == NULL || host.n <= 0 || host.n > 255 || port <= 0 || port > 65535) {
+        ct_dbredis_errno = EFAULT;
+        return -1;
+    }
+    char node[256];
+    char service[16];
+    for (int64_t i = 0; i < host.n; i++) node[i] = (char)host.d[i];
+    node[host.n] = '\0';
+    snprintf(service, sizeof service, "%lld", (long long)port);
+    struct addrinfo hints, *res = NULL, *rp = NULL;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    int saved = 0;
+    if (getaddrinfo(node, service, &hints, &res) != 0 || res == NULL) {
+        ct_dbredis_errno = EHOSTUNREACH;
+        return -1;
+    }
+    int fd = -1;
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (fd < 0) { saved = errno; continue; }
+        if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0) break;
+        saved = errno;
+        ct_dbredis_closefd(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) {
+        ct_dbredis_errno = saved ? saved : ECONNREFUSED;
+        return -1;
+    }
+    return (int64_t)fd;
 }
