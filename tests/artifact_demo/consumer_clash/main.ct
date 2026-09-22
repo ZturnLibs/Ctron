@@ -1,0 +1,6 @@
+use mygeom.geom.{area_rect}
+use mygeom2.geom.{area_rect}
+
+fn main() {
+    println("x")
+}

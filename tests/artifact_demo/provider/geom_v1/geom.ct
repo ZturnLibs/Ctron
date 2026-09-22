@@ -1,0 +1,4 @@
+// geom v1:面积 = w*h
+pub fn area_rect(w: I32, h: I32) -> I32 {
+    return w * h
+}

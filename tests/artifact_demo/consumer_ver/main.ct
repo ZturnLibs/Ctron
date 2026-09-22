@@ -1,0 +1,7 @@
+use mygeom.geom.{area_rect}
+use mygeom2.geom.{perim_rect}
+
+fn main() {
+    println("v1=" + area_rect(3, 4).to_string())
+    println("v2p=" + perim_rect(3, 4).to_string())
+}

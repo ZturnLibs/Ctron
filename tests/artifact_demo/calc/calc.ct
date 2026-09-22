@@ -1,0 +1,6 @@
+// calc —— 传递依赖中层包(use mybase;闭包随消费端 deps 扁平落位)
+use mybase.base.{base_mul}
+
+pub fn area_rect(w: I32, h: I32) -> I32 {
+    return base_mul(w, h)
+}

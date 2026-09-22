@@ -1,0 +1,4 @@
+// geom v2:重命名式演进(area_rect 已更名 perim_rect)—— 同包不同版本夹具
+pub fn perim_rect(w: I32, h: I32) -> I32 {
+    return (w + h) * 2
+}

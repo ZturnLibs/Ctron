@@ -666,6 +666,46 @@ else
     bad "S2a 工件 std.use 异常: $(tail -2 "$T/c3.out" 2>/dev/null; tail -1 "$T/seal3.out")"
 fi
 
+echo "== 3m) S2a 版本与传递依赖(双版本共存/同名碰撞/传递/缺传递负例)=="
+V="$T/ver"
+for d in a1 a2 ab ap a2c; do mkdir -p "$V/$d/impl"; done
+mkdir -p "$V/cv/deps/mygeom.ctart" "$V/cv/deps/mygeom2.ctart" "$V/cc/deps/mygeom.ctart" "$V/cc/deps/mygeom2.ctart" "$V/ct/deps/mybase.ctart" "$V/ct/deps/mypkg.ctart" "$V/ctn/deps/mypkg.ctart"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom_v1/geom.ct" --ast=seal --astout="$V/a1" --astname=mygeom > "$T/v1.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider_v2/geom.ct" --ast=seal --astout="$V/a2" --astname=mygeom2 > "$T/v2.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$V/ab" --astname=mybase > "$T/vb.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/calc/calc.ct" --ast=seal --astout="$V/ap" --astname=mypkg > "$T/vp.out" 2>&1
+cp -r "$V/a1/." "$V/cv/deps/mygeom.ctart/" && cp -r "$V/a2/." "$V/cv/deps/mygeom2.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_ver/main.ct" "$V/cv/"
+(cd "$V/cv" && "$COMP/ctc.sh" main.ct > "$T/cv.out" 2>&1)
+if grep -q "v1=12" "$T/cv.out" && grep -q "v2p=14" "$T/cv.out"; then
+    ok "同包双版本共存(v1 area_rect + v2 perim_rect 同程序)"
+else
+    bad "双版本共存异常: $(head -2 "$T/cv.out")"
+fi
+cp -r "$V/a1/." "$V/cc/deps/mygeom.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_clash/main.ct" "$V/cc/"
+mkdir -p "$V/a2c/impl"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider_clash/geom.ct" --ast=seal --astout="$V/a2c" --astname=mygeom2 > "$T/v2c.out" 2>&1
+cp -r "$V/a2c/." "$V/cc/deps/mygeom2.ctart/"
+(cd "$V/cc" && "$COMP/ctc.sh" main.ct > "$T/cc.out" 2>&1)
+if grep -q "E5030" "$T/cc.out"; then
+    ok "同符号跨版本碰撞拦截(E5030,显式收敛口径)"
+else
+    bad "碰撞负例异常: $(head -1 "$T/cc.out")"
+fi
+cp -r "$V/ab/." "$V/ct/deps/mybase.ctart/" && cp -r "$V/ap/." "$V/ct/deps/mypkg.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$V/ct/"
+(cd "$V/ct" && "$COMP/ctc.sh" main.ct > "$T/ct.out" 2>&1)
+if grep -q "t=12" "$T/ct.out"; then
+    ok "传递依赖(calc→mybase 经消费端 deps 扁平解析)"
+else
+    bad "传递依赖异常: $(head -1 "$T/ct.out")"
+fi
+cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$V/ctn/"
+(cd "$V/ctn" && "$COMP/ctc.sh" main.ct > "$T/ctn.out" 2>&1)
+if grep -q "E2020" "$T/ctn.out"; then
+    ok "缺传递依赖负例拦截(E2020;S4 改进:错误应点名 deps/<pkg>.ctart 缺失)"
+else
+    bad "缺传递依赖负例异常: $(head -1 "$T/ctn.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

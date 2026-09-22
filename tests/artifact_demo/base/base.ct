@@ -1,0 +1,4 @@
+// base —— 传递依赖底层包(被 calc 依赖)
+pub fn base_mul(a: I32, b: I32) -> I32 {
+    return a * b
+}

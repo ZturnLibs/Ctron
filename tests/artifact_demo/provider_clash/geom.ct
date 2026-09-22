@@ -1,0 +1,4 @@
+// geom(clash 版):area_rect 语义变更版 —— 同名符号跨版本碰撞负例夹具
+pub fn area_rect(w: I32, h: I32) -> I32 {
+    return w * h * 2
+}

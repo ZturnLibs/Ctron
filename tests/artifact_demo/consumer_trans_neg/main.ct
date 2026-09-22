@@ -1,0 +1,5 @@
+use mypkg.calc.{area_rect}
+
+fn main() {
+    println("t=" + area_rect(3, 4).to_string())
+}
