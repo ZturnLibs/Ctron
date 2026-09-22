@@ -127,6 +127,11 @@
   u[9] 前插入 0、丢弃 u[10]**（11 参 call 的栈参写坏）。-O2/-O0 双构建均复现。
   **续接 = -g 单步 case-11 的栈写序列**（break dispatch0 case-11 → si 逐条
   store 指令，观察 [sp]/[sp+8]/[sp+16] 写入），ABI 专案交接。
+- **int-cast 改良已落（工作树）**：case ≥9 的 cast → int×N + u[] int 化 + DISPATCH
+  转储 %d——复测 hval=11 bg=11（bg 已对，hval 仍差一位=参 10/11 边界仍乱）。
+  ** int cast 改良了 bg 但 hval 仍错——栈参写入的序/宽仍需单步定位。**
+- **sem I32→I64 宽化已落（工作树）**：compat 数值宽化(I32 实参可传 I64 形参)——
+  skint2 的 E2010 消除，解释路径可执行 gui_cfg 调用（hval 差一位待上述收尾）。
 - **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
   **parse/sem 层正确**。
 - **C 层终态（-g 构建 + lldb 双断点，干净重建复现依旧=真实缺陷）**：FR 帧串正确
@@ -169,6 +174,11 @@
   u[9] 前插入 0、丢弃 u[10]**（11 参 call 的栈参写坏）。-O2/-O0 双构建均复现。
   **续接 = -g 单步 case-11 的栈写序列**（break dispatch0 case-11 → si 逐条
   store 指令，观察 [sp]/[sp+8]/[sp+16] 写入），ABI 专案交接。
+- **int-cast 改良已落（工作树）**：case ≥9 的 cast → int×N + u[] int 化 + DISPATCH
+  转储 %d——复测 hval=11 bg=11（bg 已对，hval 仍差一位=参 10/11 边界仍乱）。
+  ** int cast 改良了 bg 但 hval 仍错——栈参写入的序/宽仍需单步定位。**
+- **sem I32→I64 宽化已落（工作树）**：compat 数值宽化(I32 实参可传 I64 形参)——
+  skint2 的 E2010 消除，解释路径可执行 gui_cfg 调用（hval 差一位待上述收尾）。
 - **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
   **parse/sem 层正确**。
 - **C 层终态（-g 构建 + lldb 双断点，干净重建复现依旧=真实缺陷）**：FR 帧串正确

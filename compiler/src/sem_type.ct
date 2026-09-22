@@ -291,6 +291,10 @@ fn compat(exp: Str, act: Str, e: List[Str], file: List[Str], tc: List[Str]) -> B
     if seq2(exp, "n:Str") {
         return seq2(act, "n:String")
     }
+    // 数值宽化:I32 实参可传 I64 形参(无损;extern 桥 long×N 调用约定配套)
+    if seq2(exp, "n:I64") {
+        return seq2(act, "n:I32")
+    }
     if seq2(exp, "slice") {
         return seq2(act, "arr")
     }
