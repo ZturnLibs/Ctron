@@ -1,4 +1,4 @@
-// std/time.ct —— 纯历法(days 域;公历;Clock 单调时钟为 v0.3,依赖运行时面)
+// std/time.ct —— 纯历法(days 域;公历)+ Clock 墙钟面(v0.3:now_ms/iso_utc;单调钟待运行时面;Rust interp 内建待补,parity 欠账在册)
 // since: std-0.2 stability: experimental
 // 口径:days since 1970-01-01(1970-01-01 = 0);年份域 [1,9999];全部纯函数,
 // 无时钟依赖(宪章 8);Hinnant 民历算法;I32 除法幅度 ≤1.5e6(C3 安全)
@@ -349,6 +349,16 @@ fn two(v: I64) -> Str {
 pub fn iso_utc(ms: I64) -> Str {
     var days: I64 = ms / 86400000
     var mod: I64 = ms % 86400000
+    if mod < 0 {
+        days -= 1
+        mod += 86400000
+    }
+    // 规范化:自举 6 域除法为 floor 语义,负 ms 可得非规范对(如 02-27T24:00),
+    // 恒等式 days*86400000 + mod = ms 不变,进位即得规范形(宿主无关)
+    if mod >= 86400000 {
+        mod -= 86400000
+        days += 1
+    }
     var hh: I64 = mod / 3600000
     var mi: I64 = mod % 3600000 / 60000
     var ss: I64 = mod % 60000 / 1000
@@ -428,4 +438,11 @@ test "now wall clock" {
     assert(byte_at(iso, 13) == 58)
     assert(byte_at(iso, 16) == 58)
     assert(byte_at(iso, 19) == 90)
+}
+
+test "iso utc negative and century" {
+    assert_eq(iso_utc(-1), "1969-12-31T23:59:59Z")
+    assert_eq(iso_utc(-86400000), "1969-12-31T00:00:00Z")
+    assert_eq(iso_utc(-2203977600000), "1900-02-28T00:00:00Z")
+    assert_eq(iso_utc(-2203891200000), "1900-03-01T00:00:00Z")
 }
