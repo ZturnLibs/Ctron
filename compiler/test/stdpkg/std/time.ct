@@ -331,3 +331,101 @@ test "epoch seconds" {
     assert_eq(time_to_epoch_s(1970, 1, 1), 0)
     assert_eq(time_to_epoch_s(2024, 1, 1), 1704067200)
 }
+
+// ============ v0.3 Clock 面(墙钟 epoch ms;单调钟待运行时面) ============
+// 口径:内建 now_ms(Unix epoch 毫秒)仅在自举/发射口径在册,Rust interp
+// 内建待补(parity Rust 臂欠账在册);iso_utc 为纯历法组合,Hinnant 以
+// I64 域内联(回避 I64 到 I32 的收窄桥,登记分歧)
+
+// 两位十进制(时/分/秒域填零)
+fn two(v: I64) -> Str {
+    if v < 10 {
+        return "0" + v.to_string()
+    }
+    return v.to_string()
+}
+
+// epoch 毫秒 → ISO 8601 UTC(YYYY-MM-DDTHH:MM:SSZ)
+pub fn iso_utc(ms: I64) -> Str {
+    var days: I64 = ms / 86400000
+    var mod: I64 = ms % 86400000
+    var hh: I64 = mod / 3600000
+    var mi: I64 = mod % 3600000 / 60000
+    var ss: I64 = mod % 60000 / 1000
+    var z2: I64 = days + 719468
+    var era: I64 = 0
+    if z2 >= 0 {
+        era = z2 / 146097
+    } else {
+        era = (z2 - 146096) / 146097
+    }
+    var doe = z2 - era * 146097
+    var yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    var yy = yoe + era * 400
+    var doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    var mp = (5 * doy + 2) / 153
+    var dd = doy - (153 * mp + 2) / 5 + 1
+    var mm = mp
+    if mm < 10 {
+        mm = mm + 3
+    } else {
+        mm = mm - 9
+    }
+    if mm <= 2 {
+        yy = yy + 1
+    }
+    var out = ""
+    if yy < 10 {
+        out = out + "000"
+    } else {
+        if yy < 100 {
+            out = out + "00"
+        } else {
+            if yy < 1000 {
+                out = out + "0"
+            }
+        }
+    }
+    out = out + yy.to_string()
+    out = out + "-"
+    if mm < 10 {
+        out = out + "0"
+    }
+    out = out + mm.to_string()
+    out = out + "-"
+    if dd < 10 {
+        out = out + "0"
+    }
+    out = out + dd.to_string()
+    out = out + "T"
+    out = out + two(hh) + ":" + two(mi) + ":" + two(ss) + "Z"
+    return out
+}
+
+// 当前墙钟的 ISO 8601 UTC 串
+pub fn now_iso_utc() -> Str {
+    return iso_utc(now_ms())
+}
+
+test "iso utc civil" {
+    assert_eq(iso_utc(0), "1970-01-01T00:00:00Z")
+    assert_eq(iso_utc(86400000), "1970-01-02T00:00:00Z")
+    assert_eq(iso_utc(1000000000000), "2001-09-09T01:46:40Z")
+    assert_eq(iso_utc(951782400000), "2000-02-29T00:00:00Z")
+    assert_eq(date_parse(date_format(19000)).or(-1), 19000)
+}
+
+test "now wall clock" {
+    assert(now_ms() > 1600000000000)
+    var t1: I64 = now_ms()
+    var t2: I64 = now_ms()
+    assert(t2 >= t1)
+    var iso = now_iso_utc()
+    assert(iso.len == 20)
+    assert(byte_at(iso, 4) == 45)
+    assert(byte_at(iso, 7) == 45)
+    assert(byte_at(iso, 10) == 84)
+    assert(byte_at(iso, 13) == 58)
+    assert(byte_at(iso, 16) == 58)
+    assert(byte_at(iso, 19) == 90)
+}

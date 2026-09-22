@@ -340,7 +340,7 @@ fi
 echo "== 3j3) std 全模块 Rust 臂 parity(内建面欠账清单驱动;清账即翻绿提醒) =="
 RUSTBIN="$ROOT/compiler-rust/target/release/ctron"
 if [ -x "$RUSTBIN" ]; then
-    known="json_write sort fs unicode gui"
+    known="json_write sort fs unicode gui time"
     newred=0
     knownred=0
     flipped=""
