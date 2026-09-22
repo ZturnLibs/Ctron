@@ -128,3 +128,22 @@ toolchain-design 既定原则)。
 std/db P5-D 连发),红项集合逐轮漂移且均映射 peer 在途编辑;doc 腿各轮稳定全绿。
 
 状态:✅ 完成(2026-09-22,S0.7)。
+
+## S0.7a(2026-09-22 续):域目录形态 + S1 触发线重测
+
+**① doc 域目录形态**:`std.http.parse`/`std.db.pg` 等域目录模块——doc_mod_rel 把
+"std." 后余下点号转路径分隔(模块名本身无点),四级 std 根解析照旧。HEAD 基线实测
+五形态全通:http.parse 61 decls、db.pg 130、net.bind 26、tls.bind 12、str 64 回归;
+pg/http 模块头契约注释直接出面。
+
+**② S1 触发线重测(2026-09-22,基线对照 S0.6)**:stdpkg 面积 257 decls(不变——
+std 新域模块 http/db/tls 由各自夹具消费,未入种子包);doc(parse+load)≈1.2s、
+check(+sem)≈2.7s——工具链提速后**绝对耗时反降约一半**,解析占比 ≈44%(原 40%)。
+**门禁维持且更稳**:面积×3/占比>60%/真实需求方,三者均远。
+
+**③ 环境登记:** peer 泳道(lex/diag/trans)高频在途编辑期,树上 CORE 存在不可解析
+中间态 → native.sh 静默早夭、seed 解析瞬断;本片域解析以 HEAD 基线合并验证
+(`git show HEAD:` 逐文件取干净 CORE + 本片驱动),原生重建待 peer 落库后
+`sh native.sh` 一次补齐(与 ps1 Windows conformance 同列挂账)。
+
+状态:✅ 完成(2026-09-22,S0.7a)。

@@ -612,10 +612,28 @@ fn doc_print_doc(t: Str) {
 }
 
 
+fn doc_mod_rel(ep: Str) -> Str {
+    // "std.<a>.<b>" → "<a>/<b>"(域目录分节;模块名本身无点,余下点号皆为路径分隔)
+    var out = ""
+    var i: I32 = 4
+    var n = ep.len
+    while i < n {
+        var c = byte_at(ep, i)
+        if c == 46 {
+            out = out + "/"
+        } else {
+            out = out + byte_slice(ep, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
 fn doc_std_mod(ep: Str) -> Str {
     // §5.3:"std.<module>" 形 → 实文件四级解析:①CTRON_STDPATH ②exe 旁 ../lib/ctron/std
-    // ③cwd ./std(dev 仓库根)④cwd ../std(pkg_std_root 种子约定的 cwd 变体)
-    var mod = byte_slice(ep, 4, ep.len)
+    // ③cwd ./std(dev 仓库根)④cwd ../std(pkg_std_root 种子约定的 cwd 变体);
+    // 域目录形(std.http.parse)经 doc_mod_rel 点号转路径
+    var mod = doc_mod_rel(ep)
     var envp = env_get("CTRON_STDPATH")
     if envp.len > 0 {
         if fs_exists(envp + "/" + mod + ".ct") {
