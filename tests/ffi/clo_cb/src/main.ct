@@ -1,0 +1,15 @@
+// tests/ffi/clo_cb —— context-pointer 闭包糖(§9.6 v0.8)
+// 承诺:捕获闭包经 clo_handle 句柄 + clo_cb2 蹦床成为 C 回调——
+// C 签名(业务参, void* ctx),ctx = 闭包箱句柄,捕获态全保留。
+#[trusted]
+extern "c" fn set_cb(f: fn(I64, I64) -> I64, user: I64)
+
+#[trusted]
+extern "c" fn fire(ev: I64) -> I64
+
+test "captured closure as C callback via ctx handle" {
+    let base: I64 = 100
+    set_cb(clo_cb2, clo_handle(|ev| ev + base))
+    assert_eq(fire(5), 105)
+    assert_eq(fire(1), 101)
+}

@@ -210,6 +210,10 @@ fn main() -> I32 {
             println("typedef ct_i (*ct_cfn1)(void*, ct_i);")
             println("typedef ct_i (*ct_cfn2)(void*, ct_i, ct_i);")
             println("typedef ct_i (*ct_cfn3)(void*, ct_i, ct_i, ct_i);")
+            // context-pointer 闭包糖(§9.6 v0.8):C 签名(业务参..., void* ctx)——
+            // ctx = clo_handle 闭包箱句柄;蹦床经箱内 shim(env-first)路由回闭包
+            println("static ct_i ctron_clo_tramp2(ct_i _e, void* _u) \{ ct_clop _b = (ct_clop)_u; return ((ct_cfn1)(_b->fn))(_b->env, _e); }")
+            println("static ct_i ctron_clo_tramp3(ct_i _e, ct_i _x, void* _u) \{ ct_clop _b = (ct_clop)_u; return ((ct_cfn2)(_b->fn))(_b->env, _e, _x); }")
             println("static ctron_list* ct_parallel_mapL(ctron_list* a, ct_fn1 f) \{ ctron_list* r = ctron_list_new(); int i; for (i = 0; i < a->n; i++) \{ ctron_list_push(r, (const char*)(long)f((ct_i)(long)a->items[i])); } return r; }")
             println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ ct_i acc = init; int i; for (i = 0; i < a->n; i++) \{ acc = f(acc, (ct_i)(long)a->items[i]); } return acc; }")
             println("static const char* ctron_cli_input = NULL;")
@@ -451,9 +455,6 @@ fn main() -> I32 {
             var lq2: I32 = 1
             while lq2 < file.len {
                 var ld2 = file[lq2]
-                if ld2[0] == "FnExt" {
-                    println("// DBGL " + ld2[1] + " len=" + ld2.len.to_string() + " slot6=" + ld2[6])
-                }
                 if ld2[0] == "FnExt" && ld2.len > 7 && attr_has(ld2[6], "link") {
                     var larg = attr_arg(ld2[6])
                     var eqp2 = -1

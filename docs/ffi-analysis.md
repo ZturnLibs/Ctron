@@ -101,6 +101,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **panic 跨边界策略** | **全语境落地**——回调入口蹦床(`ct_cbtr_<名>`:入口置 `ctron_cb_depth`,退出递减,ifndef 去重)+ `ctron_panic` 语境判定(深度 > 0 = 消息 + exit(1),不越 C 帧 longjmp;Rust "extern fn 内 panic = abort" 同款约定);`cb_panic/`(非 task)+ `cb_panic_task/`(task 态,join 不可达/进程退出)双夹具钉死 |
 | **cimport 原生化 + 修复** | `cimp_mul_add` carry-in 修正(0x 解码此前漏 +a);run.sh cimport 工具切自举 ctron-cc 原生驱动(seed 退化备用);#11③ 确认 = #11② 重复,随解析器修复关闭 |
 | **#11② 根因修复** | `p_if` 条件改 `p_oror`(原 p_and 不消费 `||`)——if 条件含 `||` 即解析错位的一族症状(StructLit panic/签名吞没/List[Str] 野节点)全部归零;04d_bool_or 补回归锚(语料此前零覆盖) |
+| **context-pointer 闭包糖** | `clo_handle(闭包)` → 闭包箱句柄(void* 语义)+ `clo_cb2/clo_cb3` 蹦床 fn 值(C 签名 `(业务参..., void* ctx)`,经箱内 shim 路由回闭包 env)——**捕获闭包成为 C 回调**,ctx 惯用法闭环;锚定 `tests/ffi/clo_cb/`(捕获 base 的闭包经 C 回调槽 fire) |
 | **#10 arity 断言** | `ct_arity_range/ct_arity_parse` 发射期个数断言(声明在案被调,不符硬失败;变参 ≥ min);旧"补 0"垫片实证会把缺参洗成合法 C |
 
 
@@ -152,7 +153,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃;已删除解阻塞,impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② ~~if 条件 `||` 解析错位~~ **已修复**——根因:`p_if` 条件误用 `p_and`(不消费 `\|\|`),`if` 条件含 `\|\|` 即解析错位(下游 `StructLit 非值类型`/签名吞没);语料对 if 条件 `\|\|` 零覆盖故长期隐形(while 走 p_stmt_expr→p_oror 本就对)。修复:p_if 改 `p_oror` + 04d_bool_or 回归锚。③ ~~`cimp_toks`+`cimp_proto` 同文件 native sem 崩溃~~ **已关闭(=②重复)**——该源型含 `if 三词或链`,②修复后 ctron-cc 原生驱动 cimport rc=0(输出与 seed 逐字一致);run.sh 已切原生驱动优先、seed 退化备用 | 中 | ①②③全部处置 |
 | 12 | panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧) | 中 | 非 task 态已安全(exit);task 态回调约定待钉 |
 | 13 | cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参 | 低 | 按需扩面;未识别一律注释占位不静默 |
-| 14 | pkg-config/构建集成、context-pointer 闭包模式糖、C 位域 | 低 | 随构建系统批次 |
+| 14 | pkg-config/构建集成、C 位域 | 低 | 随构建系统批次(context-pointer 闭包糖已落地:clo_handle + clo_cb2/3) |
 
 ### 本次顺带修复的既有问题
 

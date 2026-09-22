@@ -83,6 +83,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var iidx = ct_variant_index(file, ien, e[1])
             return "(ct_enum_" + ien + ")\{ " + iidx.to_string() + ", \{ 0, 0 } }"
         }
+        if e[1] == "clo_cb2" { return "(ct_fn2)ctron_clo_tramp2" }
+        if e[1] == "clo_cb3" { return "(ct_fn3)ctron_clo_tramp3" }
         var pcs5 = ct_fn_pcodes(file, e[1])
         if pcs5.len > 0 {
             if pcs5.len > 3 {
@@ -823,6 +825,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned;解释器侧恒等)
         if callee == "str_from_c" { return "ctron_str_from_c(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // context-pointer 闭包糖(§9.6 v0.8):闭包装箱句柄(void* 语义)
+        if callee == "clo_handle" {
+            if ag.len < 2 || ag[1][0] != "Closure" {
+                panic("emit:clo_handle 实参须闭包字面量")
+                return ""
+            }
+            return "(ct_i)(long)(" + ct_emit_clov(ag[1], ag[1], env, file) + ")"
+        }
         // 动态链接面(§9.6 v0.7):句柄为 ct_i 载荷;dlopen 固定 RTLD_NOW
         if callee == "dlopen" {
             var dp = ct_expr(ag[1], env, file)
@@ -1042,6 +1052,9 @@ fn ct_cb_ref(file: List[Str], ae: List[Str], ac: Str, ex: Str, pc: Str) -> Str {
     }
     if ae[0] == "Ident" {
         var nm = ae[1]
+        // context-pointer 蹦床 fn 值(§9.6 v0.8):直接以蹦床地址过界(无 fn 槽可摘)
+        if nm == "clo_cb2" { return "ctron_clo_tramp2" }
+        if nm == "clo_cb3" { return "ctron_clo_tramp3" }
         var di: I32 = 1
         while di < file.len {
             var d = file[di]
