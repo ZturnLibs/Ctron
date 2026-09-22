@@ -1,0 +1,114 @@
+// tests/http/frm_auth/a_jwt.ct —— JWT HS256 语料(P6-C;双臂 a_ 纯面)
+// 面:黄金向量校验(python hmac/b64url 对拍)、签发→校验往返(链形适配:
+//   守卫过→next 透传,不过→401 胜出,终端不可达)、sig 篡改拒、过期边界
+//   (now >= exp 拝,RFC 7519 §4.1.4 口径)、alg 混淆拒(none/HS512 钉形外
+//   一概)、claims 缺省可过 + exp/nbf/iat 三件判、claims 数值保真扫描。
+// 链形适配(a_csrf 同口径:适配闭包内令牌/判定面恒字面量;next 结果恒经
+//   `"" +` 裸尾惯用法落 Str —— P6-A 探针捕获缺口 + emit fn 值装箱 ct_i)。
+use std.http.frm.auth.{ auth_jwt_verify, auth_jwt_sign, auth_jwt_claim, auth_jwt_hdr_b64, auth_err_ok, auth_err_empty, auth_err_shape, auth_err_sig, auth_err_expired, auth_err_alg, auth_err_nbf, auth_err_iat, auth_err_claim, at_ok, at_tok, jwt_rc, jwt_why, ac_k, ac_v }
+
+// ---- 终端 handler(组合层;JWT 守护面不可达) ----
+
+fn h_post(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nposted"
+}
+
+// ---- 链形适配器(Bearer JWT 守卫;令牌/时钟字面量) ----
+
+// 黄金向量经链:合法 → next 透传
+fn mw_jwt_gold(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let tok = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1NDIiLCJuYW1lIjoiWm9lIiwiYWRtaW4iOmZhbHNlLCJuIjo3fQ.FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MI"
+    let v = auth_jwt_verify("s3cret-key", tok, 1000)
+    if jwt_rc(v) == 1 {
+        return "" + next(req, h)
+    }
+    return "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access"
+}
+
+// 篡改 sig(尾位翻)经链 → 401 胜出
+fn mw_jwt_tamper(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let tok = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1NDIiLCJuYW1lIjoiWm9lIiwiYWRtaW4iOmZhbHNlLCJuIjo3fQ.FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    let v = auth_jwt_verify("s3cret-key", tok, 1000)
+    if jwt_rc(v) == 1 {
+        return "" + next(req, h)
+    }
+    return "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access"
+}
+
+test "jwt golden via chain pass" {
+    let t1 = |r2: Str, k2: I64| h_post(r2, k2)
+    let ok = mw_jwt_gold("/api/todo", 3, t1)
+    assert(ok == "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nposted")
+    let no = mw_jwt_tamper("/api/todo", 3, t1)
+    assert(no == "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access")
+}
+
+test "jwt verify matrix" {
+    let tok = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1NDIiLCJuYW1lIjoiWm9lIiwiYWRtaW4iOmZhbHNlLCJuIjo3fQ.FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MI"
+    // happy:密钥/时钟对 → rc 1
+    assert(jwt_rc(auth_jwt_verify("s3cret-key", tok, 1000)) == 1)
+    // 密钥错 → 签名不合
+    assert(jwt_why(auth_jwt_verify("wrong-key", tok, 1000)) == auth_err_sig())
+    // 形坏矩阵:空 / 单点 / 双点 / 三段不足
+    assert(jwt_why(auth_jwt_verify("s3cret-key", "", 1)) == auth_err_empty())
+    assert(jwt_why(auth_jwt_verify("s3cret-key", "a.b", 1)) == auth_err_shape())
+    assert(jwt_why(auth_jwt_verify("s3cret-key", "a.b.c.d", 1)) == auth_err_shape())
+    // 钉形常量(与本模块签发互钉;漂移即断)
+    assert(auth_jwt_hdr_b64() == "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
+}
+
+test "jwt sign verify roundtrip and claims" {
+    // 签发往返(载荷含 exp/nbf/iat 三件;时钟注入)
+    let pay = "\{\"sub\":\"u1\",\"exp\":2000,\"nbf\":500,\"iat\":900,\"n\":9007199254740993}"
+    let t = auth_jwt_sign("k0", pay)
+    assert(at_ok(t) == 1)
+    assert(jwt_rc(auth_jwt_verify("k0", at_tok(t), 1000)) == 1)
+    // claims 数值保真(18 位内定宽;2^53 + 1 钉)
+    assert(ac_v(auth_jwt_claim(pay, "n")) == 9007199254740993)
+    assert(ac_k(auth_jwt_claim(pay, "nope")) == 0)
+    // 字符串/布尔 claim → k=-1(数字扫域外,登记头注)
+    assert(ac_k(auth_jwt_claim(pay, "sub")) == -1)
+    // 负数 claim
+    assert(ac_v(auth_jwt_claim("\{\"d\":-42}", "d")) == -42)
+    // 过期边界:now = exp-1 过 / now = exp 拝 / now > exp 拝
+    assert(jwt_rc(auth_jwt_verify("k0", at_tok(t), 1999)) == 1)
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t), 2000)) == auth_err_expired())
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t), 2500)) == auth_err_expired())
+    // nbf 未生效
+    let pay3 = "\{\"sub\":\"u1\",\"exp\":9000,\"nbf\":1500,\"iat\":900}"
+    let t3 = auth_jwt_sign("k0", pay3)
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t3), 1000)) == auth_err_nbf())
+    assert(jwt_rc(auth_jwt_verify("k0", at_tok(t3), 1500)) == 1)
+    // iat 在未来(零钟差从严档)
+    let pay4 = "\{\"sub\":\"u1\",\"exp\":9000,\"nbf\":500,\"iat\":1500}"
+    let t4 = auth_jwt_sign("k0", pay4)
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t4), 1000)) == auth_err_iat())
+    // claims 皆缺 → 可过(exp 可选;required 模式列志向)
+    let t5 = auth_jwt_sign("k0", "\{\"sub\":\"u1\"}")
+    assert(jwt_rc(auth_jwt_verify("k0", at_tok(t5), 90000)) == 1)
+    // claim 值非整数形 → why 12
+    let t6 = auth_jwt_sign("k0", "\{\"exp\":\"soon\"}")
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t6), 1000)) == auth_err_claim())
+}
+
+test "jwt alg confusion rejected" {
+    let p = auth_jwt_sign("k0", "\{\"sub\":\"u1\",\"exp\":9000}")
+    let payseg = "eyJzdWIiOiJ1MSwiZXhwIjo5MDAwfQ"
+    // alg=none + 空 sig 段 → 形坏(无签名 RFC 7515 §6 禁)
+    let hn = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"
+    assert(jwt_why(auth_jwt_verify("k0", hn + "." + payseg + ".", 1000)) == auth_err_shape())
+    // alg=none + 伪 sig → 钉形异 → alg 拒(混淆防护面)
+    assert(jwt_why(auth_jwt_verify("k0", hn + "." + payseg + ".FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA", 1000)) == auth_err_alg())
+    // HS512 钉形外同拒(无 alg 白名单旁路)
+    let h5 = auth_jwt_sign("k0", "\{\"alg\":\"HS512\"}")
+    let tok5 = "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9." + payseg + ".FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    assert(jwt_why(auth_jwt_verify("k0", tok5, 1000)) == auth_err_alg())
+    // typ 丢失(仅 alg)→ 钉形异同拒
+    let tok7 = "eyJhbGciOiJIUzI1NiJ9." + payseg + ".FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    assert(jwt_why(auth_jwt_verify("k0", tok7, 1000)) == auth_err_alg())
+    // b64url 域坏(sig 段 '+' 标准字母表混入)
+    let tok8 = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." + payseg + ".FkzYgiR+xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    assert(jwt_why(auth_jwt_verify("k0", tok8, 1000)) == auth_err_shape() || jwt_why(auth_jwt_verify("k0", tok8, 1000)) == auth_err_sig())
+    // 签发负:空载荷
+    assert(at_ok(auth_jwt_sign("k0", "")) == 0)
+}

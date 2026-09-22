@@ -36,7 +36,9 @@ done
 # W8052,解释臂直跑;emit 臂覆盖见 frm_route 夹具对拍)
 # P6-B:中间件五件入列 —— cors/sechdr/limit/timeout 零 use 叶,csrf→crypto
 # 纯叶(无 W8052);emit 臂覆盖见 frm_mw 夹具对拍
-for m in frm/router frm/middleware frm/cors frm/csrf frm/sechdr frm/limit frm/timeout; do
+# P6-C:auth→crypto 叶 + body→json 叶(csrf 同款纯叶);emit 臂覆盖见
+# frm_auth 夹具对拍
+for m in frm/router frm/middleware frm/cors frm/csrf frm/sechdr frm/limit frm/timeout frm/auth frm/body; do
     mn=$(basename "$m")
     if "$CC" run "$ROOT/std/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS std/http/$m.ct (inline)"
@@ -218,6 +220,30 @@ done
 for f in "$DIR"/frm_mw/a_*.ct; do
     [ -f "$f" ] || continue
     name="frm_mw_$(basename "$f" .ct)"
+    if "$CC" run "$f" > "$T/$name.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS $name (interp)"
+    else
+        fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
+    fi
+    if [ -x "$EMIT" ]; then
+        if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
+           && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" 2>"$T/$name.e.cc.err" \
+           && "$T/$name.e.bin" > "$T/$name.e.out" 2>&1; then
+            pass=$((pass+1)); echo "  PASS $name (emit)"
+        else
+            fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.e.out" "$T/$name.e.cc.err" "$T/$name.e.err" 2>/dev/null
+        fi
+    fi
+done
+
+# ── P6-C 行为夹具:frm_auth(认证三件套 + body 绑定)──
+# 臂分工(frm_route/frm_mw 同款):a_ 前缀 = 纯面(零 IO;auth→crypto 叶 +
+# body→json 叶 + guard 双叶并用皆纯叶,无 W8052)interp + emit 双计。
+# 确定性:时钟/sid 熵源恒注入参数(auth.ct 头注④;limit.ct 先例),
+# JWT 黄金向量离线预compute,零真钟零熵零外联。
+for f in "$DIR"/frm_auth/a_*.ct; do
+    [ -f "$f" ] || continue
+    name="frm_auth_$(basename "$f" .ct)"
     if "$CC" run "$f" > "$T/$name.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (interp)"
     else

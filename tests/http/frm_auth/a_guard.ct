@@ -1,0 +1,70 @@
+// tests/http/frm_auth/a_guard.ct —— 组合层守卫链语料(P6-C;双臂 a_ 纯面)
+// 面:JWT 守卫 + body 绑定装配(端到端最小组合):Bearer 令牌过守卫 →
+//   JSON 体字段提取入 handler → 200;令牌坏/体坏 → 401/400 胜出(短路面,
+//   终端不可达)。链形适配(a_csrf/a_jwt 同口径:令牌/体恒字面量过链 ——
+//   P6-A 探针 emit fn 值装箱 ct_i 实参,struct/多值不过装箱调用;
+//   next 结果恒经 `"" +` 裸尾惯用法落 Str)。
+// use 面:auth(crypto 叶)+ body(json 叶)双叶并用 —— 异叶单径,
+//   E5020 不触(两模块互不引,json/crypto 各单径,头注③登记)。
+use std.http.frm.auth.{ auth_jwt_verify, jwt_rc }
+use std.http.frm.body.{ body_json, bj_rc, bj_i64, bj_str, bs_v }
+
+// ---- 终端 handler(组合层;体字段预提入参 —— 装配前直接调用边界) ----
+
+fn h_create(title: Str, uid: I64) -> Str {
+    return "HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok"
+}
+
+// ---- 链形适配器(守卫 + 绑定;令牌/体字面量) ----
+
+// 正链:JWT 过 + 体 id/title 提取 → 201
+fn mw_create_ok(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let tok = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1NDIiLCJuYW1lIjoiWm9lIiwiYWRtaW4iOmZhbHNlLCJuIjo3fQ.FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MI"
+    let v = auth_jwt_verify("s3cret-key", tok, 1000)
+    if jwt_rc(v) != 1 {
+        return "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access"
+    }
+    let b = body_json("\{\"title\":\"hi\",\"id\":42}", 4096)
+    if bj_rc(b) != 1 {
+        return "HTTP/1.1 400 Bad Request\r\nContent-Length: 9\r\n\r\nbad body"
+    }
+    let t = bj_str(b, "$.title")
+    if bs_rc(t) != 1 {
+        return "HTTP/1.1 400 Bad Request\r\nContent-Length: 9\r\n\r\nbad body"
+    }
+    let idv = bj_i64(b, "$.id", 0)
+    if idv != 42 {
+        return "HTTP/1.1 400 Bad Request\r\nContent-Length: 9\r\n\r\nbad body"
+    }
+    return h_create(bs_v(t), idv)
+}
+
+// 坏令牌链 → 401 胜出(终端不可达)
+fn mw_create_evil(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let tok = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1NDIiLCJuYW1lIjoiWm9lIiwiYWRtaW4iOmZhbHNlLCJuIjo3fQ.FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    let v = auth_jwt_verify("s3cret-key", tok, 1000)
+    if jwt_rc(v) != 1 {
+        return "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access"
+    }
+    return "" + next(req, h)
+}
+
+test "guard chain create pass" {
+    let t1 = |r2: Str, k2: I64| h_create("never", 0)
+    let ok = mw_create_ok("/api/todos", 3, t1)
+    assert(ok == "HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok")
+}
+
+test "guard chain rejects tampered bearer" {
+    let t1 = |r2: Str, k2: I64| h_create("never", 0)
+    let no = mw_create_evil("/api/todos", 3, t1)
+    assert(no == "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access")
+}
+
+test "bind into handler numeric fidelity" {
+    // 2^53+1 经绑定面进 handler 参数(I64 保真;jv_* 结构通道)
+    let b = body_json("\{\"title\":\"zed\",\"id\":9007199254740993}", 4096)
+    assert(bj_rc(b) == 1)
+    assert(bj_i64(b, "$.id", 0) == 9007199254740993)
+    assert(bs_v(bj_str(b, "$.title")) == "zed")
+}

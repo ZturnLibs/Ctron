@@ -1,0 +1,172 @@
+// tests/http/frm_auth/a_sess.ct —— cookie 签名会话 + own 盒存储语料(P6-C;双臂 a_ 纯面)
+// 面:签发→Set-Cookie→浏览器回程(Cookie 头提取)→校验全正链(链形适配,
+//   令牌字面量过链)、过期边界(now >= exp 拝)、签名篡改(密钥错/位翻)、
+//   cookie 构造域拒(头走私钉)、own 盒存储 put/upsert/过期/满/gc/del 全值
+//   态循环(时钟注入,确定性)。
+use std.http.frm.auth.{ auth_cookie_get, auth_cookie_set, auth_tok_issue, auth_tok_verify, auth_sess_new, auth_sess_put, auth_sess_get, auth_sess_del, auth_sess_gc, auth_sess_len, auth_err_ok, auth_err_uid, auth_err_sig, auth_err_expired, auth_err_full, at_ok, at_tok, tv_rc, tv_why, tv_uid, sp_ok, sp_why, sp_st, sg_rc, sg_user }
+
+// 十进制自拼(fixture 局部;au_ 私名不入公开面)
+fn uv_num(v: I64) -> Str {
+    if v <= 0 {
+        return "0"
+    }
+    var out = ""
+    var x: I64 = v
+    while x > 0 {
+        let d = (x % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        x = x / 10
+    }
+    return out
+}
+
+// ---- 终端 handler(组合层;会话守卫面不可达) ----
+
+fn h_get(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nmine"
+}
+
+// ---- 链形适配器(cookie 会话守卫;令牌字面量过链) ----
+
+// 正链:tok 经 cookie 头提取 + 校验 → next 透传
+fn mw_sess_ok(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let t = auth_tok_issue("sess-k", "u-42", 1000, 500)
+    let hdr = "a=1; sess=" + at_tok(t)
+    let v = auth_tok_verify("sess-k", auth_cookie_get(hdr, "sess"), 1100)
+    if tv_rc(v) == 1 {
+        return "" + next(req, h)
+    }
+    return "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access"
+}
+
+// 攻击链:cookie 端签名位翻(浏览器外无法重签)→ 401 胜出
+fn mw_sess_evil(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let t = auth_tok_issue("sess-k", "u-42", 1000, 500)
+    let tok = at_tok(t)
+    var flip: Str = "0"
+    if byte_at(tok, tok.len - 1) == 48 {
+        flip = "1"
+    }
+    let tam = byte_slice(tok, 0, tok.len - 1) + flip
+    let v = auth_tok_verify("sess-k", auth_cookie_get("sess=" + tam, "sess"), 1100)
+    if tv_rc(v) == 1 {
+        return "" + next(req, h)
+    }
+    return "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access"
+}
+
+test "sess chain pass and short circuit" {
+    let t1 = |r2: Str, k2: I64| h_get(r2, k2)
+    let ok = mw_sess_ok("/mine", 3, t1)
+    assert(ok == "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nmine")
+    let evil = mw_sess_evil("/mine", 3, t1)
+    assert(evil == "HTTP/1.1 401 Unauthorized\r\nContent-Length: 9\r\n\r\nno access")
+}
+
+test "cookie extract and set-cookie shape" {
+    let t = auth_tok_issue("sess-k", "u-42", 1000, 500)
+    let tok = at_tok(t)
+    // Set-Cookie 快照:属性序钉 Path=/; HttpOnly; Max-Age; SameSite=Lax
+    let line = auth_cookie_set("sess", tok, 1, 1)
+    assert(line == "Set-Cookie: sess=" + tok + "; Path=/; HttpOnly; Max-Age=1; SameSite=Lax\r\n")
+    // 会话 cookie(无 Max-Age)
+    assert(auth_cookie_set("sess", tok, -1, 1) == "Set-Cookie: sess=" + tok + "; Path=/; HttpOnly; SameSite=Lax\r\n")
+    // 浏览器回程:多 cookie 头名精确匹配
+    assert(auth_cookie_get("theme=dark; sess=" + tok + "; x=1", "sess") == tok)
+    assert(auth_cookie_get("theme=dark", "sess") == "")
+    // 构造域拒(头走私封口:CR/LF/控制字节不可达)
+    assert(auth_cookie_set("se\r\nss", tok, 1, 1) == "")
+    assert(auth_cookie_set("sess", "a\r\nX-Evil: 1", 1, 1) == "")
+    assert(auth_cookie_set("sess", "a b", 1, 1) == "")
+    // Max-Age=0 = 删除面(RFC 6265 §5.2.2)
+    assert(auth_cookie_set("sess", "gone", 0, 1) == "Set-Cookie: sess=gone; Path=/; HttpOnly; Max-Age=0; SameSite=Lax\r\n")
+}
+
+test "tok verify matrix expiry tamper" {
+    let t = auth_tok_issue("sess-k", "u-42", 1000, 500)
+    let tok = at_tok(t)
+    // happy + uid 回读
+    let v = auth_tok_verify("sess-k", tok, 1100)
+    assert(tv_rc(v) == 1 && tv_uid(v) == "u-42")
+    // 过期边界:now = exp-1 过 / now = exp 拝(RFC 7519 §4.1.4 口径)
+    assert(tv_rc(auth_tok_verify("sess-k", tok, 1499)) == 1)
+    assert(tv_why(auth_tok_verify("sess-k", tok, 1500)) == auth_err_expired())
+    // 密钥错 → 签名不合(恒时比较面)
+    assert(tv_why(auth_tok_verify("other-k", tok, 1100)) == auth_err_sig())
+    // sig 位翻
+    var flip: Str = "0"
+    if byte_at(tok, tok.len - 1) == 48 {
+        flip = "1"
+    }
+    assert(tv_why(auth_tok_verify("sess-k", byte_slice(tok, 0, tok.len - 1) + flip, 1100)) == auth_err_sig())
+    // uid 篡改(不重签)→ 签名不合
+    let t2 = auth_tok_issue("sess-k", "u-43", 1000, 500)
+    let pfx = "u-42." + byte_slice(at_tok(t2), 5, at_tok(t2).len)
+    assert(tv_why(auth_tok_verify("sess-k", pfx, 1100)) == auth_err_sig())
+    // 形坏矩阵
+    assert(tv_why(auth_tok_verify("sess-k", "", 1)) == 1)
+    assert(tv_why(auth_tok_verify("sess-k", "nodot", 1)) == 2)
+    assert(tv_why(auth_tok_verify("sess-k", "a.b", 1)) == 2)
+    assert(tv_why(auth_tok_verify("sess-k", "a.b.c", 1)) == 4)
+    // uid 域拒(非 [A-Za-z0-9_-])
+    assert(tv_why(auth_tok_verify("sess-k", "u!x.2000.aaaa", 1)) == auth_err_uid())
+    // exp 段非数
+    assert(tv_why(auth_tok_verify("sess-k", "ux.2x00.aaaa", 1)) == 4)
+    // sig 形坏(短)
+    assert(tv_why(auth_tok_verify("sess-k", "ux.2000.a", 1)) == 5)
+    // 签发域拒
+    assert(at_ok(auth_tok_issue("k", "", 1, 1)) == 0)
+    assert(at_ok(auth_tok_issue("k", "has space000000000000000000000000000000000000000000000000000000000", 1, 1)) == 0)
+}
+
+test "sess store full value cycle" {
+    // 时钟注入全循环:put ×3 → get → upsert → 过期 → gc → 满 → 满后复用 → del
+    var st = auth_sess_new()
+    assert(auth_sess_len(st) == 0)
+    let pa = auth_sess_put(st, "sid-aaa", "alice", 1000, 500)
+    assert(sp_ok(pa) == 1 && sp_why(pa) == auth_err_ok())
+    st = sp_st(pa)
+    let pb = auth_sess_put(st, "sid-bbb", "bob", 1000, 900)
+    st = sp_st(pb)
+    let pc = auth_sess_put(st, "sid-ccc", "carol", 1000, 900)
+    st = sp_st(pc)
+    assert(auth_sess_len(st) == 3)
+    // get:有效 + 用户回读 / miss
+    assert(sg_rc(auth_sess_get(st, "sid-aaa", 1200)) == 1)
+    assert(sg_user(auth_sess_get(st, "sid-aaa", 1200)) == "alice")
+    assert(sg_rc(auth_sess_get(st, "sid-zzz", 1200)) == 0)
+    // upsert:同 sid 原槽替换(n 不涨)
+    let pu = auth_sess_put(st, "sid-aaa", "alice2", 1200, 500)
+    st = sp_st(pu)
+    assert(auth_sess_len(st) == 3 && sg_user(auth_sess_get(st, "sid-aaa", 1200)) == "alice2")
+    // 过期边界:now = e-1 有效 / now = e 过期(-1;删否归组合层)
+    assert(sg_rc(auth_sess_get(st, "sid-aaa", 1699)) == 1)
+    assert(sg_rc(auth_sess_get(st, "sid-aaa", 1700)) == -1)
+    // 灌满 8 槽(now=2000 注:aaa/bbb/ccc 已过期 → 槽复用不涨)
+    var i: I64 = 0
+    while i < 8 {
+        let pf = auth_sess_put(st, "fill-" + uv_num(i), "u" + uv_num(i), 2000, 1000)
+        assert(sp_ok(pf) == 1)
+        st = sp_st(pf)
+        i += 1
+    }
+    assert(auth_sess_len(st) == 8)
+    // 满拒
+    let over = auth_sess_put(st, "sid-ooo", "oot", 2000, 1000)
+    assert(sp_ok(over) == 0 && sp_why(over) == auth_err_full())
+    // gc 清扫过期(now=4000 全过)→ 空位复用
+    let g = auth_sess_gc(st, 4000)
+    assert(auth_sess_len(g) == 0)
+    let pr = auth_sess_put(g, "sid-ooo", "oot", 4000, 100)
+    assert(sp_ok(pr) == 1)
+    assert(sg_rc(auth_sess_get(sp_st(pr), "sid-ooo", 4050)) == 1)
+    // del + 幂等
+    let d = auth_sess_del(sp_st(pr), "sid-ooo")
+    assert(auth_sess_len(d) == 0)
+    assert(sg_rc(auth_sess_get(d, "sid-ooo", 4000)) == 0)
+    assert(auth_sess_len(auth_sess_del(d, "sid-ooo")) == 0)
+    // sid 域拒(非法字符 / 超 64)
+    assert(sp_why(auth_sess_put(st, "x!", "u", 1, 1)) == auth_err_uid())
+    assert(sp_why(auth_sess_put(st, "0123456789012345678901234567890123456789012345678901234567890123X", "u", 1, 1)) == auth_err_uid())
+}
+
