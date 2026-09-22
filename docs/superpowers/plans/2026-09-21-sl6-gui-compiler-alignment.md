@@ -99,7 +99,12 @@
   C 分发器 switch(k) 逐位核对无误——错位在 eval 侧帧填充/参计数的解释执行路径，
   归解释运行时泳道（编译口径无此问题，s23 已证）。
 - **新增调试设施**：shim CTRON_GUI_TRACE=1（open/cfg/text/close 序列 stderr 直出，
-  双口径共用）+ driver_emit DISPATCH n/k 转储（同 env 门控）——常态零成本已入阶梯回归。
+  双口径共用）+ driver_emit DISPATCH n/k 与 FR[i] 帧串转储（同 env 门控）——常态零成本。
+- **帧级实证（FR 转储）**：gui_cfg(1..11) 的帧 = [i:1..i:9, i:0, i:10]（k=11）——
+  **参 10 位被 "i:0" 占据、参 11 丢失**——错位在 eval 侧参求值/帧填充（11 字面量
+  求值链），不在 C 分发器。续接：eval_call extern 分支 vals 编码处单步。
+- **环境警告**：peer 并发 build 竞态使 build 行数波动（cc_emit 10800↔19598）、
+  二进制版本翻转——回归前必须静默重跑 build 至计数稳定（连三次一致）。
 
 ### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位；已被节点包裹方案根除）
 
