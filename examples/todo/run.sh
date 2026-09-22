@@ -11,7 +11,8 @@ EMIT="$ROOT/compiler/bin/ctron-emit"
 sh "$ROOT/vendor/gui/build.sh" > /dev/null
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-"$EMIT" run "$DIR/src/main.ct" > "$T/todo.c"
+# L1 域包形态:use std.gui 需 std 三级解析(旧形态自包含不需,迁移后补设)
+CTRON_STDPATH="$ROOT/std" "$EMIT" run "$DIR/src/main.ct" > "$T/todo.c"
 
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;

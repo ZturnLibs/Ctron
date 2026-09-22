@@ -1,24 +1,25 @@
-// examples/todo —— 规范 §10 Todo 演绎的当前能力版(M1-e)
-// 已支持:input 受控输入 / each 列表 / when 空态 / on:click / 标量绑定
-// 已支持:checkbox 语义(行级 done 切换按钮 + 状态前缀,M1-b2)// 差集(登记):IME 组词(M3)
+// examples/todo —— 规范 §10 Todo 演绎,L1 域包形态(view/style 独立文件)
+// 能力面:input 受控输入 + each 列表 + when 空态 + on:click + 标量绑定
+// 差集(登记):per-row checkbox/逐项删除 = 实例索引分发 L1 缺口(del 末项替代);
+//   on:submit/IME 组词随 M3
 view Todo {
   <vbox class="root">
     <label>todo: {n}</label>
-    <input bind={draft} class="fld" />
+    <input bind={draft} class="fld"/>
+    <label class="mirror">{draft}</label>
     <button class="btn" on:click={add}>add</button>
     <button class="btn2" on:click={del}>del</button>
     <when cond={empty}>
       <label class="empty">nothing yet</label>
     </when>
     <each t in={todos}>
-      <hbox class="row">
-        <button class="chk" on:click={toggle}>done</button>
-        <label>{t}</label>
-      </hbox>
+      <label class="row">{t}</label>
     </each>
   </vbox>
 }
 style root { direction: column gap: 8 padding: 16 }
 style btn { bg: "#2563eb" }
 style btn2 { bg: "#c83c3c" }
-style chk { bg: "#3c8c3c" }
+style mirror { fg: "#aaaaaa" }
+style row { fg: "#cccccc" }
+style empty { fg: "#888888" }
