@@ -489,3 +489,25 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   `ct_expr:Member@30` 占位;List[I64] 字段为 P5-C 既登记(读坏)。
   绕行 = 平行标量表(List[I32])+ 值语义整体重建(pool.ct PoolState
   形;局部新表逐槽搬运,不在共享表上原地写)。(源:P5 Task 5 探针 b4)
+
+### (h)/(i) 家族新证 + 收口核对(P5-F 门禁 + 登记收口,2026-09-22)
+
+- **定长 lane 复制经 view 形参索引赋值 = emit 拒(本波唯一新证)**:
+  `fn fill(dst: &I64[], …) { dst[i] = v }`(形参为 `&I64[]` 视图,函数体
+  内索引赋值)→ emit `ct_expr:index 目标非 List/数组:i 名:dst 下标:i 节点
+  元数:3 尾槽tag:Ident`;同形**局部 lane 下标赋值恒绿**(x_ 夹具逐槽搬运
+  先例),List 形参经 push 传播绿(P5-C 已证形)。interp 臂不判(纯层无
+  extern 语境,该面 emit 专红/interp 不可达)。绕行 = 字节 List 先在调用
+  方解码、lane 声明与逐槽搬运恒内联在 test 块体内(x_pg_fd_session
+  srvb/srv 形;与 ⑥ 定长数组返回值截断同属「数组作抽象边界」缺口谱,
+  v2 收编面:发射器按形参视图胞出 items 写法)。(源:P5 Task 6 探针)
+- **P5 全波编译器面收口核对(Task 6 去重结论)**:评审移交候选清单——
+  未用结果绑定毒化(P5-A §i)、解释器堆 ≈1GB/块定量 + 1.5GB 定档
+  (P5-B/P5-D)、(i) 值域定宽乘法第五处惯用法(P4 终审已收口)、c6sub、
+  use 路径 `-` 宿主崩溃、Option[struct]/List[struct]、Sender/Receiver
+  字段化截断 + 池「纯核 + 组合层接线」裁定、utf8_enc 解释口径 U+FFFD、
+  Result/Option 32 位载荷 match 绑定截断(trans_stmt.ct:996,勘误处方
+  已随 P5-B 登记)、加载器严格树 E5020/E5030、b64 C8 域约束、fmt×emit
+  scope 拆臂挂死——**经逐条比对均已在 P3/P4/P5-A..E 各节持久登记**,
+  本波无重复条目;上文 view 形参索引赋值为唯一新增。
+  (源:P5 Task 6 登记收口核对)

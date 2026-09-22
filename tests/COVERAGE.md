@@ -303,6 +303,21 @@ Drop 顺序 fd 复用 ABA caveat(超时兜底,文件头注);tls_read cap<=0 返 
 | P4-C | 客户端(client_request:重定向 301/302/303→GET 弃体、307/308 保方法保体、5 跳上限 err7、keep-alive 单槽 bru 复用计数、陈旧连接重试一次、101 直通)+ SSE 写面(id-NUL 整字段忽略)+ WebSocket(RFC 6455 三 MUST:分片序列态 err9/10、UTF-8 良构校验 1007 惰性档、version 严格 13;SHA-1 std/crypto RFC 3174 向量;lane-b64 因 std/enc C8 域约束自出) | tests/http **57/57 双臂**(x_ e2e 夹具 emit × {默认, CTRON_RT=coro} 双矩阵;§5.7 掩码/分片语料逐字节;粘包余量压实;修复波断言逮住零长帧悬挂/len7 标记误算两真 bug);len64 证据转双臂在库断言(ws_frame_head 单点) |
 | P4-D | 解析基准(vs picohttpparser)+ 结构化 fuzz 长跑 + 登记收口 | 基准:N=1e6 ×3 取最小,ctron **209 ns/req** vs pico **46 ns/req** = **4.54×**(复跑 4.44×)→ 门 ≤2× **RED 登记档**:实测 < 8× 悲观界但仍在 I64-lane 宽度税量级(~4.8M parse/s ≈ 754 MB/s),处置 P9 I8-typedef,数字照录不粉饰;fuzz:结构化生成十类(合法/坏版本/走私/越限/chunked 异常/WS 帧边/垃圾/gzip)× interp+emit 双臂 × 24 seeds(120 段),本地 ≥10min(nightly ≥30min 惯例入 runner 头注),**零崩溃零挂死**(watchdog 段超时);差分对拍 6144 样本:pico_accepts_we_reject=1265(严格子集预期差)、**we_accept_pico_rejects=0**;fuzz 实证解释器值域定宽乘法 std/http 四处(值跨 2^28–2^31 带即炸,emit 正确)→ C10 宽域惯用法四处结构性修复 + divergences (i) 收口 |
 
+### P5 行(std/db 数据访问层,2026-09-21)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| P5-A | std/json 数值/布尔保真(类型化访问器:jget_i64 溢出检测/jget_f64 17 位窗/jget_bool;越界 = Err 非 silent) | tests/json_fidelity **11/11** 双臂(2^63/2^64 边界负例含 9223372036854775808/99999999999999999999 两串、F64 精度负例、布尔/null 判别、嵌套路径) |
+| P5-B | std/crypto 二进制面 + std/uuid v4 真熵/v7 | tests/crypto_vec **24/24** 双臂(RFC 6234 SHA / RFC 4231 HMAC / RFC 6070 PBKDF2 官方向量全锚 + "abc" sha256;uuid 10 万枚唯一性 + 版本位断言) |
+| P5-C | 协议夹具回放框架(双薄源共驱一核:script 十六进制回放 / fd 垫片直读)+ PG wire v3 核心(startup/AuthOk/Query/RowDescription/DataRow/CommandComplete/ReadyForQuery/ErrorResponse/Terminate) | tests/db/run.sh 双臂(replay_fixtures 8 手工按公开协议构造,README 登记);fd 源面 emit 专臂(x_fd_edge EBADF/errno 槽、x_fd_pipeline 管线帧 mtype/fill 持态/send-all 整发) |
+| P5-D | SCRAM-SHA-256 全流程(RFC 5802/7677,PBKDF2 密码链 + server-final v= 校验 + Z 门 phase==3 信任面)+ 扩展查询(Parse/Bind/Describe/Execute/Sync)+ 事务(BEGIN/COMMIT/ROLLBACK + 取消传播分级) | replay_scram 13 夹具(RFC 7677 原例 i=4096 + i=1 改制;**生成器 hashlib 自检双落地**)、错口令/签名不符 x_scram_neg、nonce 真熵 x_scram_nonce |
+| P5-E | Redis RESP2(五形 +/-/:/$/*,NULL bulk,一层数组)+ 有界连接池(容量必填/FIFO/Z('T') 陷阱复位/drain/脏连接绝不发放/双重归还防呆/等待接线背压)+ 行→struct 运行时绑定(**D-P5-1 偏差**:运行时 Err 面,`@derive(DbRow)` 列编译泳道志向) | redis_replay 13 夹具(rr_replay 五形逐字节 + 编码器 hex 锚 + 512MiB 乘前门 + 截断拒收)、pool 4 夹具(pool_core/pool_wait 双臂)、rowmap 2 夹具(rm_anchors r7d 运行时 Err 锚 noent/type/null/row-oob/val-domain + I64_MIN 下顶格) |
+| P5-F | **fd 半包判别收口**:redis bulk 数据段 TCP 分片 ≠ 协议违例——incomplete 面(rc 0/err 0/used 0/kind 0)三途(头行无 CRLF/bulk 数据未到齐 sane/数组元素未到齐),redis_recv_fd 续读 + 垫片 would-block 面(非阻塞夹具 socketpair);脚本源截断映射 err 2 拒收语义不变 | x_rd_fd 重钉:真 TCP 分片跨两次 recv(incomplete 面逐值锚)+ incomplete 三臂 + 管线 fill + send-all;脚本面 rr_replay 截断钉同绿;redisx_i64s I64_MIN 负向累计 + EXPIRE I64_MIN hex 锚钉;pool 借出/回池栅两处对齐(借出半开/回池全闭语义注 + 槽尾再借 err 2 钉) |
+| P5-F | **fd 真源全会话**(pg.ct fd walkers:pg_scram_handshake_fd 含 SASL 双下行、pg_query_fd 帧分派核同构;dbpg/dbredis connect 垫片) | x_pg_fd_session(emit 臂,链 dbpg+entropy 垫片):socketpair 真源 SCRAM 全链(sigok=1/pid/key 逐值)+ 简单查询行集 + 扩展查询 + 事务状态 I→T→T→I;服务端字节 = 夹具同源帧逐字复用 |
+| P5-F | **tests/db 双臂总门禁** | **54/54**(守卫 15 [漂移 5+声明冒烟 5+在位 5] + interp 臂 16 + emit 臂 23;夹具面 = script 8+13+13+4+2 手工构造 + corpus 7 + x_ emit 专臂 3;较 P5-E 53 增 1 = x_pg_fd_session);四矩阵不变:json 11/11、crypto 24/24、http 59/59、net 14/14 |
+| P5-F | nightly 真靶(真 Postgres/Redis;不入 CI 主环) | tests/db/nightly/(env CTRON_PG_DSN/CTRON_REDIS_URL 驱动,nc 探活回退;构建门先跑 = 夹具健康检查):**本机实测 构建 2/2 PASS + 真靶 2 SKIP**(5432/6379 不可达,无靶跳过口径逐行登记);PG 面 = connect+SCRAM+简单+预编译+事务,Redis 面 = SET/GET 回环+INCR×3+DEL |
+| P5-F | 性能门 简单查询回环 vs libpq ≤1.5× | tests/db/perf/(baseline_libpq.c 同构基线 + ctron 臂,min-of-3 整进程墙钟):**本机实测 SKIP 登记**——缺本地 libpq 开发面(pg_config 不可用、常见路径无 libpq-fe.h;缺失前置逐行输出),不虚构数字;装 libpq + 有真靶后重跑 |
+
 ## §ctron fmt 三宿主对齐(工具链泳道,2026-09-21)
 
 R-P2d `ctron fmt` 由 Rust 宿主移植至 C 宿主与自举编译器,三宿主同规范(docs/fmt-spec.md)同输出。
