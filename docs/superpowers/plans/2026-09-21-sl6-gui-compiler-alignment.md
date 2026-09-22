@@ -109,12 +109,22 @@
   错位在参数收集层（parse 产参 or eval 调用 arg 循环），FR 转储移位到 break 前
   即可看全 12 槽。**当前重建被 peer trans_emit WIP（|| 语法 sem 拒绝）阻断——
   ctron-cc 无法重编译，修复迭代待其落库。**
+- **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
+  **parse/sem 层正确**。分歧锁定在编译态 eval 的参数求值层（vals 多出 vI(0)）——
+  或为并发竞态下混合拼接二进制的伪影（无干净重建不可区分）。两条路径已明：
+  ①peer 落库后干净重建复测（若消失 = 竞态伪影销案）；②复现则修 eval_call
+  Call-arg 循环。
 - **标记帧实验（f11=vals.len 编码）结论**：k=11 且标记未触发 → **vals.len=12**（非 11）——
   帧实为 [i:1..i:9, i:0, i:10, X]（X = 空/坏节点，解析循环 break 处）。即 eval 侧参数
   列表多出一个 vI(0)（插在参 10 位）且参 11 的节点损坏。11 源参 → 12 值节点，
   错位在参数收集层（parse 产参 or eval 调用 arg 循环），FR 转储移位到 break 前
   即可看全 12 槽。**当前重建被 peer trans_emit WIP（|| 语法 sem 拒绝）阻断——
   ctron-cc 无法重编译，修复迭代待其落库。**
+- **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
+  **parse/sem 层正确**。分歧锁定在编译态 eval 的参数求值层（vals 多出 vI(0)）——
+  或为并发竞态下混合拼接二进制的伪影（无干净重建不可区分）。两条路径已明：
+  ①peer 落库后干净重建复测（若消失 = 竞态伪影销案）；②复现则修 eval_call
+  Call-arg 循环。
 - **复现件（内嵌存档；/tmp 易失）**：`#[trusted] extern "c" fn gui_cfg(dir: I32, gap: I32,
   padx: I32, pady: I32, ax: I32, ay: I32, wmode: I32, wval: I32, hmode: I32, hval: I32,
   bg: I32) -> I32` + main 内 `var r: I32 = gui_cfg(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)`
