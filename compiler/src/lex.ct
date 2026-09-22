@@ -180,7 +180,10 @@ fn scan5(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
             cstarts.push(cs)
             cends.push(i)
         } else if b == 34 {
+            // 字符串校验走查(镜像 lexer.c 合法转义集 n t r 0 \ " { u{HEX} 与插值配对;
+            // 仅诊断不解码——记号仍为原文切片,边界与既有实现逐点一致)
             var q0 = i
+            var err = ""
             i += 1
             var done = false
             while i < n && !done {
@@ -189,12 +192,82 @@ fn scan5(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
                     i += 1
                     done = true
                 } else if c == 92 {
-                    i += 2
+                    if i + 1 >= n {
+                        err = diag_text0("E1001.str.unterm")
+                        done = true
+                    } else {
+                        var e2 = byte_at(src, i + 1)
+                        if or2(e2 == 110, or2(e2 == 116, or2(e2 == 114, or2(e2 == 48, or2(e2 == 92, or2(e2 == 34, e2 == 123)))))) {
+                            i += 2
+                        } else if e2 == 117 {
+                            if i + 2 < n && byte_at(src, i + 2) == 123 {
+                                var j = i + 3
+                                var nd: I32 = 0
+                                var cp: I32 = 0
+                                var ovf = false
+                                while j < n && is_hex(byte_at(src, j)) {
+                                    var hv = byte_at(src, j)
+                                    if hv <= 57 { hv = hv - 48 } else if hv <= 70 { hv = hv - 55 } else { hv = hv - 87 }
+                                    if cp > (1114111 - hv) / 16 { ovf = true }
+                                    cp = cp * 16 + hv
+                                    nd += 1
+                                    j += 1
+                                }
+                                if j < n && nd > 0 && byte_at(src, j) == 125 {
+                                    j += 1
+                                    if or2(ovf, or2(cp > 1114111, or2(cp >= 55296 && cp <= 57343))) { err = diag_text0("E1001.u.illegal") }
+                                    i = j
+                                } else {
+                                    err = diag_text0("E1001.u.nohex")
+                                    i = j
+                                }
+                            } else {
+                                err = diag_text0("E1001.u.nobrace")
+                                i += 2
+                            }
+                        } else {
+                            err = diag_text1("E1001.str.esc", byte_slice(src, i + 1, i + 2))
+                            i += 2
+                        }
+                    }
+                } else if c == 123 {
+                    // 插值配对校验:同行内深度计数;" 视为本串截断引号;换行/EOF → 未终止
+                    var depth: I32 = 1
+                    var j = i + 1
+                    var term = false
+                    while j < n && depth > 0 {
+                        var cj = byte_at(src, j)
+                        if cj == 10 {
+                            depth = 0
+                        } else if cj == 34 {
+                            j += 1
+                            depth = 0
+                        } else if cj == 123 {
+                            depth += 1
+                            j += 1
+                        } else if cj == 125 {
+                            depth -= 1
+                            if depth == 0 { term = true } else { j += 1 }
+                        } else {
+                            j += 1
+                        }
+                    }
+                    if term {
+                        i = j
+                    } else {
+                        err = diag_text0("E1001.interp.unterm")
+                        done = true
+                        i = j
+                    }
                 } else if c == 10 {
+                    err = diag_text0("E1001.str.unterm")
                     done = true
                 } else {
                     i += 1
                 }
+            }
+            if err.len > 0 {
+                pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + err)
             }
             rpush(toks, lns, cols, tstarts, tends, line, c0, q0, i, byte_slice(src, q0, i))
         } else if is_al(b) {

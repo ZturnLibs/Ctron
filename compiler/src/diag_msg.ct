@@ -25,6 +25,12 @@ fn diag_tpl(key: Str) -> Str {
 
 // 目录(en):键与 zh 表一一对应
 fn diag_tpl_en(key: Str) -> Str {
+    if seq2(key, "E1001.str.unterm") { return "unterminated string (no line span)" }
+    if seq2(key, "E1001.str.esc") { return "illegal escape \\%0" }
+    if seq2(key, "E1001.u.illegal") { return "illegal Unicode escape" }
+    if seq2(key, "E1001.u.nobrace") { return "\\u escape missing HEX wrap" }
+    if seq2(key, "E1001.u.nohex") { return "\\u escape missing HEX digits" }
+    if seq2(key, "E1001.interp.unterm") { return "unterminated interpolation" }
     if seq2(key, "E3030") { return "static var does not exist; use static let or Global[T]:%0" }
     if seq2(key, "W8010") { return "struct contains class-reference field (shallow copy):%0.%1" }
     if seq2(key, "E3031") { return "static storage is non-Send (Send):%0" }
@@ -101,6 +107,12 @@ fn diag_tpl_en(key: Str) -> Str {
 // 目录(zh):键 → 模板。码先进 §10.1 注册表再入此表(meta_check R1 守护覆盖)
 fn diag_tpl_zh(key: Str) -> Str {
     // —— 批① sem_main.ct(§9.6 FFI 声明面 + 声明级检查)——
+    if seq2(key, "E1001.str.unterm") { return "未终止的字符串(不允许跨行)" }
+    if seq2(key, "E1001.str.esc") { return "非法转义 \\%0" }
+    if seq2(key, "E1001.u.illegal") { return "非法的 Unicode 转义" }
+    if seq2(key, "E1001.u.nobrace") { return "\\u 转义缺少 HEX 包裹" }
+    if seq2(key, "E1001.u.nohex") { return "\\u 转义缺少 HEX 数字" }
+    if seq2(key, "E1001.interp.unterm") { return "未终止的插值" }
     if seq2(key, "E3030") { return "static var 不存在;用 static let 或 Global[T]:%0" }
     if seq2(key, "W8010") { return "struct 含类引用字段(浅拷贝):%0.%1" }
     if seq2(key, "E3031") { return "static 存储非 Send(Send):%0" }
