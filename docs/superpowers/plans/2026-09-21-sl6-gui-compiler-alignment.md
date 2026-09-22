@@ -103,6 +103,13 @@
 - **帧级实证（FR 转储）**：gui_cfg(1..11) 的帧 = [i:1..i:9, i:0, i:10]（k=11）——
   **参 10 位被 "i:0" 占据、参 11 丢失**——错位在 eval 侧参求值/帧填充（11 字面量
   求值链），不在 C 分发器。续接：eval_call extern 分支 vals 编码处单步。
+- **复现件（内嵌存档；/tmp 易失）**：`#[trusted] extern "c" fn gui_cfg(dir: I32, gap: I32,
+  padx: I32, pady: I32, ax: I32, ay: I32, wmode: I32, wval: I32, hmode: I32, hval: I32,
+  bg: I32) -> I32` + main 内 `var r: I32 = gui_cfg(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)`
+  （注意：须 gui_clay_init 先行或仅看 trace——无 init 时 Clay ConfigureOpenElementPtr
+  NULL 崩是另一层）。判据：CTRON_GUI_TRACE=1 下 cfg 行应为 hval=10 bg=00000b，
+  实测 hval=0 bg=00000a。多位字面量求值本身正常（num.ct 对照 10/11 打印无误）——
+  分歧仅在 extern 调用的参数收集/编码路径。
 - **环境警告**：peer 并发 build 竞态使 build 行数波动（cc_emit 10800↔19598）、
   二进制版本翻转——回归前必须静默重跑 build 至计数稳定（连三次一致）。
 
