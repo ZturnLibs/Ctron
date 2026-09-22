@@ -129,6 +129,17 @@
   错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
   参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
   （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
+- **根因破案（2026-09-22 下午）**：栈槽解码实锤——**解释桥的 long×N cast 写 8 字节
+  栈槽，int×11 的 gui_cfg 按 4 字节步长读**——参 9 后全部错位（hval 读到 u[8] 槽的
+  高半=0，bg 读到 u[9]=10）。≤8 参走寄存器不受累（现存 d_* 钩子全 ≤3 参零风险）。
+- **修复已就位（工作树，未落库）**：①driver_emit dispatch 锅炉plate `long u[12]`→
+  `int u[12]`（+strtol/转储 cast 适配）——栈参写侧改 4 字节步长对齐 int 被调方；
+  ②shim gui_cfg/gui_cfg2 的 long 形参实验已回退 int（native 原型一致性优先）。
+- **验证被三层阻断（peer 迭代中）**：ctc.sh ASTMODE 中途态（line 98 unbound）+
+  seed(10:43) 落后源码（match no arm）+ trans_emit WIP——工具链重建全链暂停。
+  **续接 = peer 稳定后 native.sh 重建 → args11 判据（hval=10 bg=00000b）→
+  skint2 组合复测 → s23 回归 → 落库。**
+- **顺手登记**：/tmp 复现件会被系统清理——重要复现件一律内嵌文档或入库。
 - **调用瞬间终测（lldb f 1 + frame variable u）**：调用点 u = [1..9, 10, 11, 0] 完美；
   被调方 gui_cfg 收到 (hmode=9, **hval=0, bg=10**)——**C 调用指令在栈参写入时于
   u[9] 前插入 0 并丢弃 u[10]**（11 参 call 的栈参写坏）。-O2 与 -O0 -g 双构建
@@ -154,6 +165,17 @@
   错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
   参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
   （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
+- **根因破案（2026-09-22 下午）**：栈槽解码实锤——**解释桥的 long×N cast 写 8 字节
+  栈槽，int×11 的 gui_cfg 按 4 字节步长读**——参 9 后全部错位（hval 读到 u[8] 槽的
+  高半=0，bg 读到 u[9]=10）。≤8 参走寄存器不受累（现存 d_* 钩子全 ≤3 参零风险）。
+- **修复已就位（工作树，未落库）**：①driver_emit dispatch 锅炉plate `long u[12]`→
+  `int u[12]`（+strtol/转储 cast 适配）——栈参写侧改 4 字节步长对齐 int 被调方；
+  ②shim gui_cfg/gui_cfg2 的 long 形参实验已回退 int（native 原型一致性优先）。
+- **验证被三层阻断（peer 迭代中）**：ctc.sh ASTMODE 中途态（line 98 unbound）+
+  seed(10:43) 落后源码（match no arm）+ trans_emit WIP——工具链重建全链暂停。
+  **续接 = peer 稳定后 native.sh 重建 → args11 判据（hval=10 bg=00000b）→
+  skint2 组合复测 → s23 回归 → 落库。**
+- **顺手登记**：/tmp 复现件会被系统清理——重要复现件一律内嵌文档或入库。
 - **调用瞬间终测（lldb f 1 + frame variable u）**：调用点 u = [1..9, 10, 11, 0] 完美；
   被调方 gui_cfg 收到 (hmode=9, **hval=0, bg=10**)——**C 调用指令在栈参写入时于
   u[9] 前插入 0 并丢弃 u[10]**（11 参 call 的栈参写坏）。-O2 与 -O0 -g 双构建
