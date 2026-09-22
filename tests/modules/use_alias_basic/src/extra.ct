@@ -1,0 +1,7 @@
+pub fn addpair(a: I32, b: I32) -> I32 {
+    return a + b
+}
+
+pub fn widget_new() -> I32 {
+    return 7
+}

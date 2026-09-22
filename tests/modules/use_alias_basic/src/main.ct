@@ -1,0 +1,20 @@
+use app.util.{
+    double,
+    triple as tri,
+    via_helper,
+}
+use app.extra.{
+    widget_new as panel_new,
+    addpair,
+}
+
+test "group alias renames bindings" {
+    assert_eq(double(21), 42)
+    assert_eq(tri(14), 42)
+    assert_eq(via_helper(4), 50)
+}
+
+test "alias and bare import from one module" {
+    assert_eq(panel_new(), 7)
+    assert_eq(addpair(2, 3), 5)
+}

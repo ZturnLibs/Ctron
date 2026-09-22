@@ -1,0 +1,7 @@
+// fx_use_alias.ct —— use 别名解析固定点(P1a:Syms 交替对;.ctast roundtrip 面)
+use app.util.{double as dbl, triple}
+use app.extra.widget_new as panel_new
+
+fn main() -> I32 {
+    return dbl(1) + triple(1) + panel_new()
+}

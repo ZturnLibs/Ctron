@@ -618,6 +618,12 @@ if [ $? -eq 0 ] && grep -q "ast roundtrip OK" "$T/doc8.out"; then
 else
     bad "ast stdpkg 往返异常: $(head -c 120 "$T/doc8.out")"
 fi
+"$COMP/ctc.sh" ast "$COMP/test/fx_use_alias.ct" > "$T/doc9.out" 2>&1
+if [ $? -eq 0 ] && grep -q "ast roundtrip OK" "$T/doc9.out"; then
+    ok "ast 往返固定点(use 别名交替对 Syms)"
+else
+    bad "ast 往返异常(use 别名): $(head -c 120 "$T/doc9.out")"
+fi
 
 echo "== 3k) 示例应用 examples/ctecho(echo server:run.sh 自冒烟,3 探针逐字)=="
 if command -v nc >/dev/null 2>&1; then
