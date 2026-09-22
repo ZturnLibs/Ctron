@@ -123,6 +123,12 @@
   ctron-cc 无法重编译，修复迭代待其落库。**
 - **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
   **parse/sem 层正确**。
+- **C 层终态（-g 构建 + lldb 双断点，干净重建复现依旧=真实缺陷）**：FR 帧串正确
+  [i:1..i:11] → DISPATCH u 正确（u8=9/u9=10/u10=11）→ **gui_cfg 入口实参
+  (…, hmode=9, hval=0, bg=10)**（lldb frame variable，ctron_gui.c:152）——
+  错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
+  参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
+  （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
 - **C 层定论（-g 构建 + lldb 三点实测，2026-09-22）**：干净重建下复现依旧（路径②确认，
   非竞态伪影）。证据链：①FR 帧串正确 [i:1..i:11]；②DISPATCH u 数组正确（u8=9/u9=10/
   u10=11）；③**gui_cfg 入口栈参正确 [9,10,11]**；④**gui_cfg_impl 收到 hval=0 bg=10**
@@ -138,6 +144,12 @@
   ctron-cc 无法重编译，修复迭代待其落库。**
 - **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
   **parse/sem 层正确**。
+- **C 层终态（-g 构建 + lldb 双断点，干净重建复现依旧=真实缺陷）**：FR 帧串正确
+  [i:1..i:11] → DISPATCH u 正确（u8=9/u9=10/u10=11）→ **gui_cfg 入口实参
+  (…, hmode=9, hval=0, bg=10)**（lldb frame variable，ctron_gui.c:152）——
+  错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
+  参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
+  （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
 - **C 层定论（-g 构建 + lldb 三点实测，2026-09-22）**：干净重建下复现依旧（路径②确认，
   非竞态伪影）。证据链：①FR 帧串正确 [i:1..i:11]；②DISPATCH u 数组正确（u8=9/u9=10/
   u10=11）；③**gui_cfg 入口栈参正确 [9,10,11]**；④**gui_cfg_impl 收到 hval=0 bg=10**
