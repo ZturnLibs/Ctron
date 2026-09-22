@@ -653,6 +653,19 @@ else
     grep -q "E5030" "$T/c2.out" && ok "S2a 碰撞负例拦截(E5030 同判)" || bad "S2a 碰撞负例异常: $(head -1 "$T/c2.out")"
 fi
 
+mkdir -p "$AD/stduse/impl" "$AD/c3/deps/mygeom.ctart"
+if "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom_str.ct" --ast=seal --astout="$AD/stduse" --astname=mygeom > "$T/seal3.out" 2>&1 \
+   && grep -q "ast seal OK" "$T/seal3.out" \
+   && ln -sfn "$ROOT/std" "$AD/std" \
+   && cp "$ROOT/tests/artifact_demo/consumer_str/main.ct" "$AD/c3/" \
+   && cp -r "$AD/stduse/." "$AD/c3/deps/mygeom.ctart/" \
+   && (cd "$AD/c3" && "$COMP/ctc.sh" main.ct > "$T/c3.out" 2>&1) \
+   && grep -q "GEO" "$T/c3.out"; then
+    ok "S2a 工件 std.use(seed 回落口径, std 依赖不密封)"
+else
+    bad "S2a 工件 std.use 异常: $(tail -2 "$T/c3.out" 2>/dev/null; tail -1 "$T/seal3.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

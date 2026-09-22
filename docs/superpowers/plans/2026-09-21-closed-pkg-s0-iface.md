@@ -239,10 +239,13 @@ fx 62/65;str.ct/stdpkg 照旧;smoke 3g 腿扩至八查(+ast 往返 geom/stdpkg)�
 - 夹具 tests/artifact_demo/{provider/geom.ct, consumer, consumer_neg};
   smoke 3l 腿:seal→仅 deps 工件消费(rect=12/circle=27 行为正确,源码缺席)+
   碰撞负例 E5030 拦截;
-- **已知问题登记**:①工件内 std.use 的运行时解析(消费端 E2020 eq_ignore_ascii_case,
-  待查 eval 合并序)——S2a 演示包暂不含 std.use,fix 后放开;②cc.ct 单体 ~2MB ser
-  超 seed 内存限(rc=137)——S1b 按模块分片为自然解;③match/枚举形态在工件路径
-  待 S1a-iii 补验(演示包暂用 if/else);④"doc 非幂等"为 peer 重生成瞬态,孤验双 OK。
+- **已知问题订正(2026-09-22 复核)**:①"工件内 std.use E2020"**根因不在工件机制**——
+  最小复现证明源码模式同败:seed 的 env_get 为恒空 stub(rt_eval.c),CTRON_STDPATH
+  在 seed 路径不可见,只能走 ../std 回落(符号链接即可用;正例腿已加,真修=compiler-c
+  实现 env_get,归编译器 C 线);③match/枚举工件路径失败**根因同在解析泳道**:完整
+  geom 源码/工件双模式同败(match+KStruct+=> 恢复式解析吞后续 pub fn,伴生幻影
+  decl 与 E5030"NL")——最小复现交解析泳道;②cc.ct 规模限照旧;④doc 非幂等 =
+  peer 重生成瞬态(孤验双 OK)。演示夹具按已验证子集收敛(std.use 正例腿已加)。
 
 **验收:** seal(geom.ct→1201B 工件)→ 消费方仅持工件跑出 rect=12/circle=27 →
 碰撞负例 E5030 拦截;smoke 3l 双查全绿(全量分数随 peer 落库波动,切片腿为准)。

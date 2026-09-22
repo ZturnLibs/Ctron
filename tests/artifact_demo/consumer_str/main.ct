@@ -1,0 +1,5 @@
+use mygeom.geom_str.{tag}
+
+fn main() {
+    println(tag("geo"))
+}

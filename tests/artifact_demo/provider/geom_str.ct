@@ -1,0 +1,9 @@
+// geom_str —— 闭源工件 std.use 正例夹具(S2a:std 依赖不密封,随消费端解析)
+use std.str.{eq_ignore_ascii_case}
+
+pub fn tag(name: Str) -> Str {
+    if eq_ignore_ascii_case(name, "geo") {
+        return "GEO"
+    }
+    return "geometry"
+}
