@@ -147,16 +147,20 @@ static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
     return 0;
 }
 
-int gui_cfg(int dir, int gap, int padx, int pady, int ax, int ay,
-            int wmode, int wval, int hmode, int hval, int bg_packed) {
-    return gui_cfg_impl(dir, gap, padx, pady, ax, ay, wmode, wval, hmode, hval, bg_packed, 0, 0);
+// 形参用 long:与解释桥 long×N 调用及 CTron 侧 I64 声明对齐(≥9 参走栈参,
+// int 形参 4 字节步长与桥的 8 字节槽错位——args11 实证 hval=0 bg=10)
+int gui_cfg(long dir, long gap, long padx, long pady, long ax, long ay,
+            long wmode, long wval, long hmode, long hval, long bg_packed) {
+    return gui_cfg_impl((int)dir, (int)gap, (int)padx, (int)pady, (int)ax, (int)ay,
+                        (int)wmode, (int)wval, (int)hmode, (int)hval, (int)bg_packed, 0, 0);
 }
 
 // 滚动能力(gui_cfg2):clipv = 垂直裁剪/滚动容器(§13 T0 scroll);
 // offsetpx = 运行时本地滚动偏移(§12.2;滚轮事件由应用侧累计,Clay 按偏移裁剪)
-int gui_cfg2(int dir, int gap, int padx, int pady, int ax, int ay,
-             int wmode, int wval, int hmode, int hval, int bg_packed, int clipv, int offsetpx) {
-    return gui_cfg_impl(dir, gap, padx, pady, ax, ay, wmode, wval, hmode, hval, bg_packed, clipv, offsetpx);
+int gui_cfg2(long dir, long gap, long padx, long pady, long ax, long ay,
+             long wmode, long wval, long hmode, long hval, long bg_packed, long clipv, long offsetpx) {
+    return gui_cfg_impl((int)dir, (int)gap, (int)padx, (int)pady, (int)ax, (int)ay,
+                        (int)wmode, (int)wval, (int)hmode, (int)hval, (int)bg_packed, (int)clipv, (int)offsetpx);
 }
 
 int gui_text(const char *s, int size, int r, int g, int b, int a) {

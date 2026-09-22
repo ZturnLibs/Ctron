@@ -15,8 +15,8 @@ extern "c" fn gui_open() -> I32
 extern "c" fn gui_close() -> I32
 
 #[trusted]
-extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
-                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+extern "c" fn gui_cfg(dir: I64, gap: I64, padx: I64, pady: I64, ax: I64, ay: I64,
+                      wmode: I64, wval: I64, hmode: I64, hval: I64,
                       rr: I32, gg: I32, bb: I32, aa: I32) -> I32
 
 #[trusted]
