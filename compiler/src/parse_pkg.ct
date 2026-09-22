@@ -229,6 +229,8 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                 k += 1
             }
             if syms.len == 0 {
+                // 空组兜底:保持交替对不变式(name,alias 同名),下游步长 2 对读不越界
+                syms.push(segs[segs.len - 1])
                 syms.push(segs[segs.len - 1])
             }
             var mpath = ""
@@ -309,10 +311,12 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         mf = p_file(toks2, cur2, lns2, cols2, pd2)
                         }
                         pkg_check_caps(mf, dir, diags)
-                        // 可见性:请求符号必须存在且为 pub(v0:FnPub)
+                        // 可见性:请求符号必须存在且为 pub(v0:FnPub)。
+                        // P1a:syms 为交替对(name,alias),步长 2 对读;可见性按本名 sn 判
                             var k3: I32 = 0
                             while k3 < syms.len {
                                 var sn = syms[k3]
+                                var _al = syms[k3 + 1]
                                 var found = false
                                 var vis = false
                                 var m2: I32 = 1
@@ -338,7 +342,23 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                             } else if !vis {
                                 diag1(diags, "E2020.use.priv", "", sn)
                             }
-                            k3 += 1
+                            k3 += 2
+                        }
+                        // E5035:别名与本文件已有 decl 撞名(spec §4.4;P1a 先查入口面,
+                        // 合并流内撞名由既有 E5030 兜底)
+                        var k8: I32 = 0
+                        while k8 < syms.len {
+                            if syms[k8 + 1] != syms[k8] {
+                                var m9: I32 = 1
+                                while m9 < out.len {
+                                    if out[m9].len > 1 && out[m9][1] == syms[k8 + 1] {
+                                        diag1(diags, "E5035", "", syms[k8 + 1])
+                                        return out
+                                    }
+                                    m9 += 1
+                                }
+                            }
+                            k8 += 2
                         }
                         if diags.len > 0 {
                             return out
@@ -362,12 +382,23 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         var j4: I32 = 1
                         while j4 < mf.len {
                             if mf[j4][0] != "Use" {
+                                // 改用名:本 Use 交替对里 name→alias 的映射(spec §4.3)
+                                var rn = ""
+                                var k6: I32 = 0
+                                while k6 < syms.len {
+                                    if mf[j4].len > 1 && syms[k6] == mf[j4][1] && syms[k6 + 1] != syms[k6] {
+                                        rn = syms[k6 + 1]
+                                    }
+                                    k6 += 2
+                                }
+                                var iname = mf[j4][1]
+                                if rn != "" { iname = rn }
                                 var dup = false
                                 var j5: I32 = 1
                                 while j5 < merged.len {
                                     if or2(merged[j5][0] == "Fn", or2(merged[j5][0] == "FnPub", or2(merged[j5][0] == "Struct", or2(merged[j5][0] == "Enum", or2(merged[j5][0] == "FnExt", or2(merged[j5][0] == "Static", merged[j5][0] == "Const")))))) {
                                         if or2(mf[j4][0] == "Fn", or2(mf[j4][0] == "FnPub", or2(mf[j4][0] == "Struct", or2(mf[j4][0] == "Enum", or2(mf[j4][0] == "FnExt", or2(mf[j4][0] == "Static", mf[j4][0] == "Const")))))) {
-                                            if mf[j4].len > 1 && merged[j5].len > 1 && merged[j5][1] == mf[j4][1] {
+                                            if mf[j4].len > 1 && merged[j5].len > 1 && merged[j5][1] == iname {
                                                 dup = true
                                             }
                                         }
@@ -375,11 +406,23 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                     j5 += 1
                                 }
                                 if dup {
-                                    // E5030:同名 decl 曾"首个胜出"静默遮蔽 → 现拦截
-                                    diag1(diags, "E5030", "", mf[j4][1])
+                                    // E5030:同名 decl 曾"首个胜出"静默遮蔽 → 现拦截(报名用改用名)
+                                    diag1(diags, "E5030", "", iname)
                                     return out
                                 }
-                                merged.push(mf[j4])
+                                if rn != "" {
+                                    // 合并期重命名:浅拷贝顶层槽,子节点共享(spec §4.3)
+                                    var nd = mk(mf[j4][0])
+                                    nd.push(rn)
+                                    var k7: I32 = 2
+                                    while k7 < mf[j4].len {
+                                        nd.push(mf[j4][k7])
+                                        k7 += 1
+                                    }
+                                    merged.push(nd)
+                                } else {
+                                    merged.push(mf[j4])
+                                }
                             }
                             j4 += 1
                         }
