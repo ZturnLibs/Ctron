@@ -1,0 +1,6 @@
+# drain-idle (P5 final review I-1 pin): non-tx query error E(42601) leaves
+# trailing Z(I); pool drain reads back idle -> conn kept, no ROLLBACK
+# (nreset not counted, nrel counted; healthy conn not dropped per query error)
+430000000d53454c454354203100
+4500000021534552524f5200433432363031004d73796e746178206572726f720000
+5a0000000549

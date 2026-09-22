@@ -28,8 +28,11 @@
 //   ① 活动事务回滚:**Z('T') 陷阱(P5-D 评审裁定)——查询以 err 0 收口
 //      但 ReadyForQuery 状态字节 'T' = 连接在事务中,池必须分类为需复位,
 //      经 ROLLBACK 回放路径复位见 'I' 方可回池**(pool_release_pg);
-//      E 收口(err 5,drain 档)先排空尾随 Z 再 ROLLBACK(Task 4 同路径:
-//      s_tx.ct 排空→回滚→'I')。
+//      E 收口(err 5,drain 档)先排空尾随 Z:排空读回已是 'I'(非事务内
+//      普通查询错误,服务端 ErrorResponse 后已自回 idle)即保留回池——
+//      复位并未失败,健康连接不因单次查询错误而弃(P5 终审 I-1 keep 分支,
+//      p_drain_idle 钉);仍 'T'/'E' 再 ROLLBACK(Task 4 同路径:s_tx.ct
+//      排空→回滚→'I')。
 //   ② 会话变量复位:pg.ct v1 无 SET 面党 ⇒ 不建模(登记)。
 //   ③ 预编译语句清理:命名语句生命周期归池策略 = pg_close_msg 归池消费
 //      (pg.ct 预留;v1 池不持语句清单,登记 Task 6 nightly 随动)。
@@ -442,10 +445,14 @@ pub fn pool_release_pg(s: PoolState, slot: I64, err: I64, status: I64, next: I64
     if act == 1 {
         // 复位路径(Task 4 回放面):drain 档(err != 0,Z 待排空)先排空,
         // Z('T') 陷阱(err 0 状态 'T',Z 已消费)直滚。
-        // **drain 档 recovered-'I' 注(P5-F)**:排空读回的 Z 若已是 'I'
-        // (服务端已自行收口事务),则跳过 ROLLBACK 直接收 keep——此途
-        // nreset **不**计(未执行回滚,仅 nrel 计),cls 复 0 回池;回滚
-        // 途径的 nreset 计数不受影响。
+        // **drain 档 recovered-'I' keep 分支(P5 终审 I-1;钉
+        // p_drain_idle)**:排空读回的 Z 若已是 'I'(非事务内普通查询错误
+        // ——服务端最常见错型——E 收口后服务端已自回 idle),则复位并未
+        // 失败(§12.3 弃用语义 = **复位失败**→弃用;此处复位即排空且已
+        // 成)→ keep = 1 回池:此途 nreset **不**计(未执行回滚,仅 nrel
+        // 计),cls 复 0。排空位经回池栅 [fstart, fend] 全闭校验(同
+        // poolx_fence_release 注;越栅 = 消费他槽帧,弃)。status 仍
+        // 'T'/'E' → 下方 ROLLBACK 途径不变(回滚途径 nreset 计数不受影响)。
         var pos = cur
         if err != 0 {
             var dr = pg_query_script(s.frames, pos, "")
@@ -455,6 +462,14 @@ pub fn pool_release_pg(s: PoolState, slot: I64, err: I64, status: I64, next: I64
             } else {
                 pos = pgr_next(dr)
                 status = pgr_status(dr)
+            }
+        }
+        if pos >= 0 && err != 0 && status == poolx_st_idle() {
+            if poolx_fence_release(pos, fstart, fend) == 1 {
+                keep = 1
+            } else {
+                keep = 0
+                pos = -1
             }
         }
         if pos >= 0 && status != poolx_st_idle() {

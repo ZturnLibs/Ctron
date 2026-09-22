@@ -3,7 +3,7 @@
 // 流截断脏弃用(绝不发放脏连接)/ Redis 无会话态直回池。
 // use 纪律:单路径导入树(pool→pg 已占 pg;消费方直 use pg 即 E5020 环)
 // ⇒ 借出/复位面全经 pool 门面(pool_borrow_pg/pq_*;pool.ct 头注)。
-use std.db.pool.{pool_open, pool_add_pg, pool_add_redis, pool_take, pool_borrow_pg, pool_release_pg, pool_release_redis, pool_classify, pool_ok, pool_cap, pool_nslots, pool_nidle, pool_nadd, pool_ntake, pool_nreset, pool_ndrop, pool_slot_kind, pool_slot_status, pool_slot_cls, pool_slot_fd, pa_ok, pa_slot, pa_kind, pa_cur, pa_st, pq_rc, pq_err, pq_status, pq_next}
+use std.db.pool.{pool_open, pool_add_pg, pool_add_redis, pool_take, pool_borrow_pg, pool_release_pg, pool_release_redis, pool_classify, pool_ok, pool_cap, pool_nslots, pool_nidle, pool_nadd, pool_ntake, pool_nrel, pool_nreset, pool_ndrop, pool_slot_kind, pool_slot_status, pool_slot_cls, pool_slot_fd, pa_ok, pa_slot, pa_kind, pa_cur, pa_st, pq_rc, pq_err, pq_status, pq_next}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()
@@ -150,6 +150,37 @@ test "drain: E leaves pending Z, pool drains then rollbacks to idle" {
     assert_eq(pool_nreset(st2), 1)
     assert_eq(pool_nidle(st2), 1)
     assert_eq(pool_slot_status(st2, 0), 73)
+}
+
+test "drain recovered-I: non-tx error drains to idle, kept without rollback" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_drain_idle.script")
+    assert_eq(frames.len, 3)
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    let a = pool_take(st)
+    st = pa_st(a)
+    // 借出面:非事务内普通查询错误(服务端最常见错型)——E 收口,尾随
+    // Z('I') 在线(next 停在 Z 之前 = 排空位,status 未见 Z = 0)
+    let q = pool_borrow_pg(st, pa_slot(a), pa_cur(a), "SELEK 1")
+    assert_eq(pq_err(q), 5)
+    assert_eq(pq_status(q), 0)
+    // 分类:err 5 = drain 档(复位回池,非弃用)
+    assert_eq(pool_classify(5, 0), 1)
+    // 回池(P5 终审 I-1 keep 分支):排空读回 'I'(已回 idle,复位并未
+    // 失败)→ 保留回池;未执行 ROLLBACK ⇒ nreset 不计(仅 nrel),ndrop 0
+    let st2 = pool_release_pg(st, pa_slot(a), 5, 0, pq_next(q))
+    assert_eq(pool_nrel(st2), 1)
+    assert_eq(pool_nreset(st2), 0)
+    assert_eq(pool_ndrop(st2), 0)
+    assert_eq(pool_slot_cls(st2, 0), 0)
+    assert_eq(pool_slot_status(st2, 0), 73)
+    assert_eq(pool_nidle(st2), 1)
+    // 回池实证:FIFO 同槽再取;游标已推进至槽尾(cur = 3 = fend,回池栅
+    // 全闭合法 idle 终态;再借即借出栅 err 2 显形——Z('T') 钉同面)
+    let b = pool_take(st2)
+    assert_eq(pa_ok(b), 1)
+    assert_eq(pa_slot(b), 0)
+    assert_eq(pa_cur(b), 3)
 }
 
 test "stream cut: dirty conn dropped without reset, never handed out" {

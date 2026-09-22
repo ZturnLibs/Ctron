@@ -172,6 +172,9 @@ URL 编解码复用既有 `std/enc`(hex/b64/pct 已在)。
 互操作  std/pb:protobuf 线格式 · OTLP/HTTP 导出 + W3C TraceContext · Connect 客户端(P8)
 安全层  std/tls:mbedTLS 绑定(cimport) · 系统 CA 加载垫片
 数据层  std/db:Postgres wire v3 · Redis RESP · 连接池 · comptime 行映射
+        (D-P5-1 as-built 2026-09-21:行映射落运行时绑定——§8.4 无类型反射
+        决策下 comptime 行映射不可达,列缺失/类型不符运行时 Result 报;见
+        12-db.md 定稿 §12.5;@derive(DbRow) 插件列编译泳道志向)
         std/crypto:SHA-256/HMAC/PBKDF2(纯 Ctron,SCRAM 底座)
 基础件  std/uuid(v4 真熵源/v7) · std/time 扩展(RFC 1123 · UnixTime) · std/enc(既有)
 ──────────────────────────────────────────────  以上纯 Ctron,双运行时透明
@@ -201,6 +204,10 @@ std/db、std/pb 只依赖 std/net 以上抽象,天然继承同形异构契约。
 | 6 | **确定性异步测试** | 调度器可播种(单线程确定性模式) + 虚拟时钟 + FakeNet/FakeDB(协议夹具回放) | Tokio `#[test]`/Go(无) | 并发 bug 可重现:同种子逐字节重放;沿用 r2b_fs_fake 注入先例;DB 协议夹具回放使 CI 零真库依赖 |
 | 7 | **请求热路径可证明零分配** | §6.5 alloc 效果推断当门禁:热路径 `no_alloc` 断言 + 任务 arena 显式分配 | Rust(人工审计) | 语言效果系统自动核算,CI 拦截热路径隐式 GC 分配 |
 | 8 | **comptime 行映射** | 查询结果 struct 绑定 comptime 展开(列名/类型匹配零反射);不做静态 SQL 校验(后者列志向) | sqlx(宏 + live DB) | 无宏系统、无 live-DB 依赖;行映射错误编译期报 |
+
+> **D-P5-1(2026-09-21)as-built 注(创新 8)**:行映射落**运行时绑定**——
+> §8.4 无类型反射决策下 comptime 行映射不可达;列缺失/类型不符运行时
+> `Result` 报,见 12-db.md 定稿 §12.5;`@derive(DbRow)` 插件列编译泳道志向。
 
 创新 1/2/6 组合是本路线的护城河:**"结构化并发即服务器运行时"**——不是给语言加一个
 web 框架,而是证明 §7 的并发语义天然就是服务器语义。
@@ -294,6 +301,9 @@ web 框架,而是证明 §7 的并发语义天然就是服务器语义。
 - Redis RESP2:`GET/SET/DEL/EXPIRE/INCR` 面 + 订阅(推给 P8 视需求)。
 - 连接池(有界,池等待经 Channel 背压);**comptime 行映射**(创新 8):结果行 → struct
   零反射绑定,列名/类型不符编译期报(§12.5)。
+- 行映射 as-built(**D-P5-1**,2026-09-21):上句 comptime 行映射在 §8.4 无
+  类型反射决策下**不可达** → 落**运行时绑定**(列缺失/类型不符运行时
+  `Result` 报),见 12-db.md 定稿 §12.5;`@derive(DbRow)` 插件列编译泳道志向。
 - 能力键 `db.connect`(DSN 经能力参数传入,`[caps]` 声明上限);E4020 纯函数禁触。
 - **出口门禁**:协议夹具回放测试(录制字节流,CI 零真库依赖,创新 6);nightly 靶
   (真 Postgres/Redis)互操作;简单查询回环 vs libpq 同构 ≤1.5×;行映射负例锚
@@ -369,7 +379,7 @@ web 框架,而是证明 §7 的并发语义天然就是服务器语义。
 | 文件 | 修订 |
 |---|---|
 | `docs/spec/11-net.md`(**草案已落库 v0.8-d1**,S0 定稿) | socket 门面/双栈/TCP 语义默认值/能力键/超时与取消/同形异构契约/HTTP 档分层 |
-| `docs/spec/12-db.md`(**草案已落库 v0.8-d1**,P5 开工前定稿) | 驱动契约(纯 Ctron)/连接池/comptime 行映射/事务与取消/`db.connect` 能力键 |
+| `docs/spec/12-db.md`(**草案已落库 v0.8-d1**,P5 开工前定稿) | 驱动契约(纯 Ctron)/连接池/comptime 行映射/事务与取消/`db.connect` 能力键;行映射 as-built = 运行时绑定回写(**D-P5-1**,2026-09-21 定稿 §12.5;`@derive(DbRow)` 列编译泳道志向) |
 | `07-concurrency.md` | 新节:异步执行模型(无色语义、挂起点契约、协程 × Send、取消、§7.1 过渡口径注记) |
 | `08-effects-comptime.md` | 能力键表增 net.listen/net.connect/net.resolve/db.connect;纯函数网络/数据库禁令 |
 | `02-names-modules.md` | `[caps]` 键集与包级上限语义对齐 |
