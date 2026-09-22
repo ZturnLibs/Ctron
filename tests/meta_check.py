@@ -98,6 +98,14 @@ def check_file(path: Path) -> list[str]:
         # net 包 main:由 tests/net/run.sh 双臂(原生==解释黄金对照)驱动,
         # 不按主流 test 块规则元检查(同 dist/ 泳道先例)。
         return errors
+    for pkg_lane in ("artifact_demo", "realdep_demo"):
+        if relparts0 and relparts0[0] == pkg_lane:
+            # 包分发泳道夹具(编译/分发线):库源文件被 consumer 包 import,
+            # 不按主流 test 块规则元检查(同 dist/ 泳道先例)。
+            return errors
+    if relparts0 and relparts0[0] == "http" and len(relparts0) > 2:
+        # http/ 泳道子目录源文件(frm_route 等由 http/run.sh 驱动,非 test 块语义)
+        return errors
     kind = kind_of(path)
     if kind is None:
         return errors
