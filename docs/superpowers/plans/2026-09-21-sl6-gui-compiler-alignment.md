@@ -119,8 +119,14 @@
   帧实为 [i:1..i:9, i:0, i:10, X]（X = 空/坏节点，解析循环 break 处）。即 eval 侧参数
   列表多出一个 vI(0)（插在参 10 位）且参 11 的节点损坏。11 源参 → 12 值节点，
   错位在参数收集层（parse 产参 or eval 调用 arg 循环），FR 转储移位到 break 前
-  即可看全 12 槽。**当前重建被 peer trans_emit WIP（|| 语法 sem 拒绝）阻断——
-  ctron-cc 无法重编译，修复迭代待其落库。**
+  即可看全 12 槽。**peer WIP 已落库，发射链恢复——干净重建复测：bug 依旧
+  （路径②确认 = 真实缺陷，非竞态伪影）。**
+- **-G 双断点同停实测（lldb frame variable + bt）**：同一停点，调用者帧
+  u = [1..9, 10, 11, 0] 完美；被调方 gui_cfg 实参 = (…, hmode=9, **hval=0,
+  bg_packed=10**) at ctron_gui.c:152——**case-11 调用指令的栈参写入序列在
+  u[9] 前插入 0、丢弃 u[10]**（11 参 call 的栈参写坏）。-O2/-O0 双构建均复现。
+  **续接 = -g 单步 case-11 的栈写序列**（break dispatch0 case-11 → si 逐条
+  store 指令，观察 [sp]/[sp+8]/[sp+16] 写入），ABI 专案交接。
 - **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
   **parse/sem 层正确**。
 - **C 层终态（-g 构建 + lldb 双断点，干净重建复现依旧=真实缺陷）**：FR 帧串正确
@@ -155,8 +161,14 @@
   帧实为 [i:1..i:9, i:0, i:10, X]（X = 空/坏节点，解析循环 break 处）。即 eval 侧参数
   列表多出一个 vI(0)（插在参 10 位）且参 11 的节点损坏。11 源参 → 12 值节点，
   错位在参数收集层（parse 产参 or eval 调用 arg 循环），FR 转储移位到 break 前
-  即可看全 12 槽。**当前重建被 peer trans_emit WIP（|| 语法 sem 拒绝）阻断——
-  ctron-cc 无法重编译，修复迭代待其落库。**
+  即可看全 12 槽。**peer WIP 已落库，发射链恢复——干净重建复测：bug 依旧
+  （路径②确认 = 真实缺陷，非竞态伪影）。**
+- **-G 双断点同停实测（lldb frame variable + bt）**：同一停点，调用者帧
+  u = [1..9, 10, 11, 0] 完美；被调方 gui_cfg 实参 = (…, hmode=9, **hval=0,
+  bg_packed=10**) at ctron_gui.c:152——**case-11 调用指令的栈参写入序列在
+  u[9] 前插入 0、丢弃 u[10]**（11 参 call 的栈参写坏）。-O2/-O0 双构建均复现。
+  **续接 = -g 单步 case-11 的栈写序列**（break dispatch0 case-11 → si 逐条
+  store 指令，观察 [sp]/[sp+8]/[sp+16] 写入），ABI 专案交接。
 - **sem 对照判据（已测）**：ctc.sh check args11.ct = check OK（11 调用参对 11 形参）——
   **parse/sem 层正确**。
 - **C 层终态（-g 构建 + lldb 双断点，干净重建复现依旧=真实缺陷）**：FR 帧串正确
