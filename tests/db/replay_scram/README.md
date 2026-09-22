@@ -32,6 +32,7 @@ hashlib 复算并对 RFC 7677 §3 原文常量自检,不一致即中止)。night
 | `scram_badsig.script` | server-final v= 与本地 ServerSignature 不符 → clean err 4,sigok=0 | `x_scram_neg.ct`(emit) |
 | `scram_nonce.script` | combined nonce 不以 client nonce 为前缀 → err 4(前缀校验在 PBKDF2 前) | `s_scram_hs.ct`(双臂) |
 | `scram_plus.script` | 机制表仅 SCRAM-SHA-256-PLUS → err 4(channel-binding-plus 不支援,登记) | `s_scram_hs.ct`(双臂) |
+| `scram_no_r12.script` | 信任面钉(P5-D 评审):server 跳过 R12 直接 AuthOk→K→Z → 中止 rc<0 err 4,不产成功位(RFC 5802 客户端 MUST 校验 ServerSignature) | `s_scram_nor12.ct`(双臂) |
 | `scram_rfc7677.script` | RFC 7677 原例 i=4096 全链 | `x_scram_rfc7677.ct`(emit) |
 | `ext_query.script` | 扩展查询响应流:1/2 跳过 + T + 2×D + C + Z(PQexecParams 形) | `s_ext.ct`(双臂) |
 | `ext_describe.script` | 语句级 Describe:1 + t(参数 OID 表)+ T + Z(零行) | `s_ext.ct`(双臂) |

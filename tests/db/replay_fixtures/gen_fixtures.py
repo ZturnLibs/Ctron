@@ -297,6 +297,20 @@ write_script(os.path.join(OUT2, "scram_plus.script"), [
     sasl_mech_frame(["SCRAM-SHA-256-PLUS"]),
 ])
 
+# ---- scram_no_r12:信任面钉——server 跳过 server-final(R12)直接 AuthOk ----
+write_script(os.path.join(OUT2, "scram_no_r12.script"), [
+    "SCRAM trust-face pin (P5-D review): server skips server-final (R12)",
+    "stream R10->R11->AuthOk->K->Z must abort (RFC 5802: client MUST verify",
+    "ServerSignature; rc<0 err 4, never a success bit without the proof)",
+    "seq: R10(SCRAM-SHA-256) R11(server-first) R0(AuthOk) K S Z(idle)",
+], [
+    sasl_mech_frame(["SCRAM-SHA-256"]),
+    auth_extra(11, SFIRST_I1.encode()),
+    auth(0),
+    backend_keydata(4711, 305419896),
+    ready("I"),
+])
+
 # ---- scram_rfc7677:RFC 7677 §3 原例(i=4096;x_ emit 臂专面) ----
 write_script(os.path.join(OUT2, "scram_rfc7677.script"), [
     "SCRAM RFC 7677 exact vector (P5-D; emit arm only - interp heap budget)",

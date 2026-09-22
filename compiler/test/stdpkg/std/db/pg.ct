@@ -539,9 +539,13 @@ pub fn pg_parse_msg(stmt: Str, sql: Str, oids: List[I32]) -> List[I32] {
 }
 
 // Bind('B'):portal + 语句 + 参数(format code 0 逐参;值文本格字节,
-// NULL = -1 长)+ result format 计数 0(全文本)
+// NULL = -1 长)+ result format 计数 0(全文本)。参数计数 i16 域门
+// (>65535 → 空表 fail-closed,(i) 族同门:计数先于 be16 装配)
 pub fn pg_bind_msg(portal: Str, stmt: Str, params: List[Str], nulls: List[I32]) -> List[I32] {
     var msg = List[I32]()
+    if params.len > 65535 {
+        return msg
+    }
     msg.push(66)
     var plen: I64 = 0
     var pc: I64 = pgz() + params.len
@@ -701,6 +705,8 @@ pub fn pg_cancel_msg(pid: I64, key: I64) -> List[I32] {
 //   2 = drain(E 已收口——含 57014 查询取消/25P02 事务内错——尾随 Z 在线,
 //       复位 = 排空 Z(pgr_next 续跑)→ 事务内则 ROLLBACK → 见 Z('I') 复用)
 //   1 = dirty(帧/协议/源耗尽/IO:流信任失,连接弃用,不复位不回池)
+//   注:本分类只按 err 面;事务态 Z('T')(含 drain 排出 Z('T'))不在此
+//   反映——池消费方回池前须另查 pgr_status,'T' 者先 ROLLBACK 见 'I' 再入池。
 pub fn pg_conn_dirty(err: I64) -> I64 {
     if err == 0 {
         return 0
@@ -1383,7 +1389,8 @@ pub fn pg_scram_salted(pass: Str, salt: List[I32], iters: I32) -> List[I32] {
     return pbkdf2_sha256(pg_str_bytes(pass), salt, iters, 32)
 }
 
-// ClientProof = ClientKey XOR H(ClientKey)(authmsg 由调用方按上式拼)
+// ClientProof = ClientKey XOR ClientSignature(= HMAC(StoredKey, AuthMessage);
+// authmsg 由调用方按上式拼)
 pub fn pg_scram_proof(salted: List[I32], authmsg: Str) -> List[I32] {
     var am = pg_str_bytes(authmsg)
     var ckey = hmac_sha256(salted, pg_str_bytes("Client Key"))
@@ -1569,7 +1576,8 @@ fn pgx_mech_pick(mechs: List[Str]) -> I64 {
 // R kind 10(机制表;明档选择)→ kind 11(server-first:nonce 前缀校验/
 // 盐 b64 解码/迭代 (i) 门 → PBKDF2 → client-final 计算面入 sess)→
 // kind 12(server-final v= 与本地 ServerSignature 比对,不符 → err 4
-// 认证败)→ AuthOk/K/Z 收口(status 记)。E → err 5 字段面。相序违例
+// 认证败)→ AuthOk/K/Z 收口(status 记;**Z 门 phase==3——未见 R12 校验
+// 通过的收口一律 rc<0 err 4,信任面**。E → err 5 字段面。相序违例
 // (11/12 先于 10 / 12 先于 11)→ err 2。空 nonce → err 4(fail-closed:
 // 前缀校验空洞)。sigok/pgs_* 面 = 夹具逐字节锚定面。
 pub fn pg_scram_handshake(frames: List[Str], cur: I64, user: Str, pass: Str, nonce: Str) -> PgSess {
@@ -1720,9 +1728,21 @@ pub fn pg_scram_handshake(frames: List[Str], cur: I64, user: Str, pass: Str, non
                     }
                 } else {
                     if t == 90 {
-                        status = pg_ready_status(fr.body)
-                        rc = 0
-                        done = 1
+                        // 信任面门(P5-D 评审必修):未见 server-final(R12)
+                        // 校验通过即中止——流 R10→R11→AuthOk→K→Z(跳过口令
+                        // 知识证明)以 rc<0 拒,不产成功位(RFC 5802 客户端
+                        // MUST 中止;互认证缺口/迭代降级面)。仅本 walker,
+                        // 其余 Z 消费面不动。
+                        if phase != 3 {
+                            rc = -1
+                            err = pg_err_auth()
+                            emsg = "scram: handshake closed without verified server-final"
+                            done = 1
+                        } else {
+                            status = pg_ready_status(fr.body)
+                            rc = 0
+                            done = 1
+                        }
                     } else {
                         if t == 69 {
                             var ed = pg_err_data(fr.body)

@@ -1,0 +1,52 @@
+// tests/db/replay_scram/s_scram_nor12.ct —— SCRAM 信任面钉(P5-D 评审
+// 必修;tests/db/run.sh 双臂,CT_DB_SCRAM = 本目录)。server 跳过
+// server-final(R12)直接 AuthOk→K→Z 的流必须中止:pgs_rc 是全库头号
+// 成功位,未见口令知识证明校验绝不产 rc=0(RFC 5802 §5.1 客户端 MUST
+// 校验 ServerSignature;互认证缺口面)。单链 interp 预算口径(PBKDF2+
+// 证明 ≈ 15 块压缩,无 server 签名——R12 不到)。
+use std.db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_emsg, pgs_cfinal, pgs_sigok, pg_err_auth}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "scram trust face: handshake without server-final (R12) aborts, no success bit" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_no_r12.script")
+    assert_eq(frames.len, 5)
+    let s = pg_scram_handshake(frames, 0, "user", "pencil", "rOprNGfwEbeRWgbNEkqO")
+    // Z 门 phase==3 不满足 → rc<0 err 4(认证败),status 不记
+    assert_eq(pgs_rc(s), -1)
+    assert_eq(pgs_err(s), pg_err_auth())
+    assert_eq(pgs_emsg(s), "scram: handshake closed without verified server-final")
+    assert_eq(pgs_status(s), 0)
+    // 证明面已算(client 尽到义务)但 sigok 未达(无 R12 可校)
+    assert_eq(pgs_authkind(s), 0)
+    assert_eq(pgs_sigok(s), -1)
+    assert_eq(pgs_cfinal(s), "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=0HpZtX/KXXa0ywYK4tj43Y2SHpuAk6sib0z2ZmNk22Y=")
+    // 帧已耗尽(消费至 Z,游标终态)
+    assert_eq(pgs_next(s), 5)
+    // 合规对照锚:同链带 R12 的 ok 路径 sigok=1 rc=0(s_scram_hs.ct)
+}
