@@ -390,15 +390,77 @@ fn p_enum(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     return p_enum2(toks, cur, lns, dr0, "")
 }
 
-fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+// use 别名关键字面(镜像 fmt.ct fmt_kw;fmt.ct 仅入 cc_fmt 拼接,parse 侧自持一份)
+fn p_kw(t: Str) -> Bool {
+    var ks = List[Str]()
+    ks.push("fn")
+    ks.push("let")
+    ks.push("var")
+    ks.push("const")
+    ks.push("static")
+    ks.push("comptime")
+    ks.push("if")
+    ks.push("else")
+    ks.push("match")
+    ks.push("while")
+    ks.push("for")
+    ks.push("in")
+    ks.push("break")
+    ks.push("continue")
+    ks.push("return")
+    ks.push("struct")
+    ks.push("class")
+    ks.push("enum")
+    ks.push("trait")
+    ks.push("impl")
+    ks.push("own")
+    ks.push("scope")
+    ks.push("test")
+    ks.push("use")
+    ks.push("pub")
+    ks.push("extern")
+    ks.push("prop")
+    ks.push("true")
+    ks.push("false")
+    ks.push("void")
+    ks.push("self")
+    var k: I32 = 0
+    while k < ks.len {
+        if ks[k] == t { return true }
+        k += 1
+    }
+    return false
+}
+
+// `as` 后别名槽:须非关键字 ident(spec §2),否则 E1001;推进并返回名(失败返 "")
+fn p_use_alias(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str]) -> Str {
+    var t = tok(toks, cur)
+    if or2(t == "#EOF", t == "NL") {
+        pdiag(pdiags, lns, cols, cur, "E1001", "use 别名须为标识符")
+        return ""
+    }
+    if !is_al(byte_at(t, 0)) {
+        pdiag(pdiags, lns, cols, cur, "E1001", "use 别名须为标识符")
+        return ""
+    }
+    if p_kw(t) {
+        pdiag(pdiags, lns, cols, cur, "E1001", "use 别名须为标识符")
+        return ""
+    }
+    adv(cur)
+    return t
+}
+
+fn p_use(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str]) -> List[Str] {
     adv(cur)
     var nu = mk("Use")
     var segs = mk("Segs")
     var syms = mk("Syms")
     var braced = false
+    var ng_alias = ""
     var more = true
     while more {
-        // use 语句内换行不敏感:组项跨行/无尾逗号收组、路径段跨行(对齐 seed §1.6 抑制面)
+        // use 语句内换行不敏感(f15554c)
         while tok(toks, cur) == "NL" {
             adv(cur)
         }
@@ -419,6 +481,14 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 } else {
                     syms.push(b2)
                     adv(cur)
+                    // 组项别名 `Sym as Alias`:as 为上下文关键字;别名槽缺省=本名
+                    if tok(toks, cur) == "as" {
+                        adv(cur)
+                        var al = p_use_alias(toks, cur, lns, cols, pdiags)
+                        if al == "" { syms.push(b2) } else { syms.push(al) }
+                    } else {
+                        syms.push(b2)
+                    }
                     if tok(toks, cur) == "," {
                         adv(cur)
                     }
@@ -437,14 +507,25 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 adv(cur)
             }
             var nx = tok(toks, cur)
-            if nx != "." {
+            if nx == "as" {
+                // 单符号别名 `use path.Sym as Alias`(mpath 逻辑不动,spec §4.7)
+                adv(cur)
+                ng_alias = p_use_alias(toks, cur, lns, cols, pdiags)
+                more = false
+            } else if nx != "." {
                 more = false
             }
         }
     }
     if !braced {
-        // 无花括号:末段即符号(use app.hidden.secret)
-        syms.push(segs[segs.len - 1])
+        // 无花括号:末段即符号;别名形态下仍为交替对
+        var last = segs[segs.len - 1]
+        syms.push(last)
+        if ng_alias != "" {
+            syms.push(ng_alias)
+        } else {
+            syms.push(last)
+        }
     }
     nu.push(segs)
     nu.push(syms)
@@ -690,7 +771,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         } else if t == "trait" {
             nf.push(p_trait(toks, cur, lns))
         } else if t == "use" {
-            nf.push(p_use(toks, cur))
+            nf.push(p_use(toks, cur, lns, cols, pdiags))
         } else if t == "const" {
             nf.push(p_const(toks, cur, lns))
         } else if t == "static" {
