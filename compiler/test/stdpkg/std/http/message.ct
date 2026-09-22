@@ -1,0 +1,504 @@
+// std/http/message.ct —— HTTP/1.1 报文构造与分框编解码(P4-A 协议半层)
+// 形态(与 std/http/parse.ct 头注同源,皆发射面已证形态):
+//   ① 零 use 纯模块(不 import std.net —— 加载器菱形 use 误报 E5020 规避 +
+//      解释器可测;不 import std.http.parse —— 同理:消费方双 use 即菱形。
+//      故 CL 分框助手收标量槽,不收 HttpHead)。IO 粘合(经 net 门面写道)
+//      归框架波次,net_write_str 原语一行即接。名字面前缀 msg_* / chunk_*,
+//      与 parse.ct 的 http_* 在 use 合并后的单命名空间并存不撞(E5030 守卫)。
+//   ② 构造面 = Str 拼接头块(T2 已收账的 + 语义);分框面 = &I64[] 字节道
+//      零拷贝进出;无闭包、无 Drop 局部、无方法调用、无 trait —— while 体
+//      仅标量局部((f)/(g) 纪律)。
+//   ③ chunked 解码 = 可重入状态机(RFC 9112 §7.1):chunk_step 以
+//      (src, n, pos, st) 进、ChunkRet 出,状态显式随值返还 —— 分片到达
+//      (一次读不全)即多次调用推进。重入契约(解码侧统一口径):
+//        - 调用方恒 pos += ret.consumed,并以 ret 的 phase/remain 为新状态;
+//        - rc = 0(需要更多输入):consumed = 未竟行的【行起点】距 pos 的
+//          位移 —— 已落袋的 data/帧推进照计(consumed 相应含之),未竟行
+//          整行回卷重扫(无半行状态;dst 重写同区间,幂等);
+//        - rc = 2(dst 满):consumed 记真实推进,排空 dst 后以新 pos/状态
+//          重调;
+//        - rc = -1 协议错(err 槽记码),consumed/produced 记出错前推进量。
+//      扩展(;后至 CR)跳过;trailer 段整段消费(字段不解析,行长受 cap);
+//      last-chunk(0) 后空行终止 phase = done(4)。
+//   ④ 100-continue 钩子(RFC 9110 §10.1.1):
+//      服务端 = http_is_expect_100(parse.ct)检出 + msg_continue() 常量头
+//      (先发 100 再读体);客户端 = msg_should_expect 阈值判 +
+//      msg_expect_header() 附加;等待岔路(发体前读 1xx 或终态)需读道超时,
+//      归框架波次。
+//   ⑤ Content-Length 分框:体即 head_end 后 clen 字节;msg_body_remaining
+//      给剩余量(调用方读道循环用;上限在 parse.ct 的 max_body 已裁)。
+
+// ---- 构造面(Str 拼接;CRLF 严格自备) ----
+
+// 小写十六进制(chunk-size 线格式;v < 0 → "")
+pub fn msg_hex(v: I64) -> Str {
+    if v < 0 {
+        return ""
+    }
+    if v == 0 {
+        return "0"
+    }
+    var acc = v
+    var out = ""
+    while acc > 0 {
+        let d = acc % 16
+        out = byte_slice("0123456789abcdef", d, d + 1) + out
+        acc = acc / 16
+    }
+    return out
+}
+
+// 请求行:"METHOD target HTTP/1.x\r\n"(ver 0 = 1.0,余 = 1.1)
+pub fn msg_request_line(method: Str, target: Str, ver: I64) -> Str {
+    var v = "HTTP/1.1"
+    if ver == 0 {
+        v = "HTTP/1.0"
+    }
+    return method + " " + target + " " + v + "\r\n"
+}
+
+// 状态行:"HTTP/1.x <3位码> <reason>\r\n"(reason 空 → 码后直 CRLF)
+pub fn msg_status_line(ver: I64, status: I64, reason: Str) -> Str {
+    var v = "HTTP/1.1 "
+    if ver == 0 {
+        v = "HTTP/1.0 "
+    }
+    let d1 = status / 100
+    let d2 = (status / 10) % 10
+    let d3 = status % 10
+    var line = v + byte_slice("0123456789", d1, d1 + 1) + byte_slice("0123456789", d2, d2 + 1) + byte_slice("0123456789", d3, d3 + 1)
+    if reason.len > 0 {
+        line = line + " " + reason
+    }
+    return line + "\r\n"
+}
+
+// 头行:"Name: value\r\n"(name 原样透传 —— token 校验归调用方/框架)
+pub fn msg_header(name: Str, value: Str) -> Str {
+    return name + ": " + value + "\r\n"
+}
+
+// 头块终止哨兵(空行 CRLF)
+pub fn msg_head_end() -> Str {
+    return "\r\n"
+}
+
+// Content-Length 头行
+pub fn msg_cl_header(n: I64) -> Str {
+    return msg_header("Content-Length", n.to_string())
+}
+
+// 最小客户端请求头块(Host + Content-Length;体字节由调用方续写)
+pub fn msg_request_head(method: Str, target: Str, host: Str, ver: I64, body_len: I64) -> Str {
+    return msg_request_line(method, target, ver) + msg_header("Host", host) + msg_cl_header(body_len) + msg_head_end()
+}
+
+// 最小服务端响应头块(状态行 + Content-Length)
+pub fn msg_response_head(ver: I64, status: I64, reason: Str, body_len: I64) -> Str {
+    return msg_status_line(ver, status, reason) + msg_cl_header(body_len) + msg_head_end()
+}
+
+// ---- chunked 编码面(RFC 9112 §7.1;帧 = hex(size) [;ext] CRLF data CRLF) ----
+
+// chunk 帧头(无扩展)
+pub fn msg_chunk_header(size: I64) -> Str {
+    return msg_hex(size) + "\r\n"
+}
+
+// chunk 数据后缀 CRLF
+pub fn msg_chunk_data_end() -> Str {
+    return "\r\n"
+}
+
+// 终止块(无 trailer 档;"0\r\n\r\n")
+pub fn msg_last_chunk() -> Str {
+    return "0\r\n\r\n"
+}
+
+// 终止块带单条 trailer(trailer 逐条声明 —— 逐跳头禁入 trailer,校验归框架)
+pub fn msg_last_chunk_trailer(name: Str, value: Str) -> Str {
+    return "0\r\n" + msg_header(name, value) + "\r\n"
+}
+
+// ---- 100-continue 钩子 ----
+
+// 服务端:检出 Expect: 100-continue 后先行发回的 1xx 头块
+pub fn msg_continue() -> Str {
+    return "HTTP/1.1 100 Continue\r\n\r\n"
+}
+
+// 客户端:Expect 头行(体长 ≥ 阈值才附 —— msg_should_expect 裁量)
+pub fn msg_expect_header() -> Str {
+    return msg_header("Expect", "100-continue")
+}
+
+// 客户端阈值裁量:body_len ≥ threshold → 1(附 Expect,等 100/终态再发体)
+pub fn msg_should_expect(body_len: I64, threshold: I64) -> I64 {
+    if body_len >= threshold {
+        return 1
+    }
+    return 0
+}
+
+// ---- Content-Length 分框(标量槽面,① 见) ----
+
+// CL 体剩余量:头块 head_end、体长 clen、已喂 fed 字节(含头)→ 仍欠多少
+//(fed 过头 → 0;非 CL 分框(clen < 0)恒 0)
+pub fn msg_body_remaining(head_end: I64, clen: I64, fed: I64) -> I64 {
+    if clen < 0 {
+        return 0
+    }
+    var got = fed - head_end
+    if got < 0 {
+        got = 0
+    }
+    var rem = clen - got
+    if rem < 0 {
+        rem = 0
+    }
+    return rem
+}
+
+// ---- chunked 解码状态机 ----
+
+// phase:0 = size-line,1 = data,2 = data 后 CRLF,3 = trailer 段,4 = done
+struct ChunkSt {
+    let phase: I64
+    let remain: I64
+    let err: I64
+}
+
+// 解码步进结果(③ 的 rc 契约;err 槽:1 坏 hex/空 size、2 size 行超限、
+// 3 坏帧(CRLF 缺/裸 LF)、4 trailer 行超限)
+struct ChunkRet {
+    let rc: I64
+    let err: I64
+    let consumed: I64
+    let produced: I64
+    let phase: I64
+    let remain: I64
+}
+
+pub fn chunk_st_new() -> ChunkSt {
+    return ChunkSt { phase: 0, remain: 0, err: 0 }
+}
+
+// 公开 getter((h) 缺口绕行:成员访问留在本模块,消费方经 getter 取)
+pub fn st_phase(st: ChunkSt) -> I64 { return st.phase }
+pub fn st_remain(st: ChunkSt) -> I64 { return st.remain }
+pub fn st_err(st: ChunkSt) -> I64 { return st.err }
+pub fn cr_rc(r: ChunkRet) -> I64 { return r.rc }
+pub fn cr_err(r: ChunkRet) -> I64 { return r.err }
+pub fn cr_consumed(r: ChunkRet) -> I64 { return r.consumed }
+pub fn cr_produced(r: ChunkRet) -> I64 { return r.produced }
+pub fn cr_phase(r: ChunkRet) -> I64 { return r.phase }
+pub fn cr_remain(r: ChunkRet) -> I64 { return r.remain }
+
+fn ck_ret(rc: I64, err: I64, consumed: I64, produced: I64, phase: I64, remain: I64) -> ChunkRet {
+    return ChunkRet { rc: rc, err: err, consumed: consumed, produced: produced, phase: phase, remain: remain }
+}
+
+fn ck_hexval(c: I64) -> I64 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 55
+    }
+    return -1
+}
+
+// 行扫描(回卷契约):自 start 找 CRLF → CR 位;需更多 → -1;裸 CR → -2
+fn ck_find_crlf(src: &I64[], n: I64, start: I64) -> I64 {
+    var i = start
+    while i < n {
+        if src[i] == 13 {
+            if i + 1 >= n {
+                return -1
+            }
+            if src[i + 1] == 10 {
+                return i
+            }
+            return -2
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 解码一步:src[pos..n) → dst[dfill..dcap)(dfill = dst 已存量,跨调用由
+// 调用方累进;写位 = dfill + 本次 produced)。size 行回卷重扫(无半行状态),
+// 行界:size 行 2112 字节、trailer 行 4096 字节;chunk 计数 16 hex 上限、
+// 乘前 2^59-1 界门(防 I64 溢出 panic/回绕——FFFFFFFFFFFFFFFE 远程 DoS
+// 收口,2026-09-21 终审)+ CR 处 1e18 界门(负值防御冗余档)。
+// 回卷提交界 = 未竟行起点(③ 契约)。
+pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill: I64, dcap: I64) -> ChunkRet {
+    var i = pos
+    var out: I64 = 0
+    var phase = st.phase
+    var remain = st.remain
+    var lstart = pos
+    while i < n {
+        if phase == 0 {
+            // size 行:1*HEXDIG [;ext] CRLF(lstart = 行起点)
+            lstart = i
+            var acc: I64 = 0
+            var digits: I64 = 0
+            var ext = 0
+            var done = 0
+            while i < n && done == 0 {
+                let c = src[i]
+                if c == 13 {
+                    if i + 1 >= n {
+                        return ck_ret(0, 0, lstart - pos, out, phase, remain)
+                    }
+                    if src[i + 1] != 10 {
+                        return ck_ret(-1, 3, i - pos, out, phase, remain)
+                    }
+                    if digits == 0 {
+                        return ck_ret(-1, 1, i - pos, out, phase, remain)
+                    }
+                    // 负值防御(2026-09-21 终审必修):下方乘前界门已使 acc<0
+                    // 不可达,此为冗余档(算术语义若改回绕仍不失守);>1e18 界原样。
+                    if acc < 0 || acc > 1000000000000000000 {
+                        return ck_ret(-1, 2, i - pos, out, phase, remain)
+                    }
+                    i += 2
+                    if acc == 0 {
+                        phase = 3
+                    } else {
+                        phase = 1
+                        remain = acc
+                    }
+                    done = 1
+                } else {
+                    if c == 10 {
+                        return ck_ret(-1, 3, i - pos, out, phase, remain)
+                    }
+                    if c == 59 {
+                        ext = 1
+                        i += 1
+                    } else {
+                        if ext == 1 {
+                            i += 1
+                        } else {
+                            let hv = ck_hexval(c)
+                            if hv < 0 {
+                                return ck_ret(-1, 1, i - pos, out, phase, remain)
+                            }
+                            if digits >= 16 {
+                                return ck_ret(-1, 2, i - pos, out, phase, remain)
+                            }
+                            // 乘前 I64 界门(parse.ct hs_parse_dec 界内累加同款):
+                            // acc ≤ 2^59-1 ⇒ acc*16+hv ≤ I64_MAX 恒不溢出;越过
+                            // 即拒(err 槽 2),否则乘法在双臂(emit __builtin_
+                            // mul_overflow / interp 大数域界检)确定性 panic
+                            // rc=1 —— 恰 16 位 "FFFFFFFFFFFFFFFE" 语料实证的
+                            // 远程 DoS 面(2026-09-21 终审必修,r_chunkneg.ct 钉)。
+                            if acc > 576460752303423487 {
+                                return ck_ret(-1, 2, i - pos, out, phase, remain)
+                            }
+                            // C10 宽域惯用法(time.ct w-w+x 同款):acc 值域回落
+                            // I32 时,解释器按值域定宽判乘法上溢(已登记解释器缺陷,
+                            // divergences (i));+2^32-2^32 提升参与值域,乘法按 I64。
+                            // emit 侧无差(纯恒等);触发面 = chunk size ≥8 位 16 进制。
+                            acc = (acc + 4294967296 - 4294967296) * 16 + hv
+                            digits += 1
+                            i += 1
+                        }
+                    }
+                    if i - lstart > 2112 {
+                        return ck_ret(-1, 2, i - pos, out, phase, remain)
+                    }
+                }
+            }
+            if done == 0 {
+                // 行中途输入尽:回卷至行起点(consumed = 已提交推进,状态 = 已
+                // 提交相;行内半扫不留状态)
+                return ck_ret(0, 0, lstart - pos, out, phase, remain)
+            }
+        } else {
+            if phase == 1 {
+                // data:尽可能搬
+                var room = dcap - dfill - out
+                if room <= 0 {
+                    // dst 满:真实推进照报,排空后以新 pos/状态重调
+                    return ck_ret(2, 0, i - pos, out, phase, remain)
+                }
+                var avail = n - i
+                var k = remain
+                if k > avail {
+                    k = avail
+                }
+                if k > room {
+                    k = room
+                }
+                var j: I64 = 0
+                while j < k {
+                    dst[dfill + out + j] = src[i + j]
+                    j += 1
+                }
+                out += k
+                i += k
+                remain -= k
+                if remain == 0 {
+                    phase = 2
+                } else {
+                    if i >= n {
+                        // data 半途输入尽:已搬落袋(consumed 真实),续调接续
+                        return ck_ret(0, 0, i - pos, out, phase, remain)
+                    }
+                    return ck_ret(2, 0, i - pos, out, phase, remain)
+                }
+            } else {
+                if phase == 2 {
+                    // data 后 CRLF(lstart = CRLF 起点)
+                    lstart = i
+                    if i + 1 >= n {
+                        return ck_ret(0, 0, lstart - pos, out, phase, remain)
+                    }
+                    if src[i] != 13 || src[i + 1] != 10 {
+                        return ck_ret(-1, 3, i - pos, out, phase, remain)
+                    }
+                    i += 2
+                    phase = 0
+                } else {
+                    if phase == 3 {
+                        // trailer 段:逐行吞至空行(行长界 4096,含未竟行)
+                        lstart = i
+                        if n - lstart > 4096 {
+                            return ck_ret(-1, 4, i - pos, out, phase, remain)
+                        }
+                        let sc = ck_find_crlf(src, n, i)
+                        if sc == -1 {
+                            return ck_ret(0, 0, lstart - pos, out, phase, remain)
+                        }
+                        if sc < -1 {
+                            return ck_ret(-1, 4, i - pos, out, phase, remain)
+                        }
+                        let llen = sc + 2 - i
+                        i = sc + 2
+                        if llen == 2 {
+                            phase = 4
+                        }
+                    } else {
+                        // phase 4 = done:不再消费(剩余为下一报文,调用方裁)
+                        return ck_ret(1, 0, i - pos, out, phase, remain)
+                    }
+                }
+            }
+        }
+    }
+    return ck_ret(0, 0, i - pos, out, phase, remain)
+}
+
+// ---- inline tests(纯面自检;行为面见 tests/http/corpus) ----
+
+fn mi_fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "msg builders" {
+    assert(msg_hex(0) == "0")
+    assert(msg_hex(255) == "ff")
+    assert(msg_hex(4096) == "1000")
+    assert(msg_hex(-1) == "")
+    assert(msg_request_line("GET", "/a", 1) == "GET /a HTTP/1.1\r\n")
+    assert(msg_request_line("POST", "/b", 0) == "POST /b HTTP/1.0\r\n")
+    assert(msg_status_line(1, 200, "OK") == "HTTP/1.1 200 OK\r\n")
+    assert(msg_status_line(0, 404, "") == "HTTP/1.0 404\r\n")
+    assert(msg_header("Host", "x") == "Host: x\r\n")
+    assert(msg_cl_header(5) == "Content-Length: 5\r\n")
+    assert(msg_request_head("GET", "/", "h", 1, 0) == "GET / HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\n\r\n")
+    assert(msg_response_head(1, 200, "OK", 2) == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n")
+    assert(msg_chunk_header(11) == "b\r\n")
+    assert(msg_last_chunk() == "0\r\n\r\n")
+    assert(msg_last_chunk_trailer("X-Sum", "3") == "0\r\nX-Sum: 3\r\n\r\n")
+    assert(msg_continue() == "HTTP/1.1 100 Continue\r\n\r\n")
+    assert(msg_expect_header() == "Expect: 100-continue\r\n")
+    assert(msg_should_expect(1024, 1024) == 1)
+    assert(msg_should_expect(1023, 1024) == 0)
+    assert(msg_body_remaining(16, 5, 16) == 5)
+    assert(msg_body_remaining(16, 5, 19) == 2)
+    assert(msg_body_remaining(16, 5, 21) == 0)
+}
+
+test "chunk decode single and multi" {
+    var src: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let body = "3\r\nabc\r\n0\r\n\r\n"
+    let n = mi_fill(src, body)
+    var st = chunk_st_new()
+    var pos: I64 = 0
+    var total: I64 = 0
+    var guard: I64 = 0
+    while guard < 16 {
+        guard += 1
+        let r = chunk_step(src, n, pos, st, dst, total, 64)
+        pos = pos + cr_consumed(r)
+        total = total + cr_produced(r)
+        let rc = cr_rc(r)
+        if rc == -1 {
+            assert(false)
+        }
+        if cr_phase(r) == 4 {
+            st = ChunkSt { phase: cr_phase(r), remain: cr_remain(r), err: 0 }
+            break
+        }
+        st = ChunkSt { phase: cr_phase(r), remain: cr_remain(r), err: 0 }
+    }
+    assert(total == 3)
+    assert(dst[0] == 97 && dst[1] == 98 && dst[2] == 99)
+    assert(pos == 13)
+}
+
+test "chunk decode extensions trailer and sharded" {
+    var src: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let body = "2;a=b\r\nhi\r\n3\r\nbye\r\n0\r\nX-Sum: 5\r\n\r\n"
+    let n = mi_fill(src, body)
+    var st = chunk_st_new()
+    var pos: I64 = 0
+    var total: I64 = 0
+    var done = 0
+    var guard: I64 = 0
+    while guard < 32 {
+        guard += 1
+        let r = chunk_step(src, n, pos, st, dst, total, 64)
+        pos = pos + cr_consumed(r)
+        total = total + cr_produced(r)
+        if cr_rc(r) == -1 {
+            assert(false)
+        }
+        st = ChunkSt { phase: cr_phase(r), remain: cr_remain(r), err: 0 }
+        if cr_phase(r) == 4 {
+            done = 1
+            break
+        }
+    }
+    assert(done == 1)
+    assert(total == 5)
+    assert(dst[0] == 104 && dst[1] == 105 && dst[2] == 98 && dst[3] == 121 && dst[4] == 101)
+    assert(pos == n)
+}
+
+test "chunk decode bad framing rejected" {
+    var src: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // 坏 hex
+    let n1 = mi_fill(src, "z\r\nabc\r\n0\r\n\r\n")
+    var r = chunk_step(src, n1, 0, chunk_st_new(), dst, 0, 32)
+    assert(cr_rc(r) == -1 && cr_err(r) == 1)
+    // data 后缺 CRLF
+    let n2 = mi_fill(src, "3\r\nabcX0\r\n\r\n")
+    r = chunk_step(src, n2, 0, chunk_st_new(), dst, 0, 32)
+    assert(cr_rc(r) == -1 && cr_err(r) == 3)
+}

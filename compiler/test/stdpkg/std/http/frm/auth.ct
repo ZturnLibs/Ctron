@@ -1,0 +1,1159 @@
+// std/http/frm/auth.ct —— 认证三件套(P6-C;cookie 解析/签发 + HMAC 签名
+// 会话令牌 + JWT HS256 + own 盒会话存储)
+//
+// 语义登记(v1 口径,偏离/志向逐条):
+//
+//   ① Cookie 面:auth_cookie_get = Cookie 头 "a=b; c=d" 名精确匹配取值
+//   (零解码 —— 值域即签发域 [A-Za-z0-9_-.],percent/plus 解码登记缺席,
+//   从严;DQuote 包裹值(RFC 6265 §5.2 容许形)登记缺席)。auth_cookie_set
+//   = Set-Cookie 行构造:属性序【恒】 `Path=/; HttpOnly?; Max-Age=?;
+//   SameSite=Lax`(csrf.ct Task-3 对齐登记:Path 前置、SameSite=Lax 收尾,
+//   会话版增 HttpOnly/Max-Age 居中 —— HttpOnly 先、Max-Age 后,序登记);
+//   maxage < 0 = 会话 cookie(不发 Max-Age);maxage >= 0 恒发(Max-Age=0
+//   = 即刻过期删除面,RFC 6265 §5.2.2)。构造期校验(注入面封口):name =
+//   RFC 9110 tchar 域 1..64,value = cookie-octet 窄域(0x21..0x7E 去
+//   DQUOTE/逗号/分号/反斜杠)0..4096 —— name/value 任一出域 → 返回 ""
+//   (空行 = 构造拒;CR/LF/控制字节不可达 → 头走私面封口,csrf 同口径)。
+//
+//   ② 签名会话令牌(无状态;own 盒存储之对偶):auth_tok_issue(key, uid,
+//   now, ttl) → tok = uid "." exp "." hex(HMAC-SHA256(key, uid "." exp))
+//   (csrf 签名对同构,值携过期 —— exp = now+ttl unix_ms 十进制)。校验
+//   auth_tok_verify(key, tok, now):形(恰两点、域、exp 数、sig 64 hex)
+//   → 签名重算恒时比较(csrf cr_ct_eq 算术平方累计同式,本模块私铸 ——
+//   直引即同叶双径)→ 过期判(now >= exp 拒,RFC 7519 §4.1.4「须早于」
+//   字面口径,jwt exp 同规)。uid 域 = [A-Za-z0-9_-]{1,64}(cookie 安全)。
+//
+//   ③ JWT HS256(RFC 7515/7519):header 钉死 `{"alg":"HS256","typ":"JWT"}`
+//   —— 校验面对收报首段(b64url)与钉形常量 auth_jwt_hdr_b64 【整串字节
+//   等值】判,alg=none/RS256/缺 typ/任意增删字段一概异形即拒
+//   (auth_err_alg=9;alg 混淆防护 = 钉形即防护,自定义 header(kid 等)列
+//   志向;常量与字面 header 的编码等值有 inline 测试互钉)。签名段 = 
+//   base64url(HMAC-SHA256(key, header_b64 "." payload_b64))(无填充 
+//   RFC 7515;字母表 `-_`);b64url 自出 lane-b64(ws.ct 先例:std/enc 
+//   b64_decode 入 C8 printable 域且标准字母表,不取)。恒时比较在【编码域】
+//   进行(重算期待 b64url 串 vs 收报 sig 段,解码不需要)。载荷 b64url 解码
+//   = List[I32] 字节道(router.ct body 绑定字节道登记同向;Str 表格构建面
+//   —— byte_slice 可印表 —— 载不下 123 '{' 字节,故 claims 扫描直接走
+//   字节,任意字节载荷可解)。claims 扫描 = 平面字节扫 `"name"` `:` 后
+//   整数 token(首现胜出/重复键登记;字符串值内引号假象登记 v1 限 —— 载荷
+//   恒 composition 层经 std/json write 面产出)。exp/iat/nbf 判:
+//   exp 缺省可过(RFC 7519 不强制;required 模式列志向)/ now >= exp 拒 /
+//   nbf now < nbf 拒(§4.1.5「on or after」)/ iat 恒 iat <= now(零钟差
+//   从严档,登记)。RS256 = 志向(纯层无 RSA;登记)。
+//
+//   ④ own 盒会话存储(有状态对偶;外置 Redis 列 P8 注记):SessStore = 
+//   显式值状态(8 槽定容;组合层持有并以值重建下传 —— limit.ct LimBkt
+//   先例;纯层无全局无可变量)。put = upsert(同 sid 原槽替换;新 sid 落
+//   首空槽,次占过期槽 —— now >= e 判;满 → why 14 原样返回)。get =
+//   1 命中有效(now < e)/ 0 miss / -1 过期(组合层决定删)。del/gc =
+//   值重建。sid 熵源 = composition 层注入(uuid_v4/随机 —— csrf nonce 同
+//   口径,纯层无熵);时钟恒注入参数 now(unix_ms)—— limit.ct 确定性
+//   先例,真钟装配归组合层(std.time Clock 出面)。
+//
+//   注入面:Set-Cookie 值/name 恒经构造域校验(①);tok/jwt 值域 = 签发
+//   域(token 字符);Retry 类无。请求侧取值面产出只进校验比较面。
+//
+//   use 面:std.crypto 单叶(hmac_sha256/bytes_to_hex —— csrf.ct 同款;
+//   消费方若自用 std.crypto 再 use 本模块 = 同叶双径 E5020,禁)。常时
+//   比较/字位面私铸不导(防菱形);【禁】use std.json(claims 平面字节扫,
+//   见 ③)—— body.ct 另持 json 叶,两模块可在同一 fixture 并用而 json 
+//   单径不菱形。byte_at/byte_slice = 内建(零 use)。【utf8_enc 内建禁用】
+//   P6-C 实证:解释臂恒产 U+FFFD 替换列(0xEF 0xBF 0xBD),emit 臂真编码
+//   —— 双臂语义劈叉,单字节 Str 构建恒走 au_ch 表格面(csrf/ws 同式)。
+
+use std.crypto.{ hmac_sha256, bytes_to_hex }
+
+// ---- why / err 码(码位稳定;0 恒 ok) ----
+
+pub fn auth_err_ok() -> I64 { return 0 }
+pub fn auth_err_empty() -> I64 { return 1 }      // 入参空
+pub fn auth_err_shape() -> I64 { return 2 }      // 形坏(点数/段空)
+pub fn auth_err_uid() -> I64 { return 3 }        // uid/sid 域坏
+pub fn auth_err_expnum() -> I64 { return 4 }     // exp 段非十进制数
+pub fn auth_err_sigform() -> I64 { return 5 }    // sig 非 64 hex
+pub fn auth_err_sig() -> I64 { return 6 }        // 签名不合(恒时比较面)
+pub fn auth_err_expired() -> I64 { return 7 }    // 过期(now >= exp)
+pub fn auth_err_b64() -> I64 { return 8 }        // b64url 形坏/解码域外
+pub fn auth_err_alg() -> I64 { return 9 }        // header 非钉形(alg 混淆含)
+pub fn auth_err_nbf() -> I64 { return 10 }       // nbf 未生效(now < nbf)
+pub fn auth_err_iat() -> I64 { return 11 }       // iat 在未来(零钟差档)
+pub fn auth_err_claim() -> I64 { return 12 }     // claim 值非整数形
+pub fn auth_err_full() -> I64 { return 14 }      // 会话存储满
+
+// ---- 私铸助手(csrf/limit 同式,不导防菱形) ----
+
+// Str → 字节 List[I32](key/uid/token 域皆窄,越域不发生)
+fn au_bytes(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
+}
+
+// 恒时形等值(csrf cr_ct_eq 同式:长度差计入 + 逐字节差平方算术累计 ——
+//   位或 `|` emit 挂死在案,P6-B 登记;算术累计绕行)
+fn au_cteq(a: Str, b: Str) -> I64 {
+    var diff: I64 = 0
+    if a.len != b.len {
+        diff = 1
+    }
+    var n: I32 = a.len
+    if b.len < n {
+        n = b.len
+    }
+    var i: I32 = 0
+    while i < n {
+        let da: I64 = byte_at(a, i).as[I64]()
+        let db: I64 = byte_at(b, i).as[I64]()
+        let dd = da - db
+        diff = diff + dd * dd
+        i += 1
+    }
+    if diff == 0 {
+        return 1
+    }
+    return 0
+}
+
+// 单字节 → Str(0x20..0x7E 去 '{' 123;frm_slice_str/wu_bstr 表格同式 ——
+//   【utf8_enc 内建在解释臂产 U+FFFD 替换列,禁用,P6-C 实证登记】)
+fn au_ch(b: I64) -> Str {
+    if b < 32 || b > 126 || b == 123 {
+        return ""
+    }
+    if b < 123 {
+        return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz", (b - 32).as[I32](), (b - 31).as[I32]())
+    }
+    return byte_slice("|}~", (b - 124).as[I32](), (b - 123).as[I32]())
+}
+
+// 正域 I64 → 十进制(limit lm_num / cors cs_num 同式自拼)
+fn au_num(v: I64) -> Str {
+    if v <= 0 {
+        return "0"
+    }
+    var out = ""
+    var x: I64 = v
+    while x > 0 {
+        let d = (x % 10).as[I32]()
+        out = au_ch(48 + d.as[I64]()) + out
+        x = x / 10
+    }
+    return out
+}
+
+// [a,b) 全十进制数位判(含非空)
+fn au_dig(s: Str, a: I32, b: I32) -> I64 {
+    if a >= b {
+        return 0
+    }
+    var i: I32 = a
+    while i < b {
+        let c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// 十进制段 → I64(严格;越 18 位拒 —— exp unix_ms 13 位在域)
+fn au_parse(s: Str, a: I32, b: I32) -> I64 {
+    if b - a > 18 || b - a <= 0 {
+        return -1
+    }
+    var acc: I64 = 0
+    var i: I32 = a
+    while i < b {
+        let c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            return -1
+        }
+        acc = (acc + 4294967296 - 4294967296) * 10 + (c - 48).as[I64]()
+        i += 1
+    }
+    return acc
+}
+
+// uid/sid 域判:[A-Za-z0-9_-]{1,64}(cookie 安全;熵源归 composition)
+fn au_uid_ok(s: Str) -> I64 {
+    if s.len < 1 || s.len > 64 {
+        return 0
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let alnum = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)
+        let extra = c == 45 || c == 95
+        if !alnum && !extra {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ---- ① Cookie 面 ----
+
+// Cookie 头值 "a=b; c=d" → 名精确匹配值(无 → "";首匹配胜出;零解码)
+pub fn auth_cookie_get(cookie_hdr: Str, name: Str) -> Str {
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= cookie_hdr.len {
+        var isend: I64 = 0
+        if i == cookie_hdr.len {
+            isend = 1
+        }
+        if isend == 0 {
+            if byte_at(cookie_hdr, i) == 59 {
+                isend = 1
+            }
+        }
+        if isend == 1 {
+            var a = start
+            var b = i
+            while a < b && (byte_at(cookie_hdr, a) == 32 || byte_at(cookie_hdr, a) == 9) {
+                a += 1
+            }
+            while b > a && (byte_at(cookie_hdr, b - 1) == 32 || byte_at(cookie_hdr, b - 1) == 9) {
+                b -= 1
+            }
+            var eq: I32 = a
+            while eq < b && byte_at(cookie_hdr, eq) != 61 {
+                eq += 1
+            }
+            if eq < b {
+                if byte_slice(cookie_hdr, a, eq) == name {
+                    return byte_slice(cookie_hdr, eq + 1, b)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return ""
+}
+
+// RFC 9110 tchar 判(cookie-name 域)
+fn au_tchar(c: I32) -> I64 {
+    if c >= 97 && c <= 122 {
+        return 1
+    }
+    if c >= 65 && c <= 90 {
+        return 1
+    }
+    if c >= 48 && c <= 57 {
+        return 1
+    }
+    if c == 33 || c == 35 || c == 36 || c == 37 || c == 38 || c == 39 || c == 42 || c == 43 {
+        return 1
+    }
+    if c == 45 || c == 46 || c == 94 || c == 95 || c == 96 || c == 124 || c == 126 {
+        return 1
+    }
+    return 0
+}
+
+// Set-Cookie 行(属性序登记见头注①;CRLF 自备)。构造期校验:任一出域
+//   → ""(注入面封口:CR/LF/控制字节/裸逗号分号反斜杠 DQUOTE 不可达)。
+//   maxage < 0 = 会话 cookie(无 Max-Age);>= 0 恒发(0 = 删除面)。
+pub fn auth_cookie_set(name: Str, value: Str, maxage: I64, httponly: I64) -> Str {
+    if name.len < 1 || name.len > 64 {
+        return ""
+    }
+    var i: I32 = 0
+    while i < name.len {
+        if au_tchar(byte_at(name, i)) != 1 {
+            return ""
+        }
+        i += 1
+    }
+    if value.len > 4096 {
+        return ""
+    }
+    i = 0
+    while i < value.len {
+        let c = byte_at(value, i)
+        let octet = c >= 33 && c <= 126
+        let excl = c == 34 || c == 44 || c == 59 || c == 92
+        if !octet || excl {
+            return ""
+        }
+        i += 1
+    }
+    var out = "Set-Cookie: " + name + "=" + value + "; Path=/"
+    if httponly == 1 {
+        out = out + "; HttpOnly"
+    }
+    if maxage >= 0 {
+        out = out + "; Max-Age=" + au_num(maxage)
+    }
+    return out + "; SameSite=Lax\r\n"
+}
+
+// ---- ② 签名会话令牌(csrf 签名对同构,值携过期) ----
+
+pub struct AuthTok {
+    let ok: I64
+    let why: I64
+    let tok: Str
+}
+
+pub fn at_ok(t: AuthTok) -> I64 { return t.ok }
+pub fn at_why(t: AuthTok) -> I64 { return t.why }
+pub fn at_tok(t: AuthTok) -> Str { return t.tok }
+
+// 签发:tok = uid "." exp "." hex(HMAC-SHA256(key, uid "." exp))
+pub fn auth_tok_issue(key: Str, uid: Str, now: I64, ttl: I64) -> AuthTok {
+    if au_uid_ok(uid) != 1 {
+        return AuthTok { ok: 0, why: auth_err_uid(), tok: "" }
+    }
+    let pay = uid + "." + au_num(now + ttl)
+    let sig = bytes_to_hex(hmac_sha256(au_bytes(key), au_bytes(pay)))
+    return AuthTok { ok: 1, why: auth_err_ok(), tok: pay + "." + sig }
+}
+
+pub struct TokVer {
+    let rc: I64
+    let why: I64
+    let uid: Str
+}
+
+pub fn tv_rc(v: TokVer) -> I64 { return v.rc }
+pub fn tv_why(v: TokVer) -> I64 { return v.why }
+pub fn tv_uid(v: TokVer) -> Str { return v.uid }
+
+// 校验:形 → 签名重算恒时比较 → 过期(now >= exp 拒,RFC 7519 §4.1.4 口径)
+pub fn auth_tok_verify(key: Str, tok: Str, now: I64) -> TokVer {
+    if tok.len == 0 {
+        return TokVer { rc: 0, why: auth_err_empty(), uid: "" }
+    }
+    var d1: I32 = -1
+    var d2: I32 = -1
+    var dots: I64 = 0
+    var i: I32 = 0
+    while i < tok.len {
+        if byte_at(tok, i) == 46 {
+            if d1 < 0 {
+                d1 = i
+            } else {
+                if d2 < 0 {
+                    d2 = i
+                }
+            }
+            dots += 1
+        }
+        i += 1
+    }
+    if dots != 2 || d1 <= 0 || d2 <= d1 + 1 || d2 + 1 >= tok.len {
+        return TokVer { rc: 0, why: auth_err_shape(), uid: "" }
+    }
+    let uid = byte_slice(tok, 0, d1)
+    let exps = byte_slice(tok, d1 + 1, d2)
+    let sig = byte_slice(tok, d2 + 1, tok.len)
+    if au_uid_ok(uid) != 1 {
+        return TokVer { rc: 0, why: auth_err_uid(), uid: "" }
+    }
+    if au_dig(exps, 0, exps.len) != 1 {
+        return TokVer { rc: 0, why: auth_err_expnum(), uid: "" }
+    }
+    let exp = au_parse(exps, 0, exps.len)
+    if exp < 0 {
+        return TokVer { rc: 0, why: auth_err_expnum(), uid: "" }
+    }
+    if sig.len != 64 {
+        return TokVer { rc: 0, why: auth_err_sigform(), uid: "" }
+    }
+    var j: I32 = 0
+    while j < 64 {
+        let c = byte_at(sig, j)
+        let lo = (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
+        let up = c >= 65 && c <= 70
+        if !(lo || up) {
+            return TokVer { rc: 0, why: auth_err_sigform(), uid: "" }
+        }
+        j += 1
+    }
+    let want = bytes_to_hex(hmac_sha256(au_bytes(key), au_bytes(uid + "." + exps)))
+    if au_cteq(want, sig) != 1 {
+        return TokVer { rc: 0, why: auth_err_sig(), uid: "" }
+    }
+    if now >= exp {
+        return TokVer { rc: 0, why: auth_err_expired(), uid: "" }
+    }
+    return TokVer { rc: 1, why: auth_err_ok(), uid: uid }
+}
+
+// ---- ③ JWT HS256(RFC 7515/7519;lane-b64url 自出) ----
+
+// b64url 字母表(RFC 4648 §5;`-_`,无填充)
+fn au_b64t() -> Str {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+}
+
+// b64url 编码(入参任意字节面 —— byte_at 逐字节,出参恒 ASCII;无填充)
+pub fn auth_b64url_encode(src: Str) -> Str {
+    var t = au_b64t()
+    var out = ""
+    var i: I32 = 0
+    while i < src.len {
+        var b0: I64 = byte_at(src, i).as[I64]()
+        var has1: I64 = 0
+        var has2: I64 = 0
+        if i + 1 < src.len {
+            has1 = 1
+        }
+        if i + 2 < src.len {
+            has2 = 1
+        }
+        var b1: I64 = 0
+        var b2: I64 = 0
+        if has1 == 1 {
+            b1 = byte_at(src, i + 1).as[I64]()
+        }
+        if has2 == 1 {
+            b2 = byte_at(src, i + 2).as[I64]()
+        }
+        let v = b0 * 65536 + b1 * 256 + b2
+        let c0: I32 = (v / 262144).as[I32]()
+        let c1: I32 = ((v % 262144) / 4096).as[I32]()
+        out = out + byte_slice(t, c0, c0 + 1) + byte_slice(t, c1, c1 + 1)
+        if has1 == 1 {
+            let c2: I32 = ((v % 4096) / 64).as[I32]()
+            out = out + byte_slice(t, c2, c2 + 1)
+        }
+        if has2 == 1 {
+            let c3: I32 = (v % 64).as[I32]()
+            out = out + byte_slice(t, c3, c3 + 1)
+        }
+        i += 3
+    }
+    return out
+}
+
+// b64url 单字符 → 值(0..63;非法 -1)
+fn au_b64v(c: I32) -> I64 {
+    if c >= 65 && c <= 90 {
+        return (c - 65).as[I64]()
+    }
+    if c >= 97 && c <= 122 {
+        return (c - 97 + 26).as[I64]()
+    }
+    if c >= 48 && c <= 57 {
+        return (c - 48 + 52).as[I64]()
+    }
+    if c == 45 {
+        return 62
+    }
+    if c == 95 {
+        return 63
+    }
+    return -1
+}
+
+struct AuBytes {
+    let ok: I64
+    let b: List[I32]
+}
+
+fn au_by_ok(b: List[I32]) -> AuBytes {
+    return AuBytes { ok: 1, b: b }
+}
+
+fn au_by_bad() -> AuBytes {
+    return AuBytes { ok: 0, b: List[I32]() }
+}
+
+// b64url 解码(RFC 7515 严格:无 '='、len%4 != 1、全字母表)。出域 =
+//   List[I32] 字节道(router.ct body 绑定字节道登记同向;Str 表格构建面
+//   载不下 123 '{' 字节,头注③)—— 任意字节载荷可解,claims 扫描走字节。
+fn au_b64d(s: Str) -> AuBytes {
+    if s.len % 4 == 1 {
+        return au_by_bad()
+    }
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        let d0 = au_b64v(byte_at(s, i))
+        if d0 < 0 {
+            return au_by_bad()
+        }
+        if i + 1 >= s.len {
+            out.push(d0.as[I32]() * 4)
+            return au_by_ok(out)
+        }
+        let d1 = au_b64v(byte_at(s, i + 1))
+        if d1 < 0 {
+            return au_by_bad()
+        }
+        if i + 2 >= s.len {
+            let v = d0 * 1024 + d1 * 16
+            if v % 256 != 0 {
+                return au_by_bad()
+            }
+            out.push((v / 256).as[I32]())
+            return au_by_ok(out)
+        }
+        let d2 = au_b64v(byte_at(s, i + 2))
+        if d2 < 0 {
+            return au_by_bad()
+        }
+        if i + 3 >= s.len {
+            let v = d0 * 262144 + d1 * 4096 + d2 * 64
+            if v % 256 != 0 {
+                return au_by_bad()
+            }
+            out.push((v / 65536).as[I32]())
+            out.push(((v % 65536) / 256).as[I32]())
+            return au_by_ok(out)
+        }
+        let d3 = au_b64v(byte_at(s, i + 3))
+        if d3 < 0 {
+            return au_by_bad()
+        }
+        let v4 = d0 * 262144 + d1 * 4096 + d2 * 64 + d3
+        out.push((v4 / 65536).as[I32]())
+        out.push(((v4 % 65536) / 256).as[I32]())
+        out.push((v4 % 256).as[I32]())
+        i += 4
+    }
+    return au_by_ok(out)
+}
+
+// 钉死 JWT header(alg 混淆防护 = 整串字节等值钉形判,头注③)
+pub fn auth_jwt_hdr() -> Str {
+    return "\{\"alg\":\"HS256\",\"typ\":\"JWT\"}"
+}
+
+// 32 字节 hex 摘要 → 43 字符 b64url(RFC 7515 无填充;ws.ct wu_b64_from_hex
+//   URL-safe 变体;hex 长 64 之外调用方纪律)
+fn au_hex_b64u(hex: Str) -> Str {
+    var t = au_b64t()
+    var out = ""
+    var nb: I32 = hex.len / 2
+    var i: I32 = 0
+    while i + 3 <= nb {
+        let b0 = au_hexval(byte_at(hex, i * 2)) * 16 + au_hexval(byte_at(hex, i * 2 + 1))
+        let b1 = au_hexval(byte_at(hex, i * 2 + 2)) * 16 + au_hexval(byte_at(hex, i * 2 + 3))
+        let b2 = au_hexval(byte_at(hex, i * 2 + 4)) * 16 + au_hexval(byte_at(hex, i * 2 + 5))
+        let v = b0 * 65536 + b1 * 256 + b2
+        let c0: I32 = (v / 262144).as[I32]()
+        let c1: I32 = ((v % 262144) / 4096).as[I32]()
+        let c2: I32 = ((v % 4096) / 64).as[I32]()
+        let c3: I32 = (v % 64).as[I32]()
+        out = out + byte_slice(t, c0, c0 + 1) + byte_slice(t, c1, c1 + 1) + byte_slice(t, c2, c2 + 1) + byte_slice(t, c3, c3 + 1)
+        i += 3
+    }
+    if nb - i == 1 {
+        let b0 = au_hexval(byte_at(hex, i * 2)) * 16 + au_hexval(byte_at(hex, i * 2 + 1))
+        let c0: I32 = (b0 / 4).as[I32]()
+        let c1: I32 = (b0 % 4).as[I32]()
+        out = out + byte_slice(t, c0, c0 + 1) + byte_slice(t, c1, c1 + 1)
+    }
+    if nb - i == 2 {
+        let b0 = au_hexval(byte_at(hex, i * 2)) * 16 + au_hexval(byte_at(hex, i * 2 + 1))
+        let b1 = au_hexval(byte_at(hex, i * 2 + 2)) * 16 + au_hexval(byte_at(hex, i * 2 + 3))
+        let c0: I32 = (b0 / 4).as[I32]()
+        let c1: I32 = ((b0 % 4) * 16 + b1 / 16).as[I32]()
+        let c2: I32 = ((b1 % 16) * 4).as[I32]()
+        out = out + byte_slice(t, c0, c0 + 1) + byte_slice(t, c1, c1 + 1) + byte_slice(t, c2, c2 + 1)
+    }
+    return out
+}
+
+fn au_hexval(c: I32) -> I64 {
+    if c >= 48 && c <= 57 {
+        return (c - 48).as[I64]()
+    }
+    if c >= 97 && c <= 102 {
+        return (c - 87).as[I64]()
+    }
+    if c >= 65 && c <= 70 {
+        return (c - 55).as[I64]()
+    }
+    return -1
+}
+
+// claims 平面扫描结果(k: 1 命中 / 0 缺 / -1 命中但值非整数形;首现胜出)
+pub struct AuthClaim {
+    let k: I64
+    let v: I64
+}
+
+pub fn ac_k(c: AuthClaim) -> I64 { return c.k }
+pub fn ac_v(c: AuthClaim) -> I64 { return c.v }
+
+// 十进制段 → I64(字节道;越 18 位拒)
+fn au_parse_b(pb: List[I32], a: I32, b: I32) -> I64 {
+    if b - a > 18 || b - a <= 0 {
+        return -1
+    }
+    var acc: I64 = 0
+    var i: I32 = a
+    while i < b {
+        acc = (acc + 4294967296 - 4294967296) * 10 + (pb[i] - 48).as[I64]()
+        i += 1
+    }
+    return acc
+}
+
+// 平面 claims 扫描(字节道):`"name"` `:` ws* [-]?digits 终止于 [,!}\s/文末]
+//   (语义限制见头注③:首现胜出;字符串值内引号假象登记 v1)
+fn au_claim_b(pb: List[I32], plen: I32, name: Str) -> AuthClaim {
+    if name.len == 0 {
+        return AuthClaim { k: 0, v: 0 }
+    }
+    var i: I32 = 0
+    while i + name.len + 2 <= plen {
+        if pb[i] == 34 && pb[i + name.len + 1] == 34 {
+            var m: I64 = 1
+            var j: I32 = 0
+            while j < name.len {
+                if pb[i + 1 + j] != byte_at(name, j) {
+                    m = 0
+                }
+                j += 1
+            }
+            if m == 1 {
+                var c: I32 = i + name.len + 2
+                while c < plen && (pb[c] == 32 || pb[c] == 9) {
+                    c += 1
+                }
+                if c < plen && pb[c] == 58 {
+                    c += 1
+                    while c < plen && (pb[c] == 32 || pb[c] == 9) {
+                        c += 1
+                    }
+                    var neg: I64 = 0
+                    if c < plen && pb[c] == 45 {
+                        neg = 1
+                        c += 1
+                    }
+                    var d0: I32 = c
+                    while c < plen && pb[c] >= 48 && pb[c] <= 57 {
+                        c += 1
+                    }
+                    var term: I64 = 0
+                    if c >= plen {
+                        term = 1
+                    }
+                    if c < plen {
+                        let t = pb[c]
+                        if t == 44 || t == 125 || t == 93 || t == 32 || t == 9 {
+                            term = 1
+                        }
+                    }
+                    if c > d0 && term == 1 {
+                        let v = au_parse_b(pb, d0, c)
+                        if v < 0 {
+                            return AuthClaim { k: -1, v: 0 }
+                        }
+                        if neg == 1 {
+                            return AuthClaim { k: 1, v: 0 - v }
+                        }
+                        return AuthClaim { k: 1, v: v }
+                    }
+                    return AuthClaim { k: -1, v: 0 }
+                }
+            }
+        }
+        i += 1
+    }
+    return AuthClaim { k: 0, v: 0 }
+}
+
+// 公开面(载荷 Str 域;composition 侧查询)—— 字节道同一扫描
+pub fn auth_jwt_claim(payload: Str, name: Str) -> AuthClaim {
+    return au_claim_b(au_bytes(payload), payload.len, name)
+}
+
+// JWT 签发(结果面 = AuthTok 复用,at_* getter):tok = b64u(hdr) "." 
+//   b64u(payload) "." b64u(HMAC-SHA256(key, hdr_b64 "." pay_b64))(载荷逐字
+//   签入,本模块不校验载荷 JSON —— composition 层经 std/json write 面产出,
+//   登记头注③)
+pub fn auth_jwt_sign(key: Str, payload: Str) -> AuthTok {
+    if payload.len == 0 {
+        return AuthTok { ok: 0, why: auth_err_empty(), tok: "" }
+    }
+    let h = au_hdr_b64()
+    let p = auth_b64url_encode(payload)
+    let si = h + "." + p
+    let sig = au_hex_b64u(bytes_to_hex(hmac_sha256(au_bytes(key), au_bytes(si))))
+    return AuthTok { ok: 1, why: auth_err_ok(), tok: si + "." + sig }
+}
+
+// 钉死 header 的 b64url 形(常量;校验面以收报首段整串等值钉形判 —— 
+//   alg 混淆防护:alg=none/HS512/RS256/字段增删一概异形即拒)
+pub fn auth_jwt_hdr_b64() -> Str {
+    return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+}
+
+fn au_hdr_b64() -> Str {
+    return auth_jwt_hdr_b64()
+}
+
+pub struct JwtVer {
+    let rc: I64
+    let why: I64
+}
+
+pub fn jwt_rc(v: JwtVer) -> I64 { return v.rc }
+pub fn jwt_why(v: JwtVer) -> I64 { return v.why }
+
+// 校验序(登记):空/形 → b64url 三段形 → header 钉形(整串等值,alg 混淆
+//   拒)→ 签名重算恒时比较(编码域)→ 载荷解码(字节道)→ exp → nbf → 
+//   iat。claims 皆缺省可过(RFC 7519 不强制;required 模式列志向)。
+pub fn auth_jwt_verify(key: Str, tok: Str, now: I64) -> JwtVer {
+    if tok.len == 0 {
+        return JwtVer { rc: 0, why: auth_err_empty() }
+    }
+    var d1: I32 = -1
+    var d2: I32 = -1
+    var dots: I64 = 0
+    var i: I32 = 0
+    while i < tok.len {
+        if byte_at(tok, i) == 46 {
+            if d1 < 0 {
+                d1 = i
+            } else {
+                if d2 < 0 {
+                    d2 = i
+                }
+            }
+            dots += 1
+        }
+        i += 1
+    }
+    if dots != 2 || d1 <= 0 || d2 <= d1 + 1 || d2 + 1 >= tok.len {
+        return JwtVer { rc: 0, why: auth_err_shape() }
+    }
+    let h = byte_slice(tok, 0, d1)
+    let p = byte_slice(tok, d1 + 1, d2)
+    let sg = byte_slice(tok, d2 + 1, tok.len)
+    if h != au_hdr_b64() {
+        return JwtVer { rc: 0, why: auth_err_alg() }
+    }
+    let want = au_hex_b64u(bytes_to_hex(hmac_sha256(au_bytes(key), au_bytes(h + "." + p))))
+    if au_cteq(want, sg) != 1 {
+        return JwtVer { rc: 0, why: auth_err_sig() }
+    }
+    let pd = au_b64d(p)
+    if pd.ok != 1 {
+        return JwtVer { rc: 0, why: auth_err_b64() }
+    }
+    let plen: I32 = pd.b.len
+    let ce = au_claim_b(pd.b, plen, "exp")
+    if ce.k < 0 {
+        return JwtVer { rc: 0, why: auth_err_claim() }
+    }
+    if ce.k == 1 && now >= ce.v {
+        return JwtVer { rc: 0, why: auth_err_expired() }
+    }
+    let cn = au_claim_b(pd.b, plen, "nbf")
+    if cn.k < 0 {
+        return JwtVer { rc: 0, why: auth_err_claim() }
+    }
+    if cn.k == 1 && now < cn.v {
+        return JwtVer { rc: 0, why: auth_err_nbf() }
+    }
+    let ci = au_claim_b(pd.b, plen, "iat")
+    if ci.k < 0 {
+        return JwtVer { rc: 0, why: auth_err_claim() }
+    }
+    if ci.k == 1 && ci.v > now {
+        return JwtVer { rc: 0, why: auth_err_iat() }
+    }
+    return JwtVer { rc: 1, why: auth_err_ok() }
+}
+
+// ---- ④ own 盒会话存储(显式值状态;8 槽定容;空槽 = sid "") ----
+
+pub struct SessStore {
+    let n: I64
+    let e0: I64
+    let e1: I64
+    let e2: I64
+    let e3: I64
+    let e4: I64
+    let e5: I64
+    let e6: I64
+    let e7: I64
+    let s0: Str
+    let s1: Str
+    let s2: Str
+    let s3: Str
+    let s4: Str
+    let s5: Str
+    let s6: Str
+    let s7: Str
+    let r0: Str
+    let r1: Str
+    let r2: Str
+    let r3: Str
+    let r4: Str
+    let r5: Str
+    let r6: Str
+    let r7: Str
+}
+
+pub fn auth_sess_cap() -> I64 { return 8 }
+
+pub fn auth_sess_new() -> SessStore {
+    return SessStore { n: 0, e0: 0, e1: 0, e2: 0, e3: 0, e4: 0, e5: 0, e6: 0, e7: 0, s0: "", s1: "", s2: "", s3: "", s4: "", s5: "", s6: "", s7: "", r0: "", r1: "", r2: "", r3: "", r4: "", r5: "", r6: "", r7: "" }
+}
+
+// 槽 getter(内部;跨模块消费经 auth_sess_get 面,不导槽)
+fn au_s_st(t: SessStore, k: I64) -> Str {
+    if k == 0 { return t.s0 }
+    if k == 1 { return t.s1 }
+    if k == 2 { return t.s2 }
+    if k == 3 { return t.s3 }
+    if k == 4 { return t.s4 }
+    if k == 5 { return t.s5 }
+    if k == 6 { return t.s6 }
+    if k == 7 { return t.s7 }
+    return ""
+}
+
+fn au_e_st(t: SessStore, k: I64) -> I64 {
+    if k == 0 { return t.e0 }
+    if k == 1 { return t.e1 }
+    if k == 2 { return t.e2 }
+    if k == 3 { return t.e3 }
+    if k == 4 { return t.e4 }
+    if k == 5 { return t.e5 }
+    if k == 6 { return t.e6 }
+    if k == 7 { return t.e7 }
+    return 0
+}
+
+fn au_r_st(t: SessStore, k: I64) -> Str {
+    if k == 0 { return t.r0 }
+    if k == 1 { return t.r1 }
+    if k == 2 { return t.r2 }
+    if k == 3 { return t.r3 }
+    if k == 4 { return t.r4 }
+    if k == 5 { return t.r5 }
+    if k == 6 { return t.r6 }
+    if k == 7 { return t.r7 }
+    return ""
+}
+
+// 单槽写 = 值整体重建((h) 缺口绕行;8 槽展开)
+fn au_st_put(t: SessStore, k: I64, e: I64, s: Str, r: Str) -> SessStore {
+    var n = t.n
+    if au_s_st(t, k) == "" && s != "" {
+        n = t.n + 1
+    }
+    if au_s_st(t, k) != "" && s == "" {
+        n = t.n - 1
+    }
+    if k == 0 { return SessStore { n: n, e0: e, e1: t.e1, e2: t.e2, e3: t.e3, e4: t.e4, e5: t.e5, e6: t.e6, e7: t.e7, s0: s, s1: t.s1, s2: t.s2, s3: t.s3, s4: t.s4, s5: t.s5, s6: t.s6, s7: t.s7, r0: r, r1: t.r1, r2: t.r2, r3: t.r3, r4: t.r4, r5: t.r5, r6: t.r6, r7: t.r7 } }
+    if k == 1 { return SessStore { n: n, e0: t.e0, e1: e, e2: t.e2, e3: t.e3, e4: t.e4, e5: t.e5, e6: t.e6, e7: t.e7, s0: t.s0, s1: s, s2: t.s2, s3: t.s3, s4: t.s4, s5: t.s5, s6: t.s6, s7: t.s7, r0: t.r0, r1: r, r2: t.r2, r3: t.r3, r4: t.r4, r5: t.r5, r6: t.r6, r7: t.r7 } }
+    if k == 2 { return SessStore { n: n, e0: t.e0, e1: t.e1, e2: e, e3: t.e3, e4: t.e4, e5: t.e5, e6: t.e6, e7: t.e7, s0: t.s0, s1: t.s1, s2: s, s3: t.s3, s4: t.s4, s5: t.s5, s6: t.s6, s7: t.s7, r0: t.r0, r1: t.r1, r2: r, r3: t.r3, r4: t.r4, r5: t.r5, r6: t.r6, r7: t.r7 } }
+    if k == 3 { return SessStore { n: n, e0: t.e0, e1: t.e1, e2: t.e2, e3: e, e4: t.e4, e5: t.e5, e6: t.e6, e7: t.e7, s0: t.s0, s1: t.s1, s2: t.s2, s3: s, s4: t.s4, s5: t.s5, s6: t.s6, s7: t.s7, r0: t.r0, r1: t.r1, r2: t.r2, r3: r, r4: t.r4, r5: t.r5, r6: t.r6, r7: t.r7 } }
+    if k == 4 { return SessStore { n: n, e0: t.e0, e1: t.e1, e2: t.e2, e3: t.e3, e4: e, e5: t.e5, e6: t.e6, e7: t.e7, s0: t.s0, s1: t.s1, s2: t.s2, s3: t.s3, s4: s, s5: t.s5, s6: t.s6, s7: t.s7, r0: t.r0, r1: t.r1, r2: t.r2, r3: t.r3, r4: r, r5: t.r5, r6: t.r6, r7: t.r7 } }
+    if k == 5 { return SessStore { n: n, e0: t.e0, e1: t.e1, e2: t.e2, e3: t.e3, e4: t.e4, e5: e, e6: t.e6, e7: t.e7, s0: t.s0, s1: t.s1, s2: t.s2, s3: t.s3, s4: t.s4, s5: s, s6: t.s6, s7: t.s7, r0: t.r0, r1: t.r1, r2: t.r2, r3: t.r3, r4: t.r4, r5: r, r6: t.r6, r7: t.r7 } }
+    if k == 6 { return SessStore { n: n, e0: t.e0, e1: t.e1, e2: t.e2, e3: t.e3, e4: t.e4, e5: t.e5, e6: e, e7: t.e7, s0: t.s0, s1: t.s1, s2: t.s2, s3: t.s3, s4: t.s4, s5: t.s5, s6: s, s7: t.s7, r0: t.r0, r1: t.r1, r2: t.r2, r3: t.r3, r4: t.r4, r5: t.r5, r6: r, r7: t.r7 } }
+    if k == 7 { return SessStore { n: n, e0: t.e0, e1: t.e1, e2: t.e2, e3: t.e3, e4: t.e4, e5: t.e5, e6: t.e6, e7: e, s0: t.s0, s1: t.s1, s2: t.s2, s3: t.s3, s4: t.s4, s5: t.s5, s6: t.s6, s7: s, r0: t.r0, r1: t.r1, r2: t.r2, r3: t.r3, r4: t.r4, r5: t.r5, r6: t.r6, r7: r } }
+    return t
+}
+
+pub struct SessPut {
+    let ok: I64
+    let why: I64
+    let st: SessStore
+}
+
+pub fn sp_ok(p: SessPut) -> I64 { return p.ok }
+pub fn sp_why(p: SessPut) -> I64 { return p.why }
+pub fn sp_st(p: SessPut) -> SessStore { return p.st }
+
+// upsert:同 sid 原槽替换;新 sid 落首空槽,次占首个过期槽(now >= e);
+//   满 → ok=0/why=14 原样返回(逐出策略归组合层)
+pub fn auth_sess_put(t: SessStore, sid: Str, user: Str, now: I64, ttl: I64) -> SessPut {
+    if au_uid_ok(sid) != 1 {
+        return SessPut { ok: 0, why: auth_err_uid(), st: t }
+    }
+    var k: I64 = 0
+    while k < auth_sess_cap() {
+        if au_s_st(t, k) == sid {
+            return SessPut { ok: 1, why: auth_err_ok(), st: au_st_put(t, k, now + ttl, sid, user) }
+        }
+        k += 1
+    }
+    k = 0
+    while k < auth_sess_cap() {
+        if au_s_st(t, k) == "" {
+            return SessPut { ok: 1, why: auth_err_ok(), st: au_st_put(t, k, now + ttl, sid, user) }
+        }
+        k += 1
+    }
+    k = 0
+    while k < auth_sess_cap() {
+        if now >= au_e_st(t, k) {
+            return SessPut { ok: 1, why: auth_err_ok(), st: au_st_put(t, k, now + ttl, sid, user) }
+        }
+        k += 1
+    }
+    return SessPut { ok: 0, why: auth_err_full(), st: t }
+}
+
+pub struct SessGet {
+    let rc: I64
+    let user: Str
+}
+
+pub fn sg_rc(g: SessGet) -> I64 { return g.rc }
+pub fn sg_user(g: SessGet) -> Str { return g.user }
+
+// 取:1 命中有效(now < e)/ 0 miss / -1 过期(删否归组合层)
+pub fn auth_sess_get(t: SessStore, sid: Str, now: I64) -> SessGet {
+    var k: I64 = 0
+    while k < auth_sess_cap() {
+        if au_s_st(t, k) == sid {
+            if now >= au_e_st(t, k) {
+                return SessGet { rc: -1, user: au_r_st(t, k) }
+            }
+            return SessGet { rc: 1, user: au_r_st(t, k) }
+        }
+        k += 1
+    }
+    return SessGet { rc: 0, user: "" }
+}
+
+// 删(不存在原样返回)
+pub fn auth_sess_del(t: SessStore, sid: Str) -> SessStore {
+    var k: I64 = 0
+    while k < auth_sess_cap() {
+        if au_s_st(t, k) == sid {
+            return au_st_put(t, k, 0, "", "")
+        }
+        k += 1
+    }
+    return t
+}
+
+// 清扫过期(now >= e 全删;组合层周期驱动的便捷面)
+pub fn auth_sess_gc(t: SessStore, now: I64) -> SessStore {
+    var out = t
+    var k: I64 = 0
+    while k < auth_sess_cap() {
+        if au_s_st(out, k) != "" && now >= au_e_st(out, k) {
+            out = au_st_put(out, k, 0, "", "")
+        }
+        k += 1
+    }
+    return out
+}
+
+// 活跃会话数
+pub fn auth_sess_len(t: SessStore) -> I64 {
+    return t.n
+}
+
+// ---- inline tests(正反全语料见 tests/http/frm_auth) ----
+
+test "hmac rfc4231 tc2 pin" {
+    let d = bytes_to_hex(hmac_sha256(au_bytes("Jefe"), au_bytes("what do ya want for nothing?")))
+    assert(d == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+}
+
+test "cookie get set" {
+    let hdr = "a=1; sid=abc-123_X; t=2"
+    assert(auth_cookie_get(hdr, "sid") == "abc-123_X")
+    assert(auth_cookie_get(hdr, "nope") == "")
+    assert(auth_cookie_get("x=%2F", "x") == "%2F")
+    // Set-Cookie 形(属性序钉:Path=/; HttpOnly; Max-Age; SameSite=Lax)
+    assert(auth_cookie_set("sid", "abc", 3600, 1) == "Set-Cookie: sid=abc; Path=/; HttpOnly; Max-Age=3600; SameSite=Lax\r\n")
+    assert(auth_cookie_set("sid", "abc", -1, 0) == "Set-Cookie: sid=abc; Path=/; SameSite=Lax\r\n")
+    // Max-Age=0 = 删除面
+    assert(auth_cookie_set("sid", "x", 0, 0) == "Set-Cookie: sid=x; Path=/; Max-Age=0; SameSite=Lax\r\n")
+    // 构造拒 = 注入面封口(CR/LF/分号/DQUOTE/空名/出域字节)
+    assert(auth_cookie_set("si\r\nd", "abc", 1, 1) == "")
+    assert(auth_cookie_set("sid", "a\r\nX-Evil: 1", 1, 1) == "")
+    assert(auth_cookie_set("sid", "a;b", 1, 1) == "")
+    assert(auth_cookie_set("sid", "\"q\"", 1, 1) == "")
+    assert(auth_cookie_set("", "a", 1, 1) == "")
+    assert(auth_cookie_set("sid", "ca\u{07}fe", 1, 1) == "")
+}
+
+test "tok roundtrip expiry tamper" {
+    let t = auth_tok_issue("k0", "u-42", 1000, 500)
+    assert(at_ok(t) == 1 && at_tok(t).len > 0)
+    let v = auth_tok_verify("k0", at_tok(t), 1499)
+    assert(tv_rc(v) == 1)
+    // 边界:now == exp 即拒(RFC 7519「须早于」口径)
+    assert(tv_why(auth_tok_verify("k0", at_tok(t), 1500)) == auth_err_expired())
+    // 密钥错 / sig 位翻 → 恒时比较面拒
+    assert(tv_why(auth_tok_verify("k1", at_tok(t), 1100)) == auth_err_sig())
+    let vok = auth_tok_verify("k0", at_tok(t), 1100)
+    assert(tv_rc(vok) == 1 && tv_uid(vok) == "u-42")
+    let tok = at_tok(t)
+    var flip: Str = "0"
+    if byte_at(tok, tok.len - 1) == 48 {
+        flip = "1"
+    }
+    let tam = byte_slice(tok, 0, tok.len - 1) + flip
+    assert(tv_why(auth_tok_verify("k0", tam, 1100)) == auth_err_sig())
+    // 形坏矩阵
+    assert(tv_why(auth_tok_verify("k0", "", 1)) == auth_err_empty())
+    assert(tv_why(auth_tok_verify("k0", "nodot", 1)) == auth_err_shape())
+    assert(tv_why(auth_tok_verify("k0", "a.b", 1)) == auth_err_shape())
+    assert(tv_why(auth_tok_verify("k0", "a.b.c.d", 1)) == auth_err_shape())
+    assert(tv_why(auth_tok_verify("k0", "u!x.100.aaaa", 1)) == auth_err_uid())
+    assert(tv_why(auth_tok_verify("k0", "ux.1x0.aaaa", 1)) == auth_err_expnum())
+    assert(tv_why(auth_tok_verify("k0", "ux.100.a", 1)) == auth_err_sigform())
+    // 签发域拒:uid 空/超 64
+    assert(at_ok(auth_tok_issue("k0", "", 1, 1)) == 0)
+    assert(at_ok(auth_tok_issue("k0", "u.", 1, 1)) == 0)
+}
+
+// 解码字节面 ↔ Str 等值(测试助手;逐字节对拍)
+fn au_dec_is(d: AuBytes, s: Str) -> I64 {
+    if d.ok != 1 || d.b.len != s.len {
+        return 0
+    }
+    var i: I32 = 0
+    while i < s.len {
+        if d.b[i] != byte_at(s, i) {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+test "b64url roundtrip and gates" {
+    assert(auth_b64url_encode("") == "")
+    assert(auth_b64url_encode("f") == "Zg")
+    assert(auth_b64url_encode("fo") == "Zm8")
+    assert(auth_b64url_encode("foo") == "Zm9v")
+    assert(auth_b64url_encode("foob") == "Zm9vYg")
+    assert(auth_b64url_encode("fooba") == "Zm9vYmE")
+    assert(auth_b64url_encode("foobar") == "Zm9vYmFy")
+    // 解码字节道(RFC 4648 向量回程)
+    assert(au_dec_is(au_b64d("Zm9vYmFy"), "foobar") == 1)
+    assert(au_dec_is(au_b64d("Zm8"), "fo") == 1)
+    assert(au_dec_is(au_b64d("Zg"), "f") == 1)
+    assert(au_dec_is(au_b64d(""), "") == 1)
+    // '=' 填充拒(RFC 7515 严格)/ len%4==1 拒 / 字母表外拒
+    assert(au_b64d("Zg==").ok == 0)
+    assert(au_b64d("Z").ok == 0)
+    assert(au_b64d("Zm+v").ok == 0)
+    // 悬位非零拒(canonical:尾部残余位须零;Zm9 = "fo" 带脏位 01)
+    assert(au_b64d("Zm9").ok == 0)
+}
+
+test "jwt sign verify claims" {
+    // 钉形常量与字面 header 编码互钉(漂移即断)
+    assert(auth_b64url_encode(auth_jwt_hdr()) == auth_jwt_hdr_b64())
+    // 黄金向量(composition 产载荷;python hmac/b64url 对拍)
+    let tok = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1NDIiLCJuYW1lIjoiWm9lIiwiYWRtaW4iOmZhbHNlLCJuIjo3fQ.FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MI"
+    let v = auth_jwt_verify("s3cret-key", tok, 1000)
+    assert(jwt_rc(v) == 1 && jwt_why(v) == auth_err_ok())
+    // 公开 claim 扫描面(Str 域):字符串/布尔值不在数字扫域(k=-1),数值保真
+    let jpl = "\{\"sub\":\"u42\",\"name\":\"Zoe\",\"admin\":false,\"n\":7}"
+    assert(ac_k(auth_jwt_claim(jpl, "admin")) == -1)
+    // 数值 claim 保真 + 缺失
+    assert(ac_k(auth_jwt_claim(jpl, "n")) == 1 && ac_v(auth_jwt_claim(jpl, "n")) == 7)
+    assert(ac_k(auth_jwt_claim(jpl, "nope")) == 0)
+    // 本模块签发往返(载荷含 claims 三件)
+    let pay = "\{\"sub\":\"u1\",\"exp\":2000,\"nbf\":500,\"iat\":900}"
+    let t = auth_jwt_sign("k0", pay)
+    assert(at_ok(t) == 1)
+    let v2 = auth_jwt_verify("k0", at_tok(t), 1000)
+    assert(jwt_rc(v2) == 1)
+    // 密钥错 / sig 篡改
+    assert(jwt_why(auth_jwt_verify("k1", at_tok(t), 1000)) == auth_err_sig())
+    let raw = at_tok(t)
+    var flip: Str = "A"
+    if byte_at(raw, raw.len - 1) == 65 {
+        flip = "B"
+    }
+    let tam = byte_slice(raw, 0, raw.len - 1) + flip
+    assert(jwt_why(auth_jwt_verify("k0", tam, 1000)) == auth_err_sig())
+    // 过期 / nbf 未生效 / iat 在未来
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t), 2000)) == auth_err_expired())
+    let pay3 = "\{\"sub\":\"u1\",\"exp\":5000,\"nbf\":1500,\"iat\":900}"
+    let t3 = auth_jwt_sign("k0", pay3)
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t3), 1000)) == auth_err_nbf())
+    let pay4 = "\{\"sub\":\"u1\",\"exp\":5000,\"nbf\":500,\"iat\":1500}"
+    let t4 = auth_jwt_sign("k0", pay4)
+    assert(jwt_why(auth_jwt_verify("k0", at_tok(t4), 1000)) == auth_err_iat())
+    // claims 皆缺 → 可过(exp 可选登记)
+    let t5 = auth_jwt_sign("k0", "\{\"sub\":\"u1\"}")
+    assert(jwt_rc(auth_jwt_verify("k0", at_tok(t5), 9000)) == 1)
+    // 形坏 / b64 域坏
+    assert(jwt_why(auth_jwt_verify("k0", "", 1)) == auth_err_empty())
+    assert(jwt_why(auth_jwt_verify("k0", "a.b", 1)) == auth_err_shape())
+    assert(jwt_why(auth_jwt_verify("k0", "a.b.c.d", 1)) == auth_err_shape())
+    // 空 payload 签发拒
+    assert(at_ok(auth_jwt_sign("k0", "")) == 0)
+}
+
+test "jwt alg confusion rejected" {
+    let p = auth_b64url_encode("\{\"sub\":\"u1\",\"exp\":9000}")
+    // alg=none(RFC 7515 §6 禁无签名;空 sig 段亦形坏)
+    let hn = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"
+    let none_tok = hn + "." + p + "."
+    assert(jwt_why(auth_jwt_verify("k0", none_tok, 1000)) == auth_err_shape())
+    // alg=none 带伪 sig:header 解出非钉形 → auth_err_alg(alg 混淆防护)
+    let none_tok2 = hn + "." + p + ".FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    assert(jwt_why(auth_jwt_verify("k0", none_tok2, 1000)) == auth_err_alg())
+    // HS256 钉 header 换 HS512 同拒(钉形整串判,无 alg 白名单旁路)
+    let h5 = auth_b64url_encode("\{\"alg\":\"HS512\",\"typ\":\"JWT\"}")
+    let tok5 = h5 + "." + p + ".FkzYgiR-xHxI46AVkGOpylON4aroFDh4AxPSWbHt4MA"
+    assert(jwt_why(auth_jwt_verify("k0", tok5, 1000)) == auth_err_alg())
+}
+
+test "sess store put get del gc full" {
+    var st = auth_sess_new()
+    assert(auth_sess_len(st) == 0)
+    // put × 3(组合层注 sid;时钟注入)
+    let qa = auth_sess_put(st, "sid-aaa", "alice", 1000, 500)
+    assert(sp_ok(qa) == 1)
+    st = sp_st(qa)
+    let qb = auth_sess_put(st, "sid-bbb", "bob", 1000, 900)
+    st = sp_st(qb)
+    let qc = auth_sess_put(st, "sid-ccc", "carol", 1000, 900)
+    st = sp_st(qc)
+    assert(auth_sess_len(st) == 3)
+    // get:有效 / miss
+    assert(sg_rc(auth_sess_get(st, "sid-aaa", 1200)) == 1 && sg_user(auth_sess_get(st, "sid-aaa", 1200)) == "alice")
+    assert(sg_rc(auth_sess_get(st, "sid-zzz", 1200)) == 0)
+    // upsert:同 sid 替换(用户面更新,n 不涨)
+    let pu = auth_sess_put(st, "sid-aaa", "alice2", 1200, 500)
+    st = sp_st(pu)
+    assert(auth_sess_len(st) == 3 && sg_user(auth_sess_get(st, "sid-aaa", 1200)) == "alice2")
+    // 过期边界:now >= e 即过期(-1);过期槽可被 put 复用
+    assert(sg_rc(auth_sess_get(st, "sid-aaa", 1700)) == -1)
+    // 灌满 8 槽 → 满拒
+    var full = st
+    var i: I64 = 0
+    while i < 8 {
+        let pf = auth_sess_put(full, "fill-" + au_num(i), "u" + au_num(i), 2000, 1000)
+        full = sp_st(pf)
+        i += 1
+    }
+    let over = auth_sess_put(full, "sid-ooo", "oot", 2000, 1000)
+    assert(sp_ok(over) == 0 && sp_why(over) == auth_err_full())
+    assert(sp_st(over).n == auth_sess_len(full))
+    // 满后过期槽复用(gc → 空位)
+    let g = auth_sess_gc(full, 4000)
+    assert(auth_sess_len(g) == 0)
+    let pr = auth_sess_put(g, "sid-ooo", "oot", 4000, 100)
+    assert(sp_ok(pr) == 1 && sg_rc(auth_sess_get(sp_st(pr), "sid-ooo", 4050)) == 1)
+    // del + 幂等
+    let d = auth_sess_del(sp_st(pr), "sid-ooo")
+    assert(auth_sess_len(d) == 0 && sg_rc(auth_sess_get(d, "sid-ooo", 4000)) == 0)
+    assert(auth_sess_len(auth_sess_del(d, "sid-ooo")) == 0)
+    // sid 域拒(非法字符 / 超 64)
+    assert(sp_ok(auth_sess_put(st, "x!", "u", 1, 1)) == 0)
+    assert(sp_why(auth_sess_put(st, "x!", "u", 1, 1)) == auth_err_uid())
+    assert(sp_ok(auth_sess_put(st, "0123456789012345678901234567890123456789012345678901234567890123X", "u", 1, 1)) == 0)
+}

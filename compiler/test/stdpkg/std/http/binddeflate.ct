@@ -1,0 +1,18 @@
+// std/http/binddeflate.ct - ctron_deflate.c shim extern surface (P4-B)
+// 纪律:参数单行(C 宿主解析器);句柄全程 I64;单行 extern 白名单形参,
+// std/tls/bind.ct 同款。可见性注:pub extern 而非 #[trusted] 组合语法的理由
+// 同 tls/net bind.ct 头注(loader use 可见性仅认 FnExt+pub 尾槽)。
+// 模块名注:任务书原形 bind-deflate.ct —— use 路径词法不含 '-'(实证:use
+// 解析段码撞减号即宿主崩,segv,登记 divergences 新发现),改 binddeflate。
+// 边界形态(依 tls bind.ct 既有登记):
+//   - 缓冲 = &I64[] 视图 lane 双向(ct_view6 {d,n} 按值;ctron_deflate.c 头注);
+//     故本表 extern 在解释口径不可调(interp extern 桥仅标量帧 "i:/s:",
+//     eval_call.ct W4 E1)—— enc 压缩面夹具走 emit 臂,tests/http/run.sh 登记;
+//   - rc:>0 = 字节数(crc32 = 新 crc);<0 失败码(-1 参数/-2 容量护栏/-3 损坏);
+//     0 不可达(空流仍 ≥2 字节);详细分工见 ctron_deflate.c 文件头;
+//   - raw deflate 口径:zlib/gzip 容器组框在 std/http/enc.ct 纯层。
+// 解释口径符号源:ctron-cc 未链本垫片(仅 GUI 域),dlsym 亦无 —— 解释臂
+// 不可用为【结构性】约束,非临时态(登记于 tests/http/run.sh enc 块头注)。
+pub extern "c" fn ctron_deflate_compress(in: &I64[], in_n: I64, out: &I64[], out_off: I64, out_cap: I64, level: I64) -> I64
+pub extern "c" fn ctron_deflate_decompress(in: &I64[], in_n: I64, in_off: I64, out: &I64[], out_cap: I64) -> I64
+pub extern "c" fn ctron_deflate_crc32(in: &I64[], in_n: I64, in_off: I64, crc: I64) -> I64

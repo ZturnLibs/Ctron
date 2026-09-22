@@ -30,6 +30,7 @@ extern "c" fn gui_open() -> I32
 extern "c" fn gui_close() -> I32
 
 #[trusted]
+// 形参 I32:与解释桥 int×N cast(栈参 4 字节步长)及 shim int 形参三层一致
 extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
                       wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32) -> I32
 
