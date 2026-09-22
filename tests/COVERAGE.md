@@ -312,7 +312,8 @@ R-P2d `ctron fmt` 由 Rust 宿主移植至 C 宿主与自举编译器,三宿主�
 | C 宿主 | `compiler-c/src/fmt.{c,h}` + `ctronc fmt`(完整 CLI 契约)+ `tests/suite_fmt.c` | 11 金样(R4 期望按 Rust 参考冻结)+ 语料幂等 160 + trans 等价代理 69 + 词法脏报错 1;`make -C compiler-c test` 挂载 |
 | 自举 | `compiler/src/fmt.ct` + `scan5`(lex.ct 加法改造:原始流+字节 span+注释 span)+ `driver_fmt.ct` → `bin/ctron-fmt` | 金样钉子 `compiler/test/fx_fmt_golden.{ct,expected}`(smoke 3f:金样逐字节/native==seed 双口径/幂等/R8 负例);`ctc fmt`(-w/--check/pkg 目录)契约 5 断言入 ctc_smoke 第 9 段 |
 | 对拍 | `tests/fmt/parity.sh` | 三宿主(Rust 参考/C 宿主/自举)tests 160 + std/examples 45 逐字节零分歧;词法脏一致报错 1 |
-| 语义对齐裁决 | `.or(` 成员位置紧贴(Rust lexer prev_is_dot 上下文)、CRLF 注释尾 `\r` 修剪、`...` 逗号后紧贴 | 以 Rust 参考实现输出为真值冻结;spec R4"链断行相对缩进 1 级"为 v1 遗留(现行实现=同缩进延续,r2d_fmt_chain 形态即权威) |
+| 语义对齐裁决 | `.or(` 成员位置紧贴(Rust lexer prev_is_dot 上下文)、CRLF 注释尾 `\r` 修剪、`...` 逗号后紧贴 | 以 Rust 参考实现输出为真值冻结 |
+| R4 v1 定版(2026-09-21 用户裁决) | 链断行相对缩进 1 级三宿主同步落地 | spec R4 文字与实现自此一致;金样/套件期望已重冻结,parity 303 绿零分歧 |
 
 已知红账(非本面):smoke conc_fs / std 快照漂移 / fs 种子单测(HEAD 既有,net·fs 泳道);
 suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_suite 01i(Rust 侧既有)。

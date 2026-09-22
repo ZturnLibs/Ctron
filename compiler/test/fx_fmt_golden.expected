@@ -17,9 +17,9 @@ fn a() {}
 
 fn g(xs: List[I32]) -> I32 {
     return xs
-    .map(twice)
-    .filter(gt0)
-    .len()
+        .map(twice)
+        .filter(gt0)
+        .len()
 }
 
 fn h(n: I32) -> Str {

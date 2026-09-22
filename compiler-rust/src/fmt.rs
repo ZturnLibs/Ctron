@@ -214,7 +214,7 @@ impl<'a> Emitter<'a> {
                 continue;
             }
             self.emit_comments_before(span.start);
-            if tok != Tok::Else {
+            if tok != Tok::Else && tok != Tok::Dot {
                 self.apply_gap_break(span.start);
             }
             match tok {
@@ -254,9 +254,16 @@ impl<'a> Emitter<'a> {
                     self.push_real(tok, span.end);
                 }
                 Tok::Dot => {
-                    // 链断行:前隙自由换行 → 换行 + 相对缩进(§1.6 重词法化滤除,流不变)
-                    if !self.at_line_start && self.free_newlines(self.last_end, span.start) >= 1 {
-                        self.newline(false);
+                    // 链断行(R4 v1 定版):自由换行 → 换行 + 相对缩进 1 级,空行折叠沿用 R1;
+                    // 补插换行重词法化时被 §1.6 滤除,流不变、天然幂等。
+                    // 此前统一间隙换行先行,本分支不可达,规范形态退化为同缩进——本次按 spec 定版。
+                    let free = self.free_newlines(self.last_end, span.start);
+                    if free >= 1 {
+                        if !self.at_line_start {
+                            self.newline(free >= 2);
+                        } else if free >= 2 {
+                            self.out.push('\n');
+                        }
                         self.line_indent_extra = 1;
                     }
                     self.write_sep(".", false);

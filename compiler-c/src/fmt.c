@@ -345,15 +345,21 @@ static void run(F* f) {
             }
             push_real(f, k, t->span.end);
             break;
-        case TOK_DOT:
-            // 链断行:前隙自由换行 → 换行 + 相对缩进(重词法化滤除,流不变)
-            if (!f->at_line_start && free_newlines(f, f->last_end, t->span.start) >= 1) {
-                emit_newline(f, 0);
+        case TOK_DOT: {
+            // 链断行(R4 v1 定版):自由换行 → 换行 + 相对缩进 1 级,空行折叠沿用 R1
+            size_t free = free_newlines(f, f->last_end, t->span.start);
+            if (free >= 1) {
+                if (!f->at_line_start) {
+                    emit_newline(f, free >= 2);
+                } else if (free >= 2) {
+                    ob_putc(&f->out, '\n');
+                }
                 f->extra = 1;
             }
             wr_sep(f, ".", 0);
             push_real(f, k, t->span.end);
             break;
+        }
         case TOK_MINUS:
         case TOK_PLUS:
             f->sign_unary = !f->has_prev || !operand_end(f->prev);

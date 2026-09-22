@@ -253,8 +253,10 @@ fn fmt_src(src: Str, diags: List[Str]) -> Str {
                 more = true
             }
         }
-        // 统一间隙换行:free ≥ 1 换行、free ≥ 2 加空行(至多 1 行);else 恒同行(R3)
-        if t != "else" {
+        // 统一间隙换行:free ≥ 1 换行、free ≥ 2 加空行(至多 1 行);else 恒同行(R3);
+        // Dot 跳过——链断行由 Dot 分支落行并置相对缩进(R4 v1 定版)
+        if or2(t == "else", t == ".") {
+        } else {
             var free = fmt_free_nl(src, cstarts, cends, last_end, ts)
             if free >= 1 {
                 if !at_ls {
@@ -344,10 +346,18 @@ fn fmt_src(src: Str, diags: List[Str]) -> Str {
             continue
         }
         if t == "." {
-            // 链断行:前隙自由换行 → 换行 + 相对缩进(§1.6 重词法化滤除,流不变)
-            if !at_ls && fmt_free_nl(src, cstarts, cends, last_end, ts) >= 1 {
-                out = out + "\n"
-                at_ls = true
+            // 链断行(R4 v1 定版):自由换行 → 换行 + 相对缩进 1 级,空行折叠沿用 R1;
+            // 补插换行重词法化时被 §1.6 滤除,流不变、天然幂等
+            var free = fmt_free_nl(src, cstarts, cends, last_end, ts)
+            if free >= 1 {
+                if !at_ls {
+                    out = out + "\n"
+                    if free >= 2 { out = out + "\n" }
+                    at_ls = true
+                    extra = 0
+                } else if free >= 2 {
+                    out = out + "\n"
+                }
                 extra = 1
             }
         }

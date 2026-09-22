@@ -78,10 +78,10 @@ static const golden G[] = {
     {"R1 空行折叠(至多 1 行)",
      "fn a() {}\n\n\n\nfn b() {}\n",
      "fn a() {}\n\nfn b() {}\n", 0},
-    {"R4 链断行(同缩进延续,Rust 参考实现输出冻结;相对缩进为 spec R4 v1 遗留)",
+    {"R4 链断行(相对缩进 1 级,R4 v1 定版,Rust 参考实现输出冻结)",
      "fn g(xs: List[I32]) -> I32 {\nreturn xs\n.map(twice)\n.filter(gt0)\n.len()\n}\n",
-     "fn g(xs: List[I32]) -> I32 {\n    return xs\n    .map(twice)\n    .filter(gt0)\n"
-     "    .len()\n}\n",
+     "fn g(xs: List[I32]) -> I32 {\n    return xs\n        .map(twice)\n        .filter(gt0)\n"
+     "        .len()\n}\n",
      0},
     {"R6 注释:独占行/行尾//@ 标记逐字保留",
      "// head\nfn f() {\n// own line\nvar x = 1 // trailing\n//@ panic: marker\n}\n",
