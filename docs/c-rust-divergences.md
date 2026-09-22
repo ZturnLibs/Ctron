@@ -425,3 +425,11 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   按此语义建 lane,extern 垫片 cap 另传显式值。(源:P5 Task 3
   probe_lane;约定证实于 tests/net/tcp_echo main.ct:51 与
   tests/http/client_fixtures x_client_e2e.ct:162)
+- **extern 边界 lane 形参 = 视图胞,裸指针签名靠 ABI 巧合**:发射器把
+  `&I64[]` 实参编为 `(ctron_view_6){ d, n }` 结构按值传递 —— 垫片形参
+  写 `int64_t*` 时首槽恰落指针寄存器"能跑",但下一形参实收 view.len
+  而非调用方 n(P5-C x_fd_pipeline 首版实证:write 的 n 恒 = view.len,
+  返回值断言红)。ctron_net.c 以 `ct_view6{d,n}` 镜像为正解;垫片新增
+  一律镜像视图胞。连带注:std/db/c_src/ctron_entropy.c(P5-B)的
+  `int64_t* buf` 签名同属此类,现调用面 lane 长与 n 恒等值故行为正确,
+  Task 6 nightly 扩展调用面时应同改视图胞。(源:P5 Task 3 评审修正)

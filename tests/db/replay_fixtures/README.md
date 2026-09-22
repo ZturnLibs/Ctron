@@ -37,6 +37,10 @@ Frontend/Backend Protocol);构造过程可复核落盘 = 同目录
 | `utf8_bytes.script` | 多字节 UTF-8 格:字节精确面(hex/bytes);ASCII 面 fail-closed 锚 | `f_null_utf8.ct` |
 | `auth_stub.script` | 认证存根检测:Cleartext(3)/SASL(10)→ err 4(SCRAM = Task 4) | `b_handshake.ct` |
 
+(非脚本夹具:`corpus/x_fd_edge.ct` = fd 真源 IO 边 EBADF → err 6 + errno 槽;
+`corpus/x_fd_pipeline.ct` = fd 真源三钉 —— 管线帧 mtype / fill 跨调用持态 /
+send-all 整发。均 emit 臂专面,链 `std/db/c_src/ctron_dbpg.c`。)
+
 ## 口径注
 
 - **帧长域 [4, 1048576]**:2^20 上界远低 (i) 族 2^28 险带(乘前高位预门 +

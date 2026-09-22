@@ -6,7 +6,7 @@
 #          回放夹具经 read_file 内建装载 *.script,CT_DB_FIX 指根)。
 #   副 = emit 同源对拍(ctron-emit → cc → 原生):corpus/*.ct 含 x_。
 #   x_ 前缀 = 仅 emit 臂入计(tests/crypto_vec x_uuid_live 同款结构性登记):
-#          x_fd_edge 承载 fd 真源 IO 边(EBADF → err 6 + errno 槽)——
+#          x_fd_edge / x_fd_pipeline 承载 fd 真源面(EBADF → err 6 + errno 槽;管线帧 mtype/fill 持态/send-all 整发三钉)——
 #          interp 无 extern 运行时,需链 std/db/c_src/ctron_dbpg.c。
 #          fd 长度域门(读前即拒,不触 extern)已由 e_protocol_violation
 #          双臂承载;真库 fd 冒烟 Task 6 nightly。
@@ -65,12 +65,12 @@ for f in "$DIR"/corpus/*.ct; do
     fi
 done
 
-# ── corpus:副臂 = emit 对拍(含 x_;x_fd_edge 链 db 垫片)──
+# ── corpus:副臂 = emit 对拍(含 x_;fd 源面链 db 垫片)──
 if [ -x "$EMIT" ]; then
     for f in "$DIR"/corpus/*.ct; do
         name=$(basename "$f" .ct)
         EXTRA=""
-        if [ "$name" = "x_fd_edge" ] || [ "$name" = "e_protocol_violation" ]; then
+        if [ "$name" = "x_fd_edge" ] || [ "$name" = "x_fd_pipeline" ] || [ "$name" = "e_protocol_violation" ]; then
             # fd 源面(extern 引用进 emit C):链 std/db 自有垫片
             EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c"
         fi

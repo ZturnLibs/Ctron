@@ -55,8 +55,10 @@ pub extern "c" fn ctron_dbpg_read(fd: I64, buf: &I64[], cap: I64) -> I64
 pub extern "c" fn ctron_dbpg_write(fd: I64, buf: &I64[], n: I64) -> I64
 pub extern "c" fn ctron_dbpg_close(fd: I64) -> I64
 pub extern "c" fn ctron_dbpg_last_errno() -> I64
+pub extern "c" fn ctron_dbpg_socketpair(out: &I64[]) -> I64
 
-// fd 出参标量胞(与 std/net bind.ct Box64 同布局异名;见头注依赖纪律)
+// fd 出参标量胞(与 std/net bind.ct Box64 同布局异名;见头注依赖纪律);
+// 出参持态一律 Box[PgCell64](net 出参 Box[Box64] 同款堆胞,跨调用可见)
 pub struct PgCell64 {
     var v: I64
 }
@@ -297,11 +299,14 @@ pub fn pg_recv_frame_script(frames: List[Str], cur: I64) -> PgRecv {
 
 // ② 真源:fd 直读(阻塞;真 fd 冒烟 Task 6 nightly;x_ 夹具 emit 臂专面)。
 // rbuf = 持续读缓冲 lane(须 ≥ frame_max+1 lane;调用方持有;view .len =
-// 字面量显式槽数——夹具逐槽写满字面量,tcp_echo 同款),fill = 缓冲
-// 填充位标量胞(PgCell64;跨调用持态),scr = 单读暂存 lane(垫片
-// CT_CHUNK=4096 口径)。声明长越域 → err 2;读败 → err 6;对端关 → err 3;
-// 守卫计数防滞留(长度域已门,滞留面只剩对端慢滴,nightly 面再演进)。
-pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: PgCell64, scr: &I64[]) -> PgRecv {
+// 字面量显式槽数——夹具逐槽写满字面量,tcp_echo 同款),fill = 缓冲填充位
+// 标量胞(Box[PgCell64];net 出参 Box[Box64] 同款堆胞——struct 值语义下
+// 裸形参写回是 callee 局部拷贝,跨调用持态必须经 Box),scr = 单读暂存
+// lane(垫片 CT_CHUNK=4096 口径)。声明长越域 → err 2;读败 → err 6;
+// 对端关 → err 3;守卫计数防滞留(长度域已门,滞留面只剩对端慢滴,
+// nightly 面再演进)。mtype 在 leftover 前移前捕获(管线帧场景:一包
+// R+S+K+Z 到齐,shift 后 rbuf[0] 已是下一帧类型字节)。
+pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: Box[PgCell64], scr: &I64[]) -> PgRecv {
     var guard: I64 = 0
     while guard < 100000 {
         guard += 1
@@ -315,6 +320,7 @@ pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: PgCell64, scr: &I64[]) -> P
             }
             var need = pgz() + 1 + acc
             if fill.v >= need {
+                var mt: I32 = rbuf[0].as[I32]()
                 var body = List[I32]()
                 var i: I64 = 5
                 while i < need {
@@ -328,7 +334,7 @@ pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: PgCell64, scr: &I64[]) -> P
                     k += 1
                 }
                 fill.v = rest
-                var r = PgRecv { rc: 0, err: 0, next: 0, mtype: rbuf[0].as[I32](), body: body }
+                var r = PgRecv { rc: 0, err: 0, next: 0, mtype: mt, body: body }
                 return r
             }
         }
@@ -349,7 +355,9 @@ pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: PgCell64, scr: &I64[]) -> P
     return pgx_recv_fail(pg_err_io(), 0)
 }
 
-// 客户端帧发送(fd 源;List → lane 暂存后整发;rc 0 成/<0 败;超暂存 → -1)
+// 客户端帧发送(fd 源;List → lane 暂存后整发;rc 0 成/<0 败;超暂存 →
+// -1)。垫片 write 为 send-all 整长 chunk 循环(ctron_net.c ct_send_all
+// 同口径,无静默截断),返回值语义 = 已发全长的确认。
 pub fn pg_send_msg_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
     if msg.len > scr.len {
         return -1

@@ -8,7 +8,7 @@ use std.db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_fd_close, pg_fd_last_errno, 
 test "fd edge: EBADF maps to io err with errno slot" {
     var rbuf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     var scr: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var fill = PgCell64 { v: 0 }
+    var fill = Box[PgCell64](PgCell64 { v: 0 })
     let r = pg_recv_frame_fd(-1, rbuf, fill, scr)
     assert_eq(pgv_rc(r), -1)
     assert_eq(pgv_err(r), pg_err_io())
