@@ -28,12 +28,14 @@ Ctron 仓库 GUI 泳道执行者。当前阶段：SL-7 双口径骨架管线主�
 
 ## 剩余任务（按优先级）
 
-### P0：11 参桥 hval 差一位（>9 参调用边界）
-- 现状：args11 判据 hval=10 bg=11 中 bg 已对但 hval=11（应为 10）——参 10/11 边界仍乱
-- 已排除：帧串正确（FR 转储）/u 数组正确（DISPATCH 转储）/入口栈正确（memory read）
-- 已试：long→int shim 回退（bg 对 hval 仍差）/int cast 改良（bg 对 hval 仍差）
-- 续接 = lldb 交互单步：-g 构建 break gui_cfg → si 逐条指令观察栈写入与读取偏移
-- 或者：gui_cfg C 签名改 long×11 + CTron decl I64 + 解释桥 long cast 三层同 long（待系统验证）
+### P0：11 参桥 hval 差一位 —— ✅ 已收口（d73afcc，2026-09-22 深夜）
+- 真相：hval=11 系 a8b7974 半 int 态（桥 int cast + shim long）在重建二进制上的读数；
+  工作树遗留的全 int 补完（shim int + 声明 I32）实测判据即全对
+- 根因层级修正：本机为 ARM64（AAPCS64）——栈参 int 按 4 字节打包、long 按 8 字节
+  步长（x86-64 SysV"每栈参恒 8 字节槽"推理不适用本机）；两个错位方向自此一格
+- 收口 = shim/声明/桥三层全 int；≥9 参 extern 的事实契约 = int 编组（声明须 I32）
+- 验证：args11 hval=10 bg=00000b 全对；阶梯 23/27（4 红均已登记跨泳道）；
+  e8 15/15；suite 73/73（宿主列 72/73 既有分歧）；详见实施记录"P0 收口"节
 
 ### P1：Todo 域包迁移回迁（设计已存档）
 - 122 行域包形态本体已写好（设计含完整断言流）——回退前代码在本会话上下文
@@ -64,10 +66,11 @@ Ctron 仓库 GUI 泳道执行者。当前阶段：SL-7 双口径骨架管线主�
 - 行尾 ~ 剥除（域包词法不认 W1 dump 标记）
 - 空格化 token 全容忍（glit 前置 gws）
 
-### 11 参桥错误签名速查
-- hval=0 bg=10 = long cast 写 8 字节槽 + int shim 4 字节读（跨槽错位）
-- hval=11 bg=11 = int cast 写 4 字节步长 + long shim 8 字节窗读（跨槽反向）
-- 根治 = shim/声明/桥三层同类型（全 int 或全 long），当前 = 全 int（部分生效）
+### 11 参桥错误签名速查（ARM64 修订版）
+- 平台事实：AAPCS64 栈参 **int = 4 字节打包**，**long = 8 字节步长**；≤8 参走寄存器（x0-x7）不受累
+- hval=0 bg=10 = long 调用 8 字节步长写 + int shim 4 字节打包读（半 int 前身）
+- hval=11 bg=11 = int cast 调用 4 字节打包写 + long shim 8 字节窗读（a8b7974 半 int 态）
+- 根治 = shim/声明/桥三层同类型——已收口为**全 int**（d73afcc）；≥9 参 extern 声明一律 I32
 
 ### 调试方法论
 - println 缓冲在 panic/SEGV 时丢失——trace 用 panic 标记或 stderr fprintf

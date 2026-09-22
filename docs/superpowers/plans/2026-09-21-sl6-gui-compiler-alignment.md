@@ -241,6 +241,28 @@
 - **环境警告**：peer 并发 build 竞态使 build 行数波动（cc_emit 10800↔19598）、
   二进制版本翻转——回归前必须静默重跑 build 至计数稳定（连三次一致）。
 
+### P0 收口：11 参桥全 int 三层一致（d73afcc，2026-09-22 深夜）
+
+- **真相**：hval 差一位已不在飞——交接文档记录的 hval=11 系 a8b7974 半 int 态
+  （桥 int cast 已落 + shim 仍 long）在后续重建二进制上的读数；工作树遗留的
+  全 int 补完（shim int + 声明 I32）实测判据即全对。
+- **根因层级修正**：本机为 **ARM64（AAPCS64）**——栈参 int 按 **4 字节打包**、
+  long 按 **8 字节步长**（x86-64 SysV 每栈参恒 8 字节槽的推理不适用于本机）。
+  半 int 态 = 4 字节写对 8 字节窗读（hval=11 症状）；最初 long 调对 int shim =
+  8 字节步长写对 4 字节打包读（hval=0 bg=10 症状）。两个方向的错位都自此一格。
+- **收口 = 三层全 int（d73afcc）**：shim gui_cfg/gui_cfg2 形参 long→int（impl
+  直传零截断）+ std/gui.ct 声明 I64→I32（免 sem 宽化依赖）；桥 case≥9 int cast
+  已在 a8b7974 就位，无需再动。
+- **二进制一致性双证**：现编工作树 ctron_gui.c（native.sh 同参 -O1）与
+  bin/ctron-cc 内 _gui_cfg 指令逐条一致（clang 将相邻两 4 字节栈参 hmode/hval
+  融合为单 64 位 ldr/str 转发——非错位）；无 peer 竞态翻转。
+- **验证**：args11 判据 hval=10 bg=00000b 全对；阶梯 23/27（4 红 = 已登记
+  parse/merge 泳道旧形态项，无新增红）；e8_corpus 15/15；suite 73/73（宿主列
+  72/73 既有分歧不变）。
+- **坑位存档**：AAPCS64 栈参宽度随形参类型变化（int 打包/long 8 字节步长），
+  解释桥 ≥9 参口径的**事实契约 = int 编组**——后续任何 ≥9 参 extern 声明必须
+  I32 形参（≤8 参走寄存器不受此限，long/int 均可）。
+
 ### β2 ABI 阻塞登记（2026-09-21 实证，lldb 定位；已被节点包裹方案根除）
 
 - **现象**：eval 内建 gui_sk_load 构造 U 值（ GuiTree 同形 list）→ 域包 sk_dump/test_sk
