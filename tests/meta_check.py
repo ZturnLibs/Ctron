@@ -44,6 +44,7 @@ ERROR_CODES = {
     "E5010": "trait 孤儿规则违规",
     "E5020": "循环依赖",
     "E5030": "use 导入同名 decl",
+    "E5035": "use 别名与已有 decl 冲突(§2 包路径别名)",
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",
     "E6030": "comptime 反射泛型运行时类型(parametricity)",
