@@ -133,6 +133,10 @@ pub fn frm_resp_404() -> Str {
     return frm_resp(404, "Not Found", "not found")
 }
 
+// v1 口径登记(评审修正;RFC 9110 §15.5.5 要求 405 带 Allow 头):本助手
+// 不发 Allow —— 方法集需 id→路由方法集映射,frm_match 只返首个 405 候选
+// id(router.ct id405 槽在案),v1 单值映射不足。Allow 发射列志向:api
+// 波(Task 5 todo_api)或 P7 落;届时 frm_match 需扩方法集出口。
 pub fn frm_resp_405() -> Str {
     return frm_resp(405, "Method Not Allowed", "method not allowed")
 }

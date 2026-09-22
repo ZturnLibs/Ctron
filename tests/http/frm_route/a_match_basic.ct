@@ -2,7 +2,7 @@
 // 面:静态段/参数段命中、query 裁剪、404/405 面、first-match 优先级(含重叠
 // 解析双序)、方法齐平优先于先声明 405 候选、尾斜杠严格、comptime 表折叠
 // (const ROUTES: Str + comptime fn 数值派生 —— D-P6-1 释义的消费方侧形)。
-use std.http.frm.router.{ frm_match, frm_m_get, frm_m_post, frm_m_delete, frm_m_head, frm_rc_match, frm_rc_method, frm_rc_miss, fr_rc, fr_id, fr_np, frm_param }
+use std.http.frm.router.{ frm_match, frm_mcode_buf, frm_m_get, frm_m_post, frm_m_delete, frm_m_head, frm_m_options, frm_rc_match, frm_rc_method, frm_rc_miss, fr_rc, fr_id, fr_np, frm_param }
 
 // —— comptime 路由表(D-P6-1:平面 Str 字面量,ceval 折叠;emit 直出 C 静常量)——
 const ROUTES: Str = "GET /users|GET /users/new|GET /users/:id|POST /users|HEAD /health"
@@ -13,6 +13,7 @@ const BOTH: Str = "GET /x|POST /x"
 const S1: Str = "GET /users"
 const S2: Str = "GET /"
 const S3: Str = ""
+const FORGED: Str = "OPTI0NS /x|OPTIONS /x"
 
 // —— comptime fn 表事实派生(I 域;ceval Call 仅收 I 域实参,已证形)——
 comptime fn tbl_sum(n: I32) -> I32 {
@@ -103,6 +104,36 @@ test "method match wins over earlier 405 candidate" {
     // 未知方法码 0:路径有主 → 405 面(501 映射归框架后续)
     let mz = frm_match(BOTH, 0, buf, 0, n)
     assert(fr_rc(mz) == frm_rc_method())
+}
+
+test "method token full compare (forgery pins)" {
+    // 评审钉:首字节+长度判码有碰撞面 —— PUTT→POST、POSTX→PATCH、
+    // OPTI0NS→OPTIONS;全 token 比较下伪造形码 = 0(请求侧)
+    var buf: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert(frm_mcode_buf(buf, 0, fill(buf, "PUTT")) == 0)
+    assert(frm_mcode_buf(buf, 0, fill(buf, "POSTX")) == 0)
+    assert(frm_mcode_buf(buf, 0, fill(buf, "OPTI0NS")) == 0)
+    assert(frm_mcode_buf(buf, 0, fill(buf, "OPTIONS")) == frm_m_options())
+    assert(frm_mcode_buf(buf, 0, fill(buf, "GET")) == frm_m_get())
+    assert(frm_mcode_buf(buf, 0, fill(buf, "PATCH")) == 5)
+    // spec 侧同门槛:伪造形条目码 0,正形命中(表作者面同判)
+    let n = fill(buf, "/x")
+    let mz = frm_match(FORGED, frm_m_options(), buf, 0, n)
+    assert(fr_rc(mz) == 1 && fr_id(mz) == 2)
+}
+
+test "static seg no decode before match" {
+    // 评审钉:匹配期零解码 —— %2F 不重分段;%65 不参与静态段字节比较
+    // (/users/n%65w 段数不变、字节不等静态段 → 落 :id 参数段,非静态条目)
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/users/n%65w")
+    let m = frm_match(ROUTES, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == 1 && fr_id(m) == 3 && fr_np(m) == 1)
+    assert(frm_param(buf, m, 0) == "n%65w")
+    // %2F 在静态段内:字节不等且不重分段 → 非 /users/new
+    let n2 = fill(buf, "/users/ne%2Fw")
+    let m2 = frm_match(ROUTES, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m2) == 1 && fr_id(m2) == 3)
 }
 
 test "trailing slash strict and empty spec" {

@@ -22,7 +22,8 @@
 //
 // 表语法(作者面,匹配器零宽容):
 //   条目 = "METHOD SP pattern",条目间 '|' 分隔;METHOD = 大写 token
-//   (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS/TRACE,首字节+长度即判码);
+//   (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS/TRACE;全 token 字节比较,
+//   伪造形 PUTT/POSTX/OPTI0NS → 码 0,见 rm_mcode_str/frm_mcode_buf);
 //   pattern 段以 '/' 分,":name" 段 = 参数段(捕获至下一 '/' 或尾);
 //   尾斜杠严格(无隐式归一化,从严即默认);优先级 = 声明序 first-match。
 //   query(?)/fragment(#)不入匹配(零拷贝缩界);参数按捕获序存 4 槽
@@ -42,6 +43,12 @@
 //   时发生)。Option[Str] 的 let 绑定 emit 缺口(P6-A 探针实证:int32_t
 //   落出)→ 解码面以 inline 调用 enc_get/enc_some 组成(dft/谓词双出口),
 //   永不绑定 Option 中间值。
+//
+// 派发缺口(消费方面;Task 5 todo_api 落策略):派发 if/match 恒须带缺省
+//   臂 —— 未处理 route id 落 404 面(rc=-1 同形响应),不落空。
+// frm_slice_str 并集注记(Task 3):非 printable/越域字节 → ""(空串),
+//   与"空输入"不可区分 —— 二进制/非 ASCII 面禁用本助手(body 绑定走
+//   List[I32] 字节道,ws.ct lane 先例)。
 //
 // 缩放注记(≤100ns 门的适用域):线性扫描 O(路由数 × 模式字节);小表
 //   (≤ ~32 条)emit 臂亚百纳秒(x_bench 实测),radix 树/DFA = P9 志向
@@ -73,44 +80,99 @@ pub fn frm_rc_match() -> I64 { return 1 }
 pub fn frm_rc_method() -> I64 { return 0 }
 pub fn frm_rc_miss() -> I64 { return -1 }
 
-// 方法码判定:首字节 + 长度即唯一((G,3)(P,3)(P,4)(P,5)(D,6)(H,4)(O,7)(T,5))
-// —— spec 侧 token 与请求侧方法同用此判;非大写 canonical 形 → 0
-pub fn frm_mcode(c0: I64, n: I64) -> I64 {
-    if c0 == 71 {
-        if n == 3 { return frm_m_get() }
+// 方法码判定:全 token 字节比较(评审修正:首字节+长度有碰撞面 ——
+//   PUTT→POST、POSTX→PATCH、OPTI0NS(n=7)→OPTIONS,Task 2 CORS 预检以
+//   OPTIONS 码为门,伪造即误判预检)。spec 侧 = frm_mcode_str;请求侧 =
+//   frm_mcode_buf;非大写 canonical 形 → 0。
+fn rm_mcode_str(spec: Str, a: I32, b: I32) -> I64 {
+    let n: I64 = (b - a).as[I64]()
+    if n == 3 {
+        if byte_at(spec, a) == 71 && byte_at(spec, a + 1) == 69 && byte_at(spec, a + 2) == 84 {
+            return frm_m_get()
+        }
+        if byte_at(spec, a) == 80 && byte_at(spec, a + 1) == 85 && byte_at(spec, a + 2) == 84 {
+            return frm_m_put()
+        }
         return 0
     }
-    if c0 == 80 {
-        if n == 3 { return frm_m_put() }
-        if n == 4 { return frm_m_post() }
-        if n == 5 { return frm_m_patch() }
+    if n == 4 {
+        if byte_at(spec, a) == 80 && byte_at(spec, a + 1) == 79 && byte_at(spec, a + 2) == 83 && byte_at(spec, a + 3) == 84 {
+            return frm_m_post()
+        }
+        if byte_at(spec, a) == 72 && byte_at(spec, a + 1) == 69 && byte_at(spec, a + 2) == 65 && byte_at(spec, a + 3) == 68 {
+            return frm_m_head()
+        }
         return 0
     }
-    if c0 == 68 {
-        if n == 6 { return frm_m_delete() }
+    if n == 5 {
+        if byte_at(spec, a) == 80 && byte_at(spec, a + 1) == 65 && byte_at(spec, a + 2) == 84 && byte_at(spec, a + 3) == 67 && byte_at(spec, a + 4) == 72 {
+            return frm_m_patch()
+        }
+        if byte_at(spec, a) == 84 && byte_at(spec, a + 1) == 82 && byte_at(spec, a + 2) == 65 && byte_at(spec, a + 3) == 67 && byte_at(spec, a + 4) == 69 {
+            return frm_m_trace()
+        }
         return 0
     }
-    if c0 == 72 {
-        if n == 4 { return frm_m_head() }
+    if n == 6 {
+        if byte_at(spec, a) == 68 && byte_at(spec, a + 1) == 69 && byte_at(spec, a + 2) == 76 && byte_at(spec, a + 3) == 69 && byte_at(spec, a + 4) == 84 && byte_at(spec, a + 5) == 69 {
+            return frm_m_delete()
+        }
         return 0
     }
-    if c0 == 79 {
-        if n == 7 { return frm_m_options() }
-        return 0
-    }
-    if c0 == 84 {
-        if n == 5 { return frm_m_trace() }
+    if n == 7 {
+        if byte_at(spec, a) == 79 && byte_at(spec, a + 1) == 80 && byte_at(spec, a + 2) == 84 && byte_at(spec, a + 3) == 73 && byte_at(spec, a + 4) == 79 && byte_at(spec, a + 5) == 78 && byte_at(spec, a + 6) == 83 {
+            return frm_m_options()
+        }
         return 0
     }
     return 0
 }
 
-// 请求侧方法码(lane 切片;parse.ct method 槽直喂)
+// 请求侧方法码(lane 切片;parse.ct method 槽直喂;全 token 比较,同上)
 pub fn frm_mcode_buf(buf: &I64[], s: I64, l: I64) -> I64 {
     if l <= 0 {
         return 0
     }
-    return frm_mcode(buf[s], l)
+    if l == 3 {
+        if buf[s] == 71 && buf[s + 1] == 69 && buf[s + 2] == 84 {
+            return frm_m_get()
+        }
+        if buf[s] == 80 && buf[s + 1] == 85 && buf[s + 2] == 84 {
+            return frm_m_put()
+        }
+        return 0
+    }
+    if l == 4 {
+        if buf[s] == 80 && buf[s + 1] == 79 && buf[s + 2] == 83 && buf[s + 3] == 84 {
+            return frm_m_post()
+        }
+        if buf[s] == 72 && buf[s + 1] == 69 && buf[s + 2] == 65 && buf[s + 3] == 68 {
+            return frm_m_head()
+        }
+        return 0
+    }
+    if l == 5 {
+        if buf[s] == 80 && buf[s + 1] == 65 && buf[s + 2] == 84 && buf[s + 3] == 67 && buf[s + 4] == 72 {
+            return frm_m_patch()
+        }
+        if buf[s] == 84 && buf[s + 1] == 82 && buf[s + 2] == 65 && buf[s + 3] == 67 && buf[s + 4] == 69 {
+            return frm_m_trace()
+        }
+        return 0
+    }
+    if l == 6 {
+        if buf[s] == 68 && buf[s + 1] == 69 && buf[s + 2] == 76 && buf[s + 3] == 69 && buf[s + 4] == 84 && buf[s + 5] == 69 {
+            return frm_m_delete()
+        }
+        return 0
+    }
+    if l == 7 {
+        if buf[s] == 79 && buf[s + 1] == 80 && buf[s + 2] == 84 && buf[s + 3] == 73 && buf[s + 4] == 79 && buf[s + 5] == 78 && buf[s + 6] == 83 {
+            return frm_m_options()
+        }
+        return 0
+    }
+    return 0
 }
 
 // ---- 匹配结果(11 标量槽;(h) 公开面 = getter) ----
@@ -293,7 +355,7 @@ pub fn frm_match(spec: Str, meth: I64, buf: &I64[], ts: I64, tl: I64) -> FrmRout
         }
         var mcode: I64 = 0
         if k < n {
-            mcode = frm_mcode(byte_at(spec, i).as[I64](), (k - i).as[I64]())
+            mcode = rm_mcode_str(spec, i, k)
         }
         // pattern:[k+1, e)('|' 124 或表尾)
         var e: I32 = k + 1
@@ -384,7 +446,10 @@ pub fn fi_rc(x: FrmI64) -> I64 { return x.rc }
 pub fn fi_v(x: FrmI64) -> I64 { return x.v }
 
 // 第 k 参数 → I64(严格 1*DIGIT,无符号;非数字/空/溢出拒 —— parse.ct
-// hs_parse_dec 界门同款 + C10 宽域惯用法((i) 乘法定宽))
+// hs_parse_dec 界门同款 + C10 宽域惯用法((i) 乘法定宽)。评审修正:阈值
+// 精确命中亦裁 —— acc == 922337203685477580 且位 > 7 时 acc*10+d 越域
+// 即双臂确定性 panic(如 9223372036854775808;仅查 > 的窗在请求路径可达,
+// P4 先例 = 可达实例就地修)
 pub fn frm_param_i64(buf: &I64[], m: FrmRoute, k: I64) -> FrmI64 {
     let s = fr_ps(m, k)
     let l = fr_pl(m, k)
@@ -399,6 +464,9 @@ pub fn frm_param_i64(buf: &I64[], m: FrmRoute, k: I64) -> FrmI64 {
             return FrmI64 { rc: 0, v: 0 }
         }
         if acc > 922337203685477580 {
+            return FrmI64 { rc: 0, v: 0 }
+        }
+        if acc == 922337203685477580 && c > 55 {
             return FrmI64 { rc: 0, v: 0 }
         }
         acc = (acc + 4294967296 - 4294967296) * 10 + (c - 48)
