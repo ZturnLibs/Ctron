@@ -235,7 +235,7 @@ fn main() -> I32 {
             println("        if (!fr[i] || !fr[i][0]) \{ break; }")
             println("        if (fr[i][1] != ':') \{ ctron_panic(\"extern 帧损坏\"); }")
             println("        if (getenv(\"CTRON_GUI_TRACE\") != 0) \{ fprintf(stderr, \"FR[%d]=%s\\n\", i, fr[i] ? fr[i] : \"(null)\"); }")
-        if (fr[i][0] == 'i') \{ u[k++] = strtol(fr[i] + 2, 0, 10); } else \{ if (fr[i][0] == 's') \{ u[k++] = (long)(fr[i] + 2); } else \{ ctron_panic(\"extern 解释口径:不支持参数类型\"); } }")
+            println("        if (fr[i][0] == 'i') \{ u[k++] = strtol(fr[i] + 2, 0, 10); } else \{ if (fr[i][0] == 's') \{ u[k++] = (long)(fr[i] + 2); } else \{ ctron_panic(\"extern 解释口径:不支持参数类型\"); } }")
             println("    }")
             println("    if (getenv(\"CTRON_GUI_TRACE\") != 0) \{ fprintf(stderr, \"DISPATCH nm=%s n=%d k=%d\\n\", nm, n, k); }")
             println("    p = dlsym(RTLD_DEFAULT, nm);")
