@@ -88,3 +88,26 @@ sha 系 checksum(crypto 之外)、toml/yaml(config.ct 已占 CTCL,勿重复)、�
 - 范围裁定(§3)与明确不做清单(§3.4)是否核准为 std 泳道宪章?
 - 组织形态宪章 v2(§3.5 域目录收录)是否随下一版 README 修订?
 - 五项创新的落地序是否按 §6?(1、2 可并行,3、4 随泳道间隙)
+
+## 8. v1.1 补账(2026-09-21 深夜,泳道执行实测回写)
+
+### 8.1 落地补账(本稿落后于现实的部分)
+- **crypto 全链闭环**:SHA-256(caa3591)+ 二进制面/HMAC/PBKDF2/bytes_hex(75ba7b2,List[I32] 容器形态)+ SHA-1(90240b4,http 线);§12 SCRAM 前置就绪
+- **uuid 落地**(75ba7b2,RFC 9562 v4 真熵/v7)——原稿候补层未列,补记
+- **db 域开张**(std/db/{db,pg,pool,redis,rowmap})——P5 服务器线所有,非 std 泳道债
+- **http 域全套**:client/sse/ws/form(query 解析,候补层"真实需求触发"已兑现)/binddeflate
+- **List.pop 内建落地**——J20 时代登记的"List 删除原语"缺口已清
+- **parity 矩阵**:自举臂(7ffc4ab,22 模块)+ Rust 臣(本笔,欠账清单驱动)+ 发射臂待
+
+### 8.2 平台债清单(parity 的 Rust 臂即其自动执行器)
+1. 自举解释器快速宽整型(crypto 整向量/计算密集模块的自举验收前置)
+2. 发射器 List[I64] 元素读无数值转换(发射面数值 List 须滑窗具名局部绕行)
+3. Rust interp 内建面:fs.ct 缺 fs_exists、time Clock 缺 now_ms、unicode.ct 触发 853 行 char-boundary panic、fmap/json_write/sort 预存红(已翻绿/在册动态)
+
+### 8.3 结构裁决提案(宪章 v2 议题)
+1. **json_write 并入 json**:历史切片分裂,违一域一模块;合并为破坏性演进,待裁决后 since 升版
+2. **域目录形态收录**:http/net/db/tls/gui 皆已目录化("一域一目录、目录内零 use"),既成事实转正
+
+### 8.4 裁决状态
+- §3 范围裁定、§5 创新方向:**已按"继续"指令执行中**(parity 两臂落地、crypto 全链、对数式验收在 crypto/csv/工具对数持续)
+- §8.3 两项待规范所有者裁决

@@ -337,6 +337,37 @@ done
 if [ $std_parity -eq 0 ]; then
     ok "std 全模块自举单测绿($std_total 模块)"
 fi
+echo "== 3j3) std 全模块 Rust 臂 parity(内建面欠账清单驱动;清账即翻绿提醒) =="
+RUSTBIN="$ROOT/compiler-rust/target/release/ctron"
+if [ -x "$RUSTBIN" ]; then
+    known="json_write sort fs unicode gui"
+    newred=0
+    knownred=0
+    flipped=""
+    for f in "$ROOT"/std/*.ct; do
+        b=$(basename "$f" .ct)
+        if echo " $known " | grep -q " $b "; then
+            if ! CTRON_MAX_STEPS=0 "$RUSTBIN" test "$f" > /dev/null 2>&1; then
+                knownred=$((knownred+1))
+            else
+                flipped="$flipped $b"
+            fi
+        else
+            if ! CTRON_MAX_STEPS=0 "$RUSTBIN" test "$f" > /dev/null 2>&1; then
+                bad "std Rust 臂新红: $b(登记 interp 线内建面)"
+                newred=1
+            fi
+        fi
+    done
+    if [ $newred -eq 0 ]; then
+        ok "std Rust 臂无新红(欠账 $knownred 模块待 interp 线:fs_exists/now_ms/宽整型)"
+    fi
+    if [ -n "$flipped" ]; then
+        bad "Rust 臂翻绿待清账:$flipped(从欠账清单移除)"
+    fi
+else
+    ok "Rust 参考臂未构建,跳过(ci 全量跑)"
+fi
 echo "== 3h) 示例应用 examples/ctgrep(子串 grep,与 grep -F -n 对数 + 退出码语义) =="
 CTGREP="$ROOT/examples/ctgrep"
 GSAMPLE="$T/gsample.txt"
