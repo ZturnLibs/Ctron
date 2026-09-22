@@ -9,7 +9,9 @@ pub struct Attribute { pub name: String, pub args: Vec<String> }   // #[no_alloc
 pub enum Decl { Use(UseDecl), Struct(StructDecl), Class(ClassDecl), Enum(EnumDecl),
     Trait(TraitDecl), Impl(ImplDecl), Fn(FnDecl), Const(ConstDecl), Static(StaticDecl), Test(TestDecl) }
 #[derive(Debug, Clone, PartialEq)]
-pub struct UseDecl { pub imports: Vec<Vec<String>> }               // 组导入已拆为全路径
+pub struct ImportItem { pub segs: Vec<String>, pub alias: Option<String> }   // 别名:Some= Sym as Alias
+#[derive(Debug, Clone, PartialEq)]
+pub struct UseDecl { pub imports: Vec<ImportItem> }                // 组导入已拆为全路径
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDecl { pub attrs: Vec<Attribute>, pub derives: Vec<String>, pub vis: Vis,
     pub name: String, pub type_params: Vec<TypeParam>, pub fields: Vec<Field> }

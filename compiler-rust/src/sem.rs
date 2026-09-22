@@ -366,17 +366,18 @@ pub fn build_package(
         fill_def_fields(&mut sema, fill);
     }
 
-    // 第二遍:导入解析(跨模块可见性 E2020)
+    // 第二遍:导入解析(跨模块可见性 E2020;别名 use 绑别名槽,缺省=本名)
     for pf in &parsed {
         let imports = collect_imports(&pf.ast);
-        for p in &imports {
-            let Some((sym_name, target)) = p.split_last() else { continue };
+        for imp in &imports {
+            let Some((sym_name, target)) = imp.segs.split_last() else { continue };
             let target_syms = sema.mod_by_path.get(&target.join("."))
                 .and_then(|&idx| mod_syms.get(idx))
                 .cloned()
                 .unwrap_or_default();
+            let bind: &str = imp.alias.as_deref().unwrap_or(sym_name);
             let mut import_diags = Vec::new();
-            resolve_import(&sema, &target_syms, target, sym_name, &mut mod_syms[pf.file_idx], &mut import_diags);
+            resolve_import(&sema, &target_syms, target, sym_name, bind, &mut mod_syms[pf.file_idx], &mut import_diags);
             per_module[pf.file_idx].1.extend(import_diags);
         }
     }
@@ -433,13 +434,13 @@ fn collect_use_targets(file: &ast::File, out: &mut Vec<String>) {
     for d in &file.decls {
         if let ast::Decl::Use(u) = d {
             for p in &u.imports {
-                if p.len() >= 2 { out.push(p[..p.len() - 1].join(".")); }
+                if p.segs.len() >= 2 { out.push(p.segs[..p.segs.len() - 1].join(".")); }
             }
         }
     }
 }
 
-fn collect_imports(file: &ast::File) -> Vec<Vec<String>> {
+fn collect_imports(file: &ast::File) -> Vec<ast::ImportItem> {
     let mut out = Vec::new();
     for d in &file.decls {
         if let ast::Decl::Use(u) = d {
@@ -640,11 +641,15 @@ fn lower_fn_def(lower: &mut Lower, pf: &ParsedFile, m: &ast::FnDecl) -> FnDef {
     }
 }
 
+/// 导入绑定:查 orig(`segs` 末段)于目标模块,以 `bind` 名插入本模块符号表
+/// (无别名时 bind == orig 本名)。注意:std/stdweb 分支暂维持按原名绑定
+/// (别名对 std 符号暂不生效)——P1b 落 E2020.use.nat 统一拦截。
 fn resolve_import(
     sema: &Sema,
     target_syms: &HashMap<String, Symbol>,
     target: &[String],
     sym_name: &str,
+    bind: &str,
     syms: &mut HashMap<String, Symbol>,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -665,7 +670,7 @@ fn resolve_import(
             }
         },
         _ => {
-            // 本包模块
+            // 本包模块:查 orig,成功则插 bind
             if !target_syms.is_empty() {
                 let found = target_syms.get(sym_name).cloned();
                 match found {
@@ -675,7 +680,7 @@ fn resolve_import(
                             _ => true,
                         };
                         if visible {
-                            syms.insert(sym_name.to_string(), sym);
+                            syms.insert(bind.to_string(), sym);
                         } else {
                             diags.push(Diagnostic {
                                 code: "E2020",

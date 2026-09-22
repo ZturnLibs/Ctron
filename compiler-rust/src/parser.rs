@@ -231,6 +231,14 @@ impl Parser {
             }
             if !self.eat(&Tok::Dot) { break; }
         }
+        // 单符号别名 `use path.Sym as Alias`:prefix 循环贪婪吃路径段,
+        // `as`(上下文关键字)在路径段走完后触发,不入路径(与自举同语义)
+        let mut alias = None;
+        if matches!(self.peek(), Tok::Ident(s) if s == "as") && matches!(self.peek2(), Tok::Ident(_)) {
+            self.bump();
+            if let Tok::Ident(a) = self.peek().clone() { alias = Some(a); }
+            self.bump();
+        }
         let mut imports = Vec::new();
         if group {
             self.expect(&Tok::LBrace, "use 组");
@@ -240,13 +248,22 @@ impl Parser {
                 let mut full = prefix.clone();
                 let seg = self.parse_dotted_path();
                 full.extend(seg);
-                imports.push(full);
+                // 组项别名 `Sym as Alias`:as 为上下文关键字;别名槽缺省=本名
+                let is_as = matches!(self.peek(), Tok::Ident(s) if s == "as");
+                let next_ident = matches!(self.peek2(), Tok::Ident(_));
+                let mut item_alias = None;
+                if is_as && next_ident {
+                    self.bump();
+                    if let Tok::Ident(a) = self.peek().clone() { item_alias = Some(a); }
+                    self.bump();
+                }
+                imports.push(ImportItem { segs: full, alias: item_alias });
                 if !self.eat(&Tok::Comma) { break; }
             }
             while self.at(&Tok::Newline) { self.bump(); }
             self.expect(&Tok::RBrace, "use 组结束");
         } else {
-            imports.push(std::mem::take(&mut prefix));
+            imports.push(ImportItem { segs: std::mem::take(&mut prefix), alias });
         }
         UseDecl { imports }
     }
@@ -1466,11 +1483,32 @@ mod tests {
         assert!(d.is_empty());
         match &f.decls[0] {
             Decl::Use(u) => {
-                let want: Vec<Vec<String>> = vec![
-                    vec!["std".into(), "net".into(), "TcpListener".into()],
-                    vec!["std".into(), "net".into(), "Request".into()],
+                let want = vec![
+                    ImportItem { segs: vec!["std".into(), "net".into(), "TcpListener".into()], alias: None },
+                    ImportItem { segs: vec!["std".into(), "net".into(), "Request".into()], alias: None },
                 ];
                 assert_eq!(u.imports, want);
+            }
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn use_alias_parses_item_and_solo_forms() {
+        let (f, d) = file("use std.net.{TcpListener as TL, Request}
+use app.extra.widget_new as panel_new");
+        assert!(d.is_empty());
+        match &f.decls[0] {
+            Decl::Use(u) => {
+                assert_eq!(u.imports[0].alias.as_deref(), Some("TL"));
+                assert_eq!(u.imports[1].alias, None);
+            }
+            other => panic!("{:?}", other),
+        }
+        match &f.decls[1] {
+            Decl::Use(u) => {
+                assert_eq!(u.imports[0].segs.last().map(String::as_str), Some("widget_new"));
+                assert_eq!(u.imports[0].alias.as_deref(), Some("panel_new"));
             }
             other => panic!("{:?}", other),
         }
