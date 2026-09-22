@@ -34,7 +34,9 @@ for m in parse message sse ws; do
 done
 # P6-A:frm 子层(router.ct 纯叶 + middleware.ct → router/enc;enc 纯面无
 # W8052,解释臂直跑;emit 臂覆盖见 frm_route 夹具对拍)
-for m in frm/router frm/middleware; do
+# P6-B:中间件五件入列 —— cors/sechdr/limit/timeout 零 use 叶,csrf→crypto
+# 纯叶(无 W8052);emit 臂覆盖见 frm_mw 夹具对拍
+for m in frm/router frm/middleware frm/cors frm/csrf frm/sechdr frm/limit frm/timeout; do
     mn=$(basename "$m")
     if "$CC" run "$ROOT/std/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS std/http/$m.ct (inline)"
@@ -192,6 +194,30 @@ done
 for f in "$DIR"/frm_route/a_*.ct; do
     [ -f "$f" ] || continue
     name="frm_route_$(basename "$f" .ct)"
+    if "$CC" run "$f" > "$T/$name.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS $name (interp)"
+    else
+        fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
+    fi
+    if [ -x "$EMIT" ]; then
+        if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
+           && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" 2>"$T/$name.e.cc.err" \
+           && "$T/$name.e.bin" > "$T/$name.e.out" 2>&1; then
+            pass=$((pass+1)); echo "  PASS $name (emit)"
+        else
+            fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.e.out" "$T/$name.e.cc.err" "$T/$name.e.err" 2>/dev/null
+        fi
+    fi
+done
+
+# ── P6-B 行为夹具:frm_mw(公网中间件五件)──
+# 臂分工(frm_route 同款):a_ 前缀 = 纯面(零 IO;cors/sechdr/limit/timeout
+# 零 use 叶 + csrf→std.crypto 纯叶,无 W8052)interp + emit 双计。确定性:
+# limit/timeout 时钟恒注入参数(tick 计数),零真钟零睡眠;CORS/CSRF/安全头
+# 全请求-响应纯值面。
+for f in "$DIR"/frm_mw/a_*.ct; do
+    [ -f "$f" ] || continue
+    name="frm_mw_$(basename "$f" .ct)"
     if "$CC" run "$f" > "$T/$name.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (interp)"
     else

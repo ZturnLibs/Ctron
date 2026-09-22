@@ -1,0 +1,105 @@
+// tests/http/frm_mw/a_csrf.ct —— CSRF 双提交令牌语料(P6-B;双臂)
+// 面:签发→Set-Cookie→表单提交→校验全正链(链形短路:过→next,不过→403
+// 胜出,终端不可达)、双提交不等(why 3)、两端缺(why 1/2)、形坏矩阵
+// (无点/双点/短 sig → why 4)、签名篡改(why 5)、cookie/form 取值、
+// CR/LF nonce 签发即拒(头走私面钉:Set-Cookie 值域封口)。
+// 链形适配(a_cors 同口径:适配器内令牌/判定面恒字面量 —— 组合层经
+// 直接调用边界以 parse.ct Cookie 槽/体槽取值后预判;P6-A 探针捕获缺口 +
+// emit fn 值装箱 ct_i 返回 ⇒ next 结果恒经 `"" +` 裸尾惯用法落 Str)。
+use std.http.frm.csrf.{ csrf_issue, csrf_verify, csrf_cookie_get, csrf_form_get, csrf_set_cookie, csrf_resp_403, ct_rc, ct_why, ct_tok, cv_rc, cv_why }
+
+// ---- 终端 handler(组合层;CSRF 短路面不可达) ----
+
+fn h_post(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nposted"
+}
+
+// ---- 链形适配器(组合层按请求面选择;令牌/判定字面量) ----
+
+// 正链形:cookie 端 = 提交端 = 本模块签发产物 → next 透传
+fn mw_csrf_ok(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let tok = ct_tok(csrf_issue("s3cret-key", "abcdefghijklmnop"))
+    let v = csrf_verify("s3cret-key", tok, tok)
+    if cv_rc(v) == 1 {
+        return "" + next(req, h)
+    }
+    return csrf_resp_403()
+}
+
+// 攻击形:cookie 端真令牌,提交端伪造(跨域站点无本源 cookie 读权 → 只能瞎猜)
+fn mw_csrf_evil(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let tok = ct_tok(csrf_issue("s3cret-key", "abcdefghijklmnop"))
+    let v = csrf_verify("s3cret-key", tok, "forged00000000001234567890abcdef.0000000000000000000000000000000000000000000000000000000000000000")
+    if cv_rc(v) == 1 {
+        return "" + next(req, h)
+    }
+    return csrf_resp_403()
+}
+
+test "csrf chain pass and short circuit" {
+    let t1 = |r2: Str, k2: I64| h_post(r2, k2)
+    let ok = mw_csrf_ok("/api/todo", 3, t1)
+    assert(ok == "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nposted")
+    let evil = mw_csrf_evil("/api/todo", 3, t1)
+    assert(evil == "HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\n\r\ncsrf rejected")
+}
+
+test "issue set-cookie and roundtrip" {
+    let t = csrf_issue("s3cret-key", "abcdefghijklmnop")
+    assert(ct_rc(t) == 1)
+    let tok = ct_tok(t)
+    // 形 = nonce(16) "." hex(64)= 81 字节
+    assert(tok.len == 81)
+    // Set-Cookie 快照:名 csrf、Path=/、SameSite=Lax;HttpOnly 不设(双提交
+    // JS 读面,csrf.ct 头注权衡);CRLF 仅行尾
+    assert(csrf_set_cookie(tok) == "Set-Cookie: csrf=" + tok + "; Path=/; SameSite=Lax\r\n")
+    // 浏览器回程:cookie 端自 Set-Cookie 值、提交端自 form 体 —— 全等过
+    let cookie_hdr = "session=abc; csrf=" + tok + "; theme=dark"
+    let cval = csrf_cookie_get(cookie_hdr, "csrf")
+    assert(cval == tok)
+    let body = "title=hello&csrf=" + tok + "&done=0"
+    let fval = csrf_form_get(body, "csrf")
+    assert(fval == tok)
+    let v = csrf_verify("s3cret-key", cval, fval)
+    assert(cv_rc(v) == 1 && cv_why(v) == 0)
+}
+
+test "verify fail matrix" {
+    let tok = ct_tok(csrf_issue("s3cret-key", "abcdefghijklmnop"))
+    // 双提交不等(cookie 端 ≠ 提交端)
+    let v3 = csrf_verify("s3cret-key", tok, "different-value-0123456789.zzz")
+    assert(cv_rc(v3) == 0 && cv_why(v3) == 3)
+    // 端缺
+    assert(cv_why(csrf_verify("s3cret-key", "", tok)) == 1)
+    assert(cv_why(csrf_verify("s3cret-key", tok, "")) == 2)
+    // 形坏:无点 / 双点 / sig 短
+    assert(cv_why(csrf_verify("s3cret-key", "plainnonce", "plainnonce")) == 4)
+    assert(cv_why(csrf_verify("s3cret-key", "a.b.c", "a.b.c")) == 4)
+    // 签名篡改:密钥错 / hex 位翻 —— 形完好,重算不合(恒时比较面)
+    let v5 = csrf_verify("wrong-key", tok, tok)
+    assert(cv_rc(v5) == 0 && cv_why(v5) == 5)
+    var flip: Str = "0"
+    if byte_at(tok, 17) == 48 {
+        flip = "1"
+    }
+    let tam = byte_slice(tok, 0, 17) + flip + byte_slice(tok, 18, tok.len)
+    let v6 = csrf_verify("s3cret-key", tam, tam)
+    assert(cv_rc(v6) == 0 && cv_why(v6) == 5)
+}
+
+test "injection face pinned" {
+    // 头走私钉:nonce 携 CR/LF/控制字节 → 签发即拒 —— Set-Cookie 值域
+    // 无 CR/LF 可达路径(值恒出自 csrf_issue 产物约定 + 签发域校验)
+    let t1 = csrf_issue("k", "abc\r\nX-Evil: 1abcdefgh")
+    assert(ct_rc(t1) == 0 && ct_why(t1) == 1)
+    let t2 = csrf_issue("k", "abc\nX-Evil: 1abcdefg")
+    assert(ct_rc(t2) == 0)
+    let t3 = csrf_issue("k", "abc def_ghijklmno")
+    assert(ct_rc(t3) == 0)
+    // 短 nonce(域 [A-Za-z0-9]{16..64})
+    let t4 = csrf_issue("k", "short12345")
+    assert(ct_rc(t4) == 0)
+    // 取值面只进比较面:cookie 取值含分号/空格容错,但不产响应头
+    assert(csrf_cookie_get("a=1", "csrf") == "")
+    assert(csrf_form_get("x=1", "csrf") == "")
+}

@@ -1,0 +1,72 @@
+// tests/http/frm_mw/a_timeout.ct —— 每路由超时语料(P6-B;双臂)
+// 面:deadline 算术、链前判(已越限 → 504 短路,终端不可达)、链后判
+// (越限观测 → 弃 handler 体改发 504 —— mid-handler 中止诚实登记:纯层
+// 无执行控制,v1 = 前/后检出,真·运行中止归 net 集成 P8)、剩余预算下界 0。
+// 确定性:时钟恒注入参数(h = now tick;真钟装配归组合层)。链形适配
+// (a_cors 同口径:dl 恒字面量;now 经 h 下传 —— 链面唯一标量通道)。
+use std.http.frm.timeout.{ tout_deadline, tout_pre, tout_over, tout_left, tout_check, tout_resp_504, td_rc, td_left }
+
+// ---- 终端 handler(组合层;超时短路面不可达) ----
+
+fn h_term(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nworked"
+}
+
+// ---- 链形适配器(组合层;dl 字面量,now = h) ----
+
+// 每 route 一适配器(budget 字面量 = 派发表按 route id 选择 —— timeout.ct
+// 头注 per-route 登记);h = 组合层注入 now(真钟装配归组合层)
+fn mw_timeout(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let dl = tout_deadline(1000, 500)
+    let d = tout_check(h, dl)
+    if td_rc(d) == 0 {
+        return tout_resp_504()
+    }
+    let r = "" + next(req, h)
+    // 后判:真钟面 now2 = 组合层 handler 返回后重读;此处 h 即注入序
+    // (now2 == now 同刻返回 —— 界内)。越限分支以直接调用面演示(下测)。
+    if tout_over(h, dl) == 1 {
+        return tout_resp_504()
+    }
+    return r
+}
+
+test "chain pre reject and pass" {
+    let t1 = |r2: Str, k2: I64| h_term(r2, k2)
+    // 界内 → 终端可达
+    let r1 = mw_timeout("/slow", 1200, t1)
+    assert(r1 == "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nworked")
+    // 已越限(now = dl 恰等即拒,从严)→ 504 短路,终端不可达
+    let r2 = mw_timeout("/slow", 1500, t1)
+    assert(r2 == "HTTP/1.1 504 Gateway Timeout\r\nContent-Length: 7\r\n\r\ntimeout")
+    let r3 = mw_timeout("/slow", 9001, t1)
+    assert(r3 == "HTTP/1.1 504 Gateway Timeout\r\nContent-Length: 7\r\n\r\ntimeout")
+}
+
+test "post check overrun branch" {
+    let dl = tout_deadline(1000, 500)
+    // 后判观测越限(真钟面:handler 返回后 now2 >= dl)→ 组合层弃体改发
+    // 504 —— handler 产物以标记体模拟(诚实登记:响应已生成,组合层处置)
+    let r = "" + h_term("/slow", 1200)
+    var now2: I64 = 1600
+    var resp = r
+    if tout_over(now2, dl) == 1 {
+        resp = tout_resp_504()
+    }
+    assert(resp == "HTTP/1.1 504 Gateway Timeout\r\nContent-Length: 7\r\n\r\ntimeout")
+    // 界内返回:后判不触发
+    now2 = 1499
+    resp = r
+    if tout_over(now2, dl) == 1 {
+        resp = tout_resp_504()
+    }
+    assert(resp == "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nworked")
+    // 剩余预算:下界 0(IO 面可作 socket 预算)
+    assert(tout_left(1200, dl) == 300)
+    assert(tout_left(1500, dl) == 0)
+    assert(tout_left(9999, dl) == 0)
+    // 决策面:rc/left 随出
+    let d = tout_check(1499, dl)
+    assert(td_rc(d) == 1 && td_left(d) == 1)
+    assert(tout_pre(1500, dl) == 0)
+}

@@ -1,0 +1,57 @@
+// tests/http/frm_mw/a_sechdr.ct —— 安全响应头基线语料(P6-B;双臂)
+// 面:五头全快照(HSTS/nosniff/CSP/XFO/Referrer-Policy,发序钉)、HSTS 关
+// /csp 空变体、404 响应同施(全响应适用域)、链形适配(next 响应过
+// sechdr_apply)、csp 携 CR/LF 构造期拒(注入面钉:err 路径 csp 置空 →
+// 施加面只出安全子集)、单点装配登记(重复施加不去重,组合层纪律)。
+// 链形适配(a_cors 同口径:配置字面量 + next 结果 `"" +` 裸尾惯用法)。
+use std.http.frm.sechdr.{ sechdr_cfg, sechdr_apply, sechdr_csp_default, scfg_ok, scfg_err, scfg_csp, sec_err_csp, sec_err_age }
+
+// ---- 终端 handler(组合层) ----
+
+fn h_term(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+}
+
+// ---- 链形适配器(组合层;配置字面量) ----
+
+fn mw_sechdr(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let c = sechdr_cfg(31536000, sechdr_csp_default())
+    let r = "" + next(req, h)
+    return sechdr_apply(r, c)
+}
+
+test "chain snapshot five headers" {
+    let t1 = |r2: Str, k2: I64| h_term(r2, k2)
+    let resp = mw_sechdr("/", 1, t1)
+    // 全快照:发序 HSTS → nosniff → CSP → XFO → Referrer-Policy,插于头块尾
+    assert(resp == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nStrict-Transport-Security: max-age=31536000\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n\r\nok")
+}
+
+test "variants and 404 domain" {
+    // HSTS 关(hage=0)+ csp 空 → 三头基线
+    let c0 = sechdr_cfg(0, "")
+    assert(scfg_ok(c0) == 1)
+    let r404 = sechdr_apply("HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nnot found", c0)
+    assert(r404 == "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n\r\nnot found")
+    // 自定义 csp(部署常量面)
+    let c1 = sechdr_cfg(86400, "default-src 'none'; frame-ancestors 'none'")
+    let r1 = sechdr_apply("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", c1)
+    assert(r1 == "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nStrict-Transport-Security: max-age=86400\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n\r\n")
+}
+
+test "cfg rejects and err path safe subset" {
+    // csp 携 CR/LF(头走私)→ 构造期拒
+    let c1 = sechdr_cfg(0, "default-src 'self'\r\nX-Evil: 1")
+    assert(scfg_ok(c1) == 0 && scfg_err(c1) == sec_err_csp())
+    let c2 = sechdr_cfg(0, "a\nb")
+    assert(scfg_ok(c2) == 0 && scfg_err(c2) == sec_err_csp())
+    // 负 age 拒
+    let c3 = sechdr_cfg(-5, "x")
+    assert(scfg_ok(c3) == 0 && scfg_err(c3) == sec_err_age())
+    // err 路径施加 = 安全子集(csp 已置空/age 归零 —— 坏配置不放大攻击面)
+    let r1 = sechdr_apply("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", c1)
+    assert(r1 == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n\r\nok")
+    // 头块形坏(无 CRLFCRLF)→ 原样返回(防御面)
+    let cg = sechdr_cfg(100, "")
+    assert(sechdr_apply("garbage", cg) == "garbage")
+}

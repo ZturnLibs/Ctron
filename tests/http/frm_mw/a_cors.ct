@@ -1,0 +1,114 @@
+// tests/http/frm_mw/a_cors.ct —— CORS 中间件语料(P6-B;双臂)
+// 面:预检链短路(204 + CORS 头全快照,终端不可达)、预检拒矩阵(origin
+// 出表/后缀混淆形、方法出表、请求头出表 → 403)、actual 放行 + cors_apply
+// 头追加(插于头块尾)、非 CORS 透传(无 Origin 不发头)、wild 通配、
+// cred+wild 构造冲突、ACRH 多 token + OWS 容忍。
+// 链形适配(P6-A 探针口径:闭包捕获槽读 = emit 缺口 → 适配器内配置/请求
+// 判定面恒字面量;头值进适配器的通道 = 组合层直接调用边界预判,组合层按
+// 请求面选择适配器 —— 链面 fn(req,h,next) 只携 req/h,I64/Str 装箱面纪律)。
+use std.http.frm.cors.{ cors_cfg, cors_preflight, cors_check, cors_preflight_resp, cors_apply, cors_resp_403, cd_rc, cd_why, cd_acao, cd_acam, cd_cred, ccfg_ok, ccfg_err, ccfg_wild, cors_err_credwild, cors_err_origin, cors_err_token }
+
+// ---- 终端 handler(组合层;预检短路面不可达) ----
+
+fn h_term(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+}
+
+// ---- 链形适配器(组合层按请求面选择;配置/判定字面量) ----
+
+// 预检放行形:OPTIONS + Origin/ACRM/ACRH 三件齐且全中 → 204 胜出(不调 next)
+fn mw_pf_ok(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let c = cors_cfg("https://app.example", "GET|POST", "Content-Type|X-App", 600, 0)
+    let d = cors_preflight(c, "https://app.example", "POST", "Content-Type, X-App")
+    if cd_rc(d) == 1 {
+        return cors_preflight_resp(d)
+    }
+    return cors_resp_403()
+}
+
+// 预检拒形:origin 后缀混淆(app.example.evil.tld ≠ 白名单精确串)
+fn mw_pf_evil(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let c = cors_cfg("https://app.example", "GET|POST", "Content-Type|X-App", 600, 0)
+    let d = cors_preflight(c, "https://app.example.evil.tld", "POST", "Content-Type")
+    if cd_rc(d) == 1 {
+        return cors_preflight_resp(d)
+    }
+    return cors_resp_403()
+}
+
+// actual 放行形:next 透传 + CORS 头追加于其响应(next 结果恒经 `"" +`
+// 裸尾惯用法落 Str —— fn 值装箱 ct_i 返回,直传实参即断,emit 实证)
+fn mw_actual(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let c = cors_cfg("https://app.example", "GET|POST", "Content-Type|X-App", 600, 0)
+    let d = cors_check(c, 1, "https://app.example")
+    if cd_rc(d) == 0 {
+        return cors_resp_403()
+    }
+    let r = "" + next(req, h)
+    return cors_apply(r, d)
+}
+
+test "preflight chain allow snapshot" {
+    let t1 = |r2: Str, k2: I64| h_term(r2, k2)
+    let resp = mw_pf_ok("/api", 1, t1)
+    // 204 快照:ACAO 出配置条目(非请求回显)+ ACAM/ACAH 出配置表 +
+    // Max-Age 600;cred=0 无 ACC;Vary: Origin;终端体不可达
+    assert(resp == "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: https://app.example\r\nAccess-Control-Allow-Methods: GET, POST\r\nAccess-Control-Allow-Headers: Content-Type, X-App\r\nAccess-Control-Max-Age: 600\r\nVary: Origin\r\nContent-Length: 0\r\n\r\n")
+}
+
+test "preflight chain deny matrix" {
+    let t1 = |r2: Str, k2: I64| h_term(r2, k2)
+    // 后缀混淆拒(403;终端不可达)
+    let r1 = mw_pf_evil("/api", 1, t1)
+    assert(r1 == "HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\n\r\ncors rejected")
+    // 直接判定矩阵:origin 出表 / 方法出表 / 头出表(why 1/2/3)
+    let c = cors_cfg("https://app.example", "GET|POST", "Content-Type|X-App", 600, 0)
+    let d1 = cors_preflight(c, "https://other.example", "POST", "Content-Type")
+    assert(cd_rc(d1) == 0 && cd_why(d1) == 1)
+    let d2 = cors_preflight(c, "https://app.example", "DELETE", "Content-Type")
+    assert(cd_rc(d2) == 0 && cd_why(d2) == 2)
+    let d3 = cors_preflight(c, "https://app.example", "POST", "X-Nope")
+    assert(cd_rc(d3) == 0 && cd_why(d3) == 3)
+    // ACRH 多 token + OWS:全中放行,一个出表即拒
+    let d4 = cors_preflight(c, "https://app.example", "POST", "  X-App ,  Content-Type  ")
+    assert(cd_rc(d4) == 1)
+    let d5 = cors_preflight(c, "https://app.example", "POST", "Content-Type,X-Nope")
+    assert(cd_rc(d5) == 0 && cd_why(d5) == 3)
+}
+
+test "actual apply and passthrough" {
+    let t1 = |r2: Str, k2: I64| h_term(r2, k2)
+    // actual 链:next 200 → ACAO + Vary 插于头块尾(CR/LF 值面 = 配置条目,
+    // 无请求回显)
+    let resp = mw_actual("/api/data", 2, t1)
+    assert(resp == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nAccess-Control-Allow-Origin: https://app.example\r\nVary: Origin\r\n\r\nok")
+    // 非 CORS(无 Origin):放行透传,零 CORS 头(why 4)
+    let c = cors_cfg("https://app.example", "GET|POST", "Content-Type|X-App", 600, 0)
+    let d0 = cors_check(c, 0, "")
+    assert(cd_rc(d0) == 1 && cd_why(d0) == 4)
+    assert(cd_acao(d0) == "")
+    let r0 = cors_apply("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", d0)
+    assert(r0 == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+    // wild 通配:ACAO 恒 "*",cred+wild 构造期拒(WHATWG fetch 语义)
+    let w = cors_cfg("*", "GET", "X-A", 0, 0)
+    assert(ccfg_ok(w) == 1 && ccfg_wild(w) == 1)
+    let dw = cors_check(w, 1, "https://random.example")
+    assert(cd_rc(dw) == 1 && cd_acao(dw) == "*")
+    let wc = cors_cfg("*", "GET", "X-A", 0, 1)
+    assert(ccfg_ok(wc) == 0 && ccfg_err(wc) == cors_err_credwild())
+}
+
+test "cfg construction rejects" {
+    // origin 形坏(下划线 host 非法字符域)
+    let c1 = cors_cfg("https://bad_host.example", "GET", "X-A", 0, 0)
+    assert(ccfg_ok(c1) == 0 && ccfg_err(c1) == cors_err_origin())
+    // 方法表坏(非 token 字节 —— CR/LF 不可入配置,注入面构造期封口)
+    let c2 = cors_cfg("https://ok.example", "GE\rT", "X-A", 0, 0)
+    assert(ccfg_ok(c2) == 0 && ccfg_err(c2) == cors_err_token())
+    // cred 白名单回显面:ACAO = 条目 + ACC 头(预检)
+    let c3 = cors_cfg("https://app.example", "GET|POST", "X-App", 600, 1)
+    let d3 = cors_preflight(c3, "https://app.example", "POST", "X-App")
+    assert(cd_rc(d3) == 1 && cd_acao(d3) == "https://app.example" && cd_cred(d3) == 1)
+    let r3 = cors_preflight_resp(d3)
+    assert(r3 == "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: https://app.example\r\nAccess-Control-Allow-Methods: GET, POST\r\nAccess-Control-Allow-Headers: X-App\r\nAccess-Control-Allow-Credentials: true\r\nAccess-Control-Max-Age: 600\r\nVary: Origin\r\nContent-Length: 0\r\n\r\n")
+}

@@ -1,0 +1,108 @@
+// tests/http/frm_mw/a_limit.ct —— 限流 + 过载 shed 语料(P6-B;双臂)
+// 面:令牌桶耗尽 → 503 + Retry-After(链形短路,终端不可达)、注入时钟
+// 补充恢复(分数步留余确定性:不足一步仍拒,恰一步补 1)、突发封顶、
+// max-in-flight 满 shed → 503(判定序:in-flight 门先于令牌桶)、释放后
+// 再入、per-IP 键分桶(双 IP 独立值状态)。
+// 确定性:时钟恒注入参数(h = tick;真钟装配归组合层 —— ctron_net_now_ns
+// 垫片 or 逻辑计数),零真钟零睡眠。链形适配(a_cors 同口径:桶态/在途数
+// 恒字面量 —— 组合层注册表(IP→桶值)经直接调用边界算得后入适配器;值
+// 状态经 lim_bkt 构造面重建下传,消费方不直构字面量)。
+use std.http.frm.limit.{ lim_cfg, lim_bkt_new, lim_bkt, lim_take, lim_acq, lim_rel, lim_ip_key, lim_resp_503, lcfg_ok, lt_ok, lt_retry, lt_tks, lt_last, lif_ok, lif_n }
+
+// ---- 终端 handler(组合层;限流/shed 短路面不可达) ----
+
+fn h_term(req: Str, h: I64) -> Str {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+}
+
+// ---- 链形适配器(组合层;桶态/判定字面量) ----
+
+// 令牌桶形:h = 注入时钟。桶态 = 组合层算得的字面量重建(此处已耗尽:
+// tks=0,last=0);now=5 不足一补充步(ivl=10)→ 503 Retry-After: 10
+fn mw_limit_drained(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let c = lim_cfg(2, 1, 10, 4)
+    let b = lim_bkt(0, 0)
+    let t = lim_take(b, c, h, 1)
+    if lt_ok(t) == 1 {
+        return "" + next(req, h)
+    }
+    return lim_resp_503(lt_retry(t))
+}
+
+// 在途满载形:acq(4,4) → shed → 503(Retry-After: 1 常量,shed 无时间
+// 估计面,limit.ct 头注登记)
+fn mw_inflight_full(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    let a = lim_acq(4, 4)
+    if lif_ok(a) == 1 {
+        return "" + next(req, h)
+    }
+    return lim_resp_503(1)
+}
+
+test "chain drain shed and refill recovery" {
+    let t1 = |r2: Str, k2: I64| h_term(r2, k2)
+    // 耗尽桶 + now=5(分数步)→ 503,Retry-After = ceil(1*10/1) = 10
+    let r1 = mw_limit_drained("/api", 5, t1)
+    assert(r1 == "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 10\r\nContent-Length: 12\r\n\r\nlim rejected")
+    // 同桶 + now=10(恰一步)→ 补 1 放行(确定性恢复;终端可达)
+    let r2 = mw_limit_drained("/api", 10, t1)
+    assert(r2 == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+    // 在途满 → shed 503(Retry-After: 1;终端不可达)
+    let r3 = mw_inflight_full("/api", 0, t1)
+    assert(r3 == "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 1\r\nContent-Length: 12\r\n\r\nlim rejected")
+}
+
+test "bucket determinism sequence" {
+    let c = lim_cfg(3, 1, 10, 8)
+    assert(lcfg_ok(c) == 1)
+    // 确定性序列:cap 3 @t=0 → 三耗一拒,恢复窗精确(109 拒 / 110 过)
+    let b0 = lim_bkt_new(3, 0)
+    let t1 = lim_take(b0, c, 0, 1)
+    assert(lt_ok(t1) == 1 && lt_tks(t1) == 2)
+    let b1 = lim_bkt(lt_tks(t1), lt_last(t1))
+    let t2 = lim_take(b1, c, 0, 2)
+    assert(lt_ok(t2) == 1 && lt_tks(t2) == 0)
+    let b2 = lim_bkt(lt_tks(t2), lt_last(t2))
+    let t3 = lim_take(b2, c, 0, 1)
+    assert(lt_ok(t3) == 0 && lt_retry(t3) == 10)
+    // 补充与消费正交:now=100 十步 → 补满 cap,再耗尽(桶态 last=100)
+    let t3b = lim_take(b2, c, 100, 1)
+    assert(lt_ok(t3b) == 1 && lt_tks(t3b) == 2 && lt_last(t3b) == 100)
+    let b3 = lim_bkt(lt_tks(t3b), lt_last(t3b))
+    let t4 = lim_take(b3, c, 100, 2)
+    assert(lt_ok(t4) == 1 && lt_tks(t4) == 0 && lt_last(t4) == 100)
+    // 分数步留余确定性:109(不足一步)仍拒;110(恰一步)补 1 过
+    let b4 = lim_bkt(lt_tks(t4), lt_last(t4))
+    assert(lt_ok(lim_take(b4, c, 109, 1)) == 0)
+    let t5 = lim_take(b4, c, 110, 1)
+    assert(lt_ok(t5) == 1 && lt_tks(t5) == 0 && lt_last(t5) == 110)
+    // 突发封顶:长闲补足 cap 不越(900 tick = 90 步 × 1 → cap 3)
+    let b5 = lim_bkt(1, 100)
+    let t7 = lim_take(b5, c, 1000, 1)
+    assert(lt_ok(t7) == 1 && lt_tks(t7) == 2)
+}
+
+test "inflight semaphore and ip keying" {
+    // 满 shed / 释放再入 / rel 下界
+    let a1 = lim_acq(0, 2)
+    let a2 = lim_acq(lif_n(a1), 2)
+    assert(lif_ok(a2) == 1 && lif_n(a2) == 2)
+    assert(lif_ok(lim_acq(lif_n(a2), 2)) == 0)
+    let n = lim_rel(lif_n(a2))
+    assert(n == 1)
+    let a3 = lim_acq(n, 2)
+    assert(lif_ok(a3) == 1 && lif_n(a3) == 2)
+    assert(lim_rel(0) == 0)
+    // per-IP 键:确定性 + 相异;双 IP 双桶独立(组合层注册表按键分槽)
+    let k1 = lim_ip_key("203.0.113.7")
+    assert(lim_ip_key("203.0.113.7") == k1)
+    assert(lim_ip_key("198.51.100.9") != k1)
+    let c = lim_cfg(2, 1, 10, 8)
+    let ba = lim_bkt_new(2, 0)
+    let ta1 = lim_take(ba, c, 0, 2)
+    assert(lt_ok(ta1) == 1 && lt_tks(ta1) == 0)
+    // IP A 耗尽不影响 IP B(值状态独立)
+    let bb = lim_bkt_new(2, 0)
+    let tb = lim_take(bb, c, 0, 1)
+    assert(lt_ok(tb) == 1 && lt_tks(tb) == 1)
+}
