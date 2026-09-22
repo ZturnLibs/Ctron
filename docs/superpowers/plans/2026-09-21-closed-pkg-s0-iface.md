@@ -147,3 +147,37 @@ check(+sem)≈2.7s——工具链提速后**绝对耗时反降约一半**,解析
 `sh native.sh` 一次补齐(与 ps1 Windows conformance 同列挂账)。
 
 状态:✅ 完成(2026-09-22,S0.7a)。
+
+## S1a 底座(2026-09-22):.ctast 格式冻结 + 标签清单 + 前置登记
+
+> 触发说明:owner 连续四次"推进剩余全部任务",视为对登记门禁的授权改判;S1 按
+> 最小切片启动——本片只冻结**格式与前置**,序列化器实现为下片(S1a 本体),
+> 缓存接线(S1b)仍按加速触发线挂账。
+
+**.ctast 记录格式 v1(冻结;行序 = 先序遍历):**
+- `N <tag> <nchildren>` — 节点开记录(tag = AST 标签,nchildren = 子记录数);
+- `S <bytelen> <payload>` — 字符串载荷记录(字节长前缀,载荷任意字节含换行,
+  免转义;确定性由遍历序与记录结构保证,规范化无自由度)。
+- 判定规则:AST 节点 = `List[Str]`,[0] 恒为标签串;混合子槽(名串/子节点)按
+  **形态表**(tag → 槽位种类)驱动,形如:前缀串槽(名/isv/"pub")+ 节点槽 +
+  尾部变长串槽(anm/stamp/"pub" 尾标,Fn/FnPub/FnC/FnExt/Struct/Enum/Method);
+  容器节点三分:全串容器(Segs/Syms/Bounds/Drvs)/全节点容器(File/Fields/Ps/
+  Vars/Items/TArgs/KTuple/FnT/TupleT…)/混合节点(见上)。
+- **解析器当前实测 95 个唯一标签**(parse_node/expr/stmt/decl/gui/pkg 的 mk() 构造
+  位去重);形态表须全覆盖,**未知标签 = fail-closed 拒绝**(缓存与文法
+  schema_version = 工具链 VERSION 锚定,§10.1 缓存键同源)。
+
+**硬前置(登记,跨线):** 通用序列化需 `is_list(x) -> Bool` 类型判定内建——
+现有语言面不存在(rt_eval/eval_expr/eval_call 无 is_list/is_str/typeof);
+**无它则只能走 95 项形态表**(维护税随文法演化,等价 std 宪章"三宿主税"论证)。
+is_list 三线改动点:seed `compiler-c/src/rt_eval.c` 内建表 + `compiler-rust`
+interp 对应分支 + `trans_expr.ct` 降到 C 的内建分派;均处 peer 泳道在途文件,
+待其稳定后由本泳道提三线小片(每线 ~5 行)。
+
+**验收预案(S1a 本体,下片):** 往返逐字节固定点——`dump(src) ==
+redump(load(dump(src)))` 于真实语料(stdpkg 合并 + fx 夹具 + 编译器自身),
+seed 解释路径实现与验证(发射路径非必需);另有 P1 环境事实:当前
+`ctc.sh emit build/cc_run.ct` rc=1 且产物截断 2387B(发射泳道落库回归,
+native 全构建冻结)——**归发射泳道,本泳道仅上报**。
+
+状态:底座完成(2026-09-22);S1a 本体(序列化器/回读器/往返验收)按下片实施。
