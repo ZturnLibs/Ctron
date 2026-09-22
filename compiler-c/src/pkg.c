@@ -751,6 +751,7 @@ static void check_use_alias_collisions(pkg_res* r, const pkg* p, const mod* m) {
         for (size_t k = 0; k < d->use.nimports; k++) {
             const cimport* imp = &d->use.imports[k];
             if (!imp->alias) continue;
+            if (imp->nsegs > 0 && strcmp(imp->alias, imp->segs[imp->nsegs - 1]) == 0) continue; // A as A = 裸导(spec §2),对齐自举 k8 守卫
             for (size_t a = 0; a < f->ndecls; a++) {
                 const cdecl* dd = &f->decls[a];
                 const char* nm = NULL;
