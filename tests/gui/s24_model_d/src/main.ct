@@ -1,0 +1,131 @@
+// tests/gui/s24_model_d —— SL-5:Box 活模型域包组合夹具(Todo 迁移高危面回归门)
+// 覆盖登记的值态高危面全组合:Box[Model] 活绑定 + when+each+input 同视图 +
+// 动作变更模型(键入/添加/删除)+ 多帧 bind 重入。形态 = s21 内嵌 view/style +
+// s19/gui_counter 的 Box 活模型与动作分发,与 todo 域包迁移同构。
+// 坑位:视口 320x640——Clay 对视口外元素剔除渲染命令,断言面须容得下全内容。
+// 注:字面量叶文本避开标点(重建插空格,已登记限制)。
+use std.gui.{test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent}
+
+view ProbeApp {
+  <vbox class="root">
+    <label class="title">S24 MODEL</label>
+    <input bind={draft} class="field"/>
+    <label class="mirror">{draft}</label>
+    <button class="btn" on:click={add}>ADD</button>
+    <when cond={empty}>
+      <label class="hint">nothing yet</label>
+    </when>
+    <each item in={todos}>
+      <label class="row">{item}</label>
+    </each>
+    <button class="del" on:click={del}>DEL</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style field { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style mirror { fg: "#aaaaaa" h: 30 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style hint { fg: "#888888" }
+style row { fg: "#cccccc" }
+style del { bg: "#7f1d1d" fg: "#ffffff" w: 120 h: 44 }
+
+struct Model {
+    var draft: Str
+    var todos: List[Str]
+}
+
+// E8120 处理函数声明 stub(真分发在 act)
+fn add() {
+}
+fn del() {
+}
+
+// bind 通道三形态分发:when:/each:/绑定名(gui_counter 活值化)
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "draft" {
+        buf.push(m.draft)
+    }
+    if buf[0] == "when:empty" {
+        if m.todos.len == 0 {
+            buf.push("1")
+        } else {
+            buf.push("0")
+        }
+    }
+    if buf[0] == "each:todos" {
+        var i: I32 = 0
+        while i < m.todos.len {
+            buf.push(m.todos[i])
+            i += 1
+        }
+    }
+}
+
+// 动作收口:添加(回显值入列 + 清 draft)/删除末项
+// 注:del 不用 .pop()——零参方法发射缺口(t_pop 悬空逗号,登记归发射泳道),
+// 以重建列表 + 成员赋值替代(兼覆盖 Box 成员 List 的 native 引用语义面)
+fn act(name: Str, m: Box[Model]) {
+    if name == "add" {
+        m.todos.push(m.draft)
+        m.draft = ""
+    } else {
+        if name == "del" {
+            if m.todos.len > 0 {
+                var nl = List[Str]()
+                var i2: I32 = 0
+                while i2 < m.todos.len - 1 {
+                    nl.push(m.todos[i2])
+                    i2 += 1
+                }
+                m.todos = nl
+            }
+        }
+    }
+}
+
+// 键入:退格删尾,可打印字符追加(s19 同款)
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 259 {
+        if m.draft.len > 0 {
+            m.draft = byte_slice(m.draft, 0, m.draft.len - 1)
+        }
+    } else {
+        if k >= 32 {
+            if k < 127 {
+                m.draft = m.draft + char_str(k)
+            }
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](Model { draft: "", todos: List[Str]() })
+    var rc: I32 = test(src, 320, 640,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| on_key(k, m),
+        |t, a, key| {
+            // 帧 1:空态断言
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "nothing yet")
+            // 键入 h i → 回显
+            key(d_type_char(t, 104))
+            key(d_type_char(t, 105))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi")
+            // 添加 → 行渲染 + 空态消失
+            a(d_click(t, "add"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi")
+            d_expect_absent(t, "nothing yet")
+            // 删除 → 空态回归
+            a(d_click(t, "del"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "nothing yet")
+            println("S24-ALL-GREEN")
+        })
+    println("s24: rc=" + rc.to_string())
+    return rc
+}
