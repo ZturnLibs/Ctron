@@ -98,6 +98,12 @@
   真实现象 = strlen(NULL)（lldb frame #0 = _platform_strlen）**。编译态即触发。
   嫌疑：bind 通道字符串生命周期 / mirror 空 draft 的 Clay 切片 / Box 字段串。
   **Todo 回退旧形态绿态（peer checkbox 升级 + I64 对齐）；迁移待专门调试会话。**
+- **2026-09-22 晚二试（11 参桥修复后）**：迁移版构建/运行全通，但帧内 when 分支
+  未渲染（"nothing yet" 缺失，cmds=6 = 仅 title/fld-R/btn-R/ADD/btn2-R/del）。
+  **when:empty 查询链（nflag→bind 查询→"1"）三层人工核对全对**，而渲染层 when
+  被跳过——症状指向 rt_emit 的 when 旗查询在编译口径的实参传递（同类：11 参桥
+  hval 差一位）——**与 11 参桥同根（>9 参栈参/寄存器边界）的疑点加强，待
+  dispatch0 单步会话一并定位**。Todo 维持旧形态绿态。
 - todo 已回退落库绿态（旧形态 M1-e 全绿）；迁移代码可按需找回（本登记含完整设计）。
 - 教训：**域包 Box 捕获闭包 + when+each+input 组合 + 多帧 bind 重入**为值态高危面，
   迁移前先用最小合成例验证（s23 单构造全绿不足覆盖此形态）。
