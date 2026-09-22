@@ -203,6 +203,12 @@ fn pkg_std_root(dir: Str) -> Str {
 }
 
 fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -> List[Str] {
+    return pkg_load_use_done(file, dir, stack, List[Str](), diags)
+}
+
+// done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
+// stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str]) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
@@ -258,6 +264,20 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                         mpath = apath
                     }
                 }
+            }
+            if in_list(done, mpath) {
+                // 已合并(菱形/共享):剔除本 Use 重扫,零重复
+                var nm3 = mk("File")
+                var j3: I32 = 1
+                while j3 < out.len {
+                    if j3 != i {
+                        nm3.push(out[j3])
+                    }
+                    j3 += 1
+                }
+                out = nm3
+                i = 1
+                continue
             }
             if in_list(stack, mpath) {
                 diag1(diags, "E5020.circ", "", mpath)
@@ -325,7 +345,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                         }
                         var stack2 = stack
                         stack2.push(mpath)
-                        mf = pkg_load_use(mf, dir, stack2, diags)
+                        mf = pkg_load_use_done(mf, dir, stack2, done, diags)
                         if diags.len > 0 {
                             return out
                         }
@@ -365,6 +385,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                         }
                         out = merged
                         i = 0
+                        done.push(mpath)
                     }
                 None => {
                     if !isstd {

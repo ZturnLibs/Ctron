@@ -712,6 +712,23 @@ else
     bad "缺传递依赖负例异常: $(head -1 "$T/ctn.out")"
 fi
 
+echo "== 3n) S2a 真实依赖图(共享传递去重 + 三层链 + 双版本改名共存)=="
+R="$T/realdep"
+for d in ac af1 af2 an ai; do mkdir -p "$R/$d/impl"; done
+mkdir -p "$R/app/deps/codecore.ctart" "$R/app/deps/fmtkit.ctart" "$R/app/deps/fmtkit2.ctart" "$R/app/deps/netlite.ctart" "$R/app/deps/invoiceapi.ctart"
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/codecore/codecore.ct" --ast=seal --astout="$R/ac" --astname=codecore > "$T/r1.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/fmtkit1/fmtkit.ct" --ast=seal --astout="$R/af1" --astname=fmtkit > "$T/r2.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/fmtkit2/fmtkit.ct" --ast=seal --astout="$R/af2" --astname=fmtkit2 > "$T/r3.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/netlite/netlite.ct" --ast=seal --astout="$R/an" --astname=netlite > "$T/r4.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/invoiceapi/invoiceapi.ct" --ast=seal --astout="$R/ai" --astname=invoiceapi > "$T/r5.out" 2>&1
+cp -r "$R/ac/." "$R/app/deps/codecore.ctart/" && cp -r "$R/af1/." "$R/app/deps/fmtkit.ctart/" && cp -r "$R/af2/." "$R/app/deps/fmtkit2.ctart/" && cp -r "$R/an/." "$R/app/deps/netlite.ctart/" && cp -r "$R/ai/." "$R/app/deps/invoiceapi.ctart/" && cp "$ROOT/tests/realdep_demo/app/main.ct" "$R/app/"
+(cd "$R/app" && CTRON_STDPATH="$ROOT/std" "$COMP/ctc.sh" main.ct > "$T/rapp.out" 2>&1)
+if grep -q "legacy=1,234,567" "$T/rapp.out" && grep -q "total=CNY 1,234,567" "$T/rapp.out" && grep -q "paid=75%" "$T/rapp.out" && grep -q "ref8=" "$T/rapp.out" && grep -q "resp=OK" "$T/rapp.out"; then
+    ok "真实依赖图五行锚定(菱形去重 + 三层链 + 双版本改名共存)"
+else
+    bad "真实依赖图异常: $(head -3 "$T/rapp.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

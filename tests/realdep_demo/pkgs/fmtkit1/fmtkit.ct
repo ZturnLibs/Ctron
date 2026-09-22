@@ -1,0 +1,26 @@
+// fmtkit 1.x —— 金额千分位(money);legacy 口径:纯数字无符号
+// 依赖 codecore.pad_left(单号补位功能);部分功能依赖,非全量。
+use codecore.codecore.{pad_left}
+
+// 千分位插逗号(正整数域;负数未定义)
+pub fn money(cents: I32) -> Str {
+    var s = cents.to_string()
+    var out = ""
+    var grp = 0
+    var i = s.len
+    while i > 0 {
+        out = byte_slice(s, i - 1, i) + out
+        grp += 1
+        if grp == 3 && i > 1 {
+            out = "," + out
+            grp = 0
+        }
+        i -= 1
+    }
+    return out
+}
+
+// 单号补位(透传 codecore;证明依赖真实性)
+pub fn ref_no(id: I32) -> Str {
+    return "INV" + pad_left(id.to_string(), 6)
+}

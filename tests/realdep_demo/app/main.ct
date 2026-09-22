@@ -1,0 +1,15 @@
+// 报表应用 —— 现实依赖形态消费方:
+//   直接依赖 fmtkit(1.x)与 fmtkit2(2.x)双版本共存(符号不重叠:ref_no 择一)
+//   直接依赖 invoiceapi;传递依赖 netlite、codecore(三方共享,单副本)
+use fmtkit.fmtkit.{money, ref_no}
+use fmtkit2.fmtkit.{money_str, pct, ref_no8}
+use invoiceapi.invoiceapi.{fetch_total}
+
+fn main() {
+    var cents = 1234567
+    println("legacy=" + money(cents))
+    println("total=" + money_str(cents))
+    println("paid=" + pct(75, 100))
+    println("ref8=" + ref_no8(42))
+    println("resp=" + fetch_total("https://api.example/invoice/1"))
+}

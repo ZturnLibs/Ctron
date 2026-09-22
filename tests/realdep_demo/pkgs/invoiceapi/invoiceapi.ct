@@ -1,0 +1,8 @@
+// invoiceapi 1.x —— 发票 API 客户端(拉取面;确定性模拟)
+// 依赖 netlite(收发)—— 传递依赖经消费端 deps 扁平解析
+use netlite.netlite.{post}
+
+// 拉取发票总额报文(确定性模拟响应)
+pub fn fetch_total(url: Str) -> Str {
+    return post(url, "invoice=1")
+}

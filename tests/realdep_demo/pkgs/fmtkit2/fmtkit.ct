@@ -1,0 +1,38 @@
+// fmtkit 2.x —— breaking:money 改名 money_str 并带货币前缀;新增 pct
+// 依赖 codecore.pad_left(与 1.x 同一底座 —— 同包不同版本共享传递依赖)
+use codecore.codecore.{pad_left}
+
+// 千分位 + 货币前缀(2.x 新口径)
+pub fn money_str(cents: I32) -> Str {
+    var s = cents.to_string()
+    var out = ""
+    var grp = 0
+    var i = s.len
+    while i > 0 {
+        out = byte_slice(s, i - 1, i) + out
+        grp += 1
+        if grp == 3 && i > 1 {
+            out = "," + out
+            grp = 0
+        }
+        i -= 1
+    }
+    return "CNY " + out
+}
+
+// 百分比整数(0-100 裁剪)
+pub fn pct(part: I32, total: I32) -> Str {
+    var v = 0
+    if total > 0 {
+        v = part * 100 / total
+    }
+    if v > 100 {
+        v = 100
+    }
+    return v.to_string() + "%"
+}
+
+// 单号补位(2.x 口径:宽度 8)
+pub fn ref_no8(id: I32) -> Str {
+    return "INV-" + pad_left(id.to_string(), 8)
+}

@@ -1,0 +1,25 @@
+// codecore 1.0 —— 数字/文本编码底座(被 fmtkit/netlite 共享依赖)
+// 确定性:纯函数域,无 IO 无时钟;输入正整数/ASCII。
+
+// 左填充至指定宽(空格;超宽原样)—— 千分位/单号构造的共用底座
+pub fn pad_left(s: Str, w: I32) -> Str {
+    var out = s
+    while out.len < w {
+        out = " " + out
+    }
+    return out
+}
+
+// 仅保留数字字节(其余丢弃)—— 报文提数底座
+pub fn digits_only(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c >= 48 && c <= 57 {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}

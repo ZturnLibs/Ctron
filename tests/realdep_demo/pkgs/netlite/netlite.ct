@@ -1,0 +1,8 @@
+// netlite 1.x —— 极简 HTTP 收发(确定性模拟;真网由 P6 服务线验证)
+// 依赖 codecore.pad_left(报文长度定宽 —— 三层链:app→invoiceapi→netlite→codecore)
+use codecore.codecore.{pad_left}
+
+// POST 确定性模拟:返回定长长度标注 + URL(不真联网)
+pub fn post(url: Str, body: Str) -> Str {
+    return "OK[" + pad_left((body.len).to_string(), 6) + "] " + url
+}
