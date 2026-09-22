@@ -129,6 +129,10 @@
   错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
   参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
   （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
+- **调用瞬间终测（lldb f 1 + frame variable u）**：调用点 u = [1..9, 10, 11, 0] 完美；
+  被调方 gui_cfg 收到 (hmode=9, **hval=0, bg=10**)——**C 调用指令在栈参写入时于
+  u[9] 前插入 0 并丢弃 u[10]**（11 参 call 的栈参写坏）。-O2 与 -O0 -g 双构建
+  均复现。续接 = -g 单步 case-11 的栈写入序列（4 条 store 指令）定位写坏点。
 - **C 层定论（-g 构建 + lldb 三点实测，2026-09-22）**：干净重建下复现依旧（路径②确认，
   非竞态伪影）。证据链：①FR 帧串正确 [i:1..i:11]；②DISPATCH u 数组正确（u8=9/u9=10/
   u10=11）；③**gui_cfg 入口栈参正确 [9,10,11]**；④**gui_cfg_impl 收到 hval=0 bg=10**
@@ -150,6 +154,10 @@
   错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
   参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
   （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
+- **调用瞬间终测（lldb f 1 + frame variable u）**：调用点 u = [1..9, 10, 11, 0] 完美；
+  被调方 gui_cfg 收到 (hmode=9, **hval=0, bg=10**)——**C 调用指令在栈参写入时于
+  u[9] 前插入 0 并丢弃 u[10]**（11 参 call 的栈参写坏）。-O2 与 -O0 -g 双构建
+  均复现。续接 = -g 单步 case-11 的栈写入序列（4 条 store 指令）定位写坏点。
 - **C 层定论（-g 构建 + lldb 三点实测，2026-09-22）**：干净重建下复现依旧（路径②确认，
   非竞态伪影）。证据链：①FR 帧串正确 [i:1..i:11]；②DISPATCH u 数组正确（u8=9/u9=10/
   u10=11）；③**gui_cfg 入口栈参正确 [9,10,11]**；④**gui_cfg_impl 收到 hval=0 bg=10**
