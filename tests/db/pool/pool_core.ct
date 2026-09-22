@@ -1,0 +1,219 @@
+// tests/db/pool/pool_core.ct —— 有界连接池核心面(P5-E;双臂)。
+// 容量必填 / FIFO / Z('T') 陷阱复位 / drain 排空复位 / 复位失败弃用 /
+// 流截断脏弃用(绝不发放脏连接)/ Redis 无会话态直回池。
+// use 纪律:单路径导入树(pool→pg 已占 pg;消费方直 use pg 即 E5020 环)
+// ⇒ 借出/复位面全经 pool 门面(pool_borrow_pg/pq_*;pool.ct 头注)。
+use std.db.pool.{pool_open, pool_add_pg, pool_add_redis, pool_take, pool_borrow_pg, pool_release_pg, pool_release_redis, pool_classify, pool_ok, pool_cap, pool_nslots, pool_nidle, pool_nadd, pool_ntake, pool_nreset, pool_ndrop, pool_slot_kind, pool_slot_status, pool_slot_cls, pool_slot_fd, pa_ok, pa_slot, pa_kind, pa_cur, pa_st, pq_rc, pq_err, pq_status, pq_next}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "capacity required: zero/negative cap fail-closed" {
+    let z = pool_open(0)
+    assert_eq(pool_ok(z), 0)
+    let n = pool_add_redis(z, -1)
+    assert_eq(pool_nslots(n), 0)
+    let a = pool_take(n)
+    assert_eq(pa_ok(a), 0)
+    let neg = pool_open(-3)
+    assert_eq(pool_ok(neg), 0)
+    let ok = pool_open(1)
+    assert_eq(pool_ok(ok), 1)
+    assert_eq(pool_cap(ok), 1)
+}
+
+test "bounded: add beyond cap rejected, FIFO take, empty miss" {
+    var st = pool_open(1)
+    st = pool_add_redis(st, -1)
+    st = pool_add_redis(st, -1)
+    assert_eq(pool_nslots(st), 1)
+    assert_eq(pool_nadd(st), 1)
+    // 容量 2:第二连接入池
+    var st2 = pool_open(2)
+    st2 = pool_add_redis(st2, 11)
+    st2 = pool_add_redis(st2, 12)
+    assert_eq(pool_nslots(st2), 2)
+    assert_eq(pool_nadd(st2), 2)
+    // FIFO 获取:slot 0 先出
+    let a0 = pool_take(st2)
+    assert_eq(pa_ok(a0), 1)
+    assert_eq(pa_slot(a0), 0)
+    st2 = pa_st(a0)
+    let a1 = pool_take(st2)
+    assert_eq(pa_slot(a1), 1)
+    st2 = pa_st(a1)
+    // 池空:miss 面(ok 0;等待接线 = 空闲槽通道 recv,背压显式)
+    let a2 = pool_take(st2)
+    assert_eq(pa_ok(a2), 0)
+    assert_eq(pool_nidle(st2), 0)
+    assert_eq(pool_ntake(st2), 2)
+}
+
+test "Z('T') trap: clean-err in-tx conn must rollback before reuse" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_tx_reset.script")
+    assert_eq(frames.len, 4)
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    let a = pool_take(st)
+    assert_eq(pa_ok(a), 1)
+    assert_eq(pa_cur(a), 0)
+    st = pa_st(a)
+    // 借出面:BEGIN 收口 rc 0 但状态 'T' —— 在事务中(P5-D 评审裁定)
+    let q = pool_borrow_pg(st, pa_slot(a), pa_cur(a), "BEGIN")
+    assert_eq(pq_rc(q), 0)
+    assert_eq(pq_status(q), 84)
+    assert_eq(pq_next(q), 2)
+    // 分类面:err 0 + status 'T' = 复位档(非直接回池)
+    assert_eq(pool_classify(0, 84), 1)
+    assert_eq(pool_classify(0, 73), 0)
+    // 回池:ROLLBACK 复位见 'I' 方可复用(next = 借出查询后的线上位)
+    let st2 = pool_release_pg(st, pa_slot(a), 0, 84, pq_next(q))
+    assert_eq(pool_nreset(st2), 1)
+    assert_eq(pool_nidle(st2), 1)
+    assert_eq(pool_ndrop(st2), 0)
+    assert_eq(pool_slot_status(st2, 0), 73)
+    // 复用:FIFO 同槽;游标已推进过复位路径(cur = 4 = 槽尾)
+    let b = pool_take(st2)
+    assert_eq(pa_ok(b), 1)
+    assert_eq(pa_slot(b), 0)
+    assert_eq(pa_cur(b), 4)
+}
+
+test "reset failure: rollback path exhausted -> conn dropped, never reused" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_reset_eof.script")
+    assert_eq(frames.len, 2)
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    let a = pool_take(st)
+    st = pa_st(a)
+    let q = pool_borrow_pg(st, pa_slot(a), pa_cur(a), "BEGIN")
+    assert_eq(pq_status(q), 84)
+    // 复位路径缺位:ROLLBACK at cur 2 → 源耗尽 → 弃用
+    let st2 = pool_release_pg(st, pa_slot(a), 0, 84, pq_next(q))
+    assert_eq(pool_nreset(st2), 0)
+    assert_eq(pool_ndrop(st2), 1)
+    assert_eq(pool_nidle(st2), 0)
+    assert_eq(pool_slot_cls(st2, 0), 1)
+    // 绝不发放脏连接:取 = miss
+    let b = pool_take(st2)
+    assert_eq(pa_ok(b), 0)
+}
+
+test "drain: E leaves pending Z, pool drains then rollbacks to idle" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_drain.script")
+    assert_eq(frames.len, 6)
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    let a = pool_take(st)
+    st = pa_st(a)
+    let q1 = pool_borrow_pg(st, pa_slot(a), pa_cur(a), "BEGIN")
+    assert_eq(pq_status(q1), 84)
+    let q2 = pool_borrow_pg(st, pa_slot(a), pq_next(q1), "DELETE FROM missing")
+    assert_eq(pq_err(q2), 5)
+    assert_eq(pq_status(q2), 0)
+    // 分类:err 5 = drain 档(可复位)
+    assert_eq(pool_classify(5, 0), 1)
+    let st2 = pool_release_pg(st, pa_slot(a), 5, 0, pq_next(q2))
+    assert_eq(pool_nreset(st2), 1)
+    assert_eq(pool_nidle(st2), 1)
+    assert_eq(pool_slot_status(st2, 0), 73)
+}
+
+test "stream cut: dirty conn dropped without reset, never handed out" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_dirty.script")
+    assert_eq(frames.len, 2)
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    let a = pool_take(st)
+    st = pa_st(a)
+    // 流截断:行集中 EOF → err 3
+    let q = pool_borrow_pg(st, pa_slot(a), pa_cur(a), "SELECT count FROM t")
+    assert_eq(pq_err(q), 3)
+    assert_eq(pool_classify(3, 0), 2)
+    let st2 = pool_release_pg(st, pa_slot(a), 3, 0, pq_next(q))
+    assert_eq(pool_ndrop(st2), 1)
+    assert_eq(pool_nreset(st2), 0)
+    assert_eq(pool_nidle(st2), 0)
+    // Global Constraints:脏连接不复位不回池
+    assert_eq(pa_ok(pool_take(st2)), 0)
+}
+
+test "redis side: no session state, clean direct, err drops" {
+    var st = pool_open(1)
+    st = pool_add_redis(st, 21)
+    let a = pool_take(st)
+    assert_eq(pa_kind(a), 1)
+    assert_eq(pa_slot(a), 0)
+    st = pa_st(a)
+    assert_eq(pool_slot_kind(st, 0), 1)
+    assert_eq(pool_slot_fd(st, 0), 21)
+    // clean:直回池(无复位面;v1 命令面无会话态)
+    let st2 = pool_release_redis(st, pa_slot(a), 0)
+    assert_eq(pool_nidle(st2), 1)
+    assert_eq(pool_nrel(st2), 1)
+    // 复用:FIFO 同槽先出
+    let a2 = pool_take(st2)
+    assert_eq(pa_slot(a2), 0)
+    st2 = pa_st(a2)
+    // err 面:协议/IO = 流信任失 → 弃用,永不复用
+    let st3 = pool_release_redis(st2, pa_slot(a2), 6)
+    assert_eq(pool_ndrop(st3), 1)
+    assert_eq(pool_nreset(st3), 0)
+    assert_eq(pool_nidle(st3), 0)
+    assert_eq(pool_slot_cls(st3, 0), 1)
+    assert_eq(pa_ok(pool_take(st3)), 0)
+    // 双重归还防呆:非借出态归还 = 原样返回(fail-closed,防 idle 双推)
+    let st4 = pool_release_redis(st3, 0, 0)
+    assert_eq(pool_nidle(st4), 0)
+    assert_eq(pool_nrel(st4), 1)
+    // 双重复位归还防呆同面(pg 侧)
+    let st5 = pool_release_pg(st3, 0, 0, 73, 0)
+    assert_eq(pool_nidle(st5), 0)
+}
+
+test "clean pg release + FIFO fairness across two conns" {
+    let fr = load_frames(env_get("CT_DB_POOL"), "p_tx_reset.script")
+    var st = pool_open(2)
+    st = pool_add_pg(st, fr, -1)
+    st = pool_add_redis(st, 31)
+    let a0 = pool_take(st)
+    assert_eq(pa_slot(a0), 0)
+    st = pa_st(a0)
+    let a1 = pool_take(st)
+    assert_eq(pa_slot(a1), 1)
+    assert_eq(pa_kind(a1), 1)
+    st = pa_st(a1)
+    // 借出者 1 先回,1 先入 idle(FIFO);slot 0 无借出查询,next = 0
+    let s1 = pool_release_redis(st, 1, 0)
+    let s01 = pool_release_pg(s1, 0, 0, 73, 0)
+    assert_eq(pool_nidle(s01), 2)
+    // 先等先得:idle 队首 = slot 1
+    let b0 = pool_take(s01)
+    assert_eq(pa_slot(b0), 1)
+    let b1 = pool_take(pa_st(b0))
+    assert_eq(pa_slot(b1), 0)
+}

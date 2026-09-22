@@ -1,0 +1,101 @@
+// tests/db/redis_replay/x_rd_fd.ct —— Redis fd 真源三钉(P5-E;emit 臂专面,
+// x_ 前缀 = interp 无 extern 运行时,链 std/db/c_src/ctron_dbredis.c)。
+// 三钉:
+//   ① 半包续读:bulk 回包分两片到齐($5\r\nhe | llo\r\n),首片不足解析,
+//      续片到齐后整包产出 —— 解析核与脚本源共享(redisx_parse);
+//   ② 管线包 + fill 跨调用持态:$-1 与 :7 一包到齐,f2 消化 $-1 后自残留
+//      取 :7(零读路径;fill 丢失即退化读);对端已关背景下读只有
+//      残留消化 / EOF 两途,钉干净红不挂起;
+//   ③ send-all 命令整发:GET 装配消息经 ctron_dbredis_write 整发,对端
+//      逐读累计逐字节核对(垫片 clamp-单发会 4096 截断的回归面,
+//      ctron_dbpg.c P5-C 同钉)。
+// lane 槽数 = 字面量显式(P5-C 登记;定长数组返回值发射面未证 ⇒ 恒内联)。
+// 真库互操作 Task 6 nightly。
+use std.db.redis.{redis_recv_fd, redis_send_cmd_fd, redis_fd_close, redis_get_cmd, redis_hex_decode, RdsCell64, ctron_dbredis_socketpair, ctron_dbredis_write, ctron_dbredis_read, rs_rc, rs_err, rs_kind, rs_sval, rs_isnull, rs_ival, redis_err_eof}
+
+test "fd source: split bulk, pipeline packet residual, then eof" {
+    var sv: I64[2] = [0, 0]
+    assert_eq(ctron_dbredis_socketpair(sv), 0)
+    // 半包片 p1 = $5\r\nhe(6B)
+    var b1 = redis_hex_decode("24350d0a6865")
+    var p1: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var w: I64 = 0
+    while w < b1.len {
+        p1[w] = b1[w]
+        w += 1
+    }
+    assert_eq(ctron_dbredis_write(sv[1], p1, 6), 6)
+    var rbuf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var scr: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var fill = Box[RdsCell64](RdsCell64 { v: 0 })
+    // 补齐片 p2 = llo\r\n(5B):两片到齐后整包产出(半包续读钉)
+    var b2 = redis_hex_decode("6c6c6f0d0a")
+    var p2: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    w = 0
+    while w < b2.len {
+        p2[w] = b2[w]
+        w += 1
+    }
+    assert_eq(ctron_dbredis_write(sv[1], p2, 5), 5)
+    var f1 = redis_recv_fd(sv[0], rbuf, fill, scr)
+    assert_eq(rs_rc(f1), 0)
+    assert_eq(rs_kind(f1), 36)
+    assert_eq(rs_sval(f1), "hello")
+    assert_eq(rs_ival(f1), 5)
+    assert_eq(rs_bval(f1).len, 5)
+    // 管线包 p3 = $-1 + :7 一包到齐(9B)
+    var b3 = redis_hex_decode("242d310d0a3a370d0a")
+    var p3: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    w = 0
+    while w < b3.len {
+        p3[w] = b3[w]
+        w += 1
+    }
+    assert_eq(ctron_dbredis_write(sv[1], p3, 9), 9)
+    // f2 = NULL bulk($-1):残留消化
+    var f2 = redis_recv_fd(sv[0], rbuf, fill, scr)
+    assert_eq(rs_rc(f2), 0)
+    assert_eq(rs_isnull(f2), 1)
+    assert_eq(rs_ival(f2), -1)
+    // f3 = 整数 :7:零读路径(fill 持态钉;fill 丢失即 err 3)
+    var f3 = redis_recv_fd(sv[0], rbuf, fill, scr)
+    assert_eq(rs_rc(f3), 0)
+    assert_eq(rs_kind(f3), 58)
+    assert_eq(rs_ival(f3), 7)
+    // 对端已关 + 残留耗尽 → err 3 eof(两途均即时,不挂起)
+    assert_eq(redis_fd_close(sv[1]), 0)
+    var f4 = redis_recv_fd(sv[0], rbuf, fill, scr)
+    assert_eq(rs_rc(f4), -1)
+    assert_eq(rs_err(f4), redis_err_eof())
+    assert_eq(redis_fd_close(sv[0]), 0)
+}
+
+test "fd send-all: GET command crosses intact" {
+    var sv: I64[2] = [0, 0]
+    assert_eq(ctron_dbredis_socketpair(sv), 0)
+    let m = redis_get_cmd("k")
+    assert_eq(m.len, 20)
+    var scr: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert_eq(redis_send_cmd_fd(sv[0], m, scr), 0)
+    // 对端逐读累计:恰 20B,边角字节核对(截断即 total < 20 断言红,不挂起)
+    var sr: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var total: I64 = 0
+    var guard: I64 = 0
+    var got = List[I32]()
+    while total < 20 && guard < 10 {
+        guard += 1
+        let n = ctron_dbredis_read(sv[1], sr, 64)
+        assert(n > 0)
+        var j: I64 = 0
+        while j < n {
+            got.push(sr[j].as[I32]())
+            j += 1
+        }
+        total = total + n
+    }
+    assert_eq(total, 20)
+    assert_eq(got[0], 42)
+    assert_eq(got[1], 50)
+    assert_eq(got[2], 13)
+    assert_eq(got[19], 10)
+}

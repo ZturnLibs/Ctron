@@ -1,0 +1,96 @@
+// tests/db/pool/pool_wait.ct —— 池等待接线(§12.3 等待经有界通道表达背压;
+// P5-E;双臂)。池核(miss 不阻塞)+ 空闲槽通道(容量 = 池容量)标准接线:
+//   获取:pool_take miss(ok 0)→ idle_rx.recv() 阻塞等待 = 背压显式;
+//   归还:借出任务分类(pool_classify 纯标量)→ idle_tx.send(slot) 回池信号
+//          (池满即阻塞 = 反向背压);Channel FIFO + idle FIFO ⇒ 先等先得;
+//   取消:recv/send 随作用域取消以 Err 返回(§7.2;06e_cancel 同面)——
+//          取消路径 pool_classify 恒不产 clean ⇒ 禁跨取消复用脏连接。
+// 形态纪律(发射面实证,P5-E 登记):Sender/Receiver 只可闭包捕获于 spawn
+// 字面处(作 struct 字段/形参即 emit 截断);子任务发/主任务收为已证方向;
+// 匹配臂不用(match 于闭包 emit 缺位),err 面走 expect。
+use std.db.pool.{pool_open, pool_add_pg, pool_take, pool_release_pg, pool_classify, pool_nidle, pool_nreset, pool_slot_status, pa_ok, pa_slot, pa_st}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "backpressure: acquire waits until borrower releases, then reset face runs" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_tx_reset.script")
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    // 唯一连接借出 → 池空
+    let a = pool_take(st)
+    assert_eq(pa_ok(a), 1)
+    assert_eq(pa_slot(a), 0)
+    st = pa_st(a)
+    assert_eq(pool_nidle(st), 0)
+    // 第二次获取 = miss(池空;非阻塞面)
+    let miss = pool_take(st)
+    assert_eq(pa_ok(miss), 0)
+    // 等待接线:空闲槽通道容量 1(= 池容量;背压显式)。获取者于 idle_rx
+    // 阻塞;借出者任务分类决策后回池信号。
+    let (idle_tx, idle_rx) = Channel[I64](1)
+    let (cls_tx, cls_rx) = Channel[I64](1)
+    let got = scope { |s|
+        let w = s.spawn(|| {
+            // 归还者:Z('T') 态回池(事务开着)→ 分类 = 复位档(1)
+            let c = pool_classify(0, 84)
+            idle_tx.send(0).expect("idle")
+            cls_tx.send(c).expect("cls")
+            c
+        })
+        let tok = idle_rx.recv().expect("wait")   // 池空获取阻塞点(背压)
+        let c = cls_rx.recv().expect("cls")
+        let r = w.join()
+        tok * 10 + c
+    }
+    // slot 0 + 分类 1(复位档)→ 01
+    assert_eq(got, 1)
+    // 池属主按分类完成回池复位:Z('T') 陷阱 → ROLLBACK 见 'I'
+    // (借出者归还面 = err 0 / status 'T' / next 2 = BEGIN+Z 后线上位)
+    let st2 = pool_release_pg(st, 0, 0, 84, 2)
+    assert_eq(pool_nreset(st2), 1)
+    assert_eq(pool_nidle(st2), 1)
+    assert_eq(pool_slot_status(st2, 0), 73)
+    // 复用:同槽 FIFO 先出
+    let b = pool_take(st2)
+    assert_eq(pa_ok(b), 1)
+    assert_eq(pa_slot(b), 0)
+}
+
+test "clean release face: classify direct, no reset counted" {
+    let frames = load_frames(env_get("CT_DB_POOL"), "p_tx_reset.script")
+    var st = pool_open(1)
+    st = pool_add_pg(st, frames, -1)
+    // 借出(池空)→ clean 归还:classify(0, 73) = 0 = 直接回池
+    let a = pool_take(st)
+    st = pa_st(a)
+    assert_eq(pool_classify(0, 73), 0)
+    let st2 = pool_release_pg(st, pa_slot(a), 0, 73, pa_cur(a))
+    assert_eq(pool_nreset(st2), 0)
+    assert_eq(pool_nrel(st2), 1)
+    assert_eq(pool_nidle(st2), 1)
+}

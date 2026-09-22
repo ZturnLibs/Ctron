@@ -1,0 +1,673 @@
+// std/db/redis.ct —— Redis RESP2 客户端核(P5-E;回放优先架构,镜像 pg.ct)
+// since: std-0.5 stability: experimental
+// ═══ 架构口径(镜像 pg.ct 双薄源共驱一核)═══
+//   ① redis_recv_script(回放源):List[Str] 十六进制回包逐条出(一行一条
+//      完整回包;tests/db/redis_replay/*.script + README)——CI 零真库;
+//   ② redis_recv_fd(真源):fd 直读(std/db 自有垫片 std/db/c_src/
+//      ctron_dbredis.c,ctron_dbpg.c 同构镜像;真 fd 冒烟 Task 6 nightly;
+//      interp 无 extern 运行时 ⇒ fd 源面 emit 专臂,x_ 前缀)。
+//   核解析器 redisx_*(字节表 + 游标)双源共享;统一产出 RedisReply。
+// ═══ 依赖纪律 ═══
+//   零 std use 纯叶(与 pg.ct/db.ct 同口径;严格互斥树——std/db 不 use
+//   std.net)。十六进制面自持(redis_hex_*,pg.ct 自持 b64 同款先例:仅
+//   为夹具 I/O 复制 30 行工具面,不为此拉 std/enc 载荷面)。extern 符号
+//   前缀 ctron_dbredis_*(与 ctron_dbpg_* 分置:同名 extern decl 二次
+//   合并即 E5030,P5-D 探针实证)。
+// ═══ RESP2 面(本任务)═══
+//   命令编码 = RESP 数组(逐参 bulk string):*N\r\n $len\r\n arg\r\n …;
+//   GET/SET/DEL/EXPIRE/INCR 五命令装配面(redis_cmd + 五具名包装)。
+//   回包五形:
+//     '+' 简单字符串(sval)/ '-' 错误(rc -1 err 4,sval = 原文)/
+//     ':' 整数(ival)/ '$' 批量字符串(sval + bval 精确字节面;$-1 = NULL
+//     → isnull 1)/ '*' 数组(一屢单展开:items/inulls 平铺;*-1 = NULL
+//     数组 → isnull;嵌套数组 = 协议违例 err 2,v0 登记口径——基本面
+//     五命令不产嵌套)。
+// ═══ 发射面/解释面纪律(divergences (f)-(i);全镜像 pg.ct)═══
+//   ① (h) 载荷通道:RedisReply struct 标量字段 + rs_* 自由 getter。
+//   ② (i) C10:长度/计数算术一律宽域播种(redisz)后运算;bulk 长域
+//      **乘前预门**:累计 > 512MiB(RESP 协议上限 512MB,远低 2^28 险带
+//      = 268435456?——512MiB = 536870912 > 2^28,故逐位累计并以
+//      bulk_max 先于 *10 界门,全程 I64 宽域,不落 32 位乘)即拒。
+//      **struct 字段只用 List[Str]/List[I32](List[I64] 字段发射面坏,
+//      P5-C 登记)**。
+//   ③ utf8_enc 解释口径坏(pg.ct 头注③同款):文本解码走可打印 ASCII
+//      表切片(32..122,'{' 档 fail-closed);任意字节精确面 = bval
+//      (List[I32])/redis_hex_encode;非 ASCII 文本解码待解释器修复后
+//      收敛(登记口径)。
+//   ④ 无方法调用/无闭包/无 Tuple;状态随值携带;List 经形参 push 跨
+//      函数传播;"fn 内未用结果绑定"毒化——忽略返回值用裸语句形。
+//   ⑤ inline test 不落本文件(C17 宿主敏感);声明冒烟 + 行为面全在
+//      tests/db/redis_replay。
+// ═══ err 码(RedisReply.err)═══
+//   1 帧面坏(非十六进制/空行)  2 协议违例(形式坏/长度域越界/截断/
+//   嵌套数组)  3 源耗尽(脚本走完/fd 对端关)  4 错误回包('-' 形收到,
+//   sval = 错误原文)  6 IO(fd 读写败;fd 源专面)
+//   rc 约定:0 成功 / -1 失败(net 门面同款;'-' 回包 rc -1 err 4)。
+// ═══ 连接状态面(pool.ct 消费)═══
+//   redis_conn_dirty(err):0 = clean / 1 = dirty。v1 命令面(GET/SET/
+//   DEL/EXPIRE/INCR)无会话态(无事务/无客户端命名态)⇒ 无复位面:
+//   回包完成即干净;err != 0(协议/IO/源耗尽)流信任失 ⇒ 弃用不复用
+//   (池侧 = 丢弃,不回池)。登记:pub/sub(P8)/MULTI 会话态落地时
+//   本分类随动。
+
+pub extern "c" fn ctron_dbredis_read(fd: I64, buf: &I64[], cap: I64) -> I64
+pub extern "c" fn ctron_dbredis_write(fd: I64, buf: &I64[], n: I64) -> I64
+pub extern "c" fn ctron_dbredis_close(fd: I64) -> I64
+pub extern "c" fn ctron_dbredis_last_errno() -> I64
+pub extern "c" fn ctron_dbredis_socketpair(out: &I64[]) -> I64
+
+// fd 出参标量胞(与 pg.ct PgCell64 同布局异名——同名 decl 合并 E5030
+// 纪律;出参持态一律 Box[RdsCell64] 堆胞,跨调用可见)
+pub struct RdsCell64 {
+    var v: I64
+}
+
+// ---- 常量与 err 码(值 fn 面;纯层无 static) ----
+
+// RESP 批量字符串协议上限(512MiB;C10 乘前界门基准)
+pub fn redis_bulk_max() -> I64 {
+    return 536870912
+}
+
+pub fn redis_err_frame() -> I64 { return 1 }
+pub fn redis_err_proto() -> I64 { return 2 }
+pub fn redis_err_eof() -> I64 { return 3 }
+pub fn redis_err_reply() -> I64 { return 4 }
+pub fn redis_err_io() -> I64 { return 6 }
+
+// ---- 宽域播种(pg.ct pgz 同款) ----
+
+fn redisz() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+// ---- 十六进制面(脚本源 I/O 与字节精确断言面;夹具边唯一入口) ----
+
+fn redis_hex_val(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 65 + 10
+    }
+    return -1
+}
+
+fn redis_hex_digit(v: I64) -> Str {
+    if v == 0 { return "0" }
+    if v == 1 { return "1" }
+    if v == 2 { return "2" }
+    if v == 3 { return "3" }
+    if v == 4 { return "4" }
+    if v == 5 { return "5" }
+    if v == 6 { return "6" }
+    if v == 7 { return "7" }
+    if v == 8 { return "8" }
+    if v == 9 { return "9" }
+    if v == 10 { return "a" }
+    if v == 11 { return "b" }
+    if v == 12 { return "c" }
+    if v == 13 { return "d" }
+    if v == 14 { return "e" }
+    return "f"
+}
+
+// 十六进制串 → 字节表(0..255);奇长/非法数位/空串 → 空表(fail-closed)
+pub fn redis_hex_decode(s: Str) -> List[I32] {
+    var out = List[I32]()
+    if s.len == 0 {
+        return out
+    }
+    if s.len % 2 != 0 {
+        return out
+    }
+    var i: I32 = 0
+    while i < s.len {
+        var hi = redis_hex_val(byte_at(s, i))
+        if hi < 0 {
+            return List[I32]()
+        }
+        var lo = redis_hex_val(byte_at(s, i + 1))
+        if lo < 0 {
+            return List[I32]()
+        }
+        out.push(hi * 16 + lo)
+        i += 2
+    }
+    return out
+}
+
+// 字节表 → 小写十六进制串(空表 → "")
+pub fn redis_hex_encode(b: List[I32]) -> Str {
+    var out = ""
+    var i: I64 = 0
+    while i < b.len {
+        var v: I64 = redisz() + b[i]
+        out = out + redis_hex_digit(v / 16) + redis_hex_digit(v % 16)
+        i += 1
+    }
+    return out
+}
+
+// ---- 可打印 ASCII 表切片(pgx_ascii_* 同款;头注③)----
+// 表 32..122 直排;'{'(123)源码字面量禁裸且 \u{} 逃逸经坏 utf8_enc 不可走
+// ⇒ 123 fail-closed;124..126 走 "|}~" 段。形参恒 I32(byte_at/byte_slice
+// 内建解释口径收 I32 域标签)。
+fn redisx_ascii_char(c: I32) -> Str {
+    if c < 32 || c > 126 || c == 123 {
+        return ""
+    }
+    if c < 123 {
+        return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz", c - 32, c - 31)
+    }
+    return byte_slice("|}~", c - 124, c - 123)
+}
+
+// 字节表 [a,b) → Str;含非可打印字节 → ""(fail-closed;精确字节面走
+// bval/redis_hex_encode)
+fn redisx_ascii_bytes(b: List[I32], a: I64, e: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < e {
+        var s = redisx_ascii_char(b[i])
+        if s.len == 0 {
+            return ""
+        }
+        out = out + s
+        i += 1
+    }
+    return out
+}
+
+// [a,b) 内含非可打印字节否(ASCII 面预检;真 = 含,面必空)
+fn redisx_ascii_clean(b: List[I32], a: I64, e: I64) -> I64 {
+    var i = a
+    while i < e {
+        var c: I64 = redisz() + b[i]
+        if c < 32 || c > 126 || c == 123 {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ---- 定长小十进制解析(RESP 行内数字域;[a,e) 全数位;C10 乘前预门)----
+
+// 无符号累计:> bulk_max 即拒(先门后乘;恒 I64 宽域)。非数位/空域 → -1。
+fn redisx_uint(b: List[I32], a: I64, e: I64) -> I64 {
+    if a < 0 || e < a || e == a {
+        return -1
+    }
+    if e - a > 18 {
+        return -1
+    }
+    var acc: I64 = redisz()
+    var i = a
+    while i < e {
+        var c: I64 = redisz() + b[i]
+        if c < 48 || c > 57 {
+            return -1
+        }
+        if acc > redis_bulk_max() {
+            return -1
+        }
+        acc = acc * 10 + (c - 48)
+        i += 1
+    }
+    return acc
+}
+
+// ---- 回包结果(struct 通道;头注①)----
+
+pub struct RedisReply {
+    var rc: I64
+    var err: I64
+    var kind: I32
+    var ival: I64
+    var sval: Str
+    var isnull: I64
+    var nitems: I64
+    var items: List[Str]
+    var inulls: List[I32]
+    var bval: List[I32]
+    var used: I64
+    var next: I64
+}
+
+pub fn rs_rc(r: RedisReply) -> I64 { return r.rc }
+pub fn rs_err(r: RedisReply) -> I64 { return r.err }
+// 形字节:'+' 43 / '-' 45 / ':' 58 / '$' 36 / '*' 42(畸形 0)
+pub fn rs_kind(r: RedisReply) -> I32 { return r.kind }
+// ':' 整数值;'*' 数组元素计数
+pub fn rs_ival(r: RedisReply) -> I64 { return r.ival }
+// '+' 简单串 / '-' 错误原文 / '$' 批量文本(ASCII 面;非打印 → "")
+pub fn rs_sval(r: RedisReply) -> Str { return r.sval }
+// 1 = NULL($-1 / *-1)
+pub fn rs_isnull(r: RedisReply) -> I64 { return r.isnull }
+pub fn rs_nitems(r: RedisReply) -> I64 { return r.nitems }
+// 数组一层数元(ASCII 面;OOB → "")
+pub fn rs_item(r: RedisReply, i: I64) -> Str {
+    if i < 0 || i >= r.items.len {
+        return ""
+    }
+    return r.items[i]
+}
+// 数组逐元 NULL 位(1 = $-1;OOB → -1)
+pub fn rs_inull(r: RedisReply, i: I64) -> I64 {
+    if i < 0 || i >= r.inulls.len {
+        return -1
+    }
+    return redisz() + r.inulls[i]
+}
+// '$' 批量精确字节面(任意字节双臂可断言)
+pub fn rs_bval(r: RedisReply) -> List[I32] { return r.bval }
+// 本回包消耗字节数(fd 源消费位;脚本源恒全行)
+pub fn rs_used(r: RedisReply) -> I64 { return r.used }
+// 脚本源游标推进位(下一回包行下标)
+pub fn rs_next(r: RedisReply) -> I64 { return r.next }
+
+fn redisx_fail(err: I64, next: I64) -> RedisReply {
+    var r = RedisReply { rc: -1, err: err, kind: 0, ival: 0, sval: "", isnull: 0, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: 0, next: next }
+    return r
+}
+
+// 行尾扫描:自 pos 起首个 CRLF 的 CR 下标;无 → -1
+fn redisx_crlf(b: List[I32], pos: I64) -> I64 {
+    var i = pos
+    while i + 1 < b.len {
+        if b[i] == 13 && b[i + 1] == 10 {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 批量字符串域解析(含 NULL 档;pos 指向 '$'):产出经 items/bval 承载的
+// 轻量面由调用方分流——此处返 终止偏移(批量结束后下一字节下标)/ -1 违例;
+// isnull/sval/bval 经形参 List/Box 出(无闭包无出参元组,push 形已证形)。
+// 用于 '*' 数组逐元展开(items 累加;inulls 累加)。
+fn redisx_bulk_scan(b: List[I32], pos: I64, items: List[Str], inulls: List[I32]) -> I64 {
+    var e = redisx_crlf(b, pos)
+    if e < 0 {
+        return -1
+    }
+    // len 可为 -1(NULL):首字节 '-' 档
+    var neg: I64 = 0
+    var na = pos + 1
+    if b[na] == 45 {
+        neg = 1
+        na += 1
+    }
+    var len = redisx_uint(b, na, e)
+    if len < 0 {
+        return -1
+    }
+    if neg == 1 {
+        if len != 1 {
+            return -1
+        }
+        // $-1:NULL 元
+        items.push("")
+        inulls.push(1)
+        return e + 2
+    }
+    if len > redis_bulk_max() {
+        return -1
+    }
+    // 数据 + CRLF 须在界内(截断 = 违例;脚本源一回包一行完整性前提)
+    if e + 2 + len + 2 > b.len {
+        return -1
+    }
+    if redisx_ascii_clean(b, e + 2, e + 2 + len) == 1 {
+        items.push(redisx_ascii_bytes(b, e + 2, e + 2 + len))
+    } else {
+        items.push("")
+    }
+    inulls.push(0)
+    return e + 2 + len + 2
+}
+
+// 回包解析核(字节表 + 起始游标;双源共享)。next = cur(脚本源不变式),
+// used = 本回包字节数(fd 源消费位)。畸形 → rc -1 err 面,used 0。
+// **不完整流(fd 源半包)判别:rc 0 / err 0 / used 0 / kind 0**——调用方
+// 续读;脚本源一行一整回包,不完整即 viol面(err 2)。
+fn redisx_parse(b: List[I32], pos: I64) -> RedisReply {
+    if pos < 0 || pos >= b.len {
+        return redisx_fail(redis_err_eof(), pos)
+    }
+    var t: I64 = redisz() + b[pos]
+    var e = redisx_crlf(b, pos + 1)
+    if e < 0 {
+        // 头行无 CRLF:可能半包(仅 '+' '-' ':' '$' '*' 首字节在场)
+        if t == 43 || t == 45 || t == 58 || t == 36 || t == 42 {
+            var inc = RedisReply { rc: 0, err: 0, kind: 0, ival: 0, sval: "", isnull: 0, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: 0, next: pos }
+            return inc
+        }
+        return redisx_fail(redis_err_proto(), pos)
+    }
+    if t == 43 {
+        // 简单字符串
+        var r = RedisReply { rc: 0, err: 0, kind: b[pos], ival: 0, sval: redisx_ascii_bytes(b, pos + 1, e), isnull: 0, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: e + 2 - pos, next: pos }
+        return r
+    }
+    if t == 45 {
+        // 错误回包:rc -1 err 4,原文在 sval
+        var r = RedisReply { rc: -1, err: redis_err_reply(), kind: b[pos], ival: 0, sval: redisx_ascii_bytes(b, pos + 1, e), isnull: 0, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: e + 2 - pos, next: pos }
+        return r
+    }
+    if t == 58 {
+        // 整数(可负)
+        var neg: I64 = 0
+        var na = pos + 1
+        if b[na] == 45 {
+            neg = 1
+            na += 1
+        }
+        var v = redisx_uint(b, na, e)
+        if v < 0 {
+            return redisx_fail(redis_err_proto(), pos)
+        }
+        if neg == 1 {
+            v = 0 - v
+        }
+        var r = RedisReply { rc: 0, err: 0, kind: b[pos], ival: v, sval: "", isnull: 0, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: e + 2 - pos, next: pos }
+        return r
+    }
+    if t == 36 {
+        // 批量字符串;$-1 = NULL
+        var neg: I64 = 0
+        var na = pos + 1
+        if b[na] == 45 {
+            neg = 1
+            na += 1
+        }
+        var len = redisx_uint(b, na, e)
+        if len < 0 {
+            return redisx_fail(redis_err_proto(), pos)
+        }
+        if neg == 1 {
+            if len != 1 {
+                return redisx_fail(redis_err_proto(), pos)
+            }
+            var rn = RedisReply { rc: 0, err: 0, kind: b[pos], ival: -1, sval: "", isnull: 1, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: e + 2 - pos, next: pos }
+            return rn
+        }
+        if len > redis_bulk_max() {
+            return redisx_fail(redis_err_proto(), pos)
+        }
+        if e + 2 + len + 2 > b.len {
+            return redisx_fail(redis_err_proto(), pos)
+        }
+        var bval = List[I32]()
+        var i: I64 = 0
+        while i < len {
+            bval.push(b[e + 2 + i])
+            i += 1
+        }
+        var sval = ""
+        if redisx_ascii_clean(b, e + 2, e + 2 + len) == 1 {
+            sval = redisx_ascii_bytes(b, e + 2, e + 2 + len)
+        }
+        var r = RedisReply { rc: 0, err: 0, kind: b[pos], ival: len, sval: sval, isnull: 0, nitems: 0, items: List[Str](), inulls: List[I32](), bval: bval, used: e + 2 + len + 2 - pos, next: pos }
+        return r
+    }
+    if t == 42 {
+        // 数组(一屢单展开;*-1 = NULL 数组;嵌套 → 违例,v0 登记)
+        var neg: I64 = 0
+        var na = pos + 1
+        if b[na] == 45 {
+            neg = 1
+            na += 1
+        }
+        var n = redisx_uint(b, na, e)
+        if n < 0 {
+            return redisx_fail(redis_err_proto(), pos)
+        }
+        if neg == 1 {
+            if n != 1 {
+                return redisx_fail(redis_err_proto(), pos)
+            }
+            var ra = RedisReply { rc: 0, err: 0, kind: b[pos], ival: -1, sval: "", isnull: 1, nitems: 0, items: List[Str](), inulls: List[I32](), bval: List[I32](), used: e + 2 - pos, next: pos }
+            return ra
+        }
+        if n > 65535 {
+            return redisx_fail(redis_err_proto(), pos)
+        }
+        var items = List[Str]()
+        var inulls = List[I32]()
+        var cur = e + 2
+        var k: I64 = 0
+        while k < n {
+            if cur >= b.len || b[cur] != 36 {
+                return redisx_fail(redis_err_proto(), pos)
+            }
+            var nxt = redisx_bulk_scan(b, cur, items, inulls)
+            if nxt < 0 {
+                return redisx_fail(redis_err_proto(), pos)
+            }
+            cur = nxt
+            k += 1
+        }
+        var r = RedisReply { rc: 0, err: 0, kind: b[pos], ival: n, sval: "", isnull: 0, nitems: n, items: items, inulls: inulls, bval: List[I32](), used: cur - pos, next: pos }
+        return r
+    }
+    return redisx_fail(redis_err_proto(), pos)
+}
+
+// ① 回放源:十六进制回包逐条出(一行一整回包;cur 越界 → eof)
+pub fn redis_recv_script(lines: List[Str], cur: I64) -> RedisReply {
+    if cur < 0 || cur >= lines.len {
+        return redisx_fail(redis_err_eof(), cur)
+    }
+    var bytes = redis_hex_decode(lines[cur])
+    if bytes.len == 0 {
+        return redisx_fail(redis_err_frame(), cur + 1)
+    }
+    var r = redisx_parse(bytes, 0)
+    if r.rc != 0 && r.err == 0 {
+        return redisx_fail(redis_err_frame(), cur + 1)
+    }
+    if r.used == 0 && r.kind == 0 && r.err == 0 {
+        // 不完整面在脚本源 = 回包截断(一行一整回包前提)
+        return redisx_fail(redis_err_proto(), cur + 1)
+    }
+    var out = RedisReply { rc: r.rc, err: r.err, kind: r.kind, ival: r.ival, sval: r.sval, isnull: r.isnull, nitems: r.nitems, items: r.items, inulls: r.inulls, bval: r.bval, used: r.used, next: cur + 1 }
+    return out
+}
+
+// ② 真源:fd 直读(阻塞;真 fd 冒烟 Task 6 nightly;x_ 夹具 emit 臂专面)。
+// rbuf = 持续读缓冲 lane(调用方持有;lane .len = 字面量显式槽数,P5-C
+// 登记),fill = 缓冲填充位(Box[RdsCell64] 堆胞,跨调用持态),scr =
+// 单读暂存 lane(垫片 CT_CHUNK=4096 口径)。半包 → 续读(判别面见
+// redisx_parse 头注);违例 → err 2;读败 → err 6;对端关 → err 3;
+// 守卫计数防滞留。成功后 lane 前移消费 used 字节。
+pub fn redis_recv_fd(fd: I64, rbuf: &I64[], fill: Box[RdsCell64], scr: &I64[]) -> RedisReply {
+    var guard: I64 = 0
+    while guard < 100000 {
+        guard += 1
+        if fill.v > 0 {
+            var cur = List[I32]()
+            var i: I64 = 0
+            while i < fill.v {
+                cur.push(rbuf[i].as[I32]())
+                i += 1
+            }
+            var r = redisx_parse(cur, 0)
+            if r.rc != 0 {
+                return r
+            }
+            if r.used > 0 {
+                var rest = fill.v - r.used
+                var k: I64 = 0
+                while k < rest {
+                    rbuf[k] = rbuf[r.used + k]
+                    k += 1
+                }
+                fill.v = rest
+                var out = RedisReply { rc: r.rc, err: r.err, kind: r.kind, ival: r.ival, sval: r.sval, isnull: r.isnull, nitems: r.nitems, items: r.items, inulls: r.inulls, bval: r.bval, used: r.used, next: 0 }
+                return out
+            }
+        }
+        var n = ctron_dbredis_read(fd, scr, scr.len.as[I64]())
+        if n < 0 {
+            return redisx_fail(redis_err_io(), 0)
+        }
+        if n == 0 {
+            return redisx_fail(redis_err_eof(), 0)
+        }
+        var j: I64 = 0
+        while j < n && fill.v < rbuf.len {
+            rbuf[fill.v] = scr[j]
+            fill.v = fill.v + 1
+            j += 1
+        }
+    }
+    return redisx_fail(redis_err_io(), 0)
+}
+
+// 命令发送(fd 源;List[I32] → lane 暂存后整发;0 成 / -1 败)。垫片
+// write 为 send-all 整长 chunk 循环(ctron_dbpg.c 同口径,无静默截断)。
+pub fn redis_send_cmd_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
+    if msg.len > scr.len {
+        return -1
+    }
+    var i: I64 = 0
+    while i < msg.len {
+        scr[i] = msg[i]
+        i += 1
+    }
+    var w = ctron_dbredis_write(fd, scr, redisz() + msg.len)
+    if w < 0 {
+        return -1
+    }
+    return 0
+}
+
+pub fn redis_fd_close(fd: I64) -> I64 {
+    return ctron_dbredis_close(fd)
+}
+
+pub fn redis_fd_last_errno() -> I64 {
+    return ctron_dbredis_last_errno()
+}
+
+// ---- 客户端命令装配(RESP 数组;宽域装配)----
+
+// i64 → 十进制串(负值二补直书;div/mod 阶梯无乘,C10 安全)
+fn redisx_i64s(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var neg = ""
+    var w = v
+    if w < 0 {
+        neg = "-"
+        w = 0 - w
+    }
+    var digits = ""
+    var guard: I64 = 0
+    while w > 0 && guard < 32 {
+        guard += 1
+        var d: I64 = redisz() + w % 10
+        digits = redis_hex_digit(d) + digits
+        w = w / 10
+    }
+    return neg + digits
+}
+
+// 通用命令装配:*N\r\n + 逐参 $len\r\n arg\r\n(参数计数 i16 域门先于
+// 计数装配,(i) 族同门;空参表 = 空表 fail-closed——RESP 命令至少 1 参)
+pub fn redis_cmd(parts: List[Str]) -> List[I32] {
+    var out = List[I32]()
+    if parts.len < 1 || parts.len > 65535 {
+        return out
+    }
+    out.push(42)
+    var i: I32 = 0
+    while i < redisx_i64s(parts.len).len {
+        out.push(byte_at(redisx_i64s(parts.len), i))
+        i += 1
+    }
+    out.push(13)
+    out.push(10)
+    var k: I64 = 0
+    while k < parts.len {
+        var arg = parts[k]
+        out.push(36)
+        i = 0
+        while i < redisx_i64s(arg.len).len {
+            out.push(byte_at(redisx_i64s(arg.len), i))
+            i += 1
+        }
+        out.push(13)
+        out.push(10)
+        var j: I32 = 0
+        while j < arg.len {
+            out.push(byte_at(arg, j))
+            j += 1
+        }
+        out.push(13)
+        out.push(10)
+        k += 1
+    }
+    return out
+}
+
+// GET key → *2\r\n$3\r\nGET\r\n$len\r\nkey\r\n
+pub fn redis_get_cmd(key: Str) -> List[I32] {
+    var a = List[Str]()
+    a.push("GET")
+    a.push(key)
+    return redis_cmd(a)
+}
+
+// SET key val → *3
+pub fn redis_set_cmd(key: Str, val: Str) -> List[I32] {
+    var a = List[Str]()
+    a.push("SET")
+    a.push(key)
+    a.push(val)
+    return redis_cmd(a)
+}
+
+// DEL key → *2(多 key 删除面 v0 不展开,登记)
+pub fn redis_del_cmd(key: Str) -> List[I32] {
+    var a = List[Str]()
+    a.push("DEL")
+    a.push(key)
+    return redis_cmd(a)
+}
+
+// EXPIRE key seconds → *3(secs 十进制文本格)
+pub fn redis_expire_cmd(key: Str, secs: I64) -> List[I32] {
+    var a = List[Str]()
+    a.push("EXPIRE")
+    a.push(key)
+    a.push(redisx_i64s(secs))
+    return redis_cmd(a)
+}
+
+// INCR key → *2(回包恒整数形)
+pub fn redis_incr_cmd(key: Str) -> List[I32] {
+    var a = List[Str]()
+    a.push("INCR")
+    a.push(key)
+    return redis_cmd(a)
+}
+
+// ---- 连接状态分类(pool.ct 消费;见头注连接状态面)----
+
+// 0 = clean(回包完成即干净,无会话态)/ 1 = dirty(协议/IO/源耗尽,
+// 流信任失,弃用不复位不回池)
+pub fn redis_conn_dirty(err: I64) -> I64 {
+    if err == 0 {
+        return 0
+    }
+    return 1
+}

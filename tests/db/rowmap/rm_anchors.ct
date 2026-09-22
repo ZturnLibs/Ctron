@@ -1,0 +1,210 @@
+// tests/db/rowmap/rm_anchors.ct —— 运行时行→struct 绑定锚(P5-E;双臂)。
+//
+// **r7d_db_rowmap 锚语义修正(D-P5-1 设计偏差;born-correct)**:设计稿
+// §12.5 承诺"列缺失/类型不符编译期报"——§8.4 禁泛型反射,不可达;本锚按
+// **运行时 Err 面**断言(非编译期负例):列缺失 → rm_kind 1(noent),
+// 类型不符 → rm_kind 2(type),NULL → rm_kind 3(调用方 wrapper 映射
+// Option),行越界 → 4,值域坏 → 5。COVERAGE 口径随 Task 6 同步改写。
+// use 纪律:单路径导入树(rowmap→pg;直 use pg 即 E5020 环)= pool 同款,
+// 查询经 rm_query 穿透,PgRows 以推断携带。
+// 正例钉 = struct 字面量显式字段装配(零反射;@derive(DbRow) 志向的
+// v1 手工形态)。锚值 = rm_rows.script 同源(目录 README)。
+use std.db.rowmap.{rm_query, rm_rc, rm_nrows, rm_ncols, rm_colname, rm_tag, rm_col, rm_oid_name, rm_is_int_oid, rm_is_text_oid, rm_is_float_oid, rm_is_bool_oid, rm_i64, rm_f64, rm_bool, rm_str, rm_ok, rm_kind, rm_val, rm_f64v, rm_strv, rm_oid, rm_coli}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+struct RmUser {
+    let id: I64
+    let name: Str
+    let active: Bool
+}
+
+test "rowset loaded: row description via rowmap face" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    assert_eq(frames.len, 7)
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    assert_eq(rm_rc(r), 0)
+    assert_eq(rm_nrows(r), 4)
+    assert_eq(rm_ncols(r), 4)
+    assert_eq(rm_tag(r), "SELECT 4")
+    assert_eq(rm_colname(r, 0), "id")
+    assert_eq(rm_colname(r, 3), "ratio")
+    // 类型分派表(声明 OID;v1 子集)
+    assert_eq(rm_oid_name(16), "bool")
+    assert_eq(rm_oid_name(20), "int8")
+    assert_eq(rm_oid_name(21), "int2")
+    assert_eq(rm_oid_name(23), "int4")
+    assert_eq(rm_oid_name(25), "text")
+    assert_eq(rm_oid_name(700), "float4")
+    assert_eq(rm_oid_name(701), "float8")
+    assert_eq(rm_oid_name(1043), "varchar")
+    assert_eq(rm_oid_name(9999), "")
+    assert_eq(rm_is_int_oid(20), 1)
+    assert_eq(rm_is_int_oid(25), 0)
+    assert_eq(rm_is_text_oid(1043), 1)
+    assert_eq(rm_is_float_oid(701), 1)
+    assert_eq(rm_is_bool_oid(16), 1)
+    // 列名→下标;缺失 → -1(noent 面的定位层)
+    assert_eq(rm_col(r, "id"), 0)
+    assert_eq(rm_col(r, "ratio"), 3)
+    assert_eq(rm_col(r, "nope"), -1)
+}
+
+test "positive binding: typed accessors hit declared OID face" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    // row0:1 / alice / t / 2.5(全非 NULL)
+    let b0 = rm_i64(r, 0, "id")
+    assert_eq(rm_ok(b0), 1)
+    assert_eq(rm_kind(b0), 0)
+    assert_eq(rm_val(b0), 1)
+    assert_eq(rm_oid(b0), 20)
+    assert_eq(rm_coli(b0), 0)
+    let n0 = rm_str(r, 0, "name")
+    assert_eq(rm_ok(n0), 1)
+    assert_eq(rm_strv(n0), "alice")
+    let a0 = rm_bool(r, 0, "active")
+    assert_eq(rm_ok(a0), 1)
+    assert_eq(rm_val(a0), 1)
+    let f0 = rm_f64(r, 0, "ratio")
+    assert_eq(rm_ok(f0), 1)
+    assert_eq(rm_f64v(f0), 2.5)
+    // row2:int8 正顶格 + 科学计数文本
+    let b2 = rm_i64(r, 2, "id")
+    assert_eq(rm_val(b2), 9223372036854775807)
+    let f2 = rm_f64(r, 2, "ratio")
+    assert_eq(rm_ok(f2), 1)
+    assert_eq(rm_f64v(f2), 1000.0)
+    // row3 ratio = 3.14159(小数解析窗口)
+    let f3 = rm_f64(r, 3, "ratio")
+    assert_eq(rm_ok(f3), 1)
+    assert(rm_f64v(f3) > 3.14158)
+    assert(rm_f64v(f3) < 3.14160)
+    // bool 'f' 档
+    let a1 = rm_bool(r, 1, "active")
+    assert_eq(rm_ok(a1), 1)
+    assert_eq(rm_val(a1), 0)
+}
+
+test "r7d anchor (runtime Err, D-P5-1): column missing -> noent" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    // **运行时 Err 面(非编译期)**:列缺失 → rm_kind 1
+    let x = rm_i64(r, 0, "nope")
+    assert_eq(rm_ok(x), 0)
+    assert_eq(rm_kind(x), 1)
+    assert_eq(rm_coli(x), -1)
+    // 同面跨访问器一致
+    assert_eq(rm_kind(rm_str(r, 0, "nope")), 1)
+    assert_eq(rm_kind(rm_f64(r, 0, "nope")), 1)
+    assert_eq(rm_kind(rm_bool(r, 0, "nope")), 1)
+}
+
+test "r7d anchor (runtime Err, D-P5-1): type mismatch -> type" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    // **运行时 Err 面(非编译期)**:声明 OID 与访问器族违 → rm_kind 2
+    let x = rm_i64(r, 0, "name")
+    assert_eq(rm_ok(x), 0)
+    assert_eq(rm_kind(x), 2)
+    assert_eq(rm_oid(x), 25)
+    // text 列取 int / int 列取 str / bool 列取 f64 / text 列取 bool 同面
+    assert_eq(rm_kind(rm_str(r, 0, "id")), 2)
+    assert_eq(rm_kind(rm_f64(r, 0, "active")), 2)
+    assert_eq(rm_kind(rm_bool(r, 0, "name")), 2)
+    assert_eq(rm_kind(rm_i64(r, 0, "ratio")), 2)
+}
+
+test "NULL -> null kind; caller maps Option via wrapper" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    // row1 ratio = NULL → rm_kind 3;wrapper 形(显式 Option 映射,无隐式零值):
+    //   kind 3 → None;否则 Some(rm_f64v)
+    let f = rm_f64(r, 1, "ratio")
+    assert_eq(rm_ok(f), 0)
+    assert_eq(rm_kind(f), 3)
+    // wrapper 演示(标量承载;Some 档同型)
+    var has_ratio: I64 = 0
+    if rm_kind(f) == 0 {
+        has_ratio = 1
+    }
+    assert_eq(has_ratio, 0)
+    let f0 = rm_f64(r, 0, "ratio")
+    if rm_kind(f0) == 0 {
+        has_ratio = 1
+    }
+    assert_eq(has_ratio, 1)
+}
+
+test "row out of bounds and value domain -> runtime Err" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    // 行越界 → rm_kind 4
+    assert_eq(rm_kind(rm_i64(r, 9, "id")), 4)
+    assert_eq(rm_kind(rm_i64(r, -1, "id")), 4)
+    // 值域:20 位十进制溢 I64 → rm_kind 5(乘 10 前哨兵界门)
+    let b3 = rm_i64(r, 3, "id")
+    assert_eq(rm_ok(b3), 0)
+    assert_eq(rm_kind(b3), 5)
+}
+
+test "int8 lower bound: I64_MIN text parses (negative accumulate)" {
+    // PG int8 下顶格 = 合法值;正向累计+取负形会拒真 → rm_i64 负向累计
+    // (I64_MIN 哨兵界门;rowmap.ct 头注)
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_i64min.script")
+    assert_eq(frames.len, 4)
+    let r = rm_query(frames, 0, "SELECT v FROM t")
+    assert_eq(rm_rc(r), 0)
+    assert_eq(rm_nrows(r), 1)
+    let b = rm_i64(r, 0, "v")
+    assert_eq(rm_ok(b), 1)
+    assert_eq(rm_val(b), 0 - 9223372036854775807 - 1)
+    // 负溢一位(…809 越下界)→ kind 5:哨兵面(同函数单测形,直构文本)
+    // 经 rm_rows 行4 正溢锚同库覆盖;此处锚下顶格恰好的合法解析。
+}
+
+test "positive struct binding demo: explicit field assembly (zero reflection)" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_rows.script")
+    let r = rm_query(frames, 0, "SELECT id, name, active, ratio FROM users")
+    // v1 手工形态(@derive(DbRow) 志向):访问器结果 → struct 字面量显式装配
+    let b = rm_i64(r, 0, "id")
+    let n = rm_str(r, 0, "name")
+    let a = rm_bool(r, 0, "active")
+    let u0 = RmUser { id: rm_val(b), name: rm_strv(n), active: rm_val(a) == 1 }
+    assert_eq(u0.id, 1)
+    assert_eq(u0.name, "alice")
+    assert(u0.active)
+    // row1:active 'f' → false;NULL ratio 不入 struct(Option 面,上锚)
+    let b1 = rm_i64(r, 1, "id")
+    let n1 = rm_str(r, 1, "name")
+    let a1 = rm_bool(r, 1, "active")
+    let u1 = RmUser { id: rm_val(b1), name: rm_strv(n1), active: rm_val(a1) == 1 }
+    assert_eq(u1.id, 2)
+    assert_eq(u1.name, "bob")
+    assert(!u1.active)
+}

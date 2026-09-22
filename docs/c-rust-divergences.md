@@ -456,3 +456,36 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   pg_b64_encode/pg_b64_decode(List[I32] 容器;RFC 4648 全字节
   round-trip 0..255 有锚)。std/enc 字节构建面放宽后可收编。
   (源:P5 Task 4;先例 std/http/ws.ct 头注①)
+
+### (h)/(i) 家族新证 + 并发面发射缺口成谱(P5-E Redis RESP2 + 连接池 + 行映射,2026-09-22)
+
+- **Sender/Receiver 作 struct 字段或 fn 形参 = emit 截断 int32**:
+  `Sender[I64]`/`Receiver[I64]` 仅可作局部(let 解构)+ spawn 闭包字面捕获
+  (06_concurrency 形);字段化(PoolH{tx,rx})或参数化
+  (`fn f(rx: Receiver[I64])`)在 emit C 中按 `int32_t` 出,通道指针截断
+  cc 报 incompatible conversion(探针实证)。interp 臂两形皆绿(双口径
+  分叉)。绕行 = 池对象不持通道,通道由属主任务局部持有(标准接线 =
+  idle Channel[容量=池容量],miss → recv 阻塞 = 背压;tests/db/pool/
+  pool_wait.ct 双臂钉)。**连带判定:std 对象持有通道半端在 emit 现实下
+  不可用,池/服务类 std 门面须为"纯核 + 组合层接线"形态。**
+  (源:P5 Task 5 探针 probe1/probe3;tests/06_concurrency.ct 本身 emit
+  红为既存面——`for _` 通配(下条)+ class 字面量入 Mutex 构造位)
+- **emit 缺口小谱(本轮探针复证实,均 emit 专红 / interp 绿)**:
+  ① `for _ in`(PatWild)→ `ct_stmt:for pat:PatWild` 占位文本进 C;
+  ② class 字面量在 Mutex[T] 构造位 → `ct_expr:StructLit 非值类型`
+    (struct 字面量同位绿);
+  ③ match 于 spawn 闭包内 → `ct_stmt:match R arm body` 占位
+    (闭包体走 expect/if 形即绿);
+  ④ `Mutex.with/with_mut` 作裸语句位 → `emit:with 仅语句位(let/Expr)`
+    (let 绑定/尾表达式位绿);
+  ⑤ **闭包内对捕获局部赋值 interp 不回写**(closure 捕获槽拷贝语义,
+    `got = 7` 于 with_mut 闭包体内不出闭包)——跨任务共享一律经
+    Mutex 内容物/通道,禁走捕获槽写回;
+  ⑥ 定长数组 `T[N]` 作 fn 返回值 emit 截断(x_rd_fd 首版实证;lane
+    声明内联即绿,tests/net 同口径)。
+  (源:P5 Task 5 探针 b1–b6/xa–xe;修法均 = 按绿形改写,登记 v2 收编面)
+- **List[用户 struct] 字段容器 + struct 字段列表原地 push**:emit 臂
+  `it.flags.push(1)`(struct 字段 List 经 member 链调用)→
+  `ct_expr:Member@30` 占位;List[I64] 字段为 P5-C 既登记(读坏)。
+  绕行 = 平行标量表(List[I32])+ 值语义整体重建(pool.ct PoolState
+  形;局部新表逐槽搬运,不在共享表上原地写)。(源:P5 Task 5 探针 b4)

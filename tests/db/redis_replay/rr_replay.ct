@@ -1,0 +1,198 @@
+// tests/db/redis_replay/rr_replay.ct —— Redis RESP2 回放验收(P5-E;双臂)。
+// 五形(+/-/:/$/*)逐字节锚 + 命令装配十六进制锚 + 负例拒收面 + 计数序列
+// 游标链。锚值 = 夹具同源展开(RESP2 公开规范;见目录 README)。
+use std.db.redis.{redis_recv_script, redis_hex_encode, redis_hex_decode, redis_get_cmd, redis_set_cmd, redis_del_cmd, redis_expire_cmd, redis_incr_cmd, redis_cmd, redis_conn_dirty, redis_err_eof, redis_err_frame, redis_err_proto, redis_err_reply, rs_rc, rs_err, rs_kind, rs_ival, rs_sval, rs_isnull, rs_nitems, rs_item, rs_inull, rs_bval, rs_used, rs_next}
+
+fn load_replies(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "command encoders: resp2 array hex anchors" {
+    // *2\r\n$3\r\nGET\r\n$1\r\nk\r\n
+    assert_eq(redis_hex_encode(redis_get_cmd("k")), "2a320d0a24330d0a4745540d0a24310d0a6b0d0a")
+    // *3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1\r\nv\r\n
+    assert_eq(redis_hex_encode(redis_set_cmd("k", "v")), "2a330d0a24330d0a5345540d0a24310d0a6b0d0a24310d0a760d0a")
+    // *2\r\n$3\r\nDEL\r\n$1\r\nk\r\n
+    assert_eq(redis_hex_encode(redis_del_cmd("k")), "2a320d0a24330d0a44454c0d0a24310d0a6b0d0a")
+    // *3\r\n$6\r\nEXPIRE\r\n$1\r\nk\r\n$2\r\n10\r\n
+    assert_eq(redis_hex_encode(redis_expire_cmd("k", 10)), "2a330d0a24360d0a4558504952450d0a24310d0a6b0d0a24320d0a31300d0a")
+    // *2\r\n$4\r\nINCR\r\n$1\r\nc\r\n
+    assert_eq(redis_hex_encode(redis_incr_cmd("c")), "2a320d0a24340d0a494e43520d0a24310d0a630d0a")
+    // 通用装配:多参 + 零长参数($0)
+    var a = List[Str]()
+    a.push("GET")
+    a.push("")
+    assert_eq(redis_hex_encode(redis_cmd(a)), "2a320d0a24330d0a4745540d0a24300d0a0d0a")
+    // 空参表 fail-closed(空表)
+    assert_eq(redis_cmd(List[Str]()).len, 0)
+    // 负秒值(EXPIRE k -1)十进制负号面
+    assert_eq(redis_hex_encode(redis_expire_cmd("k", -1)), "2a330d0a24360d0a4558504952450d0a24310d0a6b0d0a24320d0a2d310d0a")
+}
+
+test "five reply forms: simple/error/integer/bulk/nil + array" {
+    // '+' 简单字符串(SET ok)
+    let s = load_replies(env_get("CT_DB_REDIS"), "r_set_ok.script")
+    assert_eq(s.len, 1)
+    let rs = redis_recv_script(s, 0)
+    assert_eq(rs_rc(rs), 0)
+    assert_eq(rs_kind(rs), 43)
+    assert_eq(rs_sval(rs), "OK")
+    assert_eq(rs_used(rs), 5)
+    assert_eq(rs_next(rs), 1)
+    // '$' 批量字符串(GET hit)+ bval 精确字节面
+    let g = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_get_ok.script"), 0)
+    assert_eq(rs_rc(g), 0)
+    assert_eq(rs_kind(g), 36)
+    assert_eq(rs_sval(g), "hello")
+    assert_eq(rs_ival(g), 5)
+    assert_eq(rs_isnull(g), 0)
+    assert_eq(redis_hex_encode(rs_bval(g)), "68656c6c6f")
+    assert_eq(rs_used(g), 11)
+    // '$-1' NULL bulk
+    let n = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_get_nil.script"), 0)
+    assert_eq(rs_rc(n), 0)
+    assert_eq(rs_isnull(n), 1)
+    assert_eq(rs_ival(n), -1)
+    assert_eq(rs_sval(n), "")
+    // ':' 整数(INCR 回包形)
+    let i = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_del_expire.script"), 0)
+    assert_eq(rs_kind(i), 58)
+    assert_eq(rs_ival(i), 0)
+    let i2 = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_del_expire.script"), 1)
+    assert_eq(rs_ival(i2), 1)
+    assert_eq(rs_next(i2), 2)
+    // 负整数形(:-5;INCR 可负面)
+    var negl = List[Str]()
+    negl.push("3a2d350d0a")
+    let ineg = redis_recv_script(negl, 0)
+    assert_eq(rs_rc(ineg), 0)
+    assert_eq(rs_kind(ineg), 58)
+    assert_eq(rs_ival(ineg), -5)
+    // '-' 错误回包:rc -1 err 4,原文在 sval
+    let e = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_error.script"), 0)
+    assert_eq(rs_rc(e), -1)
+    assert_eq(rs_err(e), redis_err_reply())
+    assert_eq(rs_kind(e), 45)
+    assert_eq(rs_sval(e), "ERR unknown command 'FOO'")
+    // '*' 数组:一层数元展开
+    let arr = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_array.script"), 0)
+    assert_eq(rs_rc(arr), 0)
+    assert_eq(rs_kind(arr), 42)
+    assert_eq(rs_ival(arr), 2)
+    assert_eq(rs_nitems(arr), 2)
+    assert_eq(rs_item(arr, 0), "foo")
+    assert_eq(rs_item(arr, 1), "bar")
+    assert_eq(rs_inull(arr, 0), 0)
+    assert_eq(rs_used(arr), 22)
+    // 数组 NULL 元($-1 中置)
+    let an = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_array_null.script"), 0)
+    assert_eq(rs_nitems(an), 2)
+    assert_eq(rs_inull(an, 0), 1)
+    assert_eq(rs_item(an, 0), "")
+    assert_eq(rs_item(an, 1), "bar")
+    // 零长 bulk($0)
+    let z = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_empty_bulk.script"), 0)
+    assert_eq(rs_rc(z), 0)
+    assert_eq(rs_ival(z), 0)
+    assert_eq(rs_sval(z), "")
+    assert_eq(rs_bval(z).len, 0)
+    // OOB 数元访问面
+    assert_eq(rs_item(arr, 9), "")
+    assert_eq(rs_inull(arr, -1), -1)
+}
+
+test "incr counter sequence: cursor chain over 3 integer replies" {
+    let lines = load_replies(env_get("CT_DB_REDIS"), "r_incr_seq.script")
+    assert_eq(lines.len, 3)
+    var cur: I64 = 0
+    var expect: I64 = 1
+    var guard: I64 = 0
+    while cur < lines.len && guard < 10 {
+        guard += 1
+        let r = redis_recv_script(lines, cur)
+        assert_eq(rs_rc(r), 0)
+        assert_eq(rs_kind(r), 58)
+        assert_eq(rs_ival(r), expect)
+        cur = rs_next(r)
+        expect += 1
+    }
+    assert_eq(cur, 3)
+    // 源耗尽:cur 越界 → err 3
+    let eof = redis_recv_script(lines, cur)
+    assert_eq(rs_rc(eof), -1)
+    assert_eq(rs_err(eof), redis_err_eof())
+}
+
+test "wrongtype error face + conn dirty classification" {
+    let w = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_wrongtype.script"), 0)
+    assert_eq(rs_rc(w), -1)
+    assert_eq(rs_err(w), redis_err_reply())
+    assert_eq(rs_kind(w), 45)
+    // v1 命令面无会话态:err 0 即 clean;协议/IO/源耗尽 = 流信任失
+    assert_eq(redis_conn_dirty(0), 0)
+    assert_eq(redis_conn_dirty(1), 1)
+    assert_eq(redis_conn_dirty(2), 1)
+    assert_eq(redis_conn_dirty(3), 1)
+    assert_eq(redis_conn_dirty(4), 1)
+    assert_eq(redis_conn_dirty(6), 1)
+}
+
+test "malformed replies: clean rejection, no hang" {
+    // 未知类型字节 → err 2
+    let bad = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_badform.script"), 0)
+    assert_eq(rs_rc(bad), -1)
+    assert_eq(rs_err(bad), redis_err_proto())
+    // bulk 长域越 512MiB 界(乘前门)→ err 2
+    let huge = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_hugebulk.script"), 0)
+    assert_eq(rs_rc(huge), -1)
+    assert_eq(rs_err(huge), redis_err_proto())
+    // bulk 声明长 > 实际(截断)→ err 2
+    let tr = redis_recv_script(load_replies(env_get("CT_DB_REDIS"), "r_truncbulk.script"), 0)
+    assert_eq(rs_rc(tr), -1)
+    assert_eq(rs_err(tr), redis_err_proto())
+    // 非十六进制行 → err 1(帧面)
+    var nl = List[Str]()
+    nl.push("zzzz")
+    let f = redis_recv_script(nl, 0)
+    assert_eq(rs_rc(f), -1)
+    assert_eq(rs_err(f), redis_err_frame())
+    // 空串行 → err 1
+    var el = List[Str]()
+    el.push("")
+    let e2 = redis_recv_script(el, 0)
+    assert_eq(rs_err(e2), redis_err_frame())
+    // cur 越界 → err 3;负 cur → err 3
+    var one = List[Str]()
+    one.push("2b4f4b0d0a")
+    let e3 = redis_recv_script(one, 5)
+    assert_eq(rs_err(e3), redis_err_eof())
+    let e4 = redis_recv_script(one, -1)
+    assert_eq(rs_err(e4), redis_err_eof())
+    // 十六进制解码面对偶(空表/奇长)
+    assert_eq(redis_hex_decode("").len, 0)
+    assert_eq(redis_hex_decode("abc").len, 0)
+    assert_eq(redis_hex_encode(redis_hex_decode("2b4f4b0d0a")), "2b4f4b0d0a")
+}
