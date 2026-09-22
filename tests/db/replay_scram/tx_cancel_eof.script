@@ -1,0 +1,5 @@
+# stream cut mid-rowset (P5-D): script exhausted before C/Z -> eof err 3
+# pg_conn_dirty(3) = dirty (discard; never reset/reuse across lost stream)
+# seq: T(count) D [cut]
+540000001e0001636f756e7400000000000001000000170004ffffffff0000
+440000000b00010000000131

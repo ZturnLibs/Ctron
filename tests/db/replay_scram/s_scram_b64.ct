@@ -1,0 +1,106 @@
+// tests/db/replay_scram/s_scram_b64.ct —— pg lane-b64 + SCRAM 纯核锚
+// (P5-D;tests/db/run.sh 双臂)。b64 = ws.ct lane-b64 先例(std/enc b64 面
+// 受 C8 printable 约束,SCRAM 盐/证明/签名携任意字节);SCRAM 核锚 =
+// RFC 7677 §3 示例低迭代改制(i=1;hashlib 复算锚,gen_fixtures.py 同源
+// 双落地)。interp 堆预算口径:c=1 档(crypto_vec c_pbkdf2_low 同级)。
+use std.db.pg.{pg_b64_encode, pg_b64_decode, pg_hex_decode, pg_hex_encode, pg_str_bytes, pg_scram_first_bare, pg_scram_salted, pg_scram_proof, pg_scram_server_sig, pg_scram_nonce_from}
+
+test "b64 RFC 4648 vectors + pad faces" {
+    var e0 = List[I32]()
+    assert_eq(pg_b64_encode(e0), "")
+    var f = List[I32]()
+    f.push(102)
+    assert_eq(pg_b64_encode(f), "Zg==")
+    var fo = List[I32]()
+    fo.push(102)
+    fo.push(111)
+    assert_eq(pg_b64_encode(fo), "Zm8=")
+    var foo = List[I32]()
+    foo.push(102)
+    foo.push(111)
+    foo.push(111)
+    assert_eq(pg_b64_encode(foo), "Zm9v")
+    // 解码面(任意字节承载——std/enc 拒的非打印域,pg 面合法)
+    assert_eq(pg_hex_encode(pg_b64_decode("Zm9vYmFy")), "666f6f626172")
+    var sig = pg_b64_decode("Zm9vYmFy")
+    assert_eq(sig.len, 6)
+    assert_eq(sig[0], 102)
+    assert_eq(sig[5], 114)
+}
+
+test "b64 all-byte-values roundtrip 0..255" {
+    var all = List[I32]()
+    var i: I32 = 0
+    while i < 256 {
+        all.push(i)
+        i += 1
+    }
+    let enc = pg_b64_encode(all)
+    // 256B → 344 字符,尾 '=='(256 = 3*85+1;尾组 1 数据字符 + 双垫位)
+    assert_eq(enc.len, 344)
+    assert_eq(byte_at(enc, 342), 61)
+    assert_eq(byte_at(enc, 343), 61)
+    var dec = pg_b64_decode(enc)
+    assert_eq(dec.len, 256)
+    var j: I32 = 0
+    while j < 256 {
+        assert_eq(dec[j], j)
+        j += 1
+    }
+}
+
+test "b64 fail-closed negatives" {
+    // 非 4 倍长 / 非法数位 / 中段垫位 / 前导垫位 / 空串
+    assert_eq(pg_b64_decode("Zg=").len, 0)
+    assert_eq(pg_b64_decode("Zm9!").len, 0)
+    assert_eq(pg_b64_decode("Zm9=YmFy").len, 0)
+    assert_eq(pg_b64_decode("=m9v").len, 0)
+    assert_eq(pg_b64_decode("").len, 0)
+}
+
+test "str bytes face" {
+    var b = pg_str_bytes("ABz")
+    assert_eq(b.len, 3)
+    assert_eq(b[0], 65)
+    assert_eq(b[2], 122)
+}
+
+test "scram first-bare assembly" {
+    assert_eq(pg_scram_first_bare("user", "rOprNGfwEbeRWgbNEkqO"), "n=user,r=rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pg_scram_first_bare("", "abc"), "n=,r=abc")
+}
+
+test "scram core i=1 anchors (RFC 7677 adapted; hashlib-generated)" {
+    // 盐 = RFC 7677 salt b64 解码(16B 任意字节——std/enc b64 拒,pg 面承载)
+    var salt = pg_b64_decode("W22ZaJ0SNY7soEsUEjb6gQ==")
+    assert_eq(salt.len, 16)
+    assert_eq(pg_hex_encode(salt), "5b6d99689d12358eeca04b141236fa81")
+    var salted = pg_scram_salted("pencil", salt, 1)
+    assert_eq(pg_b64_encode(salted), "/PxWPEsCIL9CTgbZEXQW35xzCS5/q+JaCq1RWGUnQI4=")
+    // AuthMessage = 三段逐字节逗号拼接(RFC 5802 §5.1;逗号无空白)
+    let cfirst = "n=user,r=rOprNGfwEbeRWgbNEkqO"
+    let sfirst = "r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=1"
+    let noproof = "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0"
+    let authmsg = cfirst + "," + sfirst + "," + noproof
+    var proof = pg_scram_proof(salted, authmsg)
+    assert_eq(proof.len, 32)
+    assert_eq(pg_b64_encode(proof), "0HpZtX/KXXa0ywYK4tj43Y2SHpuAk6sib0z2ZmNk22Y=")
+    var ssig = pg_scram_server_sig(salted, authmsg)
+    assert_eq(ssig.len, 32)
+    assert_eq(pg_b64_encode(ssig), "XjTu3KBABgY/OKnhaQwxJb9Vbt2Fj1v+lPuMzeAcqSk=")
+}
+
+test "scram nonce_from pure face" {
+    // 18B 0..17 → 24 字符 b64
+    var r = List[I32]()
+    var i: I32 = 0
+    while i < 18 {
+        r.push(i)
+        i += 1
+    }
+    assert_eq(pg_scram_nonce_from(r), "AAECAwQFBgcICQoLDA0ODxAR")
+    // 短表补零(文档化)
+    var short = List[I32]()
+    short.push(1)
+    assert_eq(pg_scram_nonce_from(short), "AQAAAAAAAAAAAAAAAAAAAAAA")
+}

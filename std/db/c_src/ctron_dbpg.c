@@ -29,6 +29,9 @@
 #include <string.h>
 #include <errno.h>
 
+/* 熵垫片符号(ctron_entropy.c 独立编译单元;别名转发用,链接须并链) */
+int64_t ctron_entropy_fill(int64_t* buf, int64_t n);
+
 #define CT_DBPG_CHUNK 4096
 
 #if defined(_WIN32)
@@ -148,4 +151,17 @@ int64_t ctron_dbpg_socketpair(ct_dbpg_view out) {
     out.d[1] = (int64_t)sv[1];
     return 0;
 #endif
+}
+
+/* SCRAM 客户端 nonce 真熵(P5-D;ctron_entropy.c 别名转发,view 胞形——
+ * pg.ct 直宣 ctron_entropy_fill 与 std/uuid.ct 同名 decl 合并即 E5030
+ * (探针实证),故出 db 前缀别名;n 计 lane。链接须并链 ctron_entropy.c
+ * (tests/db run.sh x_scram_nonce 同法)。view 胞形为正形(不做
+ * ctron_entropy_fill 裸指针的 ABI 巧合档;其潜伏面已登记,Task 6 同改)。 */
+int64_t ctron_dbpg_entropy(ct_dbpg_view buf, int64_t n) {
+    if (buf.d == NULL) {
+        ct_dbpg_errno = EFAULT;
+        return -1;
+    }
+    return ctron_entropy_fill(buf.d, n);
 }

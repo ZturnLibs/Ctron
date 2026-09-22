@@ -433,3 +433,26 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   一律镜像视图胞。连带注:std/db/c_src/ctron_entropy.c(P5-B)的
   `int64_t* buf` 签名同属此类,现调用面 lane 长与 n 恒等值故行为正确,
   Task 6 nightly 扩展调用面时应同改视图胞。(源:P5 Task 3 评审修正)
+
+### (i) 家族新证 + 分臂预算定档(P5-D SCRAM + 扩展查询 + 事务,2026-09-22)
+
+- **同名 extern decl 跨模块合并即 E5030**:pg.ct 直宣
+  `ctron_entropy_fill`(P5-B 已由 std/uuid.ct 宣)+ 消费方同程序
+  `use std.uuid` 即 `E5030: use 导入同名 decl`(探针实证)——decl 合并
+  单命名空间纪律不分 struct/extern。绕行 = db 前缀别名符号
+  (`ctron_dbpg_entropy`,ctron_dbpg.c 内 view 胞形转发
+  ctron_entropy_fill;链接须并链 ctron_entropy.c,run.sh 已扩)。
+  同类预检:任何 std 模块新增 extern 前先 grep 既有声明。(源:P5 Task 4 探针)
+- **解释器堆不回收定档(P5-B 的量化续证)**:实测 ≈1GB 峰值/块压缩
+  (SHA-256 64 轮块):c_pbkdf2_low(3×PBKDF2 c=1 ≈ 18 块)= 24GB 绿;
+  SCRAM 单全链文件(PBKDF2+证明+签名 ≈ 23 块)= 40GB 绿;双链同文件
+  ≈ 70GB 即 SIGKILL(exit 137,机器级 OOM)。**分臂预算线由此定档**:
+  interp 单文件 ≤ 1 条 SCRAM 全链;重链多走/x_ 承载(x_scram_neg/
+  x_scram_rfc7677 结构性登记,emit 口径 < 1s)。修法不变 = 解释器
+  堆回收;修后 x_ 面可收编双臂。(源:P5 Task 4 tests/db/replay_scram)
+- **std/enc b64 任意字节缺口维持登记(ws.ct 先例沿用)**:SCRAM 盐/
+  证明/签名携任意字节,std/enc b64_decode 对非 printable 载荷拒
+  (None)、b64_encode 入参受 C8 Str 约束——pg.ct 自出
+  pg_b64_encode/pg_b64_decode(List[I32] 容器;RFC 4648 全字节
+  round-trip 0..255 有锚)。std/enc 字节构建面放宽后可收编。
+  (源:P5 Task 4;先例 std/http/ws.ct 头注①)

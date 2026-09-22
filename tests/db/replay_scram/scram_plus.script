@@ -1,0 +1,3 @@
+# SCRAM plus-only mechanism list (P5-D): channel-binding-plus unsupported (registered)
+# walker must fail clean (err 4 auth), never fall back to plain silently
+520000001c0000000a534352414d2d5348412d3235362d504c55530000

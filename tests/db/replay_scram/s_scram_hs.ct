@@ -1,0 +1,113 @@
+// tests/db/replay_scram/s_scram_hs.ct —— SCRAM-SHA-256 握手回放(P5-D;
+// tests/db/run.sh 双臂,CT_DB_SCRAM = 本目录)。夹具 = RFC 7677 §3 示例
+// 低迭代改制(i=1;hashlib 复算,gen_fixtures.py 落盘)。
+// interp 堆不回收(P5-B 登记;实测 ≈1GB/块压缩)⇒ 本文件只承【一条】
+// 重链(ok 路全链 ≈ 23 块压缩)+ pre-PBKDF2 廉价负例(mech/nonce 前缀/
+// 相序/耗尽);错口令与签名不符两走 x_scram_neg.ct(emit 臂,x_ 结构性
+// 登记),RFC 7677 原例 i=4096 走 x_scram_rfc7677.ct。
+use std.db.pg.{pg_recv_frame_script, pg_scram_handshake, pg_sasl_initial_msg, pg_sasl_response_msg, pg_str_bytes, pg_hex_encode, pgv_rc, pgv_type, pgv_body_len, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_esev, pgs_ecode, pgs_emsg, pgs_nmech, pgs_mech, pgs_cfirst, pgs_sfirst, pgs_cfinal, pgs_sigok, pg_err_auth, pg_err_eof}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "sasl builders: hex anchors (SASLInitialResponse / SASLResponse)" {
+    // p | len | "SCRAM-SHA-256\0" | i32(32) | "n,,n=user,r=rOprNGfwEbeRWgbNEkqO"
+    let m = pg_sasl_initial_msg("SCRAM-SHA-256", pg_str_bytes("n,,n=user,r=rOprNGfwEbeRWgbNEkqO"))
+    assert_eq(pg_hex_encode(m), "7000000036534352414d2d5348412d32353600000000206e2c2c6e3d757365722c723d724f70724e476677456265525767624e456b714f")
+    // client-final(i=1 改制向量;hashlib 复算锚)
+    let cf = "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=0HpZtX/KXXa0ywYK4tj43Y2SHpuAk6sib0z2ZmNk22Y="
+    let r = pg_sasl_response_msg(pg_str_bytes(cf))
+    assert_eq(pg_hex_encode(r), "700000006e633d626977732c723d724f70724e476677456265525767624e456b714f25687659447057556132526154434166757846496c6a29684e6c46246b302c703d3048705a74582f4b585861307977594b34746a3433593253487075416b36736962307a325a6d4e6b3232593d")
+}
+
+test "scram handshake ok path (RFC 7677 adapted i=1; full chain)" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_ok.script")
+    assert_eq(frames.len, 7)
+    // 逐帧面:R(10)/R(11)/R(12)/R(0)/K/S/Z
+    let f0 = pg_recv_frame_script(frames, 0)
+    assert_eq(pgv_rc(f0), 0)
+    assert_eq(pgv_type(f0), 82)
+    assert_eq(pgv_body_len(f0), 19)
+    // 全链:client-final 逐字节锚(hashlib 同源);sigok = server-final 校验
+    let s = pg_scram_handshake(frames, 0, "user", "pencil", "rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_rc(s), 0)
+    assert_eq(pgs_err(s), 0)
+    assert_eq(pgs_authkind(s), 0)
+    assert_eq(pgs_sigok(s), 1)
+    assert_eq(pgs_status(s), 73)
+    assert_eq(pgs_pid(s), 4711)
+    assert_eq(pgs_key(s), 305419896)
+    assert_eq(pgs_next(s), 7)
+    // 机制表 + 选择面
+    assert_eq(pgs_nmech(s), 1)
+    assert_eq(pgs_mech(s, 0), "SCRAM-SHA-256")
+    assert_eq(pgs_mech(s, 1), "")
+    // 三段消息面(逐字节锚)
+    assert_eq(pgs_cfirst(s), "n=user,r=rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_sfirst(s), "r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=1")
+    assert_eq(pgs_cfinal(s), "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=0HpZtX/KXXa0ywYK4tj43Y2SHpuAk6sib0z2ZmNk22Y=")
+    assert_eq(pgs_emsg(s), "")
+}
+
+test "scram server nonce prefix violation -> clean auth err (pre-PBKDF2)" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_nonce.script")
+    let s = pg_scram_handshake(frames, 0, "user", "pencil", "rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_rc(s), -1)
+    assert_eq(pgs_err(s), pg_err_auth())
+    assert_eq(pgs_emsg(s), "scram: server nonce prefix mismatch")
+    // 未达证明面:cfinal 空
+    assert_eq(pgs_cfinal(s), "")
+}
+
+test "scram plus-only mechanism list -> clean auth err (registered)" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_plus.script")
+    let s = pg_scram_handshake(frames, 0, "user", "pencil", "rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_rc(s), -1)
+    assert_eq(pgs_err(s), pg_err_auth())
+    assert_eq(pgs_nmech(s), 1)
+    assert_eq(pgs_mech(s, 0), "SCRAM-SHA-256-PLUS")
+    assert_eq(pgs_emsg(s), "scram: SCRAM-SHA-256 not offered (plus-only channel binding unsupported)")
+}
+
+test "scram edges: empty nonce / source exhausted / phase violation" {
+    // 空 nonce → fail-closed err 4(前缀校验空洞)
+    var frames = List[Str]()
+    frames.push("52000000170000000a534352414d2d5348412d3235360000")
+    let s0 = pg_scram_handshake(frames, 0, "user", "pencil", "")
+    assert_eq(pgs_rc(s0), -1)
+    assert_eq(pgs_err(s0), pg_err_auth())
+    // 源耗尽(空脚本)→ err 3
+    var none = List[Str]()
+    let s1 = pg_scram_handshake(none, 0, "user", "pencil", "abc")
+    assert_eq(pgs_rc(s1), -1)
+    assert_eq(pgs_err(s1), pg_err_eof())
+    // 相序违例:R11 先于 R10 → err 2
+    frames.push("520000002c0000000b723d6162632c733d5732325a614a30534e5937736f457355456a623667513d3d2c693d31")
+    let s2 = pg_scram_handshake(frames, 1, "user", "pencil", "abc")
+    assert_eq(pgs_rc(s2), -1)
+    assert_eq(pgs_err(s2), 2)
+}

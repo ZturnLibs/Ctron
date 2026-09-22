@@ -9,12 +9,18 @@
 //   Ctron 无可发射 trait ⇒ 既定双入口形态:两入口 fn 共享核心解析器
 //   (pgx_*),统一产出 PgRecv(帧面)/PgRows/PgSess(会话面)。
 // ═══ 依赖纪律 ═══
-//   零 std 依赖叶(uuid.ct 同款):std/db 门面将同时消费 pg/crypto/uuid,
-//   严格互斥树(uuid×crypto 菱形先例)下 pg 自持十六进制/装配面;Task 4
-//   SCRAM 接 std/crypto 时亦只单子扩展。**不 use std.net**(Global
-//   Constraints):真源经 PgCell64 标量胞(本文件自有声明;与 net bind.ct
-//   的 Box64 同布局异名——同名 decl 二次合并 E5030,合并单命名空间纪律)
-//   传 fd,垫片符号前缀 ctron_dbpg_*。
+//   单子扩展(P5-D 落定):唯一 std 依赖 = std.crypto(SCRAM 原语
+//   sha256_bytes/hmac_sha256/pbkdf2_sha256;ws.ct→std.crypto 同款单子先例,
+//   E5020 树互斥)。base64 不取 std/enc——其 b64 面受 C8 printable-ASCII
+//   约束,SCRAM 盐/证明/签名携任意字节(ws.ct lane-b64 同款先例),本文件
+//   自出 pg_b64_encode/pg_b64_decode(List[I32] 字节容器,RFC 4648 标准
+//   字母表 + '=' 填充)。**不 use std.net**(Global Constraints):真源经
+//   PgCell64 标量胞(本文件自有声明;与 net bind.ct 的 Box64 同布局异名
+//   ——同名 decl 二次合并 E5030,合并单命名空间纪律)传 fd,垫片符号
+//   前缀 ctron_dbpg_*。SCRAM 客户端 nonce 真熵经 ctron_dbpg_entropy
+//   (P5-D 新 extern;db 垫片别名转发 ctron_entropy_fill——pg.ct 直宣
+//   ctron_entropy_fill 与 std/uuid.ct 同名 decl 合并即 E5030,探针实证,
+//   故出 db 前缀别名;链接需并链 ctron_entropy.c)。
 // ═══ 发射面/解释面纪律(divergences (f)-(i) + P5 新证)═══
 //   ① (h) 载荷通道:跨模块数值消费一律 struct 标量字段 + 自由 getter
 //      (client.ct HttpLoc/HttpResp 同款);Result 数值载荷禁跨模块。
@@ -37,25 +43,36 @@
 //      绑定必消费,忽略返回值用裸语句形。
 //   ⑤ inline test 不落本文件(C17 宿主敏感,P5-A 口径);声明冒烟 +
 //      行为面全在 tests/db。
-// ═══ 线协议范围(本任务)═══
-//   startup(3.0 + 参数面)/AuthenticationOk 检测/Cleartext 检测(SCRAM 路径
-//   检出即 err 4 存根,Task 4 接管)/Query 简单查询/RowDescription/DataRow
-//   (文本格式)/CommandComplete/ReadyForQuery/ErrorResponse(全字段解析,
-//   暴露 severity+SQLSTATE+message)/NoticeResponse 跳过/ParameterStatus
-//   跳过/BackendKeyData 解析/Terminate。大端长度前缀帧:server 帧
-//   [type(1)|len(4,含自身)|payload];client 帧 startup 无 type 字节,
-//   Q/P/X 有。
+// ═══ 线协议范围(本任务;P5-D 扩)═══
+//   startup(3.0 + 参数面)/AuthenticationOk 检测/**SCRAM-SHA-256 全流程
+//   (RFC 5802/7677;gs2 'n' 档,channel-binding-plus 不支援即 clean Err;
+//   pg_scram_handshake 回放面 + pg_scram_* 纯核)**/Query 简单查询/
+//   **扩展查询装配(Parse/Bind/Describe/Execute/Close/Sync + 管线拼接;
+//   收侧与简单查询共驱一核——1/t/2/n 帧入"其余跳过"前向兼容)**/
+//   **事务面(BEGIN/COMMIT/ROLLBACK Query 面 + ReadyForQuery 'T'/'I'/'E'
+//   状态字节 + 取消传播:pg_conn_dirty 脏/排空分级 + 复位语义)**/
+//   RowDescription/DataRow(文本格式)/CommandComplete/ReadyForQuery/
+//   ErrorResponse(全字段解析,暴露 severity+SQLSTATE+message)/
+//   NoticeResponse 跳过/ParameterStatus 跳过/BackendKeyData 解析/
+//   **CancelRequest 装配(独立连startup 形)**/Terminate。大端长度前缀帧:
+//   server 帧 [type(1)|len(4,含自身)|payload];client 帧 startup/cancel
+//   无 type 字节,其余有。
 // ═══ err 码(PgRecv.err/PgRows.err/PgSess.err)═══
-//   1 帧面坏(非十六进制/空行)  2 协议违例(长度域/字段越界/计数不符)
-//   3 源耗尽(脚本走完/fd 对端关)  4 认证存根(Cleartext/MD5/SASL 检出)
+//   1 帧面坏(非十六进制/空行)  2 协议违例(长度域/字段越界/计数不符/
+//   SCRAM 相位错)  3 源耗尽(脚本走完/fd 对端关)  4 认证败(SCRAM 签名
+//   不符/nonce 前缀违例/盐·迭代·机制面坏;Cleartext/MD5 存根)
 //   5 ErrorResponse 收到(SQLSTATE 在 ecode)  6 IO(fd 读写败;fd 源专面)
 //   rc 约定:0 成功 / <0 失败(net 门面同款)。
+
+// SCRAM 原语单子依赖(ws.ct→std.crypto 同款;P5-D)
+use std.crypto.{ sha256_bytes, hmac_sha256, pbkdf2_sha256 }
 
 pub extern "c" fn ctron_dbpg_read(fd: I64, buf: &I64[], cap: I64) -> I64
 pub extern "c" fn ctron_dbpg_write(fd: I64, buf: &I64[], n: I64) -> I64
 pub extern "c" fn ctron_dbpg_close(fd: I64) -> I64
 pub extern "c" fn ctron_dbpg_last_errno() -> I64
 pub extern "c" fn ctron_dbpg_socketpair(out: &I64[]) -> I64
+pub extern "c" fn ctron_dbpg_entropy(buf: &I64[], n: I64) -> I64
 
 // fd 出参标量胞(与 std/net bind.ct Box64 同布局异名;见头注依赖纪律);
 // 出参持态一律 Box[PgCell64](net 出参 Box[Box64] 同款堆胞,跨调用可见)
@@ -386,8 +403,21 @@ pub fn pg_fd_last_errno() -> I64 {
 
 fn pgx_push_be32(out: List[I32], v: I64) {
     var w: I64 = pgz() + v
+    if w < 0 {
+        w = w + 4294967296
+    }
     out.push(w / 16777216 % 256)
     out.push(w / 65536 % 256)
+    out.push(w / 256 % 256)
+    out.push(w % 256)
+}
+
+// i16 域大端(负值二补;Bind 参数长 −1 = NULL 同门)
+fn pgx_push_be16(out: List[I32], v: I64) {
+    var w: I64 = pgz() + v
+    if w < 0 {
+        w = w + 65536
+    }
     out.push(w / 256 % 256)
     out.push(w % 256)
 }
@@ -452,6 +482,241 @@ pub fn pg_terminate_msg() -> List[I32] {
     msg.push(88)
     pgx_push_be32(msg, 4)
     return msg
+}
+
+// ---- SASL 面(SCRAM 线格式;PG 文档 §53.3.2 SASL 流程)----
+
+// SASLInitialResponse('p'):机制名 + i32 初始响应长(-1 = 无)+ 初始响应
+// (gs2 头 + client-first-bare;'n' 档 = "n,," 前缀)
+pub fn pg_sasl_initial_msg(mech: Str, initial: List[I32]) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(112)
+    pgx_push_be32(msg, pgz() + 4 + mech.len + 1 + 4 + initial.len)
+    pgx_push_cstr(msg, mech)
+    pgx_push_be32(msg, pgz() + initial.len)
+    var i: I64 = 0
+    while i < initial.len {
+        msg.push(initial[i])
+        i += 1
+    }
+    return msg
+}
+
+// SASLResponse('p'):client-final-message("c=biws,r=...,p=<proof-b64>")
+pub fn pg_sasl_response_msg(resp: List[I32]) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(112)
+    pgx_push_be32(msg, pgz() + 4 + resp.len)
+    var i: I64 = 0
+    while i < resp.len {
+        msg.push(resp[i])
+        i += 1
+    }
+    return msg
+}
+
+// ---- 扩展查询装配(P5-D;PG 文档 §53.2.3 扩展查询;全文本格 v1)----
+// 管线 = Parse + Bind + Describe(portal) + Execute + Sync 一发;预编译
+// 句柄 = 命名语句(stmt 名非空:Parse 一次,Bind 多次;生命周期经
+// pg_close_msg 归池复位面,池体 Task 5)。参数全文本格(format code 0
+// 逐参);NULL = 长域 -1;result format codes 计数 0(全文本默认)。
+
+// Parse('P'):语句名 + SQL + 参数 OID 表(0 = 未指定)
+pub fn pg_parse_msg(stmt: Str, sql: Str, oids: List[I32]) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(80)
+    var oc: I64 = pgz() + oids.len
+    pgx_push_be32(msg, pgz() + 4 + stmt.len + 1 + sql.len + 1 + 2 + oc * 4)
+    pgx_push_cstr(msg, stmt)
+    pgx_push_cstr(msg, sql)
+    pgx_push_be16(msg, oids.len)
+    var i: I64 = 0
+    while i < oids.len {
+        pgx_push_be32(msg, pgz() + oids[i])
+        i += 1
+    }
+    return msg
+}
+
+// Bind('B'):portal + 语句 + 参数(format code 0 逐参;值文本格字节,
+// NULL = -1 长)+ result format 计数 0(全文本)
+pub fn pg_bind_msg(portal: Str, stmt: Str, params: List[Str], nulls: List[I32]) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(66)
+    var plen: I64 = 0
+    var pc: I64 = pgz() + params.len
+    var i: I64 = 0
+    while i < params.len {
+        var nl: I64 = 0
+        if i < nulls.len {
+            nl = pgz() + nulls[i]
+        }
+        if nl != 1 {
+            plen += pgz() + 4 + params[i].len
+        } else {
+            plen += pgz() + 4
+        }
+        i += 1
+    }
+    // 长度:4 + portal\0 + stmt\0 + 参数格式计数(2)+ 逐参码(pc*2)+
+    // 参数计数(2)+ 参数值(plen)+ 结果格式计数(2)
+    pgx_push_be32(msg, pgz() + 4 + portal.len + 1 + stmt.len + 1 + 2 + 2 + pc * 2 + plen + 2)
+    pgx_push_cstr(msg, portal)
+    pgx_push_cstr(msg, stmt)
+    pgx_push_be16(msg, params.len)
+    i = 0
+    while i < params.len {
+        pgx_push_be16(msg, 0)
+        i += 1
+    }
+    pgx_push_be16(msg, params.len)
+    i = 0
+    while i < params.len {
+        var nl2: I64 = 0
+        if i < nulls.len {
+            nl2 = pgz() + nulls[i]
+        }
+        if nl2 == 1 {
+            pgx_push_be32(msg, -1)
+        } else {
+            pgx_push_be32(msg, pgz() + params[i].len)
+            var j: I32 = 0
+            while j < params[i].len {
+                msg.push(byte_at(params[i], j))
+                j += 1
+            }
+        }
+        i += 1
+    }
+    pgx_push_be16(msg, 0)
+    return msg
+}
+
+// Describe('D'):kind 'S'(83)= 语句 / 'P'(80)= portal + 名
+pub fn pg_describe_msg(kind: I32, name: Str) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(68)
+    pgx_push_be32(msg, pgz() + 4 + 1 + name.len + 1)
+    msg.push(kind)
+    pgx_push_cstr(msg, name)
+    return msg
+}
+
+// Close('C'):kind 同 Describe;语句清理(归池复位三件套之一,Task 5 消费)
+pub fn pg_close_msg(kind: I32, name: Str) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(67)
+    pgx_push_be32(msg, pgz() + 4 + 1 + name.len + 1)
+    msg.push(kind)
+    pgx_push_cstr(msg, name)
+    return msg
+}
+
+// Execute('E'):portal + max-rows(0 = 全行)
+pub fn pg_execute_msg(portal: Str, maxrows: I64) -> List[I32] {
+    var msg = List[I32]()
+    msg.push(69)
+    pgx_push_be32(msg, pgz() + 4 + portal.len + 1 + 4)
+    pgx_push_cstr(msg, portal)
+    pgx_push_be32(msg, maxrows)
+    return msg
+}
+
+// Sync('S'):扩展查询管线收口(事务边界由 ReadyForQuery 报)
+pub fn pg_sync_msg() -> List[I32] {
+    var msg = List[I32]()
+    msg.push(83)
+    pgx_push_be32(msg, 4)
+    return msg
+}
+
+// 参数化查询管线一发(stmt/portal 名显参 = 预编译句柄命名面):
+// Parse + Bind + Describe(portal) + Execute + Sync
+pub fn pg_ext_pipeline(stmt: Str, sql: Str, oids: List[I32], portal: Str, params: List[Str], nulls: List[I32], maxrows: I64) -> List[I32] {
+    var p = pg_parse_msg(stmt, sql, oids)
+    var b = pg_bind_msg(portal, stmt, params, nulls)
+    var d = pg_describe_msg(80, portal)
+    var e = pg_execute_msg(portal, maxrows)
+    var s = pg_sync_msg()
+    var out = List[I32]()
+    var i: I64 = 0
+    while i < p.len {
+        out.push(p[i])
+        i += 1
+    }
+    i = 0
+    while i < b.len {
+        out.push(b[i])
+        i += 1
+    }
+    i = 0
+    while i < d.len {
+        out.push(d[i])
+        i += 1
+    }
+    i = 0
+    while i < e.len {
+        out.push(e[i])
+        i += 1
+    }
+    i = 0
+    while i < s.len {
+        out.push(s[i])
+        i += 1
+    }
+    return out
+}
+
+// ---- 事务面(P5-D)----
+
+// begin/commit/rollback = Query 简单查询(会话语义收 ReadyForQuery 状态
+// 字节:'I'=73 idle / 'T'=84 in-tx / 'E'=69 failed-tx;pg_query_script
+// status 槽承接,tx 链 = 游标续跑)
+pub fn pg_tx_begin_msg() -> List[I32] {
+    return pg_query_msg("BEGIN")
+}
+
+pub fn pg_tx_commit_msg() -> List[I32] {
+    return pg_query_msg("COMMIT")
+}
+
+pub fn pg_tx_rollback_msg() -> List[I32] {
+    return pg_query_msg("ROLLBACK")
+}
+
+// CancelRequest(独立连 startup 形:无 type 字节,len 16,code 80877102,
+// pid + key = BackendKeyData 回执面);收侧 Abort 面服务端自理
+pub fn pg_cancel_msg(pid: I64, key: I64) -> List[I32] {
+    var msg = List[I32]()
+    pgx_push_be32(msg, 16)
+    pgx_push_be32(msg, 80877102)
+    pgx_push_be32(msg, pid)
+    pgx_push_be32(msg, key)
+    return msg
+}
+
+// 取消传播分级(池回池复位判定基面;Global Constraints:禁止跨取消复用
+// 脏连接):
+//   0 = clean(查询 rc 0,Z 已收,连接即复用)
+//   2 = drain(E 已收口——含 57014 查询取消/25P02 事务内错——尾随 Z 在线,
+//       复位 = 排空 Z(pgr_next 续跑)→ 事务内则 ROLLBACK → 见 Z('I') 复用)
+//   1 = dirty(帧/协议/源耗尽/IO:流信任失,连接弃用,不复位不回池)
+pub fn pg_conn_dirty(err: I64) -> I64 {
+    if err == 0 {
+        return 0
+    }
+    if err == pg_err_response() {
+        return 2
+    }
+    return 1
+}
+
+// 复用判定(1 = 可复用 / 0 = 需复位或弃用)
+pub fn pg_dirty_clean(state: I64) -> I64 {
+    if state == 0 {
+        return 1
+    }
+    return 0
 }
 
 // ---- 服务端消息解析核(共享;body 字节表入参) ----
@@ -549,6 +814,8 @@ pub struct PgRows {
     var esev: Str
     var ecode: Str
     var emsg: Str
+    var next: I64
+    var status: I64
 }
 
 pub fn pgr_rc(r: PgRows) -> I64 { return r.rc }
@@ -614,9 +881,14 @@ pub fn pgr_cell_bytes(r: PgRows, row: I64, col: I64) -> List[I32] {
 pub fn pgr_esev(r: PgRows) -> Str { return r.esev }
 pub fn pgr_ecode(r: PgRows) -> Str { return r.ecode }
 pub fn pgr_emsg(r: PgRows) -> Str { return r.emsg }
+// 会话游标(P5-D):next = 收侧消费停点(Z 之后 = 后续查询续跑位;E 之后 =
+// 尾随 Z 待排空位——drain 面,自 next 续跑即排空);status = ReadyForQuery
+// 状态字节('I'=73/'T'=84/'E'=69;未见 Z = 0)。事务链/取消复位面基石。
+pub fn pgr_next(r: PgRows) -> I64 { return r.next }
+pub fn pgr_status(r: PgRows) -> I64 { return r.status }
 
-fn pgx_rows_fail(err: I64, esev: Str, ecode: Str, emsg: Str) -> PgRows {
-    var r = PgRows { rc: -1, err: err, nrows: 0, ncols: 0, tag: "", cols: List[Str](), oids: List[I32](), cells: List[Str](), nulls: List[I32](), cbytes: List[I32](), coffs: List[I32](), esev: esev, ecode: ecode, emsg: emsg }
+fn pgx_rows_fail(err: I64, next: I64, esev: Str, ecode: Str, emsg: Str) -> PgRows {
+    var r = PgRows { rc: -1, err: err, nrows: 0, ncols: 0, tag: "", cols: List[Str](), oids: List[I32](), cells: List[Str](), nulls: List[I32](), cbytes: List[I32](), coffs: List[I32](), esev: esev, ecode: ecode, emsg: emsg, next: next, status: 0 }
     return r
 }
 
@@ -704,10 +976,14 @@ fn pgx_parse_datarow(body: List[I32], ncols: I64, cells: List[Str], nulls: List[
     return 1
 }
 
-// 简单查询回放(脚本源):发侧 pg_query_msg 由调用方构建/断言(回放源无
-// 下行信道);收侧逐帧:T→行描述,D→行(列数校验),C→tag,Z→收口(rc 0),
-// E→rc -1 err 5 + 字段面,N/S/K/其余→跳过(前向兼容)。源耗尽未见 Z →
-// err 3。无行集查询(BEGIN 等)v0 口径:rc 0 ncols 0 空面。
+// 查询回放(脚本源;收侧核 = 简单查询与扩展查询响应流共驱——扩展查询的
+// ParseComplete('1')/BindComplete('2')/ParameterDescription('t')/NoData
+// ('n')入"其余跳过"前向兼容,v0 不校验计数(登记口径)):发侧由调用方
+// 构建/断言(回放源无下行信道;扩展查询装配 pg_ext_pipeline);收侧逐帧:
+// T→行描述,D→行(列数校验),C→tag,Z→收口(rc 0,next 推进 + status 记),
+// E→rc -1 err 5 + 字段面(next 停在尾随 Z 之前 = 排空位),N/S/K/其余→跳过
+// (前向兼容)。源耗尽未见 Z → err 3。无行集查询(BEGIN 等)rc 0 ncols 0。
+// next/status 语义见 pgr_next(pgr)。
 pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
     var ncols: I64 = -1
     var nrows: I64 = 0
@@ -727,11 +1003,14 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
     var done: I64 = 0
     var rc: I64 = -1
     var err: I64 = 0
+    var status: I64 = 0
+    var stop: I64 = cur
     while done == 0 {
         var fr = pg_recv_frame_script(frames, pos)
         if fr.rc != 0 {
             rc = -1
             err = fr.err
+            stop = fr.next
             done = 1
         } else {
             pos = fr.next
@@ -741,6 +1020,7 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
                 if d.ok == 0 {
                     rc = -1
                     err = pg_err_proto()
+                    stop = pos
                     done = 1
                 } else {
                     ncols = d.ncols
@@ -752,12 +1032,14 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
                     if ncols < 0 {
                         rc = -1
                         err = pg_err_proto()
+                        stop = pos
                         done = 1
                     } else {
                         var dr = pgx_parse_datarow(fr.body, ncols, cells, nulls, cbytes, offs)
                         if dr == 0 {
                             rc = -1
                             err = pg_err_proto()
+                            stop = pos
                             done = 1
                         } else {
                             offs.push(cbytes.len)
@@ -770,6 +1052,8 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
                     } else {
                         if t == 90 {
                             rc = 0
+                            status = pg_ready_status(fr.body)
+                            stop = pos
                             done = 1
                         } else {
                             if t == 69 {
@@ -779,9 +1063,11 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
                                 emsg = ed.msg
                                 rc = -1
                                 err = pg_err_response()
+                                stop = pos
                                 done = 1
                             }
-                            // N(78)/S(83)/K(75)/其余:跳过(前向兼容)
+                            // N(78)/S(83)/K(75)/1(49)/2(50)/t(116)/n(110)/
+                            // 其余:跳过(前向兼容;扩展查询响应帧同核)
                         }
                     }
                 }
@@ -789,13 +1075,13 @@ pub fn pg_query_script(frames: List[Str], cur: I64, sql: Str) -> PgRows {
         }
     }
     if rc != 0 {
-        return pgx_rows_fail(err, esev, ecode, emsg)
+        return pgx_rows_fail(err, stop, esev, ecode, emsg)
     }
     var fc2: I64 = ncols
     if fc2 < 0 {
         fc2 = 0
     }
-    var r = PgRows { rc: 0, err: 0, nrows: nrows, ncols: fc2, tag: tag, cols: cols, oids: oids, cells: cells, nulls: nulls, cbytes: cbytes, coffs: offs, esev: esev, ecode: ecode, emsg: emsg }
+    var r = PgRows { rc: 0, err: 0, nrows: nrows, ncols: fc2, tag: tag, cols: cols, oids: oids, cells: cells, nulls: nulls, cbytes: cbytes, coffs: offs, esev: esev, ecode: ecode, emsg: emsg, next: stop, status: status }
     return r
 }
 
@@ -812,6 +1098,11 @@ pub struct PgSess {
     var esev: Str
     var ecode: Str
     var emsg: Str
+    var mechs: List[Str]
+    var cfirst: Str
+    var sfirst: Str
+    var cfinal: Str
+    var sigok: I64
 }
 
 pub fn pgs_rc(s: PgSess) -> I64 { return s.rc }
@@ -824,11 +1115,25 @@ pub fn pgs_authkind(s: PgSess) -> I64 { return s.authkind }
 pub fn pgs_esev(s: PgSess) -> Str { return s.esev }
 pub fn pgs_ecode(s: PgSess) -> Str { return s.ecode }
 pub fn pgs_emsg(s: PgSess) -> Str { return s.emsg }
+// SCRAM 面(P5-D):mechs = AuthenticationSASL 机制列表;cfirst/sfirst/
+// cfinal = client-first-bare / server-first-message / client-final-message
+// (含 ,p= 证明);sigok = server-final 签名校验(1 符 / 0 不符 / -1 未达)。
+pub fn pgs_nmech(s: PgSess) -> I64 { return s.mechs.len }
+pub fn pgs_mech(s: PgSess, i: I64) -> Str {
+    if i < 0 || i >= s.mechs.len {
+        return ""
+    }
+    return s.mechs[i]
+}
+pub fn pgs_cfirst(s: PgSess) -> Str { return s.cfirst }
+pub fn pgs_sfirst(s: PgSess) -> Str { return s.sfirst }
+pub fn pgs_cfinal(s: PgSess) -> Str { return s.cfinal }
+pub fn pgs_sigok(s: PgSess) -> I64 { return s.sigok }
 
 // 握手回放:startup 发侧由调用方构建/断言(回放源无下行信道);收侧
-// R(AuthenticationOk=0 续;Cleartext=3/MD5=5/SASL=10 检出 → err 4 存根并
-// 记 authkind;其余方式记 kind 后续帧再断),K 记 pid/key,E 记字段面,
-// Z 记 status 收口。源耗尽 → err 3。
+// R(AuthenticationOk=0 续;Cleartext=3/MD5=5 存根 err 4;SASL=10 → 本入口
+// 不携凭据,err 4 指路 pg_scram_handshake),K 记 pid/key,E 记字段面,
+// Z 记 status 收口。源耗尽 → err 3。SCRAM 全流程 = pg_scram_handshake。
 pub fn pg_handshake_script(frames: List[Str], cur: I64) -> PgSess {
     var pos: I64 = cur
     var done: I64 = 0
@@ -858,10 +1163,16 @@ pub fn pg_handshake_script(frames: List[Str], cur: I64) -> PgSess {
                     done = 1
                 } else {
                     authkind = kind
-                    if kind == 3 || kind == 5 || kind == 10 {
+                    if kind == 3 || kind == 5 {
                         rc = -1
                         err = pg_err_auth()
-                        emsg = "auth kind " + kind.to_string() + " not supported in replay core (SCRAM: Task 4)"
+                        emsg = "auth kind " + kind.to_string() + " not supported (cleartext/md5; core is SCRAM-SHA-256 only)"
+                        done = 1
+                    }
+                    if kind == 10 {
+                        rc = -1
+                        err = pg_err_auth()
+                        emsg = "auth kind 10: SASL detected; use pg_scram_handshake with credentials"
                         done = 1
                     }
                     // kind 0(AuthOk)与其余方式:续帧(K/S/Z/E 断)
@@ -899,6 +1210,535 @@ pub fn pg_handshake_script(frames: List[Str], cur: I64) -> PgSess {
             }
         }
     }
-    var s = PgSess { rc: rc, err: err, next: pos, status: status, pid: pid, key: key, authkind: authkind, esev: esev, ecode: ecode, emsg: emsg }
+    var s = PgSess { rc: rc, err: err, next: pos, status: status, pid: pid, key: key, authkind: authkind, esev: esev, ecode: ecode, emsg: emsg, mechs: List[Str](), cfirst: "", sfirst: "", cfinal: "", sigok: -1 }
+    return s
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ---- SCRAM-SHA-256(P5-D;RFC 5802/7677;gs2 'n' 档)----
+// 密码链(RFC 5802 §5.1 定义,双括注 = 官方文字):
+//   SaltedPassword = Hi(N(- - - )password, salt, i)(= PBKDF2-HMAC-SHA-256,
+//     RFC 8018 §5.2;经 std.crypto pbkdf2_sha256)
+//   ClientKey       = HMAC(SaltedPassword, "Client Key")
+//   StoredKey       = H(ClientKey)
+//   AuthMessage     = client-first-message-bare + "," + server-first-message
+//                     + "," + client-final-message-without-proof(逐字节
+//                     拼接,逗号无空白——RFC 5802 §5.1 形式文法)
+//   ClientSignature = HMAC(StoredKey, AuthMessage)
+//   ClientProof     = ClientKey XOR ClientSignature
+//   ServerKey       = HMAC(SaltedPassword, "Server Key")
+//   ServerSignature = HMAC(ServerKey, AuthMessage)(server-final v= 校验)
+// gs2 头:'n,,'(channel binding 不支援;RFC 5802 §4(a)裸档)⇒ c = base64
+// ("n,,") = "biws"。SCRAM-SHA-256-PLUS(+tls-server-end-point)不支援:
+// server 只荐 plus → clean Err 4(登记面);server 兼容明档('n')即本核。
+// nonce:客户端 nonce = 调用方供给(回放 = 夹具定值;真源 = pg_scram_nonce,
+// ctron_dbpg_entropy 真熵 18B → 24 字符 b64)。SASLprep 口令规范化不做
+// (v0 登记:口令按原始字节;RFC 5802 §5.1 建议档)。
+// ════════════════════════════════════════════════════════════════════
+
+// ---- lane-b64(ws.ct lane-b64 先例;任意字节双向)----
+
+fn pgx_b64t() -> Str {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+}
+
+fn pgx_b64ch(v: I64) -> Str {
+    var t = pgx_b64t()
+    var k = v.as[I32]()
+    return byte_slice(t, k, k + 1)
+}
+
+fn pgx_b64val(c: I32) -> I32 {
+    var t = pgx_b64t()
+    var i: I32 = 0
+    while i < 64 {
+        if byte_at(t, i) == c {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 字节表 → base64 串(RFC 4648 标准字母表 + '=' 填充)
+pub fn pg_b64_encode(b: List[I32]) -> Str {
+    var out = ""
+    var i: I64 = 0
+    while i + 3 <= b.len {
+        var b0: I64 = pgz() + b[i]
+        var b1: I64 = pgz() + b[i + 1]
+        var b2: I64 = pgz() + b[i + 2]
+        var v = b0 * 65536 + b1 * 256 + b2
+        out = out + pgx_b64ch(v / 262144) + pgx_b64ch(v % 262144 / 4096) + pgx_b64ch(v % 4096 / 64) + pgx_b64ch(v % 64)
+        i += 3
+    }
+    if b.len - i == 1 {
+        var b0: I64 = pgz() + b[i]
+        out = out + pgx_b64ch(b0 / 4) + pgx_b64ch(b0 % 4 * 16) + "=="
+    }
+    if b.len - i == 2 {
+        var b0: I64 = pgz() + b[i]
+        var b1: I64 = pgz() + b[i + 1]
+        out = out + pgx_b64ch(b0 / 4) + pgx_b64ch(b0 % 4 * 16 + b1 / 16) + pgx_b64ch(b1 % 16 * 4) + "="
+    }
+    return out
+}
+
+// base64 串 → 字节表;长度非 4 倍/非法数位/垫位错位(中段 '=')→ 空表
+// (fail-closed;空串 → 空表,调用方以盐长 0 拒)
+pub fn pg_b64_decode(s: Str) -> List[I32] {
+    var out = List[I32]()
+    if s.len == 0 {
+        return out
+    }
+    if s.len % 4 != 0 {
+        return out
+    }
+    var i: I32 = 0
+    while i < s.len {
+        var d0 = pgx_b64val(byte_at(s, i))
+        var d1 = pgx_b64val(byte_at(s, i + 1))
+        if d0 < 0 || d1 < 0 {
+            return List[I32]()
+        }
+        var c2: I32 = byte_at(s, i + 2)
+        var c3: I32 = byte_at(s, i + 3)
+        var pad: I32 = 0
+        var d2: I32 = 0
+        var d3: I32 = 0
+        if c2 == 61 {
+            if c3 != 61 || i + 4 != s.len {
+                return List[I32]()
+            }
+            pad = 2
+        } else {
+            d2 = pgx_b64val(c2)
+            if d2 < 0 {
+                return List[I32]()
+            }
+            if c3 == 61 {
+                if i + 4 != s.len {
+                    return List[I32]()
+                }
+                pad = 1
+            } else {
+                d3 = pgx_b64val(c3)
+                if d3 < 0 {
+                    return List[I32]()
+                }
+            }
+        }
+        var v: I64 = pgz() + d0 * 262144 + d1 * 4096 + d2 * 64 + d3
+        out.push(v / 65536 % 256)
+        if pad < 2 {
+            out.push(v / 256 % 256)
+        }
+        if pad < 1 {
+            out.push(v % 256)
+        }
+        i += 4
+    }
+    return out
+}
+
+// Str → 字节表(ASCII 域;byte_at 逐字节;AuthMessage/口令边)
+pub fn pg_str_bytes(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
+}
+
+// 单字节异或(ClientProof;0..255 值域内 div/mod 位合成,C10 安全)
+fn pgx_xor_byte(a: I32, b: I32) -> I32 {
+    var acc: I32 = 0
+    var p: I32 = 1
+    var i: I32 = 0
+    while i < 8 {
+        var ba = a / p % 2
+        var bb = b / p % 2
+        var xb = ba + bb
+        if xb == 2 {
+            xb = 0
+        }
+        acc += xb * p
+        p = p * 2
+        i += 1
+    }
+    return acc
+}
+
+// ---- SCRAM 纯核(双臂可测;RFC 7677/ adapted 向量锚在 tests/db)----
+
+// client-first-message-bare = "n=" + user(或 authzid)+ ",r=" + nonce
+pub fn pg_scram_first_bare(user: Str, nonce: Str) -> Str {
+    return "n=" + user + ",r=" + nonce
+}
+
+// SaltedPassword = PBKDF2-HMAC-SHA256(口令字节, 盐, i;32B)
+pub fn pg_scram_salted(pass: Str, salt: List[I32], iters: I32) -> List[I32] {
+    return pbkdf2_sha256(pg_str_bytes(pass), salt, iters, 32)
+}
+
+// ClientProof = ClientKey XOR H(ClientKey)(authmsg 由调用方按上式拼)
+pub fn pg_scram_proof(salted: List[I32], authmsg: Str) -> List[I32] {
+    var am = pg_str_bytes(authmsg)
+    var ckey = hmac_sha256(salted, pg_str_bytes("Client Key"))
+    var skey = sha256_bytes(ckey)
+    var csig = hmac_sha256(skey, am)
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < ckey.len {
+        out.push(pgx_xor_byte(ckey[i], csig[i]))
+        i += 1
+    }
+    return out
+}
+
+// ServerSignature = HMAC(HMAC(SaltedPassword,"Server Key"), AuthMessage)
+pub fn pg_scram_server_sig(salted: List[I32], authmsg: Str) -> List[I32] {
+    var srvk = hmac_sha256(salted, pg_str_bytes("Server Key"))
+    return hmac_sha256(srvk, pg_str_bytes(authmsg))
+}
+
+// ---- SCRAM 客户端 nonce(熵面)----
+
+// 18B 随机 → 24 字符 b64 nonce(RFC 5802 建议 nonce 熵 ≈ 18 字节档;
+// 纯形:调用方供熵,双臂可测)
+pub fn pg_scram_nonce_from(rand: List[I32]) -> Str {
+    var b = List[I32]()
+    var i: I32 = 0
+    while i < 18 {
+        var z: I32 = 0
+        if i < rand.len {
+            z = rand[i]
+        }
+        b.push(z)
+        i += 1
+    }
+    return pg_b64_encode(b)
+}
+
+// 真熵 nonce(发射臂面;interp 无 extern 运行时——uuid_v4 同款口径);
+// 失败 → 空串(fail-closed,绝不回退伪熵)。lane 槽数 = 字面量显式
+// (P5-C 登记:lane .len = 字面量槽数)。
+pub fn pg_scram_nonce() -> Str {
+    var lane: I64[24] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var w0: I64 = 4294967296
+    var n: I64 = w0 - w0 + 18
+    var rc = ctron_dbpg_entropy(lane, n)
+    if rc != 0 {
+        return ""
+    }
+    var r = List[I32]()
+    var i: I64 = 0
+    while i < 18 {
+        r.push(lane[i] % 256)
+        i += 1
+    }
+    return pg_scram_nonce_from(r)
+}
+
+// ---- server-first-message 解析 ----
+
+struct PgSFirst {
+    let ok: I64
+    let nonce: Str
+    let saltb64: Str
+    let iterstr: Str
+}
+
+// "r=<combined>,s=<salt-b64>,i=<iters>"(RFC 5802 §5.1 server-first;
+// 属性序 v0 从严固定 r/s/i——PG 实发序,他序 malformed)
+fn pgx_parse_sfirst(s: Str) -> PgSFirst {
+    var f = PgSFirst { ok: 0, nonce: "", saltb64: "", iterstr: "" }
+    if s.len < 5 {
+        return f
+    }
+    if byte_slice(s, 0, 2) != "r=" {
+        return f
+    }
+    var pos: I32 = 2
+    var comma: I32 = -1
+    var k: I32 = pos
+    while k < s.len {
+        if byte_at(s, k) == 44 {
+            comma = k
+            k = s.len
+        } else {
+            k += 1
+        }
+    }
+    if comma < 0 {
+        return f
+    }
+    f.nonce = byte_slice(s, pos, comma)
+    if comma + 3 > s.len || byte_slice(s, comma + 1, comma + 3) != "s=" {
+        return f
+    }
+    pos = comma + 3
+    comma = -1
+    k = pos
+    while k < s.len {
+        if byte_at(s, k) == 44 {
+            comma = k
+            k = s.len
+        } else {
+            k += 1
+        }
+    }
+    if comma < 0 {
+        return f
+    }
+    f.saltb64 = byte_slice(s, pos, comma)
+    if comma + 3 > s.len || byte_slice(s, comma + 1, comma + 3) != "i=" {
+        return f
+    }
+    f.iterstr = byte_slice(s, comma + 3, s.len)
+    if f.iterstr.len == 0 {
+        return f
+    }
+    var q: I32 = 0
+    while q < f.iterstr.len {
+        if byte_at(f.iterstr, q) == 44 {
+            return f
+        }
+        q += 1
+    }
+    f.ok = 1
+    return f
+}
+
+// 迭代计数解析((i) 族 C10 门:乘 10 前界 2^20,溢带即拒;工作预算界)
+fn pgx_parse_iters(s: Str) -> I64 {
+    if s.len == 0 || s.len > 7 {
+        return -1
+    }
+    var acc: I64 = pgz()
+    var k: I32 = 0
+    while k < s.len {
+        var c = byte_at(s, k)
+        if c < 48 || c > 57 {
+            return -1
+        }
+        acc = acc * 10 + (c - 48).as[I64]()
+        if acc > 1048576 {
+            return -1
+        }
+        k += 1
+    }
+    if acc < 1 {
+        return -1
+    }
+    return acc
+}
+
+// AuthenticationSASL(kind 10)机制列表(u32 kind 后 cstring 序,空串终止)
+fn pgx_sasl_mechs(body: List[I32]) -> List[Str] {
+    var out = List[Str]()
+    var pos: I64 = 4
+    while pos < body.len {
+        var e = pgx_cstr_end(body, pos)
+        if e < 0 || e == pos {
+            return out
+        }
+        out.push(pgx_ascii_bytes(body, pos, e))
+        pos = e + 1
+    }
+    return out
+}
+
+// 机制选择:恰含明档 "SCRAM-SHA-256" → 0;仅 plus/未知 → -1(登记面:
+// server REQUIRES plus → clean Err)
+fn pgx_mech_pick(mechs: List[Str]) -> I64 {
+    var i: I64 = 0
+    while i < mechs.len {
+        if mechs[i] == "SCRAM-SHA-256" {
+            return 0
+        }
+        i += 1
+    }
+    return -1
+}
+
+// SCRAM-SHA-256 握手回放(frames[cur..];发侧 SASLInitialResponse/
+// SASLResponse 由调用方经 pg_sasl_*_msg 装配并断言,回放源无下行信道):
+// R kind 10(机制表;明档选择)→ kind 11(server-first:nonce 前缀校验/
+// 盐 b64 解码/迭代 (i) 门 → PBKDF2 → client-final 计算面入 sess)→
+// kind 12(server-final v= 与本地 ServerSignature 比对,不符 → err 4
+// 认证败)→ AuthOk/K/Z 收口(status 记)。E → err 5 字段面。相序违例
+// (11/12 先于 10 / 12 先于 11)→ err 2。空 nonce → err 4(fail-closed:
+// 前缀校验空洞)。sigok/pgs_* 面 = 夹具逐字节锚定面。
+pub fn pg_scram_handshake(frames: List[Str], cur: I64, user: Str, pass: Str, nonce: Str) -> PgSess {
+    var pos: I64 = cur
+    var done: I64 = 0
+    var rc: I64 = -1
+    var err: I64 = 0
+    var status: I64 = 0
+    var pid: I64 = -1
+    var key: I64 = -1
+    var authkind: I64 = -1
+    var esev = ""
+    var ecode = ""
+    var emsg = ""
+    var mechs = List[Str]()
+    var cfirst = ""
+    var sfirst = ""
+    var cfinal = ""
+    var noproof = ""
+    var sigok: I64 = -1
+    var phase: I64 = 0
+    var salted = List[I32]()
+    var cnonce = nonce
+    if cnonce.len == 0 {
+        rc = -1
+        err = pg_err_auth()
+        emsg = "scram: client nonce required (pg_scram_nonce / pg_scram_nonce_from)"
+        done = 1
+    } else {
+        cfirst = pg_scram_first_bare(user, cnonce)
+    }
+    while done == 0 {
+        var fr = pg_recv_frame_script(frames, pos)
+        if fr.rc != 0 {
+            rc = -1
+            err = fr.err
+            done = 1
+        } else {
+            pos = fr.next
+            var t: I64 = pgz() + fr.mtype
+            if t == 82 {
+                var kind = pg_auth_kind(fr.body)
+                if kind < 0 {
+                    rc = -1
+                    err = pg_err_proto()
+                    done = 1
+                } else {
+                    authkind = kind
+                    if kind == 10 {
+                        if phase != 0 {
+                            rc = -1
+                            err = pg_err_proto()
+                            done = 1
+                        } else {
+                            mechs = pgx_sasl_mechs(fr.body)
+                            if pgx_mech_pick(mechs) != 0 {
+                                rc = -1
+                                err = pg_err_auth()
+                                emsg = "scram: SCRAM-SHA-256 not offered (plus-only channel binding unsupported)"
+                                done = 1
+                            } else {
+                                phase = 1
+                            }
+                        }
+                    } else {
+                        if kind == 11 {
+                            if phase != 1 {
+                                rc = -1
+                                err = pg_err_proto()
+                                done = 1
+                            } else {
+                                sfirst = pgx_ascii_bytes(fr.body, 4, fr.body.len)
+                                var sf = pgx_parse_sfirst(sfirst)
+                                if sf.ok == 0 {
+                                    rc = -1
+                                    err = pg_err_auth()
+                                    emsg = "scram: server-first malformed"
+                                    done = 1
+                                } else {
+                                    if sf.nonce.len < cnonce.len || byte_slice(sf.nonce, 0, cnonce.len) != cnonce {
+                                        rc = -1
+                                        err = pg_err_auth()
+                                        emsg = "scram: server nonce prefix mismatch"
+                                        done = 1
+                                    } else {
+                                        var salt = pg_b64_decode(sf.saltb64)
+                                        var iters = pgx_parse_iters(sf.iterstr)
+                                        if salt.len == 0 || iters < 0 {
+                                            rc = -1
+                                            err = pg_err_auth()
+                                            emsg = "scram: salt/iterations malformed or out of domain"
+                                            done = 1
+                                        } else {
+                                            salted = pg_scram_salted(pass, salt, iters.as[I32]())
+                                            noproof = "c=biws,r=" + sf.nonce
+                                            var authmsg = cfirst + "," + sfirst + "," + noproof
+                                            var proof = pg_scram_proof(salted, authmsg)
+                                            cfinal = noproof + ",p=" + pg_b64_encode(proof)
+                                            phase = 2
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if kind == 12 {
+                                if phase != 2 {
+                                    rc = -1
+                                    err = pg_err_proto()
+                                    done = 1
+                                } else {
+                                    var vmsg = pgx_ascii_bytes(fr.body, 4, fr.body.len)
+                                    var authmsg = cfirst + "," + sfirst + "," + noproof
+                                    var expect = "v=" + pg_b64_encode(pg_scram_server_sig(salted, authmsg))
+                                    if vmsg == expect {
+                                        sigok = 1
+                                        phase = 3
+                                    } else {
+                                        sigok = 0
+                                        rc = -1
+                                        err = pg_err_auth()
+                                        emsg = "scram: server signature mismatch"
+                                        done = 1
+                                    }
+                                }
+                            } else {
+                                if kind == 3 || kind == 5 {
+                                    rc = -1
+                                    err = pg_err_auth()
+                                    emsg = "auth kind " + kind.to_string() + " not supported (cleartext/md5; core is SCRAM-SHA-256 only)"
+                                    done = 1
+                                }
+                                // kind 0(AuthOk)与其余方式:续帧
+                            }
+                        }
+                    }
+                }
+            } else {
+                if t == 75 {
+                    var p = pgx_u32be(fr.body, 0)
+                    var k2 = pgx_u32be(fr.body, 4)
+                    if p < 0 || k2 < 0 {
+                        rc = -1
+                        err = pg_err_proto()
+                        done = 1
+                    } else {
+                        pid = p
+                        key = k2
+                    }
+                } else {
+                    if t == 90 {
+                        status = pg_ready_status(fr.body)
+                        rc = 0
+                        done = 1
+                    } else {
+                        if t == 69 {
+                            var ed = pg_err_data(fr.body)
+                            esev = ed.sev
+                            ecode = ed.code
+                            emsg = ed.msg
+                            rc = -1
+                            err = pg_err_response()
+                            done = 1
+                        }
+                        // S(83)/N(78)/其余:跳过(前向兼容)
+                    }
+                }
+            }
+        }
+    }
+    var s = PgSess { rc: rc, err: err, next: pos, status: status, pid: pid, key: key, authkind: authkind, esev: esev, ecode: ecode, emsg: emsg, mechs: mechs, cfirst: cfirst, sfirst: sfirst, cfinal: cfinal, sigok: sigok }
     return s
 }

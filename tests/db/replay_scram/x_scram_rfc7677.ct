@@ -1,0 +1,49 @@
+// tests/db/replay_scram/x_scram_rfc7677.ct —— SCRAM RFC 7677 §3 原例全链
+// (x_ = 仅 emit 臂入计;c=4096 ≈ 8192 块压缩,interp 堆不回收 P5-B 登记
+// 不可实用,crypto_vec x_pbkdf2_hi 同口径;emit ≈ 0.3s)。锚 = RFC 原文
+// 常量(client-final / server-final v=),gen_fixtures.py 生成器已自检。
+use std.db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_cfinal, pgs_sfirst, pgs_sigok, pg_err_auth}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "scram RFC 7677 exact vector: i=4096 full chain, sigok, cfinal byte-exact" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_rfc7677.script")
+    assert_eq(frames.len, 6)
+    let s = pg_scram_handshake(frames, 0, "user", "pencil", "rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_rc(s), 0)
+    assert_eq(pgs_err(s), 0)
+    assert_eq(pgs_authkind(s), 0)
+    assert_eq(pgs_sigok(s), 1)
+    assert_eq(pgs_status(s), 73)
+    assert_eq(pgs_pid(s), 4711)
+    assert_eq(pgs_key(s), 305419896)
+    assert_eq(pgs_next(s), 6)
+    // RFC 7677 §3 原文常量(逐字节)
+    assert_eq(pgs_sfirst(s), "r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096")
+    assert_eq(pgs_cfinal(s), "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ=")
+}

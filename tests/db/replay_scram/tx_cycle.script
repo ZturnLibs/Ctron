@@ -1,0 +1,9 @@
+# transaction status transitions (P5-D): ReadyForQuery I->T->T->I
+# client side: BEGIN / SELECT 1 / COMMIT via Query; cursor chains via next
+# seq: C(BEGIN) Z(T) C(SELECT 1) Z(T) C(COMMIT) Z(I)
+430000000a424547494e00
+5a0000000554
+430000000d53454c454354203100
+5a0000000554
+430000000b434f4d4d495400
+5a0000000549

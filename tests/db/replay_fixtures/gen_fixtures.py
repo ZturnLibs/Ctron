@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-# tests/db/replay_fixtures/gen_fixtures.py —— 回放夹具生成器(P5-C)
+# tests/db/replay_fixtures/gen_fixtures.py —— 回放夹具生成器(P5-C/P5-D)
 # 录制来源登记:本波夹具 = 手工按 PostgreSQL 线协议 v3 公开规范构造
 # (PostgreSQL 文档 §53 Frontend/Backend Protocol),本生成器即构造过程
-# 的可复核落盘(锚生成器纪律,P5-B 同款);nightly 真库导出钩子 Task 6
-# 另标。产物:同目录 *.script(十六进制帧脚本,一帧一行,# 注释)。
+# 的可复核落盘(锚生成器纪律,P5-B 同款,幂等重写)。产物:
+#   同目录 *.script               —— P5-C 帧(简单查询/握手/错帧)
+#   ../replay_scram/*.script      —— P5-D 帧(SCRAM/扩展查询/事务/取消)
+# SCRAM 夹具密码链 = RFC 5802 §5.1,向量 = RFC 7677 §3 示例(user/pencil),
+# interp 臂夹具同链低迭代改制(i=1;emit 臂 x_scram_rfc7677 走原例 i=4096
+# —— interp 堆不回收,P5-B 登记,c=4096 不可实用)。生成器自检:hashlib
+# 复算值与 RFC 7677 常量逐字节比对(不一致即中止)。
 # 用法:python3 gen_fixtures.py(幂等重写)。
+import os
 import struct
+import hashlib
+import hmac as hmac_mod
+import base64
 
 def u16(v): return struct.pack(">H", v)
 def u32(v): return struct.pack(">I", v)
@@ -170,3 +179,226 @@ write_script("auth_stub.script", [
 # ── 生成器自检:帧长域/字节面一致性 ──
 assert len(frame(b"R", u32(0))) == 18  # 5 + 4 bytes hex
 print("gen ok")
+
+# ══════════════════════════════════════════════════════════════════
+# P5-D 夹具(tests/db/replay_scram/):SCRAM / 扩展查询 / 事务 / 取消
+# ══════════════════════════════════════════════════════════════════
+
+OUT2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "replay_scram")
+os.makedirs(OUT2, exist_ok=True)
+
+# ---- SCRAM 密码链(hashlib 复算;RFC 5802 §5.1)----
+
+def scram_chain(password: str, cfirst_bare: str, sfirst: str, cfwp: str, salt_b64: str, iters: int):
+    """返回 (salted_b64, proof_b64, serversig_b64);AuthMessage = 三段逗号拼接"""
+    salt = base64.b64decode(salt_b64)
+    authmsg = cfirst_bare + "," + sfirst + "," + cfwp
+    salted = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iters, 32)
+    ckey = hmac_mod.new(salted, b"Client Key", hashlib.sha256).digest()
+    stored = hashlib.sha256(ckey).digest()
+    csig = hmac_mod.new(stored, authmsg.encode(), hashlib.sha256).digest()
+    proof = bytes(a ^ b for a, b in zip(ckey, csig))
+    srvk = hmac_mod.new(salted, b"Server Key", hashlib.sha256).digest()
+    ssig = hmac_mod.new(srvk, authmsg.encode(), hashlib.sha256).digest()
+    return (base64.b64encode(salted).decode(),
+            base64.b64encode(proof).decode(),
+            base64.b64encode(ssig).decode())
+
+# RFC 7677 §3 常量(生成器自检锚)
+RFC_USER, RFC_PASS = "user", "pencil"
+RFC_NONCE = "rOprNGfwEbeRWgbNEkqO"
+RFC_SERVER_NONCE = RFC_NONCE + "%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0"
+RFC_SALT = "W22ZaJ0SNY7soEsUEjb6gQ=="
+RFC_CFIRST = "n=user,r=" + RFC_NONCE
+RFC_SFIRST = "r=" + RFC_SERVER_NONCE + ",s=" + RFC_SALT + ",i=4096"
+RFC_CFWP = "c=biws,r=" + RFC_SERVER_NONCE
+RFC_PROOF = "dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ="
+RFC_V = "6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4="
+
+_, proof4096, v4096 = scram_chain(RFC_PASS, RFC_CFIRST, RFC_SFIRST, RFC_CFWP, RFC_SALT, 4096)
+assert proof4096 == RFC_PROOF, proof4096
+assert v4096 == RFC_V, v4096
+
+# interp 臂低迭代改制(同链 i=1)
+SFIRST_I1 = "r=" + RFC_SERVER_NONCE + ",s=" + RFC_SALT + ",i=1"
+_, PROOF_I1, V_I1 = scram_chain(RFC_PASS, RFC_CFIRST, SFIRST_I1, RFC_CFWP, RFC_SALT, 1)
+_, PROOF_I1_BADPW, _ = scram_chain("penc1l", RFC_CFIRST, SFIRST_I1, RFC_CFWP, RFC_SALT, 1)
+CFINAL_I1 = RFC_CFWP + ",p=" + PROOF_I1
+CFINAL_I1_BADPW = RFC_CFWP + ",p=" + PROOF_I1_BADPW
+
+def sasl_mech_frame(mechs: list) -> str:
+    """AuthenticationSASL:u32(10) + 机制 cstring 序 + 空串终止"""
+    p = u32(10)
+    for m in mechs:
+        p += cstr(m)
+    p += b"\x00"
+    return frame(b"R", p)
+
+def auth_extra(kind: int, extra: bytes) -> str:
+    return frame(b"R", u32(kind) + extra)
+
+# ---- scram_ok:i=1 改制全链 ok 路(R10→R11→R12→R0→K→S→Z idle) ----
+write_script(os.path.join(OUT2, "scram_ok.script"), [
+    "SCRAM-SHA-256 happy path (P5-D; gen_fixtures.py; RFC 7677 adapted i=1)",
+    "chain: n=user / pencil / nonce " + RFC_NONCE + " / salt " + RFC_SALT + " / i=1",
+    "seq: R10(SCRAM-SHA-256) R11(server-first) R12(v=) R0(AuthOk) K S Z(idle)",
+    "cfinal expect: " + CFINAL_I1,
+], [
+    sasl_mech_frame(["SCRAM-SHA-256"]),
+    auth_extra(11, SFIRST_I1.encode()),
+    auth_extra(12, ("v=" + V_I1).encode()),
+    auth(0),
+    backend_keydata(4711, 305419896),
+    param_status("client_encoding", "UTF8"),
+    ready("I"),
+])
+
+# ---- scram_badpw:错口令路径(client-final 计出面 server E 28P01) ----
+write_script(os.path.join(OUT2, "scram_badpw.script"), [
+    "SCRAM wrong-password path (P5-D): server rejects after client-final",
+    "client side computes proof with 'penc1l'; server answers E(28P01) + Z(E)",
+    "cfinal(wrong pw) expect: " + CFINAL_I1_BADPW,
+], [
+    sasl_mech_frame(["SCRAM-SHA-256"]),
+    auth_extra(11, SFIRST_I1.encode()),
+    error_response({
+        "S": "FATAL",
+        "V": "FATAL",
+        "C": "28P01",
+        "M": "password authentication failed for user \"user\"",
+    }),
+    ready("E"),
+])
+
+# ---- scram_badsig:server-final v= 与本地 ServerSignature 不符 ----
+write_script(os.path.join(OUT2, "scram_badsig.script"), [
+    "SCRAM server-final signature mismatch (P5-D): v != HMAC(ServerKey, AuthMessage)",
+    "walker must fail clean (err 4 auth) with sigok=0",
+], [
+    sasl_mech_frame(["SCRAM-SHA-256"]),
+    auth_extra(11, SFIRST_I1.encode()),
+    auth_extra(12, ("v=" + "A" * 43 + "=").encode()),
+])
+
+# ---- scram_nonce:combined nonce 不以 client nonce 为前缀 ----
+write_script(os.path.join(OUT2, "scram_nonce.script"), [
+    "SCRAM server nonce prefix violation (P5-D): r= does not extend client nonce",
+    "walker must fail clean (err 4 auth)",
+], [
+    sasl_mech_frame(["SCRAM-SHA-256"]),
+    auth_extra(11, ("r=ZZZunrelated,s=" + RFC_SALT + ",i=1").encode()),
+])
+
+# ---- scram_plus:server 仅荐 SCRAM-SHA-256-PLUS(channel binding) ----
+write_script(os.path.join(OUT2, "scram_plus.script"), [
+    "SCRAM plus-only mechanism list (P5-D): channel-binding-plus unsupported (registered)",
+    "walker must fail clean (err 4 auth), never fall back to plain silently",
+], [
+    sasl_mech_frame(["SCRAM-SHA-256-PLUS"]),
+])
+
+# ---- scram_rfc7677:RFC 7677 §3 原例(i=4096;x_ emit 臂专面) ----
+write_script(os.path.join(OUT2, "scram_rfc7677.script"), [
+    "SCRAM RFC 7677 exact vector (P5-D; emit arm only - interp heap budget)",
+    "cfinal expect: " + RFC_CFWP + ",p=" + RFC_PROOF,
+    "server-final expect: v=" + RFC_V,
+], [
+    sasl_mech_frame(["SCRAM-SHA-256"]),
+    auth_extra(11, RFC_SFIRST.encode()),
+    auth_extra(12, ("v=" + RFC_V).encode()),
+    auth(0),
+    backend_keydata(4711, 305419896),
+    ready("I"),
+])
+
+# ---- ext_query:PQexecParams 形响应流(P+B+Describe portal+E+S) ----
+write_script(os.path.join(OUT2, "ext_query.script"), [
+    "extended query response stream (P5-D): ParseComplete/BindComplete skipped",
+    "send side (asserted by builders): P(q1,SELECT $1,$2,[23,25]) B D(P) E S",
+    "seq: 1 2 T(id,name) D D C(SELECT 2) Z(idle)",
+], [
+    frame(b"1", b""),
+    frame(b"2", b""),
+    rowdesc([("id", 23), ("name", 25)]),
+    datarow([b"1", b"alice"]),
+    datarow([b"2", b"bob"]),
+    command_complete("SELECT 2"),
+    ready("I"),
+])
+
+# ---- ext_describe:语句级 Describe(ParameterDescription + RowDescription) ----
+write_script(os.path.join(OUT2, "ext_describe.script"), [
+    "statement-level Describe response (P5-D): t(param oids) + T, zero rows",
+    "seq: 1 t(n=2,oids 23/25) T(v) Z(idle)",
+], [
+    frame(b"1", b""),
+    frame(b"t", u16(2) + u32(23) + u32(25)),
+    rowdesc([("v", 25)]),
+    ready("I"),
+])
+
+# ---- tx_cycle:事务状态字节迁移 idle→T→T→idle ----
+write_script(os.path.join(OUT2, "tx_cycle.script"), [
+    "transaction status transitions (P5-D): ReadyForQuery I->T->T->I",
+    "client side: BEGIN / SELECT 1 / COMMIT via Query; cursor chains via next",
+    "seq: C(BEGIN) Z(T) C(SELECT 1) Z(T) C(COMMIT) Z(I)",
+], [
+    command_complete("BEGIN"),
+    ready("T"),
+    command_complete("SELECT 1"),
+    ready("T"),
+    command_complete("COMMIT"),
+    ready("I"),
+])
+
+# ---- tx_error_drain:E 收口 + 尾随 Z('E')排空 + ROLLBACK 复位 ----
+write_script(os.path.join(OUT2, "tx_error_drain.script"), [
+    "error drain + reset-via-rollback (P5-D): E(25P02) leaves trailing Z('E')",
+    "walker stops before Z (next=drain pos); drain then ROLLBACK sees Z('I')",
+    "seq: C(BEGIN) Z(T) E(25P02) Z(E) C(ROLLBACK) Z(I)",
+], [
+    command_complete("BEGIN"),
+    ready("T"),
+    error_response({
+        "S": "ERROR",
+        "V": "ERROR",
+        "C": "25P02",
+        "M": "current transaction is aborted, commands ignored until end of transaction block",
+    }),
+    ready("E"),
+    command_complete("ROLLBACK"),
+    ready("I"),
+])
+
+# ---- tx_cancel:查询取消传播(E 57014 后 Z idle;连接排空后可复位) ----
+write_script(os.path.join(OUT2, "tx_cancel.script"), [
+    "cancel propagation (P5-D): in-flight query aborted mid-rowset, E(57014)+Z",
+    "client: CancelRequest(pid,key) on separate connection; this stream shows",
+    "the partial rowset then the cancel ErrorResponse then ReadyForQuery",
+    "seq: T(count) D D E(57014) Z(I)",
+], [
+    rowdesc([("count", 23)]),
+    datarow([b"1"]),
+    datarow([b"2"]),
+    error_response({
+        "S": "ERROR",
+        "V": "ERROR",
+        "C": "57014",
+        "M": "canceling statement due to user request",
+    }),
+    ready("I"),
+])
+
+# ---- tx_cancel_eof:流截断(源耗尽未见 Z)→ dirty 弃用面 ----
+write_script(os.path.join(OUT2, "tx_cancel_eof.script"), [
+    "stream cut mid-rowset (P5-D): script exhausted before C/Z -> eof err 3",
+    "pg_conn_dirty(3) = dirty (discard; never reset/reuse across lost stream)",
+    "seq: T(count) D [cut]",
+], [
+    rowdesc([("count", 23)]),
+    datarow([b"1"]),
+])
+
+# ── P5-D 生成器自检 ──
+assert scram_chain(RFC_PASS, RFC_CFIRST, RFC_SFIRST, RFC_CFWP, RFC_SALT, 4096)[1] == RFC_PROOF
+print("gen p5-d ok:", OUT2)

@@ -1,0 +1,126 @@
+// tests/db/replay_scram/s_tx.ct —— 事务面 + 取消传播(P5-D):状态字节
+// 'I'/'T'/'E' 迁移、游标链、E 收口排空(drain)、复位经 ROLLBACK、流截断
+// 脏标记。廉价纯协议面(零密码学),双臂。锚值 = gen_fixtures.py 同源。
+use std.db.pg.{pg_tx_begin_msg, pg_tx_commit_msg, pg_tx_rollback_msg, pg_cancel_msg, pg_conn_dirty, pg_dirty_clean, pg_query_script, pg_query_msg, pg_hex_encode, pgr_rc, pgr_err, pgr_rows, pgr_tag, pgr_cell, pgr_next, pgr_status, pgr_ecode, pgr_emsg}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "tx msg builders hex anchors" {
+    assert_eq(pg_hex_encode(pg_tx_begin_msg()), "510000000a424547494e00")
+    assert_eq(pg_hex_encode(pg_tx_commit_msg()), "510000000b434f4d4d495400")
+    assert_eq(pg_hex_encode(pg_tx_rollback_msg()), "510000000d524f4c4c4241434b00")
+    // CancelRequest:独立连 startup 形(len 16 + code 80877102 + pid/key)
+    assert_eq(pg_hex_encode(pg_cancel_msg(4711, 305419896)), "0000001004d2162e0000126712345678")
+}
+
+test "conn dirty classification face" {
+    assert_eq(pg_conn_dirty(0), 0)
+    assert_eq(pg_conn_dirty(5), 2)
+    assert_eq(pg_conn_dirty(1), 1)
+    assert_eq(pg_conn_dirty(2), 1)
+    assert_eq(pg_conn_dirty(3), 1)
+    assert_eq(pg_conn_dirty(6), 1)
+    assert_eq(pg_dirty_clean(0), 1)
+    assert_eq(pg_dirty_clean(1), 0)
+    assert_eq(pg_dirty_clean(2), 0)
+}
+
+test "tx cycle: status I->T->T->I via cursor chaining" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "tx_cycle.script")
+    assert_eq(frames.len, 6)
+    let q1 = pg_query_script(frames, 0, "BEGIN")
+    assert_eq(pgr_rc(q1), 0)
+    assert_eq(pgr_tag(q1), "BEGIN")
+    assert_eq(pgr_status(q1), 84)
+    assert_eq(pgr_next(q1), 2)
+    let q2 = pg_query_script(frames, pgr_next(q1), "SELECT 1")
+    assert_eq(pgr_rc(q2), 0)
+    assert_eq(pgr_tag(q2), "SELECT 1")
+    assert_eq(pgr_status(q2), 84)
+    let q3 = pg_query_script(frames, pgr_next(q2), "COMMIT")
+    assert_eq(pgr_rc(q3), 0)
+    assert_eq(pgr_tag(q3), "COMMIT")
+    assert_eq(pgr_status(q3), 73)
+    assert_eq(pgr_next(q3), 6)
+}
+
+test "tx error drain: E leaves Z pending, drain, rollback resets to idle" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "tx_error_drain.script")
+    assert_eq(frames.len, 6)
+    let q1 = pg_query_script(frames, 0, "BEGIN")
+    assert_eq(pgr_rc(q1), 0)
+    assert_eq(pgr_status(q1), 84)
+    // 事务内错:E 收口(err 5),尾随 Z('E') 未消费,next = 排空位(Z 在帧位 3)
+    let q2 = pg_query_script(frames, pgr_next(q1), "DELETE FROM missing")
+    assert_eq(pgr_rc(q2), -1)
+    assert_eq(pgr_err(q2), 5)
+    assert_eq(pgr_ecode(q2), "25P02")
+    assert_eq(pgr_next(q2), 3)
+    assert_eq(pgr_status(q2), 0)
+    // 取消传播分级:E 面 = drain(可复位)
+    assert_eq(pg_conn_dirty(5), 2)
+    // 排空:自 next 续跑即消费 Z('E')
+    let q3 = pg_query_script(frames, pgr_next(q2), "")
+    assert_eq(pgr_rc(q3), 0)
+    assert_eq(pgr_status(q3), 69)
+    assert_eq(pgr_next(q3), 4)
+    // 复位 = ROLLBACK 后见 Z('I') → clean
+    let q4 = pg_query_script(frames, pgr_next(q3), "ROLLBACK")
+    assert_eq(pgr_rc(q4), 0)
+    assert_eq(pgr_tag(q4), "ROLLBACK")
+    assert_eq(pgr_status(q4), 73)
+    assert_eq(pg_dirty_clean(0), 1)
+}
+
+test "cancel propagation: query aborted mid-rowset, E(57014), drain to idle" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "tx_cancel.script")
+    assert_eq(frames.len, 5)
+    let q1 = pg_query_script(frames, 0, "SELECT count FROM t")
+    // 行流中途取消:rc -1 err 5(57014),next 停在尾随 Z 前
+    assert_eq(pgr_rc(q1), -1)
+    assert_eq(pgr_err(q1), 5)
+    assert_eq(pgr_ecode(q1), "57014")
+    assert_eq(pgr_emsg(q1), "canceling statement due to user request")
+    assert_eq(pgr_next(q1), 4)
+    // 排空 → Z('I'):取消后连接复位可复用(池回池面,Task 5 消费)
+    let q2 = pg_query_script(frames, pgr_next(q1), "")
+    assert_eq(pgr_rc(q2), 0)
+    assert_eq(pgr_status(q2), 73)
+}
+
+test "stream cut mid-rowset: eof -> dirty, never reset/reuse" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "tx_cancel_eof.script")
+    assert_eq(frames.len, 2)
+    let q1 = pg_query_script(frames, 0, "SELECT count FROM t")
+    assert_eq(pgr_rc(q1), -1)
+    assert_eq(pgr_err(q1), 3)
+    assert_eq(pgr_next(q1), 2)
+    // 流信任失 = dirty(1):弃用,不复位(Global Constraints 禁跨取消复用)
+    assert_eq(pg_conn_dirty(3), 1)
+    assert_eq(pg_dirty_clean(pg_conn_dirty(3)), 0)
+}

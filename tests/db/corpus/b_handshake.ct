@@ -69,17 +69,19 @@ test "query misapplied to handshake script -> clean eof" {
 test "auth stub detection: cleartext(3) and SASL(10)" {
     let frames = load_frames(env_get("CT_DB_FIX"), "auth_stub.script")
     assert_eq(frames.len, 2)
-    // 游标 0:Cleartext 检出 → err 4,authkind 3(存根文案点名 SCRAM Task 4)
+    // 游标 0:Cleartext 检出 → err 4,authkind 3(存根面:核仅 SCRAM-SHA-256)
     let s0 = pg_handshake_script(frames, 0)
     assert_eq(pgs_rc(s0), -1)
     assert_eq(pgs_err(s0), pg_err_auth())
     assert_eq(pgs_authkind(s0), 3)
-    assert_eq(pgs_emsg(s0), "auth kind 3 not supported in replay core (SCRAM: Task 4)")
-    // 游标 1:SASL 检出 → err 4,authkind 10(机制列表体不扰 kind 解析)
+    assert_eq(pgs_emsg(s0), "auth kind 3 not supported (cleartext/md5; core is SCRAM-SHA-256 only)")
+    // 游标 1:SASL 检出 → err 4,authkind 10(机制列表体不扰 kind 解析;
+    // 全流程 = pg_scram_handshake,tests/db/replay_scram)
     let s1 = pg_handshake_script(frames, 1)
     assert_eq(pgs_rc(s1), -1)
     assert_eq(pgs_err(s1), pg_err_auth())
     assert_eq(pgs_authkind(s1), 10)
+    assert_eq(pgs_emsg(s1), "auth kind 10: SASL detected; use pg_scram_handshake with credentials")
     // 源耗尽 → err 3
     let s2 = pg_handshake_script(frames, 2)
     assert_eq(pgs_rc(s2), -1)

@@ -1,0 +1,6 @@
+# statement-level Describe response (P5-D): t(param oids) + T, zero rows
+# seq: 1 t(n=2,oids 23/25) T(v) Z(idle)
+3100000004
+740000000e00020000001700000019
+540000001a0001760000000000000100000019ffffffffffff0000
+5a0000000549

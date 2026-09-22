@@ -1,0 +1,124 @@
+// tests/db/replay_scram/s_ext.ct —— 扩展查询(P5-D):装配器十六进制锚 +
+// 响应流回放(ParseComplete/BindComplete/ParameterDescription 入共驱核
+// 跳过分支;收侧行结果走既有 struct 通道)。廉价纯协议面(零密码学),
+// 双臂。锚值 = gen_fixtures.py 同源 python 构造(锚生成器纪律)。
+use std.db.pg.{pg_parse_msg, pg_bind_msg, pg_describe_msg, pg_close_msg, pg_execute_msg, pg_sync_msg, pg_ext_pipeline, pg_handshake_script, pg_query_script, pg_hex_encode, pgr_rc, pgr_err, pgr_rows, pgr_cols, pgr_tag, pgr_colname, pgr_oid, pgr_cell, pgr_isnull, pgr_next, pgr_status, pgr_ecode}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+fn oids2() -> List[I32] {
+    var o = List[I32]()
+    o.push(23)
+    o.push(25)
+    return o
+}
+
+fn params2() -> List[Str] {
+    var p = List[Str]()
+    p.push("42")
+    p.push("alice")
+    return p
+}
+
+fn nulls00() -> List[I32] {
+    var n = List[I32]()
+    n.push(0)
+    n.push(0)
+    return n
+}
+
+test "parse msg: named stmt + param oids hex anchor" {
+    // P(q1, "SELECT $1, $2", [23,25])——预编译句柄命名面
+    let m = pg_parse_msg("q1", "SELECT $1, $2", oids2())
+    assert_eq(pg_hex_encode(m), "500000001f71310053454c4543542024312c2024320000020000001700000019")
+}
+
+test "bind msg: text params + NULL(-1) + format codes hex anchor" {
+    // 全文本格:format code 0 逐参;result codes 计数 0
+    let m = pg_bind_msg("", "q1", params2(), nulls00())
+    assert_eq(pg_hex_encode(m), "420000002100713100000200000000000200000002343200000005616c6963650000")
+    // NULL = 长域 -1(FFFFFFFF)
+    var p2 = List[Str]()
+    p2.push("42")
+    p2.push("")
+    var n2 = List[I32]()
+    n2.push(0)
+    n2.push(1)
+    let mn = pg_bind_msg("", "q1", p2, n2)
+    assert_eq(pg_hex_encode(mn), "420000001c007131000002000000000002000000023432ffffffff0000")
+}
+
+test "describe/close/execute/sync hex anchors" {
+    assert_eq(pg_hex_encode(pg_describe_msg(80, "")), "44000000065000")
+    assert_eq(pg_hex_encode(pg_describe_msg(83, "q1")), "440000000853713100")
+    assert_eq(pg_hex_encode(pg_close_msg(83, "q1")), "430000000853713100")
+    assert_eq(pg_hex_encode(pg_execute_msg("", 0)), "45000000090000000000")
+    assert_eq(pg_hex_encode(pg_sync_msg()), "5300000004")
+}
+
+test "ext pipeline: Parse+Bind+Describe(portal)+Execute+Sync one-shot hex anchor" {
+    let m = pg_ext_pipeline("q1", "SELECT $1, $2", oids2(), "", params2(), nulls00(), 0)
+    assert_eq(pg_hex_encode(m), "500000001f71310053454c4543542024312c2024320000020000001700000019420000002100713100000200000000000200000002343200000005616c696365000044000000065000450000000900000000005300000004")
+}
+
+test "ext query replay: rowset through shared core (1/2 frames skipped)" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "ext_query.script")
+    assert_eq(frames.len, 7)
+    let r = pg_query_script(frames, 0, "SELECT $1, $2")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_err(r), 0)
+    assert_eq(pgr_rows(r), 2)
+    assert_eq(pgr_cols(r), 2)
+    assert_eq(pgr_tag(r), "SELECT 2")
+    assert_eq(pgr_colname(r, 0), "id")
+    assert_eq(pgr_colname(r, 1), "name")
+    assert_eq(pgr_oid(r, 0), 23)
+    assert_eq(pgr_oid(r, 1), 25)
+    assert_eq(pgr_cell(r, 0, 0), "1")
+    assert_eq(pgr_cell(r, 0, 1), "alice")
+    assert_eq(pgr_cell(r, 1, 0), "2")
+    assert_eq(pgr_cell(r, 1, 1), "bob")
+    assert_eq(pgr_isnull(r, 0, 0), 0)
+    // 收口面:Z('I') + 游标终态
+    assert_eq(pgr_status(r), 73)
+    assert_eq(pgr_next(r), 7)
+    assert_eq(pgr_ecode(r), "")
+}
+
+test "statement describe replay: t(param oids) + T, zero rows" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "ext_describe.script")
+    assert_eq(frames.len, 4)
+    let r = pg_query_script(frames, 0, "SELECT $1")
+    assert_eq(pgr_rc(r), 0)
+    assert_eq(pgr_rows(r), 0)
+    assert_eq(pgr_cols(r), 1)
+    assert_eq(pgr_colname(r, 0), "v")
+    assert_eq(pgr_oid(r, 0), 25)
+    assert_eq(pgr_status(r), 73)
+    assert_eq(pgr_next(r), 4)
+}

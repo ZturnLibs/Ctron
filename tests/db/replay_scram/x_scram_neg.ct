@@ -1,0 +1,55 @@
+// tests/db/replay_scram/x_scram_neg.ct —— SCRAM 负例重链(x_ = 仅 emit 臂
+// 入计,json_fidelity x_p53_rounding 同款结构性登记):错口令路径与
+// server-final 签名不符路径各为一条全链(PBKDF2+证明+签名 ≈ 23 块压缩
+// ≈ 40GB interp 堆,s_scram_hs 单链文件已抵 interp 实测预算线;堆不回收
+// P5-B 登记,interp 口径不可再叠)。emit 口径 ≈ 0.01s。
+use std.db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_ecode, pgs_emsg, pgs_cfinal, pgs_sigok, pg_err_auth}
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "scram wrong password: server E(28P01) surfaced, cfinal anchored" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_badpw.script")
+    let s = pg_scram_handshake(frames, 0, "user", "penc1l", "rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_rc(s), -1)
+    assert_eq(pgs_err(s), 5)
+    assert_eq(pgs_ecode(s), "28P01")
+    // next 停在尾随 Z('E') 之前 = 排空位(Z 在帧位 3)
+    assert_eq(pgs_next(s), 3)
+    // 错口令 client-final 计出面(hashlib 复算锚;服务器即拒此证明)
+    assert_eq(pgs_cfinal(s), "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=bvFIXIQaLaEegvcQun0DBFPUr9OAnnEPRCcXC2tnEcE=")
+}
+
+test "scram server-final signature mismatch -> clean auth err, sigok=0" {
+    let frames = load_frames(env_get("CT_DB_SCRAM"), "scram_badsig.script")
+    let s = pg_scram_handshake(frames, 0, "user", "pencil", "rOprNGfwEbeRWgbNEkqO")
+    assert_eq(pgs_rc(s), -1)
+    assert_eq(pgs_err(s), pg_err_auth())
+    assert_eq(pgs_sigok(s), 0)
+    assert_eq(pgs_ecode(s), "")
+    assert_eq(pgs_emsg(s), "scram: server signature mismatch")
+}
