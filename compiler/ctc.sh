@@ -75,7 +75,13 @@ case $mode in
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" > "$TMP"
         "$HOST" run "$TMP" > "$OUTC"
         rc=$?
-        [ $rc -eq 0 ] && echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"
+        if [ $rc -eq 0 ]; then
+            echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"
+            LF=$(grep -o "ctron:link -l[^ ]*" "$OUTC" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
+            if [ -n "$LF" ]; then
+                echo "ctc.sh: 链接标志(#[link] 收集): $LF"
+            fi
+        fi
         ;;
     fmt)
         "$DIR/build.sh" >/dev/null
