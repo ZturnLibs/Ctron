@@ -289,3 +289,61 @@ a+b 语义的 "mybase" 工件 → `t=7`、rc=0、**零报错静默错版本**。
 base_evil(base_mul=a+b)已留 /tmp 亦随本片入 tests/ 作负例语料。
 
 状态:设计成文(2026-09-22);摘要校验实现按下片。
+
+## D8-2 支持方案设计(2026-09-22):版本摘要校验的实施设计
+
+> 目标:关闭 S2a-iii 实证的"静默错版本"洞(t=7)。威胁三分:①错版本/错内容
+> (同名工件);②封印后篡改;③跨发布者同名。防线分三层,本期实施 L2。
+
+**摘要定义(冻结):**
+- 工件摘要 = `sha256(SHA256SUMS 字节)`;SHA256SUMS 行 = `<hex>  <相对路径>\n`,
+  成员按路径字节序排序(与发布产物校验单同文化)。
+- self_digest:封印时编排层算出工件摘要,写入**自身 meta.ctcl** 的
+  `artifact` 块 `self_digest` 键 —— 工件自证身份的锚。
+- 摘要计算在编排层(shell shasum / 未来 ctc pkg),不在编译器热路径。
+
+**meta.ctcl schema v1 增订(CTCL dep 注册表随立表,键面示意):**
+```text
+artifact "mybase" {
+  manifest_version = 1
+  self_digest = "sha256:e3b0…"      // 新增:自身工件摘要
+}
+dep "mybase" {                       // 消费方工件(calc)的 meta 内:
+  digest = "sha256:e3b0…"            // 新增:封印时对依赖的要求摘要
+}
+```
+
+**seal 流程(编排层与驱动分工):**
+1. driver(seal 模式):parse → impl/<stem>.ast + 基础 meta(不含摘要);
+2. 编排层(ctc pkg seal / ctc.sh 步骤):对新依赖逐个 shasum → 以
+   `--depdigest=<name>:sha256:…` 旗标回传 driver → driver 追写 meta 的
+   `dep` 块 digest;编排层算工件摘要 → 追写 self_digest + SHA256SUMS。
+- **fail-closed**:编排层跳过摘要步骤 = meta 无 self_digest/dep.digest
+  → 加载期拒载(E-PKG-DEP-UNVERIFIED),不存在"未校验也能跑"的路径。
+
+**加载算法(pkg_load_use_done 工件分支增补):**
+1. 解析 use → 工件 impl 文件定位(现有);
+2. 读**消费方工件** meta 的 dep 需求集(键 = 依赖名 → 需求 digest;
+   文本扫描同 pkg_caps_allowed 先例);
+3. 读**被依赖工件** meta 的 self_digest;
+4. 比对:不等或任一方缺记录 → `E-PKG-DEP-MISMATCH` / `E-PKG-DEP-UNVERIFIED`
+   (消息点名依赖名 + 双摘要);相等 → 继续现流程(ast_load/合并);
+5. done 集语义不变(已验过的依赖随 done 跳过,不重复校验)。
+
+**诊断(占位码,归编译器线分配):**
+E-PKG-DEP-MISMATCH(需求摘要 ≠ 实际 self_digest,消息含双摘要与依赖名)/
+E-PKG-DEP-UNVERIFIED(meta 缺 self_digest 或缺 dep 记录)。
+
+**分期与诚实边界:**
+- L2(下片首件):上述**记录-比对**校验 —— 依赖双方均为"诚实封印"时,
+  错版本/改名静默配错被精准拦截(base_evil 夹具:digest 不同 → 拒载)。
+  边界:比对的是**记录串**而非实时重算 —— 封印后篡改 impl 字节不改变记录串,
+  由 L1(SHA256SUMS shell 校验,`ctc pkg verify`)覆盖;
+- L3(S3/S4 合并):in-language sha256 重算 + attest/trace;
+- 命名空间(跨发布者同名)随 S4;E2020.use.read 错误信息点名工件缺失同批小改。
+
+**验收预案:** base_evil 负例(digest 不符 → E-PKG-DEP-MISMATCH,现 t=7 静默
+转为明确拒绝)+ 正例(digest 一致 → 行为不变)+ 未验负例(去 self_digest →
+E-PKG-DEP-UNVERIFIED)+ 篡改负例(改字节 → L1 shasum -c 失败)。
+
+状态:设计成文(2026-09-22);L2 实现按下片。
