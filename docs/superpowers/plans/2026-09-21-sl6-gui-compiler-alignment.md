@@ -140,9 +140,12 @@
   错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
   参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
   （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
-- **根因破案（2026-09-22 下午）**：栈槽解码实锤——**解释桥的 long×N cast 写 8 字节
-  栈槽，int×11 的 gui_cfg 按 4 字节步长读**——参 9 后全部错位（hval 读到 u[8] 槽的
-  高半=0，bg 读到 u[9]=10）。≤8 参走寄存器不受累（现存 d_* 钩子全 ≤3 参零风险）。
+- **根因破案 + 根修落库（a8b7974，2026-09-22）**：栈槽解码实锤——**解释桥的 long×N
+  cast 写 8 字节栈槽，int×11 的 gui_cfg 按 4 字节步长读**——参 9 后全部错位。
+  **修复 = 三层 long 对齐**：shim gui_cfg/gui_cfg2 形参 long（impl 入口 int 截断）+
+  std/gui.ct gui_cfg 声明 I64 + 旧形态夹具声明同步 I64 + 解释桥 case≥9 cast int×N +
+  u[] int 化 + sem I32→I64 宽化。**args11 判据 hval=10 bg=11 全对；阶梯 27/27；
+  s23 全绿。β2 完整闭环。**
 - **修复已就位（工作树，未落库）**：①driver_emit dispatch 锅炉plate `long u[12]`→
   `int u[12]`（+strtol/转储 cast 适配）——栈参写侧改 4 字节步长对齐 int 被调方；
   ②shim gui_cfg/gui_cfg2 的 long 形参实验已回退 int（native 原型一致性优先）。
@@ -187,9 +190,12 @@
   错位发生在 dispatch0 内 dlsym→switch→call 尾段（u 数组正确但调用 delivered
   参 10 位=0/参 11 位=参 10 值）。**续接 = lldb 交互单步 dispatch0 尾段**
   （break dispatch0 → finish → si，观察栈写入），ABI 专案交接。
-- **根因破案（2026-09-22 下午）**：栈槽解码实锤——**解释桥的 long×N cast 写 8 字节
-  栈槽，int×11 的 gui_cfg 按 4 字节步长读**——参 9 后全部错位（hval 读到 u[8] 槽的
-  高半=0，bg 读到 u[9]=10）。≤8 参走寄存器不受累（现存 d_* 钩子全 ≤3 参零风险）。
+- **根因破案 + 根修落库（a8b7974，2026-09-22）**：栈槽解码实锤——**解释桥的 long×N
+  cast 写 8 字节栈槽，int×11 的 gui_cfg 按 4 字节步长读**——参 9 后全部错位。
+  **修复 = 三层 long 对齐**：shim gui_cfg/gui_cfg2 形参 long（impl 入口 int 截断）+
+  std/gui.ct gui_cfg 声明 I64 + 旧形态夹具声明同步 I64 + 解释桥 case≥9 cast int×N +
+  u[] int 化 + sem I32→I64 宽化。**args11 判据 hval=10 bg=11 全对；阶梯 27/27；
+  s23 全绿。β2 完整闭环。**
 - **修复已就位（工作树，未落库）**：①driver_emit dispatch 锅炉plate `long u[12]`→
   `int u[12]`（+strtol/转储 cast 适配）——栈参写侧改 4 字节步长对齐 int 被调方；
   ②shim gui_cfg/gui_cfg2 的 long 形参实验已回退 int（native 原型一致性优先）。
