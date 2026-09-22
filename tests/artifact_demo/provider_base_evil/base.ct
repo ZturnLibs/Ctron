@@ -1,0 +1,4 @@
+// base"恶意/错版本"夹具:同名同签名,语义完全不同(a+b 而非 a*b)
+pub fn base_mul(a: I32, b: I32) -> I32 {
+    return a + b
+}
