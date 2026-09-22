@@ -181,3 +181,29 @@ seed 解释路径实现与验证(发射路径非必需);另有 P1 环境事实:�
 native 全构建冻结)——**归发射泳道,本泳道仅上报**。
 
 状态:底座完成(2026-09-22);S1a 本体(序列化器/回读器/往返验收)按下片实施。
+
+## S1a-i(2026-09-22 续):序列化器/回读器落地——往返固定点全绿
+
+**实施:** `compiler/src/driver_ast.ct`(形态表路线,is_list 不依赖)+ build.sh 拼接行
+(cc_ast.ct,生成物不入库)。游标模型读写(非按行 tokenize,S 载荷免转义任意字节);
+形态表 66 标签语料驱动增量,fail-closed(未知标签/子项越形态 = E-AST-UNKNOWN/
+E-AST-SHAPE);模式 dump / roundtrip(ctron_cli_flag("ast") + ANCHORAST 锚)。
+
+**验收(往返逐字节固定点 `dump == redump(load(dump))`):**
+- std/str.ct:**75374 字节 / 4740 节点 OK**;
+- stdpkg 全量合并(17 模块):**21482 字节 OK**;
+- fx 夹具族:**62/65 OK**(含闭包/结构体字面量/枚举/模式/泛型/derive/Scope/Own/
+  ComptimeVal/Range 等);余 3 = 2 个负例夹具按设计解析失败(预期)+ fx_uhex;
+- fx_uhex 报"or2 期望 2 实得 1":**与本驱动无关的既存问题**——维护路径
+  `ctc.sh check test/fx_uhex.ct` 同样复现(lex.ct 的 \u{} 解析路径 or2 参数错
+  或 seed/lex 代际差),归解析泳道,已上报。
+
+**踩坑登记:** ①形态槽取值须处理 `*` 尾标(SI 越界即取尾前一位);②"S 0" 空载荷
+的长度解析不能扫描空格(单字符长度即越界),直接取 "S " 之后;③S 槽塞入列表的
+症状是 join 期"索引目标非数组",与加载器越界("byte_slice 越界")是两类故障。
+
+**S1a-ii 挂账:** 覆盖剩余 ~29 标签(gui 系/其余语句面,语料驱动同法);ctc.sh `ast`
+模式 + smoke 常设腿(待 P1 发射冻结解除后一并上 native);is_list 三线小片
+(interp.rs 净后);S1b 缓存接线(pkg_load_use 消费,加速触发线挂账)。
+
+状态:✅ S1a-i 完成(2026-09-22)。
