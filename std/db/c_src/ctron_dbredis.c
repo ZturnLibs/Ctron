@@ -3,25 +3,31 @@
  *
  * extern 面(std/db/redis.ct):
  *   int64_t ctron_dbredis_read(int64_t fd, ct_dbredis_view buf, int64_t cap)
- *     → 阻塞收 ≤ min(cap, CT_DBREDIS_CHUNK, buf.n) 字节,逐字节写 lane
- *       (read_t 约定:每条 lane 一个字节值 0..255);>0 n / 0 eof / <0 err。
+ *     → 收 ≤ min(cap, CT_DBREDIS_CHUNK, buf.n) 字节,逐字节写 lane
+ *       (read_t 约定:每条 lane 一个字节值 0..255);>0 n / 0 eof / -1 err /
+ *       **-2 would-block(P5-F)**:fd 为非阻塞(夹具 socketpair 面)且
+ *       暂无数据可读(阻塞 fd 真源 nightly 不见此面:recv 即等待)。
  *   int64_t ctron_dbredis_write(int64_t fd, ct_dbredis_view buf, int64_t n)
  *     → 逐条取 (char)buf.d[i] 发满为止(send-all 整长 chunk 循环);n / <0。
  *   int64_t ctron_dbredis_close(int64_t fd)          → 0 成 / <0 败
  *   int64_t ctron_dbredis_last_errno(void)           → 错误槽(0 = 无错可读)
  *   int64_t ctron_dbredis_socketpair(int64_t* out)   → 夹具注入面;out 双 lane
- *     对偶 fd;POSIX 专面(_WIN32 -1)。
+ *     对偶 fd;POSIX 专面(_WIN32 -1)。**两端 O_NONBLOCK(P5-F)**:fd 半包
+ *     判别面(x_rd_fd 真分片钉:分片间 redis_recv_fd 以 incomplete 面返调用
+ *     方,不挂起;阻塞对不产 incomplete 观测面)。真源(nightly connect)
+ *     为阻塞 fd,循环至整包语义不变。
  *
  * 与 ctron_dbpg.c 同构镜像(符号分置:同名 extern decl 二次合并 E5030,
  * P5-D 探针实证——std/db 各驱动自有符号面前缀)。约定镜像 ctron_net.c
  * (阻塞收发;chunk 上限 4096;errno 槽 thread-local;EINTR 重试)。
  * 链接由夹具显式进行(tests/db/redis_replay/x_rd_fd emit 臂;真库冒烟
  * Task 6 nightly 同法)。interp 口径无 extern 运行时:fd 源面仅发射臂
- * 可跑(tests/net 同款)。超时/非阻塞面不做(v0:阻塞 recv)。
+ * 可跑(tests/net 同款)。超时面不做(v0:阻塞 recv;非阻塞仅夹具注入面)。
  */
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #define CT_DBREDIS_CHUNK 4096
 
@@ -67,9 +73,16 @@ int64_t ctron_dbredis_read(int64_t fd, ct_dbredis_view buf, int64_t cap) {
 #endif
         if (n < 0) {
 #if defined(_WIN32)
+            if (WSAGetLastError() == WSAEWOULDBLOCK) return -2;
             return ct_dbredis_err();
 #else
             if (errno == EINTR) continue;
+            /* would-block(非阻塞 fd 无数据)=-2:与硬错 -1 分形(P5-F;
+             * EAGAIN/EWOULDBLOCK 同值平台收敛面) */
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                ct_dbredis_errno = errno;
+                return -2;
+            }
             return ct_dbredis_err();
 #endif
         }
@@ -136,6 +149,19 @@ int64_t ctron_dbredis_socketpair(ct_dbredis_view out) {
     }
     int sv[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) return ct_dbredis_err();
+    /* 两端 O_NONBLOCK(P5-F):fd 半包判别观测面——分片间 redis_recv_fd
+     * 以 incomplete 面返调用方而非挂起(x_rd_fd 真分片钉;阻塞对不产
+     * would-block,判别路径不可观测)。真源 connect 阻塞 fd 不受影响。 */
+    for (int i = 0; i < 2; i++) {
+        int fl = fcntl(sv[i], F_GETFL, 0);
+        if (fl < 0 || fcntl(sv[i], F_SETFL, fl | O_NONBLOCK) != 0) {
+            int e = errno;
+            close(sv[0]);
+            close(sv[1]);
+            errno = e;
+            return ct_dbredis_err();
+        }
+    }
     out.d[0] = (int64_t)sv[0];
     out.d[1] = (int64_t)sv[1];
     return 0;

@@ -50,6 +50,11 @@ test "command encoders: resp2 array hex anchors" {
     assert_eq(redis_cmd(List[Str]()).len, 0)
     // 负秒值(EXPIRE k -1)十进制负号面
     assert_eq(redis_hex_encode(redis_expire_cmd("k", -1)), "2a330d0a24360d0a4558504952450d0a24310d0a6b0d0a24320d0a2d310d0a")
+    // I64_MIN 负向累计钉(P5-F 修订:取负形在 I64_MIN 溢出回卷,曾产裸
+    // "-";负域解法同 rm_i64)——恰编码 -9223372036854775808
+    var imin: I64 = 0 - 9223372036854775807
+    imin = imin - 1
+    assert_eq(redis_hex_encode(redis_expire_cmd("k", imin)), "2a330d0a24360d0a4558504952450d0a24310d0a6b0d0a2432300d0a2d393232333337323033363835343737353830380d0a")
 }
 
 test "five reply forms: simple/error/integer/bulk/nil + array" {

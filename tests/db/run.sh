@@ -22,9 +22,10 @@
 #          (P5-B 登记;实测 ≈1GB/块压缩,s_ 单链文件已抵预算线);
 #          x_scram_nonce(nonce 真熵,interp 无 extern 运行时)链
 #          ctron_dbpg.c + ctron_entropy.c(ctron_dbpg_entropy 别名转发)。
-#          P5-E:x_rd_fd(Redis fd 真源:半包续读/管线包 fill 持态/
-#          send-all 命令整发三钉)链 ctron_dbredis.c(与 ctron_dbpg.c
-#          分置:同名 extern decl 合并即 E5030)。
+#          P5-E:x_rd_fd(Redis fd 真源:P5-F 真分片跨两次 recv(incomplete
+#          面)+ incomplete 三臂 + 管线包 fill 持态/send-all 整发钉)链
+#          ctron_dbredis.c(与 ctron_dbpg.c 分置:同名 extern decl 合并
+#          即 E5030;socketpair 两端 O_NONBLOCK,P5-F)。
 #   两臂同一夹具集双计 pass;任一臂红即红。pass>0 空集守卫。
 #   双运行时矩阵(CTRON_RT=coro)不适用:纯层无停车点,无 rt 依赖。
 # 前置:compiler/native.sh、cc(副臂)

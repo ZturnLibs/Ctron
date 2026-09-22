@@ -101,6 +101,15 @@ test "Z('T') trap: clean-err in-tx conn must rollback before reuse" {
     assert_eq(pa_ok(b), 1)
     assert_eq(pa_slot(b), 0)
     assert_eq(pa_cur(b), 4)
+    // 借出栅半开(P5-F 钉):cur == fend 槽尾耗尽态不可再借 → err 2
+    let qb = pool_borrow_pg(pa_st(b), pa_slot(b), pa_cur(b), "SELECT 1")
+    assert_eq(pq_rc(qb), -1)
+    assert_eq(pq_err(qb), 2)
+    // 槽尾耗尽连接属主层弃用收口(err 2 = dirty 档,ndrop 计,绝不回池)
+    let st3 = pool_release_pg(pa_st(b), pa_slot(b), pq_err(qb), pq_status(qb), 4)
+    assert_eq(pool_ndrop(st3), 1)
+    assert_eq(pool_nidle(st3), 0)
+    assert_eq(pool_slot_cls(st3, 0), 1)
 }
 
 test "reset failure: rollback path exhausted -> conn dropped, never reused" {

@@ -112,6 +112,27 @@ fn poolx_slot_at(a: List[I32], i: I64) -> I64 {
     return poolz() + a[i]
 }
 
+// ---- 栅(防串池;P5-F 两处对齐 + 语义注)----
+// 两处栅**有意半开/全闭异形**,合一形即坏:
+//   借出栅 = [fstart, fend) 半开——借出须有未消费帧可跑(cur == fend =
+//   本槽帧恰好耗尽,无帧可跑,越栅即消费他槽帧,fail-closed err 2);
+//   回池栅 = [fstart, fend] 全闭——next == fend = 本槽帧恰好耗尽的合法
+//   idle 终态(健康连接,弃之即误伤;回池后若再借出,借出栅 err 2 显形,
+//   属主层弃用收口)。消费方可见不变式:回池成功 ⇒ curs ∈ [fstart, fend]。
+fn poolx_fence_borrow(cur: I64, fstart: I64, fend: I64) -> I64 {
+    if cur < fstart || cur >= fend {
+        return 0
+    }
+    return 1
+}
+
+fn poolx_fence_release(next: I64, fstart: I64, fend: I64) -> I64 {
+    if next < fstart || next > fend {
+        return 0
+    }
+    return 1
+}
+
 // 槽位面(OOB → -1;kind 0 pg / 1 redis;cls 0 clean / 1 dirty / 2 drain;
 // status = 最近 ReadyForQuery 字节或 0)
 pub fn pool_slot_kind(s: PoolState, slot: I64) -> I64 { return poolx_slot_at(s.kinds, slot) }
@@ -346,7 +367,9 @@ pub fn pool_borrow_pg(s: PoolState, slot: I64, cur: I64, sql: Str) -> PoolQry {
     }
     var fstart: I64 = poolx_slot_at(s.fstarts, slot)
     var fend: I64 = poolx_slot_at(s.fends, slot)
-    if cur < fstart || cur >= fend {
+    // 借出栅(半开;见 poolx_fence_borrow 注——cur == fend 槽尾耗尽态
+    // 不可再借,err 2 fail-closed)
+    if poolx_fence_borrow(cur, fstart, fend) != 1 {
         return bad
     }
     var r = pg_query_script(s.frames, cur, sql)
@@ -403,8 +426,9 @@ pub fn pool_release_pg(s: PoolState, slot: I64, err: I64, status: I64, next: I64
     var nreset = s.nreset
     var ndrop = s.ndrop
     var nrel = s.nrel
-    // 线上位置随借出查询推进(借出面 next;栅内才收,越栅 = 串池违例弃用)
-    if next >= fstart && next <= fend {
+    // 线上位置随借出查询推进(借出面 next;回池栅全闭收槽尾终态——见
+    // poolx_fence_release 注;越栅 = 串池违例弃用)
+    if poolx_fence_release(next, fstart, fend) == 1 {
         curs[slot] = next.as[I32]()
         cur = next
     } else {
@@ -417,7 +441,11 @@ pub fn pool_release_pg(s: PoolState, slot: I64, err: I64, status: I64, next: I64
     }
     if act == 1 {
         // 复位路径(Task 4 回放面):drain 档(err != 0,Z 待排空)先排空,
-        // Z('T') 陷阱(err 0 状态 'T',Z 已消费)直滚
+        // Z('T') 陷阱(err 0 状态 'T',Z 已消费)直滚。
+        // **drain 档 recovered-'I' 注(P5-F)**:排空读回的 Z 若已是 'I'
+        // (服务端已自行收口事务),则跳过 ROLLBACK 直接收 keep——此途
+        // nreset **不**计(未执行回滚,仅 nrel 计),cls 复 0 回池;回滚
+        // 途径的 nreset 计数不受影响。
         var pos = cur
         if err != 0 {
             var dr = pg_query_script(s.frames, pos, "")
