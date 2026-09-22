@@ -18,7 +18,7 @@ mkdir -p "$OUT"
 #   trans_*   C 代码生成器:类型基础 → 表达式 → 语句 → 函数/样板(仅 cc_emit)
 CORE="$SRC/lex.ct \
 $SRC/diag_msg.ct \
-$SRC/parse_node.ct $SRC/parse_expr.ct $SRC/parse_stmt.ct $SRC/parse_decl.ct $SRC/gui_parse.ct $SRC/parse_pkg.ct \
+$SRC/parse_node.ct $SRC/parse_expr.ct $SRC/parse_stmt.ct $SRC/parse_decl.ct $SRC/gui_parse.ct $SRC/parse_pkg.ct $SRC/ast_fmt.ct \
 $SRC/sem_walk.ct $SRC/sem_send.ct $SRC/sem_own.ct $SRC/sem_pure.ct $SRC/sem_spawn.ct \
 $SRC/sem_move.ct $SRC/sem_exh.ct $SRC/sem_alloc.ct $SRC/sem_main.ct $SRC/sem_type.ct \
 $SRC/sem_calls.ct $SRC/sem_comptime.ct $SRC/sem_ceval.ct $SRC/sem_closure.ct \

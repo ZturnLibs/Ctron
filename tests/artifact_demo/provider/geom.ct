@@ -1,0 +1,18 @@
+// mygeom —— 闭源示例包(S2a 夹具:发布方源码,真实场景保持私有)
+// std 依赖不密封(spec §3.3):std.str use 随消费端解析
+
+pub struct Point {
+    let x: I32
+    let y: I32
+}
+
+// 矩形面积(w*h)
+pub fn area_rect(w: I32, h: I32) -> I32 {
+    return w * h
+}
+
+// 圆面积整域近似(3r²)
+pub fn area_circle(r: I32) -> I32 {
+    return 3 * r * r
+}
+

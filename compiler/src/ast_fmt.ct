@@ -1,0 +1,48 @@
+// =====================================================================
+// ast_fmt.ct —— .ctast 记录流加载器(S2a;格式 v1 见 S1a 底座)
+//   N <tag> <nchildren>\n          节点开记录
+//   S <bytelen>\n<payload>\n       字符串载荷(字节长前缀,任意字节)
+// 供 pkg_load_use 工件分支消费闭源包 impl/*.ast(§4 消费路径);
+// driver_ast.ct 的 dump 侧经同一格式产出(往返固定点 = S1a 验收)。
+// 加载不校验形态表(消费端信任 + SHA256SUMS/S3 指纹兜底);坏流以
+// byte_slice/dvi 越界显式失败。
+// =====================================================================
+fn ast_read_line(ser: Str, cur: Atomic[I32]) -> Str {
+    var out = ""
+    var i = cur.load()
+    while i < ser.len && byte_at(ser, i) != 10 {
+        out = out + byte_slice(ser, i, i + 1)
+        i += 1
+    }
+    cur.store(i + 1)
+    return out
+}
+
+fn ast_load_node(ser: Str, cur: Atomic[I32]) -> List[Str] {
+    var line = ast_read_line(ser, cur)
+    var sp: I32 = 2
+    while sp < line.len {
+        if byte_at(line, sp) == 32 {
+            break
+        }
+        sp += 1
+    }
+    var tag = byte_slice(line, 2, sp)
+    var n = dvi(byte_slice(line, sp + 1, line.len))
+    var node = mk(tag)
+    var i: I32 = 0
+    while i < n {
+        var rec = ast_read_line(ser, cur)
+        if byte_at(rec, 0) == 83 {
+            var len = dvi(byte_slice(rec, 2, rec.len))
+            var p0 = cur.load()
+            node.push(byte_slice(ser, p0, p0 + len))
+            cur.store(p0 + len + 1)
+        } else {
+            cur.store(cur.load() - rec.len - 1)
+            node.push(ast_load_node(ser, cur))
+        }
+        i += 1
+    }
+    return node
+}

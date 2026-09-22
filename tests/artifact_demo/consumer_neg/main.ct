@@ -1,0 +1,9 @@
+use mygeom.geom.{Point, area_rect}
+
+fn Point() -> I32 {
+    return 9
+}
+
+fn main() {
+    println("x")
+}

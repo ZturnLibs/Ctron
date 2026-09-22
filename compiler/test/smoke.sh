@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=347' "$T/chk.out" && ok "自检 cc_run 绿,decls=347" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=349' "$T/chk.out" && ok "自检 cc_run 绿,decls=349" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -630,6 +630,27 @@ if command -v nc >/dev/null 2>&1; then
     fi
 else
     ok "ctecho 跳过(环境无 nc)"
+fi
+
+echo "== 3l) S2a 闭源工件流(seal→deps 消费→正确性 + 碰撞负例)=="
+AD="$T/s2a"
+mkdir -p "$AD/art/impl" "$AD/c1/deps/mygeom.ctart" "$AD/c2/deps/mygeom.ctart"
+if "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom.ct" --ast=seal --astout="$AD/art" --astname=mygeom > "$T/seal.out" 2>&1 \
+   && grep -q "ast seal OK" "$T/seal.out" \
+   && cp "$ROOT/tests/artifact_demo/consumer/main.ct" "$AD/c1/" \
+   && cp -r "$AD/art/." "$AD/c1/deps/mygeom.ctart/" \
+   && (cd "$AD/c1" && "$COMP/ctc.sh" main.ct > "$T/c1.out" 2>&1) \
+   && grep -q "rect=12" "$T/c1.out" && grep -q "circle=27" "$T/c1.out"; then
+    ok "S2a 工件消费(仅 deps 工件源码缺席,行为正确)"
+else
+    bad "S2a 工件消费失败: $(tail -2 "$T/c1.out" 2>/dev/null; tail -1 "$T/seal.out")"
+fi
+if cp "$ROOT/tests/artifact_demo/consumer_neg/main.ct" "$AD/c2/" \
+   && cp -r "$AD/art/." "$AD/c2/deps/mygeom.ctart/" \
+   && (cd "$AD/c2" && "$COMP/ctc.sh" main.ct > "$T/c2.out" 2>&1); then
+    bad "S2a 碰撞未拦截"
+else
+    grep -q "E5030" "$T/c2.out" && ok "S2a 碰撞负例拦截(E5030 同判)" || bad "S2a 碰撞负例异常: $(head -1 "$T/c2.out")"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

@@ -250,6 +250,14 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
                     j2b += 1
                 }
                 mpath = dir + rel + ".ct"
+                // S2a 闭源工件回落:源缺失时消费 deps/<pkg>.ctart/impl<rel>.ast
+                // (spec §7.2 deps/ 布局;可见性/E5030 合并对加载后的 decl 同判)
+                if !fs_exists(mpath) {
+                    var apath = dir + "/deps/" + segs[1] + ".ctart/impl" + rel + ".ast"
+                    if fs_exists(apath) {
+                        mpath = apath
+                    }
+                }
             }
             if in_list(stack, mpath) {
                 diag1(diags, "E5020.circ", "", mpath)
@@ -258,13 +266,28 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
             var src = read_file(mpath)
             match src {
                 Some(ms) => {
+                        var mf = List[Str]()
+                        var is_ast = mpath.len >= 4
+                        if is_ast {
+                            if byte_at(mpath, mpath.len - 4) == 46 {
+                                is_ast = byte_slice(mpath, mpath.len - 4, mpath.len) == ".ast"
+                            } else {
+                                is_ast = false
+                            }
+                        }
+                        if is_ast {
+                            // .ctast 工件模块:免 parse 直载(S2a;坏流显式越界失败)
+                            var acur = Atomic[I32](0)
+                            mf = ast_load_node(ms, acur)
+                        } else {
                         var toks2 = List[Str]()
                         var lns2 = List[Str]()
                         var cols2 = List[Str]()
                         var pd2 = List[Str]()
                         scan4(ms, toks2, lns2, cols2, pd2)
                         var cur2 = Atomic[I32](0)
-                        var mf = p_file(toks2, cur2, lns2, cols2, pd2)
+                        mf = p_file(toks2, cur2, lns2, cols2, pd2)
+                        }
                         pkg_check_caps(mf, dir, diags)
                         // 可见性:请求符号必须存在且为 pub(v0:FnPub)
                             var k3: I32 = 0

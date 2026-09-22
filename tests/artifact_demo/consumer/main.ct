@@ -1,0 +1,6 @@
+use mygeom.geom.{Point, area_rect, area_circle}
+
+fn main() {
+    println("rect=" + area_rect(3, 4).to_string())
+    println("circle=" + area_circle(3).to_string())
+}

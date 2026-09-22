@@ -225,3 +225,26 @@ fx 62/65;str.ct/stdpkg 照旧;smoke 3g 腿扩至八查(+ast 往返 geom/stdpkg)�
 **全量 smoke 127 ok / 0 fail,历史首次全绿**。
 
 状态:✅ S1a-ii 完成(2026-09-22)。
+
+
+## S2a(2026-09-22):闭源工件流程端到端——seal→deps 消费→碰撞负例,全绿
+
+**owner 需求方信号触发 S2 启动**("开始设计并编写一个闭源包,并验证流程")。最小切片:
+- `src/ast_fmt.ct` 入 CORE(ast_read_line/ast_load_node,driver_ast 改用 CORE 版);
+  pkg_load_use 工件分支:非 std use 源缺失时回落 `deps/<pkg>.ctart/impl<rel>.ast`,
+  加载后可见性/E5030/E2020 对加载 decl 同判(spec §4 对照表);build.sh CORE 注册;
+  decl 锁 347→349;
+- driver_ast 增 seal 模式(--ast=seal --astout= --astname=):写 impl/<stem>.ast +
+  meta.ctcl(示意键面,注册表随 S4 立表);ctc.sh ast 臂扩旗;
+- 夹具 tests/artifact_demo/{provider/geom.ct, consumer, consumer_neg};
+  smoke 3l 腿:seal→仅 deps 工件消费(rect=12/circle=27 行为正确,源码缺席)+
+  碰撞负例 E5030 拦截;
+- **已知问题登记**:①工件内 std.use 的运行时解析(消费端 E2020 eq_ignore_ascii_case,
+  待查 eval 合并序)——S2a 演示包暂不含 std.use,fix 后放开;②cc.ct 单体 ~2MB ser
+  超 seed 内存限(rc=137)——S1b 按模块分片为自然解;③match/枚举形态在工件路径
+  待 S1a-iii 补验(演示包暂用 if/else);④"doc 非幂等"为 peer 重生成瞬态,孤验双 OK。
+
+**验收:** seal(geom.ct→1201B 工件)→ 消费方仅持工件跑出 rect=12/circle=27 →
+碰撞负例 E5030 拦截;smoke 3l 双查全绿(全量分数随 peer 落库波动,切片腿为准)。
+
+状态:✅ S2a 完成(2026-09-22)。

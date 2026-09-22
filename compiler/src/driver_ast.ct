@@ -94,57 +94,6 @@ fn ast_emit_node(d: List[Str], k: List[Str], v: List[Str], out: List[Str], depth
     return 0
 }
 
-fn ast_read_line(ser: Str, cur: Atomic[I32]) -> Str {
-    var out = ""
-    var i = cur.load()
-    while i < ser.len && byte_at(ser, i) != 10 {
-        out = out + byte_slice(ser, i, i + 1)
-        i += 1
-    }
-    cur.store(i + 1)
-    return out
-}
-
-fn ast_load_node(ser: Str, cur: Atomic[I32]) -> List[Str] {
-    var line = ast_read_line(ser, cur)
-    var sp: I32 = 2
-    while sp < line.len {
-        if byte_at(line, sp) == 32 {
-            break
-        }
-        sp += 1
-    }
-    var tag = byte_slice(line, 2, sp)
-    var n = dvi(byte_slice(line, sp + 1, line.len))
-    var node = mk(tag)
-    var i: I32 = 0
-    while i < n {
-        var rec = ast_read_line(ser, cur)
-        if byte_at(rec, 0) == 83 {
-            var len = dvi(byte_slice(rec, 2, rec.len))
-            var p0 = cur.load()
-            node.push(byte_slice(ser, p0, p0 + len))
-            cur.store(p0 + len + 1)
-        } else {
-            cur.store(cur.load() - rec.len - 1)
-            node.push(ast_load_node(ser, cur))
-        }
-        i += 1
-    }
-    return node
-}
-
-fn ast_join_dc(parts: List[Str], lo: I32, hi: I32) -> Str {
-    if hi - lo <= 0 {
-        return ""
-    }
-    if hi - lo == 1 {
-        return parts[lo]
-    }
-    var mid = lo + (hi - lo) / 2
-    return ast_join_dc(parts, lo, mid) + ast_join_dc(parts, mid, hi)
-}
-
 fn main() -> I32 {
     var path = "ANCHORINPUT"
     var s = ""
@@ -295,6 +244,44 @@ fn main() -> I32 {
         println("E-AST-DEEP")
         return 1
     }
+    var ser = ""
+    var sj: I32 = 0
+    while sj < out.len {
+        ser = ser + out[sj]
+        sj += 1
+    }
+    if seq2(mode, "seal") {
+        var outdir = ctron_cli_flag("astout")
+        if outdir.len == 0 {
+            outdir = "ANCHOROUT"
+        }
+        var name = ctron_cli_flag("astname")
+        if name.len == 0 {
+            name = "ANCHORNAME"
+        }
+        var st0 = epath.len - 1
+        while st0 >= 0 {
+            if byte_at(epath, st0) == 47 {
+                break
+            }
+            st0 -= 1
+        }
+        var stem = byte_slice(epath, st0 + 1, epath.len)
+        if stem.len > 3 {
+            if byte_slice(stem, stem.len - 3, stem.len) == ".ct" {
+                stem = byte_slice(stem, 0, stem.len - 3)
+            }
+        }
+        var w1 = fs_write(outdir + "/impl/" + stem + ".ast", ser)
+        var meta = "artifact \"" + name + "\" \{\n  manifest_version = 1\n}\nmodule \"" + stem + "\" \{\n  decls = " + (file.len - 1).to_string() + "\n  bytes = " + (ser.len).to_string() + "\n}\n"
+        var w2 = fs_write(outdir + "/meta.ctcl", meta)
+        if or2(!w1, !w2) {
+            println("E-AST-SEAL: 写出失败(目录须先建:" + outdir + ")")
+            return 1
+        }
+        println("ast seal OK module=" + stem + " bytes=" + (ser.len).to_string())
+        return 0
+    }
     if seq2(mode, "dump") {
         var i: I32 = 0
         while i < out.len {
@@ -303,7 +290,6 @@ fn main() -> I32 {
         }
         return 0
     }
-    var ser = ast_join_dc(out, 0, out.len)
     var cur2 = Atomic[I32](0)
     var file2 = ast_load_node(ser, cur2)
     var out2 = List[Str]()

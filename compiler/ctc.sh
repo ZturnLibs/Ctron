@@ -86,12 +86,19 @@ case $mode in
         ;;
     ast)
         ASTMODE=roundtrip
+        ASTOUT="ANCHOROUT"
+        ASTNAME="ANCHORNAME"
         for a in "$@"; do
-            case $a in --ast=dump) ASTMODE=dump ;; esac
+            case $a in
+                --ast=dump) ASTMODE=dump ;;
+                --ast=seal) ASTMODE=seal ;;
+                --astout=*) ASTOUT=${a#--astout=} ;;
+                --astname=*) ASTNAME=${a#--astname=} ;;
+            esac
         done
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_ast.XXXXXX)
-        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORAST|$ASTMODE|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_ast.ct" > "$TMP"
+        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORAST|$ASTMODE|" -e "s|ANCHOROUT|$ASTOUT|" -e "s|ANCHORNAME|$ASTNAME|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_ast.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
