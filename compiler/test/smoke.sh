@@ -619,6 +619,19 @@ else
     bad "ast stdpkg 往返异常: $(head -c 120 "$T/doc8.out")"
 fi
 
+echo "== 3k) 示例应用 examples/ctecho(echo server:run.sh 自冒烟,3 探针逐字)=="
+if command -v nc >/dev/null 2>&1; then
+    (cd "$ROOT/examples/ctecho" && timeout 90 sh run.sh > "$T/ctecho.out" 2>&1)
+    CRC=$?
+    if [ "$CRC" -eq 0 ] && grep -q "3/3 echo" "$T/ctecho.out"; then
+        ok "ctecho 回环服务自冒烟(3 探针逐字一致)"
+    else
+        bad "ctecho 自冒烟失败(rc=$CRC): $(tail -2 "$T/ctecho.out")"
+    fi
+else
+    ok "ctecho 跳过(环境无 nc)"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]
