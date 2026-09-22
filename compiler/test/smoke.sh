@@ -606,6 +606,19 @@ else
     bad "doc std.<module> 异常: $(head -c 120 "$T/doc6.out")"
 fi
 
+"$COMP/ctc.sh" ast "$ROOT/tests/doc_fix/geom.ct" > "$T/doc7.out" 2>&1
+if [ $? -eq 0 ] && grep -q "ast roundtrip OK" "$T/doc7.out"; then
+    ok "ast 往返固定点(.ctast S1a,geom 夹具)"
+else
+    bad "ast 往返异常: $(head -c 120 "$T/doc7.out")"
+fi
+"$COMP/ctc.sh" ast "$COMP/test/stdpkg/src/main.ct" > "$T/doc8.out" 2>&1
+if [ $? -eq 0 ] && grep -q "ast roundtrip OK" "$T/doc8.out"; then
+    ok "ast 往返固定点(stdpkg 合并语料)"
+else
+    bad "ast stdpkg 往返异常: $(head -c 120 "$T/doc8.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

@@ -134,6 +134,17 @@ fn ast_load_node(ser: Str, cur: Atomic[I32]) -> List[Str] {
     return node
 }
 
+fn ast_join_dc(parts: List[Str], lo: I32, hi: I32) -> Str {
+    if hi - lo <= 0 {
+        return ""
+    }
+    if hi - lo == 1 {
+        return parts[lo]
+    }
+    var mid = lo + (hi - lo) / 2
+    return ast_join_dc(parts, lo, mid) + ast_join_dc(parts, mid, hi)
+}
+
 fn main() -> I32 {
     var path = "ANCHORINPUT"
     var s = ""
@@ -188,7 +199,6 @@ fn main() -> I32 {
     ast_put(ktags, kshapes, "Trait", "SNNN")
     ast_put(ktags, kshapes, "Impl", "NNNN")
     ast_put(ktags, kshapes, "Const", "SNN")
-    ast_put(ktags, kshapes, "Static", "SSNN")
     ast_put(ktags, kshapes, "Use", "NN")
     ast_put(ktags, kshapes, "Test", "SN")
     ast_put(ktags, kshapes, "Ps", "N*")
@@ -264,6 +274,15 @@ fn main() -> I32 {
     ast_put(ktags, kshapes, "Class", "SNN")
     ast_put(ktags, kshapes, "LField", "SN")
     ast_put(ktags, kshapes, "Interp", "S")
+    ast_put(ktags, kshapes, "PatLitI", "S")
+    ast_put(ktags, kshapes, "PatLitF", "S")
+    ast_put(ktags, kshapes, "PatLitS", "S")
+    ast_put(ktags, kshapes, "Continue", "S")
+    ast_put(ktags, kshapes, "Break", "S")
+    ast_put(ktags, kshapes, "PropSig", "SNN")
+    ast_put(ktags, kshapes, "PropImpl", "SNN")
+    ast_put(ktags, kshapes, "Prop", "SNN")
+    ast_put(ktags, kshapes, "Static", "SSNNS*")
     ast_put(ktags, kshapes, "Member", "NSSS*")
     ast_put(ktags, kshapes, "For", "NNN")
     ast_put(ktags, kshapes, "Assign", "NSNS*")
@@ -276,16 +295,15 @@ fn main() -> I32 {
         println("E-AST-DEEP")
         return 1
     }
-    var ser = ""
-    var i: I32 = 0
-    while i < out.len {
-        ser = ser + out[i]
-        i += 1
-    }
     if seq2(mode, "dump") {
-        print(ser)
+        var i: I32 = 0
+        while i < out.len {
+            print(out[i])
+            i += 1
+        }
         return 0
     }
+    var ser = ast_join_dc(out, 0, out.len)
     var cur2 = Atomic[I32](0)
     var file2 = ast_load_node(ser, cur2)
     var out2 = List[Str]()

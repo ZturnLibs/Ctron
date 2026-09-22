@@ -207,3 +207,21 @@ E-AST-SHAPE);模式 dump / roundtrip(ctron_cli_flag("ast") + ANCHORAST 锚)。
 (interp.rs 净后);S1b 缓存接线(pkg_load_use 消费,加速触发线挂账)。
 
 状态:✅ S1a-i 完成(2026-09-22)。
+
+## S1a-ii(2026-09-22 续):形态表补齐 + ast 进 ctc.sh/smoke
+
+**实施:** 形态表扩至 **71 标签**(selfhosted 黄金语料全语扫驱动:PatLitI/F/S、
+Continue/Break、Prop 系、Static 尾戳、LField、Interp、Range/ComptimeVal/Float/Own/
+ClosureParam/Scope/ArrLit/Class 等);重复表项教训(ast_put 取首个,旧条目必须删);
+**O(n²) join 之死**:cc.ct 级语料的 ser 拼接触发 OOM-SIGKILL——dump 改流式直印,
+roundtrip 用分治拼接 O(n log n)。
+
+**环境:** P1 解除(发射泳道落库修复,emit 655992B 恢复),native 五件全部重建——
+原生重建挂账销账。cc.ct(自举编译器单体 ~2MB ser)仍超 seed 内存上限(rc=137),
+登记为规模限:**S1b 按模块分片为自然解**(缓存键本就 = VERSION + 模块源 hash)。
+
+**验收:** selfhosted 黄金语料除 cc.ct(规模限)外全绿,sem_chk.ct 470167B OK;
+fx 62/65;str.ct/stdpkg 照旧;smoke 3g 腿扩至八查(+ast 往返 geom/stdpkg)——
+**全量 smoke 127 ok / 0 fail,历史首次全绿**。
+
+状态:✅ S1a-ii 完成(2026-09-22)。

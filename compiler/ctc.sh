@@ -8,6 +8,8 @@
 #   ./ctc.sh fmt <input.ct>          # 格式化:R-P2d token 流重排 → stdout(docs/fmt-spec.md;诊断 rc=1)
 #   ./ctc.sh doc <input.ct>          # iface 投影(闭源包分发 S0):pub 符号表 + trait/impl 面
 #                                    #   --format=json 走 JSON 面(schema v0,见 driver_doc.ct 头注)
+#   ./ctc.sh ast <input.ct> [--ast=dump]
+#                                    # .ctast 序列化(S1a):默认 roundtrip 固定点自验;--ast=dump 出记录流
 #
 # 宿主 seed(compiler-c/build/ctronc)仅充当 Ctron 解释器;输入路径经
 # read_file 锚换靶注入。自举完成后产物可自替换宿主(见 test/smoke.sh --full)。
@@ -21,7 +23,7 @@ PROF=full
 TAUSTED=0
 DIAGLANG=zh
 case ${1:-} in
-    check|emit|fmt|doc) mode=$1; shift ;;
+    check|emit|fmt|doc|ast) mode=$1; shift ;;
 esac
 for a in "$@"; do
     case $a in
@@ -35,7 +37,7 @@ if [ ! -x "$HOST" ]; then
     exit 2
 fi
 if [ $# -lt 1 ] || [ ! -f "$1" ]; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json]" >&2
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump]" >&2
     exit 2
 fi
 
@@ -79,6 +81,17 @@ case $mode in
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_fmt.XXXXXX)
         sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_fmt.ct" > "$TMP"
+        "$HOST" run "$TMP"
+        rc=$?
+        ;;
+    ast)
+        ASTMODE=roundtrip
+        for a in "$@"; do
+            case $a in --ast=dump) ASTMODE=dump ;; esac
+        done
+        "$DIR/build.sh" >/dev/null
+        TMP=$(mktemp /tmp/ctron_ast.XXXXXX)
+        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORAST|$ASTMODE|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_ast.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
