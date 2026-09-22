@@ -320,6 +320,13 @@ void parse_use(cparser* p, cuse* u) {
         }
         if (!eat_k(p, TOK_DOT)) break;
     }
+    // 非组别名:`Sym as Alias`(as 上下文关键字;peek2 须 IDENT,关键字另型天然排除)
+    char* alias = NULL;
+    if (at_k(p, TOK_IDENT) && strcmp(tokp_at(p, 0)->text, "as") == 0 && tok_at(p, 1) == TOK_IDENT) {
+        bump_tok(p);
+        alias = dup_text(p, tokp_at(p, 0)->text);
+        bump_tok(p);
+    }
     iv imports = {0};
     if (group) {
         if (!eat_k(p, TOK_LBRACE)) err_here(p, "E1001", "use 组缺少 {");
@@ -333,7 +340,15 @@ void parse_use(cparser* p, cuse* u) {
             sv seg = parse_dotted_path_sv(p);
             for (size_t i = 0; i < seg.n; i++) sv_push(&full, seg.d[i]);
             free(seg.d);
+            // 组项别名:`Sym as Alias`(as 上下文关键字;peek2 须 IDENT,关键字另型天然排除)
+            char* alias = NULL;
+            if (at_k(p, TOK_IDENT) && strcmp(tokp_at(p, 0)->text, "as") == 0 && tok_at(p, 1) == TOK_IDENT) {
+                bump_tok(p);
+                alias = dup_text(p, tokp_at(p, 0)->text);
+                bump_tok(p);
+            }
             imp->segs = sv_done(&full, p->arena, &imp->nsegs);
+            imp->alias = alias;
             if (imports.n == imports.cap) {
                 imports.cap = imports.cap ? imports.cap * 2 : 8;
                 imports.d = (cimport**)realloc(imports.d, imports.cap * sizeof(cimport*));
@@ -354,6 +369,7 @@ void parse_use(cparser* p, cuse* u) {
     } else {
         cimport* imp = (cimport*)ctron_arena_alloc(p->arena, sizeof(cimport));
         imp->segs = sv_done(&prefix, p->arena, &imp->nsegs);
+        imp->alias = alias;
         u->imports = imp;
         u->nimports = 1;
     }

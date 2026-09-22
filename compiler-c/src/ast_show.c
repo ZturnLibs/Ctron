@@ -512,6 +512,7 @@ static void show_decl(FILE* o, cdecl* d) {
         for (size_t i = 0; i < d->use.nimports; i++) {
             if (i) fputs(", ", o);
             strlist(o, d->use.imports[i].segs, d->use.imports[i].nsegs);
+            if (d->use.imports[i].alias) fprintf(o, " as %s", d->use.imports[i].alias);
         }
         fputs("] }", o);
         break;

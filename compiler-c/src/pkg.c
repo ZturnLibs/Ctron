@@ -741,6 +741,36 @@ static void check_orphan(pkg_res* r, const pkg* p, const mod* m) {
     }
 }
 
+// E5035:use 别名与本模块既有 decl 撞名(spec 2026-09-22 §4.4;check 面)
+static void check_use_alias_collisions(pkg_res* r, const pkg* p, const mod* m) {
+    (void)p;
+    const cfile* f = m->pr.file;
+    for (size_t j = 0; j < f->ndecls; j++) {
+        const cdecl* d = &f->decls[j];
+        if (d->kind != D_USE) continue;
+        for (size_t k = 0; k < d->use.nimports; k++) {
+            const cimport* imp = &d->use.imports[k];
+            if (!imp->alias) continue;
+            for (size_t a = 0; a < f->ndecls; a++) {
+                const cdecl* dd = &f->decls[a];
+                const char* nm = NULL;
+                switch (dd->kind) {
+                case D_FN: nm = dd->fn_.name; break;
+                case D_STRUCT: nm = dd->strukt.name; break;
+                case D_CLASS: nm = dd->klass.name; break;
+                case D_ENUM: nm = dd->en.name; break;
+                case D_TRAIT: nm = dd->trait.name; break;
+                case D_STATIC: nm = dd->statik.name; break;
+                default: break;
+                }
+                if (nm && strcmp(nm, imp->alias) == 0) {
+                    push(r, m->rel, "E5035", "use 别名撞名:%s(与既有名冲突)", imp->alias);
+                }
+            }
+        }
+    }
+}
+
 static void check_use_visibility(pkg_res* r, const pkg* p, const mod* m) {
     const cfile* f = m->pr.file;
     for (size_t j = 0; j < f->ndecls; j++) {
@@ -992,6 +1022,7 @@ pkg_res ctron_pkg_check(const char* root) {
     for (size_t i = 0; i < p.n; i++) {
         check_orphan(&r, &p, &p.m[i]);
         check_use_visibility(&r, &p, &p.m[i]);
+        check_use_alias_collisions(&r, &p, &p.m[i]);
         check_caps(&r, &p, &p.m[i]);
     }
     check_circular(&r, &p);

@@ -22,6 +22,7 @@ typedef struct {
 typedef struct {
     char** segs;   // 一个完整导入路径(组导入已拆为全路径)
     size_t nsegs;
+    char* alias;   // 别名(NULL = 无别名;spec 2026-09-22 §3)
 } cimport;
 
 // ---------- 类型 ----------
