@@ -92,10 +92,12 @@
 
 - 迁移本体完成（1242→122 行，域包 test/d_* 全套断言：键入/回显/添加/列表/空态/删除/
   del 末项替代 per-row checkbox——实例索引分发为域包 L1 登记缺口）。
-- **受阻**：二次添加后 each 展开丢行（帧 6 条 vs 预期 8，模型 todos.len=2 但 each 查询
-  返回空 → m.todos[0] 读取 SEGV）。编译态（test/gt_parse/rt_emit 全编译）即触发，
-  非解释运行时问题——域包 Box 捕获闭包在 each 查询路径的值态分叉，需专门调查
-  （与 β2 的 11 参桥同类值模型族，但发生在编译口径）。
+- **受阻（2026-09-22 复验，11 参桥根修后）**：迁移版运行 strlen(NULL) SEGV——
+  dump 显示帧内文本命令缺行（mirror 空文本被 Clay 跳过属正常，但 each 行/
+  when 空态文本缺失）。**早期"SEGV 探针"系探针自身 OOB（空 todos 读 [0]）已排除；
+  真实现象 = strlen(NULL)（lldb frame #0 = _platform_strlen）**。编译态即触发。
+  嫌疑：bind 通道字符串生命周期 / mirror 空 draft 的 Clay 切片 / Box 字段串。
+  **Todo 回退旧形态绿态（peer checkbox 升级 + I64 对齐）；迁移待专门调试会话。**
 - todo 已回退落库绿态（旧形态 M1-e 全绿）；迁移代码可按需找回（本登记含完整设计）。
 - 教训：**域包 Box 捕获闭包 + when+each+input 组合 + 多帧 bind 重入**为值态高危面，
   迁移前先用最小合成例验证（s23 单构造全绿不足覆盖此形态）。
