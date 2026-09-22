@@ -1,0 +1,473 @@
+// std/http/frm/router.ct —— comptime 路由核(P6-A;静态表 + 运行时 match + 类型化参数)
+//
+// D-P6-1 释义(设计文档 "comptime 路由核" 未钉 handler 绑定形;本文件即登记形):
+//   路由表 = 【消费方侧 comptime 折叠的 const Str 字面量表】(如
+//   `const ROUTES: Str = "GET /users|GET /users/:id|POST /users"`),运行时
+//   匹配器对本表做线性扫描;派发 = 消费方按命中的 route id 显式
+//   if/match 分支调用具名 handler(静态分发,零反射零注册)。handler 引用
+//   【不】入表(fn 值入 const = ceval 不可折叠面,§8.4 无反射决策一致)。
+//   本释义与 docs/superpowers/plans/2026-09-21-server-p6-framework.md
+//   Architecture 段("const 静态表 + 运行时 match 显式分发")逐字一致。
+//
+// comptime 构表形态决策(task-1 "Before You Begin" 条款登记):
+//   ceval(sem_ceval.ct,E6010 预算求值器;emit 侧 const 折叠同源)仅可折叠
+//   I/6/B/S/D 标量 —— Str 连接、struct/数组构表皆回退不折叠,而 emit 侧
+//   【被引用的】const 必须折叠(driver_emit.ct:414 直出 C 静常量,否则
+//   t_<名> 无定义即 cc 断)。故构表形 = 平面 Str 字面量表(ceval "Str" 纯
+//   Text 折叠档,t_ 直出 C 串常量 —— 表即编译期物,运行时零构表);数值表
+//   事实(计数/版本戳)经 comptime fn 的 I 域递归/循环派生(ceval Call
+//   仅收 I 域实参,04_generics_comptime/04h_comptime_stmt 已证形)。
+//   struct 数组/段预切分归一化表 = CVM 能力外,不采(登记志向:ceval 升级
+//   后可在 comptime 归一化为段表,匹配热路径再省一层切分)。
+//
+// 表语法(作者面,匹配器零宽容):
+//   条目 = "METHOD SP pattern",条目间 '|' 分隔;METHOD = 大写 token
+//   (GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS/TRACE,首字节+长度即判码);
+//   pattern 段以 '/' 分,":name" 段 = 参数段(捕获至下一 '/' 或尾);
+//   尾斜杠严格(无隐式归一化,从严即默认);优先级 = 声明序 first-match。
+//   query(?)/fragment(#)不入匹配(零拷贝缩界);参数按捕获序存 4 槽
+//   (v1 上限 4,超 4 参数路由照常命中、溢出槽不捕获 —— 登记上限)。
+//
+// 匹配语义:
+//   逐条目扫描:路径全匹配 + 方法码相等 → rc=1 即刻返回(first-match);
+//   路径匹配而方法不齐 → 记 405 候选(首个)继续扫 —— 后条目方法齐则仍命中
+//   (方法面同样 first-match);扫毕:有 405 候选 → rc=0(405 面),否则
+//   rc=-1(404 面)。未知方法 token 码 = 0,不与任何路由相等 → 405 面
+//   (501 映射归框架后续波次,登记)。
+//
+// 参数提取(类型化访问器;字节面零拷贝,Str 化经 rm 表):
+//   :id 面 = frm_param_i64(严格十进制,非数字/空/溢出拒 —— hs_parse_dec
+//   界门同款);:name 面 = frm_param(原始切片 Str)/ frm_param_dec(percent
+//   解码经 std/enc pct_decode,%2F 解 '/' 但【不】重分段 —— 解码只在提取
+//   时发生)。Option[Str] 的 let 绑定 emit 缺口(P6-A 探针实证:int32_t
+//   落出)→ 解码面以 inline 调用 enc_get/enc_some 组成(dft/谓词双出口),
+//   永不绑定 Option 中间值。
+//
+// 缩放注记(≤100ns 门的适用域):线性扫描 O(路由数 × 模式字节);小表
+//   (≤ ~32 条)emit 臂亚百纳秒(x_bench 实测),radix 树/DFA = P9 志向
+//   (表尺寸增长先看 OpenAPI 导出与真实应用规模,不过早设计)。
+//
+// 形态纪律(全 (f)/(g)/(h) 已证形):零 use 纯模块 + 仅 std.enc(消费方
+//   严禁再直 use std.enc —— 加载器严格树 E5020,P4-C 在案;enc 解码面一律
+//   走本模块参数访问器);无闭包/无 Drop 局部/无 match/无方法调用 —— 自由
+//   函数 + 值 struct 进出;while 体仅标量局部;byte_at/byte_slice 入参恒
+//   I32 域((i) 在案);跨模块公开面 = struct 返回 + 标量 getter((h)
+//   缺口绕行,parse.ct 同款)。lane 不入本模块(视图形参索引赋值 emit 拒
+//   (⑦),匹配全程零拷贝读 buf)。
+
+use std.enc.{ pct_decode, enc_get, enc_some }
+
+// ---- 方法码(码位稳定;0 = 未知/不支持) ----
+
+pub fn frm_m_get() -> I64 { return 1 }
+pub fn frm_m_post() -> I64 { return 2 }
+pub fn frm_m_put() -> I64 { return 3 }
+pub fn frm_m_delete() -> I64 { return 4 }
+pub fn frm_m_patch() -> I64 { return 5 }
+pub fn frm_m_head() -> I64 { return 6 }
+pub fn frm_m_options() -> I64 { return 7 }
+pub fn frm_m_trace() -> I64 { return 8 }
+
+// 匹配结果 rc 码(1 = 命中 / 0 = 405 面 / -1 = 404 面)
+pub fn frm_rc_match() -> I64 { return 1 }
+pub fn frm_rc_method() -> I64 { return 0 }
+pub fn frm_rc_miss() -> I64 { return -1 }
+
+// 方法码判定:首字节 + 长度即唯一((G,3)(P,3)(P,4)(P,5)(D,6)(H,4)(O,7)(T,5))
+// —— spec 侧 token 与请求侧方法同用此判;非大写 canonical 形 → 0
+pub fn frm_mcode(c0: I64, n: I64) -> I64 {
+    if c0 == 71 {
+        if n == 3 { return frm_m_get() }
+        return 0
+    }
+    if c0 == 80 {
+        if n == 3 { return frm_m_put() }
+        if n == 4 { return frm_m_post() }
+        if n == 5 { return frm_m_patch() }
+        return 0
+    }
+    if c0 == 68 {
+        if n == 6 { return frm_m_delete() }
+        return 0
+    }
+    if c0 == 72 {
+        if n == 4 { return frm_m_head() }
+        return 0
+    }
+    if c0 == 79 {
+        if n == 7 { return frm_m_options() }
+        return 0
+    }
+    if c0 == 84 {
+        if n == 5 { return frm_m_trace() }
+        return 0
+    }
+    return 0
+}
+
+// 请求侧方法码(lane 切片;parse.ct method 槽直喂)
+pub fn frm_mcode_buf(buf: &I64[], s: I64, l: I64) -> I64 {
+    if l <= 0 {
+        return 0
+    }
+    return frm_mcode(buf[s], l)
+}
+
+// ---- 匹配结果(11 标量槽;(h) 公开面 = getter) ----
+
+pub struct FrmRoute {
+    let rc: I64
+    let id: I64
+    let np: I64
+    let p0s: I64
+    let p0l: I64
+    let p1s: I64
+    let p1l: I64
+    let p2s: I64
+    let p2l: I64
+    let p3s: I64
+    let p3l: I64
+}
+
+fn rm_zero(rc: I64, id: I64) -> FrmRoute {
+    return FrmRoute { rc: rc, id: id, np: 0, p0s: 0, p0l: 0, p1s: 0, p1l: 0, p2s: 0, p2l: 0, p3s: 0, p3l: 0 }
+}
+
+pub fn fr_rc(m: FrmRoute) -> I64 { return m.rc }
+pub fn fr_id(m: FrmRoute) -> I64 { return m.id }
+pub fn fr_np(m: FrmRoute) -> I64 { return m.np }
+pub fn fr_ps(m: FrmRoute, k: I64) -> I64 {
+    if k == 0 { return m.p0s }
+    if k == 1 { return m.p1s }
+    if k == 2 { return m.p2s }
+    if k == 3 { return m.p3s }
+    return 0
+}
+pub fn fr_pl(m: FrmRoute, k: I64) -> I64 {
+    if k == 0 { return m.p0l }
+    if k == 1 { return m.p1l }
+    if k == 2 { return m.p2l }
+    if k == 3 { return m.p3l }
+    return 0
+}
+
+// ---- 段匹配内核(模块内;rc = 1 全路径匹配 / -1 不匹配) ----
+
+struct RmSeg {
+    let rc: I64
+    let np: I64
+    let s0: I64
+    let l0: I64
+    let s1: I64
+    let l1: I64
+    let s2: I64
+    let l2: I64
+    let s3: I64
+    let l3: I64
+}
+
+fn rm_fail() -> RmSeg {
+    return RmSeg { rc: -1, np: 0, s0: 0, l0: 0, s1: 0, l1: 0, s2: 0, l2: 0, s3: 0, l3: 0 }
+}
+
+// pattern[ps..pe) vs 路径 buf[ts..te) 逐段对走:静态段字节等长等值;
+// ':' 段捕获路径段(空段拒);段数含尾斜杠严格齐平
+fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &I64[], ts: I64, te: I64) -> RmSeg {
+    var pi: I32 = ps
+    var pj: I64 = ts
+    var np: I64 = 0
+    var s0: I64 = 0
+    var l0: I64 = 0
+    var s1: I64 = 0
+    var l1: I64 = 0
+    var s2: I64 = 0
+    var l2: I64 = 0
+    var s3: I64 = 0
+    var l3: I64 = 0
+    var first: I64 = 1
+    while pi < pe || pj < te {
+        if first == 1 {
+            first = 0
+        } else {
+            // 段间 '/' 两侧齐耗
+            if pi >= pe || pj >= te {
+                return rm_fail()
+            }
+            if byte_at(spec, pi) != 47 || buf[pj] != 47 {
+                return rm_fail()
+            }
+            pi += 1
+            pj += 1
+        }
+        // 段数不齐(单侧先尽,含尾斜杠差异)即拒
+        var aend: I64 = 0
+        if pi >= pe {
+            aend = 1
+        }
+        var bend: I64 = 0
+        if pj >= te {
+            bend = 1
+        }
+        if aend != bend {
+            return rm_fail()
+        }
+        // 段界
+        var pse: I32 = pi
+        while pse < pe && byte_at(spec, pse) != 47 {
+            pse += 1
+        }
+        var pje: I64 = pj
+        while pje < te && buf[pje] != 47 {
+            pje += 1
+        }
+        if byte_at(spec, pi) == 58 {
+            // 参数段:空捕获拒(如 /users/:id vs /users/)
+            if pje == pj {
+                return rm_fail()
+            }
+            if np == 0 {
+                s0 = pj
+                l0 = pje - pj
+            }
+            if np == 1 {
+                s1 = pj
+                l1 = pje - pj
+            }
+            if np == 2 {
+                s2 = pj
+                l2 = pje - pj
+            }
+            if np == 3 {
+                s3 = pj
+                l3 = pje - pj
+            }
+            np += 1
+        } else {
+            // 静态段:等长 + 字节等值
+            if pse - pi != pje - pj {
+                return rm_fail()
+            }
+            var a: I32 = pi
+            var b: I64 = pj
+            while a < pse {
+                if byte_at(spec, a) != buf[b] {
+                    return rm_fail()
+                }
+                a += 1
+                b += 1
+            }
+        }
+        pi = pse
+        pj = pje
+    }
+    return RmSeg { rc: 1, np: np, s0: s0, l0: l0, s1: s1, l1: l1, s2: s2, l2: l2, s3: s3, l3: l3 }
+}
+
+// ---- 主入口 ----
+
+// 路由匹配:spec(消费方 comptime const 表)× 方法码 × 请求目标 buf 切片
+// (parse.ct target 槽直喂;query/fragment 零拷贝缩界)。语义见头注。
+pub fn frm_match(spec: Str, meth: I64, buf: &I64[], ts: I64, tl: I64) -> FrmRoute {
+    // query(63 '?')/fragment(35 '#')裁剪:缩 te 即可,零拷贝
+    var te: I64 = ts + tl
+    var q: I64 = ts
+    while q < te {
+        let c = buf[q]
+        if c == 63 || c == 35 {
+            te = q
+            break
+        }
+        q += 1
+    }
+    var n: I32 = spec.len
+    var i: I32 = 0
+    var rid: I64 = 0
+    var saw405: I64 = 0
+    var id405: I64 = 0
+    while i < n {
+        rid += 1
+        // 方法 token:[i, sp)
+        var k: I32 = i
+        while k < n && byte_at(spec, k) != 32 {
+            k += 1
+        }
+        var mcode: I64 = 0
+        if k < n {
+            mcode = frm_mcode(byte_at(spec, i).as[I64](), (k - i).as[I64]())
+        }
+        // pattern:[k+1, e)('|' 124 或表尾)
+        var e: I32 = k + 1
+        while e < n && byte_at(spec, e) != 124 {
+            e += 1
+        }
+        if k < n {
+            var mr = rm_seg(spec, k + 1, e, buf, ts, te)
+            if mr.rc == 1 {
+                if mcode == meth {
+                    return FrmRoute { rc: 1, id: rid, np: mr.np, p0s: mr.s0, p0l: mr.l0, p1s: mr.s1, p1l: mr.l1, p2s: mr.s2, p2l: mr.l2, p3s: mr.s3, p3l: mr.l3 }
+                }
+                if saw405 == 0 {
+                    saw405 = 1
+                    id405 = rid
+                }
+            }
+        }
+        i = e + 1
+    }
+    if saw405 == 1 {
+        return rm_zero(frm_rc_method(), id405)
+    }
+    return rm_zero(frm_rc_miss(), 0)
+}
+
+// ---- 参数提取(类型化访问器) ----
+
+// lane 字节域 → Str(printable ASCII 门,client.ct cx_slice_str 同款已证形;
+// 123 '{' 词法域拒;越域 → "")
+pub fn frm_slice_str(src: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let c = src[i]
+        if c < 32 || c > 126 || c == 123 {
+            return ""
+        }
+        if c < 123 {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz", c - 32, c - 31)
+        } else {
+            out = out + byte_slice("|}~", c - 124, c - 123)
+        }
+        i += 1
+    }
+    return out
+}
+
+// 第 k 参数原始切片(未解码;k 越界/无捕获 → "";offsets 绝对指向 buf)
+pub fn frm_param(buf: &I64[], m: FrmRoute, k: I64) -> Str {
+    let s = fr_ps(m, k)
+    let l = fr_pl(m, k)
+    if l <= 0 {
+        return ""
+    }
+    return frm_slice_str(buf, s, s + l)
+}
+
+// 第 k 参数 percent 解码(经 std/enc;非法 → bad 哨兵 —— Option 中间值
+// 不落 let 绑定,emit 缺口绕行见头注)
+pub fn frm_param_dec(buf: &I64[], m: FrmRoute, k: I64, bad: Str) -> Str {
+    let raw = frm_param(buf, m, k)
+    if raw == "" {
+        return bad
+    }
+    return enc_get(pct_decode(raw), bad)
+}
+
+// 第 k 参数 percent 解码可解判(1 = 可解 / 0 = 不可解;谓词出口)
+pub fn frm_param_dec_ok(buf: &I64[], m: FrmRoute, k: I64) -> I64 {
+    let raw = frm_param(buf, m, k)
+    if raw == "" {
+        return 0
+    }
+    if enc_some(pct_decode(raw)) {
+        return 1
+    }
+    return 0
+}
+
+// :id 类型化访问器结果(严格十进制;rc = 1 有效)
+pub struct FrmI64 {
+    let rc: I64
+    let v: I64
+}
+
+pub fn fi_rc(x: FrmI64) -> I64 { return x.rc }
+pub fn fi_v(x: FrmI64) -> I64 { return x.v }
+
+// 第 k 参数 → I64(严格 1*DIGIT,无符号;非数字/空/溢出拒 —— parse.ct
+// hs_parse_dec 界门同款 + C10 宽域惯用法((i) 乘法定宽))
+pub fn frm_param_i64(buf: &I64[], m: FrmRoute, k: I64) -> FrmI64 {
+    let s = fr_ps(m, k)
+    let l = fr_pl(m, k)
+    if l <= 0 {
+        return FrmI64 { rc: 0, v: 0 }
+    }
+    var acc: I64 = 0
+    var i: I64 = 0
+    while i < l {
+        let c = buf[s + i]
+        if c < 48 || c > 57 {
+            return FrmI64 { rc: 0, v: 0 }
+        }
+        if acc > 922337203685477580 {
+            return FrmI64 { rc: 0, v: 0 }
+        }
+        acc = (acc + 4294967296 - 4294967296) * 10 + (c - 48)
+        i += 1
+    }
+    return FrmI64 { rc: 1, v: acc }
+}
+
+// ---- inline tests(纯面自检;行为语料见 tests/http/frm_route) ----
+
+fn frm_rt_fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "match static param 404 405" {
+    let spec = "GET /users|GET /users/new|GET /users/:id|POST /users|HEAD /health"
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = frm_rt_fill(buf, "/users")
+    let m1 = frm_match(spec, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m1) == 1 && fr_id(m1) == 1 && fr_np(m1) == 0)
+    let n2 = frm_rt_fill(buf, "/users/new")
+    let m2 = frm_match(spec, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m2) == 1 && fr_id(m2) == 2)
+    let m4 = frm_match(spec, frm_m_delete(), buf, 0, n2)
+    assert(fr_rc(m4) == 0 && fr_id(m4) == 2)
+    let n3 = frm_rt_fill(buf, "/users/42")
+    let m3 = frm_match(spec, frm_m_get(), buf, 0, n3)
+    assert(fr_rc(m3) == 1 && fr_id(m3) == 3 && fr_np(m3) == 1)
+    assert(frm_param(buf, m3, 0) == "42")
+    let n5 = frm_rt_fill(buf, "/users/42/posts")
+    let m5 = frm_match(spec, frm_m_get(), buf, 0, n5)
+    assert(fr_rc(m5) == -1 && fr_id(m5) == 0)
+    let n6 = frm_rt_fill(buf, "/health")
+    let m6 = frm_match(spec, frm_m_get(), buf, 0, n6)
+    assert(fr_rc(m6) == 0)
+    let m7 = frm_match(spec, frm_m_head(), buf, 0, n6)
+    assert(fr_rc(m7) == 1 && fr_id(m7) == 5)
+    let n8 = frm_rt_fill(buf, "/users/42?tab=posts")
+    let m8 = frm_match(spec, frm_m_get(), buf, 0, n8)
+    assert(fr_rc(m8) == 1 && fr_id(m8) == 3 && frm_param(buf, m8, 0) == "42")
+}
+
+test "params typed decode" {
+    let spec = "GET /u/:id|GET /n/:name|GET /deep/:a/:b/:c/:d/:e"
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = frm_rt_fill(buf, "/u/007")
+    let m1 = frm_match(spec, frm_m_get(), buf, 0, n1)
+    let v1 = frm_param_i64(buf, m1, 0)
+    assert(fi_rc(v1) == 1 && fi_v(v1) == 7)
+    let n2 = frm_rt_fill(buf, "/u/x9")
+    let m2 = frm_match(spec, frm_m_get(), buf, 0, n2)
+    assert(fi_rc(frm_param_i64(buf, m2, 0)) == 0)
+    let n3 = frm_rt_fill(buf, "/n/a%20b%2Fc")
+    let m3 = frm_match(spec, frm_m_get(), buf, 0, n3)
+    assert(frm_param_dec(buf, m3, 0, "!") == "a b/c")
+    assert(frm_param_dec_ok(buf, m3, 0) == 1)
+    assert(frm_param(buf, m3, 0) == "a%20b%2Fc")
+    let n4 = frm_rt_fill(buf, "/n/100%")
+    let m4 = frm_match(spec, frm_m_get(), buf, 0, n4)
+    assert(frm_param_dec(buf, m4, 0, "!") == "!")
+    assert(frm_param_dec_ok(buf, m4, 0) == 0)
+    let n5 = frm_rt_fill(buf, "/deep/1/2/3/4/5")
+    let m5 = frm_match(spec, frm_m_get(), buf, 0, n5)
+    assert(fr_rc(m5) == 1 && fr_np(m5) == 5)
+    assert(frm_param(buf, m5, 3) == "4")
+    assert(frm_param(buf, m5, 4) == "")
+}

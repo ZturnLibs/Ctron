@@ -1,0 +1,118 @@
+// tests/http/frm_route/a_match_basic.ct —— 路由匹配语料(P6-A;双臂)
+// 面:静态段/参数段命中、query 裁剪、404/405 面、first-match 优先级(含重叠
+// 解析双序)、方法齐平优先于先声明 405 候选、尾斜杠严格、comptime 表折叠
+// (const ROUTES: Str + comptime fn 数值派生 —— D-P6-1 释义的消费方侧形)。
+use std.http.frm.router.{ frm_match, frm_m_get, frm_m_post, frm_m_delete, frm_m_head, frm_rc_match, frm_rc_method, frm_rc_miss, fr_rc, fr_id, fr_np, frm_param }
+
+// —— comptime 路由表(D-P6-1:平面 Str 字面量,ceval 折叠;emit 直出 C 静常量)——
+const ROUTES: Str = "GET /users|GET /users/new|GET /users/:id|POST /users|HEAD /health"
+
+// 反序/双方法/窄表(const 仅文件级;测试块内 const 不支持)
+const REV: Str = "GET /users/:id|GET /users/new"
+const BOTH: Str = "GET /x|POST /x"
+const S1: Str = "GET /users"
+const S2: Str = "GET /"
+const S3: Str = ""
+
+// —— comptime fn 表事实派生(I 域;ceval Call 仅收 I 域实参,已证形)——
+comptime fn tbl_sum(n: I32) -> I32 {
+    var acc: I32 = 0
+    var k: I32 = 1
+    while k <= n {
+        acc = acc + k
+        k = k + 1
+    }
+    return acc
+}
+
+const TBL_SUM: I32 = tbl_sum(5)
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "comptime table consts" {
+    assert(ROUTES.len == 65)
+    assert(TBL_SUM == 15)
+}
+
+test "static segments first match" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/users")
+    let m = frm_match(ROUTES, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == frm_rc_match() && fr_id(m) == 1 && fr_np(m) == 0)
+}
+
+test "param segment capture" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/users/42")
+    let m = frm_match(ROUTES, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == 1 && fr_id(m) == 3 && fr_np(m) == 1)
+    assert(frm_param(buf, m, 0) == "42")
+}
+
+test "query stripped from match" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/users/42?tab=posts&x=1")
+    let m = frm_match(ROUTES, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == 1 && fr_id(m) == 3)
+    assert(frm_param(buf, m, 0) == "42")
+    let n2 = fill(buf, "/health#a1")
+    let m2 = frm_match(ROUTES, frm_m_head(), buf, 0, n2)
+    assert(fr_rc(m2) == 1 && fr_id(m2) == 5)
+}
+
+test "404 miss and 405 face" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = fill(buf, "/users/42/posts")
+    let m1 = frm_match(ROUTES, frm_m_get(), buf, 0, n1)
+    assert(fr_rc(m1) == frm_rc_miss() && fr_id(m1) == 0)
+    let n2 = fill(buf, "/health")
+    let m2 = frm_match(ROUTES, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m2) == frm_rc_method() && fr_id(m2) == 5)
+    let n3 = fill(buf, "/users")
+    let m3 = frm_match(ROUTES, frm_m_delete(), buf, 0, n3)
+    assert(fr_rc(m3) == frm_rc_method() && fr_id(m3) == 1)
+}
+
+test "priority overlap resolution" {
+    // 先静态后参数:/users/new 落静态条目(id 2)
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/users/new")
+    let m = frm_match(ROUTES, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == 1 && fr_id(m) == 2 && fr_np(m) == 0)
+    // 反序表:参数条目先行,new 落参数槽(声明序即优先级,语义如实)
+    let n2 = fill(buf, "/users/new")
+    let m2 = frm_match(REV, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m2) == 1 && fr_id(m2) == 1 && fr_np(m2) == 1)
+    assert(frm_param(buf, m2, 0) == "new")
+}
+
+test "method match wins over earlier 405 candidate" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/x")
+    let mg = frm_match(BOTH, frm_m_get(), buf, 0, n)
+    assert(fr_rc(mg) == 1 && fr_id(mg) == 1)
+    let mp = frm_match(BOTH, frm_m_post(), buf, 0, n)
+    assert(fr_rc(mp) == 1 && fr_id(mp) == 2)
+    // 未知方法码 0:路径有主 → 405 面(501 映射归框架后续)
+    let mz = frm_match(BOTH, 0, buf, 0, n)
+    assert(fr_rc(mz) == frm_rc_method())
+}
+
+test "trailing slash strict and empty spec" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/users/")
+    let m = frm_match(S1, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == frm_rc_miss())
+    let n2 = fill(buf, "/users")
+    let m2 = frm_match(S2, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m2) == frm_rc_miss())
+    let m3 = frm_match(S3, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m3) == frm_rc_miss())
+}

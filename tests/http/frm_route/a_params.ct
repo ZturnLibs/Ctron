@@ -1,0 +1,106 @@
+// tests/http/frm_route/a_params.ct —— 类型化参数提取语料(P6-A;双臂)
+// 面::id 严格十进制(非法/空/溢出拒)、:name 原始切片与 percent 解码(经
+// std/enc;非法解码 bad 哨兵 + dec_ok 谓词)、多参数槽、4 槽上限(第 5 参数
+// 命中不捕获)、解码不重分段(%2F → '/' 仍在单段内)。
+use std.http.frm.router.{ frm_match, frm_m_get, fr_rc, fr_id, fr_np, fr_ps, fr_pl, frm_param, frm_param_dec, frm_param_dec_ok, frm_param_i64, fi_rc, fi_v, frm_slice_str }
+
+const SPEC: Str = "GET /u/:id|GET /n/:name|GET /deep/:a/:b/:c/:d/:e"
+
+// 窄表(const 仅文件级)
+const BIG: Str = "GET /u/:id"
+const FOUR: Str = "GET /r/:a/:b/:c/:d"
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "typed i64 accessor" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "/u/007")
+    let m = frm_match(SPEC, frm_m_get(), buf, 0, n)
+    let v = frm_param_i64(buf, m, 0)
+    assert(fi_rc(v) == 1 && fi_v(v) == 7)
+    // 非数字拒
+    let n2 = fill(buf, "/u/x9")
+    let m2 = frm_match(SPEC, frm_m_get(), buf, 0, n2)
+    assert(fi_rc(frm_param_i64(buf, m2, 0)) == 0)
+    // 空段在匹配即拒(:id 不收空)
+    let n3 = fill(buf, "/u/")
+    let m3 = frm_match(SPEC, frm_m_get(), buf, 0, n3)
+    assert(fr_rc(m3) == -1)
+    // 19 位 I64_MAX 恰好界内 / 20 位溢出拒(hs_parse_dec 界门同款)
+    let n4 = fill(buf, "/u/9223372036854775807")
+    let m4 = frm_match(BIG, frm_m_get(), buf, 0, n4)
+    let v4 = frm_param_i64(buf, m4, 0)
+    assert(fi_rc(v4) == 1 && fi_v(v4) == 9223372036854775807)
+    let n5 = fill(buf, "/u/92233720368547758070")
+    let m5 = frm_match(BIG, frm_m_get(), buf, 0, n5)
+    assert(fi_rc(frm_param_i64(buf, m5, 0)) == 0)
+    // I32 域乘法宽域惯用法面:18 位值(跨 2^31 界)
+    let n6 = fill(buf, "/u/99999999999999999")
+    let m6 = frm_match(BIG, frm_m_get(), buf, 0, n6)
+    let v6 = frm_param_i64(buf, m6, 0)
+    assert(fi_rc(v6) == 1 && fi_v(v6) == 99999999999999999)
+}
+
+test "raw slice and percent decode" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // 原始切片保留编码;解码经 std/enc;%2F 解 '/' 但不重分段(单段内)
+    let n = fill(buf, "/n/a%20b%2Fc")
+    let m = frm_match(SPEC, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == 1 && fr_id(m) == 2)
+    assert(frm_param(buf, m, 0) == "a%20b%2Fc")
+    assert(frm_param_dec(buf, m, 0, "!") == "a b/c")
+    assert(frm_param_dec_ok(buf, m, 0) == 1)
+    // 非法解码:尾 % / 坏 hex / 裸 % → bad 哨兵 + ok 0
+    let n2 = fill(buf, "/n/100%")
+    let m2 = frm_match(SPEC, frm_m_get(), buf, 0, n2)
+    assert(frm_param_dec(buf, m2, 0, "!") == "!")
+    assert(frm_param_dec_ok(buf, m2, 0) == 0)
+    let n3 = fill(buf, "/n/%4G")
+    let m3 = frm_match(SPEC, frm_m_get(), buf, 0, n3)
+    assert(frm_param_dec_ok(buf, m3, 0) == 0)
+    // 无捕获槽:k 越界 → "" / bad
+    let m4 = frm_match(SPEC, frm_m_get(), buf, 0, n)
+    assert(frm_param(buf, m4, 1) == "")
+    assert(frm_param_dec(buf, m4, 1, "z") == "z")
+    assert(frm_param_dec_ok(buf, m4, 1) == 0)
+}
+
+test "multi param slots and cap" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // 4 参数:槽全捕获(offsets 绝对指向 buf)
+    let n = fill(buf, "/r/1/22/333/4444")
+    let m = frm_match(FOUR, frm_m_get(), buf, 0, n)
+    assert(fr_rc(m) == 1 && fr_np(m) == 4)
+    assert(frm_param(buf, m, 0) == "1")
+    assert(frm_param(buf, m, 1) == "22")
+    assert(frm_param(buf, m, 2) == "333")
+    assert(frm_param(buf, m, 3) == "4444")
+    assert(fr_ps(m, 0) == 3 && fr_pl(m, 0) == 1)
+    assert(fr_ps(m, 3) == 12 && fr_pl(m, 3) == 4)
+    // 第 5 参数:照常命中,溢出槽不捕获(v1 上限,头注登记)
+    let n2 = fill(buf, "/deep/1/2/3/4/5")
+    let m2 = frm_match(SPEC, frm_m_get(), buf, 0, n2)
+    assert(fr_rc(m2) == 1 && fr_np(m2) == 5)
+    assert(frm_param(buf, m2, 0) == "1")
+    assert(frm_param(buf, m2, 3) == "4")
+    assert(frm_param(buf, m2, 4) == "")
+}
+
+test "slice str gate" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // printable 门:域外字节 → ""(C8 域纪律)
+    buf[0] = 65
+    buf[1] = 66
+    assert(frm_slice_str(buf, 0, 2) == "AB")
+    buf[2] = 1
+    assert(frm_slice_str(buf, 0, 3) == "")
+    buf[2] = 126
+    assert(frm_slice_str(buf, 0, 3) == "AB~")
+}

@@ -1,0 +1,210 @@
+// tests/http/frm_route/a_mw_chain.ct —— 中间件链骨架语料(P6-A;双臂)
+// 面:parse→match→ctx 端到端接线(框架 keystone 路径)、链序(句柄算术组合
+// —— 序错即值异)、短路(不调 next,响应胜出,终端不可达)、next 透传、
+// 类型化数据槽(句柄变换下传 + FrmCtx d0/d1 槽)、frm_ctx_route 参数搬运、
+// 派发骨架(rc 三面 → 200/405/404)。
+// 链形(P5-E 组合层裁定;emit fn 值装箱 ct_i 实参 ⇒ 链上只走 Str + I64):
+//   fn(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str
+// use 面:parse(协议半层)+ middleware(框架唯一入口;router 侧符号经其
+// 单命名空间合并贯穿 —— 消费方不直 use router/enc,严格树 E5020 规避)。
+// 纪律:const 引用仅入 test 块(普通 fn 体 const 引用 = interp 缺口,P6-A
+// 实证 unbound;emit 侧无差 —— 表以形参/局部面过 fn 边界)。
+use std.http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len }
+use std.http.frm.middleware.{ frm_ctx_new, frm_ctx_route, frm_ctx_with_d0, frm_ctx_arena, frm_ctx_req_id, frm_ctx_np, frm_ctx_ps, frm_ctx_pl, frm_ctx_d0, frm_ctx_d1, frm_ctx_param, frm_resp_404, frm_resp_405 }
+
+// —— comptime 路由表(D-P6-1 消费方侧形;const 引用恒在 test 块内)——
+const ROUTES: Str = "GET /users|GET /users/:id|POST /users|DELETE /users/:id|GET /admin"
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// ---- 终端 handler(组合层;h = 链上累改句柄,类型化数据槽面) ----
+
+fn h_users(req: Str, h: I64) -> Str {
+    return "users:id=" + h.to_string()
+}
+
+fn h_admin(req: Str, h: I64) -> Str {
+    return "admin:uid=" + h.to_string()
+}
+
+fn h_forbidden(req: Str, h: I64) -> Str {
+    return "FORBIDDEN-REACHED:" + h.to_string()
+}
+
+// ---- 中间件(组合层具名 fn;序 = 装配嵌套序) ----
+
+// 最外层:句柄 ×10+1 下传(序指纹高位)
+fn mw_outer(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    return "" + next(req, h * 10 + 1)
+}
+
+// 中层:句柄 ×10+2 下传
+fn mw_mid(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    return "" + next(req, h * 10 + 2)
+}
+
+// 鉴权形中间件:uid=7 放行(next 透传),余短路 403 文 —— 短路 = 不调
+// next,响应胜出,终端不可达
+fn mw_auth(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    if h == 7 {
+        return "" + next(req, h)
+    }
+    return "403 short-circuit"
+}
+
+// 透传形:next 结果原样返回(不改写不观察)
+fn mw_pass(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
+    return "" + next(req, h)
+}
+
+test "route id via explicit dispatch" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "GET /users/42 HTTP/1.1\r\n\r\n")
+    let head = http_parse_head(buf, n, http_limits_default())
+    assert(http_rc(head) == 1)
+    let meth = frm_mcode_buf(buf, http_method_start(head), http_method_len(head))
+    assert(meth == frm_m_get())
+    let m = frm_match(ROUTES, meth, buf, http_target_start(head), http_target_len(head))
+    assert(fr_rc(m) == 1 && fr_id(m) == 2)
+}
+
+test "chain order by handle arithmetic" {
+    // 装配:outer(mid(term));h0 = 路由 id 1,term 收到 h = ((1*10+1)*10+2) = 112
+    // —— 序错(内先外后)即得 211,值异即序断言
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "GET /users HTTP/1.1\r\n\r\n")
+    let head = http_parse_head(buf, n, http_limits_default())
+    let meth = frm_mcode_buf(buf, http_method_start(head), http_method_len(head))
+    let m = frm_match(ROUTES, meth, buf, http_target_start(head), http_target_len(head))
+    assert(fr_rc(m) == 1 && fr_id(m) == 1)
+    let req = frm_slice_str(buf, http_target_start(head), http_target_start(head) + http_target_len(head))
+    let h0 = fr_id(m)
+    // 闭包字面量 let 预绑(emit 缺口绕行:嵌套闭包字面量按嵌套深度计号,
+    // 兄弟表达式同深度即 ct_clo_L<n> 重名 —— P6-A 实证;内层先绑值)
+    let t1 = |r2: Str, k2: I64| h_users(r2, k2)
+    let resp = mw_outer(req, h0, |r, k| mw_mid(r, k, t1))
+    assert(resp == "users:id=112")
+    // 透传形夹层不改变序指纹
+    let t2 = |r3: Str, k3: I64| h_users(r3, k3)
+    let m2c = |r2: Str, k2: I64| mw_mid(r2, k2, t2)
+    let resp2 = mw_outer(req, h0, |r, k| mw_pass(r, k, m2c))
+    assert(resp2 == "users:id=112")
+}
+
+test "short circuit skips terminal" {
+    // 鉴权中间件:uid != 7 → 短路文,终端(FORBIDDEN 标记)不可达
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "GET /admin HTTP/1.1\r\n\r\n")
+    let head = http_parse_head(buf, n, http_limits_default())
+    let req = frm_slice_str(buf, http_target_start(head), http_target_start(head) + http_target_len(head))
+    let cf = |r: Str, k: I64| h_forbidden(r, k)
+    let denied = mw_auth(req, 9, cf)
+    assert(denied == "403 short-circuit")
+    // uid = 7 放行:next 透传至终端,句柄数据槽语义(uid)抵达
+    let ca = |r: Str, k: I64| h_admin(r, k)
+    let ok = mw_auth(req, 7, ca)
+    assert(ok == "admin:uid=7")
+}
+
+test "ctx carries params and data slots" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = fill(buf, "GET /users/42 HTTP/1.1\r\n\r\n")
+    let head = http_parse_head(buf, n, http_limits_default())
+    let m = frm_match(ROUTES, frm_m_get(), buf, http_target_start(head), http_target_len(head))
+    // match → ctx 一行接线;参数槽 + arena/req_id 句柄
+    let ctx = frm_ctx_route(frm_ctx_new(77, 3), m)
+    assert(frm_ctx_arena(ctx) == 77 && frm_ctx_req_id(ctx) == 3)
+    assert(frm_ctx_np(ctx) == 1)
+    assert(frm_ctx_param(buf, ctx, 0) == "42")
+    assert(frm_ctx_ps(ctx, 0) == http_target_start(head) + 7 && frm_ctx_pl(ctx, 0) == 2)
+    // 数据槽写 = 值重建;读 = getter
+    let ctx2 = frm_ctx_with_d0(ctx, 501)
+    assert(frm_ctx_d0(ctx2) == 501 && frm_ctx_d1(ctx2) == 0)
+    // 直接调用边界(组合层):ctx 不过装箱链,getter 面消费
+    assert(frm_ctx_np(ctx2) == 1 && frm_ctx_param(buf, ctx2, 0) == "42")
+}
+
+test "dispatch skeleton three rc faces" {
+    // 派发骨架:rc 三面 → 链 / 405 / 404(终端装配最外层形状;
+    // mw_outer 单层:h = id*10+1)
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    // 命中(GET /users/7,id 2)→ 链
+    let n1 = fill(buf, "GET /users/7 HTTP/1.1\r\n\r\n")
+    let h1 = http_parse_head(buf, n1, http_limits_default())
+    let meth1 = frm_mcode_buf(buf, http_method_start(h1), http_method_len(h1))
+    let m1 = frm_match(ROUTES, meth1, buf, http_target_start(h1), http_target_len(h1))
+    let cu = |r: Str, k: I64| h_users(r, k)
+    var resp = ""
+    if fr_rc(m1) == frm_rc_match() {
+        let req1 = frm_slice_str(buf, http_target_start(h1), http_target_start(h1) + http_target_len(h1))
+        resp = mw_outer(req1, fr_id(m1), cu)
+    }
+    if fr_rc(m1) == frm_rc_method() {
+        resp = frm_resp_405()
+    }
+    if fr_rc(m1) == frm_rc_miss() {
+        resp = frm_resp_404()
+    }
+    assert(resp == "users:id=21")
+
+    // 命中(POST /users,id 3)→ 链
+    let n2 = fill(buf, "POST /users HTTP/1.1\r\n\r\n")
+    let h2 = http_parse_head(buf, n2, http_limits_default())
+    let meth2 = frm_mcode_buf(buf, http_method_start(h2), http_method_len(h2))
+    assert(meth2 == frm_m_post())
+    let m2 = frm_match(ROUTES, meth2, buf, http_target_start(h2), http_target_len(h2))
+    resp = ""
+    if fr_rc(m2) == frm_rc_match() {
+        let req2 = frm_slice_str(buf, http_target_start(h2), http_target_start(h2) + http_target_len(h2))
+        resp = mw_outer(req2, fr_id(m2), cu)
+    }
+    if fr_rc(m2) == frm_rc_method() {
+        resp = frm_resp_405()
+    }
+    if fr_rc(m2) == frm_rc_miss() {
+        resp = frm_resp_404()
+    }
+    assert(resp == "users:id=31")
+
+    // 405 面(DELETE /users:路径有主,方法不齐)
+    let n3 = fill(buf, "DELETE /users HTTP/1.1\r\n\r\n")
+    let h3 = http_parse_head(buf, n3, http_limits_default())
+    let meth3 = frm_mcode_buf(buf, http_method_start(h3), http_method_len(h3))
+    let m3 = frm_match(ROUTES, meth3, buf, http_target_start(h3), http_target_len(h3))
+    resp = ""
+    if fr_rc(m3) == frm_rc_match() {
+        resp = "unreachable"
+    }
+    if fr_rc(m3) == frm_rc_method() {
+        resp = frm_resp_405()
+    }
+    if fr_rc(m3) == frm_rc_miss() {
+        resp = frm_resp_404()
+    }
+    assert(resp == "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 18\r\n\r\nmethod not allowed")
+
+    // 404 面(GET /nope:路径无主)
+    let n4 = fill(buf, "GET /nope HTTP/1.1\r\n\r\n")
+    let h4 = http_parse_head(buf, n4, http_limits_default())
+    let meth4 = frm_mcode_buf(buf, http_method_start(h4), http_method_len(h4))
+    let m4 = frm_match(ROUTES, meth4, buf, http_target_start(h4), http_target_len(h4))
+    resp = ""
+    if fr_rc(m4) == frm_rc_match() {
+        resp = "unreachable"
+    }
+    if fr_rc(m4) == frm_rc_method() {
+        resp = frm_resp_405()
+    }
+    if fr_rc(m4) == frm_rc_miss() {
+        resp = frm_resp_404()
+    }
+    assert(resp == "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nnot found")
+}

@@ -32,6 +32,16 @@ for m in parse message sse ws; do
         fail=$((fail+1)); echo "  FAIL std/http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$m.out"
     fi
 done
+# P6-A:frm 子层(router.ct 纯叶 + middleware.ct → router/enc;enc 纯面无
+# W8052,解释臂直跑;emit 臂覆盖见 frm_route 夹具对拍)
+for m in frm/router frm/middleware; do
+    mn=$(basename "$m")
+    if "$CC" run "$ROOT/std/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS std/http/$m.ct (inline)"
+    else
+        fail=$((fail+1)); echo "  FAIL std/http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$mn.out"
+    fi
+done
 if "$CC" run "$ROOT/std/crypto.ct" > "$T/std_crypto.out" 2>&1; then
     pass=$((pass+1)); echo "  PASS std/crypto.ct (inline, sha1+sha256)"
 else
@@ -171,6 +181,61 @@ for dir in client_fixtures sse_ws; do
         esac
     done
 done
+
+# ── P6-A 行为夹具:frm_route(路由核 + 中间件链)──
+# 臂分工(client_fixtures 同款):a_ 前缀 = 纯面(零 IO;use middleware 门面
+# → router/enc 纯叶,无 W8052)interp + emit 双计;x_ = 触 net 垫片时钟
+# (ctron_net_now_ns)→ emit 专臂,且为 env 门禁(CTRON_ROUTE_BENCH=1 启用,
+# tests/http/bench/bench.sh 家族口径:本地/nightly 门禁,不入 CI 主环;
+# 3 轮取最小,门 ns_per_hit ≤ 100;ns_per_reject 如实打印不裁 —— 全表扫描
+# 拒绝面归因登记见 P6-A 报告)。
+for f in "$DIR"/frm_route/a_*.ct; do
+    [ -f "$f" ] || continue
+    name="frm_route_$(basename "$f" .ct)"
+    if "$CC" run "$f" > "$T/$name.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS $name (interp)"
+    else
+        fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
+    fi
+    if [ -x "$EMIT" ]; then
+        if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
+           && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" 2>"$T/$name.e.cc.err" \
+           && "$T/$name.e.bin" > "$T/$name.e.out" 2>&1; then
+            pass=$((pass+1)); echo "  PASS $name (emit)"
+        else
+            fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.e.out" "$T/$name.e.cc.err" "$T/$name.e.err" 2>/dev/null
+        fi
+    fi
+done
+
+if [ "${CTRON_ROUTE_BENCH:-}" = "1" ] && [ -x "$EMIT" ]; then
+    B="frm_route_x_bench"
+    if "$EMIT" run "$DIR/frm_route/x_bench.ct" > "$T/$B.c" 2>"$T/$B.err" \
+       && cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/$B.bin" "$T/$B.c" "$ROOT/std/net/c_src/ctron_net.c" 2>"$T/$B.cc.err"; then
+        MIN=""; MINR=""
+        R=1
+        while [ "$R" -le 3 ]; do
+            OUT=$(env CTRON_ROUTE_BENCH_N="${CTRON_ROUTE_BENCH_N:-200000}" timeout 120 "$T/$B.bin") || { fail=$((fail+1)); echo "  FAIL $B (round $R 运行失败)"; break; }
+            NS=$(printf '%s\n' "$OUT" | sed -n 's/^ns_per_hit=//p')
+            NSR=$(printf '%s\n' "$OUT" | sed -n 's/^ns_per_reject=//p')
+            if [ -z "$MIN" ] || [ "$NS" -lt "$MIN" ]; then MIN="$NS"; fi
+            if [ -z "$MINR" ] || [ "$NSR" -lt "$MINR" ]; then MINR="$NSR"; fi
+            R=$((R + 1))
+        done
+        if [ -n "$MIN" ]; then
+            VERDICT=$(awk -v n="$MIN" 'BEGIN { print (n <= 100) ? "GREEN" : "RED" }')
+            if [ "$VERDICT" = "GREEN" ]; then
+                pass=$((pass+1)); echo "  PASS $B (bench: hit ${MIN}ns ≤100 | reject ${MINR}ns)"
+            else
+                fail=$((fail+1)); echo "  FAIL $B (bench: hit ${MIN}ns >100 门;reject ${MINR}ns —— 如实登记归因)"
+            fi
+        fi
+    else
+        fail=$((fail+1)); echo "  FAIL $B (构建失败)"; sed -n '1,5p' "$T/$B.err" "$T/$B.cc.err" 2>/dev/null
+    fi
+else
+    echo "  [skip] frm_route x_bench:CTRON_ROUTE_BENCH=1 启用(bench 家族门禁,不入 CI 主环)"
+fi
 
 echo "http/run: pass=$pass fail=$fail"
 # 空集口径:一例未跑与全败同罪

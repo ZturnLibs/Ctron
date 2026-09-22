@@ -1,0 +1,128 @@
+// tests/http/frm_route/x_bench.ct —— P6-A 路由命中基准(emit 专臂;bench.sh 家族口径)
+// 口径(tests/http/bench/bench_parse.ct 同款):
+//   - 纯面路由命中:comptime const 表(SPEC,8 条目)+ 4 请求形(静态命中 /
+//     参数命中+:id 提取 / 405 面 / 404 面)每轮各 1 次 match + 1 次 i64 参数
+//     提取(热路径全形);时钟 = ctron_net_now_ns()(CLOCK_MONOTONIC,net 垫
+//     片)→ 触 net/bind 子树,解释口径 W8052 ⇒ emit 专臂(x_ 前缀惯例)。
+//   - 热身 1000 轮不计时;正式 N 轮(env CTRON_ROUTE_BENCH_N,缺省 200000);
+//     校验和有界模乘防 DCE;run.sh 采 3 轮取最小,门 ≤100ns/match。
+//   - 「回环」口径注记:本基准为进程内命中段(TCP 全请求周期归 P6-F vs
+//     epoll 基准;表扫描无 IO,解释臂无时钟不入计例)。
+// use 面:middleware 锚(框架唯一入口;router 符号经其单命名空间合并贯穿,
+// 消费方 use 表只能列入口自有符号 —— router 名以裸名直引)。
+use std.http.frm.middleware.{ frm_ctx_new }
+use std.net.{ Net_probe }
+
+const SPEC: Str = "GET /users|GET /users/new|GET /users/:id|POST /users|DELETE /users/:id|GET /health|GET /static/:name|GET /api/v1/items/:id"
+
+fn bf_fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    // ---- 语料四形(目标字节装入 lane) ----
+    var b1: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var b2: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var b3: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var b4: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n1 = bf_fill(b1, "/users")
+    let n2 = bf_fill(b2, "/users/12345")
+    let n3 = bf_fill(b3, "/users")
+    let n4 = bf_fill(b4, "/nope/12345")
+
+    // ---- 正确性钉(热身外):四形各归其面 ----
+    let m1 = frm_match(SPEC, frm_m_get(), b1, 0, n1)
+    if fr_rc(m1) != frm_rc_match() || fr_id(m1) != 1 {
+        return 1
+    }
+    let m2 = frm_match(SPEC, frm_m_get(), b2, 0, n2)
+    if fr_rc(m2) != frm_rc_match() || fr_id(m2) != 3 {
+        return 2
+    }
+    let v2 = frm_param_i64(b2, m2, 0)
+    if fi_rc(v2) != 1 || fi_v(v2) != 12345 {
+        return 3
+    }
+    let m3 = frm_match(SPEC, frm_m_delete(), b3, 0, n3)
+    if fr_rc(m3) != frm_rc_method() || fr_id(m3) != 1 {
+        return 4
+    }
+    let m4 = frm_match(SPEC, frm_m_get(), b4, 0, n4)
+    if fr_rc(m4) != frm_rc_miss() {
+        return 5
+    }
+
+    // ---- 热身(不计时) ----
+    var w: I64 = 0
+    while w < 1000 {
+        let a = frm_match(SPEC, frm_m_get(), b1, 0, n1)
+        let b = frm_match(SPEC, frm_m_get(), b2, 0, n2)
+        let c = frm_match(SPEC, frm_m_delete(), b3, 0, n3)
+        let d = frm_match(SPEC, frm_m_get(), b4, 0, n4)
+        if fr_rc(a) + fr_rc(b) + fr_rc(c) + fr_rc(d) != 1 {
+            return 6
+        }
+        w += 1
+    }
+
+    // ---- 正式计时 ----
+    var iters: I64 = 200000
+    let ns_env = env_get("CTRON_ROUTE_BENCH_N")
+    if ns_env.len > 0 {
+        var ok = 1
+        var v: I64 = 0
+        var i: I32 = 0
+        while i < ns_env.len {
+            let dg = byte_at(ns_env, i)
+            if dg < 48 || dg > 57 {
+                ok = 0
+            } else {
+                v = v * 10 + (dg - 48).as[I64]()
+            }
+            i += 1
+        }
+        if ok == 1 && v > 0 {
+            iters = v
+        }
+    }
+    var cs: I64 = 0
+    // —— 命中门计时(路由命中 = 派发面:静态命中 + 参数命中含 :id 提取)——
+    let t0 = ctron_net_now_ns()
+    var k: I64 = 0
+    while k < iters {
+        let a = frm_match(SPEC, frm_m_get(), b1, 0, n1)
+        cs = cs + fr_rc(a) + fr_id(a)
+        let b = frm_match(SPEC, frm_m_get(), b2, 0, n2)
+        let vb = frm_param_i64(b2, b, 0)
+        cs = cs + fr_rc(b) + fr_id(b) + fi_rc(vb) + fi_v(vb)
+        k += 1
+    }
+    let t1 = ctron_net_now_ns()
+    // —— 全形混计(命中两形 + 405/404 拒绝面;门不裁,如实登记)——
+    let t0b = ctron_net_now_ns()
+    k = 0
+    while k < iters {
+        let c = frm_match(SPEC, frm_m_delete(), b3, 0, n3)
+        cs = cs + fr_rc(c) + fr_id(c)
+        let d = frm_match(SPEC, frm_m_get(), b4, 0, n4)
+        cs = cs + fr_rc(d) + fr_id(d)
+        k += 1
+    }
+    let t1b = ctron_net_now_ns()
+    let total_ns = t1 - t0
+    let hits = iters * 2
+    println("kind=route-hit")
+    println("iters=" + iters.to_string())
+    println("hits=" + hits.to_string())
+    println("ns_total=" + total_ns.to_string())
+    println("ns_per_hit=" + (total_ns / hits).to_string())
+    println("ns_per_reject=" + ((t1b - t0b) / (iters * 2)).to_string())
+    println("checksum=" + cs.to_string())
+    return 0
+}
