@@ -322,6 +322,21 @@ for st in map set fs; do
         bad "$st 种子单测失败"
     fi
 done
+echo "== 3j2) std 全模块自举单测(parity 矩阵自举臂;extern/c_src 依赖面除外) =="
+std_parity=0
+std_total=0
+for f in "$ROOT"/std/*.ct; do
+    b=$(basename "$f")
+    case $b in config.ct|net.ct|tls.ct) continue ;; esac
+    std_total=$((std_total+1))
+    if ! "$COMP/bin/ctron-cc" run "$f" > /dev/null 2>&1; then
+        bad "std 单测自举红: $b"
+        std_parity=1
+    fi
+done
+if [ $std_parity -eq 0 ]; then
+    ok "std 全模块自举单测绿($std_total 模块)"
+fi
 echo "== 3h) 示例应用 examples/ctgrep(子串 grep,与 grep -F -n 对数 + 退出码语义) =="
 CTGREP="$ROOT/examples/ctgrep"
 GSAMPLE="$T/gsample.txt"
