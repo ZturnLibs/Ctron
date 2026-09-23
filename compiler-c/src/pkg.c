@@ -762,6 +762,7 @@ static void check_use_alias_collisions(pkg_res* r, const pkg* p, const mod* m) {
                 case D_ENUM: nm = dd->en.name; break;
                 case D_TRAIT: nm = dd->trait.name; break;
                 case D_STATIC: nm = dd->statik.name; break;
+                case D_CONST: nm = dd->konst.name; break;
                 default: break;
                 }
                 if (nm && strcmp(nm, imp->alias) == 0) {
@@ -794,6 +795,25 @@ static void check_use_visibility(pkg_res* r, const pkg* p, const mod* m) {
             if (!mod_has_pub_item(target, item)) {
                 push(r, m->rel, "E2020", "不可见模块项(secret):%s 未 pub", item);
             }
+        }
+    }
+}
+
+// E2020.use.nat:前奏/native 符号不支持别名(spec 2026-09-22 §4.6;check 面)
+static void check_use_alias_nat(pkg_res* r, const pkg* p, const mod* m) {
+    (void)p;
+    const cfile* f = m->pr.file;
+    for (size_t j = 0; j < f->ndecls; j++) {
+        const cdecl* d = &f->decls[j];
+        if (d->kind != D_USE) continue;
+        for (size_t k = 0; k < d->use.nimports; k++) {
+            const cimport* imp = &d->use.imports[k];
+            if (!imp->alias) continue;
+            if (imp->nsegs < 2 || strcmp(imp->segs[0], "std") != 0) continue;
+            const char* key = imp->segs[1];
+            if (strcmp(key, "fs") != 0 && strcmp(key, "time") != 0 &&
+                strcmp(key, "net") != 0 && strcmp(key, "db") != 0) continue;
+            push(r, m->rel, "E2020.use.nat", "use 前奏/native 符号不支持别名:%s", imp->alias);
         }
     }
 }
@@ -1024,6 +1044,7 @@ pkg_res ctron_pkg_check(const char* root) {
         check_orphan(&r, &p, &p.m[i]);
         check_use_visibility(&r, &p, &p.m[i]);
         check_use_alias_collisions(&r, &p, &p.m[i]);
+        check_use_alias_nat(&r, &p, &p.m[i]);
         check_caps(&r, &p, &p.m[i]);
     }
     check_circular(&r, &p);
