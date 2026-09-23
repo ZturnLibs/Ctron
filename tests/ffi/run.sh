@@ -59,6 +59,11 @@ for d in "$DIR"/*/; do
             fail=$((fail + 1))
             continue
         fi
+        if ! grep -q "cimport: 跳过(位域" "$T/$name.bind.ct"; then
+            echo "  [FAIL] $name — 位域 struct 未整构跳过"
+            fail=$((fail + 1))
+            continue
+        fi
         cat "$T/$name.bind.ct" "$e" > "$T/$name.all.ct"
         if ! "$EMIT" run "$T/$name.all.ct" > "$T/$name.c" 2>"$T/$name.emiterr"; then
             echo "  [FAIL] $name — emit 失败: $(head -1 "$T/$name.emiterr")"

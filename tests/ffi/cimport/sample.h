@@ -18,4 +18,11 @@ extern double sample_scale(double v, int factor);
 extern size_t sample_count(const char *s, int limit);
 extern void sample_reset(void);
 
+/* 位域:cimport 应整构跳过(布局不可按声明序表达,逐字段映射=静默错绑) */
+struct bits {
+    unsigned int lo : 3;
+    unsigned int hi : 5;
+    int rest;
+};
+
 #endif

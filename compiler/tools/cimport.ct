@@ -580,6 +580,27 @@ fn cimp_struct(item: Str, tds: List[Str]) -> Str {
     var head = cimp_trim(byte_slice(item, 0, lb))
     var body = byte_slice(item, lb + 1, rb)
     var tail = cimp_trim(byte_slice(item, rb + 1, item.len))
+    // 位域预扫:成员声明上下文出现 ':' 只可能是位域 → 整构跳过。按声明序
+    // struct 无法表达位域布局,逐字段映射会静默产出错绑(typedef 位域实测
+    // 只剩非位域字段,布局/sizeof 全错)。
+    var bf = -1
+    var bdep: I32 = 0
+    var bi: I32 = 0
+    while bi < body.len {
+        var bc = byte_at(body, bi)
+        if bc == 40 || bc == 91 || bc == 123 {
+            bdep += 1
+        } else if bc == 41 || bc == 93 || bc == 125 {
+            bdep -= 1
+        } else if bc == 58 && bdep == 0 {
+            bf = bi
+            bi = body.len
+        }
+        bi += 1
+    }
+    if bf >= 0 {
+        return "// cimport: 跳过(位域布局不可表达,需手写绑定): " + item
+    }
     var ht = cimp_toks(head)
     var hasunion = false
     var hasenum = false
