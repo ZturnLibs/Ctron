@@ -90,6 +90,23 @@ style t { fg: "#ffffff" size: 24 }
 `d_cmd_count/type/text_len/text_byte/x100/y100/w100/h100`(命令缓冲逐条访问,
 黄金帧差分与几何断言底座)。
 
+## 文本管线(M3 合流,2026-09-23)
+
+flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_text`
+((串,px) 键,LRU 64 槽,白色 RGBA 渲染、颜色绘制时 tint)→ `gui_ft_text_draw`
+(懒上传 + DrawTexture);测量 `ctron_measure` = FreeType 实测 advance(与渲染同
+迭代序,布局盒宽==实测)。默认字体位图路径仅作无 CJK 字体环境兜底(ASCII 仍可用,
+即旧点阵观感的唯一残留场景)。
+
+- `CTRON_GUI_FT_OFF=1`:钉回 0.55 启发式测量——坐标/黄金夹具(s3/s5/s17/s18/s21)
+  专用钉值,跨平台稳定(macOS Hiragino 与 Linux Noto 的 advance 不同,实测值不可作
+  跨平台黄金)。
+- 无 CJK 字体环境:测量回启发式、绘制回默认字体(旧行为,零回归)。
+- 链接面:凡链 `gui/c_src/ctron_gui.c` 的 run.sh 须加 `gui/c_src/ft_shim.c` +
+  `vendor/gui/build/libfreetype.a` + `-I vendor/gui/freetype/include`。
+- 直绘路径(`ft_render`/`ft_tex_*`)语义零变化,`examples/gui_cjk` 仍为直绘示范;
+  声明式路径中文示范 = `examples/gui_counter`(「计数: {count}」)。
+
 ## 坑位(实证登记,续接必读)
 
 - 跨包符号**必须显式请求**:use 面缺什么,发射面就缺什么(选择性合并契约)。
@@ -98,14 +115,15 @@ style t { fg: "#ffffff" size: 24 }
   表达式槽走求值器——两态并存零破坏。
 - 零参方法(`.pop()` 等)发射面缺口:以重建列表 + 成员赋值配方绕行。
 - 域包形态构建:`CTRON_STDPATH` 指向 std 三级解析根(域根随仓库布局解析),
-  native 链接 `gui/c_src/ctron_gui.c` + `vendor/gui/build/libraylib.a`。
+  native 链接 `gui/c_src/ctron_gui.c` + `gui/c_src/ft_shim.c` +
+  `vendor/gui/build/libraylib.a` + `vendor/gui/build/libfreetype.a`(M3 合流起)。
 
 ## 门禁与活样例
 
-- 阶梯 `sh tests/gui/run.sh`(30 夹具:s1–s26 + e8 语料 22 件);`ci.sh [8/9]` 挂载。
-- 示例:`examples/todo`(键入/列表/空态全链)、`gui_counter`(最小活模型)、
-  `gui_calc`(全场景断言)、`gui_cjk`(中文渲染);各目录 `run.sh` 直跑,
-  `--run` 开真窗口。
+- 阶梯 `sh tests/gui/run.sh`(s1–s28 + e8 语料);`ci.sh [8/9]` 挂载。
+- 示例:`examples/todo`(键入/列表/空态全链)、`gui_counter`(最小活模型/声明式
+  中文示范)、`gui_calc`(全场景断言)、`gui_cjk`(直绘中文渲染);各目录 `run.sh`
+  直跑,`--run` 开真窗口。
 
 ## 分层与稳定口径
 

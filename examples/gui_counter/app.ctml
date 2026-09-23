@@ -1,7 +1,7 @@
-// 注:窗口文本用 ASCII——Clay TEXT 走默认字体,无 CJK 字形(中文渲染见 examples/gui_cjk)
+// 窗口文本走 FreeType 纹理缓存(M3 合流后声明式路径 CJK 一等);直绘路径见 examples/gui_cjk
 view Counter {
   <vbox class="root">
-    <label>count: {count}</label>
+    <label>计数: {count}</label>
     <button class="btn" on:click={inc}>+1</button>
     <button class="btn-danger" on:click={clear}>clear</button>
   </vbox>

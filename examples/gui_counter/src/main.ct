@@ -55,15 +55,15 @@ fn main() -> I32 {
             |name| act_counter(name, m),
             |k| k,
             |t, act, key| {
-                d_expect_text(t, "count: " + m.count.to_string())
+                d_expect_text(t, "计数: " + m.count.to_string())
                 act(d_click(t, "inc"))
                 act(d_click(t, "inc"))
                 act(d_click(t, "inc"))
                 d_frame(t, |buf| buf.push(m.count.to_string()))
-                d_expect_text(t, "count: " + m.count.to_string())
+                d_expect_text(t, "计数: " + m.count.to_string())
                 act(d_click(t, "clear"))
                 d_frame(t, |buf| buf.push(m.count.to_string()))
-                d_expect_text(t, "count: 0")
+                d_expect_text(t, "计数: 0")
             })
         println("CTRON_GUI_STATE count=" + m.count.to_string())
         return rc

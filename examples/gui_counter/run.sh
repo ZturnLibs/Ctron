@@ -36,7 +36,7 @@ CTRON_GUI_HEADLESS=1 "$T/gui_counter.bin"
 # 2) 状态恢复往返(W4 裁决 1A):env 注入 count=7 → 首帧即 7 → 脚本 +3 → 快照回传 10
 #    (恢复值 7 正确 + 动作生效 = 双重验证)
 OUT=$(CTRON_GUI_STATE="count=7" CTRON_GUI_HEADLESS=1 "$T/gui_counter.bin" | grep "CTRON_GUI_STATE")
-# 恢复正确性由脚本内部断言背书(首帧 "count: 7" ✓,+3 → "count: 10" ✓,失败即 panic 无快照行)
+# 恢复正确性由脚本内部断言背书(首帧 "计数: 7" ✓,+3 → "计数: 10" ✓,失败即 panic 无快照行)
 echo "$OUT" | grep -q "count=0" || { echo "gui_counter: 状态恢复往返失败: $OUT" >&2; exit 1; }
 echo "gui_counter: 状态恢复往返 OK($OUT)"
 
