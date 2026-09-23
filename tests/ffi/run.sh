@@ -32,6 +32,7 @@ for d in "$DIR"/*/; do
     if [ ! -d "$d/src" ]; then continue; fi
     [ "$name" = "link_math" ] && continue  # #[link] 面由下方 link_math 专道驱动(无 c_src)
     [ "$name" = "pkgconf" ] && continue   # pkg-config 解析面由下方 pkgconf 专道驱动(假 .pc,不可真链)
+    [ "$name" = "err_wrap" ] && continue  # std.ffi 包装面由下方 err_wrap 专道驱动(须 CTRON_STDPATH)
     if [ ! -d "$d/c_src" ]; then
         # 纯 libc 夹具(无 c_src):emit → cc → 运行(errno_basics 等)
         e0="$d/src/main.ct"
@@ -165,6 +166,21 @@ if [ -d "$pcd/src" ]; then
     else
         echo "  [ok] pkgconf(pkg-config 不在册,跳过解析断言)"
         pass=$((pass + 1))
+    fi
+fi
+
+# ---- err_wrap:std.ffi Result 包装(std 路径 + 编译通道) ----
+ewd="$DIR/err_wrap"
+if [ -d "$ewd/src" ]; then
+    e="$ewd/src/main.ct"
+    if CTRON_STDPATH="$ROOT/std" "$EMIT" run "$e" > "$T/ew.c" 2>"$T/ew.emiterr" \
+       && cc -O1 -w -o "$T/ew.bin" "$T/ew.c" "$ROOT"/std/ffi/c_src/*.c 2>"$T/ew.ccerr" \
+       && "$T/ew.bin" run "$e" > "$T/ew.out" 2>&1; then
+        echo "  [ok] err_wrap(std.ffi sys_result Ok/Err 双臂 + strerror 深拷)"
+        pass=$((pass + 1))
+    else
+        echo "  [FAIL] err_wrap — $(head -1 "$T/ew.emiterr" 2>/dev/null)$(head -1 "$T/ew.ccerr" 2>/dev/null)$(head -c 120 "$T/ew.out" 2>/dev/null)"
+        fail=$((fail + 1))
     fi
 fi
 

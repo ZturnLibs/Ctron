@@ -1,0 +1,42 @@
+// tests/ffi/err_wrap —— std.ffi errno→Result 深层包装(§9.6 v0.9)
+// 承诺:sys_result 把 "rc + errno" 双值惯例折叠成 Result[I64, Str]——
+// rc ≥ 0 → Ok(rc);rc < 0 → Err(err_str(errno()))(strerror 深拷消息)。
+// 通道:编译(bin run=编译执行)。解释桥 Str 返回截断(E3 在册)+
+// seed 桥 close 回转缺口为预存,非本夹具口径。
+use std.ffi.{sys_result, err_str}
+
+#[trusted]
+extern "c" fn dup(fd: I32) -> I32
+
+#[trusted]
+extern "c" fn close(fd: I32) -> I32
+
+test "dup success folds into Ok(fd)" {
+    let fd = dup(0)
+    assert(fd >= 0)
+    match sys_result(fd) {
+        Ok(v) => {
+            assert_eq(v, fd)
+        }
+        Err(m) => {
+            assert_eq(m.len, -1)
+        }
+    }
+    close(fd)
+}
+
+test "close(-1) folds into Err with strerror message" {
+    let r = close(-1)
+    assert_eq(r, -1)
+    assert_eq(errno(), 9)
+    let m9 = err_str(9)
+    assert(m9.len > 0)
+    match sys_result(-1) {
+        Err(m) => {
+            assert_eq(m.len, m9.len)
+        }
+        Ok(v) => {
+            assert_eq(v, -999)
+        }
+    }
+}
