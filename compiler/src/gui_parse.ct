@@ -661,7 +661,7 @@ fn gui_ck_color(v: Str, gdiags: List[Str]) -> I32 {
 }
 
 fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
-    // 白名单对齐域包 rt_emit 认领面(std/gui.ct):容器/叶子/包装元素
+    // 白名单对齐域包 rt_emit 认领面(gui.ct):容器/叶子/包装元素
     if tag == "vbox" {
         return 0
     }
@@ -1084,7 +1084,7 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
     return 0
 }
 
-// ==================== SL-7β1:编译期骨架解析(镜像 std/gui.ct gt_parse)====================
+// ==================== SL-7β1:编译期骨架解析(镜像 gui.ct gt_parse)====================
 // GuiBlock token 流 → GuiTree 15 字段平行表。与运行时 gt_parse 的树等价由
 // s22_sk_equiv 夹具双端差分锁定(编译器 dump vs 域包 sk_dump)。语义镜像:
 // 节点 id = push 序;when = 带旗容器(cond 名自持);each 节点 npre=列表名 nbid=itemvar;
@@ -1500,7 +1500,7 @@ fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[S
     return 0
 }
 
-// 骨架表倾倒(格式与域包 std/gui.ct sk_dump 逐字节一致,双端差分用;空串以 - 表示)
+// 骨架表倾倒(格式与域包 gui.ct sk_dump 逐字节一致,双端差分用;空串以 - 表示)
 fn gui_sk_dump_all(file: List[Str]) -> I32 {
     var ntag = List[Str]()
     var nflag = List[Str]()

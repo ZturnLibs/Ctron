@@ -422,7 +422,7 @@ pub fn qval(entries: List[List[Str]], path: Str) -> Str {
 // 发射面结构(h) 族:emit 的 Result/Option union 载荷槽 32 位——Ok(I64) 截断
 //   /Ok(F64) 错值(2^63-1 读回 -1 实证;Err-Str 与 Bool 载荷绿),故跨模块
 //   数值消费走 JNum/JReal 结构通道(struct 标量字段 + plain 标量 getter,
-//   std/http parse.ct getter 面 prior art),Result 面 jget_* 留同模块/
+//   http parse.ct getter 面 prior art),Result 面 jget_* 留同模块/
 //   解释口径与 Err 载荷原文面。消费速查:值 jv_*;kind jk_*(返回 "ok" 或
 //   kind 段);结构面 jnum_i64/jreal_f64 + jn_k/jn_v/jr_k/jr_v。
 

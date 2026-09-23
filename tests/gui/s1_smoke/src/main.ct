@@ -1,7 +1,7 @@
 // tests/gui/s1_smoke —— GUI 泳道 S1:raylib 绑定冒烟(计划 2026-09-16-gui-mvp-ladder S1)
 // 开窗 → 清屏 → 画 "ctron gui" → 300 帧后 rc=0 退出;自动化验 rc + 帧计数。
 // 窗口运行为交互验收(run.sh 默认只构建链接;--run 才启动窗口)。
-// raylib 绑定引用 std/gui/bind/raylib.ct 的同一组 extern(夹具内自带,S1 阶段不入库编译)。
+// raylib 绑定引用 gui/bind/raylib.ct 的同一组 extern(夹具内自带,S1 阶段不入库编译)。
 
 #[trusted]
 extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void

@@ -1,4 +1,4 @@
-// tests/db/corpus/g_dsn.ct —— std/db 门面雏形:StdDb 能力 token + DSN 解析
+// tests/db/corpus/g_dsn.ct —— db 门面雏形:StdDb 能力 token + DSN 解析
 // (P5-C;§12.1 门面首参 db: StdDb 贯穿)。postgres://user:pass@host:port/db
 // 文法面:全形/缺省 5432/pass 或 name 可空/两前缀;负例 = 坏 scheme/缺
 // user/坏 port/空 port 段/name 内 '/'。百分号编码与 IPv6 字面量 v0 不支援

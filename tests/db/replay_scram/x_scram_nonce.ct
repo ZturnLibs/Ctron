@@ -1,6 +1,6 @@
 // tests/db/replay_scram/x_scram_nonce.ct —— SCRAM 客户端 nonce 真熵面
 // (x_ = 仅 emit 臂入计;interp 无 extern 运行时,x_uuid_live 同款结构性
-// 登记;链 std/db/c_src/ctron_dbpg.c + ctron_entropy.c——ctron_dbpg_entropy
+// 登记;链 db/c_src/ctron_dbpg.c + ctron_entropy.c——ctron_dbpg_entropy
 // 为 view 胞形别名转发,链接须并链熵垫片)。emit 臂专用。
 use db.pg.{pg_scram_nonce, pg_scram_nonce_from}
 

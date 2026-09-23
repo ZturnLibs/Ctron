@@ -1,5 +1,5 @@
 // tests/db/corpus/x_pg_fd_session.ct —— PG fd 真源**全会话**钉(P5-F;
-// emit 臂专面,x_ 前缀 = interp 无 extern 运行时,链 std/db/c_src/
+// emit 臂专面,x_ 前缀 = interp 无 extern 运行时,链 db/c_src/
 // ctron_dbpg.c)。socketpair 注入真源,服务端字节 = 夹具同源帧
 // (replay_scram/scram_ok i=1 改制向量 + replay_fixtures/query_rows +
 // replay_scram/ext_query + tx_cycle 手工协议构造;帧字节逐字相同):

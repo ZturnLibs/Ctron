@@ -7,7 +7,7 @@
 // ② 直调 bind.ct extern 而非 trait 方法 —— 方法调用发射缺口
 //    (t_m(recv,) 尾逗号 + 方法体不发射,最小复现登记在案);
 //    trait 门面本身 sem 全绿(chk decls=8),发射面补齐后可切换 net.now_ns()。
-// ③ use 括号形态解析 std/net.ct(点分 `use net.Net` 解析 std/net/Net.ct,
+// ③ use 括号形态解析 net.ct(点分 `use net.Net` 解析 net/Net.ct,
 //    目录态布局,非本仓形态);Net_probe 请求即验 pub 可见性,随合并带出 extern 面。
 use net.{Net_probe}
 use net.bind.{ctron_net_last_errno}

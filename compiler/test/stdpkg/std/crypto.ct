@@ -716,7 +716,7 @@ test "sha1 rfc 3174 vectors" {
 // ---- 二进制面(P5-B;SCRAM-SHA-256 前置,RFC 2104/8018)----
 // 容器决策:字节 = List[I32](值域 0..255)。Str 不可承载任意字节(C8 约束:
 // 解释面 Str 仅源码字面量切片可构,std/enc 头注同款);&I64[] lane 是 FFI
-// 形(std/net bind),纯 Ctron 内部交换一律 List[I32](std/enc b64_decode
+// 形(net bind),纯 Ctron 内部交换一律 List[I32](std/enc b64_decode
 // 字节构建同款,双臂实证绿)。
 // 实现注:不复用/不改 sha256_hex 的内联形式(C17 宿主敏感性,P5-A 登记:
 // 对既有 decl 扰动即 segv)——压缩核独立成 struct 态形,兼得 HMAC 中间态

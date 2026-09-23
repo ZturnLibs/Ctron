@@ -1,5 +1,5 @@
 // examples/gui_counter —— L1 域包形态(SL-3 切包)
-// UI 在 app.ctml(view Counter);逻辑在此;平台(解析/布局/命中/循环)全部在 std/gui
+// UI 在 app.ctml(view Counter);逻辑在此;平台(解析/布局/命中/循环)全部在 gui
 // 域包——`use std.gui` 一行,用户树零 #[trusted]、零解析器、零事件循环。
 // 双口径:CTRON_GUI_HEADLESS=1 → 域包 test()(注入断言);缺省 → run_d(窗口 + 热重载环)。
 // 状态恢复(W4 裁决 1A):CTRON_GUI_STATE=count=N 环境注入,退出回传快照。

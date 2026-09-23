@@ -1,12 +1,12 @@
 // std/uuid.ct —— RFC 9562 UUID(v4 真熵 / v7 unix_ms 前缀;§12 纯 Ctron 驱动)
 // since: std-0.5 stability: experimental
-// 口径:零 std 依赖叶(不 use 任何 std 模块——加载器严格互斥树,std/db 将同时
+// 口径:零 std 依赖叶(不 use 任何 std 模块——加载器严格互斥树,db 将同时
 // 消费 uuid 与 crypto,uuid 用 crypto 即菱形 E5020);位装配以纯算术(div/mod
 // 掩码合成,字节值域 0..255 内无 (i) 族乘法风险)。
-// 熵源:ctron_entropy_fill extern 垫片(std/db/c_src/ctron_entropy.c;
+// 熵源:ctron_entropy_fill extern 垫片(db/c_src/ctron_entropy.c;
 // getrandom(Linux)/arc4random_buf(Apple·BSD)/getrandom 失败回落
-// /dev/urandom)。垫片放 std/db/c_src 的理由:P5 db 泳道自有 c_src 邻位
-// (ctron_net.c 邻形),uuid 是 db 消费面、而 std/net 模块面不得被 db 依赖
+// /dev/urandom)。垫片放 db/c_src 的理由:P5 db 泳道自有 c_src 邻位
+// (ctron_net.c 邻形),uuid 是 db 消费面、而 net 模块面不得被 db 依赖
 // (门面 db: StdDb 贯穿口径),故不随 net。
 // interp 口径无 extern 运行时:uuid_v4()/uuid_v7() 真熵面仅发射臂可跑
 // (tests/net 同款);纯形 uuid_v4_from/uuid_v7_from/format/parse 双臂可测。

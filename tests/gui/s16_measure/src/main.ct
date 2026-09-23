@@ -1,4 +1,4 @@
-// tests/gui/s16_measure —— M3:FreeType 实测宽度驱动 Clay 布局(std/gui 0.55 桩 → 真实字形 advance)
+// tests/gui/s16_measure —— M3:FreeType 实测宽度驱动 Clay 布局(gui 0.55 桩 → 真实字形 advance)
 // 断言口径:TEXT 命令盒宽 == gui_ft_measure 实测(×100 整数),且 ≠ 0.55 启发式——证桥已接管
 // shim 码表沿 s3:dir 0=左右 1=上下;mode 0=fit 1=grow 2=fixed;命令 1=TEXT 2=RECTANGLE
 

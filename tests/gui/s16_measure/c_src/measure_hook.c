@@ -1,5 +1,5 @@
-// measure_hook.c —— FreeType 实测宽度接入 Clay(s16;std/gui 的 0.55 系数桩的升级证明)
-// 口径:fixture 本地重设 Clay_SetMeasureTextFunction,不动共享 std/gui;上游合并留后续
+// measure_hook.c —— FreeType 实测宽度接入 Clay(s16;gui 的 0.55 系数桩的升级证明)
+// 口径:fixture 本地重设 Clay_SetMeasureTextFunction,不动共享 gui;上游合并留后续
 #include <clay.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H

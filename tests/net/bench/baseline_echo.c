@@ -1,6 +1,6 @@
 /* baseline_echo.c —— 手写 C thread-per-connection echo 基线(Task 8,P1-E 吞吐门禁)
  * 结构镜像 examples/ctecho,差异仅语言/门面:同垫片默认值(§11.3,参考
- * std/net/c_src/ctron_net.c)——listen 置 SO_REUSEADDR,accept/connect 置
+ * net/c_src/ctron_net.c)——listen 置 SO_REUSEADDR,accept/connect 置
  * TCP_NODELAY + SO_KEEPALIVE;每 accept 一 pthread(read/write 循环,4KB 栈上缓冲)。
  *
  * 用法:

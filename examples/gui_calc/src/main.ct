@@ -1,6 +1,6 @@
 // examples/gui_calc/src/main.ct —— L1 域包形态(SL-4 切包)
 // 用户树 = app.ctml + 本文件:十进制字符串算术 + 状态机 + 装配(958 行,原 1958)。
-// 平台(解析/布局/命中/循环/extern)全部在 std/gui 域包;测试走域包 test()(headless)。
+// 平台(解析/布局/命中/循环/extern)全部在 gui 域包;测试走域包 test()(headless)。
 // 已知配方约束(SL-0.6 前):闭包体保持单调用(控制流提具名 fn);批量点击走 click_rep。
 
 use gui.{run_kb_d, test, d_click, d_frame, d_expect_text, d_press_key}

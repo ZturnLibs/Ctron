@@ -1,6 +1,6 @@
 // tests/gui/s8_cjk —— GUI 泳道 M3 第一片:FreeType 中文渲染(计划 M3-prep)
 // headless 断言:CJK 字体加载 + UTF-8 行渲染位图非空(不依赖窗口);
-// --run 变体开窗绘制(交互验收)。字体路径列表内置于域库 shim(std/gui/c_src/ft_shim.c)。
+// --run 变体开窗绘制(交互验收)。字体路径列表内置于域库 shim(gui/c_src/ft_shim.c)。
 // W6 换面(2026-09-19):探针承接域库命名——ft_buf_w/h/nonempty → ft_last_w/ft_last_h/
 // ft_probe_nonzero(非空断言改计数 >0 口径);链接改域库单一真源,断言语义零变化。
 

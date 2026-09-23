@@ -1,5 +1,5 @@
 // examples/todo —— 规范 §10 Todo 演绎,L1 域包形态(use gui 收敛,SL-5 门面)
-// 平台(解析/布局/命中/事件循环)全部在 std/gui 域包;用户树 = 数据 + 动作 + 视图。
+// 平台(解析/布局/命中/事件循环)全部在 gui 域包;用户树 = 数据 + 动作 + 视图。
 // 双口径:CTRON_GUI_HEADLESS=1 → 域包 test() 注入断言(headless 全自动);
 //   缺省/--run → run_kb 真窗口(键入 + 点击)。
 // 差集(登记):per-row checkbox/逐项删除 = 实例索引分发 L1 缺口,del 末项替代;

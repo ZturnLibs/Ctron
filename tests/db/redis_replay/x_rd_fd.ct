@@ -1,6 +1,6 @@
 // tests/db/redis_replay/x_rd_fd.ct —— Redis fd 真源钉(P5-F 修订真分片;
 // emit 臂专面,x_ 前缀 = interp 无 extern 运行时,链
-// std/db/c_src/ctron_dbredis.c)。四钉:
+// db/c_src/ctron_dbredis.c)。四钉:
 //   ① **真 TCP 分片跨两次 recv(P5-F 修订)**:bulk 数据段分两片,片 1
 //      ($5\r\nhe)后 redis_recv_fd 返 **incomplete 面(rc 0/err 0/used 0/
 //      kind 0)**,片 2 到齐后续调产整包 —— 回归钉:数据段越界曾误判

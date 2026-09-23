@@ -1,6 +1,6 @@
 // tests/gui/s17_bidi_layout —— M3 整合:bidi run 切分(SheenBidi FFI)→ Clay 定位排布
 // "Hi سلام" 逻辑序两段 run(Latin level 0 / Arabic level 1);LTR 基向 visual 序 = 逻辑序,
-// hbox 顺序排布即视觉序。宽度确定性:std/gui 启发式 measure(bytes×size×0.55)两侧同式可预测,
+// hbox 顺序排布即视觉序。宽度确定性:gui 启发式 measure(bytes×size×0.55)两侧同式可预测,
 // Ctron 侧自算落点断言(无需开窗)。shim 码表沿 s3:命令 1=TEXT;dir 0=左右
 
 #[trusted]

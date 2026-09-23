@@ -1,5 +1,5 @@
 // reload_util.c —— w4_ctml_reload 夹具本地:毫秒 mtime / sleep / 就绪 touch
-// 命名 w4r_ 前缀防与共享 std/gui 撞车(gui_clear 已在 std/gui/c_src/ctron_gui.c 定义,不重复)
+// 命名 w4r_ 前缀防与共享 gui 撞车(gui_clear 已在 gui/c_src/ctron_gui.c 定义,不重复)
 #include <sys/stat.h>
 #include <time.h>
 #include <stdio.h>

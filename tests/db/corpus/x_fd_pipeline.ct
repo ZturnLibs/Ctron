@@ -1,6 +1,6 @@
 // tests/db/corpus/x_fd_pipeline.ct —— fd 真源管线帧钉 + fill 持态 + send-all
 // (P5-C 评审修正钉;emit 臂专面,x_ 前缀 = interp 无 extern 运行时,链
-// std/db/c_src/ctron_dbpg.c)。三钉:
+// db/c_src/ctron_dbpg.c)。三钉:
 //   ① 管线帧 mtype:R(AuthOk)+Z 一包到齐,两次取帧类型各自正确 ——
 //      回归钉:mtype 曾在 leftover 前移之后读(缺陷 2),一包场景 f1
 //      会返回下一帧类型字节;
