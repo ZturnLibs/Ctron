@@ -631,7 +631,9 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
                 if !is_input {
                     if tag != "vbox" {
                         if tag != "hbox" {
-                            panic("gui: 未知元素 " + tag)
+                            if tag != "spacer" {
+                                panic("gui: 未知元素 " + tag)
+                            }
                         }
                     }
                 }
@@ -685,6 +687,22 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
         t.nes.push(estart)
         t.nec.push(t.ev_name.len - estart)
         t.nflag.push("")
+        return id
+    }
+    if byte_at(src, cur.load()) == 47 {
+        // 自闭合空元素(spacer 等,§4.2 内建集):attrs 后 "/>" 即收口无子树
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(listname)
+        t.nbid.push(itemvar)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push(gt_cond_pick(conds, cstart))
         return id
     }
     glit(src, cur, 62)

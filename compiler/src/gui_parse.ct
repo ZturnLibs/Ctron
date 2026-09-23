@@ -582,6 +582,9 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
     if tag == "input" {
         return 0
     }
+    if tag == "spacer" {
+        return 0
+    }
     gdiags.push("E8100: 未声明标签 " + tag)
     return -1
 }
@@ -1126,6 +1129,27 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
         nec.push(ev_name.len - estart)
         nflag.push("")
         return id
+    }
+    // 自闭合空元素(spacer 等,§4.2 内建集):attrs 后遇 "/>" 即收口无子树
+    if cur.load() < tks.len {
+        var sk1: Str = tks[cur.load()]
+        if sk1.len == 1 {
+            if byte_at(sk1, 0) == 47 {
+                gui_sk_word(tks, cur)
+                gui_sk_word(tks, cur)
+                ntag.push(tag)
+                ncls.push(out4[0])
+                npre.push(listname)
+                nbid.push(itemvar)
+                npost.push("")
+                nfc.push(-1)
+                ns.push(-1)
+                nes.push(estart)
+                nec.push(ev_name.len - estart)
+                nflag.push(out4[1])
+                return id
+            }
+        }
     }
     gui_sk_word(tks, cur)
     if is_leaf {

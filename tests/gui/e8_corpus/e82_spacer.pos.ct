@@ -1,0 +1,15 @@
+// gui expect: OK —— spacer 空元素(§4.2 内建集):自闭合 + class 定尺寸,布局占位
+// 渲染语义:rt_emit 容器分支空子树(空盒),v10 终锚 todo.ctml 行内占位依赖此元素
+fn noop() {
+}
+view P {
+  <vbox class="root">
+    <label class="row">above</label>
+    <spacer class="gap"/>
+    <button class="btn" on:click={noop}>go</button>
+  </vbox>
+}
+style root { direction: column gap: 4 }
+style row { fg: "#ffffff" }
+style gap { h: 24 }
+style btn { bg: "#2563eb" }
