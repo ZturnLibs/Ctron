@@ -25,4 +25,11 @@ struct bits {
     int rest;
 };
 
+/* union:cimport 以 U64 字段缓冲承载(8 补齐);raw_len 与 C sizeof 互证 */
+typedef union {
+    double d;
+    long l;
+    int i;
+} Vals;
+
 #endif

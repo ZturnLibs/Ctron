@@ -610,8 +610,11 @@ fn cimp_struct(item: Str, tds: List[Str]) -> Str {
         if (ht[hq] == "enum") { hasenum = true }
         hq += 1
     }
-    if hasunion || hasenum {
-        return "// cimport: 跳过(union/enum): " + item
+    if hasunion {
+        return cimp_union(item, body, tail, tds)
+    }
+    if hasenum {
+        return "// cimport: 跳过(enum 变体形态,常量 enum 走枚举路径): " + item
     }
     // 名字:尾词(tail 的最后一个标识符);无名(typedef 前置名不在尾)→ 跳过
     var tt = cimp_toks(tail)
@@ -654,6 +657,101 @@ fn cimp_struct(item: Str, tds: List[Str]) -> Str {
     }
     out = out + "}"
     return out
+}
+
+// union → U64 字段字节缓冲:Ctron 无 union 类型;布局以"最大成员大小"向上
+// 8 补齐的 U64 字段序列承载,成员映射表落注释,raw_len 助手供 C 侧 sizeof
+// 互证(C 大小 ≤ 缓冲 < C 大小 + 8)。任一成员类型不可映射 → 整构跳过(不
+// 静默)。口径:C 侧分配 + 指针传递(缓冲对齐 8 ≥ 常见成员对齐;按值传
+// union 非支持口径)。定长数组 struct 字段现发射为塌缩(int32),故不用
+// U8[N] 缓冲形态。
+fn cimp_union(item: Str, body: Str, tail: Str, tds: List[Str]) -> Str {
+    var tt = cimp_toks(tail)
+    if tt.len == 0 {
+        return "// cimport: 跳过(匿名 union): " + item
+    }
+    var unm = tt[tt.len - 1]
+    if unm == ";" && tt.len > 1 {
+        unm = tt[tt.len - 2]
+    }
+    if !cimp_is_ident_start(byte_at(unm, 0)) {
+        return "// cimport: 跳过(匿名 union): " + item
+    }
+    // 成员切分 ';';pa = "名: Ctron型",名取首个 ':' 前
+    var names = List[Str]()
+    var szs = List[I32]()
+    var bad = ""
+    var cur = ""
+    var i: I32 = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 59 {
+            var ftxt = cimp_trim(cur)
+            if ftxt.len > 0 {
+                var pa = cimp_param(ftxt, "m" + i.to_string(), tds)
+                var cp = -1
+                var ci: I32 = 0
+                while ci < pa.len {
+                    if byte_at(pa, ci) == 58 {
+                        cp = ci
+                        ci = pa.len
+                    }
+                    ci += 1
+                }
+                if pa.len == 0 || cp < 0 {
+                    bad = ftxt
+                } else {
+                    var mn = cimp_trim(byte_slice(pa, 0, cp))
+                    var mt = cimp_trim(byte_slice(pa, cp + 1, pa.len))
+                    var ms = cimp_ctron_size(mt)
+                    if ms == 0 {
+                        bad = ftxt
+                    } else {
+                        names.push(mn + " : " + mt + " (" + ms.to_string() + "B)")
+                        szs.push(ms)
+                    }
+                }
+            }
+            cur = ""
+        } else {
+            cur = cur + byte_slice(body, i, i + 1)
+        }
+        i += 1
+    }
+    if bad.len > 0 || names.len == 0 {
+        return "// cimport: 跳过(union 成员类型不可映射): " + item
+    }
+    var mx: I32 = 0
+    var mi: I32 = 0
+    var doc = ""
+    while mi < names.len {
+        if szs[mi] > mx {
+            mx = szs[mi]
+        }
+        doc = doc + "//   ." + names[mi] + "\n"
+        mi += 1
+    }
+    var nw: I32 = (mx + 7) / 8
+    var out = "#[repr(c)]\nstruct " + unm + " \{\n"
+    out = out + "    // union 字节缓冲(U64 序列,8 补齐;C 侧分配 + 指针传递口径)\n"
+    var wi: I32 = 0
+    while wi < nw {
+        out = out + "    var w" + wi.to_string() + ": U64\n"
+        wi += 1
+    }
+    out = out + "}\n"
+    out = out + doc
+    out = out + "pub fn " + unm + "_raw_len() -> I64 \{ return " + (nw * 8).to_string() + " }"
+    return out
+}
+
+// Ctron 标量型大小表(sizeof 口径,LP64):未知型 → 0(上层判 0 即整构跳过)
+fn cimp_ctron_size(ty: Str) -> I32 {
+    if ty == "I8" || ty == "U8" || ty == "Bool" { return 1 }
+    if ty == "I16" || ty == "U16" { return 2 }
+    if ty == "I32" || ty == "U32" { return 4 }
+    if ty == "I64" || ty == "U64" || ty == "F64" || ty == "USize" || ty == "Str" { return 8 }
+    return 0
 }
 
 // enum typedef 名探测(tail 尾词;无 → "")
