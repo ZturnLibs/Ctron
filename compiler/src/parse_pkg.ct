@@ -210,7 +210,7 @@ fn pkg_std_root(dir: Str) -> Str {
 }
 
 fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -> List[Str] {
-    return pkg_load_use_done(file, dir, stack, List[Str](), diags)
+    return pkg_load_use_done(file, dir, stack, List[Str](), diags, true)
 }
 
 // 名槽 decl 种类(与 E5030 dup 检查面一致;spec §4.2 P1b 精化口径)
@@ -242,7 +242,7 @@ fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[S
 
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
-fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str]) -> List[Str] {
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
@@ -331,8 +331,14 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
             }
-            if in_list(done, mpath) {
-                // 已合并(菱形/共享):剔除本 Use 重扫,零重复
+            // 已合并模块重入,分两半(2026-09-23 P1b merge-through 收紧):
+            // ① 递归展开内部:保持旧 done-skip —— 中层 mf 不需要已完成模块的声明
+            //    (符号在消费级平面视图解析;补进 mf 反而在消费级 dup 撞名,smoke 3n 实证)
+            // ② 顶层消费方 use:补并 —— done-skip 会把直连请求一并吞掉(门面先行合并
+            //    同一模块时 keep 集不同 → 请求符号缺失:轻则 E2020,重则 emit 缺 extern
+            //    声明);照常重载走选择性合并,已在视图的符号于 dup 处 redo 静默跳过
+            var isdone = in_list(done, mpath)
+            if isdone && !top {
                 var nm3 = mk("File")
                 var j3: I32 = 1
                 while j3 < out.len {
@@ -345,7 +351,10 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                 i = 1
                 continue
             }
-            if in_list(stack, mpath) {
+            var redo = isdone && top
+            if !isdone && in_list(stack, mpath) {
+                // stack 为单调"曾展开集"(不弹栈);真环在首次展开(未 done)即被拦,
+                // 已 done 者必为干净完成的合并,顶层重入补并不可能成环 → done 免检
                 diag1(diags, "E5020.circ", "", mpath)
                 return out
             }
@@ -429,7 +438,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         }
                         var stack2 = stack
                         stack2.push(mpath)
-                        mf = pkg_load_use_done(mf, dir, stack2, done, diags)
+                        mf = pkg_load_use_done(mf, dir, stack2, done, diags, false)
                         if diags.len > 0 {
                             return out
                         }
@@ -550,6 +559,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                     j5 += 1
                                 }
                                 if dup {
+                                    if redo {
+                                        // 重入补并:符号已在视图(前次合并并入)→ 跳过即免重
+                                        j4 += 1
+                                        continue
+                                    }
                                     // E5030:同名 decl 曾"首个胜出"静默遮蔽 → 现拦截(报名用改用名)
                                     diag1(diags, "E5030", "", iname)
                                     return out
@@ -572,7 +586,9 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         }
                         out = merged
                         i = 0
-                        done.push(mpath)
+                        if !redo {
+                            done.push(mpath)
+                        }
                     }
                 None => {
                     if !isstd {
