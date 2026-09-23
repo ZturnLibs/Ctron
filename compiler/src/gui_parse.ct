@@ -683,6 +683,9 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
     if tag == "input" {
         return 0
     }
+    if tag == "checkbox" {
+        return 0
+    }
     if tag == "spacer" {
         return 0
     }
@@ -734,6 +737,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     var has_cond: Bool = false
     var has_bind: Bool = false
     var has_in: Bool = false
+    var has_checked: Bool = false
     var selfc: Bool = false
     while cur.load() < tks.len {
         var pk: Str = tks[cur.load()]
@@ -868,6 +872,13 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                         bad = -1
                     }
                 }
+                if an == "checked" {
+                    has_checked = true
+                    if !brform {
+                        gdiags.push("E8110: checked 须花括号绑定名形态,得 " + av)
+                        bad = -1
+                    }
+                }
             }
         }
     }
@@ -880,6 +891,12 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     if tag == "input" {
         if !has_bind {
             gdiags.push("E8100: input 缺 bind")
+            bad = -1
+        }
+    }
+    if tag == "checkbox" {
+        if !has_checked {
+            gdiags.push("E8100: checkbox 缺 checked")
             bad = -1
         }
     }
@@ -1262,6 +1279,10 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             if an == "bind" {
                 out4[2] = av
             }
+            if an == "checked" {
+                // checkbox 选中态表达式 → nbid 槽(镜像 input bind)
+                out4[2] = av
+            }
             if an == "placeholder" {
                 out4[3] = av
             }
@@ -1283,6 +1304,10 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
     var is_input: Bool = false
     if tag == "input" {
         is_input = true
+    }
+    var is_check: Bool = false
+    if tag == "checkbox" {
+        is_check = true
     }
     var itemvar: Str = ""
     var listname: Str = ""
@@ -1321,6 +1346,23 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
         nes.push(estart)
         nec.push(ev_name.len - estart)
         nflag.push("")
+        return id
+    }
+    if is_check {
+        // 自闭合:<checkbox checked={表达式} ... />;checked → nbid;登记可点击
+        gui_sk_word(tks, cur)
+        gui_sk_word(tks, cur)
+        ntag.push(tag)
+        ncls.push(out4[0])
+        npre.push("")
+        nbid.push(out4[2])
+        npost.push("")
+        nfc.push(-1)
+        ns.push(-1)
+        nes.push(estart)
+        nec.push(ev_name.len - estart)
+        nflag.push("")
+        btns.push(id)
         return id
     }
     // 自闭合空元素(spacer 等,§4.2 内建集):attrs 后遇 "/>" 即收口无子树

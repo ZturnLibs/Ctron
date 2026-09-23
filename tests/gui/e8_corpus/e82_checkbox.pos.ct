@@ -1,0 +1,12 @@
+// gui expect: OK —— checkbox 空元素(P-W1):自闭合 + checked 必填 + on:click 名单分发
+// 选中态由 checked 槽逐帧求值(简单名走通道/表达式走求值器);渲染 accent 底+x 文本
+fn toggle() {
+}
+view P {
+  <vbox class="root">
+    <checkbox class="ck" checked={done} on:click={toggle}/>
+    <checkbox class="ck" checked={items.len > 0}/>
+  </vbox>
+}
+style root { direction: column gap: 8 }
+style ck { w: 28 h: 28 }

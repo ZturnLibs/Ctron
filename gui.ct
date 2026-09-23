@@ -513,6 +513,10 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             if an == "bind" {
                 binds.push(av)
             }
+            if an == "checked" {
+                // checkbox 选中态表达式(值形态同 bind 槽;SL-8b 求值器消费)
+                binds.push(av)
+            }
             if an == "placeholder" {
                 strs.push(av)
             }
@@ -625,14 +629,20 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     if tag == "input" {
         is_input = true
     }
+    var is_check: Bool = false
+    if tag == "checkbox" {
+        is_check = true
+    }
     if !is_leaf {
         if !is_when {
             if !is_each {
                 if !is_input {
-                    if tag != "vbox" {
-                        if tag != "hbox" {
-                            if tag != "spacer" {
-                                panic("gui: 未知元素 " + tag)
+                    if !is_check {
+                        if tag != "vbox" {
+                            if tag != "hbox" {
+                                if tag != "spacer" {
+                                    panic("gui: 未知元素 " + tag)
+                                }
                             }
                         }
                     }
@@ -687,6 +697,27 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
         t.nes.push(estart)
         t.nec.push(t.ev_name.len - estart)
         t.nflag.push("")
+        return id
+    }
+    if is_check {
+        // 自闭合:<checkbox checked={表达式} ... />;checked → nbid;登记可点击
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        var bn: Str = ""
+        if binds.len > bstart {
+            bn = binds[binds.len - 1]
+        }
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push("")
+        t.nbid.push(bn)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push("")
+        t.btns.push(id)
         return id
     }
     if byte_at(src, cur.load()) == 47 {
@@ -1065,6 +1096,23 @@ fn bxv_truth(v: Str) -> Bool {
     return v != ""
 }
 
+// checkbox 选中态真值:带型走 bxv_truth;裸串按约定(""/"0"/"false" = 假)
+fn gt_ck_truth(v: Str) -> Bool {
+    if bxv_istag(v) {
+        return bxv_truth(v)
+    }
+    if v == "" {
+        return false
+    }
+    if v == "0" {
+        return false
+    }
+    if v == "false" {
+        return false
+    }
+    return true
+}
+
 fn bxv_show(v: Str) -> Str {
     if bxv_istag(v) {
         if byte_at(v, 0) == 98 {
@@ -1363,6 +1411,36 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         gui_text(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)),
                  rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
     } else {
+        if tag == "checkbox" {
+            // 选中态:nbid 值求值(简单名走通道/表达式走求值器);P-W1 MVP
+            var ck: Bool = false
+            if t.nbid[id] != "" {
+                if gt_slot_simple(t.nbid[id]) {
+                    ck = gt_ck_truth(rt_bind_text(bind, t.nbid[id]))
+                } else {
+                    ck = bxv_truth(bxv_eval(t.nbid[id], bind))
+                }
+            }
+            var cbgv: Str = gt_cls_prop(c, "bg", "", t)
+            var cbgp: I32 = 0
+            if cbgv != "" {
+                cbgp = g_parse_color(cbgv)
+            }
+            if cbgp == 0 {
+                if ck {
+                    cbgp = g_parse_color("#2563eb")
+                } else {
+                    cbgp = g_parse_color("#3a3a44")
+                }
+            }
+            gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "28", t)),
+                    2, gs2i(gt_cls_prop(c, "h", "28", t)), cbgp)
+            if ck {
+                var cfp: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+                gui_text("x", gs2i(gt_cls_prop(c, "size", "18", t)),
+                         rt_col_r(cfp), rt_col_g(cfp), rt_col_b(cfp), 255)
+            }
+        } else {
         if tag == "label" {
             var ax: I32 = 0
             var al: Str = gt_cls_prop(c, "align", "left", t)
@@ -1398,6 +1476,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             gui_text(txt, sz, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
             var dir: I32 = 1
+            if tag == "hbox" {
+                dir = 0
+            }
             if tag == "hbox" {
                 dir = 0
             }
@@ -1439,6 +1520,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ch = t.ns[ch]
                 }
             }
+        }
         }
     }
     gui_close()

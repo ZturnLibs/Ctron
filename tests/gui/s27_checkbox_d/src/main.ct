@@ -1,0 +1,94 @@
+use gui.{test, d_click, d_frame, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte}
+
+view P {
+  <vbox class="root">
+    <checkbox class="ck" checked={done} on:click={toggle}/>
+    <label class="st">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style ck { w: 28 h: 28 }
+style st { fg: "#cccccc" h: 30 }
+
+struct Model {
+    var done: Bool
+}
+
+fn toggle() {
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "done" {
+        if m.done {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "state" {
+        if m.done {
+            buf.push("on")
+        } else {
+            buf.push("off")
+        }
+    }
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if name == "toggle" {
+        if m.done {
+            m.done = false
+        } else {
+            m.done = true
+        }
+    }
+}
+
+fn has_x() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if d_cmd_text_len(i) == 1 {
+                if d_cmd_text_byte(i, 0) == 120 {
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](Model { done: false })
+    var rc: I32 = test(src, 320, 200,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            var r0: I32 = has_x()
+            a(d_click(t, "toggle"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var r1: I32 = has_x()
+            a(d_click(t, "toggle"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var r2: I32 = has_x()
+            if r0 == 0 {
+                if r1 == 1 {
+                    if r2 == 0 {
+                        println("CK-TOGGLE-GREEN")
+                    }
+                }
+            }
+            if r0 != 0 {
+                panic("checkbox 初态应为未选中")
+            }
+            if r1 != 1 {
+                panic("checkbox 点击后应为选中")
+            }
+        })
+    return rc
+}

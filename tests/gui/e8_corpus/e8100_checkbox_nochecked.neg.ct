@@ -1,0 +1,7 @@
+// gui expect: E8100 —— checkbox 缺 checked(选中态槽必填)
+view P {
+  <vbox class="root">
+    <checkbox class="ck"/>
+  </vbox>
+}
+style root { direction: column }
