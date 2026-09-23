@@ -528,3 +528,17 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   长度域维持 redisx_uint 不变;随 docs/spec/12-db.md v0.9 批次落地,随行
   锚 = 大整数 INCR 回包钉(I64_MAX/I64_MIN 两端)。(源:P5 终审收尾波实证
   ——redis.ct:214 redisx_uint 双门 × redis.ct:390 ':' 形共用)
+
+### utf8_enc 内建双层委派分歧(2026-09-23 实证,stdpkg json 消费首踩亮)
+
+- **现象**:seed→cc_run→程序双层语境下 `utf8_enc(cp)` 返回空串(jprobe 直调
+  123/125/65 三行全空);单层 seed(`ctronc test std/json.ct` 10/10 绿)、发射臂、
+  自举臂(ctron-cc)全绿。write_json 根对象/数组恒经 utf8_enc(123)/(125) 出花括号,
+  故合并面写出半边在双层语境缺 `{}` 且行序错位(stdpkg 夹具两臂对数必分歧)。
+- **链路**:内层 eval_call.ct:269 委托宿主 `utf8_enc`;seed rt_eval.c:984 有内建;
+  双层传值槽位错位嫌疑,根因归 compiler-c 线。
+- **归因**:提交地板复现(以 HEAD compiler/src 拼装 cc_run 复刻 ctc.sh run 实证),
+  非 2026-09-23 在制 lex.ct 所致;系潜在分歧,json 写出半边消费尝试首暴露。
+- **阻塞与复位**:stdpkg 全量消费夹具的 json 写出半边(write_json/jw_*)暂缓——
+  待本分歧修复后按同款 ent→write→parse 回读夹具复位(形态已备案于 2026-09-23
+  会话记录);夹具回归 reverted(未落库,两臂逐字门禁不让红)。
