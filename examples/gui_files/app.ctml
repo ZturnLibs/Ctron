@@ -1,0 +1,36 @@
+// examples/gui_files —— 文件查看器:GUI 域包第一个消费真实 IO 数据的示例
+// 能力面:read_dir/read_file 内建 + input 受控输入 + each 列表 + when 状态 + 表达式槽
+// 差集(登记):行级点击导航 = 实例索引分发 L1 缺口,输入导航替代;IME 组词随 M3
+// 注:注释内不放花括号(发射词法)
+view Files {
+  <vbox class="root">
+    <label class="title">目录: {cwd}</label>
+    <hbox class="nav">
+      <input bind={draft} placeholder="子目录或文件名" class="fld"/>
+      <button class="btn" on:click={go}>打开</button>
+      <button class="btn2" on:click={up}>上级</button>
+    </hbox>
+    <when cond={msgon}>
+      <label class="msg">{msg}</label>
+    </when>
+    <when cond={hasprev}>
+      <label class="prev">{preview}</label>
+    </when>
+    <when cond={empty}>
+      <label class="dim">空目录</label>
+    </when>
+    <each t in={entries}>
+      <label class="row">{t}</label>
+    </each>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#eeeeee" }
+style nav { gap: 8 }
+style fld { bg: "#1f1f23" }
+style btn { bg: "#2563eb" }
+style btn2 { bg: "#c83c3c" }
+style msg { fg: "#e5a50a" }
+style prev { fg: "#9ae59a" }
+style dim { fg: "#888888" }
+style row { fg: "#cccccc" }
