@@ -1,4 +1,5 @@
 #include "rt_internal.h"
+#include <errno.h>
 #include <time.h>
 
 // rt_eval.c —— 域辅助(和类型/数组/类/并发)+ 表达式求值(C4-i)
@@ -831,6 +832,26 @@ val eval_expr(rt* R, cexpr* e) {
                 o.k = V_STR;
                 o.s = ctron_arena_strndup(R->a, sv.s + a, (size_t)(b - a));
                 return o;
+            }
+            if (!strcmp(nm, "str_from_c")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "str_from_c 实参");
+                val sv = eval_expr(R, e->elems[0]);
+                if (sv.k != V_STR) rt_abort(R, RT_ERROR, "str_from_c 目标需 Str");
+                val o = {0};
+                o.k = V_STR;
+                o.s = sv.s; // 解释器内已是 Ctron 串,恒等(发射面为 arena 深拷)
+                return o;
+            }
+            if (!strcmp(nm, "errno")) {
+                if (e->nelems != 0) rt_abort(R, RT_ERROR, "errno 无实参");
+                val o = {0};
+                o.k = V_INT;
+                o.i = (int32_t)errno;
+                return o;
+            }
+            if (!strcmp(nm, "dlopen") || !strcmp(nm, "dlclose") || !strcmp(nm, "dlsym")
+                || !strcmp(nm, "clo_handle") || !strcmp(nm, "clo_cb2") || !strcmp(nm, "clo_cb3")) {
+                rt_abort(R, RT_ERROR, "%s 仅原生口径可用(经 ctron-emit + cc 后运行)", nm);
             }
             if (!strcmp(nm, "read_dir")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_dir 实参");
