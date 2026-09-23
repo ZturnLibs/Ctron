@@ -16,7 +16,7 @@
 //   ⑤ 单次读/收调用至多搬运 4096 字节(垫片 CT_CHUNK 上限,cap 更大也被截到
 //      该值);UDP 单报文超限截断,EMSGSIZE 守卫列 P2。
 // 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/AF_UNIX/resolve 全量同文件。
-use net.bind.{ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
+use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
 
 // ---- 能力 trait(stub 面原样保留;sem 审计锚:E4010 看 &Net 引用形参) ----
 
@@ -51,16 +51,16 @@ struct NetError {
     let message: Str
 }
 
-struct TcpListener {
+pub struct TcpListener {
     var fd: I64
     let port: I32
 }
 
-struct TcpStream {
+pub struct TcpStream {
     var fd: I64
 }
 
-struct UdpSock {
+pub struct UdpSock {
     var fd: I64
 }
 

@@ -4,8 +4,8 @@
 // 6 夹具同矩阵位,证"链而不活"不漂移。协程停车面由 c_smoke.c(C 级冒烟,经
 // run.sh 专属块承载)实证。
 // CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
-use net.{Net_probe}
-use net.bind.{ctron_net_last_errno}
+use net.{Net_probe, last_net_error, net_close, net_read_t, net_shutdown_write, net_tcp_accept, net_tcp_connect, net_tcp_listen, net_tcp_sockname, net_udp_bind, net_udp_recvfrom, net_udp_sendto, net_udp_socket, net_write, net_write_str, TcpListener, TcpStream, UdpSock}
+use net.bind.{ctron_net_last_errno, Box64}
 
 test "hybrid bare-plane: tcp roundtrip + timeout gate + half-close + sleep + udp" {
     let net = Net_probe()

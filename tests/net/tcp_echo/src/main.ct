@@ -6,8 +6,8 @@
 // (trait 方法不发射;&Net 引用形参发射即坏);错误面 = rc(0 成/<0 败)+
 // last_net_error();缓冲 = &I64[] 视图 lane(每字节一条 lane)。
 // CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
-use net.{Net_probe}
-use net.bind.{ctron_net_last_errno}
+use net.{Net_probe, addr_format, addr_host, addr_port, last_net_error, net_close, net_get_nodelay, net_read_t, net_resolve, net_set_nodelay, net_shutdown_write, net_tcp_accept, net_tcp_connect, net_tcp_listen, net_tcp_sockname, net_udp_bind, net_udp_recvfrom, net_udp_sendto, net_udp_socket, net_write, net_write_str, TcpListener, TcpStream, UdpSock}
+use net.bind.{ctron_net_last_errno, Box64}
 
 test "tcp echo roundtrip + udp self-talk" {
     let net = Net_probe()

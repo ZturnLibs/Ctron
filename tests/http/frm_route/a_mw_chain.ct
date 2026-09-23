@@ -11,6 +11,7 @@
 // 实证 unbound;emit 侧无差 —— 表以形参/局部面过 fn 边界)。
 use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len }
 use http.frm.middleware.{ frm_ctx_new, frm_ctx_route, frm_ctx_with_d0, frm_ctx_arena, frm_ctx_req_id, frm_ctx_np, frm_ctx_ps, frm_ctx_pl, frm_ctx_d0, frm_ctx_d1, frm_ctx_param, frm_resp_404, frm_resp_405 }
+use http.frm.router.{ frm_mcode_buf, frm_rc_match }
 
 // —— comptime 路由表(D-P6-1 消费方侧形;const 引用恒在 test 块内)——
 const ROUTES: Str = "GET /users|GET /users/:id|POST /users|DELETE /users/:id|GET /admin"

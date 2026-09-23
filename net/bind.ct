@@ -19,7 +19,8 @@
 // 出参镜像 Box:所有 fd/port 出参统一 Box[Box64] 通道(发射 t_Box64* 堆胞指针,
 // 与 ctron_net.c 侧 `typedef struct { int64_t v; } Box64;` 布局镜像)。struct 声明
 // 落本文件,use 合并即带出 typedef(发射器只为已声明 struct 发 typedef)。
-struct Box64 {
+// pub(SL-0.7 尾槽):夹具构造 Box64 字面量须显式请求;非 pub 则 E2020.use.priv。
+pub struct Box64 {
     var v: I64
 }
 
