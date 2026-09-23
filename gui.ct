@@ -803,9 +803,22 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     return id
 }
 
-fn gt_style(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
+fn gt_style(src: Str, cur: Atomic[I32], t: GuiTree, ext: List[Str]) -> I32 {
     var name: Str = gword(src, cur)
     gws(src, cur)
+    // P-W2:extends 单亲派生(§5 StyleExt,仅限本文件)——记 (child, parent) 对
+    if cur.load() < src.len {
+        if byte_at(src, cur.load()) == 101 {
+            var kw: Str = gword(src, cur)
+            if kw == "extends" {
+                gws(src, cur)
+                var pn: Str = gword(src, cur)
+                ext.push(name)
+                ext.push(pn)
+                gws(src, cur)
+            }
+        }
+    }
     glit(src, cur, 123)
     while true {
         gws(src, cur)
@@ -837,6 +850,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
     var binds = List[Str]()
     var strs = List[Str]()
     var conds = List[Str]()
+    var ext = List[Str]()
     var cur = Atomic[I32](0)
     var n: I32 = src.len
     while cur.load() < n {
@@ -875,13 +889,92 @@ pub fn gt_parse(src: Str) -> GuiTree {
             glit(src, cur, 125)
         } else {
             if w == "style" {
-                gt_style(src, cur, t)
+                gt_style(src, cur, t, ext)
             } else {
                 panic("gui: 顶层仅 view/style,得 " + w)
             }
         }
     }
+    gt_ext_resolve(t, ext)
     return t
+}
+
+// P-W2:extends 解析——定点迭代把父类属性复制到子类(子已定义者不覆盖;
+// 链式派生随迭代收敛,守护 16 轮);父链走查超限 = 环,panic。
+fn gt_ext_resolve(t: GuiTree, ext: List[Str]) -> I32 {
+    // 环检测:每个 child 沿父链上行;走满 ext 对数仍未到根 = 环
+    var ci: I32 = 0
+    while ci < ext.len {
+        var cur: Str = ext[ci]
+        var step: I32 = 0
+        var cyc: Bool = true
+        while step <= ext.len {
+            var found: Bool = false
+            var pi: I32 = 0
+            while pi < ext.len {
+                if ext[pi] == cur {
+                    cur = ext[pi + 1]
+                    found = true
+                    pi = ext.len
+                }
+                pi += 2
+            }
+            if !found {
+                cyc = false
+                step = ext.len + 1
+            }
+            step += 1
+        }
+        if cyc {
+            panic("gui: 样式 extends 环 " + ext[ci])
+        }
+        ci += 2
+    }
+    // 属性复制:定点迭代(g→p→c 链式随轮次收敛)
+    var changed: Bool = true
+    var guard: I32 = 0
+    while changed {
+        changed = false
+        guard += 1
+        if guard > 16 {
+            break
+        }
+        var pi: I32 = 0
+        while pi < ext.len {
+            var child: Str = ext[pi]
+            var parent: Str = ext[pi + 1]
+            var pp: Str = parent + "."
+            var si: I32 = 0
+            while si < t.sk.len {
+                var k: Str = t.sk[si]
+                if k.len > pp.len {
+                    if byte_slice(k, 0, pp.len) == pp {
+                        var pname: Str = byte_slice(k, pp.len, k.len)
+                        var ck: Str = child + "." + pname
+                        if !gt_sk_has(t.sk, ck) {
+                            t.sk.push(ck)
+                            t.sv.push(t.sv[si])
+                            changed = true
+                        }
+                    }
+                }
+                si += 1
+            }
+            pi += 2
+        }
+    }
+    return 0
+}
+
+fn gt_sk_has(sk: List[Str], key: Str) -> Bool {
+    var i: I32 = 0
+    while i < sk.len {
+        if sk[i] == key {
+            return true
+        }
+        i += 1
+    }
+    return false
 }
 
 // SL-7β1:骨架表倾倒(与编译器 gui_parse gui_sk_dump_all 同格式,等价差分用)。

@@ -1,0 +1,8 @@
+// gui expect: E8100 —— P-W2:style extends 环(a→b→a 无根,解析期拒绝)
+view P {
+  <vbox class="root">
+    <label class="a">x</label>
+  </vbox>
+}
+style a extends b { fg: "#ffffff" }
+style b extends a { size: 20 }

@@ -1,0 +1,11 @@
+// gui expect: OK —— P-W2:style extends 单亲派生——子继承父属性,自有属性覆盖
+view P {
+  <vbox class="root">
+    <label class="pri">primary</label>
+    <label class="sec">secondary</label>
+  </vbox>
+}
+style root { direction: column gap: 8 }
+style base { size: 20 fg: "#cccccc" h: 36 }
+style pri extends base { fg: "#2563eb" }
+style sec extends base { fg: "#22c55e" }

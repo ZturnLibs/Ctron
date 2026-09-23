@@ -48,6 +48,19 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
         }
     }
     var joined: Str = name
+    if kind == "style" {
+        // P-W2:extends 对并入 joined——started 旗会丢弃 { 前的 token,
+        // 而 check/skeleton/lower 三面的 extends 消费全走 joined 串
+        if cur.load() < toks.len {
+            var pt2: Str = tok(toks, cur)
+            if pt2 == "extends" {
+                adv(cur)
+                var pn2: Str = tok(toks, cur)
+                adv(cur)
+                joined = joined + " extends " + pn2
+            }
+        }
+    }
     var depth: I32 = 0
     var toks_n: I32 = 1
     var started: Bool = false
@@ -340,6 +353,13 @@ fn gui_lower_view(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) ->
 fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -> I32 {
     var name: Str = tks[cur.load()]
     cur.store(cur.load() + 1)
+    // P-W2:extends 单亲派生——跳过关键字与父名(dump 不展开继承)
+    if cur.load() < tks.len {
+        if tks[cur.load()] == "extends" {
+            cur.store(cur.load() + 1)
+            cur.store(cur.load() + 1)
+        }
+    }
     println(ind + "gui style " + name)
     out.push("style " + name)
     while cur.load() < tks.len {
@@ -989,6 +1009,7 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
     // 第一遍:样式名表 + Fn/FnExt 名表(E8120 处理函数存在性依据)
     var sn = List[Str]()
     var fns = List[Str]()
+    var sext = List[Str]()
     var si: I32 = 1
     while si < file.len {
         var ds = file[si]
@@ -997,6 +1018,13 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                 var stks = List[Str]()
                 gui_split(ds[4], stks)
                 sn.push(stks[0])
+                // P-W2:extends 对收集(第二遍做环/缺父诊断)
+                if stks.len > 2 {
+                    if stks[1] == "extends" {
+                        sext.push(stks[0])
+                        sext.push(stks[2])
+                    }
+                }
             }
         }
         if ds[0] == "Fn" {
@@ -1078,6 +1106,12 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                     // joined 以名字开头(tks[0]),与 view 路径同样跳过——
                     // 否则属性错位一位:冒号误报 + 游标越界,整个检查崩溃丢诊断(W3 修复)
                     cur.store(1)
+                    // P-W2:extends 跳过(诊断在主循环后统一做)
+                    if cur.load() < tks.len {
+                        if tks[cur.load()] == "extends" {
+                            cur.store(cur.load() + 2)
+                        }
+                    }
                     while cur.load() < tks.len {
                         var pp: Str = eat_tok(tks, cur)
                         if eat_tok(tks, cur) != ":" {
@@ -1097,6 +1131,41 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
             }
         }
         i += 1
+    }
+    // P-W2:extends 诊断——缺父(E8100)+ 环(E8100;镜像域包走查)
+    var xi: I32 = 0
+    while xi < sext.len {
+        if !gui_ck_has_style(sn, sext[xi + 1]) {
+            gdiags.push("E8100: extends 父样式未声明 " + sext[xi] + " extends " + sext[xi + 1])
+        }
+        xi += 2
+    }
+    xi = 0
+    while xi < sext.len {
+        var cur2: Str = sext[xi]
+        var step: I32 = 0
+        var cyc: Bool = true
+        while step <= sext.len {
+            var found: Bool = false
+            var pi: I32 = 0
+            while pi < sext.len {
+                if sext[pi] == cur2 {
+                    cur2 = sext[pi + 1]
+                    found = true
+                    pi = sext.len
+                }
+                pi += 2
+            }
+            if !found {
+                cyc = false
+                step = sext.len + 1
+            }
+            step += 1
+        }
+        if cyc {
+            gdiags.push("E8100: 样式 extends 环 " + sext[xi])
+        }
+        xi += 2
     }
     return 0
 }
@@ -1481,8 +1550,18 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
     return id
 }
 
-fn gui_sk_style(tks: List[Str], cur: Atomic[I32], sk: List[Str], sv: List[Str]) -> I32 {
+fn gui_sk_style(tks: List[Str], cur: Atomic[I32], sk: List[Str], sv: List[Str], ext: List[Str]) -> I32 {
     var name: Str = gui_sk_word(tks, cur)
+    // P-W2:extends 单亲派生——记 (child, parent) 对,build 期定点解析
+    if cur.load() < tks.len {
+        var ek: Str = tks[cur.load()]
+        if ek == "extends" {
+            cur.store(cur.load() + 1)
+            var pn: Str = gui_sk_word(tks, cur)
+            ext.push(name)
+            ext.push(pn)
+        }
+    }
     while cur.load() < tks.len {
         var pk: Str = tks[cur.load()]
         if pk.len == 1 {
@@ -1519,6 +1598,7 @@ fn gui_sk_style(tks: List[Str], cur: Atomic[I32], sk: List[Str], sv: List[Str]) 
 }
 
 fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[Str], npre: List[Str], nbid: List[Str], npost: List[Str], nfc: List[I32], ns: List[I32], nes: List[I32], nec: List[I32], ev_name: List[Str], ev_fn: List[Str], btns: List[I32], sk: List[Str], sv: List[Str]) -> I32 {
+    var ext = List[Str]()
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
@@ -1533,13 +1613,90 @@ fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[S
                 }
             } else {
                 if d[1] == "style" {
-                    gui_sk_style(tks, cur, sk, sv)
+                    gui_sk_style(tks, cur, sk, sv, ext)
                 }
             }
         }
         i += 1
     }
+    gui_sk_ext_resolve(sk, sv, ext)
     return 0
+}
+
+// P-W2:extends 解析(骨架侧)——镜像域包 gt_ext_resolve:环 panic、
+// 定点迭代复制父属性(子已定义不覆盖)
+fn gui_sk_ext_resolve(sk: List[Str], sv: List[Str], ext: List[Str]) -> I32 {
+    var ci: I32 = 0
+    while ci < ext.len {
+        var cur: Str = ext[ci]
+        var step: I32 = 0
+        var cyc: Bool = true
+        while step <= ext.len {
+            var found: Bool = false
+            var pi: I32 = 0
+            while pi < ext.len {
+                if ext[pi] == cur {
+                    cur = ext[pi + 1]
+                    found = true
+                    pi = ext.len
+                }
+                pi += 2
+            }
+            if !found {
+                cyc = false
+                step = ext.len + 1
+            }
+            step += 1
+        }
+        if cyc {
+            panic("gui: 样式 extends 环 " + ext[ci])
+        }
+        ci += 2
+    }
+    var changed: Bool = true
+    var guard: I32 = 0
+    while changed {
+        changed = false
+        guard += 1
+        if guard > 16 {
+            break
+        }
+        var pi: I32 = 0
+        while pi < ext.len {
+            var child: Str = ext[pi]
+            var parent: Str = ext[pi + 1]
+            var pp: Str = parent + "."
+            var si: I32 = 0
+            while si < sk.len {
+                var k: Str = sk[si]
+                if k.len > pp.len {
+                    if byte_slice(k, 0, pp.len) == pp {
+                        var pname: Str = byte_slice(k, pp.len, k.len)
+                        var ck: Str = child + "." + pname
+                        if !gui_sk_has(sk, ck) {
+                            sk.push(ck)
+                            sv.push(sv[si])
+                            changed = true
+                        }
+                    }
+                }
+                si += 1
+            }
+            pi += 2
+        }
+    }
+    return 0
+}
+
+fn gui_sk_has(sk: List[Str], key: Str) -> Bool {
+    var i: I32 = 0
+    while i < sk.len {
+        if sk[i] == key {
+            return true
+        }
+        i += 1
+    }
+    return false
 }
 
 // 骨架表倾倒(格式与域包 gui.ct sk_dump 逐字节一致,双端差分用;空串以 - 表示)

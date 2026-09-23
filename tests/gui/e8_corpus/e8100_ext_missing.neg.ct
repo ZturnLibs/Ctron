@@ -1,0 +1,7 @@
+// gui expect: E8100 —— P-W2:extends 父样式未声明(仅限本文件)
+view P {
+  <vbox class="root">
+    <label class="kid">x</label>
+  </vbox>
+}
+style kid extends nosuch { fg: "#ffffff" }

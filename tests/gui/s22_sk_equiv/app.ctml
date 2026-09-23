@@ -18,6 +18,7 @@ view FrameApp {
 style root { direction: column gap: 8 padding: 16 }
 style title { fg: "#ffffff" size: 24 h: 40 }
 style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style btn2 extends btn { fg: "#ffcc00" }
 style sub { fg: "#22c55e" }
 style sub2 { fg: "#f97316" }
 style row { fg: "#cccccc" }
