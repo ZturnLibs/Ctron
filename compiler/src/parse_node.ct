@@ -15,6 +15,150 @@ fn nstamp(n: List[Str], line: Str) {
     n.push(line)
 }
 
+// ---------------- 形态表(S1a:tag → 槽位形状串;S=串槽 N=节点槽,末位 * = 变长) ----------------
+fn ast_put(k: List[Str], v: List[Str], key: Str, val: Str) {
+    k.push(key)
+    v.push(val)
+}
+
+fn ast_shape(k: List[Str], v: List[Str], tag: Str) -> Str {
+    var i: I32 = 0
+    while i < k.len {
+        if k[i] == tag {
+            return v[i]
+        }
+        i += 1
+    }
+    return "?"
+}
+
+fn ast_kind(sh: Str, si: I32) -> Str {
+    if sh.len == 0 {
+        return "?"
+    }
+    var star = byte_slice(sh, sh.len - 1, sh.len) == "*"
+    var n = sh.len
+    if star {
+        n = n - 1
+    }
+    if n == 0 {
+        return "?"
+    }
+    var idx = si
+    if idx >= n {
+        if !star {
+            return "?"
+        }
+        idx = n - 1
+    }
+    return byte_slice(sh, idx, idx + 1)
+}
+
+// 形态表(语料驱动增量;未知标签 fail-closed → 加表再验)——cc_ast(driver_ast)与
+// pkg 加载器(选择性合并引用收集)共用;迁自 driver_ast.ct,逐字不变
+fn ast_tables(ktags: List[Str], kshapes: List[Str]) {
+    ast_put(ktags, kshapes, "File", "N*")
+    ast_put(ktags, kshapes, "Expr", "N")
+    ast_put(ktags, kshapes, "None", "")
+    ast_put(ktags, kshapes, "Fn", "SNNNNS*")
+    ast_put(ktags, kshapes, "FnPub", "SNNNNS*")
+    ast_put(ktags, kshapes, "Method", "SNNNNS*")
+    ast_put(ktags, kshapes, "FnExt", "SNNNNS*")
+    ast_put(ktags, kshapes, "FnC", "SNNNNS*")
+    ast_put(ktags, kshapes, "Struct", "SNNNS*")
+    ast_put(ktags, kshapes, "Enum", "SNNS*")
+    ast_put(ktags, kshapes, "Trait", "SNNN")
+    ast_put(ktags, kshapes, "Impl", "NNNN")
+    ast_put(ktags, kshapes, "Const", "SNN")
+    ast_put(ktags, kshapes, "Use", "NN")
+    ast_put(ktags, kshapes, "Test", "SN")
+    ast_put(ktags, kshapes, "Ps", "N*")
+    ast_put(ktags, kshapes, "Param", "SSN")
+    ast_put(ktags, kshapes, "VaArgs", "")
+    ast_put(ktags, kshapes, "Fields", "N*")
+    ast_put(ktags, kshapes, "Field", "SSNS*")
+    ast_put(ktags, kshapes, "Drvs", "S*")
+    ast_put(ktags, kshapes, "TPs", "N*")
+    ast_put(ktags, kshapes, "TPar", "SSN")
+    ast_put(ktags, kshapes, "Bounds", "S*")
+    ast_put(ktags, kshapes, "Vars", "N*")
+    ast_put(ktags, kshapes, "Variant", "SN")
+    ast_put(ktags, kshapes, "KUnit", "N*")
+    ast_put(ktags, kshapes, "KTuple", "N*")
+    ast_put(ktags, kshapes, "KStruct", "N*")
+    ast_put(ktags, kshapes, "Items", "N*")
+    ast_put(ktags, kshapes, "Segs", "S*")
+    ast_put(ktags, kshapes, "Syms", "S*")
+    ast_put(ktags, kshapes, "Named", "SN")
+    ast_put(ktags, kshapes, "TArgs", "N*")
+    ast_put(ktags, kshapes, "TArgs2", "N*")
+    ast_put(ktags, kshapes, "Ref", "N")
+    ast_put(ktags, kshapes, "Optional", "N")
+    ast_put(ktags, kshapes, "TupleT", "N*")
+    ast_put(ktags, kshapes, "Slice", "N")
+    ast_put(ktags, kshapes, "ArrayT", "NN")
+    ast_put(ktags, kshapes, "FnType", "NN")
+    ast_put(ktags, kshapes, "FnT", "N*")
+    ast_put(ktags, kshapes, "Block", "N*")
+    ast_put(ktags, kshapes, "BlockExpr", "N")
+    ast_put(ktags, kshapes, "Let", "SNNNS")
+    ast_put(ktags, kshapes, "Return", "NS*")
+    ast_put(ktags, kshapes, "If", "NNN")
+    ast_put(ktags, kshapes, "While", "NN")
+    ast_put(ktags, kshapes, "Match", "NNS")
+    ast_put(ktags, kshapes, "Arms", "N*")
+    ast_put(ktags, kshapes, "Arm", "NNNS*")
+    ast_put(ktags, kshapes, "Call", "NNS*")
+    ast_put(ktags, kshapes, "Args", "N*")
+    ast_put(ktags, kshapes, "Unary", "SN")
+    ast_put(ktags, kshapes, "Binary", "SNNS*")
+    ast_put(ktags, kshapes, "Ident", "S")
+    ast_put(ktags, kshapes, "Int", "SS*")
+    ast_put(ktags, kshapes, "Str", "N")
+    ast_put(ktags, kshapes, "Parts", "N*")
+    ast_put(ktags, kshapes, "Text", "S")
+    ast_put(ktags, kshapes, "PatWild", "")
+    ast_put(ktags, kshapes, "PatId", "S")
+    ast_put(ktags, kshapes, "PatLitB", "S")
+    ast_put(ktags, kshapes, "PatTup", "N*")
+    ast_put(ktags, kshapes, "PatAgg", "SN")
+    ast_put(ktags, kshapes, "SubTup", "N*")
+    ast_put(ktags, kshapes, "SubSt", "N*")
+    ast_put(ktags, kshapes, "SubUnit", "")
+    ast_put(ktags, kshapes, "PatFld", "SN")
+    ast_put(ktags, kshapes, "TypeArgs", "NN")
+    ast_put(ktags, kshapes, "Index", "NN")
+    ast_put(ktags, kshapes, "Try", "NS*")
+    ast_put(ktags, kshapes, "Closure", "NNNS*")
+    ast_put(ktags, kshapes, "CPs", "N*")
+    ast_put(ktags, kshapes, "TupleE", "N*")
+    ast_put(ktags, kshapes, "StructLit", "SNS")
+    ast_put(ktags, kshapes, "LitFs", "N*")
+    ast_put(ktags, kshapes, "Bool", "S")
+    ast_put(ktags, kshapes, "Range", "SNN")
+    ast_put(ktags, kshapes, "ComptimeVal", "S")
+    ast_put(ktags, kshapes, "Float", "SS*")
+    ast_put(ktags, kshapes, "Own", "SN")
+    ast_put(ktags, kshapes, "ClosureParam", "SSN")
+    ast_put(ktags, kshapes, "Scope", "SN")
+    ast_put(ktags, kshapes, "ArrLit", "N*")
+    ast_put(ktags, kshapes, "Class", "SNN")
+    ast_put(ktags, kshapes, "LField", "SN")
+    ast_put(ktags, kshapes, "Interp", "S")
+    ast_put(ktags, kshapes, "PatLitI", "S")
+    ast_put(ktags, kshapes, "PatLitF", "S")
+    ast_put(ktags, kshapes, "PatLitS", "S")
+    ast_put(ktags, kshapes, "Continue", "S")
+    ast_put(ktags, kshapes, "Break", "S")
+    ast_put(ktags, kshapes, "PropSig", "SNN")
+    ast_put(ktags, kshapes, "PropImpl", "SNN")
+    ast_put(ktags, kshapes, "Prop", "SNN")
+    ast_put(ktags, kshapes, "Static", "SSNNS*")
+    ast_put(ktags, kshapes, "Member", "NSSS*")
+    ast_put(ktags, kshapes, "For", "NNN")
+    ast_put(ktags, kshapes, "Assign", "NSNS*")
+}
+
 // ---------------- 解析(建树):p_file(toks, cur, lns) → 文件节点树 ----------------
 fn qtext(raw: Str) -> Str {
     var out = ""

@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=352' "$T/chk.out" && ok "自检 cc_run 绿,decls=352" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=360' "$T/chk.out" && ok "自检 cc_run 绿,decls=360" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -543,8 +543,9 @@ else
 fi
 
 echo "== 3g) doc(iface 投影:S0 面——文本金样/幂等/JSON 形准/负例) =="
+# decls=6:P1b 选择性合并后 geom 的私有 _hidden/MAXW(未请求、零引用)不再搭车合并
 "$COMP/ctc.sh" doc "$ROOT/tests/doc_fix/main.ct" > "$T/doc1.out" 2>&1
-if [ $? -eq 0 ] && grep -q "decls=8$" "$T/doc1.out"; then
+if [ $? -eq 0 ] && grep -q "decls=6$" "$T/doc1.out"; then
     tail -n +2 "$T/doc1.out" > "$T/doc1.body"
     cat > "$T/doc1.gold" <<'EOD'
 // doc_fix 入口夹具(iface 投影金样)

@@ -206,6 +206,33 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
     return pkg_load_use_done(file, dir, stack, List[Str](), diags)
 }
 
+// 名槽 decl 种类(与 E5030 dup 检查面一致;spec §4.2 P1b 精化口径)
+fn pkg_is_named_kind(t: Str) -> Bool {
+    return or2(t == "Fn", or2(t == "FnPub", or2(t == "Struct", or2(t == "Enum", or2(t == "FnExt", or2(t == "Static", t == "Const"))))))
+}
+
+// 引用收集:形态表驱动,S 槽收集、N 槽递归;未知标签/非法槽/超深 → false(保守信号)
+fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[Str], depth: I32) -> Bool {
+    if depth > 4000 { return false }
+    var sh = ast_shape(ktags, kshapes, d[0])
+    if sh == "?" { return false }
+    var i: I32 = 1
+    while i < d.len {
+        var kind = ast_kind(sh, i - 1)
+        if kind == "S" {
+            acc.push(d[i])
+        } else {
+            if kind == "N" {
+                if !pkg_refs_walk(d[i], ktags, kshapes, acc, depth + 1) { return false }
+            } else {
+                return false
+            }
+        }
+        i += 1
+    }
+    return true
+}
+
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
 fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str]) -> List[Str] {
@@ -369,6 +396,70 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         if diags.len > 0 {
                             return out
                         }
+                        // —— 选择性合并(spec §4.2):7-kind = 请求 ∪ 闭包;非 7-kind 恒随;
+                        //    遍历失败/未知形态 → 保守整模块(= P1a 行为)——
+                        var ktags = List[Str]()
+                        var kshapes = List[Str]()
+                        ast_tables(ktags, kshapes)
+                        var keep = List[Str]()
+                        var k9: I32 = 0
+                        while k9 < syms.len {
+                            keep.push(syms[k9])
+                            k9 += 2
+                        }
+                        var refs_ok = true
+                        var grow = true
+                        while grow {
+                            grow = false
+                            var acc = List[Str]()
+                            var j9: I32 = 1
+                            while j9 < mf.len {
+                                // 遍历面 = 将随合并走的 decl(非 Use;7-kind 须在 keep):
+                                // Test/Impl/Method 恒随,其体引用的 decl 若不入 keep 即悬空
+                                // (E2020;收紧审计第一轮:stdpkg/geom_str 实红),故一并收集
+                                var carry = false
+                                if mf[j9][0] != "Use" {
+                                    carry = true
+                                    if pkg_is_named_kind(mf[j9][0]) {
+                                        carry = false
+                                        var ka: I32 = 0
+                                        while ka < keep.len {
+                                            if keep[ka] == mf[j9][1] { carry = true }
+                                            ka += 1
+                                        }
+                                    }
+                                }
+                                if carry {
+                                    if !pkg_refs_walk(mf[j9], ktags, kshapes, acc, 0) { refs_ok = false }
+                                }
+                                j9 += 1
+                            }
+                            if !refs_ok { grow = false }
+                            if refs_ok {
+                                var j10: I32 = 1
+                                while j10 < mf.len {
+                                    if mf[j10].len > 1 && pkg_is_named_kind(mf[j10][0]) {
+                                        var ink2 = false
+                                        var kb: I32 = 0
+                                        while kb < keep.len {
+                                            if keep[kb] == mf[j10][1] { ink2 = true }
+                                            kb += 1
+                                        }
+                                        if !ink2 {
+                                            var kc: I32 = 0
+                                            while kc < acc.len {
+                                                if acc[kc] == mf[j10][1] {
+                                                    keep.push(mf[j10][1])
+                                                    grow = true
+                                                }
+                                                kc += 1
+                                            }
+                                        }
+                                    }
+                                    j10 += 1
+                                }
+                            }
+                        }
                         // 合并:滤除当前 Use;保留其余未展开 Use(重启扫描处理);
                         // 同名 decl 首个胜出(eval find_decl 同口径)
                         var merged = mk("File")
@@ -382,6 +473,22 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         var j4: I32 = 1
                         while j4 < mf.len {
                             if mf[j4][0] != "Use" {
+                                // 选择性合并跳过判定(spec §4.2):7-kind 不在 keep → 不并入
+                                var named = pkg_is_named_kind(mf[j4][0])
+                                if named && !refs_ok {
+                                    // 保守回退:视为 keep(整模块合并)
+                                } else if named {
+                                    var ink3 = false
+                                    var kd: I32 = 0
+                                    while kd < keep.len {
+                                        if keep[kd] == mf[j4][1] { ink3 = true }
+                                        kd += 1
+                                    }
+                                    if !ink3 {
+                                        j4 += 1
+                                        continue
+                                    }
+                                }
                                 // 改用名:本 Use 交替对里 name→alias 的映射(spec §4.3)
                                 var rn = ""
                                 var k6: I32 = 0
@@ -396,8 +503,8 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                 var dup = false
                                 var j5: I32 = 1
                                 while j5 < merged.len {
-                                    if or2(merged[j5][0] == "Fn", or2(merged[j5][0] == "FnPub", or2(merged[j5][0] == "Struct", or2(merged[j5][0] == "Enum", or2(merged[j5][0] == "FnExt", or2(merged[j5][0] == "Static", merged[j5][0] == "Const")))))) {
-                                        if or2(mf[j4][0] == "Fn", or2(mf[j4][0] == "FnPub", or2(mf[j4][0] == "Struct", or2(mf[j4][0] == "Enum", or2(mf[j4][0] == "FnExt", or2(mf[j4][0] == "Static", mf[j4][0] == "Const")))))) {
+                                    if pkg_is_named_kind(merged[j5][0]) {
+                                        if pkg_is_named_kind(mf[j4][0]) {
                                             if mf[j4].len > 1 && merged[j5].len > 1 && merged[j5][1] == iname {
                                                 dup = true
                                             }
