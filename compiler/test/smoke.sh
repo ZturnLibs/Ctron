@@ -315,6 +315,17 @@ if [ $vend_ok -eq 1 ]; then
 else
     bad "vendored std 漂移(cp compiler/test/stdpkg/std/*.ct examples/<app>/std/ 同步)"
 fi
+echo "== 3i2) ctron vendor 原型(use 闭集拷贝+钉版清单;09-21 spec §5.4) =="
+if python3 "$ROOT/tools/ctron_vendor.py" std.str,std.fmap,std.sort "$T/vendp" >/dev/null 2>&1 \
+   && diff -q "$COMP/test/stdpkg/std/str.ct" "$T/vendp/str.ct" >/dev/null 2>&1 \
+   && diff -q "$COMP/test/stdpkg/std/fmap.ct" "$T/vendp/fmap.ct" >/dev/null 2>&1 \
+   && diff -q "$COMP/test/stdpkg/std/sort.ct" "$T/vendp/sort.ct" >/dev/null 2>&1 \
+   && grep -q "^str sha256:" "$T/vendp/VENDOR.lock" 2>/dev/null \
+   && ! python3 "$ROOT/tools/ctron_vendor.py" std.net "$T/vendn" >/dev/null 2>&1; then
+    ok "vendor 原型:T1 闭集拷贝+钉版清单绿,域包 fail-closed 拒绝"
+else
+    bad "vendor 原型异常(闭集拷贝/lock/域包拒绝)"
+fi
 for st in map set fs; do
     if "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/std/$st.ct" > /dev/null 2>&1; then
         ok "$st 种子单测通过(原生解释)"
@@ -511,6 +522,42 @@ P
         diff -q "$T/cc_self.c" "$T/c2.c" > /dev/null 2>&1 && ok "固定点:发射产物逐字节复现" || bad "固定点:两路发射产物分歧"
     else
         bad "发射器自发射失败"
+    fi
+    echo "== 4c) std 全模块发射原生 parity(矩阵第三臂;known=heap/opt 闭包面欠账登记 trans 线) =="
+    emit_green=0
+    emit_knownred=0
+    emit_newred=0
+    emit_flipped=""
+    for f in "$ROOT"/std/*.ct; do
+        b=$(basename "$f" .ct)
+        case $b in config|net|tls) continue ;; esac
+        arm_ok=0
+        if "$COMP/bin/ctron-emit" run "$f" > "$T/pe_$b.c" 2>/dev/null \
+           && cc -O1 -w -o "$T/pe_$b.bin" "$T/pe_$b.c" 2>/dev/null; then
+            out_n=$("$T/pe_$b.bin" run "$f" 2>&1); rc_n=$?
+            out_i=$("$COMP/bin/ctron-cc" run "$f" 2>&1); rc_i=$?
+            [ $rc_n -eq 0 ] && [ $rc_i -eq 0 ] && [ "$out_n" = "$out_i" ] && arm_ok=1
+        fi
+        if echo " heap opt " | grep -q " $b "; then
+            if [ $arm_ok -eq 1 ]; then
+                emit_flipped="$emit_flipped $b"
+            else
+                emit_knownred=$((emit_knownred+1))
+            fi
+        else
+            if [ $arm_ok -eq 1 ]; then
+                emit_green=$((emit_green+1))
+            else
+                bad "std 发射臂新红: $b(emit/cc/run/两臂输出对数)"
+                emit_newred=1
+            fi
+        fi
+    done
+    if [ $emit_newred -eq 0 ]; then
+        ok "std 发射臂 parity 绿($emit_green 模块;known $emit_knownred 待 trans 线:闭包结构值/比较器形参)"
+    fi
+    if [ -n "$emit_flipped" ]; then
+        bad "发射臂翻绿待清账:$emit_flipped(从 known 移除)"
     fi
 fi
 

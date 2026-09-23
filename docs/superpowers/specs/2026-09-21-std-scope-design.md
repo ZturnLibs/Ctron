@@ -32,7 +32,7 @@
 | 目标 | 锚 | 优先级依据 |
 |---|---|---|
 | **std/crypto:SHA-256/HMAC/PBKDF2(纯 Ctron)** | §12.2 规范级前置,RFC 6234/4231/6070 向量 | §12 纯 Ctron 驱动(SCRAM-SHA-256)的硬依赖;向量现成,确定性最高 |
-| time Clock 面 | 内建 now_ms 已存在;v0.3 承诺 | 包装 + 单调钟语义,小切片 |
+| time Clock 面 | 内建 now_ms 已存在;v0.3 承诺 | **墙钟面已落地**(iso_utc/now_iso_utc,2026-09-23 核验在库);单调钟待 compiler 线新内建(登记不碰) |
 | F64 数学面 | C2 解除 | abs/floor/ceil/round/sqrt/pow/常量一次铺;rand 均匀分布 |
 | url 解析 / query 编码 | P4-B 配套 | http 泳道拉入时随片 |
 
@@ -82,6 +82,14 @@ sha 系 checksum(crypto 之外)、toml/yaml(config.ct 已占 CTCL,勿重复)、�
 2. **parity 矩阵腿进 smoke**(§5.1 最小落地)。
 3. **time Clock 面**(内建已有,stdlib 包装 + 单调语义)。
 4. **`ctron vendor` 原型**(§5.4)。
+
+**状态回写(2026-09-23,余项三片全落)**:1 crypto 全链已落地;2 parity 三臂全落
+——自举臂 3j2、Rust 臂 3j3 在册,**发射臂 4c 进 smoke --full**(每模块 emit→cc→run
+与解释臂输出逐字对数;known=heap/opt 闭包面欠账登记 trans 线);3 time 墙钟面在库
+核验(iso_utc/now_iso_utc;单调钟待 compiler 线新内建);4 `ctron vendor` 原型落地
+(tools/ctron_vendor.py + smoke 3i2:T1 闭集拷贝/VENDOR.lock 钉版/域包 fail-closed)。
+另:stdpkg 全量消费的 json 写出半边夹具暂缓——utf8_enc 内建双层委派分歧
+(docs/c-rust-divergences.md 2026-09-23 条),待修复位。
 
 ## 7. 决议请求
 
