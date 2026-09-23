@@ -13,6 +13,7 @@
 
 // strerror 经包垫片中转(std/ffi/c_src/ctron_ffi.c):Str 边界 = const char*,
 // 与 libc char* strerror 原型 const 冲突,自有符号免冲突;私有面。
+#[trusted]
 extern "c" fn ctron_ffi_strerror(e: I32) -> Str
 
 // 错误码 → 人读消息。垫片返回 C-owned(静态区,后续调用可覆写),
