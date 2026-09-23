@@ -36,8 +36,15 @@ fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
         if d[0] == "Use" {
             var segs = d[1]
             var symsN = d[2]
+            // caps 键提取(2026-09-23 推广):std.<key> 取 segs[2];域顶层命名空间
+            // (net/db 挂顶层)取 segs[1]。gui/http 无 cap 键,成员测试自然过滤。
+            var cap = ""
             if segs.len > 2 && seq2(segs[1], "std") {
-                var cap = segs[2]
+                cap = segs[2]
+            } else if segs.len > 1 {
+                cap = segs[1]
+            }
+            if cap.len > 0 {
                 if or2(or2(seq2(cap, "fs"), seq2(cap, "time")), or2(seq2(cap, "net"), seq2(cap, "db"))) {
                     var name = ""
                     if symsN.len > 1 {
@@ -285,6 +292,36 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     j2b += 1
                 }
                 mpath = dir + rel + ".ct"
+                // 域根(2026-09-23 顶层命名空间):libroot(= std 根父目录)下
+                // <首段>[/<次段>…].ct 命中则用之(gui.* / net.* / http.* / tls.* /
+                // db.*;段映射镜像 std 分支,门面 = 域同名 .ct)。目录相对优先、
+                // ctart 仍保底——realdep/S2a 既有语义零扰动;未命中保持静默。
+                if !fs_exists(mpath) {
+                    var sroot = pkg_std_root(dir)
+                    if sroot.len > 0 {
+                        var cut: I32 = 0 - 1
+                        var ci: I32 = sroot.len - 1
+                        while ci >= 0 {
+                            if byte_at(sroot, ci) == 47 {
+                                cut = ci
+                                break
+                            }
+                            ci -= 1
+                        }
+                        if cut > 0 {
+                            var dpath = byte_slice(sroot, 0, cut)
+                            var j2c: I32 = 1
+                            while j2c < segs.len {
+                                dpath = dpath + "/" + segs[j2c]
+                                j2c += 1
+                            }
+                            dpath = dpath + ".ct"
+                            if fs_exists(dpath) {
+                                mpath = dpath
+                            }
+                        }
+                    }
+                }
                 // S2a 闭源工件回落:源缺失时消费 deps/<pkg>.ctart/impl<rel>.ast
                 // (spec §7.2 deps/ 布局;可见性/E5030 合并对加载后的 decl 同判)
                 if !fs_exists(mpath) {
