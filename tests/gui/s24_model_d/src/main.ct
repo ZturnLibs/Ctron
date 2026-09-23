@@ -4,7 +4,7 @@
 // s19/gui_counter 的 Box 活模型与动作分发,与 todo 域包迁移同构。
 // 坑位:视口 320x640——Clay 对视口外元素剔除渲染命令,断言面须容得下全内容。
 // 注:字面量叶文本避开标点(重建插空格,已登记限制)。
-use std.gui.{test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent}
+use std.gui.{test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent, char_str}
 
 view ProbeApp {
   <vbox class="root">

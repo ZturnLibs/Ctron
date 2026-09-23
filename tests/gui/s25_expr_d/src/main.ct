@@ -2,7 +2,7 @@
 // 覆盖:叶表达式串接({draft + "!"})/比较条件(cond={n > 0})/算术渲染({n * 2})/
 // 带型通道(bare = 串,i: 前缀 = 整)/动作变更后逐帧活值。形态 = s24 同款
 // (内嵌 view/style + Box 活模型),视口 320x640(Clay 视口剔除坑位)。
-use std.gui.{test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent}
+use std.gui.{test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent, char_str}
 
 view ExprApp {
   <vbox class="root">

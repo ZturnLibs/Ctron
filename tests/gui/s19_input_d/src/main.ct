@@ -1,4 +1,4 @@
-use std.gui.{test, d_frame, d_expect_text, d_type_char}
+use std.gui.{test, d_frame, d_expect_text, d_type_char, char_str}
 
 struct Model {
     var draft: Str
