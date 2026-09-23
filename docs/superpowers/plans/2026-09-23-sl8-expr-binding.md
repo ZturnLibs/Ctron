@@ -62,6 +62,24 @@
   阶梯 29（s24_model_d + s25_expr_d）。8c 动工时 8b 的 bxv_* 可作为解释口径
   事件表达式求值底座复用。
 
+## 泳道外交互发现（转交 use 别名 P1b 泳道，2026-09-23 实证）
+
+**选择性合并（7e8af9c）对"引用但非请求"的 decl 产签名级形态，两口径双症状**：
+
+1. **解释口径 index target 根因实锤**（域包 test() 驱动解释口径整体红的真身）：
+   use 合并后的跨包 fn（如 std.gui test）为 **len=6 签名级 stub 节点**
+   （`FnPub|test|tsLnorTC…` 四槽皆类型戳、无体槽）——解释口径 call_decl_vals
+   落 stub 即 eval_expr Index 炸 "index target"。判定手法：panic 标记法
+   （println 缓冲在 panic 时丢失，不可作迹）；实参求值期闭包逐个二分 +
+   call fallthrough 节点转储。
+2. **原生口径 gui_calc 发射红**：`t_d_press_key` undeclared——calc 引用
+   d_press_key 但未入 use 请求面，闭包收集未携带 → 发射面声明缺失。
+   gui_cjk/todo/gui_counter 三示例全绿（其引用面恰在请求∪闭包内）。
+
+两症状同根（stub 无体/闭包收集缺口），随 P1b 闭包收集收口应自愈；验收锚：
+解释口径 `ctron-cc run` 跑通域包 test() 探针 + `sh examples/gui_calc/run.sh`
+复绿。GUI 泳道回归态（阶梯 26/30、e8 19/19、todo/counter/cjk 全绿）不受累。
+
 ## 非目标（本计划不顺手做）
 - view 组件/props 类型面/each key/slot 分发（终锚 §10.3 全形态）；
 - 可变方法调用的类型级纯度判定（等 8c 类型面）；
