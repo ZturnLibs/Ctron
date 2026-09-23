@@ -1,0 +1,11 @@
+use app.a.{
+    open as open_a,
+}
+use app.b.{
+    open as open_b,
+}
+
+test "S1 conflict resolved by alias" {
+    assert_eq(open_a(), 1)
+    assert_eq(open_b(), 2)
+}

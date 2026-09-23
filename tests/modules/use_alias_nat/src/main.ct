@@ -1,0 +1,6 @@
+//@ fail: E2020.use.nat
+use std.time.Clock as K
+
+fn main() -> I32 {
+    return 0
+}

@@ -1,0 +1,7 @@
+pub fn open() -> I32 {
+    return 2
+}
+
+fn same_name() -> I32 {
+    return 8
+}
