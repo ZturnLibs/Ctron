@@ -295,6 +295,7 @@ fn main() -> I32 {
             println("typedef struct \{ int* d; int64_t n; } ctron_view_b;")
             println("typedef struct \{ const char** d; int64_t n; } ctron_view_s;")
             println("typedef struct \{ double* d; int64_t n; } ctron_view_f;")
+            println("typedef struct \{ float* d; int64_t n; } ctron_view_g;")
             // 用户 struct 值类型(§6.1):typedef 先于原型与函数体;#[repr(...)] 变体
             // (packed/align(N),v0.7 §9.6)直出 GNU 属性(声明序布局不变)
             var si: I32 = 1
