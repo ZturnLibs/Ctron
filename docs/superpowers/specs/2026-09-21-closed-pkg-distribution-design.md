@@ -128,7 +128,7 @@ dep "std.str" { digest = "sha256:…" }         // 依赖 DAG → E5020 无环,�
 
 - 三宿主 conformance 跑包内 test 块与 trace 用例,三线输出逐字一致才可发布(parity badge 对工件原样适用);
 - 每个导出 pub fn 按采样策略录制轨迹:纯函数按输入类采样;**效果函数用脚本化 FakeFs/Clock 录制**(r2b 锚现成),回放确定性;
-- 轨迹值编码 = std json_write 规范形(字节级钉死,复用现有确定性写出口)。
+- 轨迹值编码 = std json 写出面 write_json 规范形(原 json_write,2026-09-23 并入 json.ct,d144182;字节级钉死,复用现有确定性写出口)。
 
 ### 5.2 消费时(复放)
 
