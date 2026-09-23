@@ -557,3 +557,31 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   双径下,emitter 侧 extern 性丢失 → 按 Ctron 级 fn 出 t_ 调用。归 compiler/
   emitter 泳道(trans_emit.ct 在制中)。
 - **复位**:修后 tests/net 三夹具免改即绿(显式 use 已补到位)。
+- **复位复核(2026-09-23 晚,双臂净场对照:工作区在飞件 vs 干净基线)**:三夹具
+  仍红但死法分化——clock_sanity 仍 cc 缺 `t_ctron_net_last_errno` 声明(本分歧
+  本体,在制 trans_emit 修法对口);tcp_echo/coro_hybrid 已前移死在 emit 阶段
+  (`ct_expr:StructLit 非值类型`,见下节)——**须先销该断裂,本节复位条款才可达**。
+  在飞 ct_impl_method_fns 再加回为半接线态:零调用方,四夹具探针与干净基线
+  行为零差。mw_chain 复核:interp E2020 已在案;emit 臂现测出 C 后 cc 缺
+  `t_frm_mcode_buf` 声明——同族第二实例(门面再导出形态),修复须一并覆盖。
+
+### emit 中途崩:ct_expr:StructLit 非值类型(2026-09-23 晚实证,net 双夹具 emit 红)
+
+- **现象**:ctron-emit 发射 tests/net tcp_echo/coro_hybrid 至 StructLit 表达式
+  中途夭折,诊断 `ct_expr:StructLit 非值类型` 追加在半截 C 尾(stdout 通道,
+  stderr 空),rc=1;两夹具到不了上节的 cc 缺声明面。
+- **归因**:已落库断裂,非 2026-09-23 在飞件所致——干净基线双臂复现:
+  55acb90+lexfix 与 1218cb0+lexfix 同崩;排除 55acb90(gui checkbox)、
+  b82ada3(纯注释扫尾)、b1e7073(仅 examples)、在飞 trans_emit/lex(四夹具
+  探针零差)。引入点 ≤b1e7073(19:52),候选 e3bc073 域包迁移一带;上节
+  备案"cc 阶段"叙述系旧二进制观察。
+- **复现**:git worktree 检出基线 → 仅贴在制 lex.ct(见下)→ build.sh +
+  native.sh → `ctron-emit run tests/net/tcp_echo/src/main.ct`。
+- **前置事实**:纯 HEAD 自举链断裂——lex.ct \u 转义判定处 or2 单参错字
+  (`emit:调用实参个数不符:or2 期望 2 实得 1`),纯 HEAD 无法自举;在制
+  lex.ct or2→|| 改写即修复,须先行落库。native.sh 的 build 拼装守卫
+  (cc_run.ct 在即跳过)会吞陈旧拼装——勿用旧 bin 纪律的实例。
+- **顺带归属**:tests/http interp 臂 Killed:9 群(frm_auth_a_guard/jwt/sess、
+  frm_mw_a_csrf、client/sse_ws e2e、http/frm auth inline)与 mw_chain interp
+  E2020 同为已落库既有债(1218cb0 复现,非 55acb90 所引),归 server/frm
+  泳道账,暂不入本文档两臂口径。
