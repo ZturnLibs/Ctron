@@ -31,6 +31,8 @@ fi
 
 # headless 热重载证明:单进程内 mtime 轮询 → 外部改写 → 重读生效
 cd "$DIR"
+cp app.txt "$T/app.bak"
+trap 'cp "$T/app.bak" app.txt' EXIT
 W4_READY="$T/ready"
 export W4_READY
 rm -f "$W4_READY"

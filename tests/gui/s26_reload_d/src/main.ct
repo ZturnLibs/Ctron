@@ -1,0 +1,55 @@
+// examples —— tests/gui/s26_reload_d —— SL-9:热重载宿主域包形态验收(§11.5/§6.3)
+// run_kb_d 60 帧内容比对 → gt_parse 原址重解析 → 树换源,闭包状态天然保留。
+// 探针模式(S26_HOTRELOAD=1):bind 每帧打印状态行(模型值 + 命令缓冲数)——
+// run.sh 改写 app.ctml(改样式 h/改结构增行)后断言:新结构入帧 + 模型状态不变。
+// 焦点/IME 保留属 M3 硬验收(§6.3),本夹具覆盖 M0-M2 面:样式+结构+状态。
+use std.gui.{run_kb_d, d_cmd_count}
+
+struct Model {
+    var count: I32
+}
+
+// E8120 处理函数声明 stub
+fn inc() {
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "n" {
+        buf.push("i:" + m.count.to_string())
+    }
+}
+
+// 十进制串 → I32(空串/非数字 → 0)
+fn state_count(st: Str) -> I32 {
+    var v: I32 = 0
+    var j: I32 = 0
+    while j < st.len {
+        var b: I32 = byte_at(st, j)
+        if b < 48 || b > 57 {
+            return 0
+        }
+        v = v * 10 + (b - 48)
+        j += 1
+    }
+    return v
+}
+
+fn main() -> I32 {
+    var m = Box[Model](Model { count: state_count(env_get("CTRON_GUI_STATE")) })
+    // 窗口口径:run_kb_d(默认锚 app.ctml + 60 帧内容比对热重载 + 键盘钩子)
+    run_kb_d("ctron s26 reload", 320, 240,
+        |buf| {
+            bind_all(buf, m)
+            if env_get("S26_HOTRELOAD") != "" {
+                println("S26P n=" + m.count.to_string() + " cmds=" + d_cmd_count().to_string())
+            }
+        },
+        |name| {
+            if name == "inc" {
+                m.count = m.count + 1
+            }
+        },
+        |k| k)
+    println("S26 exit n=" + m.count.to_string())
+    return 0
+}

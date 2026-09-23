@@ -1,0 +1,9 @@
+view S26 {
+  <vbox class="root">
+    <label class="mark">V1</label>
+    <label class="cnt">count {n}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style mark { fg: "#22c55e" size: 30 }
+style cnt { fg: "#ffffff" }
