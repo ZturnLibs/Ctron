@@ -36,6 +36,8 @@
 `use std.<域>.` 形态已移除)。**物理位置 = 仓库根与 `std/` 平级**
 (`gui/ net/ http/ tls/ db/ ffi/` + 各门面文件),安装布局 `lib/ctron/<域>` 1:1;
 loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-design.md。
+各域用法详见域内 README(`gui/README.md` 已备:快速上手/能力面/入口 API/
+驱动器/坑位;其余域随泳道补齐)。
 
 | 档 | 域 | 内容 | 依赖 | 稳定口径 | 门禁 | 所有 |
 |---|---|---|---|---|---|---|
