@@ -1,0 +1,25 @@
+// tests/http/frm_openapi/a_export.ct —— OpenAPI 同源导出消费形态(P6-D;双臂纯面)
+// 面:comptime 路由表(router.ct D-P6-1 平面 Str 同一常量)喂导出器 —— 快照
+// 语义 = 路由表任一改动本夹具即红;方法聚合/参数提升/畸形跳过全链。
+use std.http.frm.openapi.{ oa_export, oa_path_openapi, oa_json_escape, oa_mcode, oa_mkey }
+
+// 消费方 comptime 路由表(与 frm_route 同款形态;本表即快照源)
+const ROUTES: Str = "GET /users|GET /users/:id|POST /users|DELETE /users/:id"
+
+test "comptime table snapshot" {
+    let doc = oa_export(ROUTES, "todo-api", "0.9")
+    // 手写快照:路由表改任一字符 → 本断言红(计划"快照必变"口径)
+    assert(doc == "\{\"openapi\":\"3.0.3\",\"info\":\{\"title\":\"todo-api\",\"version\":\"0.9\"},\"paths\":\{\"/users\":\{\"get\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}}},\"/users/\{id}\":\{\"get\":\{\"parameters\":[\{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":\{\"type\":\"string\"}}],\"responses\":\{\"200\":\{\"description\":\"OK\"}}},\"post\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}},\"delete\":\{\"parameters\":[\{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":\{\"type\":\"string\"}}],\"responses\":\{\"200\":\{\"description\":\"OK\"}}}}}}")
+}
+
+test "param promotion and method codes" {
+    assert(oa_path_openapi("/orders/:oid/items") == "/orders/\{oid}/items")
+    assert(oa_mcode("GET") == 1 && oa_mcode("TRACE") == 8 && oa_mcode("FETCH") == 0)
+    assert(oa_mkey(4) == "delete" && oa_mkey(0) == "")
+}
+
+test "json value escape" {
+    assert(oa_json_escape("x\"y") == "x\\\"y")
+    let doc = oa_export("GET /x", "a\"b", "1")
+    assert(oa_json_escape("x") == "x")
+}

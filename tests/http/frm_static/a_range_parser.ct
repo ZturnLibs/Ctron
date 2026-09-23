@@ -1,0 +1,13 @@
+// tests/http/frm_static/a_range_parser.ct —— // Range 解析器类型化访问(rc/s/e 槽;开放尾/越界截断/416 面)
+// tests/http/frm_static/a_core.ct —— 静态文件面消费形态(P6-D;双臂纯面)
+// 面:st_resp_from_content 全分支(200/304/206/416)+ 穿越拒 + ctype 表,
+// 经消费方 use 形态装载(middleware 门面 + static 双叶 —— 加载器 done 去重)。
+// IO 薄胶 st_serve 不入夹具(CWD 不定;P6-E todo_api e2e 接线)。
+use std.http.frm.static.{ st_resp_from_content, st_traversal_ok, st_etag, st_ctype, st_range_parse, st_rc, st_s, st_e }
+
+test "range parser typed access" {
+    let p = st_range_parse("bytes=3-", 20)
+    assert(st_rc(p) == 1 && st_s(p) == 3 && st_e(p) == 19)
+    let q = st_range_parse("bytes=19-30", 20)
+    assert(st_rc(q) == 1 && st_e(q) == 19)
+}

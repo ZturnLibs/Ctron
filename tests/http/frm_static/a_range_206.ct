@@ -1,0 +1,9 @@
+// tests/http/frm_static/a_range_206.ct —— Range 206 全头序对拍(P6-D;双臂纯面)
+// CT→ETag→Accept-Ranges→Content-Range→CL→体 逐字节;切片 2..5/10。
+use std.http.frm.static.{ st_resp_from_content, st_etag }
+
+test "range 206" {
+    let body = "0123456789"
+    let r = st_resp_from_content("data.bin", body, "", "bytes=2-5")
+    assert(r == "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nETag: " + st_etag(body) + "\r\nAccept-Ranges: bytes\r\nContent-Range: bytes 2-5/10\r\nContent-Length: 4\r\n\r\n2345")
+}

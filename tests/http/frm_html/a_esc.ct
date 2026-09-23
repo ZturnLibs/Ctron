@@ -1,0 +1,20 @@
+// tests/http/frm_html/a_esc.ct —— HTML 输出窄面消费形态(P6-D;双臂纯面)
+// 面:五实体转义 + XSS 注入拒(安全默认)+ 显式豁免装配(ht_el/ht_page)+ 
+// 响应组合(转义文本入 frm_resp)。
+use std.http.frm.html.{ ht_esc, ht_text, ht_el, ht_page }
+
+test "xss injection escaped" {
+    // 脚本注入经 ht_esc 后不可执行(< > 实体化)
+    let evil = "<script>alert(1)</script>"
+    assert(ht_esc(evil) == "&lt;script&gt;alert(1)&lt;/script&gt;")
+    // 属性逃逸:引号实体化,破属性边界即拒
+    assert(ht_esc("\"><script>") == "&quot;&gt;&lt;script&gt;")
+}
+
+test "assembly with explicit exemption" {
+    // 豁免面显式:ht_el/ht_page 的 inner 直入,受信内容由调用方保证
+    let row = ht_el("li", ht_esc("<img>"))
+    assert(row == "<li>&lt;img&gt;</li>")
+    let page = ht_page("todo", ht_el("p", ht_esc("a&b")))
+    assert(page == "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>todo</title>\n</head>\n<body>\n<p>a&amp;b</p>\n</body>\n</html>\n")
+}

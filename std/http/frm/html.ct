@@ -1,0 +1,81 @@
+// std/http/frm/html.ct —— CTML HTML 输出窄面(P6-D;插值默认转义,豁免显式)
+//
+// 计划原文:"CTML HTML 输出窄面:插值默认 HTML 转义 —— 安全默认"。P6 窄面
+// 形态 = 转义原语 + 最小文档/元素装配;CTML 全语法模板引擎(.ctml 解析、
+// 指令/each/when)归 gui 泳道(std/gui/parse.ct),本模块零 use 零解析,
+// 仅输出侧。安全默认面:
+//   ht_esc(s)     五实体转义(&amp; &lt; &gt; &quot; &#39;)—— 文本/属性值
+//                 皆此一面(属性值同文本转义口径;RFC/OWASP 属性上下文无
+//                 第二转义表)。UTF-8 ≥0x80 透传(字节纪律,宪章 7)。
+//   ht_text(s)    = ht_esc 显式别名(调用点自文档:"此处转义")。
+//   ht_el(tag, inner) 结构装配:tag 为调用方常量(不转义);inner 为原文
+//                 直入 —— 豁免面【显式】:调 ht_el 即声明 inner 信任
+//                 (已转义或受信模板产物);不受信文本须先 ht_esc。
+//   ht_page(title, body) 最小 HTML5 骨架;title 经 ht_esc,body 为豁免面
+//                 (同 ht_el 语义)。
+// 登记志向:模板插值形态(ctml {:var} 输出管道)随 CTML 输出波落;autoescape
+// 上下文矩阵(SCRIPT/ATTR-URL 等)显式非目标(P6 窄面口径)。
+
+// ---- 转义原语(纯面) ----
+
+pub fn ht_esc(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 38 {
+            out = out + "&amp;"
+        } else if c == 60 {
+            out = out + "&lt;"
+        } else if c == 62 {
+            out = out + "&gt;"
+        } else if c == 34 {
+            out = out + "&quot;"
+        } else if c == 39 {
+            out = out + "&#39;"
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+// 显式转义别名(调用点自文档)
+pub fn ht_text(s: Str) -> Str {
+    return ht_esc(s)
+}
+
+// ---- 装配(纯面;inner/body = 显式豁免面) ----
+
+pub fn ht_el(tag: Str, inner: Str) -> Str {
+    return "<" + tag + ">" + inner + "</" + tag + ">"
+}
+
+pub fn ht_page(title: Str, body: Str) -> Str {
+    return "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>" + ht_esc(title) + "</title>\n</head>\n<body>\n" + body + "\n</body>\n</html>\n"
+}
+
+// ---- inline tests(纯面) ----
+
+test "escape five entities" {
+    assert(ht_esc("a&b") == "a&amp;b")
+    assert(ht_esc("<x>") == "&lt;x&gt;")
+    assert(ht_esc("a\"b'c") == "a&quot;b&#39;c")
+    assert(ht_esc("plain") == "plain")
+    // 全转义序:('&'<60,'<'60,'>'62 — & 必须最先不回炉)
+    let mixed = ht_esc("<a href=\"x\">&amp;</a>")
+    assert(mixed == "&lt;a href=&quot;x&quot;&gt;&amp;amp;&lt;/a&gt;")
+}
+
+test "passthrough utf8" {
+    assert(ht_esc("张三") == "张三")
+    assert(ht_esc("caf") == "caf")
+}
+
+test "assembly" {
+    assert(ht_el("p", "hi") == "<p>hi</p>")
+    assert(ht_text("a<b") == "a&lt;b")
+    let page = ht_page("t&", "<p>body</p>")
+    assert(page == "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>t&amp;</title>\n</head>\n<body>\n<p>body</p>\n</body>\n</html>\n")
+}

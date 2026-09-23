@@ -1,0 +1,9 @@
+// tests/http/frm_static/a_range_416.ct —— Range 416 面(P6-D;双臂纯面)
+// S≥len → 416 + Content-Range: bytes */10 + 短体。
+use std.http.frm.static.{ st_resp_from_content, st_etag }
+
+test "range 416" {
+    let body = "0123456789"
+    let r = st_resp_from_content("data.bin", body, "", "bytes=10-")
+    assert(r == "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: application/octet-stream\r\nETag: " + st_etag(body) + "\r\nAccept-Ranges: bytes\r\nContent-Range: bytes */10\r\nContent-Length: 21\r\n\r\nrange not satisfiable")
+}

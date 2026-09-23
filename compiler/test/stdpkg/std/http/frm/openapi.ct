@@ -1,0 +1,256 @@
+// std/http/frm/openapi.ct —— OpenAPI 3 同源导出(P6-D;路由表 → JSON 文本)
+//
+// 同源语义:输入 = router.ct 表语法的同一字符串("METHOD SP pattern" 条目,
+// '|' 分隔;D-P6-1 释义)。导出器自解析(零 use;router 导出面是匹配器,
+// 枚举器不在其公开面 —— 自解析纯 Str 处理,与表语法零宽容对齐:畸形条目
+// 跳过,未知方法 token 跳过,登记)。
+//
+// 输出口径(钉版快照面,键序固定;紧凑单行):
+//   {"openapi":"3.0.3","info":{"title":T,"version":V},"paths":{…}}
+//   path 键 = OpenAPI 形(:name 段 → {name});同路径多方法聚合进同一 path
+//   对象(声明序;同 path 同方法重复 → 首现保留,后续跳过 —— JSON 键唯一)。
+//   方法键 = 小写。每操作:
+//     {"parameters":[…],"responses":{"200":{"description":"OK"}}}
+//   参数(按出现序):{"name":N,"in":"path","required":true,"schema":{"type":"string"}}
+//   无参操作省 parameters 键。description 默认面 OK;逐操作响应码/描述自定义
+//   列志向(v1 表语法无承载位)。
+//
+// JSON 串字面量:源内裸 '{' 一律 '\{' 转义(sse.ct 95 字表先例;'}' 原样);
+// 值转义 oa_json_escape:'"' '\\' 与 <0x20(具名 \b\f\n\r\t,余 \u00XX 十六
+// 进制小写)。UTF-8 ≥0x80 透传。
+//
+// 快照语义:夹具手写期望串 assert_eq —— 路由表任一改动 → 快照必红(计划原文
+// "路由表改 → 快照必变")。
+
+// ---- JSON 值转义(纯面) ----
+
+pub fn oa_json_escape(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 34 {
+            out = out + "\\\""
+        } else if c == 92 {
+            out = out + "\\\\"
+        } else if c == 8 {
+            out = out + "\\b"
+        } else if c == 12 {
+            out = out + "\\f"
+        } else if c == 10 {
+            out = out + "\\n"
+        } else if c == 13 {
+            out = out + "\\r"
+        } else if c == 9 {
+            out = out + "\\t"
+        } else if c < 32 {
+            // \u00XX(小写十六进制;余控制字符无具名转义)
+            let hi = (c / 16).as[I32]()
+            let lo = (c % 16).as[I32]()
+            out = out + "\\u00" + byte_slice("0123456789abcdef", hi, hi + 1) + byte_slice("0123456789abcdef", lo, lo + 1)
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+// ---- 方法面(纯面;token 语义与 router 对齐) ----
+
+pub fn oa_mcode(m: Str) -> I64 {
+    if m == "GET" { return 1 }
+    if m == "POST" { return 2 }
+    if m == "PUT" { return 3 }
+    if m == "DELETE" { return 4 }
+    if m == "PATCH" { return 5 }
+    if m == "HEAD" { return 6 }
+    if m == "OPTIONS" { return 7 }
+    if m == "TRACE" { return 8 }
+    return 0
+}
+
+pub fn oa_mkey(code: I64) -> Str {
+    if code == 1 { return "get" }
+    if code == 2 { return "post" }
+    if code == 3 { return "put" }
+    if code == 4 { return "delete" }
+    if code == 5 { return "patch" }
+    if code == 6 { return "head" }
+    if code == 7 { return "options" }
+    if code == 8 { return "trace" }
+    return ""
+}
+
+// ---- path 形转换(纯面)::name → {name} ----
+
+pub fn oa_path_openapi(p: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    var in_param = false
+    while i < p.len {
+        let c = byte_at(p, i)
+        if c == 58 {
+            in_param = true
+            out = out + "\{"
+        } else if in_param && c == 47 {
+            out = out + "}" + "/"
+            in_param = false
+        } else if in_param && i == p.len - 1 {
+            out = out + byte_slice(p, i, i + 1) + "}"
+            in_param = false
+        } else {
+            out = out + byte_slice(p, i, i + 1)
+        }
+        i += 1
+    }
+    if in_param {
+        out = out + "}"
+    }
+    return out
+}
+
+// path 参数名 JSON 数组前缀(按出现序;无参 → "")
+pub fn oa_params_json(p: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    var seg_start: I32 = 0 - 1
+    var first = true
+    while i <= p.len {
+        var c: I32 = 47
+        if i != p.len {
+            c = byte_at(p, i)
+        }
+        if c == 47 {
+            if seg_start >= 0 && i > seg_start && byte_at(p, seg_start) == 58 {
+                let nm = byte_slice(p, seg_start + 1, i)
+                if !first {
+                    out = out + ","
+                }
+                first = false
+                out = out + "\{\"name\":\"" + oa_json_escape(nm) + "\",\"in\":\"path\",\"required\":true,\"schema\":\{\"type\":\"string\"}}"
+            }
+            seg_start = i + 1
+        } else if seg_start < 0 {
+            seg_start = i
+        }
+        i += 1
+    }
+    if out.len == 0 {
+        return ""
+    }
+    return "\"parameters\":[" + out + "],"
+}
+
+// ---- 导出(纯面;同路径聚合,声明序) ----
+
+pub fn oa_export(routes: Str, title: Str, version: Str) -> Str {
+    var paths_body = ""
+    var seen_path: List[Str] = List[Str]()
+    var seen_keys: List[Str] = List[Str]()
+    var i: I32 = 0
+    var entry_start: I32 = 0
+    while i <= routes.len {
+        var c: I32 = 124
+        if i != routes.len {
+            c = byte_at(routes, i)
+        }
+        if c == 124 {
+            if i > entry_start {
+                let entry = byte_slice(routes, entry_start, i)
+                // 条目 = METHOD SP pattern(恰一空格;畸形跳过)
+                var sp: I32 = 0 - 1
+                var k: I32 = 0
+                var nsp: I32 = 0
+                while k < entry.len {
+                    if byte_at(entry, k) == 32 {
+                        sp = k
+                        nsp += 1
+                    }
+                    k += 1
+                }
+                if sp > 0 && nsp == 1 && sp < entry.len - 1 {
+                    let m = byte_slice(entry, 0, sp)
+                    let p = byte_slice(entry, sp + 1, entry.len)
+                    let code = oa_mcode(m)
+                    if code > 0 && p.len > 0 && byte_at(p, 0) == 47 {
+                        let op_key = oa_path_openapi(p)
+                        let mkey = oa_mkey(code)
+                        var dup = false
+                        var z: I32 = 0
+                        while z < seen_keys.len {
+                            if seen_keys[z] == op_key + " " + mkey {
+                                dup = true
+                                break
+                            }
+                            z += 1
+                        }
+                        if !dup {
+                            seen_keys.push(op_key + " " + mkey)
+                            let op = "\{" + oa_params_json(p) + "\"responses\":\{\"200\":\{\"description\":\"OK\"}}}"
+                            // path 首现判定
+                            var pidx: I32 = 0 - 1
+                            var y: I32 = 0
+                            while y < seen_path.len {
+                                if seen_path[y] == op_key {
+                                    pidx = y
+                                    break
+                                }
+                                y += 1
+                            }
+                            if pidx < 0 {
+                                seen_path.push(op_key)
+                                if seen_path.len > 1 {
+                                    paths_body = paths_body + "},"
+                                }
+                                paths_body = paths_body + "\"" + oa_json_escape(op_key) + "\":\{\"" + mkey + "\":" + op
+                            } else {
+                                paths_body = paths_body + ",\"" + mkey + "\":" + op
+                            }
+                        }
+                    }
+                }
+            }
+            entry_start = i + 1
+        }
+        i += 1
+    }
+    if seen_path.len > 0 {
+        paths_body = paths_body + "}"
+        paths_body = "\{" + paths_body + "}"
+    } else {
+        paths_body = "\{"
+    }
+    return "\{\"openapi\":\"3.0.3\",\"info\":\{\"title\":\"" + oa_json_escape(title) + "\",\"version\":\"" + oa_json_escape(version) + "\"},\"paths\":" + paths_body + "}"
+}
+
+// ---- inline tests(纯面;快照夹具见 tests/http/frm_openapi) ----
+
+test "json escape" {
+    assert(oa_json_escape("plain") == "plain")
+    assert(oa_json_escape("a\"b") == "a\\\"b")
+    assert(oa_json_escape("a\\b") == "a\\\\b")
+    assert(oa_json_escape("a\nb") == "a\\nb")
+}
+
+test "path convert" {
+    assert(oa_path_openapi("/users") == "/users")
+    assert(oa_path_openapi("/users/:id") == "/users/\{id}")
+    assert(oa_path_openapi("/u/:a/f/:b") == "/u/\{a}/f/\{b}")
+    let pj = oa_params_json("/users/:id")
+    assert(pj == "\"parameters\":[\{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":\{\"type\":\"string\"}}],")
+    assert(oa_params_json("/users") == "")
+}
+
+test "export snapshot" {
+    let doc = oa_export("GET /users|GET /users/:id|POST /users", "demo", "0.1")
+    let want = "\{\"openapi\":\"3.0.3\",\"info\":\{\"title\":\"demo\",\"version\":\"0.1\"},\"paths\":\{\"/users\":\{\"get\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}}},\"/users/\{id}\":\{\"get\":\{\"parameters\":[\{\"name\":\"id\",\"in\":\"path\",\"required\":true,\"schema\":\{\"type\":\"string\"}}],\"responses\":\{\"200\":\{\"description\":\"OK\"}}},\"post\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}}}}}"
+    assert(doc == want)
+    assert(oa_export("", "t", "v") == "\{\"openapi\":\"3.0.3\",\"info\":\{\"title\":\"t\",\"version\":\"v\"},\"paths\":\{}")
+    let agg = oa_export("GET /x|GET /x|DELETE /x", "t", "v")
+    let want_agg = "\{\"openapi\":\"3.0.3\",\"info\":\{\"title\":\"t\",\"version\":\"v\"},\"paths\":\{\"/x\":\{\"get\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}},\"delete\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}}}}}"
+    assert(agg == want_agg)
+    let sk = oa_export("GETX /a|GET|GET /ok", "t", "v")
+    let want_sk = "\{\"openapi\":\"3.0.3\",\"info\":\{\"title\":\"t\",\"version\":\"v\"},\"paths\":\{\"/ok\":\{\"get\":\{\"responses\":\{\"200\":\{\"description\":\"OK\"}}}}}}"
+    assert(sk == want_sk)
+}

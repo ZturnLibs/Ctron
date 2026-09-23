@@ -1,0 +1,16 @@
+// tests/http/frm_static/a_serve_full.ct —— // 200 全量 + If-None-Match 304 条件链(精确串对拍)
+// tests/http/frm_static/a_core.ct —— 静态文件面消费形态(P6-D;双臂纯面)
+// 面:st_resp_from_content 全分支(200/304/206/416)+ 穿越拒 + ctype 表,
+// 经消费方 use 形态装载(middleware 门面 + static 双叶 —— 加载器 done 去重)。
+// IO 薄胶 st_serve 不入夹具(CWD 不定;P6-E todo_api e2e 接线)。
+use std.http.frm.static.{ st_resp_from_content, st_traversal_ok, st_etag, st_ctype, st_range_parse, st_rc, st_s, st_e }
+
+test "full chain 200 and conditional" {
+    let content = "<html>hi</html>"
+    let r1 = st_resp_from_content("index.html", content, "", "")
+    assert(st_traversal_ok("/assets/index.html"))
+    assert(r1 == "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nETag: " + st_etag(content) + "\r\nAccept-Ranges: bytes\r\nContent-Length: 15\r\n\r\n" + content)
+    // 条件请求命中 → 304 无体
+    let r2 = st_resp_from_content("index.html", content, st_etag(content), "")
+    assert(r2 == "HTTP/1.1 304 Not Modified\r\nETag: " + st_etag(content) + "\r\n\r\n")
+}

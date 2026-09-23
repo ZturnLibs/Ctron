@@ -260,6 +260,29 @@ for f in "$DIR"/frm_auth/a_*.ct; do
     fi
 done
 
+# ── P6-D 行为夹具:frm_static / frm_openapi / frm_html(静态+OpenAPI+转义)──
+# 臂分工(frm_route 同款):a_ 前缀 = 纯面(零 IO;static→std.crypto 叶 +
+# openapi/html 零 use 叶,无 W8052)interp + emit 双计。st_serve IO 薄胶
+# 不入夹具(CWD 不定;P6-E todo_api e2e 接线)。快照夹具 = 路由表改 → 断言红。
+for f in "$DIR"/frm_static/a_*.ct "$DIR"/frm_openapi/a_*.ct "$DIR"/frm_html/a_*.ct; do
+    [ -f "$f" ] || continue
+    name="p6d_$(basename "$(dirname "$f")")_$(basename "$f" .ct)"
+    if "$CC" run "$f" > "$T/$name.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS $name (interp)"
+    else
+        fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
+    fi
+    if [ -x "$EMIT" ]; then
+        if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
+           && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" 2>"$T/$name.e.cc.err" \
+           && "$T/$name.e.bin" > "$T/$name.e.out" 2>&1; then
+            pass=$((pass+1)); echo "  PASS $name (emit)"
+        else
+            fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.e.out" "$T/$name.e.cc.err" "$T/$name.e.err" 2>/dev/null
+        fi
+    fi
+done
+
 if [ "${CTRON_ROUTE_BENCH:-}" = "1" ] && [ -x "$EMIT" ]; then
     B="frm_route_x_bench"
     if "$EMIT" run "$DIR/frm_route/x_bench.ct" > "$T/$B.c" 2>"$T/$B.err" \
