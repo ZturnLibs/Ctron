@@ -371,13 +371,26 @@ pub fn build_package(
         let imports = collect_imports(&pf.ast);
         for imp in &imports {
             let Some((sym_name, target)) = imp.segs.split_last() else { continue };
-            let target_syms = sema.mod_by_path.get(&target.join("."))
-                .and_then(|&idx| mod_syms.get(idx))
-                .cloned()
-                .unwrap_or_default();
-            let bind: &str = imp.alias.as_deref().unwrap_or(sym_name);
             let mut import_diags = Vec::new();
-            resolve_import(&sema, &target_syms, target, sym_name, bind, &mut mod_syms[pf.file_idx], &mut import_diags);
+            // E2020.use.nat:前奏/native 符号不支持别名。拦截面收窄至 std/stdweb
+            // 分支显式处理的原生符号面(Fs/Clock/Net/Log/parallel)——std 头下其余
+            // 符号(文件模块/Module fallback)的别名合法,与自举 None 分支口径对齐。
+            if imp.alias.is_some()
+                && matches!(target.first().map(String::as_str), Some("std") | Some("stdweb"))
+                && matches!(sym_name.as_str(), "Fs" | "Clock" | "Net" | "Log" | "parallel")
+            {
+                import_diags.push(Diagnostic {
+                    code: "E2020.use.nat",
+                    message: format!("use 前奏/native 符号不支持别名:{}", imp.alias.as_deref().unwrap_or(sym_name)),
+                    span: crate::token::Span::new(1, 1, 0, 0),
+                });
+            } else {
+                let target_syms = sema.mod_by_path.get(&target.join("."))
+                    .and_then(|&idx| mod_syms.get(idx))
+                    .cloned()
+                    .unwrap_or_default();
+                resolve_import(&sema, &target_syms, target, sym_name, imp.alias.as_deref(), &mut mod_syms[pf.file_idx], &mut import_diags);
+            }
             per_module[pf.file_idx].1.extend(import_diags);
         }
     }
@@ -642,17 +655,20 @@ fn lower_fn_def(lower: &mut Lower, pf: &ParsedFile, m: &ast::FnDecl) -> FnDef {
 }
 
 /// 导入绑定:查 orig(`segs` 末段)于目标模块,以 `bind` 名插入本模块符号表
-/// (无别名时 bind == orig 本名)。注意:std/stdweb 分支暂维持按原名绑定
-/// (别名对 std 符号暂不生效)——P1b 落 E2020.use.nat 统一拦截。
+/// (无别名时 bind == orig 本名)。前奏/native 符号的别名拦截(E2020.use.nat)
+/// 落在绑定环(调用方),此处不重复判。E5035:仅别名导入在插入前查本模块
+/// 既有名(自有 decl/前序导入;`syms` 即含两者,own_names 快照为其子集),
+/// 裸导 bind==orig 维持覆盖绑定现状(与自举 E5030 面一致)。
 fn resolve_import(
     sema: &Sema,
     target_syms: &HashMap<String, Symbol>,
     target: &[String],
     sym_name: &str,
-    bind: &str,
+    alias: Option<&str>,
     syms: &mut HashMap<String, Symbol>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    let bind: &str = alias.unwrap_or(sym_name);
     let head = target.first().map(String::as_str).unwrap_or("");
     match head {
         "std" | "stdweb" => match sym_name {
@@ -680,7 +696,16 @@ fn resolve_import(
                             _ => true,
                         };
                         if visible {
-                            syms.insert(bind.to_string(), sym);
+                            // E5035:别名与本模块既有名(自有 decl/前序导入)撞名
+                            if alias.is_some() && syms.contains_key(bind) {
+                                diags.push(Diagnostic {
+                                    code: "E5035",
+                                    message: format!("use 别名撞名:{bind}(与既有名冲突)"),
+                                    span: crate::token::Span::new(1, 1, 0, 0),
+                                });
+                            } else {
+                                syms.insert(bind.to_string(), sym);
+                            }
                         } else {
                             diags.push(Diagnostic {
                                 code: "E2020",
@@ -750,4 +775,36 @@ pub struct RuntimeFnSig {
     pub params: Vec<Ty>,
     pub ret: Ty,
     pub is_comptime: bool,
+}
+
+// ---------- 测试(use 别名 P1b:E2020.use.nat + E5035) ----------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn codes_of(per: &[(String, Vec<Diagnostic>)], module: &str) -> Vec<&'static str> {
+        per.iter().find(|(m, _)| m == module)
+            .map(|(_, d)| d.iter().map(|x| x.code).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn use_alias_on_native_prelude_is_e2020_use_nat() {
+        let files = vec![
+            ("main".to_string(), "use std.time.Clock as K\nfn main() {}\n".to_string()),
+        ];
+        let (_, per) = build_package(&files, None, Profile::Full);
+        assert_eq!(codes_of(&per, "main"), vec!["E2020.use.nat"]);
+    }
+
+    #[test]
+    fn use_alias_colliding_with_own_decl_is_e5035() {
+        let files = vec![
+            ("main".to_string(), "use app.util.{double as triple}\nfn main() {}\nfn triple() {}\n".to_string()),
+            ("app.util".to_string(), "pub fn double() -> I32 { return 2 }\n".to_string()),
+        ];
+        let (_, per) = build_package(&files, None, Profile::Full);
+        assert_eq!(codes_of(&per, "main"), vec!["E5035"]);
+    }
 }
