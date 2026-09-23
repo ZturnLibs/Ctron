@@ -214,7 +214,10 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if ct_is_enum(file, nt[1]) { return "E:" + nt[1] }
     if nt[1] == "Str" { return "s" }
     if nt[1] == "Bool" { return "b" }
-    if or2(nt[1] == "F64", nt[1] == "F32") { return "f" }
+    if nt[1] == "F64" { return "f" }
+    // F32 独立码 "g"(v0.9 精度约定):此前折叠进 "f"(C double)致 extern
+    // 边界 float/double ABI 错配(C 侧收 0);"g" → float,binary32 保真
+    if nt[1] == "F32" { return "g" }
     if nt[1] == "I64" { return "6" }
     if nt[1] == "U8" { return "w8u" }
     if nt[1] == "I8" { return "w8s" }
@@ -265,6 +268,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "N" { return "const char*" }
     if code == "b" { return "int" }
     if code == "f" { return "double" }
+    if code == "g" { return "float" }
     if or2(code == "L", code == "LI") { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
@@ -801,6 +805,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if l.len > 1 && byte_at(l, 0) == 113 { return l }
             if r.len > 1 && byte_at(r, 0) == 113 { return r }
             if or2(l == "f", r == "f") { return "f" }
+            if or2(l == "g", r == "g") { return "g" }
             if or2(l == "s", r == "s") { return "s" }
             if or2(l == "N", r == "N") { return "s" }
             if or2(l == "6", r == "6") { return "6" }

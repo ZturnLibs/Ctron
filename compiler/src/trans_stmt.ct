@@ -1368,8 +1368,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln("printf(\"%s" + bs() + "n\", " + ct_expr(e[2][1], env, file) + " ? \"true\" : \"false\");", env)
                 return env
             }
-            if at == "f" {
-                // rt fmt_val:整值 %.1f,否则 %g(实参三次文本展开,仅限简单表达式)
+            if or2(at == "f", at == "g") {
+                // rt fmt_val:整值 %.1f,否则 %g(实参三次文本展开,仅限简单表达式);
+                // "g"(float)经变参默认提升为 double,同型打印
                 var fx = ct_expr(e[2][1], env, file)
                 eln("printf((" + fx + " == (double)(long long)(" + fx + ")) ? \"%.1f" + bs() + "n\" : \"%g" + bs() + "n\", " + fx + ");", env)
                 return env

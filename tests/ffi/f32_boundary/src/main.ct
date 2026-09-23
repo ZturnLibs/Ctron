@@ -1,0 +1,23 @@
+// tests/ffi/f32_boundary —— F32 extern 边界保真(§9.6 v0.9 精度约定)
+// 承诺:F32 边界 = C float(IEEE binary32);F64 = C double;边界不隐式加宽。
+// 此前 F32 折叠进 F64 码(C double),extern 边界 ABI 错配,C 侧收 0。
+#[trusted]
+extern "c" fn f_add(a: F32, b: F32) -> F32
+
+#[trusted]
+extern "c" fn f_half(x: F32) -> F32
+
+#[trusted]
+extern "c" fn f_widen(x: F32) -> F64
+
+test "F32 scalar roundtrip preserves binary32" {
+    var a: F32 = 1.5
+    var b: F32 = 2.25
+    assert_eq(f_add(a, b), 3.75)
+    assert_eq(f_half(9.0), 4.5)
+}
+
+test "boundary rounds to binary32 (F32 widened back differs from F64 0.1)" {
+    var t: F32 = 0.1
+    assert_eq(f_widen(t) == 0.1, false)
+}

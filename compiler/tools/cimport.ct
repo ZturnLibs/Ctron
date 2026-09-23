@@ -322,6 +322,7 @@ fn cimp_ty(t: Str, tds: List[Str]) -> Str {
     if (nm == "size_t") { return "USize" }
     if (nm == "ptrdiff_t") { return "I64" }
     if (nm == "double") { return "F64" }
+    if (nm == "float") { return "F32" }
     if (nm == "_Bool") { return "Bool" }
     if (nm == "bool") { return "Bool" }
     if base.len == 1 {

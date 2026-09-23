@@ -374,6 +374,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if tgtc == "i" { return "(int32_t)(" + aobj + ")" }
                 if tgtc == "b" { return "(int)(" + aobj + ")" }
                 if tgtc == "f" { return "(double)(" + aobj + ")" }
+                if tgtc == "g" { return "(float)(" + aobj + ")" }
                 if tgtc.len > 2 && byte_at(tgtc, 0) == 119 {
                     return "(" + ct_ctype(tgtc) + ")(" + aobj + ")"
                 }
@@ -1270,6 +1271,7 @@ fn ct_zero(code: Str) -> Str {
         return "(t_" + byte_slice(code, 2, code.len) + ")\{0}"
     }
     if code == "f" { return "0.0" }
+    if code == "g" { return "0.0" }
     return "0"
 }
 
@@ -1282,7 +1284,7 @@ fn a_split(code: Str) -> I32 {
     while k > 1 {
         var c = byte_at(code, k)
         var ok = false
-        var set = "isbf67NghRALvuwBEmP"
+        var set = "isbgf67NghRALvuwBEmP"
         var t: I32 = 0
         while t < set.len {
             if byte_at(set, t) == c {

@@ -17,6 +17,7 @@ extern int64_t sample_add(int64_t a, int64_t b);
 extern double sample_scale(double v, int factor);
 extern size_t sample_count(const char *s, int limit);
 extern void sample_reset(void);
+extern float sample_fscale(float v, float k);
 
 /* 位域:cimport 应整构跳过(布局不可按声明序表达,逐字段映射=静默错绑) */
 struct bits {
