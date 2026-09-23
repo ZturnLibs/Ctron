@@ -1,0 +1,46 @@
+use gui.{test, gt_parse, rt_hit_name, d_cmd_x100, d_cmd_y100, d_cmd_w100, d_cmd_h100}
+
+view P {
+  <vbox class="root">
+    <button class="b1" on:click={top}>TOP</button>
+    <each it in={rows}>
+      <button class="b2" on:click={row}>{it}</button>
+    </each>
+  </vbox>
+}
+style root { direction: column gap: 4 padding: 8 }
+style b1 { bg: "#2563eb" w: 120 h: 40 fg: "#ffffff" }
+style b2 { bg: "#7f1d1d" w: 120 h: 40 fg: "#ffffff" }
+
+fn top() {
+}
+fn row() {
+}
+
+fn bind_all(buf: List[Str]) {
+    if buf[0] == "each:rows" {
+        buf.push("r0")
+        buf.push("r1")
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var t: GuiTree = gt_parse(src)
+    var rc: I32 = test(src, 320, 400,
+        |buf| bind_all(buf),
+        |name| { },
+        |k| k,
+        |d, a, k2| {
+            var j: I32 = 0
+            while j < d.rects.len {
+                var cx: I32 = d_cmd_x100(d.rects[j]) / 100 + d_cmd_w100(d.rects[j]) / 200
+                var cy: I32 = d_cmd_y100(d.rects[j]) / 100 + d_cmd_h100(d.rects[j]) / 200
+                var nm: Str = rt_hit_name(d.t, d.hits, d.hinst, d.rects, cx, cy)
+                println("hit" + j.to_string() + "=" + nm)
+                j += 1
+            }
+            println("HIT-PROBE-DONE")
+        })
+    return rc
+}
