@@ -303,6 +303,19 @@ Drop 顺序 fd 复用 ABA caveat(超时兜底,文件头注);tls_read cap<=0 返 
 | P4-C | 客户端(client_request:重定向 301/302/303→GET 弃体、307/308 保方法保体、5 跳上限 err7、keep-alive 单槽 bru 复用计数、陈旧连接重试一次、101 直通)+ SSE 写面(id-NUL 整字段忽略)+ WebSocket(RFC 6455 三 MUST:分片序列态 err9/10、UTF-8 良构校验 1007 惰性档、version 严格 13;SHA-1 std/crypto RFC 3174 向量;lane-b64 因 std/enc C8 域约束自出) | tests/http **57/57 双臂**(x_ e2e 夹具 emit × {默认, CTRON_RT=coro} 双矩阵;§5.7 掩码/分片语料逐字节;粘包余量压实;修复波断言逮住零长帧悬挂/len7 标记误算两真 bug);len64 证据转双臂在库断言(ws_frame_head 单点) |
 | P4-D | 解析基准(vs picohttpparser)+ 结构化 fuzz 长跑 + 登记收口 | 基准:N=1e6 ×3 取最小,ctron **209 ns/req** vs pico **46 ns/req** = **4.54×**(复跑 4.44×)→ 门 ≤2× **RED 登记档**:实测 < 8× 悲观界但仍在 I64-lane 宽度税量级(~4.8M parse/s ≈ 754 MB/s),处置 P9 I8-typedef,数字照录不粉饰;fuzz:结构化生成十类(合法/坏版本/走私/越限/chunked 异常/WS 帧边/垃圾/gzip)× interp+emit 双臂 × 24 seeds(120 段),本地 ≥10min(nightly ≥30min 惯例入 runner 头注),**零崩溃零挂死**(watchdog 段超时);差分对拍 6144 样本:pico_accepts_we_reject=1265(严格子集预期差)、**we_accept_pico_rejects=0**;fuzz 实证解释器值域定宽乘法 std/http 四处(值跨 2^28–2^31 带即炸,emit 正确)→ C10 宽域惯用法四处结构性修复 + divergences (i) 收口 |
 
+### P6 行(ctron-http 应用框架,2026-09-22→23)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| P6-A | comptime 路由核(平面 Str const 表+运行时 first-match+类型化参数)+ 中间件链骨架 | tests/http/frm_route 双臂 67 绿;x_bench hit 52ns ≤100 门;bench 家族门禁不入 CI 主环 |
+| P6-B | 公网中间件五件(cors/csrf/sechdr/limit/timeout;时钟恒注入) | tests/http 82/82 + net 14/14;注入防护语料 |
+| P6-C | 认证三件套(cookie 会话/JWT HS256/PBKDF2)+ multipart + JSON body 绑定 | frm_auth 语料双臂(JWT 黄金向量/alg 混淆拒/时钟注入);登记: utf8_enc 内建解释臂劈叉→au_ch 表格面 |
+| P6-D | 静态文件(强 ETag 内容寻址/304/Range 206·416/穿越拒 fail-closed;Last-Modified 与 sendfile 登记)+ OpenAPI 3 同源导出(快照=路由表改即红)+ CTML 转义窄面(五实体安全默认+显式豁免) | tests/http frm_static×6+frm_openapi+frm_html 双臂 **16/16**(da08562);st_serve IO 薄胶待 P6-E e2e;大串断言按 corpus 惯例拆小文件(解释器堆不回收在册债的单文件腐坏规避) |
+
+P6-D 时点套件环境红(独立于本片,移出复现):frm_auth/csrf/auth-inline interp
+137 击杀(解释器堆不回收在册债 × 并行泳道负载)、mw_chain E2020(P1b 显式
+请求口径对 middleware 合并贯穿形态的波及,compiler 泳道在制)、e2e×4 负载超时。
+
 ### P5 行(std/db 数据访问层,2026-09-21)
 
 | 波次 | 项 | 锚定 |
