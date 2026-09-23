@@ -80,6 +80,11 @@
 解释口径 `ctron-cc run` 跑通域包 test() 探针 + `sh examples/gui_calc/run.sh`
 复绿。GUI 泳道回归态（阶梯 26/30、e8 19/19、todo/counter/cjk 全绿）不受累。
 
+**更新（2026-09-23 晚，21fef21）**：native 半已关——gui_calc 按 ddb5ee7 先例
+（调用方补显式请求）补 `d_press_key` 入 use 面即复绿（rc=0 全场景断言过）。
+**选择性合并的现行契约 = 引用跨包符号必须显式请求**（闭包收集有边界，跨包
+extern 尤甚）。interp 半（请求面内的 test 仍 stub）仍归 P1b 合并器，登记不变。
+
 ## 非目标（本计划不顺手做）
 - view 组件/props 类型面/each key/slot 分发（终锚 §10.3 全形态）；
 - 可变方法调用的类型级纯度判定（等 8c 类型面）；
