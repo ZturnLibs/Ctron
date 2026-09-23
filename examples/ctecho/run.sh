@@ -12,7 +12,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 "$EMIT" run "$DIR/src/main.ct" > "$T/ctecho.c" || exit 1
 # P2-D:并链 ctron_rt.c(协程模式需要;默认环境 active()=0 仍走 P1 pthread 面,
 # 源码零改动同形不变)。-pthread = rt 依赖;-I 供 ctron_net.c 的 ctron_rt.h。
-cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/ctecho" "$T/ctecho.c" "$ROOT/std/net/c_src/ctron_net.c" "$ROOT/std/net/c_src/ctron_rt.c" || exit 1
+cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctecho" "$T/ctecho.c" "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" || exit 1
 PORT=${CTECHO_PORT:-$(( (RANDOM % 20000) + 30000 ))}
 CTECHO_PORT=$PORT "$T/ctecho" > "$T/srv.log" 2>&1 & SRV=$!
 sleep 0.5

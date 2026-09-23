@@ -5,7 +5,7 @@
 // 重链(ok 路全链 ≈ 23 块压缩)+ pre-PBKDF2 廉价负例(mech/nonce 前缀/
 // 相序/耗尽);错口令与签名不符两走 x_scram_neg.ct(emit 臂,x_ 结构性
 // 登记),RFC 7677 原例 i=4096 走 x_scram_rfc7677.ct。
-use std.db.pg.{pg_recv_frame_script, pg_scram_handshake, pg_sasl_initial_msg, pg_sasl_response_msg, pg_str_bytes, pg_hex_encode, pgv_rc, pgv_type, pgv_body_len, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_esev, pgs_ecode, pgs_emsg, pgs_nmech, pgs_mech, pgs_cfirst, pgs_sfirst, pgs_cfinal, pgs_sigok, pg_err_auth, pg_err_eof}
+use db.pg.{pg_recv_frame_script, pg_scram_handshake, pg_sasl_initial_msg, pg_sasl_response_msg, pg_str_bytes, pg_hex_encode, pgv_rc, pgv_type, pgv_body_len, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_esev, pgs_ecode, pgs_emsg, pgs_nmech, pgs_mech, pgs_cfirst, pgs_sfirst, pgs_cfinal, pgs_sigok, pg_err_auth, pg_err_eof}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

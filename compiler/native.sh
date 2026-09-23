@@ -42,7 +42,7 @@ GUI_O=""
 GUI_F=""
 if [ -f "$ROOT/vendor/gui/build/libraylib.a" ]; then
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" \
-       -c "$ROOT/std/gui/c_src/ctron_gui.c" -o "$TMP/ctron_gui.o"
+       -c "$ROOT/gui/c_src/ctron_gui.c" -o "$TMP/ctron_gui.o"
     GUI_O="$TMP/ctron_gui.o"
     case "$(uname)" in
         Darwin)

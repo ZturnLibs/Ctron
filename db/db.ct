@@ -1,0 +1,182 @@
+// db/db.ct —— 数据访问能力门面雏形(§12.1;P5-C)
+// since: std-0.5 stability: experimental
+// ═══ 能力面(§12.1 规范性)═══
+//   能力键 `db.connect` 已在 S0 落键集;门面函数首参 `db: StdDb` 贯穿
+//   (net/tls 惯例:调用点能力显形)。连接以 DSN 经门面解析传入,程序内
+//   不从任意字符串自行建连;`#[pure]` 触库 = E4020(编译期;本文件纯面)。
+// ═══ 依赖纪律 ═══
+//   零 std 依赖纯叶(与 db/pg.ct 同口径):DSN 解析纯 Ctron 字节面,
+//   不触 net(tcp 连接由消费侧组合:net 树建连 → 句柄 fd 传 pg 真源,
+//   Task 6 nightly 冒烟;严格互斥树——db 不 use std.net)。
+// ═══ 发射面纪律 ═══
+//   DSN 结果 struct 通道(头注①;PgRows 同款):跨模块数值消费走 pgd_*
+//   getter,不暴露字段直读。inline test 不落本文件(C17 宿主敏感,P5-A
+//   口径);行为面在 tests/db。
+// ═══ DSN 文法(v0)═══
+//   postgres://user:pass@host:port/dbname   (postgresql:// 前缀同收)
+//   port 缺省 5432;user/pass/host/name 可空(ok=1 允许空 pass/name;
+//   user 空 = ok 0 —— 协议要求 user 必填);百分号编码不解(v0,登记);
+//   IPv6 [::1] 字面量不支援(v0,登记);畸形 → ok=0 全空。
+
+pub struct StdDb {
+}
+
+// 能力 token 构造(门面首参显形;db.connect 键的运行期显形面)
+pub fn db_std() -> StdDb {
+    return StdDb { }
+}
+
+pub struct DbDsn {
+    var ok: I64
+    var user: Str
+    var pass: Str
+    var host: Str
+    var port: I64
+    var name: Str
+}
+
+pub fn pgd_ok(d: DbDsn) -> I64 { return d.ok }
+pub fn pgd_user(d: DbDsn) -> Str { return d.user }
+pub fn pgd_pass(d: DbDsn) -> Str { return d.pass }
+pub fn pgd_host(d: DbDsn) -> Str { return d.host }
+pub fn pgd_port(d: DbDsn) -> I64 { return d.port }
+pub fn pgd_name(d: DbDsn) -> Str { return d.name }
+
+fn dsnx_fail() -> DbDsn {
+    var d = DbDsn { ok: 0, user: "", pass: "", host: "", port: 0, name: "" }
+    return d
+}
+
+// DSN 解析(postgres://user:pass@host:port/dbname;文法见头注)。
+// 首参能力显形(db: StdDb)贯穿门面惯例。
+pub fn dsn_parse(db: StdDb, raw: Str) -> DbDsn {
+    var consumed: I32 = 0
+    if raw.len >= 13 {
+        var p13 = byte_slice(raw, 0, 13)
+        if p13 == "postgresql://" {
+            consumed = 13
+        }
+    }
+    if consumed == 0 {
+        if raw.len >= 11 {
+            var p11 = byte_slice(raw, 0, 11)
+            if p11 == "postgres://" {
+                consumed = 11
+            } else {
+                return dsnx_fail()
+            }
+        } else {
+            return dsnx_fail()
+        }
+    }
+    var rest = byte_slice(raw, consumed, raw.len)
+    // rest = [user[:pass]@]host[:port][/name];先切 authority(path 前)
+    var aslash: I32 = rest.len
+    var i: I32 = 0
+    while i < rest.len {
+        if byte_at(rest, i) == 47 {
+            aslash = i
+            i = rest.len
+        } else {
+            i += 1
+        }
+    }
+    var authority = byte_slice(rest, 0, aslash)
+    var path = byte_slice(rest, aslash, rest.len)
+    // userinfo:'@' 在 authority 内最后一处(v0 禁 user/pass 含 @)
+    var at: I32 = -1
+    var j: I32 = 0
+    while j < authority.len {
+        if byte_at(authority, j) == 64 {
+            at = j
+        }
+        j += 1
+    }
+    var userinfo = ""
+    var hostport = authority
+    if at >= 0 {
+        userinfo = byte_slice(authority, 0, at)
+        hostport = byte_slice(authority, at + 1, authority.len)
+    }
+    // user:pass(userinfo 内首 ':')
+    var user = userinfo
+    var pass = ""
+    var colon: I32 = -1
+    var k: I32 = 0
+    while k < userinfo.len {
+        if byte_at(userinfo, k) == 58 {
+            colon = k
+            k = userinfo.len
+        } else {
+            k += 1
+        }
+    }
+    if colon >= 0 {
+        user = byte_slice(userinfo, 0, colon)
+        pass = byte_slice(userinfo, colon + 1, userinfo.len)
+    }
+    // host:port(hostport 内最后 ':'——点分 IPv4/主机名无 ':' 歧义;
+    // IPv6 不支援 v0)
+    var host = hostport
+    var port: I64 = 5432
+    var c2: I32 = -1
+    var m: I32 = hostport.len - 1
+    while m >= 0 {
+        if byte_at(hostport, m) == 58 {
+            c2 = m
+            m = -1
+        } else {
+            m -= 1
+        }
+    }
+    if c2 >= 0 {
+        host = byte_slice(hostport, 0, c2)
+        var ps = byte_slice(hostport, c2 + 1, hostport.len)
+        if ps.len == 0 {
+            return dsnx_fail()
+        }
+        var acc: I64 = dbz()
+        var q: I32 = 0
+        while q < ps.len {
+            var c = byte_at(ps, q)
+            if c < 48 || c > 57 {
+                return dsnx_fail()
+            }
+            acc = (acc + 4294967296 - 4294967296) * 10 + (c - 48).as[I64]()
+            if acc > 65535 {
+                return dsnx_fail()
+            }
+            q += 1
+        }
+        port = acc
+    }
+    // dbname:path 首字符须 '/',其余为名(v0 名内禁 '/')
+    var name = ""
+    if path.len > 0 {
+        if byte_at(path, 0) != 47 {
+            return dsnx_fail()
+        }
+        name = byte_slice(path, 1, path.len)
+        var n: I32 = 0
+        while n < name.len {
+            if byte_at(name, n) == 47 {
+                return dsnx_fail()
+            }
+            n += 1
+        }
+    }
+    if user.len == 0 {
+        return dsnx_fail()
+    }
+    if host.len == 0 {
+        return dsnx_fail()
+    }
+    var d = DbDsn { ok: 1, user: user, pass: pass, host: host, port: port, name: name }
+    return d
+}
+
+// 宽域播种(pg.ct pgz 同款;本文件零 use,自持)
+fn dbz() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}

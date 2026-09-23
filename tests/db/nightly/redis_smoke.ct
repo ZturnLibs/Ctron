@@ -2,7 +2,7 @@
 // 不入 tests/db 主环)。env CTRON_REDIS_URL(redis://host:port;v0 最小文法,
 // 无鉴权/无 db 段——登记)→ 垫片 connect → fd 句柄传驱动:SET/GET 回环 +
 // INCR ×3 计数 + DEL。URL 未设 → skip 行照跑(run.sh 负责靶探测与登记)。
-use std.db.redis.{ctron_dbredis_connect, ctron_dbredis_close, redis_send_cmd_fd, redis_recv_fd, redis_set_cmd, redis_get_cmd, redis_del_cmd, redis_incr_cmd, RdsCell64, rs_rc, rs_err, rs_kind, rs_sval, rs_ival}
+use db.redis.{ctron_dbredis_connect, ctron_dbredis_close, redis_send_cmd_fd, redis_recv_fd, redis_set_cmd, redis_get_cmd, redis_del_cmd, redis_incr_cmd, RdsCell64, rs_rc, rs_err, rs_kind, rs_sval, rs_ival}
 
 // 解析目标(struct 通道;getter 面 (h) 裁定)
 struct NlxTarget {

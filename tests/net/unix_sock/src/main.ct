@@ -9,7 +9,7 @@
 // 协程面:spawn 协程内 net_resolve 走 P3-E helper 池 + park(默认环境该
 // spawn 为 P1 pthread 面,resolve 直呼阻塞 —— 双模式同果)。
 // CI 纪律:仅本机文件系统 + localhost 解析、零外联(tests/net/run.sh 同口径)。
-use std.net.{Net_probe, last_net_error, net_unix_listen, net_unix_accept, net_unix_connect, net_unix_unlink, net_write_str, net_write, net_read_t, net_close, net_shutdown_write, net_resolve}
+use net.{Net_probe, last_net_error, net_unix_listen, net_unix_accept, net_unix_connect, net_unix_unlink, net_write_str, net_write, net_read_t, net_close, net_shutdown_write, net_resolve}
 
 #[trusted]
 extern "c" fn ctron_unix_sockpath() -> Str

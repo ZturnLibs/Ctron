@@ -1,0 +1,50 @@
+// net/bind.ct - ctron_net.c shim extern surface (§11.2)
+// 纪律:参数表单行(C 宿主解析器);fd 全程 I64;出参经 Box/repr(c) struct(Task 4 登记)。
+// 可见性注:此处用 `pub extern` 而非 brief 原案 `#[trusted] extern` —— loader 的
+// use 可见性检查仅认 FnExt+pub 尾槽(parse_pkg.ct:285),而 `#[trusted]` 与 `pub`
+// 无组合语法(pub 分支不路由属性,属性分支不路由 pub);sem 对 extern 无 trusted
+// 检查(E4040 仅 Fn/FnPub),纪律语义由本注释承载。net.ct 经
+// use net.bind.{...} 链入,符号随合并进单一命名空间(§11.2)。
+//
+// 边界形态(Task 6,依 Task 4 发射面登记选择):
+//   - 出参 fd/port = Box[Box64](发射 t_Box64* 堆胞指针,与 C 侧 Box64* 镜像);
+//     裸 struct 按值 / &struct 形参均不可按引用(发射面缺口,Task 4/6 登记)。
+//   - 缓冲 = &I64[] 视图 lane(每字节一条 int64 lane;发射器仅预发 i/6/b/s/f
+//     视图 typedef,I8/U8 视图为缺口)。read_t/recv 逐字节写 lane,write/sendto
+//     逐条取 (char)lane[i]。
+//   - C-owned 串返回(ctron_net_resolve_first/strerror)为 thread-local 静态,
+//     Ctron 侧 str_from_c 深拷后用(§9.6 三约定)。
+//   - rc 约定:0 成功;<0 失败(错误详情经 ctron_net_last_errno/strerror);
+//     读函数 >0 n / 0 eof / <0 err。peer 地址串 P1 全裁(YAGNI,无夹具需要)。
+// 出参镜像 Box:所有 fd/port 出参统一 Box[Box64] 通道(发射 t_Box64* 堆胞指针,
+// 与 ctron_net.c 侧 `typedef struct { int64_t v; } Box64;` 布局镜像)。struct 声明
+// 落本文件,use 合并即带出 typedef(发射器只为已声明 struct 发 typedef)。
+struct Box64 {
+    var v: I64
+}
+
+pub extern "c" fn ctron_net_now_ns() -> I64
+pub extern "c" fn ctron_net_sleep_ms(ms: I64) -> I64
+pub extern "c" fn ctron_net_last_errno() -> I64
+pub extern "c" fn ctron_net_strerror(e: I64) -> Str
+pub extern "c" fn str_from_c(s: Str) -> Str
+pub extern "c" fn ctron_net_tcp_listen(host: Str, port: I64, out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_tcp_sockname(fd: I64, out_port: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_tcp_accept(lfd: I64, out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_tcp_connect(host: Str, port: I64, out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_read_t(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_write(fd: I64, buf: &I64[], n: I64) -> I64
+pub extern "c" fn ctron_net_write_str(fd: I64, s: Str) -> I64
+pub extern "c" fn ctron_net_close(fd: I64) -> I64
+pub extern "c" fn ctron_net_shutdown_write(fd: I64) -> I64
+pub extern "c" fn ctron_net_set_nodelay(fd: I64, on: I64) -> I64
+pub extern "c" fn ctron_net_get_nodelay(fd: I64) -> I64
+pub extern "c" fn ctron_net_udp_socket(out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_udp_bind(fd: I64, host: Str, port: I64, out_port: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_udp_sendto(fd: I64, host: Str, port: I64, buf: &I64[], n: I64) -> I64
+pub extern "c" fn ctron_net_udp_recvfrom(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_resolve_first(host: Str) -> Str
+pub extern "c" fn ctron_net_unix_listen(path: Str, out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_unix_accept(lfd: I64, out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_unix_connect(path: Str, out_fd: Box[Box64]) -> I64
+pub extern "c" fn ctron_net_unix_unlink(path: Str) -> I64

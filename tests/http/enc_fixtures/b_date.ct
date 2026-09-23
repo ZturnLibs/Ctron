@@ -2,7 +2,7 @@
 // 纯 Ctron 面(不触 extern):双臂(解释 + emit)同跑。
 // 覆盖:RFC 黄金向量、epoch 边界(0/-1/负元)、互逆(roundtrip)、闰年面、
 // 严格拒(RFC 850/asctime 形、UTC/Z 时区、星期不符、闰秒、越界、畸形)。
-use std.http.date.{ http_date_format, http_date_parse, http_date_get, http_date_some, http_date_weekday }
+use http.date.{ http_date_format, http_date_parse, http_date_get, http_date_some, http_date_weekday }
 
 test "date golden vectors" {
     // RFC 9110 §5.6.7 示例(RFC 1123 经典向量)

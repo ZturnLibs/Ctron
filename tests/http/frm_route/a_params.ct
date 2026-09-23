@@ -2,7 +2,7 @@
 // 面::id 严格十进制(非法/空/溢出拒)、:name 原始切片与 percent 解码(经
 // std/enc;非法解码 bad 哨兵 + dec_ok 谓词)、多参数槽、4 槽上限(第 5 参数
 // 命中不捕获)、解码不重分段(%2F → '/' 仍在单段内)。
-use std.http.frm.router.{ frm_match, frm_m_get, fr_rc, fr_id, fr_np, fr_ps, fr_pl, frm_param, frm_param_dec, frm_param_dec_ok, frm_param_i64, fi_rc, fi_v, frm_slice_str }
+use http.frm.router.{ frm_match, frm_m_get, fr_rc, fr_id, fr_np, fr_ps, fr_pl, frm_param, frm_param_dec, frm_param_dec_ok, frm_param_i64, fi_rc, fi_v, frm_slice_str }
 
 const SPEC: Str = "GET /u/:id|GET /n/:name|GET /deep/:a/:b/:c/:d/:e"
 

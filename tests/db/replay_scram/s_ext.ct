@@ -2,7 +2,7 @@
 // 响应流回放(ParseComplete/BindComplete/ParameterDescription 入共驱核
 // 跳过分支;收侧行结果走既有 struct 通道)。廉价纯协议面(零密码学),
 // 双臂。锚值 = gen_fixtures.py 同源 python 构造(锚生成器纪律)。
-use std.db.pg.{pg_parse_msg, pg_bind_msg, pg_describe_msg, pg_close_msg, pg_execute_msg, pg_sync_msg, pg_ext_pipeline, pg_handshake_script, pg_query_script, pg_hex_encode, pgr_rc, pgr_err, pgr_rows, pgr_cols, pgr_tag, pgr_colname, pgr_oid, pgr_cell, pgr_isnull, pgr_next, pgr_status, pgr_ecode}
+use db.pg.{pg_parse_msg, pg_bind_msg, pg_describe_msg, pg_close_msg, pg_execute_msg, pg_sync_msg, pg_ext_pipeline, pg_handshake_script, pg_query_script, pg_hex_encode, pgr_rc, pgr_err, pgr_rows, pgr_cols, pgr_tag, pgr_colname, pgr_oid, pgr_cell, pgr_isnull, pgr_next, pgr_status, pgr_ecode}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

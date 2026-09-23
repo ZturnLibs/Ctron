@@ -3,7 +3,7 @@
 // P=15)+ Z;查询侧 rc -1 err 5,SQLSTATE/severity/message 三槽传播;P 字段
 // 扫描跳过不扰。NoticeResponse(N)同字段格式 —— 查询/会话两侧跳过锚。
 // 内嵌字面量脚本用于 N/E 变体(回放源双入口同一核)。
-use std.db.pg.{pg_recv_frame_script, pg_handshake_script, pg_query_script, pg_err_data, pge_ok, pge_sev, pge_code, pge_msg, pgv_rc, pgv_type, pgv_body, pgs_rc, pgs_err, pgs_esev, pgs_ecode, pgs_emsg, pgr_rc, pgr_err, pgr_rows, pgr_tag, pgr_esev, pgr_ecode, pgr_emsg, pg_err_response}
+use db.pg.{pg_recv_frame_script, pg_handshake_script, pg_query_script, pg_err_data, pge_ok, pge_sev, pge_code, pge_msg, pgv_rc, pgv_type, pgv_body, pgs_rc, pgs_err, pgs_esev, pgs_ecode, pgs_emsg, pgr_rc, pgr_err, pgr_rows, pgr_tag, pgr_esev, pgr_ecode, pgr_emsg, pg_err_response}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

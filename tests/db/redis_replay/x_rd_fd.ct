@@ -18,7 +18,7 @@
 //      ctron_dbpg.c P5-C 同钉)。
 // lane 槽数 = 字面量显式(P5-C 登记;定长数组返回值发射面未证 ⇒ 恒内联)。
 // 真库互操作 Task 6 nightly(阻塞 fd:循环至整包,incomplete 面不外显)。
-use std.db.redis.{redis_recv_fd, redis_send_cmd_fd, redis_fd_close, redis_get_cmd, redis_hex_decode, RdsCell64, ctron_dbredis_socketpair, ctron_dbredis_write, ctron_dbredis_read, rs_rc, rs_err, rs_kind, rs_sval, rs_isnull, rs_ival, rs_nitems, rs_item, rs_inull, rs_bval, rs_used, redis_err_eof}
+use db.redis.{redis_recv_fd, redis_send_cmd_fd, redis_fd_close, redis_get_cmd, redis_hex_decode, RdsCell64, ctron_dbredis_socketpair, ctron_dbredis_write, ctron_dbredis_read, rs_rc, rs_err, rs_kind, rs_sval, rs_isnull, rs_ival, rs_nitems, rs_item, rs_inull, rs_bval, rs_used, redis_err_eof}
 
 fn lane_from_hex(dst: &I64[], hex: Str) -> I64 {
     var b = redis_hex_decode(hex)

@@ -1,0 +1,31 @@
+// tls/bind.ct - ctron_tls.c shim extern surface (P3-C)
+// 纪律:参数表单行(C 宿主解析器);句柄全程 I64;单行 extern 白名单形参,
+// net/bind.ct 同款。可见性注:pub extern 而非 #[trusted] 组合语法的理由
+// 同 net/bind.ct 头注(loader use 可见性仅认 FnExt+pub 尾槽)。
+// 边界形态(依 net/bind.ct 既有登记):
+//   - 缓冲读 = &I64[] 视图 lane(C 侧 ct_view6 布局镜像,ctron_tls.c 头注);
+//   - 写 = Str → const char* 零拷贝直通(同 ctron_net_write_str);
+//   - C-owned 串返回(strerror/alpn_selected_s)为 thread-local 静态或 ctx
+//     自有表,门面 str_from_c 深拷后用(§9.6 三约定);
+//   - rc 约定:0 成;<0 失败(详情经 ctron_tls_last_errno/strerror);
+//     读 >0 n / 0 eof / <0 err。任务书冻结的出参形 ctron_tls_alpn_selected
+//     (char* out, I64 cap)与 ctron_tls_last_error(char* out, I64 cap)为 C
+//     消费面 —— Ctron 侧无可变缓冲类型,不入本表(门面走 _s/errno 路径),
+//     双形并存于 ctron_tls.c。
+//   - ctron_tls_close C 侧为 void(冻结):发射面 extern 声明统一带返回槽,
+//     -> I64 声明 + C void 的错位为既登记先例(ctron_net_sleep_ms 同款)。
+// 不含 Box64/net 面:TLS 是 net 之上加工层,但本模块类型面独立(头注见
+// tls.ct ⑥ —— net.bind 子模块 use 会被加载器栈式查环误判,故门面句柄
+// 直接以 I64 返回,不经 Box 通道)。
+pub extern "c" fn ctron_tls_last_errno() -> I64
+pub extern "c" fn ctron_tls_strerror(e: I64) -> Str
+pub extern "c" fn ctron_tls_ctx_new(is_server: I64) -> I64
+pub extern "c" fn ctron_tls_use_cert(ctx: I64, cert_pem: Str, key_pem: Str) -> I64
+pub extern "c" fn ctron_tls_use_ca_bundle(ctx: I64, ca_path: Str) -> I64
+pub extern "c" fn ctron_tls_set_alpn(ctx: I64, protos: Str) -> I64
+pub extern "c" fn ctron_tls_set_hostname(ctx: I64, host: Str) -> I64
+pub extern "c" fn ctron_tls_handshake(ctx: I64, fd: I64) -> I64
+pub extern "c" fn ctron_tls_read(ctx: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_tls_write(ctx: I64, buf: Str, n: I64) -> I64
+pub extern "c" fn ctron_tls_alpn_selected_s(ctx: I64) -> Str
+pub extern "c" fn ctron_tls_close(ctx: I64) -> I64

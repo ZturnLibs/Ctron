@@ -5,7 +5,7 @@
 //   一概)、claims 缺省可过 + exp/nbf/iat 三件判、claims 数值保真扫描。
 // 链形适配(a_csrf 同口径:适配闭包内令牌/判定面恒字面量;next 结果恒经
 //   `"" +` 裸尾惯用法落 Str —— P6-A 探针捕获缺口 + emit fn 值装箱 ct_i)。
-use std.http.frm.auth.{ auth_jwt_verify, auth_jwt_sign, auth_jwt_claim, auth_jwt_hdr_b64, auth_err_ok, auth_err_empty, auth_err_shape, auth_err_sig, auth_err_expired, auth_err_alg, auth_err_nbf, auth_err_iat, auth_err_claim, at_ok, at_tok, jwt_rc, jwt_why, ac_k, ac_v }
+use http.frm.auth.{ auth_jwt_verify, auth_jwt_sign, auth_jwt_claim, auth_jwt_hdr_b64, auth_err_ok, auth_err_empty, auth_err_shape, auth_err_sig, auth_err_expired, auth_err_alg, auth_err_nbf, auth_err_iat, auth_err_claim, at_ok, at_tok, jwt_rc, jwt_why, ac_k, ac_v }
 
 // ---- 终端 handler(组合层;JWT 守护面不可达) ----
 

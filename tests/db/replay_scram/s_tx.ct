@@ -1,7 +1,7 @@
 // tests/db/replay_scram/s_tx.ct —— 事务面 + 取消传播(P5-D):状态字节
 // 'I'/'T'/'E' 迁移、游标链、E 收口排空(drain)、复位经 ROLLBACK、流截断
 // 脏标记。廉价纯协议面(零密码学),双臂。锚值 = gen_fixtures.py 同源。
-use std.db.pg.{pg_tx_begin_msg, pg_tx_commit_msg, pg_tx_rollback_msg, pg_cancel_msg, pg_conn_dirty, pg_dirty_clean, pg_query_script, pg_query_msg, pg_hex_encode, pgr_rc, pgr_err, pgr_rows, pgr_tag, pgr_cell, pgr_next, pgr_status, pgr_ecode, pgr_emsg}
+use db.pg.{pg_tx_begin_msg, pg_tx_commit_msg, pg_tx_rollback_msg, pg_cancel_msg, pg_conn_dirty, pg_dirty_clean, pg_query_script, pg_query_msg, pg_hex_encode, pgr_rc, pgr_err, pgr_rows, pgr_tag, pgr_cell, pgr_next, pgr_status, pgr_ecode, pgr_emsg}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

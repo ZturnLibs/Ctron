@@ -2,7 +2,7 @@
 // gui_sk_load() 由编译器发射为 C 静态构造(见 driver_emit β3 段),域包 test_sk 消费。
 // 断言:骨架树渲染 = 源烘焙渲染(d_expect_text 文本命中 + 几何正值 + 命令数下限)。
 // 解释口径:gui_sk_load 干净 panic(β2 ABI 评审中),本夹具按阶梯惯例走原生。
-use std.gui.{test_sk, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, GuiTree}
+use gui.{test_sk, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, GuiTree}
 
 view FrameApp {
   <vbox class="root">

@@ -1,6 +1,6 @@
 // tests/http/corpus/a_get_simple.ct —— 合法 GET:最小请求 + 切片提取 + 头迭代
 // 断言式夹具(tests/http 自有 run.sh;主口径 = 解释器,副 = emit 对拍)
-use std.http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
+use http.parse.{http_parse_head, http_limits_default, http_rc, http_err_of, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_is_resp, http_status_of, http_method_start, http_method_len, http_target_start, http_target_len, http_header_at, http_header_find, http_header_value, sl_rc, sl_ns, sl_nl, sl_vs, sl_vl, http_keep_alive, http_is_expect_100, http_err_line, http_err_line_long, http_err_version, http_err_token, http_err_target, http_err_hdr, http_err_fold, http_err_hdr_long, http_err_hdr_many, http_err_head_long, http_err_smuggle, http_err_cl, http_err_te, http_err_bodycap}
 
 fn feed(buf: &I64[], s: Str) -> I64 {
     var i: I32 = 0

@@ -18,6 +18,6 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/freetype/include" -I"$ROOT/vendor/gui/raylib" -o "$T/s8.bin" \
-   "$T/s8.c" "$ROOT/std/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/s8.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 "$T/s8.bin"
 echo "s8: FreeType 中文渲染全绿(headless)"

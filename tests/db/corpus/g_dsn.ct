@@ -3,7 +3,7 @@
 // 文法面:全形/缺省 5432/pass 或 name 可空/两前缀;负例 = 坏 scheme/缺
 // user/坏 port/空 port 段/name 内 '/'。百分号编码与 IPv6 字面量 v0 不支援
 // (门面头注登记)。
-use std.db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
+use db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
 
 test "dsn parse: full form" {
     let d = dsn_parse(db_std(), "postgres://alice:s3cret@db.host.lan:5433/appdb")

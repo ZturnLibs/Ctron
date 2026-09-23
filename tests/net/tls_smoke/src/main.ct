@@ -16,8 +16,8 @@
 // 主面 join 后断言;StdNet 值 struct 亦不可入闭包捕获槽(发射 int32 截断,
 // 同 Task 4/6 登记的捕获面)—— 服务端协程内自取 Net_probe()。主面(内联
 // 展开,非 shim)断言不受限。CI 纪律:仅回环、:0、零外联。
-use std.net.{Net_probe, last_net_error, net_tcp_listen, net_tcp_sockname, net_tcp_accept, net_tcp_connect}
-use std.tls.{tls_client, tls_server, tls_set_alpn, tls_handshake, tls_read, tls_write_str, tls_close, tls_alpn, tls_last_error}
+use net.{Net_probe, last_net_error, net_tcp_listen, net_tcp_sockname, net_tcp_accept, net_tcp_connect}
+use tls.{tls_client, tls_server, tls_set_alpn, tls_handshake, tls_read, tls_write_str, tls_close, tls_alpn, tls_last_error}
 
 #[trusted]
 extern "c" fn ctron_smoke_env(k: Str) -> Str

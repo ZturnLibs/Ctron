@@ -6,7 +6,7 @@
 // 形态(tcp_echo 同款,依 c5281b8 门面):免费函数 + net: StdNet 按值首参;
 // 错误面 = rc(0 成/<0 败)+ last_net_error();缓冲 = I64[N] 视图 lane
 // (每字节一条 lane,112/103 断言式);句柄 Drop RAII(作用域出口关 fd)。
-use std.net.{Net_probe, net_udp_socket, net_udp_bind, net_udp_sendto, net_udp_recvfrom, last_net_error}
+use net.{Net_probe, net_udp_socket, net_udp_bind, net_udp_sendto, net_udp_recvfrom, last_net_error}
 
 test "udp loopback roundtrip, two sockets both directions" {
     let net = Net_probe()

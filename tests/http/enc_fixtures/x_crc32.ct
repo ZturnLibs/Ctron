@@ -2,7 +2,7 @@
 // x_ 前缀 = emit 臂专用(理由同 x_deflate_round.ct 头注)。
 // 向量源:zlib 参考实现(IEEE 802.3 多项式 0xEDB88320 反射形);miniz
 // mz_crc32 与之同算法,黄金向量防上游实现漂移。
-use std.http.enc.{ crc32, crc32_update }
+use http.enc.{ crc32, crc32_update }
 
 fn put(buf: &I64[], s: Str) -> I64 {
     var i: I32 = 0

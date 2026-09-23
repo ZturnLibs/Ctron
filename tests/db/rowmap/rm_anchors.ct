@@ -9,7 +9,7 @@
 // 查询经 rm_query 穿透,PgRows 以推断携带。
 // 正例钉 = struct 字面量显式字段装配(零反射;@derive(DbRow) 志向的
 // v1 手工形态)。锚值 = rm_rows.script 同源(目录 README)。
-use std.db.rowmap.{rm_query, rm_rc, rm_nrows, rm_ncols, rm_colname, rm_tag, rm_col, rm_oid_name, rm_is_int_oid, rm_is_text_oid, rm_is_float_oid, rm_is_bool_oid, rm_i64, rm_f64, rm_bool, rm_str, rm_ok, rm_kind, rm_val, rm_f64v, rm_strv, rm_oid, rm_coli}
+use db.rowmap.{rm_query, rm_rc, rm_nrows, rm_ncols, rm_colname, rm_tag, rm_col, rm_oid_name, rm_is_int_oid, rm_is_text_oid, rm_is_float_oid, rm_is_bool_oid, rm_i64, rm_f64, rm_bool, rm_str, rm_ok, rm_kind, rm_val, rm_f64v, rm_strv, rm_oid, rm_coli}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

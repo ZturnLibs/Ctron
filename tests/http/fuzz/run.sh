@@ -65,8 +65,8 @@ if [ -x "$EMIT" ]; then
         || { echo "fuzz/run: emit 臂构建失败" >&2; sed -n '1,5p' "$T/e.err" "$T/e.cc.err"; exit 2; }
     if [ -f "$ROOT/vendor/deflate/build/lib/libminiz.a" ]; then
         "$EMIT" run "$DIR/fuzz_gz.ct" > "$T/g.c" 2>"$T/g.err" \
-            && cc -O1 -w -I"$ROOT/std/http/c_src" -I"$ROOT/vendor/deflate/miniz" -o "$T/g.bin" "$T/g.c" \
-               "$ROOT/std/http/c_src/ctron_deflate.c" "$ROOT/vendor/deflate/build/lib/libminiz.a" 2>"$T/g.cc.err" \
+            && cc -O1 -w -I"$ROOT/http/c_src" -I"$ROOT/vendor/deflate/miniz" -o "$T/g.bin" "$T/g.c" \
+               "$ROOT/http/c_src/ctron_deflate.c" "$ROOT/vendor/deflate/build/lib/libminiz.a" 2>"$T/g.cc.err" \
             || { echo "fuzz/run: gz 臂构建失败" >&2; sed -n '1,5p' "$T/g.err" "$T/g.cc.err"; exit 2; }
         HAVE_GZ=1
     else

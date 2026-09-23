@@ -35,7 +35,7 @@ echo "== bench-parse: ctron http_parse_head vs picohttpparser(N=$N ×3,各取最
 
 # ---- 构建 ----
 "$EMIT" run "$DIR/bench_parse.ct" > "$T/ctron.c" 2>"$T/ctron.err" \
-    && cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/ctron.bin" "$T/ctron.c" "$ROOT/std/net/c_src/ctron_net.c" 2>"$T/ctron.cc.err" \
+    && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctron.bin" "$T/ctron.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/ctron.cc.err" \
     || { echo "bench: ctron 侧构建失败"; sed -n '1,5p' "$T/ctron.err" "$T/ctron.cc.err" 2>/dev/null; exit 2; }
 cc -O1 -w -I"$DIR" -o "$T/pico.bin" "$DIR/bench_pico.c" "$DIR/pico/picohttpparser.c" \
     || { echo "bench: pico 侧构建失败"; exit 2; }

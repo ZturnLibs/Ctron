@@ -1,6 +1,6 @@
 // tests/http/frm_static/a_range_416.ct —— Range 416 面(P6-D;双臂纯面)
 // S≥len → 416 + Content-Range: bytes */10 + 短体。
-use std.http.frm.static.{ st_resp_from_content, st_etag }
+use http.frm.static.{ st_resp_from_content, st_etag }
 
 test "range 416" {
     let body = "0123456789"

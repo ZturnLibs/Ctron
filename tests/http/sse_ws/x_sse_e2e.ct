@@ -6,8 +6,8 @@
 //   conn B  GET /stream → 无 CL 无 TE(Connection: close)原始事件流,事件间
 //           30ms 节奏 → 客户端裸 socket 增量读 + sse_step 逐事件派发(流语义)。
 // CI 纪律:仅回环、:0、零外联。
-use std.http.client.{ http_net, client_listen, client_sockname, client_accept, client_connect, client_request, client_read_t, client_write, client_write_str, client_close, client_sleep_ms, HttpSock }
-use std.http.sse.{ sse_event_str, sse_step, sse_st_new, sret_rc, sret_err, sret_consumed, sret_name, sret_data, sret_id, sret_st }
+use http.client.{ http_net, client_listen, client_sockname, client_accept, client_connect, client_request, client_read_t, client_write, client_write_str, client_close, client_sleep_ms, HttpSock }
+use http.sse.{ sse_event_str, sse_step, sse_st_new, sret_rc, sret_err, sret_consumed, sret_name, sret_data, sret_id, sret_st }
 
 fn fx_slice_str(src: &I64[], a: I64, b: I64) -> Str {
     var out = ""

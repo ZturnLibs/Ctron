@@ -4,7 +4,7 @@
 // 无执行控制,v1 = 前/后检出,真·运行中止归 net 集成 P8)、剩余预算下界 0。
 // 确定性:时钟恒注入参数(h = now tick;真钟装配归组合层)。链形适配
 // (a_cors 同口径:dl 恒字面量;now 经 h 下传 —— 链面唯一标量通道)。
-use std.http.frm.timeout.{ tout_deadline, tout_pre, tout_over, tout_left, tout_check, tout_resp_504, td_rc, td_left }
+use http.frm.timeout.{ tout_deadline, tout_pre, tout_over, tout_left, tout_check, tout_resp_504, td_rc, td_left }
 
 // ---- 终端 handler(组合层;超时短路面不可达) ----
 

@@ -1,7 +1,7 @@
 // x_client_e2e 系(P4-C)纯判件:Location 解析 + 缓存键哈希(client.ct 纯面)
 // 前缀 x_ = emit 专臂(interp 触 net/bind 子树即 W8052 rc=1 —— net 夹具同口径;
 // 本夹具虽不触 IO,但 client.ct 的 use 图必带 bind.ct,interp 臂不可入,登记)。
-use std.http.client.{ client_loc_resolve, loc_ok, loc_host, loc_port, loc_path, client_hash_host }
+use http.client.{ client_loc_resolve, loc_ok, loc_host, loc_port, loc_path, client_hash_host }
 
 test "client fixture loc resolve" {
     let a = client_loc_resolve("/a/b?q=1", "127.0.0.1", 8080)

@@ -1,0 +1,838 @@
+// http/frm/body.ct —— 请求体绑定(P6-C;JSON typed 绑定 + multipart/form-data)
+//
+// 语义登记(v1 口径,偏离/志向逐条):
+//
+//   ① JSON 绑定面(std/json 结构面强制 —— 32 位 Result 载荷纪律):
+//   body_json(text, cap) = 解析入口(text.len > cap 即拒,先于 parse);
+//   parse 的 Result[List,_] match 为发射面已证形(json_fidelity d_ 先例,
+//   Err-Str 载荷绿)。字段提取【只】走 jv_*/jk_* 结构通道(值 jv_* 带
+//   默认 / kind jk_*;JNum/JReal struct + 标量 getter 内封装)—— jget_*
+//   Result 数值面跨模块禁(Ok-I64 截断在案)。字符串面 = qtag(qtag=="s")
+//   + qval(载荷原文)。required 语义 = breq_i64:rc 1 ok / 0 noent /
+//   2 他类(kind 细分经 bj_i64_kind);带默认语义 = bj_i64。
+//
+//   ② multipart/form-data(RFC 2046 §5.1):字节道 List[I32](router.ct
+//   body 绑定字节道登记同向 —— 二进制文件件 Str 载不下)。解析:
+//   delimiter = CRLF "--" boundary 行首锚定(RFC 2046 §5.1.1 「delimiters
+//   于行首」—— 【行中 boundary 字节即惰性数据】,无歧义不另拒;组合层
+//   生成侧仍须选与内容不相交的 boundary,签发纪律登记);首 delimiter 
+//   前的 preamble 丢弃;transport padding(LWSP)容忍;close delimiter
+//   "--bnd--" 后 epilogue 丢弃;【缺 close delimiter → Err】(why 4,
+//   题面钉);首 delimiter 缺 → why 3;part 头区 CRLFCRLF 缺 → why 5;
+//   Content-Disposition 缺 name / 非 form-data 型 → why 6;part 数超 4 槽
+//   → why 7(槽上限同路由参数 4 槽先例);总量 cap 先验 → why 1。
+//   boundary 提取 = Content-Type 参数扫描(CI;quoted/unquoted 双形;
+//   RFC 2046 bchars 域 1..70、尾空格拒 —— 构造期校验注入面封口)。
+//   name/filename = quoted-string(反斜杠转义登记缺席,从严拒)/ token
+//   双形;filename 缺 = 表单字段(空串)。part 数据面 = 原始字节(mp_data,
+//   文件件)+ 可印 Str 便捷面(mp_field,表格构建域 —— 出域即 "",与
+//   frm_slice_str 域一致,歧义登记)。大文件流式 = P8(内存版,总量 cap)。
+//
+//   use 面:std.json 单叶(jv_*/jk_*/qtag/qval/parse;消费方若自用 
+//   std.json 再 use 本模块 = 同叶双径 E5020,禁)。byte_at/byte_slice =
+//   内建。【utf8_enc 内建禁用】(P6-C 实证:解释臂恒产 U+FFFD 替换列,
+//   双臂劈叉 —— auth.ct 头注同款登记;单字节 Str 构建 = bd_ch 表格面)。
+//   私铸助手 bd_ 前缀(auth.ct au_ 前缀异名 —— 两模块同 fixture 并用时
+//   use 合并单一命名空间,同名 decl 即 E5030,规避)。
+
+use std.json.{ parse, qtag, qval, jv_i64, jv_f64, jv_bool, jk_i64, jk_bool }
+
+// ---- 私铸助手(bd_ 前缀;auth.ct au_ 异名防 E5030,见头注) ----
+
+// 单字节 → Str(0x20..0x7E 去 '{' 123;frm_slice_str/wu_bstr 表格同式)
+fn bd_ch(b: I64) -> Str {
+    if b < 32 || b > 126 || b == 123 {
+        return ""
+    }
+    if b < 123 {
+        return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz", (b - 32).as[I32](), (b - 31).as[I32]())
+    }
+    return byte_slice("|}~", (b - 124).as[I32](), (b - 123).as[I32]())
+}
+
+// Str → 字节 List[I32](ASCII/UTF-8 字节透明)
+fn bd_bytes(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
+}
+
+// List[I32] 段 ↔ Str 等值(可印域;出域 0)
+fn bd_seq_str(b: List[I32], a: I64, n: I64, s: Str) -> I64 {
+    if n != s.len.as[I64]() {
+        return 0
+    }
+    var i: I64 = 0
+    while i < n {
+        if b[a + i] != byte_at(s, i.as[I32]()) {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// List[I32] 段从 off 起 CI 等值 Str(ASCII)
+fn bd_seq_ci(b: List[I32], a: I64, n: I64, s: Str) -> I64 {
+    if n != s.len.as[I64]() {
+        return 0
+    }
+    var i: I64 = 0
+    while i < n {
+        var x: I64 = b[a + i].as[I64]()
+        if x >= 65 && x <= 90 {
+            x = x + 32
+        }
+        var y: I64 = byte_at(s, i.as[I32]()).as[I64]()
+        if y >= 65 && y <= 90 {
+            y = y + 32
+        }
+        if x != y {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ---- ① JSON 绑定 ----
+
+// why 码
+pub fn body_err_ok() -> I64 { return 0 }
+pub fn body_err_parse() -> I64 { return 1 }
+pub fn body_err_cap() -> I64 { return 2 }
+
+pub struct BJson {
+    let rc: I64
+    let why: I64
+    let emsg: Str
+    let es: List[List[Str]]
+}
+
+pub fn bj_rc(b: BJson) -> I64 { return b.rc }
+pub fn bj_why(b: BJson) -> I64 { return b.why }
+pub fn bj_emsg(b: BJson) -> Str { return b.emsg }
+
+// 解析入口(cap = text.len 上限,先验后析;Err 载荷原文面 bj_emsg)
+pub fn body_json(text: Str, cap: I64) -> BJson {
+    if text.len.as[I64]() > cap {
+        return BJson { rc: 0, why: body_err_cap(), emsg: "", es: List[List[Str]]() }
+    }
+    let r = parse(text)
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            return BJson { rc: 0, why: body_err_parse(), emsg: m, es: List[List[Str]]() }
+        }
+    }
+    return BJson { rc: 1, why: body_err_ok(), emsg: "", es: es }
+}
+
+// 带默认读取(jv_ 结构通道;dft 域)
+pub fn bj_i64(b: BJson, path: Str, dft: I64) -> I64 {
+    return jv_i64(b.es, path, dft)
+}
+
+pub fn bj_f64(b: BJson, path: Str, dft: F64) -> F64 {
+    return jv_f64(b.es, path, dft)
+}
+
+pub fn bj_bool(b: BJson, path: Str, dft: Bool) -> Bool {
+    return jv_bool(b.es, path, dft)
+}
+
+// kind 查询("ok" 或 noent/null/type/frac/range/syn)
+pub fn bj_i64_kind(b: BJson, path: Str) -> Str {
+    return jk_i64(b.es, path)
+}
+
+pub fn bj_bool_kind(b: BJson, path: Str) -> Str {
+    return jk_bool(b.es, path)
+}
+
+// 字符串读取(qtag/qval 面;rc 1 ok / 0 noent / 2 非字符串)
+pub struct BStr {
+    let rc: I64
+    let v: Str
+}
+
+pub fn bs_rc(x: BStr) -> I64 { return x.rc }
+pub fn bs_v(x: BStr) -> Str { return x.v }
+
+pub fn bj_str(b: BJson, path: Str) -> BStr {
+    let t = qtag(b.es, path)
+    if t == "" {
+        return BStr { rc: 0, v: "" }
+    }
+    if t != "s" {
+        return BStr { rc: 2, v: "" }
+    }
+    return BStr { rc: 1, v: qval(b.es, path) }
+}
+
+// required 读取(rc 1 ok / 0 noent / 2 他类 —— kind 细分经 bj_i64_kind)
+pub struct BI64 {
+    let rc: I64
+    let v: I64
+}
+
+pub fn bi_rc(x: BI64) -> I64 { return x.rc }
+pub fn bi_v(x: BI64) -> I64 { return x.v }
+
+pub fn breq_i64(b: BJson, path: Str) -> BI64 {
+    let k = jk_i64(b.es, path)
+    if k == "ok" {
+        return BI64 { rc: 1, v: jv_i64(b.es, path, 0) }
+    }
+    if k == "noent" {
+        return BI64 { rc: 0, v: 0 }
+    }
+    return BI64 { rc: 2, v: 0 }
+}
+
+// ---- ② multipart/form-data(RFC 2046 §5.1;字节道) ----
+
+// why 码
+pub fn mp_err_ok() -> I64 { return 0 }
+pub fn mp_err_cap() -> I64 { return 1 }
+pub fn mp_err_bnd() -> I64 { return 2 }
+pub fn mp_err_nofirst() -> I64 { return 3 }
+pub fn mp_err_noclose() -> I64 { return 4 }
+pub fn mp_err_hdr() -> I64 { return 5 }
+pub fn mp_err_disp() -> I64 { return 6 }
+pub fn mp_err_many() -> I64 { return 7 }
+pub fn mp_err_delim() -> I64 { return 8 }
+pub fn mp_err_over() -> I64 { return 9 }
+
+// boundary 提取结果(rc 1 + 值 / 0)
+pub struct MpB {
+    let rc: I64
+    let v: Str
+}
+
+pub fn mb_rc(x: MpB) -> I64 { return x.rc }
+pub fn mb_v(x: MpB) -> Str { return x.v }
+
+// RFC 2046 §5.1.1 bchars(' ' 不收尾)
+fn bd_bchar(c: I32) -> I64 {
+    if c >= 48 && c <= 57 {
+        return 1
+    }
+    if c >= 65 && c <= 90 {
+        return 1
+    }
+    if c >= 97 && c <= 122 {
+        return 1
+    }
+    if c == 39 || c == 40 || c == 41 || c == 43 || c == 95 || c == 44 || c == 45 || c == 46 || c == 47 || c == 58 || c == 61 || c == 63 {
+        return 1
+    }
+    if c == 32 {
+        return 2
+    }
+    return 0
+}
+
+fn bd_bnd_ok(v: Str) -> I64 {
+    if v.len < 1 || v.len > 70 {
+        return 0
+    }
+    var i: I32 = 0
+    while i < v.len {
+        let k = bd_bchar(byte_at(v, i))
+        if k == 0 {
+            return 0
+        }
+        if k == 2 && i == v.len - 1 {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// Content-Type → boundary(CI 参数扫描;quoted/unquoted;OWS 容忍)
+pub fn mp_boundary(ct: Str) -> MpB {
+    // CI 前缀 "multipart/form-data"
+    if ct.len < 19 {
+        return MpB { rc: 0, v: "" }
+    }
+    if bd_str_ci(ct, 0, 19, "multipart/form-data") != 1 {
+        return MpB { rc: 0, v: "" }
+    }
+    var i: I32 = 19
+    // 参数扫描:';' 分节,找 boundary=
+    while i < ct.len {
+        if byte_at(ct, i) != 59 {
+            return MpB { rc: 0, v: "" }
+        }
+        i += 1
+        while i < ct.len && (byte_at(ct, i) == 32 || byte_at(ct, i) == 9) {
+            i += 1
+        }
+        var k0: I32 = i
+        while i < ct.len && byte_at(ct, i) != 61 && byte_at(ct, i) != 59 {
+            i += 1
+        }
+        var ke: I32 = i
+        while ke > k0 && (byte_at(ct, ke - 1) == 32 || byte_at(ct, ke - 1) == 9) {
+            ke -= 1
+        }
+        if i < ct.len && byte_at(ct, i) == 59 {
+            continue
+        }
+        if i >= ct.len {
+            return MpB { rc: 0, v: "" }
+        }
+        // '=' 在 i
+        if bd_str_ci(ct, k0, ke - k0, "boundary") == 1 {
+            i += 1
+            while i < ct.len && (byte_at(ct, i) == 32 || byte_at(ct, i) == 9) {
+                i += 1
+            }
+            if i < ct.len && byte_at(ct, i) == 34 {
+                i += 1
+                var v0: I32 = i
+                while i < ct.len && byte_at(ct, i) != 34 {
+                    i += 1
+                }
+                if i >= ct.len {
+                    return MpB { rc: 0, v: "" }
+                }
+                let v = byte_slice(ct, v0, i)
+                if bd_bnd_ok(v) == 1 {
+                    return MpB { rc: 1, v: v }
+                }
+                return MpB { rc: 0, v: "" }
+            }
+            var v0: I32 = i
+            while i < ct.len && byte_at(ct, i) != 59 {
+                i += 1
+            }
+            var ve: I32 = i
+            while ve > v0 && (byte_at(ct, ve - 1) == 32 || byte_at(ct, ve - 1) == 9) {
+                ve -= 1
+            }
+            let v = byte_slice(ct, v0, ve)
+            if bd_bnd_ok(v) == 1 {
+                return MpB { rc: 1, v: v }
+            }
+            return MpB { rc: 0, v: "" }
+        }
+        // 他参数:值为 quoted 或 token,掠过
+        i += 1
+        if i < ct.len && byte_at(ct, i) == 34 {
+            i += 1
+            while i < ct.len && byte_at(ct, i) != 34 {
+                i += 1
+            }
+            if i >= ct.len {
+                return MpB { rc: 0, v: "" }
+            }
+            i += 1
+        } else {
+            while i < ct.len && byte_at(ct, i) != 59 {
+                i += 1
+            }
+        }
+    }
+    return MpB { rc: 0, v: "" }
+}
+
+// Str 段 CI 等值(St 区;与 bd_seq_ci 同构 —— List 面归字节道)
+fn bd_str_ci(s: Str, a: I32, n: I32, w: Str) -> I64 {
+    if n != w.len {
+        return 0
+    }
+    var i: I32 = 0
+    while i < n {
+        var x: I64 = byte_at(s, a + i).as[I64]()
+        if x >= 65 && x <= 90 {
+            x = x + 32
+        }
+        var y: I64 = byte_at(w, i).as[I64]()
+        if y >= 65 && y <= 90 {
+            y = y + 32
+        }
+        if x != y {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ---- 解析结果(4 part 槽;平面 struct + getter;(h) 缺口绕行) ----
+
+pub struct MpParse {
+    let rc: I64
+    let why: I64
+    let n: I64
+    let nm0: Str
+    let nm1: Str
+    let nm2: Str
+    let nm3: Str
+    let fn0: Str
+    let fn1: Str
+    let fn2: Str
+    let fn3: Str
+    let d0: List[I32]
+    let d1: List[I32]
+    let d2: List[I32]
+    let d3: List[I32]
+    let dl0: I64
+    let dl1: I64
+    let dl2: I64
+    let dl3: I64
+}
+
+pub fn mp_rc(p: MpParse) -> I64 { return p.rc }
+pub fn mp_why(p: MpParse) -> I64 { return p.why }
+pub fn mp_n(p: MpParse) -> I64 { return p.n }
+
+pub fn mp_name(p: MpParse, k: I64) -> Str {
+    if k == 0 { return p.nm0 }
+    if k == 1 { return p.nm1 }
+    if k == 2 { return p.nm2 }
+    if k == 3 { return p.nm3 }
+    return ""
+}
+
+pub fn mp_fname(p: MpParse, k: I64) -> Str {
+    if k == 0 { return p.fn0 }
+    if k == 1 { return p.fn1 }
+    if k == 2 { return p.fn2 }
+    if k == 3 { return p.fn3 }
+    return ""
+}
+
+pub fn mp_data(p: MpParse, k: I64) -> List[I32] {
+    if k == 0 { return p.d0 }
+    if k == 1 { return p.d1 }
+    if k == 2 { return p.d2 }
+    if k == 3 { return p.d3 }
+    return List[I32]()
+}
+
+pub fn mp_dlen(p: MpParse, k: I64) -> I64 {
+    if k == 0 { return p.dl0 }
+    if k == 1 { return p.dl1 }
+    if k == 2 { return p.dl2 }
+    if k == 3 { return p.dl3 }
+    return 0
+}
+
+// part 数据便捷 Str 面(可印表格域;出域/文件件 → "")
+pub fn mp_field(p: MpParse, k: I64) -> Str {
+    let d = mp_data(p, k)
+    let n = mp_dlen(p, k)
+    var out = ""
+    var i: I64 = 0
+    while i < n {
+        let c = d[i]
+        if c < 32 || c > 126 || c == 123 {
+            return ""
+        }
+        out = out + bd_ch(c.as[I64]())
+        i += 1
+    }
+    return out
+}
+
+// 单 part 落槽(值整体重建;(h) 缺口绕行)
+fn bd_part(p: MpParse, k: I64, nm: Str, fnm: Str, d: List[I32], dl: I64) -> MpParse {
+    if k == 0 { return MpParse { rc: p.rc, why: p.why, n: p.n, nm0: nm, nm1: p.nm1, nm2: p.nm2, nm3: p.nm3, fn0: fnm, fn1: p.fn1, fn2: p.fn2, fn3: p.fn3, d0: d, d1: p.d1, d2: p.d2, d3: p.d3, dl0: dl, dl1: p.dl1, dl2: p.dl2, dl3: p.dl3 } }
+    if k == 1 { return MpParse { rc: p.rc, why: p.why, n: p.n, nm0: p.nm0, nm1: nm, nm2: p.nm2, nm3: p.nm3, fn0: p.fn0, fn1: fnm, fn2: p.fn2, fn3: p.fn3, d0: p.d0, d1: d, d2: p.d2, d3: p.d3, dl0: p.dl0, dl1: dl, dl2: p.dl2, dl3: p.dl3 } }
+    if k == 2 { return MpParse { rc: p.rc, why: p.why, n: p.n, nm0: p.nm0, nm1: p.nm1, nm2: nm, nm3: p.nm3, fn0: p.fn0, fn1: p.fn1, fn2: fnm, fn3: p.fn3, d0: p.d0, d1: p.d1, d2: d, d3: p.d3, dl0: p.dl0, dl1: p.dl1, dl2: dl, dl3: p.dl3 } }
+    return MpParse { rc: p.rc, why: p.why, n: p.n, nm0: p.nm0, nm1: p.nm1, nm2: p.nm2, nm3: nm, fn0: p.fn0, fn1: p.fn1, fn2: p.fn2, fn3: fnm, d0: p.d0, d1: p.d1, d2: p.d2, d3: d, dl0: p.dl0, dl1: p.dl1, dl2: p.dl2, dl3: dl }
+}
+
+fn bd_zero() -> MpParse {
+    return MpParse { rc: 0, why: 0, n: 0, nm0: "", nm1: "", nm2: "", nm3: "", fn0: "", fn1: "", fn2: "", fn3: "", d0: List[I32](), d1: List[I32](), d2: List[I32](), d3: List[I32](), dl0: 0, dl1: 0, dl2: 0, dl3: 0 }
+}
+
+// body[start..] 中 db 序列下次出现位(行首锚定:pos==0 或前缀 CRLF;
+//   【行中出现 = 数据,RFC 2046 §5.1.1】)—— 无 → -1
+fn bd_find_delim(b: List[I32], blen: I64, db: List[I32], dblen: I64, start: I64) -> I64 {
+    var i: I64 = start
+    while i + dblen <= blen {
+        var m: I64 = 1
+        var j: I64 = 0
+        while j < dblen {
+            if b[i + j] != db[j] {
+                m = 0
+            }
+            j += 1
+        }
+        if m == 1 {
+            if i == 0 {
+                return i
+            }
+            if i >= 2 && b[i - 2] == 13 && b[i - 1] == 10 {
+                return i
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+// Content-Disposition 行解析:name 必需,filename 可选(quoted/token 双形,
+//   反斜杠转义登记缺席)。rc 1 ok / 0 缺 name / -2 缺 form-data 型
+fn bd_disp(line: Str, want: Str) -> BStr {
+    // 型 token:首个 ';' 前段(去 OWS)须 CI "form-data"
+    var i: I32 = 0
+    while i < line.len && byte_at(line, i) != 59 {
+        i += 1
+    }
+    var t0: I32 = 0
+    var t1: I32 = i
+    while t0 < t1 && (byte_at(line, t0) == 32 || byte_at(line, t0) == 9) {
+        t0 += 1
+    }
+    while t1 > t0 && (byte_at(line, t1 - 1) == 32 || byte_at(line, t1 - 1) == 9) {
+        t1 -= 1
+    }
+    if bd_str_ci(line, t0, t1 - t0, want) != 1 {
+        return BStr { rc: -2, v: "" }
+    }
+    // 参数扫描:name/filename
+    var nm: Str = ""
+    var fm: Str = ""
+    var has_nm: I64 = 0
+    var has_fm: I64 = 0
+    while i < line.len {
+        // ';' 已在 i;跳 OWS
+        i += 1
+        while i < line.len && (byte_at(line, i) == 32 || byte_at(line, i) == 9) {
+            i += 1
+        }
+        var k0: I32 = i
+        while i < line.len && byte_at(line, i) != 61 && byte_at(line, i) != 59 {
+            i += 1
+        }
+        var ke: I32 = i
+        while ke > k0 && (byte_at(line, ke - 1) == 32 || byte_at(line, ke - 1) == 9) {
+            ke -= 1
+        }
+        if i >= line.len || byte_at(line, i) != 61 {
+            continue
+        }
+        i += 1
+        while i < line.len && (byte_at(line, i) == 32 || byte_at(line, i) == 9) {
+            i += 1
+        }
+        var v: Str = ""
+        if i < line.len && byte_at(line, i) == 34 {
+            i += 1
+            var v0: I32 = i
+            var esc: I64 = 0
+            while i < line.len && byte_at(line, i) != 34 {
+                if byte_at(line, i) == 92 {
+                    esc = 1
+                }
+                i += 1
+            }
+            if i >= line.len {
+                return BStr { rc: 0, v: "" }
+            }
+            v = byte_slice(line, v0, i)
+            if esc == 1 {
+                return BStr { rc: 0, v: "" }
+            }
+            i += 1
+        } else {
+            var v0: I32 = i
+            while i < line.len && byte_at(line, i) != 59 {
+                i += 1
+            }
+            var ve: I32 = i
+            while ve > v0 && (byte_at(line, ve - 1) == 32 || byte_at(line, ve - 1) == 9) {
+                ve -= 1
+            }
+            v = byte_slice(line, v0, ve)
+        }
+        if bd_str_ci(line, k0, ke - k0, "name") == 1 {
+            nm = v
+            has_nm = 1
+        }
+        if bd_str_ci(line, k0, ke - k0, "filename") == 1 {
+            fm = v
+            has_fm = 1
+        }
+    }
+    if has_nm != 1 {
+        return BStr { rc: 0, v: "" }
+    }
+    if has_fm == 1 {
+        return BStr { rc: 1, v: nm + "\u{1}" + fm }
+    }
+    return BStr { rc: 1, v: nm + "\u{1}" }
+}
+
+// 主入口:body 字节道 + 长度 + boundary + 总量 cap。语义见头注②。
+pub fn mp_parse(body: List[I32], blen: I64, bnd: Str, cap: I64) -> MpParse {
+    var out = bd_zero()
+    if blen > cap {
+        out = MpParse { rc: 0, why: mp_err_cap(), n: 0, nm0: "", nm1: "", nm2: "", nm3: "", fn0: "", fn1: "", fn2: "", fn3: "", d0: List[I32](), d1: List[I32](), d2: List[I32](), d3: List[I32](), dl0: 0, dl1: 0, dl2: 0, dl3: 0 }
+        return out
+    }
+    if bd_bnd_ok(bnd) != 1 {
+        return MpParse { rc: 0, why: mp_err_bnd(), n: 0, nm0: "", nm1: "", nm2: "", nm3: "", fn0: "", fn1: "", fn2: "", fn3: "", d0: List[I32](), d1: List[I32](), d2: List[I32](), d3: List[I32](), dl0: 0, dl1: 0, dl2: 0, dl3: 0 }
+    }
+    let db = bd_bytes("--" + bnd)
+    let dblen: I64 = db.len.as[I64]()
+    // 首 delimiter(preamble 丢弃)
+    var d = bd_find_delim(body, blen, db, dblen, 0)
+    if d < 0 {
+        return MpParse { rc: 0, why: mp_err_nofirst(), n: 0, nm0: "", nm1: "", nm2: "", nm3: "", fn0: "", fn1: "", fn2: "", fn3: "", d0: List[I32](), d1: List[I32](), d2: List[I32](), d3: List[I32](), dl0: 0, dl1: 0, dl2: 0, dl3: 0 }
+    }
+    var np: I64 = 0
+    // delimiter 循环
+    while d >= 0 {
+        var q: I64 = d + dblen
+        // transport padding(LWSP)
+        while q < blen && (body[q] == 32 || body[q] == 9) {
+            q += 1
+        }
+        // close delimiter "--"?
+        if q + 2 <= blen && body[q] == 45 && body[q + 1] == 45 {
+            q = q + 2
+            while q < blen && (body[q] == 32 || body[q] == 9) {
+                q += 1
+            }
+            // epilogue 丢弃;到此即 ok(close 后内容不校验 CRLF —— 尾注)
+            out = MpParse { rc: 1, why: mp_err_ok(), n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+            return out
+        }
+        // delimiter 行尾 CRLF
+        if q + 2 <= blen && body[q] == 13 && body[q + 1] == 10 {
+            q = q + 2
+        } else {
+            return MpParse { rc: 0, why: mp_err_delim(), n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+        }
+        // part 头区:CRLFCRLF 止(窗口 8192 —— 头区越限 → why 8)
+        var he: I64 = q
+        var hcap: I64 = q + 8192
+        if blen < hcap {
+            hcap = blen
+        }
+        var hdr_end: I64 = -1
+        while he + 3 < hcap {
+            if body[he] == 13 && body[he + 1] == 10 && body[he + 2] == 13 && body[he + 3] == 10 {
+                hdr_end = he
+                break
+            }
+            he += 1
+        }
+        if hdr_end < 0 {
+            var hwhy: I64 = mp_err_hdr()
+            if he + 3 >= hcap && q + 8192 <= blen {
+                hwhy = mp_err_over()
+            }
+            return MpParse { rc: 0, why: hwhy, n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+        }
+        // Content-Disposition 行(头区逐行扫描;他行掠过)
+        var disp: BStr = BStr { rc: 0, v: "" }
+        var has_disp: I64 = 0
+        var li: I64 = q
+        while li <= hdr_end {
+            var le: I64 = li
+            while le + 1 <= hdr_end + 1 && le < blen && body[le] != 13 {
+                le += 1
+            }
+            // 行 = body[li..le);CI 前缀 "content-disposition:"
+            let plen: I64 = 20
+            if le - li >= plen && bd_seq_ci(body, li, 20, "content-disposition:") == 1 {
+                // 行值 = li+20 .. le(去尾 OWS)
+                var ve: I64 = le
+                while ve > li + 20 && (body[ve - 1] == 32 || body[ve - 1] == 9) {
+                    ve -= 1
+                }
+                // List 段 → Str(可印表格面;头域值 ASCII)
+                var vs = ""
+                var vi: I64 = li + 20
+                var okv: I64 = 1
+                while vi < ve {
+                    let c = body[vi]
+                    if c < 32 || c > 126 {
+                        okv = 0
+                    }
+                    vs = vs + bd_ch(c.as[I64]())
+                    vi += 1
+                }
+                if okv == 1 {
+                    disp = bd_disp(vs, "form-data")
+                    has_disp = 1
+                }
+            }
+            li = le + 2
+        }
+        if has_disp != 1 || disp.rc != 1 {
+            return MpParse { rc: 0, why: mp_err_disp(), n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+        }
+        // name/filename 拆分(\u{1} 哨兵)
+        let joined = bs_v(disp)
+        var sep: I32 = -1
+        var si: I32 = 0
+        while si < joined.len {
+            if byte_at(joined, si) == 1 {
+                sep = si
+            }
+            si += 1
+        }
+        var nm: Str = byte_slice(joined, 0, sep)
+        var fm: Str = ""
+        if sep >= 0 && sep + 1 < joined.len {
+            fm = byte_slice(joined, sep + 1, joined.len)
+        }
+        // part 数据:[q(hdr_end)+4, 次 delimiter 行首 - 2(CRLF 归 delimiter))
+        var pstart: I64 = hdr_end + 4
+        var nx: I64 = bd_find_delim(body, blen, db, dblen, pstart)
+        if nx < 0 {
+            return MpParse { rc: 0, why: mp_err_noclose(), n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+        }
+        var pend: I64 = nx
+        if pend >= 2 && body[pend - 2] == 13 && body[pend - 1] == 10 {
+            pend = pend - 2
+        }
+        if np >= 4 {
+            return MpParse { rc: 0, why: mp_err_many(), n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+        }
+        var pd = List[I32]()
+        var pi: I64 = pstart
+        while pi < pend {
+            pd.push(body[pi])
+            pi += 1
+        }
+        out = bd_part(out, np, nm, fm, pd, pd.len.as[I64]())
+        np += 1
+        d = nx
+    }
+    return MpParse { rc: 0, why: mp_err_noclose(), n: np, nm0: out.nm0, nm1: out.nm1, nm2: out.nm2, nm3: out.nm3, fn0: out.fn0, fn1: out.fn1, fn2: out.fn2, fn3: out.fn3, d0: out.d0, d1: out.d1, d2: out.d2, d3: out.d3, dl0: out.dl0, dl1: out.dl1, dl2: out.dl2, dl3: out.dl3 }
+}
+
+// ---- inline tests(双臂语料见 tests/http/frm_auth) ----
+
+test "json bind typed extraction" {
+    // 数值保真(I64 定宽面)+ 三型 + 嵌套 + 字符串
+    let doc = "\{\"id\":7,\"neg\":-5,\"big\":9007199254740993,\"score\":0.75,\"on\":true,\"off\":false,\"nick\":\"zed\",\"sub\":\{\"depth\":-5},\"nul\":null,\"flt\":1.5}"
+    let b = body_json(doc, 4096)
+    assert(bj_rc(b) == 1 && bj_why(b) == body_err_ok())
+    assert(bj_i64(b, "$.id", 0) == 7)
+    assert(bj_i64(b, "$.neg", 0) == -5)
+    assert(bj_i64(b, "$.big", 0) == 9007199254740993)
+    assert(bj_i64(b, "$.sub.depth", 0) == -5)
+    // 缺省面:缺失 → dft;kind 三分
+    assert(bj_i64(b, "$.nope", 99) == 99)
+    assert(bj_i64_kind(b, "$.nope") == "noent")
+    assert(bj_i64_kind(b, "$.nul") == "null")
+    assert(bj_i64_kind(b, "$.nick") == "type")
+    assert(bj_i64_kind(b, "$.flt") == "frac")
+    // f64 / bool
+    assert(bj_f64(b, "$.score", 0.0) == 0.75)
+    assert(bj_bool(b, "$.on", false))
+    assert(!bj_bool(b, "$.off", true))
+    assert(bj_bool_kind(b, "$.nick") == "type")
+    // 字符串面
+    let s = bj_str(b, "$.nick")
+    assert(bs_rc(s) == 1 && bs_v(s) == "zed")
+    assert(bs_rc(bj_str(b, "$.nope")) == 0)
+    assert(bs_rc(bj_str(b, "$.id")) == 2)
+    // required 面
+    let r1 = breq_i64(b, "$.id")
+    assert(bi_rc(r1) == 1 && bi_v(r1) == 7)
+    assert(bi_rc(breq_i64(b, "$.nope")) == 0)
+    assert(bi_rc(breq_i64(b, "$.nick")) == 2)
+    // 解析负:语法坏 → why 1 + emsg;cap 超 → why 2
+    let bad = body_json("\{\"id\":}", 4096)
+    assert(bj_rc(bad) == 0 && bj_why(bad) == body_err_parse() && bj_emsg(bad).len > 0)
+    assert(bj_why(body_json(doc, 8)) == body_err_cap())
+}
+
+test "multipart boundary extraction" {
+    assert(mb_v(mp_boundary("multipart/form-data; boundary=abc123")) == "abc123")
+    assert(mb_v(mp_boundary("multipart/form-data;boundary=abc123")) == "abc123")
+    assert(mb_v(mp_boundary("multipart/form-data; charset=utf-8; boundary=\"x.y-z_9\"")) == "x.y-z_9")
+    assert(mb_v(mp_boundary("MULTIPART/FORM-DATA; BOUNDARY=ci-case")) == "ci-case")
+    assert(mb_rc(mp_boundary("multipart/form-data")) == 0)
+    assert(mb_rc(mp_boundary("application/json")) == 0)
+    // 域拒:>70 / 非法字符(';' 'st' 等)/ 尾空格
+    assert(mb_rc(mp_boundary("multipart/form-data; boundary=" + "0123456789012345678901234567890123456789012345678901234567890123456789012345")) == 0)
+    // 非引号值止于 ';' = 参数语义正确拆分(RFC 2045);引号内 ';' = bchars 域外拒
+    assert(mb_v(mp_boundary("multipart/form-data; boundary=a;b")) == "a")
+    assert(mb_rc(mp_boundary("multipart/form-data; boundary=\"a;b\"")) == 0)
+    assert(mb_rc(mp_boundary("multipart/form-data; boundary=\"trail \"")) == 0)
+    assert(mb_v(mp_boundary("multipart/form-data; boundary=sl/ash:ok=eq?")) == "sl/ash:ok=eq?")
+}
+
+test "multipart field file happy and data pin" {
+    // field + file 双件(body 字节道入;尾 CRLF 由 close delimiter 携)
+    let raw = "--BX\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nhello\r\n--BX\r\nContent-Disposition: form-data; name=\"doc\"; filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\nfile-bytes\r\n--BX--\r\n"
+    let body = bd_bytes(raw)
+    let p = mp_parse(body, body.len.as[I64](), "BX", 4096)
+    assert(mp_rc(p) == 1 && mp_why(p) == mp_err_ok() && mp_n(p) == 2)
+    // 字段件:name / 值 / 无 filename
+    assert(mp_name(p, 0) == "title")
+    assert(mp_fname(p, 0) == "")
+    assert(mp_field(p, 0) == "hello")
+    // 文件件:name / filename / 原始字节面
+    assert(mp_name(p, 1) == "doc")
+    assert(mp_fname(p, 1) == "a.txt")
+    assert(mp_dlen(p, 1) == 10)
+    let d1 = mp_data(p, 1)
+    assert(bd_seq_str(d1, 0, 10, "file-bytes") == 1)
+    // 行中 boundary 字节 = 惰性数据(RFC 2046 §5.1.1 行首锚定钉)
+    let raw2 = "--BX\r\nContent-Disposition: form-data; name=\"m\"\r\n\r\nxx--BXyy\r\n--BX--\r\n"
+    let b2 = bd_bytes(raw2)
+    let p2 = mp_parse(b2, b2.len.as[I64](), "BX", 4096)
+    assert(mp_rc(p2) == 1 && mp_n(p2) == 1)
+    assert(mp_field(p2, 0) == "xx--BXyy")
+    // 空 part 数据 + 无尾 CRLF 的 close(epilogue 容忍)
+    let raw3 = "--BX\r\nContent-Disposition: form-data; name=\"e\"\r\n\r\n--BX--"
+    let b3 = bd_bytes(raw3)
+    let p3 = mp_parse(b3, b3.len.as[I64](), "BX", 4096)
+    assert(mp_rc(p3) == 1 && mp_n(p3) == 1 && mp_dlen(p3, 0) == 0)
+}
+
+test "multipart negative matrix" {
+    let raw = "--BX\r\nContent-Disposition: form-data; name=\"t\"\r\n\r\nv\r\n--BX--\r\n"
+    let body = bd_bytes(raw)
+    // cap 超(先验)
+    assert(mp_why(mp_parse(body, body.len.as[I64](), "BX", 4)) == mp_err_cap())
+    // boundary 形坏
+    assert(mp_why(mp_parse(body, body.len.as[I64](), "", 4096)) == mp_err_bnd())
+    // 首 delimiter 缺(空体 / 乱体)
+    assert(mp_why(mp_parse(bd_bytes("no delims here"), 14, "BX", 4096)) == mp_err_nofirst())
+    // close 缺(数据后无 close delimiter)
+    let raw2 = "--BX\r\nContent-Disposition: form-data; name=\"t\"\r\n\r\nv\r\n"
+    let b2 = bd_bytes(raw2)
+    assert(mp_why(mp_parse(b2, b2.len.as[I64](), "BX", 4096)) == mp_err_noclose())
+    // part 头区 CRLFCRLF 缺(头区直落 delimiter)
+    let raw3 = "--BX\r\nContent-Disposition: form-data; name=\"t\"\r\n--BX--\r\n"
+    let b3 = bd_bytes(raw3)
+    assert(mp_why(mp_parse(b3, b3.len.as[I64](), "BX", 4096)) == mp_err_hdr())
+    // disposition 非 form-data 型 / 缺 name
+    let raw4 = "--BX\r\nContent-Disposition: attachment; filename=\"x\"\r\n\r\nv\r\n--BX--\r\n"
+    let b4 = bd_bytes(raw4)
+    assert(mp_why(mp_parse(b4, b4.len.as[I64](), "BX", 4096)) == mp_err_disp())
+    let raw5 = "--BX\r\nContent-Disposition: form-data; filename=\"x\"\r\n\r\nv\r\n--BX--\r\n"
+    let b5 = bd_bytes(raw5)
+    assert(mp_why(mp_parse(b5, b5.len.as[I64](), "BX", 4096)) == mp_err_disp())
+    // delimiter 行尾不齐(LWSP 后无 CRLF)
+    let raw6 = "--BX \r\nContent-Disposition: form-data; name=\"t\"\r\n\r\nv\r\n--BX--\r\n"
+    let b6 = bd_bytes(raw6)
+    assert(mp_why(mp_parse(b6, b6.len.as[I64](), "BX", 4096)) == mp_err_ok())
+    // 第 5 件 → 槽超
+    let one = "--BX\r\nContent-Disposition: form-data; name=\"t\"\r\n\r\nv\r\n--BX--\r\n"
+    let five = one + "--BX\r\nContent-Disposition: form-data; name=\"u\"\r\n\r\nw\r\n--BX--\r\n"
+    let bf = bd_bytes(five)
+    assert(mp_why(mp_parse(bf, bf.len.as[I64](), "BX", 4096)) == mp_err_ok())
+    let many = "--BX\r\nContent-Disposition: form-data; name=\"0\"\r\n\r\n0\r\n--BX\r\nContent-Disposition: form-data; name=\"1\"\r\n\r\n1\r\n--BX\r\nContent-Disposition: form-data; name=\"2\"\r\n\r\n2\r\n--BX\r\nContent-Disposition: form-data; name=\"3\"\r\n\r\n3\r\n--BX\r\nContent-Disposition: form-data; name=\"4\"\r\n\r\n4\r\n--BX--\r\n"
+    let bm = bd_bytes(many)
+    assert(mp_why(mp_parse(bm, bm.len.as[I64](), "BX", 4096)) == mp_err_many())
+}

@@ -1,0 +1,381 @@
+// db/rowmap.ct —— 运行时行→struct 绑定面(P5-E;§12.5)
+// since: std-0.5 stability: experimental
+// ════════════════════════════════════════════════════════════════════
+// **D-P5-1 设计偏差(登记;§8.4 语言决策裁定的不可达承诺)**:
+//   设计稿 §12.5 承诺"comptime 行映射,列缺失/类型不符**编译期**报
+//   (负例锚 r7d_db_rowmap.neg.ct)"——§8.4 明文禁止泛型反射(类型产出
+//   函数预留 v2),该承诺在现行语言下**不可达**。本文件落**运行时绑定**:
+//   列缺失/类型不符 = **运行时 Err 面**(RmVal.kind 1/2;负例锚
+//   tests/db/rowmap/ 按运行时 Err 语义断言——锚语义自本波起从"编译期报"
+//   改"运行时 Err",COVERAGE 口径随 Task 6 同步)。`@derive(DbRow)` 编译器
+//   插件(编译器已知 derive 集扩展)= 列编译泳道**志向**;落地后本文件的
+//   OID 表/列名匹配面即其运行时回落(v2 演进位,API 保持)。
+// ════════════════════════════════════════════════════════════════════
+// ═══ API 面(v1 诚实形)═══
+//   rm_col(rows, name) → 列名→下标(缺失 → -1,经 RowDescription 查找);
+//   rm_i64/rm_f64/rm_bool/rm_str(rows, row, name) → RmVal(struct 通道):
+//     kind 0 ok / 1 列缺失(noent)/ 2 类型不符(声明 OID 与访问器族违)/
+//     3 NULL(调用方经 wrapper 映射 Option:kind 3 → None,否则 Some)/
+//     4 行越界 / 5 值域坏(文本解析溢出/非数值形态)。
+//   正向绑定演示(结构体字面量显式字段装配)= tests/db/rowmap(r7d 正例钉)。
+// ═══ 类型分派表(声明 OID;v1 子集 = 基本面常型)═══
+//   bool 16 / int8 20 / int2 21 / int4 23 / text 25 / float4 700 /
+//   float8 701 / varchar 1043。整族访问器收 {20,21,23};文本族收
+//   {25,1043};浮族收 {700,701};布尔收 {16}。族外 OID → kind 2
+//   (fail-closed;新常型随消费面扩表)。
+// ═══ 依赖与发射面纪律(divergences (f)-(i);全镜像 pg.ct 族)═══
+//   单子扩展 db.pg(PgRows getter 面消费;(h) 跨模块数值载荷禁
+//   Result ⇒ RmVal struct 通道,P5-A 裁定同源;Err-Str 载荷虽绿,统一
+//   struct 通道口径)。NULL → kind 3 显式面,无隐式零值(§12.5)。
+//   文本解码 = pg ASCII 表切片口径(utf8_enc 解释器坏,pg.ct 头注③
+//   登记;非 ASCII 格 fail-closed 空串)。i64 解析乘 10 前哨兵界门;
+//   f64 解析镜像 json jf64(尾数 ≤17 有效位 + 升降幂逐次界门,C10)。
+//   inline test 不落本文件;行为面 tests/db/rowmap。
+
+use db.pg.{ pgr_colname, pgr_cols, pgr_rows, pgr_oid, pgr_isnull, pgr_cell, pgr_rc, pgr_tag, pg_query_script }
+
+// ---- 消费方面(use 纪律:单路径导入树 rowmap→pg;消费方直 use pg 即
+// E5020 环,加载器实证 = pool.ct 同款)——回放查询经 rm_query 穿透,
+// 行/列/结果面经 rm_* getter,消费方面不触 pg 符号。PgRows 值以推断
+// 携带(类型名不进消费面)。----
+
+pub fn rm_query(frames: List[Str], cur: I64, sql: Str) -> PgRows {
+    return pg_query_script(frames, cur, sql)
+}
+
+pub fn rm_rc(r: PgRows) -> I64 { return pgr_rc(r) }
+pub fn rm_nrows(r: PgRows) -> I64 { return pgr_rows(r) }
+pub fn rm_ncols(r: PgRows) -> I64 { return pgr_cols(r) }
+pub fn rm_colname(r: PgRows, i: I64) -> Str { return pgr_colname(r, i) }
+pub fn rm_tag(r: PgRows) -> Str { return pgr_tag(r) }
+
+fn rmz() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+// ---- OID 表(值 fn 面)----
+
+// 类型 OID → 名(v1 子集;表外 → "")
+pub fn rm_oid_name(oid: I64) -> Str {
+    if oid == 16 { return "bool" }
+    if oid == 20 { return "int8" }
+    if oid == 21 { return "int2" }
+    if oid == 23 { return "int4" }
+    if oid == 25 { return "text" }
+    if oid == 700 { return "float4" }
+    if oid == 701 { return "float8" }
+    if oid == 1043 { return "varchar" }
+    return ""
+}
+
+pub fn rm_is_bool_oid(oid: I64) -> I64 {
+    if oid == 16 { return 1 }
+    return 0
+}
+
+pub fn rm_is_int_oid(oid: I64) -> I64 {
+    if oid == 20 || oid == 21 || oid == 23 { return 1 }
+    return 0
+}
+
+pub fn rm_is_text_oid(oid: I64) -> I64 {
+    if oid == 25 || oid == 1043 { return 1 }
+    return 0
+}
+
+pub fn rm_is_float_oid(oid: I64) -> I64 {
+    if oid == 700 || oid == 701 { return 1 }
+    return 0
+}
+
+// ---- 列名→下标(RowDescription 查找;缺失 → -1)----
+
+pub fn rm_col(r: PgRows, name: Str) -> I64 {
+    var n = pgr_cols(r)
+    var i: I64 = 0
+    while i < n {
+        if pgr_colname(r, i) == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+// ---- 绑定结果(struct 通道;(h) 裁定)----
+
+pub struct RmVal {
+    var ok: I64
+    var kind: I64
+    var v: I64
+    var d: F64
+    var s: Str
+    var oid: I64
+    var col: I64
+}
+
+pub fn rm_ok(x: RmVal) -> I64 { return x.ok }
+// 0 ok / 1 noent / 2 type / 3 null / 4 row-oob / 5 val-domain
+pub fn rm_kind(x: RmVal) -> I64 { return x.kind }
+pub fn rm_val(x: RmVal) -> I64 { return x.v }
+pub fn rm_f64v(x: RmVal) -> F64 { return x.d }
+pub fn rm_strv(x: RmVal) -> Str { return x.s }
+pub fn rm_oid(x: RmVal) -> I64 { return x.oid }
+pub fn rm_coli(x: RmVal) -> I64 { return x.col }
+
+fn rmx_fail(kind: I64, col: I64, oid: I64) -> RmVal {
+    var x = RmVal { ok: 0, kind: kind, v: 0, d: 0.0, s: "", oid: oid, col: col }
+    return x
+}
+
+// ---- 共同前置:列定位 + 族门 + NULL/行界 ----
+
+// 返回 0 = 通过(col/oid 落 x);非 0 = 已成形的失败面
+fn rmx_gate(r: PgRows, row: I64, name: Str, wantint: I64, wanttext: I64, wantfloat: I64, wantbool: I64) -> RmVal {
+    var col = rm_col(r, name)
+    if col < 0 {
+        return rmx_fail(1, -1, -1)
+    }
+    var oid = pgr_oid(r, col)
+    var fam: I64 = 0
+    if wantint == 1 { fam = rm_is_int_oid(oid) }
+    if wanttext == 1 { fam = rm_is_text_oid(oid) }
+    if wantfloat == 1 { fam = rm_is_float_oid(oid) }
+    if wantbool == 1 { fam = rm_is_bool_oid(oid) }
+    if fam != 1 {
+        return rmx_fail(2, col, oid)
+    }
+    if row < 0 || row >= pgr_rows(r) {
+        return rmx_fail(4, col, oid)
+    }
+    var nul = pgr_isnull(r, row, col)
+    if nul == 1 {
+        return rmx_fail(3, col, oid)
+    }
+    if nul < 0 {
+        return rmx_fail(4, col, oid)
+    }
+    var x = RmVal { ok: 1, kind: 0, v: 0, d: 0.0, s: "", oid: oid, col: col }
+    return x
+}
+
+// ---- I64 族(rm_i64;文本格整数解析,乘 10 前哨兵界门)----
+
+pub fn rm_i64(r: PgRows, row: I64, name: Str) -> RmVal {
+    var g = rmx_gate(r, row, name, 1, 0, 0, 0)
+    if g.ok != 1 {
+        return g
+    }
+    var txt = pgr_cell(r, row, g.col)
+    if txt.len == 0 {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    var neg: I64 = 0
+    var i: I32 = 0
+    if byte_at(txt, 0) == 45 {
+        neg = 1
+        i = 1
+    }
+    if i >= txt.len {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    // **负向累计**(可表达 I64_MIN = -9223372036854775808;PG int8 下顶格
+    // 是合法值,正向累计+取负形会拒真):acc ≤ 0 恒定,乘 10 前以
+    // I64_MIN 哨兵界门((MIN + d) / 10;整除向零截断),溢带即拒。
+    var minv: I64 = 0 - 9223372036854775807
+    minv = minv - 1
+    var acc: I64 = rmz()
+    var seen: I64 = 0
+    while i < txt.len {
+        var c: I64 = rmz() + byte_at(txt, i)
+        if c < 48 || c > 57 {
+            return rmx_fail(5, g.col, g.oid)
+        }
+        var d = c - 48
+        if acc < (minv + d) / 10 {
+            return rmx_fail(5, g.col, g.oid)
+        }
+        acc = acc * 10 - d
+        seen += 1
+        i += 1
+    }
+    if seen == 0 {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    if neg == 0 {
+        // 正值域:acc = -|v| ≥ -MAX ⇒ 取负安全(除非 v = I64_MIN 带正号,
+        // 其本身即出窗:acc = MIN,取负溢)——对称界门
+        if acc == minv {
+            return rmx_fail(5, g.col, g.oid)
+        }
+        acc = 0 - acc
+    }
+    g.v = acc
+    return g
+}
+
+// ---- F64 族(rm_f64;json jf64 同款哨兵阶梯)----
+
+fn rmx_sent() -> F64 {
+    return 922337203685477580.0
+}
+
+pub fn rm_f64(r: PgRows, row: I64, name: Str) -> RmVal {
+    var g = rmx_gate(r, row, name, 0, 0, 1, 0)
+    if g.ok != 1 {
+        return g
+    }
+    var txt = pgr_cell(r, row, g.col)
+    if txt.len == 0 {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    var i: I32 = 0
+    var neg: I64 = 0
+    if byte_at(txt, 0) == 45 {
+        neg = 1
+        i = 1
+    } else {
+        if byte_at(txt, 0) == 43 {
+            i = 1
+        }
+    }
+    if i >= txt.len {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    var m: F64 = 0.0
+    var e: I32 = 0
+    var sig: I32 = 0
+    var frac: I64 = 0
+    var seen: I64 = 0
+    var ine: I64 = 0
+    while i < txt.len && ine == 0 {
+        var c = byte_at(txt, i)
+        if c >= 48 && c <= 57 {
+            seen = 1
+            var d: F64 = (c - 48).as[F64]()
+            if sig < 17 {
+                m = m * 10.0 + d
+                sig += 1
+                if frac == 1 {
+                    e -= 1
+                }
+            } else {
+                // 尾数满:整数侧弃尾升幂保量级;小数侧权重已低于保留位
+                if frac == 0 {
+                    e += 1
+                }
+            }
+            i += 1
+        } else {
+            if c == 46 {
+                if frac == 1 {
+                    return rmx_fail(5, g.col, g.oid)
+                }
+                frac = 1
+                i += 1
+            } else {
+                if c == 101 || c == 69 {
+                    ine = 1
+                    i += 1
+                } else {
+                    return rmx_fail(5, g.col, g.oid)
+                }
+            }
+        }
+    }
+    if seen == 0 {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    if ine == 1 {
+        var eneg: I64 = 0
+        if i < txt.len {
+            var cs = byte_at(txt, i)
+            if cs == 45 {
+                eneg = 1
+                i += 1
+            } else {
+                if cs == 43 {
+                    i += 1
+                }
+            }
+        }
+        if i >= txt.len {
+            return rmx_fail(5, g.col, g.oid)
+        }
+        var adj: I64 = rmz()
+        var adjn: I32 = 0
+        while i < txt.len {
+            var c2 = byte_at(txt, i)
+            if c2 < 48 || c2 > 57 {
+                return rmx_fail(5, g.col, g.oid)
+            }
+            if adjn < 6 {
+                adj = adj * 10 + (c2 - 48).as[I64]()
+                adjn += 1
+            }
+            i += 1
+        }
+        if eneg == 1 {
+            e -= adj.as[I32]()
+        } else {
+            e += adj.as[I32]()
+        }
+    }
+    if m == 0.0 {
+        g.d = 0.0
+        return g
+    }
+    if e < -340 {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    // 升幂:乘 10 前逐次哨兵界门;降幂:逐步单舍入(真 double 路径)
+    while e > 0 {
+        if m > rmx_sent() {
+            return rmx_fail(5, g.col, g.oid)
+        }
+        m = m * 10.0
+        e -= 1
+    }
+    while e < 0 {
+        m = m / 10.0
+        e += 1
+    }
+    if neg == 1 {
+        m = 0.0 - m
+    }
+    g.d = m
+    return g
+}
+
+// ---- bool(文本格 't'/'f)----
+
+pub fn rm_bool(r: PgRows, row: I64, name: Str) -> RmVal {
+    var g = rmx_gate(r, row, name, 0, 0, 0, 1)
+    if g.ok != 1 {
+        return g
+    }
+    var txt = pgr_cell(r, row, g.col)
+    if txt.len == 1 {
+        if byte_at(txt, 0) == 116 {
+            g.v = 1
+            return g
+        }
+        if byte_at(txt, 0) == 102 {
+            g.v = 0
+            return g
+        }
+    }
+    return rmx_fail(5, g.col, g.oid)
+}
+
+// ---- 文本族(rm_str;ASCII 口径,非 ASCII 格 fail-closed 空串)----
+
+pub fn rm_str(r: PgRows, row: I64, name: Str) -> RmVal {
+    var g = rmx_gate(r, row, name, 0, 1, 0, 0)
+    if g.ok != 1 {
+        return g
+    }
+    g.s = pgr_cell(r, row, g.col)
+    return g
+}

@@ -1,0 +1,461 @@
+// http/enc.ct —— HTTP 压缩面(P4-B):gzip/deflate 封装 + Accept-Encoding 协商
+// 形态(与 http/parse.ct 头注同源):
+//   ① 零 use 纯模块(不 import std.net/http.parse —— 加载器菱形 use 误报
+//      E5020 规避 + 消费方双 use 即菱形;同 message.ct ②);唯一次级 use =
+//      本目录 binddeflate.ct(extern 白名单表,tls.ct→tls/bind 同款
+//      子模块形;同包加载器不判环,tests/http corpus 双模块实证)。
+//   ② 分工(登记,任务书 DECISION 面):C 垫片 ctron_deflate.c 只出三件无状态
+//      原语 —— raw deflate 压缩 / raw inflate(出参 cap 必填 = 炸弹护栏)/
+//      CRC-32(miniz mz_crc32)。gzip 容器组框(RFC 1952:10 字节头 + FLG 遍历
+//      + crc32/isize 尾)在本文件纯 Ctron —— 组框逻辑纯层可测;crc32 取垫片
+//      (miniz 16 项 nibble 表)而非纯层重写:单实现防漂移(任务书两案取
+//      「垫片组框」的折中:组框逻辑仍在纯层,唯 crc32 一原语复用 miniz)。
+//      deflate 无容器(raw);zlib 容器(RFC 1950)本波不实现 —— RFC 9110
+//      §8.4.1.2 "deflate" 名义的 zlib/raw 歧义,本实现取 raw 口径(nginx 等
+//      常见服务端行为),消费端兼容面注记登记。
+//   ③ 缓冲口径:&I64[] 字节道零拷贝进出(parse.ct 同款);输出道 cap 由调用方
+//      给定,解压面 cap 即炸弹护栏(RFC 9110 §8.4.1 安全注:解压输出必须设
+//      上限;本 API 无无上限解压面)。rc:>0 = 字节数;<0 = 失败码(-1 参数/
+//      -2 容量护栏/-3 损坏/-4 crc 不符/-5 isize 不符);0 不可达。
+//   ④ 发射面纪律:无闭包、无方法调用、无 if/match 表达式(语句形),while 体
+//      仅标量局部((f)/(g));Option 消费用 match 形助手(C13a)。
+//   ⑤ level 语义(zlib 档,登记):0 = 存储块(zlib 语义);1..9 = 探针档递进
+//      (miniz s_tdefl_num_probes);缺省档常量 = 6(库默认面)。越域 rc -1。
+//   ⑥ 协商面(纯 Str,无 lane):规则登记见 negotiate 头注。
+use http.binddeflate.{ ctron_deflate_compress, ctron_deflate_decompress, ctron_deflate_crc32 }
+
+// ---- level 缺省档(库默认;zlib 常规取 6)----
+pub fn enc_level_default() -> I64 {
+    return 6
+}
+
+// ---- raw deflate(无容器;头注② 口径)----
+
+// 压缩:in[0..in_n) → out[0..cap),返回写出字节数。level 见头注⑤。
+pub fn deflate_compress(in: &I64[], in_n: I64, out: &I64[], cap: I64, level: I64) -> I64 {
+    if level < 0 || level > 9 {
+        return -1
+    }
+    return ctron_deflate_compress(in, in_n, out, 0, cap, level)
+}
+
+// 解压(护栏必填):in[0..in_n) → out[0..cap),返回解压字节数。
+// -2 = 输出超护栏(炸弹面;夹具断言此码),-3 = 数据损坏。
+pub fn deflate_decompress(in: &I64[], in_n: I64, out: &I64[], cap: I64) -> I64 {
+    return ctron_deflate_decompress(in, in_n, 0, out, cap)
+}
+
+// ---- CRC-32(Continuation;miniz mz_crc32 表实现)----
+
+// 续算:crc 传上次返回值(首调 0),对 in[off..off+n) 求新值。
+pub fn crc32_update(crc: I64, in: &I64[], off: I64, n: I64) -> I64 {
+    return ctron_deflate_crc32(in, n, off, crc)
+}
+
+// 整段便捷形。
+pub fn crc32(in: &I64[], n: I64) -> I64 {
+    return ctron_deflate_crc32(in, n, 0, 0)
+}
+
+// ---- gzip 容器(RFC 1952;组框纯 Ctron,原语经垫片)----
+
+// 头 10 字节(ID1 ID2 CM FLG MTIME×4 XFL OS),尾 8 字节(CRC32 ISIZE,各
+// 4 字节小端);deflate 流最短 2 字节 → 成员总长下限 18、可解下限 20(含尾)。
+fn gzip_write_u32le(out: &I64[], at: I64, v: I64) {
+    out[at] = v % 256
+    out[at + 1] = (v / 256) % 256
+    out[at + 2] = (v / 65536) % 256
+    out[at + 3] = (v / 16777216) % 256
+}
+
+fn gzip_read_u32le(in: &I64[], at: I64) -> I64 {
+    return in [at] + in [at + 1] * 256 + in [at + 2] * 65536 + in [at + 3] * 16777216
+}
+
+// gzip 成员压缩:输出 = 10 字节头 + raw deflate + crc32/isize 尾。
+// 头定值:FLG=0(无 FEXTRA/FNAME/FCOMMENT/FHCRC)、MTIME=0(无时间戳——输出
+// 字节级可复现,登记)、XFL=0(档位不做 XFL 影射,登记)、OS=255(unknown,
+// RFC 9529 §9.1.5)。返回总字节数;容量不足 -2(先验下限 18 字节)。
+pub fn gzip_compress(in: &I64[], in_n: I64, out: &I64[], cap: I64, level: I64) -> I64 {
+    if level < 0 || level > 9 {
+        return -1
+    }
+    if cap < 18 {
+        return -2
+    }
+    out[0] = 31 // ID1
+    out[1] = 139 // ID2
+    out[2] = 8 // CM = deflate
+    out[3] = 0 // FLG
+    out[4] = 0
+    out[5] = 0
+    out[6] = 0
+    out[7] = 0 // MTIME = 0
+    out[8] = 0 // XFL
+    out[9] = 255 // OS = unknown
+    let dl = ctron_deflate_compress(in, in_n, out, 10, cap - 18, level)
+    if dl < 0 {
+        return dl
+    }
+    let crc = ctron_deflate_crc32(in, in_n, 0, 0)
+    gzip_write_u32le(out, 10 + dl, crc)
+    gzip_write_u32le(out, 14 + dl, in_n % 4294967296) // ISIZE = len mod 2^32
+    return 18 + dl
+}
+
+// gzip 成员解压:遍历头(RFC 1952 §2.3:FEXTRA/FNAME/FCOMMENT/FHCRC 逐项跳,
+// FLG 保留位 5..7 置位即拒)→ raw inflate(护栏 = cap)→ 校验尾 CRC32/ISIZE。
+// 返回解压字节数;-1 参数/短流;-2 护栏不足(炸弹面);-3 损坏(魔数/CM/FLG/
+// deflate);-4 CRC32 不符;-5 ISIZE 不符。
+// 注:FHCRC(头 CRC16)不校验(跳过;登记 —— 尾 CRC32 恒校验,流完整性由之
+// 承担;需要头校验的后继任务补)。
+// 注:单成员口径 —— 拼接成员(RFC 1952 §2.2 多成员串)不级联解,尾校验不符
+// -4 拒(实证;级联面后继任务按需补)。
+pub fn gzip_decompress(in: &I64[], in_n: I64, out: &I64[], cap: I64) -> I64 {
+    if in_n < 20 || in_n > in.len || cap < 0 || cap > out.len {
+        return -1
+    }
+    if in [0] != 31 || in [1] != 139 {
+        return -3
+    }
+    if in [2] != 8 {
+        return -3
+    }
+    let flg = in [3]
+    if flg >= 32 {
+        return -3 // 保留位 5..7 置位
+    }
+    var p: I64 = 10
+    if flg % 8 >= 4 {
+        // FEXTRA (bit 2):2 字节小端 XLEN + XLEN 字节
+        if p + 2 > in_n {
+            return -3
+        }
+        let xl = in [p] + in [p + 1] * 256
+        p = p + 2 + xl
+    }
+    if flg % 16 >= 8 {
+        // FNAME (bit 3):零终止串
+        while p < in_n && in [p] != 0 {
+            p += 1
+        }
+        p += 1
+    }
+    if flg % 32 >= 16 {
+        // FCOMMENT (bit 4):零终止串
+        while p < in_n && in [p] != 0 {
+            p += 1
+        }
+        p += 1
+    }
+    if flg % 4 >= 2 {
+        // FHCRC (bit 1):2 字节(不校验,见头注)
+        p += 2
+    }
+    if p >= in_n - 8 {
+        return -3 // deflate 流与 8 字节尾无处安放
+    }
+    let dl = ctron_deflate_decompress(in, in_n - 8 - p, p, out, cap)
+    if dl < 0 {
+        return dl
+    }
+    let crc_want = gzip_read_u32le(in, in_n - 8)
+    let crc_got = ctron_deflate_crc32(out, dl, 0, 0)
+    if crc_want != crc_got {
+        return -4
+    }
+    let isz_want = gzip_read_u32le(in, in_n - 4)
+    if isz_want != dl % 4294967296 {
+        return -5
+    }
+    return dl
+}
+
+// ---- Accept-Encoding 协商(RFC 9110 §12.5.3;纯 Str)----
+// v1 口径(登记):
+//   - accept_enc 形如 "gzip, deflate;q=0.5, *;q=0.1";have = 本端可提供表
+//     ("gzip, deflate")。OWS(空格/制表)容忍;匹配大小写不敏感;
+//     x-gzip 为 gzip 弃用同义(RFC 9110 §8.4.1.1),两侧同归一。
+//   - q:0..1 三位小数封顶;畸形 q(缺值/>1/四位小数/尾随杂符)→ 该元素整条
+//     按【不存在】处理(RFC 7231 §5.3.1 建议拒);同 coding 多次出现 → 首现胜。
+//   - "*" 通配:对未被显式列出的 coding 生效(q 取 "*" 的;"*" 畸形 q =
+//     无通配);**含 identity** —— identity;q=0 与 *;q=0(且无更具体的
+//     identity 条目)皆排除未编码表示(RFC 9110 §12.5.3 规则 2,自示例 #5)。
+//   - 选择:negotiate 返回 q 最高且 >0 的 have 成员(原形 token,服务端规范
+//     拼写);并列取 have 序(服务端偏好,mbedTLS ALPN 服务端序同款);无匹配
+//     → ""(identity)。identity 被拒(显式 identity;q=0,或 *;q=0 且无
+//     更具体 identity 条目)时调用方以 content_coding_identity_ok 区分
+//     「identity 回退」与「应 415」。
+//   - 缓存注:凡依本头协商的响应,消费方须回 `Vary: Accept-Encoding`
+//     (RFC 9110 §12.5.3;P6 缓存面脚雷,登记)。
+// 元素遍历注:逗号无引号串面(Accept-Encoding token 无内嵌逗号,q 参数无
+// 串值 —— RFC 9110 §12.5.3 语法无 quoted-string),裸 split 即合法。
+
+fn enc_is_ows(c: I32) -> Bool {
+    return c == 32 || c == 9
+}
+
+// [a..b) 去首尾 OWS(byte_slice 挖出)
+fn enc_trim(s: Str, a: I32, b: I32) -> Str {
+    var lo = a
+    var hi = b
+    while lo < hi && enc_is_ows(byte_at(s, lo)) {
+        lo += 1
+    }
+    while hi > lo && enc_is_ows(byte_at(s, hi - 1)) {
+        hi -= 1
+    }
+    return byte_slice(s, lo, hi)
+}
+
+fn enc_ci_eq(a: Str, b: Str) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var i: I32 = 0
+    while i < a.len {
+        var ca = byte_at(a, i)
+        var cb = byte_at(b, i)
+        if ca >= 65 && ca <= 90 {
+            ca += 32
+        }
+        if cb >= 65 && cb <= 90 {
+            cb += 32
+        }
+        if ca != cb {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// coding 名归一:x-gzip → gzip(弃用同义);其余原样(匹配再不分大小写)。
+fn enc_canon(t: Str) -> Str {
+    if enc_ci_eq(t, "x-gzip") {
+        return "gzip"
+    }
+    return t
+}
+
+// q 值解析([a..b) 内 ";q=X" 的 X;milli-q 0..1000;畸形 -1)。OWS 容忍。
+fn enc_parse_q(s: Str, a: I32, b: I32) -> I64 {
+    var lo = a
+    var hi = b
+    while lo < hi && enc_is_ows(byte_at(s, lo)) {
+        lo += 1
+    }
+    while hi > lo && enc_is_ows(byte_at(s, hi - 1)) {
+        hi -= 1
+    }
+    if lo >= hi || byte_at(s, lo) != 113 {
+        // 'q'
+        return -1
+    }
+    lo += 1
+    while lo < hi && enc_is_ows(byte_at(s, lo)) {
+        lo += 1
+    }
+    if lo >= hi || byte_at(s, lo) != 61 {
+        // '='
+        return -1
+    }
+    lo += 1
+    while lo < hi && enc_is_ows(byte_at(s, lo)) {
+        lo += 1
+    }
+    var intpart: I64 = 0
+    var seen_int = false
+    while lo < hi && byte_at(s, lo) >= 48 && byte_at(s, lo) <= 57 {
+        intpart = intpart * 10 + (byte_at(s, lo) - 48).as[I64]()
+        seen_int = true
+        lo += 1
+    }
+    if !seen_int || intpart > 1 {
+        return -1
+    }
+    var frac: I64 = 0
+    var fdigits = 0
+    if lo < hi && byte_at(s, lo) == 46 {
+        // '.'
+        lo += 1
+        while lo < hi && byte_at(s, lo) >= 48 && byte_at(s, lo) <= 57 {
+            if fdigits == 3 {
+                return -1 // 超三位小数(qvalue 封顶)
+            }
+            frac = frac * 10 + (byte_at(s, lo) - 48).as[I64]()
+            fdigits += 1
+            lo += 1
+        }
+        if fdigits == 0 {
+            return -1
+        }
+    }
+    if lo != hi {
+        return -1 // 尾随杂符
+    }
+    if intpart == 1 && frac != 0 {
+        return -1 // qvalue 语法:1 后小数仅 0(RFC 7231 §5.3.1;"1.5" 非法)
+    }
+    while fdigits < 3 {
+        frac = frac * 10
+        fdigits += 1
+    }
+    return intpart * 1000 + frac
+}
+
+// 单个 accept 元素([a..b))的 q 段解析:milli-q(缺省 1000;畸形 -1)。
+// 元素畸形(多 ';'、q 参形不合规)→ -1(整条按不存在处理,头注口径)。
+fn enc_elem_q(accept: Str, a: I32, b: I32) -> I64 {
+    var semi = -1
+    var semi2 = -1
+    var i = a
+    while i < b {
+        if byte_at(accept, i) == 59 {
+            // ';'
+            if semi < 0 {
+                semi = i
+            } else {
+                semi2 = i
+            }
+        }
+        i += 1
+    }
+    if semi < 0 {
+        return 1000
+    }
+    if semi2 >= 0 {
+        return -1 // 多参数:Accept-Encoding 语法无此面(RFC 9110 §12.5.3)
+    }
+    return enc_parse_q(accept, semi + 1, b)
+}
+
+// 元素([a..b))的 coding 名(去 q 段、去 OWS)是否与 target 等价
+// (canon 后不分大小写)。
+fn enc_elem_is(accept: Str, a: I32, b: I32, target: Str) -> Bool {
+    var semi = a
+    var i = a
+    var seen_semi = false
+    while i < b {
+        if byte_at(accept, i) == 59 && !seen_semi {
+            semi = i
+            seen_semi = true
+            i = b
+        } else {
+            i += 1
+        }
+    }
+    let nm = enc_trim(accept, a, if2(seen_semi, semi, b))
+    return enc_ci_eq(enc_canon(nm), target)
+}
+
+// seen ? x : y(语句形纪律的微助手;Ctron 无条件表达式)
+fn if2(c: Bool, x: I32, y: I32) -> I32 {
+    if c {
+        return x
+    }
+    return y
+}
+
+// 元素名恰为 "*"(通配)。
+fn enc_elem_star(accept: Str, a: I32, b: I32) -> Bool {
+    var semi = a
+    var i = a
+    var seen_semi = false
+    while i < b {
+        if byte_at(accept, i) == 59 && !seen_semi {
+            semi = i
+            seen_semi = true
+            i = b
+        } else {
+            i += 1
+        }
+    }
+    let nm = enc_trim(accept, a, if2(seen_semi, semi, b))
+    if nm.len == 1 {
+        return byte_at(nm, 0) == 42
+    }
+    return false
+}
+
+// accept 中 "*" 元素的 q;无 "*" 或其 q 畸形 → -1(首现胜)。
+fn enc_star_q(accept: Str) -> I64 {
+    var found: I64 = -1
+    var i: I32 = 0
+    let n = accept.len
+    var start = 0
+    while i <= n {
+        if i == n || byte_at(accept, i) == 44 {
+            let q = enc_elem_q(accept, start, i)
+            if enc_elem_star(accept, start, i) && q >= 0 && found < 0 {
+                found = q
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return found
+}
+
+// accept 中与 target(canon 比较)显式匹配的首现元素 milli-q;
+// 未显式列出或匹配元素 q 畸形 → -1(与通配无关,调用方叠通配)。
+fn enc_explicit_q(accept: Str, target: Str) -> I64 {
+    var found: I64 = -1
+    var i: I32 = 0
+    let n = accept.len
+    var start = 0
+    while i <= n {
+        if i == n || byte_at(accept, i) == 44 {
+            let q = enc_elem_q(accept, start, i)
+            if q >= 0 && enc_elem_is(accept, start, i, target) && found < 0 {
+                found = q
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return found
+}
+
+// identity 是否仍可接受(RFC 9110 §12.5.3 规则 2:未编码表示默认可接受,
+// 除非被显式 identity;q=0,或被 *;q=0 且无更具体 identity 条目排除)。
+pub fn content_coding_identity_ok(accept_enc: Str) -> Bool {
+    let eq = enc_explicit_q(accept_enc, "identity")
+    if eq == 0 {
+        return false
+    }
+    if eq < 0 && enc_star_q(accept_enc) == 0 {
+        return false // *;q=0 且无更具体 identity 条目
+    }
+    return true
+}
+
+// 协商主入口:返回应施加的 coding(have 中的原形 token);"" = identity
+// (胜出或回退;identity 被拒时调用方以 content_coding_identity_ok
+// 区分)。q 最高者胜,并列取 have 序;q ≤ 0 不可接受。
+pub fn content_coding_negotiate(accept_enc: Str, have: Str) -> Str {
+    let star_q = enc_star_q(accept_enc)
+    var best = ""
+    var best_q: I64 = 0
+    var i: I32 = 0
+    let n = have.len
+    var start = 0
+    while i <= n {
+        if i == n || byte_at(have, i) == 44 {
+            let tok = enc_trim(have, start, i)
+            if tok.len > 0 {
+                var q = enc_explicit_q(accept_enc, enc_canon(tok))
+                if q < 0 {
+                    q = star_q // 未显式列出 → 通配兜底(可能仍 -1)
+                }
+                if q > best_q {
+                    best_q = q
+                    best = tok
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return best
+}

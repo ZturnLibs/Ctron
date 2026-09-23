@@ -4,7 +4,7 @@
 // 跑;三类:纯随机 / gzip 头+随机载荷+随机尾 / 合法 gzip 翻转体内一字节
 // (crc -4 / 损坏 -3 / cap 护栏 -2 面)。只计 rc,零断言;崩溃即 fail。
 // 助手件与 fuzz_http.ct 同源(双文件各自成树,加载器严格树约束见 divergences)。
-use std.http.enc.{ gzip_decompress, gzip_compress }
+use http.enc.{ gzip_decompress, gzip_compress }
 use std.rand.{ rng_next }
 use std.str.{ char_at }
 

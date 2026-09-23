@@ -3,7 +3,7 @@
 // 探针模式(S26_HOTRELOAD=1):bind 每帧打印状态行(模型值 + 命令缓冲数)——
 // run.sh 改写 app.ctml(改样式 h/改结构增行)后断言:新结构入帧 + 模型状态不变。
 // 焦点/IME 保留属 M3 硬验收(§6.3),本夹具覆盖 M0-M2 面:样式+结构+状态。
-use std.gui.{run_kb_d, d_cmd_count}
+use gui.{run_kb_d, d_cmd_count}
 
 struct Model {
     var count: I32

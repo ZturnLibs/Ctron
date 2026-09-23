@@ -174,7 +174,7 @@ ewd="$DIR/err_wrap"
 if [ -d "$ewd/src" ]; then
     e="$ewd/src/main.ct"
     if CTRON_STDPATH="$ROOT/std" "$EMIT" run "$e" > "$T/ew.c" 2>"$T/ew.emiterr" \
-       && cc -O1 -w -o "$T/ew.bin" "$T/ew.c" "$ROOT"/std/ffi/c_src/*.c 2>"$T/ew.ccerr" \
+       && cc -O1 -w -o "$T/ew.bin" "$T/ew.c" "$ROOT"/ffi/c_src/*.c 2>"$T/ew.ccerr" \
        && "$T/ew.bin" run "$e" > "$T/ew.out" 2>&1; then
         echo "  [ok] err_wrap(std.ffi sys_result Ok/Err 双臂 + strerror 深拷)"
         pass=$((pass + 1))

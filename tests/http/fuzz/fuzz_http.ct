@@ -17,9 +17,9 @@
 //   - 形态纪律:跨模块 struct 只走 getter(HttpHead/ChunkRet/WsRet);ChunkSt
 //     状态回组用字面量(corpus/r_chunk 同款);lane 进出 + 标量返回;无闭包/
 //     无 Drop 局部/无方法调用。
-use std.http.parse.{ http_parse_head, http_limits_default, http_rc, http_err_of }
-use std.http.message.{ chunk_st_new, chunk_step, cr_rc, cr_err, cr_consumed, cr_produced, cr_phase, cr_remain }
-use std.http.ws.{ ws_step, ws_st_new, wr_rc, wr_err, wr_consumed, wr_produced, wr_st }
+use http.parse.{ http_parse_head, http_limits_default, http_rc, http_err_of }
+use http.message.{ chunk_st_new, chunk_step, cr_rc, cr_err, cr_consumed, cr_produced, cr_phase, cr_remain }
+use http.ws.{ ws_step, ws_st_new, wr_rc, wr_err, wr_consumed, wr_produced, wr_st }
 use std.rand.{ rng_next }
 use std.str.{ char_at }
 

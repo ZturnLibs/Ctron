@@ -1,0 +1,313 @@
+// http/date.ct —— HTTP 日期(RFC 9110 §5.6.7 IMF-fixdate;RFC 1123/5322 形)
+// 形态(与 http/parse.ct 头注同源):
+//   ① 零 use 纯模块(不 import std.time —— 消费方双 use 菱形 E5020 规避 +
+//      http 半层零 use 纪律;民历算法与 std/time.ct 同源(Hinnant
+//      civil_from_days/days_from_civil)本地复制,I64 域(time.ct 为 I32 z 域,
+//      epoch 全域 -62135596800..253402300799 需 I64;漂移风险由黄金向量钉住)。
+//   ② 域:epoch 秒(I64)↔ 公历年 [1,9999];format 域外返回 ""(文档化);
+//      parse 域外 None。
+//   ③ 严格口径(v1,登记):只受 IMF-fixdate("Sun, 06 Nov 1994 08:49:37 GMT");
+//      RFC 850(asl, "Sunday, 06-Nov-94")与 asctime("Sun Nov  6 08:49:37 94")
+//      遗留形拒(RFC 9110 §5.6.7 允许接收方拒;生成恒 IMF-fixdate);GMT
+//      字面,UT/Z/数字时区拒;星期名与日期不符拒(9110 允许拒,取严);
+//      秒 60(闰秒)拒(9110 注生成器不得产闰秒,受面取严);大小写敏感
+//      (IMF-fixdate 语法字面)。
+//   ④ 发射面纪律:无闭包、无方法调用、无 if/match 表达式,while 体仅标量
+//      局部((f)/(g));Option 消费用 match 形助手(C13a)。
+//   ⑤ 结构 DCiv 仅模块内用(跨模块 struct 成员读不可发射,(h) —— pub 面全
+//      标量化,不泄结构)。
+
+// ---- 民历(Hinnant;I64;与 std/time.ct 同算法,I64 化)----
+
+struct DCiv {
+    let y: I32
+    let m: I32
+    let d: I32
+}
+
+fn d_leap(y: I32) -> Bool {
+    if y % 4 != 0 {
+        return false
+    }
+    if y % 100 != 0 {
+        return true
+    }
+    if y % 400 != 0 {
+        return false
+    }
+    return true
+}
+
+fn d_days_in_month(y: I32, m: I32) -> I32 {
+    if m == 1 || m == 3 || m == 5 || m == 7 || m == 8 || m == 10 || m == 12 {
+        return 31
+    }
+    if m == 4 || m == 6 || m == 9 || m == 11 {
+        return 30
+    }
+    if m == 2 {
+        if d_leap(y) {
+            return 29
+        }
+        return 28
+    }
+    return 0
+}
+
+fn d_floor_div(a: I64, b: I64) -> I64 {
+    let q = a / b
+    if a % b != 0 && ((a < 0 && b > 0) || (a > 0 && b < 0)) {
+        return q - 1
+    }
+    return q
+}
+
+// days since 1970-01-01 → 公历(Hinnant civil_from_days;年份域外行为不裁,
+// 调用方以域判定)。段注释 := 无条件表达式,Ctron 语句形展开。
+fn d_civil(z: I64) -> DCiv {
+    var zz = z + 719468
+    let era = d_floor_div(zz, 146097)
+    let doe = zz - era * 146097 // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365 // [0, 399]
+    var y = yoe + era * 400
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100) // [0, 365]
+    let mp = (5 * doy + 2) / 153 // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1 // [1, 31]
+    var m = mp + 3
+    if mp >= 10 {
+        m = mp - 9
+    }
+    if m <= 2 {
+        y += 1
+    }
+    return DCiv { y: y.as[I32](), m: m.as[I32](), d: d.as[I32]() }
+}
+
+// 公历 → days since 1970-01-01(Hinnant days_from_civil;y/m/d 须域内)。
+fn d_days(y: I32, m: I32, d: I32) -> I64 {
+    var yy = y.as[I64]()
+    let mm = m.as[I64]()
+    let dd = d.as[I64]()
+    if mm <= 2 {
+        yy -= 1
+    }
+    let era = d_floor_div(yy, 400)
+    let yoe = yy - era * 400
+    var mp = mm + 9
+    if mm > 2 {
+        mp = mm - 3
+    }
+    let doy = (153 * mp + 2) / 5 + dd - 1
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    return era * 146097 + doe - 719468
+}
+
+// 星期:0 = 星期日 … 6 = 星期六(1970-01-01 = 4 = 星期四;floor-mod)。
+fn d_weekday(z: I64) -> I32 {
+    var w = (z + 4) % 7
+    if w < 0 {
+        w += 7
+    }
+    return w.as[I32]()
+}
+
+// ---- 名表(3 字节切片)----
+
+fn d_wd_name(w: I32) -> Str {
+    let t = "SunMonTueWedThuFriSat"
+    return byte_slice(t, w * 3, w * 3 + 3)
+}
+
+fn d_wd_index(s: Str) -> I32 {
+    let t = "SunMonTueWedThuFriSat"
+    var i: I32 = 0
+    while i < 7 {
+        if byte_at(t, i * 3) == byte_at(s, 0) && byte_at(t, i * 3 + 1) == byte_at(s, 1) && byte_at(t, i * 3 + 2) == byte_at(s, 2) {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn d_mo_name(m: I32) -> Str {
+    let t = "JanFebMarAprMayJunJulAugSepOctNovDec"
+    return byte_slice(t, (m - 1) * 3, (m - 1) * 3 + 3)
+}
+
+fn d_mo_index(s: Str) -> I32 {
+    let t = "JanFebMarAprMayJunJulAugSepOctNovDec"
+    var i: I32 = 0
+    while i < 12 {
+        if byte_at(t, i * 3) == byte_at(s, 0) && byte_at(t, i * 3 + 1) == byte_at(s, 1) && byte_at(t, i * 3 + 2) == byte_at(s, 2) {
+            return i + 1
+        }
+        i += 1
+    }
+    return -1
+}
+
+// ---- 数字段 ----
+
+fn d_digit(s: Str, at: I32) -> I32 {
+    var c = byte_at(s, at)
+    if c < 48 || c > 57 {
+        return -1
+    }
+    return c - 48
+}
+
+// 两位十进制([a..a+2));非数字 -1
+fn d_dd(s: Str, a: I32) -> I32 {
+    let hi = d_digit(s, a)
+    let lo = d_digit(s, a + 1)
+    if hi < 0 || lo < 0 {
+        return -1
+    }
+    return hi * 10 + lo
+}
+
+// 两位零填
+fn d_p2(v: I32) -> Str {
+    let h = byte_slice("0123456789", v / 10, v / 10 + 1)
+    let l = byte_slice("0123456789", v % 10, v % 10 + 1)
+    return h + l
+}
+
+// 四位零填(域 [1,9999];调用方先判域)
+fn d_p4(v: I32) -> Str {
+    return d_p2(v / 100) + d_p2(v % 100)
+}
+
+// ---- 面 ----
+
+// RFC 1123 IMF-fixdate:epoch 秒 → "Sun, 06 Nov 1994 08:49:37 GMT"。
+// 年份域 [1,9999] 外返回 ""(文档化)。
+// 6 域提升(登记,同 std/time.ct time_to_epoch_s 解法):解释器整数按【值域】
+// 定宽——字面量/形参值落在 I32 域即按 I32 判溢出乘(z*86400 在 2038~2100 年
+// 段溢 I32 而 |epoch|>I32max 的入参反而不溢)—— 故 z 一律经 `w - w + z`
+// 提升至 6 域再做秒换算。
+pub fn http_date_format(epoch_s: I64) -> Str {
+    var w: I64 = 4294967296
+    let z = d_floor_div(epoch_s, 86400)
+    let z6: I64 = w - w + z
+    let c = d_civil(z6)
+    if c.y < 1 || c.y > 9999 {
+        return ""
+    }
+    // sod = epoch_s − z6×86400 ∈ [0,86400):两操作数同号性按 e 的符号分岔后
+    // 以【非负减】计算 —— 解释器 6 域 c6sub 双负操作数符号翻转
+    // ((−a)−(−b) 误得 −(b−a),实证 format(−1);emit 侧 int64 正确,属
+    // 解释器缺陷,登记 divergences;此处结构规避,发射/解释两口径同确)
+    let z8 = z6 * 86400
+    var sod: I64 = 0
+    if epoch_s >= 0 {
+        sod = epoch_s - z8
+    } else {
+        sod = (0 - z8) - (0 - epoch_s)
+    }
+    let hh = (sod / 3600).as[I32]()
+    let mi = ((sod % 3600) / 60).as[I32]()
+    let ss = (sod % 60).as[I32]()
+    let wd = d_weekday(z6)
+    return d_wd_name(wd) + ", " + d_p2(c.d) + " " + d_mo_name(c.m) + " " + d_p4(c.y) + " " + d_p2(hh) + ":" + d_p2(mi) + ":" + d_p2(ss) + " GMT"
+}
+
+// 严格 IMF-fixdate 解析(口径见头注③):返回 epoch 秒。长度恰 29;星期名
+// 与日期一致性校验(取严)。
+pub fn http_date_parse(s: Str) -> Option[I64] {
+    if s.len != 29 {
+        return None
+    }
+    if byte_at(s, 3) != 44 || byte_at(s, 4) != 32 {
+        // ',' ' '
+        return None
+    }
+    if byte_at(s, 7) != 32 || byte_at(s, 11) != 32 || byte_at(s, 16) != 32 {
+        return None
+    }
+    if byte_at(s, 19) != 58 || byte_at(s, 22) != 58 || byte_at(s, 25) != 32 {
+        // ':' ':' ' '
+        return None
+    }
+    let wd = d_wd_index(byte_slice(s, 0, 3))
+    if wd < 0 {
+        return None
+    }
+    let dd = d_dd(s, 5)
+    if dd < 1 {
+        return None
+    }
+    let mo = d_mo_index(byte_slice(s, 8, 11))
+    if mo < 0 {
+        return None
+    }
+    // 年:四位数字
+    let y1 = d_digit(s, 12)
+    let y2 = d_digit(s, 13)
+    let y3 = d_digit(s, 14)
+    let y4 = d_digit(s, 15)
+    if y1 < 0 || y2 < 0 || y3 < 0 || y4 < 0 {
+        return None
+    }
+    let y = y1 * 1000 + y2 * 100 + y3 * 10 + y4
+    if y < 1 || y > 9999 {
+        return None
+    }
+    if dd > d_days_in_month(y, mo) {
+        return None
+    }
+    let hh = d_dd(s, 17)
+    let mi = d_dd(s, 20)
+    let ss = d_dd(s, 23)
+    if hh < 0 || mi < 0 || ss < 0 {
+        return None
+    }
+    if hh > 23 || mi > 59 || ss > 59 {
+        return None // 闰秒 60 亦拒(头注③)
+    }
+    if byte_at(s, 26) != 71 || byte_at(s, 27) != 77 || byte_at(s, 28) != 84 {
+        // 'G' 'M' 'T'
+        return None
+    }
+    let z = d_days(y, mo, dd)
+    if d_weekday(z) != wd {
+        return None // 星期名一致性(取严)
+    }
+    var w: I64 = 4294967296
+    let z6: I64 = w - w + z
+    return Some(z6 * 86400 + hh.as[I64]() * 3600 + mi.as[I64]() * 60 + ss.as[I64]())
+}
+
+// 星期(0 = 星期日 … 6 = 星期六);format 同域判定不适用 —— 纯算术,域外
+// 亦返模值(测试面用)。
+pub fn http_date_weekday(epoch_s: I64) -> I32 {
+    return d_weekday(d_floor_div(epoch_s, 86400))
+}
+
+// ---- Option[I64] 消费助手(match 形;C13a,enc/enc/time 同款)----
+pub fn http_date_get(o: Option[I64], dft: I64) -> I64 {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+pub fn http_date_some(o: Option[I64]) -> Bool {
+    match o {
+        Some(v) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
+// ---- RFC 歧义登记 ----
+// "deflate" 内容编码名的 zlib/raw 歧义(RFC 9110 §8.4.1.2)与协商规则登记
+// 于 http/enc.ct 头注;本文件仅日期面。

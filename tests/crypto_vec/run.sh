@@ -8,7 +8,7 @@
 #          登记):x_pbkdf2_hi(c=4096 档)、x_sha256_million(百万 'a')——
 #          解释器堆不回收(P5-B 登记 docs/c-rust-divergences.md),高块数
 #          档解释器口径不可实用;emit 口径各 ≈1s。x_uuid_live 另需真熵
-#          (interp 无 extern 运行时),单独 emit 块链 std/db/c_src/
+#          (interp 无 extern 运行时),单独 emit 块链 db/c_src/
 #          ctron_entropy.c(tests/net 链法;uuid 纯形面已由 e_uuid_pure
 #          双臂承载)。
 #   interp 逐文件预算 ≈ 10 块压缩等效内(同上登记),故 RFC 4231 七例拆
@@ -63,7 +63,7 @@ if [ -x "$EMIT" ]; then
         name=$(basename "$f" .ct)
         EXTRA=""
         if [ "$name" = "x_uuid_live" ]; then
-            EXTRA="$ROOT/std/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/db/c_src/ctron_entropy.c"
         fi
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
            && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" $EXTRA 2>"$T/$name.e.cc.err" \

@@ -2,7 +2,7 @@
 // 面:静态段/参数段命中、query 裁剪、404/405 面、first-match 优先级(含重叠
 // 解析双序)、方法齐平优先于先声明 405 候选、尾斜杠严格、comptime 表折叠
 // (const ROUTES: Str + comptime fn 数值派生 —— D-P6-1 释义的消费方侧形)。
-use std.http.frm.router.{ frm_match, frm_mcode_buf, frm_m_get, frm_m_post, frm_m_delete, frm_m_head, frm_m_options, frm_rc_match, frm_rc_method, frm_rc_miss, fr_rc, fr_id, fr_np, frm_param }
+use http.frm.router.{ frm_match, frm_mcode_buf, frm_m_get, frm_m_post, frm_m_delete, frm_m_head, frm_m_options, frm_rc_match, frm_rc_method, frm_rc_miss, fr_rc, fr_id, fr_np, frm_param }
 
 // —— comptime 路由表(D-P6-1:平面 Str 字面量,ceval 折叠;emit 直出 C 静常量)——
 const ROUTES: Str = "GET /users|GET /users/new|GET /users/:id|POST /users|HEAD /health"

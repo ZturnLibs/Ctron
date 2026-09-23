@@ -3,7 +3,7 @@
 // 面:st_resp_from_content 全分支(200/304/206/416)+ 穿越拒 + ctype 表,
 // 经消费方 use 形态装载(middleware 门面 + static 双叶 —— 加载器 done 去重)。
 // IO 薄胶 st_serve 不入夹具(CWD 不定;P6-E todo_api e2e 接线)。
-use std.http.frm.static.{ st_resp_from_content, st_traversal_ok, st_etag, st_ctype, st_range_parse, st_rc, st_s, st_e }
+use http.frm.static.{ st_resp_from_content, st_traversal_ok, st_etag, st_ctype, st_range_parse, st_rc, st_s, st_e }
 
 test "ctype dispatch" {
     assert(st_ctype("s.svg") == "image/svg+xml")

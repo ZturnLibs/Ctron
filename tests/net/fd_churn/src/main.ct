@@ -5,7 +5,7 @@
 // 即"无泄漏"实证。裸 fd 纪律:句柄 struct 不入环(while 体 Drop 局部不可
 // 发射,"移入内层裸块"缺口,Task 7 微探针登记);Box 出参通道非 Drop 局部,
 // 入环已证可发射(p5 探针)。
-use std.net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_close, last_net_error}
+use net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_close, last_net_error}
 
 test "500 connect/accept/close cycles without fd leak" {
     let net = Net_probe()

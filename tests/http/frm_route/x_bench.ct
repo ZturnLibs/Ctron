@@ -10,8 +10,8 @@
 //     epoll 基准;表扫描无 IO,解释臂无时钟不入计例)。
 // use 面:middleware 锚(框架唯一入口;router 符号经其单命名空间合并贯穿,
 // 消费方 use 表只能列入口自有符号 —— router 名以裸名直引)。
-use std.http.frm.middleware.{ frm_ctx_new }
-use std.net.{ Net_probe }
+use http.frm.middleware.{ frm_ctx_new }
+use net.{ Net_probe }
 
 const SPEC: Str = "GET /users|GET /users/new|GET /users/:id|POST /users|DELETE /users/:id|GET /health|GET /static/:name|GET /api/v1/items/:id"
 

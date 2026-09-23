@@ -19,7 +19,7 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/s7.bin" \
-   "$T/s7.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/s7.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 echo "s7: 构建+链接 OK -> $T/s7.bin"
 if [ "${1:-}" = "--run" ]; then
     cd "$DIR"

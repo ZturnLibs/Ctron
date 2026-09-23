@@ -5,8 +5,8 @@
 // 口令认证必需:trust/AuthOk 直达与 plus-only 按信任门拒收(err 4 显形,
 // RFC 5802 客户端 MUST;emsg 逐字透出,失败点由步骤行定位)。
 // CTRON_PG_DSN 未设 → skip 行照跑(零断言;run.sh 负责靶探测与登记)。
-use std.db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
-use std.db.pg.{ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_ext_pipeline, pg_terminate_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_err, pgs_emsg, pgs_sigok, pgs_status, pgr_rc, pgr_rows, pgr_cols, pgr_tag, pgr_cell, pgr_status, pgr_emsg}
+use db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
+use db.pg.{ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_ext_pipeline, pg_terminate_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_err, pgs_emsg, pgs_sigok, pgs_status, pgr_rc, pgr_rows, pgr_cols, pgr_tag, pgr_cell, pgr_status, pgr_emsg}
 
 test "pg nightly smoke: connect + scram + simple + prepared + tx" {
     var dsn = env_get("CTRON_PG_DSN")

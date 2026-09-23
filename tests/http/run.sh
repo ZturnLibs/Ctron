@@ -1,10 +1,10 @@
 #!/bin/sh
 # tests/http/run.sh —— HTTP/1.1 协议半层验收(P4-A;§11.7)
-# 口径:std/http 为零 use 纯 Ctron 半层(不 import std.net:加载器菱形 use
+# 口径:http 为零 use 纯 Ctron 半层(不 import std.net:加载器菱形 use
 # 误报 E5020 规避 + 网络垫片在解释口径无绑定,divergences (c)/(g) ⑥),故:
 #   主环 = 解释器(ctron-cc run):corpus/*.ct 断言式夹具逐文件跑,纯层无需
 #          原生速度;与 std/*.ct 种子单测同口径(smoke.sh 3e 先例)。
-#   副 = emit 同源对拍(ctron-emit → cc → 原生):std/http 无 extern,发射零
+#   副 = emit 同源对拍(ctron-emit → cc → 原生):http 无 extern,发射零
 #        链接需求;对拍即 divergences (h)(跨模块 struct 形)的常设回归哨。
 #   两臂同一夹具集双计 pass;任一臂红即红。pass>0 空集守卫(tests/net 同款)。
 #   双运行时矩阵(CTRON_RT=coro)不适用:纯层无停车点,无 rt 依赖。
@@ -26,10 +26,10 @@ echo "== tests/http 协议半层用例(§11.7;P4-A)=="
 # P4-C:sse/ws 纯叶入 interp;client.ct 触 net/bind 子树(W8052 使 interp rc=1)
 # → 其 inline tests 入下方 emit 专臂;crypto.ct(SHA-1 RFC 3174 向量)同 interp。
 for m in parse message sse ws; do
-    if "$CC" run "$ROOT/std/http/$m.ct" > "$T/std_$m.out" 2>&1; then
-        pass=$((pass+1)); echo "  PASS std/http/$m.ct (inline)"
+    if "$CC" run "$ROOT/http/$m.ct" > "$T/std_$m.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS http/$m.ct (inline)"
     else
-        fail=$((fail+1)); echo "  FAIL std/http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$m.out"
+        fail=$((fail+1)); echo "  FAIL http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$m.out"
     fi
 done
 # P6-A:frm 子层(router.ct 纯叶 + middleware.ct → router/enc;enc 纯面无
@@ -40,10 +40,10 @@ done
 # frm_auth 夹具对拍
 for m in frm/router frm/middleware frm/cors frm/csrf frm/sechdr frm/limit frm/timeout frm/auth frm/body; do
     mn=$(basename "$m")
-    if "$CC" run "$ROOT/std/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
-        pass=$((pass+1)); echo "  PASS std/http/$m.ct (inline)"
+    if "$CC" run "$ROOT/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS http/$m.ct (inline)"
     else
-        fail=$((fail+1)); echo "  FAIL std/http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$mn.out"
+        fail=$((fail+1)); echo "  FAIL http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$mn.out"
     fi
 done
 if "$CC" run "$ROOT/std/crypto.ct" > "$T/std_crypto.out" 2>&1; then
@@ -108,7 +108,7 @@ if [ -x "$EMIT" ]; then
                     continue
                 fi
                 MZCF="-I$ROOT/vendor/deflate/miniz"
-                MZLB="$ROOT/std/http/c_src/ctron_deflate.c $ROOT/vendor/deflate/build/lib/libminiz.a"
+                MZLB="$ROOT/http/c_src/ctron_deflate.c $ROOT/vendor/deflate/build/lib/libminiz.a"
                 ;;
         esac
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
@@ -121,20 +121,20 @@ if [ -x "$EMIT" ]; then
     done
 fi
 
-# ── std/http/client.ct inline tests(P4-C;emit 专臂,net/bind 子树 W8052)──
+# ── http/client.ct inline tests(P4-C;emit 专臂,net/bind 子树 W8052)──
 if [ -x "$EMIT" ]; then
-    if "$EMIT" run "$ROOT/std/http/client.ct" > "$T/std_client.e.c" 2>"$T/std_client.e.err" \
+    if "$EMIT" run "$ROOT/http/client.ct" > "$T/std_client.e.c" 2>"$T/std_client.e.err" \
        && cc -O1 -w -o "$T/std_client.e.bin" "$T/std_client.e.c" 2>"$T/std_client.e.cc.err" \
        && "$T/std_client.e.bin" > "$T/std_client.e.out" 2>&1; then
-        pass=$((pass+1)); echo "  PASS std/http/client.ct (inline, emit)"
+        pass=$((pass+1)); echo "  PASS http/client.ct (inline, emit)"
     else
-        fail=$((fail+1)); echo "  FAIL std/http/client.ct (inline, emit)"; sed -n '1,5p' "$T/std_client.e.out" "$T/std_client.e.cc.err" "$T/std_client.e.err" 2>/dev/null
+        fail=$((fail+1)); echo "  FAIL http/client.ct (inline, emit)"; sed -n '1,5p' "$T/std_client.e.out" "$T/std_client.e.cc.err" "$T/std_client.e.err" 2>/dev/null
     fi
 fi
 
 # ── P4-C 行为夹具:client_fixtures(客户端)与 sse_ws(SSE/WS)──
 # 臂分工(结构性登记,enc_fixtures x_ 同口径):凡 use std.http.client 的夹具,
-# 其 use 图必带 std/net/bind.ct —— 解释口径 W8052(rc=1)且垫片无绑定 → x_ 前缀
+# 其 use 图必带 net/bind.ct —— 解释口径 W8052(rc=1)且垫片无绑定 → x_ 前缀
 # = emit 专臂,cc 链 ctron_net.c(net 垫片;tests/net run.sh 同款)。双 RT 矩阵:
 # 默认(裸线程)+ CTRON_RT=coro(补链 ctron_rt.c;服务端协程停车于 net 垫片)
 # 各整跑、各计一例 —— tests/net 双矩阵口径在本目录的延伸。
@@ -149,16 +149,16 @@ for dir in client_fixtures sse_ws; do
                     continue
                 fi
                 RTN=""
-                RTSRC2="$ROOT/std/net/c_src/ctron_net.c"
+                RTSRC2="$ROOT/net/c_src/ctron_net.c"
                 for mode in default coro; do
                     RTF=""
                     RTENV=""
                     if [ "$mode" = "coro" ]; then
-                        RTF="$ROOT/std/net/c_src/ctron_rt.c"
+                        RTF="$ROOT/net/c_src/ctron_rt.c"
                         RTENV="CTRON_RT=coro"
                     fi
                     if "$EMIT" run "$f" > "$T/$name.$mode.c" 2>"$T/$name.$mode.err" \
-                       && cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/$name.$mode.bin" "$T/$name.$mode.c" "$RTSRC2" $RTF 2>"$T/$name.$mode.cc.err" \
+                       && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.$mode.bin" "$T/$name.$mode.c" "$RTSRC2" $RTF 2>"$T/$name.$mode.cc.err" \
                        && env $RTENV timeout 60 "$T/$name.$mode.bin" > "$T/$name.$mode.out" 2>&1; then
                         pass=$((pass+1)); echo "  PASS $name ($mode)"
                     else
@@ -286,7 +286,7 @@ done
 if [ "${CTRON_ROUTE_BENCH:-}" = "1" ] && [ -x "$EMIT" ]; then
     B="frm_route_x_bench"
     if "$EMIT" run "$DIR/frm_route/x_bench.ct" > "$T/$B.c" 2>"$T/$B.err" \
-       && cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/$B.bin" "$T/$B.c" "$ROOT/std/net/c_src/ctron_net.c" 2>"$T/$B.cc.err"; then
+       && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$B.bin" "$T/$B.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/$B.cc.err"; then
         MIN=""; MINR=""
         R=1
         while [ "$R" -le 3 ]; do

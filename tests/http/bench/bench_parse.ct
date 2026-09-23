@@ -10,8 +10,8 @@
 //     求和进校验和(防 DCE;(h) 缺口下消费方本就只触 getter 面)。
 //   - 本夹具为 emit 专臂(触 std.net/bind 子树 → 解释口径 W8052 rc=1,同
 //     client x_ 夹具口径);由 bench.sh 构建,不入 tests/http/run.sh 计例。
-use std.http.parse.{ http_parse_head, http_limits_default, http_rc, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_status_of, http_method_len, http_target_len, http_is_resp }
-use std.net.{ Net_probe }
+use http.parse.{ http_parse_head, http_limits_default, http_rc, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_status_of, http_method_len, http_target_len, http_is_resp }
+use net.{ Net_probe }
 
 fn bc_fill(buf: &I64[], s: Str) -> I64 {
     var i: I32 = 0

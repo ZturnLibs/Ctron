@@ -28,7 +28,7 @@ for d in "$DIR"/*/; do
     #(终审收账:补链条件收紧为仅 =coro,其他 CTRON_RT 值不再过匹配补链。)
     RTSRC=""
     if [ "${CTRON_RT:-}" = "coro" ] && [ ! -e "$d/c_src/ctron_rt.c" ]; then
-        RTSRC="$ROOT/std/net/c_src/ctron_rt.c"
+        RTSRC="$ROOT/net/c_src/ctron_rt.c"
     fi
     # P3-C TLS 夹具:c_src 含 ctron_tls.c 时补 mbedTLS 头/库与自签证书。
     # 证书 openssl req -x509 本机生成(临时目录,零外联),路径经环境变量
@@ -59,7 +59,7 @@ for d in "$DIR"/*/; do
         TLENV="CTRON_SMOKE_CERT=$T/$name.pki/cert.pem CTRON_SMOKE_KEY=$T/$name.pki/key.pem CTRON_SMOKE_CA=$T/$name.pki/ca.pem"
     fi
     if "$EMIT" run "$e" > "$T/$name.c" 2>"$T/$name.err"; then
-        if cc -O1 -w -pthread -I"$ROOT/std/net/c_src" $TLCF -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC $TLLB 2>"$T/$name.cc.err"; then
+        if cc -O1 -w -pthread -I"$ROOT/net/c_src" $TLCF -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC $TLLB 2>"$T/$name.cc.err"; then
             # 展开词不作赋值前缀(shell 语义)→ 经 env 注入夹具环境(TLENV 空 = 仅透传)
             if env $TLENV "$T/$name" run "$e" >"$T/$name.out" 2>&1; then
                 pass=$((pass+1)); echo "  PASS $name"

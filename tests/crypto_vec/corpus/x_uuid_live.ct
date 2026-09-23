@@ -1,5 +1,5 @@
 // tests/crypto_vec/corpus/x_uuid_live.ct —— std/uuid 真熵面(x_ = 仅 emit
-// 臂 + 链 std/db/c_src/ctron_entropy.c;interp 无 extern 运行时):
+// 臂 + 链 db/c_src/ctron_entropy.c;interp 无 extern 运行时):
 // v4 十万枚全异 + 版本半字节 '4' / 变体 ∈ {8,9,a,b} 全量断言、v7 毫秒面
 // 单调 + parse 往返全量。
 // 去重 = 夹具内就地快排(ms 面枢轴)邻比——std/sort 的 sorted 系 O(n²)

@@ -1,0 +1,593 @@
+// http/frm/cors.ct —— CORS 中间件(P6-B;预检矩阵 + 白名单 + 凭据)
+//
+// 语义登记(v1 口径,偏离/志向逐条):
+//   预检判定 = OPTIONS 方法码 + Access-Control-Request-Method 头在 + Origin
+//   在(fetch spec 预检三件;composition 层自 parse.ct 取,纯值入参)。
+//   预检放行 → 204 No Content + ACAO/ACAM/ACAH/ACCredentials/Max-Age/Vary:
+//   Origin;拒 → 403(择 403 而非 200-无头:显式失败面便于网关观测,登记)。
+//   非预检(actual)→ cors_check:无 Origin = 同源/非 CORS 请求放行不发 ACAO
+//   (同源无 CORS 语义);有 Origin 命中白名单/通配 → 放行,cors_apply 追加
+//   ACAO(+credentials 时 ACC)+ Vary: Origin;不命中 → 403 短路。
+//
+//   白名单 = 精确串等值(origin 逐字节;后缀/子域匹配登记缺席 —— 从严即默认
+//   ,"suffix matching registered as absent")。wild = origins 表为 "*" 单条;
+//   wild + cred 同时配置 = 构造期拒绝(WHATWG fetch:credentials 响应禁 *
+//   —— RFC 9110 语义面同源);cred 时 ACAO 恒取白名单条目回显面。
+//
+//   注入面(响应构造纪律):ACAO 恒出自配置条目/常量 "*"(永不回显请求字节);
+//   ACAM/ACAH 恒出自配置表(ACAH 不反射请求头名,发配置全表 —— 反射面登记
+//   志向);配置经 cors_cfg 校验(条目无 CR/LF/控制字节、origin 形、方法/头
+//   token 形)—— 构造拒绝即注入面封口。
+//
+// use 面:零 use 纯模块(middleware/router 不引 —— 严格树 E5020:多中间件
+//   同入口组合时各中间件必为无共享叶子;组合层接线经直接调用边界,链形适配
+//   由消费方闭包字面量完成,P6-B 探针:闭包捕获标量读 emit 缺口 → 适配闭包
+//   配置恒字面量实参)。私有助手自拼(响应助数字位面 middleware.ct 同式不
+//   导,防菱形)。
+
+// ---- 配置 ----
+
+pub struct CorsCfg {
+    let ok: I64
+    let err: I64
+    let wild: I64
+    let cred: I64
+    let n: I64
+    let o0: Str
+    let o1: Str
+    let o2: Str
+    let o3: Str
+    let o4: Str
+    let o5: Str
+    let o6: Str
+    let o7: Str
+    let mth: Str
+    let hdrs: Str
+    let mage: I64
+}
+
+// err 码:0 ok / 1 cred+wild 冲突 / 2 origin 形坏 / 3 方法或头 token 坏 /
+//   4 origin 条目超 8 / 5 origins 空表
+pub fn cors_err_ok() -> I64 { return 0 }
+pub fn cors_err_credwild() -> I64 { return 1 }
+pub fn cors_err_origin() -> I64 { return 2 }
+pub fn cors_err_token() -> I64 { return 3 }
+pub fn cors_err_many() -> I64 { return 4 }
+pub fn cors_err_empty() -> I64 { return 5 }
+
+pub fn ccfg_ok(c: CorsCfg) -> I64 { return c.ok }
+pub fn ccfg_err(c: CorsCfg) -> I64 { return c.err }
+pub fn ccfg_wild(c: CorsCfg) -> I64 { return c.wild }
+pub fn ccfg_cred(c: CorsCfg) -> I64 { return c.cred }
+pub fn ccfg_mage(c: CorsCfg) -> I64 { return c.mage }
+
+// token 字符(RFC 9110 tchar)判
+fn cs_tchar(ch: I32) -> I64 {
+    if ch >= 97 && ch <= 122 {
+        return 1
+    }
+    if ch >= 65 && ch <= 90 {
+        return 1
+    }
+    if ch >= 48 && ch <= 57 {
+        return 1
+    }
+    if ch == 33 || ch == 35 || ch == 36 || ch == 37 || ch == 38 || ch == 39 || ch == 42 || ch == 43 {
+        return 1
+    }
+    if ch == 45 || ch == 46 || ch == 94 || ch == 95 || ch == 96 || ch == 124 || ch == 126 {
+        return 1
+    }
+    return 0
+}
+
+// token 全形判(非空 + 全 tchar)
+fn cs_tok_ok(s: Str) -> I64 {
+    if s.len == 0 {
+        return 0
+    }
+    var i: I32 = 0
+    while i < s.len {
+        if cs_tchar(byte_at(s, i)) != 1 {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// '|' 分隔表全 token 判(空表拒)
+fn cs_toklist_ok(s: Str) -> I64 {
+    if s.len == 0 {
+        return 0
+    }
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= s.len {
+        var isend: I64 = 0
+        if i == s.len {
+            isend = 1
+        }
+        if isend == 0 {
+            if byte_at(s, i) == 124 {
+                isend = 1
+            }
+        }
+        if isend == 1 {
+            if i == start {
+                return 0
+            }
+            if cs_tok_ok(byte_slice(s, start, i)) != 1 {
+                return 0
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ASCII alnum 判(origin 域用;不取 cs_tchar 宽域 —— host 名 '_' 等非法)
+fn cs_alnum(ch: I32) -> I64 {
+    if ch >= 97 && ch <= 122 {
+        return 1
+    }
+    if ch >= 65 && ch <= 90 {
+        return 1
+    }
+    if ch >= 48 && ch <= 57 {
+        return 1
+    }
+    return 0
+}
+
+// origin 条目形:scheme://host[:port](v1 字符域 = alnum + ".:/-[]";拒绝
+//   其余 —— 含空白/下划线/逗号/控制字节,注入面封口)
+fn cs_origin_ok(s: Str) -> I64 {
+    if s.len < 8 {
+        return 0
+    }
+    var h: I32 = 0
+    if byte_at(s, 0) == 104 && byte_at(s, 1) == 116 && byte_at(s, 2) == 116 && byte_at(s, 3) == 112 {
+        if byte_at(s, 4) == 115 {
+            if byte_at(s, 5) == 58 && byte_at(s, 6) == 47 && byte_at(s, 7) == 47 {
+                h = 8
+            }
+        } else {
+            if byte_at(s, 4) == 58 && byte_at(s, 5) == 47 && byte_at(s, 6) == 47 {
+                h = 7
+            }
+        }
+    }
+    if h == 0 {
+        return 0
+    }
+    if s.len == h {
+        return 0
+    }
+    var i: I32 = h
+    while i < s.len {
+        let c = byte_at(s, i)
+        if cs_alnum(c) != 1 && c != 46 && c != 58 && c != 45 && c != 91 && c != 93 && c != 47 {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// 构造:origins = '|' 分隔白名单(或单条 "*" 通配);methods/hdrs = '|'
+//   分隔 token 表;mage 秒(0 = 预检不发 Max-Age);cred 0/1
+pub fn cors_cfg(origins: Str, methods: Str, hdrs: Str, mage: I64, cred: I64) -> CorsCfg {
+    if origins.len == 0 {
+        return CorsCfg { ok: 0, err: cors_err_empty(), wild: 0, cred: 0, n: 0, o0: "", o1: "", o2: "", o3: "", o4: "", o5: "", o6: "", o7: "", mth: "", hdrs: "", mage: 0 }
+    }
+    var wild: I64 = 0
+    if origins == "*" {
+        wild = 1
+    }
+    if wild == 1 && cred == 1 {
+        return CorsCfg { ok: 0, err: cors_err_credwild(), wild: 1, cred: 1, n: 0, o0: "", o1: "", o2: "", o3: "", o4: "", o5: "", o6: "", o7: "", mth: "", hdrs: "", mage: 0 }
+    }
+    if cs_toklist_ok(methods) != 1 || cs_toklist_ok(hdrs) != 1 {
+        return CorsCfg { ok: 0, err: cors_err_token(), wild: wild, cred: cred, n: 0, o0: "", o1: "", o2: "", o3: "", o4: "", o5: "", o6: "", o7: "", mth: "", hdrs: "", mage: 0 }
+    }
+    if wild == 1 {
+        return CorsCfg { ok: 1, err: cors_err_ok(), wild: 1, cred: cred, n: 1, o0: "*", o1: "", o2: "", o3: "", o4: "", o5: "", o6: "", o7: "", mth: methods, hdrs: hdrs, mage: mage }
+    }
+    var n: I64 = 0
+    var i: I32 = 0
+    var start: I32 = 0
+    var o0 = ""
+    var o1 = ""
+    var o2 = ""
+    var o3 = ""
+    var o4 = ""
+    var o5 = ""
+    var o6 = ""
+    var o7 = ""
+    var bad: I64 = 0
+    while i <= origins.len {
+        var isend: I64 = 0
+        if i == origins.len {
+            isend = 1
+        }
+        if isend == 0 {
+            if byte_at(origins, i) == 124 {
+                isend = 1
+            }
+        }
+        if isend == 1 {
+            let ent = byte_slice(origins, start, i)
+            if ent.len > 0 {
+                if cs_origin_ok(ent) != 1 {
+                    bad = 1
+                }
+                if n == 0 { o0 = ent }
+                if n == 1 { o1 = ent }
+                if n == 2 { o2 = ent }
+                if n == 3 { o3 = ent }
+                if n == 4 { o4 = ent }
+                if n == 5 { o5 = ent }
+                if n == 6 { o6 = ent }
+                if n == 7 { o7 = ent }
+                if n == 8 { bad = 2 }
+                if n < 8 {
+                    n += 1
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    if bad == 1 {
+        return CorsCfg { ok: 0, err: cors_err_origin(), wild: 0, cred: cred, n: 0, o0: "", o1: "", o2: "", o3: "", o4: "", o5: "", o6: "", o7: "", mth: "", hdrs: "", mage: 0 }
+    }
+    if bad == 2 {
+        return CorsCfg { ok: 0, err: cors_err_many(), wild: 0, cred: cred, n: 8, o0: o0, o1: o1, o2: o2, o3: o3, o4: o4, o5: o5, o6: o6, o7: o7, mth: methods, hdrs: hdrs, mage: mage }
+    }
+    if n == 0 {
+        return CorsCfg { ok: 0, err: cors_err_empty(), wild: 0, cred: cred, n: 0, o0: "", o1: "", o2: "", o3: "", o4: "", o5: "", o6: "", o7: "", mth: "", hdrs: "", mage: 0 }
+    }
+    return CorsCfg { ok: 1, err: cors_err_ok(), wild: 0, cred: cred, n: n, o0: o0, o1: o1, o2: o2, o3: o3, o4: o4, o5: o5, o6: o6, o7: o7, mth: methods, hdrs: hdrs, mage: mage }
+}
+
+// ---- 判定 ----
+
+pub struct CorsDec {
+    let rc: I64
+    let why: I64
+    let acao: Str
+    let acam: Str
+    let acah: Str
+    let cred: I64
+    let mage: I64
+}
+
+// why:0 ok / 1 origin 拒 / 2 method 拒 / 3 header 拒 / 4 非 CORS(无 Origin
+//   放行透传)
+pub fn cd_rc(d: CorsDec) -> I64 { return d.rc }
+pub fn cd_why(d: CorsDec) -> I64 { return d.why }
+pub fn cd_acao(d: CorsDec) -> Str { return d.acao }
+pub fn cd_acam(d: CorsDec) -> Str { return d.acam }
+pub fn cd_acah(d: CorsDec) -> Str { return d.acah }
+pub fn cd_cred(d: CorsDec) -> I64 { return d.cred }
+pub fn cd_mage(d: CorsDec) -> I64 { return d.mage }
+
+fn cs_dec_deny(why: I64) -> CorsDec {
+    return CorsDec { rc: 0, why: why, acao: "", acam: "", acah: "", cred: 0, mage: 0 }
+}
+
+// 白名单命中 → 出 ACAO 值(配置条目或 "*";永不取请求字节)
+fn cs_acao_of(c: CorsCfg, origin: Str) -> Str {
+    if c.wild == 1 {
+        return "*"
+    }
+    if c.o0 == origin && c.o0.len > 0 {
+        return c.o0
+    }
+    if c.o1 == origin && c.o1.len > 0 {
+        return c.o1
+    }
+    if c.o2 == origin && c.o2.len > 0 {
+        return c.o2
+    }
+    if c.o3 == origin && c.o3.len > 0 {
+        return c.o3
+    }
+    if c.o4 == origin && c.o4.len > 0 {
+        return c.o4
+    }
+    if c.o5 == origin && c.o5.len > 0 {
+        return c.o5
+    }
+    if c.o6 == origin && c.o6.len > 0 {
+        return c.o6
+    }
+    if c.o7 == origin && c.o7.len > 0 {
+        return c.o7
+    }
+    return ""
+}
+
+// ASCII 小写化单字节
+fn cs_lower(ch: I32) -> I32 {
+    if ch >= 65 && ch <= 90 {
+        return ch + 32
+    }
+    return ch
+}
+
+// 头名等值(大小写不敏感;逐字节)
+fn cs_name_eq(a: Str, b: Str) -> I64 {
+    if a.len != b.len {
+        return 0
+    }
+    var i: I32 = 0
+    while i < a.len {
+        if cs_lower(byte_at(a, i)) != cs_lower(byte_at(b, i)) {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ',' 分隔请求头名表逐 token 白名单(大小写不敏感;OWS 裁)全命中判
+fn cs_acrh_ok(req: Str, allow: Str) -> I64 {
+    if req.len == 0 {
+        return 1
+    }
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= req.len {
+        var isend: I64 = 0
+        if i == req.len {
+            isend = 1
+        }
+        if isend == 0 {
+            if byte_at(req, i) == 44 {
+                isend = 1
+            }
+        }
+        if isend == 1 {
+            var a = start
+            var b = i
+            while a < b && byte_at(req, a) == 32 {
+                a += 1
+            }
+            while b > a && byte_at(req, b - 1) == 32 {
+                b -= 1
+            }
+            var hit: I64 = 0
+            if b > a {
+                let tok = byte_slice(req, a, b)
+                var j: I32 = 0
+                var js: I32 = 0
+                while j <= allow.len {
+                    var jend: I64 = 0
+                    if j == allow.len {
+                        jend = 1
+                    }
+                    if jend == 0 {
+                        if byte_at(allow, j) == 124 {
+                            jend = 1
+                        }
+                    }
+                    if jend == 1 {
+                        if j > js {
+                            if cs_name_eq(tok, byte_slice(allow, js, j)) == 1 {
+                                hit = 1
+                            }
+                        }
+                        js = j + 1
+                    }
+                    j += 1
+                }
+            }
+            if hit == 0 {
+                return 0
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return 1
+}
+
+// 预检判定:origin/ACRM 值/ACRH 值(composition 层自 parse.ct 头切片 Str 化
+//   后传入;空 origin 或空 ACRM = 非预检形 → why 拒由调用面 cors_check/411
+//   分管 —— 本面按预检语义判)
+pub fn cors_preflight(c: CorsCfg, origin: Str, acrm: Str, acrh: Str) -> CorsDec {
+    let acao = cs_acao_of(c, origin)
+    if acao == "" {
+        return cs_dec_deny(1)
+    }
+    var hitm: I64 = 0
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= c.mth.len {
+        var isend: I64 = 0
+        if i == c.mth.len {
+            isend = 1
+        }
+        if isend == 0 {
+            if byte_at(c.mth, i) == 124 {
+                isend = 1
+            }
+        }
+        if isend == 1 {
+            if i > start && byte_slice(c.mth, start, i) == acrm {
+                hitm = 1
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    if hitm == 0 {
+        return cs_dec_deny(2)
+    }
+    if cs_acrh_ok(acrh, c.hdrs) != 1 {
+        return cs_dec_deny(3)
+    }
+    return CorsDec { rc: 1, why: 0, acao: acao, acam: cs_join(c.mth), acah: cs_join(c.hdrs), cred: c.cred, mage: c.mage }
+}
+
+// actual 请求 Origin 门:has_origin = 0(同源/非 CORS)→ 放行透传不发 CORS
+//   头;有 Origin 命中 → 放行(acao 出);不命中 → 403 短路
+pub fn cors_check(c: CorsCfg, has_origin: I64, origin: Str) -> CorsDec {
+    if has_origin == 0 {
+        return CorsDec { rc: 1, why: 4, acao: "", acam: "", acah: "", cred: 0, mage: 0 }
+    }
+    let acao = cs_acao_of(c, origin)
+    if acao == "" {
+        return cs_dec_deny(1)
+    }
+    return CorsDec { rc: 1, why: 0, acao: acao, acam: "", acah: "", cred: c.cred, mage: c.mage }
+}
+
+// ---- 响应构造(注入面:全配置/常量出) ----
+
+// I64 → 十进制(正域;0 兜底)
+fn cs_num(v: I64) -> Str {
+    if v <= 0 {
+        return "0"
+    }
+    var out = ""
+    var x: I64 = v
+    while x > 0 {
+        let d = (x % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        x = x / 10
+    }
+    return out
+}
+
+// '|' 表 → ", " 连接(ACAM/ACAH 发射面)
+fn cs_join(list: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= list.len {
+        var isend: I64 = 0
+        if i == list.len {
+            isend = 1
+        }
+        if isend == 0 {
+            if byte_at(list, i) == 124 {
+                isend = 1
+            }
+        }
+        if isend == 1 {
+            if i > start {
+                if out.len > 0 {
+                    out = out + ", "
+                }
+                out = out + byte_slice(list, start, i)
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+// 预检 204(放行时;拒绝面 = cors_resp_403)
+pub fn cors_preflight_resp(d: CorsDec) -> Str {
+    var head = "HTTP/1.1 204 No Content\r\n" + "Access-Control-Allow-Origin: " + cd_acao(d) + "\r\n"
+    if cd_acam(d).len > 0 {
+        head = head + "Access-Control-Allow-Methods: " + cd_acam(d) + "\r\n"
+    }
+    if cd_acah(d).len > 0 {
+        head = head + "Access-Control-Allow-Headers: " + cd_acah(d) + "\r\n"
+    }
+    if cd_cred(d) == 1 {
+        head = head + "Access-Control-Allow-Credentials: true\r\n"
+    }
+    if cd_mage(d) > 0 {
+        head = head + "Access-Control-Max-Age: " + cs_num(cd_mage(d)) + "\r\n"
+    }
+    head = head + "Vary: Origin\r\n" + "Content-Length: 0\r\n" + "\r\n"
+    return head
+}
+
+// CORS 拒(预检/actual 共面;body 13 字节)
+pub fn cors_resp_403() -> Str {
+    return "HTTP/1.1 403 Forbidden\r\n" + "Content-Length: 13\r\n" + "\r\n" + "cors rejected"
+}
+
+// actual 放行后追加 ACAO(+credentials)于响应头尾(head_end 后插,空
+//   acao 不动 —— why=4 非 CORS 面)
+pub fn cors_apply(resp: Str, d: CorsDec) -> Str {
+    if cd_acao(d).len == 0 {
+        return resp
+    }
+    var extra = "Access-Control-Allow-Origin: " + cd_acao(d) + "\r\n" + "Vary: Origin\r\n"
+    if cd_cred(d) == 1 {
+        extra = extra + "Access-Control-Allow-Credentials: true\r\n"
+    }
+    let e = cs_head_end(resp)
+    if e < 0 {
+        return resp
+    }
+    let p = (e + 2).as[I32]()
+    return byte_slice(resp, 0, p) + extra + byte_slice(resp, p, resp.len)
+}
+
+// 头尾(首 CRLFCRLF)定位;无 → -1
+fn cs_head_end(s: Str) -> I64 {
+    var i: I32 = 0
+    while i + 3 < s.len {
+        if byte_at(s, i) == 13 && byte_at(s, i + 1) == 10 && byte_at(s, i + 2) == 13 && byte_at(s, i + 3) == 10 {
+            return i.as[I64]()
+        }
+        i += 1
+    }
+    return -1
+}
+
+// ---- inline tests(矩阵语料见 tests/http/frm_mw/a_cors.ct) ----
+
+test "cfg validate and preflight allow" {
+    let c = cors_cfg("https://a.example|https://b.example", "GET|POST", "X-App|Content-Type", 600, 0)
+    assert(ccfg_ok(c) == 1 && ccfg_err(c) == 0 && ccfg_wild(c) == 0)
+    let d = cors_preflight(c, "https://a.example", "POST", "X-App")
+    assert(cd_rc(d) == 1 && cd_acao(d) == "https://a.example")
+    assert(cd_acam(d) == "GET, POST" && cd_acah(d) == "X-App, Content-Type")
+    let r = cors_preflight_resp(d)
+    assert(r == "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: https://a.example\r\nAccess-Control-Allow-Methods: GET, POST\r\nAccess-Control-Allow-Headers: X-App, Content-Type\r\nAccess-Control-Max-Age: 600\r\nVary: Origin\r\nContent-Length: 0\r\n\r\n")
+}
+
+test "cfg rejects and deny matrix" {
+    let c1 = cors_cfg("*", "GET", "X-A", 0, 1)
+    assert(ccfg_ok(c1) == 0 && ccfg_err(c1) == cors_err_credwild())
+    let c2 = cors_cfg("https://x_y.example", "GET", "X-A", 0, 0)
+    assert(ccfg_ok(c2) == 0 && ccfg_err(c2) == cors_err_origin())
+    let c3 = cors_cfg("https://ok.example", "GET|GE?T", "X-A", 0, 0)
+    assert(ccfg_ok(c3) == 0 && ccfg_err(c3) == cors_err_token())
+    let c = cors_cfg("https://a.example", "GET", "X-A", 0, 0)
+    let d1 = cors_preflight(c, "https://evil.example", "GET", "")
+    assert(cd_rc(d1) == 0 && cd_why(d1) == 1)
+    let d2 = cors_preflight(c, "https://a.example", "DELETE", "")
+    assert(cd_rc(d2) == 0 && cd_why(d2) == 2)
+    let d3 = cors_preflight(c, "https://a.example", "GET", "X-Nope")
+    assert(cd_rc(d3) == 0 && cd_why(d3) == 3)
+    let d4 = cors_preflight(c, "https://a.example.evil.tld", "GET", "")
+    assert(cd_rc(d4) == 0 && cd_why(d4) == 1)
+}
+
+test "check apply and non-cors" {
+    let c = cors_cfg("https://a.example", "GET", "X-A", 0, 1)
+    let d0 = cors_check(c, 0, "")
+    assert(cd_rc(d0) == 1 && cd_why(d0) == 4 && cd_acao(d0) == "")
+    let d1 = cors_check(c, 1, "https://a.example")
+    assert(cd_rc(d1) == 1 && cd_acao(d1) == "https://a.example" && cd_cred(d1) == 1)
+    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+    let out = cors_apply(resp, d1)
+    assert(out == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nAccess-Control-Allow-Origin: https://a.example\r\nVary: Origin\r\nAccess-Control-Allow-Credentials: true\r\n\r\nhi")
+    let d2 = cors_check(c, 1, "https://nope.example")
+    assert(cd_rc(d2) == 0 && cors_resp_403() == "HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\n\r\ncors rejected")
+    let w = cors_cfg("*", "GET", "X-A", 0, 0)
+    let d3 = cors_check(w, 1, "https://any.example")
+    assert(cd_rc(d3) == 1 && cd_acao(d3) == "*")
+}

@@ -1,7 +1,7 @@
 // tests/db/redis_replay/rr_replay.ct —— Redis RESP2 回放验收(P5-E;双臂)。
 // 五形(+/-/:/$/*)逐字节锚 + 命令装配十六进制锚 + 负例拒收面 + 计数序列
 // 游标链。锚值 = 夹具同源展开(RESP2 公开规范;见目录 README)。
-use std.db.redis.{redis_recv_script, redis_hex_encode, redis_hex_decode, redis_get_cmd, redis_set_cmd, redis_del_cmd, redis_expire_cmd, redis_incr_cmd, redis_cmd, redis_conn_dirty, redis_err_eof, redis_err_frame, redis_err_proto, redis_err_reply, rs_rc, rs_err, rs_kind, rs_ival, rs_sval, rs_isnull, rs_nitems, rs_item, rs_inull, rs_bval, rs_used, rs_next}
+use db.redis.{redis_recv_script, redis_hex_encode, redis_hex_decode, redis_get_cmd, redis_set_cmd, redis_del_cmd, redis_expire_cmd, redis_incr_cmd, redis_cmd, redis_conn_dirty, redis_err_eof, redis_err_frame, redis_err_proto, redis_err_reply, rs_rc, rs_err, rs_kind, rs_ival, rs_sval, rs_isnull, rs_nitems, rs_item, rs_inull, rs_bval, rs_used, rs_next}
 
 fn load_replies(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

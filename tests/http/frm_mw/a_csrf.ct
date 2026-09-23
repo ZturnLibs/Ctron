@@ -6,7 +6,7 @@
 // 链形适配(a_cors 同口径:适配器内令牌/判定面恒字面量 —— 组合层经
 // 直接调用边界以 parse.ct Cookie 槽/体槽取值后预判;P6-A 探针捕获缺口 +
 // emit fn 值装箱 ct_i 返回 ⇒ next 结果恒经 `"" +` 裸尾惯用法落 Str)。
-use std.http.frm.csrf.{ csrf_issue, csrf_verify, csrf_cookie_get, csrf_form_get, csrf_set_cookie, csrf_resp_403, ct_rc, ct_why, ct_tok, cv_rc, cv_why }
+use http.frm.csrf.{ csrf_issue, csrf_verify, csrf_cookie_get, csrf_form_get, csrf_set_cookie, csrf_resp_403, ct_rc, ct_why, ct_tok, cv_rc, cv_why }
 
 // ---- 终端 handler(组合层;CSRF 短路面不可达) ----
 

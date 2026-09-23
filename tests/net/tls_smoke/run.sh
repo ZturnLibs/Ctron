@@ -20,7 +20,7 @@ cp "$T/cert.pem" "$T/ca.pem"
 
 "$EMIT" run "$DIR/src/main.ct" > "$T/main.c"
 printf '#define MBEDTLS_CONFIG_FILE "config-thread.h"\n' > "$T/mbcfg.h"
-cc -O1 -w -pthread -I"$ROOT/std/net/c_src" \
+cc -O1 -w -pthread -I"$ROOT/net/c_src" \
    -I"$ROOT/vendor/tls" -I"$ROOT/vendor/tls/mbedtls/include" -include "$T/mbcfg.h" \
    -o "$T/tls_smoke" "$T/main.c" "$DIR"/c_src/*.c \
    "$ROOT/vendor/tls/build/lib/libmbedtls.a" \

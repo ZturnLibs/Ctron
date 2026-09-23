@@ -5,7 +5,7 @@
 // → C8 域拒绝,Unicode 即此路径,登记)。
 // API 注:form 不出 struct(发射缺口,form.ct 头注③)—— 单对面走
 // form_decode_k/v/ok,多对面走交错 K/V 道(form_key_at/form_val_at)。
-use std.http.form.{ form_parse, form_encode_pair, form_encode_pairs, form_pct_encode, form_decode_k, form_decode_v, form_decode_ok, form_parse_ok, form_count, form_key_at, form_val_at }
+use http.form.{ form_parse, form_encode_pair, form_encode_pairs, form_pct_encode, form_decode_k, form_decode_v, form_decode_ok, form_parse_ok, form_count, form_key_at, form_val_at }
 
 fn dk(s: Str) -> Str {
     return form_decode_k(s, "<none>")

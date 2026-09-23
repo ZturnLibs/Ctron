@@ -632,7 +632,7 @@ fn doc_mod_rel(ep: Str) -> Str {
 fn doc_std_mod(ep: Str) -> Str {
     // §5.3:"std.<module>" 形 → 实文件四级解析:①CTRON_STDPATH ②exe 旁 ../lib/ctron/std
     // ③cwd ./std(dev 仓库根)④cwd ../std(pkg_std_root 种子约定的 cwd 变体);
-    // 域目录形(std.http.parse)经 doc_mod_rel 点号转路径
+    // 域目录形(http.parse)经 doc_mod_rel 点号转路径
     var mod = doc_mod_rel(ep)
     var envp = env_get("CTRON_STDPATH")
     if envp.len > 0 {

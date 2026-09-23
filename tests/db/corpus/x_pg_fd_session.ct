@@ -14,7 +14,7 @@
 //      Z('I')——状态字节游水面。
 // 定长 lane 字面量显式槽(P5-C 登记);nonce/口令/盐 = 夹具定值(确定性,
 // 不触熵面)。真库互操作 = tests/db/nightly(同入口组合)。
-use std.db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_startup_msg, pg_query_msg, pg_ext_pipeline, pg_terminate_msg, pg_hex_decode, PgCell64, ctron_dbpg_socketpair, ctron_dbpg_write, ctron_dbpg_close, pgs_rc, pgs_err, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_nmech, pgs_mech, pgs_cfinal, pgs_sigok, pgr_rc, pgr_rows, pgr_cols, pgr_colname, pgr_tag, pgr_cell, pgr_isnull, pgr_status}
+use db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_startup_msg, pg_query_msg, pg_ext_pipeline, pg_terminate_msg, pg_hex_decode, PgCell64, ctron_dbpg_socketpair, ctron_dbpg_write, ctron_dbpg_close, pgs_rc, pgs_err, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_nmech, pgs_mech, pgs_cfinal, pgs_sigok, pgr_rc, pgr_rows, pgr_cols, pgr_colname, pgr_tag, pgr_cell, pgr_isnull, pgr_status}
 
 test "pg fd full session: scram handshake (downlink sends), simple+extended query, tx status" {
     var sv: I64[2] = [0, 0]

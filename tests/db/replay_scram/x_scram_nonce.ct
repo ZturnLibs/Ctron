@@ -2,7 +2,7 @@
 // (x_ = 仅 emit 臂入计;interp 无 extern 运行时,x_uuid_live 同款结构性
 // 登记;链 std/db/c_src/ctron_dbpg.c + ctron_entropy.c——ctron_dbpg_entropy
 // 为 view 胞形别名转发,链接须并链熵垫片)。emit 臂专用。
-use std.db.pg.{pg_scram_nonce, pg_scram_nonce_from}
+use db.pg.{pg_scram_nonce, pg_scram_nonce_from}
 
 test "scram nonce: live entropy 24 chars, two draws differ, pure face intact" {
     let a = pg_scram_nonce()

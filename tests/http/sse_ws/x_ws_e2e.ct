@@ -8,8 +8,8 @@
 // 客户端 = 主面:101 直通(client_request)+ Accept 头黄金向量互证 + 掩码帧
 // (rng 种子键 —— RFC 仅要求"不可预测",v1 登记限制)+ 帧面断言。
 // CI 纪律:仅回环、:0、零外联。
-use std.http.client.{ http_net, client_listen, client_sockname, client_accept, client_request, client_read_t, client_write, client_write_str, client_close, HttpSock }
-use std.http.ws.{ ws_upgrade_ok, ws_accept_key, ws_accept_key_lane, ws_frame_encode, ws_frame_head, ws_step, ws_st_new, ws_close_payload, ws_close_protocol_error, ws_close_code_ok, ws_utf8_valid, ws_op_text, ws_op_binary, ws_op_ping, ws_op_pong, ws_op_close, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
+use http.client.{ http_net, client_listen, client_sockname, client_accept, client_request, client_read_t, client_write, client_write_str, client_close, HttpSock }
+use http.ws.{ ws_upgrade_ok, ws_accept_key, ws_accept_key_lane, ws_frame_encode, ws_frame_head, ws_step, ws_st_new, ws_close_payload, ws_close_protocol_error, ws_close_code_ok, ws_utf8_valid, ws_op_text, ws_op_binary, ws_op_ping, ws_op_pong, ws_op_close, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
 use std.rand.{ rng_fresh, rng_next }
 
 fn fx_fill(buf: &I64[], s: Str) -> I64 {

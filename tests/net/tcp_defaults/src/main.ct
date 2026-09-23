@@ -4,7 +4,7 @@
 // get==1。off→get→on→get,两次 get 之间无读(M-T6-7 口径)。
 // 形态(tcp_echo 同款,依 c5281b8 门面):免费函数 + net: StdNet 按值首参;
 // 错误面 = rc(0 成/<0 败)+ last_net_error();句柄 Drop RAII。
-use std.net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_set_nodelay, net_get_nodelay, last_net_error}
+use net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_set_nodelay, net_get_nodelay, last_net_error}
 
 test "nodelay default on, explicit off/on roundtrip" {
     let net = Net_probe()

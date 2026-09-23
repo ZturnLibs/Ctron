@@ -15,7 +15,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 build() {
     "$EMIT" run "$DIR/src/main.ct" > "$T/gui_calc.c"
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/gui_calc.bin" \
-       "$T/gui_calc.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+       "$T/gui_calc.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 }
 
 case "$(uname)" in

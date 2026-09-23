@@ -7,7 +7,7 @@
 // 垫片 or 逻辑计数),零真钟零睡眠。链形适配(a_cors 同口径:桶态/在途数
 // 恒字面量 —— 组合层注册表(IP→桶值)经直接调用边界算得后入适配器;值
 // 状态经 lim_bkt 构造面重建下传,消费方不直构字面量)。
-use std.http.frm.limit.{ lim_cfg, lim_bkt_new, lim_bkt, lim_take, lim_acq, lim_rel, lim_ip_key, lim_resp_503, lcfg_ok, lt_ok, lt_retry, lt_tks, lt_last, lif_ok, lif_n }
+use http.frm.limit.{ lim_cfg, lim_bkt_new, lim_bkt, lim_take, lim_acq, lim_rel, lim_ip_key, lim_resp_503, lcfg_ok, lt_ok, lt_retry, lt_tks, lt_last, lif_ok, lif_n }
 
 // ---- 终端 handler(组合层;限流/shed 短路面不可达) ----
 

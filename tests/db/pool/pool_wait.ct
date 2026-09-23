@@ -8,7 +8,7 @@
 // 形态纪律(发射面实证,P5-E 登记):Sender/Receiver 只可闭包捕获于 spawn
 // 字面处(作 struct 字段/形参即 emit 截断);子任务发/主任务收为已证方向;
 // 匹配臂不用(match 于闭包 emit 缺位),err 面走 expect。
-use std.db.pool.{pool_open, pool_add_pg, pool_take, pool_release_pg, pool_classify, pool_nidle, pool_nreset, pool_slot_status, pa_ok, pa_slot, pa_st}
+use db.pool.{pool_open, pool_add_pg, pool_take, pool_release_pg, pool_classify, pool_nidle, pool_nreset, pool_slot_status, pa_ok, pa_slot, pa_st}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

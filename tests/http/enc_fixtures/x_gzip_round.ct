@@ -3,7 +3,7 @@
 // 组框面(gzip_compress/gzip_decompress)在 std/http/enc.ct 纯 Ctron;本夹具
 // 覆盖:往返(空/单/重复/随机)、头字节布局、FLG 遍历(FNAME 自组装成员)、
 // 尾校验(CRC32 篡改 -4 / ISIZE 篡改 -5)、魔数/CM 拒(-3)、炸弹护栏(-2)。
-use std.http.enc.{ gzip_compress, gzip_decompress, deflate_compress, crc32_update, crc32 }
+use http.enc.{ gzip_compress, gzip_decompress, deflate_compress, crc32_update, crc32 }
 
 fn fill_rep(buf: &I64[], n: I64) -> I64 {
     var i: I64 = 0

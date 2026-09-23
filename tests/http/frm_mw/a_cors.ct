@@ -6,7 +6,7 @@
 // 链形适配(P6-A 探针口径:闭包捕获槽读 = emit 缺口 → 适配器内配置/请求
 // 判定面恒字面量;头值进适配器的通道 = 组合层直接调用边界预判,组合层按
 // 请求面选择适配器 —— 链面 fn(req,h,next) 只携 req/h,I64/Str 装箱面纪律)。
-use std.http.frm.cors.{ cors_cfg, cors_preflight, cors_check, cors_preflight_resp, cors_apply, cors_resp_403, cd_rc, cd_why, cd_acao, cd_acam, cd_cred, ccfg_ok, ccfg_err, ccfg_wild, cors_err_credwild, cors_err_origin, cors_err_token }
+use http.frm.cors.{ cors_cfg, cors_preflight, cors_check, cors_preflight_resp, cors_apply, cors_resp_403, cd_rc, cd_why, cd_acao, cd_acam, cd_cred, ccfg_ok, ccfg_err, ccfg_wild, cors_err_credwild, cors_err_origin, cors_err_token }
 
 // ---- 终端 handler(组合层;预检短路面不可达) ----
 

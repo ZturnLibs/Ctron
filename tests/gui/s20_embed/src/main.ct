@@ -2,7 +2,7 @@
 // 源经 ctron_embedded() 取编译期 GuiBlock 重建(空格化 token + </ 粘连 + 剥 ~)。
 // 已知限制(登记):字面量叶文本含词法切分标点(冒号/逗号等)时,重建会按 token
 // 加空格(W1 join 丢邻接)——骨架 IR 槽表直通后根治;字面量文本用无标点形态。
-use std.gui.{test, d_frame, d_expect_text}
+use gui.{test, d_frame, d_expect_text}
 
 view Counter {
   <vbox class="root">

@@ -3,7 +3,7 @@
 //   令牌字面量过链)、过期边界(now >= exp 拝)、签名篡改(密钥错/位翻)、
 //   cookie 构造域拒(头走私钉)、own 盒存储 put/upsert/过期/满/gc/del 全值
 //   态循环(时钟注入,确定性)。
-use std.http.frm.auth.{ auth_cookie_get, auth_cookie_set, auth_tok_issue, auth_tok_verify, auth_sess_new, auth_sess_put, auth_sess_get, auth_sess_del, auth_sess_gc, auth_sess_len, auth_err_ok, auth_err_uid, auth_err_sig, auth_err_expired, auth_err_full, at_ok, at_tok, tv_rc, tv_why, tv_uid, sp_ok, sp_why, sp_st, sg_rc, sg_user }
+use http.frm.auth.{ auth_cookie_get, auth_cookie_set, auth_tok_issue, auth_tok_verify, auth_sess_new, auth_sess_put, auth_sess_get, auth_sess_del, auth_sess_gc, auth_sess_len, auth_err_ok, auth_err_uid, auth_err_sig, auth_err_expired, auth_err_full, at_ok, at_tok, tv_rc, tv_why, tv_uid, sp_ok, sp_why, sp_st, sg_rc, sg_user }
 
 // 十进制自拼(fixture 局部;au_ 私名不入公开面)
 fn uv_num(v: I64) -> Str {

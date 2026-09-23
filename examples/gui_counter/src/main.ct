@@ -4,7 +4,7 @@
 // 双口径:CTRON_GUI_HEADLESS=1 → 域包 test()(注入断言);缺省 → run_d(窗口 + 热重载环)。
 // 状态恢复(W4 裁决 1A):CTRON_GUI_STATE=count=N 环境注入,退出回传快照。
 
-use std.gui.{run_d, test, d_click, d_frame, d_expect_text}
+use gui.{run_d, test, d_click, d_frame, d_expect_text}
 
 struct Model {
     var count: I32

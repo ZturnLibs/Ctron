@@ -4,7 +4,7 @@
 // 成功位,未见口令知识证明校验绝不产 rc=0(RFC 5802 §5.1 客户端 MUST
 // 校验 ServerSignature;互认证缺口面)。单链 interp 预算口径(PBKDF2+
 // 证明 ≈ 15 块压缩,无 server 签名——R12 不到)。
-use std.db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_emsg, pgs_cfinal, pgs_sigok, pg_err_auth}
+use db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_emsg, pgs_cfinal, pgs_sigok, pg_err_auth}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

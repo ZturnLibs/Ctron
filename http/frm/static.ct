@@ -1,0 +1,456 @@
+// http/frm/static.ct —— 静态文件面(P6-D;ETag/If-None-Match 304/Range 206·416/穿越拒)
+//
+// 口径:
+//   纯面/IO 面两分 —— st_resp_from_content(name, content, inm, range) 为全决策
+//   纯函数(夹具双臂直测);st_serve(root, target, …) 是唯一 IO 薄胶
+//   (fs_exists/read_file 内建),组合层 handler 终端调用,frm 零 IO 链形不变。
+//
+//   ETag = 强校验器 '"' + sha256_hex(content) + '"'(内容寻址;无 mtime 内建,
+//   Last-Modified 不发 —— 登记志向:mtime 内建落库后补)。If-None-Match:
+//   精确比较 + "*" 全匹配 + 逗号列表逐段;弱比较 W/ 前缀不支持(从严,登记)。
+//   304 响应无 Content-Type/Content-Length、无体(RFC 9110 §15.4.5)。
+//
+//   Range(v1 单范围 bytes=;RFC 9110 §14):"bytes=S-E"/"bytes=S-"/"bytes=-N"。
+//   E 越界截断至 len-1;S ≥ len 或 S > E → 416(带 Content-Range: bytes */len);
+//   suffix N=0 → 416;畸形/多范围(含 ',')/非 bytes 单位 → 忽略 Range 走 200
+//   (RFC 允许忽略,从严即默认之宽容面)。206 带 Content-Range: bytes S-E/len。
+//
+//   穿越拒:target 必以 '/' 开头、无 '..' 与 '.' 段、无空段(//)、无尾斜杠
+//   (只服务文件)、无 '?'/'#' 目标内嵌(query/fragment 归调用方裁剪,入此即拒)。
+//   命中任一 → 403(fail-closed,从严即默认)。
+//
+//   Content-Type = 扩展名小表(确定性穷举;缺省 application/octet-stream;
+//   字符集参数不标 —— 登记志向)。sendfile 零拷贝列 P9(计划原文)。
+//
+// use 面:std.crypto(sha256_hex)单叶;router/middleware 不 use(消费方经
+//   middleware 门面合并 router,本模块只补 crypto 叶 —— 加载器 done 去重,
+//   同叶多径安全,frm 家族同 body.ct 先例)。
+
+use std.crypto.{ sha256_hex }
+
+// ---- Range 解析(纯面) ----
+
+struct StRange {
+    let rc: I64
+    let s: I64
+    let e: I64
+    let clen: I64
+}
+
+// rc:0 = 忽略 Range(200 全量) / 1 = 206 可满足 / 2 = 416 不可满足
+pub fn st_rc(r: StRange) -> I64 { return r.rc }
+pub fn st_s(r: StRange) -> I64 { return r.s }
+pub fn st_e(r: StRange) -> I64 { return r.e }
+pub fn st_clen(r: StRange) -> I64 { return r.clen }
+
+// "bytes=" 前缀判定
+fn st_has_bytes_prefix(h: Str) -> Bool {
+    if h.len < 6 {
+        return false
+    }
+    return byte_slice(h, 0, 6) == "bytes="
+}
+
+// 十进制段 → I64;空/非数字 → -1(调用方按畸形处置)
+fn st_dec(seg: Str) -> I64 {
+    if seg.len == 0 {
+        return 0 - 1
+    }
+    var v: I64 = 0
+    var i: I32 = 0
+    while i < seg.len {
+        let c = byte_at(seg, i)
+        if c < 48 || c > 57 {
+            return 0 - 1
+        }
+        v = v * 10 + (c - 48).as[I64]()
+        i += 1
+    }
+    return v
+}
+
+// 单范围解析。len = 资源总长(I64 ≥ 0)
+pub fn st_range_parse(range: Str, len: I64) -> StRange {
+    let unsat = StRange { rc: 2, s: 0, e: 0, clen: len }
+    let ignore = StRange { rc: 0, s: 0, e: 0, clen: len }
+    if range.len == 0 {
+        return ignore
+    }
+    if !st_has_bytes_prefix(range) {
+        return ignore
+    }
+    let spec = byte_slice(range, 6, range.len)
+    // 多范围(逗号)→ 忽略(v1 单范围登记)
+    var i: I32 = 0
+    while i < spec.len {
+        if byte_at(spec, i) == 44 {
+            return ignore
+        }
+        i += 1
+    }
+    // 切 '-'(恰一个;多个 → 忽略)
+    var dash: I32 = 0 - 1
+    var nd: I32 = 0
+    i = 0
+    while i < spec.len {
+        if byte_at(spec, i) == 45 {
+            dash = i
+            nd += 1
+        }
+        i += 1
+    }
+    if nd != 1 {
+        return ignore
+    }
+    let lhs = byte_slice(spec, 0, dash)
+    let rhs = byte_slice(spec, dash + 1, spec.len)
+    if lhs.len == 0 {
+        // suffix 形:-N
+        let n = st_dec(rhs)
+        if n < 0 {
+            return ignore
+        }
+        if n == 0 {
+            return unsat
+        }
+        if n >= len {
+            return StRange { rc: 1, s: 0, e: len - 1, clen: len }
+        }
+        return StRange { rc: 1, s: len - n, e: len - 1, clen: len }
+    }
+    let s0 = st_dec(lhs)
+    if s0 < 0 {
+        return ignore
+    }
+    var e0: I64 = len - 1
+    if rhs.len > 0 {
+        e0 = st_dec(rhs)
+        if e0 < 0 {
+            return ignore
+        }
+    }
+    if s0 >= len {
+        return unsat
+    }
+    if s0 > e0 {
+        return unsat
+    }
+    if e0 > len - 1 {
+        e0 = len - 1
+    }
+    return StRange { rc: 1, s: s0, e: e0, clen: len }
+}
+
+// ---- 切片/ETag/条件请求(纯面) ----
+
+// 含端点字节切片(s..e 双闭;调用方保证 0 ≤ s ≤ e < len)
+pub fn st_slice(s: Str, start: I64, end: I64) -> Str {
+    return byte_slice(s, start.as[I32](), (end + 1).as[I32]())
+}
+
+// 强 ETag:内容寻址
+pub fn st_etag(content: Str) -> Str {
+    return "\"" + sha256_hex(content) + "\""
+}
+
+// If-None-Match 比较:""=无头 false;"*"=true;逗号列表逐段精确;W/ 弱形不支持
+pub fn st_inm_match(inm: Str, etag: Str) -> Bool {
+    if inm.len == 0 {
+        return false
+    }
+    if inm == "*" {
+        return true
+    }
+    var seg = inm
+    while true {
+        var comma: I32 = 0 - 1
+        var i: I32 = 0
+        while i < seg.len {
+            if byte_at(seg, i) == 44 {
+                comma = i
+                break
+            }
+            i += 1
+        }
+        var one = seg
+        if comma >= 0 {
+            one = byte_slice(seg, 0, comma)
+            seg = byte_slice(seg, comma + 1, seg.len)
+        } else {
+            seg = ""
+        }
+        // trim 空格
+        while one.len > 0 && byte_at(one, 0) == 32 {
+            one = byte_slice(one, 1, one.len)
+        }
+        while one.len > 0 && byte_at(one, one.len - 1) == 32 {
+            one = byte_slice(one, 0, one.len - 1)
+        }
+        if one == etag {
+            return true
+        }
+        if seg.len == 0 {
+            break
+        }
+    }
+    return false
+}
+
+// ---- 穿越拒(纯面;fail-closed) ----
+
+pub fn st_traversal_ok(target: Str) -> Bool {
+    if target.len == 0 {
+        return false
+    }
+    if byte_at(target, 0) != 47 {
+        return false
+    }
+    if byte_at(target, target.len - 1) == 47 {
+        return false
+    }
+    // 单遍:段边界即判 "." / "..";空段(//)与 ?/# 内嵌即拒
+    var i: I32 = 1
+    var seg_start: I32 = 1
+    var prev_slash = false
+    while i < target.len {
+        let c = byte_at(target, i)
+        if c == 63 || c == 35 {
+            return false
+        }
+        if c == 47 {
+            if prev_slash || i == seg_start {
+                return false
+            }
+            prev_slash = true
+            let sl = i - seg_start
+            if sl == 1 && byte_at(target, seg_start) == 46 {
+                return false
+            }
+            if sl == 2 && byte_at(target, seg_start) == 46 && byte_at(target, seg_start + 1) == 46 {
+                return false
+            }
+            seg_start = i + 1
+        } else {
+            prev_slash = false
+        }
+        i += 1
+    }
+    let sl = target.len - seg_start
+    if sl == 1 && byte_at(target, seg_start) == 46 {
+        return false
+    }
+    if sl == 2 && byte_at(target, seg_start) == 46 && byte_at(target, seg_start + 1) == 46 {
+        return false
+    }
+    return true
+}
+
+// ---- Content-Type 小表(确定性穷举;缺省 octet-stream) ----
+
+pub fn st_ctype(name: Str) -> Str {
+    // 取扩展名(最后一个 '.' 后;无 '.' → 缺省)
+    var dot: I32 = 0 - 1
+    var i: I32 = 0
+    while i < name.len {
+        if byte_at(name, i) == 46 {
+            dot = i
+        }
+        i += 1
+    }
+    if dot < 0 {
+        return "application/octet-stream"
+    }
+    let ext = byte_slice(name, dot + 1, name.len)
+    if ext == "html" || ext == "htm" { return "text/html" }
+    if ext == "css" { return "text/css" }
+    if ext == "js" || ext == "mjs" { return "text/javascript" }
+    if ext == "json" { return "application/json" }
+    if ext == "txt" { return "text/plain" }
+    if ext == "svg" { return "image/svg+xml" }
+    if ext == "png" { return "image/png" }
+    if ext == "jpg" || ext == "jpeg" { return "image/jpeg" }
+    if ext == "wasm" { return "application/wasm" }
+    if ext == "xml" { return "application/xml" }
+    if ext == "pdf" { return "application/pdf" }
+    if ext == "ico" { return "image/x-icon" }
+    return "application/octet-stream"
+}
+
+// 子串查找(hay 内 needle 首现下标;未现 = -1;夹具断言辅助)
+pub fn st_find(hay: Str, needle: Str) -> I32 {
+    if needle.len == 0 || needle.len > hay.len {
+        return 0 - 1
+    }
+    var i: I32 = 0
+    while i <= hay.len - needle.len {
+        var j: I32 = 0
+        var ok = true
+        while j < needle.len {
+            if byte_at(hay, i + j) != byte_at(needle, j) {
+                ok = false
+                break
+            }
+            j += 1
+        }
+        if ok {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// ---- 响应组装(纯面;frm_resp 同式自拼,CRLF 自备) ----
+
+fn st_digits(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var out = ""
+    var n = v
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    return out
+}
+
+fn st_reason(code: I64) -> Str {
+    if code == 200 { return "OK" }
+    if code == 206 { return "Partial Content" }
+    if code == 304 { return "Not Modified" }
+    if code == 403 { return "Forbidden" }
+    if code == 404 { return "Not Found" }
+    if code == 416 { return "Range Not Satisfiable" }
+    return "Unknown"
+}
+
+fn st_resp_raw(code: I64, headers: Str, body: Str) -> Str {
+    return "HTTP/1.1 " + st_digits(code) + " " + st_reason(code) + "\r\n" + headers + "Content-Length: " + st_digits(body.len.as[I64]()) + "\r\n" + "\r\n" + body
+}
+
+// 全决策面:name 供 Content-Type;inm/range 为对应请求头原文(可空)
+pub fn st_resp_from_content(name: Str, content: Str, inm: Str, range: Str) -> Str {
+    let etag = st_etag(content)
+    let len = content.len.as[I64]()
+    if st_inm_match(inm, etag) {
+        // 304:无 Content-Type/Content-Length、无体;带 ETag
+        return "HTTP/1.1 304 Not Modified\r\n" + "ETag: " + etag + "\r\n" + "\r\n"
+    }
+    let r = st_range_parse(range, len)
+    if st_rc(r) == 2 {
+        let h = "Content-Type: " + st_ctype(name) + "\r\n" + "ETag: " + etag + "\r\n" + "Accept-Ranges: bytes\r\n" + "Content-Range: bytes */" + st_digits(len) + "\r\n"
+        return st_resp_raw(416, h, "range not satisfiable")
+    }
+    if st_rc(r) == 1 {
+        let body = st_slice(content, st_s(r), st_e(r))
+        let h = "Content-Type: " + st_ctype(name) + "\r\n" + "ETag: " + etag + "\r\n" + "Accept-Ranges: bytes\r\n" + "Content-Range: bytes " + st_digits(st_s(r)) + "-" + st_digits(st_e(r)) + "/" + st_digits(len) + "\r\n"
+        return st_resp_raw(206, h, body)
+    }
+    let h = "Content-Type: " + st_ctype(name) + "\r\n" + "ETag: " + etag + "\r\n" + "Accept-Ranges: bytes\r\n"
+    return st_resp_raw(200, h, content)
+}
+
+// ---- IO 薄胶(唯一 IO 面;夹具不触,P6-E todo_api 接线) ----
+
+pub fn st_serve(root: Str, target: Str, inm: Str, range: Str) -> Str {
+    if !st_traversal_ok(target) {
+        return st_resp_raw(403, "Content-Type: text/plain\r\n", "forbidden")
+    }
+    var full = root
+    if full.len == 0 || byte_at(full, full.len - 1) != 47 {
+        full = full + "/"
+    }
+    full = full + byte_slice(target, 1, target.len)
+    if !fs_exists(full) {
+        return st_resp_raw(404, "Content-Type: text/plain\r\n", "not found")
+    }
+    let content = read_file(full)
+    return st_resp_from_content(target, content, inm, range)
+}
+
+// ---- inline tests(纯面;IO 薄胶由 P6-E e2e 接线) ----
+
+test "range parse states" {
+    // 全量忽略
+    assert(st_rc(st_range_parse("", 10)) == 0)
+    assert(st_rc(st_range_parse("items=0-3", 10)) == 0)
+    assert(st_rc(st_range_parse("bytes=0-1,3-4", 10)) == 0)
+    // 单范围常规
+    let a = st_range_parse("bytes=2-5", 10)
+    assert(st_rc(a) == 1 && st_s(a) == 2 && st_e(a) == 5)
+    // 开放尾/越界截断
+    let b = st_range_parse("bytes=7-", 10)
+    assert(st_rc(b) == 1 && st_s(b) == 7 && st_e(b) == 9)
+    let c = st_range_parse("bytes=0-99", 10)
+    assert(st_rc(c) == 1 && st_e(c) == 9)
+    // suffix
+    let d = st_range_parse("bytes=-4", 10)
+    assert(st_rc(d) == 1 && st_s(d) == 6 && st_e(d) == 9)
+    let e = st_range_parse("bytes=-99", 10)
+    assert(st_rc(e) == 1 && st_s(e) == 0 && st_e(e) == 9)
+    let f = st_range_parse("bytes=-0", 10)
+    assert(st_rc(f) == 2)
+    // 416:S 越界 / S>E
+    assert(st_rc(st_range_parse("bytes=10-", 10)) == 2)
+    assert(st_rc(st_range_parse("bytes=5-2", 10)) == 2)
+    // 畸形 → 忽略
+    assert(st_rc(st_range_parse("bytes=a-b", 10)) == 0)
+    assert(st_rc(st_range_parse("bytes=1-2-3", 10)) == 0)
+}
+
+test "slice and etag" {
+    assert(st_slice("hello", 1, 3) == "ell")
+    assert(st_slice("hello", 4, 4) == "o")
+    let t = st_etag("abc")
+    assert(byte_at(t, 0) == 34 && byte_at(t, t.len - 1) == 34)
+    assert(byte_slice(t, 1, t.len - 1) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+}
+
+test "inm match" {
+    let et = st_etag("abc")
+    assert(!st_inm_match("", et))
+    assert(st_inm_match("*", et))
+    assert(st_inm_match(et, et))
+    assert(st_inm_match("\"x\", " + et, et))
+    assert(!st_inm_match("\"x\"", et))
+}
+
+test "traversal" {
+    assert(st_traversal_ok("/a/b.txt"))
+    assert(!st_traversal_ok(""))
+    assert(!st_traversal_ok("a/b"))
+    assert(!st_traversal_ok("/a/../b"))
+    assert(!st_traversal_ok("/.."))
+    assert(!st_traversal_ok("/a/./b"))
+    assert(!st_traversal_ok("//a"))
+    assert(!st_traversal_ok("/a/"))
+    assert(!st_traversal_ok("/a?x"))
+    assert(!st_traversal_ok("/a#y"))
+}
+
+test "ctype table" {
+    assert(st_ctype("a.html") == "text/html")
+    assert(st_ctype("a.JSON") == "application/octet-stream")
+    assert(st_ctype("noext") == "application/octet-stream")
+    assert(st_ctype("x.tar.gz") == "application/octet-stream")
+    assert(st_ctype("x.gz") == "application/octet-stream")
+    assert(st_ctype("app.js") == "text/javascript")
+    assert(st_ctype("i.svg") == "image/svg+xml")
+}
+
+test "resp shapes" {
+    let full = st_resp_from_content("a.txt", "hello", "", "")
+    assert(full == "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nETag: " + st_etag("hello") + "\r\nAccept-Ranges: bytes\r\nContent-Length: 5\r\n\r\nhello")
+    let p = st_resp_from_content("a.txt", "hello", "", "bytes=1-3")
+    assert(st_find(p, "206 Partial Content") == 9)
+    assert(st_find(p, "Content-Range: bytes 1-3/5\r\n") >= 0)
+    assert(st_find(p, "Content-Length: 3\r\n\r\nell") >= 0)
+    let unm = st_resp_from_content("a.txt", "hello", st_etag("hello"), "")
+    assert(byte_slice(unm, 0, 24) == "HTTP/1.1 304 Not Modifie")
+    assert(st_find(unm, "Content-Length") == 0 - 1)
+    let r416 = st_resp_from_content("a.txt", "hello", "", "bytes=9-")
+    assert(st_find(r416, "416 Range Not Satisfiable") >= 0)
+    assert(st_find(r416, "Content-Range: bytes */5\r\n") >= 0)
+}

@@ -1,7 +1,7 @@
 // a_wscodec —— P4-C WS 帧编解码语料(interp + emit 双臂;零 IO)
 // RFC 6455 §5.7 字节级黄金向量 + §5.4 分片语料 + 方向掩码强制 + close 面。
 // 行为面 x_ws_e2e。
-use std.http.ws.{ ws_frame_encode, ws_step, ws_st_new, ws_accept_key, ws_close_payload, ws_close_protocol_error, ws_is_control, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
+use http.ws.{ ws_frame_encode, ws_step, ws_st_new, ws_accept_key, ws_close_payload, ws_close_protocol_error, ws_is_control, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
 
 fn wc_hex_fill(buf: &I64[], hex: Str) -> I64 {
     var i: I32 = 0

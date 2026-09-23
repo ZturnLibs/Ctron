@@ -9,7 +9,7 @@
 #   3) 无种子 coro 面完成性;
 #   4) CI 种子循环:0..99 各双跑 cmp(100 种子;每晚全量 1000 见尾部注释)。
 # 契约口径:spawn→join(main 首个 join 开 rt spawn 闸)、纯通道、无 sleep/fd
-# ——见 std/net/c_src/ctron_rt.c 头注 P2-E 段。
+# ——见 net/c_src/ctron_rt.c 头注 P2-E 段。
 set -eu
 cd "$(dirname "$0")"
 ROOT=$(dirname "$(dirname "$(dirname "$(pwd)")")")
@@ -19,7 +19,7 @@ if [ ! -x "$EMIT" ]; then echo "coro_det: 缺少编译器二进制(先: compiler
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
 "$EMIT" run src/main.ct > "$T/main.c"
-cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/coro_det" "$T/main.c" c_src/*.c
+cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/coro_det" "$T/main.c" c_src/*.c
 
 run_seed() {                                      # $1=seed  $2=outfile
     CTRON_RT=coro CTRON_RT_SEED="$1" "$T/coro_det" > "$2"

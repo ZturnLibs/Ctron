@@ -29,9 +29,13 @@
 | T1 | `math.ct` | 数学助手(整数域):clamp/iabs/pow2 系 + v0.4/v0.5 扩张(max/min/clamp64/64 位界端 + sat_* 全集/sat_abs/abs_diff/div_ceil/div_floor) | 无 | 0.3 |
 | T1 | `uuid.ct` | RFC 9562 UUID(v4 真熵 / v7 unix_ms 前缀;§12 纯 Ctron 驱动前置) | 无 | 0.8 |
 
-### 域包(T2/T3,2026-09-23 入册)
+### 域包(T2/T3,2026-09-23 入册;同日 v2.1 挂顶层命名空间)
 
-域包随所属泳道演进,不参与 std since 升版;消费形态同 `use std.<域>…`。
+域包随所属泳道演进,不参与 std since 升版。**消费形态 = 顶层命名空间
+`use <域>.<子模块>.{...}`**(2026-09-23 起;`std.` 层仅 T1 核心,旧
+`use std.<域>.` 形态已移除)。**物理位置 = 仓库根与 `std/` 平级**
+(`gui/ net/ http/ tls/ db/ ffi/` + 各门面文件),安装布局 `lib/ctron/<域>` 1:1;
+loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-design.md。
 
 | 档 | 域 | 内容 | 依赖 | 稳定口径 | 门禁 | 所有 |
 |---|---|---|---|---|---|---|

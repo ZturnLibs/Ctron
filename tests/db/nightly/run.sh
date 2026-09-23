@@ -13,9 +13,9 @@ ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
 export CTRON_STDPATH="$ROOT/std"
-DBPG="$ROOT/std/db/c_src/ctron_dbpg.c"
-DBENT="$ROOT/std/db/c_src/ctron_entropy.c"
-DBREDIS="$ROOT/std/db/c_src/ctron_dbredis.c"
+DBPG="$ROOT/db/c_src/ctron_dbpg.c"
+DBENT="$ROOT/db/c_src/ctron_entropy.c"
+DBREDIS="$ROOT/db/c_src/ctron_dbredis.c"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 npass=0; nfail=0; nskip=0
 echo "== tests/db/nightly 真靶冒烟(P5-F;真 Postgres/Redis;非 CI 主环)=="

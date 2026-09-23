@@ -4,8 +4,8 @@
 // 校验)→ 退出。N/DSN 经 env(CTRON_PERF_N / CTRON_PG_DSN);连接失败/任一
 // 回环断言红 = exit 非 0。计时刻 = run.sh 外层整进程墙钟(两臂同构含
 // 连接段;N 大默认 1000 摊薄)。
-use std.db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
-use std.db.pg.{ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_status, pgr_rc, pgr_cell, pgr_status}
+use db.db.{db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name}
+use db.pg.{ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_status, pgr_rc, pgr_cell, pgr_status}
 
 test "perf arm: n x simple-query roundtrip (SELECT 1)" {
     var dsn = env_get("CTRON_PG_DSN")

@@ -12,7 +12,7 @@
 //      连带修正:lane 形参按发射器 view 胞镜像,裸指针 ABI 巧合不可依)。
 // f3 取帧走对端已关的读 → err 3 eof(阻塞不存在:残留消化/EOF 两途
 // 均即时);真库互操作 Task 6 nightly。
-use std.db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_query_msg, pg_hex_decode, pgv_rc, pgv_err, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, PgCell64, ctron_dbpg_socketpair, ctron_dbpg_write, ctron_dbpg_read}
+use db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_query_msg, pg_hex_decode, pgv_rc, pgv_err, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, PgCell64, ctron_dbpg_socketpair, ctron_dbpg_write, ctron_dbpg_read}
 
 test "pipeline frames: R+Z one packet, mtypes correct, fill residual consumed, then eof" {
     var sv: I64[2] = [0, 0]

@@ -2,7 +2,7 @@
 // 纯 Ctron 面(不触 extern):双臂(解释 + emit)同跑。矩阵覆盖大小写/OWS
 // 容忍、q 序、通配、x-gzip 归一、畸形 q 拒、identity 排除面(identity;q=0
 // 与 *;q=0 均拒,415 区分面;RFC 9110 §12.5.3 规则 2)。
-use std.http.enc.{ content_coding_negotiate, content_coding_identity_ok }
+use http.enc.{ content_coding_negotiate, content_coding_identity_ok }
 
 test "negotiate basic matrix" {
     let have = "gzip, deflate"

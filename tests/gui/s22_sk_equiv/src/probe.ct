@@ -2,7 +2,7 @@
 // 本探针 = 域包端:gt_parse(app.ctml) → sk_dump 倾倒 15 字段表;
 // 编译器端 = ctc.sh check app.ctml --dump-gui 的 sk 段(gui_sk_dump_all)。
 // 两端输出逐字节 diff 即等价(diff 由 run.sh 双端执行)。
-use std.gui.{gt_parse, sk_dump, GuiTree}
+use gui.{gt_parse, sk_dump, GuiTree}
 
 fn main() -> I32 {
     var t: GuiTree = gt_parse(read_file("app.ctml"))

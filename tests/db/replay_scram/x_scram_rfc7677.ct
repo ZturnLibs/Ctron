@@ -2,7 +2,7 @@
 // (x_ = 仅 emit 臂入计;c=4096 ≈ 8192 块压缩,interp 堆不回收 P5-B 登记
 // 不可实用,crypto_vec x_pbkdf2_hi 同口径;emit ≈ 0.3s)。锚 = RFC 原文
 // 常量(client-final / server-final v=),gen_fixtures.py 生成器已自检。
-use std.db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_cfinal, pgs_sfirst, pgs_sigok, pg_err_auth}
+use db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgs_cfinal, pgs_sfirst, pgs_sigok, pg_err_auth}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

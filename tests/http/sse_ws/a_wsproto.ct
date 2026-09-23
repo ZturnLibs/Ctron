@@ -3,7 +3,7 @@
 // (ws_utf8_valid → close 1007 面;登记:分片中段非法字节延迟到重组完成
 // 才报 —— RFC 8.1 惰性校验档)、Sec-WebSocket-Version 恰 "13"、len64 头
 // 双向黄金向量、err 4/6/7 负例。
-use std.http.ws.{ ws_frame_head, ws_frame_encode, ws_step, ws_st_new, ws_utf8_valid, ws_upgrade_ok, wr_rc, wr_err, wr_produced, wr_fin, wr_opcode, wst_phase, wst_frag, wst_remain }
+use http.ws.{ ws_frame_head, ws_frame_encode, ws_step, ws_st_new, ws_utf8_valid, ws_upgrade_ok, wr_rc, wr_err, wr_produced, wr_fin, wr_opcode, wst_phase, wst_frag, wst_remain }
 
 fn wp_hex(buf: &I64[], hex: Str) -> I64 {
     var i: I32 = 0

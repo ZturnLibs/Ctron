@@ -1,0 +1,847 @@
+// http/parse.ct —— HTTP/1.1 请求行/状态行/头部解析(P4-A 协议半层)
+// 形态(发射面事实,divergences 服务器面 (a)/(f)/(g) 已证形态):
+//   ① 零 use 纯模块:不 import std.net(加载器菱形 use 误报 E5020,tls.ct ⑥
+//      同款规避);不 import std.strconv(RFC 语法严格档与通用解析口径不同,
+//      CL/ chunk-size 解析内建:1*DIGIT / 1*HEXDIG + 溢出界门)。纯 Ctron
+//      ⇒ 解释器(ctron-cc run)可直接承载测试(tests/http/run.sh 主口径)。
+//   ② 缓冲 = &I64[] 字节道(每字节一条 I64 lane,net.ct 头注④同款);一切
+//      提取物 = 切片四元组(start,len)零拷贝指向缓冲,不分配 Str。索引全程
+//      I64(道下标);Str 侧 byte_at 需 I32 处经 .as[I32]() 显式变宽收窄。
+//   ③ 错误面 = rc 槽(net.ct ③ 同款,Result[struct,_] Ok 成员访问不可发射):
+//        rc = 1 完整头部(out 各槽有效;head_end = 头块结束哨兵,体从该位起)
+//        rc = 0  需要更多字节(增量可重入:换更大缓冲/原缓冲追加后重调,
+//                 解析为纯重扫,无隐藏状态 —— 游标即 head_end,完成前恒 0)
+//        rc = -1 协议/上限违规(err 槽 = 下列码;框架层后续映射 HTTP 状态:
+//                 400/414/431/413/505 —— 码位即映射表,P4 不做状态行发射)
+//   ④ RFC 9110/9112 严格子集(走私加固姿态,从严即默认):
+//        - 方法/头名 = token(tchar 校验);请求目标 VCHAR 非空;
+//        - 版本仅 "HTTP/1.1"|"HTTP/1.0"(大小写敏感,恰 8 字节,拒 HTTP/1.10);
+//        - obs-fold(续行以 SP/HTAB 起头)拒绝(E_FOLD,RFC 9112 §5.2 裁量从窄);
+//        - 行终止仅 CRLF(裸 LF 拒 —— 走私加固;RFC 9112 §2.2 宽容档不采);
+//        - Transfer-Encoding 与 Content-Length 并存 → E_SMUGGLE(RFC 9112
+//          §6.1 裁量"拒";两值相等亦拒 —— 简单姿态优先);
+//        - Content-Length 重复(即使值相同)→ E_CL(逗号并值含非数字自然被拒);
+//        - TE 存在且末编码非 chunked → E_TE(框架映射 501);
+//        - 头名与 ':' 之间有 SP/HTAB → E_HDR(RFC 9110 §5.1 必须 400);
+//   ⑤ 上限参数化(HttpLimits,五槽);P4 缺省 = max_line 8192 / max_headers
+//      100 / max_header 8192 / max_head 65536 / max_body 1048576。超限各给
+//      独立 err 码(414=行超限 / 431=头数·头长·头总超限 / 413=体超限)。
+//   ⑥ 无闭包、无 Drop 局部、无 trait 方法、无方法调用 —— 全自由函数 + 值
+//      struct 进出((f)/(g) 已证形态;while 体仅标量与无 Drop 结构局部)。
+// IO 粘合(读道/写道经 net 门面)归框架波次;本文件为纯编解码半层(§11.7
+// 分层纪律:协议半层禁止内嵌业务;Capability 显形由消费方 net: StdNet 首参
+// 贯穿,如 tls.ct)。
+
+// ---- 上限与结果槽 ----
+
+struct HttpLimits {
+    let max_line: I64
+    let max_headers: I64
+    let max_header: I64
+    let max_head: I64
+    let max_body: I64
+}
+
+pub fn http_limits_default() -> HttpLimits {
+    return HttpLimits { max_line: 8192, max_headers: 100, max_header: 8192, max_head: 65536, max_body: 1048576 }
+}
+
+// 解析结果(③ 的 rc/err 契约;切片均零拷贝指向调用方缓冲)
+struct HttpHead {
+    let rc: I64
+    let err: I64
+    let is_resp: I64
+    let ver: I64
+    let method_start: I64
+    let method_len: I64
+    let target_start: I64
+    let target_len: I64
+    let status: I64
+    let head_end: I64
+    let nheaders: I64
+    let body_kind: I64
+    let clen: I64
+}
+
+// err 码(err 槽;括注 = 框架层映射目标,P4 只出码)
+pub fn http_err_line() -> I64 { return 1 }        // 请求/状态行畸形 (400)
+pub fn http_err_line_long() -> I64 { return 2 }   // 行超 max_line (414)
+pub fn http_err_version() -> I64 { return 3 }     // 版本非 1.1/1.0 (505)
+pub fn http_err_token() -> I64 { return 4 }       // 方法/头名 token 坏 (400)
+pub fn http_err_target() -> I64 { return 5 }      // 目标空/含控制字节 (400)
+pub fn http_err_hdr() -> I64 { return 6 }         // 头行畸形/冒号前空白 (400)
+pub fn http_err_fold() -> I64 { return 7 }        // obs-fold (400)
+pub fn http_err_hdr_long() -> I64 { return 8 }    // 单头行超 max_header (431)
+pub fn http_err_hdr_many() -> I64 { return 9 }    // 头数超 max_headers (431)
+pub fn http_err_head_long() -> I64 { return 10 }  // 头总超 max_head (431)
+pub fn http_err_smuggle() -> I64 { return 11 }    // TE+CL 并存 (400)
+pub fn http_err_cl() -> I64 { return 12 }         // CL 坏/重复 (400)
+pub fn http_err_te() -> I64 { return 13 }         // TE 末编码非 chunked (501)
+pub fn http_err_bodycap() -> I64 { return 14 }    // CL 超 max_body (413)
+
+// 头迭代切片(rc = 0 有值 / -1 越界或未找到;四元组零拷贝指向缓冲)
+struct HttpSlice {
+    let rc: I64
+    let ns: I64
+    let nl: I64
+    let vs: I64
+    let vl: I64
+}
+
+// ---- 内建助手(模块内;http_ 前缀留名空间给消费方 use 合并) ----
+// 发射面新证(P4-A 实测,登记 divergences 服务器面 (h)):跨模块 fn 返回的
+// struct,消费方【成员读取】不可发射(ct_expr:Member@N 出口径 —— Member 型
+// 别在跨模块 let 绑定位丢失);同模块成员读写、struct 按值跨模块流动、
+// 消费方再按实参回传皆绿。故本模块公开面 = struct 返回 + 标量 getter
+// (成员访问留在模块内),消费方永不触成员。ctor 面(struct 字面量构造)
+// 不受限(tcp_echo TcpListener 同款)。
+
+fn hs_need() -> HttpHead {
+    return HttpHead { rc: 0, err: 0, is_resp: 0, ver: -1, method_start: 0, method_len: 0, target_start: 0, target_len: 0, status: -1, head_end: 0, nheaders: 0, body_kind: 0, clen: -1 }
+}
+
+fn hs_fail(code: I64) -> HttpHead {
+    return HttpHead { rc: -1, err: code, is_resp: 0, ver: -1, method_start: 0, method_len: 0, target_start: 0, target_len: 0, status: -1, head_end: 0, nheaders: 0, body_kind: 0, clen: -1 }
+}
+
+// tchar(RFC 9110 token 字符):ALPHA / DIGIT / "!#$%&'*+-.^_`|~"
+fn hs_tchar(c: I64) -> I64 {
+    if c >= 97 && c <= 122 { return 1 }
+    if c >= 65 && c <= 90 { return 1 }
+    if c >= 48 && c <= 57 { return 1 }
+    if c == 33 { return 1 }
+    if c >= 35 && c <= 39 { return 1 }
+    if c == 42 || c == 43 { return 1 }
+    if c == 45 || c == 46 { return 1 }
+    if c == 94 || c == 95 || c == 96 { return 1 }
+    if c == 124 || c == 126 { return 1 }
+    return 0
+}
+
+// VCHAR(可见 ASCII;请求目标合法字节档)
+fn hs_vchar(c: I64) -> I64 {
+    if c >= 33 && c <= 126 { return 1 }
+    return 0
+}
+
+fn hs_lower(c: I64) -> I64 {
+    if c >= 65 && c <= 90 {
+        return c + 32
+    }
+    return c
+}
+
+// field-content / reason-phrase 字节档(RFC 9110):HTAB / SP / VCHAR / obs-text;
+// 其余 CTL(裸 LF/CR/NUL 等)拒 —— 走私加固:行扫描以 CR 为界,值内裸控制
+// 字节即折行变体,必须在解析层拒绝
+fn hs_text_ok(buf: &I64[], s: I64, e: I64) -> I64 {
+    var i = s
+    while i < e {
+        let c = buf[i]
+        if c == 9 {
+            i += 1
+        } else {
+            if c >= 32 && c <= 126 {
+                i += 1
+            } else {
+                if c >= 128 {
+                    i += 1
+                } else {
+                    return 0
+                }
+            }
+        }
+    }
+    return 1
+}
+
+// 行扫描:自 start 找 CRLF。rc = 1 命中(pos = CR 位)/ 0 需要更多 /
+// -1 裸 CR(其后非 LF,已见两字节)/ -2 超 cap(行长界)。
+struct HttpScan {
+    let rc: I64
+    let pos: I64
+}
+
+fn hs_scan_line(buf: &I64[], n: I64, start: I64, cap: I64) -> HttpScan {
+    var i = start
+    while i < n {
+        if buf[i] == 13 {
+            if i + 1 >= n {
+                return HttpScan { rc: 0, pos: i }
+            }
+            if buf[i + 1] == 10 {
+                return HttpScan { rc: 1, pos: i }
+            }
+            return HttpScan { rc: -1, pos: i }
+        }
+        if i - start >= cap {
+            return HttpScan { rc: -2, pos: i }
+        }
+        i += 1
+    }
+    return HttpScan { rc: 0, pos: i }
+}
+
+// 头名等值(大小写不敏感):缓冲切片 vs Str
+fn hs_name_eq(buf: &I64[], ns: I64, nl: I64, name: Str) -> I64 {
+    if nl != name.len.as[I64]() {
+        return 0
+    }
+    var i: I64 = 0
+    while i < nl {
+        let b = hs_lower(buf[ns + i])
+        let s = hs_lower(byte_at(name, i.as[I32]()).as[I64]())
+        if b != s {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// 值等值(大小写不敏感;Expect/Connection token 比较用)
+fn hs_value_eq(buf: &I64[], vs: I64, vl: I64, want: Str) -> I64 {
+    if vl != want.len.as[I64]() {
+        return 0
+    }
+    var i: I64 = 0
+    while i < vl {
+        let b = hs_lower(buf[vs + i])
+        let s = hs_lower(byte_at(want, i.as[I32]()).as[I64]())
+        if b != s {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// 逗号分隔 token 表含判(Connection 值档):任一逗号元去 OWS 后与 tok 等
+// 值(大小写不敏感)→ 1
+fn hs_token_list_has(buf: &I64[], vs: I64, vl: I64, tok: Str) -> I64 {
+    var seg = vs
+    var end = vs + vl
+    while seg < end {
+        // 段界
+        var comma = seg
+        while comma < end && buf[comma] != 44 {
+            comma += 1
+        }
+        // 段内去首尾 OWS(SP/HTAB)
+        var a = seg
+        var b = comma
+        while a < b && (buf[a] == 32 || buf[a] == 9) {
+            a += 1
+        }
+        while b > a && (buf[b - 1] == 32 || buf[b - 1] == 9) {
+            b -= 1
+        }
+        if b - a == tok.len.as[I64]() {
+            var k: I64 = 0
+            var eq = 1
+            while k < b - a {
+                if hs_lower(buf[a + k]) != hs_lower(byte_at(tok, k.as[I32]()).as[I64]()) {
+                    eq = 0
+                }
+                k += 1
+            }
+            if eq == 1 {
+                return 1
+            }
+        }
+        seg = comma + 1
+    }
+    return 0
+}
+
+// 严格十进制解析(1*DIGIT,无符号无前缀溢出回 -1;界门乘 10)
+fn hs_parse_dec(buf: &I64[], vs: I64, vl: I64) -> I64 {
+    if vl <= 0 {
+        return -1
+    }
+    var acc: I64 = 0
+    var i: I64 = 0
+    while i < vl {
+        let c = buf[vs + i]
+        if c < 48 || c > 57 {
+            return -1
+        }
+        if acc > 922337203685477580 {
+            return -1
+        }
+        // C10 宽域惯用法(time.ct 同款):解释器按值域定宽判乘法上溢(已登记
+        // 缺陷,divergences (i));CL 值 ≥ ~2.1e8(9 位十进制)时 acc×10 会被
+        // I32 宽度误判 —— +2^32-2^32 提升参与值域,乘法按 I64。emit 侧纯恒等。
+        acc = (acc + 4294967296 - 4294967296) * 10 + (c - 48)
+        i += 1
+    }
+    return acc
+}
+
+// ---- 主入口 ----
+
+// 解析头部块(buf[0..n) 已收字节;增量口径:rc=0 时追加字节后整体重调 ——
+// 纯重扫无隐藏状态,可任意次重入直至 rc != 0)。响应/请求自适应:缓冲以
+// "HTTP/" 起头按状态行解析,否则按请求行。
+pub fn http_parse_head(buf: &I64[], n: I64, lim: HttpLimits) -> HttpHead {
+    var is_resp: I64 = 0
+    if n >= 5 && buf[0] == 72 && buf[1] == 84 && buf[2] == 84 && buf[3] == 80 && buf[4] == 47 {
+        is_resp = 1
+    }
+    var ver: I64 = -1
+    var ms: I64 = 0
+    var ml: I64 = 0
+    var ts: I64 = 0
+    var tl: I64 = 0
+    var status: I64 = -1
+    var i: I64 = 0
+    if is_resp == 1 {
+        // 状态行:HTTP/1.x SP 3DIGIT (SP reason)? CRLF
+        if n < 9 {
+            return hs_need()
+        }
+        if buf[5] != 49 || buf[6] != 46 {
+            return hs_fail(http_err_version())
+        }
+        if buf[7] == 49 {
+            ver = 1
+        } else {
+            if buf[7] == 48 {
+                ver = 0
+            } else {
+                return hs_fail(http_err_version())
+            }
+        }
+        i = 8
+        if i >= n {
+            return hs_need()
+        }
+        if buf[i] != 32 {
+            return hs_fail(http_err_line())
+        }
+        i += 1
+        // 3DIGIT(增量:不足即 need-more)
+        var d: I64 = 0
+        var sv: I64 = 0
+        while d < 3 {
+            if i >= n {
+                return hs_need()
+            }
+            if buf[i] < 48 || buf[i] > 57 {
+                return hs_fail(http_err_line())
+            }
+            sv = sv * 10 + (buf[i] - 48)
+            i += 1
+            d += 1
+        }
+        status = sv
+        if i >= n {
+            return hs_need()
+        }
+        if buf[i] == 13 {
+            // 空原因档(RFC 9110 "HTTP/1.1 200\r\n")
+            if i + 1 >= n {
+                return hs_need()
+            }
+            if buf[i + 1] != 10 {
+                return hs_fail(http_err_line())
+            }
+            i += 2
+        } else {
+            if buf[i] != 32 {
+                return hs_fail(http_err_line())
+            }
+            // reason:跳到 CRLF(字节档 = field-content 同款,值内裸 CTL 拒)
+            var sc = hs_scan_line(buf, n, i + 1, lim.max_line)
+            if sc.rc == 0 {
+                return hs_need()
+            }
+            if sc.rc != 1 {
+                if sc.rc == -2 {
+                    return hs_fail(http_err_line_long())
+                }
+                return hs_fail(http_err_line())
+            }
+            if hs_text_ok(buf, i + 1, sc.pos) != 1 {
+                return hs_fail(http_err_line())
+            }
+            i = sc.pos + 2
+        }
+    } else {
+        // 请求行:method SP target SP version CRLF(严格单 SP)
+        // method
+        while i < n && buf[i] != 32 {
+            if i >= lim.max_line {
+                return hs_fail(http_err_line_long())
+            }
+            if hs_tchar(buf[i]) != 1 {
+                return hs_fail(http_err_token())
+            }
+            i += 1
+        }
+        if i >= n {
+            if i >= lim.max_line {
+                return hs_fail(http_err_line_long())
+            }
+            return hs_need()
+        }
+        ms = 0
+        ml = i
+        if ml == 0 {
+            return hs_fail(http_err_token())
+        }
+        i += 1
+        // target
+        ts = i
+        while i < n && buf[i] != 32 {
+            if i - ts >= lim.max_line {
+                return hs_fail(http_err_line_long())
+            }
+            if hs_vchar(buf[i]) != 1 {
+                return hs_fail(http_err_target())
+            }
+            i += 1
+        }
+        if i >= n {
+            if i - ts >= lim.max_line {
+                return hs_fail(http_err_line_long())
+            }
+            return hs_need()
+        }
+        tl = i - ts
+        if tl == 0 {
+            return hs_fail(http_err_target())
+        }
+        i += 1
+        // version:恰 8 字节 "HTTP/1.1"|"HTTP/1.0" + CRLF
+        if i + 10 > n {
+            if i >= lim.max_line {
+                return hs_fail(http_err_line_long())
+            }
+            return hs_need()
+        }
+        if buf[i] != 72 || buf[i + 1] != 84 || buf[i + 2] != 84 || buf[i + 3] != 80 || buf[i + 4] != 47 || buf[i + 5] != 49 || buf[i + 6] != 46 {
+            return hs_fail(http_err_version())
+        }
+        if buf[i + 7] == 49 {
+            ver = 1
+        } else {
+            if buf[i + 7] == 48 {
+                ver = 0
+            } else {
+                return hs_fail(http_err_version())
+            }
+        }
+        // 恰 8 字节版本 + CRLF(拒 "HTTP/1.10"、"HTTP/1.1x")
+        if buf[i + 8] == 13 && buf[i + 9] == 10 {
+            i += 10
+        } else {
+            return hs_fail(http_err_version())
+        }
+        if i > lim.max_line {
+            return hs_fail(http_err_line_long())
+        }
+    }
+
+    // 头区:逐行直至空行;TE/CL 走私面在扫中记账
+    var nheads: I64 = 0
+    var te_count: I64 = 0
+    var te_chunked_last: I64 = 0
+    var cl_seen: I64 = 0
+    var cl_val: I64 = -1
+    var more: I64 = 1
+    while more == 1 {
+        if i >= lim.max_head {
+            return hs_fail(http_err_head_long())
+        }
+        var sc = hs_scan_line(buf, n, i, lim.max_header)
+        if sc.rc == 0 {
+            return hs_need()
+        }
+        if sc.rc == -1 {
+            return hs_fail(http_err_hdr())
+        }
+        if sc.rc == -2 {
+            return hs_fail(http_err_hdr_long())
+        }
+        let ls = i
+        let ll = sc.pos - i
+        i = sc.pos + 2
+        if ll == 0 {
+            // 空行:头块终止
+            more = 0
+        } else {
+            if buf[ls] == 32 || buf[ls] == 9 {
+                return hs_fail(http_err_fold())
+            }
+            // name ':' value
+            var c = ls
+            while c < ls + ll && buf[c] != 58 {
+                if hs_tchar(buf[c]) != 1 {
+                    return hs_fail(http_err_hdr())
+                }
+                c += 1
+            }
+            if c == ls + ll {
+                return hs_fail(http_err_hdr())
+            }
+            if c == ls {
+                return hs_fail(http_err_hdr())
+            }
+            // 头数上限(完成行计)
+            nheads += 1
+            if nheads > lim.max_headers {
+                return hs_fail(http_err_hdr_many())
+            }
+            // value:去首尾 OWS
+            var vs = c + 1
+            var ve = ls + ll
+            while vs < ve && (buf[vs] == 32 || buf[vs] == 9) {
+                vs += 1
+            }
+        while ve > vs && (buf[ve - 1] == 32 || buf[ve - 1] == 9) {
+            ve -= 1
+        }
+        if hs_text_ok(buf, vs, ve) != 1 {
+            return hs_fail(http_err_hdr())
+        }
+        // 走私面记账:Transfer-Encoding / Content-Length
+            if hs_name_eq(buf, ls, c - ls, "transfer-encoding") == 1 {
+                te_count += 1
+                // 末编码 = 逗号表最后一段是否恰 "chunked"
+                if hs_token_list_has_last(buf, vs, ve - vs, "chunked") == 1 {
+                    te_chunked_last = 1
+                } else {
+                    te_chunked_last = 0
+                }
+            }
+            if hs_name_eq(buf, ls, c - ls, "content-length") == 1 {
+                let v = hs_parse_dec(buf, vs, ve - vs)
+                if v < 0 {
+                    return hs_fail(http_err_cl())
+                }
+                if cl_seen > 0 {
+                    // 重复 CL:一律拒(值同值异皆拒 —— 简单走私加固姿态)
+                    return hs_fail(http_err_cl())
+                }
+                cl_seen += 1
+                cl_val = v
+            }
+        }
+    }
+
+    // 体分框裁决
+    var body_kind: I64 = 0
+    var clen: I64 = 0
+    if te_count > 0 {
+        if cl_seen > 0 {
+            return hs_fail(http_err_smuggle())
+        }
+        if te_chunked_last != 1 {
+            return hs_fail(http_err_te())
+        }
+        body_kind = 1
+        clen = -1
+    } else {
+        if cl_seen == 1 {
+            if cl_val > lim.max_body {
+                return hs_fail(http_err_bodycap())
+            }
+            clen = cl_val
+        }
+    }
+
+    return HttpHead { rc: 1, err: 0, is_resp: is_resp, ver: ver, method_start: ms, method_len: ml, target_start: ts, target_len: tl, status: status, head_end: i, nheaders: nheads, body_kind: body_kind, clen: clen }
+}
+
+// 逗号表最后一段(去 OWS)与 tok 等值(大小写不敏感)—— TE 末编码判
+fn hs_token_list_has_last(buf: &I64[], vs: I64, vl: I64, tok: Str) -> I64 {
+    var b = vs + vl
+    while b > vs && (buf[b - 1] == 32 || buf[b - 1] == 9) {
+        b -= 1
+    }
+    var a = b
+    while a > vs && buf[a - 1] != 44 {
+        a -= 1
+    }
+    // 跳过 ',' 并去前段尾部 OWS 不需要(取末段):a 位为末段起
+    while a < b && (buf[a] == 32 || buf[a] == 9) {
+        a += 1
+    }
+    if b - a != tok.len.as[I64]() {
+        return 0
+    }
+    var k: I64 = 0
+    while k < b - a {
+        if hs_lower(buf[a + k]) != hs_lower(byte_at(tok, k.as[I32]()).as[I64]()) {
+            return 0
+        }
+        k += 1
+    }
+    return 1
+}
+
+// ---- 头迭代(重扫式;头块有界 ⇒ 重扫 O(head) 恒小) ----
+
+// 第 idx 条头(idx 自 0;rc = -1 越界)。name/value 切片零拷贝,value 已去 OWS。
+pub fn http_header_at(buf: &I64[], h: HttpHead, idx: I64) -> HttpSlice {
+    var i: I64 = hs_head_lines_start(buf, h)
+    var k: I64 = 0
+    while k < h.nheaders {
+        var sc = hs_scan_line(buf, h.head_end, i, 1073741824)
+        if sc.rc != 1 {
+            return HttpSlice { rc: -1, ns: 0, nl: 0, vs: 0, vl: 0 }
+        }
+        let ls = i
+        let ll = sc.pos - i
+        i = sc.pos + 2
+        if ll == 0 {
+            return HttpSlice { rc: -1, ns: 0, nl: 0, vs: 0, vl: 0 }
+        }
+        var c = ls
+        while c < ls + ll && buf[c] != 58 {
+            c += 1
+        }
+        if c == ls + ll || c == ls {
+            return HttpSlice { rc: -1, ns: 0, nl: 0, vs: 0, vl: 0 }
+        }
+        if k == idx {
+            var vs = c + 1
+            var ve = ls + ll
+            while vs < ve && (buf[vs] == 32 || buf[vs] == 9) {
+                vs += 1
+            }
+            while ve > vs && (buf[ve - 1] == 32 || buf[ve - 1] == 9) {
+                ve -= 1
+            }
+            return HttpSlice { rc: 0, ns: ls, nl: c - ls, vs: vs, vl: ve - vs }
+        }
+        k += 1
+    }
+    return HttpSlice { rc: -1, ns: 0, nl: 0, vs: 0, vl: 0 }
+}
+
+// 首条名匹配头(大小写不敏感)→ 下标;无 → -1
+pub fn http_header_find(buf: &I64[], h: HttpHead, name: Str) -> I64 {
+    var i: I64 = hs_head_lines_start(buf, h)
+    var k: I64 = 0
+    while k < h.nheaders {
+        var sc = hs_scan_line(buf, h.head_end, i, 1073741824)
+        if sc.rc != 1 {
+            return -1
+        }
+        let ls = i
+        let ll = sc.pos - i
+        i = sc.pos + 2
+        if ll == 0 {
+            return -1
+        }
+        var c = ls
+        while c < ls + ll && buf[c] != 58 {
+            c += 1
+        }
+        if c == ls + ll || c == ls {
+            return -1
+        }
+        if hs_name_eq(buf, ls, c - ls, name) == 1 {
+            return k
+        }
+        k += 1
+    }
+    return -1
+}
+
+// 首条名匹配头的 value 切片(rc = -1 未找到)
+pub fn http_header_value(buf: &I64[], h: HttpHead, name: Str) -> HttpSlice {
+    let idx = http_header_find(buf, h, name)
+    if idx < 0 {
+        return HttpSlice { rc: -1, ns: 0, nl: 0, vs: 0, vl: 0 }
+    }
+    return http_header_at(buf, h, idx)
+}
+
+// 头区行起点(请求行/状态行之后):请求行按槽算术;状态行无切片槽,重扫
+// 首个 CRLF(头块有界 ⇒ 恒廉)
+fn hs_head_lines_start(buf: &I64[], h: HttpHead) -> I64 {
+    if h.is_resp == 1 {
+        var sc = hs_scan_line(buf, h.head_end, 0, 1073741824)
+        if sc.rc != 1 {
+            return h.head_end
+        }
+        return sc.pos + 2
+    }
+    return h.method_len + 1 + h.target_len + 1 + 8 + 2
+}
+
+// ---- 语义助手(连接管理 / Expect) ----
+
+// keep-alive 判:1.1 缺省开,1.0 缺省关;Connection 头 token 表显式翻面。
+pub fn http_keep_alive(buf: &I64[], h: HttpHead) -> I64 {
+    var d: I64 = 0
+    if h.ver == 1 {
+        d = 1
+    }
+    let sl = http_header_value(buf, h, "connection")
+    if sl.rc != 0 {
+        return d
+    }
+    if hs_token_list_has(buf, sl.vs, sl.vl, "close") == 1 {
+        return 0
+    }
+    if hs_token_list_has(buf, sl.vs, sl.vl, "keep-alive") == 1 {
+        return 1
+    }
+    return d
+}
+
+// Expect: 100-continue 检出(大小写不敏感;他值按 RFC 必须忽略 → 0)
+pub fn http_is_expect_100(buf: &I64[], h: HttpHead) -> I64 {
+    let sl = http_header_value(buf, h, "expect")
+    if sl.rc != 0 {
+        return 0
+    }
+    if hs_value_eq(buf, sl.vs, sl.vl, "100-continue") == 1 {
+        return 1
+    }
+    return 0
+}
+
+// ---- 公开 getter(消费方面;(h) 缺口绕行:成员访问不出本模块) ----
+
+pub fn http_rc(h: HttpHead) -> I64 { return h.rc }
+pub fn http_err_of(h: HttpHead) -> I64 { return h.err }
+pub fn http_is_resp(h: HttpHead) -> I64 { return h.is_resp }
+pub fn http_ver(h: HttpHead) -> I64 { return h.ver }
+pub fn http_status_of(h: HttpHead) -> I64 { return h.status }
+pub fn http_head_end(h: HttpHead) -> I64 { return h.head_end }
+pub fn http_nheaders(h: HttpHead) -> I64 { return h.nheaders }
+pub fn http_body_kind(h: HttpHead) -> I64 { return h.body_kind }
+pub fn http_clen(h: HttpHead) -> I64 { return h.clen }
+pub fn http_method_start(h: HttpHead) -> I64 { return h.method_start }
+pub fn http_method_len(h: HttpHead) -> I64 { return h.method_len }
+pub fn http_target_start(h: HttpHead) -> I64 { return h.target_start }
+pub fn http_target_len(h: HttpHead) -> I64 { return h.target_len }
+
+pub fn sl_rc(s: HttpSlice) -> I64 { return s.rc }
+pub fn sl_ns(s: HttpSlice) -> I64 { return s.ns }
+pub fn sl_nl(s: HttpSlice) -> I64 { return s.nl }
+pub fn sl_vs(s: HttpSlice) -> I64 { return s.vs }
+pub fn sl_vl(s: HttpSlice) -> I64 { return s.vl }
+
+// ---- inline tests(纯面自检;行为面见 tests/http/corpus) ----
+
+test "parse minimal get" {
+    var buf: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let req = "GET / HTTP/1.1\r\n\r\n"
+    var i: I32 = 0
+    while i < req.len {
+        buf[i] = byte_at(req, i).as[I64]()
+        i += 1
+    }
+    let h = http_parse_head(buf, req.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_is_resp(h) == 0)
+    assert(http_method_len(h) == 3)
+    assert(http_target_len(h) == 1)
+    assert(http_ver(h) == 1)
+    assert(http_nheaders(h) == 0)
+    assert(http_clen(h) == 0)
+    assert(http_body_kind(h) == 0)
+    assert(http_head_end(h) == 18)
+}
+
+test "parse need more then complete" {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let req = "GET /a HTTP/1.1\r\nHost: h\r\n\r\n"
+    var i: I32 = 0
+    while i < 10 {
+        buf[i] = byte_at(req, i).as[I64]()
+        i += 1
+    }
+    var h = http_parse_head(buf, 10, http_limits_default())
+    assert(http_rc(h) == 0)
+    while i < req.len {
+        buf[i] = byte_at(req, i).as[I64]()
+        i += 1
+    }
+    h = http_parse_head(buf, req.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1)
+    assert(http_nheaders(h) == 1)
+    assert(http_head_end(h) == 28)
+    let f = http_header_find(buf, h, "hOsT")
+    assert(f == 0)
+    let v = http_header_value(buf, h, "host")
+    assert(sl_rc(v) == 0 && sl_vl(v) == 1 && buf[sl_vs(v)] == 104)
+}
+
+test "parse rejects smuggling and fold" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let bad = "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n"
+    var i: I32 = 0
+    while i < bad.len {
+        buf[i] = byte_at(bad, i).as[I64]()
+        i += 1
+    }
+    var h = http_parse_head(buf, bad.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == -1 && http_err_of(h) == http_err_smuggle())
+
+    let fold = "GET / HTTP/1.1\r\nX-A: 1\r\n  cont\r\n\r\n"
+    i = 0
+    while i < fold.len {
+        buf[i] = byte_at(fold, i).as[I64]()
+        i += 1
+    }
+    h = http_parse_head(buf, fold.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == -1 && http_err_of(h) == http_err_fold())
+}
+
+test "parse status line forms" {
+    var buf: I64[48] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let r1 = "HTTP/1.1 200 OK\r\n\r\n"
+    var i: I32 = 0
+    while i < r1.len {
+        buf[i] = byte_at(r1, i).as[I64]()
+        i += 1
+    }
+    var h = http_parse_head(buf, r1.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1 && http_is_resp(h) == 1 && http_status_of(h) == 200 && http_ver(h) == 1 && http_nheaders(h) == 0)
+
+    let r2 = "HTTP/1.0 404\r\n\r\n"
+    i = 0
+    while i < r2.len {
+        buf[i] = byte_at(r2, i).as[I64]()
+        i += 1
+    }
+    h = http_parse_head(buf, r2.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1 && http_status_of(h) == 404 && http_ver(h) == 0)
+}
+
+test "keep alive semantics" {
+    var buf: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let c11 = "GET / HTTP/1.1\r\n\r\n"
+    var i: I32 = 0
+    while i < c11.len {
+        buf[i] = byte_at(c11, i).as[I64]()
+        i += 1
+    }
+    var h = http_parse_head(buf, c11.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1 && http_keep_alive(buf, h) == 1)
+
+    let c10 = "GET / HTTP/1.0\r\nConnection: keep-alive\r\n\r\n"
+    i = 0
+    while i < c10.len {
+        buf[i] = byte_at(c10, i).as[I64]()
+        i += 1
+    }
+    h = http_parse_head(buf, c10.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1 && http_keep_alive(buf, h) == 1)
+
+    let cc = "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
+    i = 0
+    while i < cc.len {
+        buf[i] = byte_at(cc, i).as[I64]()
+        i += 1
+    }
+    h = http_parse_head(buf, cc.len.as[I64](), http_limits_default())
+    assert(http_rc(h) == 1 && http_keep_alive(buf, h) == 0)
+}

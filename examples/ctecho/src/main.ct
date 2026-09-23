@@ -9,7 +9,7 @@
 //      句柄落 main 体(函数体 Drop 已支持),连接侧全程裸 fd + handler
 //      内 net_close;
 //   ④ 门面 = 免费函数 + net: StdNet 按值首参;rc 0 成/<0 败 + last_net_error()。
-use std.net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_read_t, net_write, net_close, last_net_error}
+use net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept, net_read_t, net_write, net_close, last_net_error}
 use std.strconv.{parse_i64, sc_get_l}
 
 // 单连接回环:读到 eof/错即止;逐段回写(n!=w 断链);出口 net_close。

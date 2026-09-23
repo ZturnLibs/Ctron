@@ -4,7 +4,7 @@
 // 负)→ 原 CR 门 `acc > 1e18` 对负值失明 → remain<0:服务端形(dst 新缓冲)
 // 负下标 emit exit(1) 确定性远程 DoS / 客户端形在地分框静默腐化。修后
 // CR 处 acc<0 同拒(err 槽 2,与超位/溢出面同槽);不入正集。
-use std.http.message.{chunk_st_new, chunk_step, cr_rc, cr_err}
+use http.message.{chunk_st_new, chunk_step, cr_rc, cr_err}
 
 fn feed(buf: &I64[], s: Str) -> I64 {
     var i: I32 = 0

@@ -3,7 +3,7 @@
 // 字节)→ 2,非十六进制/奇长 → 1,源耗尽 → 3;next 恒推进不滞留;查询/
 // 会话级首帧即拒;fd 源长度域门(声明长越域,读前即拒 —— interp 可跑,
 // 不触 extern)。全程 clean Err:夹具跑完即"无崩溃无挂起"证据。
-use std.db.pg.{pg_recv_frame_script, pg_handshake_script, pg_query_script, pg_recv_frame_fd, pg_send_msg_fd, pgv_rc, pgv_err, pgv_next, pgs_rc, pgs_err, pgr_rc, pgr_err, pg_err_eof, pg_err_frame, pg_err_proto, pg_err_io, PgCell64}
+use db.pg.{pg_recv_frame_script, pg_handshake_script, pg_query_script, pg_recv_frame_fd, pg_send_msg_fd, pgv_rc, pgv_err, pgv_next, pgs_rc, pgs_err, pgr_rc, pgr_err, pg_err_eof, pg_err_frame, pg_err_proto, pg_err_io, PgCell64}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

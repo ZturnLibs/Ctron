@@ -2,7 +2,7 @@
 // (P5-C)。脚本装载(读内建 + 行切分)→ pg_handshake_script:R(AuthOk)→
 // S 跳过 → K 记 pid/key → Z 记 status 收口;逐帧面断言(auth kind/类型
 // 字节);查询误用于非查询脚本 → 干净 eof。CT_DB_FIX = 夹具根(run.sh 设)。
-use std.db.pg.{pg_recv_frame_script, pg_handshake_script, pg_auth_kind, pg_ready_status, pg_query_script, pgv_rc, pgv_err, pgv_next, pgv_type, pgv_body_len, pgv_body, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgr_rc, pgr_err, pg_err_auth, pg_err_eof}
+use db.pg.{pg_recv_frame_script, pg_handshake_script, pg_auth_kind, pg_ready_status, pg_query_script, pgv_rc, pgv_err, pgv_next, pgv_type, pgv_body_len, pgv_body, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_pid, pgs_key, pgs_authkind, pgr_rc, pgr_err, pg_err_auth, pg_err_eof}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

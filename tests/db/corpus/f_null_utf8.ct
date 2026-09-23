@@ -3,7 +3,7 @@
 // 非 NULL 对照格 "t"。utf8_bytes.script:U+4E2D(e4b8ad)—— ASCII 解码面
 // fail-closed(cell=""),hex/bytes 面逐字节精确(解释器 utf8_enc 缺陷登记
 // 口径:文本格非 ASCII 解码待修复收敛,精确面由字节容器承载)。
-use std.db.pg.{pg_query_script, pgr_rc, pgr_rows, pgr_cols, pgr_tag, pgr_cell, pgr_cell_hex, pgr_cell_bytes, pgr_isnull}
+use db.pg.{pg_query_script, pgr_rc, pgr_rows, pgr_cols, pgr_tag, pgr_cell, pgr_cell_hex, pgr_cell_bytes, pgr_isnull}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

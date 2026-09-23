@@ -59,8 +59,8 @@ trap cleanup EXIT INT TERM
 echo "== c10k: 构建 ctecho(coro)+ driver(N=$N budget=${BUDGET}s) =="
 "$EMIT" run "$ROOT/examples/ctecho/src/main.ct" > "$T/ctecho.c" \
     || { echo "c10k: ctecho emit 失败" >&2; exit 1; }
-cc -O1 -w -pthread -I"$ROOT/std/net/c_src" -o "$T/ctecho" "$T/ctecho.c" \
-    "$ROOT/std/net/c_src/ctron_net.c" "$ROOT/std/net/c_src/ctron_rt.c" \
+cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctecho" "$T/ctecho.c" \
+    "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" \
     || { echo "c10k: ctecho 编译失败" >&2; exit 1; }
 cc -O1 -w -o "$T/driver" "$DIR/c_src/driver.c" \
     || { echo "c10k: driver 编译失败" >&2; exit 1; }

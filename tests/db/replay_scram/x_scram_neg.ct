@@ -3,7 +3,7 @@
 // server-final 签名不符路径各为一条全链(PBKDF2+证明+签名 ≈ 23 块压缩
 // ≈ 40GB interp 堆,s_scram_hs 单链文件已抵 interp 实测预算线;堆不回收
 // P5-B 登记,interp 口径不可再叠)。emit 口径 ≈ 0.01s。
-use std.db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_ecode, pgs_emsg, pgs_cfinal, pgs_sigok, pg_err_auth}
+use db.pg.{pg_scram_handshake, pgs_rc, pgs_err, pgs_next, pgs_status, pgs_ecode, pgs_emsg, pgs_cfinal, pgs_sigok, pg_err_auth}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

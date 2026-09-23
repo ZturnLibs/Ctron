@@ -2,7 +2,7 @@
 // (P5-C;tests/db/run.sh 双臂)。锚值 = gen_fixtures.py 同源 python 构造
 // (锚生成器纪律;预期十六进制字面量落盘,双向:builder→hex 断言 +
 // hex→decode→recv 断言)。消费面 = pgv_*/pg_hex_* 标量 getter((h) 族)。
-use std.db.pg.{pg_startup_msg, pg_query_msg, pg_password_msg, pg_terminate_msg, pg_hex_decode, pg_hex_encode, pg_recv_frame_script, pg_auth_kind, pgv_body, pgv_rc, pgv_err, pgv_next, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, pg_err_frame, pg_err_proto}
+use db.pg.{pg_startup_msg, pg_query_msg, pg_password_msg, pg_terminate_msg, pg_hex_decode, pg_hex_encode, pg_recv_frame_script, pg_auth_kind, pgv_body, pgv_rc, pgv_err, pgv_next, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, pg_err_frame, pg_err_proto}
 
 test "startup msg: full params hex anchor" {
     // user + database + application_name;len 含自身(8 + payload)

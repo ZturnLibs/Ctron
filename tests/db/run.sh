@@ -1,7 +1,7 @@
 #!/bin/sh
-# tests/db/run.sh —— std/db 数据访问层回放验收(P5-C/P5-D/P5-E;§P5 Task 3/4/5)
-# 口径:std/db(pg.ct/db.ct/redis.ct/pool.ct/rowmap.ct)为纯 Ctron 叶
-# (不触 std.net;fd 真源经自有垫片 std/db/c_src/ctron_dbpg.c +
+# tests/db/run.sh —— db 数据访问层回放验收(P5-C/P5-D/P5-E;§P5 Task 3/4/5)
+# 口径:db(pg.ct/db.ct/redis.ct/pool.ct/rowmap.ct)为纯 Ctron 叶
+# (不触 std.net;fd 真源经自有垫片 db/c_src/ctron_dbpg.c +
 # ctron_dbredis.c;P5-D SCRAM 单子扩展 std.crypto;P5-E pool 单子扩展
 # std.db.pg、rowmap 单子扩展 std.db.pg——严格互斥树:消费方对
 # pool/rowmap/pg 三门面**二选一** use,单路径导入树,直 use pg 而复用
@@ -14,7 +14,7 @@
 #   副 = emit 同源对拍(ctron-emit → cc → 原生):各目录全量含 x_。
 #   x_ 前缀 = 仅 emit 臂入计(tests/crypto_vec x_uuid_live 同款结构性登记):
 #          x_fd_edge / x_fd_pipeline 承载 fd 真源面(EBADF → err 6 + errno 槽;管线帧 mtype/fill 持态/send-all 整发三钉)——
-#          interp 无 extern 运行时,需链 std/db/c_src/ctron_dbpg.c。
+#          interp 无 extern 运行时,需链 db/c_src/ctron_dbpg.c。
 #          fd 长度域门(读前即拒,不触 extern)已由 e_protocol_violation
 #          双臂承载;真库 fd 冒烟 Task 6 nightly。
 #          P5-D:x_scram_neg(错口令/签名不符两条 SCRAM 重链)、
@@ -43,7 +43,7 @@ export CT_DB_ROW="$DIR/rowmap"
 if [ ! -x "$CC" ]; then echo "db/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
-echo "== tests/db std/db 数据访问层回放用例(P5-C/P5-D/P5-E)=="
+echo "== tests/db db 数据访问层回放用例(P5-C/P5-D/P5-E)=="
 
 # ── std 规范源与种子副本漂移守卫(smoke.sh 3d 同款,本地即查)──
 for m in "db/pg" "db/db" "db/redis" "db/pool" "db/rowmap"; do
@@ -55,12 +55,12 @@ for m in "db/pg" "db/db" "db/redis" "db/pool" "db/rowmap"; do
     fi
 done
 
-# ── std/db 声明冒烟(无 inline test 块;装载/类型检查即过,C17 口径)──
+# ── db 声明冒烟(无 inline test 块;装载/类型检查即过,C17 口径)──
 for m in pg db redis pool rowmap; do
-    if "$CC" run "$ROOT/std/db/$m.ct" > "$T/std_$m.out" 2>&1; then
-        pass=$((pass+1)); echo "  PASS std/db/$m.ct (decl smoke, interp)"
+    if "$CC" run "$ROOT/db/$m.ct" > "$T/std_$m.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS db/$m.ct (decl smoke, interp)"
     else
-        fail=$((fail+1)); echo "  FAIL std/db/$m.ct (decl smoke, interp)"; sed -n '1,5p' "$T/std_$m.out"
+        fail=$((fail+1)); echo "  FAIL db/$m.ct (decl smoke, interp)"; sed -n '1,5p' "$T/std_$m.out"
     fi
 done
 
@@ -117,25 +117,25 @@ if [ -x "$EMIT" ]; then
         name=$(basename "$f" .ct)
         EXTRA=""
         if [ "$name" = "x_fd_edge" ] || [ "$name" = "x_fd_pipeline" ] || [ "$name" = "e_protocol_violation" ]; then
-            # fd 源面(extern 引用进 emit C):链 std/db 自有垫片
+            # fd 源面(extern 引用进 emit C):链 db 自有垫片
             # (ctron_dbpg_entropy 别名引 ctron_entropy_fill → 并链熵垫片)
-            EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c $ROOT/std/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/db/c_src/ctron_dbpg.c $ROOT/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_pg_fd_session" ]; then
             # PG fd 真源全会话(P5-F:SCRAM 下行双发 + 简单/扩展查询 +
             # 事务状态)链 dbpg 垫片;ctron_dbpg_entropy 别名引
             # ctron_entropy_fill → 并链熵垫片(nonce 面经 pg_scram_nonce
             # 链接面;夹具定值 nonce 不触熵,符号面仍须全)
-            EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c $ROOT/std/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/db/c_src/ctron_dbpg.c $ROOT/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_scram_nonce" ]; then
             # nonce 真熵:ctron_dbpg_entropy 别名转发 → 并链熵垫片
-            EXTRA="$ROOT/std/db/c_src/ctron_dbpg.c $ROOT/std/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/db/c_src/ctron_dbpg.c $ROOT/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_rd_fd" ]; then
             # Redis fd 真源(P5-E):自有垫片(ctron_dbredis_*;与 dbpg 分置
             # ——同名 extern decl 合并即 E5030)
-            EXTRA="$ROOT/std/db/c_src/ctron_dbredis.c"
+            EXTRA="$ROOT/db/c_src/ctron_dbredis.c"
         fi
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
            && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" $EXTRA 2>"$T/$name.e.cc.err" \

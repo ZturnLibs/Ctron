@@ -3,7 +3,7 @@
 // bind 通道分发(when:/each:/绑定名三形态,域包全语义),d_frame 后逐命令倾倒
 // type/box(×100)/text/bg。此黄金 = 后续骨架 IR 换源/绑定/热重载的渲染安全网(SL-7/8/9)。
 // 已知限制(登记):字面量叶文本不用词法切分标点(重建插空格,骨架 IR 根治)。
-use std.gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, d_cmd_y100, d_cmd_w100, d_cmd_h100}
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, d_cmd_y100, d_cmd_w100, d_cmd_h100}
 
 view FrameApp {
   <vbox class="root">

@@ -3,7 +3,7 @@
 // 受 C8 printable 约束,SCRAM 盐/证明/签名携任意字节);SCRAM 核锚 =
 // RFC 7677 §3 示例低迭代改制(i=1;hashlib 复算锚,gen_fixtures.py 同源
 // 双落地)。interp 堆预算口径:c=1 档(crypto_vec c_pbkdf2_low 同级)。
-use std.db.pg.{pg_b64_encode, pg_b64_decode, pg_hex_decode, pg_hex_encode, pg_str_bytes, pg_scram_first_bare, pg_scram_salted, pg_scram_proof, pg_scram_server_sig, pg_scram_nonce_from}
+use db.pg.{pg_b64_encode, pg_b64_decode, pg_hex_decode, pg_hex_encode, pg_str_bytes, pg_scram_first_bare, pg_scram_salted, pg_scram_proof, pg_scram_server_sig, pg_scram_nonce_from}
 
 test "b64 RFC 4648 vectors + pad faces" {
     var e0 = List[I32]()

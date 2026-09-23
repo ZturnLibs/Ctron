@@ -4,7 +4,7 @@
 // sechdr_apply)、csp 携 CR/LF 构造期拒(注入面钉:err 路径 csp 置空 →
 // 施加面只出安全子集)、单点装配登记(重复施加不去重,组合层纪律)。
 // 链形适配(a_cors 同口径:配置字面量 + next 结果 `"" +` 裸尾惯用法)。
-use std.http.frm.sechdr.{ sechdr_cfg, sechdr_apply, sechdr_csp_default, scfg_ok, scfg_err, scfg_csp, sec_err_csp, sec_err_age }
+use http.frm.sechdr.{ sechdr_cfg, sechdr_apply, sechdr_csp_default, scfg_ok, scfg_err, scfg_csp, sec_err_csp, sec_err_age }
 
 // ---- 终端 handler(组合层) ----
 

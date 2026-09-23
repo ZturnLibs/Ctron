@@ -1,0 +1,1842 @@
+// gui.ct —— gui 域包(L1;规范 §10 形态的 SL-1 过渡桥)
+// 用户代码形态:
+//   use gui.{run_kb}
+//   fn main() -> I32 {
+//       var src: Str = read_file("app.ctml")   // 发射锚(CWD 相对;L2 内嵌形态后消失)
+//       var m = CalcModel()
+//       run_kb(src, "title", 320, 420,
+//           |buf| buf.push(m.disp),            // 绑定:buf[0]=名 → push 值
+//           |name| dispatch(name, m),          // 点击 → 动作名
+//           |k| dispatch(keymap(k), m))        // 键盘(raylib 键码)
+//       return 0
+//   }
+// 通道口径(SL-0 实证):全部钩子 = F1 闭包(Void 返回;List/Str/I32 形参;Box 捕获)。
+// Str 返回的 fn 值、零参 fn 类型、pub struct/extern 跨模块导出 = SL-0.6(登记);
+// 故本包暂为单文件形态(extern+词法+解析+运行时+入口同文件),语言面补齐后拆分。
+// 测试:test() 强制 headless(域库注入缝 + 命令缓冲断言),env 开关退出用户面。
+
+// ==================== 域库窄桥 extern(ctron_gui.c 单一真源;用户不接触) ====================
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+// 形参 I32:与解释桥 int×N cast(栈参 4 字节步长)及 shim int 形参三层一致
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_count() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_x100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_y100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_h100(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_len(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_text_byte(i: I32, j: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_key(key: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_char(ch: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_poll_event() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_key() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_x() -> I32
+
+#[trusted]
+extern "c" fn gui_evt_y() -> I32
+
+#[trusted]
+extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+
+#[trusted]
+extern "c" fn CloseWindow() -> Void
+
+#[trusted]
+extern "c" fn WindowShouldClose() -> Bool
+
+#[trusted]
+extern "c" fn SetTargetFPS(fps: I32) -> Void
+
+#[trusted]
+extern "c" fn BeginDrawing() -> Void
+
+#[trusted]
+extern "c" fn EndDrawing() -> Void
+
+#[trusted]
+extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn ctron_gui_flush() -> I32
+
+// ==================== 迷你词法(同步自 s6/s7) ====================
+
+fn gws(src: Str, cur: Atomic[I32]) -> I32 {
+    var n: I32 = src.len
+    while cur.load() < n {
+        var b: I32 = byte_at(src, cur.load())
+        if b == 47 {
+            if cur.load() + 1 < n {
+                if byte_at(src, cur.load() + 1) == 47 {
+                    cur.store(cur.load() + 2)
+                    while cur.load() < n {
+                        if byte_at(src, cur.load()) == 10 {
+                            break
+                        }
+                        cur.store(cur.load() + 1)
+                    }
+                    continue
+                }
+            }
+        }
+        if b == 32 {
+            cur.store(cur.load() + 1)
+        } else {
+            if b == 10 {
+                cur.store(cur.load() + 1)
+            } else {
+                if b == 13 {
+                    cur.store(cur.load() + 1)
+                } else {
+                    if b == 9 {
+                        cur.store(cur.load() + 1)
+                    } else {
+                        return 0
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn gword(src: Str, cur: Atomic[I32]) -> Str {
+    gws(src, cur)
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        var al: Bool = b >= 65 && b <= 90
+        var low: Bool = b >= 97 && b <= 122
+        var dg: Bool = b >= 48 && b <= 57
+        if al {
+            i += 1
+        } else {
+            if low {
+                i += 1
+            } else {
+                if b == 95 {
+                    i += 1
+                } else {
+                    if b == 45 {
+                        i += 1
+                    } else {
+                        if dg {
+                            i += 1
+                        } else {
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cur.store(i)
+    if i > start {
+        return byte_slice(src, start, i)
+    }
+    panic("gui: 期待标识符 @byte " + cur.load().to_string())
+    return ""
+}
+
+fn glit(src: Str, cur: Atomic[I32], c: I32) -> I32 {
+    gws(src, cur)
+    if byte_at(src, cur.load()) != c {
+        var around: Str = "?"
+        if cur.load() > 40 {
+            around = byte_slice(src, cur.load() - 40, cur.load())
+        } else {
+            around = byte_slice(src, 0, cur.load())
+        }
+        panic("gui: 期待字符码 " + c.to_string() + " @byte " + cur.load().to_string() + " srclen=" + src.len.to_string() + " 前文=[" + around + "]")
+    }
+    cur.store(cur.load() + 1)
+    return 0
+}
+
+fn gstr(src: Str, cur: Atomic[I32]) -> Str {
+    glit(src, cur, 34)
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == 34 {
+            break
+        }
+        i += 1
+    }
+    cur.store(i + 1)
+    return byte_slice(src, start, i)
+}
+
+fn gspan(src: Str, cur: Atomic[I32], stop: I32) -> Str {
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == stop {
+            break
+        }
+        i += 1
+    }
+    var e: I32 = i
+    while start < e {
+        var c0: I32 = byte_at(src, start)
+        if c0 == 32 {
+            start += 1
+        } else {
+            if c0 == 10 {
+                start += 1
+            } else {
+                if c0 == 9 {
+                    start += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    while e > start {
+        var c1: I32 = byte_at(src, e - 1)
+        if c1 == 32 {
+            e -= 1
+        } else {
+            if c1 == 10 {
+                e -= 1
+            } else {
+                if c1 == 9 {
+                    e -= 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    cur.store(i)
+    if e > start {
+        return byte_slice(src, start, e)
+    }
+    return ""
+}
+
+fn ghex1(b: I32) -> I32 {
+    if b >= 48 {
+        if b <= 57 {
+            return b - 48
+        }
+    }
+    if b >= 97 {
+        if b <= 102 {
+            return b - 87
+        }
+    }
+    if b >= 65 {
+        if b <= 70 {
+            return b - 55
+        }
+    }
+    panic("gui: 非法十六进制")
+    return 0
+}
+
+fn g_parse_color(v: Str) -> I32 {
+    if byte_at(v, 0) == 35 {
+        if v.len != 7 {
+            panic("gui: 颜色须 #RRGGBB,得 " + v)
+        }
+        var r: I32 = ghex1(byte_at(v, 1)) * 16 + ghex1(byte_at(v, 2))
+        var g: I32 = ghex1(byte_at(v, 3)) * 16 + ghex1(byte_at(v, 4))
+        var b: I32 = ghex1(byte_at(v, 5)) * 16 + ghex1(byte_at(v, 6))
+        return r * 65536 + g * 256 + b
+    }
+    panic("gui: 未知颜色令牌 " + v)
+    return 0
+}
+
+fn gs2i(s: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        v = v * 10 + (byte_at(s, i) - 48)
+        i += 1
+    }
+    return v
+}
+
+pub struct GuiTree {
+    var ntag: List[Str]
+    var nflag: List[Str]
+    var ncls: List[Str]
+    var npre: List[Str]
+    var nbid: List[Str]
+    var npost: List[Str]
+    var nfc: List[I32]
+    var ns: List[I32]
+    var nes: List[I32]
+    var nec: List[I32]
+    var ev_name: List[Str]
+    var ev_fn: List[Str]
+    var btns: List[I32]
+    var sk: List[Str]
+    var sv: List[Str]
+}
+
+fn gt_new() -> GuiTree {
+    return GuiTree {
+        ntag: List[Str](),
+        ncls: List[Str](),
+        npre: List[Str](),
+        nbid: List[Str](),
+        npost: List[Str](),
+        nfc: List[I32](),
+        ns: List[I32](),
+        nes: List[I32](),
+        nec: List[I32](),
+        ev_name: List[Str](),
+        ev_fn: List[Str](),
+        btns: List[I32](),
+        sk: List[Str](),
+        sv: List[Str](),
+        nflag: List[Str]()
+    }
+}
+
+// SL-8a:花括号槽表达式捕获(源字节面)——配对闭花括号下标;字符串字面量内
+// 花括号不参与配对(转义 \" 不出串)。编译侧 token 直拼与本侧剥空白捕获同规范形。
+fn gt_bx_end(src: Str, start: I32) -> I32 {
+    var depth: I32 = 1
+    var i: I32 = start
+    var instr: Bool = false
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if instr {
+            if b == 92 {
+                i += 1
+            } else {
+                if b == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if b == 34 {
+                instr = true
+            } else {
+                if b == 123 {
+                    depth += 1
+                } else {
+                    if b == 125 {
+                        depth -= 1
+                        if depth == 0 {
+                            return i
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return n
+}
+
+// [a,b) 剥空白规范化(字符串字面量内空白保留,转义对直纳)
+fn gt_bx_strip(src: Str, a: I32, b: I32) -> Str {
+    var out: Str = ""
+    var i: I32 = a
+    var instr: Bool = false
+    while i < b {
+        var c: I32 = byte_at(src, i)
+        if instr {
+            out = out + byte_slice(src, i, i + 1)
+            if c == 92 {
+                if i + 1 < b {
+                    out = out + byte_slice(src, i + 1, i + 2)
+                    i += 1
+                }
+            } else {
+                if c == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if c == 34 {
+                instr = true
+                out = out + byte_slice(src, i, i + 1)
+            } else {
+                if c == 32 || c == 9 || c == 10 || c == 13 {
+                    out = out
+                } else {
+                    out = out + byte_slice(src, i, i + 1)
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+fn gt_bx_expr(src: Str, cur: Atomic[I32]) -> Str {
+    var e: I32 = gt_bx_end(src, cur.load())
+    var out: Str = gt_bx_strip(src, cur.load(), e)
+    cur.store(e + 1)
+    return out
+}
+
+// SL-8a:槽形态判——标识符/点链(名字查询通道直通)与否;含运算符的表达式槽
+// 待 8b 求值器,运行时响亮 panic(不静默空渲染)
+fn gt_slot_simple(v: Str) -> Bool {
+    if v.len == 0 {
+        return false
+    }
+    var i: I32 = 0
+    while i < v.len {
+        var b: I32 = byte_at(v, i)
+        if b == 46 || b == 95 {
+            i += 1
+        } else {
+            if b >= 48 {
+                if b <= 57 {
+                    i += 1
+                } else {
+                    if b >= 65 {
+                        if b <= 90 {
+                            i += 1
+                        } else {
+                            if b >= 97 {
+                                if b <= 122 {
+                                    i += 1
+                                } else {
+                                    return false
+                                }
+                            } else {
+                                return false
+                            }
+                        }
+                    } else {
+                        return false
+                    }
+                }
+            } else {
+                return false
+            }
+        }
+    }
+    return true
+}
+
+fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str]) -> Str {
+    var out: Str = ""
+    while true {
+        gws(src, cur)
+        var b: I32 = byte_at(src, cur.load())
+        if b == 62 || b == 47 {
+            // > 结束;/ = 自闭合标记(input/>,留给调用方消费)
+            break
+        }
+        var an: Str = gword(src, cur)
+        if an == "on" {
+            glit(src, cur, 58)
+            var evn: Str = gword(src, cur)
+            glit(src, cur, 61)
+            glit(src, cur, 123)
+            var fnn: Str = gword(src, cur)
+            glit(src, cur, 125)
+            t.ev_name.push(evn)
+            t.ev_fn.push(fnn)
+        } else {
+            glit(src, cur, 61)
+            // 花括号属性值(cond={表达式}):SL-8a 平衡捕获+剥空白规范形
+            var av: Str = ""
+            if byte_at(src, cur.load()) == 123 {
+                cur.store(cur.load() + 1)
+                av = gt_bx_expr(src, cur)
+            } else {
+                av = gstr(src, cur)
+            }
+            if an == "class" {
+                out = av
+            }
+            if an == "cond" {
+                conds.push(av)
+            }
+            if an == "bind" {
+                binds.push(av)
+            }
+            if an == "placeholder" {
+                strs.push(av)
+            }
+        }
+    }
+    return out
+}
+
+fn gt_leaf_text(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
+    var start: I32 = cur.load()
+    var i: I32 = start
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if b == 123 {
+            break
+        }
+        if b == 60 {
+            break
+        }
+        i += 1
+    }
+    var e: I32 = i
+    var has_bind: Bool = false
+    if i < n {
+        if byte_at(src, i) == 123 {
+            has_bind = true
+        }
+    }
+    while start < e {
+        var c0: I32 = byte_at(src, start)
+        if c0 == 32 {
+            start += 1
+        } else {
+            if c0 == 10 {
+                start += 1
+            } else {
+                if c0 == 9 {
+                    start += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+    if !has_bind {
+        while e > start {
+            var c1: I32 = byte_at(src, e - 1)
+            if c1 == 32 {
+                e -= 1
+            } else {
+                if c1 == 10 {
+                    e -= 1
+                } else {
+                    if c1 == 9 {
+                        e -= 1
+                    } else {
+                        break
+                    }
+                }
+            }
+        }
+    }
+    var p0: Str = ""
+    if e > start {
+        p0 = byte_slice(src, start, e)
+    }
+    cur.store(i)
+    var b: Str = ""
+    var p1: Str = ""
+    if has_bind {
+        cur.store(cur.load() + 1)
+        b = gt_bx_expr(src, cur)
+        p1 = gspan(src, cur, 60)
+    }
+    t.npre.push(p0)
+    t.nbid.push(b)
+    t.npost.push(p1)
+    return 0
+}
+
+
+// 本节点 cond 名(cstart 后最后一个;无 = "")
+fn gt_cond_pick(conds: List[Str], cstart: I32) -> Str {
+    if conds.len > cstart {
+        return conds[conds.len - 1]
+    }
+    return ""
+}
+
+fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str], depth: I32) -> I32 {
+    glit(src, cur, 60)
+    var tag: Str = gword(src, cur)
+    var is_leaf: Bool = false
+    if tag == "label" {
+        is_leaf = true
+    }
+    if tag == "button" {
+        is_leaf = true
+    }
+    var is_when: Bool = false
+    if tag == "when" {
+        is_when = true
+    }
+    var is_each: Bool = false
+    if tag == "each" {
+        is_each = true
+    }
+    var is_input: Bool = false
+    if tag == "input" {
+        is_input = true
+    }
+    if !is_leaf {
+        if !is_when {
+            if !is_each {
+                if !is_input {
+                    if tag != "vbox" {
+                        if tag != "hbox" {
+                            if tag != "spacer" {
+                                panic("gui: 未知元素 " + tag)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if !is_leaf {
+        if depth >= 16 {
+            panic("gui: 嵌套超限(16)")
+        }
+    }
+    var itemvar: Str = ""
+    var listname: Str = ""
+    if is_each {
+        // 头:item in={列表表达式}(先于 attrs;SL-8a 平衡捕获)
+        itemvar = gword(src, cur)
+        var inkw: Str = gword(src, cur)
+        if inkw != "in" {
+            panic("gui: each 期待 in,得 " + inkw)
+        }
+        glit(src, cur, 61)
+        glit(src, cur, 123)
+        listname = gt_bx_expr(src, cur)
+        gws(src, cur)
+    }
+    var estart: I32 = t.ev_name.len
+    var cstart: I32 = conds.len
+    var bstart: I32 = binds.len
+    var sstart: I32 = strs.len
+    var c: Str = gt_attrs(src, cur, t, conds, binds, strs)
+    var id: I32 = t.ntag.len
+    if is_input {
+        // 自闭合:<input ... />;bind 名 → nbid,placeholder → npre
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        var ph: Str = ""
+        if strs.len > sstart {
+            ph = strs[strs.len - 1]
+        }
+        var bn: Str = ""
+        if binds.len > bstart {
+            bn = binds[binds.len - 1]
+        }
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(ph)
+        t.nbid.push(bn)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push("")
+        return id
+    }
+    if byte_at(src, cur.load()) == 47 {
+        // 自闭合空元素(spacer 等,§4.2 内建集):attrs 后 "/>" 即收口无子树
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(listname)
+        t.nbid.push(itemvar)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push(gt_cond_pick(conds, cstart))
+        return id
+    }
+    glit(src, cur, 62)
+    if is_leaf {
+        if byte_at(src, cur.load()) == 60 {
+            if byte_at(src, cur.load() + 1) != 47 {
+                panic("gui: 叶子不得嵌套")
+            }
+        }
+        gt_leaf_text(src, cur, t)
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push(gt_cond_pick(conds, cstart))
+        glit(src, cur, 60)
+        glit(src, cur, 47)
+        var et: Str = gword(src, cur)
+        if et != tag {
+            panic("gui: 闭合标签不匹配 " + et)
+        }
+        glit(src, cur, 62)
+        if tag == "button" {
+            t.btns.push(id)
+        }
+    } else {
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(listname)
+        t.nbid.push(itemvar)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push(gt_cond_pick(conds, cstart))
+        var prev: I32 = -1
+        while true {
+            gws(src, cur)
+            if byte_at(src, cur.load()) == 60 {
+                if byte_at(src, cur.load() + 1) == 47 {
+                    break
+                }
+            }
+            var kid: I32 = gt_node(src, cur, t, conds, binds, strs, depth + 1)
+            // 成员链索引赋值(t.nfc[id]=…)解释口径不支持(assign target:Index),
+            // 取局部引用中转——List 引用语义下同一底层列表(SL-2v 实证配方)
+            var fcl: List[I32] = t.nfc
+            var nsl: List[I32] = t.ns
+            if prev < 0 {
+                fcl[id] = kid
+            } else {
+                nsl[prev] = kid
+            }
+            prev = kid
+        }
+        glit(src, cur, 60)
+        glit(src, cur, 47)
+        var et2: Str = gword(src, cur)
+        if et2 != tag {
+            panic("gui: 闭合标签不匹配 " + et2)
+        }
+        glit(src, cur, 62)
+    }
+    return id
+}
+
+fn gt_style(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
+    var name: Str = gword(src, cur)
+    gws(src, cur)
+    glit(src, cur, 123)
+    while true {
+        gws(src, cur)
+        if byte_at(src, cur.load()) == 125 {
+            break
+        }
+        var p: Str = gword(src, cur)
+        glit(src, cur, 58)
+        gws(src, cur)
+        var v: Str = ""
+        if byte_at(src, cur.load()) == 34 {
+            v = gstr(src, cur)
+        } else {
+            v = gword(src, cur)
+        }
+        t.sk.push(name + "." + p)
+        t.sv.push(v)
+        gws(src, cur)
+        if byte_at(src, cur.load()) == 59 {
+            glit(src, cur, 59)
+        }
+    }
+    glit(src, cur, 125)
+    return 0
+}
+
+pub fn gt_parse(src: Str) -> GuiTree {
+    var t: GuiTree = gt_new()
+    var binds = List[Str]()
+    var strs = List[Str]()
+    var conds = List[Str]()
+    var cur = Atomic[I32](0)
+    var n: I32 = src.len
+    while cur.load() < n {
+        gws(src, cur)
+        if cur.load() >= n {
+            break
+        }
+        var w: Str = gword(src, cur)
+        if w == "view" {
+            gword(src, cur)
+            gws(src, cur)
+            // 8c-1:view props 形参表——平衡圆括号跳过(槽消费待 8c-2 props 环境)
+            if cur.load() < n {
+                if byte_at(src, cur.load()) == 40 {
+                    var pd: I32 = 0
+                    while cur.load() < n {
+                        var pb: I32 = byte_at(src, cur.load())
+                        cur.store(cur.load() + 1)
+                        if pb == 40 {
+                            pd += 1
+                        } else {
+                            if pb == 41 {
+                                pd -= 1
+                                if pd == 0 {
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    gws(src, cur)
+                }
+            }
+            glit(src, cur, 123)
+            gt_node(src, cur, t, conds, binds, strs, 1)
+            gws(src, cur)
+            glit(src, cur, 125)
+        } else {
+            if w == "style" {
+                gt_style(src, cur, t)
+            } else {
+                panic("gui: 顶层仅 view/style,得 " + w)
+            }
+        }
+    }
+    return t
+}
+
+// SL-7β1:骨架表倾倒(与编译器 gui_parse gui_sk_dump_all 同格式,等价差分用)。
+// 行口径:n<id> tag= cls= pre= bid= post= flag= fc= ns= es= ec=(空串以 - 表示);
+// 之后 e<k> on= fn= 事件表 / btn id= 按钮表 / s 键=值 样式表,序 = push 序。
+pub fn sk_dump(t: GuiTree) -> I32 {
+    var i: I32 = 0
+    while i < t.ntag.len {
+        var pre: Str = t.npre[i]
+        if pre == "" {
+            pre = "-"
+        }
+        var bid: Str = t.nbid[i]
+        if bid == "" {
+            bid = "-"
+        }
+        var post: Str = t.npost[i]
+        if post == "" {
+            post = "-"
+        }
+        var flag: Str = t.nflag[i]
+        if flag == "" {
+            flag = "-"
+        }
+        var cls: Str = t.ncls[i]
+        if cls == "" {
+            cls = "-"
+        }
+        println("n" + i.to_string() + " tag=" + t.ntag[i] + " cls=" + cls + " pre=" + pre + " bid=" + bid + " post=" + post + " flag=" + flag + " fc=" + t.nfc[i].to_string() + " ns=" + t.ns[i].to_string() + " es=" + t.nes[i].to_string() + " ec=" + t.nec[i].to_string())
+        i += 1
+    }
+    var k: I32 = 0
+    while k < t.ev_name.len {
+        println("e" + k.to_string() + " on=" + t.ev_name[k] + " fn=" + t.ev_fn[k])
+        k += 1
+    }
+    var b: I32 = 0
+    while b < t.btns.len {
+        println("btn id=" + t.btns[b].to_string())
+        b += 1
+    }
+    var s: I32 = 0
+    while s < t.sk.len {
+        println("s " + t.sk[s] + "=" + t.sv[s])
+        s += 1
+    }
+    println("sk-end")
+    return 0
+}
+
+fn gt_cls_prop(classes: Str, prop: Str, dflt: Str, t: GuiTree) -> Str {
+    var s: I32 = classes.len - 1
+    while s >= 0 {
+        var hit: Bool = false
+        if s == 0 {
+            hit = true
+        } else {
+            if byte_at(classes, s - 1) == 32 {
+                hit = true
+            }
+        }
+        if hit {
+            var e: I32 = s
+            while e < classes.len {
+                if byte_at(classes, e) == 32 {
+                    break
+                }
+                e += 1
+            }
+            var tok: Str = byte_slice(classes, s, e)
+            var key: Str = tok + "." + prop
+            var i: I32 = 0
+            while i < t.sk.len {
+                if t.sk[i] == key {
+                    return t.sv[i]
+                }
+                i += 1
+            }
+        }
+        s -= 1
+    }
+    return dflt
+}
+// ==================== 运行时(绑定求值/布局发射/命中/循环) ====================
+
+fn rt_col_r(p: I32) -> I32 {
+    return (p / 65536) % 256
+}
+
+fn rt_col_g(p: I32) -> I32 {
+    return (p / 256) % 256
+}
+
+fn rt_col_b(p: I32) -> I32 {
+    return p % 256
+}
+
+// 列表询问:buf[0] = "each:名",用户逐项 push 标题;返回项文本列表
+pub fn rt_bind_items(bind: fn(List[Str]) -> Void, listname: Str) -> List[Str] {
+    var buf = List[Str]()
+    buf.push("each:" + listname)
+    bind(buf)
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < buf.len {
+        out.push(buf[i])
+        i += 1
+    }
+    return out
+}
+
+fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
+    var buf = List[Str]()
+    buf.push(name)
+    bind(buf)
+    if buf.len > 1 {
+        return buf[buf.len - 1]
+    }
+    return ""
+}
+
+// ==================== SL-8b:受限纯读表达式求值器 ====================
+// 值形态 = 打标串:"i:<十进制>" 整 / "b:0|1" 布 / 其余 = 串。bind 通道回答
+// 逐字面解码(bare = 串;i:/b: 合形 = 带型),表达式运算产出同形打标串。
+// 文法(优先级升):cmp := add (cmpop add)?;add := mul ((+|-) mul)*;
+//   mul := unary ((*|/|%) unary)*;unary := - unary | primary;
+//   primary := 数字 | "串" | 路径 | ( cmp );路径 := ident(.ident)*(后缀 .len
+//   对串回答取字节长)。无调用无赋值(纯读;on: 事件面归 8c)。
+// 已知边界(登记):串值恰形如 i:<全数字>/b:0|1 时被解为带型——表达式槽专用,
+//   简单槽({ident})不走求值器不受累。
+
+fn bxv_istag(v: Str) -> Bool {
+    if v.len < 2 {
+        return false
+    }
+    if byte_at(v, 1) != 58 {
+        return false
+    }
+    var h: I32 = byte_at(v, 0)
+    if h == 105 {
+        var j: I32 = 2
+        if v.len == 2 {
+            return false
+        }
+        while j < v.len {
+            var b: I32 = byte_at(v, j)
+            if b < 48 || b > 57 {
+                return false
+            }
+            j += 1
+        }
+        return true
+    }
+    if h == 98 {
+        if v.len != 3 {
+            return false
+        }
+        var t2: I32 = byte_at(v, 2)
+        return t2 == 48 || t2 == 49
+    }
+    return false
+}
+
+fn bxv_iv(v: Str) -> I32 {
+    var r: I32 = 0
+    var j: I32 = 2
+    var neg: Bool = false
+    if j < v.len {
+        if byte_at(v, j) == 45 {
+            neg = true
+            j += 1
+        }
+    }
+    while j < v.len {
+        r = r * 10 + (byte_at(v, j) - 48)
+        j += 1
+    }
+    if neg {
+        return -r
+    }
+    return r
+}
+
+fn bxv_tagi(n: I32) -> Str {
+    if n == 0 {
+        return "i:0"
+    }
+    var neg: Bool = false
+    var m: I32 = n
+    if m < 0 {
+        neg = true
+        m = -m
+    }
+    var digits: Str = ""
+    while m > 0 {
+        digits = char_str(48 + m % 10) + digits
+        m = m / 10
+    }
+    if neg {
+        return "i:-" + digits
+    }
+    return "i:" + digits
+}
+
+fn bxv_truth(v: Str) -> Bool {
+    if bxv_istag(v) {
+        if byte_at(v, 0) == 98 {
+            return byte_at(v, 2) == 49
+        }
+        return bxv_iv(v) != 0
+    }
+    return v != ""
+}
+
+fn bxv_show(v: Str) -> Str {
+    if bxv_istag(v) {
+        if byte_at(v, 0) == 98 {
+            if byte_at(v, 2) == 49 {
+                return "true"
+            }
+            return "false"
+        }
+        return byte_slice(v, 2, v.len)
+    }
+    return v
+}
+
+fn bxv_ws(e: Str, cur: Atomic[I32]) -> I32 {
+    while cur.load() < e.len {
+        var b: I32 = byte_at(e, cur.load())
+        if b == 32 || b == 9 || b == 10 || b == 13 {
+            cur.store(cur.load() + 1)
+        } else {
+            return 0
+        }
+    }
+    return 0
+}
+
+// 路径求值:名通道询问;bare 回答 = 串值(s: 不打标,原样即串);
+// 尾 .len 后缀对串回答取字节长(对 i:/b: 带型回答不适用,原样返回)
+fn bxv_path(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var start: I32 = cur.load()
+    while cur.load() < e.len {
+        var b: I32 = byte_at(e, cur.load())
+        if b == 46 || b == 95 || (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) {
+            cur.store(cur.load() + 1)
+        } else {
+            break
+        }
+    }
+    var path: Str = byte_slice(e, start, cur.load())
+    var ans: Str = rt_bind_text(bind, path)
+    if bxv_istag(ans) {
+        return ans
+    }
+    var pl: I32 = path.len
+    if pl > 4 {
+        if byte_slice(path, pl - 4, pl) == ".len" {
+            var base: Str = byte_slice(path, 0, pl - 4)
+            if gt_slot_simple(base) {
+                var bans: Str = rt_bind_text(bind, base)
+                if !bxv_istag(bans) {
+                    return bxv_tagi(bans.len)
+                }
+            }
+        }
+    }
+    return ans
+}
+
+fn bxv_primary(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    bxv_ws(e, cur)
+    if cur.load() >= e.len {
+        return ""
+    }
+    var b: I32 = byte_at(e, cur.load())
+    if b == 40 {
+        cur.store(cur.load() + 1)
+        var v: Str = bxv_cmp(e, cur, bind)
+        bxv_ws(e, cur)
+        if cur.load() < e.len {
+            if byte_at(e, cur.load()) == 41 {
+                cur.store(cur.load() + 1)
+            }
+        }
+        return v
+    }
+    if b == 34 {
+        cur.store(cur.load() + 1)
+        var s: Str = ""
+        while cur.load() < e.len {
+            var c: I32 = byte_at(e, cur.load())
+            cur.store(cur.load() + 1)
+            if c == 92 {
+                if cur.load() < e.len {
+                    s = s + byte_slice(e, cur.load(), cur.load() + 1)
+                    cur.store(cur.load() + 1)
+                }
+            } else {
+                if c == 34 {
+                    break
+                } else {
+                    s = s + byte_slice(e, cur.load() - 1, cur.load())
+                }
+            }
+        }
+        return s
+    }
+    if b >= 48 {
+        if b <= 57 {
+            var start: I32 = cur.load()
+            while cur.load() < e.len {
+                var d: I32 = byte_at(e, cur.load())
+                if d < 48 || d > 57 {
+                    break
+                }
+                cur.store(cur.load() + 1)
+            }
+            return bxv_tagi(gs2i(byte_slice(e, start, cur.load())))
+        }
+    }
+    if (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 {
+        return bxv_path(e, cur, bind)
+    }
+    panic("gui 表达式求值:非法记号 " + byte_slice(e, cur.load(), cur.load() + 1))
+    return ""
+}
+
+fn bxv_unary(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    bxv_ws(e, cur)
+    if cur.load() < e.len {
+        if byte_at(e, cur.load()) == 45 {
+            cur.store(cur.load() + 1)
+            var v: Str = bxv_unary(e, cur, bind)
+            if bxv_istag(v) {
+                if byte_at(v, 0) == 105 {
+                    return bxv_tagi(-bxv_iv(v))
+                }
+            }
+            panic("gui 表达式求值:负号仅适用整数")
+        }
+    }
+    return bxv_primary(e, cur, bind)
+}
+
+fn bxv_mul(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var l: Str = bxv_unary(e, cur, bind)
+    while true {
+        bxv_ws(e, cur)
+        if cur.load() >= e.len {
+            return l
+        }
+        var op: I32 = byte_at(e, cur.load())
+        if op != 42 && op != 47 && op != 37 {
+            return l
+        }
+        cur.store(cur.load() + 1)
+        var r: Str = bxv_unary(e, cur, bind)
+        if op == 42 {
+            l = bxv_tagi(bxv_iv(l) * bxv_iv(r))
+        } else {
+            if op == 47 {
+                l = bxv_tagi(bxv_iv(l) / bxv_iv(r))
+            } else {
+                l = bxv_tagi(bxv_iv(l) % bxv_iv(r))
+            }
+        }
+    }
+    return l
+}
+
+fn bxv_add(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var l: Str = bxv_mul(e, cur, bind)
+    while true {
+        bxv_ws(e, cur)
+        if cur.load() >= e.len {
+            return l
+        }
+        var op: I32 = byte_at(e, cur.load())
+        if op != 43 && op != 45 {
+            return l
+        }
+        cur.store(cur.load() + 1)
+        var r: Str = bxv_mul(e, cur, bind)
+        var lstr: Bool = !bxv_istag(l)
+        var rstr: Bool = !bxv_istag(r)
+        if op == 43 {
+            if lstr || rstr {
+                l = bxv_show(l) + bxv_show(r)
+            } else {
+                l = bxv_tagi(bxv_iv(l) + bxv_iv(r))
+            }
+        } else {
+            if lstr || rstr {
+                panic("gui 表达式求值:串不可减")
+            }
+            l = bxv_tagi(bxv_iv(l) - bxv_iv(r))
+        }
+    }
+    return l
+}
+
+fn bxv_cmp(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var l: Str = bxv_add(e, cur, bind)
+    bxv_ws(e, cur)
+    if cur.load() >= e.len {
+        return l
+    }
+    var op: Str = ""
+    var b0: I32 = byte_at(e, cur.load())
+    if b0 == 61 || b0 == 33 || b0 == 60 || b0 == 62 {
+        if cur.load() + 1 < e.len {
+            if byte_at(e, cur.load() + 1) == 61 {
+                op = byte_slice(e, cur.load(), cur.load() + 2)
+                cur.store(cur.load() + 2)
+            } else {
+                if b0 == 60 || b0 == 62 {
+                    op = byte_slice(e, cur.load(), cur.load() + 1)
+                    cur.store(cur.load() + 1)
+                } else {
+                    return l
+                }
+            }
+        } else {
+            return l
+        }
+    } else {
+        return l
+    }
+    var r: Str = bxv_add(e, cur, bind)
+    var res: Bool = false
+    var numeric: Bool = bxv_istag(l) && bxv_istag(r)
+    if op == "==" {
+        if numeric {
+            res = bxv_iv(l) == bxv_iv(r)
+        } else {
+            res = bxv_show(l) == bxv_show(r)
+        }
+    } else {
+        if op == "!=" {
+            if numeric {
+                res = bxv_iv(l) != bxv_iv(r)
+            } else {
+                res = bxv_show(l) != bxv_show(r)
+            }
+        } else {
+            var a: I32 = 0
+            var b2: I32 = 0
+            if numeric {
+                a = bxv_iv(l)
+                b2 = bxv_iv(r)
+            } else {
+                panic("gui 表达式求值:大小比较仅适用整数")
+            }
+            if op == "<" {
+                res = a < b2
+            } else {
+                if op == "<=" {
+                    res = a <= b2
+                } else {
+                    if op == ">" {
+                        res = a > b2
+                    } else {
+                        res = a >= b2
+                    }
+                }
+            }
+        }
+    }
+    if res {
+        return "b:1"
+    }
+    return "b:0"
+}
+
+fn bxv_eval(e: Str, bind: fn(List[Str]) -> Void) -> Str {
+    var cur = Atomic[I32](0)
+    var v: Str = bxv_cmp(e, cur, bind)
+    return v
+}
+
+fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32) -> I32 {
+    // when 条件:简单旗名走通道询问;表达式槽(SL-8b)求值取真值
+    if t.nflag[id] != "" {
+        var fv: Str = "0"
+        if gt_slot_simple(t.nflag[id]) {
+            fv = rt_bind_text(bind, "when:" + t.nflag[id])
+        } else {
+            if bxv_truth(bxv_eval(t.nflag[id], bind)) {
+                fv = "1"
+            }
+        }
+        if fv != "1" {
+            return 0
+        }
+    }
+    gui_open()
+    var tag: Str = t.ntag[id]
+    var c: Str = t.ncls[id]
+    if tag == "button" {
+        var bgp: I32 = 0
+        var bgv: Str = gt_cls_prop(c, "bg", "", t)
+        if bgv != "" {
+            bgp = g_parse_color(bgv)
+        }
+        gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
+                2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
+        var fgp: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+        gui_text(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)),
+                 rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
+    } else {
+        if tag == "label" {
+            var ax: I32 = 0
+            var al: Str = gt_cls_prop(c, "align", "left", t)
+            if al == "right" {
+                ax = 2
+            } else {
+                if al == "center" {
+                    ax = 1
+                }
+            }
+            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gs2i(gt_cls_prop(c, "h", "40", t)), 0)
+            var txt: Str = t.npre[id]
+            if t.nbid[id] != "" {
+                if t.nbid[id] == itemvar {
+                    // each 活动项:项文本直取(不经绑定通道)
+                    txt = txt + item + t.npost[id]
+                } else {
+                    if gt_slot_simple(t.nbid[id]) {
+                        txt = txt + rt_bind_text(bind, t.nbid[id]) + t.npost[id]
+                    } else {
+                        // SL-8b:表达式槽求值(每帧活值)
+                        txt = txt + bxv_show(bxv_eval(t.nbid[id], bind)) + t.npost[id]
+                    }
+                }
+            } else {
+                txt = txt + t.npost[id]
+            }
+            var sz: I32 = gs2i(gt_cls_prop(c, "size", "40", t))
+            if txt.len > 12 {
+                sz = 22
+            }
+            var fgp2: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+            gui_text(txt, sz, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
+        } else {
+            var dir: I32 = 1
+            if tag == "hbox" {
+                dir = 0
+            }
+            var gap: I32 = gs2i(gt_cls_prop(c, "gap", "0", t))
+            var pad: I32 = gs2i(gt_cls_prop(c, "padding", "0", t))
+            var hmode: I32 = 1
+            var hval: I32 = 0
+            var hs: Str = gt_cls_prop(c, "h", "", t)
+            if hs != "" {
+                hmode = 2
+                hval = gs2i(hs)
+            }
+            var bgp2: I32 = 0
+            var bgv2: Str = gt_cls_prop(c, "bg", "", t)
+            if bgv2 != "" {
+                bgp2 = g_parse_color(bgv2)
+            }
+            gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+            if tag == "each" {
+                // 按项展开:询问 bind 通道("each:列表名" → 逐项 push 标题),
+                // 每项以 itemvar/item 绑定重放孩子子树
+                if !gt_slot_simple(t.npre[id]) {
+                    panic("gui 绑定表达式解释求值待 SL-8b list: " + t.npre[id])
+                }
+                var items = rt_bind_items(bind, t.npre[id])
+                var ii: I32 = 0
+                while ii < items.len {
+                    var ch: I32 = t.nfc[id]
+                    while ch >= 0 {
+                        rt_emit(t, bind, t.nbid[id], items[ii], ch)
+                        ch = t.ns[ch]
+                    }
+                    ii += 1
+                }
+            } else {
+                var ch: I32 = t.nfc[id]
+                while ch >= 0 {
+                    rt_emit(t, bind, itemvar, item, ch)
+                    ch = t.ns[ch]
+                }
+            }
+        }
+    }
+    gui_close()
+    return 0
+}
+
+pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32) -> I32 {
+    gui_begin_layout(w, h)
+    rt_emit(t, bind, "", "", 0)
+    return gui_end_layout()
+}
+
+pub fn rt_collect_rects(cmds: I32, out: List[I32]) -> I32 {
+    var i: I32 = 0
+    while i < cmds {
+        if gui_cmd_type(i) == 2 {
+            out.push(i)
+        }
+        i += 1
+    }
+    return 0
+}
+
+pub fn rt_hit_name(t: GuiTree, rects: List[I32], px: I32, py: I32) -> Str {
+    var j: I32 = 0
+    while j < rects.len {
+        var ci: I32 = rects[j]
+        var px100: I32 = px * 100
+        var py100: I32 = py * 100
+        if px100 >= gui_cmd_x100(ci) && px100 < gui_cmd_x100(ci) + gui_cmd_w100(ci) {
+            if py100 >= gui_cmd_y100(ci) && py100 < gui_cmd_y100(ci) + gui_cmd_h100(ci) {
+                if j < t.btns.len {
+                    var node: I32 = t.btns[j]
+                    var e: I32 = 0
+                    while e < t.nec[node] {
+                        var gi: I32 = t.nes[node] + e
+                        if t.ev_name[gi] == "click" {
+                            return t.ev_fn[gi]
+                        }
+                        e += 1
+                    }
+                }
+                return ""
+            }
+        }
+        j += 1
+    }
+    return ""
+}
+
+pub fn rt_expect_text(want: Str) -> I32 {
+    var n: I32 = gui_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            if gui_cmd_text_len(i) == want.len {
+                var ok: Bool = true
+                var j: I32 = 0
+                while j < want.len {
+                    if gui_cmd_text_byte(i, j) != byte_at(want, j) {
+                        ok = false
+                        j = want.len
+                    }
+                    j += 1
+                }
+                if ok {
+                    return 0
+                }
+            }
+        }
+        i += 1
+    }
+    var d0: I32 = gui_cmd_text_len(0)
+    var dump: Str = "cmd0["
+    var dj: I32 = 0
+    while dj < d0 {
+        dump = dump + gui_cmd_text_byte(0, dj).to_string()
+        if dj < d0 - 1 { dump = dump + "," }
+        dj += 1
+    }
+    dump = dump + "]"
+    panic("gui test: 断言失败,显示无 [" + want + "] cmds=" + gui_cmd_count().to_string() + " " + dump)
+    return 1
+}
+
+fn rt_nokey(k: I32) -> Void {
+}
+
+fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
+                  bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                  key: fn(I32) -> Void, has_key: Bool) -> I32 {
+    var rects = List[I32]()
+    gui_clay_init(w, h)
+    var n: I32 = rt_draw_frame(t, bind, w, h)
+    rt_collect_rects(n, rects)
+    InitWindow(w, h, title)
+    SetTargetFPS(60)
+    while !WindowShouldClose() {
+        var evt: I32 = gui_poll_event()
+        if evt == 2 {
+            var name: Str = rt_hit_name(t, rects, gui_evt_x(), gui_evt_y())
+            if name != "" {
+                act(name)
+            }
+        } else {
+            if evt == 1 {
+                if has_key {
+                    key(gui_evt_key())
+                }
+            }
+        }
+        rt_draw_frame(t, bind, w, h)
+        BeginDrawing()
+        gui_clear(27, 27, 29)
+        ctron_gui_flush()
+        EndDrawing()
+    }
+    CloseWindow()
+    return 0
+}
+
+// 带热重载的循环(R2/W4-E3 收编):每 60 帧比对 CTML 内容,变更即原址重解析
+// (骨架/几何刷新,rects 重收集;用户闭包与状态不动)
+fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I32,
+                    bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                    key: fn(I32) -> Void, has_key: Bool) -> I32 {
+    var rects = List[I32]()
+    gui_clay_init(w, h)
+    var n: I32 = rt_draw_frame(t, bind, w, h)
+    rt_collect_rects(n, rects)
+    InitWindow(w, h, title)
+    SetTargetFPS(60)
+    var frames: I32 = 0
+    while !WindowShouldClose() {
+        frames += 1
+        if frames >= 60 {
+            frames = 0
+            var src2: Str = read_file(reload)
+            // 空源守卫(SL-7α):文件缺失(内嵌兜底形态/运行中被删)不重解析——
+            // 此前 src2="" != src 会 gt_parse("") 清空 UI
+            if src2 != "" {
+                if src2 != src {
+                    var t2: GuiTree = gt_parse(src2)
+                    t = t2
+                    src = src2
+                    n = rt_draw_frame(t, bind, w, h)
+                    rects = List[I32]()
+                    rt_collect_rects(n, rects)
+                }
+            }
+        }
+        var evt: I32 = gui_poll_event()
+        if evt == 2 {
+            var name: Str = rt_hit_name(t, rects, gui_evt_x(), gui_evt_y())
+            if name != "" {
+                act(name)
+            }
+        } else {
+            if evt == 1 {
+                if has_key {
+                    key(gui_evt_key())
+                }
+            }
+        }
+        rt_draw_frame(t, bind, w, h)
+        BeginDrawing()
+        gui_clear(27, 27, 29)
+        ctron_gui_flush()
+        EndDrawing()
+    }
+    CloseWindow()
+    return 0
+}
+
+pub fn rt_run(t: GuiTree, title: Str, w: I32, h: I32,
+              bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    return rt_window_loop(t, title, w, h, bind, act, rt_nokey, false)
+}
+
+pub fn rt_run_kb(t: GuiTree, title: Str, w: I32, h: I32,
+                 bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                 key: fn(I32) -> Void) -> I32 {
+    return rt_window_loop(t, title, w, h, bind, act, key, true)
+}
+
+// d 变体:热重载路径固定 "app.ctml"(默认锚)
+pub fn rt_run_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
+                bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    return rt_window_loop_d(t, src, "app.ctml", title, w, h, bind, act, rt_nokey, false)
+}
+
+pub fn rt_run_kb_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
+                   bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                   key: fn(I32) -> Void) -> I32 {
+    return rt_window_loop_d(t, src, "app.ctml", title, w, h, bind, act, key, true)
+}
+
+// ==================== 入口与测试驱动(headless) ====================
+
+pub struct Driver {
+    var t: GuiTree
+    var rects: List[I32]
+    var w: I32
+    var h: I32
+}
+
+fn d_btn_index(t: GuiTree, name: Str) -> I32 {
+    var j: I32 = 0
+    while j < t.btns.len {
+        var node: I32 = t.btns[j]
+        var e: I32 = 0
+        while e < t.nec[node] {
+            var gi: I32 = t.nes[node] + e
+            if t.ev_fn[gi] == name {
+                return j
+            }
+            e += 1
+        }
+        j += 1
+    }
+    return -1
+}
+
+pub fn d_click(t: Box[Driver], name: Str) -> Str {
+    var j: I32 = d_btn_index(t.t, name)
+    if j < 0 {
+        panic("gui test: 未知动作 " + name)
+        return ""
+    }
+    var ci: I32 = t.rects[j]
+    var cx: I32 = gui_cmd_x100(ci) / 100 + gui_cmd_w100(ci) / 200
+    var cy: I32 = gui_cmd_y100(ci) / 100 + gui_cmd_h100(ci) / 200
+    gui_inject_click(cx, cy)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失 " + name)
+        return ""
+    }
+    return name
+}
+
+pub fn d_press_key(t: Box[Driver], k: I32) -> I32 {
+    gui_inject_key(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 1 {
+        panic("gui test: 键事件丢失")
+        return -1
+    }
+    return k
+}
+
+pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
+    return rt_draw_frame(t.t, bind, t.w, t.h)
+}
+
+// 注入字符事件(type 3),返回字符码(应用键钩子自行编辑模型)
+pub fn d_type_char(t: Box[Driver], k: I32) -> I32 {
+    gui_inject_char(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 3 {
+        panic("gui test: 字符事件丢失")
+        return -1
+    }
+    return gui_evt_key()
+}
+
+pub fn d_expect_text(t: Box[Driver], want: Str) -> I32 {
+    return rt_expect_text(want)
+}
+
+// 命令缓冲诊断访问器(自断言钩子/夹具排查用;type: 1=TEXT 2=RECT)
+pub fn d_cmd_count() -> I32 {
+    return gui_cmd_count()
+}
+
+pub fn d_cmd_type(i: I32) -> I32 {
+    return gui_cmd_type(i)
+}
+
+pub fn d_cmd_text_len(i: I32) -> I32 {
+    return gui_cmd_text_len(i)
+}
+
+pub fn d_cmd_text_byte(i: I32, j: I32) -> I32 {
+    return gui_cmd_text_byte(i, j)
+}
+
+// 几何(×100 整数域;黄金帧差分/夹具布局断言用)
+pub fn d_cmd_x100(i: I32) -> I32 {
+    return gui_cmd_x100(i)
+}
+
+pub fn d_cmd_y100(i: I32) -> I32 {
+    return gui_cmd_y100(i)
+}
+
+pub fn d_cmd_w100(i: I32) -> I32 {
+    return gui_cmd_w100(i)
+}
+
+pub fn d_cmd_h100(i: I32) -> I32 {
+    return gui_cmd_h100(i)
+}
+
+// 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
+pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
+    var n: I32 = gui_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            if gui_cmd_text_len(i) == want.len {
+                var ok: Bool = true
+                var j: I32 = 0
+                while j < want.len {
+                    if gui_cmd_text_byte(i, j) != byte_at(want, j) {
+                        ok = false
+                        j = want.len
+                    }
+                    j += 1
+                }
+                if ok {
+                    panic("gui test: 负断言失败,显示出现 [" + want + "]")
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+pub fn test(src: Str, w: I32, h: I32,
+            bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+            key: fn(I32) -> Void,
+            script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    var t: GuiTree = gt_parse(src)
+    gui_clay_init(w, h)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h)
+    rt_collect_rects(n, d.rects)
+    script(d, act, key)
+    return 0
+}
+
+// SL-7β2:骨架直通测试入口——树已由编译期解析(gui_sk_load)给出,不再经
+// gt_parse;其余口径与 test 完全一致(d_* 驱动断言族全可用)
+pub fn test_sk(t: GuiTree, w: I32, h: I32,
+               bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+               key: fn(I32) -> Void,
+               script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    gui_clay_init(w, h)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h)
+    rt_collect_rects(n, d.rects)
+    script(d, act, key)
+    return 0
+}
+
+pub fn run(src: Str, title: Str, w: I32, h: I32,
+           bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    var t: GuiTree = gt_parse(src)
+    return rt_run(t, title, w, h, bind, act)
+}
+
+pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
+              bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+              key: fn(I32) -> Void) -> I32 {
+    var t: GuiTree = gt_parse(src)
+    return rt_run_kb(t, title, w, h, bind, act, key)
+}
+
+// d 变体:默认锚 "app.ctml" + 热重载环(60 帧内容比对,变更原址重解析)
+pub fn run_d(title: Str, w: I32, h: I32,
+             bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
+    // 独立二进制零 CWD 依赖)
+    var src: Str = read_file("app.ctml")
+    if src == "" {
+        src = ctron_embedded()
+    }
+    var t: GuiTree = gt_parse(src)
+    return rt_run_d(t, src, title, w, h, bind, act)
+}
+
+pub fn run_kb_d(title: Str, w: I32, h: I32,
+                bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                key: fn(I32) -> Void) -> I32 {
+    var src: Str = read_file("app.ctml")
+    if src == "" {
+        src = ctron_embedded()
+    }
+    var t: GuiTree = gt_parse(src)
+    return rt_run_kb_d(t, src, title, w, h, bind, act, key)
+}
+
+// ==================== 输入辅助 ====================
+
+// 字符码 → 单字符 Str(TextInput/type 3 事件;utf8_enc 透传)
+pub fn char_str(k: I32) -> Str {
+    return utf8_enc(k)
+}

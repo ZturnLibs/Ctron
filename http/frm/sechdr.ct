@@ -1,0 +1,154 @@
+// http/frm/sechdr.ct —— 安全响应头基线中间件(P6-B;HSTS/nosniff/CSP/XFO/Referrer-Policy)
+//
+// 语义登记(v1 口径):
+//   基线五头(sec_apply 组装,插于响应头块尾 —— 首个 CRLFCRLF 前, cors_apply
+//   同式):
+//     Strict-Transport-Security: max-age=<hage>   —— hage > 0 时发(hage = 0
+//                                                   视为 HSTS 关,不发;
+//                                                   负值构造期拒)
+//     X-Content-Type-Options: nosniff             —— 恒发
+//     Content-Security-Policy: <csp>              —— csp 非空时发;默认策略
+//                                                   default-src 'self'(sechdr_csp_default)
+//     X-Frame-Options: DENY                       —— 恒发(CSP frame-ancestors
+//                                                   细粒度面登记志向)
+//     Referrer-Policy: no-referrer                —— 恒发
+//
+//   注入面(响应构造纪律):五头值恒出自配置常量/本模块字面量(csp = 部署侧
+//   常量,构造期 sechdr_cfg 校验每字节 printable ASCII(32..126,CR/LF/控制
+//   字节/非 ASCII 即拒)—— 请求字节永不入头。hage = I64 数值经十进制自拼
+//   (cors.cs_num 同式),无注入面。
+//
+//   装配口径:sec_apply 恒在响应生命周期【单点】调用(组合层装配点唯一);
+//   重复调用即头重复(v1 不去重,如实登记 —— 组合层纪律,不去重防护)。
+//   适用域 = 全响应(200/404/…一视同仁;30x Location 与 CSP 交互面登记
+//   志向)。
+//
+// use 面:零 use 纯模块(middleware/router/cors 不引 —— 严格树 E5020:多
+//   中间件同入口组合时各中间件必为无共享叶子;响应助数字位面自拼不导,
+//   cors.ct 同款防菱形)。
+
+// ---- 配置 ----
+
+pub struct SecCfg {
+    let ok: I64
+    let err: I64
+    let hage: I64
+    let csp: Str
+}
+
+// err 码:0 ok / 1 csp 形坏(非 printable ASCII)/ 2 hsts age 负
+pub fn sec_err_ok() -> I64 { return 0 }
+pub fn sec_err_csp() -> I64 { return 1 }
+pub fn sec_err_age() -> I64 { return 2 }
+
+pub fn scfg_ok(c: SecCfg) -> I64 { return c.ok }
+pub fn scfg_err(c: SecCfg) -> I64 { return c.err }
+pub fn scfg_hage(c: SecCfg) -> I64 { return c.hage }
+pub fn scfg_csp(c: SecCfg) -> Str { return c.csp }
+
+// 默认 CSP(部署常量字面量;'self' 单引号为 CSP 语法面,非 Ctron 词法域)
+pub fn sechdr_csp_default() -> Str {
+    return "default-src 'self'"
+}
+
+// csp 形判:每字节 printable ASCII(32..126;CR 13/LF 10/控制字节/非 ASCII
+//   即拒 —— 注入面封口)。空串放行(= 不发 CSP 头)。
+fn sh_printable(s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c < 32 || c > 126 {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// 构造:hage 秒(0 = HSTS 关;负 = err 2),csp 策略(空 = 不发 CSP;
+//   非空须全 printable,否则 err 1)。err 路径 csp 置空(不发面)。
+pub fn sechdr_cfg(hage: I64, csp: Str) -> SecCfg {
+    if hage < 0 {
+        return SecCfg { ok: 0, err: sec_err_age(), hage: 0, csp: "" }
+    }
+    if sh_printable(csp) != 1 {
+        return SecCfg { ok: 0, err: sec_err_csp(), hage: 0, csp: "" }
+    }
+    return SecCfg { ok: 1, err: sec_err_ok(), hage: hage, csp: csp }
+}
+
+// ---- 响应构造(注入面:全配置/字面量出) ----
+
+// I64 → 十进制(正域;0 兜底;cors.cs_num 同式自拼)
+fn sh_num(v: I64) -> Str {
+    if v <= 0 {
+        return "0"
+    }
+    var out = ""
+    var x: I64 = v
+    while x > 0 {
+        let d = (x % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        x = x / 10
+    }
+    return out
+}
+
+// 头尾(首 CRLFCRLF)定位;无 → -1(cors.cs_head_end 同式自拼)
+fn sh_head_end(s: Str) -> I64 {
+    var i: I32 = 0
+    while i + 3 < s.len {
+        if byte_at(s, i) == 13 && byte_at(s, i + 1) == 10 && byte_at(s, i + 2) == 13 && byte_at(s, i + 3) == 10 {
+            return i.as[I64]()
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 安全头基线施加:resp = 任意 frm_resp 形(状态行 + 头块 + CRLFCRLF + 体);
+//   头块无 CRLFCRLF(形坏)则原样返回(不动 —— 组合层 resp 恒出自 frm_resp,
+//   本臂为防御面)。五头序:HSTS → nosniff → CSP → XFO → Referrer-Policy
+//   (发序稳定 = 快照语料可钉)。
+pub fn sechdr_apply(resp: Str, c: SecCfg) -> Str {
+    var extra = ""
+    if c.hage > 0 {
+        extra = extra + "Strict-Transport-Security: max-age=" + sh_num(c.hage) + "\r\n"
+    }
+    extra = extra + "X-Content-Type-Options: nosniff\r\n"
+    if c.csp.len > 0 {
+        extra = extra + "Content-Security-Policy: " + c.csp + "\r\n"
+    }
+    extra = extra + "X-Frame-Options: DENY\r\n"
+    extra = extra + "Referrer-Policy: no-referrer\r\n"
+    let e = sh_head_end(resp)
+    if e < 0 {
+        return resp
+    }
+    let p = (e + 2).as[I32]()
+    return byte_slice(resp, 0, p) + extra + byte_slice(resp, p, resp.len)
+}
+
+// ---- inline tests(快照语料见 tests/http/frm_mw/a_sechdr.ct) ----
+
+test "apply baseline snapshot" {
+    let c = sechdr_cfg(31536000, sechdr_csp_default())
+    assert(scfg_ok(c) == 1 && scfg_err(c) == 0)
+    let out = sechdr_apply("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", c)
+    assert(out == "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nStrict-Transport-Security: max-age=31536000\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n\r\nhi")
+    // hage = 0 → HSTS 关;csp 空 → CSP 不发
+    let c2 = sechdr_cfg(0, "")
+    let out2 = sechdr_apply("HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nnot found", c2)
+    assert(out2 == "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n\r\nnot found")
+}
+
+test "cfg rejects bad shapes" {
+    // csp 携 CR/LF → 构造期拒(注入面)
+    let c1 = sechdr_cfg(0, "default-src 'self'\r\nX-Evil: 1")
+    assert(scfg_ok(c1) == 0 && scfg_err(c1) == sec_err_csp())
+    let c2 = sechdr_cfg(0, "a\nb")
+    assert(scfg_ok(c2) == 0 && scfg_err(c2) == sec_err_csp())
+    // 负 age 拒
+    let c3 = sechdr_cfg(-1, "x")
+    assert(scfg_ok(c3) == 0 && scfg_err(c3) == sec_err_age())
+}

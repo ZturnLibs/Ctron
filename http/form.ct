@@ -1,0 +1,345 @@
+// http/form.ct —— query/form 解析与构造(P4-B;application/x-www-form-urlencoded
+// + URL query 共用语法,RFC 9110 §11.2 与 WHATWG urlencoded 序列化惯例)
+// 形态(与 http/parse.ct 头注同源):
+//   ① 零 use 纯模块(菱形 use E5020 规避;同 message.ct ②)。百分号编解码不
+//      复用 std/enc.pct_*(防 use 菱形),本地窄实现(判法同源:hex 值 + 可打印
+//      ASCII 域,C8 同款;漂移由双向向量钉住,登记)。
+//   ② 语义(登记):
+//      - 解码侧(服务端姿态):'+' → 空格;'%XX' 十六进制(大小写均可);裸
+//        '%' 或 XX 非十六进制 → 非法。域:解码输出限可打印 ASCII(32..126,除
+//        123 '{' —— C8 约束同 std/enc,Unicode/控制字符 → 非法,登记)。
+//      - 对分割:先 '&' 后首 '=';无 '=' → 键有值空(bare key,登记容忍);
+//        空 token(如 "a=1&&b=2")跳过(容忍,登记);键允许空("=v")。
+//      - 构造侧:RFC 3986 unreserved(A-Z a-z 0-9 - . _ ~)原样,其余百分号
+//        大写 hex;空格 → %20(非 '+':构造侧取无歧义形,解码侧 '+/%20' 双收
+//        —— 不对称登记,服务端姿态)。
+//   ③ 结构面(登记,(h) 家族新发射面缺口):Option[FormPair] 的变体载荷 struct
+//      与 List[struct] 的 push 在发射面产错型强转(实证 c_form emit:
+//      (t_FormPair)(long) / list_push((const char*)(long)(t_FormPair){...}))
+//      —— 故本模块【不出 struct】:form_parse 返回交错 K/V 道 List[Str]
+//      ([k0, v0, k1, v1, …],取值经 form_key_at/form_val_at getter,零拷贝
+//      语义不变);单对解码出 k/v 双 Str 形(form_decode_k/v)。struct 载荷
+//      发射缺口待发射器任务收口后可回迁 FormPair 形。
+//   ④ 发射面纪律:无闭包、无方法调用、无 if/match 表达式,while 体仅标量
+//      局部((f)/(g));Option 消费用 match 形助手(C13a)。
+
+// ---- 单字节/串助手 ----
+
+fn f_hexval(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 65 + 10
+    }
+    return -1
+}
+
+// 解码字节 → 单字节 Str(仅可打印 ASCII 32..126 且非 123 '{';C8 同 std/enc)。
+// 表两段规避字面量裸 '{'(C9:词法器禁裸 '{')。
+fn f_byte(b: I32) -> Str {
+    if b < 123 {
+        let t = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz"
+        return byte_slice(t, b - 32, b - 31)
+    }
+    let t2 = "|}~"
+    return byte_slice(t2, b - 124, b - 123)
+}
+
+// 百分号解码(含 '+' → 空格;口径见头注②)。非法 None。
+fn f_pct_decode(s: Str) -> Option[Str] {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 43 {
+            // '+'
+            c = 32
+        } else {
+            if c == 37 {
+                // '%'
+                if i + 2 >= s.len {
+                    return None
+                }
+                let hi = f_hexval(byte_at(s, i + 1))
+                let lo = f_hexval(byte_at(s, i + 2))
+                if hi < 0 || lo < 0 {
+                    return None
+                }
+                c = hi * 16 + lo
+                i += 2
+            }
+        }
+        if c < 32 || c > 126 || c == 123 {
+            return None // C8 域
+        }
+        out = out + f_byte(c)
+        i += 1
+    }
+    return Some(out)
+}
+
+// 百分号编码(RFC 3986 unreserved 原样,大写 hex;空格 → %20)。
+pub fn form_pct_encode(s: Str) -> Str {
+    let h = "0123456789ABCDEF"
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        var un = false
+        if c >= 48 && c <= 57 {
+            un = true
+        }
+        if c >= 65 && c <= 90 {
+            un = true
+        }
+        if c >= 97 && c <= 122 {
+            un = true
+        }
+        if c == 45 || c == 46 || c == 95 || c == 126 {
+            un = true // - . _ ~
+        }
+        if un {
+            out = out + byte_slice(s, i, i + 1)
+        } else {
+            out = out + "%" + byte_slice(h, c / 16, c / 16 + 1) + byte_slice(h, c % 16, c % 16 + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+// ---- 单对解码(k/v 双 Str 形;头注③)----
+
+// 单对 "k=v" 的键(首 '=' 前;无 '=' 全串);整对非法 → dft。
+pub fn form_decode_k(s: Str, dft: Str) -> Str {
+    var eq = -1
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 61 {
+            // '='
+            eq = i
+            i = s.len
+        } else {
+            i += 1
+        }
+    }
+    var key = s
+    if eq >= 0 {
+        key = byte_slice(s, 0, eq)
+    }
+    let d = f_pct_decode(key)
+    match d {
+        Some(kv) => {
+            return kv
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+// 单对的值(首 '=' 后;无 '=' → "");整对非法 → dft。
+pub fn form_decode_v(s: Str, dft: Str) -> Str {
+    var eq = -1
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 61 {
+            // '='
+            eq = i
+            i = s.len
+        } else {
+            i += 1
+        }
+    }
+    var key = s
+    var val = ""
+    if eq >= 0 {
+        key = byte_slice(s, 0, eq)
+        val = byte_slice(s, eq + 1, s.len)
+    }
+    let dk = f_pct_decode(key)
+    match dk {
+        Some(kv) => {
+            let dv = f_pct_decode(val)
+            match dv {
+                Some(vv) => {
+                    return vv
+                }
+                None => {
+                    return dft
+                }
+            }
+        }
+        None => {
+            return dft
+        }
+    }
+}
+
+// 单对合法性(k/v 双双落 C8 域且百分号形合规)。
+pub fn form_decode_ok(s: Str) -> Bool {
+    var eq = -1
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 61 {
+            // '='
+            eq = i
+            i = s.len
+        } else {
+            i += 1
+        }
+    }
+    var key = s
+    var val = ""
+    if eq >= 0 {
+        key = byte_slice(s, 0, eq)
+        val = byte_slice(s, eq + 1, s.len)
+    }
+    let dk = f_pct_decode(key)
+    match dk {
+        Some(kv) => {
+            let dv = f_pct_decode(val)
+            match dv {
+                Some(vv) => {
+                    return true
+                }
+                None => {
+                    return false
+                }
+            }
+        }
+        None => {
+            return false
+        }
+    }
+}
+
+// ---- 整串解析(交错 K/V 道;头注③)----
+
+// 整串解析:'&' 分割;空 token 跳过;任一非空 token 非法 → 整体 None(严)。
+// 返回 List[Str] 交错 [k0, v0, k1, v1, …]。
+pub fn form_parse(s: Str) -> Option[List[Str]] {
+    var ps = List[Str]()
+    var i: I32 = 0
+    let n = s.len
+    var start = 0
+    while i <= n {
+        if i == n || byte_at(s, i) == 38 {
+            // '&'
+            if i > start {
+                let tok = byte_slice(s, start, i)
+                let dk = f_pct_decode(f_pair_key(tok))
+                match dk {
+                    Some(kv) => {
+                        let dv = f_pct_decode(f_pair_val(tok))
+                        match dv {
+                            Some(vv) => {
+                                ps.push(kv)
+                                ps.push(vv)
+                            }
+                            None => {
+                                return None
+                            }
+                        }
+                    }
+                    None => {
+                        return None
+                    }
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return Some(ps)
+}
+
+// 对 span 的键/值 span(首 '=' 分割;无 '=' → 全串 / "")
+fn f_pair_key(s: Str) -> Str {
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 61 {
+            // '='
+            return byte_slice(s, 0, i)
+        }
+        i += 1
+    }
+    return s
+}
+
+fn f_pair_val(s: Str) -> Str {
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 61 {
+            // '='
+            return byte_slice(s, i + 1, s.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+// K/V 道取值 getter(交错布局的唯一直读面)。
+pub fn form_count(ps: List[Str]) -> I32 {
+    return ps.len / 2
+}
+
+pub fn form_key_at(ps: List[Str], i: I32) -> Str {
+    return ps[i * 2]
+}
+
+pub fn form_val_at(ps: List[Str], i: I32) -> Str {
+    return ps[i * 2 + 1]
+}
+
+// ---- 构造 ----
+
+// 单对构造 "k=v"(口径见头注②:空格 → %20)。
+pub fn form_encode_pair(k: Str, v: Str) -> Str {
+    return form_pct_encode(k) + "=" + form_pct_encode(v)
+}
+
+// 整串构造('&' 连接;空道 → "")。
+pub fn form_encode_pairs(ps: List[Str]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < ps.len {
+        if i > 0 {
+            if i % 2 == 0 {
+                out = out + "&"
+            } else {
+                out = out + "="
+            }
+        }
+        out = out + form_pct_encode(ps[i])
+        i += 1
+    }
+    return out
+}
+
+// ---- Option 消费助手(match 形;C13a)----
+pub fn form_parse_ok(o: Option[List[Str]]) -> Bool {
+    match o {
+        Some(p) => {
+            return true
+        }
+        None => {
+            return false
+        }
+    }
+}
+
+pub fn form_str_get(o: Option[Str], dft: Str) -> Str {
+    match o {
+        Some(v) => {
+            return v
+        }
+        None => {
+            return dft
+        }
+    }
+}

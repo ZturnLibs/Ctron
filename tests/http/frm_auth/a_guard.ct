@@ -6,8 +6,8 @@
 //   next 结果恒经 `"" +` 裸尾惯用法落 Str)。
 // use 面:auth(crypto 叶)+ body(json 叶)双叶并用 —— 异叶单径,
 //   E5020 不触(两模块互不引,json/crypto 各单径,头注③登记)。
-use std.http.frm.auth.{ auth_jwt_verify, jwt_rc }
-use std.http.frm.body.{ body_json, bj_rc, bj_i64, bj_str, bs_v }
+use http.frm.auth.{ auth_jwt_verify, jwt_rc }
+use http.frm.body.{ body_json, bj_rc, bj_i64, bj_str, bs_v }
 
 // ---- 终端 handler(组合层;体字段预提入参 —— 装配前直接调用边界) ----
 

@@ -2,7 +2,7 @@
 // (P5-C)。query_rows.script:T(id/name/active,oid 23/25/16)+ 3×D(全非
 // NULL)+ C("SELECT 3")+ Z;空集 empty_result.script:T 一列零 D。会话链
 // 路形态 = 握手 next 游标续查询(OOB 格面 → -1 锚)。
-use std.db.pg.{pg_handshake_script, pg_query_script, pgs_rc, pgs_next, pgr_rc, pgr_err, pgr_rows, pgr_cols, pgr_tag, pgr_colname, pgr_oid, pgr_cell, pgr_cell_hex, pgr_isnull, pgr_esev, pgr_ecode}
+use db.pg.{pg_handshake_script, pg_query_script, pgs_rc, pgs_next, pgr_rc, pgr_err, pgr_rows, pgr_cols, pgr_tag, pgr_colname, pgr_oid, pgr_cell, pgr_cell_hex, pgr_isnull, pgr_esev, pgr_ecode}
 
 fn load_frames(base: Str, name: Str) -> List[Str] {
     var out = List[Str]()

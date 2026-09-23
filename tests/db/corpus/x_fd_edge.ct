@@ -3,7 +3,7 @@
 // fd = -1 → 垫片 recv EBADF → err 6;errno 槽 = 9(EBADF,darwin/linux 同
 // 值);发送/关闭路径同探。真库(fd 冒烟)Task 6 nightly。
 // 链接:tests/db/run.sh 本文件 emit 臂加 std/db/c_src/ctron_dbpg.c。
-use std.db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_fd_close, pg_fd_last_errno, pg_query_msg, pgv_rc, pgv_err, pg_err_io, PgCell64}
+use db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_fd_close, pg_fd_last_errno, pg_query_msg, pgv_rc, pgv_err, pg_err_io, PgCell64}
 
 test "fd edge: EBADF maps to io err with errno slot" {
     var rbuf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

@@ -1,7 +1,7 @@
 // tests/http/frm_openapi/a_export.ct —— OpenAPI 同源导出消费形态(P6-D;双臂纯面)
 // 面:comptime 路由表(router.ct D-P6-1 平面 Str 同一常量)喂导出器 —— 快照
 // 语义 = 路由表任一改动本夹具即红;方法聚合/参数提升/畸形跳过全链。
-use std.http.frm.openapi.{ oa_export, oa_path_openapi, oa_json_escape, oa_mcode, oa_mkey }
+use http.frm.openapi.{ oa_export, oa_path_openapi, oa_json_escape, oa_mcode, oa_mkey }
 
 // 消费方 comptime 路由表(与 frm_route 同款形态;本表即快照源)
 const ROUTES: Str = "GET /users|GET /users/:id|POST /users|DELETE /users/:id"

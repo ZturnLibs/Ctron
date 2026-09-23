@@ -26,7 +26,7 @@ case "$(uname)" in
     *) echo "s22: unsupported platform" >&2; exit 1 ;;
 esac
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/s22.bin" \
-   "$T/probe.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/probe.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 cp "$DIR/app.ctml" "$T/app.ctml"
 cd "$T"
 ./s22.bin > B.txt

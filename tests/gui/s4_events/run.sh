@@ -18,6 +18,6 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/s4.bin" \
-   "$T/s4.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/s4.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 "$T/s4.bin" run "$DIR/src/main.ct"
 echo "s4: 事件注入 + 交互状态机全绿(headless)"

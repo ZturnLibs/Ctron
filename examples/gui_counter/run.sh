@@ -1,6 +1,6 @@
 #!/bin/sh
 # examples/gui_counter/run.sh —— GUI 声明式路径正式示例(L1 域包形态)
-# 用户树 = app.ctml + src/main.ct(~70 行);平台在 std/gui 域包(use std.gui)。
+# 用户树 = app.ctml + src/main.ct(~70 行);平台在 gui 域包(use std.gui)。
 # 默认:构建 + headless 断言(域包 test() 注入,全自动)
 #       + 状态恢复往返(CTRON_GUI_STATE=count=7 → 首帧即 7 → 回传快照)
 # --run:追加真实窗口(run_d 自带热重载环:编辑 app.ctml 保存,60 帧内原址生效,计数保留)
@@ -17,7 +17,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 build() {
     "$EMIT" run "$DIR/src/main.ct" > "$T/gui_counter.c"
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/gui_counter.bin" \
-       "$T/gui_counter.c" "$ROOT/std/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+       "$T/gui_counter.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
 }
 
 case "$(uname)" in

@@ -1,6 +1,6 @@
-// caps_net - E4010: use std.net.Net with ref param, manifest caps only has fs
+// caps_net - E4010: use net.Net with ref param, manifest caps only has fs
 //@ fail: E4010
-use std.net.Net
+use net.Net
 
 fn touch(net: &Net) -> I32 {
     return 0

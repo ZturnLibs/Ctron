@@ -3,7 +3,7 @@
 // rc ≥ 0 → Ok(rc);rc < 0 → Err(err_str(errno()))(strerror 深拷消息)。
 // 通道:编译(bin run=编译执行)。解释桥 Str 返回截断(E3 在册)+
 // seed 桥 close 回转缺口为预存,非本夹具口径。
-use std.ffi.{sys_result, err_str}
+use ffi.{sys_result, err_str}
 
 #[trusted]
 extern "c" fn dup(fd: I32) -> I32

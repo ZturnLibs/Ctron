@@ -11,7 +11,7 @@
 ## 2.2 导入
 
 - `use 包名.模块.符号;` 显式具名导入;**禁止通配导入**(`use m.*`)与**禁止重导出**(模块不得把导入的符号再 `pub`)。
-- 组导入:`use std.net.{TcpListener, Request}`(可尾逗号)。
+- 组导入:`use net.{TcpListener, Request}`(可尾逗号)。
 - 路径一律**从包根起**(Go 式全限定),无相对导入、无 `super/self` 路径模块。`self` 仅用于 impl 内类型指代(§1.7)。
 
 ## 2.3 可见性

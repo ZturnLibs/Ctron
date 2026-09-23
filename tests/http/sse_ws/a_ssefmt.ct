@@ -1,7 +1,7 @@
 // a_ssefmt —— P4-C SSE 纯面语料(interp + emit 双臂;零 IO)
 // 写面 WHATWG 序列化黄金向量 + 读面状态机(CRLF 档/多 data/id 保持/注释/
 // 未知字段/畸形 retry/写读往返)。行为面 x_sse_e2e。
-use std.http.sse.{ sse_event_str, sse_step, sse_st_new, sret_rc, sret_err, sret_consumed, sret_name, sret_data, sret_id, sret_st, sst_data }
+use http.sse.{ sse_event_str, sse_step, sse_st_new, sret_rc, sret_err, sret_consumed, sret_name, sret_data, sret_id, sret_st, sst_data }
 
 fn sf_fill(buf: &I64[], s: Str) -> I64 {
     var i: I32 = 0

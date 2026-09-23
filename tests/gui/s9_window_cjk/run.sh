@@ -19,7 +19,7 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/freetype/include" -I"$ROOT/vendor/gui/raylib" -o "$T/s9.bin" \
-   "$T/s9.c" "$ROOT/std/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/s9.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 echo "s9: 构建+链接 OK -> $T/s9.bin"
 if [ "${1:-}" = "--run" ]; then
     cd "$DIR"

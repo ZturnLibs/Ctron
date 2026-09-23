@@ -29,8 +29,8 @@
 //   对端 s_client -CAfile 同一张证书(链验证开)且不给 -verify_hostname(=
 //   我方 opt-out 同口径)—— 双端验证策略对齐,bench_tls.sh 比值只隔离栈成本。
 // CI 纪律:仅回环、:0/高随机端口、零外联(run.sh 同口径)。
-use std.net.{Net_probe, last_net_error, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept}
-use std.tls.{tls_client, tls_server, tls_set_alpn, tls_handshake, tls_read, tls_write_str, tls_close, tls_alpn, tls_last_error}
+use net.{Net_probe, last_net_error, net_tcp_listen, net_tcp_sockname, net_tcp_connect, net_tcp_accept}
+use tls.{tls_client, tls_server, tls_set_alpn, tls_handshake, tls_read, tls_write_str, tls_close, tls_alpn, tls_last_error}
 use std.strconv.{parse_i64, sc_get_l}
 
 fn main() -> I32 {
