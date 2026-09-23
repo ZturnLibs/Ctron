@@ -312,7 +312,9 @@ Drop 顺序 fd 复用 ABA caveat(超时兜底,文件头注);tls_read cap<=0 返 
 | P6-C | 认证三件套(cookie 会话/JWT HS256/PBKDF2)+ multipart + JSON body 绑定 | frm_auth 语料双臂(JWT 黄金向量/alg 混淆拒/时钟注入);登记: utf8_enc 内建解释臂劈叉→au_ch 表格面 |
 | P6-D | 静态文件(强 ETag 内容寻址/304/Range 206·416/穿越拒 fail-closed;Last-Modified 与 sendfile 登记)+ OpenAPI 3 同源导出(快照=路由表改即红)+ CTML 转义窄面(五实体安全默认+显式豁免) | tests/http frm_static×6+frm_openapi+frm_html 双臂 **16/16**(da08562);st_serve IO 薄胶待 P6-E e2e;大串断言按 corpus 惯例拆小文件(解释器堆不回收在册债的单文件腐坏规避) |
 
-P6-D 时点套件环境红(独立于本片,移出复现):frm_auth/csrf/auth-inline interp
+| P6-E | examples/todo_api 端到端(REST CRUD+JWT 写保护 login 签发/CORS 预检/限流 503/OpenAPI 同源/静态页 static 响应面/健康端点/优雅停机排空退出) | run.sh 自客户端 nc 打自服务端 **20/20 双 RT 矩阵**(默认+CTRON_RT=coro;da08562 static 面首次 IO 接线于同构应用);存储=内存平行 List(Str 形 id/done——List[I64] 元素读发射债绕行),业务 ≤300 行 |
+
+P6-D/E 时点套件环境红(独立于本片,移出复现):frm_auth/csrf/auth-inline interp
 137 击杀(解释器堆不回收在册债 × 并行泳道负载)、mw_chain E2020(P1b 显式
 请求口径对 middleware 合并贯穿形态的波及,compiler 泳道在制)、e2e×4 负载超时。
 

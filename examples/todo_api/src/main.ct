@@ -1,0 +1,457 @@
+// examples/todo_api —— P6-E 端到端示例:ctron-http 框架最小装配(REST CRUD + JWT
+// 写保护 + CORS + 限流 + 健康端点 + OpenAPI + 静态页 + 优雅停机)
+//
+// 形态(ctecho 同款骨架 + std/http 解析 + frm 三件):
+//   监听 = net_tcp_listen(127.0.0.1:$TODO_API_PORT,缺省 8091);串行处理连接
+//   (HTTP/1.0 Connection:close,一连接一请求;示例不并发——P2 协程环见 ctecho);
+//   请求循环 = net_read_t 落 lane → http_parse_head 增量解析 → CL 读体 →
+//   路由(方法+target 字节比对)→ 组响应(net_write)→ close。
+//   路由表(与 /openapi.json 同源,oa_export 消费同一常量):
+//     GET /health | GET /todos | POST /todos | DELETE /todos/:id |
+//     GET /openapi.json | GET / | POST /__shutdown
+//   JWT 写保护:POST/DELETE 需 Authorization: Bearer <tok>;tok 由
+//   POST /login {"uid":"..."} 经 auth_jwt_sign 签发(key = TODO_API_KEY,缺省
+//   s3cret-key;now 固定 1000,载荷不带 exp——示例免时钟注入)。
+//   限流:进程内计数,阈值 env TODO_API_RLIMIT(缺省 1000),超限 503。
+//   CORS:全部响应带 ACAO:*;OPTIONS 预检 204 + ACRM/ACAH。
+//   停机:POST /__shutdown → 200 后主环 break,scope 排空退出(rc=0)。
+//   静态页:内嵌 index.html 经 static.ct 响应面(ETag/304/Range 能力随面携带)。
+// 登记志向:非 printable 体、keep-alive、sechdr/limit/cors 中间件全家桶接线
+// (示例为教学最小形,中间件套件本体由 frm_* 各自语料覆盖)。
+
+use net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_accept, net_read_t, net_write, net_close, last_net_error}
+use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len, http_clen, http_head_end }
+use http.frm.openapi.{ oa_export, oa_json_escape }
+use http.frm.static.{ st_resp_from_content, st_etag }
+use http.frm.auth.{ auth_jwt_sign, auth_jwt_verify, auth_jwt_claim, at_ok, at_tok, jwt_rc }
+use http.frm.body.{ body_json, bj_rc, bj_str, bs_v }
+use std.strconv.{ parse_i64, sc_get_l }
+
+// —— 同源路由表(OpenAPI 导出与分发共用此常量)——
+const ROUTES: Str = "GET /health|GET /todos|POST /todos|DELETE /todos/:id|GET /openapi.json|GET /|POST /__shutdown|POST /login"
+
+const PAGE: Str = "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>todo-api</title></head>\n<body>\n<h1>todo-api</h1>\n<p>REST: GET/POST /todos, DELETE /todos/:id (JWT 写保护), GET /openapi.json, GET /health</p>\n</body>\n</html>\n"
+
+const KEY: Str = "s3cret-key"
+
+// 长度感知等值(byte_slice 中段切片非 NUL 结尾,==/strcmp 会读越界——发射面债)
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// —— lane → Str(printable;示例体/target/token 均可印 ASCII)——
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if c < 32 || c > 126 {
+            return out
+        }
+        out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
+        i += 1
+    }
+    return out
+}
+
+// lane target 段与 want 等值
+fn tgt_is(buf: &I64[], ts: I64, tl: I64, want: Str) -> Bool {
+    if tl != want.len {
+        return false
+    }
+    var i: I64 = 0
+    while i < tl {
+        if buf[ts + i] != byte_at(want, i.as[I32]()).as[I64]() {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 头区找行首 needle,返回值首(a);未现 = -1(大小写敏感,探针用规范形)
+fn hfind(buf: &I64[], n: I64, needle: Str) -> I64 {
+    let nl = needle.len.as[I64]()
+    var i: I64 = 0
+    while i + nl <= n {
+        var ok = true
+        var j: I64 = 0
+        while j < nl {
+            if buf[i + j] != byte_at(needle, j.as[I32]()).as[I64]() {
+                ok = false
+                break
+            }
+            j += 1
+        }
+        if ok {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// Str 落 lane(响应写出)
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// 十进制 I64 → Str
+fn dstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var neg = false
+    var n = v
+    if n < 0 {
+        neg = true
+        n = 0 - n
+    }
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    if neg {
+        out = "-" + out
+    }
+    return out
+}
+
+// CORS + 安全头(示例级:*;套件级全貌见 frm cors/sechdr 各自语料)
+const XCORS: Str = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nX-Content-Type-Options: nosniff\r\n"
+
+fn respond(net: StdNet, fd: I64, buf: &I64[], code: Str, ctype: Str, body: Str) {
+    let resp = "HTTP/1.1 " + code + "\r\n" + XCORS + "Content-Type: " + ctype + "\r\n" + "Content-Length: " + dstr(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + body
+    let m = fill(buf, resp)
+    net_write(net, fd, buf, m)
+}
+
+fn main() {
+    let net = Net_probe()
+    var key = KEY
+    if env_get("TODO_API_KEY").len > 0 {
+        key = env_get("TODO_API_KEY")
+    }
+    let rlimit = sc_get_l(parse_i64(env_get("TODO_API_RLIMIT")), 1000)
+    let port = sc_get_l(parse_i64(env_get("TODO_API_PORT")), 8091)
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd_box) != 0 {
+        panic(last_net_error().message)
+    }
+    let port_box = Box[Box64](Box64 { v: 0 })
+    if net_tcp_sockname(net, lfd_box.v, port_box) != 0 {
+        panic(last_net_error().message)
+    }
+    println("todo-api listening on 127.0.0.1:" + port_box.v.to_string())
+
+    // 内存存储(可插拔缺省形:平行 List)
+    var ids: List[Str] = List[Str]()     // id 以十进制 Str 存(同 dones,发射面数值列表元素读在册债)
+    var titles: List[Str] = List[Str]()
+    var dones: List[Str] = List[Str]()   // done 位以 "0"/"1" 存(List[I64] 元素读为已登记发射债,Str 列表原生)
+    var next_id: I64 = 1
+    var served: I64 = 0
+    var stop = 0
+
+    while stop == 0 {
+        let afd_box = Box[Box64](Box64 { v: 0 })
+        if net_tcp_accept(net, lfd_box.v, afd_box) != 0 {
+            break
+        }
+        let fd = afd_box.v
+        served += 1
+
+        // —— 读头(增量;lane 定长 4096,fixture 已证尺寸)——
+        var buf: I64[4096] = [0, 0, 0, 0]
+        var scr: I64[2048] = [0, 0, 0, 0]
+        var n: I64 = 0
+        var ms: I64 = 0
+        var ml: I64 = 0
+        var ts: I64 = 0
+        var tl: I64 = 0
+        var clen: I64 = 0
+        var hend: I64 = 0
+        var good = 0
+        var guard: I64 = 0
+        var need = 1
+        while need == 1 && guard < 64 {
+            guard += 1
+            let h = http_parse_head(buf, n, http_limits_default())
+            if http_rc(h) == 1 {
+                need = 0
+                good = 1
+                ms = http_method_start(h)
+                ml = http_method_len(h)
+                ts = http_target_start(h)
+                tl = http_target_len(h)
+                clen = http_clen(h)
+                hend = http_head_end(h)
+                n = n
+            } else {
+                if http_rc(h) == -1 {
+                    need = 0
+                } else {
+                    let r = net_read_t(net, fd, scr, 2048, 5000)
+                    if r <= 0 {
+                        need = 0
+                    } else {
+                        var i: I64 = 0
+                        while i < r {
+                            if n + i < 4096 {
+                                buf[n + i] = scr[i]
+                            }
+                            i += 1
+                        }
+                        n = n + r
+                    }
+                }
+            }
+        }
+        if good == 0 {
+            respond(net, fd, scr, "400 Bad Request", "text/plain", "bad request")
+            net_close(net, fd)
+            continue
+        }
+        // —— 读体(CL)——
+        let total = hend + clen
+        while n < total {
+            let r = net_read_t(net, fd, scr, 2048, 5000)
+            if r <= 0 {
+                break
+            }
+            var i: I64 = 0
+            while i < r {
+                if n < 4096 {
+                    buf[n] = scr[i]
+                }
+                n += 1
+                i += 1
+            }
+        }
+
+        // —— 限流(进程内计数;探针以小阈值验证 503)——
+        if served > rlimit {
+            respond(net, fd, scr, "503 Service Unavailable", "text/plain", "over limit")
+            net_close(net, fd)
+            continue
+        }
+
+        let method = lane_str(buf, ms, ms + ml)
+        let target = lane_str(buf, ts, ts + tl)
+
+        // —— CORS 预检 ——
+        if method == "OPTIONS" {
+            let resp = "HTTP/1.1 204 No Content\r\n" + XCORS + "Access-Control-Max-Age: 600\r\n" + "Content-Length: 0\r\n" + "Connection: close\r\n" + "\r\n"
+            let m = fill(buf, resp)
+            net_write(net, fd, buf, m)
+            net_close(net, fd)
+            continue
+        }
+
+        // —— 健康端点 ——
+        if target == "/health" && method == "GET" {
+            respond(net, fd, buf, "200 OK", "application/json", "\{\"ok\":true,\"served\":" + dstr(served) + "}")
+            net_close(net, fd)
+            continue
+        }
+
+        // —— OpenAPI(路由表同源)——
+        if target == "/openapi.json" && method == "GET" {
+            respond(net, fd, buf, "200 OK", "application/json", oa_export(ROUTES, "todo-api", "1.0"))
+            net_close(net, fd)
+            continue
+        }
+
+        // —— 静态页(static 响应面;ETag/304 随面)——
+        if (target == "/" || target == "/index.html") && method == "GET" {
+            let inm_a = hfind(buf, hend, "If-None-Match: ")
+            var inm = ""
+            if inm_a >= 0 {
+                let vstart = inm_a + "If-None-Match: ".len.as[I64]()
+                var ve = vstart
+                while ve < hend && buf[ve] != 13 {
+                    ve += 1
+                }
+                inm = lane_str(buf, vstart, ve)
+            }
+            let resp = st_resp_from_content("index.html", PAGE, inm, "")
+            let m = fill(buf, resp)
+            net_write(net, fd, buf, m)
+            net_close(net, fd)
+            continue
+        }
+
+        // —— 登录(签发 JWT)——
+        if target == "/login" && method == "POST" {
+            let body = lane_str(buf, hend, n)
+            let b = body_json(body, 4096)
+            if bj_rc(b) != 1 {
+                respond(net, fd, buf, "400 Bad Request", "application/json", "\{\"error\":\"bad json\"}")
+                net_close(net, fd)
+                continue
+            }
+            var uid = "demo"
+            let got = bs_v(bj_str(b, "$.uid"))
+            if got.len > 0 {
+                uid = got
+            }
+            let tok = auth_jwt_sign(key, "\{\"sub\":\"" + oa_json_escape(uid) + "\"}")
+            if at_ok(tok) == 0 {
+                respond(net, fd, buf, "500 Internal Server Error", "text/plain", "sign failed")
+                net_close(net, fd)
+                continue
+            }
+            respond(net, fd, buf, "200 OK", "application/json", "\{\"token\":\"" + at_tok(tok) + "\"}")
+            net_close(net, fd)
+            continue
+        }
+
+        // —— 写保护:POST/DELETE 需 JWT ——
+        var uid = ""
+        if method == "POST" || method == "DELETE" {
+            if target == "/__shutdown" {
+                uid = "sys"
+            } else {
+                let auth_a = hfind(buf, hend, "Authorization: Bearer ")
+                if auth_a < 0 {
+                    respond(net, fd, buf, "401 Unauthorized", "application/json", "\{\"error\":\"unauthorized\"}")
+                    net_close(net, fd)
+                    continue
+                }
+                let vstart = auth_a + "Authorization: Bearer ".len.as[I64]()
+                var ve = vstart
+                while ve < hend && buf[ve] != 13 {
+                    ve += 1
+                }
+                let tok = lane_str(buf, vstart, ve)
+                let v = auth_jwt_verify(key, tok, 1000)
+                if jwt_rc(v) != 1 {
+                    respond(net, fd, buf, "401 Unauthorized", "application/json", "\{\"error\":\"bad token\"}")
+                    net_close(net, fd)
+                    continue
+                }
+                uid = "demo"
+            }
+        }
+
+        // —— CRUD ——
+        if target == "/todos" && method == "GET" {
+            var body = "["
+            var i: I32 = 0
+            while i < ids.len {
+                if i > 0 {
+                    body = body + ","
+                }
+                let idv = ids[i]
+                let dn = dones[i]
+                var dv = "false"
+                if dn == "1" {
+                    dv = "true"
+                }
+                body = body + "\{\"id\":" + idv + ",\"title\":\"" + oa_json_escape(titles[i]) + "\",\"done\":" + dv + "}"
+                i += 1
+            }
+            body = body + "]"
+            respond(net, fd, buf, "200 OK", "application/json", body)
+            net_close(net, fd)
+            continue
+        }
+        if target == "/todos" && method == "POST" {
+            let body = lane_str(buf, hend, n)
+            let b = body_json(body, 4096)
+            var title = ""
+            var bad = 0
+            if bj_rc(b) != 1 {
+                bad = 1
+            } else {
+                title = bs_v(bj_str(b, "$.title"))
+            }
+            if title.len == 0 {
+                bad = 1
+            }
+            if bad == 1 {
+                respond(net, fd, buf, "422 Unprocessable Entity", "application/json", "\{\"error\":\"title required\"}")
+                net_close(net, fd)
+                continue
+            }
+            ids.push(dstr(next_id))
+            titles.push(title)
+            dones.push("0")
+            let out = "\{\"id\":" + dstr(next_id) + ",\"title\":\"" + oa_json_escape(title) + "\",\"done\":false}"
+            next_id += 1
+            respond(net, fd, buf, "201 Created", "application/json", out)
+            net_close(net, fd)
+            continue
+        }
+        // DELETE /todos/:id
+        if target.len >= 8 && eqs(byte_slice(target, 0, 7), "/todos/") && method == "DELETE" {
+            let idv = byte_slice(target, 7, target.len)
+            var hit: I32 = 0 - 1
+            var i: I32 = 0
+            while i < ids.len {
+                let cur = ids[i]
+                if eqs(cur, idv) {
+                    hit = i
+                    break
+                }
+                i += 1
+            }
+            if hit < 0 {
+                respond(net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"no such todo\"}")
+                net_close(net, fd)
+                continue
+            }
+            var nids: List[I64] = List[I64]()
+            var ntitles: List[Str] = List[Str]()
+            var ndones: List[I64] = List[I64]()
+            var j: I32 = 0
+            while j < ids.len {
+                if j != hit {
+                    let pj = ids[j]
+                    let tj = titles[j]
+                    let dj = dones[j]
+                    nids.push(pj)
+                    ntitles.push(tj)
+                    ndones.push(dj)
+                }
+                j += 1
+            }
+            ids = nids
+            titles = ntitles
+            dones = ndones
+            respond(net, fd, buf, "204 No Content", "text/plain", "")
+            net_close(net, fd)
+            continue
+        }
+
+        // —— 优雅停机 ——
+        if target == "/__shutdown" && method == "POST" {
+            stop = 1
+            respond(net, fd, buf, "200 OK", "text/plain", "draining")
+            net_close(net, fd)
+            continue
+        }
+
+        respond(net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"not found\"}")
+        net_close(net, fd)
+    }
+
+    net_close(net, lfd_box.v)
+    println("todo-api drained (served " + dstr(served) + ")")
+}

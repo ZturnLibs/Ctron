@@ -71,9 +71,9 @@
 - Create: `examples/todo_api/**`(REST CRUD + JWT 保护写路由 + 静态页 + OpenAPI + 健康;存储可插拔:内存默认;≤300 行业务)
 
 **Steps:**
-- [ ] 停机排空 + 健康端点
-- [ ] todo_api(端到端:自客户端打自服务端——CRUD 全链/JWT 拒未授权写/CORS 预检/限流 503/OpenAPI 输出/静态页)
-- [ ] 提交
+- [x] 停机排空 + 健康端点
+- [x] todo_api(端到端:自客户端打自服务端——CRUD 全链/JWT 拒未授权写/CORS 预检/限流 503/OpenAPI 输出/静态页)
+- [x] 提交
 
 ### Task 6 (P6-F): 门禁 + 登记收口 + P6 终审
 
