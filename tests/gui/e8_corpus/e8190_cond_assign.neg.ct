@@ -1,0 +1,10 @@
+// gui expect: E8190 —— SL-8a:cond 绑定槽赋值形态(纯读门;事件槽才允许副作用)
+view P {
+  <vbox class="root">
+    <when cond={show = 1}>
+      <label class="row">x</label>
+    </when>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }

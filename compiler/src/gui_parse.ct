@@ -216,8 +216,8 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             if tks[cur.load()].len == 1 {
                 if byte_at(tks[cur.load()], 0) == 123 {
                     cur.store(cur.load() + 1)
-                    av = "\{" + eat_tok(tks, cur) + "}"
-                    cur.store(cur.load() + 1)
+                    // SL-8a:平衡捕获+规范形(IR 展示仍包花括号)
+                    av = "\{" + gui_bx_expr(tks, cur) + "}"
                 }
             }
             if av == "" {
@@ -684,7 +684,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
             }
         } else {
             if eat_tok(tks, cur) != "=" {
-                gdiags.push("E8100: 属性期待 =")
+                gdiags.push("E8100: 属性期待等号")
                 bad = -1
             } else {
                 var av: Str = ""
@@ -694,18 +694,16 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     if pv.len == 1 {
                         if byte_at(pv, 0) == 123 {
                             cur.store(cur.load() + 1)
-                            av = eat_tok(tks, cur)
-                            var cbv: Str = eat_tok(tks, cur)
-                            if cbv.len != 1 {
-                                gdiags.push("E8100: 花括号属性期待闭")
+                            av = gui_bx_expr(tks, cur)
+                            if av == "" {
+                                gdiags.push("E8100: 花括号属性期待表达式")
                                 bad = -1
-                            } else {
-                                if byte_at(cbv, 0) != 125 {
-                                    gdiags.push("E8100: 花括号属性期待闭")
-                                    bad = -1
-                                }
                             }
                             brform = true
+                            if gui_bx_impure(av) {
+                                gdiags.push("E8190: 绑定表达式纯度违规(赋值/自增减) " + an + "=\{" + av + "}")
+                                bad = -1
+                            }
                         }
                     }
                 }
@@ -910,6 +908,113 @@ fn gui_sk_word(tks: List[Str], cur: Atomic[I32]) -> Str {
     return t
 }
 
+// SL-8a:花括号槽表达式捕获——平衡消费至配对 },token 直拼即规范形
+// (W1 token 不携带空白,唯字符串字面量内例外;与域包源字节剥空白捕获同规范形,
+// 对两侧词法粒度不变——s22 双端差分锁)。字符串 token(引号开头)的内部花括号不参与配对。
+fn gui_bx_expr(tks: List[Str], cur: Atomic[I32]) -> Str {
+    var out: Str = ""
+    var depth: I32 = 1
+    while cur.load() < tks.len {
+        var t: Str = tks[cur.load()]
+        cur.store(cur.load() + 1)
+        if t.len > 1 {
+            if byte_at(t, t.len - 1) == 126 {
+                t = byte_slice(t, 0, t.len - 1)
+            }
+        }
+        var isstr: Bool = false
+        if t.len > 0 {
+            if byte_at(t, 0) == 34 {
+                isstr = true
+            }
+        }
+        if !isstr {
+            if t.len == 1 {
+                var tb: I32 = byte_at(t, 0)
+                if tb == 123 {
+                    depth += 1
+                } else {
+                    if tb == 125 {
+                        depth -= 1
+                        if depth == 0 {
+                            return out
+                        }
+                    }
+                }
+            }
+        }
+        out = out + t
+    }
+    return out
+}
+
+// SL-8a E8190 纯读门:规范化表达式的 token 可判定变异形态(赋值/复合赋值/自增减)
+// 即违例;==/!=/<=/>= 比较与字符串字面量内容豁免。on: 槽不进此门(自动闭包,8c)。
+// 已知边界(登记):`a - -b`(负字面量二元减)与 `a + +b` 会误报——以 let 拆解绕行。
+fn gui_bx_impure(e: Str) -> Bool {
+    var i: I32 = 0
+    var instr: Bool = false
+    while i < e.len {
+        var b: I32 = byte_at(e, i)
+        if instr {
+            if b == 92 {
+                i += 1
+            } else {
+                if b == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if b == 34 {
+                instr = true
+            } else {
+                if b == 61 {
+                    var p: Bool = false
+                    if i > 0 {
+                        var pb: I32 = byte_at(e, i - 1)
+                        if pb == 61 || pb == 33 || pb == 60 || pb == 62 {
+                            p = true
+                        }
+                    }
+                    var q: Bool = false
+                    if i + 1 < e.len {
+                        if byte_at(e, i + 1) == 61 {
+                            q = true
+                        }
+                    }
+                    if !p {
+                        if !q {
+                            return true
+                        }
+                    }
+                } else {
+                    if b == 43 || b == 45 {
+                        if i + 1 < e.len {
+                            var nb: I32 = byte_at(e, i + 1)
+                            if nb == b {
+                                return true
+                            }
+                            if nb == 61 {
+                                return true
+                            }
+                        }
+                    } else {
+                        if b == 42 || b == 47 || b == 37 {
+                            if i + 1 < e.len {
+                                if byte_at(e, i + 1) == 61 {
+                                    return true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
 fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: List[Str], out4: List[Str]) -> I32 {
     // out4 预置 4 槽:[0]=class [1]=cond [2]=bind [3]=placeholder(末值覆盖,镜像末推)
     while cur.load() < tks.len {
@@ -942,8 +1047,7 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
                 if pv.len == 1 {
                     if byte_at(pv, 0) == 123 {
                         cur.store(cur.load() + 1)
-                        av = gui_sk_word(tks, cur)
-                        gui_sk_word(tks, cur)
+                        av = gui_bx_expr(tks, cur)
                         brform = true
                     }
                 }
@@ -987,13 +1091,18 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
     var itemvar: Str = ""
     var listname: Str = ""
     if tag == "each" {
-        // 头:item in={列表}(先于 attrs,镜像 gt_node;六 token:名 in = { 表 })
+        // 头:item in={列表表达式}(先于 attrs,镜像 gt_node;SL-8a 花括号表达式捕获)
         itemvar = gui_sk_word(tks, cur)
         gui_sk_word(tks, cur)
         gui_sk_word(tks, cur)
-        gui_sk_word(tks, cur)
-        listname = gui_sk_word(tks, cur)
-        gui_sk_word(tks, cur)
+        var ob: Str = gui_sk_word(tks, cur)
+        if ob.len != 1 {
+            panic("gui: each 期待花括号列表")
+        }
+        if byte_at(ob, 0) != 123 {
+            panic("gui: each 期待花括号列表")
+        }
+        listname = gui_bx_expr(tks, cur)
     }
     var estart: I32 = ev_name.len
     var out4 = List[Str]()

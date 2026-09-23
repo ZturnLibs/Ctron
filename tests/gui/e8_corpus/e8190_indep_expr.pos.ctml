@@ -1,0 +1,12 @@
+// gui expect: OK —— SL-8a 独立形态:表达式绑定槽正例(伴生 .ct 提供模型面)
+view DraftApp {
+  <vbox class="root">
+    <input bind={form.draft} class="field"/>
+    <when cond={count >= 1}>
+      <label class="row">ready</label>
+    </when>
+  </vbox>
+}
+style root { direction: column }
+style field { bg: "#2a2a2e" }
+style row { fg: "#ffffff" }

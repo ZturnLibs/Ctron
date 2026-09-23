@@ -1,0 +1,17 @@
+// gui expect: OK —— SL-8a:表达式绑定槽正例(点链/算术比较;纯读,检查面放行)
+// 运行时求值归 8b(本语料只锁检查面:形态合法即过)
+fn send() {
+}
+view P {
+  <vbox class="root">
+    <input bind={form.draft} class="field"/>
+    <when cond={n > 0}>
+      <label class="row">items: {n}</label>
+    </when>
+    <button class="btn" on:click={send}>go</button>
+  </vbox>
+}
+style root { direction: column }
+style field { bg: "#2a2a2e" }
+style btn { bg: "#2563eb" }
+style row { fg: "#ffffff" }

@@ -1,0 +1,8 @@
+// gui expect: E8190 —— SL-8a 独立形态:input bind 槽赋值形态(纯读门,伴生 .ct 免声明)
+view DraftApp {
+  <vbox class="root">
+    <input bind={draft = ""} class="field"/>
+  </vbox>
+}
+style root { direction: column }
+style field { bg: "#2a2a2e" }

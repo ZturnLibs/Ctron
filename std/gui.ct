@@ -352,6 +352,129 @@ fn gt_new() -> GuiTree {
     }
 }
 
+// SL-8a:花括号槽表达式捕获(源字节面)——配对闭花括号下标;字符串字面量内
+// 花括号不参与配对(转义 \" 不出串)。编译侧 token 直拼与本侧剥空白捕获同规范形。
+fn gt_bx_end(src: Str, start: I32) -> I32 {
+    var depth: I32 = 1
+    var i: I32 = start
+    var instr: Bool = false
+    var n: I32 = src.len
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if instr {
+            if b == 92 {
+                i += 1
+            } else {
+                if b == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if b == 34 {
+                instr = true
+            } else {
+                if b == 123 {
+                    depth += 1
+                } else {
+                    if b == 125 {
+                        depth -= 1
+                        if depth == 0 {
+                            return i
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return n
+}
+
+// [a,b) 剥空白规范化(字符串字面量内空白保留,转义对直纳)
+fn gt_bx_strip(src: Str, a: I32, b: I32) -> Str {
+    var out: Str = ""
+    var i: I32 = a
+    var instr: Bool = false
+    while i < b {
+        var c: I32 = byte_at(src, i)
+        if instr {
+            out = out + byte_slice(src, i, i + 1)
+            if c == 92 {
+                if i + 1 < b {
+                    out = out + byte_slice(src, i + 1, i + 2)
+                    i += 1
+                }
+            } else {
+                if c == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if c == 34 {
+                instr = true
+                out = out + byte_slice(src, i, i + 1)
+            } else {
+                if c == 32 || c == 9 || c == 10 || c == 13 {
+                    out = out
+                } else {
+                    out = out + byte_slice(src, i, i + 1)
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+fn gt_bx_expr(src: Str, cur: Atomic[I32]) -> Str {
+    var e: I32 = gt_bx_end(src, cur.load())
+    var out: Str = gt_bx_strip(src, cur.load(), e)
+    cur.store(e + 1)
+    return out
+}
+
+// SL-8a:槽形态判——标识符/点链(名字查询通道直通)与否;含运算符的表达式槽
+// 待 8b 求值器,运行时响亮 panic(不静默空渲染)
+fn gt_slot_simple(v: Str) -> Bool {
+    if v.len == 0 {
+        return false
+    }
+    var i: I32 = 0
+    while i < v.len {
+        var b: I32 = byte_at(v, i)
+        if b == 46 || b == 95 {
+            i += 1
+        } else {
+            if b >= 48 {
+                if b <= 57 {
+                    i += 1
+                } else {
+                    if b >= 65 {
+                        if b <= 90 {
+                            i += 1
+                        } else {
+                            if b >= 97 {
+                                if b <= 122 {
+                                    i += 1
+                                } else {
+                                    return false
+                                }
+                            } else {
+                                return false
+                            }
+                        }
+                    } else {
+                        return false
+                    }
+                }
+            } else {
+                return false
+            }
+        }
+    }
+    return true
+}
+
 fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str]) -> Str {
     var out: Str = ""
     while true {
@@ -373,12 +496,11 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             t.ev_fn.push(fnn)
         } else {
             glit(src, cur, 61)
-            // 花括号属性值(cond={名}):单词直取(绑定名,SL-5 when 通道)
+            // 花括号属性值(cond={表达式}):SL-8a 平衡捕获+剥空白规范形
             var av: Str = ""
             if byte_at(src, cur.load()) == 123 {
-                glit(src, cur, 123)
-                av = gword(src, cur)
-                glit(src, cur, 125)
+                cur.store(cur.load() + 1)
+                av = gt_bx_expr(src, cur)
             } else {
                 av = gstr(src, cur)
             }
@@ -525,7 +647,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     var itemvar: Str = ""
     var listname: Str = ""
     if is_each {
-        // 头:item in={listname}(先于 attrs)
+        // 头:item in={列表表达式}(先于 attrs;SL-8a 平衡捕获)
         itemvar = gword(src, cur)
         var inkw: Str = gword(src, cur)
         if inkw != "in" {
@@ -533,8 +655,7 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
         }
         glit(src, cur, 61)
         glit(src, cur, 123)
-        listname = gword(src, cur)
-        glit(src, cur, 125)
+        listname = gt_bx_expr(src, cur)
         gws(src, cur)
     }
     var estart: I32 = t.ev_name.len
@@ -814,6 +935,18 @@ fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
 }
 
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32) -> I32 {
+    // SL-8a:非简单形槽(含运算符的表达式)待 8b 求值器——响亮 panic 不静默空渲染
+    // (nflag/nbid 仅非空时判;npre 复用为叶文本/占位符,只在 each 分支按列表名判)
+    if t.nflag[id] != "" {
+        if !gt_slot_simple(t.nflag[id]) {
+            panic("gui 绑定表达式解释求值待 SL-8b cond: " + t.nflag[id])
+        }
+    }
+    if t.nbid[id] != "" {
+        if !gt_slot_simple(t.nbid[id]) {
+            panic("gui 绑定表达式解释求值待 SL-8b bind: " + t.nbid[id])
+        }
+    }
     // when 条件:旗名经 bind 通道询问("when:名" → push "1"/"0");假 = 整子树跳过
     if t.nflag[id] != "" {
         var fv: Str = rt_bind_text(bind, "when:" + t.nflag[id])
@@ -887,6 +1020,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if tag == "each" {
                 // 按项展开:询问 bind 通道("each:列表名" → 逐项 push 标题),
                 // 每项以 itemvar/item 绑定重放孩子子树
+                if !gt_slot_simple(t.npre[id]) {
+                    panic("gui 绑定表达式解释求值待 SL-8b list: " + t.npre[id])
+                }
                 var items = rt_bind_items(bind, t.npre[id])
                 var ii: I32 = 0
                 while ii < items.len {
