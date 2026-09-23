@@ -55,8 +55,14 @@ Ctron 仓库 GUI 泳道执行者。当前阶段：SL-7 双口径骨架管线主�
   需动 trans/emit 面，trans_emit.ct 为 peer 在制品——待其落库后开片；
   切片计划与已就位基座清单见 docs/superpowers/plans/2026-09-23-sl8-expr-binding.md
 
-### P3：SL-9 热重载宿主骨架化 + 渲染回归进 CI
-- 骨架原址替换（§11.5）；渲染黄金帧差分已就位（s21 安全网）
+### P3：SL-9 热重载宿主骨架化 + 渲染回归进 CI —— ✅ M0-M2 面收口（eff6f71，2026-09-23）
+- 渲染回归进 CI：**核实已覆盖**——ci.sh [8/9] 挂 GUI 阶梯，阶梯含
+  s21_frame_golden 黄金帧差分
+- 热重载域包验收：**s26_reload_d 入阶梯**（阶梯 30）——run_kb_d 60 帧内容
+  比对 → gt_parse 原址重解析；探针模式断言改写 app.ctml（样式+结构）后
+  新结构入帧且闭包 Box 状态保留（n=7）；w4 app.txt 残留顺手根治
+- 余项登记：焦点/IME 保留 = §6.3 M3 硬验收（依赖 IME 组词面，随 M3）；
+  原生口径快照恢复 = 裁决 1A（gui_counter CTRON_GUI_STATE 协议已示范）
 
 ### 终锚：Todo v10 照抄能跑
 
