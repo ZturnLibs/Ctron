@@ -542,3 +542,18 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
 - **阻塞与复位**:stdpkg 全量消费夹具的 json 写出半边(write_json/jw_*)暂缓——
   待本分歧修复后按同款 ent→write→parse 回读夹具复位(形态已备案于 2026-09-23
   会话记录);夹具回归 reverted(未落库,两臂逐字门禁不让红)。
+
+### P1b 选择性合并 × extern 再导出发射缺声明(2026-09-23 实证,net 三夹具红)
+
+- **现象**:`use net.{Net_probe}`(门面)+ `use net.bind.{ctron_net_last_errno}` 共同
+  合并时,emit 侧对 last_errno 出 `t_ctron_net_last_errno()` 调用但**无 extern 声明**
+  → cc "undeclared function"。仅 `use net.bind.{...}` 直连时声明正常(最小差分:
+  m2.ct vs m.ct,后者双 extern 全_DECLARED)。
+- **波及**:tests/net clock_sanity/tcp_echo/coro_hybrid(emit 臂)、tests/http
+  frm_route_a_mw_chain(E2020 形态,同族 merge-through 收紧)。时间线:P1b 编译器
+  落地(2d2c98c/8093990/b3a5d20)即现,与域包迁移无关(迁移前后 merge 结构同形,
+  本日 76be7ff 审计清单外的门面再导出形态漏网)。
+- **归因**:P1b 选择性合并的来源标记在"门面 use 请求 + 消费方直连请求"同符号
+  双径下,emitter 侧 extern 性丢失 → 按 Ctron 级 fn 出 t_ 调用。归 compiler/
+  emitter 泳道(trans_emit.ct 在制中)。
+- **复位**:修后 tests/net 三夹具免改即绿(显式 use 已补到位)。
