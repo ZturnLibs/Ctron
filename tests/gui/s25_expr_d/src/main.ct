@@ -1,0 +1,132 @@
+// tests/gui/s25_expr_d —— SL-8b:表达式绑定槽域包夹具(求值器端到端)
+// 覆盖:叶表达式串接({draft + "!"})/比较条件(cond={n > 0})/算术渲染({n * 2})/
+// 带型通道(bare = 串,i: 前缀 = 整)/动作变更后逐帧活值。形态 = s24 同款
+// (内嵌 view/style + Box 活模型),视口 320x640(Clay 视口剔除坑位)。
+use std.gui.{test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent}
+
+view ExprApp {
+  <vbox class="root">
+    <label class="title">S25 EXPR</label>
+    <input bind={draft} class="field"/>
+    <label class="echo">{draft + "!"}</label>
+    <button class="btn" on:click={add}>ADD</button>
+    <when cond={n > 0}>
+      <label class="count">items {n * 2}</label>
+    </when>
+    <each item in={todos}>
+      <label class="row">{item}</label>
+    </each>
+    <button class="del" on:click={del}>DEL</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style field { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style echo { fg: "#22c55e" h: 30 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style count { fg: "#f97316" h: 30 }
+style row { fg: "#cccccc" }
+style del { bg: "#7f1d1d" fg: "#ffffff" w: 120 h: 44 }
+
+struct Model {
+    var draft: Str
+    var todos: List[Str]
+}
+
+// E8120 处理函数声明 stub(真分发在 act)
+fn add() {
+}
+fn del() {
+}
+
+// bind 通道:路径名 → 值(bare = 串;i: 前缀 = 整——SL-8b 带型约定)
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "draft" {
+        buf.push(m.draft)
+    }
+    if buf[0] == "n" {
+        buf.push("i:" + m.todos.len.to_string())
+    }
+    if buf[0] == "each:todos" {
+        var i: I32 = 0
+        while i < m.todos.len {
+            buf.push(m.todos[i])
+            i += 1
+        }
+    }
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if name == "add" {
+        if m.draft.len > 0 {
+            m.todos.push(m.draft)
+            m.draft = ""
+        }
+    } else {
+        if name == "del" {
+            if m.todos.len > 0 {
+                var kept = List[Str]()
+                var i: I32 = 0
+                while i < m.todos.len - 1 {
+                    kept.push(m.todos[i])
+                    i += 1
+                }
+                m.todos = kept
+            }
+        }
+    }
+}
+
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 259 {
+        if m.draft.len > 0 {
+            m.draft = byte_slice(m.draft, 0, m.draft.len - 1)
+        }
+    } else {
+        if k >= 32 {
+            if k < 127 {
+                m.draft = m.draft + char_str(k)
+            }
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](Model { draft: "", todos: List[Str]() })
+    var rc: I32 = test(src, 320, 640,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| on_key(k, m),
+        |t, a, key| {
+            // 键入 hi → 叶表达式回显 hi!(串接活值)
+            key(d_type_char(t, 104))
+            key(d_type_char(t, 105))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi!")
+            // 添加 → 条件表达式放行 + 算术渲染 items 2
+            a(d_click(t, "add"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "items 2")
+            d_expect_text(t, "hi")
+            // 再入 cd 添加 → items 4(两行)
+            key(d_type_char(t, 99))
+            key(d_type_char(t, 100))
+            a(d_click(t, "add"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "items 4")
+            d_expect_text(t, "cd")
+            // 删一 → items 2;删空 → 条件关闭
+            a(d_click(t, "del"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "items 2")
+            d_expect_absent(t, "cd")
+            a(d_click(t, "del"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "items 2")
+            d_expect_absent(t, "items 4")
+            println("S25-ALL-GREEN")
+        })
+    println("s25: rc=" + rc.to_string())
+    return rc
+}

@@ -585,8 +585,7 @@ fn gt_leaf_text(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
     var p1: Str = ""
     if has_bind {
         cur.store(cur.load() + 1)
-        b = gword(src, cur)
-        glit(src, cur, 125)
+        b = gt_bx_expr(src, cur)
         p1 = gspan(src, cur, 60)
     }
     t.npre.push(p0)
@@ -934,22 +933,378 @@ fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
     return ""
 }
 
+// ==================== SL-8b:受限纯读表达式求值器 ====================
+// 值形态 = 打标串:"i:<十进制>" 整 / "b:0|1" 布 / 其余 = 串。bind 通道回答
+// 逐字面解码(bare = 串;i:/b: 合形 = 带型),表达式运算产出同形打标串。
+// 文法(优先级升):cmp := add (cmpop add)?;add := mul ((+|-) mul)*;
+//   mul := unary ((*|/|%) unary)*;unary := - unary | primary;
+//   primary := 数字 | "串" | 路径 | ( cmp );路径 := ident(.ident)*(后缀 .len
+//   对串回答取字节长)。无调用无赋值(纯读;on: 事件面归 8c)。
+// 已知边界(登记):串值恰形如 i:<全数字>/b:0|1 时被解为带型——表达式槽专用,
+//   简单槽({ident})不走求值器不受累。
+
+fn bxv_istag(v: Str) -> Bool {
+    if v.len < 2 {
+        return false
+    }
+    if byte_at(v, 1) != 58 {
+        return false
+    }
+    var h: I32 = byte_at(v, 0)
+    if h == 105 {
+        var j: I32 = 2
+        if v.len == 2 {
+            return false
+        }
+        while j < v.len {
+            var b: I32 = byte_at(v, j)
+            if b < 48 || b > 57 {
+                return false
+            }
+            j += 1
+        }
+        return true
+    }
+    if h == 98 {
+        if v.len != 3 {
+            return false
+        }
+        var t2: I32 = byte_at(v, 2)
+        return t2 == 48 || t2 == 49
+    }
+    return false
+}
+
+fn bxv_iv(v: Str) -> I32 {
+    var r: I32 = 0
+    var j: I32 = 2
+    var neg: Bool = false
+    if j < v.len {
+        if byte_at(v, j) == 45 {
+            neg = true
+            j += 1
+        }
+    }
+    while j < v.len {
+        r = r * 10 + (byte_at(v, j) - 48)
+        j += 1
+    }
+    if neg {
+        return -r
+    }
+    return r
+}
+
+fn bxv_tagi(n: I32) -> Str {
+    if n == 0 {
+        return "i:0"
+    }
+    var neg: Bool = false
+    var m: I32 = n
+    if m < 0 {
+        neg = true
+        m = -m
+    }
+    var digits: Str = ""
+    while m > 0 {
+        digits = char_str(48 + m % 10) + digits
+        m = m / 10
+    }
+    if neg {
+        return "i:-" + digits
+    }
+    return "i:" + digits
+}
+
+fn bxv_truth(v: Str) -> Bool {
+    if bxv_istag(v) {
+        if byte_at(v, 0) == 98 {
+            return byte_at(v, 2) == 49
+        }
+        return bxv_iv(v) != 0
+    }
+    return v != ""
+}
+
+fn bxv_show(v: Str) -> Str {
+    if bxv_istag(v) {
+        if byte_at(v, 0) == 98 {
+            if byte_at(v, 2) == 49 {
+                return "true"
+            }
+            return "false"
+        }
+        return byte_slice(v, 2, v.len)
+    }
+    return v
+}
+
+fn bxv_ws(e: Str, cur: Atomic[I32]) -> I32 {
+    while cur.load() < e.len {
+        var b: I32 = byte_at(e, cur.load())
+        if b == 32 || b == 9 || b == 10 || b == 13 {
+            cur.store(cur.load() + 1)
+        } else {
+            return 0
+        }
+    }
+    return 0
+}
+
+// 路径求值:名通道询问;bare 回答 = 串值(s: 不打标,原样即串);
+// 尾 .len 后缀对串回答取字节长(对 i:/b: 带型回答不适用,原样返回)
+fn bxv_path(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var start: I32 = cur.load()
+    while cur.load() < e.len {
+        var b: I32 = byte_at(e, cur.load())
+        if b == 46 || b == 95 || (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) {
+            cur.store(cur.load() + 1)
+        } else {
+            break
+        }
+    }
+    var path: Str = byte_slice(e, start, cur.load())
+    var ans: Str = rt_bind_text(bind, path)
+    if bxv_istag(ans) {
+        return ans
+    }
+    var pl: I32 = path.len
+    if pl > 4 {
+        if byte_slice(path, pl - 4, pl) == ".len" {
+            var base: Str = byte_slice(path, 0, pl - 4)
+            if gt_slot_simple(base) {
+                var bans: Str = rt_bind_text(bind, base)
+                if !bxv_istag(bans) {
+                    return bxv_tagi(bans.len)
+                }
+            }
+        }
+    }
+    return ans
+}
+
+fn bxv_primary(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    bxv_ws(e, cur)
+    if cur.load() >= e.len {
+        return ""
+    }
+    var b: I32 = byte_at(e, cur.load())
+    if b == 40 {
+        cur.store(cur.load() + 1)
+        var v: Str = bxv_cmp(e, cur, bind)
+        bxv_ws(e, cur)
+        if cur.load() < e.len {
+            if byte_at(e, cur.load()) == 41 {
+                cur.store(cur.load() + 1)
+            }
+        }
+        return v
+    }
+    if b == 34 {
+        cur.store(cur.load() + 1)
+        var s: Str = ""
+        while cur.load() < e.len {
+            var c: I32 = byte_at(e, cur.load())
+            cur.store(cur.load() + 1)
+            if c == 92 {
+                if cur.load() < e.len {
+                    s = s + byte_slice(e, cur.load(), cur.load() + 1)
+                    cur.store(cur.load() + 1)
+                }
+            } else {
+                if c == 34 {
+                    break
+                } else {
+                    s = s + byte_slice(e, cur.load() - 1, cur.load())
+                }
+            }
+        }
+        return s
+    }
+    if b >= 48 {
+        if b <= 57 {
+            var start: I32 = cur.load()
+            while cur.load() < e.len {
+                var d: I32 = byte_at(e, cur.load())
+                if d < 48 || d > 57 {
+                    break
+                }
+                cur.store(cur.load() + 1)
+            }
+            return bxv_tagi(gs2i(byte_slice(e, start, cur.load())))
+        }
+    }
+    if (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 {
+        return bxv_path(e, cur, bind)
+    }
+    panic("gui 表达式求值:非法记号 " + byte_slice(e, cur.load(), cur.load() + 1))
+    return ""
+}
+
+fn bxv_unary(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    bxv_ws(e, cur)
+    if cur.load() < e.len {
+        if byte_at(e, cur.load()) == 45 {
+            cur.store(cur.load() + 1)
+            var v: Str = bxv_unary(e, cur, bind)
+            if bxv_istag(v) {
+                if byte_at(v, 0) == 105 {
+                    return bxv_tagi(-bxv_iv(v))
+                }
+            }
+            panic("gui 表达式求值:负号仅适用整数")
+        }
+    }
+    return bxv_primary(e, cur, bind)
+}
+
+fn bxv_mul(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var l: Str = bxv_unary(e, cur, bind)
+    while true {
+        bxv_ws(e, cur)
+        if cur.load() >= e.len {
+            return l
+        }
+        var op: I32 = byte_at(e, cur.load())
+        if op != 42 && op != 47 && op != 37 {
+            return l
+        }
+        cur.store(cur.load() + 1)
+        var r: Str = bxv_unary(e, cur, bind)
+        if op == 42 {
+            l = bxv_tagi(bxv_iv(l) * bxv_iv(r))
+        } else {
+            if op == 47 {
+                l = bxv_tagi(bxv_iv(l) / bxv_iv(r))
+            } else {
+                l = bxv_tagi(bxv_iv(l) % bxv_iv(r))
+            }
+        }
+    }
+    return l
+}
+
+fn bxv_add(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var l: Str = bxv_mul(e, cur, bind)
+    while true {
+        bxv_ws(e, cur)
+        if cur.load() >= e.len {
+            return l
+        }
+        var op: I32 = byte_at(e, cur.load())
+        if op != 43 && op != 45 {
+            return l
+        }
+        cur.store(cur.load() + 1)
+        var r: Str = bxv_mul(e, cur, bind)
+        var lstr: Bool = !bxv_istag(l)
+        var rstr: Bool = !bxv_istag(r)
+        if op == 43 {
+            if lstr || rstr {
+                l = bxv_show(l) + bxv_show(r)
+            } else {
+                l = bxv_tagi(bxv_iv(l) + bxv_iv(r))
+            }
+        } else {
+            if lstr || rstr {
+                panic("gui 表达式求值:串不可减")
+            }
+            l = bxv_tagi(bxv_iv(l) - bxv_iv(r))
+        }
+    }
+    return l
+}
+
+fn bxv_cmp(e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+    var l: Str = bxv_add(e, cur, bind)
+    bxv_ws(e, cur)
+    if cur.load() >= e.len {
+        return l
+    }
+    var op: Str = ""
+    var b0: I32 = byte_at(e, cur.load())
+    if b0 == 61 || b0 == 33 || b0 == 60 || b0 == 62 {
+        if cur.load() + 1 < e.len {
+            if byte_at(e, cur.load() + 1) == 61 {
+                op = byte_slice(e, cur.load(), cur.load() + 2)
+                cur.store(cur.load() + 2)
+            } else {
+                if b0 == 60 || b0 == 62 {
+                    op = byte_slice(e, cur.load(), cur.load() + 1)
+                    cur.store(cur.load() + 1)
+                } else {
+                    return l
+                }
+            }
+        } else {
+            return l
+        }
+    } else {
+        return l
+    }
+    var r: Str = bxv_add(e, cur, bind)
+    var res: Bool = false
+    var numeric: Bool = bxv_istag(l) && bxv_istag(r)
+    if op == "==" {
+        if numeric {
+            res = bxv_iv(l) == bxv_iv(r)
+        } else {
+            res = bxv_show(l) == bxv_show(r)
+        }
+    } else {
+        if op == "!=" {
+            if numeric {
+                res = bxv_iv(l) != bxv_iv(r)
+            } else {
+                res = bxv_show(l) != bxv_show(r)
+            }
+        } else {
+            var a: I32 = 0
+            var b2: I32 = 0
+            if numeric {
+                a = bxv_iv(l)
+                b2 = bxv_iv(r)
+            } else {
+                panic("gui 表达式求值:大小比较仅适用整数")
+            }
+            if op == "<" {
+                res = a < b2
+            } else {
+                if op == "<=" {
+                    res = a <= b2
+                } else {
+                    if op == ">" {
+                        res = a > b2
+                    } else {
+                        res = a >= b2
+                    }
+                }
+            }
+        }
+    }
+    if res {
+        return "b:1"
+    }
+    return "b:0"
+}
+
+fn bxv_eval(e: Str, bind: fn(List[Str]) -> Void) -> Str {
+    var cur = Atomic[I32](0)
+    var v: Str = bxv_cmp(e, cur, bind)
+    return v
+}
+
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32) -> I32 {
-    // SL-8a:非简单形槽(含运算符的表达式)待 8b 求值器——响亮 panic 不静默空渲染
-    // (nflag/nbid 仅非空时判;npre 复用为叶文本/占位符,只在 each 分支按列表名判)
+    // when 条件:简单旗名走通道询问;表达式槽(SL-8b)求值取真值
     if t.nflag[id] != "" {
-        if !gt_slot_simple(t.nflag[id]) {
-            panic("gui 绑定表达式解释求值待 SL-8b cond: " + t.nflag[id])
+        var fv: Str = "0"
+        if gt_slot_simple(t.nflag[id]) {
+            fv = rt_bind_text(bind, "when:" + t.nflag[id])
+        } else {
+            if bxv_truth(bxv_eval(t.nflag[id], bind)) {
+                fv = "1"
+            }
         }
-    }
-    if t.nbid[id] != "" {
-        if !gt_slot_simple(t.nbid[id]) {
-            panic("gui 绑定表达式解释求值待 SL-8b bind: " + t.nbid[id])
-        }
-    }
-    // when 条件:旗名经 bind 通道询问("when:名" → push "1"/"0");假 = 整子树跳过
-    if t.nflag[id] != "" {
-        var fv: Str = rt_bind_text(bind, "when:" + t.nflag[id])
         if fv != "1" {
             return 0
         }
@@ -986,7 +1341,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     // each 活动项:项文本直取(不经绑定通道)
                     txt = txt + item + t.npost[id]
                 } else {
-                    txt = txt + rt_bind_text(bind, t.nbid[id]) + t.npost[id]
+                    if gt_slot_simple(t.nbid[id]) {
+                        txt = txt + rt_bind_text(bind, t.nbid[id]) + t.npost[id]
+                    } else {
+                        // SL-8b:表达式槽求值(每帧活值)
+                        txt = txt + bxv_show(bxv_eval(t.nbid[id], bind)) + t.npost[id]
+                    }
                 }
             } else {
                 txt = txt + t.npost[id]

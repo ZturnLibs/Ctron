@@ -1129,7 +1129,7 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
     }
     gui_sk_word(tks, cur)
     if is_leaf {
-        // 叶文本三段:词流(单空格拼接)至 { → bind 名 → 词流至 <
+        // 叶文本三段:词流(单空格拼接)至 { → 表达式槽(SL-8a 平衡捕获) → 词流至 <
         var p0: Str = ""
         var b: Str = ""
         var p1: Str = ""
@@ -1140,7 +1140,8 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
                 var tb: I32 = byte_at(tk, 0)
                 if tb == 123 {
                     cur.store(cur.load() + 1)
-                    phase = 1
+                    b = gui_bx_expr(tks, cur)
+                    phase = 2
                     continue
                 }
                 if tb == 60 {
@@ -1153,25 +1154,10 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
                 }
                 p0 = p0 + tk
             } else {
-                if phase == 1 {
-                    b = tk
-                    phase = 3
-                } else {
-                    if phase == 3 {
-                        // bind 闭括号 }:镜像 gt_leaf_text glit(125)——消费不入 post
-                        phase = 2
-                        if tk.len == 1 {
-                            if byte_at(tk, 0) == 125 {
-                                cur.store(cur.load() + 1)
-                                continue
-                            }
-                        }
-                    }
-                    if p1 != "" {
-                        p1 = p1 + " "
-                    }
-                    p1 = p1 + tk
+                if p1 != "" {
+                    p1 = p1 + " "
                 }
+                p1 = p1 + tk
             }
             cur.store(cur.load() + 1)
         }
