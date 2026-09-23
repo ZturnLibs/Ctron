@@ -564,6 +564,16 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   在飞 ct_impl_method_fns 再加回为半接线态:零调用方,四夹具探针与干净基线
   行为零差。mw_chain 复核:interp E2020 已在案;emit 臂现测出 C 后 cc 缺
   `t_frm_mcode_buf` 声明——同族第二实例(门面再导出形态),修复须一并覆盖。
+- **销账(2026-09-23 深夜,09c22a7)**:根因非备案原猜的"emitter 侧 extern 性
+  丢失",而是 parse_pkg 的 done-skip 把消费方直连 use 的请求**整组吞掉**——门面
+  先行合并同一模块时 keep 集不同,请求符号缺失;ctron-emit 不跑语义,缺失名
+  放行成 `t_` 调用且无声明。修复=done 模块顶层重入补并(缺失符号照常并,已在
+  视图者 dup 处静默跳过;递归层保持旧 skip——补进中层 mf 反而消费级撞名,smoke
+  3n 实证;E5020 栈检豁免已 done 者,栈系单调不弹)。修后 clock_sanity extern
+  声明+裸调齐、mw_chain 双臂绿;tests/net **14/14**、tests/http 97/11(余额全为
+  在册解释器债/e2e);smoke 149/1(ctecho 冒烟红系 HEAD 既有,基线差分实证)、
+  自举 suite 73/73。在制 trans_emit.ct ct_impl_method_fns 本修复不需要(仍零
+  调用方,留 peer 泳道处置);在制 lex.ct or2 断链修复已先落(4f8e545)。
 
 ### emit 中途崩:ct_expr:StructLit 非值类型(2026-09-23 晚实证,net 双夹具 emit 红)
 
@@ -585,3 +595,14 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   frm_mw_a_csrf、client/sse_ws e2e、http/frm auth inline)与 mw_chain interp
   E2020 同为已落库既有债(1218cb0 复现,非 55acb90 所引),归 server/frm
   泳道账,暂不入本文档两臂口径。
+- **销账更正(2026-09-23 深夜,e96d5f6)**:上节"已落库断裂"归因有误——真因
+  并非任何提交损坏了发射器,而是①夹具违反 P1b 显式请求契约(tcp_echo/
+  coro_hybrid 系全模块合并时代旧件,P1b 收紧审计漏网:调 ~20 门面函数、构造
+  4 种跨包 struct,却仅请求 `Net_probe`);②trans 侧 `ct_is_struct` 查无即
+  panic(未合成 E 诊断;sem 亦未拦未合并类型命名,直达 trans 才崩——sem/trans
+  一致性另立待办)。修复=夹具补全 use 清单+net.ct TcpListener/TcpStream/
+  UdpSock、bind.ct Box64 开 pub(SL-0.7,gui.ct GuiTree 先例),emit 崩不复现。
+  mw_chain 同族=旧「router 符号经 middleware 单命名空间合并贯穿」设计对 P1b
+  失效(非贯穿符号必饿),夹具按契约直 use router 双符号即绿——原「严格树
+  E5020 规避」戒律系 P1b 前旧形,done 补并后直 use 无环(router 不依赖
+  middleware)。
