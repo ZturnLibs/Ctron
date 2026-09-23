@@ -1,7 +1,7 @@
 #!/bin/sh
 # tests/gui/s19_input_d/run.sh —— SL-5:input 域包端到端(std.gui test 驱动;headless 全自动)
 # 与 s12_input 同验收、新形态:s12 走裸 extern 桥 + #[trusted] 样板,本夹具走 L1 域包
-# (use std.gui.{test,...})——用户面收敛后的目标形态。d_type_char 注入 h/i →
+# (use gui.{test,...})——用户面收敛后的目标形态。d_type_char 注入 h/i →
 # d_expect_text "hi";backspace(259)→ "h";空点击钩子 |name| { } 覆盖 ⑰ 空体闭包。
 set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

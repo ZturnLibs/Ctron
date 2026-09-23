@@ -133,7 +133,7 @@ if [ -x "$EMIT" ]; then
 fi
 
 # ── P4-C 行为夹具:client_fixtures(客户端)与 sse_ws(SSE/WS)──
-# 臂分工(结构性登记,enc_fixtures x_ 同口径):凡 use std.http.client 的夹具,
+# 臂分工(结构性登记,enc_fixtures x_ 同口径):凡 use http.client 的夹具,
 # 其 use 图必带 net/bind.ct —— 解释口径 W8052(rc=1)且垫片无绑定 → x_ 前缀
 # = emit 专臂,cc 链 ctron_net.c(net 垫片;tests/net run.sh 同款)。双 RT 矩阵:
 # 默认(裸线程)+ CTRON_RT=coro(补链 ctron_rt.c;服务端协程停车于 net 垫片)

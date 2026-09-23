@@ -10,7 +10,7 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-# Task 5 起夹具 use std.net.*:显式指路源码树 std(gui_counter/run.sh 同款)
+# Task 5 起夹具 use net.*:显式指路源码树 std(gui_counter/run.sh 同款)
 export CTRON_STDPATH="$ROOT/std"
 if [ ! -x "$EMIT" ]; then echo "net/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
