@@ -14,7 +14,7 @@
 | T1 | `set.ct` | Set[T]:函数式不可变集合 | 无 | 0.1 |
 | T1 | `fmap.ct` | FMap[V]:Str 键哈希映射(djb2 mod 质数,开放寻址) | 无 | 0.1 |
 | T1 | `fs.ct` | 文件系统便利层:read_or/exists 等(内建 fs_* 之上;r* 前缀) | 无(编译器内建) | 0.1 |
-| T1 | `json.ct` | JSON 解析(路径展平 DOM)+序列化转义(RFC 8259 ABNF 严格) | 无 | 0.1 |
+| T1 | `json.ct` | JSON 解析(路径展平 DOM)+序列化转义(RFC 8259 ABNF 严格;写出半边 write_json/jw_* 于 2026-09-23 自 json_write.ct 并入) | 无 | 0.1 |
 | T1 | `path.ct` | 路径纯函数:join/dir/base/ext/normalize(Unix `/` 口径) | 无 | 0.2 |
 | T1 | `enc.ct` | 编码:hex/base64(RFC 4648)/percent;解码输出限可打印 ASCII(C8) | 无 | 0.2 |
 | T1 | `hash.ct` | 确定性 32 位哈希:djb2/fnv1a32(算法钉死;crc32 待 v0.3) | 无 | 0.2 |
@@ -28,7 +28,6 @@
 | T1 | `crypto.ct` | 密码学原语(纯 Ctron):SHA-256(FIPS 180-4 向量锚;HMAC/PBKDF2 待续,§12 前置) | 无 | 0.5 |
 | T1 | `math.ct` | 数学助手(整数域):clamp/iabs/pow2 系 + v0.4/v0.5 扩张(max/min/clamp64/64 位界端 + sat_* 全集/sat_abs/abs_diff/div_ceil/div_floor) | 无 | 0.3 |
 | T1 | `uuid.ct` | RFC 9562 UUID(v4 真熵 / v7 unix_ms 前缀;§12 纯 Ctron 驱动前置) | 无 | 0.8 |
-| T1 | `json_write.ct` | JSON 写出与成员枚举(与 json.ct 配对的写出半边) | 无 | —(并入 json 待裁决,见「分层与准入」) |
 
 ### 域包(T2/T3,2026-09-23 入册)
 
@@ -91,8 +90,8 @@ CTCL 注册表包形态外置):
 迁出,gui 第一个;②API freeze(1.0)→ T1 冻结,T2 只冻结已稳面(§11 v0.8.1
 先例),T3 明示不在范围;③平台矩阵展开(Windows/无显示 CI)→ T3 构建税自负。
 
-**悬案**:json_write 并入 json(09-21 spec §8.3.1)维持待裁决;域目录形态
-已随宪章 v2 转正(组织宪章 #1)。
+**悬案清账**:json_write 已并入 json(2026-09-23,宪章 v2 一域一模块裁决;C17 规避
+解除——合并面 43 decls 宿主 test 10/10 复验绿);域目录形态已随宪章 v2 转正(组织宪章 #1)。
 
 ## 分发与同步
 

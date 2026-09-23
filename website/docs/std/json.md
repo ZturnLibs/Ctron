@@ -2,7 +2,7 @@
 <!-- Skeleton: hand-write the module description below; regenerating preserves this page unless --force. -->
 # std.json
 
-JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]` entries queried via `qtag`/`qval`; `esc`/`junesc` handle JSON string escaping.
+JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]` entries queried via `qtag`/`qval`; `esc`/`junesc` handle JSON string escaping. The write half (former `std.json_write`, merged 2026-09-23) replays entries back to JSON text via `write_json`.
 
 ## pub fn
 
@@ -13,3 +13,8 @@ JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]`
 | `parse(s: Str)` | `Result[List[List[Str]], Str]` | TODO |
 | `qtag(entries: List[List[Str]], path: Str)` | `Str` | TODO |
 | `qval(entries: List[List[Str]], path: Str)` | `Str` | TODO |
+| `wesc(s: Str)` | `Str` | TODO |
+| `jw_depth(path: Str)` | `I32` | TODO |
+| `jw_keys(entries: List[List[Str]], path: Str)` | `List[Str]` | TODO |
+| `write_json(entries: List[List[Str]])` | `Option[Str]` | TODO |
+| `jw_ent(path: Str, tag: Str, val: Str)` | `List[Str]` | TODO |
