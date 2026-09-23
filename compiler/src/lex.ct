@@ -216,7 +216,8 @@ fn scan5(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
                                 }
                                 if j < n && nd > 0 && byte_at(src, j) == 125 {
                                     j += 1
-                                    if or2(ovf, or2(cp > 1114111, or2(cp >= 55296 && cp <= 57343))) { err = diag_text0("E1001.u.illegal") }
+                                    var ill = ovf || cp > 1114111 || (cp >= 55296 && cp <= 57343)
+                                    if ill { err = diag_text0("E1001.u.illegal") }
                                     i = j
                                 } else {
                                     err = diag_text0("E1001.u.nohex")
