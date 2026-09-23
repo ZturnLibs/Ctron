@@ -1,5 +1,7 @@
 use std.a.{new}
-use std.b.{hello}
+use std.b.{new, hello}
+// P1b 选择性合并(spec §4.2)后,未请求的 b.new 不再搭车合并——E5030 拦截面改为
+// 显式请求同名符号(b.new 裸导入)触发;语义等价:撞名仍拦截,静默遮蔽不复活
 
 fn main() -> I32 {
     println(new().to_string())
