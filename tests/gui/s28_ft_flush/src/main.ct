@@ -1,0 +1,64 @@
+// tests/gui/s28_ft_flush —— M3 合流第一验:域库 ft 实测测量 + 字符串纹理 LRU 缓存(headless)
+// 断言口径:①实测宽 ≠ 0.55 启发式;②miss 位图非空(ft_probe_nonzero 复用)+ 纹理宽 ≥ 实测宽;
+// ③同串同槽命中、异串异槽、槽宽为正。④布局 TEXT 盒宽 == 实测(证 ctron_measure 换桥)随
+// ctron_gui.c 合流片加入。无 CJK 字体即红,与 s8 同口径(阶梯隐含 CJK 字体前提)。
+
+#[trusted]
+extern "c" fn gui_ft_measure(s: Str, px: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_ft_text_str(s: Str, px: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_ft_text_w(slot: I32) -> I32
+
+#[trusted]
+extern "c" fn ft_last_w() -> I32
+
+#[trusted]
+extern "c" fn ft_probe_nonzero() -> I32
+
+fn main() -> I32 {
+    // ① 实测:宽为正,且 ≠ 0.55 启发式(12 字节 CJK 串)
+    var m: I32 = gui_ft_measure("中文测试", 24)
+    var heur: I32 = 12 * 24 * 55 / 100
+    if m <= 0 {
+        println("s28: 实测宽度非正(字体未加载?)")
+        return 1
+    }
+    if m == heur {
+        println("s28: 实测宽撞上 0.55 启发式(桥未接管)")
+        return 1
+    }
+    // ② miss 渲染:位图非空,纹理宽 ≥ 实测宽(pen+8 填充)
+    var s1: I32 = gui_ft_text_str("中文测试", 24)
+    if s1 < 0 {
+        println("s28: 首渲槽位异常")
+        return 1
+    }
+    if ft_probe_nonzero() <= 0 {
+        println("s28: 位图为空")
+        return 1
+    }
+    if ft_last_w() < m {
+        println("s28: 纹理宽小于实测宽")
+        return 1
+    }
+    // ③ 缓存:同串同槽;异串异槽;槽宽为正
+    var s2: I32 = gui_ft_text_str("中文测试", 24)
+    if s1 != s2 {
+        println("s28: 缓存未命中(同串不同槽)")
+        return 1
+    }
+    var s3: I32 = gui_ft_text_str("另一串文本", 24)
+    if s3 == s1 {
+        println("s28: 不同串同槽(缓存键错)")
+        return 1
+    }
+    if gui_ft_text_w(s3) <= 0 {
+        println("s28: 槽宽非正")
+        return 1
+    }
+    println("s28 ft_flush: 实测测量+纹理缓存全绿(headless)")
+    return 0
+}

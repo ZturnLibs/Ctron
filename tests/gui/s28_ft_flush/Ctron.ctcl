@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "gui_s28_ft_flush"
+    version = "0.1.0"
+}

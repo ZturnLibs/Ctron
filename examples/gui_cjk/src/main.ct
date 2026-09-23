@@ -33,7 +33,7 @@ extern "c" fn BeginDrawing() -> Void
 extern "c" fn EndDrawing() -> Void
 
 #[trusted]
-extern "c" fn gui_clear(r: I32, g: I32, b: I32, a: I32) -> I32
+extern "c" fn ft_gui_clear(r: I32, g: I32, b: I32, a: I32) -> I32
 
 #[trusted]
 extern "c" fn DrawRectangleRounded(rect: Rectangle, round: F32, seg: I32, color: Color) -> Void
@@ -127,7 +127,7 @@ fn main() -> I32 {
             dirty = false
         }
         BeginDrawing()
-        gui_clear(24, 24, 32, 255)
+        ft_gui_clear(24, 24, 32, 255)
         ft_tex_draw(0, 16, 16)
         gui_rect(16, 64, 100, 40, 15, 37, 99, 235)
         ft_tex_draw(1, 16, 112)
