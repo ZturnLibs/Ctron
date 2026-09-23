@@ -11,6 +11,8 @@
 - `use 包名.模块.符号;` 显式具名导入;**禁止通配导入**(`use m.*`)与**禁止重导出**(模块不得把导入的符号再 `pub`)。
 - 组导入:`use net.{TcpListener, Request}`(可尾逗号)。
 - 路径一律**从包根起**(Go 式全限定),无相对导入、无 `super/self` 路径模块。`self` 仅用于 impl 内类型指代(§1.7)。
+- **命名空间(2026-09-23)**:`std.*` = 标准库核心(`std/`,文件与目录模块);**域包挂顶层命名空间**——`gui` / `net` / `http` / `tls` / `db` / `ffi`(物理为仓库根与 `std/` 平级的域目录,安装为 `lib/ctron/<域>`)。`use gui.{run_kb}` 解析域根门面 `gui.ct`,`use net.bind.{...}` 解析 `net/bind.ct`——段映射与 `std.*` 分支逐段镜像。
+- **非 std 首段解析链**:①目录相对(项目本地包,既有语义)→ ②库根(= std 根父目录;新增域根)→ ③`deps/<包>.ctart` 工件回落(闭源分发,S2a)。域未命中保持静默,最终 E2020 兜底。规范锚:`docs/superpowers/specs/2026-09-23-domain-namespace-design.md`。
 
 ## 2.3 可见性
 
