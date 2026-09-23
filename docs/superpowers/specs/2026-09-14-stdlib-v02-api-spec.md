@@ -56,7 +56,8 @@
 ## 1. 模块规范
 
 通用:每模块首行文档头(宪章 5)+ `since: std-0.2 stability: experimental`;
-一文件一模块、模块独立不互 use(宪章 1/2);新导出函数一律带模块前缀消歧
+一文件一模块、模块独立不互 use(宪章 1/2;本规范所辖均为 T1 核心,域包分档口径见
+std/README「分层与准入」宪章 v2);新导出函数一律带模块前缀消歧
 (v0.2 前缀注册表:path_* / hex_ b64_ pct_ / djb2 fnv1a32 crc32 / rng_* /
 parse_ format_ / bit_* / leap days_ date_ weekday_ / csv_* / cp_* / opt_* /
 heap_*;sort/opt 既有文件扩张沿用原名族)。
