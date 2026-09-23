@@ -19,8 +19,8 @@ case "$(uname)" in
     *) echo "s26: unsupported platform" >&2; exit 1 ;;
 esac
 
-cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/s26.bin" \
-   "$T/s26.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$T/s26.bin" \
+   "$T/s26.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 cd "$DIR"
 cp app.ctml "$T/app.bak"
@@ -70,7 +70,7 @@ done
 
 # 状态保留:重载后最新探针行 = n=7(闭包 Box 状态跨重载存活)
 sleep 0.3
-LAST=$(tail -1 "$T/out.txt")
+LAST=$(grep "S26P" "$T/out.txt" | tail -1)
 kill $BIN 2>/dev/null || true
 wait $BIN 2>/dev/null || true
 case "$LAST" in

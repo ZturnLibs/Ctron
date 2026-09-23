@@ -69,10 +69,29 @@ static void clay_err(Clay_ErrorData data) {
     abort();
 }
 
+// ft_shim.c(M3 合流):实测测量 + 字符串纹理缓存;链接面须含 ft_shim.c + libfreetype
+extern int gui_ft_measure_n(const char* s, int len, int px);
+extern int gui_ft_text(const char* s, int len, int px);
+extern int gui_ft_text_draw(int slot, int x, int y, int r, int g, int b, int a);
+
+// 测量:FreeType 实测接管;CTRON_GUI_FT_OFF=1 → 0.55 启发式(坐标黄金夹具钉值,跨平台稳定);
+// 字体缺失(ft_shim 侧 g_ft_failed)同样回启发式——无 CJK 字体环境行为与旧版一致
+static int gui_ft_off = -1;
+
 static Clay_Dimensions ctron_measure(Clay_StringSlice text, Clay_TextElementConfig *cfg, void *ud) {
     (void)ud;
-    return (Clay_Dimensions){ (float)text.length * (float)cfg->fontSize * 0.55f,
-                              (float)cfg->fontSize * 1.25f };
+    if (gui_ft_off < 0) { gui_ft_off = getenv("CTRON_GUI_FT_OFF") ? 1 : 0; }
+    float wf = -1.0f;
+    if (!gui_ft_off) {
+        int wi = gui_ft_measure_n(text.chars, (int)text.length, (int)cfg->fontSize);
+        if (wi >= 0) { wf = (float)wi; }
+    }
+    if (wf < 0.0f) {
+        // 启发式回退保持旧式纯浮点(length×size×0.55f 不取整)——s17/s21 等黄金口径按
+        // 「×100 恰为 bytes×size×55」断言,(int) 截断即红
+        wf = (float)text.length * (float)cfg->fontSize * 0.55f;
+    }
+    return (Clay_Dimensions){ wf, (float)cfg->fontSize * 1.25f };
 }
 
 int gui_clay_init(int w, int h) {
@@ -219,10 +238,17 @@ void ctron_gui_flush(void) {
             case CLAY_RENDER_COMMAND_TYPE_TEXT: {
                 Clay_StringSlice s = c->renderData.text.stringContents;
                 Clay_Color col = c->renderData.text.textColor;
-                DrawTextEx(GetFontDefault(), s.chars, (Vector2){ b.x, b.y },
-                           (float)c->renderData.text.fontSize, 0.0f,
-                           (Color){ (unsigned char)col.r, (unsigned char)col.g,
-                                    (unsigned char)col.b, (unsigned char)col.a });
+                int slot = gui_ft_text(s.chars, (int)s.length, (int)c->renderData.text.fontSize);
+                if (slot >= 0) {
+                    gui_ft_text_draw(slot, (int)b.x, (int)b.y,
+                                     (int)col.r, (int)col.g, (int)col.b, (int)col.a);
+                } else {
+                    // 兜底:无 CJK 字体环境回默认位图字体(ASCII 界面仍可用,即旧观感)
+                    DrawTextEx(GetFontDefault(), s.chars, (Vector2){ b.x, b.y },
+                               (float)c->renderData.text.fontSize, 0.0f,
+                               (Color){ (unsigned char)col.r, (unsigned char)col.g,
+                                        (unsigned char)col.b, (unsigned char)col.a });
+                }
                 break;
             }
             default: break;

@@ -1,7 +1,7 @@
 // tests/gui/s28_ft_flush —— M3 合流第一验:域库 ft 实测测量 + 字符串纹理 LRU 缓存(headless)
 // 断言口径:①实测宽 ≠ 0.55 启发式;②miss 位图非空(ft_probe_nonzero 复用)+ 纹理宽 ≥ 实测宽;
-// ③同串同槽命中、异串异槽、槽宽为正。④布局 TEXT 盒宽 == 实测(证 ctron_measure 换桥)随
-// ctron_gui.c 合流片加入。无 CJK 字体即红,与 s8 同口径(阶梯隐含 CJK 字体前提)。
+// ③同串同槽命中、异串异槽、槽宽为正;④布局 TEXT 盒宽 == 实测(证 ctron_measure 已换桥)。
+// 无 CJK 字体即红,与 s8 同口径(阶梯隐含 CJK 字体前提)。
 
 #[trusted]
 extern "c" fn gui_ft_measure(s: Str, px: I32) -> I32
@@ -17,6 +17,38 @@ extern "c" fn ft_last_w() -> I32
 
 #[trusted]
 extern "c" fn ft_probe_nonzero() -> I32
+
+#[trusted]
+extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_begin_layout(w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_open() -> I32
+
+#[trusted]
+extern "c" fn gui_close() -> I32
+
+#[trusted]
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32,
+                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_end_layout() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_count() -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_type(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_w100(i: I32) -> I32
 
 fn main() -> I32 {
     // ① 实测:宽为正,且 ≠ 0.55 启发式(12 字节 CJK 串)
@@ -59,6 +91,31 @@ fn main() -> I32 {
         println("s28: 槽宽非正")
         return 1
     }
-    println("s28 ft_flush: 实测测量+纹理缓存全绿(headless)")
+    // ④ 布局换桥:TEXT 命令盒宽 ×100 == 实测 ×100
+    gui_clay_init(320, 200)
+    gui_begin_layout(320, 200)
+    gui_open()
+    gui_cfg(0, 8, 16, 16, 0, 0, 2, 320, 2, 200, 0, 0, 0, 0)
+    gui_text("中文测试", 24, 235, 235, 240, 255)
+    gui_close()
+    var n: I32 = gui_end_layout()
+    if n < 1 {
+        println("s28: 布局无命令")
+        return 1
+    }
+    var i: I32 = 0
+    var found: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            assert_eq(gui_cmd_w100(i), m * 100)
+            found = 1
+        }
+        i += 1
+    }
+    if found == 0 {
+        println("s28: 无 TEXT 命令")
+        return 1
+    }
+    println("s28 ft_flush: 实测测量+纹理缓存+布局换桥全绿(headless)")
     return 0
 }

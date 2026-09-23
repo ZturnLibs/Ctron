@@ -1,15 +1,10 @@
 // tests/gui/s16_measure —— M3:FreeType 实测宽度驱动 Clay 布局(gui 0.55 桩 → 真实字形 advance)
 // 断言口径:TEXT 命令盒宽 == gui_ft_measure 实测(×100 整数),且 ≠ 0.55 启发式——证桥已接管
+// 上游已合并(M3 合流片):测量桥=域库 ft_shim(gui_ft_measure 直连),fixture 本地 hook 已删
 // shim 码表沿 s3:dir 0=左右 1=上下;mode 0=fit 1=grow 2=fixed;命令 1=TEXT 2=RECTANGLE
 
 #[trusted]
 extern "c" fn gui_clay_init(w: I32, h: I32) -> I32
-
-#[trusted]
-extern "c" fn gui_measure_install() -> I32
-
-#[trusted]
-extern "c" fn gui_measure_hook(px: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_ft_measure(s: Str, size: I32) -> I32
@@ -67,8 +62,6 @@ fn check_text(n: I32, want: Str, size: I32) -> I32 {
 
 fn main() -> I32 {
     gui_clay_init(320, 200)
-    assert_eq(gui_measure_install(), 0)
-    assert_eq(gui_measure_hook(24), 0)
     gui_begin_layout(320, 200)
     gui_open()
     gui_cfg(1, 8, 16, 16, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0)          // 根:纵向 grow

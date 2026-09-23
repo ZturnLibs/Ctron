@@ -20,7 +20,7 @@ esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" \
    -o "$T/s16.bin" \
-   "$T/s16.c" "$ROOT/gui/c_src/ctron_gui.c" "$DIR"/c_src/measure_hook.c \
+   "$T/s16.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" \
    "$ROOT/vendor/gui/build/libraylib.a" "$ROOT/vendor/gui/build/libfreetype.a" $FW
 "$T/s16.bin" run "$DIR/src/main.ct"
 echo "s16_measure: 测量桥全绿(headless)"

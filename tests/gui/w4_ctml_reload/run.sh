@@ -18,9 +18,9 @@ case "$(uname)" in
     *) echo "w4_ctml_reload: unsupported platform" >&2; exit 1 ;;
 esac
 
-cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" \
+cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" \
    -o "$T/w4r.bin" \
-   "$T/w4r.c" "$ROOT/gui/c_src/ctron_gui.c" "$DIR"/c_src/reload_util.c \
+   "$T/w4r.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$DIR"/c_src/reload_util.c \
    "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 echo "w4_ctml_reload: 构建+链接 OK"

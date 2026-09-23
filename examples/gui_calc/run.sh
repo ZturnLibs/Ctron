@@ -14,8 +14,8 @@ sh "$ROOT/vendor/gui/build.sh" > /dev/null
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 build() {
     "$EMIT" run "$DIR/src/main.ct" > "$T/gui_calc.c"
-    cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -o "$T/gui_calc.bin" \
-       "$T/gui_calc.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/vendor/gui/build/libraylib.a" $FW
+    cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$T/gui_calc.bin" \
+       "$T/gui_calc.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 }
 
 case "$(uname)" in

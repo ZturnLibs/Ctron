@@ -16,10 +16,12 @@ case "$(uname)" in
     Linux)  FW="-lX11 -lGL -lm -lpthread -ldl" ;;
     *) echo "s17: unsupported platform" >&2; exit 1 ;;
 esac
+export CTRON_GUI_FT_OFF=1  # 坐标/黄金口径钉 0.55 启发式测量(M3 合流后默认 FT 实测;钉值跨平台稳定)
 
-cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/sheenbidi/Headers" \
+
+cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -I"$ROOT/vendor/gui/sheenbidi/Headers" \
    -o "$T/s17.bin" \
-   "$T/s17.c" "$ROOT/gui/c_src/ctron_gui.c" "$DIR"/c_src/sb_shim.c \
+   "$T/s17.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$DIR"/c_src/sb_shim.c \
    "$ROOT/vendor/gui/build/libraylib.a" "$ROOT/vendor/gui/build/libsheenbidi.a" $FW
 "$T/s17.bin" run "$DIR/src/main.ct"
 echo "s17_bidi_layout: 整合全绿(headless)"
