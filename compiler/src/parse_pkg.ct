@@ -542,6 +542,19 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         diag1(diags, "E2020.use.read", "", mpath)
                         return out
                     }
+                    // 前奏类文件缺失路径:带别名请求 = E2020.use.nat(spec §4.6)。
+                    // 交替对步长 2 对读;k13+1 防越界(空组已兜底为同名对,奇数长理论
+                    // 不可达但有兜底路径,守卫不越 P1a 交替对不变式)
+                    var k13: I32 = 0
+                    while k13 + 1 < syms.len {
+                        if syms[k13 + 1] != syms[k13] {
+                            // 变体码整键前缀 + 目录文案(sem_walk E1001@/W8901 手拼前缀同位;
+                            // modules 套件按 //@ fail 整键子串判定,diag_render 只出基础码)
+                            diags.push("E2020.use.nat: " + diag_text1("E2020.use.nat", syms[k13 + 1]))
+                            return out
+                        }
+                        k13 += 2
+                    }
                 }
             }
         }

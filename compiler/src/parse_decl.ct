@@ -436,15 +436,15 @@ fn p_kw(t: Str) -> Bool {
 fn p_use_alias(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str]) -> Str {
     var t = tok(toks, cur)
     if or2(t == "#EOF", t == "NL") {
-        pdiag(pdiags, lns, cols, cur, "E1001", "use 别名须为标识符")
+        pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.use.alias.ident"))
         return ""
     }
     if !is_al(byte_at(t, 0)) {
-        pdiag(pdiags, lns, cols, cur, "E1001", "use 别名须为标识符")
+        pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.use.alias.ident"))
         return ""
     }
     if p_kw(t) {
-        pdiag(pdiags, lns, cols, cur, "E1001", "use 别名须为标识符")
+        pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.use.alias.ident"))
         return ""
     }
     adv(cur)
@@ -485,7 +485,21 @@ fn p_use(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdi
                     if tok(toks, cur) == "as" {
                         adv(cur)
                         var al = p_use_alias(toks, cur, lns, cols, pdiags)
-                        if al == "" { syms.push(b2) } else { syms.push(al) }
+                        if al == "" {
+                            // 别名失败:cur 未推进(下一 token 任意),已报 E1001;补 (b2,b2)
+                            // 配对后交还循环 —— 尾守卫仅别名成功后检查,失败路径不二次报错
+                            syms.push(b2)
+                        } else {
+                            syms.push(al)
+                            // 链式 as 收口(终审 4):别名后仅容 , / } / NL / #EOF;其余
+                            // (含第二个 as)E1001 并消费该记号 —— 防其入下轮产出 (as,as)
+                            // 垃圾对。不补 push:(b2,al) 对已齐,再 push 即破交替对偶长不变式;
+                            // 消费后尾随符号按 (orig,orig) 缺省配对续走
+                            if tok(toks, cur) != "," && tok(toks, cur) != "}" && tok(toks, cur) != "NL" && tok(toks, cur) != "#EOF" {
+                                pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.use.alias.tail"))
+                                adv(cur)
+                            }
+                        }
                     } else {
                         syms.push(b2)
                     }

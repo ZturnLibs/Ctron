@@ -86,6 +86,9 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E2020.use.priv") { return "use import: symbol is not public (pub):%0" }
     if seq2(key, "E5030") { return "use import name collision:%0 (duplicates a merged module/entry; rename or consolidate imports)" }
     if seq2(key, "E5035") { return "use alias collision:%0 (alias conflicts with an existing name; pick another)" }
+    if seq2(key, "E2020.use.nat") { return "use alias on native/prelude symbol:%0 (not supported; import without alias)" }
+    if seq2(key, "E1001.use.alias.ident") { return "use alias must be an identifier" }
+    if seq2(key, "E1001.use.alias.tail") { return "expected , or } after use alias" }
     if seq2(key, "E2020.use.read") { return "use: module file unreadable:%0" }
     if seq2(key, "E3050.umove") { return "use-after-move (moved):arena handle %0" }
     if seq2(key, "E3040.own") { return "GC allocation inside an own block (allocation):%0" }
@@ -172,6 +175,9 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E2020.use.priv") { return "use 导入的符号未公开(pub):%0" }
     if seq2(key, "E5030") { return "use 导入同名 decl:%0(与已合并模块/入口同名;请重命名或收敛导入)" }
     if seq2(key, "E5035") { return "use 别名撞名:%0(别名与既有名冲突;请改别名)" }
+    if seq2(key, "E2020.use.nat") { return "use 前奏/native 符号不支持别名:%0(请去掉 as 别名导入)" }
+    if seq2(key, "E1001.use.alias.ident") { return "use 别名须为标识符" }
+    if seq2(key, "E1001.use.alias.tail") { return "use 别名后应为 , 或 }" }
     if seq2(key, "E2020.use.read") { return "use 模块文件不可读:%0" }
     if seq2(key, "E3050.umove") { return "use-after-move(moved):arena 句柄 %0" }
     if seq2(key, "E3040.own") { return "own 块内 GC 分配(allocation):%0" }
