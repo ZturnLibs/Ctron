@@ -1,0 +1,10 @@
+// gui expect: E8110 —— 8c-1:props 视图引用门——路径根未声明(须 prop/each 项)
+// 选择性合并现行契约的对偶:props 视图内绑定根越界即拒(modle 为根拼写错;
+// 字段段拼写属类型面,待 8c-2 props 类型门)
+view TodoApp(model: Model) {
+  <vbox class="root">
+    <label class="row">{modle.draft}</label>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }

@@ -15,6 +15,38 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     var name: Str = tok(toks, cur)
     adv(cur)
     nd.push(name)
+    // 8c-1:view props 形参表捕获(view Name(a: T, b: U) { … })——平衡圆括号
+    // 原文入节点尾槽(d[5];既有 d[4]=joined 索引消费者不动)。域包侧仅跳过。
+    var props: Str = ""
+    if cur.load() < toks.len {
+        var pt: Str = tok(toks, cur)
+        if pt.len == 1 {
+            if byte_at(pt, 0) == 40 {
+                adv(cur)
+                props = "( "
+                var pd: I32 = 1
+                while cur.load() < toks.len && pd > 0 {
+                    var t2: Str = tok(toks, cur)
+                    adv(cur)
+                    if t2.len == 1 {
+                        var b2: I32 = byte_at(t2, 0)
+                        if b2 == 40 {
+                            pd += 1
+                        } else {
+                            if b2 == 41 {
+                                pd -= 1
+                                if pd == 0 {
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    props = props + t2 + " "
+                }
+                props = props + ")"
+            }
+        }
+    }
     var joined: Str = name
     var depth: I32 = 0
     var toks_n: I32 = 1
@@ -59,6 +91,7 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     }
     nd.push(toks_n.to_string())
     nd.push(joined)
+    nd.push(props)
     return nd
 }
 
@@ -523,6 +556,74 @@ fn gui_ck_has_style(sn: List[Str], name: Str) -> Bool {
     return false
 }
 
+// 8c-1:表达式根标识符提取——每个 ident 路径的首段(点前);字符串字面量内跳过
+fn gui_bx_roots(e: Str, out: List[Str]) {
+    var i: I32 = 0
+    var instr: Bool = false
+    while i < e.len {
+        var b: I32 = byte_at(e, i)
+        if instr {
+            if b == 92 {
+                i += 1
+            } else {
+                if b == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if b == 34 {
+                instr = true
+            } else {
+                if (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 {
+                    var start: I32 = i
+                    while i < e.len {
+                        var c: I32 = byte_at(e, i)
+                        if c == 46 {
+                            break
+                        }
+                        if (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95 {
+                            i += 1
+                        } else {
+                            break
+                        }
+                    }
+                    var root: Str = byte_slice(e, start, i)
+                    // 点链续段:成员访问非根,吞并 .ident 序列(model.todos.len → 根 model)
+                    while i < e.len {
+                        if byte_at(e, i) != 46 {
+                            break
+                        }
+                        var j: I32 = i + 1
+                        if j >= e.len {
+                            break
+                        }
+                        var c2: I32 = byte_at(e, j)
+                        if !((c2 >= 65 && c2 <= 90) || (c2 >= 97 && c2 <= 122) || c2 == 95) {
+                            break
+                        }
+                        i = j
+                        while i < e.len {
+                            var c3: I32 = byte_at(e, i)
+                            if c3 == 46 {
+                                break
+                            }
+                            if (c3 >= 65 && c3 <= 90) || (c3 >= 97 && c3 <= 122) || (c3 >= 48 && c3 <= 57) || c3 == 95 {
+                                i += 1
+                            } else {
+                                break
+                            }
+                        }
+                    }
+                    if !gui_ck_has_style(out, root) {
+                        out.push(root)
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+}
+
 fn gui_ck_color(v: Str, gdiags: List[Str]) -> I32 {
     if v.len != 7 {
         gdiags.push("E8130: 颜色须 #RRGGBB,得 " + v)
@@ -597,7 +698,7 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
 //   E8120 on: 处理函数未在本文件 Fn/FnExt 声明表(签名级联动随 sem,登记非目标)
 //   E8193 each 体含 input 型控件(警告入 gwarns,不置 rc;key 原语未落地前索引对齐即串位)
 // sawin = 子树 input 计数累加器(Atomic;each 据此发 E8193,嵌套 each 各自报)。
-fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool) -> I32 {
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], pscope: List[Str]) -> I32 {
     var bad: I32 = 0
     if depth > 8 {
         gdiags.push("E8100: 嵌套超限(限深 8)")
@@ -610,6 +711,8 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     if tag == "input" {
         sawin.store(sawin.load() + 1)
     }
+    // 子树词法作用域:each 项变量入内(8c-1;非 each 视图共享外层 scope 列表)
+    var cscope: List[Str] = pscope
     if tag == "each" {
         // 位置头:item in={列表}(域包先于 attrs 解析,镜像)
         if cur.load() < tks.len {
@@ -617,6 +720,13 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
             if it != ">" {
                 if it != "/" {
                     cur.store(cur.load() + 1)
+                    cscope = List[Str]()
+                    var si: I32 = 0
+                    while si < pscope.len {
+                        cscope.push(pscope[si])
+                        si += 1
+                    }
+                    cscope.push(it)
                 }
             }
         }
@@ -706,6 +816,22 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                             if gui_bx_impure(av) {
                                 gdiags.push("E8190: 绑定表达式纯度违规(赋值/自增减) " + an + "=\{" + av + "}")
                                 bad = -1
+                            }
+                            // 8c-1:prop 引用门——props 视图内,路径根须为已声明
+                            // prop 或 each 项变量(裸名通道视图不设门,零破坏)
+                            if props.len > 0 {
+                                var roots = List[Str]()
+                                gui_bx_roots(av, roots)
+                                var ri: I32 = 0
+                                while ri < roots.len {
+                                    if !gui_ck_has_style(props, roots[ri]) {
+                                        if !gui_ck_has_style(pscope, roots[ri]) {
+                                            gdiags.push("E8110: 绑定引用未声明(须 prop/each 项) " + roots[ri] + " 于 " + an + "=\{" + av + "}")
+                                            bad = -1
+                                        }
+                                    }
+                                    ri += 1
+                                }
                             }
                         }
                     }
@@ -798,7 +924,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 cur.store(cur.load() + 1)
-                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, depth + 1, sawin, indep)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, depth + 1, sawin, indep, props, cscope)
                 if cb < 0 {
                     bad = -1
                 }
@@ -807,6 +933,26 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     gdiags.push("E8100: 未终止 " + tag)
                     bad = -1
                     break
+                }
+                if b2 == 123 {
+                    // 叶插值槽(8c-1):平衡捕获 + prop 引用门(与 attr 槽同规)
+                    cur.store(cur.load() + 1)
+                    var lv: Str = gui_bx_expr(tks, cur)
+                    if props.len > 0 {
+                        var lroots = List[Str]()
+                        gui_bx_roots(lv, lroots)
+                        var li: I32 = 0
+                        while li < lroots.len {
+                            if !gui_ck_has_style(props, lroots[li]) {
+                                if !gui_ck_has_style(pscope, lroots[li]) {
+                                    gdiags.push("E8110: 绑定引用未声明(须 prop/each 项) " + lroots[li] + " 于叶")
+                                    bad = -1
+                                }
+                            }
+                            li += 1
+                        }
+                    }
+                    continue
                 }
                 cur.store(cur.load() + 1)
             }
@@ -856,12 +1002,59 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
             gui_split(d[4], tks)
             var cur = Atomic[I32](0)
             if d[1] == "view" {
+                // 8c-1:props 形参表(d[5],"( a: T, b: U )" 形)解析为名表
+                var vprops = List[Str]()
+                if d.len > 5 {
+                    if d[5].len > 2 {
+                        var seg: Str = byte_slice(d[5], 2, d[5].len - 2)
+                        var pi: I32 = 0
+                        while pi < seg.len {
+                            var ps: I32 = pi
+                            while pi < seg.len {
+                                if byte_at(seg, pi) == 44 {
+                                    break
+                                }
+                                pi += 1
+                            }
+                            var unit: Str = byte_slice(seg, ps, pi)
+                            var ui: I32 = 0
+                            while ui < unit.len {
+                                if byte_at(unit, ui) == 58 {
+                                    var pn: Str = byte_slice(unit, 0, ui)
+                                    var pe: I32 = pn.len
+                                    while pe > 0 {
+                                        var pc: I32 = byte_at(pn, pe - 1)
+                                        if pc == 32 || pc == 9 {
+                                            pe -= 1
+                                        } else {
+                                            break
+                                        }
+                                    }
+                                    var psi: I32 = 0
+                                    while psi < pe {
+                                        if byte_at(pn, psi) != 32 && byte_at(pn, psi) != 9 {
+                                            break
+                                        }
+                                        psi += 1
+                                    }
+                                    if pe > psi {
+                                        vprops.push(byte_slice(pn, psi, pe))
+                                    }
+                                    ui = unit.len
+                                }
+                                ui += 1
+                            }
+                            pi += 1
+                        }
+                    }
+                }
                 cur.store(1)
                 if eat_tok(tks, cur) != "<" {
                     gdiags.push("E8100: view 期待 <")
                 } else {
                     var sawin = Atomic[I32](0)
-                    gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, 1, sawin, indep)
+                    var emptyscope = List[Str]()
+                    gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, 1, sawin, indep, vprops, emptyscope)
                 }
             } else {
                 if d[1] == "style" {

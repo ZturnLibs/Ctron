@@ -817,6 +817,27 @@ pub fn gt_parse(src: Str) -> GuiTree {
         if w == "view" {
             gword(src, cur)
             gws(src, cur)
+            // 8c-1:view props 形参表——平衡圆括号跳过(槽消费待 8c-2 props 环境)
+            if cur.load() < n {
+                if byte_at(src, cur.load()) == 40 {
+                    var pd: I32 = 0
+                    while cur.load() < n {
+                        var pb: I32 = byte_at(src, cur.load())
+                        cur.store(cur.load() + 1)
+                        if pb == 40 {
+                            pd += 1
+                        } else {
+                            if pb == 41 {
+                                pd -= 1
+                                if pd == 0 {
+                                    break
+                                }
+                            }
+                        }
+                    }
+                    gws(src, cur)
+                }
+            }
             glit(src, cur, 123)
             gt_node(src, cur, t, conds, binds, strs, 1)
             gws(src, cur)

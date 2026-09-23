@@ -1,0 +1,21 @@
+// gui expect: OK —— 8c-1:props 视图正例——声明面解析+引用门放行(根=已声明 prop/each 项)
+// 域包槽消费(值流)待 8c-2 props 环境;本语料锁文法+检查面
+fn send() {
+}
+view TodoApp(model: Model, title: Str) {
+  <vbox class="root">
+    <label class="title">{title}</label>
+    <when cond={model.todos.len > 0}>
+      <each t in={model.todos}>
+        <label class="row">{t}</label>
+      </each>
+    </when>
+    <label class="sub">{model.title}</label>
+    <button class="btn" on:click={send}>go</button>
+  </vbox>
+}
+style root { direction: column }
+style title { fg: "#ffffff" }
+style row { fg: "#cccccc" }
+style btn { bg: "#2563eb" }
+style sub { fg: "#f97316" }
