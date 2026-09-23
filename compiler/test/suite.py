@@ -24,7 +24,7 @@ def markers(path):
 
 def run(binpath, path, sub):
     try:
-        p = subprocess.run([binpath, sub, path], capture_output=True, text=True, timeout=20, cwd=ROOT)
+        p = subprocess.run([binpath, sub, path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20, cwd=ROOT)
         return p.returncode, p.stdout + p.stderr
     except subprocess.TimeoutExpired:
         return None, "TIMEOUT"
@@ -146,17 +146,17 @@ for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
             em = os.path.join(td, "out.c")
             binp = os.path.join(td, "app")
             emit_bin = CC.replace("ctron-cc", "ctron-emit")
-            p1 = sp.run([emit_bin, "run", entry], capture_output=True, text=True, timeout=60, cwd=ROOT)
+            p1 = sp.run([emit_bin, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, cwd=ROOT)
             if p1.returncode != 0:
                 ok, why = False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
             else:
                 open(em, "w").write(p1.stdout)
                 srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c")))
-                p2 = sp.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, timeout=60)
+                p2 = sp.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
                 if p2.returncode != 0:
                     ok, why = False, f"cc 失败: {first_line(p2.stderr)}"
                 else:
-                    p3 = sp.run([binp, "run", entry], capture_output=True, text=True, timeout=20, cwd=ROOT)
+                    p3 = sp.run([binp, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20, cwd=ROOT)
                     rc, out = p3.returncode, p3.stdout + p3.stderr
                     ok, why = verdict(kind, mk, rc, out)
     else:
@@ -192,15 +192,15 @@ def ffi_emit_run(case, entry, mk, kind):
         em = os.path.join(td, "out.c")
         binp = os.path.join(td, "app")
         emit_bin = CC.replace("ctron-cc", "ctron-emit")
-        p1 = sp2.run([emit_bin, "run", entry], capture_output=True, text=True, timeout=60, cwd=ROOT)
+        p1 = sp2.run([emit_bin, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, cwd=ROOT)
         if p1.returncode != 0:
             return False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
         open(em, "w").write(p1.stdout)
         srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c")))
-        p2 = sp2.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, timeout=60)
+        p2 = sp2.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
         if p2.returncode != 0:
             return False, f"cc 失败: {first_line(p2.stderr)}"
-        p3 = sp2.run([binp, "run", entry], capture_output=True, text=True, timeout=20, cwd=ROOT)
+        p3 = sp2.run([binp, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20, cwd=ROOT)
         return verdict(kind, mk, p3.returncode, p3.stdout + p3.stderr)
 
 ffi_dir = os.path.join(TESTS, "ffi")
