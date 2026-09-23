@@ -1,0 +1,4 @@
+Name: fakefoo
+Description: cimport pkg-config resolution fixture (hermetic; never linked)
+Version: 1.0
+Libs: -lfakefoo -lfakeextra

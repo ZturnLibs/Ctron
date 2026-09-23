@@ -31,6 +31,7 @@ for d in "$DIR"/*/; do
     [ "$name" = "bench" ] && continue  # 微基准由 compiler/test/bench_ffi.sh 驱动
     if [ ! -d "$d/src" ]; then continue; fi
     [ "$name" = "link_math" ] && continue  # #[link] 面由下方 link_math 专道驱动(无 c_src)
+    [ "$name" = "pkgconf" ] && continue   # pkg-config 解析面由下方 pkgconf 专道驱动(假 .pc,不可真链)
     if [ ! -d "$d/c_src" ]; then
         # 纯 libc 夹具(无 c_src):emit → cc → 运行(errno_basics 等)
         e0="$d/src/main.ct"
@@ -146,6 +147,24 @@ if [ -d "$ld/src" ]; then
     else
         echo "  [FAIL] link_math — emit 失败或缺 ctron:link 标记"
         fail=$((fail + 1))
+    fi
+fi
+
+# ---- pkgconf:ctc.sh #[link] 标记 → pkg-config 解析(假 .pc,hermetic) ----
+pcd="$DIR/pkgconf"
+if [ -d "$pcd/src" ]; then
+    if command -v pkg-config >/dev/null 2>&1; then
+        if PKG_CONFIG_PATH="$pcd/pc" sh "$ROOT/compiler/ctc.sh" emit "$pcd/src/main.ct" "$T/pkgconf.c" > "$T/pkgconf.log" 2>&1 \
+           && grep -q "lfakeextra" "$T/pkgconf.log"; then
+            echo "  [ok] pkgconf(pkg-config 解析 -lfakefoo → -lfakefoo -lfakeextra)"
+            pass=$((pass + 1))
+        else
+            echo "  [FAIL] pkgconf — 解析输出缺 -lfakeextra: $(grep 'pkg-config' "$T/pkgconf.log" | head -1)"
+            fail=$((fail + 1))
+        fi
+    else
+        echo "  [ok] pkgconf(pkg-config 不在册,跳过解析断言)"
+        pass=$((pass + 1))
     fi
 fi
 

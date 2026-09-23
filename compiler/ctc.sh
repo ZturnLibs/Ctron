@@ -80,6 +80,21 @@ case $mode in
             LF=$(grep -o "ctron:link -l[^ ]*" "$OUTC" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
             if [ -n "$LF" ]; then
                 echo "ctc.sh: 链接标志(#[link] 收集): $LF"
+                # pkg-config 解析(v0.9):对每个 -l<名>,若 pkg-config 在册且
+                # 认识该名(--exists 成功),展开其 --libs 输出;否则保留 -l<名>。
+                # 发射 C 文本不变,解析只发生在驱动壳层(构建系统可取本行)。
+                if command -v pkg-config >/dev/null 2>&1; then
+                    PR=""
+                    for ln in $LF; do
+                        pn=${ln#-l}
+                        if pkg-config --exists "$pn" 2>/dev/null; then
+                            PR="$PR $(pkg-config --libs "$pn" 2>/dev/null)"
+                        else
+                            PR="$PR $ln"
+                        fi
+                    done
+                    echo "ctc.sh: 链接标志(pkg-config 解析):$PR"
+                fi
             fi
         fi
         ;;

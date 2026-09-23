@@ -1,0 +1,12 @@
+// tests/ffi/pkgconf —— #[link] → ctc.sh pkg-config 解析(v0.9 构建集成)
+// 承诺:驱动壳层对 #[link(name)] 收集的 -l 名做 pkg-config --exists 探测,
+// 命中则展开其 --libs(fakefoo.pc: -lfakefoo -lfakeextra);发射 C 文本不变。
+// 本夹具只验标记面(驱动输出),不真链(fakefoo 并非真实库)。
+#[link(name = "fakefoo")]
+#[trusted]
+extern "c" fn fakefoo_ver() -> I32
+
+fn main() -> I32 {
+    assert_eq(0, 0)
+    return 0
+}
