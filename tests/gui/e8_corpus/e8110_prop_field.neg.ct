@@ -1,0 +1,13 @@
+// gui expect: E8110 —— 8c-4 地基:props 段级类型门——字段段拼写核对
+// {m.draftt} 二段拼写错(Model 无 draftt;8c-1 根门的对偶深化,登记的
+// "字段段拼写属类型面"欠账销)
+view V(m: Model) {
+  <vbox class="root">
+    <label class="row">{m.draftt}</label>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }
+struct Model {
+    var draft: Str
+}

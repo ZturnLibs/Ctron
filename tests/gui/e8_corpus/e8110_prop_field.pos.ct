@@ -1,0 +1,19 @@
+// gui expect: OK —— 8c-4 地基正例:段级类型门全过
+// {m.draft} Str 字段 / {m.items.len} List 尾段 len 豁免 / {inc(m)} 调用实参同门
+view V(m: Model) {
+  <vbox class="root">
+    <label class="a">{m.draft}</label>
+    <label class="b">{m.items.len}</label>
+    <button class="btn" on:click={inc(m)}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style a { fg: "#ffffff" }
+style b { fg: "#ffffff" }
+style btn { bg: "#2563eb" }
+struct Model {
+    var draft: Str
+    var items: List[Str]
+}
+fn inc(mm: Model) {
+}
