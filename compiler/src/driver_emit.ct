@@ -546,7 +546,8 @@ fn main() -> I32 {
                 var btns = List[I32]()
                 var sk = List[Str]()
                 var sv = List[Str]()
-                gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, sk, sv)
+                var sk_props = List[Str]()
+                gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, sk, sv, sk_props)
                 println("static ctron_list* gui_sk_ls(int n, const char** v) \{ ctron_list* l = ctron_list_new(); int i; for (i = 0; i < n; i++) \{ ctron_list_push(l, v[i]); } return l; }")
                 println("static ctron_list* gui_sk_li(int n, const int32_t* v) \{ ctron_list* l = ctron_list_new(); int i; for (i = 0; i < n; i++) \{ ctron_list_push(l, (const char*)(long)v[i]); } return l; }")
                 println("static t_GuiTree gui_sk_load(void) \{")
@@ -581,6 +582,8 @@ fn main() -> I32 {
                 println("t.btns = gui_sk_li(" + btns.len.to_string() + ", sk_t12);")
                 println("t.sk = gui_sk_ls(" + sk.len.to_string() + ", sk_t13);")
                 println("t.sv = gui_sk_ls(" + sv.len.to_string() + ", sk_t14);")
+                println(gui_sk_emit_str_arr(15, sk_props))
+                println("t.props = gui_sk_ls(" + sk_props.len.to_string() + ", sk_t15);")
                 println("return t;")
                 println("}")
             }
