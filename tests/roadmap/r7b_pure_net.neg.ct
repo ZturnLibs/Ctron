@@ -5,7 +5,7 @@
 // (RunRed);R 线解析/纯度就绪后按翻转协议迁 NegGreen(E4020)。
 // 门面形态注(Task 6):传输走免费函数 net_*(net: StdNet 按值),能力审计
 // 锚保留 &Net 引用形参 fn —— 即本件的 probe 形。
-use std.net.Net
+use net.Net
 
 fn probe(net: &Net) -> I32 {
     return net.probe()

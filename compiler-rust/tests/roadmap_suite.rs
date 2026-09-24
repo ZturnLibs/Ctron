@@ -55,6 +55,18 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         // ---- R-P5 comptime ----
         ("r5a_const_size.ct", "R-P5a", Status::Green),
         ("r5a_semantics.ct", "R-P5a", Status::Green),
+        // ---- 插值负向面(§1.4/§4.11;R 线已拦 E1001,自举线落后——见文件头锚点行) ----
+        ("r6h_interp_unclosed.neg.ct", "R-P6h", Status::NegGreen("E1001")),
+        ("r6i_interp_nested_str.neg.ct", "R-P6i", Status::NegGreen("E1001")),
+        // ---- 09-15 审计批次补登(r6b–r6g/r1a;R 线行为逐件实测锚定) ----
+        ("r1a_trailing_dot.neg.ct", "R-P1a", Status::NegGreen("E1001")),
+        ("r6b_res_class.neg.ct", "R-P6b", Status::NegPending("E4050")),
+        ("r6c_as_u64_negsrc.ct", "R-P6c", Status::Green), // 2026-09-19 interp 字面量保真修复后翻转(RunRed → Green)
+        ("r6d_trusted_unmarked.neg.ct", "R-P6d", Status::NegPending("W8050")),
+        ("r6e_trusted_nonextern.neg.ct", "R-P6e", Status::NegPending("E4040")),
+        ("r6f_comptime_budget.neg.ct", "R-P6f", Status::NegPending("E6010")),
+        // r6g:check 双面绿;文件无 test 块,RunRed 对空结果集空泛成立(链接面由 modules/ffi_math 覆盖)
+        ("r6g_trusted_extern.ct", "R-P6g", Status::RunRed),
         // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播未实现,RunRed 空泛成立;
         // P1 std/net 门面已落地(免费函数面 + &Net 审计锚),R 线纯度/解析就绪后翻转 NegGreen("E4020")
         ("r7b_pure_net.neg.ct", "R-P7b", Status::RunRed),

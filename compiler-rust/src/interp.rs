@@ -435,6 +435,12 @@ impl<'a> Interp<'a> {
                         _ => Value::Int(v),
                     });
                 }
+                // 无后缀且超 i64 正程:保真为 U64(§3.7;负值不经此路径,i64::MIN 由 as i64 精确回绕)
+                if let Some((false, u)) = parse_int_mag(&cleaned) {
+                    if u > i64::MAX as u64 {
+                        return Ok(Value::UInt(u));
+                    }
+                }
                 Ok(Value::Int(v))
             }
             Expr::Float { text, suffix } => {
@@ -1856,7 +1862,7 @@ fn runtime_index_usize(_o: &Value, i: &Value) -> usize {
     }
 }
 
-fn parse_int(cleaned: &str) -> Option<i64> {
+fn parse_int_mag(cleaned: &str) -> Option<(bool, u64)> {
     let (radix, digits) = if let Some(r) = cleaned.strip_prefix("0x") { (16, r) }
         else if let Some(r) = cleaned.strip_prefix("0o") { (8, r) }
         else if let Some(r) = cleaned.strip_prefix("0b") { (2, r) }
@@ -1864,10 +1870,11 @@ fn parse_int(cleaned: &str) -> Option<i64> {
     let digits = digits.replace('_', "");
     let signed = digits.starts_with('-');
     let digits = digits.trim_start_matches('-').to_string();
-    match u64::from_str_radix(&digits, radix) {
-        Ok(u) => if signed { Some(-(u as i64)) } else { Some(u as i64) },
-        Err(_) => None,
-    }
+    u64::from_str_radix(&digits, radix).ok().map(|u| (signed, u))
+}
+
+fn parse_int(cleaned: &str) -> Option<i64> {
+    parse_int_mag(cleaned).map(|(neg, u)| if neg { -(u as i64) } else { u as i64 })
 }
 
 pub fn truthy(v: &Value) -> bool {

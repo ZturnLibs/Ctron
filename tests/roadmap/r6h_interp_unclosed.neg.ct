@@ -1,0 +1,12 @@
+// r6h_interp_unclosed.neg.ct —— 插值未闭合(§1.4:`{` 引入插值,串内未闭合非法)
+// 语义承诺:`"v={n tail"` → E1001「未终止的插值」(C 宿主/R 线已按此拦截)
+// 锚点:自举线把未闭合 `{` 的片段续读成名称,以 ad-hoc "unbound:n" 拒绝,
+// 不产出 E1001 → 红;自举线补词法守卫(镜像宿主/R 线)转绿。
+//@ fail: E1001
+//@ msg: 未终止的插值
+
+fn main() -> Void {
+    let n: I32 = 1
+    let a = "v={n tail"
+    println(a)
+}
