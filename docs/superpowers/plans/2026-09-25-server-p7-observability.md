@@ -27,8 +27,8 @@
 - Create: `tests/log/`(级别过滤矩阵/时间戳在位/kv 转义(值含空格=引号包裹、换行=\n 转义、不可 printable 丢弃)/空 kv/层级缺省)
 
 **Steps:**
-- [ ] log_line 纯构行 + 级别过滤 + 转义面 + 语料(纯面双臂;stderr 写出面 x_ 专臂一条)
-- [ ] 提交
+- [x] log_line 纯构行 + 级别过滤 + 转义面 + 语料(纯面双臂;a63470e,9/9;stderr 写出面留消费方 println,登记)
+- [x] 提交
 
 ### Task 2 (P7-B): std/pb protobuf 线格式编解码
 
@@ -37,8 +37,8 @@
 - Create: `tests/pb/`(官方编码向量锚:field1 varint 150=`08 96 01`、field2 ld "testing"=`12 07 74…`、zigzag sint `-1→01/-2→03`、负 i32 10 字节定宽形;嵌套 submessage 定界;未知字段 skip 往返;截断/overlong/超深负例矩阵;往返 property:encode→decode→encode 字节恒等)
 
 **Steps:**
-- [ ] 写面+读面+skip+向量语料(纯面双臂)
-- [ ] 往返恒等+负例矩阵 + 提交
+- [x] 写面+读面+skip+向量语料(纯算术实现:无位算符惯用法,15/15;c02e687)
+- [x] 往返恒等+负例矩阵 + 提交
 
 ### Task 3 (P7-C): W3C traceparent 提取/注入
 
@@ -47,8 +47,8 @@
 - Create: `tests/http/frm_trace/`(W3C §3.2.2 合法矩阵/§3.2.3 非法矩阵:全零/长度/非 hex/版本 0f 假位/空白;serialize↔parse 往返;请求提取+客户端注入端到端(emit 专臂 x_ 带 socket))
 
 **Steps:**
-- [ ] parse/serialize/提取注入 + W3C 矩阵语料
-- [ ] 双臂 + 提交
+- [x] parse/serialize/提取注入 + W3C 矩阵语料(7/7;3dd6f1a)
+- [x] 双臂 + 提交
 
 ### Task 4 (P7-D): Prometheus metrics 注册表 + /metrics
 
@@ -58,8 +58,8 @@
 - Modify: `examples/todo_api/src/main.ct`(/metrics 端点接线:http_total{code} counter、http_duration histogram、todo_items gauge;路由表 +1)
 
 **Steps:**
-- [ ] 注册表+exposition+语料(纯面双臂)
-- [ ] todo_api /metrics 接线 + run.sh 断言行(文本格式合法性:Help/Type/样本行 grep 钉)+ 提交
+- [x] 注册表+exposition+语料(纯面双臂;7/7;f96995c)
+- [x] todo_api /metrics 接线 + run.sh 断言行(文本格式合法性:Help/Type/样本行 grep 钉)+ 提交(e2e 21/21)
 
 ### Task 5 (P7-E): OTLP/HTTP 导出 + traceparent 跨服务传播
 
