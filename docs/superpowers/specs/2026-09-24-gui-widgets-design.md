@@ -14,17 +14,29 @@
    自制(组件=pub view 无特权)。现有内建 vbox/hbox/label/button/input/checkbox/
    spacer/scroll 元素集保持——input 的升级走能力缝(§2.2),不新增语义元素。
 3. **视觉** = 深色扁平现代风(Linear/GitHub Dark 基调):扁平 + 细边框 + accent 蓝,
-   状态区分靠亮度/边框/accent,不用阴影(Clay 能力面内做专业感;现有默认主题已在半路)。
+   状态区分靠亮度/边框/accent,不用阴影(Clay 能力面内做专业感)。2026-09-24 审阅
+   修订:此基调保留为独立主题 gui-dark 的基调与各主题的兜底语汇;**缺省观感让位
+   系统自适应**(裁决 #6)。
 4. **切片** = 能力先行·四件起步:第一批能力缝立刻被首批组件消费,每片全绿即落库;
    全目录路线图只列不做(防过度设计)。
 5. **主题**(2026-09-24 审阅反馈)= 用户自定义全套主题样式是一等需求:主题文件可
    定义全套令牌,一步换装全套观感(§3.4)。
+6. **主题集**(同日审阅反馈)= 内置五套:**三套平台主题**(mac/win/linux——宿主
+   OS 对应风格,Clay 能力面内的 HIG/Fluent/Adwaita 味诠释,不承诺原生拟真,
+   阴影/模糊/材质不在 Clay 面)+ **两套系统无关独立主题**(gui-dark 深色扁平/
+   gui-light 浅色)。**缺省 = 按宿主 OS 自动选择平台主题**(`theme_auto`,run/test
+   缺省行为);用户显式 `theme_apply` 覆盖。系统明暗跟随 P2(§5)。
+7. **方法论裁决(横切,同日审阅反馈)**= 设计遇语言/能力不支持,**扩展能力是正路,
+   不用 hack 兜底**。本规格据此修订三处:色解析扩 `#RRGGBBAA`(修订 C1 六位承诺,
+   登记规范回写);令牌解析(§2.4)定为必做(删「主题包整体替换样式表」兜底);
+   组件消费面等 SL-8c 落库(删 bind/act 替身形态,能力缝/主题面先行不阻塞)。
 
 ## 1. 总体架构(三层)
 
 ```
 ③ 外观体系  Theme struct 全套令牌 + 四态视觉规范 + 默认样式折叠规则
             (主题=.ct 文件构造 Theme 全字段字面量,theme_apply 一步换装;
+             内置五套主题在 gui/themes/,缺省 theme_auto 按宿主 OS 选;
              组件默认样式只引令牌,不写裸色值)
 ② 组件库    gui/widgets/*.ct —— pub view 组合 + 默认样式,零特权
             (首批:select/list/dialog 三新组件 + input 升级的 w-input 预设)
@@ -36,8 +48,8 @@
 能组合出来的,做进内建即违宪。
 
 **依赖登记**:组件消费形态(view+props 语法)依赖 SL-8c-2/3/4(机刷在飞,蓝本
-sl8c-design.md)。首批组件动工排其落库之后;若延期,组件可用现有 bind/act + 元素
-组合先出 v1(功能等价,签名面待 8c 收敛后切换)。
+sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bind/act 替身**;
+能力缝(§2)、主题面(§3)与夹具可先行,与 8c 无依赖冲突。
 
 ## 2. 能力缝(内建面,第一批四个)
 
@@ -88,8 +100,15 @@ sl8c-design.md)。首批组件动工排其落库之后;若延期,组件可用现
 实证:gt_style 对属性值只存原文(引号串/裸词),无令牌解析——「组件默认样式只引
 令牌」需此缝:**裸词值与已加载主题令牌同名时,加载期折叠解析为令牌值**;`"#…"`
 字面量原样直通。落点在样式折叠(域运行时,查 §3.4 运行时令牌表),非 parser。
-兜底:若此缝延期,组件默认样式以字面量书写、主题包整体替换组件默认样式表
-(master 设计 L1 兜底口径),二选一在实施计划定夺。
+按裁决 #7 此缝**定为必做**——「主题包整体替换组件默认样式表」的兜底口径作废,
+不留 stringly 替身。
+
+### 2.5 平台探测(主题自适应的地基)
+
+- `gui_platform() -> Str`("mac" / "win" / "linux"):c_src 胶水一行(编译期
+  `__APPLE__`/`_WIN32` 宏分支),供 `theme_auto` 缺省选择(§3.5)。
+- 测试钉值:`CTRON_GUI_THEME=mac|win|linux|dark|light` 覆盖探测——headless 断言
+  跨平台确定性的唯一入口(宿主差异不进黄金)。
 
 ## 3. 外观体系
 
@@ -165,9 +184,30 @@ pub fn make() -> Theme {
 - **覆围口径 v1**:全套**令牌**(色板/圆角/字号/间距/禁用/遮罩)。组件默认样式的
   结构性覆盖(换形状语汇,非换色)= 可选第二层,走 §7「主题包整体替换组件默认
   样式表」口径,P2。
-- **官方样本**:`gui/theme_light.ct` 随包交付——既是第二主题,又是机制的就地验收
-  (同一 app 换 apply 一行,全套观感切换)。
+- **缺省行为**:`run`/`test` 入口缺省执行 `theme_auto()`——按 `gui_platform()`
+  选对应平台主题(裁决 #6「默认在对应系统下用一致的主题样式」);`CTRON_GUI_THEME`
+  钉值与用户显式 `theme_apply` 均可覆盖。
+- **内置主题集**:五套随包交付,置于 `gui/themes/`(§3.5)——平台三套 + 独立两套;
+  独立主题既是用户可选样本,又是机制的就地验收(同一 app 换 apply 一行,全套观感
+  切换)。
 - **热重载**:令牌表是运行时状态,CTML 热重载环不受影响;主题自身热切换 P2。
+
+### 3.5 内置主题集(gui/themes/,裁决 #6)
+
+| 主题 | 文件 | 明暗 | 基调 |
+|---|---|---|---|
+| mac | `theme_mac.ct` | 深 | macOS HIG 味:大圆角(RADIUS 6/10/14)、系统灰阶、mac 蓝 accent(#0a84ff 系)、克制边框 |
+| win | `theme_win.ct` | 深 | Fluent 味:Mica 灰阶、小圆角(2/4/8)、低饱和 accent、细边框为主 |
+| linux | `theme_linux.ct` | 深 | Adwaita 味:中圆角(4/6/12)、libadwaita 灰阶、GNOME 蓝(#3584e4 系)、头部栏语汇 |
+| dark | `theme_dark.ct` | 深 | 深色扁平现代(Linear/GitHub Dark,裁决 #3 基调的独立主题形态) |
+| light | `theme_light.ct` | 浅 | 同语汇浅色版(§3.4 示例即此) |
+
+- 三套平台主题是**味道诠释而非原生拟真**:色板/圆角/间距/字号阶梯向各 OS 设计
+  语言对齐;阴影、模糊、材质不在 Clay 能力面,不承诺(视觉近似,非 hack)。
+- 五套共用同一 Theme 字段面与四态规范(§3.2),差异全在令牌值——主题集本身即
+  「换令牌=换全套」的五个实证。
+- 用户选择:`use gui.themes.{theme_dark}`(或任意自备主题文件)+
+  `gui.theme_apply(...)`;缺省 `theme_auto` 可被 `CTRON_GUI_THEME` 钉值覆盖。
 
 ## 4. 首批交付物:input 升级 + 三新组件(功能/API/默认观感)
 
@@ -188,7 +228,9 @@ slider(拖拽事件缝²)、progress(纯组合)、tabs(纯组合)、switch(check
 radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组合)。
 
 **P2**(消费新能力缝):拖拽事件(drag 事件缝)、光标闪烁、Tab 焦点环导航、
-右键菜单、图标、滚动条视觉、程序化 `focus()`/`scroll_into_view`、多行 textarea。
+右键菜单、图标、滚动条视觉、程序化 `focus()`/`scroll_into_view`、多行 textarea;
+主题面:系统明暗跟随(宿主 dark mode 探测,平台主题深浅自动切)、高对比无障碍
+主题、主题热切换。
 
 ² 拖拽事件缝:pointer move + 按住位移进事件通道(「名:载荷」复用),P2 随 slider 细化。
 
@@ -197,13 +239,15 @@ radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组
 - **能力夹具**(阶梯新增):s29_state(hover/active/focus/disabled 折叠——d_cmd 断言
   折叠后绘制属性,无需新注入口)、s30_focus(input 编辑全链:得焦/键入/退格/submit/
   失焦;d_type_char/d_press_key 已有)、s31_overlay(z 序/居中/遮罩回调)、
-  s32_theme(theme_apply 换 light 后折叠值全套断言 + 缺省深色不受扰)。
+  s32_theme(五主题 apply 逐套折叠值全套断言;theme_auto 探测与
+  CTRON_GUI_THEME 钉值覆盖;显式 apply 后缺省自适应不再干扰)。
 - **组件验收**:examples/todo 改造换真 input(退役 mirror label,回归既有断言);
   新示例 examples/gui_widgets 四件套陈列室(headless 断言 + `--run` 真窗口)。
 - **驱动器增量**:hover 态断言走折叠后命令缓冲,零新注入;焦点态同口径。
 - **门禁**:sh tests/gui/run.sh 阶梯 + ci.sh [8/9];黄金/坐标夹具延续
   CTRON_GUI_FT_OFF=1 钉值;净树 smoke 与 tests/net 不回归。
-- **视觉验收**:gui_widgets `--run` 人工过一遍四态(扁平风基准确认)。
+- **视觉验收**:gui_widgets `--run` 人工过一遍四态(dark 基准 + 宿主平台主题
+  各一遍;五主题 `CTRON_GUI_THEME` 钉值轮巡抽查)。
 
 ## 7. 坑位与风险登记
 
@@ -214,12 +258,12 @@ radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组
   载荷任意文本安全);夹具覆盖。
 - **SL-8c 在飞**:组件 props 消费面若延期,v1 降级 bind/act 组合(§1 依赖登记)。
 - **select v2 锚定**:触发器坐标查询依赖命中注册表矩形,v1 内联展开不依赖。
-- **遮罩色 8 位制式**:MASK 用 `#RRGGBBAA`,但 C1 裁决/theme.ct 注释只承诺 6 位
-  `#RRGGBB`——色解析是否认 8 位未验证;若只认 6 位,遮罩降级不透明深色(如
-  `#101016`)或扩色解析(实施计划定夺,倾向降级)。
+- **遮罩色 8 位制式**:MASK 需 `#RRGGBBAA`,而 C1 裁决/theme.ct 注释只承诺 6 位。
+  按裁决 #7 **扩色解析**:gui 域 gt 词法 + ctron_gui.c 色转换面同步支持 8 位,
+  6 位继续合法(alpha 视 FF);C1 承诺修订为「#RRGGBB(A)」,规范回写登记——
+  不做不透明降级替身。
 - **Theme 字段面负担**:全字段字面量 ~20+ 字段,主题作者手写负担——官方主题文件
   即模板,文档给可复制骨架;「从默认改三色」场景可给 `theme_default()` 改成员配方
   (构造后成员赋值,零新语法)。
 - **令牌表全局态与热重载**:theme_apply 后的表是运行时全局态,与热重载环/多入口
   (run 与 test)的交互口径=s32 夹具覆盖;主题热切换 P2 前不做增量 apply。
-- **令牌解析兜底**:§2.4 若延期走「主题包整体替换组件默认样式表」口径,二选一定夺。
