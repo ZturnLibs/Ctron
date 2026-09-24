@@ -99,6 +99,10 @@ def check_file(path: Path) -> list[str]:
         # net 包 main:由 tests/net/run.sh 双臂(原生==解释黄金对照)驱动,
         # 不按主流 test 块规则元检查(同 dist/ 泳道先例)。
         return errors
+    if relparts0 and relparts0[0] == "log" and "corpus" in relparts0:
+        # log/corpus:std/log 语料(级别族/转义/门控矩阵),由 tests/log/run.sh 驱动,
+        # 与 std/log inline 测试互独立;非 test 块语义(同 gui/ 泳道先例)。
+        return errors
     for pkg_lane in ("artifact_demo", "realdep_demo"):
         if relparts0 and relparts0[0] == pkg_lane:
             # 包分发泳道夹具(编译/分发线):库源文件被 consumer 包 import,
