@@ -1,0 +1,263 @@
+// examples/gui_zitie —— 中文字帖(L1 域包形态;中文显示验证专例)
+// 平台全在 gui 域包;用户树 = 字帖内容 + 翻页动作 + 竖排视图。
+// 内容源:zitie.txt 存在则读入(用户可换字帖),否则内置千字文首段(32 字);
+//   去空白后按 UTF-8 切单字,每页 20 字 = 5 列 x 4 字(列内纵排);末页可不满列。
+// 验证面:逐字 TEXT 命令字节断言 + gui_ft_measure 大字号实测 + 翻页换字。
+// 双口径:CTRON_GUI_HEADLESS=1 → 域包 test()(全自动);缺省/--run → run_kb 真窗口。
+// 注:main 首个 read_file 字面量为发射锚(烘焙 app.ctml;run.sh 已 cd 本目录);
+//   注释内不放花括号(发射词法)。
+
+use gui.{run_kb, test, d_click, d_frame, d_expect_text, d_expect_absent, d_cmd_count, char_str}
+
+#[trusted]
+extern "c" fn gui_ft_measure(s: Str, px: I32) -> I32
+
+struct Model {
+    var page: I32
+    var pages: I32
+    var chars: List[Str]
+    var col0: List[Str]
+    var col1: List[Str]
+    var col2: List[Str]
+    var col3: List[Str]
+    var col4: List[Str]
+}
+
+// E8120 处理函数声明 stub(真分发在 act)
+fn next() {
+}
+
+// 去空白并按 UTF-8 切单字(输入限本例受控内容:汉字 + ASCII 空白)
+fn split_chars(s: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b == 10 {
+            i = i + 1
+        } else {
+            if b == 13 {
+                i = i + 1
+            } else {
+                if b == 32 {
+                    i = i + 1
+                } else {
+                    if b == 9 {
+                        i = i + 1
+                    } else {
+                        var n: I32 = 1
+                        if b >= 128 {
+                            if b < 224 {
+                                n = 2
+                            } else {
+                                if b < 240 {
+                                    n = 3
+                                } else {
+                                    n = 4
+                                }
+                            }
+                        }
+                        out.push(byte_slice(s, i, i + n))
+                        i = i + n
+                    }
+                }
+            }
+        }
+    }
+    return out
+}
+
+// 第 ci 列 = chars[page*20 + ci*4 .. +4](5 列 x 4 字 = 每页 20 字)
+fn fill_col(m: Box[Model], ci: I32) {
+    var lst = List[Str]()
+    var k: I32 = 0
+    while k < 4 {
+        var idx: I32 = m.page * 20 + ci * 4 + k
+        if idx < m.chars.len {
+            lst.push(m.chars[idx])
+        }
+        k = k + 1
+    }
+    if ci == 0 {
+        m.col0 = lst
+    }
+    if ci == 1 {
+        m.col1 = lst
+    }
+    if ci == 2 {
+        m.col2 = lst
+    }
+    if ci == 3 {
+        m.col3 = lst
+    }
+    if ci == 4 {
+        m.col4 = lst
+    }
+}
+
+fn refresh_cols(m: Box[Model]) {
+    fill_col(m, 0)
+    fill_col(m, 1)
+    fill_col(m, 2)
+    fill_col(m, 3)
+    fill_col(m, 4)
+}
+
+// 动作收口:next = 翻页(越界回首页)
+fn act(name: Str, m: Box[Model]) {
+    if name == "next" {
+        m.page = m.page + 1
+        if m.page >= m.pages {
+            m.page = 0
+        }
+        refresh_cols(m)
+    }
+}
+
+// 键入:退格删尾,可打印 ASCII 追加(本例无输入框,留空钩子形态)
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 27 {
+        m.page = 0
+        refresh_cols(m)
+    }
+}
+
+// bind 通道分发:title/page 标量 + each:col0..4 五列
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "title" {
+        buf.push("Ctron 字帖 · 千字文")
+    }
+    if buf[0] == "page" {
+        buf.push("第 " + (m.page + 1).to_string() + " 页")
+    }
+    if buf[0] == "each:col0" {
+        var i: I32 = 0
+        while i < m.col0.len {
+            buf.push(m.col0[i])
+            i = i + 1
+        }
+    }
+    if buf[0] == "each:col1" {
+        var i: I32 = 0
+        while i < m.col1.len {
+            buf.push(m.col1[i])
+            i = i + 1
+        }
+    }
+    if buf[0] == "each:col2" {
+        var i: I32 = 0
+        while i < m.col2.len {
+            buf.push(m.col2[i])
+            i = i + 1
+        }
+    }
+    if buf[0] == "each:col3" {
+        var i: I32 = 0
+        while i < m.col3.len {
+            buf.push(m.col3[i])
+            i = i + 1
+        }
+    }
+    if buf[0] == "each:col4" {
+        var i: I32 = 0
+        while i < m.col4.len {
+            buf.push(m.col4[i])
+            i = i + 1
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    // 内容源:zitie.txt 可换字帖;缺省内置千字文首段(40 字 = 2 页)
+    var text: Str = "天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳"
+    match read_file("zitie.txt") {
+        Some(s) => {
+            if s.len > 0 {
+                text = s
+            }
+        }
+        None => {
+            text = text
+        }
+    }
+    var m = Box[Model](Model { page: 0, pages: 1, chars: List[Str](), col0: List[Str](), col1: List[Str](), col2: List[Str](), col3: List[Str](), col4: List[Str]() })
+    m.chars = split_chars(text)
+    m.pages = (m.chars.len + 19) / 20
+    refresh_cols(m)
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        // headless:域包 test() 驱动;断言 = 逐字字节 + 大字号实测 + 命令数 + 翻页
+        var rc: I32 = test(src, 640, 640,
+            |buf| bind_all(buf, m),
+            |name| act(name, m),
+            |k| on_key(k, m),
+            |t, a, key| {
+                d_frame(t, |buf| bind_all(buf, m))
+                // 测量桥:大字号实测为正且量级合理(CJK 全宽 ≈ 字号)
+                var mv: I32 = gui_ft_measure("天", 72)
+                if mv < 60 {
+                    println("gui_zitie: 实测宽度过小")
+                    return 1
+                }
+                if mv > 90 {
+                    println("gui_zitie: 实测宽度过大")
+                    return 1
+                }
+                // 标题混排 + 页码
+                d_expect_text(t, "Ctron 字帖 · 千字文")
+                d_expect_text(t, "第 1 页")
+                // 第 1 页逐字(天地玄黄宇宙洪荒日月盈昃辰宿列张)
+                d_expect_text(t, "天")
+                d_expect_text(t, "地")
+                d_expect_text(t, "玄")
+                d_expect_text(t, "黄")
+                d_expect_text(t, "宇")
+                d_expect_text(t, "宙")
+                d_expect_text(t, "日")
+                d_expect_text(t, "月")
+                d_expect_text(t, "盈")
+                d_expect_text(t, "昃")
+                d_expect_text(t, "辰")
+                d_expect_text(t, "宿")
+                d_expect_text(t, "列")
+                d_expect_text(t, "张")
+                // 命令数精确:标题 1 + 页码 1 + 按钮 1 + 20 字 = 23 条 TEXT
+                var n: I32 = d_cmd_count()
+                if n != 24 {
+                    println("gui_zitie: 命令数非预期(期望 24 = 23 TEXT + 1 按钮 RECT,得 " + n.to_string() + ")")
+                    return 1
+                }
+                // 翻页:第 2 页 = 秋收冬藏闰余成岁律吕调阳(12 字;col3/col4 空 = 末页不满列边界)
+                a(d_click(t, "next"))
+                d_frame(t, |buf| bind_all(buf, m))
+                d_expect_text(t, "第 2 页")
+                d_expect_text(t, "秋")
+                d_expect_text(t, "藏")
+                d_expect_text(t, "律")
+                d_expect_text(t, "调")
+                d_expect_text(t, "阳")
+                d_expect_absent(t, "天")
+                d_expect_absent(t, "往")
+                var n2: I32 = d_cmd_count()
+                if n2 != 16 {
+                    println("gui_zitie: 第 2 页命令数非预期(期望 16 = 15 TEXT + 1 RECT,得 " + n2.to_string() + ")")
+                    return 1
+                }
+                // 再翻回首页(越界回绕)
+                a(d_click(t, "next"))
+                d_frame(t, |buf| bind_all(buf, m))
+                d_expect_text(t, "第 1 页")
+                d_expect_text(t, "天")
+                d_expect_absent(t, "秋")
+                println("gui_zitie: headless 全绿(逐字字节/大字号实测/命令数/翻页回绕)")
+            })
+        return rc
+    }
+    // 窗口口径:run_kb(键入钩子 + 点击分发,域包事件循环)
+    run_kb(src, "ctron 字帖", 640, 640,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| on_key(k, m))
+    println("gui_zitie: 窗口退出")
+    return 0
+}

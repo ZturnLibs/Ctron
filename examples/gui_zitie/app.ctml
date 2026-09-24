@@ -1,0 +1,39 @@
+// examples/gui_zitie —— 中文字帖:中文显示验证专例(竖排列版式,72px 大字)
+// 能力面:hbox 内 each 列(each 垂直容器即"列",古籍竖排版式)+ 表达式槽 + on:click
+// 版式口径:深底白字竖排笺——域包「容器嵌套 each」「each 挂 class」两路径段错误
+//   (登记归域包泳道),纸格底色暂不可达,格线以列间距留白示意
+// 验证口径:逐字 TEXT 命令字节断言 + gui_ft_measure 大字号实测 + 翻页换字
+// 注:注释内不放花括号(发射词法)
+view Zitie {
+  <vbox class="root">
+    <hbox class="head">
+      <button class="btn" on:click={next}>换页</button>
+      <label class="title">{title}</label>
+      <label class="page">{page}</label>
+    </hbox>
+    <hbox class="grid">
+      <each c in={col0}>
+        <label class="cell">{c}</label>
+      </each>
+      <each c in={col1}>
+        <label class="cell">{c}</label>
+      </each>
+      <each c in={col2}>
+        <label class="cell">{c}</label>
+      </each>
+      <each c in={col3}>
+        <label class="cell">{c}</label>
+      </each>
+      <each c in={col4}>
+        <label class="cell">{c}</label>
+      </each>
+    </hbox>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style head { gap: 12 }
+style btn { bg: "#2563eb" }
+style title { fg: "#eeeeee" size: 28 }
+style page { fg: "#aaaaaa" size: 20 }
+style grid { gap: 12 }
+style cell { size: 72 h: 116 fg: "#e8e3d5" }
