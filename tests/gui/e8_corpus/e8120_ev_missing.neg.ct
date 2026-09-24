@@ -1,0 +1,9 @@
+// gui expect: E8120 —— 8c-3:事件表达式调用形态,处理器未声明
+// on:={inc(m)} 的头 inc 不在本文件 Fn/FnExt 表(签名门的前置存在性门)
+view V {
+  <vbox class="root">
+    <button class="btn" on:click={inc(m)}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }

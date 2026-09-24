@@ -1,0 +1,102 @@
+// tests/gui/s29_ev_expr_d —— SL-8c-3:on: 表达式事件域包夹具(自动闭包语义端到端)
+// 覆盖:调用形态事件({inc(m)}/{addn(m, 5)})骨架承载 + d_click 按头按压 +
+// 模型变更逐帧活值 + when 表达式条件;ev_fire 直驱四形态断言(调用按头分发/
+// 多实参受限求值/each 实例后缀透传/旧契约单标识符直发)。
+// 形态 = s25 同款(域包 test headless);视图用 8c-1 props 形(实参根门联验)。
+use gui.{test, d_click, d_frame, d_expect_text, d_expect_absent, ev_fire}
+
+view EvApp(m: Model) {
+  <vbox class="root">
+    <label class="title">S29 EVEXPR</label>
+    <label class="count">{m.count}</label>
+    <button class="btn" on:click={inc(m)}>INC</button>
+    <button class="btn" on:click={addn(m, 5)}>ADD5</button>
+    <when cond={m.count > 0}>
+      <label class="pos">positive</label>
+    </when>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style count { fg: "#22c55e" size: 32 h: 44 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+style pos { fg: "#f97316" h: 30 }
+
+struct Model {
+    var count: I32
+}
+
+// ev_fire 分发名累积器(变异提具名 fn,闭包体保持单调用 = 计算器在册配方;
+// 同行双 lambda 撞 ct_clo_L<行> 名 = 既有发射约束,各占一行)
+struct Log {
+    var names: Str
+}
+
+fn log_add(l: Box[Log], n: Str) {
+    l.names = l.names + n + ","
+}
+
+// E8120 签名门声明 stub(实参 1/2 = 形参;真分发在 act)
+fn inc(mm: Model) {
+}
+fn addn(mm: Model, n: I32) {
+}
+
+// bind 通道:路径名 → 值(bare = 串;i: 前缀 = 整,SL-8b 带型约定)
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "m.count" {
+        buf.push("i:" + m.count.to_string())
+    }
+}
+
+fn act_ev(name: Str, m: Box[Model]) {
+    if name == "inc" {
+        m.count = m.count + 1
+    } else {
+        if name == "addn" {
+            m.count = m.count + 5
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](Model { count: 0 })
+    var log = Box[Log](Log { names: "" })
+    var rc: I32 = test(src, 320, 640,
+        |buf| bind_all(buf, m),
+        |name| act_ev(name, m),
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "S29 EVEXPR")
+            d_expect_text(t, "0")
+            d_expect_absent(t, "positive")
+            // 表达式事件端到端:d_click 按头按压(骨架 ev_fn = "inc(m)")
+            act(d_click(t, "inc"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "1")
+            d_expect_text(t, "positive")
+            act(d_click(t, "addn"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "6")
+            // ev_fire 直驱四形态:调用按头分发 / 多实参受限求值 / each 实例
+            // 后缀透传 / 旧契约单标识符直发——分发名序列一次断言
+            ev_fire("inc(m)",
+                |buf| bind_all(buf, m),
+                |n| log_add(log, n))
+            ev_fire("addn(m, 5)",
+                |buf| bind_all(buf, m),
+                |n| log_add(log, n))
+            ev_fire("toggle(t):2",
+                |buf| bind_all(buf, m),
+                |n| log_add(log, n))
+            ev_fire("inc",
+                |buf| bind_all(buf, m),
+                |n| log_add(log, n))
+            if log.names != "inc,addn,toggle:2,inc," {
+                panic("s29: 分发名序列异常 [" + log.names + "]")
+            }
+        })
+    return rc
+}

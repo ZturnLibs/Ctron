@@ -250,10 +250,9 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             if byte_at(ob, 0) != 123 {
                 panic("gui E8100: on 期待块开")
             }
-            onf = eat_tok(tks, cur)
-            if eat_tok(tks, cur) != "}" {
-                panic("gui E8100: on 期待块闭")
-            }
+            // 8c-3:事件表达式平衡捕获(单标识符旧契约为其特例;gui_bx_expr
+            // 消费至配对 } 并剥行尾 ~ 标记)
+            onf = gui_bx_expr(tks, cur)
         } else {
             if eat_tok(tks, cur) != "=" {
                 panic("gui E8100: 属性期待等号")
@@ -644,6 +643,118 @@ fn gui_bx_roots(e: Str, out: List[Str]) {
     }
 }
 
+// 8c-3:Fn/FnExt 节点形参个数(d[3]=Ps 子节点数,VaArgs 计一;形态外 -2)
+fn gui_fn_arity(d: List[Str]) -> I32 {
+    if d.len <= 3 {
+        return -2
+    }
+    var ps = d[3]
+    if ps[0] != "Ps" {
+        return -2
+    }
+    return ps.len - 1
+}
+
+// 8c-3:名 → 形参个数(首匹配;未声明 -1)
+fn gui_ck_fn_argc(fns: List[Str], fna: List[I32], name: Str) -> I32 {
+    var i: I32 = 0
+    while i < fns.len {
+        if fns[i] == name {
+            return fna[i]
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 8c-3:on: 事件表达式形态分析(规范化形,空白已剥)。
+// 头 = 前导标识符;argc[0]: -1=单标识符(旧契约)/ -2=形态非法 / >=0=调用实参数;
+// aout[0] = 调用形态实参串(括号内原文)。字符串字面量内标点不参与配对;
+// 闭括号须为表达式末字节(f(a)(b) 即非法)。
+fn gui_ev_head2(e: Str, argc: List[I32], aout: List[Str]) -> Str {
+    var i: I32 = 0
+    while i < e.len {
+        var b: I32 = byte_at(e, i)
+        if b == 95 || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) {
+            i += 1
+        } else {
+            break
+        }
+    }
+    var head: Str = byte_slice(e, 0, i)
+    if i == e.len {
+        if head.len == 0 {
+            argc.push(-2)
+        } else {
+            argc.push(-1)
+        }
+        return head
+    }
+    if head.len == 0 {
+        argc.push(-2)
+        return head
+    }
+    if byte_at(e, i) != 40 {
+        argc.push(-2)
+        return head
+    }
+    var j: I32 = i + 1
+    var depth: I32 = 1
+    var instr: Bool = false
+    var commas: I32 = 0
+    var seen: Bool = false
+    var close: I32 = -1
+    while j < e.len {
+        var c: I32 = byte_at(e, j)
+        if instr {
+            if c == 92 {
+                j += 1
+            } else {
+                if c == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if c == 34 {
+                instr = true
+            } else {
+                if c == 40 {
+                    depth += 1
+                } else {
+                    if c == 41 {
+                        depth -= 1
+                        if depth == 0 {
+                            close = j
+                            break
+                        }
+                    } else {
+                        if c == 44 {
+                            if depth == 1 {
+                                commas += 1
+                            }
+                        }
+                    }
+                }
+            }
+            if c != 32 && c != 9 && c != 10 && c != 13 {
+                seen = true
+            }
+        }
+        j += 1
+    }
+    if close != e.len - 1 {
+        argc.push(-2)
+        return head
+    }
+    if seen {
+        argc.push(commas + 1)
+    } else {
+        argc.push(0)
+    }
+    aout.push(byte_slice(e, i + 1, close))
+    return head
+}
+
 fn gui_ck_color(v: Str, gdiags: List[Str]) -> I32 {
     if v.len != 7 {
         gdiags.push("E8130: 颜色须 #RRGGBB,得 " + v)
@@ -717,11 +828,13 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
 // 认领:when cond 绑定名 / each item 位置头(in= 绑定列表名) / input bind 绑定名自闭合 /
 // 花括号属性值(单词 = 绑定名通道)。诊断:
 //   E8100 未知标签/闭合不匹配/props 缺失(when 无 cond、input 无 bind、each 无 in)
-//   E8110 cond/bind/in 属性契约形态(须花括号绑定名,字符串即绑定期物不符)
-//   E8120 on: 处理函数未在本文件 Fn/FnExt 声明表(签名级联动随 sem,登记非目标)
+//   E8110 cond/bind/in 属性契约形态(须花括号绑定名,字符串即绑定期物不符);
+//        8c-3 扩:on: 事件表达式形态(仅路径/调用)与实参根门(props 视图)
+//   E8120 on: 处理器未声明;8c-3 扩:调用形态实参个数 vs 声明形参(签名门;
+//        单标识符旧契约仅存在性;indep 独立形态两门均跳)
 //   E8193 each 体含 input 型控件(警告入 gwarns,不置 rc;key 原语未落地前索引对齐即串位)
 // sawin = 子树 input 计数累加器(Atomic;each 据此发 E8193,嵌套 each 各自报)。
-fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], pscope: List[Str]) -> I32 {
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], pscope: List[Str]) -> I32 {
     var bad: I32 = 0
     if depth > 8 {
         gdiags.push("E8100: 嵌套超限(限深 8)")
@@ -775,7 +888,8 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
         }
         var an: Str = eat_tok(tks, cur)
         if an == "on" {
-            // on:名=花括号处理函数:逐 token 校验(曾盲吃 5 漏收尾闭,错位越界,W3 修复口径)
+            // on:名=花括号事件表达式:块开逐 token 校验(曾盲吃 5 漏收尾闭,W3 口径),
+            // 块体 8c-3 平衡捕获(单标识符旧契约为特例;配对 } 由捕获消费)
             if eat_tok(tks, cur) != ":" {
                 gdiags.push("E8100: on 期待冒号")
                 bad = -1
@@ -795,27 +909,61 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                         gdiags.push("E8100: on 期待块开")
                         bad = -1
                     } else {
-                        hn = eat_tok(tks, cur)
-                        var cb: Str = eat_tok(tks, cur)
-                        if cb.len != 1 {
-                            gdiags.push("E8100: on 期待块闭")
-                            bad = -1
-                        } else {
-                            if byte_at(cb, 0) != 125 {
-                                gdiags.push("E8100: on 期待块闭")
-                                bad = -1
-                            }
-                        }
+                        hn = gui_bx_expr(tks, cur)
                     }
                 }
             }
+            if hn == "" {
+                gdiags.push("E8100: on 事件表达式为空")
+                bad = -1
+            }
             if hn != "" {
-                // indep = 独立 .ctml 形态(处理函数在伴生 .ct,跨文件解析 SL-7+)
-                // ——跳过存在性检查;内嵌形态恒严格核对(与 Fn 表有无无关)
-                if !indep {
-                    if !gui_ck_has_style(fns, hn) {
-                        gdiags.push("E8120: 事件处理器未声明 " + hn + "(on:" + evn + ")")
-                        bad = -1
+                // 8c-3 事件表达式门:形态(单标识符旧契约 / 调用形态)+ E8120
+                // 存在与签名(实参个数 vs 声明形参;indep 独立形态处理函数在
+                // 伴生 .ct,跳过)+ E8110 实参根门(props 视图,复用 8c-1 通道)
+                var argc = List[I32]()
+                var aout = List[Str]()
+                var head: Str = gui_ev_head2(hn, argc, aout)
+                if argc[0] == -2 {
+                    gdiags.push("E8110: on: 事件表达式仅路径或调用形态 " + hn + "(on:" + evn + ")")
+                    bad = -1
+                } else {
+                    if argc[0] == -1 {
+                        // indep = 独立 .ctml 形态(处理函数在伴生 .ct,跨文件解析 SL-7+)
+                        // ——跳过存在性检查;内嵌形态恒严格核对(与 Fn 表有无无关)
+                        if !indep {
+                            if !gui_ck_has_style(fns, hn) {
+                                gdiags.push("E8120: 事件处理器未声明 " + hn + "(on:" + evn + ")")
+                                bad = -1
+                            }
+                        }
+                    } else {
+                        if !indep {
+                            var da: I32 = gui_ck_fn_argc(fns, fna, head)
+                            if da < 0 {
+                                gdiags.push("E8120: 事件处理器未声明 " + head + "(on:" + evn + ")")
+                                bad = -1
+                            } else {
+                                if da != argc[0] {
+                                    gdiags.push("E8120: 事件签名不匹配 " + head + "(实参 " + argc[0].to_string() + ",声明 " + da.to_string() + ")(on:" + evn + ")")
+                                    bad = -1
+                                }
+                            }
+                        }
+                        if props.len > 0 {
+                            var eroots = List[Str]()
+                            gui_bx_roots(aout[0], eroots)
+                            var ei: I32 = 0
+                            while ei < eroots.len {
+                                if !gui_ck_has_style(props, eroots[ei]) {
+                                    if !gui_ck_has_style(pscope, eroots[ei]) {
+                                        gdiags.push("E8110: 事件实参引用未声明(须 prop/each 项) " + eroots[ei] + " 于 on:" + evn + "=\{" + hn + "}")
+                                        bad = -1
+                                    }
+                                }
+                                ei += 1
+                            }
+                        }
                     }
                 }
             }
@@ -961,7 +1109,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 cur.store(cur.load() + 1)
-                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, depth + 1, sawin, indep, props, cscope)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, cscope)
                 if cb < 0 {
                     bad = -1
                 }
@@ -1006,9 +1154,10 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
 }
 
 fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: Bool) -> I32 {
-    // 第一遍:样式名表 + Fn/FnExt 名表(E8120 处理函数存在性依据)
+    // 第一遍:样式名表 + Fn/FnExt 名表与形参个数表(E8120 存在/签名门依据)
     var sn = List[Str]()
     var fns = List[Str]()
+    var fna = List[I32]()
     var sext = List[Str]()
     var si: I32 = 1
     while si < file.len {
@@ -1030,11 +1179,13 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
         if ds[0] == "Fn" {
             if ds.len > 1 {
                 fns.push(ds[1])
+                fna.push(gui_fn_arity(ds))
             }
         }
         if ds[0] == "FnExt" {
             if ds.len > 1 {
                 fns.push(ds[1])
+                fna.push(gui_fn_arity(ds))
             }
         }
         si += 1
@@ -1097,9 +1248,9 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                 if eat_tok(tks, cur) != "<" {
                     gdiags.push("E8100: view 期待 <")
                 } else {
-                    var sawin = Atomic[I32](0)
-                    var emptyscope = List[Str]()
-                    gui_ck_elem(tks, cur, sn, fns, gdiags, gwarns, 1, sawin, indep, vprops, emptyscope)
+                var sawin = Atomic[I32](0)
+                var emptyscope = List[Str]()
+                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, emptyscope)
                 }
             } else {
                 if d[1] == "style" {
@@ -1315,9 +1466,15 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             gui_sk_word(tks, cur)
             var evn: Str = gui_sk_word(tks, cur)
             gui_sk_word(tks, cur)
-            gui_sk_word(tks, cur)
-            var fnn: Str = gui_sk_word(tks, cur)
-            gui_sk_word(tks, cur)
+            var ob: Str = gui_sk_word(tks, cur)
+            // 块开守卫(缺 { 错位吞词,镜像 check 面 W3 教训)后 8c-3 平衡捕获
+            if ob.len != 1 {
+                panic("gui: on 期待块开")
+            }
+            if byte_at(ob, 0) != 123 {
+                panic("gui: on 期待块开")
+            }
+            var fnn: Str = gui_bx_expr(tks, cur)
             ev_name.push(evn)
             ev_fn.push(fnn)
         } else {

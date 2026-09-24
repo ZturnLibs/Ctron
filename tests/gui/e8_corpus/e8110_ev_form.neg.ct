@@ -1,0 +1,9 @@
+// gui expect: E8110 —— 8c-3:事件表达式形态门——仅路径或调用形态
+// on:={a + b} 算术形态无副作用落点(回写 E8170 登记不做),解析期即拒
+view V {
+  <vbox class="root">
+    <button class="btn" on:click={a + b}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }

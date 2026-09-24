@@ -1,0 +1,11 @@
+// gui expect: E8110 —— 8c-3:事件实参根门——props 视图内实参根须已声明
+// on:={add(modle)} 实参根 modle 拼写错(∈ {m};与 8c-1 绑定根门同规)
+view V(m: I32) {
+  <vbox class="root">
+    <button class="btn" on:click={add(modle)}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }
+fn add(mm: I32) {
+}

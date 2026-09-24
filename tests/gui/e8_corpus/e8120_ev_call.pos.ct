@@ -1,0 +1,15 @@
+// gui expect: OK —— 8c-3 正例:props 视图 + 调用形态事件表达式
+// 存在门(inc/addn 已声明)+ 签名门(实参 1/2 = 形参 1/2)+ 实参根门
+// (根 m ∈ props)三过;E8190 豁免面结构成立(on: 槽不进纯读门)
+view V(m: I32) {
+  <vbox class="root">
+    <button class="btn" on:click={inc(m)}>+1</button>
+    <button class="btn" on:click={addn(m, 5)}>+5</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }
+fn inc(mm: I32) {
+}
+fn addn(mm: I32, n: I32) {
+}

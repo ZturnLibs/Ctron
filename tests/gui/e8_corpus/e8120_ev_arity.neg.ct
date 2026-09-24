@@ -1,0 +1,11 @@
+// gui expect: E8120 —— 8c-3:事件签名门——实参个数 vs 声明形参不匹配
+// on:={add()} 零实参,声明 add(m: I32) 一参(E8120 既有码承载签名面)
+view V {
+  <vbox class="root">
+    <button class="btn" on:click={add()}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }
+fn add(m: I32) {
+}

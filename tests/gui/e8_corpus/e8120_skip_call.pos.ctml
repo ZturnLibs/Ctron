@@ -1,0 +1,10 @@
+// gui expect: OK —— 8c-3 独立形态正例:调用形态事件表达式
+// 独立 .ctml 无伴生 Fn 表(E8120 存在/签名门跳过,SL-6c 口径),表达式
+// 捕获与规范化照常(dump e 行 fn=add(model,3) 差分面)
+view V {
+  <vbox class="root">
+    <button class="btn" on:click={add(model, 3)}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }

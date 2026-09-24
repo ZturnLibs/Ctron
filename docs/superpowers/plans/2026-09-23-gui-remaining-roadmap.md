@@ -7,8 +7,20 @@
 
 - 已解锁:s26 自愈(run_kb_d 段错误随 peer 落库消失)、gui_calc 绿、
   trans_expr/stmt/ty 已落库(仅 trans_emit.ct 在飞)。
-- 仍阻塞:8c-2/3/4(interp 半 = P1b 跨包 stub「index target」;native 半 =
-  trans_emit.ct 在飞)。蓝本:plans/2026-09-23-sl8c-design.md。
+- 已落:8c-3(09-24,on: 表达式事件两口径——捕获/签名门 E8120/形态与
+  实参根门 E8110/ev_fire 触发面/语料 7 件/s22 扩/s29 新夹具/calc 切表达式
+  事件;decl 锁 363→366)。
+- 余阻塞:8c-2(props 环境+槽求值切换)/8c-4(gui.run 单入口+钩子退役)。
+  蓝本:plans/2026-09-23-sl8c-design.md(§4/§7 已兑现)。
+
+## 8c-3 落库登记(09-24;绕行与发现,trans 线候选)
+
+- 闭包捕获 List + 下标,在 test script 闭包内触发既有 trans 发射症状
+  ("ct_expr:index 目标非 List/数组:i";同文件同形 probe9 复现,与本片无关)。
+- 同行双 lambda 撞 ct_clo_L<行> 名(C 重定义)——每 lambda 独占一行绕行。
+- Void fn 裸 `return` 发射 `return;` 触非 void 告警——if/else 嵌套绕行;
+  「闭包体保持单调用」配方扩:变异提具名 fn。
+- 8b 补口:简单名通道补 bxv_show 解标(带型应答 i:/b: 上屏取值,裸串零破坏)。
 
 ## 执行队列
 
@@ -23,10 +35,10 @@
 `style b extends a { … }`:解析认领 + 样式表构建期单亲合并(子覆盖父);
 循环继承 E8100。验收:e8 pos/neg + 现有样式夹具回归。
 
-### P-8c-2/3/4(阻塞;解除即按蓝本动工)
-props 值流(props 环境)/on: 表达式事件闭包/gui.run 单入口+钩子退役。
-解除条件:trans_emit.ct 落库(native 半)+ P1b interp 收口(解释半)。
-解除检查:`git status | grep trans_emit` 为空 + interp 探针过。
+### P-8c-2/8c-4(余;按蓝本动工)
+8c-2:props 值流(props 环境;解释口径槽求值切换,s24/s25 守门)。
+8c-4:gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包
+字面量的发射落点,native 面彼时动 trans)。8c-3 已落(09-24)。
 
 ### P-v10 终锚装配(依赖 8c)
 §10.3 Todo 照抄能跑:props 视图 + 表达式事件 + `disabled={}`(需按钮

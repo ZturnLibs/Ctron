@@ -2,6 +2,7 @@ view FrameApp {
   <vbox class="root">
     <label class="title">FRAME GOLDEN</label>
     <button class="btn" on:click={noop}>ADD</button>
+    <button class="btn2" on:click={bump(draft, 3)}>BUMP</button>
     <when cond={show}>
       <label class="sub">visible row</label>
     </when>

@@ -5,33 +5,33 @@ view Calc {
   <vbox class="root">
     <label class="display">{display}</label>
     <hbox class="row">
-      <button class="fn" on:click={ac}>AC</button>
-      <button class="fn" on:click={neg}>±</button>
-      <button class="fn" on:click={pct}>%</button>
-      <button class="op" on:click={div}>÷</button>
+      <button class="fn" on:click={ac(m)}>AC</button>
+      <button class="fn" on:click={neg(m)}>±</button>
+      <button class="fn" on:click={pct(m)}>%</button>
+      <button class="op" on:click={div(m)}>÷</button>
     </hbox>
     <hbox class="row">
-      <button class="num" on:click={d7}>7</button>
-      <button class="num" on:click={d8}>8</button>
-      <button class="num" on:click={d9}>9</button>
-      <button class="op" on:click={mul}>×</button>
+      <button class="num" on:click={d7(m)}>7</button>
+      <button class="num" on:click={d8(m)}>8</button>
+      <button class="num" on:click={d9(m)}>9</button>
+      <button class="op" on:click={mul(m)}>×</button>
     </hbox>
     <hbox class="row">
-      <button class="num" on:click={d4}>4</button>
-      <button class="num" on:click={d5}>5</button>
-      <button class="num" on:click={d6}>6</button>
-      <button class="op" on:click={sub}>-</button>
+      <button class="num" on:click={d4(m)}>4</button>
+      <button class="num" on:click={d5(m)}>5</button>
+      <button class="num" on:click={d6(m)}>6</button>
+      <button class="op" on:click={sub(m)}>-</button>
     </hbox>
     <hbox class="row">
-      <button class="num" on:click={d1}>1</button>
-      <button class="num" on:click={d2}>2</button>
-      <button class="num" on:click={d3}>3</button>
-      <button class="op" on:click={add}>+</button>
+      <button class="num" on:click={d1(m)}>1</button>
+      <button class="num" on:click={d2(m)}>2</button>
+      <button class="num" on:click={d3(m)}>3</button>
+      <button class="op" on:click={add(m)}>+</button>
     </hbox>
     <hbox class="row">
-      <button class="num zero" on:click={d0}>0</button>
-      <button class="num" on:click={dot}>.</button>
-      <button class="op" on:click={eq}>=</button>
+      <button class="num zero" on:click={d0(m)}>0</button>
+      <button class="num" on:click={dot(m)}>.</button>
+      <button class="op" on:click={eq(m)}>=</button>
     </hbox>
   </vbox>
 }

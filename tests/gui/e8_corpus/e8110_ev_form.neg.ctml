@@ -1,0 +1,9 @@
+// gui expect: E8110 —— 8c-3 独立形态:事件表达式形态门(独立 .ctml 同规;
+// 存在/签名门 indep 跳过,形态门不跳)
+view V {
+  <vbox class="root">
+    <button class="btn" on:click={count = 0}>X</button>
+  </vbox>
+}
+style root { direction: column }
+style btn { bg: "#2563eb" }
