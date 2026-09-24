@@ -91,6 +91,13 @@ rc=139**（段错误，窗开后循环首帧前；无探针 env 同崩）——�
 gui_counter(run_d)/e8 22/22 全绿，崩面锁定 kb 窗口循环路径；发射产物结构
 完整（extern 均在）。判定：peer 在飞态交互回归，随其落库复验，暂不归
 GUI 泳道；8c-1（c082c94）落库时阶梯读数 25/30 即含此扰。
+**终态（2026-09-24）：s26/w4_interp 随 peer 落库全部自愈；native.sh
+ft_shim 适配落库（e4fe4df）→ suite 自举列 73/73（06e_cancel 宿主分歧亦
+愈）、阶梯 29/33 历史最佳（仅剩已登记 parse/merge 四红）；ctron-cc 手工
+按新契约可建。8c 阻塞余 interp 半：跨包 fn 的 P1b stub 已由「index
+target 崩」演化为「静默返回零值」（gt_parse 探针实证：src.len=101 正常
+读入、返回空树无诊断）——静默错比崩溃更危险，转交解释执行泳道时建议
+在 call 路径加体槽守卫响亮化；native 半已解锁（trans_emit 落库）。**
 
 ## 非目标（本计划不顺手做）
 - view 组件/props 类型面/each key/slot 分发（终锚 §10.3 全形态）；
