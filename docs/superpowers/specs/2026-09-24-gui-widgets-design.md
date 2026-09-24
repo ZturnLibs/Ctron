@@ -33,6 +33,11 @@
    扩容(table/image/多选 list/输入变体/便宜件包);四态规范去深色偏置;无选区、
    无 IME 等列为 v1 明面已知限制(§4.1);批判分析两处实证错误(hover 现成、
    零注入口)按实测修正(§2.1)。
+9. **成熟工具包对照的五轮修订与远期口径**(五轮审阅)= A 档并入:字体族/字重、
+   DPI/HiDPI、双击、hover 态对用户代码暴露、修饰键进事件载荷、尺寸约束属性透出
+   (§2.8–2.10 及 §2.1/2.3 修订);B 档进 P2(OS 文件拖入/虚拟化长列表/窗口级 API/
+   canvas 整合等);**C 档不是弃绝——多窗口、富文本、RTL、无障碍、触摸手势、
+   内部拖放等皆为远期目标**(§5 远期章),排期靠后、目标不删。
 
 ## 1. 总体架构(三层)
 
@@ -45,8 +50,8 @@
 ② 组件库    gui/widgets/*.ct —— pub view 组合 + 默认样式,零特权
             (首批:select/list/dialog 三新组件 + input 升级的 w-input 预设)
 ① 能力缝    gui.ct/parse.ct/ctron_gui.c —— 只加能力不加语义组件
-            (交互态/文本焦点+剪贴板/overlay/令牌解析/平台明暗/图像/定时器,
-             见 §2 七项)
+            (交互态/文本焦点+剪贴板/overlay/令牌解析/平台明暗/图像/定时器/
+             字体字重/DPI/尺寸约束透出,见 §2 十项)
 ```
 
 **能力缝判定铁律**:只有「无运行时支持就做不出真货」的才进内建(与 scroll 同判据)。
@@ -79,6 +84,14 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
 - **headless**:新增注入口 `d_hover(name)`(强制悬停态;active 态经按下注入钩子
   同法)——`d_click` 是按名合成、无指针位置,交互态断言必须走注入口,「零注入口」
   口径作废。
+- **hover 态对用户代码暴露**(五轮):视觉折叠之外,hover 态经 bind 通道暴露——
+  `hover:名` → "1"/"0",与 `when:名` 同构;tooltip(P1)等组件以 `when(hovered)`
+  消费,不依赖视觉副作用。
+- **双击**(五轮):on:dblclick,指针管线顺带(click 计数 + 间隔窗,复用 §2.1 管线);
+  headless `d_dblclick` 注入。list 行打开等高频消费。
+- **修饰键进事件载荷**(五轮):ctrl/shift/alt 位随事件载荷下发——「名:载荷」前
+  置修饰段(如 `pick:ctrl:3`);多选 list 的 ctrl+click 直接消费。首版仅 click/
+  dblclick 携带。
 - **探针任务**:each 实例行级 hover(list 行反白消费)——click 有「名:下标」先例,
   hover 的实例索引须同构验证(§7/s35)。
 - **disabled 并轨**:现有 nflag 通道保持语义不变,视觉走 `disabled-*` 属性 +
@@ -113,8 +126,9 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
 - 显示控制复用 when 通道(overlay 置于 `when` 体内条件渲染),无新状态通道。
 - **模态语义**(dialog 组件消费):overlay 全屏半透明遮罩底(MASK 令牌)+ 遮罩
   点击走既有命中通道回调 on:close;遮罩吃掉穿透点击。
-- **键盘模态(v1 钉值)**:overlay 最顶层为 dialog 时,键闭包挂起(堵模态泄漏——
-  否则弹窗开着背景快捷键照常触发)。
+- **键盘模态(v1 钉值,五轮修复自锁)**:overlay 最顶层为 dialog 时,键闭包挂起
+  (堵模态泄漏);**Esc 例外——由运行时消费并转 `on:close`**(否则模态框连 Esc
+  都关不上,自锁)。dialog 内 input 聚焦时 Esc 先失焦(编辑语义优先),再关。
 - **探针先行**:三处未钉——浮层命中序(遮罩吃穿透的判定次序)、多层 z 叠序、
   位于 scroll/裁剪祖先内时的行为。实施计划探针验证;若裁剪祖先内异常,**约束
   overlay 仅根级声明**(钉值)。
@@ -156,6 +170,29 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
   动画直接消费**:spinner 相位、光标闪烁(P2 转正)、进度动画、toast 自动消失。
 - 用户级 `on:after` 定时事件 P2(事件通道扩展)。
 - headless:`d_tick(ms)` 注入推进(确定性,不睡真实时钟)。
+
+### 2.8 字体族/字重(P1,五轮补入;实测 ft_shim 单字体硬编码 Regular)
+
+- ft_shim 扩**多字体 + weight 变体**加载(同族 Regular/Bold 两面起步,按
+  font-weight 选取;缓存键 = (串,px,weight) 三元组,LRU 口径沿 §ft_shim 先例)。
+- style 属性透出:`font-weight`(400/700 起步)、`font-family`(命名映射,内置
+  默认族;用户自带 TTF 的注册面 P2)。
+- 字体回退链(CJK/emoji 混排、缺字回退)P2(§5)。
+
+### 2.9 DPI/HiDPI 缩放(P1 探针先行,五轮补入;实测 c_src 零 DPI 处理)
+
+- 探针:核查 raylib retina 现行为(窗口创建 flag、帧缓冲尺寸、鼠标坐标口径)——
+  结论补记本节,再定实现。
+- 实现面(探针后落):HighDPI flag + 全局缩放因子,**测量/布局/指针命中三处
+  统一换算**(漏一处即错位);逻辑像素口径(§5.1)不变,缩放因子对用户透明。
+- 黄金夹具约束:探针未决前延续 CTRON_GUI_FT_OFF=1 + 逻辑像素钉值;DPI 因子不进
+  跨平台黄金。
+
+### 2.10 尺寸约束属性透出(P1,五轮补入;Clay 能力未透出)
+
+- style 属性面扩容:`min-w`/`min-h`/`max-w`/`max-h`/`aspect`(Clay 已有,CTML
+  未透)/`grow`(系数,现仅开关语义则升级)。纯属性透传,响应式布局地基。
+- 夹具:s29 系相邻几何断言复用(x100/w100 口径已备)。
 
 ## 3. 外观体系
 
@@ -287,15 +324,18 @@ input 是**内建元素的能力升级**(§2.2)+ 库级默认样式预设(`w-inp
 - **光标常亮**(闪烁 P2)。
 - dialog 键盘模态泄漏已由 §2.3 钉值堵漏(顶层 dialog 时键闭包挂起),非限制。
 
-## 5. 全目录路线图(只列不做,防过度设计;四轮扩容)
+## 5. 全目录路线图(P1/P2 只列不做防过度设计;远期章 = 裁决 #9 在册目标;五轮扩容)
 
-**P1**(消费 §2 能力缝,含三新缝):
+**P1**(消费 §2 能力缝,含新缝):
 slider(拖拽缝¹)、progress、**spinner**(tick³)、tabs、switch(checkbox 变体)、
-radio、menu(overlay)、**menubar**(menu+hbox 组合)、tooltip(overlay)、
-toast(overlay + tick 自动消失³)、badge、**table**(列头+对齐+行选中,
-files/面板生态直接受益)、**image**(§2.6)、**多选 list**(`selected: List[I32]`)、
-**input 变体**(password mask / 数值属性面,零新能力)、
-**便宜件包**(divider / accordion / card——纯组合各一两行)。
+radio、menu(overlay)、**menubar**(menu+hbox 组合)、tooltip(overlay + hover 态
+bind 暴露)、toast(overlay + tick 自动消失³)、badge、**table**(列头+对齐+行
+选中,files/面板生态直接受益)、**image**(§2.6)、**多选 list**(`selected:
+List[I32]`,ctrl+click 消费修饰键载荷)、**input 变体**(password mask / 数值
+属性面,零新能力)、**便宜件包**(divider / accordion / card——纯组合各一两行);
+能力面:**字体族/字重**(§2.8)、**DPI 探针→落地**(§2.9)、**双击 +
+`d_dblclick`**、**hover 态 bind 暴露**、**修饰键载荷**、**尺寸约束属性透出**
+(§2.10)。
 
 **P2**(消费新能力缝):拖拽事件缝¹细化、可拖分隔条、tree(view 递归已支持,
 缩进+折叠组合)、combobox(input+select 合体)、grid 布局助手(**前置:核查 Clay
@@ -303,10 +343,20 @@ grid 支持面**)、光标形状(I-beam/pointer)、光标闪烁(tick 转正)、T
 右键菜单、图标(消费 §2.6)、滚动条视觉、程序化 `focus()`/`scroll_into_view`、
 多行 textarea、**选区模型**、**undo/redo**、**焦点原语开放给 view 层**(解除
 §7 宪法例外)、用户级 `on:after` 定时、窗口图标/无边框;
+五轮 B 档:**OS 文件拖入**(raylib IsFileDropped 现成)、**虚拟化长列表**(master
+设计 virtual each 蓝本:each 于 scroll 内 + `virtual` + `row-h` + overscan)、
+**窗口级 API**(关闭拦截/全屏最大化)、**canvas 树内整合**(直绘已有 gui_cjk,
+CTML 树内 canvas 元素 + 每帧绘制回调)、文本 ellipsis/行钳制、链接(OpenURL)、
+字体回退链(CJK/emoji 混排);
 主题面:高对比无障碍主题、主题热切换。
 
-**P3 方向**:date/time picker、color picker、command palette、chart、过渡动画
-(插值,消费 tick)。
+**P3+ 远期目标(裁决 #9:皆为在册目标,排期靠后、目标不删)**:
+**多窗口**(架构级:raylib 单窗假设,届时需窗口层决策——多 Clay 上下文/换窗口
+库/多进程,方案评审时点定)、富文本/inline markup、RTL 布局镜像(文字 bidi 已有,
+镜像布局待做)、无障碍树/屏幕阅读器、触摸/手势、内部拖放(列表重排/drop target)、
+date/time picker、color picker、command palette、chart、过渡动画(插值,消费
+tick)、**异步任务到 UI**(跨泳道依赖:语言面线程/通道就绪后接 GUI 合流;现状 =
+帧内小粒度分片口径)。
 
 ¹ 拖拽事件缝:pointer move + 按住位移进事件通道(「名:载荷」复用)。
 ³ spinner/toast 自动消失消费 §2.7 tick 原语。
@@ -314,18 +364,22 @@ grid 支持面**)、光标形状(I-beam/pointer)、光标闪烁(tick 转正)、T
 ## 6. 验收与测试(能力→示例→测试,house 方法论)
 
 - **能力夹具**(阶梯新增):s29_state(hover 注入 `d_hover` + active/focus/disabled
-  折叠,经**颜色访问器**断言折叠后绘制属性)、s30_focus(input 编辑全链:得焦/
-  键入/退格/submit/剪贴板键(自持缓冲口径)/失焦)、s31_overlay(z 序/居中/遮罩
-  回调 + 命中序/裁剪祖先探针)、s32_theme(八主题 apply 逐套折叠值全套断言;
-  theme_auto 平台×明暗探测与 CTRON_GUI_THEME 钉值覆盖;显式 apply 后缺省自适应
-  不再干扰)、s33_image(加载/缓存命中/失败占位/绘制尺寸)、s34_tick(d_tick 推进
-  + spinner 相位/toast 自动消失)、s35_组件×each 探针(list/select 于 each 内
-  实例化 + 组件内部 each,邻域坑验证见 §7)。
+  折叠,经**颜色访问器**断言;**双击 `d_dblclick`、hover 态 bind 暴露(`hover:名`
+  询问面)、修饰键载荷断言**,五轮扩)、s30_focus(input 编辑全链:得焦/键入/退格/
+  submit/剪贴板粘贴(自持缓冲口径)/失焦)、s31_overlay(z 序/居中/遮罩回调 +
+  命中序/裁剪祖先探针 + **Esc 关模态(自锁修复)**)、s32_theme(八主题 apply
+  逐套折叠值全套断言;theme_auto 平台×明暗探测与 CTRON_GUI_THEME 钉值覆盖;显式
+  apply 后缺省自适应不再干扰)、s33_image(加载/缓存命中/失败占位/绘制尺寸)、
+  s34_tick(d_tick 推进 + spinner 相位/toast 自动消失)、s35_组件×each 探针
+  (list/select 于 each 内实例化 + 组件内部 each,邻域坑验证见 §7)、
+  **s36_font(粗体渲染 + 缓存键含 weight,§2.8)**;**DPI 探针结论补记 §2.9**
+  (探针先行,落地后几何黄金复核)。
 - **夹具迁移清单**:input 升级改 keystroke 消费边界——s12_input/s19_input_d/
   todo 断言面连锁,**迁移先行于 s30 合入**(逐个改口径,清单化销账)。
 - **驱动器增量**(三轮实证缺口):`d_hover` 注入口、`d_cmd` 颜色访问器
   (`d_cmd_bg100`/`border100`/`fg100`——现访问器仅 count/type/text/几何,无颜色)、
-  `d_tick`、图像命令访问器(`d_cmd_img`)、剪贴板注入(直控自持缓冲)。
+  `d_tick`、图像命令访问器(`d_cmd_img`)、剪贴板注入(直控自持缓冲)、
+  `d_dblclick` 与修饰键注入参数(五轮)。
 - **组件验收**:examples/todo 改造换真 input(退役 mirror label,回归既有断言);
   新示例 examples/gui_widgets 陈列室(首批四件 + P1 渐次上架;headless 断言 +
   `--run` 真窗口)。
@@ -361,3 +415,9 @@ grid 支持面**)、光标形状(I-beam/pointer)、光标闪烁(tick 转正)、T
   (构造后成员赋值,零新语法)。
 - **令牌表全局态与热重载**:theme_apply 后的表是运行时全局态,与热重载环/多入口
   (run 与 test)的交互口径=s32 夹具覆盖;主题热切换 P2 前不做增量 apply。
+- **DPI 探针未决前黄金口径**(五轮):几何/黄金夹具延续 FT_OFF + 逻辑像素钉值,
+  缩放因子不进跨平台黄金;探针结论先补记 §2.9 再动实现。
+- **多窗口架构决策点**(五轮,远期):raylib 单窗假设,多窗口需窗口层决策(多
+  Clay 上下文/换窗口库/多进程)——P3+ 评审时点定,提前登记防临时拍板。
+- **异步到 UI 跨泳道依赖**(五轮,远期):语言面无线程/通道,GUI 长任务冻结帧循环
+  ——gui 侧现状口径 = 帧内小粒度分片;合流待 std 线程/通道,登记跨泳道勿单方许诺。
