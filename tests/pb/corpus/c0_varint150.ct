@@ -1,0 +1,15 @@
+// c0 —— 官方向量:field1 varint 150 = 08 96 01
+use std.pb.{ pb_put_i64, pb_next, pb_rc_field }
+
+fn main() -> I64 {
+    var b: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = pb_put_i64(b, 16, 0, 1, 150)
+    if n != 3 { return 1 }
+    if b[0] != 8 { return 2 }
+    if b[1] != 150 { return 3 }
+    if b[2] != 1 { return 4 }
+    let f = pb_next(b, n, 0)
+    if f.rc != pb_rc_field() { return 5 }
+    if f.v != 150 { return 6 }
+    return 0
+}

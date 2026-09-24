@@ -625,3 +625,15 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   另:2026-09-24 机刷在飞自举二进制曾呈现同族缺声明(client/sse_ws e2e 的
   t_client_write_str/t_http_method_start 形),与 HEAD 静态缺陷叠置,门禁采数
   一律走 worktree 隔离构建(CTRON_EMIT 覆盖口,bench_cycle.sh/run.sh 已备)。
+
+### emit 直发主文件确定性 SIGKILL @20480B(P7-B std/pb.ct,2026-09-25)
+
+- **现象**:`ctron-emit run std/pb.ct`(435 行,作为主文件)产物恒止于 20480 字节
+  (恰好 20×1024;截断点 = t_PbField typedef 中途),SIGKILL;复跑两次逐字节同
+  尺寸。同文件**作为依赖**(corpus `use std.pb.*` 五件)被 emit 全量发射且双臂
+  全绿——仅「主文件发射」路径死。
+- **归因候选**:20KB 输出缓冲边界 + 主文件发射路径(直发 main-dispatch 与全部
+  顶层 decl)的内存行为;依赖路径代码相同而安好,故非单一 decl 触发。归编译
+  泳道(minimal repro = std/pb.ct 本体)。
+- **绕行**:tests/pb/run.sh 的 std 直发腿以 chk 语义门替代;代码生成覆盖由
+  corpus 五件(作为依赖的 emit 双臂)承担。

@@ -1,0 +1,13 @@
+// c1 —— 官方向量:field2 ld "testing" = 12 07 74 65 73 74 69 6e 67
+use std.pb.{ pb_put_str }
+
+fn main() -> I64 {
+    var b: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = pb_put_str(b, 16, 0, 2, "testing")
+    if n != 9 { return 1 }
+    if b[0] != 18 { return 2 }
+    if b[1] != 7 { return 3 }
+    if b[2] != 116 { return 4 }
+    if b[8] != 103 { return 5 }
+    return 0
+}

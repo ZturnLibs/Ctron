@@ -1,0 +1,28 @@
+// c3 —— zigzag 族 + bool 面
+use std.pb.{ pb_put_sint, pb_put_bool, pb_next, pb_zag }
+
+fn main() -> I64 {
+    var b: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = pb_put_sint(b, 16, 0, 1, 0 - 1)
+    if n != 2 { return 1 }
+    if b[1] != 1 { return 2 }
+    let f = pb_next(b, n, 0)
+    if pb_zag(f.v) != 0 - 1 { return 3 }
+    if pb_zag(3) != 0 - 2 { return 4 }
+    if pb_zag(0) != 0 { return 5 }
+    if pb_zag(2) != 1 { return 6 }
+    // 2 与 -2
+    var c: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let m = pb_put_sint(c, 16, 0, 3, 0 - 2)
+    let g = pb_next(c, m, 0)
+    if g.field != 3 { return 7 }
+    if pb_zag(g.v) != 0 - 2 { return 8 }
+    // bool:true → 1
+    var d: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let k = pb_put_bool(d, 16, 0, 4, true)
+    if k != 2 { return 9 }
+    if d[1] != 1 { return 10 }
+    let h = pb_next(d, k, 0)
+    if h.v != 1 { return 11 }
+    return 0
+}

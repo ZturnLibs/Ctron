@@ -1,0 +1,394 @@
+// std/pb.ct —— protobuf 线格式编解码(P7-B;T1 档:零 use 纯函数,无 IO 无时钟)
+//
+// 形态纪律(router/log 同款零 use 纯模块):字节道 = &I64[] lane(每字节一条
+//   I64,0..255;I8-typedef 列 P9);写面 = (buf,cap,pos) 游标返新 pos,越界
+//   返 -1;读面 = 值 struct PbField 游标(http parse 同款,rc 1=字段/0=EOF/
+//   -1=坏)。P8 Connect 桥与 P7 OTLP/HTTP 的共同地基。
+//
+// 线格式(protobuf encoding,字段号 1 起,wire 类型):
+//   0 = varint(int32/int64/uint32/uint64/sint/bool/enum)
+//   1 = 64-bit / 5 = 32-bit(fixed/float 族——v1 不做,OTLP v1 span 面不需要,
+//       志向登记)
+//   2 = length-delimited(string/bytes/嵌套 message)
+//   3/4 = group(已废弃)→ 读面拒
+// varint:每字节低 7 位,最高位续行;≤10 字节。负 int64 = 10 字节规范形
+//   (补码 64 位);解码 v1 只收 <2^63(9 组;规范形负数 10 组拒,OTLP 正值域
+//   足够,登记志向)。
+// 【Ctron 算术纪律(为什么满屏 %/*//)】本语言无位运算算符(& = 借用符;| ^
+//   非法,2026-09-25 实证 divergences 在册)——位运算一律算术等价:低 7 位 =
+//   %128、移位 = */除 128 幂链、continuation = +128;常量经 zseed 播种
+//   (crypto.ct z64 同款宽域惯例,防字面量类型标签假阳)。
+// 分层准入(宪章 v2 四问):零依赖/纯函数/无平台面/与 enc·json 同类 —— T1。
+
+fn zseed() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+pub fn pb_w_varint() -> I64 { return zseed() + 0 }
+pub fn pb_w_64bit() -> I64 { return zseed() + 1 }
+pub fn pb_w_ld() -> I64 { return zseed() + 2 }
+pub fn pb_w_32bit() -> I64 { return zseed() + 5 }
+
+pub struct PbField {
+    let rc: I64
+    let field: I64
+    let wire: I64
+    let v: I64
+    let start: I64
+    let ln: I64
+    let pos: I64
+}
+
+pub struct PbRd {
+    let rc: I64
+    let v: I64
+    let np: I64
+}
+
+pub fn pb_rc_field() -> I64 { return zseed() + 1 }
+pub fn pb_rc_eof() -> I64 { return zseed() + 0 }
+pub fn pb_rc_bad() -> I64 { return zseed() - 1 }
+
+// 地板 7 位取模(负数安全:((v % 128) + 128) % 128)
+fn fn7(v: I64) -> I64 {
+    let m = v % 128
+    if m < 0 {
+        return m + 128
+    }
+    return m
+}
+
+// ---- 写面 ----
+
+// varint 写(负数委 varneg 10 字节规范形;正数 9 组直排 + 地板除链)
+pub fn pb_put_varint(buf: &I64[], cap: I64, pos: I64, v: I64) -> I64 {
+    if v < 0 {
+        return pb_put_varneg(buf, cap, pos, v)
+    }
+    var p = pos
+    var x = v
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    if x <= 127 {
+        if p >= cap { return 0 - 1 }
+        buf[p] = x
+        return p + 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x % 128 + 128
+    p += 1
+    x = x / 128
+    // 组 9(第 10 字节):正数至多 1 位,再续 = 值域坏
+    if x > 127 {
+        return 0 - 1
+    }
+    if p >= cap { return 0 - 1 }
+    buf[p] = x
+    return p + 1
+}
+
+// 负数规范形:10 字节(地板 7 位链;组 0..8 恒续行,组 9 恒 1)
+pub fn pb_put_varneg(buf: &I64[], cap: I64, pos: I64, v: I64) -> I64 {
+    var p = pos
+    var r = v
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = fn7(r) + 128
+    p += 1
+    r = (r - fn7(r)) / 128
+    if p >= cap { return 0 - 1 }
+    buf[p] = 1
+    return p + 1
+}
+
+// tag = field*8 + wire(varint 写)
+pub fn pb_put_tag(buf: &I64[], cap: I64, pos: I64, field: I64, wire: I64) -> I64 {
+    return pb_put_varint(buf, cap, pos, field * 8 + wire)
+}
+
+// wire0:有符号 64(负数 10 字节规范形)
+pub fn pb_put_i64(buf: &I64[], cap: I64, pos: I64, field: I64, v: I64) -> I64 {
+    let p = pb_put_tag(buf, cap, pos, field, pb_w_varint())
+    if p < 0 { return 0 - 1 }
+    return pb_put_varint(buf, cap, p, v)
+}
+
+// wire0:sint(zigzag;正负分路等价形,Ctron 无 ^)
+pub fn pb_put_sint(buf: &I64[], cap: I64, pos: I64, field: I64, v: I64) -> I64 {
+    if v >= 0 {
+        return pb_put_i64(buf, cap, pos, field, v * 2)
+    }
+    return pb_put_i64(buf, cap, pos, field, (0 - (v * 2)) - 1)
+}
+
+// wire0:bool
+pub fn pb_put_bool(buf: &I64[], cap: I64, pos: I64, field: I64, b: Bool) -> I64 {
+    if b {
+        return pb_put_i64(buf, cap, pos, field, 1)
+    }
+    return pb_put_i64(buf, cap, pos, field, 0)
+}
+
+// wire2:length-delimited(lane 源)
+pub fn pb_put_bytes(buf: &I64[], cap: I64, pos: I64, field: I64, src: &I64[], slen: I64) -> I64 {
+    let p = pb_put_tag(buf, cap, pos, field, pb_w_ld())
+    if p < 0 { return 0 - 1 }
+    let p2 = pb_put_varint(buf, cap, p, slen)
+    if p2 < 0 { return 0 - 1 }
+    if p2 + slen > cap { return 0 - 1 }
+    var i: I64 = 0
+    while i < slen {
+        buf[p2 + i] = src[i]
+        i += 1
+    }
+    return p2 + slen
+}
+
+// wire2:Str 源(字节逐个;UTF-8 透传)
+pub fn pb_put_str(buf: &I64[], cap: I64, pos: I64, field: I64, s: Str) -> I64 {
+    let p = pb_put_tag(buf, cap, pos, field, pb_w_ld())
+    if p < 0 { return 0 - 1 }
+    let p2 = pb_put_varint(buf, cap, p, s.len.as[I64]())
+    if p2 < 0 { return 0 - 1 }
+    if p2 + s.len.as[I64]() > cap { return 0 - 1 }
+    var i: I32 = 0
+    while i < s.len {
+        buf[p2 + i.as[I64]()] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return p2 + s.len.as[I64]()
+}
+
+// ---- 读面 ----
+
+// varint 读(<2^63,9 组;第 10 字节续行 = 规范形负数或超长 → v1 拒)
+fn pb_rd_varint(buf: &I64[], n: I64, pos: I64) -> PbRd {
+    if pos >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b0 = buf[pos]
+    if (b0 < 0) || (b0 > 255) {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let v0 = b0 % 128
+    if b0 < 128 {
+        return PbRd { rc: 1, v: v0, np: pos + 1 }
+    }
+    if pos + 1 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b1 = buf[pos + 1]
+    let v1 = v0 + (b1 % 128) * 128
+    if b1 < 128 {
+        return PbRd { rc: 1, v: v1, np: pos + 2 }
+    }
+    if pos + 2 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b2 = buf[pos + 2]
+    let v2 = v1 + (b2 % 128) * 16384
+    if b2 < 128 {
+        return PbRd { rc: 1, v: v2, np: pos + 3 }
+    }
+    if pos + 3 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b3 = buf[pos + 3]
+    let v3 = v2 + (b3 % 128) * 2097152
+    if b3 < 128 {
+        return PbRd { rc: 1, v: v3, np: pos + 4 }
+    }
+    if pos + 4 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b4 = buf[pos + 4]
+    let v4 = v3 + (b4 % 128) * 268435456
+    if b4 < 128 {
+        return PbRd { rc: 1, v: v4, np: pos + 5 }
+    }
+    if pos + 5 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b5 = buf[pos + 5]
+    let v5 = v4 + (b5 % 128) * 34359738368
+    if b5 < 128 {
+        return PbRd { rc: 1, v: v5, np: pos + 6 }
+    }
+    if pos + 6 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b6 = buf[pos + 6]
+    let v6 = v5 + (b6 % 128) * 4398046511104
+    if b6 < 128 {
+        return PbRd { rc: 1, v: v6, np: pos + 7 }
+    }
+    if pos + 7 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b7 = buf[pos + 7]
+    let v7 = v6 + (b7 % 128) * 562949953421312
+    if b7 < 128 {
+        return PbRd { rc: 1, v: v7, np: pos + 8 }
+    }
+    if pos + 8 >= n {
+        return PbRd { rc: 0 - 1, v: 0, np: n }
+    }
+    let b8 = buf[pos + 8]
+    let v8 = v7 + (b8 % 128) * 72057594037927936
+    if b8 < 128 {
+        return PbRd { rc: 1, v: v8, np: pos + 9 }
+    }
+    // 第 10 字节续行 = 规范形负数或超长 → v1 拒(正值域口径,登记志向)
+    return PbRd { rc: 0 - 1, v: 0, np: n }
+}
+
+// 单字段游标:v(varint 原值)/start·len(ld 载荷窗)/pos(下字段起点)
+pub fn pb_next(buf: &I64[], n: I64, pos: I64) -> PbField {
+    if pos >= n {
+        return PbField { rc: pb_rc_eof(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+    }
+    let t = pb_rd_varint(buf, n, pos)
+    if t.rc != 1 {
+        return PbField { rc: pb_rc_bad(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+    }
+    let fld = t.v / 8
+    let wr = t.v % 8
+    if (fld < 1) || (fld > 536870911) {
+        return PbField { rc: pb_rc_bad(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+    }
+    if wr == pb_w_varint() {
+        let vv = pb_rd_varint(buf, n, t.np)
+        if vv.rc != 1 {
+            return PbField { rc: pb_rc_bad(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+        }
+        return PbField { rc: pb_rc_field(), field: fld, wire: wr, v: vv.v, start: 0, ln: 0, pos: vv.np }
+    }
+    if wr == pb_w_ld() {
+        let lv = pb_rd_varint(buf, n, t.np)
+        if lv.rc != 1 {
+            return PbField { rc: pb_rc_bad(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+        }
+        if (lv.v < 0) || (lv.np + lv.v > n) {
+            return PbField { rc: pb_rc_bad(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+        }
+        return PbField { rc: pb_rc_field(), field: fld, wire: wr, v: lv.v, start: lv.np, ln: lv.v, pos: lv.np + lv.v }
+    }
+    // wire 1/5(64/32-bit 值面 v1 不做)与 3/4(group 废弃)→ 坏(诚实:无半懂)
+    return PbField { rc: pb_rc_bad(), field: 0, wire: 0, v: 0, start: 0, ln: 0, pos: n }
+}
+
+// ld 载荷 → Str(printable 透传面;OTLP v1 字段名 ASCII 口径,UTF-8 全保真列志向)
+pub fn pb_str(buf: &I64[], f: PbField) -> Str {
+    var out = ""
+    var i: I64 = 0
+    while i < f.ln {
+        let c = buf[f.start + i]
+        if (c >= 32) && (c < 127) {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\\{|}~", c - 32, c - 31)
+        }
+        i += 1
+    }
+    return out
+}
+
+// zigzag 反变换(正偶/正奇分路形)
+pub fn pb_zag(z: I64) -> I64 {
+    let h = z / 2
+    if z % 2 == 0 {
+        return h
+    }
+    return (0 - h) - 1
+}

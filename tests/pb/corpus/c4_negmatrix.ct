@@ -1,0 +1,35 @@
+// c4 —— 负例矩阵:截断 varint/字节域越界/字段 0/EOF/持续位尾随
+use std.pb.{ pb_next, pb_rc_bad, pb_rc_eof, pb_put_varint }
+
+fn main() -> I64 {
+    // EOF:空域
+    var b: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let e = pb_next(b, 0, 0)
+    if e.rc != pb_rc_eof() { return 1 }
+    // 截断:tag 宣称 varint 但值字节缺(08 后无值)
+    b[0] = 8
+    let t1 = pb_next(b, 1, 0)
+    if t1.rc != pb_rc_bad() { return 2 }
+    // 字段 0 拒(tag=0)
+    b[0] = 0
+    b[1] = 5
+    let t2 = pb_next(b, 2, 0)
+    if t2.rc != pb_rc_bad() { return 3 }
+    // ld 长度越界:tag 18(字段2 ld)声明长 200 但域只有 1
+    var c: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    c[0] = 18
+    c[1] = 200
+    let t3 = pb_next(c, 2, 0)
+    if t3.rc != pb_rc_bad() { return 4 }
+    // wire 3(group 废弃)拒:tag = 3*8+3 = 27
+    var d: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let gn = pb_put_varint(d, 16, 0, 27)
+    d[gn] = 1
+    let t4 = pb_next(d, gn + 1, 0)
+    if t4.rc != pb_rc_bad() { return 5 }
+    // 合法流尾随 EOF 已在 c1;此处补 put 越界:cap 不足返 -1
+    var z: I64[2] = [0, 0]
+    let o = pb_put_varint(z, 2, 0, 0 - 1)
+    if o != 0 - 1 { return 6 }
+    return 0
+}

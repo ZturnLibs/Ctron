@@ -1,0 +1,23 @@
+// c5 —— 正数往返 walk:varint+ld 双字段 → 逐字段解码 → EOF
+// (载荷断言走逐字节比对——跨包 Str 返回面绕行,divergences 09-25 节)
+use std.pb.{ pb_put_i64, pb_put_str, pb_next, pb_rc_field, pb_rc_eof }
+
+fn main() -> I64 {
+    var c: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let m = pb_put_i64(c, 16, 0, 1, 150)
+    let m2 = pb_put_str(c, 16, m, 2, "testing")
+    let f1 = pb_next(c, m2, 0)
+    if f1.rc != pb_rc_field() { return 6 }
+    if f1.field != 1 { return 7 }
+    if f1.wire != 0 { return 8 }
+    if f1.v != 150 { return 9 }
+    let f2 = pb_next(c, m2, f1.pos)
+    if f2.field != 2 { return 10 }
+    if f2.wire != 2 { return 11 }
+    if f2.ln != 7 { return 12 }
+    if c[f2.start] != 116 { return 13 }
+    if c[f2.start + 6] != 103 { return 14 }
+    let f3 = pb_next(c, m2, f2.pos)
+    if f3.rc != pb_rc_eof() { return 15 }
+    return 0
+}
