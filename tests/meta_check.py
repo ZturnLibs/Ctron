@@ -153,12 +153,13 @@ def check_file(path: Path) -> list[str]:
     # msg 只配 fail
     if "msg" in markers and "fail" not in markers:
         errors.append("//@ msg: 只能与 //@ fail: 同用")
-    # 错误码必须已注册
+    # 错误码必须已注册(点式变体码合法:E2020.use.nat 等 P1b 整键前缀;基码须注册)
     for key in ("fail", "warn"):
         for code in markers.get(key, []):
-            if not CODE_RE.match(code):
+            base = code.split(".")[0]
+            if not CODE_RE.match(base) or (code != base and not re.fullmatch(r"(\.[a-z][a-z_]*)+", code[len(base):])):
                 errors.append(f"错误码格式非法: {code}")
-            elif code not in ERROR_CODES:
+            elif base not in ERROR_CODES:
                 errors.append(f"错误码未注册(先加 README §4 与本脚本注册表): {code}")
     # target/profile 取值
     for key in ("target", "profile"):
