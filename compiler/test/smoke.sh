@@ -430,10 +430,13 @@ for cv in uhex; do
 done
 
 echo "== 3j) FFI 发射链接面(§9.6·§9.8,tests/ffi/) =="
+# linux:主程序符号默认不进 dlsym 全局域,#[dlsym] thunk 需 -rdynamic(mac 两级
+# 命名空间默认可达,历史未暴露)
+case $(uname) in Linux) FFI_RDL="-rdynamic" ;; *) FFI_RDL="" ;; esac
 ffi_case() { # <目录名>
     local d="$ROOT/tests/ffi/$1"
     if "$COMP/bin/ctron-emit" run "$d/src/main.ct" > "$T/ffi_$1.c" 2>/dev/null \
-       && cc -O1 -w -o "$T/ffi_$1.bin" "$T/ffi_$1.c" "$d"/c_src/*.c 2>/dev/null \
+       && cc -O1 -w $FFI_RDL -o "$T/ffi_$1.bin" "$T/ffi_$1.c" "$d"/c_src/*.c 2>/dev/null \
        && "$T/ffi_$1.bin" run "$d/src/main.ct" > "$T/ffi_$1.out" 2>&1; then
         ok "ffi/$1 emit+链接+原生运行"
     else
@@ -533,6 +536,11 @@ P
     emit_knownred=0
     emit_newred=0
     emit_flipped=""
+    # 4c known 欠账表按平台:heap 在 linux 双臂已绿(翻绿清账),mac 解释臂仍红
+    case $(uname) in
+        Darwin) KNOWN4C=" heap opt " ;;
+        *)      KNOWN4C=" opt " ;;
+    esac
     for f in "$ROOT"/std/*.ct; do
         b=$(basename "$f" .ct)
         # fmap/crypto:arena 大户(解释臂 GB 级,见 3j2 注)——runner 必被 SIGTERM
@@ -544,7 +552,7 @@ P
             out_i=$("$COMP/bin/ctron-cc" run "$f" 2>&1); rc_i=$?
             [ $rc_n -eq 0 ] && [ $rc_i -eq 0 ] && [ "$out_n" = "$out_i" ] && arm_ok=1
         fi
-        if echo " heap opt " | grep -q " $b "; then
+        if echo " $KNOWN4C " | grep -q " $b "; then
             if [ $arm_ok -eq 1 ]; then
                 emit_flipped="$emit_flipped $b"
             else
