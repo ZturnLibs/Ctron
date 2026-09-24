@@ -259,8 +259,54 @@ void ctron_gui_flush(void) {
 // ---- 主题令牌槽(波次一 §2.4):25 槽 I32,theme_apply 逐槽写入;
 // 样式存储期令牌名折成 "@n" 标记,折叠期 slot_get O(1) 读(两段式,禁逐帧名查表) ----
 int g_theme_slots[32];
-void gui_theme_slot(int i, int v) { g_theme_slots[i] = v; }
+int g_theme_applied = 0;
+void gui_theme_slot(int i, int v) { g_theme_slots[i] = v; g_theme_applied = 1; }
+int gui_theme_applied(void) { return g_theme_applied; }
 int gui_theme_slot_get(int i) {
     if (i < 0 || i >= 32) { return 0; }
     return g_theme_slots[i];
+}
+
+// ---- 平台/明暗探测(§2.5;theme_auto 缺省选择;进程内缓存,探测不可得回退深色) ----
+int gui_platform_id(void) {
+#if defined(__APPLE__)
+    return 0;
+#elif defined(_WIN32)
+    return 1;
+#else
+    return 2;
+#endif
+}
+int g_os_dark = -1;
+int gui_os_dark_id(void) {
+    if (g_os_dark >= 0) { return g_os_dark; }
+    int dark = 1;
+#ifdef __APPLE__
+    FILE *pp = popen("defaults read -g AppleInterfaceStyle 2>/dev/null", "r");
+    if (pp) {
+        char buf[64];
+        dark = (fgets(buf, sizeof buf, pp) != NULL) ? 1 : 0;
+        pclose(pp);
+    }
+#elif defined(_WIN32)
+    FILE *pp = popen("reg query \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\" /v AppsUseLightTheme 2>nul", "r");
+    if (pp) {
+        char buf[512];
+        dark = 1;
+        while (fgets(buf, sizeof buf, pp) != NULL) {
+            if (strstr(buf, "0x0")) { dark = 1; }
+            if (strstr(buf, "0x1")) { dark = 0; }
+        }
+        pclose(pp);
+    }
+#else
+    FILE *pp = popen("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", "r");
+    if (pp) {
+        char buf[128];
+        dark = (fgets(buf, sizeof buf, pp) != NULL && strstr(buf, "dark") != NULL) ? 1 : 0;
+        pclose(pp);
+    }
+#endif
+    g_os_dark = dark;
+    return dark;
 }

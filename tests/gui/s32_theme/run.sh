@@ -22,5 +22,8 @@ cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/
    "$T/s32.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 cd "$DIR"
-"$T/s32.bin"
-echo "s32: 颜色读回全绿(八主题换装)"
+O1=$("$T/s32.bin")
+echo "$O1" | grep -q "S32-AUTO-GREEN" || { echo "s32: auto 段红" >&2; exit 1; }
+O2=$(CTRON_GUI_THEME=linux_dark "$T/s32.bin")
+echo "$O2" | grep -q "S32-PIN-GREEN" || { echo "s32: 钉值段红" >&2; exit 1; }
+echo "s32: 八主题+auto+钉值全绿"

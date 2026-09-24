@@ -80,6 +80,15 @@ extern "c" fn gui_theme_slot(i: I32, v: I32) -> Void
 extern "c" fn gui_theme_slot_get(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_theme_applied() -> I32
+
+#[trusted]
+extern "c" fn gui_platform_id() -> I32
+
+#[trusted]
+extern "c" fn gui_os_dark_id() -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -395,6 +404,52 @@ pub fn theme_apply(t: Theme) -> I32 {
     gui_theme_slot(22, t.space_sm)
     gui_theme_slot(23, t.space_md)
     gui_theme_slot(24, t.space_lg)
+    return 0
+}
+
+// 平台 id:0=mac 1=win 2=linux(§2.5;I32 跨界,Str 面由调用方映射)
+pub fn gui_platform() -> I32 {
+    return gui_platform_id()
+}
+
+// 宿主明暗:true=dark(探测不可得回退 dark;进程内缓存)
+pub fn gui_os_dark() -> Bool {
+    if gui_os_dark_id() == 1 {
+        return true
+    }
+    return false
+}
+
+// 缺省主题:CTRON_GUI_THEME 八值钉值 > 平台×明暗(theme_auto 语义,§3.4)
+pub fn theme_auto() -> Theme {
+    var pin: Str = env_get("CTRON_GUI_THEME")
+    if pin == "dark" { return theme_dark() }
+    if pin == "light" { return theme_light() }
+    if pin == "mac_dark" { return theme_mac_dark() }
+    if pin == "mac_light" { return theme_mac_light() }
+    if pin == "win_dark" { return theme_win_dark() }
+    if pin == "win_light" { return theme_win_light() }
+    if pin == "linux_dark" { return theme_linux_dark() }
+    if pin == "linux_light" { return theme_linux_light() }
+    var pid: I32 = gui_platform_id()
+    var dk: I32 = gui_os_dark_id()
+    if pid == 0 {
+        if dk == 1 { return theme_mac_dark() }
+        return theme_mac_light()
+    }
+    if pid == 1 {
+        if dk == 1 { return theme_win_dark() }
+        return theme_win_light()
+    }
+    if dk == 1 { return theme_linux_dark() }
+    return theme_linux_light()
+}
+
+// 入口缺省换装:用户此前显式 theme_apply 过则不扰(显式优先)
+pub fn theme_auto_apply() -> I32 {
+    if gui_theme_applied() == 0 {
+        return theme_apply(theme_auto())
+    }
     return 0
 }
 
@@ -2680,6 +2735,7 @@ pub fn test(src: Str, w: I32, h: I32,
             bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
             key: fn(I32) -> Void,
             script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     gui_clay_init(w, h)
     var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), w: w, h: h })
@@ -2695,6 +2751,7 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
                bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
                key: fn(I32) -> Void,
                script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    theme_auto_apply()
     gui_clay_init(w, h)
     var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), w: w, h: h })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst)
@@ -2705,6 +2762,7 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
 
 pub fn run(src: Str, title: Str, w: I32, h: I32,
            bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     return rt_run(t, title, w, h, bind, act)
 }
@@ -2712,6 +2770,7 @@ pub fn run(src: Str, title: Str, w: I32, h: I32,
 pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
               bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
               key: fn(I32) -> Void) -> I32 {
+    theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     return rt_run_kb(t, title, w, h, bind, act, key)
 }
@@ -2725,6 +2784,7 @@ pub fn run_d(title: Str, w: I32, h: I32,
     if src == "" {
         src = ctron_embedded()
     }
+    theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     return rt_run_d(t, src, title, w, h, bind, act)
 }
@@ -2736,6 +2796,7 @@ pub fn run_kb_d(title: Str, w: I32, h: I32,
     if src == "" {
         src = ctron_embedded()
     }
+    theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     return rt_run_kb_d(t, src, title, w, h, bind, act, key)
 }

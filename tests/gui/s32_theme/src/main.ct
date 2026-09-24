@@ -1,7 +1,7 @@
 // tests/gui/s32_theme —— 波次一 T4/T5:八主题换装 + theme_auto 探测/钉值
 // 逐主题 apply→SURFACE/ACCENT 折叠值断言(顺序相邻主题 surface/accent 必异,
 // apply 失默即红);末段复原 theme_default。
-use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b, theme_apply, theme_default, theme_dark, theme_light, theme_mac_dark, theme_mac_light, theme_win_dark, theme_win_light, theme_linux_dark, theme_linux_light}
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b, theme_apply, theme_default, theme_auto, gui_os_dark, theme_dark, theme_light, theme_mac_dark, theme_mac_light, theme_win_dark, theme_win_light, theme_linux_dark, theme_linux_light}
 
 view P {
   <vbox class="root">
@@ -109,6 +109,26 @@ fn main() -> I32 {
             d_frame(t, |buf| bind_noop(buf))
             if scan_bg(34, 34, 46) != 1 {
                 panic("s32: theme_default 复原后 SURFACE 未现")
+            }
+            // theme_auto 语义:钉值 > 平台×明暗(入口层 auto_apply 的显式优先口径另测)
+            theme_apply(theme_auto())
+            d_frame(t, |buf| bind_noop(buf))
+            if env_get("CTRON_GUI_THEME") == "linux_dark" {
+                if scan_bg(46, 46, 50) != 1 {
+                    panic("s32: 钉值 linux_dark 未生效")
+                }
+                println("S32-PIN-GREEN")
+            } else {
+                if gui_os_dark() {
+                    if scan_bg(40, 40, 40) != 1 {
+                        panic("s32: auto mac_dark 未生效")
+                    }
+                } else {
+                    if scan_bg(0, 104, 218) != 1 {
+                        panic("s32: auto mac_light 未生效")
+                    }
+                }
+                println("S32-AUTO-GREEN")
             }
             println("S32-THEME-GREEN")
         })
