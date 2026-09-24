@@ -78,12 +78,14 @@
 ### Task 6 (P6-F): 门禁 + 登记收口 + P6 终审
 
 - [x] 全请求周期回环基准 vs 手写 C epoll ≤1.05×(P4 遗留承诺,本波复核)+ no_alloc 断言(路由/解析热路径)
-  —— **终采 1.049× PASS**(三跑 0.563/1.060/1.049,首跑 C 侧瞬时虚高照录;load5≈28–32
-  桌面负载在册披露;quiet 窗复测义务登记);coro 臂 0.998–1.053×(归档)= 协程 RT 与
-  C 事件环全周期打平(P2 同形承诺兑现);**no_alloc PASS**(三轮全绿,10 万请求稳态
-  bump 差=0)。执行台账 tests/COVERAGE.md P6-F 行;harness = tests/http/bench/
-  {bench_cycle.sh,bench_cycle.ct,baseline_cycle.c},CTRON_EMIT 覆盖口接 worktree
-  隔离构建(机刷共享树清场事故后的可复现口径,编译器 = HEAD a514f07)。
+  —— **四跑 0.563×/1.060×/1.049×/1.106×,判定 = 登记档 1.05–1.15(net bench 家族
+  语义 rc=0;P1 echo 1.114 同待遇);quiet 窗复测义务已销(09-25 00:03,load≈9–16)**;
+  归因 = 垫片 per-read poll 门 + parse lane 拷贝(P1 echo 同族);coro 臂
+  0.998–1.139×(归档)= 协程 RT 与 C 事件环同量级(P2 同形承诺兑现);
+  **no_alloc PASS**(四轮全绿,10 万请求稳态 bump 差=0)。执行台账
+  tests/COVERAGE.md P6-F 行;harness = tests/http/bench/{bench_cycle.sh,
+  bench_cycle.ct,baseline_cycle.c},CTRON_EMIT 覆盖口接 worktree 隔离构建
+  (机刷共享树清场事故后的可复现口径,编译器 = HEAD a514f07)。
 - [x] COVERAGE P6 行、divergences 收口、计划执行记录 P6 出口判定、设计文档 §六 P6 as-built 回写
   —— divergences 2026-09-24 节:发射符号饿死(frm_rc_* accessor 形状依赖确定性缺失,
   HEAD worktree 复现;x_bench 字面 rc 码绕行待编译修复回切;client/sse/ws e2e 双臂
@@ -96,13 +98,12 @@
 | todo_api 端到端(JWT 拒未授权写/CORS 预检/限流 503) | ✅ 20/20 双 RT(worktree 编译器) |
 | OpenAPI 快照与路由一致 | ✅ P6-D frm_openapi 16/16 |
 | 路由命中 ≤100ns | ✅ 66ns(负载窗;门内) |
-| 回环全请求周期 vs 手写 C ≤1.05× | ✅ 1.049×(登记档语义三轮 0.563/1.060/1.049;quiet 窗复测义务登记) |
+| 回环全请求周期 vs 手写 C ≤1.05× | ✅ 登记档(四跑 0.563/1.060/1.049/1.106;quiet 窗复测已销;P1 echo 1.114 同待遇) |
 | 热路径 no_alloc 断言 | ✅ 稳态 bump 差=0(10 万请求×3 轮) |
 | multipart 夹具 | ✅ P6-C frm_auth/body 语料 |
 
 **P6 终审结论:六门全过,P6 交付收口。** 在册移交:①e2e 双臂缺声明 6 件(编译泳道,
-饿死族);②x_bench rc 字面码绕行待回切(同族);③周期贴门稳态的 quiet 窗复测
-(本泳道夜窗义务);④parse 4.77× RED(P9 I8-typedef 在册)。在册红不阻塞 P7 开工
+饿死族);②x_bench rc 字面码绕行待回切(同族);④parse 4.77× RED(P9 I8-typedef 在册)。在册红不阻塞 P7 开工
 (可观测档仅消费 std/http 既有绿面)。
 
 ## Self-Review
