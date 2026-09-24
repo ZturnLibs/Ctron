@@ -391,6 +391,12 @@ tick)、chord 序列组合键(Ctrl+K Ctrl+C 式,消费 §2.11)、**异步任务�
 
 ## 6. 验收与测试(能力→示例→测试,house 方法论)
 
+> 号段注记(波次一计划对齐):阶梯 s29_ev_expr_d/s30_props_d 已被 SL-8c 泳道占用,
+> 本文夹具号自 s31 起顺延——s29_state→**s31_state**、s32_theme→**s32_theme**、
+> s30_focus→**s33_focus**、s31_overlay→**s34_overlay**、s33_image→**s35_image**、
+> s34_tick→**s36_tick**、s36_font→**s37_font**、s37_hotkey→**s38_hotkey**、
+> s35 组件×each→**s39**。
+
 - **能力夹具**(阶梯新增):s29_state(hover 注入 `d_hover` + active/focus/disabled
   折叠,经**颜色访问器**断言;**双击 `d_dblclick`、hover 态 bind 暴露(`hover:名`
   询问面)、修饰键载荷断言**,五轮扩)、s30_focus(input 编辑全链:得焦/键入/退格/

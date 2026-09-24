@@ -1,0 +1,48 @@
+// tests/gui/s31_state —— 波次一 T1:驱动器颜色读回通路(style 直写色 → RECT bg 断言)
+// 交互态(hover/active/disabled)与主题令牌折叠的断言地基;d_cmd_bg_r/g/b 通路验证
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b}
+
+view P {
+  <vbox class="root">
+    <button class="sw" on:click={noop}>S</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style sw { bg: "#aa33cc" w: 60 h: 30 }
+
+fn noop() {
+}
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var rc: I32 = test(src, 320, 200,
+        |buf| bind_noop(buf),
+        |name| noop(),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            var n: I32 = d_cmd_count()
+            var i: I32 = 0
+            var hit: I32 = 0
+            while i < n {
+                if d_cmd_type(i) == 2 {
+                    if d_cmd_bg_r(i) == 170 {
+                        if d_cmd_bg_g(i) == 51 {
+                            if d_cmd_bg_b(i) == 204 {
+                                hit = 1
+                            }
+                        }
+                    }
+                }
+                i += 1
+            }
+            if hit != 1 {
+                panic("s31: 未找到 #aa33cc 背景矩形(bg 读回通路断)")
+            }
+            println("S31-BG-GREEN")
+        })
+    return rc
+}

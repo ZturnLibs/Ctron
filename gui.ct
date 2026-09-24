@@ -65,6 +65,15 @@ extern "c" fn gui_cmd_text_len(i: I32) -> I32
 extern "c" fn gui_cmd_text_byte(i: I32, j: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_cmd_bg_r(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_bg_g(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_cmd_bg_b(i: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -2215,6 +2224,19 @@ pub fn d_cmd_w100(i: I32) -> I32 {
 
 pub fn d_cmd_h100(i: I32) -> I32 {
     return gui_cmd_h100(i)
+}
+
+// 颜色读回(RECT 命令背景色 0-255;交互态/主题折叠断言用)
+pub fn d_cmd_bg_r(i: I32) -> I32 {
+    return gui_cmd_bg_r(i)
+}
+
+pub fn d_cmd_bg_g(i: I32) -> I32 {
+    return gui_cmd_bg_g(i)
+}
+
+pub fn d_cmd_bg_b(i: I32) -> I32 {
+    return gui_cmd_bg_b(i)
 }
 
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
