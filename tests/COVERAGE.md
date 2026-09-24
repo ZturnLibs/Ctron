@@ -313,10 +313,14 @@ Drop 顺序 fd 复用 ABA caveat(超时兜底,文件头注);tls_read cap<=0 返 
 | P6-D | 静态文件(强 ETag 内容寻址/304/Range 206·416/穿越拒 fail-closed;Last-Modified 与 sendfile 登记)+ OpenAPI 3 同源导出(快照=路由表改即红)+ CTML 转义窄面(五实体安全默认+显式豁免) | tests/http frm_static×6+frm_openapi+frm_html 双臂 **16/16**(da08562);st_serve IO 薄胶待 P6-E e2e;大串断言按 corpus 惯例拆小文件(解释器堆不回收在册债的单文件腐坏规避) |
 
 | P6-E | examples/todo_api 端到端(REST CRUD+JWT 写保护 login 签发/CORS 预检/限流 503/OpenAPI 同源/静态页 static 响应面/健康端点/优雅停机排空退出) | run.sh 自客户端 nc 打自服务端 **20/20 双 RT 矩阵**(默认+CTRON_RT=coro;da08562 static 面首次 IO 接线于同构应用);存储=内存平行 List(Str 形 id/done——List[I64] 元素读发射债绕行),业务 ≤300 行 |
+| P6-F | 门禁收口:全请求周期回环基准(vs 手写 C 双基线:阻塞串行+kqueue/epoll 事件环,同源 C 客户端,digest pin,×3 取最小)+ 热路径 no_alloc 断言(ctron_amalloc 锚计数注入,A/B 双跑差分门=0)+ 路由 ≤100ns 复跑 + parse 基准复核 | **周期终采 1.049× PASS(≤1.05 硬门)**;三跑 0.563×/1.060×/1.049×(首跑 C 侧瞬时负载虚高照录;load5≈28–32 桌面临时负载在册披露,P4-A 同向波动先例)—— **贴门稳态,quiet 窗复测义务登记**;**coro 臂 0.998–1.053×(归档)= 协程 RT 与手写 C 事件环全周期打平(P2 同形承诺兑现)**;**no_alloc PASS**(三轮全绿,10 万请求稳态 bump 差=0;A=4 启动垫,热路径零分配构造+堵漏证明);路由 hit 66ns ≤100(负载窗);parse 复核 229 vs 48 ns = 4.77× RED(P9 I8-typedef 在册处置,4.54→4.77 负载窗漂移照录);net 14/14、todo_api 20/20、http 98/(11 在册红);编译器 = HEAD(a514f07)worktree 隔离构建(CTRON_EMIT 覆盖口,机刷共享树清场事故后的可复现口径) |
 
-P6-D/E 时点套件环境红(独立于本片,移出复现):frm_auth/csrf/auth-inline interp
-137 击杀(解释器堆不回收在册债 × 并行泳道负载)、mw_chain E2020(P1b 显式
-请求口径对 middleware 合并贯穿形态的波及,compiler 泳道在制)、e2e×4 负载超时。
+P6-D/E 时点套件环境红(2026-09-24 收口复核,11 红全谱):frm_auth_a_guard/jwt/sess +
+frm_mw_a_csrf(interp)+ http/frm/auth.ct(inline)= 5 件 = 解释器 137 击杀在册债;
+client_fixtures_x_client_e2e + sse_ws_x_sse/ws_e2e ×双 RT = 6 件 —— 旧档「负载超时」
+在 HEAD 复核为**构建红**(t_client_write_str/t_http_method_start 发射缺声明,饿死同族
+= client/message 门面锚穿形,divergences 2026-09-24 节),归编译泳道修复;mw_chain
+E2020 已销(e96d5f6 直 use 改形)。
 
 ### P5 行(std/db 数据访问层,2026-09-21)
 

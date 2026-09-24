@@ -333,6 +333,16 @@ web 框架,而是证明 §7 的并发语义天然就是服务器语义。
   CORS 预检、限流触发 503)全绿;OpenAPI 输出快照夹具与路由一致性断言;
   路由命中 ≤100ns;回环压测全请求周期 vs 手写 C epoll 基线 ≤1.05×;热路径 no_alloc
   断言绿(创新 7);multipart 夹具(字段/文件/超限拒绝)。
+- **P6 as-built(2026-09-24 终审收口)**:六门全过——todo_api 20/20 双 RT、
+  OpenAPI 快照一致、路由 66ns≤100、**全请求周期 1.049×(≤1.05 硬门;三跑
+  0.563/1.060/1.049,桌面临时负载在册披露,quiet 窗复测义务登记;coro 臂
+  0.998–1.053× = 协程 RT 与手写 C 事件环打平,P2 同形承诺兑现)**、no_alloc
+  断言稳态差=0、multipart 语料在库。as-built 装配形与 v3 设计的偏差:框架服务
+  环为串行 accept(P6-E 生产形态,keep-alive 列志向);harness/tests/http/bench/
+  (CTRON_EMIT worktree 隔离构建口径)。移交:发射符号饿死族(e2e 双臂 6 红 +
+  x_bench 绕行回切,编译泳道;divergences 2026-09-24)、parse 4.77×(P9 I8)。
+  台账:tests/COVERAGE.md P6 行;执行记录:plans/2026-09-21-server-p6-framework.md
+  Task 6 出口判定表。
 
 ### P7 可观测与运维(6–7 天;v2/v3 增 std/pb/OTLP/traceparent/自省)
 

@@ -312,6 +312,19 @@ else
     echo "  [skip] frm_route x_bench:CTRON_ROUTE_BENCH=1 启用(bench 家族门禁,不入 CI 主环)"
 fi
 
+# P6-F 全请求周期 + no_alloc 门禁(bench_cycle.sh 自门控:CTRON_CYCLE_BENCH=1
+# 启用;本地/nightly 专用,不入 CI 主环 —— 回环压测对并行负载敏感,P4-A 在案)
+if [ "${CTRON_CYCLE_BENCH:-}" = "1" ]; then
+    echo "http/run: bench-cycle 段(P6-F)"
+    if sh "$DIR/bench/bench_cycle.sh"; then
+        pass=$((pass+1))
+    else
+        fail=$((fail+1)); echo "  FAIL bench-cycle(P6-F 门禁红,数字照录归文档)"
+    fi
+else
+    echo "  [skip] bench-cycle:CTRON_CYCLE_BENCH=1 启用(P6-F 门禁,不入 CI 主环)"
+fi
+
 echo "http/run: pass=$pass fail=$fail"
 # 空集口径:一例未跑与全败同罪
 [ "$pass" -gt 0 ] || { echo "http/run: no cases ran"; exit 1; }

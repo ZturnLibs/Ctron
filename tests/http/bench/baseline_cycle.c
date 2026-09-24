@@ -89,7 +89,9 @@ static long read_request(int fd, char *buf, size_t cap, int *done) {
     return -1;
 }
 
-/* 服务一连接:读头 → 定长响应 → close。返回 1 = 收到停机指令。 */
+/* 服务一连接:读头 → 定长响应 → close。返回 1 = 收到停机指令。
+ * 注:服务端 close 恒为 FIN(勿试 linger-0 RST —— RST 会丢客户端未读响应,
+ * 2026-09-24 试验实证;客户端 RST 则在 EOF 后,无数据损耗)。 */
 static int serve_conn(int fd) {
     char buf[4096];
     int done = 0;
