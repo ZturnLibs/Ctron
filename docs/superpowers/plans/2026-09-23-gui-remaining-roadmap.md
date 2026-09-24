@@ -54,6 +54,17 @@
 gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包字面量的
 发射落点,native 面彼时动 trans;props 环境由 gui.run 生成的解析闭包注入,
 当前 prop: 前缀协议为其替身)。8c-2/8c-3 已落(09-24)。
+**地基已落(06c1142)**:props 段级类型门+构型字段表(stns/sfk/stv)——合成器
+的槽表达式类型化依据就绪;段级门语料 2 件。
+**执行序建议(下一专项会话)**:①ViewCall 文法面——`TodoApp(model: make())`
+命名实参形态(今日为解析错,放开向后兼容;p_post Args 环节 NParg 尾槽,
+sem_calls 认 GuiBlock 视图名校验 props 必填 E8100/未知 prop E8110,语料先行);
+②装配合成——文本注入式(p_file 后对 run(ViewCall) 调用点改写+__gui_bind/
+__gui_act/__gui_run 三 fn 以源文本生成→scan4+p_file 真解析→拼写进 File,
+双口径免费;微型类型推(prop 型字段表+.len/比较/算术)定 i:/b: 标签;钩子点
+parse_pkg.pkg_load_use 尾=全驱动单点);③钩子退役(rt_run 族降内部);
+④§10.3 Todo 照抄验收(差集:key/checkbox/props 多层随终锚如实登记)。
+**注意:driver_emit 对端常驻在飞——钩子点避开,取 pkg_load_use 单点。**
 
 ### P-v10 终锚装配(依赖 8c)
 §10.3 Todo 照抄能跑:props 视图 + 表达式事件 + `disabled={}`(需按钮
