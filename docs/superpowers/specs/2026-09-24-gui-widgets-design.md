@@ -48,7 +48,7 @@
 ```
 ③ 外观体系  Theme struct 全套令牌 + 四态视觉规范 + 默认样式折叠规则
             (主题=.ct 文件构造 Theme 全字段字面量,theme_apply 一步换装;
-             内置八套主题在 gui/themes/(平台×深浅+独立深浅),
+             内置八套主题驻 gui.ct 门面(平台×深浅+独立深浅),
              缺省 theme_auto=宿主 OS×宿主明暗;
              组件默认样式只引令牌,不写裸色值)
 ② 组件库    gui/widgets/*.ct —— pub view 组合 + 默认样式,零特权
@@ -300,26 +300,31 @@ pub fn make() -> Theme {
 - **缺省行为**:`run`/`test` 入口缺省执行 `theme_auto()`——`gui_platform()` ×
   `gui_os_dark()` 二维选择(裁决 #6「默认与宿主一致」);`CTRON_GUI_THEME` 钉值与
   用户显式 `theme_apply` 均可覆盖。
-- **内置主题集**:八套随包交付,置于 `gui/themes/`(§3.5)——平台×深浅六套 +
+- **内置主题集**:八套随包交付,驻 gui.ct 门面(§3.5)——平台×深浅六套 +
   独立深浅两套;独立主题既是用户可选样本,又是机制的就地验收(同一 app 换
   apply 一行,全套观感切换)。
 - **热重载**:令牌表是运行时状态,CTML 热重载环不受影响;主题自身热切换 P2。
 
-### 3.5 内置主题集(gui/themes/,裁决 #6;平台 × 明暗二维)
+### 3.5 内置主题集(裁决 #6;平台 × 明暗二维)
+
+> 落地事实修正(波次一):域命名空间在仓库根**物理平铺**(loader `use a.b` 解析为
+> `<根>/b.ct`,E2020 实证),`gui/themes/` 子目录不可寻址——内置八主题驻 **gui.ct
+> 门面命名函数**(`theme_dark()`…`theme_linux_light()`,返回 Theme);第三方主题 =
+> 任意 .ct 文件定义 `make() -> Theme`。子模块寻址是 loader 课题,登记缓行。
 
 | 主题 id | 文件 | 基调 |
 |---|---|---|
-| mac_dark / mac_light | `theme_mac_dark.ct` / `theme_mac_light.ct` | macOS HIG 味:大圆角(RADIUS 6/10/14)、系统灰阶、mac 蓝 accent(#0a84ff 系)、克制边框;浅版=纸白底深灰字 |
-| win_dark / win_light | `theme_win_dark.ct` / `theme_win_light.ct` | Fluent 味:Mica 灰阶、小圆角(2/4/8)、低饱和 accent、细边框为主 |
-| linux_dark / linux_light | `theme_linux_dark.ct` / `theme_linux_light.ct` | Adwaita 味:中圆角(4/6/12)、libadwaita 灰阶、GNOME 蓝(#3584e4 系) |
-| dark / light | `theme_dark.ct` / `theme_light.ct` | 独立基准对:深色扁平现代(Linear/GitHub Dark,裁决 #3)与同语汇浅色版 |
+| mac_dark / mac_light | gui.ct `theme_mac_dark()` / `theme_mac_light()` | macOS HIG 味:大圆角(RADIUS 6/10/14)、系统灰阶、mac 蓝 accent(#0a84ff 系)、克制边框;浅版=纸白底深灰字 |
+| win_dark / win_light | gui.ct `theme_win_dark()` / `theme_win_light()` | Fluent 味:Mica 灰阶、小圆角(2/4/8)、低饱和 accent、细边框为主 |
+| linux_dark / linux_light | gui.ct `theme_linux_dark()` / `theme_linux_light()` | Adwaita 味:中圆角(4/6/12)、libadwaita 灰阶、GNOME 蓝(#3584e4 系) |
+| dark / light | gui.ct `theme_dark()` / `theme_light()` | 独立基准对:深色扁平现代(Linear/GitHub Dark,裁决 #3)与同语汇浅色版 |
 
 - 平台六套是**味道诠释而非原生拟真**:色板/圆角/间距/字号阶梯向各 OS 设计语言
   对齐;阴影、模糊、材质不在 Clay 能力面,不承诺(视觉近似,非 hack)。
 - 每对深浅共享同族形状/间距语汇,只换色板令牌;八套共用同一 Theme 字段面与四态
   规范(§3.2)——主题集本身即「换令牌=换全套」的八个实证。
 - 明暗等权:`gui_os_dark()` 探测决定缺省深浅(§2.5),用户可任意固定。
-- 用户选择:`use gui.themes.{theme_dark}`(或任意自备主题文件)+
+- 用户选择:`use gui.{theme_dark,…}`(或任意自备主题文件)+
   `gui.theme_apply(...)`;缺省 `theme_auto` 可被 `CTRON_GUI_THEME` 钉值覆盖。
 
 ## 4. 首批交付物:input 升级 + 三新组件(功能/API/默认观感)

@@ -398,6 +398,258 @@ pub fn theme_apply(t: Theme) -> I32 {
     return 0
 }
 
+
+
+// ---- 内置八主题(§3.5;域命名空间仓库根平铺,故驻门面;第三方主题=任意 .ct 文件构造 Theme) ----
+
+// theme_dark:独立基准:深色扁平现代(Linear/GitHub Dark,裁决 #3)
+pub fn theme_dark() -> Theme {
+    return Theme {
+        bg_base: "#181820"
+        surface: "#22222e"
+        elevated: "#2a2a38"
+        border: "#32323f"
+        border_strong: "#454553"
+        text: "#e6e6eb"
+        text_muted: "#9a9aa8"
+        accent: "#2563eb"
+        accent_hover: "#3b82f6"
+        danger: "#c83c3c"
+        success: "#2f9e63"
+        mask: "#0a0a12"
+        disabled_fg: "#6b6b78"
+        disabled_bg: "#23232d"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_light:独立基准:同语汇浅色(与 dark 共享形状/间距)
+pub fn theme_light() -> Theme {
+    return Theme {
+        bg_base: "#f5f5f7"
+        surface: "#ffffff"
+        elevated: "#ffffff"
+        border: "#d8d8de"
+        border_strong: "#b9b9c2"
+        text: "#1a1a24"
+        text_muted: "#6e6e7a"
+        accent: "#2563eb"
+        accent_hover: "#1d4fd8"
+        danger: "#c83c3c"
+        success: "#2f9e63"
+        mask: "#0a0a12"
+        disabled_fg: "#9a9aa8"
+        disabled_bg: "#ececf2"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_mac_dark:macOS HIG 味·深:大圆角 6/10/14,mac 蓝 #0a84ff(味诠释非拟真)
+pub fn theme_mac_dark() -> Theme {
+    return Theme {
+        bg_base: "#1e1e1e"
+        surface: "#282828"
+        elevated: "#323232"
+        border: "#3d3d3d"
+        border_strong: "#4d4d4d"
+        text: "#e8e8ed"
+        text_muted: "#98989f"
+        accent: "#0a84ff"
+        accent_hover: "#3395ff"
+        danger: "#ff453a"
+        success: "#32d74b"
+        mask: "#0a0a0a"
+        disabled_fg: "#6e6e76"
+        disabled_bg: "#2a2a2a"
+        radius_sm: 6
+        radius_md: 10
+        radius_lg: 14
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_mac_light:macOS HIG 味·浅:与 mac_dark 共享形状
+pub fn theme_mac_light() -> Theme {
+    return Theme {
+        bg_base: "#f2f2f4"
+        surface: "#ffffff"
+        elevated: "#ffffff"
+        border: "#d5d5da"
+        border_strong: "#b6b6bf"
+        text: "#1d1d1f"
+        text_muted: "#7a7a82"
+        accent: "#0068da"
+        accent_hover: "#0058b8"
+        danger: "#d70015"
+        success: "#248a3d"
+        mask: "#0a0a0a"
+        disabled_fg: "#a0a0a8"
+        disabled_bg: "#e8e8ec"
+        radius_sm: 6
+        radius_md: 10
+        radius_lg: 14
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_win_dark:Fluent 味·深:Mica 灰阶,小圆角 2/4/8,accent #4cc2ff
+pub fn theme_win_dark() -> Theme {
+    return Theme {
+        bg_base: "#202020"
+        surface: "#272727"
+        elevated: "#2d2d2d"
+        border: "#383838"
+        border_strong: "#4a4a4a"
+        text: "#ffffff"
+        text_muted: "#9d9d9d"
+        accent: "#4cc2ff"
+        accent_hover: "#47b1e8"
+        danger: "#ff6169"
+        success: "#6ccb5f"
+        mask: "#0a0a0a"
+        disabled_fg: "#8d8d8d"
+        disabled_bg: "#292929"
+        radius_sm: 2
+        radius_md: 4
+        radius_lg: 8
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_win_light:Fluent 味·浅:与 win_dark 共享形状,accent #005fb8
+pub fn theme_win_light() -> Theme {
+    return Theme {
+        bg_base: "#f3f3f3"
+        surface: "#fbfbfb"
+        elevated: "#ffffff"
+        border: "#e0e0e0"
+        border_strong: "#c8c8c8"
+        text: "#1a1a1a"
+        text_muted: "#5d5d5d"
+        accent: "#005fb8"
+        accent_hover: "#1a79c8"
+        danger: "#c13438"
+        success: "#0f7b0f"
+        mask: "#0a0a0a"
+        disabled_fg: "#b0b0b0"
+        disabled_bg: "#ececec"
+        radius_sm: 2
+        radius_md: 4
+        radius_lg: 8
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_linux_dark:Adwaita 味·深:中圆角 4/6/12,GNOME 蓝 #3584e4
+pub fn theme_linux_dark() -> Theme {
+    return Theme {
+        bg_base: "#222226"
+        surface: "#2e2e32"
+        elevated: "#3a3a3f"
+        border: "#44444a"
+        border_strong: "#5a5a62"
+        text: "#ffffff"
+        text_muted: "#9a9da3"
+        accent: "#3584e4"
+        accent_hover: "#4a90e8"
+        danger: "#e01b24"
+        success: "#2ec27e"
+        mask: "#0a0a0a"
+        disabled_fg: "#7d7d84"
+        disabled_bg: "#2c2c30"
+        radius_sm: 4
+        radius_md: 6
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_linux_light:Adwaita 味·浅:与 linux_dark 共享形状,accent #1c71d8
+pub fn theme_linux_light() -> Theme {
+    return Theme {
+        bg_base: "#fafafb"
+        surface: "#ffffff"
+        elevated: "#ffffff"
+        border: "#dedede"
+        border_strong: "#c0c0c4"
+        text: "#2d2d33"
+        text_muted: "#77777e"
+        accent: "#1c71d8"
+        accent_hover: "#1b6acb"
+        danger: "#e01b24"
+        success: "#2ec27e"
+        mask: "#0a0a0a"
+        disabled_fg: "#9c9ca2"
+        disabled_bg: "#efeff1"
+        radius_sm: 4
+        radius_md: 6
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
 fn gtok_index(w: Str) -> I32 {
     // 槽序 = 规格 §3.1 令牌序 = Theme 字段序(0-13 色 packed,14-24 尺寸 I32)
     if w == "BG_BASE" { return 0 }
