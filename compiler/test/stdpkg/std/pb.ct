@@ -222,6 +222,32 @@ pub fn pb_put_bool(buf: &I64[], cap: I64, pos: I64, field: I64, b: Bool) -> I64 
     return pb_put_i64(buf, cap, pos, field, 0)
 }
 
+// wire1:fixed64(8 字节小端;OTLP 时间戳面。精确除链取位:负数安全)
+pub fn pb_put_i64fixed(buf: &I64[], cap: I64, pos: I64, field: I64, v: I64) -> I64 {
+    let p = pb_put_tag(buf, cap, pos, field, pb_w_64bit())
+    if p < 0 { return 0 - 1 }
+    if p + 8 > cap { return 0 - 1 }
+    var r = v
+    var k: I64 = 0
+    while k < 8 {
+        let b = r % 256
+        let lb = fn8(b)
+        buf[p + k] = lb
+        r = (r - lb) / 256
+        k += 1
+    }
+    return p + 8
+}
+
+// 地板 8 位取模(负数安全)
+fn fn8(v: I64) -> I64 {
+    let m = v % 256
+    if m < 0 {
+        return m + 256
+    }
+    return m
+}
+
 // wire2:length-delimited(lane 源)
 pub fn pb_put_bytes(buf: &I64[], cap: I64, pos: I64, field: I64, src: &I64[], slen: I64) -> I64 {
     let p = pb_put_tag(buf, cap, pos, field, pb_w_ld())

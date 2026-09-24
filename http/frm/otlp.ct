@@ -1,0 +1,299 @@
+// http/frm/otlp.ct —— OTLP/HTTP 导出编码面(P7-E;protobuf 经 std/pb)
+//
+// 形态纪律(P5-E 组合层裁定):本模块只做**编码**(ExportTraceServiceRequest
+//   单 span 形,proto3 零值省略);发送 = 组合层经 http.client(装配层接线,
+//   门面不持 socket)。批量/压缩/gzip 列志向(v1 单 span/请求)。
+// 线形(proto 字段号钉形,opentelemetry/proto/trace/v1):
+//   ExportTraceServiceRequest{ resource_spans=1 }
+//   ResourceSpans{ scope_spans=2 }(resource 属性 v1 省略)
+//   ScopeSpans{ scope=1{ name=1 } spans=2 }
+//   Span{ trace_id=1(bytes16) span_id=2(bytes8) parent_span_id=3(bytes8,
+//         psid 空串省略) name=4(string) start_time_unix_nano=7(fixed64)
+//         end_time_unix_nano=8(fixed64) }
+// scr 布局(调用方提供,容量 ≥ 256 + name.len*2):
+//   [0..16) tid / [16..24) sid / [24..32) psid / [48..) span → ss → rs 顺序
+//   内嵌(目标区恒在源区之后,自嵌套安全)。
+// 【Ctron 算术纪律】无位运算算符(2026-09-25 在册):hex 经查表,tag =
+//   field*8+wire,长度 varint 经 std/pb。
+use std.pb.{ pb_put_varint, pb_put_tag, pb_put_i64fixed, pb_put_bytes, pb_put_str, pb_w_varint, pb_w_ld, pb_w_64bit }
+
+pub struct OtelSpan {
+    let tid: Str
+    let sid: Str
+    let psid: Str
+    let name: Str
+    let t0: I64
+    let t1: I64
+}
+
+// varint 写(负数 = 10 字节规范形;地板 7 位链,全算术)
+fn ot_varint(buf: &I64[], cap: I64, pos: I64, v: I64) -> I64 {
+    var p = pos
+    var x = v
+    if x < 0 {
+        while p < cap {
+            let g = ot_f7(x)
+            buf[p] = g + 128
+            p += 1
+            x = (x - g) / 128
+            if x == 0 - 1 {
+                if p >= cap { return 0 - 1 }
+                buf[p] = 1
+                return p + 1
+            }
+        }
+        return 0 - 1
+    }
+    while p < cap {
+        if x <= 127 {
+            buf[p] = x % 128
+            return p + 1
+        }
+        buf[p] = x % 128 + 128
+        p += 1
+        x = x / 128
+    }
+    return 0 - 1
+}
+
+fn ot_f7(v: I64) -> I64 {
+    let m = v % 128
+    if m < 0 {
+        return m + 128
+    }
+    return m
+}
+
+fn ot_f8(v: I64) -> I64 {
+    let m = v % 256
+    if m < 0 {
+        return m + 256
+    }
+    return m
+}
+
+// tag = field*8 + wire(varint)
+fn ot_tag(buf: &I64[], cap: I64, pos: I64, field: I64, wire: I64) -> I64 {
+    return ot_varint(buf, cap, pos, field * 8 + wire)
+}
+
+// wire2 定长载荷写(从 src lane 拷)
+fn ot_bytes(buf: &I64[], cap: I64, pos: I64, field: I64, src: &I64[], slen: I64) -> I64 {
+    let p = ot_tag(buf, cap, pos, field, 2)
+    if p < 0 { return 0 - 1 }
+    let p2 = ot_varint(buf, cap, p, slen)
+    if p2 < 0 { return 0 - 1 }
+    if p2 + slen > cap { return 0 - 1 }
+    var i: I64 = 0
+    while i < slen {
+        buf[p2 + i] = src[i]
+        i += 1
+    }
+    return p2 + slen
+}
+
+// wire2 Str 写
+fn ot_str(buf: &I64[], cap: I64, pos: I64, field: I64, s: Str) -> I64 {
+    let p = ot_tag(buf, cap, pos, field, 2)
+    if p < 0 { return 0 - 1 }
+    let p2 = ot_varint(buf, cap, p, s.len.as[I64]())
+    if p2 < 0 { return 0 - 1 }
+    if p2 + s.len.as[I64]() > cap { return 0 - 1 }
+    var i: I32 = 0
+    while i < s.len {
+        buf[p2 + i.as[I64]()] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return p2 + s.len.as[I64]()
+}
+
+// wire1 fixed64(8 字节 LE;精确除链)
+fn ot_fixed64(buf: &I64[], cap: I64, pos: I64, field: I64, v: I64) -> I64 {
+    let p = ot_tag(buf, cap, pos, field, 1)
+    if p < 0 { return 0 - 1 }
+    if p + 8 > cap { return 0 - 1 }
+    var r = v
+    var k: I64 = 0
+    while k < 8 {
+        let lb = ot_f8(r)
+        buf[p + k] = lb
+        r = (r - lb) / 256
+        k += 1
+    }
+    return p + 8
+}
+
+// hex nibble(小写;非法 -1)——与 trace.ct 同形(各自私有,零 use 纪律)
+fn ot_hexv(c: I32) -> I64 {
+    if c >= 48 && c <= 57 {
+        return (c - 48).as[I64]()
+    }
+    if c >= 97 && c <= 102 {
+        return (c - 97).as[I64]() + 10
+    }
+    return 0 - 1
+}
+
+// hex 串两字符 → 一字节(非法 -1)
+fn ot_hexbyte(s: Str, i: I32) -> I64 {
+    let h = ot_hexv(byte_at(s, i))
+    if h < 0 {
+        return 0 - 1
+    }
+    let l = ot_hexv(byte_at(s, i + 1))
+    if l < 0 {
+        return 0 - 1
+    }
+    return h * 16 + l
+}
+
+// hex 串 → 字节落 lane 指定偏移(返回字节数;非法/越界 -1)
+pub fn ot_hex_to_lane(dst: &I64[], dcap: I64, off: I64, s: Str) -> I64 {
+    if s.len % 2 != 0 {
+        return 0 - 1
+    }
+    let nb: I64 = s.len.as[I64]() / 2
+    if off + nb > dcap {
+        return 0 - 1
+    }
+    var i: I64 = 0
+    while i < nb {
+        let by = ot_hexbyte(s, i.as[I32]() * 2)
+        if by < 0 {
+            return 0 - 1
+        }
+        dst[off + i] = by
+        i += 1
+    }
+    return nb
+}
+
+// ScopeSpans 的 scope 子消息(手拼 12 字节:0A 0A "ctron-otel")写 scr[off..)
+fn ot_scope(scr: &I64[], scap: I64, off: I64) -> I64 {
+    if off + 12 > scap {
+        return 0 - 1
+    }
+    scr[off] = 10
+    scr[off + 1] = 10
+    let nm = "ctron-otel"
+    var i: I32 = 0
+    while i < 10 {
+        scr[off + 2 + i.as[I64]()] = byte_at(nm, i).as[I64]()
+        i += 1
+    }
+    return 12
+}
+
+// Span 子消息编码 → scr[48..)
+fn ot_span(scr: &I64[], scap: I64, s: OtelSpan) -> I64 {
+    let ntid = ot_hex_to_lane(scr, scap, 0, s.tid)
+    if ntid != 16 {
+        return 0 - 1
+    }
+    let nsid = ot_hex_to_lane(scr, scap, 16, s.sid)
+    if nsid != 8 {
+        return 0 - 1
+    }
+    var nps: I64 = 0
+    if s.psid.len == 16 {
+        nps = ot_hex_to_lane(scr, scap, 24, s.psid)
+        if nps != 8 {
+            return 0 - 1
+        }
+    }
+    var n: I64 = 48
+    // 1: trace_id(bytes)
+    n = ot_bytes(scr, scap, n, 1, scr, 16)
+    if n < 0 { return 0 - 1 }
+    // 2: span_id
+    var sv: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var j: I64 = 0
+    while j < 8 {
+        sv[j] = scr[16 + j]
+        j += 1
+    }
+    n = ot_bytes(scr, scap, n, 2, sv, 8)
+    if n < 0 { return 0 - 1 }
+    // 3: parent_span_id(有才写)
+    if s.psid.len == 16 {
+        j = 0
+        while j < 8 {
+            sv[j] = scr[24 + j]
+            j += 1
+        }
+        n = ot_bytes(scr, scap, n, 3, sv, 8)
+        if n < 0 { return 0 - 1 }
+    }
+    // 4: name
+    n = ot_str(scr, scap, n, 4, s.name)
+    if n < 0 { return 0 - 1 }
+    // 7/8: fixed64 时间
+    n = ot_fixed64(scr, scap, n, 7, s.t0)
+    if n < 0 { return 0 - 1 }
+    n = ot_fixed64(scr, scap, n, 8, s.t1)
+    if n < 0 { return 0 - 1 }
+    return n - 48
+}
+
+// ExportTraceServiceRequest 全嵌套 → buf(返回长度;-1 越界/坏 id)
+pub fn otlp_span_request(buf: &I64[], cap: I64, scr: &I64[], scap: I64, s: OtelSpan) -> I64 {
+    let nspan = ot_span(scr, scap, s)
+    if nspan < 0 {
+        return 0 - 1
+    }
+    // scope 子消息(span 后)
+    let off_scope = 48 + nspan
+    let nscope = ot_scope(scr, scap, off_scope)
+    if nscope < 0 {
+        return 0 - 1
+    }
+    // ScopeSpans:ss = [tag(1,ld)+len+scope体][tag(2,ld)+len+span体]
+    // scope 体已写于 off_scope——ss 段在其后,三段统一「tag+len+拷体」形
+    let off_ss = off_scope + nscope
+    if off_ss + nscope + nspan + 32 > scap {
+        return 0 - 1
+    }
+    var p = off_ss
+    p = ot_tag(scr, scap, p, 1, 2)
+    p = ot_varint(scr, scap, p, nscope)
+    var i: I64 = 0
+    while i < nscope {
+        scr[p + i] = scr[off_scope + i]
+        i += 1
+    }
+    p += nscope
+    p = ot_tag(scr, scap, p, 2, 2)
+    p = ot_varint(scr, scap, p, nspan)
+    i = 0
+    while i < nspan {
+        scr[p + i] = scr[48 + i]
+        i += 1
+    }
+    p += nspan
+    let nss = p - off_ss
+    // ResourceSpans:rs = tag(2,ld)+len+ss 体(拷于 ss 之后)
+    let off_rs = off_ss + nss
+    var q = off_rs
+    q = ot_tag(scr, scap, q, 2, 2)
+    q = ot_varint(scr, scap, q, nss)
+    i = 0
+    while i < nss {
+        scr[q + i] = scr[off_ss + i]
+        i += 1
+    }
+    let nrs = nss + (q - off_rs)
+    // Request → buf:tag(1,ld)+len+rs(拷贝)
+    var b = ot_tag(buf, cap, 0, 1, 2)
+    if b < 0 { return 0 - 1 }
+    b = ot_varint(buf, cap, b, nrs)
+    if b < 0 { return 0 - 1 }
+    if b + nrs > cap {
+        return 0 - 1
+    }
+    i = 0
+    while i < nrs {
+        buf[b + i] = scr[off_rs + i]
+        i += 1
+    }
+    return b + nrs
+}
