@@ -82,16 +82,16 @@ fn main() -> I32 {
             d_expect_text(t, "6")
             // ev_fire 直驱四形态:调用按头分发 / 多实参受限求值 / each 实例
             // 后缀透传 / 旧契约单标识符直发——分发名序列一次断言
-            ev_fire("inc(m)",
+            ev_fire(t.t, "inc(m)",
                 |buf| bind_all(buf, m),
                 |n| log_add(log, n))
-            ev_fire("addn(m, 5)",
+            ev_fire(t.t, "addn(m, 5)",
                 |buf| bind_all(buf, m),
                 |n| log_add(log, n))
-            ev_fire("toggle(t):2",
+            ev_fire(t.t, "toggle(t):2",
                 |buf| bind_all(buf, m),
                 |n| log_add(log, n))
-            ev_fire("inc",
+            ev_fire(t.t, "inc",
                 |buf| bind_all(buf, m),
                 |n| log_add(log, n))
             if log.names != "inc,addn,toggle:2,inc," {

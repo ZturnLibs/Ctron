@@ -1,0 +1,143 @@
+// tests/gui/s30_props_d —— SL-8c-2:props 环境 + 槽求值切换域包夹具(活模型 props 版)
+// 蓝本 sl8c-design.md §5 8c-2 验收片。覆盖:
+// - 数据面:props 名表(gt_parse 捕获 + gui_sk_load β3 烘焙,双端同形归 s22 差分)
+// - 链解析(D-8c1):prop 根路径先以 "prop:" 前缀问 props 环境,未答回落裸名通道
+//   (m.extra = prop: 未答 → 裸名应答 "extra-ok" 即回落活证)
+// - 求值切换(§7 并存开关):props 视图内简单槽 {m.count} 走求值器,带型应答
+//   i:/b: 解标上屏;when 简单条件 {m.on} 同切换
+// - 双阶段:gt_parse(test)+ gui_sk_load(test_sk,β3 烘焙 props 表)同断言
+use gui.{test, test_sk, d_click, d_frame, d_expect_text, d_expect_absent, GuiTree, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, char_str}
+
+view PropsApp(m: Model) {
+  <vbox class="root">
+    <label class="title">S30 PROPS</label>
+    <label class="count">{m.count}</label>
+    <label class="extra">{m.extra}</label>
+    <when cond={m.on}>
+      <label class="pos">ON AIR</label>
+    </when>
+    <button class="btn" on:click={inc(m)}>INC</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style count { fg: "#22c55e" size: 32 h: 44 }
+style extra { fg: "#cccccc" h: 30 }
+style pos { fg: "#f97316" h: 30 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+
+struct Model {
+    var count: I32
+}
+
+// E8120 签名门声明 stub(真分发在 act)
+fn inc(mm: Model) {
+}
+
+// 链查询计数器(Box 捕获写穿透 = 计算器同款;变异提具名 fn)
+struct Probe {
+    var propq: I32
+    var bareq: I32
+}
+
+fn probe_prop(p: Box[Probe]) {
+    p.propq = p.propq + 1
+}
+
+fn probe_bare(p: Box[Probe]) {
+    p.bareq = p.bareq + 1
+}
+
+// 解析面(装配期捕获 props 实例的替身;8c-4 归 gui.run 生成):
+// props 链 = "prop:" 前缀询问(propq 计数活证);回落 = 裸名(bareq 计数)
+fn bind_all(buf: List[Str], m: Box[Model], p: Box[Probe]) {
+    if buf[0] == "prop:m.count" {
+        probe_prop(p)
+        buf.push("i:" + m.count.to_string())
+    }
+    if buf[0] == "prop:m.on" {
+        probe_prop(p)
+        if m.count > 0 {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "m.extra" {
+        probe_bare(p)
+        buf.push("extra-ok")
+    }
+}
+
+fn act_ev(name: Str, m: Box[Model]) {
+    if name == "inc" {
+        m.count = m.count + 1
+    }
+}
+
+fn run_script(t: Box[Driver], act: fn(Str) -> Void, m: Box[Model], p: Box[Probe]) {
+    d_frame(t, |buf| bind_all(buf, m, p))
+    d_expect_text(t, "S30 PROPS")
+    // 求值切换:简单槽 {m.count} 走求值器,带型 i: 应答解标上屏
+    d_expect_text(t, "0")
+    // 链回落:prop:m.extra 未答 → 裸名应答 extra-ok
+    d_expect_text(t, "extra-ok")
+    d_expect_absent(t, "ON AIR")
+    // 表达式事件(8c-3 面,props 实参)
+    act(d_click(t, "inc"))
+    d_frame(t, |buf| bind_all(buf, m, p))
+    d_expect_text(t, "1")
+    var dump: Str = ""
+    var dn: I32 = d_cmd_count()
+    var di: I32 = 0
+    while di < dn {
+        if d_cmd_type(di) == 1 {
+            var tl: I32 = d_cmd_text_len(di)
+            var tj: I32 = 0
+            while tj < tl {
+                dump = dump + char_str(d_cmd_text_byte(di, tj))
+                tj += 1
+            }
+            dump = dump + "|"
+        }
+        di += 1
+    }
+    // when 简单条件切换:带型 b: 应答经求值器真值
+    // (叶文本用空格形:连字符属词法切分标点,内嵌重建插空格为在册坑)
+    d_expect_text(t, "ON AIR")
+    // 链序活证:props 链被问过;回落通道被问过
+    if p.propq < 1 {
+        panic("s30: props 链未被问(prop: 前缀询问 0 次)")
+    }
+    if p.bareq < 1 {
+        panic("s30: 回落通道未被问(裸名询问 0 次)")
+    }
+}
+
+fn main() -> I32 {
+    var m = Box[Model](Model { count: 0 })
+    var p = Box[Probe](Probe { propq: 0, bareq: 0 })
+    var src: Str = ctron_embedded()
+    var rc: I32 = test(src, 320, 480,
+        |buf| bind_all(buf, m, p),
+        |name| act_ev(name, m),
+        |k| { },
+        |t, act, key| {
+            run_script(t, act, m, p)
+        })
+    if rc != 0 {
+        return rc
+    }
+    // 第二阶段:骨架直通(β3 烘焙 props 表)同断言——树 props 双端同形的消费面
+    var p2 = Box[Probe](Probe { propq: 0, bareq: 0 })
+    var m2 = Box[Model](Model { count: 0 })
+    var t2: GuiTree = gui_sk_load()
+    var rc2: I32 = test_sk(t2, 320, 480,
+        |buf| bind_all(buf, m2, p2),
+        |name| act_ev(name, m2),
+        |k| { },
+        |t, act, key| {
+            run_script(t, act, m2, p2)
+        })
+    return rc2
+}

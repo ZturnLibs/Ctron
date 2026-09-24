@@ -1,0 +1,23 @@
+// s22 第二轮:props 视图双端差分(8c-2 数据面正例——props 名表双端同形)
+// 槽根全为已声明 prop/each 项(8c-1 引用门在 A 端 check 管线生效,须全过)
+view FrameProps ( m: Model, name: Str ) {
+  <vbox class="root">
+    <label class="title">{name}</label>
+    <when cond={m.show}>
+      <label class="sub">visible row</label>
+    </when>
+    <when cond={m.count > 0}>
+      <label class="sub2">has items</label>
+    </when>
+    <each item in={m.items}>
+      <label class="row">{item}</label>
+    </each>
+    <input bind={m.draft} placeholder="点链" class="field"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style sub { fg: "#22c55e" }
+style sub2 { fg: "#f97316" }
+style row { fg: "#cccccc" }
+style field { bg: "#2a2a2e" fg: "#ffffff" h: 36 }

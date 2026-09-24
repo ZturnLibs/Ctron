@@ -9,9 +9,24 @@
   trans_expr/stmt/ty 已落库(仅 trans_emit.ct 在飞)。
 - 已落:8c-3(09-24,on: 表达式事件两口径——捕获/签名门 E8120/形态与
   实参根门 E8110/ev_fire 触发面/语料 7 件/s22 扩/s29 新夹具/calc 切表达式
-  事件;decl 锁 363→366)。
-- 余阻塞:8c-2(props 环境+槽求值切换)/8c-4(gui.run 单入口+钩子退役)。
-  蓝本:plans/2026-09-23-sl8c-design.md(§4/§7 已兑现)。
+  事件;decl 锁 363→366);8c-2(09-24,props 名表双端同形+props 链解析
+  (D-8c1:prop: 前缀先问 props 环境、未答回落裸名)+槽求值切换(props 视图
+  四站点全走求值器,§7 并存开关)+s22 双轮差分+w2_fold 黄金同步+s30 双阶段
+  夹具;decl 锁 366→367)。
+- 余:8c-4(gui.run 单入口+钩子退役)。
+  蓝本:plans/2026-09-23-sl8c-design.md(§3/§4/§7 已兑现)。
+
+## 8c-2 落库登记(09-24;坑与发现)
+
+- ctron_embedded 重建器(gui_blocks_src)原先丢 d[5]——内嵌兜底源无 props,
+  gt_parse 捕获空表,链解析/求值切换静默失效;已修(d[5] 随重建 + 令牌剥 ~)。
+- 独立 .ctml 的 props 括号须空格独立:`view V ( m: T ) {`;`V(m:` 粘词
+  (indep tokenizer 的 ( 非特殊字节)→ props 不捕获且引用门空转。嵌入式不受累。
+- 域包夹具解释执行(ctron-cc run s25/s29/s30)同错 "index out of bounds
+  idx=1 base=nsl"——既有缺口归 interp/合并泳道(s25 先于本片已同错);
+  w4_interp 的 extern 直调形态不受累。
+- trans 既有:闭包捕获 fn 值 native 发射坏(capture 槽按 ct_i 传参)——
+  8c-2 链解析因此取树上下文设计(bxv 线程 t,无 fn 捕获),双口径绿。
 
 ## 8c-3 落库登记(09-24;绕行与发现,trans 线候选)
 
@@ -35,10 +50,10 @@
 `style b extends a { … }`:解析认领 + 样式表构建期单亲合并(子覆盖父);
 循环继承 E8100。验收:e8 pos/neg + 现有样式夹具回归。
 
-### P-8c-2/8c-4(余;按蓝本动工)
-8c-2:props 值流(props 环境;解释口径槽求值切换,s24/s25 守门)。
-8c-4:gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包
-字面量的发射落点,native 面彼时动 trans)。8c-3 已落(09-24)。
+### P-8c-4(余;按蓝本动工)
+gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包字面量的
+发射落点,native 面彼时动 trans;props 环境由 gui.run 生成的解析闭包注入,
+当前 prop: 前缀协议为其替身)。8c-2/8c-3 已落(09-24)。
 
 ### P-v10 终锚装配(依赖 8c)
 §10.3 Todo 照抄能跑:props 视图 + 表达式事件 + `disabled={}`(需按钮

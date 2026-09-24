@@ -28,6 +28,12 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
                 while cur.load() < toks.len && pd > 0 {
                     var t2: Str = tok(toks, cur)
                     adv(cur)
+                    // 剥 join 流行尾 ~ 标记(多行形参表防护;与 gui_sk_word 同规)
+                    if t2.len > 1 {
+                        if byte_at(t2, t2.len - 1) == 126 {
+                            t2 = byte_slice(t2, 0, t2.len - 1)
+                        }
+                    }
                     if t2.len == 1 {
                         var b2: I32 = byte_at(t2, 0)
                         if b2 == 40 {
@@ -397,7 +403,9 @@ fn gui_blocks_src(file: List[Str]) -> Str {
     while i < file.len {
         var d = file[i]
         if d[0] == "GuiBlock" {
-            out = out + d[1] + " " + d[2] + " \{"
+            // 8c-2:props 形参表(d[5])随重建——否则内嵌兜底源丢 props,
+            // 域包 gt_parse 捕获空表,求值切换/链解析静默失效
+            out = out + d[1] + " " + d[2] + d[5] + " \{"
             var tks = List[Str]()
             gui_split(d[4], tks)
             var k: I32 = 1
@@ -1153,6 +1161,54 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     return bad
 }
 
+// 8c-1/8c-2:view props 形参名表——"( a: T, b: U )" 形态拆名(类型段弃,
+// 字段段类型门登记待 props 类型面)。check 面引用门与骨架表(s22 双端同形)共用。
+fn gui_props_names(d5: Str, out: List[Str]) -> I32 {
+    if d5.len > 2 {
+        var seg: Str = byte_slice(d5, 2, d5.len - 2)
+        var pi: I32 = 0
+        while pi < seg.len {
+            var ps: I32 = pi
+            while pi < seg.len {
+                if byte_at(seg, pi) == 44 {
+                    break
+                }
+                pi += 1
+            }
+            var unit: Str = byte_slice(seg, ps, pi)
+            var ui: I32 = 0
+            while ui < unit.len {
+                if byte_at(unit, ui) == 58 {
+                    var pn: Str = byte_slice(unit, 0, ui)
+                    var pe: I32 = pn.len
+                    while pe > 0 {
+                        var pc: I32 = byte_at(pn, pe - 1)
+                        if pc == 32 || pc == 9 {
+                            pe -= 1
+                        } else {
+                            break
+                        }
+                    }
+                    var psi: I32 = 0
+                    while psi < pe {
+                        if byte_at(pn, psi) != 32 && byte_at(pn, psi) != 9 {
+                            break
+                        }
+                        psi += 1
+                    }
+                    if pe > psi {
+                        out.push(byte_slice(pn, psi, pe))
+                    }
+                    ui = unit.len
+                }
+                ui += 1
+            }
+            pi += 1
+        }
+    }
+    return 0
+}
+
 fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: Bool) -> I32 {
     // 第一遍:样式名表 + Fn/FnExt 名表与形参个数表(E8120 存在/签名门依据)
     var sn = List[Str]()
@@ -1201,48 +1257,7 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                 // 8c-1:props 形参表(d[5],"( a: T, b: U )" 形)解析为名表
                 var vprops = List[Str]()
                 if d.len > 5 {
-                    if d[5].len > 2 {
-                        var seg: Str = byte_slice(d[5], 2, d[5].len - 2)
-                        var pi: I32 = 0
-                        while pi < seg.len {
-                            var ps: I32 = pi
-                            while pi < seg.len {
-                                if byte_at(seg, pi) == 44 {
-                                    break
-                                }
-                                pi += 1
-                            }
-                            var unit: Str = byte_slice(seg, ps, pi)
-                            var ui: I32 = 0
-                            while ui < unit.len {
-                                if byte_at(unit, ui) == 58 {
-                                    var pn: Str = byte_slice(unit, 0, ui)
-                                    var pe: I32 = pn.len
-                                    while pe > 0 {
-                                        var pc: I32 = byte_at(pn, pe - 1)
-                                        if pc == 32 || pc == 9 {
-                                            pe -= 1
-                                        } else {
-                                            break
-                                        }
-                                    }
-                                    var psi: I32 = 0
-                                    while psi < pe {
-                                        if byte_at(pn, psi) != 32 && byte_at(pn, psi) != 9 {
-                                            break
-                                        }
-                                        psi += 1
-                                    }
-                                    if pe > psi {
-                                        vprops.push(byte_slice(pn, psi, pe))
-                                    }
-                                    ui = unit.len
-                                }
-                                ui += 1
-                            }
-                            pi += 1
-                        }
-                    }
+                    gui_props_names(d[5], vprops)
                 }
                 cur.store(1)
                 if eat_tok(tks, cur) != "<" {
@@ -1754,7 +1769,7 @@ fn gui_sk_style(tks: List[Str], cur: Atomic[I32], sk: List[Str], sv: List[Str], 
     return 0
 }
 
-fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[Str], npre: List[Str], nbid: List[Str], npost: List[Str], nfc: List[I32], ns: List[I32], nes: List[I32], nec: List[I32], ev_name: List[Str], ev_fn: List[Str], btns: List[I32], sk: List[Str], sv: List[Str]) -> I32 {
+fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[Str], npre: List[Str], nbid: List[Str], npost: List[Str], nfc: List[I32], ns: List[I32], nes: List[I32], nec: List[I32], ev_name: List[Str], ev_fn: List[Str], btns: List[I32], sk: List[Str], sv: List[Str], props: List[Str]) -> I32 {
     var ext = List[Str]()
     var i: I32 = 1
     while i < file.len {
@@ -1764,6 +1779,10 @@ fn gui_sk_build(file: List[Str], ntag: List[Str], nflag: List[Str], ncls: List[S
             gui_split(d[4], tks)
             var cur = Atomic[I32](0)
             if d[1] == "view" {
+                // 8c-2:props 名表入骨架(双端同形,s22 差分面)
+                if d.len > 5 {
+                    gui_props_names(d[5], props)
+                }
                 cur.store(1)
                 if cur.load() < tks.len {
                     gui_sk_node(tks, cur, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, 1)
@@ -1873,7 +1892,22 @@ fn gui_sk_dump_all(file: List[Str]) -> I32 {
     var btns = List[I32]()
     var sk = List[Str]()
     var sv = List[Str]()
-    gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, sk, sv)
+    var props = List[Str]()
+    gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, sk, sv, props)
+    // 8c-2:props 名表行(首行;空 = -;与域包 sk_dump 同格式)
+    var pline: Str = ""
+    var pi: I32 = 0
+    while pi < props.len {
+        if pi > 0 {
+            pline = pline + ","
+        }
+        pline = pline + props[pi]
+        pi += 1
+    }
+    if pline == "" {
+        pline = "-"
+    }
+    println("props=" + pline)
     var i: I32 = 0
     while i < ntag.len {
         var pre: Str = npre[i]
