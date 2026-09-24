@@ -535,7 +535,8 @@ P
     emit_flipped=""
     for f in "$ROOT"/std/*.ct; do
         b=$(basename "$f" .ct)
-        case $b in config|net|tls) continue ;; esac
+        # fmap/crypto:arena 大户(解释臂 GB 级,见 3j2 注)——runner 必被 SIGTERM
+        case $b in config|net|tls|fmap|crypto) continue ;; esac
         arm_ok=0
         if "$COMP/bin/ctron-emit" run "$f" > "$T/pe_$b.c" 2>/dev/null \
            && cc -O1 -w -o "$T/pe_$b.bin" "$T/pe_$b.c" 2>/dev/null; then
