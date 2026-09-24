@@ -8,9 +8,12 @@
 //     校验和有界模乘防 DCE;run.sh 采 3 轮取最小,门 ≤100ns/match。
 //   - 「回环」口径注记:本基准为进程内命中段(TCP 全请求周期归 P6-F vs
 //     epoll 基准;表扫描无 IO,解释臂无时钟不入计例)。
-// use 面:middleware 锚(框架唯一入口;router 符号经其单命名空间合并贯穿,
-// 消费方 use 表只能列入口自有符号 —— router 名以裸名直引)。
-use http.frm.middleware.{ frm_ctx_new }
+// use 面:P1b 契约直 use(mw_chain 先例;锚穿对消费方专用符号饿死在册)。
+// rc 三 accessor(frm_rc_match/method/miss)暂离清单:HEAD(a514f07)发射对
+// 「其调用 × method/miss 同清单请求」形确定性饿死(def=0,worktree 隔离构建
+// 复现;divergences 2026-09-24 节),钉面改字面 rc 码(1/0/-1 = router.ct
+// 在案钉值,同断言力);编译泳道修复后回切 accessor。
+use http.frm.router.{ frm_match, frm_m_get, frm_m_delete, fr_rc, fr_id, frm_param_i64, fi_rc, fi_v }
 use net.{ Net_probe }
 
 const SPEC: Str = "GET /users|GET /users/new|GET /users/:id|POST /users|DELETE /users/:id|GET /health|GET /static/:name|GET /api/v1/items/:id"
@@ -38,11 +41,11 @@ fn main() -> I64 {
 
     // ---- 正确性钉(热身外):四形各归其面 ----
     let m1 = frm_match(SPEC, frm_m_get(), b1, 0, n1)
-    if fr_rc(m1) != frm_rc_match() || fr_id(m1) != 1 {
+    if fr_rc(m1) != 1 || fr_id(m1) != 1 {
         return 1
     }
     let m2 = frm_match(SPEC, frm_m_get(), b2, 0, n2)
-    if fr_rc(m2) != frm_rc_match() || fr_id(m2) != 3 {
+    if fr_rc(m2) != 1 || fr_id(m2) != 3 {
         return 2
     }
     let v2 = frm_param_i64(b2, m2, 0)
@@ -50,11 +53,11 @@ fn main() -> I64 {
         return 3
     }
     let m3 = frm_match(SPEC, frm_m_delete(), b3, 0, n3)
-    if fr_rc(m3) != frm_rc_method() || fr_id(m3) != 1 {
+    if fr_rc(m3) != 0 || fr_id(m3) != 1 {
         return 4
     }
     let m4 = frm_match(SPEC, frm_m_get(), b4, 0, n4)
-    if fr_rc(m4) != frm_rc_miss() {
+    if fr_rc(m4) != 0 - 1 {
         return 5
     }
 

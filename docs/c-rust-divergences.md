@@ -606,3 +606,22 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   失效(非贯穿符号必饿),夹具按契约直 use router 双符号即绿——原「严格树
   E5020 规避」戒律系 P1b 前旧形,done 补并后直 use 无环(router 不依赖
   middleware)。
+
+### 发射符号饿死新证:frm_rc_* accessor 形状依赖确定性缺失(2026-09-24,P6-F 门禁首踩;HEAD worktree 隔离复现)
+
+- **现象**:消费方直 use `frm_rc_match` 等三 accessor(rc 码函数,`pub fn x() -> I64 { return <常量> }`
+  形)的夹具,emit 产物对其**确定性缺失**(声明/定义均无,或仅声明无定义),cc 阶段
+  硬错(implicit declaration;新 clang 为 error,`-w` 不掩)。可复现件:tests/http/
+  frm_route/x_bench.ct(直 use 形,mit 行 322/328 调用点在、符号不在)。
+- **形状依赖(HEAD=a514f07 worktree 隔离构建,同机同刻探针矩阵)**:
+  单符号直 use ✓;六符号表+简单体 ✓;全 11 符号表+简单体 ✓;**x_bench 本体
+  ✗**;截半体(V10:pin1–3)✗。判别面在 body 形状与符号集的交(「rc_match 调用 ×
+  method/miss 同清单」嫌疑最大,精确判据留编译泳道);产物确定性(md5 逐次一致),
+  非随机。8 符号表 + 双 match + param 链 + bf_fill + net 探针形(V17/V18/V20 族)
+  全绿 —— x_bench 据此绕行(钉面改字面 rc 码 1/0/-1 = router.ct 在案钉值;三
+  accessor 暂离 use 清单),编译修复后回切。
+- **史注**:2026-09-23 e96d5f6 已录「合并贯穿对 P1b 失效」(mw_chain E2020 形);
+  本节新证 = 直 use 亦饿 + 静默形(发射 rc=0 不报,cc 才炸)+ 形状依赖确定性。
+  另:2026-09-24 机刷在飞自举二进制曾呈现同族缺声明(client/sse_ws e2e 的
+  t_client_write_str/t_http_method_start 形),与 HEAD 静态缺陷叠置,门禁采数
+  一律走 worktree 隔离构建(CTRON_EMIT 覆盖口,bench_cycle.sh/run.sh 已备)。

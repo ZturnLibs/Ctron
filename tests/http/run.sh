@@ -15,7 +15,7 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 CC="$ROOT/compiler/bin/ctron-cc"
-EMIT="$ROOT/compiler/bin/ctron-emit"
+EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"   # 覆盖口:worktree 隔离构建验证用
 export CTRON_STDPATH="$ROOT/std"
 if [ ! -x "$CC" ]; then echo "http/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT

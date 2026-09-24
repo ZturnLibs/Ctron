@@ -1,0 +1,111 @@
+// tests/http/bench/bench_cycle.ct —— P6-F 全请求周期基准 ctron 侧(emit 专臂)
+// 形态(todo_api 装配同款最小化):net_tcp_listen 串行 accept → net_read_t 增量
+// 读头 → http_parse_head → frm_match(路由核参与计时面)→ 定长响应 net_write →
+// close(Connection:close 一连接一请求 = P6-E 生产形态)。
+// 两路由(与 baseline_cycle.c 同形):GET /health → 200 定长 83 字节;
+// GET /__done → 同 200 响应后排空退出(计数构建的 atexit 靠它冲刷)。
+// no_alloc 口径:热路径(accept→parse→match→fill→write)按构造零分配——
+//   Box 句柄全部提出循环体、响应为 const 定长串 lane 直填、无 Str 拼接;
+//   堵漏证明 = bench_cycle.sh 计数构建(ctron_amalloc 调用计数)双跑差分。
+// 响应字节与 C 基线逐字节同文(digest pin 自证,不等即 FAIL 禁采数)。
+// use 面:P1b 契约显式直 use(mw_chain 先例;「middleware 单命名空间合并贯穿」
+// 对消费方使用而 middleware 内部未用的符号失灵——frm_rc_match 最小差分实证,
+// def=0 登记档);net/http.parse/router/strconv 逐符号显式请求。
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close, last_net_error}
+use http.parse.{ http_parse_head, http_limits_default, http_rc, http_target_start, http_target_len }
+use http.frm.router.{ frm_match, frm_m_get, frm_rc_match, frm_rc_miss, fr_rc, fr_id }
+use std.strconv.{ parse_i64, sc_get_l }
+
+// 与 baseline_cycle.c RESP 逐字节同文(body 18 字节,整响应 83 字节)
+const RESP: Str = "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 18\r\n\r\nctron-cycle-bench\n"
+const RESP404: Str = "HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n"
+const SPEC: Str = "GET /health|GET /__done"
+
+// lane → 定长串写出(返回长度;热路径唯一写出面)
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("BENCH_CYCLE_PORT")), 8093)
+    // Box 句柄热循环外提(no_alloc 构造口径:循环体零分配)
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd_box) != 0 {
+        panic(last_net_error().message)
+    }
+    println("bench-srv listening")
+
+    var buf: I64[4096] = [0, 0, 0, 0]
+    var scr: I64[2048] = [0, 0, 0, 0]
+    var stop = 0
+    var served: I64 = 0
+
+    while stop == 0 {
+        if net_tcp_accept(net, lfd_box.v, afd_box) != 0 {
+            break
+        }
+        let fd = afd_box.v
+
+        // —— 增量读头(todo_api 同款守卫形;请求无体)——
+        var n: I64 = 0
+        var ts: I64 = 0
+        var tl: I64 = 0
+        var good = 0
+        var guard: I64 = 0
+        var need = 1
+        while need == 1 && guard < 64 {
+            guard += 1
+            let h = http_parse_head(buf, n, http_limits_default())
+            if http_rc(h) == 1 {
+                need = 0
+                good = 1
+                ts = http_target_start(h)
+                tl = http_target_len(h)
+            } else {
+                if http_rc(h) == -1 {
+                    need = 0
+                } else {
+                    let r = net_read_t(net, fd, scr, 2048, 5000)
+                    if r <= 0 {
+                        need = 0
+                    } else {
+                        var i: I64 = 0
+                        while i < r {
+                            if n + i < 4096 {
+                                buf[n + i] = scr[i]
+                            }
+                            i += 1
+                        }
+                        n = n + r
+                    }
+                }
+            }
+        }
+        if good == 1 {
+            // —— 路由核参与计时面(方法钉 GET:客户端固定 GET,基线同形)——
+            let m = frm_match(SPEC, frm_m_get(), buf, ts, tl)
+            if fr_rc(m) == frm_rc_match() {
+                let L = fill(buf, RESP)
+                net_write(net, fd, buf, L)
+                if fr_id(m) == 2 {
+                    net_close(net, fd)
+                    stop = 1
+                }
+            } else {
+                let L = fill(buf, RESP404)
+                net_write(net, fd, buf, L)
+            }
+        }
+        net_close(net, fd)
+        served += 1
+    }
+    println("bench-srv done served=" + served.to_string())
+    return 0
+}
