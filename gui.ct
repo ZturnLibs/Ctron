@@ -89,6 +89,15 @@ extern "c" fn gui_platform_id() -> I32
 extern "c" fn gui_os_dark_id() -> I32
 
 #[trusted]
+extern "c" fn gui_mouse_x() -> I32
+
+#[trusted]
+extern "c" fn gui_mouse_y() -> I32
+
+#[trusted]
+extern "c" fn gui_mouse_down() -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -2197,11 +2206,68 @@ pub fn ev_fire(t: GuiTree, expr: Str, bind: fn(List[Str]) -> Void, act: fn(Str) 
     }
 }
 
-fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32, hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
+// 交互态属性取值(§2.1):st 1=hover 2=active 3=disabled;态前缀属性定义则覆盖,
+// 未定义逐级回落基值——零全局默认。前缀形 = 下划线(hover_bg;编译器词法器裸 '-'
+// 落算符 token 致样式块段错误,连字符形俟 lex 词法模式补丁后切换——坑位在册)
+fn gt_st_prop(c: Str, p: Str, d: Str, t: GuiTree, st: I32) -> Str {
+    if st == 3 {
+        var dv: Str = gt_cls_prop(c, "disabled_" + p, "", t)
+        if dv != "" {
+            return dv
+        }
+        return gt_cls_prop(c, p, d, t)
+    }
+    if st == 2 {
+        var av: Str = gt_cls_prop(c, "active_" + p, "", t)
+        if av != "" {
+            return av
+        }
+        var hv: Str = gt_cls_prop(c, "hover_" + p, "", t)
+        if hv != "" {
+            return hv
+        }
+        return gt_cls_prop(c, p, d, t)
+    }
+    if st == 1 {
+        var hv2: Str = gt_cls_prop(c, "hover_" + p, "", t)
+        if hv2 != "" {
+            return hv2
+        }
+    }
+    return gt_cls_prop(c, p, d, t)
+}
+
+// 真窗 hover:指针位×命中表首中矩形(与 rt_hit_name 同序同语义),返回节点 id/-1
+pub fn rt_hover_node(rects: List[I32], hits: List[I32], px: I32, py: I32) -> I32 {
+    var j: I32 = 0
+    while j < rects.len {
+        var ci: I32 = rects[j]
+        var px100: I32 = px * 100
+        var py100: I32 = py * 100
+        if px100 >= gui_cmd_x100(ci) && px100 < gui_cmd_x100(ci) + gui_cmd_w100(ci) {
+            if py100 >= gui_cmd_y100(ci) && py100 < gui_cmd_y100(ci) + gui_cmd_h100(ci) {
+                return hits[j]
+            }
+        }
+        j += 1
+    }
+    return -1
+}
+
+fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32, hits: List[I32], hinst: List[I32], inst: I32, hov: I32, actn: I32) -> I32 {
     // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
     // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
     var tag: Str = t.ntag[id]
     var c: Str = t.ncls[id]
+    // 交互态(§2.1):hover/active 由指针管线穿线;disabled 在各元素 fold 处按真值置 st=3
+    var st: I32 = 0
+    if hov == id {
+        if actn == 1 {
+            st = 2
+        } else {
+            st = 1
+        }
+    }
     // when 条件:仅 when 元素以旗求值(按钮/checkbox 的 nflag = disabled 槽,P-W3)
     if tag == "when" {
         if t.nflag[id] != "" {
@@ -2229,16 +2295,21 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 dis = bxv_truth(bxv_eval(t, t.nflag[id], bind))
             }
         }
+        if dis {
+            st = 3
+        }
         var bgp: I32 = 0
-        var bgv: Str = gt_cls_prop(c, "bg", "", t)
+        var bgv: Str = gt_st_prop(c, "bg", "", t, st)
         if bgv != "" {
             bgp = g_parse_color(bgv)
         }
         gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
                 2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
-        var fgs: Str = gt_cls_prop(c, "fg", "#ffffff", t)
+        var fgs: Str = gt_st_prop(c, "fg", "#ffffff", t, st)
         if dis {
-            fgs = "#888888"
+            if gt_cls_prop(c, "disabled_fg", "", t) == "" {
+                fgs = "#888888"
+            }
         }
         var fgp: I32 = g_parse_color(fgs)
         gui_text(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)),
@@ -2261,7 +2332,18 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ck = bxv_truth(bxv_eval(t, t.nbid[id], bind))
                 }
             }
-            var cbgv: Str = gt_cls_prop(c, "bg", "", t)
+            if t.nflag[id] != "" {
+                if gt_slot_simple(t.nflag[id]) && t.props.len == 0 {
+                    if gt_ck_truth(rt_bind_text(bind, t.nflag[id])) {
+                        st = 3
+                    }
+                } else {
+                    if bxv_truth(bxv_eval(t, t.nflag[id], bind)) {
+                        st = 3
+                    }
+                }
+            }
+            var cbgv: Str = gt_st_prop(c, "bg", "", t, st)
             var cbgp: I32 = 0
             if cbgv != "" {
                 cbgp = g_parse_color(cbgv)
@@ -2276,7 +2358,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "28", t)),
                     2, gs2i(gt_cls_prop(c, "h", "28", t)), cbgp)
             if ck {
-                var cfp: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+                var cfp: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
                 gui_text("x", gs2i(gt_cls_prop(c, "size", "18", t)),
                          rt_col_r(cfp), rt_col_g(cfp), rt_col_b(cfp), 255)
             }
@@ -2316,7 +2398,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if txt.len > 12 {
                 sz = 22
             }
-            var fgp2: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+            var fgp2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
             gui_text(txt, sz, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
             var dir: I32 = 1
@@ -2336,7 +2418,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 hval = gs2i(hs)
             }
             var bgp2: I32 = 0
-            var bgv2: Str = gt_cls_prop(c, "bg", "", t)
+            var bgv2: Str = gt_st_prop(c, "bg", "", t, st)
             if bgv2 != "" {
                 bgp2 = g_parse_color(bgv2)
             }
@@ -2352,7 +2434,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 while ii < items.len {
                     var ch: I32 = t.nfc[id]
                     while ch >= 0 {
-                        rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii)
+                        rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii, hov, actn)
                         ch = t.ns[ch]
                     }
                     ii += 1
@@ -2360,7 +2442,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             } else {
                 var ch: I32 = t.nfc[id]
                 while ch >= 0 {
-                    rt_emit(t, bind, itemvar, item, ch, hits, hinst, inst)
+                    rt_emit(t, bind, itemvar, item, ch, hits, hinst, inst, hov, actn)
                     ch = t.ns[ch]
                 }
             }
@@ -2371,9 +2453,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
     return 0
 }
 
-pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32]) -> I32 {
+pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32], hov: I32, actn: I32) -> I32 {
     gui_begin_layout(w, h)
-    rt_emit(t, bind, "", "", 0, hits, hinst, 0)
+    rt_emit(t, bind, "", "", 0, hits, hinst, 0, hov, actn)
     return gui_end_layout()
 }
 
@@ -2466,7 +2548,9 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     var hits = List[I32]()
     var hinst = List[I32]()
     gui_clay_init(w, h)
-    var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst)
+    var hov: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+    var dn: I32 = gui_mouse_down()
+    var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     InitWindow(w, h, title)
     SetTargetFPS(60)
@@ -2485,7 +2569,8 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                 }
             }
         }
-        rt_draw_frame(t, bind, w, h, hits, hinst)
+        rt_draw_frame(t, bind, w, h, hits, hinst,
+            rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y()), gui_mouse_down())
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -2504,7 +2589,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var hits = List[I32]()
     var hinst = List[I32]()
     gui_clay_init(w, h)
-    var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst)
+    var hov: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+    var dn: I32 = gui_mouse_down()
+    var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     InitWindow(w, h, title)
     SetTargetFPS(60)
@@ -2523,7 +2610,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     src = src2
                     hits = List[I32]()
                     hinst = List[I32]()
-                    n = rt_draw_frame(t, bind, w, h, hits, hinst)
+                    n = rt_draw_frame(t, bind, w, h, hits, hinst,
+                        rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y()), gui_mouse_down())
                     rects = List[I32]()
                     rt_collect_rects(n, rects)
                 }
@@ -2543,7 +2631,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                 }
             }
         }
-        rt_draw_frame(t, bind, w, h, hits, hinst)
+        rt_draw_frame(t, bind, w, h, hits, hinst,
+            rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y()), gui_mouse_down())
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -2583,6 +2672,8 @@ pub struct Driver {
     var rects: List[I32]
     var hits: List[I32]
     var hinst: List[I32]
+    var hov: I32
+    var actn: I32
     var w: I32
     var h: I32
 }
@@ -2623,6 +2714,26 @@ pub fn d_click(t: Box[Driver], name: Str) -> Str {
     return name
 }
 
+// 交互态注入口(§2.1 headless):名→命中节点(d_btn_index 按钮面);"" 清除
+pub fn d_hover(t: Box[Driver], name: Str) -> I32 {
+    if name == "" {
+        t.hov = -1
+        t.actn = 0
+        return 0
+    }
+    var bi: I32 = d_btn_index(t.t, name)
+    if bi >= 0 {
+        var bl: List[I32] = t.t.btns
+        t.hov = bl[bi]
+    }
+    return 0
+}
+
+pub fn d_active(t: Box[Driver], on: I32) -> I32 {
+    t.actn = on
+    return 0
+}
+
 pub fn d_press_key(t: Box[Driver], k: I32) -> I32 {
     gui_inject_key(k)
     var evt: I32 = gui_poll_event()
@@ -2636,7 +2747,7 @@ pub fn d_press_key(t: Box[Driver], k: I32) -> I32 {
 pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
     var nh = List[I32]()
     var hi = List[I32]()
-    var n: I32 = rt_draw_frame(t.t, bind, t.w, t.h, nh, hi)
+    var n: I32 = rt_draw_frame(t.t, bind, t.w, t.h, nh, hi, t.hov, t.actn)
     t.hits = nh
     t.hinst = hi
     return n
@@ -2738,8 +2849,8 @@ pub fn test(src: Str, w: I32, h: I32,
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     gui_clay_init(w, h)
-    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), w: w, h: h })
-    var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
     script(d, act, key)
     return 0
@@ -2753,8 +2864,8 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
                script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
     theme_auto_apply()
     gui_clay_init(w, h)
-    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), w: w, h: h })
-    var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
     script(d, act, key)
     return 0

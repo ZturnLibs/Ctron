@@ -310,3 +310,12 @@ int gui_os_dark_id(void) {
     g_os_dark = dark;
     return dark;
 }
+
+// ---- 指针位置/按下读面(§2.1 真窗 hover;headless 走 d_hover/d_active 注入) ----
+int gui_mouse_x(void) { Vector2 p = GetMousePosition(); return (int)p.x; }
+int gui_mouse_y(void) { Vector2 p = GetMousePosition(); return (int)p.y; }
+int gui_mouse_down(void) {
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { return 1; }
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { return 1; }
+    return 0;
+}
