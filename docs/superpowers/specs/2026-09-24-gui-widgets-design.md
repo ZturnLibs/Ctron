@@ -21,11 +21,12 @@
    全目录路线图只列不做(防过度设计)。
 5. **主题**(2026-09-24 审阅反馈)= 用户自定义全套主题样式是一等需求:主题文件可
    定义全套令牌,一步换装全套观感(§3.4)。
-6. **主题集**(同日审阅反馈)= 内置五套:**三套平台主题**(mac/win/linux——宿主
-   OS 对应风格,Clay 能力面内的 HIG/Fluent/Adwaita 味诠释,不承诺原生拟真,
-   阴影/模糊/材质不在 Clay 面)+ **两套系统无关独立主题**(gui-dark 深色扁平/
-   gui-light 浅色)。**缺省 = 按宿主 OS 自动选择平台主题**(`theme_auto`,run/test
-   缺省行为);用户显式 `theme_apply` 覆盖。系统明暗跟随 P2(§5)。
+6. **主题集**(同日审阅反馈,二轮修订)= **明暗为等一等维度**:内置八套——
+   **平台六套**(mac/win/linux × dark/light,宿主 OS 对应风格,Clay 能力面内的
+   HIG/Fluent/Adwaita 味诠释,不承诺原生拟真,阴影/模糊/材质不在 Clay 面)+
+   **独立两套**(dark 深色扁平/light 浅色)。**缺省 = `theme_auto`**:按宿主 OS
+   选平台 + 按宿主明暗选深浅(`gui_os_dark()` 探测缝,§2.5);用户显式
+   `theme_apply` 或 `CTRON_GUI_THEME` 钉值覆盖。
 7. **方法论裁决(横切,同日审阅反馈)**= 设计遇语言/能力不支持,**扩展能力是正路,
    不用 hack 兜底**。本规格据此修订三处:色解析扩 `#RRGGBBAA`(修订 C1 六位承诺,
    登记规范回写);令牌解析(§2.4)定为必做(删「主题包整体替换样式表」兜底);
@@ -36,7 +37,8 @@
 ```
 ③ 外观体系  Theme struct 全套令牌 + 四态视觉规范 + 默认样式折叠规则
             (主题=.ct 文件构造 Theme 全字段字面量,theme_apply 一步换装;
-             内置五套主题在 gui/themes/,缺省 theme_auto 按宿主 OS 选;
+             内置八套主题在 gui/themes/(平台×深浅+独立深浅),
+             缺省 theme_auto=宿主 OS×宿主明暗;
              组件默认样式只引令牌,不写裸色值)
 ② 组件库    gui/widgets/*.ct —— pub view 组合 + 默认样式,零特权
             (首批:select/list/dialog 三新组件 + input 升级的 w-input 预设)
@@ -103,12 +105,18 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
 按裁决 #7 此缝**定为必做**——「主题包整体替换组件默认样式表」的兜底口径作废,
 不留 stringly 替身。
 
-### 2.5 平台探测(主题自适应的地基)
+### 2.5 平台与明暗探测(主题自适应的地基)
 
 - `gui_platform() -> Str`("mac" / "win" / "linux"):c_src 胶水一行(编译期
-  `__APPLE__`/`_WIN32` 宏分支),供 `theme_auto` 缺省选择(§3.5)。
-- 测试钉值:`CTRON_GUI_THEME=mac|win|linux|dark|light` 覆盖探测——headless 断言
-  跨平台确定性的唯一入口(宿主差异不进黄金)。
+  `__APPLE__`/`_WIN32` 宏分支)。
+- `gui_os_dark() -> Bool`:宿主明暗探测,c_src 胶水(macOS 读
+  AppleInterfaceStyle;Win 读注册表 AppsUseLightTheme;Linux 读
+  `gsettings color-scheme`,探测不可得/无桌面环境回退深色)。按裁决 #7 做
+  真实探测缝,不约定死值。
+- 二者供 `theme_auto` 缺省选择(§3.5)。
+- 测试钉值:`CTRON_GUI_THEME=mac_dark|mac_light|win_dark|win_light|
+  linux_dark|linux_light|dark|light` 覆盖探测——headless 断言跨平台确定性的
+  唯一入口(宿主差异不进黄金)。
 
 ## 3. 外观体系
 
@@ -184,28 +192,28 @@ pub fn make() -> Theme {
 - **覆围口径 v1**:全套**令牌**(色板/圆角/字号/间距/禁用/遮罩)。组件默认样式的
   结构性覆盖(换形状语汇,非换色)= 可选第二层,走 §7「主题包整体替换组件默认
   样式表」口径,P2。
-- **缺省行为**:`run`/`test` 入口缺省执行 `theme_auto()`——按 `gui_platform()`
-  选对应平台主题(裁决 #6「默认在对应系统下用一致的主题样式」);`CTRON_GUI_THEME`
-  钉值与用户显式 `theme_apply` 均可覆盖。
-- **内置主题集**:五套随包交付,置于 `gui/themes/`(§3.5)——平台三套 + 独立两套;
-  独立主题既是用户可选样本,又是机制的就地验收(同一 app 换 apply 一行,全套观感
-  切换)。
+- **缺省行为**:`run`/`test` 入口缺省执行 `theme_auto()`——`gui_platform()` ×
+  `gui_os_dark()` 二维选择(裁决 #6「默认与宿主一致」);`CTRON_GUI_THEME` 钉值与
+  用户显式 `theme_apply` 均可覆盖。
+- **内置主题集**:八套随包交付,置于 `gui/themes/`(§3.5)——平台×深浅六套 +
+  独立深浅两套;独立主题既是用户可选样本,又是机制的就地验收(同一 app 换
+  apply 一行,全套观感切换)。
 - **热重载**:令牌表是运行时状态,CTML 热重载环不受影响;主题自身热切换 P2。
 
-### 3.5 内置主题集(gui/themes/,裁决 #6)
+### 3.5 内置主题集(gui/themes/,裁决 #6;平台 × 明暗二维)
 
-| 主题 | 文件 | 明暗 | 基调 |
-|---|---|---|---|
-| mac | `theme_mac.ct` | 深 | macOS HIG 味:大圆角(RADIUS 6/10/14)、系统灰阶、mac 蓝 accent(#0a84ff 系)、克制边框 |
-| win | `theme_win.ct` | 深 | Fluent 味:Mica 灰阶、小圆角(2/4/8)、低饱和 accent、细边框为主 |
-| linux | `theme_linux.ct` | 深 | Adwaita 味:中圆角(4/6/12)、libadwaita 灰阶、GNOME 蓝(#3584e4 系)、头部栏语汇 |
-| dark | `theme_dark.ct` | 深 | 深色扁平现代(Linear/GitHub Dark,裁决 #3 基调的独立主题形态) |
-| light | `theme_light.ct` | 浅 | 同语汇浅色版(§3.4 示例即此) |
+| 主题 id | 文件 | 基调 |
+|---|---|---|
+| mac_dark / mac_light | `theme_mac_dark.ct` / `theme_mac_light.ct` | macOS HIG 味:大圆角(RADIUS 6/10/14)、系统灰阶、mac 蓝 accent(#0a84ff 系)、克制边框;浅版=纸白底深灰字 |
+| win_dark / win_light | `theme_win_dark.ct` / `theme_win_light.ct` | Fluent 味:Mica 灰阶、小圆角(2/4/8)、低饱和 accent、细边框为主 |
+| linux_dark / linux_light | `theme_linux_dark.ct` / `theme_linux_light.ct` | Adwaita 味:中圆角(4/6/12)、libadwaita 灰阶、GNOME 蓝(#3584e4 系) |
+| dark / light | `theme_dark.ct` / `theme_light.ct` | 独立基准对:深色扁平现代(Linear/GitHub Dark,裁决 #3)与同语汇浅色版 |
 
-- 三套平台主题是**味道诠释而非原生拟真**:色板/圆角/间距/字号阶梯向各 OS 设计
-  语言对齐;阴影、模糊、材质不在 Clay 能力面,不承诺(视觉近似,非 hack)。
-- 五套共用同一 Theme 字段面与四态规范(§3.2),差异全在令牌值——主题集本身即
-  「换令牌=换全套」的五个实证。
+- 平台六套是**味道诠释而非原生拟真**:色板/圆角/间距/字号阶梯向各 OS 设计语言
+  对齐;阴影、模糊、材质不在 Clay 能力面,不承诺(视觉近似,非 hack)。
+- 每对深浅共享同族形状/间距语汇,只换色板令牌;八套共用同一 Theme 字段面与四态
+  规范(§3.2)——主题集本身即「换令牌=换全套」的八个实证。
+- 明暗等权:`gui_os_dark()` 探测决定缺省深浅(§2.5),用户可任意固定。
 - 用户选择:`use gui.themes.{theme_dark}`(或任意自备主题文件)+
   `gui.theme_apply(...)`;缺省 `theme_auto` 可被 `CTRON_GUI_THEME` 钉值覆盖。
 
@@ -229,8 +237,7 @@ radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组
 
 **P2**(消费新能力缝):拖拽事件(drag 事件缝)、光标闪烁、Tab 焦点环导航、
 右键菜单、图标、滚动条视觉、程序化 `focus()`/`scroll_into_view`、多行 textarea;
-主题面:系统明暗跟随(宿主 dark mode 探测,平台主题深浅自动切)、高对比无障碍
-主题、主题热切换。
+主题面:高对比无障碍主题、主题热切换(明暗探测已进 v1,§2.5)。
 
 ² 拖拽事件缝:pointer move + 按住位移进事件通道(「名:载荷」复用),P2 随 slider 细化。
 
@@ -239,15 +246,15 @@ radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组
 - **能力夹具**(阶梯新增):s29_state(hover/active/focus/disabled 折叠——d_cmd 断言
   折叠后绘制属性,无需新注入口)、s30_focus(input 编辑全链:得焦/键入/退格/submit/
   失焦;d_type_char/d_press_key 已有)、s31_overlay(z 序/居中/遮罩回调)、
-  s32_theme(五主题 apply 逐套折叠值全套断言;theme_auto 探测与
+  s32_theme(八主题 apply 逐套折叠值全套断言;theme_auto 平台×明暗探测与
   CTRON_GUI_THEME 钉值覆盖;显式 apply 后缺省自适应不再干扰)。
 - **组件验收**:examples/todo 改造换真 input(退役 mirror label,回归既有断言);
   新示例 examples/gui_widgets 四件套陈列室(headless 断言 + `--run` 真窗口)。
 - **驱动器增量**:hover 态断言走折叠后命令缓冲,零新注入;焦点态同口径。
 - **门禁**:sh tests/gui/run.sh 阶梯 + ci.sh [8/9];黄金/坐标夹具延续
   CTRON_GUI_FT_OFF=1 钉值;净树 smoke 与 tests/net 不回归。
-- **视觉验收**:gui_widgets `--run` 人工过一遍四态(dark 基准 + 宿主平台主题
-  各一遍;五主题 `CTRON_GUI_THEME` 钉值轮巡抽查)。
+- **视觉验收**:gui_widgets `--run` 人工过一遍四态(dark/light 基准 + 宿主平台
+  主题各一遍;八主题 `CTRON_GUI_THEME` 钉值轮巡抽查)。
 
 ## 7. 坑位与风险登记
 
