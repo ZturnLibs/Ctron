@@ -1,0 +1,19 @@
+// c3 —— 组合面:parse→gate→line 端到端(消费方装配形的纯面镜像)
+use std.log.{ lg_level_parse, lg_enabled, lg_line, lg_kv, lg_warn }
+
+fn main() -> I64 {
+    // 消费方形:thresh = lg_level_parse(env 值形参)
+    let thresh = lg_level_parse("warn")
+    // debug 级被门掉(构造但不输出)
+    let dbg = lg_enabled(thresh, 0)
+    if dbg { return 1 }
+    // warn 级过门成行
+    let w = lg_enabled(thresh, 2)
+    if w == false { return 2 }
+    let line = lg_line("2026-09-25T02:00:00Z", 2, "over limit", lg_kv("n", "1200"))
+    if line != "2026-09-25T02:00:00Z WARN over limit n=1200\n" { return 3 }
+    // 空值 → 引裹空
+    let e = lg_line("2026-09-25T02:00:01Z", 2, "missing", lg_kv("id", ""))
+    if e != "2026-09-25T02:00:01Z WARN missing id=\"\"\n" { return 4 }
+    return 0
+}

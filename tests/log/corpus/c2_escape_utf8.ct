@@ -1,0 +1,29 @@
+// c2 —— 转义面:引裹判定/裹内转义/控制字节丢弃/UTF-8 透传(中文不破坏)
+use std.log.{ lg_esc_val, lg_kv }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    // 透传:UTF-8 多字节(中文字节均 >=128,不触引裹)
+    if eqs(lg_esc_val("开始处理"), "开始处理") == false { return 1 }
+    // 裹内转义五种
+    if eqs(lg_esc_val("a\"b"), "\"a\\\"b\"") == false { return 2 }
+    if eqs(lg_esc_val("a\\b"), "\"a\\\\b\"") == false { return 3 }
+    if eqs(lg_esc_val("x\ny"), "\"x\\ny\"") == false { return 4 }
+    // 混合:引裹内控制字节(垂直制表 11)丢弃、普通字符保留
+    let m = lg_esc_val("a\u{000b}b")
+    if eqs(m, "\"ab\"") == false { return 5 }
+    // 中文含引号:引裹且多字节保留
+    if eqs(lg_esc_val("值\"引"), "\"值\\\"引\"") == false { return 6 }
+    // kv 片:键原样 + 值转义
+    if eqs(lg_kv("msg", "重 试"), " msg=\"重 试\"") == false { return 7 }
+    return 0
+}

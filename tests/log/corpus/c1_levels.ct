@@ -1,0 +1,20 @@
+// c1 —— 级别族全形:码/名/门控矩阵(与 std/log inline 互独立,跑同断言面)
+use std.log.{ lg_debug, lg_info, lg_warn, lg_error, lg_level_name, lg_enabled, lg_line, lg_kv }
+
+fn main() -> I64 {
+    // 名表四形
+    if lg_level_name(0) != "DEBUG" { return 1 }
+    if lg_level_name(1) != "INFO" { return 2 }
+    if lg_level_name(2) != "WARN" { return 3 }
+    if lg_level_name(3) != "ERROR" { return 4 }
+    if lg_level_name(9) != "INFO" { return 5 }
+    // 门控:阈值语义 = level >= thresh
+    if lg_enabled(1, 1) == false { return 6 }
+    if lg_enabled(2, 1) { return 7 }
+    if lg_enabled(0, 3) == false { return 8 }
+    if lg_enabled(3, 2) { return 9 }
+    // 行构造:error + 多 kv 拼接
+    let l = lg_line("2026-09-25T01:00:00Z", lg_error(), "db connect failed", lg_kv("dsn", "pg://h/db") + lg_kv("try", "3"))
+    if l != "2026-09-25T01:00:00Z ERROR db connect failed dsn=pg://h/db try=3\n" { return 10 }
+    return 0
+}
