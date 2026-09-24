@@ -4,11 +4,15 @@
 use std::path::{Path, PathBuf};
 
 fn walk_ct(dir: &Path, out: &mut Vec<PathBuf>) {
+    // 只认 tests/ 顶层单文件:泳道子目录(crypto_vec/db/ffi/net/…)系多文件包
+    // 结构,extern 解析依赖包上下文,由各 lane runner 承载(对齐 meta_check
+    // 泳道 skip 口径)
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let p = e.path();
-        if p.is_dir() { walk_ct(&p, out); }
-        else if p.extension().is_some_and(|x| x == "ct") { out.push(p); }
+        if !p.is_dir() && p.extension().is_some_and(|x| x == "ct") {
+            out.push(p);
+        }
     }
 }
 

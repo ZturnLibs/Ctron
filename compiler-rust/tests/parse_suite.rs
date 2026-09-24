@@ -4,12 +4,13 @@
 use std::path::{Path, PathBuf};
 
 fn walk_ct(dir: &Path, out: &mut Vec<PathBuf>) {
+    // 只认 tests/ 顶层单文件:泳道子目录(net/http/doc_fix/artifact_demo/…)
+    // 各有专属 runner 且系多文件包结构,单文件解析必 E2020/E1001 误报
+    // (对齐 meta_check 泳道 skip 口径)
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let p = e.path();
-        if p.is_dir() {
-            walk_ct(&p, out);
-        } else if p.extension().is_some_and(|x| x == "ct") {
+        if !p.is_dir() && p.extension().is_some_and(|x| x == "ct") {
             out.push(p);
         }
     }
@@ -39,6 +40,10 @@ fn all_suite_files_parse_per_expectation() {
         let key = format!("{}/{}", parent, name);
         let cs = codes(&diags);
         let neg_want: Option<&[&'static str]> = if name == "01c_parse.neg.ct" {
+            Some(&["E1001"])
+        } else if name == "01i_semicolon.neg.ct" {
+            Some(&["E1001"])
+        } else if name == "01j_impl_for.neg.ct" {
             Some(&["E1001"])
         } else if name == "06_static_var.neg.ct" {
             Some(&["E3030"])

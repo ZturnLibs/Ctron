@@ -10,11 +10,19 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn walk_ct(dir: &Path, out: &mut Vec<PathBuf>) {
+    // 只认 tests/ 顶层单文件:泳道子目录(net/ffi/…)系多文件包结构,其 c_src
+    // extern 由各 lane runner 链接,单文件发射必然 undefined symbols。
+    // *.neg.ct 带词法级错误(判定面=//@ fail 码),不入行为对照。
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let p = e.path();
-        if p.is_dir() { walk_ct(&p, out); }
-        else if p.extension().is_some_and(|x| x == "ct") { out.push(p); }
+        let name = p.file_name().map(|x| x.to_string_lossy().to_string());
+        if p.is_file()
+            && p.extension().is_some_and(|x| x == "ct")
+            && !name.is_some_and(|n| n.ends_with(".neg.ct"))
+        {
+            out.push(p);
+        }
     }
 }
 

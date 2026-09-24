@@ -5,11 +5,13 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 fn walk_ct(dir: &Path, out: &mut Vec<PathBuf>) {
+    // 只认 tests/ 顶层单文件用例:泳道子目录(net/http/doc_fix/artifact_demo/
+    // json_fidelity/realdep_demo/…)各有专属 runner 且系多文件包结构,单文件
+    // 检查器无包上下文必 E2020(对齐 meta_check 的泳道 skip 口径)
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let p = e.path();
-        if p.is_dir() { walk_ct(&p, out); }
-        else if p.extension().is_some_and(|x| x == "ct") { out.push(p); }
+        if !p.is_dir() && p.extension().is_some_and(|x| x == "ct") { out.push(p); }
     }
 }
 
@@ -42,8 +44,14 @@ fn expectations() -> Vec<(&'static str, Vec<&'static str>)> {
         ("08_bare_alloc.neg.ct", vec!["E3040"]),
         ("04e_break_outside.neg.ct", vec!["E2070"]),
         ("04d_bool_or_type.neg.ct", vec!["E2010"]),
+        ("04d_bool_not_type.neg.ct", vec!["E2010"]),
         ("04e_break_closure.neg.ct", vec!["E2072"]),
         ("04e_break_drop.neg.ct", vec!["E2071"]),
+        ("04f_infer_ambig.neg.ct", vec!["E2061"]),
+        ("04f_infer_missing.neg.ct", vec!["E2060"]),
+        ("04d_unary_neg_type.neg.ct", vec!["E2010"]),
+        ("01j_impl_for.neg.ct", vec!["E1001"]),
+        ("01i_semicolon.neg.ct", vec!["E1001"]),
     ]
 }
 

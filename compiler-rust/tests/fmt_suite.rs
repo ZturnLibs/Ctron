@@ -150,6 +150,9 @@ fn full_corpus_idempotent_and_parse_equal() {
         let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().to_string();
         // roadmap/ 是测试先行的红锚语料,可能尚未可解析,不入门禁
         if rel.starts_with("roadmap/") { continue; }
+        // *.neg.ct 本就带词法级错误(判定面=//@ fail 码;lex_suite skip/check_suite
+        // 表驱动同口径),fmt 不可达亦无意义,不入语料
+        if rel.ends_with(".neg.ct") { continue; }
         let src = std::fs::read_to_string(f).unwrap();
         let formatted = match fmt_src(&src) {
             Ok(s) => s,
