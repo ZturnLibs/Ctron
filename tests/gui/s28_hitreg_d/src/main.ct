@@ -6,15 +6,19 @@ view P {
     <each it in={rows}>
       <button class="b2" on:click={row}>{it}</button>
     </each>
+    <button class="b3" disabled={1 > 0} on:click={nope}>OFF</button>
   </vbox>
 }
 style root { direction: column gap: 4 padding: 8 }
 style b1 { bg: "#2563eb" w: 120 h: 40 fg: "#ffffff" }
 style b2 { bg: "#7f1d1d" w: 120 h: 40 fg: "#ffffff" }
+style b3 { bg: "#4a4a52" w: 120 h: 40 fg: "#ffffff" }
 
 fn top() {
 }
 fn row() {
+}
+fn nope() {
 }
 
 fn bind_all(buf: List[Str]) {
@@ -40,7 +44,7 @@ fn main() -> I32 {
                 println("hit" + j.to_string() + "=" + nm)
                 j += 1
             }
-            println("HIT-PROBE-DONE")
+            println("HIT-PROBE-DONE(含 disabled 哨兵验证)")
         })
     return rc
 }

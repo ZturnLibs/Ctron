@@ -510,6 +510,11 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             if an == "cond" {
                 conds.push(av)
             }
+            if an == "disabled" {
+                // P-W3:button/checkbox 禁用态表达式(复用 cond 通道 → nflag;
+                // 逐帧求值,真 = 命中表 -1 哨兵不可点)
+                conds.push(av)
+            }
             if an == "bind" {
                 binds.push(av)
             }
@@ -1475,24 +1480,37 @@ fn bxv_eval(e: Str, bind: fn(List[Str]) -> Void) -> Str {
 }
 
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32, hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
-    // when 条件:简单旗名走通道询问;表达式槽(SL-8b)求值取真值
-    if t.nflag[id] != "" {
-        var fv: Str = "0"
-        if gt_slot_simple(t.nflag[id]) {
-            fv = rt_bind_text(bind, "when:" + t.nflag[id])
-        } else {
-            if bxv_truth(bxv_eval(t.nflag[id], bind)) {
-                fv = "1"
+    // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
+    // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
+    var tag: Str = t.ntag[id]
+    var c: Str = t.ncls[id]
+    // when 条件:仅 when 元素以旗求值(按钮/checkbox 的 nflag = disabled 槽,P-W3)
+    if tag == "when" {
+        if t.nflag[id] != "" {
+            var fv: Str = "0"
+            if gt_slot_simple(t.nflag[id]) {
+                fv = rt_bind_text(bind, "when:" + t.nflag[id])
+            } else {
+                if bxv_truth(bxv_eval(t.nflag[id], bind)) {
+                    fv = "1"
+                }
             }
-        }
-        if fv != "1" {
-            return 0
+            if fv != "1" {
+                return 0
+            }
         }
     }
     gui_open()
-    var tag: Str = t.ntag[id]
-    var c: Str = t.ncls[id]
     if tag == "button" {
+        // P-W3:disabled 槽(nflag 复用)逐帧求值——真 = 置灰 + 命中表 -1 哨兵
+        var dis: Bool = false
+        if t.nflag[id] != "" {
+            if gt_slot_simple(t.nflag[id]) {
+                dis = gt_ck_truth(rt_bind_text(bind, t.nflag[id]))
+            } else {
+                dis = bxv_truth(bxv_eval(t.nflag[id], bind))
+            }
+        }
         var bgp: I32 = 0
         var bgv: Str = gt_cls_prop(c, "bg", "", t)
         if bgv != "" {
@@ -1500,11 +1518,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         }
         gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
                 2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
-        var fgp: I32 = g_parse_color(gt_cls_prop(c, "fg", "#ffffff", t))
+        var fgs: Str = gt_cls_prop(c, "fg", "#ffffff", t)
+        if dis {
+            fgs = "#888888"
+        }
+        var fgp: I32 = g_parse_color(fgs)
         gui_text(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)),
                  rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
-        hits.push(id)
-        hinst.push(inst)
+        if dis {
+            hits.push(-1)
+            hinst.push(-1)
+        } else {
+            hits.push(id)
+            hinst.push(inst)
+        }
     } else {
         if tag == "checkbox" {
             // 选中态:nbid 值求值(简单名走通道/表达式走求值器);P-W1 MVP
