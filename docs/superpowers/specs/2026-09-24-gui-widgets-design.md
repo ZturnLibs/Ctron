@@ -38,6 +38,10 @@
    (§2.8–2.10 及 §2.1/2.3 修订);B 档进 P2(OS 文件拖入/虚拟化长列表/窗口级 API/
    canvas 整合等);**C 档不是弃绝——多窗口、富文本、RTL、无障碍、触摸手势、
    内部拖放等皆为远期目标**(§5 远期章),排期靠后、目标不删。
+10. **快捷键与菜单缺口补齐**(六轮审阅)= key 通道修饰键缝(实测 key 通道仅键码
+    无修饰键,Ctrl+S 与 S 不可区分,§2.11);应用级快捷键表(库级,优先级链钉死);
+    菜单加速器集成(同动作 id);菜单组件细节(子菜单/分隔线/勾选/导航);右键
+    事件缝点名(§2.1 button-2)。chord 序列进远期。
 
 ## 1. 总体架构(三层)
 
@@ -51,7 +55,7 @@
             (首批:select/list/dialog 三新组件 + input 升级的 w-input 预设)
 ① 能力缝    gui.ct/parse.ct/ctron_gui.c —— 只加能力不加语义组件
             (交互态/文本焦点+剪贴板/overlay/令牌解析/平台明暗/图像/定时器/
-             字体字重/DPI/尺寸约束透出,见 §2 十项)
+             字体字重/DPI/尺寸约束透出/key 修饰键+路由,见 §2 十一项)
 ```
 
 **能力缝判定铁律**:只有「无运行时支持就做不出真货」的才进内建(与 scroll 同判据)。
@@ -89,6 +93,8 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
   消费,不依赖视觉副作用。
 - **双击**(五轮):on:dblclick,指针管线顺带(click 计数 + 间隔窗,复用 §2.1 管线);
   headless `d_dblclick` 注入。list 行打开等高频消费。
+- **右键事件**(六轮):指针管线加 button-2 → on:contextmenu(「名:下标」先例);
+  P2 右键菜单组件消费此缝(§5)。
 - **修饰键进事件载荷**(五轮):ctrl/shift/alt 位随事件载荷下发——「名:载荷」前
   置修饰段(如 `pick:ctrl:3`);多选 list 的 ctrl+click 直接消费。首版仅 click/
   dblclick 携带。
@@ -193,6 +199,25 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
 - style 属性面扩容:`min-w`/`min-h`/`max-w`/`max-h`/`aspect`(Clay 已有,CTML
   未透)/`grow`(系数,现仅开关语义则升级)。纯属性透传,响应式布局地基。
 - 夹具:s29 系相邻几何断言复用(x100/w100 口径已备)。
+
+### 2.11 key 通道修饰键与事件路由(P1 地基,六轮补入;实测 key 通道仅键码)
+
+- **实测前提**:key 通道 = `fn(I32)`,运行时只 poll `GetKeyPressed`——Ctrl+S 与 S
+  不可区分,应用级快捷键现状做不了。本缝 = 运行时合成 **键码 + 修饰位**
+  (IsKeyDown ctrl/shift/alt/cmd 四位)下发;key 闭包签名随扩展
+  (`fn(I32, I32)` 或载荷编码,实施计划定夺,双宿主口径同步)。
+- **事件路由优先级链(钉死,快捷键表与 key 闭包的仲裁)**:
+  1. 焦点元素编辑键消费(§2.2——input 聚焦时的编辑键到此为止);
+  2. overlay 顶层 dialog 的 Esc(§2.3——转 on:close);
+  3. **应用快捷键表**(库级,§5 P1:声明式 combo→动作名,如 `"mod+s": save`;
+     菜单项引用同一动作 id——加速器显示 + 同 act 通道分发,一处注册两处生效);
+  4. key 闭包(遗留直通)。
+  例:input 聚焦按 Ctrl+S——input 只认编辑键,S 带 ctrl 位落入快捷键表 → save。
+- **平台惯例**:组合显示经 `gui_platform`(mac 显 ⌘/Cmd、win/linux 显 Ctrl);
+  匹配时 mod 键位平台等价(cmd≡ctrl 视主题/平台归一)。
+- **headless**:`d_press_key` 扩修饰参数(`d_key_combo(k, mod)`),注入路径与
+  真实 poll 同管线。
+- **远期**:chord 序列(Ctrl+K Ctrl+C 编辑器式组合键)进 §5 远期章。
 
 ## 3. 外观体系
 
@@ -328,19 +353,22 @@ input 是**内建元素的能力升级**(§2.2)+ 库级默认样式预设(`w-inp
 
 **P1**(消费 §2 能力缝,含新缝):
 slider(拖拽缝¹)、progress、**spinner**(tick³)、tabs、switch(checkbox 变体)、
-radio、menu(overlay)、**menubar**(menu+hbox 组合)、tooltip(overlay + hover 态
-bind 暴露)、toast(overlay + tick 自动消失³)、badge、**table**(列头+对齐+行
+radio、menu(overlay;**子菜单级联 overlay/分隔线/勾选项/展开时方向键导航/
+加速器集成——菜单项引用快捷键表同动作 id,显示 ⌘/Ctrl 经 gui_platform**,六轮)、
+**menubar**(menu+hbox 组合)、tooltip(overlay + hover 态 bind 暴露)、toast(overlay + tick 自动消失³)、badge、**table**(列头+对齐+行
 选中,files/面板生态直接受益)、**image**(§2.6)、**多选 list**(`selected:
 List[I32]`,ctrl+click 消费修饰键载荷)、**input 变体**(password mask / 数值
 属性面,零新能力)、**便宜件包**(divider / accordion / card——纯组合各一两行);
 能力面:**字体族/字重**(§2.8)、**DPI 探针→落地**(§2.9)、**双击 +
 `d_dblclick`**、**hover 态 bind 暴露**、**修饰键载荷**、**尺寸约束属性透出**
-(§2.10)。
+(§2.10)、**key 修饰键 + 应用快捷键表**(§2.11——库级 combo→动作名 + 菜单
+加速器同动作 id + 优先级链仲裁)。
 
 **P2**(消费新能力缝):拖拽事件缝¹细化、可拖分隔条、tree(view 递归已支持,
 缩进+折叠组合)、combobox(input+select 合体)、grid 布局助手(**前置:核查 Clay
 grid 支持面**)、光标形状(I-beam/pointer)、光标闪烁(tick 转正)、Tab 焦点环导航、
-右键菜单、图标(消费 §2.6)、滚动条视觉、程序化 `focus()`/`scroll_into_view`、
+右键菜单(消费 §2.1 button-2 事件缝)、图标(消费 §2.6)、滚动条视觉、程序化
+`focus()`/`scroll_into_view`、
 多行 textarea、**选区模型**、**undo/redo**、**焦点原语开放给 view 层**(解除
 §7 宪法例外)、用户级 `on:after` 定时、窗口图标/无边框;
 五轮 B 档:**OS 文件拖入**(raylib IsFileDropped 现成)、**虚拟化长列表**(master
@@ -355,8 +383,8 @@ CTML 树内 canvas 元素 + 每帧绘制回调)、文本 ellipsis/行钳制、�
 库/多进程,方案评审时点定)、富文本/inline markup、RTL 布局镜像(文字 bidi 已有,
 镜像布局待做)、无障碍树/屏幕阅读器、触摸/手势、内部拖放(列表重排/drop target)、
 date/time picker、color picker、command palette、chart、过渡动画(插值,消费
-tick)、**异步任务到 UI**(跨泳道依赖:语言面线程/通道就绪后接 GUI 合流;现状 =
-帧内小粒度分片口径)。
+tick)、chord 序列组合键(Ctrl+K Ctrl+C 式,消费 §2.11)、**异步任务到 UI**(跨泳道
+依赖:语言面线程/通道就绪后接 GUI 合流;现状 = 帧内小粒度分片口径)。
 
 ¹ 拖拽事件缝:pointer move + 按住位移进事件通道(「名:载荷」复用)。
 ³ spinner/toast 自动消失消费 §2.7 tick 原语。
@@ -372,14 +400,15 @@ tick)、**异步任务到 UI**(跨泳道依赖:语言面线程/通道就绪后�
   apply 后缺省自适应不再干扰)、s33_image(加载/缓存命中/失败占位/绘制尺寸)、
   s34_tick(d_tick 推进 + spinner 相位/toast 自动消失)、s35_组件×each 探针
   (list/select 于 each 内实例化 + 组件内部 each,邻域坑验证见 §7)、
-  **s36_font(粗体渲染 + 缓存键含 weight,§2.8)**;**DPI 探针结论补记 §2.9**
-  (探针先行,落地后几何黄金复核)。
+  **s36_font(粗体渲染 + 缓存键含 weight,§2.8)**、**s37_hotkey(修饰键注入 +
+  优先级链仲裁 + 快捷键表分发 + 菜单加速器同动作 id,§2.11)**;**DPI 探针结论
+  补记 §2.9**(探针先行,落地后几何黄金复核)。
 - **夹具迁移清单**:input 升级改 keystroke 消费边界——s12_input/s19_input_d/
   todo 断言面连锁,**迁移先行于 s30 合入**(逐个改口径,清单化销账)。
 - **驱动器增量**(三轮实证缺口):`d_hover` 注入口、`d_cmd` 颜色访问器
   (`d_cmd_bg100`/`border100`/`fg100`——现访问器仅 count/type/text/几何,无颜色)、
   `d_tick`、图像命令访问器(`d_cmd_img`)、剪贴板注入(直控自持缓冲)、
-  `d_dblclick` 与修饰键注入参数(五轮)。
+  `d_dblclick` 与修饰键注入参数(五轮)、`d_key_combo(k, mod)`(六轮,§2.11)。
 - **组件验收**:examples/todo 改造换真 input(退役 mirror label,回归既有断言);
   新示例 examples/gui_widgets 陈列室(首批四件 + P1 渐次上架;headless 断言 +
   `--run` 真窗口)。
