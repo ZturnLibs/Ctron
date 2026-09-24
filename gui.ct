@@ -74,6 +74,12 @@ extern "c" fn gui_cmd_bg_g(i: I32) -> I32
 extern "c" fn gui_cmd_bg_b(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_theme_slot(i: I32, v: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_theme_slot_get(i: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -299,7 +305,61 @@ fn ghex1(b: I32) -> I32 {
     return 0
 }
 
+fn gtok_index(w: Str) -> I32 {
+    // 槽序 = 规格 §3.1 令牌序 = Theme 字段序(0-13 色 packed,14-24 尺寸 I32)
+    if w == "BG_BASE" { return 0 }
+    if w == "SURFACE" { return 1 }
+    if w == "ELEVATED" { return 2 }
+    if w == "BORDER" { return 3 }
+    if w == "BORDER_STRONG" { return 4 }
+    if w == "TEXT" { return 5 }
+    if w == "TEXT_MUTED" { return 6 }
+    if w == "ACCENT" { return 7 }
+    if w == "ACCENT_HOVER" { return 8 }
+    if w == "DANGER" { return 9 }
+    if w == "SUCCESS" { return 10 }
+    if w == "MASK" { return 11 }
+    if w == "DISABLED_FG" { return 12 }
+    if w == "DISABLED_BG" { return 13 }
+    if w == "RADIUS_SM" { return 14 }
+    if w == "RADIUS_MD" { return 15 }
+    if w == "RADIUS_LG" { return 16 }
+    if w == "SIZE_XS" { return 17 }
+    if w == "SIZE_SM" { return 18 }
+    if w == "SIZE_MD" { return 19 }
+    if w == "SIZE_LG" { return 20 }
+    if w == "SIZE_XL" { return 21 }
+    if w == "SPACE_SM" { return 22 }
+    if w == "SPACE_MD" { return 23 }
+    if w == "SPACE_LG" { return 24 }
+    return -1
+}
+
+// 存储期两段式(§2.4):令牌名 → "@槽位" 标记;折叠期 gs2i/g_parse_color 见 @ 直读槽
+fn gtok_mark(w: Str) -> Str {
+    var i: I32 = gtok_index(w)
+    if i >= 0 {
+        return "@" + i.to_string()
+    }
+    return w
+}
+
+fn gtok_slot(v: Str) -> I32 {
+    var r: I32 = 0
+    var i: I32 = 1
+    while i < v.len {
+        r = r * 10 + (byte_at(v, i) - 48)
+        i += 1
+    }
+    return r
+}
+
 fn g_parse_color(v: Str) -> I32 {
+    if v.len > 1 {
+        if byte_at(v, 0) == 64 {
+            return gui_theme_slot_get(gtok_slot(v))
+        }
+    }
     if byte_at(v, 0) == 35 {
         if v.len != 7 {
             panic("gui: 颜色须 #RRGGBB,得 " + v)
@@ -314,6 +374,11 @@ fn g_parse_color(v: Str) -> I32 {
 }
 
 fn gs2i(s: Str) -> I32 {
+    if s.len > 1 {
+        if byte_at(s, 0) == 64 {
+            return gui_theme_slot_get(gtok_slot(s))
+        }
+    }
     var v: I32 = 0
     var i: I32 = 0
     while i < s.len {
@@ -849,7 +914,7 @@ fn gt_style(src: Str, cur: Atomic[I32], t: GuiTree, ext: List[Str]) -> I32 {
         if byte_at(src, cur.load()) == 34 {
             v = gstr(src, cur)
         } else {
-            v = gword(src, cur)
+            v = gtok_mark(gword(src, cur))
         }
         t.sk.push(name + "." + p)
         t.sv.push(v)

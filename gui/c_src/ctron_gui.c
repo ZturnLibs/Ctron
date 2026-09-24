@@ -255,3 +255,12 @@ void ctron_gui_flush(void) {
         }
     }
 }
+
+// ---- 主题令牌槽(波次一 §2.4):25 槽 I32,theme_apply 逐槽写入;
+// 样式存储期令牌名折成 "@n" 标记,折叠期 slot_get O(1) 读(两段式,禁逐帧名查表) ----
+int g_theme_slots[32];
+void gui_theme_slot(int i, int v) { g_theme_slots[i] = v; }
+int gui_theme_slot_get(int i) {
+    if (i < 0 || i >= 32) { return 0; }
+    return g_theme_slots[i];
+}
