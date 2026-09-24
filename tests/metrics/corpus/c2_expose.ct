@@ -1,0 +1,27 @@
+// c2 —— exposition 组装:多 metric 连排(counter+gauge+histogram)golden
+use http.frm.metrics.{ mx_meta, mx_line, mx_hist }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    var out = mx_meta("http_total", "counter", "total requests")
+    out = out + mx_line("http_total", "code", "200", 17)
+    out = out + mx_line("http_total", "code", "404", 2)
+    out = out + mx_meta("todo_items", "gauge", "current items")
+    out = out + mx_line("todo_items", "", "", 3)
+    var counts: I64[4] = [4, 6, 0, 0]
+    var bounds: I64[4] = [25, 250, 0, 0]
+    out = out + mx_meta("http_duration", "histogram", "request ms")
+    out = out + mx_hist("http_duration", "", "", counts, 2, bounds, 300, 6)
+    let want = "# HELP http_total total requests\n" + "# TYPE http_total counter\n" + "http_total\{code=\"200\"} 17\n" + "http_total\{code=\"404\"} 2\n" + "# HELP todo_items current items\n" + "# TYPE todo_items gauge\n" + "todo_items 3\n" + "# HELP http_duration request ms\n" + "# TYPE http_duration histogram\n" + "http_duration_bucket\{le=\"25\"} 4\n" + "http_duration_bucket\{le=\"250\"} 6\n" + "http_duration_bucket\{le=\"+Inf\"} 6\n" + "http_duration_sum 300\n" + "http_duration_count 6\n"
+    if eqs(out, want) == false { return 1 }
+    return 0
+}

@@ -1,0 +1,28 @@
+// c0 —— counter/gauge:元行/无标签样本/带标签样本/转义四事
+use http.frm.metrics.{ mx_meta, mx_line, mx_esc }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    let m = mx_meta("http_total", "counter", "total requests handled")
+    if eqs(m, "# HELP http_total total requests handled\n# TYPE http_total counter\n") == false { return 1 }
+    // 无标签
+    let l0 = mx_line("todo_items", "", "", 3)
+    if eqs(l0, "todo_items 3\n") == false { return 2 }
+    // 带标签
+    let l1 = mx_line("http_total", "code", "200", 41)
+    if eqs(l1, "http_total\{code=\"200\"} 41\n") == false { return 3 }
+    // 标签值转义:引号/反斜杠/换行
+    if eqs(mx_esc("a\"b\\c\nd"), "a\\\"b\\\\c\\nd") == false { return 4 }
+    let l2 = mx_line("http_total", "path", "/a\"b", 1)
+    if eqs(l2, "http_total\{path=\"/a\\\"b\"} 1\n") == false { return 5 }
+    return 0
+}

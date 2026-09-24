@@ -23,12 +23,13 @@ use net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_accept, net_read_t
 use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len, http_clen, http_head_end }
 use http.frm.openapi.{ oa_export, oa_json_escape }
 use http.frm.static.{ st_resp_from_content, st_etag }
+use http.frm.metrics.{ mx_meta, mx_line }
 use http.frm.auth.{ auth_jwt_sign, auth_jwt_verify, auth_jwt_claim, at_ok, at_tok, jwt_rc }
 use http.frm.body.{ body_json, bj_rc, bj_str, bs_v }
 use std.strconv.{ parse_i64, sc_get_l }
 
 // —— 同源路由表(OpenAPI 导出与分发共用此常量)——
-const ROUTES: Str = "GET /health|GET /todos|POST /todos|DELETE /todos/:id|GET /openapi.json|GET /|POST /__shutdown|POST /login"
+const ROUTES: Str = "GET /health|GET /todos|POST /todos|DELETE /todos/:id|GET /openapi.json|GET /|POST /__shutdown|POST /login|GET /metrics"
 
 const PAGE: Str = "<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><title>todo-api</title></head>\n<body>\n<h1>todo-api</h1>\n<p>REST: GET/POST /todos, DELETE /todos/:id (JWT 写保护), GET /openapi.json, GET /health</p>\n</body>\n</html>\n"
 
@@ -134,10 +135,26 @@ fn dstr(v: I64) -> Str {
     return out
 }
 
+// 计数槽:响应码 → 槽位(0..9;未知 → 10;槽容量 16)。bump 在 main 词法域
+// (view 形参索引写 = emit 缺口谱 ⑦,禁——站点级就地自增)
+fn cslot(code: Str) -> I64 {
+    if code == "200" { return 0 }
+    if code == "201" { return 1 }
+    if code == "204" { return 2 }
+    if code == "400" { return 3 }
+    if code == "401" { return 4 }
+    if code == "404" { return 5 }
+    if code == "422" { return 6 }
+    if code == "429" { return 7 }
+    if code == "500" { return 8 }
+    if code == "503" { return 9 }
+    return 10
+}
+
 // CORS + 安全头(示例级:*;套件级全貌见 frm cors/sechdr 各自语料)
 const XCORS: Str = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nX-Content-Type-Options: nosniff\r\n"
 
-fn respond(net: StdNet, fd: I64, buf: &I64[], code: Str, ctype: Str, body: Str) {
+fn respond(cnt: &I64[], net: StdNet, fd: I64, buf: &I64[], code: Str, ctype: Str, body: Str) {
     let resp = "HTTP/1.1 " + code + "\r\n" + XCORS + "Content-Type: " + ctype + "\r\n" + "Content-Length: " + dstr(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + body
     let m = fill(buf, resp)
     net_write(net, fd, buf, m)
@@ -168,6 +185,7 @@ fn main() {
     var next_id: I64 = 1
     var served: I64 = 0
     var stop = 0
+    var cnt: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     while stop == 0 {
         let afd_box = Box[Box64](Box64 { v: 0 })
@@ -224,7 +242,8 @@ fn main() {
             }
         }
         if good == 0 {
-            respond(net, fd, scr, "400 Bad Request", "text/plain", "bad request")
+            respond(cnt, net, fd, scr, "400 Bad Request", "text/plain", "bad request")
+            cnt[cslot("400")] = cnt[cslot("400")] + 1
             net_close(net, fd)
             continue
         }
@@ -247,7 +266,8 @@ fn main() {
 
         // —— 限流(进程内计数;探针以小阈值验证 503)——
         if served > rlimit {
-            respond(net, fd, scr, "503 Service Unavailable", "text/plain", "over limit")
+            respond(cnt, net, fd, scr, "503 Service Unavailable", "text/plain", "over limit")
+            cnt[cslot("503")] = cnt[cslot("503")] + 1
             net_close(net, fd)
             continue
         }
@@ -266,14 +286,16 @@ fn main() {
 
         // —— 健康端点 ——
         if target == "/health" && method == "GET" {
-            respond(net, fd, buf, "200 OK", "application/json", "\{\"ok\":true,\"served\":" + dstr(served) + "}")
+            respond(cnt, net, fd, buf, "200 OK", "application/json", "\{\"ok\":true,\"served\":" + dstr(served) + "}")
+            cnt[cslot("200")] = cnt[cslot("200")] + 1
             net_close(net, fd)
             continue
         }
 
         // —— OpenAPI(路由表同源)——
         if target == "/openapi.json" && method == "GET" {
-            respond(net, fd, buf, "200 OK", "application/json", oa_export(ROUTES, "todo-api", "1.0"))
+            respond(cnt, net, fd, buf, "200 OK", "application/json", oa_export(ROUTES, "todo-api", "1.0"))
+            cnt[cslot("200")] = cnt[cslot("200")] + 1
             net_close(net, fd)
             continue
         }
@@ -302,7 +324,8 @@ fn main() {
             let body = lane_str(buf, hend, n)
             let b = body_json(body, 4096)
             if bj_rc(b) != 1 {
-                respond(net, fd, buf, "400 Bad Request", "application/json", "\{\"error\":\"bad json\"}")
+                respond(cnt, net, fd, buf, "400 Bad Request", "application/json", "\{\"error\":\"bad json\"}")
+                cnt[cslot("400")] = cnt[cslot("400")] + 1
                 net_close(net, fd)
                 continue
             }
@@ -313,11 +336,13 @@ fn main() {
             }
             let tok = auth_jwt_sign(key, "\{\"sub\":\"" + oa_json_escape(uid) + "\"}")
             if at_ok(tok) == 0 {
-                respond(net, fd, buf, "500 Internal Server Error", "text/plain", "sign failed")
+                respond(cnt, net, fd, buf, "500 Internal Server Error", "text/plain", "sign failed")
+                cnt[cslot("500")] = cnt[cslot("500")] + 1
                 net_close(net, fd)
                 continue
             }
-            respond(net, fd, buf, "200 OK", "application/json", "\{\"token\":\"" + at_tok(tok) + "\"}")
+            respond(cnt, net, fd, buf, "200 OK", "application/json", "\{\"token\":\"" + at_tok(tok) + "\"}")
+            cnt[cslot("200")] = cnt[cslot("200")] + 1
             net_close(net, fd)
             continue
         }
@@ -330,7 +355,8 @@ fn main() {
             } else {
                 let auth_a = hfind(buf, hend, "Authorization: Bearer ")
                 if auth_a < 0 {
-                    respond(net, fd, buf, "401 Unauthorized", "application/json", "\{\"error\":\"unauthorized\"}")
+                    respond(cnt, net, fd, buf, "401 Unauthorized", "application/json", "\{\"error\":\"unauthorized\"}")
+                    cnt[cslot("401")] = cnt[cslot("401")] + 1
                     net_close(net, fd)
                     continue
                 }
@@ -342,7 +368,8 @@ fn main() {
                 let tok = lane_str(buf, vstart, ve)
                 let v = auth_jwt_verify(key, tok, 1000)
                 if jwt_rc(v) != 1 {
-                    respond(net, fd, buf, "401 Unauthorized", "application/json", "\{\"error\":\"bad token\"}")
+                    respond(cnt, net, fd, buf, "401 Unauthorized", "application/json", "\{\"error\":\"bad token\"}")
+                    cnt[cslot("401")] = cnt[cslot("401")] + 1
                     net_close(net, fd)
                     continue
                 }
@@ -368,7 +395,8 @@ fn main() {
                 i += 1
             }
             body = body + "]"
-            respond(net, fd, buf, "200 OK", "application/json", body)
+            respond(cnt, net, fd, buf, "200 OK", "application/json", body)
+            cnt[cslot("200")] = cnt[cslot("200")] + 1
             net_close(net, fd)
             continue
         }
@@ -386,7 +414,8 @@ fn main() {
                 bad = 1
             }
             if bad == 1 {
-                respond(net, fd, buf, "422 Unprocessable Entity", "application/json", "\{\"error\":\"title required\"}")
+                respond(cnt, net, fd, buf, "422 Unprocessable Entity", "application/json", "\{\"error\":\"title required\"}")
+                cnt[cslot("422")] = cnt[cslot("422")] + 1
                 net_close(net, fd)
                 continue
             }
@@ -395,7 +424,8 @@ fn main() {
             dones.push("0")
             let out = "\{\"id\":" + dstr(next_id) + ",\"title\":\"" + oa_json_escape(title) + "\",\"done\":false}"
             next_id += 1
-            respond(net, fd, buf, "201 Created", "application/json", out)
+            respond(cnt, net, fd, buf, "201 Created", "application/json", out)
+            cnt[cslot("201")] = cnt[cslot("201")] + 1
             net_close(net, fd)
             continue
         }
@@ -413,7 +443,8 @@ fn main() {
                 i += 1
             }
             if hit < 0 {
-                respond(net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"no such todo\"}")
+                respond(cnt, net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"no such todo\"}")
+                cnt[cslot("404")] = cnt[cslot("404")] + 1
                 net_close(net, fd)
                 continue
             }
@@ -435,7 +466,8 @@ fn main() {
             ids = nids
             titles = ntitles
             dones = ndones
-            respond(net, fd, buf, "204 No Content", "text/plain", "")
+            respond(cnt, net, fd, buf, "204 No Content", "text/plain", "")
+            cnt[cslot("204")] = cnt[cslot("204")] + 1
             net_close(net, fd)
             continue
         }
@@ -443,12 +475,35 @@ fn main() {
         // —— 优雅停机 ——
         if target == "/__shutdown" && method == "POST" {
             stop = 1
-            respond(net, fd, buf, "200 OK", "text/plain", "draining")
+            respond(cnt, net, fd, buf, "200 OK", "text/plain", "draining")
+            cnt[cslot("200")] = cnt[cslot("200")] + 1
             net_close(net, fd)
             continue
         }
 
-        respond(net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"not found\"}")
+        // —— /metrics(Prometheus 文本;P7-D)——
+        if target == "/metrics" && method == "GET" {
+            var out = mx_meta("http_total", "counter", "responses by status code")
+            out = out + mx_line("http_total", "code", "200", cnt[0])
+            out = out + mx_line("http_total", "code", "201", cnt[1])
+            out = out + mx_line("http_total", "code", "204", cnt[2])
+            out = out + mx_line("http_total", "code", "400", cnt[3])
+            out = out + mx_line("http_total", "code", "401", cnt[4])
+            out = out + mx_line("http_total", "code", "404", cnt[5])
+            out = out + mx_line("http_total", "code", "422", cnt[6])
+            out = out + mx_line("http_total", "code", "429", cnt[7])
+            out = out + mx_line("http_total", "code", "500", cnt[8])
+            out = out + mx_line("http_total", "code", "503", cnt[9])
+            out = out + mx_meta("todo_served", "gauge", "requests served since start")
+            out = out + mx_line("todo_served", "", "", served)
+            let m = fill(buf, out)
+            net_write(net, fd, buf, m)
+            net_close(net, fd)
+            continue
+        }
+
+        respond(cnt, net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"not found\"}")
+        cnt[cslot("404")] = cnt[cslot("404")] + 1
         net_close(net, fd)
     }
 

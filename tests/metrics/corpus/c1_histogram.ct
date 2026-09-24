@@ -1,0 +1,28 @@
+// c1 —— histogram 形:桶累计/le 升序/+Inf/sum/count(带标签与无标签双形)
+use http.frm.metrics.{ mx_hist }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    // 无标签:两桶(10, 100),累计 3、7,总数 9,sum 410
+    var counts: I64[4] = [3, 7, 0, 0]
+    var bounds: I64[4] = [10, 100, 0, 0]
+    let h = mx_hist("http_duration", "", "", counts, 2, bounds, 410, 9)
+    let want = "http_duration_bucket\{le=\"10\"} 3\n" + "http_duration_bucket\{le=\"100\"} 7\n" + "http_duration_bucket\{le=\"+Inf\"} 9\n" + "http_duration_sum 410\n" + "http_duration_count 9\n"
+    if eqs(h, want) == false { return 1 }
+    // 带标签:route="/todos"
+    var c2: I64[4] = [1, 2, 0, 0]
+    var b2: I64[4] = [5, 50, 0, 0]
+    let h2 = mx_hist("http_duration", "route", "/todos", c2, 2, b2, 55, 2)
+    let want2 = "http_duration_bucket\{route=\"/todos\",le=\"5\"} 1\n" + "http_duration_bucket\{route=\"/todos\",le=\"50\"} 2\n" + "http_duration_bucket\{route=\"/todos\",le=\"+Inf\"} 2\n" + "http_duration_sum\{route=\"/todos\"} 55\n" + "http_duration_count\{route=\"/todos\"} 2\n"
+    if eqs(h2, want2) == false { return 2 }
+    return 0
+}

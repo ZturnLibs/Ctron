@@ -1,0 +1,77 @@
+// http/frm/metrics.ct —— Prometheus 文本 exposition 写面(P7-D)
+//
+// 形态纪律(P5-E 组合层裁定):本模块**不持状态**——计数状态 = 调用方自有
+//   lane(热路径 self 自增,零分配,沿 P6-F no_alloc 口径);本模块只提供
+//   exposition 写面(转义/元行/样本行/histogram 形),/metrics 拉取为冷路径,
+//   Str 构建合法。浮点样本列志向(v1 整数计数;整数文本是 Prometheus 浮点
+//   语法的合法子集)。
+// 文本格式(Prometheus text format v0.0.4 子集):
+//     # HELP <name> <docstring>(\\ 与 \n 转义)
+//     # TYPE <name> counter|gauge|histogram
+//     <name>{<k>="<v>",...} <value>(标签值转义 \ " \n;无标签省略花括号)
+//     histogram:<name>_bucket{le="<上界"} 累计 + {le="+Inf"} 总数 + _sum + _count
+// 分层准入(宪章 v2 四问):纯函数写面、零依赖(http 域内,不入 std)。
+
+// 标签值转义:\ → \\ 、" → \" 、换行 → \n(字面两字符)
+pub fn mx_esc(v: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < v.len {
+        let c = byte_at(v, i)
+        if c == 92 {
+            out = out + "\\\\"
+        } else {
+            if c == 34 {
+                out = out + "\\\""
+            } else {
+                if c == 10 {
+                    out = out + "\\n"
+                } else {
+                    out = out + byte_slice(v, i, i + 1)
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// 元行:# HELP + # TYPE(连发两行;help 经转义)
+pub fn mx_meta(name: Str, typ: Str, help: Str) -> Str {
+    return "# HELP " + name + " " + mx_esc(help) + "\n" + "# TYPE " + name + " " + typ + "\n"
+}
+
+// 样本行:lname 空 → 无标签组;否则 {lname="lval"}(值经转义)
+pub fn mx_line(name: Str, lname: Str, lval: Str, val: I64) -> Str {
+    var head = name
+    if lname.len > 0 {
+        head = head + "\{" + lname + "=\"" + mx_esc(lval) + "\"}"
+    }
+    return head + " " + val.to_string() + "\n"
+}
+
+// histogram 桶行:lname 空 → {le="..."};否则 {lname="lval",le="..."}
+pub fn mx_hist_bucket(name: Str, lname: Str, lval: Str, le: Str, cum: I64) -> Str {
+    var head = name + "_bucket"
+    if lname.len > 0 {
+        head = head + "\{" + lname + "=\"" + mx_esc(lval) + "\",le=\"" + le + "\"}"
+    } else {
+        head = head + "\{le=\"" + le + "\"}"
+    }
+    return head + " " + cum.to_string() + "\n"
+}
+
+// histogram 整形(counts = 各桶累计计数,bounds = 各桶上界整数(升序,不含
+// +Inf),sum = 观测和(v1 整数),total = 观测总数 = +Inf 桶 = _count)
+pub fn mx_hist(name: Str, lname: Str, lval: Str, counts: &I64[], nb: I64, bounds: &I64[], sum: I64, total: I64) -> Str {
+    var out = ""
+    var i: I64 = 0
+    while i < nb {
+        out = out + mx_hist_bucket(name, lname, lval, bounds[i].to_string(), counts[i])
+        i += 1
+    }
+    out = out + mx_hist_bucket(name, lname, lval, "+Inf", total)
+    out = out + mx_line(name + "_sum", lname, lval, sum)
+    out = out + mx_line(name + "_count", lname, lval, total)
+    return out
+}

@@ -78,6 +78,10 @@ grep -q "200 OK" "$T/r1" && grep -q '"ok":true' "$T/r1" && ok "健康端点 200 
 # 2) 静态页 + ETag + 304
 probe 'GET / HTTP/1.1\r\nHost: t\r\n\r\n' "$T/r2"
 if grep -q "200 OK" "$T/r2" && grep -q "<h1>todo-api</h1>" "$T/r2"; then ok "静态页 200"; else bad "静态页 200"; fi
+
+# 2.5) /metrics(P7-D Prometheus 文本面)
+probe 'GET /metrics HTTP/1.1\r\nHost: t\r\n\r\n' "$T/rmx"
+if grep -q "# TYPE http_total counter" "$T/rmx" && grep -qF 'http_total{code="200"}' "$T/rmx" && grep -q "todo_served" "$T/rmx"; then ok "/metrics Prometheus 文本(counter+gauge)"; else bad "/metrics"; fi
 ETAG=$(grep -i "^ETag:" "$T/r2" | tr -d "\r" | cut -d" " -f2)
 [ -n "$ETAG" ] && ok "ETag 在册" || bad "ETag 缺失"
 probe "GET / HTTP/1.1\r\nHost: t\r\nIf-None-Match: $ETAG\r\n\r\n" "$T/r3"
