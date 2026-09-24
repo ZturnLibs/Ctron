@@ -17,12 +17,15 @@
    状态区分靠亮度/边框/accent,不用阴影(Clay 能力面内做专业感;现有默认主题已在半路)。
 4. **切片** = 能力先行·四件起步:第一批能力缝立刻被首批组件消费,每片全绿即落库;
    全目录路线图只列不做(防过度设计)。
+5. **主题**(2026-09-24 审阅反馈)= 用户自定义全套主题样式是一等需求:主题文件可
+   定义全套令牌,一步换装全套观感(§3.4)。
 
 ## 1. 总体架构(三层)
 
 ```
-③ 外观体系  theme.ct 令牌 + 四态视觉规范 + 默认样式折叠规则
-            (组件默认样式只引令牌,不写裸色值;主题经 use 整体替换)
+③ 外观体系  Theme struct 全套令牌 + 四态视觉规范 + 默认样式折叠规则
+            (主题=.ct 文件构造 Theme 全字段字面量,theme_apply 一步换装;
+             组件默认样式只引令牌,不写裸色值)
 ② 组件库    gui/widgets/*.ct —— pub view 组合 + 默认样式,零特权
             (首批:select/list/dialog 三新组件 + input 升级的 w-input 预设)
 ① 能力缝    gui.ct/parse.ct/ctron_gui.c —— 只加能力不加语义组件
@@ -84,13 +87,13 @@ sl8c-design.md)。首批组件动工排其落库之后;若延期,组件可用现
 
 实证:gt_style 对属性值只存原文(引号串/裸词),无令牌解析——「组件默认样式只引
 令牌」需此缝:**裸词值与已加载主题令牌同名时,加载期折叠解析为令牌值**;`"#…"`
-字面量原样直通。落点在样式折叠(域运行时,主题 const 在包内可见),非 parser。
+字面量原样直通。落点在样式折叠(域运行时,查 §3.4 运行时令牌表),非 parser。
 兜底:若此缝延期,组件默认样式以字面量书写、主题包整体替换组件默认样式表
 (master 设计 L1 兜底口径),二选一在实施计划定夺。
 
 ## 3. 外观体系
 
-### 3.1 令牌扩展(theme.ct,全 const,主题包整体替换)
+### 3.1 令牌全集(= §3.4 Theme 字段;下表默认值 = 内建深色主题)
 
 | 组 | 令牌 | 默认值 | 用途 |
 |---|---|---|---|
@@ -120,6 +123,52 @@ sl8c-design.md)。首批组件动工排其落库之后;若延期,组件可用现
 注意与 extends「子已定义者不覆盖」方向相反,合并序必须实现时钉死 + 夹具锁
 (预期:extends 先折叠,用户 class 最后折叠)。
 
+### 3.4 主题自定义与换装机制(用户裁决 #5,一等需求)
+
+**主题 = 一个 .ct 文件,构造 `gui.Theme` 全字段字面量,`theme_apply` 一步换装。**
+
+```ct
+// my_theme.ct —— 用户自定义全套主题(light 示例)
+use gui.{Theme}
+
+pub fn make() -> Theme {
+    return Theme {
+        bg_base: "#f5f5f7"  surface: "#ffffff"  elevated: "#ffffff"
+        border: "#d8d8de"   border_strong: "#b9b9c2"
+        text: "#1a1a24"     text_muted: "#6e6e7a"
+        accent: "#2563eb"   accent_hover: "#1d4fd8"
+        danger: "#c83c3c"   success: "#2f9e63"  mask: "#101016"
+        radius_sm: 4  radius_md: 8  radius_lg: 12
+        size_xs: 12  size_sm: 14  size_md: 16  size_lg: 20  size_xl: 24
+        space_sm: 4  space_md: 8  space_lg: 16
+        disabled_fg: "#9a9aa8"  disabled_bg: "#ececf2"
+    }
+}
+
+// 应用侧:
+// use my_theme.{make}
+// gui.theme_apply(make())   // run/test 之前调用一次
+```
+
+机制要点:
+
+- **完备性免费**:Theme 为 gui 包定义的 pub struct,字段 = §3.1 令牌全集
+  (snake_case 同形);字面量缺字段即编译错——「全套」由编译器保证,无 stringly
+  校验面。现 theme.ct 常量迁为 `theme_default()` 的构造源(默认主题 = 不调用
+  theme_apply 时的内建表)。
+- **查表对象**:§2.4 裸词折叠查**运行时令牌表**(默认内建深色;theme_apply 整体
+  替换),非编译期 const——主题换装对解析/组件层零感知,组件默认样式零改动即随
+  令牌全套换观感(「换令牌=换全套」)。
+- **可分发**:主题文件可进任意包,`use` 进应用再 apply——theme.ct 旧注释「用户
+  theme 经 use 整体替换」的精神落地为「主题 = 可分发 CT 工件」;use 级静态替换
+  (选择合并拦截)仍留 L2 comptime 终态(master 设计既定,不提前)。
+- **覆围口径 v1**:全套**令牌**(色板/圆角/字号/间距/禁用/遮罩)。组件默认样式的
+  结构性覆盖(换形状语汇,非换色)= 可选第二层,走 §7「主题包整体替换组件默认
+  样式表」口径,P2。
+- **官方样本**:`gui/theme_light.ct` 随包交付——既是第二主题,又是机制的就地验收
+  (同一 app 换 apply 一行,全套观感切换)。
+- **热重载**:令牌表是运行时状态,CTML 热重载环不受影响;主题自身热切换 P2。
+
 ## 4. 首批交付物:input 升级 + 三新组件(功能/API/默认观感)
 
 input 是**内建元素的能力升级**(§2.2)+ 库级默认样式预设(`w-input` 类,gui/widgets
@@ -147,7 +196,8 @@ radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组
 
 - **能力夹具**(阶梯新增):s29_state(hover/active/focus/disabled 折叠——d_cmd 断言
   折叠后绘制属性,无需新注入口)、s30_focus(input 编辑全链:得焦/键入/退格/submit/
-  失焦;d_type_char/d_press_key 已有)、s31_overlay(z 序/居中/遮罩回调)。
+  失焦;d_type_char/d_press_key 已有)、s31_overlay(z 序/居中/遮罩回调)、
+  s32_theme(theme_apply 换 light 后折叠值全套断言 + 缺省深色不受扰)。
 - **组件验收**:examples/todo 改造换真 input(退役 mirror label,回归既有断言);
   新示例 examples/gui_widgets 四件套陈列室(headless 断言 + `--run` 真窗口)。
 - **驱动器增量**:hover 态断言走折叠后命令缓冲,零新注入;焦点态同口径。
@@ -167,4 +217,9 @@ radio(组合)、menu(overlay)、tooltip(overlay)、toast(overlay)、badge(纯组
 - **遮罩色 8 位制式**:MASK 用 `#RRGGBBAA`,但 C1 裁决/theme.ct 注释只承诺 6 位
   `#RRGGBB`——色解析是否认 8 位未验证;若只认 6 位,遮罩降级不透明深色(如
   `#101016`)或扩色解析(实施计划定夺,倾向降级)。
+- **Theme 字段面负担**:全字段字面量 ~20+ 字段,主题作者手写负担——官方主题文件
+  即模板,文档给可复制骨架;「从默认改三色」场景可给 `theme_default()` 改成员配方
+  (构造后成员赋值,零新语法)。
+- **令牌表全局态与热重载**:theme_apply 后的表是运行时全局态,与热重载环/多入口
+  (run 与 test)的交互口径=s32 夹具覆盖;主题热切换 P2 前不做增量 apply。
 - **令牌解析兜底**:§2.4 若延期走「主题包整体替换组件默认样式表」口径,二选一定夺。
