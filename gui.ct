@@ -305,6 +305,99 @@ fn ghex1(b: I32) -> I32 {
     return 0
 }
 
+// ==================== 主题面(§3.4;Theme 全字段=槽序,theme_apply 一步换装) ====================
+
+// 字段序 = gtok_index 槽序 = 规格 §3.1;色 14 字段 #RRGGBB,尺寸 11 字段 I32
+pub struct Theme {
+    var bg_base: Str
+    var surface: Str
+    var elevated: Str
+    var border: Str
+    var border_strong: Str
+    var text: Str
+    var text_muted: Str
+    var accent: Str
+    var accent_hover: Str
+    var danger: Str
+    var success: Str
+    var mask: Str
+    var disabled_fg: Str
+    var disabled_bg: Str
+    var radius_sm: I32
+    var radius_md: I32
+    var radius_lg: I32
+    var size_xs: I32
+    var size_sm: I32
+    var size_md: I32
+    var size_lg: I32
+    var size_xl: I32
+    var space_sm: I32
+    var space_md: I32
+    var space_lg: I32
+}
+
+// 缺省深色主题(值镜像 theme.ct;跨文件 const 不随选择性合并发射,故自含字面量)
+// mask 临时 6 位不透明,#RRGGBBAA 随 overlay 波次
+pub fn theme_default() -> Theme {
+    return Theme {
+        bg_base: "#181820"
+        surface: "#22222e"
+        elevated: "#2a2a38"
+        border: "#32323f"
+        border_strong: "#454553"
+        text: "#e6e6eb"
+        text_muted: "#9a9aa8"
+        accent: "#2563eb"
+        accent_hover: "#3b82f6"
+        danger: "#c83c3c"
+        success: "#2f9e63"
+        mask: "#0a0a12"
+        disabled_fg: "#6b6b78"
+        disabled_bg: "#23232d"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// 一步换装:色字段过 g_parse_color 折 packed,尺寸直写;槽即活值,折叠自动跟随
+pub fn theme_apply(t: Theme) -> I32 {
+    gui_theme_slot(0, g_parse_color(t.bg_base))
+    gui_theme_slot(1, g_parse_color(t.surface))
+    gui_theme_slot(2, g_parse_color(t.elevated))
+    gui_theme_slot(3, g_parse_color(t.border))
+    gui_theme_slot(4, g_parse_color(t.border_strong))
+    gui_theme_slot(5, g_parse_color(t.text))
+    gui_theme_slot(6, g_parse_color(t.text_muted))
+    gui_theme_slot(7, g_parse_color(t.accent))
+    gui_theme_slot(8, g_parse_color(t.accent_hover))
+    gui_theme_slot(9, g_parse_color(t.danger))
+    gui_theme_slot(10, g_parse_color(t.success))
+    gui_theme_slot(11, g_parse_color(t.mask))
+    gui_theme_slot(12, g_parse_color(t.disabled_fg))
+    gui_theme_slot(13, g_parse_color(t.disabled_bg))
+    gui_theme_slot(14, t.radius_sm)
+    gui_theme_slot(15, t.radius_md)
+    gui_theme_slot(16, t.radius_lg)
+    gui_theme_slot(17, t.size_xs)
+    gui_theme_slot(18, t.size_sm)
+    gui_theme_slot(19, t.size_md)
+    gui_theme_slot(20, t.size_lg)
+    gui_theme_slot(21, t.size_xl)
+    gui_theme_slot(22, t.space_sm)
+    gui_theme_slot(23, t.space_md)
+    gui_theme_slot(24, t.space_lg)
+    return 0
+}
+
 fn gtok_index(w: Str) -> I32 {
     // 槽序 = 规格 §3.1 令牌序 = Theme 字段序(0-13 色 packed,14-24 尺寸 I32)
     if w == "BG_BASE" { return 0 }

@@ -1,14 +1,16 @@
-// tests/gui/s31_state —— 波次一 T1:驱动器颜色读回通路(style 直写色 → RECT bg 断言)
-// 交互态(hover/active/disabled)与主题令牌折叠的断言地基;d_cmd_bg_r/g/b 通路验证
-use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b}
+// tests/gui/s31_state —— 波次一 T1/T3:颜色读回通路 + 令牌折叠(theme_apply→ACCENT)
+// 交互态(hover/active/disabled)与主题令牌折叠的断言地基;d_cmd_bg_* 通路验证
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b, theme_apply, theme_default}
 
 view P {
   <vbox class="root">
     <button class="sw" on:click={noop}>S</button>
+    <button class="tk" on:click={noop}>T</button>
   </vbox>
 }
 style root { direction: column gap: 8 padding: 16 }
 style sw { bg: "#aa33cc" w: 60 h: 30 }
+style tk { bg: ACCENT w: 40 h: 20 }
 
 fn noop() {
 }
@@ -18,6 +20,7 @@ fn bind_noop(buf: List[Str]) {
 
 fn main() -> I32 {
     var src: Str = ctron_embedded()
+    theme_apply(theme_default())
     var rc: I32 = test(src, 320, 200,
         |buf| bind_noop(buf),
         |name| noop(),
@@ -27,6 +30,7 @@ fn main() -> I32 {
             var n: I32 = d_cmd_count()
             var i: I32 = 0
             var hit: I32 = 0
+            var tok: I32 = 0
             while i < n {
                 if d_cmd_type(i) == 2 {
                     if d_cmd_bg_r(i) == 170 {
@@ -36,11 +40,21 @@ fn main() -> I32 {
                             }
                         }
                     }
+                    if d_cmd_bg_r(i) == 37 {
+                        if d_cmd_bg_g(i) == 99 {
+                            if d_cmd_bg_b(i) == 235 {
+                                tok = 1
+                            }
+                        }
+                    }
                 }
                 i += 1
             }
             if hit != 1 {
                 panic("s31: 未找到 #aa33cc 背景矩形(bg 读回通路断)")
+            }
+            if tok != 1 {
+                panic("s31: ACCENT 令牌未折叠为 #2563eb(令牌槽/两段式解析断)")
             }
             println("S31-BG-GREEN")
         })

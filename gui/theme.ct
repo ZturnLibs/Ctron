@@ -1,5 +1,6 @@
-// gui/theme.ct —— 默认主题令牌(§13.3;用户 theme 经 use 整体替换)
+// gui/theme.ct —— 缺省主题令牌(§13.3;缺省表构造源 = gui.ct theme_default())
 // 颜色一律 Str 字面量 #RRGGBB(C1 裁决);间距为 I32 逻辑像素(§5.1)
+// 主题换装 = gui.Theme 全字段字面量 + gui.theme_apply(用户主题可整体替换本文件价值观)
 
 pub const COLOR_BG:     Str = "#181820"
 pub const COLOR_TEXT:   Str = "#e6e6eb"
