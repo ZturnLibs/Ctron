@@ -1,0 +1,28 @@
+// c1 —— W3C 非法矩阵:长度/分隔/大写/全零/ff 版本/非 hex/尾随空白
+use http.frm.trace.{ tp_parse_s, tp_rc_bad }
+
+fn bad(s: Str) -> I64 {
+    let t = tp_parse_s(s)
+    if t.rc != tp_rc_bad() { return 1 }
+    return 0
+}
+
+fn main() -> I64 {
+    if bad("") != 0 { return 1 }
+    if bad("00") != 0 { return 2 }
+    if bad("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-0") != 0 { return 3 }
+    if bad("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-011") != 0 { return 4 }
+    if bad("00/4bf92f3577b34da6a3ce929d0e0e4736/00f067aa0ba902b7/01") != 0 { return 5 }
+    // 大写 hex 拒(严格小写口径)
+    if bad("00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01") != 0 { return 6 }
+    // 全零 tid / 全零 sid
+    if bad("00-00000000000000000000000000000000-00f067aa0ba902b7-01") != 0 { return 7 }
+    if bad("00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01") != 0 { return 8 }
+    // version ff 拒
+    if bad("ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01") != 0 { return 9 }
+    // 非 hex 字符
+    if bad("00-4bf92f3577b34da6a3ce929d0e0e473g-00f067aa0ba902b7-01") != 0 { return 10 }
+    // 尾随空格(55+1)
+    if bad("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 ") != 0 { return 11 }
+    return 0
+}

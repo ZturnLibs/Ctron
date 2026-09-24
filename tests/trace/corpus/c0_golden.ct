@@ -1,0 +1,32 @@
+// c0 —— W3C 官方样例黄金向量:解析/字段/序列化字节精确/往返稳定
+use http.frm.trace.{ tp_parse_s, tp_rc_ok, tp_ser }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    let g = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    let t = tp_parse_s(g)
+    if t.rc != tp_rc_ok() { return 1 }
+    if t.ver != 0 { return 2 }
+    if eqs(t.tid, "4bf92f3577b34da6a3ce929d0e0e4736") == false { return 3 }
+    if eqs(t.sid, "00f067aa0ba902b7") == false { return 4 }
+    if t.fl != 1 { return 5 }
+    // 序列化 55 字节逐字节对拍
+    var b: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = tp_ser(b, 64, 0, t)
+    if n != 55 { return 6 }
+    var i: I32 = 0
+    while i < g.len {
+        if b[i.as[I64]()] != byte_at(g, i).as[I64]() { return 7 }
+        i += 1
+    }
+    return 0
+}

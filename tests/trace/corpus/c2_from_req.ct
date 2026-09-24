@@ -1,0 +1,42 @@
+// c2 —— 请求头提取:在册/缺席/坏值三面(纯 lane 构造请求头区)
+use http.frm.trace.{ tp_from_req, tp_rc_ok, tp_rc_absent, tp_rc_bad }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+// 请求头区落 lane(调用方填 ASCII 行;返回长度)
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i.as[I64]() ] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn main() -> I64 {
+    var b: I64[256] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    // 在册:第二行头(traceparent 在 Host 之后,覆盖非行首锚)
+    let n = fill(b, "GET /x HTTP/1.1\r\nHost: a\r\ntraceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\r\n\r\n")
+    let t = tp_from_req(b, n)
+    if t.rc != tp_rc_ok() { return 1 }
+    if eqs(t.tid, "4bf92f3577b34da6a3ce929d0e0e4736") == false { return 2 }
+    if eqs(t.sid, "00f067aa0ba902b7") == false { return 3 }
+    if t.fl != 1 { return 4 }
+    // 缺席
+    let n2 = fill(b, "GET /x HTTP/1.1\r\nHost: a\r\n\r\n")
+    let t2 = tp_from_req(b, n2)
+    if t2.rc != tp_rc_absent() { return 5 }
+    // 坏值(全零 sid)
+    let n3 = fill(b, "GET /x HTTP/1.1\r\ntraceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01\r\n\r\n")
+    let t3 = tp_from_req(b, n3)
+    if t3.rc != tp_rc_bad() { return 6 }
+    return 0
+}
