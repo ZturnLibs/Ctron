@@ -41,15 +41,21 @@ esac
 GUI_O=""
 GUI_F=""
 if [ -f "$ROOT/vendor/gui/build/libraylib.a" ]; then
+    # M3 文件管线合流(6696433)起 ctron_gui.c 引 ft_shim 三符号——与域包 run.sh
+    # 惯例同形:ft_shim 源 + freetype 头 + libfreetype/libsheenbidi 静态链
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" \
+       -I"$ROOT/vendor/gui/freetype/include" \
        -c "$ROOT/gui/c_src/ctron_gui.c" -o "$TMP/ctron_gui.o"
-    GUI_O="$TMP/ctron_gui.o"
+    cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" \
+       -I"$ROOT/vendor/gui/freetype/include" \
+       -c "$ROOT/gui/c_src/ft_shim.c" -o "$TMP/ft_shim.o"
+    GUI_O="$TMP/ctron_gui.o $TMP/ft_shim.o"
     case "$(uname)" in
         Darwin)
-            GUI_F="-Wl,-force_load,$ROOT/vendor/gui/build/libraylib.a $FW"
+            GUI_F="-Wl,-force_load,$ROOT/vendor/gui/build/libraylib.a $FW $ROOT/vendor/gui/build/libfreetype.a $ROOT/vendor/gui/build/libsheenbidi.a"
             ;;
         Linux)
-            GUI_F="-Wl,--whole-archive $ROOT/vendor/gui/build/libraylib.a -Wl,--no-whole-archive $FW"
+            GUI_F="-Wl,--whole-archive $ROOT/vendor/gui/build/libraylib.a -Wl,--no-whole-archive $FW $ROOT/vendor/gui/build/libfreetype.a $ROOT/vendor/gui/build/libsheenbidi.a"
             ;;
     esac
     echo "native: ctron-cc 附带解释口径 extern 符号源(域库 shim + raylib)"
