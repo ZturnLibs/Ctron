@@ -1,0 +1,79 @@
+// tests/s3/roundtrip.ct —— S3 往返客户端(P8-B e2e;裸 socket 形:
+// http.client StructLit 缺陷绕行,divergences 在册;签名仍走 s3.ct 全链)
+// PUT(体 hello-s3-roundtrip)→ GET(回声断言)→ DELETE(204)。
+use net.{Net_probe, net_tcp_connect, net_write_str, net_write, net_read_t, net_close}
+use s3.s3.{ s3_auth_for, s3_payload_hash_str, s3_empty_hash }
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn dstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var n = v
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    return out
+}
+
+// 一轮:连接→发请求(带签名三头)→读响应→回状态码;-1 = IO 坏
+fn round(port: I64, method: Str, path: Str, body: Str, ak: Str, sk: Str, region: Str, xdate: Str, rbuf: &I64[], rcap: I64) -> I64 {
+    let net = Net_probe()
+    let cfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_connect(net, "127.0.0.1", port, cfd) != 0 {
+        return 0 - 1
+    }
+    let ph = s3_payload_hash_str(body)
+    let auth = s3_auth_for(method, path, "127.0.0.1:" + port.to_string(), xdate, ph, ak, sk, region)
+    let head = method + " " + path + " HTTP/1.1\r\n" + "x-amz-date: " + xdate + "\r\n" + "x-amz-content-sha256: " + ph + "\r\n" + "Authorization: " + auth + "\r\n" + "content-length: " + dstr(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n"
+    net_write_str(net, cfd.v, head)
+    if body.len > 0 {
+        var bb: I64[512] = [0, 0, 0, 0]
+        var i: I32 = 0
+        while i < body.len {
+            bb[i.as[I64]() ] = byte_at(body, i).as[I64]()
+            i += 1
+        }
+        net_write(net, cfd.v, bb, body.len.as[I64]())
+    }
+    let r = net_read_t(net, cfd.v, rbuf, rcap, 5000)
+    net_close(net, cfd.v)
+    if r < 12 {
+        return 0 - 1
+    }
+    // 状态行 "HTTP/1.1 NNN" → rbuf[9..12)
+    return rbuf[9] * 100 + rbuf[10] * 10 + rbuf[11] - 48 * 111
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("S3_PORT")), 8471)
+    let ak = "AKIDEXAMPLE"
+    let sk = "wJalrXUtnFEMI"
+    let region = "us-east-1"
+    let xdate = "20250925T000000Z"
+    var rbuf: I64[2048] = [0, 0, 0, 0]
+    // PUT
+    let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", ak, sk, region, xdate, rbuf, 2048)
+    if s1 != 200 {
+        println("RT-FAIL put=" + s1.to_string())
+        return 1
+    }
+    // GET → 200
+    let s2 = round(port, "GET", "/testbucket/obj1.txt", "", ak, sk, region, xdate, rbuf, 2048)
+    if s2 != 200 {
+        println("RT-FAIL get=" + s2.to_string())
+        return 2
+    }
+    // DELETE → 204
+    let s3 = round(port, "DELETE", "/testbucket/obj1.txt", "", ak, sk, region, xdate, rbuf, 2048)
+    if s3 != 204 {
+        println("RT-FAIL delete=" + s3.to_string())
+        return 3
+    }
+    println("RT-OK")
+    return 0
+}

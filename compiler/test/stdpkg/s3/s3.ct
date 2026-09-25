@@ -75,3 +75,24 @@ pub fn s3_auth_header(ak: Str, scp: Str, sig: Str) -> Str {
     let c3 = s3_join2(", SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=", sig)
     return s3_join2(s3_join2(c1, c2), c3)
 }
+
+// xdate → date(前 8 位)
+pub fn s3_date_of(xdate: Str) -> Str {
+    return byte_slice(xdate, 0, 8)
+}
+
+// 装配面:Authorization 头值(全链:canon→sts→sig)
+pub fn s3_auth_for(method: Str, path: Str, host: Str, xdate: Str, payload_hash: Str, ak: Str, sk: Str, region: Str) -> Str {
+    let date = s3_date_of(xdate)
+    let scp = s3_scope(date, region)
+    let canon = s3_canonical(method, path, host, xdate, payload_hash)
+    let sts = s3_string_to_sign(xdate, scp, canon)
+    let key = s3_secret_key(sk, date, region)
+    let sig = s3_signature(key, sts)
+    return s3_auth_header(ak, scp, sig)
+}
+
+// 载荷哈希(文本体;二进制体列志向)
+pub fn s3_payload_hash_str(body: Str) -> Str {
+    return sha256_hex(body)
+}

@@ -43,6 +43,29 @@ for f in "$DIR"/corpus/*.ct; do
     esac
 done
 
+# ── e2e 段(CTRON_S3_E2E=1):mock 服务 ↔ 签名往返客户端(PUT/GET/DELETE)──
+if [ "${CTRON_S3_E2E:-}" = "1" ]; then
+    echo "== s3 e2e:mock ↔ 签名往返 =="
+    if "$EMIT" run "$DIR/mock.ct" > "$T/mock.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/mock.bin" "$T/mock.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null        && "$EMIT" run "$DIR/roundtrip.ct" > "$T/rt.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/rt.bin" "$T/rt.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null; then
+        SP=$((21000 + RANDOM % 20000))
+        ( S3_PORT="$SP" "$T/mock.bin" > "$T/mock.log" 2>&1 & )
+        sleep 1
+        S3_PORT="$SP" timeout 20 "$T/rt.bin" > "$T/rt.log" 2>&1
+        RRC=$?
+        sleep 0.5
+        pkill -f 'mock.bin' 2>/dev/null
+        if [ "$RRC" = 0 ] && grep -q "MOCK-DONE" "$T/mock.log"; then
+            pass=$((pass+1)); echo "  PASS s3-e2e(PUT/GET/DELETE 签名往返 + mock 鉴权结构守门)"
+        else
+            fail=$((fail+1)); echo "  FAIL s3-e2e(rt_rc=$RRC)"; sed -n '1,3p' "$T/rt.log" "$T/mock.log" 2>/dev/null
+        fi
+    else
+        fail=$((fail+1)); echo "  FAIL s3-e2e 构建"
+    fi
+else
+    echo "  [skip] s3-e2e:CTRON_S3_E2E=1 启用"
+fi
+
 echo "s3/run: pass=$pass fail=$fail"
 [ "$pass" -gt 0 ] || { echo "s3/run: no cases ran"; exit 1; }
 [ "$fail" = 0 ] || exit 1

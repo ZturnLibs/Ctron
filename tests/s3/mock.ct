@@ -1,0 +1,159 @@
+// tests/s3/mock.ct —— S3 夹具服务(P8-B):串行三轮 PUT/GET/DELETE
+// 鉴权结构校验(x-amz-date/x-amz-content-sha256/authorization AWS4 前缀);
+// 单槽存储(PUT 落/GET 回/DELETE 204)。端口 env S3_PORT。
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close}
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn hval(buf: &I64[], n: I64, needle: Str) -> I64 {
+    let nl = needle.len
+    var i: I64 = 0
+    while i < n {
+        if (i == 0) || (buf[i - 1] == 10) {
+            var ok = true
+            var j: I32 = 0
+            while j < nl {
+                if byte_at(needle, j) != buf[i + j.as[I64]()].as[I32]() {
+                    ok = false
+                }
+                j += 1
+            }
+            if ok {
+                var vs = i + nl.as[I64]()
+                while (vs < n) && (buf[vs] == 32) {
+                    vs += 1
+                }
+                return vs
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if (c >= 32) && (c < 127) {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
+        }
+        i += 1
+    }
+    return out
+}
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("S3_PORT")), 8471)
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        println("MOCK-FAIL listen")
+        return 2
+    }
+    println("mock ready")
+    var stored = ""
+    var stored_path = ""
+    var round: I64 = 0
+    while round < 3 {
+        let afd = Box[Box64](Box64 { v: 0 })
+        if net_tcp_accept(net, lfd.v, afd) != 0 {
+            break
+        }
+        let fd = afd.v
+        var buf: I64[2048] = [0, 0, 0, 0]
+        var scr: I64[1024] = [0, 0, 0, 0]
+        var n: I64 = 0
+        var hend: I64 = 0 - 1
+        var guard: I64 = 0
+        while (guard < 64) && (hend < 0) {
+            guard += 1
+            let r = net_read_t(net, fd, scr, 1024, 5000)
+            if r <= 0 {
+                break
+            }
+            var i: I64 = 0
+            while i < r {
+                buf[n + i] = scr[i]
+                i += 1
+            }
+            n = n + r
+            var k: I64 = 0
+            while (k + 3 < n) && (hend < 0) {
+                if (buf[k] == 13) && (buf[k + 1] == 10) && (buf[k + 2] == 13) && (buf[k + 3] == 10) {
+                    hend = k + 4
+                }
+                k += 1
+            }
+        }
+        // 鉴权结构三针(在册:签名正确性由黄金向量面独立证明,此处钉结构)
+        var auth_ok = true
+        if hval(buf, hend, "x-amz-date: ") < 0 { auth_ok = false }
+        if hval(buf, hend, "x-amz-content-sha256: ") < 0 { auth_ok = false }
+        let av = hval(buf, hend, "Authorization: AWS4-HMAC-SHA256 Credential=")
+        if av < 0 { auth_ok = false }
+        if auth_ok == false {
+            let m = fill(buf, "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            net_write(net, fd, buf, m)
+            net_close(net, fd)
+            println("MOCK-FAIL auth")
+            return 1
+        }
+        // 路由
+        let is_put = hval(buf, hend, "PUT /testbucket/obj1.txt ") >= 0
+        let is_get = hval(buf, hend, "GET /testbucket/obj1.txt ") >= 0
+        let is_del = hval(buf, hend, "DELETE /testbucket/obj1.txt ") >= 0
+        if is_put {
+            stored = lane_str(buf, hend, n)
+            stored_path = "put"
+            let m = fill(buf, "HTTP/1.1 200 OK\r\nETag: \"mock\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            net_write(net, fd, buf, m)
+        } else {
+            if is_get {
+                if eqs(stored_path, "put") == false {
+                    let m = fill(buf, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    net_write(net, fd, buf, m)
+                } else {
+                    let head = "HTTP/1.1 200 OK\r\nContent-Length: " + stored.len.to_string() + "\r\nConnection: close\r\n\r\n"
+                    let m = fill(buf, head)
+                    var mb: I64[512] = [0, 0, 0, 0]
+                    let bl = fill(mb, stored)
+                    net_write(net, fd, buf, m)
+                    net_write(net, fd, mb, bl)
+                }
+            } else {
+                if is_del {
+                    stored_path = ""
+                    let m = fill(buf, "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    net_write(net, fd, buf, m)
+                } else {
+                    let m = fill(buf, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    net_write(net, fd, buf, m)
+                }
+            }
+        }
+        net_close(net, fd)
+        round += 1
+    }
+    println("MOCK-DONE")
+    return 0
+}
