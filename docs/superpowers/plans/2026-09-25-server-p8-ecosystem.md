@@ -47,7 +47,8 @@
 - Create: `tests/ndjson/`(逐行解析/坏行跳过策略/空行/大行;双臂)
 
 **Steps:**
-- [ ] 逐行流式面 + 语料 + 提交
+- [x] 逐行流式面 + 语料(6/6 双臂;std/ndjson.ct T1 零 use 游标;坏行策略=消费方 json.parse,Result 面修复后可深集成)
+- [x] 提交
 
 ### Task 4 (P8-D): ctron pkg 拉取走 std/http
 
