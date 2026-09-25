@@ -98,6 +98,33 @@ extern "c" fn gui_mouse_y() -> I32
 extern "c" fn gui_mouse_down() -> I32
 
 #[trusted]
+extern "c" fn gui_focus_set(i: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_focus_node() -> I32
+
+#[trusted]
+extern "c" fn gui_caret_set(i: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_caret_get() -> I32
+
+#[trusted]
+extern "c" fn gui_clip_set_c(s: Str) -> Void
+
+#[trusted]
+extern "c" fn gui_clip_len() -> I32
+
+#[trusted]
+extern "c" fn gui_clip_byte(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_inject_mod(m: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_mod_ctrl() -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -2731,6 +2758,38 @@ pub fn d_hover(t: Box[Driver], name: Str) -> I32 {
 
 pub fn d_active(t: Box[Driver], on: I32) -> I32 {
     t.actn = on
+    return 0
+}
+
+// 焦点注入口(§2.2 headless):聚焦树内首个 input;失焦 = d_blur
+pub fn d_focus(t: Box[Driver]) -> I32 {
+    var i: I32 = 0
+    while i < t.t.ntag.len {
+        if t.t.ntag[i] == "input" {
+            gui_focus_set(i)
+            gui_caret_set(0)
+            return 0
+        }
+        i += 1
+    }
+    return -1
+}
+
+pub fn d_blur(t: Box[Driver]) -> I32 {
+    gui_focus_set(-1)
+    gui_caret_set(0)
+    return 0
+}
+
+// 剪贴板注入口(headless 直控缓冲;真窗路径 rt_input_key 粘贴前自系统同步)
+pub fn d_clip(t: Box[Driver], s: Str) -> I32 {
+    gui_clip_set_c(s)
+    return 0
+}
+
+// 修饰键注入口(headless;真窗 gui_mod_ctrl 回落 IsKeyDown)
+pub fn d_mod(t: Box[Driver], on: I32) -> I32 {
+    gui_inject_mod(on)
     return 0
 }
 

@@ -319,3 +319,35 @@ int gui_mouse_down(void) {
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { return 1; }
     return 0;
 }
+
+// ---- 焦点/光标/剪贴板/修饰键原语(波次二 §2.2;文本零 C 存储,编辑走 bind 活问+act 载荷) ----
+int g_focus_id = -1;
+void gui_focus_set(int i) { g_focus_id = i; }
+int gui_focus_node(void) { return g_focus_id; }
+
+int g_caret = 0;
+void gui_caret_set(int i) { g_caret = i; }
+int gui_caret_get(void) { return g_caret; }
+
+char g_clip[4096];
+int g_clip_n = 0;
+void gui_clip_set_c(const char *s) {
+    if (s == NULL) { g_clip_n = 0; return; }
+    int i = 0;
+    while (s[i] != 0 && i < 4095) { g_clip[i] = s[i]; i++; }
+    g_clip[i] = 0;
+    g_clip_n = i;
+}
+int gui_clip_len(void) { return g_clip_n; }
+int gui_clip_byte(int i) {
+    if (i < 0 || i >= g_clip_n) { return -1; }
+    return (unsigned char)g_clip[i];
+}
+
+int g_mod_ctrl = 0;
+void gui_inject_mod(int m) { g_mod_ctrl = m; }
+int gui_mod_ctrl(void) {
+    if (g_mod_ctrl > 0) { return 1; }
+    if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) { return 1; }
+    return 0;
+}
