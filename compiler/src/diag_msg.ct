@@ -105,6 +105,8 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E1001.exptype") { return "expected type, got %0" }
     if seq2(key, "E1001.impl.body") { return "impl body missing \{" }
     if seq2(key, "E1001.abi") { return "extern ABI must be the \"c\" string" }
+    if seq2(key, "E8110.np") { return "view prop check failed: %0" }
+    if seq2(key, "E8100.props") { return "%0" }
     return ""
 }
 
@@ -195,6 +197,8 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E1001.abi") { return "extern ABI 应为 \"c\" 字符串" }
     if seq2(key, "E4020.cap") { return "pure 函数含能力调用(pure)" }
     if seq2(key, "E6020.cap") { return "comptime 函数含能力调用(comptime)" }
+    if seq2(key, "E8110.np") { return "组件 prop 核对失败:%0" }
+    if seq2(key, "E8100.props") { return "%0" }
     return ""
 }
 

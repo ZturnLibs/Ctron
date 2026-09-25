@@ -1,0 +1,13 @@
+// gui expect: E8100 —— 8c-4 ViewCall:组件必填 prop 缺失(v10 裁决 E8100;
+// 表达式空间组件实例化 TodoApp(m: make()) 文法面)
+struct Model {
+    var draft: Str
+}
+view TodoApp(m: Model) {
+  <vbox class="root"><label class="a">{m.draft}</label></vbox>
+}
+style root { direction: column }
+style a { fg: "#ffffff" }
+fn main() -> I32 {
+    return TodoApp()
+}

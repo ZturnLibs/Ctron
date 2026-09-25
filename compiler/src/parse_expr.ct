@@ -178,7 +178,23 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
                 if tok(toks, cur) == ")" {
                     more = false
                 } else {
-                    ag.push(p_stmt_expr(toks, cur, lns, "1"))
+                    // SL-8c-4:命名实参(ViewCall 组件实例化 `View(prop: expr)`;
+                    // 泛化文法——原为解析错,放开向后兼容;sem 按被调面裁决)
+                    var a0 = p_stmt_expr(toks, cur, lns, "1")
+                    if tok(toks, cur) == ":" {
+                        if a0[0] == "Ident" {
+                            adv(cur)
+                            var np = mk("NParg")
+                            np.push(a0[1])
+                            np.push(p_stmt_expr(toks, cur, lns, "1"))
+                            nstamp(np, ln0)
+                            ag.push(np)
+                        } else {
+                            ag.push(a0)
+                        }
+                    } else {
+                        ag.push(a0)
+                    }
                     if tok(toks, cur) == "," {
                         adv(cur)
                     } else {

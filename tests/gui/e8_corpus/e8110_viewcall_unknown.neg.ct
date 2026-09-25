@@ -1,0 +1,15 @@
+// gui expect: E8110 —— 8c-4 ViewCall:未知 prop 名(拼写错 modle)
+struct Model {
+    var draft: Str
+}
+view TodoApp(m: Model) {
+  <vbox class="root"><label class="a">{m.draft}</label></vbox>
+}
+style root { direction: column }
+style a { fg: "#ffffff" }
+fn make() -> Model {
+    return Model { draft: "hi" }
+}
+fn main() -> I32 {
+    return TodoApp(modle: make())
+}

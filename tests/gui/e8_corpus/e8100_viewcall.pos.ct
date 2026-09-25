@@ -1,0 +1,16 @@
+// gui expect: OK —— 8c-4 ViewCall 正例:组件实例化表达式文法面干净通过
+// (运行时面归装配合成片;本语料锁 解析+sem 校验 面)
+struct Model {
+    var draft: Str
+}
+view TodoApp(m: Model) {
+  <vbox class="root"><label class="a">{m.draft}</label></vbox>
+}
+style root { direction: column }
+style a { fg: "#ffffff" }
+fn make() -> Model {
+    return Model { draft: "hi" }
+}
+fn main() -> I32 {
+    return TodoApp(m: make())
+}

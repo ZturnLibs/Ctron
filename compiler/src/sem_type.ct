@@ -469,6 +469,27 @@ fn ex_ty(e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str]) -> Str {
     return ""
 }
 
+// SL-8c-4:视图查询——名 → props 形参串(d[5]);found[0] = 是否本文件视图
+fn gui_view_props(file: List[Str], nm: Str, found: List[Bool]) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "GuiBlock" {
+            if d[1] == "view" {
+                if d[2] == nm {
+                    found[0] = true
+                    if d.len > 5 {
+                        return d[5]
+                    }
+                    return ""
+                }
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
 fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str], retK: List[Str], diags: List[Str]) {
     var t = e[0]
     if t == "Call" {
@@ -476,6 +497,51 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         var rt = root_name(cal)
         var ag = e[2]
         var got = ag.len - 1
+        // SL-8c-4:ViewCall 组件实例化——被调为本文件 view 即走组件核对:
+        // 实参须命名形态(E8110)/未知 prop(E8110)/重复 prop(E8110)/
+        // 必填缺失(E8100,v10 裁决);值表达式照常走查。运行时面归装配合成片。
+        var vfound = List[Bool]()
+        vfound.push(false)
+        var vprops: Str = gui_view_props(file, rt, vfound)
+        if vfound[0] {
+            var dn = List[Str]()
+            var dt = List[Str]()
+            gui_props_typed(vprops, dn, dt)
+            var have = List[Str]()
+            var badnp: Bool = false
+            var ai: I32 = 1
+            while ai < ag.len {
+                var a = ag[ai]
+                if a[0] == "NParg" {
+                    tce(file, a[2], tc, loc, envT, retK, diags)
+                    if gui_ck_has_style(dn, a[1]) {
+                        if gui_ck_has_style(have, a[1]) {
+                            diag2(diags, "E8110.dup", nline(a), "组件 prop 重复: " + a[1], "")
+                            badnp = true
+                        } else {
+                            have.push(a[1])
+                        }
+                    } else {
+                        diag2(diags, "E8110.np", nline(a), "组件未知 prop: " + a[1] + " 于 " + rt, "")
+                        badnp = true
+                    }
+                } else {
+                    diag2(diags, "E8110.np", nline(a), "组件实参须命名形态(prop: expr) 于 " + rt, "")
+                    badnp = true
+                }
+                ai += 1
+            }
+            if !badnp {
+                var di: I32 = 0
+                while di < dn.len {
+                    if !gui_ck_has_style(have, dn[di]) {
+                        diag2(diags, "E8100.props", nline(e), "组件必填 prop 缺失: " + dn[di] + " 于 " + rt, "")
+                    }
+                    di += 1
+                }
+            }
+            return
+        }
         if rt.len > 0 && !in_list(loc, rt) && !in_list(diags, "E2020@" + nline(e) + ": 未解析的名称(unresolved):" + rt) {
             if !in_list(tc[0], rt) && !prelude_ok(rt) && !in_list(tc[6], rt) {
                 diag1(diags, "E2020.name", nline(e), rt)
@@ -491,12 +557,16 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                         while i < ps.len && i <= got {
                             var prm = ps[i]
                             if prm[0] == "Param" {
+                                if ag[i][0] == "NParg" {
+                                    diag2(diags, "E8110.np", nline(ag[i]), "命名实参仅用于组件实例化,于 " + rt, "")
+                                } else {
                                 var pk = ty_kind(prm[3])
                                 var ak = ex_ty(ag[i], tc, loc, envT)
                                 if !compat(pk, ak, ag[i], file, tc) {
                                     diag5(diags, "E2010.arg", nline(ag[i]), rt, i.to_string(), root_name(ag[i]), pk, ak)
                                 }
                                 lit_fit_gate(pk, ag[i], "0", diags)
+                                }
                             }
                             i += 1
                         }
