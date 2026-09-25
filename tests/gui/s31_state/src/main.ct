@@ -1,6 +1,6 @@
 // tests/gui/s31_state —— 波次一 T1/T3/T6:颜色读回 + 令牌折叠 + 交互态(hover/active/disabled)
 // d_hover/d_active 注入→bg 折叠值变;disabled={} 真值→disabled-bg/fg 灰化(§2.1)
-use gui.{test, d_frame, d_click, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b, d_hover, d_active, theme_apply, theme_default}
+use gui.{test, d_frame, d_click, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b, d_cmd_bg_a, d_hover, d_active, theme_apply, theme_default}
 
 view P {
   <vbox class="root">
@@ -21,6 +21,24 @@ fn bind_all(buf: List[Str]) {
     if buf[0] == "dflag" {
         buf.push("b:1")
     }
+}
+
+fn scan_a(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return d_cmd_bg_a(i)
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
 }
 
 fn scan_bg(r: I32, g: I32, b: I32) -> I32 {
@@ -52,6 +70,9 @@ fn main() -> I32 {
             d_frame(t, |buf| bind_all(buf))
             if scan_bg(170, 51, 204) != 1 {
                 panic("s31: 基态 #aa33cc 未现")
+            }
+            if scan_a(170, 51, 204) != 255 {
+                panic("s31: 6 位色 alpha 应 255")
             }
             if scan_bg(37, 99, 235) != 1 {
                 panic("s31: ACCENT 令牌未折叠 #2563eb")

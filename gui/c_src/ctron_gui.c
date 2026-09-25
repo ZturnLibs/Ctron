@@ -12,6 +12,9 @@
 
 static Clay_RenderCommandArray g_cmds = { 0 };
 
+// 8 位色 alpha 通道(§7):gui_alpha 置位 → 下一次 gui_cfg 消费即复位 255(单线程折叠序)
+int g_pending_alpha = 255;
+
 // ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput) ----
 // 容量 256:进程累计、不回卷——gui_calc headless 全场景 ~70 次注入,64 会静默丢尾。
 typedef struct { int type; int key; int x; int y; } GuiEvent;
@@ -158,7 +161,8 @@ static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
     decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
                                          (float)((bg_packed >> 8) & 255),
                                          (float)(bg_packed & 255),
-                                         (bg_packed == 0) ? 0.0f : 255.0f };
+                                         (bg_packed == 0) ? (float)g_pending_alpha : (float)g_pending_alpha };
+    g_pending_alpha = 255;
     if (clipv) {
         decl.clip = (Clay_ClipElementConfig){ false, true, { 0.0f, (float)-offsetpx } };
     }
@@ -220,6 +224,10 @@ int gui_cmd_text_byte(int i, int j) {
 int gui_cmd_bg_r(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.r; }
 int gui_cmd_bg_g(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.g; }
 int gui_cmd_bg_b(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.b; }
+int gui_cmd_bg_a(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.a; }
+
+// 8 位色 alpha 通道(§7):gui_alpha 置位 → 下一次 gui_cfg 消费即复位 255(单线程折叠序)
+void gui_alpha(int a) { g_pending_alpha = a; }
 
 // ---- 绘制 flush(§12.3d 唯一绘制口;窗口口径) ----
 void ctron_gui_flush(void) {

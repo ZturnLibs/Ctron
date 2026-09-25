@@ -128,6 +128,12 @@ extern "c" fn gui_inject_mod(m: I32) -> Void
 extern "c" fn gui_mod_ctrl() -> I32
 
 #[trusted]
+extern "c" fn gui_alpha(a: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_cmd_bg_a(i: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -810,6 +816,16 @@ fn g_parse_color(v: Str) -> I32 {
     }
     panic("gui: 未知颜色令牌 " + v)
     return 0
+}
+
+// 8 位色 alpha 通道(§7;C1 修订=#RRGGBB(A)):len 9 取末两位十六进制,6 位=255
+fn g_parse_alpha(v: Str) -> I32 {
+    if v.len == 9 {
+        if byte_at(v, 0) == 35 {
+            return ghex1(byte_at(v, 7)) * 16 + ghex1(byte_at(v, 8))
+        }
+    }
+    return 255
 }
 
 fn gs2i(s: Str) -> I32 {
@@ -3172,6 +3188,10 @@ pub fn d_cmd_bg_g(i: I32) -> I32 {
 
 pub fn d_cmd_bg_b(i: I32) -> I32 {
     return gui_cmd_bg_b(i)
+}
+
+pub fn d_cmd_bg_a(i: I32) -> I32 {
+    return gui_cmd_bg_a(i)
 }
 
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
