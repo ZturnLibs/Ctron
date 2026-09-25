@@ -65,7 +65,7 @@ fn main() -> I32 {
     var log = Box[Log](Log { names: "" })
     var rc: I32 = test(src, 320, 640,
         |buf| bind_all(buf, m),
-        |name| act_ev(name, m),
+        |name, args| act_ev(name, m),
         |k| { },
         |t, act, key| {
             d_frame(t, |buf| bind_all(buf, m))
@@ -73,27 +73,27 @@ fn main() -> I32 {
             d_expect_text(t, "0")
             d_expect_absent(t, "positive")
             // 表达式事件端到端:d_click 按头按压(骨架 ev_fn = "inc(m)")
-            act(d_click(t, "inc"))
+            act(d_click(t, "inc"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "1")
             d_expect_text(t, "positive")
-            act(d_click(t, "addn"))
+            act(d_click(t, "addn"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "6")
             // ev_fire 直驱四形态:调用按头分发 / 多实参受限求值 / each 实例
             // 后缀透传 / 旧契约单标识符直发——分发名序列一次断言
             ev_fire(t.t, "inc(m)",
                 |buf| bind_all(buf, m),
-                |n| log_add(log, n))
+                |n, args| log_add(log, n))
             ev_fire(t.t, "addn(m, 5)",
                 |buf| bind_all(buf, m),
-                |n| log_add(log, n))
+                |n, args| log_add(log, n))
             ev_fire(t.t, "toggle(t):2",
                 |buf| bind_all(buf, m),
-                |n| log_add(log, n))
+                |n, args| log_add(log, n))
             ev_fire(t.t, "inc",
                 |buf| bind_all(buf, m),
-                |n| log_add(log, n))
+                |n, args| log_add(log, n))
             if log.names != "inc,addn,toggle:2,inc," {
                 panic("s29: 分发名序列异常 [" + log.names + "]")
             }

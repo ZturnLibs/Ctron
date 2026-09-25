@@ -33,7 +33,7 @@ fn main() -> I32 {
     var t: GuiTree = gt_parse(src)
     var rc: I32 = test(src, 320, 400,
         |buf| bind_all(buf),
-        |name| { },
+        |name, args| { },
         |k| k,
         |d, a, k2| {
             var j: I32 = 0

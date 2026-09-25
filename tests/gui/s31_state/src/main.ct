@@ -64,7 +64,7 @@ fn main() -> I32 {
     theme_apply(theme_default())
     var rc: I32 = test(src, 320, 240,
         |buf| bind_all(buf),
-        |name| noop(),
+        |name, args| noop(),
         |k| k,
         |t, a, k2| {
             d_frame(t, |buf| bind_all(buf))

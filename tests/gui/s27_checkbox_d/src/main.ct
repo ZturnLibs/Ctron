@@ -65,7 +65,7 @@ fn main() -> I32 {
     var m = Box[Model](Model { done: false })
     var rc: I32 = test(src, 320, 200,
         |buf| bind_all(buf, m),
-        |name| act(name, m),
+        |name, args| act(name, m),
         |k| k,
         |t, a, k2| {
             d_frame(t, |buf| bind_all(buf, m))

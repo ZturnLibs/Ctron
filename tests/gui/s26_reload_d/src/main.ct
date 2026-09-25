@@ -44,7 +44,7 @@ fn main() -> I32 {
                 println("S26P n=" + m.count.to_string() + " cmds=" + d_cmd_count().to_string())
             }
         },
-        |name| {
+        |name, args| {
             if name == "inc" {
                 m.count = m.count + 1
             }

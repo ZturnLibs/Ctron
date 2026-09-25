@@ -44,7 +44,7 @@ fn main() -> I32 {
     var t: GuiTree = gui_sk_load()
     var rc: I32 = test_sk(t, 320, 200,
         |buf| bind_all(buf),
-        |name| { },
+        |name, args| { },
         |k| { },
         |drv, a, k2| {
             d_frame(drv, |buf| bind_all(buf))

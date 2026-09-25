@@ -52,16 +52,16 @@ fn main() -> I32 {
         // headless:域包 test() 注入点击,断言走命令缓冲读回
         var rc: I32 = test(src, 320, 200,
             |buf| buf.push(m.count.to_string()),
-            |name| act_counter(name, m),
+            |name, args| act_counter(name, m),
             |k| k,
             |t, act, key| {
                 d_expect_text(t, "计数: " + m.count.to_string())
-                act(d_click(t, "inc"))
-                act(d_click(t, "inc"))
-                act(d_click(t, "inc"))
+                act(d_click(t, "inc"), List[Str]())
+                act(d_click(t, "inc"), List[Str]())
+                act(d_click(t, "inc"), List[Str]())
                 d_frame(t, |buf| buf.push(m.count.to_string()))
                 d_expect_text(t, "计数: " + m.count.to_string())
-                act(d_click(t, "clear"))
+                act(d_click(t, "clear"), List[Str]())
                 d_frame(t, |buf| buf.push(m.count.to_string()))
                 d_expect_text(t, "计数: 0")
             })
@@ -71,7 +71,7 @@ fn main() -> I32 {
     // 窗口口径:run_d 自带热重载环(每 60 帧比对 app.ctml,变更原址重解析,状态保留)
     run_d("ctron gui counter", 320, 200,
         |buf| buf.push(m.count.to_string()),
-        |name| act_counter(name, m))
+        |name, args| act_counter(name, m))
     println("CTRON_GUI_STATE count=" + m.count.to_string())
     return 0
 }

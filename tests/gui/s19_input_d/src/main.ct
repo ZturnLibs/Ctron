@@ -23,7 +23,7 @@ fn main() -> I32 {
     var m = Box[Model](Model { draft: "" })
     var rc: I32 = test(src, 320, 200,
         |buf| buf.push(m.draft),
-        |name| { },
+        |name, args| { },
         |k| on_key(k, m),
         |t, act, key| {
             key(d_type_char(t, 104))
