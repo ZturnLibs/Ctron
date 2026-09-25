@@ -1623,11 +1623,19 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     } else {
                         if !indep {
                             var da: I32 = gui_ck_fn_argc(fns, fna, head)
+                            // 8c-4④:on:input(input 元素)隐式尾参 text——全文经
+                            // 名通道("头名:全文")送达,花括号实参 +1 豁免
+                            var imp: I32 = 0
+                            if or2(evn == "input", tag == "input") {
+                                if evn == "input" {
+                                    imp = 1
+                                }
+                            }
                             if da < 0 {
                                 gdiags.push("E8120: 事件处理器未声明 " + head + "(on:" + evn + ")")
                                 bad = -1
                             } else {
-                                if da != argc[0] {
+                                if da != argc[0] + imp {
                                     gdiags.push("E8120: 事件签名不匹配 " + head + "(实参 " + argc[0].to_string() + ",声明 " + da.to_string() + ")(on:" + evn + ")")
                                     bad = -1
                                 }
@@ -2748,8 +2756,9 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
     return out
 }
 
-// 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
+// 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
+// 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
     var ntag = List[Str]()
     var nflag = List[Str]()
     var ncls = List[Str]()
@@ -2813,11 +2822,25 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         evf.push(f_evf[i])
         i += 1
     }
+    i = 0
+    while i < ntag.len {
+        if ntag[i] == "input" {
+            var e: I32 = 0
+            while e < nec[i] {
+                var gi: I32 = nes[i] + e
+                if f_evn[gi] == "input" {
+                    inps.push(f_evf[gi])
+                }
+                e += 1
+            }
+        }
+        i += 1
+    }
     return 0
 }
 
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
+fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -2919,6 +2942,13 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
     a2 = a2 + ") \{\n"
     k = 0
     while k < evf.len {
+        // input 元素的 on:input 已由名通道前缀分支接管(inps),主循环跳过免双写
+        if evn[k] == "input" {
+            if gui_ck_has_style(inps, evf[k]) {
+                k += 1
+                continue
+            }
+        }
         var argc = List[I32]()
         var ao = List[Str]()
         var head2: Str = gui_ev_head2(evf[k], argc, ao)
@@ -2968,6 +2998,32 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
             } else {
                 a2 = a2 + "    if name == \"" + evf[k] + "\" \{ " + evf[k] + "() }\n"
             }
+        }
+        k += 1
+    }
+    // input on:input 名通道前缀分支("头名:全文" → 头(__p_*, 全文))
+    k = 0
+    while k < inps.len {
+        var argcI = List[I32]()
+        var aoI = List[Str]()
+        var headI: Str = gui_ev_head2(inps[k], argcI, aoI)
+        if headI.len > 0 {
+            if argcI.len == 0 {
+                k = inps.len
+                continue
+            }
+            var pl: I32 = headI.len + 1
+            var arI: Str = ""
+            if argcI.len > 0 {
+                if argcI[0] >= 1 {
+                    arI = gui_ds_rw(aoI[0], pnames, ptoks)
+                }
+            }
+            a2 = a2 + "    if name.len >= " + pl.to_string() + " \{\n"
+            a2 = a2 + "        if byte_slice(name, 0, " + pl.to_string() + ") == \"" + headI + ":\" \{\n"
+            a2 = a2 + "            " + headI + "(" + arI + ", byte_slice(name, " + pl.to_string() + ", name.len))\n"
+            a2 = a2 + "        }\n"
+            a2 = a2 + "    }\n"
         }
         k += 1
     }
@@ -3072,8 +3128,9 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var lists = List[Str]()
     var evn = List[Str]()
     var evf = List[Str]()
-    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, stns, sfk, stv)
-    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, stns, sfk, stv)
+    var inps = List[Str]()
+    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, inps, stns, sfk, stv)
+    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, stns, sfk, stv)
     var k2: I32 = 1
     while k2 < made.len {
         unit.push(made[k2])

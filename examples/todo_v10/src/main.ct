@@ -15,6 +15,10 @@ fn make() -> Model {
     return Model { draft: "", todos: List[Str]() }
 }
 
+fn input(m: Box[Model], text: Str) {
+    m.draft = text
+}
+
 fn add_todo(m: Box[Model]) {
     if m.draft.len > 0 {
         m.todos.push(m.draft)
@@ -37,7 +41,7 @@ fn remove_last(m: Box[Model]) {
 view TodoApp(m: Model) {
   <vbox class="root">
     <label class="title">todos</label>
-    <input bind={m.draft} class="fld"/>
+    <input bind={m.draft} class="fld" on:input={input(m)}/>
     <button class="btn" on:click={add_todo(m)}>add</button>
     <when cond={m.todos.len == 0}>
       <label class="empty">nothing yet</label>
@@ -70,8 +74,12 @@ fn headless_suite() -> I32 {
             d_expect_text(t, "todos")
             // when 空态:v10 差集面
             d_expect_text(t, "nothing yet")
-            // 模型级设稿 + 合成分发 add_todo(空稿防重复添加契约活证)
-            m.draft = "write the spec"
+            // 键入持久化:on:input 名通道("头名:全文")→ 合成 act 前缀分支
+            __gui_act_TodoApp("input:write the spec", m)
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
+            d_expect_text(t, "write the spec")
+            // 合成分发 add_todo
+            __gui_act_TodoApp("add_todo", m)
             __gui_act_TodoApp("add_todo", m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "write the spec")
