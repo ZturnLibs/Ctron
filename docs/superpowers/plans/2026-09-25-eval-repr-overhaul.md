@@ -42,6 +42,11 @@ AMEM 直方图实证 loop 基准 10K 次迭代产生 2.07 亿次分配(每迭代
   在 eval_expr/eval_call/run_stmt/env_* 八个入口处计数(纯 Ctr 实现:一个
   全局 Atomic[I32] 计数器表 + 阈值打印;零门控成本)。
 - 产出:loop.ct/fmap30 的 Top-10 分配函数榜 → 决定 Phase 1 动哪一层。
+- **执行纪要(0925)**:差分阶梯已得(L1 单赋值 1,217 次/迭代;+双目 1,950;
+  +调用 2,019——调用便宜);mac 侧 RA 归因死局:发射函数全 static,链接器吞符号
+  (nm 仅 ~450 条,atos+dSYM 均无法解析,捕获 RA 落点在二进制之外)。**后续路线:
+  RA 探针搬 linux 容器跑(gcc static 符号 + addr2line 可靠)**,amalloc 包装 patch
+  在会话史可复用(括号律:开 \{ 闭裸 })。
 - 验收:AMEM 总量对账(计数器之和 ≈ AMEM count);榜复现稳定。
 
 ### Phase 1:env 帧化(候选设计 A,1-2 日)
