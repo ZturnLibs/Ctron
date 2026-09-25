@@ -119,6 +119,16 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - **令牌裸词**:style 值可直接写令牌名(`bg: ACCENT`),25 枚 = BG_BASE…DISABLED_BG
   + RADIUS_* + SIZE_* + SPACE_*;存储期折 @槽标记,折叠期 O(1) 读。
 
+## 图像管线(波次五a,§2.6)
+
+- **`<image src="路径" class ... />`**(自闭合):w/h 样式定盒(缺省 100x100),
+  DrawTexturePro 拉伸填充;缓存 = 路径键 LRU 16 槽(flush 专用)。
+- **架构红线:纹理加载只在 flush(真窗路径)**——headless 无 GL 上下文,
+  LoadTexture 即崩;命令面只透传路径指针(树内 npre,跨帧稳定)。
+- **失败占位**:fopen 判存在,缺失 → 无 image 配置的底色框(不崩);
+  断言读面 = 命令类型 3=IMAGE + `d_cmd_*` 几何族。
+- 编译器白名单(image)登记缓行——embedded 形态俟 SL-8c-4 后;现 read_file 形态可用。
+
 ## 浮层与模态(波次三,§2.3)
 
 - **`<overlay>` 浮层容器**:Clay floating attach ROOT(真全屏,不随父 padding)+

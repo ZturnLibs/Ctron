@@ -161,7 +161,11 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
   linux_dark|linux_light|dark|light` 覆盖探测——headless 断言跨平台确定性的
   唯一入口(宿主差异不进黄金)。
 
-### 2.6 图像/纹理管线(P1 首位,四轮补入)
+### 2.6 图像/纹理管线(P1 首位,四轮补入;波次五a落地)
+
+> 落地注记(2026-09-25):缓存 16 槽(纹理大于字形,较 ft_shim 64 收紧);**加载延迟
+> flush**(headless 无 GL,LoadTexture 即崩——架构红线);w/h 缺省 100x100(纹理原
+> 尺寸回退属真窗路径,P2);编译器白名单缓行,read_file 形态先行。
 
 - `<image>` 新内建**能力性容器**(与 scroll 同判据——无运行时支持做不出真货):
   `src` 属性,LoadTexture 加载,**路径键 LRU 缓存**(仿 ft_shim 64 槽先例,防
