@@ -119,6 +119,17 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - **令牌裸词**:style 值可直接写令牌名(`bg: ACCENT`),25 枚 = BG_BASE…DISABLED_BG
   + RADIUS_* + SIZE_* + SPACE_*;存储期折 @槽标记,折叠期 O(1) 读。
 
+## tick/尺寸约束/快捷键(波次五b,§2.7/§2.10/§2.11)
+
+- **tick 原语**:运行时毫秒钟(注入优先)+帧计数;`d_tick(t, ms)`/`d_frames()`。
+  可见消费者=光标闪烁——**仅注入时钟激活**(d_tick 确定性口径),真窗常亮至 P2 转正。
+- **尺寸约束**:容器样式 `min_w/max_w/min_h/max_h`——max=钳制填充(GROW{min,max}),
+  min=托底 hug(FIT{min,∞});装包 min*100000+max(min<21000/max<100000);
+  容器宽度存量口径 = grow(w 样式对容器不生效,zitie 同款事实)。
+- **快捷键表**:`gui_hotkey("mod+s", "save")` 注册(run 前任意时机),mods 位
+  1=ctrl/cmd 2=shift 4=alt;事件路由链=焦点编辑键 > 模态 Esc/吞 > **快捷键表** >
+  key 闭包;未中回落。菜单加速器显示随组件波次。
+
 ## 图像管线(波次五a,§2.6)
 
 - **`<image src="路径" class ... />`**(自闭合):w/h 样式定盒(缺省 100x100),
