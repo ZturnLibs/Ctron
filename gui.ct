@@ -812,7 +812,9 @@ fn g_parse_color(v: Str) -> I32 {
     }
     if byte_at(v, 0) == 35 {
         if v.len != 7 {
-            panic("gui: 颜色须 #RRGGBB,得 " + v)
+            if v.len != 9 {
+                panic("gui: 颜色须 #RRGGBB(A),得 " + v)
+            }
         }
         var r: I32 = ghex1(byte_at(v, 1)) * 16 + ghex1(byte_at(v, 2))
         var g: I32 = ghex1(byte_at(v, 3)) * 16 + ghex1(byte_at(v, 4))
@@ -2541,6 +2543,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var bgv2: Str = gt_st_prop(c, "bg", "", t, st)
             if bgv2 != "" {
                 bgp2 = g_parse_color(bgv2)
+                var aa2: I32 = g_parse_alpha(bgv2)
+                if aa2 != 255 {
+                    gui_alpha(aa2)
+                }
+            }
+            // rects↔hits 平行不变量:可见背景盒才产 RECT 命令,才推 hits
+            // (容器此前恒透明故免推;overlay 遮罩=首个可见容器,8 位色 alpha 使其可见)
+            if bgv2 != "" {
+                hits.push(id)
+                hinst.push(inst)
             }
             if tag == "overlay" {
                 // 波次三(§2.3):浮层容器——Clay floating 全屏附着 zIndex=1;
@@ -2660,7 +2672,12 @@ pub fn rt_expect_text(want: Str) -> I32 {
         }
         i += 1
     }
-    var d0: I32 = gui_cmd_text_len(0)
+    var d0: I32 = 0
+    if gui_cmd_count() > 0 {
+        if gui_cmd_type(0) == 1 {
+            d0 = gui_cmd_text_len(0)
+        }
+    }
     var dump: Str = "cmd0["
     var dj: I32 = 0
     while dj < d0 {
@@ -3173,7 +3190,44 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
     if rt_input_key(t.t, bind, act, gui_evt_key()) {
         return 0
     }
+    // 键盘模态镜像(窗口循环同语义):overlay 在场 Esc 转 on:click、余键吞
+    var ov: I32 = rt_top_overlay(t.t, t.hits)
+    if ov >= 0 {
+        if gui_evt_key() == 256 {
+            var oh: Str = rt_in_handler(t.t, ov, "click")
+            if oh != "" {
+                act(oh)
+            }
+        }
+        return 0
+    }
     return gui_evt_key()
+}
+
+// 位置点击(headless):注入 xy 点击→真实命中路径(后向最优先)+焦点转移+ev_fire
+// ——遮罩吃穿透/卡片不透等位置语义的唯一断言口(d_click 按名绕过命中面)
+pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    gui_inject_click(x, y)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失")
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var name: Str = rt_hit_name(t.t, t.hits, t.hinst, rc2, x, y)
+    var fnode: I32 = rt_hover_node(rc2, t.hits, x, y)
+    if fnode >= 0 {
+        if t.t.ntag[fnode] == "input" {
+            gui_focus_set(fnode)
+        } else {
+            gui_focus_set(-1)
+        }
+    }
+    if name != "" {
+        ev_fire(t.t, name, bind, act)
+    }
+    return 0
 }
 
 pub fn d_press_key(t: Box[Driver], k: I32) -> I32 {

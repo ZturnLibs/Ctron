@@ -1,0 +1,21 @@
+view ModalDemo {
+  <vbox class="root">
+    <button class="op" on:click={open}>open</button>
+    <label class="st">{state}</label>
+    <when cond={open}>
+      <overlay class="mask" on:click={close}>
+        <vbox class="card">
+          <label class="ti">confirm?</label>
+          <button class="ok" on:click={ok}>ok</button>
+        </vbox>
+      </overlay>
+    </when>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style op { bg: "#2563eb" w: 80 h: 36 }
+style st { fg: "#aaaaaa" size: 16 h: 26 }
+style mask { bg: "#00000099" align: center }
+style card { bg: "#2a2a38" w: 180 h: 120 }
+style ti { fg: "#e6e6eb" size: 20 h: 30 }
+style ok { bg: "#2f9e63" w: 70 h: 32 }

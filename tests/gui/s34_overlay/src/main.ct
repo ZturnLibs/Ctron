@@ -1,0 +1,209 @@
+// tests/gui/s34_overlay —— 波次三 T4:浮层+模态语义(§2.3)
+// 显隐(when)→8 位遮罩色 alpha=0x99→卡片居中(childAlignment)→卡片点击不透(位置命中
+// 后向最优先)→遮罩点击 on:close→键盘模态(Esc 转 close 自锁修复;开启期键闭包挂起)
+// ——遮罩吃穿透用 d_click_xy(位置命中唯一断言口;d_click 按名绕过命中面);
+// d_click 返回动作名须经 act 触发(s27 惯例)
+use gui.{test, d_frame, d_click, d_click_xy, d_expect_text, d_expect_absent, d_send_key,
+         d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b, d_cmd_bg_a,
+         d_cmd_x100, d_cmd_y100, d_cmd_w100, d_cmd_h100, theme_apply, theme_default}
+
+view ModalDemo {
+  <vbox class="root">
+    <button class="op" on:click={open}>open</button>
+    <label class="st">{state}</label>
+    <when cond={open}>
+      <overlay class="mask" on:click={close}>
+        <vbox class="card">
+          <label class="ti">confirm?</label>
+          <button class="ok" on:click={ok}>ok</button>
+        </vbox>
+      </overlay>
+    </when>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style op { bg: "#2563eb" w: 80 h: 36 }
+style st { fg: "#aaaaaa" size: 16 h: 26 }
+style mask { bg: "#00000099" align: center }
+style card { bg: "#2a2a38" w: 180 h: 120 }
+style ti { fg: "#e6e6eb" size: 20 h: 30 }
+style ok { bg: "#2f9e63" w: 70 h: 32 }
+
+struct Model {
+    var open: Bool
+    var state: Str
+}
+
+fn open() {
+}
+fn close() {
+}
+fn ok() {
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "when:open" {
+        if m.open {
+            buf.push("1")
+        } else {
+            buf.push("0")
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if name == "open" {
+        m.open = true
+    }
+    if name == "close" {
+        m.open = false
+        m.state = "closed"
+    }
+    if name == "ok" {
+        m.open = false
+        m.state = "ok"
+    }
+}
+
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 65 {
+        m.state = "key-a"
+    }
+}
+
+// 遮罩色 (0,0,0) 的 alpha 读回(8 位色通道断言)
+fn mask_alpha() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == 0 {
+                if d_cmd_bg_g(i) == 0 {
+                    if d_cmd_bg_b(i) == 0 {
+                        if d_cmd_bg_a(i) > 0 {
+                            if d_cmd_bg_a(i) < 255 {
+                                return d_cmd_bg_a(i)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+// 卡片矩形(按 bg 色)命令下标;-1 未现
+fn find_ca(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return i
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var m = Box[Model](Model { open: false, state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| on_key(k, m),
+        |t, act, key| {
+            // 初态:未开
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "confirm?")
+            // 开:遮罩 8 位色 alpha=0x99=153;卡片居中
+            act(d_click(t, "open"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "confirm?")
+            var ma: I32 = mask_alpha()
+            if ma != 153 {
+                panic("s34: 遮罩 8 位色 alpha 应 153 得 " + ma.to_string())
+            }
+            var ci: I32 = find_ca(42, 42, 56)
+            if ci < 0 {
+                panic("s34: 卡片 #2a2a38 未现")
+            }
+            var cx: I32 = d_cmd_x100(ci) / 100 + d_cmd_w100(ci) / 200
+            var cy: I32 = d_cmd_y100(ci) / 100 + d_cmd_h100(ci) / 200
+            if cx < 155 {
+                if cx > 165 {
+                    panic("s34: 卡片未水平居中 cx=" + cx.to_string())
+                }
+            }
+            if cy < 115 {
+                if cy > 125 {
+                    panic("s34: 卡片未垂直居中 cy=" + cy.to_string())
+                }
+            }
+            // 卡片体点击不透(位置命中:顶层无 handler 即吞,遮罩回调不触发)
+            d_click_xy(t, cx, cy - 40,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            if m.state == "closed" {
+                panic("s34: 卡片点击穿透至遮罩")
+            }
+            // 遮罩点击(角落)→ on:close
+            d_click_xy(t, 15, 15,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "closed")
+            d_expect_absent(t, "confirm?")
+            // 重开:键盘模态——Esc 转 close(自锁修复);余键吞
+            act(d_click(t, "open"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var esk: I32 = d_send_key(t, 256,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            if esk != 0 {
+                panic("s34: 模态期 Esc 未被运行时消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "confirm?")
+            // 再开:任意键吞(键闭包挂起)
+            act(d_click(t, "open"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var sw: I32 = d_send_key(t, 65,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            if sw != 0 {
+                panic("s34: 模态期键未吞")
+            }
+            // 关闭后键回落 key 闭包
+            act(d_click(t, "open"))
+            // 遮罩关:on:click 挂在 overlay(容器)上,d_click 按名只扫按钮表,
+            // 位置点击走真实命中面
+            d_click_xy(t, 15, 15,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            var ka: I32 = d_send_key(t, 65,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            if ka != 65 {
+                panic("s34: 关闭后键应回落")
+            }
+            key(ka)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "key-a")
+            println("S34-OVERLAY-GREEN")
+        })
+    return rc
+}

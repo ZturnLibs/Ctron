@@ -161,7 +161,7 @@ static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
     decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
                                          (float)((bg_packed >> 8) & 255),
                                          (float)(bg_packed & 255),
-                                         (bg_packed == 0) ? (float)g_pending_alpha : (float)g_pending_alpha };
+                                         (bg_packed == 0 && g_pending_alpha == 255) ? 0.0f : (float)g_pending_alpha };
     g_pending_alpha = 255;
     if (clipv) {
         decl.clip = (Clay_ClipElementConfig){ false, true, { 0.0f, (float)-offsetpx } };
@@ -366,7 +366,7 @@ void gui_clip_sync(void) {
     if (s) { gui_clip_set_c(s); }
 }
 
-// ---- 浮层容器(§2.3):Clay floating attach PARENT/zIndex=1/CAPTURE;全屏 grow;
+// ---- 浮层容器(§2.3):Clay floating attach ROOT(真全屏,不随父 padding)/zIndex=1/CAPTURE;全屏 grow;
 // alignc → childAlignment 居中(卡片作 overlay 子元素自动居中);x/y 偏移(下拉锚定用) ----
 int gui_floating(int dir, int gap, int padx, int pady, int ax, int ay,
                  int wmode, int wval, int hmode, int hval, int bg_packed,
@@ -392,7 +392,7 @@ int gui_floating(int dir, int gap, int padx, int pady, int ax, int ay,
     decl.floating = (Clay_FloatingElementConfig){
         .offset = { (float)xoff, (float)yoff },
         .zIndex = 1,
-        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .attachTo = CLAY_ATTACH_TO_ROOT,
         .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_CAPTURE,
     };
     Clay__ConfigureOpenElement(decl);
