@@ -39,3 +39,6 @@ editors/vscode-ctron/dist/
 .superpowers/
 *.log
 tmp/
+
+# git worktrees (superpowers:using-git-worktrees)
+.worktrees/
