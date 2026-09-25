@@ -376,6 +376,11 @@ web 框架,而是证明 §7 的并发语义天然就是服务器语义。
 - **出口门禁**:对本地 registry 夹具 `pkg add` e2e;Connect 客户端对 grpc 夹具服务互调;
   S3 客户端对 minio 夹具(nightly)读写往返;website 文档页上线;todo_api 在
   scratch 容器内跑通。
+- **P8 as-built(2026-09-26)**:①pkg add ⏸ defer(CLI 落点/registry 协议 v1 设计
+  评审待拍板,归下波首件) ②Connect ✅(connect.ct unary+双轮 e2e) ③S3 ✅
+  (s3.ct SigV4 签名链+python 独立黄金向量+mock 往返 e2e;minio nightly 待环境)
+  ④website 指南 ✅ ⑤todo_api scratch 配方 ✅(容器内跑通 nightly)。台账
+  tests/COVERAGE.md P8 行;执行记录 plans/2026-09-25-server-p8-ecosystem.md。
 
 ### P9 硬件利用档(不排期,志向登记;v2/v3 增栈经济/多进程/zstd)
 
