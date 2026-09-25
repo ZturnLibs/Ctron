@@ -506,7 +506,7 @@ fn gui_ds_views(file: List[Str], vnames: List[Str], vprops: List[Str]) -> I32 {
 }
 
 // run(ViewCall) 检出:表达式走查(命中返回视图名;未知标签安全返回 "")
-fn gui_ds_find_expr(e: List[Str], views: List[Str]) -> Str {
+fn gui_ds_find_expr(e: List[Str], views: List[Str], names: List[Str]) -> Str {
     if e.len < 1 {
         return ""
     }
@@ -522,6 +522,12 @@ fn gui_ds_find_expr(e: List[Str], views: List[Str]) -> Str {
                                 if a[1][0] == "Ident" {
                                     if a[2].len > 1 {
                                         if gui_ck_has_style(views, a[1][1]) {
+                                            names.push(a[1][1])
+                                            var k2: I32 = 1
+                                            while k2 < a[2].len {
+                                                names.push(a[2][k2][1])
+                                                k2 += 1
+                                            }
                                             return a[1][1]
                                         }
                                     }
@@ -532,13 +538,13 @@ fn gui_ds_find_expr(e: List[Str], views: List[Str]) -> Str {
                 }
             }
         }
-        var r: Str = gui_ds_find_expr(e[1], views)
+        var r: Str = gui_ds_find_expr(e[1], views, names)
         if r != "" {
             return r
         }
         var i: I32 = 1
         while i < e[2].len {
-            r = gui_ds_find_expr(e[2][i], views)
+            r = gui_ds_find_expr(e[2][i], views, names)
             if r != "" {
                 return r
             }
@@ -547,29 +553,29 @@ fn gui_ds_find_expr(e: List[Str], views: List[Str]) -> Str {
         return ""
     }
     if t == "Binary" {
-        var r2: Str = gui_ds_find_expr(e[2], views)
+        var r2: Str = gui_ds_find_expr(e[2], views, names)
         if r2 != "" {
             return r2
         }
-        return gui_ds_find_expr(e[3], views)
+        return gui_ds_find_expr(e[3], views, names)
     }
     if t == "Unary" {
-        return gui_ds_find_expr(e[2], views)
+        return gui_ds_find_expr(e[2], views, names)
     }
     if t == "Member" {
-        return gui_ds_find_expr(e[1], views)
+        return gui_ds_find_expr(e[1], views, names)
     }
     if t == "NParg" {
-        return gui_ds_find_expr(e[2], views)
+        return gui_ds_find_expr(e[2], views, names)
     }
     if t == "Index" {
-        return gui_ds_find_expr(e[1], views)
+        return gui_ds_find_expr(e[1], views, names)
     }
     return ""
 }
 
 // 语句块走查(镜像 p_stmt 标签集;裸表达式语句原样试查)
-fn gui_ds_find_block(b: List[Str], views: List[Str]) -> Str {
+fn gui_ds_find_block(b: List[Str], views: List[Str], names: List[Str]) -> Str {
     var i: I32 = 1
     while i < b.len {
         var s = b[i]
@@ -577,49 +583,49 @@ fn gui_ds_find_block(b: List[Str], views: List[Str]) -> Str {
         var hit: Str = ""
         if t == "Return" {
             if s.len > 1 {
-                hit = gui_ds_find_expr(s[1], views)
+                hit = gui_ds_find_expr(s[1], views, names)
             }
         } else {
             if t == "Let" {
-                hit = gui_ds_find_expr(s[4], views)
+                hit = gui_ds_find_expr(s[4], views, names)
             } else {
                 if t == "While" {
-                    hit = gui_ds_find_expr(s[1], views)
+                    hit = gui_ds_find_expr(s[1], views, names)
                     if hit == "" {
-                        hit = gui_ds_find_block(s[2], views)
+                        hit = gui_ds_find_block(s[2], views, names)
                     }
                 } else {
                     if t == "For" {
-                        hit = gui_ds_find_expr(s[2], views)
+                        hit = gui_ds_find_expr(s[2], views, names)
                         if hit == "" {
-                            hit = gui_ds_find_block(s[3], views)
+                            hit = gui_ds_find_block(s[3], views, names)
                         }
                     } else {
                         if t == "If" {
-                            hit = gui_ds_find_expr(s[1], views)
+                            hit = gui_ds_find_expr(s[1], views, names)
                             if hit == "" {
-                                hit = gui_ds_find_block(s[2], views)
+                                hit = gui_ds_find_block(s[2], views, names)
                             }
                             if hit == "" {
                                 if s[3][0] == "If" {
-                                    hit = gui_ds_find_block(s[3], views)
+                                    hit = gui_ds_find_block(s[3], views, names)
                                 } else {
                                     if s[3][0] == "BlockExpr" {
-                                        hit = gui_ds_find_block(s[3][1], views)
+                                        hit = gui_ds_find_block(s[3][1], views, names)
                                     }
                                 }
                             }
                         } else {
                             if t == "Expr" {
-                                hit = gui_ds_find_expr(s[1], views)
+                                hit = gui_ds_find_expr(s[1], views, names)
                             } else {
                                 if t == "Assign" {
-                                    hit = gui_ds_find_expr(s[1], views)
+                                    hit = gui_ds_find_expr(s[1], views, names)
                                     if hit == "" {
-                                        hit = gui_ds_find_expr(s[3], views)
+                                        hit = gui_ds_find_expr(s[3], views, names)
                                     }
                                 } else {
-                                    hit = gui_ds_find_expr(s, views)
+                                    hit = gui_ds_find_expr(s, views, names)
                                 }
                             }
                         }
@@ -635,12 +641,12 @@ fn gui_ds_find_block(b: List[Str], views: List[Str]) -> Str {
     return ""
 }
 
-fn gui_ds_find_file(file: List[Str], views: List[Str]) -> Str {
+fn gui_ds_find_file(file: List[Str], views: List[Str], names: List[Str]) -> Str {
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
         if d[0] == "Fn" {
-            var hit: Str = gui_ds_find_block(d[5], views)
+            var hit: Str = gui_ds_find_block(d[5], views, names)
             if hit != "" {
                 return hit
             }
@@ -2703,132 +2709,6 @@ fn gui_sk_wrap_i(src: List[I32]) -> List[Str] {
 
 // ==================== SL-8c-4② 续:定位/生成/钩子 ====================
 
-// 定位 run(ViewCall) 调用节点:返回调用点 prop 名序;节点出参 outn[0]
-fn gui_ds_locate(file: List[Str], views: List[Str], vname: Str, outn: List[Str]) -> List[Str] {
-    var i: I32 = 1
-    while i < file.len {
-        var d = file[i]
-        if d[0] == "Fn" {
-            if gui_ds_locate_block(d[5], vname, outn) > 0 {
-                var names = List[Str]()
-                var call = outn[0]
-                var a = call[2][1]
-                var k: I32 = 1
-                while k < a[2].len {
-                    names.push(a[2][k][1])
-                    k += 1
-                }
-                return names
-            }
-        }
-        i += 1
-    }
-    return List[Str]()
-}
-
-fn gui_ds_locate_block(b: List[Str], vname: Str, outn: List[Str]) -> I32 {
-    var i: I32 = 1
-    while i < b.len {
-        var s = b[i]
-        var t: Str = s[0]
-        var hit: I32 = 0
-        if t == "Return" {
-            if s.len > 1 {
-                hit = gui_ds_locate_expr(s[1], vname, outn)
-            }
-        } else {
-            if t == "Let" {
-                hit = gui_ds_locate_expr(s[4], vname, outn)
-            } else {
-                if t == "While" {
-                    hit = gui_ds_locate_expr(s[1], vname, outn)
-                } else {
-                    if t == "For" {
-                        hit = gui_ds_locate_expr(s[2], vname, outn)
-                    } else {
-                        if t == "If" {
-                            hit = gui_ds_locate_expr(s[1], vname, outn)
-                        } else {
-                            if t == "Expr" {
-                                hit = gui_ds_locate_expr(s[1], vname, outn)
-                            } else {
-                                if t == "Assign" {
-                                    hit = gui_ds_locate_expr(s[1], vname, outn)
-                                } else {
-                                    hit = gui_ds_locate_expr(s, vname, outn)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if hit > 0 {
-            return 1
-        }
-        i += 1
-    }
-    return 0
-}
-
-fn gui_ds_locate_expr(e: List[Str], vname: Str, outn: List[Str]) -> I32 {
-    if e.len < 1 {
-        return 0
-    }
-    var t: Str = e[0]
-    if t == "Call" {
-        if e[1].len > 1 {
-            if e[1][0] == "Ident" {
-                if e[1][1] == "run" {
-                    if e[2].len == 2 {
-                        var a = e[2][1]
-                        if a[0] == "Call" {
-                            if a[1].len > 1 {
-                                if a[1][0] == "Ident" {
-                                    if a[1][1] == vname {
-                                        outn.push(a)
-                                        return 1
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if gui_ds_locate_expr(e[1], vname, outn) > 0 {
-            return 1
-        }
-        var i: I32 = 1
-        while i < e[2].len {
-            if gui_ds_locate_expr(e[2][i], vname, outn) > 0 {
-                return 1
-            }
-            i += 1
-        }
-        return 0
-    }
-    if t == "Binary" {
-        if gui_ds_locate_expr(e[2], vname, outn) > 0 {
-            return 1
-        }
-        return gui_ds_locate_expr(e[3], vname, outn)
-    }
-    if t == "Unary" {
-        return gui_ds_locate_expr(e[2], vname, outn)
-    }
-    if t == "Member" {
-        return gui_ds_locate_expr(e[1], vname, outn)
-    }
-    if t == "NParg" {
-        return gui_ds_locate_expr(e[2], vname, outn)
-    }
-    if t == "Index" {
-        return gui_ds_locate_expr(e[1], vname, outn)
-    }
-    return 0
-}
-
 // 视图声明型表(d[5] → 与 pnames 同序的型原文表)
 fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
     var out = List[Str]()
@@ -2908,7 +2788,16 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         gui_bx_dotted(exprs[i], ps)
         var j: I32 = 0
         while j < ps.len {
-            if gui_ck_has_style(pnames, ps[j]) {
+            var rt: Str = ps[j]
+            var di: I32 = 0
+            while di < ps[j].len {
+                if byte_at(ps[j], di) == 46 {
+                    rt = byte_slice(ps[j], 0, di)
+                    di = ps[j].len
+                }
+                di += 1
+            }
+            if gui_ck_has_style(pnames, rt) {
                 if !gui_ck_has_style(paths, ps[j]) {
                     paths.push(ps[j])
                     pty.push(gui_ds_path_ty(ps[j], pnames, ptyps, stns, sfk, stv))
@@ -2960,11 +2849,13 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
     }
     var params: Str = ""
     var cargs: Str = ""
+    var sigargs: Str = ""
     ii = 0
     while ii < ordn.len {
         if ii > 0 {
             params = params + ", "
             cargs = cargs + ", "
+            sigargs = sigargs + ", "
         }
         var pn: Str = ordn[ii]
         var ty: Str = ""
@@ -2978,11 +2869,17 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
         }
         params = params + "__a" + ii.to_string() + ": " + ty
         cargs = cargs + ptoks[ii]
+        var head2: Str = gui_ty_head_txt(ty)
+        if gui_ck_has_style(stns, head2) {
+            sigargs = sigargs + ptoks[ii] + ": Box[" + head2 + "]"
+        } else {
+            sigargs = sigargs + ptoks[ii] + ": " + ty
+        }
         ii += 1
     }
     var g: Str = "fn __gui_bind_" + vname + "(buf: List[Str]"
-    if cargs.len > 0 {
-        g = g + ", " + cargs
+    if sigargs.len > 0 {
+        g = g + ", " + sigargs
     }
     g = g + ") \{\n"
     var k: I32 = 0
@@ -3016,8 +2913,8 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
     }
     g = g + "}\n"
     var a2: Str = "fn __gui_act_" + vname + "(name: Str"
-    if cargs.len > 0 {
-        a2 = a2 + ", " + cargs
+    if sigargs.len > 0 {
+        a2 = a2 + ", " + sigargs
     }
     a2 = a2 + ") \{\n"
     k = 0
@@ -3091,7 +2988,9 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
         actcl = actcl + ", " + cargs
     }
     actcl = actcl + ")"
-    r = r + "    return run_d(\"Ctron\", 320, 480, " + bindcl + ", " + actcl + ")\n"
+    r = r + "    return run_d(\"Ctron\", 320, 480,\n"
+    r = r + "        " + bindcl + ",\n"
+    r = r + "        " + actcl + ")\n"
     r = r + "}\n"
     var src: Str = g + a2 + r
     var toks = List[Str]()
@@ -3103,8 +3002,10 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
     return p_file(toks, cur, lns, cols, pd)
 }
 
-// 预合并:run(ViewCall) 命中即注入 use gui.{run_d} 请求(合并期生效)
-fn gui_ds_premerge(file: List[Str]) -> List[Str] {
+// 预合并:run(ViewCall) 命中即注入 use gui.{run_d} 请求(合并期生效)。
+// 定位/收集/生成全部前置——合并产物含签名级 stub(d[5]=类型戳字符串),
+// 后置遍历按 Block 索引即 SEGV(0ea0513 余账根因);unit 出参带合成 decl。
+fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var has: Bool = false
     var i: I32 = 1
     while i < file.len {
@@ -3123,8 +3024,16 @@ fn gui_ds_premerge(file: List[Str]) -> List[Str] {
     if vnames.len == 0 {
         return file
     }
-    if gui_ds_find_file(file, vnames) == "" {
+    var names = List[Str]()
+    var vname: Str = gui_ds_find_file(file, vnames, names)
+    if vname == "" {
         return file
+    }
+    var ordn = List[Str]()
+    var oi: I32 = 1
+    while oi < names.len {
+        ordn.push(names[oi])
+        oi += 1
     }
     // Use 节点经真解析生成(手拼形态与解析器产物微差即炸合并面)
     var utoks = List[Str]()
@@ -3143,42 +3052,7 @@ fn gui_ds_premerge(file: List[Str]) -> List[Str] {
         out.push(file[i])
         i += 1
     }
-    return out
-}
-
-// 合并后:改写调用点 + 生成三 fn 拼写进 File
-fn gui_ds_postmerge(file: List[Str], diags: List[Str]) -> List[Str] {
-    if diags.len > 0 {
-        // 合并已带诊断(use 不可解析等)——失败树上不合成,诊断主导出
-        return file
-    }
-    var has: Bool = false
-    var i: I32 = 1
-    while i < file.len {
-        if file[i][0] == "GuiBlock" {
-            has = true
-            i = file.len
-        }
-        i += 1
-    }
-    if !has {
-        return file
-    }
-    var vnames = List[Str]()
-    var vprops = List[Str]()
-    gui_ds_views(file, vnames, vprops)
-    if vnames.len == 0 {
-        return file
-    }
-    var vname: Str = gui_ds_find_file(file, vnames)
-    if vname == "" {
-        return file
-    }
-    var outn = List[Str]()
-    var ordn: List[Str] = gui_ds_locate(file, vnames, vname, outn)
-    if outn.len == 0 {
-        return file
-    }
+    // 前置合成(合并前文件;全部遍历仅触本泳道 decl,零 stub 面)
     var dn = List[Str]()
     var dt = List[Str]()
     var vi: I32 = 0
@@ -3192,16 +3066,41 @@ fn gui_ds_postmerge(file: List[Str], diags: List[Str]) -> List[Str] {
     var stns = List[Str]()
     var sfk = List[Str]()
     var stv = List[Str]()
-    gui_field_tables(file, stns, sfk, stv)
+    gui_field_tables(out, stns, sfk, stv)
     var paths = List[Str]()
     var pty = List[Str]()
     var lists = List[Str]()
     var evn = List[Str]()
     var evf = List[Str]()
-    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, stns, sfk, stv)
-    var unit: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, stns, sfk, stv)
+    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, stns, sfk, stv)
+    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, stns, sfk, stv)
+    var k2: I32 = 1
+    while k2 < made.len {
+        unit.push(made[k2])
+        k2 += 1
+    }
+    return out
+}
+
+// 合并后:改写调用点 + 生成三 fn 拼写进 File
+// 合并后:改写调用点(早退于 main,不触合并段)+ 拼写前置生成的 unit
+fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[Str] {
+    if diags.len > 0 {
+        // 合并已带诊断(use 不可解析等)——失败树上不合成,诊断主导出
+        return file
+    }
+    if unit.len == 0 {
+        return file
+    }
+    var vnames = List[Str]()
+    var vprops = List[Str]()
+    gui_ds_views(file, vnames, vprops)
+    var vname: Str = gui_ds_find_file(file, vnames, List[Str]())
+    if vname == "" {
+        return file
+    }
     gui_ds_rew_file(file, vname)
-    var k: I32 = 1
+    var k: I32 = 0
     while k < unit.len {
         file.push(unit[k])
         k += 1

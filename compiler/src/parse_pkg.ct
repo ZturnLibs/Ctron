@@ -212,9 +212,10 @@ fn pkg_std_root(dir: Str) -> Str {
 fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -> List[Str] {
     // SL-8c-4②:gui.run 装配合成——预合并注入 use gui.{run_d} 请求,
     // 合并后改写 run(ViewCall) 调用点并拼写 __gui_bind/__gui_act/__gui_run
-    var f2: List[Str] = gui_ds_premerge(file)
+    var unit = List[Str]()
+    var f2: List[Str] = gui_ds_premerge(file, unit)
     var out: List[Str] = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true)
-    return gui_ds_postmerge(out, diags)
+    return gui_ds_postmerge(out, unit, diags)
 }
 
 // 名槽 decl 种类(与 E5030 dup 检查面一致;spec §4.2 P1b 精化口径)
