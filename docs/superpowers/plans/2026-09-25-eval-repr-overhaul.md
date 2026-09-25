@@ -42,6 +42,16 @@ AMEM 直方图实证 loop 基准 10K 次迭代产生 2.07 亿次分配(每迭代
   在 eval_expr/eval_call/run_stmt/env_* 八个入口处计数(纯 Ctr 实现:一个
   全局 Atomic[I32] 计数器表 + 阈值打印;零门控成本)。
 - 产出:loop.ct/fmap30 的 Top-10 分配函数榜 → 决定 Phase 1 动哪一层。
+- **归因结果(0925 深夜,linux 容器 addr2line)**:全部分配 99% 来自两个运行时
+  字符串助手——ctron_byte_slice 62%(1.26 亿次)+ ctron_str_concat 37%;调用方
+  Top 全在 C6 字符串大数算术(t_c6can 5,760 万/t_c6addmag/t_c6mul/t_c6divmod
+  ——I64 域逐数字字符串手术)。字面量解析链 txt_num/dvi 每数字一轮 c6 乘加。
+- **优化实现已试制并定量**:c6 四则原生 int64 快路径(≤18 位守范围)+ txt_num/
+  dvi 十进制直累加折回——native 臂 loop 基准 2.17s→**0.11s(~20×)**、负数语义
+  对齐 seed;**但 seed 解释同款 eval 时触发 integer overflow (-)(native 正确)**
+  ——「快路径在 seed 解释口径下的行为分歧」成为新开项(嫌凝:seed 对超 I32
+  常量/as 截断/解释口径 I64 链的某环节),修复前 c6 快路径不得落库。
+- eval_val 已回滚至 HEAD;本节改动与证据留存于会话史与本计划。
 - **执行纪要(0925)**:差分阶梯已得(L1 单赋值 1,217 次/迭代;+双目 1,950;
   +调用 2,019——调用便宜);mac 侧 RA 归因死局:发射函数全 static,链接器吞符号
   (nm 仅 ~450 条,atos+dSYM 均无法解析,捕获 RA 落点在二进制之外)。**后续路线:
