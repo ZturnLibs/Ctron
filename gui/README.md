@@ -107,9 +107,37 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - 直绘路径(`ft_render`/`ft_tex_*`)语义零变化,`examples/gui_cjk` 仍为直绘示范;
   声明式路径中文示范 = `examples/gui_counter`(「计数: {count}」)。
 
+## 主题面(波次一,2026-09-25)
+
+- **Theme struct**(25 字段,字段序=令牌槽序)+ `theme_apply(t)` 一步换装;
+  `theme_default()` 缺省深色;`theme_auto()` = `CTRON_GUI_THEME` 八值钉值
+  (mac_dark…linux_light/dark/light)> 平台×明暗探测;六入口缺省 `theme_auto_apply`
+  (此前显式 apply 优先不扰)。
+- **内置八主题**:gui.ct 命名函数 `theme_dark()/theme_light()/theme_mac_dark()…`
+  (域根平铺,`use gui.themes` 不可寻址);第三方主题 = 任意 .ct 文件定义
+  `make() -> Theme`。
+- **令牌裸词**:style 值可直接写令牌名(`bg: ACCENT`),25 枚 = BG_BASE…DISABLED_BG
+  + RADIUS_* + SIZE_* + SPACE_*;存储期折 @槽标记,折叠期 O(1) 读。
+
+## 交互态(波次一,§2.1)
+
+- **态前缀属性(下划线形)**:`hover_bg / hover_fg / active_bg / active_fg /
+  disabled_bg / disabled_fg`——态命中则覆盖,未定义逐级回落基值,零全局默认;
+  **连字符形(`hover-bg`)俟编译器 lex 词法补丁后切换**(裸 '-' 落算符 token 致
+  样式块段错误,见坑位)。
+- headless 注入:`d_hover(t, 名)` / `d_active(t, 0|1)`;真窗路径 = 指针求交
+  (rt_hover_node,与点击命中同序)。
+- 令牌/交互态折叠断言底座:`d_cmd_bg_r/g/b`(RECT 命令色读回);夹具 s31_state
+  (四态全量)/s32_theme(八主题+auto+钉值)。
+
 ## 坑位(实证登记,续接必读)
 
-- 跨包符号**必须显式请求**:use 面缺什么,发射面就缺什么(选择性合并契约)。
+- 跨包符号**必须显式请求**:use 面缺什么,发射面就缺什么(选择性合并契约;
+  跨文件 const 亦不随传递,theme_default 故为自含字面量)。
+- **编译器词法器裸 '-'**:CTML 样式属性名含 '-'(如 hover-bg)时词法落减号算符
+  token,样式块解析段错误且无诊断码——态前缀用下划线形规避;健壮性债归编译泳道。
+- 同包多文件各自独立合并:parse.ct 为死副本(gt_* 活码在 gui.ct);域子模块
+  (`use a.b`)解析为 `<根>/b.ct` 平铺,子目录不可寻址。
 - headless 视口给足(建议高 640):内容超视口被 Clay 剔除,断言面即"消失"。
 - input 回显写 mirror label(`{draft}`);`{ident}` 简单槽走名字通道,
   表达式槽走求值器——两态并存零破坏。
