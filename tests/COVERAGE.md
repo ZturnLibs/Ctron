@@ -340,9 +340,11 @@ serial/coro 双形;树父权 ct_task 层残留=逐层名映射,归编译器任�
 ⑤tracing 层级=连接/请求树 ⏸ 随④残留。**P7 按 4/5 门 + ct_task 层残留交付收口**。
 
 **P7 as-built 偏差与移交**:①std/config 实为 CTCL manifest 校验器,非应用运行时
-配置面——todo_api env 配置形维持,应用配置读法提请 std 需求评审;②发射符号饿死族
-+ emit 主文件 20480B SIGKILL + `\|` 死旋(divergences 09-24/25 节)归编译泳道,
-OTLP e2e 的 http.client 路径以裸 socket 绕行;③OTLP 批量/JSON 形态列志向。
+配置面——todo_api env 配置形维持,应用配置读法提请 std 需求评审;②emit 主文件
+20480B SIGKILL + `\|` 死旋(divergences 09-24/25 节)归编译泳道;③OTLP 批量/JSON
+形态列志向。**09-25 深夜追加**:e2e 缺声明 6 红(饿死族 client/message 面)经 P1b
+契约补全(use 清单全量请求)全清——http 套件 103/5,余 5=137 解释器债族;OTLP send
+仍以裸 socket 形(net 门面直连)维持,http.client 合并修复后可回切 client_request。
 
 ### P5 行(std/db 数据访问层,2026-09-21)
 
