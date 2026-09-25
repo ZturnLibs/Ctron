@@ -181,7 +181,7 @@ sl8c-design.md)。按裁决 #7:**组件动工序 = SL-8c 落库之后,不造 bin
 - 用户级 `on:after` 定时事件 P2(事件通道扩展)。
 - headless:`d_tick(ms)` 注入推进(确定性,不睡真实时钟)。
 
-### 2.8 字体族/字重(P1,五轮补入;实测 ft_shim 单字体硬编码 Regular)
+### 2.8 字体族/字重(P1,五轮补入;波次五c落地——合成加粗免粗体字面,weight 400/700;family 注册/回退链 P2)
 
 - ft_shim 扩**多字体 + weight 变体**加载(同族 Regular/Bold 两面起步,按
   font-weight 选取;缓存键 = (串,px,weight) 三元组,LRU 口径沿 §ft_shim 先例)。

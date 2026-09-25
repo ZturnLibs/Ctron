@@ -119,6 +119,17 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - **令牌裸词**:style 值可直接写令牌名(`bg: ACCENT`),25 枚 = BG_BASE…DISABLED_BG
   + RADIUS_* + SIZE_* + SPACE_*;存储期折 @槽标记,折叠期 O(1) 读。
 
+## 字体字重(波次五c,§2.8)
+
+- **`font_weight` 样式属性**(400/700,缺省 400):label/button/input/checkbox 四分支
+  路由 gui_text_w。合成加粗 = FT_Outline_Embolden(px/16)+advance 增量 px/24——
+  **免粗体字体文件**,测量与渲染双轮同增量(测量==渲染不变式)。
+- **已知限制**:FT_OFF 下 bold≡400 宽(heuristic 无增量);font-family 用户字面
+  注册/回退链 P2。
+- **实现注记**:Clay 文本测量内联于 OpenTextElement 同步发生(每文本两次)——
+  字重走「当前值」直传;flush 侧用影子表(产出序=TEXT 命令序)取重传缓存
+  (缓存键 (串,px,weight) 三元,gui_ft_text_wt)。
+
 ## tick/尺寸约束/快捷键(波次五b,§2.7/§2.10/§2.11)
 
 - **tick 原语**:运行时毫秒钟(注入优先)+帧计数;`d_tick(t, ms)`/`d_frames()`。
