@@ -1,0 +1,45 @@
+// c0 —— 纯面:path 拼/协议头/状态码表/HTTP 映射
+use http.frm.connect.{ connect_path, connect_headers, connect_code_str, connect_code_from_http }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn count(s: Str, key: Str) -> I64 {
+    let kl = key.len
+    var n: I64 = 0
+    var i: I32 = 0
+    while i + kl <= s.len {
+        var ok = true
+        var j: I32 = 0
+        while j < kl {
+            if byte_at(s, i + j) != byte_at(key, j) { ok = false }
+            j += 1
+        }
+        if ok { n += 1 }
+        i += 1
+    }
+    return n
+}
+
+fn main() -> I64 {
+    if eqs(connect_path("pkg.Echo", "Get"), "/pkg.Echo/Get") == false { return 1 }
+    let h = connect_headers()
+    if h.len != 62 { return 2 }
+    if count(h, "connect-protocol-version: 1") != 1 { return 3 }
+    if eqs(connect_code_str(5), "not_found") == false { return 4 }
+    if eqs(connect_code_str(0), "ok") == false { return 5 }
+    if eqs(connect_code_str(99), "unknown") == false { return 6 }
+    if connect_code_from_http(200) != 0 { return 7 }
+    if connect_code_from_http(404) != 5 { return 8 }
+    if connect_code_from_http(503) != 14 { return 9 }
+    if connect_code_from_http(418) != 2 { return 10 }
+    return 0
+}
+

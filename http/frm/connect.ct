@@ -1,0 +1,79 @@
+// http/frm/connect.ct —— Connect 协议客户端(P8-A;unary 调用,protobuf 帧)
+//
+// 协议(Connect RPC unary,应用 proto 形):
+//     POST /<service>/<method>
+//     content-type: application/proto
+//     connect-protocol-version: 1
+//   成功 = HTTP 200,体 = 响应 protobuf;非 200 = 传输/应用错(v1:状态码即
+//   错误面;200 + JSON connect-error 帧解析列志向)。帧编解码 = 调用方经
+//   std/pb(本模块纯传输)。
+// 形态纪律:仅依赖 http.client(单级,发射已证——x_client_e2e 40702d5);
+//   HttpResp 直返(client_request 透传,消费方经 rr_* getter 读)。
+// use 面(P1b):http.client 显式请求。
+
+use http.client.{ http_net, client_request, HttpResp, rr_rc, rr_status }
+
+// 请求路径:/<service>/<method>
+pub fn connect_path(service: Str, method: Str) -> Str {
+    return "/" + service + "/" + method
+}
+
+// 协议头(两行,自含 CRLF)
+pub fn connect_headers() -> Str {
+    return "content-type: application/proto\r\n" + "connect-protocol-version: 1\r\n"
+}
+
+// unary 调用:返回 HttpResp(透传 client_request;消费方 rr_status/rr_body_*
+// 读取,体 = 响应 protobuf 原文)。bfd/bhh/bpt/bru = client 连接状态四盒
+// (透传,复用与重连语义随 http.client)。
+pub fn connect_unary(net: HttpNet, host: Str, port: I64, service: Str, method: Str, req: &I64[], rlen: I64, resp: &I64[], rcap: I64, scr: &I64[], timeout_ms: I64, bfd: Box[Box64], bhh: Box[Box64], bpt: Box[Box64], bru: Box[Box64]) -> HttpResp {
+    let path = connect_path(service, method)
+    let extra = connect_headers()
+    return client_request(net, "POST", host, port, path, extra, req, rlen, resp, rcap, scr, timeout_ms, bfd, bhh, bpt, bru)
+}
+
+// 状态分类:0 = 传输 IO 错;1 = HTTP 200(应用成功,proto 体);2 = 非 200
+// (HTTP 状态即错误面;JSON connect-error 帧解析列志向)
+pub fn connect_classify(r: HttpResp) -> I64 {
+    if rr_rc(r) != 0 {
+        return 0
+    }
+    if rr_status(r) == 200 {
+        return 1
+    }
+    return 2
+}
+
+// connect/gRPC 状态码表(数字 → 规范名;HTTP 状态映射用)
+pub fn connect_code_str(code: I64) -> Str {
+    if code == 0 { return "ok" }
+    if code == 1 { return "canceled" }
+    if code == 2 { return "unknown" }
+    if code == 3 { return "invalid_argument" }
+    if code == 4 { return "deadline_exceeded" }
+    if code == 5 { return "not_found" }
+    if code == 6 { return "already_exists" }
+    if code == 7 { return "permission_denied" }
+    if code == 8 { return "resource_exhausted" }
+    if code == 9 { return "failed_precondition" }
+    if code == 10 { return "aborted" }
+    if code == 11 { return "out_of_range" }
+    if code == 12 { return "unimplemented" }
+    if code == 13 { return "internal" }
+    if code == 14 { return "unavailable" }
+    if code == 15 { return "data_loss" }
+    if code == 16 { return "unauthenticated" }
+    return "unknown"
+}
+
+// HTTP 状态 → connect 码(grpc 映射子集;未表项 = 2 unknown)
+pub fn connect_code_from_http(status: I64) -> I64 {
+    if status == 200 { return 0 }
+    if status == 400 { return 3 }
+    if status == 401 { return 16 }
+    if status == 403 { return 7 }
+    if status == 404 { return 5 }
+    if status == 429 { return 8 }
+    if status == 502 || status == 503 || status == 504 { return 14 }
+    return 2
+}

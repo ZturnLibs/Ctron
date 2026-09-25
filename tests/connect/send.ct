@@ -1,0 +1,54 @@
+// tests/connect/send.ct —— Connect 客户端(P8-A e2e):std/pb 编码请求 →
+// connect_unary 双路由(成功 200+proto 体断言 [8,42];Fail 路由 classify=2)
+use http.client.{ http_net, client_request, HttpResp, rr_rc, rr_status, rr_body_off }
+use http.frm.connect.{ connect_unary, connect_classify }
+use std.pb.{ pb_put_i64 }
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn main() -> I64 {
+    let httpn = http_net()
+    let port = sc_get_l(parse_i64(env_get("CONN_PORT")), 8451)
+    // 请求帧:field1 varint 150
+    var req: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let rn = pb_put_i64(req, 16, 0, 1, 150)
+    if rn != 3 {
+        println("CONNECT-FAIL encode")
+        return 1
+    }
+    // 成功路由
+    var resp: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var scr: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var bfd = Box[Box64](Box64 { v: -1 })
+    var bhh = Box[Box64](Box64 { v: 0 })
+    var bpt = Box[Box64](Box64 { v: -1 })
+    var bru = Box[Box64](Box64 { v: 0 })
+    let r = connect_unary(httpn, "127.0.0.1", port, "pkg.Echo", "Get", req, rn, resp, 512, scr, 5000, bfd, bhh, bpt, bru)
+    let cls = connect_classify(r)
+    if env_get("CONN_EXPECT") == "err" {
+        if cls != 2 {
+            println("CONNECT-FAIL expect-err got=" + cls.to_string())
+            return 7
+        }
+        println("CONNECT-ERR-OK")
+        return 0
+    }
+    if cls != 1 {
+        println("CONNECT-FAIL classify")
+        return 2
+    }
+    // 响应体两字节:08 2A
+    if rr_status(r) != 200 {
+        println("CONNECT-FAIL status")
+        return 3
+    }
+    if resp[rr_body_off(r)] != 8 {
+        println("CONNECT-FAIL body0")
+        return 4
+    }
+    if resp[rr_body_off(r) + 1] != 42 {
+        println("CONNECT-FAIL body1")
+        return 5
+    }
+    println("CONNECT-OK")
+    return 0
+}

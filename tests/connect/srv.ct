@@ -1,0 +1,122 @@
+// tests/connect/srv.ct —— Connect 夹具服务端(P8-A):串行 accept 环
+//   POST /pkg.Echo/Get → 校验请求体(08 96 01 = field1 varint 150)→ 200
+//   application/proto 定长响应(08 2A = field1 varint 42)
+//   POST /pkg.Echo/Fail → 500
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close}
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// 头区找行首 needle(小写),返回值起点
+fn hval(buf: &I64[], n: I64, needle: Str) -> I64 {
+    let nl = needle.len
+    var i: I64 = 0
+    while i < n {
+        if (i == 0) || (buf[i - 1] == 10) {
+            var ok = true
+            var j: I32 = 0
+            while j < nl {
+                if byte_at(needle, j) != buf[i + j.as[I64]()].as[I32]() {
+                    ok = false
+                }
+                j += 1
+            }
+            if ok {
+                var vs = i + nl.as[I64]()
+                while (vs < n) && (buf[vs] == 32) {
+                    vs += 1
+                }
+                return vs
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn lane_dump(buf: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        if (buf[i] >= 32) && (buf[i] < 127) {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", buf[i].as[I32]() - 32, buf[i].as[I32]() - 31)
+        } else {
+            if buf[i] == 13 {
+                out = out + "<CR>"
+            }
+            if buf[i] == 10 {
+                out = out + "<LF>"
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+fn main() -> I64 {
+    let fail_mode = env_get("CONN_FAIL") == "1"
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("CONN_PORT")), 8451)
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        println("CONN-SRV-FAIL listen")
+        return 2
+    }
+    println("conn-srv ready")
+    let afd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_accept(net, lfd.v, afd) != 0 {
+        return 2
+    }
+    let fd = afd.v
+    var buf: I64[2048] = [0, 0, 0, 0]
+    var scr: I64[1024] = [0, 0, 0, 0]
+    var n: I64 = 0
+    var hend: I64 = 0 - 1
+    var guard: I64 = 0
+    while (guard < 64) && (hend < 0) {
+        guard += 1
+        let r = net_read_t(net, fd, scr, 1024, 5000)
+        if r <= 0 {
+            break
+        }
+        var i: I64 = 0
+        while i < r {
+            buf[n + i] = scr[i]
+            i += 1
+        }
+        n = n + r
+        var k: I64 = 0
+        while (k + 3 < n) && (hend < 0) {
+            if (buf[k] == 13) && (buf[k + 1] == 10) && (buf[k + 2] == 13) && (buf[k + 3] == 10) {
+                hend = k + 4
+            }
+            k += 1
+        }
+    }
+    let is_get = hval(buf, n, "POST /pkg.Echo/Get ") >= 0
+    println("REQ n=" + n.to_string() + " get=" + is_get.to_string())
+    if is_get && (fail_mode == false) {
+        // 成功:响应 proto 体 08 2A(field1 varint 42;头直填后覆写体两字节)
+        var head = "HTTP/1.1 200 OK\r\ncontent-type: application/proto\r\nContent-Length: 2\r\nConnection: close\r\n\r\n"
+        let hl = fill(buf, head)
+        buf[hl] = 8
+        buf[hl + 1] = 42
+        net_write(net, fd, buf, hl + 2)
+        net_close(net, fd)
+        println("CONN-SRV-OK")
+        return 0
+    }
+    // 失败模式或路由不匹配:500(分类面用)
+    let m = fill(buf, "HTTP/1.1 500 Internal Server Error\r\ncontent-type: application/proto\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    net_write(net, fd, buf, m)
+    net_close(net, fd)
+    println("CONN-SRV-500")
+    return 0
+}
