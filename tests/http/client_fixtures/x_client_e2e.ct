@@ -8,7 +8,9 @@
 //   - keep-alive 复用计数(bru:成功走复用连接的次数,测试可见)
 //   - 对端早关(client 侧视角)→ 复用连接零字节读败 → 重连一次(重试一次)
 // CI 纪律:仅回环、:0、零外联。双 RT 矩阵(默认 + CTRON_RT=coro)由 run.sh 双跑。
-use http.client.{ http_net, client_listen, client_sockname, client_accept, client_request, client_close, HttpSock }
+use http.client.{ http_net, client_listen, client_sockname, client_accept, client_read_t, client_request, client_write_str, client_close, HttpSock, rr_rc, rr_status, rr_err, rr_nredir, rr_reuses, rr_body_len, rr_body_off }
+use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len, http_clen, http_head_end }
+use http.message.{ msg_response_head }
 
 // 请求行 target 切片等值
 fn fx_target_is(buf: &I64[], ms: I64, ml: I64, ts: I64, tl: I64, want: Str) -> I64 {
