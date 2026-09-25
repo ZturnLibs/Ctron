@@ -1,0 +1,95 @@
+// tests/gui/s36_tick —— 波次五b T1:tick 原语(§2.7)
+// d_tick 注入时钟→光标闪烁相位(偶 500ms 亮/奇灭)→d_frames 跨帧递增;
+// 真窗路径常亮(未注入不激活——确定性口径,规格 §2.7)
+use gui.{test, d_frame, d_click, d_expect_text, d_focus, d_send_char, d_tick, d_frames, theme_apply, theme_default}
+
+view TickDemo {
+  <vbox class="root">
+    <input bind={draft} class="field" on:input={set_draft}/>
+    <label class="st">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style field { bg: "#22222e" fg: "#ffffff" size: 20 h: 36 }
+style st { fg: "#aaaaaa" size: 16 h: 26 }
+
+struct Model {
+    var draft: Str
+    var state: Str
+}
+
+fn set_draft() {
+}
+
+fn head_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, 0, i)
+        }
+        i += 1
+    }
+    return nm
+}
+
+fn payload_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, i + 1, nm.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if head_of(name) == "set_draft" {
+        m.draft = payload_of(name)
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "draft" {
+        buf.push(m.draft)
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    theme_apply(theme_default())
+    var m = Box[Model](Model { draft: "", state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| k,
+        |t, a, k2| {
+            d_focus(t)
+            d_send_char(t, 104,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_send_char(t, 105,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_tick(t, 0)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi|")
+            d_tick(t, 600)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi")
+            d_tick(t, 1200)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi|")
+            var f1: I32 = d_frames()
+            d_frame(t, |buf| bind_all(buf, m))
+            var f2: I32 = d_frames()
+            if f2 - f1 != 1 {
+                panic("s36: 帧计数未递增 " + f1.to_string() + "->" + f2.to_string())
+            }
+            println("S36-TICK-GREEN")
+        })
+    return rc
+}

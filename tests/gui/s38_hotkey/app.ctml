@@ -1,0 +1,7 @@
+view HotDemo {
+  <vbox class="root">
+    <label class="st">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style st { fg: "#e6e6eb" size: 20 h: 30 }

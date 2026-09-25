@@ -1,0 +1,80 @@
+// tests/gui/s38_hotkey —— 波次五b T3:快捷键表(§2.11)
+// gui_hotkey("mod+s", "save") 注册→d_mod+d_send_key(83) 直发 save;
+// 无修饰 83 回落 key 闭包;未注册组合不受扰;路由链=编辑键>模态>快捷键>key 闭包
+use gui.{test, d_frame, d_send_key, d_mod, gui_hotkey, d_expect_text, theme_apply, theme_default}
+
+view HotDemo {
+  <vbox class="root">
+    <label class="st">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style st { fg: "#e6e6eb" size: 20 h: 30 }
+
+struct Model {
+    var state: Str
+}
+
+fn save() {
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if name == "save" {
+        m.state = "saved"
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 83 {
+        m.state = "plain-s"
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    theme_apply(theme_default())
+    gui_hotkey("mod+s", "save")
+    var m = Box[Model](Model { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| on_key(k, m),
+        |t, a, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // mod+s → 快捷键表直发 save
+            d_mod(t, 1)
+            var r1: I32 = d_send_key(t, 83,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "saved")
+            if r1 != 0 {
+                panic("s38: mod+s 未被快捷键表消费")
+            }
+            // 无修饰 83:未中 → 回落 key 闭包
+            var r2: I32 = d_send_key(t, 83,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            if r2 != 83 {
+                panic("s38: 无修饰 83 应回落")
+            }
+            // 未注册键位(mod+d):同修饰不受扰 → 回落
+            d_mod(t, 1)
+            var r3: I32 = d_send_key(t, 68,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_mod(t, 0)
+            if r3 != 68 {
+                panic("s38: 未注册组合应回落")
+            }
+            println("S38-HOTKEY-GREEN")
+        })
+    return rc
+}

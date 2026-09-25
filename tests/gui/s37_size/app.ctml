@@ -1,0 +1,11 @@
+view SizeDemo {
+  <vbox class="root">
+    <vbox class="mx"/>
+    <vbox class="mh"/>
+    <vbox class="free"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style mx { bg: "#2f9e63" max_w: 80 h: 30 }
+style mh { bg: "#2563eb" min_h: 60 w: 50 }
+style free { bg: "#c83c3c" w: 40 h: 20 }

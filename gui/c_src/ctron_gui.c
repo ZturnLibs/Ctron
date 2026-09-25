@@ -526,3 +526,49 @@ int gui_hotkey_action_byte(int i) {
     if (g_hk_last < 0 || i < 0 || i >= 64) { return -1; }
     return (unsigned char)g_hotkeys[g_hk_last].action[i];
 }
+
+// ---- 尺寸约束(§2.10):minmax packed = min*100000+max(上限 max<100000/min<21000);mode 3=GROW{min,max}(max 钳制
+// 填充),mode 4=FIT{min,∞}(min 托底 hug 内容)——Clay GROW 不读 max/FIT 不读 min 的实证分工 ----
+int gui_cfg3(int dir, int gap, int padx, int pady, int ax, int ay,
+             int wmode, int wval, int hmode, int hval, int bg_packed,
+             int wminmax, int hminmax) {
+    float wf = (float)wval;
+    float hf = (float)hval;
+    Clay_LayoutConfig lay = {
+        .layoutDirection = (dir == 0) ? CLAY_LEFT_TO_RIGHT : CLAY_TOP_TO_BOTTOM,
+        .padding = { .left = (uint16_t)padx, .right = (uint16_t)padx,
+                     .top = (uint16_t)pady, .bottom = (uint16_t)pady },
+        .childGap = (uint16_t)gap,
+    };
+    if (wmode == 1) {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    } else if (wmode == 2) {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { wf, wf } }, .type = CLAY__SIZING_TYPE_FIXED };
+    } else if (wmode == 3) {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)(wminmax / 100000), (float)(wminmax % 100000) } }, .type = CLAY__SIZING_TYPE_GROW };
+    } else if (wmode == 4) {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)(wminmax / 100000), (float)(wminmax % 100000) } }, .type = CLAY__SIZING_TYPE_FIT };
+    } else {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { wf, wf } }, .type = CLAY__SIZING_TYPE_FIXED };
+    }
+    if (hmode == 1) {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    } else if (hmode == 2) {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { hf, hf } }, .type = CLAY__SIZING_TYPE_FIXED };
+    } else if (hmode == 3) {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)(hminmax / 100000), (float)(hminmax % 100000) } }, .type = CLAY__SIZING_TYPE_GROW };
+    } else if (hmode == 4) {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)(hminmax / 100000), (float)(hminmax % 100000) } }, .type = CLAY__SIZING_TYPE_FIT };
+    } else {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { hf, hf } }, .type = CLAY__SIZING_TYPE_FIXED };
+    }
+    Clay_ElementDeclaration decl = { 0 };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
+                                         (float)((bg_packed >> 8) & 255),
+                                         (float)(bg_packed & 255),
+                                         (float)g_pending_alpha };
+    g_pending_alpha = 255;
+    Clay__ConfigureOpenElement(decl);
+    return 0;
+}

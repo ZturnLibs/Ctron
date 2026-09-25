@@ -169,6 +169,11 @@ extern "c" fn gui_hotkey_match(key: I32, mods: I32) -> I32
 extern "c" fn gui_hotkey_action_byte(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_cfg3(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                       wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32,
+                       wminmax: I32, hminmax: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -2666,7 +2671,51 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var yo: I32 = gs2i(gt_cls_prop(c, "y", "0", t))
                 gui_floating(dir, gap, pad, pad, 0, 0, 1, 0, 1, 0, bgp2, ac, xo, yo)
             } else {
-                gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+                // 波次五b(§2.10):min/max 约束在则走 gui_cfg3(FIT 语义)
+                var mmw: Str = gt_cls_prop(c, "max_w", "", t)
+                var mnw: Str = gt_cls_prop(c, "min_w", "", t)
+                var mmh: Str = gt_cls_prop(c, "max_h", "", t)
+                var mnh: Str = gt_cls_prop(c, "min_h", "", t)
+                if mmw != "" {
+                    // max_w 在:宽 GROW{min,max} 钳制;高按其自身约束
+                    var mn2: I32 = 0
+                    if mnw != "" {
+                        mn2 = gs2i(mnw)
+                    }
+                    var wmm: I32 = mn2 * 100000 + gs2i(mmw)
+                    var hmm2: I32 = 0
+                    var h3: I32 = hmode
+                    var hv3: I32 = hval
+                    if mmh != "" {
+                        var mn3: I32 = 0
+                        if mnh != "" {
+                            mn3 = gs2i(mnh)
+                        }
+                        hmm2 = mn3 * 100000 + gs2i(mmh)
+                        h3 = 3
+                        hv3 = 0
+                    } else {
+                        if mnh != "" {
+                            hmm2 = gs2i(mnh) * 100000 + 32000
+                            h3 = 4
+                            hv3 = 0
+                        }
+                    }
+                    gui_cfg3(dir, gap, pad, pad, 0, 0, 3, 0, h3, hv3, bgp2, wmm, hmm2)
+                } else {
+                    if mnh != "" {
+                        // 仅 min_h:高 FIT{min,∞} 托底
+                        var hv4: I32 = gs2i(mnh) * 100000 + 32000
+                        gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 4, 0, bgp2, 0, hv4)
+                    } else {
+                        if mmh != "" {
+                            // 仅 max_h:高 GROW{0,max} 钳制
+                            gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 3, 0, bgp2, 0, gs2i(mmh))
+                        } else {
+                            gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+                        }
+                    }
+                }
             }
             if tag == "each" {
                 // 按项展开:询问 bind 通道("each:列表名" → 逐项 push 标题),
@@ -3019,8 +3068,20 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                                 }
                             }
                         } else {
-                            if has_key {
-                                key(gui_evt_key())
+                            // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                            var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                            if hk >= 0 {
+                                var han: Str = ""
+                                var hi: I32 = 0
+                                while hi < hk {
+                                    han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                    hi += 1
+                                }
+                                act(han)
+                            } else {
+                                if has_key {
+                                    key(gui_evt_key())
+                                }
                             }
                         }
                     }
@@ -3125,8 +3186,20 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                 }
                             }
                         } else {
-                            if has_key {
-                                key(gui_evt_key())
+                            // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                            var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                            if hk >= 0 {
+                                var han: Str = ""
+                                var hi: I32 = 0
+                                while hi < hk {
+                                    han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                    hi += 1
+                                }
+                                act(han)
+                            } else {
+                                if has_key {
+                                    key(gui_evt_key())
+                                }
                             }
                         }
                     }
@@ -3278,6 +3351,79 @@ pub fn d_frames() -> I32 {
     return gui_frame_count()
 }
 
+// 快捷键注册(§2.11 应用侧):combo = "mod+s"/"ctrl+shift+k"/"alt+1";
+// mods 位 1=ctrl/cmd 2=shift 4=alt;action 直发 act
+pub fn gui_hotkey(combo: Str, action: Str) -> I32 {
+    var mods: I32 = 0
+    var key: I32 = 0
+    var part: Str = ""
+    var i: I32 = 0
+    while i <= combo.len {
+        if i == combo.len {
+            if byte_at(combo, combo.len - 1) == 43 {
+                part = part
+            } else {
+                if i > 0 {
+                    if byte_at(combo, i - 1) != 43 {
+                        // 末段=键位
+                        var kb: I32 = byte_at(combo, i - 1)
+                        if kb >= 97 {
+                            if kb <= 122 {
+                                kb = kb - 32
+                            }
+                        }
+                        key = kb
+                    }
+                }
+            }
+            // 收尾段处理(见下方统一逻辑的替代——此处仅处理单段组合)
+        }
+        i += 1
+    }
+    // 逐段扫描(+' 分隔;Ctron 无 split,字节态机)
+    mods = 0
+    key = 0
+    var j: I32 = 0
+    var seg: Str = ""
+    while j <= combo.len {
+        var ch: I32 = 43
+        if j < combo.len {
+            ch = byte_at(combo, j)
+        }
+        if ch == 43 || j == combo.len {
+            if seg == "mod" {
+                mods = mods + 1
+            }
+            if seg == "ctrl" {
+                mods = mods + 1
+            }
+            if seg == "shift" {
+                mods = mods + 2
+            }
+            if seg == "alt" {
+                mods = mods + 4
+            }
+            if seg.len == 1 {
+                var kb: I32 = byte_at(seg, 0)
+                if kb >= 97 {
+                    if kb <= 122 {
+                        kb = kb - 32
+                    }
+                }
+                key = kb
+            }
+            seg = ""
+        } else {
+            seg = seg + utf8_enc(ch)
+        }
+        j += 1
+    }
+    if key != 0 {
+        gui_hotkey_set(mods, key, action)
+    }
+    return 0
+}
+
 // headless 编辑管线注入口:注入→poll→焦点 input 编辑管线路由;消费返 0,未消费返原码
 // (与窗口循环同一管线;s33 键消费边界夹具依赖此语义)
 pub fn d_send_char(t: Box[Driver], ch: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
@@ -3311,6 +3457,18 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
                 act(oh)
             }
         }
+        return 0
+    }
+    // 快捷键表镜像(窗口循环同语义)
+    var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+    if hk >= 0 {
+        var han: Str = ""
+        var hi: I32 = 0
+        while hi < hk {
+            han = han + utf8_enc(gui_hotkey_action_byte(hi))
+            hi += 1
+        }
+        act(han)
         return 0
     }
     return gui_evt_key()

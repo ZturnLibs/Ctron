@@ -1,0 +1,9 @@
+view TickDemo {
+  <vbox class="root">
+    <input bind={draft} class="field" on:input={set_draft}/>
+    <label class="st">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style field { bg: "#22222e" fg: "#ffffff" size: 20 h: 36 }
+style st { fg: "#aaaaaa" size: 16 h: 26 }

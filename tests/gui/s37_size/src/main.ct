@@ -1,0 +1,84 @@
+// tests/gui/s37_size —— 波次五b T2:尺寸约束(§2.10)
+// max_w 钳制 grow(grow 288→80)/min_h 托底空容器(0→60)/无约束不受扰;
+// 读面 = 命令缓冲几何,按 bg 色寻址(x100/w100/h100 整数域)
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b,
+         d_cmd_w100, d_cmd_h100, theme_apply, theme_default}
+
+view SizeDemo {
+  <vbox class="root">
+    <vbox class="mx"/>
+    <vbox class="mh"/>
+    <vbox class="free"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style mx { bg: "#2f9e63" max_w: 80 h: 30 }
+style mh { bg: "#2563eb" min_h: 60 w: 50 }
+style free { bg: "#c83c3c" w: 40 h: 20 }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn noop() {
+}
+
+// 按 bg 色找 RECT 命令下标;-1 未现
+fn find_ca(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return i
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_noop(buf),
+        |name| noop(),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            // max_w 钳制:mx(grow 内容宽 288)钳至 80
+            var mi: I32 = find_ca(47, 158, 99)
+            if mi < 0 {
+                panic("s37: mx #2f9e63 未现")
+            }
+            if d_cmd_w100(mi) != 8000 {
+                panic("s37: max_w 80 未钳制 w100=" + d_cmd_w100(mi).to_string())
+            }
+            // min_h 托底:空容器 grow 高 0 托至 60
+            var hi: I32 = find_ca(37, 99, 235)
+            if hi < 0 {
+                panic("s37: mh #2563eb 未现")
+            }
+            if d_cmd_h100(hi) != 6000 {
+                panic("s37: min_h 60 未托底 h100=" + d_cmd_h100(hi).to_string())
+            }
+            // 无约束不受扰:free 40x20
+            var fi: I32 = find_ca(200, 60, 60)
+            if fi < 0 {
+                panic("s37: free #c83c3c 未现")
+            }
+            // 容器宽度存量口径 = grow(288);w 样式对容器不生效(zitie 同款事实)
+            if d_cmd_w100(fi) != 28800 {
+                panic("s37: 无约束 w 受扰 w100=" + d_cmd_w100(fi).to_string())
+            }
+            if d_cmd_h100(fi) != 2000 {
+                panic("s37: 无约束 h 受扰 h100=" + d_cmd_h100(fi).to_string())
+            }
+            println("S37-SIZE-GREEN")
+        })
+    return rc
+}
