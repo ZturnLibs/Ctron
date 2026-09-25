@@ -1,0 +1,35 @@
+// examples/gui_themes —— 主题陈列室:八主题键盘切换(1-8)+令牌色板+表单演示
+// 视觉验收载体(规格 §6):四态(dark/light+平台主题)轮巡;headless 断言换装折叠值
+view Gallery {
+  <vbox class="root">
+    <label class="title">Ctron 主题陈列室</label>
+    <label class="hint">按 1-8 切换主题</label>
+    <hbox class="swrow">
+      <vbox class="sw_base"/>
+      <vbox class="sw_surface"/>
+      <vbox class="sw_elev"/>
+      <vbox class="sw_accent"/>
+      <vbox class="sw_border"/>
+    </hbox>
+    <input bind={draft} class="field" on:input={set_draft}/>
+    <hbox class="btnrow">
+      <button class="btn" on:click={poke}>按钮</button>
+      <checkbox class="ck" checked={on} on:click={flip}/>
+    </hbox>
+    <label class="state">{theme}</label>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style title { fg: TEXT size: 24 font_weight: 700 h: 32 }
+style hint { fg: TEXT_MUTED size: 14 h: 22 }
+style swrow { direction: hbox gap: 8 h: 40 }
+style sw_base { bg: BG_BASE w: 40 h: 36 border_color: BORDER }
+style sw_surface { bg: SURFACE w: 40 h: 36 }
+style sw_elev { bg: ELEVATED w: 40 h: 36 }
+style sw_accent { bg: ACCENT w: 40 h: 36 }
+style sw_border { bg: BORDER w: 40 h: 36 }
+style field { bg: SURFACE fg: TEXT size: 16 h: 34 }
+style btnrow { direction: hbox gap: 8 h: 40 }
+style btn { bg: ACCENT fg: "#ffffff" w: 90 h: 34 }
+style ck { w: 26 h: 26 }
+style state { fg: TEXT_MUTED size: 14 h: 24 }

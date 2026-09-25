@@ -1,0 +1,150 @@
+// examples/gui_themes —— 主题陈列室(视觉验收载体,规格 §6)
+// 键 1-8 切换八主题(theme_apply 事件中换装,下帧全量折叠);headless 断言:
+// 切 light 后 BG_BASE 色板即换(换令牌=换全套实证);真窗 --run 手玩四态轮巡
+use gui.{run_kb_d, test, d_frame, d_press_key, d_click, d_expect_text,
+         d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b,
+         theme_apply, theme_auto_apply,
+         theme_dark, theme_light, theme_mac_dark, theme_mac_light,
+         theme_win_dark, theme_win_light, theme_linux_dark, theme_linux_light}
+
+struct Model {
+    var theme: Str
+    var draft: Str
+    var on: Bool
+}
+
+fn set_draft() {
+}
+fn poke() {
+}
+fn flip() {
+}
+
+// act v2 契约:fn(Str, List[Str])(实参表;本例事件无实参)
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "poke" {
+        m.on = !m.on
+    }
+    if name == "flip" {
+        m.on = !m.on
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "draft" {
+        buf.push(m.draft)
+    }
+    if buf[0] == "theme" {
+        buf.push(m.theme)
+    }
+    if buf[0] == "on" {
+        if m.on {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+}
+
+// 键 1-8 → 主题换装(app 侧注册表;theme id 与 gui.ct 八函数一一对应)
+fn apply_key(k: I32, m: Box[Model]) {
+    if k == 49 {
+        theme_apply(theme_dark())
+        m.theme = "dark"
+    }
+    if k == 50 {
+        theme_apply(theme_light())
+        m.theme = "light"
+    }
+    if k == 51 {
+        theme_apply(theme_mac_dark())
+        m.theme = "mac_dark"
+    }
+    if k == 52 {
+        theme_apply(theme_mac_light())
+        m.theme = "mac_light"
+    }
+    if k == 53 {
+        theme_apply(theme_win_dark())
+        m.theme = "win_dark"
+    }
+    if k == 54 {
+        theme_apply(theme_win_light())
+        m.theme = "win_light"
+    }
+    if k == 55 {
+        theme_apply(theme_linux_dark())
+        m.theme = "linux_dark"
+    }
+    if k == 56 {
+        theme_apply(theme_linux_light())
+        m.theme = "linux_light"
+    }
+}
+
+// BG_BASE 色板(第一个 sw_base 盒)读色
+fn base_at(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return 1
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    var m = Box[Model](Model { theme: "auto", draft: "", on: false })
+    if env_get("CTRON_GUI_HEADLESS") == "" {
+        theme_auto_apply()
+        var rc: I32 = run_kb_d("Ctron 主题陈列室", 320, 480,
+            |buf| bind_all(buf, m),
+            |name, args| act(name, args, m),
+            |k| apply_key(k, m))
+        return rc
+    }
+    var src: Str = read_file("app.ctml")
+    var rc: I32 = test(src, 320, 480,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| apply_key(k, m),
+        |t, a, k2| {
+            // 入口为平台自适应:键 1 切 dark 作为基线(覆盖切换路径)
+            d_frame(t, |buf| bind_all(buf, m))
+            k2(d_press_key(t, 49))
+            d_frame(t, |buf| bind_all(buf, m))
+            if base_at(24, 24, 32) != 1 {
+                panic("themes: dark BG_BASE #181820 未现")
+            }
+            // 键 2 → light:BG_BASE #f5f5f7(换令牌=换全套)
+            k2(d_press_key(t, 50))
+            d_frame(t, |buf| bind_all(buf, m))
+            if base_at(245, 245, 247) != 1 {
+                panic("themes: light BG_BASE #f5f5f7 未现")
+            }
+            d_expect_text(t, "light")
+            // 键 5 → win_dark:#202020
+            k2(d_press_key(t, 53))
+            d_frame(t, |buf| bind_all(buf, m))
+            if base_at(32, 32, 32) != 1 {
+                panic("themes: win_dark BG_BASE #202020 未现")
+            }
+            d_expect_text(t, "win_dark")
+            // 键 1 → 回 dark
+            k2(d_press_key(t, 49))
+            d_frame(t, |buf| bind_all(buf, m))
+            if base_at(24, 24, 32) != 1 {
+                panic("themes: 回 dark 未现")
+            }
+            println("THEMES-GREEN")
+        })
+    return rc
+}
