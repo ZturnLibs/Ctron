@@ -1,0 +1,42 @@
+// c0 —— 游标面:多值行/空白行跳过/CRLF 剥离/尾行无换行/EOF
+use std.ndjson.{ nd_next, nd_rc_line, nd_rc_eof }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    // 装载:value1\n\n  \n{"a":1}\r\nvalue2(尾行无换行;含一空白行与 CRLF 行)
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let src = "value1\n\n  \n\{\"a\":1}\r\nvalue2"
+    var i: I32 = 0
+    while i < src.len {
+        buf[i.as[I64]() ] = byte_at(src, i).as[I64]()
+        i += 1
+    }
+    let n = src.len.as[I64]()
+    // 行 1:value1
+    let r1 = nd_next(buf, n, 0)
+    if r1.rc != nd_rc_line() { return 1 }
+    if (r1.start != 0) || (r1.ln != 6) { return 2 }
+    // 行 2:{"a":1}(CRLF 剥离后 7 字节)
+    let r2 = nd_next(buf, n, r1.start + r1.ln)
+    if r2.rc != nd_rc_line() { return 3 }
+    if (r2.start != 11) || (r2.ln != 7) { return 4 }
+    // 行 3:value2(尾行)
+    let r3 = nd_next(buf, n, r2.start + r2.ln)
+    if r3.rc != nd_rc_line() { return 5 }
+    if r3.ln != 6 { return 6 }
+    // EOF
+    let r4 = nd_next(buf, n, r3.start + r3.ln)
+    if r4.rc != nd_rc_eof() { return 7 }
+    let r5 = nd_next(buf, n, n)
+    if r5.rc != nd_rc_eof() { return 8 }
+    return 0
+}
