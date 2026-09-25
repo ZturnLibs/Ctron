@@ -1,0 +1,95 @@
+// tests/rt_scopes —— P7-F /debug/scopes 确定性夹具(coro 臂):scope 下固定
+// spawn 序 t1..t4(g_all LIFO → 走链 idx0 = 最后 spawn),子任务停车于
+// Channel recv(parked),main join 全部(main 挂四条等待边)。断言:
+//   ①entries 数 = 5(main + 4 子)②wait 边 = 4 条且 waiter 全部同指
+//   (main 的 idx)③main idx = 0(最后 spawn 的是……非——main 非 spawn,
+//   其 idx 由布局定;此处只钉边结构与数量,绝对 idx 不钉)。
+// 快照时点 = join 前(子 parked、main running)——s 字段不钉(调度态非确定)。
+use net.{Net_probe}
+use net.bind.{ ctron_rt_scopes_json, ctron_net_sleep_ms }
+
+// 可印表(计数 needle 的引号由此取,免转义邻居冲突)
+fn tbl() -> Str {
+    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~"
+}
+
+fn count_sub(s: Str, key: Str) -> I64 {
+    let kl = key.len
+    var n: I64 = 0
+    var i: I32 = 0
+    while i + kl <= s.len {
+        var ok = true
+        var j: I32 = 0
+        while j < kl {
+            if byte_at(s, i + j) != byte_at(key, j) {
+                ok = false
+            }
+            j += 1
+        }
+        if ok {
+            n += 1
+        }
+        i += 1
+    }
+    return n
+}
+
+fn main() -> I32 {
+    if env_get("RT_SCOPES_SERIAL") == "1" {
+        println(ctron_rt_scopes_json())
+        return 0
+    }
+    var out = scope { |sc|
+        let (rel, relr) = Channel[I64](4)
+        var t1 = sc.spawn(|| {
+            var r1 = relr.recv().expect("r")
+            return r1
+        })
+        var t2 = sc.spawn(|| {
+            t1.join()
+            return 7
+        })
+        var t3 = sc.spawn(|| {
+            var r3 = relr.recv().expect("r")
+            return r3
+        })
+        var t4 = sc.spawn(|| {
+            var r4 = relr.recv().expect("r")
+            return r4
+        })
+        // 稳态化:sleep 80ms 后全树 parked(t1/t3/t4 停 recv;t2 停 join t1)
+        ctron_net_sleep_ms(80)
+        // —— 快照:entries=4;等待边恰一条 [2,3](t2 join t1;LIFO idx:0=t4,1=t3,2=t2,3=t1)
+        var js = ctron_rt_scopes_json()
+        println("SCOPE-JSON-LEN " + js.len.to_string())
+        println(js)
+        let q = byte_slice(tbl(), 2, 3)
+        let n_ent = count_sub(js, q + "i" + q + ":")
+        if n_ent != 4 {
+            println("FAIL entries=" + n_ent.to_string())
+            return 1
+        }
+        let n_park = count_sub(js, "parked")
+        if n_park != 4 {
+            println("FAIL parked=" + n_park.to_string())
+            return 2
+        }
+        if count_sub(js, "[2,3]") != 1 {
+            println("FAIL edge")
+            return 3
+        }
+        // 放行 + join 全体收口
+        rel.send(1).expect("s")
+        rel.send(3).expect("s")
+        rel.send(4).expect("s")
+        t1.join()
+        t2.join()
+        t3.join()
+        t4.join()
+        return 0
+    }
+    if out != 0 {
+        return 1
+    }
+    return 0
+}

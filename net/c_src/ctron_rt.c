@@ -1283,3 +1283,44 @@ int64_t ctron_rt_yield_bench(int rounds)
     t1 = now_ns();
     return (int64_t)(t1 - t0);                       /* rounds 次"配对"的总 ns */
 }
+
+/* ───────────────────────── P7-F /debug/scopes 快照 ─────────────────────────
+ * 形态:"[[entries],[wait_edges]]"——entries = [{i,s}](i = g_all 走链序,
+ * LIFO:最新 spawn 在 0;s = ready/running/desched/parked/done);wait_edges =
+ * [waiter_i, target_j](join 方向:waiter 挂在 target 的 jnext 链上)。
+ * rt 锁内走链快照(与 cancel_wake_all 同锁形);静态缓冲,串行调用方口径
+ * (serial 模式 g_all 空 → "[[],[]]")。 */
+const char *ctron_rt_scopes_json(void)
+{
+    static char buf[16384];
+    static const char *stname[] = { "", "ready", "running", "desched", "parked", "done" };
+    rt_coro *all[256];
+    rt_coro *c, *w;
+    int total = 0, i, j, n, first = 1;
+    rt_lock();
+    for (c = g_all; c && total < 256; c = c->allnext)
+        all[total++] = c;
+    n = snprintf(buf, sizeof buf, "[[");
+    for (i = 0; i < total; i++) {
+        int st = all[i]->state;
+        if (st < 1 || st > 5) st = 1;
+        n += snprintf(buf + n, sizeof buf - (size_t)n, "%s{\"i\":%d,\"s\":\"%s\"}",
+                      i ? "," : "", i, stname[st]);
+        if (n >= (int)sizeof buf - 2) { rt_unlock(); return buf; }
+    }
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "],[");
+    for (j = 0; j < total; j++) {
+        for (w = all[j]->jnext; w; w = w->jnext) {
+            for (i = 0; i < total; i++) {
+                if (all[i] == w) {
+                    n += snprintf(buf + n, sizeof buf - (size_t)n, "%s[%d,%d]",
+                                  first ? "" : ",", i, j);
+                    first = 0;
+                }
+            }
+        }
+    }
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "]]");
+    rt_unlock();
+    return buf;
+}

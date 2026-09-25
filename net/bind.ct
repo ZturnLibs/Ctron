@@ -49,3 +49,4 @@ pub extern "c" fn ctron_net_unix_listen(path: Str, out_fd: Box[Box64]) -> I64
 pub extern "c" fn ctron_net_unix_accept(lfd: I64, out_fd: Box[Box64]) -> I64
 pub extern "c" fn ctron_net_unix_connect(path: Str, out_fd: Box[Box64]) -> I64
 pub extern "c" fn ctron_net_unix_unlink(path: Str) -> I64
+pub extern "c" fn ctron_rt_scopes_json() -> Str
