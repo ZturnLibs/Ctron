@@ -119,6 +119,19 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - **令牌裸词**:style 值可直接写令牌名(`bg: ACCENT`),25 枚 = BG_BASE…DISABLED_BG
   + RADIUS_* + SIZE_* + SPACE_*;存储期折 @槽标记,折叠期 O(1) 读。
 
+## 浮层与模态(波次三,§2.3)
+
+- **`<overlay>` 浮层容器**:Clay floating attach ROOT(真全屏,不随父 padding)+
+  zIndex=1 + CAPTURE 吞穿透;样式 `align: center`(子元素居中,dialog 卡片)、
+  `x:`/`y:` 偏移(下拉锚定 v2);显隐走 when 通道;z 序=声明序。
+- **键盘模态**:末帧有 overlay 时键闭包挂起,Esc 由运行时消费转该 overlay 的
+  on:click(自锁修复=Esc 永可达);headless 语义镜像在 d_send_key/d_click_xy。
+- **命中语义**:rt_hit_name 后向最优先(绘制序顶层先中)——遮罩吃穿透、卡片不透;
+  位置点击断言口 = `d_click_xy`(d_click 按名绕过命中面,且只扫按钮表)。
+- **8 位色**:`#RRGGBBAA` 全面放行(C1 修订);6 位合法 alpha=FF;折叠经
+  gui_alpha 置位→gui_cfg 消费即复位;断言读面 d_cmd_bg_a。dialog 库级组件随
+  SL-8c-4(编译器白名单 overlay 登记缓行,embedded 形态俟其落库)。
+
 ## input 真文本框(波次二,§2.2)
 
 - **焦点模型**:单焦点;点击 input 得焦(光标置尾),点击其它失焦,Esc 失焦。
