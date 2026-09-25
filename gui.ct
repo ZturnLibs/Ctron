@@ -134,6 +134,11 @@ extern "c" fn gui_alpha(a: I32) -> Void
 extern "c" fn gui_cmd_bg_a(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_floating(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                           wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32,
+                           alignc: I32, xoff: I32, yoff: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -1170,15 +1175,23 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     if tag == "checkbox" {
         is_check = true
     }
+    var is_ov: Bool = false
+    if tag == "overlay" {
+        is_ov = true
+    }
     if !is_leaf {
         if !is_when {
             if !is_each {
                 if !is_input {
                     if !is_check {
-                        if tag != "vbox" {
-                            if tag != "hbox" {
-                                if tag != "spacer" {
-                                    panic("gui: 未知元素 " + tag)
+                        if !is_ov {
+                            if tag != "vbox" {
+                                if tag != "hbox" {
+                                    if tag != "spacer" {
+                                        if tag != "scroll" {
+                                            panic("gui: 未知元素 " + tag)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2529,7 +2542,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if bgv2 != "" {
                 bgp2 = g_parse_color(bgv2)
             }
-            gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+            if tag == "overlay" {
+                // 波次三(§2.3):浮层容器——Clay floating 全屏附着 zIndex=1;
+                // align: center → 子元素居中(dialog 卡片);x/y 偏移(下拉锚定 v2)
+                var ac: I32 = 0
+                var acv: Str = gt_cls_prop(c, "align", "", t)
+                if acv == "center" {
+                    ac = 1
+                }
+                var xo: I32 = gs2i(gt_cls_prop(c, "x", "0", t))
+                var yo: I32 = gs2i(gt_cls_prop(c, "y", "0", t))
+                gui_floating(dir, gap, pad, pad, 0, 0, 1, 0, 1, 0, bgp2, ac, xo, yo)
+            } else {
+                gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+            }
             if tag == "each" {
                 // 按项展开:询问 bind 通道("each:列表名" → 逐项 push 标题),
                 // 每项以 itemvar/item 绑定重放孩子子树
@@ -2579,8 +2605,9 @@ pub fn rt_collect_rects(cmds: I32, out: List[I32]) -> I32 {
 }
 
 pub fn rt_hit_name(t: GuiTree, hits: List[I32], hinst: List[I32], rects: List[I32], px: I32, py: I32) -> Str {
-    var j: I32 = 0
-    while j < rects.len {
+    // 波次三:后向最优先(绘制序顶层先中)——浮层遮罩吃穿透、卡片不透全靠绘制序
+    var j: I32 = rects.len - 1
+    while j >= 0 {
         var ci: I32 = rects[j]
         var px100: I32 = px * 100
         var py100: I32 = py * 100
@@ -2606,7 +2633,7 @@ pub fn rt_hit_name(t: GuiTree, hits: List[I32], hinst: List[I32], rects: List[I3
                 return ""
             }
         }
-        j += 1
+        j -= 1
     }
     return ""
 }

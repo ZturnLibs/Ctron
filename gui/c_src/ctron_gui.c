@@ -365,3 +365,36 @@ void gui_clip_sync(void) {
     const char *s = GetClipboardText();
     if (s) { gui_clip_set_c(s); }
 }
+
+// ---- 浮层容器(§2.3):Clay floating attach PARENT/zIndex=1/CAPTURE;全屏 grow;
+// alignc → childAlignment 居中(卡片作 overlay 子元素自动居中);x/y 偏移(下拉锚定用) ----
+int gui_floating(int dir, int gap, int padx, int pady, int ax, int ay,
+                 int wmode, int wval, int hmode, int hval, int bg_packed,
+                 int alignc, int xoff, int yoff) {
+    Clay_LayoutConfig lay = {
+        .layoutDirection = (dir == 0) ? CLAY_LEFT_TO_RIGHT : CLAY_TOP_TO_BOTTOM,
+        .padding = { .left = (uint16_t)padx, .right = (uint16_t)padx,
+                     .top = (uint16_t)pady, .bottom = (uint16_t)pady },
+        .childGap = (uint16_t)gap,
+    };
+    if (alignc) {
+        lay.childAlignment = (Clay_ChildAlignment){ CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER };
+    }
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    Clay_ElementDeclaration decl = { 0 };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
+                                         (float)((bg_packed >> 8) & 255),
+                                         (float)(bg_packed & 255),
+                                         (float)g_pending_alpha };
+    g_pending_alpha = 255;
+    decl.floating = (Clay_FloatingElementConfig){
+        .offset = { (float)xoff, (float)yoff },
+        .zIndex = 1,
+        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_CAPTURE,
+    };
+    Clay__ConfigureOpenElement(decl);
+    return 0;
+}
