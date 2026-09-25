@@ -1,0 +1,13 @@
+// gui expect: E8120 —— 8c-4④:on:input 豁免限 +1(声明 3 形参仍不匹配)
+struct Model {
+    var draft: Str
+}
+view V(m: Model) {
+  <vbox class="root">
+    <input bind={m.draft} class="fld" on:input={h(m)}/>
+  </vbox>
+}
+style root { direction: column }
+style fld { bg: "#2a2a2e" }
+fn h(mm: Model, text: Str, extra: I32) {
+}

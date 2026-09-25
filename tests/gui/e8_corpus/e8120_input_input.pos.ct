@@ -1,0 +1,15 @@
+// gui expect: OK —— 8c-4④:on:input 隐式尾参豁免正例
+// input 元素 on:input={h(m)} 花括号 1 实参 + 名通道全文尾参 = 声明 2 形参,
+// 签名门按 +1 豁免核对(键入持久化契约)
+struct Model {
+    var draft: Str
+}
+view V(m: Model) {
+  <vbox class="root">
+    <input bind={m.draft} class="fld" on:input={h(m)}/>
+  </vbox>
+}
+style root { direction: column }
+style fld { bg: "#2a2a2e" }
+fn h(mm: Model, text: Str) {
+}
