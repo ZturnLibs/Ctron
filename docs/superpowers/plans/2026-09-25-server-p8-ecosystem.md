@@ -69,8 +69,9 @@
 - Create: `tests/deploy/`(配方可复现的本地验收段:产物清单+启动探活;容器内跑通归 nightly 真靶段)
 
 **Steps:**
-- [ ] 部署文档+配方验收段
-- [ ] website 指南页 + 提交
+- [x] 部署文档+配方验收段(docs/deploy.md:产物/运行期表/scratch 配方/可观测三件/限制登记;本地验收=e2e 22/22 同源,容器内跑通归 nightly)
+- [x] website 指南页 + 提交(website/server-guide.md)
+- [x] 提交
 
 ### Task 6 (P8-F): 门禁收口 + P8 终审
 
