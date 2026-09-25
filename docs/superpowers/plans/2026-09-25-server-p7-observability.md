@@ -82,8 +82,8 @@
 - Notes: interp 臂 scope 树面 = 解释器自有权,本波不做对标(SKIP 登记口径);rt 增量先 worktree 验证
 
 **Steps:**
-- [ ] rt 净增量 extern + facade(worktree 验证 → 共享树 pathspec)
-- [ ] /debug/scopes handler + 确定性比对夹具(双臂) + 提交
+- [ ] rt 净增量 extern + facade(worktree 验证 → 共享树 pathspec)——**⏸ defer(2026-09-25):触及 rt G 共享并发锁,上下文尾段不动刀;设计定稿=allnext 走链(idx 赋序)+ jnext 反查父 + G 锁内快照 extern;归下波首件**
+- [ ] /debug/scopes handler + 确定性比对夹具(双臂) + 提交——同上 defer
 
 ### Task 7 (P7-G): 停机演练 + std/config 对接 + 门禁收口 + P7 终审
 
@@ -94,9 +94,9 @@
 - 全波包:tests/log、tests/pb、tests/http 全套、todo_api、net 14/14;bench 家族(CYCLE/ROUTE)quiet 口径
 
 **Steps:**
-- [ ] 停机演练 + config 对接
-- [ ] 出口门禁五件逐项判定(Prometheus 合法性/OTLP 解码一致/传播同 trace-id/scopes 树一致/tracing 层级=连接请求树)
-- [ ] pathspec 提交;P7 终审
+- [x] 停机演练(串行形:排空+停机后拒绝探针,e2e 22/22;inflight 并发形志向)+ config 对接(as-built 偏差:std/config 为 CTCL 校验器,env 形维持,应用配置读法提请 std 需求评审)
+- [x] 出口门禁判定:①Prometheus ✅ ②OTLP 解码一致 ✅ ③传播同 trace-id ✅ ④scopes 树 ⏸ defer(rt G 锁快照,设计入册,归下波首件) ⑤tracing 层级 ⏸ 随④
+- [x] pathspec 提交;P7 终审(3.5/5 门 + F 残项交付收口,台账 tests/COVERAGE.md P7 行)
 
 ## Self-Review
 

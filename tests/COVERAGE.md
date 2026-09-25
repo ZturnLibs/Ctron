@@ -322,6 +322,28 @@ client_fixtures_x_client_e2e + sse_ws_x_sse/ws_e2e ×双 RT = 6 件 —— 旧�
 = client/message 门面锚穿形,divergences 2026-09-24 节),归编译泳道修复;mw_chain
 E2020 已销(e96d5f6 直 use 改形)。
 
+### P7 行(可观测与运维,2026-09-24→25)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| P7-A | std/log 结构化 kv(级别码/阈值门/行构造三件纯面;值转义含 UTF-8 透传) | tests/log **9/9** 双臂(a63470e);T1 档零 use 纯模块,ts 与 IO 留消费方 |
+| P7-B | std/pb protobuf 线格式(varint 9 组正编/10 组负规范形/tag*8+wire/zigzag 分路/ld/fixed64 LE) | tests/pb **17/17** 双臂(c02e687+5fd6271);官方向量锚(150/testing/-2)+负例矩阵+往返 walk;**纯算术实现**(无位算符纪律,divergences 09-25) |
+| P7-C | W3C traceparent 提取/注入(http/frm/trace.ct 零 use) | tests/trace **7/7** 双臂(3dd6f1a);严格 55 字形+非法矩阵+请求提取;黄金向量字节精确 |
+| P7-D | Prometheus 文本 exposition(http/frm/metrics.ct 零状态写面)+ todo_api /metrics | tests/metrics **7/7** 双臂 + e2e **22/22**(f96995c);http_total{code} counter×10 + todo_served gauge;热路径调用方 lane 零分配 |
+| P7-E | OTLP/HTTP 导出(四层嵌套 ETSR 编码,fixed64 时间面)+ Collector 夹具解码比对 + traceparent 跨服务传播 | tests/otlp **4/4**(含 e2e)+ tests/trace **8/8**(含传播 e2e)(5fd6271+db2cde9);编码→真回环 POST→解码→tid 逐字节+name 双匹配;传播 A 提取→再注入→B 回显 trace-id 一致 |
+| P7-G | 优雅停机演练(串行形:排空退出+停机后新连接拒绝)+ 登记 | e2e **22/22**(含停机拒绝探针);inflight 并发形随 keep-alive/协程环志向演进 |
+
+**P7 出口门禁判定(2026-09-25)**:①todo_api 合法 Prometheus 文本 ✅;②OTLP 夹具解码
+比对一致 ✅;③traceparent 跨服务同 trace-id ✅;④/debug/scopes scope 树一致 ⏸ **defer**
+(需 rt G 锁内快照 extern,净增量设计已定稿入计划——allnext 走链+jnext 反查父;
+触及共享并发锁,不抢上下文尾段动刀,归下波首件);⑤tracing 层级=连接/请求树 ⏸
+随④(span 树导出同族)。**P7 按 3.5/5 门 + F 残项交付收口**。
+
+**P7 as-built 偏差与移交**:①std/config 实为 CTCL manifest 校验器,非应用运行时
+配置面——todo_api env 配置形维持,应用配置读法提请 std 需求评审;②发射符号饿死族
++ emit 主文件 20480B SIGKILL + `\|` 死旋(divergences 09-24/25 节)归编译泳道,
+OTLP e2e 的 http.client 路径以裸 socket 绕行;③OTLP 批量/JSON 形态列志向。
+
 ### P5 行(std/db 数据访问层,2026-09-21)
 
 | 波次 | 项 | 锚定 |

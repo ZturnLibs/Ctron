@@ -130,6 +130,8 @@ grep -q "200 OK" "$T/r13" && ok "停机指令 200" || bad "停机指令"
 sleep 0.5
 if ! kill -0 "$SRV" 2>/dev/null; then
     ok "服务排空退出"
+# 20.5) 停机后拒绝(P7-G 演练:排空退出后新连接必拒)
+if nc -z -w 2 127.0.0.1 "$PORT" 2>/dev/null; then bad "停机后端口应关闭"; else ok "停机后新连接拒绝"; fi
 else
     kill "$SRV" 2>/dev/null; bad "服务未退出"
 fi
