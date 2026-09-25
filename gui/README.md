@@ -119,6 +119,18 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - **令牌裸词**:style 值可直接写令牌名(`bg: ACCENT`),25 枚 = BG_BASE…DISABLED_BG
   + RADIUS_* + SIZE_* + SPACE_*;存储期折 @槽标记,折叠期 O(1) 读。
 
+## input 真文本框(波次二,§2.2)
+
+- **焦点模型**:单焦点;点击 input 得焦(光标置尾),点击其它失焦,Esc 失焦。
+- **编辑键**(焦点内运行时消费,不进 key 闭包):字符/Backspace/Delete(字节级,码点级
+  随 M3)/←→/Home/End/Enter=on:submit/Ctrl+V=粘贴(真窗自系统剪贴板同步)。
+- **on:input「名:载荷」**:`on:input={set_draft}` → `act("set_draft:" + 新文)`,
+  应用按首个冒号拆分;s33 为全链示范。on:submit 无载荷直发。
+- **值单一起源=模型**:bind 活问渲染;无 on:input 的 input 编辑不持久(下帧还原,
+  钉值非缺陷)。headless:`d_focus/d_blur/d_clip/d_mod` + `d_send_char/d_send_key`
+  (消费返 0,未消费返原码——键消费边界断言口)。
+- 已知限制:无选区(caret-only)/无 undo/超宽截断尾显/光标 `|` 字符形态常亮。
+
 ## 交互态(波次一,§2.1)
 
 - **态前缀属性(下划线形)**:`hover_bg / hover_fg / active_bg / active_fg /
