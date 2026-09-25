@@ -2428,6 +2428,67 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var fgp2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
             gui_text(txt, sz, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
+        if tag == "input" {
+            // 波次二(§2.2):真文本框——盒+值文本(bind 单一起源)+焦点光标(| 前缀
+            // 插入,caret 钳制 len=外部改文钉值)+placeholder 灰显(TEXT_MUTED 槽 6)
+            var ihm: I32 = 1
+            var ihv: I32 = 0
+            var ihs: Str = gt_cls_prop(c, "h", "", t)
+            if ihs != "" {
+                ihm = 2
+                ihv = gs2i(ihs)
+            }
+            var ibgp: I32 = 0
+            var ibgv: Str = gt_st_prop(c, "bg", "", t, st)
+            if ibgv != "" {
+                ibgp = g_parse_color(ibgv)
+            }
+            gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, ihm, ihv, ibgp)
+            var ival: Str = ""
+            if t.nbid[id] != "" {
+                if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
+                    ival = bxv_show(rt_bind_text(bind, t.nbid[id]))
+                } else {
+                    ival = bxv_show(bxv_eval(t, t.nbid[id], bind))
+                }
+            }
+            var ifoc: Bool = false
+            if gui_focus_node() == id {
+                ifoc = true
+            }
+            var ishow: Str = ival
+            var iph: Bool = false
+            if !ifoc {
+                if ival == "" {
+                    if t.npre[id] != "" {
+                        ishow = t.npre[id]
+                        iph = true
+                    }
+                }
+            } else {
+                var ic: I32 = gui_caret_get()
+                if ic > ival.len {
+                    ic = ival.len
+                }
+                if ic < 0 {
+                    ic = 0
+                }
+                ishow = byte_slice(ival, 0, ic) + "|" + byte_slice(ival, ic, ival.len)
+            }
+            if ishow != "" {
+                var isz: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
+                var ifg: I32 = 0
+                if iph {
+                    ifg = gui_theme_slot_get(6)
+                } else {
+                    var ifgs: Str = gt_st_prop(c, "fg", "#ffffff", t, st)
+                    ifg = g_parse_color(ifgs)
+                }
+                gui_text(ishow, isz, rt_col_r(ifg), rt_col_g(ifg), rt_col_b(ifg), 255)
+            }
+            hits.push(id)
+            hinst.push(inst)
+        } else {
             var dir: I32 = 1
             if tag == "hbox" {
                 dir = 0
@@ -2473,6 +2534,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ch = t.ns[ch]
                 }
             }
+        }
         }
         }
     }
@@ -2585,6 +2647,24 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
+            // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
+            var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if fnode >= 0 {
+                if t.ntag[fnode] == "input" {
+                    gui_focus_set(fnode)
+                    var fbv: Str = ""
+                    if t.nbid[fnode] != "" {
+                        if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
+                            fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
+                        }
+                    }
+                    gui_caret_set(fbv.len)
+                } else {
+                    gui_focus_set(-1)
+                }
+            } else {
+                gui_focus_set(-1)
+            }
             if name != "" {
                 // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
                 ev_fire(t, name, bind, act)
@@ -2647,6 +2727,24 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
+            // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
+            var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if fnode >= 0 {
+                if t.ntag[fnode] == "input" {
+                    gui_focus_set(fnode)
+                    var fbv: Str = ""
+                    if t.nbid[fnode] != "" {
+                        if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
+                            fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
+                        }
+                    }
+                    gui_caret_set(fbv.len)
+                } else {
+                    gui_focus_set(-1)
+                }
+            } else {
+                gui_focus_set(-1)
+            }
             if name != "" {
                 // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
                 ev_fire(t, name, bind, act)
