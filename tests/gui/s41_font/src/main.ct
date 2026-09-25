@@ -1,0 +1,64 @@
+// tests/gui/s41_font —— 波次五c:字体字重(§2.8;合成加粗,宽差断言跨平台安全)
+// 同文双 label weight 400/700 → TEXT 命令宽差(bold advance 增量 px/24*len);
+// len 相等(同文)+400 基线不受扰;须 FT 实测(本夹具不设 CTRON_GUI_FT_OFF)
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_w100, theme_apply, theme_default}
+
+view WDemo {
+  <vbox class="root">
+    <label class="reg">width</label>
+    <label class="bld">width</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style reg { fg: "#e6e6eb" size: 24 }
+style bld { fg: "#e6e6eb" size: 24 font_weight: 700 }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn noop() {
+}
+
+// 同 len 的两个 TEXT 命令宽读数(按出现序:0=400 首/1=700 次)
+fn text_w(ord: I32, want_len: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    var seen: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if d_cmd_text_len(i) == want_len {
+                if seen == ord {
+                    return d_cmd_w100(i)
+                }
+                seen += 1
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_noop(buf),
+        |name| noop(),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            var w4: I32 = text_w(0, 5)
+            var w7: I32 = text_w(1, 5)
+            if w4 < 0 {
+                panic("s41: 400 基线 label 未现")
+            }
+            if w7 < 0 {
+                panic("s41: 700 加粗 label 未现")
+            }
+            if w7 <= w4 {
+                panic("s41: 加粗应更宽 w400=" + w4.to_string() + " w700=" + w7.to_string())
+            }
+            println("S41-FONT-GREEN")
+        })
+    return rc
+}

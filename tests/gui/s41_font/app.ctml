@@ -1,0 +1,9 @@
+view WDemo {
+  <vbox class="root">
+    <label class="reg">width</label>
+    <label class="bld">width</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style reg { fg: "#e6e6eb" size: 24 }
+style bld { fg: "#e6e6eb" size: 24 font_weight: 700 }

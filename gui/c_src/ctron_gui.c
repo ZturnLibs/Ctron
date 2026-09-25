@@ -18,6 +18,17 @@ int g_pending_alpha = 255;
 // 图像纹理缓存(flush 专用;定义在文件尾,flush 分支前向声明)
 static Texture2D *gui_tex_cache_get(const char *path);
 
+// ft 缓存 weight 入口(ft_shim 定义;flush TEXT 分支前向声明)
+extern int gui_ft_text_wt(const char* s, int len, int px, int weight);
+
+// 字重当前值(§2.8):Clay 文本测量内联于 OpenTextElement 同步发生(每文本两次),
+// gui_text_w 先置值再开元素,测量回调直读——无序号算术
+int gui_text_w(const char *s, int size, int weight, int r, int g, int b, int a);
+static int g_current_weight = 400;
+static int *g_text_weights = NULL;
+static int g_text_weights_cap = 0;
+static int g_text_weights_n = 0;
+
 // ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput) ----
 // 容量 256:进程累计、不回卷——gui_calc headless 全场景 ~70 次注入,64 会静默丢尾。
 typedef struct { int type; int key; int x; int y; } GuiEvent;
@@ -84,12 +95,16 @@ extern int gui_ft_text_draw(int slot, int x, int y, int r, int g, int b, int a);
 // 字体缺失(ft_shim 侧 g_ft_failed)同样回启发式——无 CJK 字体环境行为与旧版一致
 static int gui_ft_off = -1;
 
+extern int gui_ft_measure_n_wt(const char* s, int len, int px, int weight);
+static int g_measure_ord = 0;
 static Clay_Dimensions ctron_measure(Clay_StringSlice text, Clay_TextElementConfig *cfg, void *ud) {
     (void)ud;
     if (gui_ft_off < 0) { gui_ft_off = getenv("CTRON_GUI_FT_OFF") ? 1 : 0; }
     float wf = -1.0f;
     if (!gui_ft_off) {
-        int wi = gui_ft_measure_n(text.chars, (int)text.length, (int)cfg->fontSize);
+        // 字重按序弹(产出序=布局遍历序;gui_begin_layout 复位)
+        int wt = g_current_weight;
+        int wi = gui_ft_measure_n_wt(text.chars, (int)text.length, (int)cfg->fontSize, wt);
         if (wi >= 0) { wf = (float)wi; }
     }
     if (wf < 0.0f) {
@@ -112,6 +127,8 @@ int gui_clay_init(int w, int h) {
 
 
 int gui_begin_layout(int w, int h) {
+    g_text_weights_n = 0;
+    g_current_weight = 400;    g_text_weights_n = 0;
     Clay_SetLayoutDimensions((Clay_Dimensions){ (float)w, (float)h });
     Clay_BeginLayout();
     return 0;
@@ -188,7 +205,22 @@ int gui_cfg2(int dir, int gap, int padx, int pady, int ax, int ay,
 }
 
 int gui_text(const char *s, int size, int r, int g, int b, int a) {
+    return gui_text_w(s, size, 400, r, g, b, a);
+}
+
+// 字重文本(§2.8):weight 进影子表(产出序),flush 按 TEXT 序号取回传 ft 缓存
+int gui_text_w(const char *s, int size, int weight, int r, int g, int b, int a) {
     if (gui_trace()) { fprintf(stderr, "T%03d text size=%d len=%zu head=%.24s\n", ++gui_trace_n, size, strlen(s), s); }
+    g_current_weight = weight;
+    if (g_text_weights_n >= g_text_weights_cap) {
+        int nc = g_text_weights_cap ? g_text_weights_cap * 2 : 64;
+        int *ni = (int *)realloc(g_text_weights, sizeof(int) * (size_t)nc);
+        if (ni) { g_text_weights = ni; g_text_weights_cap = nc; }
+    }
+    if (g_text_weights_n < g_text_weights_cap) {
+        g_text_weights[g_text_weights_n] = weight;
+    }
+    g_text_weights_n++;
     Clay_String str = { true, (int32_t)strlen(s), s };
     Clay_TextElementConfig cfg = {
         .textColor = { (float)r, (float)g, (float)b, (float)a },
@@ -235,6 +267,7 @@ void gui_alpha(int a) { g_pending_alpha = a; }
 
 // ---- 绘制 flush(§12.3d 唯一绘制口;窗口口径) ----
 void ctron_gui_flush(void) {
+    int text_ord = 0;
     for (int32_t i = 0; i < g_cmds.length; i++) {
         Clay_RenderCommand *c = Clay_RenderCommandArray_Get(&g_cmds, i);
         Clay_BoundingBox b = c->boundingBox;
@@ -263,7 +296,10 @@ void ctron_gui_flush(void) {
             case CLAY_RENDER_COMMAND_TYPE_TEXT: {
                 Clay_StringSlice s = c->renderData.text.stringContents;
                 Clay_Color col = c->renderData.text.textColor;
-                int slot = gui_ft_text(s.chars, (int)s.length, (int)c->renderData.text.fontSize);
+                int wt = 400;
+                if (text_ord < g_text_weights_n) { wt = g_text_weights[text_ord]; }
+                text_ord++;
+                int slot = gui_ft_text_wt(s.chars, (int)s.length, (int)c->renderData.text.fontSize, wt);
                 if (slot >= 0) {
                     gui_ft_text_draw(slot, (int)b.x, (int)b.y,
                                      (int)col.r, (int)col.g, (int)col.b, (int)col.a);

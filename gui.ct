@@ -174,6 +174,9 @@ extern "c" fn gui_cfg3(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I3
                        wminmax: I32, hminmax: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_text_w(s: Str, size: I32, weight: I32, r: I32, g: I32, b: I32, a: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -2493,7 +2496,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             }
         }
         var fgp: I32 = g_parse_color(fgs)
-        gui_text(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)),
+        var fw: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
+        gui_text_w(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)), fw,
                  rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
         if dis {
             hits.push(-1)
@@ -2540,7 +2544,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     2, gs2i(gt_cls_prop(c, "h", "28", t)), cbgp)
             if ck {
                 var cfp: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-                gui_text("x", gs2i(gt_cls_prop(c, "size", "18", t)),
+                gui_text_w("x", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
                          rt_col_r(cfp), rt_col_g(cfp), rt_col_b(cfp), 255)
             }
             hits.push(id)
@@ -2580,7 +2584,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 sz = 22
             }
             var fgp2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-            gui_text(txt, sz, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
+            var fw2: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
+            gui_text_w(txt, sz, fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
         if tag == "input" {
             // 波次二(§2.2):真文本框——盒+值文本(bind 单一起源)+焦点光标(| 前缀
@@ -2652,7 +2657,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     var ifgs: Str = gt_st_prop(c, "fg", "#ffffff", t, st)
                     ifg = g_parse_color(ifgs)
                 }
-                gui_text(ishow, isz, rt_col_r(ifg), rt_col_g(ifg), rt_col_b(ifg), 255)
+                var ifw: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
+                gui_text_w(ishow, isz, ifw, rt_col_r(ifg), rt_col_g(ifg), rt_col_b(ifg), 255)
             }
             hits.push(id)
             hinst.push(inst)

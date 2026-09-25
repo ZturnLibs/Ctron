@@ -6,6 +6,7 @@
 // 纹理注册表:ft_render → ft_tex_upload(id) → ft_tex_draw(id,x,y)
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_OUTLINE_H
 #include <raylib.h>
 #include <string.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@
 static FT_Library g_ft;
 static FT_Face g_face;
 static int g_ft_ready = 0;
+static int g_ft_px = 0;
 
 static unsigned char* g_buf = 0;
 static int g_bw = 0;
@@ -74,8 +76,11 @@ static unsigned long utf8_next_n(const unsigned char* s, int len, int* i) {
 }
 
 // 两遍渲染核心(测宽 → 画);定长口径,ft_render/缓存路径共用
-static int ft_render_n(const char* utf8, int len, int r, int g, int b) {
+// weight≥600 = 合成加粗(§2.8):outline Embolden + advance 增量 px/24(测宽轮同加,缓冲不溢)
+static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int weight) {
     if (!g_face) { return -1; }
+    int bold = (weight >= 600) ? 1 : 0;
+    int bdelta = bold ? (g_ft_px / 24 + 1) : 0;
     int asc = g_face->size->metrics.ascender >> 6;
     int hgt = (int)((g_face->size->metrics.height >> 6)) + 4;
     int i = 0;
@@ -84,7 +89,7 @@ static int ft_render_n(const char* utf8, int len, int r, int g, int b) {
         unsigned long cp = utf8_next_n((const unsigned char*)utf8, len, &i);
         if (cp == 0) { break; }
         if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) != 0) { continue; }
-        pen += (int)(g_face->glyph->advance.x >> 6);
+        pen += (int)(g_face->glyph->advance.x >> 6) + bdelta;
     }
     g_bw = pen + 8;
     g_bh = hgt;
@@ -97,6 +102,7 @@ static int ft_render_n(const char* utf8, int len, int r, int g, int b) {
         if (cp == 0) { break; }
         if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_RENDER) != 0) { continue; }
         FT_GlyphSlot sl = g_face->glyph;
+        if (bold) { FT_Outline_Embolden(&sl->outline, (FT_Pos)(g_ft_px / 16 + 1)); }
         int bx = pen + sl->bitmap_left;
         int by = asc - sl->bitmap_top;
         int bw = (int)sl->bitmap.width;
@@ -112,9 +118,13 @@ static int ft_render_n(const char* utf8, int len, int r, int g, int b) {
                 if (a > q[3]) { q[3] = a; }
             }
         }
-        pen += (int)(sl->advance.x >> 6);
+        pen += (int)(sl->advance.x >> 6) + bdelta;
     }
     return 0;
+}
+
+static int ft_render_n(const char* utf8, int len, int r, int g, int b) {
+    return ft_render_n_w(utf8, len, r, g, b, 400);
 }
 
 int ft_render(const char* utf8, int r, int g, int b) {
@@ -137,7 +147,6 @@ int ft_probe_nonzero(void) {
 // 白色 RGBA 入缓存,颜色在 gui_ft_text_draw 用 tint 上色——缓存键 = (串,px)。
 // 启发式回退(CTRON_GUI_FT_OFF=1 / 无字体)在 ctron_gui.c 的 ctron_measure 侧,本文件不读 env。
 static int g_ft_failed = 0;
-static int g_ft_px = 0;
 
 // 懒加载 + 按需换字号(face 全局单例,测量/渲染/直绘共享,入口各自先设 px)
 static int ft_ensure(int px) {
@@ -153,18 +162,22 @@ static int ft_ensure(int px) {
     return 0;
 }
 
-// 实测宽:与 ft_render_n 同一迭代(FT_Load_Char),保证测量==渲染 advance 完全一致
-static int ft_measure_n(const char* s, int len, int px) {
+// 实测宽:与 ft_render_n_w 同一迭代+同 bold 增量,保证测量==渲染完全一致
+static int ft_measure_n_w(const char* s, int len, int px, int weight) {
     if (ft_ensure(px) != 0) { return -1; }
+    int bdelta = (weight >= 600) ? (g_ft_px / 24 + 1) : 0;
     int w = 0;
     int i = 0;
     while (i < len) {
         unsigned long cp = utf8_next_n((const unsigned char*)s, len, &i);
         if (cp == 0) { break; }
         if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) != 0) { continue; }
-        w += (int)(g_face->glyph->advance.x >> 6);
+        w += (int)(g_face->glyph->advance.x >> 6) + bdelta;
     }
     return w;
+}
+static int ft_measure_n(const char* s, int len, int px) {
+    return ft_measure_n_w(s, len, px, 400);
 }
 int gui_ft_measure(const char* s, int px) {
     return ft_measure_n(s, (int)strlen(s), px);
@@ -172,12 +185,16 @@ int gui_ft_measure(const char* s, int px) {
 int gui_ft_measure_n(const char* s, int len, int px) {
     return ft_measure_n(s, len, px);
 }
+int gui_ft_measure_n_wt(const char* s, int len, int px, int weight) {
+    return ft_measure_n_w(s, len, px, weight);
+}
 
 #define FT_TEXT_CACHE 64
 typedef struct {
     char* str;
     int len;
     int px;
+    int weight;
     unsigned char* buf;
     int w;
     int h;
@@ -190,17 +207,18 @@ static int g_tc_n = 0;
 static long g_tc_clock = 0;
 
 // 缓存查找/渲染,返回槽位;miss 时白色渲染进 g_buf(探针可读)后拷入槽位
-int gui_ft_text(const char* s, int len, int px) {
+// 缓存键 = (串,px,weight) 三元(§2.8);wt 后缀避让 gui_ft_text_w(slot) 旧槽宽读面
+int gui_ft_text_wt(const char* s, int len, int px, int weight) {
     if (ft_ensure(px) != 0) { return -1; }
     g_tc_clock++;
     for (int i = 0; i < g_tc_n; i++) {
-        if (g_tc[i].px == px && g_tc[i].len == len &&
+        if (g_tc[i].px == px && g_tc[i].weight == weight && g_tc[i].len == len &&
             memcmp(g_tc[i].str, s, (size_t)len) == 0) {
             g_tc[i].use = g_tc_clock;
             return i;
         }
     }
-    if (ft_render_n(s, len, 255, 255, 255) != 0) { return -1; }
+    if (ft_render_n_w(s, len, 255, 255, 255, weight) != 0) { return -1; }
     int slot;
     if (g_tc_n < FT_TEXT_CACHE) {
         slot = g_tc_n++;
@@ -216,6 +234,7 @@ int gui_ft_text(const char* s, int len, int px) {
     FtText* e = &g_tc[slot];
     e->len = len;
     e->px = px;
+    e->weight = weight;
     e->str = (char*)malloc((size_t)len);
     memcpy(e->str, s, (size_t)len);
     e->w = g_bw;
@@ -227,6 +246,11 @@ int gui_ft_text(const char* s, int len, int px) {
     return slot;
 }
 
+int gui_ft_text(const char* s, int len, int px) {
+    return gui_ft_text_wt(s, len, px, 400);
+}
+
+// 槽宽读面(s28 夹具消费)
 int gui_ft_text_w(int slot) {
     if (slot < 0 || slot >= g_tc_n) { return -1; }
     return g_tc[slot].w;
