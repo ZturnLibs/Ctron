@@ -71,6 +71,12 @@ gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包字
 当前 prop: 前缀协议为其替身)。8c-2/8c-3 已落(09-24)。
 **地基已落(06c1142)**:props 段级类型门+构型字段表(stns/sfk/stv)——合成器
 的槽表达式类型化依据就绪;段级门语料 2 件。
+**① 已落(ce6ee6d)**:ViewCall 文法面(NParg 命名实参+sem 组件核对)。
+**② 已落(1463bca,完成 0ea0513 WIP)**:文本注入式 desugar 双口径端到端
+(合成面/直驱面/真窗面三层;s41_run_d);根因修复=出参节点经 List[Str]
+通道的静态型谎言(字符串索引码对 list 指针即崩),全 Str 名单+删 locate。
+**余 ③钩子退役(rt_run 族降内部)+④Todo 照抄验收**——②的合成 fn 已可被
+④的 test() 直驱复用;业务契约=业务 fn 取 Box。
 **执行序建议(下一专项会话)**:①ViewCall 文法面——`TodoApp(model: make())`
 命名实参形态(今日为解析错,放开向后兼容;p_post Args 环节 NParg 尾槽,
 sem_calls 认 GuiBlock 视图名校验 props 必填 E8100/未知 prop E8110,语料先行);
