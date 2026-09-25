@@ -469,15 +469,16 @@ fn ex_ty(e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str]) -> Str {
     return ""
 }
 
-// SL-8c-4:视图查询——名 → props 形参串(d[5]);found[0] = 是否本文件视图
-fn gui_view_props(file: List[Str], nm: Str, found: List[Bool]) -> Str {
+// SL-8c-4:视图查询——名 → props 形参串(d[5]);found[0] = "1" 即本文件视图
+// (List[Bool] 槽位赋值 trans 面既有缺口,旗面取 List[Str] 绕行)
+fn gui_view_props(file: List[Str], nm: Str, found: List[Str]) -> Str {
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
         if d[0] == "GuiBlock" {
             if d[1] == "view" {
                 if d[2] == nm {
-                    found[0] = true
+                    found[0] = "1"
                     if d.len > 5 {
                         return d[5]
                     }
@@ -500,10 +501,10 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         // SL-8c-4:ViewCall 组件实例化——被调为本文件 view 即走组件核对:
         // 实参须命名形态(E8110)/未知 prop(E8110)/重复 prop(E8110)/
         // 必填缺失(E8100,v10 裁决);值表达式照常走查。运行时面归装配合成片。
-        var vfound = List[Bool]()
-        vfound.push(false)
+        var vfound = List[Str]()
+        vfound.push("0")
         var vprops: Str = gui_view_props(file, rt, vfound)
-        if vfound[0] {
+        if vfound[0] == "1" {
             var dn = List[Str]()
             var dt = List[Str]()
             gui_props_typed(vprops, dn, dt)
