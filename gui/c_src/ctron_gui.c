@@ -15,6 +15,9 @@ static Clay_RenderCommandArray g_cmds = { 0 };
 // 8 位色 alpha 通道(§7):gui_alpha 置位 → 下一次 gui_cfg 消费即复位 255(单线程折叠序)
 int g_pending_alpha = 255;
 
+// 图像纹理缓存(flush 专用;定义在文件尾,flush 分支前向声明)
+static Texture2D *gui_tex_cache_get(const char *path);
+
 // ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput) ----
 // 容量 256:进程累计、不回卷——gui_calc headless 全场景 ~70 次注入,64 会静默丢尾。
 typedef struct { int type; int key; int x; int y; } GuiEvent;
@@ -245,12 +248,15 @@ void ctron_gui_flush(void) {
                 break;
             }
             case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
-                Texture2D *tex = (Texture2D *)c->renderData.image.imageData;
-                if (tex != NULL && tex->id != 0) {
-                    Rectangle src = { 0, 0, (float)tex->width, (float)tex->height };
-                    DrawTexturePro(*tex, src,
-                        (Rectangle){ b.x, b.y, b.width, b.height },
-                        (Vector2){ 0, 0 }, 0.0f, WHITE);
+                const char *ipath = (const char *)c->renderData.image.imageData;
+                if (ipath != NULL) {
+                    Texture2D *tex = gui_tex_cache_get(ipath);
+                    if (tex != NULL && tex->id != 0) {
+                        Rectangle srcrect = { 0, 0, (float)tex->width, (float)tex->height };
+                        DrawTexturePro(*tex, srcrect,
+                            (Rectangle){ b.x, b.y, b.width, b.height },
+                            (Vector2){ 0, 0 }, 0.0f, WHITE);
+                    }
                 }
                 break;
             }
@@ -410,14 +416,14 @@ int gui_floating(int dir, int gap, int padx, int pady, int ax, int ay,
     return 0;
 }
 
-// ---- 图像/纹理管线(§2.6):路径键 LRU 16 槽;Clay IMAGE 命令 imageData 透传 Texture2D;
-// 失败槽 tex.id==0 → 不设 image 配置(纯底色框即占位,规格口径不崩) ----
+// ---- 图像/纹理管线(§2.6):命令面只透传路径指针(树内 npre,跨帧稳定);
+// LoadTexture 延迟到 flush(真窗独占路径)——headless 无 GL 上下文,加载即崩(实证);
+// LRU 16 槽缓存供 flush 复用;缺失路径 → 无 image 配置的底色占位框(fopen 判存在) ----
 typedef struct { char path[256]; Texture2D tex; unsigned long long last; } GuiTexSlot;
 static GuiTexSlot g_tex[16];
 static unsigned long long g_tex_clock = 0;
 
-int gui_image_open(const char *path) {
-    if (path == NULL) { return -1; }
+static Texture2D *gui_tex_cache_get(const char *path) {
     g_tex_clock++;
     int oldest = 0;
     for (int i = 0; i < 16; i++) {
@@ -425,55 +431,49 @@ int gui_image_open(const char *path) {
         if (g_tex[i].last < g_tex[oldest].last) { oldest = i; }
         if (strncmp(g_tex[i].path, path, 255) == 0) {
             g_tex[i].last = g_tex_clock;
-            return i;
+            return &g_tex[i].tex;
         }
     }
     Texture2D t = LoadTexture(path);
-    if (t.id == 0) {
-        return -1;
-    }
+    if (t.id == 0) { return NULL; }
     int slot = oldest;
     if (g_tex[slot].tex.id != 0) { UnloadTexture(g_tex[slot].tex); }
     g_tex[slot].tex = t;
     strncpy(g_tex[slot].path, path, 255);
     g_tex[slot].path[255] = 0;
     g_tex[slot].last = g_tex_clock;
-    return slot;
+    return &g_tex[slot].tex;
 }
 
-int gui_image_dims(int handle) {
-    if (handle < 0 || handle >= 16) { return 0; }
-    return g_tex[handle].tex.width * 10000 + g_tex[handle].tex.height;
-}
-
-int gui_image_cfg(int handle, int wmode, int wval, int hmode, int hval) {
+int gui_image_cfg(const char *path, int wmode, int wval, int hmode, int hval) {
     float wf = (float)wval;
     float hf = (float)hval;
+    int exists = 0;
+    if (path != NULL) {
+        FILE *f = fopen(path, "rb");
+        if (f) { exists = 1; fclose(f); }
+    }
     Clay_LayoutConfig lay = { 0 };
     if (wmode == 1) {
         lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
     } else if (wmode == 2) {
         lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { wf, wf } }, .type = CLAY__SIZING_TYPE_FIXED };
     } else {
-        int dw = 100;
-        if (handle >= 0 && handle < 16) { dw = g_tex[handle].tex.width; }
-        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)dw, (float)dw } }, .type = CLAY__SIZING_TYPE_FIXED };
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { 100, 100 } }, .type = CLAY__SIZING_TYPE_FIXED };
     }
     if (hmode == 1) {
         lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
     } else if (hmode == 2) {
         lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { hf, hf } }, .type = CLAY__SIZING_TYPE_FIXED };
     } else {
-        int dh = 100;
-        if (handle >= 0 && handle < 16) { dh = g_tex[handle].tex.height; }
-        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)dh, (float)dh } }, .type = CLAY__SIZING_TYPE_FIXED };
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { 100, 100 } }, .type = CLAY__SIZING_TYPE_FIXED };
     }
     Clay_ElementDeclaration decl = { 0 };
     decl.layout = lay;
     decl.backgroundColor = (Clay_Color){ 34, 34, 46, 255 };
-    if (handle >= 0 && handle < 16) {
-        decl.image = (Clay_ImageElementConfig){ .imageData = &g_tex[handle].tex };
+    if (exists) {
+        decl.image = (Clay_ImageElementConfig){ .imageData = (void *)path };
     }
     Clay__ConfigureOpenElement(decl);
-    return 0;
+    return exists ? 0 : -1;
 }

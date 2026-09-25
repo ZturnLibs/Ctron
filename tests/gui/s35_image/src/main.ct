@@ -1,0 +1,129 @@
+// tests/gui/s35_image —— 波次五a T2:图像管线(§2.6)
+// 加载(type=3 IMAGE 命令)→w/h 样式拉伸几何→缺失 src 占位框(无 type3,不崩)→
+// 双 frame 缓存命中(同句柄句法,trace 口径=第二次 open 不再 LoadTexture)
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_x100, d_cmd_y100, d_cmd_w100, d_cmd_h100, theme_apply, theme_default}
+
+view PicDemo {
+  <vbox class="root">
+    <image src="test.png" class="pic"/>
+    <image src="test.png" class="big"/>
+    <image src="missing.png" class="ph"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style pic { w: 40 h: 30 }
+style big { w: 64 h: 64 }
+style ph { w: 20 h: 20 bg: "#3a3a44" }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn noop() {
+}
+
+// 统计 IMAGE 命令(type=3);opt 模式:2=按几何找拉伸盒
+fn count_img() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    var c: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 3 {
+            c += 1
+        }
+        i += 1
+    }
+    return c
+}
+
+fn find_img_at(x: I32, y: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 3 {
+            if d_cmd_x100(i) == x {
+                if d_cmd_y100(i) == y {
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn find_rect_at(x: I32, y: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_x100(i) == x {
+                if d_cmd_y100(i) == y {
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_noop(buf),
+        |name| noop(),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            var nc: I32 = count_img()
+            if nc != 2 {
+                panic("s35: IMAGE 命令应 2 得 " + nc.to_string())
+            }
+            var px: I32 = 16 * 100
+            var py: I32 = 16 * 100
+            if find_img_at(px, py) != 1 {
+                panic("s35: pic 未在 (16,16)")
+            }
+            var bx: I32 = 16 * 100
+            var by: I32 = (16 + 30 + 8) * 100
+            if find_img_at(bx, by) != 1 {
+                panic("s35: big 未在 (16,54)")
+            }
+            var n2: I32 = d_cmd_count()
+            var i2: I32 = 0
+            var saw40: I32 = 0
+            var saw64: I32 = 0
+            while i2 < n2 {
+                if d_cmd_type(i2) == 3 {
+                    if d_cmd_w100(i2) == 4000 {
+                        saw40 = 1
+                    }
+                    if d_cmd_w100(i2) == 6400 {
+                        saw64 = 1
+                    }
+                }
+                i2 += 1
+            }
+            if saw40 != 1 {
+                panic("s35: pic 未拉伸至 40 宽")
+            }
+            if saw64 != 1 {
+                panic("s35: big 未拉伸至 64 宽")
+            }
+            var fx: I32 = 16 * 100
+            var fy: I32 = (16 + 30 + 8 + 64 + 8) * 100
+            if find_img_at(fx, fy) == 1 {
+                panic("s35: 缺失 src 不应产 IMAGE 命令")
+            }
+            if find_rect_at(fx, fy) != 1 {
+                panic("s35: 缺失 src 占位框未现")
+            }
+            d_frame(t, |buf| bind_noop(buf))
+            if count_img() != 2 {
+                panic("s35: 第二帧 IMAGE 命令数变")
+            }
+            println("S35-IMAGE-GREEN")
+        })
+    return rc
+}

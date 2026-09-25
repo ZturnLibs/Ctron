@@ -1,0 +1,11 @@
+view PicDemo {
+  <vbox class="root">
+    <image src="test.png" class="pic"/>
+    <image src="test.png" class="big"/>
+    <image src="missing.png" class="ph"/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style pic { w: 40 h: 30 }
+style big { w: 64 h: 64 }
+style ph { w: 20 h: 20 bg: "#3a3a44" }

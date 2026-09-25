@@ -139,6 +139,9 @@ extern "c" fn gui_floating(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay
                            alignc: I32, xoff: I32, yoff: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_image_cfg(path: Str, wmode: I32, wval: I32, hmode: I32, hval: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -1064,6 +1067,10 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             if an == "placeholder" {
                 strs.push(av)
             }
+            if an == "src" {
+                // 波次五a:image 源路径(与 placeholder 同 strs 槽位;各自元素取用)
+                strs.push(av)
+            }
         }
     }
     return out
@@ -1181,17 +1188,23 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     if tag == "overlay" {
         is_ov = true
     }
+    var is_img: Bool = false
+    if tag == "image" {
+        is_img = true
+    }
     if !is_leaf {
         if !is_when {
             if !is_each {
                 if !is_input {
                     if !is_check {
-                        if !is_ov {
-                            if tag != "vbox" {
-                                if tag != "hbox" {
-                                    if tag != "spacer" {
-                                        if tag != "scroll" {
-                                            panic("gui: 未知元素 " + tag)
+                        if !is_img {
+                            if !is_ov {
+                                if tag != "vbox" {
+                                    if tag != "hbox" {
+                                        if tag != "spacer" {
+                                            if tag != "scroll" {
+                                                panic("gui: 未知元素 " + tag)
+                                            }
                                         }
                                     }
                                 }
@@ -1243,6 +1256,26 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
         t.ncls.push(c)
         t.npre.push(ph)
         t.nbid.push(bn)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push("")
+        return id
+    }
+    if is_img {
+        // 自闭合:<image src="路径" class ... />(§2.6);src → npre
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        var sn: Str = ""
+        if strs.len > sstart {
+            sn = strs[strs.len - 1]
+        }
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(sn)
+        t.nbid.push("")
         t.npost.push("")
         t.nfc.push(-1)
         t.ns.push(-1)
@@ -2523,6 +2556,32 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             hits.push(id)
             hinst.push(inst)
         } else {
+        if tag == "image" {
+            // 波次五a(§2.6):图像——src 路径透传(LoadTexture 延迟 flush,headless
+            // 无 GL 不可加载);w/h 样式,缺省 100x100;缺失路径 → 底色占位框(不崩)
+            var iwm: I32 = 0
+            var iwv: I32 = 0
+            var iwsv: Str = gt_cls_prop(c, "w", "", t)
+            if iwsv != "" {
+                iwm = 2
+                iwv = gs2i(iwsv)
+            }
+            var ihm2: I32 = 0
+            var ihv2: I32 = 0
+            var ihsv: Str = gt_cls_prop(c, "h", "", t)
+            if ihsv != "" {
+                ihm2 = 2
+                ihv2 = gs2i(ihsv)
+            }
+            var iok: I32 = gui_image_cfg(t.npre[id], iwm, iwv, ihm2, ihv2)
+            if iok == 0 {
+                hits.push(id)
+                hinst.push(inst)
+            } else {
+                hits.push(-1)
+                hinst.push(-1)
+            }
+        } else {
             var dir: I32 = 1
             if tag == "hbox" {
                 dir = 0
@@ -2591,6 +2650,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ch = t.ns[ch]
                 }
             }
+        }
         }
         }
         }
