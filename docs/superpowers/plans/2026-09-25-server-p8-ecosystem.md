@@ -25,8 +25,8 @@
 - Create: `tests/connect/`(夹具服务=本地 Ctron server 模拟 Connect 端点回显 protobuf;客户端互调断言:请求帧字节/响应解码/错误路径;双臂)
 
 **Steps:**
-- [ ] connect.ct 客户端面 + 夹具服务互调 e2e
-- [ ] 双臂 + 提交
+- [x] connect.ct 客户端面 + 夹具服务互调 e2e(4/4 含双轮 e2e;a9a5878)
+- [x] 双臂 + 提交
 
 ### Task 2 (P8-B): S3 兼容客户端(SigV4)
 
@@ -36,8 +36,8 @@
 - Notes: 签名链全算术(hmac_sha256 输出 List[I32] → hex);时间 = std/time iso→basic 格式换算
 
 **Steps:**
-- [ ] SigV4 签名链 + 请求装配 + 语料(RFC 向量锚)
-- [ ] 夹具服务往返 + nightly minio 段 + 提交
+- [x] SigV4 签名链 + 语料(python 独立实现黄金向量钉值;5/5;d858343;scope 关键字撞名实证入册)
+- [ ] 夹具服务往返 + nightly minio 段(待续:PUT/GET/DELETE 经 http.client + mock 校验服务)
 
 ### Task 3 (P8-C): NDJSON/流式 JSON
 
