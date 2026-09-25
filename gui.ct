@@ -2820,6 +2820,22 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, k
     return false
 }
 
+// 键盘模态检出(§2.3):末帧 hits 扫描取最后声明的 overlay(绘制序顶层);无则 -1
+fn rt_top_overlay(t: GuiTree, hits: List[I32]) -> I32 {
+    var found: I32 = -1
+    var j: I32 = 0
+    while j < hits.len {
+        var node: I32 = hits[j]
+        if node >= 0 {
+            if t.ntag[node] == "overlay" {
+                found = node
+            }
+        }
+        j += 1
+    }
+    return found
+}
+
 fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                   bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
                   key: fn(I32) -> Void, has_key: Bool) -> I32 {
@@ -2873,8 +2889,20 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                     // 波次二:焦点 input 编辑键优先(消费边界=不进 key 闭包,s33 锁)
                     var ik: Bool = rt_input_key(t, bind, act, gui_evt_key())
                     if !ik {
-                        if has_key {
-                            key(gui_evt_key())
+                        // 波次三:键盘模态——末帧有 overlay:Esc 转其 on:click(自锁
+                        // 修复=Esc 永可达),余键吞,键闭包挂起
+                        var ov: I32 = rt_top_overlay(t, hits)
+                        if ov >= 0 {
+                            if gui_evt_key() == 256 {
+                                var oh: Str = rt_in_handler(t, ov, "click")
+                                if oh != "" {
+                                    act(oh)
+                                }
+                            }
+                        } else {
+                            if has_key {
+                                key(gui_evt_key())
+                            }
                         }
                     }
                 }
@@ -2967,8 +2995,20 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     // 波次二:焦点 input 编辑键优先(消费边界=不进 key 闭包,s33 锁)
                     var ik: Bool = rt_input_key(t, bind, act, gui_evt_key())
                     if !ik {
-                        if has_key {
-                            key(gui_evt_key())
+                        // 波次三:键盘模态——末帧有 overlay:Esc 转其 on:click(自锁
+                        // 修复=Esc 永可达),余键吞,键闭包挂起
+                        var ov: I32 = rt_top_overlay(t, hits)
+                        if ov >= 0 {
+                            if gui_evt_key() == 256 {
+                                var oh: Str = rt_in_handler(t, ov, "click")
+                                if oh != "" {
+                                    act(oh)
+                                }
+                            }
+                        } else {
+                            if has_key {
+                                key(gui_evt_key())
+                            }
                         }
                     }
                 }
