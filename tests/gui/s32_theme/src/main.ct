@@ -41,7 +41,7 @@ fn main() -> I32 {
     var src: Str = ctron_embedded()
     var rc: I32 = test(src, 320, 200,
         |buf| bind_noop(buf),
-        |name| noop(),
+        |name, args| noop(),
         |k| k,
         |t, a, k2| {
             // dark 基准

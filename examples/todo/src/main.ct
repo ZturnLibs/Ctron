@@ -91,7 +91,7 @@ fn main() -> I32 {
         // headless:域包 test() 驱动,断言走命令缓冲(键入/回显/添加/列表/空态/删除)
         var rc: I32 = test(src, 320, 640,
             |buf| bind_all(buf, m),
-            |name| act(name, m),
+            |name, args| act(name, m),
             |k| on_key(k, m),
             |t, a, key| {
                 d_frame(t, |buf| bind_all(buf, m))
@@ -127,7 +127,7 @@ fn main() -> I32 {
     // 窗口口径:run_kb(键入钩子 + 点击分发,域包事件循环)
     run_kb(src, "ctron todo", 320, 640,
         |buf| bind_all(buf, m),
-        |name| act(name, m),
+        |name, args| act(name, m),
         |k| on_key(k, m))
     println("todo: 窗口退出,todos = " + m.todos.len.to_string())
     return 0

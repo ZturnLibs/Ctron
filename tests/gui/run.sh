@@ -9,7 +9,7 @@ pass=0
 fail=0
 failed=""
 
-for s in s1_smoke s2_ab s3_clay s4_events s5_golden s6_demo s7_window s8_cjk s9_window_cjk e8_corpus w2_fold w4_interp s10_when s11_each s12_input s13_item w4_hotreload w4_ctml_reload s14_bidi s15_bidi_ct s16_measure s17_bidi_layout s18_scroll s19_input_d s20_embed s21_frame_golden s23_sk_native s24_model_d s25_expr_d s26_reload_d s27_checkbox_d s28_hitreg_d s28_ft_flush s29_ev_expr_d s30_props_d s31_state s32_theme s33_focus s34_overlay s35_image; do
+for s in s1_smoke s2_ab s3_clay s4_events s5_golden s6_demo s7_window s8_cjk s9_window_cjk e8_corpus w2_fold w4_interp s10_when s11_each s12_input s13_item w4_hotreload w4_ctml_reload s14_bidi s15_bidi_ct s16_measure s17_bidi_layout s18_scroll s19_input_d s20_embed s21_frame_golden s23_sk_native s24_model_d s25_expr_d s26_reload_d s27_checkbox_d s28_hitreg_d s28_ft_flush s29_ev_expr_d s30_props_d s31_state s32_theme s33_focus s34_overlay s35_image s40_ev_args_d; do
     if sh "$DIR/$s/run.sh" > /tmp/gui_ladder_$s.log 2>&1; then
         echo "  [ok] $s"
         pass=$((pass + 1))

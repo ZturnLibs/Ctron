@@ -122,14 +122,14 @@ fn main() -> I32 {
     var m = Box[Model](Model { open: false, state: "" })
     var rc: I32 = test(src, 320, 240,
         |buf| bind_all(buf, m),
-        |name| act(name, m),
+        |name, args| act(name, m),
         |k| on_key(k, m),
         |t, act, key| {
             // 初态:未开
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_absent(t, "confirm?")
             // 开:遮罩 8 位色 alpha=0x99=153;卡片居中
-            act(d_click(t, "open"))
+            act(d_click(t, "open"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "confirm?")
             var ma: I32 = mask_alpha()
@@ -167,7 +167,7 @@ fn main() -> I32 {
             d_expect_text(t, "closed")
             d_expect_absent(t, "confirm?")
             // 重开:键盘模态——Esc 转 close(自锁修复);余键吞
-            act(d_click(t, "open"))
+            act(d_click(t, "open"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             var esk: I32 = d_send_key(t, 256,
                 |buf| bind_all(buf, m),
@@ -178,7 +178,7 @@ fn main() -> I32 {
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_absent(t, "confirm?")
             // 再开:任意键吞(键闭包挂起)
-            act(d_click(t, "open"))
+            act(d_click(t, "open"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             var sw: I32 = d_send_key(t, 65,
                 |buf| bind_all(buf, m),
@@ -187,7 +187,7 @@ fn main() -> I32 {
                 panic("s34: 模态期键未吞")
             }
             // 关闭后键回落 key 闭包
-            act(d_click(t, "open"))
+            act(d_click(t, "open"), List[Str]())
             // 遮罩关:on:click 挂在 overlay(容器)上,d_click 按名只扫按钮表,
             // 位置点击走真实命中面
             d_click_xy(t, 15, 15,

@@ -189,7 +189,7 @@ fn main() -> I32 {
         // headless:域包 test() 驱动;断言 = 逐字字节 + 大字号实测 + 命令数 + 翻页
         var rc: I32 = test(src, 640, 640,
             |buf| bind_all(buf, m),
-            |name| act(name, m),
+            |name, args| act(name, m),
             |k| on_key(k, m),
             |t, a, key| {
                 d_frame(t, |buf| bind_all(buf, m))
@@ -264,7 +264,7 @@ fn main() -> I32 {
     // 窗口口径:run_kb(键入钩子 + 点击分发,域包事件循环)
     run_kb(src, "ctron 字帖", 640, 640,
         |buf| bind_all(buf, m),
-        |name| act(name, m),
+        |name, args| act(name, m),
         |k| on_key(k, m))
     println("gui_zitie: 窗口退出")
     return 0

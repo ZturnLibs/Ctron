@@ -1798,6 +1798,12 @@ fn bxv_istag(v: Str) -> Bool {
         if v.len == 2 {
             return false
         }
+        if byte_at(v, 2) == 45 {
+            j = 3
+            if v.len == 3 {
+                return false
+            }
+        }
         while j < v.len {
             var b: I32 = byte_at(v, j)
             if b < 48 || b > 57 {
@@ -2240,7 +2246,9 @@ fn ev_paren_end(e: Str, open: I32) -> I32 {
 
 // 实参受限求值:顶层逗号切分,逐段 bxv(路径经 bind 通道回答;值现弃——
 // 副作用经被调 fn 落地,E8190 豁免面的运行时对偶)
-fn ev_eval_args(t: GuiTree, args: Str, bind: fn(List[Str]) -> Void) -> Void {
+// 实参受限求值:顶层逗号切分,逐段 bxv 求值后按序推入 out(打标串,8b 约定;
+// 路径经 bind 通道回答)——SL-8c-4a 值不再弃,随 act 第二参交应用侧解码(ev_arg_*)
+fn ev_eval_args(t: GuiTree, args: Str, bind: fn(List[Str]) -> Void, out: List[Str]) -> Void {
     var i: I32 = 0
     var start: I32 = 0
     var depth: I32 = 0
@@ -2267,7 +2275,7 @@ fn ev_eval_args(t: GuiTree, args: Str, bind: fn(List[Str]) -> Void) -> Void {
                     } else {
                         if c == 44 {
                             if depth == 0 {
-                                bxv_eval(t, byte_slice(args, start, i), bind)
+                                out.push(bxv_eval(t, byte_slice(args, start, i), bind))
                                 start = i + 1
                             }
                         }
@@ -2279,13 +2287,14 @@ fn ev_eval_args(t: GuiTree, args: Str, bind: fn(List[Str]) -> Void) -> Void {
     }
     var last: Str = byte_slice(args, start, args.len)
     if last != "" {
-        bxv_eval(t, last, bind)
+        out.push(bxv_eval(t, last, bind))
     }
 }
 
-// 事件触发统一入口:单标识符直发;调用形态求实参后按头分发。
+// 事件触发统一入口:单标识符直发(空实参表);调用形态求实参后按头分发,
+// 实参表(打标串)随名交 act(SL-8c-4a 值传播;8c-4b auto-act 以此契约为目标)。
 // 触发期形态非法 = panic 带表达式原文(编译期形态门 E8110 的运行时 belt)。
-pub fn ev_fire(t: GuiTree, expr: Str, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> Void {
+pub fn ev_fire(t: GuiTree, expr: Str, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> Void {
     var e: Str = expr
     var suf: Str = ""
     // 尾 ":数字" 实例后缀剥离(仅 ':' 领衔才认——纯数字表达式不误剥)
@@ -2307,24 +2316,70 @@ pub fn ev_fire(t: GuiTree, expr: Str, bind: fn(List[Str]) -> Void, act: fn(Str) 
         }
     }
     if gt_slot_simple(e) {
-        act(e + suf)
+        act(e + suf, List[Str]())
     } else {
         var head: Str = ev_head(e)
         if head.len == 0 {
             panic("gui 事件表达式形态非法: " + expr)
         } else {
+            var args = List[Str]()
             var hl: I32 = head.len
             if hl < e.len {
                 if byte_at(e, hl) == 40 {
                     var close: I32 = ev_paren_end(e, hl)
                     if close < e.len {
-                        ev_eval_args(t, byte_slice(e, hl + 1, close), bind)
+                        ev_eval_args(t, byte_slice(e, hl + 1, close), bind, args)
                     }
                 }
             }
-            act(head + suf)
+            act(head + suf, args)
         }
     }
+}
+
+// ==================== SL-8c-4a:事件实参解码器 ====================
+// 打标串(8b 约定)→ 应用侧取回:ev_arg_s 解标展示形 / ev_arg_i 整 /
+// ev_arg_b 布 / ev_arg_len 实参个数。越界回零值(宽容契约,s40 锁定);
+// 裸串按字面宽容解码(gs2i 前导数字口径同样式值)。
+pub fn ev_arg_len(args: List[Str]) -> I32 {
+    return args.len
+}
+
+pub fn ev_arg_s(args: List[Str], i: I32) -> Str {
+    if i < 0 {
+        return ""
+    }
+    if i >= args.len {
+        return ""
+    }
+    return bxv_show(args[i])
+}
+
+pub fn ev_arg_i(args: List[Str], i: I32) -> I32 {
+    if i < 0 {
+        return 0
+    }
+    if i >= args.len {
+        return 0
+    }
+    var v: Str = args[i]
+    if bxv_istag(v) {
+        if byte_at(v, 0) == 105 {
+            return bxv_iv(v)
+        }
+        return 0
+    }
+    return gs2i(v)
+}
+
+pub fn ev_arg_b(args: List[Str], i: I32) -> Bool {
+    if i < 0 {
+        return false
+    }
+    if i >= args.len {
+        return false
+    }
+    return gt_ck_truth(args[i])
 }
 
 // 交互态属性取值(§2.1):st 1=hover 2=active 3=disabled;态前缀属性定义则覆盖,
@@ -2822,16 +2877,16 @@ fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
 }
 
 // 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
-fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str) -> Void) -> I32 {
+fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
     var h: Str = rt_in_handler(t, node, evname)
     if h != "" {
-        act(h + ":" + payload)
+        act(h + ":" + payload, List[Str]())
     }
     return 0
 }
 
 // 字符输入:焦点 input 插入码点(utf8_enc)并 fire on:input;非焦点返回 false 回落
-fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, ch: I32) -> Bool {
+fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, ch: I32) -> Bool {
     var fn0: I32 = gui_focus_node()
     if fn0 < 0 {
         return false
@@ -2856,7 +2911,7 @@ fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, 
 
 // 编辑键:退格/删除(字节级,沿 s12 口径;码点级随 M3)/←→/Home/End/Enter=submit/
 // Esc=失焦/Ctrl+V=粘贴;结构编辑后 fire on:input。未消费返回 false 回落 key 闭包
-fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, k: I32) -> Bool {
+fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, k: I32) -> Bool {
     var fn0: I32 = gui_focus_node()
     if fn0 < 0 {
         return false
@@ -2915,7 +2970,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, k
     if k == 257 {
         var sh: Str = rt_in_handler(t, fn0, "submit")
         if sh != "" {
-            act(sh)
+            act(sh, List[Str]())
         }
         return true
     }
@@ -2956,7 +3011,7 @@ fn rt_top_overlay(t: GuiTree, hits: List[I32]) -> I32 {
 }
 
 fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
-                  bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                  bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                   key: fn(I32) -> Void, has_key: Bool) -> I32 {
     var rects = List[I32]()
     var hits = List[I32]()
@@ -3015,7 +3070,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                             if gui_evt_key() == 256 {
                                 var oh: Str = rt_in_handler(t, ov, "click")
                                 if oh != "" {
-                                    act(oh)
+                                    act(oh, List[Str]())
                                 }
                             }
                         } else {
@@ -3041,7 +3096,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
 // 带热重载的循环(R2/W4-E3 收编):每 60 帧比对 CTML 内容,变更即原址重解析
 // (骨架/几何刷新,rects 重收集;用户闭包与状态不动)
 fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I32,
-                    bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                    bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                     key: fn(I32) -> Void, has_key: Bool) -> I32 {
     var rects = List[I32]()
     var hits = List[I32]()
@@ -3121,7 +3176,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                             if gui_evt_key() == 256 {
                                 var oh: Str = rt_in_handler(t, ov, "click")
                                 if oh != "" {
-                                    act(oh)
+                                    act(oh, List[Str]())
                                 }
                             }
                         } else {
@@ -3145,24 +3200,24 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
 }
 
 pub fn rt_run(t: GuiTree, title: Str, w: I32, h: I32,
-              bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     return rt_window_loop(t, title, w, h, bind, act, rt_nokey, false)
 }
 
 pub fn rt_run_kb(t: GuiTree, title: Str, w: I32, h: I32,
-                 bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                 bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                  key: fn(I32) -> Void) -> I32 {
     return rt_window_loop(t, title, w, h, bind, act, key, true)
 }
 
 // d 变体:热重载路径固定 "app.ctml"(默认锚)
 pub fn rt_run_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
-                bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+                bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     return rt_window_loop_d(t, src, "app.ctml", title, w, h, bind, act, rt_nokey, false)
 }
 
 pub fn rt_run_kb_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
-                   bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                   bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                    key: fn(I32) -> Void) -> I32 {
     return rt_window_loop_d(t, src, "app.ctml", title, w, h, bind, act, key, true)
 }
@@ -3280,7 +3335,7 @@ pub fn d_frames() -> I32 {
 
 // headless 编辑管线注入口:注入→poll→焦点 input 编辑管线路由;消费返 0,未消费返原码
 // (与窗口循环同一管线;s33 键消费边界夹具依赖此语义)
-pub fn d_send_char(t: Box[Driver], ch: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+pub fn d_send_char(t: Box[Driver], ch: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     gui_inject_char(ch)
     var evt: I32 = gui_poll_event()
     if evt != 3 {
@@ -3293,7 +3348,7 @@ pub fn d_send_char(t: Box[Driver], ch: I32, bind: fn(List[Str]) -> Void, act: fn
     return k
 }
 
-pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     gui_inject_key(k)
     var evt: I32 = gui_poll_event()
     if evt != 1 {
@@ -3308,7 +3363,7 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
         if gui_evt_key() == 256 {
             var oh: Str = rt_in_handler(t.t, ov, "click")
             if oh != "" {
-                act(oh)
+                act(oh, List[Str]())
             }
         }
         return 0
@@ -3318,7 +3373,7 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
 
 // 位置点击(headless):注入 xy 点击→真实命中路径(后向最优先)+焦点转移+ev_fire
 // ——遮罩吃穿透/卡片不透等位置语义的唯一断言口(d_click 按名绕过命中面)
-pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     gui_inject_click(x, y)
     var evt: I32 = gui_poll_event()
     if evt != 2 {
@@ -3455,9 +3510,9 @@ pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
 }
 
 pub fn test(src: Str, w: I32, h: I32,
-            bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+            bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
             key: fn(I32) -> Void,
-            script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+            script: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void) -> I32 {
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     gui_clay_init(w, h)
@@ -3471,9 +3526,9 @@ pub fn test(src: Str, w: I32, h: I32,
 // SL-7β2:骨架直通测试入口——树已由编译期解析(gui_sk_load)给出,不再经
 // gt_parse;其余口径与 test 完全一致(d_* 驱动断言族全可用)
 pub fn test_sk(t: GuiTree, w: I32, h: I32,
-               bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+               bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                key: fn(I32) -> Void,
-               script: fn(Box[Driver], fn(Str) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+               script: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void) -> I32 {
     theme_auto_apply()
     gui_clay_init(w, h)
     var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
@@ -3484,14 +3539,14 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
 }
 
 pub fn run(src: Str, title: Str, w: I32, h: I32,
-           bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+           bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     return rt_run(t, title, w, h, bind, act)
 }
 
 pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
-              bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
               key: fn(I32) -> Void) -> I32 {
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
@@ -3500,7 +3555,7 @@ pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
 
 // d 变体:默认锚 "app.ctml" + 热重载环(60 帧内容比对,变更原址重解析)
 pub fn run_d(title: Str, w: I32, h: I32,
-             bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+             bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
     // 独立二进制零 CWD 依赖)
     var src: Str = read_file("app.ctml")
@@ -3513,7 +3568,7 @@ pub fn run_d(title: Str, w: I32, h: I32,
 }
 
 pub fn run_kb_d(title: Str, w: I32, h: I32,
-                bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
+                bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                 key: fn(I32) -> Void) -> I32 {
     var src: Str = read_file("app.ctml")
     if src == "" {

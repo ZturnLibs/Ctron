@@ -1,0 +1,106 @@
+// tests/gui/s40_ev_args_d —— SL-8c-4a:on: 事件实参值传播域包夹具(act v2 契约)
+// 蓝本 sl8c-design.md §4 值流传面(8c-3 落「求值后弃」,本片收「求值后传出」)。覆盖:
+// - 值传播主判据:ev_fire 驱动 {addn(5)} → ev_arg_i 回 5 → 模型 +5
+//   (未实现时 act 收空表 → ev_arg_i 越界回 0 → count 恒 0,红在此)
+// - 多实参按位次序:{setadj(3, -1)} → a=3, b=-1 位独立(count + a*10 + b)
+// - 约定(本片实证裁决):事件实参 = 事件局部数据;模型经闭包传递不入实参表
+//   ——props 根在实参位经 bind 通道求值为空串(bind 只答路径槽,不答根对象)
+// - 解码器契约自检:i:/b:/裸串三形 + 越界回零值
+// - 旧契约零破坏:单标识符 {addn} 直发空实参不崩、d_click 按头路由不受累
+// 号段注记:s31-s35 = 组件库波次一,s36/s37/s38 = w5b 预留,s39 = 组件×each。
+use gui.{test, d_click, d_frame, d_expect_text, ev_fire, ev_arg_i, ev_arg_s, ev_arg_b, ev_arg_len}
+
+view ArgsApp(m: Model) {
+  <vbox class="root">
+    <label class="title">S40 EVARGS</label>
+    <label class="count">{m.count}</label>
+    <button class="btn" on:click={addn(5)}>ADD5</button>
+    <button class="btn" on:click={setadj(3, -1)}>ADJ</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style count { fg: "#22c55e" size: 32 h: 44 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
+
+struct Model {
+    var count: I32
+}
+
+// E8120 签名门声明:形参个数 = 事件实参个数(实参不含模型——模型经闭包)
+fn addn(n: I32) {
+}
+fn setadj(a: I32, b: I32) {
+}
+
+// 真逻辑(变异提具名 fn = 计算器在册配方;模型 Box 经闭包穿透)
+fn addn_impl(m: Box[Model], n: I32) {
+    m.count = m.count + n
+}
+fn setadj_impl(m: Box[Model], a: I32, b: I32) {
+    m.count = m.count + a * 10 + b
+}
+
+// act v2:名字 + 实参表(打标串)→ 按头路由,实参解码后转交处理函数
+fn act_args(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "addn" {
+        addn_impl(m, ev_arg_i(args, 0))
+    } else {
+        if name == "setadj" {
+            setadj_impl(m, ev_arg_i(args, 0), ev_arg_i(args, 1))
+        }
+    }
+}
+
+// bind 通道:props 路径应答(带型 i: 前缀,8b 约定)
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "m.count" {
+        buf.push("i:" + m.count.to_string())
+    }
+}
+
+// 解码器契约自检(提具名 fn,闭包体单调用配方)
+fn check_decoders() {
+    var xs = List[Str]()
+    xs.push("i:42")
+    xs.push("b:1")
+    xs.push("hello")
+    if ev_arg_i(xs, 0) != 42 { panic("s40: ev_arg_i 带型解码异常") }
+    if ev_arg_i(xs, 9) != 0 { panic("s40: ev_arg_i 越界未回零") }
+    if !ev_arg_b(xs, 1) { panic("s40: ev_arg_b 带型解码异常") }
+    if ev_arg_s(xs, 2) != "hello" { panic("s40: ev_arg_s 裸串解码异常") }
+    if ev_arg_len(xs) != 3 { panic("s40: ev_arg_len 异常") }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](Model { count: 0 })
+    var rc: I32 = test(src, 320, 640,
+        |buf| bind_all(buf, m),
+        |name, args| act_args(name, args, m),
+        |k| { },
+        |t, act, key| {
+            check_decoders()
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "S40 EVARGS")
+            d_expect_text(t, "0")
+            // d_click 按头路由(ev_fn 头 "addn" ↔ {addn(5)});headless 下
+            // act 由脚本直调,空实参 = 宽容契约(count 不动)
+            act(d_click(t, "addn"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "0")
+            // 值传播主判据:ev_fire = 真实窗口 rt_window_loop 同路径,
+            // 实参求值后随名到达 act → 解码回值 → 模型变更
+            ev_fire(t.t, "addn(5)", |buf| bind_all(buf, m), act)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "5")
+            ev_fire(t.t, "setadj(3, -1)", |buf| bind_all(buf, m), act)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "34")
+            // 旧契约零破坏:单标识符直发空实参
+            ev_fire(t.t, "addn", |buf| bind_all(buf, m), act)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "34")
+        })
+    return rc
+}

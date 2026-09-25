@@ -104,7 +104,7 @@ fn main() -> I32 {
     var m = Box[Model](Model { draft: "", todos: List[Str]() })
     var rc: I32 = test(src, 320, 640,
         |buf| bind_all(buf, m),
-        |name| act(name, m),
+        |name, args| act(name, m),
         |k| on_key(k, m),
         |t, a, key| {
             // 帧 1:空态断言

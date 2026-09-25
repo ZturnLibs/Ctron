@@ -78,7 +78,7 @@ fn main() -> I32 {
     var m = Box[Model](Model { draft: "", state: "" })
     var rc: I32 = test(src, 320, 240,
         |buf| bind_all(buf, m),
-        |name| act(name, m),
+        |name, args| act(name, m),
         |k| on_key(k, m),
         |t, act, key| {
             // 初态:placeholder 灰显

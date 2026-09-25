@@ -75,7 +75,7 @@ fn act_ev(name: Str, m: Box[Model]) {
     }
 }
 
-fn run_script(t: Box[Driver], act: fn(Str) -> Void, m: Box[Model], p: Box[Probe]) {
+fn run_script(t: Box[Driver], act: fn(Str, List[Str]) -> Void, m: Box[Model], p: Box[Probe]) {
     d_frame(t, |buf| bind_all(buf, m, p))
     d_expect_text(t, "S30 PROPS")
     // 求值切换:简单槽 {m.count} 走求值器,带型 i: 应答解标上屏
@@ -84,7 +84,7 @@ fn run_script(t: Box[Driver], act: fn(Str) -> Void, m: Box[Model], p: Box[Probe]
     d_expect_text(t, "extra-ok")
     d_expect_absent(t, "ON AIR")
     // 表达式事件(8c-3 面,props 实参)
-    act(d_click(t, "inc"))
+    act(d_click(t, "inc"), List[Str]())
     d_frame(t, |buf| bind_all(buf, m, p))
     d_expect_text(t, "1")
     var dump: Str = ""
@@ -120,7 +120,7 @@ fn main() -> I32 {
     var src: Str = ctron_embedded()
     var rc: I32 = test(src, 320, 480,
         |buf| bind_all(buf, m, p),
-        |name| act_ev(name, m),
+        |name, args| act_ev(name, m),
         |k| { },
         |t, act, key| {
             run_script(t, act, m, p)
@@ -134,7 +134,7 @@ fn main() -> I32 {
     var t2: GuiTree = gui_sk_load()
     var rc2: I32 = test_sk(t2, 320, 480,
         |buf| bind_all(buf, m2, p2),
-        |name| act_ev(name, m2),
+        |name, args| act_ev(name, m2),
         |k| { },
         |t, act, key| {
             run_script(t, act, m2, p2)
