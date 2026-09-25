@@ -1,0 +1,54 @@
+// tests/otlp/send.ct —— OTLP 发送端(P7-E e2e;裸 socket POST 形:
+// http.client 发射债在册,net 门面直连绕行)
+use net.{Net_probe, net_tcp_connect, net_write_str, net_write, net_read_t, net_close}
+use http.frm.otlp.{ otlp_span_request_f }
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn dstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var n = v
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    return out
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("OTLP_PORT")), 8431)
+    var buf: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var scr: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let n = otlp_span_request_f(buf, 512, scr, 512, env_get("OTLP_TID"), env_get("OTLP_SID"), "", env_get("OTLP_NAME"), 1000, 2000)
+    if n < 40 {
+        println("SEND-FAIL encode")
+        return 1
+    }
+    let fd_box = Box[Box64](Box64 { v: 0 })
+    if net_tcp_connect(net, "127.0.0.1", port, fd_box) != 0 {
+        println("SEND-FAIL connect")
+        return 1
+    }
+    let fd = fd_box.v
+    let req = "POST /v1/traces HTTP/1.1\r\nHost: t\r\ncontent-type: application/x-protobuf\r\ncontent-length: " + dstr(n) + "\r\nConnection: close\r\n\r\n"
+    net_write_str(net, fd, req)
+    net_write(net, fd, buf, n)
+    var rbuf: I64[1024] = [0, 0, 0, 0]
+    let r = net_read_t(net, fd, rbuf, 1024, 5000)
+    net_close(net, fd)
+    if r < 12 {
+        println("SEND-FAIL short resp")
+        return 1
+    }
+    // 状态行 "HTTP/1.1 200" → rbuf[9..12) = '2','0','0'
+    if (rbuf[9] != 50) || (rbuf[10] != 48) || (rbuf[11] != 48) {
+        println("SEND-FAIL status")
+        return 1
+    }
+    println("SEND-OK")
+    return 0
+}

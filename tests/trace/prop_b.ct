@@ -1,0 +1,79 @@
+// tests/trace/prop_b.ct —— 传播夹具下游服务(P7-E):回显收到的 traceparent 值
+// 串行 accept 环;GET /echo → 200 体 "tp=<value>"(值经可印表 Str 化)。
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close}
+use std.strconv.{ parse_i64, sc_get_l }
+
+// lane 可印段 → Str(hex 恒可印)
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if (c >= 32) && (c < 127) {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
+        }
+        i += 1
+    }
+    return out
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("PROP_B_PORT")), 8442)
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        return 2
+    }
+    println("prop-b ready")
+    var served: I64 = 0
+    while served < 4 {
+        let afd = Box[Box64](Box64 { v: 0 })
+        if net_tcp_accept(net, lfd.v, afd) != 0 {
+            break
+        }
+        let fd = afd.v
+        var buf: I64[2048] = [0, 0, 0, 0]
+        let r = net_read_t(net, fd, buf, 2048, 5000)
+        // traceparent 值:行首锚 "traceparent: " 后至 \r
+        let needle = "traceparent: "
+        var vs: I64 = 0 - 1
+        var i: I64 = 0
+        while (i + 13 < r) && (vs < 0) {
+            if (i == 0) || (buf[i - 1] == 10) {
+                var ok = true
+                var j: I32 = 0
+                while j < 13 {
+                    if byte_at(needle, j) != buf[i + j.as[I64]()].as[I32]() {
+                        ok = false
+                    }
+                    j += 1
+                }
+                if ok {
+                    vs = i + 13
+                }
+            }
+            i += 1
+        }
+        var vstr = "none"
+        if vs >= 0 {
+            var ve = vs
+            while (ve < r) && (buf[ve] != 13) {
+                ve += 1
+            }
+            vstr = lane_str(buf, vs, ve)
+        }
+        let body = "tp=" + vstr
+        let resp = "HTTP/1.1 200 OK\r\nContent-Length: " + body.len.to_string() + "\r\nConnection: close\r\n\r\n" + body
+        // 响应写(两次:头 lane 一致形——直接 Str 拼一次写)
+        var ob: I64[512] = [0, 0, 0, 0]
+        var k: I32 = 0
+        while k < resp.len {
+            ob[k.as[I64]()] = byte_at(resp, k).as[I64]()
+            k += 1
+        }
+        net_write(net, fd, ob, resp.len.as[I64]())
+        net_close(net, fd)
+        served += 1
+    }
+    return 0
+}

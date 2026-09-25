@@ -1,0 +1,77 @@
+// tests/trace/prop_a.ct —— 传播夹具上游服务(P7-E):提取→再注入→调下游→
+// 回传下游回显。GET /hop:tp_from_req 提取 → tp_ser 55B → 值 Str 化 →
+// net_tcp_connect 下游 PROP_B_PORT 发 GET /echo 携注入头 → 体回源客户端。
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close, net_tcp_connect, net_write_str}
+use http.frm.trace.{ tp_from_req, tp_rc_ok, tp_ser }
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if (c >= 32) && (c < 127) {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
+        }
+        i += 1
+    }
+    return out
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("PROP_A_PORT")), 8441)
+    let bport = sc_get_l(parse_i64(env_get("PROP_B_PORT")), 8442)
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        return 2
+    }
+    println("prop-a ready")
+    let afd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_accept(net, lfd.v, afd) != 0 {
+        return 2
+    }
+    let fd = afd.v
+    var buf: I64[2048] = [0, 0, 0, 0]
+    let r = net_read_t(net, fd, buf, 2048, 5000)
+    // 提取
+    let t = tp_from_req(buf, r)
+    var body = "tp=none"
+    if t.rc == tp_rc_ok() {
+        // 再序列化(55B)并 Str 化
+        var ser: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let sn = tp_ser(ser, 64, 0, t)
+        let vstr = lane_str(ser, 0, sn)
+        // 调下游(注入)
+        let cfd = Box[Box64](Box64 { v: 0 })
+        if net_tcp_connect(net, "127.0.0.1", bport, cfd) == 0 {
+            let fwd = "GET /echo HTTP/1.1\r\nHost: a\r\ntraceparent: " + vstr + "\r\nConnection: close\r\n\r\n"
+            net_write_str(net, cfd.v, fwd)
+            var rb: I64[2048] = [0, 0, 0, 0]
+            let rn = net_read_t(net, cfd.v, rb, 2048, 5000)
+            net_close(net, cfd.v)
+            // 体 = 最后一空行后
+            var k: I64 = 0
+            var bo: I64 = 0 - 1
+            while (k + 3 < rn) && (bo < 0) {
+                if (rb[k] == 13) && (rb[k + 1] == 10) && (rb[k + 2] == 13) && (rb[k + 3] == 10) {
+                    bo = k + 4
+                }
+                k += 1
+            }
+            if bo >= 0 {
+                body = lane_str(rb, bo, rn)
+            }
+        }
+    }
+    let resp = "HTTP/1.1 200 OK\r\nContent-Length: " + body.len.to_string() + "\r\nConnection: close\r\n\r\n" + body
+    var ob: I64[512] = [0, 0, 0, 0]
+    var k2: I32 = 0
+    while k2 < resp.len {
+        ob[k2.as[I64]()] = byte_at(resp, k2).as[I64]()
+        k2 += 1
+    }
+    net_write(net, fd, ob, resp.len.as[I64]())
+    net_close(net, fd)
+    return 0
+}

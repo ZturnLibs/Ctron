@@ -37,6 +37,31 @@ for f in "$DIR"/corpus/*.ct; do
     fi
 done
 
+# ── 传播 e2e 段(CTRON_TP_PROP=1 启用):A 提取→再注入→B 回显,trace-id 一致 ──
+if [ "${CTRON_TP_PROP:-}" = "1" ]; then
+    echo "== trace 传播 e2e:双服务串联 trace-id 一致 =="
+    if "$EMIT" run "$DIR/prop_a.ct" > "$T/pa.c" 2>"$T/pa.err" && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/pa.bin" "$T/pa.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/pa.cc.err"        && "$EMIT" run "$DIR/prop_b.ct" > "$T/pbb.c" 2>"$T/pbb.err" && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/pbb.bin" "$T/pbb.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/pbb.cc.err"; then
+        AP=$((21000 + RANDOM % 9000))
+        BP=$((30000 + RANDOM % 20000))
+        ( PROP_B_PORT="$BP" "$T/pbb.bin" > "$T/pb.log" 2>&1 & )
+        sleep 1
+        ( PROP_A_PORT="$AP" PROP_B_PORT="$BP" "$T/pa.bin" > "$T/pa.log" 2>&1 & )
+        sleep 1
+        RESP=$(printf 'GET /hop HTTP/1.1\r\nHost: x\r\ntraceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\r\n\r\n' | timeout 8 nc 127.0.0.1 "$AP" 2>/dev/null)
+        sleep 0.3
+        pkill -f 'pa.bin' 2>/dev/null; pkill -f 'pbb.bin' 2>/dev/null
+        if echo "$RESP" | grep -q "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"; then
+            pass=$((pass+1)); echo "  PASS tp-prop(trace-id 跨服务一致)"
+        else
+            fail=$((fail+1)); echo "  FAIL tp-prop(响应缺期望 tid)"
+        fi
+    else
+        fail=$((fail+1)); echo "  FAIL tp-prop 构建"; sed -n '1,3p' "$T/pa.err" "$T/pbb.err" 2>/dev/null
+    fi
+else
+    echo "  [skip] tp-prop:CTRON_TP_PROP=1 启用"
+fi
+
 echo "trace/run: pass=$pass fail=$fail"
 [ "$pass" -gt 0 ] || { echo "trace/run: no cases ran"; exit 1; }
 [ "$fail" = 0 ] || exit 1

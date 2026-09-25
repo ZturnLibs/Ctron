@@ -403,7 +403,7 @@ pub fn pb_str(buf: &I64[], f: PbField) -> Str {
     while i < f.ln {
         let c = buf[f.start + i]
         if (c >= 32) && (c < 127) {
-            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\\{|}~", c - 32, c - 31)
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
         }
         i += 1
     }

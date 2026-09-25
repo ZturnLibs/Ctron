@@ -184,19 +184,20 @@ fn ot_scope(scr: &I64[], scap: I64, off: I64) -> I64 {
     return 12
 }
 
-// Span 子消息编码 → scr[48..)
-fn ot_span(scr: &I64[], scap: I64, s: OtelSpan) -> I64 {
-    let ntid = ot_hex_to_lane(scr, scap, 0, s.tid)
+// Span 子消息编码 → scr[48..)(字段直参形:OtelSpan 字面量在合并程序内
+//   触发 StructLit 非值类型,2026-09-25 在册——e2e 路径零字面量)
+fn ot_span(scr: &I64[], scap: I64, tid: Str, sid: Str, psid: Str, name: Str, t0: I64, t1: I64) -> I64 {
+    let ntid = ot_hex_to_lane(scr, scap, 0, tid)
     if ntid != 16 {
         return 0 - 1
     }
-    let nsid = ot_hex_to_lane(scr, scap, 16, s.sid)
+    let nsid = ot_hex_to_lane(scr, scap, 16, sid)
     if nsid != 8 {
         return 0 - 1
     }
     var nps: I64 = 0
-    if s.psid.len == 16 {
-        nps = ot_hex_to_lane(scr, scap, 24, s.psid)
+    if psid.len == 16 {
+        nps = ot_hex_to_lane(scr, scap, 24, psid)
         if nps != 8 {
             return 0 - 1
         }
@@ -215,7 +216,7 @@ fn ot_span(scr: &I64[], scap: I64, s: OtelSpan) -> I64 {
     n = ot_bytes(scr, scap, n, 2, sv, 8)
     if n < 0 { return 0 - 1 }
     // 3: parent_span_id(有才写)
-    if s.psid.len == 16 {
+    if psid.len == 16 {
         j = 0
         while j < 8 {
             sv[j] = scr[24 + j]
@@ -225,19 +226,25 @@ fn ot_span(scr: &I64[], scap: I64, s: OtelSpan) -> I64 {
         if n < 0 { return 0 - 1 }
     }
     // 4: name
-    n = ot_str(scr, scap, n, 4, s.name)
+    n = ot_str(scr, scap, n, 4, name)
     if n < 0 { return 0 - 1 }
     // 7/8: fixed64 时间
-    n = ot_fixed64(scr, scap, n, 7, s.t0)
+    n = ot_fixed64(scr, scap, n, 7, t0)
     if n < 0 { return 0 - 1 }
-    n = ot_fixed64(scr, scap, n, 8, s.t1)
+    n = ot_fixed64(scr, scap, n, 8, t1)
     if n < 0 { return 0 - 1 }
     return n - 48
 }
 
+// 字段形入口(消费方免建 struct 字面量——Str 成员 struct 字面量在消费方
+//   main 触发「StructLit 非值类型」,2026-09-25 在册,divergences)
+pub fn otlp_span_request_f(buf: &I64[], cap: I64, scr: &I64[], scap: I64, tid: Str, sid: Str, psid: Str, name: Str, t0: I64, t1: I64) -> I64 {
+    return otlp_span_request(buf, cap, scr, scap, tid, sid, psid, name, t0, t1)
+}
+
 // ExportTraceServiceRequest 全嵌套 → buf(返回长度;-1 越界/坏 id)
-pub fn otlp_span_request(buf: &I64[], cap: I64, scr: &I64[], scap: I64, s: OtelSpan) -> I64 {
-    let nspan = ot_span(scr, scap, s)
+pub fn otlp_span_request(buf: &I64[], cap: I64, scr: &I64[], scap: I64, tid: Str, sid: Str, psid: Str, name: Str, t0: I64, t1: I64) -> I64 {
+    let nspan = ot_span(scr, scap, tid, sid, psid, name, t0, t1)
     if nspan < 0 {
         return 0 - 1
     }

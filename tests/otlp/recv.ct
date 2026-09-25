@@ -1,0 +1,236 @@
+// tests/otlp/recv.ct —— OTLP Collector 夹具接收端(P7-E e2e)
+// 串行 accept 环(todo_api 骨架最小形):收 POST /v1/traces → 按 CL 读体 →
+// std/pb 解码 ETSR 四层嵌套 → trace_id 与 env OTLP_EXP_TID(32 hex)逐字节
+// 比对 + span name 与 env OTLP_EXP_NAME 比对 → 打 OTLP-OK / OTLP-FAIL 后
+// 退出(rc 0/1)。端口 env OTLP_PORT。
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close}
+use std.pb.{ pb_next, pb_rc_field }
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// 头区找行首 needle(小写精确),返回值起点;-1 未现
+fn hval(buf: &I64[], n: I64, needle: Str) -> I64 {
+    let nl = needle.len
+    var i: I64 = 0
+    while i < n {
+        if (i == 0) || (buf[i - 1] == 10) {
+            var ok = true
+            var j: I32 = 0
+            while j < nl {
+                if byte_at(needle, j) != buf[i + j.as[I64]()].as[I32]() {
+                    ok = false
+                }
+                j += 1
+            }
+            if ok {
+                var vs = i + nl.as[I64]()
+                while (vs < n) && (buf[vs] == 32) {
+                    vs += 1
+                }
+                return vs
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("OTLP_PORT")), 8431)
+    let exp_tid = env_get("OTLP_EXP_TID")
+    let exp_name = env_get("OTLP_EXP_NAME")
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        println("OTLP-FAIL listen")
+        return 2
+    }
+    println("recv ready")
+    // 单请求即验即退(Collector 夹具口径)
+    let afd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_accept(net, lfd.v, afd) != 0 {
+        println("OTLP-FAIL accept")
+        return 2
+    }
+    let fd = afd.v
+    var buf: I64[4096] = [0, 0, 0, 0]
+    var scr: I64[2048] = [0, 0, 0, 0]
+    var n: I64 = 0
+    var guard: I64 = 0
+    var hend: I64 = 0 - 1
+    // 增量读到头尽
+    while (guard < 64) && (hend < 0) {
+        guard += 1
+        let r = net_read_t(net, fd, scr, 2048, 5000)
+        if r <= 0 {
+            break
+        }
+        var i: I64 = 0
+        while i < r {
+            buf[n + i] = scr[i]
+            i += 1
+        }
+        n = n + r
+        // 手扫 \r\n\r\n
+        var k: I64 = 0
+        while (k + 3 < n) && (hend < 0) {
+            if (buf[k] == 13) && (buf[k + 1] == 10) && (buf[k + 2] == 13) && (buf[k + 3] == 10) {
+                hend = k + 4
+            }
+            k += 1
+        }
+    }
+    if hend < 0 {
+        let m = fill(buf, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+        net_write(net, fd, buf, m)
+        net_close(net, fd)
+        println("OTLP-FAIL no header end")
+        return 1
+    }
+    // CL
+    let clv = hval(buf, hend, "content-length:")
+    var clen: I64 = 0
+    if clv >= 0 {
+        var vs = clv
+        var ve = vs
+        while (ve < hend) && (buf[ve] != 13) {
+            ve += 1
+        }
+        var cs = ""
+        var i2 = vs
+        while i2 < ve {
+            cs = cs + byte_slice("0123456789", buf[i2].as[I32]() - 48, buf[i2].as[I32]() - 47)
+            i2 += 1
+        }
+        clen = sc_get_l(parse_i64(cs), 0)
+    }
+    while n < hend + clen {
+        let r = net_read_t(net, fd, scr, 2048, 5000)
+        if r <= 0 {
+            break
+        }
+        var i: I64 = 0
+        while i < r {
+            buf[n + i] = scr[i]
+            i += 1
+        }
+        n = n + r
+    }
+    // 响应先行(200;判定靠退出码)
+    let m = fill(buf, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+    net_write(net, fd, buf, m)
+    net_close(net, fd)
+    // —— 解码 ETSR:1→RS{2→SS{2→Span{1 tid(16B)/4 name}}}——
+    let f_rs = pb_next(buf, hend + clen, hend)
+    if (f_rs.rc != 1) || (f_rs.field != 1) {
+        println("OTLP-FAIL rs")
+        return 1
+    }
+    let rs_lim = f_rs.start + f_rs.ln
+    let f_ss = pb_next(buf, rs_lim, f_rs.start)
+    if (f_ss.rc != 1) || (f_ss.field != 2) {
+        println("OTLP-FAIL ss")
+        return 1
+    }
+    let ss_lim = f_ss.start + f_ss.ln
+    // scope(1)略过,直接定位 spans(2)
+    let f_sc = pb_next(buf, ss_lim, f_ss.start)
+    if (f_sc.rc != 1) || (f_sc.field != 1) {
+        println("OTLP-FAIL scope")
+        return 1
+    }
+    let f_sp = pb_next(buf, ss_lim, f_sc.pos)
+    if (f_sp.rc != 1) || (f_sp.field != 2) {
+        println("OTLP-FAIL span")
+        return 1
+    }
+    let sp_lim = f_sp.start + f_sp.ln
+    let s1 = pb_next(buf, sp_lim, f_sp.start)
+    if (s1.rc != 1) || (s1.field != 1) || (s1.ln != 16) {
+        println("OTLP-FAIL tid field")
+        return 1
+    }
+    // 期望 tid hex → lane 逐字节比对
+    var exp: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var h: I32 = 0
+    while h < 16 {
+        let hi = byte_at(exp_tid, h * 2)
+        let lo = byte_at(exp_tid, h * 2 + 1)
+        var hv: I64 = 0 - 1
+        if (hi >= 97) && (hi <= 102) {
+            hv = (hi - 97).as[I64]() + 10
+        } else {
+            if (hi >= 48) && (hi <= 57) {
+                hv = (hi - 48).as[I64]()
+            }
+        }
+        var lv: I64 = 0 - 1
+        if (lo >= 97) && (lo <= 102) {
+            lv = (lo - 97).as[I64]() + 10
+        } else {
+            if (lo >= 48) && (lo <= 57) {
+                lv = (lo - 48).as[I64]()
+            }
+        }
+        exp[h.as[I64]()] = hv * 16 + lv
+        h += 1
+    }
+    var bi: I64 = 0
+    while bi < 16 {
+        if buf[s1.start + bi] != exp[bi] {
+            println("OTLP-FAIL tid byte")
+            return 1
+        }
+        bi += 1
+    }
+    // name(4)
+    var p = s1.pos
+    var name_ok = false
+    while p < sp_lim {
+        let f4 = pb_next(buf, sp_lim, p)
+        if f4.rc != 1 {
+            break
+        }
+        if f4.field == 4 {
+            // 逐字节比对(pb_str 导入触发 emit SIGKILL@20480,绕行 divergences 09-25)
+            if f4.ln == exp_name.len {
+                var k: I32 = 0
+                var same = true
+                while k < exp_name.len {
+                    if buf[f4.start + k.as[I64]()] != byte_at(exp_name, k).as[I64]() {
+                        same = false
+                    }
+                    k += 1
+                }
+                if same {
+                    name_ok = true
+                }
+            }
+        }
+        p = f4.pos
+    }
+    if name_ok == false {
+        println("OTLP-FAIL name")
+        return 1
+    }
+    println("OTLP-OK tid matched name matched")
+    return 0
+}
