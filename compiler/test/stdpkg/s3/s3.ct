@@ -1,0 +1,77 @@
+use std.crypto.{ sha256_hex }
+fn main() -> I64 {
+    return sha256_hex("x").len
+}
+
+fn s3_nl() -> Str {
+    return "\n"
+}
+
+fn s3_join2(a: Str, b: Str) -> Str {
+    return a + b
+}
+
+fn s3_bytes(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i).as[I32]())
+        i += 1
+    }
+    return out
+}
+
+pub fn s3_scope(date: Str, region: Str) -> Str {
+    return date + "/" + region + "/s3/aws4_request"
+}
+
+pub fn s3_secret_key(secret: Str, date: Str, region: Str) -> List[I32] {
+    let k0 = hmac_sha256(s3_bytes(s3_join2("AWS4", secret)), s3_bytes(date))
+    let k1 = hmac_sha256(k0, s3_bytes(region))
+    let k2 = hmac_sha256(k1, s3_bytes("s3"))
+    return hmac_sha256(k2, s3_bytes("aws4_request"))
+}
+
+pub fn s3_canonical(method: Str, uri: Str, host: Str, xdate: Str, payload_hash: Str) -> Str {
+    let l1 = s3_join2(method, s3_nl())
+    let l2 = s3_join2(uri, s3_nl())
+    let l3 = s3_nl()
+    let h1 = s3_join2("host:", host)
+    let h2 = s3_join2("x-amz-content-sha256:", payload_hash)
+    let h3 = s3_join2("x-amz-date:", xdate)
+    let hs = s3_join2(s3_join2(h1, s3_nl()), s3_join2(h2, s3_nl()))
+    let hs2 = s3_join2(hs, s3_join2(h3, s3_nl()))
+    let p1 = s3_join2(s3_join2(l1, l2), s3_join2(l3, hs2))
+    return s3_join2(p1, s3_join2(s3_nl(), s3_join2("host;x-amz-content-sha256;x-amz-date", s3_join2(s3_nl(), payload_hash))))
+}
+
+
+pub fn s3_basic_time(iso: Str) -> Str {
+    if iso.len < 20 {
+        return ""
+    }
+    return byte_slice(iso, 0, 4) + byte_slice(iso, 5, 7) + byte_slice(iso, 8, 10) + "T" + byte_slice(iso, 11, 13) + byte_slice(iso, 15, 17) + byte_slice(iso, 18, 20) + "Z"
+}
+
+pub fn s3_empty_hash() -> Str {
+    return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+
+pub fn s3_string_to_sign(xdate: Str, scp: Str, canon: Str) -> Str {
+    let l1 = s3_join2("AWS4-HMAC-SHA256", s3_nl())
+    let l2 = s3_join2(xdate, s3_nl())
+    let l3 = s3_join2(scp, s3_nl())
+    let l4 = sha256_hex(canon)
+    return s3_join2(s3_join2(s3_join2(l1, l2), s3_join2(l3, l4)), "")
+}
+
+pub fn s3_signature(key: List[I32], to_sign: Str) -> Str {
+    return bytes_to_hex(hmac_sha256(key, s3_bytes(to_sign)))
+}
+
+pub fn s3_auth_header(ak: Str, scp: Str, sig: Str) -> Str {
+    let c1 = s3_join2("AWS4-HMAC-SHA256 Credential=", ak)
+    let c2 = s3_join2("/", scp)
+    let c3 = s3_join2(", SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=", sig)
+    return s3_join2(s3_join2(c1, c2), c3)
+}

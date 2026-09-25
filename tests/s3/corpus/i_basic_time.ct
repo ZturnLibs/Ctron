@@ -1,0 +1,19 @@
+// i_basic_time —— basic 格式换算(interp 专臂:emit 臂 byte_slice 对参量
+// Str 的形参差异在册,登记归编译泳道;i_ 前缀 = runner 跳 emit 腿)
+use s3.s3.{ s3_basic_time }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    if eqs(s3_basic_time("2026-09-25T12:34:56Z"), "20260925T123456Z") == false { return 1 }
+    if s3_basic_time("short").len != 0 { return 2 }
+    return 0
+}

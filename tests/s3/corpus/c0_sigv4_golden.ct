@@ -1,0 +1,56 @@
+// c0 —— SigV4 黄金向量(python hmac/sha256 独立实现预算钉值)
+// 输入:secret=wJalrXUtnFEMI date=20250925 region=us-east-1
+//       GET /bucket/key host=s3.test xdate=20250925T000000Z 空载荷
+use s3.s3.{ s3_secret_key, s3_scope, s3_canonical, s3_string_to_sign, s3_signature, s3_auth_header, s3_basic_time, s3_empty_hash }
+use std.crypto.{ bytes_to_hex }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn count_sub(s: Str, key: Str) -> I64 {
+    let kl = key.len
+    var n: I64 = 0
+    var i: I32 = 0
+    while i + kl <= s.len {
+        var ok = true
+        var j: I32 = 0
+        while j < kl {
+            if byte_at(s, i + j) != byte_at(key, j) { ok = false }
+            j += 1
+        }
+        if ok { n += 1 }
+        i += 1
+    }
+    return n
+}
+
+fn hex_last4(k: List[I32]) -> Str {
+    let h = bytes_to_hex(k)
+    return byte_slice(h, h.len - 8, h.len)
+}
+
+fn main() -> I64 {
+    var key = s3_secret_key("wJalrXUtnFEMI", "20250925", "us-east-1")
+    var h = bytes_to_hex(key)
+    if eqs(byte_slice(h, h.len - 8, h.len), "0417bcd2") == false { return 1 }
+    let scp = s3_scope("20250925", "us-east-1")
+    if eqs(scp, "20250925/us-east-1/s3/aws4_request") == false { return 2 }
+    let ph = s3_empty_hash()
+    if eqs(ph, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") == false { return 3 }
+    let canon = s3_canonical("GET", "/bucket/key", "s3.test", "20250925T000000Z", ph)
+    let sts = s3_string_to_sign("20250925T000000Z", scp, canon)
+    if count_sub(sts, "bb7071788b38f128922aa34632b060fc2bee75f87085e32d4da09f4c3cb2a246") != 1 { return 4 }
+    let sig = s3_signature(key, sts)
+    if eqs(sig, "5f5e13fca99340c7c6b8a599d8a444e94d0ec780d6e2ffe31bbc3a2d12681c99") == false { return 5 }
+    let auth = s3_auth_header("AKIDEXAMPLE", scp, sig)
+    if count_sub(auth, "Credential=AKIDEXAMPLE/20250925/us-east-1/s3/aws4_request") != 1 { return 6 }
+    if count_sub(auth, "Signature=5f5e13fca99340c7c6b8a599d8a444e94d0ec780d6e2ffe31bbc3a2d12681c99") != 1 { return 7 }
+    return 0
+}
