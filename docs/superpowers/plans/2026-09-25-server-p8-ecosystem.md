@@ -58,8 +58,8 @@
 - Notes: registry 协议 v1 = 纯 GET 静态约定(`/<name>/<ver>/ctcl` + `/<name>/<ver>/src.tar`);认证/私有 registry 列志向
 
 **Steps:**
-- [ ] pkg add 链(manifest 解析→闭包→拉取→落盘→lockfile)
-- [ ] 本地 registry e2e + 提交
+- [ ] pkg add 链(manifest 解析→闭包→拉取→落盘→lockfile)——**⏸ defer(2026-09-25):CLI 落点(driver 新面 vs tools 独立)与 registry 协议 v1 拍板待设计评审;零依赖自持+夹具 registry 全链方案已入 Task 4 描述,归下波首件;P8 其余五件交付收口**')
+- [ ] 本地 registry e2e + 提交——随上
 
 ### Task 5 (P8-E): 部署面 + website 服务器指南
 
@@ -79,8 +79,8 @@
 - Modify: `tests/COVERAGE.md`(P8 行)、`docs/c-rust-divergences.md`(执行发现)、本计划(出口判定)、spec §六 P8 as-built
 
 **Steps:**
-- [ ] 出口门禁逐项:pkg add e2e / Connect 互调 / S3 夹具往返(minio nightly 段登记) / website 上线 / todo_api 容器配方
-- [ ] pathspec 提交;P8 终审
+- [x] 出口门禁逐项:pkg add e2e ⏸ defer(随 D) / Connect 互调 ✅ / S3 夹具往返 ✅(minio nightly 待环境) / website ✅ / todo_api 容器配方 ✅(容器内跑通 nightly)
+- [x] pathspec 提交;P8 终审(2026-09-26 00:39 全波 98 断言 0 红;3.5/5 门 + D 残项交付收口,台账 tests/COVERAGE.md P8 行)
 
 ## Self-Review
 

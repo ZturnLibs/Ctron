@@ -322,6 +322,24 @@ client_fixtures_x_client_e2e + sse_ws_x_sse/ws_e2e ×双 RT = 6 件 —— 旧�
 = client/message 门面锚穿形,divergences 2026-09-24 节),归编译泳道修复;mw_chain
 E2020 已销(e96d5f6 直 use 改形)。
 
+### P8 行(生态与部署,2026-09-25→26)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| P8-A | Connect 协议客户端(http/frm/connect.ct:unary POST+proto 头两行,classify 三态+17 名状态码表+HTTP 映射) | tests/connect **4/4**(a9a5878;含双轮 e2e:成功帧字节断言+500 失败分类;夹具服务端帧校验 08 96 01→08 2A) |
+| P8-B | S3 兼容客户端签名面+往返(s3/s3.ct 域包:SigV4 四层链 HMAC^4/canonical/sts/signature/auth_header/basic_time;mock 鉴权结构三针守门+单槽存储) | tests/s3 **6/6**(d858343+b324db2;含 e2e:PUT/GET/DELETE 签名往返全链;黄金向量 python 独立实现钉值 key 尾 0417bcd2/sig 5f5e13fc…;minio nightly 待真靶环境) |
+| P8-C | NDJSON 逐行游标(std/ndjson.ct T1 零 use:NdLine 值 struct,空白行跳过/CRLF 剥离/尾行无换行;窗口交消费方) | tests/ndjson **6/6**(fcff689;含游标×行内容消费集成;坏行策略=消费方 json.parse,Result 面修复后深集成回切) |
+| P8-E | 部署面+website 指南(docs/deploy.md:产物/运行期表/scratch 配方/可观测三件;website/server-guide.md) | 文档交付(5f872cb);本地验收=e2e 22/22 同源,容器跑通归 nightly 真靶段 |
+| P8-F | 门禁收口+终审 | 全波 9 套件+net+todo_api **98 断言 0 红**(00:39 终审);P8-D pkg defer(设计评审待拍板,归下波首件) |
+
+**P8 出口门禁判定**:①pkg add e2e ⏸ defer(随 P8-D);②Connect 互调 ✅;③S3 夹具
+往返 ✅(minio nightly 段待环境);④website 指南 ✅;⑤todo_api 容器配方 ✅(容器内
+跑通归 nightly)。**P8 按 3.5/5 门 + D 残项交付收口**。
+
+**P8 as-built 偏差**:http.client StructLit 残缺陷(往返客户端裸 socket 绕行);
+发射器长串拼接/`\n` 字面量组合缺陷(s3_nl/join2 组合原语绕行);`scope` 关键字
+撞名(参数改名即清,divergences 在册)。
+
 ### P7 行(可观测与运维,2026-09-24→25)
 
 | 波次 | 项 | 锚定 |
