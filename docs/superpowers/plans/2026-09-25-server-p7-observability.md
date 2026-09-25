@@ -95,8 +95,8 @@
 
 **Steps:**
 - [x] 停机演练(串行形:排空+停机后拒绝探针,e2e 22/22;inflight 并发形志向)+ config 对接(as-built 偏差:std/config 为 CTCL 校验器,env 形维持,应用配置读法提请 std 需求评审)
-- [x] 出口门禁判定:①Prometheus ✅ ②OTLP 解码一致 ✅ ③传播同 trace-id ✅ ④scopes 树 ⏸ defer(rt G 锁快照,设计入册,归下波首件) ⑤tracing 层级 ⏸ 随④
-- [x] pathspec 提交;P7 终审(3.5/5 门 + F 残项交付收口,台账 tests/COVERAGE.md P7 行)
+- [x] 出口门禁判定:①Prometheus ✅ ②OTLP 解码一致 ✅ ③传播同 trace-id ✅ ④scopes 快照 ✅ v1(rt 实体/状态/裸 join 边;树父权 ct_task 层残留) ⑤tracing 层级 ⏸ 随残留
+- [x] pathspec 提交;P7 终审(4/5 门 + ct_task 层残留交付收口;P7-F 补充交付 3b9f002,台账 tests/COVERAGE.md P7 行)
 
 ## Self-Review
 

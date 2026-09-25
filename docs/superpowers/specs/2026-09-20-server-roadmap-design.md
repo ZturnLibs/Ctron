@@ -357,8 +357,9 @@ web 框架,而是证明 §7 的并发语义天然就是服务器语义。
   `/debug/scopes` 输出与确定性测试的 scope 树逐层一致;tracing 层级与连接/请求树一致。
 - **P7 as-built(2026-09-25)**:①Prometheus ✅(metrics 写面+todo_api /metrics,e2e 22/22)
   ②OTLP/HTTP ✅(std/pb 四层嵌套编码→Collector 夹具解码,tid/name 双匹配)
-  ③traceparent 跨服务 ✅(A 提取→再注入→B 回显同 trace-id) ④⑤/debug/scopes 与
-  span 树导出 ⏸ defer(rt G 锁内快照 extern,设计入册,归下波首件)。as-built 偏差:
+  ③traceparent 跨服务 ✅(A 提取→再注入→B 回显同 trace-id) ④/debug/scopes ✅ v1
+  (rt 锁内快照 extern:实体/五态/裸 join 边,确定性夹具 [2,3] 全钉;span 树父权
+  =ct_task 层,逐层名映射残留归编译器任务面)。as-built 偏差:
   std/config 为 CTCL 校验器非应用配置面(env 形维持);metrics 浮点样本列志向;
   OTLP 批量/JSON 志向。台账 tests/COVERAGE.md P7 行;执行记录 plans/2026-09-25-server-
   p7-observability.md。

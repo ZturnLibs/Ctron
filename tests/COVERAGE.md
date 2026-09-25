@@ -334,10 +334,10 @@ E2020 已销(e96d5f6 直 use 改形)。
 | P7-G | 优雅停机演练(串行形:排空退出+停机后新连接拒绝)+ 登记 | e2e **22/22**(含停机拒绝探针);inflight 并发形随 keep-alive/协程环志向演进 |
 
 **P7 出口门禁判定(2026-09-25)**:①todo_api 合法 Prometheus 文本 ✅;②OTLP 夹具解码
-比对一致 ✅;③traceparent 跨服务同 trace-id ✅;④/debug/scopes scope 树一致 ⏸ **defer**
-(需 rt G 锁内快照 extern,净增量设计已定稿入计划——allnext 走链+jnext 反查父;
-触及共享并发锁,不抢上下文尾段动刀,归下波首件);⑤tracing 层级=连接/请求树 ⏸
-随④(span 树导出同族)。**P7 按 3.5/5 门 + F 残项交付收口**。
+比对一致 ✅;③traceparent 跨服务同 trace-id ✅;④/debug/scopes ✅ **v1 交付**(3b9f002:ctron_rt_scopes_json rt 锁内快照,
+entries 五态+jnext 反查等待边;确定性夹具 [2,3] join 边全钉,tests/rt_scopes 5/5;
+serial/coro 双形;树父权 ct_task 层残留=逐层名映射,归编译器任务面);
+⑤tracing 层级=连接/请求树 ⏸ 随④残留。**P7 按 4/5 门 + ct_task 层残留交付收口**。
 
 **P7 as-built 偏差与移交**:①std/config 实为 CTCL manifest 校验器,非应用运行时
 配置面——todo_api env 配置形维持,应用配置读法提请 std 需求评审;②发射符号饿死族
