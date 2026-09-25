@@ -1,0 +1,75 @@
+# eval 环境表示换代——实施计划(v1)
+
+> 状态:**待批**(计划先行;实现未动工)
+> 作者:编译器线(2026-09-25 会话);证据链见 docs/c-rust-divergences.md 与发布记忆
+> 一句话:自举解释器 loop 基准每迭代 ~2 万次 arena 分配(seed ~40 次,114× 慢),
+> 杠杆在 eval 环境表示;本计划分期把它降一个数量级以上,解锁 3j2/4c/bench 三处预算豁免。
+
+## 0. 本文回答什么
+
+CI 全绿后,编译器线头号在册债 = 自举解释器(eval_*.ct,~4.0k 行)的内存/速度:
+AMEM 直方图实证 loop 基准 10K 次迭代产生 2.07 亿次分配(每迭代 ~2 万次);
+同刻度 seed 解释 0.019s vs 自举 2.174s=114×;fmap fput 每调用 54 万次。
+微优化已证伪(小整数 to_string 缓存 −0.15%);本文给表示级的分期方案。
+
+## 1. 已实证的机制(诊断依据)
+
+- **O(env) 全量拷贝**:eval_env.ct 的 env_add/env_set/env_drop/env_dedupe 每次
+  bind/赋值/出作用域都重建整个平铺 env(List[Str],条目=二元 [名,值] 子列表)。
+- **while 逐轮重建**:每轮 keep 段 dedupe + 全量重建(eval_run.ct "keep 累积压缩")。
+- **值=字符串**:算术即 parse→运算→to_string,每运算至少 1 次 16B 分配。
+- **每步一个 e4 元组**:每个表达式节点求值返回新 4 元 List(fl/env/vv/out)。
+- **未解之谜(Phase 0 的靶)**:小 env(loop.ct,~6 条目)下每迭代仍 ~2 万次分配,
+  且成本随全局变量数 **反向**摆动(200 全局 → 每迭代降 10 倍)——存在一个
+  未定位的大头分配源,不能只按上面的 O(env) 账面推算动刀。
+
+## 2. 分期
+
+### Phase 0:分配归因 instrumentation(先行,半个工作日)
+
+- 给 ctron-cc 的 eval 层加**函数级分配归因**:CTRON_EVAL_TRACE 环境门控,
+  在 eval_expr/eval_call/run_stmt/env_* 八个入口处计数(纯 Ctr 实现:一个
+  全局 Atomic[I32] 计数器表 + 阈值打印;零门控成本)。
+- 产出:loop.ct/fmap30 的 Top-10 分配函数榜 → 决定 Phase 1 动哪一层。
+- 验收:AMEM 总量对账(计数器之和 ≈ AMEM count);榜复现稳定。
+
+### Phase 1:env 帧化(候选设计 A,1-2 日)
+
+- env 从平铺 List[Str] 换成**帧栈 List[List[Str]]**(外层=帧,内层=条目):
+  - env_at:新帧→旧帧线性查(语义不变:新者优先);
+  - env_set:只重建**当前帧**(条目数=作用域变量数,~O(帧)而非 O(env));
+  - 作用域进/出 = 外层 push/pop(出帧 O(帧数) 或换算成截断);
+  - while keep 段:帧内 dedupe(段有界 → O(段²) 有界)。
+- 理由:纯 Ctr 层可表达(无需新内建);把两处 O(env) 降为 O(帧)。
+- 风险:env 类型签名涟漪(e4/s4 与全部 eval_* 的 env: List[Str] → 帧栈),
+  机械但面宽(估 ~60 处注解/传参);语义由 73/73 + parity + smoke 全量兜底。
+- 验收:AMEM loop 每迭代分配 ≤ 2K(10×);bench 自举臂时间 ≤ 1/3;
+  三套件全绿,SMOKE 豁免面不变。
+
+### Phase 2:按 Phase 0 榜决定(候选设计 B/C,各 1-2 日)
+
+- **B 值表示**:标量值从字符串改为定长标记对(如 ["i", 文本] → 单槽编码),
+  消每运算的 to_string/parse 往返;仅当榜显示 vS/to_string 进 Top-3。
+- **C e4 复用**:每节点元组换 .push 复用池或扁平 4 槽;仅当榜显示 e4 进 Top-3。
+- 两者独立可回退;均过同一验收门。
+
+### Phase 3:豁免回收(收官,半日)
+
+- AMEM 复测 fmap 饱和测/loop:每迭代分配降到 runner 安全水位(≤ 500B/迭代)
+  后,逐项回收 smoke 3j2/4c 与 bench 刻度豁免,恢复 fmap/crypto 全臂。
+- 若解释臂仍超,豁免保留并注明剩余倍数。
+
+## 3. 不做什么(边界)
+
+- 不动 seed(compiler-c)——它是对照基准;
+- 不做回收式 GC/分代 arena(运行时样板工程,另行立项);
+- 不改 Ctron 语言面(帧化纯 eval 内部重构,无新内建;若 Phase 0 榜指向
+  "缺 list 原位写"再按能力优先于 hack 走扩展提案)。
+
+## 4. 风险与回退
+
+- 每阶段独立提交、独立可回退;语义门:tests 三套件(73/73、parity、smoke 150/0)
+  + roadmap NegGreen 锚全量不动画。
+- Phase 1 涟漪面广,选在无并行泳道在飞 compiler/src 的安静窗实施(机刷纪律:
+  动工前 git 重对齐 + pathspec 限定)。
+- 回退即 git revert 单提交;豁免在 Phase 3 前一律不动(保 CI 绿底线)。
