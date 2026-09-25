@@ -206,6 +206,7 @@ int gui_cmd_type(int i) {
     switch (cmd(i)->commandType) {
         case CLAY_RENDER_COMMAND_TYPE_TEXT:      return 1;
         case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: return 2;
+        case CLAY_RENDER_COMMAND_TYPE_IMAGE:     return 3;
         default:                                 return 0;
     }
 }
@@ -241,6 +242,16 @@ void ctron_gui_flush(void) {
                     (Rectangle){ b.x, b.y, b.width, b.height }, 0.15f, 8,
                     (Color){ (unsigned char)col.r, (unsigned char)col.g,
                              (unsigned char)col.b, (unsigned char)col.a });
+                break;
+            }
+            case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
+                Texture2D *tex = (Texture2D *)c->renderData.image.imageData;
+                if (tex != NULL && tex->id != 0) {
+                    Rectangle src = { 0, 0, (float)tex->width, (float)tex->height };
+                    DrawTexturePro(*tex, src,
+                        (Rectangle){ b.x, b.y, b.width, b.height },
+                        (Vector2){ 0, 0 }, 0.0f, WHITE);
+                }
                 break;
             }
             case CLAY_RENDER_COMMAND_TYPE_TEXT: {
@@ -395,6 +406,74 @@ int gui_floating(int dir, int gap, int padx, int pady, int ax, int ay,
         .attachTo = CLAY_ATTACH_TO_ROOT,
         .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_CAPTURE,
     };
+    Clay__ConfigureOpenElement(decl);
+    return 0;
+}
+
+// ---- 图像/纹理管线(§2.6):路径键 LRU 16 槽;Clay IMAGE 命令 imageData 透传 Texture2D;
+// 失败槽 tex.id==0 → 不设 image 配置(纯底色框即占位,规格口径不崩) ----
+typedef struct { char path[256]; Texture2D tex; unsigned long long last; } GuiTexSlot;
+static GuiTexSlot g_tex[16];
+static unsigned long long g_tex_clock = 0;
+
+int gui_image_open(const char *path) {
+    if (path == NULL) { return -1; }
+    g_tex_clock++;
+    int oldest = 0;
+    for (int i = 0; i < 16; i++) {
+        if (g_tex[i].last == 0) { oldest = i; break; }
+        if (g_tex[i].last < g_tex[oldest].last) { oldest = i; }
+        if (strncmp(g_tex[i].path, path, 255) == 0) {
+            g_tex[i].last = g_tex_clock;
+            return i;
+        }
+    }
+    Texture2D t = LoadTexture(path);
+    if (t.id == 0) {
+        return -1;
+    }
+    int slot = oldest;
+    if (g_tex[slot].tex.id != 0) { UnloadTexture(g_tex[slot].tex); }
+    g_tex[slot].tex = t;
+    strncpy(g_tex[slot].path, path, 255);
+    g_tex[slot].path[255] = 0;
+    g_tex[slot].last = g_tex_clock;
+    return slot;
+}
+
+int gui_image_dims(int handle) {
+    if (handle < 0 || handle >= 16) { return 0; }
+    return g_tex[handle].tex.width * 10000 + g_tex[handle].tex.height;
+}
+
+int gui_image_cfg(int handle, int wmode, int wval, int hmode, int hval) {
+    float wf = (float)wval;
+    float hf = (float)hval;
+    Clay_LayoutConfig lay = { 0 };
+    if (wmode == 1) {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    } else if (wmode == 2) {
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { wf, wf } }, .type = CLAY__SIZING_TYPE_FIXED };
+    } else {
+        int dw = 100;
+        if (handle >= 0 && handle < 16) { dw = g_tex[handle].tex.width; }
+        lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)dw, (float)dw } }, .type = CLAY__SIZING_TYPE_FIXED };
+    }
+    if (hmode == 1) {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    } else if (hmode == 2) {
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { hf, hf } }, .type = CLAY__SIZING_TYPE_FIXED };
+    } else {
+        int dh = 100;
+        if (handle >= 0 && handle < 16) { dh = g_tex[handle].tex.height; }
+        lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)dh, (float)dh } }, .type = CLAY__SIZING_TYPE_FIXED };
+    }
+    Clay_ElementDeclaration decl = { 0 };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ 34, 34, 46, 255 };
+    if (handle >= 0 && handle < 16) {
+        decl.image = (Clay_ImageElementConfig){ .imageData = &g_tex[handle].tex };
+    }
     Clay__ConfigureOpenElement(decl);
     return 0;
 }
