@@ -477,3 +477,52 @@ int gui_image_cfg(const char *path, int wmode, int wval, int hmode, int hval) {
     Clay__ConfigureOpenElement(decl);
     return exists ? 0 : -1;
 }
+
+// ---- tick 原语(§2.7):毫秒钟(注入优先,真窗 GetTime)+帧计数;光标闪烁消费口 ----
+int g_inject_ms = -1;
+void gui_inject_ms(int ms) { g_inject_ms = ms; }
+int gui_ms_injected(void) { return g_inject_ms; }
+int gui_now_ms(void) {
+    if (g_inject_ms >= 0) { return g_inject_ms; }
+    return (int)(GetTime() * 1000.0);
+}
+int g_frame_n = 0;
+void gui_frame_tick(void) { g_frame_n++; }
+int gui_frame_count(void) { return g_frame_n; }
+
+// ---- 快捷键表(§2.11):16 条目;mods 位 1=ctrl/cmd 2=shift 4=alt;事件链尾 match ----
+typedef struct { int mods; int key; char action[64]; } GuiHotkey;
+static GuiHotkey g_hotkeys[16];
+static int g_nhotkeys = 0;
+static int g_hk_last = -1;
+void gui_hotkey_set(int mods, int key, const char *action) {
+    if (g_nhotkeys >= 16) { return; }
+    g_hotkeys[g_nhotkeys].mods = mods;
+    g_hotkeys[g_nhotkeys].key = key;
+    strncpy(g_hotkeys[g_nhotkeys].action, action ? action : "", 63);
+    g_hotkeys[g_nhotkeys].action[63] = 0;
+    g_nhotkeys++;
+}
+int gui_hotkey_mods(void) {
+    int m = 0;
+    if (gui_mod_ctrl()) { m |= 1; }
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) { m |= 2; }
+    if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) { m |= 4; }
+    return m;
+}
+int gui_hotkey_match(int key, int mods) {
+    int i = 0;
+    g_hk_last = -1;
+    while (i < g_nhotkeys) {
+        if (g_hotkeys[i].key == key && g_hotkeys[i].mods == mods) {
+            g_hk_last = i;
+            return (int)strlen(g_hotkeys[i].action);
+        }
+        i++;
+    }
+    return -1;
+}
+int gui_hotkey_action_byte(int i) {
+    if (g_hk_last < 0 || i < 0 || i >= 64) { return -1; }
+    return (unsigned char)g_hotkeys[g_hk_last].action[i];
+}

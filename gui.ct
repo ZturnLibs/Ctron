@@ -142,6 +142,33 @@ extern "c" fn gui_floating(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay
 extern "c" fn gui_image_cfg(path: Str, wmode: I32, wval: I32, hmode: I32, hval: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_inject_ms(ms: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_ms_injected() -> I32
+
+#[trusted]
+extern "c" fn gui_now_ms() -> I32
+
+#[trusted]
+extern "c" fn gui_frame_tick() -> Void
+
+#[trusted]
+extern "c" fn gui_frame_count() -> I32
+
+#[trusted]
+extern "c" fn gui_hotkey_set(mods: I32, key: I32, action: Str) -> Void
+
+#[trusted]
+extern "c" fn gui_hotkey_mods() -> I32
+
+#[trusted]
+extern "c" fn gui_hotkey_match(key: I32, mods: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_hotkey_action_byte(i: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -2540,7 +2567,21 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if ic < 0 {
                     ic = 0
                 }
-                ishow = byte_slice(ival, 0, ic) + "|" + byte_slice(ival, ic, ival.len)
+                // 光标闪烁(§2.7):仅注入时钟激活(d_tick 确定性口径);真窗常亮至 P2。
+                // 相位 = (ms/500) 偶数亮;无位算符,Ctron 取模用减法形
+                var blink: I32 = 1
+                if gui_ms_injected() >= 0 {
+                    var ph: I32 = gui_now_ms() / 500
+                    var ph2: I32 = ph / 2
+                    if ph - ph2 * 2 == 1 {
+                        blink = 0
+                    }
+                }
+                if blink == 1 {
+                    ishow = byte_slice(ival, 0, ic) + "|" + byte_slice(ival, ic, ival.len)
+                } else {
+                    ishow = byte_slice(ival, 0, ic) + byte_slice(ival, ic, ival.len)
+                }
             }
             if ishow != "" {
                 var isz: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
@@ -2660,6 +2701,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
 }
 
 pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32], hov: I32, actn: I32) -> I32 {
+    gui_frame_tick()
     gui_begin_layout(w, h)
     rt_emit(t, bind, "", "", 0, hits, hinst, 0, hov, actn)
     return gui_end_layout()
@@ -3224,6 +3266,16 @@ pub fn d_clip(t: Box[Driver], s: Str) -> I32 {
 pub fn d_mod(t: Box[Driver], on: I32) -> I32 {
     gui_inject_mod(on)
     return 0
+}
+
+// tick 注入(§2.7 headless):设定确定性时钟;光标闪烁等 tick 消费者激活
+pub fn d_tick(t: Box[Driver], ms: I32) -> I32 {
+    gui_inject_ms(ms)
+    return 0
+}
+
+pub fn d_frames() -> I32 {
+    return gui_frame_count()
 }
 
 // headless 编辑管线注入口:注入→poll→焦点 input 编辑管线路由;消费返 0,未消费返原码
