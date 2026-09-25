@@ -3066,6 +3066,33 @@ pub fn d_mod(t: Box[Driver], on: I32) -> I32 {
     return 0
 }
 
+// headless 编辑管线注入口:注入→poll→焦点 input 编辑管线路由;消费返 0,未消费返原码
+// (与窗口循环同一管线;s33 键消费边界夹具依赖此语义)
+pub fn d_send_char(t: Box[Driver], ch: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    gui_inject_char(ch)
+    var evt: I32 = gui_poll_event()
+    if evt != 3 {
+        panic("gui test: 字符事件丢失")
+    }
+    var k: I32 = gui_evt_key()
+    if rt_input_char(t.t, bind, act, k) {
+        return 0
+    }
+    return k
+}
+
+pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void) -> I32 {
+    gui_inject_key(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 1 {
+        panic("gui test: 键事件丢失")
+    }
+    if rt_input_key(t.t, bind, act, gui_evt_key()) {
+        return 0
+    }
+    return gui_evt_key()
+}
+
 pub fn d_press_key(t: Box[Driver], k: I32) -> I32 {
     gui_inject_key(k)
     var evt: I32 = gui_poll_event()

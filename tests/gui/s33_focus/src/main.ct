@@ -1,0 +1,160 @@
+// tests/gui/s33_focus —— 波次二 T4:input 真文本编辑全链(§2.2)
+// placeholder 初态→d_focus→键入(input 自身回显,焦点光标 |)→←→插入→退格→Home/End→
+// d_clip+d_mod+Ctrl+V 粘贴→on:input 载荷(模型侧记账)→on:submit→Esc 失焦→
+// 未消费键回落 key 闭包(d_send_* 消费返 0/未消费返原码)
+use gui.{test, d_frame, d_expect_text, d_focus, d_blur, d_clip, d_mod, d_send_char, d_send_key, theme_apply, theme_default}
+
+view P {
+  <vbox class="root">
+    <input bind={draft} placeholder="写点啥" class="field" on:input={set_draft} on:submit={add}/>
+    <label class="st">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style field { bg: "#22222e" fg: "#ffffff" size: 20 h: 36 }
+style st { fg: "#aaaaaa" size: 16 h: 26 }
+
+struct Model {
+    var draft: Str
+    var state: Str
+}
+
+fn set_draft() {
+}
+fn add() {
+}
+
+// 名:载荷 拆分(首个冒号;载荷任意文本)
+fn head_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, 0, i)
+        }
+        i += 1
+    }
+    return nm
+}
+
+fn payload_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, i + 1, nm.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if head_of(name) == "set_draft" {
+        m.draft = payload_of(name)
+    }
+    if name == "add" {
+        m.state = "submitted"
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "draft" {
+        buf.push(m.draft)
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+// 未消费键回落面:key 闭包记账(消费边界断言)
+fn on_key(k: I32, m: Box[Model]) {
+    if k == 259 {
+        m.state = "bs-fellthrough"
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    theme_apply(theme_default())
+    var m = Box[Model](Model { draft: "", state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| on_key(k, m),
+        |t, act, key| {
+            // 初态:placeholder 灰显
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "写点啥")
+            // 聚焦+键入:input 自身回显,焦点光标 | 在尾;on:input 已送达模型
+            d_focus(t)
+            d_send_char(t, 104,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_send_char(t, 105,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi|")
+            if m.draft != "hi" {
+                panic("s33: on:input 载荷未达模型 draft=" + m.draft)
+            }
+            // ← 移位插入:caret 1 处插 E
+            d_send_key(t, 263,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_send_char(t, 69,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hE|i")
+            // 退格:删 E
+            d_send_key(t, 259,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "h|i")
+            // Home/End
+            d_send_key(t, 268,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_send_key(t, 269,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi|")
+            // 粘贴:Ctrl+V @尾
+            d_clip(t, "XYZ")
+            d_mod(t, 1)
+            d_send_key(t, 86,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hiXYZ|")
+            if m.draft != "hiXYZ" {
+                panic("s33: 粘贴载荷未达模型 draft=" + m.draft)
+            }
+            // submit:Enter
+            d_send_key(t, 257,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "submitted")
+            // Esc 失焦;未消费键回落 key 闭包
+            d_send_key(t, 256,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hiXYZ")
+            var fell: I32 = d_send_key(t, 259,
+                |buf| bind_all(buf, m),
+                |nm| act(nm, m))
+            if fell != 259 {
+                panic("s33: 失焦后退格应回落(得 " + fell.to_string() + ")")
+            }
+            key(fell)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "bs-fellthrough")
+            println("S33-FOCUS-GREEN")
+        })
+    return rc
+}
