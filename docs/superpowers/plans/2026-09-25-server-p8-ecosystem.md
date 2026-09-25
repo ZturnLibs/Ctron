@@ -37,7 +37,8 @@
 
 **Steps:**
 - [x] SigV4 签名链 + 语料(python 独立实现黄金向量钉值;5/5;d858343;scope 关键字撞名实证入册)
-- [ ] 夹具服务往返 + nightly minio 段(待续:PUT/GET/DELETE 经 http.client + mock 校验服务)
+- [x] 夹具服务往返(mock 鉴权结构三针+单槽存储;PUT/GET/DELETE 全链 200/200/204;裸 socket 形——http.client StructLit 残缺陷绕行在册;minio nightly 段待真靶环境)
+- [x] 提交
 
 ### Task 3 (P8-C): NDJSON/流式 JSON
 
