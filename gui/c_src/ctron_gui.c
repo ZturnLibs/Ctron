@@ -351,3 +351,9 @@ int gui_mod_ctrl(void) {
     if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) { return 1; }
     return 0;
 }
+
+// 剪贴板系统同步(真窗粘贴前调;headless 直控缓冲不经此)
+void gui_clip_sync(void) {
+    const char *s = GetClipboardText();
+    if (s) { gui_clip_set_c(s); }
+}

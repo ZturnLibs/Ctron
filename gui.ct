@@ -119,6 +119,9 @@ extern "c" fn gui_clip_len() -> I32
 extern "c" fn gui_clip_byte(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_clip_sync() -> Void
+
+#[trusted]
 extern "c" fn gui_inject_mod(m: I32) -> Void
 
 #[trusted]
@@ -2630,6 +2633,150 @@ pub fn rt_expect_text(want: Str) -> I32 {
 fn rt_nokey(k: I32) -> Void {
 }
 
+// ==================== input 编辑管线(波次二 §2.2) ====================
+
+// 值活问:焦点 input 当前文本(bind 单一起源;简单名通道,表达式槽编辑 v1 不支持)
+fn rt_in_val(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void) -> Str {
+    if t.nbid[node] == "" {
+        return ""
+    }
+    if gt_slot_simple(t.nbid[node]) && t.props.len == 0 {
+        return bxv_show(rt_bind_text(bind, t.nbid[node]))
+    }
+    return ""
+}
+
+// on:<evname> 处理器头名提取(节点事件表扫描);未声明返回 ""
+fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
+    var e: I32 = 0
+    while e < t.nec[node] {
+        var gi: I32 = t.nes[node] + e
+        if t.ev_name[gi] == evname {
+            return ev_head(t.ev_fn[gi])
+        }
+        e += 1
+    }
+    return ""
+}
+
+// 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
+fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str) -> Void) -> I32 {
+    var h: Str = rt_in_handler(t, node, evname)
+    if h != "" {
+        act(h + ":" + payload)
+    }
+    return 0
+}
+
+// 字符输入:焦点 input 插入码点(utf8_enc)并 fire on:input;非焦点返回 false 回落
+fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, ch: I32) -> Bool {
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return false
+    }
+    if t.ntag[fn0] != "input" {
+        return false
+    }
+    var cur: Str = rt_in_val(t, fn0, bind)
+    var caret: I32 = gui_caret_get()
+    if caret > cur.len {
+        caret = cur.len
+    }
+    if caret < 0 {
+        caret = 0
+    }
+    var ins: Str = utf8_enc(ch)
+    var nw: Str = byte_slice(cur, 0, caret) + ins + byte_slice(cur, caret, cur.len)
+    gui_caret_set(caret + ins.len)
+    rt_in_fire(t, fn0, "input", nw, act)
+    return true
+}
+
+// 编辑键:退格/删除(字节级,沿 s12 口径;码点级随 M3)/←→/Home/End/Enter=submit/
+// Esc=失焦/Ctrl+V=粘贴;结构编辑后 fire on:input。未消费返回 false 回落 key 闭包
+fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str) -> Void, k: I32) -> Bool {
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return false
+    }
+    if t.ntag[fn0] != "input" {
+        return false
+    }
+    if k == 256 {
+        gui_focus_set(-1)
+        gui_caret_set(0)
+        return true
+    }
+    var cur: Str = rt_in_val(t, fn0, bind)
+    var caret: I32 = gui_caret_get()
+    if caret > cur.len {
+        caret = cur.len
+    }
+    if caret < 0 {
+        caret = 0
+    }
+    if k == 259 {
+        if caret > 0 {
+            var nw: Str = byte_slice(cur, 0, caret - 1) + byte_slice(cur, caret, cur.len)
+            gui_caret_set(caret - 1)
+            rt_in_fire(t, fn0, "input", nw, act)
+        }
+        return true
+    }
+    if k == 261 {
+        if caret < cur.len {
+            var nw2: Str = byte_slice(cur, 0, caret) + byte_slice(cur, caret + 1, cur.len)
+            rt_in_fire(t, fn0, "input", nw2, act)
+        }
+        return true
+    }
+    if k == 263 {
+        if caret > 0 {
+            gui_caret_set(caret - 1)
+        }
+        return true
+    }
+    if k == 262 {
+        if caret < cur.len {
+            gui_caret_set(caret + 1)
+        }
+        return true
+    }
+    if k == 268 {
+        gui_caret_set(0)
+        return true
+    }
+    if k == 269 {
+        gui_caret_set(cur.len)
+        return true
+    }
+    if k == 257 {
+        var sh: Str = rt_in_handler(t, fn0, "submit")
+        if sh != "" {
+            act(sh)
+        }
+        return true
+    }
+    if k == 86 {
+        if gui_mod_ctrl() == 1 {
+            gui_clip_sync()
+            var n: I32 = gui_clip_len()
+            var cs: Str = ""
+            var i: I32 = 0
+            while i < n {
+                cs = cs + utf8_enc(gui_clip_byte(i))
+                i += 1
+            }
+            var nw3: Str = byte_slice(cur, 0, caret) + cs + byte_slice(cur, caret, cur.len)
+            gui_caret_set(caret + cs.len)
+            rt_in_fire(t, fn0, "input", nw3, act)
+            return true
+        }
+        return false
+    }
+    return false
+}
+
 fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                   bind: fn(List[Str]) -> Void, act: fn(Str) -> Void,
                   key: fn(I32) -> Void, has_key: Bool) -> I32 {
@@ -2670,9 +2817,23 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                 ev_fire(t, name, bind, act)
             }
         } else {
-            if evt == 1 {
-                if has_key {
-                    key(gui_evt_key())
+            if evt == 3 {
+                // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
+                var ic: Bool = rt_input_char(t, bind, act, gui_evt_key())
+                if !ic {
+                    if has_key {
+                        key(gui_evt_key())
+                    }
+                }
+            } else {
+                if evt == 1 {
+                    // 波次二:焦点 input 编辑键优先(消费边界=不进 key 闭包,s33 锁)
+                    var ik: Bool = rt_input_key(t, bind, act, gui_evt_key())
+                    if !ik {
+                        if has_key {
+                            key(gui_evt_key())
+                        }
+                    }
                 }
             }
         }
@@ -2750,9 +2911,23 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                 ev_fire(t, name, bind, act)
             }
         } else {
-            if evt == 1 {
-                if has_key {
-                    key(gui_evt_key())
+            if evt == 3 {
+                // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
+                var ic: Bool = rt_input_char(t, bind, act, gui_evt_key())
+                if !ic {
+                    if has_key {
+                        key(gui_evt_key())
+                    }
+                }
+            } else {
+                if evt == 1 {
+                    // 波次二:焦点 input 编辑键优先(消费边界=不进 key 闭包,s33 锁)
+                    var ik: Bool = rt_input_key(t, bind, act, gui_evt_key())
+                    if !ik {
+                        if has_key {
+                            key(gui_evt_key())
+                        }
+                    }
                 }
             }
         }
