@@ -1,0 +1,299 @@
+// pkg/pkg.ct —— ctron pkg 域包(P8-D;registry v1 + CTCL 子集解析)
+//
+// 拍板(2026-09-26,在案待否决):
+//   1. CLI 落点 = tools/pkg.ct 独立程序(零编译器树扰动;本域包 = 库半面)。
+//   2. registry 协议 v1 = 纯 GET 静态约定:/<name>/<ver>/manifest(CTCL 文本)+
+//      /<name>/<ver>/module(单文件源码;多文件 tar 志向)。
+//   3. lockfile v1 = ctron-lock.ndjson 管道行(name|ver|hash16 每包一行;
+//      NDJSON 对象形随字符串转义基建)。
+//   4. dep v1 = version 单形(path/git 志向);闭包递归 + 深度上限 8。
+//   5. 鉴权/私有 registry 志向。
+// use 面(P1b):net 逐符号显式请求。
+use net.{Net_probe, net_tcp_connect, net_write_str, net_read_t, net_close}
+
+pub struct MfLine {
+    let rc: I64
+    let start: I64
+    let ln: I64
+}
+
+pub struct MfKv {
+    let rc: I64
+    let k: Str
+    let v: Str
+}
+
+pub struct PkgManifest {
+    let rc: I64
+    let name: Str
+    let ver: Str
+    let deps: Str
+    let ndeps: I64
+}
+
+pub fn mf_rc_ok() -> I64 { return 1 }
+pub fn mf_rc_bad() -> I64 { return 0 - 1 }
+pub fn mf_deps_empty(d: Str) -> Bool { return d.len == 0 }
+
+// 行扫描:第 ln 行(0 起)窗口;rc 0 = 越界
+fn mf_line(src: Str, ln: I64) -> MfLine {
+    var start: I64 = 0
+    var idx: I64 = 0
+    var i: I32 = 0
+    while i <= src.len {
+        if (i == src.len) || (byte_at(src, i) == 10) {
+            if idx == ln {
+                var e = i
+                if (e > start) && (byte_at(src, e - 1) == 13) {
+                    e -= 1
+                }
+                return MfLine { rc: 1, start: start, ln: e - start }
+            }
+            idx += 1
+            start = i + 1
+        }
+        i += 1
+    }
+    return MfLine { rc: 0, start: 0, ln: 0 }
+}
+
+// "key = value" 拆解(窗口内;value 引号可选剥)
+fn mf_kv(src: Str, st: I64, ln: I64) -> MfKv {
+    var eq: I64 = 0 - 1
+    var i = st
+    while i < st + ln {
+        if byte_at(src, i) == 61 {
+            eq = i
+            break
+        }
+        i += 1
+    }
+    if eq < 0 {
+        return MfKv { rc: 0 - 1, k: "", v: "" }
+    }
+    var ks = st
+    while (ks < eq) && (byte_at(src, ks) == 32) {
+        ks += 1
+    }
+    var ke = eq
+    while (ke > ks) && (byte_at(src, ke - 1) == 32) {
+        ke -= 1
+    }
+    var vs = eq + 1
+    while (vs < st + ln) && (byte_at(src, vs) == 32) {
+        vs += 1
+    }
+    var ve = st + ln
+    while (ve > vs) && (byte_at(src, ve - 1) == 32) {
+        ve -= 1
+    }
+    if (ve - vs >= 2) && (byte_at(src, vs) == 34) && (byte_at(src, ve - 1) == 34) {
+        vs += 1
+        ve -= 1
+    }
+    return MfKv { rc: 1, k: byte_slice(src, ks, ke), v: byte_slice(src, vs, ve) }
+}
+
+// CTCL 子集解析:pkg{name,version} + dep <name>{version}。deps = "|" 连接
+// 的 name@ver 列表(配 mf_deps_first/rest 迭代)。
+pub fn mf_parse(src: Str) -> PkgManifest {
+    var name = ""
+    var ver = ""
+    var deps = ""
+    var ndeps: I64 = 0
+    var in_pkg = false
+    var in_dep = false
+    var cur_dep = ""
+    var cur_ver = ""
+    var lnn: I64 = 0
+    var guard: I64 = 0
+    while guard < 512 {
+        guard += 1
+        let ml = mf_line(src, lnn)
+        if ml.rc == 0 {
+            break
+        }
+        // 去 // 注释 + 剥空白
+        var t0 = ml.start
+        var te = ml.start + ml.ln
+        var ci = t0
+        var cut = te
+        while (ci + 1) < te {
+            if (byte_at(src, ci) == 47) && (byte_at(src, ci + 1) == 47) {
+                cut = ci
+                break
+            }
+            ci += 1
+        }
+        while (t0 < cut) && (byte_at(src, t0) == 32) {
+            t0 += 1
+        }
+        while (te > t0) && (byte_at(src, te - 1) == 32) {
+            te -= 1
+        }
+        let tl = te - t0
+        if tl >= 5 {
+            // "pkg {" 或 "dep NAME {"
+            let is_pkg = (byte_at(src, t0) == 112) && (byte_at(src, t0 + 1) == 107) && (byte_at(src, t0 + 2) == 103) && (byte_at(src, t0 + 3) == 32) && (byte_at(src, t0 + 4) == 123)
+            let is_dep = (byte_at(src, t0) == 100) && (byte_at(src, t0 + 1) == 101) && (byte_at(src, t0 + 2) == 112) && (byte_at(src, t0 + 3) == 32) && (byte_at(src, t0 + 4) == 123)
+            if is_pkg {
+                in_pkg = true
+                in_dep = false
+            } else {
+                if is_dep {
+                    in_dep = true
+                    in_pkg = false
+                    var ds = t0 + 4
+                    var de = t0 + tl - 1
+                    while (ds < de) && (byte_at(src, ds) == 32) {
+                        ds += 1
+                    }
+                    while (de > ds) && (byte_at(src, de - 1) == 32) {
+                        de -= 1
+                    }
+                    cur_dep = byte_slice(src, ds, de)
+                    cur_ver = ""
+                } else {
+                    if byte_at(src, t0) == 125 {
+                        // 块闭合:dep 收账
+                        if (in_dep) && (cur_dep.len > 0) && (cur_ver.len > 0) {
+                            let ent = s3_j3(cur_dep, "@", cur_ver)
+                            if deps.len > 0 {
+                                deps = s3_j3(deps, "|", ent)
+                            } else {
+                                deps = ent
+                            }
+                            ndeps += 1
+                        }
+                        in_dep = false
+                        cur_dep = ""
+                        cur_ver = ""
+                        in_pkg = false
+                    } else {
+                        let kv = mf_kv(src, t0, tl)
+                        if kv.rc == 1 {
+                            if (in_pkg) && (kv.k == "name") {
+                                name = kv.v
+                            }
+                            if (in_pkg) && (kv.k == "version") {
+                                ver = kv.v
+                            }
+                            if (in_dep) && (kv.k == "version") {
+                                cur_ver = kv.v
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        lnn += 1
+    }
+    var rc = mf_rc_ok()
+    if name.len == 0 {
+        rc = mf_rc_bad()
+    }
+    return PkgManifest { rc: rc, name: name, ver: ver, deps: deps, ndeps: ndeps }
+}
+
+fn s3_j3(a: Str, b: Str, c: Str) -> Str {
+    return a + b + c
+}
+
+// deps 迭代:首段(name@ver)/ 余段(空 = 尽)
+pub fn mf_deps_first(d: Str) -> Str {
+    var i: I32 = 0
+    while i < d.len {
+        if byte_at(d, i) == 124 {
+            return byte_slice(d, 0, i)
+        }
+        i += 1
+    }
+    return d
+}
+
+pub fn mf_deps_rest(d: Str) -> Str {
+    var i: I32 = 0
+    while i < d.len {
+        if byte_at(d, i) == 124 {
+            return byte_slice(d, i + 1, d.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+// dep 项拆 name@ver
+pub fn mf_dep_name(ent: Str) -> Str {
+    var i: I32 = 0
+    while i < ent.len {
+        if byte_at(ent, i) == 64 {
+            return byte_slice(ent, 0, i)
+        }
+        i += 1
+    }
+    return ent
+}
+
+pub fn mf_dep_ver(ent: Str) -> Str {
+    var i: I32 = 0
+    while i < ent.len {
+        if byte_at(ent, i) == 64 {
+            return byte_slice(ent, i + 1, ent.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+// registry GET(Connection: close 读至 EOF;体 = 空行后全文)
+pub fn reg_get(port: I64, path: Str, scr: &I64[], scap: I64) -> Str {
+    let net = Net_probe()
+    let cfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_connect(net, "127.0.0.1", port, cfd) != 0 {
+        return ""
+    }
+    let req = "GET " + path + " HTTP/1.1\r\n" + "Host: r\r\n" + "Connection: close\r\n" + "\r\n"
+    net_write_str(net, cfd.v, req)
+    var buf: I64[8192] = [0, 0, 0, 0]
+    var n: I64 = 0
+    var guard: I64 = 0
+    while (guard < 256) && (n < 8000) {
+        guard += 1
+        let r = net_read_t(net, cfd.v, scr, scap, 5000)
+        if r <= 0 {
+            break
+        }
+        var i: I64 = 0
+        while i < r {
+            if n < 8000 {
+                buf[n] = scr[i]
+                n += 1
+            }
+            i += 1
+        }
+    }
+    net_close(net, cfd.v)
+    println("DBG n=" + n.to_string())
+    // 体 = 空行后
+    var hend: I64 = 0 - 1
+    var k: I64 = 0
+    while (k + 3 < n) && (hend < 0) {
+        if (buf[k] == 13) && (buf[k + 1] == 10) && (buf[k + 2] == 13) && (buf[k + 3] == 10) {
+            hend = k + 4
+        }
+        k += 1
+    }
+    if hend < 0 {
+        return ""
+    }
+    var out = ""
+    var i2 = hend
+    while i2 < n {
+        let c = buf[i2]
+        if (c >= 32) && (c < 127) {
+            out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
+        }
+        i2 += 1
+    }
+    return out
+}

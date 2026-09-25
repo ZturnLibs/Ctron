@@ -21,6 +21,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+/* P8-D(2026-09-26):SIGPIPE 全局忽略——对端早关后的写返回 EPIPE 错误而非
+ * 进程死亡(标准服务器实践;registry/mock 等夹具服务实证:就绪探针连接
+ * 立即关闭后,服务端 400 写响应即被 SIGPIPE 击杀)。 */
+#include <signal.h>
+__attribute__((constructor)) static void ctron_net_sigpipe_init(void) {
+    signal(SIGPIPE, SIG_IGN);
+}
 /* P2-C 收账:rt 垫底三符号取冻结声明自 ctron_rt.h(强定义同头),防 ABI 漂移
  * (签名失配时编译期即报,不再静默弱顶弱) */
 #include "ctron_rt.h"

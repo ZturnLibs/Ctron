@@ -1,0 +1,96 @@
+// tools/pkg.ct —— ctron pkg(P8-D):pkg add <name>@<ver>(registry v1)
+// 用法:PKG_PORT=nnnn PKG_NAME=app PKG_VER=1.0.0 PKG_DIR=workdir ctron-cc run tools/pkg.ct
+// 流程:GET manifest → CTCL 解析(name/ver 校验+deps)→ 逐 dep 递归拉取 →
+//       vendor/<name>-<ver>.ct 落盘 → ctron-lock.ndjson 管道行追加。
+// vendor/ 目录由使用方预建(fs_write 无 mkdir;CLI mkdir 加固志向)。
+use pkg.pkg.{ mf_parse, mf_rc_ok, mf_deps_empty, mf_deps_first, mf_deps_rest, mf_dep_name, mf_dep_ver, reg_get }
+use std.fs.{ read_or }
+use std.crypto.{ sha256_hex }
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn dstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var n = v
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    return out
+}
+
+// 递归 add(深度上限 8;返回 0 = ok)
+fn add_pkg(port: I64, name: Str, ver: Str, depth: I64) -> I64 {
+    if depth > 8 {
+        println("PKG-FAIL depth")
+        return 1
+    }
+    var scr: I64[1024] = [0, 0, 0, 0]
+    let mf_path = "/" + name + "/" + ver + "/manifest"
+    let mf_text = reg_get(port, mf_path, scr, 1024)
+    println("DBG mf.len=" + mf_text.len.to_string())
+    if mf_text.len == 0 {
+        println("PKG-FAIL manifest fetch")
+        return 1
+    }
+    let m = mf_parse(mf_text)
+    if m.rc != mf_rc_ok() {
+        println("PKG-FAIL manifest parse")
+        return 1
+    }
+    if (m.name != name) || (m.ver != ver) {
+        println("PKG-FAIL identity")
+        return 1
+    }
+    // module 落盘
+    let mod_path = "/" + name + "/" + ver + "/module"
+    let mod_src = reg_get(port, mod_path, scr, 1024)
+    if mod_src.len == 0 {
+        println("PKG-FAIL module fetch")
+        return 1
+    }
+    let fname = "vendor/" + name + "-" + ver + ".ct"
+    if fs_write(fname, mod_src) == false {
+        println("PKG-FAIL vendor write")
+        return 1
+    }
+    // lockfile 追加(管道行:name|ver|hash16)
+    let h = sha256_hex(mod_src)
+    let h16 = byte_slice(h, 0, 16)
+    let prev = read_or("ctron-lock.ndjson", "")
+    let entry = name + "|" + ver + "|" + h16 + "\n"
+    if fs_write("ctron-lock.ndjson", prev + entry) == false {
+        println("PKG-FAIL lock write")
+        return 1
+    }
+    println("PKG-ADDED " + name + "-" + ver)
+    // deps 递归
+    var d = m.deps
+    var guard: I64 = 0
+    while (mf_deps_empty(d) == false) && (guard < 16) {
+        guard += 1
+        let ent = mf_deps_first(d)
+        let dn = mf_dep_name(ent)
+        let dv = mf_dep_ver(ent)
+        let rc = add_pkg(port, dn, dv, depth + 1)
+        if rc != 0 {
+            return rc
+        }
+        d = mf_deps_rest(d)
+    }
+    return 0
+}
+
+fn main() -> I64 {
+    let port = sc_get_l(parse_i64(env_get("PKG_PORT")), 8501)
+    let name = env_get("PKG_NAME")
+    let ver = env_get("PKG_VER")
+    if (name.len == 0) || (ver.len == 0) {
+        println("PKG-FAIL args")
+        return 2
+    }
+    return add_pkg(port, name, ver, 0)
+}

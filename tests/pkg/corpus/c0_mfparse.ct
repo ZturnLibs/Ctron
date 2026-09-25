@@ -1,0 +1,37 @@
+// c0 —— CTCL 子集解析:pkg 块/dep 键控块/deps 迭代/注释与空白容忍
+use pkg.pkg.{ mf_parse, mf_rc_ok, mf_deps_empty, mf_deps_first, mf_deps_rest, mf_dep_name, mf_dep_ver }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    let src = "pkg \{\n    manifest_version = 1\n    name = \"app\"\n    version = \"1.0.0\"\n}\n\ndep lib \{\n    version = \"1.2.0\"\n}\n\ndep util \{\n    version = \"0.3.0\"\n}\n"
+    let m = mf_parse(src)
+    if m.rc != mf_rc_ok() { return 1 }
+    if eqs(m.name, "app") == false { return 2 }
+    if eqs(m.ver, "1.0.0") == false { return 3 }
+    if m.ndeps != 2 { return 4 }
+    // deps = "lib@1.2.0|util@0.3.0"
+    let first = mf_deps_first(m.deps)
+    if eqs(mf_dep_name(first), "lib") == false { return 5 }
+    if eqs(mf_dep_ver(first), "1.2.0") == false { return 6 }
+    let rest = mf_deps_rest(m.deps)
+    let second = mf_deps_first(rest)
+    if eqs(mf_dep_name(second), "util") == false { return 7 }
+    if eqs(mf_dep_ver(second), "0.3.0") == false { return 8 }
+    if mf_deps_empty(m.deps) { return 9 }
+    if mf_deps_empty(mf_deps_rest(rest)) == false { return 10 }
+    // 无 dep 形
+    let m2 = mf_parse("pkg \{\n    name = \"solo\"\n    version = \"0.1.0\"\n}\n")
+    if m2.rc != mf_rc_ok() { return 11 }
+    if m2.ndeps != 0 { return 12 }
+    if mf_deps_empty(m2.deps) == false { return 13 }
+    return 0
+}

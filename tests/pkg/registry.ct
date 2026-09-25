@@ -1,0 +1,91 @@
+// tests/pkg/registry.ct —— registry 夹具(P8-D):静态 GET 服务四轮
+//   /app/1.0.0/manifest → CTCL(pkg app + dep lib version 1.2.0)
+//   /app/1.0.0/module → "APP-MODULE"
+//   /lib/1.2.0/manifest → CTCL(pkg lib 无 dep)
+//   /lib/1.2.0/module → "LIB-MODULE-CONTENT"
+use net.{Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write, net_close}
+use std.strconv.{ parse_i64, sc_get_l }
+
+fn fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+fn main() -> I64 {
+    let net = Net_probe()
+    let port = sc_get_l(parse_i64(env_get("REG_PORT")), 8501)
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        println("REG-FAIL listen")
+        return 2
+    }
+    println("reg ready")
+    let mf_app = "pkg \{\n    manifest_version = 1\n    name = \"app\"\n    version = \"1.0.0\"\n}\n\ndep lib \{\n    version = \"1.2.0\"\n}\n"
+    let mf_lib = "pkg \{\n    manifest_version = 1\n    name = \"lib\"\n    version = \"1.2.0\"\n}\n"
+    var round: I64 = 0
+    while round < 16 {
+        let afd = Box[Box64](Box64 { v: 0 })
+        if net_tcp_accept(net, lfd.v, afd) != 0 {
+            break
+        }
+        let fd = afd.v
+        var buf: I64[2048] = [0, 0, 0, 0]
+        let r = net_read_t(net, fd, buf, 2048, 5000)
+        var path = ""
+        // 请求行第二段 = path(GET x HTTP/1.1)
+        if r > 4 {
+            var i: I64 = 4
+            while (i < r) && (buf[i] != 32) {
+                i += 1
+            }
+            path = ""
+            var j: I64 = 4
+            while j < i {
+                path = path + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", buf[j].as[I32]() - 32, buf[j].as[I32]() - 31)
+                j += 1
+            }
+        }
+        var body = ""
+        if path == "/app/1.0.0/manifest" {
+            body = mf_app
+        } else {
+            if path == "/app/1.0.0/module" {
+                body = "APP-MODULE"
+            } else {
+                if path == "/lib/1.2.0/manifest" {
+                    body = mf_lib
+                } else {
+                    if path == "/lib/1.2.0/module" {
+                        body = "LIB-MODULE-CONTENT"
+                    }
+                }
+            }
+        }
+        var head = ""
+        if body.len > 0 {
+            head = "HTTP/1.1 200 OK\r\nContent-Length: " + body.len.to_string() + "\r\nConnection: close\r\n\r\n"
+        } else {
+            head = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        }
+        var ob: I64[512] = [0, 0, 0, 0]
+        var k: I32 = 0
+        while k < head.len {
+            ob[k.as[I64]() ] = byte_at(head, k).as[I64]()
+            k += 1
+        }
+        var bi: I32 = 0
+        while bi < body.len {
+            ob[head.len.as[I64]() + bi.as[I64]()] = byte_at(body, bi).as[I64]()
+            bi += 1
+        }
+        net_write(net, fd, ob, head.len.as[I64]() + body.len.as[I64]())
+        net_close(net, fd)
+        round += 1
+    }
+    println("REG-DONE")
+    return 0
+}
