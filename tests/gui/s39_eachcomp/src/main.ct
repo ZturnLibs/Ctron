@@ -1,0 +1,27 @@
+// tests/gui/s39_eachcomp —— 波次四:组件×each 探针(规格 §7;each 内组件实例)
+// 实参 {u} 引用迭代变量→展开期 itemvar 直取;read_file 形态(视图归 ctml,
+// .ct 内嵌叶中文词法缺口登记——卡:标签故置于 app.ctml)
+use gui.{test, d_frame, d_expect_text, theme_apply, theme_default}
+
+fn bind_all(buf: List[Str]) {
+    if buf[0] == "each:users" {
+        buf.push("甲")
+        buf.push("乙")
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf),
+        |name, args| { },
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_all(buf))
+            d_expect_text(t, "卡:甲")
+            d_expect_text(t, "卡:乙")
+            println("S39-EACHCOMP-GREEN")
+        })
+    return rc
+}

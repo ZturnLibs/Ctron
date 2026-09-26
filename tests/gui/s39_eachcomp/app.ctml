@@ -1,0 +1,14 @@
+// 组件×each:each 内组件实例,实参引用迭代变量(规格 §7 探针任务兑现)
+view Card (name: Str) {
+  <label class="card">卡:{name}</label>
+}
+style card { fg: "#e6e6eb" size: 16 h: 24 }
+
+view App {
+  <vbox class="root">
+    <each u in={users}>
+      <Card name: {u}/>
+    </each>
+  </vbox>
+}
+style root { direction: column gap: 4 padding: 12 }

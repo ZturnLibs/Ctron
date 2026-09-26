@@ -2575,7 +2575,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if byte_at(pexpr, 0) == 1 {
                     pval = byte_slice(pexpr, 1, pexpr.len)
                 } else {
-                    pval = bxv_eval(t, pexpr, bind)
+                    if pexpr == itemvar {
+                        // each 活动项直取(组件×each:实参引用迭代变量)
+                        pval = item
+                    } else {
+                        pval = bxv_eval(t, pexpr, bind)
+                    }
                 }
             }
             t.env_n.push(pname)
@@ -3916,4 +3921,24 @@ pub fn run_kb_d(title: Str, w: I32, h: I32,
 // 字符码 → 单字符 Str(TextInput/type 3 事件;utf8_enc 透传)
 pub fn char_str(k: I32) -> Str {
     return utf8_enc(k)
+}
+
+// SL-8c-4④:事件名实例后缀取整("头:N" 尾部数字;无后缀 = 0)——
+// 合成 act 的逐行事件分支消费(P-H1 命中契约的解码侧)
+pub fn ev_suffix_i(name: Str) -> I32 {
+    var j: I32 = name.len
+    while j > 0 {
+        var d: I32 = byte_at(name, j - 1)
+        if d >= 48 && d <= 57 {
+            j -= 1
+        } else {
+            break
+        }
+    }
+    if j > 1 {
+        if byte_at(name, j - 1) == 58 {
+            return gs2i(byte_slice(name, j, name.len))
+        }
+    }
+    return 0
 }
