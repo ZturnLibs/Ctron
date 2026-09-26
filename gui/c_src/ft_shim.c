@@ -106,9 +106,24 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
     while (i < len) {
         unsigned long cp = utf8_next_n((const unsigned char*)utf8, len, &i);
         if (cp == 0) { break; }
-        if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_RENDER) != 0) { continue; }
-        FT_GlyphSlot sl = g_face->glyph;
-        if (bold) { FT_Outline_Embolden(&sl->outline, (FT_Pos)(g_ft_px / 16 + 1)); }
+        FT_GlyphSlot sl = NULL;
+        if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_RENDER) == 0) {
+            sl = g_face->glyph;
+        } else {
+            // 回退链(§2.8 P2):当前面缺字→遍历注册族面
+            for (int fi = 0; fi < g_nfam; fi++) {
+                if (!g_fams[fi].ok) { continue; }
+                int saved_px = g_fams[fi].px;
+                FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)g_ft_px);
+                if (FT_Load_Char(g_fams[fi].face, (FT_ULong)cp, FT_LOAD_RENDER) == 0) {
+                    sl = g_fams[fi].face->glyph;
+                    break;
+                }
+                FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)saved_px);
+            }
+            if (!sl) { continue; }
+        }
+        if (bold) { if (sl->format == FT_GLYPH_FORMAT_OUTLINE) { FT_Outline_Embolden(&sl->outline, (FT_Pos)(g_ft_px / 16 + 1)); } }
         int bx = pen + sl->bitmap_left;
         int by = asc - sl->bitmap_top;
         int bw = (int)sl->bitmap.width;
@@ -177,8 +192,23 @@ static int ft_measure_n_w(const char* s, int len, int px, int weight, int fam) {
     while (i < len) {
         unsigned long cp = utf8_next_n((const unsigned char*)s, len, &i);
         if (cp == 0) { break; }
-        if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) != 0) { continue; }
-        w += (int)(g_face->glyph->advance.x >> 6) + bdelta;
+        if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) == 0) {
+            w += (int)(g_face->glyph->advance.x >> 6) + bdelta;
+        } else {
+            // 回退链:当前面缺字→注册族面(与渲染轮同序,测量==渲染不变式)
+            int fb_w = -1;
+            for (int fi = 0; fi < g_nfam; fi++) {
+                if (!g_fams[fi].ok) { continue; }
+                FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)px);
+                if (FT_Load_Char(g_fams[fi].face, (FT_ULong)cp, FT_LOAD_DEFAULT) == 0) {
+                    fb_w = (int)(g_fams[fi].face->glyph->advance.x >> 6) + bdelta;
+                    break;
+                }
+            }
+            if (fb_w >= 0) {
+                w += fb_w;
+            }
+        }
     }
     return w;
 }
