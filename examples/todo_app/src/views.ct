@@ -1,5 +1,141 @@
-// views.ct 骨架探针(Task 1)
+// views.ct —— HTML 视图层(纯函数 Str→Str;无存储知识)
+//
+// 纪律:一切用户可控文本(uid/title/err 回显)过 ht_esc(五实体转义,XSS 安全默认);
+// 页面骨架 ht_page;表单全 POST + 303 重定向(PR-G)。行数据以 NDJSON 行 Str 到达,
+// 字段经 store.fld_* 按需取(视图不落持久化知识,只做行→片段投影)。
 
-pub fn probe_views() -> Str {
-    return "v"
+use todo_app.store.{ fld_s, fld_i, fld_b }
+use http.frm.html.{ ht_esc, ht_page }
+use std.str.{ contains }
+
+// 视图不落 I64→Str 依赖翻转:id 十进制化私留(与 store 同款算术形)
+fn vdstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var neg = false
+    var n = v
+    if n < 0 {
+        neg = true
+        n = 0 - n
+    }
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    if neg {
+        out = "-" + out
+    }
+    return out
+}
+
+// 内联小表单(每行 toggle/delete 按钮;button 自带提交语义)
+fn f_btn(action: Str, label: Str, cls: Str) -> Str {
+    return "<form method=\"post\" action=\"" + action + "\" class=\"" + cls + "\"><button type=\"submit\">" + label + "</button></form>"
+}
+
+fn f_err(err: Str) -> Str {
+    if err.len == 0 {
+        return ""
+    }
+    return "<p class=\"err\">" + ht_esc(err) + "</p>"
+}
+
+fn f_auth_page(title: Str, err: Str, action: Str, submit: Str, alt_href: Str, alt_text: Str) -> Str {
+    var body = "<h1>" + ht_esc(title) + "</h1>" + f_err(err)
+    body = body + "<form method=\"post\" action=\"" + action + "\">"
+    body = body + "<input name=\"uid\" placeholder=\"username\" autocomplete=\"username\">"
+    body = body + "<input name=\"pass\" type=\"password\" placeholder=\"password\" autocomplete=\"current-password\">"
+    body = body + "<button type=\"submit\">" + ht_esc(submit) + "</button>"
+    body = body + "</form>"
+    body = body + "<p><a href=\"" + alt_href + "\">" + ht_esc(alt_text) + "</a></p>"
+    return ht_page(title, body)
+}
+
+// ---- 页面 ----
+
+pub fn view_login(err: Str) -> Str {
+    return f_auth_page("登录", err, "/login", "登录", "/register", "没有账号?去注册")
+}
+
+pub fn view_register(err: Str) -> Str {
+    return f_auth_page("注册", err, "/register", "注册", "/login", "已有账号?去登录")
+}
+
+// 主列表页:新增表单 + 逐行 toggle/delete + 登出
+pub fn view_app(uid: Str, items: List[Str]) -> Str {
+    var body = "<header><span class=\"uid\">" + ht_esc(uid) + "</span>" + f_btn("/logout", "登出", "inline right") + "</header>"
+    body = body + "<form method=\"post\" action=\"/app/add\" class=\"add\">"
+    body = body + "<input name=\"title\" placeholder=\"要做什么?\">"
+    body = body + "<button type=\"submit\">添加</button></form>"
+    if items.len == 0 {
+        body = body + "<p class=\"empty\">暂无条目</p>"
+    } else {
+        body = body + "<ul>"
+        var i: I32 = 0
+        while i < items.len {
+            let line = items[i]
+            let id = fld_i(line, "$.id", 0)
+            let title = fld_s(line, "$.title")
+            let done = fld_b(line, "$.done", false)
+            let ids = vdstr(id)
+            var cls = "open"
+            var mark = "&#9744;"
+            if done {
+                cls = "done"
+                mark = "&#9745;"
+            }
+            body = body + "<li class=\"" + cls + "\">"
+            body = body + f_btn("/app/toggle/" + ids, mark, "inline")
+            body = body + "<span class=\"title\">" + ht_esc(title) + "</span>"
+            body = body + f_btn("/app/delete/" + ids, "&#215;", "inline del")
+            body = body + "</li>"
+            i += 1
+        }
+        body = body + "</ul>"
+    }
+    return ht_page("todo", body)
+}
+
+pub fn view_404() -> Str {
+    return ht_page("404", "<h1>404</h1><p><a href=\"/\">回首页</a></p>")
+}
+
+// ---- tests(解释口径;廉价纯逻辑) ----
+
+test "login page shape and escape" {
+    let p = view_login("")
+    assert(contains(p, "action=\"/login\""))
+    assert(contains(p, "type=\"password\""))
+    let e = view_login("<x>")
+    assert(contains(e, "&lt;x&gt;"))
+    assert(!contains(e, "<x>"))
+}
+
+test "register page links" {
+    let p = view_register("uid 域坏")
+    assert(contains(p, "action=\"/register\""))
+    assert(contains(p, "href=\"/login\""))
+    assert(contains(p, "uid 域坏"))
+}
+
+test "app page rows and isolation of markup" {
+    var items: List[Str] = List[Str]()
+    items.push("\{\"id\":1,\"uid\":\"a\",\"title\":\"alPHA <b>\",\"done\":false,\"created\":\"t\"}")
+    items.push("\{\"id\":2,\"uid\":\"a\",\"title\":\"beta\",\"done\":true,\"created\":\"t\"}")
+    let p = view_app("alice", items)
+    assert(contains(p, "/app/toggle/1"))
+    assert(contains(p, "/app/delete/2"))
+    assert(contains(p, "alPHA &lt;b&gt;"))
+    assert(!contains(p, "alPHA <b>"))
+    assert(contains(p, "alice"))
+    assert(contains(p, "class=\"done\""))
+    let empty = view_app("bob", List[Str]())
+    assert(contains(empty, "暂无条目"))
+}
+
+test "404 page" {
+    assert(view_404().contains("404"))
 }
