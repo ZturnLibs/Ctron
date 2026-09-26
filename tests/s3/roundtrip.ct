@@ -65,8 +65,25 @@ fn main() -> I64 {
         akx = env_get("S3_AK")
         skx = env_get("S3_SK")
     }
-    // 建桶 = 部署契约(桶预建;S3_MKBUCKET=1 时以 CreateBucket 重试一次)
+    // 建桶 = 部署契约(桶预建);S3_MKBUCKET=1 时先 CreateBucket(签名已证)
     // 签名面时间 = 当前(now_iso_utc→basic),防 minio 15min 偏移拒。
+    if env_get("S3_MKBUCKET") == "1" {
+        let phb = s3_payload_hash_str("")
+        let hostb = "127.0.0.1:" + port.to_string()
+        let authb = s3_auth_for("PUT", "/testbucket", hostb, xdate, phb, akx, skx, region)
+        let headb = "PUT /testbucket HTTP/1.1\r\n" + "Host: " + hostb + "\r\n" + "x-amz-date: " + xdate + "\r\n" + "x-amz-content-sha256: " + phb + "\r\n" + "Authorization: " + authb + "\r\n" + "content-length: 0\r\n" + "Connection: close\r\n" + "\r\n"
+        let cfb = Box[Box64](Box64 { v: 0 })
+        if net_tcp_connect(net, "127.0.0.1", port, cfb) == 0 {
+            net_write_str(net, cfb.v, headb)
+            var rbb: I64[2048] = [0, 0, 0, 0]
+            let rb = net_read_t(net, cfb.v, rbb, 2048, 5000)
+            net_close(net, cfb.v)
+            if rb > 12 {
+                let scb = rbb[9] * 100 + rbb[10] * 10 + rbb[11] - 48 * 111
+                println("MKBUCKET=" + scb.to_string())
+            }
+        }
+    }
     var rbuf: I64[2048] = [0, 0, 0, 0]
     // PUT
     let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", akx, skx, region, rbuf, 2048, xdate)

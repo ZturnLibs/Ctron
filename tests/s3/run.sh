@@ -66,6 +66,39 @@ else
     echo "  [skip] s3-e2e:CTRON_S3_E2E=1 启用"
 fi
 
+# ── minio 真靶段(CTRON_S3_MINIO=1;nightly 例行):brew/path minio 起服 →
+#    S3_REAL 签名往返(PUT/GET/DELETE 真靶)→ 判 RT-OK。无 minio 即 SKIP。──
+if [ "${CTRON_S3_MINIO:-}" = "1" ]; then
+    echo "== s3 minio 真靶段 =="
+    MINIO_BIN=""
+    for c in "$(command -v minio 2>/dev/null)" /opt/homebrew/bin/minio /usr/local/bin/minio; do
+        if [ -n "$c" ] && [ -x "$c" ]; then MINIO_BIN="$c"; break; fi
+    done
+    if [ -z "$MINIO_BIN" ]; then
+        echo "  [skip] minio 二进制未装(brew install minio)"
+    else
+        MP=$(mktemp -d)
+        ( env MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin "$MINIO_BIN" server "$MP/data" --address 127.0.0.1:9100 > "$T/minio.log" 2>&1 & )
+        sleep 2
+        if "$EMIT" run "$DIR/roundtrip.ct" > "$T/rt.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/rt.bin" "$T/rt.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null; then
+            S3_REAL=1 S3_MKBUCKET=1 S3_AK=minioadmin S3_SK=minioadmin S3_PORT=9100 timeout 25 "$T/rt.bin" > "$T/rt.log" 2>&1
+            RRC=$?
+            sleep 0.3
+            pkill -f 'minio server' 2>/dev/null
+            if [ "$RRC" = 0 ] && grep -q "RT-OK" "$T/rt.log"; then
+                pass=$((pass+1)); echo "  PASS minio-真靶(PUT/GET/DELETE 签名往返全通)"
+            else
+                fail=$((fail+1)); echo "  FAIL minio-真靶(rt_rc=$RRC)"; sed -n '1,3p' "$T/rt.log" 2>/dev/null
+            fi
+        else
+            fail=$((fail+1)); echo "  FAIL minio-真靶 构建"
+        fi
+        rm -rf "$MP"
+    fi
+else
+    echo "  [skip] minio-真靶:CTRON_S3_MINIO=1 启用(nightly 例行)"
+fi
+
 echo "s3/run: pass=$pass fail=$fail"
 [ "$pass" -gt 0 ] || { echo "s3/run: no cases ran"; exit 1; }
 [ "$fail" = 0 ] || exit 1
