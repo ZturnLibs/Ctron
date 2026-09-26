@@ -177,6 +177,12 @@ extern "c" fn gui_cfg3(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I3
 extern "c" fn gui_text_w(s: Str, size: I32, weight: I32, r: I32, g: I32, b: I32, a: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_list_ns(l: List[Str]) -> I32
+
+#[trusted]
+extern "c" fn gui_list_ni(l: List[I32]) -> I32
+
+#[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
 
 #[trusted]
@@ -905,6 +911,16 @@ pub struct GuiTree {
     var sk: List[Str]
     var sv: List[Str]
     var props: List[Str]
+    var vreg_name: List[Str]
+    var vreg_root: List[I32]
+    var vreg_ps: List[I32]
+    var vreg_pn: List[I32]
+    var vc_prop: List[Str]
+    var vc_expr: List[Str]
+    var vc_ps: List[I32]
+    var vc_pn: List[I32]
+    var env_n: List[Str]
+    var env_v: List[Str]
 }
 
 fn gt_new() -> GuiTree {
@@ -924,7 +940,17 @@ fn gt_new() -> GuiTree {
         sk: List[Str](),
         sv: List[Str](),
         nflag: List[Str](),
-        props: List[Str]()
+        props: List[Str](),
+        vreg_name: List[Str](),
+        vreg_root: List[I32](),
+        vreg_ps: List[I32](),
+        vreg_pn: List[I32](),
+        vc_prop: List[Str](),
+        vc_expr: List[Str](),
+        vc_ps: List[I32](),
+        vc_pn: List[I32](),
+        env_n: List[Str](),
+        env_v: List[Str]()
     }
 }
 
@@ -1196,6 +1222,54 @@ fn gt_cond_pick(conds: List[Str], cstart: I32) -> Str {
 fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List[Str], strs: List[Str], depth: I32) -> I32 {
     glit(src, cur, 60)
     var tag: Str = gword(src, cur)
+    // 波次四:ViewCall(大写首字母 = 组件实例)——props 形如 `名: 表达式`
+    // (冒号分隔,引号串/裸词/花括号表达式三形);自闭合或带子树皆收口
+    var fb: I32 = byte_at(tag, 0)
+    if fb >= 65 {
+        if fb <= 90 {
+            var vps: I32 = t.vc_prop.len
+            while true {
+                gws(src, cur)
+                var ab: I32 = byte_at(src, cur.load())
+                if ab == 62 || ab == 47 {
+                    break
+                }
+                var pn: Str = gword(src, cur)
+                glit(src, cur, 58)
+                gws(src, cur)
+                var pv: Str = ""
+                if byte_at(src, cur.load()) == 34 {
+                    // 字面串:0x01 哨兵前缀(展开期直取,不经表达式求值)
+                    pv = utf8_enc(1) + gstr(src, cur)
+                } else {
+                    if byte_at(src, cur.load()) == 123 {
+                        cur.store(cur.load() + 1)
+                        pv = gt_bx_expr(src, cur)
+                    } else {
+                        pv = gword(src, cur)
+                    }
+                }
+                t.vc_prop.push(pn)
+                t.vc_expr.push(pv)
+            }
+            if byte_at(src, cur.load()) == 47 {
+                glit(src, cur, 47)
+            }
+            glit(src, cur, 62)
+            t.ntag.push("call:" + tag)
+            t.ncls.push("")
+            // 区间存节点自有槽(扁平表不能按节点 id 寻址——垃圾读数实证)
+            t.npre.push(vps.to_string())
+            t.nbid.push((t.vc_prop.len - vps).to_string())
+            t.npost.push("")
+            t.nfc.push(-1)
+            t.ns.push(-1)
+            t.nes.push(t.ev_name.len)
+            t.nec.push(0)
+            t.nflag.push("")
+            return t.ntag.len - 1
+        }
+    }
     var is_leaf: Bool = false
     if tag == "label" {
         is_leaf = true
@@ -1525,8 +1599,12 @@ pub fn gt_parse(src: Str) -> GuiTree {
         }
         var w: Str = gword(src, cur)
         if w == "view" {
-            gword(src, cur)
+            var vname: Str = gword(src, cur)
             gws(src, cur)
+            // 波次四:vreg_ps 须在 props 捕获之前装订(否则 pn 恒 0——实测坑)
+            t.vreg_name.push(vname)
+            t.vreg_root.push(t.ntag.len)
+            t.vreg_ps.push(t.props.len)
             // 8c-2:view props 形参表捕获——"( a: T, b: U )" 平衡圆括号内
             // 逐逗号段取名(冒号前,剥空白)入 t.props(与编译侧 gui_props_names
             // 同名表;s22 双端差分)
@@ -1560,6 +1638,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
             gt_node(src, cur, t, conds, binds, strs, 1)
             gws(src, cur)
             glit(src, cur, 125)
+            t.vreg_pn.push(t.props.len - t.vreg_ps[t.vreg_ps.len - 1])
         } else {
             if w == "style" {
                 gt_style(src, cur, t, ext)
@@ -1932,6 +2011,18 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
         if gt_sk_has(t.props, root) {
+            // 波次四:运行时实例环境末位优先(追加不弹,后来者覆盖);
+            // 未中回落 prop: 装配通道(synthesized bind),再回落裸名
+            if gui_list_ns(t.env_n) > 0 {
+                var ei: I32 = t.env_n.len - 1
+                while ei >= 0 {
+                    if t.env_n[ei] == root {
+                        return t.env_v[ei]
+                    }
+                    ei -= 1
+                }
+            }
+
             var pa: Str = rt_bind_text(bind, "prop:" + path)
             if pa != "" {
                 return pa
@@ -2442,6 +2533,61 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
     // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
     // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
     var tag: Str = t.ntag[id]
+    // 波次四:ViewCall 展开——查组件注册表,实参求值入 env(末位优先),
+    // 拼接组件体子树;无 gui_open(纯拼接,组件体自带根元素)
+    var callname: Str = ""
+    if tag.len > 5 {
+        if byte_slice(tag, 0, 5) == "call:" {
+            callname = byte_slice(tag, 5, tag.len)
+        }
+    }
+    if callname != "" {
+        var vi: I32 = 0
+        var vroot: I32 = -1
+        var vps: I32 = -1
+        var vpn: I32 = 0
+        while vi < t.vreg_name.len {
+            if t.vreg_name[vi] == callname {
+                vroot = t.vreg_root[vi]
+                vps = t.vreg_ps[vi]
+                vpn = t.vreg_pn[vi]
+            }
+            vi += 1
+        }
+        if vroot < 0 {
+            panic("gui: 未知组件 " + callname)
+        }
+        // 默认先垫(props 声明,空串),实例实参后入覆盖——env 末位优先语义
+        var dpi: I32 = 0
+        while dpi < vpn {
+            t.env_n.push(t.props[vps + dpi])
+            t.env_v.push("")
+            dpi += 1
+        }
+        var pi: I32 = 0
+        var vpsn: I32 = gs2i(t.npre[id])
+        var vpnn: I32 = gs2i(t.nbid[id])
+        while pi < vpnn {
+            var pname: Str = t.vc_prop[vpsn + pi]
+            var pexpr: Str = t.vc_expr[vpsn + pi]
+            var pval: Str = ""
+            if pexpr.len > 0 {
+                if byte_at(pexpr, 0) == 1 {
+                    pval = byte_slice(pexpr, 1, pexpr.len)
+                } else {
+                    pval = bxv_eval(t, pexpr, bind)
+                }
+            }
+            t.env_n.push(pname)
+            t.env_v.push(pval)
+            if pname == "open" {
+                println("EXP-OPEN expr=[" + pexpr + "] val=[" + pval + "]")
+            }
+            pi += 1
+        }
+        rt_emit(t, bind, itemvar, item, vroot, hits, hinst, inst, hov, actn)
+        return 0
+    }
     var c: Str = t.ncls[id]
     // 交互态(§2.1):hover/active 由指针管线穿线;disabled 在各元素 fold 处按真值置 st=3
     var st: I32 = 0
@@ -2497,7 +2643,19 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         }
         var fgp: I32 = g_parse_color(fgs)
         var fw: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
-        gui_text_w(t.npre[id], gs2i(gt_cls_prop(c, "size", "26", t)), fw,
+        // 波次四:按钮文本接 bind 槽({prop} 动态标签——组件触发器消费)
+        var btxt: Str = t.npre[id]
+        if t.nbid[id] != "" {
+            if t.nbid[id] == itemvar {
+                // each 活动项:项文本直取(不经绑定通道;label 同款)
+                btxt = btxt + item + t.npost[id]
+            } else {
+                btxt = btxt + bxv_show(bxv_eval(t, t.nbid[id], bind)) + t.npost[id]
+            }
+        } else {
+            btxt = btxt + t.npost[id]
+        }
+        gui_text_w(btxt, gs2i(gt_cls_prop(c, "size", "26", t)), fw,
                  rt_col_r(fgp), rt_col_g(fgp), rt_col_b(fgp), 255)
         if dis {
             hits.push(-1)
@@ -2813,7 +2971,17 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
 pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32], hov: I32, actn: I32) -> I32 {
     gui_frame_tick()
     gui_begin_layout(w, h)
-    rt_emit(t, bind, "", "", 0, hits, hinst, 0, hov, actn)
+    // 应用根 = 最后声明的视图(组件先声明后用惯例;单视图退化为 0);
+    // gui_list_ni 门控——编译构建树无 vreg 字段(NULL)
+    var root: I32 = 0
+    if gui_list_ni(t.vreg_root) > 0 {
+        var vn: I32 = gui_list_ns(t.vreg_name)
+        var vi2: I32 = t.vreg_name.len - 1
+        if vi2 >= 0 {
+            root = t.vreg_root[vi2]
+        }
+    }
+    rt_emit(t, bind, "", "", root, hits, hinst, 0, hov, actn)
     return gui_end_layout()
 }
 

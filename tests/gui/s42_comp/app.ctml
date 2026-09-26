@@ -1,0 +1,48 @@
+// 库组件(应用内声明;跨文件分发待 view 导入,P2 登记)
+view Select (label: Str, open: Bool) {
+  <vbox class="w-select">
+    <button class="w-trigger" on:click={sel_toggle()}>{label}</button>
+    <when cond={open}>
+      <vbox class="w-opts">
+        <each o in={opts}>
+          <button class="w-opt" on:click={sel_pick()}>{o}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+view WList (title: Str) {
+  <vbox class="w-list">
+    <label class="w-list-t">{title}</label>
+    <each it in={items}>
+      <button class="w-row" on:click={list_pick()}>{it}</button>
+    </each>
+  </vbox>
+}
+view Dialog (title: Str, open: Bool) {
+  <when cond={dopen}>
+    <overlay class="w-mask" on:click={dialog_close()}>
+      <vbox class="w-card">
+        <label class="w-title">{title}</label>
+      </vbox>
+    </overlay>
+  </when>
+}
+view App {
+  <vbox class="root">
+    <Select label: {lbl} open: {selopen}/>
+    <WList title: "清单"/>
+    <Dialog title: "确认" open: {dopen}/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style w-select { direction: column gap: 4 }
+style w-trigger { bg: "#2563eb" fg: "#ffffff" w: 120 h: 34 }
+style w-opts { direction: column gap: 2 }
+style w-opt { bg: "#22222e" fg: "#e6e6eb" w: 120 h: 28 }
+style w-list { direction: column gap: 2 }
+style w-list-t { fg: "#9a9aa8" size: 14 h: 22 }
+style w-row { bg: "#22222e" fg: "#e6e6eb" w: 140 h: 28 }
+style w-mask { bg: "#00000063" align: center }
+style w-card { bg: "#2a2a38" w: 160 h: 90 }
+style w-title { fg: "#e6e6eb" size: 18 h: 26 }

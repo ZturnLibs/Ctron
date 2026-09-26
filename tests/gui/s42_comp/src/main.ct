@@ -1,0 +1,127 @@
+// tests/gui/s42_comp —— 波次四:运行时组件实例化(select/list/dialog 三件套)
+// 嵌套 ViewCall(View 声明+<Comp prop: expr/> 实例)+props env 末位优先+
+// 列表 props 同名 bind 透传+组件事件头(sel_toggle/sel_pick/list_pick/dialog_close)
+use gui.{test, d_frame, d_click, d_expect_text, d_expect_absent, d_send_key, d_cmd_count, d_cmd_type, d_cmd_w100,
+         theme_apply, theme_default}
+
+struct Model {
+    var lbl: Str
+    var selopen: Bool
+    var picked: Str
+    var dopen: Bool
+    var items: List[Str]
+}
+
+fn sel_toggle() {
+}
+fn sel_pick() {
+}
+fn list_pick() {
+}
+fn dialog_close() {
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "sel_toggle" {
+        println("ACT-TOGGLE before=" + m.selopen.to_string())
+        m.selopen = true
+    }
+    if name == "sel_pick" {
+        m.selopen = false
+        m.picked = "picked"
+    }
+    if name == "list_pick" {
+        m.picked = "row"
+    }
+    if name == "dialog_close" {
+        m.dopen = false
+    }
+    if name == "dialog_open" {
+        m.dopen = true
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "lbl" {
+        buf.push(m.lbl)
+    }
+    if buf[0] == "selopen" {
+        println("BIND-SELOPEN m=" + m.selopen.to_string())
+        if m.selopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "each:opts" {
+        buf.push("苹果")
+        buf.push("香蕉")
+        buf.push("樱桃")
+    }
+    if buf[0] == "each:items" {
+        buf.push("甲")
+        buf.push("乙")
+    }
+    if buf[0] == "dopen" {
+        if m.dopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var m = Box[Model](Model { lbl: "选一个", selopen: false, picked: "", dopen: false, items: List[Str]() })
+    var rc: I32 = test(src, 320, 480,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| k,
+        |t, act, key| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // 收起态:触发器在,选项不在
+            d_expect_text(t, "选一个")
+            d_expect_absent(t, "樱桃")
+            // 展开:三选项渲染(列表 props 透传 each)
+            act(d_click(t, "sel_toggle"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var dn: I32 = d_cmd_count()
+            var di: I32 = 0
+            while di < dn {
+                println("CMD " + di.to_string() + " type=" + d_cmd_type(di).to_string() + " w=" + d_cmd_w100(di).to_string())
+                di += 1
+            }
+            d_expect_text(t, "苹果")
+            d_expect_text(t, "樱桃")
+            // 点选:行事件 sel_pick(实例后缀)→ 收起
+            act(d_click(t, "sel_pick"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "苹果")
+            if m.picked == "" {
+                panic("s42: sel_pick 实参未达")
+            }
+            // list:两行渲染+行事件
+            d_expect_text(t, "清单")
+            d_expect_text(t, "甲")
+            act(d_click(t, "list_pick"))
+            if m.picked != "row" {
+                panic("s42: list_pick 未达")
+            }
+            // dialog:开(遮罩+卡片)→ Esc 关(模态链自锁修复路径)
+            act("dialog_open")
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "确认")
+            var esk: I32 = d_send_key(t, 256,
+                |buf| bind_all(buf, m),
+                |nm, ar| act(nm, ar, m))
+            if esk != 0 {
+                panic("s42: 模态 Esc 未消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "确认")
+            println("S42-COMP-GREEN")
+        })
+    return rc
+}
