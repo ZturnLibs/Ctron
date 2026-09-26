@@ -1,0 +1,151 @@
+// examples/gui_widgets —— 组件陈列室(Select/WList/Dialog 全交互演示)
+// headless:开下拉→点选→开模态→Esc 关,四段断言;--run 真窗手玩
+use gui.{run_kb_d, test, d_frame, d_click, d_send_key, d_mod, d_press_key, gui_hotkey,
+         d_expect_text, d_expect_absent, theme_apply, theme_auto_apply,
+         theme_dark, theme_light}
+
+struct Model {
+    var picked: Str
+    var selopen: Bool
+    var dopen: Bool
+    var state: Str
+    var dark: Bool
+}
+
+fn sel_toggle() {
+}
+fn sel_pick() {
+}
+fn list_pick() {
+}
+fn dialog_open() {
+}
+fn dialog_close() {
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "sel_toggle" {
+        if m.selopen {
+            m.selopen = false
+        } else {
+            m.selopen = true
+        }
+    }
+    if name == "sel_pick" {
+        m.selopen = false
+        m.picked = "Ctron"
+        m.state = "已选"
+    }
+    if name == "list_pick" {
+        m.state = "清单点选"
+    }
+    if name == "dialog_open" {
+        m.dopen = true
+    }
+    if name == "dialog_close" {
+        m.dopen = false
+        m.state = "已确认"
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "picked" {
+        if m.picked == "" {
+            buf.push("选择框架…")
+        } else {
+            buf.push(m.picked)
+        }
+    }
+    if buf[0] == "selopen" {
+        if m.selopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "dopen" {
+        if m.dopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+    if buf[0] == "each:opts" {
+        buf.push("Ctron")
+        buf.push("raylib")
+        buf.push("Clay")
+    }
+    if buf[0] == "each:items" {
+        buf.push("写发布说明")
+        buf.push("打标签 v0.1")
+    }
+}
+
+// 键 1/2 切主题(应用侧演示;陈列室不内置快捷键合约)
+fn apply_key(k: I32, m: Box[Model]) {
+    if k == 49 {
+        theme_apply(theme_dark())
+        m.dark = true
+        m.state = "dark"
+    }
+    if k == 50 {
+        theme_apply(theme_light())
+        m.dark = false
+        m.state = "light"
+    }
+}
+
+fn main() -> I32 {
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true })
+    if env_get("CTRON_GUI_HEADLESS") == "" {
+        theme_auto_apply()
+        var rc: I32 = run_kb_d("Ctron 组件陈列室", 360, 520,
+            |buf| bind_all(buf, m),
+            |name, args| act(name, args, m),
+            |k| apply_key(k, m))
+        return rc
+    }
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_dark())
+    var rc: I32 = test(src, 360, 520,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| apply_key(k, m),
+        |t, actc, k2| {
+            // 收起态
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "Ctron 组件陈列室")
+            d_expect_text(t, "选择框架…")
+            d_expect_absent(t, "raylib")
+            // 开下拉 → 选项可见
+            actc(d_click(t, "sel_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "raylib")
+            // 点选(实例后缀事件) → 收起+选中回显
+            actc(d_click(t, "sel_pick"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "raylib")
+            d_expect_text(t, "已选")
+            // 模态:开 → Esc 关(键盘模态链)
+            actc("dialog_open", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "确认操作?")
+            var esk: I32 = d_send_key(t, 256,
+                |buf| bind_all(buf, m),
+                |nm, ar| act(nm, ar, m))
+            if esk != 0 {
+                panic("widgets: 模态 Esc 未消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已确认")
+            // 主题切换:light 全套换装
+            k2(d_press_key(t, 50))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "light")
+            println("WIDGETS-GREEN")
+        })
+    return rc
+}

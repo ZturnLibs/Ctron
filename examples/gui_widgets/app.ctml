@@ -1,0 +1,58 @@
+// examples/gui_widgets —— 组件陈列室:Select/WList/Dialog 三件套+图像+主题
+// 键 1-2 切主题(dark/light);点触发器开下拉,点选项收起;open 按钮开模态
+// 组件三件套(同源声明;跨文件分发待 view 导入)
+view Select (label: Str, open: Bool) {
+  <vbox class="w-select">
+    <button class="w-trigger" on:click={sel_toggle()}>{label}</button>
+    <when cond={open}>
+      <vbox class="w-opts">
+        <each o in={opts}>
+          <button class="w-opt" on:click={sel_pick()}>{o}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+view WList (title: Str) {
+  <vbox class="w-list">
+    <label class="w-list-t">{title}</label>
+    <each it in={items}>
+      <button class="w-row" on:click={list_pick()}>{it}</button>
+    </each>
+  </vbox>
+}
+view Dialog (title: Str, open: Bool) {
+  <when cond={open}>
+    <overlay class="w-mask" on:click={dialog_close()}>
+      <vbox class="w-card">
+        <label class="w-title">{title}</label>
+      </vbox>
+    </overlay>
+  </when>
+}
+view Widgets {
+  <vbox class="root">
+    <label class="title">Ctron 组件陈列室</label>
+    <label class="sub">1/2 切主题 · 点触发器与按钮</label>
+    <Select label: {picked} open: {selopen}/>
+    <WList title: "待办清单"/>
+    <button class="op" on:click={dialog_open}>打开对话框</button>
+    <Dialog title: "确认操作?" open: {dopen}/>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style title { fg: TEXT size: 22 font_weight: 700 h: 30 }
+style sub { fg: TEXT_MUTED size: 13 h: 20 }
+style op { bg: ACCENT fg: "#ffffff" w: 130 h: 34 }
+style w-select { direction: column gap: 4 }
+style w-trigger { bg: SURFACE fg: TEXT w: 150 h: 34 }
+style w-opts { direction: column gap: 2 }
+style w-opt { bg: ELEVATED fg: TEXT w: 150 h: 28 }
+style w-list { direction: column gap: 2 }
+style w-list-t { fg: TEXT_MUTED size: 13 h: 20 }
+style w-row { bg: SURFACE fg: TEXT w: 170 h: 28 }
+style w-mask { bg: MASK align: center }
+style w-card { bg: ELEVATED w: 200 h: 100 }
+style w-title { fg: TEXT size: 18 h: 28 }
+style state { fg: TEXT_MUTED size: 13 h: 22 }
