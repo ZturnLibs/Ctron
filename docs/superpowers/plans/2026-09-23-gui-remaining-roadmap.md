@@ -75,10 +75,12 @@ gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包字
 **② 已落(1463bca,完成 0ea0513 WIP)**:文本注入式 desugar 双口径端到端
 (合成面/直驱面/真窗面三层;s41_run_d);根因修复=出参节点经 List[Str]
 通道的静态型谎言(字符串索引码对 list 指针即崩),全 Str 名单+删 locate。
-**④ 已落(examples/todo_v10)**:§10.3 合成用户面——main 一行装配,零手写
-钩子;headless 直驱合成 fn(when 空态/each/act 分发/删末项过滤重建);
-差集在案:on:input 键入持久化(名通道生成面)、每行勾选/删除(key/实例
-分发对偶)、跨文件 view 导入(组件模型 P2)、checkbox(T1)。
+**④ 已落(examples/todo_v10,119e5d1+119e5d1 后续)**:§10.3 合成用户面——
+main 一行装配,零手写钩子;headless 直驱合成 fn;on:input 键入持久化
+(名通道前缀分支+隐式尾参豁免,119e5d1)与每行实例分发(隐式下标+
+ev_suffix_i+d_click_inst,2a982e8)均已销账——Todo 全交互链(键入→添加
+→逐行删)可用。**余差集:checkbox 勾选行(T1 里程碑)、跨文件 view 导入
+(组件模型 P2)、多级 props(随终锚)。**
 **余 ③钩子退役**:rt_run 族降内部待对端 act v2 波次收口后统一更名
 (现 pub 保持夹具/示例兼容;合成面已单入口文档化)。
 **act v2(07fcf19,对端)**:ev_fire 实参求值传出+ev_arg_* 解码器;窄闭包
