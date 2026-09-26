@@ -81,8 +81,9 @@ main 一行装配,零手写钩子;headless 直驱合成 fn;on:input 键入持久
 ev_suffix_i+d_click_inst,2a982e8)均已销账——Todo 全交互链(键入→添加
 →逐行删)可用。**余差集:checkbox 勾选行(T1 里程碑)、跨文件 view 导入
 (组件模型 P2)、多级 props(随终锚)。**
-**余 ③钩子退役**:rt_run 族降内部待对端 act v2 波次收口后统一更名
-(现 pub 保持夹具/示例兼容;合成面已单入口文档化)。
+**③ 已落(5b5e910)**:钩子退役——run/run_kb/run_d/run_kb_d 降内部
+(rt_run_src/rt_run_kb_src/rt_run_anchor/rt_run_kb_anchor);合成面
+(run(ViewCall))即唯一文档化用户入口;消费面 9 文件机械迁移。
 **act v2(07fcf19,对端)**:ev_fire 实参求值传出+ev_arg_* 解码器;窄闭包
 ABI 兼容(额外寄存器实参被 callee 忽略),本泳道夹具/生成器零破坏。
 **执行序建议(下一专项会话)**:①ViewCall 文法面——`TodoApp(model: make())`
