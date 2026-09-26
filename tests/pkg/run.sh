@@ -54,7 +54,7 @@ if [ "${CTRON_PKG_E2E:-}" = "1" ]; then
         if [ "$PR" = 0 ]; then
             echo "  [info] registry 就绪($((pr_i+1)) 探)"
         fi
-        ( cd "$W" && REG_PORT="$PP" PKG_NAME=app PKG_VER=1.0.0 timeout 20 "$T/tool.bin" > "$T/tool.log" 2>&1 )
+        ( cd "$W" && PKG_PORT="$PP" PKG_NAME=app PKG_VER=1.0.0 timeout 20 "$T/tool.bin" > "$T/tool.log" 2>&1 )
         PRC=$?
         sleep 0.5
         pkill -f 'reg.bin' 2>/dev/null
