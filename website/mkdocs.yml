@@ -44,4 +44,5 @@ nav:
       - 10 诊断契约与符合性: spec/10-diagnostics-conformance.md
   - Std Reference: std/README.md
   - Examples: examples.md
+  - Server: server-guide.md
   - Download: download.md
