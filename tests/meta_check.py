@@ -103,6 +103,10 @@ def check_file(path: Path) -> list[str]:
         # log/corpus:std/log 语料(级别族/转义/门控矩阵),由 tests/log/run.sh 驱动,
         # 与 std/log inline 测试互独立;非 test 块语义(同 gui/ 泳道先例)。
         return errors
+    if relparts0 and relparts0[0] in ("connect", "metrics", "ndjson", "otlp", "pb", "trace", "s3", "pkg", "rt_scopes"):
+        # 服务器泳道 P7 语料/夹具目录:各自 run.sh 驱动、非 test 块语义
+        # (gui/ 泳道先例;gotcha #17:新泳道 = meta_check 加泳道 skip)。
+        return errors
     for pkg_lane in ("artifact_demo", "realdep_demo"):
         if relparts0 and relparts0[0] == pkg_lane:
             # 包分发泳道夹具(编译/分发线):库源文件被 consumer 包 import,
