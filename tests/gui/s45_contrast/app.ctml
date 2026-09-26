@@ -1,0 +1,11 @@
+view CDemo {
+  <vbox class="root">
+    <button class="b" on:click={noop}>OK</button>
+    <vbox class="sw"/>
+    <label class="t">可读性</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style b { bg: ACCENT fg: "#000000" w: 90 h: 34 }
+style t { fg: TEXT size: 16 h: 24 }
+style sw { bg: BG_BASE w: 30 h: 20 }

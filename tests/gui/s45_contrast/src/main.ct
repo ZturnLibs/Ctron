@@ -1,0 +1,62 @@
+// tests/gui/s45_contrast —— P2:高对比无障碍主题(纯黑白+黄 accent+零圆角+字号上调)
+// 视图归 app.ctml(.ct 内嵌中文叶 E1001 词法缺口,上轮登记);退回 dark 不受扰
+use gui.{test, d_frame, d_click, d_expect_text, d_cmd_count, d_cmd_type,
+         d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b,
+         theme_apply, theme_default, theme_contrast}
+
+fn noop() {
+}
+
+fn bind_noop(buf: List[Str]) {
+}
+
+// 按色找 RECT
+fn find_ca(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return i
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_noop(buf),
+        |name| noop(),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            // 高对比:ACCENT=纯黄,底=纯黑,按钮黑字
+            theme_apply(theme_contrast())
+            d_frame(t, |buf| bind_noop(buf))
+            var bi: I32 = find_ca(255, 255, 0)
+            if bi < 0 {
+                panic("s45: 高对比 ACCENT 纯黄未现")
+            }
+            var ri: I32 = find_ca(0, 0, 0)
+            if ri < 0 {
+                panic("s45: 高对比 BG 纯黑未现")
+            }
+            // 退回 dark:蓝 accent 复现
+            theme_apply(theme_default())
+            d_frame(t, |buf| bind_noop(buf))
+            var di: I32 = find_ca(37, 99, 235)
+            if di < 0 {
+                panic("s45: 退回 dark ACCENT 未现")
+            }
+            println("S45-CONTRAST-GREEN")
+        })
+    return rc
+}

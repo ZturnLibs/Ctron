@@ -552,6 +552,37 @@ pub fn theme_auto_apply() -> I32 {
 
 
 
+// theme_contrast:高对比无障碍(纯黑底/纯白字/强边框/无灰阶中间态;§5 P2 高对比档)
+pub fn theme_contrast() -> Theme {
+    return Theme {
+        bg_base: "#000000"
+        surface: "#000000"
+        elevated: "#101010"
+        border: "#ffffff"
+        border_strong: "#ffffff"
+        text: "#ffffff"
+        text_muted: "#ffffff"
+        accent: "#ffff00"
+        accent_hover: "#ffff00"
+        danger: "#ff6666"
+        success: "#66ff66"
+        mask: "#000000"
+        disabled_fg: "#808080"
+        disabled_bg: "#000000"
+        radius_sm: 0
+        radius_md: 0
+        radius_lg: 0
+        size_xs: 14
+        size_sm: 16
+        size_md: 18
+        size_lg: 22
+        size_xl: 26
+        space_sm: 6
+        space_md: 10
+        space_lg: 18
+    }
+}
+
 // ---- 内置八主题(§3.5;域命名空间仓库根平铺,故驻门面;第三方主题=任意 .ct 文件构造 Theme) ----
 
 // theme_dark:独立基准:深色扁平现代(Linear/GitHub Dark,裁决 #3)
@@ -2670,6 +2701,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         var bgv: Str = gt_st_prop(c, "bg", "", t, st)
         if bgv != "" {
             bgp = g_parse_color(bgv)
+            var aba: I32 = g_parse_alpha(bgv)
+            if aba == 255 {
+                if bgp == 0 {
+                    gui_alpha(254)
+                }
+            } else {
+                gui_alpha(aba)
+            }
+        } else {
+            gui_alpha(0)
         }
         gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
                 2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
@@ -2734,6 +2775,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
             }
             var cbgv: Str = gt_st_prop(c, "bg", "", t, st)
+            if cbgv != "" {
+                var cba: I32 = g_parse_alpha(cbgv)
+                if cba != 255 {
+                    gui_alpha(cba)
+                }
+            }
             var cbgp: I32 = 0
             if cbgv != "" {
                 cbgp = g_parse_color(cbgv)
@@ -2806,6 +2853,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var ibgv: Str = gt_st_prop(c, "bg", "", t, st)
             if ibgv != "" {
                 ibgp = g_parse_color(ibgv)
+                var iba: I32 = g_parse_alpha(ibgv)
+                if iba == 255 {
+                    if ibgp == 0 {
+                        gui_alpha(254)
+                    }
+                } else {
+                    gui_alpha(iba)
+                }
+            } else {
+                gui_alpha(0)
             }
             gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, ihm, ihv, ibgp)
             var ival: Str = ""
@@ -2880,6 +2937,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var tbgv: Str = gt_st_prop(c, "bg", "", t, st)
             if tbgv != "" {
                 tbgp = g_parse_color(tbgv)
+                var tba: I32 = g_parse_alpha(tbgv)
+                if tba == 255 {
+                    if tbgp == 0 {
+                        gui_alpha(254)
+                    }
+                } else {
+                    gui_alpha(tba)
+                }
+            } else {
+                gui_alpha(0)
             }
             gui_cfg(1, 2, 4, 4, 0, 0, 1, 0, thm, thv, tbgp)
             var tval: Str = ""
@@ -2991,10 +3058,17 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var bgv2: Str = gt_st_prop(c, "bg", "", t, st)
             if bgv2 != "" {
                 bgp2 = g_parse_color(bgv2)
+                // 有样式背景:显式 alpha(纯黑 packed=0 须与「未样式透明」区分→254)
                 var aa2: I32 = g_parse_alpha(bgv2)
-                if aa2 != 255 {
+                if aa2 == 255 {
+                    if bgp2 == 0 {
+                        gui_alpha(254)
+                    }
+                } else {
                     gui_alpha(aa2)
                 }
+            } else {
+                gui_alpha(0)
             }
             // rects↔hits 平行不变量:可见背景盒才产 RECT 命令,才推 hits
             // (容器此前恒透明故免推;overlay 遮罩=首个可见容器,8 位色 alpha 使其可见)
