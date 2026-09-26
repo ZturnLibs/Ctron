@@ -17,6 +17,12 @@ static FT_Face g_face;
 static int g_ft_ready = 0;
 static int g_ft_px = 0;
 
+// 字体族注册表(§2.8 P2):0=内建默认族(k_fonts),1..8=gui_font_register 用户字面
+typedef struct { char path[256]; FT_Face face; int px; int ok; } GuiFam;
+static GuiFam g_fams[8];
+static int g_nfam = 0;
+static int ft_ensure_fam(int px, int fam);
+
 static unsigned char* g_buf = 0;
 static int g_bw = 0;
 static int g_bh = 0;
@@ -77,8 +83,8 @@ static unsigned long utf8_next_n(const unsigned char* s, int len, int* i) {
 
 // 两遍渲染核心(测宽 → 画);定长口径,ft_render/缓存路径共用
 // weight≥600 = 合成加粗(§2.8):outline Embolden + advance 增量 px/24(测宽轮同加,缓冲不溢)
-static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int weight) {
-    if (!g_face) { return -1; }
+static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int weight, int fam) {
+    if (ft_ensure_fam(g_ft_px, fam) != 0) { return -1; }
     int bold = (weight >= 600) ? 1 : 0;
     int bdelta = bold ? (g_ft_px / 24 + 1) : 0;
     int asc = g_face->size->metrics.ascender >> 6;
@@ -124,7 +130,7 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
 }
 
 static int ft_render_n(const char* utf8, int len, int r, int g, int b) {
-    return ft_render_n_w(utf8, len, r, g, b, 400);
+    return ft_render_n_w(utf8, len, r, g, b, 400, 0);
 }
 
 int ft_render(const char* utf8, int r, int g, int b) {
@@ -163,8 +169,8 @@ static int ft_ensure(int px) {
 }
 
 // 实测宽:与 ft_render_n_w 同一迭代+同 bold 增量,保证测量==渲染完全一致
-static int ft_measure_n_w(const char* s, int len, int px, int weight) {
-    if (ft_ensure(px) != 0) { return -1; }
+static int ft_measure_n_w(const char* s, int len, int px, int weight, int fam) {
+    if (ft_ensure_fam(px, fam) != 0) { return -1; }
     int bdelta = (weight >= 600) ? (g_ft_px / 24 + 1) : 0;
     int w = 0;
     int i = 0;
@@ -177,7 +183,7 @@ static int ft_measure_n_w(const char* s, int len, int px, int weight) {
     return w;
 }
 static int ft_measure_n(const char* s, int len, int px) {
-    return ft_measure_n_w(s, len, px, 400);
+    return ft_measure_n_w(s, len, px, 400, 0);
 }
 int gui_ft_measure(const char* s, int px) {
     return ft_measure_n(s, (int)strlen(s), px);
@@ -186,7 +192,7 @@ int gui_ft_measure_n(const char* s, int len, int px) {
     return ft_measure_n(s, len, px);
 }
 int gui_ft_measure_n_wt(const char* s, int len, int px, int weight) {
-    return ft_measure_n_w(s, len, px, weight);
+    return ft_measure_n_w(s, len, px, weight, 0);
 }
 
 #define FT_TEXT_CACHE 64
@@ -195,6 +201,7 @@ typedef struct {
     int len;
     int px;
     int weight;
+    int fam;
     unsigned char* buf;
     int w;
     int h;
@@ -208,17 +215,17 @@ static long g_tc_clock = 0;
 
 // 缓存查找/渲染,返回槽位;miss 时白色渲染进 g_buf(探针可读)后拷入槽位
 // 缓存键 = (串,px,weight) 三元(§2.8);wt 后缀避让 gui_ft_text_w(slot) 旧槽宽读面
-int gui_ft_text_wt(const char* s, int len, int px, int weight) {
-    if (ft_ensure(px) != 0) { return -1; }
+int gui_ft_text_wt(const char* s, int len, int px, int weight, int fam) {
+    if (ft_ensure_fam(px, fam) != 0) { return -1; }
     g_tc_clock++;
     for (int i = 0; i < g_tc_n; i++) {
-        if (g_tc[i].px == px && g_tc[i].weight == weight && g_tc[i].len == len &&
+        if (g_tc[i].px == px && g_tc[i].weight == weight && g_tc[i].fam == fam && g_tc[i].len == len &&
             memcmp(g_tc[i].str, s, (size_t)len) == 0) {
             g_tc[i].use = g_tc_clock;
             return i;
         }
     }
-    if (ft_render_n_w(s, len, 255, 255, 255, weight) != 0) { return -1; }
+    if (ft_render_n_w(s, len, 255, 255, 255, weight, fam) != 0) { return -1; }
     int slot;
     if (g_tc_n < FT_TEXT_CACHE) {
         slot = g_tc_n++;
@@ -235,6 +242,7 @@ int gui_ft_text_wt(const char* s, int len, int px, int weight) {
     e->len = len;
     e->px = px;
     e->weight = weight;
+    e->fam = fam;
     e->str = (char*)malloc((size_t)len);
     memcpy(e->str, s, (size_t)len);
     e->w = g_bw;
@@ -247,7 +255,7 @@ int gui_ft_text_wt(const char* s, int len, int px, int weight) {
 }
 
 int gui_ft_text(const char* s, int len, int px) {
-    return gui_ft_text_wt(s, len, px, 400);
+    return gui_ft_text_wt(s, len, px, 400, 0);
 }
 
 // 槽宽读面(s28 夹具消费)
@@ -319,4 +327,37 @@ int gui_rect(int x, int y, int w, int h, int rr, int r, int g, int b) {
         (float)rr / 100.0f, 8,
         (Color){ (unsigned char)r, (unsigned char)g, (unsigned char)b, 255 });
     return 0;
+}
+
+// 用户字体族注册(§2.8):注册即验载(失败 -1,id 不占位);id 从 1 起(0=默认族)
+int gui_font_register_c(const char* path) {
+    if (path == NULL || g_nfam >= 8) { return -1; }
+    if (!g_ft_ready) {
+        if (FT_Init_FreeType(&g_ft) != 0) { return -1; }
+        g_ft_ready = 1;
+    }
+    FT_Face f;
+    if (FT_New_Face(g_ft, path, 0, &f) != 0) { return -1; }
+    g_fams[g_nfam].face = f;
+    strncpy(g_fams[g_nfam].path, path, 255);
+    g_fams[g_nfam].path[255] = 0;
+    g_fams[g_nfam].px = 0;
+    g_fams[g_nfam].ok = 1;
+    g_nfam += 1;
+    return g_nfam;
+}
+
+// ensure 的族感知版:切 face+px(族 face 独立 px 记;默认族沿 g_ft_px)
+static int ft_ensure_fam(int px, int fam) {
+    if (fam >= 1 && fam <= g_nfam) {
+        if (!g_fams[fam - 1].ok) { return -1; }
+        g_face = g_fams[fam - 1].face;
+        if (px > 0 && g_fams[fam - 1].px != px) {
+            FT_Set_Pixel_Sizes(g_face, 0, (FT_UInt)px);
+            g_fams[fam - 1].px = px;
+        }
+        g_ft_px = px;
+        return 0;
+    }
+    return ft_ensure(px);
 }

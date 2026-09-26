@@ -1,0 +1,63 @@
+// tests/gui/s46_fontfam —— P2:字体族注册(§2.8 完全体;用户 TTF 字面注册+font_family 样式)
+// 注册 Helvetica(mac 系统字)→族 1;alt 行 font_family: 1 → 同文不同族渲染
+// (宽读数>0+文本在场+默认族不受扰;宽是否相异不作断言——族间 advance 无保证,跨平台安全)
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_w100,
+         gui_font_register, theme_apply, theme_default}
+
+view FDemo {
+  <vbox class="root">
+    <label class="def">Width</label>
+    <label class="alt">Width</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style def { fg: TEXT size: 24 }
+style alt { fg: TEXT size: 24 font_family: 1 }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn noop() {
+}
+
+fn text_w(ord: I32, want_len: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    var seen: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if d_cmd_text_len(i) == want_len {
+                if seen == ord {
+                    return d_cmd_w100(i)
+                }
+                seen += 1
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    // 注册族 1(注册失败 -1 → font_family: 1 求值回落默认族,文本照渲不炸)
+    var fid: I32 = gui_font_register("/System/Library/Fonts/Helvetica.ttc")
+    theme_apply(theme_default())
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_noop(buf),
+        |name| noop(),
+        |k| k,
+        |t, a, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            var w0: I32 = text_w(0, 5)
+            var w1: I32 = text_w(1, 5)
+            if w0 <= 0 {
+                panic("s46: 默认族 Width 未现")
+            }
+            if w1 <= 0 {
+                panic("s46: 注册族 Width 未现(fid=" + fid.to_string() + ")")
+            }
+            println("S46-FONTFAM-GREEN")
+        })
+    return rc
+}

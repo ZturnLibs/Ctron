@@ -19,7 +19,8 @@ int g_pending_alpha = 255;
 static Texture2D *gui_tex_cache_get(const char *path);
 
 // ft 缓存 weight 入口(ft_shim 定义;flush TEXT 分支前向声明)
-extern int gui_ft_text_wt(const char* s, int len, int px, int weight);
+extern int gui_ft_text_wt(const char* s, int len, int px, int weight, int fam);
+extern int gui_ft_measure_n_wt(const char* s, int len, int px, int weight, int fam);
 
 // 字重当前值(§2.8):Clay 文本测量内联于 OpenTextElement 同步发生(每文本两次),
 // gui_text_w 先置值再开元素,测量回调直读——无序号算术
@@ -95,7 +96,7 @@ extern int gui_ft_text_draw(int slot, int x, int y, int r, int g, int b, int a);
 // 字体缺失(ft_shim 侧 g_ft_failed)同样回启发式——无 CJK 字体环境行为与旧版一致
 static int gui_ft_off = -1;
 
-extern int gui_ft_measure_n_wt(const char* s, int len, int px, int weight);
+extern int gui_ft_measure_n_wt(const char* s, int len, int px, int weight, int fam);
 static int g_measure_ord = 0;
 static Clay_Dimensions ctron_measure(Clay_StringSlice text, Clay_TextElementConfig *cfg, void *ud) {
     (void)ud;
@@ -104,7 +105,9 @@ static Clay_Dimensions ctron_measure(Clay_StringSlice text, Clay_TextElementConf
     if (!gui_ft_off) {
         // 字重按序弹(产出序=布局遍历序;gui_begin_layout 复位)
         int wt = g_current_weight;
-        int wi = gui_ft_measure_n_wt(text.chars, (int)text.length, (int)cfg->fontSize, wt);
+        int fam2 = wt / 10000;
+        int wt2 = wt % 10000;
+        int wi = gui_ft_measure_n_wt(text.chars, (int)text.length, (int)cfg->fontSize, wt2, fam2);
         if (wi >= 0) { wf = (float)wi; }
     }
     if (wf < 0.0f) {
@@ -296,10 +299,12 @@ void ctron_gui_flush(void) {
             case CLAY_RENDER_COMMAND_TYPE_TEXT: {
                 Clay_StringSlice s = c->renderData.text.stringContents;
                 Clay_Color col = c->renderData.text.textColor;
-                int wt = 400;
-                if (text_ord < g_text_weights_n) { wt = g_text_weights[text_ord]; }
+                int combo = 400;
+                if (text_ord < g_text_weights_n) { combo = g_text_weights[text_ord]; }
                 text_ord++;
-                int slot = gui_ft_text_wt(s.chars, (int)s.length, (int)c->renderData.text.fontSize, wt);
+                int wt = combo % 10000;
+                int fam = combo / 10000;
+                int slot = gui_ft_text_wt(s.chars, (int)s.length, (int)c->renderData.text.fontSize, wt, fam);
                 if (slot >= 0) {
                     gui_ft_text_draw(slot, (int)b.x, (int)b.y,
                                      (int)col.r, (int)col.g, (int)col.b, (int)col.a);

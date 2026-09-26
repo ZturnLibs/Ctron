@@ -160,6 +160,9 @@ extern "c" fn gui_frame_count() -> I32
 extern "c" fn gui_cursor_set(shape: I32) -> Void
 
 #[trusted]
+extern "c" fn gui_font_register_c(path: Str) -> I32
+
+#[trusted]
 extern "c" fn gui_hotkey_set(mods: I32, key: I32, action: Str) -> Void
 
 #[trusted]
@@ -2837,7 +2840,11 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             }
             var fgp2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
             var fw2: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
-            gui_text_w(txt, sz, fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
+            var ff2: I32 = gs2i(gt_cls_prop(c, "font_family", "0", t))
+            if ff2 < 0 {
+                ff2 = 0
+            }
+            gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
         if tag == "input" {
             // 波次二(§2.2):真文本框——盒+值文本(bind 单一起源)+焦点光标(| 前缀
@@ -3930,6 +3937,12 @@ pub fn d_tick(t: Box[Driver], ms: I32) -> I32 {
 
 pub fn d_frames() -> I32 {
     return gui_frame_count()
+}
+
+// 字体族注册(§2.8 P2):路径验载成功返回族 id(1..8,0=默认族),失败 -1;
+// 样式侧 font_family: <id 数字>;combo 编码 = id*10000+字重
+pub fn gui_font_register(path: Str) -> I32 {
+    return gui_font_register_c(path)
 }
 
 // 快捷键注册(§2.11 应用侧):combo = "mod+s"/"ctrl+shift+k"/"alt+1";

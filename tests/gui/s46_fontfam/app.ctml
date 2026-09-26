@@ -1,0 +1,9 @@
+view FDemo {
+  <vbox class="root">
+    <label class="def">Width</label>
+    <label class="alt">Width</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style def { fg: TEXT size: 24 }
+style alt { fg: TEXT size: 24 font_family: 1 }
