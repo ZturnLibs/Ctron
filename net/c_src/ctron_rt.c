@@ -167,7 +167,7 @@ static size_t rt_stack_size(void)
     static size_t cached;
     if (cached == 0) {
         const char *e = getenv("CTRON_RT_STACK_KB");
-        long kb = (e && *e) ? atol(e) : 64;
+        long kb = (e && *e) ? atol(e) : 1024;
         if (kb < 4) kb = 4;
         if (kb > 1024) kb = 1024;
         cached = (size_t)kb * (size_t)1024;
@@ -544,7 +544,6 @@ static unsigned char *stack_alloc(size_t *map_sz)
     if (g_npool > 0) {
         base = g_pool[--g_npool];
         rt_unlock();
-        memset(base + ps, 0xA5, rt_stack_size());        /* 重铺填充供高水位 */
         return base;
     }
     rt_unlock();
@@ -552,7 +551,6 @@ static unsigned char *stack_alloc(size_t *map_sz)
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == MAP_FAILED) return NULL;
     (void)mprotect(base, (size_t)ps, PROT_NONE);         /* guard(可选失败不致命) */
-    memset(base + ps, 0xA5, rt_stack_size());
     return base;
 }
 
