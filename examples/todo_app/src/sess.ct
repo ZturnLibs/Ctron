@@ -1,0 +1,251 @@
+// sess.ct —— 会话令牌与 Cookie(替代 http.frm.auth 依赖:frm/auth 的 sess-store
+// 段进入主文件发射即触发在册 emit 缺陷;以 std.crypto 直实现同语义小面:
+// HMAC-SHA256 签名 + 恒时比较 + 过期域)。
+// 星形单路径拆分:本模块不 use 本包其他模块,dstr/uid_ok/b2x/sbytes 以 s 前缀
+// 就地复制(data.ct 同名正本;发射图单父纪律的代价)。
+
+use std.crypto.{ pbkdf2_sha256, bytes_to_hex, bytes_from_hex, hmac_sha256 }
+use std.rand.{ rng_next, rng_range }
+use std.str.{ contains }
+
+// ---- s 前缀本地副本(data.ct 正本;单父纪律代价) ----
+
+fn sdstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var neg = false
+    var n = v
+    if n < 0 {
+        neg = true
+        n = 0 - n
+    }
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    if neg {
+        out = "-" + out
+    }
+    return out
+}
+
+fn ssbytes(s: Str) -> List[I32] {
+    var out: List[I32] = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
+}
+
+fn sb2x(b: List[I32]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < b.len {
+        let v = b[i]
+        let hi = (v / 16).as[I32]()
+        let lo = (v % 16).as[I32]()
+        out = out + byte_slice("0123456789abcdef", hi, hi + 1)
+        out = out + byte_slice("0123456789abcdef", lo, lo + 1)
+        i += 1
+    }
+    return out
+}
+
+fn suid_ok(s: Str) -> Bool {
+    if s.len < 1 || s.len > 32 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let alnum = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)
+        let extra = c == 45 || c == 95
+        if !alnum && !extra {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// ---- 会话令牌与 Cookie ----
+
+// ---- 会话令牌与 Cookie(替代 http.frm.auth 依赖:frm/auth 的 sess-store 段进入
+// 主文件发射即触发在册 emit 缺陷(45056B 截断 SIGKILL);此处以 std.crypto 直实现
+// 同语义小面:HMAC-SHA256 签名 + 恒时比较 + 过期域) ----
+
+fn ct_eq(a: Str, b: Str) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var diff: I32 = 0
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) {
+            diff = diff + 1
+        }
+        i += 1
+    }
+    return diff == 0
+}
+
+// 令牌形 "uid.exp秒.hex(HMAC(key, uid.exp秒))";uid 域坏回空串
+pub fn tok_sign(key: Str, uid: Str, now_s: I64, ttl: I64) -> Str {
+    if !suid_ok(uid) {
+        return ""
+    }
+    let exp = now_s + ttl
+    let pay = uid + "." + sdstr(exp)
+    return pay + "." + sb2x(hmac_sha256(ssbytes(key), ssbytes(pay)))
+}
+
+// 校验回 uid(形坏/签名不合/过期回空串)
+pub fn tok_verify(key: Str, tok: Str, now_s: I64) -> Str {
+    var d1: I32 = 0 - 1
+    var d2: I32 = 0 - 1
+    var i: I32 = 0
+    while i < tok.len {
+        if byte_at(tok, i) == 46 {
+            if d1 < 0 {
+                d1 = i
+            } else {
+                d2 = i
+            }
+        }
+        i += 1
+    }
+    if d1 < 1 || d2 <= d1 + 1 || d2 >= tok.len - 1 {
+        return ""
+    }
+    let uid = bseg(tok, 0, d1)
+    let exps = bseg(tok, d1 + 1, d2)
+    let sig = bseg(tok, d2 + 1, tok.len)
+    if !suid_ok(uid) || !hex64(sig) {
+        return ""
+    }
+    let exp = s2i(exps)
+    if exp <= 0 {
+        return ""
+    }
+    let want = sb2x(hmac_sha256(ssbytes(key), ssbytes(uid + "." + exps)))
+    if !ct_eq(want, sig) {
+        return ""
+    }
+    if now_s >= exp {
+        return ""
+    }
+    return uid
+}
+
+// [a,b) 子串重建(整串拼接,避 byte_slice 中段非 NUL 结尾 == 雷)
+fn bseg(s: Str, a: I32, b: I32) -> Str {
+    var out = ""
+    var i: I32 = a
+    while i < b {
+        out = out + byte_slice(s, i, i + 1)
+        i += 1
+    }
+    return out
+}
+
+// 十六进制串校验(64 位 sig 形)
+fn hex64(s: Str) -> Bool {
+    if s.len != 64 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let ok = (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
+        if !ok {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 十进制正整数解析(非数字/空回 0)
+fn s2i(s: Str) -> I64 {
+    var v: I64 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            return 0
+        }
+        v = v * 10 + (c - 48).as[I64]()
+        i += 1
+    }
+    return v
+}
+
+// Cookie 头取值("a=1; b=2" 形;未现回空串)
+pub fn cookie_get(hdr: Str, name: Str) -> Str {
+    let want = name + "="
+    var seg = 0
+    var i: I32 = 0
+    while i <= hdr.len {
+        if i == hdr.len || byte_at(hdr, i) == 59 {
+            var a = seg
+            while a < i && byte_at(hdr, a) == 32 {
+                a += 1
+            }
+            let pair = bseg(hdr, a, i)
+            if pair.len >= want.len {
+                var hit = true
+                var j: I32 = 0
+                while j < want.len {
+                    if byte_at(pair, j) != byte_at(want, j) {
+                        hit = false
+                        break
+                    }
+                    j += 1
+                }
+                if hit {
+                    return bseg(pair, want.len, pair.len)
+                }
+            }
+            seg = i + 1
+        }
+        i += 1
+    }
+    return ""
+}
+
+// Set-Cookie 行(值空 + Max-Age=0 即清除;HttpOnly+SameSite=Lax 随面)
+pub fn cookie_set(name: Str, value: Str, maxage: I64) -> Str {
+    if name.len < 1 || name.len > 64 {
+        return ""
+    }
+    return "Set-Cookie: " + name + "=" + value + "; Path=/; HttpOnly; Max-Age=" + sdstr(maxage) + "; SameSite=Lax\r\n"
+}
+
+test "token sign verify expire" {
+    let t = tok_sign("k1", "alice", 1000, 60)
+    assert(t.len > 0)
+    assert(tok_verify("k1", t, 1030) == "alice")
+    assert(tok_verify("k1", t, 1060) == "")
+    assert(tok_verify("k1", t, 1059) == "alice")
+    assert(tok_verify("k2", t, 1030) == "")
+    assert(tok_verify("k1", t + "0", 1030) == "")
+    assert(tok_sign("k1", "bad uid", 1000, 60) == "")
+}
+
+test "cookie get set" {
+    let g = cookie_get("a=1; sid=xyz; c=3", "sid")
+    assert(g == "xyz")
+    assert(cookie_get("sid=xyz", "sid") == "xyz")
+    assert(cookie_get("a=1", "sid") == "")
+    assert(cookie_get("", "sid") == "")
+    let line = cookie_set("sid", "t0k", 604800)
+    assert(contains(line, "Set-Cookie: sid=t0k"))
+    assert(contains(line, "HttpOnly"))
+    let clr = cookie_set("sid", "", 0)
+    assert(contains(clr, "Max-Age=0"))
+}

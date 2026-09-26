@@ -1,36 +1,19 @@
-// views.ct —— HTML 视图层(纯函数 Str→Str;无存储知识)
-//
-// 纪律:一切用户可控文本(uid/title/err 回显)过 ht_esc(五实体转义,XSS 安全默认);
-// 页面骨架 ht_page;表单全 POST + 303 重定向(PR-G)。行数据以 NDJSON 行 Str 到达,
-// 字段经 store.fld_* 按需取(视图不落持久化知识,只做行→片段投影)。
-
-use todo_app.store.{ fld_s, fld_i, fld_b }
 use http.frm.html.{ ht_esc, ht_page }
 use std.str.{ contains }
 
-// 视图不落 I64→Str 依赖翻转:id 十进制化私留(与 store 同款算术形)
-fn vdstr(v: I64) -> Str {
-    if v == 0 {
-        return "0"
-    }
-    var neg = false
-    var n = v
-    if n < 0 {
-        neg = true
-        n = 0 - n
-    }
-    var out = ""
-    while n > 0 {
-        let d = (n % 10).as[I32]()
-        out = byte_slice("0123456789", d, d + 1) + out
-        n = n / 10
-    }
-    if neg {
-        out = "-" + out
-    }
-    return out
-}
+// views.ct —— 星形拆分的视图叶
+// ---- 视图面(自 views.ct 并入:主文件单路径导入纪律——main→store 单边,
+// views 再挂 store 即双路径合并,触发主文件发射确定性截断,见会话段头注) ----
 
+// views.ct —— HTML 视图层(纯函数 Str→Str;无存储知识)
+//
+// 纪律:一切用户可控文本(uid/title/err 回显)过 ht_esc(五实体转义,XSS 安全默认);
+// 页面骨架 ht_page;表单全 POST + 303 重定向(PR-G)。行数据以平行 List[Str]
+// (ids/titles/dones,"0"/"1" 表 done)到达——装配层解码,视图零本地依赖
+// (星形单路径拆分:app→views 单边,views 不再触 data 符号)。
+
+
+// 视图不落 I64→Str 依赖翻转:id 十进制化私留(与 store 同款算术形)
 // 内联小表单(每行 toggle/delete 按钮;button 自带提交语义)
 fn f_btn(action: Str, label: Str, cls: Str) -> Str {
     return "<form method=\"post\" action=\"" + action + "\" class=\"" + cls + "\"><button type=\"submit\">" + label + "</button></form>"
@@ -65,22 +48,20 @@ pub fn view_register(err: Str) -> Str {
 }
 
 // 主列表页:新增表单 + 逐行 toggle/delete + 登出
-pub fn view_app(uid: Str, items: List[Str]) -> Str {
+pub fn view_app(uid: Str, ids: List[Str], titles: List[Str], dones: List[Str]) -> Str {
     var body = "<header><span class=\"uid\">" + ht_esc(uid) + "</span>" + f_btn("/logout", "登出", "inline right") + "</header>"
     body = body + "<form method=\"post\" action=\"/app/add\" class=\"add\">"
     body = body + "<input name=\"title\" placeholder=\"要做什么?\">"
     body = body + "<button type=\"submit\">添加</button></form>"
-    if items.len == 0 {
+    if ids.len == 0 {
         body = body + "<p class=\"empty\">暂无条目</p>"
     } else {
         body = body + "<ul>"
         var i: I32 = 0
-        while i < items.len {
-            let line = items[i]
-            let id = fld_i(line, "$.id", 0)
-            let title = fld_s(line, "$.title")
-            let done = fld_b(line, "$.done", false)
-            let ids = vdstr(id)
+        while i < ids.len {
+            let idv = ids[i]
+            let title = titles[i]
+            let done = dones[i] == "1"
             var cls = "open"
             var mark = "&#9744;"
             if done {
@@ -88,9 +69,9 @@ pub fn view_app(uid: Str, items: List[Str]) -> Str {
                 mark = "&#9745;"
             }
             body = body + "<li class=\"" + cls + "\">"
-            body = body + f_btn("/app/toggle/" + ids, mark, "inline")
+            body = body + f_btn("/app/toggle/" + idv, mark, "inline")
             body = body + "<span class=\"title\">" + ht_esc(title) + "</span>"
-            body = body + f_btn("/app/delete/" + ids, "&#215;", "inline del")
+            body = body + f_btn("/app/delete/" + idv, "&#215;", "inline del")
             body = body + "</li>"
             i += 1
         }
@@ -103,7 +84,6 @@ pub fn view_404() -> Str {
     return ht_page("404", "<h1>404</h1><p><a href=\"/\">回首页</a></p>")
 }
 
-// ---- tests(解释口径;廉价纯逻辑) ----
 
 test "login page shape and escape" {
     let p = view_login("")
@@ -122,20 +102,32 @@ test "register page links" {
 }
 
 test "app page rows and isolation of markup" {
-    var items: List[Str] = List[Str]()
-    items.push("\{\"id\":1,\"uid\":\"a\",\"title\":\"alPHA <b>\",\"done\":false,\"created\":\"t\"}")
-    items.push("\{\"id\":2,\"uid\":\"a\",\"title\":\"beta\",\"done\":true,\"created\":\"t\"}")
-    let p = view_app("alice", items)
+    var ids: List[Str] = List[Str]()
+    var titles: List[Str] = List[Str]()
+    var dones: List[Str] = List[Str]()
+    ids.push("1")
+    titles.push("alPHA <b>")
+    dones.push("0")
+    ids.push("2")
+    titles.push("beta")
+    dones.push("1")
+    let p = view_app("alice", ids, titles, dones)
     assert(contains(p, "/app/toggle/1"))
     assert(contains(p, "/app/delete/2"))
     assert(contains(p, "alPHA &lt;b&gt;"))
     assert(!contains(p, "alPHA <b>"))
     assert(contains(p, "alice"))
     assert(contains(p, "class=\"done\""))
-    let empty = view_app("bob", List[Str]())
+    let empty = view_app("bob", List[Str](), List[Str](), List[Str]())
     assert(contains(empty, "暂无条目"))
 }
 
 test "404 page" {
-    assert(view_404().contains("404"))
+    let nf = view_404()
+    assert(contains(nf, "404"))
 }
+
+// ---- tests(解释口径;廉价纯逻辑面) ----
+// 密码/认证面不进解释口径单测:自举解释器 arena 无回收(在册债),pbkdf2 解释执行
+// 6-8GB RSS 必 OOM;该面由 run.sh e2e 原生口径覆盖(注册/登录/错密/重名全链)。
+

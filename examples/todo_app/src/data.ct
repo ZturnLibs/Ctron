@@ -1,0 +1,468 @@
+// data.ct —— 存储与账号面(内存即盘上格式:List[Str] 每行一条 NDJSON 记录)
+//
+// 形态裁决(2026-09-26 探针实证):emit 值类型列表元素读为在册发射债(List[struct]/
+// List[I64] 索引读静默截断,todo_api 同款登记),Str 列表原生——存储形态取 List[Str]
+// NDJSON 行,平面取值器就地解析;变更 = 行重建。持久化 = join/fs_write 全量重写。
+// 密码面:pbkdf2_sha256(每用户随机盐 + iters 落档)。详设计
+// docs/superpowers/specs/2026-09-26-todo-app-design.md。
+
+use std.crypto.{ pbkdf2_sha256, bytes_from_hex, hmac_sha256 }
+use std.rand.{ rng_next, rng_range }
+use std.fs.{ read_or }
+use std.time.{ now_iso_utc }
+use std.str.{ contains }
+
+// ---- 私有工具 ----
+
+// JSON 串转义("、\\、控制字符;本地面替代 frm.openapi,减发射图原型负担)
+fn jesc(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 34 {
+            out = out + "\\\""
+        } else if c == 92 {
+            out = out + "\\\\"
+        } else if c < 32 {
+            let hi = (c / 16).as[I32]()
+            let lo = (c % 16).as[I32]()
+            out = out + "\\u00" + byte_slice("0123456789abcdef", hi, hi + 1) + byte_slice("0123456789abcdef", lo, lo + 1)
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out
+}
+
+// now_iso_utc 包装(main 不直依赖 std.time,见会话段头注的发射缺陷绕行族)
+pub fn now_iso() -> Str {
+    return now_iso_utc()
+}
+
+
+fn sbytes(s: Str) -> List[I32] {
+    var out: List[I32] = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
+}
+
+pub fn dstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var neg = false
+    var n = v
+    if n < 0 {
+        neg = true
+        n = 0 - n
+    }
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    if neg {
+        out = "-" + out
+    }
+    return out
+}
+
+// 行字段读取(平面 NDJSON 专用取值器;本地面替代 frm/body——发射图瘦身,
+// 值形仅 平面串/整数/布尔 三类;path 形 "$.key" 兼容旧调用点)。坏行/缺键回缺省。
+pub fn fld_s(line: Str, path: Str) -> Str {
+    let key = bseg(path, 2, path.len)
+    let want = "\\"" + key + "\\":"
+    return jstr(line, want)
+}
+
+pub fn fld_i(line: Str, path: Str, dft: I64) -> I64 {
+    return s2i(fld_s(line, path))
+}
+
+pub fn fld_b(line: Str, path: Str, dft: Bool) -> Bool {
+    return fld_s(line, path) == "true"
+}
+
+// jstr:取 "key": 后的字符串值(带反转义);未现/非串回空串
+fn jstr(line: Str, want: Str) -> Str {
+    let a = hfind_str(line, want)
+    if a < 0 {
+        return ""
+    }
+    let vs = a + want.len
+    if vs >= line.len || byte_at(line, vs) != 34 {
+        return ""
+    }
+    var out = ""
+    var i: I32 = vs + 1
+    while i < line.len {
+        let d = byte_at(line, i)
+        if d == 34 {
+            return out
+        }
+        if d == 92 && i + 1 < line.len {
+            let e = byte_at(line, i + 1)
+            if e == 34 {
+                out = out + "\\\""
+                i += 2
+                continue
+            }
+            if e == 92 {
+                out = out + "\\\\"
+                i += 2
+                continue
+            }
+            if e == 110 {
+                out = out + "\\n"
+                i += 2
+                continue
+            }
+            if e == 114 {
+                out = out + "\\r"
+                i += 2
+                continue
+            }
+            if e == 116 {
+                out = out + "\\t"
+                i += 2
+                continue
+            }
+            if e == 117 && i + 5 < line.len {
+                let h1 = hxv(byte_at(line, i + 2))
+                let h2 = hxv(byte_at(line, i + 3))
+                let h3 = hxv(byte_at(line, i + 4))
+                let h4 = hxv(byte_at(line, i + 5))
+                if h1 >= 0 && h2 >= 0 && h3 >= 0 && h4 >= 0 {
+                    out = out + one_ascii(h1 * 4096 + h2 * 256 + h3 * 16 + h4)
+                    i += 6
+                    continue
+                }
+            }
+            out = out + byte_slice(line, i, i + 1)
+            i += 1
+            continue
+        }
+        out = out + byte_slice(line, i, i + 1)
+        i += 1
+    }
+    return out
+}
+
+// 子串定位(Str 版 hfind;未现回 -1)
+fn hfind_str(s: Str, want: Str) -> I32 {
+    if want.len == 0 || s.len < want.len {
+        return 0 - 1
+    }
+    var i: I32 = 0
+    while i + want.len <= s.len {
+        var ok = true
+        var j: I32 = 0
+        while j < want.len {
+            if byte_at(s, i + j) != byte_at(want, j) {
+                ok = false
+                break
+            }
+            j += 1
+        }
+        if ok {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// hex 字符 → 0-15(否则 -1)
+fn hxv(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    return 0 - 1
+}
+
+// ASCII 码点 → 单字符(本应用 \\u 只产控制字符,ASCII 域内;域外回空)
+fn one_ascii(v: I32) -> Str {
+    if v < 0 || v > 126 {
+        return ""
+    }
+    return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", v - 32, v - 31)
+}
+
+
+// ---- 密码与盐 ----
+
+fn b2x(b: List[I32]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < b.len {
+        let v = b[i]
+        let hi = (v / 16).as[I32]()
+        let lo = (v % 16).as[I32]()
+        out = out + byte_slice("0123456789abcdef", hi, hi + 1)
+        out = out + byte_slice("0123456789abcdef", lo, lo + 1)
+        i += 1
+    }
+    return out
+}
+
+pub fn pw_hash(pass: Str, salt_hex: Str, iters: I32) -> Str {
+    return b2x(pbkdf2_sha256(sbytes(pass), bytes_from_hex(salt_hex), iters, 32))
+}
+
+// 32 hex 随机盐;种子由调用方注入(main 传 now_ms(),测试传固定值——now_ms 在
+// interp 为在册 parity 欠账(time.ct 头注),值栈错位延迟爆"byte_slice arity",
+// 故解释口径可达的模块禁直呼) + uid 逐字节混洗(同毫秒注册不同 uid 不同盐)
+pub fn salt_new(uid: Str, seed: I64) -> Str {
+    var s = (seed % 2147480000) + 1
+    if s < 1 {
+        s = 1
+    }
+    var k: I32 = 0
+    while k < uid.len {
+        s = rng_next(s + byte_at(uid, k).as[I64]())
+        k += 1
+    }
+    var out = ""
+    var i: I32 = 0
+    while i < 32 {
+        s = rng_next(s)
+        let d = rng_range(s, 0, 16)
+        out = out + byte_slice("0123456789abcdef", d, d + 1)
+        i += 1
+    }
+    return out
+}
+
+// uid 域:与 frm/auth au_uid_ok 同族收紧([A-Za-z0-9_-]{1,32})
+pub fn uid_ok(s: Str) -> Bool {
+    if s.len < 1 || s.len > 32 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let alnum = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)
+        let extra = c == 45 || c == 95
+        if !alnum && !extra {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// ---- 行序列化 ----
+
+pub fn user_line(uid: Str, salt: Str, hash: Str, iters: I32, created: Str) -> Str {
+    return "\{\"uid\":\"" + jesc(uid) + "\",\"salt\":\"" + salt + "\",\"hash\":\"" + hash + "\",\"iters\":" + dstr(iters.as[I64]()) + ",\"created\":\"" + jesc(created) + "\"}"
+}
+
+pub fn todo_line(id: I64, uid: Str, title: Str, done: Bool, created: Str) -> Str {
+    var dv = "false"
+    if done {
+        dv = "true"
+    }
+    return "\{\"id\":" + dstr(id) + ",\"uid\":\"" + jesc(uid) + "\",\"title\":\"" + jesc(title) + "\",\"done\":" + dv + ",\"created\":\"" + jesc(created) + "\"}"
+}
+
+// ---- 账号面 ----
+
+// 0=可注册 1=uid 域坏 2=重名 3=pass 短(<6)
+pub fn user_validate(users: List[Str], uid: Str, pass: Str) -> I64 {
+    if !uid_ok(uid) {
+        return 1
+    }
+    if pass.len < 6 {
+        return 3
+    }
+    var i: I32 = 0
+    while i < users.len {
+        if fld_s(users[i], "$.uid") == uid {
+            return 2
+        }
+        i += 1
+    }
+    return 0
+}
+
+pub fn user_auth(users: List[Str], uid: Str, pass: Str) -> Bool {
+    var i: I32 = 0
+    while i < users.len {
+        let line = users[i]
+        if fld_s(line, "$.uid") == uid {
+            let salt = fld_s(line, "$.salt")
+            let hash = fld_s(line, "$.hash")
+            let iters = fld_i(line, "$.iters", 2000)
+            if salt.len == 0 || hash.len == 0 {
+                return false
+            }
+            return pw_hash(pass, salt, iters.as[I32]()) == hash
+        }
+        i += 1
+    }
+    return false
+}
+
+// ---- todo 面(全为重建面:原 List 不动) ----
+
+pub fn todos_of(todos: List[Str], uid: Str) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < todos.len {
+        let line = todos[i]
+        if fld_s(line, "$.uid") == uid {
+            out.push(line)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn todo_toggle(todos: List[Str], uid: Str, id: I64) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < todos.len {
+        let line = todos[i]
+        if fld_i(line, "$.id", 0) == id && fld_s(line, "$.uid") == uid {
+            out.push(todo_line(id, uid, fld_s(line, "$.title"), !fld_b(line, "$.done", false), fld_s(line, "$.created")))
+        } else {
+            out.push(line)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn todo_delete(todos: List[Str], uid: Str, id: I64) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < todos.len {
+        let line = todos[i]
+        if fld_i(line, "$.id", 0) == id && fld_s(line, "$.uid") == uid {
+            // 跳过即删
+        } else {
+            out.push(line)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn max_todo_id(todos: List[Str]) -> I64 {
+    var m: I64 = 0
+    var i: I32 = 0
+    while i < todos.len {
+        let v = fld_i(todos[i], "$.id", 0)
+        if v > m {
+            m = v
+        }
+        i += 1
+    }
+    return m
+}
+
+// ---- 持久化(NDJSON 全量重写) ----
+
+pub fn load_file(path: Str) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    let text = read_or(path, "")
+    var line = ""
+    var i: I32 = 0
+    while i < text.len {
+        let c = byte_at(text, i)
+        if c == 10 {
+            if line.len > 0 {
+                out.push(line)
+            }
+            line = ""
+        } else {
+            line = line + byte_slice(text, i, i + 1)
+        }
+        i += 1
+    }
+    if line.len > 0 {
+        out.push(line)
+    }
+    return out
+}
+
+pub fn save_file(path: Str, lines: List[Str]) -> Bool {
+    var out = ""
+    var i: I32 = 0
+    while i < lines.len {
+        if i > 0 {
+            out = out + "\n"
+        }
+        out = out + lines[i]
+        i += 1
+    }
+    return fs_write(path, out)
+}
+
+
+test "salt shape" {
+    let s = salt_new("u1", 999)
+    assert(s.len == 32)
+    var i: I32 = 0
+    while i < 32 {
+        let c = byte_at(s, i)
+        let dig = (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
+        assert(dig)
+        i += 1
+    }
+}
+
+test "uid domain" {
+    assert(uid_ok("alice"))
+    assert(uid_ok("a-b_C9"))
+    assert(!uid_ok(""))
+    assert(!uid_ok("has space"))
+    assert(uid_ok("abcdefghijklmnopqrstuvwxyz012345"))      // 32 可
+    assert(!uid_ok("abcdefghijklmnopqrstuvwxyz0123456"))    // 33 拒
+}
+
+test "todo isolate toggle delete" {
+    var todos: List[Str] = List[Str]()
+    todos.push(todo_line(1, "alice", "alpha", false, "t"))
+    todos.push(todo_line(2, "alice", "beta", false, "t"))
+    todos.push(todo_line(3, "bob", "bobx", false, "t"))
+    assert(todos_of(todos, "alice").len == 2)
+    assert(todos_of(todos, "bob").len == 1)
+    assert(max_todo_id(todos) == 3)
+    let t2 = todo_toggle(todos, "alice", 1)
+    assert(fld_b(t2[0], "$.done", true))
+    assert(!fld_b(todos[0], "$.done", true))
+    assert(!fld_b(t2[1], "$.done", true))
+    let t3 = todo_delete(t2, "alice", 2)
+    assert(t3.len == 2)
+    assert(todo_delete(todos, "bob", 1).len == 3)
+    assert(todos_of(t3, "alice").len == 1)
+}
+
+test "ndjson file roundtrip" {
+    let p = "/tmp/ctron_todo_app_test.ndjson"
+    if fs_exists(p) {
+        fs_delete(p)
+    }
+    var xs: List[Str] = List[Str]()
+    xs.push(todo_line(1, "alice", "alpha", false, "t"))
+    xs.push(todo_line(2, "alice", "beta & <stuff>", true, "t"))
+    assert(save_file(p, xs))
+    let back = load_file(p)
+    assert(back.len == 2)
+    assert(fld_i(back[0], "$.id", 0) == 1)
+    assert(fld_s(back[1], "$.title") == "beta & <stuff>")
+    assert(fld_b(back[1], "$.done", false))
+    assert(max_todo_id(back) == 2)
+    fs_delete(p)
+}

@@ -637,3 +637,21 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   泳道(minimal repro = std/pb.ct 本体)。
 - **绕行**:tests/pb/run.sh 的 std 直发腿以 chk 语义门替代;代码生成覆盖由
   corpus 五件(作为依赖的 emit 双臂)承担。
+
+### 主文件发射确定性 SIGKILL @36864-45056B(依赖路径同病;todo_app 复现族,2026-09-26)
+
+- **现象**:`examples/todo_app` 多模块包(数据/会话/视图/HTTP 四件)任意主文件形态
+  emit 确定性 SIGKILL:主文件直发 45056B;依赖 shim(main→app)36864B/40960B;
+  星形单路径拆分(main→app→{data,sess,views})36864B;688f65e 与 main-tip 双工具链
+  同死;截断点恒落在 std/http frm 原型区(mp_parse/form_key_at 等处),逐字节可复现。
+- **对照**:同机同源 `todo_api`(512 行单文件主)292927B 全绿;todo_app 的
+  **app_main 体 stub 化即全量 262KB 绿**,恢复真体(哪怕 `serve()` 单调用转发)即死;
+  最小循环(config+listen+读头读体)271KB 绿,+4 行会话块即死。
+- **归因候选**:主分发/调用图遍历在依赖图上的有界预算(疑似 32-45KB 输出窗口);
+  非纯尺寸(todo_api 292KB 绿)、非单函数体(拆至 ~50 行仍死)、非双路径合并
+  (星形单父仍死)、非 flattener(fn 值不透明边界仍死)。
+- **已排除**:内存压力(16GB 空闲 68%)、工具链版本(三构建同死)、合并顺序、
+  frm/auth 依赖(移除后仍死)、frm/body(本地 JSON 取值器替代后仍死)。
+- **绕行**:todo_app run.sh 原生臂红账站岗(emit 失败即明确报错);语义面
+  `ctc check`(0E)+ 四模块 `ctc test` 全绿承接到保管;发射修复后 run.sh 即为验收门。
+- **最小复现**:examples/todo_app @ b0ce76d+ 星形拆分版;`ctron-emit run src/main.ct`。

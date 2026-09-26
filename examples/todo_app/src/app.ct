@@ -1,119 +1,160 @@
-// store.ct —— 存储与账号面(内存即盘上格式:List[Str] 每行一条 NDJSON 记录)
+// app.ct —— HTTP 面接线:多用户 todo 管理应用(浏览器即验收面)
 //
-// 形态裁决(探针实证 2026-09-26):emit 值类型列表元素读为在册发射债(List[struct]/
-// List[I64] 索引读静默 rc=1 截断;todo_api 同款登记),Str 列表原生——故存储形态
-// 取 List[Str] NDJSON 行,解析按需走 frm/body body_json;变更 = 行重建(重建
-// push 面已被 todo_api e2e 证明)。持久化 = join/fs_write 全量重写。
-// 密码面:pbkdf2_sha256(每用户随机盐 + iters 落档);比对为 == (演示口径;恒时
-// 比较面在 frm/auth 令牌路径,密码路径登记志向)。
+// 形态:net 听/收 + http.parse 头解析 + CL 读体 + 串行一连接一请求(todo_api
+// 同型骨架,handler 拆分形)。星形单路径拆分:app 为唯一父,data/sess/views
+// 互不依赖;变更路由落盘 + Res.reload 旗,装配层重载内存面。
+// env:TODO_APP_PORT(8092) TODO_APP_KEY(dev 缺省) TODO_APP_DATA(./data)
+//   TODO_APP_ITERS(2000)。data 目录须先存在。
 
-use std.crypto.{ pbkdf2_sha256, bytes_to_hex, bytes_from_hex }
-use std.rand.{ rng_next, rng_range }
-use std.fs.{ read_or }
+use net.{ Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_accept, net_read_t, net_write, net_close, last_net_error }
+use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len, http_clen, http_head_end }
+use http.frm.metrics.{ mx_meta, mx_line }
+use http.form.{ form_parse, form_count, form_key_at, form_val_at }
+use std.strconv.{ parse_i64, sc_get_l }
+use std.str.{ contains }
+use todo_app.data.{ dstr, fld_s, fld_i, fld_b, load_file, save_file, user_line, todo_line, user_validate, user_auth, salt_new, pw_hash, todos_of, todo_toggle, todo_delete, max_todo_id, now_iso }
+use todo_app.sess.{ tok_sign, tok_verify, cookie_get, cookie_set }
+use todo_app.views.{ view_login, view_register, view_app, view_404 }
 
-use http.frm.body.{ body_json, bj_rc, bj_str, bj_i64, bj_bool, bs_v }
-use http.frm.openapi.{ oa_json_escape }
+// ---- HTTP 面接线(路由处理函数族 + 装配;todo_api 同型骨架的拆分形。
+// 依赖语境单函数体发射预算紧(2026-09-26 探针实证,登记 c-rust-divergences),
+// 全部拆至最小函数;变更路由落盘 + Res.reload 旗,装配层重载内存面) ----
 
-// ---- 私有工具 ----
+pub struct Res {
+    let code: Str
+    let ctype: Str
+    let extra: Str
+    let body: Str
+    let reload: I64
+    let stop: I64
+}
 
-fn sbytes(s: Str) -> List[I32] {
-    var out: List[I32] = List[I32]()
+fn r_red(loc: Str, extra: Str) -> Res {
+    return Res { code: "303 See Other", ctype: "text/plain", extra: extra + "Location: " + loc + "\r\n", body: "", reload: 0, stop: 0 }
+}
+
+fn r_html(body: Str) -> Res {
+    return Res { code: "200 OK", ctype: "text/html; charset=utf-8", extra: "", body: body, reload: 0, stop: 0 }
+}
+
+fn r_html_err(body: Str) -> Res {
+    return Res { code: "404 Not Found", ctype: "text/html; charset=utf-8", extra: "", body: body, reload: 0, stop: 0 }
+}
+
+fn r_json(body: Str) -> Res {
+    return Res { code: "200 OK", ctype: "application/json", extra: "", body: body, reload: 0, stop: 0 }
+}
+
+fn r_text(code: Str, body: Str) -> Res {
+    return Res { code: code, ctype: "text/plain", extra: "", body: body, reload: 0, stop: 0 }
+}
+
+fn r_stop() -> Res {
+    return Res { code: "200 OK", ctype: "text/plain", extra: "", body: "draining", reload: 0, stop: 1 }
+}
+
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if c < 32 || c > 126 {
+            return out
+        }
+        out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", c - 32, c - 31)
+        i += 1
+    }
+    return out
+}
+
+fn hfind(buf: &I64[], n: I64, needle: Str) -> I64 {
+    let nl = needle.len.as[I64]()
+    var i: I64 = 0
+    while i + nl <= n {
+        var ok = true
+        var j: I64 = 0
+        while j < nl {
+            if buf[i + j] != byte_at(needle, j.as[I32]()).as[I64]() {
+                ok = false
+                break
+            }
+            j += 1
+        }
+        if ok {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn fill(buf: &I64[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        out.push(byte_at(s, i))
+        buf[i] = byte_at(s, i).as[I64]()
         i += 1
     }
-    return out
+    return s.len.as[I64]()
 }
 
-fn dstr(v: I64) -> Str {
-    if v == 0 {
-        return "0"
-    }
-    var neg = false
-    var n = v
-    if n < 0 {
-        neg = true
-        n = 0 - n
-    }
-    var out = ""
-    while n > 0 {
-        let d = (n % 10).as[I32]()
-        out = byte_slice("0123456789", d, d + 1) + out
-        n = n / 10
-    }
-    if neg {
-        out = "-" + out
-    }
-    return out
-}
-
-// 行字段读取(坏行回安全缺省)
-pub fn fld_s(line: Str, path: Str) -> Str {
-    let b = body_json(line, 4096)
-    if bj_rc(b) != 1 {
+// 头区取某行头的值("Name: value" → value;未现回空)
+fn hval(buf: &I64[], n: I64, name: Str) -> Str {
+    let tag = name + ": "
+    let a = hfind(buf, n, tag)
+    if a < 0 {
         return ""
     }
-    return bs_v(bj_str(b, path))
+    let vs = a + tag.len.as[I64]()
+    var ve = vs
+    while ve < n && buf[ve] != 13 {
+        ve += 1
+    }
+    return lane_str(buf, vs, ve)
 }
 
-pub fn fld_i(line: Str, path: Str, dft: I64) -> I64 {
-    let b = body_json(line, 4096)
-    if bj_rc(b) != 1 {
-        return dft
-    }
-    return bj_i64(b, path, dft)
+fn cslot(code: Str) -> I64 {
+    if code == "200" { return 0 }
+    if code == "303" { return 1 }
+    if code == "400" { return 2 }
+    if code == "404" { return 3 }
+    if code == "422" { return 4 }
+    if code == "500" { return 5 }
+    return 6
 }
 
-pub fn fld_b(line: Str, path: Str, dft: Bool) -> Bool {
-    let b = body_json(line, 4096)
-    if bj_rc(b) != 1 {
-        return dft
-    }
-    return bj_bool(b, path, dft)
+fn respond_res(cnt: &I64[], net: StdNet, fd: I64, buf: &I64[], r: Res) {
+    let resp = "HTTP/1.1 " + r.code + "\r\n" + r.extra + "Content-Type: " + r.ctype + "\r\n" + "Content-Length: " + dstr(r.body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + r.body
+    let m = fill(buf, resp)
+    net_write(net, fd, buf, m)
+    cnt[cslot(r.code)] = cnt[cslot(r.code)] + 1
 }
 
-// ---- 密码与盐 ----
-
-pub fn pw_hash(pass: Str, salt_hex: Str, iters: I32) -> Str {
-    return bytes_to_hex(pbkdf2_sha256(sbytes(pass), bytes_from_hex(salt_hex), iters, 32))
+// urlencoded 表单体取字段(解析败或未现回 dft;match 形沿 http/form.ct C13a)
+fn form_fld(ps: Option[List[Str]], key: Str, dft: Str) -> Str {
+    match ps {
+        Some(xs) => {
+            var i: I32 = 0
+            while i < form_count(xs) {
+                if form_key_at(xs, i) == key {
+                    return form_val_at(xs, i)
+                }
+                i += 1
+            }
+            return dft
+        }
+        None => {
+            return dft
+        }
+    }
 }
 
-// 32 hex 随机盐;种子由调用方注入(main 传 now_ms(),测试传固定值——now_ms 在
-// interp 为在册 parity 欠账(time.ct 头注),值栈错位延迟爆"byte_slice arity",
-// 故解释口径可达的模块禁直呼) + uid 逐字节混洗(同毫秒注册不同 uid 不同盐)
-pub fn salt_new(uid: Str, seed: I64) -> Str {
-    var s = (seed % 2147480000) + 1
-    if s < 1 {
-        s = 1
-    }
-    var k: I32 = 0
-    while k < uid.len {
-        s = rng_next(s + byte_at(uid, k).as[I64]())
-        k += 1
-    }
-    var out = ""
-    var i: I32 = 0
-    while i < 32 {
-        s = rng_next(s)
-        let d = rng_range(s, 0, 16)
-        out = out + byte_slice("0123456789abcdef", d, d + 1)
-        i += 1
-    }
-    return out
-}
-
-// uid 域:与 frm/auth au_uid_ok 同族收紧([A-Za-z0-9_-]{1,32})
-pub fn uid_ok(s: Str) -> Bool {
-    if s.len < 1 || s.len > 32 {
+fn pfx(target: Str, pre: Str) -> Bool {
+    if target.len < pre.len {
         return false
     }
     var i: I32 = 0
-    while i < s.len {
-        let c = byte_at(s, i)
-        let alnum = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)
-        let extra = c == 45 || c == 95
-        if !alnum && !extra {
+    while i < pre.len {
+        if byte_at(target, i) != byte_at(pre, i) {
             return false
         }
         i += 1
@@ -121,211 +162,399 @@ pub fn uid_ok(s: Str) -> Bool {
     return true
 }
 
-// ---- 行序列化 ----
-
-pub fn user_line(uid: Str, salt: Str, hash: Str, iters: I32, created: Str) -> Str {
-    return "\{\"uid\":\"" + oa_json_escape(uid) + "\",\"salt\":\"" + salt + "\",\"hash\":\"" + hash + "\",\"iters\":" + dstr(iters.as[I64]()) + ",\"created\":\"" + oa_json_escape(created) + "\"}"
+// "/app/toggle/12" → 12(非数字段回 -1)
+fn path_id(target: Str, pre: Str) -> I64 {
+    if !pfx(target, pre) {
+        return 0 - 1
+    }
+    var v: I64 = 0
+    var i: I32 = pre.len
+    while i < target.len {
+        let c = byte_at(target, i)
+        if c < 48 || c > 57 {
+            return 0 - 1
+        }
+        v = v * 10 + (c - 48).as[I64]()
+        i += 1
+    }
+    return v
 }
 
-pub fn todo_line(id: I64, uid: Str, title: Str, done: Bool, created: Str) -> Str {
-    var dv = "false"
-    if done {
-        dv = "true"
-    }
-    return "\{\"id\":" + dstr(id) + ",\"uid\":\"" + oa_json_escape(uid) + "\",\"title\":\"" + oa_json_escape(title) + "\",\"done\":" + dv + ",\"created\":\"" + oa_json_escape(created) + "\"}"
+pub struct Cfg {
+    let key: Str
+    let iters: I32
+    let port: I64
+    let dir: Str
+    let f_users: Str
+    let f_todos: Str
 }
 
-// ---- 账号面 ----
+fn cfg() -> Cfg {
+    var key = "dev-todo-app-key"
+    if env_get("TODO_APP_KEY").len > 0 {
+        key = env_get("TODO_APP_KEY")
+    }
+    let iters = sc_get_l(parse_i64(env_get("TODO_APP_ITERS")), 2000).as[I32]()
+    let port = sc_get_l(parse_i64(env_get("TODO_APP_PORT")), 8092)
+    var dir = "data"
+    if env_get("TODO_APP_DATA").len > 0 {
+        dir = env_get("TODO_APP_DATA")
+    }
+    return Cfg { key: key, iters: iters, port: port, dir: dir, f_users: dir + "/users.ndjson", f_todos: dir + "/todos.ndjson" }
+}
 
-// 0=可注册 1=uid 域坏 2=重名 3=pass 短(<6)
-pub fn user_validate(users: List[Str], uid: Str, pass: Str) -> I64 {
-    if !uid_ok(uid) {
-        return 1
+fn listen_at(net: StdNet, port: I64) -> I64 {
+    let lfd = Box[Box64](Box64 { v: 0 })
+    if net_tcp_listen(net, "127.0.0.1", port, lfd) != 0 {
+        panic(last_net_error().message)
     }
-    if pass.len < 6 {
-        return 3
+    let pbox = Box[Box64](Box64 { v: 0 })
+    if net_tcp_sockname(net, lfd.v, pbox) != 0 {
+        panic(last_net_error().message)
     }
+    println("todo-app listening on 127.0.0.1:" + pbox.v.to_string())
+    return lfd.v
+}
+
+pub struct ReqH {
+    let ms: I64
+    let ml: I64
+    let ts: I64
+    let tl: I64
+    let hend: I64
+    let n: I64
+    let good: I64
+}
+
+// 读请求(头增量解析 + CL 读体;buf/scr 经 & 数参就地写)
+fn read_req(net: StdNet, fd: I64, buf: &I64[], scr: &I64[]) -> ReqH {
+    var n: I64 = 0
+    var ms: I64 = 0
+    var ml: I64 = 0
+    var ts: I64 = 0
+    var tl: I64 = 0
+    var clen: I64 = 0
+    var hend: I64 = 0
+    var good = 0
+    var guard: I64 = 0
+    var need = 1
+    while need == 1 && guard < 64 {
+        guard += 1
+        let h = http_parse_head(buf, n, http_limits_default())
+        if http_rc(h) == 1 {
+            need = 0
+            good = 1
+            ms = http_method_start(h)
+            ml = http_method_len(h)
+            ts = http_target_start(h)
+            tl = http_target_len(h)
+            clen = http_clen(h)
+            hend = http_head_end(h)
+        } else {
+            if http_rc(h) == -1 {
+                need = 0
+            } else {
+                let r = net_read_t(net, fd, scr, 2048, 5000)
+                if r <= 0 {
+                    need = 0
+                } else {
+                    var i: I64 = 0
+                    while i < r {
+                        if n + i < 4096 {
+                            buf[n + i] = scr[i]
+                        }
+                        i += 1
+                    }
+                    n = n + r
+                }
+            }
+        }
+    }
+    if good == 0 {
+        return ReqH { ms: 0, ml: 0, ts: 0, tl: 0, hend: 0, n: 0, good: 0 }
+    }
+    let total = hend + clen
+    while n < total {
+        let r = net_read_t(net, fd, scr, 2048, 5000)
+        if r <= 0 {
+            break
+        }
+        var i: I64 = 0
+        while i < r {
+            if n < 4096 {
+                buf[n] = scr[i]
+            }
+            n += 1
+            i += 1
+        }
+    }
+    return ReqH { ms: ms, ml: ml, ts: ts, tl: tl, hend: hend, n: n, good: 1 }
+}
+
+pub struct Basics {
+    let method: Str
+    let target: Str
+    let body: Str
+    let cookie: Str
+}
+
+fn basics(buf: &I64[], rh: ReqH) -> Basics {
+    let method = lane_str(buf, rh.ms, rh.ms + rh.ml)
+    let target = lane_str(buf, rh.ts, rh.ts + rh.tl)
+    let body = lane_str(buf, rh.hend, rh.n)
+    let cookie = hval(buf, rh.hend, "Cookie")
+    return Basics { method: method, target: target, body: body, cookie: cookie }
+}
+
+fn sess_uid(key: Str, cookie_hdr: Str) -> Str {
+    let sid = cookie_get(cookie_hdr, "sid")
+    if sid.len == 0 {
+        return ""
+    }
+    return tok_verify(key, sid, now_ms() / 1000)
+}
+
+// ---- 路由处理函数族(各守小体;签名即路由表) ----
+
+fn h_health(served: I64, n_users: I64, n_todos: I64) -> Res {
+    return r_json("\{\"ok\":true,\"served\":" + dstr(served) + ",\"users\":" + dstr(n_users) + ",\"todos\":" + dstr(n_todos) + "}")
+}
+
+fn h_metrics(cnt: &I64[], n_users: I64, n_todos: I64) -> Res {
+    var out = mx_meta("http_total", "counter", "responses by status code")
+    out = out + mx_line("http_total", "code", "200", cnt[0])
+    out = out + mx_line("http_total", "code", "303", cnt[1])
+    out = out + mx_line("http_total", "code", "400", cnt[2])
+    out = out + mx_line("http_total", "code", "404", cnt[3])
+    out = out + mx_line("http_total", "code", "422", cnt[4])
+    out = out + mx_meta("todo_users", "gauge", "registered users")
+    out = out + mx_line("todo_users", "", "", n_users)
+    out = out + mx_meta("todo_items", "gauge", "todo items")
+    out = out + mx_line("todo_items", "", "", n_todos)
+    return Res { code: "200 OK", ctype: "text/plain; charset=utf-8", extra: "", body: out, reload: 0, stop: 0 }
+}
+
+fn h_login_get() -> Res {
+    return r_html(view_login(""))
+}
+
+fn h_login_post(users: List[Str], key: Str, body: Str) -> Res {
+    let ps = form_parse(body)
+    let fuid = form_fld(ps, "uid", "")
+    let fpass = form_fld(ps, "pass", "")
+    if !user_auth(users, fuid, fpass) {
+        return r_html(view_login("用户名或密码不对"))
+    }
+    let tok = tok_sign(key, fuid, now_ms() / 1000, 604800)
+    var extra = ""
+    if tok.len > 0 {
+        extra = cookie_set("sid", tok, 604800)
+    }
+    return r_red("/app", extra)
+}
+
+// 注册(本地副本追加 + 落盘;内存面由装配层 reload 刷新)
+fn h_register(users: List[Str], iters: I32, body: Str, path: Str) -> Res {
+    let ps = form_parse(body)
+    let fuid = form_fld(ps, "uid", "")
+    let fpass = form_fld(ps, "pass", "")
+    let rc = user_validate(users, fuid, fpass)
+    if rc != 0 {
+        var msg = "注册信息不合规"
+        if rc == 1 {
+            msg = "用户名限 1-32 位字母数字或 _ -"
+        }
+        if rc == 2 {
+            msg = "用户名已存在"
+        }
+        if rc == 3 {
+            msg = "密码至少 6 位"
+        }
+        return r_html(view_register(msg))
+    }
+    var fresh: List[Str] = List[Str]()
     var i: I32 = 0
     while i < users.len {
-        if fld_s(users[i], "$.uid") == uid {
-            return 2
-        }
+        fresh.push(users[i])
         i += 1
     }
-    return 0
+    let salt = salt_new(fuid, now_ms())
+    fresh.push(user_line(fuid, salt, pw_hash(fpass, salt, iters), iters, now_iso()))
+    save_file(path, fresh)
+    return r_red("/login", "")
 }
 
-pub fn user_auth(users: List[Str], uid: Str, pass: Str) -> Bool {
+fn h_logout() -> Res {
+    return r_red("/login", cookie_set("sid", "", 0))
+}
+
+fn h_app(uid: Str, todos: List[Str]) -> Res {
+    let rows = todos_of(todos, uid)
+    var ids: List[Str] = List[Str]()
+    var titles: List[Str] = List[Str]()
+    var dones: List[Str] = List[Str]()
     var i: I32 = 0
-    while i < users.len {
-        let line = users[i]
-        if fld_s(line, "$.uid") == uid {
-            let salt = fld_s(line, "$.salt")
-            let hash = fld_s(line, "$.hash")
-            let iters = fld_i(line, "$.iters", 2000)
-            if salt.len == 0 || hash.len == 0 {
-                return false
-            }
-            return pw_hash(pass, salt, iters.as[I32]()) == hash
+    while i < rows.len {
+        ids.push(dstr(fld_i(rows[i], "$.id", 0)))
+        titles.push(fld_s(rows[i], "$.title"))
+        var dv = "0"
+        if fld_b(rows[i], "$.done", false) {
+            dv = "1"
         }
+        dones.push(dv)
         i += 1
     }
-    return false
+    return r_html(view_app(uid, ids, titles, dones))
 }
 
-// ---- todo 面(全为重建面:原 List 不动) ----
-
-pub fn todos_of(todos: List[Str], uid: Str) -> List[Str] {
-    var out: List[Str] = List[Str]()
-    var i: I32 = 0
-    while i < todos.len {
-        let line = todos[i]
-        if fld_s(line, "$.uid") == uid {
-            out.push(line)
-        }
-        i += 1
+// 新增(本地副本追加 + 落盘;reload 由装配层执行)
+fn h_add(todos: List[Str], uid: Str, title: Str, next_id: I64, path: Str) -> Res {
+    if title.len == 0 || title.len > 512 {
+        return r_red("/app", "")
     }
-    return out
-}
-
-pub fn todo_toggle(todos: List[Str], uid: Str, id: I64) -> List[Str] {
-    var out: List[Str] = List[Str]()
+    var fresh: List[Str] = List[Str]()
     var i: I32 = 0
     while i < todos.len {
-        let line = todos[i]
-        if fld_i(line, "$.id", 0) == id && fld_s(line, "$.uid") == uid {
-            out.push(todo_line(id, uid, fld_s(line, "$.title"), !fld_b(line, "$.done", false), fld_s(line, "$.created")))
-        } else {
-            out.push(line)
+        fresh.push(todos[i])
+        i += 1
+    }
+    fresh.push(todo_line(next_id, uid, title, false, now_iso()))
+    save_file(path, fresh)
+    return r_red("/app", "")
+}
+
+fn h_toggle(todos: List[Str], uid: Str, id: I64, path: Str) -> Res {
+    if id > 0 {
+        save_file(path, todo_toggle(todos, uid, id))
+    }
+    return r_red("/app", "")
+}
+
+fn h_delete(todos: List[Str], uid: Str, id: I64, path: Str) -> Res {
+    if id > 0 {
+        save_file(path, todo_delete(todos, uid, id))
+    }
+    return r_red("/app", "")
+}
+
+fn route_app(f_todos: Str, todos: List[Str], uid: Str, method: Str, target: Str, body: Str) -> Res {
+    if target == "/app" && method == "GET" {
+        if uid.len == 0 {
+            return r_red("/login", "")
         }
-        i += 1
+        return h_app(uid, todos)
     }
-    return out
-}
-
-pub fn todo_delete(todos: List[Str], uid: Str, id: I64) -> List[Str] {
-    var out: List[Str] = List[Str]()
-    var i: I32 = 0
-    while i < todos.len {
-        let line = todos[i]
-        if fld_i(line, "$.id", 0) == id && fld_s(line, "$.uid") == uid {
-            // 跳过即删
-        } else {
-            out.push(line)
+    if pfx(target, "/app/add") && method == "POST" {
+        if uid.len == 0 {
+            return r_red("/login", "")
         }
-        i += 1
+        let ps = form_parse(body)
+        let title = form_fld(ps, "title", "")
+        return h_add(todos, uid, title, max_todo_id(todos) + 1, f_todos)
     }
-    return out
-}
-
-pub fn max_todo_id(todos: List[Str]) -> I64 {
-    var m: I64 = 0
-    var i: I32 = 0
-    while i < todos.len {
-        let v = fld_i(todos[i], "$.id", 0)
-        if v > m {
-            m = v
+    if pfx(target, "/app/toggle/") && method == "POST" {
+        if uid.len == 0 {
+            return r_red("/login", "")
         }
-        i += 1
+        return h_toggle(todos, uid, path_id(target, "/app/toggle/"), f_todos)
     }
-    return m
-}
-
-// ---- 持久化(NDJSON 全量重写) ----
-
-pub fn load_file(path: Str) -> List[Str] {
-    var out: List[Str] = List[Str]()
-    let text = read_or(path, "")
-    var line = ""
-    var i: I32 = 0
-    while i < text.len {
-        let c = byte_at(text, i)
-        if c == 10 {
-            if line.len > 0 {
-                out.push(line)
-            }
-            line = ""
-        } else {
-            line = line + byte_slice(text, i, i + 1)
+    if pfx(target, "/app/delete/") && method == "POST" {
+        if uid.len == 0 {
+            return r_red("/login", "")
         }
-        i += 1
+        return h_delete(todos, uid, path_id(target, "/app/delete/"), f_todos)
     }
-    if line.len > 0 {
-        out.push(line)
+    if target == "/__shutdown" && method == "POST" {
+        return r_stop()
     }
-    return out
+    return r_html_err(view_404())
 }
 
-pub fn save_file(path: Str, lines: List[Str]) -> Bool {
-    var out = ""
-    var i: I32 = 0
-    while i < lines.len {
-        if i > 0 {
-            out = out + "\n"
+fn route(key: Str, iters: I32, f_users: Str, f_todos: Str, users: List[Str], todos: List[Str], uid: Str, b: Basics, served: I64, cnt: &I64[]) -> Res {
+    if b.target == "/health" && b.method == "GET" {
+        return h_health(served, users.len.as[I64](), todos.len.as[I64]())
+    }
+    if b.target == "/metrics" && b.method == "GET" {
+        return h_metrics(cnt, users.len.as[I64](), todos.len.as[I64]())
+    }
+    if b.target == "/" && b.method == "GET" {
+        if uid.len > 0 {
+            return r_red("/app", "")
         }
-        out = out + lines[i]
-        i += 1
+        return r_red("/login", "")
     }
-    return fs_write(path, out)
-}
-
-// ---- tests(解释口径;廉价纯逻辑面) ----
-// 密码/认证面不进解释口径单测:自举解释器 arena 无回收(在册债),pbkdf2 解释执行
-// 6-8GB RSS 必 OOM;该面由 run.sh e2e 原生口径覆盖(注册/登录/错密/重名全链)。
-
-test "salt shape" {
-    let s = salt_new("u1", 999)
-    assert(s.len == 32)
-    var i: I32 = 0
-    while i < 32 {
-        let c = byte_at(s, i)
-        let dig = (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
-        assert(dig)
-        i += 1
+    if b.target == "/login" && b.method == "GET" {
+        return h_login_get()
     }
-}
-
-test "uid domain" {
-    assert(uid_ok("alice"))
-    assert(uid_ok("a-b_C9"))
-    assert(!uid_ok(""))
-    assert(!uid_ok("has space"))
-    assert(uid_ok("abcdefghijklmnopqrstuvwxyz012345"))      // 32 可
-    assert(!uid_ok("abcdefghijklmnopqrstuvwxyz0123456"))    // 33 拒
-}
-
-test "todo isolate toggle delete" {
-    var todos: List[Str] = List[Str]()
-    todos.push(todo_line(1, "alice", "alpha", false, "t"))
-    todos.push(todo_line(2, "alice", "beta", false, "t"))
-    todos.push(todo_line(3, "bob", "bobx", false, "t"))
-    assert(todos_of(todos, "alice").len == 2)
-    assert(todos_of(todos, "bob").len == 1)
-    assert(max_todo_id(todos) == 3)
-    let t2 = todo_toggle(todos, "alice", 1)
-    assert(fld_b(t2[0], "$.done", true))
-    assert(!fld_b(todos[0], "$.done", true))
-    assert(!fld_b(t2[1], "$.done", true))
-    let t3 = todo_delete(t2, "alice", 2)
-    assert(t3.len == 2)
-    assert(todo_delete(todos, "bob", 1).len == 3)
-    assert(todos_of(t3, "alice").len == 1)
-}
-
-test "ndjson file roundtrip" {
-    let p = "/tmp/ctron_todo_app_test.ndjson"
-    if fs_exists(p) {
-        fs_delete(p)
+    if b.target == "/login" && b.method == "POST" {
+        return h_login_post(users, key, b.body)
     }
-    var xs: List[Str] = List[Str]()
-    xs.push(todo_line(1, "alice", "alpha", false, "t"))
-    xs.push(todo_line(2, "alice", "beta & <stuff>", true, "t"))
-    assert(save_file(p, xs))
-    let back = load_file(p)
-    assert(back.len == 2)
-    assert(fld_i(back[0], "$.id", 0) == 1)
-    assert(fld_s(back[1], "$.title") == "beta & <stuff>")
-    assert(fld_b(back[1], "$.done", false))
-    assert(max_todo_id(back) == 2)
-    fs_delete(p)
+    if b.target == "/register" && b.method == "GET" {
+        return r_html(view_register(""))
+    }
+    if b.target == "/register" && b.method == "POST" {
+        return h_register(users, iters, b.body, f_users)
+    }
+    if b.target == "/logout" && b.method == "POST" {
+        return h_logout()
+    }
+    if pfx(b.target, "/app") {
+        return route_app(f_todos, todos, uid, b.method, b.target, b.body)
+    }
+    return r_html_err(view_404())
 }
+
+
+// run_with:函数值调用——主分发展平器的不透明边界(2026-09-26 发射缺陷绕行)
+fn run_with(f: fn()) {
+    f()
+}
+
+pub fn app_main() {
+    run_with(serve)
+}
+
+fn serve() {
+    let net = Net_probe()
+        let c = cfg()
+    if !fs_exists(c.dir) {
+        panic("data 目录不存在: " + c.dir + "(先创建或以 TODO_APP_DATA 指定)")
+    }
+    let lfd = listen_at(net, c.port)
+    var users: List[Str] = load_file(c.f_users)
+    var todos: List[Str] = load_file(c.f_todos)
+    var served: I64 = 0
+    var stop = 0
+    var cnt: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    while stop == 0 {
+        let abox = Box[Box64](Box64 { v: 0 })
+        if net_tcp_accept(net, lfd, abox) != 0 {
+            break
+        }
+        served += 1
+        var buf: I64[4096] = [0, 0, 0, 0]
+        var scr: I64[2048] = [0, 0, 0, 0]
+        let rh = read_req(net, abox.v, buf, scr)
+        if rh.good == 0 {
+            let bad = r_text("400 Bad Request", "bad request")
+            respond_res(cnt, net, abox.v, scr, bad)
+            net_close(net, abox.v)
+            continue
+        }
+        let b = basics(buf, rh)
+        let uid = sess_uid(c.key, b.cookie)
+        let res = route(c.key, c.iters, c.f_users, c.f_todos, users, todos, uid, b, served, cnt)
+        if res.reload == 1 {
+            users = load_file(c.f_users)
+            todos = load_file(c.f_todos)
+        }
+        if res.stop == 1 {
+            stop = 1
+        }
+        respond_res(cnt, net, abox.v, buf, res)
+        net_close(net, abox.v)
+    }
+    net_close(net, lfd)
+    println("todo-app drained (served " + dstr(served) + ")")
+}
+
