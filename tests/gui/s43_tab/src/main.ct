@@ -1,0 +1,108 @@
+// tests/gui/s43_tab —— P2:Tab 焦点环(§2.2/§2.11;多输入 Tab 进/Shift+Tab 退)
+// 光标相位经 d_tick 钉死(闪烁转正后 exact 断言需确定性);焦点可见性=光标所在 input
+use gui.{test, d_frame, d_focus, d_tick, d_mod, d_send_char, d_send_key, d_expect_text, theme_apply, theme_default}
+
+view Tabs {
+  <vbox class="root">
+    <input bind={a} class="fa"/>
+    <input bind={b} class="fb"/>
+    <label class="st">{a}|{b}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style fa { bg: SURFACE fg: TEXT size: 16 h: 32 }
+style fb { bg: SURFACE fg: TEXT size: 16 h: 32 }
+style st { fg: TEXT_MUTED size: 13 h: 20 }
+
+struct Model {
+    var a: Str
+    var b: Str
+}
+
+fn set_a() {
+}
+fn set_b() {
+}
+
+fn head_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, 0, i)
+        }
+        i += 1
+    }
+    return nm
+}
+
+fn payload_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, i + 1, nm.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if head_of(name) == "set_a" {
+        m.a = payload_of(name)
+    }
+    if head_of(name) == "set_b" {
+        m.b = payload_of(name)
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "a" {
+        buf.push(m.a)
+    }
+    if buf[0] == "b" {
+        buf.push(m.b)
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var m = Box[Model](Model { a: "", b: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| k,
+        |t, actc, k2| {
+            d_tick(t, 0)
+            // 聚焦 A,键入 x → "x|"
+            d_focus(t)
+            d_send_char(t, 120,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "x|")
+            // Tab → 焦点环进 B(光标随焦,空文本无竖线);A 侧 "x" 平显
+            d_send_key(t, 258,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "x")
+            // B 中键入 y(B 为焦)
+            d_send_char(t, 121,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "y|")
+            // Shift+Tab → 回 A
+            d_mod(t, 2)
+            d_send_key(t, 258,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "x|")
+            println("S43-TAB-GREEN")
+        })
+    return rc
+}
+

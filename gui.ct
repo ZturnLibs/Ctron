@@ -3232,6 +3232,52 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     return false
 }
 
+// Tab 焦点环(P2):树序 input 收集,cur 相对环进/环退(Shift 反向);无 input 返 -1
+fn rt_focus_next(t: GuiTree, cur: I32, rev: I32) -> I32 {
+    var ids = List[I32]()
+    var i: I32 = 0
+    while i < t.ntag.len {
+        if t.ntag[i] == "input" {
+            ids.push(i)
+        }
+        i += 1
+    }
+    if ids.len == 0 {
+        return -1
+    }
+    if cur < 0 {
+        if rev == 1 {
+            return ids[ids.len - 1]
+        }
+        return ids[0]
+    }
+    var pos: I32 = -1
+    var j: I32 = 0
+    while j < ids.len {
+        if ids[j] == cur {
+            pos = j
+        }
+        j += 1
+    }
+    if pos < 0 {
+        if rev == 1 {
+            return ids[ids.len - 1]
+        }
+        return ids[0]
+    }
+    var np: I32 = pos + 1
+    if rev == 1 {
+        np = pos - 1
+    }
+    if np >= ids.len {
+        np = 0
+    }
+    if np < 0 {
+        np = ids.len - 1
+    }
+    return ids[np]
+}
+
 // 光标形状(P2):悬停节点→形状(input=2 I-beam,可点元素=4 手型,余 0 默认)
 fn rt_cursor_for(t: GuiTree, hov: I32) -> I32 {
     if hov < 0 {
@@ -3331,19 +3377,38 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                                 }
                             }
                         } else {
-                            // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
-                            var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
-                            if hk >= 0 {
-                                var han: Str = ""
-                                var hi: I32 = 0
-                                while hi < hk {
-                                    han = han + utf8_enc(gui_hotkey_action_byte(hi))
-                                    hi += 1
+                            // P2:Tab 焦点环(导航位,先于快捷键表;Shift 反向)
+                            if gui_evt_key() == 258 {
+                                var md: I32 = gui_hotkey_mods()
+                                var sh: I32 = md / 2
+                                var sh2: I32 = sh / 2
+                                var rev: I32 = 0
+                                if sh - sh2 * 2 == 1 {
+                                    rev = 1
                                 }
-                                act(han)
+                                var nf: I32 = rt_focus_next(t, gui_focus_node(), rev)
+                                gui_focus_set(nf)
+                                if nf >= 0 {
+                                    var fbv2: Str = rt_in_val(t, nf, bind)
+                                    gui_caret_set(fbv2.len)
+                                } else {
+                                    gui_caret_set(0)
+                                }
                             } else {
-                                if has_key {
-                                    key(gui_evt_key())
+                                // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                                var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                                if hk >= 0 {
+                                    var han: Str = ""
+                                    var hi: I32 = 0
+                                    while hi < hk {
+                                        han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                        hi += 1
+                                    }
+                                    act(han, List[Str]())
+                                } else {
+                                    if has_key {
+                                        key(gui_evt_key())
+                                    }
                                 }
                             }
                         }
@@ -3451,19 +3516,38 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                 }
                             }
                         } else {
-                            // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
-                            var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
-                            if hk >= 0 {
-                                var han: Str = ""
-                                var hi: I32 = 0
-                                while hi < hk {
-                                    han = han + utf8_enc(gui_hotkey_action_byte(hi))
-                                    hi += 1
+                            // P2:Tab 焦点环(导航位,先于快捷键表;Shift 反向)
+                            if gui_evt_key() == 258 {
+                                var mdb: I32 = gui_hotkey_mods()
+                                var shb: I32 = mdb / 2
+                                var shb2: I32 = shb / 2
+                                var revb: I32 = 0
+                                if shb - shb2 * 2 == 1 {
+                                    revb = 1
                                 }
-                                act(han)
+                                var nfb: I32 = rt_focus_next(t, gui_focus_node(), revb)
+                                gui_focus_set(nfb)
+                                if nfb >= 0 {
+                                    var fbv: Str = rt_in_val(t, nfb, bind)
+                                    gui_caret_set(fbv.len)
+                                } else {
+                                    gui_caret_set(0)
+                                }
                             } else {
-                                if has_key {
-                                    key(gui_evt_key())
+                                // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                                var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                                if hk >= 0 {
+                                    var han: Str = ""
+                                    var hi: I32 = 0
+                                    while hi < hk {
+                                        han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                        hi += 1
+                                    }
+                                    act(han, List[Str]())
+                                } else {
+                                    if has_key {
+                                        key(gui_evt_key())
+                                    }
                                 }
                             }
                         }
@@ -3722,6 +3806,25 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
             if oh != "" {
                 act(oh, List[Str]())
             }
+        }
+        return 0
+    }
+    // Tab 焦点环镜像(窗口循环同语义)
+    if gui_evt_key() == 258 {
+        var mdm: I32 = gui_hotkey_mods()
+        var shm: I32 = mdm / 2
+        var shm2: I32 = shm / 2
+        var revm: I32 = 0
+        if shm - shm2 * 2 == 1 {
+            revm = 1
+        }
+        var nfm: I32 = rt_focus_next(t.t, gui_focus_node(), revm)
+        gui_focus_set(nfm)
+        if nfm >= 0 {
+            var fvb: Str = rt_in_val(t.t, nfm, bind)
+            gui_caret_set(fvb.len)
+        } else {
+            gui_caret_set(0)
         }
         return 0
     }

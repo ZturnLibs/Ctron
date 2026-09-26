@@ -1,0 +1,11 @@
+view Tabs {
+  <vbox class="root">
+    <input bind={a} class="fa" on:input={set_a}/>
+    <input bind={b} class="fb" on:input={set_b}/>
+    <label class="st">{a}|{b}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style fa { bg: SURFACE fg: TEXT size: 16 h: 32 }
+style fb { bg: SURFACE fg: TEXT size: 16 h: 32 }
+style st { fg: TEXT_MUTED size: 13 h: 20 }
