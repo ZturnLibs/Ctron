@@ -1,0 +1,9 @@
+// store.ct 骨架探针(Task 1)——证伪:包内 use 解析 / struct 跨模块传递
+
+pub struct Probe {
+    let v: I64
+}
+
+pub fn probe_store() -> Str {
+    return "s"
+}

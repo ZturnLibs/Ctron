@@ -1,0 +1,9 @@
+// main.ct 骨架探针(Task 1)——包内 use 解析 + struct 跨模块构造/回读
+
+use todo_app.store.{ Probe, probe_store }
+use todo_app.views.{ probe_views }
+
+fn main() {
+    let p = Probe { v: 42 }
+    println("probe:" + probe_store() + probe_views() + ":" + p.v.to_string())
+}
