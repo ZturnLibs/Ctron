@@ -2,8 +2,9 @@
 // http.client StructLit 缺陷绕行,divergences 在册;签名仍走 s3.ct 全链)
 // PUT(体 hello-s3-roundtrip)→ GET(回声断言)→ DELETE(204)。
 use net.{Net_probe, net_tcp_connect, net_write_str, net_write, net_read_t, net_close}
-use s3.s3.{ s3_auth_for, s3_payload_hash_str, s3_empty_hash }
+use s3.s3.{ s3_auth_for, s3_payload_hash_str, s3_empty_hash, s3_basic_time }
 use std.strconv.{ parse_i64, sc_get_l }
+use std.time.{ now_iso_utc }
 
 fn dstr(v: I64) -> Str {
     if v == 0 {
@@ -54,7 +55,12 @@ fn main() -> I64 {
     let ak = "AKIDEXAMPLE"
     let sk = "wJalrXUtnFEMI"
     let region = "us-east-1"
-    let xdate = "20250925T000000Z"
+    // S3_REAL=1 → minio 真靶形:当前时间戳(minio 拒 >15min 偏移)+ env AK/SK
+    var xdate = "20250925T000000Z"
+    var akx = "AKIDEXAMPLE"
+    var skx = "wJalrXUtnFEMI"
+    // 建桶 = 部署契约(桶预建;S3_MKBUCKET=1 时以 CreateBucket 重试一次)
+    // 签名面时间 = 当前(now_iso_utc→basic),防 minio 15min 偏移拒。
     var rbuf: I64[2048] = [0, 0, 0, 0]
     // PUT
     let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", ak, sk, region, xdate, rbuf, 2048)
