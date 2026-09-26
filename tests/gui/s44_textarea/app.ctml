@@ -1,0 +1,9 @@
+view Notes {
+  <vbox class="root">
+    <textarea bind={note} placeholder="记点什么…" class="ta" on:input={set_note}/>
+    <label class="st">{nlines}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style ta { bg: SURFACE fg: TEXT size: 16 h: 90 }
+style st { fg: TEXT_MUTED size: 13 h: 20 }

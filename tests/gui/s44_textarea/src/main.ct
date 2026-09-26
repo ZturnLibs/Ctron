@@ -1,0 +1,121 @@
+// tests/gui/s44_textarea —— 波次五d:多行 textarea(§2.10 P2 销账)
+// Enter 换行插入(\\n 入值)→逐行渲染→退格跨行连接→行数计数标签;光标 | 落所在行
+use gui.{test, d_frame, d_focus, d_tick, d_send_char, d_send_key, d_expect_text,
+         theme_apply, theme_default}
+
+view Notes {
+  <vbox class="root">
+    <textarea bind={note} placeholder="记点什么…" class="ta"/>
+    <label class="st">{nlines}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style ta { bg: SURFACE fg: TEXT size: 16 h: 90 }
+style st { fg: TEXT_MUTED size: 13 h: 20 }
+
+struct Model {
+    var note: Str
+    var nlines: Str
+}
+
+fn set_note() {
+}
+
+fn head_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, 0, i)
+        }
+        i += 1
+    }
+    return nm
+}
+
+fn payload_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, i + 1, nm.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if head_of(name) == "set_note" {
+        m.note = payload_of(name)
+        // 行数 = 换行数 + 1(减法形取模不涉;逐字节计)
+        var nl: I32 = 1
+        var i: I32 = 0
+        while i < m.note.len {
+            if byte_at(m.note, i) == 10 {
+                nl += 1
+            }
+            i += 1
+        }
+        m.nlines = nl.to_string()
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "note" {
+        buf.push(m.note)
+    }
+    if buf[0] == "nlines" {
+        buf.push(m.nlines)
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_default())
+    var m = Box[Model](Model { note: "", nlines: "0" })
+    var rc: I32 = test(src, 320, 320,
+        |buf| bind_all(buf, m),
+        |name| act(name, m),
+        |k| k,
+        |t, actc, k2| {
+            d_tick(t, 0)
+            // 初态:placeholder
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "记点什么…")
+            // 聚焦键入首行 → Enter 换行 → 次行键入
+            d_focus(t)
+            d_send_char(t, 104,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_send_char(t, 105,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_send_key(t, 257,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_send_char(t, 121,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            // 光标在次行:"y|"
+            d_expect_text(t, "y|")
+            // 首行仍在:"hi"
+            d_expect_text(t, "hi")
+            if m.nlines != "2" {
+                panic("s44: 行数应 2 得 " + m.nlines.to_string())
+            }
+            // ← 移至 \n 后 → 退格删换行连接两行 → "hiy|"
+            d_send_key(t, 263,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_send_key(t, 259,
+                |buf| bind_all(buf, m),
+                |nm| actc(nm, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hi|y")
+            if m.nlines != "1" {
+                panic("s44: 连接后行数应 1 得 " + m.nlines.to_string())
+            }
+            println("S44-TA-GREEN")
+        })
+    return rc
+}

@@ -3240,7 +3240,9 @@ fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
         return false
     }
     if t.ntag[fn0] != "input" {
-        return false
+        if t.ntag[fn0] != "textarea" {
+            return false
+        }
     }
     var cur: Str = rt_in_val(t, fn0, bind)
     var caret: I32 = gui_caret_get()
@@ -3264,8 +3266,14 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     if fn0 < 0 {
         return false
     }
+    var is_ta2: Bool = false
+    if t.ntag[fn0] == "textarea" {
+        is_ta2 = true
+    }
     if t.ntag[fn0] != "input" {
-        return false
+        if !is_ta2 {
+            return false
+        }
     }
     if k == 256 {
         gui_focus_set(-1)
@@ -3316,6 +3324,20 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         return true
     }
     if k == 257 {
+        if is_ta2 {
+            var cur3: Str = rt_in_val(t, fn0, bind)
+            var c3: I32 = gui_caret_get()
+            if c3 > cur3.len {
+                c3 = cur3.len
+            }
+            if c3 < 0 {
+                c3 = 0
+            }
+            var nw3: Str = byte_slice(cur3, 0, c3) + "\n" + byte_slice(cur3, c3, cur3.len)
+            gui_caret_set(c3 + 1)
+            rt_in_fire(t, fn0, "input", nw3, act)
+            return true
+        }
         var sh: Str = rt_in_handler(t, fn0, "submit")
         if sh != "" {
             act(sh, List[Str]())
@@ -3348,6 +3370,9 @@ fn rt_focus_next(t: GuiTree, cur: I32, rev: I32) -> I32 {
     var i: I32 = 0
     while i < t.ntag.len {
         if t.ntag[i] == "input" {
+            ids.push(i)
+        }
+        if t.ntag[i] == "textarea" {
             ids.push(i)
         }
         i += 1
@@ -3394,6 +3419,9 @@ fn rt_cursor_for(t: GuiTree, hov: I32) -> I32 {
         return 0
     }
     if t.ntag[hov] == "input" {
+        return 2
+    }
+    if t.ntag[hov] == "textarea" {
         return 2
     }
     var e: I32 = 0
@@ -3443,7 +3471,14 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
             // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
             var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
             if fnode >= 0 {
+                var ised: Bool = false
                 if t.ntag[fnode] == "input" {
+                    ised = true
+                }
+                if t.ntag[fnode] == "textarea" {
+                    ised = true
+                }
+                if ised {
                     gui_focus_set(fnode)
                     var fbv: Str = ""
                     if t.nbid[fnode] != "" {
@@ -3582,7 +3617,14 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
             // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
             var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
             if fnode >= 0 {
+                var ised: Bool = false
                 if t.ntag[fnode] == "input" {
+                    ised = true
+                }
+                if t.ntag[fnode] == "textarea" {
+                    ised = true
+                }
+                if ised {
                     gui_focus_set(fnode)
                     var fbv: Str = ""
                     if t.nbid[fnode] != "" {
@@ -3774,6 +3816,11 @@ pub fn d_focus(t: Box[Driver]) -> I32 {
     var i: I32 = 0
     while i < t.t.ntag.len {
         if t.t.ntag[i] == "input" {
+            gui_focus_set(i)
+            gui_caret_set(0)
+            return 0
+        }
+        if t.t.ntag[i] == "textarea" {
             gui_focus_set(i)
             gui_caret_set(0)
             return 0
