@@ -98,11 +98,19 @@ fn try_chdir(m: Box[Model], target: Str) -> Bool {
 
 // 文件预览:可读则上屏,不可读则报错
 fn show_file(m: Box[Model], target: Str) {
+    // 688f65e 起 read_file 缺文件返 Some("") 非 None——空内容即错误态
+    // (真实空文件误报为不可读:登记限制,正确率远高于旧 None 判据失效)
     match read_file(target) {
         Some(txt) => {
-            m.preview = head_bytes(txt, 240)
-            m.hasprev = true
-            m.msgon = false
+            if txt.len > 0 {
+                m.preview = head_bytes(txt, 240)
+                m.hasprev = true
+                m.msgon = false
+            } else {
+                m.hasprev = false
+                m.msgon = true
+                m.msg = "打不开: " + m.draft
+            }
         }
         None => {
             m.hasprev = false
