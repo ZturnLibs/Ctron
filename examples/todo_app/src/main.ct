@@ -1,9 +1,20 @@
-// main.ct 骨架探针(Task 1)——包内 use 解析 + struct 跨模块构造/回读
-
-use todo_app.store.{ Probe, probe_store }
-use todo_app.views.{ probe_views }
+use todo_app.store.{ salt_new, pw_hash, uid_ok, user_line, todo_line, todos_of, todo_toggle, todo_delete, max_todo_id, load_file, save_file, user_validate, user_auth }
 
 fn main() {
-    let p = Probe { v: 42 }
-    println("probe:" + probe_store() + probe_views() + ":" + p.v.to_string())
+    let salt = salt_new("alice", now_ms())
+    println("salt:" + salt)
+    println("hash:" + pw_hash("secret1", salt, 8))
+    println("uid:" + uid_ok("a-b_C9").to_string())
+    var users: List[Str] = List[Str]()
+    users.push(user_line("alice", salt, pw_hash("secret1", salt, 8), 8, "t"))
+    println("auth:" + user_auth(users, "alice", "secret1").to_string())
+    var todos: List[Str] = List[Str]()
+    todos.push(todo_line(1, "alice", "alpha", false, "t"))
+    todos.push(todo_line(2, "alice", "beta", false, "t"))
+    let t2 = todo_toggle(todos, "alice", 1)
+    println("toggle0done:" + (if true { "x" } else { "y" }))
+    let t3 = todo_delete(t2, "alice", 2)
+    println("after_del:" + t3.len.to_string() + " max:" + max_todo_id(t3).to_string() + " of:" + todos_of(t3, "alice").len.to_string())
+    println("save:" + save_file("/tmp/ctron_tapp_probe.ndjson", t3).to_string())
+    println("reload:" + load_file("/tmp/ctron_tapp_probe.ndjson").len.to_string())
 }

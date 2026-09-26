@@ -1,9 +1,350 @@
-// store.ct 骨架探针(Task 1)——证伪:包内 use 解析 / struct 跨模块传递
+// store.ct —— 存储与账号面(内存即盘上格式:List[Str] 每行一条 NDJSON 记录)
+//
+// 形态裁决(探针实证 2026-09-26):emit 值类型列表元素读为在册发射债(List[struct]/
+// List[I64] 索引读静默 rc=1 截断;todo_api 同款登记),Str 列表原生——故存储形态
+// 取 List[Str] NDJSON 行,解析按需走 frm/body body_json;变更 = 行重建(重建
+// push 面已被 todo_api e2e 证明)。持久化 = join/fs_write 全量重写。
+// 密码面:pbkdf2_sha256(每用户随机盐 + iters 落档);比对为 == (演示口径;恒时
+// 比较面在 frm/auth 令牌路径,密码路径登记志向)。
 
-pub struct Probe {
-    let v: I64
+use std.crypto.{ pbkdf2_sha256, bytes_to_hex, bytes_from_hex }
+use std.rand.{ rng_next, rng_range }
+use std.fs.{ read_or }
+
+use http.frm.body.{ body_json, bj_rc, bj_str, bj_i64, bj_bool, bs_v }
+use http.frm.openapi.{ oa_json_escape }
+
+// ---- 私有工具 ----
+
+fn sbytes(s: Str) -> List[I32] {
+    var out: List[I32] = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
 }
 
-pub fn probe_store() -> Str {
-    return "s"
+fn dstr(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    var neg = false
+    var n = v
+    if n < 0 {
+        neg = true
+        n = 0 - n
+    }
+    var out = ""
+    while n > 0 {
+        let d = (n % 10).as[I32]()
+        out = byte_slice("0123456789", d, d + 1) + out
+        n = n / 10
+    }
+    if neg {
+        out = "-" + out
+    }
+    return out
+}
+
+// 行字段读取(坏行回安全缺省)
+fn f_s(line: Str, path: Str) -> Str {
+    let b = body_json(line, 4096)
+    if bj_rc(b) != 1 {
+        return ""
+    }
+    return bs_v(bj_str(b, path))
+}
+
+fn f_i(line: Str, path: Str, dft: I64) -> I64 {
+    let b = body_json(line, 4096)
+    if bj_rc(b) != 1 {
+        return dft
+    }
+    return bj_i64(b, path, dft)
+}
+
+fn f_b(line: Str, path: Str, dft: Bool) -> Bool {
+    let b = body_json(line, 4096)
+    if bj_rc(b) != 1 {
+        return dft
+    }
+    return bj_bool(b, path, dft)
+}
+
+// ---- 密码与盐 ----
+
+pub fn pw_hash(pass: Str, salt_hex: Str, iters: I32) -> Str {
+    return bytes_to_hex(pbkdf2_sha256(sbytes(pass), bytes_from_hex(salt_hex), iters, 32))
+}
+
+// 32 hex 随机盐;种子由调用方注入(main 传 now_ms(),测试传固定值——now_ms 在
+// interp 为在册 parity 欠账(time.ct 头注),值栈错位延迟爆"byte_slice arity",
+// 故解释口径可达的模块禁直呼) + uid 逐字节混洗(同毫秒注册不同 uid 不同盐)
+pub fn salt_new(uid: Str, seed: I64) -> Str {
+    var s = (seed % 2147480000) + 1
+    if s < 1 {
+        s = 1
+    }
+    var k: I32 = 0
+    while k < uid.len {
+        s = rng_next(s + byte_at(uid, k).as[I64]())
+        k += 1
+    }
+    var out = ""
+    var i: I32 = 0
+    while i < 32 {
+        s = rng_next(s)
+        let d = rng_range(s, 0, 16)
+        out = out + byte_slice("0123456789abcdef", d, d + 1)
+        i += 1
+    }
+    return out
+}
+
+// uid 域:与 frm/auth au_uid_ok 同族收紧([A-Za-z0-9_-]{1,32})
+pub fn uid_ok(s: Str) -> Bool {
+    if s.len < 1 || s.len > 32 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let alnum = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)
+        let extra = c == 45 || c == 95
+        if !alnum && !extra {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// ---- 行序列化 ----
+
+pub fn user_line(uid: Str, salt: Str, hash: Str, iters: I32, created: Str) -> Str {
+    return "\{\"uid\":\"" + oa_json_escape(uid) + "\",\"salt\":\"" + salt + "\",\"hash\":\"" + hash + "\",\"iters\":" + dstr(iters.as[I64]()) + ",\"created\":\"" + oa_json_escape(created) + "\"}"
+}
+
+pub fn todo_line(id: I64, uid: Str, title: Str, done: Bool, created: Str) -> Str {
+    var dv = "false"
+    if done {
+        dv = "true"
+    }
+    return "\{\"id\":" + dstr(id) + ",\"uid\":\"" + oa_json_escape(uid) + "\",\"title\":\"" + oa_json_escape(title) + "\",\"done\":" + dv + ",\"created\":\"" + oa_json_escape(created) + "\"}"
+}
+
+// ---- 账号面 ----
+
+// 0=可注册 1=uid 域坏 2=重名 3=pass 短(<6)
+pub fn user_validate(users: List[Str], uid: Str, pass: Str) -> I64 {
+    if !uid_ok(uid) {
+        return 1
+    }
+    if pass.len < 6 {
+        return 3
+    }
+    var i: I32 = 0
+    while i < users.len {
+        if f_s(users[i], "$.uid") == uid {
+            return 2
+        }
+        i += 1
+    }
+    return 0
+}
+
+pub fn user_auth(users: List[Str], uid: Str, pass: Str) -> Bool {
+    var i: I32 = 0
+    while i < users.len {
+        let line = users[i]
+        if f_s(line, "$.uid") == uid {
+            let salt = f_s(line, "$.salt")
+            let hash = f_s(line, "$.hash")
+            let iters = f_i(line, "$.iters", 2000)
+            if salt.len == 0 || hash.len == 0 {
+                return false
+            }
+            return pw_hash(pass, salt, iters.as[I32]()) == hash
+        }
+        i += 1
+    }
+    return false
+}
+
+// ---- todo 面(全为重建面:原 List 不动) ----
+
+pub fn todos_of(todos: List[Str], uid: Str) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < todos.len {
+        let line = todos[i]
+        if f_s(line, "$.uid") == uid {
+            out.push(line)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn todo_toggle(todos: List[Str], uid: Str, id: I64) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < todos.len {
+        let line = todos[i]
+        if f_i(line, "$.id", 0) == id && f_s(line, "$.uid") == uid {
+            out.push(todo_line(id, uid, f_s(line, "$.title"), !f_b(line, "$.done", false), f_s(line, "$.created")))
+        } else {
+            out.push(line)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn todo_delete(todos: List[Str], uid: Str, id: I64) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < todos.len {
+        let line = todos[i]
+        if f_i(line, "$.id", 0) == id && f_s(line, "$.uid") == uid {
+            // 跳过即删
+        } else {
+            out.push(line)
+        }
+        i += 1
+    }
+    return out
+}
+
+pub fn max_todo_id(todos: List[Str]) -> I64 {
+    var m: I64 = 0
+    var i: I32 = 0
+    while i < todos.len {
+        let v = f_i(todos[i], "$.id", 0)
+        if v > m {
+            m = v
+        }
+        i += 1
+    }
+    return m
+}
+
+// ---- 持久化(NDJSON 全量重写) ----
+
+pub fn load_file(path: Str) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    let text = read_or(path, "")
+    var line = ""
+    var i: I32 = 0
+    while i < text.len {
+        let c = byte_at(text, i)
+        if c == 10 {
+            if line.len > 0 {
+                out.push(line)
+            }
+            line = ""
+        } else {
+            line = line + byte_slice(text, i, i + 1)
+        }
+        i += 1
+    }
+    if line.len > 0 {
+        out.push(line)
+    }
+    return out
+}
+
+pub fn save_file(path: Str, lines: List[Str]) -> Bool {
+    var out = ""
+    var i: I32 = 0
+    while i < lines.len {
+        if i > 0 {
+            out = out + "\n"
+        }
+        out = out + lines[i]
+        i += 1
+    }
+    return fs_write(path, out)
+}
+
+// ---- tests(解释口径;iters=8 快档) ----
+
+test "pw hash roundtrip" {
+    let salt = salt_new("alice", 12345)
+    let h = pw_hash("secret1", salt, 8)
+    assert(h.len == 64)
+    assert(pw_hash("secret1", salt, 8) == h)
+    assert(pw_hash("secret2", salt, 8) != h)
+}
+
+test "salt shape" {
+    let s = salt_new("u1", 999)
+    assert(s.len == 32)
+    var i: I32 = 0
+    while i < 32 {
+        let c = byte_at(s, i)
+        let dig = (c >= 48 && c <= 57) || (c >= 97 && c <= 102)
+        assert(dig)
+        i += 1
+    }
+}
+
+test "uid domain" {
+    assert(uid_ok("alice"))
+    assert(uid_ok("a-b_C9"))
+    assert(!uid_ok(""))
+    assert(!uid_ok("has space"))
+    assert(uid_ok("abcdefghijklmnopqrstuvwxyz012345"))      // 32 可
+    assert(!uid_ok("abcdefghijklmnopqrstuvwxyz0123456"))    // 33 拒
+}
+
+test "user validate and auth" {
+    var users: List[Str] = List[Str]()
+    assert(user_validate(users, "alice", "secret1") == 0)
+    let salt = salt_new("alice", 12345)
+    users.push(user_line("alice", salt, pw_hash("secret1", salt, 8), 8, "2026-09-26T00:00:00Z"))
+    assert(user_validate(users, "alice", "secret1") == 2)
+    assert(user_validate(users, "b@b", "secret1") == 1)
+    assert(user_validate(users, "bob", "abc12") == 3)
+    assert(user_auth(users, "alice", "secret1"))
+    assert(!user_auth(users, "alice", "wrong0"))
+    assert(!user_auth(users, "nobody", "secret1"))
+}
+
+test "todo isolate toggle delete" {
+    var todos: List[Str] = List[Str]()
+    todos.push(todo_line(1, "alice", "alpha", false, "t"))
+    todos.push(todo_line(2, "alice", "beta", false, "t"))
+    todos.push(todo_line(3, "bob", "bobx", false, "t"))
+    assert(todos_of(todos, "alice").len == 2)
+    assert(todos_of(todos, "bob").len == 1)
+    assert(max_todo_id(todos) == 3)
+    let t2 = todo_toggle(todos, "alice", 1)
+    assert(f_b(t2[0], "$.done", true))
+    assert(!f_b(todos[0], "$.done", true))
+    assert(!f_b(t2[1], "$.done", true))
+    let t3 = todo_delete(t2, "alice", 2)
+    assert(t3.len == 2)
+    assert(todo_delete(todos, "bob", 1).len == 3)
+    assert(todos_of(t3, "alice").len == 1)
+}
+
+test "ndjson file roundtrip" {
+    let p = "/tmp/ctron_todo_app_test.ndjson"
+    if fs_exists(p) {
+        fs_delete(p)
+    }
+    var xs: List[Str] = List[Str]()
+    xs.push(todo_line(1, "alice", "alpha", false, "t"))
+    xs.push(todo_line(2, "alice", "beta & <stuff>", true, "t"))
+    assert(save_file(p, xs))
+    let back = load_file(p)
+    assert(back.len == 2)
+    assert(f_i(back[0], "$.id", 0) == 1)
+    assert(f_s(back[1], "$.title") == "beta & <stuff>")
+    assert(f_b(back[1], "$.done", false))
+    assert(max_todo_id(back) == 2)
+    fs_delete(p)
 }
