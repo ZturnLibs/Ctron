@@ -173,7 +173,7 @@ fn main() -> I32 {
             println("static void ctron_drop_pop(void) \{ if (ct_drn > 0) \{ ct_drn -= 1; } }")
             println("static void ctron_drop_unwind(void) \{ while (ct_drn > 0) \{ ct_drn -= 1; ct_drstack[ct_drn].fn(ct_drstack[ct_drn].obj); } }")
             println("static int ctron_cb_depth = 0;")
-            println("static void ctron_panic(const char* m) \{ ctron_drop_unwind(); if (ctron_cb_depth > 0) \{ printf(\"%s\", m); exit(1); } ct_task* _tp = ct_task_self(); if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } printf(\"%s\", m); exit(1); }")
+            println("static void ctron_panic(const char* m) \{ fflush(stdout); fprintf(stderr, \"%s\\n\", m); ctron_drop_unwind(); if (ctron_cb_depth > 0) \{ exit(1); } ct_task* _tp = ct_task_self(); if (_tp) \{ snprintf(_tp->pmsg, 128, \"%s\", m); _tp->state = 2; if (_tp->scope) \{ _tp->scope->cancelled = 1; } ct_cancel_broadcast(); longjmp(_tp->jmp, 1); } exit(1); }")
             println("static int64_t ctron_i64_add(int64_t a, int64_t b) \{ int64_t r; if (__builtin_add_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
             println("static int64_t ctron_i64_sub(int64_t a, int64_t b) \{ int64_t r; if (__builtin_sub_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
             println("static int64_t ctron_i64_mul(int64_t a, int64_t b) \{ int64_t r; if (__builtin_mul_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")

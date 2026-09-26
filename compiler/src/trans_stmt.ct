@@ -1341,8 +1341,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert" && e[2].len == 2 {
-            // rt assert 失败 panic 退出;生成码失败即 return 1(stdout 面 fixture 全过,逐字等价)
-            eln("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ return 1; }", env)
+            // rt assert 失败 panic 退出(对齐 interp 臂 assert_fail 消息;
+            // 旧静默 return 1 = 登记的「失败消息丢失」债,消息走 stderr+fflush)
+            eln("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ ctron_panic(\"assert failed\"); }", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert_eq" && e[2].len == 3 {
@@ -1355,7 +1356,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             } else {
                 cmp = "((" + ct_expr(a0, env, file) + ") == (" + ct_expr(a1, env, file) + "))"
             }
-            eln("if (!" + cmp + ") \{ return 1; }", env)
+            eln("if (!" + cmp + ") \{ ctron_panic(\"assert_eq failed\"); }", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "println" {
