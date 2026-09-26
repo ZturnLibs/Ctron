@@ -16,9 +16,9 @@ use std.strconv.{parse_i64, sc_get_l}
 // 返回值 = task result 槽所需(②)。
 fn handle(fd: I64) -> I64 {
     let net = Net_probe()
-    var buf: I64[4096] = [0, 0, 0, 0]
+    var buf: I64[512] = [0, 0, 0, 0]
     while true {
-        let n = net_read_t(net, fd, buf, 4096, 300000)
+        let n = net_read_t(net, fd, buf, 512, 300000)
         if n <= 0 {
             break
         }
