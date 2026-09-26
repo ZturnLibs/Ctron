@@ -1,15 +1,15 @@
 // examples/todo —— 规范 §10 Todo 演绎,L1 域包形态(use gui 收敛,SL-5 门面)
 // 平台(解析/布局/命中/事件循环)全部在 gui 域包;用户树 = 数据 + 动作 + 视图。
 // 双口径:CTRON_GUI_HEADLESS=1 → 域包 test() 注入断言(headless 全自动);
-//   缺省/--run → run_kb 真窗口(键入 + 点击)。
+//   缺省/--rt_run_src → rt_run_kb_src 真窗口(键入 + 点击)。
 // 差集(登记):per-row checkbox/逐项删除 = 实例索引分发 L1 缺口,del 末项替代;
 //   on:submit/IME 组词随 M3;行文本直显(旧形态 [x] 前缀随 checkbox 一并退役)。
 // 坑位:headless 视口须容得下全内容——Clay 对视口外元素剔除渲染命令,列表增高后
 //   行/空态文本会从命令缓冲消失(视口 320x640;上回迁移二试 when 不渲染疑云即此)。
-// 注:main 首个 read_file 字面量为发射锚(烘焙 app.ctml;run.sh 已 cd 本目录);
+// 注:main 首个 read_file 字面量为发射锚(烘焙 app.ctml;rt_run_src.sh 已 cd 本目录);
 //   注释内不放花括号(发射词法)。
 
-use gui.{run_kb, test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent, char_str}
+use gui.{rt_run_kb_src, test, d_click, d_frame, d_type_char, d_expect_text, d_expect_absent, char_str}
 
 struct Model {
     var draft: Str
@@ -124,8 +124,8 @@ fn main() -> I32 {
             })
         return rc
     }
-    // 窗口口径:run_kb(键入钩子 + 点击分发,域包事件循环)
-    run_kb(src, "ctron todo", 320, 640,
+    // 窗口口径:rt_run_kb_src(键入钩子 + 点击分发,域包事件循环)
+    rt_run_kb_src(src, "ctron todo", 320, 640,
         |buf| bind_all(buf, m),
         |name, args| act(name, m),
         |k| on_key(k, m))

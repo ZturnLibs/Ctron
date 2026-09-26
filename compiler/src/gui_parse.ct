@@ -3105,7 +3105,7 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
         actcl = actcl + ", " + cargs
     }
     actcl = actcl + ")"
-    r = r + "    return run_d(\"Ctron\", 320, 480,\n"
+    r = r + "    return rt_run_anchor(\"Ctron\", 320, 480,\n"
     r = r + "        " + bindcl + ",\n"
     r = r + "        " + actcl + ")\n"
     r = r + "}\n"
@@ -3158,7 +3158,7 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var ulns = List[Str]()
     var ucols = List[Str]()
     var upd = List[Str]()
-    scan4("use gui.\{ run_d, ev_suffix_i }", utoks, ulns, ucols, upd)
+    scan4("use gui.\{ rt_run_anchor, ev_suffix_i }", utoks, ulns, ucols, upd)
     var ucur = Atomic[I32](0)
     var uf: List[Str] = p_file(utoks, ucur, ulns, ucols, upd)
     var un: List[Str] = uf[1]

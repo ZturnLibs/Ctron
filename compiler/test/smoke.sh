@@ -338,12 +338,10 @@ std_parity=0
 std_total=0
 for f in "$ROOT"/std/*.ct; do
     b=$(basename "$f")
-    # config/net/tls:extern/c_src 依赖面;fmap/crypto:arena 大户——自举解释器
-    # 每步 ~2K 个 16B arena 小对象且 bump 无回收(插桩实证:fmap 饱和测 1.63 亿
-    # 次/3GB;fput 每调用 ~50 万次),runner 7GB 必被 SIGTERM。语义双臂在
-    # parity 矩阵与 macOS 本地 smoke 常绿;恢复条件=解释器 arena 回收/每步
-    # 分配量治理落地(编译器线在册债)
-    case $b in config.ct|net.ct|tls.ct|fmap.ct|crypto.ct) continue ;; esac
+    # config/net/tls:extern/c_src 依赖面;crypto:arena 大户保留豁免(1.5GB/86s,
+    # linux 膨胀 3-4.5GB 贴边);fmap 已随 c6 原生快路径回收(487eaef:1.63 亿→
+    # 1,510 万次分配、3GB→655MB/2.7s,2026-09-26)
+    case $b in config.ct|net.ct|tls.ct|crypto.ct) continue ;; esac
     std_total=$((std_total+1))
     if ! "$COMP/bin/ctron-cc" run "$f" > /dev/null 2>&1; then
         bad "std 单测自举红: $b"
@@ -543,8 +541,8 @@ P
     esac
     for f in "$ROOT"/std/*.ct; do
         b=$(basename "$f" .ct)
-        # fmap/crypto:arena 大户(解释臂 GB 级,见 3j2 注)——runner 必被 SIGTERM
-        case $b in config|net|tls|fmap|crypto) continue ;; esac
+        # crypto:arena 大户保留豁免(见 3j2 注);fmap 已随 c6 快路径回收
+        case $b in config|net|tls|crypto) continue ;; esac
         arm_ok=0
         if "$COMP/bin/ctron-emit" run "$f" > "$T/pe_$b.c" 2>/dev/null \
            && cc -O1 -w -o "$T/pe_$b.bin" "$T/pe_$b.c" 2>/dev/null; then

@@ -4,7 +4,7 @@
 //   fn main() -> I32 {
 //       var src: Str = read_file("app.ctml")   // 发射锚(CWD 相对;L2 内嵌形态后消失)
 //       var m = CalcModel()
-//       run_kb(src, "title", 320, 420,
+//       rt_run_kb_src(src, "title", 320, 420,
 //           |buf| buf.push(m.disp),            // 绑定:buf[0]=名 → push 值
 //           |name| dispatch(name, m),          // 点击 → 动作名
 //           |k| dispatch(keymap(k), m))        // 键盘(raylib 键码)
@@ -3912,14 +3912,14 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
     return 0
 }
 
-pub fn run(src: Str, title: Str, w: I32, h: I32,
+pub fn rt_run_src(src: Str, title: Str, w: I32, h: I32,
            bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     return rt_run(t, title, w, h, bind, act)
 }
 
-pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
+pub fn rt_run_kb_src(src: Str, title: Str, w: I32, h: I32,
               bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
               key: fn(I32) -> Void) -> I32 {
     theme_auto_apply()
@@ -3928,7 +3928,7 @@ pub fn run_kb(src: Str, title: Str, w: I32, h: I32,
 }
 
 // d 变体:默认锚 "app.ctml" + 热重载环(60 帧内容比对,变更原址重解析)
-pub fn run_d(title: Str, w: I32, h: I32,
+pub fn rt_run_anchor(title: Str, w: I32, h: I32,
              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
     // 独立二进制零 CWD 依赖)
@@ -3941,7 +3941,7 @@ pub fn run_d(title: Str, w: I32, h: I32,
     return rt_run_d(t, src, title, w, h, bind, act)
 }
 
-pub fn run_kb_d(title: Str, w: I32, h: I32,
+pub fn rt_run_kb_anchor(title: Str, w: I32, h: I32,
                 bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                 key: fn(I32) -> Void) -> I32 {
     var src: Str = read_file("app.ctml")

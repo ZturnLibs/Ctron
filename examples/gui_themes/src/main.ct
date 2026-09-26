@@ -1,7 +1,7 @@
 // examples/gui_themes —— 主题陈列室(视觉验收载体,规格 §6)
 // 键 1-8 切换八主题(theme_apply 事件中换装,下帧全量折叠);headless 断言:
-// 切 light 后 BG_BASE 色板即换(换令牌=换全套实证);真窗 --run 手玩四态轮巡
-use gui.{run_kb_d, test, d_frame, d_press_key, d_click, d_expect_text,
+// 切 light 后 BG_BASE 色板即换(换令牌=换全套实证);真窗 --rt_run_src 手玩四态轮巡
+use gui.{rt_run_kb_anchor, test, d_frame, d_press_key, d_click, d_expect_text,
          d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b,
          theme_apply, theme_auto_apply,
          theme_dark, theme_light, theme_mac_dark, theme_mac_light,
@@ -105,7 +105,7 @@ fn main() -> I32 {
     var m = Box[Model](Model { theme: "auto", draft: "", on: false })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
-        var rc: I32 = run_kb_d("Ctron 主题陈列室", 320, 480,
+        var rc: I32 = rt_run_kb_anchor("Ctron 主题陈列室", 320, 480,
             |buf| bind_all(buf, m),
             |name, args| act(name, args, m),
             |k| apply_key(k, m))

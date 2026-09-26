@@ -3,11 +3,11 @@
 // 内容源:zitie.txt 存在则读入(用户可换字帖)= 千字文全文 1000 字(50 整页);
 //   缺省内置首段 32 字兜底。去空白后按 UTF-8 切单字,每页 20 字 = 5 列 x 4 字。
 // 验证面:逐字 TEXT 命令字节断言 + gui_ft_measure 大字号实测 + 翻页换字。
-// 双口径:CTRON_GUI_HEADLESS=1 → 域包 test()(全自动);缺省/--run → run_kb 真窗口。
-// 注:main 首个 read_file 字面量为发射锚(烘焙 app.ctml;run.sh 已 cd 本目录);
+// 双口径:CTRON_GUI_HEADLESS=1 → 域包 test()(全自动);缺省/--rt_run_src → rt_run_kb_src 真窗口。
+// 注:main 首个 read_file 字面量为发射锚(烘焙 app.ctml;rt_run_src.sh 已 cd 本目录);
 //   注释内不放花括号(发射词法)。
 
-use gui.{run_kb, test, d_click, d_frame, d_expect_text, d_expect_absent, d_cmd_count, d_press_key, char_str}
+use gui.{rt_run_kb_src, test, d_click, d_frame, d_expect_text, d_expect_absent, d_cmd_count, d_press_key, char_str}
 
 #[trusted]
 extern "c" fn gui_ft_measure(s: Str, px: I32) -> I32
@@ -261,8 +261,8 @@ fn main() -> I32 {
             })
         return rc
     }
-    // 窗口口径:run_kb(键入钩子 + 点击分发,域包事件循环)
-    run_kb(src, "ctron 字帖", 640, 640,
+    // 窗口口径:rt_run_kb_src(键入钩子 + 点击分发,域包事件循环)
+    rt_run_kb_src(src, "ctron 字帖", 640, 640,
         |buf| bind_all(buf, m),
         |name, args| act(name, m),
         |k| on_key(k, m))

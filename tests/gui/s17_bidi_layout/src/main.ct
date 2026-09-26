@@ -1,5 +1,5 @@
-// tests/gui/s17_bidi_layout —— M3 整合:bidi run 切分(SheenBidi FFI)→ Clay 定位排布
-// "Hi سلام" 逻辑序两段 run(Latin level 0 / Arabic level 1);LTR 基向 visual 序 = 逻辑序,
+// tests/gui/s17_bidi_layout —— M3 整合:bidi rt_run_src 切分(SheenBidi FFI)→ Clay 定位排布
+// "Hi سلام" 逻辑序两段 rt_run_src(Latin level 0 / Arabic level 1);LTR 基向 visual 序 = 逻辑序,
 // hbox 顺序排布即视觉序。宽度确定性:gui 启发式 measure(bytes×size×0.55)两侧同式可预测,
 // Ctron 侧自算落点断言(无需开窗)。shim 码表沿 s3:命令 1=TEXT;dir 0=左右
 
@@ -94,7 +94,7 @@ fn main() -> I32 {
     assert_eq(sb_run_level(line, 0), 0)
     assert_eq(sb_run_level(line, 1), 1)
 
-    // 按 run 字节区间切片,顺序作为 hbox 子元素(visual 序)
+    // 按 rt_run_src 字节区间切片,顺序作为 hbox 子元素(visual 序)
     var s0: I32 = sb_run_offset(line, 0)
     var e0: I32 = s0 + sb_run_length(line, 0)
     var s1: I32 = sb_run_offset(line, 1)
@@ -124,6 +124,6 @@ fn main() -> I32 {
     var w0x100: I32 = hwidth100(3, 24)
     assert_eq(gui_cmd_x100(i1), 1600 + w0x100)
     assert_eq(gui_cmd_y100(i1), 1600)
-    println("s17_bidi_layout: bidi run → Clay 定位排布全绿(run1 x = " + ((1600 + w0x100) / 100).to_string() + ")")
+    println("s17_bidi_layout: bidi rt_run_src → Clay 定位排布全绿(run1 x = " + ((1600 + w0x100) / 100).to_string() + ")")
     return 0
 }
