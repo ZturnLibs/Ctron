@@ -2762,7 +2762,10 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
 
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
+    // 单一树走查统一收集(I32 双栈,子树承 in_each 旗;域包 gs2i 不可见
+    // 于编译器,禁字符串栈):标量路径表达式 / each 列表 / 行域 checkbox /
+    // in-each 事件(实例分发)/ input on:input 处理器(名通道)
     var ntag = List[Str]()
     var nflag = List[Str]()
     var ncls = List[Str]()
@@ -2782,20 +2785,57 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
     gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, f_evn, f_evf, btns, sk, sv, skprops)
     var ptyps: List[Str] = gui_ds_ptyps(file, pnames)
     var exprs = List[Str]()
-    var i: I32 = 0
-    while i < ntag.len {
-        if nbid[i] != "" {
-            exprs.push(nbid[i])
+    var stid = List[I32]()
+    var stie = List[I32]()
+    stid.push(0)
+    stie.push(0)
+    var si: I32 = 0
+    while si < stid.len {
+        var id: I32 = stid[si]
+        var ie: I32 = stie[si]
+        si += 1
+        if ntag[id] == "each" {
+            ie = 1
+            lists.push(npre[id])
         }
-        if nflag[i] != "" {
-            exprs.push(nflag[i])
+        if tag_is_input_evt(ntag[id], nbid[id]) {
+            crows.push(nbid[id])
+            cty.push("Bool")
+        } else {
+            if nbid[id] != "" {
+                exprs.push(nbid[id])
+            }
+            if nflag[id] != "" {
+                exprs.push(nflag[id])
+            }
         }
-        if ntag[i] == "each" {
-            lists.push(npre[i])
+        var e: I32 = 0
+        while e < nec[id] {
+            var gi: I32 = nes[id] + e
+            if ie == 1 {
+                if f_evn[gi] == "input" {
+                    inps.push(f_evf[gi])
+                } else {
+                    ievs.push(f_evf[gi])
+                }
+            } else {
+                if f_evn[gi] == "input" {
+                    inps.push(f_evf[gi])
+                } else {
+                    evn.push(f_evn[gi])
+                    evf.push(f_evf[gi])
+                }
+            }
+            e += 1
         }
-        i += 1
+        var ch: I32 = nfc[id]
+        while ch >= 0 {
+            stid.push(ch)
+            stie.push(ie)
+            ch = ns[ch]
+        }
     }
-    i = 0
+    var i: I32 = 0
     while i < exprs.len {
         var ps = List[Str]()
         gui_bx_dotted(exprs[i], ps)
@@ -2820,60 +2860,21 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         }
         i += 1
     }
-    i = 0
-    while i < f_evn.len {
-        evn.push(f_evn[i])
-        evf.push(f_evf[i])
-        i += 1
-    }
-    i = 0
-    while i < ntag.len {
-        if ntag[i] == "input" {
-            var e: I32 = 0
-            while e < nec[i] {
-                var gi: I32 = nes[i] + e
-                if f_evn[gi] == "input" {
-                    inps.push(f_evf[gi])
-                }
-                e += 1
-            }
-        }
-        i += 1
-    }
-    // each 体内事件收集(实例分发面):树走查(I32 双栈,子树承 in_each 旗;
-    // 域包 gs2i 不可见于编译器,勿用字符串栈)
-    var stid = List[I32]()
-    var stie = List[I32]()
-    stid.push(0)
-    stie.push(0)
-    var si: I32 = 0
-    while si < stid.len {
-        var id: I32 = stid[si]
-        var ie: I32 = stie[si]
-        si += 1
-        if ntag[id] == "each" {
-            ie = 1
-        }
-        var e: I32 = 0
-        while e < nec[id] {
-            var gi: I32 = nes[id] + e
-            if ie == 1 {
-                ievs.push(f_evf[gi])
-            }
-            e += 1
-        }
-        var ch: I32 = nfc[id]
-        while ch >= 0 {
-            stid.push(ch)
-            stie.push(ie)
-            ch = ns[ch]
-        }
-    }
     return 0
 }
 
+// checkbox checked 槽判定(each 行域勾选面)
+fn tag_is_input_evt(tag: Str, nbid: Str) -> Bool {
+    if tag == "checkbox" {
+        if nbid != "" {
+            return true
+        }
+    }
+    return false
+}
+
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
+fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -2952,6 +2953,17 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
                 g = g + "        buf.push(" + rw + ")\n"
             }
         }
+        g = g + "    }\n"
+        k += 1
+    }
+    k = 0
+    while k < crows.len {
+        var rwc: Str = gui_ds_rw(crows[k], pnames, ptoks)
+        var plc: I32 = crows[k].len + 9
+        g = g + "    if buf[0].len >= " + plc.to_string() + " \{\n"
+        g = g + "        if byte_slice(buf[0], 0, " + plc.to_string() + ") == \"eachrow:" + crows[k] + ":\" \{\n"
+        g = g + "            if " + rwc + "[ev_suffix_i(buf[0])] \{ buf.push(\"1\") } else \{ buf.push(\"0\") }\n"
+        g = g + "        }\n"
         g = g + "    }\n"
         k += 1
     }
@@ -3192,8 +3204,10 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var evf = List[Str]()
     var inps = List[Str]()
     var ievs = List[Str]()
-    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, inps, ievs, stns, sfk, stv)
-    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, stns, sfk, stv)
+    var crows = List[Str]()
+    var cty = List[Str]()
+    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
+    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
     var k2: I32 = 1
     while k2 < made.len {
         unit.push(made[k2])

@@ -1304,18 +1304,24 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     if tag == "image" {
         is_img = true
     }
+    var is_ta: Bool = false
+    if tag == "textarea" {
+        is_ta = true
+    }
     if !is_leaf {
         if !is_when {
             if !is_each {
                 if !is_input {
-                    if !is_check {
-                        if !is_img {
-                            if !is_ov {
-                                if tag != "vbox" {
-                                    if tag != "hbox" {
-                                        if tag != "spacer" {
-                                            if tag != "scroll" {
-                                                panic("gui: 未知元素 " + tag)
+                    if !is_ta {
+                        if !is_check {
+                            if !is_img {
+                                if !is_ov {
+                                    if tag != "vbox" {
+                                        if tag != "hbox" {
+                                            if tag != "spacer" {
+                                                if tag != "scroll" {
+                                                    panic("gui: 未知元素 " + tag)
+                                                }
                                             }
                                         }
                                     }
@@ -1395,6 +1401,30 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
         t.nec.push(t.ev_name.len - estart)
         t.nflag.push("")
         return id
+    }
+    if is_ta {
+        // 自闭合:<textarea bind={名} placeholder="..." ... />(§2.10 P2;多行文本)
+        glit(src, cur, 47)
+        glit(src, cur, 62)
+        var pht: Str = ""
+        if strs.len > sstart {
+            pht = strs[strs.len - 1]
+        }
+        var bnt: Str = ""
+        if binds.len > bstart {
+            bnt = binds[binds.len - 1]
+        }
+        t.ntag.push(tag)
+        t.ncls.push(c)
+        t.npre.push(pht)
+        t.nbid.push(bnt)
+        t.npost.push("")
+        t.nfc.push(-1)
+        t.ns.push(-1)
+        t.nes.push(estart)
+        t.nec.push(t.ev_name.len - estart)
+        t.nflag.push("")
+        return t.ntag.len - 1
     }
     if is_check {
         // 自闭合:<checkbox checked={表达式} ... />;checked → nbid;登记可点击
@@ -2836,6 +2866,85 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             hits.push(id)
             hinst.push(inst)
         } else {
+        if tag == "textarea" {
+            // 波次五d(P2):多行文本——值整串存储(编辑全兼容),渲染按 \n 切行
+            // 堆叠;光标 | 内联落所在行;placeholder 灰显(未聚焦空值)
+            var thm: I32 = 1
+            var thv: I32 = 0
+            var ths: Str = gt_cls_prop(c, "h", "", t)
+            if ths != "" {
+                thm = 2
+                thv = gs2i(ths)
+            }
+            var tbgp: I32 = 0
+            var tbgv: Str = gt_st_prop(c, "bg", "", t, st)
+            if tbgv != "" {
+                tbgp = g_parse_color(tbgv)
+            }
+            gui_cfg(1, 2, 4, 4, 0, 0, 1, 0, thm, thv, tbgp)
+            var tval: Str = ""
+            if t.nbid[id] != "" {
+                if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
+                    tval = bxv_show(rt_bind_text(bind, t.nbid[id]))
+                } else {
+                    tval = bxv_show(bxv_eval(t, t.nbid[id], bind))
+                }
+            }
+            var tfoc: Bool = false
+            if gui_focus_node() == id {
+                tfoc = true
+            }
+            var tshow: Str = tval
+            var tph: Bool = false
+            if !tfoc {
+                if tval == "" {
+                    if t.npre[id] != "" {
+                        tshow = t.npre[id]
+                        tph = true
+                    }
+                }
+            } else {
+                var tc: I32 = gui_caret_get()
+                if tc > tval.len {
+                    tc = tval.len
+                }
+                if tc < 0 {
+                    tc = 0
+                }
+                tshow = byte_slice(tval, 0, tc) + "|" + byte_slice(tval, tc, tval.len)
+            }
+            if tph {
+                var tsz2: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
+                var tfg2: I32 = gui_theme_slot_get(6)
+                gui_text(tshow, tsz2, rt_col_r(tfg2), rt_col_g(tfg2), rt_col_b(tfg2), 255)
+            } else {
+                // 逐行渲染(\n 切分;光标 | 已内联)
+                var tsz3: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
+                var tfg3: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                var rem: Str = tshow
+                while rem.len > 0 {
+                    var nl: I32 = -1
+                    var qi: I32 = 0
+                    while qi < rem.len {
+                        if byte_at(rem, qi) == 10 {
+                            nl = qi
+                            break
+                        }
+                        qi += 1
+                    }
+                    if nl < 0 {
+                        gui_text(rem, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
+                        rem = ""
+                    } else {
+                        var ln: Str = byte_slice(rem, 0, nl)
+                        gui_text(ln, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
+                        rem = byte_slice(rem, nl + 1, rem.len)
+                    }
+                }
+            }
+            hits.push(id)
+            hinst.push(inst)
+        } else {
         if tag == "image" {
             // 波次五a(§2.6):图像——src 路径透传(LoadTexture 延迟 flush,headless
             // 无 GL 不可加载);w/h 样式,缺省 100x100;缺失路径 → 底色占位框(不崩)
@@ -2974,6 +3083,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ch = t.ns[ch]
                 }
             }
+        }
         }
         }
         }
