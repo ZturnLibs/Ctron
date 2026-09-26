@@ -50,7 +50,7 @@ pub fn s3_basic_time(iso: Str) -> Str {
     if iso.len < 20 {
         return ""
     }
-    return byte_slice(iso, 0, 4) + byte_slice(iso, 5, 7) + byte_slice(iso, 8, 10) + "T" + byte_slice(iso, 11, 13) + byte_slice(iso, 15, 17) + byte_slice(iso, 18, 20) + "Z"
+    return byte_slice(iso, 0, 4) + byte_slice(iso, 5, 7) + byte_slice(iso, 8, 10) + "T" + byte_slice(iso, 11, 13) + byte_slice(iso, 14, 16) + byte_slice(iso, 17, 19) + "Z"
 }
 
 pub fn s3_empty_hash() -> Str {
