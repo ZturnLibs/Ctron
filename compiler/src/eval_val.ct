@@ -56,6 +56,74 @@ fn txt_num(t: Str) -> I32 {
 
     }
 
+    // 十进制规范快路径:无前缀/下划线、全数字 → I64 直累加折回,免 c6 链
+
+    if radix == 10 && i == 0 {
+
+        var allc = true
+
+        var j: I32 = 0
+
+        while j < n {
+
+            var c = byte_at(t, j)
+
+            if c == 95 {
+
+                allc = false
+
+            }
+
+            if c < 48 {
+
+                allc = false
+
+            }
+
+            if c > 57 {
+
+                allc = false
+
+            }
+
+            if j == 0 && n > 1 && c == 48 {
+
+                allc = false
+
+            }
+
+            j += 1
+
+        }
+
+        if allc {
+
+            var v: I64 = 0
+
+            var q: I32 = 0
+
+            while q < n {
+
+                v = v * 10 + (byte_at(t, q) - 48)
+
+                q += 1
+
+            }
+
+            var mo: I64 = v % 4294967296
+
+            if mo >= 2147483648 {
+
+                mo = mo - 4294967296
+
+            }
+
+            return mo.as[I32]()
+
+        }
+
+    }
+
     var acc7 = "0"
 
     var rtxt = dvi_str(radix)
@@ -345,6 +413,54 @@ fn dvi(t: Str) -> I32 {
 
     }
 
+    // 十进制快路径:仅正数(负支 seed 解释口径有未解分歧,见计划 Phase 0)
+
+    if neg == false && t.len - k <= 10 {
+
+        var allc = true
+
+        var q: I32 = k
+
+        while q < t.len {
+
+            var c = byte_at(t, q)
+
+            if c < 48 {
+
+                allc = false
+
+            }
+
+            if c > 57 {
+
+                allc = false
+
+            }
+
+            q += 1
+
+        }
+
+        if allc {
+
+            var v: I64 = 0
+
+            var p2: I32 = k
+
+            while p2 < t.len {
+
+                v = v * 10 + (byte_at(t, p2) - 48)
+
+                p2 += 1
+
+            }
+
+            return v.as[I32]()
+
+        }
+
+    }
+
     var acc7 = "0"
 
     while k < t.len {
@@ -611,6 +727,140 @@ fn v7(t: Str) -> List[Str] {
 
 
 
+fn c6_i64ok(t: Str) -> Bool {
+
+    var i: I32 = 0
+
+    if t.len > 0 {
+
+        if byte_at(t, 0) == 45 {
+
+            i = 1
+
+        }
+
+    }
+
+    var d: I32 = t.len - i
+
+    if d < 1 {
+
+        return false
+
+    }
+
+    if d > 18 {
+
+        return false
+
+    }
+
+    while i < t.len {
+
+        var c = byte_at(t, i)
+
+        if c < 48 {
+
+            return false
+
+        }
+
+        if c > 57 {
+
+            return false
+
+        }
+
+        i += 1
+
+    }
+
+    return true
+
+}
+
+fn c6_i64v(t: Str) -> I64 {
+
+    var neg = false
+
+    var i: I32 = 0
+
+    if t.len > 0 {
+
+        if byte_at(t, 0) == 45 {
+
+            neg = true
+
+            i = 1
+
+        }
+
+    }
+
+    var v: I64 = 0
+
+    while i < t.len {
+
+        v = v * 10 + (byte_at(t, i) - 48)
+
+        i += 1
+
+    }
+
+    if neg {
+
+        return -v
+
+    }
+
+    return v
+
+}
+
+fn c6_i64s(v: I64) -> Str {
+
+    if v == 0 {
+
+        return "0"
+
+    }
+
+    var neg = false
+
+    var u: I64 = v
+
+    if v < 0 {
+
+        neg = true
+
+        u = -v
+
+    }
+
+    if u < 10 {
+
+        var d = byte_slice("0123456789", u, u + 1)
+
+        if neg {
+
+            return "-" + d
+
+        }
+
+        return d
+
+    }
+
+    if neg {
+
+        return "-" + c6_i64s(u / 10) + byte_slice("0123456789", u % 10, u % 10 + 1)
+
+    }
+
+    return c6_i64s(u / 10) + byte_slice("0123456789", u % 10, u % 10 + 1)
+
+}
+
 fn c6can(t: Str) -> Str {
 
     var neg = false
@@ -867,6 +1117,12 @@ fn c6cmp(a: Str, b: Str) -> I32 {
 
 
 fn c6add(a: Str, b: Str) -> Str {
+
+    if c6_i64ok(a) && c6_i64ok(b) {
+
+        return c6_i64s(c6_i64v(a) + c6_i64v(b))
+
+    }
     var aneg = false
     var bneg = false
     if a.len > 0 {
@@ -1035,6 +1291,12 @@ fn c6submag(a: Str, b: Str) -> Str {
 
 fn c6sub(a: Str, b: Str) -> Str {
 
+    if c6_i64ok(a) && c6_i64ok(b) {
+
+        return c6_i64s(c6_i64v(a) - c6_i64v(b))
+
+    }
+
     var aneg = false
 
     var bneg = false
@@ -1097,6 +1359,20 @@ fn c6sub(a: Str, b: Str) -> Str {
 
 // 非负竖式乘法(逐位乘累加;单步数值 <= 89,I32 安全)
 fn c6mul(a: Str, b: Str) -> Str {
+
+    if c6_i64ok(a) && c6_i64ok(b) {
+
+        var va = c6_i64v(a)
+
+        var vb = c6_i64v(b)
+
+        if va >= -2000000000 && va <= 2000000000 && vb >= -2000000000 && vb <= 2000000000 {
+
+            return c6_i64s(va * vb)
+
+        }
+
+    }
     var acc = "0"
     var ib = b.len
     while ib > 0 {
