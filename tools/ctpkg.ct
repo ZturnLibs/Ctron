@@ -42,7 +42,7 @@ fn add_pkg(port: I64, name: Str, ver: Str, depth: I64) -> I64 {
         return 1
     }
     if (m.name != name) || (m.ver != ver) {
-        println("PKG-FAIL identity")
+        println("PKG-FAIL identity name=[" + m.name + "] ver=[" + m.ver + "]")
         return 1
     }
     // module 落盘
