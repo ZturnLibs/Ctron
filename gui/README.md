@@ -80,19 +80,6 @@ style t { fg: "#ffffff" size: 24 }
 
 ## 驱动器(headless 断言面)
 
-| 入口 | 源 | 键盘 | 用途 |
-|---|---|---|---|
-| `run(src, title, w, h, bind, act)` | 显式 | 无 | 窗口(纯鼠标) |
-| `run_kb(src, title, w, h, bind, act, key)` | 显式 | 有 | 窗口(键入) |
-| `run_d(title, w, h, bind, act)` | 默认锚 app.ctml(缺失回落内嵌) | 无 | 窗口 + 热重载环 |
-| `run_kb_d(title, w, h, bind, act, key)` | 同上 | 有 | **窗口 + 键入 + 热重载(最常用)** |
-| `test(src, w, h, bind, act, key, script)` | 显式 | 注入 | **headless 断言(强制无窗)** |
-| `test_sk(tree, …)` | 骨架直通(gui_sk_load) | 注入 | headless(编译期骨架口径) |
-
-热重载环:60 帧内容比对 → gt_parse 原址重解析 → 树换源,闭包状态天然保留。
-
-## 驱动器(headless 断言面)
-
 `d_frame`(重绘)、`d_click`(按处理函数名点击)、`d_type_char`/`d_press_key`
 (注入键)、`d_expect_text`/`d_expect_absent`(文本断言)、
 `d_cmd_count/type/text_len/text_byte/x100/y100/w100/h100`(命令缓冲逐条访问,
