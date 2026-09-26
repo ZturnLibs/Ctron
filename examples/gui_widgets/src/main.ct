@@ -1,6 +1,6 @@
 // examples/gui_widgets —— 组件陈列室(Select/WList/Dialog 全交互演示)
-// headless:开下拉→点选→开模态→Esc 关,四段断言;--run 真窗手玩
-use gui.{run_kb_d, test, d_frame, d_click, d_send_key, d_mod, d_press_key, gui_hotkey,
+// headless:开下拉→点选→开模态→Esc 关,四段断言;--rt_run_src 真窗手玩
+use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_mod, d_press_key, gui_hotkey,
          d_expect_text, d_expect_absent, theme_apply, theme_auto_apply,
          theme_dark, theme_light}
 
@@ -102,7 +102,7 @@ fn main() -> I32 {
     var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
-        var rc: I32 = run_kb_d("Ctron 组件陈列室", 360, 520,
+        var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
             |buf| bind_all(buf, m),
             |name, args| act(name, args, m),
             |k| apply_key(k, m))
