@@ -157,7 +157,23 @@
 #endif
 
 /* ───────────────────────── 常量 ───────────────────────── */
-#define RT_STACK_SIZE   (64u * 1024u)          /* 每协程栈(冻结口径) */
+#define RT_STACK_SIZE_DEF   (64u * 1024u)       /* 每协程栈缺省(P2 冻结口径;P9 起可配) */
+
+/* P9 前置测量面:栈尺寸 env 可配(CTRON_RT_STACK_KB,4–1024 KB;缺省 64 =
+ * 原冻结口径,零行为变化)。栈经济专案(设计呈报 2026-09-26)供数:小栈下
+ * 的功能回归与内存密度实测。首次取用即缓存(进程内恒定)。 */
+static size_t rt_stack_size(void)
+{
+    static size_t cached;
+    if (cached == 0) {
+        const char *e = getenv("CTRON_RT_STACK_KB");
+        long kb = (e && *e) ? atol(e) : 64;
+        if (kb < 4) kb = 4;
+        if (kb > 1024) kb = 1024;
+        cached = (size_t)kb * (size_t)1024;
+    }
+    return cached;
+}
 #define RT_POOL_CAP     256                    /* 栈空闲池上限 */
 #define RT_MAX_WORKERS  64
 #define RT_MAP_BUCKETS  1024                   /* key→record 哈希(2 的幂) */
@@ -523,12 +539,12 @@ static unsigned char *stack_alloc(size_t *map_sz)
 {
     unsigned char *base;
     long ps = rt_pagesize();
-    *map_sz = (size_t)RT_STACK_SIZE + (size_t)ps;
+    *map_sz = rt_stack_size() + (size_t)ps;
     rt_lock();
     if (g_npool > 0) {
         base = g_pool[--g_npool];
         rt_unlock();
-        memset(base + ps, 0xA5, RT_STACK_SIZE);          /* 重铺填充供高水位 */
+        memset(base + ps, 0xA5, rt_stack_size());        /* 重铺填充供高水位 */
         return base;
     }
     rt_unlock();
@@ -536,7 +552,7 @@ static unsigned char *stack_alloc(size_t *map_sz)
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == MAP_FAILED) return NULL;
     (void)mprotect(base, (size_t)ps, PROT_NONE);         /* guard(可选失败不致命) */
-    memset(base + ps, 0xA5, RT_STACK_SIZE);
+    memset(base + ps, 0xA5, rt_stack_size());
     return base;
 }
 
@@ -546,13 +562,14 @@ static unsigned char *stack_alloc(size_t *map_sz)
 static void stack_retire(rt_coro *c)
 {
     unsigned char *lo = c->stack + rt_pagesize();
-    long used = (long)RT_STACK_SIZE;                 /* 全脏兜底:整栈用满 */
+    size_t ssz = rt_stack_size();
+    long used = (long)ssz;                           /* 全脏兜底:整栈用满 */
     /* 栈自高端(top)向低端(guard)生长:已用字节 = top 端前缀。
      * 自 top-1 向下扫首个 ==0xA5 的干净字节,其上方 [i..top) 全为脏字节,
      * used = RT_STACK_SIZE - i(P2-B 评审修复:旧谓词找 !=0xA5,自顶扫第一个
      * 字节即中招,used 恒为最小值,高水位统计形同虚设)。 */
-    for (size_t i = RT_STACK_SIZE; i > 0; i--) {
-        if (lo[i - 1] == 0xA5) { used = (long)(RT_STACK_SIZE - i); break; }
+    for (size_t i = ssz; i > 0; i--) {
+        if (lo[i - 1] == 0xA5) { used = (long)(ssz - i); break; }
     }
     long prev = atomic_load_explicit(&g_hwm_stack, memory_order_relaxed);
     while (used > prev &&
@@ -1048,7 +1065,7 @@ void *ctron_rt_run(void (*fn)(void*), void *arg, void *key)
     if (!c->stack) { free(c); return NULL; }
     c->state = RT_ST_READY;
     c->desched_kind = 0;
-    rt_ctx_init(&c->ctx, c->stack + rt_pagesize(), RT_STACK_SIZE, rt_tramp);
+    rt_ctx_init(&c->ctx, c->stack + rt_pagesize(), rt_stack_size(), rt_tramp);
 
     rt_lock();
     c->allnext = g_all;
