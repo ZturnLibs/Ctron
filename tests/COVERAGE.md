@@ -327,14 +327,14 @@ E2020 已销(e96d5f6 直 use 改形)。
 | 波次 | 项 | 锚定 |
 |---|---|---|
 | P8-A | Connect 协议客户端(http/frm/connect.ct:unary POST+proto 头两行,classify 三态+17 名状态码表+HTTP 映射) | tests/connect **4/4**(a9a5878;含双轮 e2e:成功帧字节断言+500 失败分类;夹具服务端帧校验 08 96 01→08 2A) |
-| P8-B | S3 兼容客户端签名面+往返(s3/s3.ct 域包:SigV4 四层链 HMAC^4/canonical/sts/signature/auth_header/basic_time;mock 鉴权结构三针守门+单槽存储) | tests/s3 **6/6**(d858343+b324db2;含 e2e:PUT/GET/DELETE 签名往返全链;黄金向量 python 独立实现钉值 key 尾 0417bcd2/sig 5f5e13fc…;minio nightly 待真靶环境) |
+| P8-B | S3 兼容客户端签名面+往返(s3/s3.ct 域包:SigV4 四层链 HMAC^4/canonical/sts/signature/auth_header/basic_time;mock 鉴权结构三针守门+单槽存储) | tests/s3 **6/6**(d858343+b324db2;含 e2e:PUT/GET/DELETE 签名往返全链;黄金向量 python 独立实现钉值 key 尾 0417bcd2/sig 5f5e13fc…;**minio 真靶 0926 全链 ✅**:brew minio 2025-10,凭证调用点修正后 **PUT 200+ETag=md5(body)/GET 回读逐字节/DELETE 204** 三轮;根因=调用点传 AWS 示例键 403 InvalidAccessKeyId) |
 | P8-C | NDJSON 逐行游标(std/ndjson.ct T1 零 use:NdLine 值 struct,空白行跳过/CRLF 剥离/尾行无换行;窗口交消费方) | tests/ndjson **6/6**(fcff689;含游标×行内容消费集成;坏行策略=消费方 json.parse,Result 面修复后深集成回切) |
 | P8-E | 部署面+website 指南(docs/deploy.md:产物/运行期表/scratch 配方/可观测三件;website/server-guide.md) | 文档交付(5f872cb);本地验收=e2e 22/22 同源,容器跑通归 nightly 真靶段 |
 | P8-F | 门禁收口+终审 | 全波 9 套件+net+todo_api **98 断言 0 红**(00:39 终审);P8-D pkg defer(设计评审待拍板,归下波首件) |
 
 **P8 出口门禁判定(0926 二次收口)**:①pkg add e2e ✅(registry↔ctpkg 全链:
 manifest 解析→deps→vendor 双包落盘→lockfile 两行;is_dep 头匹配缺陷修复后)
-②Connect 互调 ✅;③S3 夹具往返 ✅(minio nightly 段待环境);④website 指南 ✅;
+②Connect 互调 ✅;③S3 夹具往返 ✅(minio 真靶全链 ✅ 0926);④website 指南 ✅;
 ⑤todo_api 容器配方 ✅(容器内跑通归 nightly)。**P8 按 4.5/5 门交付收口**
 (余 0.5=minio 真靶环境)。
 **is_dep 头匹配缺陷**(80f669a 后修复):dep 头判 b4=='{' 拷自 is_pkg 定式,
