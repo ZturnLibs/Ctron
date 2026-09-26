@@ -15,9 +15,9 @@ extern "c" fn gui_open() -> I32
 extern "c" fn gui_close() -> I32
 
 #[trusted]
-extern "c" fn gui_cfg(dir: I64, gap: I64, padx: I64, pady: I64, ax: I64, ay: I64,
-                      wmode: I64, wval: I64, hmode: I64, hval: I64,
-                      rr: I32, gg: I32, bb: I32, aa: I32) -> I32
+// 全 int 契约(d73afcc:AAPCS64 栈参 int 4 字节打包,混宽即错位;bg 位打包)
+extern "c" fn gui_cfg(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
+                      wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_text(s: Str, size: I32, r: I32, g: I32, b: I32, a: I32) -> I32
@@ -50,10 +50,10 @@ fn main() -> I32 {
     gui_clay_init(320, 200)
     gui_begin_layout(320, 200)
     gui_open()
-    gui_cfg(1, 8, 16, 16, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0)             // 根:纵向 grow,无背景
+    gui_cfg(1, 8, 16, 16, 0, 0, 1, 0, 1, 0, 0)             // 根:纵向 grow,无背景
     gui_text("ctron clay", 24, 230, 230, 235, 255)                    // 文本 24 号
     gui_open()
-    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, 200, 60, 60, 255)       // 固定 100×40 红块
+    gui_cfg(0, 0, 0, 0, 0, 0, 2, 100, 2, 40, 200 * 65536 + 60 * 256 + 60)       // 固定 100×40 红块
     gui_close()
     gui_close()
     var n: I32 = gui_end_layout()
