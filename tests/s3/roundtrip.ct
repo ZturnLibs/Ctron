@@ -69,19 +69,19 @@ fn main() -> I64 {
     // 签名面时间 = 当前(now_iso_utc→basic),防 minio 15min 偏移拒。
     var rbuf: I64[2048] = [0, 0, 0, 0]
     // PUT
-    let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", ak, sk, region, rbuf, 2048, xdate)
+    let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", akx, skx, region, rbuf, 2048, xdate)
     if s1 != 200 {
         println("RT-FAIL put=" + s1.to_string())
         return 1
     }
     // GET → 200
-    let s2 = round(port, "GET", "/testbucket/obj1.txt", "", ak, sk, region, rbuf, 2048, xdate)
+    let s2 = round(port, "GET", "/testbucket/obj1.txt", "", akx, skx, region, rbuf, 2048, xdate)
     if s2 != 200 {
         println("RT-FAIL get=" + s2.to_string())
         return 2
     }
     // DELETE → 204
-    let s3 = round(port, "DELETE", "/testbucket/obj1.txt", "", ak, sk, region, rbuf, 2048, xdate)
+    let s3 = round(port, "DELETE", "/testbucket/obj1.txt", "", akx, skx, region, rbuf, 2048, xdate)
     if s3 != 204 {
         println("RT-FAIL delete=" + s3.to_string())
         return 3
