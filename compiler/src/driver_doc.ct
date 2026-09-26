@@ -666,8 +666,12 @@ fn main() -> I32 {
     }
     match read_file("ANCHORINPUT") {
         Some(x) => {
-            s = x
-            have = true
+            // 688f65e 起:编译态 read_file 缺文件返回 Some("") 而非 None——
+            // 空内容视同锚缺失,否则 std.<module> 直参臂被跳过(CI doc 红根因)
+            if x.len > 0 {
+                s = x
+                have = true
+            }
         }
         None => {}
     }
