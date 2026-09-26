@@ -94,3 +94,24 @@
 ## 后续(不在本片)
 
 - eval 侧装配(P1b 后);J18 ctcl gui.entry(吞 title/w/h,四参形再缩一行);多 prop 视图/组件嵌套(§3 组件元素)随终锚。
+
+---
+
+## Task 1 spike 结论(2026-09-26 实证,worktree sl8c4b)
+
+**判定:机制成立。** 探针(props 视图 + 绑定槽 + 四参 run_d)native 运行,合成 bind 闭包被真实窗口循环逐帧调用(3s 打点 288 次);act 同构造同 ABI(bind 证接线,act 触发归 Task 3 夹具 ev_fire 直驱)。
+
+**发射配方三件套(实证形态)**:
+1. driver_emit has_gui 区直出 shim(先于用户函数体,前向可见):
+   `static ct_i gui_auto_bind_L1(void* _cp, ct_i _p0) { ... }` / act 版 +`ct_i _p1`(fprintf 打点即活证)。
+2. trans_expr 调用点合成(= 用户 lambda 发射同款语句表达式):
+   `({ ct_i* _e = (ct_i*)ctron_amalloc(sizeof(ct_i)*N); _e[0]=(ct_i)(props); ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn=(void*)gui_auto_act_L1; _c->env=_e; _c; })`
+   ——capture 槽放 props 值(Task 3 起真用);域包侧 `ct_clo{fn,env}` 原样消费。
+3. sem_type 调用检查豁免:`run_d && got==4` 跳过 E2010.arity(Task 2 换 props 类型门)。
+
+**spike 踩坑三件(续接必读)**:
+- 字符串裸 `{` = 插值(在册头号坑)——发射文本里 `({` 须写 `"(\{"`,否则发射器把 C 片段当 Ctron 插值,自举链在 cc 阶段炸 4 错;
+- `ct_call_args(ag, N, …)` 第二参是 **from**(起始下标)非个数——取前 3 参用逐参 `ct_expr(ag[k])`;
+- 自举重建定向法:`sh compiler/build.sh && sh compiler/ctc.sh emit compiler/build/cc_emit.ct out.c && cc -O2 -w -o bin/ctron-emit out.c`(只建 emit 一件,省 3/4 时长;native.sh 是四件全量)。
+
+**附带发现(既有 bug,归域包泳道)**:`ctron_read_file` 缺文件返回 **NULL**(非空串),域包 run_d 兜底分支 `src == ""` 发射 `strcmp(NULL,…)` SEGV——凡 CWD 无 app.ctml 的 run_d 应用必崩(gui_counter 们 CWD 恒有 app.ctml 故从未暴露)。修复候选:C 侧缺文件回 ""(须核 pkg/ctcl 读点的 NULL 判)或域包判空前移。spike 以探针 CWD 放 app.ctml 绕行。
