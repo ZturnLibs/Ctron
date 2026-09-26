@@ -3754,6 +3754,43 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
 }
 
 // 注入字符事件(type 3),返回字符码(应用键钩子自行编辑模型)
+// SL-8c-4④:实例分发按压——each 行按钮的驱动面(rt_hit_name "名:下标"
+// 契约的镜像;按名+实例定矩形,补 d_click 单实例几何缺口)
+pub fn d_click_inst(t: Box[Driver], name: Str, inst: I32) -> Str {
+    var found: I32 = -1
+    var j: I32 = 0
+    while j < t.hits.len {
+        var node: I32 = t.hits[j]
+        if node >= 0 {
+            if t.hinst[j] == inst {
+                var e: I32 = 0
+                while e < t.t.nec[node] {
+                    var gi: I32 = t.t.nes[node] + e
+                    if ev_head(t.t.ev_fn[gi]) == name {
+                        found = j
+                    }
+                    e += 1
+                }
+            }
+        }
+        j += 1
+    }
+    if found < 0 {
+        panic("gui test: 未知动作 " + name + ":" + inst.to_string())
+        return ""
+    }
+    var ci: I32 = t.rects[found]
+    var cx: I32 = gui_cmd_x100(ci) / 100 + gui_cmd_w100(ci) / 200
+    var cy: I32 = gui_cmd_y100(ci) / 100 + gui_cmd_h100(ci) / 200
+    gui_inject_click(cx, cy)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失 " + name)
+        return ""
+    }
+    return name + ":" + inst.to_string()
+}
+
 pub fn d_type_char(t: Box[Driver], k: I32) -> I32 {
     gui_inject_char(k)
     var evt: I32 = gui_poll_event()

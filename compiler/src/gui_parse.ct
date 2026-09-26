@@ -1626,10 +1626,14 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                             // 8c-4④:on:input(input 元素)隐式尾参 text——全文经
                             // 名通道("头名:全文")送达,花括号实参 +1 豁免
                             var imp: I32 = 0
-                            if or2(evn == "input", tag == "input") {
-                                if evn == "input" {
+                            if evn == "input" {
+                                if tag == "input" {
                                     imp = 1
                                 }
+                            }
+                            if pscope.len > 0 {
+                                // each 体内事件隐式实例下标(P-H1 "名:下标" 命中契约)
+                                imp += 1
                             }
                             if da < 0 {
                                 gdiags.push("E8120: 事件处理器未声明 " + head + "(on:" + evn + ")")
@@ -2758,7 +2762,7 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
 
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
     var ntag = List[Str]()
     var nflag = List[Str]()
     var ncls = List[Str]()
@@ -2836,11 +2840,40 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         }
         i += 1
     }
+    // each 体内事件收集(实例分发面):树走查(I32 双栈,子树承 in_each 旗;
+    // 域包 gs2i 不可见于编译器,勿用字符串栈)
+    var stid = List[I32]()
+    var stie = List[I32]()
+    stid.push(0)
+    stie.push(0)
+    var si: I32 = 0
+    while si < stid.len {
+        var id: I32 = stid[si]
+        var ie: I32 = stie[si]
+        si += 1
+        if ntag[id] == "each" {
+            ie = 1
+        }
+        var e: I32 = 0
+        while e < nec[id] {
+            var gi: I32 = nes[id] + e
+            if ie == 1 {
+                ievs.push(f_evf[gi])
+            }
+            e += 1
+        }
+        var ch: I32 = nfc[id]
+        while ch >= 0 {
+            stid.push(ch)
+            stie.push(ie)
+            ch = ns[ch]
+        }
+    }
     return 0
 }
 
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
+fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -2949,6 +2982,11 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
                 continue
             }
         }
+        // each 体内事件已由实例后缀分支接管(ievs),主循环跳过
+        if gui_ck_has_style(ievs, evf[k]) {
+            k += 1
+            continue
+        }
         var argc = List[I32]()
         var ao = List[Str]()
         var head2: Str = gui_ev_head2(evf[k], argc, ao)
@@ -3001,6 +3039,29 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
         }
         k += 1
     }
+    // each 体内事件实例后缀分支("头:N" → 头(__p_*, N))——P-H1 命中契约
+    k = 0
+    while k < ievs.len {
+        var argcE = List[I32]()
+        var aoE = List[Str]()
+        var headE: Str = gui_ev_head2(ievs[k], argcE, aoE)
+        if headE.len > 0 {
+            var arE: Str = ""
+            if argcE.len > 0 {
+                if argcE[0] >= 1 {
+                    arE = gui_ds_rw(aoE[0], pnames, ptoks)
+                }
+            }
+            a2 = a2 + "    if name.len > " + headE.len.to_string() + " \{\n"
+            a2 = a2 + "        if byte_slice(name, 0, " + headE.len.to_string() + ") == \"" + headE + "\" \{\n"
+            a2 = a2 + "        if byte_at(name, " + headE.len.to_string() + ") == 58 \{\n"
+            a2 = a2 + "            " + headE + "(" + arE + ", ev_suffix_i(name))\n"
+            a2 = a2 + "        }\n"
+            a2 = a2 + "        }\n"
+            a2 = a2 + "    }\n"
+        }
+        k += 1
+    }
     // input on:input 名通道前缀分支("头名:全文" → 头(__p_*, 全文))
     k = 0
     while k < inps.len {
@@ -3049,6 +3110,7 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
     r = r + "        " + actcl + ")\n"
     r = r + "}\n"
     var src: Str = g + a2 + r
+    fs_write("/tmp/ds_gen_dump.ct", src)
     var toks = List[Str]()
     var lns = List[Str]()
     var cols = List[Str]()
@@ -3096,7 +3158,7 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var ulns = List[Str]()
     var ucols = List[Str]()
     var upd = List[Str]()
-    scan4("use gui.\{ run_d }", utoks, ulns, ucols, upd)
+    scan4("use gui.\{ run_d, ev_suffix_i }", utoks, ulns, ucols, upd)
     var ucur = Atomic[I32](0)
     var uf: List[Str] = p_file(utoks, ucur, ulns, ucols, upd)
     var un: List[Str] = uf[1]
@@ -3129,8 +3191,9 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var evn = List[Str]()
     var evf = List[Str]()
     var inps = List[Str]()
-    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, inps, stns, sfk, stv)
-    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, stns, sfk, stv)
+    var ievs = List[Str]()
+    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, inps, ievs, stns, sfk, stv)
+    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, stns, sfk, stv)
     var k2: I32 = 1
     while k2 < made.len {
         unit.push(made[k2])

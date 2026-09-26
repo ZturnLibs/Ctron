@@ -4,7 +4,7 @@
 // 差集如实登记(随终锚):on:input 键入持久化(名通道契约的生成面待做)、
 // 每行勾选/删除(key/实例分发对偶面)、跨文件 view 导入(组件模型 P2)、
 // checkbox(T1 里程碑)。列表删除 = 过滤重建配方(List 无删除原语)。
-use gui.{test, d_click, d_frame, d_expect_text, d_expect_absent}
+use gui.{test, d_click, d_click_inst, d_frame, d_expect_text, d_expect_absent}
 
 struct Model {
     var draft: Str
@@ -24,6 +24,18 @@ fn add_todo(m: Box[Model]) {
         m.todos.push(m.draft)
         m.draft = ""
     }
+}
+
+fn row_remove(m: Box[Model], idx: I32) {
+    var kept = List[Str]()
+    var i: I32 = 0
+    while i < m.todos.len {
+        if i != idx {
+            kept.push(m.todos[i])
+        }
+        i += 1
+    }
+    m.todos = kept
 }
 
 fn remove_last(m: Box[Model]) {
@@ -47,7 +59,10 @@ view TodoApp(m: Model) {
       <label class="empty">nothing yet</label>
     </when>
     <each t in={m.todos}>
-      <label class="row">{t}</label>
+      <hbox class="row">
+        <label class="rowtext">{t}</label>
+        <button class="rowdel" on:click={row_remove(m)}>x</button>
+      </hbox>
     </each>
     <button class="del" on:click={remove_last(m)}>remove last</button>
   </vbox>
@@ -58,6 +73,8 @@ style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
 style btn { bg: "#2563eb" fg: "#ffffff" w: 120 h: 44 }
 style empty { fg: "#888888" h: 30 }
 style row { fg: "#e5e5e5" h: 32 }
+style rowtext { fg: "#e5e5e5" h: 32 }
+style rowdel { bg: "#7f1d1d" fg: "#ffffff" w: 36 h: 32 }
 style del { bg: "#7f1d1d" fg: "#ffffff" w: 140 h: 40 }
 
 // headless 自动验收:合成 fn 直驱(与生成装配同契约)——模型级设置代替
@@ -80,19 +97,17 @@ fn headless_suite() -> I32 {
             d_expect_text(t, "write the spec")
             // 合成分发 add_todo
             __gui_act_TodoApp("add_todo", m)
-            __gui_act_TodoApp("add_todo", m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "write the spec")
             d_expect_absent(t, "nothing yet")
             m.todos.push("second item")
-            __gui_act_TodoApp("add_todo", m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "second item")
-            // 删末项:过滤重建配方
-            __gui_act_TodoApp("remove_last", m)
+            // 每行实例分发:首行 x 按钮(remove:0 命中契约)删首行
+            act(d_click_inst(t, "row_remove", 0))
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
-            d_expect_absent(t, "second item")
-            d_expect_text(t, "write the spec")
+            d_expect_absent(t, "write the spec")
+            d_expect_text(t, "second item")
         })
     return rc
 }
