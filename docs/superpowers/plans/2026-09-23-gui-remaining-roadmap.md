@@ -106,6 +106,10 @@ L1 缺口对偶面)+ checkbox 行级勾选(P-W1 交付)。
 ### P-M3 中文输入(独立大山头,不阻塞于 8c)
 IME 组词 preedit 一等状态(§6.4);平台 shim + 字形栈协作;焦点/IME 不丢
 为 §6.3 硬验收(P3 遗留面一并兑现)。
+> 泳道状态(0926):自动装配正统已裁归 desugar(简报 plans/2026-09-26-gui-
+> assembly-arbitration.md;emit 合成归档分支 sl8c4b 可复活);read_file NULL
+> 修复与 panic/assert stderr 可见性已入 main(688f65e/ef2dffe,阶梯 52/0)。
+> 本泳道小件队列清空,下一片 = P-M3 专项会话(设计尖刺先行)。
 
 ### P-M4 远期
 `ctron build --release`(<2MB 静态单二进制)、多窗口、动画 tween、
