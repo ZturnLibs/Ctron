@@ -334,7 +334,8 @@ E2020 已销(e96d5f6 直 use 改形)。
 
 **P8 出口门禁判定(0926 二次收口)**:①pkg add e2e ✅(registry↔ctpkg 全链:
 manifest 解析→deps→vendor 双包落盘→lockfile 两行;is_dep 头匹配缺陷修复后)
-②Connect 互调 ✅;③S3 夹具往返 ✅(minio 真靶全链 ✅ 0926);④website 指南 ✅;
+②Connect 互调 ✅;③S3 夹具往返 ✅(minio 真靶全链 ✅ 0926;**fresh 数据目录含建桶全链亦通**,
+nightly 例行段 CTRON_S3_MINIO=1 入 runner——无 minio 自动 SKIP);④website 指南 ✅;
 ⑤todo_api 容器配方 ✅(容器内跑通归 nightly)。**P8 按 4.5/5 门交付收口**
 (余 0.5=minio 真靶环境)。
 **is_dep 头匹配缺陷**(80f669a 后修复):dep 头判 b4=='{' 拷自 is_pkg 定式,
