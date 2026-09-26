@@ -608,3 +608,15 @@ int gui_cfg3(int dir, int gap, int padx, int pady, int ax, int ay,
     Clay__ConfigureOpenElement(decl);
     return 0;
 }
+
+// 列表 NULL 安全计数(编译构建树 gui_sk_load 不含波次四新字段时为 NULL;
+// Ctron 侧不可判空,经此助手门控——vreg/env 读取前置条件)
+typedef struct { unsigned long long magic; char **items; int n; int cap; } CtronListC;
+int gui_list_ns(const void *l) {
+    if (l == NULL) { return 0; }
+    return ((const CtronListC *)l)->n;
+}
+int gui_list_ni(const void *l) {
+    if (l == NULL) { return 0; }
+    return ((const CtronListC *)l)->n;
+}
