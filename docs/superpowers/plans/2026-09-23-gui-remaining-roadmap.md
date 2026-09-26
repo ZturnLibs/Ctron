@@ -79,10 +79,15 @@ gui.run 单入口+钩子退役(run/run_kb 降内部;装配闭包=事件闭包字
 main 一行装配,零手写钩子;headless 直驱合成 fn;on:input 键入持久化
 (名通道前缀分支+隐式尾参豁免,119e5d1)与每行实例分发(隐式下标+
 ev_suffix_i+d_click_inst,2a982e8)均已销账——Todo 全交互链(键入→添加
-→逐行删)可用。**余差集:checkbox 勾选行(T1 专项——机械已入库 ec3003f:行域查询/
-收集/生成分支/ev_suffix_i/d_click_inst;夹具 2 行 each+checkbox 渲染
-native SEGV 待专项)、跨文件 view 导入(组件模型 P2)、多级 props
-(随终锚)。**
+→逐行删)可用。**checkbox 勾选行已销账(21508a3+21508a3 后续,dones=List[Str] "0"/"1"
+惯例;List[Bool] 索引读比较 strcmp SEGV 家族第三形态入册)。**
+**跨文件 view(P2)今日攻而未克,发现全数入册**:①GuiBlock 合并恒随
+(非 7-kind 任何 use 即随行,视图合并零成本);②相对 use 形态=项目根相对
+(use src.todo.{...},src 段=入口子目录;单段 use todo 解析为 dir+".ct"
+即断);③跨包业务 fn 须 pub+显式请求;④Box 跨包 struct 载荷=emit 限值
+(两步注解绕行);⑤desugar 后置段的合并 AST 访问面有多处未护(stub struct
+字段表已护,emit 期 "]extern" 字节串当指针的下一层待查)——续接按此五条
+推进,机械(生成器/收集器)全数在库可复用。
 **③ 已落(5b5e910)**:钩子退役——run/run_kb/run_d/run_kb_d 降内部
 (rt_run_src/rt_run_kb_src/rt_run_anchor/rt_run_kb_anchor);合成面
 (run(ViewCall))即唯一文档化用户入口;消费面 9 文件机械迁移。
