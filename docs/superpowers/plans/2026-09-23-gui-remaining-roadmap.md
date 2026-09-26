@@ -95,6 +95,14 @@ AST、P1b refs walk(ast_shape 未注册 GuiBlock→保守整模块)、interp 面
 深层交互。回退=gui_parse/parse_pkg/todo_v10 至 21508a3 态,基线 52/0 回稳,
 decl 锁回 394。**续接须专项 co-design 三选题**:合并时序/refs shape 表注册
 GuiBlock/keep 面收窄;勿在长会话尾部重试。
+**二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
+ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
+interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr
+补 NParg→值表达式透传,3 行级);②emit 驱动的 premerge 标记/收集走查在
+该 fixture 上先行崩溃(fs_write 探针未达)——emit 口的走查崩溃与 chk 口
+不一致,双口径分叉再证;③跨文件夹具三形态全试(use src.todo 相对形态
++pub 面),sem/merge 通,堵在 trans。**续接序:NParg trans/eval 补口(小)
+→ emit 口 premerge 崩溃 lldb 专项 → 合并时序 co-design。**
 **③ 已落(5b5e910)**:钩子退役——run/run_kb/run_d/run_kb_d 降内部
 (rt_run_src/rt_run_kb_src/rt_run_anchor/rt_run_kb_anchor);合成面
 (run(ViewCall))即唯一文档化用户入口;消费面 9 文件机械迁移。
