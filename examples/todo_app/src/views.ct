@@ -12,7 +12,6 @@ use std.str.{ contains }
 // (ids/titles/dones,"0"/"1" 表 done)到达——装配层解码,视图零本地依赖
 // (星形单路径拆分:app→views 单边,views 不再触 data 符号)。
 
-
 // 视图不落 I64→Str 依赖翻转:id 十进制化私留(与 store 同款算术形)
 // 内联小表单(每行 toggle/delete 按钮;button 自带提交语义)
 fn f_btn(action: Str, label: Str, cls: Str) -> Str {
@@ -84,7 +83,6 @@ pub fn view_404() -> Str {
     return ht_page("404", "<h1>404</h1><p><a href=\"/\">回首页</a></p>")
 }
 
-
 test "login page shape and escape" {
     let p = view_login("")
     assert(contains(p, "action=\"/login\""))
@@ -130,4 +128,3 @@ test "404 page" {
 // ---- tests(解释口径;廉价纯逻辑面) ----
 // 密码/认证面不进解释口径单测:自举解释器 arena 无回收(在册债),pbkdf2 解释执行
 // 6-8GB RSS 必 OOM;该面由 run.sh e2e 原生口径覆盖(注册/登录/错密/重名全链)。
-

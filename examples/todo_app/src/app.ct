@@ -504,9 +504,8 @@ fn route(key: Str, iters: I32, f_users: Str, f_todos: Str, users: List[Str], tod
     return r_html_err(view_404())
 }
 
-
 // run_with:函数值调用——主分发展平器的不透明边界(2026-09-26 发射缺陷绕行)
-fn run_with(f: fn()) {
+fn run_with(f: fn ()) {
     f()
 }
 
@@ -516,7 +515,7 @@ pub fn app_main() {
 
 fn serve() {
     let net = Net_probe()
-        let c = cfg()
+    let c = cfg()
     if !fs_exists(c.dir) {
         panic("data 目录不存在: " + c.dir + "(先创建或以 TODO_APP_DATA 指定)")
     }
@@ -557,4 +556,3 @@ fn serve() {
     net_close(net, lfd)
     println("todo-app drained (served " + dstr(served) + ")")
 }
-
