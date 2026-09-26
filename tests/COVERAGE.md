@@ -332,12 +332,11 @@ E2020 已销(e96d5f6 直 use 改形)。
 | P8-E | 部署面+website 指南(docs/deploy.md:产物/运行期表/scratch 配方/可观测三件;website/server-guide.md) | 文档交付(5f872cb);本地验收=e2e 22/22 同源,容器跑通归 nightly 真靶段 |
 | P8-F | 门禁收口+终审 | 全波 9 套件+net+todo_api **98 断言 0 红**(00:39 终审);P8-D pkg defer(设计评审待拍板,归下波首件) |
 
-**P8 出口门禁判定(0926 二次收口)**:①pkg add e2e ✅(registry↔ctpkg 全链:
+**P8 出口门禁判定(0926 三次收口)**:①pkg add e2e ✅(registry↔ctpkg 全链:
 manifest 解析→deps→vendor 双包落盘→lockfile 两行;is_dep 头匹配缺陷修复后)
-②Connect 互调 ✅;③S3 夹具往返 ✅(minio 真靶全链 ✅ 0926;**fresh 数据目录含建桶全链亦通**,
-nightly 例行段 CTRON_S3_MINIO=1 入 runner——无 minio 自动 SKIP);④website 指南 ✅;
-⑤todo_api 容器配方 ✅(容器内跑通归 nightly)。**P8 按 4.5/5 门交付收口**
-(余 0.5=minio 真靶环境)。
+②Connect 互调 ✅;③S3 夹具往返 ✅ + **minio 真靶全链 ✅**(建桶→PUT/GET/DELETE
+三轮;fresh 数据目录亦通;nightly 例行段 CTRON_S3_MINIO=1 入 runner);④website 指南 ✅;
+⑤todo_api 容器配方 ✅(容器内跑通归 nightly)。**P8 按 5/5 门全绿交付收口**。
 **is_dep 头匹配缺陷**(80f669a 后修复):dep 头判 b4=='{' 拷自 is_pkg 定式,
 对 dep NAME { 恒不匹配(t0+4=名首字母)→in_dep 永不置位;修=dep 锚定行尾
 (te-2 空格+te-1 '{')。逐行 trace 一轮定位。
