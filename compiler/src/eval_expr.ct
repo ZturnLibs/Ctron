@@ -37,6 +37,10 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     if t == "Str" {
         return eval_str(file, env, out, e)
     }
+    if t == "NParg" {
+        // P2 二次攻坚:组件实参值表达式透传(interp 侧同 trans)
+        return eval_expr(file, env, out, e[2])
+    }
     if t == "Ident" {
         var en = env_at(env, e[1])
         if en.len > 0 {
@@ -488,6 +492,10 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     }
     if t == "Void" {
         return e4("k", env, vV2(), out)
+    }
+    if t == "NParg" {
+        // P2:命名实参值透传(ViewCall 载荷;desugar 未达面防御)
+        return eval_expr(file, env, out, e[2])
     }
     panic("expr:" + t)
     return e4("a", env, vV2(), out)

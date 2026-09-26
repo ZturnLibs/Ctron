@@ -16,6 +16,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return e[1]
     }
     if t == "Float" { return e[1] }
+    if t == "NParg" {
+        // P2:命名实参值透传(ViewCall 载荷;desugar 未达面防御)
+        return ct_expr(e[2], env, file)
+    }
     if t == "Str" {
         var parts = e[1]
         var acc = ""
@@ -65,6 +69,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Bool" {
         if e[1] == "true" { return "1" }
         return "0"
+    }
+    if t == "NParg" {
+        // P2 二次攻坚:组件实参值表达式透传(trans 侧无专属形态——NParg 仅是
+        // 带 prop 名的包裹,值语义即子表达式)
+        return ct_expr(e[2], env, file)
     }
     if t == "Ident" {
         if ct_env_has(env, e[1]) {
