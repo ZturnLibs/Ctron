@@ -208,7 +208,8 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - 阶梯 `sh tests/gui/run.sh`(s1–s28 + e8 语料);`ci.sh [8/9]` 挂载。
 - 示例:`examples/todo`(键入/列表/空态全链)、`gui_counter`(最小活模型/声明式
   中文示范)、`gui_calc`(全场景断言)、`gui_files`(真实 IO 首例:文件查看器)、
-  `gui_cjk`(直绘中文渲染);各目录 `run.sh` 直跑,`--run` 开真窗口。
+  `gui_cjk`(直绘中文渲染)、`gui_themes`(八主题键盘切换陈列室)、`gui_widgets`
+  (Select/WList/Dialog 组件交互演示);各目录 `run.sh` 直跑,`--run` 开真窗口。
 
 ## 分层与稳定口径
 
