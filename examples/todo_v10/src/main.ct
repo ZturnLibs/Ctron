@@ -9,10 +9,30 @@ use gui.{test, d_frame, d_expect_text, d_expect_absent}
 struct Model {
     var draft: Str
     var todos: List[Str]
+    var dones: List[Str]
 }
 
 fn make() -> Model {
-    return Model { draft: "", todos: List[Str]() }
+    return Model { draft: "", todos: List[Str](), dones: List[Bool]() }
+}
+
+fn toggle(m: Box[Model], idx: I32) {
+    // dones = List[Str] "0"/"1"(List[Bool] 索引读比较 trans SEGV 家族,惯例绕行)
+    var nd = List[Str]()
+    var i: I32 = 0
+    while i < m.dones.len {
+        if i == idx {
+            if m.dones[i] == "1" {
+                nd.push("0")
+            } else {
+                nd.push("1")
+            }
+        } else {
+            nd.push(m.dones[i])
+        }
+        i += 1
+    }
+    m.dones = nd
 }
 
 fn input(m: Box[Model], text: Str) {
@@ -22,6 +42,7 @@ fn input(m: Box[Model], text: Str) {
 fn add_todo(m: Box[Model]) {
     if m.draft.len > 0 {
         m.todos.push(m.draft)
+        m.dones.push("0")
         m.draft = ""
     }
 }
@@ -49,7 +70,10 @@ view TodoApp(m: Model) {
       <label class="empty">nothing yet</label>
     </when>
     <each t in={m.todos}>
-      <label class="row">{t}</label>
+      <hbox class="row">
+        <checkbox checked={m.dones} on:click={toggle(m)}/>
+        <label class="rowtext">{t}</label>
+      </hbox>
     </each>
     <button class="del" on:click={remove_last(m)}>remove last</button>
   </vbox>
@@ -68,6 +92,7 @@ style del { bg: "#7f1d1d" fg: "#ffffff" w: 140 h: 40 }
 // 键入(on:input 持久化差集在案),断言 when 空态/each 渲染/act 分发/删末项
 fn seed_second(m: Box[Model]) {
     m.todos.push("second item")
+    m.dones.push("0")
 }
 
 fn headless_suite() -> I32 {
@@ -94,6 +119,24 @@ fn headless_suite() -> I32 {
             seed_second(m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             // 行内换行按词拆绘制命令(渲染细节),按词断言
+            d_expect_text(t, "second item")
+            // T1 勾选行:实例分发翻转(行 0 勾选,行 1 不动)
+            act("toggle:0")
+            if m.dones[0] != "1" {
+                panic("todo_v10: 行 0 勾选未翻转")
+            }
+            if m.dones[1] != "0" {
+                panic("todo_v10: 行 1 被误翻转")
+            }
+            act("toggle:1")
+            if m.dones[1] != "1" {
+                panic("todo_v10: 行 1 勾选未翻转")
+            }
+            act("toggle:0")
+            if m.dones[0] != "0" {
+                panic("todo_v10: 行 0 反勾选未翻转")
+            }
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "second item")
             // 删末项:过滤重建配方
             act("remove_last:0")
