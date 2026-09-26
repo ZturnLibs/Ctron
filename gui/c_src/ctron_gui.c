@@ -620,3 +620,6 @@ int gui_list_ni(const void *l) {
     if (l == NULL) { return 0; }
     return ((const CtronListC *)l)->n;
 }
+
+// 光标形状(P2):真窗逐帧设定;headless 无窗安全(raylib 全局态直设)
+void gui_cursor_set(int shape) { SetMouseCursor(shape); }

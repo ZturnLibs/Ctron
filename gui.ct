@@ -157,6 +157,9 @@ extern "c" fn gui_frame_tick() -> Void
 extern "c" fn gui_frame_count() -> I32
 
 #[trusted]
+extern "c" fn gui_cursor_set(shape: I32) -> Void
+
+#[trusted]
 extern "c" fn gui_hotkey_set(mods: I32, key: I32, action: Str) -> Void
 
 #[trusted]
@@ -2671,11 +2674,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         }
     } else {
         if tag == "checkbox" {
-            // 选中态:nbid 值求值(简单名走通道/表达式走求值器);P-W1 MVP
+            // 选中态:nbid 值求值(简单名走通道/表达式走求值器);P-W1 MVP。
+            // 8c-4④ T1:each 行内勾选先行域查询("eachrow:式:行号",行域 bind
+            // 分支应答),未答回落裸名(8c-2 同款兼容式)
             var ck: Bool = false
             if t.nbid[id] != "" {
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
-                    ck = gt_ck_truth(rt_bind_text(bind, t.nbid[id]))
+                    var ans: Str = ""
+                    if itemvar != "" {
+                        ans = rt_bind_text(bind, "eachrow:" + t.nbid[id] + ":" + inst)
+                    }
+                    if ans == "" {
+                        ans = rt_bind_text(bind, t.nbid[id])
+                    }
+                    ck = gt_ck_truth(ans)
                 } else {
                     ck = bxv_truth(bxv_eval(t, t.nbid[id], bind))
                 }
@@ -2795,15 +2807,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if ic < 0 {
                     ic = 0
                 }
-                // 光标闪烁(§2.7):仅注入时钟激活(d_tick 确定性口径);真窗常亮至 P2。
-                // 相位 = (ms/500) 偶数亮;无位算符,Ctron 取模用减法形
+                // 光标闪烁(§2.7,P2 转正):相位=(ms/500) 偶数亮;注入时钟
+                // (d_tick)优先保 headless 确定性,真窗走 GetTime 真时钟
                 var blink: I32 = 1
-                if gui_ms_injected() >= 0 {
-                    var ph: I32 = gui_now_ms() / 500
-                    var ph2: I32 = ph / 2
-                    if ph - ph2 * 2 == 1 {
-                        blink = 0
-                    }
+                var ph: I32 = gui_now_ms() / 500
+                var ph2: I32 = ph / 2
+                if ph - ph2 * 2 == 1 {
+                    blink = 0
                 }
                 if blink == 1 {
                     ishow = byte_slice(ival, 0, ic) + "|" + byte_slice(ival, ic, ival.len)
@@ -3222,6 +3232,25 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     return false
 }
 
+// 光标形状(P2):悬停节点→形状(input=2 I-beam,可点元素=4 手型,余 0 默认)
+fn rt_cursor_for(t: GuiTree, hov: I32) -> I32 {
+    if hov < 0 {
+        return 0
+    }
+    if t.ntag[hov] == "input" {
+        return 2
+    }
+    var e: I32 = 0
+    while e < t.nec[hov] {
+        var gi: I32 = t.nes[hov] + e
+        if t.ev_name[gi] == "click" {
+            return 4
+        }
+        e += 1
+    }
+    return 0
+}
+
 // 键盘模态检出(§2.3):末帧 hits 扫描取最后声明的 overlay(绘制序顶层);无则 -1
 fn rt_top_overlay(t: GuiTree, hits: List[I32]) -> I32 {
     var found: I32 = -1
@@ -3322,8 +3351,9 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                 }
             }
         }
-        rt_draw_frame(t, bind, w, h, hits, hinst,
-            rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y()), gui_mouse_down())
+        var hv2: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+        gui_cursor_set(rt_cursor_for(t, hv2))
+        rt_draw_frame(t, bind, w, h, hits, hinst, hv2, gui_mouse_down())
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -3363,8 +3393,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     src = src2
                     hits = List[I32]()
                     hinst = List[I32]()
-                    n = rt_draw_frame(t, bind, w, h, hits, hinst,
-                        rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y()), gui_mouse_down())
+                    var hv3: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+                    gui_cursor_set(rt_cursor_for(t, hv3))
+                    n = rt_draw_frame(t, bind, w, h, hits, hinst, hv3, gui_mouse_down())
                     rects = List[I32]()
                     rt_collect_rects(n, rects)
                 }
@@ -3440,8 +3471,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                 }
             }
         }
-        rt_draw_frame(t, bind, w, h, hits, hinst,
-            rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y()), gui_mouse_down())
+        var hv2: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+        gui_cursor_set(rt_cursor_for(t, hv2))
+        rt_draw_frame(t, bind, w, h, hits, hinst, hv2, gui_mouse_down())
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()

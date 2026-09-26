@@ -2,7 +2,7 @@
 // placeholder 初态→d_focus→键入(input 自身回显,焦点光标 |)→←→插入→退格→Home/End→
 // d_clip+d_mod+Ctrl+V 粘贴→on:input 载荷(模型侧记账)→on:submit→Esc 失焦→
 // 未消费键回落 key 闭包(d_send_* 消费返 0/未消费返原码)
-use gui.{test, d_frame, d_expect_text, d_focus, d_blur, d_clip, d_mod, d_send_char, d_send_key, theme_apply, theme_default}
+use gui.{test, d_frame, d_expect_text, d_focus, d_blur, d_clip, d_mod, d_send_char, d_send_key, d_tick, theme_apply, theme_default}
 
 view P {
   <vbox class="root">
@@ -86,6 +86,7 @@ fn main() -> I32 {
             d_expect_text(t, "写点啥")
             // 聚焦+键入:input 自身回显,焦点光标 | 在尾;on:input 已送达模型
             d_focus(t)
+            d_tick(t, 0)
             d_send_char(t, 104,
                 |buf| bind_all(buf, m),
                 |nm| act(nm, m))
