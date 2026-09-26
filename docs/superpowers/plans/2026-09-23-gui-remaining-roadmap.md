@@ -88,6 +88,13 @@ ev_suffix_i+d_click_inst,2a982e8)均已销账——Todo 全交互链(键入→�
 (两步注解绕行);⑤desugar 后置段的合并 AST 访问面有多处未护(stub struct
 字段表已护,emit 期 "]extern" 字节串当指针的下一层待查)——续接按此五条
 推进,机械(生成器/收集器)全数在库可复用。
+**两阶段重构(pre-改写/post-生成)已试并回退(0926)**:同文件 todo_v10 绿,
+但 s41(checkbox 行)native 运行期 SEGV+chk E2020(rt_run_anchor/ev_suffix_i
+miss)+ctron-cc interp SEGV 叠加——注入 use 触发 gui.ct 全量合并,与改写后
+AST、P1b refs walk(ast_shape 未注册 GuiBlock→保守整模块)、interp 面存在
+深层交互。回退=gui_parse/parse_pkg/todo_v10 至 21508a3 态,基线 52/0 回稳,
+decl 锁回 394。**续接须专项 co-design 三选题**:合并时序/refs shape 表注册
+GuiBlock/keep 面收窄;勿在长会话尾部重试。
 **③ 已落(5b5e910)**:钩子退役——run/run_kb/run_d/run_kb_d 降内部
 (rt_run_src/rt_run_kb_src/rt_run_anchor/rt_run_kb_anchor);合成面
 (run(ViewCall))即唯一文档化用户入口;消费面 9 文件机械迁移。
