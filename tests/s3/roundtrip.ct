@@ -21,7 +21,8 @@ fn dstr(v: I64) -> Str {
 }
 
 // 一轮:连接→发请求(带签名三头)→读响应→回状态码;-1 = IO 坏
-fn round(port: I64, method: Str, path: Str, body: Str, ak: Str, sk: Str, region: Str, xdate: Str, rbuf: &I64[], rcap: I64) -> I64 {
+fn round(port: I64, method: Str, path: Str, body: Str, ak: Str, sk: Str, region: Str, rbuf: &I64[], rcap: I64, xdate: Str) -> I64 {
+    // S3_REAL=1(真靶)时 xdate 传当前 basic 时;mock 传固定值
     let net = Net_probe()
     let cfd = Box[Box64](Box64 { v: 0 })
     if net_tcp_connect(net, "127.0.0.1", port, cfd) != 0 {
@@ -29,7 +30,7 @@ fn round(port: I64, method: Str, path: Str, body: Str, ak: Str, sk: Str, region:
     }
     let ph = s3_payload_hash_str(body)
     let auth = s3_auth_for(method, path, "127.0.0.1:" + port.to_string(), xdate, ph, ak, sk, region)
-    let head = method + " " + path + " HTTP/1.1\r\n" + "x-amz-date: " + xdate + "\r\n" + "x-amz-content-sha256: " + ph + "\r\n" + "Authorization: " + auth + "\r\n" + "content-length: " + dstr(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n"
+    let head = method + " " + path + " HTTP/1.1\r\n" + "Host: 127.0.0.1:" + port.to_string() + "\r\n" + "x-amz-date: " + xdate + "\r\n" + "x-amz-content-sha256: " + ph + "\r\n" + "Authorization: " + auth + "\r\n" + "content-length: " + dstr(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n"
     net_write_str(net, cfd.v, head)
     if body.len > 0 {
         var bb: I64[512] = [0, 0, 0, 0]
@@ -57,25 +58,30 @@ fn main() -> I64 {
     let region = "us-east-1"
     // S3_REAL=1 → minio 真靶形:当前时间戳(minio 拒 >15min 偏移)+ env AK/SK
     var xdate = "20250925T000000Z"
-    var akx = "AKIDEXAMPLE"
-    var skx = "wJalrXUtnFEMI"
+    var akx = ak
+    var skx = sk
+    if env_get("S3_REAL") == "1" {
+        xdate = s3_basic_time(now_iso_utc())
+        akx = env_get("S3_AK")
+        skx = env_get("S3_SK")
+    }
     // 建桶 = 部署契约(桶预建;S3_MKBUCKET=1 时以 CreateBucket 重试一次)
     // 签名面时间 = 当前(now_iso_utc→basic),防 minio 15min 偏移拒。
     var rbuf: I64[2048] = [0, 0, 0, 0]
     // PUT
-    let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", ak, sk, region, xdate, rbuf, 2048)
+    let s1 = round(port, "PUT", "/testbucket/obj1.txt", "hello-s3-roundtrip", ak, sk, region, rbuf, 2048, xdate)
     if s1 != 200 {
         println("RT-FAIL put=" + s1.to_string())
         return 1
     }
     // GET → 200
-    let s2 = round(port, "GET", "/testbucket/obj1.txt", "", ak, sk, region, xdate, rbuf, 2048)
+    let s2 = round(port, "GET", "/testbucket/obj1.txt", "", ak, sk, region, rbuf, 2048, xdate)
     if s2 != 200 {
         println("RT-FAIL get=" + s2.to_string())
         return 2
     }
     // DELETE → 204
-    let s3 = round(port, "DELETE", "/testbucket/obj1.txt", "", ak, sk, region, xdate, rbuf, 2048)
+    let s3 = round(port, "DELETE", "/testbucket/obj1.txt", "", ak, sk, region, rbuf, 2048, xdate)
     if s3 != 204 {
         println("RT-FAIL delete=" + s3.to_string())
         return 3
