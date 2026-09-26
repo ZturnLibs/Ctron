@@ -163,7 +163,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
         "$COMP/ctc.sh" "$FXC" > "$T/cn_$cv.iv" 2>&1
-        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧"
+        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧: $(diff "$T/cn_$cv.got" "$T/cn_$cv.iv" | head -4 | tr "\n" "|")"
     else
         bad "conc_$cv 发射/编译失败"
     fi
@@ -173,7 +173,7 @@ for cv in fnval cloval clostr enumres fnret try tlist own generic gstruct derive
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
         "$COMP/ctc.sh" "$COMP/test/fx_$cv.ct" > "$T/cn_$cv.iv" 2>&1
-        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧"
+        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧: $(diff "$T/cn_$cv.got" "$T/cn_$cv.iv" | head -4 | tr "\n" "|")"
     else
         bad "conc_$cv 发射/编译失败"
     fi
@@ -421,7 +421,7 @@ for cv in uhex; do
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
         "$COMP/ctc.sh" "$COMP/test/fx_$cv.ct" > "$T/cn_$cv.iv" 2>&1
-        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧"
+        diff -q "$T/cn_$cv.got" "$T/cn_$cv.iv" > /dev/null 2>&1 && ok "conc_$cv 原生==解释 逐字一致" || bad "conc_$cv 分歧: $(diff "$T/cn_$cv.got" "$T/cn_$cv.iv" | head -4 | tr "\n" "|")"
     else
         bad "conc_$cv 发射/编译失败"
     fi
