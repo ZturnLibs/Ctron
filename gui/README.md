@@ -70,7 +70,15 @@ style t { fg: "#ffffff" size: 24 }
 - 已知限制:叶字面量含标点在内嵌形态会被重建插空格(避用);input 只渲空盒,
   回显靠 mirror label;视口须容得下全内容(Clay 剔除视口外渲染命令)。
 
-## 入口 API(四入口语义,无重载故乘四)
+## 入口 API(SL-8c ③钩子退役后)
+
+- **文档化入口 = `gui.run(ViewCall)`**(编译器 desugar 合成 __gui_bind/__gui_act/__gui_run,
+  TodoApp 照抄形态;s41_run_d 三层验收)。
+- **键盘应用** = `rt_run_kb_anchor(title, w, h, bind, act, key)`(内部面仍 pub;
+  gui_themes/gui_widgets 键盘切换演示用此)。
+- 旧 run/run_kb/run_d/run_kb_d 已降内部(rt_run_src 系),勿在新代码使用。
+
+## 驱动器(headless 断言面)
 
 | 入口 | 源 | 键盘 | 用途 |
 |---|---|---|---|
@@ -106,6 +114,19 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
   `vendor/gui/build/libfreetype.a` + `-I vendor/gui/freetype/include`。
 - 直绘路径(`ft_render`/`ft_tex_*`)语义零变化,`examples/gui_cjk` 仍为直绘示范;
   声明式路径中文示范 = `examples/gui_counter`(「计数: {count}」)。
+
+## 组件库(波次四,2026-09-26)
+
+- **声明**:同源 .ctml 内 `view Card (name: Str) { ... }` + 实例 `<Card name: {u}/>`
+  (大写首字母;props 冒号形,值=引号串直取/{表达式}求值/裸词);**应用根=最后声明的
+  视图**(组件先声明后用)。
+- **内置三件套**(s42_comp 为用法范本):
+  - `Select`(触发器+when+each 行;事件头 sel_toggle/sel_pick,行事件带实例下标);
+  - `WList`(标题+行列表;list_pick);
+  - `Dialog`(when+overlay 模态+遮罩 close;键盘模态链 Esc 关)。
+  事件头=组件合约,应用侧按头实现即接;列表 props 经同名 `each:名` bind 通道透传。
+- **组件×each**:each 内组件实例,实参引用迭代变量(`name: {u}`)走展开期 itemvar 直取。
+- 已知限:组件内 when/each 可用;跨文件分发(view 导入)与 dialog 内容投影待后续。
 
 ## 主题面(波次一,2026-09-25)
 
