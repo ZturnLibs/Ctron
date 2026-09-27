@@ -142,7 +142,12 @@ ty decl_ty_tc(tc* c, const cty* t) {
     if (b.k != T_UNK) return b;
     ty sm = sum_ty_of(c, t); // T? / Option[T] / Result[T,E](须在 TY_NAMED 守卫前)
     if (sm.k == T_SUM) return sm;
-    if (t->kind == TY_FN) return ty_fnptr(); // fn(A) -> B:无原型函数指针(int64 统一 ABI)
+    if (t->kind == TY_FN) { // fn(A) -> B:无原型函数指针(int64 统一 ABI);P0-3:返回类型 R 存元素槽,供调用点(值调用/链上成员读)解析
+        ty f = ty_fnptr();
+        ty r = decl_ty_tc(c, t->fret);
+        if (r.k != T_UNK) { f.ek = r.k; f.ebits = r.bits; f.eus = r.us; f.tname = r.tname; }
+        return f;
+    }
     if (t->kind == TY_REF) return decl_ty_tc(c, t->sub); // 共享引用:表示不变
     if (t->kind == TY_TUPLE && t->nelems == 2) { // (A, B):subs 活跃时即单态化后的具体元组
         ty a = decl_ty_tc(c, t->elems[0]);

@@ -15,6 +15,14 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
             if elc.len > 0 {
                 env = env_bind(env, "#elem:" + pr[2], elc)
             }
+            // P0-3:fn 值形参返回型别侧条目(F<arity> 码不带 R;间接调用/链上成员读解析用;
+            // 仅聚合返回(用户 struct)入码,标量维持 int 统一 ABI 旧形态)
+            if pr[3][0] == "FnType" && pr[3][2][0] == "Named" {
+                var frc = ct_ty_code(pr[3][2], file)
+                if frc.len > 2 && byte_slice(frc, 0, 2) == "u:" {
+                    env = env_bind(env, "#fret:" + pr[2], frc)
+                }
+            }
         }
         k += 1
     }

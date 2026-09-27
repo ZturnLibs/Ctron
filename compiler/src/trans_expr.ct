@@ -910,6 +910,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // 此前兜底 "(ct_i)0" 使零参直调多传一参(cc 报 too many arguments)
                 if far == 0 { rargs = "" } else { if ag.len > 1 { rargs = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs } else { rargs = "(ct_i)0" + rargs } }
                 var rhead = "((ct_fn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
+                // P0-3:返回型别取 fn(T)->R(#fret 侧条目,ct_fn 绑定)——聚合返回经
+                // 返回类型原型化指针调用(ct_i 统一 ABI 装不下 struct,链上成员读全靠它)
+                var frk = "#fret:" + cal[1]
+                if ct_env_has(env, frk) {
+                    var fretc = ct_env_ty(env, frk)
+                    if fretc.len > 2 && byte_slice(fretc, 0, 2) == "u:" {
+                        var frt = ct_ctype(fretc)
+                        fhead = "((" + frt + "(*)(void*))(((ct_clop)" + fv + ")->fn))"
+                        rhead = "((" + frt + "(*)())(((ct_clop)" + fv + ")->fn))"
+                    }
+                }
                 return fcast + "(((ct_clop)" + fv + ")->env == (void*)1 ? " + rhead + "(" + rargs + ") : " + fhead + "(" + fargs + "))"
             }
         }

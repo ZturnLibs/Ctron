@@ -725,7 +725,17 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (cal && cal->kind == EX_IDENT) {
             ty ft;
             if (scope_find(c, cal->text, &ft) && ft.k == T_FNPTR) {
-                sb_f(o, "((ctron_fnptr)(%s))(", cal->text);
+                // P0-3:返回类型取 fn(T)->R(decl_ty_tc TY_FN 臂存于元素槽,box_elem 同式重构);
+                // R 未知(闭包字面量等)维持 int64 统一 ABI 旧形态
+                ty rt = ty_unk(); rt.k = ft.ek; rt.bits = ft.ebits; rt.us = ft.eus;
+                if (rt.k == T_FLT) rt = ty_flt();
+                else if (rt.k == T_BOOL) rt = ty_bool();
+                else if (rt.k == T_STR) rt = ty_str();
+                else if (rt.k != T_UNK) rt.tname = ft.tname;
+                if (rt.k != T_UNK)
+                    sb_f(o, "((%s(*)())(%s))(", ctype_of(rt), cal->text); // R 已知:经返回类型原型化指针调用(struct 成员链即自然命中)
+                else
+                    sb_f(o, "((ctron_fnptr)(%s))(", cal->text);
                 for (size_t i = 0; i < e->nelems; i++) {
                     if (i) sb_s(o, ", ");
                     sb a1 = {0};
@@ -734,7 +744,7 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                     sb_free(&a1);
                 }
                 sb_s(o, ")");
-                return ty_int(64, 0);
+                return rt.k != T_UNK ? rt : ty_int(64, 0);
             }
         }
         // C10-k:并发成员调用(scope.spawn / task.join·join_or / chan.send·recv / mutex.with·with_mut)

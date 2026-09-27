@@ -1,0 +1,28 @@
+// 03k_fn_call_chain_member.ct —— P0-3:fn 值调用链成员读(发射臂)
+struct Resp { body: Str }
+
+fn mk() -> Resp {
+    return Resp { body: "hi" }
+}
+
+fn apply(f: fn() -> Resp) -> Resp {
+    return f()
+}
+
+fn pick(f: fn() -> Resp) -> Str {
+    return f().body
+}
+
+fn main() -> I32 {
+    let v = apply(mk)
+    println(v.body)          // 经 fn 值调用结果的成员读:普通调用 mk().body 已绿,此处曾红
+    println(apply(mk).body)  // 直接链式形态:同族缺口
+    return 0
+}
+
+test "fn 值调用链成员读:返回类型取 R,struct 分支命中" {
+    let v = apply(mk)
+    assert_eq(v.body, "hi")
+    assert_eq(apply(mk).body, "hi")
+    assert_eq(pick(mk), "hi")
+}
