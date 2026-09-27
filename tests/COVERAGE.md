@@ -369,6 +369,13 @@ serial/coro 双形;树父权 ct_task 层残留=逐层名映射,归编译器任�
 契约补全(use 清单全量请求)全清——http 套件 103/5,余 5=137 解释器债族;OTLP send
 仍以裸 socket 形(net 门面直连)维持,http.client 合并修复后可回切 client_request。
 
+### 完整应用示例行(2026-09-26→27)
+
+| 波次 | 项 | 锚定 |
+|---|---|---|
+| APP-1 | examples/todo_app 完整应用(带登录 todo 管理):注册/登录/登出(pbkdf2_sha256+每用户盐+iters 落档)/HMAC Cookie 会话(HttpOnly+SameSite=Lax,恒时比较+过期域)/多用户隔离/NDJSON 文件持久化(重启不丢)/服务端渲染 HTML(ht_esc XSS 安全默认) | run.sh 两相位 e2e **26/26**(注册/重复与短密错密拒/Cookie 签发/未登录门卫/空态/增删翻/隔离门/登出/metrics/重启持久化);四模块 check 0E+test 全绿+fmt 净;真浏览器烟测截图取证(中文标题端到端+用户手工互动) |
+| APP-2 | 双层发射缺陷定案(divergences「todo_app 发射爆炸+运行野跳双层案」):①字符串表裸 `{` lexer 毒(P7 同族,解释臂宽容/发射臂 3.95GB 爆炸——初判主分发预算有误)②fn 值形参 ct_clop 野跳转(签名白名单缺口) | 星形单路径四模块拆分(data/sess/views/app)+主要文件 shim;`\{|}~` 转义+删 fn 形参后 237KB 一次发射全绿;应用侧 UTF-8 感知百分号解码(utf8_enc 发射口径)补 form C8 域中文能力 |
+
 ### P5 行(std/db 数据访问层,2026-09-21)
 
 | 波次 | 项 | 锚定 |
