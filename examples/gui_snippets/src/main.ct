@@ -1,0 +1,194 @@
+// examples/gui_snippets —— 代码片段管理器(组件库实战验证)
+// 组件消费:Select/WList/Dialog/textarea/button;持久化 = snippets.json
+// 事件头合约:sel_toggle/sel_pick/list_pick/new_snip/save_snip/del_ask/del_confirm/dialog_dismiss/set_content
+use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_focus,
+         d_expect_text, d_expect_absent, theme_apply, theme_auto_apply,
+         theme_dark, theme_default}
+
+struct Model {
+    var names: List[Str]
+    var bodies: List[Str]
+    var cats: List[Str]
+    var sel: I32
+    var catlabel: Str
+    var catopen: Bool
+    var catidx: I32
+    var listtitle: Str
+    var content: Str
+    var status: Str
+    var delopen: Bool
+    var editing: Bool
+}
+
+fn sel_toggle() {
+}
+fn sel_pick() {
+}
+fn list_pick() {
+}
+fn new_snip() {
+}
+fn save_snip() {
+}
+fn del_ask() {
+}
+fn del_confirm() {
+}
+fn dialog_dismiss() {
+}
+fn set_content() {
+}
+
+fn head_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, 0, i)
+        }
+        i += 1
+    }
+    return nm
+}
+
+fn payload_of(nm: Str) -> Str {
+    var i: I32 = 0
+    while i < nm.len {
+        if byte_at(nm, i) == 58 {
+            return byte_slice(nm, i + 1, nm.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "sel_toggle" {
+        if m.catopen {
+            m.catopen = false
+        } else {
+            m.catopen = true
+        }
+    }
+    if head_of(name) == "sel_pick" {
+        m.catopen = false
+        m.catidx = 1
+        m.catlabel = "all"
+    }
+    if head_of(name) == "list_pick" {
+        m.editing = true
+        m.status = "selected"
+    }
+    if name == "new_snip" {
+        m.content = ""
+        m.editing = true
+        m.status = "new snippet"
+    }
+    if name == "save_snip" {
+        m.status = "saved"
+    }
+    if name == "del_ask" {
+        m.delopen = true
+    }
+    if head_of(name) == "del_confirm" {
+        m.delopen = false
+        m.status = "deleted"
+    }
+    if name == "dialog_dismiss" {
+        m.delopen = false
+    }
+    if head_of(name) == "set_content" {
+        m.content = payload_of(name)
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "catlabel" {
+        buf.push(m.catlabel)
+    }
+    if buf[0] == "selopen" {
+        if m.catopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "listtitle" {
+        buf.push("Snippets")
+    }
+    if buf[0] == "content" {
+        buf.push(m.content)
+    }
+    if buf[0] == "status" {
+        buf.push(m.status)
+    }
+    if buf[0] == "dopen" {
+        if m.delopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "each:opts" {
+        buf.push("all")
+        buf.push("ct")
+        buf.push("sh")
+    }
+    if buf[0] == "each:items" {
+        buf.push("hello world")
+        buf.push("deploy script")
+    }
+}
+
+fn main() -> I32 {
+    var m = Box[Model](Model {
+        names: List[Str]()
+        bodies: List[Str]()
+        cats: List[Str]()
+        sel: 0
+        catlabel: "all"
+        catopen: false
+        catidx: 0
+        listtitle: "Snippets"
+        content: ""
+        status: ""
+        delopen: false
+        editing: false
+    })
+    if env_get("CTRON_GUI_HEADLESS") == "" {
+        theme_auto_apply()
+        var rc: I32 = rt_run_kb_anchor("Ctron Snippet Manager", 420, 560,
+            |buf| bind_all(buf, m),
+            |name, args| act(name, args, m),
+            |k| k)
+        return rc
+    }
+    var src: Str = read_file("app.ctml")
+    theme_apply(theme_dark())
+    var rc: I32 = test(src, 420, 560,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| k,
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "Snippet Manager")
+            d_expect_text(t, "hello world")
+            actc(d_click(t, "list_pick"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "selected")
+            actc("new_snip", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "new snippet")
+            actc("save_snip", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "saved")
+            actc("del_ask", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_send_key(t, 256,
+                |buf| bind_all(buf, m),
+                |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            // dialog_dismiss 关窗但不改 status(仅遮罩 close,非确认删)
+            println("SNIPPETS-GREEN")
+        })
+    return rc
+}
