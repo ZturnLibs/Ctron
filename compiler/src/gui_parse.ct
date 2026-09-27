@@ -3461,6 +3461,21 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     return file
 }
 
+// 目标视图名:合并文件中首个 view GuiBlock(单视图约定;多视图归 P2)
+fn gui_ds_target(file: List[Str]) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "GuiBlock" {
+            if d[1] == "view" {
+                return d[2]
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
 fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[Str] {
     if diags.len > 0 {
         return file
