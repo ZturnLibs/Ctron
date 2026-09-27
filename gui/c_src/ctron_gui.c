@@ -10,7 +10,12 @@
 #include <string.h>
 #include <stdio.h>
 #if defined(__APPLE__)
-void gui_ime_swizzle(void);
+// P-M3 IME 臂:弱符号回退(默认无 IME;链接 ime_shim.m 时强符号覆盖)。
+// 域包 input 分支/collect 反喂引用符号,fixture 不链 shim 亦须可链接。
+__attribute__((weak)) const char* gui_ime_preedit(void) { return ""; }
+__attribute__((weak)) int gui_ime_has_preedit(void) { return 0; }
+__attribute__((weak)) int gui_ime_set_caret(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; return 0; }
+__attribute__((weak)) void gui_ime_swizzle(void) { }
 #endif
 
 static Clay_RenderCommandArray g_cmds = { 0 };

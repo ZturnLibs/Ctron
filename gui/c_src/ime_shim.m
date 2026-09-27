@@ -94,11 +94,12 @@ int gui_ime_has_preedit(void) {
     return g_ime_has_pre;
 }
 
-void gui_ime_set_caret(int x, int y, int w, int h) {
+int gui_ime_set_caret(int x, int y, int w, int h) {
     g_ime_crect[0] = x;
     g_ime_crect[1] = y;
     g_ime_crect[2] = w;
     g_ime_crect[3] = h;
+    return 0;
 }
 
 int gui_ime_caret(int* x, int* y, int* w, int* h) {
