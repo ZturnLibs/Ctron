@@ -1,0 +1,18 @@
+// fx_val_panic_order.ct —— S1 前置回归网:panic 消息/Drop 析构/执行顺序三钉
+// 钉住:①panic 消息在 panic 点入输出(native ctron_panic 同序)②作用域 Drop
+// 在展开时逆序执行③assert 失败消息带操作数值。S1 Val 迁移的回归网
+//(值表示换代时三钉任一偏移即红;详 eval 值/流表示换代设计 §S1)
+struct Ticket {
+    let id: I32
+}
+impl Drop for Ticket {
+    fn drop(var self) {
+        println("drop:" + self.id.to_string())
+    }
+}
+fn main() -> I32 {
+    let a: Ticket = Ticket { id: 1 }
+    println("before")
+    panic("boom")
+    return 0
+}

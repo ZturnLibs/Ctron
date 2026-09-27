@@ -1,0 +1,10 @@
+// fx_val_negarith.ct —— S1 前置回归网:负数/边界算术全钉(I32 域内/I64 跨界/模负)
+fn main() -> I32 {
+    assert_eq(0 - 5, -5)
+    assert_eq(-5 + 2, -3)
+    assert_eq(-1 * 3, -3)
+    assert_eq(-7 % 3, -1)
+    assert_eq(1000000 * 1000, 1000000000)
+    println(-2147483647 - 1 == -2147483648)
+    return 0
+}
