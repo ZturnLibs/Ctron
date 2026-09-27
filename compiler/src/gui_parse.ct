@@ -657,152 +657,6 @@ fn gui_ds_find_file(file: List[Str], views: List[Str], names: List[Str]) -> Str 
 }
 
 // 命中节点就地改写:被调换 __gui_run_<V>,实参 = NParg 值表达式按序
-fn gui_ds_rew_expr(e: List[Str], vname: Str) -> I32 {
-    if e.len < 1 {
-        return 0
-    }
-    var t: Str = e[0]
-    if t == "Call" {
-        if e[1].len > 1 {
-            if e[1][0] == "Ident" {
-                if e[1][1] == "run" {
-                    if e[2].len == 2 {
-                        var a = e[2][1]
-                        if a[0] == "Call" {
-                            if a[1].len > 1 {
-                                if a[1][0] == "Ident" {
-                                    if a[1][1] == vname {
-                                        var nn = mk("Ident")
-                                        nn.push("__gui_run_" + vname)
-                                        e[1] = nn
-                                        var na = mk("Args")
-                                        var i: I32 = 1
-                                        while i < a[2].len {
-                                            na.push(a[2][i][2])
-                                            i += 1
-                                        }
-                                        e[2] = na
-                                        return 1
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if gui_ds_rew_expr(e[1], vname) > 0 {
-            return 1
-        }
-        var i: I32 = 1
-        while i < e[2].len {
-            if gui_ds_rew_expr(e[2][i], vname) > 0 {
-                return 1
-            }
-            i += 1
-        }
-        return 0
-    }
-    if t == "Binary" {
-        if gui_ds_rew_expr(e[2], vname) > 0 {
-            return 1
-        }
-        return gui_ds_rew_expr(e[3], vname)
-    }
-    if t == "Unary" {
-        return gui_ds_rew_expr(e[2], vname)
-    }
-    if t == "Member" {
-        return gui_ds_rew_expr(e[1], vname)
-    }
-    if t == "NParg" {
-        return gui_ds_rew_expr(e[2], vname)
-    }
-    if t == "Index" {
-        return gui_ds_rew_expr(e[1], vname)
-    }
-    return 0
-}
-
-fn gui_ds_rew_block(b: List[Str], vname: Str) -> I32 {
-    var i: I32 = 1
-    while i < b.len {
-        var s = b[i]
-        var t: Str = s[0]
-        var hit: I32 = 0
-        if t == "Return" {
-            if s.len > 1 {
-                hit = gui_ds_rew_expr(s[1], vname)
-            }
-        } else {
-            if t == "Let" {
-                hit = gui_ds_rew_expr(s[4], vname)
-            } else {
-                if t == "While" {
-                    hit = gui_ds_rew_expr(s[1], vname)
-                    if hit == 0 {
-                        hit = gui_ds_rew_block(s[2], vname)
-                    }
-                } else {
-                    if t == "For" {
-                        hit = gui_ds_rew_expr(s[2], vname)
-                        if hit == 0 {
-                            hit = gui_ds_rew_block(s[3], vname)
-                        }
-                    } else {
-                        if t == "If" {
-                            hit = gui_ds_rew_expr(s[1], vname)
-                            if hit == 0 {
-                                hit = gui_ds_rew_block(s[2], vname)
-                            }
-                            if hit == 0 {
-                                if s[3][0] == "If" {
-                                    hit = gui_ds_rew_block(s[3], vname)
-                                } else {
-                                    if s[3][0] == "BlockExpr" {
-                                        hit = gui_ds_rew_block(s[3][1], vname)
-                                    }
-                                }
-                            }
-                        } else {
-                            if t == "Expr" {
-                                hit = gui_ds_rew_expr(s[1], vname)
-                            } else {
-                                if t == "Assign" {
-                                    hit = gui_ds_rew_expr(s[1], vname)
-                                    if hit == 0 {
-                                        hit = gui_ds_rew_expr(s[3], vname)
-                                    }
-                                } else {
-                                    hit = gui_ds_rew_expr(s, vname)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if hit > 0 {
-            return 1
-        }
-        i += 1
-    }
-    return 0
-}
-
-fn gui_ds_rew_file(file: List[Str], vname: Str) -> I32 {
-    var i: I32 = 1
-    while i < file.len {
-        var d = file[i]
-        if d[0] == "Fn" {
-            if gui_ds_rew_block(d[5], vname) > 0 {
-                return 1
-            }
-        }
-        i += 1
-    }
-    return 0
-}
 
 // 路径型别解析(prop 根起逐段;len 尾段=I32;未知="")
 fn gui_ds_path_ty(path: Str, pnames: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> Str {
@@ -3135,35 +2989,444 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
 // 预合并:run(ViewCall) 命中即注入 use gui.{run_d} 请求(合并期生效)。
 // 定位/收集/生成全部前置——合并产物含签名级 stub(d[5]=类型戳字符串),
 // 后置遍历按 Block 索引即 SEGV(0ea0513 余账根因);unit 出参带合成 decl。
-fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
-    var has: Bool = false
+// ==================== P2 跨文件:标记/ordn/改写族 ====================
+// 视图可居被用模块(GuiBlock 合并恒随),主文件零 GuiBlock 亦然——标记检测
+// 泛化为 run(<Ident>(...));视图名合并后 gui_ds_target 核(缺=sem E2020)。
+
+fn gui_ds_marker_expr(e: List[Str]) -> Str {
+    if e.len < 1 {
+        return ""
+    }
+    var t: Str = e[0]
+    if t == "Call" {
+        if e[1].len > 1 {
+            if e[1][0] == "Ident" {
+                if e[1][1] == "run" {
+                    if e[2].len == 2 {
+                        var a = e[2][1]
+                        if a[0] == "Call" {
+                            if a[1].len > 1 {
+                                if a[1][0] == "Ident" {
+                                    if a[2].len > 1 {
+                                        return a[1][1]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        var r: Str = gui_ds_marker_expr(e[1])
+        if r != "" {
+            return r
+        }
+        var i: I32 = 1
+        while i < e[2].len {
+            r = gui_ds_marker_expr(e[2][i])
+            if r != "" {
+                return r
+            }
+            i += 1
+        }
+        return ""
+    }
+    if t == "Binary" {
+        var r2: Str = gui_ds_marker_expr(e[2])
+        if r2 != "" {
+            return r2
+        }
+        return gui_ds_marker_expr(e[3])
+    }
+    if t == "Unary" {
+        return gui_ds_marker_expr(e[2])
+    }
+    if t == "Member" {
+        return gui_ds_marker_expr(e[1])
+    }
+    if t == "NParg" {
+        return gui_ds_marker_expr(e[2])
+    }
+    if t == "Index" {
+        return gui_ds_marker_expr(e[1])
+    }
+    return ""
+}
+
+fn gui_ds_marker_block(b: List[Str]) -> Str {
     var i: I32 = 1
-    while i < file.len {
-        if file[i][0] == "GuiBlock" {
-            has = true
-            i = file.len
+    while i < b.len {
+        var st: Str = b[i][0]
+        var hit: Str = ""
+        if st == "Return" {
+            if b[i].len > 1 {
+                hit = gui_ds_marker_expr(b[i][1])
+            }
+        } else {
+            if st == "Let" {
+                hit = gui_ds_marker_expr(b[i][4])
+            } else {
+                if st == "While" {
+                    hit = gui_ds_marker_expr(b[i][1])
+                } else {
+                    if st == "For" {
+                        hit = gui_ds_marker_expr(b[i][2])
+                    } else {
+                        if st == "If" {
+                            hit = gui_ds_marker_expr(b[i][1])
+                            if hit == "" {
+                                hit = gui_ds_marker_block(b[i][2])
+                            }
+                            if hit == "" {
+                                if b[i][3][0] == "If" {
+                                    hit = gui_ds_marker_block(b[i][3])
+                                } else {
+                                    if b[i][3][0] == "BlockExpr" {
+                                        hit = gui_ds_marker_block(b[i][3][1])
+                                    }
+                                }
+                            }
+                        } else {
+                            if st == "Expr" {
+                                hit = gui_ds_marker_expr(b[i][1])
+                            } else {
+                                if st == "Assign" {
+                                    hit = gui_ds_marker_expr(b[i][1])
+                                    if hit == "" {
+                                        hit = gui_ds_marker_expr(b[i][3])
+                                    }
+                                } else {
+                                    hit = gui_ds_marker_expr(b[i])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if hit != "" {
+            return hit
         }
         i += 1
     }
-    if !has {
-        return file
+    return ""
+}
+
+fn gui_ds_marker_file(file: List[Str]) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        if file[i][0] == "Fn" {
+            var hit: Str = gui_ds_marker_block(file[i][5])
+            if hit != "" {
+                return hit
+            }
+        }
+        i += 1
     }
+    return ""
+}
+
+fn gui_ds_ordn_expr(e: List[Str], vname: Str, names: List[Str]) -> I32 {
+    if e.len < 1 {
+        return 0
+    }
+    var t: Str = e[0]
+    if t == "Call" {
+        if e[1].len > 1 {
+            if e[1][0] == "Ident" {
+                if e[1][1] == "run" {
+                    if e[2].len == 2 {
+                        var a = e[2][1]
+                        if a[0] == "Call" {
+                            if a[1].len > 1 {
+                                if a[1][0] == "Ident" {
+                                    if a[1][1] == vname {
+                                        if a[2].len > 1 {
+                                            var k: I32 = 1
+                                            while k < a[2].len {
+                                                names.push(a[2][k][1])
+                                                k += 1
+                                            }
+                                            return 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if gui_ds_ordn_expr(e[1], vname, names) > 0 {
+            return 1
+        }
+        var i: I32 = 1
+        while i < e[2].len {
+            if gui_ds_ordn_expr(e[2][i], vname, names) > 0 {
+                return 1
+            }
+            i += 1
+        }
+        return 0
+    }
+    if t == "Binary" {
+        if gui_ds_ordn_expr(e[2], vname, names) > 0 {
+            return 1
+        }
+        return gui_ds_ordn_expr(e[3], vname, names)
+    }
+    if t == "Unary" {
+        return gui_ds_ordn_expr(e[2], vname, names)
+    }
+    if t == "Member" {
+        return gui_ds_ordn_expr(e[1], vname, names)
+    }
+    if t == "NParg" {
+        return gui_ds_ordn_expr(e[2], vname, names)
+    }
+    if t == "Index" {
+        return gui_ds_ordn_expr(e[1], vname, names)
+    }
+    return 0
+}
+
+fn gui_ds_ordn_block(b: List[Str], vname: Str, names: List[Str]) -> I32 {
+    var i: I32 = 1
+    while i < b.len {
+        var st: Str = b[i][0]
+        var got: I32 = 0
+        if st == "Return" {
+            if b[i].len > 1 {
+                got = gui_ds_ordn_expr(b[i][1], vname, names)
+            }
+        } else {
+            if st == "Let" {
+                got = gui_ds_ordn_expr(b[i][4], vname, names)
+            } else {
+                if st == "While" {
+                    got = gui_ds_ordn_expr(b[i][1], vname, names)
+                } else {
+                    if st == "For" {
+                        got = gui_ds_ordn_expr(b[i][2], vname, names)
+                    } else {
+                        if st == "If" {
+                            got = gui_ds_ordn_expr(b[i][1], vname, names)
+                            if got == 0 {
+                                got = gui_ds_ordn_block(b[i][2], vname, names)
+                            }
+                            if got == 0 {
+                                if b[i][3][0] == "If" {
+                                    got = gui_ds_ordn_block(b[i][3], vname, names)
+                                } else {
+                                    if b[i][3][0] == "BlockExpr" {
+                                        got = gui_ds_ordn_block(b[i][3][1], vname, names)
+                                    }
+                                }
+                            }
+                        } else {
+                            if st == "Expr" {
+                                got = gui_ds_ordn_expr(b[i][1], vname, names)
+                            } else {
+                                if st == "Assign" {
+                                    got = gui_ds_ordn_expr(b[i][1], vname, names)
+                                    if got == 0 {
+                                        got = gui_ds_ordn_expr(b[i][3], vname, names)
+                                    }
+                                } else {
+                                    got = gui_ds_ordn_expr(b[i], vname, names)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if got > 0 {
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn gui_ds_ordn_file(file: List[Str], vname: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Fn" {
+            var names = List[Str]()
+            if gui_ds_ordn_block(d[5], vname, names) > 0 {
+                return names
+            }
+        }
+        i += 1
+    }
+    return List[Str]()
+}
+
+fn gui_ds_rew_expr(e: List[Str], vname: Str) -> I32 {
+    if e.len < 1 {
+        return 0
+    }
+    var t: Str = e[0]
+    if t == "Call" {
+        if e[1].len > 1 {
+            if e[1][0] == "Ident" {
+                if e[1][1] == "run" {
+                    if e[2].len == 2 {
+                        var a = e[2][1]
+                        if a[0] == "Call" {
+                            if a[1].len > 1 {
+                                if a[1][0] == "Ident" {
+                                    if a[1][1] == vname {
+                                        var nn = mk("Ident")
+                                        nn.push("__gui_run_" + vname)
+                                        e[1] = nn
+                                        var na = mk("Args")
+                                        var i: I32 = 1
+                                        while i < a[2].len {
+                                            na.push(a[2][i][2])
+                                            i += 1
+                                        }
+                                        e[2] = na
+                                        return 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if gui_ds_rew_expr(e[1], vname) > 0 {
+            return 1
+        }
+        var i: I32 = 1
+        while i < e[2].len {
+            if gui_ds_rew_expr(e[2][i], vname) > 0 {
+                return 1
+            }
+            i += 1
+        }
+        return 0
+    }
+    if t == "Binary" {
+        if gui_ds_rew_expr(e[2], vname) > 0 {
+            return 1
+        }
+        return gui_ds_rew_expr(e[3], vname)
+    }
+    if t == "Unary" {
+        return gui_ds_rew_expr(e[2], vname)
+    }
+    if t == "Member" {
+        return gui_ds_rew_expr(e[1], vname)
+    }
+    if t == "NParg" {
+        return gui_ds_rew_expr(e[2], vname)
+    }
+    if t == "Index" {
+        return gui_ds_rew_expr(e[1], vname)
+    }
+    return 0
+}
+
+fn gui_ds_rew_block(b: List[Str], vname: Str) -> I32 {
+    var i: I32 = 1
+    while i < b.len {
+        var st: Str = b[i][0]
+        var got: I32 = 0
+        if st == "Return" {
+            if b[i].len > 1 {
+                got = gui_ds_rew_expr(b[i][1], vname)
+            }
+        } else {
+            if st == "Let" {
+                got = gui_ds_rew_expr(b[i][4], vname)
+            } else {
+                if st == "While" {
+                    got = gui_ds_rew_expr(b[i][1], vname)
+                } else {
+                    if st == "For" {
+                        got = gui_ds_rew_expr(b[i][2], vname)
+                    } else {
+                        if st == "If" {
+                            got = gui_ds_rew_expr(b[i][1], vname)
+                            if got == 0 {
+                                got = gui_ds_rew_block(b[i][2], vname)
+                            }
+                            if got == 0 {
+                                if b[i][3][0] == "If" {
+                                    got = gui_ds_rew_block(b[i][3], vname)
+                                } else {
+                                    if b[i][3][0] == "BlockExpr" {
+                                        got = gui_ds_rew_block(b[i][3][1], vname)
+                                    }
+                                }
+                            }
+                        } else {
+                            if st == "Expr" {
+                                got = gui_ds_rew_expr(b[i][1], vname)
+                            } else {
+                                if st == "Assign" {
+                                    got = gui_ds_rew_expr(b[i][1], vname)
+                                    if got == 0 {
+                                        got = gui_ds_rew_expr(b[i][3], vname)
+                                    }
+                                } else {
+                                    got = gui_ds_rew_expr(b[i], vname)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if got > 0 {
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn gui_ds_rew_file(file: List[Str], vname: Str) -> I32 {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Fn" {
+            if gui_ds_rew_block(d[5], vname) > 0 {
+                return 1
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var vnames = List[Str]()
     var vprops = List[Str]()
     gui_ds_views(file, vnames, vprops)
-    if vnames.len == 0 {
-        return file
-    }
     var names = List[Str]()
     var vname: Str = gui_ds_find_file(file, vnames, names)
-    if vname == "" {
-        return file
-    }
     var ordn = List[Str]()
-    var oi: I32 = 1
-    while oi < names.len {
-        ordn.push(names[oi])
-        oi += 1
+    if vname == "" {
+        // 跨文件:marker 泛化检
+        vname = gui_ds_marker_file(file)
+        if vname == "" {
+            return file
+        }
+        ordn = gui_ds_ordn_file(file, vname)
+        if ordn.len == 0 {
+            return file
+        }
+    } else {
+        var oi: I32 = 1
+        while oi < names.len {
+            ordn.push(names[oi])
+            oi += 1
+        }
     }
     // Use 节点经真解析生成(手拼形态与解析器产物微差即炸合并面)
     var utoks = List[Str]()
@@ -3177,7 +3440,7 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var out = List[Str]()
     out.push(file[0])
     out.push(un)
-    i = 1
+    var i: I32 = 1
     while i < file.len {
         out.push(file[i])
         i += 1
