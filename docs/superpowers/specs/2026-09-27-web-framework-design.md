@@ -38,6 +38,7 @@ todo_app(四模块 ~1560 行)中真正的业务逻辑不足 400 行,其余是四
 | 9 | 参数/返回面 | 六源取参全谱 + 五构造器/链式/`json_obj()` 构建器/`send_file`/`bytes` |
 | 10 | struct 直出 | **`@derive(Json)` 正解**(无反射宪法 §8.4 的 sanctioned 通道),归编译账本;过渡 = 应用手写 `json_of`(每 struct ~5 行,derive 落地后删函数调用点零改) |
 | 11 | 遗漏审计 | 十处遗漏按 A(补入 v1)/B(边界声明)/C(次波登记)三类处置(§8) |
+| 12 | 通用性审计 | 三风险补齐:流式=演进契约三件套(§4.4,死变体否决)、二进制=plan 探针门+条件 L4(§7-8/§9)、插件 S 契约(§4.6);六小补丁(query_all/param_f64/多值头政策/method_not_allowed/timeout_ms/spawn 惯例)入 v1(§8.1) |
 
 ## 3. 分层与包结构
 
@@ -84,6 +85,7 @@ router(state)                         // Router[S];S = 应用状态类型,无态
   .static(前缀, 目录)                 // 收编 frm/static
   .body_limit(n)                      // 请求体上限,默认 1MB,超限 413
   .not_found(h)                       // 默认 404 体可覆写
+  .method_not_allowed(h)              // 默认 405 体可覆写(Allow 头框架自动带)
   .openapi(标题, 版本)                // 挂 /openapi.json(运行期同源导出)
 
 serve("127.0.0.1:8091", r)            // 阻塞;排空后返回
@@ -109,7 +111,9 @@ fn need_login(req: Req[App], next: fn(Req[App]) -> Resp) -> Resp
 ```ctron
 req.param("id")            // 路径参数 "42";req.param("path") 通配 "css/main.css"
 req.param_i64("id").or(0)  // 类型化族:Option[I64],默认值显式写在调用点
+req.param_f64("x").or(0)   // 类型化族第二件:坐标/评分类 API(注意双宿主 F64 分歧坑位)
 req.query("q")             // URL 查询,百分号解码 + UTF-8 重组就绪
+req.query_all("tag")       // 同名多值查询参数 List[Str](与 form_all 对称)
 req.form("title")          // 表单 urlencoded;'+'→空格、%XX、中文就绪
 req.form_all("tag")        // 同名多值 List[Str](复选框族)
 req.json()                 // Option[JDoc]:JSON body,JDoc 取值器 str/i64/bool/list + .or
@@ -120,7 +124,8 @@ req.state                  // S:应用状态(App 结构,内含 Mutex/Atomic 与�
 ```
 
 解码纪律全在框架:百分号解码/UTF-8 四字节重组、头折叠、Cookie 分号解析、JSON 容量
-上限(收编 frm/body)。应用永远见不到字节缓冲——todo_app 的 `pctb/pdec/f_fld/lane_str/
+上限(收编 frm/body)。重复请求头按 RFC 逗并(`Set-Cookie` 响应侧例外,保序多值)。
+应用永远见不到字节缓冲——todo_app 的 `pctb/pdec/f_fld/lane_str/
 hval` 约 200 行解码外科在这个面上零残留。
 
 ### 4.4 返回(五构造器 + 链式 + 格式矩阵)
@@ -158,6 +163,16 @@ derive 未落地期间应用手写 `json_of`(每 struct ~5 行机械代码,deriv
 调用点零改动)。struct 反序列化 `from_json` 随 derive 登记志向,不做承诺。
 错误就是响应:业务 4xx 直接构造对应 Resp;handler panic 由框架兜 500 不泄栈。
 
+**流式演进契约(通用性审计定案,SSE/WS 波次的架构预留)**:v1 的 Resp 为
+`struct { status, headers, body: Str }`,不引入死变体(Ctron enum 变体须可构造,
+v1 造不出流句柄,空臂反成死码)。预留以三件套落位:①**门面契约**——应用与中间件
+只经构造器与 `.with()` 族触 Resp,禁直构字面量、不依赖字段布局(写进 README 与
+13-web.md;testkit 字段断言为框架内口径,演进时框架统一迁移);②**单一咽喉**——
+Resp 序列化收敛于 server.ct 一处,SSE/WS 波次将 `body: Str` 演进为
+`body: Body` 判别和(`text(Str)` / `chunked(流句柄)`)时应用与中间件零改;
+③**语义挂点**——超时/日志/限流对流式路由的计法(响应头写出 ≠ 完成)在
+SSE/WS 波设计内定,挂点即咽喉处。
+
 ### 4.5 自定义中间件三档形态(全是普通函数/闭包,零框架机制)
 
 ```ctron
@@ -166,12 +181,20 @@ derive 未落地期间应用手写 `json_of`(每 struct ~5 行机械代码,deriv
 // ③ 带状态工厂      fn rate_limiter(per_min: I64) -> ... { let hits: Mutex[Map[Str,I64]] = ...; |req, next| {...} }
 ```
 
+每路由/每组的超时档位不引入新机制,就是中间件:`.layer(timeout_ms(5000))`
+(框架件,收编 frm/timeout;全局档 `.timeout(ms)` 之外组级可细化覆盖)。
+
 ### 4.6 插件:`fn(Router[S]) -> Router[S]`,零新机制
 
 插件 = 往路由器装「路由+中间件+文档」捆绑包的普通函数;`.install()` 一行挂载,
 顺序即装配序;带配置的插件是工厂;第三方包发插件 = 发一个普通 `.ct` 模块,
 能力审计照常管住(要听端口/读盘照样得声明 caps)。框架自带件
 (with_sessions/log_requests/static/openapi)本身是第一批插件(自举吃狗粮)。
+
+**插件 S 契约(生态通用性条款)**:加路由的插件(如 auth 要签发 cookie)必然要求
+`S` 含特定字段;Ctron 无反射、字段约束走不了 trait,故契约 = 插件文档**必须声明
+最小字段集**(形如"要求 S 含 `key: Str`"),缺字段在插件体编译点报错(报错位置
+确定、消息可读)。纯中间件插件(不限路由)一律写成 `[S]` 泛型,对任意 S 组合。
 
 ### 4.7 测试(整台服务器零 socket)
 
@@ -292,10 +315,16 @@ panic 兜 500 不泄栈;读/处理超时收编 frm/timeout;HEAD 自动应 GET �
 5. Router 启动自检 panic 优于运行期错路由;comptime 增量审计层(二期)把该项提前到编译期。
 6. OpenAPI 走运行期端点,永远与运行中服务同源;E6030 无反射下 schema 元数据显式挂
    (`.doc(...)`),不做反射魔法。
+7. **响应后异步动作惯例**:handler 返回 Resp 前可 `spawn` 后续任务(发邮件/清缓存类),
+   归调用方 scope 树;排空时由结构化并发兜底取消。框架不设第二套后台任务机制。
+8. **二进制安全门(plan 期探针)**:`bytes()`/上传面依赖 Str 承载任意字节,而
+   `byte_slice` 中段有在册非 NUL 结尾雷。实施计划须含二进制往返探针(含 NUL 的
+   body 经 进→取→byte_slice 运算→出 全链);红则登记 `Bytes` 类型语言项(§9 L4)
+   后放行文件上传相关波次,纯下行(静态文件,已证可用)不受阻。
 
 ## 8. 范围:交付 / 边界 / 次波
 
-### 8.1 v1 交付(含遗漏审计 A 类八条)
+### 8.1 v1 交付(含遗漏审计 A 类八条 + 通用性审计补齐)
 
 Req/Resp/Router/serve/中间件框架/插件 install、session(收编 frm/auth)、static
 (frm/static)、CORS+安全头(frm/cors+sechdr)、form/query/cookie 解析(http/form)、
@@ -303,6 +332,10 @@ Req/Resp/Router/serve/中间件框架/插件 install、session(收编 frm/auth)�
 **body_limit(默认 1MB)**、**HEAD 自动语义**、**路径规范化安全默认**、**默认 500 页+
 panic 日志**、**时钟/随机经 state 注入惯例**、**路由匹配 ≤200ns 门禁**、
 **docs/spec/13-web.md 规范草案 + README API 表**、**装配提成 fn 惯例条款**、
+**`query_all`/`param_f64` 取参对称族**、**多值头政策(请求侧逗并/响应侧保序)**、
+**`.method_not_allowed(h)`**、**`timeout_ms(n)` 组级超时中间件**、
+**流式演进契约条款(门面/咽喉/挂点,§4.4)**、**插件 S 契约条款(§4.6)**、
+**响应后 spawn 惯例(§7-7)**、**二进制安全探针门(§7-8)**、
 testkit(`ctron test` 零 socket 确定性测试)。
 
 ### 8.2 边界声明(B 类,把"不做"写透)
@@ -316,7 +349,8 @@ testkit(`ctron test` 零 socket 确定性测试)。
 ### 8.3 次波登记(C 类)
 
 gzip/deflate 响应压缩(**http/enc 全套在库,协商函数现成,次波第一件**)·
-csrf/limit 中间件收编 · OTLP trace 插件 · multipart · 自定义错误页 ·
+csrf/limit 中间件收编 · **SSE/WS(流式,走 §4.4 演进契约的 Body 判别和)** ·
+OTLP trace 插件 · multipart(受 §7-8 二进制门约束)· 自定义错误页 ·
 信号处理 · CTML 模板适配(gui 泳道地盘,Resp 适配点预留)·
 struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审计层。
 
@@ -335,6 +369,7 @@ struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审�
 |---|---|---|
 | L2 | `@derive(Json)` | 语言扩展(derive 插件机制,§8.3 注解契约 sanctioned 通道);`@derive(DbRow)` 同池 |
 | L3 | 主文件直发截断债(在册) | 关联:todo_app 迁移后仍守"逻辑在依赖模块"纪律,该债销账前 main.ct 不回胖 |
+| L4 | `Bytes` 字节串类型(**条件登记**) | 若 §7-8 二进制往返探针红(Str 含 NUL 过 byte_slice/比较运算静默截断)则立此项;探针绿则销 |
 
 按「能力优先于 hack」裁决:web 按目标形态设计,**不做平行 List/act 表/id 分发替身**;
 P0 四件全部 member-emit 同族小面。
@@ -348,6 +383,8 @@ P0 四件全部 member-emit 同族小面。
    (session 层替代,s-前缀副本族全灭)、views/data 基本不动;总账 ~1560→~900。
 3. todo_api 不动(教学面),次波迁移登记。
 4. 性能门:路由匹配 ≤200ns@16 路由;解码/构造器 no_alloc 稳态差=0(既有门口径)。
+5. **二进制往返探针门**:含 NUL 字节的 body 经 取参→运算→响应 全链保真(§7-8);
+   红则 L4 立项,文件上传类波次待其销账。
 
 ## 11. 与既有资产的关系
 
