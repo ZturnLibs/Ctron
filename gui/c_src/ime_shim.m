@@ -62,6 +62,19 @@ static void ime_swz_setMarkedText(id self, SEL _cmd, id str, NSRange sel, NSRang
     ime_mirror("");
 }
 
+// commit/解组 = 组词结束:镜像清空(GLFW 的 insertText 不清自身 markedText,
+// 第三方 IME(搜狗)也不调 setMarkedText:"" ——不清则内联渲染残留过期组词串)
+static void ime_swz_insertText(id self, SEL _cmd, id str, NSRange rep) {
+    ((void (*)(id, SEL, id, NSRange))objc_msgSend)(self,
+        sel_registerName("ime_swz_insertText:replacementRange:"), str, rep);
+    ime_mirror("");
+}
+
+static void ime_swz_unmarkText(id self, SEL _cmd) {
+    ((void (*)(id, SEL))objc_msgSend)(self, sel_registerName("ime_swz_unmarkText"));
+    ime_mirror("");
+}
+
 static NSRect ime_swz_firstRect(id self, SEL _cmd, NSRange range, NSRangePointer actual) {
     // 域包反喂了光标 rect → 换算屏幕坐标返回(候选窗跟随光标);
     // 未反喂(无聚焦 input)→ 走原实现(旧行为:视图原点)
@@ -144,6 +157,25 @@ void gui_ime_swizzle(void) {
         Method s2 = class_getInstanceMethod(cls, sn2);
         if (s2 != NULL) {
             method_exchangeImplementations(m2, s2);
+        }
+    }
+    // 提交/解组清镜像
+    Method m3 = class_getInstanceMethod(cls, sel_registerName("insertText:replacementRange:"));
+    if (m3 != NULL) {
+        SEL sn3 = sel_registerName("ime_swz_insertText:replacementRange:");
+        class_addMethod(cls, sn3, (IMP)ime_swz_insertText, method_getTypeEncoding(m3));
+        Method s3 = class_getInstanceMethod(cls, sn3);
+        if (s3 != NULL) {
+            method_exchangeImplementations(m3, s3);
+        }
+    }
+    Method m4 = class_getInstanceMethod(cls, sel_registerName("unmarkText"));
+    if (m4 != NULL) {
+        SEL sn4 = sel_registerName("ime_swz_unmarkText");
+        class_addMethod(cls, sn4, (IMP)ime_swz_unmarkText, method_getTypeEncoding(m4));
+        Method s4 = class_getInstanceMethod(cls, sn4);
+        if (s4 != NULL) {
+            method_exchangeImplementations(m4, s4);
         }
     }
     if (g_ime_trace()) { fprintf(stderr, "[IME] swizzle done\n"); }
