@@ -48,7 +48,17 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
 
 // 动作收口:add 回显值入列并清 draft;del 移除末项(重建配方——零参方法发射
 // 缺口 t_pop 悬空逗号登记归发射泳道,此处以重建+成员赋值绕行)
+// input 编辑持久化(wave-2 通道:on:input 隐式尾参 text——「save:全文」直发)
+fn save(text: Str) {
+}
 fn act(name: Str, m: Box[Model]) {
+    // save:<全文> → 草稿同步(受控组件双向绑定;取首冒号后全文,正文可含冒号)
+    if name.len >= 5 {
+        if byte_at(name, 0) == 115 && byte_at(name, 1) == 97 && byte_at(name, 2) == 118 && byte_at(name, 3) == 101 && byte_at(name, 4) == 58 {
+            m.draft = byte_slice(name, 5, name.len)
+            return
+        }
+    }
     if name == "add" {
         if m.draft.len > 0 {
             m.todos.push(m.draft)

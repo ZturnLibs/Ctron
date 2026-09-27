@@ -5,7 +5,7 @@
 view Todo {
   <vbox class="root">
     <label>todo: {n}</label>
-    <input bind={draft} class="fld"/>
+    <input bind={draft} class="fld" on:input={save}/>
     <label class="mirror">{draft}</label>
     <button class="btn" on:click={add}>add</button>
     <button class="btn2" on:click={del}>del</button>
