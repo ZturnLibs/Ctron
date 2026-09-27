@@ -663,3 +663,8 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   hex 缺补(A-F)。③深色主题浏览器下无样式 HTML 黑底黑字不可读——views 内嵌
   CSS(开括号 \{ 转义、闭括号裸写,字面量纪律同 one_ascii 表);const 在 test
   求值域不解析(unbound),改函数形。
+
+## web 框架 P0 探针(2026-09-27)
+
+L5 StringBuilder: 立——探针 03i(tests/03i_string_builder_probe.ct):sem check 0 诊断(类型名表挂名证实),interp 臂运行期拒 `未知函数: StringBuilder`(rc=1),emit 臂 `trans: v1 未解析函数:StringBuilder`(rc=2),双臂无真身。
+L4 Bytes: 立(门红,第三形态)——探针 03m(tests/03m_binary_nul_probe.ct)在种子双臂均未能执行:interp `未知函数: read_or`、trans `v1 未解析函数:read_or`,根因系种子为单文件编译器,`use`(std.fs 与本地模块同)只 parse 不并,两臂皆无 std.fs 原语;emit 臂另拒 `to_string` 成员调用(`v1 仅支持具名函数调用`),即使无 std 版探针也过不了发射臂。NUL 保真本体此工具链上未测得,判定按「两臂未全绿 → 立」记;待引导编译器双臂复测后翻转或坐实。

@@ -413,8 +413,8 @@ struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审�
 |---|---|---|
 | L2 | `@derive(Json)` | 语言扩展(derive 插件机制,§8.3 注解契约 sanctioned 通道);`@derive(DbRow)` 同池 |
 | L3 | 主文件直发截断债(在册) | 关联:todo_app 迁移后仍守"逻辑在依赖模块"纪律,该债销账前 main.ct 不回胖 |
-| L4 | `Bytes` 字节串类型(**条件登记**) | 若 §7-8 二进制往返探针红(Str 含 NUL 过 byte_slice/比较运算静默截断)则立此项;探针绿则销 |
-| L5 | 可增长字符串缓冲(**条件登记**) | `+` 拼接每次 `ctron_str_concat` 新分配,循环拼接 O(n²);`StringBuilder` 现仅 sem.c 类型名表挂名(std 零使用、rt 零函数)。plan 首批探针双宿主;红则立此项——web 构建器与用户视图共同受益(§14-1) |
+| L4 | `Bytes` 字节串类型(**已立项**) | 若 §7-8 二进制往返探针红(Str 含 NUL 过 byte_slice/比较运算静默截断)则立此项;探针绿则销。判定(探针 03m,2026-09-27):**立**——种子双臂未能执行探针(interp `未知函数: read_or` / trans `未解析函数:read_or`,种子单文件不并 use,无 std.fs;emit 臂另拒 `to_string` 成员调用),§7-8 门红;NUL 保真本体待引导编译器复测 |
+| L5 | 可增长字符串缓冲(**已立项**) | `+` 拼接每次 `ctron_str_concat` 新分配,循环拼接 O(n²);`StringBuilder` 现仅 sem.c 类型名表挂名(std 零使用、rt 零函数)。plan 首批探针双宿主;红则立此项——web 构建器与用户视图共同受益(§14-1)。判定(探针 03i,2026-09-27):**立**——sem 0 诊断(挂名证实),interp `未知函数: StringBuilder`、trans `未解析函数:StringBuilder`,双臂无真身 |
 
 按「能力优先于 hack」裁决:web 按目标形态设计,**不做平行 List/act 表/id 分发替身**;
 P0 四件全部 member-emit 同族小面。
