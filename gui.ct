@@ -3377,28 +3377,68 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     }
     if k == 259 {
         if caret > 0 {
-            var nw: Str = byte_slice(cur, 0, caret - 1) + byte_slice(cur, caret, cur.len)
-            gui_caret_set(caret - 1)
+            // UTF-8 码点级退格(字节级剁碎 CJK 码点;连续字节随首字节一并删)
+            var bc: I32 = caret - 1
+            while bc > 0 {
+                var b: I32 = byte_at(cur, bc)
+                if b >= 128 && b < 192 {
+                    bc -= 1
+                } else {
+                    break
+                }
+            }
+            var nw: Str = byte_slice(cur, 0, bc) + byte_slice(cur, caret, cur.len)
+            gui_caret_set(bc)
             rt_in_fire(t, fn0, "input", nw, act)
         }
         return true
     }
     if k == 261 {
         if caret < cur.len {
-            var nw2: Str = byte_slice(cur, 0, caret) + byte_slice(cur, caret + 1, cur.len)
+            // 码点级前删(跳过首字节的连续字节)
+            var de: I32 = caret + 1
+            while de < cur.len {
+                var b2: I32 = byte_at(cur, de)
+                if b2 >= 128 && b2 < 192 {
+                    de += 1
+                } else {
+                    break
+                }
+            }
+            var nw2: Str = byte_slice(cur, 0, caret) + byte_slice(cur, de, cur.len)
             rt_in_fire(t, fn0, "input", nw2, act)
         }
         return true
     }
     if k == 263 {
         if caret > 0 {
-            gui_caret_set(caret - 1)
+            // 码点级左移(落在连续字节上时回退到码点首)
+            var lc: I32 = caret - 1
+            while lc > 0 {
+                var b3: I32 = byte_at(cur, lc)
+                if b3 >= 128 && b3 < 192 {
+                    lc -= 1
+                } else {
+                    break
+                }
+            }
+            gui_caret_set(lc)
         }
         return true
     }
     if k == 262 {
         if caret < cur.len {
-            gui_caret_set(caret + 1)
+            // 码点级右移(跳过当前码点的连续字节)
+            var rc2: I32 = caret + 1
+            while rc2 < cur.len {
+                var b4: I32 = byte_at(cur, rc2)
+                if b4 >= 128 && b4 < 192 {
+                    rc2 += 1
+                } else {
+                    break
+                }
+            }
+            gui_caret_set(rc2)
         }
         return true
     }
@@ -3550,6 +3590,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    gui_autofocus_first_input(t, bind)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     while !WindowShouldClose() {
@@ -3675,6 +3716,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    gui_autofocus_first_input(t, bind)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     var frames: I32 = 0
@@ -4358,6 +4400,26 @@ pub fn char_str(k: I32) -> Str {
 
 // SL-8c-4④:事件名实例后缀取整("头:N" 尾部数字;无后缀 = 0)——
 // 合成 act 的逐行事件分支消费(P-H1 命中契约的解码侧)
+// P-M3:开窗自动聚焦首个 input(成熟语言输入体验:启动即可打字,无需点击;
+// caret 置尾 = append 惯例,与 click-to-focus 一致)
+fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
+    var afi: I32 = 0
+    var af: I32 = -1
+    while afi < t.ntag.len {
+        if t.ntag[afi] == "input" {
+            af = afi
+            afi = t.ntag.len
+        }
+        afi += 1
+    }
+    if af > 0 {
+        gui_focus_set(af)
+        var av: Str = rt_in_val(t, af, bind)
+        gui_caret_set(av.len)
+    }
+    return af
+}
+
 // P-M3:聚焦节点 rect 反喂 IME shim(候选窗定位;cmd ×100 域;v1 静态布局
 // 口径——反喂点 = collect 时点,动态布局随帧刷新登记)
 fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {

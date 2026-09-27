@@ -75,12 +75,20 @@ int gui_poll_event(void) {
         g_qhead++;
         return g_cur.type;
     }
+    // 排空本帧字符/按键队列进内部队列(raylib 每帧清空;多码点 IME 提交逐个
+    // 入队,否则同帧第二码点起全丢——用户实测「两中文只出一」根因)
     int c = GetCharPressed();
     if (c > 0) {
         static int ime_tr = -1;
         if (ime_tr < 0) { ime_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
         if (ime_tr) { fprintf(stderr, "[POLLC] char=%d\n", c); }
         g_cur = (GuiEvent){ 3, c, 0, 0 };
+        int nx = GetCharPressed();
+        while (nx > 0 && g_qtail < 256) {
+            g_queue[g_qtail] = (GuiEvent){ 3, nx, 0, 0 };
+            g_qtail++;
+            nx = GetCharPressed();
+        }
         return 3;
     }
     int k = GetKeyPressed();
@@ -89,6 +97,12 @@ int gui_poll_event(void) {
         if (ime_tr2 < 0) { ime_tr2 = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
         if (ime_tr2) { fprintf(stderr, "[POLLC] key=%d\n", k); }
         g_cur = (GuiEvent){ 1, k, 0, 0 };
+        int nk = GetKeyPressed();
+        while (nk != 0 && g_qtail < 256) {
+            g_queue[g_qtail] = (GuiEvent){ 1, nk, 0, 0 };
+            g_qtail++;
+            nk = GetKeyPressed();
+        }
         return 1;
     }
     float wv = GetMouseWheelMove();
