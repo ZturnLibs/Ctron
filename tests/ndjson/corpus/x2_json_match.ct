@@ -1,0 +1,51 @@
+// c2 —— nd 游标 × std/json parse × match 正道(结果消费金标形)
+use std.ndjson.{ nd_next, nd_line_str }
+use std.json.{ parse, qval }
+
+fn eqs(a: Str, b: Str) -> Bool {
+    if a.len != b.len { return false }
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) { return false }
+        i += 1
+    }
+    return true
+}
+
+fn main() -> I64 {
+    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let src = "\{\"k\":\"v1\",\"n\":10}\n\{\"k\":\"v2\",\"n\":20}\n"
+    var i: I32 = 0
+    while i < src.len {
+        buf[i] = byte_at(src, i).as[I64]()
+        i += 1
+    }
+    let n = src.len.as[I64]()
+    var pos: I64 = 0
+    var good: I64 = 0
+    var sum: I64 = 0
+    var guard: I64 = 0
+    while (pos < n) && (guard < 16) {
+        guard += 1
+        let r = nd_next(buf, n, pos)
+        if r.rc == 0 {
+            break
+        }
+        let line = nd_line_str(buf, r)
+        let e = parse(line)
+        let entries = match e {
+            Ok(v) => v
+            Err(m) => List[List[Str]]()
+        }
+        if entries.len > 0 {
+            good += 1
+            let kv = qval(entries, "$.k")
+            if eqs(kv, "v1") { sum += 10 }
+            if eqs(kv, "v2") { sum += 20 }
+        }
+        pos = r.start + r.ln
+    }
+    if good != 2 { return 1 }
+    if sum != 30 { return 2 }
+    return 0
+}
