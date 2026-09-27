@@ -32,7 +32,7 @@ todo_app(四模块 ~1560 行)中真正的业务逻辑不足 400 行,其余是四
 | 3 | v1 范围 | **核心+应用件;frm 薄收编**(调用不复制,单一正本) |
 | 4 | 视图面 | **Str 视图 + ht_esc 安全默认**;CTML HTML 形态为预留适配点(gui 泳道地盘) |
 | 5 | 目标形态 | 路由表式(1 为基座),fn 值/闭包组合子为 API 语言 |
-| 6 | 守卫模板噪声 | **路由组 `.mount_at` + 平铺 `.layer` 链**替代逐路由包裹;组级中间件对全组生效 |
+| 6 | 守卫模板噪声 | **路由组 `.mount` + 平铺 `.middleware` 链**替代逐路由包裹;组级中间件对全组生效 |
 | 7 | 状态形态 | **`Req[S]` 泛型携带 + `req.state`**(§8.1"上下文打包"钦定缓解);handler 单形参 |
 | 8 | 中间件/插件 | 自定义中间件三档形态文档化;**插件 = `fn(Router[S]) -> Router[S]`,`.install()` 一行挂载**,零新机制 |
 | 9 | 参数/返回面 | 六源取参全谱 + 五构造器/链式/`json_obj()` 构建器/`send_file`/`bytes` |
@@ -71,7 +71,7 @@ web/
 
 ## 4. 核心 API(定稿全暴露面)
 
-暴露面总计:**router/serve 两个词起,layer/mount_at/install 三个组合子,
+暴露面总计:**router/serve 两个词起,middleware/mount/install 三个组合子,
 html/json/text/redirect/status 五个构造器,req 八个访问器,test_call 一个测试口。**
 
 ### 4.1 装配
@@ -79,8 +79,8 @@ html/json/text/redirect/status 五个构造器,req 八个访问器,test_call 一
 ```ctron
 router(state)                         // Router[S];S = 应用状态类型,无态应用传 0
   .get/.post/.put/.delete/.patch(路径, handler)   // 路径::id 单段参数,*name 尾通配
-  .layer(mw)                          // 组级中间件:组内全部路由生效;声明序=执行序
-  .mount_at(前缀, 子路由器)            // 前缀+中间件随组叠加(外层→内层→handler)
+  .middleware(mw)                     // 组级中间件:组内全部路由生效;声明序=执行序
+  .mount(前缀, 子路由器)               // 前缀+中间件随组叠加(外层→内层→handler)
   .install(plugin)                    // 插件挂载:plugin: fn(Router[S]) -> Router[S]
   .static(前缀, 目录)                 // 收编 frm/static
   .body_limit(n)                      // 请求体上限,默认 1MB,超限 413
@@ -93,7 +93,7 @@ serve("127.0.0.1:8091", r)            // 阻塞;排空后返回
 
 匹配语义:静态段 > `:param` > `*splat`;路径命中方法不中 → 405+Allow;启动期重复
 (method,path) panic(**失败在启动,不在半夜**);匹配热路径预算 ≤200ns@16 路由。
-实现注:Router 是值,`.layer/.mount_at/.install` 均返回新值;mount 合并时对每条子路由
+实现注:Router 是值,`.middleware/.mount/.install` 均返回新值;mount 合并时对每条子路由
 预拼链条(外层 mw+子组 mw+handler),最终一张平铺表,热路径无嵌套开销。
 
 ### 4.2 handler 与中间件
@@ -181,7 +181,7 @@ SSE/WS 波设计内定,挂点即咽喉处。
 // ③ 带状态工厂      fn rate_limiter(per_min: I64) -> ... { let hits: Mutex[Map[Str,I64]] = ...; |req, next| {...} }
 ```
 
-每路由/每组的超时档位不引入新机制,就是中间件:`.layer(timeout_ms(5000))`
+每路由/每组的超时档位不引入新机制,就是中间件:`.middleware(timeout_ms(5000))`
 (框架件,收编 frm/timeout;全局档 `.timeout(ms)` 之外组级可细化覆盖)。
 
 ### 4.6 插件:`fn(Router[S]) -> Router[S]`,零新机制
@@ -222,11 +222,11 @@ struct App  { todos: Mutex[List[Todo]], key: Str, next_id: Atomic[I64] }
 fn main() {
     let app = App { todos: Mutex[List[Todo]](), key: "dev-mini", next_id: Atomic[I64](1) }
     let r = router(app)
-        .layer(log_requests)
-        .layer(with_sessions(app.key))
+        .middleware(log_requests)
+        .middleware(with_sessions(app.key))
         .get("/", |req| redirect("/app"))
         .post("/login", h_login)
-        .mount_at("/app", guarded(app))
+        .mount("/app", guarded(app))
     serve("127.0.0.1:8091", r)
 }
 
@@ -239,7 +239,7 @@ fn need_login(req: Req[App], next: fn(Req[App]) -> Resp) -> Resp {
 
 fn guarded(app: App) -> Router[App] {
     return router(app)
-        .layer(need_login)               // 组级守卫写一次,组内全路由生效
+        .middleware(need_login)               // 组级守卫写一次,组内全路由生效
         .get("/", h_list)
         .post("/add", h_add)
         .post("/del/:id", h_del)
@@ -307,7 +307,7 @@ panic 兜 500 不泄栈;读/处理超时收编 frm/timeout;HEAD 自动应 GET �
 
 ## 7. 语义条款(定稿细则)
 
-1. **组级中间件对组内全部路由生效**(不按注册位置)——"路由写在 layer 之前就静默
+1. **组级中间件对组内全部路由生效**(不按注册位置)——"路由写在 middleware 之前就静默
    漏守卫"在形态上不可表达;同组多条按声明序,叠加组外层先执行。
 2. 解码纪律全框架化(§4.3);请求字符集假定 UTF-8,响应 charset=utf-8 默认。
 3. Cookie 安全默认:`grant_session` 随 HttpOnly+SameSite=Lax(frm/auth 同款)。
