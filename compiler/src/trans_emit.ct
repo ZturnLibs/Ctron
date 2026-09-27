@@ -22,6 +22,8 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     if seq2(pass, "2") {
         println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
     }
+    // 闭包命名前缀:ct_clo_<fn>_L<行>(跨文件合并下行号撞号,fn 名合并面唯一)
+    env = env_bind(env, "#clofn", d[1])
     var penv = env_bind(env, "#p", pass)
     ct_body(d[5], penv, file, rc)
 }
@@ -40,7 +42,7 @@ fn ct_drop_fn(d: List[Str], file: List[Str], pass: Str) {
             if seq2(pass, "2") {
                 println("static void t_" + ftn + "__drop(t_" + ftn + " t_self) ")
             }
-            var menv = env_bind(env_bind(List[Str](), "self", "u:" + ftn), "#p", pass)
+            var menv = env_bind(env_bind(env_bind(List[Str](), "self", "u:" + ftn), "#clofn", ftn + "__drop"), "#p", pass)
             ct_body(it[5], menv, file, "v")
         }
         mi += 1

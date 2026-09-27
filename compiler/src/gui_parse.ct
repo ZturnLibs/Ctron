@@ -3409,23 +3409,51 @@ fn gui_ds_rew_file(file: List[Str], vname: Str) -> I32 {
 }
 
 fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
-    // 单文件视图 find + ordn + 就地改写 + ordn 头
-    // (跨文件 marker 路径暂时移除:P1b 合并 stub 对 trans 无类型安全)
+    // 单文件视图 find + ordn + 就地改写 + ordn 头;
+    // P2 跨文件:视图居被用模块 —— 纯标记检测(run(<Ident>(...)),不依赖本文件
+    // views;marker/ordn 族 70fcda7 已备,此为接线),ordn 取调用点命名实参。
+    // 当日移除跨文件路径的根因(合并串流入遍历 SEGV)已定性为 made[0] 头串
+    // 拼入 + sanitize 白名单缺 FnPub 两 bug,修复后遍历合并面恢复类型安全。
     var vnames = List[Str]()
     var vprops = List[Str]()
     gui_ds_views(file, vnames, vprops)
     var names = List[Str]()
     var vname: Str = gui_ds_find_file(file, vnames, names)
-    if vname == "" {
-        return file
-    }
     var ordn = List[Str]()
-    var oi: I32 = 1
-    while oi < names.len {
-        ordn.push(names[oi])
-        oi += 1
+    if vname != "" {
+        var oi: I32 = 1
+        while oi < names.len {
+            ordn.push(names[oi])
+            oi += 1
+        }
+    } else {
+        vname = gui_ds_marker_file(file)
+        if vname == "" {
+            return file
+        }
+        names = gui_ds_ordn_file(file, vname)
+        var oi2: I32 = 0
+        while oi2 < names.len {
+            ordn.push(names[oi2])
+            oi2 += 1
+        }
     }
     gui_ds_rew_file(file, vname)
+    // 合成面宿主符号请求(SL-8c-4② 注入落地):合成三 fn 引 rt_run_anchor/
+    // ev_suffix_i,而合并闭包(pkg_refs_walk)看不到 postmerge 才生成的引用——
+    // 不请求即被选择性合并剔除(rt_run_anchor undeclared 实红)。顶层 use 走
+    // redo 补并路径,已并入符号在 dup 处静默跳过,零重复
+    var nu = mk("Use")
+    var nsegs = mk("Segs")
+    nsegs.push("gui")
+    var nsyms = mk("Syms")
+    nsyms.push("rt_run_anchor")
+    nsyms.push("rt_run_anchor")
+    nsyms.push("ev_suffix_i")
+    nsyms.push("ev_suffix_i")
+    nu.push(nsegs)
+    nu.push(nsyms)
+    file.push(nu)
     var hdr: Str = "__ordn__"
     var k2: I32 = 0
     while k2 < ordn.len {
@@ -3454,7 +3482,9 @@ fn gui_ds_target(file: List[Str]) -> Str {
     return ""
 }
 
-// P2 合并面文件净化器:移除合并产物中的非节点子项
+// P2 合并面文件净化器:移除合并产物中的非节点子项。
+// 白名单 = 顶层 decl 全 kind 集(缺 FnPub 即剥掉全部 pub fn——s41 实红:
+// rt_bind_items 等被清,trans 期 fnret 塌 "i" panic;与 pkg_is_named_kind 对齐)
 fn gui_ds_sanitize(file: List[Str]) -> List[Str] {
     var out = List[Str]()
     out.push(file[0])
@@ -3465,9 +3495,15 @@ fn gui_ds_sanitize(file: List[Str]) -> List[Str] {
             var keep: Bool = false
             var tag: Str = d[0]
             if tag == "Fn" { keep = true }
+            if tag == "FnPub" { keep = true }
+            if tag == "FnC" { keep = true }
             if tag == "FnExt" { keep = true }
+            if tag == "Method" { keep = true }
             if tag == "Struct" { keep = true }
             if tag == "Enum" { keep = true }
+            if tag == "Trait" { keep = true }
+            if tag == "Impl" { keep = true }
+            if tag == "Test" { keep = true }
             if tag == "GuiBlock" { keep = true }
             if tag == "Use" { keep = true }
             if tag == "Static" { keep = true }
@@ -3546,7 +3582,9 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var cty = List[Str]()
     gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
     var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
-    var k: I32 = 0
+    // made = p_file 产物(File 节点):[0] 是 "File" 头字符串,从 1 起拼——
+    // 从 0 拼即把头串当 decl 注入,trans/emit 面遍历 d[0] 解引用即 SEGV(s41 根因)
+    var k: I32 = 1
     while k < made.len {
         file.push(made[k])
         k += 1

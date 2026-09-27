@@ -98,14 +98,34 @@ premerge/postmerge+field_tables 守卫+family rew 去重;跨文件 emit+cc+
 link+run 全通;todo_v10 单文件面全绿。**跨文件拆分夹具(todo.ct+main.ct)
 待下次复原挂阶梯验证。**
 **余 ③钩子退役已完成(5b5e910)**。SL-8c 全片收官。
-**emit 面 premerge SEGV 专项(0927 登记)**:ctron-emit 处理含 run(ViewCall)
-的跨文件 fixture 时编译器自身 SEGV(-O0 -g lldb 定位 gui_blocks_src:6357
-ctron_len/strcmp 对 stub 字符串子项解引用)。sanitizer+field_tables 守卫+
-gui_blocks_src 短子项守卫均不足——compiled C 的 List[Str] 统一存储对
-"字符串 vs 嵌套 List" 无运行时类型标记,trans 全文件遍历族逐函数守卫
-不可持续。**须 trans 发射面 runtime 类型安全改造**(候选:值 tag 字段/
-AST 节点不可 string 化/P1b stub 不可见化)方可彻底消解。
-非单会话可修,独立专项。
+**emit 面 premerge SEGV 专项销账(0927 收官,推翻 0927 登记结论)**:s41
+SEGV 根因非「合并面类型安全缺失」,而是两个确定性 bug 叠加+两个接线缺口,
+lldb -O0 -g 逐帧取证定案:
+①**made[0] 头串拼入(SEGV 直接根因)**——gui_ds_gen 返回 p_file 产物
+(File 节点,[0]="File" 头串),gui_ds_postmerge 拼接循环 k 从 0 起,
+把头串当 decl 注入合并产物;trans/emit 遍历族 d[0] 解引用即崩
+(此前 gui_blocks_src/ct_find_main_anchor/ct_swap_anchor 三处逐函数守卫
+拦的正是它,P1b stub 定性为误判)。修=拼接 k 从 1 起(gui_parse.ct)。
+②**sanitize 白名单缺 FnPub(类型塌陷根因)**——gui_ds_sanitize 只留
+Fn/FnExt/Struct/Enum/GuiBlock/Use/Static/Const,合并面 pub fn(rt_bind_items
+等)整类剥除→trans 期 ct_fn_ret 查无 decl 塌 "i"→ct_expr:index panic。
+修=白名单补全顶层 decl 全 kind(FnPub/FnC/Method/Trait/Impl/Test)。
+③**premerge 注入落地**——合成三 fn 引 rt_run_anchor/ev_suffix_i,合并
+闭包(pkg_refs_walk)看不到 postmerge 才生成的引用,选择性合并剔除即
+C 级 undeclared;gui_ds_premerge 现 view 命中即注入 use gui.{rt_run_anchor,
+ev_suffix_i} Use 节点(顶层 use 走 redo 补并路径,dup 处静默跳过)。
+④**闭包命名跨文件撞号**——ct_clo_L<行号> 跨文件合并后 todo.ct/main.ct
+同行号撞 C 符号;修=ct_fn/ct_drop_fn 经 env 绑 #clofn,命名改
+ct_clo_<fn>_L<行>(合并面 fn 名 E5030 保证唯一,跨 pass 稳定)。
+**P2 跨文件 desugar 接线复通**:premerge 单文件 find 失败即走
+gui_ds_marker_file(纯标记检测,不依赖本文件 views)+gui_ds_ordn_file
+(调用点命名实参;70fcda7 机械全在库,此为接线);sanitize 仅 run(ViewCall)
+装配程序触发,web/服务器泳道不受影响。**s48_crossfile_d 拆分夹具
+(todo.ct 视图+业务全 pub / main.ct use 请求+直驱+run)落库挂阶梯**,
+键入/添加/删末/空态翻转全交互绿。
+**基线(0927)**:阶梯 54/54(新增 s48);smoke 151/3(3=对端 log/ndjson/pb
+在册不变);calc rc=0;decl 锁净增 0。「runtime 类型安全改造」专项按本
+定性降级为备查:若合并面再现串流,先查拼接起点与 sanitize 白名单两处。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr
