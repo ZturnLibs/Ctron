@@ -122,13 +122,13 @@ pub fn tok_verify(key: Str, tok: Str, now_s: I64) -> Str {
     if d1 < 1 || d2 <= d1 + 1 || d2 >= tok.len - 1 {
         return ""
     }
-    let uid = bseg(tok, 0, d1)
-    let exps = bseg(tok, d1 + 1, d2)
-    let sig = bseg(tok, d2 + 1, tok.len)
+    let uid = sbseg(tok, 0, d1)
+    let exps = sbseg(tok, d1 + 1, d2)
+    let sig = sbseg(tok, d2 + 1, tok.len)
     if !suid_ok(uid) || !hex64(sig) {
         return ""
     }
-    let exp = s2i(exps)
+    let exp = ss2i(exps)
     if exp <= 0 {
         return ""
     }
@@ -143,7 +143,7 @@ pub fn tok_verify(key: Str, tok: Str, now_s: I64) -> Str {
 }
 
 // [a,b) 子串重建(整串拼接,避 byte_slice 中段非 NUL 结尾 == 雷)
-fn bseg(s: Str, a: I32, b: I32) -> Str {
+fn sbseg(s: Str, a: I32, b: I32) -> Str {
     var out = ""
     var i: I32 = a
     while i < b {
@@ -171,7 +171,7 @@ fn hex64(s: Str) -> Bool {
 }
 
 // 十进制正整数解析(非数字/空回 0)
-fn s2i(s: Str) -> I64 {
+fn ss2i(s: Str) -> I64 {
     var v: I64 = 0
     var i: I32 = 0
     while i < s.len {
@@ -196,7 +196,7 @@ pub fn cookie_get(hdr: Str, name: Str) -> Str {
             while a < i && byte_at(hdr, a) == 32 {
                 a += 1
             }
-            let pair = bseg(hdr, a, i)
+            let pair = sbseg(hdr, a, i)
             if pair.len >= want.len {
                 var hit = true
                 var j: I32 = 0
@@ -208,7 +208,7 @@ pub fn cookie_get(hdr: Str, name: Str) -> Str {
                     j += 1
                 }
                 if hit {
-                    return bseg(pair, want.len, pair.len)
+                    return sbseg(pair, want.len, pair.len)
                 }
             }
             seg = i + 1

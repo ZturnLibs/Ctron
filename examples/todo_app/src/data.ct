@@ -82,11 +82,60 @@ pub fn fld_s(line: Str, path: Str) -> Str {
 }
 
 pub fn fld_i(line: Str, path: Str, dft: I64) -> I64 {
-    return s2i(fld_s(line, path))
+    let v = jraw(line, bseg(path, 2, path.len))
+    if v.len == 0 {
+        return dft
+    }
+    return s2i(v)
 }
 
 pub fn fld_b(line: Str, path: Str, dft: Bool) -> Bool {
-    return fld_s(line, path) == "true"
+    return jraw(line, bseg(path, 2, path.len)) == "true"
+}
+
+// jraw:取 "key": 后的原始值段(数字/布尔;到逗号或闭括号)
+fn jraw(line: Str, key: Str) -> Str {
+    let want = "\"" + key + "\":"
+    let a = hfind_str(line, want)
+    if a < 0 {
+        return ""
+    }
+    let vs = a + want.len
+    var ve = vs
+    while ve < line.len {
+        let c = byte_at(line, ve)
+        if c == 44 || c == 125 {
+            break
+        }
+        ve += 1
+    }
+    return bseg(line, vs, ve)
+}
+
+// [a,b) 子串重建(整串拼接,避 byte_slice 中段非 NUL 结尾 == 雷)
+fn bseg(s: Str, a: I32, b: I32) -> Str {
+    var out = ""
+    var i: I32 = a
+    while i < b {
+        out = out + byte_slice(s, i, i + 1)
+        i += 1
+    }
+    return out
+}
+
+// 十进制正整数解析(非数字/空回 0)
+fn s2i(s: Str) -> I64 {
+    var v: I64 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            return 0
+        }
+        v = v * 10 + (c - 48).as[I64]()
+        i += 1
+    }
+    return v
 }
 
 // jstr:取 "key": 后的字符串值(带反转义);未现/非串回空串
@@ -194,7 +243,7 @@ fn one_ascii(v: I32) -> Str {
     if v < 0 || v > 126 {
         return ""
     }
-    return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", v - 32, v - 31)
+    return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", v - 32, v - 31)
 }
 
 // ---- 密码与盐 ----

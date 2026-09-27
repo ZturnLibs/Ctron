@@ -23,12 +23,12 @@ Cookie 会话(HMAC 签名令牌,HttpOnly+SameSite=Lax)、每用户数据隔离�
 (真密码 + 会话 + 隔离 + 持久化 + 浏览器界面)。设计文档:
 `docs/superpowers/specs/2026-09-26-todo-app-design.md`。
 
-## 红账(2026-09-26,非本示例代码问题)
+## 验收(2026-09-27)
 
-原生臂暂被编译器在册发射缺陷阻断:主文件/依赖路径在较大依赖图上确定性 SIGKILL
-截断(36864-45056B,主分发预算家族)。复现矩阵与排除清单见
-`docs/c-rust-divergences.md`「todo_app 复现族」节。当前语义门:`ctc check` 0 诊断
-+ 四模块 `ctc test` 全绿;发射修复后 `sh run.sh` 即为完整验收门。
+`sh run.sh` 两相位 e2e **26/26 全绿**(注册/登录/重复与短密错密拒/Cookie 会话/
+增删翻/多用户隔离/登出/metrics/重启持久化)。途中定案双层发射缺陷(字符串裸 `{`
+lexer 毒 + fn 值形参野跳转),复盘见 `docs/c-rust-divergences.md`
+「todo_app 发射爆炸+运行野跳双层案」节。
 
 ## 已登记志向(演示口径,见 spec §7)
 

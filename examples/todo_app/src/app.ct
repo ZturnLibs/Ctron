@@ -49,6 +49,10 @@ fn r_text(code: Str, body: Str) -> Res {
     return Res { code: code, ctype: "text/plain", extra: "", body: body, reload: 0, stop: 0 }
 }
 
+fn r_red_r(loc: Str, extra: Str) -> Res {
+    return Res { code: "303 See Other", ctype: "text/plain", extra: extra + "Location: " + loc + "\r\n", body: "", reload: 1, stop: 0 }
+}
+
 fn r_stop() -> Res {
     return Res { code: "200 OK", ctype: "text/plain", extra: "", body: "draining", reload: 0, stop: 1 }
 }
@@ -61,7 +65,7 @@ fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
         if c < 32 || c > 126 {
             return out
         }
-        out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", c - 32, c - 31)
+        out = out + byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~", c - 32, c - 31)
         i += 1
     }
     return out
@@ -381,7 +385,7 @@ fn h_register(users: List[Str], iters: I32, body: Str, path: Str) -> Res {
     let salt = salt_new(fuid, now_ms())
     fresh.push(user_line(fuid, salt, pw_hash(fpass, salt, iters), iters, now_iso()))
     save_file(path, fresh)
-    return r_red("/login", "")
+    return r_red_r("/login", "")
 }
 
 fn h_logout() -> Res {
@@ -420,21 +424,21 @@ fn h_add(todos: List[Str], uid: Str, title: Str, next_id: I64, path: Str) -> Res
     }
     fresh.push(todo_line(next_id, uid, title, false, now_iso()))
     save_file(path, fresh)
-    return r_red("/app", "")
+    return r_red_r("/app", "")
 }
 
 fn h_toggle(todos: List[Str], uid: Str, id: I64, path: Str) -> Res {
     if id > 0 {
         save_file(path, todo_toggle(todos, uid, id))
     }
-    return r_red("/app", "")
+    return r_red_r("/app", "")
 }
 
 fn h_delete(todos: List[Str], uid: Str, id: I64, path: Str) -> Res {
     if id > 0 {
         save_file(path, todo_delete(todos, uid, id))
     }
-    return r_red("/app", "")
+    return r_red_r("/app", "")
 }
 
 fn route_app(f_todos: Str, todos: List[Str], uid: Str, method: Str, target: Str, body: Str) -> Res {
@@ -504,13 +508,8 @@ fn route(key: Str, iters: I32, f_users: Str, f_todos: Str, users: List[Str], tod
     return r_html_err(view_404())
 }
 
-// run_with:函数值调用——主分发展平器的不透明边界(2026-09-26 发射缺陷绕行)
-fn run_with(f: fn ()) {
-    f()
-}
-
 pub fn app_main() {
-    run_with(serve)
+    serve()
 }
 
 fn serve() {
