@@ -73,7 +73,8 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             if truth(vals[0]) {
                 return e4("k", env, vV2(), out)
             }
-            return e4("a", env, vS("assert failed"), out)
+            // §6.4 对齐:消息在失败点入 out(时序同 native ctron_panic)
+            return e4("a", env, vV2(), out + "assert failed\n")
         }
         panic("assert arity")
         return e4("a", env, vV2(), out)
@@ -83,7 +84,8 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             if veq(vals[0], vals[1]) {
                 return e4("k", env, vV2(), out)
             }
-            return e4("a", env, vS("assert_eq failed: " + fmt(vals[0]) + " != " + fmt(vals[1])), out)
+            // §6.4 对齐:同上,消息带操作数值
+            return e4("a", env, vV2(), out + "assert_eq failed: " + fmt(vals[0]) + " != " + fmt(vals[1]) + "\n")
         }
         panic("assert_eq arity")
         return e4("a", env, vV2(), out)
