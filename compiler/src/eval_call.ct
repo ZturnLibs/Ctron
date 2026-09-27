@@ -317,7 +317,9 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
     }
     if seq2(nm, "panic") {
         if vals.len == 1 {
-            return e4("a", env, vS(fmt(vals[0])), out)
+            // §6.4 对齐:native ctron_panic 先印消息后展开——消息在 panic 点入 out
+            //(流内位置一致);val 置空防 driver 末尾重印
+            return e4("a", env, vV2(), out + fmt(vals[0]) + "\n")
         }
         panic("panic arity")
         return e4("a", env, vV2(), out)
