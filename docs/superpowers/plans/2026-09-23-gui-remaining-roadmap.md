@@ -93,8 +93,11 @@ ev_suffix_i+d_click_inst,2a982e8)均已销账——Todo 全交互链(键入→�
 miss)+ctron-cc interp SEGV 叠加——注入 use 触发 gui.ct 全量合并,与改写后
 AST、P1b refs walk(ast_shape 未注册 GuiBlock→保守整模块)、interp 面存在
 深层交互。回退=gui_parse/parse_pkg/todo_v10 至 21508a3 态,基线 52/0 回稳,
-decl 锁回 394。**续接须专项 co-design 三选题**:合并时序/refs shape 表注册
-GuiBlock/keep 面收窄;勿在长会话尾部重试。
+decl 锁回 394。**P2 跨文件 desugar 已落(70fcda7)**:marker/ordn 走查族+两阶段
+premerge/postmerge+field_tables 守卫+family rew 去重;跨文件 emit+cc+
+link+run 全通;todo_v10 单文件面全绿。**跨文件拆分夹具(todo.ct+main.ct)
+待下次复原挂阶梯验证。**
+**余 ③钩子退役已完成(5b5e910)**。SL-8c 全片收官。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr
