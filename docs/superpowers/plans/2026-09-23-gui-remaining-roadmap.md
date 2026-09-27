@@ -104,8 +104,13 @@ interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_e
 补 NParg→值表达式透传,3 行级);②emit 驱动的 premerge 标记/收集走查在
 该 fixture 上先行崩溃(fs_write 探针未达)——emit 口的走查崩溃与 chk 口
 不一致,双口径分叉再证;③跨文件夹具三形态全试(use src.todo 相对形态
-+pub 面),sem/merge 通,堵在 trans。**续接序:NParg trans/eval 补口(小)
-→ emit 口 premerge 崩溃 lldb 专项 → 合并时序 co-design。**
++pub 面),sem/merge 通,堵在 trans。**续接序落地状态**:①NParg trans/eval 补口 ✅(0022a47+本片);②emit 口
+lldb 专项——根因=desugar premerge 的 interp 面崩溃(双口径分叉),两阶段
+统一后 s48 域包面夹具 rc=0 ✅;③合并时序 co-design——**跨文件 loader
+限制**为根本阻塞(同目录兄弟文件 import 不支持,仅域根/STDPATH/ctart
+三路径;项目根相对 src.todo 形态可达但需 parse_pkg 面对齐)。
+**SL-8c 全片收官+T1 销账+P2 desugar 全链入库。余=loader 兄弟文件 import
+(P2 前置)+todo_v10 拆分夹具复原(依赖前置)+多级 props(随终锚)。**
 **③ 已落(5b5e910)**:钩子退役——run/run_kb/run_d/run_kb_d 降内部
 (rt_run_src/rt_run_kb_src/rt_run_anchor/rt_run_kb_anchor);合成面
 (run(ViewCall))即唯一文档化用户入口;消费面 9 文件机械迁移。
