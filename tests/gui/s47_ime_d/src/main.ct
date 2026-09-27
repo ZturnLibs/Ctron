@@ -1,0 +1,79 @@
+// tests/gui/s47_ime_d —— P-M3:IME 组词内联渲染域包夹具(headless)
+// 判据:①d_focus 聚焦 input ②d_ime_set 注入组词态 → 命令缓冲 TEXT 含组词串
+// (marked range 内联可见,§10.5)③mirror 模型值不动(bind 单一起源)④清除回落
+use gui.{test, d_focus, d_frame, d_expect_text, d_ime_set, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte}
+
+struct St {
+    var draft: Str
+}
+
+view ImeD(m: Box[St]) {
+  <vbox class="root">
+    <label class="title">S47 IME</label>
+    <input bind={m.draft} class="fld"/>
+    <label class="mirror">{m.draft}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 20 h: 34 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style mirror { fg: "#22c55e" h: 30 }
+
+// 命令缓冲含子串扫描(组词串随光标位嵌入 ishow,整串断言受 blink 相位扰)
+fn cmds_contain(t: Box[Driver], sub: Str) -> I32 {
+    var n: I32 = gui_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            var ln: I32 = gui_cmd_text_len(i)
+            var j: I32 = 0
+            while j + sub.len <= ln {
+                var ok: I32 = 1
+                var k: I32 = 0
+                while k < sub.len {
+                    if gui_cmd_text_byte(i, j + k) != byte_at(sub, k) {
+                        ok = 0
+                    }
+                    k += 1
+                }
+                if ok == 1 {
+                    return 1
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[St](St { draft: "ready" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| buf.push(m.draft),
+        |name| { },
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| buf.push(m.draft))
+            d_expect_text(t, "S47 IME")
+            d_expect_text(t, "ready")
+            // 组词注入:聚焦(光标 0)+ 组词串 → input TEXT 含组词(内联可见)
+            d_focus(t)
+            d_ime_set("ni'hao")
+            d_frame(t, |buf| buf.push(m.draft))
+            if cmds_contain(t, "ni'hao") != 1 {
+                panic("s47: 组词串未内联渲染")
+            }
+            // mirror 模型值不动(bind 单一起源;组词仅显示态)
+            d_expect_text(t, "ready")
+            // 清除回落:组词清空 → input 回原值
+            d_ime_set("")
+            d_frame(t, |buf| buf.push(m.draft))
+            d_expect_text(t, "ready")
+            if cmds_contain(t, "ni'hao") == 1 {
+                panic("s47: 组词清除未回落")
+            }
+        })
+    return rc
+}

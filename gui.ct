@@ -2914,6 +2914,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 } else {
                     ishow = byte_slice(ival, 0, ic) + byte_slice(ival, ic, ival.len)
                 }
+                // P-M3:IME 组词内联(§10.5 marked range 可见;光标随组词尾;
+                // 组词仅显示态,模型仍 bind 单一起源,上屏才经 type 3 进编辑管线)
+                var ipre: Str = gui_ime_preedit()
+                if ipre != "" {
+                    ishow = byte_slice(ival, 0, ic) + ipre + "|" + byte_slice(ival, ic, ival.len)
+                }
             }
             if ishow != "" {
                 var isz: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
@@ -3543,6 +3549,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     var dn: I32 = gui_mouse_down()
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
+    gui_ime_feed_caret(rects, hits)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     while !WindowShouldClose() {
@@ -3667,6 +3674,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var dn: I32 = gui_mouse_down()
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
+    gui_ime_feed_caret(rects, hits)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     var frames: I32 = 0
@@ -3689,6 +3697,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     n = rt_draw_frame(t, bind, w, h, hits, hinst, hv3, gui_mouse_down())
                     rects = List[I32]()
                     rt_collect_rects(n, rects)
+                    gui_ime_feed_caret(rects, hits)
                 }
             }
         }
@@ -3893,6 +3902,14 @@ pub fn d_active(t: Box[Driver], on: I32) -> I32 {
 }
 
 // 焦点注入口(§2.2 headless):聚焦树内首个 input;失焦 = d_blur
+#[trusted]
+extern "c" fn gui_ime_test_set(text: Str) -> I32
+
+// P-M3:headless 组词注入(test 驱动面;渲染即断言,零真窗)
+pub fn d_ime_set(text: Str) -> I32 {
+    return gui_ime_test_set(text)
+}
+
 pub fn d_focus(t: Box[Driver]) -> I32 {
     var i: I32 = 0
     while i < t.t.ntag.len {
@@ -4341,6 +4358,32 @@ pub fn char_str(k: I32) -> Str {
 
 // SL-8c-4④:事件名实例后缀取整("头:N" 尾部数字;无后缀 = 0)——
 // 合成 act 的逐行事件分支消费(P-H1 命中契约的解码侧)
+// P-M3:聚焦节点 rect 反喂 IME shim(候选窗定位;cmd ×100 域;v1 静态布局
+// 口径——反喂点 = collect 时点,动态布局随帧刷新登记)
+fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return 1
+    }
+    var j: I32 = 0
+    while j < hits.len {
+        if hits[j] == fn0 {
+            if j < rects.len {
+                var ci: I32 = rects[j]
+                gui_ime_set_caret(gui_cmd_x100(ci) / 100, gui_cmd_y100(ci) / 100, gui_cmd_w100(ci) / 100, gui_cmd_h100(ci) / 100)
+            }
+            j = hits.len + 1
+        }
+        j += 1
+    }
+    return 0
+}
+
+#[trusted]
+extern "c" fn gui_ime_preedit() -> Str
+#[trusted]
+extern "c" fn gui_ime_set_caret(x: I32, y: I32, w: I32, h: I32) -> I32
+
 pub fn ev_suffix_i(name: Str) -> I32 {
     var j: I32 = name.len
     while j > 0 {

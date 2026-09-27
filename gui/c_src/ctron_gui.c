@@ -9,6 +9,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#if defined(__APPLE__)
+// P-M3 IME 状态与弱回退(默认无 IME;链接 ime_shim.m 时强符号覆盖)。
+// 状态驻此(真臂/回退/test 注入三方同源);域包 input 分支/collect 反喂引用
+// 符号,fixture 不链 ime_shim.o 亦可链接。
+char g_ime_pre[256] = {0};
+int g_ime_has_pre = 0;
+int g_ime_crect[4] = {0, 0, 0, 0};
+__attribute__((weak)) const char* gui_ime_preedit(void) { return g_ime_pre; }
+__attribute__((weak)) int gui_ime_has_preedit(void) { return g_ime_has_pre; }
+__attribute__((weak)) int gui_ime_set_caret(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; return 0; }
+__attribute__((weak)) void gui_ime_swizzle(void) { }
+// headless 注入口(d_ime_set 桥;真臂 swizzle 不经此)
+int gui_ime_test_set(const char* s) {
+    int n = 0;
+    while (s[n] != 0 && n < 255) { g_ime_pre[n] = s[n]; n += 1; }
+    g_ime_pre[n] = 0;
+    g_ime_has_pre = n > 0;
+    return 0;
+}
+#endif
 
 static Clay_RenderCommandArray g_cmds = { 0 };
 
@@ -119,6 +139,10 @@ static Clay_Dimensions ctron_measure(Clay_StringSlice text, Clay_TextElementConf
 }
 
 int gui_clay_init(int w, int h) {
+#if defined(__APPLE__)
+    gui_ime_swizzle(); // P-M3 IME 臂(幂等;ime_shim.m)
+#endif
+
     uint32_t min = Clay_MinMemorySize();
     void *mem = malloc(min);
     Clay_Initialize(Clay_CreateArenaWithCapacityAndMemory(min, mem),
