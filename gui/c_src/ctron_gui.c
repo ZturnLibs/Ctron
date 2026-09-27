@@ -76,9 +76,21 @@ int gui_poll_event(void) {
         return g_cur.type;
     }
     int c = GetCharPressed();
-    if (c > 0) { g_cur = (GuiEvent){ 3, c, 0, 0 }; return 3; }
+    if (c > 0) {
+        static int ime_tr = -1;
+        if (ime_tr < 0) { ime_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
+        if (ime_tr) { fprintf(stderr, "[POLLC] char=%d\n", c); }
+        g_cur = (GuiEvent){ 3, c, 0, 0 };
+        return 3;
+    }
     int k = GetKeyPressed();
-    if (k != 0) { g_cur = (GuiEvent){ 1, k, 0, 0 }; return 1; }
+    if (k != 0) {
+        static int ime_tr2 = -1;
+        if (ime_tr2 < 0) { ime_tr2 = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
+        if (ime_tr2) { fprintf(stderr, "[POLLC] key=%d\n", k); }
+        g_cur = (GuiEvent){ 1, k, 0, 0 };
+        return 1;
+    }
     float wv = GetMouseWheelMove();
     if (wv != 0.0f) {
         int iv = (int)wv;
