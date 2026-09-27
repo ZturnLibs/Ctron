@@ -113,7 +113,7 @@ fn jraw(line: Str, key: Str) -> Str {
 }
 
 // [a,b) 子串重建(整串拼接,避 byte_slice 中段非 NUL 结尾 == 雷)
-fn bseg(s: Str, a: I32, b: I32) -> Str {
+pub fn bseg(s: Str, a: I32, b: I32) -> Str {
     var out = ""
     var i: I32 = a
     while i < b {
@@ -228,9 +228,12 @@ fn hfind_str(s: Str, want: Str) -> I32 {
 }
 
 // hex 字符 → 0-15(否则 -1)
-fn hxv(c: I32) -> I32 {
+pub fn hxv(c: I32) -> I32 {
     if c >= 48 && c <= 57 {
         return c - 48
+    }
+    if c >= 65 && c <= 70 {
+        return c - 55
     }
     if c >= 97 && c <= 102 {
         return c - 87
@@ -239,7 +242,7 @@ fn hxv(c: I32) -> I32 {
 }
 
 // ASCII 码点 → 单字符(本应用 \\u 只产控制字符,ASCII 域内;域外回空)
-fn one_ascii(v: I32) -> Str {
+pub fn one_ascii(v: I32) -> Str {
     if v < 0 || v > 126 {
         return ""
     }

@@ -33,7 +33,13 @@ fn f_auth_page(title: Str, err: Str, action: Str, submit: Str, alt_href: Str, al
     body = body + "<button type=\"submit\">" + ht_esc(submit) + "</button>"
     body = body + "</form>"
     body = body + "<p><a href=\"" + alt_href + "\">" + ht_esc(alt_text) + "</a></p>"
-    return ht_page(title, body)
+    return ht_page(title, css() + body)
+}
+
+// 页面样式(深色主题浏览器下无样式 HTML 黑底黑字不可读;花括号遵守
+// 字符串字面量纪律:开括号 \{ 转义、闭括号裸写——与 one_ascii 表同款)
+fn css() -> Str {
+    return "<style>body\{background:#f5f6f8;color:#1d2129;font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:40px auto;padding:0 20px}h1\{font-size:26px}input\{font-size:16px;padding:8px 12px;border:1px solid #ccd0d5;border-radius:8px;margin-right:8px}button\{font-size:14px;padding:8px 12px;border:1px solid #ccd0d5;border-radius:8px;background:#fff;color:#1d2129;cursor:pointer}button:hover\{background:#e8f0fe}form\{display:inline-block;margin:0}ul\{list-style:none;padding:0}li\{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #ececec}.done .title\{text-decoration:line-through;color:#9aa0a6}.err\{color:#d93025}.empty\{color:#80868b}header\{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.uid\{font-weight:600}</style>"
 }
 
 // ---- 页面 ----
@@ -76,11 +82,11 @@ pub fn view_app(uid: Str, ids: List[Str], titles: List[Str], dones: List[Str]) -
         }
         body = body + "</ul>"
     }
-    return ht_page("todo", body)
+    return ht_page("todo", css() + body)
 }
 
 pub fn view_404() -> Str {
-    return ht_page("404", "<h1>404</h1><p><a href=\"/\">回首页</a></p>")
+    return ht_page("404", css() + "<h1>404</h1><p><a href=\"/\">回首页</a></p>")
 }
 
 test "login page shape and escape" {

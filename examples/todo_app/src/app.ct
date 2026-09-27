@@ -9,10 +9,9 @@
 use net.{ Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_accept, net_read_t, net_write, net_close, last_net_error }
 use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len, http_clen, http_head_end }
 use http.frm.metrics.{ mx_meta, mx_line }
-use http.form.{ form_parse, form_count, form_key_at, form_val_at }
 use std.strconv.{ parse_i64, sc_get_l }
 use std.str.{ contains }
-use todo_app.data.{ dstr, fld_s, fld_i, fld_b, load_file, save_file, user_line, todo_line, user_validate, user_auth, salt_new, pw_hash, todos_of, todo_toggle, todo_delete, max_todo_id, now_iso }
+use todo_app.data.{ dstr, fld_s, fld_i, fld_b, load_file, save_file, user_line, todo_line, user_validate, user_auth, salt_new, pw_hash, todos_of, todo_toggle, todo_delete, max_todo_id, now_iso, bseg, hxv, one_ascii }
 use todo_app.sess.{ tok_sign, tok_verify, cookie_get, cookie_set }
 use todo_app.views.{ view_login, view_register, view_app, view_404 }
 
@@ -133,23 +132,115 @@ fn respond_res(cnt: &I64[], net: StdNet, fd: I64, buf: &I64[], r: Res) {
     cnt[cslot(r.code)] = cnt[cslot(r.code)] + 1
 }
 
-// urlencoded 表单体取字段(解析败或未现回 dft;match 形沿 http/form.ct C13a)
-fn form_fld(ps: Option[List[Str]], key: Str, dft: Str) -> Str {
-    match ps {
-        Some(xs) => {
-            var i: I32 = 0
-            while i < form_count(xs) {
-                if form_key_at(xs, i) == key {
-                    return form_val_at(xs, i)
-                }
-                i += 1
-            }
-            return dft
-        }
-        None => {
-            return dft
-        }
+// 表单体取字段(本地 UTF-8 感知解码;http/form 的 C8 域拒非 ASCII 字节,
+// 中文标题必需——utf8_enc 发射口径可用,interp ?? 与纯发射臂的本应用无涉)
+
+fn pctb(s: Str, i: I32) -> I32 {
+    if i + 2 >= s.len || byte_at(s, i) != 37 {
+        return 0 - 1
     }
+    let h1 = hxv(byte_at(s, i + 1))
+    let h2 = hxv(byte_at(s, i + 2))
+    if h1 < 0 || h2 < 0 {
+        return 0 - 1
+    }
+    return h1 * 16 + h2
+}
+
+// 百分号解码:'+' → 空格;%XX 单字节直出(ASCII 域),连续多字节按 UTF-8
+// 序列重组码点经 utf8_enc 还原(2-4 字节;非法序列原样降级)
+fn pdec(s: Str) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 43 {
+            out = out + " "
+            i += 1
+            continue
+        }
+        if c == 37 {
+            let b0 = pctb(s, i)
+            if b0 < 0 {
+                out = out + "%"
+                i += 1
+                continue
+            }
+            if b0 < 128 {
+                out = out + one_ascii(b0)
+                i += 3
+                continue
+            }
+            var seq = 2
+            if b0 >= 240 {
+                seq = 4
+            } else {
+                if b0 >= 224 {
+                    seq = 3
+                }
+            }
+            let b1 = pctb(s, i + 3)
+            if b1 < 128 || b1 > 191 {
+                out = out + "%"
+                i += 1
+                continue
+            }
+            if seq == 2 {
+                out = out + utf8_enc((b0 - 192) * 64 + b1 - 128)
+                i += 6
+                continue
+            }
+            let b2 = pctb(s, i + 6)
+            if b2 < 128 || b2 > 191 {
+                out = out + "%"
+                i += 1
+                continue
+            }
+            if seq == 3 {
+                out = out + utf8_enc(((b0 - 224) * 64 + b1 - 128) * 64 + b2 - 128)
+                i += 9
+                continue
+            }
+            let b3 = pctb(s, i + 9)
+            if b3 < 128 || b3 > 191 {
+                out = out + "%"
+                i += 1
+                continue
+            }
+            out = out + utf8_enc((((b0 - 240) * 64 + b1 - 128) * 64 + b2 - 128) * 64 + b3 - 128)
+            i += 12
+            continue
+        }
+        out = out + one_ascii(c)
+        i += 1
+    }
+    return out
+}
+
+// 取表单字段(逐段找 k=v;k 匹配即百分号解码返回)
+fn f_fld(body: Str, key: Str) -> Str {
+    var seg = 0
+    var i: I32 = 0
+    while i <= body.len {
+        if i == body.len || byte_at(body, i) == 38 {
+            let pair = bseg(body, seg, i)
+            var eq: I32 = 0 - 1
+            var j: I32 = 0
+            while j < pair.len {
+                if byte_at(pair, j) == 61 {
+                    eq = j
+                    break
+                }
+                j += 1
+            }
+            if eq > 0 && bseg(pair, 0, eq) == key {
+                return pdec(bseg(pair, eq + 1, pair.len))
+            }
+            seg = i + 1
+        }
+        i += 1
+    }
+    return ""
 }
 
 fn pfx(target: Str, pre: Str) -> Bool {
@@ -343,9 +434,8 @@ fn h_login_get() -> Res {
 }
 
 fn h_login_post(users: List[Str], key: Str, body: Str) -> Res {
-    let ps = form_parse(body)
-    let fuid = form_fld(ps, "uid", "")
-    let fpass = form_fld(ps, "pass", "")
+    let fuid = f_fld(body, "uid")
+    let fpass = f_fld(body, "pass")
     if !user_auth(users, fuid, fpass) {
         return r_html(view_login("用户名或密码不对"))
     }
@@ -359,9 +449,8 @@ fn h_login_post(users: List[Str], key: Str, body: Str) -> Res {
 
 // 注册(本地副本追加 + 落盘;内存面由装配层 reload 刷新)
 fn h_register(users: List[Str], iters: I32, body: Str, path: Str) -> Res {
-    let ps = form_parse(body)
-    let fuid = form_fld(ps, "uid", "")
-    let fpass = form_fld(ps, "pass", "")
+    let fuid = f_fld(body, "uid")
+    let fpass = f_fld(body, "pass")
     let rc = user_validate(users, fuid, fpass)
     if rc != 0 {
         var msg = "注册信息不合规"
@@ -452,9 +541,7 @@ fn route_app(f_todos: Str, todos: List[Str], uid: Str, method: Str, target: Str,
         if uid.len == 0 {
             return r_red("/login", "")
         }
-        let ps = form_parse(body)
-        let title = form_fld(ps, "title", "")
-        return h_add(todos, uid, title, max_todo_id(todos) + 1, f_todos)
+        return h_add(todos, uid, f_fld(body, "title"), max_todo_id(todos) + 1, f_todos)
     }
     if pfx(target, "/app/toggle/") && method == "POST" {
         if uid.len == 0 {

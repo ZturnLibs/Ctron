@@ -656,3 +656,10 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   head/tail 吃 rc 三度咬人);④python replace 静默 no-op 须 assert 驻留。
 - **终态**:e2e 两相位 26/26 全绿(注册/登录/重复与短密错密拒/Cookie 会话/增删翻/
   多用户隔离/登出/metrics/重启持久化)。
+- **续发(2026-09-27 上午)**:①http/form 的 C8 域(line76 拒 >126 字节)使中文表单
+  必空——应用侧以 utf8_enc 发射口径自建 UTF-8 感知百分号解码(2-4 字节序列重组
+  码点)绕行,「给 Ctron 写一个完整应用」端到端落盘验证;utf8_enc interp 出 ??
+  emit 正确(与 db/pg 头注③互证),form 层 UTF-8 解码登记志向。②data.hxv 大写
+  hex 缺补(A-F)。③深色主题浏览器下无样式 HTML 黑底黑字不可读——views 内嵌
+  CSS(开括号 \{ 转义、闭括号裸写,字面量纪律同 one_ascii 表);const 在 test
+  求值域不解析(unbound),改函数形。
