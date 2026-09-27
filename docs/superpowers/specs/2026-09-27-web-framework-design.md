@@ -42,6 +42,8 @@ todo_app(四模块 ~1560 行)中真正的业务逻辑不足 400 行,其余是四
 | 13 | 次波四形态 | SSE/WS/multipart/并发四形态设计预置认可(§13);落地序:P0 编译销账 → web v1 → ④并发 → ①SSE/②WS → ③multipart(独立,仅看二进制探针) |
 | 14 | 四形态二次自审 | 语义洞=流式响应头收件箱+短路式中间件条款(§13-①1);依赖洞=「client chunked 增量读」入 SSE 波范围(实证 client.ct 无增量读);默认兜底全套(auto-close/panic 兜底/帧原语三件/WS ping-pong+Origin 同源/filename 交付即清洗/max_in_flight 预注册)入 §13 各小节 |
 | 15 | readlet 全场景演绎 | 以书签服务(双面 SSR+API/嵌套守卫角色/CORS 组粒度/分页搜索/导出/导入/后台任务/测试/部署)全流程演绎压测:通过=组粒度 CORS/角色叠加/分页取参/CSV 下载/测试三口径/部署面;发现五项入册——①§7-7 spawn 语义错误改 `req.spawn_bg` 后台 scope(连接 scope 字面用会任务静默死)、②JDoc 校验族、③flash、④err_json、⑤响应全内存边界(§8.2) |
+| 16 | 性能审计 | 实证三件:`+` 拼接 O(n²)/StringBuilder 仅挂名、Map.put 全量重建 O(n²)、no_alloc 门措辞错;定案 §14——框架内拼接收敛构建器+StringBuilder 双宿主探针+条件 L5、Req 内部平行 List 线性查写死、分配锚稳态差=0(无增长)正名+RSS 压测门 |
+| 17 | 视图面 | 微 builder `el` 族入 v1(§4.8):结构性转义+`\"` 消除;运行期模板引擎正式否决;CTML HTML 形态(创新 5)维持预留适配点 |
 
 ## 3. 分层与包结构
 
@@ -221,6 +223,28 @@ test "未登录访问 /app 踢回登录" {
 装配提成 `fn full_router(app: App) -> Router[App]`,main 与测试同源(§8-A8 条款)。
 handler 需要时钟/随机时经 `req.state` 字段注入,测试传 fake(§8-A5 条款)。
 
+### 4.8 视图微 builder(决策 17:治 `\"` 地狱与漏转义,CTML 适配点不变)
+
+```ctron
+use web.view.{ el, raw }
+
+fn row(b: Bookmark) -> El {
+    return el("li").cls(if b.done { "done" } else { "open" })
+        .child(el("a").attr("href", b.url).text(b.title))   // text/attr 值自动转义
+        .child(el("button").text("删除"))
+}
+el("ul").children(rows).done()      // -> Str,喂 html()
+```
+
+- 转义变**结构性**:`.text()/.attr()` 自动 ht_esc,信任 HTML 必须显式 `.raw()`——
+  漏转义在形态上不可能,XSS 从纪律问题变类型问题;`\"` 手拼引号消失;
+- 布局无需继承机制:`ht_page` + 函数组合即模板继承(语言即模板语言);
+- ~30 行纯函数,产出仍为 Str(`html()` 口径零变);受 §14-1 拼接常数约束,
+  内部 List[Str] 段收集末次 join,大视图等 L5;
+- **运行期模板引擎(`{{ }}` 系)正式否决**(运行期解析/零编译检查,反 Ctron 哲学);
+  CTML HTML 输出形态(创新 5,编译期查标签/属性)仍是正解与预留适配点,
+  落地后 B 与手拼并存,`html(str)` 口径不变。
+
 ## 5. 体验样例(迷你 todo,全部业务 ~75 行;今天同物 1560 行)
 
 ```ctron
@@ -353,7 +377,7 @@ panic 日志**、**时钟/随机经 state 注入惯例**、**路由匹配 ≤200
 **`req.spawn_bg`(§7-7 后台 scope)**、**JDoc 校验族(str/i64_between)**、
 **`.flash`/`req.flash()`(PRG 提示)**、**`err_json(n,msg)`**、
 **二进制安全探针门(§7-8)**、
-testkit(`ctron test` 零 socket 确定性测试)。
+testkit(`ctron test` 零 socket 确定性测试)、**视图微 builder `el/.text/.attr/.raw`(§4.8)**。
 
 ### 8.2 边界声明(B 类,把"不做"写透)
 
