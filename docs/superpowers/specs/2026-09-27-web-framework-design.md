@@ -41,6 +41,7 @@ todo_app(四模块 ~1560 行)中真正的业务逻辑不足 400 行,其余是四
 | 12 | 通用性审计 | 三风险补齐:流式=演进契约三件套(§4.4,死变体否决)、二进制=plan 探针门+条件 L4(§7-8/§9)、插件 S 契约(§4.6);六小补丁(query_all/param_f64/多值头政策/method_not_allowed/timeout_ms/spawn 惯例)入 v1(§8.1) |
 | 13 | 次波四形态 | SSE/WS/multipart/并发四形态设计预置认可(§13);落地序:P0 编译销账 → web v1 → ④并发 → ①SSE/②WS → ③multipart(独立,仅看二进制探针) |
 | 14 | 四形态二次自审 | 语义洞=流式响应头收件箱+短路式中间件条款(§13-①1);依赖洞=「client chunked 增量读」入 SSE 波范围(实证 client.ct 无增量读);默认兜底全套(auto-close/panic 兜底/帧原语三件/WS ping-pong+Origin 同源/filename 交付即清洗/max_in_flight 预注册)入 §13 各小节 |
+| 15 | readlet 全场景演绎 | 以书签服务(双面 SSR+API/嵌套守卫角色/CORS 组粒度/分页搜索/导出/导入/后台任务/测试/部署)全流程演绎压测:通过=组粒度 CORS/角色叠加/分页取参/CSV 下载/测试三口径/部署面;发现五项入册——①§7-7 spawn 语义错误改 `req.spawn_bg` 后台 scope(连接 scope 字面用会任务静默死)、②JDoc 校验族、③flash、④err_json、⑤响应全内存边界(§8.2) |
 
 ## 3. 分层与包结构
 
@@ -119,9 +120,13 @@ req.query_all("tag")       // 同名多值查询参数 List[Str](与 form_all �
 req.form("title")          // 表单 urlencoded;'+'→空格、%XX、中文就绪
 req.form_all("tag")        // 同名多值 List[Str](复选框族)
 req.json()                 // Option[JDoc]:JSON body,JDoc 取值器 str/i64/bool/list + .or
+j.str_between("title", 1, 200)   // 校验族(readlet 演绎定案):取值+域检查一体回 Option,
+j.i64_between("page", 1, 10_000) //   str/i64/bool 三型;None 由应用统一转 422——无此族
+                                 //   则每 handler ~15 行取值校验样板
 req.header("User-Agent")   // 大小写不敏感
 req.cookie("sid")          // 未带回 ""
 req.session("uid")         // with_sessions 层注入后可用
+req.flash()                // 读即清的一次性提示(PRG 标配;session 载体框架管理)
 req.state                  // S:应用状态(App 结构,内含 Mutex/Atomic 与配置)
 ```
 
@@ -138,6 +143,7 @@ json(body)   // 200 application/json
 text(body)   // 200 text/plain
 redirect(loc)   // 303 + Location(PR-G 惯例)
 status(n, body) // 任意状态码
+err_json(n, msg)   // JSON API 错误统一:status + {"error": msg}(readlet 演绎补)
 bytes(data, mime)       // 二进制直出(Ctron Str 即字节串)
 send_file(path, mime)   // 框架读盘(经能力审计)
 
@@ -152,6 +158,10 @@ return json_obj().str("title", title).i64("count", n).bool("ok", true)
 // 会话签发/注销(HttpOnly+SameSite=Lax 默认随;Secure 留配置点)
 return redirect("/app").grant_session(req.state.key, uid, 604800)
 return redirect("/login").drop_session(req.state.key)
+
+// flash:PRG 成功提示(readlet 演绎补:PRG 钉死则提示是标配)
+return redirect("/read").flash("书签已添加")     // 写 session,一次性
+// 视图侧:let tip = req.flash()   // 读即清
 
 // 其他格式
 xml(body)    // text/xml 自动;xml_esc 助手(builder 登记不做)
@@ -317,8 +327,11 @@ panic 兜 500 不泄栈;读/处理超时收编 frm/timeout;HEAD 自动应 GET �
 5. Router 启动自检 panic 优于运行期错路由;comptime 增量审计层(二期)把该项提前到编译期。
 6. OpenAPI 走运行期端点,永远与运行中服务同源;E6030 无反射下 schema 元数据显式挂
    (`.doc(...)`),不做反射魔法。
-7. **响应后异步动作惯例**:handler 返回 Resp 前可 `spawn` 后续任务(发邮件/清缓存类),
-   归调用方 scope 树;排空时由结构化并发兜底取消。框架不设第二套后台任务机制。
+7. **后台任务语义(readlet 演绎改错)**:handler 内裸 `spawn` 挂**调用方 scope=连接
+   scope**——连接断即取消(发响应后的小尾巴可用,但绝不能承载后台作业)。框架提供
+   **`req.spawn_bg(fn)`**:spawn 到框架持有的后台 scope(server 根之下,`/__shutdown`
+   排空时才整体取消),发邮件/抓取类后台作业一律走它;排空语义=排空端点等后台 scope
+   自然终结,不强制杀。
 8. **二进制安全门(plan 期探针)**:`bytes()`/上传面依赖 Str 承载任意字节,而
    `byte_slice` 中段有在册非 NUL 结尾雷。实施计划须含二进制往返探针(含 NUL 的
    body 经 进→取→byte_slice 运算→出 全链);红则登记 `Bytes` 类型语言项(§9 L4)
@@ -337,7 +350,9 @@ panic 日志**、**时钟/随机经 state 注入惯例**、**路由匹配 ≤200
 **`query_all`/`param_f64` 取参对称族**、**多值头政策(请求侧逗并/响应侧保序)**、
 **`.method_not_allowed(h)`**、**`timeout_ms(n)` 组级超时中间件**、
 **流式演进契约条款(门面/咽喉/挂点,§4.4)**、**插件 S 契约条款(§4.6)**、
-**响应后 spawn 惯例(§7-7)**、**二进制安全探针门(§7-8)**、
+**`req.spawn_bg`(§7-7 后台 scope)**、**JDoc 校验族(str/i64_between)**、
+**`.flash`/`req.flash()`(PRG 提示)**、**`err_json(n,msg)`**、
+**二进制安全探针门(§7-8)**、
 testkit(`ctron test` 零 socket 确定性测试)。
 
 ### 8.2 边界声明(B 类,把"不做"写透)
@@ -347,6 +362,9 @@ testkit(`ctron test` 零 socket 确定性测试)。
   仅并发形态有意义,随 RT 落地。
 - **TLS**:v1 明文 HTTP;生产经反代终结 TLS;`std/tls` 落地后挂 TLS 列志向;
   `Secure` cookie 标志留配置点。
+- **响应全内存(readlet 演绎定案)**:v1 响应体一次性构造(`body: Str`),超大导出
+  (十万行 CSV 量级)受此约束——导出量级以 body_limit 同档为参考;§13-① 的 Body
+  判和落地后导出可走 chunked 写句柄,无需新机制。
 
 ### 8.3 次波登记(C 类)
 
