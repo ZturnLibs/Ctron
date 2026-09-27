@@ -3902,6 +3902,14 @@ pub fn d_active(t: Box[Driver], on: I32) -> I32 {
 }
 
 // 焦点注入口(§2.2 headless):聚焦树内首个 input;失焦 = d_blur
+#[trusted]
+extern "c" fn gui_ime_test_set(text: Str) -> I32
+
+// P-M3:headless 组词注入(test 驱动面;渲染即断言,零真窗)
+pub fn d_ime_set(text: Str) -> I32 {
+    return gui_ime_test_set(text)
+}
+
 pub fn d_focus(t: Box[Driver]) -> I32 {
     var i: I32 = 0
     while i < t.t.ntag.len {

@@ -13,10 +13,10 @@
 #import <stdio.h>
 #import <stdlib.h>
 
-// C 全局(域包/ctron_gui.c 消费;extern 桥接勿复制)
-char g_ime_pre[256] = {0};
-int g_ime_has_pre = 0;
-int g_ime_crect[4] = {0, 0, 0, 0}; // x, y(内容系,顶原), w, h
+// C 全局驻 ctron_gui.c(真臂/回退/test 注入三方同源;此处 extern)
+extern char g_ime_pre[256];
+extern int g_ime_has_pre;
+extern int g_ime_crect[4];
 static int g_ime_swizzled = 0;
 
 static int g_ime_trace(void) {
