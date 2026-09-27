@@ -1,0 +1,99 @@
+// tests/gui/s48_crossfile_d —— SL-8c-4④ P2:跨文件 view 导入
+// 被用模块 todo.ct 居视图+业务,主文件 use 请求后 desugar 端到端。
+// 合成 fn 直驱(与 s41 同契约)+键入/添加/删末/空态翻转全交互。
+use gui.{test, d_frame, d_expect_text, d_expect_absent}
+
+struct Model {
+    var draft: Str
+    var todos: List[Str]
+}
+
+fn input(m: Box[Model], text: Str) {
+    m.draft = text
+}
+
+fn add_todo(m: Box[Model]) {
+    if m.draft.len > 0 {
+        m.todos.push(m.draft)
+        m.draft = ""
+    }
+}
+
+pub fn remove_last(m: Box[Model]) {
+    if m.todos.len > 0 {
+        var kept = List[Str]()
+        var i: I32 = 0
+        while i < m.todos.len - 1 {
+            kept.push(m.todos[i])
+            i += 1
+        }
+        m.todos = kept
+    }
+}
+
+view TodoApp(m: Model) {
+  <vbox class="root">
+    <label class="title">S48 CROSSFILE</label>
+    <input bind={m.draft} class="fld" on:input={input(m)}/>
+    <button class="btn" on:click={add_todo(m)}>add</button>
+    <when cond={m.todos.len == 0}>
+      <label class="empty">nothing yet</label>
+    </when>
+    <each t in={m.todos}>
+      <label class="row">{t}</label>
+    </each>
+    <button class="del" on:click={remove_last(m)}>rm</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 24 h: 40 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style btn { bg: "#2563eb" fg: "#ffffff" w: 100 h: 40 }
+style empty { fg: "#888888" h: 30 }
+style row { fg: "#e5e5e5" h: 32 }
+style del { bg: "#7f1d1d" fg: "#ffffff" w: 80 h: 36 }
+
+
+fn make() -> Model {
+    return Model { draft: "", todos: List[Str]() }
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 320, 640,
+        |buf| __gui_bind_TodoApp(buf, m),
+        |name| __gui_act_TodoApp(name, m),
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
+            d_expect_text(t, "S48 CROSSFILE")
+            d_expect_text(t, "nothing yet")
+            // 键入持久化:on:input 名通道
+            __gui_act_TodoApp("input:hello", m)
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
+            d_expect_text(t, "hello")
+            // 添加
+            __gui_act_TodoApp("add_todo", m)
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
+            d_expect_text(t, "hello")
+            d_expect_absent(t, "nothing yet")
+            // 第二项
+            m.todos.push("world")
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
+            d_expect_text(t, "world")
+            // 删末项
+            __gui_act_TodoApp("remove_last", m)
+            d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
+            d_expect_absent(t, "world")
+            d_expect_text(t, "hello")
+        })
+    return rc
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(TodoApp(m: make()))
+}

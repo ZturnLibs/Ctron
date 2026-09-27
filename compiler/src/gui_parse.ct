@@ -3410,9 +3410,9 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     gui_ds_views(file, vnames, vprops)
     var names = List[Str]()
     var vname: Str = gui_ds_find_file(file, vnames, names)
+    var cross: Bool = false
     var ordn = List[Str]()
     if vname == "" {
-        // 跨文件:marker 泛化检
         vname = gui_ds_marker_file(file)
         if vname == "" {
             return file
@@ -3421,6 +3421,7 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
         if ordn.len == 0 {
             return file
         }
+        cross = true
     } else {
         var oi: I32 = 1
         while oi < names.len {
@@ -3428,24 +3429,77 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
             oi += 1
         }
     }
-    // Use 节点经真解析生成(手拼形态与解析器产物微差即炸合并面)
-    var utoks = List[Str]()
-    var ulns = List[Str]()
-    var ucols = List[Str]()
-    var upd = List[Str]()
-    scan4("use gui.\{ rt_run_anchor, ev_suffix_i }", utoks, ulns, ucols, upd)
-    var ucur = Atomic[I32](0)
-    var uf: List[Str] = p_file(utoks, ucur, ulns, ucols, upd)
-    var un: List[Str] = uf[1]
-    var out = List[Str]()
-    out.push(file[0])
-    out.push(un)
-    var i: I32 = 1
-    while i < file.len {
-        out.push(file[i])
-        i += 1
+    gui_ds_rew_file(file, vname)
+    if cross {
+        var utoks = List[Str]()
+        var ulns = List[Str]()
+        var ucols = List[Str]()
+        var upd = List[Str]()
+        scan4("use gui.\{ rt_run_anchor, ev_suffix_i }", utoks, ulns, ucols, upd)
+        var ucur = Atomic[I32](0)
+        var uf: List[Str] = p_file(utoks, ucur, ulns, ucols, upd)
+        var out = List[Str]()
+        out.push(file[0])
+        out.push(uf[1])
+        var j: I32 = 1
+        while j < file.len {
+            out.push(file[j])
+            j += 1
+        }
+        file = out
     }
-    // 前置合成(合并前文件;全部遍历仅触本泳道 decl,零 stub 面)
+    var hdr: Str = "__ordn__"
+    var k2: I32 = 0
+    while k2 < ordn.len {
+        if k2 > 0 {
+            hdr = hdr + ","
+        }
+        hdr = hdr + ordn[k2]
+        k2 += 1
+    }
+    unit.push(hdr)
+    return file
+}
+
+fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[Str] {
+    if diags.len > 0 {
+        return file
+    }
+    if unit.len == 0 {
+        return file
+    }
+    var hdr: Str = unit[0]
+    if hdr.len < 9 {
+        return file
+    }
+    if byte_slice(hdr, 0, 8) != "__ordn__" {
+        return file
+    }
+    var ordntxt: Str = byte_slice(hdr, 8, hdr.len)
+    var ordn = List[Str]()
+    var oi: I32 = 0
+    var os: I32 = 0
+    while oi <= ordntxt.len {
+        if oi == ordntxt.len {
+            if oi > os {
+                ordn.push(byte_slice(ordntxt, os, oi))
+            }
+            oi += 1
+        } else {
+            if byte_at(ordntxt, oi) == 44 {
+                ordn.push(byte_slice(ordntxt, os, oi))
+                os = oi + 1
+            }
+            oi += 1
+        }
+    }
+    var vname: Str = gui_ds_target(file)
+    if vname == "" {
+        return file
+    }
+    var vnames = List[Str]()
+    var vprops = List[Str]()
+    gui_ds_views(file, vnames, vprops)
     var dn = List[Str]()
     var dt = List[Str]()
     var vi: I32 = 0
@@ -3459,7 +3513,7 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var stns = List[Str]()
     var sfk = List[Str]()
     var stv = List[Str]()
-    gui_field_tables(out, stns, sfk, stv)
+    gui_field_tables(file, stns, sfk, stv)
     var paths = List[Str]()
     var pty = List[Str]()
     var lists = List[Str]()
@@ -3469,37 +3523,11 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     var ievs = List[Str]()
     var crows = List[Str]()
     var cty = List[Str]()
-    gui_ds_collect_slots(out, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
+    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
     var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
-    var k2: I32 = 1
-    while k2 < made.len {
-        unit.push(made[k2])
-        k2 += 1
-    }
-    return out
-}
-
-// 合并后:改写调用点 + 生成三 fn 拼写进 File
-// 合并后:改写调用点(早退于 main,不触合并段)+ 拼写前置生成的 unit
-fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[Str] {
-    if diags.len > 0 {
-        // 合并已带诊断(use 不可解析等)——失败树上不合成,诊断主导出
-        return file
-    }
-    if unit.len == 0 {
-        return file
-    }
-    var vnames = List[Str]()
-    var vprops = List[Str]()
-    gui_ds_views(file, vnames, vprops)
-    var vname: Str = gui_ds_find_file(file, vnames, List[Str]())
-    if vname == "" {
-        return file
-    }
-    gui_ds_rew_file(file, vname)
     var k: I32 = 0
-    while k < unit.len {
-        file.push(unit[k])
+    while k < made.len {
+        file.push(made[k])
         k += 1
     }
     return file
