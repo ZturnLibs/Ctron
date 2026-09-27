@@ -290,11 +290,17 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
             } else {
+                // 单段 use:rel 取首段本身(同目录兄弟文件形态 dir/<mod>.ct);
+                // 多段:首段=域/包名,rel 取 seg2 起子路径(既有口径)
                 var rel = ""
-                var j2b: I32 = 2
-                while j2b < segs.len {
-                    rel = rel + "/" + segs[j2b]
-                    j2b += 1
+                if segs.len == 2 {
+                    rel = "/" + segs[1]
+                } else {
+                    var j2b: I32 = 2
+                    while j2b < segs.len {
+                        rel = rel + "/" + segs[j2b]
+                        j2b += 1
+                    }
                 }
                 mpath = dir + rel + ".ct"
                 // 域根(2026-09-23 顶层命名空间):libroot(= std 根父目录)下
