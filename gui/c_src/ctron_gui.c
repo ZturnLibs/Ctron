@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#if defined(__APPLE__)
+void gui_ime_swizzle(void);
+#endif
 
 static Clay_RenderCommandArray g_cmds = { 0 };
 
@@ -119,6 +122,10 @@ static Clay_Dimensions ctron_measure(Clay_StringSlice text, Clay_TextElementConf
 }
 
 int gui_clay_init(int w, int h) {
+#if defined(__APPLE__)
+    gui_ime_swizzle(); // P-M3 IME 臂(幂等;ime_shim.m)
+#endif
+
     uint32_t min = Clay_MinMemorySize();
     void *mem = malloc(min);
     Clay_Initialize(Clay_CreateArenaWithCapacityAndMemory(min, mem),
