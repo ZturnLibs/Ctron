@@ -402,6 +402,10 @@ fn gui_blocks_src(file: List[Str]) -> Str {
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
+        if d.len < 3 {
+            i += 1
+            continue
+        }
         if d[0] == "GuiBlock" {
             // 8c-2:props 形参表(d[5])随重建——否则内嵌兜底源丢 props,
             // 域包 gt_parse 捕获空表,求值切换/链解析静默失效
@@ -3476,6 +3480,33 @@ fn gui_ds_target(file: List[Str]) -> Str {
     return ""
 }
 
+// P2 合并面文件净化器:移除合并产物中的非节点子项(stub 签名戳/元数据字符串)
+fn gui_ds_sanitize(file: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    out.push(file[0])
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d.len > 2 {
+            var keep: Bool = false
+            var tag: Str = d[0]
+            if tag == "Fn" { keep = true }
+            if tag == "FnExt" { keep = true }
+            if tag == "Struct" { keep = true }
+            if tag == "Enum" { keep = true }
+            if tag == "GuiBlock" { keep = true }
+            if tag == "Use" { keep = true }
+            if tag == "Static" { keep = true }
+            if tag == "Const" { keep = true }
+            if keep {
+                out.push(d)
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
 fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[Str] {
     if diags.len > 0 {
         return file
@@ -3508,6 +3539,7 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
             oi += 1
         }
     }
+    file = gui_ds_sanitize(file)
     var vname: Str = gui_ds_target(file)
     if vname == "" {
         return file

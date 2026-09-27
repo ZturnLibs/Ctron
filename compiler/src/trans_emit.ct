@@ -90,6 +90,12 @@ fn ct_find_main_anchor(file: List[Str]) -> Str {
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
+        // stub/合并面守卫:len < 6 的子节点非 Fn(跳过;P1b stub 的 d[5] 为
+        // 类型戳字符串,直入 d[5] 体遍历即崩)
+        if d.len <= 5 {
+            i += 1
+            continue
+        }
         if d[0] == "Fn" && d[1] == "main" {
             var b = d[5]
             var k: I32 = 1
@@ -117,6 +123,11 @@ fn ct_swap_anchor(file: List[Str]) -> List[Str] {
     var mi: I32 = 1
     while mi < file.len {
         var d = file[mi]
+        // stub/合并面守卫(同 ct_find_main_anchor)
+        if d.len <= 5 {
+            mi += 1
+            continue
+        }
         if d[0] == "Fn" && d[1] == "main" {
             var b = d[5]
             var k: I32 = 1
