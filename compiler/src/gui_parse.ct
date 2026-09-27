@@ -3409,49 +3409,23 @@ fn gui_ds_rew_file(file: List[Str], vname: Str) -> I32 {
 }
 
 fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
+    // 单文件视图 find + ordn + 就地改写 + ordn 头
+    // (跨文件 marker 路径暂时移除:P1b 合并 stub 对 trans 无类型安全)
     var vnames = List[Str]()
     var vprops = List[Str]()
     gui_ds_views(file, vnames, vprops)
     var names = List[Str]()
     var vname: Str = gui_ds_find_file(file, vnames, names)
-    var cross: Bool = false
-    var ordn = List[Str]()
     if vname == "" {
-        vname = gui_ds_marker_file(file)
-        if vname == "" {
-            return file
-        }
-        ordn = gui_ds_ordn_file(file, vname)
-        if ordn.len == 0 {
-            return file
-        }
-        cross = true
-    } else {
-        var oi: I32 = 1
-        while oi < names.len {
-            ordn.push(names[oi])
-            oi += 1
-        }
+        return file
+    }
+    var ordn = List[Str]()
+    var oi: I32 = 1
+    while oi < names.len {
+        ordn.push(names[oi])
+        oi += 1
     }
     gui_ds_rew_file(file, vname)
-    if cross {
-        var utoks = List[Str]()
-        var ulns = List[Str]()
-        var ucols = List[Str]()
-        var upd = List[Str]()
-        scan4("use gui.\{ rt_run_anchor, ev_suffix_i }", utoks, ulns, ucols, upd)
-        var ucur = Atomic[I32](0)
-        var uf: List[Str] = p_file(utoks, ucur, ulns, ucols, upd)
-        var out = List[Str]()
-        out.push(file[0])
-        out.push(uf[1])
-        var j: I32 = 1
-        while j < file.len {
-            out.push(file[j])
-            j += 1
-        }
-        file = out
-    }
     var hdr: Str = "__ordn__"
     var k2: I32 = 0
     while k2 < ordn.len {
@@ -3465,7 +3439,7 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     return file
 }
 
-// 目标视图名:合并文件中首个 view GuiBlock(单视图约定;多视图归 P2)
+// 目标视图名:合并文件中首个 view GuiBlock
 fn gui_ds_target(file: List[Str]) -> Str {
     var i: I32 = 1
     while i < file.len {
@@ -3480,7 +3454,7 @@ fn gui_ds_target(file: List[Str]) -> Str {
     return ""
 }
 
-// P2 合并面文件净化器:移除合并产物中的非节点子项(stub 签名戳/元数据字符串)
+// P2 合并面文件净化器:移除合并产物中的非节点子项
 fn gui_ds_sanitize(file: List[Str]) -> List[Str] {
     var out = List[Str]()
     out.push(file[0])
