@@ -40,6 +40,7 @@ todo_app(四模块 ~1560 行)中真正的业务逻辑不足 400 行,其余是四
 | 11 | 遗漏审计 | 十处遗漏按 A(补入 v1)/B(边界声明)/C(次波登记)三类处置(§8) |
 | 12 | 通用性审计 | 三风险补齐:流式=演进契约三件套(§4.4,死变体否决)、二进制=plan 探针门+条件 L4(§7-8/§9)、插件 S 契约(§4.6);六小补丁(query_all/param_f64/多值头政策/method_not_allowed/timeout_ms/spawn 惯例)入 v1(§8.1) |
 | 13 | 次波四形态 | SSE/WS/multipart/并发四形态设计预置认可(§13);落地序:P0 编译销账 → web v1 → ④并发 → ①SSE/②WS → ③multipart(独立,仅看二进制探针) |
+| 14 | 四形态二次自审 | 语义洞=流式响应头收件箱+短路式中间件条款(§13-①1);依赖洞=「client chunked 增量读」入 SSE 波范围(实证 client.ct 无增量读);默认兜底全套(auto-close/panic 兜底/帧原语三件/WS ping-pong+Origin 同源/filename 交付即清洗/max_in_flight 预注册)入 §13 各小节 |
 
 ## 3. 分层与包结构
 
@@ -350,7 +351,7 @@ testkit(`ctron test` 零 socket 确定性测试)。
 ### 8.3 次波登记(C 类)
 
 gzip/deflate 响应压缩(**http/enc 全套在库,协商函数现成,次波第一件**)·
-csrf/limit 中间件收编 · **SSE/WS(流式,走 §4.4 演进契约的 Body 判别和;设计预置 §13-①②)** ·
+csrf/limit 中间件收编 · **SSE/WS(流式,走 §4.4 演进契约的 Body 判别和;设计预置 §13-①②;波内含「client chunked 增量读」新件,§13-①2)** ·
 OTLP trace 插件 · multipart(受 §7-8 二进制门约束;设计预置 §13-③)· 自定义错误页 ·
 信号处理 · CTML 模板适配(gui 泳道地盘,Resp 适配点预留)·
 struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审计层。
@@ -438,6 +439,21 @@ fn h_chat(req: Req[App]) -> Resp {          // LLM 流式代理:上游逐 token 
 句柄置断位,handler 循环感知退出,上游取消由应用自判。**依赖:与 ④并发绑定同一波**
 ——串行下一个慢流卡全服,流式推送只在 coro RT 下有产品价值。
 
+**二次自审补全(2026-09-27,用户裁决入册)**:
+
+1. **流式响应头收件箱(语义洞修补,SSE/WS 共用)**:中间件后处理(调 `next` 后对
+   Resp `.with()`)对流式不生效——handler 中途已上 body,后处理到时头已出。框架内
+   消化:req 级"响应头收件箱",框架中间件(cors/secure_headers)把头写入请求级
+   缓冲,`stream_sse()/websocket()` 构造时并入;认证类中间件照旧短路拦截(不调
+   `next` 直接 401)。**语义条款:应用自定义中间件对流式路由只能短路式**。
+2. **上游增量读(依赖洞,实证)**:`http/client.ct` 只有连接级 I/O 与整包 Resp,
+   无 chunked 响应体增量读 API——**SSE 波范围必须含「client chunked 增量读」件**
+   (基于 parse 层既有编解码原语封装),否则 LLM 代理主用例空转。
+3. **默认兜底**:handler return 即框架 auto-close(忘 `close()` 不漏流);流中
+   panic = 尽力 `event("error")` + close(头已出,不能 500);句柄原语补
+   `w.id / w.retry(ms) / w.comment(str)` 三件(`sse_event_str` 参数现成);
+   auto-heartbeat 空闲保活归 ④并发波(串行下无定时面)。
+
 ### 13-② WebSocket 双向:升级接管 + 连接循环函数
 
 ```ctron
@@ -458,6 +474,13 @@ handler 签名不动——`websocket(fn(WsConn))` 构造器返回**接管型 Res
 `req.state`(Mutex[Map[room, List[WsConn]]]),框架不藏第二个状态通道(插件 S 契约
 同款纪律)。
 
+**二次自审补全**:框架默认全套(hidden)——ping/pong 自动应答、close 握手兜底
+(`recv()` 回 `None` 即框架完成关闭序列)、单消息上限沿用 body_limit 档、
+**升级前 Origin 同源默认校验**(跨站 WS 劫持是真实攻击面;放行白名单复用
+`allow_origins`);流式路由的头收件箱与短路式中间件条款同 13-①第 1 条;
+**与 ④并发绑定同一波**(串行下一条 WS 连接独占服务器,只够单连接调试);
+subprotocol 协商不做(登记)。
+
 ### 13-③ multipart 文件上传:req.file() 与 form 对称
 
 ```ctron
@@ -466,20 +489,22 @@ fn h_upload(req: Req[App]) -> Resp {
     match req.file("avatar") {                    // Option[Upload]
         Some(u) => {
             if u.size > 2_000_000 { return status(413, "太大") }
-            fs_write("./uploads/" + sanitize_name(u.filename), u.data)  // 穿越拒+能力审计
+            fs_write("./uploads/" + u.filename, u.data)   // filename 交付即清洗(安全名)
             return redirect("/ok")
         }
         None => { return status(422, "缺文件") }
     }
 }
 let many = req.files("photos")                    // List[Upload],多文件
-// Upload { filename: Str, ctype: Str, size: I64, data: Str }
+// Upload { filename: Str, raw_name: Str, ctype: Str, size: I64, data: Str }
 ```
 
 机制:解析收编 `frm/body.ct` multipart 面。安全默认:per-file 上限(body_limit 之下)、
-filename 清洗(frm/static 穿越检查同族)、ctype 白名单归应用。依赖门:`u.data` 是
-字节串——§7-8 二进制探针先走,红则 L4 `Bytes` 立项、`Upload.data: Bytes`;
-大文件流式(不落内存)登记 P8 时代志向。
+**`u.filename` 交付即清洗**(basename、去 `..` 段、空名兜 `upload.bin`——清洗在框架,
+应用拿到即可安全拼路径;原始名另存 `u.raw_name`)、ctype 白名单归应用、
+`filename*`(RFC 5987)解码 hidden、body 解析一次缓存(form/file 混调不重复解析)。
+依赖门:`u.data` 是字节串——§7-8 二进制探针先走,红则 L4 `Bytes` 立项、
+`Upload.data: Bytes`;大文件流式(不落内存)登记 P8 时代志向。
 
 ### 13-④ 高并发(微服务):应用零改动的准确含义
 
@@ -494,6 +519,7 @@ C epoll、todo_api 双 RT 20/20。
 2. **框架共享态原子化**:metrics 计数/限流桶封装一处,串行档普通 I64、并发档
    Mutex/Atomic(框架自己的;应用状态本就该 Mutex,§5 已示范);
 3. **过载保护解锁**:max-in-flight 信号量 + 503 shed(`frm/limit` 现成)——串行档
-   不启用,并发档注册即活。
+   不启用,并发档注册即活;`.max_in_flight(n)` 路由器旋钮**本设计预注册**
+   (串行档 no-op,API 面一次定死)。
 
 并发正确性回归 = 同码双 RT + 限流计数原子性测试(todo coro 22/22 先例口径)。
