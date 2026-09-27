@@ -39,6 +39,7 @@ todo_app(四模块 ~1560 行)中真正的业务逻辑不足 400 行,其余是四
 | 10 | struct 直出 | **`@derive(Json)` 正解**(无反射宪法 §8.4 的 sanctioned 通道),归编译账本;过渡 = 应用手写 `json_of`(每 struct ~5 行,derive 落地后删函数调用点零改) |
 | 11 | 遗漏审计 | 十处遗漏按 A(补入 v1)/B(边界声明)/C(次波登记)三类处置(§8) |
 | 12 | 通用性审计 | 三风险补齐:流式=演进契约三件套(§4.4,死变体否决)、二进制=plan 探针门+条件 L4(§7-8/§9)、插件 S 契约(§4.6);六小补丁(query_all/param_f64/多值头政策/method_not_allowed/timeout_ms/spawn 惯例)入 v1(§8.1) |
+| 13 | 次波四形态 | SSE/WS/multipart/并发四形态设计预置认可(§13);落地序:P0 编译销账 → web v1 → ④并发 → ①SSE/②WS → ③multipart(独立,仅看二进制探针) |
 
 ## 3. 分层与包结构
 
@@ -349,8 +350,8 @@ testkit(`ctron test` 零 socket 确定性测试)。
 ### 8.3 次波登记(C 类)
 
 gzip/deflate 响应压缩(**http/enc 全套在库,协商函数现成,次波第一件**)·
-csrf/limit 中间件收编 · **SSE/WS(流式,走 §4.4 演进契约的 Body 判别和)** ·
-OTLP trace 插件 · multipart(受 §7-8 二进制门约束)· 自定义错误页 ·
+csrf/limit 中间件收编 · **SSE/WS(流式,走 §4.4 演进契约的 Body 判别和;设计预置 §13-①②)** ·
+OTLP trace 插件 · multipart(受 §7-8 二进制门约束;设计预置 §13-③)· 自定义错误页 ·
 信号处理 · CTML 模板适配(gui 泳道地盘,Resp 适配点预留)·
 struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审计层。
 
@@ -405,3 +406,94 @@ P0 四件全部 member-emit 同族小面。
    struct 多格式同源导出,代码即文档。
 5. **Ctron 特色**:无 async 染色、无生命周期标注、闭包即中间件、值语义组合子
    (Router 是值,装配序=读码序)、Mutex/Atomic 内建并发原语护持状态。
+
+## 13. 次波四形态设计预置(2026-09-27 用户裁决认可)
+
+落地顺序:**P0 编译销账 → web v1 → ④并发 → ①SSE/②WS → ③multipart**(③独立,
+仅看二进制探针门)。四形态的协议底座均已核实:multipart 解析在 `frm/body.ct`
+(P6 交付,语料在库)、SSE 帧编解码在 `http/sse.ct`、WS 帧编解码在 `http/ws.ct`。
+
+### 13-① SSE / LLM 流式输出:Body 判和 + 写句柄
+
+```ctron
+fn h_chat(req: Req[App]) -> Resp {          // LLM 流式代理:上游逐 token → 下游 SSE
+    let resp = stream_sse()                 // body=chunked 变体;自动 text/event-stream + 禁缓冲头
+    let w = resp.writer()
+    let up = client_stream("POST", req.state.llm_url, prompt_of(req))
+    loop {
+        let chunk = up.next()
+        if chunk.is_none() || !w.event("delta", chunk.unwrap()) {
+            break                           // 上游完 或 客户端断(w.event 回 false)
+        }
+    }
+    w.close()
+    return resp                             // 串行语义:handler 返回 = 流写完
+}
+```
+
+机制:`Body` 判和(`text(Str)`/`chunked(句柄)`)是 §4.4 演进契约的兑现点;帧格式
+收编 `http/sse.ct`;上游流式读走 http/client。语义定案:中间件链在**响应头写出前**
+全部完成(认证/限流天然安全);`.with()` 对 chunked 只能动 headers;`timeout_ms`
+对流式 = **空闲超时**(每次写重置),非总时长;客户端断开 = `net_write` 错 →
+句柄置断位,handler 循环感知退出,上游取消由应用自判。**依赖:与 ④并发绑定同一波**
+——串行下一个慢流卡全服,流式推送只在 coro RT 下有产品价值。
+
+### 13-② WebSocket 双向:升级接管 + 连接循环函数
+
+```ctron
+fn h_ws(req: Req[App]) -> Resp {
+    return websocket(|conn: WsConn| {      // 中间件全在升级(握手)前走完 ✓
+        loop {
+            let m = conn.recv()             // Option[WsMsg];None=对端关
+            if m.is_none() { break }
+            conn.send(render(m.unwrap()))   // -> Bool,false=断
+        }
+    })
+}
+```
+
+机制:升级握手(RFC 6455 key/accept)在 serve 层;帧编解码收编 `http/ws.ct`。
+handler 签名不动——`websocket(fn(WsConn))` 构造器返回**接管型 Resp**,循环函数即
+连接生命周期;v1 串行下收发同循环单线程,P2 后可 spawn 分离读写。房间/广播状态归
+`req.state`(Mutex[Map[room, List[WsConn]]]),框架不藏第二个状态通道(插件 S 契约
+同款纪律)。
+
+### 13-③ multipart 文件上传:req.file() 与 form 对称
+
+```ctron
+fn h_upload(req: Req[App]) -> Resp {
+    let note = req.form("note")                   // 普通字段照旧(同一 boundary 流解析)
+    match req.file("avatar") {                    // Option[Upload]
+        Some(u) => {
+            if u.size > 2_000_000 { return status(413, "太大") }
+            fs_write("./uploads/" + sanitize_name(u.filename), u.data)  // 穿越拒+能力审计
+            return redirect("/ok")
+        }
+        None => { return status(422, "缺文件") }
+    }
+}
+let many = req.files("photos")                    // List[Upload],多文件
+// Upload { filename: Str, ctype: Str, size: I64, data: Str }
+```
+
+机制:解析收编 `frm/body.ct` multipart 面。安全默认:per-file 上限(body_limit 之下)、
+filename 清洗(frm/static 穿越检查同族)、ctype 白名单归应用。依赖门:`u.data` 是
+字节串——§7-8 二进制探针先走,红则 L4 `Bytes` 立项、`Upload.data: Bytes`;
+大文件流式(不落内存)登记 P8 时代志向。
+
+### 13-④ 高并发(微服务):应用零改动的准确含义
+
+**应用零改动是真零**:阻塞调用(`net_read_t/net_write/accept`)在 P2 coro RT 下
+自动变挂起点(reactor + ucontext 栈切换,同形异构契约 D1),serve 循环一字不改,
+一个连接等待时 RT 调度别的连接。已实证:coro 臂全周期 0.998–1.053× vs 手写
+C epoll、todo_api 双 RT 20/20。
+
+框架内部预置三件(本节落位,届时即插):
+1. **连接即子任务**:`while { accept; handle }` → `while { spawn handle(accept()) }`
+   ——一处差异,连接=scope 树子任务,取消/排空/`/debug/scopes` 免费(创新 2 兑现);
+2. **框架共享态原子化**:metrics 计数/限流桶封装一处,串行档普通 I64、并发档
+   Mutex/Atomic(框架自己的;应用状态本就该 Mutex,§5 已示范);
+3. **过载保护解锁**:max-in-flight 信号量 + 503 shed(`frm/limit` 现成)——串行档
+   不启用,并发档注册即活。
+
+并发正确性回归 = 同码双 RT + 限流计数原子性测试(todo coro 22/22 先例口径)。
