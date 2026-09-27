@@ -1,0 +1,38 @@
+// 03j_closure_param_member.ct —— P0-2:闭包形参成员读(发射臂)
+// interp 已绿;emit 曾报 "trans: v1:成员 .path 不支持(目标类型 1)"(2026-09-27 探针 p2e)
+struct Req { path: Str }
+struct Resp { body: Str }
+
+fn wrap(tag: Str) -> fn(Req) -> Resp {
+    return |r| {
+        return Resp { body: tag + ":" + r.path }   // 闭包形参成员读:曾红点
+    }
+}
+
+fn main() -> I32 {
+    let mid = wrap("mw")
+    let r = Req { path: "/x" }
+    let v = mid(r)
+    println(v.body)
+    return 0
+}
+
+// P0-3 对齐(Task 1 seam ②):#fret 收窄标量/Str 返回——fn 值链上成员读,双臂
+fn mkstr() -> fn() -> Str {
+    return | | { return "abcd" }
+}
+
+fn takelen(f: fn() -> Str) -> I32 {
+    return f().len
+}
+
+test "闭包形参成员读:形参类型从期望 fn 签名注入,struct 分支命中" {
+    let mid = wrap("mw")
+    let r = Req { path: "/x" }
+    let v = mid(r)
+    assert_eq(v.body, "mw:/x")
+    // fn() -> Str 链上成员读(#fret 标量/Str 收窄)
+    let g = mkstr()
+    assert_eq(g().len, 4)
+    assert_eq(takelen(g), 4)
+}

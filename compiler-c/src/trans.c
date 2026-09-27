@@ -153,7 +153,9 @@ void collect_fns(tc* c, const cfile* f) {
 void emit_fn(tc* c, const cfn* F, const char* cname) {
     ty ret = decl_ty_tc(c, F->ret);
     c->fn_ret = &ret;
-    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
+    const cty* saved_fnty = c->fn_ret_fnty; // P0-2:fn 返回类型为 fn(A)->B 时存 AST 节点(返回位闭包的适配签名)
+    c->fn_ret_fnty = (F->ret && F->ret->kind == TY_FN) ? F->ret : NULL;
+    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_FNPTR) ? "int64_t" /* P0-2:fn 值回传经 int64 槽(函数地址),调用点原型化 */ : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
     sb* B = c->out_sb ? c->out_sb : &c->body;
     int saved_it = c->in_test; // in_test 泄漏会让方法/例化函数体裸 return
     c->in_test = 0;
@@ -190,6 +192,7 @@ void emit_fn(tc* c, const cfn* F, const char* cname) {
     sb_s(B, "}\n");
     c->in_test = saved_it;
     c->fn_ret = NULL;
+    c->fn_ret_fnty = saved_fnty;
 }
 
 void ctron_trans_result_free(ctron_trans_result* r) {
@@ -398,7 +401,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
                 continue;
             }
             ty ret = decl_ty_tc(&c, d->fn_.ret);
-            const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
+            const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_FNPTR) ? "int64_t" /* P0-2:fn 值回传经 int64 槽(函数地址),调用点原型化 */ : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
             sb_f(h, "static %s ctron_user_%s(", rct, d->fn_.name);
             for (size_t j = 0; j < d->fn_.nparams; j++) {
                 ty pt = decl_ty_tc(&c, d->fn_.params[j].ty);

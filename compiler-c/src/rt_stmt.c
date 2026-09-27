@@ -227,6 +227,8 @@ int type_has_drop(const rt* R, const char* ty) {
     return 0;
 }
 static void drop_frame(rt* R, env* f) {
+    if (f->captured) return; // P0-2:被闭包捕获的帧绑定仍存活(env_pop 同判;此前 drop_scope
+                             // 无条件回收,跨 fn 返回的闭包捕获全部失效——03j interp 臂根因)
     for (bind* b = f->head; b; b = b->next) {
         if (b->slot.k != V_STRUCT || !type_has_drop(R, b->slot.type)) continue;
         const cfn* F = cls_method(R, b->slot.type, "drop");

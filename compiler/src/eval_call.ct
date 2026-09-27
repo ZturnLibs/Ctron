@@ -48,6 +48,11 @@ fn call_cv(file: List[Str], env: List[Str], out: Str, v: List[Str], vals: List[S
             k += 1
         }
         var br = eval_expr(file, nenv, out, v[2])
+        // P0-2:闭包体内 return 就地取值,"r" 态不外泄调用方(镜像 call_decl_vals;
+        // 此前泄漏使调用方语句流截断——03j 解释臂静默丢输出根因)
+        if br[0] == "r" {
+            return e4("k", env, br[2], br[3])
+        }
         return e4(br[0], env, br[2], br[3])
     }
     panic("call value")

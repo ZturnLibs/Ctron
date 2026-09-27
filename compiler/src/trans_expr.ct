@@ -910,15 +910,38 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // 此前兜底 "(ct_i)0" 使零参直调多传一参(cc 报 too many arguments)
                 if far == 0 { rargs = "" } else { if ag.len > 1 { rargs = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs } else { rargs = "(ct_i)0" + rargs } }
                 var rhead = "((ct_fn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
-                // P0-3:返回型别取 fn(T)->R(#fret 侧条目,ct_fn 绑定)——聚合返回经
-                // 返回类型原型化指针调用(ct_i 统一 ABI 装不下 struct,链上成员读全靠它)
+                // P0-3:返回型别取 fn(T)->R(#fret 侧条目,ct_fn 绑定)——返回经
+                // 返回类型原型化指针调用(ct_i 统一 ABI 装不下 struct,链上成员读全靠它)。
+                // P0-2/seam② 收窄:标量/Str R(s/b/f/g/6/7/u:/…;v/i 除外)同式入码——
+                // i 维持 ct_fnK 旧形态(语义无差),v 无值。
+                // 头部原型须带实参 ABI(rhead=ct_i×far;fhead=void*+ct_i×(far-1));
+                // 此前 (*)() 恒零参,Task 1 仅零参 struct 返回(03k)踩不到,seam② 放宽后即炸
                 var frk = "#fret:" + cal[1]
                 if ct_env_has(env, frk) {
                     var fretc = ct_env_ty(env, frk)
-                    if fretc.len > 2 && byte_slice(fretc, 0, 2) == "u:" {
-                        var frt = ct_ctype(fretc)
-                        fhead = "((" + frt + "(*)(void*))(((ct_clop)" + fv + ")->fn))"
-                        rhead = "((" + frt + "(*)())(((ct_clop)" + fv + ")->fn))"
+                    if fretc.len > 0 {
+                        if fretc != "i" {
+                            if fretc != "v" {
+                                var frt = ct_ctype(fretc)
+                                var rp = "void"
+                                if far > 0 {
+                                    rp = "ct_i"
+                                    var pk: I32 = 2
+                                    while pk <= far {
+                                        rp = rp + ", ct_i"
+                                        pk += 1
+                                    }
+                                }
+                                var fp2 = "void*"
+                                var pk2: I32 = 1
+                                while pk2 <= far {
+                                    fp2 = fp2 + ", ct_i"
+                                    pk2 += 1
+                                }
+                                fhead = "((" + frt + "(*)(" + fp2 + "))(((ct_clop)" + fv + ")->fn))"
+                                rhead = "((" + frt + "(*)(" + rp + "))(((ct_clop)" + fv + ")->fn))"
+                            }
+                        }
                     }
                 }
                 return fcast + "(((ct_clop)" + fv + ")->env == (void*)1 ? " + rhead + "(" + rargs + ") : " + fhead + "(" + fargs + "))"
