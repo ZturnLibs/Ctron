@@ -98,6 +98,14 @@ premerge/postmerge+field_tables 守卫+family rew 去重;跨文件 emit+cc+
 link+run 全通;todo_v10 单文件面全绿。**跨文件拆分夹具(todo.ct+main.ct)
 待下次复原挂阶梯验证。**
 **余 ③钩子退役已完成(5b5e910)**。SL-8c 全片收官。
+**emit 面 premerge SEGV 专项(0927 登记)**:ctron-emit 处理含 run(ViewCall)
+的跨文件 fixture 时编译器自身 SEGV(-O0 -g lldb 定位 gui_blocks_src:6357
+ctron_len/strcmp 对 stub 字符串子项解引用)。sanitizer+field_tables 守卫+
+gui_blocks_src 短子项守卫均不足——compiled C 的 List[Str] 统一存储对
+"字符串 vs 嵌套 List" 无运行时类型标记,trans 全文件遍历族逐函数守卫
+不可持续。**须 trans 发射面 runtime 类型安全改造**(候选:值 tag 字段/
+AST 节点不可 string 化/P1b stub 不可见化)方可彻底消解。
+非单会话可修,独立专项。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr
