@@ -52,6 +52,15 @@ AMEM 直方图实证 loop 基准 10K 次迭代产生 2.07 亿次分配(每迭代
   ——「快路径在 seed 解释口径下的行为分歧」成为新开项(嫌凝:seed 对超 I32
   常量/as 截断/解释口径 I64 链的某环节),修复前 c6 快路径不得落库。
 - eval_val 已回滚至 HEAD;本节改动与证据留存于会话史与本计划。
+- **conc×3 根因终版(0927,x86_64 CI 分歧详情实测)**:joinor/cancel=解释臂
+  **完全没有** drop 标记(panic 在 call/spawn 上下文,drop 整段跳过);
+  drop_unwind=解释臂标记延迟到块退出第 4 行(native 第 1 行即刻 unwind)。
+  **根因=drop 时机语义分歧**:native=assert→ctron_panic→ctron_drop_unwind
+  即刻析构;interp=延迟到块退出、部分上下文整段跳过。
+  **修复设计**:即刻 unwind 需要 env 条目就地标记防双跑→现役 Ctr 缺 list
+  索引写→按能力优先于 hack 准则,提案 `list_set` 内建扩展(真实的 List
+  原位写能力)+ 基于 it 的 panic 即刻 unwind 游走;或并入 V2 env 重设计。
+  呈报待批(能力扩展需用户裁决)。
 - **c6cmp 分歧已破案(0926,双跑自校验探针)**:分歧输入对 = `c6cmp("-0","0")`
   ——原符号感知实现判 **-1**(`"-0"` 带负号即判负,"负零小于零"的字符串域怪癖),
   数学快路径判 0 → time.ct 的负值格式化分支依赖该 quirky 序承载。裁决:**比较
