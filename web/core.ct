@@ -1,2 +1,205 @@
 // core.ct —— web 核心:Resp/Req/构造器/取参/构建器(Plan 2a Task 1-4 填充)
 // 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4;纪律 §14-1
+
+use std.str.{ contains, join }
+
+// ---- Resp 构造器族(§4:五构造器 + 安全默认) ----
+
+pub struct Pair {
+    let k: Str
+    let v: Str
+}
+
+pub struct Resp {
+    let status: I32
+    let headers: List[Pair]
+    let body: Str
+}
+
+fn base(status: I32, ctype: Str, body: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Content-Type", v: ctype })
+    hs.push(Pair { k: "X-Content-Type-Options", v: "nosniff" })
+    return Resp { status: status, headers: hs, body: body }
+}
+
+pub fn html(body: Str) -> Resp {
+    return base(200, "text/html; charset=utf-8", body)
+}
+
+pub fn json(body: Str) -> Resp {
+    return base(200, "application/json", body)
+}
+
+pub fn text(body: Str) -> Resp {
+    return base(200, "text/plain", body)
+}
+
+pub fn redirect(loc: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Location", v: loc })
+    return Resp { status: 303, headers: hs, body: "" }
+}
+
+pub fn status(n: I32, body: Str) -> Resp {
+    return base(n, "text/plain", body)
+}
+
+pub fn err_json(n: I32, msg: Str) -> Resp {
+    return json_obj().str("error", msg).end_status(n)
+}
+
+pub fn with(r: Resp, k: Str, v: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    var i: I32 = 0
+    while i < r.headers.len {
+        hs.push(r.headers[i])
+        i += 1
+    }
+    hs.push(Pair { k: k, v: v })
+    return Resp { status: r.status, headers: hs, body: r.body }
+}
+
+pub fn with_status(r: Resp, n: I32) -> Resp {
+    return Resp { status: n, headers: r.headers, body: r.body }
+}
+
+pub fn resp_header(r: Resp, k: Str) -> Str {
+    var i: I32 = 0
+    while i < r.headers.len {
+        if r.headers[i].k == k {
+            return r.headers[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+pub fn resp_body(r: Resp) -> Str {
+    return r.body
+}
+
+pub fn resp_status(r: Resp) -> I32 {
+    return r.status
+}
+
+// ---- json_obj 构建器(§4.4;函数式段收集,§14-1 合规) ----
+// 注:UFCS 按函数名精确解析,链式面 .str/.i64/.bool/.strs/.end/.end_status
+// 即自由函数本名(spec §4 链式示例口径;实测见 task-1-report)。
+
+pub struct JObj {
+    let parts: List[Str]
+}
+
+pub fn json_obj() -> JObj {
+    return JObj { parts: List[Str]() }
+}
+
+pub fn str(b: JObj, k: Str, v: Str) -> JObj {
+    return jpush(b, "\"" + json_esc(k) + "\":\"" + json_esc(v) + "\"")
+}
+
+pub fn i64(b: JObj, k: Str, v: I64) -> JObj {
+    return jpush(b, "\"" + json_esc(k) + "\":" + v.to_string())
+}
+
+pub fn bool(b: JObj, k: Str, v: Bool) -> JObj {
+    var s = "false"
+    if v {
+        s = "true"
+    }
+    return jpush(b, "\"" + json_esc(k) + "\":" + s)
+}
+
+pub fn strs(b: JObj, k: Str, xs: List[Str]) -> JObj {
+    var items: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < xs.len {
+        items.push("\"" + json_esc(xs[i]) + "\"")
+        i += 1
+    }
+    return jpush(b, "\"" + json_esc(k) + "\":[" + join(items, ",") + "]")
+}
+
+fn jpush(b: JObj, piece: Str) -> JObj {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < b.parts.len {
+        ps.push(b.parts[i])
+        i += 1
+    }
+    ps.push(piece)
+    return JObj { parts: ps }
+}
+
+fn jfinish(b: JObj, wrap: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    ps.push("\{")
+    var i: I32 = 0
+    while i < b.parts.len {
+        if i > 0 {
+            ps.push(",")
+        }
+        ps.push(b.parts[i])
+        i += 1
+    }
+    ps.push("}" + wrap)
+    return join(ps, "")
+}
+
+pub fn end(b: JObj) -> Str {
+    return jfinish(b, "")
+}
+
+pub fn end_status(b: JObj, n: I32) -> Resp {
+    return status(n, jfinish(b, ""))
+}
+
+fn json_esc(s: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 34 {
+            ps.push("\\\"")
+        } else if c == 92 {
+            ps.push("\\\\")
+        } else if c == 10 {
+            ps.push("\\n")
+        } else if c == 13 {
+            ps.push("\\r")
+        } else if c == 9 {
+            ps.push("\\t")
+        } else {
+            ps.push(byte_slice(s, i, i + 1))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// ---- 测试 ----
+
+test "resp 构造器安全默认" {
+    let r = html("<h1>hi</h1>")
+    assert(resp_status(r) == 200)
+    assert(contains(resp_header(r, "Content-Type"), "text/html"))
+    assert(contains(resp_header(r, "X-Content-Type-Options"), "nosniff"))
+    let rd = redirect("/app")
+    assert(resp_status(rd) == 303)
+    assert(resp_header(rd, "Location") == "/app")
+    let r2 = with_status(with(json("\{" + "}"), "Set-Cookie", "a=b"), 201)
+    assert(resp_status(r2) == 201)
+    assert(resp_header(r2, "Set-Cookie") == "a=b")
+}
+
+test "json_obj 转义与类型" {
+    let s = json_obj().str("t", "a\"b").i64("n", 42).bool("ok", true).end()
+    assert(s == "\{" + "\"t\":\"a\\\"b\",\"n\":42,\"ok\":true}")
+    assert(contains(s, "\"t\":\"a\\\"b\""))
+    assert(contains(s, "\"n\":42"))
+    assert(contains(s, "\"ok\":true"))
+    let e = err_json(422, "bad")
+    assert(resp_status(e) == 422)
+    assert(contains(resp_body(e), "\"error\":\"bad\""))
+}
