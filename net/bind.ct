@@ -26,6 +26,8 @@ pub struct Box64 {
 
 pub extern "c" fn ctron_net_now_ns() -> I64
 pub extern "c" fn ctron_net_sleep_ms(ms: I64) -> I64
+pub extern "c" fn ctron_net_sleep_ns(ns: I64) -> I64
+pub extern "c" fn ctron_net_clock_jump(ns: I64) -> I64
 pub extern "c" fn ctron_net_last_errno() -> I64
 pub extern "c" fn ctron_net_strerror(e: I64) -> Str
 pub extern "c" fn str_from_c(s: Str) -> Str

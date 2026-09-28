@@ -390,11 +390,18 @@ static void rt_lock(void)   { pthread_mutex_lock(&rt_g); }
 static void rt_unlock(void) { pthread_mutex_unlock(&rt_g); }
 
 /* ───────────────────────── 工具 ───────────────────────── */
-static uint64_t now_ns(void)
+/* 时钟钩(T10;§11.6):net 垫片强覆盖以贯通虚拟钟(ctron_net_clock_jump);
+ * 未链垫片/实钟态 = 本弱缺省(单调实钟)。 */
+__attribute__((weak)) uint64_t ctron_rt_clock_ns(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+
+static uint64_t now_ns(void)
+{
+    return ctron_rt_clock_ns();
 }
 
 static size_t key_bucket(void *k)
@@ -1149,6 +1156,29 @@ void ctron_rt_wake(void *key)
     c = map_get_locked(key);
     if (c) coro_wake_locked(c);
     rt_unlock();
+}
+
+/* 绝对 deadline 停车(T10):armed+入堆+park;早醒(取消广播/虚假唤醒)
+ * 不内循环——调用方以 now vs deadline 判到期(ctron_net_sleep_ns 契约)。 */
+void ctron_rt_sleep_until(uint64_t deadline)
+{
+    if (!rt_tls_cur()) {
+        uint64_t now = now_ns();
+        if (now < deadline) {
+            uint64_t rel = deadline - now;
+            struct timespec ts = { (time_t)(rel / 1000000000ull), (long)(rel % 1000000000ull) };
+            while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+                ;
+        }
+        return;
+    }
+    rt_coro *self = rt_tls_cur();
+    rt_lock();
+    self->armed = 1;
+    self->arm_seq++;
+    heap_push(deadline, self, self->arm_seq);
+    rt_unlock();
+    coro_suspend(DESCHED_PARK);
 }
 
 void ctron_rt_sleep_ms(int64_t ms)

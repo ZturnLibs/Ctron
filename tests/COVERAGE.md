@@ -519,3 +519,18 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - 新登记:04g 发射臂类方法分发缺位(c.hi() → t_hi 未声明;UFCS 修后暴露的下一层,
   归类方法发射批次)。
 - net 双矩阵 15/15×2;db 44/10 基线;suite 87/88 维持;cargo 14/0;meta/fmt 过。
+
+**2026-09-28 T10 sleep_ns/可取消/虚拟时钟落库**(spec-gap W2;§11.6/§11.4):
+- C 三件:ctron_net_sleep_ns(协程面 ctron_rt_sleep_until 绝对 deadline 停车,取消广播早醒
+  →返 1(deadline 未到判据),裸线程真睡返 0=join 等效口径);ctron_net_clock_jump(虚拟态
+  偏移累加,实钟态 -1+EINVAL);虚拟钟(CTRON_CLOCK=virtual:冻结基点+跳变量,env 惰性读)。
+- rt 两件:ctron_rt_clock_ns 弱钩(rt.c 弱缺省实钟,net 垫片强覆盖贯通——虚拟跳变驱动
+  定时器堆依 deadline 序确定性触发)+ctron_rt_sleep_until;net.c 补弱哑元(裸矩阵链接纪律)。
+- 门面 net_sleep_ns/net_clock_jump(bind extern 直调,方法发射缺口在案);夹具 clock_sleep
+  三矩阵:实钟臂(下界/单调/取消 elapsed<1s)、虚拟臂(5s 虚拟定时器经跳变 33ms 真实完成)
+  ——模式探测 jump(0),实钟臂默认+coro、虚拟臂 run.sh 第三矩阵 coro+virtual 专跑块。
+- 新登记:①scope 闭包体 return 语句发射泄漏(return 直出宿主函数+块值丢失;块值须尾表达
+  式形态,coro_conc 先例;spawn 闭包不受影响)②ct_spawn pthread/协程混合分派下取消早退
+  深时序(~500ms 中间态)归 P9 栈经济注记③裸线程睡眠虚拟跳变不打断(专跑臂在协程矩阵,
+  语义注记)。
+- net 三矩阵 17/17×2+专跑;db 44/10 基线;suite 87/88 维持。

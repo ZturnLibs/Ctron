@@ -147,6 +147,7 @@ __attribute__((weak)) void ctron_rt_wait_fd(int fd, int write_side, int64_t time
 }
 __attribute__((weak)) void* ctron_rt_current(void) { return 0; }
 __attribute__((weak)) void ctron_rt_sleep_ms(int64_t ms) { (void)ms; }
+__attribute__((weak)) void ctron_rt_sleep_until(uint64_t deadline) { (void)deadline; } /* T10 */
 /* P3-A 兴趣驻留配套:fd 关闭钩子(摘 rt 驻留登记)。哑元无条件发射,同上。 */
 __attribute__((weak)) void ctron_rt_forget_fd(int64_t fd) { (void)fd; }
 /* P3-E DNS 异步化配套:park/wake 两符号同款弱垫底(resolve 协程停车等
@@ -198,7 +199,42 @@ static int ct_host4(const char* host, struct in_addr* out) {
     return 1;
 }
 
+/* ---- T10 §11.6:虚拟时钟(CTRON_CLOCK=virtual)----
+ * 虚拟态:now_ns = 冻结基点 + 跳变量(clock_jump 累加);rt 定时器堆经
+ * ctron_rt_clock_ns 弱钩(rt.c 缺省实钟,本文件强覆盖)同源走虚拟钟——
+ * 跳变即令到期定时器在 worker 下次轮询时依 deadline 序确定性触发。
+ * 裸线程睡眠仍真睡(虚拟跳变不打断裸 nanosleep;专跑臂在协程矩阵)。 */
+static int ct_vclock = -1;                 /* -1 未读 env;0 实钟;1 虚拟 */
+static pthread_mutex_t ct_vmx = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t ct_vbase = 0, ct_voff = 0;
+
+int64_t ctron_net_now_ns(void);           /* 前向(虚拟钩先于定义) */
+uint64_t ctron_rt_clock_ns(void) {         /* 强覆盖 rt.c 弱缺省 */
+    return (uint64_t)ctron_net_now_ns();
+}
+
+static void ct_vclock_init(void) {
+    const char* m = getenv("CTRON_CLOCK");
+    pthread_mutex_lock(&ct_vmx);
+    if (ct_vclock < 0) {
+        ct_vclock = (m != NULL && strcmp(m, "virtual") == 0) ? 1 : 0;
+        if (ct_vclock) {
+            struct timespec ts;
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            ct_vbase = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+        }
+    }
+    pthread_mutex_unlock(&ct_vmx);
+}
+
 int64_t ctron_net_now_ns(void) {
+    if (ct_vclock < 0) ct_vclock_init();
+    if (ct_vclock) {
+        pthread_mutex_lock(&ct_vmx);
+        int64_t v = (int64_t)(ct_vbase + ct_voff);
+        pthread_mutex_unlock(&ct_vmx);
+        return v;
+    }
 #ifdef _WIN32
     LARGE_INTEGER f, t;
     QueryPerformanceFrequency(&f);
@@ -211,6 +247,41 @@ int64_t ctron_net_now_ns(void) {
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) { *ct_err_slot() = errno; return -1; }
     return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 #endif
+}
+
+/* 虚拟钟跳变(T10;§11.6 测试形态):ns 累入偏移;非虚拟态 → -1(errno=EINVAL)。
+ * 返回跳变后累计偏移(ns)。 */
+int64_t ctron_net_clock_jump(int64_t ns) {
+    if (ct_vclock < 0) ct_vclock_init();
+    if (!ct_vclock) {
+        *ct_err_slot() = EINVAL;
+        return -1;
+    }
+    pthread_mutex_lock(&ct_vmx);
+    ct_voff += (uint64_t)ns;
+    int64_t v = (int64_t)ct_voff;
+    pthread_mutex_unlock(&ct_vmx);
+    return v;
+}
+
+/* 纳秒睡眠(T10;§11.4 挂起点):协程面 armed 定时器停车,取消广播早醒 →
+ * 返 1(取消/早醒,deadline 未到);到期返 0。裸线程真睡返 0(join 等效口径)。 */
+int64_t ctron_net_sleep_ns(int64_t ns) {
+    if (ns < 0) ns = 0;
+    if (ct_rt_sleep_parkable()) {
+        uint64_t deadline = (uint64_t)ctron_net_now_ns() + (uint64_t)ns;
+        ctron_rt_sleep_until(deadline);
+        return ((uint64_t)ctron_net_now_ns() >= deadline) ? 0 : 1;
+    }
+#ifdef _WIN32
+    Sleep((DWORD)(ns / 1000000));
+#else
+    struct timespec req;
+    req.tv_sec = (time_t)(ns / 1000000000);
+    req.tv_nsec = (long)(ns % 1000000000);
+    while (nanosleep(&req, &req) != 0 && errno == EINTR) { }
+#endif
+    return 0;
 }
 
 void ctron_net_sleep_ms(int64_t ms) {
