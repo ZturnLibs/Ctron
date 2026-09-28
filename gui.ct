@@ -3441,11 +3441,12 @@ fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
             return false
         }
     }
-    // 选区消费:非空选区先删(输入替换选区,成熟 GUI 口径)
-    if rt_sel_consume() {
+    // 选区消费:非空选区先真删(输入替换选区,成熟 GUI 口径)
+    var sel_end0: I32 = rt_sel_take()
+    if sel_end0 >= 0 {
         var v2: Str = rt_in_val(t, fn0, bind)
         var dl: I32 = gui_caret_get()
-        var nw0: Str = byte_slice(v2, 0, dl) + byte_slice(v2, dl, v2.len)
+        var nw0: Str = byte_slice(v2, 0, dl) + byte_slice(v2, sel_end0, v2.len)
         rt_in_fire(t, fn0, "input", nw0, act)
     }
     var cur: Str = rt_in_val(t, fn0, bind)
@@ -3588,11 +3589,12 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     if caret < 0 {
         caret = 0
     }
-    // 选区消费:退格/删除对非空选区 = 整段删(成熟 GUI 口径)
-    if rt_sel_consume() {
+    // 选区消费:退格/删除对非空选区 = 整段真删(成熟 GUI 口径)
+    var sel_end3: I32 = rt_sel_take()
+    if sel_end3 >= 0 {
         var v3: Str = rt_in_val(t, fn0, bind)
         var dl3: I32 = gui_caret_get()
-        var nw3: Str = byte_slice(v3, 0, dl3) + byte_slice(v3, dl3, v3.len)
+        var nw3: Str = byte_slice(v3, 0, dl3) + byte_slice(v3, sel_end3, v3.len)
         rt_in_fire(t, fn0, "input", nw3, act)
         return true
     }
@@ -4683,11 +4685,13 @@ pub fn char_str(k: I32) -> Str {
 
 // SL-8c-4④:事件名实例后缀取整("头:N" 尾部数字;无后缀 = 0)——
 // 合成 act 的逐行事件分支消费(P-H1 命中契约的解码侧)
-// 选区非空时消费:删除 [s0,s1) 并置 caret=s0(输入替换/退删的公共前奏)
-fn rt_sel_consume() -> Bool {
+// 选区非空时消费:置 caret=s0,返回 s1(调用方执行真删 [s0,s1));-1 = 无选区
+// (旧版返回 Bool 且调用方以消费后 caret 拼接 = [0,s0)+[s0,end) 原串重组,
+// 什么都没删——用户实测「Delete 不删选中」根因)
+fn rt_sel_take() -> I32 {
     var an: I32 = gui_sel_anchor_get()
     if an < 0 {
-        return false
+        return -1
     }
     var ca: I32 = gui_caret_get()
     var s0: I32 = an
@@ -4697,11 +4701,11 @@ fn rt_sel_consume() -> Bool {
         s1 = an
     }
     if s1 <= s0 {
-        return false
+        return -1
     }
     gui_sel_clear()
     gui_caret_set(s0)
-    return true
+    return s1
 }
 
 // 输入拖动选区(逐帧:按下命中输入锚定,拖动更新活动端,松开结束)
