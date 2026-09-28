@@ -1642,7 +1642,6 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                 cpi2 += 1
             }
             if !selfc3 {
-                var prev3: I32 = -1
                 while cur.load() < tks.len {
                     var pk4: Str = tks[cur.load()]
                     if pk4.len == 1 {
