@@ -170,7 +170,24 @@
 
 ### T14 · Channel 去限制(§7.3)
 
-- **预估:** 1.5–2 d。**前置:** 无(T33 并行化不依赖此件,可独立)。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** 无(T33 并行化不依赖此件,可独立)。**状态:** 待办(0928 侦察笔记已入卡,见下)
+- **侦察笔记(2026-09-28,W2 执行时实地确认)**:
+  - 运行时三处限制(driver_emit.ct:239-328):①buf[64] 定长栈内环(堆化=calloc at make)
+    ②send/recv 取模 `% 64` 硬编码(须改 `% c->cap`)③ct_chans[64] 注册表定长(取消广播
+    扫描面,改增长数组)。cap<=0→64 现行为保留。
+  - struct 值入通道 = **发射器类型层贯通件**(与 List[struct] 同底座):
+    断点=Channel[T](cap) 构造点知道 T,但 ①send 点装箱(struct→堆盒→ct_i 槽)、
+    ②recv 点拆箱(ct_res.v→struct 拷贝)都需要元素型码;env 现不记录通道元素类型
+    (ct_typeof 只出 "CH" 类粗码,推断 receiver 绑定元素型的通道 = List[struct] 的
+    "LPt" 元素码方案同源:构造点/注解点把元素码写入 env,收发点查询)。
+    ③interp 侧 call_mem "CH" send/recv 已是值直存(host List 语义)天然支持 struct——
+    只需放行 sem 的 E3020/ct_wrap_i panic 面。
+  - Sender/Receiver 作 struct 字段:sem 放行(值句柄本就是指针槽)+ db/pool.ct
+    组合层等待回切原生(pool_wait.ct 夹具在案)。
+  - 验证矩阵:cap>64 背压(cap=128 双任务往返)、struct 通道往返(源端改后接收端不变)、
+    db/pool 套件、coro 双矩阵、06_concurrency 回归。
+  - 关联在册:divergences「todo_app 发射爆炸」fn 值形参 ct_clop 野跳同族(通道槽形改造
+    时一并审视);T33 真并行复用本件环缓冲。
 - **目标:** 三件:①缓冲上限 64 解除(堆分配环形缓冲);②struct 值可入通道;③Sender/Receiver 可作 struct 字段(`db/pool.ct` 登记偏差销账)。
 - **范围:** `compiler/src/driver_emit.ct`(`ct_chan.buf[64]` 定长栈槽→堆 ring)、`trans_conc.ct`(通道值表示从标量槽改携带 struct 拷贝)、`sem_send.ct`(Send 检查面已通,查放行点)。
 - **要点:** struct 值入通道 = 值拷贝语义(struct 赋值即拷贝,§3.2),通道槽从 int64 改定宽字节槽 + 型别码;Sender/Receiver 作字段 = 它们本就是值句柄,主要解锁 sem/发射的字段声明面 + `db/pool.ct` 回切。
