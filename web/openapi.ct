@@ -1,0 +1,166 @@
+// openapi.ct —— 运行期 /openapi.json 端点:自路由表同源导出最小 OpenAPI 3
+// (Plan 2b Task 2;设计 docs/superpowers/specs/2026-09-27-web-framework-design.md §4.1;纪律 §14-1)
+//
+// 形态:`openapi_json(r, title, ver) -> Resp`——装配点一行挂载
+//   `r.get("/openapi.json", |rq| openapi_json(app, title, ver))`(app 为终态 Router;
+//   spec §4.1 `.openapi(标题, 版本)` 链式糖即此二行的封装,v1 不另入 Router 面)。
+//   spec §13-⑥ 惰性缓存不在此件——端点闭包自持缓存归装配点,本件恒纯函数。
+//
+// 导出面(最小 OpenAPI 3.0.3):openapi/info.title/info.version/paths;
+//   路由模式段还原 —— lit 原样、`:par` → `{par}`、`*splat` → `{splat}`(OpenAPI
+//   无尾通配概念,模板化登记);同模板多方法归并进同一 path 对象(声明序);
+//   每方法 responses 恒 `200 → description "ok"`(v1 无逐路由响应模型,登记志向)。
+//
+// JSON 构建:§14-1 收集+join 一遍成形(无中途拼接);字符串经 oapi_esc 转义
+//   (core.json_esc 私有不可复用,core 增导出会牵动 2a 冻结面——本件自铸,名面隔开)。
+//   method 小写化逐字节 +32(utf8_enc 单字符),A-Z 域外原样。
+
+use web.core.{ Req, Resp, json, text, resp_status, resp_body, resp_header }
+use web.router.{ Router, RouteSeg, router, get, post }
+use std.str.{ contains, join }
+
+// ---- 模式段还原与串面助手 ----
+
+fn oapi_tmpl(segs: List[RouteSeg]) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < segs.len {
+        if segs[i].kind == "par" {
+            ps.push("/\{" + segs[i].text + "}")
+        } else if segs[i].kind == "splat" {
+            ps.push("/\{" + segs[i].text + "}")
+        } else {
+            ps.push("/" + segs[i].text)
+        }
+        i += 1
+    }
+    if ps.len == 0 {
+        return "/"
+    }
+    return join(ps, "")
+}
+
+fn oapi_lower(s: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c >= 65 && c <= 90 {
+            ps.push(utf8_enc(c + 32))
+        } else {
+            ps.push(byte_slice(s, i, i + 1))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// JSON 串转义(quote/backslash/控制字符;与 core.json_esc 同域,自铸名面隔开)
+fn oapi_esc(s: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 34 {
+            ps.push("\\\"")
+        } else if c == 92 {
+            ps.push("\\\\")
+        } else if c == 10 {
+            ps.push("\\n")
+        } else if c == 13 {
+            ps.push("\\r")
+        } else if c == 9 {
+            ps.push("\\t")
+        } else {
+            ps.push(byte_slice(s, i, i + 1))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// ---- 导出 ----
+
+pub fn openapi_json[S](r: Router[S], title: Str, ver: Str) -> Resp {
+    var ps: List[Str] = List[Str]()
+    ps.push("\{" + "\"openapi\":\"3.0.3\",\"info\":\{" + "\"title\":\"" + oapi_esc(title) + "\",\"version\":\"" + oapi_esc(ver) + "\"" + "},\"paths\":\{")
+    // 模板去重(保声明序)
+    var tpls: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < r.routes.len {
+        let t = oapi_tmpl(r.routes[i].segs)
+        var seen = false
+        var j: I32 = 0
+        while j < tpls.len {
+            if tpls[j] == t {
+                seen = true
+            }
+            j += 1
+        }
+        if !seen {
+            tpls.push(t)
+        }
+        i += 1
+    }
+    i = 0
+    while i < tpls.len {
+        if i > 0 {
+            ps.push(",")
+        }
+        ps.push("\"" + oapi_esc(tpls[i]) + "\":\{")
+        // 同模板全方法归并(声明序;GET/POST 撞 :param 双注册即一径两法)
+        var ops: List[Str] = List[Str]()
+        var k: I32 = 0
+        while k < r.routes.len {
+            if oapi_tmpl(r.routes[k].segs) == tpls[i] {
+                ops.push("\"" + oapi_lower(r.routes[k].m) + "\":\{" + "\"responses\":\{" + "\"200\":\{" + "\"description\":\"ok\"" + "}" + "}" + "}")
+            }
+            k += 1
+        }
+        ps.push(join(ops, ","))
+        ps.push("}")
+        i += 1
+    }
+    ps.push("}")
+    ps.push("}")
+    return json(join(ps, ""))
+}
+
+// ---- 测试(名带 "2b " 前缀)----
+
+fn h_api(r: Req[I64]) -> Resp {
+    return text("x")
+}
+
+// 两路由快照(全等):POST /hi/:name + GET /ping → 模板化 + 方法小写 + 最小 responses
+test "2b openapi 两路由快照" {
+    let app = get[I64](post[I64](router[I64](0), "/hi/:name", h_api), "/ping", h_api)
+    let doc = openapi_json[I64](app, "demo", "1.0")
+    assert(resp_status(doc) == 200)
+    assert(resp_header(doc, "Content-Type") == "application/json")
+    let expect = "\{" + "\"openapi\":\"3.0.3\",\"info\":\{" + "\"title\":\"demo\",\"version\":\"1.0\"" + "}" + ",\"paths\":\{" + "\"/hi/\{name}\":\{" + "\"post\":\{" + "\"responses\":\{" + "\"200\":\{" + "\"description\":\"ok\"" + "}" + "}" + "}" + "}" + ",\"/ping\":\{" + "\"get\":\{" + "\"responses\":\{" + "\"200\":\{" + "\"description\":\"ok\"" + "}" + "}" + "}" + "}" + "}" + "}"
+    assert(resp_body(doc) == expect)
+}
+
+// 同模板 GET+POST 归并单 path 对象;:param 必模板化(原样 ":name" 不现身)
+test "2b openapi 同径双方法归并与参数模板化" {
+    let app = get[I64](post[I64](router[I64](0), "/hi/:name", h_api), "/hi/:name", h_api)
+    let body = resp_body(openapi_json[I64](app, "t", "v"))
+    let expect = "\{" + "\"openapi\":\"3.0.3\",\"info\":\{" + "\"title\":\"t\",\"version\":\"v\"" + "}" + ",\"paths\":\{" + "\"/hi/\{name}\":\{" + "\"post\":\{" + "\"responses\":\{" + "\"200\":\{" + "\"description\":\"ok\"" + "}" + "}" + "}" + ",\"get\":\{" + "\"responses\":\{" + "\"200\":\{" + "\"description\":\"ok\"" + "}" + "}" + "}" + "}" + "}" + "}"
+    assert(body == expect)
+    assert(!contains(body, ":name"))
+}
+
+// 空表/转义/挂载端点全链:openapi.json 路由 dispatch 取回即文档
+test "2b openapi 空表转义与端点装配" {
+    let empty = openapi_json[I64](router[I64](0), "e", "0")
+    assert(resp_body(empty) == "\{" + "\"openapi\":\"3.0.3\",\"info\":\{" + "\"title\":\"e\",\"version\":\"0\"" + "},\"paths\":\{" + "}" + "}")
+    let q = openapi_json[I64](router[I64](0), "a\"b", "1")
+    assert(contains(resp_body(q), "\\\"b"))
+    // 装配全链:终态 Router 自挂 openapi.json,dispatch 取回即文档
+    let app = get[I64](router[I64](0), "/ping", h_api)
+    let docapp = get[I64](app, "/openapi.json", |rq| openapi_json[I64](app, "demo", "1"))
+    let hit = dispatch[I64](docapp, "GET", "/openapi.json", "")
+    assert(resp_status(hit) == 200)
+    assert(contains(resp_body(hit), "\"/ping\""))
+}
