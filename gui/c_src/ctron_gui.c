@@ -585,6 +585,26 @@ int gui_image_cfg(const char *path, int wmode, int wval, int hmode, int hval) {
 int g_inject_ms = -1;
 void gui_inject_ms(int ms) { g_inject_ms = ms; }
 int gui_ms_injected(void) { return g_inject_ms; }
+// 浮动光标条(P-M3 成熟输入体验):Clay floating attachTo=parent,绝对偏移
+// 不参与父布局(文字位置与光标完全解耦);zIndex 置顶覆盖绘制
+int gui_caret_float(int offx, int y, int w, int h, int bg) {
+    Clay_ElementDeclaration decl = {0};
+    decl.floating = (Clay_FloatingElementConfig){
+        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .offset = { .x = (float)offx, .y = (float)y },
+        .zIndex = 100,
+    };
+    Clay_LayoutConfig lay = {0};
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)w, (float)w } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg >> 16) & 255), (float)((bg >> 8) & 255), (float)(bg & 255), 255.0f };
+    Clay__OpenElement();
+    Clay__ConfigureOpenElement(decl);
+    Clay__CloseElement();
+    return 0;
+}
+
 int gui_now_ms(void) {
     if (g_inject_ms >= 0) { return g_inject_ms; }
     return (int)(GetTime() * 1000.0);

@@ -150,6 +150,8 @@ extern "c" fn gui_ms_injected() -> I32
 #[trusted]
 extern "c" fn gui_now_ms() -> I32
 extern "c" fn gui_caret_blink() -> I32
+extern "c" fn gui_ft_measure_n_wt(s: Str, n: I32, px: I32, wt: I32, fam: I32) -> I32
+extern "c" fn gui_caret_float(offx: I32, y: I32, w: I32, h: I32, bg: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_frame_tick() -> Void
@@ -2972,38 +2974,34 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if ic < 0 {
                     ic = 0
                 }
-                // 光标覆盖条(用户实测两症状根治):①caret=2px 覆盖条非文本字形
-                // ——内联 "|" 占字形宽,闪烁间右侧文字随其进退;条槽恒占位(熄灭
-                // 相 bg=0 不产 RECT 但布局仍进位),文字位置恒定 ②移动即重置闪烁
-                // 锚(gui_caret_blink:450ms 实心跟手,逾时 320ms 相位闪烁)
+                // 浮动光标(成熟 GUI 终形态):文本布局 = 值本体单绘制(光标与
+                // 文字位置完全解耦——中间态零挤动);光标条 = Clay floating
+                // attachTo=parent 按前缀实测 x 绝对定位覆盖(zIndex 置顶);
+                // 移动即重置闪烁锚(450ms 实心跟手,逾时 320ms 相位)
                 var blink: I32 = gui_caret_blink()
-                var ileft: Str = byte_slice(ival, 0, ic)
-                var iright: Str = byte_slice(ival, ic, ival.len)
-                // P-M3:IME 组词内联(§10.5;组词随左段尾,caret 槽随组词尾)
+                // P-M3:IME 组词内联进显示串(§10.5;组词随光标位插入)
                 var ipre: Str = gui_ime_preedit()
+                var idisp: Str = ival
                 if ipre != "" {
-                    ileft = ileft + ipre
+                    idisp = byte_slice(ival, 0, ic) + ipre + byte_slice(ival, ic, ival.len)
+                }
+                if idisp == "" {
+                    idisp = " "
                 }
                 var isz2: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
                 var ifg2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
                 var ifw2: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
-                if ileft != "" {
-                    gui_text_w(ileft, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
-                }
-                gui_open()
+                gui_text_w(idisp, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
                 if blink == 1 {
-                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 2, 2, isz2, ifg2)
-                } else {
-                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 2, 2, isz2, 0)
-                }
-                gui_close()
-                if blink == 1 {
-                    // 覆盖条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
+                    // 前缀实测 x(与布局测量同源:weight 参数含 fam 编码 ×10000)
+                    var pfx: Str = byte_slice(ival, 0, ic) + ipre
+                    var wt2: I32 = ifw2 % 10000
+                    var fam2: I32 = ifw2 / 10000
+                    var offx: I32 = gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2)
+                    gui_caret_float(offx, 3, 2, isz2, ifg2)
+                    // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
                     hits.push(id)
                     hinst.push(inst)
-                }
-                if iright != "" {
-                    gui_text_w(iright, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
                 }
                 ishow = ""
             }
