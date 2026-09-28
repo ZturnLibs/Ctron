@@ -2743,7 +2743,6 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             t.env_n.push(pname)
             t.env_v.push(pval)
             if pname == "items" {
-                println("T-ITEMS pname=" + pname + " pvallen=" + pval.len.to_string() + " islist=" + gui_is_list(pval).to_string())
             }
             pi += 1
         }
@@ -3388,9 +3387,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
                 var items = rt_bind_items(t, bind, t.npre[id])
                 var ii: I32 = 0
-                println("T-EACHN n=" + items.len.to_string() + " lst=" + t.npre[id])
                 while ii < items.len {
-                    println("T-ITEM[" + ii.to_string() + "]=[" + items[ii] + "]")
                     var ch: I32 = t.nfc[id]
                     while ch >= 0 {
                         rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii, hov, actn)
