@@ -849,7 +849,9 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if capn >= 0 && chq.len >= capn {
                 return e4("k", ob.env, vT("Err", vS("ScopeCancelled")), ob.out)
             }
-            chq.push(v_box(v_unbox(vals[0])))
+            // T14②:struct 值语义=入箱即克隆(镜像 bind_of;发射臂 send 点堆盒拷贝
+            // 同判),源端改后接收端不变;List/M/类保持引用(bind_of 同口径)
+            chq.push(v_box(bind_of(file, v_unbox(vals[0]))))
             return e4("k", ob.env, vT("Ok", vV2()), ob.out)
         }
         if seq2(cx_of(recv)[0], "CH") && seq2(m, "recv") && vals.len == 0 {
