@@ -1,0 +1,8 @@
+// 01n_unused_binding.lint.ct —— 未使用绑定 → W8030(T04;§1.3 命名约定的 lint 面)
+//@ warn: W8030
+
+fn main() {
+    let unused_counter: I32 = 5      // 原语类型绑定且函数体内未读 → W8030(下划线开头豁免)
+    let _ignored: I32 = 6            // _ 前缀 = 显式丢弃,免报
+    assert_eq(_ignored, 6)
+}

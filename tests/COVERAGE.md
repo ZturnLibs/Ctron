@@ -442,3 +442,15 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   裸类型名构造器调用回退补——def_by_name 命中即构造,含无泛型形)。
 - 发射臂:native_suite 口径 trans 拒绝=skip;StringBuilder 发射(拼接语义)随容器发射批次。
 - suite 78/79 双线 +1 全绿;cargo 13 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T04 W 码三负锚补齐**(spec-gap W1;§5.6/§3.8/§1.3):
+- 新锚 01m_shadow_prelude.lint.ct(W8040 参数位遮蔽)+01n_unused_binding.lint.ct(W8030 未使用
+  绑定,fn 体形——自举 W8030 仅扫 fn 体,test 块位登记差异);05f(W8020)既有,注册表「锚待补」注记清除。
+- 实现补齐:自举 W8020 泛型返回(Result[I32,Str] Named+TArgs 形)+fn/test 体**块尾表达式位**
+  (walk_b 加 body 参,值位块不判防误报)+参数位 W8040(is_prelude_name 名单对齐 C 宿主;行传 0
+  交驱动探针——Fn 无属性路径不盖章,nline 契约内回退);C 宿主补 fn/test 尾位 W8020(w8020_tail)
+  +**W8030 全新**(bind.used 标记:bind_find 命中+check_expr EX_IDENT 读取位;保守面仅原语类型
+  绑定——插值部件宿主侧纯文本无 AST,聚合/Option/Drop 绑定免报对齐自举豁免口径)。
+- 登记差异:R 线无 W8030/W8040 发射面(lint 锚经 check_suite 零诊断口径空过,R 线欠账);
+  自举 W8030 不扫 test 块位。
+- suite 80/81 双线(lint 4/4×2;06f/06e 两预存红不变);cargo 14 套全绿;meta/fmt parity 过。

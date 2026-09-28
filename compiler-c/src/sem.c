@@ -182,6 +182,7 @@ typedef struct bind {
     const char* name;
     cty* ty; // NULL = 未知(保守 Send)
     int depth;
+    int used; // W8030:本块内是否被读取(T04)
     struct bind* next;
 } bind;
 
@@ -197,8 +198,9 @@ static void bind_push(bind** env, const char* name, cty* ty, int depth) {
     *env = b;
 }
 static bind* bind_find(bind* env, const char* name) {
+    // W8030:命中即视为已读(类型推导/成员根/capture 名单等全部查询路径,T04)
     for (bind* b = env; b; b = b->next)
-        if (b->name && strcmp(b->name, name) == 0) return b;
+        if (b->name && strcmp(b->name, name) == 0) { b->used = 1; return b; }
     return NULL;
 }
 
@@ -836,6 +838,8 @@ static int sem_has_drop_impl(const sym* s, const char* ty) {
 
 static void check_block(ctx* c, cblock* b) {
     if (!b) return;
+    // W8030:块入口快照,块尾报告本块新绑定中未被读取者(下划线开头豁免;T04)
+    bind* entry8030 = c->env;
     for (size_t i = 0; i < b->nstmts; i++) {
         cstmt* st = b->stmts[i];
         switch (st->kind) {
@@ -986,6 +990,15 @@ static void check_block(ctx* c, cblock* b) {
         }
     }
     if (b->tail) check_expr(c, b->tail);
+    // W8030 报告:从栈顶走到入口快照即本块新绑定。保守面:仅原语类型绑定——
+    // 插值部件在宿主侧是纯文本(无 AST 可走查),聚合/容器/Option 类型绑定
+    // 免报(对齐自举线 Drop/插值启发豁免口径;锚=I32 级绑定)
+    for (bind* wb = c->env; wb && wb != entry8030; wb = wb->next) {
+        if (wb->used || !wb->name || wb->name[0] == '_') continue;
+        if (!wb->ty || wb->ty->kind != TY_NAMED || wb->ty->npath != 1) continue;
+        if (!is_prim(wb->ty->path[0])) continue;
+        diag(c->k, "W8030", "未使用绑定(unused):%s", wb->name);
+    }
 }
 
 static void check_expr(ctx* c, cexpr* e) {
@@ -997,7 +1010,10 @@ static void check_expr(ctx* c, cexpr* e) {
     switch (e->kind) {
     case EX_STR: case EX_INT: case EX_FLOAT: case EX_BOOL: case EX_VOID:
         return;
-    case EX_IDENT: return;
+    case EX_IDENT:
+        // W8030:标识符读取标记(命中本地绑定即已读;T04)
+        if (bind_find(c->env, e->text)) return;
+        return;
     case EX_TUPLE: case EX_ARRAY:
         for (size_t i = 0; i < e->nelems; i++) check_expr(c, e->elems[i]);
         return;
@@ -1237,6 +1253,21 @@ static int impl_method_noalloc_contract(const sym* s, const cdecl* impl, const c
     return 0;
 }
 
+// W8020:块尾表达式位(fn/test 体语境;值位块尾是块值非丢弃,T04 前漏扫)
+static void w8020_tail(ctx* c, cexpr* e) {
+    if (!e || e->kind != EX_CALL) return;
+    const char* fnname = root_ident(e);
+    if (!fnname) return;
+    const cdecl* d = find_fn(c->s->f, fnname);
+    if (!d) return;
+    cty* rt = d->fn_.ret;
+    if (rt && ((rt->kind == TY_OPT)
+               || (rt->kind == TY_NAMED && (strcmp(head_name(rt), "Option") == 0
+                                            || strcmp(head_name(rt), "Result") == 0)))) {
+        diag(c->k, "W8020", "结果被丢弃(must-use):%s 返回 Option/Result", fnname);
+    }
+}
+
 static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
     ctx sub;
     sub = *c;
@@ -1264,7 +1295,10 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
     }
     fn_has_drop_local = 0;
     brk_outer = 0;
-    if (f->body) check_block(&sub, f->body);
+    if (f->body) {
+        check_block(&sub, f->body);
+        w8020_tail(&sub, f->body->tail);
+    }
     bind_free(sub.env);
 }
 
@@ -1385,6 +1419,7 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             fn_has_drop_local = 0;
             brk_outer = 0;
             check_block(&tc, d->test.body);
+            w8020_tail(&tc, d->test.body->tail);
             bind_free(tc.env);
             break;
         }
