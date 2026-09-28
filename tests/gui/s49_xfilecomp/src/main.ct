@@ -1,14 +1,15 @@
 // tests/gui/s49_xfilecomp —— P2 跨文件组件分发+契约Ⅱ数据事件
 // 根视图居主文件实例化被用模块组件;run(ViewCall) desugar 端到端:
 // 合成 bind 应答组件实参路径(prop:m.txt/prop:m.n/prop:m.tags),展开期
-// bxv_ask 经装配通道取值;mark 数据事件实参=事件局部数据(处理器仅数据
-// 形参,println 观察哨经 run.sh grep 门)。
+// bxv_ask 经装配通道取值;tags 列表 prop 实例直传(Ⅰ:rt_bind_items env
+// 前置回落);mark 数据事件实参=事件局部数据(Ⅱ,println 观察哨经 grep 门)。
 use comp.{badge_tag}
 use gui.{test, d_frame, d_click, d_expect_text}
 
 struct Model {
     var txt: Str
     var n: I32
+    var tags: List[Str]
 }
 
 fn mark(s: Str) {
@@ -16,7 +17,10 @@ fn mark(s: Str) {
 }
 
 fn make() -> Model {
-    return Model { txt: "BADGEGOOD", n: 7 }
+    var tl = List[Str]()
+    tl.push("ALPHA")
+    tl.push("BETA")
+    return Model { txt: "BADGEGOOD", n: 7, tags: tl }
 }
 
 fn headless_suite() -> I32 {
@@ -31,6 +35,9 @@ fn headless_suite() -> I32 {
             d_expect_text(t, "ROOTHERE")
             d_expect_text(t, "BADGEGOOD")
             d_expect_text(t, "7")
+            // 契约Ⅰ:列表 prop 经 each 通道渲染
+            d_expect_text(t, "ALPHA")
+            d_expect_text(t, "BETA")
             d_click(t, "mark")
             // 直驱面模拟 fire 供参(ev_fire 点击期求值:Str 裸串)
             var margs = List[Str]()
@@ -43,7 +50,7 @@ fn headless_suite() -> I32 {
 view Root(m: Model) {
   <vbox class="root">
     <label class="ttl">ROOTHERE</label>
-    <Badge t: {m.txt} n: {m.n}/>
+    <Badge t: {m.txt} n: {m.n} tags: {m.tags}/>
   </vbox>
 }
 style root { direction: column gap: 8 padding: 16 }

@@ -172,6 +172,14 @@ gen 重构后全绿;**s49 Ⅱ 正例验证被 peer gui.ct 在飞 WIP 阻**(fam2p
 登记。**契约Ⅰ延后**:rt_bind_items env 前置回落需动 gui.ct,正撞 peer
 实时编辑区(extern 声明块被其编辑器缓冲刷丢一次,编辑赛跑无赢家)——
 gui.ct 落窗后按已注册设计实施(半小时片)。
+**契约Ⅰ落地(0928,peer gui.ct 落窗后实施)**:rt_bind_items 加树参
+`(t, bind, listname)`+env 前置回落(env 末位优先扫,gui_is_list 魔数判+
+gui_as_list 恒等转接还原 List——Ctron 无中缀 cast,extern 边界逐字直通,
+C 助手双件入 ctron_gui.c);调用点单处(rt_emit each 分支)。组件列表
+prop=显式声明+实例直传:`view Badge(tags: List[Str])`+`tags: {m.tags}`,
+each 通道 env 命中即渲染,宿主 bind 零分支。s49 三契约全锁(显示 prop/
+列表 prop/数据事件),ALPHA/BETA 断言过。**组件数据/事件契约全片收官**,
+余 Ⅲ(多实例 env 陈旧)维持 v1 边界登记。
 **内容投影落库(0928,s50_dialogslot;「dialog slot」销账)**:ViewCall 实例
 支持非自闭合携带子树,组件体 `<slot/>` 锚位拼接。机制:①gt_node 实例分支
 分自闭合/投影两形——投影形子树链接到实例节点(nfc/ns,宿主上下文解析);
