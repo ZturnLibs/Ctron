@@ -1361,6 +1361,18 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
     if tag == "spacer" {
         return 0
     }
+    if tag == "slot" {
+        // P2 投影锚:组件体内容注点位(运行时拼接实例子树)
+        return 0
+    }
+    var fb3: I32 = byte_at(tag, 0)
+    if fb3 >= 65 {
+        if fb3 <= 90 {
+            // ViewCall 组件实例(大写首字母;波次四)——完整 attr/props 契约
+            // 检查随组件检查专项,此处仅认领不误报
+            return 0
+        }
+    }
     gdiags.push("E8100: 未声明标签 " + tag)
     return -1
 }
@@ -2147,11 +2159,13 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
                     }
                 }
             }
+            var selfc: Bool = false
             if cur.load() < tks.len {
                 var cw2: Str = tks[cur.load()]
                 if cw2.len == 1 {
                     if byte_at(cw2, 0) == 47 {
                         gui_sk_word(tks, cur)
+                        selfc = true
                     }
                 }
             }
@@ -2166,7 +2180,39 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
             nes.push(estart)
             nec.push(0)
             nflag.push("")
-            return ntag.len - 1
+            var vid2: I32 = ntag.len - 1
+            // P2 投影实例:非自闭合并带子树时,子树链接到实例节点——collect
+            // 多树走查即覆盖槽内容(bind 路径/事件全按主文件语义收集)
+            if !selfc {
+                var prev2: I32 = -1
+                while cur.load() < tks.len {
+                    var nk: Str = tks[cur.load()]
+                    if nk.len == 1 {
+                        if byte_at(nk, 0) == 60 {
+                            if cur.load() + 1 < tks.len {
+                                var nk2: Str = tks[cur.load() + 1]
+                                if nk2.len == 1 {
+                                    if byte_at(nk2, 0) == 47 {
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    var kid: I32 = gui_sk_node(tks, cur, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, ev_name, ev_fn, btns, depth + 1)
+                    if prev2 < 0 {
+                        nfc[vid2] = kid
+                    } else {
+                        ns[prev2] = kid
+                    }
+                    prev2 = kid
+                }
+                gui_sk_word(tks, cur)
+                gui_sk_word(tks, cur)
+                gui_sk_word(tks, cur)
+                gui_sk_word(tks, cur)
+            }
+            return vid2
         }
     }
     var out4 = List[Str]()

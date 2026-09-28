@@ -1291,11 +1291,27 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
             }
             if byte_at(src, cur.load()) == 47 {
                 glit(src, cur, 47)
+                // 自闭合:<Badge ... />——无投影子树
+                glit(src, cur, 62)
+                t.ntag.push("call:" + tag)
+                t.ncls.push("")
+                // 区间存节点自有槽(扁平表不能按节点 id 寻址——垃圾读数实证)
+                t.npre.push(vps.to_string())
+                t.nbid.push((t.vc_prop.len - vps).to_string())
+                t.npost.push("")
+                t.nfc.push(-1)
+                t.ns.push(-1)
+                t.nes.push(t.ev_name.len)
+                t.nec.push(0)
+                t.nflag.push("")
+                return t.ntag.len - 1
             }
             glit(src, cur, 62)
+            // P2 投影实例:<Badge ...> 子树 </Badge>——子树链接到实例节点,
+            // 展开期在组件体 <slot/> 锚位拼接(宿主内容保宿主语义:bind/事件
+            // 全按主文件解析,s50 锁定)
             t.ntag.push("call:" + tag)
             t.ncls.push("")
-            // 区间存节点自有槽(扁平表不能按节点 id 寻址——垃圾读数实证)
             t.npre.push(vps.to_string())
             t.nbid.push((t.vc_prop.len - vps).to_string())
             t.npost.push("")
@@ -1304,7 +1320,33 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
             t.nes.push(t.ev_name.len)
             t.nec.push(0)
             t.nflag.push("")
-            return t.ntag.len - 1
+            var vid: I32 = t.ntag.len - 1
+            var prev: I32 = -1
+            while true {
+                gws(src, cur)
+                if byte_at(src, cur.load()) == 60 {
+                    if byte_at(src, cur.load() + 1) == 47 {
+                        break
+                    }
+                }
+                var kid: I32 = gt_node(src, cur, t, conds, binds, strs, depth + 1)
+                var fcl: List[I32] = t.nfc
+                var nsl: List[I32] = t.ns
+                if prev < 0 {
+                    fcl[vid] = kid
+                } else {
+                    nsl[prev] = kid
+                }
+                prev = kid
+            }
+            glit(src, cur, 60)
+            glit(src, cur, 47)
+            var et3: Str = gword(src, cur)
+            if et3 != tag {
+                panic("gui: 闭合标签不匹配 " + et3)
+            }
+            glit(src, cur, 62)
+            return vid
         }
     }
     var is_leaf: Bool = false
@@ -1354,7 +1396,9 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
                                         if tag != "hbox" {
                                             if tag != "spacer" {
                                                 if tag != "scroll" {
-                                                    panic("gui: 未知元素 " + tag)
+                                                    if tag != "slot" {
+                                                        panic("gui: 未知元素 " + tag)
+                                                    }
                                                 }
                                             }
                                         }
@@ -2652,12 +2696,38 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             }
             t.env_n.push(pname)
             t.env_v.push(pval)
-            if pname == "open" {
-                println("EXP-OPEN expr=[" + pexpr + "] val=[" + pval + "]")
-            }
             pi += 1
         }
+        // slot 投影:实例子树根入 env("__slot__" 恒不与真实路径根撞),
+        // 末位优先——嵌套组件(A 槽内实例 B)内层覆盖外层,无需弹栈;
+        // 无子树实例也垫 -1,组件体 slot 读到即空渲染
+        var sroot: I32 = -1
+        if t.nfc[id] >= 0 {
+            sroot = t.nfc[id]
+        }
+        t.env_n.push("__slot__")
+        t.env_v.push(sroot.to_string())
         rt_emit(t, bind, itemvar, item, vroot, hits, hinst, inst, hov, actn)
+        return 0
+    }
+    // P2 slot 锚:组件体内的 <slot/> 在展开期拼接当前实例的投影子树。
+    // env 末位优先读 "__slot__"(展开期垫);无条目=组件非实例展开路径
+    // (不可能,slot 只居组件体)或自闭合实例垫 -1=空投影,均零渲染直返
+    if tag == "slot" {
+        var si2: I32 = t.env_n.len - 1
+        var sroot2: I32 = -1
+        while si2 >= 0 {
+            if t.env_n[si2] == "__slot__" {
+                sroot2 = gs2i(t.env_v[si2])
+                si2 = -1
+            }
+            si2 -= 1
+        }
+        var sc: I32 = sroot2
+        while sc >= 0 {
+            rt_emit(t, bind, itemvar, item, sc, hits, hinst, inst, hov, actn)
+            sc = t.ns[sc]
+        }
         return 0
     }
     var c: Str = t.ncls[id]

@@ -1,0 +1,20 @@
+// tests/gui/s50_dialogslot/comp.ct —— P2 内容投影:组件视图带 <slot/> 锚
+// DCard 模态卡(overlay+when 门)内容区 = slot;投影子树展开期在锚位拼接,
+// 宿主内容保宿主语义(路径经 prop: 装配通道应答,事件按主文件收集)
+pub fn dlg_tag() -> Str {
+    return "DLG"
+}
+
+view DCard (title: Str, open: Bool) {
+  <when cond={open}>
+    <overlay class="mask" on:click={dialog_close()}>
+      <vbox class="card">
+        <label class="cttl">{title}</label>
+        <slot/>
+      </vbox>
+    </overlay>
+  </when>
+}
+style mask { bg: "#000000" h: 200 }
+style card { direction: column gap: 8 padding: 16 bg: "#2a2a2e" w: 240 h: 140 }
+style cttl { fg: "#ffffff" h: 30 }

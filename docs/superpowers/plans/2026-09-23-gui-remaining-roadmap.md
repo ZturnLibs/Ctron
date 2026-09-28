@@ -141,6 +141,18 @@ no-op);②**sk_node ViewCall 实例分支**(desugar 骨架面此前无大写识�
 文件实参映射契约**未设计**(合成 act 只有根模型捕获,组件 prop 根实参
 无映射目标;零参/字面参形态可用但观察面待设计)——登记随组件事件
 专项,夹具锁定显示面(Str/I32 带型解标)。阶梯 55 夹具。
+**内容投影落库(0928,s50_dialogslot;「dialog slot」销账)**:ViewCall 实例
+支持非自闭合携带子树,组件体 `<slot/>` 锚位拼接。机制:①gt_node 实例分支
+分自闭合/投影两形——投影形子树链接到实例节点(nfc/ns,宿主上下文解析);
+②slot 入元素白名单(gt 面挂自闭合空元素分支,sk 面 ck 白名单+大写实例
+认领);③展开期实例垫 env "__slot__"(末位优先,嵌套组件内层覆盖外层
+免弹栈;无子树垫 -1=空投影),rt_emit slot 分支读 env 拼接子树链;
+④sk_node 镜像(投影子树入骨架,collect 多树走查即覆盖——slot 内容
+bind 路径/事件全按主文件语义合成)。宿主语义三钉入夹具:slot 路径经
+prop: 通道应答/slot 内事件合成根模型捕获分支/组件 when 门包 slot 关态
+零渲染。**边界在册**:v1 组件 prop 与宿主路径根同名时组件 env 遮蔽;
+check 面对实例仅认领不深查(E81xx 完整契约随组件检查专项);gui_sk_load
+编译骨架面无 vreg,投影仅 gt_parse 形态(既有登记顺延)。阶梯 56 夹具。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr
