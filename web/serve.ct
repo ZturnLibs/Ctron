@@ -1,14 +1,46 @@
 // serve.ct —— HTTP 序列化咽喉:reason 表 + render(全仓唯一状态行/头区拼接点)
-// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.4;纪律 §14-1
-// 本任务只放常量与纯函数;serve 循环(socket 半边)归 2b Task 3,直复用 router.dispatch。
+//            + serve 循环(§6;2b Task 3 填充)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.4/§6;纪律 §14-1
 //
 // §4.4 演进契约支点:报文组装只有 render 一处——状态行、头区、Content-Length、
 // Connection: close 全在此拼;其余代码只造 Resp(值语义),永不手拼报文串。
 // render 无需转义(headers/body 均为上游已构建的成品段;json_esc/ht_esc 各守其界)。
 // Connection: close 为 2a 同款串行口径;keep-alive 挂 L6/L7 后的并发波(spec §13-④)。
+//
+// serve 循环(§6;探针定界见 task-3-report):
+//   Step 0 探针(2026-09-28)——引导 interp 双臂(bootstrap ctc.sh 裸跑 + ctron-cc
+//   run)对 use net 合并态一律 W8052 ×3(Box[Box64] extern 形参非 C-ABI)→ rc=1:
+//   interp-net 死,net 内建不可 interp 执行,真 socket e2e 挂 L6/L7 原生翻账(在册)。
+//   因此 socket 边界做成值驱动 SrvIo(fn 值五件 listen/accept/read/write/close):
+//   循环本体 serve_with 全量 interp 可测(fake 驱动脚本化 feed,文件尾测试即证);
+//   真 net 接线 = 调用点十余行(net.* 五件映射进 SrvIo,例见 task-3-report)——
+//   不入本件:`use net` 会把 net/bind 的 W8052 拉进 web 合并态,check/run 门全红
+//   (interp 净土纪律;驱动注入 = 依赖倒置的 Ctron 形,fn 值字段 Route.chain 同族)。
+//   头解析为 Str 面自建(parse_head):todo_api 骨架的 http_parse_head 走 &I64[]
+//   lane,interp 执行面未证且 web 载体即 Str——「增量读、逐块试解析」的骨架形态
+//   原样保留(parse 每 read 一块),载体偏离如实登记。
+//
+// panic 面(执行时核实,task-3-report 在册):Ctron 无进程内 catch(`?` 是
+// Option/Result-try,非异常);探针实证 panic = 印消息后整跑中止(两 interp 臂
+// rc=1;native ctron_panic 终止进程)——§6「panic 兜 500」不可进程内实现,登记为
+// 进程级边界:handler panic 即服务进程亡。缓解 = 装配期 has_conflict 自检(§7-5
+// 失败在启动,不在半夜)+ handler 测试门(test_call);真兜底挂语言项翻账。
+//
+// 职责落点(§6):listen(127.0.0.1,port 参)→ accept → 增量头读(头区上限
+// 32KB,超 400)→ CL 读体(body_limit 默认 1MB;形坏 400/超限 413 不读体)→
+// 构造 Req(hdrs/cookies 经 dispatch_h→req_full,params 随匹配)→ 预拼链
+// →handler→render→write;路径安全默认(`..` 段一票 404;多余斜杠由 router
+// path_segs 空段丢弃归一);HEAD 自动应 GET 路由(去 body 保头);内置排空端点
+// `POST /__shutdown`(loop 直拦,不过路由表;200 "draining" 后断循环关监听)。
+// 访问日志不做 loop 侧行(log_requests 中间件即声明序挂点,§4.5 形态①)。
+// 装配面(Task 1/2 交接,调用点口径):with_sessions(key, now) 时钟参须
+// `| | now_ms() / 1000`(now/ttl 恒 unix 秒,now_ms 是毫秒——勿直喂);会话/flash
+// v1 边界重申(M-T1b-3):drop_session 忽略 key,flash 自清仅随 with_sessions 链。
+// v1 串行(§8.2):一连接一请求,多余缓冲字节(pipelining)随 close 丢弃。
 
-use std.str.{ join, contains, starts_with }
-use web.core.{ Resp, Pair, html, status, redirect, with, resp_status, resp_body }
+use std.str.{ contains, eq_ignore_ascii_case, index_of, join, split, starts_with }
+use web.core.{ Resp, Pair, html, status, redirect, with, resp_status, resp_body, text }
+use web.router.{ Router, dispatch_h, get, post, has_conflict, router }
 
 // ---- reason 表(状态码 → reason-phrase;表外一律 "Unknown") ----
 
@@ -53,6 +85,326 @@ pub fn render(r: Resp) -> Str {
     return join(ps, "")
 }
 
+// ---- serve 循环:常量与驱动 ----
+
+// §8.1 body_limit 默认 1MB / 头区字节上限 32KB(超 400;防慢头堆积)/
+// 单请求增量读次数护栏 64(todo_api 骨架同款)
+// 模块级裸 const 引导 interp check 过而 run 期 unbound(2026-09-28 探针实证,
+// 语义项翻账)——限以字面返回 fn 出面,命名政策点保留(pub const 则编译器自身
+// abort,前 Task 0 在册)
+fn body_limit_cap() -> I64 {
+    return 1048576
+}
+
+fn head_limit_cap() -> I32 {
+    return 32768
+}
+
+fn read_guard_cap() -> I32 {
+    return 64
+}
+
+pub fn body_limit_default() -> I64 {
+    return body_limit_cap()
+}
+
+// SrvIo —— socket 边界值驱动(fn 值五件;fd 全 I64 句柄,与 net/bind 同口径)。
+// rc 约定:listen <0 失败;accept <0 关停/失败;read 返 "" = eof/err(超时政策
+// 由真驱动的 read 闭包内嵌,如 net_read_t 5000ms);write 返 n(<0 err);close 无值。
+pub struct SrvIo {
+    let listen: fn(Str, I64) -> I64
+    let accept: fn(I64) -> I64
+    let read: fn(I64, I64) -> Str
+    let write: fn(I64, Str) -> I64
+    let close: fn(I64)
+}
+
+// serve_with —— §6 循环(阻塞;排空即返 0,监听失败返 1)。启动自检 has_conflict
+// (路由装配 panic 的静默双兜,router.ct 前置口径)。真 net 装配 = SrvIo 五件
+// 映射 net.*(见 task-3-report 例);端口 :0 时实际端口由驱动方经 net_tcp_sockname
+// 回读(本件不藏 sockname——驱动句柄面已是调用点能力)。
+pub fn serve_with[S](io: SrvIo, host: Str, port: I64, r: Router[S]) -> I32 {
+    return serve_with_limit[S](io, host, port, r, body_limit_default())
+}
+
+pub fn serve_with_limit[S](io: SrvIo, host: Str, port: I64, r: Router[S], body_limit: I64) -> I32 {
+    if has_conflict[S](r) {
+        panic("serve: duplicate route(装配自检,§7-5)")
+    }
+    // fn 值字段先落局部再调(io.read(...) 直调面 run 期 "method:read" panic,
+    // 2026-09-28 探针实证;run_chain 同款 local-bound 口径)
+    let f_listen = io.listen
+    let f_accept = io.accept
+    let f_read = io.read
+    let f_write = io.write
+    let f_close = io.close
+    let lfd = f_listen(host, port)
+    if lfd < 0 {
+        return 1
+    }
+    var run: I32 = 1
+    while run == 1 {
+        let cfd = f_accept(lfd)
+        if cfd < 0 {
+            run = 0
+            break
+        }
+        // —— 增量头读(todo_api 骨架同构:每读一块试解析一次)——
+        var buf = ""
+        var hend: I32 = 0 - 1
+        var alive = true
+        var guard: I32 = 0
+        while guard < read_guard_cap() {
+            guard += 1
+            hend = head_end(buf)
+            if hend > 0 - 1 {
+                break
+            }
+            if buf.len > head_limit_cap() {
+                alive = false
+                break
+            }
+            let chunk = f_read(cfd, 4096)
+            if chunk.len == 0 {
+                alive = false
+                break
+            }
+            buf = buf + chunk
+        }
+        if !alive || hend < 0 {
+            f_write(cfd, render(status(400, "bad request")))
+            f_close(cfd)
+            continue
+        }
+        let hd = parse_head(byte_slice(buf, 0, hend))
+        if hd.method.len == 0 || hd.target.len == 0 {
+            f_write(cfd, render(status(400, "bad request")))
+            f_close(cfd)
+            continue
+        }
+        // —— CL 读体:形坏 400(双 CL 逗并即形坏,走私面 fail-closed);
+        //      超限 413 且不读体(Connection: close 使短读安全)——
+        let cl = cl_of(hd.hdrs)
+        if cl < 0 {
+            f_write(cfd, render(status(400, "bad request")))
+            f_close(cfd)
+            continue
+        }
+        if cl > body_limit {
+            f_write(cfd, render(status(413, "payload too large")))
+            f_close(cfd)
+            continue
+        }
+        var body = ""
+        if buf.len > hend + 4 {
+            body = byte_slice(buf, hend + 4, buf.len)
+        }
+        let want = cl.as[I32]()
+        while body.len < want {
+            let chunk = f_read(cfd, 4096)
+            if chunk.len == 0 {
+                break
+            }
+            body = body + chunk
+        }
+        if body.len > want {
+            body = byte_slice(body, 0, want)
+        }
+        // —— 内置排空端点(§6 惯例;loop 直拦,不过路由表/中间件)——
+        if hd.method == "POST" && hd.target == "/__shutdown" {
+            f_write(cfd, render(text("draining")))
+            f_close(cfd)
+            run = 0
+            break
+        }
+        f_write(cfd, loop_one[S](r, hd.method, hd.target, hd.hdrs, body))
+        f_close(cfd)
+    }
+    f_close(lfd)
+    return 0
+}
+
+// loop_one —— 单请求纯核(fake 直驱可测):`..` 段拒(§6 路径安全默认)→
+// HEAD 自动应 GET 路由 → dispatch_h(全 target;查询串在 dispatch_h 内分裂)→
+// render;HEAD 去 body 保头(状态行+头区原样,Content-Length 保持 GET 形态)。
+pub fn loop_one[S](r: Router[S], method: Str, target: Str, hdrs: List[Pair], body: Str) -> Str {
+    if has_dotdot(target) {
+        return render(status(404, "not found"))
+    }
+    var m = method
+    var is_head = false
+    if method == "HEAD" {
+        m = "GET"
+        is_head = true
+    }
+    let wire = render(dispatch_h[S](r, m, target, body, hdrs))
+    if is_head {
+        let cut = index_of(wire, "\r\n\r\n")
+        if cut > 0 - 1 {
+            return byte_slice(wire, 0, cut + 4)
+        }
+    }
+    return wire
+}
+
+// ---- 请求头解析(Str 面;增量读的解析半边) ----
+
+pub struct HeadReq {
+    let method: Str
+    let target: Str
+    let hdrs: List[Pair]
+}
+
+// 头区终点:首个 "\r\n\r\n" 起点(其 +4 起为体);未完 -1
+pub fn head_end(buf: Str) -> I32 {
+    var i: I32 = 0
+    while i + 4 <= buf.len {
+        if byte_at(buf, i) == 13 && byte_at(buf, i + 1) == 10 && byte_at(buf, i + 2) == 13 && byte_at(buf, i + 3) == 10 {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// 请求行 + 头区:首行 "METHOD SP target SP HTTP/x.y"(HTTP 版后缀丢弃);
+// 头行 "K: V" OWS 削平;同名头逗并,键保留首见大小写(值合并语义以
+// eq_ignore_ascii_case 同名可达为准——core hdr_get/serve cl_of 均大小写
+// 不敏感;§8.1 请求侧政策;Cookie 双头并后 ';'-解析见 task-3-report
+// 登记——v1 单 Cookie 头为常态面)。行切 '\n' 后削尾 '\r'。
+pub fn parse_head(head: Str) -> HeadReq {
+    var method = ""
+    var target = ""
+    var raw: List[Pair] = List[Pair]()
+    let lines = split(head, 10)
+    var i: I32 = 0
+    while i < lines.len {
+        var ln = lines[i]
+        if ln.len > 0 {
+            if byte_at(ln, ln.len - 1) == 13 {
+                ln = byte_slice(ln, 0, ln.len - 1)
+            }
+            if i == 0 {
+                let sp = index_of(ln, " ")
+                if sp > 0 {
+                    method = byte_slice(ln, 0, sp)
+                    let rest = byte_slice(ln, sp + 1, ln.len)
+                    let sp2 = index_of(rest, " ")
+                    if sp2 > 0 {
+                        target = byte_slice(rest, 0, sp2)
+                    } else {
+                        target = rest
+                    }
+                }
+            } else {
+                if ln.len > 0 {
+                    let co = index_of(ln, ":")
+                    if co > 0 {
+                        let k = byte_slice(ln, 0, co)
+                        var v = byte_slice(ln, co + 1, ln.len)
+                        while v.len > 0 && byte_at(v, 0) == 32 {
+                            v = byte_slice(v, 1, v.len)
+                        }
+                        while v.len > 0 && byte_at(v, v.len - 1) == 32 {
+                            v = byte_slice(v, 0, v.len - 1)
+                        }
+                        raw.push(Pair { k: k, v: v })
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return HeadReq { method: method, target: target, hdrs: hdr_merge(raw) }
+}
+
+// 同名请求头逗并(值纪律:重建,不做就地元素赋值)
+fn hdr_merge(raw: List[Pair]) -> List[Pair] {
+    var out: List[Pair] = List[Pair]()
+    var i: I32 = 0
+    while i < raw.len {
+        let k = raw[i].k
+        let v = raw[i].v
+        var at: I32 = 0 - 1
+        var j: I32 = 0
+        while j < out.len {
+            if eq_ignore_ascii_case(out[j].k, k) {
+                at = j
+            }
+            j += 1
+        }
+        if at > 0 - 1 {
+            var out2: List[Pair] = List[Pair]()
+            var m: I32 = 0
+            while m < out.len {
+                if m == at {
+                    out2.push(Pair { k: out[m].k, v: out[m].v + "," + v })
+                } else {
+                    out2.push(out[m])
+                }
+                m += 1
+            }
+            out = out2
+        } else {
+            out.push(Pair { k: k, v: v })
+        }
+        i += 1
+    }
+    return out
+}
+
+// Content-Length:缺 → 0;非全十进制 → -1(上式 400);大小写不敏感
+fn cl_of(hdrs: List[Pair]) -> I64 {
+    var i: I32 = 0
+    while i < hdrs.len {
+        if eq_ignore_ascii_case(hdrs[i].k, "Content-Length") {
+            return cl_parse(hdrs[i].v)
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn cl_parse(v: Str) -> I64 {
+    if v.len == 0 {
+        return 0 - 1
+    }
+    var acc: I64 = 0
+    var i: I32 = 0
+    while i < v.len {
+        let c = byte_at(v, i)
+        if c < 48 || c > 57 {
+            return 0 - 1
+        }
+        acc = acc * 10 + (c - 48).as[I64]()
+        if acc > 1073741824 {
+            return acc   // 早护栏:超限即返,413 面裁决,防长串慢积
+        }
+        i += 1
+    }
+    return acc
+}
+
+// 路径安全默认(§6):`..` 段一票拒(仅扫 path 面,查询串不误伤;多余斜杠
+// 由 router path_segs 空段丢弃归一)。static 侧 frm 另有 fail-closed 穿越门,
+// 本守门兜其余 handler 的 target 形态。
+fn has_dotdot(target: Str) -> Bool {
+    var p = target
+    let q = index_of(target, "?")
+    if q > 0 - 1 {
+        p = byte_slice(target, 0, q)
+    }
+    let segs = split(p, 47)
+    var i: I32 = 0
+    while i < segs.len {
+        if segs[i] == ".." {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
 // ---- 测试 ----
 
 // 精确串:200 html 体全报文(状态行 + base 双头 + Content-Length + close + 空行 + 体)
@@ -87,4 +439,215 @@ test "render 头序与 Content-Length 字节口径" {
     assert(s == "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-Request-Id: r-1\r\nContent-Length: 6\r\nConnection: close\r\n\r\n中文")
     let w = render(with(with(html("x"), "A-A", "1"), "B-B", "2"))
     assert(contains(w, "X-Content-Type-Options: nosniff\r\nA-A: 1\r\nB-B: 2\r\nContent-Length: 1\r\n"))
+}
+
+// ---- serve 循环测试(全 interp 面:纯核 + fake 驱动全链)----
+
+test "head_end 与 parse_head 请求行/OWS/逗并" {
+    assert(head_end("GET / HTTP/1.1\r\n\r\n") == 14)   // "GET / HTTP/1.1" 恰 14 字节
+    assert(head_end("GET / HTTP/1.1\r\nHost") == 0 - 1)
+    assert(head_end("") == 0 - 1)
+    let hd = parse_head("POST /a/b?x=1 HTTP/1.1\r\nHost: t\r\nX-A:  1 \r\ncookie: c1=ok\r\nCookie: c2=two\r\nContent-Length: 5\r\n\r\nBODYX")
+    assert(hd.method == "POST")
+    assert(hd.target == "/a/b?x=1")
+    assert(hd.hdrs.len == 4)   // Host / X-A / Cookie(逗并)/ Content-Length
+    assert(hd.hdrs[2].k == "cookie")         // 键保留首见大小写(查找端大小写不敏感)
+    assert(hd.hdrs[2].v == "c1=ok,c2=two")   // 大小写不敏感同名逗并(§8.1 请求侧)
+    assert(hd.hdrs[1].v == "1")              // OWS 前导/尾随削平
+    // 无头区退化:请求行即全部(头空);坏行(无冒号)丢弃
+    let bare = parse_head("GET / HTTP/1.1\r\n")
+    assert(bare.method == "GET")
+    assert(bare.target == "/")
+    assert(bare.hdrs.len == 0)
+    // 请求行残形:无空格 → method/target 空(loop 面 400)
+    let bad = parse_head("GARBAGE\r\n\r\n")
+    assert(bad.method == "")
+}
+
+test "cl_of 十进制/形坏/大小写" {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "content-LENGTH", v: "42" })
+    assert(cl_of(hs) == 42)
+    var hj: List[Pair] = List[Pair]()
+    hj.push(Pair { k: "Content-Length", v: "12,34" })
+    assert(cl_of(hj) == 0 - 1)   // 双 CL 逗并形坏 → 400 fail-closed
+    var he: List[Pair] = List[Pair]()
+    he.push(Pair { k: "Content-Length", v: "" })
+    assert(cl_of(he) == 0 - 1)
+    assert(cl_of(List[Pair]()) == 0)
+}
+
+test "loop_one HEAD 去body保头与 dotdot 拒/查询不误伤" {
+    let app = get[I64](router[I64](0), "/hi", |rq| html("<h1>hi</h1>"))
+    let full = render(html("<h1>hi</h1>"))
+    let cut = index_of(full, "\r\n\r\n")
+    let w = loop_one[I64](app, "HEAD", "/hi", List[Pair](), "")
+    assert(w == byte_slice(full, 0, cut + 4))
+    assert(contains(w, "Content-Length: 11"))   // 保头:CL = GET 形态(RFC 7231)
+    assert(!contains(w, "<h1>"))                // 去 body
+    // `..` 段一票 404;查询串携 `..` 不误伤(仅扫 path 面)
+    assert(starts_with(loop_one[I64](app, "GET", "/a/../b", List[Pair](), ""), "HTTP/1.1 404"))
+    assert(starts_with(loop_one[I64](app, "GET", "/hi?x=../y", List[Pair](), ""), "HTTP/1.1 200"))
+    assert(starts_with(loop_one[I64](app, "GET", "../x", List[Pair](), ""), "HTTP/1.1 404"))
+    // 常规命中与 404 经同一核
+    assert(starts_with(loop_one[I64](app, "GET", "/hi", List[Pair](), ""), "HTTP/1.1 200"))
+    assert(starts_with(loop_one[I64](app, "GET", "/nope", List[Pair](), ""), "HTTP/1.1 404"))
+}
+
+// fake 驱动全链:SrvIo 五件全闭包,状态走 Box[Box64] 游标 + List 捕获
+// (两件 interp 捕获变异可见性,2026-09-28 探针实证——task-3-report 在册)。
+test "serve_with fake 全链:请求×2→写出字节→排空端点断循环关监听" {
+    var reads: List[Str] = List[Str]()
+    reads.push("GET /hi HTTP/1.1\r\nHost: t\r\n\r\n")
+    reads.push("GET /hi HTTP/1.1\r\nHost: t\r\n\r\n")
+    reads.push("POST /__shutdown HTTP/1.1\r\nHost: t\r\nContent-Length: 0\r\n\r\n")
+    let rcur = Box[Box64](Box64 { v: 0 })
+    let acur = Box[Box64](Box64 { v: 0 })
+    var wr: List[Str] = List[Str]()
+    var closed: List[Str] = List[Str]()
+    let io = SrvIo {
+        listen: |h, p| {
+            closed.push("listen:" + h + ":" + p.to_string())
+            return 7
+        },
+        accept: |lfd| {
+            let n = acur.v
+            acur.v = acur.v + 1
+            if n == 0 { return 101 }
+            if n == 1 { return 102 }
+            if n == 2 { return 103 }
+            return 0 - 1
+        },
+        read: |fd, cap| {
+            let i = rcur.v.as[I32]()
+            rcur.v = rcur.v + 1
+            if i < reads.len {
+                return reads[i]
+            }
+            return ""
+        },
+        write: |fd, s| {
+            wr.push(s)
+            return s.len.as[I64]()
+        },
+        close: |fd| {
+            closed.push("close:" + fd.to_string())
+        }
+    }
+    let app = get[I64](router[I64](0), "/hi", |rq| text("ok"))
+    let rc = serve_with[I64](io, "127.0.0.1", 8080, app)
+    assert(rc == 0)
+    assert(wr.len == 3)
+    assert(wr[0] == render(text("ok")))
+    assert(wr[1] == render(text("ok")))
+    assert(wr[2] == render(text("draining")))   // 内置排空端点,不过路由表
+    // close 序:listen 先推(监听建立)→ conn 101 → conn 102 → conn 103 → 监听 7
+    assert(closed[0] == "listen:127.0.0.1:8080")
+    assert(closed[1] == "close:101")
+    assert(closed[2] == "close:102")
+    assert(closed[3] == "close:103")
+    assert(closed[4] == "close:7")
+}
+
+test "serve_with 400 形坏 CL 与 413 超限不读体" {
+    var reads: List[Str] = List[Str]()
+    // conn A:双 CL 逗并形坏 → 400 fail-closed(体块不读)
+    reads.push("POST /bad HTTP/1.1\r\nContent-Length: 1,2\r\n\r\nx")
+    // conn B:CL 超限 → 413 且体不读(后续 "plant-*" 两块必须留在脚本)
+    reads.push("POST /up HTTP/1.1\r\nContent-Length: 99999999\r\n\r\nsh")
+    reads.push("plant-a")
+    reads.push("plant-b")
+    let rcur = Box[Box64](Box64 { v: 0 })
+    let acur = Box[Box64](Box64 { v: 0 })
+    var wr: List[Str] = List[Str]()
+    let io = SrvIo {
+        listen: |h, p| { return 5 },
+        accept: |lfd| {
+            let n = acur.v
+            acur.v = acur.v + 1
+            if n < 2 { return 200 + n }
+            return 0 - 1
+        },
+        read: |fd, cap| {
+            let i = rcur.v.as[I32]()
+            rcur.v = rcur.v + 1
+            if i < reads.len {
+                return reads[i]
+            }
+            return ""
+        },
+        write: |fd, s| {
+            wr.push(s)
+            return s.len.as[I64]()
+        },
+        close: |fd| { }
+    }
+    let app = get[I64](router[I64](0), "/up", |rq| text("no"))
+    let rc = serve_with_limit[I64](io, "127.0.0.1", 0, app, 16)
+    assert(rc == 0)
+    assert(wr.len == 2)
+    assert(starts_with(wr[0], "HTTP/1.1 400 Bad Request\r\n"))
+    assert(starts_with(wr[1], "HTTP/1.1 413 Payload Too Large\r\n"))
+    assert(rcur.v == 2)   // 两臂各只消费头块;"plant-a/plant-b" 未被读 = 超限不读体实证
+}
+
+test "serve_with 头区超限 400 与坏请求行 400 与体读跨块" {
+    var reads: List[Str] = List[Str]()
+    // 头区超限:单块 > HEAD_LIMIT(32768)且无头区终点(4100×8+5 = 32805 字节)
+    var big = "GET /"
+    var k: I32 = 0
+    while k < 4100 {
+        big = big + "abcdefgh"
+        k += 1
+    }
+    reads.push(big)
+    // 坏请求行
+    reads.push("GARBAGE\r\n\r\n")
+    // 体跨块:头块 + 体分两块到齐(增量读重组)
+    reads.push("POST /echo HTTP/1.1\r\nContent-Length: 6\r\n\r\nabc")
+    reads.push("def")
+    let rcur = Box[Box64](Box64 { v: 0 })
+    let acur = Box[Box64](Box64 { v: 0 })
+    var wr: List[Str] = List[Str]()
+    let io = SrvIo {
+        listen: |h, p| { return 5 },
+        accept: |lfd| {
+            let n = acur.v
+            acur.v = acur.v + 1
+            if n < 3 { return 300 + n }
+            return 0 - 1
+        },
+        read: |fd, cap| {
+            let i = rcur.v.as[I32]()
+            rcur.v = rcur.v + 1
+            if i < reads.len {
+                return reads[i]
+            }
+            return ""
+        },
+        write: |fd, s| {
+            wr.push(s)
+            return s.len.as[I64]()
+        },
+        close: |fd| { }
+    }
+    let app = post[I64](router[I64](0), "/echo", |rq| text("b=" + rq.body))
+    let rc = serve_with[I64](io, "127.0.0.1", 0, app)
+    assert(rc == 0)
+    assert(wr.len == 3)
+    assert(starts_with(wr[0], "HTTP/1.1 400 Bad Request\r\n"))   // 头区超限
+    assert(starts_with(wr[1], "HTTP/1.1 400 Bad Request\r\n"))   // 坏请求行
+    assert(contains(wr[2], "\r\n\r\nb=abcdef"))                  // 跨块体重组进 handler
+}
+
+test "serve_with 监听失败返 1 与启动查重" {
+    let io = SrvIo {
+        listen: |h, p| { return 0 - 1 },
+        accept: |lfd| { return 0 - 1 },
+        read: |fd, cap| { return "" },
+        write: |fd, s| { return 0 },
+        close: |fd| { }
+    }
+    let app = get[I64](router[I64](0), "/x", |rq| text("x"))
+    assert(serve_with[I64](io, "127.0.0.1", 0, app) == 1)
 }

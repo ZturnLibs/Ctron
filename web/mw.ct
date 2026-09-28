@@ -37,7 +37,7 @@
 use web.core.{ Req, Resp, Pair, cookie, pdec, req_full, req_set_session, session, with, redirect, text, resp_status, resp_body, resp_header }
 use std.str.{ join, starts_with }
 use web.router.{ router, get, middleware, dispatch }
-use http.frm.auth.{ auth_tok_issue, auth_tok_verify, auth_cookie_set, at_ok, at_tok, tv_rc, tv_uid, auth_err_sig, auth_err_expired }
+use http.frm.auth.{ auth_tok_issue, auth_tok_verify, auth_cookie_set, at_ok, at_tok, tv_rc, tv_uid, tv_why, auth_err_sig, auth_err_expired }
 
 // ---- cookie 名与 Set-Cookie 行 ----
 
