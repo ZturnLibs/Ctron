@@ -664,7 +664,25 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   CSS(开括号 \{ 转义、闭括号裸写,字面量纪律同 one_ascii 表);const 在 test
   求值域不解析(unbound),改函数形。
 
-## web 框架 P0 探针(2026-09-27)
+## web 框架 P0 探针(2026-09-27;Task 5 回归收口终判)
 
-L5 StringBuilder: 立——探针 03i(tests/03i_string_builder_probe.ct):sem check 0 诊断(类型名表挂名证实),interp 臂运行期拒 `未知函数: StringBuilder`(rc=1),emit 臂 `trans: v1 未解析函数:StringBuilder`(rc=2),双臂无真身。
-L4 Bytes: 立(门红,第三形态)——探针 03m(tests/03m_binary_nul_probe.ct)在种子双臂均未能执行:interp `未知函数: read_or`、trans `v1 未解析函数:read_or`,根因系种子为单文件编译器,`use`(std.fs 与本地模块同)只 parse 不并,两臂皆无 std.fs 原语;emit 臂另拒 `to_string` 成员调用(`v1 仅支持具名函数调用`),即使无 std 版探针也过不了发射臂。NUL 保真本体此工具链上未测得,判定按「两臂未全绿 → 立」记;待引导编译器双臂复测后翻转或坐实。
+**P0 四件销账(member-emit 同族;种子臂+引导臂双修,探针已转正 tests/ 一致性测试集,修复四件 suite 行为桶双臂绿)**:
+
+| # | 缺口 | 销账提交 | 探针(tests/) |
+|---|---|---|---|
+| P0-1 | `List[struct]` 元素读+成员读(`tab[i].p` 静默截断/拒) | b0e5bfc | 03l_list_struct_member.ct |
+| P0-2 | 闭包形参成员读(闭包体内 `r.path`) | ec006dd | 03j_closure_param_member.ct |
+| P0-3 | fn 值调用链成员读(`f(x).body`) | fc79e6c | 03k_fn_call_chain_member.ct |
+| P0-4 | 含 fn 字段 struct 入定长数组("数组元素类型不支持") | edb59fb | 03n_struct_fn_field_array.ct |
+
+**残留(自举正本原生发射臂,非本次销账域;Task 5 逐字实测复核)**:03l emit `ct_expr:Member@23`(正本发射器元素型别 L 码擦除 trans_ty.ct:250 + 定宽 `char**` 运行期槽,= P5 b4 定宽槽架构);03n emit `emit:并发值含 struct 值传递`(在册同族)。镜像不存在,补齐需「参数化 List 码+装箱容器 ABI」特性级工作——条件登记 **L6**(spec §9 表,候选·待用户裁决;Plan 2 关键路径输入)。
+
+L5 StringBuilder: **立(终判)**——探针 03i(tests/03i_string_builder_probe.ct):种子 check 0 诊断(类型名表挂名证实),种子 interp `未知函数: StringBuilder`(rc=1)、种子 trans `v1 未解析函数:StringBuilder`(rc=2);引导 check 同过(同一挂名),引导 `bin/ctron-cc run` `E2020: 未解析的名称(unresolved):StringBuilder`(rc=1)。拒绝在解释/发射**运行面**而非编译面,双臂无真身 → 立。形态裁定(Task 5):03i 编译(双编译器挂名通过)与运行(拒)分相,不合 `.neg.ct`「必须编译失败」契约——强转 neg 将在 bootstrap 侧以解释期拒绝冒充编译期拦截(假绿),种子侧仍红(check 过 = 「未拦截」);维持行为件红账在册,远期建议迁 roadmap 锚(红=规范锚,L5 销时按翻转协议转正)。
+
+L4 Bytes: **立(终判,Task 0 门红默认升格为实测坐实)**——探针 03m(tests/03m_binary_nul_probe.ct)。种子双臂仍不可执行(interp `未知函数: read_or` rc=1 / trans `v1 未解析函数:read_or`;种子单文件不并 use)。**引导双臂首次执行成功而门红**(判定纪律:nuls>0 且 mid_ok=1 → 销):
+- 引导解释臂 `bin/ctron-cc run`(加载器并 std.fs):`len:4` / `nuls:0` / `mid_ok:0`,rc=0;
+- 引导发射臂 `bin/ctron-emit run` → cc → 原生二进制:逐字同上,rc=0。
+
+nuls=0、mid_ok=0 → **立,坐实**。机理:靶 /bin/echo(101136 B,fat Mach-O `ca fe ba be`+`00 00 00 02`,首 NUL 在偏移 4)读入即止于首 NUL——Str=C 串语义下 101132 字节在读边界即失,byte_at/byte_slice 未及参与;§7-8 门(进→取→运算→出全链保真)红在读边界本身,中段重组问题在该 Str 形态下不可问。工具链事实(Plan 2 输入):`ctc.sh emit`(锚驱动)发射不携带 use 依赖(产物调 `t_read_or` 而无定义 → cc 硬错);`bin/ctron-emit` 合并并发射 use 依赖,为权威发射臂。03m 形态裁定:干净编译 + rc=0 运行,无既有文件形态可载(neg/lint/panic 皆不合;补门断言 test 块会把 bootstrap suite 臂从绿翻红,超本计划授权),维持行为件红账在册(同 03i,建议远期迁 roadmap 锚)。
+
+suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大**——bootstrap 红 2 = 03i(L5 探针,判立即红账)+ 06f_parallel(bootstrap 解释器无 parallel 内建,基线既有);种子红 2 = 03i + 03m(L4 探针,判立即红账;bootstrap 侧 03m rc=0 而 gate 红——suite 判 rc 不判 gate,红账以本节判定为准)。meta gate 已知红 2 = 03i/03m 行为件无 test 块(即上两探针,判立即红账的一部分,不扩大)。

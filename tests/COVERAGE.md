@@ -411,3 +411,15 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   错位一格且尾部越界读,EOF 名读出 NULL 使 test_lex 段错误——补条目,test_lex 58/0 全绿。
 - `suite_lex` 补 `.neg.ct` 过滤(对齐 Rust lex_suite 先例):neg 语料判定面是诊断码,
   不入"全语料零词法诊断"断言 → 127 文件零误报。
+
+## §web P0 编译销账(编译泳道,2026-09-27→28)
+
+| 项 | 锚定 |
+|---|---|
+| P0-3/P0-2/P0-1/P0-4 member-emit 四件 | 探针转正 `03k_fn_call_chain_member`/`03j_closure_param_member`/`03l_list_struct_member`/`03n_struct_fn_field_array`(销账提交 fc79e6c/ec006dd/b0e5bfc/edb59fb),suite 行为桶**双臂绿**;自举原生发射臂残留不在销账域:03l emit `ct_expr:Member@23`(L 码擦除 trans_ty.ct:250+定宽 char** 槽=P5 b4)、03n emit `emit:并发值含 struct 值传递`(在册同族)——条件登记 **L6**(spec §9,候选·待用户裁决) |
+| L5 StringBuilder 判定 | **立(终判)**:探针 `03i_string_builder_probe` 双编译器 check 挂名过(0 诊断)、运行面拒(种子 `未知函数: StringBuilder` / 引导 `E2020`);编译/运行分相不合 `.neg.ct` 契约,维持行为件红账 |
+| L4 Bytes 判定 | **立(终判,引导双臂实测坐实)**:探针 `03m_binary_nul_probe` 种子双臂不可执行(单文件不并 use);引导 interp + emit→gcc 双臂执行成功而门红(`len:4/nuls:0/mid_ok:0`——/bin/echo 101136 B fat Mach-O 首 NUL 在偏移 4,Str=C 串读边界截断,nuls=0 且 mid_ok=0 → 立) |
+| **web-P0 收口门** | 修复四件探针双臂绿 ✓;03i/03m 判立红账在册(非新增红);**全套件 77/79 双侧与基线零扩大**(bootstrap 红 2 = 03i+06f_parallel[基线既有:解释器无 parallel 内建];种子红 2 = 03i+03m;bootstrap 侧 03m rc=0 而 gate 红,suite 判 rc 不判 gate,红账以 divergences 判定为准);smoke --full 150/0;ctc_smoke 21/0;meta gate 已知红 2 = 03i/03m 行为件无 test 块(即两探针,判立红账一部分,不扩大) |
+
+设计:`docs/superpowers/specs/2026-09-27-web-framework-design.md` §9;判定详证与逐字输出:
+`docs/c-rust-divergences.md`「web 框架 P0 探针」节。

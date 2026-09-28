@@ -400,21 +400,23 @@ struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审�
 
 ## 9. 编译泳道账本(分立销账;web 的硬前置)
 
-探针实案(`compiler-c/build/ctronc`,2026-09-27;解释臂全绿,发射臂逐条定位):
+探针实案(`compiler-c/build/ctronc`,2026-09-27;解释臂全绿,发射臂逐条定位)。
+**P0 四件已销账收口(Task 5,2026-09-28:探针 03j/03k/03l/03n 双臂绿,全套件 77/79 双侧零新红;L4/L5 引导双臂终判均 立);残留与语言项见下表:**
 
 | # | 缺口 | 探针 | 状态 |
 |---|---|---|---|
-| P0-1 | `List[struct]` 元素成员读(`tab[i].p` 红) | final.ct | **在册债**(todo_app 数据层降级同根因) |
-| P0-2 | 闭包形参成员读(闭包体内 `r.path` 红) | p2e.ct | 新登记 |
-| P0-3 | fn 值调用链成员读(`f(x).body` 红;绕行:提取局部) | p2a.ct | 新登记 |
-| P0-4 | 含 fn 字段 struct 入定长数组("数组元素类型不支持") | fixed.ct | 新登记 |
+| P0-1 | `List[struct]` 元素成员读(`tab[i].p` 红) | 03l | **已销账(种子臂 b0e5bfc;探针 03l 双臂绿)**;正本原生臂残留——正本发射器元素型别 L 码擦除(trans_ty.ct:250)+定宽 char** 运行期,镜像不存在,补齐需「参数化 List 码+装箱容器 ABI」特性级工作(Plan 2 关键路径输入) |
+| P0-2 | 闭包形参成员读(闭包体内 `r.path` 红) | 03j | 已销账(ec006dd) |
+| P0-3 | fn 值调用链成员读(`f(x).body` 红;绕行:提取局部) | 03k | 已销账(fc79e6c) |
+| P0-4 | 含 fn 字段 struct 入定长数组("数组元素类型不支持") | 03n | 已销账(edb59fb) |
 
 | # | 项 | 说明 |
 |---|---|---|
 | L2 | `@derive(Json)` | 语言扩展(derive 插件机制,§8.3 注解契约 sanctioned 通道);`@derive(DbRow)` 同池 |
 | L3 | 主文件直发截断债(在册) | 关联:todo_app 迁移后仍守"逻辑在依赖模块"纪律,该债销账前 main.ct 不回胖 |
-| L4 | `Bytes` 字节串类型(**已立项**) | 若 §7-8 二进制往返探针红(Str 含 NUL 过 byte_slice/比较运算静默截断)则立此项;探针绿则销。判定(探针 03m,2026-09-27):**立**——种子双臂未能执行探针(interp `未知函数: read_or` / trans `未解析函数:read_or`,种子单文件不并 use,无 std.fs;emit 臂另拒 `to_string` 成员调用),§7-8 门红;NUL 保真本体待引导编译器复测 |
-| L5 | 可增长字符串缓冲(**已立项**) | `+` 拼接每次 `ctron_str_concat` 新分配,循环拼接 O(n²);`StringBuilder` 现仅 sem.c 类型名表挂名(std 零使用、rt 零函数)。plan 首批探针双宿主;红则立此项——web 构建器与用户视图共同受益(§14-1)。判定(探针 03i,2026-09-27):**立**——sem 0 诊断(挂名证实),interp `未知函数: StringBuilder`、trans `未解析函数:StringBuilder`,双臂无真身 |
+| L4 | `Bytes` 字节串类型(**已立项,终判坐实**) | 若 §7-8 二进制往返探针红(Str 含 NUL 过 byte_slice/比较运算静默截断)则立此项;探针绿则销。判定(探针 03m,2026-09-27 种子门红默认;Task 5 引导双臂实测):**立**——种子双臂不可执行(单文件不并 use);引导 interp + emit→gcc 双臂执行成功而门红(`len:4/nuls:0/mid_ok:0`,rc=0:/bin/echo 101136 B fat Mach-O 首 NUL 在偏移 4,Str=C 串读边界截断,nuls=0 且 mid_ok=0 → 立)。判定纪律:nuls>0 且 mid_ok=1 → 销 |
+| L5 | 可增长字符串缓冲(**已立项,终判**) | `+` 拼接每次 `ctron_str_concat` 新分配,循环拼接 O(n²);`StringBuilder` 现仅 sem.c 类型名表挂名(std 零使用、rt 零函数)。plan 首批探针双宿主;红则立此项——web 构建器与用户视图共同受益(§14-1)。判定(探针 03i,2026-09-27;Task 5 引导复核同判):**立**——sem 0 诊断(挂名证实,双编译器同),interp `未知函数: StringBuilder`、trans `未解析函数:StringBuilder`,引导 `E2020` 运行面拒;拒绝在运行面而非编译面,双臂无真身 |
+| L6 | 参数化 List 码 + 装箱容器 ABI(**候选·条件登记,待用户裁决**) | 正本原生臂 List[struct] 残留的唯一正解(元素型别 L 码擦除 trans_ty.ct:250 + 定宽 char** 运行期槽,镜像不存在,P5 b4 同根);特性级新工作,非 member-emit 小面。现状:种子臂+引导 interp 臂已绿(03l),引导原生臂拒(`ct_expr:Member@23`);web v1 若跑引导原生臂则为关键路径输入,裁决决定 Plan 2 宿主口径 |
 
 按「能力优先于 hack」裁决:web 按目标形态设计,**不做平行 List/act 表/id 分发替身**;
 P0 四件全部 member-emit 同族小面。
