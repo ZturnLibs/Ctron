@@ -1,0 +1,124 @@
+// view.ct —— 视图微 builder:HTML 元素值模型 + 链式装配(Plan 2a Task 4)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.8;纪律 §14-1
+//
+// 结构性转义是本件的存在理由(§4.8;XSS 纪律变类型):
+//   text/attr 的值一律过 ht_esc(http.frm.html 五实体转义:&amp; &lt; &gt;
+//   &quot; &#39;)——转义不靠调用点自觉,靠 El 装配面无原文洞;
+//   raw 是显式逃生口(调用点自声明信任,同 ht_el inner 豁免口径);
+//   child/children 收的是 El,递归 done 后入 kids,成品段不回炉。
+// 会话糖(grant_session/drop_session/flash)归 2b(依赖 with_sessions 键管理)。
+
+use web.core.{ Pair }
+use std.str.{ join, contains, starts_with, ends_with }
+use http.frm.html.{ ht_esc }
+
+pub struct El {
+    let tag: Str
+    let attrs: List[Pair]
+    let kids: List[Str]     // 子节点已是成品 HTML 段(text/child 递归 done)
+}
+
+pub fn el(tag: Str) -> El {
+    return El { tag: tag, attrs: List[Pair](), kids: List[Str]() }
+}
+
+// el_with —— 值语义推进:拷旧字段 + 按哨兵入新(k 非空入属性,kid 非空入子)
+// (El 本体不动,链式每步新值;同 Resp/Router 值语义口径)
+fn el_with(e: El, a: Pair, kid: Str) -> El {
+    var as_: List[Pair] = List[Pair]()
+    var i: I32 = 0
+    while i < e.attrs.len {
+        as_.push(e.attrs[i])
+        i += 1
+    }
+    if a.k.len > 0 {
+        as_.push(a)
+    }
+    var ks: List[Str] = List[Str]()
+    i = 0
+    while i < e.kids.len {
+        ks.push(e.kids[i])
+        i += 1
+    }
+    if kid.len > 0 {
+        ks.push(kid)
+    }
+    return El { tag: e.tag, attrs: as_, kids: ks }
+}
+
+pub fn cls(e: El, v: Str) -> El { return el_with(e, Pair { k: "class", v: ht_esc(v) }, "") }
+pub fn attr(e: El, k: Str, v: Str) -> El { return el_with(e, Pair { k: k, v: ht_esc(v) }, "") }
+pub fn child(e: El, k: El) -> El { return el_with(e, Pair { k: "", v: "" }, done(k)) }
+pub fn children(e: El, ks: List[El]) -> El {
+    var i: I32 = 0
+    var acc = e
+    while i < ks.len {
+        acc = child(acc, ks[i])
+        i += 1
+    }
+    return acc
+}
+pub fn text(e: El, v: Str) -> El { return el_with(e, Pair { k: "", v: "" }, ht_esc(v)) }
+pub fn raw(e: El, v: Str) -> El { return el_with(e, Pair { k: "", v: "" }, v) }
+
+pub fn done(e: El) -> Str {
+    var ps: List[Str] = List[Str]()
+    ps.push("<" + e.tag)
+    var i: I32 = 0
+    while i < e.attrs.len {
+        ps.push(" " + e.attrs[i].k + "=\"" + e.attrs[i].v + "\"")
+        i += 1
+    }
+    if e.kids.len == 0 {
+        ps.push("/>")
+        return join(ps, "")
+    }
+    ps.push(">")
+    i = 0
+    while i < e.kids.len {
+        ps.push(e.kids[i])
+        i += 1
+    }
+    ps.push("</" + e.tag + ">")
+    return join(ps, "")
+}
+
+// ---- 测试(结构性转义为核心断言) ----
+
+test "el 结构性转义" {
+    let a = el("a").attr("href", "http://x/?a=1&b=2").text("<b>&\"")
+    let s = done(a)
+    assert(contains(s, "href=\"http://x/?a=1&amp;b=2\""))
+    // ht_esc 五实体口径:引号亦转(&quot;)——text 值内 `"` 不破字面界
+    assert(contains(s, "&lt;b&gt;&amp;&quot;"))
+    assert(starts_with(s, "<a ") && ends_with(s, "</a>"))
+    let li = el("li").cls("done").child(el("span").text("x"))
+    assert(contains(done(li), "<li class=\"done\"><span>x</span></li>"))
+}
+
+test "attr 引号洞与 raw 逃生口" {
+    // 引号入属性值:转成 &quot; 才不出逃 attr 界(引号属性注入向量)
+    let q = done(el("div").attr("title", "a\"b'c"))
+    assert(q == "<div title=\"a&quot;b&#39;c\"/>")
+    // cls 同属性口径:class 值亦过 ht_esc
+    let c = done(el("span").cls("a\"b"))
+    assert(c == "<span class=\"a&quot;b\"/>")
+    // 值语义:attr 不动本体
+    let base = el("p")
+    let w = base.attr("id", "x")
+    assert(done(base) == "<p/>")
+    assert(contains(done(w), "id=\"x\""))
+    // raw 显式逃生口:原文直入(信任面),text 同源必转
+    let r = done(el("p").raw("<em>ok</em>"))
+    assert(r == "<p><em>ok</em></p>")
+    let t = done(el("p").text("<em>ok</em>"))
+    assert(t == "<p>&lt;em&gt;ok&lt;/em&gt;</p>")
+    // children 保序多子
+    var ks: List[El] = List[El]()
+    ks.push(el("li").text("1"))
+    ks.push(el("li").text("2"))
+    let ul = done(el("ul").children(ks))
+    assert(ul == "<ul><li>1</li><li>2</li></ul>")
+    // 空子空属性 → 自闭形
+    assert(done(el("br")) == "<br/>")
+}
