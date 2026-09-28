@@ -3089,6 +3089,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     wi = nbc
                 }
                 vs = wi
+                // 实绘原点 = 子串起点实测(vs 为 ≤xo 的最近码点边界,与 xo 差
+                // 可达一字宽;光标/选区/窗口右界一律以此为参照——用 xo 会左移
+                // 骑字,用户实测「光标覆盖文字」根因)
+                var mvs: I32 = gui_ft_measure_n_wt(idisp, vs, isz2, wt2p, fam2p)
                 var ve: I32 = idisp.len
                 wi = vs
                 while wi < idisp.len {
@@ -3101,7 +3105,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             break
                         }
                     }
-                    if gui_ft_measure_n_wt(idisp, nbc2, isz2, wt2p, fam2p) >= xo + vavail - 12 {
+                    if gui_ft_measure_n_wt(idisp, nbc2, isz2, wt2p, fam2p) >= mvs + vavail - 12 {
                         ve = wi
                         wi = idisp.len + 1
                     } else {
@@ -3131,8 +3135,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         sc1 = san
                     }
                     if sc1 > sc0 {
-                        var sx0: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p) - xo
-                        var sx1: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p) - xo
+                        var sx0: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p) - mvs
+                        var sx1: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p) - mvs
                         if sx1 > ipd + vavail {
                             sx1 = ipd + vavail
                         }
@@ -3154,7 +3158,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     var pfx: Str = pfx2
                     var wt2: I32 = ifw2 % 10000
                     var fam2: I32 = ifw2 / 10000
-                    var offx: I32 = ipd + gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2) - xo
+                    var offx: I32 = ipd + gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2) - mvs
                     gui_caret_float(offx, icy, 2, ilh, ifg2)
                     // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
                     hits.push(id)
