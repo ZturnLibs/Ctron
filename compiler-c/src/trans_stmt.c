@@ -563,6 +563,7 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
             if (t.ek == T_FLT) e2 = ty_flt();
             if (t.ek == T_BOOL) e2 = ty_bool();
             if (t.ek == T_STR) e2 = ty_str();
+            if (t.ek == T_STRUCT) { e2.k = T_STRUCT; e2.tname = t.tname; } // P0-4:struct 元素直赋(A_EQ 走裸赋值不经 decl 助手;复合赋值诚实拒绝)
             if (st->aop == A_EQ) {
                 if (e2.k == T_INT) {
                     char h[64];

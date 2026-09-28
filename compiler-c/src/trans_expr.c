@@ -485,10 +485,23 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_free(&a1);
         }
         if (c->err) { sb_free(&elems); return ty_unk(); }
-        if (et.k != T_INT && et.k != T_FLT && et.k != T_BOOL && et.k != T_STR) {
+        if (et.k != T_INT && et.k != T_FLT && et.k != T_BOOL && et.k != T_STR && et.k != T_STRUCT) {
             terr(c, "v1:数组元素类型不支持");
             sb_free(&elems);
             return ty_unk();
+        }
+        if (et.k == T_STRUCT) {
+            // P0-4:struct 元素(含 fn 字段)定长数组字面量放行——形态镜像标量 _lit(堆复制),
+            // 数据槽 ctron_t_<名> 全宽(typedef 由 P0-1 后置环发射);曾报「数组元素类型不支持」
+            char wl[64];
+            snprintf(wl, sizeof wl, "%s", et.tname ? et.tname : "?");
+            use_arr(c, wl);
+            char h[96];
+            snprintf(h, sizeof h, "ctron_arr_%s_lit", wl);
+            use_helper(c, h);
+            sb_f(o, "%s(%lld, (%s[]){%s})", h, (long long)e->nelems, dt_for_wl(wl), elems.d ? elems.d : "");
+            sb_free(&elems);
+            return ty_arr(et);
         }
         char wl[16];
         if (et.k == T_STR) snprintf(wl, sizeof wl, "str");
@@ -702,6 +715,14 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (t.k == T_LIST && t.ek == T_STRUCT) {
             // P0-1:List[struct] 元素读——数据指针按元素结构取全宽值(在册债「索引读静默截断」销账;
             // 曾以 int64 槽直读 → 值截断,且元素型别落 T_INT → 成员读报「目标类型 1」)
+            use_arr(c, t.tname ? t.tname : "");
+            ty e3 = box_elem(t);
+            sb_f(o, "((%s*)(%s.d))[ctron_idx(%s.n, %s)]", ctype_of(e3), e->obj->text, e->obj->text, ix.d ? ix.d : "0");
+            sb_free(&ix);
+            return e3;
+        }
+        if (t.k == T_ARR && t.ek == T_STRUCT) {
+            // P0-4:定长数组 struct 元素读——镜像 P0-1 List[struct] 形态(数据槽全宽读,元素型别落 T_STRUCT)
             use_arr(c, t.tname ? t.tname : "");
             ty e3 = box_elem(t);
             sb_f(o, "((%s*)(%s.d))[ctron_idx(%s.n, %s)]", ctype_of(e3), e->obj->text, e->obj->text, ix.d ? ix.d : "0");

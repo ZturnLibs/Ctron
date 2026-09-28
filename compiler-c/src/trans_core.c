@@ -103,8 +103,9 @@ const char* ctype_of(ty t) {
     if (t.k == T_ENUM) { static char sb2[96]; snprintf(sb2, sizeof sb2, "ctron_e_%s", t.tname ? t.tname : "?"); return sb2; }
     if (t.k == T_STR) return "const char*";
     if (t.k == T_ARR) {
-        static char buf[48];
-        snprintf(buf, sizeof buf, "ctron_arr_%s", ewlname(t));
+        static char buf[96];
+        if (t.ek == T_STRUCT) snprintf(buf, sizeof buf, "ctron_arr_%s", t.tname ? t.tname : "?"); // P0-4:struct 元素容器名 = 元素结构名(与 P0-1 T_LIST 同径;typedef 在 struct 定义后)
+        else snprintf(buf, sizeof buf, "ctron_arr_%s", ewlname(t));
         return buf;
     }
     if (t.k == T_FLT) return "double";
@@ -177,11 +178,17 @@ ty decl_ty_tc(tc* c, const cty* t) {
     }
     if (t->kind == TY_SLICE) {
         ty e = decl_ty_tc(c, t->sub);
-        return e.k == T_UNK ? ty_unk() : ty_arr(e);
+        if (e.k == T_UNK) return ty_unk();
+        ty r0 = ty_arr(e);
+        if ((e.k == T_STRUCT || e.k == T_ENUM || e.k == T_CLASS) && !r0.tname) r0.tname = e.tname; // P0-4:聚合元素名入容器槽(索引读/字面量按名寻型;ty_arr 不复制)
+        return r0;
     }
     if (t->kind == TY_ARRAY) {
         ty e = decl_ty_tc(c, t->elem);
-        return e.k == T_UNK ? ty_unk() : ty_arr(e); // 维度不校验(对齐 rt)
+        if (e.k == T_UNK) return ty_unk();
+        ty r = ty_arr(e); // 维度不校验(对齐 rt)
+        if ((e.k == T_STRUCT || e.k == T_ENUM || e.k == T_CLASS) && !r.tname) r.tname = e.tname; // P0-4:同上
+        return r;
     }
     if (!t || t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];
