@@ -153,6 +153,18 @@ prop: 通道应答/slot 内事件合成根模型捕获分支/组件 when 门包 
 零渲染。**边界在册**:v1 组件 prop 与宿主路径根同名时组件 env 遮蔽;
 check 面对实例仅认领不深查(E81xx 完整契约随组件检查专项);gui_sk_load
 编译骨架面无 vreg,投影仅 gt_parse 形态(既有登记顺延)。阶梯 56 夹具。
+**check 面组件实例深查落库(0928,e8140 语料三件;「认领不深查」收口)**:
+gui_check_file 预收集组件注册表(视图名→声明 prop 名表,0x01 连接)穿参
+gui_ck_elem;实例元素分支:args `名: 值` 逐参核声明表(**未知=E8110/缺失
+=E8100**),{表达式} 值走宿主根门(与 attr 槽同规),非自闭合投影子树按
+宿主上下文递归。**连带发现:gui_dump_file 的 lower 面(gui_lower_element)
+不认实例实参即 panic("属性期待等号"),先于 E81xx 走查炸掉**——lower 面
+补实例分支(跳读 args+投影子树递归,与 sk/gt 面三处同形)。**验证口径
+注记**:e8 语料夹具走 ctc.sh=seed 解释面,peer 在飞 compiler-c(eval 换代)
+期间 seed 静默放行全部负例(基线红,非本片);本片经**原生面私有锚 chk**
+( sed 锚+ctron-emit+cc)全量验证 36/36(23 neg+12 pos+1 warn,含新增 3 件),
+存量零回归。教训:私有验证用锚副本必须每次从新鲜 build/cc_check.ct 重
+sed(旧副本静默吃掉新逻辑,TMP 示踪"不触发"假象一小时)。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr
