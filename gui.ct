@@ -3701,7 +3701,8 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                             fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
                         }
                     }
-                    gui_caret_set(fbv.len)
+                    var cax: I32 = gui_caret_at_x(t, fnode, fbv, gui_evt_x(), rects, hits)
+                    gui_caret_set(cax)
                 } else {
                     gui_focus_set(-1)
                 }
@@ -3852,7 +3853,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                             fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
                         }
                     }
-                    gui_caret_set(fbv.len)
+                    var cax: I32 = gui_caret_at_x(t, fnode, fbv, gui_evt_x(), rects, hits)
+                    gui_caret_set(cax)
                 } else {
                     gui_focus_set(-1)
                 }
@@ -3901,7 +3903,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                 gui_focus_set(nfb)
                                 if nfb >= 0 {
                                     var fbv: Str = rt_in_val(t, nfb, bind)
-                                    gui_caret_set(fbv.len)
+                                    var cax: I32 = gui_caret_at_x(t, nfb, fbv, gui_evt_x(), rects, hits)
+                    gui_caret_set(cax)
                                 } else {
                                     gui_caret_set(0)
                                 }
@@ -4488,6 +4491,63 @@ pub fn char_str(k: I32) -> Str {
 
 // SL-8c-4④:事件名实例后缀取整("头:N" 尾部数字;无后缀 = 0)——
 // 合成 act 的逐行事件分支消费(P-H1 命中契约的解码侧)
+// P-M3:点击 x → 最近码点边界(成熟 GUI 点击定位光标):沿码点边界步行累计
+// 前缀实测宽(与布局同源),取 |w-off| 最小边界;框体定位取该节点配对矩形中
+// 最宽者(浮条 2px RECT 亦配对命中,须避开)
+fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32], hits: List[I32]) -> I32 {
+    var boxi: I32 = -1
+    var boxw: I32 = 0
+    var j: I32 = 0
+    while j < hits.len {
+        if hits[j] == node {
+            if j < rects.len {
+                var wj: I32 = gui_cmd_w100(rects[j])
+                if wj > boxw {
+                    boxw = wj
+                    boxi = rects[j]
+                }
+            }
+        }
+        j += 1
+    }
+    if boxi < 0 {
+        return val.len
+    }
+    var off: I32 = clickx - gui_cmd_x100(boxi) / 100
+    var isz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "20", t))
+    var ifw: I32 = gs2i(gt_cls_prop(t.ncls[node], "font_weight", "400", t))
+    var wt2: I32 = ifw % 10000
+    var fam2: I32 = ifw / 10000
+    var best: I32 = 0
+    var bestd: I32 = off
+    if bestd < 0 {
+        bestd = 0 - bestd
+    }
+    var i: I32 = 0
+    while i <= val.len {
+        var okb: Bool = true
+        if i < val.len {
+            var b: I32 = byte_at(val, i)
+            if b >= 128 && b < 192 {
+                okb = false
+            }
+        }
+        if okb {
+            var w: I32 = gui_ft_measure_n_wt(val, i, isz, wt2, fam2)
+            var d: I32 = w - off
+            if d < 0 {
+                d = 0 - d
+            }
+            if d < bestd {
+                bestd = d
+                best = i
+            }
+        }
+        i += 1
+    }
+    return best
+}
+
 // P-M3:开窗自动聚焦首个 input(成熟语言输入体验:启动即可打字,无需点击;
 // caret 置尾 = append 惯例,与 click-to-focus 一致)
 fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
