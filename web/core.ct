@@ -212,6 +212,11 @@ pub fn req_full[S](method: Str, path: Str, body: Str, hdrs: List[Pair], state: S
     return Req { method: method, path: p, query: q, body: body, headers: hdrs, cookies: cs, params: List[Pair](), state: state }
 }
 
+// params 注入(router 匹配后回填 :param;值语义拷贝换字段,Req 本体不动)
+pub fn req_set_params[S](r: Req[S], params: List[Pair]) -> Req[S] {
+    return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: params, state: r.state }
+}
+
 fn hdr_get(hdrs: List[Pair], name: Str) -> Str {
     var i: I32 = 0
     while i < hdrs.len {
