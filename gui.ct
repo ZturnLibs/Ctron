@@ -127,6 +127,7 @@ extern "c" fn gui_inject_mod(m: I32) -> Void
 
 #[trusted]
 extern "c" fn gui_mod_ctrl() -> I32
+extern "c" fn gui_mod_shift() -> I32
 
 #[trusted]
 extern "c" fn gui_alpha(a: I32) -> Void
@@ -1985,8 +1986,10 @@ pub fn rt_bind_items(t: GuiTree, bind: fn(List[Str]) -> Void, listname: Str) -> 
         if gui_list_ns(t.env_v) > 0 {
             var ei: I32 = t.env_n.len - 1
             while ei >= 0 {
+                println("T-BINDSCAN ei=" + ei.to_string() + " en=" + t.env_n[ei] + " want=" + listname)
                 if t.env_n[ei] == listname {
                     if gui_is_list(t.env_v[ei]) == 1 {
+                        println("T-BINDHIT")
                         return gui_as_list(t.env_v[ei])
                     }
                 }
@@ -2739,6 +2742,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             }
             t.env_n.push(pname)
             t.env_v.push(pval)
+            if pname == "items" {
+                println("T-ITEMS pname=" + pname + " pvallen=" + pval.len.to_string() + " islist=" + gui_is_list(pval).to_string())
+            }
             pi += 1
         }
         // slot 投影:实例子树根入 env("__slot__" 恒不与真实路径根撞),
@@ -3380,7 +3386,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
                 var items = rt_bind_items(t, bind, t.npre[id])
                 var ii: I32 = 0
+                println("T-EACHN n=" + items.len.to_string() + " lst=" + t.npre[id])
                 while ii < items.len {
+                    println("T-ITEM[" + ii.to_string() + "]=[" + items[ii] + "]")
                     var ch: I32 = t.nfc[id]
                     while ch >= 0 {
                         rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii, hov, actn)
@@ -3601,6 +3609,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         gui_caret_set(0)
         return true
     }
+    var shd: Bool = gui_mod_shift() == 1
     // 编辑快捷键(⌘/Ctrl 统一 gui_mod_ctrl):C 复制 / X 剪切 / V 粘贴 / A 全选
     if gui_mod_ctrl() == 1 {
         var kU: I32 = k
@@ -3752,7 +3761,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     }
     if k == 263 {
         if caret > 0 {
-            // 码点级左移(落在连续字节上时回退到码点首)
+            // 码点级左移(落在连续字节上时回退到码点首);Shift=扩选(锚保持)
             var lc: I32 = caret - 1
             while lc > 0 {
                 var b3: I32 = byte_at(cur, lc)
@@ -3762,14 +3771,21 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
                     break
                 }
             }
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
             gui_caret_set(lc)
-            gui_sel_clear()
+            if !shd {
+                gui_sel_clear()
+            }
         }
         return true
     }
     if k == 262 {
         if caret < cur.len {
-            // 码点级右移(跳过当前码点的连续字节)
+            // 码点级右移;Shift=扩选(锚保持)
             var rc2: I32 = caret + 1
             while rc2 < cur.len {
                 var b4: I32 = byte_at(cur, rc2)
@@ -3779,19 +3795,40 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
                     break
                 }
             }
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
             gui_caret_set(rc2)
-            gui_sel_clear()
+            if !shd {
+                gui_sel_clear()
+            }
         }
         return true
     }
     if k == 268 {
+        if shd {
+            if gui_sel_anchor_get() < 0 {
+                gui_sel_anchor_set(caret)
+            }
+        }
         gui_caret_set(0)
-        gui_sel_clear()
+        if !shd {
+            gui_sel_clear()
+        }
         return true
     }
     if k == 269 {
+        if shd {
+            if gui_sel_anchor_get() < 0 {
+                gui_sel_anchor_set(caret)
+            }
+        }
         gui_caret_set(cur.len)
-        gui_sel_clear()
+        if !shd {
+            gui_sel_clear()
+        }
         return true
     }
     if k == 257 {
@@ -3955,6 +3992,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                     ised = true
                 }
                 if ised {
+                    var hadf: Bool = gui_focus_node() == fnode
                     gui_focus_set(fnode)
                     var fbv: Str = ""
                     if t.nbid[fnode] != "" {
@@ -3968,6 +4006,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                     gui_caret_set(cax)
                     // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
                     // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
+                    // 三击=全选;Shift+点击(已聚焦且有锚)=扩选到点击位
                     var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
                     if dblk == 1 {
                         var wr = List[I32]()
@@ -3979,8 +4018,17 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                             }
                         }
                     } else {
-                        gui_sel_anchor_set(cax)
-                        gui_drag_begin()
+                        if dblk == 2 {
+                            gui_sel_anchor_set(0)
+                            gui_caret_set(fbv.len)
+                        } else {
+                            if gui_mod_shift() == 1 && hadf && gui_sel_anchor_get() >= 0 {
+                                gui_caret_set(cax)
+                            } else {
+                                gui_sel_anchor_set(cax)
+                                gui_drag_begin()
+                            }
+                        }
                     }
                 } else {
                     gui_focus_set(-1)
@@ -4126,6 +4174,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     ised = true
                 }
                 if ised {
+                    var hadf: Bool = gui_focus_node() == fnode
                     gui_focus_set(fnode)
                     var fbv: Str = ""
                     if t.nbid[fnode] != "" {
@@ -4139,6 +4188,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     gui_caret_set(cax)
                     // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
                     // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
+                    // 三击=全选;Shift+点击(已聚焦且有锚)=扩选到点击位
                     var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
                     if dblk == 1 {
                         var wr = List[I32]()
@@ -4150,8 +4200,17 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                             }
                         }
                     } else {
-                        gui_sel_anchor_set(cax)
-                        gui_drag_begin()
+                        if dblk == 2 {
+                            gui_sel_anchor_set(0)
+                            gui_caret_set(fbv.len)
+                        } else {
+                            if gui_mod_shift() == 1 && hadf && gui_sel_anchor_get() >= 0 {
+                                gui_caret_set(cax)
+                            } else {
+                                gui_sel_anchor_set(cax)
+                                gui_drag_begin()
+                            }
+                        }
                     }
                 } else {
                     gui_focus_set(-1)

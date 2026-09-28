@@ -505,7 +505,14 @@ int gui_clip_byte(int i) {
 }
 
 int g_mod_ctrl = 0;
+static int g_mod_shift = 0;
 void gui_inject_mod(int m) { g_mod_ctrl = m; }
+int gui_mod_shift(void) {
+    if (g_mod_shift > 0) { return 1; }
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) { return 1; }
+    return 0;
+}
+void gui_inject_shift(int m) { g_mod_shift = m; }
 int gui_mod_ctrl(void) {
     if (g_mod_ctrl > 0) { return 1; }
     if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) { return 1; }
@@ -639,16 +646,17 @@ int gui_drag_begin(void) { g_drag_input = 1; return 0; }
 int gui_drag_end(void) { g_drag_input = 0; return 0; }
 int gui_drag_active(void) { return g_drag_input; }
 
-// 双击检测(350ms/6px 内二次点击);命中后复位防三击
+// 点击计数(350ms/6px 聚类):2=双击 3=三击(后复位);连续计数防抖
 static int g_last_click_ms = -100000;
 static int g_last_click_x = 0;
 static int g_last_click_y = 0;
+static int g_click_n = 0;
 int gui_click_kind(int px, int py) {
     int now = gui_now_ms();
     {
         static int ck_tr = -1;
         if (ck_tr < 0) { ck_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
-        if (ck_tr) { fprintf(stderr, "[CK] px=%d py=%d now=%d last=%d\n", px, py, now, g_last_click_ms); }
+        if (ck_tr) { fprintf(stderr, "[CK] px=%d py=%d now=%d last=%d n=%d\n", px, py, now, g_last_click_ms, g_click_n); }
     }
     int d = now - g_last_click_ms;
     int dx = px - g_last_click_x;
@@ -656,12 +664,15 @@ int gui_click_kind(int px, int py) {
     if (dx < 0) { dx = -dx; }
     if (dy < 0) { dy = -dy; }
     if (d >= 0 && d < 350 && dx < 6 && dy < 6) {
-        g_last_click_ms = -100000;
-        return 1;
+        g_click_n += 1;
+    } else {
+        g_click_n = 1;
     }
     g_last_click_ms = now;
     g_last_click_x = px;
     g_last_click_y = py;
+    if (g_click_n == 2) { return 1; }
+    if (g_click_n >= 3) { g_click_n = 0; return 2; }
     return 0;
 }
 
