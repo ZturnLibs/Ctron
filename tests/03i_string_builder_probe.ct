@@ -17,3 +17,13 @@ fn main() -> I32 {
 test "probe file carries runnable block" {
     assert(true)
 }
+
+test "stringbuilder push_str to_string len" {
+    let sb = StringBuilder()
+    sb.push_str("hello")
+    sb.push_str(" ")
+    sb.push_str("world")
+    let out = sb.to_string()
+    assert(out == "hello world")
+    assert(sb.len == 11)
+}
