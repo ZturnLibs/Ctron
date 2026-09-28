@@ -1,0 +1,90 @@
+// serve.ct —— HTTP 序列化咽喉:reason 表 + render(全仓唯一状态行/头区拼接点)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.4;纪律 §14-1
+// 本任务只放常量与纯函数;serve 循环(socket 半边)归 2b Task 3,直复用 router.dispatch。
+//
+// §4.4 演进契约支点:报文组装只有 render 一处——状态行、头区、Content-Length、
+// Connection: close 全在此拼;其余代码只造 Resp(值语义),永不手拼报文串。
+// render 无需转义(headers/body 均为上游已构建的成品段;json_esc/ht_esc 各守其界)。
+// Connection: close 为 2a 同款串行口径;keep-alive 挂 L6/L7 后的并发波(spec §13-④)。
+
+use std.str.{ join, contains, starts_with }
+use web.core.{ Resp, Pair, html, status, redirect, with, resp_status, resp_body }
+
+// ---- reason 表(状态码 → reason-phrase;表外一律 "Unknown") ----
+
+pub fn reason(n: I32) -> Str {
+    if n == 200 { return "OK" }
+    if n == 201 { return "Created" }
+    if n == 204 { return "No Content" }
+    if n == 303 { return "See Other" }
+    if n == 400 { return "Bad Request" }
+    if n == 401 { return "Unauthorized" }
+    if n == 403 { return "Forbidden" }
+    if n == 404 { return "Not Found" }
+    if n == 405 { return "Method Not Allowed" }
+    if n == 409 { return "Conflict" }
+    if n == 413 { return "Payload Too Large" }
+    if n == 422 { return "Unprocessable Entity" }
+    if n == 429 { return "Too Many Requests" }
+    if n == 500 { return "Internal Server Error" }
+    if n == 503 { return "Service Unavailable" }
+    return "Unknown"
+}
+
+// ---- render(HTTP/1.1 报文;唯一咽喉) ----
+// 形态:状态行 \r\n → 用户头(声明序)\r*n → Content-Length(体字节长) →
+// Connection: close → 空行 → 体。Str.len 即字节长(仓内 Str 全 byte 口径),
+// 多字节 UTF-8 体 Content-Length 自然正确。
+
+pub fn render(r: Resp) -> Str {
+    let st = resp_status(r)
+    var ps: List[Str] = List[Str]()
+    ps.push("HTTP/1.1 " + st.to_string() + " " + reason(st) + "\r\n")
+    var i: I32 = 0
+    let hs = r.headers
+    while i < hs.len {
+        ps.push(hs[i].k + ": " + hs[i].v + "\r\n")
+        i += 1
+    }
+    let body = resp_body(r)
+    ps.push("Content-Length: " + body.len.to_string() + "\r\n")
+    ps.push("Connection: close\r\n\r\n")
+    ps.push(body)
+    return join(ps, "")
+}
+
+// ---- 测试 ----
+
+// 精确串:200 html 体全报文(状态行 + base 双头 + Content-Length + close + 空行 + 体)
+test "render 200 html 精确报文" {
+    let s = render(html("<h1>hi</h1>"))
+    assert(s == "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\nContent-Length: 11\r\nConnection: close\r\n\r\n<h1>hi</h1>")
+}
+
+// 精确串:404 reason;303 redirect(空体 Content-Length: 0);表外码 "Unknown";reason 直读
+test "render 404 reason 与 303/未知码" {
+    let s = render(status(404, "nope"))
+    assert(s == "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nX-Content-Type-Options: nosniff\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnope")
+    let rd = render(redirect("/app"))
+    assert(starts_with(rd, "HTTP/1.1 303 See Other\r\nLocation: /app\r\n"))
+    assert(contains(rd, "Content-Length: 0\r\n"))
+    let uk = render(status(418, "x"))
+    assert(starts_with(uk, "HTTP/1.1 418 Unknown\r\n"))
+    assert(reason(200) == "OK")
+    assert(reason(404) == "Not Found")
+    assert(reason(429) == "Too Many Requests")
+    assert(reason(500) == "Internal Server Error")
+    assert(reason(418) == "Unknown")
+}
+
+// 头序:用户头声明序原样串出(自构 Resp 直验),Content-Length 按体字节长
+// (多字节 UTF-8 "中文" = 6 字节,非 2 字符);with 追加头尾插保序
+test "render 头序与 Content-Length 字节口径" {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Content-Type", v: "text/html; charset=utf-8" })
+    hs.push(Pair { k: "X-Request-Id", v: "r-1" })
+    let s = render(Resp { status: 200, headers: hs, body: "中文" })
+    assert(s == "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-Request-Id: r-1\r\nContent-Length: 6\r\nConnection: close\r\n\r\n中文")
+    let w = render(with(with(html("x"), "A-A", "1"), "B-B", "2"))
+    assert(contains(w, "X-Content-Type-Options: nosniff\r\nA-A: 1\r\nB-B: 2\r\nContent-Length: 1\r\n"))
+}
