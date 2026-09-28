@@ -608,3 +608,21 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   grant_session/drop_session/flash)/README 示例迁移(todo_app 对照 §10 验收门)/原生 e2e 门
   (挂 L6/L7 销账)。全景见 `web/README.md` API 表两列。
 - suite 回归:web/ 不在 tests/,suite.py 计数不动(87/88+88/88 基线,本笔复跑确认)。
+
+**2026-09-28 T14 Channel 去限制三片落库**(spec-gap W2;§7.3/§12.3):
+- **①容量上限解除**(0e004a2):自举模板 ct_chan buf[64] 堆化+取模 %64→%cap+cap<1→1
+  (fail-closed)+注册表定长 64→增长数组(realloc 加锁,原无锁竞态顺手收口);宿主发射器
+  本即类型化堆环无需动;锚 coro_conc chan_cap_smoke(单线程 128 发不阻塞=在途容量实证)。
+- **②List[struct] 发射底座**(b6d26fe;divergences (h) 族首件收口):元素码 Lu:<名> 贯通
+  (注解位 ct_ty_code/构造推断位 ct_typeof/索引派型位);push 堆盒装箱(值拷贝);索引解
+  引用取回;for-in 补 L/Lu: 两族(此前 for-over-list 发射面整个缺位);L(char*)/LI(int)
+  既有行为零扰动;锚 fx_list_struct(装箱/索引/for-in/struct 字段持有/值拷贝语义)。
+- **③句柄作字段+struct 入通道**(369b9bc):Sender/Receiver/Channel 注解型码 h——作
+  struct 字段/形参/返回位贯通(P5-E 池持通道「emit int32 截断」缺口收口,db/pool 消费方
+  迁移随 db 泳道);struct 值入通道 = send 装箱 + match Ok 臂解引用(解构位 rx 绑定
+  hR<元素码>);锚 fx_chan_structs;登记:recv().expect 于 struct 载荷未支持(match 为
+  消费正形)、句柄注解无型参(hR 元素码仅解构位可得)。
+- 同底座连带解锁:SocketAddr struct 化(T09 v0 文本承载可升级)、form.ct List[struct]
+  产错型强转登记位、04g 类方法发射((h) 族下一件)。
+- 门禁:net 17/17×2、suite 87/88、db 44/10、http 110/1(基线红不变)、cargo 14/0、
+  meta/fmt/ffi 过。
