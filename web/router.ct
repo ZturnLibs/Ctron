@@ -175,7 +175,9 @@ pub fn middleware[S](r: Router[S], mw: fn(Req[S], fn(Req[S]) -> Resp) -> Resp) -
 }
 
 // 子路由器前缀挂载:每条子路由预拼前缀段(最终一张平铺表,热路径无嵌套);
-// 中间件继承叠加:外层(宿主)在前、子组在后——执行序外层→内层→handler(§4.1);
+// 中间件继承:子组中间件已随子路由注册预拼入逐路由链(合并时 chain = 宿主 mws + 子链,
+// 执行序外层→内层→handler §4.1);合并态 mws 仅取宿主——子组 mw 不入合并态列表,
+// 否则挂载后新注册的宿主路由经 r_add 继承之、嵌套兄弟组经外层合并互渗(双外泄向量)。
 // state 取宿主(单一应用状态)。同样启动期查重(前缀拼接后即最终形态)。
 pub fn mount_at[S](r: Router[S], prefix: Str, sub: Router[S]) -> Router[S] {
     var rs: List[Route[S]] = List[Route[S]]()
@@ -193,18 +195,7 @@ pub fn mount_at[S](r: Router[S], prefix: Str, sub: Router[S]) -> Router[S] {
         rs.push(Route { m: rt.m, segs: segs_append(segs_of(prefix), rt.segs), chain: chain_append[S](r.mws, rt.chain), h: rt.h })
         i += 1
     }
-    var ms: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp] = List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]()
-    i = 0
-    while i < r.mws.len {
-        ms.push(r.mws[i])
-        i += 1
-    }
-    i = 0
-    while i < sub.mws.len {
-        ms.push(sub.mws[i])
-        i += 1
-    }
-    return Router { state: r.state, routes: rs, mws: ms }
+    return Router { state: r.state, routes: rs, mws: r.mws }
 }
 
 // 模式段还原为诊断字符串(lit/par/splat 各自带记号;仅 mount_at panic 消息用)
@@ -479,6 +470,23 @@ test "mount_at 前缀拼接与中间件继承" {
     let mp2 = route_match[I64](app2, "GET", "/api/u/7")
     assert(mp2.params[0].k == "id")
     assert(mp2.params[0].v == "7")        // 拼接后 :param 照常捕获
+    // 回归(合并态 mws 仅宿主):挂载后新注册的宿主路由不得继承子组 mw——
+    // 修复前 r_add 以合并态 mws(含 need_x)拼链 → /health 误 303;修复后直落 handler
+    let app3 = get[I64](mount_at[I64](router[I64](0), "/api", sub), "/health", h_state)
+    let health = dispatch[I64](app3, "GET", "/health", "")
+    assert(resp_status(health) == 200)
+    assert(resp_body(health) == "0")
+    // 回归(嵌套兄弟组不交叉继承):/g2 组不带 /g1 组的 mw——
+    // 修复前外层合并把 subA.mws 并入再经 r_add 渗入 subB 新链;子组自身 mw 仍随逐路由链在册
+    let suba = middleware[I64](get[I64](router[I64](0), "/a", h_state), add_a)
+    let subb = middleware[I64](get[I64](router[I64](0), "/b", h_state), add_b)
+    let nest = mount_at[I64](mount_at[I64](router[I64](0), "/g1", suba), "/g2", subb)
+    let gb = dispatch[I64](nest, "GET", "/g2/b", "")
+    assert(resp_status(gb) == 200)
+    assert(resp_header(gb, "X-B") == "2")
+    assert(resp_header(gb, "X-A") == "")  // subA 的 mw 不渗入 /g2
+    let ga = dispatch[I64](nest, "GET", "/g1/a", "")
+    assert(resp_header(ga, "X-A") == "1") // /g1 组自身 mw 挂载后仍生效
 }
 
 test "重复路由探测 has_conflict" {
