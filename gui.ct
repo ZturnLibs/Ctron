@@ -3603,6 +3603,11 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             return false
         }
     }
+    // IME 组词期键盘归输入法所有(退格=删拼音、Esc=取消组词均由 IME 处理;
+    // 应用不得碰已确认文本——用户实测「组词退格误删前文」)
+    if gui_ime_has_preedit() == 1 {
+        return true
+    }
     if k == 256 {
         gui_focus_set(-1)
         gui_caret_set(0)
@@ -5107,6 +5112,7 @@ fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
 
 #[trusted]
 extern "c" fn gui_ime_preedit() -> Str
+extern "c" fn gui_ime_has_preedit() -> I32
 #[trusted]
 extern "c" fn gui_ime_set_caret(x: I32, y: I32, w: I32, h: I32) -> I32
 
