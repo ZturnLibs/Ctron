@@ -684,6 +684,15 @@ int gui_sel_float(int offx, int y, int w, int h, int bg) {
     return 0;
 }
 
+// ---- 单行输入视口(成熟 GUI:不换行,水平滚动跟随光标)----
+// 内宽逐帧回填(循环 collect 后);偏移按「光标可见」滚动,渲染消费
+static int g_in_w[512];
+static int g_in_xo[512];
+int gui_in_w_set(int node, int w) { if (node >= 0 && node < 512) { g_in_w[node] = w; } return 0; }
+int gui_in_w_get(int node) { return (node >= 0 && node < 512) ? g_in_w[node] : 0; }
+int gui_in_xo_set(int node, int x) { if (node >= 0 && node < 512) { g_in_xo[node] = x; } return 0; }
+int gui_in_xo_get(int node) { return (node >= 0 && node < 512) ? g_in_xo[node] : 0; }
+
 int gui_caret_float(int offx, int y, int w, int h, int bg) {
     Clay_ElementDeclaration decl = {0};
     decl.floating = (Clay_FloatingElementConfig){
@@ -805,13 +814,14 @@ int gui_list_ni(const void *l) {
     return ((const CtronListC *)l)->n;
 }
 
-// P2 组件列表 prop:env 值判型(魔数)+恒等转接——实例实参以 Str 槽穿环境,
-// 消费侧经此二助手还原 List;Ctron 侧无中缀 cast,extern 边界逐字直通
+// P2 契约Ⅰ:env 值判型(魔数)+恒等转接——实例实参以 Str 槽穿环境,消费侧
+// 经此二助手还原 List;Ctron 侧无中缀 cast,extern 边界逐字直通
 int gui_is_list(const void *p) {
     if (p == NULL) { return 0; }
     return ((const CtronListC *)p)->magic == 0x4354726F6E4C7374ULL;
 }
 void *gui_as_list(void *p) { return p; }
+
 
 // 光标形状(P2):真窗逐帧设定;headless 无窗安全(raylib 全局态直设)
 void gui_cursor_set(int shape) { SetMouseCursor(shape); }

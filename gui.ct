@@ -153,6 +153,10 @@ extern "c" fn gui_now_ms() -> I32
 extern "c" fn gui_caret_blink() -> I32
 extern "c" fn gui_ft_measure_n_wt(s: Str, n: I32, px: I32, wt: I32, fam: I32) -> I32
 extern "c" fn gui_caret_float(offx: I32, y: I32, w: I32, h: I32, bg: I32) -> I32
+extern "c" fn gui_in_w_set(node: I32, w: I32) -> I32
+extern "c" fn gui_in_w_get(node: I32) -> I32
+extern "c" fn gui_in_xo_set(node: I32, x: I32) -> I32
+extern "c" fn gui_in_xo_get(node: I32) -> I32
 extern "c" fn gui_sel_anchor_set(i: I32) -> I32
 extern "c" fn gui_sel_anchor_get() -> I32
 extern "c" fn gui_sel_clear() -> I32
@@ -199,6 +203,14 @@ extern "c" fn gui_list_ns(l: List[Str]) -> I32
 
 #[trusted]
 extern "c" fn gui_list_ni(l: List[I32]) -> I32
+
+// P2 契约Ⅰ:env 值判型(魔数)与恒等转接——实例实参以 Str 槽穿环境,消费侧
+// 还原 List(Ctron 无中缀 cast,extern 边界逐字直通)
+#[trusted]
+extern "c" fn gui_is_list(s: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_as_list(s: Str) -> List[Str]
 
 #[trusted]
 extern "c" fn gui_inject_click(x: I32, y: I32) -> I32
@@ -1962,7 +1974,26 @@ fn rt_col_b(p: I32) -> I32 {
 }
 
 // 列表询问:buf[0] = "each:名",用户逐项 push 标题;返回项文本列表
-pub fn rt_bind_items(bind: fn(List[Str]) -> Void, listname: Str) -> List[Str] {
+pub fn rt_bind_items(t: GuiTree, bind: fn(List[Str]) -> Void, listname: Str) -> List[Str] {
+    // P2 契约Ⅰ:组件列表 prop env 前置回落——展开期实例实参已垫 List 指针
+    // (以 Str 槽穿环境,gui_is_list 魔数判+gui_as_list 恒等转接还原);未垫
+    // 回落 bind 通道(宿主自有 each 通道口径不变)。组件视图的 each 通道数据
+    // 源即实例实参,宿主合成 bind 无从供给(契约设计提案 Ⅰ)
+    // gui_sk_load 编译骨架树不含 env 字段(NULL)——gui_list_ns NULL 门控
+    // 先行(bxv_ask 同款先例);headless/真窗 gt_parse 树 env 恒在
+    if gui_list_ns(t.env_n) > 0 {
+        if gui_list_ns(t.env_v) > 0 {
+            var ei: I32 = t.env_n.len - 1
+            while ei >= 0 {
+                if t.env_n[ei] == listname {
+                    if gui_is_list(t.env_v[ei]) == 1 {
+                        return gui_as_list(t.env_v[ei])
+                    }
+                }
+                ei -= 1
+            }
+        }
+    }
     var buf = List[Str]()
     buf.push("each:" + listname)
     bind(buf)
@@ -3002,7 +3033,75 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var isz2: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
                 var ifg2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
                 var ifw2: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
-                gui_text_w(idisp, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
+                // 单行视口(成熟 GUI:不换行,水平滚动跟随光标):内宽逐帧缓存回填,
+                // 偏移按光标可见滚动;绘制仅取可视窗口子串(码点边界步行)
+                var wt2p: I32 = ifw2 % 10000
+                var fam2p: I32 = ifw2 / 10000
+                var pfx2: Str = byte_slice(ival, 0, ic) + ipre
+                var vfull: I32 = gui_ft_measure_n_wt(idisp, idisp.len, isz2, wt2p, fam2p)
+                var vavail: I32 = gui_in_w_get(id) - ipd - ipd
+                if vavail < 40 {
+                    vavail = 40
+                }
+                var xo: I32 = gui_in_xo_get(id)
+                var vca: I32 = gui_ft_measure_n_wt(pfx2, pfx2.len, isz2, wt2p, fam2p)
+                if vfull <= vavail {
+                    xo = 0
+                } else {
+                    if vca < xo {
+                        xo = vca
+                    }
+                    if vca > xo + vavail - 2 {
+                        xo = vca - vavail + 2
+                    }
+                    if xo > vfull - vavail {
+                        xo = vfull - vavail
+                    }
+                    if xo < 0 {
+                        xo = 0
+                    }
+                }
+                gui_in_xo_set(id, xo)
+                var vs: I32 = 0
+                var wi: I32 = 0
+                while wi < idisp.len {
+                    var nbc: I32 = wi + 1
+                    while nbc < idisp.len {
+                        var nb2: I32 = byte_at(idisp, nbc)
+                        if nb2 >= 128 && nb2 < 192 {
+                            nbc += 1
+                        } else {
+                            break
+                        }
+                    }
+                    if gui_ft_measure_n_wt(idisp, nbc, isz2, wt2p, fam2p) > xo {
+                        break
+                    }
+                    wi = nbc
+                }
+                vs = wi
+                var ve: I32 = idisp.len
+                wi = vs
+                while wi < idisp.len {
+                    var nbc2: I32 = wi + 1
+                    while nbc2 < idisp.len {
+                        var nb3: I32 = byte_at(idisp, nbc2)
+                        if nb3 >= 128 && nb3 < 192 {
+                            nbc2 += 1
+                        } else {
+                            break
+                        }
+                    }
+                    if gui_ft_measure_n_wt(idisp, nbc2, isz2, wt2p, fam2p) >= xo + vavail {
+                        ve = wi
+                        wi = idisp.len + 1
+                    } else {
+                        ve = nbc2
+                        wi = nbc2
+                    }
+                }
+                var vistr: Str = byte_slice(idisp, vs, ve)
+                gui_text_w(vistr, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
                 // 光标/选区条垂直居中(固定高输入框;(框高-条高)/2;grow 高 = 文本高,近顶)
                 var icy: I32 = 2
                 if ihm == 2 {
@@ -3012,8 +3111,6 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                 }
                 // 选区高亮浮条(半透明 accent,zIndex 50 居光标条下)
-                var wt2p: I32 = ifw2 % 10000
-                var fam2p: I32 = ifw2 / 10000
                 var san: I32 = gui_sel_anchor_get()
                 if san >= 0 {
                     var sc0: I32 = san
@@ -3023,17 +3120,25 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         sc1 = san
                     }
                     if sc1 > sc0 {
-                        var sx0: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p)
-                        var sx1: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p)
-                        gui_sel_float(sx0, icy, sx1 - sx0, isz2, gui_theme_slot_get(7))
+                        var sx0: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p) - xo
+                        var sx1: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p) - xo
+                        if sx1 > ipd + vavail {
+                            sx1 = ipd + vavail
+                        }
+                        if sx0 < ipd {
+                            sx0 = ipd
+                        }
+                        if sx1 > sx0 {
+                            gui_sel_float(sx0, icy, sx1 - sx0, isz2, gui_theme_slot_get(7))
+                        }
                     }
                 }
                 if blink == 1 {
                     // 前缀实测 x(与布局测量同源:weight 参数含 fam 编码 ×10000)
-                    var pfx: Str = byte_slice(ival, 0, ic) + ipre
+                    var pfx: Str = pfx2
                     var wt2: I32 = ifw2 % 10000
                     var fam2: I32 = ifw2 / 10000
-                    var offx: I32 = ipd + gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2)
+                    var offx: I32 = ipd + gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2) - xo
                     gui_caret_float(offx, icy, 2, isz2, ifg2)
                     // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
                     hits.push(id)
@@ -3273,7 +3378,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if !gt_slot_simple(t.npre[id]) {
                     panic("gui 绑定表达式解释求值待 SL-8b list: " + t.npre[id])
                 }
-                var items = rt_bind_items(bind, t.npre[id])
+                var items = rt_bind_items(t, bind, t.npre[id])
                 var ii: I32 = 0
                 while ii < items.len {
                     var ch: I32 = t.nfc[id]
@@ -3830,6 +3935,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
     InitWindow(w, h, title)
     SetTargetFPS(60)
@@ -3976,6 +4082,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
     InitWindow(w, h, title)
     SetTargetFPS(60)
@@ -4001,6 +4108,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     rects = List[I32]()
                     rt_collect_rects(n, rects)
                     gui_ime_feed_caret(rects, hits)
+                    rt_feed_input_w(t, rects, hits)
                 }
             }
         }
@@ -4626,6 +4734,7 @@ pub fn test(src: Str, w: I32, h: I32,
     var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
+    rt_feed_input_w(d.t, d.rects, d.hits)
     script(d, act, key)
     return 0
 }
@@ -4641,6 +4750,7 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
     var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
+    rt_feed_input_w(d.t, d.rects, d.hits)
     script(d, act, key)
     return 0
 }
@@ -4815,6 +4925,29 @@ fn gui_word_range(val: Str, pos: I32, out: List[I32]) -> I32 {
     return 0
 }
 
+// 单行输入内宽回填(视口消费;每帧 collect 后:节点取配对最宽矩形,避浮条)
+fn rt_feed_input_w(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
+    var j: I32 = 0
+    while j < hits.len {
+        var nd: I32 = hits[j]
+        if nd >= 0 {
+            if nd < t.ntag.len {
+                if t.ntag[nd] == "input" {
+                    if j < rects.len {
+                        var wj: I32 = gui_cmd_w100(rects[j]) / 100
+                        var cw: I32 = gui_in_w_get(nd)
+                        if wj > cw {
+                            gui_in_w_set(nd, wj)
+                        }
+                    }
+                }
+            }
+        }
+        j += 1
+    }
+    return 0
+}
+
 // P-M3:点击 x → 最近码点边界(成熟 GUI 点击定位光标):沿码点边界步行累计
 // 前缀实测宽(与布局同源),取 |w-off| 最小边界;框体定位取该节点配对矩形中
 // 最宽者(浮条 2px RECT 亦配对命中,须避开)
@@ -4838,7 +4971,7 @@ fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32]
         return val.len
     }
     var ipd2: I32 = gs2i(gt_cls_prop(t.ncls[node], "pad", "8", t))
-    var off: I32 = clickx - gui_cmd_x100(boxi) / 100 - ipd2
+    var off: I32 = clickx - gui_cmd_x100(boxi) / 100 - ipd2 + gui_in_xo_get(node)
     var isz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "20", t))
     var ifw: I32 = gs2i(gt_cls_prop(t.ncls[node], "font_weight", "400", t))
     var wt2: I32 = ifw % 10000
