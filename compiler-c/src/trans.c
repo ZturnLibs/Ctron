@@ -366,6 +366,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         for (size_t i = 0; i < c.n_arrs; i++) {
             const char* wl = c.arrs[i];
             if (!strcmp(wl, "str")) continue; // str typedef 已在头部
+            if (wl[0] >= 'A' && wl[0] <= 'Z') continue; // P0-1:struct 元素容器→struct typedef 后发射(数据槽引用 ctron_t_*)
             const char* dt = dt_for_wl(wl);
             sb_f(h, "typedef struct { %s* d; int64_t n; } ctron_arr_%s;\n", dt, wl);
             sb_f(h, "typedef struct { %s* d; int64_t n; int64_t cap; } ctron_list_%s;\n", dt, wl);
@@ -380,6 +381,17 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             for (size_t j = 0; j < sd->n; j++)
                 sb_f(h, " %s %s;", ctype_of(sd->fields[j].t), sd->fields[j].name);
             sb_f(h, " } ctron_t_%s;\n", sd->name);
+        }
+        for (size_t i = 0; i < c.n_arrs; i++) { // P0-1:struct 元素容器——数据槽按 ctron_t_<wl> 全宽(元素读/推入不再截断)
+            const char* wl = c.arrs[i];
+            if (!(wl[0] >= 'A' && wl[0] <= 'Z')) continue;
+            const char* dt = dt_for_wl(wl);
+            sb_f(h, "typedef struct { %s* d; int64_t n; } ctron_arr_%s;\n", dt, wl);
+            sb_f(h, "typedef struct { %s* d; int64_t n; int64_t cap; } ctron_list_%s;\n", dt, wl);
+            sb_f(h, "static void ctron_list_%s_push(ctron_list_%s* l, %s v) { if (l->n == l->cap) { l->cap = l->cap ? l->cap * 2 : 4; %s* nd = (%s*)realloc(l->d, (size_t)l->cap * sizeof(%s)); l->d = nd; } l->d[l->n++] = v; }\n",
+                 wl, wl, dt, dt, dt, dt);
+            sb_f(h, "static ctron_list_%s ctron_list_%s_clone(ctron_list_%s l) { ctron_list_%s r; r.n = l.n; r.cap = l.n ? l.n : 4; %s* nd = (%s*)malloc((size_t)r.cap * sizeof(%s)); for (int64_t i = 0; i < l.n; i++) nd[i] = l.d[i]; r.d = nd; return r; }\n",
+                 wl, wl, wl, wl, dt, dt, dt);
         }
         for (size_t i = 0; i < c.n_globals; i++)
             sb_f(h, "static %s %s = %s;\n", ctype_of(c.globals[i].t), c.globals[i].name,

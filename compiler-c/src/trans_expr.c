@@ -699,6 +699,15 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         sb ix = {0};
         emit_expr(c, e->index, &ix);
         if (c->err) { sb_free(&ix); return ty_unk(); }
+        if (t.k == T_LIST && t.ek == T_STRUCT) {
+            // P0-1:List[struct] 元素读——数据指针按元素结构取全宽值(在册债「索引读静默截断」销账;
+            // 曾以 int64 槽直读 → 值截断,且元素型别落 T_INT → 成员读报「目标类型 1」)
+            use_arr(c, t.tname ? t.tname : "");
+            ty e3 = box_elem(t);
+            sb_f(o, "((%s*)(%s.d))[ctron_idx(%s.n, %s)]", ctype_of(e3), e->obj->text, e->obj->text, ix.d ? ix.d : "0");
+            sb_free(&ix);
+            return e3;
+        }
         sb_f(o, "%s.d[ctron_idx(%s.n, %s)]", e->obj->text, e->obj->text, ix.d ? ix.d : "0");
         sb_free(&ix);
         ty e2 = ty_int(t.ebits, t.eus);
@@ -1142,8 +1151,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (rt6.k == T_LIST && !strcmp(cal->mname, "push")) {
                 if (!cal->obj || cal->obj->kind != EX_IDENT) { terr(c, "v1:push 接收者需为局部列表"); sb_free(&rob4); return ty_unk(); }
                 if (e->nelems != 1) { terr(c, "v1:push 实参"); sb_free(&rob4); return ty_unk(); }
-                char wl[16];
-                snprintf(wl, sizeof wl, "%s", ewlname(rt6));
+                char wl[64];
+                if (rt6.ek == T_STRUCT) snprintf(wl, sizeof wl, "%s", rt6.tname ? rt6.tname : "?"); // P0-1:struct 元素容器按名取(dt=ctron_t_*)
+                else snprintf(wl, sizeof wl, "%s", ewlname(rt6));
                 use_arr(c, wl);
                 sb a1 = {0};
                 const ty* sw2 = c->want;
@@ -1159,8 +1169,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             }
             if (rt6.k == T_LIST && !strcmp(cal->mname, "into_gc")) {
                 if (e->nelems != 0) { terr(c, "v1:into_gc 实参"); sb_free(&rob4); return ty_unk(); }
-                char wl[16];
-                snprintf(wl, sizeof wl, "%s", ewlname(rt6));
+                char wl[64];
+                if (rt6.ek == T_STRUCT) snprintf(wl, sizeof wl, "%s", rt6.tname ? rt6.tname : "?"); // P0-1:同 push
+                else snprintf(wl, sizeof wl, "%s", ewlname(rt6));
                 use_arr(c, wl);
                 char hn[96];
                 snprintf(hn, sizeof hn, "ctron_list_%s_clone", wl);
@@ -1230,8 +1241,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (is_list_ctor && e->nelems == 0) {
                 ty et = decl_ty_tc(c, cal->targs[0]);
                 if (et.k == T_UNK) { terr(c, "v1:List 元素类型不支持"); return ty_unk(); }
-                char wl[16];
+                char wl[64];
                 if (et.k == T_STR) snprintf(wl, sizeof wl, "str");
+                else if (et.k == T_STRUCT) snprintf(wl, sizeof wl, "%s", et.tname ? et.tname : "?"); // P0-1:struct 元素容器按名取(dt=ctron_t_*)
                 else snprintf(wl, sizeof wl, "%s", wlname(et));
                 use_arr(c, wl);
                 sb_f(o, "(ctron_list_%s){0}", wl);

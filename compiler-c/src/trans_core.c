@@ -60,6 +60,11 @@ const char* dt_for_wl(const char* wl) {
     if (!strcmp(wl, "str")) return "const char*";
     if (!strcmp(wl, "f64")) return "double";
     if (!strcmp(wl, "b")) return "int";
+    if (wl[0] >= 'A' && wl[0] <= 'Z') { // P0-1:用户 struct 元素容器——数据槽按元素结构全宽
+        static char cs[96];
+        snprintf(cs, sizeof cs, "ctron_t_%s", wl);
+        return cs;
+    }
     int ub = wl[0] == 'u';
     int bits = atoi(wl + 1);
     ty t = ty_int(bits, ub);
@@ -91,7 +96,7 @@ const char* ctype_of(ty t) {
     if (t.k == T_TUP) return t.tname ? t.tname : "void"; // 元组:完整 typedef 名(tup_ty 生成)
     if (t.k == T_SIMD) { static char sd[64]; snprintf(sd, sizeof sd, "ctron_simd_f64_%d", (int)t.bits); return sd; }
     if (t.k == T_RANGE) return "ctron_rng";
-    if (t.k == T_LIST) { static char cl[96]; snprintf(cl, sizeof cl, "ctron_list_%s", ewlname(t)); return cl; }
+    if (t.k == T_LIST) { static char cl[96]; if (t.ek == T_STRUCT) snprintf(cl, sizeof cl, "ctron_list_%s", t.tname ? t.tname : "?"); /* P0-1:struct 元素容器名 = 元素结构名(与 ctor/push/索引读同径) */ else snprintf(cl, sizeof cl, "ctron_list_%s", ewlname(t)); return cl; }
     if (t.k == T_CLASS) { static char cb1[96]; snprintf(cb1, sizeof cb1, "ctron_c_%s*", t.tname ? t.tname : "?"); return cb1; }
     if (t.k == T_BOX) { static char cb2[128]; ty e = box_elem(t); snprintf(cb2, sizeof cb2, "%s*", ctype_of(e)); return cb2; }
     if (t.k == T_STRUCT) { static char sb1[96]; snprintf(sb1, sizeof sb1, "ctron_t_%s", t.tname ? t.tname : "?"); return sb1; }
