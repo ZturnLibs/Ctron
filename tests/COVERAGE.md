@@ -652,3 +652,14 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   06f_parallel.ct 常驻红首次翻绿。parallel 前奏直用保持兼容(过渡双轨)。
 - **suite 89/89 双线——主套件首次 100%**(自举+宿主全绿);cargo 14/0;meta/db/net/http
   基线全维持(唯一红=http frm_auth_a_jwt interp OOM 预存在,归 T31 arena 债)。
+
+**2026-09-28 T21 宿主检查面红账五件销账**(spec-gap W4):
+- r6b(E4050 类持资源字段)/r6c(as[U64] 负源模 2^64)/r6d(W8050)/r6e(E4040)/r6f(E6010)
+  五锚迁入主套件 05h/03l/05i/05j/05k;r6d/r6e 宿主先前行已绿(免改)。
+- C 宿主三件补齐:E4050(D_CLASS 字段 Mutex/Channel/Sender/Receiver 检查)+
+  wrap_int U64 修(bits==64 && us 时掩码 2^64-1——此前 bits>=64 直通透传,负源 -1 经
+  __int128 全宽无符号读出 = 2^128-1)+E6010(ceval_21 迷你树走查求值器:字面量/ident/
+  算术/比较/While/Let/Return/Assign/comptime fn 调用;步数>1200 → E6010;
+  ST_ASSIGN 补 env 绑定更新;depth 跟踪移除——只增不减致 35 轮假爆,步数已兜底)。
+- E4050 消息对齐自举(去「需确定性释放的」——msg 子串锚一致)。
+- suite 94/94 双线;cargo 14/0;meta/db/net 基线全维持。

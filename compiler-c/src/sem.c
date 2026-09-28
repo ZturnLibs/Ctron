@@ -800,6 +800,187 @@ static int call_alloc_in_ctx(ctx* c, cexpr* call) {
     return 0;
 }
 
+// ---------- T21:comptime const 步数预算求值器(E6010) ----------
+// 迷你树走查:字面量/const 引用/算术/比较/While/Let/Return/comptime fn 调用。
+// 步数 > 1200 → E6010;不支持形态 → 静默跳过(镜像自举 ceval "u" 回退)。
+typedef struct {
+    const cfile* f;
+    long steps;
+    int over;
+    int depth;
+} ceval_ctx_t;
+
+typedef struct cbind21 { const char* n; __int128 v; struct cbind21* next; } cbind21;
+
+static __int128 ceval_expr_21(ceval_ctx_t* c, const cexpr* e, cbind21* env);
+static int ceval_block_21(ceval_ctx_t* c, const cblock* b, cbind21** env, __int128* out);
+
+static __int128 ceval_expr_21(ceval_ctx_t* c, const cexpr* e, cbind21* env) {
+    if (!e || c->over) return 0;
+    if (++c->steps > 1200) { c->over = 1; return 0; }
+    switch (e->kind) {
+    case EX_INT: { const char* t21 = e->text ? e->text : "0"; __int128 v21 = 0; int neg21 = (*t21 == 45); if (neg21) t21++; while (*t21 >= 48 && *t21 <= 57) { v21 = v21 * 10 + (*t21 - 48); t21++; } return neg21 ? -v21 : v21; }
+    case EX_IDENT: {
+        for (cbind21* b = env; b; b = b->next)
+            if (strcmp(b->n, e->text) == 0) return b->v;
+        for (size_t i = 0; i < c->f->ndecls; i++) {
+            const cdecl* d = &c->f->decls[i];
+            if (d->kind == D_CONST && d->konst.name && strcmp(d->konst.name, e->text) == 0 && d->konst.expr)
+                return ceval_expr_21(c, d->konst.expr, NULL);
+        }
+        c->over = 1; return 0;
+    }
+    case EX_UNARY:
+        if (e->uop == UN_NEG) { __int128 v = ceval_expr_21(c, e->ux, env); return -v; }
+        c->over = 1; return 0;
+    case EX_BINARY: {
+        if (e->bop == B_AND) {
+            __int128 l = ceval_expr_21(c, e->lhs, env);
+            if (c->over) return 0;
+            if (!l) return 0;
+            __int128 r = ceval_expr_21(c, e->rhs, env);
+            return r != 0;
+        }
+        if (e->bop == B_OR) {
+            __int128 l = ceval_expr_21(c, e->lhs, env);
+            if (c->over) return 0;
+            if (l) return 1;
+            __int128 r = ceval_expr_21(c, e->rhs, env);
+            return r != 0;
+        }
+        __int128 l = ceval_expr_21(c, e->lhs, env);
+        if (c->over) return 0;
+        __int128 r = ceval_expr_21(c, e->rhs, env);
+        if (c->over) return 0;
+        switch (e->bop) {
+        case B_ADD: return l + r;
+        case B_SUB: return l - r;
+        case B_MUL: return l * r;
+        case B_DIV: return r == 0 ? (c->over = 1, 0) : l / r;
+        case B_MOD: return r == 0 ? (c->over = 1, 0) : l % r;
+        case B_LT: return l < r;
+        case B_GT: return l > r;
+        case B_LE: return l <= r;
+        case B_GE: return l >= r;
+        case B_EQ: return l == r;
+        case B_NE: return l != r;
+        default: c->over = 1; return 0;
+        }
+    }
+    case EX_CALL: {
+        if (e->callee && e->callee->kind == EX_IDENT) {
+            for (size_t i = 0; i < c->f->ndecls; i++) {
+                const cdecl* d = &c->f->decls[i];
+                if (d->kind == D_FN && d->fn_.is_comptime && d->fn_.name
+                    && strcmp(d->fn_.name, e->callee->text) == 0 && d->fn_.body) {
+                    if ((int)e->nelems != (int)d->fn_.nparams) { c->over = 1; return 0; }
+                    cbind21* fenv = NULL;
+                    for (size_t j = 0; j < e->nelems && j < d->fn_.nparams; j++) {
+                        __int128 av = ceval_expr_21(c, e->elems[j], env);
+                        if (c->over) return 0;
+                        cbind21* nb = (cbind21*)malloc(sizeof(cbind21));
+                        nb->n = d->fn_.params[j].name;
+                        nb->v = av;
+                        nb->next = fenv;
+                        fenv = nb;
+                    }
+                    __int128 out = 0;
+                    int r2 = ceval_block_21(c, d->fn_.body, &fenv, &out);
+                    while (fenv) { cbind21* nx = fenv->next; free(fenv); fenv = nx; }
+                    if (r2 == 1) return out;
+                    if (r2 == -1) return 0;
+                    c->over = 1; return 0;
+                }
+            }
+        }
+        c->over = 1; return 0;
+    }
+    default: c->over = 1; return 0;
+    }
+}
+
+static int ceval_block_21(ceval_ctx_t* c, const cblock* b, cbind21** env, __int128* out) {
+    if (!b) return 0;
+    for (size_t i = 0; i < b->nstmts; i++) {
+        const cstmt* st = b->stmts[i];
+        if (c->over) return -1;
+        switch (st->kind) {
+        case ST_LET: {
+            if (st->pat && st->pat->kind == PAT_IDENT && st->pat->name && st->e) {
+                __int128 v = ceval_expr_21(c, st->e, *env);
+                if (c->over) return -1;
+                cbind21* nb = (cbind21*)malloc(sizeof(cbind21));
+                nb->n = st->pat->name;
+                nb->v = v;
+                nb->next = *env;
+                *env = nb;
+            }
+            break;
+        }
+        case ST_RET: {
+            if (st->e) {
+                *out = ceval_expr_21(c, st->e, *env);
+                if (c->over) return -1;
+            }
+            return 1;
+        }
+        case ST_WHILE: {
+            for (;;) {
+                __int128 cond = ceval_expr_21(c, st->e, *env);
+                if (c->over) return -1;
+                if (!cond) break;
+                __int128 wout = 0;
+                int r3 = ceval_block_21(c, st->body, env, &wout);
+                if (r3 == 1) { *out = wout; return 1; }
+                if (r3 == -1) return -1;
+            }
+            break;
+        }
+        case ST_EXPR: {
+            if (st->e) ceval_expr_21(c, st->e, *env);
+            if (c->over) return -1;
+            break;
+        }
+        case ST_ASSIGN: {
+            // k = k + 1 形:目标 Ident → 更新 env 绑定
+            if (st->target && st->target->kind == EX_IDENT && st->value) {
+                __int128 v21 = ceval_expr_21(c, st->value, *env);
+                if (c->over) return -1;
+                const char* tn = st->target->text;
+                cbind21* b21 = *env;
+                while (b21 && strcmp(b21->n, tn) != 0) b21 = b21->next;
+                if (b21) { b21->v = v21; }
+                else {
+                    cbind21* nb = (cbind21*)malloc(sizeof(cbind21));
+                    nb->n = tn; nb->v = v21; nb->next = *env;
+                    *env = nb;
+                }
+            } else { c->over = 1; return -1; }
+            break;
+        }
+        default: c->over = 1; return -1;
+        }
+    }
+    if (b->tail) {
+        *out = ceval_expr_21(c, b->tail, *env);
+        if (c->over) return -1;
+        return 1;
+    }
+    return 0;
+}
+
+static void check_comptime_consts(ck* k, const cfile* f) {
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind != D_CONST || !d->konst.name || !d->konst.expr) continue;
+        ceval_ctx_t c = { f, 0, 0, 0 };
+        (void)ceval_expr_21(&c, d->konst.expr, NULL);
+        if (c.over && c.steps > 1200) {
+            diag(k, "E6010", "comptime 预算超限(budget):%s", d->konst.name);
+        }
+    }
+}
+
 static void check_alloc_ctx(ctx* c, const char* kind) {
     if (c->in_own) diag(c->k, "E3040", "own 块内 GC 分配(allocation):%s", kind);
     else diag(c->k, "E3040", "no_alloc 上下文 GC 分配(allocation):%s", kind);
@@ -1393,6 +1574,21 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             check_fn(&c, &d->fn_, 0);
             break;
         case D_CLASS:
+            /* E4050(§6.2 硬规则;T21):类直接持有需确定性释放的资源字段(Mutex/Channel)
+             * ——类引用由 GC 回收,不触发 Drop;资源只能由值类型句柄持有 */
+            for (size_t j = 0; j < d->klass.nitems; j++) {
+                const cclassitem* it = &d->klass.items[j];
+                if (it->kind == CT_FIELD && it->f->ty) {
+                    const char* hn = head_name(it->f->ty);
+                    if (hn && (!strcmp(hn, "Mutex") || !strcmp(hn, "Channel")
+                               || !strcmp(hn, "Sender") || !strcmp(hn, "Receiver"))) {
+                        diag(&k, "E4050",
+                             "类直接持有资源字段(§6.2;资源须值句柄或能力对象):%s.%s",
+                             d->klass.name ? d->klass.name : "?",
+                             it->f->name ? it->f->name : "?");
+                    }
+                }
+            }
             for (size_t j = 0; j < d->klass.nitems; j++) {
                 const cclassitem* it = &d->klass.items[j];
                 if (it->kind == CT_METHOD && it->m->body) check_fn(&c, it->m, 0);
@@ -1447,6 +1643,9 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             break;
         }
     }
+
+    // T21:comptime const 步数预算求值(E6010)
+    check_comptime_consts(&k, f);
 
     ctron_sem_result r;
     r.diags = k.d;

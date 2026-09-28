@@ -129,7 +129,15 @@ val ck_int(rt* R, __int128 x, int bits, int us, const char* op) {
     return v_int(x, bits, us);
 }
 val wrap_int(__int128 x, int bits, int us) {
-    if (bits >= 64) return v_int(x, bits, us);
+    if (bits >= 64) {
+        if (bits == 64 && us) {
+            /* U64(§3.6 窄化=截断;T21 修):负值源模 2^64 折回——此前 bits>=64
+             * 直通透传,-1 以 __int128 全宽存储经无符号读出 = 2^128-1 */
+            unsigned __int128 m = (((unsigned __int128)1) << 64) - 1;
+            return v_int((__int128)((unsigned __int128)x & m), 64, 1);
+        }
+        return v_int(x, bits, us);
+    }
     unsigned __int128 m = (((unsigned __int128)1) << bits) - 1;
     __int128 r = (__int128)((unsigned __int128)x & m);
     if (!us) { __int128 h = ((__int128)1) << (bits - 1); if (r >= h) r -= ((__int128)1) << bits; }
