@@ -3050,17 +3050,19 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
                 var xo: I32 = gui_in_xo_get(id)
                 var vca: I32 = gui_ft_measure_n_wt(pfx2, pfx2.len, isz2, wt2p, fam2p)
-                if vfull <= vavail {
+                // 窗口宽留 12px 安全余量(绘宽恰等可用宽时 Clay 浮点边界放不下
+                // 末字形 → 末字符折行;余量同时用于光标可见钳制)
+                if vfull <= vavail - 12 {
                     xo = 0
                 } else {
                     if vca < xo {
                         xo = vca
                     }
-                    if vca > xo + vavail - 2 {
-                        xo = vca - vavail + 2
+                    if vca > xo + vavail - 14 {
+                        xo = vca - vavail + 14
                     }
-                    if xo > vfull - vavail {
-                        xo = vfull - vavail
+                    if xo > vfull - vavail + 12 {
+                        xo = vfull - vavail + 12
                     }
                     if xo < 0 {
                         xo = 0
@@ -3097,7 +3099,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             break
                         }
                     }
-                    if gui_ft_measure_n_wt(idisp, nbc2, isz2, wt2p, fam2p) >= xo + vavail {
+                    if gui_ft_measure_n_wt(idisp, nbc2, isz2, wt2p, fam2p) >= xo + vavail - 12 {
                         ve = wi
                         wi = idisp.len + 1
                     } else {
