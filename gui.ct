@@ -149,6 +149,7 @@ extern "c" fn gui_ms_injected() -> I32
 
 #[trusted]
 extern "c" fn gui_now_ms() -> I32
+extern "c" fn gui_caret_blink() -> I32
 
 #[trusted]
 extern "c" fn gui_frame_tick() -> Void
@@ -2971,25 +2972,40 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if ic < 0 {
                     ic = 0
                 }
-                // 光标闪烁(§2.7,P2 转正):相位=(ms/500) 偶数亮;注入时钟
-                // (d_tick)优先保 headless 确定性,真窗走 GetTime 真时钟
-                var blink: I32 = 1
-                var ph: I32 = gui_now_ms() / 500
-                var ph2: I32 = ph / 2
-                if ph - ph2 * 2 == 1 {
-                    blink = 0
-                }
-                if blink == 1 {
-                    ishow = byte_slice(ival, 0, ic) + "|" + byte_slice(ival, ic, ival.len)
-                } else {
-                    ishow = byte_slice(ival, 0, ic) + byte_slice(ival, ic, ival.len)
-                }
-                // P-M3:IME 组词内联(§10.5 marked range 可见;光标随组词尾;
-                // 组词仅显示态,模型仍 bind 单一起源,上屏才经 type 3 进编辑管线)
+                // 光标覆盖条(用户实测两症状根治):①caret=2px 覆盖条非文本字形
+                // ——内联 "|" 占字形宽,闪烁间右侧文字随其进退;条槽恒占位(熄灭
+                // 相 bg=0 不产 RECT 但布局仍进位),文字位置恒定 ②移动即重置闪烁
+                // 锚(gui_caret_blink:450ms 实心跟手,逾时 320ms 相位闪烁)
+                var blink: I32 = gui_caret_blink()
+                var ileft: Str = byte_slice(ival, 0, ic)
+                var iright: Str = byte_slice(ival, ic, ival.len)
+                // P-M3:IME 组词内联(§10.5;组词随左段尾,caret 槽随组词尾)
                 var ipre: Str = gui_ime_preedit()
                 if ipre != "" {
-                    ishow = byte_slice(ival, 0, ic) + ipre + "|" + byte_slice(ival, ic, ival.len)
+                    ileft = ileft + ipre
                 }
+                var isz2: I32 = gs2i(gt_cls_prop(c, "size", "20", t))
+                var ifg2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                var ifw2: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
+                if ileft != "" {
+                    gui_text_w(ileft, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
+                }
+                gui_open()
+                if blink == 1 {
+                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 2, 2, isz2, ifg2)
+                } else {
+                    gui_cfg(0, 0, 0, 0, 0, 0, 2, 2, 2, isz2, 0)
+                }
+                gui_close()
+                if blink == 1 {
+                    // 覆盖条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
+                    hits.push(id)
+                    hinst.push(inst)
+                }
+                if iright != "" {
+                    gui_text_w(iright, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
+                }
+                ishow = ""
             }
             if ishow != "" {
                 var isz: I32 = gs2i(gt_cls_prop(c, "size", "20", t))

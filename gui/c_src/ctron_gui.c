@@ -442,7 +442,19 @@ void gui_focus_set(int i) { g_focus_id = i; }
 int gui_focus_node(void) { return g_focus_id; }
 
 int g_caret = 0;
-void gui_caret_set(int i) { g_caret = i; }
+// 光标闪烁锚:任何 caret 移动即重置——移动后立即实心(跟手),逾时才进入闪烁
+// (成熟 GUI 口径;注入时钟优先保 headless 确定性)
+int gui_now_ms(void); // 前向(定义在 tick 原语段,此处在其上)
+static int g_caret_anchor_ms = -1;
+void gui_caret_set(int i) { g_caret = i; g_caret_anchor_ms = gui_now_ms(); }
+int gui_caret_blink(void) {
+    int now = gui_now_ms();
+    if (g_caret_anchor_ms < 0) { return 1; }
+    int d = now - g_caret_anchor_ms;
+    if (d < 0) { d = 0; }
+    if (d < 450) { return 1; }
+    return ((now / 320) % 2) == 0;
+}
 int gui_caret_get(void) { return g_caret; }
 
 char g_clip[4096];
