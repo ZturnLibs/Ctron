@@ -222,6 +222,10 @@ struct Val {
     var cx: List[Str]
 }
 
+// 标量 cx 槽哨兵:仅作值使用(裸名禁成员/下标调用——发射面 ct_typeof 缺口);
+// 只读共享,标量 cx 永不写入(写面全部 tag=8 守卫),双臂身份无观察差异
+static let VNIL: List[Str] = List[Str]()
+
 // 流 = Flow 结构体(S1 换代):每表达式/语句节点一个,e4/s4 元组消除;
 // kind:k 正常 / r return / a 断言失败 / b break / c continue(Str 与原编码同形)
 struct Flow {
@@ -246,37 +250,37 @@ fn cx_of(v: Val) -> List[Str] {
 }
 
 fn vI(x: I32) -> Val {
-    return Val { tag: 1, iv: x.as[I64](), b: false, s: "", cx: List[Str]() }
+    return Val { tag: 1, iv: x.as[I64](), b: false, s: "", cx: VNIL }
 }
 
 fn vB(b: Bool) -> Val {
-    return Val { tag: 4, iv: 0, b: b, s: "", cx: List[Str]() }
+    return Val { tag: 4, iv: 0, b: b, s: "", cx: VNIL }
 }
 
 fn vS(s: Str) -> Val {
-    return Val { tag: 5, iv: 0, b: false, s: s, cx: List[Str]() }
+    return Val { tag: 5, iv: 0, b: false, s: s, cx: VNIL }
 }
 
 fn vV2() -> Val {
-    return Val { tag: 0, iv: 0, b: false, s: "", cx: List[Str]() }
+    return Val { tag: 0, iv: 0, b: false, s: "", cx: VNIL }
 }
 
 // I64 域:iv 原生承载;超 I64 文本(巨型字面量)回 s 槽零损
 fn v6(t: Str) -> Val {
     var m = c6can(t)
     if c6_in_i64(m) {
-        return Val { tag: 2, iv: c6_i64v(m), b: false, s: "", cx: List[Str]() }
+        return Val { tag: 2, iv: c6_i64v(m), b: false, s: "", cx: VNIL }
     }
-    return Val { tag: 2, iv: 0, b: false, s: m, cx: List[Str]() }
+    return Val { tag: 2, iv: 0, b: false, s: m, cx: VNIL }
 }
 
 // U64 域:iv 承载 ≤2^63-1;超域回 s 槽(文本零损,消费端 v7t 分流)
 fn v7(t: Str) -> Val {
     var m = c6can(t)
     if c6_i64ok(m) {
-        return Val { tag: 3, iv: c6_i64v(m), b: false, s: "", cx: List[Str]() }
+        return Val { tag: 3, iv: c6_i64v(m), b: false, s: "", cx: VNIL }
     }
-    return Val { tag: 3, iv: 0, b: false, s: m, cx: List[Str]() }
+    return Val { tag: 3, iv: 0, b: false, s: m, cx: VNIL }
 }
 
 // 6/7 域文本投影(iv 原生 → 规范十进制;文本槽直返)
@@ -384,7 +388,7 @@ fn v_unbox(l: List[Str]) -> Val {
         return vW(l[2], dvi(l[1]))
     }
     if k0 == "D" {
-        return Val { tag: 6, iv: 0, b: false, s: l[1], cx: List[Str]() }
+        return Val { tag: 6, iv: 0, b: false, s: l[1], cx: VNIL }
     }
     return Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(l) }
 }
@@ -1054,6 +1058,58 @@ fn lit_to_dec(t: Str) -> Str {
 }
 
 fn lit_wide_i32(t: Str) -> Bool {
+    // 十进制:零分配逐位判宽(跳符号/下划线/前导零后与 2147483647 逐位比较);
+    // 旧实现全量 lit_to_dec 换算(逐字符拼接+规范化),为 loop 基准第一分配大户
+    // (14 分配/迭代,直方图+RA 采样实证)。进制字面量走换算冷路径。
+    if lit_is_dec(t) {
+        var i: I32 = 0
+        if t.len > 0 {
+            if byte_at(t, 0) == 45 {
+                i = 1
+            }
+        }
+        var base: I32 = i
+        while base < t.len {
+            var c0 = byte_at(t, base)
+            if c0 != 48 && c0 != 95 {
+                break
+            }
+            base += 1
+        }
+        var eff: I32 = 0
+        var j: I32 = base
+        while j < t.len {
+            if byte_at(t, j) != 95 {
+                eff += 1
+            }
+            j += 1
+        }
+        if eff < 10 {
+            return false
+        }
+        if eff > 10 {
+            return true
+        }
+        var limit = "2147483647"
+        var k: I32 = 0
+        var pos: I32 = base
+        while k < 10 {
+            while byte_at(t, pos) == 95 {
+                pos += 1
+            }
+            var c = byte_at(t, pos) - 48
+            var l = byte_at(limit, k) - 48
+            if c < l {
+                return false
+            }
+            if c > l {
+                return true
+            }
+            pos += 1
+            k += 1
+        }
+        return false
+    }
     return c6abscmp(lit_to_dec(t), "2147483647") > 0
 }
 
