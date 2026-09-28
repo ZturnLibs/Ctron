@@ -4,7 +4,7 @@
 use std.str.{ contains, join, split, index_of, trim, partition, eq_ignore_ascii_case }
 use std.strconv.{ parse_i64 }
 
-// ---- Resp 构造器族(§4:五构造器 + 安全默认) ----
+// ---- Resp 构造器族(§4:五构造器 + 其他格式 + 安全默认) ----
 
 pub struct Pair {
     let k: Str
@@ -46,8 +46,22 @@ pub fn status(n: I32, body: Str) -> Resp {
     return base(n, "text/plain", body)
 }
 
+// 其他格式(§4.4 格式矩阵;xml 不做自动转义——xml_esc 助手 spec 登记不做,信任调用点已编码)
+pub fn xml(body: Str) -> Resp {
+    return base(200, "text/xml", body)
+}
+
+pub fn yaml(body: Str) -> Resp {
+    return base(200, "application/yaml", body)
+}
+
 pub fn err_json(n: I32, msg: Str) -> Resp {
     return json_obj().str("error", msg).end_status(n)
+}
+
+// 附件下载头(M-T5 收口补:csv_rows 导出配套;filename 为调用点可信常量,不转义)
+pub fn attachment(r: Resp, filename: Str) -> Resp {
+    return with(r, "Content-Disposition", "attachment; filename=\"" + filename + "\"")
 }
 
 pub fn with(r: Resp, k: Str, v: Str) -> Resp {
@@ -152,8 +166,10 @@ pub fn end(b: JObj) -> Str {
     return jfinish(b, "")
 }
 
+// end_status 走 json() 底座(M-T1w-1 收口:此前经 status() → text/plain;
+// JSON 构建器终结物应为 application/json + nosniff 安全默认,err_json 同源受益)
 pub fn end_status(b: JObj, n: I32) -> Resp {
-    return status(n, jfinish(b, ""))
+    return with_status(json(jfinish(b, "")), n)
 }
 
 fn json_esc(s: Str) -> Str {
@@ -177,6 +193,63 @@ fn json_esc(s: Str) -> Str {
         i += 1
     }
     return join(ps, "")
+}
+
+// ---- csv_rows(§4.4:报表导出小助手 → text().attachment();Task 5 收口补) ----
+// RFC 4180 最小引用形:字段含逗号/引号/CR/LF 才整域加引号、引号双写;行 \n 相接。
+// 注:std/csv csv_write 同款口径,但 web 侧本地实现——use std.csv 入 core 会翻转
+// view 合并态 E5030(text 撞名;引导 pkg_load_use 合并路径坑,task-5-report 在册)。
+
+fn csv_cell(s: Str) -> Str {
+    var need = false
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 44 || c == 34 || c == 10 || c == 13 {
+            need = true
+        }
+        i += 1
+    }
+    if !need {
+        return s
+    }
+    var ps: List[Str] = List[Str]()
+    ps.push("\"")
+    i = 0
+    while i < s.len {
+        if byte_at(s, i) == 34 {
+            ps.push("\"\"")
+        } else {
+            ps.push(byte_slice(s, i, i + 1))
+        }
+        i += 1
+    }
+    ps.push("\"")
+    return join(ps, "")
+}
+
+pub fn csv_rows(headers: List[Str], rows: List[List[Str]]) -> Str {
+    var lines: List[Str] = List[Str]()
+    var cells: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < headers.len {
+        cells.push(csv_cell(headers[i]))
+        i += 1
+    }
+    lines.push(join(cells, ","))
+    i = 0
+    while i < rows.len {
+        cells = List[Str]()
+        let row = rows[i]
+        var j: I32 = 0
+        while j < row.len {
+            cells.push(csv_cell(row[j]))
+            j += 1
+        }
+        lines.push(join(cells, ","))
+        i += 1
+    }
+    return join(lines, "\n")
 }
 
 // ---- Req 取参族(§4.3:泛型 Req + UTF-8 安全百分号解码;session 归 2b) ----
@@ -507,6 +580,9 @@ test "resp 构造器安全默认" {
     let r2 = with_status(with(json("\{" + "}"), "Set-Cookie", "a=b"), 201)
     assert(resp_status(r2) == 201)
     assert(resp_header(r2, "Set-Cookie") == "a=b")
+    // 其他格式矩阵(§4.4):xml/yaml 自动 Content-Type
+    assert(contains(resp_header(xml("<a/>"), "Content-Type"), "text/xml"))
+    assert(contains(resp_header(yaml("k: v"), "Content-Type"), "application/yaml"))
 }
 
 test "json_obj 转义与类型" {
@@ -515,9 +591,44 @@ test "json_obj 转义与类型" {
     assert(contains(s, "\"t\":\"a\\\"b\""))
     assert(contains(s, "\"n\":42"))
     assert(contains(s, "\"ok\":true"))
+    var tags: List[Str] = List[Str]()
+    tags.push("a")
+    tags.push("b\"c")
+    let s4 = json_obj().strs("tags", tags).end()
+    assert(s4 == "\{" + "\"tags\":[\"a\",\"b\\\"c\"]}")   // strs 独立覆盖(M-T1w-2 收口)
     let e = err_json(422, "bad")
     assert(resp_status(e) == 422)
     assert(contains(resp_body(e), "\"error\":\"bad\""))
+    // err_json Content-Type 修正(M-T1w-1 收口):JSON 终结物走 json() 底座,不再 text/plain
+    assert(resp_header(e, "Content-Type") == "application/json")
+    assert(contains(resp_header(e, "X-Content-Type-Options"), "nosniff"))
+}
+
+test "csv_rows RFC 4180 最小引用与 attachment 导出面" {
+    var hs: List[Str] = List[Str]()
+    hs.push("id")
+    hs.push("note")
+    var r1: List[Str] = List[Str]()
+    r1.push("1")
+    r1.push("plain")
+    var r2: List[Str] = List[Str]()
+    r2.push("2")
+    r2.push("a,b\"c")
+    var rows: List[List[Str]] = List[List[Str]]()
+    rows.push(r1)
+    rows.push(r2)
+    let out = csv_rows(hs, rows)
+    // 含逗号+引号字段:整域加引号、引号双写;表头行首;行 \n 相接(尾行不带换行)
+    assert(out == "id,note\n1,plain\n2,\"a,b\"\"c\"")
+    // 导出组装面:csv_rows 产文本 + Content-Disposition 链上(spec §4.4 "→ text/attachment")。
+    // 注:载体用 html() 不用 text()——core 的 test 体引用会把该 decl 拉进 use 选择性合并
+    // keep 集(pkg_load_use "Test 恒随"口径),与 view.el 的 text 撞名 E5030(在册 M-T5w-1);
+    // 真实导出用法 text(csv_rows(...)).attachment("report.csv") 记于 README。
+    let resp = attachment(html(out), "report.csv")
+    assert(resp_header(resp, "Content-Disposition") == "attachment; filename=\"report.csv\"")
+    assert(resp_body(resp) == out)
+    // 空表/空行边界
+    assert(csv_rows(List[Str](), List[List[Str]]()) == "")
 }
 
 test "query/form 解码 UTF-8 安全" {

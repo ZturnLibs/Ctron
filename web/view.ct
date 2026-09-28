@@ -6,6 +6,8 @@
 //   &quot; &#39;)——转义不靠调用点自觉,靠 El 装配面无原文洞;
 //   raw 是显式逃生口(调用点自声明信任,同 ht_el inner 豁免口径);
 //   child/children 收的是 El,递归 done 后入 kids,成品段不回炉。
+// 信任边界(M-T4w-1 收口注记,§4.8 口径):tag 与属性 KEY 是调用点可信常量,不过 ht_esc——
+//   仅 text/attr/cls 的值位转义;动态来源字符串一律走值位,禁拼入 tag/KEY 位。
 // 会话糖(grant_session/drop_session/flash)归 2b(依赖 with_sessions 键管理)。
 
 use web.core.{ Pair }

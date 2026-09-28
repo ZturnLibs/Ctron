@@ -231,6 +231,17 @@ pub fn has_conflict[S](r: Router[S]) -> Bool {
     return false
 }
 
+// 插件挂载(§4.6:插件 = 普通 fn(Router[S]) -> Router[S],零新机制;顺序即装配序)
+pub fn install[S](r: Router[S], p: fn(Router[S]) -> Router[S]) -> Router[S] {
+    return p(r)
+}
+
+// test_call —— spec §4.7 测试口(dispatch 别名;整台服务器零 socket 的确定性测试形;
+// 2b serve 循环复用 dispatch 本体)
+pub fn test_call[S](r: Router[S], method: Str, path: Str, body: Str) -> Resp {
+    return dispatch[S](r, method, path, body)
+}
+
 // ---- 匹配(静态 > :param > *splat;路径命中方法不中 → 405 + Allow)----
 
 pub struct Match[S] {
@@ -487,6 +498,16 @@ test "mount_at 前缀拼接与中间件继承" {
     assert(resp_header(gb, "X-A") == "")  // subA 的 mw 不渗入 /g2
     let ga = dispatch[I64](nest, "GET", "/g1/a", "")
     assert(resp_header(ga, "X-A") == "1") // /g1 组自身 mw 挂载后仍生效
+}
+
+test "install 插件挂载与 test_call 测试口" {
+    // 插件 = fn(Router)->Router 普通函数(§4.6 零新机制);install 一行挂载
+    let app = install[I64](router[I64](0), |rr| get[I64](rr, "/plug", h_hello))
+    let hit = test_call[I64](app, "GET", "/plug", "")
+    assert(resp_status(hit) == 200)
+    assert(resp_body(hit) == "hi:")   // 静态路由无 :name → 取参缺回空纪律
+    let miss = test_call[I64](app, "GET", "/nope", "")
+    assert(resp_status(miss) == 404)
 }
 
 test "重复路由探测 has_conflict" {
