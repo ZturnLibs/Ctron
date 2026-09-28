@@ -3141,6 +3141,11 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         }
                         if sx1 > sx0 {
                             gui_sel_float(sx0, icy, sx1 - sx0, ilh, gui_theme_slot_get(7))
+                            // 选区浮条 RECT ↔ 命中表配对(漏推则 rects/hits 计数
+                            // 错位:后续元素配对偏移+输入框宽缓存污染→视口失效
+                            // →全文绘制折行=用户实测「连击后文字上移」)
+                            hits.push(id)
+                            hinst.push(inst)
                         }
                     }
                 }
