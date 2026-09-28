@@ -1002,8 +1002,20 @@ fn gui_fn_arity(d: List[Str]) -> I32 {
     return ps.len - 1
 }
 
+// P2 契约Ⅱ-b:Box[T] 结构判别(自包含;ct_ty_code 是 trans 面专属不可用)
+fn gui_ty_is_box(t: List[Str]) -> Bool {
+    if t.len > 1 {
+        if t[0] == "Named" {
+            if t[1] == "Box" {
+                return true
+            }
+        }
+    }
+    return false
+}
+
 // P2 契约Ⅱ:名 → 形参型别头表(首匹配;未声明空表)——组件事件 ev_arg
-// 解码器选型依据(Str→s/I32→i/Bool→b,余默认 s)
+// 解码器选型依据(Box: 前缀=模型捕获,I32→i/Bool→b/余 s)
 fn gui_fn_ptyps(file: List[Str], nm: Str) -> List[Str] {
     var out = List[Str]()
     var i: I32 = 1
@@ -1015,7 +1027,14 @@ fn gui_fn_ptyps(file: List[Str], nm: Str) -> List[Str] {
             while k < ps.len {
                 var pr = ps[k]
                 if pr[0] == "Param" {
-                    out.push(gui_ty_head_node(pr[3]))
+                    // Box 参数打 "Box:" 前缀标记(gui_ty_head_node 会剥 Box 返回
+                    // 载荷型;ct_ty_code 是 trans 面专属,check 驱动文件集没有——
+                    // gui_parse 内助手必须双驱动自包含)
+                    var th: Str = gui_ty_head_node(pr[3])
+                    if gui_ty_is_box(pr[3]) {
+                        th = "Box:" + th
+                    }
+                    out.push(th)
                 }
                 k += 1
             }
@@ -1467,7 +1486,7 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
 //        单标识符旧契约仅存在性;indep 独立形态两门均跳)
 //   E8193 each 体含 input 型控件(警告入 gwarns,不置 rc;key 原语未落地前索引对齐即串位)
 // sawin = 子树 input 计数累加器(Atomic;each 据此发 E8193,嵌套 each 各自报)。
-fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], pscope: List[Str], vr_nm: List[Str], vr_pp: List[Str]) -> I32 {
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], pscope: List[Str], vr_nm: List[Str], vr_pp: List[Str], iscomp: Bool, fbox: List[Str]) -> I32 {
     var bad: I32 = 0
     if depth > 8 {
         gdiags.push("E8100: 嵌套超限(限深 8)")
@@ -1654,7 +1673,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                             }
                         }
                     }
-                    var cb2: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp)
+                    var cb2: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, iscomp, fbox)
                     if cb2 < 0 {
                         bad = -1
                     }
@@ -1747,6 +1766,13 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                             if pscope.len > 0 {
                                 // each 体内事件隐式实例下标(P-H1 "名:下标" 命中契约)
                                 imp += 1
+                            }
+                            // 契约Ⅱ-b:组件视图事件首参 Box = 模型捕获直传(合成面
+                            // gen 同规)——声明形参 = 表达式实参 + 1
+                            if iscomp {
+                                if gui_ck_has_style(fbox, head) {
+                                    imp += 1
+                                }
                             }
                             if da < 0 {
                                 gdiags.push("E8120: 事件处理器未声明 " + head + "(on:" + evn + ")")
@@ -1895,7 +1921,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 cur.store(cur.load() + 1)
-                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, iscomp, fbox)
                 if cb < 0 {
                     bad = -1
                 }
@@ -1986,9 +2012,27 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
     // 实例实参名核对/缺失 prop 门依据;视图可居后被用模块(跨文件)亦可本文件
     var vr_nm = List[Str]()
     var vr_pp = List[Str]()
+    // 契约Ⅱ-b:desugar 靶视图名(run(<Ident>) 标记检出;无标记="")与
+    // Box 首参处理器名表——组件视图事件首参 Box = 模型捕获 +1 豁免依据
+    var tgt: Str = gui_ds_marker_file(file)
+    var fbox = List[Str]()
     var vri: I32 = 1
     while vri < file.len {
         var vd = file[vri]
+        if vd[0] == "Fn" || vd[0] == "FnPub" || vd[0] == "FnExt" || vd[0] == "FnC" {
+            if vd.len > 3 {
+                if vd[3].len > 1 {
+                    var p0 = vd[3][1]
+                    if p0[0] == "Param" {
+                        if p0.len > 3 {
+                            if gui_ty_is_box(p0[3]) {
+                                fbox.push(vd[1])
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if vd[0] == "GuiBlock" {
             if vd[1] == "view" {
                 vr_nm.push(vd[2])
@@ -2080,7 +2124,16 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                 } else {
                 var sawin = Atomic[I32](0)
                 var emptyscope = List[Str]()
-                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, vptyps, stns, sfk, stv, emptyscope, vr_nm, vr_pp)
+                // 契约Ⅱ-b:靶视图=宿主语义(无模型豁免),其余视图=组件(首参
+                // Box 捕获 +1 豁免);无 run(<Ident>) 标记的程序全视图严格(旧契
+                // 约,无合成面)
+                var iscomp: Bool = false
+                if tgt != "" {
+                    if d[2] != tgt {
+                        iscomp = true
+                    }
+                }
+                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, vptyps, stns, sfk, stv, emptyscope, vr_nm, vr_pp, iscomp, fbox)
                 }
             } else {
                 if d[1] == "style" {
@@ -3007,7 +3060,7 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
 
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str]) -> I32 {
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str]) -> I32 {
     // 单一树走查统一收集(I32 双栈,子树承 in_each 旗;域包 gs2i 不可见
     // 于编译器,禁字符串栈):标量路径表达式 / each 列表 / 行域 checkbox /
     // in-each 事件(实例分发)/ input on:input 处理器(名通道)
@@ -3131,6 +3184,10 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
                     } else {
                         if istgt {
                             ievs.push(f_evf[gi])
+                        } else {
+                            // 契约Ⅱ-b:组件树 each 内事件→后缀前缀分支(模型捕获
+                            // +行下标),组件树不做 ievs(目标面专属)
+                            ciev.push(f_evf[gi])
                         }
                     }
                 } else {
@@ -3198,7 +3255,7 @@ fn tag_is_input_evt(tag: Str, nbid: Str) -> Bool {
 }
 
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str]) -> List[Str] {
+fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -3311,24 +3368,46 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
     a2 = a2 + ") \{\n"
     // P2 契约Ⅱ:组件视图 call 形事件——实参全 ev_arg 按位解码(处理器声明
     // 型别,合成期可知;事件实参=事件局部数据,4a 同构);先于靶事件分支
+    // 契约Ⅱ-b:处理器首参 Box = 模型捕获直传(与 4a 根捕获同构;check 面
+    // fbox+iscomp 同规豁免 +1)——组件事件即可改宿主模型
+    var mcap: Str = ""
+    if ptoks.len > 0 {
+        mcap = ptoks[0]
+    }
     k = 0
     while k < cvf.len {
         var argcC = List[I32]()
         var aoC = List[Str]()
         var headC: Str = gui_ev_head2(cvf[k], argcC, aoC)
         if headC.len > 0 {
+            var ptsl = gui_fn_ptyps(file, headC)
+            var hasm: Bool = false
+            if ptsl.len > 0 {
+                if ptsl[0].len >= 4 {
+                    if byte_slice(ptsl[0], 0, 4) == "Box:" {
+                        hasm = true
+                    }
+                }
+            }
             if argcC[0] >= 0 {
-                var ptsl = gui_fn_ptyps(file, headC)
                 var parr: Str = ""
+                if hasm {
+                    parr = mcap + ", "
+                }
                 var pi2: I32 = 0
                 while pi2 < argcC[0] {
+                    // 数据参型别 = 声明形参表跳过模型首参(hasm)后按位对齐
+                    var didx: I32 = pi2
+                    if hasm {
+                        didx = pi2 + 1
+                    }
                     var dc: Str = "ev_arg_s"
-                    if pi2 < ptsl.len {
-                        var pts: Str = ptsl[pi2]
-                        if pts == "I32" {
+                    if didx < ptsl.len {
+                        var pts: Str = ptsl[didx]
+                        if pts == "i" {
                             dc = "ev_arg_i"
                         } else {
-                            if pts == "Bool" {
+                            if pts == "b" {
                                 dc = "ev_arg_b"
                             }
                         }
@@ -3341,8 +3420,31 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
                 }
                 a2 = a2 + "    if name == \"" + headC + "\" \{ " + headC + "(" + parr + ") }\n"
             } else {
-                a2 = a2 + "    if name == \"" + headC + "\" \{ " + headC + "() }\n"
+                if hasm {
+                    a2 = a2 + "    if name == \"" + headC + "\" \{ " + headC + "(" + mcap + ") }\n"
+                } else {
+                    a2 = a2 + "    if name == \"" + headC + "\" \{ " + headC + "() }\n"
+                }
             }
+        }
+        k += 1
+    }
+    // 契约Ⅱ-b:组件树 each 内事件——后缀前缀分支("头:N" P-H1 同构),处理器
+    // 声明 (Box[M], I32):模型捕获 + 行下标(ev_suffix_i)
+    k = 0
+    while k < ciev.len {
+        var argcC2 = List[I32]()
+        var aoC2 = List[Str]()
+        var headC2: Str = gui_ev_head2(ciev[k], argcC2, aoC2)
+        if headC2.len > 0 {
+            var hl: I32 = headC2.len
+            a2 = a2 + "    if name.len > " + hl.to_string() + " \{\n"
+            a2 = a2 + "        if byte_slice(name, 0, " + hl.to_string() + ") == \"" + headC2 + "\" \{\n"
+            a2 = a2 + "        if byte_at(name, " + hl.to_string() + ") == 58 \{\n"
+            a2 = a2 + "            " + headC2 + "(" + mcap + ", ev_suffix_i(name))\n"
+            a2 = a2 + "        }\n"
+            a2 = a2 + "        }\n"
+            a2 = a2 + "    }\n"
         }
         k += 1
     }
@@ -4123,8 +4225,9 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var cty = List[Str]()
     var cvn = List[Str]()
     var cvf = List[Str]()
-    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf)
-    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf)
+    var ciev = List[Str]()
+    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev)
+    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev)
     // made = p_file 产物(File 节点):[0] 是 "File" 头字符串,从 1 起拼——
     // 从 0 拼即把头串当 decl 注入,trans/emit 面遍历 d[0] 解引用即 SEGV(s41 根因)
     var k: I32 = 1

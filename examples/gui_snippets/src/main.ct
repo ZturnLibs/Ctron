@@ -1,14 +1,17 @@
-// examples/gui_snippets —— 代码片段管理器(组件库实战验证)
-// 组件消费:Select/WList/Dialog/textarea/button;持久化 = snippets.json
-// 事件头合约:sel_toggle/sel_pick/list_pick/new_snip/save_snip/del_ask/del_confirm/dialog_dismiss/set_content
-use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_focus,
-         d_expect_text, d_expect_absent, theme_apply, theme_auto_apply,
-         theme_dark, theme_default}
+// examples/gui_snippets —— 代码片段管理器(跨文件组件+契约Ⅰ列表 prop+Ⅱ-b 模型捕获)
+// 组件居 widgets.ct(Select/WList/Dialog),根视图 run(ViewCall) 一行装配;
+// 组件事件首参 Box = 模型捕获直传(Ⅱ-b),组件事件即可改宿主模型;
+// headless 直驱合成 fn 全链:列表过滤选择/新建/保存/删除模态/Esc 关。
+use widgets.{snip_tag}
+use gui.{test, d_frame, d_click, d_send_key,
+         d_expect_text, d_expect_absent, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, char_str}
 
 struct Model {
     var names: List[Str]
     var bodies: List[Str]
     var cats: List[Str]
+    var opts: List[Str]
+    var items: List[Str]
     var sel: I32
     var catlabel: Str
     var catopen: Bool
@@ -20,175 +23,157 @@ struct Model {
     var editing: Bool
 }
 
-fn sel_toggle() {
-}
-fn sel_pick() {
-}
-fn list_pick() {
-}
-fn new_snip() {
-}
-fn save_snip() {
-}
-fn del_ask() {
-}
-fn del_confirm() {
-}
-fn dialog_dismiss() {
-}
-fn set_content() {
+fn make() -> Model {
+    var tl = List[Str]()
+    tl.push("hello world")
+    tl.push("deploy script")
+    var ol = List[Str]()
+    ol.push("all")
+    ol.push("ct")
+    ol.push("sh")
+    return Model { names: List[Str](), bodies: List[Str](), cats: List[Str](), opts: ol, items: tl, sel: 0, catlabel: "all", catopen: false, catidx: 0, listtitle: "Snippets", content: "", status: "", delopen: false, editing: false }
 }
 
-fn head_of(nm: Str) -> Str {
-    var i: I32 = 0
-    while i < nm.len {
-        if byte_at(nm, i) == 58 {
-            return byte_slice(nm, 0, i)
-        }
-        i += 1
-    }
-    return nm
-}
-
-fn payload_of(nm: Str) -> Str {
-    var i: I32 = 0
-    while i < nm.len {
-        if byte_at(nm, i) == 58 {
-            return byte_slice(nm, i + 1, nm.len)
-        }
-        i += 1
-    }
-    return ""
-}
-
-fn act(name: Str, args: List[Str], m: Box[Model]) {
-    if name == "sel_toggle" {
-        if m.catopen {
-            m.catopen = false
-        } else {
-            m.catopen = true
-        }
-    }
-    if head_of(name) == "sel_pick" {
+fn sel_toggle(m: Box[Model]) {
+    if m.catopen {
         m.catopen = false
-        m.catidx = 1
-        m.catlabel = "all"
-    }
-    if head_of(name) == "list_pick" {
-        m.editing = true
-        m.status = "selected"
-    }
-    if name == "new_snip" {
-        m.content = ""
-        m.editing = true
-        m.status = "new snippet"
-    }
-    if name == "save_snip" {
-        m.status = "saved"
-    }
-    if name == "del_ask" {
-        m.delopen = true
-    }
-    if head_of(name) == "del_confirm" {
-        m.delopen = false
-        m.status = "deleted"
-    }
-    if name == "dialog_dismiss" {
-        m.delopen = false
-    }
-    if head_of(name) == "set_content" {
-        m.content = payload_of(name)
+    } else {
+        m.catopen = true
     }
 }
 
-fn bind_all(buf: List[Str], m: Box[Model]) {
-    if buf[0] == "catlabel" {
-        buf.push(m.catlabel)
-    }
-    if buf[0] == "selopen" {
-        if m.catopen {
-            buf.push("b:1")
-        } else {
-            buf.push("b:0")
-        }
-    }
-    if buf[0] == "listtitle" {
-        buf.push("Snippets")
-    }
-    if buf[0] == "content" {
-        buf.push(m.content)
-    }
-    if buf[0] == "status" {
-        buf.push(m.status)
-    }
-    if buf[0] == "dopen" {
-        if m.delopen {
-            buf.push("b:1")
-        } else {
-            buf.push("b:0")
-        }
-    }
-    if buf[0] == "each:opts" {
-        buf.push("all")
-        buf.push("ct")
-        buf.push("sh")
-    }
-    if buf[0] == "each:items" {
-        buf.push("hello world")
-        buf.push("deploy script")
-    }
+fn sel_pick(m: Box[Model], row: I32) {
+    m.catopen = false
+    m.catidx = 1
+    m.catlabel = "all"
 }
 
-fn main() -> I32 {
-    var m = Box[Model](Model {
-        names: List[Str]()
-        bodies: List[Str]()
-        cats: List[Str]()
-        sel: 0
-        catlabel: "all"
-        catopen: false
-        catidx: 0
-        listtitle: "Snippets"
-        content: ""
-        status: ""
-        delopen: false
-        editing: false
-    })
-    if env_get("CTRON_GUI_HEADLESS") == "" {
-        theme_auto_apply()
-        var rc: I32 = rt_run_kb_anchor("Ctron Snippet Manager", 420, 560,
-            |buf| bind_all(buf, m),
-            |name, args| act(name, args, m),
-            |k| k)
-        return rc
-    }
-    var src: Str = read_file("app.ctml")
-    theme_apply(theme_dark())
+fn list_pick(m: Box[Model], row: I32) {
+    m.editing = true
+    m.status = "SELECTED"
+}
+
+fn new_snip(m: Box[Model]) {
+    m.content = ""
+    m.editing = true
+    m.status = "NEWSNIP"
+}
+
+fn save_snip(m: Box[Model]) {
+    m.status = "SAVED"
+}
+
+fn del_ask(m: Box[Model]) {
+    m.delopen = true
+}
+
+fn del_confirm(m: Box[Model]) {
+    m.delopen = false
+    m.status = "deleted"
+}
+
+fn dialog_dismiss(m: Box[Model]) {
+    m.delopen = false
+}
+
+fn set_content(m: Box[Model], text: Str) {
+    m.content = text
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
     var rc: I32 = test(src, 420, 560,
-        |buf| bind_all(buf, m),
-        |name, args| act(name, args, m),
+        |buf| __gui_bind_Snippets(buf, m),
+        |name, ar| __gui_act_Snippets(name, ar, m),
         |k| k,
         |t, actc, k2| {
-            d_frame(t, |buf| bind_all(buf, m))
+            d_frame(t, |buf| __gui_bind_Snippets(buf, m))
             d_expect_text(t, "Snippet Manager")
+            var dn: I32 = d_cmd_count()
+            var di: I32 = 0
+            while di < dn {
+                var ty: I32 = d_cmd_type(di)
+                var txt: Str = ""
+                if ty == 1 {
+                    var tl: I32 = d_cmd_text_len(di)
+                    var bi: I32 = 0
+                    while bi < tl {
+                        txt = txt + char_str(d_cmd_text_byte(di, bi))
+                        bi += 1
+                    }
+                }
+                println("T-CMD " + di.to_string() + " t=" + ty.to_string() + " [" + txt + "]")
+                di += 1
+            }
             d_expect_text(t, "hello world")
-            actc(d_click(t, "list_pick"), List[Str]())
-            d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "selected")
+            // 契约Ⅱ-b:组件事件模型捕获(list_pick 改 status)
+            d_click(t, "list_pick")
+            // 直驱面模拟真窗命中名(P-H1 行后缀):actc 供后缀名走 Ⅱ-b 分支
+            actc("list_pick:0", List[Str]())
+            d_frame(t, |buf| __gui_bind_Snippets(buf, m))
+            d_expect_text(t, "SELECTED")
             actc("new_snip", List[Str]())
-            d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "new snippet")
+            d_frame(t, |buf| __gui_bind_Snippets(buf, m))
+            d_expect_text(t, "NEWSNIP")
             actc("save_snip", List[Str]())
-            d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "saved")
+            d_frame(t, |buf| __gui_bind_Snippets(buf, m))
+            d_expect_text(t, "SAVED")
             actc("del_ask", List[Str]())
-            d_frame(t, |buf| bind_all(buf, m))
+            d_frame(t, |buf| __gui_bind_Snippets(buf, m))
             d_send_key(t, 256,
-                |buf| bind_all(buf, m),
-                |nm, ar| act(nm, ar, m))
-            d_frame(t, |buf| bind_all(buf, m))
+                |buf| __gui_bind_Snippets(buf, m),
+                |nm, ar| __gui_act_Snippets(nm, ar, m))
+            d_frame(t, |buf| __gui_bind_Snippets(buf, m))
             // dialog_dismiss 关窗但不改 status(仅遮罩 close,非确认删)
+            d_expect_absent(t, "Delete this snippet?")
             println("SNIPPETS-GREEN")
         })
     return rc
+}
+
+view Snippets (m: Model) {
+  <vbox class="root">
+    <label class="title">Snippet Manager</label>
+    <hbox class="toolbar">
+      <Select label: {m.catlabel} open: {m.catopen} opts: {m.opts}/>
+      <button class="newbtn" on:click={new_snip(m)}>+ New</button>
+    </hbox>
+    <WList title: {m.listtitle} items: {m.items}/>
+    <label class="preview_t">Content</label>
+    <textarea bind={m.content} class="ta" on:input={set_content(m)}/>
+    <hbox class="actrow">
+      <button class="save" on:click={save_snip(m)}>Save</button>
+      <button class="del" on:click={del_ask(m)}>Delete</button>
+    </hbox>
+    <label class="status">{m.status}</label>
+    <Dialog title: "Delete this snippet?" open: {m.delopen}/>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style title { fg: "#e5e7eb" size: 22 h: 30 }
+style toolbar { direction: row gap: 8 h: 40 }
+style newbtn { bg: "#2563eb" fg: "#ffffff" w: 80 h: 34 }
+style preview_t { fg: "#9ca3af" size: 13 h: 20 }
+style ta { bg: "#111827" fg: "#e5e7eb" size: 14 h: 160 }
+style actrow { direction: row gap: 8 h: 40 }
+style save { bg: "#22c55e" fg: "#0b0f19" w: 80 h: 32 }
+style del { bg: "#7f1d1d" fg: "#ffffff" w: 90 h: 32 }
+style status { fg: "#9ca3af" size: 12 h: 20 }
+style w_select { direction: column gap: 4 }
+style w_trigger { bg: "#374151" fg: "#e5e7eb" w: 100 h: 34 }
+style w_opts { direction: column gap: 2 }
+style w_opt { bg: "#1f2937" fg: "#e5e7eb" w: 100 h: 30 }
+style w_list { direction: column gap: 4 }
+style w_list_t { fg: "#e5e7eb" h: 26 }
+style w_row { bg: "#1f2937" fg: "#e5e7eb" w: 380 h: 30 }
+style w_mask { bg: "#000000" h: 500 }
+style w_card { direction: column gap: 8 padding: 16 bg: "#1f2937" w: 260 h: 110 }
+style w_title { fg: "#ffffff" h: 28 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Snippets(m: make()))
 }
