@@ -2,18 +2,19 @@
 // eval_run.ct —— 语句与顶层执行:run_stmt(声明/赋值/if·while·for-in/match/
 // return·? 传播/own 块/Scope 并发模拟)、run_block(作用域进出)、statics_env
 // (static let 预绑定)、run_tests(test 块)。解释入口在 driver_run.ct。
+// S1 Val 换代:流 Flow struct(e4/s4 字段序统一后,eval 结果直传即换形)。
 // =====================================================================
-fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[Str] {
+fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
     var t = st[0]
     if t == "Return" {
         if st[1][0] == "None" {
             return s4("r", env, out, vV2())
         }
         var er = eval_expr(file, env, out, st[1])
-        if er[0] != "k" {
-            return s4(er[0], er[1], er[3], er[2])
+        if er.kind != "k" {
+            return er
         }
-        return s4("r", er[1], er[3], er[2])
+        return s4("r", er.env, er.out, er.v)
     }
     if t == "Break" {
         // v0.7 修订二:状态种 "b"/"c" 向最近 enclosing 循环传播(run_block 泛化透传)
@@ -26,13 +27,13 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
         var pat = st[2]
         if pat[0] == "PatId" {
             var er = eval_expr(file, env, out, st[4])
-            if er[0] != "k" {
-                return s4(er[0], er[1], er[3], er[2])
+            if er.kind != "k" {
+                return er
             }
             // 宽度注解:let x: U8/I8/U16/I16 = <整值> → 值带宽标签;
-            // U64/USize → "7" 无符号 64 文本域;ISize → "6" 域(§3.1 定宽,P1-B)
-            var vv = bind_of(file, er[2])
-            if or2(er[2][0] == "I", er[2][0] == "W") && st[3][0] == "Named" {
+            // U64/USize → "7" 无符号 64 域;ISize → "6" 域(§3.1 定宽,P1-B)
+            var vv = bind_of(file, er.v)
+            if or2(er.v.tag == 1, er.v.tag == 7) && st[3][0] == "Named" {
                 var h = ty_head(st[3])
                 if or2(h == "U8", or2(h == "I8", or2(h == "U16", h == "I16"))) {
                     var wl = "u8"
@@ -45,39 +46,39 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                     if h == "I16" {
                         wl = "i16"
                     }
-                    vv = vW(wl, dvi(er[2][1]))
+                    vv = vW(wl, er.v.iv.as[I32]())
                 }
                 if or2(h == "U64", h == "USize") {
-                    vv = v7(er[2][1])
+                    vv = v7(dvi_str(er.v.iv.as[I32]()))
                 }
                 if h == "ISize" {
-                    vv = v6(er[2][1])
+                    vv = v6(dvi_str(er.v.iv.as[I32]()))
                 }
             }
-            if er[2][0] == "6" && st[3][0] == "Named" {
+            if er.v.tag == 2 && st[3][0] == "Named" {
                 var h2 = ty_head(st[3])
                 if or2(h2 == "U64", h2 == "USize") {
                     // 6 域宽字面量落 U64 绑定:十进制文本已精确,仅换签
-                    vv = v7(er[2][1])
+                    vv = v7(v6t(er.v))
                 }
             }
-            return s4("k", env_add(er[1], pat[1], vv), er[3], vV2())
+            return s4("k", env_add(er.env, pat[1], vv), er.out, vV2())
         }
         if pat[0] == "PatWild" {
             var er = eval_expr(file, env, out, st[4])
-            if er[0] != "k" {
-                return s4(er[0], er[1], er[3], er[2])
+            if er.kind != "k" {
+                return er
             }
-            return s4("k", er[1], er[3], vV2())
+            return s4("k", er.env, er.out, vV2())
         }
         if pat[0] == "PatTup" {
             var er2 = eval_expr(file, env, out, st[4])
-            if er2[0] != "k" {
-                return s4(er2[0], er2[1], er2[3], er2[2])
+            if er2.kind != "k" {
+                return er2
             }
-            var pmr = pat_match(pat, er2[2], er2[1])
+            var pmr = pat_match(pat, er2.v, er2.env)
             if seq2(pmr[0], "1") {
-                return s4("k", pmr[1], er2[3], vV2())
+                return s4("k", pmr[1], er2.out, vV2())
             }
             panic("let pat mismatch")
             return s4("a", env, out, vV2())
@@ -87,7 +88,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
     }
     if t == "Expr" {
         var er = eval_expr(file, env, out, st[1])
-        return s4(er[0], er[1], er[3], er[2])
+        return er
     }
     if t == "Assign" {
         var tg = st[1]
@@ -99,31 +100,33 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 panic("unbound:" + oname)
                 return s4("a", env, out, vV2())
             }
-            var ov = en[1]
-            if ov[0] == "BOX" {
-                // Box 自动解引用写(§6.1):内层 U 原地改,别名共享可见
-                ov = ov[1]
+            var ov = v_unbox(en[1])
+            if ov.tag == 8 {
+                if seq2(cx_of(ov)[0], "BOX") {
+                    // Box 自动解引用写(§6.1):内层 U 原地改,别名共享可见
+                    ov = v_unbox(cx_of(ov)[1])
+                }
             }
-            if ov[0] != "U" {
+            if !(ov.tag == 8 && seq2(cx_of(ov)[0], "U")) {
                 panic("member assign target")
                 return s4("a", env, out, vV2())
             }
             var vr = eval_expr(file, env, out, st[3])
-            if vr[0] != "k" {
-                return s4(vr[0], vr[1], vr[3], vr[2])
+            if vr.kind != "k" {
+                return vr
             }
             var op = st[2]
-            var nv = vr[2]
+            var nv = vr.v
             if !seq2(op, "Eq") {
-                var oldf = u_field(ov, fname)
-                nv = vI(ari(op, dvi(oldf[1]), dvi(nv[1])))
+                var oldf = u_field(cx_of(ov), fname)
+                nv = vI(ari(op, v_unbox(oldf).iv.as[I32](), nv.iv.as[I32]()))
             }
             // C9g:原地写(镜像 rt.c ST_ASSIGN 经绑定槽直接改;结构体绑定时已克隆,类共享可见)
-            if !u_set_ip(ov, fname, nv) {
+            if !u_set_ip(cx_of(ov), fname, v_box(nv)) {
                 panic("field:" + fname)
                 return s4("a", env, out, vV2())
             }
-            return s4("k", vr[1], vr[3], vV2())
+            return s4("k", vr.env, vr.out, vV2())
         }
         if tg[0] == "Ident" {
             var nm = tg[1]
@@ -133,21 +136,22 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 return s4("a", env, out, vV2())
             }
             var vr = eval_expr(file, env, out, st[3])
-            if vr[0] != "k" {
-                return s4(vr[0], vr[1], vr[3], vr[2])
+            if vr.kind != "k" {
+                return vr
             }
             var op = st[2]
-            var nv = vr[2]
+            var nv = vr.v
             if !seq2(op, "Eq") {
                 var oa = en[1]
-                if oa[0] == "M" {
-                    oa[1] = val_arith(op, oa[1], nv)
-                    return s4("k", vr[1], vr[3], vV2())
+                if seq2(oa[0], "M") {
+                    // Atomic/Global 共享单元:载荷槽原地换(box 位面),别名可见
+                    oa[1] = v_box(val_arith(op, v_unbox(oa[1]), nv))
+                    return s4("k", vr.env, vr.out, vV2())
                 }
-                nv = val_arith(op, oa, nv)
+                nv = val_arith(op, v_unbox(oa), nv)
             }
             // C9g:结构体右值赋给绑定也克隆(镜像 rt.c b->slot = clone…)
-            return s4("k", env_set(vr[1], nm, bind_of(file, nv)), vr[3], vV2())
+            return s4("k", env_set(vr.env, nm, bind_of(file, nv)), vr.out, vV2())
         }
         // C9f①:索引赋值 a[i] = v / a[i] op= v —— A/L 同布局;L 经宿主 List 索引写
         // 写透共享后备(镜像 rt.c ST_ASSIGN 的 V_LIST/V_ARR 写透分支)
@@ -158,71 +162,77 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
                 panic("unbound:" + nm3)
                 return s4("a", env, out, vV2())
             }
-            var cont = en3[1]
-            if !or2(seq2(cont[0], "A"), seq2(cont[0], "L")) {
+            var cont = v_unbox(en3[1])
+            if !(cont.tag == 8 && or2(seq2(cx_of(cont)[0], "A"), seq2(cx_of(cont)[0], "L"))) {
                 panic("index assign target")
                 return s4("a", env, out, vV2())
             }
             var ixr = eval_expr(file, env, out, tg[2])
-            if ixr[0] != "k" {
-                return s4(ixr[0], ixr[1], ixr[3], ixr[2])
+            if ixr.kind != "k" {
+                return ixr
             }
-            var idx = dvi(ixr[2][1])
-            if or2(idx < 0, idx >= cont.len - 1) {
+            var idx = ixr.v.iv.as[I32]()
+            if or2(idx < 0, idx >= cx_of(cont).len - 1) {
                 var bnm: Str = "?"
-                if tg[1].len > 1 { bnm = tg[1][1] }
-                panic("index out of bounds idx=" + idx.to_string() + " base=" + bnm + " contlen=" + (cont.len - 1).to_string())
+                if tg[1].len > 1 {
+                    bnm = tg[1][1]
+                }
+                panic("index out of bounds idx=" + idx.to_string() + " base=" + bnm + " contlen=" + (cx_of(cont).len - 1).to_string())
                 return s4("a", env, out, vV2())
             }
             var vr = eval_expr(file, env, out, st[3])
-            if vr[0] != "k" {
-                return s4(vr[0], vr[1], vr[3], vr[2])
+            if vr.kind != "k" {
+                return vr
             }
             var op3 = st[2]
-            var nv3 = vr[2]
+            var nv3 = vr.v
             if !seq2(op3, "Eq") {
-                var old3 = cont[idx + 1]
-                nv3 = vI(ari(op3, dvi(old3[1]), dvi(nv3[1])))
+                var old3 = v_unbox(cx_of(cont)[idx + 1])
+                nv3 = vI(ari(op3, old3.iv.as[I32](), nv3.iv.as[I32]()))
             }
-            cont[idx + 1] = nv3
-            return s4("k", ixr[1], ixr[3], vV2())
+            var ccx = cx_of(cont)
+            ccx[idx + 1] = v_box(nv3)
+            return s4("k", ixr.env, ixr.out, vV2())
         }
         // C9f③:索引赋值 Member 基座 t.nfc[i] = v(SL-0.6-⑱:struct List 字段写透)。
         // Member 读对 BOX 自动解引用、u_field 返回共享 L 节点(别名形态已证共享后备)
         // ——原地写即字段后备写透,与 Ident 基座同语义
         if tg[0] == "Index" && tg[1][0] == "Member" {
             var mr = eval_expr(file, env, out, tg[1])
-            if mr[0] != "k" {
-                return s4(mr[0], mr[1], mr[3], mr[2])
+            if mr.kind != "k" {
+                return mr
             }
-            var cont4 = mr[2]
-            if !or2(seq2(cont4[0], "A"), seq2(cont4[0], "L")) {
+            var cont4 = mr.v
+            if !(cont4.tag == 8 && or2(seq2(cx_of(cont4)[0], "A"), seq2(cx_of(cont4)[0], "L"))) {
                 panic("index assign target")
                 return s4("a", env, out, vV2())
             }
             var ix4 = eval_expr(file, env, out, tg[2])
-            if ix4[0] != "k" {
-                return s4(ix4[0], ix4[1], ix4[3], ix4[2])
+            if ix4.kind != "k" {
+                return ix4
             }
-            var id4 = dvi(ix4[2][1])
-            if or2(id4 < 0, id4 >= cont4.len - 1) {
+            var id4 = ix4.v.iv.as[I32]()
+            if or2(id4 < 0, id4 >= cx_of(cont4).len - 1) {
                 var b4: Str = "?"
-                if tg[1][1][0] == "Ident" { b4 = tg[1][1][1] + "." + tg[1][3] }
-                panic("index out of bounds idx=" + id4.to_string() + " base=" + b4 + " contlen=" + (cont4.len - 1).to_string())
+                if tg[1][1][0] == "Ident" {
+                    b4 = tg[1][1][1] + "." + tg[1][3]
+                }
+                panic("index out of bounds idx=" + id4.to_string() + " base=" + b4 + " contlen=" + (cx_of(cont4).len - 1).to_string())
                 return s4("a", env, out, vV2())
             }
             var vr4 = eval_expr(file, env, out, st[3])
-            if vr4[0] != "k" {
-                return s4(vr4[0], vr4[1], vr4[3], vr4[2])
+            if vr4.kind != "k" {
+                return vr4
             }
             var op4 = st[2]
-            var nv4 = vr4[2]
+            var nv4 = vr4.v
             if !seq2(op4, "Eq") {
-                var old4 = cont4[id4 + 1]
-                nv4 = vI(ari(op4, dvi(old4[1]), dvi(nv4[1])))
+                var old4 = v_unbox(cx_of(cont4)[id4 + 1])
+                nv4 = vI(ari(op4, old4.iv.as[I32](), nv4.iv.as[I32]()))
             }
-            cont4[id4 + 1] = nv4
-            return s4("k", ix4[1], ix4[3], vV2())
+            var c4x = cx_of(cont4)
+            c4x[id4 + 1] = v_box(nv4)
+            return s4("k", ix4.env, ix4.out, vV2())
         }
         panic("assign target:" + tg[0])
         return s4("a", env, out, vV2())
@@ -234,25 +244,25 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
         var base: I32 = envw.len
         while go {
             var cr = eval_expr(file, envw, outw, st[1])
-            if cr[0] != "k" {
-                return s4(cr[0], cr[1], cr[3], cr[2])
+            if cr.kind != "k" {
+                return cr
             }
-            envw = cr[1]
-            outw = cr[3]
-            if truth(cr[2]) {
+            envw = cr.env
+            outw = cr.out
+            if truth(cr.v) {
                 var br = run_block(file, envw, outw, st[2], true)
-                if br[0] == "b" {
-                    envw = br[1]
-                    outw = br[2]
+                if br.kind == "b" {
+                    envw = br.env
+                    outw = br.out
                     go = false
-                } else if br[0] == "c" {
-                    envw = br[1]
-                    outw = br[2]
-                } else if br[0] != "k" {
-                    return s4(br[0], br[1], br[2], br[3])
+                } else if br.kind == "c" {
+                    envw = br.env
+                    outw = br.out
+                } else if br.kind != "k" {
+                    return br
                 } else {
-                    envw = br[1]
-                    outw = br[2]
+                    envw = br.env
+                    outw = br.out
                     // keep 累积压缩:新增段按名去重回基线,防跨轮线性增长(env_add 全量拷贝 → O(n²))
                     if envw.len > base {
                         envw = env_dedupe(envw, envw.len - base)
@@ -271,57 +281,59 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             nm = pat[1]
         }
         var ir = eval_expr(file, env, out, st[2])
-        if ir[0] != "k" {
-            return s4(ir[0], ir[1], ir[3], ir[2])
+        if ir.kind != "k" {
+            return ir
         }
-        var it = ir[2]
-        if it[0] == "A" {
-            var envw3 = ir[1]
-            var outw3 = ir[3]
-            var c2: I32 = 1
-            while c2 < it.len {
-                var eit = env_add(envw3, nm, it[c2])
-                var br = run_block(file, eit, outw3, st[3], false)
-                if br[0] == "b" {
-                    return s4("k", env_drop(br[1], 1), br[2], vV2())
+        var it = ir.v
+        if it.tag == 8 {
+            if seq2(cx_of(it)[0], "A") {
+                var envw3 = ir.env
+                var outw3 = ir.out
+                var c2: I32 = 1
+                while c2 < cx_of(it).len {
+                    var eit = env_add(envw3, nm, v_unbox(cx_of(it)[c2]))
+                    var br = run_block(file, eit, outw3, st[3], false)
+                    if br.kind == "b" {
+                        return s4("k", env_drop(br.env, 1), br.out, vV2())
+                    }
+                    if br.kind != "k" && br.kind != "c" {
+                        return br
+                    }
+                    envw3 = env_drop(br.env, 1)
+                    outw3 = br.out
+                    c2 += 1
                 }
-                if br[0] != "k" && br[0] != "c" {
-                    return s4(br[0], br[1], br[2], br[3])
-                }
-                envw3 = env_drop(br[1], 1)
-                outw3 = br[2]
-                c2 += 1
+                return s4("k", envw3, outw3, vV2())
             }
-            return s4("k", envw3, outw3, vV2())
-        }
-        if it[0] == "L" {
-            var envl = ir[1]
-            var outl = ir[3]
-            var ci: I32 = 1
-            while ci < it.len {
-                var eit = env_add(envl, nm, it[ci])
-                var br = run_block(file, eit, outl, st[3], false)
-                if br[0] == "b" {
-                    return s4("k", env_drop(br[1], 1), br[2], vV2())
+            if seq2(cx_of(it)[0], "L") {
+                var envl = ir.env
+                var outl = ir.out
+                var ci: I32 = 1
+                while ci < cx_of(it).len {
+                    var eit = env_add(envl, nm, v_unbox(cx_of(it)[ci]))
+                    var br = run_block(file, eit, outl, st[3], false)
+                    if br.kind == "b" {
+                        return s4("k", env_drop(br.env, 1), br.out, vV2())
+                    }
+                    if br.kind != "k" && br.kind != "c" {
+                        return br
+                    }
+                    envl = env_drop(br.env, 1)
+                    outl = br.out
+                    ci += 1
                 }
-                if br[0] != "k" && br[0] != "c" {
-                    return s4(br[0], br[1], br[2], br[3])
-                }
-                envl = env_drop(br[1], 1)
-                outl = br[2]
-                ci += 1
+                return s4("k", envl, outl, vV2())
             }
-            return s4("k", envl, outl, vV2())
         }
-        if it[0] != "R" {
+        if !(it.tag == 8 && seq2(cx_of(it)[0], "R")) {
             panic("for iter not range")
             return s4("a", env, out, vV2())
         }
-        var lo = dvi(it[2][1])
-        var hi = dvi(it[3][1])
-        var incl = seq2(it[1], "true")
-        var envw = ir[1]
-        var outw = ir[3]
+        var lo = v_unbox(cx_of(it)[2]).iv.as[I32]()
+        var hi = v_unbox(cx_of(it)[3]).iv.as[I32]()
+        var incl = seq2(cx_of(it)[1], "true")
+        var envw = ir.env
+        var outw = ir.out
         var cur = lo
         var more = true
         if incl {
@@ -336,11 +348,11 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
         while more {
             var eit = env_add(envw, nm, vI(cur))
             var br = run_block(file, eit, outw, st[3], false)
-            if br[0] != "k" {
-                return s4(br[0], br[1], br[2], br[3])
+            if br.kind != "k" {
+                return br
             }
-            envw = env_drop(br[1], 1)
-            outw = br[2]
+            envw = env_drop(br.env, 1)
+            outw = br.out
             cur += 1
             if incl {
                 if cur > hi {
@@ -357,7 +369,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
     panic("stmt:" + t)
     return s4("a", env, out, vV2())
 }
-fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: Bool) -> List[Str] {
+fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: Bool) -> Flow {
     var flow = "k"
     var env = env0
     var o2 = out
@@ -366,10 +378,10 @@ fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: B
     while i < blk.len - 1 {
         if flow == "k" {
             var sr = run_stmt(file, env, o2, blk[i])
-            flow = sr[0]
-            env = sr[1]
-            o2 = sr[2]
-            val = sr[3]
+            flow = sr.kind
+            env = sr.env
+            o2 = sr.out
+            val = sr.v
         }
         i += 1
     }
@@ -379,10 +391,10 @@ fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: B
             val = vV2()
         } else {
             var er = eval_expr(file, env, o2, tl)
-            flow = er[0]
-            env = er[1]
-            val = er[2]
-            o2 = er[3]
+            flow = er.kind
+            env = er.env
+            val = er.v
+            o2 = er.out
         }
     }
     // 镜像 rt 可观察行为:while 体 keep=true 绑定留存但按名去重(有界,防 O(n²)),
@@ -396,14 +408,16 @@ fn run_block(file: List[Str], env0: List[Str], out: Str, blk: List[Str], keep: B
             // env 为前插式:新增段是 [0, extra),逆声明序 = 下标升序
             var di: I32 = 0
             while di < extra {
-                var dv = env[di][1]
-                if dv[0] == "U" {
-                    var dm = find_impl_method(file, dv[1], "drop")
-                    if dm.len > 0 {
-                        // drop(self) 免克隆:字段共享单元(Atomic)的写入必须透到原件
-                        var dnenv = env_add(List[Str](), "self", dv)
-                        var dbr = run_block(file, dnenv, o2, dm[5], false)
-                        o2 = dbr[2]
+                var dv = v_unbox(env[di][1])
+                if dv.tag == 8 {
+                    if seq2(cx_of(dv)[0], "U") {
+                        var dm = find_impl_method(file, cx_of(dv)[1], "drop")
+                        if dm.len > 0 {
+                            // drop(self) 免克隆:字段共享单元(Atomic)的写入必须透到原件
+                            var dnenv = env_add(List[Str](), "self", dv)
+                            var dbr = run_block(file, dnenv, o2, dm[5], false)
+                            o2 = dbr.out
+                        }
                     }
                 }
                 di += 1
@@ -421,21 +435,21 @@ fn statics_env(file: List[Str]) -> List[Str] {
         var d = file[i]
         if d[0] == "Static" && d[2] == "false" {
             var vr = eval_expr(file, env, "", d[4])
-            if vr[0] == "k" {
-                env = env_add(env, d[1], bind_of(file, vr[2]))
+            if vr.kind == "k" {
+                env = env_add(env, d[1], bind_of(file, vr.v))
             }
         }
         if d[0] == "Const" {
             var vr2 = eval_expr(file, env, "", d[3])
-            if vr2[0] == "k" {
-                env = env_add(env, d[1], bind_of(file, vr2[2]))
+            if vr2.kind == "k" {
+                env = env_add(env, d[1], bind_of(file, vr2.v))
             }
         }
         i += 1
     }
     return env
 }
-fn run_tests(file: List[Str]) -> List[Str] {
+fn run_tests(file: List[Str]) -> Flow {
     var env0 = statics_env(file)
     var acc = ""
     var i: I32 = 1
@@ -443,10 +457,10 @@ fn run_tests(file: List[Str]) -> List[Str] {
         var d = file[i]
         if d[0] == "Test" {
             var br = run_block(file, env0, "", d[2], false)
-            if br[0] == "a" {
-                return s4("a", br[1], acc + br[2], br[3])
+            if br.kind == "a" {
+                return s4("a", br.env, acc + br.out, br.v)
             }
-            acc = acc + br[2]
+            acc = acc + br.out
         }
         i += 1
     }

@@ -423,26 +423,26 @@ fn main() -> I32 {
                     var cvr = ceval_expr(file, st[3], ccN, ccV, cst2)
                     println("//CV:" + st[1] + ":" + cvr[0])
                     if cvr[0] == "k" {
-                        var vt = cvr[2][0]
-                        var vt1 = cvr[2][1]
+                        var cvv = v_unbox(cvr[2])
+                        var vt = vtag_str(cvv)
                         ccN.push(st[1])
                         ccV.push(cvr[2])
                         if vt == "I" {
-                            println("static int32_t t_" + st[1] + " = " + vt1 + ";")
+                            println("static int32_t t_" + st[1] + " = " + dvi_str(cvv.iv.as[I32]()) + ";")
                         }
                         if vt == "6" {
-                            println("static int64_t t_" + st[1] + " = " + vt1 + "LL;")
+                            println("static int64_t t_" + st[1] + " = " + v6t(cvv) + "LL;")
                         }
                         if vt == "B" {
                             var bv = "0"
-                            if vt1 == "true" { bv = "1" }
+                            if cvv.b { bv = "1" }
                             println("static int32_t t_" + st[1] + " = " + bv + ";")
                         }
                         if vt == "S" {
-                            println("static const char* t_" + st[1] + " = " + ct_str_cquote(vt1) + ";")
+                            println("static const char* t_" + st[1] + " = " + ct_str_cquote(cvv.s) + ";")
                         }
                         if vt == "D" {
-                            println("static double t_" + st[1] + " = " + vt1 + ";")
+                            println("static double t_" + st[1] + " = " + cvv.s + ";")
                         }
                     }
                 }
