@@ -696,6 +696,23 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     env = env_bind(env, "#elem:" + pat[1], ct_opt_elem_of(file, gd7[4]))
                 }
             }
+            // P0-2/seam②:fn 值绑定(F/G 码)且初值为直调声明 fn 时挂 #fret 侧条目——
+            // 返回型取该 fn 的 FnType 返回节点(标量/Str/聚合;v/i 不入码,i 即旧形态无差)
+            // 此后 <名>(…) 间接调用与链上成员读按 R 原型化(镜像种子 decl_ty_tc 存槽)
+            var chf: I32 = byte_at(ty, 0)
+            if or2(chf == 70, chf == 71) {
+                if st[4][0] == "Call" && st[4][1][0] == "Ident" {
+                    var gd8 = ct_fn_decl(file, st[4][1][1])
+                    if gd8.len > 0 && gd8[4][0] == "FnType" {
+                        var frc8 = ct_ty_code(gd8[4][2], file)
+                        if frc8 != "v" {
+                            if frc8 != "i" {
+                                env = env_bind(env, "#fret:" + pat[1], frc8)
+                            }
+                        }
+                    }
+                }
+            }
             var rhs = ct_expr(st[4], env, file)
             // extern 返回 fn(v0.7 §9.6):声明位装箱——ct_fnK 裸指针 → ct_clop
             //(fn 槽存裸地址,env 恒 0),绑定后经既有 ct_clop 间接调用与回调摘槽路径
@@ -1294,7 +1311,16 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("return;", env)
             return env
         }
-        eln("return " + ct_expr(st[1], env, file) + ";", env)
+        // P0-2:返回位闭包形参码注入——#retfn(ct_fn 绑的返回 FnType 内参码串)
+        // 临时改绑 #clcodes,作用域仅限本返回表达式(ct_emit_clov 消费;§4.7 适配)
+        var renv = env
+        if ct_env_has(env, "#retfn") {
+            var rcc = ct_env_ty(env, "#retfn")
+            if rcc.len > 0 {
+                renv = env_bind(env, "#clcodes", rcc)
+            }
+        }
+        eln("return " + ct_expr(st[1], renv, file) + ";", env)
         return env
     }
     if t == "Expr" {

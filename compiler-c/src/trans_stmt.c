@@ -481,6 +481,10 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
             use_helper(c, h);
             sb_f(o, "%s %s = %s(%s);\n", ctype_of(ann), nv, h, rhs.d ? rhs.d : "0");
             sb_f(o, "%s %s = %s;\n", ctype_of(ann), name, nv);
+        } else if (t.k == T_FNPTR) {
+            // P0-2:fn 值绑定——fn 值经 int64 槽回传(用户 fn 返回 int64_t),消费位显式还原指针
+            sb_f(o, "%s %s = (ctron_fnptr)(%s);\n", ctype_of(t), nv, rhs.d ? rhs.d : "0");
+            sb_f(o, "%s %s = %s;\n", ctype_of(t), name, nv);
         } else {
             sb_f(o, "%s %s = %s;\n", ctype_of(t), nv, rhs.d ? rhs.d : "0");
             sb_f(o, "%s %s = %s;\n", ctype_of(t), name, nv);
@@ -559,6 +563,7 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
             if (t.ek == T_FLT) e2 = ty_flt();
             if (t.ek == T_BOOL) e2 = ty_bool();
             if (t.ek == T_STR) e2 = ty_str();
+            if (t.ek == T_STRUCT) { e2.k = T_STRUCT; e2.tname = t.tname; } // P0-4:struct 元素直赋(A_EQ 走裸赋值不经 decl 助手;复合赋值诚实拒绝)
             if (st->aop == A_EQ) {
                 if (e2.k == T_INT) {
                     char h[64];
@@ -620,12 +625,15 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
         }
         {
             const ty* saved_rw = c->want;
+            const cty* saved_wf = c->want_fnty;
             c->want = c->fn_ret;
+            c->want_fnty = c->fn_ret_fnty; // P0-2:返回位闭包的适配签名(随 want 同步设置/恢复)
             if (st->e && st->e->kind == EX_TRY) {
                 // return expr? —— None/Err 原样传播
                 sb op = {0};
                 ty ot = emit_expr(c, st->e->obj, &op);
                 c->want = saved_rw;
+                c->want_fnty = saved_wf;
                 if (c->err) { sb_free(&op); return; }
                 if (ot.k != T_SUM) { terr(c, "v1:? 需 Option/Result"); sb_free(&op); return; }
                 int is_opt = !strncmp(ot.tname, "ctron_opt_", 10);
@@ -663,6 +671,7 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
                 }
                 sb_free(&op);
                 c->want = saved_rw;
+                c->want_fnty = saved_wf;
                 return;
             }
         }
@@ -686,7 +695,12 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
         if (st->e) {
             sb r = {0};
             emit_expr(c, st->e, &r);
-            sb_f(o, "return %s;\n", r.d ? r.d : "0");
+            // P0-2:fn 值返回——fn 值经 int64 槽回传(闭包/函数地址),显式收敛 C 型别
+            //(真签名闭包体内除外:其 C 返回型即闭包真返回型,直发)
+            if (!c->in_typed_clo && c->fn_ret && c->fn_ret->k == T_FNPTR)
+                sb_f(o, "return (int64_t)(%s);\n", r.d ? r.d : "0");
+            else
+                sb_f(o, "return %s;\n", r.d ? r.d : "0");
             sb_free(&r);
         } else sb_s(o, "return 0;\n");
         return;

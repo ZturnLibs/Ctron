@@ -1,0 +1,35 @@
+// 03m_binary_nul_probe.ct —— L4 生死探针:含 NUL 字节过 Str 读链(byte_at 扫描/中段切片重组)保真?
+// 判定(只量 nuls 与 mid_ok 两项):nuls>0 且 mid_ok=1 → 链路保真观测成立;
+//       任一不满足 → L4 立项(Upload.data: Bytes 等 §13-③ 面待其)
+// (本探针不测 write-back/round_len 写回门——该门不在量程内,勿据本文件下写回结论)
+use std.fs.{ read_or }
+
+fn main() -> I32 {
+    let bin = read_or("/bin/echo", "")
+    println("len:" + bin.len.to_string())
+    var nuls: I32 = 0
+    var i: I32 = 0
+    while i < bin.len {
+        if byte_at(bin, i) == 0 {
+            nuls += 1
+        }
+        i += 1
+    }
+    println("nuls:" + nuls.to_string())
+    var mid = ""
+    var j: I32 = bin.len / 2
+    while j < bin.len / 2 + 16 {
+        mid = mid + byte_slice(bin, j, j + 1)
+        j += 1
+    }
+    var ok = true
+    var k: I32 = 0
+    while k < 16 {
+        if byte_at(mid, k) != byte_at(bin, bin.len / 2 + k) {
+            ok = false
+        }
+        k += 1
+    }
+    println("mid_ok:" + (if ok { "1" } else { "0" }))
+    return 0
+}

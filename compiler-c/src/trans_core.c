@@ -57,9 +57,15 @@ ty e2_of(ty t) {
     return e;
 }
 const char* dt_for_wl(const char* wl) {
+    // 守卫:单点存活——返回静态缓冲,同一表达式内不得叠加两次 dt_for_wl 结果(后者覆盖前者)
     if (!strcmp(wl, "str")) return "const char*";
     if (!strcmp(wl, "f64")) return "double";
     if (!strcmp(wl, "b")) return "int";
+    if (wl[0] >= 'A' && wl[0] <= 'Z') { // P0-1:用户 struct 元素容器——数据槽按元素结构全宽
+        static char cs[96];
+        snprintf(cs, sizeof cs, "ctron_t_%s", wl);
+        return cs;
+    }
     int ub = wl[0] == 'u';
     int bits = atoi(wl + 1);
     ty t = ty_int(bits, ub);
@@ -91,15 +97,16 @@ const char* ctype_of(ty t) {
     if (t.k == T_TUP) return t.tname ? t.tname : "void"; // 元组:完整 typedef 名(tup_ty 生成)
     if (t.k == T_SIMD) { static char sd[64]; snprintf(sd, sizeof sd, "ctron_simd_f64_%d", (int)t.bits); return sd; }
     if (t.k == T_RANGE) return "ctron_rng";
-    if (t.k == T_LIST) { static char cl[96]; snprintf(cl, sizeof cl, "ctron_list_%s", ewlname(t)); return cl; }
+    if (t.k == T_LIST) { static char cl[96]; if (t.ek == T_STRUCT) snprintf(cl, sizeof cl, "ctron_list_%s", t.tname ? t.tname : "?"); /* P0-1:struct 元素容器名 = 元素结构名(与 ctor/push/索引读同径) */ else snprintf(cl, sizeof cl, "ctron_list_%s", ewlname(t)); return cl; }
     if (t.k == T_CLASS) { static char cb1[96]; snprintf(cb1, sizeof cb1, "ctron_c_%s*", t.tname ? t.tname : "?"); return cb1; }
     if (t.k == T_BOX) { static char cb2[128]; ty e = box_elem(t); snprintf(cb2, sizeof cb2, "%s*", ctype_of(e)); return cb2; }
     if (t.k == T_STRUCT) { static char sb1[96]; snprintf(sb1, sizeof sb1, "ctron_t_%s", t.tname ? t.tname : "?"); return sb1; }
     if (t.k == T_ENUM) { static char sb2[96]; snprintf(sb2, sizeof sb2, "ctron_e_%s", t.tname ? t.tname : "?"); return sb2; }
     if (t.k == T_STR) return "const char*";
     if (t.k == T_ARR) {
-        static char buf[48];
-        snprintf(buf, sizeof buf, "ctron_arr_%s", ewlname(t));
+        static char buf[96];
+        if (t.ek == T_STRUCT) snprintf(buf, sizeof buf, "ctron_arr_%s", t.tname ? t.tname : "?"); // P0-4:struct 元素容器名 = 元素结构名(与 P0-1 T_LIST 同径;typedef 在 struct 定义后)
+        else snprintf(buf, sizeof buf, "ctron_arr_%s", ewlname(t));
         return buf;
     }
     if (t.k == T_FLT) return "double";
@@ -142,7 +149,12 @@ ty decl_ty_tc(tc* c, const cty* t) {
     if (b.k != T_UNK) return b;
     ty sm = sum_ty_of(c, t); // T? / Option[T] / Result[T,E](须在 TY_NAMED 守卫前)
     if (sm.k == T_SUM) return sm;
-    if (t->kind == TY_FN) return ty_fnptr(); // fn(A) -> B:无原型函数指针(int64 统一 ABI)
+    if (t->kind == TY_FN) { // fn(A) -> B:无原型函数指针(int64 统一 ABI);P0-3:返回类型 R 存元素槽,供调用点(值调用/链上成员读)解析
+        ty f = ty_fnptr();
+        ty r = decl_ty_tc(c, t->fret);
+        if (r.k != T_UNK) { f.ek = r.k; f.ebits = r.bits; f.eus = r.us; f.tname = r.tname; }
+        return f;
+    }
     if (t->kind == TY_REF) return decl_ty_tc(c, t->sub); // 共享引用:表示不变
     if (t->kind == TY_TUPLE && t->nelems == 2) { // (A, B):subs 活跃时即单态化后的具体元组
         ty a = decl_ty_tc(c, t->elems[0]);
@@ -167,11 +179,17 @@ ty decl_ty_tc(tc* c, const cty* t) {
     }
     if (t->kind == TY_SLICE) {
         ty e = decl_ty_tc(c, t->sub);
-        return e.k == T_UNK ? ty_unk() : ty_arr(e);
+        if (e.k == T_UNK) return ty_unk();
+        ty r0 = ty_arr(e);
+        if ((e.k == T_STRUCT || e.k == T_ENUM || e.k == T_CLASS) && !r0.tname) r0.tname = e.tname; // P0-4:聚合元素名入容器槽(索引读/字面量按名寻型;ty_arr 不复制)
+        return r0;
     }
     if (t->kind == TY_ARRAY) {
         ty e = decl_ty_tc(c, t->elem);
-        return e.k == T_UNK ? ty_unk() : ty_arr(e); // 维度不校验(对齐 rt)
+        if (e.k == T_UNK) return ty_unk();
+        ty r = ty_arr(e); // 维度不校验(对齐 rt)
+        if ((e.k == T_STRUCT || e.k == T_ENUM || e.k == T_CLASS) && !r.tname) r.tname = e.tname; // P0-4:同上
+        return r;
     }
     if (!t || t->kind != TY_NAMED || t->npath != 1) return ty_unk();
     const char* n = t->path[0];

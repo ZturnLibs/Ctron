@@ -663,3 +663,31 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   hex 缺补(A-F)。③深色主题浏览器下无样式 HTML 黑底黑字不可读——views 内嵌
   CSS(开括号 \{ 转义、闭括号裸写,字面量纪律同 one_ascii 表);const 在 test
   求值域不解析(unbound),改函数形。
+
+## web 框架 P0 探针(2026-09-27;Task 5 回归收口终判)
+
+**P0 四件销账(member-emit 同族;种子臂+引导臂双修,探针已转正 tests/ 一致性测试集。臂况分记——终审纠正,不得以 suite 通过推臂:03k/03l/03n 种子双臂绿[03l/03n 正本原生臂残留另录];03j interp 双臂绿、emit 双臂红,残留=值位置闭包捕获,候选登记见下;suite 收口见文末)**:
+
+| # | 缺口 | 销账提交 | 探针(tests/) |
+|---|---|---|---|
+| P0-1 | `List[struct]` 元素读+成员读(`tab[i].p` 静默截断/拒) | b0e5bfc | 03l_list_struct_member.ct |
+| P0-2 | 闭包形参成员读(闭包体内 `r.path`) | ec006dd | 03j_closure_param_member.ct |
+| P0-3 | fn 值调用链成员读(`f(x).body`) | fc79e6c | 03k_fn_call_chain_member.ct |
+| P0-4 | 含 fn 字段 struct 入定长数组("数组元素类型不支持") | edb59fb | 03n_struct_fn_field_array.ct |
+
+**残留(发射臂逐条实测,非本次销账域;Task 5 逐字实测复核+终审 2026-09-28 补记)**:03j emit **双臂红**——种子 `tag` 未声明(值位置闭包按设计非捕获:顶层 static 函数+函数指针,trans_expr.c:1587)、正本 `t_tag` 未声明+struct 经 int64 槽传值(`emit:并发值含 struct 值传递` 硬停)——残留=值位置闭包捕获,条件登记 **L7**(spec §9 表,候选·待用户裁决,同 L6 口径);03l 正本 emit `ct_expr:Member@23`(正本发射器元素型别 L 码擦除 trans_ty.ct:250 + 定宽 `char**` 运行期槽,= P5 b4 定宽槽架构;种子双臂绿);03n 正本 emit `emit:并发值含 struct 值传递`(在册同族;种子双臂绿)。03l/03n 镜像不存在,补齐需「参数化 List 码+装箱容器 ABI」特性级工作——条件登记 **L6**(spec §9 表,候选·待用户裁决;Plan 2 关键路径输入)。
+
+L5 StringBuilder: **立(终判)**——探针 03i(tests/03i_string_builder_probe.ct):种子 check 0 诊断(check 过仅证实名称可解析——sem 类型名表挂名,非真身;终审措辞收紧),种子 interp `未知函数: StringBuilder`(rc=1)、种子 trans `v1 未解析函数:StringBuilder`(rc=2);引导 check 同过(同一挂名),引导 `bin/ctron-cc run` `E2020: 未解析的名称(unresolved):StringBuilder`(rc=1)。拒绝在解释/发射**运行面**而非编译面,双臂无真身 → 立。形态裁定(Task 5):03i 编译(双编译器挂名通过)与运行(拒)分相,不合 `.neg.ct`「必须编译失败」契约——强转 neg 将在 bootstrap 侧以解释期拒绝冒充编译期拦截(假绿),种子侧仍红(check 过 = 「未拦截」);维持行为件红账在册,远期建议迁 roadmap 锚(红=规范锚,L5 销时按翻转协议转正)。
+
+L4 Bytes: **立(终判,Task 0 门红默认升格为实测坐实)**——探针 03m(tests/03m_binary_nul_probe.ct)。种子双臂仍不可执行(interp `未知函数: read_or` rc=1 / trans `v1 未解析函数:read_or`;种子单文件不并 use)。**引导双臂首次执行成功而门红**(判定纪律:nuls>0 且 mid_ok=1 → 销):
+- 引导解释臂 `bin/ctron-cc run`(加载器并 std.fs):`len:4` / `nuls:0` / `mid_ok:0`,rc=0;
+- 引导发射臂 `bin/ctron-emit run` → cc → 原生二进制:逐字同上,rc=0。
+
+nuls=0、mid_ok=0 → **立,坐实**。机理:靶 /bin/echo(101136 B,fat Mach-O `ca fe ba be`+`00 00 00 02`,首 NUL 在偏移 4)读入即止于首 NUL——Str=C 串语义下 101132 字节在读边界即失,byte_at/byte_slice 未及参与;§7-8 门(进→取→运算→出全链保真)红在读边界本身,中段重组问题在该 Str 形态下不可问。工具链事实(Plan 2 输入):`ctc.sh emit`(锚驱动)发射不携带 use 依赖(产物调 `t_read_or` 而无定义 → cc 硬错);`bin/ctron-emit` 合并并发射 use 依赖,为权威发射臂。03m 形态裁定:干净编译 + rc=0 运行,无既有文件形态可载(neg/lint/panic 皆不合;补门断言 test 块会把 bootstrap suite 臂从绿翻红,超本计划授权),维持行为件红账在册(同 03i,建议远期迁 roadmap 锚)。
+
+suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大**——bootstrap 红 2 = 03i(L5 探针,判立即红账)+ 06f_parallel(bootstrap 解释器无 parallel 内建,基线既有);种子红 2 = 03i + 03m(L4 探针,判立即红账;bootstrap 侧 03m rc=0 而 gate 红——suite 判 rc 不判 gate,红账以本节判定为准)。meta gate 已知红 2 = 03i/03m 行为件无 test 块(即上两探针,判立即红账的一部分,不扩大)。
+
+**终审 deferred 登记(2026-09-28 终审 triage;只入册不改码——不对称/未测缝隙/纪律性侧效,均留行为件待验)**:
+- **N2 种子中径 fn 指针强转不原型化实参**:trans_expr.c:788 `((R (*)())f)(...)`——R 已知但存在无注解实参时走 `(*)()` 空参原型发射(实参不经原型校验/转换);Ctron 镜像侧对实参原型化。调用约定不对称,UB 类;触发面窄(R 已知+实参混合注解),登记不修。
+- **N4 EX_CLOSURE 不回设期望签名**:闭包体发射不将 `c->want`/`c->fn_ret` 重定向到闭包自身签名 → 闭包体内 `Ok/Some/None` 等和类型构造无法按期望推断(`trans: v1:Ok 需期望类型`)。与 let 显式类型闭包/块尾返回/返回位嵌套闭包等同族(均未测)——一并留行为件红账。
+- **N6 drop_frame 捕获帧永久跳过 Drop**:捕获门使被捕获帧不执行 Drop 侧效(与 env_pop 先例同一纪律);closure+RAII 程序可观测。登记不修。

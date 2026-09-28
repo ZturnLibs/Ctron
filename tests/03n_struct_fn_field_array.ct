@@ -1,0 +1,54 @@
+// 03n_struct_fn_field_array.ct —— P0-4:含 fn 字段 struct 入定长数组(发射臂)
+// interp 已绿;emit 曾报 "trans: v1:数组元素类型不支持"(2026-09-27 探针 fixed.ct)
+struct Req { path: Str, uid: Str }
+struct Resp { body: Str }
+struct Route { m: Str, p: Str, h: fn(Req) -> Resp }
+// 对照组:无 fn 字段 struct(定长数组本亦被拒,一并放行)
+struct Pt { x: Str, y: Str }
+
+fn h_root(r: Req) -> Resp {
+    return Resp { body: "root" }
+}
+fn h_app(r: Req) -> Resp {
+    return Resp { body: "app:" + r.uid }
+}
+
+fn main() -> I32 {
+    var tab: Route[8] = [Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }]
+    tab[0] = Route { m: "GET", p: "/", h: h_root }
+    tab[1] = Route { m: "GET", p: "/app", h: h_app }
+    let r = Req { path: "/app", uid: "alice" }
+    var i: I32 = 0
+    while i < 2 {
+        let e = tab[i]
+        if e.p == r.path {
+            let h = e.h
+            let resp = h(r)
+            println("HIT " + e.p + " -> " + resp.body)
+        }
+        i += 1
+    }
+    var ctl: Pt[4] = [Pt { x: "", y: "" }, Pt { x: "", y: "" }, Pt { x: "", y: "" }, Pt { x: "", y: "" }]
+    ctl[2] = Pt { x: "ctl", y: "ok" }
+    let c2 = ctl[2]
+    println("CTL " + c2.x + ":" + c2.y)
+    return 0
+}
+
+test "含 fn 字段 struct 入定长数组:字面量/索引写/元素读/fn 字段调用" {
+    var tab: Route[2] = [Route { m: "", p: "", h: h_root }, Route { m: "", p: "", h: h_root }]
+    tab[1] = Route { m: "GET", p: "/app", h: h_app }
+    let e = tab[1]
+    assert_eq(e.p, "/app")
+    let h = e.h
+    let resp = h(Req { path: "/app", uid: "bob" })
+    assert_eq(resp.body, "app:bob")
+}
+
+test "对照组:无 fn 字段 struct 定长数组(本亦被拒,一并放行)" {
+    var ctl: Pt[2] = [Pt { x: "", y: "" }, Pt { x: "", y: "" }]
+    ctl[0] = Pt { x: "ctl", y: "ok" }
+    let c0 = ctl[0]
+    assert_eq(c0.x, "ctl")
+    assert_eq(c0.y, "ok")
+}

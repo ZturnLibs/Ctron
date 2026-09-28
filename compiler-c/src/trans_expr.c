@@ -485,10 +485,25 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             sb_free(&a1);
         }
         if (c->err) { sb_free(&elems); return ty_unk(); }
-        if (et.k != T_INT && et.k != T_FLT && et.k != T_BOOL && et.k != T_STR) {
+        if (et.k != T_INT && et.k != T_FLT && et.k != T_BOOL && et.k != T_STR && et.k != T_STRUCT) {
             terr(c, "v1:数组元素类型不支持");
             sb_free(&elems);
             return ty_unk();
+        }
+        if (et.k == T_STRUCT) {
+            // P0-4:struct 元素(含 fn 字段)定长数组字面量放行——形态镜像标量 _lit(堆复制),
+            // 数据槽 ctron_t_<名> 全宽(typedef 由 P0-1 后置环发射);曾报「数组元素类型不支持」
+            char wl[64];
+            snprintf(wl, sizeof wl, "%s", et.tname ? et.tname : "?");
+            use_arr(c, wl);
+            char h[96];
+            snprintf(h, sizeof h, "ctron_arr_%s_lit", wl);
+            use_helper(c, h);
+            sb_f(o, "%s(%lld, (%s[]){%s})", h, (long long)e->nelems, dt_for_wl(wl), elems.d ? elems.d : "");
+            sb_free(&elems);
+            ty r = ty_arr(et);
+            if (!r.tname) r.tname = et.tname; // N10:字面量数组回传容器名(裸字面量索引 [Route{..}][0] 按 ctron_arr_<名> 寻型;decl_ty_tc TY_SLICE/TY_ARRAY 同式)
+            return r;
         }
         char wl[16];
         if (et.k == T_STR) snprintf(wl, sizeof wl, "str");
@@ -699,6 +714,23 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         sb ix = {0};
         emit_expr(c, e->index, &ix);
         if (c->err) { sb_free(&ix); return ty_unk(); }
+        if (t.k == T_LIST && t.ek == T_STRUCT) {
+            // P0-1:List[struct] 元素读——数据指针按元素结构取全宽值(在册债「索引读静默截断」销账;
+            // 曾以 int64 槽直读 → 值截断,且元素型别落 T_INT → 成员读报「目标类型 1」)
+            use_arr(c, t.tname ? t.tname : "");
+            ty e3 = box_elem(t);
+            sb_f(o, "((%s*)(%s.d))[ctron_idx(%s.n, %s)]", ctype_of(e3), e->obj->text, e->obj->text, ix.d ? ix.d : "0");
+            sb_free(&ix);
+            return e3;
+        }
+        if (t.k == T_ARR && t.ek == T_STRUCT) {
+            // P0-4:定长数组 struct 元素读——镜像 P0-1 List[struct] 形态(数据槽全宽读,元素型别落 T_STRUCT)
+            use_arr(c, t.tname ? t.tname : "");
+            ty e3 = box_elem(t);
+            sb_f(o, "((%s*)(%s.d))[ctron_idx(%s.n, %s)]", ctype_of(e3), e->obj->text, e->obj->text, ix.d ? ix.d : "0");
+            sb_free(&ix);
+            return e3;
+        }
         sb_f(o, "%s.d[ctron_idx(%s.n, %s)]", e->obj->text, e->obj->text, ix.d ? ix.d : "0");
         sb_free(&ix);
         ty e2 = ty_int(t.ebits, t.eus);
@@ -725,16 +757,45 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (cal && cal->kind == EX_IDENT) {
             ty ft;
             if (scope_find(c, cal->text, &ft) && ft.k == T_FNPTR) {
-                sb_f(o, "((ctron_fnptr)(%s))(", cal->text);
+                // P0-3:返回类型取 fn(T)->R(decl_ty_tc TY_FN 臂存于元素槽,box_elem 同式重构);
+                // R 未知(闭包字面量等)维持 int64 统一 ABI 旧形态
+                ty rt = ty_unk(); rt.k = ft.ek; rt.bits = ft.ebits; rt.us = ft.eus;
+                if (rt.k == T_FLT) rt = ty_flt();
+                else if (rt.k == T_BOOL) rt = ty_bool();
+                else if (rt.k == T_STR) rt = ty_str();
+                else if (rt.k != T_UNK) rt.tname = ft.tname;
+                // P0-2:实参先发射并收集真型——R 已知且实参全带型时按真签名原型化调用
+                // (struct 实参 int64 槽装不下;真签名下闭包形参成员读/struct 回传全链可编译)
+                sb aargs = {0};   // 原型化路:实参真型原样
+                sb awrap = {0};   // 旧路:逐参 (int64_t) 包裹(基线形态)
+                sb apt = {0};
+                int all_typed = (rt.k != T_UNK);
                 for (size_t i = 0; i < e->nelems; i++) {
-                    if (i) sb_s(o, ", ");
+                    if (i) { sb_s(&aargs, ", "); sb_s(&awrap, ", "); sb_s(&apt, ", "); }
                     sb a1 = {0};
-                    emit_expr(c, e->elems[i], &a1);
-                    sb_f(o, "(int64_t)(%s)", a1.d ? a1.d : "0");
+                    ty at = emit_expr(c, e->elems[i], &a1);
+                    if (at.k == T_UNK) all_typed = 0;
+                    else sb_s(&apt, ctype_of(at));
+                    const char* av = a1.d ? a1.d : "0";
+                    sb_s(&aargs, av);
+                    sb_f(&awrap, "(int64_t)(%s)", av);
                     sb_free(&a1);
                 }
+                if (rt.k != T_UNK && all_typed) {
+                    sb_f(o, "((%s(*)(%s))(%s))(", ctype_of(rt), apt.d ? apt.d : "void", cal->text);
+                    sb_s(o, aargs.d ? aargs.d : "");
+                } else if (rt.k != T_UNK) {
+                    sb_f(o, "((%s(*)())(%s))(", ctype_of(rt), cal->text);
+                    sb_s(o, awrap.d ? awrap.d : "");
+                } else {
+                    sb_f(o, "((ctron_fnptr)(%s))(", cal->text);
+                    sb_s(o, awrap.d ? awrap.d : "");
+                }
                 sb_s(o, ")");
-                return ty_int(64, 0);
+                sb_free(&aargs);
+                sb_free(&awrap);
+                sb_free(&apt);
+                return rt.k != T_UNK ? rt : ty_int(64, 0);
             }
         }
         // C10-k:并发成员调用(scope.spawn / task.join·join_or / chan.send·recv / mutex.with·with_mut)
@@ -1119,8 +1180,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (rt6.k == T_LIST && !strcmp(cal->mname, "push")) {
                 if (!cal->obj || cal->obj->kind != EX_IDENT) { terr(c, "v1:push 接收者需为局部列表"); sb_free(&rob4); return ty_unk(); }
                 if (e->nelems != 1) { terr(c, "v1:push 实参"); sb_free(&rob4); return ty_unk(); }
-                char wl[16];
-                snprintf(wl, sizeof wl, "%s", ewlname(rt6));
+                char wl[64];
+                if (rt6.ek == T_STRUCT) snprintf(wl, sizeof wl, "%s", rt6.tname ? rt6.tname : "?"); // P0-1:struct 元素容器按名取(dt=ctron_t_*)
+                else snprintf(wl, sizeof wl, "%s", ewlname(rt6));
                 use_arr(c, wl);
                 sb a1 = {0};
                 const ty* sw2 = c->want;
@@ -1136,8 +1198,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             }
             if (rt6.k == T_LIST && !strcmp(cal->mname, "into_gc")) {
                 if (e->nelems != 0) { terr(c, "v1:into_gc 实参"); sb_free(&rob4); return ty_unk(); }
-                char wl[16];
-                snprintf(wl, sizeof wl, "%s", ewlname(rt6));
+                char wl[64];
+                if (rt6.ek == T_STRUCT) snprintf(wl, sizeof wl, "%s", rt6.tname ? rt6.tname : "?"); // P0-1:同 push
+                else snprintf(wl, sizeof wl, "%s", ewlname(rt6));
                 use_arr(c, wl);
                 char hn[96];
                 snprintf(hn, sizeof hn, "ctron_list_%s_clone", wl);
@@ -1207,8 +1270,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (is_list_ctor && e->nelems == 0) {
                 ty et = decl_ty_tc(c, cal->targs[0]);
                 if (et.k == T_UNK) { terr(c, "v1:List 元素类型不支持"); return ty_unk(); }
-                char wl[16];
+                char wl[64];
                 if (et.k == T_STR) snprintf(wl, sizeof wl, "str");
+                else if (et.k == T_STRUCT) snprintf(wl, sizeof wl, "%s", et.tname ? et.tname : "?"); // P0-1:struct 元素容器按名取(dt=ctron_t_*)
                 else snprintf(wl, sizeof wl, "%s", wlname(et));
                 use_arr(c, wl);
                 sb_f(o, "(ctron_list_%s){0}", wl);
@@ -1365,9 +1429,14 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (i) sb_s(&args, ", ");
             const ty* saved_w = c->want;
             if (is_user_fn && i < 8) c->want = &argtys[i];
+            // P0-2:被调形参为 fn(A)->B 时向实参位供期望签名(闭包字面量实参按真签名发射)
+            const cty* saved_wf = c->want_fnty;
+            c->want_fnty = (is_user_fn && GF && i < (size_t)GF->nparams && GF->params[i].ty
+                            && GF->params[i].ty->kind == TY_FN) ? GF->params[i].ty : NULL;
             sb a1 = {0};
             emit_expr(c, e->elems[i], &a1);
             c->want = saved_w;
+            c->want_fnty = saved_wf;
             sb_s(&args, a1.d ? a1.d : "0");
             sb_free(&a1);
         }
@@ -1524,31 +1593,68 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         // 值位置闭包(非捕获)→ 顶层 static 函数 + 函数指针(int64 统一 ABI)
         if (e->ncparams > 8) { terr(c, "v1:闭包参数过多"); return ty_unk(); }
         if (!e->cbody) { terr(c, "v1:闭包缺体"); return ty_unk(); }
+        // P0-2:期望函数签名(§4.7 自动适配:返回位/实参位上下文)可得 → 按真签名发射:
+        // 形参类型逐参注入局部环境(成员读命中既有 struct 分支),返回类型真型(体内 return 直发);
+        // 无签名维持 int64 统一 ABI 旧形态逐字节不变
+        const cty* wf = (c->want_fnty && c->want_fnty->kind == TY_FN) ? c->want_fnty : NULL;
         char fn[64];
         snprintf(fn, sizeof fn, "ctron_clo%d", c->tmpn++);
         sb fb = {0};
         scope_push(c);
-        sb_f(&fb, "static int64_t %s(", fn);
+        ty cret = ty_unk();
+        if (wf) {
+            cret = wf->fret ? decl_ty_tc(c, wf->fret) : ty_unk();
+            const char* rct = (cret.k == T_UNK) ? "void" : ctype_of(cret);
+            sb_f(&fb, "static %s %s(", rct, fn);
+        } else {
+            sb_f(&fb, "static int64_t %s(", fn);
+        }
         for (size_t i = 0; i < e->ncparams; i++) {
             if (i) sb_s(&fb, ", ");
-            sb_f(&fb, "int64_t %s", e->cparams[i].name ? e->cparams[i].name : "_"); // 独立函数作用域:形参即源名(EX_IDENT 直发文本)
-            scope_def(c, e->cparams[i].name, ty_int(64, 0));
+            // P0-2:形参类型优先取期望签名逐参注入;无签名/越界回落 int64 统一 ABI
+            ty pt = ty_int(64, 0);
+            if (wf && i < wf->nelems && wf->elems[i]) {
+                ty wt = decl_ty_tc(c, wf->elems[i]);
+                if (wt.k != T_UNK) pt = wt;
+            }
+            sb_f(&fb, "%s %s", ctype_of(pt), e->cparams[i].name ? e->cparams[i].name : "_"); // 独立函数作用域:形参即源名(EX_IDENT 直发文本)
+            scope_def(c, e->cparams[i].name, pt);
         }
-        sb_s(&fb, ") {\n    int64_t ctron_rv = 0;\n");
+        if (wf) {
+            if (cret.k == T_UNK) {
+                sb_s(&fb, ") {\n");
+            } else if (cret.k == T_INT || cret.k == T_STR || cret.k == T_FLT || cret.k == T_BOOL) {
+                sb_f(&fb, ") {\n    %s ctron_rv = 0;\n", ctype_of(cret));
+            } else { // T_ENUM 走聚合零值(ctron_e_X 是带 tag 的 struct,标量 =0 初始化为非法 C;镜像 struct 返回)
+                sb_f(&fb, ") {\n    %s ctron_rv = (%s){0};\n", ctype_of(cret), ctype_of(cret));
+            }
+        } else {
+            sb_s(&fb, ") {\n    int64_t ctron_rv = 0;\n");
+        }
         const cexpr* b = e->cbody;
+        int saved_itc = c->in_typed_clo;
+        if (wf) c->in_typed_clo = 1;
         if (b->kind == EX_BLOCK && b->block) {
             for (size_t i = 0; i < b->block->nstmts && !c->err; i++) emit_stmt(c, b->block->stmts[i], &fb);
             if (b->block->tail && !c->err) emit_tail_to(c, b->block->tail, "ctron_rv", &fb);
         } else if (!c->err) {
             emit_tail_to(c, (cexpr*)b, "ctron_rv", &fb);
         }
+        c->in_typed_clo = saved_itc;
         scope_pop(c);
-        if (!c->err) sb_f(&fb, "    return ctron_rv;\n}\n");
+        if (!c->err) {
+            if (wf && cret.k != T_UNK) sb_f(&fb, "    return ctron_rv;\n}\n");
+            else if (wf) sb_f(&fb, "    return;\n}\n");
+            else sb_f(&fb, "    return ctron_rv;\n}\n");
+        }
         if (c->err) { sb_free(&fb); return ty_unk(); }
         sb_s(&c->clo_sb, fb.d ? fb.d : "");
         sb_free(&fb);
         sb_f(o, "(ctron_fnptr)%s", fn);
-        return ty_fnptr();
+        // P0-2/P0-3:返回类型 R 存元素槽(与 decl_ty_tc TY_FN 臂同式),fn 值调用点原型化用
+        ty rty = ty_fnptr();
+        if (cret.k != T_UNK) { rty.ek = cret.k; rty.ebits = cret.bits; rty.eus = cret.us; rty.tname = cret.tname; }
+        return rty;
     }
     case EX_OWN:
         terr(c, "v1:own 块需语句位置");

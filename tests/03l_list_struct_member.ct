@@ -1,0 +1,58 @@
+// 03l_list_struct_member.ct —— P0-1:List[struct] 元素读+成员读(发射臂)
+// interp 已绿;emit 曾报 "trans: v1:成员 .p 不支持(目标类型 1)"(2026-09-27 探针 final.ct;
+// 在册债:c-rust-divergences「List[struct] 索引读静默截断」)
+struct Req { path: Str, uid: Str }
+struct Resp { body: Str }
+struct Route { m: Str, p: Str, h: fn(Req) -> Resp }
+
+fn h_root(r: Req) -> Resp {
+    return Resp { body: "root" }
+}
+fn h_app(r: Req) -> Resp {
+    return Resp { body: "app:" + r.uid }
+}
+
+fn main() -> I32 {
+    var tab: List[Route] = List[Route]()
+    tab.push(Route { m: "GET", p: "/", h: h_root })
+    tab.push(Route { m: "GET", p: "/app", h: h_app })
+    let r = Req { path: "/app", uid: "alice" }
+    var i: I32 = 0
+    while i < tab.len {
+        let e = tab[i]              // List[struct] 索引读(曾:静默截断)
+        if e.p == r.path {          // 元素成员读(曾:trans 报错)
+            let h = e.h             // 元素 fn 字段提取(Task 1/2 修复后可用)
+            let resp = h(r)
+            println("HIT " + e.p + " -> " + resp.body)
+        }
+        i += 1
+    }
+    // 在册债同批:List[I64] 元素读(c-rust-divergences「List[I64] 索引读静默截断」)
+    var ns: List[I64] = List[I64]()
+    ns.push(40)
+    ns.push(2)
+    let a0 = ns[0]
+    let a1 = ns[1]
+    if a0 == 40 && a1 == 2 {
+        println("SUM 42")
+    }
+    return 0
+}
+
+test "List[Route] 元素读+成员读+fn 字段调用" {
+    var tab: List[Route] = List[Route]()
+    tab.push(Route { m: "GET", p: "/app", h: h_app })
+    let e = tab[0]
+    assert_eq(e.p, "/app")
+    let h = e.h
+    let resp = h(Req { path: "/app", uid: "bob" })
+    assert_eq(resp.body, "app:bob")
+}
+
+test "List[I64] 元素读不截断" {
+    var ns: List[I64] = List[I64]()
+    ns.push(40)
+    ns.push(2)
+    assert_eq(ns[0], 40)
+    assert_eq(ns[1], 2)
+}

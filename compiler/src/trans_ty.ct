@@ -1047,6 +1047,16 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "byte_at" { return "i" }
             if cal[1] == "byte_slice" { return "s" }
             if cal[1] == "str_from_c" { return "s" }
+            // P0-3:fn 值调用(形参 env 命中 F/G 码)→ 返回型别取 #fret 侧条目
+            //(ct_fn 绑定;聚合返回 → u:<名>,链上成员读/return 位全靠它);无条目 → 标量旧形态
+            if ct_env_has(env, cal[1]) {
+                var cvt = ct_env_ty(env, cal[1])
+                if or2(byte_at(cvt, 0) == 70, byte_at(cvt, 0) == 71) {
+                    var fk2 = "#fret:" + cal[1]
+                    if ct_env_has(env, fk2) { return ct_env_ty(env, fk2) }
+                    return "i"
+                }
+            }
             return ct_fn_ret(file, cal[1])
         }
     }

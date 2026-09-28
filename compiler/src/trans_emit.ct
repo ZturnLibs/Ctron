@@ -15,10 +15,35 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
             if elc.len > 0 {
                 env = env_bind(env, "#elem:" + pr[2], elc)
             }
+            // P0-3:fn 值形参返回型别侧条目(F<arity> 码不带 R;间接调用/链上成员读解析用)。
+            // P0-2/seam② 收窄:标量/Str 返回(R 码非 v/i)亦入码,镜像种子 decl_ty_tc 存槽口径;
+            // i 即旧形态无差不入码,v 无值不绑
+            if pr[3][0] == "FnType" {
+                var frc = ct_ty_code(pr[3][2], file)
+                if frc != "v" {
+                    if frc != "i" {
+                        env = env_bind(env, "#fret:" + pr[2], frc)
+                    }
+                }
+            }
         }
         k += 1
     }
     var rc = ct_fn_ret(file, d[1])
+    // P0-2:返回为 fn(A)->R 时绑 '#retfn'(内参码逗号串)——Return 位闭包形参码
+    // 注入源(§4.7 自动适配;trans_stmt Return 位临时改绑 #clcodes 消费)
+    if d[4].len > 1 && d[4][0] == "FnType" {
+        var racc = ""
+        var rpi: I32 = 1
+        while rpi < d[4][1].len {
+            if rpi > 1 {
+                racc = racc + ","
+            }
+            racc = racc + ct_ty_code(d[4][1][rpi], file)
+            rpi += 1
+        }
+        env = env_bind(env, "#retfn", racc)
+    }
     if seq2(pass, "2") {
         println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
     }

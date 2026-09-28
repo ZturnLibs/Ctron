@@ -153,7 +153,9 @@ void collect_fns(tc* c, const cfile* f) {
 void emit_fn(tc* c, const cfn* F, const char* cname) {
     ty ret = decl_ty_tc(c, F->ret);
     c->fn_ret = &ret;
-    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
+    const cty* saved_fnty = c->fn_ret_fnty; // P0-2:fn 返回类型为 fn(A)->B 时存 AST 节点(返回位闭包的适配签名)
+    c->fn_ret_fnty = (F->ret && F->ret->kind == TY_FN) ? F->ret : NULL;
+    const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_FNPTR) ? "int64_t" /* P0-2:fn 值回传经 int64 槽(函数地址),调用点原型化 */ : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
     sb* B = c->out_sb ? c->out_sb : &c->body;
     int saved_it = c->in_test; // in_test 泄漏会让方法/例化函数体裸 return
     c->in_test = 0;
@@ -164,7 +166,7 @@ void emit_fn(tc* c, const cfn* F, const char* cname) {
         if (p->is_receiver) { terr(c, "v1 不支持 receiver"); return; }
         ty pt = decl_ty_tc(c, p->ty);
         if (pt.k == T_UNK) { terr(c, "v1:参数 %s 需类型注解", p->name ? p->name : "?"); return; }
-        if (pt.k == T_ARR) use_arr(c, ewlname(pt)); // 数组参数 typedef 注册
+        if (pt.k == T_ARR) use_arr(c, (pt.ek == T_STRUCT && pt.tname) ? pt.tname : ewlname(pt)); // 数组参数 typedef 注册;struct 元素容器名=结构名(P0-1 大写 wl 后置环发射,ctype_of ctron_arr_<名> 同径)
         if (!p->name) { terr(c, "v1:参数缺名"); return; }
         if (i) sb_s(B, ", ");
         sb_f(B, "%s ctron_p_%s", ctype_of(pt), p->name);
@@ -190,6 +192,7 @@ void emit_fn(tc* c, const cfn* F, const char* cname) {
     sb_s(B, "}\n");
     c->in_test = saved_it;
     c->fn_ret = NULL;
+    c->fn_ret_fnty = saved_fnty;
 }
 
 void ctron_trans_result_free(ctron_trans_result* r) {
@@ -363,6 +366,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         for (size_t i = 0; i < c.n_arrs; i++) {
             const char* wl = c.arrs[i];
             if (!strcmp(wl, "str")) continue; // str typedef 已在头部
+            if (wl[0] >= 'A' && wl[0] <= 'Z') continue; // P0-1:struct 元素容器→struct typedef 后发射(数据槽引用 ctron_t_*)
             const char* dt = dt_for_wl(wl);
             sb_f(h, "typedef struct { %s* d; int64_t n; } ctron_arr_%s;\n", dt, wl);
             sb_f(h, "typedef struct { %s* d; int64_t n; int64_t cap; } ctron_list_%s;\n", dt, wl);
@@ -377,6 +381,17 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
             for (size_t j = 0; j < sd->n; j++)
                 sb_f(h, " %s %s;", ctype_of(sd->fields[j].t), sd->fields[j].name);
             sb_f(h, " } ctron_t_%s;\n", sd->name);
+        }
+        for (size_t i = 0; i < c.n_arrs; i++) { // P0-1:struct 元素容器——数据槽按 ctron_t_<wl> 全宽(元素读/推入不再截断)
+            const char* wl = c.arrs[i];
+            if (!(wl[0] >= 'A' && wl[0] <= 'Z')) continue;
+            const char* dt = dt_for_wl(wl);
+            sb_f(h, "typedef struct { %s* d; int64_t n; } ctron_arr_%s;\n", dt, wl);
+            sb_f(h, "typedef struct { %s* d; int64_t n; int64_t cap; } ctron_list_%s;\n", dt, wl);
+            sb_f(h, "static void ctron_list_%s_push(ctron_list_%s* l, %s v) { if (l->n == l->cap) { l->cap = l->cap ? l->cap * 2 : 4; %s* nd = (%s*)realloc(l->d, (size_t)l->cap * sizeof(%s)); l->d = nd; } l->d[l->n++] = v; }\n",
+                 wl, wl, dt, dt, dt, dt);
+            sb_f(h, "static ctron_list_%s ctron_list_%s_clone(ctron_list_%s l) { ctron_list_%s r; r.n = l.n; r.cap = l.n ? l.n : 4; %s* nd = (%s*)malloc((size_t)r.cap * sizeof(%s)); for (int64_t i = 0; i < l.n; i++) nd[i] = l.d[i]; r.d = nd; return r; }\n",
+                 wl, wl, wl, wl, dt, dt, dt);
         }
         for (size_t i = 0; i < c.n_globals; i++)
             sb_f(h, "static %s %s = %s;\n", ctype_of(c.globals[i].t), c.globals[i].name,
@@ -398,7 +413,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
                 continue;
             }
             ty ret = decl_ty_tc(&c, d->fn_.ret);
-            const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
+            const char* rct = (ret.k == T_FLT) ? "double" : (ret.k == T_BOOL) ? "int" : (ret.k == T_STR) ? "const char*" : (ret.k == T_INT) ? "int64_t" : (ret.k == T_FNPTR) ? "int64_t" /* P0-2:fn 值回传经 int64 槽(函数地址),调用点原型化 */ : (ret.k == T_STRUCT || ret.k == T_ENUM || ret.k == T_SUM || ret.k == T_LIST || ret.k == T_CLASS || ret.k == T_BOX || ret.k == T_TUP) ? ctype_of(ret) : "void";
             sb_f(h, "static %s ctron_user_%s(", rct, d->fn_.name);
             for (size_t j = 0; j < d->fn_.nparams; j++) {
                 ty pt = decl_ty_tc(&c, d->fn_.params[j].ty);

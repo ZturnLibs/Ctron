@@ -1,0 +1,7 @@
+// 03i_string_builder_probe.ct —— L5 生死探针:预演算挂名的 StringBuilder 有无真身
+// 预期:编译通过且输出 "hello world" → L5 销;E 级拒绝(未知类型)→ L5 立项
+fn main() -> I32 {
+    let sb = StringBuilder()
+    println("probe: 类型存在")
+    return 0
+}

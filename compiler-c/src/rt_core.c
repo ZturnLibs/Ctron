@@ -388,9 +388,17 @@ val invoke_vals(rt* R, val fnv, val* args, size_t n) {
         R->top = callee_env;
         for (size_t i = 0; i < n; i++)
             if (c->cparams[i].name) env_let(R, c->cparams[i].name, args[i]);
+        // P0-2:闭包体内 return 就地取值,不得把 has_ret 泄入调用方帧
+        //(镜像 call_decl_vals;此前泄漏使调用方 eval_block 提前截断——03j interp 臂假绿根因)
+        int sr = R->has_ret;
+        val srv = R->ret;
+        R->has_ret = 0;
         val r = eval_expr(R, c->cbody);
+        val res = R->has_ret ? R->ret : r;
+        R->has_ret = sr;
+        R->ret = srv;
         R->top = saved;
-        return r;
+        return res;
     }
     rt_abort(R, RT_ERROR, "调用目标非函数值");
     return v_void();
