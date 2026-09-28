@@ -3459,6 +3459,7 @@ fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
     var ins: Str = utf8_enc(ch)
     var nw: Str = byte_slice(cur, 0, caret) + ins + byte_slice(cur, caret, cur.len)
     gui_caret_set(caret + ins.len)
+    gui_sel_clear()
     rt_in_fire(t, fn0, "input", nw, act)
     return true
 }
@@ -3609,6 +3610,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             }
             var nw: Str = byte_slice(cur, 0, bc) + byte_slice(cur, caret, cur.len)
             gui_caret_set(bc)
+            gui_sel_clear()
             rt_in_fire(t, fn0, "input", nw, act)
         }
         return true
@@ -3626,6 +3628,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
                 }
             }
             var nw2: Str = byte_slice(cur, 0, caret) + byte_slice(cur, de, cur.len)
+            gui_sel_clear()
             rt_in_fire(t, fn0, "input", nw2, act)
         }
         return true
@@ -3643,6 +3646,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
                 }
             }
             gui_caret_set(lc)
+            gui_sel_clear()
         }
         return true
     }
@@ -3659,15 +3663,18 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
                 }
             }
             gui_caret_set(rc2)
+            gui_sel_clear()
         }
         return true
     }
     if k == 268 {
         gui_caret_set(0)
+        gui_sel_clear()
         return true
     }
     if k == 269 {
         gui_caret_set(cur.len)
+        gui_sel_clear()
         return true
     }
     if k == 257 {
@@ -3682,6 +3689,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             }
             var nw3: Str = byte_slice(cur3, 0, c3) + "\n" + byte_slice(cur3, c3, cur3.len)
             gui_caret_set(c3 + 1)
+            gui_sel_clear()
             rt_in_fire(t, fn0, "input", nw3, act)
             return true
         }
