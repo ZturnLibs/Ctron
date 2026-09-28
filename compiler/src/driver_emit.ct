@@ -7,6 +7,132 @@
 // 常驻样板;文件级 static let → 零初始化 + ctron_statics_init()(自举闭环)。
 // =====================================================================
 
+// ---------------- §8.5 单态化实例计数走查(T07;E6040) ----------------
+// 显式 TypeArgs 泛型调用去重键收集(形状镜像 sem_walk 走查)
+fn mono_key(file: List[Str], cal: List[Str], keys: List[Str]) {
+    if cal.len < 3 {
+        return
+    }
+    if cal[0] != "TypeArgs" {
+        return
+    }
+    if cal[1].len < 2 {
+        return
+    }
+    if cal[1][0] != "Ident" {
+        return
+    }
+    var nm = cal[1][1]
+    var gd = find_decl(file, nm)
+    if gd.len == 0 {
+        return
+    }
+    if gd[2].len < 2 {
+        return
+    }
+    var tag = nm
+    var ta = cal[2]
+    var ti: I32 = 1
+    while ti < ta.len {
+        tag = tag + "|" + ct_ty_code(ta[ti], file)
+        ti += 1
+    }
+    if !in_list(keys, tag) {
+        keys.push(tag)
+    }
+}
+
+fn mono_e(e: List[Str], file: List[Str], keys: List[Str]) {
+    var t = e[0]
+    if t == "Call" {
+        mono_key(file, e[1], keys)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            mono_e(ag[i], file, keys)
+            i += 1
+        }
+        return
+    }
+    if or2(t == "Member", t == "TypeArgs") {
+        mono_e(e[1], file, keys)
+        return
+    }
+    if t == "Binary" {
+        mono_e(e[2], file, keys)
+        mono_e(e[3], file, keys)
+        return
+    }
+    if t == "Unary" {
+        mono_e(e[2], file, keys)
+        return
+    }
+    if t == "Range" {
+        mono_e(e[2], file, keys)
+        mono_e(e[3], file, keys)
+        return
+    }
+    if t == "Index" {
+        mono_e(e[1], file, keys)
+        mono_e(e[2], file, keys)
+        return
+    }
+    if t == "If" {
+        mono_e(e[1], file, keys)
+        mono_b(e[2], file, keys)
+        if e[3][0] != "None" {
+            mono_e(e[3], file, keys)
+        }
+        return
+    }
+    if t == "Match" {
+        mono_e(e[1], file, keys)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            mono_e(arms[i3][2], file, keys)
+            if arms[i3].len > 3 {
+                mono_e(arms[i3][3], file, keys)
+            }
+            i3 += 1
+        }
+        return
+    }
+    if t == "Closure" {
+        mono_e(e[3], file, keys)
+        return
+    }
+}
+
+fn mono_b(b: List[Str], file: List[Str], keys: List[Str]) {
+    var i: I32 = 1
+    while i < b.len - 1 {
+        var st = b[i]
+        var t = st[0]
+        if t == "Return" {
+            if st[1][0] != "None" {
+                mono_e(st[1], file, keys)
+            }
+        } else if t == "Let" {
+            mono_e(st[4], file, keys)
+        } else if t == "While" {
+            mono_e(st[1], file, keys)
+            mono_b(st[2], file, keys)
+        } else if t == "For" {
+            mono_e(st[2], file, keys)
+            mono_b(st[3], file, keys)
+        } else if t == "Assign" {
+            mono_e(st[3], file, keys)
+        } else if t == "Expr" {
+            mono_e(st[1], file, keys)
+        }
+        i += 1
+    }
+    if b[b.len - 1][0] != "None" {
+        mono_e(b[b.len - 1], file, keys)
+    }
+}
+
 fn main() -> I32 {
     let src = read_file("ANCHORINPUT")
     match src {
@@ -374,6 +500,33 @@ fn main() -> I32 {
                     }
                 }
                 ii += 1
+            }
+            // §8.5 单态化实例预算(E6040;T07):显式 TypeArgs 泛型 fn 特化去重计数 +
+            // 泛型 struct 实例(insts),超限建议 &Trait 化;CTRON_MONO_BUDGET 可调(默认 8192)。
+            // v0 计显式位;推断特化随 §3.9.1 ex_ty 保留实参登记并入
+            var mokeys = List[Str]()
+            var mi2: I32 = 1
+            while mi2 < file.len {
+                var md2 = file[mi2]
+                if or2(md2[0] == "Fn", or2(md2[0] == "FnPub", md2[0] == "Test")) {
+                    if md2[0] == "Test" {
+                        mono_b(md2[2], file, mokeys)
+                    } else {
+                        if md2[2].len < 2 {
+                            mono_b(md2[5], file, mokeys)
+                        }
+                    }
+                }
+                mi2 += 1
+            }
+            var mobud = 8192
+            var mbe = env_get("CTRON_MONO_BUDGET")
+            if mbe.len > 0 {
+                mobud = dvi(mbe)
+            }
+            if mokeys.len + insts.len > mobud {
+                println("E6040: 单态化实例预算超限(mono budget): " + (mokeys.len + insts.len).to_string() + " > " + mobud.to_string() + "(显式特化 " + mokeys.len.to_string() + " + struct 实例 " + insts.len.to_string() + ";建议 &Trait 化,CTRON_MONO_BUDGET 可调)")
+                return 1
             }
             var pi3: I32 = 0
             while pi3 < insts.len {

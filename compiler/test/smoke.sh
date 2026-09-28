@@ -111,6 +111,15 @@ if [ $grc -eq 1 ] && grep -q "递归超限" "$T/gr.out"; then
 else
     bad "递归泛型异常(rc=$grc): $(cat "$T/gr.out")"
 fi
+# §8.5 单态化实例预算(E6040;T07):4 个显式特化,预算 3 → 超限;
+# 旋钮经原生 bin(seed 路径 env_get 哑,在册);默认 8192 上面各 emit 已隐证
+CTRON_MONO_BUDGET=3 "$COMP/bin/ctron-emit" run "$COMP/test/fx_mono_budget_neg.ct" > "$T/mb.out" 2>&1
+mbrc=$?
+if [ $mbrc -eq 1 ] && grep -q "E6040" "$T/mb.out"; then
+    ok "单态化实例预算拦截(E6040, rc=1)"
+else
+    bad "单态化预算异常(rc=$mbrc): $(head -2 "$T/mb.out")"
+fi
 tc_fx fx_unused_neg "W8030: 未使用绑定"
 tc_fx fx_shadow_neg "W8040: 遮蔽前奏符号"
 tc_fx fx_capture_mut_neg "E3070: 闭包可变捕获"

@@ -483,3 +483,13 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 
 设计:`docs/superpowers/specs/2026-09-27-web-framework-design.md` §9;判定详证与逐字输出:
 `docs/c-rust-divergences.md`「web 框架 P0 探针」节。
+
+**2026-09-28 T07 单态化实例预算 E6040 落库**(spec-gap W1;§8.5):
+- driver_emit 预扫计数(镜像 struct insts 预扫惯例):显式 TypeArgs 泛型 fn 特化去重键
+  (mono_e/mono_b 走查,形状同 sem_walk)+泛型 struct 实例,超限 → E6040+rc=1,消息含
+  「建议 &Trait 化」;CTRON_MONO_BUDGET 可调(默认 8192;seed 路径 env_get 哑在册,旋钮走
+  原生 bin)。v0 计显式位,推断特化随 §3.9.1 ex_ty 保留实参登记并入(锚文件头注记)。
+- 锚 compiler/test/fx_mono_budget_neg.ct(4 显式特化去重 4——dedup 即证)+smoke emit 臂
+  (CTRON_MONO_BUDGET=3 → E6040 rc=1);注册表先行:E6040 入 §10.1 + meta_check。
+- suite 81/82 双线维持;db 套件回基线;meta/fmt parity 过;native 自举固定点过
+  (编译器自身显式特化计数在 8192 内,预扫零开销可观察)。

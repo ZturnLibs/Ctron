@@ -1,0 +1,17 @@
+// fx_mono_budget_neg.ct —— §8.5 单态化实例预算(E6040;T07)
+// 五个显式 TypeArgs 特化去重后仍 5 个;smoke 以 CTRON_MONO_BUDGET=4 复现超限
+fn gf[T](x: T) -> T {
+    return x
+}
+fn main() {
+    let a = gf[I32](1)
+    let b = gf[I64](2)
+    let c = gf[Str]("s")
+    let d = gf[Bool](true)
+    let e = gf[I32](3)
+    println(a)
+    println(b)
+    println(c)
+    println(d)
+    println(e)
+}
