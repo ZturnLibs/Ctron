@@ -283,6 +283,11 @@ fn v7(t: Str) -> Val {
     return Val { tag: 3, iv: 0, b: false, s: m, cx: VNIL }
 }
 
+// I64 字段直构(检查式算术产出,iv 必在域内;零文本)
+fn v6i(x: I64) -> Val {
+    return Val { tag: 2, iv: x, b: false, s: "", cx: VNIL }
+}
+
 // 6/7 域文本投影(iv 原生 → 规范十进制;文本槽直返)
 fn v6t(v: Val) -> Str {
     if v.s != "" {
@@ -669,6 +674,11 @@ fn veq(a: Val, b: Val) -> Bool {
         return a.iv == b.iv
     }
     if or2(a.tag == 2, b.tag == 2) {
+        if a.s == "" {
+            if b.s == "" {
+                return a.iv == b.iv
+            }
+        }
         return c6cmp(c6can(v6t(a)), c6can(v6t(b))) == 0
     }
     if or2(a.tag == 3, b.tag == 3) {
@@ -833,27 +843,8 @@ fn c6_i64v(t: Str) -> I64 {
 }
 
 fn c6_i64s(v: I64) -> Str {
-    // 负数走负向除取位(d = 0 - v%10):MIN 本尊可精确渲染;
-    // 旧写法 u = -v 在 v=MIN 时撞检查式 ctron_i64_neg 硬溢出(native 实证)
-    if v == 0 {
-        return "0"
-    }
-    if v < 0 {
-        var t = ""
-        var w: I64 = v
-        while w != 0 {
-            var d: I64 = 0 - (w % 10)
-            t = byte_slice("0123456789", d.as[I32](), d.as[I32]() + 1) + t
-            w = w / 10
-        }
-        return "-" + t
-    }
-    var u: I64 = v
-    if u < 10 {
-        var d = byte_slice("0123456789", u, u + 1)
-        return d
-    }
-    return c6_i64s(u / 10) + byte_slice("0123456789", u % 10, u % 10 + 1)
+    // 规范十进制直出(MIN 安全;snprintf 双臂一致),替代逐位递归拼接
+    return v.to_string()
 }
 
 fn c6can(t: Str) -> Str {
@@ -1477,6 +1468,17 @@ fn vcmp(a: Val, b: Val) -> I32 {
     }
     if or2(a.tag == 2, or2(b.tag == 2, or2(a.tag == 1, b.tag == 1))) {
         if or2(a.tag == 2, b.tag == 2) {
+            if a.s == "" {
+                if b.s == "" {
+                    if a.iv < b.iv {
+                        return -1
+                    }
+                    if a.iv > b.iv {
+                        return 1
+                    }
+                    return 0
+                }
+            }
             return c6cmp(v6t(a), v6t(b))
         }
     }
@@ -1587,6 +1589,34 @@ fn val_arith(op: Str, a: Val, b: Val) -> Val {
     }
     // I64 域:iv 原生(v6t 统一文本投影),检查算术(溢出 panic,镜像发射口径)
     if or2(a.tag == 2, b.tag == 2) {
+        // 双 iv 原生:字段直算(编译器源 I64 算术=检查式,溢出消息与文本管线逐字
+        // 同源:ctron_i64_* / seed ck_int 64);任一侧带 s 巨型字面量文本槽 → 旧管线
+        if a.s == "" {
+            if b.s == "" {
+                if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {
+                    return v6i(a.iv - b.iv)
+                }
+                if or2(seq2(op, "Add"), seq2(op, "AddEq")) {
+                    return v6i(a.iv + b.iv)
+                }
+                if or2(seq2(op, "Mul"), seq2(op, "MulEq")) {
+                    return v6i(a.iv * b.iv)
+                }
+                if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                    if b.iv == 0 {
+                        panic("division by zero")
+                    }
+                    return v6i(a.iv / b.iv)
+                }
+                if or2(seq2(op, "Mod"), seq2(op, "ModEq")) {
+                    if b.iv == 0 {
+                        panic("division by zero")
+                    }
+                    return v6i(a.iv % b.iv)
+                }
+                panic("I64 arithmetic: 不支持的算符")
+            }
+        }
         var ta = v6t(a)
         var tb = v6t(b)
         if or2(seq2(op, "Sub"), seq2(op, "SubEq")) {

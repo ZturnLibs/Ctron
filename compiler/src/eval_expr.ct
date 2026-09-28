@@ -98,8 +98,13 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                 }
                 return e4("k", ur.env, vD(dt), ur.out)
             }
-            // 6 域取负:文本符号翻转(c6can 归一 -0);MIN 取负溢出(§4.5)
+            // 6 域取负:iv 原生走检查式零减(编译器源 0 变量=64 位宽,MIN 取负
+            // 硬溢出,消息同文本管线);s 巨型字面量文本槽走符号翻转冷路径
             if ur.v.tag == 2 {
+                if ur.v.s == "" {
+                    var z64: I64 = 0
+                    return e4("k", ur.env, v6i(z64 - ur.v.iv), ur.out)
+                }
                 var nt6 = c6can("-" + v6t(ur.v))
                 if !c6_in_i64(nt6) {
                     panic("integer overflow (-)")
