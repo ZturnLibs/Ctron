@@ -1,0 +1,49 @@
+// tests/gui/s49_xfilecomp —— P2 组件跨文件分发(波次四 ViewCall × 视图导入)
+// 根视图居主文件实例化被用模块的组件视图;run(ViewCall) desugar 端到端:
+// 合成 bind 须应答组件实参路径(prop:m.txt/prop:m.n),展开期 bxv_ask 经
+// 装配通道取值入组件 env。headless 直驱(与 s41 同契约)。
+use comp.{badge_tag}
+use gui.{test, d_frame, d_expect_text}
+
+struct Model {
+    var txt: Str
+    var n: I32
+}
+
+fn make() -> Model {
+    return Model { txt: "BADGEGOOD", n: 7 }
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 320, 480,
+        |buf| __gui_bind_Root(buf, m),
+        |name| __gui_act_Root(name, m),
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            // 根视图自有内容
+            d_expect_text(t, "ROOTHERE")
+            // 组件实参两型:Str 直传 / I32 带型应答解标上屏
+            d_expect_text(t, "BADGEGOOD")
+            d_expect_text(t, "7")
+        })
+    return rc
+}
+
+view Root(m: Model) {
+  <vbox class="root">
+    <label class="ttl">ROOTHERE</label>
+    <Badge t: {m.txt} n: {m.n}/>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style ttl { fg: "#ffffff" h: 32 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Root(m: make()))
+}

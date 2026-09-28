@@ -126,6 +126,21 @@ gui_ds_marker_file(纯标记检测,不依赖本文件 views)+gui_ds_ordn_file
 **基线(0927)**:阶梯 54/54(新增 s48);smoke 151/3(3=对端 log/ndjson/pb
 在册不变);calc rc=0;decl 锁净增 0。「runtime 类型安全改造」专项按本
 定性降级为备查:若合并面再现串流,先查拼接起点与 sanitize 白名单两处。
+**组件跨文件分发落库(0928,s49_xfilecomp;波次四 ViewCall × 视图导入
+解锁)**:s48 视图导入落地后组件实例化跨文件仅差三件——①**靶视图居末**
+(gt_parse 应用根=内嵌源末声明视图;跨文件合并序靶在前,不挪则根选中组件
+渲染空树;gui_ds_postmerge 挪靶 GuiBlock 至文件末,单文件靶本就居末
+no-op);②**sk_node ViewCall 实例分支**(desugar 骨架面此前无大写识别,
+实例被当普通元素吞掉;现 args 三形解析,表达式值 0x01 连接入 npost);
+③**collect 实参抽取+多树走查**(call: 节点 npost 按 0x01 拆为合成 bind
+路径——展开期 bxv_ask 以 prop:<表达式> 问装配通道;走查改从全部树根
+起步——靶居末后单根 stid=[0] 只走组件树,主文件实参全漏)。**三发现
+入册**:①E2020 裸模块 use 不存在——braced 请求须命中真 decl,视图非
+7-kind 随模块合并恒随(夹具用 pub fn 作请求锚);②内嵌重建插空格坑
+再证("ROOT-HERE"→"ROOT - HERE",断言字面量须无标点);③组件事件跨
+文件实参映射契约**未设计**(合成 act 只有根模型捕获,组件 prop 根实参
+无映射目标;零参/字面参形态可用但观察面待设计)——登记随组件事件
+专项,夹具锁定显示面(Str/I32 带型解标)。阶梯 55 夹具。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr

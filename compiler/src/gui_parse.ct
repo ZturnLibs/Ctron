@@ -2099,6 +2099,76 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
         listname = gui_bx_expr(tks, cur)
     }
     var estart: I32 = ev_name.len
+    // 波次四跨文件:ViewCall 实例(大写首字母)——args `名: 值` 三形同 gt_node。
+    // 表达式值以 0x01 连接入 npost,collect 抽取为合成 bind 路径(展开期
+    // bxv_ask 走 prop:<表达式> 装配通道取值,s49 探针实证);引号串/裸词
+    // 字面值不入 bind(展开期直取/字面入 env)
+    var fb2: I32 = byte_at(tag, 0)
+    if fb2 >= 65 {
+        if fb2 <= 90 {
+            var argtxt: Str = ""
+            while cur.load() < tks.len {
+                var pk2: Str = tks[cur.load()]
+                if pk2.len == 1 {
+                    var pb2: I32 = byte_at(pk2, 0)
+                    if or2(pb2 == 62, pb2 == 47) {
+                        break
+                    }
+                }
+                gui_sk_word(tks, cur)
+                gui_sk_word(tks, cur)
+                if cur.load() >= tks.len {
+                    break
+                }
+                var vw: Str = tks[cur.load()]
+                var is_br: Bool = false
+                var is_q: Bool = false
+                if vw.len == 1 {
+                    var vb2: I32 = byte_at(vw, 0)
+                    if vb2 == 123 {
+                        is_br = true
+                    }
+                    if vb2 == 34 {
+                        is_q = true
+                    }
+                }
+                if is_br {
+                    cur.store(cur.load() + 1)
+                    var ex2: Str = gui_bx_expr(tks, cur)
+                    if argtxt != "" {
+                        argtxt = argtxt + utf8_enc(1)
+                    }
+                    argtxt = argtxt + ex2
+                } else {
+                    if is_q {
+                        gui_sk_word(tks, cur)
+                    } else {
+                        gui_sk_word(tks, cur)
+                    }
+                }
+            }
+            if cur.load() < tks.len {
+                var cw2: Str = tks[cur.load()]
+                if cw2.len == 1 {
+                    if byte_at(cw2, 0) == 47 {
+                        gui_sk_word(tks, cur)
+                    }
+                }
+            }
+            gui_sk_word(tks, cur)
+            ntag.push("call:" + tag)
+            ncls.push("")
+            npre.push("")
+            nbid.push("")
+            npost.push(argtxt)
+            nfc.push(-1)
+            ns.push(-1)
+            nes.push(estart)
+            nec.push(0)
+            nflag.push("")
+            return ntag.len - 1
+        }
+    }
     var out4 = List[Str]()
     out4.push("")
     out4.push("")
@@ -2642,11 +2712,35 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
     var skprops = List[Str]()
     gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, f_evn, f_evf, btns, sk, sv, skprops)
     var ptyps: List[Str] = gui_ds_ptyps(file, pnames)
+    // 多树走查(组件跨文件/靶视图居末后):sk 平面数组含全部视图的树,
+    // 走查须从每个树根(非任何节点孩子者)起步——单根 stid=[0] 在靶视图
+    // 居末时只走组件树,主文件实例实参/事件全漏(s49 探针实证)
+    var isch = List[I32]()
+    var z: I32 = 0
+    while z < ntag.len {
+        isch.push(0)
+        z += 1
+    }
+    var z2: I32 = 0
+    while z2 < ntag.len {
+        var ch2: I32 = nfc[z2]
+        while ch2 >= 0 {
+            isch[ch2] = 1
+            ch2 = ns[ch2]
+        }
+        z2 += 1
+    }
     var exprs = List[Str]()
     var stid = List[I32]()
     var stie = List[I32]()
-    stid.push(0)
-    stie.push(0)
+    var z3: I32 = 0
+    while z3 < ntag.len {
+        if isch[z3] == 0 {
+            stid.push(z3)
+            stie.push(0)
+        }
+        z3 += 1
+    }
     var si: I32 = 0
     while si < stid.len {
         var id: I32 = stid[si]
@@ -2655,6 +2749,31 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         if ntag[id] == "each" {
             ie = 1
             lists.push(npre[id])
+        }
+        if ntag[id].len > 5 {
+            if byte_slice(ntag[id], 0, 5) == "call:" {
+                // 组件实例表达式实参(npost 0x01 连接)→ 合成 bind 路径:
+                // 展开期 bxv_ask 以 prop:<表达式> 问装配通道,合成侧须有应答分支
+                var atx: Str = npost[id]
+                var ai: I32 = 0
+                var aos: I32 = 0
+                while ai <= atx.len {
+                    if ai == atx.len {
+                        if ai > aos {
+                            exprs.push(byte_slice(atx, aos, ai))
+                        }
+                        ai += 1
+                    } else {
+                        if byte_at(atx, ai) == 1 {
+                            if ai > aos {
+                                exprs.push(byte_slice(atx, aos, ai))
+                            }
+                            aos = ai + 1
+                        }
+                        ai += 1
+                    }
+                }
+            }
         }
         if tag_is_input_evt(ntag[id], nbid[id]) {
             crows.push(nbid[id])
@@ -3553,6 +3672,37 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var vname: Str = gui_ds_target(file)
     if vname == "" {
         return file
+    }
+    // 靶视图居末:gt_parse 应用根 = 内嵌源最后声明的视图(组件先声明后用惯例)。
+    // 跨文件合并序靶视图(主文件)在前、组件视图(被用模块)在后,不挪则根选中
+    // 组件 → 渲染空树(s49 探针实证)。挪尾后 gui_blocks_src 重建序与合成
+    // root 一致;单文件靶本就居末,重建为同序 no-op
+    var tgt = file[0]
+    var found = false
+    var nf = List[Str]()
+    nf.push(file[0])
+    var ri: I32 = 1
+    while ri < file.len {
+        var rd = file[ri]
+        var is_tgt = false
+        if rd[0] == "GuiBlock" {
+            if rd[1] == "view" {
+                if rd[2] == vname {
+                    is_tgt = true
+                }
+            }
+        }
+        if is_tgt {
+            tgt = rd
+            found = true
+        } else {
+            nf.push(rd)
+        }
+        ri += 1
+    }
+    if found {
+        nf.push(tgt)
+        file = nf
     }
     var vnames = List[Str]()
     var vprops = List[Str]()

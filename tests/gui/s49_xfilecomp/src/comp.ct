@@ -1,0 +1,17 @@
+// tests/gui/s49_xfilecomp/comp.ct —— P2 组件跨文件分发:组件视图+业务居被用模块
+// (波次四组件实例化的跨文件面;显示 prop 锁 Str/I32 带型两形态。
+//  组件事件跨文件的实参映射契约另立项——合成 act 只有根模型捕获,
+//  组件 prop 根实参无映射目标,零参/字面参形态可用但观察面待设计)
+pub fn badge_tag() -> Str {
+    return "BADGE"
+}
+
+view Badge (t: Str, n: I32) {
+  <vbox class="bdg">
+    <label class="bl">{t}</label>
+    <label class="bn">{n}</label>
+  </vbox>
+}
+style bdg { direction: column h: 72 }
+style bl { fg: "#22c55e" h: 30 }
+style bn { fg: "#e5e5e5" h: 30 }
