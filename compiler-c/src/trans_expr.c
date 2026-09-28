@@ -763,6 +763,12 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             terr(c, "v1:parallel.%s 需 map(切片, fn)/reduce(切片, 初值, fn)", cal->mname ? cal->mname : "?");
             return ty_unk();
         }
+        // bit.* 位运算内建(§4.5;T01):and/or/xor/not 直出 C 位运算(按宽度转型),
+        // shl/shr 语句表达式内范围门(panic "bit shift range")——与自举发射 ct_bit_sh* 同语义
+        if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname
+            && cal->obj && cal->obj->kind == EX_IDENT && !strcmp(cal->obj->text, "bit")) {
+            return emit_bit(c, e, o, cal->mname);
+        }
         // C10-n:bare 档 arena(§5.6):Arena.fixed(n) 无状态句柄;arena.zeros[T](n) 零数组(值等价 rt)
         if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname
             && cal->obj && cal->obj->kind == EX_IDENT && !strcmp(cal->obj->text, "Arena")

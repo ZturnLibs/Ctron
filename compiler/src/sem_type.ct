@@ -43,7 +43,7 @@ fn prelude_ok(nm: Str) -> Bool {
 
 fn value_ok(nm: Str) -> Bool {
     if prelude_ok(nm) { return true }
-    return or2(seq2(nm, "parallel"), seq2(nm, "arena"))
+    return or2(seq2(nm, "parallel"), or2(seq2(nm, "bit"), seq2(nm, "arena")))
 }
 
 fn prelude_arity(nm: Str) -> I32 {

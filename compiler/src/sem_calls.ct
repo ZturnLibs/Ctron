@@ -130,6 +130,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("Hash")
     prel.push("Iter")
     prel.push("parallel")
+    prel.push("bit")
     prel.push("arena")
     if seq2(prof, "web") {
         // web 档(§9.2):stdweb.dom 内建命名空间(dom.set_title/dom.title)→ 值名集

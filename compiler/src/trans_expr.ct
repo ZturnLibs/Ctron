@@ -615,6 +615,50 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:parallel." + m)
                 return ""
             }
+            if cal[1][0] == "Ident" && cal[1][1] == "bit" {
+                // bit.* 位运算内建(§4.5;T01):and/or/xor/not 直出 C 位运算表达式
+                // (按声明宽度显式转型,补码语义);shl/shr 走 ct_bit_sh* 助手(移位数范围门)
+                var bisun = or2(seq2(m, "not_i32"), or2(seq2(m, "not_u32"), or2(seq2(m, "not_i64"), seq2(m, "not_u64"))))
+                if bisun {
+                    if ag.len < 2 {
+                        panic("emit:bit." + m + " 实参")
+                        return ""
+                    }
+                    var ua = ct_expr(ag[1], env, file)
+                    if seq2(m, "not_i32") { return "(int32_t)(~((uint32_t)(" + ua + ")))" }
+                    if seq2(m, "not_u32") { return "(uint32_t)(~((uint32_t)(" + ua + ")))" }
+                    if seq2(m, "not_i64") { return "(int64_t)(~((uint64_t)(" + ua + ")))" }
+                    return "(uint64_t)(~((uint64_t)(" + ua + ")))"
+                }
+                if ag.len < 3 {
+                    panic("emit:bit." + m + " 实参")
+                    return ""
+                }
+                var x1 = ct_expr(ag[1], env, file)
+                var x2 = ct_expr(ag[2], env, file)
+                if seq2(m, "and_i32") { return "(int32_t)(((uint32_t)(" + x1 + ")) & ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "and_u32") { return "(uint32_t)(((uint32_t)(" + x1 + ")) & ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "and_i64") { return "(int64_t)(((uint64_t)(" + x1 + ")) & ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "and_u64") { return "(uint64_t)(((uint64_t)(" + x1 + ")) & ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "or_i32") { return "(int32_t)(((uint32_t)(" + x1 + ")) | ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "or_u32") { return "(uint32_t)(((uint32_t)(" + x1 + ")) | ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "or_i64") { return "(int64_t)(((uint64_t)(" + x1 + ")) | ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "or_u64") { return "(uint64_t)(((uint64_t)(" + x1 + ")) | ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "xor_i32") { return "(int32_t)(((uint32_t)(" + x1 + ")) ^ ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "xor_u32") { return "(uint32_t)(((uint32_t)(" + x1 + ")) ^ ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "xor_i64") { return "(int64_t)(((uint64_t)(" + x1 + ")) ^ ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "xor_u64") { return "(uint64_t)(((uint64_t)(" + x1 + ")) ^ ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "shl_i32") { return "ct_bit_shl_i32((int32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shl_u32") { return "ct_bit_shl_u32((uint32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shl_i64") { return "ct_bit_shl_i64((int64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shl_u64") { return "ct_bit_shl_u64((uint64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_i32") { return "ct_bit_shr_i32((int32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_u32") { return "ct_bit_shr_u32((uint32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_i64") { return "ct_bit_shr_i64((int64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_u64") { return "ct_bit_shr_u64((uint64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                panic("emit:bit." + m)
+                return ""
+            }
             if cal[1][0] == "TypeArgs" && cal[1][1].len > 1 && seq2(cal[1][1][1], "Simd") {
                 // Simd[E,N].splat(v)(§9.5;P1-C2 标量模拟):arena 分配 + 填充循环
                 if m != "splat" {

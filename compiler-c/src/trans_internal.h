@@ -142,6 +142,7 @@ void emit_method_fn(tc* c, const char* type, const cfn* F, const char* cname);
 ty emit_mutex_call(tc* c, cexpr* e, ty mt, const char* rn, sb* o);
 ty emit_parallel_map(tc* c, cexpr* e, sb* o);
 ty emit_parallel_reduce(tc* c, cexpr* e, sb* o);
+ty emit_bit(tc* c, cexpr* e, sb* o, const char* m);
 void emit_prop_accessor(tc* c, const char* type, const cprop* P, const char* cname);
 ty emit_scope_expr(tc* c, cexpr* e, sb* o);
 ty emit_spawn_call(tc* c, cexpr* e, sb* o);

@@ -419,6 +419,64 @@ ty emit_parallel_reduce(tc* c, cexpr* e, sb* o) {
     sb_free(&ab); sb_free(&ib); sb_free(&fb);
     return ty_int(64, 0);
 }
+
+// bit.* 位运算内建(§4.5;T01):and/or/xor/not 直出 C 位运算(按宽度显式转型,补码
+// 语义);shl/shr 语句表达式内范围门 [0, 宽度) → panic "bit shift range"(对齐自举
+// 发射 ct_bit_sh* 助手)。有符号 shr 走有符号型移位(算术),无符号恒走无符号型。
+ty emit_bit(tc* c, cexpr* e, sb* o, const char* m) {
+    char op[8] = {0}, w[8] = {0};
+    {
+        size_t n = strlen(m), us = n;
+        for (size_t i = 0; i < n; i++) {
+            if (m[i] == '_') { us = i; break; }
+        }
+        if (us >= sizeof op) us = sizeof op - 1;
+        memcpy(op, m, us);
+        snprintf(w, sizeof w, "%s", m + us + 1);
+    }
+    int bits = (!strcmp(w, "i32") || !strcmp(w, "u32")) ? 32 : 64;
+    int usd = !strcmp(w, "u32") || !strcmp(w, "u64");
+    if (!(!strcmp(w, "i32") || !strcmp(w, "u32") || !strcmp(w, "i64") || !strcmp(w, "u64"))) {
+        terr(c, "v1:bit 宽度:%s", w);
+        return ty_unk();
+    }
+    const char* ct = bits == 32 ? (usd ? "uint32_t" : "int32_t") : (usd ? "uint64_t" : "int64_t");
+    const char* uct = bits == 32 ? "uint32_t" : "uint64_t";
+    int unary = !strcmp(op, "not");
+    int two = !strcmp(op, "and") || !strcmp(op, "or") || !strcmp(op, "xor")
+              || !strcmp(op, "shl") || !strcmp(op, "shr");
+    if ((!unary && !two) || (int)e->nelems != (unary ? 1 : 2)) {
+        terr(c, "v1:bit.%s 实参", m);
+        return ty_unk();
+    }
+    if (unary) {
+        sb a = {0};
+        emit_expr(c, e->elems[0], &a);
+        if (c->err) { sb_free(&a); return ty_unk(); }
+        sb_f(o, "(%s)(~((%s)(%s)))", ct, uct, a.d ? a.d : "0");
+        sb_free(&a);
+        return ty_int(bits, usd);
+    }
+    sb a = {0}, b = {0};
+    emit_expr(c, e->elems[0], &a);
+    emit_expr(c, e->elems[1], &b);
+    if (c->err) { sb_free(&a); sb_free(&b); return ty_unk(); }
+    const char* ad = a.d ? a.d : "0";
+    const char* bd = b.d ? b.d : "0";
+    if (!strcmp(op, "and") || !strcmp(op, "or") || !strcmp(op, "xor")) {
+        const char* opc = !strcmp(op, "and") ? "&" : (!strcmp(op, "or") ? "|" : "^");
+        sb_f(o, "(%s)((%s)(%s) %s (%s)(%s))", ct, uct, ad, opc, uct, bd);
+    } else {
+        const char* st = (!strcmp(op, "shr") && !usd) ? ct : uct; // 有符号 shr 用有符号型(算术移)
+        const char* shc = !strcmp(op, "shl") ? "<<" : ">>";
+        sb_f(o, "({ %s _bta = (%s)(%s); int32_t _btn = (int32_t)(%s); "
+                "if (_btn < 0 || _btn >= %d) ctron_panic(\"bit shift range\"); "
+                "(%s)((%s)_bta %s _btn); })",
+             ct, ct, ad, bd, bits, ct, st, shc);
+    }
+    sb_free(&a); sb_free(&b);
+    return ty_int(bits, usd);
+}
 // scope { |s| … }:值 = 块尾(GNU 语句表达式;块尾匹配/if 走语句提升)
 ty emit_scope_expr(tc* c, cexpr* e, sb* o) {
     if (!e || !e->sbody) { terr(c, "v1:scope 缺体"); return ty_unk(); }

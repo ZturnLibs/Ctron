@@ -411,3 +411,15 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   错位一格且尾部越界读,EOF 名读出 NULL 使 test_lex 段错误——补条目,test_lex 58/0 全绿。
 - `suite_lex` 补 `.neg.ct` 过滤(对齐 Rust lex_suite 先例):neg 语料判定面是诊断码,
   不入"全语料零词法诊断"断言 → 127 文件零误报。
+
+**2026-09-28 T01 bit.* 位运算内建落库**(spec-gap W1;§4.0 宪法「位运算恒走 bit 模块」兑现):
+- 前奏命名空间 `bit.*`(parallel 先例):and/or/xor/not/shl/shr × i32/u32/i64/u64,共 24 入口;
+  补码语义按声明宽度、shl 回绕、shr 有符号算术/无符号逻辑、移位数越界 panic "bit shift range"。
+- 四面同判:自举解释(eval_call 文本域逐位组合+双零早退)/自举发射(trans_expr 直出 C 位运算+
+  ct_bit_sh* 运行时助手)/C 宿主解释(rt_eval __int128)/C 宿主发射(trans_conc emit_bit)。
+- 锚:tests/bit_ops.ct(6 块)+bit_shift_{hi,neg}.panic.ct;std/crypto 六处内联位函数回切 bit.*
+  (SHA/SCRAM 向量零回归,自举解释臂 8.0s→5.3s);R 线内建面缺位在册(crypto R 臂 0/3 预存红,
+  bit.* 随 R 线内建面批次补,失败数不增)。
+- 顺手修:自举 i64/isize 后缀宽字面量此前误落 I32 域截 0(eval_expr 宽路径仅认无后缀),
+  03b 补锚;宿主负大字面量/宽正字面量算术检查缺口(unary neg/Sub 于 v_int bits=32 恒炸)为
+  宿主在册债,锚侧以 i64 后缀规避开(divergences 待登)。

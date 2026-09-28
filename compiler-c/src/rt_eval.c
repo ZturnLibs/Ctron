@@ -358,6 +358,70 @@ int val_eq(rt* R, val a, val b) {
     return 0;
 }
 
+// ================= bit.* 位运算内建(§4.5;T01;宿主原生 __int128) =================
+// 语义与自举文本域一致:and/or/xor/not 按宽度补码;shl 回绕;shr 有符号算术/无符号
+// 逻辑;移位数越界 [0, 宽度) → panic "bit shift range"。宿主表示:u64 非负、其余折有符号。
+static void bit_split(const char* m, char* op, char* w) {
+    size_t n = strlen(m), us = n;
+    for (size_t i = 0; i < n; i++) {
+        if (m[i] == '_') { us = i; break; }
+    }
+    if (us >= 7) us = 6;
+    memcpy(op, m, us); op[us] = 0;
+    snprintf(w, 8, "%s", m + us + 1);
+}
+static int bit_winfo(const char* w, int* bits, int* us) {
+    if (!strcmp(w, "i32")) { *bits = 32; *us = 0; return 1; }
+    if (!strcmp(w, "u32")) { *bits = 32; *us = 1; return 1; }
+    if (!strcmp(w, "i64")) { *bits = 64; *us = 0; return 1; }
+    if (!strcmp(w, "u64")) { *bits = 64; *us = 1; return 1; }
+    return 0;
+}
+static val rt_bit(rt* R, const char* m, const cexpr* e) {
+    char op[8], w[8];
+    bit_split(m, op, w);
+    int bits = 0, us = 0;
+    if (!bit_winfo(w, &bits, &us)) rt_abort(R, RT_ERROR, "bit 宽度:%s", w);
+    unsigned __int128 mod = ((unsigned __int128)1) << bits;
+    unsigned __int128 hm = ((unsigned __int128)1) << (bits - 1);
+    int unary = !strcmp(op, "not");
+    int two = !strcmp(op, "and") || !strcmp(op, "or") || !strcmp(op, "xor")
+              || !strcmp(op, "shl") || !strcmp(op, "shr");
+    if ((!unary && !two) || (int)e->nelems != (unary ? 1 : 2))
+        rt_abort(R, RT_ERROR, "bit 实参:%s", m);
+    val a = eval_expr(R, e->elems[0]);
+    if (a.k != V_INT) rt_abort(R, RT_ERROR, "bit 数值");
+    unsigned __int128 ua = ((unsigned __int128)a.i) & (mod - 1);
+    unsigned __int128 r = 0;
+    if (unary) {
+        r = (~ua) & (mod - 1);
+    } else if (!strcmp(op, "and") || !strcmp(op, "or") || !strcmp(op, "xor")) {
+        val b = eval_expr(R, e->elems[1]);
+        if (b.k != V_INT) rt_abort(R, RT_ERROR, "bit 数值");
+        unsigned __int128 ub = ((unsigned __int128)b.i) & (mod - 1);
+        if (!strcmp(op, "and")) r = ua & ub;
+        else if (!strcmp(op, "or")) r = ua | ub;
+        else r = ua ^ ub;
+    } else {
+        val b = eval_expr(R, e->elems[1]);
+        if (b.k != V_INT) rt_abort(R, RT_ERROR, "bit 数值");
+        long long n = (long long)b.i;
+        if (n < 0 || n >= bits) rt_abort(R, RT_PANIC, "bit shift range");
+        if (!strcmp(op, "shl")) {
+            r = (ua << n) & (mod - 1);
+        } else if (us) {
+            r = ua >> n; // 逻辑右移
+        } else {
+            __int128 sv = ua >= hm ? (__int128)(ua - mod) : (__int128)ua;
+            __int128 sr = sv >> n; // C 算术右移(gcc/clang)
+            return v_int(sr, bits, us);
+        }
+    }
+    if (us) return v_int((__int128)(r & (mod - 1)), bits, us); // u32/u64 非负
+    __int128 sv = r >= hm ? (__int128)(r - mod) : (__int128)r; // 折有符号
+    return v_int(sv, bits, us);
+}
+
 // ================= 表达式 =================
 val eval_expr(rt* R, cexpr* e) {
     if (!e) return v_void();
@@ -394,8 +458,8 @@ val eval_expr(rt* R, cexpr* e) {
             }
         }
         if (is_variant(R, e->text)) return v_tag(e->text, NULL, 0); // 裸变体值(如 None)
-        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom"))
-            return v_ns(e->text); // 内建命名空间(§7.7/§9.2)
+        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom") || !strcmp(e->text, "bit"))
+            return v_ns(e->text); // 内建命名空间(§7.7/§9.2/§4.5 bit)
         rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
     }
     case EX_UNARY: {
@@ -1140,8 +1204,9 @@ val eval_expr(rt* R, cexpr* e) {
                 return out;
             }
             if (recv.k == V_NS && cal->mname) {
-                // 内建命名空间:parallel(§7.7 数据并行,解释器序贯执行)/ stdweb.dom(§9.2 最小锚)
+                // 内建命名空间:parallel(§7.7 数据并行,解释器序贯执行)/ stdweb.dom(§9.2 最小锚)/ bit(§4.5 位运算)
                 const char* ns = recv.tag;
+                if (!strcmp(ns, "bit")) return rt_bit(R, cal->mname, e);
                 if (!strcmp(ns, "parallel") && !strcmp(cal->mname, "map")) {
                     if (e->nelems != 2) rt_abort(R, RT_ERROR, "parallel.map 实参");
                     val arrv = eval_expr(R, e->elems[0]);

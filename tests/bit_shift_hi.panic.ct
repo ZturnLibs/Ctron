@@ -1,0 +1,6 @@
+// bit_shift_hi.panic.ct —— 移位数 ≥ 宽度 → panic(检查哲学:位运算总量函数,唯移位数门)
+//@ panic: bit shift range
+
+test "shift at width panics" {
+    let _ = bit.shl_i64(1, 64)
+}
