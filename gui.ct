@@ -2953,7 +2953,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             } else {
                 gui_alpha(0)
             }
-            gui_cfg(0, 0, 0, 0, 0, 1, 1, 0, ihm, ihv, ibgp)
+            // 水平内边距(style pad,默认 8;文字/占位符/光标/选区/点击定位同源偏移)
+            var ipd: I32 = gs2i(gt_cls_prop(c, "pad", "8", t))
+            gui_cfg(0, 0, ipd, 0, 0, 1, 1, 0, ihm, ihv, ibgp)
             var ival: Str = ""
             if t.nbid[id] != "" {
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
@@ -3021,8 +3023,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         sc1 = san
                     }
                     if sc1 > sc0 {
-                        var sx0: I32 = gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p)
-                        var sx1: I32 = gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p)
+                        var sx0: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p)
+                        var sx1: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p)
                         gui_sel_float(sx0, icy, sx1 - sx0, isz2, gui_theme_slot_get(7))
                     }
                 }
@@ -3031,7 +3033,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     var pfx: Str = byte_slice(ival, 0, ic) + ipre
                     var wt2: I32 = ifw2 % 10000
                     var fam2: I32 = ifw2 / 10000
-                    var offx: I32 = gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2)
+                    var offx: I32 = ipd + gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2)
                     gui_caret_float(offx, icy, 2, isz2, ifg2)
                     // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
                     hits.push(id)
@@ -4835,7 +4837,8 @@ fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32]
     if boxi < 0 {
         return val.len
     }
-    var off: I32 = clickx - gui_cmd_x100(boxi) / 100
+    var ipd2: I32 = gs2i(gt_cls_prop(t.ncls[node], "pad", "8", t))
+    var off: I32 = clickx - gui_cmd_x100(boxi) / 100 - ipd2
     var isz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "20", t))
     var ifw: I32 = gs2i(gt_cls_prop(t.ncls[node], "font_weight", "400", t))
     var wt2: I32 = ifw % 10000
