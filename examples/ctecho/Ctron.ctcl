@@ -2,5 +2,5 @@ pkg {
     manifest_version = 1
     name = "ctecho"
     version = "0.1.0"
-    caps = ["net"]
+    caps = ["net.listen", "net.connect"]  # T11 细键硬切(原粗键 net)
 }

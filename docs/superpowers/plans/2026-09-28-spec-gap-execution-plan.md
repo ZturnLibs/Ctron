@@ -143,7 +143,7 @@
 
 ### T11 · 能力键细分(§8.2/§11.1/§12.1)
 
-- **预估:** 0.5–1 d。**前置:** 无。**状态:** 待办
+- **预估:** 0.5–1 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28)
 - **目标:** `[caps]` 从命名空间级(net/db)细分到 `net.listen/net.connect/net.resolve/db.connect`;fs/time 维持现状(规范未细分)。
 - **范围:** `compiler/src/parse_pkg.ct`(`pkg_caps_allowed` 键表 + 门面函数→键映射)、`tests/modules/caps_net/` 扩展。
 - **要点:** 映射点:`net_tcp_listen/net_unix_*`→listen;`net_tcp_connect/net_udp_*`→connect;`net_resolve_*`→resolve;db 门面→db.connect。越权 E4010 消息携带缺的具体键名。
@@ -543,7 +543,7 @@
 | T08 | comptime 预算口径【裁决】 | W1 | **已完成**(0928,用户裁定步数终态,§8.4 修订注) | 见 git |
 | T09 | resolve 多记录 | W2 | **已完成**(0928,双矩阵 15/15×2;SocketAddr struct 随 T14 底座) | 见 git |
 | T10 | sleep_ns/虚拟时钟 | W2 | **已完成**(0928,三矩阵+rt 弱钩贯通) | 见 git |
-| T11 | caps 键细分 | W2 | 待办 | — |
+| T11 | caps 键细分 | W2 | **已完成**(0928,四线注册表+夹具;R 线对象面欠账在册) | 见 git |
 | T12 | gzip | W2 | 待办 | — |
 | T13 | Atomic 真原子 | W2 | 待办 | — |
 | T14 | Channel 去限制 | W2 | 待办 | — |

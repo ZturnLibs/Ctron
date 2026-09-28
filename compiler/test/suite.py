@@ -22,9 +22,13 @@ def markers(path):
             mk.setdefault(m.group(1), []).append(m.group(2))
     return mk
 
-def run(binpath, path, sub):
+def run(binpath, path, sub, env_extra=None):
     try:
-        p = subprocess.run([binpath, sub, path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20, cwd=ROOT)
+        env = None
+        if env_extra:
+            env = dict(os.environ)
+            env.update(env_extra)
+        p = subprocess.run([binpath, sub, path], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=20, cwd=ROOT, env=env)
         return p.returncode, p.stdout + p.stderr
     except subprocess.TimeoutExpired:
         return None, "TIMEOUT"
@@ -160,7 +164,7 @@ for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
                     rc, out = p3.returncode, p3.stdout + p3.stderr
                     ok, why = verdict(kind, mk, rc, out)
     else:
-        rc, out = run(CC, entry, "run")
+        rc, out = run(CC, entry, "run", {"CTRON_STDPATH": os.path.join(ROOT, "std")})
         ok, why = verdict(kind, mk, rc, out)
     if ok:
         mpass[0] += 1

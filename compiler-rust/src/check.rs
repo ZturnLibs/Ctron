@@ -551,9 +551,10 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
                     if val_err {
                     } else if let Some(items) = val_list {
                         for x in &items {
-                            if x != "fs" && x != "time" {
+                            if x != "fs" && x != "time" && x != "net.listen" && x != "net.connect"
+                                && x != "net.resolve" && x != "db.connect" {
                                 pend.push(format!(
-                                    "Ctron.ctcl: E5043 未知能力 {x};合法:fs, time(能力是安全边界,未知即拒绝)"
+                                    "Ctron.ctcl: E5043 未知能力 {x};合法:db.connect, fs, net.connect, net.listen, net.resolve, time(能力是安全边界,未知即拒绝)"
                                 ));
                             } else if !cap_list.contains(x) {
                                 cap_list.push(x.clone());

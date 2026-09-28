@@ -46,7 +46,7 @@ regkey "pkg.version" {
 
 regkey "pkg.caps" {
     type = "list"
-    members = ["fs", "time"]   // 封闭集:未知能力 = E5043(能力是安全边界)
+    members = ["fs", "time", "net.listen", "net.connect", "net.resolve", "db.connect"]   // 封闭集:未知能力 = E5043(能力是安全边界;T11 细键 §11.1/§12.1)
     sorted = true              // 集合语义:规范形态排序
 }
 

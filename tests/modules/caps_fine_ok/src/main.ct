@@ -1,0 +1,9 @@
+// caps_fine_ok - 细键正例(T11 §11.1):net.resolve 细键 + 能力对象粗面(任一细键)
+// 净键面用 resolve 族 extern(host: Str 形,无 Box 出参——listen/connect 门面的
+// Box[Box64] 出参 extern 触发 W8052 真阳性,属门面 ABI 面不在此重复)。
+// 行为主体保持平凡:细键检测为 use 导入驱动;门面真链归 tests/net 发射臂
+use net.{Net_probe, net_resolve_all}
+
+fn main() {
+    assert(true)
+}

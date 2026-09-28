@@ -534,3 +534,21 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   深时序(~500ms 中间态)归 P9 栈经济注记③裸线程睡眠虚拟跳变不打断(专跑臂在协程矩阵,
   语义注记)。
 - net 三矩阵 17/17×2+专跑;db 44/10 基线;suite 87/88 维持。
+
+**2026-09-28 T11 能力键细分落库**(spec-gap W2;§11.1/§12.1):
+- 键集扩为 {fs, time, net.listen, net.connect, net.resolve, db.connect}(粗键 net/db 不再
+  授予,fail-closed 硬切;在库 ctecho 清单同步升细键)。映射:listen 族(tcp/unix listen+accept)
+  /connect 族(tcp connect+udp 全族+unix connect)/resolve 族(net_resolve+all);db 域统一。
+- 四线注册表同步:schema(ctcl_manifest_schema members 真源)/宿主 pkg.c(check_caps 重写:
+  补域二段形——caps_net 宿主 informational 分歧顺手闭/R check.rs+main.rs/自举第四臂
+  selfhosted/ctcl_chk.ct;E5043 消息统一 sorted 序,四线对拍 104 例全绿)。
+- 自举 parse_pkg:细键检测(use 导入驱动,cap_net_fine 映射+去重)+粗面兼容(能力对象
+  &Net/&Db=任一细键);**顺手修**:无清单语境 read_file 缺失回落 Some("") 被当空清单
+  deny-all——此前粗检测 &Param 门槛掩盖,细键导入驱动面暴露;空文本=无清单放行。
+- 夹具 caps_fine_neg(仅 net.resolve,listen/connect 导入 → E4010×2)/caps_fine_ok
+  (resolve 正例,干净 extern 面——listen/connect 门面 Box 出参 W8052 真阳性属 ABI 面不重复);
+  suite modules 跑器补 CTRON_STDPATH(域包门面解析,run.sh 同惯例)。
+- diff.py 排除 .worktrees(他泳道工作树陈旧清单/二进制不入四线对拍)。
+- modules 16/17×2(唯一红=use_alias_nat/dup_static 既有意红基线);net 17/17×2;suite
+  87/88 维持;manifest 三门+ctcl selftest+cargo 14/0+meta/fmt 过;R 线细键检测(对象面
+  note_cap_use 仍粗键)登记 R 线欠账。

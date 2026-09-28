@@ -103,7 +103,7 @@ def main():
         p = os.path.join(mdir, "negative", n)
         files.append(("negative/" + n, p))
     for root, dirs, names in os.walk(ROOT):
-        dirs[:] = [d for d in dirs if d not in (".git", "target", "__pycache__", "manifest")]
+        dirs[:] = [d for d in dirs if d not in (".git", "target", "__pycache__", "manifest", ".worktrees")]  # .worktrees=他泳道工作树(陈旧清单/二进制),不入对拍
         for n in sorted(names):
             if n == "Ctron.ctcl":
                 files.append((os.path.relpath(os.path.join(root, n), ROOT),
