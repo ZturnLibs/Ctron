@@ -415,7 +415,7 @@ struct 反序列化 from_json(随 @derive)· 内容协商 · comptime 路由审�
 | L2 | `@derive(Json)` | 语言扩展(derive 插件机制,§8.3 注解契约 sanctioned 通道);`@derive(DbRow)` 同池 |
 | L3 | 主文件直发截断债(在册) | 关联:todo_app 迁移后仍守"逻辑在依赖模块"纪律,该债销账前 main.ct 不回胖 |
 | L4 | `Bytes` 字节串类型(**已立项,终判坐实**) | 若 §7-8 二进制往返探针红(Str 含 NUL 过 byte_slice/比较运算静默截断)则立此项;探针绿则销。判定(探针 03m,2026-09-27 种子门红默认;Task 5 引导双臂实测):**立**——种子双臂不可执行(单文件不并 use);引导 interp + emit→gcc 双臂执行成功而门红(`len:4/nuls:0/mid_ok:0`,rc=0:/bin/echo 101136 B fat Mach-O 首 NUL 在偏移 4,Str=C 串读边界截断,nuls=0 且 mid_ok=0 → 立)。判定纪律:nuls>0 且 mid_ok=1 → 销 |
-| L5 | 可增长字符串缓冲(**已立项,终判**) | `+` 拼接每次 `ctron_str_concat` 新分配,循环拼接 O(n²);`StringBuilder` 现仅 sem.c 类型名表挂名(std 零使用、rt 零函数)。plan 首批探针双宿主;红则立此项——web 构建器与用户视图共同受益(§14-1)。判定(探针 03i,2026-09-27;Task 5 引导复核同判):**立**——sem 0 诊断(check 过仅证实名称可解析:sem 类型名表挂名,非真身;双编译器同),interp `未知函数: StringBuilder`、trans `未解析函数:StringBuilder`,引导 `E2020` 运行面拒;拒绝在运行面而非编译面,双臂无真身 |
+| L5 | 可增长字符串缓冲(**已销账——被 spec-gap W1 T03 取代,2026-09-28**) | 判定史:探针 03i 曾判 立(2026-09-27,运行面拒,双臂无真身);次日 spec-gap 泳道三线落地 StringBuilder(push_str/to_string/len;自举+C 宿主+R 线,发射臂随容器批次在册),03i 转真烟测双侧绿。**§14-1 拼接常数纪律(框架内多段拼接收敛构建器)不随销账失效**——`+` 仍是 O(n²) 新分配,构建器才有 amortized 语义 |
 | L6 | 参数化 List 码 + 装箱容器 ABI(**候选·条件登记,待用户裁决**) | 正本原生臂 List[struct] 残留的唯一正解(元素型别 L 码擦除 trans_ty.ct:250 + 定宽 char** 运行期槽,镜像不存在,P5 b4 同根);特性级新工作,非 member-emit 小面。现状:种子臂+引导 interp 臂已绿(03l),引导原生臂拒(`ct_expr:Member@23`);web v1 若跑引导原生臂则为关键路径输入,裁决决定 Plan 2 宿主口径 |
 | L7 | 值位置闭包捕获支持(**候选·条件登记,待用户裁决**) | 03j emit 残留的正解:种子发射器值位置闭包按设计非捕获(顶层 static 函数+函数指针,trans_expr.c:1587;03j 种子 emit 红=`tag` 未声明),正本同族另证(`t_tag` 未声明+struct 经 int64 槽传值,`emit:并发值含 struct 值传递` 硬停)。修复面=种子 ct_clop 捕获语义级重设计+正本同族镜像——特性级新工作,非 member-emit 小面;web v1 若在 emit 臂用捕获闭包则为关键路径输入,裁决口径同 L6 |
 
