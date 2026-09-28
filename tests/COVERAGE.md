@@ -663,3 +663,11 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   ST_ASSIGN 补 env 绑定更新;depth 跟踪移除——只增不减致 35 轮假爆,步数已兜底)。
 - E4050 消息对齐自举(去「需确定性释放的」——msg 子串锚一致)。
 - suite 94/94 双线;cargo 14/0;meta/db/net 基线全维持。
+
+**2026-09-28 T22+T23 宿主运行面+e2e 红账核销**(spec-gap W4):
+- T22:r4d/r6a 两锚**已在前批迁主套件**(03k_u64_overflow.panic / 05h_drop_panic_unwind.panic)
+  且双线绿(09-15 宿主 fits 上界+rt_panic_unwind 落地时已修);COVERAGE §172-173 红账
+  条目系过期登记,本次核销。
+- T23:e2e 缺声明 6 红**已在前批全清**(09-25 深夜 P1b 契约补全——use 清单全量请求);
+  http 110/1(唯一红=frm_auth_a_jwt interp OOM,T31 arena 债);OTLP send 裸 socket 形
+  维持在册。
