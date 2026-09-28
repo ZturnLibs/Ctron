@@ -166,7 +166,7 @@ void emit_fn(tc* c, const cfn* F, const char* cname) {
         if (p->is_receiver) { terr(c, "v1 不支持 receiver"); return; }
         ty pt = decl_ty_tc(c, p->ty);
         if (pt.k == T_UNK) { terr(c, "v1:参数 %s 需类型注解", p->name ? p->name : "?"); return; }
-        if (pt.k == T_ARR) use_arr(c, ewlname(pt)); // 数组参数 typedef 注册
+        if (pt.k == T_ARR) use_arr(c, (pt.ek == T_STRUCT && pt.tname) ? pt.tname : ewlname(pt)); // 数组参数 typedef 注册;struct 元素容器名=结构名(P0-1 大写 wl 后置环发射,ctype_of ctron_arr_<名> 同径)
         if (!p->name) { terr(c, "v1:参数缺名"); return; }
         if (i) sb_s(B, ", ");
         sb_f(B, "%s ctron_p_%s", ctype_of(pt), p->name);

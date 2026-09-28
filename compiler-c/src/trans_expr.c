@@ -501,7 +501,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             use_helper(c, h);
             sb_f(o, "%s(%lld, (%s[]){%s})", h, (long long)e->nelems, dt_for_wl(wl), elems.d ? elems.d : "");
             sb_free(&elems);
-            return ty_arr(et);
+            ty r = ty_arr(et);
+            if (!r.tname) r.tname = et.tname; // N10:字面量数组回传容器名(裸字面量索引 [Route{..}][0] 按 ctron_arr_<名> 寻型;decl_ty_tc TY_SLICE/TY_ARRAY 同式)
+            return r;
         }
         char wl[16];
         if (et.k == T_STR) snprintf(wl, sizeof wl, "str");
@@ -1615,9 +1617,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (wf) {
             if (cret.k == T_UNK) {
                 sb_s(&fb, ") {\n");
-            } else if (cret.k == T_INT || cret.k == T_STR || cret.k == T_FLT || cret.k == T_BOOL || cret.k == T_ENUM) {
+            } else if (cret.k == T_INT || cret.k == T_STR || cret.k == T_FLT || cret.k == T_BOOL) {
                 sb_f(&fb, ") {\n    %s ctron_rv = 0;\n", ctype_of(cret));
-            } else {
+            } else { // T_ENUM 走聚合零值(ctron_e_X 是带 tag 的 struct,标量 =0 初始化为非法 C;镜像 struct 返回)
                 sb_f(&fb, ") {\n    %s ctron_rv = (%s){0};\n", ctype_of(cret), ctype_of(cret));
             }
         } else {

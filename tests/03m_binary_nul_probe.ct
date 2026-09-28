@@ -1,6 +1,7 @@
-// 03m_binary_nul_probe.ct —— L4 生死探针:含 NUL 字节过 Str 全链(读/byte_at/中段切片重组/写回)保真?
-// 判定:nuls>0 且 mid_ok=1 且 round_len 相等 → L4 销(§7-8 门绿);
+// 03m_binary_nul_probe.ct —— L4 生死探针:含 NUL 字节过 Str 读链(byte_at 扫描/中段切片重组)保真?
+// 判定(只量 nuls 与 mid_ok 两项):nuls>0 且 mid_ok=1 → 链路保真观测成立;
 //       任一不满足 → L4 立项(Upload.data: Bytes 等 §13-③ 面待其)
+// (本探针不测 write-back/round_len 写回门——该门不在量程内,勿据本文件下写回结论)
 use std.fs.{ read_or }
 
 fn main() -> I32 {

@@ -57,6 +57,7 @@ ty e2_of(ty t) {
     return e;
 }
 const char* dt_for_wl(const char* wl) {
+    // 守卫:单点存活——返回静态缓冲,同一表达式内不得叠加两次 dt_for_wl 结果(后者覆盖前者)
     if (!strcmp(wl, "str")) return "const char*";
     if (!strcmp(wl, "f64")) return "double";
     if (!strcmp(wl, "b")) return "int";
