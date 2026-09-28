@@ -207,7 +207,7 @@ fn register_prelude(sema: &mut Sema) {
     for n in ["Channel", "List", "Map", "Set", "Box", "StringBuilder",
               "Atomic", "Global", "Mutex", "Sender", "Receiver", "Task", "Scope",
               "Arena", "Region", "Pool", "ArenaList", "Simd", "AnyError", "Parallel",
-              "Path", "Bytes"] {
+              "Bit", "Path", "Bytes"] {
         sema.def_id(prelude_def(n, false, DefKind::Prelude));
     }
     {

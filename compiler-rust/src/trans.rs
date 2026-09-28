@@ -2302,6 +2302,42 @@ impl Trans {
                 return Ok((format!("{}({})", sanitize(name), cs.join(", ")), ret));
             }
         }
+            // bit.* 位运算内建(§4.5;T01):逻辑运算直出 C 位运算,移位带范围门
+        if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = callee {
+            if let ast::Expr::Ident(on) = &**obj {
+                if on == "bit" {
+                    let (op, w) = m.split_once('_').unwrap_or((m.as_str(), ""));
+                    let bits: u32 = if matches!(w, "i32" | "u32") { 32 } else { 64 };
+                    let us = matches!(w, "u32" | "u64");
+                    let ct = if bits == 32 { if us { "uint32_t" } else { "int32_t" } } else if us { "uint64_t" } else { "int64_t" };
+                    let uct = if bits == 32 { "uint32_t" } else { "uint64_t" };
+                    let unary = op == "not";
+                    let arity = if unary { 1 } else { 2 };
+                    if !matches!(w, "i32" | "u32" | "i64" | "u64")
+                        || !matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr")
+                        || args.len() != arity {
+                        return Err(format!("trans:bit.{} 实参", m));
+                    }
+                    if unary {
+                        let (ac, _at) = self.expr(&args[0])?;
+                        return Ok((format!("({})(~(({})({})))", ct, uct, ac), if bits == 32 { VTy::Int(Some((IntW::W32, !us))) } else { VTy::Int(Some((IntW::W64, !us))) }));
+                    }
+                    let (ac, _at) = self.expr(&args[0])?;
+                    let (bc, _bt) = self.expr(&args[1])?;
+                    if matches!(op, "and" | "or" | "xor") {
+                        let opc = if op == "and" { "&" } else if op == "or" { "|" } else { "^" };
+                        return Ok((format!("({})((({})({})) {} (({})({})))", ct, uct, ac, opc, uct, bc), if bits == 32 { VTy::Int(Some((IntW::W32, !us))) } else { VTy::Int(Some((IntW::W64, !us))) }));
+                    }
+                    // shl/shr:语句表达式范围门(有符号 shr 走有符号型 = 算术移)
+                    let st = if op == "shr" && !us { ct } else { uct };
+                    let shc = if op == "shl" { "<<" } else { ">>" };
+                    return Ok((format!(
+                        "({{ {} _bta = ({})({}); int32_t _btn = (int32_t)({}); if (_btn < 0 || _btn >= {}) ct_panic(\"bit shift range\"); ({})((({})_bta) {} _btn); }})",
+                        ct, ct, ac, bc, bits, ct, st, shc
+                    ), if bits == 32 { VTy::Int(Some((IntW::W32, !us))) } else { VTy::Int(Some((IntW::W64, !us))) }));
+                }
+            }
+        }
             // parallel.map(coll, f):fork-join 数据并行(v1 串行等价,元素级纯函数)
         if let ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) } = callee {
             if let ast::Expr::Ident(on) = &**obj {

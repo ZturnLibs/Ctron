@@ -2125,6 +2125,12 @@ impl<'a> Checker<'a> {
             Some(Symbol::Module(_)) => Ty::Err, // 模块名作为值:仅用于成员调用,在 call 处理
             Some(Symbol::Type(def)) => Ty::Named { def, args: vec![] }, // 类型名作为关联调用接收者
             None => {
+                // bit.* 位运算内建命名空间(§4.5;T01)——裸值名入 Bit 前奏类型
+                if name == "bit" {
+                    if let Some(&def) = self.sema.def_by_name.get("Bit") {
+                        return Ty::Named { def, args: vec![] };
+                    }
+                }
                 // prelude 枚举变体值(Some/None/Ok/Err)
                 match name {
                     "Some" => {
@@ -2955,6 +2961,24 @@ impl<'a> Checker<'a> {
                         }
                         _ => { self.err("E2020", format!("Parallel 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     },
+                    "Bit" => {
+                        // bit.and_i64(...) 等 24 入口;实参求值后按宽度返回(宽松同 parallel)
+                        let (op, w) = m.split_once('_').unwrap_or((m, ""));
+                        let okw = matches!(w, "i32" | "u32" | "i64" | "u64");
+                        let arity = if op == "not" { 1 } else { 2 };
+                        let okop = matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr");
+                        if !okw || !okop || args.len() != arity {
+                            self.err("E2020", format!("Bit 无方法 `{}`", m), Span::new(1, 1, 0, 0));
+                            return Ty::Err;
+                        }
+                        for a in args { self.expr(a, None); }
+                        match w {
+                            "i32" => Ty::Int(IntW::W32),
+                            "u32" => Ty::UInt(IntW::W32),
+                            "i64" => Ty::Int(IntW::W64),
+                            _ => Ty::UInt(IntW::W64),
+                        }
+                    }
                     "AnyError" => { self.err("E2020", format!("AnyError 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     _ => {
                         // 类固有方法 / trait 方法(含 &Trait 对象)

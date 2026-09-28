@@ -616,12 +616,88 @@ impl<'a> Interp<'a> {
 
     // ---------- 调用 ----------
 
+    // bit.* 位运算内建(§4.5;T01):补码按宽度折叠;shl 回绕;shr 有符号算术/无符号逻辑;
+    // 移位数越界 panic "bit shift range"。u64 按位型折 i64(对齐 R 线 as[U64] 口径),
+    // u32 折非负 <2^32(i64 直存)。
+    fn bit_fold(r: u64, bits: u32, us: bool) -> Value {
+        let m = if bits == 32 { u32::MAX as u64 } else { u64::MAX };
+        let v = r & m;
+        if us { Value::UInt(v) }
+        else if bits == 64 { Value::Int(v as i64) }
+        else { Value::Int(v as u32 as i32 as i64) } // i32 折有符号 32
+    }
+    // 四整型变体(Int/IntW/UInt/UIntW)→ 无符号量级
+    fn bit_umag(v: &Value) -> Option<u64> {
+        Some(match v {
+            Value::Int(i) => *i as u64,
+            Value::IntW(_, i) => *i as u64,
+            Value::UInt(u) => *u,
+            Value::UIntW(_, u) => *u,
+            _ => return None,
+        })
+    }
+    fn call_bit(&mut self, m: &str, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
+        let (op, w) = m.split_once('_').unwrap_or((m, ""));
+        let (bits, us): (u32, bool) = match w {
+            "i32" => (32, false),
+            "u32" => (32, true),
+            "i64" => (64, false),
+            "u64" => (64, true),
+            _ => return Err(Flow::Panic(format!("bit 宽度:{w}"))),
+        };
+        let unary = op == "not";
+        let want = if unary { 1 } else { 2 };
+        if !matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr") || args.len() != want {
+            return Err(Flow::Panic(format!("bit 实参:{m}")));
+        }
+        let av = self.expr(&args[0], env)?;
+        let Some(a) = Self::bit_umag(&av) else { return Err(Flow::Panic("bit 数值".into())) };
+        let mask = if bits == 32 { u32::MAX as u64 } else { u64::MAX };
+        let ua = a & mask;
+        match op {
+            "and" | "or" | "xor" => {
+                let bv = self.expr(&args[1], env)?;
+                let Some(b) = Self::bit_umag(&bv) else { return Err(Flow::Panic("bit 数值".into())) };
+                let ub = b & mask;
+                let r = match op {
+                    "and" => ua & ub,
+                    "or" => ua | ub,
+                    _ => ua ^ ub,
+                };
+                Ok(Self::bit_fold(r, bits, us))
+            }
+            "not" => Ok(Self::bit_fold(!ua & mask, bits, us)),
+            _ => {
+                let bv = self.expr(&args[1], env)?;
+                let Some(nb) = Self::bit_umag(&bv) else { return Err(Flow::Panic("bit 数值".into())) };
+                let n = nb as i64;
+                if n < 0 || n >= bits as i64 {
+                    return Err(Flow::Panic("bit shift range".into()));
+                }
+                let n = n as u32;
+                let r = if op == "shl" {
+                    (ua << n) & mask
+                } else if us {
+                    ua >> n
+                } else {
+                    // 有符号算术右移(载荷折有符号后移,再折回)
+                    let sv = if bits == 32 { ua as u32 as i32 as i64 } else { ua as i64 };
+                    ((sv >> n) as u64) & mask
+                };
+                Ok(Self::bit_fold(r, bits, us))
+            }
+        }
+    }
     fn eval_call(&mut self, callee: &ast::Expr, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
         match callee {
             Expr::Ident(name) => self.call_ident(name, args, env),
             Expr::Member { obj, target } => {
                 let m = member_name(target);
                 if let Expr::Ident(on) = &**obj {
+                    // bit.* 位运算内建(§4.5;T01):调用位直接拦截,Rust 原生位运算
+                    if on == "bit" {
+                        return self.call_bit(&m, args, env);
+                    }
                     if let Some(Symbol::Module(mp)) = self.module_symbol(on) {
                         if mp == "stdweb.dom" {
                             return match m.as_str() {
