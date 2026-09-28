@@ -2,7 +2,7 @@
 //@ msg: budget
 
 comptime fn spin(n: I32) -> I32 {
-    return spin(n + 1)              // 无限递归:受 comptime 时间预算约束
+    return spin(n + 1)              // 无限递归:受 comptime 步数预算约束(§8.4 v1 终态,T08 裁决)
 }
 
-const NEVER: I32 = spin(0)          // E6010:超预算(本用例 budget_ms = 10)
+const NEVER: I32 = spin(0)          // E6010:超步数预算(本用例按步数口径)

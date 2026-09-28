@@ -493,3 +493,10 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   (CTRON_MONO_BUDGET=3 → E6040 rc=1);注册表先行:E6040 入 §10.1 + meta_check。
 - suite 81/82 双线维持;db 套件回基线;meta/fmt parity 过;native 自举固定点过
   (编译器自身显式特化计数在 8192 内,预扫零开销可观察)。
+
+**2026-09-28 T08 comptime 预算口径裁决落地**(spec-gap W1 裁决门;用户裁定:步数预算为 v1 终态):
+- §8.4 修订注:1200 步步数预算(ceval,E6010 判据)为终态口径——确定性友好(同输入同判定,
+  与 §10.3 无张力);1s 时间口径废弃(时钟依赖不可复现)。清单键 comptime.budget_ms 定性为
+  声明位(C 宿主 pkg 解析+校验+pkg 子命令展示,不进执行;实证 grep 无第二消费方),量纲统一
+  (budget_steps 改名)随 CTCL 迁移批次(T48)定夺。
+- comptime_budget 模块锚注记对齐步数口径;r6f 锚头注本即步数口径无需动。
