@@ -3058,11 +3058,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     if vca < xo {
                         xo = vca
                     }
-                    if vca > xo + vavail - 14 {
-                        xo = vca - vavail + 14
+                    if vca > xo + vavail - 16 {
+                        xo = vca - vavail + 16
                     }
-                    if xo > vfull - vavail + 12 {
-                        xo = vfull - vavail + 12
+                    // 尾钳比步行余量(+12)多 2:窗口右界恒超文末,末字符不落
+                    // "≥界"排除(用户实测末字符 c 不可见根因);绘宽仍 < 可用宽
+                    if xo > vfull - vavail + 14 {
+                        xo = vfull - vavail + 14
                     }
                     if xo < 0 {
                         xo = 0
