@@ -509,7 +509,14 @@ void gui_inject_mod(int m) { g_mod_ctrl = m; }
 int gui_mod_ctrl(void) {
     if (g_mod_ctrl > 0) { return 1; }
     if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) { return 1; }
+    // mac ⌘ 与 Ctrl 统一(macOS 习惯;§2.11 ⌘/Ctrl 经平台统一口径)
+    if (IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) { return 1; }
     return 0;
+}
+
+// 复制到系统剪贴板(内部缓冲 → 系统;真窗 Cmd+C 后调)
+void gui_clip_push(void) {
+    if (g_clip_n > 0) { SetClipboardText(g_clip); }
 }
 
 // 剪贴板系统同步(真窗粘贴前调;headless 直控缓冲不经此)

@@ -120,6 +120,7 @@ extern "c" fn gui_clip_byte(i: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_clip_sync() -> Void
+extern "c" fn gui_clip_push() -> Void
 
 #[trusted]
 extern "c" fn gui_inject_mod(m: I32) -> Void
@@ -3483,6 +3484,101 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         gui_caret_set(0)
         return true
     }
+    // 编辑快捷键(⌘/Ctrl 统一 gui_mod_ctrl):C 复制 / X 剪切 / V 粘贴 / A 全选
+    if gui_mod_ctrl() == 1 {
+        var kU: I32 = k
+        if kU >= 97 && kU <= 122 {
+            kU = kU - 32
+        }
+        var v1: Str = rt_in_val(t, fn0, bind)
+        var an1: I32 = gui_sel_anchor_get()
+        var c1: I32 = gui_caret_get()
+        if c1 > v1.len {
+            c1 = v1.len
+        }
+        if an1 < 0 {
+            an1 = c1
+        }
+        if an1 > v1.len {
+            an1 = v1.len
+        }
+        var sa: I32 = an1
+        var sb: I32 = c1
+        if sa > sb {
+            sa = c1
+            sb = an1
+        }
+        if kU == 67 {
+            // 复制(有选区复制选区;无选区全值——简易 GUI 惯例)
+            if sb > sa {
+                gui_clip_set_c(byte_slice(v1, sa, sb))
+            } else {
+                gui_clip_set_c(v1)
+            }
+            gui_clip_push()
+            return true
+        }
+        if kU == 88 {
+            // 剪切 = 复制 + 删段
+            if sb > sa {
+                gui_clip_set_c(byte_slice(v1, sa, sb))
+                gui_clip_push()
+                var cut1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
+                gui_sel_clear()
+                gui_caret_set(sa)
+                rt_in_fire(t, fn0, "input", cut1, act)
+            }
+            return true
+        }
+        if kU == 86 {
+            // 粘贴:系统→内部→逐码点走编辑管线(UTF-8 解码;选区先消费)
+            gui_clip_sync()
+            var pi: I32 = 0
+            var pn: I32 = gui_clip_len()
+            if pn > 0 {
+                if sb > sa {
+                    var del1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
+                    gui_sel_clear()
+                    gui_caret_set(sa)
+                    rt_in_fire(t, fn0, "input", del1, act)
+                }
+                while pi < pn {
+                    var b0: I32 = gui_clip_byte(pi)
+                    var cp: I32 = b0
+                    var adv: I32 = 1
+                    if b0 >= 240 {
+                        cp = (b0 - 240) * 262144
+                        cp = cp + (gui_clip_byte(pi + 1) - 128) * 4096
+                        cp = cp + (gui_clip_byte(pi + 2) - 128) * 64
+                        cp = cp + (gui_clip_byte(pi + 3) - 128)
+                        adv = 4
+                    } else {
+                        if b0 >= 224 {
+                            cp = (b0 - 224) * 4096
+                            cp = cp + (gui_clip_byte(pi + 1) - 128) * 64
+                            cp = cp + (gui_clip_byte(pi + 2) - 128)
+                            adv = 3
+                        } else {
+                            if b0 >= 192 {
+                                cp = (b0 - 192) * 64
+                                cp = cp + (gui_clip_byte(pi + 1) - 128)
+                                adv = 2
+                            }
+                        }
+                    }
+                    rt_input_char(t, bind, act, cp)
+                    pi += adv
+                }
+            }
+            return true
+        }
+        if kU == 65 {
+            // 全选
+            gui_sel_anchor_set(0)
+            gui_caret_set(v1.len)
+            return true
+        }
+    }
     var cur: Str = rt_in_val(t, fn0, bind)
     var caret: I32 = gui_caret_get()
     if caret > cur.len {
@@ -3744,9 +3840,10 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                     }
                     var cax: I32 = gui_caret_at_x(t, fnode, fbv, gui_evt_x(), rects, hits)
                     gui_caret_set(cax)
-                    gui_sel_anchor_set(cax)
-                    gui_drag_begin()
-                    if gui_click_kind(gui_evt_x(), gui_evt_y()) == 1 {
+                    // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
+                    // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
+                    var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                    if dblk == 1 {
                         var wr = List[I32]()
                         gui_word_range(fbv, cax, wr)
                         if wr.len >= 2 {
@@ -3755,6 +3852,9 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                                 gui_caret_set(wr[1])
                             }
                         }
+                    } else {
+                        gui_sel_anchor_set(cax)
+                        gui_drag_begin()
                     }
                 } else {
                     gui_focus_set(-1)
@@ -3909,9 +4009,10 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     }
                     var cax: I32 = gui_caret_at_x(t, fnode, fbv, gui_evt_x(), rects, hits)
                     gui_caret_set(cax)
-                    gui_sel_anchor_set(cax)
-                    gui_drag_begin()
-                    if gui_click_kind(gui_evt_x(), gui_evt_y()) == 1 {
+                    // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
+                    // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
+                    var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                    if dblk == 1 {
                         var wr = List[I32]()
                         gui_word_range(fbv, cax, wr)
                         if wr.len >= 2 {
@@ -3920,6 +4021,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                 gui_caret_set(wr[1])
                             }
                         }
+                    } else {
+                        gui_sel_anchor_set(cax)
+                        gui_drag_begin()
                     }
                 } else {
                     gui_focus_set(-1)
@@ -3971,9 +4075,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                     var fbv: Str = rt_in_val(t, nfb, bind)
                                     var cax: I32 = gui_caret_at_x(t, nfb, fbv, gui_evt_x(), rects, hits)
                                     gui_caret_set(cax)
-                                    gui_sel_anchor_set(cax)
-                                    gui_drag_begin()
-                                    if gui_click_kind(gui_evt_x(), gui_evt_y()) == 1 {
+                                    var dblk2: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                                    if dblk2 == 1 {
                                         var wr2 = List[I32]()
                                         gui_word_range(fbv, cax, wr2)
                                         if wr2.len >= 2 {
@@ -3982,6 +4085,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                                 gui_caret_set(wr2[1])
                                             }
                                         }
+                                    } else {
+                                        gui_sel_anchor_set(cax)
+                                        gui_drag_begin()
                                     }
                                 } else {
                                     gui_caret_set(0)
