@@ -2953,7 +2953,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             } else {
                 gui_alpha(0)
             }
-            gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, ihm, ihv, ibgp)
+            gui_cfg(0, 0, 0, 0, 0, 1, 1, 0, ihm, ihv, ibgp)
             var ival: Str = ""
             if t.nbid[id] != "" {
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
