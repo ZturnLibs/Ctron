@@ -552,3 +552,17 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - modules 16/17×2(唯一红=use_alias_nat/dup_static 既有意红基线);net 17/17×2;suite
   87/88 维持;manifest 三门+ctcl selftest+cargo 14/0+meta/fmt 过;R 线细键检测(对象面
   note_cap_use 仍粗键)登记 R 线欠账。
+
+**2026-09-28 T12 gzip 收口**(spec-gap W2;§11.7):
+- 主体已由 webfw 泳道交付(P4-B http/enc.ct:gzip 容器组框 RFC 1952 纯 Ctron +
+  miniz 垫片 CRC-32 单实现 + Accept-Encoding 协商;enc_fixtures x_gzip_round/
+  x_crc32/x_deflate_round/a_negotiate)——计划卡分析时序差,本件缩为互操作补齐。
+- 补:①x_gzip_interop(python gzip.compress 真实流 93 字节 hex 语料 → 本实现
+  gunzip 逐字节还原 292 字节;头布局锚 1f8b/08/00/mtime=0)②x_gzip_out(本实现
+  产出流 hex 出)③run.sh 互操作臂(本实现流 → python gzip.decompress 逐字节
+  差分)——消费向/供给向双闭环。
+- 登记发射怪癖:x_ 夹具 fn main + 显式 `&数组` 实参形 → 发射驱动 SIGSEGV
+  (截断 C);test 块 + 数组直传(隐式视图转换,gzip_round 惯例)为正形。
+- http 110/1(唯一红=frm_auth_a_jwt interp OOM,实证与 bit-crypto 无关:
+  原版 crypto 对照 1.46GB vs bit 版 1.32GB/50 HMAC——解释器 arena 无回收
+  在册债(T31 目标)所致)。

@@ -152,7 +152,7 @@
 
 ### T12 · gzip 压缩面(§11.7)
 
-- **预估:** 0.5–1 d。**前置:** 无。**状态:** 待办
+- **预估:** 0.5–1 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28;主体系 webfw 泳道先落地,计划卡系分析时序差)
 - **目标:** HTTP 压缩协商补 gzip(现仅 deflate),`Accept-Encoding`/`Content-Encoding` 协商全。
 - **范围:** `http/enc.ct`+`binddeflate.ct`(deflate 即 zlib 流,gzip = 头尾包装 + CRC32,`std/hash.ct` 或 `std/crypto.ct` 已有 CRC 面则复用)。
 - **要点:** gzip 与 deflate 同为 DEFLATE 算法,差异仅在容器格式(gzip 头 10B + CRC32/ISIZE 尾);纯 Ctron 容器包装即可,零新绑定。
@@ -544,7 +544,7 @@
 | T09 | resolve 多记录 | W2 | **已完成**(0928,双矩阵 15/15×2;SocketAddr struct 随 T14 底座) | 见 git |
 | T10 | sleep_ns/虚拟时钟 | W2 | **已完成**(0928,三矩阵+rt 弱钩贯通) | 见 git |
 | T11 | caps 键细分 | W2 | **已完成**(0928,四线注册表+夹具;R 线对象面欠账在册) | 见 git |
-| T12 | gzip | W2 | 待办 | — |
+| T12 | gzip | W2 | **已完成**(0928;主体=webfw 泳道 P4-B,本件补 python 双向互操作差分) | 见 git |
 | T13 | Atomic 真原子 | W2 | 待办 | — |
 | T14 | Channel 去限制 | W2 | 待办 | — |
 | T15 | Iterator trait | W3 | 待办 | — |
