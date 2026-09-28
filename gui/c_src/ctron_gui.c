@@ -484,8 +484,8 @@ int gui_caret_blink(void) {
     if (g_caret_anchor_ms < 0) { return 1; }
     int d = now - g_caret_anchor_ms;
     if (d < 0) { d = 0; }
-    if (d < 450) { return 1; }
-    return ((now / 320) % 2) == 0;
+    if (d < 500) { return 1; }
+    return ((now / 530) % 2) == 0;
 }
 int gui_caret_get(void) { return g_caret; }
 
@@ -804,6 +804,14 @@ int gui_list_ni(const void *l) {
     if (l == NULL) { return 0; }
     return ((const CtronListC *)l)->n;
 }
+
+// P2 组件列表 prop:env 值判型(魔数)+恒等转接——实例实参以 Str 槽穿环境,
+// 消费侧经此二助手还原 List;Ctron 侧无中缀 cast,extern 边界逐字直通
+int gui_is_list(const void *p) {
+    if (p == NULL) { return 0; }
+    return ((const CtronListC *)p)->magic == 0x4354726F6E4C7374ULL;
+}
+void *gui_as_list(void *p) { return p; }
 
 // 光标形状(P2):真窗逐帧设定;headless 无窗安全(raylib 全局态直设)
 void gui_cursor_set(int shape) { SetMouseCursor(shape); }

@@ -3001,6 +3001,14 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var ifg2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
                 var ifw2: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
                 gui_text_w(idisp, isz2, ifw2, rt_col_r(ifg2), rt_col_g(ifg2), rt_col_b(ifg2), 255)
+                // 光标/选区条垂直居中(固定高输入框;(框高-条高)/2;grow 高 = 文本高,近顶)
+                var icy: I32 = 2
+                if ihm == 2 {
+                    icy = (ihv - isz2) / 2
+                    if icy < 0 {
+                        icy = 0
+                    }
+                }
                 // 选区高亮浮条(半透明 accent,zIndex 50 居光标条下)
                 var wt2p: I32 = ifw2 % 10000
                 var fam2p: I32 = ifw2 / 10000
@@ -3015,7 +3023,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     if sc1 > sc0 {
                         var sx0: I32 = gui_ft_measure_n_wt(byte_slice(ival, 0, sc0), sc0, isz2, wt2p, fam2p)
                         var sx1: I32 = gui_ft_measure_n_wt(byte_slice(ival, 0, sc1), sc1, isz2, wt2p, fam2p)
-                        gui_sel_float(sx0, 3, sx1 - sx0, isz2, gui_theme_slot_get(7))
+                        gui_sel_float(sx0, icy, sx1 - sx0, isz2, gui_theme_slot_get(7))
                     }
                 }
                 if blink == 1 {
@@ -3024,7 +3032,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     var wt2: I32 = ifw2 % 10000
                     var fam2: I32 = ifw2 / 10000
                     var offx: I32 = gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2)
-                    gui_caret_float(offx, 3, 2, isz2, ifg2)
+                    gui_caret_float(offx, icy, 2, isz2, ifg2)
                     // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
                     hits.push(id)
                     hinst.push(inst)
