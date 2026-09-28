@@ -82,7 +82,7 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructField { pub name: String, pub value: Option<Expr> } // 简写 = None
 #[derive(Debug, Clone, PartialEq)]
-pub struct MatchArm { pub pattern: Pattern, pub expr: Expr }
+pub struct MatchArm { pub pattern: Pattern, pub guard: Option<Expr>, pub expr: Expr } // guard:模式守卫(R-P3c)
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemberTarget { Name(String), TupleIndex(u32) }
 #[derive(Debug, Clone, PartialEq)]
@@ -115,6 +115,8 @@ pub enum AssignOp { Eq, AddEq, SubEq, MulEq, DivEq, ModEq }
 pub enum Pattern {
     Ident(String), Wildcard, Lit(PatLit), Tuple(Vec<Pattern>),
     Agg { path: Vec<String>, sub: AggSub },
+    /// 或模式(R-P3c):替身依序试配
+    Or(Vec<Pattern>),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum PatLit { Int(String), Float(String), Str(String), Bool(bool) }

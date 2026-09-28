@@ -59,7 +59,7 @@
 
 ### T02 · 模式守卫 `pat if cond =>`(R-P3c)
 
-- **预估:** 0.5–1 d。**前置:** 无。**状态:** 待办
+- **预估:** 0.5–1 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28;含或模式/字符串字面量模式三线,锚迁 tests/02f_*)
 - **目标:** 翻转 `tests/roadmap/r3c_guards.ct`(现状解析拒绝 E1001):守卫依序判定、守卫臂不参与穷尽性(`r3c_guard_exhaustive.neg.ct`)。
 - **范围:** `compiler/src/parse_stmt.ct`(p_pattern 扩展 GuardPat 节点)、`sem_exh.ct`(守卫臂不算穷尽证据)、`eval_pat.ct`(依序试配)、`trans_stmt.ct`(match 发射守卫分支)、R 线/宿主线同形。
 - **要点:** 或模式 PatOr 已实现(`p_pattern_or`),守卫是**模式层后置谓词**:解析为 `PatGuard{pat, cond}`;穷尽性算法把含守卫臂视为不可达证据;match 发射侧沿用现有臂跳转结构加 `if(cond)` 门。
@@ -534,7 +534,7 @@
 | ID | 件名 | 波 | 状态 | commit |
 |---|---|---|---|---|
 | T01 | std/bit 模块 | W1 | **已完成**(0928,四面同判+crypto 回切,bit_ops×4 臂绿,db 回基线) | 见 git |
-| T02 | 模式守卫 R-P3c | W1 | 待办 | — |
+| T02 | 模式守卫 R-P3c | W1 | **已完成**(0928,三线落地+锚迁主套件 02f,发射臂债在册) | 见 git |
 | T03 | StringBuilder | W1 | 待办 | — |
 | T04 | W8 锚补齐 | W1 | 待办 | — |
 | T05 | r1a 行尾点守卫 | W1 | 待办 | — |

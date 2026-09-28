@@ -1744,6 +1744,12 @@ impl<'a> Checker<'a> {
             }
             ast::Pattern::Wildcard => {}
             ast::Pattern::Lit(_) => {}
+            ast::Pattern::Or(alts) => {
+                // 或模式(R-P3c):逐替身递归(覆盖并入 cov;绑定按声明次序后者覆盖)
+                for a in alts {
+                    self.check_pattern_into(a, hint, out, cov);
+                }
+            }
             ast::Pattern::Tuple(ps) => {
                 let elems: Vec<Ty> = match hint.map(|h| self.resolve(h)) {
                     Some(Ty::Tuple(tys)) => tys,
@@ -2046,8 +2052,18 @@ impl<'a> Checker<'a> {
                     self.scopes.push(HashMap::new());
                     let (binds, cov) = self.check_pattern_cov(&arm.pattern, Some(&st));
                     self.scopes.last_mut().unwrap().extend(binds);
-                    covered.extend(cov);
-                    if matches!(arm.pattern, ast::Pattern::Wildcard | ast::Pattern::Ident(_)) { has_wildcard = true; }
+                    // 模式守卫(R-P3c):守卫可能不成立,带守卫的臂不算覆盖;
+                    // 或模式替身展开计覆盖,通配替身即整体通配
+                    let is_wild = match &arm.pattern {
+                        ast::Pattern::Wildcard | ast::Pattern::Ident(_) => true,
+                        ast::Pattern::Or(alts) => alts.iter().any(|a| matches!(a, ast::Pattern::Wildcard | ast::Pattern::Ident(_))),
+                        _ => false,
+                    };
+                    if arm.guard.is_none() {
+                        covered.extend(cov);
+                        if is_wild { has_wildcard = true; }
+                    }
+                    if let Some(g) = &arm.guard { self.expr(g, None); }
                     let at = self.expr(&arm.expr, None);
                     self.scopes.pop();
                     arm_tys.push(at);

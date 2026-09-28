@@ -1,7 +1,6 @@
-// r3c_guards.ct —— 模式守卫与或模式(R-P3c,v0.6 §4.6)
+// 02f_match_guards.ct —— 模式守卫与或模式(§4.6;R-P3c 三线落地,2026-09-28 迁入主套件)
 // 语义承诺:pat if cond => 守卫(依序判定);A | B => 或模式;字符串字面量模式;
-//          守卫臂不参与穷尽(反例:r3c_guard_exhaustive.neg.ct)
-// 锚点:R-P3c 落地转绿(现状:解析拒绝 E1001)
+//          守卫臂不参与穷尽(反例:02f_match_guard_exhaustive.neg.ct)
 fn classify(n: I32) -> Str {
     return match n {
         0 => "zero"

@@ -423,3 +423,14 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - 顺手修:自举 i64/isize 后缀宽字面量此前误落 I32 域截 0(eval_expr 宽路径仅认无后缀),
   03b 补锚;宿主负大字面量/宽正字面量算术检查缺口(unary neg/Sub 于 v_int bits=32 恒炸)为
   宿主在册债,锚侧以 i64 后缀规避开(divergences 待登)。
+
+**2026-09-28 T02 模式守卫+或模式三线落地(R-P3c 销账)**(spec-gap W1;§4.6):
+- r3c 两锚迁入主套件为 02f_match_guards.ct / 02f_match_guard_exhaustive.neg.ct(E2030);
+  三线落地:自举解析/求值/穷尽既有(R-P3c 半成品收口)——C 宿主补 parser(或模式 PAT_OR +
+  臂守卫)/rt(pat_bind_or 替身依序 + EX_MATCH 守卫绑定后判定)/sem(守卫臂不算覆盖,或模式
+  替身展开计覆盖);R 线补 ast(Pattern::Or + MatchArm.guard)/parser/check(守卫跳过覆盖 +
+  或模式展开)/interp(try_match Or 前置拦截 + 守卫假值回落)。
+- 发射臂登记(不阻塞本翻转):自举发射 match 面窄(Result/用户枚举/Option[Str] 特化),
+  表达式位 match 与字面量模式臂 ct_expr panic —— 即 P8-C 在册「match-on-Result emit 缺口
+  interp 专臂」同族,守卫/或模式发射随该债一并扩;C 宿主 trans 同族登记。
+- suite 77/78 双线(+2 全绿,06f/06e 两预存红不变);cargo 13 套全绿;meta/fmt parity 过。

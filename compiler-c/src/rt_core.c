@@ -462,7 +462,16 @@ int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
     return 0;
 }
 
+// PAT_OR 或模式(R-P3c):替身依序试配,首个命中的替身绑定生效
+static int pat_bind_or(rt* R, cpat* p, val s) {
+    for (size_t i = 0; i < p->nalts; i++) {
+        if (pat_bind(R, p->alts[i], s)) return 1;
+    }
+    return 0;
+}
+
 int pat_bind(rt* R, cpat* p, val s) {
+    if (p->kind == PAT_OR) return pat_bind_or(R, p, s);
     if (!p) return 0;
     switch (p->kind) {
     case PAT_WILD: return 1;

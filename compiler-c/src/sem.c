@@ -622,8 +622,21 @@ static void check_match_exhaustive(ctx* c, cexpr* m) {
     int* covered = (int*)calloc(ev.n, sizeof(int));
     int whole = 0;
     for (size_t i = 0; i < m->narms && !whole; i++) {
+        // 模式守卫(R-P3c):守卫可能不成立,带守卫的臂不算覆盖
+        if (m->arms[i].guard) continue;
         cpat* p = m->arms[i].pat;
-        if (p->kind == PAT_WILD || p->kind == PAT_IDENT) whole = 1;
+        if (p->kind == PAT_OR) {
+            // 或模式:任一替身通配即整体通配;变体替身逐个记覆盖
+            for (size_t k = 0; k < p->nalts; k++) {
+                cpat* ap = p->alts[k];
+                if (ap->kind == PAT_WILD || ap->kind == PAT_IDENT) { whole = 1; break; }
+                if (ap->kind == PAT_AGG && ap->npath > 0) {
+                    for (size_t j = 0; j < ev.n; j++)
+                        if (strcmp(ap->path[0], ev.names[j]) == 0) covered[j] = 1;
+                }
+            }
+        }
+        else if (p->kind == PAT_WILD || p->kind == PAT_IDENT) whole = 1;
         else if (p->kind == PAT_AGG && p->npath > 0) {
             for (size_t j = 0; j < ev.n; j++)
                 if (strcmp(p->path[0], ev.names[j]) == 0) covered[j] = 1;
@@ -1196,8 +1209,10 @@ static void check_expr(ctx* c, cexpr* e) {
     case EX_MATCH:
         check_match_exhaustive(c, e);
         check_expr(c, e->scrut);
-        for (size_t i = 0; i < e->narms; i++)
+        for (size_t i = 0; i < e->narms; i++) {
+            if (e->arms[i].guard) check_expr(c, e->arms[i].guard);
             if (e->arms[i].expr) check_expr(c, e->arms[i].expr);
+        }
         return;
     case EX_BLOCK:
         check_block(c, e->block);

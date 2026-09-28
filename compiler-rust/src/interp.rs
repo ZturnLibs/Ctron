@@ -326,6 +326,10 @@ impl<'a> Interp<'a> {
             ast::Pattern::Ident(n) => { out.insert(n.clone(), Local { value: v }); }
             ast::Pattern::Wildcard => {}
             ast::Pattern::Lit(_) => {}
+            ast::Pattern::Or(alts) => {
+                // 或模式(R-P3c):let/for 位不出现;按首替身绑定兜底
+                if let Some(first) = alts.first() { self.bind_pattern(first, &v, out); }
+            }
             ast::Pattern::Tuple(ps) => {
                 if let Value::Tuple(items) = &v {
                     for (i, sp) in ps.iter().enumerate() {
@@ -595,6 +599,15 @@ impl<'a> Interp<'a> {
                     let mut binds = HashMap::new();
                     if self.try_match(&arm.pattern, &sv, &arm_env, &mut binds) {
                         for (n, l) in binds { arm_env.define(n, l); }
+                        // 模式守卫(R-P3c):绑定入 env 后判定,假值回落下一臂
+                        if let Some(g) = &arm.guard {
+                            let gv = self.expr(g, &arm_env)?;
+                            let pass = match gv {
+                                Value::Bool(b) => b,
+                                _other => return Err(Flow::Panic("守卫须为 Bool".into())),
+                            };
+                            if !pass { continue; }
+                        }
                         return self.expr(&arm.expr, &arm_env);
                     }
                 }
@@ -1775,6 +1788,17 @@ impl<'a> Interp<'a> {
     }
 
     fn try_match(&mut self, p: &ast::Pattern, v: &Value, env: &Rc<Env>, out: &mut HashMap<String, Local>) -> bool {
+        // 或模式(R-P3c):替身依序试配,首个命中的替身绑定生效
+        if let ast::Pattern::Or(alts) = p {
+            for a in alts {
+                let mut trial = HashMap::new();
+                if self.try_match(a, v, env, &mut trial) {
+                    out.extend(trial);
+                    return true;
+                }
+            }
+            return false;
+        }
         let mut m = MatchCtx { matched: true };
         self.match_pattern_into(p, v, &mut m, out, env);
         m.matched
@@ -1786,6 +1810,7 @@ impl<'a> Interp<'a> {
         match p {
             ast::Pattern::Ident(n) => { out.insert(n.clone(), Local { value: v }); }
             ast::Pattern::Wildcard => {}
+            ast::Pattern::Or(_) => { /* try_match 前置拦截;防御位不匹配 */ m.matched = false; }
             ast::Pattern::Lit(l) => {
                 let ok = match (l, &v) {
                     (ast::PatLit::Int(t), Value::Int(i)) => text_int_eq(t, *i),

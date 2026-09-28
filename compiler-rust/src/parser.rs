@@ -1066,10 +1066,23 @@ impl Parser {
             self.skip_newlines();
             if self.at(&Tok::RBrace) { self.bump(); break; }
             if self.at(&Tok::Eof) { self.err_here("E1001", "未闭合的 match 体".into()); break; }
-            let pattern = self.parse_pattern();
+            let mut pattern = self.parse_pattern();
+            // 或模式(R-P3c):p1 | p2 依序试配
+            if self.at(&Tok::Pipe) {
+                let mut alts = vec![pattern];
+                while self.eat(&Tok::Pipe) {
+                    alts.push(self.parse_pattern());
+                }
+                pattern = Pattern::Or(alts);
+            }
+            // 模式守卫(R-P3c):pat if cond => body
+            let guard = if self.at(&Tok::If) {
+                self.bump();
+                Some(self.parse_expr())
+            } else { None };
             self.expect(&Tok::FatArrow, "match 臂");
             let body = self.parse_expr();
-            arms.push(MatchArm { pattern, expr: body });
+            arms.push(MatchArm { pattern, guard, expr: body });
             if self.at(&Tok::Newline) { self.skip_newlines(); }
             else if !self.at(&Tok::RBrace) {
                 self.err_here("E1001", format!("match 臂后应为换行,实际 {:?}", self.peek()));

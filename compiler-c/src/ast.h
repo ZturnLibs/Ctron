@@ -142,7 +142,7 @@ typedef struct cexpr {
 
 typedef struct cpat cpat;
 
-typedef struct cmatcharm { cpat* pat; cexpr* expr; } cmatcharm;
+typedef struct cmatcharm { cpat* pat; cexpr* guard; cexpr* expr; } cmatcharm; // guard:模式守卫(R-P3c,NULL=无)
 
 // ---------- 块与语句 ----------
 
@@ -170,7 +170,7 @@ struct cblock {
 
 // ---------- 模式 ----------
 
-typedef enum { PAT_IDENT, PAT_WILD, PAT_LIT, PAT_TUPLE, PAT_AGG } cpat_kind;
+typedef enum { PAT_IDENT, PAT_WILD, PAT_LIT, PAT_TUPLE, PAT_AGG, PAT_OR } cpat_kind;
 typedef enum { PLIT_INT, PLIT_FLOAT, PLIT_STR, PLIT_BOOL } cpatlit_kind;
 typedef enum { AG_UNIT, AG_TUPLE, AG_STRUCT } cagg_kind;
 
@@ -188,6 +188,8 @@ struct cpat {
     cagg_kind agg;           // AGG
     cstructpatfield* sfields; // AG_STRUCT
     size_t nsfields;
+    struct cpat** alts;      // OR:或模式替身(依序试配,R-P3c)
+    size_t nalts;
 };
 
 // ---------- 声明 ----------

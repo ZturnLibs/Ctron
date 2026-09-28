@@ -714,6 +714,11 @@ val eval_expr(rt* R, cexpr* e) {
         for (size_t i = 0; i < e->narms; i++) {
             env_push(R);
             if (pat_bind(R, e->arms[i].pat, sc)) {
+                // 模式守卫(R-P3c):绑定入 env 后判定,假值则回落下一臂
+                if (e->arms[i].guard) {
+                    val g = eval_expr(R, e->arms[i].guard);
+                    if (!truthy(g)) { env_pop(R); continue; }
+                }
                 val r = eval_expr(R, e->arms[i].expr);
                 env_pop(R);
                 return r;
