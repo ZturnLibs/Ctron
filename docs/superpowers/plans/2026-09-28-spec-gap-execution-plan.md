@@ -563,7 +563,7 @@
 | T11 | caps 键细分 | W2 | **已完成**(0928,四线注册表+夹具;R 线对象面欠账在册) | 见 git |
 | T12 | gzip | W2 | **已完成**(0928;主体=webfw 泳道 P4-B,本件补 python 双向互操作差分) | 见 git |
 | T13 | Atomic 真原子 | W2 | **已完成**(0928,__atomic SEQ_CST 三面,双矩阵精确 200k) | 见 git |
-| T14 | Channel 去限制 | W2 | **已完成**(0928,三片 0e004a2/b6d26fe/369b9bc;pool 消费方迁移随 db 泳道) | 见 git |
+| T14 | Channel 去限制 | W2 | **已完成**(0928,三片 0e004a2/b6d26fe/369b9bc;pool 消费方迁移随 db 泳道) |<!-- 并行注意:远端 main 另有编译器线平行实现(ba28f4b 链 614a5c8 堆环+dac9aec interp 克隆),两史分叉待裁决合并 --> 见 git |
 | T15 | Iterator trait | W3 | **已完成**(0928,三线 interp;发射臂 var-self 引用语义在册) | 见 git |
 | T16 | 适配器链 | W3 | 待办 | — |
 | T17 | std/iter 归位 | W3 | 待办 | — |
