@@ -104,7 +104,7 @@ fn nl_set_next(t: Str) -> Bool {
     }
     return false
 }
-fn filter_nl(raw: List[Str], rlines: List[Str], rcols: List[Str], toks: List[Str], lns: List[Str], cols: List[Str]) {
+fn filter_nl(raw: List[Str], rlines: List[Str], rcols: List[Str], toks: List[Str], lns: List[Str], cols: List[Str], pdiags: List[Str]) {
     var i: I32 = 0
     while i < raw.len && raw[i] == "NL" {
         i += 1
@@ -132,6 +132,10 @@ fn filter_nl(raw: List[Str], rlines: List[Str], rcols: List[Str], toks: List[Str
                 suppressed = true
             }
             if !suppressed {
+                // 行尾 `.` 非法(§1.6 换行规则:链式调用统一首点式;行尾点恒悬空)
+                if toks.len > 0 && toks[toks.len - 1] == "." {
+                    pdiags.push(rlines[i] + ":" + rcols[i] + " E1001: " + diag_text0("E1001.trailing.dot"))
+                }
                 toks.push("NL")
                 lns.push(rlines[i])
                 cols.push(rcols[i])
@@ -411,7 +415,7 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
     var cstarts = List[I32]()
     var cends = List[I32]()
     var line = scan5(src, raw, rlines, rcols, pdiags, tstarts, tends, cstarts, cends)
-    filter_nl(raw, rlines, rcols, toks, lns, cols)
+    filter_nl(raw, rlines, rcols, toks, lns, cols, pdiags)
     toks.push("#EOF")
     lns.push(line.to_string())
     cols.push("0")

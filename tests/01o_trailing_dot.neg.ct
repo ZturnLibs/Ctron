@@ -1,0 +1,9 @@
+// 01o_trailing_dot.neg.ct —— 行尾 `.` 非法(§1.6 换行规则:首点式合法,行尾点非法;T05 迁入主套件)
+// 语义承诺:`let s = "a".` 行尾悬挂点 → 解析错误(自举词法层 filter_nl 守卫)
+//@ fail: E1001
+
+fn main() -> I32 {
+    let s = "a".
+    println(s)
+    return 0
+}

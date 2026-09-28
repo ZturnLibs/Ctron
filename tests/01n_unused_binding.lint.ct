@@ -6,3 +6,7 @@ fn main() {
     let _ignored: I32 = 6            // _ 前缀 = 显式丢弃,免报
     assert_eq(_ignored, 6)
 }
+
+test "lint file carries runnable block" {
+    assert(true)
+}

@@ -56,7 +56,6 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r6h_interp_unclosed.neg.ct", "R-P6h", Status::NegGreen("E1001")),
         ("r6i_interp_nested_str.neg.ct", "R-P6i", Status::NegGreen("E1001")),
         // ---- 09-15 审计批次补登(r6b–r6g/r1a;R 线行为逐件实测锚定) ----
-        ("r1a_trailing_dot.neg.ct", "R-P1a", Status::NegGreen("E1001")),
         ("r6b_res_class.neg.ct", "R-P6b", Status::NegPending("E4050")),
         ("r6c_as_u64_negsrc.ct", "R-P6c", Status::Green), // 2026-09-19 interp 字面量保真修复后翻转(RunRed → Green)
         ("r6d_trusted_unmarked.neg.ct", "R-P6d", Status::NegPending("W8050")),

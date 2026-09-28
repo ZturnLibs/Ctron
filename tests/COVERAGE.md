@@ -454,3 +454,9 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - 登记差异:R 线无 W8030/W8040 发射面(lint 锚经 check_suite 零诊断口径空过,R 线欠账);
   自举 W8030 不扫 test 块位。
 - suite 80/81 双线(lint 4/4×2;06f/06e 两预存红不变);cargo 14 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T05 行尾点守卫落库**(spec-gap W1;§1.6):
+- r1a 锚迁入主套件 01o_trailing_dot.neg.ct(E1001);自举词法层 filter_nl 守卫(行尾 `.` 后
+  未抑制的 NL → E1001,消息键 E1001.trailing.dot 双语登记)——此前自举解析器吞点误放行,
+  宿主/R 线既有拒绝面不变;parse_suite/check_suite 双登记,roadmap_suite 移除 r1a。
+- suite 81/82 双线(06f/06e 预存红不变);cargo 14 套全绿;meta/fmt parity 过。
