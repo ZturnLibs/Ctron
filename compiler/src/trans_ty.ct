@@ -243,9 +243,13 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         }
     }
     if nt[1] == "List" {
-        // List[I32] → LI(元素槽 int;TArgs 装类型节点)
+        // List[I32] → LI(元素槽 int);List[<struct>] → Lu:<名>(T14-② 元素码贯通:
+        // push 装箱/索引取回按元素型;其余维持 "L"(char* 槽)不动)
         if nt[2].len > 1 {
             if nt[2][1][0] == "Named" && nt[2][1][1] == "I32" { return "LI" }
+            if nt[2][1][0] == "Named" && ct_is_struct(file, nt[2][1][1]) {
+                return "Lu:" + nt[2][1][1]
+            }
         }
         return "L"
     }
@@ -256,6 +260,16 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
 // 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
 // Phase 4 并发:g=ct_scope* / k=ct_task* / h=ct_chan* / R=ct_res(Result 值) /
 //   m<内>=Mutex 单元(ct_mcell_<内>*)/ P<内>=内值指针伪码(with_mut 体内 Ident 解引用)
+// List 码族:T14-② —— "L"(char* 槽)/"LI"(int 槽)/"Lu:<名>"(struct 装箱槽)
+fn ct_is_lcode(code: Str) -> Bool {
+    if code.len > 3 {
+        if byte_slice(code, 0, 3) == "Lu:" {
+            return true
+        }
+    }
+    return false
+}
+
 fn ct_ctype(code: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         return "t_" + byte_slice(code, 2, code.len)
@@ -269,7 +283,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "b" { return "int" }
     if code == "f" { return "double" }
     if code == "g" { return "float" }
-    if or2(code == "L", code == "LI") { return "ctron_list*" }
+    if or2(code == "L", or2(code == "LI", ct_is_lcode(code))) { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "7" { return "uint64_t" }
@@ -672,6 +686,8 @@ fn w_code_wider(a: Str, b: Str) -> Str {
 
 fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
     if pc == "L" && ac != "L" { return "(ctron_list*)(" + x + ")" }
+    // Lu: 族(T14-②):列表指针直通,同 L
+    if ct_is_lcode(pc) && !ct_is_lcode(ac) { return "(ctron_list*)(" + x + ")" }
     if pc == "A" && ac != "A" { return "(ctron_cell*)(" + x + ")" }
     if or2(pc == "s", pc == "N") && ac == "L" { return "(char*)(" + x + ")" }
     // §3.6 退化传参:内联定长数组实参 → 视图(首址+长度复合字面量,零拷贝)
@@ -902,6 +918,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return a_elem(ot)
         }
         if ot == "LI" { return "i" }
+        // Lu: 族(T14-②):索引产元素型(去 L 前缀)
+        if ct_is_lcode(ot) { return byte_slice(ot, 1, ot.len) }
         if or2(ot == "L", ot == "N") { return "N" }
         return "i"
     }
@@ -941,10 +959,12 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             if base[0] == "Ident" && base[1] == "List" {
-                // List[I32] → LI(元素槽 int);型参实参经 env 替换码(单态化体);其余 → L
+                // List[I32] → LI(元素槽 int);List[<struct>] → Lu:<名>(T14-②);
+                // 型参实参经 env 替换码(单态化体);其余 → L
                 if cal[2].len > 1 {
                     if cal[2][1][0] == "Named" {
                         if seq2(cal[2][1][1], "I32") { return "LI" }
+                        if ct_is_struct(file, cal[2][1][1]) { return "Lu:" + cal[2][1][1] }
                         if ct_env_has(env, cal[2][1][1]) {
                             var ec7 = ct_env_ty(env, cal[2][1][1])
                             if seq2(ec7, "i") { return "LI" }

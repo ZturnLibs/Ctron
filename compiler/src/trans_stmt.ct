@@ -1262,6 +1262,22 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("}", env)
             return env
         }
+        if or2(ity == "L", ct_is_lcode(ity)) {
+            // for x in <List>(T14-②:L=char* 槽直取 Str;Lu:=堆盒解引用取 struct 值)
+            var larrL = ct_expr(it, env, file)
+            var ecodeL = "s"
+            var getL = "(const char*)t_ll->items[ctron_i]"
+            if ct_is_lcode(ity) {
+                ecodeL = byte_slice(ity, 1, ity.len)
+                getL = "(*(" + ct_ctype(ecodeL) + "*)t_ll->items[ctron_i])"
+            }
+            eln("ctron_list* t_ll = (ctron_list*)(" + larrL + ");", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < t_ll->n; ctron_i++) \{", env)
+            eln("    " + ct_ctype(ecodeL) + " t_" + v0 + " = " + getL + ";", env)
+            ct_block(body, env_bind(env, v0, ecodeL), file, hreg)
+            eln("}", env)
+            return env
+        }
         panic("ct_stmt:for iter:" + it[0])
         return env
     }

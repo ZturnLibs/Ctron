@@ -263,6 +263,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); } (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); })"
         }
+        if ct_is_lcode(ot) {
+            // Lu: 族索引(T14-②):槽为堆盒指针,解引用取回 struct 值拷贝(§3.2 值语义)
+            var ity = ct_ctype(byte_slice(ot, 1, ot.len))
+            return "(*(" + ity + "*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
+        }
         if ot == "LI" {
             // List[I32] 索引:槽经 long 取回标量
             return "((int32_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
@@ -293,7 +298,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             var ot3 = ct_typeof(e[1], env, file)
-            if or2(ot3 == "L", ot3 == "LI") {
+            if or2(ot3 == "L", or2(ot3 == "LI", ct_is_lcode(ot3))) {
                 return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n"
             }
             if ot3 == "N" {
@@ -775,8 +780,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var a0t = "i"
                 if ag.len > 1 { a0t = ct_typeof(ag[1], env, file) }
                 var objt6 = ct_typeof(cal[1], env, file)
+                // Lu: 族(T14-②):struct 元素装箱入槽(堆盒值拷贝;索引侧解引用取回)
+                if ct_is_lcode(objt6) {
+                    var boxty = ct_ctype(byte_slice(objt6, 1, objt6.len))
+                    return "(\{ " + boxty + "* _lb = (" + boxty + "*)ctron_amalloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
+                }
                 var pv = ct_arg_cast(a0t, "s", a0)
-                if or2(objt6 == "LI", !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R"))))))) {
+                if or2(objt6 == "LI", !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(ct_is_lcode(a0t), or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))))) {
                     // 标量元素:槽为 char*,经 long 中转(镜像 List 元素槽模型)
                     pv = "(const char*)(long)(" + a0 + ")"
                 }

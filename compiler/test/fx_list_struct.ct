@@ -1,0 +1,44 @@
+// fx_list_struct.ct —— List[struct] 发射底座(T14-②;divergences (h) 族首件收口)
+// 装箱 push/类型化索引解引用/for-in/struct 字段持有/值拷贝语义;smoke emit 臂
+struct Pt {
+    x: I32
+    y: Str
+}
+struct Holder {
+    pts: List[Pt]
+}
+fn sum_x(xs: List[Pt]) -> I32 {
+    var t: I32 = 0
+    var i: I32 = 0
+    while i < xs.len {
+        t += xs[i].x
+        i += 1
+    }
+    return t
+}
+fn main() {
+    // 注解形
+    var ys: List[Pt] = List[Pt]()
+    ys.push(Pt { x: 10, y: "a" })
+    ys.push(Pt { x: 20, y: "b" })
+    assert_eq(sum_x(ys), 30)
+    // for-in
+    var n: I32 = 0
+    for p in ys {
+        assert(p.x > 0)
+        n += 1
+    }
+    assert_eq(n, 2)
+    // struct 字段持 List[Pt]
+    let h = Holder { pts: ys }
+    assert_eq(h.pts.len, 2)
+    assert_eq(h.pts[1].x, 20)
+    h.pts.push(Pt { x: 5, y: "c" })
+    assert_eq(h.pts.len, 3)
+    // 拷贝语义:索引取回的 p0 改局部不影响表内
+    let p0 = ys[0]
+    var p1 = p0
+    p1.x = 999
+    assert_eq(ys[0].x, 10)
+    println("list-struct full ok")
+}
