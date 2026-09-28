@@ -1,13 +1,18 @@
-// tests/gui/s49_xfilecomp —— P2 组件跨文件分发(波次四 ViewCall × 视图导入)
-// 根视图居主文件实例化被用模块的组件视图;run(ViewCall) desugar 端到端:
-// 合成 bind 须应答组件实参路径(prop:m.txt/prop:m.n),展开期 bxv_ask 经
-// 装配通道取值入组件 env。headless 直驱(与 s41 同契约)。
+// tests/gui/s49_xfilecomp —— P2 跨文件组件分发+契约Ⅱ数据事件
+// 根视图居主文件实例化被用模块组件;run(ViewCall) desugar 端到端:
+// 合成 bind 应答组件实参路径(prop:m.txt/prop:m.n/prop:m.tags),展开期
+// bxv_ask 经装配通道取值;mark 数据事件实参=事件局部数据(处理器仅数据
+// 形参,println 观察哨经 run.sh grep 门)。
 use comp.{badge_tag}
-use gui.{test, d_frame, d_expect_text}
+use gui.{test, d_frame, d_click, d_expect_text}
 
 struct Model {
     var txt: Str
     var n: I32
+}
+
+fn mark(s: Str) {
+    println("S49MARK " + s)
 }
 
 fn make() -> Model {
@@ -17,17 +22,20 @@ fn make() -> Model {
 fn headless_suite() -> I32 {
     var src: Str = ctron_embedded()
     var m = Box[Model](make())
-    var rc: I32 = test(src, 320, 480,
+    var rc: I32 = test(src, 320, 560,
         |buf| __gui_bind_Root(buf, m),
-        |name| __gui_act_Root(name, m),
+        |name, ar| __gui_act_Root(name, ar, m),
         |k| { },
         |t, act, key| {
             d_frame(t, |buf| __gui_bind_Root(buf, m))
-            // 根视图自有内容
             d_expect_text(t, "ROOTHERE")
-            // 组件实参两型:Str 直传 / I32 带型应答解标上屏
             d_expect_text(t, "BADGEGOOD")
             d_expect_text(t, "7")
+            d_click(t, "mark")
+            // 直驱面模拟 fire 供参(ev_fire 点击期求值:Str 裸串)
+            var margs = List[Str]()
+            margs.push("BADGEGOOD")
+            act("mark", margs)
         })
     return rc
 }

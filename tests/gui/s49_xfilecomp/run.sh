@@ -22,5 +22,7 @@ cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/
    "$T/s49.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 cd "$DIR"
-CTRON_GUI_HEADLESS=1 "$T/s49.bin"
+OUT=$(CTRON_GUI_HEADLESS=1 "$T/s49.bin" 2>&1) || { echo "$OUT"; exit 1; }
+echo "$OUT"
+echo "$OUT" | grep -q "S49MARK BADGEGOOD" || { echo "s49: Ⅱ 数据事件观察哨未达" >&2; exit 1; }
 echo "s49: 组件跨文件分发全绿(合成 bind 实参应答/带型解标/展开渲染)"

@@ -1002,6 +1002,30 @@ fn gui_fn_arity(d: List[Str]) -> I32 {
     return ps.len - 1
 }
 
+// P2 契约Ⅱ:名 → 形参型别头表(首匹配;未声明空表)——组件事件 ev_arg
+// 解码器选型依据(Str→s/I32→i/Bool→b,余默认 s)
+fn gui_fn_ptyps(file: List[Str], nm: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
+            var ps = d[3]
+            var k: I32 = 1
+            while k < ps.len {
+                var pr = ps[k]
+                if pr[0] == "Param" {
+                    out.push(gui_ty_head_node(pr[3]))
+                }
+                k += 1
+            }
+            return out
+        }
+        i += 1
+    }
+    return out
+}
+
 // 8c-3:名 → 形参个数(首匹配;未声明 -1)
 fn gui_ck_fn_argc(fns: List[Str], fna: List[I32], name: Str) -> I32 {
     var i: I32 = 0
@@ -2983,7 +3007,7 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
 
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> I32 {
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str]) -> I32 {
     // 单一树走查统一收集(I32 双栈,子树承 in_each 旗;域包 gs2i 不可见
     // 于编译器,禁字符串栈):标量路径表达式 / each 列表 / 行域 checkbox /
     // in-each 事件(实例分发)/ input on:input 处理器(名通道)
@@ -3024,86 +3048,116 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         z2 += 1
     }
     var exprs = List[Str]()
-    var stid = List[I32]()
-    var stie = List[I32]()
+    // P2 契约分家:靶视图(挪靶后=末根)事件/each/路径进合成面;组件树事件
+    // → cvn/cvf(ev_arg 按位解码),组件 each 通道/绑定路径跳过——env 前置
+    // 应答(Ⅰ),宿主合成 bind 无组件数据源,合了反而 C 未定义符号
+    var rst = List[I32]()
     var z3: I32 = 0
     while z3 < ntag.len {
         if isch[z3] == 0 {
-            stid.push(z3)
-            stie.push(0)
+            rst.push(z3)
         }
         z3 += 1
     }
-    var si: I32 = 0
-    while si < stid.len {
-        var id: I32 = stid[si]
-        var ie: I32 = stie[si]
-        si += 1
-        if ntag[id] == "each" {
-            ie = 1
-            lists.push(npre[id])
+    var ri4: I32 = 0
+    while ri4 < rst.len {
+        var istgt: Bool = false
+        if ri4 == rst.len - 1 {
+            istgt = true
         }
-        if ntag[id].len > 5 {
-            if byte_slice(ntag[id], 0, 5) == "call:" {
-                // 组件实例表达式实参(npost 0x01 连接)→ 合成 bind 路径:
-                // 展开期 bxv_ask 以 prop:<表达式> 问装配通道,合成侧须有应答分支
-                var atx: Str = npost[id]
-                var ai: I32 = 0
-                var aos: I32 = 0
-                while ai <= atx.len {
-                    if ai == atx.len {
-                        if ai > aos {
-                            exprs.push(byte_slice(atx, aos, ai))
-                        }
-                        ai += 1
-                    } else {
-                        if byte_at(atx, ai) == 1 {
+        var stid = List[I32]()
+        var stie = List[I32]()
+        stid.push(rst[ri4])
+        stie.push(0)
+        var si: I32 = 0
+        while si < stid.len {
+            var id: I32 = stid[si]
+            var ie: I32 = stie[si]
+            si += 1
+            if ntag[id] == "each" {
+                ie = 1
+                if istgt {
+                    lists.push(npre[id])
+                }
+            }
+            if ntag[id].len > 5 {
+                if byte_slice(ntag[id], 0, 5) == "call:" {
+                    // 组件实例表达式实参(npost 0x01 连接)→ 合成 bind 路径:
+                    // 展开期 bxv_ask 以 prop:<表达式> 问装配通道,合成侧须有应答分支
+                    var atx: Str = npost[id]
+                    var ai: I32 = 0
+                    var aos: I32 = 0
+                    while ai <= atx.len {
+                        if ai == atx.len {
                             if ai > aos {
                                 exprs.push(byte_slice(atx, aos, ai))
                             }
-                            aos = ai + 1
+                            ai += 1
+                        } else {
+                            if byte_at(atx, ai) == 1 {
+                                if ai > aos {
+                                    exprs.push(byte_slice(atx, aos, ai))
+                                }
+                                aos = ai + 1
+                            }
+                            ai += 1
                         }
-                        ai += 1
                     }
                 }
             }
-        }
-        if tag_is_input_evt(ntag[id], nbid[id]) {
-            crows.push(nbid[id])
-            cty.push("Bool")
-        } else {
-            if nbid[id] != "" {
-                exprs.push(nbid[id])
-            }
-            if nflag[id] != "" {
-                exprs.push(nflag[id])
-            }
-        }
-        var e: I32 = 0
-        while e < nec[id] {
-            var gi: I32 = nes[id] + e
-            if ie == 1 {
-                if f_evn[gi] == "input" {
-                    inps.push(f_evf[gi])
-                } else {
-                    ievs.push(f_evf[gi])
+            if tag_is_input_evt(ntag[id], nbid[id]) {
+                if istgt {
+                    crows.push(nbid[id])
+                    cty.push("Bool")
                 }
             } else {
-                if f_evn[gi] == "input" {
-                    inps.push(f_evf[gi])
-                } else {
-                    evn.push(f_evn[gi])
-                    evf.push(f_evf[gi])
+                if istgt {
+                    if nbid[id] != "" {
+                        exprs.push(nbid[id])
+                    }
+                    if nflag[id] != "" {
+                        exprs.push(nflag[id])
+                    }
                 }
             }
-            e += 1
+            var e: I32 = 0
+            while e < nec[id] {
+                var gi: I32 = nes[id] + e
+                if ie == 1 {
+                    if f_evn[gi] == "input" {
+                        if istgt {
+                            inps.push(f_evf[gi])
+                        }
+                    } else {
+                        if istgt {
+                            ievs.push(f_evf[gi])
+                        }
+                    }
+                } else {
+                    if f_evn[gi] == "input" {
+                        if istgt {
+                            inps.push(f_evf[gi])
+                        }
+                    } else {
+                        if istgt {
+                            evn.push(f_evn[gi])
+                            evf.push(f_evf[gi])
+                        } else {
+                            cvn.push(f_evn[gi])
+                            cvf.push(f_evf[gi])
+                        }
+                    }
+                }
+                e += 1
+            }
+            var ch: I32 = nfc[id]
+            while ch >= 0 {
+                stid.push(ch)
+                stie.push(ie)
+                ch = ns[ch]
+            }
         }
-        var ch: I32 = nfc[id]
-        while ch >= 0 {
-            stid.push(ch)
-            stie.push(ie)
-            ch = ns[ch]
-        }
+        ri4 += 1
     }
     var i: I32 = 0
     while i < exprs.len {
@@ -3144,7 +3198,7 @@ fn tag_is_input_evt(tag: Str, nbid: Str) -> Bool {
 }
 
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str]) -> List[Str] {
+fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -3250,11 +3304,48 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
         k += 1
     }
     g = g + "}\n"
-    var a2: Str = "fn __gui_act_" + vname + "(name: Str"
+    var a2: Str = "fn __gui_act_" + vname + "(name: Str, args: List[Str]"
     if sigargs.len > 0 {
         a2 = a2 + ", " + sigargs
     }
     a2 = a2 + ") \{\n"
+    // P2 契约Ⅱ:组件视图 call 形事件——实参全 ev_arg 按位解码(处理器声明
+    // 型别,合成期可知;事件实参=事件局部数据,4a 同构);先于靶事件分支
+    k = 0
+    while k < cvf.len {
+        var argcC = List[I32]()
+        var aoC = List[Str]()
+        var headC: Str = gui_ev_head2(cvf[k], argcC, aoC)
+        if headC.len > 0 {
+            if argcC[0] >= 0 {
+                var ptsl = gui_fn_ptyps(file, headC)
+                var parr: Str = ""
+                var pi2: I32 = 0
+                while pi2 < argcC[0] {
+                    var dc: Str = "ev_arg_s"
+                    if pi2 < ptsl.len {
+                        var pts: Str = ptsl[pi2]
+                        if pts == "I32" {
+                            dc = "ev_arg_i"
+                        } else {
+                            if pts == "Bool" {
+                                dc = "ev_arg_b"
+                            }
+                        }
+                    }
+                    if pi2 > 0 {
+                        parr = parr + ", "
+                    }
+                    parr = parr + dc + "(args, " + pi2.to_string() + ")"
+                    pi2 += 1
+                }
+                a2 = a2 + "    if name == \"" + headC + "\" \{ " + headC + "(" + parr + ") }\n"
+            } else {
+                a2 = a2 + "    if name == \"" + headC + "\" \{ " + headC + "() }\n"
+            }
+        }
+        k += 1
+    }
     k = 0
     while k < evf.len {
         // input 元素的 on:input 已由名通道前缀分支接管(inps),主循环跳过免双写
@@ -3382,7 +3473,7 @@ fn gui_ds_gen(vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], 
         bindcl = bindcl + ", " + cargs
     }
     bindcl = bindcl + ")"
-    var actcl: Str = "|nm| __gui_act_" + vname + "(nm"
+    var actcl: Str = "|nm, ar| __gui_act_" + vname + "(nm, ar"
     if cargs.len > 0 {
         actcl = actcl + ", " + cargs
     }
@@ -3863,6 +3954,13 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     nsyms.push("rt_run_anchor")
     nsyms.push("ev_suffix_i")
     nsyms.push("ev_suffix_i")
+    // 契约Ⅱ:组件事件分支调 ev_arg_* 解码器——同闭包不可见铁律
+    nsyms.push("ev_arg_s")
+    nsyms.push("ev_arg_s")
+    nsyms.push("ev_arg_i")
+    nsyms.push("ev_arg_i")
+    nsyms.push("ev_arg_b")
+    nsyms.push("ev_arg_b")
     nu.push(nsegs)
     nu.push(nsyms)
     file.push(nu)
@@ -4023,8 +4121,10 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var ievs = List[Str]()
     var crows = List[Str]()
     var cty = List[Str]()
-    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
-    var made: List[Str] = gui_ds_gen(vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv)
+    var cvn = List[Str]()
+    var cvf = List[Str]()
+    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf)
+    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf)
     // made = p_file 产物(File 节点):[0] 是 "File" 头字符串,从 1 起拼——
     // 从 0 拼即把头串当 decl 注入,trans/emit 面遍历 d[0] 解引用即 SEGV(s41 根因)
     var k: I32 = 1

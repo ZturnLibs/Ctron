@@ -9,18 +9,18 @@ fn headless_suite() -> I32 {
     var m = Box[Model](make())
     var rc: I32 = test(src, 320, 640,
         |buf| __gui_bind_TodoApp(buf, m),
-        |name| __gui_act_TodoApp(name, m),
+        |name, ar| __gui_act_TodoApp(name, ar, m),
         |k| { },
         |t, act, key| {
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "S48 CROSSFILE")
             d_expect_text(t, "nothing yet")
             // 键入持久化:on:input 名通道
-            __gui_act_TodoApp("input:hello", m)
+            __gui_act_TodoApp("input:hello", List[Str](), m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "hello")
             // 添加
-            __gui_act_TodoApp("add_todo", m)
+            __gui_act_TodoApp("add_todo", List[Str](), m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "hello")
             d_expect_absent(t, "nothing yet")
@@ -29,7 +29,7 @@ fn headless_suite() -> I32 {
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_text(t, "world")
             // 删末项
-            __gui_act_TodoApp("remove_last", m)
+            __gui_act_TodoApp("remove_last", List[Str](), m)
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))
             d_expect_absent(t, "world")
             d_expect_text(t, "hello")

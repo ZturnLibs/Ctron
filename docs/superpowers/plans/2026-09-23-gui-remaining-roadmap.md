@@ -155,6 +155,23 @@ List,免经 bind 通道),合成 bind 免新增分支;Ⅱ 事件实参=全 ev_arg
 v1 放行,多实例+事件须 hinst 路由(env 快照随命中表存)随实例分发专项。
 **裁决点**:Ⅱ 的型别解码是否接受"组件事件实参=事件局部数据"(4a 同构)
 vs 保留 prop 根直传形态;Ⅲ v1 边界是否可接受。
+**契约Ⅱ落地(0928,按推荐设计实施;待裁决追认)**:合成 act 签名加宽
+`(name, args, cargs)`(actcl `|nm, ar|` 双参闭包,消费 ev_fire 实参传出);
+collect 按树分家——靶视图(挪靶后=末根)事件/each/路径进合成面,组件树
+事件→cvn/cvf 走 **ev_arg 按位解码**(gui_fn_ptyps 取处理器声明型别选
+s/i/b 解码器),组件树 each 通道/绑定路径跳过(env 应答,合成反而 C 未定
+义符号);premerge 注入补 ev_arg_s/i/b 请求(闭包不可见铁律);四夹具
+(s41/s48/s49/s50)+gui_dash 直驱 act 调用适配双参。**边界与新证**:①
+直驱面 act 需双参齐供——`act(d_click(...))` 单参调双参闭包=ar 寄存器
+垃圾,ev_arg 解引用即 SEGV(act v2 缺参补 NULL 在册坑新实例),直驱模拟
+fire 手动供参 `act("mark", margs)`;②组件事件处理器=纯数据形参(无根
+捕获),模型变异走宿主自有事件,观察哨=println+run.sh grep 门(static
+var 不走 emit 发射,只有 static let——新证入册)。**回归**:s41/s48/s50
+gen 重构后全绿;**s49 Ⅱ 正例验证被 peer gui.ct 在飞 WIP 阻**(fam2p
+先用后声明,gui.ct 编译不过=全 GUI 夹具暂时不可跑,非本片)——落窗补验
+登记。**契约Ⅰ延后**:rt_bind_items env 前置回落需动 gui.ct,正撞 peer
+实时编辑区(extern 声明块被其编辑器缓冲刷丢一次,编辑赛跑无赢家)——
+gui.ct 落窗后按已注册设计实施(半小时片)。
 **内容投影落库(0928,s50_dialogslot;「dialog slot」销账)**:ViewCall 实例
 支持非自闭合携带子树,组件体 `<slot/>` 锚位拼接。机制:①gt_node 实例分支
 分自闭合/投影两形——投影形子树链接到实例节点(nfc/ns,宿主上下文解析);
