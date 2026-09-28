@@ -313,6 +313,46 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> List[St
             }
             return s4("k", envl, outl, vV2())
         }
+        if it[0] == "U" {
+            // Iterator 协议(T15;§3.8.2/§4):struct 值有 next 方法实现 →
+            // for 糖 = next 调用循环。self 与循环共享 env(var 绑定可变,
+            // 方法体 self.cur += 1 对下一轮可见——值类型迭代状态推进)
+            var scls = ""
+            if it.len > 1 { scls = it[1] }
+            var mth15 = find_impl_method(file, scls, "next")
+            if mth15.len > 0 {
+                var envI = env_add(ir[1], "self", it)
+                var outI = ir[3]
+                var goI = true
+                while goI {
+                    var br15 = run_block(file, envI, outI, mth15[5], false)
+                    if br15[0] == "a" {
+                        return s4(br15[0], br15[1], br15[2], br15[3])
+                    }
+                    envI = br15[1]
+                    outI = br15[2]
+                    if br15[3][0] == "T" && br15[3].len > 2 {
+                        if seq2(br15[3][1], "Some") {
+                            var eit = env_add(envI, nm, br15[3][2])
+                            var brb = run_block(file, eit, outI, st[3], false)
+                            if brb[0] == "b" {
+                                return s4("k", env_drop(brb[1], 1), brb[2], vV2())
+                            }
+                            if brb[0] != "k" && brb[0] != "c" {
+                                return s4(brb[0], brb[1], brb[2], brb[3])
+                            }
+                            envI = env_drop(brb[1], 1)
+                            outI = brb[2]
+                        } else {
+                            goI = false
+                        }
+                    } else {
+                        goI = false
+                    }
+                }
+                return s4("k", envI, outI, vV2())
+            }
+        }
         if it[0] != "R" {
             panic("for iter not range")
             return s4("a", env, out, vV2())

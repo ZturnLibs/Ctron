@@ -42,7 +42,7 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r3a_capture.ct", "R-P3a", Status::Green),
         ("r3a_capture_var.neg.ct", "R-P3a", Status::NegPending("E3070")),
         ("r3b_adapters.ct", "R-P3b", Status::RunRed),
-        ("r3b_iter_trait.ct", "R-P3b", Status::RunRed),
+        ("r3b_iter_adapters.ct", "R-P3b", Status::RunRed),
         // ---- R-P2d fmt 夹具(行为测试身份,今天绿) ----
         ("r2d_fmt_fixture.ct", "R-P2d", Status::Green),
         ("r2d_fmt_chain.ct", "R-P2d", Status::Green),

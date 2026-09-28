@@ -190,6 +190,35 @@ void eval_stmt(rt* R, cstmt* st) {
                 if (R->has_brk) { R->has_brk = 0; break; }
                 R->has_cont = 0;
             }
+        } else if (it.k == V_STRUCT && it.type) {
+            /* Iterator 协议(T15;§3.8.2):struct 值有 next 方法 → for = next 调用循环。
+             * self 绑定于循环 env(与循环变量同层)——方法体 self.cur += 1 经 env
+             * 写回对下一轮可见(值类型迭代状态推进;方法体直跑免 call_method_body
+             * 的独立 env 弹栈丢 mutation) */
+            const cfn* next_fn = cls_method(R, it.type, "next");
+            if (!next_fn || !next_fn->body) {
+                env_pop(R);
+                rt_abort(R, RT_ERROR, "for 需要 range 或数组(无 next 方法: %s)", it.type);
+            }
+            env_let(R, "self", it);
+            int sr = R->has_ret;
+            val srv = R->ret;
+            for (;;) {
+                R->has_ret = 0;
+                val rv = eval_block(R, next_fn->body);
+                val res = R->has_ret ? R->ret : rv;
+                R->has_ret = sr;
+                R->ret = srv;
+                if (res.k == V_TAG && res.tag && strcmp(res.tag, "Some") == 0 && res.nitems >= 1) {
+                    if (iv) iv->slot = res.items[0];
+                    (void)eval_block(R, st->body);
+                    if (R->has_ret) break;
+                    if (R->has_brk) { R->has_brk = 0; break; }
+                    R->has_cont = 0;
+                } else {
+                    break; /* None → 终止 */
+                }
+            }
         } else {
             env_pop(R);
             rt_abort(R, RT_ERROR, "for 需要 range 或数组");

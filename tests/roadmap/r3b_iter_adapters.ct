@@ -1,0 +1,26 @@
+// r3b_iter_adapters.ct —— 适配器作用于自定义 Iterator(T16;R-P3b)
+// 语义承诺:filter/sum 等适配器作用于任何 Iterator 实现(惰性,零中间集合)
+// 锚点:T16 落地转绿(依赖 T15 Iterator for 集成)
+trait Iterator[T] {
+    fn next(var self) -> T?
+}
+
+struct Counter {
+    var cur: I32
+    let limit: I32
+}
+
+impl Iterator[I32] for Counter {
+    fn next(var self) -> I32? {
+        if self.cur >= self.limit { return None }
+        let v = self.cur
+        self.cur += 1
+        return Some(v)
+    }
+}
+
+test "adapters over custom iterator" {
+    let c = Counter { cur: 0, limit: 6 }
+    let total = c.filter(|x| x % 2 == 0).sum()
+    assert_eq(total, 6)
+}

@@ -200,7 +200,7 @@
 
 ### T15 · `Iterator[T]` trait + for 集成
 
-- **预估:** 1.5–2 d。**前置:** 无(T25 trait 发射若未完成,则本件先交付解释器侧+发射侧 for 静态特化)。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28;三线 interp,锚迁 03k;发射臂 var-self 引用语义在册)
 - **目标:** 用户 `impl Iterator[T] for X { fn next(&var self) -> T? }` 即可 `for x in xs`;翻转 `tests/roadmap/r3b_iter_trait.ct`。
 - **范围:** `compiler/src/sem_walk.ct`/`sem_calls.ct`(for 目标解迭代协议:有 next 方法即协议满足——结构化满足谓词,同 derive/Show/Eq 口径,§3.9.2 先例)、`eval_run.ct`/`trans_stmt.ct`(for 循环糖→next 调用循环)。
 - **要点:** 锚头注两可点裁决:`next` 的 self 形态按锚起草的 `&var self`;Range/List/切片/数组的既有 for 旁路保留(内建快路径),Iterator 协议是通用出口——**能力优先:协议是扩展,不是替换内建路径**。前奏 trait `Clone`/`Hash`(§3.8.1)同件裁决:有消费场景(深拷贝/哈希容器键)则随本件立协议,无消费场景则规范修订从清单移除或声明由 `@derive`/结构化谓词承载——**勿留无名注册的死 trait**,结论入 COVERAGE。
@@ -564,7 +564,7 @@
 | T12 | gzip | W2 | **已完成**(0928;主体=webfw 泳道 P4-B,本件补 python 双向互操作差分) | 见 git |
 | T13 | Atomic 真原子 | W2 | **已完成**(0928,__atomic SEQ_CST 三面,双矩阵精确 200k) | 见 git |
 | T14 | Channel 去限制 | W2 | **已完成**(0928,三片 0e004a2/b6d26fe/369b9bc;pool 消费方迁移随 db 泳道) | 见 git |
-| T15 | Iterator trait | W3 | 待办 | — |
+| T15 | Iterator trait | W3 | **已完成**(0928,三线 interp;发射臂 var-self 引用语义在册) | 见 git |
 | T16 | 适配器链 | W3 | 待办 | — |
 | T17 | std/iter 归位 | W3 | 待办 | — |
 | T18 | 列级 span | W4 | 待办 | — |

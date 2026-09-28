@@ -268,6 +268,39 @@ impl<'a> Interp<'a> {
             ast::Stmt::Continue => Err(Flow::Continue),
             ast::Stmt::For { pattern, iter, body } => {
                 let it = self.expr(iter, env)?;
+                // Iterator 协议(T15;§3.8.2):struct 值有 next 方法 → for = next 调用循环。
+                // R 线 struct 值字段经 Rc<RefCell> 共享 → 方法体 self.cur += 1 天然对
+                // 循环侧可见(引用承载;与 interp 既有 struct 传值口径一致)
+                if let Value::Struct { def, .. } = &it {
+                    let dname = self.def_name(*def);
+                    if let Some(nbody) = self.find_method_block(&dname, "next") {
+                        loop {
+                            let fenv = Env::child(&self.globals);
+                            fenv.define("self".into(), Local { value: it.clone() });
+                            let rv = self.check_block(&nbody, &fenv)?;
+                            let go = match &rv {
+                                Value::Enum { variant: 0, payload, .. } if payload.len() >= 2 => {
+                                    let v = payload[1].clone();
+                                    self.scopes_push_bind(pattern, &v, env);
+                                    let mut sub = Vec::new();
+                                    let r = self.exec_stmts(body.stmts.as_slice(), env, &mut sub);
+                                    for (v2, def2) in sub.iter().rev() { self.run_drop(v2, *def2); }
+                                    match r {
+                                        Err(Flow::Break) => break,
+                                        Err(Flow::Continue) => continue,
+                                        Err(e) => return Err(e),
+                                        Ok(()) => {}
+                                    }
+                                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                                    true
+                                }
+                                _ => false,
+                            };
+                            if !go { break; }
+                        }
+                        return Ok(());
+                    }
+                }
                 let items: Vec<Value> = match &it {
                     Value::Range { from, to, inclusive } => (*from..(*to + *inclusive as i64)).map(Value::Int).collect(),
                     Value::Array(arr) => arr.borrow().clone(),
@@ -1355,6 +1388,25 @@ impl<'a> Interp<'a> {
     }
 
     /// 调用 impl 方法:方法体来自本文件的 ast::ImplDecl
+    /// T15:按类型名+方法名找 impl 方法体(Iterator 协议 for 消费)
+    fn find_method_block(&self, for_type: &str, m: &str) -> Option<ast::Block> {
+        for d in &self.file.decls {
+            if let ast::Decl::Impl(im) = d {
+                let ft = named_tail(&im.for_ty);
+                if ft == for_type {
+                    for item in &im.items {
+                        if let ast::ImplItem::Method(mm) = item {
+                            if mm.name == m {
+                                return mm.body.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn call_impl_method(&mut self, trait_name: &str, for_type: &str, m: &str, vals: &[Value], env: &Rc<Env>) -> EvalResult {
         let dname = for_type.to_string();
         // self 值 = 第一个实参

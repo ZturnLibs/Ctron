@@ -626,3 +626,17 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   产错型强转登记位、04g 类方法发射((h) 族下一件)。
 - 门禁:net 17/17×2、suite 87/88、db 44/10、http 110/1(基线红不变)、cargo 14/0、
   meta/fmt/ffi 过。
+
+**2026-09-28 T15 Iterator for 集成三线落地**(spec-gap W3;§3.8.2/§4;R-P3b 首件):
+- r3b_iter_trait 锚迁入主套件 03k_iter_for(E2030 语义正交,无 neg);锚修订:&var self
+  (非文法形)→ var self(EBNF 正形,起草笔误);适配器测试拆出 r3b_iter_adapters(T16 域)。
+- 三线 interp:自举 For 处理器 U 分支(find_impl_method next + 共享 env 运行方法体——
+  self 绑定于循环 env,var cur += 1 经 env 写回对下一轮可见);C 宿主 ST_FOR V_STRUCT 分支
+  (cls_method + 同 env 直跑 body 免 call_method_body 弹栈丢 mutation);R 线 Stmt::For
+  Struct 分支(find_method_block + fenv self 绑定;R 线 struct 值字段 Rc<RefCell> 共享 =
+  mutation 天然对循环侧可见)。
+- 顺手修:解析器 &var 前缀死循环(& 消费后 var 被当参数名 + else 双 adv 越过 self →
+  p_typ 死循环;防御消耗按 var 语义)。
+- 发射臂登记:var self 方法按值传递 = mutation 丢失(Iterator for 发射缺口;泛 var 参数
+  引用语义=发射层系统改造,归后续批次)。
+- suite 88/89×2(+1 全绿);cargo 14/0;meta 过;db 44/10 基线;net 17/17。
