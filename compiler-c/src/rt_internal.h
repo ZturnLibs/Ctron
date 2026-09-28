@@ -20,7 +20,7 @@
 // ================= 值 =================
 typedef enum { V_INT, V_FLOAT, V_BOOL, V_STR, V_VOID, V_RANGE, V_ARR, V_TAG, V_FN, V_CLOSURE,
                 V_STRUCT, V_BOX, V_ERR, V_LIST, V_ATOM, V_TUPLE, V_TASK, V_CHAN, V_MUTEX, V_SCOPE,
-                V_SIMD, V_NS } vkind;
+                V_SIMD, V_NS, V_SB } vkind; // V_SB:StringBuilder(§3.8.2;T03,段列表复用 lst)
 typedef struct chan_t chan_t;
 typedef struct mutex_t mutex_t;
 typedef struct task_t task_t;

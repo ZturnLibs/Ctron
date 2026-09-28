@@ -434,3 +434,11 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   表达式位 match 与字面量模式臂 ct_expr panic —— 即 P8-C 在册「match-on-Result emit 缺口
   interp 专臂」同族,守卫/或模式发射随该债一并扩;C 宿主 trans 同族登记。
 - suite 77/78 双线(+2 全绿,06f/06e 两预存红不变);cargo 13 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T03 StringBuilder 前奏三线落地**(spec-gap W1;§3.8.2 R-P2a 销账):
+- r2a_sb 锚迁入主套件 03j_stringbuilder.ct;API:StringBuilder()/push_str/to_string/len(字节)。
+- 三线:自举(SB 值=段列表宿主 List 别名语义,call_mem 专属臂须先于通用 to_string)/
+  C 宿主(V_SB 复用 listnode 段表)/R 线(Value::StrBuilder,通用 to_string 截胡排除;
+  裸类型名构造器调用回退补——def_by_name 命中即构造,含无泛型形)。
+- 发射臂:native_suite 口径 trans 拒绝=skip;StringBuilder 发射(拼接语义)随容器发射批次。
+- suite 78/79 双线 +1 全绿;cargo 13 套全绿;meta/fmt parity 过。

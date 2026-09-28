@@ -633,6 +633,11 @@ val eval_expr(rt* R, cexpr* e) {
             if (o.k == V_ARR) return v_int(o.nitems, 32, 0);
             if (o.k == V_STR) return v_int(o.s ? (__int128)strlen(o.s) : 0, 32, 0);
             if (o.k == V_LIST) return v_int(o.lst->n, 32, 0);
+            if (o.k == V_SB) {
+                __int128 n = 0;
+                for (size_t i = 0; i < o.lst->n; i++) n += (__int128)strlen(o.lst->items[i].s ? o.lst->items[i].s : "");
+                return v_int(n, 32, 0);
+            }
             rt_abort(R, RT_ERROR, ".len 目标类型不支持");
         }
         if (strcmp(m, "char_len") == 0) {
@@ -780,6 +785,16 @@ val eval_expr(rt* R, cexpr* e) {
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "List") == 0) {
             return v_list(R); // GC List[T]()
+        }
+        if (e->callee && e->callee->kind == EX_IDENT
+            && strcmp(e->callee->text, "StringBuilder") == 0) {
+            // StringBuilder()(§3.8.2;T03):段列表(引用语义,push 别名可见)
+            if (e->nelems != 0) rt_abort(R, RT_ERROR, "StringBuilder arity");
+            val v = {0};
+            v.k = V_SB;
+            listnode* ln = (listnode*)ctron_arena_alloc(R->a, sizeof(listnode));
+            v.lst = ln;
+            return v;
         }
         // Simd[E, N].method(args) —— splat(其余 lane/to_array 走成员路径)
         if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname && cal->obj
@@ -1263,6 +1278,40 @@ val eval_expr(rt* R, cexpr* e) {
                     return v_arr(it, recv.nitems);
                 }
                 rt_abort(R, RT_ERROR, "Simd 方法不支持: %s", cal->mname);
+            }
+            if (recv.k == V_SB && cal->mname) {
+                // StringBuilder 方法(§3.8.2;T03):push_str 追段 / to_string 拼段
+                if (strcmp(cal->mname, "push_str") == 0) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "push_str 实参");
+                    val sv = eval_expr(R, e->elems[0]);
+                    if (sv.k != V_STR) rt_abort(R, RT_ERROR, "push_str 需 Str");
+                    if (recv.lst->n == recv.lst->cap) {
+                        size_t nc = recv.lst->cap ? recv.lst->cap * 2 : 4;
+                        val* ni = (val*)ctron_arena_alloc(R->a, nc * sizeof(val));
+                        memcpy(ni, recv.lst->items, recv.lst->n * sizeof(val));
+                        recv.lst->items = ni;
+                        recv.lst->cap = nc;
+                    }
+                    recv.lst->items[recv.lst->n].k = V_STR;
+                    recv.lst->items[recv.lst->n].s = astr(R, sv.s ? sv.s : "");
+                    recv.lst->n += 1;
+                    return v_void();
+                }
+                if (strcmp(cal->mname, "to_string") == 0) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "to_string 实参");
+                    size_t total = 1;
+                    for (size_t i = 0; i < recv.lst->n; i++)
+                        total += strlen(recv.lst->items[i].s ? recv.lst->items[i].s : "");
+                    char* buf = (char*)ctron_arena_alloc(R->a, total);
+                    buf[0] = 0;
+                    for (size_t i = 0; i < recv.lst->n; i++)
+                        strcat(buf, recv.lst->items[i].s ? recv.lst->items[i].s : "");
+                    val o = {0};
+                    o.k = V_STR;
+                    o.s = buf;
+                    return o;
+                }
+                rt_abort(R, RT_ERROR, "StringBuilder 方法不支持: %s", cal->mname);
             }
             if (recv.k == V_LIST && cal->mname) {
                 if (strcmp(cal->mname, "push") == 0) {

@@ -32,7 +32,7 @@ fn prelude_ok(nm: Str) -> Bool {
     if seq2(nm, "gui_sk_load") { return true }
     if or2(seq2(nm, "ctron_exe_path"), or2(seq2(nm, "env_get"), seq2(nm, "ctron_cli_flag"))) { return true }
     if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }
-    if or2(seq2(nm, "fmt"), or2(seq2(nm, "char_len"), or2(seq2(nm, "Box"), seq2(nm, "List")))) { return true }
+    if or2(seq2(nm, "fmt"), or2(seq2(nm, "char_len"), or2(seq2(nm, "Box"), or2(seq2(nm, "List"), seq2(nm, "StringBuilder"))))) { return true }
     if or2(seq2(nm, "String"), or2(seq2(nm, "Channel"), or2(seq2(nm, "Mutex"), seq2(nm, "Atomic")))) { return true }
     if or2(seq2(nm, "Global"), or2(seq2(nm, "Task"), or2(seq2(nm, "Scope"), seq2(nm, "Simd")))) { return true }
     if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "clo_handle"), or2(seq2(nm, "clo_cb2"), seq2(nm, "clo_cb3")))) { return true }

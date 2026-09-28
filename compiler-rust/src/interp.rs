@@ -26,6 +26,8 @@ pub enum Value {
     Struct { def: DefId, fields: Rc<RefCell<Vec<(String, Value)>>> },
     Class { def: DefId, fields: Rc<RefCell<Vec<(String, Value)>>> },
     Boxed(Rc<Value>),
+    /// StringBuilder(§3.8.2;T03):段缓冲,引用语义(别名可见)
+    StrBuilder(Rc<RefCell<String>>),
     Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
     Range { from: i64, to: i64, inclusive: bool },
@@ -703,7 +705,14 @@ impl<'a> Interp<'a> {
     }
     fn eval_call(&mut self, callee: &ast::Expr, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
         match callee {
-            Expr::Ident(name) => self.call_ident(name, args, env),
+            Expr::Ident(name) => {
+                // StringBuilder()(§3.8.2;T03)
+                if name == "StringBuilder" {
+                    if !args.is_empty() { return Err(Flow::Panic("StringBuilder arity".into())); }
+                    return Ok(Value::StrBuilder(Rc::new(RefCell::new(String::new()))));
+                }
+                self.call_ident(name, args, env)
+            }
             Expr::Member { obj, target } => {
                 let m = member_name(target);
                 if let Expr::Ident(on) = &**obj {
@@ -963,8 +972,9 @@ impl<'a> Interp<'a> {
             o = (**inner).clone();
         }
 
-        // 标量 to_string(D1;fmt_val 同格式;method 位与属性位双覆盖)
-        if m == "to_string" && args.is_empty() {
+        // 标量 to_string(D1;fmt_val 同格式;method 位与属性位双覆盖;
+        // StringBuilder 例外——其 to_string 语义为段拼接,走下方专属臂,T03)
+        if m == "to_string" && args.is_empty() && !matches!(o, Value::StrBuilder(_)) {
             let mut out = String::new();
             fmt_value(&o, &mut out);
             return Ok(Value::Str(Rc::new(out)));
@@ -1143,6 +1153,16 @@ impl<'a> Interp<'a> {
 
         // 非阻塞成员方法(含错误级联的 Err 接收者)
         match &o {
+            Value::StrBuilder(buf) => return match m {
+                "push_str" => {
+                    let v = self.expr(&args[0], env)?;
+                    buf.borrow_mut().push_str(&to_display(&v));
+                    Ok(Value::Void)
+                }
+                "to_string" => Ok(Value::Str(Rc::new(buf.borrow().clone()))),
+                "len" => Ok(Value::Int(buf.borrow().len() as i64)),
+                _ => Err(Flow::Panic(format!("StringBuilder 无方法 `{}`", m))),
+            },
             Value::Array(arr) => return match m {
                 "push" => {
                     let v = self.expr(&args[0], env)?;
@@ -1653,6 +1673,11 @@ impl<'a> Interp<'a> {
                 }
                 "trace" => Ok(Value::Str(trace.clone())),
                 _ => Err(Flow::Panic(format!("AnyError 无属性 `{}`", name))),
+            },
+            Value::StrBuilder(buf) => match name {
+                // §3.8.2;T03:len = 当前字节长度
+                "len" => Ok(Value::Int(buf.borrow().len() as i64)),
+                _ => Err(Flow::Panic(format!("StringBuilder 无属性 `{}`", name))),
             },
             _ => Err(Flow::Panic(format!("{} 无成员 `{}`", to_display(o), name))),
         }

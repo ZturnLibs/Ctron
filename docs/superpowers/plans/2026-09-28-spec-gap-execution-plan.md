@@ -68,7 +68,7 @@
 
 ### T03 · StringBuilder 前奏(r2a_sb)
 
-- **预估:** 0.5–1 d。**前置:** 无。**状态:** 待办
+- **预估:** 0.5–1 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28)
 - **目标:** 前奏最小清单(§3.8.1)成员 `StringBuilder` 落地,翻转 `tests/roadmap/r2a_sb.ct`。
 - **范围:** `std/str.ct`(或独立 `std/sb.ct`)实现 + `compiler/src/sem_calls.ct` 前奏注册(若按前奏类型);实现建议:`struct Sb { buf: List[U8] }` 值类型 + `push_str/push_i64/to_string` 面,to_string 走既有 `Str` 构造。
 - **要点:** 先查 r2a_sb.ct 文件头承诺的 API 形态,按锚实现,勿自造 API;`to_string()` 是 alloc 面(§6.5 推断自动覆盖)。
@@ -535,7 +535,7 @@
 |---|---|---|---|---|
 | T01 | std/bit 模块 | W1 | **已完成**(0928,四面同判+crypto 回切,bit_ops×4 臂绿,db 回基线) | 见 git |
 | T02 | 模式守卫 R-P3c | W1 | **已完成**(0928,三线落地+锚迁主套件 02f,发射臂债在册) | 见 git |
-| T03 | StringBuilder | W1 | 待办 | — |
+| T03 | StringBuilder | W1 | **已完成**(0928,三线+锚迁 03j) | 见 git |
 | T04 | W8 锚补齐 | W1 | 待办 | — |
 | T05 | r1a 行尾点守卫 | W1 | 待办 | — |
 | T06 | E6030 封闭性 | W1 | 待办 | — |

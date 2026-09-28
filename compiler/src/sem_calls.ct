@@ -111,6 +111,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("char_len")
     prel.push("Box")
     prel.push("List")
+    prel.push("StringBuilder")
     prel.push("String")
     prel.push("Channel")
     prel.push("Mutex")

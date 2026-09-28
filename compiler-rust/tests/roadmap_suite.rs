@@ -32,7 +32,6 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r2a_list_oob.panic.ct", "R-P2a", Status::RunRed),
         ("r2a_map.ct", "R-P2a", Status::RunRed),
         ("r2a_set.ct", "R-P2a", Status::RunRed),
-        ("r2a_sb.ct", "R-P2a", Status::RunRed),
         ("r2a_container_send.ct", "R-P2a", Status::RunRed),
         ("r2a_container_alloc.neg.ct", "R-P2a", Status::NegGreen("E3040")),
         // ---- R-P2b std 能力(std.* 桩已解析;运行时未实现) ----

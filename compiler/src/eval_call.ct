@@ -54,6 +54,17 @@ fn call_cv(file: List[Str], env: List[Str], out: Str, v: List[Str], vals: List[S
     return e4("a", env, vV2(), out)
 }
 fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> List[Str] {
+    if seq2(nm, "StringBuilder") {
+        // StringBuilder()(§3.8.2;T03):值 = ["SB", 段…] —— 段列表即宿主 List,
+        // push 原地变、别名可见(镜像 vL 语义);to_string 拼段,len 为字节总和
+        if vals.len == 0 {
+            var sbv = List[Str]()
+            sbv.push("SB")
+            return e4("k", env, sbv, out)
+        }
+        panic("StringBuilder arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "print") {
         if vals.len == 1 {
             return e4("k", env, vV2(), out + fmt(vals[0]))
@@ -887,6 +898,27 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
     }
     var recv = ob[2]
     var m = cal[3]
+    // StringBuilder(§3.8.2;T03):须先于通用 to_string 分支
+    if recv[0] == "SB" {
+        if seq2(m, "push_str") && vals.len == 1 {
+            if vals[0][0] != "S" {
+                panic("push_str 需 Str")
+            }
+            recv.push(vals[0][1])
+            return e4("k", ob[1], vV2(), ob[3])
+        }
+        if seq2(m, "to_string") && vals.len == 0 {
+            var acc = ""
+            var si: I32 = 1
+            while si < recv.len {
+                acc = acc + recv[si]
+                si += 1
+            }
+            return e4("k", ob[1], vS(acc), ob[3])
+        }
+        panic("StringBuilder 方法:" + m)
+        return e4("a", ob[1], vV2(), ob[3])
+    }
     if seq2(m, "to_string") {
         if vals.len == 0 {
             return e4("k", ob[1], vS(fmt(recv)), ob[3])

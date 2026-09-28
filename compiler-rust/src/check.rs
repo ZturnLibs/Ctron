@@ -2440,6 +2440,11 @@ impl<'a> Checker<'a> {
             "byte_slice" => { for a in args { self.expr(a, None); } Ty::Str }
             _ => {
                 let Some(sym) = self.lookup_fn_global(name) else {
+                    // 类型名裸构造器(§3.8.2;T03:StringBuilder() 等,无泛型实参形)
+                    if let Some(def) = self.sema.def_by_name.get(name) {
+                        for a in args { self.expr(a, None); }
+                        return Ty::Named { def: *def, args: vec![] };
+                    }
                     self.err("E2020", format!("未解析的名称 `{}`", name), Span::new(1, 1, 0, 0));
                     for a in args { self.expr(a, None); }
                     return Ty::Err;
@@ -2690,6 +2695,11 @@ impl<'a> Checker<'a> {
             return pty.clone();
         }
         match d.name.as_str() {
+            "StringBuilder" => match tn.as_str() {
+                // §3.8.2;T03:len = 当前字节长度
+                "len" => self.named("I32", vec![]),
+                _ => { self.err("E2020", format!("StringBuilder 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+            },
             "Option" | "Result" => match tn.as_str() {
                 "is_some" | "is_none" | "is_ok" | "is_err" => self.named("Bool", vec![]),
                 _ => { self.err("E2020", format!("{} 无属性 `{}`(方法请直接调用)", d.name, tn), Span::new(1, 1, 0, 0)); Ty::Err }
@@ -2909,6 +2919,12 @@ impl<'a> Checker<'a> {
                         "push" => { self.expr(&args[0], Some(&targs.first().cloned().unwrap_or(Ty::Err))); Ty::Void }
                         "pop" => Ty::Optional(Box::new(targs.first().cloned().unwrap_or(Ty::Err))),
                         _ => { self.err("E2020", format!("List 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    },
+                    "StringBuilder" => match m {
+                        // §3.8.2;T03:push_str 拼段 / to_string 产出 String(len 走属性)
+                        "push_str" => { if !args.is_empty() { self.expr(&args[0], None); } Ty::Void }
+                        "to_string" => { self.named("String", vec![]) }
+                        _ => { self.err("E2020", format!("StringBuilder 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     },
                     "ArenaList" => match m {
                         "push" => { self.expr(&args[0], Some(&targs.first().cloned().unwrap_or(Ty::Err))); Ty::Void }

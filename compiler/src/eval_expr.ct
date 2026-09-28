@@ -257,6 +257,15 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                 if recv[0] == "L" {
                     return e4("k", ob[1], vI(recv.len - 1), ob[3])
                 }
+                if recv[0] == "SB" {
+                    var sbl: I32 = 0
+                    var sbi: I32 = 1
+                    while sbi < recv.len {
+                        sbl += recv[sbi].len
+                        sbi += 1
+                    }
+                    return e4("k", ob[1], vI(sbl), ob[3])
+                }
                 var tn: Str = "?"
                 if recv.len > 1 { tn = recv[1] }
                 var en: Str = "?"
