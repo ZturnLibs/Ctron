@@ -746,9 +746,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if m == "recv" { return "ct_ch_recv((ct_chan*)(" + obj + "))" }
             if m == "fetch_add" {
+                // 真原子(§7.3;T13):__atomic RMW 替全局锁;SEQ_CST 对齐 rt 语义
                 var f0 = "0"
                 if ag.len > 1 { f0 = ct_expr(ag[1], env, file) }
-                return "(\{ ctron_cell* _p = (ctron_cell*)(" + obj + "); ct_glock(); int32_t _o = _p->v; _p->v = (int32_t)((int64_t)_o + (int64_t)(" + f0 + ")); ct_gunlock(); _o; })"
+                return "(\{ ctron_cell* _p = (ctron_cell*)(" + obj + "); __atomic_fetch_add(&_p->v, (int32_t)(" + f0 + "), __ATOMIC_SEQ_CST); })"
             }
             if m == "expect" {
                 var emsg = "\"expect failed\""
@@ -781,11 +782,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
                 return "ctron_list_push((ctron_list*)(" + obj + "), " + pv + ")"
             }
-            if m == "load" { return "((ctron_cell*)(" + obj + "))->v" }
+            if m == "load" { return "__atomic_load_n(&((ctron_cell*)(" + obj + "))->v, __ATOMIC_SEQ_CST)" }
             if m == "store" {
                 var s0 = ""
                 if ag.len > 1 { s0 = ct_expr(ag[1], env, file) }
-                return "(((ctron_cell*)(" + obj + "))->v = " + s0 + ")"
+                return "__atomic_store_n(&((ctron_cell*)(" + obj + "))->v, (int32_t)(" + s0 + "), __ATOMIC_SEQ_CST)"
             }
             if m == "to_string" {
                 if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {

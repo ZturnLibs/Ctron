@@ -8,7 +8,59 @@
 //      receiver(得 Err 返 2),兄弟 panic → cancelled 广播 + rt wake_all →
 //      Err(ScopeCancelled) 语义(镜像 tests/06_concurrency / fx_conc_cancel)。
 // CI 纪律:仅回环、零外联(tests/net/run.sh 同口径)。
+// T13 真原子争用冒烟:4 任务 × 50k fetch_add 精确 = 200k(__atomic SEQ_CST;
+// 旧全局锁版同值——本锚钉并发正确性,锁自由进度差归 bench 族)。
+// 独立函数:同函数双 scope 撞发射固定名 t_sc(名不唯一化,登记)
+fn atomic_smoke() -> I32 {
+    var ctr = Atomic[I32](0)
+    var atomic_ok = scope { |sc|
+        var a1 = sc.spawn(|| {
+            var i: I32 = 0
+            while i < 50000 {
+                ctr.fetch_add(1)
+                i += 1
+            }
+            return 0
+        })
+        var a2 = sc.spawn(|| {
+            var i: I32 = 0
+            while i < 50000 {
+                ctr.fetch_add(1)
+                i += 1
+            }
+            return 0
+        })
+        var a3 = sc.spawn(|| {
+            var i: I32 = 0
+            while i < 50000 {
+                ctr.fetch_add(1)
+                i += 1
+            }
+            return 0
+        })
+        var a4 = sc.spawn(|| {
+            var i: I32 = 0
+            while i < 50000 {
+                ctr.fetch_add(1)
+                i += 1
+            }
+            return 0
+        })
+        a1.join()
+        a2.join()
+        a3.join()
+        a4.join()
+        ctr.load()
+    }
+    assert_eq(atomic_ok, 200000)
+    ctr.store(7)
+    assert_eq(ctr.load(), 7)
+    return 0
+}
+
 fn main() -> I32 {
+    assert_eq(atomic_smoke(), 0)
+
     var out = scope { |sc|
         let (tx, rx) = Channel[I32](4)
         var prod = sc.spawn(|| {

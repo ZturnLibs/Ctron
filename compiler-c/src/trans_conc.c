@@ -60,9 +60,9 @@ void rt_mutex_type(tc* c, ty inner) {
     sb t = {0};
     sb_f(&t, "typedef struct { %s v; } ctron_mutex_%s;\n", ict, m);
     sb_f(&t, "static ctron_mutex_%s* ctron_mutex_%s_new(%s v) { ctron_mutex_%s* p = (ctron_mutex_%s*)calloc(1, sizeof(ctron_mutex_%s)); p->v = v; return p; }\n", m, m, ict, m, m, m);
-    sb_f(&t, "static %s ctron_mutex_%s_load(ctron_mutex_%s* p) { return p->v; }\n", ict, m, m);
-    sb_f(&t, "static void ctron_mutex_%s_store(ctron_mutex_%s* p, %s v) { p->v = v; }\n", m, m, ict);
-    sb_f(&t, "static %s ctron_mutex_%s_fetch_add(ctron_mutex_%s* p, %s d) { %s o = p->v; p->v = (%s)((__int128)p->v + (__int128)d); return o; }\n", ict, m, m, ict, ict, ict);
+    sb_f(&t, "static %s ctron_mutex_%s_load(ctron_mutex_%s* p) { return __atomic_load_n(&p->v, __ATOMIC_SEQ_CST); }\n", ict, m, m);
+    sb_f(&t, "static void ctron_mutex_%s_store(ctron_mutex_%s* p, %s v) { __atomic_store_n(&p->v, v, __ATOMIC_SEQ_CST); }\n", m, m, ict);
+    sb_f(&t, "static %s ctron_mutex_%s_fetch_add(ctron_mutex_%s* p, %s d) { return __atomic_fetch_add(&p->v, d, __ATOMIC_SEQ_CST); }\n", ict, m, m, ict);
     use_sum(c, t.d ? t.d : "");
     sb_free(&t);
 }

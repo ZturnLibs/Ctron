@@ -566,3 +566,14 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - http 110/1(唯一红=frm_auth_a_jwt interp OOM,实证与 bit-crypto 无关:
   原版 crypto 对照 1.46GB vs bit 版 1.32GB/50 HMAC——解释器 arena 无回收
   在册债(T31 目标)所致)。
+
+**2026-09-28 T13 Atomic 真原子落库**(spec-gap W2;§7.3):
+- 自举发射:fetch_add 由全局锁 RMW(ct_glock 三步)改 __atomic_fetch_add(SEQ_CST,
+  返旧值语义不变);load/store 升 __atomic_load_n/__atomic_store_n(原裸读写无序)。
+- C 宿主镜像:ctron_mutex_<w>_{load,store,fetch_add} 三 helper 同改(原裸读写/
+  __int128 RMW);Atomic with/with_mut 保持互斥语义(锁归属正确,不动)。
+- 验证:coro_conc 增 atomic_smoke(独立函数——同函数双 scope 撞发射固定名 t_sc,
+  名不唯一化登记;4 任务×50k fetch_add 双矩阵精确 200k + store/load 往返);
+  宿主最小探针(fetch_add 返旧值→store→load 链路正确);net 17/17×2。
+- 门禁:suite 87/88 维持、modules 16/17×2(基线红不变)、db 44/10 基线、http 110/1
+  (jwt interp OOM 预存)、cargo 14/0、meta/fmt/ffi 过。

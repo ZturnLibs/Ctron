@@ -161,7 +161,7 @@
 
 ### T13 · Atomic 真原子(§7.3)
 
-- **预估:** 0.5–1 d。**前置:** 无。**状态:** 待办
+- **预估:** 0.5–1 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28)
 - **目标:** `Atomic[I32].fetch_add/load/store` 从全局 pthread 锁(`ct_glock/ct_gunlock`)换真原子(`__atomic` builtins / C11 atomics)。
 - **范围:** `compiler/src/driver_emit.ct` 运行时模板(emit 侧);解释器侧本来就是单线程无碍。
 - **要点:** emit 模板 `ct_atomic_fetch_add` 等直发 `__atomic_fetch_add(&v, d, __ATOMIC_SEQ_CST)`;Global[T] 的 with/with_mut 仍走 Mutex(那是互斥语义,不是原子语义,分清)。
@@ -545,7 +545,7 @@
 | T10 | sleep_ns/虚拟时钟 | W2 | **已完成**(0928,三矩阵+rt 弱钩贯通) | 见 git |
 | T11 | caps 键细分 | W2 | **已完成**(0928,四线注册表+夹具;R 线对象面欠账在册) | 见 git |
 | T12 | gzip | W2 | **已完成**(0928;主体=webfw 泳道 P4-B,本件补 python 双向互操作差分) | 见 git |
-| T13 | Atomic 真原子 | W2 | 待办 | — |
+| T13 | Atomic 真原子 | W2 | **已完成**(0928,__atomic SEQ_CST 三面,双矩阵精确 200k) | 见 git |
 | T14 | Channel 去限制 | W2 | 待办 | — |
 | T15 | Iterator trait | W3 | 待办 | — |
 | T16 | 适配器链 | W3 | 待办 | — |
