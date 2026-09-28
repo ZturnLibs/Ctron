@@ -640,3 +640,15 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - 发射臂登记:var self 方法按值传递 = mutation 丢失(Iterator for 发射缺口;泛 var 参数
   引用语义=发射层系统改造,归后续批次)。
 - suite 88/89×2(+1 全绿);cargo 14/0;meta 过;db 44/10 基线;net 17/17。
+
+**2026-09-28 T16+T17 std/iter 归位+06f 翻转**(spec-gap W3;§7.7):
+- **T16 std/iter.ct 适配器面**:数组终结器(sum/count/any/all/collect)+适配器 struct
+  (MapArr/FilterArr/TakeArr + 终结函数)。**阻塞登记**:UFCS 链式调度(`xs.map(f).filter(f).sum()`)
+  需同名函数作用于不同适配器类型 = 函数重载或泛型 trait 分发(皆 T25 域);泛型 struct
+  MapIter[A,B] 被实例化字母表限标量/Str 阻断。r3b_adapters/r3b_iter_adapters 锚维持红
+  (T25 依赖,翻转条件在案)。
+- **T17 06f 翻转**:std/iter.ct 创建(§7.7 归位);加载器补前奏符号 use 显式导入恒可见
+  (§3.8 前奏隐式可用——use std.iter.{parallel} 为文档化冗余,pkg_is_prelude_sym 判定)。
+  06f_parallel.ct 常驻红首次翻绿。parallel 前奏直用保持兼容(过渡双轨)。
+- **suite 89/89 双线——主套件首次 100%**(自举+宿主全绿);cargo 14/0;meta/db/net/http
+  基线全维持(唯一红=http frm_auth_a_jwt interp OOM 预存在,归 T31 arena 债)。

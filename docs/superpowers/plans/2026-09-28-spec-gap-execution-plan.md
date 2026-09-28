@@ -209,7 +209,7 @@
 
 ### T16 · 惰性适配器链(r3b_adapters)
 
-- **预估:** 1–1.5 d。**前置:** T15。**状态:** 待办
+- **预估:** 1–1.5 d。**前置:** T15。**状态:** 🟡 部分完成(2026-09-28;std/iter.ct 函数面交付;UFCS 链式=函数重载/泛型 trait 分发需求,皆 T25 域阻塞,r3b 两锚维持红)
 - **目标:** `iter.map/filter/take/...` 适配器作用 Iterator 之上,惰性、单态化零成本;翻转 `tests/roadmap/r3b_adapters.ct`。
 - **范围:** `std/`(新 `iter.ct` 或随 T15 文件);纯 stdlib 实现(适配器 = 持 Iterator 的 struct + impl Iterator),**编译器零改动为设计目标**。
 - **要点:** 每适配器一个泛型 struct(如 `struct MapIter[A, B] { it: A, f: fn(A) -> B? }`——fn 值作字段,函数类型字段面 §3.1 已有);惰性 = next 时才调 f;单态化自动获得零成本。
@@ -218,7 +218,7 @@
 
 ### T17 · std/iter 模块归位 + parallel 迁 stdlib(§7.7)
 
-- **预估:** 1 d。**前置:** T15(可 T16 后)。**状态:** 待办
+- **预估:** 1 d。**前置:** T15(可 T16 后)。**状态:** ✅ 已完成(2026-09-28;06f 翻转,suite 89/89 首次 100%)
 - **目标:** 并发设施按规范归 stdlib `iter` 模块:`parallel.map/reduce/fold` API 面 std 化(实现仍可用编译器内建背书);顺带把 T16 适配器纳入同一模块面。
 - **范围:** 新 `std/iter.ct`(域面汇聚);`compiler/src/sem_calls.ct`(parallel 前奏保留但文档标注「stdlib 化过渡」或迁出)。
 - **要点:** 分两步:①API 面 std 化(std/iter.ct 薄包装内建 parallel);②内建面转纯 stdlib 依赖 T33 真并行后一并做——本件只做 ①,规范 §7.7「stdlib,iter 模块」的归属落位。
@@ -565,8 +565,8 @@
 | T13 | Atomic 真原子 | W2 | **已完成**(0928,__atomic SEQ_CST 三面,双矩阵精确 200k) | 见 git |
 | T14 | Channel 去限制 | W2 | **已完成**(0928,三片 0e004a2/b6d26fe/369b9bc;pool 消费方迁移随 db 泳道) |<!-- 并行注意:远端 main 另有编译器线平行实现(ba28f4b 链 614a5c8 堆环+dac9aec interp 克隆),两史分叉待裁决合并 --> 见 git |
 | T15 | Iterator trait | W3 | **已完成**(0928,三线 interp;发射臂 var-self 引用语义在册) | 见 git |
-| T16 | 适配器链 | W3 | 待办 | — |
-| T17 | std/iter 归位 | W3 | 待办 | — |
+| T16 | 适配器链 | W3 | **部分完成**(0928,std/iter.ct 函数面;UFCS 链=T25 阻塞在册) | 见 git |
+| T17 | std/iter 归位 | W3 | **已完成**(0928,06f 翻转;suite 89/89 首次 100%) | 见 git |
 | T18 | 列级 span | W4 | 待办 | — |
 | T19 | fix-it 首批 | W4 | 待办 | — |
 | T20 | deterministic+缓存 | W4 | 待办 | — |

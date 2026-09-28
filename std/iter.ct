@@ -1,0 +1,159 @@
+// std/iter.ct —— 迭代器适配器与终结器(§3.8.2 Iter/§4;T16/T17)
+// 形态:纯 Ctron UFCS 自由函数(链式 c.filter(f).sum());惰性=适配器仅
+// 记录谓词/变换,终结器(for/sum/count/...)驱动迭代。
+// 消费面:数组 T[N]/T[](a 码)与 List(c 码)经 collect 统一;自定义 Iterator
+// (T15)经 for 直迭代——适配器组合(T16 后续)。
+// since: std-0.6 stability: experimental
+
+// ---- 数组/切片终结器(直接索引循环;零中间集合) ----
+
+pub fn iter_sum(xs: I32[], n: I64) -> I64 {
+    var t: I64 = 0
+    var i: I64 = 0
+    while i < n {
+        t += xs[i]
+        i += 1
+    }
+    return t
+}
+
+pub fn iter_count(xs: I32[], n: I64) -> I64 {
+    return n
+}
+
+pub fn iter_any(xs: I32[], n: I64, f: fn(I32) -> Bool) -> Bool {
+    var i: I64 = 0
+    while i < n {
+        if f(xs[i]) {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+pub fn iter_all(xs: I32[], n: I64, f: fn(I32) -> Bool) -> Bool {
+    var i: I64 = 0
+    while i < n {
+        if !f(xs[i]) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+pub fn iter_collect(xs: I32[], n: I64) -> List[I32] {
+    var out = List[I32]()
+    var i: I64 = 0
+    while i < n {
+        out.push(xs[i])
+        i += 1
+    }
+    return out
+}
+
+// ---- 数组适配器(惰性包装 struct;终结时单遍驱动) ----
+
+pub struct MapArr {
+    var src: I32[]
+    var n: I64
+    var f: fn(I32) -> I32
+}
+
+pub fn iter_map(xs: I32[], n: I64, f: fn(I32) -> I32) -> MapArr {
+    return MapArr { src: xs, n: n, f: f }
+}
+
+pub fn maparr_sum(m: MapArr) -> I64 {
+    var t: I64 = 0
+    var i: I64 = 0
+    while i < m.n {
+        t += m.f(m.src[i])
+        i += 1
+    }
+    return t
+}
+
+pub fn maparr_count(m: MapArr) -> I64 {
+    return m.n
+}
+
+pub fn maparr_collect(m: MapArr) -> List[I32] {
+    var out = List[I32]()
+    var i: I64 = 0
+    while i < m.n {
+        out.push(m.f(m.src[i]))
+        i += 1
+    }
+    return out
+}
+
+pub struct FilterArr {
+    var src: I32[]
+    var n: I64
+    var f: fn(I32) -> Bool
+}
+
+pub fn iter_filter(xs: I32[], n: I64, f: fn(I32) -> Bool) -> FilterArr {
+    return FilterArr { src: xs, n: n, f: f }
+}
+
+pub fn filterarr_sum(fa: FilterArr) -> I64 {
+    var t: I64 = 0
+    var i: I64 = 0
+    while i < fa.n {
+        if fa.f(fa.src[i]) {
+            t += fa.src[i]
+        }
+        i += 1
+    }
+    return t
+}
+
+pub fn filterarr_count(fa: FilterArr) -> I64 {
+    var c: I64 = 0
+    var i: I64 = 0
+    while i < fa.n {
+        if fa.f(fa.src[i]) {
+            c += 1
+        }
+        i += 1
+    }
+    return c
+}
+
+pub struct TakeArr {
+    var src: I32[]
+    var n: I64
+    var k: I64
+}
+
+pub fn iter_take(xs: I32[], n: I64, k: I64) -> TakeArr {
+    if k > n {
+        return TakeArr { src: xs, n: n, k: k }
+    }
+    return TakeArr { src: xs, n: k, k: k }
+}
+
+pub fn takearr_sum(ta: TakeArr) -> I64 {
+    var t: I64 = 0
+    var i: I64 = 0
+    while i < ta.n {
+        t += ta.src[i]
+        i += 1
+    }
+    return t
+}
+
+// ---- T17:parallel 域面汇聚(§7.7 std.iter 归位;前奏内建薄包装) ----
+// use std.iter.{parallel} 后 parallel.map/reduce 可用;前奏直用 parallel
+// 保持兼容(过渡双轨,迁移注记入 COVERAGE)
+
+pub fn parallel_map(xs: List[I32], f: fn(I32) -> I32) -> List[I32] {
+    return parallel.map(xs, f)
+}
+
+pub fn parallel_reduce(xs: List[I32], init: I32, f: fn(I32, I32) -> I32) -> I32 {
+    return parallel.reduce(xs, init, f)
+}
