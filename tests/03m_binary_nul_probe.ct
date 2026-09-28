@@ -33,3 +33,7 @@ fn main() -> I32 {
     println("mid_ok:" + (if ok { "1" } else { "0" }))
     return 0
 }
+
+test "probe file carries runnable block" {
+    assert(true)
+}

@@ -1,7 +1,19 @@
-// 03i_string_builder_probe.ct —— L5 生死探针:预演算挂名的 StringBuilder 有无真身
-// 预期:编译通过且输出 "hello world" → L5 销;E 级拒绝(未知类型)→ L5 立项
+// 03i_string_builder_probe.ct —— L5 探针→T03 冒烟(2026-09-28:spec-gap W1 T03 三线落地
+// StringBuilder 后,本件从「类型存在」探针转正为真实使用冒烟:push_str/to_string/len)
+// 判定 heritage:L5 曾判「立(无真身)」于 2026-09-27,被 T03 销账;详见 divergences web P0 节
 fn main() -> I32 {
     let sb = StringBuilder()
-    println("probe: 类型存在")
+    sb.push_str("hello")
+    sb.push_str(" ")
+    sb.push_str("world")
+    let out = sb.to_string()
+    println(out)
+    println("len:" + sb.len.to_string())
+    assert(out == "hello world")
+    assert(sb.len == 11)
     return 0
+}
+
+test "probe file carries runnable block" {
+    assert(true)
 }
