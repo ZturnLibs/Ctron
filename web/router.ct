@@ -1,0 +1,528 @@
+// router.ct —— web 路由:值语义 Router + 静态段 > :param > *splat 匹配 + 405 Allow + 中间件平铺链 + dispatch
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.1-§4.2;纪律 §14-1
+// serve 循环(test_call 本体)归 2b,直接复用 dispatch。
+//
+// 引导 interp 口径实测约定(实证见 task-3-report):
+//   1. 泛型 struct 字面量一律裸形(`Route { ... }`);`Route[I64] { ... }` 不入解析。
+//   2. 泛型 fn 不得作值引用(`no_h[S]` 形 → E2020 S 未解析)——占位 handler 用闭包字面量。
+//   3. 实参含 fn 型(内提 S)或调用方自身泛型时,调用一律显式 TypeArgs(`run_chain[S](...)`),
+//      泛型 struct 型实参不参与推断(E2060);具体类型语境(测试体)UFCS `.get/.middleware`
+//      可由接收者推断,冻结名面照用。
+
+use web.core.{ Req, Resp, html, status, redirect, text, with, Pair, req_full, req_set_params, param, cookie, resp_status, resp_body, resp_header }
+use std.str.{ contains, join, split, starts_with }
+
+// ---- 路由表值模型 ----
+
+pub struct RouteSeg {
+    let kind: Str      // "lit" / "par" / "splat"
+    let text: Str
+}
+
+pub struct Route[S] {
+    let m: Str
+    let segs: List[RouteSeg]
+    let chain: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]   // 本路由预拼中间件链(外层→内层;§4.1 实现注)
+    let h: fn(Req[S]) -> Resp
+}
+
+pub struct Router[S] {
+    let state: S
+    let routes: List[Route[S]]
+    let mws: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]
+}
+
+pub fn router[S](state: S) -> Router[S] {
+    return Router { state: state, routes: List[Route[S]](), mws: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]() }
+}
+
+// ---- 路径模式:段切分(空段丢弃;前导/尾随 '/' 与连 '//'/ 归一)----
+
+fn segs_of(p: Str) -> List[RouteSeg] {
+    var out: List[RouteSeg] = List[RouteSeg]()
+    var parts = split(p, 47)   // '/'
+    var i: I32 = 0
+    while i < parts.len {
+        if parts[i].len > 0 {
+            if starts_with(parts[i], ":") {
+                out.push(RouteSeg { kind: "par", text: byte_slice(parts[i], 1, parts[i].len) })
+            } else if starts_with(parts[i], "*") {
+                out.push(RouteSeg { kind: "splat", text: byte_slice(parts[i], 1, parts[i].len) })
+            } else {
+                out.push(RouteSeg { kind: "lit", text: parts[i] })
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// 请求路径侧段切分(仅去空段;与 segs_of 同一归一口径——brief 直 split 会把前导空段
+// 错位配给首段,此处修正)
+fn path_segs(path: Str) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    let raw = split(path, 47)
+    var i: I32 = 0
+    while i < raw.len {
+        if raw[i].len > 0 {
+            out.push(raw[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+fn chain_append(base: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp], extra: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]) -> List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp] {
+    var out: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp] = List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]()
+    var i: I32 = 0
+    while i < base.len {
+        out.push(base[i])
+        i += 1
+    }
+    i = 0
+    while i < extra.len {
+        out.push(extra[i])
+        i += 1
+    }
+    return out
+}
+
+fn segs_append(base: List[RouteSeg], extra: List[RouteSeg]) -> List[RouteSeg] {
+    var out: List[RouteSeg] = List[RouteSeg]()
+    var i: I32 = 0
+    while i < base.len {
+        out.push(base[i])
+        i += 1
+    }
+    i = 0
+    while i < extra.len {
+        out.push(extra[i])
+        i += 1
+    }
+    return out
+}
+
+fn segs_eq(a: List[RouteSeg], b: List[RouteSeg]) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var i: I32 = 0
+    while i < a.len {
+        if a[i].kind != b[i].kind || a[i].text != b[i].text {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// ---- 装配(值语义:每步返回新 Router;启动期重复 (method,path) panic,§4.1)----
+
+fn same_route[S](r: Router[S], m: Str, segs: List[RouteSeg]) -> Bool {
+    var i: I32 = 0
+    while i < r.routes.len {
+        if r.routes[i].m == m && segs_eq(r.routes[i].segs, segs) {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+fn r_add[S](r: Router[S], m: Str, p: Str, h: fn(Req[S]) -> Resp) -> Router[S] {
+    let segs = segs_of(p)
+    if same_route[S](r, m, segs) {
+        // 装配即失败(失败在启动,不在半夜)。interp 口径 panic 印消息后继续(不中止),
+        // native 口径 ctron_panic 终止;2b serve 启动前置 has_conflict 双兜。
+        panic("duplicate route: " + m + " " + p)
+    }
+    var rs: List[Route[S]] = List[Route[S]]()
+    var i: I32 = 0
+    while i < r.routes.len {
+        rs.push(r.routes[i])
+        i += 1
+    }
+    rs.push(Route { m: m, segs: segs, chain: chain_append[S](r.mws, List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]()), h: h })
+    return Router { state: r.state, routes: rs, mws: r.mws }
+}
+
+pub fn get[S](r: Router[S], p: Str, h: fn(Req[S]) -> Resp) -> Router[S] { return r_add[S](r, "GET", p, h) }
+pub fn post[S](r: Router[S], p: Str, h: fn(Req[S]) -> Resp) -> Router[S] { return r_add[S](r, "POST", p, h) }
+pub fn put[S](r: Router[S], p: Str, h: fn(Req[S]) -> Resp) -> Router[S] { return r_add[S](r, "PUT", p, h) }
+pub fn delete[S](r: Router[S], p: Str, h: fn(Req[S]) -> Resp) -> Router[S] { return r_add[S](r, "DELETE", p, h) }
+pub fn patch[S](r: Router[S], p: Str, h: fn(Req[S]) -> Resp) -> Router[S] { return r_add[S](r, "PATCH", p, h) }
+
+// 组级中间件:声明序 = 执行序(链头先跑);组内全部路由生效——已注册路由的预拼链
+// 亦回填追加(值语义:链不可变,重铸每条),后续注册路由经 r.mws 继承
+pub fn middleware[S](r: Router[S], mw: fn(Req[S], fn(Req[S]) -> Resp) -> Resp) -> Router[S] {
+    var ms: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp] = List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]()
+    var i: I32 = 0
+    while i < r.mws.len {
+        ms.push(r.mws[i])
+        i += 1
+    }
+    ms.push(mw)
+    var rs: List[Route[S]] = List[Route[S]]()
+    i = 0
+    while i < r.routes.len {
+        let rt = r.routes[i]
+        var one: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp] = List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]()
+        one.push(mw)
+        rs.push(Route { m: rt.m, segs: rt.segs, chain: chain_append[S](rt.chain, one), h: rt.h })
+        i += 1
+    }
+    return Router { state: r.state, routes: rs, mws: ms }
+}
+
+// 子路由器前缀挂载:每条子路由预拼前缀段(最终一张平铺表,热路径无嵌套);
+// 中间件继承:子组中间件已随子路由注册预拼入逐路由链(合并时 chain = 宿主 mws + 子链,
+// 执行序外层→内层→handler §4.1);合并态 mws 仅取宿主——子组 mw 不入合并态列表,
+// 否则挂载后新注册的宿主路由经 r_add 继承之、嵌套兄弟组经外层合并互渗(双外泄向量)。
+// state 取宿主(单一应用状态)。同样启动期查重(前缀拼接后即最终形态)。
+pub fn mount_at[S](r: Router[S], prefix: Str, sub: Router[S]) -> Router[S] {
+    var rs: List[Route[S]] = List[Route[S]]()
+    var i: I32 = 0
+    while i < r.routes.len {
+        rs.push(r.routes[i])
+        i += 1
+    }
+    i = 0
+    while i < sub.routes.len {
+        let rt = sub.routes[i]
+        if same_route[S](Router { state: r.state, routes: rs, mws: r.mws }, rt.m, segs_append(segs_of(prefix), rt.segs)) {
+            panic("duplicate route: " + rt.m + " " + prefix + "/" + join(path_strs(rt.segs), "/"))
+        }
+        rs.push(Route { m: rt.m, segs: segs_append(segs_of(prefix), rt.segs), chain: chain_append[S](r.mws, rt.chain), h: rt.h })
+        i += 1
+    }
+    return Router { state: r.state, routes: rs, mws: r.mws }
+}
+
+// 模式段还原为诊断字符串(lit/par/splat 各自带记号;仅 mount_at panic 消息用)
+fn path_strs(segs: List[RouteSeg]) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < segs.len {
+        if segs[i].kind == "par" {
+            out.push(":" + segs[i].text)
+        } else if segs[i].kind == "splat" {
+            out.push("*" + segs[i].text)
+        } else {
+            out.push(segs[i].text)
+        }
+        i += 1
+    }
+    return out
+}
+
+// 启动自检面(2b serve 前置调用):表内存在重复 (method, 模式) 即 true
+pub fn has_conflict[S](r: Router[S]) -> Bool {
+    var i: I32 = 0
+    while i < r.routes.len {
+        var j: I32 = i + 1
+        while j < r.routes.len {
+            if r.routes[i].m == r.routes[j].m && segs_eq(r.routes[i].segs, r.routes[j].segs) {
+                return true
+            }
+            j += 1
+        }
+        i += 1
+    }
+    return false
+}
+
+// 插件挂载(§4.6:插件 = 普通 fn(Router[S]) -> Router[S],零新机制;顺序即装配序)
+pub fn install[S](r: Router[S], p: fn(Router[S]) -> Router[S]) -> Router[S] {
+    return p(r)
+}
+
+// test_call —— spec §4.7 测试口(dispatch 别名;整台服务器零 socket 的确定性测试形;
+// 2b serve 循环复用 dispatch 本体)
+pub fn test_call[S](r: Router[S], method: Str, path: Str, body: Str) -> Resp {
+    return dispatch[S](r, method, path, body)
+}
+
+// ---- 匹配(静态 > :param > *splat;路径命中方法不中 → 405 + Allow)----
+
+pub struct Match[S] {
+    let kind: I32      // 1=命中 0=404 -1=405
+    let route: Route[S]
+    let params: List[Pair]
+    let splat: Str
+    let allow: Str
+}
+
+// 路由特异档:1 全静态段;2 含 :param 无 *splat;3 含 *splat——扫描按档升序,
+// 即 spec §4.1 匹配序(静态段 > :param > *splat);同档内声明序先者胜
+fn route_tier[S](rt: Route[S]) -> I32 {
+    var t: I32 = 1
+    var i: I32 = 0
+    while i < rt.segs.len {
+        if rt.segs[i].kind == "splat" {
+            return 3
+        }
+        if rt.segs[i].kind == "par" {
+            t = 2
+        }
+        i += 1
+    }
+    return t
+}
+
+pub fn route_match[S](r: Router[S], m: Str, path: Str) -> Match[S] {
+    let psegs = path_segs(path)
+    var allow: Str = ""
+    var tier: I32 = 1
+    while tier <= 3 {
+        var i: I32 = 0
+        while i < r.routes.len {
+        let rt = r.routes[i]
+        if route_tier[S](rt) != tier {
+            i += 1
+            continue
+        }
+        var ps: List[Pair] = List[Pair]()
+        var splat = ""
+        var ok = true
+        var si: I32 = 0
+        var pi: I32 = 0
+        while si < rt.segs.len {
+            if rt.segs[si].kind == "splat" {
+                // 尾通配:吞剩余全部段,空余亦命中("/f/*x" 匹配 "/f")
+                var rest: List[Str] = List[Str]()
+                while pi < psegs.len {
+                    rest.push(psegs[pi])
+                    pi += 1
+                }
+                splat = join(rest, "/")
+                si += 1
+                continue
+            }
+            if pi >= psegs.len {
+                ok = false
+                break
+            }
+            if rt.segs[si].kind == "lit" {
+                if rt.segs[si].text != psegs[pi] {
+                    ok = false
+                    break
+                }
+            } else {
+                ps.push(Pair { k: rt.segs[si].text, v: psegs[pi] })
+            }
+            pi += 1
+            si += 1
+        }
+        if ok && pi == psegs.len {
+            if rt.m == m {
+                return Match { kind: 1, route: rt, params: ps, splat: splat, allow: "" }
+            }
+            if allow.len == 0 {
+                allow = rt.m
+            } else {
+                allow = allow + "," + rt.m
+            }
+        }
+        i += 1
+        }
+        tier += 1
+    }
+    if allow.len > 0 {
+        return Match { kind: 0 - 1, route: dummy_route[S](), params: List[Pair](), splat: "", allow: allow }
+    }
+    return Match { kind: 0, route: dummy_route[S](), params: List[Pair](), splat: "", allow: "" }
+}
+
+// 占位路由(404/405 臂的 Match.route 槽位;泛型 fn 值引用不可用,闭包字面量顶位)
+fn dummy_route[S]() -> Route[S] {
+    return Route { m: "", segs: List[RouteSeg](), chain: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp](), h: |rr| status(404, "not found") }
+}
+
+// ---- dispatch(test_call 本体;2b serve 循环直接复用)----
+
+pub fn dispatch[S](r: Router[S], method: Str, path: Str, body: Str) -> Resp {
+    let mt = route_match[S](r, method, path)
+    if mt.kind == 0 {
+        return status(404, "404 not found")
+    }
+    if mt.kind == 0 - 1 {
+        return with(status(405, "405 method not allowed"), "Allow", mt.allow)
+    }
+    let req0 = req_full[S](method, path, body, List[Pair](), r.state)
+    let req = req_set_params[S](req0, mt.params)
+    let h = mt.route.h
+    return run_chain[S](mt.route.chain, 0, req, h)
+}
+
+// 中间件平铺链:idx 越界即落 handler;闭包捕获续链,mw 短路即不续
+fn run_chain[S](mws: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp], idx: I32, req: Req[S], h: fn(Req[S]) -> Resp) -> Resp {
+    if idx >= mws.len {
+        return h(req)
+    }
+    let mw = mws[idx]
+    return mw(req, |rq| run_chain[S](mws, idx + 1, rq, h))
+}
+
+// ---- 测试 ----
+
+fn h_hello(r: Req[I64]) -> Resp {
+    return html("hi:" + param[I64](r, "name"))
+}
+
+fn h_state(r: Req[I64]) -> Resp {
+    return text(r.state.to_string())
+}
+
+fn need_x(r: Req[I64], next: fn(Req[I64]) -> Resp) -> Resp {
+    if cookie[I64](r, "x").len == 0 {
+        return redirect("/login")
+    }
+    return next(r)
+}
+
+fn add_a(r: Req[I64], next: fn(Req[I64]) -> Resp) -> Resp {
+    return with(next(r), "X-A", "1")
+}
+
+fn add_b(r: Req[I64], next: fn(Req[I64]) -> Resp) -> Resp {
+    return with(next(r), "X-B", "2")
+}
+
+fn h_static(r: Req[I64]) -> Resp {
+    return text("static")
+}
+
+// 注:brief 原式仅 POST 注册 "/hi/:name" 却断言 GET 命中——按 §4.1(路径命中方法不中
+// → 405)该断言不可满足,系 brief 测试笔误;此处以 GET+POST 双注册表达原意(命中/参数),
+// 405 臂改由 DELETE 打同一路径覆盖(Allow 收两方法,顺带验多值逗号拼接)。
+test "路由命中/参数/405/404" {
+    let r = get[I64](post[I64](get[I64](router[I64](0), "/hi/:name", h_hello), "/hi/:name", h_hello), "/bye", h_hello)
+    let hit = dispatch[I64](r, "GET", "/hi/alice", "")
+    assert(resp_status(hit) == 200)
+    assert(resp_body(hit) == "hi:alice")
+    let bye = dispatch[I64](r, "GET", "/bye", "")
+    assert(resp_status(bye) == 200)
+    assert(resp_body(bye) == "hi:")   // 无 :name 段 → 取参缺回空纪律
+    let m405 = dispatch[I64](r, "DELETE", "/hi/a", "")
+    assert(resp_status(m405) == 405)
+    assert(resp_header(m405, "Allow") == "GET,POST")
+    let m404 = dispatch[I64](r, "GET", "/nope", "")
+    assert(resp_status(m404) == 404)
+    assert(route_match[I64](r, "GET", "/nope").kind == 0)
+}
+
+test "splat 通配与 route_match 直读" {
+    let r = get[I64](router[I64](0), "/files/*rest", h_hello)
+    let mt = route_match[I64](r, "GET", "/files/a/b.txt")
+    assert(mt.kind == 1)
+    assert(mt.splat == "a/b.txt")
+    assert(mt.params.len == 0)
+    let tail = route_match[I64](r, "GET", "/files")
+    assert(tail.kind == 1)
+    assert(tail.splat == "")
+    let miss = route_match[I64](r, "GET", "/other/x")
+    assert(miss.kind == 0)
+    let p = get[I64](router[I64](0), "/u/:id", h_hello)
+    let mp = route_match[I64](p, "GET", "/u/42")
+    assert(mp.kind == 1)
+    assert(mp.params[0].k == "id")
+    assert(mp.params[0].v == "42")
+}
+
+test "匹配优先级 静态 > :param > *splat" {
+    // :param 先声明,静态后声明——静态仍须胜(spec §4.1 匹配序)
+    let r = get[I64](get[I64](router[I64](0), "/u/:name", h_hello), "/u/new", h_static)
+    let win = dispatch[I64](r, "GET", "/u/new", "")
+    assert(resp_status(win) == 200)
+    assert(resp_body(win) == "static")
+    let par = dispatch[I64](r, "GET", "/u/42", "")
+    assert(resp_body(par) == "hi:42")
+    // splat 垫底:静态命中压过同前缀 splat;splat 兜底其余路径
+    let r2 = get[I64](get[I64](router[I64](0), "/f/*rest", h_hello), "/f/exact", h_static)
+    let w2 = dispatch[I64](r2, "GET", "/f/exact", "")
+    assert(resp_body(w2) == "static")
+    let s2 = dispatch[I64](r2, "GET", "/f/a/b", "")
+    assert(resp_status(s2) == 200)        // 落 splat 路由(handler 读不到 splat,面在 Match)
+    assert(route_match[I64](r2, "GET", "/f/a/b").splat == "a/b")
+}
+
+test "中间件链短路与穿透" {
+    // 冻结名 UFCS 面:具体类型语境下由接收者推断(router(0).get / r0.middleware)
+    let r0 = router[I64](0).get("/x", h_hello)
+    let r1 = r0.middleware(need_x)
+    let blocked = dispatch[I64](r1, "GET", "/x", "")
+    assert(resp_status(blocked) == 303)
+    assert(resp_header(blocked, "Location") == "/login")
+    assert(resp_body(blocked) == "")   // handler 未达(短路)
+    let r2 = middleware[I64](middleware[I64](get[I64](router[I64](0), "/y", h_hello), add_a), add_b)
+    let pass = dispatch[I64](r2, "GET", "/y", "")
+    assert(resp_status(pass) == 200)
+    assert(resp_header(pass, "X-A") == "1")
+    assert(resp_header(pass, "X-B") == "2")
+    assert(resp_body(pass) == "hi:")
+    // 空链 router 直落 handler
+    let bare = dispatch[I64](r0, "GET", "/x", "")
+    assert(resp_status(bare) == 200)
+}
+
+test "mount_at 前缀拼接与中间件继承" {
+    let sub = middleware[I64](get[I64](router[I64](0), "/u/:id", h_hello), need_x)
+    let app = mount_at[I64](get[I64](router[I64](42), "/ping", h_state), "/api", sub)
+    let blocked = dispatch[I64](app, "GET", "/api/u/7", "")
+    assert(resp_status(blocked) == 303)   // 前缀命中 + 子组 mw 继承生效
+    let resp = dispatch[I64](app, "GET", "/ping", "")
+    assert(resp_status(resp) == 200)
+    assert(resp_body(resp) == "42")       // state 流转:宿主 state 经 dispatch 入 req.state
+    let sub2 = get[I64](router[I64](0), "/u/:id", h_hello)
+    let app2 = mount_at[I64](router[I64](0), "/api", sub2)
+    let ok = dispatch[I64](app2, "GET", "/api/u/7", "")
+    assert(resp_status(ok) == 200)
+    assert(resp_body(ok) == "hi:")        // h_hello 取 "name",此路由段名 "id" → 缺回空
+    let mp2 = route_match[I64](app2, "GET", "/api/u/7")
+    assert(mp2.params[0].k == "id")
+    assert(mp2.params[0].v == "7")        // 拼接后 :param 照常捕获
+    // 回归(合并态 mws 仅宿主):挂载后新注册的宿主路由不得继承子组 mw——
+    // 修复前 r_add 以合并态 mws(含 need_x)拼链 → /health 误 303;修复后直落 handler
+    let app3 = get[I64](mount_at[I64](router[I64](0), "/api", sub), "/health", h_state)
+    let health = dispatch[I64](app3, "GET", "/health", "")
+    assert(resp_status(health) == 200)
+    assert(resp_body(health) == "0")
+    // 回归(嵌套兄弟组不交叉继承):/g2 组不带 /g1 组的 mw——
+    // 修复前外层合并把 subA.mws 并入再经 r_add 渗入 subB 新链;子组自身 mw 仍随逐路由链在册
+    let suba = middleware[I64](get[I64](router[I64](0), "/a", h_state), add_a)
+    let subb = middleware[I64](get[I64](router[I64](0), "/b", h_state), add_b)
+    let nest = mount_at[I64](mount_at[I64](router[I64](0), "/g1", suba), "/g2", subb)
+    let gb = dispatch[I64](nest, "GET", "/g2/b", "")
+    assert(resp_status(gb) == 200)
+    assert(resp_header(gb, "X-B") == "2")
+    assert(resp_header(gb, "X-A") == "")  // subA 的 mw 不渗入 /g2
+    let ga = dispatch[I64](nest, "GET", "/g1/a", "")
+    assert(resp_header(ga, "X-A") == "1") // /g1 组自身 mw 挂载后仍生效
+}
+
+test "install 插件挂载与 test_call 测试口" {
+    // 插件 = fn(Router)->Router 普通函数(§4.6 零新机制);install 一行挂载
+    let app = install[I64](router[I64](0), |rr| get[I64](rr, "/plug", h_hello))
+    let hit = test_call[I64](app, "GET", "/plug", "")
+    assert(resp_status(hit) == 200)
+    assert(resp_body(hit) == "hi:")   // 静态路由无 :name → 取参缺回空纪律
+    let miss = test_call[I64](app, "GET", "/nope", "")
+    assert(resp_status(miss) == 404)
+}
+
+test "重复路由探测 has_conflict" {
+    let good = get[I64](post[I64](router[I64](0), "/a", h_hello), "/b", h_hello)
+    assert(has_conflict[I64](good) == false)
+    assert(has_conflict[I64](put[I64](good, "/a", h_hello)) == false)   // 同路径方法异不冲突(勿用 post——会真触 r_add 装配 panic)
+    // 冲突表直接字面量构造(不经 r_add——其 panic 面在 interp 不中止、native 终止,
+    // 不可于测试内真触发;has_conflict 覆盖同一检测逻辑,r_add 挂 panic 为装配期保险)
+    var rs: List[Route[I64]] = List[Route[I64]]()
+    rs.push(Route { m: "GET", segs: segs_of("/x"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
+    rs.push(Route { m: "GET", segs: segs_of("/x"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
+    assert(has_conflict[I64](Router { state: 0, routes: rs, mws: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp]() }) == true)
+    // 模式归一后等价("/x" 与 "x/")亦判冲突
+    var rs2: List[Route[I64]] = List[Route[I64]]()
+    rs2.push(Route { m: "GET", segs: segs_of("/x"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
+    rs2.push(Route { m: "GET", segs: segs_of("x/"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
+    assert(has_conflict[I64](Router { state: 0, routes: rs2, mws: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp]() }) == true)
+}

@@ -1,0 +1,705 @@
+// core.ct —— web 核心:Resp/Req/构造器/取参/构建器(Plan 2a Task 1-4 填充)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4;纪律 §14-1
+
+use std.str.{ contains, join, split, index_of, trim, partition, eq_ignore_ascii_case }
+use std.strconv.{ parse_i64 }
+
+// ---- Resp 构造器族(§4:五构造器 + 其他格式 + 安全默认) ----
+
+pub struct Pair {
+    let k: Str
+    let v: Str
+}
+
+pub struct Resp {
+    let status: I32
+    let headers: List[Pair]
+    let body: Str
+}
+
+fn base(status: I32, ctype: Str, body: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Content-Type", v: ctype })
+    hs.push(Pair { k: "X-Content-Type-Options", v: "nosniff" })
+    return Resp { status: status, headers: hs, body: body }
+}
+
+pub fn html(body: Str) -> Resp {
+    return base(200, "text/html; charset=utf-8", body)
+}
+
+pub fn json(body: Str) -> Resp {
+    return base(200, "application/json", body)
+}
+
+pub fn text(body: Str) -> Resp {
+    return base(200, "text/plain", body)
+}
+
+pub fn redirect(loc: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Location", v: loc })
+    return Resp { status: 303, headers: hs, body: "" }
+}
+
+pub fn status(n: I32, body: Str) -> Resp {
+    return base(n, "text/plain", body)
+}
+
+// 其他格式(§4.4 格式矩阵;xml 不做自动转义——xml_esc 助手 spec 登记不做,信任调用点已编码)
+pub fn xml(body: Str) -> Resp {
+    return base(200, "text/xml", body)
+}
+
+pub fn yaml(body: Str) -> Resp {
+    return base(200, "application/yaml", body)
+}
+
+pub fn err_json(n: I32, msg: Str) -> Resp {
+    return json_obj().str("error", msg).end_status(n)
+}
+
+// 附件下载头(M-T5 收口补:csv_rows 导出配套;filename 为调用点可信常量,不转义)
+pub fn attachment(r: Resp, filename: Str) -> Resp {
+    return with(r, "Content-Disposition", "attachment; filename=\"" + filename + "\"")
+}
+
+pub fn with(r: Resp, k: Str, v: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    var i: I32 = 0
+    while i < r.headers.len {
+        hs.push(r.headers[i])
+        i += 1
+    }
+    hs.push(Pair { k: k, v: v })
+    return Resp { status: r.status, headers: hs, body: r.body }
+}
+
+pub fn with_status(r: Resp, n: I32) -> Resp {
+    return Resp { status: n, headers: r.headers, body: r.body }
+}
+
+pub fn resp_header(r: Resp, k: Str) -> Str {
+    var i: I32 = 0
+    while i < r.headers.len {
+        if r.headers[i].k == k {
+            return r.headers[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+pub fn resp_body(r: Resp) -> Str {
+    return r.body
+}
+
+pub fn resp_status(r: Resp) -> I32 {
+    return r.status
+}
+
+// ---- json_obj 构建器(§4.4;函数式段收集,§14-1 合规) ----
+// 注:UFCS 按函数名精确解析,链式面 .str/.i64/.bool/.strs/.end/.end_status
+// 即自由函数本名(spec §4 链式示例口径;实测见 task-1-report)。
+
+pub struct JObj {
+    let parts: List[Str]
+}
+
+pub fn json_obj() -> JObj {
+    return JObj { parts: List[Str]() }
+}
+
+pub fn str(b: JObj, k: Str, v: Str) -> JObj {
+    return jpush(b, "\"" + json_esc(k) + "\":\"" + json_esc(v) + "\"")
+}
+
+pub fn i64(b: JObj, k: Str, v: I64) -> JObj {
+    return jpush(b, "\"" + json_esc(k) + "\":" + v.to_string())
+}
+
+pub fn bool(b: JObj, k: Str, v: Bool) -> JObj {
+    var s = "false"
+    if v {
+        s = "true"
+    }
+    return jpush(b, "\"" + json_esc(k) + "\":" + s)
+}
+
+pub fn strs(b: JObj, k: Str, xs: List[Str]) -> JObj {
+    var items: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < xs.len {
+        items.push("\"" + json_esc(xs[i]) + "\"")
+        i += 1
+    }
+    return jpush(b, "\"" + json_esc(k) + "\":[" + join(items, ",") + "]")
+}
+
+fn jpush(b: JObj, piece: Str) -> JObj {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < b.parts.len {
+        ps.push(b.parts[i])
+        i += 1
+    }
+    ps.push(piece)
+    return JObj { parts: ps }
+}
+
+fn jfinish(b: JObj, wrap: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    ps.push("\{")
+    var i: I32 = 0
+    while i < b.parts.len {
+        if i > 0 {
+            ps.push(",")
+        }
+        ps.push(b.parts[i])
+        i += 1
+    }
+    ps.push("}" + wrap)
+    return join(ps, "")
+}
+
+pub fn end(b: JObj) -> Str {
+    return jfinish(b, "")
+}
+
+// end_status 走 json() 底座(M-T1w-1 收口:此前经 status() → text/plain;
+// JSON 构建器终结物应为 application/json + nosniff 安全默认,err_json 同源受益)
+pub fn end_status(b: JObj, n: I32) -> Resp {
+    return with_status(json(jfinish(b, "")), n)
+}
+
+fn json_esc(s: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 34 {
+            ps.push("\\\"")
+        } else if c == 92 {
+            ps.push("\\\\")
+        } else if c == 10 {
+            ps.push("\\n")
+        } else if c == 13 {
+            ps.push("\\r")
+        } else if c == 9 {
+            ps.push("\\t")
+        } else {
+            ps.push(byte_slice(s, i, i + 1))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// ---- csv_rows(§4.4:报表导出小助手 → text().attachment();Task 5 收口补) ----
+// RFC 4180 最小引用形:字段含逗号/引号/CR/LF 才整域加引号、引号双写;行 \n 相接。
+// 注:std/csv csv_write 同款口径,但 web 侧本地实现——use std.csv 入 core 会翻转
+// view 合并态 E5030(text 撞名;引导 pkg_load_use 合并路径坑,task-5-report 在册)。
+
+fn csv_cell(s: Str) -> Str {
+    var need = false
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 44 || c == 34 || c == 10 || c == 13 {
+            need = true
+        }
+        i += 1
+    }
+    if !need {
+        return s
+    }
+    var ps: List[Str] = List[Str]()
+    ps.push("\"")
+    i = 0
+    while i < s.len {
+        if byte_at(s, i) == 34 {
+            ps.push("\"\"")
+        } else {
+            ps.push(byte_slice(s, i, i + 1))
+        }
+        i += 1
+    }
+    ps.push("\"")
+    return join(ps, "")
+}
+
+pub fn csv_rows(headers: List[Str], rows: List[List[Str]]) -> Str {
+    var lines: List[Str] = List[Str]()
+    var cells: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < headers.len {
+        cells.push(csv_cell(headers[i]))
+        i += 1
+    }
+    lines.push(join(cells, ","))
+    i = 0
+    while i < rows.len {
+        cells = List[Str]()
+        let row = rows[i]
+        var j: I32 = 0
+        while j < row.len {
+            cells.push(csv_cell(row[j]))
+            j += 1
+        }
+        lines.push(join(cells, ","))
+        i += 1
+    }
+    return join(lines, "\n")
+}
+
+// ---- Req 取参族(§4.3:泛型 Req + UTF-8 安全百分号解码;session 归 2b) ----
+
+pub struct Req[S] {
+    let method: Str
+    let path: Str
+    let query: Str
+    let body: Str
+    let headers: List[Pair]
+    let cookies: List[Pair]
+    let params: List[Pair]
+    let state: S
+}
+
+pub fn req_of[S](method: Str, path: Str, state: S) -> Req[S] {
+    return req_full(method, path, "", List[Pair](), state)
+}
+
+pub fn req_full[S](method: Str, path: Str, body: Str, hdrs: List[Pair], state: S) -> Req[S] {
+    var q = ""
+    var p = path
+    let qpos = index_of(path, "?")
+    if qpos > 0 - 1 {
+        p = byte_slice(path, 0, qpos)
+        q = byte_slice(path, qpos + 1, path.len)
+    }
+    var cs: List[Pair] = List[Pair]()
+    let ck = hdr_get(hdrs, "Cookie")
+    if ck.len > 0 {
+        cs = cookie_parse(ck)
+    }
+    return Req { method: method, path: p, query: q, body: body, headers: hdrs, cookies: cs, params: List[Pair](), state: state }
+}
+
+// params 注入(router 匹配后回填 :param;值语义拷贝换字段,Req 本体不动)
+pub fn req_set_params[S](r: Req[S], params: List[Pair]) -> Req[S] {
+    return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: params, state: r.state }
+}
+
+fn hdr_get(hdrs: List[Pair], name: Str) -> Str {
+    var i: I32 = 0
+    while i < hdrs.len {
+        if eq_ignore_ascii_case(hdrs[i].k, name) {
+            return hdrs[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+// Cookie 值:';' 段切(std split)→ 段端空格削平 → 首 '=' 二分(std index_of);
+// 值原样保留(v1 不做 percent 解码);无 '=' 的段丢弃
+fn cookie_parse(ck: Str) -> List[Pair] {
+    var out: List[Pair] = List[Pair]()
+    let parts = split(ck, 59)
+    var i: I32 = 0
+    while i < parts.len {
+        let seg = trim(parts[i])
+        let eq = index_of(seg, "=")
+        if eq > 0 {
+            out.push(Pair { k: byte_slice(seg, 0, eq), v: byte_slice(seg, eq + 1, seg.len) })
+        }
+        i += 1
+    }
+    return out
+}
+
+// —— UTF-8 安全百分号解码(web 自建;frm/form C8 域在册缺口;todo_app pdec 验收算法 + §14-1 段收集形)——
+
+fn hexv(c: I32) -> I32 {
+    if c >= 48 && c <= 57 { return c - 48 }
+    if c >= 65 && c <= 70 { return c - 55 }
+    if c >= 97 && c <= 102 { return c - 87 }
+    return 0 - 1
+}
+
+// s[i] 起的 %XX 字节;形不合法回 -1
+fn pctb(s: Str, i: I32) -> I32 {
+    if i + 2 >= s.len || byte_at(s, i) != 37 {
+        return 0 - 1
+    }
+    let h1 = hexv(byte_at(s, i + 1))
+    let h2 = hexv(byte_at(s, i + 2))
+    if h1 < 0 || h2 < 0 {
+        return 0 - 1
+    }
+    return h1 * 16 + h2
+}
+
+pub fn pdec(s: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c == 43 {
+            ps.push(" ")
+            i += 1
+            continue
+        }
+        if c == 37 {
+            let b0 = pctb(s, i)
+            if b0 < 0 {
+                ps.push("%")
+                i += 1
+                continue
+            }
+            if b0 < 128 {
+                ps.push(utf8_one(b0))
+                i += 3
+                continue
+            }
+            // 首字节域守卫:合法 lead 仅 194..247(C0/C1 过长形与 248..255 非 UTF-8 拒收,原样透传)
+            if b0 < 194 || b0 > 247 {
+                ps.push("%")
+                i += 1
+                continue
+            }
+            var seq = 2
+            if b0 >= 240 { seq = 4 } else if b0 >= 224 { seq = 3 }
+            let b1 = pctb(s, i + 3)
+            if b1 < 128 || b1 > 191 {
+                ps.push("%")
+                i += 1
+                continue
+            }
+            if seq == 2 {
+                ps.push(utf8_enc((b0 - 192) * 64 + b1 - 128))
+                i += 6
+                continue
+            }
+            let b2 = pctb(s, i + 6)
+            if b2 < 128 || b2 > 191 {
+                ps.push("%")
+                i += 1
+                continue
+            }
+            if seq == 3 {
+                ps.push(utf8_enc(((b0 - 224) * 64 + b1 - 128) * 64 + b2 - 128))
+                i += 9
+                continue
+            }
+            let b3 = pctb(s, i + 9)
+            if b3 < 128 || b3 > 191 {
+                ps.push("%")
+                i += 1
+                continue
+            }
+            ps.push(utf8_enc((((b0 - 240) * 64 + b1 - 128) * 64 + b2 - 128) * 64 + b3 - 128))
+            i += 12
+            continue
+        }
+        ps.push(byte_slice(s, i, i + 1))
+        i += 1
+    }
+    return join(ps, "")
+}
+
+fn utf8_one(v: I32) -> Str {
+    // ASCII 可见域单字符(brief 表查语义;实现改内建 utf8_enc——ASCII 码点自映射,
+    // 免掉表字面量内 { } \ 三处转义雷区)。域外回空。
+    if v < 32 || v > 126 {
+        return ""
+    }
+    return utf8_enc(v)
+}
+
+// —— 取参访问器(§4.3 冻结名;六 Str 缺回空 + 类型化 Option)——
+
+pub fn param[S](r: Req[S], name: Str) -> Str {
+    return pair_get(r.params, name)
+}
+
+pub fn pair_get(ps: List[Pair], k: Str) -> Str {
+    var i: I32 = 0
+    while i < ps.len {
+        if ps[i].k == k {
+            return ps[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+pub fn param_i64[S](r: Req[S], name: Str) -> Option[I64] {
+    return parse_i64(pair_get(r.params, name))
+}
+
+pub fn param_f64[S](r: Req[S], name: Str) -> Option[F64] {
+    return pf64(pair_get(r.params, name))
+}
+
+// 十进制小数解析(std.strconv 无浮点 parse,自建最小面):
+// [+-] 前缀、整数/小数两段纯数字累计为整数,末尾一次除 10^k(单次正确舍入,与字面量逐位一致);
+// 总位数 > 18 回 None(防 I64 溢出);无数字段(""/"-"/"."/"1.2.3")回 None
+fn pf64(s: Str) -> Option[F64] {
+    if s.len == 0 {
+        return None
+    }
+    let pp = partition(s, ".")
+    var ip = pp[0]
+    var fp = ""
+    if pp[1] == "." {
+        fp = pp[2]
+    }
+    var neg = false
+    if ip.len > 0 {
+        let c0 = byte_at(ip, 0)
+        if c0 == 45 {
+            neg = true
+            ip = byte_slice(ip, 1, ip.len)
+        } else {
+            if c0 == 43 {
+                ip = byte_slice(ip, 1, ip.len)
+            }
+        }
+    }
+    if ip.len == 0 && fp.len == 0 {
+        return None
+    }
+    if ip.len + fp.len > 18 {
+        return None
+    }
+    var whole: I64 = 0
+    var i: I32 = 0
+    while i < ip.len {
+        let c = byte_at(ip, i)
+        if c < 48 || c > 57 {
+            return None
+        }
+        whole = whole * 10 + (c - 48).as[I64]()
+        i += 1
+    }
+    var k: I32 = 0
+    var j: I32 = 0
+    while j < fp.len {
+        let c = byte_at(fp, j)
+        if c < 48 || c > 57 {
+            return None
+        }
+        whole = whole * 10 + (c - 48).as[I64]()
+        k += 1
+        j += 1
+    }
+    var acc: F64 = whole.as[F64]()
+    var div: F64 = 1.0
+    var t: I32 = 0
+    while t < k {
+        div = div * 10.0
+        t += 1
+    }
+    acc = acc / div
+    if neg {
+        acc = 0.0 - acc
+    }
+    return Some(acc)
+}
+
+pub fn query[S](r: Req[S], name: Str) -> Str {
+    return pdec(q_raw(r.query, name))
+}
+
+pub fn query_all[S](r: Req[S], name: Str) -> List[Str] {
+    return pdec_all(r.query, name)
+}
+
+pub fn form[S](r: Req[S], name: Str) -> Str {
+    return pdec(q_raw(r.body, name))
+}
+
+pub fn form_all[S](r: Req[S], name: Str) -> List[Str] {
+    return pdec_all(r.body, name)
+}
+
+pub fn header[S](r: Req[S], name: Str) -> Str {
+    return hdr_get(r.headers, name)
+}
+
+pub fn cookie[S](r: Req[S], name: Str) -> Str {
+    return pair_get(r.cookies, name)
+}
+
+// query/form 串内单值取原始(未解码)值:'&' 段切(std split)→ 首 '=' 二分;键全等才中
+fn q_raw(q: Str, name: Str) -> Str {
+    let segs = split(q, 38)
+    var i: I32 = 0
+    while i < segs.len {
+        let seg = segs[i]
+        let eq = index_of(seg, "=")
+        if eq > 0 {
+            if byte_slice(seg, 0, eq) == name {
+                return byte_slice(seg, eq + 1, seg.len)
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+// query/form 串内同名多值(保序),逐值解码
+fn pdec_all(q: Str, name: Str) -> List[Str] {
+    var out: List[Str] = List[Str]()
+    let segs = split(q, 38)
+    var i: I32 = 0
+    while i < segs.len {
+        let seg = segs[i]
+        let eq = index_of(seg, "=")
+        if eq > 0 {
+            if byte_slice(seg, 0, eq) == name {
+                out.push(pdec(byte_slice(seg, eq + 1, seg.len)))
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// ---- 测试 ----
+
+test "resp 构造器安全默认" {
+    let r = html("<h1>hi</h1>")
+    assert(resp_status(r) == 200)
+    assert(contains(resp_header(r, "Content-Type"), "text/html"))
+    assert(contains(resp_header(r, "X-Content-Type-Options"), "nosniff"))
+    let rd = redirect("/app")
+    assert(resp_status(rd) == 303)
+    assert(resp_header(rd, "Location") == "/app")
+    let r2 = with_status(with(json("\{" + "}"), "Set-Cookie", "a=b"), 201)
+    assert(resp_status(r2) == 201)
+    assert(resp_header(r2, "Set-Cookie") == "a=b")
+    // 其他格式矩阵(§4.4):xml/yaml 自动 Content-Type
+    assert(contains(resp_header(xml("<a/>"), "Content-Type"), "text/xml"))
+    assert(contains(resp_header(yaml("k: v"), "Content-Type"), "application/yaml"))
+}
+
+test "json_obj 转义与类型" {
+    let s = json_obj().str("t", "a\"b").i64("n", 42).bool("ok", true).end()
+    assert(s == "\{" + "\"t\":\"a\\\"b\",\"n\":42,\"ok\":true}")
+    assert(contains(s, "\"t\":\"a\\\"b\""))
+    assert(contains(s, "\"n\":42"))
+    assert(contains(s, "\"ok\":true"))
+    var tags: List[Str] = List[Str]()
+    tags.push("a")
+    tags.push("b\"c")
+    let s4 = json_obj().strs("tags", tags).end()
+    assert(s4 == "\{" + "\"tags\":[\"a\",\"b\\\"c\"]}")   // strs 独立覆盖(M-T1w-2 收口)
+    let e = err_json(422, "bad")
+    assert(resp_status(e) == 422)
+    assert(contains(resp_body(e), "\"error\":\"bad\""))
+    // err_json Content-Type 修正(M-T1w-1 收口):JSON 终结物走 json() 底座,不再 text/plain
+    assert(resp_header(e, "Content-Type") == "application/json")
+    assert(contains(resp_header(e, "X-Content-Type-Options"), "nosniff"))
+}
+
+test "csv_rows RFC 4180 最小引用与 attachment 导出面" {
+    var hs: List[Str] = List[Str]()
+    hs.push("id")
+    hs.push("note")
+    var r1: List[Str] = List[Str]()
+    r1.push("1")
+    r1.push("plain")
+    var r2: List[Str] = List[Str]()
+    r2.push("2")
+    r2.push("a,b\"c")
+    var rows: List[List[Str]] = List[List[Str]]()
+    rows.push(r1)
+    rows.push(r2)
+    let out = csv_rows(hs, rows)
+    // 含逗号+引号字段:整域加引号、引号双写;表头行首;行 \n 相接(尾行不带换行)
+    assert(out == "id,note\n1,plain\n2,\"a,b\"\"c\"")
+    // 导出组装面:csv_rows 产文本 + Content-Disposition 链上(spec §4.4 "→ text/attachment")。
+    // 注:载体用 html() 不用 text()——core 的 test 体引用会把该 decl 拉进 use 选择性合并
+    // keep 集(pkg_load_use "Test 恒随"口径),与 view.el 的 text 撞名 E5030(在册 M-T5w-1);
+    // 真实导出用法 text(csv_rows(...)).attachment("report.csv") 记于 README。
+    let resp = attachment(html(out), "report.csv")
+    assert(resp_header(resp, "Content-Disposition") == "attachment; filename=\"report.csv\"")
+    assert(resp_body(resp) == out)
+    // 空表/空行边界
+    assert(csv_rows(List[Str](), List[List[Str]]()) == "")
+}
+
+test "query/form 解码 UTF-8 安全" {
+    let r = req_full("GET", "/s?q=a%20b&tag=%E4%B8%AD%E6%96%87&tag=x", "", List[Pair](), 0)
+    assert(query[I32](r, "q") == "a b")
+    let tags = query_all[I32](r, "tag")
+    assert(tags.len == 2)
+    assert(tags[0] == "中文")
+    assert(query[I32](r, "nope") == "")
+}
+
+test "cookie/header/params" {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Cookie", v: "sid=abc; theme=dark" })
+    hs.push(Pair { k: "User-Agent", v: "t" })
+    let r = req_full("GET", "/x", "", hs, 0)
+    assert(cookie[I32](r, "sid") == "abc")
+    assert(cookie[I32](r, "theme") == "dark")
+    assert(header[I32](r, "user-agent") == "t")
+}
+
+test "req_of query 分裂与 form 全解" {
+    let r = req_of("GET", "/p?a=1&b=%2F", 7)
+    assert(r.path == "/p")
+    assert(r.query == "a=1&b=%2F")
+    assert(r.state == 7)
+    let f = req_full("POST", "/f", "name=%E4%B8%AD%E6%96%87&name=ok&q=a+b", List[Pair](), 0)
+    assert(form[I32](f, "name") == "中文")
+    let names = form_all[I32](f, "name")
+    assert(names.len == 2)
+    assert(names[1] == "ok")
+    assert(form[I32](f, "q") == "a b")
+    assert(form[I32](f, "nope") == "")
+    assert(form_all[I32](f, "nope").len == 0)
+}
+
+test "pdec 边域:坏转义/截断/非法首字节原样透传" {
+    assert(pdec("a+b") == "a b")
+    assert(pdec("100%") == "100%")
+    assert(pdec("%zz") == "%zz")
+    assert(pdec("%E4%B8") == "%E4%B8")
+    assert(pdec("%80") == "%80")
+    assert(pdec("%C0%80") == "%C0%80")
+    assert(pdec("%2C") == ",")
+    assert(pdec("%7E") == "~")
+}
+
+test "param 族与类型化取参" {
+    var ps: List[Pair] = List[Pair]()
+    ps.push(Pair { k: "id", v: "42" })
+    ps.push(Pair { k: "ratio", v: "2.5" })
+    ps.push(Pair { k: "pi", v: "3.14" })
+    ps.push(Pair { k: "bad", v: "x1" })
+    let r = Req { method: "GET", path: "/u/42", query: "", body: "", headers: List[Pair](), cookies: List[Pair](), params: ps, state: 0 }
+    assert(param[I32](r, "id") == "42")
+    assert(param[I32](r, "nope") == "")
+    assert(param_i64[I32](r, "id").or(-1) == 42)
+    assert(param_i64[I32](r, "nope").or(-1) == -1)
+    assert(param_i64[I32](r, "bad").or(-1) == -1)
+    assert(param_f64[I32](r, "ratio").or(0.0) == 2.5)
+    assert(param_f64[I32](r, "pi").or(0.0) == 3.14)
+    assert(param_f64[I32](r, "nope").or(0.0) == 0.0)
+    assert(param_f64[I32](r, "bad").or(0.0) == 0.0)
+}
+
+test "cookie 首等号分段与 case 不敏感取头" {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "cookie", v: "tok=a=b; empty=; x" })
+    let r = req_full("GET", "/x", "", hs, 0)
+    assert(cookie[I32](r, "tok") == "a=b")
+    assert(cookie[I32](r, "empty") == "")
+    assert(cookie[I32](r, "x") == "")
+    assert(header[I32](r, "COOKIE") == "tok=a=b; empty=; x")
+}

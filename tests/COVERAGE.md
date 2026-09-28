@@ -577,3 +577,34 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   宿主最小探针(fetch_add 返旧值→store→load 链路正确);net 17/17×2。
 - 门禁:suite 87/88 维持、modules 16/17×2(基线红不变)、db 44/10 基线、http 110/1
   (jwt interp OOM 预存)、cargo 14/0、meta/fmt/ffi 过。
+**2026-09-28 web 2a 开波**(web 框架核心纯函数面;计划文件:
+`docs/superpowers/plans/2026-09-28-webfw-2a-core.md`):
+- Task 0 包骨架落库:`web/Ctron.ctcl`(pkg web;caps net.listen 供应链审计标记)+
+  `web/core.ct` 包头占位(Task 1-4 填充);语义门 `ctc.sh check web/core.ct` → check OK。
+- 包测试驱动口径(seed 单文件):语义门 `sh compiler/ctc.sh check <file>`;test 块
+  `compiler-c/build/ctronc test <file>`(suite.py 两相位同款;跨模块被测文件按
+  compiler/build.sh 式拼接,bootstrap ctc.sh 无 test 子命令)。
+
+**2026-09-28 web 2a 收口(Task 5;16e702e..本笔,worktree webfw-2a)**:
+- 语义门:`ctc.sh check web/core.ct web/router.ct web/view.ct` 全 OK(decls=134)+
+  三文件裸跑 rc=0;负臂实证:err_json 旧 end_status(status 底座 text/plain)对新断言
+  `Content-Type == application/json` 实咬(assert failed rc=1),修后绿。
+- 本笔面:err_json CT 修正(M-T1w-1,end_status 改走 json() 底座)/strs 独立断言(M-T1w-2)/
+  csv_rows(RFC 4180 最小引用形,本地实现——use std.csv 入 core 会翻转 view 合并态 E5030,
+  见下)/attachment/xml/yaml 补 §4.4 格式矩阵/install(§4.6 插件挂载)/test_call(§4.7 测试口,
+  dispatch 别名)/view 信任边界注记(M-T4w-1)/README API 表(§4 定稿面 2a/2b 两列)。
+- 新编译器坑在册(M-T5w-1):pkg_load_use 选择性合并 keep 闭包含 **test 体引用**
+  ("Test 恒随"口径)——core 测试体引用 `text()` 即把 core.text 拉进 use 方(view)合并面,
+  与 view.text 撞名 E5030(实证:引用时 rc=1/去除 rc=0);同型:`use std.csv` 入 core 同样
+  翻转 view 合并态。包内跨文件同名 decl 禁入被 use 方 test 体。
+- 覆盖清单:Resp 构造器族(html/json/text/redirect/status/err_json/xml/yaml)+ with/with_status/
+  attachment + resp 三读 + json_obj 五件(end/end_status)+ csv_rows + Req 六取参(query/
+  query_all/form/form_all/header/cookie)+ param/param_i64/param_f64 + pdec 边域 + req_of/
+  req_full/req_set_params + Router 全组合子(get/post/put/delete/patch/middleware/mount_at/
+  install)+ route_match 三档/405 Allow/has_conflict/dispatch/test_call + 中间件短路穿透 +
+  视图 el 族(结构性转义/raw/children/自闭形)。param_f64 在册确认(spec §4.3)。
+- 2b 待办指针:serve 循环/body_limit/not_found/method_not_allowed 挂点/static/openapi/
+  bytes(挂 §7-8 二进制门)/send_file/req.json+JDoc 校验族/session 族(with_sessions/
+  grant_session/drop_session/flash)/README 示例迁移(todo_app 对照 §10 验收门)/原生 e2e 门
+  (挂 L6/L7 销账)。全景见 `web/README.md` API 表两列。
+- suite 回归:web/ 不在 tests/,suite.py 计数不动(87/88+88/88 基线,本笔复跑确认)。
