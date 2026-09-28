@@ -67,9 +67,35 @@ void gui_inject_char(int ch) {
 void gui_inject_click(int x, int y) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
 }
+// 脚本化拖动注入(测试/自动化):压下帧(evt2@x1)→12 移动帧(mouse_down=1,
+// mouse_x 插值 x1→x2)→释放;gui_mouse_x/down 在注入期受控
+static int g_idrg_act = 0;
+static int g_idrg_ph = 0;
+static int g_idrg_x1 = 0, g_idrg_x2 = 0, g_idrg_y = 0;
+void gui_inject_drag(int x1, int y, int x2) {
+    g_idrg_act = 1; g_idrg_ph = 0;
+    g_idrg_x1 = x1; g_idrg_x2 = x2; g_idrg_y = y;
+}
 // 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
 // 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本)
 int gui_poll_event(void) {
+    {
+        static int cl_tr = -1;
+        if (cl_tr < 0) { cl_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
+        if (cl_tr && g_qhead < g_qtail && g_queue[g_qhead].type == 2) {
+            fprintf(stderr, "[POLLC] queued-click head x=%d y=%d q=%d\n", g_queue[g_qhead].x, g_queue[g_qhead].y, g_qtail - g_qhead);
+        }
+    }
+    if (g_idrg_act) {
+        if (g_idrg_ph == 0) {
+            g_cur = (GuiEvent){ 2, 0, g_idrg_x1, g_idrg_y };
+            g_idrg_ph = 1;
+            return 2;
+        }
+        g_idrg_ph += 1;
+        if (g_idrg_ph > 12) { g_idrg_act = 0; }
+        return 0;
+    }
     if (g_qhead < g_qtail) {
         g_cur = g_queue[g_qhead];
         g_qhead++;
@@ -428,9 +454,15 @@ int gui_os_dark_id(void) {
 }
 
 // ---- 指针位置/按下读面(§2.1 真窗 hover;headless 走 d_hover/d_active 注入) ----
-int gui_mouse_x(void) { Vector2 p = GetMousePosition(); return (int)p.x; }
+int gui_mouse_x(void) {
+    if (g_idrg_act && g_idrg_ph >= 1) {
+        return g_idrg_x1 + (g_idrg_x2 - g_idrg_x1) * (g_idrg_ph > 12 ? 12 : g_idrg_ph) / 12;
+    }
+    Vector2 p = GetMousePosition(); return (int)p.x;
+}
 int gui_mouse_y(void) { Vector2 p = GetMousePosition(); return (int)p.y; }
 int gui_mouse_down(void) {
+    if (g_idrg_act && g_idrg_ph >= 1 && g_idrg_ph <= 12) { return 1; }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { return 1; }
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { return 1; }
     return 0;
@@ -587,6 +619,64 @@ void gui_inject_ms(int ms) { g_inject_ms = ms; }
 int gui_ms_injected(void) { return g_inject_ms; }
 // 浮动光标条(P-M3 成熟输入体验):Clay floating attachTo=parent,绝对偏移
 // 不参与父布局(文字位置与光标完全解耦);zIndex 置顶覆盖绘制
+// ---- 文本选区(P-M3 成熟输入面):anchor = 拖动锚端,caret = 活动端 ----
+// 选区 = [min(anchor,caret), max(anchor,caret));-1 = 无
+static int g_sel_anchor = -1;
+int gui_sel_anchor_set(int i) { g_sel_anchor = i; return 0; }
+int gui_sel_anchor_get(void) { return g_sel_anchor; }
+int gui_sel_clear(void) { g_sel_anchor = -1; return 0; }
+
+// 输入拖动旗(按下命中输入时置位;每帧拖动更新消费,松开清除)
+static int g_drag_input = 0;
+int gui_drag_begin(void) { g_drag_input = 1; return 0; }
+int gui_drag_end(void) { g_drag_input = 0; return 0; }
+int gui_drag_active(void) { return g_drag_input; }
+
+// 双击检测(350ms/6px 内二次点击);命中后复位防三击
+static int g_last_click_ms = -100000;
+static int g_last_click_x = 0;
+static int g_last_click_y = 0;
+int gui_click_kind(int px, int py) {
+    int now = gui_now_ms();
+    {
+        static int ck_tr = -1;
+        if (ck_tr < 0) { ck_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
+        if (ck_tr) { fprintf(stderr, "[CK] px=%d py=%d now=%d last=%d\n", px, py, now, g_last_click_ms); }
+    }
+    int d = now - g_last_click_ms;
+    int dx = px - g_last_click_x;
+    int dy = py - g_last_click_y;
+    if (dx < 0) { dx = -dx; }
+    if (dy < 0) { dy = -dy; }
+    if (d >= 0 && d < 350 && dx < 6 && dy < 6) {
+        g_last_click_ms = -100000;
+        return 1;
+    }
+    g_last_click_ms = now;
+    g_last_click_x = px;
+    g_last_click_y = py;
+    return 0;
+}
+
+// 选区高亮浮条(半透明,zIndex 50 = 光标条之下)
+int gui_sel_float(int offx, int y, int w, int h, int bg) {
+    Clay_ElementDeclaration decl = {0};
+    decl.floating = (Clay_FloatingElementConfig){
+        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .offset = { .x = (float)offx, .y = (float)y },
+        .zIndex = 50,
+    };
+    Clay_LayoutConfig lay = {0};
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)w, (float)w } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg >> 16) & 255), (float)((bg >> 8) & 255), (float)(bg & 255), 90.0f };
+    Clay__OpenElement();
+    Clay__ConfigureOpenElement(decl);
+    Clay__CloseElement();
+    return 0;
+}
+
 int gui_caret_float(int offx, int y, int w, int h, int bg) {
     Clay_ElementDeclaration decl = {0};
     decl.floating = (Clay_FloatingElementConfig){
