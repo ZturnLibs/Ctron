@@ -500,3 +500,11 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   声明位(C 宿主 pkg 解析+校验+pkg 子命令展示,不进执行;实证 grep 无第二消费方),量纲统一
   (budget_steps 改名)随 CTCL 迁移批次(T48)定夺。
 - comptime_budget 模块锚注记对齐步数口径;r6f 锚头注本即步数口径无需动。
+
+**2026-09-28 web 2a 开波**(web 框架核心纯函数面;计划文件:
+`docs/superpowers/plans/2026-09-28-webfw-2a-core.md`):
+- Task 0 包骨架落库:`web/Ctron.ctcl`(pkg web;caps net.listen 供应链审计标记)+
+  `web/core.ct` 包头占位(Task 1-4 填充);语义门 `ctc.sh check web/core.ct` → check OK。
+- 包测试驱动口径(seed 单文件):语义门 `sh compiler/ctc.sh check <file>`;test 块
+  `compiler-c/build/ctronc test <file>`(suite.py 两相位同款;跨模块被测文件按
+  compiler/build.sh 式拼接,bootstrap ctc.sh 无 test 子命令)。
