@@ -3362,10 +3362,10 @@ fn rt_in_val(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void) -> Str {
     if t.nbid[node] == "" {
         return ""
     }
-    if gt_slot_simple(t.nbid[node]) && t.props.len == 0 {
-        return bxv_show(rt_bind_text(bind, t.nbid[node]))
-    }
-    return ""
+    // props 视图走求值器(prop: 链解析+裸名回落,与显示路径同口径)——
+    // 旧 return "" = 组词/编辑 cur 恒空:新字替换非追加(只留末字)/
+    // 退格 caret=0 无效/点击光标置 0 三症状同根
+    return bxv_show(bxv_eval(t, t.nbid[node], bind))
 }
 
 // on:<evname> 处理器头名提取(节点事件表扫描);未声明返回 ""
@@ -3683,6 +3683,8 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                     if t.nbid[fnode] != "" {
                         if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
                             fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
+                        } else {
+                            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
                         }
                     }
                     gui_caret_set(fbv.len)
@@ -3832,6 +3834,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     if t.nbid[fnode] != "" {
                         if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
                             fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
+                        } else {
+                            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
                         }
                     }
                     gui_caret_set(fbv.len)
