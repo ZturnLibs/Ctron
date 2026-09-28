@@ -253,6 +253,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         }
         return "L"
     }
+    if or2(nt[1] == "Sender", or2(nt[1] == "Receiver", nt[1] == "Channel")) { return "h" }
     if nt[1] == "Atomic" { return "A" }
     return "i"
 }

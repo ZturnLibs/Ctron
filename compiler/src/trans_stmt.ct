@@ -619,7 +619,18 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                                 var cn2 = pat[2][1]
                                 eln("ct_chan* t_" + cn1 + " = " + chx + ";", env)
                                 eln("ct_chan* t_" + cn2 + " = t_" + cn1 + ";", env)
-                                return env_bind(env_bind(env, cn1, "h"), cn2, "h")
+                                // T14-③:struct 元素通道 → rx 码 hR<元素码>(match Ok 臂
+                                // 据此解引用);标量元素两半端均 h(行为不变)
+                                var rcode = "h"
+                                if st[4][1][2].len > 1 {
+                                    if st[4][1][2][1][0] == "Named" {
+                                        var ec14 = ct_ty_code(st[4][1][2][1], file)
+                                        if ec14.len > 2 && byte_slice(ec14, 0, 2) == "u:" {
+                                            rcode = "hR" + ec14
+                                        }
+                                    }
+                                }
+                                return env_bind(env_bind(env, cn1, "h"), cn2, rcode)
                             }
                         }
                     }
@@ -1009,9 +1020,27 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 var obe = oa[2]
                 eln("if (" + rme + ".variant == 0) \{", env)
                 var oenv = env
+                // T14-③:scrutinee 为 struct 元素通道 recv(hR 码)→ 载荷堆盒解引用
+                var recvElem = ""
+                if st[1][0] == "Call" {
+                    var scal14 = st[1][1]
+                    if scal14[0] == "Member" && scal14[2] == "Nm" && scal14[3] == "recv" {
+                        if scal14[1][0] == "Ident" {
+                            var rc14 = ct_env_ty(env, scal14[1][1])
+                            if rc14.len > 4 && byte_slice(rc14, 0, 2) == "hR" {
+                                recvElem = byte_slice(rc14, 2, rc14.len)
+                            }
+                        }
+                    }
+                }
                 if opt[2].len > 1 && opt[2][1][0] == "PatId" && opt[2][1][1] != "_" {
-                    eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
-                    oenv = env_bind(env, opt[2][1][1], "i")
+                    if recvElem.len > 0 {
+                        eln(ct_ctype(recvElem) + " t_" + opt[2][1][1] + " = *(" + ct_ctype(recvElem) + "*)(long)" + rme + ".v;", env)
+                        oenv = env_bind(env, opt[2][1][1], recvElem)
+                    } else {
+                        eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
+                        oenv = env_bind(env, opt[2][1][1], "i")
+                    }
                 }
                 if obe[0] == "BlockExpr" {
                     ct_block(obe[1], oenv, file, hreg)

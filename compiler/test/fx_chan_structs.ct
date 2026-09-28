@@ -1,0 +1,81 @@
+// fx_chan_structs.ct —— 通道句柄与 struct 载荷(T14-③;§7.3/§12.3)
+// 钉住:①Sender/Receiver 作 struct 字段/形参(旧 P5-E「emit int32 截断」缺口收口,
+//        db/pool 池持通道的能力阻塞解除——消费方迁移随 db 泳道)
+//      ②struct 值入通道:send 装箱(堆盒值拷贝)/match Ok 臂解引用(hR 元素码)
+// smoke emit 臂门禁;interp 臂本即绿。
+struct HPool {
+    tx: Sender
+    rx: Receiver
+}
+
+struct Msg {
+    code: I32
+    tag: Str
+}
+
+fn sender_of(p: HPool) -> Sender {
+    return p.tx
+}
+
+test "channel handle as struct field and param" {
+    let (tx, rx) = Channel[I32](4)
+    let p = HPool { tx: tx, rx: rx }
+    // 字段位收发
+    match p.tx.send(11) {
+        Ok(_) => {
+            assert(true)
+        }
+        Err(m) => {
+            assert(false)
+        }
+    }
+    match p.rx.recv() {
+        Ok(v) => {
+            assert_eq(v, 11)
+        }
+        Err(m) => {
+            assert(false)
+        }
+    }
+    // 形参位(经 sender_of 转手)
+    let tx2 = sender_of(p)
+    match tx2.send(22) {
+        Ok(_) => {
+            assert(true)
+        }
+        Err(m) => {
+            assert(false)
+        }
+    }
+    match p.rx.recv() {
+        Ok(v) => {
+            assert_eq(v, 22)
+        }
+        Err(m) => {
+            assert(false)
+        }
+    }
+
+}
+
+test "struct value through channel" {
+    let (tx, rx) = Channel[Msg](4)
+    match tx.send(Msg { code: 7, tag: "hi" }) {
+        Ok(_) => {
+            assert(true)
+        }
+        Err(m) => {
+            assert(false)
+        }
+    }
+    match rx.recv() {
+        Ok(v) => {
+            assert_eq(v.code, 7)
+            assert_eq(v.tag, "hi")
+        }
+        Err(m) => {
+            assert(false)
+        }
+    }
+
+}

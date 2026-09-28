@@ -44,8 +44,9 @@ fn ct_wrap_i(code: Str, x: Str) -> Str {
         return "(ct_i)(long)(" + x + ")"
     }
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
-        panic("emit:并发值含 struct 值传递")
-        return ""
+        // T14-③:struct 值入通道 = 堆盒值拷贝(send 装箱;match Ok 臂按 hR 码解引用)
+        var bt = ct_ctype(code)
+        return "(\{ " + bt + "* _cb = (" + bt + "*)ctron_amalloc(sizeof(" + bt + ")); *_cb = (" + x + "); (ct_i)(long)_cb; })"
     }
     return "(ct_i)(" + x + ")"
 }

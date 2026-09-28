@@ -121,6 +121,15 @@ else
     bad "List[struct] 发射异常: $(head -2 "$T/ls.out" 2>/dev/null)"
 fi
 
+# T14-③ 通道句柄作字段/形参 + struct 值入通道(§7.3;P5-E 池持通道能力解锁)
+if "$COMP/ctc.sh" emit "$COMP/test/fx_chan_structs.ct" "$T/cs.c" > /dev/null 2>&1 \
+   && cc -O1 -w -pthread -o "$T/cs.bin" "$T/cs.c" 2>/dev/null \
+   && "$T/cs.bin" run "$COMP/test/fx_chan_structs.ct" > "$T/cs.out" 2>&1; then
+    ok "通道句柄字段/形参 + struct 载荷(装箱/解引用)"
+else
+    bad "通道句柄/struct 载荷异常: $(head -2 "$T/cs.out" 2>/dev/null)"
+fi
+
 # §8.5 单态化实例预算(E6040;T07):4 个显式特化,预算 3 → 超限;
 # 旋钮经原生 bin(seed 路径 env_get 哑,在册);默认 8192 上面各 emit 已隐证
 CTRON_MONO_BUDGET=3 "$COMP/bin/ctron-emit" run "$COMP/test/fx_mono_budget_neg.ct" > "$T/mb.out" 2>&1
