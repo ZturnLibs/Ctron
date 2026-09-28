@@ -2433,6 +2433,8 @@ impl<'a> Checker<'a> {
             // v0.7 语料同步:内建族登记(interp D1 面对齐;签名宽松,实参全查)
             "println" | "print" => { for a in args { self.expr(a, None); } Ty::Void }
             "read_file" => { for a in args { self.expr(a, None); } self.named("Option", vec![Ty::Str]) }
+            // std.fs.read_or(缺失回落默认;fs_exists 守卫 + 直读,L4 探针消费面)
+            "read_or" => { for a in args { self.expr(a, None); } Ty::Str }
             "read_line" => { for a in args { self.expr(a, None); } Ty::Str }
             "read_bytes" => { for a in args { self.expr(a, None); } Ty::Str }
             "flush_out" => { for a in args { self.expr(a, None); } Ty::Void }
@@ -2662,6 +2664,7 @@ impl<'a> Checker<'a> {
         match &ot {
             Ty::Str => match tn.as_str() {
                 "len" | "char_len" => Ty::UInt(IntW::WSize),
+                "contains" => self.named("Bool", vec![]), // §3.8.2;T09
                 _ => { self.err("E2020", format!("Str 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
             },
             Ty::String => match tn.as_str() {

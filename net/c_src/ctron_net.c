@@ -722,6 +722,46 @@ static int64_t ct_getaddrinfo_v4(const char* host, char* out, size_t outn) {
     return 0;
 }
 
+/* 多记录 resolve(§11.5;T09):AF_UNSPEC 双栈全记录 → inet_ntop 文本,记录间
+ * "\n" 连接(每行一个规范地址文本,v4 点分/v6 冒分);返回记录数(0 = 失败或零)。
+ * rc 经出参回传(纯函数纪律同 ct_getaddrinfo_v4:不触 errno 槽)。容量截断:
+ * 满即止(CI 面 host 记录数个位数;2048B ≈ 百余条 v6)。 */
+static int ct_getaddrinfo_all(const char* host, char* out, size_t outn, int64_t* rc_out) {
+    struct addrinfo hints, *res = NULL, *rp;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    out[0] = '\0';
+    int gai = getaddrinfo(host, NULL, &hints, &res);
+    if (gai != 0 || res == NULL) {
+        if (rc_out) *rc_out = (int64_t)gai;
+        return 0;
+    }
+    char one[INET6_ADDRSTRLEN];
+    int n = 0;
+    size_t used = 0;
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        const void* src;
+        if (rp->ai_family == AF_INET6) {
+            src = &((const struct sockaddr_in6*)(const void*)rp->ai_addr)->sin6_addr;
+        } else if (rp->ai_family == AF_INET) {
+            src = &((const struct sockaddr_in*)(const void*)rp->ai_addr)->sin_addr;
+        } else {
+            continue;
+        }
+        if (!inet_ntop(rp->ai_family, src, one, sizeof(one))) continue;
+        size_t ol = strlen(one);
+        if (used + (used ? 1 : 0) + ol + 1 > outn) break;
+        if (used > 0) out[used++] = '\n';
+        memcpy(out + used, one, ol + 1);
+        used += ol;
+        n++;
+    }
+    freeaddrinfo(res);
+    if (rc_out) *rc_out = 0;
+    return n;
+}
+
 #ifndef _WIN32
 /* ---- P3-E DNS helper 池:2 线程 + done 槽(协程面专用) ----
  * 旧实现 getaddrinfo 直接跑在调用协程所在 worker:解析期间 worker 整体滞留
@@ -749,7 +789,8 @@ static int64_t ct_getaddrinfo_v4(const char* host, char* out, size_t outn) {
 struct ct_dns_job {
     struct ct_dns_job* next;
     char host[256];                 /* 拷贝解耦调用方串寿命(停车期间仍有效) */
-    char result[64];
+    int all;                        /* 0=首 IPv4(resolve_first);1=全记录打包(T09) */
+    char result[2048];              /* 全记录打包面("\n" 连接;首模式仅用首段) */
     int64_t rc;                     /* 0 成(result 有效);非 0 = gai rc/errno */
     atomic_int done;                /* 池线程 release 置 1;协程 acquire 轮询 */
     void* coro_key;                 /* 提交协程 key(wake 用;见所有权要点 1) */
@@ -771,7 +812,9 @@ static void* ct_dns_worker(void* arg) {
         if (ct_dns_head == NULL) ct_dns_tail = &ct_dns_head;
         pthread_mutex_unlock(&ct_dns_mx);
 
-        j->rc = ct_getaddrinfo_v4(j->host, j->result, sizeof(j->result));
+        j->rc = j->all
+            ? (ct_getaddrinfo_all(j->host, j->result, sizeof(j->result), NULL) > 0 ? 0 : EAI_FAIL)
+            : ct_getaddrinfo_v4(j->host, j->result, sizeof(j->result));
 
         void* key = j->coro_key;   /* 先取副本:done 后槽归协程(free 竞态隔离) */
         atomic_store_explicit(&j->done, 1, memory_order_release);
@@ -849,4 +892,44 @@ const char* ctron_net_resolve_first(const char* host) {
     *ct_err_slot() = rc;
     if (rc != 0 || ct_res_buf[0] == '\0') return "";
     return ct_res_buf;
+}
+
+/* 多记录 resolve 门面(§11.5;T09):C-owned TLS 静态,记录文本 "\n" 连接;
+ * 失败/零记录返回 ""(errno 槽置 gai rc)。协程面走 helper 池(all 模式:
+ * 池线程产全记录打包串;槽所有权/停车纪律与 resolve_first 逐条同构)。 */
+const char* ctron_net_resolve_all(const char* host) {
+    static CT_TLS char allbuf[2048];
+    int64_t rc = 0;
+#ifndef _WIN32
+    if (ct_rt_parkable()) {
+        struct ct_dns_job* j = (struct ct_dns_job*)malloc(sizeof(*j));
+        if (j == NULL) {
+            *ct_err_slot() = ENOMEM;
+            return "";
+        }
+        memset(j, 0, sizeof(*j));
+        strncpy(j->host, host, sizeof(j->host) - 1);
+        j->host[sizeof(j->host) - 1] = '\0';
+        j->all = 1;
+        j->coro_key = ctron_rt_current();
+        atomic_init(&j->done, 0);
+        if (ct_dns_submit(j) == 0) {
+            while (atomic_load_explicit(&j->done, memory_order_acquire) == 0) {
+                ctron_rt_park();
+            }
+            int64_t jrc = j->rc;
+            strncpy(allbuf, j->result, sizeof(allbuf) - 1);
+            allbuf[sizeof(allbuf) - 1] = '\0';
+            free(j);
+            *ct_err_slot() = jrc;
+            if (jrc != 0 || allbuf[0] == '\0') return "";
+            return allbuf;
+        }
+        free(j);                   /* 池不可用:内联兜底(旧阻塞语义) */
+    }
+#endif
+    int n = ct_getaddrinfo_all(host, allbuf, sizeof(allbuf), &rc);
+    *ct_err_slot() = (n > 0) ? 0 : rc;
+    if (n == 0 || allbuf[0] == '\0') return "";
+    return allbuf;
 }

@@ -679,6 +679,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             var obj = ct_expr(cal[1], env, file)
             var objt = ct_typeof(cal[1], env, file)
+            if m == "contains" && or2(objt == "s", or2(objt == "N", objt == "u:s")) {
+                // §3.8.2 Str.contains(T09):strstr 判含;实参按 Str 直传(List.contains 既有分支不动)
+                if ag.len < 2 {
+                    panic("emit:contains 实参")
+                    return ""
+                }
+                return "(strstr((const char*)(" + obj + "), (const char*)(" + ct_expr(ag[1], env, file) + ")) != NULL)"
+            }
             if or2(m == "is_some", m == "is_ok") {
                 if objt == "R" { return "(" + obj + ".variant == 0)" }
             }
@@ -827,11 +835,27 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:eq 非结构接收者")
                 return ""
             }
-            // UFCS:文件自由 fn 首参调用
+            // UFCS:文件自由 fn 首参调用(接收者填充首参;实参对位 pcs[1..]。
+            // T09 修:旧码 ct_call_args(ag, 2,…) 把 ag 当作含接收者的实参表——
+            // 成员调用的 ag 只有实参(接收者在 cal[1]),from=2 恒漏首实参且
+            // 个数核对错位(04g 发射臂 rc=1 即此);主套件从不发射故长期隐形)
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
             if pcs.len > 0 { p0 = pcs[0] }
-            return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ", " + ct_call_args(ag, 2, env, file, m) + ")"
+            var ufargs = ""
+            var ui: I32 = 1
+            while ui < ag.len {
+                if ui > 1 { ufargs = ufargs + ", " }
+                var pcu = "i"
+                if ui < pcs.len { pcu = pcs[ui] }
+                var acu = ct_typeof(ag[ui], env, file)
+                ufargs = ufargs + ct_arg_cast(acu, pcu, ct_expr(ag[ui], env, file))
+                ui += 1
+            }
+            if ufargs.len > 0 {
+                return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ", " + ufargs + ")"
+            }
+            return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ")"
         }
         var callee = cal[1]
         if callee == "println" {

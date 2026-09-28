@@ -500,3 +500,22 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   声明位(C 宿主 pkg 解析+校验+pkg 子命令展示,不进执行;实证 grep 无第二消费方),量纲统一
   (budget_steps 改名)随 CTCL 迁移批次(T48)定夺。
 - comptime_budget 模块锚注记对齐步数口径;r6f 锚头注本即步数口径无需动。
+
+**2026-09-28 T09 resolve 多记录双栈落库**(spec-gap W2;§11.5):
+- C 垫片 ct_getaddrinfo_all(AF_UNSPEC 全记录 → inet_ntop 文本 "\n" 打包)+门面
+  ctron_net_resolve_all(TLS 静态;helper 池 all 模式——job 缓冲 64→2048,池线程产全记录
+  打包串,槽所有权/停车纪律与 resolve_first 逐条同构);net.ct 门面 net_resolve_all →
+  List[Str](规范点分/冒分文本)+ addr_is_v6;首记录面 net_resolve 保留。
+- 夹具 resolve_all(数值 v4/v6 确定性单记录/localhost ≥1/非法数值串空表+err;零外联纪律);
+  消费方 tcp_echo/unix_sock 双 API 化(协程对切 all 模式 = helper 池新面冒烟)。
+- **表示裁决**:v0 记录以规范文本承载(List[struct] 发射 = divergences (h) 族,同 T14
+  struct 值容器底座;SocketAddr 值 struct 随其并入);List[struct] 发射断点实证 = 元素
+  类型丢失(char* 槽)+索引取值无提取分支。
+- 顺手修三笔:①Str.contains(§3.8.2 v0.5 钉死承诺)interp 缺位+emit 丢实参(10_trace 侧
+  经 List.contains 绕过故隐形)——interp str_contains 分支+emit strstr 直出+R check 臂,
+  01d 补锚;②UFCS 发射 from=2 计数错位(实参恒漏首个+个数核对错位;04g 发射臂 rc=1 即此,
+  主套件从不发射故长期隐形)——重写实参对位(pcs[1..]);③R 线 std.fs.read_or 原生调用面
+  (机刷 03m 探针前向修复,read_file 同族臂)。
+- 新登记:04g 发射臂类方法分发缺位(c.hi() → t_hi 未声明;UFCS 修后暴露的下一层,
+  归类方法发射批次)。
+- net 双矩阵 15/15×2;db 44/10 基线;suite 87/88 维持;cargo 14/0;meta/fmt 过。

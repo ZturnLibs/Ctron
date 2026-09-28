@@ -9,7 +9,7 @@
 // 协程面:spawn 协程内 net_resolve 走 P3-E helper 池 + park(默认环境该
 // spawn 为 P1 pthread 面,resolve 直呼阻塞 —— 双模式同果)。
 // CI 纪律:仅本机文件系统 + localhost 解析、零外联(tests/net/run.sh 同口径)。
-use net.{Net_probe, last_net_error, net_unix_listen, net_unix_accept, net_unix_connect, net_unix_unlink, net_write_str, net_write, net_read_t, net_close, net_shutdown_write, net_resolve}
+use net.{Net_probe, last_net_error, net_unix_listen, net_unix_accept, net_unix_connect, net_unix_unlink, net_write_str, net_write, net_read_t, net_close, net_shutdown_write, net_resolve, net_resolve_all}
 
 #[trusted]
 extern "c" fn ctron_unix_sockpath() -> Str
@@ -22,13 +22,15 @@ fn resolve_coro_pair() -> I32 {
     var out = scope { |sc|
         var r = sc.spawn(|| {
             let net2 = Net_probe()
-            let a = net_resolve(net2, "localhost")
-            let b = net_resolve(net2, "localhost")
+            let a = net_resolve_all(net2, "localhost")
+            let b = net_resolve_all(net2, "localhost")
             if a.len == 0 {
                 return 1
             }
-            if a == b {
-                return 0
+            if a.len == b.len {
+                if a[0] == b[0] {
+                    return 0
+                }
             }
             return 2
         })
@@ -82,6 +84,9 @@ test "unix socket roundtrip + half-close + stale-file rebind" {
     // ---- resolve(P3-E 异步化后签名/返回不变;主线程面直呼) ----
     assert(net_resolve(net, "127.0.0.1") == "127.0.0.1")
     assert(net_resolve(net, "localhost").len > 0)
+    let ra = net_resolve_all(net, "::1")
+    assert(ra.len == 1)
+    assert(ra[0] == "::1")
 
     // ---- 协程面 resolve(helper 池 + park):coro 矩阵下 spawn 协程内
     //      resolve 改道池线程,主线程 worker 不滞留(默认环境该 spawn 为

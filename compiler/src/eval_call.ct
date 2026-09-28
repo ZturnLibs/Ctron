@@ -1106,6 +1106,13 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             return e4("k", ob[1], vdeep(recv), ob[3])
         }
     }
+    if seq2(m, "contains") && recv[0] == "S" && vals.len == 1 {
+        // §3.8.2 Str.contains(此前仅 List.contains;T09 夹具踩中补齐)
+        if vals[0][0] != "S" {
+            panic("contains 需 Str")
+        }
+        return e4("k", ob[1], vB(str_contains(recv[1], vals[0][1])), ob[3])
+    }
     if seq2(m, "contains") && recv[0] == "L" && vals.len == 1 {
         var fnd2 = false
         var li: I32 = 1

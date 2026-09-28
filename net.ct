@@ -16,7 +16,7 @@
 //   ⑤ 单次读/收调用至多搬运 4096 字节(垫片 CT_CHUNK 上限,cap 更大也被截到
 //      该值);UDP 单报文超限截断,EMSGSIZE 守卫列 P2。
 // 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/AF_UNIX/resolve 全量同文件。
-use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
+use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_resolve_all, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
 
 // ---- 能力 trait(stub 面原样保留;sem 审计锚:E4010 看 &Net 引用形参) ----
 
@@ -279,6 +279,29 @@ pub fn net_unix_unlink(net: StdNet, path: Str) -> I64 {
 // 解析主机,返回首个 IPv4 点分串(C-owned → str_from_c 深拷);失败返回 ""。
 // P3-E 异步化:协程上下文经 2 线程 helper 池 + park 完成(不再阻塞调用协程
 // 所在 worker);裸线程面 P1 原路径。签名/返回不变。
+pub fn net_resolve_all(net: StdNet, host: Str) -> List[Str] {
+    var out = List[Str]()
+    var packed = str_from_c(ctron_net_resolve_all(host))
+    var ls: I32 = 0
+    var i: I32 = 0
+    var n = packed.len
+    while i <= n {
+        if i == n || byte_at(packed, i) == 10 {
+            if i > ls {
+                out.push(byte_slice(packed, ls, i))
+            }
+            ls = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+// v6 判定(§11.5 双栈):规范冒分文本含 ':' 即 v6(v4 点分恒无)
+pub fn addr_is_v6(host: Str) -> Bool {
+    return host.contains(":")
+}
+
 pub fn net_resolve(net: StdNet, host: Str) -> Str {
     return str_from_c(ctron_net_resolve_first(host))
 }

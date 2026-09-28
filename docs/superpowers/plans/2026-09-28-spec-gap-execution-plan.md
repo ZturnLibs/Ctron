@@ -125,7 +125,7 @@
 
 ### T09 · resolve → `List[SocketAddr]` 双栈多记录(§11.5)
 
-- **预估:** 1–1.5 d。**前置:** 无。**状态:** 待办
+- **预估:** 1–1.5 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28;v0 List[Str] 文本承载,struct 形随 T14)
 - **目标:** `resolve(host)` 返回多记录(`List[SocketAddr]`),替换 `ctron_net_resolve_first` 单记录面;门面 API 变更,同形双运行时(coro/P1)都要过。
 - **范围:** `net/c_src/ctron_net.c`(getaddrinfo 迭代全记录)、`net/bind.ct`/`net.ct` 门面签名、`tests/net/`(新夹具 + 既有消费方回切)。
 - **要点:** SocketAddr 值 struct(v4/v6 族标记 + 字节数组);helper 池语义(§11.5.1)不变——池返回的是记录链而非首条;happy-eyeballs 仍是志向档不做。
@@ -541,7 +541,7 @@
 | T06 | E6030 封闭性 | W1 | **已完成**(0928,论证承载,规范注记) | 见 git |
 | T07 | 单态化预算 8192 | W1 | **已完成**(0928,E6040+fx 锚+smoke 门) | 见 git |
 | T08 | comptime 预算口径【裁决】 | W1 | **已完成**(0928,用户裁定步数终态,§8.4 修订注) | 见 git |
-| T09 | resolve 多记录 | W2 | 待办 | — |
+| T09 | resolve 多记录 | W2 | **已完成**(0928,双矩阵 15/15×2;SocketAddr struct 随 T14 底座) | 见 git |
 | T10 | sleep_ns/虚拟时钟 | W2 | 待办 | — |
 | T11 | caps 键细分 | W2 | 待办 | — |
 | T12 | gzip | W2 | 待办 | — |
