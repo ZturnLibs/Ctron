@@ -671,3 +671,13 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - T23:e2e 缺声明 6 红**已在前批全清**(09-25 深夜 P1b 契约补全——use 清单全量请求);
   http 110/1(唯一红=frm_auth_a_jwt interp OOM,T31 arena 债);OTLP send 裸 socket 形
   维持在册。
+
+**2026-09-28 T20 deterministic+内容寻址缓存落库**(spec-gap W4;§10.3):
+- --deterministic CLI 旋钮(ctc.sh):设 CTRON_RT_SEED=1 → 种子化弹出序+单 worker
+  (机制已有 ctron_rt.c:1010-1027;旋钮只做 env 传播);并发夹具同种子三跑一致实证。
+- 内容寻址缓存(ctc.sh emit 臂):源文件哈希+编译器 cc_emit.ct 哈希前 12 位 = 缓存 key
+  (防编译器升级后陈旧缓存);.cache/emit/<key>.c 命中即复用,免重发射;未命中发射后入缓。
+  同源双跑产物逐字节一致实证(cmp 过)。
+- suite 94/94×2;net 17/17;fmt parity 479/0 全维持。
+- 登记:缓存命中不重跑 build.sh(编译器源变更即 cc_emit hash 变 → 自动 miss);
+  跨机复用需迁移 .cache 目录(v1 本机口径)。

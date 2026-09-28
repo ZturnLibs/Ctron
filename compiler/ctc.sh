@@ -30,6 +30,7 @@ for a in "$@"; do
         --profile=*) PROF=${a#--profile=} ;;
         --trusted) TAUSTED=1 ;;
         --lang=*) DIAGLANG=${a#--lang=} ;;
+    --deterministic) export CTRON_RT_SEED=1 ;;
     esac
 done
 if [ ! -x "$HOST" ]; then
@@ -70,12 +71,23 @@ case $mode in
         ;;
     emit)
         OUTC=${1:-$(basename "${IN%.ct}").c}
+        # T20 内容寻址缓存:源文件哈希命中 → 复用发射产物(同输入同产物)
+        CACHE_DIR="$ROOT/.cache/emit"
+        IN_HASH=$(shasum "$IN" | cut -d' ' -f1)_$(shasum "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)
+        CACHED="$CACHE_DIR/$IN_HASH.c"
+        if [ -f "$CACHED" ]; then
+            cp "$CACHED" "$OUTC"
+            echo "ctc.sh: 已发射 $OUTC(缓存命中: $IN_HASH)"
+            exit 0
+        fi
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" > "$TMP"
         "$HOST" run "$TMP" > "$OUTC"
         rc=$?
         if [ $rc -eq 0 ]; then
+            mkdir -p "$CACHE_DIR"
+            cp "$OUTC" "$CACHED" 2>/dev/null
             echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"
             LF=$(grep -o "ctron:link -l[^ ]*" "$OUTC" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
             if [ -n "$LF" ]; then
