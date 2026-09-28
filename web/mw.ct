@@ -1,0 +1,320 @@
+// mw.ct —— web 中间件框架自带件:会话族(with_sessions/grant/drop)+ flash 读即清 +
+// log_requests + timeout_ms(Plan 2b Task 1;设计 docs/superpowers/specs/2026-09-27-web-framework-design.md §4.1/§4.5/§7;纪律 §14-1)
+//
+// 收编口径(不复制):签名会话令牌与 Set-Cookie 行构造全走 http.frm.auth 现成面
+//   —— auth_tok_issue/auth_tok_verify(签发/验签,恒时比较+过期域 frm 内铸)、
+//   auth_cookie_set(注入面封口的 Set-Cookie 行构造:CR/LF/分号/DQUOTE 出域即拒)。
+//   本模块零 crypto、零手工 cookie 拼接。auth_cookie_get 未收:web.core Req.cookies
+//   已在 req_full 解析 Cookie 头(cookie 访问器直读),重复解析无增益。
+//
+// 时钟注入(§8-A5 可测性;测试传 fake,真钟归装配):
+//   - with_sessions(key, now) 第二参 = 时钟 fn() -> I64(2b Task 3 serve 以
+//     `| | now_ms() / 1000` 装配);
+//   - grant_session 第 5 参 now —— spec §4.4 链式示例为 4 参,系伪码口径;
+//     exp = now+ttl 需真值,§8-A5 now 经参数注入条款优先(名字面不变,记录于 task-1-report)。
+//   - 单位约定:now/ttl/时钟恒 unix 秒(todo_app 验收口径;auth 令牌 exp 同单位),
+//     Max-Age 恒秒(RFC 6265)——serve 侧装配须 /1000,勿直喂 now_ms()。
+//
+// 会话机制(§4.1/§4.3;方案 (a) 最小改动):Req 增 session: List[Pair] 槽
+//   (core.ct;params 同款),with_sessions 验签后经 req_set_session 回填,
+//   handler 侧 §4.3 冻结名 session(r, "uid") 读取(缺回空)。验签失败(无
+//   cookie/形坏/签名不合/过期)一律原样放行(session 槽空)——拦截属应用守卫
+//   中间件(need_login 形),with_sessions 只管注入,不越权代拦。
+//
+// flash 机制(读即清最小形态,记录):载体 cookie `web_flash=<penc msg>`
+//   (会话 cookie,无 Max-Age)。Req 是值、读侧无法就地清——清除挂在
+//   with_sessions 响应侧:入请求携 web_flash 且响应未再写 flash(防 PRG
+//   写后自吞)时自动补 `web_flash=; Max-Age=0` 清除行。不经 with_sessions
+//   的路由 flash 不自清(登记边界;req_flash 单独可读)。
+//
+// timeout_ms 诚实口径:返回透传中间件(上限已验,n<=0 装配即 panic);
+//   真超时挂并发波(§8.2 v1 阻塞串行档,阻塞调用无中断点)——校验语义面,
+//   并发 RT 落地后在此闭包内换真实现,调用点零改(§4.5)。
+//
+// use 面:web.core(Resp/Req 取参族)+ http.frm.auth(收编面)+ std.str
+//   (starts_with);std.crypto 不直 use(auth 单叶,消费方再入即同叶双径 E5020)。
+
+use web.core.{ Req, Resp, Pair, cookie, pdec, req_full, req_set_session, session, with, redirect, text, resp_status, resp_body, resp_header }
+use std.str.{ join, starts_with }
+use web.router.{ router, get, middleware, dispatch }
+use http.frm.auth.{ auth_tok_issue, auth_tok_verify, auth_cookie_set, at_ok, at_tok, tv_rc, tv_uid, auth_err_sig, auth_err_expired }
+
+// ---- cookie 名与 Set-Cookie 行 ----
+
+fn sess_name() -> Str {
+    return "sid"
+}
+
+fn flash_name() -> Str {
+    return "web_flash"
+}
+
+// auth_cookie_set 产整行 "Set-Cookie: <体>\r\n";剥壳取头值体(前缀 12 字节 +
+// 尾 CRLF 2 字节)。行空 = 构造拒(name/value 出域),调用点原样透空。
+fn sc_line(name: Str, value: Str, maxage: I64) -> Str {
+    let line = auth_cookie_set(name, value, maxage, 1)
+    if line.len == 0 {
+        return ""
+    }
+    return byte_slice(line, 12, line.len - 2)
+}
+
+// ---- 会话族 ----
+
+// 签发:Set-Cookie sid=<tok>(HttpOnly+SameSite=Lax 随,frm/auth 同款 §7-3;
+// Max-Age=ttl 秒)。uid 出域(frm 构造拒)→ 原样返回不签发。
+pub fn grant_session(r: Resp, key: Str, uid: Str, ttl: I64, now: I64) -> Resp {
+    let t = auth_tok_issue(key, uid, now, ttl)
+    if at_ok(t) != 1 {
+        return r
+    }
+    let line = sc_line(sess_name(), at_tok(t), ttl)
+    if line.len == 0 {
+        return r
+    }
+    return with(r, "Set-Cookie", line)
+}
+
+// 注销:Max-Age=0 即刻删除面(frm/auth 口径)。key 形参留置:服务端吊销面
+// (存储对偶)属志向,当前无状态令牌注销 = 客户端删 cookie。
+pub fn drop_session(r: Resp, key: Str) -> Resp {
+    return with(r, "Set-Cookie", sc_line(sess_name(), "", 0))
+}
+
+// ---- with_sessions:中间件工厂(§4.5 形态 ②)----
+
+// sid cookie → 验签 → 注入 session 槽;失败原样放行(见头注)。响应侧顺带
+// 执行 flash 读即清(flash_sweep)。
+pub fn with_sessions[S](key: Str, now: fn() -> I64) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+    return |req, next| {
+        let sid = cookie[S](req, sess_name())
+        let v = auth_tok_verify(key, sid, now())
+        if tv_rc(v) == 1 {
+            var ss: List[Pair] = List[Pair]()
+            ss.push(Pair { k: "uid", v: tv_uid(v) })
+            return flash_sweep[S](req, next(req_set_session[S](req, ss)))
+        }
+        return flash_sweep[S](req, next(req))
+    }
+}
+
+// flash 读即清(响应侧):入请求携 web_flash 且响应未再写 flash 才补清除行
+fn flash_sweep[S](req: Req[S], resp: Resp) -> Resp {
+    if cookie[S](req, flash_name()).len == 0 {
+        return resp
+    }
+    var i: I32 = 0
+    while i < resp.headers.len {
+        if resp.headers[i].k == "Set-Cookie" {
+            if starts_with(resp.headers[i].v, flash_name() + "=") {
+                return resp
+            }
+        }
+        i += 1
+    }
+    return with(resp, "Set-Cookie", sc_line(flash_name(), "", 0))
+}
+
+// ---- flash 写读 ----
+
+// 写:cookie `web_flash=<penc msg>`(会话 cookie,无 Max-Age;值经百分号编码
+//   出 frm cookie-octet 域雷区,读侧 pdec 还原——core UTF-8 安全解码)
+pub fn flash(r: Resp, msg: Str) -> Resp {
+    return with(r, "Set-Cookie", sc_line(flash_name(), penc(msg), 0 - 1))
+}
+
+// 读(§4.3 冻结名 req.flash()):读即清的「读」半边,清半边在 with_sessions
+// 响应侧(头注 flash 机制)。缺回空。
+pub fn req_flash[S](r: Req[S]) -> Str {
+    return pdec(cookie[S](r, flash_name()))
+}
+
+// percent 编码(字节域;unreserved [A-Za-z0-9-_.~] 直存,余者 %XX 大写十六进制
+// ——RFC 3986 §2.3;逐字节保 UTF-8 序,读侧 pdec 重组)
+fn nib(v: I32) -> Str {
+    return byte_slice("0123456789ABCDEF", v, v + 1)
+}
+
+fn penc(s: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let alnum = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57)
+        if alnum || c == 45 || c == 95 || c == 46 || c == 126 {
+            ps.push(byte_slice(s, i, i + 1))
+        } else {
+            ps.push("%" + nib(c / 16) + nib(c % 16))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// ---- log_requests / timeout_ms ----
+
+// 访问日志:next 后落一行(此时才有状态可印;§4.5 形态 ① 纯函数)。
+// 行形 "GET /x 200";行缓冲/逐条刷盘政策归 serve(Task 3),本件只 println。
+pub fn log_requests[S](r: Req[S], next: fn(Req[S]) -> Resp) -> Resp {
+    let resp = next(r)
+    println(r.method + " " + r.path + " " + resp_status(resp).to_string())
+    return resp
+}
+
+// 组级超时档位(§4.5/§8.1):n<=0 装配即 panic(失败在启动,不在半夜);
+// 现阶段透传(头注诚实口径),真实现随并发波在闭包内换血。
+pub fn timeout_ms[S](ms: I64) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+    if ms <= 0 {
+        panic("timeout_ms: 上限必须为正,得 " + ms.to_string())
+    }
+    return |req, next| {
+        return next(req)
+    }
+}
+
+// ---- 测试 ----
+
+// fake 时钟(§8-A5;确定性)
+fn clk_now() -> I64 {
+    return 1000
+}
+
+fn clk_late() -> I64 {
+    return 1501
+}
+
+fn h_who(r: Req[I64]) -> Resp {
+    return text("uid=" + session[I64](r, "uid"))
+}
+
+fn g_need_login(r: Req[I64], next: fn(Req[I64]) -> Resp) -> Resp {
+    if session[I64](r, "uid").len == 0 {
+        return redirect("/login")
+    }
+    return next(r)
+}
+
+fn mw_req(sid: Str) -> Req[I64] {
+    var hs: List[Pair] = List[Pair]()
+    if sid.len > 0 {
+        hs.push(Pair { k: "Cookie", v: "sid=" + sid })
+    }
+    return req_full[I64]("GET", "/who", "", hs, 0)
+}
+
+test "mw 令牌签发验签篡改过期与 grant/drop 头" {
+    let t = auth_tok_issue("k0", "u-42", 1000, 500)
+    assert(at_ok(t) == 1)
+    // 全链:签发 → 注入态验签 → uid 取回
+    let v = auth_tok_verify("k0", at_tok(t), 1499)
+    assert(tv_rc(v) == 1)
+    assert(tv_uid(v) == "u-42")
+    // 过期拒(now+ttl 边界外一刻;frm 口径 now >= exp 即拒)
+    assert(tv_why(auth_tok_verify("k0", at_tok(t), 1501)) == auth_err_expired())
+    // 篡改拒(末位翻转 → 恒时比较面)
+    let tok = at_tok(t)
+    var flip: Str = "0"
+    if byte_at(tok, tok.len - 1) == 48 {
+        flip = "1"
+    }
+    let tam = byte_slice(tok, 0, tok.len - 1) + flip
+    assert(tv_why(auth_tok_verify("k0", tam, 1100)) == auth_err_sig())
+    // grant:Set-Cookie 行(HttpOnly/SameSite 随;同参重签确定性 → tok 复用断言)
+    let g = grant_session(redirect("/app"), "k0", "u-42", 500, 1000)
+    assert(resp_status(g) == 303)
+    assert(resp_body(g) == "")
+    assert(resp_header_set(g) == "sid=" + tok + "; Path=/; HttpOnly; Max-Age=500; SameSite=Lax")
+    // uid 出域 → 签发拒 → 不落 Set-Cookie
+    assert(resp_header_set(grant_session(redirect("/x"), "k0", "u!x", 500, 1000)) == "")
+    // drop:Max-Age=0 即刻删除面
+    let d = drop_session(redirect("/login"), "k0")
+    assert(resp_status(d) == 303)
+    assert(resp_header_set(d) == "sid=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+}
+
+// 多值 Set-Cookie 前瞻的取首法(testkit 口径;首枚即本套各面唯一落头)
+fn resp_header_set(r: Resp) -> Str {
+    var i: I32 = 0
+    while i < r.headers.len {
+        if r.headers[i].k == "Set-Cookie" {
+            return r.headers[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+test "mw flash 写读与读即清扫除" {
+    // 编码面:空格 → %20;中文逐字节 %XX;pdec 回程保真
+    assert(penc("a b") == "a%20b")
+    assert(pdec(penc("书签已添加 ok")) == "书签已添加 ok")
+    // 写头:会话 cookie 形(无 Max-Age;HttpOnly+SameSite 随)
+    let f = flash(redirect("/read"), "a b")
+    assert(resp_status(f) == 303)
+    assert(resp_header_set(f) == "web_flash=a%20b; Path=/; HttpOnly; SameSite=Lax")
+    // 读:req_flash pdec 还原
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Cookie", v: "web_flash=a%20b" })
+    let r = req_full[I64]("GET", "/read", "", hs, 0)
+    assert(req_flash[I64](r) == "a b")
+    assert(req_flash[I64](mw_req("")) == "")
+    // 读即清:携 flash 的请求过 with_sessions → 响应补 Max-Age=0 清除行
+    let mw = with_sessions[I64]("k0", clk_now)
+    let swept = mw(r, |rq| text("f=" + req_flash[I64](rq)))
+    assert(resp_body(swept) == "f=a b")
+    assert(resp_header_set(swept) == "web_flash=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+    // 未携 flash → 不落任何 Set-Cookie
+    let plain = mw(mw_req(""), |rq| text("x"))
+    assert(resp_header_set(plain) == "")
+    // 写后自吞防护:入请求携旧 flash 且 handler 又写新 flash → 不补清除,
+    // 首枚 Set-Cookie 恒为新写(旧值被同响覆写,语义 = 换新不吞)
+    let writing = mw(r, |rq| flash(text("x"), "n"))
+    assert(resp_header_set(writing) == "web_flash=n; Path=/; HttpOnly; SameSite=Lax")
+}
+
+test "mw with_sessions 集成 303 拦截与放行" {
+    // 路由集成形:with_sessions 外层 + 守卫内层(router.middleware 声明序执行)
+    let app = middleware[I64](middleware[I64](get[I64](router[I64](0), "/who", h_who), with_sessions[I64]("k0", clk_now)), g_need_login)
+    // 未登录(无 cookie):with_sessions 放行(槽空)→ 守卫 303 /login
+    let blocked = dispatch[I64](app, "GET", "/who", "")
+    assert(resp_status(blocked) == 303)
+    assert(resp_header(blocked, "Location") == "/login")
+    // 已登录(有效 sid):注入 uid → 守卫放行 → handler 读 uid
+    let tok = at_tok(auth_tok_issue("k0", "u-9", 1000, 500))
+    let mw = with_sessions[I64]("k0", clk_now)
+    let ok = mw(mw_req(tok), |rq| g_need_login(rq, |r2| h_who(r2)))
+    assert(resp_status(ok) == 200)
+    assert(resp_body(ok) == "uid=u-9")
+    // 篡改 sid:验签拒 → 槽空 → 守卫 303
+    let bad = mw(mw_req(tok + "x"), |rq| g_need_login(rq, |r2| h_who(r2)))
+    assert(resp_status(bad) == 303)
+    // 过期 sid(时钟 1501 > exp 1500):同拒 —— 时钟注入面(§8-A5)
+    let late = with_sessions[I64]("k0", clk_late)
+    let exp = late(mw_req(tok), |rq| g_need_login(rq, |r2| h_who(r2)))
+    assert(resp_status(exp) == 303)
+    // 密钥不合(sid 签自 k1):同拒
+    let tok1 = at_tok(auth_tok_issue("k1", "u-9", 1000, 500))
+    let wrong = mw(mw_req(tok1), |rq| g_need_login(rq, |r2| h_who(r2)))
+    assert(resp_status(wrong) == 303)
+}
+
+test "mw log_requests 透传与 timeout_ms 校验面" {
+    // 透传:响应值恒等(日志行 println 直落 stdout,testkit 不捕,透传即断言面)
+    let r = mw_req("")
+    let passed = log_requests[I64](r, |rq| with(text("ok"), "X-M", "1"))
+    assert(resp_status(passed) == 200)
+    assert(resp_body(passed) == "ok")
+    assert(resp_header(passed, "X-M") == "1")
+    // 注册面:泛型中间件经闭包适配进 router 链(dispatch 全绿即链通)
+    let app = middleware[I64](get[I64](router[I64](0), "/who", h_who), |rq, nx| log_requests[I64](rq, nx))
+    let hit = dispatch[I64](app, "GET", "/who", "")
+    assert(resp_status(hit) == 200)
+    assert(resp_body(hit) == "uid=")
+    // timeout_ms:正档透传(泛型工厂经闭包适配;泛型 fn 裸值引用 `timeout_ms[I64]`
+    // 实测按 Index 解析 → E2020 I64,router.ct 登记同款——值面恒闭包字面量)
+    let lim = timeout_ms[I64](5000)
+    let app2 = middleware[I64](get[I64](router[I64](0), "/who", h_who), |rq, nx| lim(rq, nx))
+    let t2 = dispatch[I64](app2, "GET", "/who", "")
+    assert(resp_status(t2) == 200)
+    assert(resp_body(t2) == "uid=")
+}
