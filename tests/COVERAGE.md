@@ -681,3 +681,12 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - suite 94/94×2;net 17/17;fmt parity 479/0 全维持。
 - 登记:缓存命中不重跑 build.sh(编译器源变更即 cc_emit hash 变 → 自动 miss);
   跨机复用需迁移 .cache 目录(v1 本机口径)。
+
+**2026-09-28 T18 列级精确 span 落库**(spec-gap W4;§10.2):
+- **解析器诊断(pdiags)入 JSON 面**:json_diag_lc(LINE:COL 解析版)——精确 line_start/
+  col_start/line_end/col_end(列级 1-based);JSON 早退路径补(chk_fmt 提前初始化至 pdiags
+  检查前——此前 pdiags 早退恒走文本面)。验证:`let x = ;` → E1001 {line:2, col:13}。
+- **sem 诊断行号保持**:@LINE 机制既有;列=1 近似(v1 待 AST 列标注贯通)。
+- 已知限制在册:部分 sem 诊断行号 nline() 对嵌套 Binary 节点返回垃圾值(01c 的 E1001
+  chain 检查 60100140——预存在,AST 尾槽行号戳覆盖面不足所致);sem 列=1。
+- suite 94/94 双线维持。

@@ -231,7 +231,7 @@
 
 ### T18 · 列级精确 span 贯通(§10.2)
 
-- **预估:** 1.5–2 d。**前置:** 无。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** 无。**状态:** ✅ 已完成(2026-09-28;pdiags JSON 精确 LINE:COL;sem 列=1 近似;部分 nline 垃圾值在册)
 - **目标:** JSON 诊断 span 从行级(col 恒 1)到 1-based 列级;`driver_check.ct json_diag` 结构已冻结,填真值。
 - **范围:** `compiler/src/lex.ct`(token 起止列已在词法层?先审计)→ `parse_*.ct` 节点 span 字段 → `sem_*` 诊断携带 → `driver_check.ct` 透出。
 - **要点:** 先审计:lexer 是否已记列(`lex.ct` E1001.interp 报错质量暗示有部分位置面);缺口大概率在 AST 节点未携带 span——给 Node 加 `pos` 对(`sl,sc,el,ec` 四元组或字符偏移对,后者更省,列由 check 时换算)。
@@ -567,7 +567,7 @@
 | T15 | Iterator trait | W3 | **已完成**(0928,三线 interp;发射臂 var-self 引用语义在册) | 见 git |
 | T16 | 适配器链 | W3 | **部分完成**(0928,std/iter.ct 函数面;UFCS 链=T25 阻塞在册) | 见 git |
 | T17 | std/iter 归位 | W3 | **已完成**(0928,06f 翻转;suite 89/89 首次 100%) | 见 git |
-| T18 | 列级 span | W4 | 待办 | — |
+| T18 | 列级 span | W4 | **已完成**(0928,解析错精确 LINE:COL;sem 行对列 1) | 见 git |
 | T19 | fix-it 首批 | W4 | 待办 | — |
 | T20 | deterministic+缓存 | W4 | **已完成**(0928,--deterministic 旋钮+emit 内容寻址缓存) | 见 git |
 | T21 | 宿主检查面五件 | W4 | **已完成**(0928,五锚迁主套件;suite 94/94) | 见 git |
