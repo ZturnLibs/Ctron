@@ -1,0 +1,312 @@
+// main.ct —— web_todo:框架首个活示例(spec §5 迷你 todo 逐字形态;Plan 2b Task 4)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §5(下称 spec)
+//
+// 形态照 §5:Todo/App 双 struct(Mutex[List[Todo]] + Atomic[I64] 序号)、need_login
+// 组级守卫、guarded(app) 子路由组、h_login/h_list/h_add/h_del、full_router 装配。
+// 冻结面对照(spec §5 为设计意图,以 web 包实际 surfaced 为准,差异逐条记 README):
+//   - use 面:§5 的 `use web.{ router, serve, html, redirect }` 门面 = 域包分文件
+//     实际面 web.core / web.router / web.mw / web.serve(视图经 http.frm.html);
+//   - grant_session 5 参(r, key, uid, ttl, now)——§5 链式 4 参系伪码口径,时钟经
+//     参数注入(§8-A5;mw.ct 头注同款);with_sessions(key, now) 工厂 2 参;
+//   - serve 调用原生门控:interp 净土纪律(use net 连 check 门都红,task-3-report
+//     在册)——§5 的 main()(装配 + serve 调用)拆 src/serve_net.ct(L6/L7 原生
+//     臂入口,"interp 测试永不调用的 fn";todo_api 入口 shim 先例:main-less 文件
+//     裸跑即 test 块)。本文件零 socket:语义门全走 test_call/dispatch_h
+//     (spec §4.7 testkit 口径:整台服务器零 socket 的确定性测试)。
+//
+// 视图纪律(§4.8「B 与手拼并存」口径):动态值一律过显式转义面(ht_text = ht_esc
+//   自文档别名,"此处转义"),结构经 ht_el 装配,文档骨架 ht_page;无裸插值。
+//   web.view el 族(结构性转义 builder)与 web.mw 在引导 interp 合并态不可共存
+//   ——两模块 "Test 恒随" test 体各拖同名 `text` decl 入合并态(core 的 Resp 构造
+//   vs el 值位),`use` 面即便不引 text 亦 E5030(探针在册 task-4-report;M-T5w-1
+//   同根)——示例按 mw 侧(会话族是活示例主菜)落地,el dogfood 待框架面消解撞名
+//   (改名属跨任务面变,登记志向不在本任务擅动)。
+//
+// 解析布局(域根查找,parse_pkg.ct 域根分支):包根四枚目录符号链 std/web/http/net
+// 指回仓根同名域包——入口目录旁 std/ 为 std 根,其父(包根)即域根,`use web.*`
+// 经 <包根>/web/*.ct 命中;深层模块的 use 一律以入口目录为锚传递解析。
+//
+// 语言纪律:字面量禁 `{`(concat 拼);无 `;`;泛型调用显式 TypeArgs(E2060);
+// 泛型 fn 不作值引用——中间件经闭包适配进链(web/mw.ct 测试同款实证);循环体
+// 累加一律 List 收集 + join(§14-1;行装配 rows_of 同款)。
+
+use web.core.{ Req, Resp, Pair, html, redirect, text, resp_status, resp_body, resp_header, param_i64, form, session }
+use web.router.{ Router, router, get, post, mount_at, dispatch, dispatch_h, test_call }
+use web.mw.{ with_sessions, grant_session, drop_session, flash, req_flash, log_requests }
+use http.frm.html.{ ht_esc, ht_text, ht_el, ht_page }
+use std.str.{ join }
+
+// ---- 状态(spec §5 逐字;Mutex/Atomic 构造带初值,§7 并发面) ----
+
+pub struct Todo {
+    let id: I64
+    let title: Str
+    let owner: Str
+    let done: Bool
+}
+
+pub struct App {
+    let todos: Mutex[List[Todo]]
+    let key: Str
+    let next_id: Atomic[I64]
+}
+
+pub fn app_of(key: Str) -> App {
+    return App { todos: Mutex[List[Todo]](List[Todo]()), key: key, next_id: Atomic[I64](1) }
+}
+
+// ---- 应用自有面(spec §5 略去的四件;演示级,与框架无关) ----
+
+// 演示口令:uid 非空 + pass 固定值;真认证归应用(§5 口径)
+fn user_auth(app: App, uid: Str, pass: Str) -> Bool {
+    return uid.len > 0 && pass == "demo123"
+}
+
+// 视图(ht_el/ht_text 显式转义装配;动态值位零裸插值)
+fn login_form() -> Str {
+    return "<form method=\"post\" action=\"/login\">"
+        + "<input name=\"uid\"><input name=\"pass\" type=\"password\">"
+        + ht_el("button", "login") + "</form>"
+}
+
+fn view_login(msg: Str) -> Str {
+    var m = ""
+    if msg.len > 0 {
+        m = "<p class=\"err\">" + ht_text(msg) + "</p>"
+    }
+    return ht_page("login", m + login_form())
+}
+
+fn add_form() -> Str {
+    return "<form method=\"post\" action=\"/app/add\">"
+        + "<input name=\"title\">" + ht_el("button", "add") + "</form>"
+}
+
+// 列表容器(rows = ht_el 成品 <li> 段拼接;ht_el 恒包裹,空行即 <ul></ul>)
+fn list_view(rows: Str) -> Str {
+    return ht_el("ul", rows)
+}
+
+// 墓碑命中:(id,owner) 对已有 done 墓碑行(应用自有的删除语义落地)
+fn del_hit(l: List[Todo], id: I64, uid: Str) -> Bool {
+    var i: I32 = 0
+    while i < l.len {
+        let t = l[i]
+        if t.done && t.id == id && t.owner == uid {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// ---- 守卫(spec §5 逐字:session 槽空 → 303 /login) ----
+
+fn need_login(req: Req[App], next: fn(Req[App]) -> Resp) -> Resp {
+    if session[App](req, "uid").len == 0 {
+        return redirect("/login")
+    }
+    return next(req)
+}
+
+fn guarded(app: App) -> Router[App] {
+    return router[App](app)
+        .middleware(need_login)               // 组级守卫写一次,组内全路由生效(spec §7-1)
+        .get("/", h_list)
+        .post("/add", h_add)
+        .post("/del/:id", h_del)
+}
+
+// ---- handlers(spec §5 逐字;取参按 §4.3 冻结名,显式 TypeArgs) ----
+
+fn h_login(req: Req[App]) -> Resp {
+    let uid = form[App](req, "uid")
+    if !user_auth(req.state, uid, form[App](req, "pass")) {
+        return html(view_login("用户名或密码不对"))
+    }
+    return grant_session(redirect("/app"), req.state.key, uid, 604800, now_ms() / 1000)
+}
+
+// 行装配(E3070 纪律:闭包体内不做 var 赋值/累加——两遍式 lint 全文件名交集,
+// 内联 while 累加形必触;临界区体提成助手 fn,闭包只做一跳,spec §5 形态等价)。
+// §14-1:段收集 List 末次 join,不做循环串累加;行体 ht_el("li") + ht_text 显式转义。
+fn rows_of(l: List[Todo], uid: Str) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < l.len {
+        let t = l[i]
+        if t.owner == uid && t.title.len > 0 && !del_hit(l, t.id, uid) {
+            ps.push(ht_el("li", ht_text(t.title)))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+fn h_list(req: Req[App]) -> Resp {
+    let uid = session[App](req, "uid")
+    let rows = req.state.todos.with(|l| rows_of(l, uid))   // Mutex.with:闭包体即临界区
+    let tip = req_flash[App](req)
+    var body = add_form()
+    if tip.len > 0 {
+        body = body + "<p class=\"flash\">" + ht_text(tip) + "</p>"
+    }
+    return html(ht_page("todo", body + list_view(rows)))
+}
+
+fn h_add(req: Req[App]) -> Resp {
+    let title = form[App](req, "title")
+    if title.len == 0 || title.len > 512 {
+        return redirect("/app")
+    }
+    let id = req.state.next_id.fetch_add(1)
+    req.state.todos.with_mut(|var l| {
+        l.push(Todo { id: id, title: title, owner: session[App](req, "uid"), done: false })
+    })
+    return flash(redirect("/app"), "已添加")      // PRG 提示(§8.1;spec §5 伪码略,测试门在册)
+}
+
+fn h_del(req: Req[App]) -> Resp {
+    let id = param_i64[App](req, "id").or(0)
+    // 应用自有删除逻辑(spec §5 h_del "应用自有逻辑"):墓碑 push 写回
+    // (实证适配见 README——with_mut 闭包内对形参整体重绑不写回 Mutex,push 是
+    // 唯一实证写回方法位);只记本人 (id,owner) → 他者同 id 条目不受扰
+    req.state.todos.with_mut(|var l| {
+        l.push(Todo { id: id, title: "", owner: session[App](req, "uid"), done: true })
+    })
+    return redirect("/app")
+}
+
+// ---- 装配(spec §5 main 内联链提成 fn;时钟注入 §8-A5) ----
+
+pub fn full_router_at(app: App, now: fn() -> I64) -> Router[App] {
+    let r0 = router[App](app)
+        .middleware(|rq, nx| log_requests[App](rq, nx))   // 泛型 fn 值引用不可 → 闭包适配
+        .middleware(with_sessions[App](app.key, now))
+        .get("/", |rq| redirect("/app"))
+        .post("/login", h_login)
+    return mount_at[App](r0, "/app", guarded(app))
+}
+
+// 真钟装配(serve 臂用;now/ttl 恒 unix 秒,now_ms 毫秒须 /1000,web/serve.ct 头注)
+fn clk_unix() -> I64 {
+    return now_ms() / 1000
+}
+
+pub fn full_router(app: App) -> Router[App] {
+    return full_router_at(app, clk_unix)
+}
+
+// ---- 测试(test_call 语义门;spec §4.7 零 socket 确定性测试) ----
+
+// fake 时钟(§8-A5 确定性;固定 now 签发/验签同源)
+fn clk_fix() -> I64 {
+    return 1000
+}
+
+fn clk_expired() -> I64 {
+    return 1501
+}
+
+// 组 Cookie 头列(单 Cookie 头;'、' 分段;dispatch_h 入口)
+fn hdr_cookie(v: Str) -> List[Pair] {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Cookie", v: v })
+    return hs
+}
+
+// 取响应首枚 Set-Cookie 值(mw.ct 测试同款取首法)
+fn set_cookie_of(r: Resp) -> Str {
+    var i: I32 = 0
+    while i < r.headers.len {
+        if r.headers[i].k == "Set-Cookie" {
+            return r.headers[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+// Set-Cookie 行 → sid 值("sid=<tok>; Path=/; ..." 首段;分号前截断)
+fn sid_val(line: Str) -> Str {
+    var i: I32 = 0
+    while i < line.len {
+        if byte_at(line, i) == 59 {
+            return byte_slice(line, 4, i)
+        }
+        i += 1
+    }
+    return byte_slice(line, 4, line.len)
+}
+
+// 固定时钟直签发 sid(守卫负例用;登录正链走 h_login 真 handler,见 test 2)
+fn sid_of(app: App, uid: Str) -> Str {
+    return sid_val(set_cookie_of(grant_session(redirect("/app"), app.key, uid, 604800, 1000)))
+}
+
+test "未登录 GET /app 守卫 303 与登录页" {
+    let app = app_of("dev-mini")
+    let r = full_router_at(app, clk_fix)
+    // 未登录(无 cookie):with_sessions 放行(槽空)→ need_login 303 /login
+    let d = dispatch_h[App](r, "GET", "/app", "", hdr_cookie("sid=x"))
+    assert(resp_status(d) == 303)
+    assert(resp_header(d, "Location") == "/login")
+    // 登录失败面(应用自有视图 + h_login 拒绝臂)
+    let bad = dispatch[App](r, "POST", "/login", "uid=demo&pass=wrong")
+    assert(resp_status(bad) == 200)
+    assert(resp_header(bad, "Content-Type") == "text/html; charset=utf-8")
+    assert(resp_body(bad) == view_login("用户名或密码不对"))
+    // test_call 测试口(spec §4.7 冻结名)同径:303 恒等
+    assert(resp_status(test_call[App](r, "GET", "/app", "")) == 303)
+}
+
+test "登录全链:login POST → grant → 列表/添加/删除(fixed now 验签)" {
+    let app = app_of("dev-mini")
+    let r = full_router_at(app, clk_fix)
+    // 登录表单 POST → h_login 真 grant 臂(handler 侧真钟 now_ms 签发,exp 远晚
+    // 于 clk_fix 验签钟 → 后续请求恒验过;固定 now 直签发的守卫负例归 test 3)
+    let login = dispatch_h[App](r, "POST", "/login", "uid=u-9&pass=demo123", List[Pair]())
+    assert(resp_status(login) == 303)
+    assert(resp_header(login, "Location") == "/app")
+    let sid = sid_val(set_cookie_of(login))
+    assert(sid.len > 0)
+    // 登录后列表:空态(守卫放行,handler 读 uid)
+    let list0 = dispatch_h[App](r, "GET", "/app", "", hdr_cookie("sid=" + sid))
+    assert(resp_status(list0) == 200)
+    assert(resp_body(list0) == ht_page("todo", add_form() + list_view("")))
+    // 添加:flash 随 303 回(Set-Cookie 面),序号 Atomic 起于 1
+    let add = dispatch_h[App](r, "POST", "/app/add", "title=%E4%B9%B0%E5%A5%B6%E8%8C%B6", hdr_cookie("sid=" + sid))
+    assert(resp_status(add) == 303)
+    assert(resp_header(add, "Location") == "/app")
+    assert(set_cookie_of(add) == "web_flash=%E5%B7%B2%E6%B7%BB%E5%8A%A0; Path=/; HttpOnly; SameSite=Lax")
+    // 列表回读:条目在册(owner 过滤;el .text 结构性转义保真)
+    let list1 = dispatch_h[App](r, "GET", "/app", "", hdr_cookie("sid=" + sid))
+    assert(resp_status(list1) == 200)
+    assert(resp_body(list1) == ht_page("todo", add_form() + "<ul><li>买奶茶</li></ul>"))
+    // 本人删除即生效(墓碑 (id,owner) 双条件;他者隔离面由 owner 过滤 + 单元
+    // 测试钉面——细粒度负例语义由 web/mw.ct 单元测试钉面,示例不重复)
+    let del = dispatch_h[App](r, "POST", "/app/del/1", "", hdr_cookie("sid=" + sid))
+    assert(resp_status(del) == 303)
+    let list2 = dispatch_h[App](r, "GET", "/app", "", hdr_cookie("sid=" + sid))
+    assert(resp_body(list2) == ht_page("todo", add_form() + list_view("")))
+}
+
+test "flash 读即清与会话过期/篡改/注销拒" {
+    let app = app_of("dev-mini")
+    let r = full_router_at(app, clk_fix)
+    let sid = sid_of(app, "u-9")
+    // 携 flash cookie 的请求:handler 读到(pdec 还原),响应侧读即清(Max-Age=0)
+    let seen = dispatch_h[App](r, "GET", "/app", "", hdr_cookie("sid=" + sid + "; web_flash=%E5%B7%B2%E6%B7%BB%E5%8A%A0"))
+    assert(resp_status(seen) == 200)
+    assert(resp_body(seen) == ht_page("todo", add_form()
+        + "<p class=\"flash\">已添加</p>" + list_view("")))
+    assert(set_cookie_of(seen) == "web_flash=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+    // 过期 sid:短 ttl(500)签发,时钟 1501 > exp 1500 → 槽空 → 守卫 303
+    let tok_exp = sid_val(set_cookie_of(grant_session(redirect("/x"), app.key, "u-9", 500, 1000)))
+    let late = full_router_at(app, clk_expired)
+    assert(resp_status(dispatch_h[App](late, "GET", "/app", "", hdr_cookie("sid=" + tok_exp))) == 303)
+    // 篡改 sid:验签拒 → 303(密钥不合面由 web/mw.ct 单元测试钉面,不重复)
+    assert(resp_status(dispatch_h[App](r, "GET", "/app", "", hdr_cookie("sid=" + sid + "x"))) == 303)
+    // 注销面:drop_session 即刻删 cookie(Max-Age=0)
+    assert(set_cookie_of(drop_session(redirect("/login"), app.key)) == "sid=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax")
+}
