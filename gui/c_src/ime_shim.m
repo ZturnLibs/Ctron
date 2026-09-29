@@ -18,6 +18,8 @@ extern char g_ime_pre[256];
 extern int g_ime_has_pre;
 extern int g_ime_crect[4];
 extern int g_ime_cx;
+extern int gui_ime_prev_set(const char* s);
+extern int gui_ime_prev_eq(const char* s);
 static int g_ime_swizzled = 0;
 
 static int g_ime_trace(void) {
@@ -31,6 +33,7 @@ static void ime_mirror(const char* s) {
     memcpy(g_ime_pre, s, (size_t)n);
     g_ime_pre[n] = 0;
     g_ime_has_pre = n > 0;
+    if (n == 0) { gui_ime_prev_set(""); } // 会话结束清快照
     if (g_ime_trace()) {
         fprintf(stderr, "[IME] preedit=\"%s\" len=%d\n", g_ime_pre, n);
     }

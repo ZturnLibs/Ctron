@@ -15,6 +15,19 @@
 // 符号,fixture 不链 ime_shim.o 亦可链接。
 char g_ime_pre[256] = {0};
 int g_ime_has_pre = 0;
+// 上次退格时刻的镜像快照(静默终末判别:镜像未随上次退格变化=IME 静默)
+char g_ime_prev[256] = {0};
+int gui_ime_prev_set(const char* s) {
+    int i = 0;
+    while (s[i] != 0 && i < 255) { g_ime_prev[i] = s[i]; i += 1; }
+    g_ime_prev[i] = 0;
+    return 0;
+}
+int gui_ime_prev_eq(const char* s) {
+    int i = 0;
+    while (s[i] != 0 && g_ime_prev[i] == s[i]) { i += 1; }
+    return s[i] == 0 && g_ime_prev[i] == 0;
+}
 int g_ime_crect[4] = {0, 0, 0, 0};
 int g_ime_cx = -1; // 光标点在框内 x(渲染期写;候选窗锚合成)
 int gui_ime_cx_set(int x) { g_ime_cx = x; return 0; }
