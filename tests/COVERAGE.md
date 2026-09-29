@@ -605,6 +605,6 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   视图 el 族(结构性转义/raw/children/自闭形)。param_f64 在册确认(spec §4.3)。
 - 2b 待办指针:serve 循环/body_limit/not_found/method_not_allowed 挂点/static/openapi/
   bytes(挂 §7-8 二进制门)/send_file/req.json+JDoc 校验族/session 族(with_sessions/
-  grant_session/drop_session/flash)/README 示例迁移(todo_app 对照 §10 验收门)/原生 e2e 门
+  grant_session(5 参含 now=§8-A5 注入)/drop_session/flash)/README 示例迁移(todo_app 对照 §10 验收门)/原生 e2e 门
   (挂 L6/L7 销账)。全景见 `web/README.md` API 表两列。
 - suite 回归:web/ 不在 tests/,suite.py 计数不动(87/88+88/88 基线,本笔复跑确认)。

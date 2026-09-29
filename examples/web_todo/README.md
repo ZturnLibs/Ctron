@@ -51,6 +51,8 @@ cc -O1 -w -pthread -I net/c_src -o /tmp/wt.bin /tmp/wt.c net/c_src/ctron_net.c
 | `with_sessions(app.key)` 1 参工厂 | `with_sessions(key, now)` 2 参 | 同上 |
 | `Mutex.with` 闭包体内联 while 累加 | 临界区体提成助手 fn(`rows_of`),闭包一跳 | E3070 两遍式 lint 全文件名交集,内联累加形必触 |
 | `todo_remove(l, id, uid)` 就地重建 | 墓碑行 push(`done` 墓碑,渲染侧过滤) | with_mut 闭包内对形参整体重绑不写回 Mutex(interp 实证);push 是唯一实证写回方法位 |
+| with_mut 闭包 `return true` 尾返回(spec:309/325) | 无返回值块体 | E3070 lint 口径;Mutex.push 写回即语义,无尾值需求(interp 实证) |
+| `Mutex[List[Todo]]()` 无参构造(spec:55) | `Mutex[List[Todo]](List[Todo]())` 带初值实参 | 构造带初值为现行约定(interp 实证) |
 | 视图手拼(ht_esc 手写转义) | `ht_el`/`ht_text` 显式转义装配(动态值位零裸插值) | web.view el 族与 web.mw 合并态 E5030 撞名,见下 |
 
 ## 合并态 interp 实证(本任务探针 + 前会话在册)

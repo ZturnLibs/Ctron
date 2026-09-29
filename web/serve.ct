@@ -131,6 +131,11 @@ pub fn serve_with_limit[S](io: SrvIo, host: Str, port: I64, r: Router[S], body_l
     if has_conflict[S](r) {
         panic("serve: duplicate route(装配自检,§7-5)")
     }
+    if body_limit > 2147483647 {
+        // 终审阻断项修复:超 I32 上界的 body_limit 经 as[I32]() 回绕负 want,
+        // byte_slice(start>end) 双臂死循环=远程 CL 可达整服挂死;失败在装配(§7-5)
+        panic("serve: body_limit 超 I32 上界(装配自检,§7-5)")
+    }
     // fn 值字段先落局部再调(io.read(...) 直调面 run 期 "method:read" panic,
     // 2026-09-28 探针实证;run_chain 同款 local-bound 口径)
     let f_listen = io.listen
