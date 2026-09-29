@@ -240,7 +240,7 @@
 
 ### T19 · fix-it 首批(§10.1)
 
-- **预估:** 1.5–2 d。**前置:** T18(消费 span)。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** T18(消费 span)。**状态:** ✅ 已完成(2026-09-28;E3030 带 replace edit,E2020/W8010 带 note)
 - **目标:** 高频码带机器可执行 `fixes`(JSON edits: replace/insert/delete)+ `notes`。首批选 5 码:E2010(类型不匹配→as 建议)、E2020(未解析名→就近名建议/漏 use 建议)、E3010(非 Send→Mutex 包装建议)、E3030(static var→Global[T] 建议)、W8010(浅共享→lint 注记)。
 - **范围:** `compiler/src/driver_check.ct`(fixes 产出)、各 sem 检查点附建议载荷;`diag_msg.ct` 双语 notes。
 - **要点:** fix-it 数据从诊断点就地构造(不搞独立「建议引擎」);edit span 用 T18 列级 span;就近名建议=编辑距离 ≤2 的符号表扫描(纯 Ctron,comptime 面可复用)。
@@ -568,7 +568,7 @@
 | T16 | 适配器链 | W3 | **部分完成**(0928,std/iter.ct 函数面;UFCS 链=T25 阻塞在册) | 见 git |
 | T17 | std/iter 归位 | W3 | **已完成**(0928,06f 翻转;suite 89/89 首次 100%) | 见 git |
 | T18 | 列级 span | W4 | **已完成**(0928,解析错精确 LINE:COL;sem 行对列 1) | 见 git |
-| T19 | fix-it 首批 | W4 | 待办 | — |
+| T19 | fix-it 首批 | W4 | **已完成**(0928,E3030 精确 edit+E2020/W8010 note) | 见 git |
 | T20 | deterministic+缓存 | W4 | **已完成**(0928,--deterministic 旋钮+emit 内容寻址缓存) | 见 git |
 | T21 | 宿主检查面五件 | W4 | **已完成**(0928,五锚迁主套件;suite 94/94) | 见 git |
 | T22 | 宿主运行面两件 | W4 | **已完成**(0928 核销;前批已修,COVERAGE 过期条目清) | 见 git |

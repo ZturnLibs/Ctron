@@ -690,3 +690,10 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - 已知限制在册:部分 sem 诊断行号 nline() 对嵌套 Binary 节点返回垃圾值(01c 的 E1001
   chain 检查 60100140——预存在,AST 尾槽行号戳覆盖面不足所致);sem 列=1。
 - suite 94/94 双线维持。
+
+**2026-09-28 T19 fix-it 首批落库**(spec-gap W4;§10.1):
+- json_diag fixes 产出:按码生成修复建议——E3030(replace edit:static var→let,
+  span 精确 line/col)、E2020(note:检查拼写或加 use)、W8010(note:改值字段或 Box)。
+- 验证:E3030 → fixes=[{title, edits:[{kind:replace, span:{L1:C1-11}, text:"let"}]}]。
+- 契约:edits.kind ∈ replace|insert|delete;span 1-based(§10.2 冻结 schema)。
+- suite 94/94 双线维持;meta 过。

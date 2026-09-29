@@ -159,7 +159,18 @@ fn json_diag(path: Str, src: Str, ln: Str, first: Bool) {
         at = probe_line(src, msg)
     }
     if !first { print(",") }
-    print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":1},\"notes\":[],\"fixes\":[]}")
+    // T19 fix-it:按码生成机器可执行修复建议(§10.1 首批三码)
+    var fixes = "[]"
+    if seq2(code, "E3030") {
+        fixes = "[\{\"title\":\"static var 不存在;用 let(不可变)或 Global[T](可变全局)\",\"edits\":[\{\"kind\":\"replace\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":11},\"text\":\"let\"}]}]"
+    }
+    if seq2(code, "E2020") {
+        fixes = "[\{\"title\":\"检查拼写或添加 use 导入\",\"edits\":[]}]"
+    }
+    if seq2(code, "W8010") {
+        fixes = "[\{\"title\":\"struct 含类引用字段拷贝浅共享;改值字段或显式 Box\",\"edits\":[]}]"
+    }
+    print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":1},\"notes\":[],\"fixes\":" + fixes + "}")
 }
 
 // 文本面剥离 span 标注:码后 "@<数字>"(诊断内部携带行号,JSON 面消费)
