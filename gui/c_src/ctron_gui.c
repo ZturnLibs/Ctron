@@ -16,6 +16,8 @@
 char g_ime_pre[256] = {0};
 int g_ime_has_pre = 0;
 int g_ime_crect[4] = {0, 0, 0, 0};
+int g_ime_cx = -1; // 光标点在框内 x(渲染期写;候选窗锚合成)
+int gui_ime_cx_set(int x) { g_ime_cx = x; return 0; }
 __attribute__((weak)) const char* gui_ime_preedit(void) { return g_ime_pre; }
 __attribute__((weak)) int gui_ime_has_preedit(void) { return g_ime_has_pre; }
 __attribute__((weak)) int gui_ime_set_caret(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; return 0; }

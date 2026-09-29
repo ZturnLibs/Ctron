@@ -3193,12 +3193,11 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         hinst.push(inst)
                     }
                 }
+                // 光标 x 恒算恒写(候选窗锚 = 框 + 光标 x;组词首帧窄矩形未入帧
+                // 亦不退化为框左缘——用户实测面板未对齐光标根因)
+                var offx: I32 = ipd + gui_ft_measure_n_wt(pfx2, pfx2.len, isz2, wt2p, fam2p) - mvs
+                gui_ime_cx_set(offx)
                 if blink == 1 {
-                    // 前缀实测 x(与布局测量同源:weight 参数含 fam 编码 ×10000)
-                    var pfx: Str = pfx2
-                    var wt2: I32 = ifw2 % 10000
-                    var fam2: I32 = ifw2 / 10000
-                    var offx: I32 = ipd + gui_ft_measure_n_wt(pfx, pfx.len, isz2, wt2, fam2) - mvs
                     gui_caret_float(offx, icy, 2, ilh, ifg2)
                     // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
                     hits.push(id)
@@ -5186,6 +5185,7 @@ extern "c" fn gui_ime_preedit() -> Str
 extern "c" fn gui_ime_has_preedit() -> I32
 #[trusted]
 extern "c" fn gui_ime_set_caret(x: I32, y: I32, w: I32, h: I32) -> I32
+extern "c" fn gui_ime_cx_set(x: I32) -> I32
 
 pub fn ev_suffix_i(name: Str) -> I32 {
     var j: I32 = name.len

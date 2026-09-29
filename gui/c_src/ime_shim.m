@@ -17,6 +17,7 @@
 extern char g_ime_pre[256];
 extern int g_ime_has_pre;
 extern int g_ime_crect[4];
+extern int g_ime_cx;
 static int g_ime_swizzled = 0;
 
 static int g_ime_trace(void) {
@@ -91,7 +92,9 @@ static NSRect ime_swz_firstRect(id self, SEL _cmd, NSRange range, NSRangePointer
             // 点,y 向下);屏幕系 = AppKit 左下原点。contentView frame 给标题栏偏移。
             NSRect wf = [w frame];
             NSRect cb = [[w contentView] frame];
-            CGFloat sx = wf.origin.x + cb.origin.x + (CGFloat)g_ime_crect[0];
+            CGFloat ax = (CGFloat)g_ime_crect[0];
+            if (g_ime_cx >= 0) { ax += (CGFloat)g_ime_cx; }
+            CGFloat sx = wf.origin.x + cb.origin.x + ax;
             CGFloat sy = wf.origin.y + cb.origin.y + cb.size.height
                        - (CGFloat)g_ime_crect[1] - (CGFloat)g_ime_crect[3];
             NSRect sr = NSMakeRect(sx, sy, (CGFloat)g_ime_crect[2], (CGFloat)g_ime_crect[3]);
