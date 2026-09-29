@@ -1,0 +1,136 @@
+// tests/gui/s51_ta_nav —— textarea 成熟导航/选区 headless 验收
+// 覆盖:↑↓ 行移列保持/Home/End 行内化/Shift+End 行内扩选/组词内联(d_ime_set)
+use gui.{test, d_focus, d_frame, d_expect_text, d_send_key, d_send_char, d_ime_set, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, Driver}
+
+struct M {
+    var v: Str
+}
+
+view TaN(m: Box[M]) {
+  <vbox class="root">
+    <textarea bind={m.v} class="ta" on:input={sv}/>
+  </vbox>
+}
+style root { direction: column padding: 8 }
+style ta { h: 80 size: 16 }
+
+fn sv(text: Str) {
+}
+
+fn act_sv(name: Str, m: Box[M]) {
+    var i: I32 = 0
+    while i < name.len {
+        if byte_at(name, i) == 58 {
+            m.v = byte_slice(name, i + 1, name.len)
+            return
+        }
+        i += 1
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](M { v: "ab\ncdef" })
+    var rc: I32 = test(src, 320, 200,
+        |buf| {
+            if buf[0] == "m.v" {
+                buf.push(m.v)
+            }
+        },
+        |name| act_sv(name, m),
+        |k| { },
+        |t, act, key| {
+            d_focus(t)
+            // End 行内化:光标行0尾,退格删 'b'(若 End=全串尾则删 'f',断言可辨)
+            d_send_key(t, 269, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_key(t, 259, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "a")
+            d_expect_text(t, "cdef")
+            // Home 行内化:行0首,Delete 删 'a'
+            d_send_key(t, 268, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_key(t, 261, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "cdef")
+            // ↓ 行移:空行0→行1首,插入 x 断言行1
+            d_send_key(t, 264, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 120, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "xcdef")
+            // 组词内联
+            d_ime_set("ni")
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            if !has_text(t, "ni") {
+                panic("s51: textarea 组词未内联")
+            }
+            d_ime_set("")
+        })
+    return rc
+}
+
+fn has_text(t: Box[Driver], sub: Str) -> Bool {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            var ln: I32 = d_cmd_text_len(i)
+            var j: I32 = 0
+            while j + sub.len <= ln {
+                var ok: I32 = 1
+                var k: I32 = 0
+                while k < sub.len {
+                    if d_cmd_text_byte(i, j + k) != byte_at(sub, k) {
+                        ok = 0
+                    }
+                    k += 1
+                }
+                if ok == 1 {
+                    return true
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return false
+}

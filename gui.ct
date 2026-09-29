@@ -4729,6 +4729,11 @@ pub fn d_focus(t: Box[Driver]) -> I32 {
             gui_caret_set(0)
             return 0
         }
+        if t.t.ntag[i] == "textarea" {
+            gui_focus_set(i)
+            gui_caret_set(0)
+            return 0
+        }
         i += 1
     }
     return -1
