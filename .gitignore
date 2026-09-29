@@ -42,3 +42,5 @@ tmp/
 
 # git worktrees (superpowers:using-git-worktrees)
 .worktrees/
+compiler-c/build
+.cache/

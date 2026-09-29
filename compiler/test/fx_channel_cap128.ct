@@ -1,0 +1,23 @@
+// fx_channel_cap128.ct —— T14①:通道缓冲上限解除(cap>64 堆环)
+// 预灌 100 条(越过旧 64 槽上限, exercise 环槽 64-99)再逐条收:FIFO 序钉
+// (乱序即 -2)+ sum 对账(0+..+99=4950);双臂同判(解释顺序模拟/原生真缓冲)
+fn main() -> I32 {
+    let (tx, rx) = Channel[I32](128)
+    var k = 0
+    while k < 100 {
+        tx.send(k).expect("s")
+        k = k + 1
+    }
+    var sum = 0
+    var expect = 0
+    while expect < 100 {
+        var v = rx.recv().expect("r")
+        if v != expect {
+            return 0 - 2
+        }
+        sum = sum + v
+        expect = expect + 1
+    }
+    println(sum.to_string())
+    return 0
+}
