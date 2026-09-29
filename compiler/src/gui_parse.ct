@@ -1761,6 +1761,9 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                                 if tag == "input" {
                                     imp = 1
                                 }
+                                if tag == "textarea" {
+                                    imp = 1
+                                }
                             }
                             if pscope.len > 0 {
                                 // each 体内事件隐式实例下标(P-H1 "名:下标" 命中契约)
