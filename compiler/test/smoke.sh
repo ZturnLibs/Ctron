@@ -565,7 +565,7 @@ P
     # 4c known 欠账表按平台:heap 在 linux 双臂已绿(翻绿清账),mac 解释臂仍红
     case $(uname) in
         Darwin) KNOWN4C=" heap opt iter " ;;
-        *)      KNOWN4C=" opt " ;;
+        *)      KNOWN4C=" opt iter " ;;
     esac
     for f in "$ROOT"/std/*.ct; do
         b=$(basename "$f" .ct)
