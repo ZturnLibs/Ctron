@@ -30,6 +30,10 @@ int gui_ime_prev_eq(const char* s) {
 }
 int g_ime_crect[4] = {0, 0, 0, 0};
 int g_ime_cx = -1; // 光标点在框内 x(渲染期写;候选窗锚合成)
+// textarea 垂直滚动偏移(节点索引;滚轮/光标跟随驱动,渲染/点击/浮条补偿)
+static int g_ta_scroll[512];
+int gui_ta_scroll_set(int node, int y) { if (node >= 0 && node < 512) { g_ta_scroll[node] = y; } return 0; }
+int gui_ta_scroll_get(int node) { return (node >= 0 && node < 512) ? g_ta_scroll[node] : 0; }
 int gui_ime_cx_set(int x) { g_ime_cx = x; return 0; }
 __attribute__((weak)) const char* gui_ime_preedit(void) { return g_ime_pre; }
 __attribute__((weak)) int gui_ime_has_preedit(void) { return g_ime_has_pre; }
