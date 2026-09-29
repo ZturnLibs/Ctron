@@ -5151,8 +5151,8 @@ fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
     if fn0 < 0 {
         return 1
     }
-    // 取最宽配对矩形(输入框现有 box/选区/下划线/光标条多 RECT 并存,首命中
-    // 可能是 2px 细条——候选窗定位失准走回落=屏幕左下角,用户实测)
+    // 取最窄正宽配对矩形(候选面板锚光标点=系统口径,用户对照实测):
+    // 优先光标条(2px)→组词下划线(跨光标,组词期恒在不随闪烁)→框体回落
     var best: I32 = -1
     var bw: I32 = 0
     var j: I32 = 0
@@ -5160,9 +5160,16 @@ fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
         if hits[j] == fn0 {
             if j < rects.len {
                 var wj: I32 = gui_cmd_w100(rects[j])
-                if wj > bw {
-                    bw = wj
-                    best = rects[j]
+                if wj > 0 {
+                    if best < 0 {
+                        best = rects[j]
+                        bw = wj
+                    } else {
+                        if wj < bw {
+                            bw = wj
+                            best = rects[j]
+                        }
+                    }
                 }
             }
         }
