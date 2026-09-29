@@ -400,7 +400,7 @@ fn v_unbox(l: List[Str]) -> Val {
 
 // 复合值包裹(cx 位面表 → Val;构造点Sugar,免逐处展开五槽字面量)
 fn cx_val(l: List[Str]) -> Val {
-    return Val { tag: 8, iv: 0, b: false, s: "", cx: l }
+    return Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(l) }
 }
 
 // 值标签投影(Val.tag → 旧编码标签文本;sem_comptime vtag_ok/driver_emit const 面用)

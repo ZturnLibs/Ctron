@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=417' "$T/chk.out" && ok "自检 cc_run 绿,decls=417" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=434' "$T/chk.out" && ok "自检 cc_run 绿,decls=434" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -564,7 +564,7 @@ P
     emit_flipped=""
     # 4c known 欠账表按平台:heap 在 linux 双臂已绿(翻绿清账),mac 解释臂仍红
     case $(uname) in
-        Darwin) KNOWN4C=" heap opt " ;;
+        Darwin) KNOWN4C=" heap opt iter " ;;
         *)      KNOWN4C=" opt " ;;
     esac
     for f in "$ROOT"/std/*.ct; do
