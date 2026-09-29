@@ -193,10 +193,10 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 if epr[0] == "Param" && ext_nonabi_ty(epr[3]) {
                     diag2(diags, "W8052.param", nline(td), td[1], epr[2])
                 }
-                // E4045(v0.9 §二·七):&T 单引用形参不支持——发射面无裸指针码,
-                // 此前静默塌缩 int32(错 ABI);&T[] 视图(Ref+Slice)与 &Trait
-                // (胖指针)放行。裸指针能力扩展呈裁决
-                if epr[0] == "Param" && ext_bare_ref_ty(file, epr[3]) {
+                // E4045 收窄(v0.9·三 裁决落码):&T 裸指针形参已放行(p<ec> 码,
+                // 路径 1 选项 A——只过界不解引用);仍拦 &T[N] 定长数组引用
+                //(不可表示,用 &T[] 视图)。返回位放行随切片 2
+                if epr[0] == "Param" && ext_arr_ref_ty(epr[3]) {
                     diag2(diags, "E4045.param", nline(td), td[1], epr[2])
                 }
                 ek += 1
@@ -344,8 +344,9 @@ fn attr_arg(v: Str) -> Str {
     return ""
 }
 
-// &T 单引用检测(v0.9 E4045):Ref 非 Slice(&T[] 视图)/非 trait 对象(胖指针)
-// = 裸引用,extern 边界无 C 表示(发射塌缩 int32,静默错 ABI → 硬错拦截)
+// &T 单引用检测(v0.9 §二·七):Ref 非 Slice(&T[] 视图)/非 trait 对象(胖指针)
+// = 裸引用。v0.9·三 起形参位合法(p<ec> 码);本判定现仅服务返回位闸门
+// (切片 2 放行)与历史口径
 // trait 判定用 sem 域 is_trait(sem 拼接序先于 trans,ct_is_trait 不可前引)
 fn ext_bare_ref_ty(file: List[Str], ty: List[Str]) -> Bool {
     if ty[0] != "Ref" {
@@ -360,6 +361,15 @@ fn ext_bare_ref_ty(file: List[Str], ty: List[Str]) -> Bool {
         }
     }
     return true
+}
+
+// &T[N] 定长数组引用(v0.9·三 E4045 收窄面):Ref 内层 ArrayT——
+// 裸指针码不覆盖的不可表示形态,用 &T[] 视图替代
+fn ext_arr_ref_ty(ty: List[Str]) -> Bool {
+    if ty[0] != "Ref" {
+        return false
+    }
+    return ty.len > 1 && ty[1].len > 0 && ty[1][0] == "ArrayT"
 }
 
 // C-ABI 类型治理(§9.6 v0.6):容器/能力类型不得跨 extern 边界(镜像 Rust

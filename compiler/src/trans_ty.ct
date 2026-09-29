@@ -196,6 +196,10 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         if ct_is_trait(file, nt[1][1]) {
             return "t:" + nt[1][1]
         }
+        // &T 裸指针(v0.9·三 裁决:路径 1 选项 A——只过界,无取址/解引用语言面):
+        // p<元素码> → C `T*`(ct_ctype 组合式:元素 C 型 + *)。此前无臂静默塌缩
+        // int32(E4045 曾硬拦);内层 ArrayT(&T[N])不可表示,sem E4045 收窄保留
+        return "p" + ct_ty_code(nt[1], file)
     }
     if nt[0] == "ArrayT" {
         // T[N] 定长注解 → 既有 a<N><ec> 内联码
@@ -307,6 +311,11 @@ fn ct_ctype(code: Str) -> Str {
     if code == "b" { return "int" }
     if code == "f" { return "double" }
     if code == "g" { return "float" }
+    if code.len > 1 && byte_at(code, 0) == 112 {
+        // 裸指针码 p<ec>(v0.9·三 路径 1):C `T*` = 元素 C 型 + *(组合式,
+        // 元素码任意合法型——标量/struct u:/Str s/嵌套 p 均自然成立)
+        return ct_ctype(byte_slice(code, 1, code.len)) + "*"
+    }
     if or2(code == "L", or2(code == "LI", ct_is_lcode(code))) { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }

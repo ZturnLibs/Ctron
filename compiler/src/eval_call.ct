@@ -392,6 +392,19 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         // 帧 "i:<int>"/"s:<str>";仅前 12 参;Void 返回 0;Str 返回暂缺随 E3 登记)。
         // dlsym 直调宿主进程链接符号(bin/ctron-cc 链 vendored 库;C 宿主未链 → 符号缺失错)
         if decl_node(file, "FnExt", nm).len > 0 {
+            // 裸指针形参(v0.9·三 p<ec>)解释口径响亮拒绝:解释器的值地址不是
+            // C ABI 对象地址,取址传过界不成立;指针通道走编译(run.sh 行为夹具
+            // 的 bin run = 编译执行,不经此桥)
+            var xdecl = decl_node(file, "FnExt", nm)
+            var xk: I32 = 1
+            while xk < xdecl[3].len {
+                var xp = xdecl[3][xk]
+                if xp[0] == "Param" && xp[3].len > 1 && xp[3][0] == "Ref" && xp[3][1].len > 0 && xp[3][1][0] != "Slice" {
+                    panic("extern 解释口径:裸指针形参 &T 不支持(编译通道)")
+                    return e4("i", env, vV2(), out)
+                }
+                xk += 1
+            }
             var f0: Str = ""
             var f1: Str = ""
             var f2: Str = ""

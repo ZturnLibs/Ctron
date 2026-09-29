@@ -1,0 +1,43 @@
+// tests/ffi/ptr_param —— &T 裸指针过界(v0.9·三 裁决:路径 1 选项 A)
+// 承诺:&T 形参发 p<ec> 码 → C `T*`;调用点实参取址(实参写变量名,
+// 发射面自动 &);只传不解——读回经 C 侧间接效应断言。
+#[repr(c)]
+struct Pkt {
+    var id: I64
+}
+
+#[trusted]
+extern "c" fn fill(p: &I64)
+
+#[trusted]
+extern "c" fn peek(p: &I64) -> I64
+
+#[trusted]
+extern "c" fn swap(a: &I64, b: &I64)
+
+#[trusted]
+extern "c" fn pkt_bump(p: &Pkt)
+
+#[trusted]
+extern "c" fn pkt_id(p: &Pkt) -> I64
+
+test "scalar pointer write-through (C derefs, Ctron asserts effect)" {
+    var v: I64 = 7
+    fill(v)
+    assert_eq(peek(v), 42)
+}
+
+test "two-pointer swap across boundary" {
+    var a: I64 = 1
+    var b: I64 = 9
+    swap(a, b)
+    assert_eq(a, 9)
+    assert_eq(b, 1)
+}
+
+test "struct pointer mutation (t_Pkt* ABI)" {
+    var k = Pkt { id: 5 }
+    pkt_bump(k)
+    assert_eq(k.id, 6)
+    assert_eq(pkt_id(k), 6)
+}

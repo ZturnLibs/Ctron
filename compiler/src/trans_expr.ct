@@ -1127,7 +1127,16 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var epc = "i"
                 if ei - 1 < epcs.len { epc = epcs[ei - 1] }
                 var eex = ct_expr(ag[ei], env, file)
-                if or2(epc == "F1", or2(epc == "F2", epc == "F3")) {
+                if epc.len > 1 && byte_at(epc, 0) == 112 {
+                    // 裸指针形参 p<ec>(v0.9·三 路径 1 选项 A):实参取址过界,
+                    // 只传不解——接收者限左值形态(Ident/成员链);其余响亮失败
+                    if or2(ag[ei][0] == "Ident", ag[ei][0] == "Member") {
+                        eargs = eargs + "(" + ct_abi_ctype(epc) + ")(&(" + eex + "))"
+                    } else {
+                        panic("emit:裸指针实参限左值(Ident/成员链):" + callee)
+                        return ""
+                    }
+                } else if or2(epc == "F1", or2(epc == "F2", epc == "F3")) {
                     eargs = eargs + "(" + ct_abi_ctype(epc) + ")" + ct_cb_ref(file, ag[ei], eac, eex, epc)
                 } else {
                     eargs = eargs + ct_arg_cast(eac, epc, eex)

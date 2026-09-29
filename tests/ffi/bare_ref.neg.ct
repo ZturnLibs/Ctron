@@ -1,6 +1,5 @@
-// tests/ffi/bare_ref.neg.ct —— E4045:&T 单引用 extern 形参/返回拦截(v0.9 §二·七)
-// 承诺:裸引用无 extern C 表示(此前发射静默塌缩 int32,错 ABI);现硬错拦截。
-// &T[] 视图与 &Trait 胖指针放行;裸指针能力扩展呈裁决。
+// tests/ffi/bare_ref.neg.ct —— E4045:&T[N] 定长数组引用 extern 形参(v0.9·三 收窄面)
+// 承诺:裸指针码 p<ec> 只覆盖 &T(单对象);&T[N] 不可表示——用 &T[] 视图。
 //@ fail: E4045
 #[trusted]
-extern "c" fn takes_ref(p: &I64) -> I64
+extern "c" fn takes_arr(p: &I64[4]) -> I64
