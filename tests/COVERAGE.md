@@ -715,3 +715,10 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   meta ✓;fmt parity 479/0。
 - 登记:发射面限定=非泛型 trait + 方法返回 ct_i(标量);prop getter 槽/泛型 trait
   对象/超 trait 前缀=v2(设计文档在案)。
+
+## §web 2c 次波增量(web 泳道,2026-09-28)
+
+- **compress_mw(fb0de38)**:gzip 响应压缩(http/enc 薄收编)——四门(CE 已带→协商→阈值→文本族)+ CL 原位换值 + Vary;**勿裸上线闸在册**:gzip 成员恒含 NUL 而 NUL 过 Str 即失(活证 utf8_enc(0).len==0/"AB"+NUL+"CD"=="ABCD")→ U+0100 载体形(单射无损+CRC 兜底,评审证实)wire 面待 render 咽喉解码或 L4 Bytes;emit 臂 e2e 4096→98B + python gzip.decompress 差分在案
+- **guard.ct(9bf1e64)**:csrf 双提交(frm/csrf 薄收编,写方法 cookie vs form 令牌,败 403,通过面恒发新 cookie)+ 令牌桶限流(frm/limit 薄收编,per-key=XFF 首段[可伪造=v1 边界],in-flight shed 503,时钟注入可测,键表满 fail-open 纯面钉死);Mutex[List[BktEnt]] 原位替换写回经 429 断言自证
+- **门**:十文件 check OK + 裸跑 rc=0(mw/guard 走 canonical bin/ctron-cc + CTRON_STDPATH;seed 宿主 crypto 闭包挂死在册);suite 94/94+94/94(基线随上游演进)
+- **指针**:L6/L7=T54/T55 候选入册 spec-gap 计划(待用户裁决);压缩线两条件(x_web_compress 夹具+wire 形决策)不得滞留
