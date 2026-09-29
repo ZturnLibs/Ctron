@@ -3663,8 +3663,19 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         // 剩单码点时收到退格,乐观自清(多字符路径 setMarkedText 正常不受扰;
         // 他法后续回调清空幂等)
         if k == 259 {
+            // 仅单码点(ASCII 1B/CJK 3B;字节引导位计数——len<=3 会误中两字符
+            // 拼音"ha"致整段清空+面板失同步,用户实测)
             var pp: Str = gui_ime_preedit()
-            if pp.len <= 3 {
+            var ncp: I32 = 0
+            var pi: I32 = 0
+            while pi < pp.len {
+                var pb: I32 = byte_at(pp, pi)
+                if pb < 128 || pb >= 192 {
+                    ncp += 1
+                }
+                pi += 1
+            }
+            if ncp <= 1 {
                 gui_ime_test_set("")
             }
         }
