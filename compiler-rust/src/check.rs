@@ -551,9 +551,10 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
                     if val_err {
                     } else if let Some(items) = val_list {
                         for x in &items {
-                            if x != "fs" && x != "time" {
+                            if x != "fs" && x != "time" && x != "net.listen" && x != "net.connect"
+                                && x != "net.resolve" && x != "db.connect" {
                                 pend.push(format!(
-                                    "Ctron.ctcl: E5043 未知能力 {x};合法:fs, time(能力是安全边界,未知即拒绝)"
+                                    "Ctron.ctcl: E5043 未知能力 {x};合法:db.connect, fs, net.connect, net.listen, net.resolve, time(能力是安全边界,未知即拒绝)"
                                 ));
                             } else if !cap_list.contains(x) {
                                 cap_list.push(x.clone());
@@ -1744,6 +1745,12 @@ impl<'a> Checker<'a> {
             }
             ast::Pattern::Wildcard => {}
             ast::Pattern::Lit(_) => {}
+            ast::Pattern::Or(alts) => {
+                // 或模式(R-P3c):逐替身递归(覆盖并入 cov;绑定按声明次序后者覆盖)
+                for a in alts {
+                    self.check_pattern_into(a, hint, out, cov);
+                }
+            }
             ast::Pattern::Tuple(ps) => {
                 let elems: Vec<Ty> = match hint.map(|h| self.resolve(h)) {
                     Some(Ty::Tuple(tys)) => tys,
@@ -2046,8 +2053,18 @@ impl<'a> Checker<'a> {
                     self.scopes.push(HashMap::new());
                     let (binds, cov) = self.check_pattern_cov(&arm.pattern, Some(&st));
                     self.scopes.last_mut().unwrap().extend(binds);
-                    covered.extend(cov);
-                    if matches!(arm.pattern, ast::Pattern::Wildcard | ast::Pattern::Ident(_)) { has_wildcard = true; }
+                    // 模式守卫(R-P3c):守卫可能不成立,带守卫的臂不算覆盖;
+                    // 或模式替身展开计覆盖,通配替身即整体通配
+                    let is_wild = match &arm.pattern {
+                        ast::Pattern::Wildcard | ast::Pattern::Ident(_) => true,
+                        ast::Pattern::Or(alts) => alts.iter().any(|a| matches!(a, ast::Pattern::Wildcard | ast::Pattern::Ident(_))),
+                        _ => false,
+                    };
+                    if arm.guard.is_none() {
+                        covered.extend(cov);
+                        if is_wild { has_wildcard = true; }
+                    }
+                    if let Some(g) = &arm.guard { self.expr(g, None); }
                     let at = self.expr(&arm.expr, None);
                     self.scopes.pop();
                     arm_tys.push(at);
@@ -2125,6 +2142,12 @@ impl<'a> Checker<'a> {
             Some(Symbol::Module(_)) => Ty::Err, // 模块名作为值:仅用于成员调用,在 call 处理
             Some(Symbol::Type(def)) => Ty::Named { def, args: vec![] }, // 类型名作为关联调用接收者
             None => {
+                // bit.* 位运算内建命名空间(§4.5;T01)——裸值名入 Bit 前奏类型
+                if name == "bit" {
+                    if let Some(&def) = self.sema.def_by_name.get("Bit") {
+                        return Ty::Named { def, args: vec![] };
+                    }
+                }
                 // prelude 枚举变体值(Some/None/Ok/Err)
                 match name {
                     "Some" => {
@@ -2411,6 +2434,8 @@ impl<'a> Checker<'a> {
             // v0.7 语料同步:内建族登记(interp D1 面对齐;签名宽松,实参全查)
             "println" | "print" => { for a in args { self.expr(a, None); } Ty::Void }
             "read_file" => { for a in args { self.expr(a, None); } self.named("Option", vec![Ty::Str]) }
+            // std.fs.read_or(缺失回落默认;fs_exists 守卫 + 直读,L4 探针消费面)
+            "read_or" => { for a in args { self.expr(a, None); } Ty::Str }
             "read_line" => { for a in args { self.expr(a, None); } Ty::Str }
             "read_bytes" => { for a in args { self.expr(a, None); } Ty::Str }
             "flush_out" => { for a in args { self.expr(a, None); } Ty::Void }
@@ -2418,6 +2443,11 @@ impl<'a> Checker<'a> {
             "byte_slice" => { for a in args { self.expr(a, None); } Ty::Str }
             _ => {
                 let Some(sym) = self.lookup_fn_global(name) else {
+                    // 类型名裸构造器(§3.8.2;T03:StringBuilder() 等,无泛型实参形)
+                    if let Some(def) = self.sema.def_by_name.get(name) {
+                        for a in args { self.expr(a, None); }
+                        return Ty::Named { def: *def, args: vec![] };
+                    }
                     self.err("E2020", format!("未解析的名称 `{}`", name), Span::new(1, 1, 0, 0));
                     for a in args { self.expr(a, None); }
                     return Ty::Err;
@@ -2635,6 +2665,7 @@ impl<'a> Checker<'a> {
         match &ot {
             Ty::Str => match tn.as_str() {
                 "len" | "char_len" => Ty::UInt(IntW::WSize),
+                "contains" => self.named("Bool", vec![]), // §3.8.2;T09
                 _ => { self.err("E2020", format!("Str 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
             },
             Ty::String => match tn.as_str() {
@@ -2668,6 +2699,11 @@ impl<'a> Checker<'a> {
             return pty.clone();
         }
         match d.name.as_str() {
+            "StringBuilder" => match tn.as_str() {
+                // §3.8.2;T03:len = 当前字节长度
+                "len" => self.named("I32", vec![]),
+                _ => { self.err("E2020", format!("StringBuilder 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+            },
             "Option" | "Result" => match tn.as_str() {
                 "is_some" | "is_none" | "is_ok" | "is_err" => self.named("Bool", vec![]),
                 _ => { self.err("E2020", format!("{} 无属性 `{}`(方法请直接调用)", d.name, tn), Span::new(1, 1, 0, 0)); Ty::Err }
@@ -2888,6 +2924,12 @@ impl<'a> Checker<'a> {
                         "pop" => Ty::Optional(Box::new(targs.first().cloned().unwrap_or(Ty::Err))),
                         _ => { self.err("E2020", format!("List 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     },
+                    "StringBuilder" => match m {
+                        // §3.8.2;T03:push_str 拼段 / to_string 产出 String(len 走属性)
+                        "push_str" => { if !args.is_empty() { self.expr(&args[0], None); } Ty::Void }
+                        "to_string" => { self.named("String", vec![]) }
+                        _ => { self.err("E2020", format!("StringBuilder 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    },
                     "ArenaList" => match m {
                         "push" => { self.expr(&args[0], Some(&targs.first().cloned().unwrap_or(Ty::Err))); Ty::Void }
                         "into_gc" => self.named("List", vec![targs.first().cloned().unwrap_or(Ty::Err)]),
@@ -2955,6 +2997,24 @@ impl<'a> Checker<'a> {
                         }
                         _ => { self.err("E2020", format!("Parallel 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     },
+                    "Bit" => {
+                        // bit.and_i64(...) 等 24 入口;实参求值后按宽度返回(宽松同 parallel)
+                        let (op, w) = m.split_once('_').unwrap_or((m, ""));
+                        let okw = matches!(w, "i32" | "u32" | "i64" | "u64");
+                        let arity = if op == "not" { 1 } else { 2 };
+                        let okop = matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr");
+                        if !okw || !okop || args.len() != arity {
+                            self.err("E2020", format!("Bit 无方法 `{}`", m), Span::new(1, 1, 0, 0));
+                            return Ty::Err;
+                        }
+                        for a in args { self.expr(a, None); }
+                        match w {
+                            "i32" => Ty::Int(IntW::W32),
+                            "u32" => Ty::UInt(IntW::W32),
+                            "i64" => Ty::Int(IntW::W64),
+                            _ => Ty::UInt(IntW::W64),
+                        }
+                    }
                     "AnyError" => { self.err("E2020", format!("AnyError 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     _ => {
                         // 类固有方法 / trait 方法(含 &Trait 对象)

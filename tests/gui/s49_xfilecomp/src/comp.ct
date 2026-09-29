@@ -1,0 +1,23 @@
+// tests/gui/s49_xfilecomp/comp.ct —— P2 跨文件组件:显示 prop+列表 prop(Ⅰ)
+// +数据事件(Ⅱ)。组件体仅用自家 prop;tags 列表 prop 经实例实参直传
+// (each 通道 env 前置回落,rt_bind_items 魔数判还原);mark 数据事件实参=
+// 事件局部数据(处理器仅数据形参,println 观察哨;模型变异经宿主自有事件)
+pub fn badge_tag() -> Str {
+    return "BADGE"
+}
+
+view Badge (t: Str, n: I32, tags: List[Str]) {
+  <vbox class="bdg">
+    <label class="bl">{t}</label>
+    <label class="bn">{n}</label>
+    <each tg in={tags}>
+      <label class="bt">{tg}</label>
+    </each>
+    <button class="bb" on:click={mark(t)}>MARK</button>
+  </vbox>
+}
+style bdg { direction: column h: 176 }
+style bl { fg: "#22c55e" h: 30 }
+style bn { fg: "#e5e5e5" h: 30 }
+style bt { fg: "#93c5fd" h: 26 }
+style bb { bg: "#2563eb" fg: "#ffffff" w: 90 h: 30 }

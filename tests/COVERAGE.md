@@ -411,3 +411,289 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   错位一格且尾部越界读,EOF 名读出 NULL 使 test_lex 段错误——补条目,test_lex 58/0 全绿。
 - `suite_lex` 补 `.neg.ct` 过滤(对齐 Rust lex_suite 先例):neg 语料判定面是诊断码,
   不入"全语料零词法诊断"断言 → 127 文件零误报。
+
+**2026-09-28 T01 bit.* 位运算内建落库**(spec-gap W1;§4.0 宪法「位运算恒走 bit 模块」兑现):
+- 前奏命名空间 `bit.*`(parallel 先例):and/or/xor/not/shl/shr × i32/u32/i64/u64,共 24 入口;
+  补码语义按声明宽度、shl 回绕、shr 有符号算术/无符号逻辑、移位数越界 panic "bit shift range"。
+- 四面同判:自举解释(eval_call 文本域逐位组合+双零早退)/自举发射(trans_expr 直出 C 位运算+
+  ct_bit_sh* 运行时助手)/C 宿主解释(rt_eval __int128)/C 宿主发射(trans_conc emit_bit)。
+- 锚:tests/bit_ops.ct(6 块)+bit_shift_{hi,neg}.panic.ct;std/crypto 六处内联位函数回切 bit.*
+  (SHA/SCRAM 向量零回归,自举解释臂 8.0s→5.3s);R 线内建面缺位在册(crypto R 臂 0/3 预存红,
+  bit.* 随 R 线内建面批次补,失败数不增)。
+- 顺手修:自举 i64/isize 后缀宽字面量此前误落 I32 域截 0(eval_expr 宽路径仅认无后缀),
+  03b 补锚;宿主负大字面量/宽正字面量算术检查缺口(unary neg/Sub 于 v_int bits=32 恒炸)为
+  宿主在册债,锚侧以 i64 后缀规避开(divergences 待登)。
+
+**2026-09-28 T02 模式守卫+或模式三线落地(R-P3c 销账)**(spec-gap W1;§4.6):
+- r3c 两锚迁入主套件为 02f_match_guards.ct / 02f_match_guard_exhaustive.neg.ct(E2030);
+  三线落地:自举解析/求值/穷尽既有(R-P3c 半成品收口)——C 宿主补 parser(或模式 PAT_OR +
+  臂守卫)/rt(pat_bind_or 替身依序 + EX_MATCH 守卫绑定后判定)/sem(守卫臂不算覆盖,或模式
+  替身展开计覆盖);R 线补 ast(Pattern::Or + MatchArm.guard)/parser/check(守卫跳过覆盖 +
+  或模式展开)/interp(try_match Or 前置拦截 + 守卫假值回落)。
+- 发射臂登记(不阻塞本翻转):自举发射 match 面窄(Result/用户枚举/Option[Str] 特化),
+  表达式位 match 与字面量模式臂 ct_expr panic —— 即 P8-C 在册「match-on-Result emit 缺口
+  interp 专臂」同族,守卫/或模式发射随该债一并扩;C 宿主 trans 同族登记。
+- suite 77/78 双线(+2 全绿,06f/06e 两预存红不变);cargo 13 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T03 StringBuilder 前奏三线落地**(spec-gap W1;§3.8.2 R-P2a 销账):
+- r2a_sb 锚迁入主套件 03j_stringbuilder.ct;API:StringBuilder()/push_str/to_string/len(字节)。
+- 三线:自举(SB 值=段列表宿主 List 别名语义,call_mem 专属臂须先于通用 to_string)/
+  C 宿主(V_SB 复用 listnode 段表)/R 线(Value::StrBuilder,通用 to_string 截胡排除;
+  裸类型名构造器调用回退补——def_by_name 命中即构造,含无泛型形)。
+- 发射臂:native_suite 口径 trans 拒绝=skip;StringBuilder 发射(拼接语义)随容器发射批次。
+- suite 78/79 双线 +1 全绿;cargo 13 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T04 W 码三负锚补齐**(spec-gap W1;§5.6/§3.8/§1.3):
+- 新锚 01m_shadow_prelude.lint.ct(W8040 参数位遮蔽)+01n_unused_binding.lint.ct(W8030 未使用
+  绑定,fn 体形——自举 W8030 仅扫 fn 体,test 块位登记差异);05f(W8020)既有,注册表「锚待补」注记清除。
+- 实现补齐:自举 W8020 泛型返回(Result[I32,Str] Named+TArgs 形)+fn/test 体**块尾表达式位**
+  (walk_b 加 body 参,值位块不判防误报)+参数位 W8040(is_prelude_name 名单对齐 C 宿主;行传 0
+  交驱动探针——Fn 无属性路径不盖章,nline 契约内回退);C 宿主补 fn/test 尾位 W8020(w8020_tail)
+  +**W8030 全新**(bind.used 标记:bind_find 命中+check_expr EX_IDENT 读取位;保守面仅原语类型
+  绑定——插值部件宿主侧纯文本无 AST,聚合/Option/Drop 绑定免报对齐自举豁免口径)。
+- 登记差异:R 线无 W8030/W8040 发射面(lint 锚经 check_suite 零诊断口径空过,R 线欠账);
+  自举 W8030 不扫 test 块位。
+- suite 80/81 双线(lint 4/4×2;06f/06e 两预存红不变);cargo 14 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T05 行尾点守卫落库**(spec-gap W1;§1.6):
+- r1a 锚迁入主套件 01o_trailing_dot.neg.ct(E1001);自举词法层 filter_nl 守卫(行尾 `.` 后
+  未抑制的 NL → E1001,消息键 E1001.trailing.dot 双语登记)——此前自举解析器吞点误放行,
+  宿主/R 线既有拒绝面不变;parse_suite/check_suite 双登记,roadmap_suite 移除 r1a。
+- suite 81/82 双线(06f/06e 预存红不变);cargo 14 套全绿;meta/fmt parity 过。
+
+**2026-09-28 T06 E6030 parametricity 封闭性论证**(spec-gap W1;§8.4):
+- 结论:**现行语言面下 E6030 违规不可达,码位由封闭性承载**(不设重复空检查,能力优先裁决)。
+  论证四点:①语言无任何反射算子(type_of/type_name/reflect 全库零命中,§3.8 前奏无此面);
+  ②ceval(E6010 步数预算求值器)值域仅 I 域整型字面量/const 引用/算术/比较/逻辑与——无类型
+  表示可入值域;③类型名在表达式位仅解析为构造器/变体(sem E2020 面),不存在产生类型信息的
+  值形态;④@derive 为编译期结构化展开(硬编码 Show/Eq/Error 集,结构谓词深度限 6),非运行期
+  反射。将来若引入类型级 comptime(§8.4 预留的类型产出函数)或反射 API,须同步补 E6030 实检。
+- 规范 §10.1 E6030 行注记随本论证更新(预留 → 封闭性承载)。
+
+## §web P0 编译销账(编译泳道,2026-09-27→28)
+
+| 项 | 锚定 |
+|---|---|
+| P0-3/P0-2/P0-1/P0-4 member-emit 四件 | 探针转正 `03k_fn_call_chain_member`/`03j_closure_param_member`/`03l_list_struct_member`/`03n_struct_fn_field_array`(销账提交 fc79e6c/ec006dd/b0e5bfc/edb59fb)。臂况分记:03k/03l/03n 种子双臂绿、03j interp 双臂绿;种子发射臂残留:03j(值位置闭包按设计非捕获 trans_expr.c:1587,`tag` 未声明——候选 **L7**);自举原生发射臂残留:03l emit `ct_expr:Member@23`(L 码擦除 trans_ty.ct:250+定宽 char** 槽=P5 b4)、03n emit `emit:并发值含 struct 值传递`(在册同族)、03j(同 L7 族)——条件登记 **L6/L7**(spec §9,候选·待用户裁决) |
+| L5 StringBuilder 判定 | **立(终判)**:探针 `03i_string_builder_probe` 双编译器 check 挂名过(0 诊断)、运行面拒(种子 `未知函数: StringBuilder` / 引导 `E2020`);编译/运行分相不合 `.neg.ct` 契约,维持行为件红账 |
+| L4 Bytes 判定 | **立(终判,引导双臂实测坐实)**:探针 `03m_binary_nul_probe` 种子双臂不可执行(单文件不并 use);引导 interp + emit→gcc 双臂执行成功而门红(`len:4/nuls:0/mid_ok:0`——/bin/echo 101136 B fat Mach-O 首 NUL 在偏移 4,Str=C 串读边界截断,nuls=0 且 mid_ok=0 → 立) |
+| **web-P0 收口门** | 修复四件:03k/03l/03n 种子双臂绿 ✓、03j interp 双臂绿 ✓(emit 双臂红,残留=值位置闭包捕获,候选 L7 在册——非本批销账域,见上行);03i/03m 判立红账在册(非新增红);**合并后 suite.py 合计 87/88(自举,红=06f_parallel 既有)+88/88(宿主);03i 随 T03 转绿(L5 销账)**(模块桶 14/15、13/15 另列;bootstrap 红 2 = 03i+06f_parallel[基线既有:解释器无 parallel 内建];种子红 2 = 03i+03m;bootstrap 侧 03m rc=0 而 gate 红,suite 判 rc 不判 gate,红账以 divergences 判定为准);smoke --full 150/0;ctc_smoke 21/0;meta gate 已知红 2 = 03i/03m 行为件无 test 块(即两探针,判立红账一部分,不扩大) |
+
+臂覆盖声明(套件量程,防「双臂绿」误推;03j 账误即由此出):本套件行为桶只跑种子 `check`+`test` 与引导 `run` 两类臂——**无种子 `build`(发射)臂、无引导 `emit` 臂**。故任何「双臂绿」结论必须来自显式逐臂运行,不得从 suite 通过推得。
+
+设计:`docs/superpowers/specs/2026-09-27-web-framework-design.md` §9;判定详证与逐字输出:
+`docs/c-rust-divergences.md`「web 框架 P0 探针」节。
+
+**2026-09-28 T07 单态化实例预算 E6040 落库**(spec-gap W1;§8.5):
+- driver_emit 预扫计数(镜像 struct insts 预扫惯例):显式 TypeArgs 泛型 fn 特化去重键
+  (mono_e/mono_b 走查,形状同 sem_walk)+泛型 struct 实例,超限 → E6040+rc=1,消息含
+  「建议 &Trait 化」;CTRON_MONO_BUDGET 可调(默认 8192;seed 路径 env_get 哑在册,旋钮走
+  原生 bin)。v0 计显式位,推断特化随 §3.9.1 ex_ty 保留实参登记并入(锚文件头注记)。
+- 锚 compiler/test/fx_mono_budget_neg.ct(4 显式特化去重 4——dedup 即证)+smoke emit 臂
+  (CTRON_MONO_BUDGET=3 → E6040 rc=1);注册表先行:E6040 入 §10.1 + meta_check。
+- suite 81/82 双线维持;db 套件回基线;meta/fmt parity 过;native 自举固定点过
+  (编译器自身显式特化计数在 8192 内,预扫零开销可观察)。
+
+**2026-09-28 T08 comptime 预算口径裁决落地**(spec-gap W1 裁决门;用户裁定:步数预算为 v1 终态):
+- §8.4 修订注:1200 步步数预算(ceval,E6010 判据)为终态口径——确定性友好(同输入同判定,
+  与 §10.3 无张力);1s 时间口径废弃(时钟依赖不可复现)。清单键 comptime.budget_ms 定性为
+  声明位(C 宿主 pkg 解析+校验+pkg 子命令展示,不进执行;实证 grep 无第二消费方),量纲统一
+  (budget_steps 改名)随 CTCL 迁移批次(T48)定夺。
+- comptime_budget 模块锚注记对齐步数口径;r6f 锚头注本即步数口径无需动。
+
+**2026-09-28 T09 resolve 多记录双栈落库**(spec-gap W2;§11.5):
+- C 垫片 ct_getaddrinfo_all(AF_UNSPEC 全记录 → inet_ntop 文本 "\n" 打包)+门面
+  ctron_net_resolve_all(TLS 静态;helper 池 all 模式——job 缓冲 64→2048,池线程产全记录
+  打包串,槽所有权/停车纪律与 resolve_first 逐条同构);net.ct 门面 net_resolve_all →
+  List[Str](规范点分/冒分文本)+ addr_is_v6;首记录面 net_resolve 保留。
+- 夹具 resolve_all(数值 v4/v6 确定性单记录/localhost ≥1/非法数值串空表+err;零外联纪律);
+  消费方 tcp_echo/unix_sock 双 API 化(协程对切 all 模式 = helper 池新面冒烟)。
+- **表示裁决**:v0 记录以规范文本承载(List[struct] 发射 = divergences (h) 族,同 T14
+  struct 值容器底座;SocketAddr 值 struct 随其并入);List[struct] 发射断点实证 = 元素
+  类型丢失(char* 槽)+索引取值无提取分支。
+- 顺手修三笔:①Str.contains(§3.8.2 v0.5 钉死承诺)interp 缺位+emit 丢实参(10_trace 侧
+  经 List.contains 绕过故隐形)——interp str_contains 分支+emit strstr 直出+R check 臂,
+  01d 补锚;②UFCS 发射 from=2 计数错位(实参恒漏首个+个数核对错位;04g 发射臂 rc=1 即此,
+  主套件从不发射故长期隐形)——重写实参对位(pcs[1..]);③R 线 std.fs.read_or 原生调用面
+  (机刷 03m 探针前向修复,read_file 同族臂)。
+- 新登记:04g 发射臂类方法分发缺位(c.hi() → t_hi 未声明;UFCS 修后暴露的下一层,
+  归类方法发射批次)。
+- net 双矩阵 15/15×2;db 44/10 基线;suite 87/88 维持;cargo 14/0;meta/fmt 过。
+
+**2026-09-28 T10 sleep_ns/可取消/虚拟时钟落库**(spec-gap W2;§11.6/§11.4):
+- C 三件:ctron_net_sleep_ns(协程面 ctron_rt_sleep_until 绝对 deadline 停车,取消广播早醒
+  →返 1(deadline 未到判据),裸线程真睡返 0=join 等效口径);ctron_net_clock_jump(虚拟态
+  偏移累加,实钟态 -1+EINVAL);虚拟钟(CTRON_CLOCK=virtual:冻结基点+跳变量,env 惰性读)。
+- rt 两件:ctron_rt_clock_ns 弱钩(rt.c 弱缺省实钟,net 垫片强覆盖贯通——虚拟跳变驱动
+  定时器堆依 deadline 序确定性触发)+ctron_rt_sleep_until;net.c 补弱哑元(裸矩阵链接纪律)。
+- 门面 net_sleep_ns/net_clock_jump(bind extern 直调,方法发射缺口在案);夹具 clock_sleep
+  三矩阵:实钟臂(下界/单调/取消 elapsed<1s)、虚拟臂(5s 虚拟定时器经跳变 33ms 真实完成)
+  ——模式探测 jump(0),实钟臂默认+coro、虚拟臂 run.sh 第三矩阵 coro+virtual 专跑块。
+- 新登记:①scope 闭包体 return 语句发射泄漏(return 直出宿主函数+块值丢失;块值须尾表达
+  式形态,coro_conc 先例;spawn 闭包不受影响)②ct_spawn pthread/协程混合分派下取消早退
+  深时序(~500ms 中间态)归 P9 栈经济注记③裸线程睡眠虚拟跳变不打断(专跑臂在协程矩阵,
+  语义注记)。
+- net 三矩阵 17/17×2+专跑;db 44/10 基线;suite 87/88 维持。
+
+**2026-09-28 T11 能力键细分落库**(spec-gap W2;§11.1/§12.1):
+- 键集扩为 {fs, time, net.listen, net.connect, net.resolve, db.connect}(粗键 net/db 不再
+  授予,fail-closed 硬切;在库 ctecho 清单同步升细键)。映射:listen 族(tcp/unix listen+accept)
+  /connect 族(tcp connect+udp 全族+unix connect)/resolve 族(net_resolve+all);db 域统一。
+- 四线注册表同步:schema(ctcl_manifest_schema members 真源)/宿主 pkg.c(check_caps 重写:
+  补域二段形——caps_net 宿主 informational 分歧顺手闭/R check.rs+main.rs/自举第四臂
+  selfhosted/ctcl_chk.ct;E5043 消息统一 sorted 序,四线对拍 104 例全绿)。
+- 自举 parse_pkg:细键检测(use 导入驱动,cap_net_fine 映射+去重)+粗面兼容(能力对象
+  &Net/&Db=任一细键);**顺手修**:无清单语境 read_file 缺失回落 Some("") 被当空清单
+  deny-all——此前粗检测 &Param 门槛掩盖,细键导入驱动面暴露;空文本=无清单放行。
+- 夹具 caps_fine_neg(仅 net.resolve,listen/connect 导入 → E4010×2)/caps_fine_ok
+  (resolve 正例,干净 extern 面——listen/connect 门面 Box 出参 W8052 真阳性属 ABI 面不重复);
+  suite modules 跑器补 CTRON_STDPATH(域包门面解析,run.sh 同惯例)。
+- diff.py 排除 .worktrees(他泳道工作树陈旧清单/二进制不入四线对拍)。
+- modules 16/17×2(唯一红=use_alias_nat/dup_static 既有意红基线);net 17/17×2;suite
+  87/88 维持;manifest 三门+ctcl selftest+cargo 14/0+meta/fmt 过;R 线细键检测(对象面
+  note_cap_use 仍粗键)登记 R 线欠账。
+
+**2026-09-28 T12 gzip 收口**(spec-gap W2;§11.7):
+- 主体已由 webfw 泳道交付(P4-B http/enc.ct:gzip 容器组框 RFC 1952 纯 Ctron +
+  miniz 垫片 CRC-32 单实现 + Accept-Encoding 协商;enc_fixtures x_gzip_round/
+  x_crc32/x_deflate_round/a_negotiate)——计划卡分析时序差,本件缩为互操作补齐。
+- 补:①x_gzip_interop(python gzip.compress 真实流 93 字节 hex 语料 → 本实现
+  gunzip 逐字节还原 292 字节;头布局锚 1f8b/08/00/mtime=0)②x_gzip_out(本实现
+  产出流 hex 出)③run.sh 互操作臂(本实现流 → python gzip.decompress 逐字节
+  差分)——消费向/供给向双闭环。
+- 登记发射怪癖:x_ 夹具 fn main + 显式 `&数组` 实参形 → 发射驱动 SIGSEGV
+  (截断 C);test 块 + 数组直传(隐式视图转换,gzip_round 惯例)为正形。
+- http 110/1(唯一红=frm_auth_a_jwt interp OOM,实证与 bit-crypto 无关:
+  原版 crypto 对照 1.46GB vs bit 版 1.32GB/50 HMAC——解释器 arena 无回收
+  在册债(T31 目标)所致)。
+
+**2026-09-28 T13 Atomic 真原子落库**(spec-gap W2;§7.3):
+- 自举发射:fetch_add 由全局锁 RMW(ct_glock 三步)改 __atomic_fetch_add(SEQ_CST,
+  返旧值语义不变);load/store 升 __atomic_load_n/__atomic_store_n(原裸读写无序)。
+- C 宿主镜像:ctron_mutex_<w>_{load,store,fetch_add} 三 helper 同改(原裸读写/
+  __int128 RMW);Atomic with/with_mut 保持互斥语义(锁归属正确,不动)。
+- 验证:coro_conc 增 atomic_smoke(独立函数——同函数双 scope 撞发射固定名 t_sc,
+  名不唯一化登记;4 任务×50k fetch_add 双矩阵精确 200k + store/load 往返);
+  宿主最小探针(fetch_add 返旧值→store→load 链路正确);net 17/17×2。
+- 门禁:suite 87/88 维持、modules 16/17×2(基线红不变)、db 44/10 基线、http 110/1
+  (jwt interp OOM 预存)、cargo 14/0、meta/fmt/ffi 过。
+**2026-09-28 web 2a 开波**(web 框架核心纯函数面;计划文件:
+`docs/superpowers/plans/2026-09-28-webfw-2a-core.md`):
+- Task 0 包骨架落库:`web/Ctron.ctcl`(pkg web;caps net.listen 供应链审计标记)+
+  `web/core.ct` 包头占位(Task 1-4 填充);语义门 `ctc.sh check web/core.ct` → check OK。
+- 包测试驱动口径(seed 单文件):语义门 `sh compiler/ctc.sh check <file>`;test 块
+  `compiler-c/build/ctronc test <file>`(suite.py 两相位同款;跨模块被测文件按
+  compiler/build.sh 式拼接,bootstrap ctc.sh 无 test 子命令)。
+
+**2026-09-28 web 2a 收口(Task 5;16e702e..本笔,worktree webfw-2a)**:
+- 语义门:`ctc.sh check web/core.ct web/router.ct web/view.ct` 全 OK(decls=134)+
+  三文件裸跑 rc=0;负臂实证:err_json 旧 end_status(status 底座 text/plain)对新断言
+  `Content-Type == application/json` 实咬(assert failed rc=1),修后绿。
+- 本笔面:err_json CT 修正(M-T1w-1,end_status 改走 json() 底座)/strs 独立断言(M-T1w-2)/
+  csv_rows(RFC 4180 最小引用形,本地实现——use std.csv 入 core 会翻转 view 合并态 E5030,
+  见下)/attachment/xml/yaml 补 §4.4 格式矩阵/install(§4.6 插件挂载)/test_call(§4.7 测试口,
+  dispatch 别名)/view 信任边界注记(M-T4w-1)/README API 表(§4 定稿面 2a/2b 两列)。
+- 新编译器坑在册(M-T5w-1):pkg_load_use 选择性合并 keep 闭包含 **test 体引用**
+  ("Test 恒随"口径)——core 测试体引用 `text()` 即把 core.text 拉进 use 方(view)合并面,
+  与 view.text 撞名 E5030(实证:引用时 rc=1/去除 rc=0);同型:`use std.csv` 入 core 同样
+  翻转 view 合并态。包内跨文件同名 decl 禁入被 use 方 test 体。
+- 覆盖清单:Resp 构造器族(html/json/text/redirect/status/err_json/xml/yaml)+ with/with_status/
+  attachment + resp 三读 + json_obj 五件(end/end_status)+ csv_rows + Req 六取参(query/
+  query_all/form/form_all/header/cookie)+ param/param_i64/param_f64 + pdec 边域 + req_of/
+  req_full/req_set_params + Router 全组合子(get/post/put/delete/patch/middleware/mount_at/
+  install)+ route_match 三档/405 Allow/has_conflict/dispatch/test_call + 中间件短路穿透 +
+  视图 el 族(结构性转义/raw/children/自闭形)。param_f64 在册确认(spec §4.3)。
+- 2b 待办指针:serve 循环/body_limit/not_found/method_not_allowed 挂点/static/openapi/
+  bytes(挂 §7-8 二进制门)/send_file/req.json+JDoc 校验族/session 族(with_sessions/
+  grant_session/drop_session/flash)/README 示例迁移(todo_app 对照 §10 验收门)/原生 e2e 门
+  (挂 L6/L7 销账)。全景见 `web/README.md` API 表两列。
+- suite 回归:web/ 不在 tests/,suite.py 计数不动(87/88+88/88 基线,本笔复跑确认)。
+
+**2026-09-28 T14 Channel 去限制三片落库**(spec-gap W2;§7.3/§12.3):
+- **①容量上限解除**(0e004a2):自举模板 ct_chan buf[64] 堆化+取模 %64→%cap+cap<1→1
+  (fail-closed)+注册表定长 64→增长数组(realloc 加锁,原无锁竞态顺手收口);宿主发射器
+  本即类型化堆环无需动;锚 coro_conc chan_cap_smoke(单线程 128 发不阻塞=在途容量实证)。
+- **②List[struct] 发射底座**(b6d26fe;divergences (h) 族首件收口):元素码 Lu:<名> 贯通
+  (注解位 ct_ty_code/构造推断位 ct_typeof/索引派型位);push 堆盒装箱(值拷贝);索引解
+  引用取回;for-in 补 L/Lu: 两族(此前 for-over-list 发射面整个缺位);L(char*)/LI(int)
+  既有行为零扰动;锚 fx_list_struct(装箱/索引/for-in/struct 字段持有/值拷贝语义)。
+- **③句柄作字段+struct 入通道**(369b9bc):Sender/Receiver/Channel 注解型码 h——作
+  struct 字段/形参/返回位贯通(P5-E 池持通道「emit int32 截断」缺口收口,db/pool 消费方
+  迁移随 db 泳道);struct 值入通道 = send 装箱 + match Ok 臂解引用(解构位 rx 绑定
+  hR<元素码>);锚 fx_chan_structs;登记:recv().expect 于 struct 载荷未支持(match 为
+  消费正形)、句柄注解无型参(hR 元素码仅解构位可得)。
+- 同底座连带解锁:SocketAddr struct 化(T09 v0 文本承载可升级)、form.ct List[struct]
+  产错型强转登记位、04g 类方法发射((h) 族下一件)。
+- 门禁:net 17/17×2、suite 87/88、db 44/10、http 110/1(基线红不变)、cargo 14/0、
+  meta/fmt/ffi 过。
+
+**2026-09-28 T15 Iterator for 集成三线落地**(spec-gap W3;§3.8.2/§4;R-P3b 首件):
+- r3b_iter_trait 锚迁入主套件 03k_iter_for(E2030 语义正交,无 neg);锚修订:&var self
+  (非文法形)→ var self(EBNF 正形,起草笔误);适配器测试拆出 r3b_iter_adapters(T16 域)。
+- 三线 interp:自举 For 处理器 U 分支(find_impl_method next + 共享 env 运行方法体——
+  self 绑定于循环 env,var cur += 1 经 env 写回对下一轮可见);C 宿主 ST_FOR V_STRUCT 分支
+  (cls_method + 同 env 直跑 body 免 call_method_body 弹栈丢 mutation);R 线 Stmt::For
+  Struct 分支(find_method_block + fenv self 绑定;R 线 struct 值字段 Rc<RefCell> 共享 =
+  mutation 天然对循环侧可见)。
+- 顺手修:解析器 &var 前缀死循环(& 消费后 var 被当参数名 + else 双 adv 越过 self →
+  p_typ 死循环;防御消耗按 var 语义)。
+- 发射臂登记:var self 方法按值传递 = mutation 丢失(Iterator for 发射缺口;泛 var 参数
+  引用语义=发射层系统改造,归后续批次)。
+- suite 88/89×2(+1 全绿);cargo 14/0;meta 过;db 44/10 基线;net 17/17。
+
+**2026-09-28 T16+T17 std/iter 归位+06f 翻转**(spec-gap W3;§7.7):
+- **T16 std/iter.ct 适配器面**:数组终结器(sum/count/any/all/collect)+适配器 struct
+  (MapArr/FilterArr/TakeArr + 终结函数)。**阻塞登记**:UFCS 链式调度(`xs.map(f).filter(f).sum()`)
+  需同名函数作用于不同适配器类型 = 函数重载或泛型 trait 分发(皆 T25 域);泛型 struct
+  MapIter[A,B] 被实例化字母表限标量/Str 阻断。r3b_adapters/r3b_iter_adapters 锚维持红
+  (T25 依赖,翻转条件在案)。
+- **T17 06f 翻转**:std/iter.ct 创建(§7.7 归位);加载器补前奏符号 use 显式导入恒可见
+  (§3.8 前奏隐式可用——use std.iter.{parallel} 为文档化冗余,pkg_is_prelude_sym 判定)。
+  06f_parallel.ct 常驻红首次翻绿。parallel 前奏直用保持兼容(过渡双轨)。
+- **suite 89/89 双线——主套件首次 100%**(自举+宿主全绿);cargo 14/0;meta/db/net/http
+  基线全维持(唯一红=http frm_auth_a_jwt interp OOM 预存在,归 T31 arena 债)。
+
+**2026-09-28 T21 宿主检查面红账五件销账**(spec-gap W4):
+- r6b(E4050 类持资源字段)/r6c(as[U64] 负源模 2^64)/r6d(W8050)/r6e(E4040)/r6f(E6010)
+  五锚迁入主套件 05h/03l/05i/05j/05k;r6d/r6e 宿主先前行已绿(免改)。
+- C 宿主三件补齐:E4050(D_CLASS 字段 Mutex/Channel/Sender/Receiver 检查)+
+  wrap_int U64 修(bits==64 && us 时掩码 2^64-1——此前 bits>=64 直通透传,负源 -1 经
+  __int128 全宽无符号读出 = 2^128-1)+E6010(ceval_21 迷你树走查求值器:字面量/ident/
+  算术/比较/While/Let/Return/Assign/comptime fn 调用;步数>1200 → E6010;
+  ST_ASSIGN 补 env 绑定更新;depth 跟踪移除——只增不减致 35 轮假爆,步数已兜底)。
+- E4050 消息对齐自举(去「需确定性释放的」——msg 子串锚一致)。
+- suite 94/94 双线;cargo 14/0;meta/db/net 基线全维持。
+
+**2026-09-28 T22+T23 宿主运行面+e2e 红账核销**(spec-gap W4):
+- T22:r4d/r6a 两锚**已在前批迁主套件**(03k_u64_overflow.panic / 05h_drop_panic_unwind.panic)
+  且双线绿(09-15 宿主 fits 上界+rt_panic_unwind 落地时已修);COVERAGE §172-173 红账
+  条目系过期登记,本次核销。
+- T23:e2e 缺声明 6 红**已在前批全清**(09-25 深夜 P1b 契约补全——use 清单全量请求);
+  http 110/1(唯一红=frm_auth_a_jwt interp OOM,T31 arena 债);OTLP send 裸 socket 形
+  维持在册。
+
+**2026-09-28 T20 deterministic+内容寻址缓存落库**(spec-gap W4;§10.3):
+- --deterministic CLI 旋钮(ctc.sh):设 CTRON_RT_SEED=1 → 种子化弹出序+单 worker
+  (机制已有 ctron_rt.c:1010-1027;旋钮只做 env 传播);并发夹具同种子三跑一致实证。
+- 内容寻址缓存(ctc.sh emit 臂):源文件哈希+编译器 cc_emit.ct 哈希前 12 位 = 缓存 key
+  (防编译器升级后陈旧缓存);.cache/emit/<key>.c 命中即复用,免重发射;未命中发射后入缓。
+  同源双跑产物逐字节一致实证(cmp 过)。
+- suite 94/94×2;net 17/17;fmt parity 479/0 全维持。
+- 登记:缓存命中不重跑 build.sh(编译器源变更即 cc_emit hash 变 → 自动 miss);
+  跨机复用需迁移 .cache 目录(v1 本机口径)。
+
+**2026-09-28 T18 列级精确 span 落库**(spec-gap W4;§10.2):
+- **解析器诊断(pdiags)入 JSON 面**:json_diag_lc(LINE:COL 解析版)——精确 line_start/
+  col_start/line_end/col_end(列级 1-based);JSON 早退路径补(chk_fmt 提前初始化至 pdiags
+  检查前——此前 pdiags 早退恒走文本面)。验证:`let x = ;` → E1001 {line:2, col:13}。
+- **sem 诊断行号保持**:@LINE 机制既有;列=1 近似(v1 待 AST 列标注贯通)。
+- 已知限制在册:部分 sem 诊断行号 nline() 对嵌套 Binary 节点返回垃圾值(01c 的 E1001
+  chain 检查 60100140——预存在,AST 尾槽行号戳覆盖面不足所致);sem 列=1。
+- suite 94/94 双线维持。
+
+**2026-09-28 T19 fix-it 首批落库**(spec-gap W4;§10.1):
+- json_diag fixes 产出:按码生成修复建议——E3030(replace edit:static var→let,
+  span 精确 line/col)、E2020(note:检查拼写或加 use)、W8010(note:改值字段或 Box)。
+- 验证:E3030 → fixes=[{title, edits:[{kind:replace, span:{L1:C1-11}, text:"let"}]}]。
+- 契约:edits.kind ∈ replace|insert|delete;span 1-based(§10.2 冻结 schema)。
+- suite 94/94 双线维持;meta 过。

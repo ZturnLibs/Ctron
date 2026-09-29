@@ -27,6 +27,37 @@ fn segs_std(d: List[Str]) -> Bool {
     return or2(seq2(segs[1], "std"), seq2(segs[1], "stdweb"))
 }
 
+// ---- T11 §11.1/§12.1 能力键细分 ----
+// 门面符号 → 细键映射:net 域细分 listen/connect/resolve(§11.1 授予面);
+// db 域统一 db.connect(§12.1)。粗键 net/db 不再授予(fail-closed 硬切,
+// 在库清单同步升级)。能力对象名(Net/Net_probe/StdNet)=网络族任一细键即可
+// (保持 &Net 引用检测兼容);fs/time 粗键维持。
+fn cap_net_fine(sym: Str) -> Str {
+    if or2(seq2(sym, "net_tcp_listen"), or2(seq2(sym, "net_unix_listen"), seq2(sym, "net_unix_accept"))) {
+        return "net.listen"
+    }
+    if or2(seq2(sym, "net_tcp_connect"), or2(seq2(sym, "net_udp_socket"), or2(seq2(sym, "net_udp_bind"), or2(seq2(sym, "net_udp_sendto"), or2(seq2(sym, "net_udp_recvfrom"), seq2(sym, "net_unix_connect")))))) {
+        return "net.connect"
+    }
+    if or2(seq2(sym, "net_resolve"), seq2(sym, "net_resolve_all")) {
+        return "net.resolve"
+    }
+    return ""
+}
+
+// T17:前奏符号名判定(use 显式导入恒可见;§3.8 前奏隐式可用)
+fn pkg_is_prelude_sym(nm: Str) -> Bool {
+    if or2(seq2(nm, "parallel"), seq2(nm, "arena")) { return true }
+    if or2(seq2(nm, "bit"), seq2(nm, "dom")) { return true }
+    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "panic"), seq2(nm, "assert")))) { return true }
+    if or2(seq2(nm, "assert_eq"), or2(seq2(nm, "assert_ne"), seq2(nm, "expect"))) { return true }
+    if or2(seq2(nm, "fmt"), or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "char_len")))) { return true }
+    if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), seq2(nm, "fs_delete"))))) { return true }
+    if or2(seq2(nm, "now_ms"), or2(seq2(nm, "now_ms_text"), seq2(nm, "str_from_c"))) { return true }
+    if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }
+    return false
+}
+
 fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
     // E4010(§8.2):use std.<key>.<Name>(key ∈ {fs,time,net,db}) 且本文件有 &Name 参数,
     // 而 Ctron.toml [caps] 未声明该 key
@@ -79,8 +110,61 @@ fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
                             }
                             j += 1
                         }
-                        if hit && !pkg_caps_allowed(dir, cap) {
+                        // 粗面(能力对象 &Net/&Db 参数):粗键或任一细键满足即过
+                        var capok = pkg_caps_allowed(dir, cap)
+                        if !capok && seq2(cap, "net") {
+                            if or2(pkg_caps_allowed(dir, "net.listen"), or2(pkg_caps_allowed(dir, "net.connect"), pkg_caps_allowed(dir, "net.resolve"))) {
+                                capok = true
+                            }
+                        }
+                        if !capok && seq2(cap, "db") {
+                            if pkg_caps_allowed(dir, "db.connect") {
+                                capok = true
+                            }
+                        }
+                        if hit && !capok {
                             diag2(diags, "E4010", "", cap, name)
+                        }
+                        // T11 细键:net 域逐导入符号映射;db 域统一 db.connect。
+                        // 能力对象(Net/Net_probe/StdNet)走上方粗检测(任一细键
+                        // 满足即过——pkg_caps_allowed 对 Net 名的 cap 仍是 "net",
+                        // 细键清单下以三细键任一判)。此处理:净键检测。
+                        var symsF = List[Str]()
+                        var kf: I32 = 1
+                        while kf < symsN.len {
+                            symsF.push(symsN[kf])
+                            kf += 1
+                        }
+                        if segs.len > 3 {
+                            symsF.push(segs[3])
+                        }
+                        var sf: I32 = 0
+                        while sf < symsF.len {
+                            var fsym = symsF[sf]
+                            var dupf = false
+                            var df: I32 = 0
+                            while df < sf {
+                                if symsF[df] == fsym {
+                                    dupf = true
+                                }
+                                df += 1
+                            }
+                            if dupf {
+                                sf += 1
+                                continue
+                            }
+                            if seq2(cap, "net") {
+                                var fk = cap_net_fine(fsym)
+                                if fk.len > 0 && !pkg_caps_allowed(dir, fk) {
+                                    diag2(diags, "E4010", "", fk, fsym)
+                                }
+                            }
+                            if seq2(cap, "db") {
+                                if !pkg_caps_allowed(dir, "db.connect") {
+                                    diag2(diags, "E4010", "", "db.connect", fsym)
+                                }
+                            }
+                            sf += 1
                         }
                     }
                 }
@@ -120,6 +204,11 @@ fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
     match read_file(dir + "/../Ctron.ctcl") {
         Some(x) => {
             t = x
+            // 空文本(缺失文件在发射语境回落 Some(""))= 无清单 → 不设限
+            //(T11 细键检测以导入为触发面后暴露:此前粗检测 &Param 门槛掩盖)
+            if t.len == 0 {
+                return true
+            }
         }
         None => {
             return true
@@ -421,6 +510,12 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                     }
                                     m2 += 1
                                 }
+                            // T17:前奏符号(§3.8 隐式可用)经 use 显式导入 = 文档化
+                            // 冗余——恒可见(use std.iter.{parallel} 归位面)
+                            if !found && pkg_is_prelude_sym(sn) {
+                                found = true
+                                vis = true
+                            }
                             if !found {
                                 diag1(diags, "E2020.use.miss", "", sn)
                             } else if !vis {

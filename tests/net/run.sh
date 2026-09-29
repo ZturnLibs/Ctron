@@ -73,6 +73,21 @@ for d in "$DIR"/*/; do
         fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.err"
     fi
 done
+# T10 虚拟钟专跑矩阵(coro + CTRON_CLOCK=virtual):clock_sleep 虚拟臂
+# (主环已双矩阵跑其实钟臂;虚拟臂 jump=-1 免报)。
+csv_bin="$T/clock_sleep_v"
+if "$EMIT" run "$DIR/clock_sleep/src/main.ct" > "$T/csv.c" 2>"$T/csv.err" \
+   && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$csv_bin" "$T/csv.c" \
+        "$DIR"/clock_sleep/c_src/*.c "$ROOT/net/c_src/ctron_rt.c" 2>"$T/csv.cc.err"; then
+    if CTRON_RT=coro CTRON_CLOCK=virtual "$csv_bin" run "$DIR/clock_sleep/src/main.ct" >"$T/csv.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS clock_sleep_virtual (coro+virtual)"
+    else
+        fail=$((fail+1)); echo "  FAIL clock_sleep_virtual (run)"; sed -n '1,5p' "$T/csv.out"
+    fi
+else
+    fail=$((fail+1)); echo "  FAIL clock_sleep_virtual (emit/cc)"; sed -n '1,5p' "$T/csv.err" "$T/csv.cc.err" 2>/dev/null
+fi
+
 # coro_hybrid C 冒烟(P2-C):net 垫片协程停车证明 —— net+rt 双链、CTRON_RT=coro、
 # workers=1 与 4 各整跑(1 = 停车严格证:垫片若滞留 worker,进度协程即饿死)。
 # .ct 部分已入主环(裸线程面,rt 链入但 current()==NULL → P1 原路径)。

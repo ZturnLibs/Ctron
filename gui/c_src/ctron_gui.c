@@ -67,20 +67,54 @@ void gui_inject_char(int ch) {
 void gui_inject_click(int x, int y) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
 }
+// 脚本化拖动注入(测试/自动化):压下帧(evt2@x1)→12 移动帧(mouse_down=1,
+// mouse_x 插值 x1→x2)→释放;gui_mouse_x/down 在注入期受控
+static int g_idrg_act = 0;
+static int g_idrg_ph = 0;
+static int g_idrg_x1 = 0, g_idrg_x2 = 0, g_idrg_y = 0;
+void gui_inject_drag(int x1, int y, int x2) {
+    g_idrg_act = 1; g_idrg_ph = 0;
+    g_idrg_x1 = x1; g_idrg_x2 = x2; g_idrg_y = y;
+}
 // 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
 // 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本)
 int gui_poll_event(void) {
+    {
+        static int cl_tr = -1;
+        if (cl_tr < 0) { cl_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
+        if (cl_tr && g_qhead < g_qtail && g_queue[g_qhead].type == 2) {
+            fprintf(stderr, "[POLLC] queued-click head x=%d y=%d q=%d\n", g_queue[g_qhead].x, g_queue[g_qhead].y, g_qtail - g_qhead);
+        }
+    }
+    if (g_idrg_act) {
+        if (g_idrg_ph == 0) {
+            g_cur = (GuiEvent){ 2, 0, g_idrg_x1, g_idrg_y };
+            g_idrg_ph = 1;
+            return 2;
+        }
+        g_idrg_ph += 1;
+        if (g_idrg_ph > 12) { g_idrg_act = 0; }
+        return 0;
+    }
     if (g_qhead < g_qtail) {
         g_cur = g_queue[g_qhead];
         g_qhead++;
         return g_cur.type;
     }
+    // 排空本帧字符/按键队列进内部队列(raylib 每帧清空;多码点 IME 提交逐个
+    // 入队,否则同帧第二码点起全丢——用户实测「两中文只出一」根因)
     int c = GetCharPressed();
     if (c > 0) {
         static int ime_tr = -1;
         if (ime_tr < 0) { ime_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
         if (ime_tr) { fprintf(stderr, "[POLLC] char=%d\n", c); }
         g_cur = (GuiEvent){ 3, c, 0, 0 };
+        int nx = GetCharPressed();
+        while (nx > 0 && g_qtail < 256) {
+            g_queue[g_qtail] = (GuiEvent){ 3, nx, 0, 0 };
+            g_qtail++;
+            nx = GetCharPressed();
+        }
         return 3;
     }
     int k = GetKeyPressed();
@@ -89,6 +123,12 @@ int gui_poll_event(void) {
         if (ime_tr2 < 0) { ime_tr2 = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
         if (ime_tr2) { fprintf(stderr, "[POLLC] key=%d\n", k); }
         g_cur = (GuiEvent){ 1, k, 0, 0 };
+        int nk = GetKeyPressed();
+        while (nk != 0 && g_qtail < 256) {
+            g_queue[g_qtail] = (GuiEvent){ 1, nk, 0, 0 };
+            g_qtail++;
+            nk = GetKeyPressed();
+        }
         return 1;
     }
     float wv = GetMouseWheelMove();
@@ -414,9 +454,15 @@ int gui_os_dark_id(void) {
 }
 
 // ---- 指针位置/按下读面(§2.1 真窗 hover;headless 走 d_hover/d_active 注入) ----
-int gui_mouse_x(void) { Vector2 p = GetMousePosition(); return (int)p.x; }
+int gui_mouse_x(void) {
+    if (g_idrg_act && g_idrg_ph >= 1) {
+        return g_idrg_x1 + (g_idrg_x2 - g_idrg_x1) * (g_idrg_ph > 12 ? 12 : g_idrg_ph) / 12;
+    }
+    Vector2 p = GetMousePosition(); return (int)p.x;
+}
 int gui_mouse_y(void) { Vector2 p = GetMousePosition(); return (int)p.y; }
 int gui_mouse_down(void) {
+    if (g_idrg_act && g_idrg_ph >= 1 && g_idrg_ph <= 12) { return 1; }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { return 1; }
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { return 1; }
     return 0;
@@ -428,7 +474,19 @@ void gui_focus_set(int i) { g_focus_id = i; }
 int gui_focus_node(void) { return g_focus_id; }
 
 int g_caret = 0;
-void gui_caret_set(int i) { g_caret = i; }
+// 光标闪烁锚:任何 caret 移动即重置——移动后立即实心(跟手),逾时才进入闪烁
+// (成熟 GUI 口径;注入时钟优先保 headless 确定性)
+int gui_now_ms(void); // 前向(定义在 tick 原语段,此处在其上)
+static int g_caret_anchor_ms = -1;
+void gui_caret_set(int i) { g_caret = i; g_caret_anchor_ms = gui_now_ms(); }
+int gui_caret_blink(void) {
+    int now = gui_now_ms();
+    if (g_caret_anchor_ms < 0) { return 1; }
+    int d = now - g_caret_anchor_ms;
+    if (d < 0) { d = 0; }
+    if (d < 500) { return 1; }
+    return ((now / 530) % 2) == 0;
+}
 int gui_caret_get(void) { return g_caret; }
 
 char g_clip[4096];
@@ -447,11 +505,25 @@ int gui_clip_byte(int i) {
 }
 
 int g_mod_ctrl = 0;
+static int g_mod_shift = 0;
 void gui_inject_mod(int m) { g_mod_ctrl = m; }
+int gui_mod_shift(void) {
+    if (g_mod_shift > 0) { return 1; }
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) { return 1; }
+    return 0;
+}
+void gui_inject_shift(int m) { g_mod_shift = m; }
 int gui_mod_ctrl(void) {
     if (g_mod_ctrl > 0) { return 1; }
     if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) { return 1; }
+    // mac ⌘ 与 Ctrl 统一(macOS 习惯;§2.11 ⌘/Ctrl 经平台统一口径)
+    if (IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) { return 1; }
     return 0;
+}
+
+// 复制到系统剪贴板(内部缓冲 → 系统;真窗 Cmd+C 后调)
+void gui_clip_push(void) {
+    if (g_clip_n > 0) { SetClipboardText(g_clip); }
 }
 
 // 剪贴板系统同步(真窗粘贴前调;headless 直控缓冲不经此)
@@ -559,6 +631,97 @@ int gui_image_cfg(const char *path, int wmode, int wval, int hmode, int hval) {
 int g_inject_ms = -1;
 void gui_inject_ms(int ms) { g_inject_ms = ms; }
 int gui_ms_injected(void) { return g_inject_ms; }
+// 浮动光标条(P-M3 成熟输入体验):Clay floating attachTo=parent,绝对偏移
+// 不参与父布局(文字位置与光标完全解耦);zIndex 置顶覆盖绘制
+// ---- 文本选区(P-M3 成熟输入面):anchor = 拖动锚端,caret = 活动端 ----
+// 选区 = [min(anchor,caret), max(anchor,caret));-1 = 无
+static int g_sel_anchor = -1;
+int gui_sel_anchor_set(int i) { g_sel_anchor = i; return 0; }
+int gui_sel_anchor_get(void) { return g_sel_anchor; }
+int gui_sel_clear(void) { g_sel_anchor = -1; return 0; }
+
+// 输入拖动旗(按下命中输入时置位;每帧拖动更新消费,松开清除)
+static int g_drag_input = 0;
+int gui_drag_begin(void) { g_drag_input = 1; return 0; }
+int gui_drag_end(void) { g_drag_input = 0; return 0; }
+int gui_drag_active(void) { return g_drag_input; }
+
+// 点击计数(350ms/6px 聚类):2=双击 3=三击(后复位);连续计数防抖
+static int g_last_click_ms = -100000;
+static int g_last_click_x = 0;
+static int g_last_click_y = 0;
+static int g_click_n = 0;
+int gui_click_kind(int px, int py) {
+    int now = gui_now_ms();
+    {
+        static int ck_tr = -1;
+        if (ck_tr < 0) { ck_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
+        if (ck_tr) { fprintf(stderr, "[CK] px=%d py=%d now=%d last=%d n=%d\n", px, py, now, g_last_click_ms, g_click_n); }
+    }
+    int d = now - g_last_click_ms;
+    int dx = px - g_last_click_x;
+    int dy = py - g_last_click_y;
+    if (dx < 0) { dx = -dx; }
+    if (dy < 0) { dy = -dy; }
+    if (d >= 0 && d < 350 && dx < 6 && dy < 6) {
+        g_click_n += 1;
+    } else {
+        g_click_n = 1;
+    }
+    g_last_click_ms = now;
+    g_last_click_x = px;
+    g_last_click_y = py;
+    if (g_click_n == 2) { return 1; }
+    if (g_click_n >= 3) { g_click_n = 0; return 2; }
+    return 0;
+}
+
+// 选区高亮浮条(半透明,zIndex 50 = 光标条之下)
+int gui_sel_float(int offx, int y, int w, int h, int bg) {
+    Clay_ElementDeclaration decl = {0};
+    decl.floating = (Clay_FloatingElementConfig){
+        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .offset = { .x = (float)offx, .y = (float)y },
+        .zIndex = 50,
+    };
+    Clay_LayoutConfig lay = {0};
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)w, (float)w } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg >> 16) & 255), (float)((bg >> 8) & 255), (float)(bg & 255), 90.0f };
+    Clay__OpenElement();
+    Clay__ConfigureOpenElement(decl);
+    Clay__CloseElement();
+    return 0;
+}
+
+// ---- 单行输入视口(成熟 GUI:不换行,水平滚动跟随光标)----
+// 内宽逐帧回填(循环 collect 后);偏移按「光标可见」滚动,渲染消费
+static int g_in_w[512];
+static int g_in_xo[512];
+int gui_in_w_set(int node, int w) { if (node >= 0 && node < 512) { g_in_w[node] = w; } return 0; }
+int gui_in_w_get(int node) { return (node >= 0 && node < 512) ? g_in_w[node] : 0; }
+int gui_in_xo_set(int node, int x) { if (node >= 0 && node < 512) { g_in_xo[node] = x; } return 0; }
+int gui_in_xo_get(int node) { return (node >= 0 && node < 512) ? g_in_xo[node] : 0; }
+
+int gui_caret_float(int offx, int y, int w, int h, int bg) {
+    Clay_ElementDeclaration decl = {0};
+    decl.floating = (Clay_FloatingElementConfig){
+        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .offset = { .x = (float)offx, .y = (float)y },
+        .zIndex = 100,
+    };
+    Clay_LayoutConfig lay = {0};
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)w, (float)w } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg >> 16) & 255), (float)((bg >> 8) & 255), (float)(bg & 255), 255.0f };
+    Clay__OpenElement();
+    Clay__ConfigureOpenElement(decl);
+    Clay__CloseElement();
+    return 0;
+}
+
 int gui_now_ms(void) {
     if (g_inject_ms >= 0) { return g_inject_ms; }
     return (int)(GetTime() * 1000.0);
@@ -661,6 +824,15 @@ int gui_list_ni(const void *l) {
     if (l == NULL) { return 0; }
     return ((const CtronListC *)l)->n;
 }
+
+// P2 契约Ⅰ:env 值判型(魔数)+恒等转接——实例实参以 Str 槽穿环境,消费侧
+// 经此二助手还原 List;Ctron 侧无中缀 cast,extern 边界逐字直通
+int gui_is_list(const void *p) {
+    if (p == NULL) { return 0; }
+    return ((const CtronListC *)p)->magic == 0x4354726F6E4C7374ULL;
+}
+void *gui_as_list(void *p) { return p; }
+
 
 // 光标形状(P2):真窗逐帧设定;headless 无窗安全(raylib 全局态直设)
 void gui_cursor_set(int shape) { SetMouseCursor(shape); }

@@ -1,0 +1,25 @@
+// examples/gui_dash/widgets.ct —— 跨文件组件模块:StatCard 指标卡 + Panel 投影面板
+// 组件体仅用自家 prop;宿主内容经 <slot/> 注入(宿主语义按宿主视图查)
+pub fn dash_tag() -> Str {
+    return "DASH"
+}
+
+view StatCard (title: Str, value: Str) {
+  <vbox class="card">
+    <label class="cardt">{title}</label>
+    <label class="cardv">{value}</label>
+  </vbox>
+}
+
+view Panel (title: Str) {
+  <vbox class="panel">
+    <label class="panelt">{title}</label>
+    <slot/>
+  </vbox>
+}
+
+style card { direction: column gap: 4 padding: 12 bg: "#1f2937" w: 150 h: 84 }
+style cardt { fg: "#9ca3af" h: 24 }
+style cardv { fg: "#22c55e" h: 40 }
+style panel { direction: column gap: 8 padding: 12 bg: "#111827" w: 480 h: 160 }
+style panelt { fg: "#e5e7eb" h: 28 }

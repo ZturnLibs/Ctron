@@ -66,7 +66,19 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             if d.len >= 7 && d[6] == "no_spawn" {
                 ns = true
             }
-            walk_b(file, d[5], ns, fns, rets, diags)
+            var ps4 = d[3]
+            var pi4: I32 = 1
+            while pi4 < ps4.len {
+                if ps4[pi4][0] == "Param" {
+                    var pn4 = ps4[pi4][2]
+                    if is_prelude_name(pn4) {
+                        // Fn 声明末槽非恒为行戳(无属性路径不盖章)——行传 "0" 交驱动探针回填
+                        diags.push(diag_render1("W8040", "0", pn4))
+                    }
+                }
+                pi4 += 1
+            }
+            walk_b(file, d[5], ns, fns, rets, diags, true)
             var e6 = sem_e3060(file, d, t)
             if e6 != "" {
                 diags.push(byte_slice(e6, 0, e6.len - 1))
@@ -102,7 +114,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 diags.push(byte_slice(ac, 0, ac.len - 1))
             }
         } else if t == "Test" {
-            walk_b(file, d[2], false, fns, rets, diags)
+            walk_b(file, d[2], false, fns, rets, diags, true)
             var e6b = sem_e3060(file, d, "Test")
             if e6b != "" {
                 diags.push(byte_slice(e6b, 0, e6b.len - 1))

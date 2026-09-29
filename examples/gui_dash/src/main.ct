@@ -1,0 +1,89 @@
+// examples/gui_dash —— 指标仪表盘:跨文件组件+内容投影首个真实应用示范
+// 组件居 widgets.ct(StatCard 显卡/Panel 投影面板),根视图 run(ViewCall)
+// 一行装配;headless 直驱合成 fn 断言:卡片渲染/refresh 循环换数/投影按钮
+// 达模型。--run 真窗手玩。
+use widgets.{dash_tag}
+use gui.{test, d_frame, d_click, d_expect_text, d_expect_absent}
+
+struct Model {
+    var cpu: Str
+    var mem: Str
+    var tick: I32
+    var status: Str
+}
+
+fn make() -> Model {
+    return Model { cpu: "12", mem: "48", tick: 0, status: "READY" }
+}
+
+fn refresh(m: Box[Model]) {
+    m.tick = m.tick + 1
+    if m.tick == 1 {
+        m.cpu = "34"
+        m.mem = "61"
+        m.status = "TICK1"
+    } else {
+        m.cpu = "56"
+        m.mem = "73"
+        m.status = "TICK2"
+    }
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 520, 360,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| __gui_act_Root(name, ar, m),
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            // 三张跨文件 StatCard:标题+值同屏(初值)
+            d_expect_text(t, "CPU")
+            d_expect_text(t, "12")
+            d_expect_text(t, "MEM")
+            d_expect_text(t, "48")
+            d_expect_text(t, "NET")
+            d_expect_text(t, "7")
+            // 投影面板:slot 内容(status)渲染
+            d_expect_text(t, "READY")
+            // refresh:组件 prop 每帧活问,点击后新值上屏
+            act(d_click(t, "refresh"))
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_absent(t, "READY")
+            d_expect_text(t, "TICK1")
+            d_expect_text(t, "34")
+            d_expect_text(t, "61")
+            // 再 refresh:TICK2
+            act(d_click(t, "refresh"))
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "TICK2")
+            d_expect_text(t, "56")
+        })
+    return rc
+}
+
+view Root(m: Model) {
+  <vbox class="root">
+    <hbox class="cards">
+      <StatCard title: "CPU" value: {m.cpu}/>
+      <StatCard title: "MEM" value: {m.mem}/>
+      <StatCard title: "NET" value: "7"/>
+    </hbox>
+    <Panel title: "CONTROL">
+      <label class="stat">{m.status}</label>
+      <button class="rf" on:click={refresh(m)}>refresh</button>
+    </Panel>
+  </vbox>
+}
+style root { direction: column gap: 12 padding: 16 bg: "#0b0f19" }
+style cards { direction: row gap: 12 }
+style stat { fg: "#fbbf24" h: 30 }
+style rf { bg: "#2563eb" fg: "#ffffff" w: 120 h: 36 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Root(m: make()))
+}

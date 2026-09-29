@@ -26,6 +26,8 @@ pub enum Value {
     Struct { def: DefId, fields: Rc<RefCell<Vec<(String, Value)>>> },
     Class { def: DefId, fields: Rc<RefCell<Vec<(String, Value)>>> },
     Boxed(Rc<Value>),
+    /// StringBuilder(§3.8.2;T03):段缓冲,引用语义(别名可见)
+    StrBuilder(Rc<RefCell<String>>),
     Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
     Range { from: i64, to: i64, inclusive: bool },
@@ -266,6 +268,39 @@ impl<'a> Interp<'a> {
             ast::Stmt::Continue => Err(Flow::Continue),
             ast::Stmt::For { pattern, iter, body } => {
                 let it = self.expr(iter, env)?;
+                // Iterator 协议(T15;§3.8.2):struct 值有 next 方法 → for = next 调用循环。
+                // R 线 struct 值字段经 Rc<RefCell> 共享 → 方法体 self.cur += 1 天然对
+                // 循环侧可见(引用承载;与 interp 既有 struct 传值口径一致)
+                if let Value::Struct { def, .. } = &it {
+                    let dname = self.def_name(*def);
+                    if let Some(nbody) = self.find_method_block(&dname, "next") {
+                        loop {
+                            let fenv = Env::child(&self.globals);
+                            fenv.define("self".into(), Local { value: it.clone() });
+                            let rv = self.check_block(&nbody, &fenv)?;
+                            let go = match &rv {
+                                Value::Enum { variant: 0, payload, .. } if payload.len() >= 2 => {
+                                    let v = payload[1].clone();
+                                    self.scopes_push_bind(pattern, &v, env);
+                                    let mut sub = Vec::new();
+                                    let r = self.exec_stmts(body.stmts.as_slice(), env, &mut sub);
+                                    for (v2, def2) in sub.iter().rev() { self.run_drop(v2, *def2); }
+                                    match r {
+                                        Err(Flow::Break) => break,
+                                        Err(Flow::Continue) => continue,
+                                        Err(e) => return Err(e),
+                                        Ok(()) => {}
+                                    }
+                                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                                    true
+                                }
+                                _ => false,
+                            };
+                            if !go { break; }
+                        }
+                        return Ok(());
+                    }
+                }
                 let items: Vec<Value> = match &it {
                     Value::Range { from, to, inclusive } => (*from..(*to + *inclusive as i64)).map(Value::Int).collect(),
                     Value::Array(arr) => arr.borrow().clone(),
@@ -326,6 +361,10 @@ impl<'a> Interp<'a> {
             ast::Pattern::Ident(n) => { out.insert(n.clone(), Local { value: v }); }
             ast::Pattern::Wildcard => {}
             ast::Pattern::Lit(_) => {}
+            ast::Pattern::Or(alts) => {
+                // 或模式(R-P3c):let/for 位不出现;按首替身绑定兜底
+                if let Some(first) = alts.first() { self.bind_pattern(first, &v, out); }
+            }
             ast::Pattern::Tuple(ps) => {
                 if let Value::Tuple(items) = &v {
                     for (i, sp) in ps.iter().enumerate() {
@@ -595,6 +634,15 @@ impl<'a> Interp<'a> {
                     let mut binds = HashMap::new();
                     if self.try_match(&arm.pattern, &sv, &arm_env, &mut binds) {
                         for (n, l) in binds { arm_env.define(n, l); }
+                        // 模式守卫(R-P3c):绑定入 env 后判定,假值回落下一臂
+                        if let Some(g) = &arm.guard {
+                            let gv = self.expr(g, &arm_env)?;
+                            let pass = match gv {
+                                Value::Bool(b) => b,
+                                _other => return Err(Flow::Panic("守卫须为 Bool".into())),
+                            };
+                            if !pass { continue; }
+                        }
                         return self.expr(&arm.expr, &arm_env);
                     }
                 }
@@ -616,12 +664,95 @@ impl<'a> Interp<'a> {
 
     // ---------- 调用 ----------
 
+    // bit.* 位运算内建(§4.5;T01):补码按宽度折叠;shl 回绕;shr 有符号算术/无符号逻辑;
+    // 移位数越界 panic "bit shift range"。u64 按位型折 i64(对齐 R 线 as[U64] 口径),
+    // u32 折非负 <2^32(i64 直存)。
+    fn bit_fold(r: u64, bits: u32, us: bool) -> Value {
+        let m = if bits == 32 { u32::MAX as u64 } else { u64::MAX };
+        let v = r & m;
+        if us { Value::UInt(v) }
+        else if bits == 64 { Value::Int(v as i64) }
+        else { Value::Int(v as u32 as i32 as i64) } // i32 折有符号 32
+    }
+    // 四整型变体(Int/IntW/UInt/UIntW)→ 无符号量级
+    fn bit_umag(v: &Value) -> Option<u64> {
+        Some(match v {
+            Value::Int(i) => *i as u64,
+            Value::IntW(_, i) => *i as u64,
+            Value::UInt(u) => *u,
+            Value::UIntW(_, u) => *u,
+            _ => return None,
+        })
+    }
+    fn call_bit(&mut self, m: &str, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
+        let (op, w) = m.split_once('_').unwrap_or((m, ""));
+        let (bits, us): (u32, bool) = match w {
+            "i32" => (32, false),
+            "u32" => (32, true),
+            "i64" => (64, false),
+            "u64" => (64, true),
+            _ => return Err(Flow::Panic(format!("bit 宽度:{w}"))),
+        };
+        let unary = op == "not";
+        let want = if unary { 1 } else { 2 };
+        if !matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr") || args.len() != want {
+            return Err(Flow::Panic(format!("bit 实参:{m}")));
+        }
+        let av = self.expr(&args[0], env)?;
+        let Some(a) = Self::bit_umag(&av) else { return Err(Flow::Panic("bit 数值".into())) };
+        let mask = if bits == 32 { u32::MAX as u64 } else { u64::MAX };
+        let ua = a & mask;
+        match op {
+            "and" | "or" | "xor" => {
+                let bv = self.expr(&args[1], env)?;
+                let Some(b) = Self::bit_umag(&bv) else { return Err(Flow::Panic("bit 数值".into())) };
+                let ub = b & mask;
+                let r = match op {
+                    "and" => ua & ub,
+                    "or" => ua | ub,
+                    _ => ua ^ ub,
+                };
+                Ok(Self::bit_fold(r, bits, us))
+            }
+            "not" => Ok(Self::bit_fold(!ua & mask, bits, us)),
+            _ => {
+                let bv = self.expr(&args[1], env)?;
+                let Some(nb) = Self::bit_umag(&bv) else { return Err(Flow::Panic("bit 数值".into())) };
+                let n = nb as i64;
+                if n < 0 || n >= bits as i64 {
+                    return Err(Flow::Panic("bit shift range".into()));
+                }
+                let n = n as u32;
+                let r = if op == "shl" {
+                    (ua << n) & mask
+                } else if us {
+                    ua >> n
+                } else {
+                    // 有符号算术右移(载荷折有符号后移,再折回)
+                    let sv = if bits == 32 { ua as u32 as i32 as i64 } else { ua as i64 };
+                    ((sv >> n) as u64) & mask
+                };
+                Ok(Self::bit_fold(r, bits, us))
+            }
+        }
+    }
     fn eval_call(&mut self, callee: &ast::Expr, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
         match callee {
-            Expr::Ident(name) => self.call_ident(name, args, env),
+            Expr::Ident(name) => {
+                // StringBuilder()(§3.8.2;T03)
+                if name == "StringBuilder" {
+                    if !args.is_empty() { return Err(Flow::Panic("StringBuilder arity".into())); }
+                    return Ok(Value::StrBuilder(Rc::new(RefCell::new(String::new()))));
+                }
+                self.call_ident(name, args, env)
+            }
             Expr::Member { obj, target } => {
                 let m = member_name(target);
                 if let Expr::Ident(on) = &**obj {
+                    // bit.* 位运算内建(§4.5;T01):调用位直接拦截,Rust 原生位运算
+                    if on == "bit" {
+                        return self.call_bit(&m, args, env);
+                    }
                     if let Some(Symbol::Module(mp)) = self.module_symbol(on) {
                         if mp == "stdweb.dom" {
                             return match m.as_str() {
@@ -874,8 +1005,9 @@ impl<'a> Interp<'a> {
             o = (**inner).clone();
         }
 
-        // 标量 to_string(D1;fmt_val 同格式;method 位与属性位双覆盖)
-        if m == "to_string" && args.is_empty() {
+        // 标量 to_string(D1;fmt_val 同格式;method 位与属性位双覆盖;
+        // StringBuilder 例外——其 to_string 语义为段拼接,走下方专属臂,T03)
+        if m == "to_string" && args.is_empty() && !matches!(o, Value::StrBuilder(_)) {
             let mut out = String::new();
             fmt_value(&o, &mut out);
             return Ok(Value::Str(Rc::new(out)));
@@ -1054,6 +1186,16 @@ impl<'a> Interp<'a> {
 
         // 非阻塞成员方法(含错误级联的 Err 接收者)
         match &o {
+            Value::StrBuilder(buf) => return match m {
+                "push_str" => {
+                    let v = self.expr(&args[0], env)?;
+                    buf.borrow_mut().push_str(&to_display(&v));
+                    Ok(Value::Void)
+                }
+                "to_string" => Ok(Value::Str(Rc::new(buf.borrow().clone()))),
+                "len" => Ok(Value::Int(buf.borrow().len() as i64)),
+                _ => Err(Flow::Panic(format!("StringBuilder 无方法 `{}`", m))),
+            },
             Value::Array(arr) => return match m {
                 "push" => {
                     let v = self.expr(&args[0], env)?;
@@ -1246,6 +1388,25 @@ impl<'a> Interp<'a> {
     }
 
     /// 调用 impl 方法:方法体来自本文件的 ast::ImplDecl
+    /// T15:按类型名+方法名找 impl 方法体(Iterator 协议 for 消费)
+    fn find_method_block(&self, for_type: &str, m: &str) -> Option<ast::Block> {
+        for d in &self.file.decls {
+            if let ast::Decl::Impl(im) = d {
+                let ft = named_tail(&im.for_ty);
+                if ft == for_type {
+                    for item in &im.items {
+                        if let ast::ImplItem::Method(mm) = item {
+                            if mm.name == m {
+                                return mm.body.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn call_impl_method(&mut self, trait_name: &str, for_type: &str, m: &str, vals: &[Value], env: &Rc<Env>) -> EvalResult {
         let dname = for_type.to_string();
         // self 值 = 第一个实参
@@ -1565,6 +1726,11 @@ impl<'a> Interp<'a> {
                 "trace" => Ok(Value::Str(trace.clone())),
                 _ => Err(Flow::Panic(format!("AnyError 无属性 `{}`", name))),
             },
+            Value::StrBuilder(buf) => match name {
+                // §3.8.2;T03:len = 当前字节长度
+                "len" => Ok(Value::Int(buf.borrow().len() as i64)),
+                _ => Err(Flow::Panic(format!("StringBuilder 无属性 `{}`", name))),
+            },
             _ => Err(Flow::Panic(format!("{} 无成员 `{}`", to_display(o), name))),
         }
     }
@@ -1699,6 +1865,17 @@ impl<'a> Interp<'a> {
     }
 
     fn try_match(&mut self, p: &ast::Pattern, v: &Value, env: &Rc<Env>, out: &mut HashMap<String, Local>) -> bool {
+        // 或模式(R-P3c):替身依序试配,首个命中的替身绑定生效
+        if let ast::Pattern::Or(alts) = p {
+            for a in alts {
+                let mut trial = HashMap::new();
+                if self.try_match(a, v, env, &mut trial) {
+                    out.extend(trial);
+                    return true;
+                }
+            }
+            return false;
+        }
         let mut m = MatchCtx { matched: true };
         self.match_pattern_into(p, v, &mut m, out, env);
         m.matched
@@ -1710,6 +1887,7 @@ impl<'a> Interp<'a> {
         match p {
             ast::Pattern::Ident(n) => { out.insert(n.clone(), Local { value: v }); }
             ast::Pattern::Wildcard => {}
+            ast::Pattern::Or(_) => { /* try_match 前置拦截;防御位不匹配 */ m.matched = false; }
             ast::Pattern::Lit(l) => {
                 let ok = match (l, &v) {
                     (ast::PatLit::Int(t), Value::Int(i)) => text_int_eq(t, *i),

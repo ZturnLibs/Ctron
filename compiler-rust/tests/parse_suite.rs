@@ -45,6 +45,8 @@ fn all_suite_files_parse_per_expectation() {
             Some(&["E1001"])
         } else if name == "01j_impl_for.neg.ct" {
             Some(&["E1001"])
+        } else if name == "01o_trailing_dot.neg.ct" {
+            Some(&["E1001"])
         } else if name == "06_static_var.neg.ct" {
             Some(&["E3030"])
         } else {

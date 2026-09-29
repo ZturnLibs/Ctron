@@ -32,7 +32,7 @@ fn prelude_ok(nm: Str) -> Bool {
     if seq2(nm, "gui_sk_load") { return true }
     if or2(seq2(nm, "ctron_exe_path"), or2(seq2(nm, "env_get"), seq2(nm, "ctron_cli_flag"))) { return true }
     if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }
-    if or2(seq2(nm, "fmt"), or2(seq2(nm, "char_len"), or2(seq2(nm, "Box"), seq2(nm, "List")))) { return true }
+    if or2(seq2(nm, "fmt"), or2(seq2(nm, "char_len"), or2(seq2(nm, "Box"), or2(seq2(nm, "List"), seq2(nm, "StringBuilder"))))) { return true }
     if or2(seq2(nm, "String"), or2(seq2(nm, "Channel"), or2(seq2(nm, "Mutex"), seq2(nm, "Atomic")))) { return true }
     if or2(seq2(nm, "Global"), or2(seq2(nm, "Task"), or2(seq2(nm, "Scope"), seq2(nm, "Simd")))) { return true }
     if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "clo_handle"), or2(seq2(nm, "clo_cb2"), seq2(nm, "clo_cb3")))) { return true }
@@ -43,7 +43,7 @@ fn prelude_ok(nm: Str) -> Bool {
 
 fn value_ok(nm: Str) -> Bool {
     if prelude_ok(nm) { return true }
-    return or2(seq2(nm, "parallel"), seq2(nm, "arena"))
+    return or2(seq2(nm, "parallel"), or2(seq2(nm, "bit"), seq2(nm, "arena")))
 }
 
 fn prelude_arity(nm: Str) -> I32 {
@@ -829,6 +829,24 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
     }
     if t == "Closure" {
         var cp = e[1]
+        // P0-2:期望 fn 签名(retK 为 FnType,§4.7 自动适配:返回位闭包)→
+        // 形参按签名逐参注入型别(体内成员读命中 struct 字段域),
+        // 体内 return 按签名返回型检查(此前误用外层 retK → E2010 误报)
+        if retK.len > 0 && seq2(retK[0], "FnType") {
+            var fp = retK[1]
+            var i8: I32 = 1
+            while i8 < cp.len {
+                loc.push(cp[i8][2])
+                if i8 < fp.len {
+                    envT.push(fp[i8])
+                } else {
+                    envT.push(unk())
+                }
+                i8 += 1
+            }
+            tce(file, e[3], tc, loc, envT, retK[2], diags)
+            return
+        }
         var i5: I32 = 1
         while i5 < cp.len {
             loc.push(cp[i5][2])

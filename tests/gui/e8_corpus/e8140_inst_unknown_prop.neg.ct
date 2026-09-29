@@ -1,0 +1,11 @@
+// gui expect: E8110 —— P2 实例深查:实参名组件未声明
+view Badge (t: Str) {
+  <label class="bl">{t}</label>
+}
+view P {
+  <vbox class="root">
+    <Badge t: "hi" z: 3/>
+  </vbox>
+}
+style root { direction: column }
+style bl { fg: "#ffffff" }

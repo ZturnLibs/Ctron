@@ -1,0 +1,80 @@
+// tests/gui/s50_dialogslot —— P2 组件内容投影(ViewCall 实例子树 → <slot/> 锚)
+// 投影子树宿主语义三钉:①slot 内容路径 {m.body} 经 prop: 装配通道应答;
+// ②slot 内事件 confirm_it(m) 按主文件收集合成 act 分支(根模型捕获);
+// ③组件 when 门(open)包住 slot——关态零渲染。headless 直驱全链。
+use comp.{dlg_tag}
+use gui.{test, d_frame, d_click, d_expect_text, d_expect_absent}
+
+struct Model {
+    var body: Str
+    var dopen: Bool
+    var done: Bool
+}
+
+fn make() -> Model {
+    return Model { body: "CONFIRMBODY", dopen: false, done: false }
+}
+
+fn dialog_close() {
+}
+
+fn open_it(mm: Box[Model]) {
+    mm.dopen = true
+}
+
+fn confirm_it(mm: Box[Model]) {
+    mm.done = true
+    mm.dopen = false
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 320, 480,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| __gui_act_Root(name, ar, m),
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            // 关态:组件 when 门假,slot 内容零渲染
+            d_expect_absent(t, "CONFIRMBODY")
+            d_expect_absent(t, "CONFIRM")
+            // 开
+            act(d_click(t, "open_it"))
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            // 组件 title + 投影内容同屏
+            d_expect_text(t, "CONFIRM")
+            d_expect_text(t, "CONFIRMBODY")
+            // 投影内按钮 → 模型变异+自关
+            act(d_click(t, "confirm_it"))
+            if m.done != true {
+                panic("s50: 投影内点击未达模型")
+            }
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_absent(t, "CONFIRMBODY")
+        })
+    return rc
+}
+
+view Root(m: Model) {
+  <vbox class="root">
+    <label class="ttl">S50SLOT</label>
+    <button class="op" on:click={open_it(m)}>open</button>
+    <DCard title: "CONFIRM" open: {m.dopen}>
+      <label class="btxt">{m.body}</label>
+      <button class="ok" on:click={confirm_it(m)}>OK</button>
+    </DCard>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style ttl { fg: "#ffffff" h: 32 }
+style op { bg: "#2563eb" fg: "#ffffff" w: 100 h: 36 }
+style btxt { fg: "#e5e5e5" h: 28 }
+style ok { bg: "#22c55e" fg: "#0b0b0e" w: 80 h: 32 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Root(m: make()))
+}

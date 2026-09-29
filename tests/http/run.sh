@@ -121,6 +121,26 @@ if [ -x "$EMIT" ]; then
     done
 fi
 
+# ── T12 gzip 互操作差分:本实现产出流 → python gzip 解压逐字节比对 ──
+# (x_gzip_out 上方 emit 臂已产物流;真实现消费向 = 内容协商供给面闭环)
+if [ -x "$T/x_gzip_out.e.bin" ]; then
+    if python3 - "$T/x_gzip_out.e.out" <<'PYINNER'
+import gzip, sys
+hx = open(sys.argv[1]).read().strip()
+data = bytes.fromhex(hx)
+out = gzip.decompress(data)
+exp = bytes(65 + i % 23 for i in range(64))
+sys.exit(0 if out == exp else 1)
+PYINNER
+    then
+        pass=$((pass+1)); echo "  PASS x_gzip_interop_py (python gunzip 本实现流)"
+    else
+        fail=$((fail+1)); echo "  FAIL x_gzip_interop_py (python 差分)"; head -2 "$T/x_gzip_out.e.out"
+    fi
+else
+    fail=$((fail+1)); echo "  FAIL x_gzip_interop_py (x_gzip_out 产物缺席)"
+fi
+
 # ── http/client.ct inline tests(P4-C;emit 专臂,net/bind 子树 W8052)──
 if [ -x "$EMIT" ]; then
     if "$EMIT" run "$ROOT/http/client.ct" > "$T/std_client.e.c" 2>"$T/std_client.e.err" \

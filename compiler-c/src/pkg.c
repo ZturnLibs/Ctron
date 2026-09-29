@@ -550,9 +550,13 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
             } else if (strcmp(key, "caps") == 0) {
                 if (vkind == 3) {
                     for (int i2 = 0; i2 < nlitems; i2++) {
-                        int known = strcmp(litems[i2], "fs") == 0 || strcmp(litems[i2], "time") == 0;
+                        int known = strcmp(litems[i2], "fs") == 0 || strcmp(litems[i2], "time") == 0
+                                    || strcmp(litems[i2], "net.listen") == 0
+                                    || strcmp(litems[i2], "net.connect") == 0
+                                    || strcmp(litems[i2], "net.resolve") == 0
+                                    || strcmp(litems[i2], "db.connect") == 0;
                         if (!known) {
-                            push(&pend, "Ctron.ctcl", "E5043", "未知能力 %s;合法:fs, time(能力是安全边界,未知即拒绝)", litems[i2]);
+                            push(&pend, "Ctron.ctcl", "E5043", "未知能力 %s;合法:db.connect, fs, net.connect, net.listen, net.resolve, time(能力是安全边界,未知即拒绝)", litems[i2]);
                         } else {
                             int already = 0;
                             for (size_t c = 0; c < p->ncaps; c++)
@@ -872,20 +876,71 @@ static void check_circular(pkg_res* r, pkg* p) {
 }
 
 // ---------- E4010 caps ----------
+// T11 fine-grained keys (§11.1/§12.1): the net domain is subdivided into listen/connect/resolve; the db domain is unified as db.connect.
+// Two import forms: std.<key>.<Name> (three segments) and top-level domain two segments (net.{...}/db.{...}).
+// Capability object names (Net/Net_probe/StdNet) go through the &Name parameter coarse detection —— satisfied by either a coarse key or any fine key.
+// The coarse keys net/db no longer grant anything (fail-closed hard switch, the in-repo manifest is upgraded in sync with fine keys).
+static const char* cap_net_fine_c(const char* sym) {
+    if (!strcmp(sym, "net_tcp_listen") || !strcmp(sym, "net_unix_listen") || !strcmp(sym, "net_unix_accept"))
+        return "net.listen";
+    if (!strcmp(sym, "net_tcp_connect") || !strcmp(sym, "net_udp_socket") || !strcmp(sym, "net_udp_bind")
+        || !strcmp(sym, "net_udp_sendto") || !strcmp(sym, "net_udp_recvfrom") || !strcmp(sym, "net_unix_connect"))
+        return "net.connect";
+    if (!strcmp(sym, "net_resolve") || !strcmp(sym, "net_resolve_all"))
+        return "net.resolve";
+    return NULL;
+}
+
+static int caps_has(const pkg* p, const char* k) {
+    for (size_t c = 0; c < p->ncaps; c++)
+        if (strcmp(p->caps[c], k) == 0) return 1;
+    return 0;
+}
+
+static int caps_net_any(const pkg* p) {
+    return caps_has(p, "net") || caps_has(p, "net.listen")
+        || caps_has(p, "net.connect") || caps_has(p, "net.resolve");
+}
+
+static int caps_db_any(const pkg* p) {
+    return caps_has(p, "db") || caps_has(p, "db.connect");
+}
+
 static void check_caps(pkg_res* r, const pkg* p, const mod* m) {
-    // 导入的 std 能力名:use std.<key>.<Name>(key ∈ {fs,time,net,db},§8.2)
     const cfile* f = m->pr.file;
     for (size_t j = 0; j < f->ndecls; j++) {
         const cdecl* d = &f->decls[j];
         if (d->kind != D_USE) continue;
         for (size_t k = 0; k < d->use.nimports; k++) {
             const cimport* imp = &d->use.imports[k];
-            if (imp->nsegs != 3 || strcmp(imp->segs[0], "std") != 0) continue;
-            const char* key = imp->segs[1];
-            if (strcmp(key, "fs") != 0 && strcmp(key, "time") != 0 &&
-                strcmp(key, "net") != 0 && strcmp(key, "db") != 0) continue;
-            const char* name = imp->segs[2];
-            // 本模块内是否有 &Name 参数
+            const char* ns = NULL;      /* net / db / fs / time */
+            const char* sym = NULL;
+            if (imp->nsegs == 3 && strcmp(imp->segs[0], "std") == 0) {
+                ns = imp->segs[1];
+                sym = imp->segs[2];
+            } else if (imp->nsegs == 2) {
+                ns = imp->segs[0];
+                sym = imp->segs[1];
+            }
+            if (!ns) continue;
+            if (strcmp(ns, "fs") != 0 && strcmp(ns, "time") != 0
+                && strcmp(ns, "net") != 0 && strcmp(ns, "db") != 0) continue;
+
+            /* Fine keys: the net domain is mapped per symbol; the db domain is unified as db.connect */
+            if (strcmp(ns, "net") == 0) {
+                const char* fine = cap_net_fine_c(sym);
+                if (fine && !caps_has(p, fine))
+                    push(r, m->rel, "E4010", "Using %s capability exceeds the manifest (caps) declaration: facade %s", fine, sym);
+            } else if (strcmp(ns, "db") == 0) {
+                if (!caps_db_any(p))
+                    push(r, m->rel, "E4010", "Using db.connect capability exceeds the manifest (caps) declaration: facade %s", sym);
+            }
+
+            /* Coarse face: whether this module has a &Name parameter (capability object injection face) */
+            int allowed;
+            if (strcmp(ns, "net") == 0) allowed = caps_net_any(p);
+            else if (strcmp(ns, "db") == 0) allowed = caps_db_any(p);
+            else allowed = caps_has(p, ns);
             for (size_t a = 0; a < f->ndecls; a++) {
                 const cdecl* dd = &f->decls[a];
                 const cfn* fn = NULL;
@@ -895,13 +950,8 @@ static void check_caps(pkg_res* r, const pkg* p, const mod* m) {
                     const cparam* pr = &fn->params[q];
                     if (pr->is_receiver || !pr->ty || pr->ty->kind != TY_REF || !pr->ty->sub) continue;
                     const char* hn = head_name(pr->ty->sub);
-                    if (hn && strcmp(hn, name) == 0) {
-                        int allowed = 0;
-                        for (size_t c = 0; c < p->ncaps; c++)
-                            if (strcmp(p->caps[c], key) == 0) allowed = 1;
-                        if (!allowed)
-                            push(r, m->rel, "E4010", "使用 %s 能力超出清单(caps)声明:参数 &%s", key, name);
-                    }
+                    if (hn && strcmp(hn, sym) == 0 && !allowed)
+                        push(r, m->rel, "E4010", "Using %s capability exceeds the manifest (caps) declaration: parameter &%s", ns, sym);
                 }
             }
         }

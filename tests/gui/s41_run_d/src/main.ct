@@ -43,7 +43,7 @@ fn headless_suite() -> I32 {
     var m = Box[Model](make())
     var rc: I32 = test(src, 320, 480,
         |buf| __gui_bind_TodoApp(buf, m),
-        |name| __gui_act_TodoApp(name, m),
+        |name, ar| __gui_act_TodoApp(name, ar, m),
         |k| { },
         |t, act, key| {
             d_frame(t, |buf| __gui_bind_TodoApp(buf, m))

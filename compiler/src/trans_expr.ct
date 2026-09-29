@@ -263,6 +263,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); } (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); })"
         }
+        if ct_is_lcode(ot) {
+            // Lu: 族索引(T14-②):槽为堆盒指针,解引用取回 struct 值拷贝(§3.2 值语义)
+            var ity = ct_ctype(byte_slice(ot, 1, ot.len))
+            return "(*(" + ity + "*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
+        }
         if ot == "LI" {
             // List[I32] 索引:槽经 long 取回标量
             return "((int32_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
@@ -293,7 +298,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             var ot3 = ct_typeof(e[1], env, file)
-            if or2(ot3 == "L", ot3 == "LI") {
+            if or2(ot3 == "L", or2(ot3 == "LI", ct_is_lcode(ot3))) {
                 return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n"
             }
             if ot3 == "N" {
@@ -615,6 +620,50 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:parallel." + m)
                 return ""
             }
+            if cal[1][0] == "Ident" && cal[1][1] == "bit" {
+                // bit.* 位运算内建(§4.5;T01):and/or/xor/not 直出 C 位运算表达式
+                // (按声明宽度显式转型,补码语义);shl/shr 走 ct_bit_sh* 助手(移位数范围门)
+                var bisun = or2(seq2(m, "not_i32"), or2(seq2(m, "not_u32"), or2(seq2(m, "not_i64"), seq2(m, "not_u64"))))
+                if bisun {
+                    if ag.len < 2 {
+                        panic("emit:bit." + m + " 实参")
+                        return ""
+                    }
+                    var ua = ct_expr(ag[1], env, file)
+                    if seq2(m, "not_i32") { return "(int32_t)(~((uint32_t)(" + ua + ")))" }
+                    if seq2(m, "not_u32") { return "(uint32_t)(~((uint32_t)(" + ua + ")))" }
+                    if seq2(m, "not_i64") { return "(int64_t)(~((uint64_t)(" + ua + ")))" }
+                    return "(uint64_t)(~((uint64_t)(" + ua + ")))"
+                }
+                if ag.len < 3 {
+                    panic("emit:bit." + m + " 实参")
+                    return ""
+                }
+                var x1 = ct_expr(ag[1], env, file)
+                var x2 = ct_expr(ag[2], env, file)
+                if seq2(m, "and_i32") { return "(int32_t)(((uint32_t)(" + x1 + ")) & ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "and_u32") { return "(uint32_t)(((uint32_t)(" + x1 + ")) & ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "and_i64") { return "(int64_t)(((uint64_t)(" + x1 + ")) & ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "and_u64") { return "(uint64_t)(((uint64_t)(" + x1 + ")) & ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "or_i32") { return "(int32_t)(((uint32_t)(" + x1 + ")) | ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "or_u32") { return "(uint32_t)(((uint32_t)(" + x1 + ")) | ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "or_i64") { return "(int64_t)(((uint64_t)(" + x1 + ")) | ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "or_u64") { return "(uint64_t)(((uint64_t)(" + x1 + ")) | ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "xor_i32") { return "(int32_t)(((uint32_t)(" + x1 + ")) ^ ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "xor_u32") { return "(uint32_t)(((uint32_t)(" + x1 + ")) ^ ((uint32_t)(" + x2 + ")))" }
+                if seq2(m, "xor_i64") { return "(int64_t)(((uint64_t)(" + x1 + ")) ^ ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "xor_u64") { return "(uint64_t)(((uint64_t)(" + x1 + ")) ^ ((uint64_t)(" + x2 + ")))" }
+                if seq2(m, "shl_i32") { return "ct_bit_shl_i32((int32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shl_u32") { return "ct_bit_shl_u32((uint32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shl_i64") { return "ct_bit_shl_i64((int64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shl_u64") { return "ct_bit_shl_u64((uint64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_i32") { return "ct_bit_shr_i32((int32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_u32") { return "ct_bit_shr_u32((uint32_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_i64") { return "ct_bit_shr_i64((int64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                if seq2(m, "shr_u64") { return "ct_bit_shr_u64((uint64_t)(" + x1 + "), (int32_t)(" + x2 + "))" }
+                panic("emit:bit." + m)
+                return ""
+            }
             if cal[1][0] == "TypeArgs" && cal[1][1].len > 1 && seq2(cal[1][1][1], "Simd") {
                 // Simd[E,N].splat(v)(§9.5;P1-C2 标量模拟):arena 分配 + 填充循环
                 if m != "splat" {
@@ -635,6 +684,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             var obj = ct_expr(cal[1], env, file)
             var objt = ct_typeof(cal[1], env, file)
+            if m == "contains" && or2(objt == "s", or2(objt == "N", objt == "u:s")) {
+                // §3.8.2 Str.contains(T09):strstr 判含;实参按 Str 直传(List.contains 既有分支不动)
+                if ag.len < 2 {
+                    panic("emit:contains 实参")
+                    return ""
+                }
+                return "(strstr((const char*)(" + obj + "), (const char*)(" + ct_expr(ag[1], env, file) + ")) != NULL)"
+            }
             if or2(m == "is_some", m == "is_ok") {
                 if objt == "R" { return "(" + obj + ".variant == 0)" }
             }
@@ -694,9 +751,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if m == "recv" { return "ct_ch_recv((ct_chan*)(" + obj + "))" }
             if m == "fetch_add" {
+                // 真原子(§7.3;T13):__atomic RMW 替全局锁;SEQ_CST 对齐 rt 语义
                 var f0 = "0"
                 if ag.len > 1 { f0 = ct_expr(ag[1], env, file) }
-                return "(\{ ctron_cell* _p = (ctron_cell*)(" + obj + "); ct_glock(); int32_t _o = _p->v; _p->v = (int32_t)((int64_t)_o + (int64_t)(" + f0 + ")); ct_gunlock(); _o; })"
+                return "(\{ ctron_cell* _p = (ctron_cell*)(" + obj + "); __atomic_fetch_add(&_p->v, (int32_t)(" + f0 + "), __ATOMIC_SEQ_CST); })"
             }
             if m == "expect" {
                 var emsg = "\"expect failed\""
@@ -722,18 +780,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var a0t = "i"
                 if ag.len > 1 { a0t = ct_typeof(ag[1], env, file) }
                 var objt6 = ct_typeof(cal[1], env, file)
+                // Lu: 族(T14-②):struct 元素装箱入槽(堆盒值拷贝;索引侧解引用取回)
+                if ct_is_lcode(objt6) {
+                    var boxty = ct_ctype(byte_slice(objt6, 1, objt6.len))
+                    return "(\{ " + boxty + "* _lb = (" + boxty + "*)ctron_amalloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
+                }
                 var pv = ct_arg_cast(a0t, "s", a0)
-                if or2(objt6 == "LI", !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R"))))))) {
+                if or2(objt6 == "LI", !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(ct_is_lcode(a0t), or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))))) {
                     // 标量元素:槽为 char*,经 long 中转(镜像 List 元素槽模型)
                     pv = "(const char*)(long)(" + a0 + ")"
                 }
                 return "ctron_list_push((ctron_list*)(" + obj + "), " + pv + ")"
             }
-            if m == "load" { return "((ctron_cell*)(" + obj + "))->v" }
+            if m == "load" { return "__atomic_load_n(&((ctron_cell*)(" + obj + "))->v, __ATOMIC_SEQ_CST)" }
             if m == "store" {
                 var s0 = ""
                 if ag.len > 1 { s0 = ct_expr(ag[1], env, file) }
-                return "(((ctron_cell*)(" + obj + "))->v = " + s0 + ")"
+                return "__atomic_store_n(&((ctron_cell*)(" + obj + "))->v, (int32_t)(" + s0 + "), __ATOMIC_SEQ_CST)"
             }
             if m == "to_string" {
                 if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {
@@ -783,11 +846,27 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:eq 非结构接收者")
                 return ""
             }
-            // UFCS:文件自由 fn 首参调用
+            // UFCS:文件自由 fn 首参调用(接收者填充首参;实参对位 pcs[1..]。
+            // T09 修:旧码 ct_call_args(ag, 2,…) 把 ag 当作含接收者的实参表——
+            // 成员调用的 ag 只有实参(接收者在 cal[1]),from=2 恒漏首实参且
+            // 个数核对错位(04g 发射臂 rc=1 即此);主套件从不发射故长期隐形)
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
             if pcs.len > 0 { p0 = pcs[0] }
-            return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ", " + ct_call_args(ag, 2, env, file, m) + ")"
+            var ufargs = ""
+            var ui: I32 = 1
+            while ui < ag.len {
+                if ui > 1 { ufargs = ufargs + ", " }
+                var pcu = "i"
+                if ui < pcs.len { pcu = pcs[ui] }
+                var acu = ct_typeof(ag[ui], env, file)
+                ufargs = ufargs + ct_arg_cast(acu, pcu, ct_expr(ag[ui], env, file))
+                ui += 1
+            }
+            if ufargs.len > 0 {
+                return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ", " + ufargs + ")"
+            }
+            return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ")"
         }
         var callee = cal[1]
         if callee == "println" {
@@ -910,6 +989,40 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // 此前兜底 "(ct_i)0" 使零参直调多传一参(cc 报 too many arguments)
                 if far == 0 { rargs = "" } else { if ag.len > 1 { rargs = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs } else { rargs = "(ct_i)0" + rargs } }
                 var rhead = "((ct_fn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
+                // P0-3:返回型别取 fn(T)->R(#fret 侧条目,ct_fn 绑定)——返回经
+                // 返回类型原型化指针调用(ct_i 统一 ABI 装不下 struct,链上成员读全靠它)。
+                // P0-2/seam② 收窄:标量/Str R(s/b/f/g/6/7/u:/…;v/i 除外)同式入码——
+                // i 维持 ct_fnK 旧形态(语义无差),v 无值。
+                // 头部原型须带实参 ABI(rhead=ct_i×far;fhead=void*+ct_i×(far-1));
+                // 此前 (*)() 恒零参,Task 1 仅零参 struct 返回(03k)踩不到,seam② 放宽后即炸
+                var frk = "#fret:" + cal[1]
+                if ct_env_has(env, frk) {
+                    var fretc = ct_env_ty(env, frk)
+                    if fretc.len > 0 {
+                        if fretc != "i" {
+                            if fretc != "v" {
+                                var frt = ct_ctype(fretc)
+                                var rp = "void"
+                                if far > 0 {
+                                    rp = "ct_i"
+                                    var pk: I32 = 2
+                                    while pk <= far {
+                                        rp = rp + ", ct_i"
+                                        pk += 1
+                                    }
+                                }
+                                var fp2 = "void*"
+                                var pk2: I32 = 1
+                                while pk2 <= far {
+                                    fp2 = fp2 + ", ct_i"
+                                    pk2 += 1
+                                }
+                                fhead = "((" + frt + "(*)(" + fp2 + "))(((ct_clop)" + fv + ")->fn))"
+                                rhead = "((" + frt + "(*)(" + rp + "))(((ct_clop)" + fv + ")->fn))"
+                            }
+                        }
+                    }
+                }
                 return fcast + "(((ct_clop)" + fv + ")->env == (void*)1 ? " + rhead + "(" + rargs + ") : " + fhead + "(" + fargs + "))"
             }
         }

@@ -1,6 +1,5 @@
-// r2a_sb.ct —— StringBuilder owned 字符串构建(R-P2a,§3.8.2 v0.6)
+// 03j_stringbuilder.ct —— StringBuilder owned 字符串构建(§3.8.2;T03 三线落地,2026-09-28 迁入主套件)
 // 语义承诺:push_str 拼接;to_string 产出 owned String;len 为当前字节长度
-// 锚点:R-P2a 落地转绿
 test "builder concat" {
     var sb = StringBuilder()
     sb.push_str("hello")

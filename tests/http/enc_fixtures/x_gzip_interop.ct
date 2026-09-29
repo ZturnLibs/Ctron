@@ -1,0 +1,65 @@
+// tests/http/enc_fixtures/x_gzip_interop.ct —— gzip 跨实现互操作(T12;§11.7)
+// x_ 前缀 = emit 臂专用(同 x_gzip_round 口径;缓冲惯例同款:直传隐式转视图)。
+// 钉住:python gzip.compress 产出的真实 gzip 流(RFC 1952)可被本实现解压且
+// 逐字节还原——服务端 Content-Encoding 消费向;产出向差分见 x_gzip_out +
+// run.sh 互操作臂。语料:python3 gzip.compress(b"The quick brown fox ... " * 4,
+// mtime=0),93 字节 hex 内嵌(确定性,零运行时外联)。
+use http.enc.{ gzip_decompress }
+
+fn h2b(h: Str, out: &I64[]) -> I64 {
+    var i: I64 = 0
+    var n: I64 = 0
+    while i + 1 < h.len {
+        var hi: I64 = 0
+        var lo: I64 = 0
+        var c: I64 = byte_at(h, i)
+        if c >= 48 && c <= 57 {
+            hi = c - 48
+        } else {
+            hi = c - 87
+        }
+        c = byte_at(h, i + 1)
+        if c >= 48 && c <= 57 {
+            lo = c - 48
+        } else {
+            lo = c - 87
+        }
+        out[n] = hi * 16 + lo
+        n += 1
+        i += 2
+    }
+    return n
+}
+
+test "python gzip stream decompresses byte-exact" {
+    var gz: I64[128] = [0]
+    var out: I64[512] = [0]
+    let gn = h2b("1f8b08000000000002ffddccd91180200c05c0565e0534610b34e011301e046350a47aadc3ef9d593f138ec2e38a41e54e0852b1943d9f908b14f6f1d6b707934487ce541262e30c4e462a1981ab152507ffdfe805826c963924010000", gz)
+    assert_eq(gn, 93)
+
+    // 头布局:魔数 1f 8b / CM=08 / FLG=00 / MTIME=0(python gzip.compress mtime=0 形)
+    assert(gz[0] == 31)
+    assert(gz[1] == 139)
+    assert(gz[2] == 8)
+    assert(gz[3] == 0)
+
+    let rn = gzip_decompress(gz, gn, out, 512)
+    assert_eq(rn, 292)
+
+    // 载荷锚点:头部 "The"(84/104/101)+ 全文可打印 ASCII(载荷无换行)
+    assert(out[0] == 84)
+    assert(out[1] == 104)
+    assert(out[2] == 101)
+    var i: I64 = 0
+    var ok: I32 = 1
+    while i < rn {
+        if out[i] < 32 {
+            ok = 0
+        }
+        if out[i] > 126 {
+            ok = 0
+        }
+        i += 1
+    }
+    assert(ok == 1)
+}

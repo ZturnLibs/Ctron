@@ -182,6 +182,7 @@ typedef struct bind {
     const char* name;
     cty* ty; // NULL = 未知(保守 Send)
     int depth;
+    int used; // W8030:本块内是否被读取(T04)
     struct bind* next;
 } bind;
 
@@ -197,8 +198,9 @@ static void bind_push(bind** env, const char* name, cty* ty, int depth) {
     *env = b;
 }
 static bind* bind_find(bind* env, const char* name) {
+    // W8030:命中即视为已读(类型推导/成员根/capture 名单等全部查询路径,T04)
     for (bind* b = env; b; b = b->next)
-        if (b->name && strcmp(b->name, name) == 0) return b;
+        if (b->name && strcmp(b->name, name) == 0) { b->used = 1; return b; }
     return NULL;
 }
 
@@ -622,8 +624,21 @@ static void check_match_exhaustive(ctx* c, cexpr* m) {
     int* covered = (int*)calloc(ev.n, sizeof(int));
     int whole = 0;
     for (size_t i = 0; i < m->narms && !whole; i++) {
+        // 模式守卫(R-P3c):守卫可能不成立,带守卫的臂不算覆盖
+        if (m->arms[i].guard) continue;
         cpat* p = m->arms[i].pat;
-        if (p->kind == PAT_WILD || p->kind == PAT_IDENT) whole = 1;
+        if (p->kind == PAT_OR) {
+            // 或模式:任一替身通配即整体通配;变体替身逐个记覆盖
+            for (size_t k = 0; k < p->nalts; k++) {
+                cpat* ap = p->alts[k];
+                if (ap->kind == PAT_WILD || ap->kind == PAT_IDENT) { whole = 1; break; }
+                if (ap->kind == PAT_AGG && ap->npath > 0) {
+                    for (size_t j = 0; j < ev.n; j++)
+                        if (strcmp(ap->path[0], ev.names[j]) == 0) covered[j] = 1;
+                }
+            }
+        }
+        else if (p->kind == PAT_WILD || p->kind == PAT_IDENT) whole = 1;
         else if (p->kind == PAT_AGG && p->npath > 0) {
             for (size_t j = 0; j < ev.n; j++)
                 if (strcmp(p->path[0], ev.names[j]) == 0) covered[j] = 1;
@@ -785,6 +800,187 @@ static int call_alloc_in_ctx(ctx* c, cexpr* call) {
     return 0;
 }
 
+// ---------- T21:comptime const 步数预算求值器(E6010) ----------
+// 迷你树走查:字面量/const 引用/算术/比较/While/Let/Return/comptime fn 调用。
+// 步数 > 1200 → E6010;不支持形态 → 静默跳过(镜像自举 ceval "u" 回退)。
+typedef struct {
+    const cfile* f;
+    long steps;
+    int over;
+    int depth;
+} ceval_ctx_t;
+
+typedef struct cbind21 { const char* n; __int128 v; struct cbind21* next; } cbind21;
+
+static __int128 ceval_expr_21(ceval_ctx_t* c, const cexpr* e, cbind21* env);
+static int ceval_block_21(ceval_ctx_t* c, const cblock* b, cbind21** env, __int128* out);
+
+static __int128 ceval_expr_21(ceval_ctx_t* c, const cexpr* e, cbind21* env) {
+    if (!e || c->over) return 0;
+    if (++c->steps > 1200) { c->over = 1; return 0; }
+    switch (e->kind) {
+    case EX_INT: { const char* t21 = e->text ? e->text : "0"; __int128 v21 = 0; int neg21 = (*t21 == 45); if (neg21) t21++; while (*t21 >= 48 && *t21 <= 57) { v21 = v21 * 10 + (*t21 - 48); t21++; } return neg21 ? -v21 : v21; }
+    case EX_IDENT: {
+        for (cbind21* b = env; b; b = b->next)
+            if (strcmp(b->n, e->text) == 0) return b->v;
+        for (size_t i = 0; i < c->f->ndecls; i++) {
+            const cdecl* d = &c->f->decls[i];
+            if (d->kind == D_CONST && d->konst.name && strcmp(d->konst.name, e->text) == 0 && d->konst.expr)
+                return ceval_expr_21(c, d->konst.expr, NULL);
+        }
+        c->over = 1; return 0;
+    }
+    case EX_UNARY:
+        if (e->uop == UN_NEG) { __int128 v = ceval_expr_21(c, e->ux, env); return -v; }
+        c->over = 1; return 0;
+    case EX_BINARY: {
+        if (e->bop == B_AND) {
+            __int128 l = ceval_expr_21(c, e->lhs, env);
+            if (c->over) return 0;
+            if (!l) return 0;
+            __int128 r = ceval_expr_21(c, e->rhs, env);
+            return r != 0;
+        }
+        if (e->bop == B_OR) {
+            __int128 l = ceval_expr_21(c, e->lhs, env);
+            if (c->over) return 0;
+            if (l) return 1;
+            __int128 r = ceval_expr_21(c, e->rhs, env);
+            return r != 0;
+        }
+        __int128 l = ceval_expr_21(c, e->lhs, env);
+        if (c->over) return 0;
+        __int128 r = ceval_expr_21(c, e->rhs, env);
+        if (c->over) return 0;
+        switch (e->bop) {
+        case B_ADD: return l + r;
+        case B_SUB: return l - r;
+        case B_MUL: return l * r;
+        case B_DIV: return r == 0 ? (c->over = 1, 0) : l / r;
+        case B_MOD: return r == 0 ? (c->over = 1, 0) : l % r;
+        case B_LT: return l < r;
+        case B_GT: return l > r;
+        case B_LE: return l <= r;
+        case B_GE: return l >= r;
+        case B_EQ: return l == r;
+        case B_NE: return l != r;
+        default: c->over = 1; return 0;
+        }
+    }
+    case EX_CALL: {
+        if (e->callee && e->callee->kind == EX_IDENT) {
+            for (size_t i = 0; i < c->f->ndecls; i++) {
+                const cdecl* d = &c->f->decls[i];
+                if (d->kind == D_FN && d->fn_.is_comptime && d->fn_.name
+                    && strcmp(d->fn_.name, e->callee->text) == 0 && d->fn_.body) {
+                    if ((int)e->nelems != (int)d->fn_.nparams) { c->over = 1; return 0; }
+                    cbind21* fenv = NULL;
+                    for (size_t j = 0; j < e->nelems && j < d->fn_.nparams; j++) {
+                        __int128 av = ceval_expr_21(c, e->elems[j], env);
+                        if (c->over) return 0;
+                        cbind21* nb = (cbind21*)malloc(sizeof(cbind21));
+                        nb->n = d->fn_.params[j].name;
+                        nb->v = av;
+                        nb->next = fenv;
+                        fenv = nb;
+                    }
+                    __int128 out = 0;
+                    int r2 = ceval_block_21(c, d->fn_.body, &fenv, &out);
+                    while (fenv) { cbind21* nx = fenv->next; free(fenv); fenv = nx; }
+                    if (r2 == 1) return out;
+                    if (r2 == -1) return 0;
+                    c->over = 1; return 0;
+                }
+            }
+        }
+        c->over = 1; return 0;
+    }
+    default: c->over = 1; return 0;
+    }
+}
+
+static int ceval_block_21(ceval_ctx_t* c, const cblock* b, cbind21** env, __int128* out) {
+    if (!b) return 0;
+    for (size_t i = 0; i < b->nstmts; i++) {
+        const cstmt* st = b->stmts[i];
+        if (c->over) return -1;
+        switch (st->kind) {
+        case ST_LET: {
+            if (st->pat && st->pat->kind == PAT_IDENT && st->pat->name && st->e) {
+                __int128 v = ceval_expr_21(c, st->e, *env);
+                if (c->over) return -1;
+                cbind21* nb = (cbind21*)malloc(sizeof(cbind21));
+                nb->n = st->pat->name;
+                nb->v = v;
+                nb->next = *env;
+                *env = nb;
+            }
+            break;
+        }
+        case ST_RET: {
+            if (st->e) {
+                *out = ceval_expr_21(c, st->e, *env);
+                if (c->over) return -1;
+            }
+            return 1;
+        }
+        case ST_WHILE: {
+            for (;;) {
+                __int128 cond = ceval_expr_21(c, st->e, *env);
+                if (c->over) return -1;
+                if (!cond) break;
+                __int128 wout = 0;
+                int r3 = ceval_block_21(c, st->body, env, &wout);
+                if (r3 == 1) { *out = wout; return 1; }
+                if (r3 == -1) return -1;
+            }
+            break;
+        }
+        case ST_EXPR: {
+            if (st->e) ceval_expr_21(c, st->e, *env);
+            if (c->over) return -1;
+            break;
+        }
+        case ST_ASSIGN: {
+            // k = k + 1 形:目标 Ident → 更新 env 绑定
+            if (st->target && st->target->kind == EX_IDENT && st->value) {
+                __int128 v21 = ceval_expr_21(c, st->value, *env);
+                if (c->over) return -1;
+                const char* tn = st->target->text;
+                cbind21* b21 = *env;
+                while (b21 && strcmp(b21->n, tn) != 0) b21 = b21->next;
+                if (b21) { b21->v = v21; }
+                else {
+                    cbind21* nb = (cbind21*)malloc(sizeof(cbind21));
+                    nb->n = tn; nb->v = v21; nb->next = *env;
+                    *env = nb;
+                }
+            } else { c->over = 1; return -1; }
+            break;
+        }
+        default: c->over = 1; return -1;
+        }
+    }
+    if (b->tail) {
+        *out = ceval_expr_21(c, b->tail, *env);
+        if (c->over) return -1;
+        return 1;
+    }
+    return 0;
+}
+
+static void check_comptime_consts(ck* k, const cfile* f) {
+    for (size_t i = 0; i < f->ndecls; i++) {
+        const cdecl* d = &f->decls[i];
+        if (d->kind != D_CONST || !d->konst.name || !d->konst.expr) continue;
+        ceval_ctx_t c = { f, 0, 0, 0 };
+        (void)ceval_expr_21(&c, d->konst.expr, NULL);
+        if (c.over && c.steps > 1200) {
+            diag(k, "E6010", "comptime 预算超限(budget):%s", d->konst.name);
+        }
+    }
+}
+
 static void check_alloc_ctx(ctx* c, const char* kind) {
     if (c->in_own) diag(c->k, "E3040", "own 块内 GC 分配(allocation):%s", kind);
     else diag(c->k, "E3040", "no_alloc 上下文 GC 分配(allocation):%s", kind);
@@ -823,6 +1019,8 @@ static int sem_has_drop_impl(const sym* s, const char* ty) {
 
 static void check_block(ctx* c, cblock* b) {
     if (!b) return;
+    // W8030:块入口快照,块尾报告本块新绑定中未被读取者(下划线开头豁免;T04)
+    bind* entry8030 = c->env;
     for (size_t i = 0; i < b->nstmts; i++) {
         cstmt* st = b->stmts[i];
         switch (st->kind) {
@@ -973,6 +1171,15 @@ static void check_block(ctx* c, cblock* b) {
         }
     }
     if (b->tail) check_expr(c, b->tail);
+    // W8030 报告:从栈顶走到入口快照即本块新绑定。保守面:仅原语类型绑定——
+    // 插值部件在宿主侧是纯文本(无 AST 可走查),聚合/容器/Option 类型绑定
+    // 免报(对齐自举线 Drop/插值启发豁免口径;锚=I32 级绑定)
+    for (bind* wb = c->env; wb && wb != entry8030; wb = wb->next) {
+        if (wb->used || !wb->name || wb->name[0] == '_') continue;
+        if (!wb->ty || wb->ty->kind != TY_NAMED || wb->ty->npath != 1) continue;
+        if (!is_prim(wb->ty->path[0])) continue;
+        diag(c->k, "W8030", "未使用绑定(unused):%s", wb->name);
+    }
 }
 
 static void check_expr(ctx* c, cexpr* e) {
@@ -984,7 +1191,10 @@ static void check_expr(ctx* c, cexpr* e) {
     switch (e->kind) {
     case EX_STR: case EX_INT: case EX_FLOAT: case EX_BOOL: case EX_VOID:
         return;
-    case EX_IDENT: return;
+    case EX_IDENT:
+        // W8030:标识符读取标记(命中本地绑定即已读;T04)
+        if (bind_find(c->env, e->text)) return;
+        return;
     case EX_TUPLE: case EX_ARRAY:
         for (size_t i = 0; i < e->nelems; i++) check_expr(c, e->elems[i]);
         return;
@@ -1196,8 +1406,10 @@ static void check_expr(ctx* c, cexpr* e) {
     case EX_MATCH:
         check_match_exhaustive(c, e);
         check_expr(c, e->scrut);
-        for (size_t i = 0; i < e->narms; i++)
+        for (size_t i = 0; i < e->narms; i++) {
+            if (e->arms[i].guard) check_expr(c, e->arms[i].guard);
             if (e->arms[i].expr) check_expr(c, e->arms[i].expr);
+        }
         return;
     case EX_BLOCK:
         check_block(c, e->block);
@@ -1220,6 +1432,21 @@ static int impl_method_noalloc_contract(const sym* s, const cdecl* impl, const c
             return has_attr(it->m->attrs, it->m->nattrs, "no_alloc");
     }
     return 0;
+}
+
+// W8020:块尾表达式位(fn/test 体语境;值位块尾是块值非丢弃,T04 前漏扫)
+static void w8020_tail(ctx* c, cexpr* e) {
+    if (!e || e->kind != EX_CALL) return;
+    const char* fnname = root_ident(e);
+    if (!fnname) return;
+    const cdecl* d = find_fn(c->s->f, fnname);
+    if (!d) return;
+    cty* rt = d->fn_.ret;
+    if (rt && ((rt->kind == TY_OPT)
+               || (rt->kind == TY_NAMED && (strcmp(head_name(rt), "Option") == 0
+                                            || strcmp(head_name(rt), "Result") == 0)))) {
+        diag(c->k, "W8020", "结果被丢弃(must-use):%s 返回 Option/Result", fnname);
+    }
 }
 
 static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
@@ -1249,7 +1476,10 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
     }
     fn_has_drop_local = 0;
     brk_outer = 0;
-    if (f->body) check_block(&sub, f->body);
+    if (f->body) {
+        check_block(&sub, f->body);
+        w8020_tail(&sub, f->body->tail);
+    }
     bind_free(sub.env);
 }
 
@@ -1344,6 +1574,21 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             check_fn(&c, &d->fn_, 0);
             break;
         case D_CLASS:
+            /* E4050(§6.2 硬规则;T21):类直接持有需确定性释放的资源字段(Mutex/Channel)
+             * ——类引用由 GC 回收,不触发 Drop;资源只能由值类型句柄持有 */
+            for (size_t j = 0; j < d->klass.nitems; j++) {
+                const cclassitem* it = &d->klass.items[j];
+                if (it->kind == CT_FIELD && it->f->ty) {
+                    const char* hn = head_name(it->f->ty);
+                    if (hn && (!strcmp(hn, "Mutex") || !strcmp(hn, "Channel")
+                               || !strcmp(hn, "Sender") || !strcmp(hn, "Receiver"))) {
+                        diag(&k, "E4050",
+                             "类直接持有资源字段(§6.2;资源须值句柄或能力对象):%s.%s",
+                             d->klass.name ? d->klass.name : "?",
+                             it->f->name ? it->f->name : "?");
+                    }
+                }
+            }
             for (size_t j = 0; j < d->klass.nitems; j++) {
                 const cclassitem* it = &d->klass.items[j];
                 if (it->kind == CT_METHOD && it->m->body) check_fn(&c, it->m, 0);
@@ -1370,6 +1615,7 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             fn_has_drop_local = 0;
             brk_outer = 0;
             check_block(&tc, d->test.body);
+            w8020_tail(&tc, d->test.body->tail);
             bind_free(tc.env);
             break;
         }
@@ -1397,6 +1643,9 @@ ctron_sem_result ctron_sem_check_mode(const cfile* f, ctron_arena* arena, int pr
             break;
         }
     }
+
+    // T21:comptime const 步数预算求值(E6010)
+    check_comptime_consts(&k, f);
 
     ctron_sem_result r;
     r.diags = k.d;

@@ -9,6 +9,25 @@ fn is_opt_ret(ty: List[Str]) -> Bool {
         var h = ty[1]
         if or2(h == "Option", h == "Result") { return true }
     }
+    // 泛型形 Result[I32, Str]:TypeArgs(Named(Result), 实参…) —— T04 补
+    if ty[0] == "TypeArgs" && ty.len > 1 && ty[1][0] == "Named" {
+        if or2(ty[1][1] == "Option", ty[1][1] == "Result") { return true }
+    }
+    return false
+}
+
+// W8040:遮蔽前奏符号(名单对齐 C 宿主 is_prelude_name/R 线 register_prelude)
+fn is_prelude_name(n: Str) -> Bool {
+    if or2(n == "I8", or2(n == "I16", or2(n == "I32", or2(n == "I64", n == "ISize")))) { return true }
+    if or2(n == "U8", or2(n == "U16", or2(n == "U32", or2(n == "U64", n == "USize")))) { return true }
+    if or2(n == "F32", or2(n == "F64", or2(n == "Bool", or2(n == "Str", or2(n == "String", or2(n == "Void", n == "Never")))))) { return true }
+    if or2(n == "TaskPanic", or2(n == "Channel", or2(n == "List", or2(n == "Map", or2(n == "Set", n == "Box"))))) { return true }
+    if or2(n == "StringBuilder", or2(n == "Atomic", or2(n == "Global", or2(n == "Mutex", or2(n == "Sender", or2(n == "Receiver", n == "Task")))))) { return true }
+    if or2(n == "Scope", or2(n == "Arena", or2(n == "Region", or2(n == "Pool", or2(n == "ArenaList", or2(n == "Simd", n == "AnyError")))))) { return true }
+    if or2(n == "Parallel", or2(n == "Path", or2(n == "Bytes", or2(n == "Option", or2(n == "Result", n == "Bit"))))) { return true }
+    if or2(n == "Some", or2(n == "None", or2(n == "Ok", n == "Err"))) { return true }
+    if or2(n == "Error", or2(n == "Show", or2(n == "Eq", or2(n == "Drop", or2(n == "Clone", or2(n == "Hash", n == "Iter")))))) { return true }
+    if or2(n == "Cap", or2(n == "Clock", or2(n == "Fs", or2(n == "Net", n == "Log")))) { return true }
     return false
 }
 
@@ -125,12 +144,12 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
         return
     }
     if t == "BlockExpr" {
-        walk_b(file, e[1], ns, fns, rets, out)
+        walk_b(file, e[1], ns, fns, rets, out, false)
         return
     }
     if t == "If" {
         walk_e(file, e[1], ns, fns, rets, out)
-        walk_b(file, e[2], ns, fns, rets, out)
+        walk_b(file, e[2], ns, fns, rets, out, false)
         walk_e(file, e[3], ns, fns, rets, out)
         return
     }
@@ -150,16 +169,37 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
         return
     }
     if t == "Own" {
-        walk_b(file, e[2], ns, fns, rets, out)
+        walk_b(file, e[2], ns, fns, rets, out, false)
         return
     }
     if t == "Scope" {
-        walk_b(file, e[2], ns, fns, rets, out)
+        walk_b(file, e[2], ns, fns, rets, out, false)
         return
     }
 }
 
-fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
+fn w8020_check(file: List[Str], ce: List[Str], fns: List[Str], rets: List[Str], out: List[Str]) {
+    if ce[0] != "Call" {
+        return
+    }
+    var cal2 = ce[1]
+    if cal2[0] != "Ident" {
+        return
+    }
+    var nm2 = cal2[1]
+    var k: I32 = 0
+    while k < fns.len {
+        if fns[k] == nm2 {
+            if is_opt_ret(rets[k]) {
+                out.push(diag_render1("W8020", nline(ce), nm2))
+            }
+            return
+        }
+        k += 1
+    }
+}
+
+fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str], body: Bool) {
     var i: I32 = 1
     while i < b.len - 1 {
         var st = b[i]
@@ -167,38 +207,31 @@ fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[St
         if t == "Return" {
             walk_e(file, st[1], ns, fns, rets, out)
         } else if t == "Let" {
+            // W8040:绑定名遮蔽前奏符号(§3.8)
+            var lp = st[2]
+            if lp[0] == "PatId" && is_prelude_name(lp[1]) {
+                out.push(diag_render1("W8040", nline(st), lp[1]))
+            }
             walk_e(file, st[4], ns, fns, rets, out)
         } else if t == "While" {
             walk_e(file, st[1], ns, fns, rets, out)
-            walk_b(file, st[2], ns, fns, rets, out)
+            walk_b(file, st[2], ns, fns, rets, out, false)
         } else if t == "For" {
             walk_e(file, st[2], ns, fns, rets, out)
-            walk_b(file, st[3], ns, fns, rets, out)
+            walk_b(file, st[3], ns, fns, rets, out, false)
         } else if t == "Assign" {
             walk_e(file, st[3], ns, fns, rets, out)
         } else if t == "Expr" {
             // W8020:丢弃 Option/Result 返回值
-            var ce = st[1]
-            if ce[0] == "Call" {
-                var cal2 = ce[1]
-                if cal2[0] == "Ident" {
-                    var nm2 = cal2[1]
-                    var k: I32 = 0
-                    var hit = false
-                    while k < fns.len && !hit {
-                        if fns[k] == nm2 {
-                            hit = true
-                            if is_opt_ret(rets[k]) {
-                                out.push(diag_render1("W8020", nline(ce), nm2))
-                            }
-                        }
-                        k += 1
-                    }
-                }
-            }
-            walk_e(file, ce, ns, fns, rets, out)
+            w8020_check(file, st[1], fns, rets, out)
+            walk_e(file, st[1], ns, fns, rets, out)
         }
         i += 1
+    }
+    // 块尾表达式:fn/test 体语境(body)下同判 W8020 —— 值位块(let x = {…}/if 臂)
+    // 的尾是块值非丢弃,body=false 不判(T04:此前 fn 体尾调用漏扫,与 C 宿主同修)
+    if body {
+        w8020_check(file, b[b.len - 1], fns, rets, out)
     }
     walk_e(file, b[b.len - 1], ns, fns, rets, out)
 }

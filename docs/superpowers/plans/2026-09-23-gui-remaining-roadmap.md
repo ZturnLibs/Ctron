@@ -98,14 +98,112 @@ premerge/postmerge+field_tables 守卫+family rew 去重;跨文件 emit+cc+
 link+run 全通;todo_v10 单文件面全绿。**跨文件拆分夹具(todo.ct+main.ct)
 待下次复原挂阶梯验证。**
 **余 ③钩子退役已完成(5b5e910)**。SL-8c 全片收官。
-**emit 面 premerge SEGV 专项(0927 登记)**:ctron-emit 处理含 run(ViewCall)
-的跨文件 fixture 时编译器自身 SEGV(-O0 -g lldb 定位 gui_blocks_src:6357
-ctron_len/strcmp 对 stub 字符串子项解引用)。sanitizer+field_tables 守卫+
-gui_blocks_src 短子项守卫均不足——compiled C 的 List[Str] 统一存储对
-"字符串 vs 嵌套 List" 无运行时类型标记,trans 全文件遍历族逐函数守卫
-不可持续。**须 trans 发射面 runtime 类型安全改造**(候选:值 tag 字段/
-AST 节点不可 string 化/P1b stub 不可见化)方可彻底消解。
-非单会话可修,独立专项。
+**emit 面 premerge SEGV 专项销账(0927 收官,推翻 0927 登记结论)**:s41
+SEGV 根因非「合并面类型安全缺失」,而是两个确定性 bug 叠加+两个接线缺口,
+lldb -O0 -g 逐帧取证定案:
+①**made[0] 头串拼入(SEGV 直接根因)**——gui_ds_gen 返回 p_file 产物
+(File 节点,[0]="File" 头串),gui_ds_postmerge 拼接循环 k 从 0 起,
+把头串当 decl 注入合并产物;trans/emit 遍历族 d[0] 解引用即崩
+(此前 gui_blocks_src/ct_find_main_anchor/ct_swap_anchor 三处逐函数守卫
+拦的正是它,P1b stub 定性为误判)。修=拼接 k 从 1 起(gui_parse.ct)。
+②**sanitize 白名单缺 FnPub(类型塌陷根因)**——gui_ds_sanitize 只留
+Fn/FnExt/Struct/Enum/GuiBlock/Use/Static/Const,合并面 pub fn(rt_bind_items
+等)整类剥除→trans 期 ct_fn_ret 查无 decl 塌 "i"→ct_expr:index panic。
+修=白名单补全顶层 decl 全 kind(FnPub/FnC/Method/Trait/Impl/Test)。
+③**premerge 注入落地**——合成三 fn 引 rt_run_anchor/ev_suffix_i,合并
+闭包(pkg_refs_walk)看不到 postmerge 才生成的引用,选择性合并剔除即
+C 级 undeclared;gui_ds_premerge 现 view 命中即注入 use gui.{rt_run_anchor,
+ev_suffix_i} Use 节点(顶层 use 走 redo 补并路径,dup 处静默跳过)。
+④**闭包命名跨文件撞号**——ct_clo_L<行号> 跨文件合并后 todo.ct/main.ct
+同行号撞 C 符号;修=ct_fn/ct_drop_fn 经 env 绑 #clofn,命名改
+ct_clo_<fn>_L<行>(合并面 fn 名 E5030 保证唯一,跨 pass 稳定)。
+**P2 跨文件 desugar 接线复通**:premerge 单文件 find 失败即走
+gui_ds_marker_file(纯标记检测,不依赖本文件 views)+gui_ds_ordn_file
+(调用点命名实参;70fcda7 机械全在库,此为接线);sanitize 仅 run(ViewCall)
+装配程序触发,web/服务器泳道不受影响。**s48_crossfile_d 拆分夹具
+(todo.ct 视图+业务全 pub / main.ct use 请求+直驱+run)落库挂阶梯**,
+键入/添加/删末/空态翻转全交互绿。
+**基线(0927)**:阶梯 54/54(新增 s48);smoke 151/3(3=对端 log/ndjson/pb
+在册不变);calc rc=0;decl 锁净增 0。「runtime 类型安全改造」专项按本
+定性降级为备查:若合并面再现串流,先查拼接起点与 sanitize 白名单两处。
+**组件跨文件分发落库(0928,s49_xfilecomp;波次四 ViewCall × 视图导入
+解锁)**:s48 视图导入落地后组件实例化跨文件仅差三件——①**靶视图居末**
+(gt_parse 应用根=内嵌源末声明视图;跨文件合并序靶在前,不挪则根选中组件
+渲染空树;gui_ds_postmerge 挪靶 GuiBlock 至文件末,单文件靶本就居末
+no-op);②**sk_node ViewCall 实例分支**(desugar 骨架面此前无大写识别,
+实例被当普通元素吞掉;现 args 三形解析,表达式值 0x01 连接入 npost);
+③**collect 实参抽取+多树走查**(call: 节点 npost 按 0x01 拆为合成 bind
+路径——展开期 bxv_ask 以 prop:<表达式> 问装配通道;走查改从全部树根
+起步——靶居末后单根 stid=[0] 只走组件树,主文件实参全漏)。**三发现
+入册**:①E2020 裸模块 use 不存在——braced 请求须命中真 decl,视图非
+7-kind 随模块合并恒随(夹具用 pub fn 作请求锚);②内嵌重建插空格坑
+再证("ROOT-HERE"→"ROOT - HERE",断言字面量须无标点);③组件事件跨
+文件实参映射契约**未设计**(合成 act 只有根模型捕获,组件 prop 根实参
+无映射目标;零参/字面参形态可用但观察面待设计)——登记随组件事件
+专项,夹具锁定显示面(Str/I32 带型解标)。阶梯 55 夹具。
+**组件数据/事件契约设计提案(0928 入册,待用户裁决后实施;gui.ct 在飞避让)**:
+现状边界=组件视图内两类宿主引用在 desugar 面无供给映射:①each 通道
+(`o in={opts}` 的裸名 opts——合成 bind 无 "each:opts" 应答分支,宿主无从
+声明数据源);②call 形事件实参(`{pick(t)}` 的 t——合成 act 分支 rw 不可
+达即 C 未定义符号)。**提案(沿用 4a 惯例延伸)**:Ⅰ 列表数据=升格显式
+prop——组件声明 `opts: List[Str]`,实例 `opts: {m.items}` 直传;展开期
+env 已垫值,补 rt_bind_items 的 env 前置回落(env 命中 "opts" 即返回其
+List,免经 bind 通道),合成 bind 免新增分支;Ⅱ 事件实参=全 ev_arg 按位
+解码——组件视图 call 形事件按处理器声明形参型别生成 `head(ev_arg_s/i/b
+(args, k))` 族(合成期型别可知),prop 根不再特殊;Ⅲ 多实例 env 陈旧
+隐患在册:env 追加不弹,多实例同组件的点击期求值取末位值——单实例组件
+v1 放行,多实例+事件须 hinst 路由(env 快照随命中表存)随实例分发专项。
+**裁决点**:Ⅱ 的型别解码是否接受"组件事件实参=事件局部数据"(4a 同构)
+vs 保留 prop 根直传形态;Ⅲ v1 边界是否可接受。
+**契约Ⅱ落地(0928,按推荐设计实施;待裁决追认)**:合成 act 签名加宽
+`(name, args, cargs)`(actcl `|nm, ar|` 双参闭包,消费 ev_fire 实参传出);
+collect 按树分家——靶视图(挪靶后=末根)事件/each/路径进合成面,组件树
+事件→cvn/cvf 走 **ev_arg 按位解码**(gui_fn_ptyps 取处理器声明型别选
+s/i/b 解码器),组件树 each 通道/绑定路径跳过(env 应答,合成反而 C 未定
+义符号);premerge 注入补 ev_arg_s/i/b 请求(闭包不可见铁律);四夹具
+(s41/s48/s49/s50)+gui_dash 直驱 act 调用适配双参。**边界与新证**:①
+直驱面 act 需双参齐供——`act(d_click(...))` 单参调双参闭包=ar 寄存器
+垃圾,ev_arg 解引用即 SEGV(act v2 缺参补 NULL 在册坑新实例),直驱模拟
+fire 手动供参 `act("mark", margs)`;②组件事件处理器=纯数据形参(无根
+捕获),模型变异走宿主自有事件,观察哨=println+run.sh grep 门(static
+var 不走 emit 发射,只有 static let——新证入册)。**回归**:s41/s48/s50
+gen 重构后全绿;**s49 Ⅱ 正例验证被 peer gui.ct 在飞 WIP 阻**(fam2p
+先用后声明,gui.ct 编译不过=全 GUI 夹具暂时不可跑,非本片)——落窗补验
+登记。**契约Ⅰ延后**:rt_bind_items env 前置回落需动 gui.ct,正撞 peer
+实时编辑区(extern 声明块被其编辑器缓冲刷丢一次,编辑赛跑无赢家)——
+gui.ct 落窗后按已注册设计实施(半小时片)。
+**契约Ⅰ落地(0928,peer gui.ct 落窗后实施)**:rt_bind_items 加树参
+`(t, bind, listname)`+env 前置回落(env 末位优先扫,gui_is_list 魔数判+
+gui_as_list 恒等转接还原 List——Ctron 无中缀 cast,extern 边界逐字直通,
+C 助手双件入 ctron_gui.c);调用点单处(rt_emit each 分支)。组件列表
+prop=显式声明+实例直传:`view Badge(tags: List[Str])`+`tags: {m.tags}`,
+each 通道 env 命中即渲染,宿主 bind 零分支。s49 三契约全锁(显示 prop/
+列表 prop/数据事件),ALPHA/BETA 断言过。**组件数据/事件契约全片收官**,
+余 Ⅲ(多实例 env 陈旧)维持 v1 边界登记。
+**内容投影落库(0928,s50_dialogslot;「dialog slot」销账)**:ViewCall 实例
+支持非自闭合携带子树,组件体 `<slot/>` 锚位拼接。机制:①gt_node 实例分支
+分自闭合/投影两形——投影形子树链接到实例节点(nfc/ns,宿主上下文解析);
+②slot 入元素白名单(gt 面挂自闭合空元素分支,sk 面 ck 白名单+大写实例
+认领);③展开期实例垫 env "__slot__"(末位优先,嵌套组件内层覆盖外层
+免弹栈;无子树垫 -1=空投影),rt_emit slot 分支读 env 拼接子树链;
+④sk_node 镜像(投影子树入骨架,collect 多树走查即覆盖——slot 内容
+bind 路径/事件全按主文件语义合成)。宿主语义三钉入夹具:slot 路径经
+prop: 通道应答/slot 内事件合成根模型捕获分支/组件 when 门包 slot 关态
+零渲染。**边界在册**:v1 组件 prop 与宿主路径根同名时组件 env 遮蔽;
+check 面对实例仅认领不深查(E81xx 完整契约随组件检查专项);gui_sk_load
+编译骨架面无 vreg,投影仅 gt_parse 形态(既有登记顺延)。阶梯 56 夹具。
+**check 面组件实例深查落库(0928,e8140 语料三件;「认领不深查」收口)**:
+gui_check_file 预收集组件注册表(视图名→声明 prop 名表,0x01 连接)穿参
+gui_ck_elem;实例元素分支:args `名: 值` 逐参核声明表(**未知=E8110/缺失
+=E8100**),{表达式} 值走宿主根门(与 attr 槽同规),非自闭合投影子树按
+宿主上下文递归。**连带发现:gui_dump_file 的 lower 面(gui_lower_element)
+不认实例实参即 panic("属性期待等号"),先于 E81xx 走查炸掉**——lower 面
+补实例分支(跳读 args+投影子树递归,与 sk/gt 面三处同形)。**验证口径
+注记**:e8 语料夹具走 ctc.sh=seed 解释面,peer 在飞 compiler-c(eval 换代)
+期间 seed 静默放行全部负例(基线红,非本片);本片经**原生面私有锚 chk**
+( sed 锚+ctron-emit+cc)全量验证 36/36(23 neg+12 pos+1 warn,含新增 3 件),
+存量零回归。教训:私有验证用锚副本必须每次从新鲜 build/cc_check.ct 重
+sed(旧副本静默吃掉新逻辑,TMP 示踪"不触发"假象一小时)。
 **二次攻坚新实锤(0926 深夜)**:①**trans 缺 NParg 发射分支**——未改写的
 ViewCall 到 trans 即 "ct_expr:NParg@行号" 硬 panic(ct_expr 无 NParg case),
 interp eval 同面待查——此为 P2 的 trans 侧确定性缺口(修=trans_expr/eval_expr

@@ -279,9 +279,14 @@ void emit_helper(tc* c, const char* name) {
     }
     if (!strncmp(name, "ctron_arr_", 10)) {
         // name: ctron_arr_<wl>_lit
-        char wl[16];
+        char wl[64];
         snprintf(wl, sizeof wl, "%s", name + 10);
         wl[strlen(wl) - 4] = 0; // 去掉 _lit
+        if (wl[0] >= 'A' && wl[0] <= 'Z') { // P0-4:struct 元素字面量——堆复制形态镜像标量,数据槽 ctron_t_<名> 全宽
+            sb_f(o, "static ctron_arr_%s %s(int64_t n, ctron_t_%s* vals) { ctron_arr_%s r; r.n = n; r.d = (ctron_t_%s*)calloc((size_t)(n ? n : 1), sizeof(ctron_t_%s)); for (int64_t i = 0; i < n; i++) r.d[i] = vals[i]; return r; }\n",
+                 wl, name, wl, wl, wl, wl);
+            return;
+        }
         if (!strcmp(wl, "str"))
             sb_f(o, "static ctron_arr_str %s(int64_t n, const char** vals) { ctron_arr_str r; r.n = n; r.d = (const char**)calloc((size_t)(n ? n : 1), sizeof(const char*)); for (int64_t i = 0; i < n; i++) r.d[i] = vals[i] ? vals[i] : \"\"; return r; }\n", name);
         else if (!strncmp(wl, "f", 1)) {

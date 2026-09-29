@@ -111,6 +111,28 @@ fn probe_line(src: Str, msg: Str) -> I32 {
     return 1
 }
 
+// T18:parser 诊断 JSON 输出(pdiags 格式 "LINE:COL CODE: msg" → 精确 span)
+fn json_diag_lc(path: Str, ln: Str, first: Bool) {
+    var p1: I32 = 0
+    while p1 < ln.len && byte_at(ln, p1) != 58 { p1 += 1 }
+    var lno = dvi(byte_slice(ln, 0, p1))
+    var p2: I32 = p1 + 1
+    while p2 < ln.len && byte_at(ln, p2) != 32 { p2 += 1 }
+    var col = dvi(byte_slice(ln, p1 + 1, p2))
+    var rest = byte_slice(ln, p2 + 1, ln.len)
+    var sp: I32 = 0
+    while sp < rest.len && byte_at(rest, sp) != 32 { sp += 1 }
+    var code = byte_slice(rest, 0, sp)
+    if sp > 0 && byte_at(code, sp - 1) == 58 {
+        code = byte_slice(code, 0, sp - 1)
+    }
+    var msg = byte_slice(rest, sp + 1, rest.len)
+    var sev = "error"
+    if byte_at(code, 0) == 87 { sev = "warning" }
+    if !first { print(",") }
+    print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + lno.to_string() + ",\"col_start\":" + col.to_string() + ",\"line_end\":" + lno.to_string() + ",\"col_end\":" + (col + 1).to_string() + "},\"notes\":[],\"fixes\":[]}")
+}
+
 fn json_diag(path: Str, src: Str, ln: Str, first: Bool) {
     var sp: I32 = 0
     while sp < ln.len && byte_at(ln, sp) != 32 { sp += 1 }
@@ -137,7 +159,18 @@ fn json_diag(path: Str, src: Str, ln: Str, first: Bool) {
         at = probe_line(src, msg)
     }
     if !first { print(",") }
-    print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":1},\"notes\":[],\"fixes\":[]}")
+    // T19 fix-it:按码生成机器可执行修复建议(§10.1 首批三码)
+    var fixes = "[]"
+    if seq2(code, "E3030") {
+        fixes = "[\{\"title\":\"static var 不存在;用 let(不可变)或 Global[T](可变全局)\",\"edits\":[\{\"kind\":\"replace\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":11},\"text\":\"let\"}]}]"
+    }
+    if seq2(code, "E2020") {
+        fixes = "[\{\"title\":\"检查拼写或添加 use 导入\",\"edits\":[]}]"
+    }
+    if seq2(code, "W8010") {
+        fixes = "[\{\"title\":\"struct 含类引用字段拷贝浅共享;改值字段或显式 Box\",\"edits\":[]}]"
+    }
+    print("\{\"code\":\"" + json_escape(code) + "\",\"severity\":\"" + sev + "\",\"message\":\"" + json_escape(msg) + "\",\"file\":\"" + json_escape(path) + "\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":1},\"notes\":[],\"fixes\":" + fixes + "}")
 }
 
 // 文本面剥离 span 标注:码后 "@<数字>"(诊断内部携带行号,JSON 面消费)
@@ -222,8 +255,24 @@ fn main() -> I32 {
             var ldiags = List[Str]()
             var lstack = List[Str]()
             lstack.push(epath)
+            // T18:chk_fmt 提前初始化(pdiags 早退需判 JSON 模式)
+            var chk_fmt18 = ctron_cli_flag("format")
+            if chk_fmt18.len == 0 {
+                chk_fmt18 = "ANCHORFMT"
+            }
             // 词法/解析诊断(镜像 seed:PATH:LINE:COL CODE: MSG)→ 止于 rc=1
+            // T18:JSON 模式下 pdiags 走 JSON 面(精确 LINE:COL span)
             if pdiags.len > 0 {
+                if or2(seq2(chk_fmt18, "1"), seq2(chk_fmt18, "json")) {
+                    print("\{\"diagnostics\":[")
+                    var pi18: I32 = 0
+                    while pi18 < pdiags.len {
+                        json_diag_lc(epath, pdiags[pi18], pi18 == 0)
+                        pi18 += 1
+                    }
+                    println("]}")
+                    return 1
+                }
                 var pi: I32 = 0
                 while pi < pdiags.len {
                     println(epath + ":" + pdiags[pi])
@@ -251,15 +300,24 @@ fn main() -> I32 {
             var sems = sem_walk2(file, chk_prof)
             if or2(seq2(chk_fmt, "1"), seq2(chk_fmt, "json")) {
                 print("\{\"diagnostics\":[")
+                var first18 = true
+                // T18:parser 诊断入 JSON(精确 LINE:COL 来自词法层)
+                if pdiags.len > 0 {
+                    var pi18: I32 = 0
+                    while pi18 < pdiags.len {
+                        json_diag_lc(epath, pdiags[pi18], first18)
+                        first18 = false
+                        pi18 += 1
+                    }
+                }
                 if !seq2(sems, "") {
                     var i: I32 = 0
-                    var first = true
                     while i < sems.len {
                         var e: I32 = i
                         while e < sems.len && byte_at(sems, e) != 10 { e += 1 }
                         if e > i {
-                            json_diag(epath, s, byte_slice(sems, i, e), first)
-                            first = false
+                            json_diag(epath, s, byte_slice(sems, i, e), first18)
+                            first18 = false
                         }
                         i = e + 1
                     }

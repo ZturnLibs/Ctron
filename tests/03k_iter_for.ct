@@ -1,0 +1,28 @@
+// 03k_iter_for.ct —— 用户实现 Iterator + for 集成(§3.8.2/§4;T15 三线 interp 落地)
+// 语义承诺:实现 Iterator[T] 即可 for 直迭代;适配器(T16)另锚 r3b_iter_adapters
+// self 形态:var self(规范 EBNF 形;锚原起草 &var self 系非文法形已修)
+trait Iterator[T] {
+    fn next(var self) -> T?
+}
+
+struct Counter {
+    var cur: I32
+    let limit: I32
+}
+
+impl Iterator[I32] for Counter {
+    fn next(var self) -> I32? {
+        if self.cur >= self.limit { return None }
+        let v = self.cur
+        self.cur += 1
+        return Some(v)
+    }
+}
+
+test "for over custom iterator" {
+    let c = Counter { cur: 0, limit: 4 }
+    var acc: I32 = 0
+    for v in c { acc += v }
+    assert_eq(acc, 6)
+}
+

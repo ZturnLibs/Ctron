@@ -18,8 +18,9 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                 return e4("k", env, v7(lit_to_dec(e[1])), out)
             }
         }
-        // 宽字面量直入 I64 域(§3.1.1):仅无后缀;十进制/0x/0o/0b 同口径
-        if e[2].len == 0 {
+        // 宽字面量直入 I64 域(§3.1.1):无后缀与 i64/isize 后缀同口径
+        // (i64 后缀超 I32 宽度此前误落 I32 域截断为 0 —— T01 锚定修复)
+        if or2(e[2].len == 0, or2(seq2(e[2], "i64"), seq2(e[2], "isize"))) {
             if lit_wide_i32(e[1]) {
                 return e4("k", env, v6(lit_to_dec(e[1])), out)
             }
@@ -71,6 +72,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
             ns.push("NS")
             ns.push("parallel")
             return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(ns) }, out)
+        }
+        if seq2(e[1], "bit") {
+            var nsb = List[Str]()
+            nsb.push("NS")
+            nsb.push("bit")
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nsb) }, out)
         }
         if seq2(e[1], "dom") {
             var ns = List[Str]()
@@ -257,6 +264,17 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                 if recv.tag == 8 {
                     if or2(seq2(cx_of(recv)[0], "A"), seq2(cx_of(recv)[0], "L")) {
                         return e4("k", ob.env, vI(cx_of(recv).len - 1), ob.out)
+                    }
+                }
+                if recv.tag == 8 {
+                    if seq2(cx_of(recv)[0], "SB") {
+                        var sbl: I32 = 0
+                        var sbi: I32 = 1
+                        while sbi < cx_of(recv).len {
+                            sbl += cx_of(recv)[sbi].len
+                            sbi += 1
+                        }
+                        return e4("k", ob.env, vI(sbl), ob.out)
                     }
                 }
                 var tn: Str = "?"

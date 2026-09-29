@@ -286,6 +286,52 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
         }
         var it = ir.v
         if it.tag == 8 {
+            // Iterator 协议(T15;§3.8.2/§4):struct 值有 next 方法实现 →
+            // for 糖 = next 调用循环。self 与循环共享 env(var 绑定可变,
+            // 方法体 self.cur += 1 对下一轮可见——值类型迭代状态推进)
+            if seq2(cx_of(it)[0], "U") {
+                var mth15 = find_impl_method(file, cx_of(it)[1], "next")
+                if mth15.len > 0 {
+                    var envI = env_add(ir.env, "self", it)
+                    var outI = ir.out
+                    var goI = true
+                    while goI {
+                        var br15 = run_block(file, envI, outI, mth15[5], false)
+                        if br15.kind == "a" {
+                            return br15
+                        }
+                        envI = br15.env
+                        outI = br15.out
+                        if br15.v.tag == 8 {
+                            if seq2(cx_of(br15.v)[0], "T") {
+                                if cx_of(br15.v).len > 2 {
+                                    if seq2(cx_of(br15.v)[1], "Some") {
+                                        var eit = env_add(envI, nm, v_unbox(cx_of(br15.v)[2]))
+                                        var brb = run_block(file, eit, outI, st[3], false)
+                                        if brb.kind == "b" {
+                                            return s4("k", env_drop(brb.env, 1), brb.out, vV2())
+                                        }
+                                        if brb.kind != "k" && brb.kind != "c" {
+                                            return brb
+                                        }
+                                        envI = env_drop(brb.env, 1)
+                                        outI = brb.out
+                                    } else {
+                                        goI = false
+                                    }
+                                } else {
+                                    goI = false
+                                }
+                            } else {
+                                goI = false
+                            }
+                        } else {
+                            goI = false
+                        }
+                    }
+                    return s4("k", envI, outI, vV2())
+                }
+            }
             if seq2(cx_of(it)[0], "A") {
                 var envw3 = ir.env
                 var outw3 = ir.out

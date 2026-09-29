@@ -1,0 +1,7 @@
+// caps_fine_neg - E4010 细键(T11 §11.1):导入 listen/connect 门面但清单仅有 net.resolve
+//@ fail: E4010
+use net.{net_tcp_listen, net_tcp_connect, net_resolve_all}
+
+fn main() {
+    assert(true)
+}

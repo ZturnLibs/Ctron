@@ -1,7 +1,6 @@
 //@ fail: E2030
-// r3c_guard_exhaustive.neg.ct —— 守卫臂不参与穷尽(R-P3c,v0.6 §4.6)
+// 02f_match_guard_exhaustive.neg.ct —— 守卫臂不参与穷尽(§4.6;R-P3c 三线落地迁入)
 // 语义承诺:守卫可能不成立,带守卫的臂不算覆盖;全部臂带守卫且无通配 = E2030
-// 锚点:现状 E1001(解析拒绝)→ 红;R-P3c 落地转绿(码从 E1001 变 E2030)
 enum Two {
     X
     Y

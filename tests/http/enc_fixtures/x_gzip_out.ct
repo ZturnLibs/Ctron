@@ -1,0 +1,30 @@
+// tests/http/enc_fixtures/x_gzip_out.ct —— gzip 产出向互操作(T12;§11.7)
+// x_ 前缀 = emit 臂专用。本实现 gzip_compress 产出的流以 hex 打印到 stdout,
+// 由 run.sh 互操作臂交 python gzip 校验(真实现消费向差分;自往返已在
+// x_gzip_round 覆盖,本件只证「别人能解我们的流」)。
+use http.enc.{ gzip_compress, enc_level_default }
+
+test "own gzip stream hex out" {
+    // 载荷与 x_gzip_interop 同源(python 侧 run.sh 逐字节比对)
+    var pay: I64[64] = [0]
+    var out: I64[256] = [0]
+    var i: I64 = 0
+    while i < 64 {
+        pay[i] = 65 + i % 23
+        i += 1
+    }
+    let n = gzip_compress(pay, 64, out, 256, enc_level_default())
+    assert(n > 18)
+    assert(n < 256)
+    var hx = ""
+    var j: I64 = 0
+    while j < n {
+        var b = out[j]
+        var hi = b / 16
+        var lo = b % 16
+        hx = hx + byte_slice("0123456789abcdef", hi, hi + 1)
+        hx = hx + byte_slice("0123456789abcdef", lo, lo + 1)
+        j += 1
+    }
+    println(hx)
+}

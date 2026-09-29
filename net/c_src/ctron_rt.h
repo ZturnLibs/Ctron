@@ -53,6 +53,10 @@ void    ctron_rt_notify_done(void* key);
 
 /* 挂起当前协程,直到被 wake/超时/reactor 就绪(裸线程为 no-op) */
 void    ctron_rt_park(void);
+/* T10:绝对 deadline 停车(取消广播早醒不内循环,调用方判到期)与时钟钩
+ * (net 垫片强覆盖贯通虚拟钟;弱缺省 = 单调实钟) */
+void    ctron_rt_sleep_until(uint64_t deadline);
+uint64_t ctron_rt_clock_ns(void);
 
 /* 唤醒因 park 挂起的协程;对未停车协程粘滞记 pending(先唤醒后停车不丢) */
 void    ctron_rt_wake(void* key);

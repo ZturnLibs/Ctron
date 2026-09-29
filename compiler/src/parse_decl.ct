@@ -31,6 +31,12 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
             if or2(t0 == "var", t0 == "let") { adv(cur) }
             if tok(toks, cur) == "&" {
                 adv(cur)
+                // &var/&let 前缀组合(&var self 等,非文法形):防御消耗按 var 语义
+                // ——否则 var 被当参数名 + else 分支双 adv 越过 self,p_typ 死循环
+                if or2(tok(toks, cur) == "var", tok(toks, cur) == "let") {
+                    if tok(toks, cur) == "var" { isv = "true" }
+                    adv(cur)
+                }
             }
             var pn = tok(toks, cur)
             adv(cur)

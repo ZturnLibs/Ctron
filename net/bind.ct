@@ -26,6 +26,8 @@ pub struct Box64 {
 
 pub extern "c" fn ctron_net_now_ns() -> I64
 pub extern "c" fn ctron_net_sleep_ms(ms: I64) -> I64
+pub extern "c" fn ctron_net_sleep_ns(ns: I64) -> I64
+pub extern "c" fn ctron_net_clock_jump(ns: I64) -> I64
 pub extern "c" fn ctron_net_last_errno() -> I64
 pub extern "c" fn ctron_net_strerror(e: I64) -> Str
 pub extern "c" fn str_from_c(s: Str) -> Str
@@ -45,6 +47,7 @@ pub extern "c" fn ctron_net_udp_bind(fd: I64, host: Str, port: I64, out_port: Bo
 pub extern "c" fn ctron_net_udp_sendto(fd: I64, host: Str, port: I64, buf: &I64[], n: I64) -> I64
 pub extern "c" fn ctron_net_udp_recvfrom(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
 pub extern "c" fn ctron_net_resolve_first(host: Str) -> Str
+pub extern "c" fn ctron_net_resolve_all(host: Str) -> Str
 pub extern "c" fn ctron_net_unix_listen(path: Str, out_fd: Box[Box64]) -> I64
 pub extern "c" fn ctron_net_unix_accept(lfd: I64, out_fd: Box[Box64]) -> I64
 pub extern "c" fn ctron_net_unix_connect(path: Str, out_fd: Box[Box64]) -> I64

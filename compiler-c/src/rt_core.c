@@ -129,7 +129,15 @@ val ck_int(rt* R, __int128 x, int bits, int us, const char* op) {
     return v_int(x, bits, us);
 }
 val wrap_int(__int128 x, int bits, int us) {
-    if (bits >= 64) return v_int(x, bits, us);
+    if (bits >= 64) {
+        if (bits == 64 && us) {
+            /* U64(§3.6 窄化=截断;T21 修):负值源模 2^64 折回——此前 bits>=64
+             * 直通透传,-1 以 __int128 全宽存储经无符号读出 = 2^128-1 */
+            unsigned __int128 m = (((unsigned __int128)1) << 64) - 1;
+            return v_int((__int128)((unsigned __int128)x & m), 64, 1);
+        }
+        return v_int(x, bits, us);
+    }
     unsigned __int128 m = (((unsigned __int128)1) << bits) - 1;
     __int128 r = (__int128)((unsigned __int128)x & m);
     if (!us) { __int128 h = ((__int128)1) << (bits - 1); if (r >= h) r -= ((__int128)1) << bits; }
@@ -388,9 +396,17 @@ val invoke_vals(rt* R, val fnv, val* args, size_t n) {
         R->top = callee_env;
         for (size_t i = 0; i < n; i++)
             if (c->cparams[i].name) env_let(R, c->cparams[i].name, args[i]);
+        // P0-2:闭包体内 return 就地取值,不得把 has_ret 泄入调用方帧
+        //(镜像 call_decl_vals;此前泄漏使调用方 eval_block 提前截断——03j interp 臂假绿根因)
+        int sr = R->has_ret;
+        val srv = R->ret;
+        R->has_ret = 0;
         val r = eval_expr(R, c->cbody);
+        val res = R->has_ret ? R->ret : r;
+        R->has_ret = sr;
+        R->ret = srv;
         R->top = saved;
-        return r;
+        return res;
     }
     rt_abort(R, RT_ERROR, "调用目标非函数值");
     return v_void();
@@ -462,7 +478,16 @@ int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
     return 0;
 }
 
+// PAT_OR 或模式(R-P3c):替身依序试配,首个命中的替身绑定生效
+static int pat_bind_or(rt* R, cpat* p, val s) {
+    for (size_t i = 0; i < p->nalts; i++) {
+        if (pat_bind(R, p->alts[i], s)) return 1;
+    }
+    return 0;
+}
+
 int pat_bind(rt* R, cpat* p, val s) {
+    if (p->kind == PAT_OR) return pat_bind_or(R, p, s);
     if (!p) return 0;
     switch (p->kind) {
     case PAT_WILD: return 1;

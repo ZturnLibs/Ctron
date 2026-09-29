@@ -1,0 +1,39 @@
+// resolve_all —— DNS 多记录双栈验收(§11.5;T09)
+// 钉住:AF_UNSPEC 全记录返回(v4 点分/v6 冒分)、数值 host 单记录确定性、
+// 失败 → 空表 + last_net_error 携带 gai rc、addr_is_v6 族判定。
+// CI 纪律:仅 localhost/数值 host(零外联;失败例用非法数值串,不走 DNS 查询)。
+use net.{Net_probe, net_resolve_all, addr_is_v6, last_net_error}
+
+test "numeric hosts resolve deterministically" {
+    let net = Net_probe()
+    let v4 = net_resolve_all(net, "127.0.0.1")
+    assert_eq(v4.len, 1)
+    assert_eq(v4[0], "127.0.0.1")
+    assert(!addr_is_v6(v4[0]))
+    let v6 = net_resolve_all(net, "::1")
+    assert_eq(v6.len, 1)
+    assert_eq(v6[0], "::1")
+    assert(addr_is_v6(v6[0]))
+}
+
+test "localhost resolves at least one record" {
+    let net = Net_probe()
+    let lh = net_resolve_all(net, "localhost")
+    assert(lh.len >= 1)
+    var hasv4 = false
+    var i: I32 = 0
+    while i < lh.len {
+        if !addr_is_v6(lh[i]) {
+            hasv4 = true
+        }
+        i += 1
+    }
+    assert(hasv4)
+}
+
+test "invalid numeric host yields empty list and error" {
+    let net = Net_probe()
+    let bad = net_resolve_all(net, "300.300.300.300")
+    assert_eq(bad.len, 0)
+    assert(last_net_error().message.len > 0)
+}

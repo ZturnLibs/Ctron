@@ -91,6 +91,9 @@ struct tc {
     struct { char* name; ty ret; int nparams; int is_void; ty pty[8]; } fns[MAX_FNS];
     size_t nfns;
     const ty* fn_ret; // 当前函数返回类型提示(?)
+    const cty* fn_ret_fnty; // 当前函数返回类型为 fn(A)->B 时的 AST 节点(P0-2 闭包形参注入源)
+    const cty* want_fnty; // 闭包适配的期望函数签名(§4.7 返回位/实参位;P0-2)
+    int in_typed_clo; // 正在发射真签名闭包体(体内 return 按 C 闭包返回型直发;P0-2)
     const ty* want;   // 期望类型提示(None/Some/Ok/Err 构造推导)
     int in_main;      // 当前正在发射 fn main(? 早退 = exit 0,对齐 rt run_main)
     scope* sc;
@@ -142,6 +145,7 @@ void emit_method_fn(tc* c, const char* type, const cfn* F, const char* cname);
 ty emit_mutex_call(tc* c, cexpr* e, ty mt, const char* rn, sb* o);
 ty emit_parallel_map(tc* c, cexpr* e, sb* o);
 ty emit_parallel_reduce(tc* c, cexpr* e, sb* o);
+ty emit_bit(tc* c, cexpr* e, sb* o, const char* m);
 void emit_prop_accessor(tc* c, const char* type, const cprop* P, const char* cname);
 ty emit_scope_expr(tc* c, cexpr* e, sb* o);
 ty emit_spawn_call(tc* c, cexpr* e, sb* o);

@@ -1,0 +1,22 @@
+// P2 实例深查正例:实参对位+投影子树+slot 事件(零 E81xx 诊断)。
+// 契约注:组件体仅用自家 prop;宿主内容走 slot(宿主语义按宿主视图查)。
+view Badge (t: Str) {
+  <vbox class="bdg">
+    <label class="bl">{t}</label>
+    <button class="bb" on:click={mark(t)}>OK</button>
+  </vbox>
+}
+view P (m: Model) {
+  <vbox class="root">
+    <Badge t: {m.txt}/>
+  </vbox>
+}
+struct Model {
+  var txt: Str
+}
+fn mark(s: Str) {
+}
+style root { direction: column }
+style bdg { direction: column }
+style bl { fg: "#ffffff" }
+style bb { bg: "#2563eb" h: 30 }

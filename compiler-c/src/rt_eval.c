@@ -358,6 +358,70 @@ int val_eq(rt* R, val a, val b) {
     return 0;
 }
 
+// ================= bit.* 位运算内建(§4.5;T01;宿主原生 __int128) =================
+// 语义与自举文本域一致:and/or/xor/not 按宽度补码;shl 回绕;shr 有符号算术/无符号
+// 逻辑;移位数越界 [0, 宽度) → panic "bit shift range"。宿主表示:u64 非负、其余折有符号。
+static void bit_split(const char* m, char* op, char* w) {
+    size_t n = strlen(m), us = n;
+    for (size_t i = 0; i < n; i++) {
+        if (m[i] == '_') { us = i; break; }
+    }
+    if (us >= 7) us = 6;
+    memcpy(op, m, us); op[us] = 0;
+    snprintf(w, 8, "%s", m + us + 1);
+}
+static int bit_winfo(const char* w, int* bits, int* us) {
+    if (!strcmp(w, "i32")) { *bits = 32; *us = 0; return 1; }
+    if (!strcmp(w, "u32")) { *bits = 32; *us = 1; return 1; }
+    if (!strcmp(w, "i64")) { *bits = 64; *us = 0; return 1; }
+    if (!strcmp(w, "u64")) { *bits = 64; *us = 1; return 1; }
+    return 0;
+}
+static val rt_bit(rt* R, const char* m, const cexpr* e) {
+    char op[8], w[8];
+    bit_split(m, op, w);
+    int bits = 0, us = 0;
+    if (!bit_winfo(w, &bits, &us)) rt_abort(R, RT_ERROR, "bit 宽度:%s", w);
+    unsigned __int128 mod = ((unsigned __int128)1) << bits;
+    unsigned __int128 hm = ((unsigned __int128)1) << (bits - 1);
+    int unary = !strcmp(op, "not");
+    int two = !strcmp(op, "and") || !strcmp(op, "or") || !strcmp(op, "xor")
+              || !strcmp(op, "shl") || !strcmp(op, "shr");
+    if ((!unary && !two) || (int)e->nelems != (unary ? 1 : 2))
+        rt_abort(R, RT_ERROR, "bit 实参:%s", m);
+    val a = eval_expr(R, e->elems[0]);
+    if (a.k != V_INT) rt_abort(R, RT_ERROR, "bit 数值");
+    unsigned __int128 ua = ((unsigned __int128)a.i) & (mod - 1);
+    unsigned __int128 r = 0;
+    if (unary) {
+        r = (~ua) & (mod - 1);
+    } else if (!strcmp(op, "and") || !strcmp(op, "or") || !strcmp(op, "xor")) {
+        val b = eval_expr(R, e->elems[1]);
+        if (b.k != V_INT) rt_abort(R, RT_ERROR, "bit 数值");
+        unsigned __int128 ub = ((unsigned __int128)b.i) & (mod - 1);
+        if (!strcmp(op, "and")) r = ua & ub;
+        else if (!strcmp(op, "or")) r = ua | ub;
+        else r = ua ^ ub;
+    } else {
+        val b = eval_expr(R, e->elems[1]);
+        if (b.k != V_INT) rt_abort(R, RT_ERROR, "bit 数值");
+        long long n = (long long)b.i;
+        if (n < 0 || n >= bits) rt_abort(R, RT_PANIC, "bit shift range");
+        if (!strcmp(op, "shl")) {
+            r = (ua << n) & (mod - 1);
+        } else if (us) {
+            r = ua >> n; // 逻辑右移
+        } else {
+            __int128 sv = ua >= hm ? (__int128)(ua - mod) : (__int128)ua;
+            __int128 sr = sv >> n; // C 算术右移(gcc/clang)
+            return v_int(sr, bits, us);
+        }
+    }
+    if (us) return v_int((__int128)(r & (mod - 1)), bits, us); // u32/u64 非负
+    __int128 sv = r >= hm ? (__int128)(r - mod) : (__int128)r; // 折有符号
+    return v_int(sv, bits, us);
+}
+
 // ================= 表达式 =================
 val eval_expr(rt* R, cexpr* e) {
     if (!e) return v_void();
@@ -394,8 +458,8 @@ val eval_expr(rt* R, cexpr* e) {
             }
         }
         if (is_variant(R, e->text)) return v_tag(e->text, NULL, 0); // 裸变体值(如 None)
-        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom"))
-            return v_ns(e->text); // 内建命名空间(§7.7/§9.2)
+        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom") || !strcmp(e->text, "bit"))
+            return v_ns(e->text); // 内建命名空间(§7.7/§9.2/§4.5 bit)
         rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
     }
     case EX_UNARY: {
@@ -569,6 +633,11 @@ val eval_expr(rt* R, cexpr* e) {
             if (o.k == V_ARR) return v_int(o.nitems, 32, 0);
             if (o.k == V_STR) return v_int(o.s ? (__int128)strlen(o.s) : 0, 32, 0);
             if (o.k == V_LIST) return v_int(o.lst->n, 32, 0);
+            if (o.k == V_SB) {
+                __int128 n = 0;
+                for (size_t i = 0; i < o.lst->n; i++) n += (__int128)strlen(o.lst->items[i].s ? o.lst->items[i].s : "");
+                return v_int(n, 32, 0);
+            }
             rt_abort(R, RT_ERROR, ".len 目标类型不支持");
         }
         if (strcmp(m, "char_len") == 0) {
@@ -650,6 +719,11 @@ val eval_expr(rt* R, cexpr* e) {
         for (size_t i = 0; i < e->narms; i++) {
             env_push(R);
             if (pat_bind(R, e->arms[i].pat, sc)) {
+                // 模式守卫(R-P3c):绑定入 env 后判定,假值则回落下一臂
+                if (e->arms[i].guard) {
+                    val g = eval_expr(R, e->arms[i].guard);
+                    if (!truthy(g)) { env_pop(R); continue; }
+                }
                 val r = eval_expr(R, e->arms[i].expr);
                 env_pop(R);
                 return r;
@@ -711,6 +785,16 @@ val eval_expr(rt* R, cexpr* e) {
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "List") == 0) {
             return v_list(R); // GC List[T]()
+        }
+        if (e->callee && e->callee->kind == EX_IDENT
+            && strcmp(e->callee->text, "StringBuilder") == 0) {
+            // StringBuilder()(§3.8.2;T03):段列表(引用语义,push 别名可见)
+            if (e->nelems != 0) rt_abort(R, RT_ERROR, "StringBuilder arity");
+            val v = {0};
+            v.k = V_SB;
+            listnode* ln = (listnode*)ctron_arena_alloc(R->a, sizeof(listnode));
+            v.lst = ln;
+            return v;
         }
         // Simd[E, N].method(args) —— splat(其余 lane/to_array 走成员路径)
         if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname && cal->obj
@@ -1140,8 +1224,9 @@ val eval_expr(rt* R, cexpr* e) {
                 return out;
             }
             if (recv.k == V_NS && cal->mname) {
-                // 内建命名空间:parallel(§7.7 数据并行,解释器序贯执行)/ stdweb.dom(§9.2 最小锚)
+                // 内建命名空间:parallel(§7.7 数据并行,解释器序贯执行)/ stdweb.dom(§9.2 最小锚)/ bit(§4.5 位运算)
                 const char* ns = recv.tag;
+                if (!strcmp(ns, "bit")) return rt_bit(R, cal->mname, e);
                 if (!strcmp(ns, "parallel") && !strcmp(cal->mname, "map")) {
                     if (e->nelems != 2) rt_abort(R, RT_ERROR, "parallel.map 实参");
                     val arrv = eval_expr(R, e->elems[0]);
@@ -1193,6 +1278,40 @@ val eval_expr(rt* R, cexpr* e) {
                     return v_arr(it, recv.nitems);
                 }
                 rt_abort(R, RT_ERROR, "Simd 方法不支持: %s", cal->mname);
+            }
+            if (recv.k == V_SB && cal->mname) {
+                // StringBuilder 方法(§3.8.2;T03):push_str 追段 / to_string 拼段
+                if (strcmp(cal->mname, "push_str") == 0) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "push_str 实参");
+                    val sv = eval_expr(R, e->elems[0]);
+                    if (sv.k != V_STR) rt_abort(R, RT_ERROR, "push_str 需 Str");
+                    if (recv.lst->n == recv.lst->cap) {
+                        size_t nc = recv.lst->cap ? recv.lst->cap * 2 : 4;
+                        val* ni = (val*)ctron_arena_alloc(R->a, nc * sizeof(val));
+                        memcpy(ni, recv.lst->items, recv.lst->n * sizeof(val));
+                        recv.lst->items = ni;
+                        recv.lst->cap = nc;
+                    }
+                    recv.lst->items[recv.lst->n].k = V_STR;
+                    recv.lst->items[recv.lst->n].s = astr(R, sv.s ? sv.s : "");
+                    recv.lst->n += 1;
+                    return v_void();
+                }
+                if (strcmp(cal->mname, "to_string") == 0) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "to_string 实参");
+                    size_t total = 1;
+                    for (size_t i = 0; i < recv.lst->n; i++)
+                        total += strlen(recv.lst->items[i].s ? recv.lst->items[i].s : "");
+                    char* buf = (char*)ctron_arena_alloc(R->a, total);
+                    buf[0] = 0;
+                    for (size_t i = 0; i < recv.lst->n; i++)
+                        strcat(buf, recv.lst->items[i].s ? recv.lst->items[i].s : "");
+                    val o = {0};
+                    o.k = V_STR;
+                    o.s = buf;
+                    return o;
+                }
+                rt_abort(R, RT_ERROR, "StringBuilder 方法不支持: %s", cal->mname);
             }
             if (recv.k == V_LIST && cal->mname) {
                 if (strcmp(cal->mname, "push") == 0) {

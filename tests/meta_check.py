@@ -48,6 +48,7 @@ ERROR_CODES = {
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",
     "E6030": "comptime 反射泛型运行时类型(parametricity)",
+    "E6040": "单态化实例预算超限(§8.5;CTRON_MONO_BUDGET 可调,默认 8192)",
     "W8010": "struct 含可变类引用字段(浅共享)",
     "W8020": "must-use 结果被丢弃",
     "W8030": "未使用绑定",

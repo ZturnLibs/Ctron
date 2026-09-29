@@ -1,0 +1,60 @@
+// bit_ops.ct —— bit.* 位运算内建命名空间(§4.0 运算符宪法:位运算恒走 bit 模块;§4.5)
+// 语义承诺:and/or/xor/not 按声明宽度补码语义;shl 回绕;shr 有符号算术移/无符号逻辑移;
+//          移位数越界 [0, 宽度) → panic "bit shift range"(检查哲学与索引/溢出一致)
+test "and/or/xor i64 incl negatives (two's complement)" {
+    assert_eq(bit.and_i64(12, 10), 8)
+    assert_eq(bit.and_i64(-1, 5), 5)
+    assert_eq(bit.and_i64(0, 12345), 0)
+    assert_eq(bit.or_i64(12, 10), 14)
+    assert_eq(bit.or_i64(-1, 5), -1)
+    assert_eq(bit.xor_i64(12, 10), 6)
+    assert_eq(bit.xor_i64(-1, 5), -6)
+    assert_eq(bit.xor_i64(-7, -7), 0)
+}
+test "not across widths" {
+    assert_eq(bit.not_i64(0), -1)
+    assert_eq(bit.not_i64(-1), 0)
+    assert_eq(bit.not_i32(0), -1)
+    assert_eq(bit.not_i64(41), -42)
+    assert_eq(bit.not_i64(bit.not_i64(12345)), 12345)
+}
+test "unsigned domain: u32/u64 magnitudes" {
+    let umax: U64 = 18446744073709551615
+    assert_eq(bit.and_u64(umax, 255), 255)
+    assert_eq(bit.and_u64(umax, 0), 0)
+    assert_eq(bit.xor_u64(umax, umax), 0)
+    assert_eq(bit.not_u64(umax), 0)
+    assert_eq(bit.not_u32(0u32), 4294967295u32)
+    assert_eq(bit.or_u32(4042322160u32, 252645135u32), 4294967295u32)
+    assert_eq(bit.xor_u32(4294967295u32, 255u32), 4294967040u32)
+}
+test "shl wraps at width; i32 high bit folds negative" {
+    assert_eq(bit.shl_i64(1, 4), 16)
+    assert_eq(bit.shl_i64(-1, 40), -1099511627776i64)
+    assert_eq(bit.shl_i64(1, 62), 4611686018427387904)
+    assert_eq(bit.shr_i64(bit.shl_i64(1, 62), 62), 1)
+    assert(bit.shl_i64(1, 63) < 0)
+    assert_eq(bit.shr_i64(bit.shl_i64(1, 63), 62), -2)
+    assert(bit.shl_i32(1073741824, 1) < 0)
+    assert_eq(bit.shr_i32(bit.shl_i32(1073741824, 1), 31), -1)
+    let e63: U64 = 9223372036854775808
+    assert_eq(bit.shl_u64(1, 63), e63)
+    assert_eq(bit.shl_u32(4294967295u32, 4), 4294967280u32)
+}
+test "shr: arithmetic on signed, logical on unsigned" {
+    assert_eq(bit.shr_i64(-8, 1), -4)
+    assert_eq(bit.shr_i64(-1, 63), -1)
+    assert_eq(bit.shr_i64(1000, 3), 125)
+    assert_eq(bit.shr_i32(-8, 2), -2)
+    let umax: U64 = 18446744073709551615
+    assert_eq(bit.shr_u64(umax, 60), 15)
+    assert_eq(bit.shr_u64(umax, 0), umax)
+    assert_eq(bit.shr_u32(4294967295u32, 28), 15)
+}
+test "bit and/or compose: extract and set fields" {
+    let full: U64 = 18446744073709551615
+    let hi: U64 = bit.shr_u64(full, 32)
+    assert_eq(hi, 4294967295)
+    let lo: U64 = bit.and_u64(full, 4294967295)
+    assert_eq(lo, 4294967295)
+}

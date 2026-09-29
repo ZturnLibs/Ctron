@@ -80,7 +80,7 @@ fn main() -> I32 {
                 |buf| bind_all(buf, m),
                 |nm| actc(nm, m))
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "x|")
+            d_expect_text(t, "x")
             // Tab → 焦点环进 B(光标随焦,空文本无竖线);A 侧 "x" 平显
             d_send_key(t, 258,
                 |buf| bind_all(buf, m),
@@ -92,7 +92,7 @@ fn main() -> I32 {
                 |buf| bind_all(buf, m),
                 |nm| actc(nm, m))
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "y|")
+            d_expect_text(t, "y")
             // Shift+Tab → 回 A
             d_mod(t, 2)
             d_send_key(t, 258,
@@ -100,7 +100,7 @@ fn main() -> I32 {
                 |nm| actc(nm, m))
             d_mod(t, 0)
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "x|")
+            d_expect_text(t, "x")
             println("S43-TAB-GREEN")
         })
     return rc

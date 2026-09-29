@@ -32,7 +32,6 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r2a_list_oob.panic.ct", "R-P2a", Status::RunRed),
         ("r2a_map.ct", "R-P2a", Status::RunRed),
         ("r2a_set.ct", "R-P2a", Status::RunRed),
-        ("r2a_sb.ct", "R-P2a", Status::RunRed),
         ("r2a_container_send.ct", "R-P2a", Status::RunRed),
         ("r2a_container_alloc.neg.ct", "R-P2a", Status::NegGreen("E3040")),
         // ---- R-P2b std 能力(std.* 桩已解析;运行时未实现) ----
@@ -43,9 +42,7 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r3a_capture.ct", "R-P3a", Status::Green),
         ("r3a_capture_var.neg.ct", "R-P3a", Status::NegPending("E3070")),
         ("r3b_adapters.ct", "R-P3b", Status::RunRed),
-        ("r3b_iter_trait.ct", "R-P3b", Status::RunRed),
-        ("r3c_guards.ct", "R-P3c", Status::CheckRed),
-        ("r3c_guard_exhaustive.neg.ct", "R-P3c", Status::NegPending("E2030")),
+        ("r3b_iter_adapters.ct", "R-P3b", Status::RunRed),
         // ---- R-P2d fmt 夹具(行为测试身份,今天绿) ----
         ("r2d_fmt_fixture.ct", "R-P2d", Status::Green),
         ("r2d_fmt_chain.ct", "R-P2d", Status::Green),
@@ -59,12 +56,7 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r6h_interp_unclosed.neg.ct", "R-P6h", Status::NegGreen("E1001")),
         ("r6i_interp_nested_str.neg.ct", "R-P6i", Status::NegGreen("E1001")),
         // ---- 09-15 审计批次补登(r6b–r6g/r1a;R 线行为逐件实测锚定) ----
-        ("r1a_trailing_dot.neg.ct", "R-P1a", Status::NegGreen("E1001")),
-        ("r6b_res_class.neg.ct", "R-P6b", Status::NegPending("E4050")),
         ("r6c_as_u64_negsrc.ct", "R-P6c", Status::Green), // 2026-09-19 interp 字面量保真修复后翻转(RunRed → Green)
-        ("r6d_trusted_unmarked.neg.ct", "R-P6d", Status::NegPending("W8050")),
-        ("r6e_trusted_nonextern.neg.ct", "R-P6e", Status::NegPending("E4040")),
-        ("r6f_comptime_budget.neg.ct", "R-P6f", Status::NegPending("E6010")),
         // r6g:check 双面绿;文件无 test 块,RunRed 对空结果集空泛成立(链接面由 modules/ffi_math 覆盖)
         ("r6g_trusted_extern.ct", "R-P6g", Status::RunRed),
         // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播未实现,RunRed 空泛成立;

@@ -1,0 +1,8 @@
+// web 域包清单(Plan 2a Task 0;设计 docs/superpowers/specs/2026-09-27-web-framework-design.md §3/§4)
+// caps net.listen:供应链审计标记——依赖 web 才可能听端口(spec §4 能力面)
+pkg {
+    manifest_version = 1
+    name = "web"
+    version = "0.1.0"
+    caps = ["net.listen"]
+}

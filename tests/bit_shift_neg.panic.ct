@@ -1,0 +1,6 @@
+// bit_shift_neg.panic.ct —— 负移位数 → panic(与 bit_shift_hi 同码同消息)
+//@ panic: bit shift range
+
+test "negative shift panics" {
+    let _ = bit.shr_i32(1, -1)
+}

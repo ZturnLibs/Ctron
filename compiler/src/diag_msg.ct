@@ -102,6 +102,7 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E1001.punct.semi") { return "disabled punctuation ;" }
     if seq2(key, "E1001.badchar") { return "unrecognized character '%0'" }
     if seq2(key, "E1001.impl.for") { return "impl missing for" }
+    if seq2(key, "E1001.trailing.dot") { return "trailing dot at end of line: method chains use leading-dot style (§1.6)" }
     if seq2(key, "E1001.exptype") { return "expected type, got %0" }
     if seq2(key, "E1001.impl.body") { return "impl body missing \{" }
     if seq2(key, "E1001.abi") { return "extern ABI must be the \"c\" string" }
@@ -192,6 +193,7 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E1001.punct.semi") { return "禁用的标点 ;" }
     if seq2(key, "E1001.badchar") { return "无法识别的字符 '%0'" }
     if seq2(key, "E1001.impl.for") { return "impl 缺少 for" }
+    if seq2(key, "E1001.trailing.dot") { return "行尾点非法:方法链统一首点式(§1.6)" }
     if seq2(key, "E1001.exptype") { return "预期类型,实际 %0" }
     if seq2(key, "E1001.impl.body") { return "impl 体缺少 \{" }
     if seq2(key, "E1001.abi") { return "extern ABI 应为 \"c\" 字符串" }

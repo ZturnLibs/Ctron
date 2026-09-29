@@ -42,7 +42,8 @@
 | E5030 | use 导入同名 decl(曾"首个胜出"静默遮蔽,现拦截) | §2.6 | 预留:多文件 use 用例 |
 | E6010 | comptime 预算超限 | §8.4 | `roadmap/r6f_comptime_budget.neg.ct` + `modules/comptime_budget` |
 | E6020 | comptime 副作用/不确定 | §8.4 | 预留 |
-| E6030 | comptime 反射泛型运行时类型(parametricity) | §8.4 | 预留 |
+| E6040 | 单态化实例预算超限(§8.5:泛型 fn 显式特化 + 泛型 struct 实例 > 上限,建议 `&Trait` 化;CTRON_MONO_BUDGET 可调,默认 8192;v0 计显式 TypeArgs 位,推断位随 §3.9.1 ex_ty 登记并入) | §8.5(v0.9) | `compiler/test/fx_mono_budget_neg.ct`(smoke emit 臂) |
+| E6030 | comptime 反射泛型运行时类型(parametricity) | §8.4 | 预留 → **封闭性承载**(2026-09-28 论证:语言无反射算子/ceval 值域仅整型/类型名不可作值,违规不可达;类型级 comptime 或反射 API 引入时须补实检,见 tests/COVERAGE.md T06 条) |
 | W8010 | struct 含可变类引用字段(拷贝浅共享) | §6.1 | `03_shallow_copy.lint.ct` |
 | W8020 | must-use 结果被丢弃(Result/Option) | §5.6 | 预留(已发射,锚待补) |
 | W8030 | 未使用绑定 | — | 预留(已发射,锚待补) |

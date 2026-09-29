@@ -16,6 +16,9 @@ test "integer widths and literal forms" {
     assert_eq(bin, 10u8)
     assert_eq(oct, 15)
     assert_eq(adapted.as[I32](), 5)
+    let wide64: I64 = 1099511627776i64            // i64 后缀宽字面量直入 I64 域(T01 锚:此前误落 I32 域截 0)
+    assert_eq(wide64, 1099511627776)
+    assert_eq(bit.xor_i64(-1099511627776i64, 0), -1099511627776i64)
 }
 
 test "explicit conversions: widening exact, narrowing truncates" {

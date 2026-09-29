@@ -489,6 +489,30 @@ cexpr* parse_match(cparser* p) {
         if (at_k(p, TOK_EOF)) { err_here(p, "E1001", "未闭合的 match 体"); break; }
         cmatcharm* a = arm_new(&arms, p->arena);
         a->pat = parse_pattern(p);
+        // 或模式(R-P3c):p1 | p2 —— 依序试配;替身 v0 限同名单一绑定
+        if (at_k(p, TOK_PIPE)) {
+            cpat* orp = (cpat*)ctron_arena_alloc(p->arena, sizeof(cpat));
+            memset(orp, 0, sizeof *orp);
+            orp->kind = PAT_OR;
+            size_t cap = 2;
+            orp->alts = (cpat**)ctron_arena_alloc(p->arena, cap * sizeof(cpat*));
+            orp->alts[orp->nalts++] = a->pat;
+            while (eat_k(p, TOK_PIPE)) {
+                if (orp->nalts == cap) {
+                    cap *= 2;
+                    cpat** na = (cpat**)ctron_arena_alloc(p->arena, cap * sizeof(cpat*));
+                    memcpy(na, orp->alts, orp->nalts * sizeof(cpat*));
+                    orp->alts = na;
+                }
+                orp->alts[orp->nalts++] = parse_pattern(p);
+            }
+            a->pat = orp;
+        }
+        // 模式守卫(R-P3c):pat if cond => body;守卫臂不参与穷尽
+        if (at_k(p, TOK_IF)) {
+            bump_tok(p);
+            a->guard = parse_expr(p);
+        }
         if (!eat_k(p, TOK_FAT_ARROW)) err_here(p, "E1001", "match 臂缺少 =>");
         a->expr = parse_expr(p);
         if (at_k(p, TOK_NEWLINE)) skip_newlines(p);

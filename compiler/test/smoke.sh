@@ -111,6 +111,34 @@ if [ $grc -eq 1 ] && grep -q "递归超限" "$T/gr.out"; then
 else
     bad "递归泛型异常(rc=$grc): $(cat "$T/gr.out")"
 fi
+# T14-② List[struct] 发射底座((h) 族首件):装箱 push/类型化索引/for-in/字段
+if "$COMP/ctc.sh" emit "$COMP/test/fx_list_struct.ct" "$T/ls.c" > /dev/null 2>&1 \
+   && cc -O1 -w -o "$T/ls.bin" "$T/ls.c" 2>/dev/null \
+   && "$T/ls.bin" run "$COMP/test/fx_list_struct.ct" > "$T/ls.out" 2>&1 \
+   && grep -q "list-struct full ok" "$T/ls.out"; then
+    ok "List[struct] 发射底座(装箱/索引/for-in/字段)"
+else
+    bad "List[struct] 发射异常: $(head -2 "$T/ls.out" 2>/dev/null)"
+fi
+
+# T14-③ 通道句柄作字段/形参 + struct 值入通道(§7.3;P5-E 池持通道能力解锁)
+if "$COMP/ctc.sh" emit "$COMP/test/fx_chan_structs.ct" "$T/cs.c" > /dev/null 2>&1 \
+   && cc -O1 -w -pthread -o "$T/cs.bin" "$T/cs.c" 2>/dev/null \
+   && "$T/cs.bin" run "$COMP/test/fx_chan_structs.ct" > "$T/cs.out" 2>&1; then
+    ok "通道句柄字段/形参 + struct 载荷(装箱/解引用)"
+else
+    bad "通道句柄/struct 载荷异常: $(head -2 "$T/cs.out" 2>/dev/null)"
+fi
+
+# §8.5 单态化实例预算(E6040;T07):4 个显式特化,预算 3 → 超限;
+# 旋钮经原生 bin(seed 路径 env_get 哑,在册);默认 8192 上面各 emit 已隐证
+CTRON_MONO_BUDGET=3 "$COMP/bin/ctron-emit" run "$COMP/test/fx_mono_budget_neg.ct" > "$T/mb.out" 2>&1
+mbrc=$?
+if [ $mbrc -eq 1 ] && grep -q "E6040" "$T/mb.out"; then
+    ok "单态化实例预算拦截(E6040, rc=1)"
+else
+    bad "单态化预算异常(rc=$mbrc): $(head -2 "$T/mb.out")"
+fi
 tc_fx fx_unused_neg "W8030: 未使用绑定"
 tc_fx fx_shadow_neg "W8040: 遮蔽前奏符号"
 tc_fx fx_capture_mut_neg "E3070: 闭包可变捕获"

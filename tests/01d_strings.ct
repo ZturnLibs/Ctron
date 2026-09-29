@@ -12,3 +12,12 @@ test "interpolation with member chains and indexing" {
     let opt: I32? = Some(7)
     assert_eq("v={opt.or(0)}", "v=7")            // 方法调用进插值
 }
+
+test "str contains (§3.8.2;T09)" {
+    assert("a:b:c".contains(":"))
+    assert(!"abc".contains(":"))
+    assert("::1".contains("::"))
+    let host = "127.0.0.1"
+    assert(host.contains("."))
+    assert(!host.contains(":"))
+}

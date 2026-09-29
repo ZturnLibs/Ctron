@@ -57,6 +57,16 @@ fn call_cv(file: List[Str], env: List[Str], out: Str, v: Val, vals: List[Str]) -
     return e4("a", env, vV2(), out)
 }
 fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> Flow {
+    if seq2(nm, "StringBuilder") {
+        // StringBuilder()(§3.8.2;T03):值 = SB 复合(段表挂 cx),push_str 原地变
+        if vals.len == 0 {
+            var sbv = List[Str]()
+            sbv.push("SB")
+            return e4("k", env, cx_val(sbv), out)
+        }
+        panic("StringBuilder arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "print") {
         if vals.len == 1 {
             return e4("k", env, vV2(), out + fmt(v_unbox(vals[0])))
@@ -756,6 +766,30 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
     }
     var recv = ob.v
     var m = cal[3]
+    // StringBuilder(§3.8.2;T03):须先于通用 to_string 分支
+    if recv.tag == 8 {
+        if seq2(cx_of(recv)[0], "SB") {
+            if seq2(m, "push_str") && vals.len == 1 {
+                var sv = v_unbox(vals[0])
+                if sv.tag != 5 {
+                    panic("push_str 需 Str")
+                }
+                cx_of(recv).push(sv.s)
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+            if seq2(m, "to_string") && vals.len == 0 {
+                var acc = ""
+                var si: I32 = 1
+                while si < cx_of(recv).len {
+                    acc = acc + cx_of(recv)[si]
+                    si += 1
+                }
+                return e4("k", ob.env, vS(acc), ob.out)
+            }
+            panic("StringBuilder 方法:" + m)
+            return e4("a", ob.env, vV2(), ob.out)
+        }
+    }
     if seq2(m, "to_string") {
         if vals.len == 0 {
             return e4("k", ob.env, vS(fmt(recv)), ob.out)
@@ -836,6 +870,16 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             }
             panic("dom 方法:" + m)
             return e4("a", env, vV2(), out)
+        }
+        if seq2(cx_of(recv)[0], "NS") && seq2(cx_of(recv)[1], "bit") {
+            // T01 bit.* 域:ob 适配旧 e4 形(ns_bit 内部读 ob[1]/ob[3]);ns_bit 内部
+            // 调用的 vI/v6/vB/e4 在 S1 后类型自洽,返回即 Flow
+            var obold = List[Str]()
+            obold.push(ob.kind)
+            obold.push(ob.env)
+            obold.push(v_box(ob.v))
+            obold.push(ob.out)
+            return ns_bit(m, vals, obold)
         }
         if seq2(cx_of(recv)[0], "NS") && seq2(m, "map") && vals.len == 2 {
             return ns_map_reduce(file, ob, vals, true)
@@ -1027,6 +1071,14 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         panic("slice args")
         return e4("a", env, vV2(), out)
     }
+        if seq2(m, "contains") && recv.tag == 5 && vals.len == 1 {
+            // §3.8.2 Str.contains(T09 夹具踩中补齐;此前仅 List.contains)
+            var sv2 = v_unbox(vals[0])
+            if sv2.tag != 5 {
+                panic("contains 需 Str")
+            }
+            return e4("k", ob.env, vB(str_contains(recv.s, sv2.s)), ob.out)
+        }
     if recv.tag == 8 {
         if seq2(m, "load") {
             if seq2(cx_of(recv)[0], "M") && vals.len == 0 {
@@ -1214,4 +1266,210 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
     }
     panic("call target")
     return e4("a", env, vV2(), out)
+}
+
+// ---------------- bit.* 位运算内建命名空间(§4.5;T01) ----------------
+// 文本域按位组合:and/or/xor/not 补码语义、shl 回绕、shr 有符号算术/无符号逻辑;
+// 移位数越界 [0, 宽度) → panic "bit shift range"(检查哲学与索引/溢出一致)。
+// 2^k 文本(k ≤ 64)
+fn bit_p2(k: I32) -> Str {
+    var r = "1"
+    var i: I32 = 0
+    while i < k {
+        r = c6add(r, r)
+        i += 1
+    }
+    return r
+}
+// c6divmod 输出 "q|r" 拆解(取商/取余)
+fn bit_quot(qr: Str) -> Str {
+    var i: I32 = 0
+    while i < qr.len {
+        if byte_at(qr, i) == 124 {
+            return c6can(byte_slice(qr, 0, i))
+        }
+        i += 1
+    }
+    return "0"
+}
+fn bit_rest(qr: Str) -> Str {
+    var i: I32 = 0
+    while i < qr.len {
+        if byte_at(qr, i) == 124 {
+            return c6can(byte_slice(qr, i + 1, qr.len))
+        }
+        i += 1
+    }
+    return "0"
+}
+// 值文本 → 宽度 bits 无符号量级文本(负数按 2^bits 补;越界 mod 折)
+fn bit_umag(t: Str, bits: I32) -> Str {
+    var neg = false
+    var m = t
+    if t.len > 0 && byte_at(t, 0) == 45 {
+        neg = true
+        m = byte_slice(t, 1, t.len)
+    }
+    var qr = c6divmod(c6can(m), bit_p2(bits))
+    m = bit_rest(qr)
+    if neg && m != "0" {
+        m = c6sub(bit_p2(bits), m)
+    }
+    return m
+}
+// 无符号量级 → 按符号折叠回值文本(有符号高位 → 负)
+fn bit_sfold(u: Str, bits: I32, signed: Bool) -> Str {
+    if signed && c6abscmp(u, bit_p2(bits - 1)) >= 0 {
+        return c6sub(u, bit_p2(bits))
+    }
+    return u
+}
+// 逐位组合:a/b 非负文本(< 2^bits);mode 0=and 1=or 2=xor
+fn bit_comb(bits: I32, a: Str, b: Str, mode: I32) -> Str {
+    var aa = a
+    var bb = b
+    var acc = "0"
+    var pw = "1"
+    var i: I32 = 0
+    while i < bits {
+        if aa == "0" {
+            if mode == 0 {
+                // and:剩余位恒 0,直接累计完毕
+                return acc
+            }
+            if aa == "0" && bb == "0" {
+                // or/xor:双方剩余位全 0,直接完成(高位零值早退,省满 64 轮)
+                return acc
+            }
+        }
+        var qa = c6divmod(aa, "2")
+        var qb = c6divmod(bb, "2")
+        var on = false
+        var b1 = bit_rest(qa) == "1"
+        var b2 = bit_rest(qb) == "1"
+        if mode == 0 {
+            on = b1 && b2
+        }
+        if mode == 1 {
+            on = b1 || b2
+        }
+        if mode == 2 {
+            on = b1 != b2
+        }
+        if on {
+            acc = c6add(acc, pw)
+        }
+        aa = bit_quot(qa)
+        bb = bit_quot(qb)
+        pw = c6add(pw, pw)
+        i += 1
+    }
+    return acc
+}
+fn bit_width(w: Str) -> I32 {
+    if w == "i32" || w == "u32" {
+        return 32
+    }
+    return 64
+}
+fn bit_signed(w: Str) -> Bool {
+    return w == "i32" || w == "i64"
+}
+// 结果构造:入参 t 对有符号宽(i32/i64)为已折叠有符号文本,u32 为无符号幅值
+// (此处折有符号 32 表示——解释器 u32 惯例:4294967295 存 -1),u64 为无符号幅值(7 域)
+fn bit_ret(w: Str, u: Str, ob: List[Str]) -> Flow {
+    if seq2(w, "i32") {
+        return e4("k", ob[1], vI(dvi(u)), ob[3])
+    }
+    if seq2(w, "u32") {
+        return e4("k", ob[1], v6(bit_sfold(u, 32, true)), ob[3])
+    }
+    if seq2(w, "i64") {
+        return e4("k", ob[1], v6(u), ob[3])
+    }
+    return e4("k", ob[1], v7(u), ob[3])
+}
+// bit.* 入口:方法名 = op_width;and/or/xor/not/shl/shr × i32/u32/i64/u64
+fn ns_bit(m: Str, vals: List[Str], ob: List[Str]) -> Flow {
+    if vals.len < 1 {
+        panic("bit 实参")
+    }
+    if or2(vals[0][0] == "I", or2(vals[0][0] == "6", or2(vals[0][0] == "7", vals[0][0] == "W"))) {
+    } else {
+        panic("bit 数值:" + vals[0][0])
+    }
+    var us = m.len
+    var ui: I32 = 0
+    while ui < m.len {
+        if byte_at(m, ui) == 95 {
+            us = ui
+            break
+        }
+        ui += 1
+    }
+    var op = byte_slice(m, 0, us)
+    var w = byte_slice(m, us + 1, m.len)
+    if or2(w == "i32", or2(w == "u32", or2(w == "i64", w == "u64"))) {
+    } else {
+        panic("bit 宽度:" + w)
+    }
+    var bits = bit_width(w)
+    var sgn = bit_signed(w)
+    var t1 = vals[0][1]
+    if or2(seq2(op, "and"), or2(seq2(op, "or"), seq2(op, "xor"))) {
+        if vals.len < 2 {
+            panic("bit 实参")
+        }
+        var md: I32 = 2
+        if seq2(op, "and") {
+            md = 0
+        }
+        if seq2(op, "or") {
+            md = 1
+        }
+        var uc = bit_comb(bits, bit_umag(t1, bits), bit_umag(vals[1][1], bits), md)
+        return bit_ret(w, bit_sfold(uc, bits, sgn), ob)
+    }
+    if seq2(op, "not") {
+        var un = bit_comb(bits, bit_umag(t1, bits), c6sub(bit_p2(bits), "1"), 2)
+        return bit_ret(w, bit_sfold(un, bits, sgn), ob)
+    }
+    if or2(seq2(op, "shl"), seq2(op, "shr")) {
+        if vals.len < 2 {
+            panic("bit 实参")
+        }
+        var n = dvi(vals[1][1])
+        if n < 0 || n >= bits {
+            panic("bit shift range")
+        }
+        var txt2 = ""
+        if seq2(op, "shl") {
+            var u2 = c6mul(bit_umag(t1, bits), bit_p2(n))
+            var qsh = c6divmod(u2, bit_p2(bits))
+            txt2 = bit_sfold(bit_rest(qsh), bits, sgn)
+        }
+        if seq2(op, "shr") {
+            if !sgn {
+                var ql = c6divmod(bit_umag(t1, bits), bit_p2(n))
+                txt2 = bit_quot(ql)
+            }
+            if sgn {
+                var neg2 = t1.len > 0 && byte_at(t1, 0) == 45
+                var mg = t1
+                if neg2 {
+                    mg = byte_slice(t1, 1, t1.len)
+                }
+                var qs = c6divmod(c6can(mg), bit_p2(n))
+                txt2 = bit_quot(qs)
+                if neg2 {
+                    // 算术右移:floor(负 / 2^n) = -ceil(幅值 / 2^n)
+                    var qc = c6divmod(c6add(c6can(mg), c6sub(bit_p2(n), "1")), bit_p2(n))
+                    txt2 = "-" + bit_quot(qc)
+                }
+            }
+        }
+        return bit_ret(w, txt2, ob)
+    }
+    panic("bit 方法:" + m)
+    return e4("a", ob[1], vV2(), ob[3])
 }

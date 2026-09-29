@@ -1,0 +1,75 @@
+// clock_sleep —— 时钟与睡眠面(§11.6/§11.4;T10)
+// 钉住:sleep_ns 纳秒面下界+单调+errno 清;协程停车被取消广播打断早醒返 1
+// (裸线程口径 = join 等效,睡满返 0 恒过);虚拟钟跳变臂(仅 CTRON_CLOCK=virtual
+// 专跑矩阵生效,实钟面 jr<0 免报——run.sh 第三矩阵 coro+virtual 专跑本夹具)。
+// 形态:直调 bind extern(方法位发射缺口在案,clock_sanity 注②同口径)。
+use net.{Net_probe}
+use net.bind.{ctron_net_now_ns, ctron_net_sleep_ns, ctron_net_clock_jump}
+
+fn main() -> I32 {
+    // 模式探测:jump(0) 虚拟态返累计偏移(≥0);实钟态 -1
+    let virt = ctron_net_clock_jump(0) >= 0
+    if !virt {
+        // ==== 实钟臂(默认 + coro 双矩阵)====
+        // sleep_ns 下界(50ms,余量 40ms 同 clock_sanity)+ 单调 + errno 清
+        let t1 = ctron_net_now_ns()
+        let rc = ctron_net_sleep_ns(50000000)
+        let t2 = ctron_net_now_ns()
+        assert(t2 >= t1)
+        assert(t2 - t1 >= 40000000)
+        assert(rc == 0)
+        // errno 清面由 clock_sanity 承载;本夹具模式探测(real 态 jump 置
+        // EINVAL)会污染槽,不重复断言
+
+        // 取消:协程面 300ms 停车被兄弟 panic 的 cancelled 广播打断(返 1);
+        // 裸面睡满(返 0)。elapsed < 1s 两形态恒真(ct_spawn pthread/协程混合
+        // 分派的深时序归 P9 栈经济注记,不断言紧界)。
+        // 注:scope 闭包体 return 语句发射泄漏(T10 登记:return 直出宿主+块值
+        // 丢失),块值取尾表达式形态(coro_conc 同款);spawn 闭包不受影响。
+        var elapsed_ok = scope { |sc|
+            let sleeper = sc.spawn(|| {
+                return ctron_net_sleep_ns(300000000)
+            })
+            let bomber = sc.spawn(|| {
+                ctron_net_sleep_ns(20000000)
+                panic("boom")
+                return 0
+            })
+            let w0 = ctron_net_now_ns()
+            let a = sleeper.join_or()
+            let b = bomber.join_or()
+            let w1 = ctron_net_now_ns()
+            if w1 - w0 < 1000000000 {
+                1
+            } else {
+                0
+            }
+        }
+        assert(elapsed_ok == 1)
+    } else {
+        // ==== 虚拟臂(专跑矩阵 coro+virtual)====
+        // 5s 虚拟定时器经跳变即时到期:实测等待 ≪ 5s(run.sh 超时兜底);
+        // 停车就位窗口 = 主线程(裸)真睡 30ms。
+        var vok = scope { |sc|
+            let sleeper = sc.spawn(|| {
+                return ctron_net_sleep_ns(5000000000)
+            })
+            ctron_net_sleep_ns(30000000)
+            let after = ctron_net_clock_jump(6000000000)
+            sleeper.join()
+            if after >= 6000000000 {
+                1
+            } else {
+                0
+            }
+        }
+        assert(vok == 1)
+        // 单调:虚拟 now 随跳变前进
+        let v1 = ctron_net_now_ns()
+        ctron_net_clock_jump(1000000)
+        let v2 = ctron_net_now_ns()
+        assert(v2 > v1)
+    }
+    println("clock_sleep ok")
+    return 0
+}

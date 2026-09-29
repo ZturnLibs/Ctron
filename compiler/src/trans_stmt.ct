@@ -619,7 +619,18 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                                 var cn2 = pat[2][1]
                                 eln("ct_chan* t_" + cn1 + " = " + chx + ";", env)
                                 eln("ct_chan* t_" + cn2 + " = t_" + cn1 + ";", env)
-                                return env_bind(env_bind(env, cn1, "h"), cn2, "h")
+                                // T14-③:struct 元素通道 → rx 码 hR<元素码>(match Ok 臂
+                                // 据此解引用);标量元素两半端均 h(行为不变)
+                                var rcode = "h"
+                                if st[4][1][2].len > 1 {
+                                    if st[4][1][2][1][0] == "Named" {
+                                        var ec14 = ct_ty_code(st[4][1][2][1], file)
+                                        if ec14.len > 2 && byte_slice(ec14, 0, 2) == "u:" {
+                                            rcode = "hR" + ec14
+                                        }
+                                    }
+                                }
+                                return env_bind(env_bind(env, cn1, "h"), cn2, rcode)
                             }
                         }
                     }
@@ -694,6 +705,23 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 var gd7 = ct_fn_decl(file, st[4][1][1])
                 if gd7.len > 0 {
                     env = env_bind(env, "#elem:" + pat[1], ct_opt_elem_of(file, gd7[4]))
+                }
+            }
+            // P0-2/seam②:fn 值绑定(F/G 码)且初值为直调声明 fn 时挂 #fret 侧条目——
+            // 返回型取该 fn 的 FnType 返回节点(标量/Str/聚合;v/i 不入码,i 即旧形态无差)
+            // 此后 <名>(…) 间接调用与链上成员读按 R 原型化(镜像种子 decl_ty_tc 存槽)
+            var chf: I32 = byte_at(ty, 0)
+            if or2(chf == 70, chf == 71) {
+                if st[4][0] == "Call" && st[4][1][0] == "Ident" {
+                    var gd8 = ct_fn_decl(file, st[4][1][1])
+                    if gd8.len > 0 && gd8[4][0] == "FnType" {
+                        var frc8 = ct_ty_code(gd8[4][2], file)
+                        if frc8 != "v" {
+                            if frc8 != "i" {
+                                env = env_bind(env, "#fret:" + pat[1], frc8)
+                            }
+                        }
+                    }
                 }
             }
             var rhs = ct_expr(st[4], env, file)
@@ -992,9 +1020,27 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 var obe = oa[2]
                 eln("if (" + rme + ".variant == 0) \{", env)
                 var oenv = env
+                // T14-③:scrutinee 为 struct 元素通道 recv(hR 码)→ 载荷堆盒解引用
+                var recvElem = ""
+                if st[1][0] == "Call" {
+                    var scal14 = st[1][1]
+                    if scal14[0] == "Member" && scal14[2] == "Nm" && scal14[3] == "recv" {
+                        if scal14[1][0] == "Ident" {
+                            var rc14 = ct_env_ty(env, scal14[1][1])
+                            if rc14.len > 4 && byte_slice(rc14, 0, 2) == "hR" {
+                                recvElem = byte_slice(rc14, 2, rc14.len)
+                            }
+                        }
+                    }
+                }
                 if opt[2].len > 1 && opt[2][1][0] == "PatId" && opt[2][1][1] != "_" {
-                    eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
-                    oenv = env_bind(env, opt[2][1][1], "i")
+                    if recvElem.len > 0 {
+                        eln(ct_ctype(recvElem) + " t_" + opt[2][1][1] + " = *(" + ct_ctype(recvElem) + "*)(long)" + rme + ".v;", env)
+                        oenv = env_bind(env, opt[2][1][1], recvElem)
+                    } else {
+                        eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
+                        oenv = env_bind(env, opt[2][1][1], "i")
+                    }
                 }
                 if obe[0] == "BlockExpr" {
                     ct_block(obe[1], oenv, file, hreg)
@@ -1245,6 +1291,22 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("}", env)
             return env
         }
+        if or2(ity == "L", ct_is_lcode(ity)) {
+            // for x in <List>(T14-②:L=char* 槽直取 Str;Lu:=堆盒解引用取 struct 值)
+            var larrL = ct_expr(it, env, file)
+            var ecodeL = "s"
+            var getL = "(const char*)t_ll->items[ctron_i]"
+            if ct_is_lcode(ity) {
+                ecodeL = byte_slice(ity, 1, ity.len)
+                getL = "(*(" + ct_ctype(ecodeL) + "*)t_ll->items[ctron_i])"
+            }
+            eln("ctron_list* t_ll = (ctron_list*)(" + larrL + ");", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < t_ll->n; ctron_i++) \{", env)
+            eln("    " + ct_ctype(ecodeL) + " t_" + v0 + " = " + getL + ";", env)
+            ct_block(body, env_bind(env, v0, ecodeL), file, hreg)
+            eln("}", env)
+            return env
+        }
         panic("ct_stmt:for iter:" + it[0])
         return env
     }
@@ -1294,7 +1356,16 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("return;", env)
             return env
         }
-        eln("return " + ct_expr(st[1], env, file) + ";", env)
+        // P0-2:返回位闭包形参码注入——#retfn(ct_fn 绑的返回 FnType 内参码串)
+        // 临时改绑 #clcodes,作用域仅限本返回表达式(ct_emit_clov 消费;§4.7 适配)
+        var renv = env
+        if ct_env_has(env, "#retfn") {
+            var rcc = ct_env_ty(env, "#retfn")
+            if rcc.len > 0 {
+                renv = env_bind(env, "#clcodes", rcc)
+            }
+        }
+        eln("return " + ct_expr(st[1], renv, file) + ";", env)
         return env
     }
     if t == "Expr" {

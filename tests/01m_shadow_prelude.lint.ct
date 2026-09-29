@@ -1,0 +1,11 @@
+// 01m_shadow_prelude.lint.ct —— 绑定遮蔽前奏符号 → W8040(§3.8;T04)
+//@ warn: W8040
+
+fn take(List: I32) -> I32 {
+    // 参数名遮蔽前奏类型 List —— 合法但 lint 提示(参数位双线同判)
+    return List
+}
+
+test "param shadowing prelude warns" {
+    assert_eq(take(7), 7)
+}

@@ -948,8 +948,8 @@ fn validate_text(t: Str) -> List[Str] {
                     var i7: I32 = 0
                     while i7 < items.len {
                         var x = items[i7]
-                        if !or2(seq2(x, "fs"), seq2(x, "time")) {
-                            ds.push("E5043 未知能力 " + x + ";合法:fs, time(能力是安全边界,未知即拒绝)")
+                        if !or2(or2(seq2(x, "fs"), or2(seq2(x, "time"), or2(seq2(x, "net.listen"), or2(seq2(x, "net.connect"), or2(seq2(x, "net.resolve"), seq2(x, "db.connect")))))) , false) {
+                            ds.push("E5043 未知能力 " + x + ";合法:db.connect, fs, net.connect, net.listen, net.resolve, time(能力是安全边界,未知即拒绝)")
                         }
                         i7 += 1
                     }

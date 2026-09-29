@@ -161,8 +161,9 @@ fn main() -> ExitCode {
                 });
             }
             if let Some(cn) = &add_cap {
-                if cn != "fs" && cn != "time" {
-                    eprintln!("E5043 未知能力 {cn};合法:fs, time(能力是安全边界,未知即拒绝)");
+                if cn != "fs" && cn != "time" && cn != "net.listen" && cn != "net.connect"
+                    && cn != "net.resolve" && cn != "db.connect" {
+                    eprintln!("E5043 未知能力 {cn};合法:db.connect, fs, net.connect, net.listen, net.resolve, time(能力是安全边界,未知即拒绝)");
                     return ExitCode::from(1);
                 }
                 let Some(pb) = tree.iter_mut().find(|b| b.name == "pkg") else {
@@ -206,7 +207,7 @@ fn main() -> ExitCode {
                     }
                 }
                 if !found {
-                    eprintln!("E5043 未知能力 {cn};合法:fs, time(能力是安全边界,未知即拒绝)");
+                    eprintln!("E5043 未知能力 {cn};合法:db.connect, fs, net.connect, net.listen, net.resolve, time(能力是安全边界,未知即拒绝)");
                     return ExitCode::from(1);
                 }
             }
