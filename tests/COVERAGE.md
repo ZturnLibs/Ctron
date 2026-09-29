@@ -697,3 +697,21 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - 验证:E3030 → fixes=[{title, edits:[{kind:replace, span:{L1:C1-11}, text:"let"}]}]。
 - 契约:edits.kind ∈ replace|insert|delete;span 1-based(§10.2 冻结 schema)。
 - suite 94/94 双线维持;meta 过。
+
+**2026-09-29 T25 &Trait 发射侧动态分发落库**(spec-gap W5;§3.5;T24 ABI 实施):
+- 四步路径全通:①型码(&Trait → t:<Trait> → ct_obj 胖指针 {data,vtable})②vtable 常量
+  发射(trait 方法槽 struct + thunk 包装(具体型↔void* 桥接)+ static const 常量,仅
+  &Trait 参数位引用的 trait 产 vtable——Drop/UFCS 走既有路径不干扰)③构造位(调用点
+  具体型实参 → GNU 语句表达式装箱:堆盒+vt 取址)④调用位(接收者 t: 码 → vtable 间接
+  跳转 `((vt_T*)obj.vtable)->m(obj.data)`)。
+- **&Trait 引用门**(ct_trait_used_as_ref):仅 fn 形参位出现 `&Trait` 的 trait 产
+  vtable——net 域包 7 个 trait/impl(Net/StdNet 等)无 &Trait 参数位引用 → 不产
+  vtable → 零干扰(net 17/17 维持);Drop impl 有专属路径(ct_drop_fn)天然隔离。
+- 方法体发射:vtable emit 内联 standalone fn(t_<Type>__<method>,self 绑定具体型)
+  ——thunk 消费;既有 pass1/pass2 Impl 处理不受扰。
+- 验证:/tmp/trait_obj.ct(Clock/FakeClock/elapsed_since&Clock)发射→cc→run rc=0
+  (100-50=50 断言过=动态分发正确);07_capabilities interp 侧本即绿。
+- suite 94/94 双线;net 17/17;db 44/10 基线;cargo 14/0(顺手清 r6c 过期引用);
+  meta ✓;fmt parity 479/0。
+- 登记:发射面限定=非泛型 trait + 方法返回 ct_i(标量);prop getter 槽/泛型 trait
+  对象/超 trait 前缀=v2(设计文档在案)。

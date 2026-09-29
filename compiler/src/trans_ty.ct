@@ -117,6 +117,19 @@ fn ct_variant_index(file: List[Str], enm: Str, vnm: Str) -> I32 {
     return 0 - 1
 }
 
+// T25:&Trait 虚表动态分发(§3.5);trait 名判定
+fn ct_is_trait(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Trait" && d[1] == nm {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
 fn ct_is_enum(file: List[Str], nm: Str) -> Bool {
     var i: I32 = 1
     while i < file.len {
@@ -177,6 +190,12 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[0] == "Ref" && nt[1].len > 1 && nt[1][0] == "Slice" {
         // &T[] 只读视图:v0 与可变视图同 C 表示(Send 区分在检查面)
         return "v" + ct_ty_code(nt[1][1], file)
+    }
+    // &Trait → t:<Trait>(T25;§3.5 trait 对象 = 胖指针 {data, vtable})
+    if nt[0] == "Ref" && nt[1].len > 1 && nt[1][0] == "Named" {
+        if ct_is_trait(file, nt[1][1]) {
+            return "t:" + nt[1][1]
+        }
     }
     if nt[0] == "ArrayT" {
         // T[N] 定长注解 → 既有 a<N><ec> 内联码
@@ -274,6 +293,10 @@ fn ct_is_lcode(code: Str) -> Bool {
 fn ct_ctype(code: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         return "t_" + byte_slice(code, 2, code.len)
+    }
+    // T25:&Trait 胖指针(§3.5):{void* data; void* vtable}
+    if code.len > 2 && byte_slice(code, 0, 2) == "t:" {
+        return "ct_obj"
     }
     if code.len > 2 && byte_slice(code, 0, 2) == "B:" {
         // Box[T]:堆单值指针(t_P*);自动解引用由 Member/Assign 位处理
@@ -689,6 +712,13 @@ fn ct_arg_cast(ac: Str, pc: Str, x: Str) -> Str {
     if pc == "L" && ac != "L" { return "(ctron_list*)(" + x + ")" }
     // Lu: 族(T14-②):列表指针直通,同 L
     if ct_is_lcode(pc) && !ct_is_lcode(ac) { return "(ctron_list*)(" + x + ")" }
+    // T25 &Trait(§3.5):具体型实参 → ct_obj 装箱(堆盒+vtable 常量取址)
+    if pc.len > 2 && byte_slice(pc, 0, 2) == "t:" && ac.len > 2 && byte_slice(ac, 0, 2) == "u:" {
+        var ttn25 = byte_slice(pc, 2, pc.len)
+        var ctn25 = byte_slice(ac, 2, ac.len)
+        var cty25 = ct_ctype(ac)
+        return "(\{ ct_obj _o25; " + cty25 + "* _b25 = (" + cty25 + "*)ctron_amalloc(sizeof(" + cty25 + ")); *_b25 = " + x + "; _o25.data = _b25; _o25.vtable = (void*)&vt_" + ttn25 + "_for_" + ctn25 + "; _o25; })"
+    }
     if pc == "A" && ac != "A" { return "(ctron_cell*)(" + x + ")" }
     if or2(pc == "s", pc == "N") && ac == "L" { return "(char*)(" + x + ")" }
     // §3.6 退化传参:内联定长数组实参 → 视图(首址+长度复合字面量,零拷贝)

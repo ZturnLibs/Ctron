@@ -56,7 +56,6 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r6h_interp_unclosed.neg.ct", "R-P6h", Status::NegGreen("E1001")),
         ("r6i_interp_nested_str.neg.ct", "R-P6i", Status::NegGreen("E1001")),
         // ---- 09-15 审计批次补登(r6b–r6g/r1a;R 线行为逐件实测锚定) ----
-        ("r6c_as_u64_negsrc.ct", "R-P6c", Status::Green), // 2026-09-19 interp 字面量保真修复后翻转(RunRed → Green)
         // r6g:check 双面绿;文件无 test 块,RunRed 对空结果集空泛成立(链接面由 modules/ffi_math 覆盖)
         ("r6g_trusted_extern.ct", "R-P6g", Status::RunRed),
         // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播未实现,RunRed 空泛成立;

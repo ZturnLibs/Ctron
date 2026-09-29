@@ -3,6 +3,50 @@
 // ct_str_payload 字面量载荷、ct_find_main_anchor/ct_swap_anchor main 锚替换、
 // bs 样板文本(原型区/运行时助手/无 main 包的测试 main 生成)。
 // =====================================================================
+// Impl 方法 → 合成 Fn 节点表(名字 t_<ForType>__<method>,self 类型注解
+// 缺失时取 impl for 型,值语义 v0)
+fn ct_impl_method_fns(d: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    if d[3].len < 2 || d[3][0] != "Named" {
+        return out
+    }
+    var forh = ty_head(d[3])
+    var its = d[4]
+    var k: I32 = 1
+    while k < its.len {
+        var it = its[k]
+        if it[0] == "Method" {
+            var fnn = mk("Fn")
+            fnn.push(forh + "__" + it[1])
+            fnn.push(mk("TPs"))
+            var nps = mk("Ps")
+            var pr: I32 = 1
+            while pr < it[3].len {
+                var pa = it[3][pr]
+                if pa[0] == "Param" && pa[2] == "self" && pa[3][0] == "None" {
+                    var stn = mk("Named")
+                    stn.push(forh)
+                    stn.push(mk("TArgs"))
+                    var npa = mk("Param")
+                    npa.push(pa[1])
+                    npa.push(pa[2])
+                    npa.push(stn)
+                    nps.push(npa)
+                } else {
+                    nps.push(pa)
+                }
+                pr += 1
+            }
+            fnn.push(nps)
+            fnn.push(it[4])
+            fnn.push(it[5])
+            out.push(fnn)
+        }
+        k += 1
+    }
+    return out
+}
+
 fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     var ps = d[3]
     var k: I32 = 1
@@ -51,6 +95,119 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     env = env_bind(env, "#clofn", d[1])
     var penv = env_bind(env, "#p", pass)
     ct_body(d[5], penv, file, rc)
+}
+
+// T25:trait 是否被引用为 &Trait 参数(仅这些产 vtable;Drop/UFCS 走既有路径)
+fn ct_trait_used_as_ref(file: List[Str], tn: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnPub", d[0] == "Method")) {
+            var ps = d[3]
+            var k: I32 = 1
+            while k < ps.len {
+                var pr = ps[k]
+                if pr[0] == "Param" && pr[3][0] == "Ref" {
+                    if pr[3][1].len > 1 && pr[3][1][0] == "Named" {
+                        if seq2(pr[3][1][1], tn) {
+                            return true
+                        }
+                    }
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
+// T25 &Trait vtable 发射(§3.5):trait 方法槽结构 + impl thunk + 常量
+fn ct_vtable_emit(file: List[Str]) {
+    // ① trait 方法槽结构(仅有 impl 的 trait)
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Trait" {
+            var tn = d[1]
+            var has_impl = ct_trait_used_as_ref(file, tn)
+            var j: I32 = 1
+            while j < file.len && !has_impl {
+                if file[j][0] == "Impl" && seq2(ty_head(file[j][2]), tn) {
+                    has_impl = true
+                }
+                j += 1
+            }
+            if has_impl {
+                println("typedef struct vt_" + tn + " vt_" + tn + ";")
+                println("struct vt_" + tn + " \{")
+                var tits = d[4]
+                var k: I32 = 1
+                while k < tits.len {
+                    var tit = tits[k]
+                    if tit[0] == "Method" {
+                        println("    ct_i (*" + tit[1] + ")(void* self);")
+                    }
+                    k += 1
+                }
+                println("};")
+            }
+        }
+        i += 1
+    }
+    // ② impl thunk + 常量
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Impl" && d[3].len > 1 && d[3][0] == "Named" && ct_trait_used_as_ref(file, ty_head(d[2])) {
+            var tn2 = ty_head(d[2])
+            var cn = d[3][1]
+            // 找 trait 方法集(按声明序)
+            var tits2 = List[Str]()
+            var j3: I32 = 1
+            while j3 < file.len {
+                if file[j3][0] == "Trait" && seq2(file[j3][1], tn2) {
+                    tits2 = file[j3][4]
+                }
+                j3 += 1
+            }
+            // thunk(impl 方法接收者=具体型,vtable 槽=void*;桥接)
+            // + 方法体发射(standalone fn;thunk 与 vtable 消费)
+            var its2 = d[4]
+            var k2: I32 = 1
+            while k2 < its2.len {
+                var it2 = its2[k2]
+                if it2[0] == "Method" {
+                    // 方法函数体(self 绑定具体型)
+                    var mr25 = ct_fn_ret(file, cn + "__" + it2[1])
+                    println("static " + ct_ctype(mr25) + " t_" + cn + "__" + it2[1] + "(" + ct_ctype("u:" + cn) + " t_self)")
+                    var menv25 = env_bind(env_bind(env_bind(List[Str](), "self", "u:" + cn), "#clofn", cn + "__" + it2[1]), "#p", "2")
+                    ct_body(it2[5], menv25, file, mr25)
+                    // thunk
+                    println("static ct_i vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s) \{ return (ct_i)(long)t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s); }")
+                }
+                k2 += 1
+            }
+            // vtable 常量
+            println("static const vt_" + tn2 + " vt_" + tn2 + "_for_" + cn + " = \{")
+            var k3: I32 = 1
+            var first3 = true
+            while k3 < tits2.len {
+                var tit3 = tits2[k3]
+                if tit3[0] == "Method" {
+                    if !first3 {
+                        println(",")
+                    }
+                    print("    ." + tit3[1] + " = vt_thk_" + tn2 + "_" + tit3[1] + "_" + cn)
+                    first3 = false
+                }
+                k3 += 1
+            }
+            println("")
+            println("};")
+        }
+        i += 1
+    }
 }
 
 // Drop 方法发射(§6.4):impl Drop for T 的 drop 方法 → static void t_<T>__drop(t_<T> t_self)

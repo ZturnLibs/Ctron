@@ -228,6 +228,9 @@ fn main() -> I32 {
             println("static const char* ctron_now_ms_text(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; char* r = (char*)ctron_amalloc(32); snprintf(r, 32, \"%lld\", ms); return r; }")
             println("typedef int64_t ct_i;")
             println("typedef struct \{ int variant; ct_i v; } ct_res;")
+            // T25 &Trait 胖指针(§3.5):{data, vtable} 值传递
+            println("typedef struct \{ void* data; void* vtable; } ct_obj;")
+            println("static void* deref_ptr(void* p) \{ return p; }")
             println("typedef struct ct_scope \{ int cancelled; pthread_mutex_t mu; } ct_scope;")
             println("static ct_scope* ct_scope_new(void) \{ ct_scope* s = (ct_scope*)calloc(1, sizeof(ct_scope)); pthread_mutex_init(&s->mu, 0); return s; }")
             println("static pthread_mutex_t ct_gm = PTHREAD_MUTEX_INITIALIZER;")
@@ -768,6 +771,8 @@ fn main() -> I32 {
             var hasmain = false
             var ntest: I32 = 0
             var testcalls = ""
+            // T25:&Trait vtable + thunk + 常量发射(§3.5)
+            ct_vtable_emit(file)
             // pass1:shim/typedef 发现与直出(函数体不发射,eln 门控丢弃)
             di = 1
             while di < file.len {

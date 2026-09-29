@@ -620,6 +620,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:parallel." + m)
                 return ""
             }
+            // T25 &Trait 方法调用 → vtable 分发(§3.5)
+            // 接收者型码 t:<Trait> → ((vt_<Trait>*)obj.vtable)->m(obj.data)
+            var tobjt = ct_typeof(cal[1], env, file)
+            if tobjt.len > 2 && byte_slice(tobjt, 0, 2) == "t:" {
+                var ttn = byte_slice(tobjt, 2, tobjt.len)
+                var tobjE = ct_expr(cal[1], env, file)
+                return "((vt_" + ttn + "*)" + tobjE + ".vtable)->" + m + "(" + tobjE + ".data)"
+            }
             if cal[1][0] == "Ident" && cal[1][1] == "bit" {
                 // bit.* 位运算内建(§4.5;T01):and/or/xor/not 直出 C 位运算表达式
                 // (按声明宽度显式转型,补码语义);shl/shr 走 ct_bit_sh* 助手(移位数范围门)
