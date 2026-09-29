@@ -388,13 +388,70 @@ fn cimp_param(t: Str, syn: Str, tds: List[Str]) -> Str {
         }
         return ""
     }
-    // 数组(方括号)不支持
+    // 定长数组(v0.9):... NAME [ N ] → NAME: T[N](N 纯数字、尾随仅空白;
+    // 其余方括号形态——二维/表达式计数/尾随声明符——不支持)
+    var br = -1
     var q: I32 = 0
     while q < t.len {
         if byte_at(t, q) == 91 {
-            return ""
+            br = q
+            q = t.len
         }
         q += 1
+    }
+    if br >= 0 {
+        var rb = -1
+        var q2: I32 = br + 1
+        while q2 < t.len {
+            if byte_at(t, q2) == 93 {
+                rb = q2
+                q2 = t.len
+            }
+            q2 += 1
+        }
+        if rb < 0 {
+            return ""
+        }
+        var cnt = cimp_trim(byte_slice(t, br + 1, rb))
+        var ci: I32 = 0
+        var dig = cnt.len > 0
+        while ci < cnt.len {
+            var cc = byte_at(cnt, ci)
+            if cc < 48 || cc > 57 {
+                dig = false
+            }
+            ci += 1
+        }
+        if !dig {
+            return ""
+        }
+        var post = cimp_trim(byte_slice(t, rb + 1, t.len))
+        if post.len > 0 {
+            return ""
+        }
+        var head = cimp_trim(byte_slice(t, 0, br))
+        var htk = cimp_toks(head)
+        if htk.len < 2 {
+            return ""
+        }
+        var anm = htk[htk.len - 1]
+        if !cimp_is_ident_start(byte_at(anm, 0)) || cimp_is_tyword(anm) {
+            return ""
+        }
+        var tyt2 = ""
+        var kj: I32 = 0
+        while kj < htk.len - 1 {
+            if kj > 0 {
+                tyt2 = tyt2 + " "
+            }
+            tyt2 = tyt2 + htk[kj]
+            kj += 1
+        }
+        var aty = cimp_ty(tyt2, tds)
+        if aty.len == 0 {
+            return ""
+        }
+        return anm + ": " + aty + "[" + cnt + "]"
     }
     var tk = cimp_toks(t)
     if tk.len == 0 {

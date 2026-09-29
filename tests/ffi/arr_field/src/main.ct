@@ -1,0 +1,32 @@
+// tests/ffi/arr_field —— repr(c) struct 定长数组字段(v0.9 §二·七 登记面修复)
+// 承诺:T[N] 字段直出 C `ctype 名[N]`(此前塌缩 int32_t 布局错);
+// 布局 sizeof/按值过界/成员索引读写全通。
+#[repr(c)]
+struct Pkt {
+    var id: I64
+    var buf: I64[4]
+    var tag: I32
+}
+
+#[trusted]
+extern "c" fn pkt_make(id: I64, tag: I32) -> Pkt
+
+#[trusted]
+extern "c" fn pkt_bufsum(p: Pkt) -> I64
+
+#[trusted]
+extern "c" fn pkt_sizeof() -> I64
+
+test "repr(c) array field layout + by-value crossing" {
+    var p = pkt_make(9, 7)
+    assert_eq(pkt_bufsum(p), 10)
+    assert_eq(pkt_sizeof(), 48)
+}
+
+test "member index read/write on array field" {
+    var p = pkt_make(1, 1)
+    assert_eq(p.buf[1], 2)
+    p.buf[2] = 30
+    assert_eq(p.buf[2], 30)
+    assert_eq(pkt_bufsum(p), 37)
+}

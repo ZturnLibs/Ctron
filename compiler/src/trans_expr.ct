@@ -253,6 +253,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var ot = ct_typeof(e[1], env, file)
         if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
             if e[1][0] == "Ident" { return "t_" + e[1][1] + "[" + ct_expr(e[2], env, file) + "]" }
+            // 成员/链式接收者(v0.9 定长数组字段):C 成员表达式直下标
+            // (t_p.buf 局部链形态,镜像 Ident 臂口径)
+            return "(" + ct_expr(e[1], env, file) + ")[" + ct_expr(e[2], env, file) + "]"
         }
         if ot.len > 1 && byte_at(ot, 0) == 118 {
             // 切片视图索引(§4.5):越界 panic 镜像 eval("index out of bounds");
@@ -296,6 +299,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ot2.len >= 3 && byte_slice(ot2, 0, 1) == "a" {
                     return a_count(ot2)
                 }
+            }
+            // 定长数组字段成员接收者(v0.9):p.buf.len → N
+            var ot4 = ct_typeof(e[1], env, file)
+            if ot4.len >= 3 && byte_slice(ot4, 0, 1) == "a" {
+                return a_count(ot4)
             }
             var ot3 = ct_typeof(e[1], env, file)
             if or2(ot3 == "L", or2(ot3 == "LI", ct_is_lcode(ot3))) {

@@ -447,7 +447,14 @@ fn main() -> I32 {
                     var fj: I32 = 1
                     while fj < fs.len {
                         var fd = fs[fj]
-                        line = line + ct_ctype(ct_ty_code(fd[3], file)) + " " + fd[2] + "; "
+                        var fc = ct_ty_code(fd[3], file)
+                        // 定长数组字段(v0.9 §二·七 登记面):a<N><ec> → <ctype(ec)> <名>[N]
+                        // (此前无臂落 int32_t 兜底,布局错)
+                        if fc.len >= 3 && byte_at(fc, 0) == 97 {
+                            line = line + ct_ctype(a_elem(fc)) + " " + fd[2] + "[" + a_count(fc) + "]; "
+                        } else {
+                            line = line + ct_ctype(fc) + " " + fd[2] + "; "
+                        }
                         fj += 1
                     }
                     line = line + "} " + ct_struct_attr_suffix(sd) + "t_" + sd[1] + ";"
@@ -558,7 +565,11 @@ fn main() -> I32 {
                         while fj2 < fs2.len {
                             var fd2 = fs2[fj2]
                             var dc = ct_field_code_inst(file, fd2[3], snm, encs)
-                            line2 = line2 + ct_ctype(dc) + " " + fd2[2] + "; "
+                            if dc.len >= 3 && byte_at(dc, 0) == 97 {
+                                line2 = line2 + ct_ctype(a_elem(dc)) + " " + fd2[2] + "[" + a_count(dc) + "]; "
+                            } else {
+                                line2 = line2 + ct_ctype(dc) + " " + fd2[2] + "; "
+                            }
                             fj2 += 1
                         }
                         line2 = line2 + "} " + ct_ctype(insts[pi3]) + ";"

@@ -4,6 +4,15 @@
 #[trusted]
 extern "c" fn uvals_size_is(n: I64) -> I64
 
+#[trusted]
+extern "c" fn samplearr_make(total: I64) -> SampleArr
+
+#[trusted]
+extern "c" fn samplearr_score_sum(a: SampleArr) -> I64
+
+#[trusted]
+extern "c" fn samplearr_sizeof() -> I64
+
 fn main() -> I32 {
     var p = SamplePoint { x: 9, weight: 0.75, label: "pt", flags: 7 }
     let sum = sample_add(p.x, SAMPLE_VERSION)
@@ -14,6 +23,14 @@ fn main() -> I32 {
     assert_eq(SAMPLE_NAME, "ctron")
     // union 字节缓冲:cimport 的 8 补齐 raw_len 须覆盖 C 侧真实 sizeof(Vals)=8
     assert_eq(uvals_size_is(Vals_raw_len()), 1)
+    // 定长数组字段:布局同构(sizeof=24)+ 成员索引读写
+    var sa = samplearr_make(100)
+    assert_eq(sa.total, 100)
+    assert_eq(sa.scores[1], 20)
+    assert_eq(samplearr_score_sum(sa), 100)
+    sa.scores[2] = 7
+    assert_eq(samplearr_score_sum(sa), 77)
+    assert_eq(samplearr_sizeof(), 24)
     println("cimport e2e OK")
     return 0
 }

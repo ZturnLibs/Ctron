@@ -33,4 +33,14 @@ typedef union {
     int i;
 } Vals;
 
+/* 定长数组字段(v0.9):scores → var scores: I32[4],布局与 C 同构(sizeof=24) */
+typedef struct {
+    int64_t total;
+    int32_t scores[4];
+} SampleArr;
+
+extern SampleArr samplearr_make(int64_t total);
+extern int64_t samplearr_score_sum(SampleArr a);
+extern int64_t samplearr_sizeof(void);
+
 #endif

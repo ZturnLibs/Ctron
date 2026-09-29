@@ -45,6 +45,30 @@ fi
 IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
 shift
 
+# 链接标志摘要(#[link] 收集 → pkg-config 解析;v0.9):缓存命中与全量发射
+# 两路同印——构建系统以本输出为契约,T20 缓存命中跳过发射但摘要仍须在。
+emit_link_summary() {
+    LF=$(grep -o "ctron:link -l[^ ]*" "$1" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
+    if [ -n "$LF" ]; then
+        echo "ctc.sh: 链接标志(#[link] 收集): $LF"
+        # pkg-config 解析:对每个 -l<名>,若 pkg-config 在册且认识该名
+        # (--exists 成功),展开其 --libs 输出;否则保留 -l<名>。
+        # 发射 C 文本不变,解析只发生在驱动壳层。
+        if command -v pkg-config >/dev/null 2>&1; then
+            PR=""
+            for ln in $LF; do
+                pn=${ln#-l}
+                if pkg-config --exists "$pn" 2>/dev/null; then
+                    PR="$PR $(pkg-config --libs "$pn" 2>/dev/null)"
+                else
+                    PR="$PR $ln"
+                fi
+            done
+            echo "ctc.sh: 链接标志(pkg-config 解析):$PR"
+        fi
+    fi
+}
+
 case $mode in
     run)
         "$DIR/build.sh" >/dev/null
@@ -78,6 +102,7 @@ case $mode in
         if [ -f "$CACHED" ]; then
             cp "$CACHED" "$OUTC"
             echo "ctc.sh: 已发射 $OUTC(缓存命中: $IN_HASH)"
+            emit_link_summary "$OUTC"
             exit 0
         fi
         "$DIR/build.sh" >/dev/null
@@ -89,25 +114,7 @@ case $mode in
             mkdir -p "$CACHE_DIR"
             cp "$OUTC" "$CACHED" 2>/dev/null
             echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"
-            LF=$(grep -o "ctron:link -l[^ ]*" "$OUTC" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
-            if [ -n "$LF" ]; then
-                echo "ctc.sh: 链接标志(#[link] 收集): $LF"
-                # pkg-config 解析(v0.9):对每个 -l<名>,若 pkg-config 在册且
-                # 认识该名(--exists 成功),展开其 --libs 输出;否则保留 -l<名>。
-                # 发射 C 文本不变,解析只发生在驱动壳层(构建系统可取本行)。
-                if command -v pkg-config >/dev/null 2>&1; then
-                    PR=""
-                    for ln in $LF; do
-                        pn=${ln#-l}
-                        if pkg-config --exists "$pn" 2>/dev/null; then
-                            PR="$PR $(pkg-config --libs "$pn" 2>/dev/null)"
-                        else
-                            PR="$PR $ln"
-                        fi
-                    done
-                    echo "ctc.sh: 链接标志(pkg-config 解析):$PR"
-                fi
-            fi
+            emit_link_summary "$OUTC"
         fi
         ;;
     fmt)
