@@ -296,7 +296,7 @@ fn p_items(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List
     return it
 }
 
-fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -309,6 +309,10 @@ fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     adv(cur)
     nc.push(tp)
     nc.push(p_items(toks, cur, lns, "class"))
+    // @derive 派生名尾槽(@+class 路由,T26;消费方按 [0] 标签扫 items,尾追不加位)
+    if dr.len > 1 {
+        nc.push(dr)
+    }
     return nc
 }
 
@@ -773,6 +777,9 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
                 nf.push(p_enum2(toks, cur, lns, dr2, ""))
             } else if t2 == "trait" {
                 nf.push(p_trait(toks, cur, lns))
+            } else if t2 == "class" {
+                // @+class 路由(T26:@derive(Error) class 错误形先例曾坠 p_fn 段错误)
+                nf.push(p_class(toks, cur, lns, dr2))
             } else {
                 nf.push(p_fn(toks, cur, lns))
             }
@@ -785,7 +792,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         } else if t == "struct" {
             nf.push(p_struct(toks, cur, lns))
         } else if t == "class" {
-            nf.push(p_class(toks, cur, lns))
+            nf.push(p_class(toks, cur, lns, mk("Drvs")))
         } else if t == "impl" {
             nf.push(p_impl(toks, cur, lns, cols, pdiags))
         } else if t == "trait" {

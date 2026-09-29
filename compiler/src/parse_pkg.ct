@@ -54,6 +54,7 @@ fn pkg_is_prelude_sym(nm: Str) -> Bool {
     if or2(seq2(nm, "fmt"), or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "char_len")))) { return true }
     if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), seq2(nm, "fs_delete"))))) { return true }
     if or2(seq2(nm, "now_ms"), or2(seq2(nm, "now_ms_text"), seq2(nm, "str_from_c"))) { return true }
+    if seq2(nm, "Env") { return true }
     if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }
     return false
 }
@@ -506,6 +507,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                                     vis = true
                                                 }
                                             }
+                                        }
+                                        // T26:trait 接口面恒可见(§3.4/§8.1 能力注入:
+                                        // 跨模块 impl/参数引用须先可导入;无 pub trait 语法位)
+                                        if md[0] == "Trait" {
+                                            vis = true
                                         }
                                     }
                                     m2 += 1

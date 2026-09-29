@@ -31,6 +31,7 @@ fn prelude_ok(nm: Str) -> Bool {
     if seq2(nm, "ctron_embedded") { return true }
     if seq2(nm, "gui_sk_load") { return true }
     if or2(seq2(nm, "ctron_exe_path"), or2(seq2(nm, "env_get"), seq2(nm, "ctron_cli_flag"))) { return true }
+    if or2(seq2(nm, "ctron_prog_args_n"), seq2(nm, "ctron_prog_args_at")) { return true }
     if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }
     if or2(seq2(nm, "fmt"), or2(seq2(nm, "char_len"), or2(seq2(nm, "Box"), or2(seq2(nm, "List"), seq2(nm, "StringBuilder"))))) { return true }
     if or2(seq2(nm, "String"), or2(seq2(nm, "Channel"), or2(seq2(nm, "Mutex"), seq2(nm, "Atomic")))) { return true }
@@ -43,7 +44,7 @@ fn prelude_ok(nm: Str) -> Bool {
 
 fn value_ok(nm: Str) -> Bool {
     if prelude_ok(nm) { return true }
-    return or2(seq2(nm, "parallel"), or2(seq2(nm, "bit"), seq2(nm, "arena")))
+    return or2(seq2(nm, "parallel"), or2(seq2(nm, "bit"), or2(seq2(nm, "arena"), seq2(nm, "Env"))))
 }
 
 fn prelude_arity(nm: Str) -> I32 {

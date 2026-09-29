@@ -1,0 +1,48 @@
+// cap_inject —— 能力注入真窗(§8.1/§11.2;T26)
+// 钉住:&Net 形参经 vtable 动态分发可发射:FakeNet(struct,确定性时钟)与
+// StdNet(真时钟)同槽注入——§8.1「测试注入 fake 实现,无需 mock 框架」的
+// 发射面兑现;trait Net 三方法(probe I32/now_ns I64/sleep_ms 带参 void)
+// 覆盖全签名槽(§3.5 ABI:带参+真返回,T26 扩展)。
+use net.{Net, Net_probe}
+
+struct FakeNet {
+    let base: I64
+}
+
+impl Net for FakeNet {
+    fn probe(&self) -> I32 {
+        return 1
+    }
+    fn now_ns(&self) -> I64 {
+        return self.base
+    }
+    fn sleep_ms(&self, ms: I64) {
+        return
+    }
+}
+
+fn now_via(net: &Net) -> I64 {
+    return net.now_ns()
+}
+
+fn probe_via(net: &Net) -> I32 {
+    return net.probe()
+}
+
+fn sleep_via(net: &Net, ms: I64) {
+    net.sleep_ms(ms)
+}
+
+fn main() -> I32 {
+    // fake 注入:确定性时钟(动态分发断言:vtable 槽取 FakeNet 实现)
+    let fake = FakeNet { base: 42 }
+    assert(now_via(fake) == 42)
+    assert(probe_via(fake) == 1)
+    sleep_via(fake, 5)
+    // 真源注入:StdNet 真时钟单调(同一 &Net 槽,另一 vtable)
+    let real = Net_probe()
+    let a = now_via(real)
+    let b = now_via(real)
+    assert(b >= a)
+    return 0
+}

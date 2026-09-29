@@ -1,0 +1,14 @@
+// 07b_cap_env.ct —— 进程环境能力面:Env.system/get/args(§8.1;R-P2b 锚迁主套件)
+// 语义承诺(承 roadmap/r2b_env):Env.system() 构造宿主环境;get 缺失 = None;
+// args 至少含程序名。use 形态按在库先例取括号组导入。
+use std.process.{Env}
+
+test "env missing is None" {
+    let env = Env.system()
+    assert_eq(env.get("CTRON_SURELY_UNSET_R2B").or("fallback"), "fallback")
+}
+
+test "args non-empty" {
+    let env = Env.system()
+    assert(env.args().len >= 1)
+}

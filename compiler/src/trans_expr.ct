@@ -629,12 +629,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return ""
             }
             // T25 &Trait 方法调用 → vtable 分发(§3.5)
-            // 接收者型码 t:<Trait> → ((vt_<Trait>*)obj.vtable)->m(obj.data)
+            // 接收者型码 t:<Trait> → ((vt_<Trait>*)obj.vtable)->m(obj.data, 实参…)
+            // T26 带参形:非接收者实参按声明序追加(槽签名=trait 声明位)
             var tobjt = ct_typeof(cal[1], env, file)
             if tobjt.len > 2 && byte_slice(tobjt, 0, 2) == "t:" {
                 var ttn = byte_slice(tobjt, 2, tobjt.len)
                 var tobjE = ct_expr(cal[1], env, file)
-                return "((vt_" + ttn + "*)" + tobjE + ".vtable)->" + m + "(" + tobjE + ".data)"
+                var dargs26 = tobjE + ".data"
+                var di26: I32 = 1
+                while di26 < ag.len {
+                    dargs26 = dargs26 + ", " + ct_expr(ag[di26], env, file)
+                    di26 += 1
+                }
+                return "((vt_" + ttn + "*)" + tobjE + ".vtable)->" + m + "(" + dargs26 + ")"
             }
             if cal[1][0] == "Ident" && cal[1][1] == "bit" {
                 // bit.* 位运算内建(§4.5;T01):and/or/xor/not 直出 C 位运算表达式
@@ -910,6 +917,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "ctron_exe_path" { return "ctron_exe_path()" }
         if callee == "ctron_cli_flag" { return "ctron_cli_flag(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "env_get" { return "ctron_env_get(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        // T26 进程参数底座(§8.1 Env.args):发射模板同形助手
+        if callee == "ctron_prog_args_n" { return "ctron_prog_args_n()" }
+        if callee == "ctron_prog_args_at" { return "ctron_prog_args_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "ctron_embedded" { return "ctron_embedded()" }
         if callee == "gui_sk_load" { return "gui_sk_load()" }
 

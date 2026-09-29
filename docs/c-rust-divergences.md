@@ -693,3 +693,21 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
 - **N6 drop_frame 捕获帧永久跳过 Drop**:捕获门使被捕获帧不执行 Drop 侧效(与 env_pop 先例同一纪律);closure+RAII 程序可观测。登记不修。
 
 **L5 翻转(2026-09-28,合并后对账)**:spec-gap W1 T03 三线落地 StringBuilder,03i 探针由「类型存在探针」转真烟测(push_str/to_string/len+test 块)双侧绿(种子 run/引导 run/check);发射臂随容器批次在册。L4 维持立(引导实测)。合并后 suite.py 合计 87/88(自举,红=06f_parallel 既有)+88/88(宿主);03m 宿主 rc=0 系套件环境并 std 路径(可执行故 rc=0),gate 红以本节判定为准(既登记口径)。
+
+## T26 能力注入归位批次登记(2026-09-29;spec-gap W5)
+
+- **R 线前奏近似(std 能力面)**:Fs/Net trait 方法签名 + FsError(struct)/Env 承载于
+  `register_prelude`(单文件 check/interp 无 loader)——**面与 std/fs.ct、net.ct 真源
+  手动同步**(std 面变更须同步 sem.rs;07a/07b 行为锚兜底)。多文件/pkg 模式不受影响。
+- **Env 发射面=interp 三线先行**:Env.system/get/args 自举(eval NS 路由)/C 宿主
+  (v_ns+EnvHandle)/R 线(Value::EnvHandle)三线可用;用户程序发射侧 Env 方法分发
+  未发射(stdweb.dom 同族),随 stdweb 真实化批次回切。
+- **class 字面量发射全缺**:`Class { ... }` StructLit 发射 panic("非值类型")——发射臂
+  fake 注入承载=struct(07a 主套件走 interp 双线;cap_inject 真窗=struct)。W6/GC 相邻
+  债(class 引用语义发射=泛 var 引用语义系统改造同族)。
+- **点式符号导入 loader 未实现**:`use std.fs.Fs`(§2.5 主形态)自举 loader 视末段为
+  模块路径(std/fs/Fs.ct);在库先例=括号组导入 `use std.fs.{Fs}`。域包 `use net.Net`
+  形靠 E4010 先发短路成立。独立缺口,随 use 泳道回切。
+- 门禁卫生:cc_run decl 锁 402→420(spec-gap 批次合法累积+T26 两 extern 申报);
+  smoke 3j3/3k known 清单补 iter/log/ndjson/pb(预存欠账归因:iter=T16 fn 字段域,
+  log/ndjson/pb=R check 宽松度);stdpkg 补 iter.ct 种子副本(T17 遗漏)。

@@ -715,3 +715,37 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
   meta ✓;fmt parity 479/0。
 - 登记:发射面限定=非泛型 trait + 方法返回 ct_i(标量);prop getter 槽/泛型 trait
   对象/超 trait 前缀=v2(设计文档在案)。
+
+**2026-09-29 T26 能力对象注入形态归位落库**(spec-gap W5;§8.1/§11.2;R-P2b 两锚翻转):
+- **r2b_fs_fake/r2b_env 翻转**:锚迁主套件 `07a_cap_fs_inject`(Fs 能力 trait + MemFs
+  fake 注入 + FsError message + @derive(Error) class 声明面)/`07b_cap_env`
+  (Env.system/get/args);roadmap_suite 删两行,语料删除(翻转协议)。
+- **std/fs.ct**:能力面入 std——`trait Fs: Cap`(read_to_string/write/exists,
+  Result[String/FVoid, FsError] 错误面)+ `pub struct FsError { message }`。
+- **loader**:Trait 声明接口面恒可见(v0 无 pub trait 语法位;跨模块 impl/参数引用
+  须先可导入,§3.4/§8.1);`use std.process.{Env}` 前奏符号冗余导入放行(T17 先例)。
+- **@+class 解析路由修复**:`@derive(...)` 前缀 class 曾坠 p_fn 段错误(parse_decl
+  @ 分支只路由 struct/enum/trait);Class 节点尾槽 Drvs(消费方按 [0] 标签扫不受扰)。
+- **Env 进程环境能力对象**(§8.1;07b):前奏命名空间形(Env.system()→句柄;
+  get→Option[Str],缺失=None;args→List[Str])。自举:eval NS 路由 + ctron_prog_args_
+  n/at 运行时底座(发射模板 main 入口寄存 argc/argv;编译器自举经 extern 直调破鸡生蛋);
+  C 宿主:rt v_ns("Env")+ EnvHandle 分发 + main 寄存;R 线:Value::EnvHandle +
+  std::env 同面。**Env 发射面=interp 三线先行**(stdweb.dom 同族),用户程序发射
+  Env 方法列登记随 stdweb 真实化批次。
+- **发射 vtable 全签名(T25 v1 面=恒 ct_i 单 self 槽的扩展)**:槽=trait 声明位真返回
+  码+非 self 形参;thunk 桥接(真返回,void 无 return;形参名保留原名=方法体 t_<原名>
+  引用);调用位非接收者实参按声明序追加。net 真窗 `tests/net/cap_inject`:FakeNet
+  (struct,确定性时钟)与 StdNet 同 &Net 槽注入,probe I32/now_ns I64/sleep_ms 带参
+  void 三槽形,双矩阵 18/18。
+- **R 线前奏近似**:Fs/Net trait 方法签名 + FsError(struct)/Env 承载于 register_
+  prelude(单文件 check 无 loader;**面与 std/fs.ct、net.ct 真源同步纪律**——std 面
+  变更须同步此处,07a/07b 行为锚);trait_has_method 扩查前奏型表;Prelude 型 defs
+  字段可读(FsError.message)。
+- 登记:①db 门面 trait 化缓期——现能力面仅 dsn 纯函数+协议半层,连接面(P5 后续)
+  落地才有真能力方法,提前造 probe trait=死 trait(T15 裁决反例);②class 字面量
+  发射全缺(StructLit 非值类型 panic)——W6/GC 相邻债,发射臂 fake 注入=struct 承载;
+  ③`use std.fs.Fs` 点式符号导入 loader 未实现(§2.5 主形态;现按在库先例取括号组
+  导入形,点式 loader 面独立登记);④测试套 96/96 双线;modules use_alias_nat(自举
+  E2020.use.miss 消息不含 use.nat 锚码)/dup_static(宿主)两红=HEAD 预存(stash
+  实证),非本批引入;tests/ffi/arr_field(机刷泳道 WIP,无 Ctron.ctcl)堵 meta_check
+  门——非己债登记。

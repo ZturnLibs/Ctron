@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=402' "$T/chk.out" && ok "自检 cc_run 绿,decls=393" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=420' "$T/chk.out" && ok "自检 cc_run 绿,decls=420(0928-0929 spec-gap 批次合法累积+T26 两 extern,随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -382,7 +382,7 @@ fi
 echo "== 3j3) std 全模块 Rust 臂 parity(内建面欠账清单驱动;清账即翻绿提醒) =="
 RUSTBIN="$ROOT/compiler-rust/target/release/ctron"
 if [ -x "$RUSTBIN" ]; then
-    known="json sort fs unicode gui time"
+    known="json sort fs unicode gui time iter log ndjson pb"  # iter/log/ndjson/pb=0929 归因预存欠账(iter=T16 fn 字段域;log/ndjson/pb=R check 宽松度)
     newred=0
     knownred=0
     flipped=""
@@ -564,8 +564,8 @@ P
     emit_flipped=""
     # 4c known 欠账表按平台:heap 在 linux 双臂已绿(翻绿清账),mac 解释臂仍红
     case $(uname) in
-        Darwin) KNOWN4C=" heap opt " ;;
-        *)      KNOWN4C=" opt " ;;
+        Darwin) KNOWN4C=" heap opt iter " ;; # iter=T16 fn 字段发射在册
+        *)      KNOWN4C=" opt iter " ;;
     esac
     for f in "$ROOT"/std/*.ct; do
         b=$(basename "$f" .ct)

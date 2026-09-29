@@ -234,10 +234,51 @@ fn register_prelude(sema: &mut Sema) {
         sema.def_id(prelude_def(n, false, DefKind::Trait));
     }
     sema.def_id(prelude_def("Cap", true, DefKind::Trait));
-    for (n, key) in [("Clock", "time"), ("Fs", "fs"), ("Net", "net"), ("Log", "log")] {
-        let id = sema.def_id(prelude_def(n, true, DefKind::Trait));
+    // T26:std 能力面前奏近似(§8.1;R-P2b 锚 07a/07b):单文件 check 无 loader,
+    // Fs/Net trait 方法签名与 FsError/Env 承载于前奏——面须与 std/fs.ct、net.ct
+    // 真源同步(std 面变更同步此处,07a/07b 为行为锚)
+    sema.def_id(TypeDef {
+        name: "FsError".into(), kind: DefKind::Prelude, cap: false, params: vec![],
+        fields: vec![("message".into(), Ty::Str, false)],
+        variants: vec![], props: vec![], methods: vec![],
+    });
+    let pre_named = |sema: &Sema, n: &str| -> Ty {
+        match sema.def_by_name.get(n) {
+            Some(&d) => Ty::Named { def: d, args: vec![] },
+            None => Ty::Err,
+        }
+    };
+    let fs_res = |sema: &Sema, ok: Ty| -> Ty {
+        match (sema.def_by_name.get("Result"), sema.def_by_name.get("FsError")) {
+            (Some(&r), Some(&fe)) => Ty::Named { def: r, args: vec![ok, Ty::Named { def: fe, args: vec![] }] },
+            _ => Ty::Err,
+        }
+    };
+    let fs_res_str = fs_res(sema, Ty::String);
+    let fs_res_void = fs_res(sema, pre_named(sema, "Void"));
+    for (n, key, methods) in [
+        ("Clock", "time", Vec::new()),
+        ("Fs", "fs", vec![
+            ("read_to_string", FnSig { params: vec![Ty::Str], ret: fs_res_str.clone() }),
+            ("write", FnSig { params: vec![Ty::Str, Ty::Str], ret: fs_res_void.clone() }),
+            ("exists", FnSig { params: vec![Ty::Str], ret: Ty::Bool }),
+        ]),
+        ("Net", "net", vec![
+            ("probe", FnSig { params: vec![], ret: Ty::Int(IntW::W32) }),
+            ("now_ns", FnSig { params: vec![], ret: Ty::Int(IntW::W64) }),
+            ("sleep_ms", FnSig { params: vec![Ty::Int(IntW::W64)], ret: Ty::Void }),
+        ]),
+        ("Log", "log", Vec::new()),
+    ] {
+        let ms: Vec<(String, FnSig)> = methods.into_iter().map(|(n2, s): (&str, FnSig)| (n2.to_string(), s)).collect();
+        let id = sema.def_id(TypeDef {
+            name: n.into(), kind: DefKind::Trait, cap: true, params: vec![],
+            fields: vec![], variants: vec![], props: vec![], methods: ms,
+        });
         sema.cap_key_by_def.insert(id, key.into());
     }
+    // Env 进程环境句柄(§8.1;07b):type 面前奏承载,方法分发在 check.rs
+    sema.def_id(prelude_def("Env", false, DefKind::Prelude));
 }
 
 // ---------- AST 类型 → Ty ----------
@@ -672,7 +713,7 @@ fn resolve_import(
     let head = target.first().map(String::as_str).unwrap_or("");
     match head {
         "std" | "stdweb" => match sym_name {
-            "Fs" | "Clock" | "Net" | "Log" => {
+            "Fs" | "Clock" | "Net" | "Log" | "FsError" | "Env" => {
                 if let Some(&id) = sema.def_by_name.get(sym_name) {
                     syms.insert(sym_name.to_string(), Symbol::Type(id));
                 }

@@ -146,7 +146,25 @@ fn ct_vtable_emit(file: List[Str]) {
                 while k < tits.len {
                     var tit = tits[k]
                     if tit[0] == "Method" {
-                        println("    ct_i (*" + tit[1] + ")(void* self);")
+                        // T26 全签名槽:trait 声明位取返回码+非 self 形参
+                        //(v1 面=恒 ct_i 单 self 槽的扩展;§3.5 方法槽序=声明序)
+                        var r26 = tit[4]
+                        var ret26 = "i"
+                        if r26[0] == "None" {
+                            ret26 = "v"
+                        } else {
+                            ret26 = ct_ty_code(r26, file)
+                        }
+                        var sl26 = "    " + ct_ctype(ret26) + " (*" + tit[1] + ")(void* self"
+                        var ps26 = tit[3]
+                        var pi26: I32 = 1
+                        while pi26 < ps26.len {
+                            if ps26[pi26][0] == "Param" && ps26[pi26][2] != "self" {
+                                sl26 = sl26 + ", " + ct_ctype(ct_ty_code(ps26[pi26][3], file))
+                            }
+                            pi26 += 1
+                        }
+                        println(sl26 + ");")
                     }
                     k += 1
                 }
@@ -171,20 +189,49 @@ fn ct_vtable_emit(file: List[Str]) {
                 }
                 j3 += 1
             }
-            // thunk(impl 方法接收者=具体型,vtable 槽=void*;桥接)
-            // + 方法体发射(standalone fn;thunk 与 vtable 消费)
+            // thunk(impl 方法接收者=具体型,vtable 槽=void* self+非 self 形参;桥接)
+            // + 方法体发射(standalone fn 全签名,thunk 与 vtable 消费;T26 带参形)
             var its2 = d[4]
             var k2: I32 = 1
             while k2 < its2.len {
                 var it2 = its2[k2]
                 if it2[0] == "Method" {
-                    // 方法函数体(self 绑定具体型)
-                    var mr25 = ct_fn_ret(file, cn + "__" + it2[1])
-                    println("static " + ct_ctype(mr25) + " t_" + cn + "__" + it2[1] + "(" + ct_ctype("u:" + cn) + " t_self)")
+                    var r26b = it2[4]
+                    var mr25 = "i"
+                    if r26b[0] == "None" {
+                        mr25 = "v"
+                    } else {
+                        mr25 = ct_ty_code(r26b, file)
+                    }
+                    // 非 self 形参:签名串 + env 绑定 + thunk 串三用一遍收集
+                    // (形参名保留原名:方法体按 t_<原名> 引用,env 绑定原名→型码)
+                    var ps26b = it2[3]
+                    var sigx = ""
+                    var thunkp = ""
+                    var thunke = ""
                     var menv25 = env_bind(env_bind(env_bind(List[Str](), "self", "u:" + cn), "#clofn", cn + "__" + it2[1]), "#p", "2")
+                    var pi26b: I32 = 1
+                    while pi26b < ps26b.len {
+                        if ps26b[pi26b][0] == "Param" && ps26b[pi26b][2] != "self" {
+                            var pc26 = ct_ty_code(ps26b[pi26b][3], file)
+                            var pn26 = ps26b[pi26b][2]
+                            var cpn26 = "t_" + pn26
+                            sigx = sigx + ", " + ct_ctype(pc26) + " " + cpn26
+                            thunkp = thunkp + ", " + ct_ctype(pc26) + " " + cpn26
+                            thunke = thunke + ", " + cpn26
+                            menv25 = env_bind(menv25, pn26, pc26)
+                        }
+                        pi26b += 1
+                    }
+                    // 方法函数体(self 绑定具体型)
+                    println("static " + ct_ctype(mr25) + " t_" + cn + "__" + it2[1] + "(" + ct_ctype("u:" + cn) + " t_self" + sigx + ")")
                     ct_body(it2[5], menv25, file, mr25)
-                    // thunk
-                    println("static ct_i vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s) \{ return (ct_i)(long)t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s); }")
+                    // thunk(返回型=impl 方法返回;void 无 return)
+                    if seq2(mr25, "v") {
+                        println("static void vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s" + thunkp + ") \{ t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s" + thunke + "); }")
+                    } else {
+                        println("static " + ct_ctype(mr25) + " vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s" + thunkp + ") \{ return t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s" + thunke + "); }")
+                    }
                 }
                 k2 += 1
             }

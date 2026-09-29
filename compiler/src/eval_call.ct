@@ -11,6 +11,14 @@
 #[trusted]
 extern "c" fn ctron_ext_dispatch(nm: Str, a0: Str, a1: Str, a2: Str, a3: Str, a4: Str, a5: Str, a6: Str, a7: Str, a8: Str, a9: Str, a10: Str, a11: Str) -> I32
 
+// T26 进程参数底座(§8.1 Env.args):发射运行时模板定义(driver_emit.ct
+// main 入口寄存 argc/argv),自举解释器经 extern 直调(同 ctron_ext_dispatch 形)
+#[trusted]
+extern "c" fn ctron_prog_args_n() -> I64
+
+#[trusted]
+extern "c" fn ctron_prog_args_at(i: I64) -> Str
+
 fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> List[Str] {
     var ps = d[3]
     var nenv = List[Str]()
@@ -932,6 +940,42 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         }
         panic("to_string arity")
         return e4("a", env, vV2(), out)
+    }
+    // T26 Env 进程环境能力对象(§8.1;R-P2b 锚 07b):Env.system() 构造宿主
+    // 环境句柄;get 缺失=None;args=进程参数表(ctron_prog_args_* 运行时底座)
+    if recv[0] == "NS" && seq2(recv[1], "Env") && seq2(m, "system") && vals.len == 0 {
+        var ehv = List[Str]()
+        ehv.push("NS")
+        ehv.push("EnvHandle")
+        return e4("k", ob[1], ehv, ob[3])
+    }
+    if recv[0] == "NS" && seq2(recv[1], "EnvHandle") {
+        if seq2(m, "get") && vals.len == 1 && vals[0][0] == "S" {
+            var gev = env_get(vals[0][1])
+            if gev.len == 0 {
+                var gnv = List[Str]()
+                gnv.push("T")
+                gnv.push("None")
+                return e4("k", ob[1], gnv, ob[3])
+            }
+            var gsv = List[Str]()
+            gsv.push("T")
+            gsv.push("Some")
+            gsv.push(vS(gev))
+            return e4("k", ob[1], gsv, ob[3])
+        }
+        if seq2(m, "args") && vals.len == 0 {
+            var gav = vL()
+            var gna: I64 = ctron_prog_args_n()
+            var gai: I64 = 0
+            while gai < gna {
+                gav.push(vS(ctron_prog_args_at(gai)))
+                gai += 1
+            }
+            return e4("k", ob[1], gav, ob[3])
+        }
+        panic("Env 方法:" + m)
+        return e4("a", ob[1], vV2(), ob[3])
     }
     // 并发域(顺序化模拟:spawn 即刻完整执行;结果与调度无关的测试面)
     if recv[0] == "SCOPE" && seq2(m, "spawn") && vals.len == 1 {

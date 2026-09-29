@@ -2722,7 +2722,8 @@ impl<'a> Checker<'a> {
                 _ => { self.err("E2020", format!("{} 无属性 `{}`", d.name, tn), Span::new(1, 1, 0, 0)); Ty::Err }
             },
             _ => {
-                if d.kind == DefKind::Class || d.kind == DefKind::Struct {
+                // T26:Prelude 型 defs 亦查字段(前奏近似型 FsError.message,§8.1/07a)
+                if d.kind == DefKind::Class || d.kind == DefKind::Struct || d.kind == DefKind::Prelude {
                     if let Some((_, fty, _)) = d.fields.iter().find(|(n, _, _)| n == &tn) {
                         return fty.clone();
                     }
@@ -3016,6 +3017,14 @@ impl<'a> Checker<'a> {
                         }
                     }
                     "AnyError" => { self.err("E2020", format!("AnyError 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    // T26 Env 进程环境能力对象(§8.1;07b):system 构造句柄;
+                    // get 缺失=None;args=进程参数表(与自举/C 宿主 eval 同面)
+                    "Env" => match m {
+                        "system" => self.named("Env", vec![]),
+                        "get" => { if let Some(a) = args.first() { self.expr(a, Some(&Ty::Str)); } Ty::Optional(Box::new(Ty::Str)) }
+                        "args" => self.named("List", vec![Ty::Str]),
+                        _ => { self.err("E2020", format!("Env 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    },
                     _ => {
                         // 类固有方法 / trait 方法(含 &Trait 对象)
                         self.check_user_method(*def, &targs.clone(), m, args, hint)

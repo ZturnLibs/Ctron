@@ -41,6 +41,8 @@ pub enum Value {
     GlobalRef(Rc<Cell<i64>>),
     Parallel,
     Arena,
+    /// T26 Env 进程环境能力句柄(§8.1;07b):Env.system() 产;get/args 分发
+    EnvHandle,
     AnyError { message: Rc<String>, cause: Option<Rc<Value>>, trace: Rc<String> },
 }
 
@@ -1162,6 +1164,26 @@ impl<'a> Interp<'a> {
                 "fixed" => { for a in args { self.expr(a, env)?; } Ok(Value::Arena) }
                 _ => Err(Flow::Panic(format!("Arena 无关联函数 `{}`", m))),
             },
+            Value::EnvHandle => return match m {
+                // T26 Env 进程环境能力对象(§8.1;07b):system 构造句柄(自产自用);
+                // get 缺失=None;args=进程参数表(至少含程序名)
+                "system" => { if !args.is_empty() { return Err(Flow::Panic("Env.system 实参".into())); } Ok(Value::EnvHandle) }
+                "get" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Env.get 实参".into())); }
+                    let k = to_display(&self.expr(&args[0], env)?);
+                    let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                    match std::env::var(&k) {
+                        Ok(v) => Ok(Value::Enum { def: d, variant: 0, payload: vec![Value::Str(Rc::new(v))] }),
+                        Err(_) => Ok(Value::Enum { def: d, variant: 1, payload: vec![] }),
+                    }
+                }
+                "args" => {
+                    if !args.is_empty() { return Err(Flow::Panic("Env.args 实参".into())); }
+                    let items: Vec<Value> = std::env::args().map(|a| Value::Str(Rc::new(a))).collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(items))))
+                }
+                _ => Err(Flow::Panic(format!("Env 无方法 `{}`", m))),
+            },
             Value::Parallel => return match m {
                 "map" => {
                     let coll = self.expr(&args[0], env)?;
@@ -1258,6 +1280,26 @@ impl<'a> Interp<'a> {
             Value::Arena => return match m {
                 "fixed" => { for a in args { self.expr(a, env)?; } Ok(Value::Arena) }
                 _ => Err(Flow::Panic(format!("Arena 无关联函数 `{}`", m))),
+            },
+            Value::EnvHandle => return match m {
+                // T26 Env 进程环境能力对象(§8.1;07b):system 构造句柄(自产自用);
+                // get 缺失=None;args=进程参数表(至少含程序名)
+                "system" => { if !args.is_empty() { return Err(Flow::Panic("Env.system 实参".into())); } Ok(Value::EnvHandle) }
+                "get" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Env.get 实参".into())); }
+                    let k = to_display(&self.expr(&args[0], env)?);
+                    let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                    match std::env::var(&k) {
+                        Ok(v) => Ok(Value::Enum { def: d, variant: 0, payload: vec![Value::Str(Rc::new(v))] }),
+                        Err(_) => Ok(Value::Enum { def: d, variant: 1, payload: vec![] }),
+                    }
+                }
+                "args" => {
+                    if !args.is_empty() { return Err(Flow::Panic("Env.args 实参".into())); }
+                    let items: Vec<Value> = std::env::args().map(|a| Value::Str(Rc::new(a))).collect();
+                    Ok(Value::Array(Rc::new(RefCell::new(items))))
+                }
+                _ => Err(Flow::Panic(format!("Env 无方法 `{}`", m))),
             },
             Value::Parallel => return match m {
                 "map" => {
@@ -1381,6 +1423,13 @@ impl<'a> Interp<'a> {
             if t.items.iter().any(|it| matches!(it,
                 crate::ast::TraitItem::Method(mm) if mm.name == m))
             {
+                return Some(());
+            }
+        }
+        // T26:导入/前奏 trait(Fs/Net std 能力面;07a):声明不在本文件,查前奏
+        // 型表(std 面前奏近似,sem.rs register_prelude——面变更与 std 真源同步)
+        if let Some(&id) = self.sema.def_by_name.get(trait_name) {
+            if self.sema.defs[id].methods.iter().any(|(n, _)| n == m) {
                 return Some(());
             }
         }
@@ -2170,6 +2219,10 @@ impl<'a> Interp<'a> {
         }
         // 用户 fn
         if let Some(Symbol::Fn(id)) = self.module_symbol(name) { return Ok(Value::FnRef { id }); }
+        // T26 Env 进程环境命名空间(§8.1;07b):Env.system()/句柄 get/args
+        if name == "Env" {
+            return Ok(Value::EnvHandle);
+        }
         // 类型名作为关联调用接收者(Arena.fixed / Simd.splat 等)
         if let Some(&_def) = self.sema.def_by_name.get(name) {
             return Ok(Value::Arena);

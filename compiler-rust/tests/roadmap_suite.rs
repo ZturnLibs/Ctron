@@ -35,9 +35,9 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r2a_container_send.ct", "R-P2a", Status::RunRed),
         ("r2a_container_alloc.neg.ct", "R-P2a", Status::NegGreen("E3040")),
         // ---- R-P2b std 能力(std.* 桩已解析;运行时未实现) ----
-        ("r2b_fs_fake.ct", "R-P2b", Status::RunRed),
+        // r2b_fs_fake/r2b_env 已翻转(T26,2026-09-29):Fs 能力 trait 入 std/fs.ct、
+        // Env.system/get/args 前奏命名空间落地,锚迁主套件 07a_cap_fs_inject/07b_cap_env
         ("r2b_time.ct", "R-P2b", Status::RunRed),
-        ("r2b_env.ct", "R-P2b", Status::RunRed),
         // ---- R-P3 闭包/迭代器/模式 ----
         ("r3a_capture.ct", "R-P3a", Status::Green),
         ("r3a_capture_var.neg.ct", "R-P3a", Status::NegPending("E3070")),

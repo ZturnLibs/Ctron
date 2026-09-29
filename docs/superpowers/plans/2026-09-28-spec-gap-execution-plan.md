@@ -306,7 +306,7 @@
 
 ### T26 · 能力对象注入形态归位(§8.1/§11.2)
 
-- **预估:** 1.5–2 d。**前置:** T25。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** T25。**状态:** ✅ 已完成(2026-09-29;r2b_fs_fake/r2b_env 翻转主套件 07a/07b;Fs 能力 trait 入 std/fs.ct+FsError;loader Trait 恒可见;Env.system/get/args 三线能力对象(ctron_prog_args_* 运行时底座);发射 vtable 全签名扩展(带参槽+真返回+thunk 桥接+调用位实参);net cap_inject 真窗 FakeNet/StdNet 同槽注入双矩阵 18/18;@+class 解析路由修复;E4010/E4020 锚维持;db trait 化缓期=连接面随 P5,登记 COVERAGE)
 - **目标:** `&Fs`/`&Clock` 能力注入成为可发射的主流形态:net/db 门面从「struct+自由函数」增加 trait 门面形(或规范回写 as-built 形态为终态——**二选一需评审**,倾向前者,能力优先裁决)。
 - **范围:** `net.ct`/`db/*.ct`(trait 门面层)、E4010 审计锚点迁移(现 `&Net` 形参仅审计)、`tests/roadmap/r2b_env.ct`/`r2b_fs_fake.ct` 翻转。
 - **要点:** FakeClock/FakeFs 测试注入模式是验收核心(§8.1「无需 mock 框架」);E4020 判定已按 `&Cap` 接收者调用实现(`sem_pure.ct`),trait 化后自然贯通。
@@ -576,7 +576,7 @@
 | T23 | e2e 缺声明 6 件 | W4 | **已完成**(0928 核销;前批 P1b 已清) | 见 git |
 | T24 | 虚表 ABI 设计 | W5 | **已完成**(0929,设计文档 9fbd332) | 见 git |
 | T25 | 动态分发 codegen | W5 | **已完成**(0929,四步全通+引用门;suite 94/94+net 17/17) | 见 git |
-| T26 | 能力注入归位 | W5 | 待办 | — |
+| T26 | 能力注入归位 | W5 | **已完成**(0929,07a/07b 翻转+Fs 入 std+Env 三线+vtable 全签名+cap_inject 真窗) | 见 git |
 | T27 | 闭包捕获收口【裁决】 | W5 | **裁决推迟**(0929 用户裁定:T29 完成后评估;业界调研已入卡) | — |
 | T28 | GC 契约校准 | W6 | **已完成**(0929,现状校准九处+M1/M2/M3 分阶段契约+栈扫描帧位图径;spec §6.2 挂注) |
 | T29 | MVP tracing GC | W6 | 待办(等 S1) | — |

@@ -458,8 +458,9 @@ val eval_expr(rt* R, cexpr* e) {
             }
         }
         if (is_variant(R, e->text)) return v_tag(e->text, NULL, 0); // 裸变体值(如 None)
-        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom") || !strcmp(e->text, "bit"))
-            return v_ns(e->text); // 内建命名空间(§7.7/§9.2/§4.5 bit)
+        if (!strcmp(e->text, "parallel") || !strcmp(e->text, "dom") || !strcmp(e->text, "bit")
+            || !strcmp(e->text, "Env"))
+            return v_ns(e->text); // 内建命名空间(§7.7/§9.2/§4.5 bit/§8.1 Env)
         rt_abort(R, RT_ERROR, "未解析名称: %s", e->text);
     }
     case EX_UNARY: {
@@ -1226,6 +1227,32 @@ val eval_expr(rt* R, cexpr* e) {
             if (recv.k == V_NS && cal->mname) {
                 // 内建命名空间:parallel(§7.7 数据并行,解释器序贯执行)/ stdweb.dom(§9.2 最小锚)/ bit(§4.5 位运算)
                 const char* ns = recv.tag;
+                // T26 Env 进程环境能力对象(§8.1;R-P2b 锚 07b):
+                // Env.system() 构造宿主环境句柄;get 缺失=None;args=进程参数表
+                if (!strcmp(ns, "Env") && !strcmp(cal->mname, "system")) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "Env.system 实参");
+                    return v_ns("EnvHandle");
+                }
+                if (!strcmp(ns, "EnvHandle") && !strcmp(cal->mname, "get")) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "Env.get 实参");
+                    val kv = eval_expr(R, e->elems[0]);
+                    if (kv.k != V_STR) rt_abort(R, RT_ERROR, "Env.get 需 Str");
+                    const char* gv = getenv(kv.s ? kv.s : "");
+                    if (!gv || !*gv) return v_tag("None", NULL, 0);
+                    val* sv = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                    sv[0] = v_str_own(R, gv);
+                    return v_tag("Some", sv, 1);
+                }
+                if (!strcmp(ns, "EnvHandle") && !strcmp(cal->mname, "args")) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "Env.args 实参");
+                    extern int ctron_host_argc;
+                    extern const char** ctron_host_argv;
+                    if (ctron_host_argc <= 0 || !ctron_host_argv)
+                        rt_abort(R, RT_ERROR, "Env.args:进程参数未寄存");
+                    val* it = (val*)ctron_arena_alloc(R->a, (size_t)ctron_host_argc * sizeof(val));
+                    for (int i = 0; i < ctron_host_argc; i++) it[i] = v_str_own(R, ctron_host_argv[i] ? ctron_host_argv[i] : "");
+                    return v_arr(it, (size_t)ctron_host_argc);
+                }
                 if (!strcmp(ns, "bit")) return rt_bit(R, cal->mname, e);
                 if (!strcmp(ns, "parallel") && !strcmp(cal->mname, "map")) {
                     if (e->nelems != 2) rt_abort(R, RT_ERROR, "parallel.map 实参");

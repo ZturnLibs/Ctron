@@ -281,6 +281,11 @@ static int cmd_run(int argc, char** argv) {
         fprintf(stderr, "usage: ctronc run <file> [--profile bare|web|full]\n");
         return 2;
     }
+    // T26 Env.args 进程参数寄存(§8.1;rt_core.c 定义)
+    extern int ctron_host_argc;
+    extern const char** ctron_host_argv;
+    ctron_host_argc = argc;
+    ctron_host_argv = (const char**)argv;
     size_t len;
     char* src = read_file(argv[2], &len);
     if (!src) {
@@ -406,6 +411,11 @@ static int cmd_test(int argc, char** argv) {
         fprintf(stderr, "usage: ctronc test <file> [--profile bare|web|full]\n");
         return 2;
     }
+    // T26 Env.args 进程参数寄存(§8.1;rt_core.c 定义)
+    extern int ctron_host_argc;
+    extern const char** ctron_host_argv;
+    ctron_host_argc = argc;
+    ctron_host_argv = (const char**)argv;
     size_t len;
     char* src = read_file(argv[2], &len);
     if (!src) { fprintf(stderr, "无法读取 %s\n", argv[2]); return 2; }

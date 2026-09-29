@@ -1,0 +1,56 @@
+// 07a_cap_fs_inject.ct —— I/O 能力 trait 注入:Fs + Fake 文件系统(§8.1;R-P2b 锚迁主套件)
+// 语义承诺(承 roadmap/r2b_fs_fake):IO 是 Fs 能力 trait 上的方法(测试注入 fake,
+// 无需 mock 框架);错误经 Result[String, FsError];FsError 携带 message;
+// @derive(Error) 类可声明(解析面;prop 生成面随 v2 prop-vtable 登记)。
+// use 形态按在库先例取括号组导入(use std.fs.{...});点式符号导入 loader 面另册在案。
+use std.fs.{Fs, FsError}
+
+class MemFs {
+    let content: Str
+}
+
+impl Fs for MemFs {
+    fn read_to_string(&self, path: Str) -> Result[String, FsError] {
+        if path == "a.txt" {
+            return Ok(self.content.to_string())
+        }
+        return Err(FsError { message: "not found: {path}".to_string() })
+    }
+    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {
+        return Ok(void)
+    }
+    fn exists(&self, path: Str) -> Bool {
+        return path == "a.txt"
+    }
+}
+
+fn read_a(fs: &Fs) -> Result[String, FsError] {
+    return fs.read_to_string("a.txt")
+}
+
+test "fake fs read via capability" {
+    let fs = MemFs { content: "hello" }
+    assert_eq(read_a(fs).expect("read"), "hello")
+    assert(fs.exists("a.txt"))
+    assert(!fs.exists("b.txt"))
+}
+
+test "fs error carries message" {
+    let fs = MemFs { content: "x" }
+    let r = fs.read_to_string("missing.txt")
+    match r {
+        Ok(_) => assert(false)
+        Err(e) => assert_eq(e.message, "not found: missing.txt")
+    }
+}
+
+// @derive(Error) 类声明面(解析回归锚:@ 前缀 class 曾路由失守段错误)
+@derive(Error)
+class FsErr2 {
+    let message: Str
+}
+
+test "derive error class declares" {
+    let e = FsErr2 { message: "boom" }
+    assert_eq(e.message, "boom")
+}

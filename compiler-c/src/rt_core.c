@@ -23,6 +23,10 @@ val v_closure(const cexpr* ce, struct env* cap) {
     return v;
 }
 val v_ns(const char* name) { val v = {0}; v.k = V_NS; v.tag = name; return v; }
+
+// T26 进程参数底座(§8.1 Env.args;R-P2b 锚 07b):main 入口寄存,解释器读取
+int ctron_host_argc = 0;
+const char** ctron_host_argv = 0;
 unsigned long long rt_env_steps(void) {
     // D2:CTRON_MAX_STEPS 步上限(N = 上限;0/未设/非法 = 无限)。默认无限支撑自举负载。
     const char* s = getenv("CTRON_MAX_STEPS");
