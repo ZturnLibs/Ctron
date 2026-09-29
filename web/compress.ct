@@ -1,0 +1,409 @@
+// compress.ct —— web 压缩面:gzip 响应压缩中间件(Plan 2c Task 1;http/enc 薄收编,调用不复制)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.5/§8.3;纪律 §14-1
+//
+// use 面:web.core(Resp/Req/取头)+ web.router(测试装配链)+ std.str(前缀/join)
+//   + http.enc(gzip_compress/gzip_decompress/content_coding_negotiate/enc_level_default
+//   —— web 包内唯一 http.enc 消费叶,无菱形;auth 单叶口径同款)。
+//
+// 判定面四门(绑定口径,次序即实现序):
+//   ① 响应已带 Content-Encoding → 透传;② !wants_gzip(req Accept-Encoding) → 透传;
+//   ③ body.len < threshold → 透传;④ Content-Type 非文本族前缀 → 透传。
+//   压缩面:替 body + 追 Content-Encoding: gzip + Content-Length 原位换值(保序)
+//   + 追 Vary: Accept-Encoding;压缩后 ≥ 原大 → 回退原文(Vary 仍追,RFC 9110
+//   §12.5.3 协商过即缓存面有变——enc.ct 头注口径)。
+//
+// wants_gzip 收编调整(登记):绑定简判「contains gzip 且非 gzip;q=0」升级为
+//   content_coding_negotiate(accept_enc, "gzip") == "gzip" —— 大小写/x-gzip 弃用
+//   同义/q 值/通配 * 一次收编(http/enc 纯面,零新增依赖),contains 简判的
+//   漏判面("*;q=0.5 应收"、"GZIP" 大小写)自然闭合。
+//
+// —— 两条结构性边界(实证登记,task-1-report 在册;非临时态)——
+//
+// ① interp 臂不可触压缩原语(enc_fixtures x_ 同款,tests/http/run.sh enc 块
+//   登记):ctron_deflate 垫片 extern 为 &I64[] lane 帧,解释口径 extern 桥仅
+//   标量帧("i:/s:")——实证:interp 调 gzip_compress 即
+//   「extern 解释口径:不支持参数类型 A」rc=1。故本文件 interp 臂测试只覆
+//   判定面(协商矩阵/四门/头 surgery 假体)+ 透传装配;压缩面往返 e2e 属
+//   emit 臂(夹具形态 = tests/http/enc_fixtures/x_web_compress.ct,待收口
+//   任务随 pathspec 放行落盘;本波已手动 emit 臂验证,证据在 task-1-report)。
+//   为此压缩面拆出纯判定三件:gzip_eligible(四门)/ apply_gzip(头 surgery,
+//   假体可测)/ compress_mw(装配面)——interp 臂测试面最大化。
+//
+// ② L4 载体边界:Str 语义全 strlen(C 串)——实证 utf8_enc(0).len == 0、
+//   "AB"+NUL+"CD" == "ABCD"(NUL 即截/即吞;03m_binary_nul_probe 同根)。
+//   gzip 成员恒含 NUL(FLG=0/MTIME=0/ISIZE 高位零,enc.ct 组框定值)→
+//   压缩字节流【不可能】以原形过 Str 载体。故 gzip_bytes 以 U+0100..U+01FF
+//   映射为载体(每字节 → utf8_enc(b+256) 两字节 UTF-8;NUL-free,Str 全
+//   语义保真,gunzip_bytes 逆映射精确往返)。wire 面(真 gzip 原形出线)
+//   待 render 咽喉加载体解码一处(render = 全仓唯一报文组装点,serve.ct
+//   §4.4 支点)或 Resp 增 lane 槽(§13-③ Bytes 面)——挂 L4 立项,登记。
+//   本波 compress_mw 落载体形 body:挂链方(v1 无人挂)须俟上述咽喉解码,
+//   不得裸上线(头注即闸)。
+//   同根边界:带内 NUL 文本体入 gzip_bytes 会在 fill_lane 处按 strlen 截短
+//   (静默丢尾,非 panic)——文本族门是唯一防线,二进制混入面 v1 不设防。
+//
+// 定长域(v1;emit 臂栈道,x_ 夹具同款):输入 ≤65536(超域 gzip_bytes 回
+//   "" → 中间件透传);输出道 66000(存储块最坏 = n + 块头 5 + 容器 18);
+//   gunzip 出道上限 65536(ISIZE 超域回 "")。
+
+use web.core.{ Req, Resp, Pair, html, text, with, resp_header, req_full }
+use std.str.{ starts_with, join }
+use web.router.{ router, get, middleware, dispatch }
+use http.enc.{ gzip_compress, gzip_decompress, content_coding_negotiate, enc_level_default }
+
+// ---- wants_gzip:Accept-Encoding 协商(收编 http/enc;头注调整登记) ----
+
+pub fn wants_gzip(accept_enc: Str) -> Bool {
+    return content_coding_negotiate(accept_enc, "gzip") == "gzip"
+}
+
+// ---- 文本族前缀判(绑定: text/ application/json application/xml image/svg;
+//      plan 面另点名 yaml/csv:csv 导出走 text()(text/csv 或 text/plain),
+//      text/ 前缀已吸收;yaml 显式收 application/yaml。前缀区分大小写
+//      (core 构造器恒规范形,resp 头非 req 头,无 case 面施工)——登记 ----
+
+fn text_family(ct: Str) -> Bool {
+    if starts_with(ct, "text/") {
+        return true
+    }
+    if starts_with(ct, "application/json") {
+        return true
+    }
+    if starts_with(ct, "application/xml") {
+        return true
+    }
+    if starts_with(ct, "application/yaml") {
+        return true
+    }
+    if starts_with(ct, "image/svg") {
+        return true
+    }
+    return false
+}
+
+// ---- 四门判定(①②③④;纯面,interp 可测)----
+
+fn gzip_eligible[S](req: Req[S], resp: Resp, threshold: I32) -> Bool {
+    if resp_header(resp, "Content-Encoding").len > 0 {
+        return false
+    }
+    if !wants_gzip(header[S](req, "Accept-Encoding")) {
+        return false
+    }
+    if resp_body_len(resp) < threshold {
+        return false
+    }
+    if !text_family(resp_header(resp, "Content-Type")) {
+        return false
+    }
+    return true
+}
+
+fn resp_body_len(r: Resp) -> I32 {
+    return r.body.len
+}
+
+// ---- 头 surgery(纯面,假体可测):Content-Length 原位换值(保序,缺省不造
+//      ——render 咽喉恒自拼 CL,用户级 CL 出现才换;双 CL 即 wire 谎)→
+//      Content-Encoding / Vary 尾追 ----
+
+fn apply_gzip(resp: Resp, gz: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    var i: I32 = 0
+    while i < resp.headers.len {
+        let p = resp.headers[i]
+        if p.k == "Content-Length" {
+            hs.push(Pair { k: p.k, v: gz.len.to_string() })
+        } else {
+            hs.push(p)
+        }
+        i += 1
+    }
+    hs.push(Pair { k: "Content-Encoding", v: "gzip" })
+    hs.push(Pair { k: "Vary", v: "Accept-Encoding" })
+    return Resp { status: resp.status, headers: hs, body: gz }
+}
+
+// ---- 中间件(§4.5 形态 ②;判定 → 压缩 → 回退/上头)----
+
+pub fn compress_mw[S](threshold: I32) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+    return |req, next| {
+        let resp = next(req)
+        if !gzip_eligible[S](req, resp, threshold) {
+            return resp
+        }
+        let gz = gzip_bytes(resp.body, enc_level_default())
+        if gz.len == 0 {
+            return resp
+        }
+        if gz.len >= resp.body.len {
+            return with(resp, "Vary", "Accept-Encoding")
+        }
+        return apply_gzip(resp, gz)
+    }
+}
+
+// ---- Str↔lane 转换(todo_api fill/byte_at 套路;头注 ② 载体边界)----
+
+// Str 落 lane(字节 1:1;strlen 语义:带内 NUL 体在此截短——头注登记)
+fn fill_lane(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// lane → 载体 Str:每字节 b → utf8_enc(b + 256)(U+0100..U+01FF,两字节
+// UTF-8,NUL-free;Str 全语义保真——头注 ②)
+fn lane_carrier(buf: &I64[], n: I64) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I64 = 0
+    while i < n {
+        ps.push(utf8_enc((buf[i] + 256).as[I32]()))
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// 载体 Str → lane(逆映射;lead = 0xC4|b>>6,cont = 0x80|b&63 的逆)
+fn carr_decode(s: Str, buf: &I64[]) -> I64 {
+    var n: I64 = 0
+    var i: I32 = 0
+    while i + 2 <= s.len {
+        let lead = byte_at(s, i)
+        let cont = byte_at(s, i + 1)
+        buf[n] = ((lead - 196) * 64 + (cont - 128)).as[I64]()
+        n += 1
+        i += 2
+    }
+    return n
+}
+
+// lane → 原文 Str(合法 UTF-8 走码点重组;ASCII 单字节直出。域:无 NUL
+// 合法 UTF-8 文本——文本族门即域;截尾序列止步防越界,域外行为登记)
+fn lane_plain(buf: &I64[], n: I64) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I64 = 0
+    while i < n {
+        let b = buf[i].as[I32]()
+        if b < 128 {
+            ps.push(utf8_enc(b))
+            i += 1
+        } else {
+            var seq = 2
+            if b >= 240 {
+                seq = 4
+            } else if b >= 224 {
+                seq = 3
+            }
+            if i + seq.as[I64]() > n {
+                i = n // 截尾序列(域外):止步,不越界读
+                continue
+            }
+            var cp: I32 = 0
+            if seq == 2 {
+                cp = (b - 192) * 64 + (buf[i + 1].as[I32]() - 128)
+            } else if seq == 3 {
+                cp = ((b - 224) * 64 + (buf[i + 1].as[I32]() - 128)) * 64 + (buf[i + 2].as[I32]() - 128)
+            } else {
+                cp = (((b - 240) * 64 + (buf[i + 1].as[I32]() - 128)) * 64 + (buf[i + 2].as[I32]() - 128)) * 64 + (buf[i + 3].as[I32]() - 128)
+            }
+            ps.push(utf8_enc(cp))
+            i += seq.as[I64]()
+        }
+    }
+    return join(ps, "")
+}
+
+// ---- 压缩/解压转换对(emit 臂可执行;头注 ①/② 边界)----
+
+// s(无 NUL 合法 UTF-8 文本,≤65536 字节)→ gzip 成员(载体形;失败/超域回 "")
+pub fn gzip_bytes(s: Str, level: I64) -> Str {
+    if s.len > 65536 {
+        return ""
+    }
+    var src: I64[65536] = [0]
+    var out: I64[66000] = [0]
+    let n = fill_lane(src, s)
+    let m = gzip_compress(src, n, out, 66000, level)
+    if m <= 0 {
+        return ""
+    }
+    return lane_carrier(out, m)
+}
+
+// 载体形 gzip 成员 → 原文(形坏/超域回 "";ISIZE 定出道上限,护栏语义同 enc)
+pub fn gunzip_bytes(s: Str) -> Str {
+    if s.len == 0 || s.len % 2 != 0 {
+        return ""
+    }
+    var in: I64[66000] = [0]
+    let n = carr_decode(s, in)
+    if n < 20 {
+        return ""
+    }
+    let isz = in[n - 4] + in[n - 3] * 256 + in[n - 2] * 65536 + in[n - 1] * 16777216
+    if isz < 0 || isz > 65536 {
+        return ""
+    }
+    var back: I64[65536] = [0]
+    let d = gzip_decompress(in, n, back, 65536)
+    if d < 0 {
+        return ""
+    }
+    return lane_plain(back, d)
+}
+
+// ---- 测试(interp 臂;头注 ①:判定面/头 surgery/透传装配。名 "2c " 前缀
+//      = E5030 合并态撞名防) ----
+
+fn ae_req(ae: Str) -> Req[I64] {
+    var hs: List[Pair] = List[Pair]()
+    if ae.len > 0 {
+        hs.push(Pair { k: "Accept-Encoding", v: ae })
+    }
+    return req_full[I64]("GET", "/big", "", hs, 0)
+}
+
+fn big_html() -> Resp {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < 512 {
+        ps.push("<p>x</p>")
+        i += 1
+    }
+    return html(join(ps, ""))
+}
+
+test "2c wants_gzip 协商矩阵(收编 negotiate:x-gzip/大小写/q 值/通配)" {
+    // 收
+    assert(wants_gzip("gzip"))
+    assert(wants_gzip("gzip, deflate"))
+    assert(wants_gzip("deflate;q=0.5, gzip"))
+    assert(wants_gzip("GZIP"))
+    assert(wants_gzip("x-gzip"))
+    assert(wants_gzip("*"))
+    assert(wants_gzip("gzip;q=0.5"))
+    assert(wants_gzip("br, *;q=0.1"))
+    // 拒
+    assert(!wants_gzip(""))
+    assert(!wants_gzip("deflate"))
+    assert(!wants_gzip("br"))
+    assert(!wants_gzip("identity"))
+    assert(!wants_gzip("gzip;q=0"))
+    assert(!wants_gzip("gzip;q=0.0"))
+    assert(!wants_gzip("*;q=0"))
+    assert(!wants_gzip("gzip ; q=0"))
+    // 畸形 q 按不存在(RFC 7231 §5.3.1;enc.ct 口径)
+    assert(!wants_gzip("gzip;q=1.0001"))
+    assert(wants_gzip("gzip;q=1"))
+}
+
+test "2c gzip_eligible 四门(CE/AE/阈值/文本族)" {
+    let req = ae_req("gzip")
+    let big = big_html()
+    assert(big.body.len == 4096)
+    // 全过 → eligible
+    assert(gzip_eligible[I64](req, big, 1024))
+    // ① 已带 Content-Encoding → 拒
+    assert(!gzip_eligible[I64](req, with(big, "Content-Encoding", "br"), 1024))
+    // ② 无/拒 gzip → 拒
+    assert(!gzip_eligible[I64](ae_req(""), big, 1024))
+    assert(!gzip_eligible[I64](ae_req("gzip;q=0"), big, 1024))
+    // ③ 阈值下 → 拒
+    assert(!gzip_eligible[I64](req, big, 8192))
+    // ④ 非文本族 → 拒
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Content-Type", v: "application/octet-stream" })
+    let bin = Resp { status: 200, headers: hs, body: big.body }
+    assert(!gzip_eligible[I64](req, bin, 1024))
+    // 文本族收口面:json/yaml/svg 收,大小写敏感按规范形
+    assert(gzip_eligible[I64](req, with_status_ct(big, "application/json"), 1024))
+    assert(gzip_eligible[I64](req, with_status_ct(big, "application/yaml"), 1024))
+    assert(gzip_eligible[I64](req, with_status_ct(big, "image/svg+xml"), 1024))
+    assert(!gzip_eligible[I64](req, with_status_ct(big, "TEXT/HTML"), 1024))
+}
+
+// 换首个 Content-Type(测试助手: Resp 字面量重组;保 body/位次)
+fn with_status_ct(r: Resp, ct: Str) -> Resp {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Content-Type", v: ct })
+    var i: I32 = 0
+    while i < r.headers.len {
+        if r.headers[i].k != "Content-Type" {
+            hs.push(r.headers[i])
+        }
+        i += 1
+    }
+    return Resp { status: r.status, headers: hs, body: r.body }
+}
+
+test "2c apply_gzip 头 surgery(CL 原位换值保序 + CE/Vary 尾追 + 体换)" {
+    // 用户级 CL 居中形:CT / CL / X-Keep —— 换值不换位
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Content-Type", v: "text/html; charset=utf-8" })
+    hs.push(Pair { k: "Content-Length", v: "4096" })
+    hs.push(Pair { k: "X-Keep", v: "1" })
+    let r = Resp { status: 200, headers: hs, body: "ORIG" }
+    let g = apply_gzip(r, "GZDATA")
+    assert(resp_status_of(g) == 200)
+    assert(g.body == "GZDATA")
+    assert(g.headers.len == 5)
+    assert(g.headers[0].k == "Content-Type")
+    assert(g.headers[1].k == "Content-Length" && g.headers[1].v == "6")
+    assert(g.headers[2].k == "X-Keep")
+    assert(g.headers[3].k == "Content-Encoding" && g.headers[3].v == "gzip")
+    assert(g.headers[4].k == "Vary" && g.headers[4].v == "Accept-Encoding")
+    // 无用户级 CL:不造(render 咽喉自拼;避免双 CL)
+    let g2 = apply_gzip(big_html(), "GZ")
+    var has_cl = false
+    var i: I32 = 0
+    while i < g2.headers.len {
+        if g2.headers[i].k == "Content-Length" {
+            has_cl = true
+        }
+        i += 1
+    }
+    assert(!has_cl)
+    assert(resp_header(g2, "Content-Encoding") == "gzip")
+    assert(resp_header(g2, "Vary") == "Accept-Encoding")
+}
+
+fn resp_status_of(r: Resp) -> I32 {
+    return r.status
+}
+
+test "2c compress_mw 透传装配(无 AE/阈值下/已编码/非文本族 + 链上集成)" {
+    let mw = compress_mw[I64](1024)
+    let big = big_html()
+    // 无 AE → 原样(体/头全不动)
+    let p1 = mw(ae_req(""), |rq| big)
+    assert(p1.body == big.body)
+    assert(resp_header(p1, "Content-Encoding") == "")
+    assert(resp_header(p1, "Vary") == "")
+    // 阈值下 → 原样
+    let p2 = mw(ae_req("gzip"), |rq| text("ok"))
+    assert(p2.body == "ok")
+    assert(resp_header(p2, "Content-Encoding") == "")
+    // 已编码 → 原样(①门在协商前)
+    let enc = with(big, "Content-Encoding", "br")
+    let p3 = mw(ae_req("gzip"), |rq| enc)
+    assert(p3.body == big.body)
+    assert(resp_header(p3, "Content-Encoding") == "br")
+    assert(resp_header(p3, "Vary") == "")
+    // 非文本族 → 原样(octet 体不触压缩面 —— interp 臂结构性边界,头注 ①)
+    let bin = with_status_ct(big, "application/octet-stream")
+    let p4 = mw(ae_req("gzip"), |rq| bin)
+    assert(p4.body == big.body)
+    assert(resp_header(p4, "Vary") == "")
+    // 拒 gzip 客户端(q=0)→ 原样
+    let p5 = mw(ae_req("gzip;q=0"), |rq| big)
+    assert(p5.body == big.body)
+    // 路由链集成:compress_mw 挂链,透传路径全绿(dispatch 面)
+    let app = middleware[I64](get[I64](router[I64](0), "/who", |rq| text("uid=1")), |rq, nx| mw(rq, nx))
+    let hit = dispatch[I64](app, "GET", "/who", "")
+    assert(resp_status_of(hit) == 200)
+    assert(hit.body == "uid=1")
+}
