@@ -3707,6 +3707,7 @@ fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
 // 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
 fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
     var h: Str = rt_in_handler(t, node, evname)
+    fs_write("/tmp/ta_dbg2", "FIRE ev=" + evname + " h=" + h + " plen=" + payload.len.to_string() + "\n")
     if h != "" {
         act(h + ":" + payload, List[Str]())
     }
@@ -3716,6 +3717,13 @@ fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, Lis
 // 字符输入:焦点 input 插入码点(utf8_enc)并 fire on:input;非焦点返回 false 回落
 fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, ch: I32) -> Bool {
     var fn0: I32 = gui_focus_node()
+    if fn0 >= 0 {
+        if fn0 < t.ntag.len {
+            fs_write("/tmp/ta_dbg", "RIC ch=" + ch.to_string() + " tag=" + t.ntag[fn0] + "\n")
+        }
+    } else {
+        fs_write("/tmp/ta_dbg", "RIC ch=" + ch.to_string() + " NOFOCUS\n")
+    }
     if fn0 < 0 {
         return false
     }
@@ -3987,13 +3995,62 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         }
         return true
     }
+    // textarea:↑↓ 行移(行内列保持,短行钳尾;纯扫描;嵌套 if——|| 非语言算符)
+    if is_ta2 {
+        if k == 265 {
+            var ucs: I32 = ta_line_start(cur, caret)
+            if ucs > 0 {
+                var ucol: I32 = caret - ucs
+                var ut: I32 = ta_line_start(cur, ucs - 1)
+                var ul: I32 = ta_line_end(cur, ut) - ut
+                if ucol > ul {
+                    ucol = ul
+                }
+                if shd {
+                    if gui_sel_anchor_get() < 0 {
+                        gui_sel_anchor_set(caret)
+                    }
+                }
+                gui_caret_set(ut + ucol)
+                if !shd {
+                    gui_sel_clear()
+                }
+            }
+            return true
+        }
+        if k == 264 {
+            var dce: I32 = ta_line_end(cur, caret)
+            if dce < cur.len {
+                var dcol: I32 = caret - ta_line_start(cur, caret)
+                var dt: I32 = dce + 1
+                var dl: I32 = ta_line_end(cur, dt) - dt
+                if dcol > dl {
+                    dcol = dl
+                }
+                if shd {
+                    if gui_sel_anchor_get() < 0 {
+                        gui_sel_anchor_set(caret)
+                    }
+                }
+                gui_caret_set(dt + dcol)
+                if !shd {
+                    gui_sel_clear()
+                }
+            }
+            return true
+        }
+    }
     if k == 268 {
         if shd {
             if gui_sel_anchor_get() < 0 {
                 gui_sel_anchor_set(caret)
             }
         }
-        gui_caret_set(0)
+        if is_ta2 {
+            gui_caret_set(ta_line_start(cur, caret))
+        } else {
+            gui_caret_set(0)
+        }
         if !shd {
             gui_sel_clear()
         }
@@ -4005,12 +4062,17 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
                 gui_sel_anchor_set(caret)
             }
         }
-        gui_caret_set(cur.len)
+        if is_ta2 {
+            gui_caret_set(ta_line_end(cur, caret))
+        } else {
+            gui_caret_set(cur.len)
+        }
         if !shd {
             gui_sel_clear()
         }
         return true
     }
+
     if k == 257 {
         if is_ta2 {
             var cur3: Str = rt_in_val(t, fn0, bind)
@@ -5456,6 +5518,35 @@ extern "c" fn gui_ime_prev_set(s: Str) -> I32
 extern "c" fn gui_ime_prev_eq(s: Str) -> I32
 
 // textarea 行几何:行起点数组(返回行数;out 逐行 push 起始字节位,末行含)
+// 字节位所在行的首字节位(跨 \n 回退)与尾字节位(\n 前或串尾)
+fn ta_line_start(val: Str, pos: I32) -> I32 {
+    var i: I32 = pos
+    if i > val.len {
+        i = val.len
+    }
+    while i > 0 {
+        if byte_at(val, i - 1) == 10 {
+            return i
+        }
+        i -= 1
+    }
+    return 0
+}
+
+fn ta_line_end(val: Str, pos: I32) -> I32 {
+    var i: I32 = pos
+    if i > val.len {
+        i = val.len
+    }
+    while i < val.len {
+        if byte_at(val, i) == 10 {
+            return i
+        }
+        i += 1
+    }
+    return val.len
+}
+
 fn gui_ta_lines(val: Str, out: List[I32]) -> I32 {
     out.push(0)
     var i: I32 = 0
