@@ -62,7 +62,7 @@ fn main() -> I32 {
             d_focus(t)
             d_ime_set("ni'hao")
             d_frame(t, |buf| buf.push(m.draft))
-            if cmds_contain(t, "ni'hao") != 1 {
+            if cmds_contain(t, "ni hao") != 1 {
                 panic("s47: 组词串未内联渲染")
             }
             // mirror 模型值不动(bind 单一起源;组词仅显示态)
@@ -71,7 +71,7 @@ fn main() -> I32 {
             d_ime_set("")
             d_frame(t, |buf| buf.push(m.draft))
             d_expect_text(t, "ready")
-            if cmds_contain(t, "ni'hao") == 1 {
+            if cmds_contain(t, "ni hao") == 1 {
                 panic("s47: 组词清除未回落")
             }
         })

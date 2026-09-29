@@ -3027,7 +3027,27 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 // 移动即重置闪烁锚(450ms 实心跟手,逾时 320ms 相位)
                 var blink: I32 = gui_caret_blink()
                 // P-M3:IME 组词内联进显示串(§10.5;组词随光标位插入)
-                var ipre: Str = gui_ime_preedit()
+                // 隔音符渲染为空格(系统口径:搜狗 "'" 原生显示为分隔空白;按字面
+                // 渲染则音节边界规范化时两可见字符同消=用户实测「一次删两个」)
+                var ipre0: Str = gui_ime_preedit()
+                var ipre: Str = ipre0
+                if ipre0 != "" {
+                    var sbq: I32 = 0
+                    while sbq < ipre0.len {
+                        if byte_at(ipre0, sbq) == 39 {
+                            var ipre2: Str = ""
+                            if sbq > 0 {
+                                ipre2 = byte_slice(ipre0, 0, sbq)
+                            }
+                            ipre2 = ipre2 + " "
+                            ipre2 = ipre2 + byte_slice(ipre0, sbq + 1, ipre0.len)
+                            ipre0 = ipre2
+                            sbq += 1
+                        }
+                        sbq += 1
+                    }
+                    ipre = ipre0
+                }
                 var idisp: Str = ival
                 if ipre != "" {
                     idisp = byte_slice(ival, 0, ic) + ipre + byte_slice(ival, ic, ival.len)
