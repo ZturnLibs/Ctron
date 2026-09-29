@@ -3093,6 +3093,35 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 // 可达一字宽;光标/选区/窗口右界一律以此为参照——用 xo 会左移
                 // 骑字,用户实测「光标覆盖文字」根因)
                 var mvs: I32 = gui_ft_measure_n_wt(idisp, vs, isz2, wt2p, fam2p)
+                // 窗口右缘结构保证:必须覆盖 min(文末, 光标+2)——尾钳在 xo 系而
+                // 窗口右界在 mvs 系(差可达一字宽)时右缘够不到文末=末字符丢失
+                // (用户实测);不够则前推 vs(实绘原点右移)
+                var wneed: I32 = vca + 2
+                if vfull < wneed {
+                    wneed = vfull
+                }
+                if mvs + vavail - 12 < wneed {
+                    var wi2: I32 = vs
+                    while wi2 < idisp.len {
+                        var nb4: I32 = wi2 + 1
+                        while nb4 < idisp.len {
+                            var bb4: I32 = byte_at(idisp, nb4)
+                            if bb4 >= 128 && bb4 < 192 {
+                                nb4 += 1
+                            } else {
+                                break
+                            }
+                        }
+                        var nm4: I32 = gui_ft_measure_n_wt(idisp, nb4, isz2, wt2p, fam2p)
+                        if nm4 + vavail - 12 >= wneed {
+                            vs = nb4
+                            mvs = nm4
+                            wi2 = idisp.len + 1
+                        } else {
+                            wi2 = nb4
+                        }
+                    }
+                }
                 var ve: I32 = idisp.len
                 wi = vs
                 while wi < idisp.len {
@@ -5120,16 +5149,25 @@ fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
     if fn0 < 0 {
         return 1
     }
+    // 取最宽配对矩形(输入框现有 box/选区/下划线/光标条多 RECT 并存,首命中
+    // 可能是 2px 细条——候选窗定位失准走回落=屏幕左下角,用户实测)
+    var best: I32 = -1
+    var bw: I32 = 0
     var j: I32 = 0
     while j < hits.len {
         if hits[j] == fn0 {
             if j < rects.len {
-                var ci: I32 = rects[j]
-                gui_ime_set_caret(gui_cmd_x100(ci) / 100, gui_cmd_y100(ci) / 100, gui_cmd_w100(ci) / 100, gui_cmd_h100(ci) / 100)
+                var wj: I32 = gui_cmd_w100(rects[j])
+                if wj > bw {
+                    bw = wj
+                    best = rects[j]
+                }
             }
-            j = hits.len + 1
         }
         j += 1
+    }
+    if best >= 0 {
+        gui_ime_set_caret(gui_cmd_x100(best) / 100, gui_cmd_y100(best) / 100, gui_cmd_w100(best) / 100, gui_cmd_h100(best) / 100)
     }
     return 0
 }
