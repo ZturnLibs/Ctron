@@ -90,7 +90,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **布局变体** | `#[repr(packed)]` / `#[repr(align(N))]` → GNU 属性直出;属性实参解析支持嵌套括号(`repr(align(8))`)。锚定:`tests/ffi/layout/`(packed sizeof=17/align sizeof=32 边界对数) |
 
 仍未落地(诚实口径):errno→Result 边界转换(Option[Str] NULL 编组已落地为首步)、pkg-config/构建集成、context-pointer 闭包模式糖、C 位域/union、float 形参精度约定。
-> (2026-09-23 v0.9 销账:上列五项已分别随 std.ffi 系统折/sys_result、ctc.sh pkg-config 解析、clo_handle+clo_cb2/3、位域整跳+union 字节缓冲、F32 码 "g" 全部落地,见 §二·七。)
+> (2026-09-23 v0.9 销账:上列五项已分别随 ffi 域包 sys_result(原 std.ffi;e3bc073 域包挂顶层)、ctc.sh pkg-config 解析、clo_handle+clo_cb2/3、位域整跳+union 字节缓冲、F32 码 "g" 全部落地,见 §二·七。)
 
 ### v0.8 增补(2026-09-17 下午)
 
@@ -117,20 +117,37 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **F32 边界保真** | F32 独立类型码 `"g"` → C `float`(此前折叠进 `"f"`=double,extern 边界 float/double ABI 错配、C 侧收 0)。七点位:ct_ty_code/ct_ctype/算术结果码/println 臂/as cast/零值/a_split 元素码集。F64 路径逐字不变(link_math sqrt 复验)。锚定:`tests/ffi/f32_boundary/`——`f_widen(F32)->F64` 证人:边界真走 binary32(0.1f 加宽回 double ≠ 0.1;注意 0.1f+0.2f==0.3f 在 binary32 成立,不能作证人) |
 | **cimport float 形参** | `cimp_ty` 补 `float → F32`(此前注释占位);sample_fscale 端到端 |
 | **pkg-config 集成** | ctc.sh emit 链接标志摘要升级:`-l<名>` 逐个 `pkg-config --exists`,命中展开 `--libs`,缺省回落;发射 C 文本不变。锚定:`tests/ffi/pkgconf/`(PKG_CONFIG_PATH 假 .pc,hermetic) |
-| **std.ffi 包** | `sys_result(rc: I64) -> Result[I64, Str]` + `err_str(e: I64) -> Str`(strerror 垫片中转 + str_from_c 深拷)。包面只暴露两 fn;自测桥安全(纯折叠),Err/strerror 臂由 err_wrap 编译通道钉死。锚定:`tests/ffi/err_wrap/` + stdpkg 快照同步 |
+| **ffi 域包**(原 std.ffi,e3bc073 挂顶层) | `sys_result(rc: I64) -> Result[I64, Str]` + `err_str(e: I64) -> Str`(strerror 垫片中转 + str_from_c 深拷)。包面只暴露两 fn;自测桥安全(纯折叠),Err/strerror 臂由 err_wrap 编译通道钉死。锚定:`tests/ffi/err_wrap/` |
 
 ### v0.9 精度约定(成文)
 
 - **F32 = C `float`(IEEE 754 binary32),F64 = C `double`**;extern 边界按声明型直出,不隐式加宽。编译通道值保真(f_widen 证人);解释桥(ctron_ext_dispatch)仅有 "i:"/"s:" 两帧,**float 形参响亮 panic**(「extern 解释口径:不支持参数类型」),不静默错值——float 帧支持登记后续。
 - 带浮点形参的 **C 回调**(ct_fnK 全 int64 原型)同属不支持口径:fn 指针 typedef 全 `ct_i`,float 实参经 int 寄存器即错值;以 W8052 类推的手写垫片惯例规避,登记后续。
 - **C 宿主分歧**:compiler-c 把 F32/F64 统折 `ty_flt`(trans.c:527),F32 注解同为 double——自举发射面为准,C 宿主对齐登记在册(镜像 #8 宿主七项诊断的差分方向)。
-- std.ffi 载荷域:Ok(I64) 经发射面 Result 载荷槽 32 位,域承诺 \|rc\| < 2^31(POSIX rc 恒真;json.ct §载荷槽注记同源)。
+- ffi 域包载荷域:Ok(I64) 经发射面 Result 载荷槽 32 位,域承诺 \|rc\| < 2^31(POSIX rc 恒真;json.ct §载荷槽注记同源)。
+
+### v0.9·二 追加批次(2026-09-29):定长数组字段 + union U8[N] + 裸引用拦截
+
+| 能力 | 落地 |
+|---|---|
+| **定长数组 struct 字段发射修复** | 两处字段循环(声明 + 泛型实例)`a<N><ec> → ctype 名[N]`(此前无臂塌缩 int32,repr(c) struct 含数组字段即布局错);trans_expr Index/len 与 trans_stmt 元素写补成员接收者臂(`p.buf[i]` 读写)。锚定:`tests/ffi/arr_field/`(sizeof=48 互证 + 按值过界 + 成员索引读写)。**余登记**:ArrLit 仅 let 初值位——struct 字面量内数组构造仍堵(Pkt\{buf:[...]} 不可达,构造走 extern make 配方) |
+| **cimport 定长数组字段** | `cimp_param` 补 `NAME[N]` 解析(纯数字计数;二维/表达式计数不支持)。锚定:SampleArr(sizeof=24 互证 + 成员索引读写) |
+| **cimport union 升级 U8[N]** | 定长数组字段修复解锁:缓冲 `var raw: U8[N]`,N 按 C 公式精确计算(最大成员大小按联合对齐补齐)= C sizeof(union),互证从窗口断言收紧为**等值**;字节可寻址(byte_at 配方读成员);成员表含数组成员(大小/对齐表按元素折叠)。锚定:Vals\{double;char[12];long} → N=16 |
+| **E4045 裸引用拦截** | 探针实证 `&T`/`&Pkt` 单引用 extern 形参**静默塌缩 int32**(错 ABI,比不支持更糟);现 sem 硬错拦截(形参/返回双侧,`&T[]` 视图与 `&Trait` 胖指针放行;trait 判定用 sem 域 is_trait——拼接序先于 trans,ct_is_trait 不可前引)。语料零存量,拦截零破坏。锚定:`tests/ffi/bare_ref.neg.ct`。**C 宿主同步登记待办**(并发线占 compiler-c,热树纪律暂缓) |
+
+### 裸指针能力扩展设计笔记(呈裁决,未实施)
+
+extern 边界现无裸指针形态:`&T` 单引用已被 E4045 拦截,唯一指针通道是 `&T[]` 视图(`(ptr,len)` 复合,非裸指针 ABI)。cimport 对 `void*`/`struct X*` 形参因此只能占位整跳。若要补齐,候选路径(按"能力优先于 hack"裁决框架,须跨宿主 ABI 评审):
+
+1. **`&T` 边界语义 = `T*`**(推荐候选):给 ct_ty_code 增加 `p<ec>` 码,`ct_abi_ctype` 映射裸 `T*`;sem E4045 转放行(限定 extern 位);解释桥加 `p:` 帧(指针按 long 直传)。Rust `&T as extern`、Zig `*T` 同型。
+2. **opaque Ptr 内建**:新原始型 `Ptr`(void* 等价),`as` 换算;更 Rust-unsafe 风味,但丢失指向型信息。
+3. **维持现状**:cimport 占位 + 手写垫片(现状口径,零成本但 POSIX 头可消费面受限)。
 
 ### v0.9 顺带发现/登记
 
-- **定长数组 struct 字段发射塌缩**:`var w: I64[4]` 等字段出 `int32_t`(定长数组仅视图形参通道可用,#7 修复面);触类:repr(c) struct 含数组字段即布局错。归发射泳道在册。
+- ~~**定长数组 struct 字段发射塌缩**~~ ✅ v0.9·二 修复(两处字段循环 + 成员索引读写;`tests/ffi/arr_field/` 钉死);余登记:ArrLit 仅 let 初值位,struct 字面量内数组构造仍堵(构造走 extern make 配方)。
 - **seed/C 宿主解释桥 close(-1) 回转缺口**:errno_basics 在 seed `test` 口径下 close(-1) 不回 -1(bridge int 返回链),FFI 夹具验收通道 = run.sh 编译通道(bin run = 编译执行,`run` 参数仅覆 CLI 输入锚)。归宿主解释桥在册。
-- **use 合并私有 decl 撞名**:std 包内私有 extern(dup/close)与消费方本地 extern 同名即 E5030——包面收敛原则(只 pub 消费面)写入 std.ffi 包头注。
+- **use 合并私有 decl 撞名**:std 包内私有 extern(dup/close)与消费方本地 extern 同名即 E5030——包面收敛原则(只 pub 消费面)写入 ffi 域包头注。
 
 ---
 
@@ -182,7 +199,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 10 | ~~发射的形参缺省静默通过~~ **已修复**——"补 0"垫片会把缺参洗成合法 C(cc rc=0 实证);现 ct_arity_range/ct_arity_parse 发射期断言(声明在案的被调个数不符即硬失败;变参 ≥ min;内建/未声明不查);编译器自身三拼接在守卫下全过(无潜伏 arity bug) | ✅ v0.8 | — |
 | 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃;已删除解阻塞,impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② ~~if 条件 `||` 解析错位~~ **已修复**——根因:`p_if` 条件误用 `p_and`(不消费 `\|\|`),`if` 条件含 `\|\|` 即解析错位(下游 `StructLit 非值类型`/签名吞没);语料对 if 条件 `\|\|` 零覆盖故长期隐形(while 走 p_stmt_expr→p_oror 本就对)。修复:p_if 改 `p_oror` + 04d_bool_or 回归锚。③ ~~`cimp_toks`+`cimp_proto` 同文件 native sem 崩溃~~ **已关闭(=②重复)**——该源型含 `if 三词或链`,②修复后 ctron-cc 原生驱动 cimport rc=0(输出与 seed 逐字一致);run.sh 已切原生驱动优先、seed 退化备用 | 中 | ①②③全部处置 |
 | 12 | ~~panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧)~~ | ✅ v0.8 | 全语境落地——回调蹦栈 `ctron_cb_depth` + `ctron_panic` 三路判定(回调内=消息+exit(1) 不越 C 帧;task 态=pmsg+cancel+longjmp;否则 exit);`cb_panic/` + `cb_panic_task/` 双夹具钉死(§四表此行此前漏销账,本次补) |
-| 13 | ~~cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参~~;**位域检测 + union 字节缓冲 + float 形参已落地**(v0.9):位域 struct 整构跳过(typedef 位域此前静默错绑——只剩非位域字段,sizeof 全错);union → U64 字段缓冲(8 补齐)+ 成员偏移注释 + `raw_len` 与 C sizeof 互证(C 大小 ≤ 缓冲 < C 大小+8),任一成员不可映射即整跳;`float → F32` 映射随 F32 码落地。**余项**:union/struct 指针形参型面(void* 等 cimport 仍占位)、匿名嵌套 struct/union 成员 | 低 | 剩余按需扩面;未识别一律注释占位不静默 |
+| 13 | ~~cimport 深化:enum/union/函数指针形参/typedef 函数签名/float 形参~~;**位域检测 + union 字节缓冲 + float 形参已落地**(v0.9):位域 struct 整构跳过(typedef 位域此前静默错绑——只剩非位域字段,sizeof 全错);union → U64 字段缓冲(8 补齐)+ 成员偏移注释 + `raw_len` 与 C sizeof 互证(C 大小 ≤ 缓冲 < C 大小+8),任一成员不可映射即整跳;`float → F32` 映射随 F32 码落地。**余项**:union/struct 指针形参型面(void* 等 cimport 仍占位;裸指针能力扩展设计笔记见 §二·七·二,呈裁决)、匿名嵌套 struct/union 成员 | 低 | 剩余按需扩面;未识别一律注释占位不静默 |
 | 14 | ~~pkg-config/构建集成~~、C 位域 | ✅ v0.9(部分)/口径收窄 | pkg-config:ctc.sh emit 对 `#[link]` 收集的 `-l<名>` 逐个 `pkg-config --exists` 探测,命中展开 `--libs`,缺省回落 `-l<名>`(发射 C 文本不变;假 .pc hermetic 夹具 `tests/ffi/pkgconf/`);深度构建集成(Makefile/CMake 生成)随构建系统批次。C 位域:**cimport 检测整跳已落地**;语言面不设位域(声明序布局宪法),登记为永久口径 |
 
 ### 本次顺带修复的既有问题

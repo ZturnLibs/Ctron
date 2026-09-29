@@ -38,6 +38,8 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E4041") { return "#[repr(c)] only allowed on struct declarations:%0" }
     if seq2(key, "W8052.param") { return "extern parameter is not a C-ABI type (§9.6):%0.%1" }
     if seq2(key, "W8052.ret") { return "extern return type is not a C-ABI type (§9.6):%0" }
+    if seq2(key, "E4045.param") { return "extern bare reference parameter &T is unsupported (use &T[] view; bare-pointer capability pending):%0.%1" }
+    if seq2(key, "E4045.ret") { return "extern bare reference return &T is unsupported (use &T[] view):%0" }
     if seq2(key, "E4040") { return "#[trusted] only allowed on extern declarations:%0" }
     if seq2(key, "E4044") { return "variadic parameter (...) only allowed on extern declarations:%0" }
     if seq2(key, "W8051") { return "repr(c) struct has a non-C-ABI field (§9.6):%0.%1" }
@@ -127,6 +129,8 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E4041") { return "#[repr(c)] 仅限 struct 声明:%0" }
     if seq2(key, "W8052.param") { return "extern 形参非 C-ABI 类型(§9.6):%0.%1" }
     if seq2(key, "W8052.ret") { return "extern 返回非 C-ABI 类型(§9.6):%0" }
+    if seq2(key, "E4045.param") { return "extern 裸引用形参 &T 不支持(用 &T[] 视图;裸指针能力呈裁决):%0.%1" }
+    if seq2(key, "E4045.ret") { return "extern 裸引用返回 &T 不支持(用 &T[] 视图):%0" }
     if seq2(key, "E4040") { return "#[trusted] 仅限 extern 声明:%0" }
     if seq2(key, "E4044") { return "变参形参(...)仅限 extern 声明:%0" }
     if seq2(key, "W8051") { return "repr(c) struct 含非 C-ABI 字段(§9.6):%0.%1" }

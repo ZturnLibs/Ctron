@@ -717,12 +717,12 @@ fn cimp_struct(item: Str, tds: List[Str]) -> Str {
     return out
 }
 
-// union → U64 字段字节缓冲:Ctron 无 union 类型;布局以"最大成员大小"向上
-// 8 补齐的 U64 字段序列承载,成员映射表落注释,raw_len 助手供 C 侧 sizeof
-// 互证(C 大小 ≤ 缓冲 < C 大小 + 8)。任一成员类型不可映射 → 整构跳过(不
-// 静默)。口径:C 侧分配 + 指针传递(缓冲对齐 8 ≥ 常见成员对齐;按值传
-// union 非支持口径)。定长数组 struct 字段现发射为塌缩(int32),故不用
-// U8[N] 缓冲形态。
+// union → U8[N] 字节缓冲(定长数组字段发射修复后可用):大小按 C 规则
+// 精确计算——最大成员大小向上补齐到联合对齐(= 成员对齐最大值),与
+// C sizeof(union) 相等,raw_len 助手供 C 侧等值互证;字节可寻址
+// (byte_at 配方读成员)。任一成员类型不可映射 → 整构跳过(不静默)。
+// 口径:C 侧分配 + 指针传递(缓冲对齐 1 < 联合对齐,由 C 分配器保证;
+// 按值传 union 非支持口径)。
 fn cimp_union(item: Str, body: Str, tail: Str, tds: List[Str]) -> Str {
     var tt = cimp_toks(tail)
     if tt.len == 0 {
@@ -738,6 +738,7 @@ fn cimp_union(item: Str, body: Str, tail: Str, tds: List[Str]) -> Str {
     // 成员切分 ';';pa = "名: Ctron型",名取首个 ':' 前
     var names = List[Str]()
     var szs = List[I32]()
+    var als = List[I32]()
     var bad = ""
     var cur = ""
     var i: I32 = 0
@@ -762,11 +763,13 @@ fn cimp_union(item: Str, body: Str, tail: Str, tds: List[Str]) -> Str {
                     var mn = cimp_trim(byte_slice(pa, 0, cp))
                     var mt = cimp_trim(byte_slice(pa, cp + 1, pa.len))
                     var ms = cimp_ctron_size(mt)
-                    if ms == 0 {
+                    var ma = cimp_ctron_align(mt)
+                    if ms == 0 || ma == 0 {
                         bad = ftxt
                     } else {
                         names.push(mn + " : " + mt + " (" + ms.to_string() + "B)")
                         szs.push(ms)
+                        als.push(ma)
                     }
                 }
             }
@@ -780,31 +783,83 @@ fn cimp_union(item: Str, body: Str, tail: Str, tds: List[Str]) -> Str {
         return "// cimport: 跳过(union 成员类型不可映射): " + item
     }
     var mx: I32 = 0
+    var mal: I32 = 1
     var mi: I32 = 0
     var doc = ""
     while mi < names.len {
         if szs[mi] > mx {
             mx = szs[mi]
         }
+        if als[mi] > mal {
+            mal = als[mi]
+        }
         doc = doc + "//   ." + names[mi] + "\n"
         mi += 1
     }
-    var nw: I32 = (mx + 7) / 8
+    // C sizeof(union) = 最大成员大小按联合对齐向上补齐(精确等值)
+    var n: I32 = ((mx + mal - 1) / mal) * mal
     var out = "#[repr(c)]\nstruct " + unm + " \{\n"
-    out = out + "    // union 字节缓冲(U64 序列,8 补齐;C 侧分配 + 指针传递口径)\n"
-    var wi: I32 = 0
-    while wi < nw {
-        out = out + "    var w" + wi.to_string() + ": U64\n"
-        wi += 1
-    }
+    out = out + "    // union 字节缓冲(U8[" + n.to_string() + "],大小=C sizeof;"
+    out = out + "对齐 1,经 C 侧分配传递;成员字节经 byte_at 配方访问)\n"
+    out = out + "    var raw: U8[" + n.to_string() + "]\n"
     out = out + "}\n"
     out = out + doc
-    out = out + "pub fn " + unm + "_raw_len() -> I64 \{ return " + (nw * 8).to_string() + " }"
+    out = out + "pub fn " + unm + "_raw_len() -> I64 \{ return " + n.to_string() + " }"
     return out
 }
 
 // Ctron 标量型大小表(sizeof 口径,LP64):未知型 → 0(上层判 0 即整构跳过)
+// 数组型 T[N] = 元素大小 × N
 fn cimp_ctron_size(ty: Str) -> I32 {
+    var br = -1
+    var q: I32 = 0
+    while q < ty.len {
+        if byte_at(ty, q) == 91 {
+            br = q
+            q = ty.len
+        }
+        q += 1
+    }
+    if br > 0 {
+        var cnt = cimp_trim(byte_slice(ty, br + 1, ty.len - 1))
+        var esz = cimp_ctron_size(cimp_trim(byte_slice(ty, 0, br)))
+        if esz == 0 || cnt.len == 0 {
+            return 0
+        }
+        var n: I32 = 0
+        var ci: I32 = 0
+        while ci < cnt.len {
+            var cc = byte_at(cnt, ci)
+            if cc < 48 || cc > 57 {
+                return 0
+            }
+            n = n * 10 + (cc - 48)
+            ci += 1
+        }
+        return esz * n
+    }
+    if ty == "I8" || ty == "U8" || ty == "Bool" { return 1 }
+    if ty == "I16" || ty == "U16" { return 2 }
+    if ty == "I32" || ty == "U32" { return 4 }
+    if ty == "I64" || ty == "U64" || ty == "F64" || ty == "USize" || ty == "Str" { return 8 }
+    return 0
+}
+
+// Ctron 型对齐表(LP64;数组型 = 元素对齐):未知型 → 0
+fn cimp_ctron_align(ty: Str) -> I32 {
+    // 数组 T[N]:对齐 = 元素对齐
+    var br = -1
+    var q: I32 = 0
+    while q < ty.len {
+        if byte_at(ty, q) == 91 {
+            br = q
+            q = ty.len
+        }
+        q += 1
+    }
+    if br > 0 {
+        return cimp_ctron_align(cimp_trim(byte_slice(ty, 0, br)))
+    }
     if ty == "I8" || ty == "U8" || ty == "Bool" { return 1 }
     if ty == "I16" || ty == "U16" { return 2 }
     if ty == "I32" || ty == "U32" { return 4 }
