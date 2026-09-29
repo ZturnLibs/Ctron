@@ -1,0 +1,84 @@
+// serve_net.ct —— web_todo 真 serve 臂(L6/L7 原生门;Plan 2b Task 4)
+//
+// 【本文件不入 interp 门】`use net` 会把 net/bind 的 W8052 ×2(extern 形参非
+// C-ABI:tcp_listen/tcp_accept 的 out_fd)拉进合并态——引导 interp 双臂(ctc.sh 裸跑 + ctron-cc run)与 check 门
+// 一律 rc=1,task-3-report 探针判决在册。故 serve 调用从 main.ct 拆出至此:
+//   - src/main.ct:装配 + 业务 + test_call 语义门(check/裸跑门内,零 socket);
+//   - 本文件:真 net 接线(SrvIo 五件映射 net.*,task-3-report 装配例同形),
+//     原生发射臂才可用 net(todo_api run.sh 同款路径;交互式 e2e 挂 L6/L7)。
+// 运行(native 臂,门外语义):
+//   compiler/bin/ctron-emit run examples/web_todo/src/serve_net.ct > /tmp/wt.c
+//   cc -O1 -w -pthread -I net/c_src -o /tmp/wt.bin /tmp/wt.c net/c_src/ctron_net.c
+//   /tmp/wt.bin   # 127.0.0.1:8091;POST /__shutdown 排空退出
+//
+// 二进制边界(§7-8 在册):lane_str 为 ASCII 面(todo_api 探针同款)——含 NUL/
+// 非ASCII 字节的 body 经 lane→Str 全链待 Bytes 语言项放行,登记不瞒。
+
+use net.{ Net_probe, net_tcp_listen, net_tcp_accept, net_read_t, net_write_str, net_close }
+use web.router.{ has_conflict }
+use web.serve.{ SrvIo, serve_with }
+use main.{ app_of, full_router }
+use std.str.{ join }
+
+// ASCII 表(32..126):`{` 字面量禁 → "\{" + "}" concat 拼(语言纪律同 main.ct)
+fn ascii_tbl() -> Str {
+    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz" + "\{" + "|}~"
+}
+
+// lane(每格一字节 I64)→ Str;todo_api 探针同款 ASCII 面(§7-8 边界见头注)。
+// §14-1:段收集 List 末次 join,不做循环串累加。
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var ps: List[Str] = List[Str]()
+    let tbl = ascii_tbl()
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if c < 32 || c > 126 {
+            break
+        }
+        ps.push(byte_slice(tbl, c - 32, c - 31))
+        i += 1
+    }
+    return join(ps, "")
+}
+
+fn main() {
+    let net = Net_probe()
+    let io = SrvIo {
+        listen: |h, p| {
+            let b = Box[Box64](Box64 { v: 0 - 1 })
+            if net_tcp_listen(net, h, p, b) != 0 {
+                return 0 - 1
+            }
+            return b.v
+        },
+        accept: |lfd| {
+            let b = Box[Box64](Box64 { v: 0 - 1 })
+            if net_tcp_accept(net, lfd, b) != 0 {
+                return 0 - 1
+            }
+            return b.v
+        },
+        read: |fd, cap| {
+            let buf: I64[4096] = [0]
+            let n = net_read_t(net, fd, buf, 4096, 5000)
+            if n <= 0 {
+                return ""
+            }
+            return lane_str(buf, 0, n)
+        },
+        write: |fd, s| {
+            return net_write_str(net, fd, s)
+        },
+        close: |fd| {
+            net_close(net, fd)
+        }
+    }
+    let app = app_of("dev-mini")
+    let r = full_router(app)
+    if has_conflict[App](r) {
+        panic("web_todo: 路由冲突(装配自检,§7-5)")
+    }
+    let rc = serve_with[App](io, "127.0.0.1", 8091, r)
+    println("web_todo: serve exit " + rc.to_string())
+}

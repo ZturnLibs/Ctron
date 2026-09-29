@@ -262,6 +262,7 @@ pub struct Req[S] {
     let headers: List[Pair]
     let cookies: List[Pair]
     let params: List[Pair]
+    let session: List[Pair]   // 会话注入槽(2b mw.with_sessions 回填;默认空)
     let state: S
 }
 
@@ -282,12 +283,17 @@ pub fn req_full[S](method: Str, path: Str, body: Str, hdrs: List[Pair], state: S
     if ck.len > 0 {
         cs = cookie_parse(ck)
     }
-    return Req { method: method, path: p, query: q, body: body, headers: hdrs, cookies: cs, params: List[Pair](), state: state }
+    return Req { method: method, path: p, query: q, body: body, headers: hdrs, cookies: cs, params: List[Pair](), session: List[Pair](), state: state }
 }
 
 // params 注入(router 匹配后回填 :param;值语义拷贝换字段,Req 本体不动)
 pub fn req_set_params[S](r: Req[S], params: List[Pair]) -> Req[S] {
-    return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: params, state: r.state }
+    return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: params, session: r.session, state: r.state }
+}
+
+// session 注入(mw.with_sessions 验签后回填;params 同款值语义拷贝)
+pub fn req_set_session[S](r: Req[S], sess: List[Pair]) -> Req[S] {
+    return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: r.params, session: sess, state: r.state }
 }
 
 fn hdr_get(hdrs: List[Pair], name: Str) -> Str {
@@ -532,6 +538,11 @@ pub fn cookie[S](r: Req[S], name: Str) -> Str {
     return pair_get(r.cookies, name)
 }
 
+// session 访问器(§4.3 冻结名 req.session("uid");with_sessions 注入后可用,缺回空)
+pub fn session[S](r: Req[S], name: Str) -> Str {
+    return pair_get(r.session, name)
+}
+
 // query/form 串内单值取原始(未解码)值:'&' 段切(std split)→ 首 '=' 二分;键全等才中
 fn q_raw(q: Str, name: Str) -> Str {
     let segs = split(q, 38)
@@ -682,7 +693,7 @@ test "param 族与类型化取参" {
     ps.push(Pair { k: "ratio", v: "2.5" })
     ps.push(Pair { k: "pi", v: "3.14" })
     ps.push(Pair { k: "bad", v: "x1" })
-    let r = Req { method: "GET", path: "/u/42", query: "", body: "", headers: List[Pair](), cookies: List[Pair](), params: ps, state: 0 }
+    let r = Req { method: "GET", path: "/u/42", query: "", body: "", headers: List[Pair](), cookies: List[Pair](), params: ps, session: List[Pair](), state: 0 }
     assert(param[I32](r, "id") == "42")
     assert(param[I32](r, "nope") == "")
     assert(param_i64[I32](r, "id").or(-1) == 42)
@@ -702,4 +713,18 @@ test "cookie 首等号分段与 case 不敏感取头" {
     assert(cookie[I32](r, "empty") == "")
     assert(cookie[I32](r, "x") == "")
     assert(header[I32](r, "COOKIE") == "tok=a=b; empty=; x")
+    // session 槽(2b):默认空 → 访问器缺回空;注入后按名读(§4.3 冻结名)
+    assert(session[I32](r, "uid") == "")
+    var ss: List[Pair] = List[Pair]()
+    ss.push(Pair { k: "uid", v: "u-9" })
+    let r2 = req_set_session[I32](r, ss)
+    assert(session[I32](r2, "uid") == "u-9")
+    assert(session[I32](r2, "nope") == "")
+    // 值语义:Req 本体不动,原请求 session 仍空;params 携带不受注入影响
+    assert(session[I32](r, "uid") == "")
+    var ps: List[Pair] = List[Pair]()
+    ps.push(Pair { k: "id", v: "7" })
+    let r3 = req_set_params[I32](r2, ps)
+    assert(param[I32](r3, "id") == "7")
+    assert(session[I32](r3, "uid") == "u-9")
 }

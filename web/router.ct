@@ -1,4 +1,5 @@
-// router.ct —— web 路由:值语义 Router + 静态段 > :param > *splat 匹配 + 405 Allow + 中间件平铺链 + dispatch
+// router.ct —— web 路由:值语义 Router + 静态段 > :param > *splat 匹配 + 405 Allow +
+// 中间件平铺链 + dispatch + not_found/method_not_allowed 覆写挂点(2b Task 2)
 // 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.1-§4.2;纪律 §14-1
 // serve 循环(test_call 本体)归 2b,直接复用 dispatch。
 //
@@ -9,8 +10,8 @@
 //      泛型 struct 型实参不参与推断(E2060);具体类型语境(测试体)UFCS `.get/.middleware`
 //      可由接收者推断,冻结名面照用。
 
-use web.core.{ Req, Resp, html, status, redirect, text, with, Pair, req_full, req_set_params, param, cookie, resp_status, resp_body, resp_header }
-use std.str.{ contains, join, split, starts_with }
+use web.core.{ Req, Resp, html, status, redirect, text, with, Pair, req_full, req_set_params, param, cookie, header, resp_status, resp_body, resp_header }
+use std.str.{ contains, index_of, join, split, starts_with }
 
 // ---- 路由表值模型 ----
 
@@ -30,10 +31,12 @@ pub struct Router[S] {
     let state: S
     let routes: List[Route[S]]
     let mws: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]
+    let not_found_h: List[fn(Req[S]) -> Resp]      // 0/1 个:404 覆写(空 = 默认文本,§4.1)
+    let not_allowed_h: List[fn(Req[S]) -> Resp]    // 0/1 个:405 覆写(Allow 恒框架自动带)
 }
 
 pub fn router[S](state: S) -> Router[S] {
-    return Router { state: state, routes: List[Route[S]](), mws: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]() }
+    return Router { state: state, routes: List[Route[S]](), mws: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp](), not_found_h: List[fn(Req[S]) -> Resp](), not_allowed_h: List[fn(Req[S]) -> Resp]() }
 }
 
 // ---- 路径模式:段切分(空段丢弃;前导/尾随 '/' 与连 '//'/ 归一)----
@@ -143,7 +146,7 @@ fn r_add[S](r: Router[S], m: Str, p: Str, h: fn(Req[S]) -> Resp) -> Router[S] {
         i += 1
     }
     rs.push(Route { m: m, segs: segs, chain: chain_append[S](r.mws, List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp]()), h: h })
-    return Router { state: r.state, routes: rs, mws: r.mws }
+    return Router { state: r.state, routes: rs, mws: r.mws, not_found_h: r.not_found_h, not_allowed_h: r.not_allowed_h }
 }
 
 pub fn get[S](r: Router[S], p: Str, h: fn(Req[S]) -> Resp) -> Router[S] { return r_add[S](r, "GET", p, h) }
@@ -171,7 +174,7 @@ pub fn middleware[S](r: Router[S], mw: fn(Req[S], fn(Req[S]) -> Resp) -> Resp) -
         rs.push(Route { m: rt.m, segs: rt.segs, chain: chain_append[S](rt.chain, one), h: rt.h })
         i += 1
     }
-    return Router { state: r.state, routes: rs, mws: ms }
+    return Router { state: r.state, routes: rs, mws: ms, not_found_h: r.not_found_h, not_allowed_h: r.not_allowed_h }
 }
 
 // 子路由器前缀挂载:每条子路由预拼前缀段(最终一张平铺表,热路径无嵌套);
@@ -179,6 +182,9 @@ pub fn middleware[S](r: Router[S], mw: fn(Req[S], fn(Req[S]) -> Resp) -> Resp) -
 // 执行序外层→内层→handler §4.1);合并态 mws 仅取宿主——子组 mw 不入合并态列表,
 // 否则挂载后新注册的宿主路由经 r_add 继承之、嵌套兄弟组经外层合并互渗(双外泄向量)。
 // state 取宿主(单一应用状态)。同样启动期查重(前缀拼接后即最终形态)。
+// 【钉注 2b Task 3】404/405 覆写钩子同 mws 口径:合并态仅取宿主槽——子路由器的
+// not_found_h/not_allowed_h 挂载时丢弃(host-level 404/405 语义:整个应用一张
+// 错误页策略;钉死测试见「mount_at 丢弃子路由覆写钩子」)。子组 404 定制属志向。
 pub fn mount_at[S](r: Router[S], prefix: Str, sub: Router[S]) -> Router[S] {
     var rs: List[Route[S]] = List[Route[S]]()
     var i: I32 = 0
@@ -195,7 +201,7 @@ pub fn mount_at[S](r: Router[S], prefix: Str, sub: Router[S]) -> Router[S] {
         rs.push(Route { m: rt.m, segs: segs_append(segs_of(prefix), rt.segs), chain: chain_append[S](r.mws, rt.chain), h: rt.h })
         i += 1
     }
-    return Router { state: r.state, routes: rs, mws: r.mws }
+    return Router { state: r.state, routes: rs, mws: r.mws, not_found_h: r.not_found_h, not_allowed_h: r.not_allowed_h }
 }
 
 // 模式段还原为诊断字符串(lit/par/splat 各自带记号;仅 mount_at panic 消息用)
@@ -234,6 +240,24 @@ pub fn has_conflict[S](r: Router[S]) -> Bool {
 // 插件挂载(§4.6:插件 = 普通 fn(Router[S]) -> Router[S],零新机制;顺序即装配序)
 pub fn install[S](r: Router[S], p: fn(Router[S]) -> Router[S]) -> Router[S] {
     return p(r)
+}
+
+// 404/405 默认文本覆写挂点(§4.1;值语义换槽)。槽 = 0/1 元 fn 列表(List[fn] 形——
+// Option[fn] interp 面未证,List 即实证面):空 = 硬文本默认;覆写 handler 收完整
+// Req(state/params 同 dispatch 常规构造;headers 空挂 Task 3 dispatch_h 收口)。
+// 405 覆写仅换体,Allow 头框架恒自动带(§8-A 类条款)。
+fn one_h[S](h: fn(Req[S]) -> Resp) -> List[fn(Req[S]) -> Resp] {
+    var hs: List[fn(Req[S]) -> Resp] = List[fn(Req[S]) -> Resp]()
+    hs.push(h)
+    return hs
+}
+
+pub fn not_found[S](r: Router[S], h: fn(Req[S]) -> Resp) -> Router[S] {
+    return Router { state: r.state, routes: r.routes, mws: r.mws, not_found_h: one_h[S](h), not_allowed_h: r.not_allowed_h }
+}
+
+pub fn method_not_allowed[S](r: Router[S], h: fn(Req[S]) -> Resp) -> Router[S] {
+    return Router { state: r.state, routes: r.routes, mws: r.mws, not_found_h: r.not_found_h, not_allowed_h: one_h[S](h) }
 }
 
 // test_call —— spec §4.7 测试口(dispatch 别名;整台服务器零 socket 的确定性测试形;
@@ -338,20 +362,43 @@ fn dummy_route[S]() -> Route[S] {
     return Route { m: "", segs: List[RouteSeg](), chain: List[fn(Req[S], fn(Req[S]) -> Resp) -> Resp](), h: |rr| status(404, "not found") }
 }
 
-// ---- dispatch(test_call 本体;2b serve 循环直接复用)----
+// ---- dispatch(test_call 本体;2b serve 循环经 dispatch_h 复用)----
 
-pub fn dispatch[S](r: Router[S], method: Str, path: Str, body: Str) -> Resp {
-    let mt = route_match[S](r, method, path)
+// dispatch_h —— 带头变体(2b Task 3 收口):hdrs 进 Req(headers 入 Req.headers,
+// Cookie 在 req_full 内解析 → 会话注入随 mw 链可达 handler);404/405 覆写臂同收
+// headered Req(task-2 交接①)。查询串:匹配面剥 "?query"(target 全形不参与段匹配),
+// req_full 仍收全 target(其内自分裂 path/query)——dispatch 旧形不剥,查询串曾恒 404,
+// 此为纯增量修正(既有测试路径无查询串,零扰动)。
+pub fn dispatch_h[S](r: Router[S], method: Str, path: Str, body: Str, hdrs: List[Pair]) -> Resp {
+    var p = path
+    let q = index_of(path, "?")
+    if q > 0 - 1 {
+        p = byte_slice(path, 0, q)
+    }
+    let mt = route_match[S](r, method, p)
     if mt.kind == 0 {
+        if r.not_found_h.len > 0 {
+            let h = r.not_found_h[0]
+            return h(req_full[S](method, path, body, hdrs, r.state))
+        }
         return status(404, "404 not found")
     }
     if mt.kind == 0 - 1 {
+        // Allow 恒框架带(覆写仅换体,§4.1);with 尾插不挤掉覆写 handler 自有头
+        if r.not_allowed_h.len > 0 {
+            let h = r.not_allowed_h[0]
+            return with(h(req_full[S](method, path, body, hdrs, r.state)), "Allow", mt.allow)
+        }
         return with(status(405, "405 method not allowed"), "Allow", mt.allow)
     }
-    let req0 = req_full[S](method, path, body, List[Pair](), r.state)
+    let req0 = req_full[S](method, path, body, hdrs, r.state)
     let req = req_set_params[S](req0, mt.params)
     let h = mt.route.h
     return run_chain[S](mt.route.chain, 0, req, h)
+}
+
+pub fn dispatch[S](r: Router[S], method: Str, path: Str, body: Str) -> Resp {
+    return dispatch_h[S](r, method, path, body, List[Pair]())
 }
 
 // 中间件平铺链:idx 越界即落 handler;闭包捕获续链,mw 短路即不续
@@ -519,10 +566,88 @@ test "重复路由探测 has_conflict" {
     var rs: List[Route[I64]] = List[Route[I64]]()
     rs.push(Route { m: "GET", segs: segs_of("/x"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
     rs.push(Route { m: "GET", segs: segs_of("/x"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
-    assert(has_conflict[I64](Router { state: 0, routes: rs, mws: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp]() }) == true)
+    assert(has_conflict[I64](Router { state: 0, routes: rs, mws: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), not_found_h: List[fn(Req[I64]) -> Resp](), not_allowed_h: List[fn(Req[I64]) -> Resp]() }) == true)
     // 模式归一后等价("/x" 与 "x/")亦判冲突
     var rs2: List[Route[I64]] = List[Route[I64]]()
     rs2.push(Route { m: "GET", segs: segs_of("/x"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
     rs2.push(Route { m: "GET", segs: segs_of("x/"), chain: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), h: h_hello })
-    assert(has_conflict[I64](Router { state: 0, routes: rs2, mws: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp]() }) == true)
+    assert(has_conflict[I64](Router { state: 0, routes: rs2, mws: List[fn(Req[I64], fn(Req[I64]) -> Resp) -> Resp](), not_found_h: List[fn(Req[I64]) -> Resp](), not_allowed_h: List[fn(Req[I64]) -> Resp]() }) == true)
+}
+
+// ---- 2b 覆写挂点测试 ----
+
+fn h_404(r: Req[I64]) -> Resp {
+    return status(404, "nf:" + r.path)
+}
+
+fn h_405(r: Req[I64]) -> Resp {
+    return status(405, "mf")
+}
+
+test "2b not_found/method_not_allowed 覆写挂点" {
+    // 声明序 GET 先、POST 后 → Allow 恒 "GET,POST"(声明序累加,既有 405 测试同款)
+    let r0 = post[I64](get[I64](router[I64](0), "/hi/:name", h_hello), "/hi/:name", h_hello)
+    // 默认形态回归锚:硬文本 404(覆写前)
+    let d404 = dispatch[I64](r0, "GET", "/nope", "")
+    assert(resp_status(d404) == 404)
+    assert(resp_body(d404) == "404 not found")
+    // 覆写 404:handler 收完整 req(可读 path);值语义换槽
+    let app = r0.not_found(h_404).method_not_allowed(h_405)
+    let c404 = dispatch[I64](app, "GET", "/nope", "")
+    assert(resp_status(c404) == 404)
+    assert(resp_body(c404) == "nf:/nope")
+    // 覆写 405:体可定制,Allow 恒框架自动带(仍收两方法逗号拼接)
+    let c405 = dispatch[I64](app, "DELETE", "/hi/a", "")
+    assert(resp_status(c405) == 405)
+    assert(resp_body(c405) == "mf")
+    assert(resp_header(c405, "Allow") == "GET,POST")
+    // 值语义:覆写不回渗旧值(原 router 默认文本不变)
+    let d2 = dispatch[I64](r0, "GET", "/nope", "")
+    assert(resp_body(d2) == "404 not found")
+    // 命中路不受覆写影响
+    let hit = dispatch[I64](app, "GET", "/hi/alice", "")
+    assert(resp_body(hit) == "hi:alice")
+}
+
+// ---- 2b Task 3:dispatch_h 带头变体 + 覆写臂 headered + 查询串分裂 ----
+
+fn h_who_hdr(r: Req[I64]) -> Resp {
+    return text("u=" + cookie[I64](r, "sid") + ";ua=" + header[I64](r, "X-UA"))
+}
+
+fn h_404ck(r: Req[I64]) -> Resp {
+    return status(404, "ck=" + cookie[I64](r, "sid"))
+}
+
+test "dispatch_h headers 进 handler 与覆写臂 headered" {
+    // dispatch 空头形回归:headers 空 → cookie/头缺回空(既有面零扰动)
+    let r0 = get[I64](router[I64](0), "/who", h_who_hdr)
+    let bare = dispatch[I64](r0, "GET", "/who", "")
+    assert(resp_body(bare) == "u=;ua=")
+    // dispatch_h:headers 进 Req → req_full 解析 Cookie → handler 双通道可达
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Cookie", v: "sid=tok9" })
+    hs.push(Pair { k: "X-UA", v: "probe" })
+    let got = dispatch_h[I64](r0, "GET", "/who", "", hs)
+    assert(resp_body(got) == "u=tok9;ua=probe")
+    // 覆写 404 臂同收 headered Req(task-2 交接①收口)
+    let app = r0.not_found(h_404ck)
+    let c = dispatch_h[I64](app, "GET", "/nope", "", hs)
+    assert(resp_body(c) == "ck=tok9")
+    // 查询串:匹配面剥 query(此前查询串恒 404),req_full 内自分裂 path/query
+    let q = dispatch[I64](r0, "GET", "/who?a=1", "")
+    assert(resp_status(q) == 200)
+    assert(resp_body(q) == "u=;ua=")
+}
+
+test "mount_at 丢弃子路由覆写钩子(宿主 404 语义钉注)" {
+    // 子路由器自定 404 覆写 → 挂载后丢弃,合并态 404 走宿主默认硬文本
+    let sub = not_found[I64](get[I64](router[I64](0), "/s", h_hello), h_404)
+    let app = mount_at[I64](router[I64](0), "/api", sub)
+    let d = dispatch[I64](app, "GET", "/api/nope", "")
+    assert(resp_status(d) == 404)
+    assert(resp_body(d) == "404 not found")   // 非 "nf:/api/nope"(子钩子未上浮)
+    // 宿主自有钩子在合并态照常生效
+    let app2 = mount_at[I64](not_found[I64](router[I64](0), h_404), "/api", sub)
+    assert(resp_body(dispatch[I64](app2, "GET", "/api/nope", "")) == "nf:/api/nope")
 }

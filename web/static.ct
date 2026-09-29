@@ -1,0 +1,209 @@
+// static.ct —— web 静态文件适配:收编 http.frm.static(ETag/If-None-Match 304/
+// Range 206·416/穿越拒 全决策面零复制)+ Router `.static(前缀, 目录)` 装配挂点
+// (Plan 2b Task 2;设计 docs/superpowers/specs/2026-09-27-web-framework-design.md §4.1;纪律 §14-1)
+//
+// 收编口径(不复制):决策全在 frm——sd handler 把 req.path 剥前缀成 target 后
+//   整体喂 `st_serve(root, target, inm, range)`(frm 唯一 IO 薄胶:fs_exists/read_file
+//   内建,穿越拒/缺档 404/ETag/304/Range 全由它裁),回来只做「原始 HTTP 报文 → Resp」
+//   翻译(sd_parse:frm 产报文形态确定,状态码恒 9..12 三字节、头区 K: V、\r\n\r\n 分体)。
+//   web 侧补挂一条安全默认 X-Content-Type-Options: nosniff(frm 不发;web §4 纪律)。
+//   边界:目录本尊请求(suffix 空 → target "/")落在 frm 穿越拒 → 403 fail-closed,
+//   非 404——frm 从严即默认,如实继承不另裁。
+//
+// 前缀剥离:`static_dir(dir)` 产 handler 剥首段(单段前缀/直挂形态);
+//   `.static(prefix, dir)` 按 prefix 实际段数剥(多段前缀 "/a/b" 逐段剥),经
+//   `prefix + "/*sfx"` splat 路由装配——handler 读不到 splat(面在 Match,router 在册),
+//   故从 req.path 侧剥。根挂载 prefix=""(0 段)即全树映射 dir 下。
+//
+// use 面:web.core(Req/Resp/取头)+ web.router(Router/get/装配)+ std.str +
+//   http.frm.static 单叶(决策面);fs 内建直呼(fx_fs 夹具口径)。
+// 实测登记(探针 t_probe/t_triv,2026-09-28):byte_slice(start > end) 引导/native
+//   两口径皆死循环挂死——本件一切切片算式先证 start < end 才切(sd_parse 各臂守卫)。
+
+use web.core.{ Req, Resp, Pair, header, req_full, status, text, html, redirect, with, param, cookie, resp_status, resp_body, resp_header }
+use web.router.{ Router, router, get, dispatch }
+use std.str.{ join, split, index_of }
+use http.frm.static.{ st_serve, st_find, st_etag }
+
+// ---- 前缀剥离与 target 构造 ----
+
+// 非空段计数("/a/b" = 2;""/"/" = 0)
+fn sd_segn(p: Str) -> I32 {
+    let parts = split(p, 47)
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < parts.len {
+        if parts[i].len > 0 {
+            n += 1
+        }
+        i += 1
+    }
+    return n
+}
+
+// req.path 剥前 skip 个非空段 → frm target(恒 "/" 起;余段 "/" 相接;剥尽 = "/",
+// 落 frm 穿越拒 403——头注边界)
+fn sd_target(path: Str, skip: I32) -> Str {
+    let parts = split(path, 47)
+    var rest: List[Str] = List[Str]()
+    var seen: I32 = 0
+    var i: I32 = 0
+    while i < parts.len {
+        if parts[i].len > 0 {
+            if seen >= skip {
+                rest.push(parts[i])
+            }
+            seen += 1
+        }
+        i += 1
+    }
+    return "/" + join(rest, "/")
+}
+
+// ---- handler 工厂(闭包捕获 dir/skip;with_sessions 捕获先例)----
+
+fn sd_at[S](dir: Str, skip: I32) -> fn(Req[S]) -> Resp {
+    return |req| {
+        let target = sd_target(req.path, skip)
+        let raw = st_serve(dir, target, header[S](req, "If-None-Match"), header[S](req, "Range"))
+        return sd_parse(raw)
+    }
+}
+
+// §4.1 冻结名面:static_dir(dir) → handler(剥首段;直挂/单段前缀形态)
+pub fn static_dir[S](dir: Str) -> fn(Req[S]) -> Resp {
+    return sd_at[S](dir, 1)
+}
+
+// Router 装配挂点(§4.1 链式形态 `r.static(前缀, 目录)`;挂 prefix + "/*sfx" splat
+// 路由,按前缀段数剥——多段前缀 "/a/b" 亦正)。与 .get 同款值语义返回新 Router;
+// 前缀与既有路由撞表 → r_add 装配期 panic(失败在启动,不在半夜)。
+pub fn static[S](r: Router[S], prefix: Str, dir: Str) -> Router[S] {
+    return get[S](r, prefix + "/*sfx", sd_at[S](dir, sd_segn(prefix)))
+}
+
+// ---- 报文翻译:frm 原始响应 → Resp(frm 产形确定,见头注)----
+
+fn sd_code(raw: Str) -> I32 {
+    let ds = byte_slice(raw, 9, 12)
+    return (byte_at(ds, 0) - 48) * 100 + (byte_at(ds, 1) - 48) * 10 + (byte_at(ds, 2) - 48)
+}
+
+fn sd_parse(raw: Str) -> Resp {
+    // 形坏兜底(frm 恒产良形;此处防御恒不走)
+    if raw.len < 14 {
+        return status(500, "static upstream")
+    }
+    let sep = st_find(raw, "\r\n\r\n")
+    if sep < 0 {
+        return status(500, "static upstream")
+    }
+    // 头区:13 起(跳 "HTTP/1.1 NNN ")到 \r\n\r\n;按 \n 切行,行尾 \r 削平,
+    // 首行 = reason 短语跳过;其余 "K: V"(frm 恒单空格)
+    var hs: List[Pair] = List[Pair]()
+    let head = byte_slice(raw, 13, sep)
+    let lines = split(head, 10)
+    var i: I32 = 0
+    while i < lines.len {
+        if i > 0 {
+            var ln = lines[i]
+            if ln.len > 0 && byte_at(ln, ln.len - 1) == 13 {
+                ln = byte_slice(ln, 0, ln.len - 1)
+            }
+            let ci = index_of(ln, ":")
+            if ci > 0 {
+                var v = ""
+                if ci + 2 < ln.len {
+                    v = byte_slice(ln, ci + 2, ln.len)
+                }
+                hs.push(Pair { k: byte_slice(ln, 0, ci), v: v })
+            }
+        }
+        i += 1
+    }
+    // web 安全默认:nosniff(frm 不发,补挂;不重复)
+    var sn = false
+    i = 0
+    while i < hs.len {
+        if hs[i].k == "X-Content-Type-Options" {
+            sn = true
+        }
+        i += 1
+    }
+    if !sn {
+        hs.push(Pair { k: "X-Content-Type-Options", v: "nosniff" })
+    }
+    // 体:\r\n\r\n 后全量;304 无体(sep+4 == len 时体空)
+    var body = ""
+    if sep + 4 < raw.len {
+        body = byte_slice(raw, sep + 4, raw.len)
+    }
+    return Resp { status: sd_code(raw), headers: hs, body: body }
+}
+
+// ---- 测试(名带 "2b " 前缀;合并态与 frm/static 夹具名面隔开)----
+// fs 注:fs_write 不建父目录(t_triv2 探针实证),夹具一律用 /tmp 平面既有目录
+// + 仓内唯一名文件,用毕 fs_delete 自清。
+
+test "2b static 200 比对/ETag 304/Range 206" {
+    fs_write("/tmp/w2b_st_a.txt", "hello")
+    let h = static_dir[I64]("/tmp")
+    // 200 全量:体/Content-Type/ETag(frm 内容寻址强校验器)/nosniff 安全默认
+    let r200 = h(req_full[I64]("GET", "/assets/w2b_st_a.txt", "", List[Pair](), 0))
+    assert(resp_status(r200) == 200)
+    assert(resp_body(r200) == "hello")
+    assert(resp_header(r200, "Content-Type") == "text/plain")
+    assert(resp_header(r200, "ETag") == st_etag("hello"))
+    assert(resp_header(r200, "X-Content-Type-Options") == "nosniff")
+    // 304:If-None-Match 命中 → 无体、无 Content-Type(frm RFC 9110 §15.4.5 口径)
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "If-None-Match", v: st_etag("hello") })
+    let r304 = h(req_full[I64]("GET", "/assets/w2b_st_a.txt", "", hs, 0))
+    assert(resp_status(r304) == 304)
+    assert(resp_body(r304) == "")
+    assert(resp_header(r304, "Content-Type") == "")
+    // 206:bytes=1-3 → Content-Range + 切片体
+    var hr: List[Pair] = List[Pair]()
+    hr.push(Pair { k: "Range", v: "bytes=1-3" })
+    let r206 = h(req_full[I64]("GET", "/assets/w2b_st_a.txt", "", hr, 0))
+    assert(resp_status(r206) == 206)
+    assert(resp_header(r206, "Content-Range") == "bytes 1-3/5")
+    assert(resp_body(r206) == "ell")
+    fs_delete("/tmp/w2b_st_a.txt")
+}
+
+test "2b static 缺档 404 与穿越拒 403" {
+    fs_write("/tmp/w2b_st_a.txt", "hello")
+    let h = static_dir[I64]("/tmp")
+    // 缺档 → frm 404 默认形态
+    let miss = h(req_full[I64]("GET", "/assets/w2b_none.txt", "", List[Pair](), 0))
+    assert(resp_status(miss) == 404)
+    assert(resp_body(miss) == "not found")
+    // 穿越拒(.. 段入 target → frm fail-closed 403)
+    let trav = h(req_full[I64]("GET", "/assets/../w2b_secret.txt", "", List[Pair](), 0))
+    assert(resp_status(trav) == 403)
+    assert(resp_body(trav) == "forbidden")
+    // 目录本尊(剥前缀后余空 → target "/")同落 frm 穿越拒(头注边界,如实继承)
+    let bare = h(req_full[I64]("GET", "/assets", "", List[Pair](), 0))
+    assert(resp_status(bare) == 403)
+    fs_delete("/tmp/w2b_st_a.txt")
+}
+
+test "2b static Router.static 装挂与多段前缀" {
+    fs_write("/tmp/w2b_st_b.css", "body\{" + "}")
+    // 单段前缀:UFCS 链式装配(spec §4.1 形),Content-Type 按扩展名
+    let app = router[I64](0).static("/assets", "/tmp")
+    let r1 = dispatch[I64](app, "GET", "/assets/w2b_st_b.css", "")
+    assert(resp_status(r1) == 200)
+    assert(resp_body(r1) == "body\{" + "}")
+    assert(resp_header(r1, "Content-Type") == "text/css")
+    // 多段前缀:按前缀段数剥(头注)
+    let app2 = router[I64](0).static("/a/b", "/tmp")
+    let r2 = dispatch[I64](app2, "GET", "/a/b/w2b_st_b.css", "")
+    assert(resp_status(r2) == 200)
+    assert(resp_body(r2) == "body\{" + "}")
+    // 装挂后缺档照走 404
+    let r3 = dispatch[I64](app, "GET", "/assets/w2b_none.css", "")
+    assert(resp_status(r3) == 404)
+    fs_delete("/tmp/w2b_st_b.css")
+}

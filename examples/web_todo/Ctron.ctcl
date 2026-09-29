@@ -1,0 +1,7 @@
+// web_todo 示例清单;caps net.listen:供应链审计标记——serve_net.ct(原生臂)听端口
+pkg {
+    manifest_version = 1
+    name = "web_todo"
+    version = "0.1.0"
+    caps = ["net.listen"]
+}

@@ -1,0 +1,162 @@
+// json.ct —— req.json + JDoc 校验族(§4.3 请求体绑定;2b Task 0;收编 std/json)
+// 设计: docs/superpowers/specs/2026-09-27-web-framework-design.md §4.3;纪律 §14-1
+//
+// 独立成件(不在 core.ct)的在册理由(task-0-report 实证):core 一旦 use std.json,
+// 其合并态 mf 即含 std/json 的 match 形 decl(Test 恒随 + 私有助手恒随),pkg_refs_walk
+// 不识该形 → 选择性合并翻"保守整模块"回退 → core 的 text(Resp ctor)整并入,
+// 与 view 的 text(El 链)撞名 E5030——view 单测与 view+core 同并入的真实应用形皆炸。
+// json 域自宿一文件,core/view 合并面保持 HEAD 干净;本件被并入时携带的 std/json
+// pub 面(parse/qtag/qval/esc/jget_*/jv_*…)与 web 四件无同名,实证 probe 见报告。
+//
+// json_of = std/json parse 的 Req.body 包装(路径展平 DOM;坏体 ok=false + 空条目,
+// 后续 jd_* 恒 None——校验失败不炸请求循环,422 交由调用点 err_json 统一回形)。
+// jd_* 收编口径:str/bool 走 qtag/qval 纯函数查询面(零 union 载荷往返回路);
+// i64 走 jnum_i64 结构通道 + jn_k/jn_v 标量 getter——std/json 头注 (h) 族在册:
+// 跨模块 Result Ok(I64) 载荷发射槽 32 位,禁 match 其 Ok 载荷。整数语法形态限定
+// (小数/指数 → None)与 I64 域越界 → None 均由 std/jnum_i64 原样继承。
+
+use std.str.{ starts_with }
+use std.json.{ parse, qtag, qval, jnum_i64, jn_k, jn_v }
+use web.core.{ Req, Pair, req_full }
+
+pub struct JDoc {
+    let ok: Bool
+    let entries: List[List[Str]]
+}
+
+pub fn json_of[S](r: Req[S]) -> JDoc {
+    let p = parse(r.body)
+    // 注:is_some 非 is_ok——interp 面组合子仅 is_some(对 Ok 同真;is_ok 仅
+    // check/emit 面在册,interp 直呼 panic "method:is_ok",task-0-report 在册)
+    return JDoc { ok: p.is_some(), entries: p.or(List[List[Str]]()) }
+}
+
+// 路径归一:裸点径("name"/"a.b")补根段 → "$.name"/"$.a.b";已根径("$" 或
+// "$.x")原样透传。web 侧调用写域名,std 展平 DOM 收根径(task-0-report 在册调整)。
+fn jd_path(path: Str) -> Str {
+    if starts_with(path, "$") {
+        return path
+    }
+    return "$." + path
+}
+
+// 取值:标签须 s;缺路径/null/类型不符 → None
+pub fn jd_str(d: JDoc, path: Str) -> Option[Str] {
+    if qtag(d.entries, jd_path(path)) == "s" {
+        return Some(qval(d.entries, jd_path(path)))
+    }
+    return None
+}
+
+// 取值:标签须 b 且原文 true/false;缺路径/null/类型不符 → None
+pub fn jd_bool(d: JDoc, path: Str) -> Option[Bool] {
+    if qtag(d.entries, jd_path(path)) == "b" {
+        let v = qval(d.entries, jd_path(path))
+        if v == "true" {
+            return Some(true)
+        }
+        if v == "false" {
+            return Some(false)
+        }
+    }
+    return None
+}
+
+// 取值:标签须 n 且整数语法形态(小数/指数/越 I64 域 → None;经 jnum_i64 结构通道)
+pub fn jd_i64(d: JDoc, path: Str) -> Option[I64] {
+    let n = jnum_i64(d.entries, jd_path(path))
+    if jn_k(n) == 0 {
+        return Some(jn_v(n))
+    }
+    return None
+}
+
+// 校验族:取值 + 域检查一体,Option 回形(闭区间 [lo, hi],双界含)。
+// jd_str_between 长度为字节长(同仓 Str.len 全 byte 口径——"中文" 记 6)。
+pub fn jd_str_between(d: JDoc, path: Str, lo: I32, hi: I32) -> Option[Str] {
+    if qtag(d.entries, jd_path(path)) != "s" {
+        return None
+    }
+    let v = qval(d.entries, jd_path(path))
+    if v.len < lo {
+        return None
+    }
+    if v.len > hi {
+        return None
+    }
+    return Some(v)
+}
+
+pub fn jd_i64_between(d: JDoc, path: Str, lo: I64, hi: I64) -> Option[I64] {
+    let n = jnum_i64(d.entries, jd_path(path))
+    if jn_k(n) != 0 {
+        return None
+    }
+    let v = jn_v(n)
+    if v < lo {
+        return None
+    }
+    if v > hi {
+        return None
+    }
+    return Some(v)
+}
+
+// ---- 测试 ----
+
+test "json_of 合法体取值族" {
+    let body = "\{" + "\"name\":\"张三\",\"age\":42,\"big\":5000000000,\"vip\":true,\"off\":false" + "}"
+    let r = req_full("POST", "/api", body, List[Pair](), 0)
+    let d = json_of[I32](r)
+    assert(d.ok)
+    assert(jd_str(d, "name").or("") == "张三")
+    assert(jd_i64(d, "age").or(0 - 1) == 42)
+    // 宽域:> 2^31 的 I64 全值经 Option 载荷读回不截断
+    assert(jd_i64(d, "big").or(0 - 1) == 5000000000)
+    assert(jd_bool(d, "vip").or(false) == true)
+    assert(jd_bool(d, "off").or(true) == false)
+    // 嵌套路径:裸点径归一("a.b" → "$.a.b");根径直写亦透传
+    let nb = "\{" + "\"a\":\{" + "\"b\":\"deep\"" + "}" + "}"
+    let dn = json_of[I32](req_full("POST", "/n", nb, List[Pair](), 0))
+    assert(dn.ok)
+    assert(jd_str(dn, "a.b").or("") == "deep")
+    assert(jd_str(dn, "$.a.b").or("") == "deep")   // 根径原样透传
+    assert(jd_str(dn, "a").or("") == "")     // 容器非标量 → None
+}
+
+test "json_of 坏体与 jd 缺失/错型" {
+    // 坏体:ok=false + 空条目,一切取值 None(缺回 None,不炸)
+    let bad = json_of[I32](req_full("POST", "/x", "\{" + "broken", List[Pair](), 0))
+    assert(!bad.ok)
+    assert(jd_str(bad, "name").or("dft") == "dft")
+    assert(jd_i64(bad, "age").or(0 - 1) == 0 - 1)
+    assert(jd_bool(bad, "vip").or(true) == true)
+    let empty = json_of[I32](req_full("POST", "/x", "", List[Pair](), 0))
+    assert(!empty.ok)
+    // 合法体但路径缺失/null/类型不符 → 各自 None
+    let d = json_of[I32](req_full("POST", "/x", "\{" + "\"s\":\"v\",\"n\":3,\"z\":null,\"f\":3.5,\"b\":true" + "}", List[Pair](), 0))
+    assert(d.ok)
+    assert(jd_str(d, "nope").or("dft") == "dft")   // 缺路径
+    assert(jd_str(d, "n").or("dft") == "dft")      // 数字非串
+    assert(jd_str(d, "z").or("dft") == "dft")      // null 非串
+    assert(jd_i64(d, "s").or(0 - 1) == 0 - 1)      // 串非数
+    assert(jd_i64(d, "z").or(0 - 1) == 0 - 1)      // null 非数
+    assert(jd_i64(d, "f").or(0 - 1) == 0 - 1)      // 小数形态拒(RFC 整数语法限定)
+    assert(jd_bool(d, "s").or(true) == true)       // 串非布尔
+    assert(jd_bool(d, "b").or(false) == true)      // 布尔正取
+}
+
+test "jd 域检查边界(闭区间双界含)" {
+    let d = json_of[I32](req_full("POST", "/x", "\{" + "\"name\":\"张三\",\"age\":42" + "}", List[Pair](), 0))
+    // 字节长口径:"张三" = 6 字节(非 2 字符)
+    assert(jd_str_between(d, "name", 1, 6).or("") == "张三")
+    assert(jd_str_between(d, "name", 6, 6).or("") == "张三")   // 双边界恰含
+    assert(jd_str_between(d, "name", 0, 5).or("x") == "x")     // 超上界 → None
+    assert(jd_str_between(d, "name", 7, 9).or("x") == "x")     // 不足下界 → None
+    assert(jd_str_between(d, "nope", 0, 99).or("x") == "x")    // 缺路径 → None
+    assert(jd_i64_between(d, "age", 42, 42).or(0 - 1) == 42)   // 双边界恰含
+    assert(jd_i64_between(d, "age", 18, 65).or(0 - 1) == 42)
+    assert(jd_i64_between(d, "age", 43, 65).or(0 - 1) == 0 - 1)
+    assert(jd_i64_between(d, "age", 18, 41).or(0 - 1) == 0 - 1)
+    assert(jd_i64_between(d, "nope", 0, 99).or(0 - 1) == 0 - 1)
+}
