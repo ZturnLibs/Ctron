@@ -3294,17 +3294,37 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
             } else {
                 tshow = tval
+                // B4:组词内联进显示串(光标位插入;仅显示态,模型单一起源)
+                var tipre: Str = gui_ime_preedit()
+                if tipre != "" {
+                    if tfoc {
+                        var tcc: I32 = gui_caret_get()
+                        if tcc > tval.len {
+                            tcc = tval.len
+                        }
+                        if tcc < 0 {
+                            tcc = 0
+                        }
+                        tshow = byte_slice(tval, 0, tcc) + tipre + byte_slice(tval, tcc, tval.len)
+                    }
+                }
             }
             // 聚焦:浮动光标 + 跨行选区高亮(行盒 = 行高+gap2;x=pad+行内前缀实测)
             if tfoc {
                 var tsz4: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
                 var tlh: I32 = tsz4 + tsz4 / 4
                 var tpitch: I32 = tlh + 2
+                // 光标几何用显示串行表(组词内联后行结构与模型串不同);
+                // 选区高亮仍模型串行表(字节位=模型系)
                 var lstarts = List[I32]()
-                gui_ta_lines(tval, lstarts)
+                gui_ta_lines(tshow, lstarts)
                 var tc2: I32 = gui_caret_get()
-                if tc2 > tval.len {
-                    tc2 = tval.len
+                var tipre2: Str = gui_ime_preedit()
+                if tipre2 != "" {
+                    tc2 = tc2 + tipre2.len
+                }
+                if tc2 > tshow.len {
+                    tc2 = tshow.len
                 }
                 if tc2 < 0 {
                     tc2 = 0
@@ -3318,12 +3338,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     li += 1
                 }
                 var cline_start: I32 = lstarts[crow]
-                var cline_end: I32 = tval.len
+                var cline_end: I32 = tshow.len
                 if crow + 1 < lstarts.len {
                     cline_end = lstarts[crow + 1] - 1
                 }
                 var tfg4: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-                var tpre: Str = byte_slice(tval, cline_start, tc2)
+                var tpre: Str = byte_slice(tshow, cline_start, tc2)
                 var tpx: I32 = 4 + gui_ft_measure_n_wt(tpre, tpre.len, tsz4, 400, 0)
                 var tpy: I32 = 4 + crow * tpitch - tscr
                 // 光标跟随(行顶低于视口→上卷;行底超视口→下卷;固定高框才滚)
@@ -3344,18 +3364,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var tan: I32 = gui_sel_anchor_get()
                 if tan >= 0 {
                     var ts0: I32 = tan
-                    var ts1: I32 = tc2
+                    var ts1: I32 = gui_caret_get()
                     if ts0 > ts1 {
                         ts0 = tc2
                         ts1 = tan
                     }
                     if ts1 > ts0 {
+                        var vstarts = List[I32]()
+                        gui_ta_lines(tval, vstarts)
                         var ri: I32 = 0
-                        while ri < lstarts.len {
-                            var ls: I32 = lstarts[ri]
+                        while ri < vstarts.len {
+                            var ls: I32 = vstarts[ri]
                             var le: I32 = tval.len
-                            if ri + 1 < lstarts.len {
-                                le = lstarts[ri + 1] - 1
+                            if ri + 1 < vstarts.len {
+                                le = vstarts[ri + 1] - 1
                             }
                             var a0: I32 = ts0
                             var a1: I32 = ts1
@@ -3394,6 +3416,17 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                 }
                 if tvis {
+                    // B4:组词下划线(光标行,值前缀尾→组词尾)
+                    var ulpre: Str = gui_ime_preedit()
+                    if ulpre != "" {
+                        var uls: I32 = tpx - gui_ft_measure_n_wt(ulpre, ulpre.len, tsz4, 400, 0)
+                        if uls < 4 {
+                            uls = 4
+                        }
+                        gui_sel_float(uls, tpy + tlh - 2, tpx - uls, 2, tfg4)
+                        hits.push(id)
+                        hinst.push(inst)
+                    }
                     if gui_caret_blink() == 1 {
                         gui_caret_float(tpx, tpy, 2, tlh, tfg4)
                         hits.push(id)
