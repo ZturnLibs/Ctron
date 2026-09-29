@@ -3153,6 +3153,17 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         }
                     }
                 }
+                // 组词下划线(IME 惯例:组词与正文视觉区分;span = 值前缀尾→组词尾)
+                if ipre != "" {
+                    var us0: I32 = ipd + gui_ft_measure_n_wt(byte_slice(ival, 0, ic), ic, isz2, wt2p, fam2p) - mvs
+                    var us1: I32 = ipd + gui_ft_measure_n_wt(pfx2, pfx2.len, isz2, wt2p, fam2p) - mvs
+                    if us1 > us0 {
+                        gui_sel_float(us0, icy + ilh - 2, us1 - us0, 2, ifg2)
+                        // 下划线 RECT ↔ 命中表配对(与选区/光标条同口径,防计数错位)
+                        hits.push(id)
+                        hinst.push(inst)
+                    }
+                }
                 if blink == 1 {
                     // 前缀实测 x(与布局测量同源:weight 参数含 fam 编码 ×10000)
                     var pfx: Str = pfx2
