@@ -615,3 +615,45 @@
 5. **验收:** 卡内验收条逐条过;`bash ci.sh` 全绿;suite.py 双跑;红账不新增。
 6. **落库:** 全绿才 commit(pathspec 限定);回写本文件状态行 + 台账;COVERAGE/divergences 相应登记;规范触点(若动规范)挂修订注。
 7. **两件裁决门(T08/T27)与一件挂起件(T50):** 点名即先呈报裁决项/触发条件,用户拍板后才动工。
+
+---
+
+## 会话交接(2026-09-29 收官)
+
+**进度**: 25/53 件落库(47%);suite 94/94 双线全绿。
+
+### 已完成
+
+| 波次 | 件数 | 核心 |
+|---|---|---|
+| W1(T01-T08) | 8/8 | bit 模块/模式守卫/StringBuilder/W 码锚/行尾点/E6030/E6040/T08 裁决 |
+| W2(T09-T14) | 6/6 | resolve 多记录/sleep_ns+虚拟钟/caps 细分/gzip/Atomic 真原子/Channel 三片 |
+| W3(T15-T17) | 3/3 | Iterator for 三线/std/iter/06f 翻转(T16 部分:UFCS 链阻塞) |
+| W4(T18-T23) | 6/6 | 列级 span/fix-it/deterministic+缓存/宿主红账全清 |
+| W5(T24-T25) | 2/4 | 虚表 ABI 设计/&Trait 发射侧动态分发(vtable+thunk+装箱+分发) |
+
+### 下一步推荐(按优先级)
+
+1. **T26 能力注入归位**(可做,T25✅ 已解锁)
+2. **W7 T33 parallel 真并行**(前置 T13✅+T17✅ 已满足)
+3. **T16 收口**(UFCS 链=需泛型 trait 分发,已登记)
+
+### 挂起/阻塞
+
+- **T27 裁决门**: 闭包捕获 A(按引用)/B(拷贝终态)/C(混合)——已呈报用户未答
+- **T29-T32 GC 全件**: 等 S1 Val 迁移落库(在飞 /tmp/s1-val)
+- **T50 闭源 S1/S2**: 触发条件未到
+- **T37-T40 wasm/bare**: T36 target 接口是前置
+
+### 关键坑位速查(10 条血泪)
+
+1. Ctron 语法: 禁`;`/裸`{`须`\{`/`\}`**不是合法转义**/or2 全括号/无三元
+2. 发射怪癖: scope 闭包 return 泄漏/双 scope 撞名 t_sc/x_ 夹具 fn main+&数组→SIGSEGV
+3. var self 方法: interp 三线各自方案;**发射臂按值传 mutation 丢**
+4. &Trait vtable: **引用门**(ct_trait_used_as_ref)防 net 域包全量产 vtable
+5. C 宿主 ceval depth: 须对称递减或移除
+6. wrap_int U64: bits==64&&us 须掩码 2^64-1
+7. msg 子串锚: 消息须逐字对齐
+8. 机刷泳道并发: 其 WIP 冲突标记/探针会堵门禁——非己债勿修只登记
+9. R 线 check_suite: tests/ 顶层新文件零诊断=三线同步必须
+10. diff.py 四线对拍: 消息逐字节;改注册表须四臂同步
