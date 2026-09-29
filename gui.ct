@@ -3458,8 +3458,22 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         rem = ""
                     } else {
                         var ln: Str = byte_slice(rem, 0, nl)
+                        if ln == "" {
+                            // 空行占位:空串 TEXT 测高塌陷=视觉无新行(用户实测
+                            // 「回车无空行」);单空格撑行高
+                            ln = " "
+                        }
                         gui_text(ln, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
                         rem = byte_slice(rem, nl + 1, rem.len)
+                    }
+                }
+                if !tph {
+                    if tshow.len > 0 {
+                        if byte_at(tshow, tshow.len - 1) == 10 {
+                            var tsz9: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
+                            var tfg9: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                            gui_text(" ", tsz9, rt_col_r(tfg9), rt_col_g(tfg9), rt_col_b(tfg9), 255)
+                        }
                     }
                 }
             }
