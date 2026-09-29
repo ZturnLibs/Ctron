@@ -1,0 +1,441 @@
+// guard.ct —— web 守卫面:CSRF 双提交中间件 + 令牌桶限流中间件(Plan 2c Task 2;
+// http/frm/csrf + http/frm/limit 薄收编,调用不复制;纪律 §14-1;§8-A5 时钟注入)
+//
+// use 面:web.core(Resp/Req/取头)+ web.router(测试装配链)+ std.str(index_of/trim/
+//   starts_with/contains)+ http.frm.csrf + http.frm.limit(两独立叶,零共享;
+//   std.crypto 不直 use —— csrf 单叶口径,mw.ct auth 同款,消费方再入即同叶双径 E5020)。
+//
+// == csrf_mw:无状态双提交(HMAC 签名硬化,frm/csrf 全语义面) ==
+//   安全方法(GET/HEAD/OPTIONS 及一切非写法)→ next 直通;写方法(POST/PUT/DELETE/
+//   PATCH)→ cookie 端(csrf_cookie_get 读 Cookie 头)vs 提交端(csrf_form_get 读
+//   form-urlencoded 体,字段名 csrf)→ csrf_verify(双提交等值 + nonce 域 + hex 形 +
+//   HMAC 重算)→ 不合 403(体 "csrf rejected",frm csrf_resp_403 同串;wire 串形态
+//   不入 Resp 世界,以 status() 值构造 —— 语义随 frm,形态随框架)。通过面(安全+
+//   已验写)响应侧恒发新 csrf cookie(csrf_issue 签发 + csrf_set_cookie 行剥壳取值,
+//   SameSite=Lax 随 frm;HttpOnly 不设 —— 双提交 JS 可读,frm 头注权衡)。
+//   nonce 熵源 = 闭包持原子序号十进制补零至 16(frm 头注「uuid_v4/random 序号/会话
+//   指纹」取「序号」支;抗伪造在 HMAC 签名面,不依赖 nonce 保密;序号确定性 → 测试
+//   面可断言;真熵装配归 composition,志向)。表单解析双面登记:csrf_form_get 零解码
+//   (frm 口径)—— 签发域 [A-Za-z0-9.] 无 %/+ 出现,与 web.core form() 的 pdec 在
+//   令牌域恒等,两侧取值等价。
+//
+// == rate_limit_mw:令牌桶 per-key + max-in-flight 闸(frm/limit 全语义面) ==
+//   判定序随 frm:in-flight 门先于令牌桶(shed 优先 —— 满载不再耗桶令牌)。桶补充/
+//   消费/Retry-After 全走 lim_take(cap 封顶、整步前进、ceil 算 retry);装配期
+//   lim_cfg 校验,参数非正 panic(失败在启动,不在半夜 —— timeout_ms 先例)。
+//   超限 → 429 + Retry-After(lt_retry;绑定口径);shed → 503 + Retry-After 1
+//   (frm lim_resp_503 常量礼让值;wire 串同不入 Resp 世界,以 status() 值构造)。
+//
+// —— v1 结构性边界(如实登记,非临时态)——
+//
+// ① per-key 口径:Req 无 remote 字段(v1)→ 键 = X-Forwarded-For 首段(trim),
+//   缺省 "local"。XFF 客户端可伪造 → 伪造键各得新桶,per-key 限流可被绕过且键表
+//   增长攻击面由此而生 —— 真键面挂 Req.remote/serve 取 peer 字段落位(§13 候选/
+//   P8),本件头注即闸。
+// ② 键表容量:maxk()=1024,线性扫描(v1)。满表 miss 并入 "local" 共享桶(降级
+//   为全局限流);表满且 "local" 未入表(全 XFF 流量)→ 溢出键不记放行(fail-open,
+//   bkt_plan 纯面测试钉死)。原位压缩/淘汰归志向。
+// ③ 键表载体 = Mutex[List[BktEnt]](键唯一不变式:命中原位 Index 替换,miss 才
+//   push)—— 绑定速记 Mutex[Map[Str,LimBkt]] 的证据化调整:std/map put 函数式
+//   (值语义)+ with_mut 闭包内整体重绑不写回 Mutex(web_todo README 在册实证),
+//   函数式 Map 无写回位;List 原位 Index 替换写回经探针实证(整元素替换写回 9/
+//   I64 位写回 5;复合 l[i].f 写回被拒「assign target:Member」—— 故整元素替换形)。
+// ④ max-in-flight:load→acq→store 三步非原子(v1 阻塞串行档 §8.2 无并发窗口;
+//   并发波落地需 CAS/fetch_add 形信号量,志向);释放点 = next 返回即 rel(链形 fn
+//   无 post-return 钩子,frm/limit 头注同款登记 —— 较「响应写出后」略早,诚实口径)。
+// ⑤ csrf 令牌不绑会话(frm v1 无会话绑定)+ SameSite=Lax 为跨站主防;子域 cookie
+//   注入面 = 双提交经典弱点,frm 头注已在册,随。
+//
+// 接线说明:本件纯判定面(无二进制 body/载体问题),可正常挂链上线 —— compress_mw
+//   的「勿裸上线闸」(2c Task 1 载体边界)不适用本件。
+// E3070 口径:两中间件闭包体全 let/return 形(无 var 声明、无 Ident 赋值);状态
+//   变更全经原子方法(store/fetch_add)、Mutex.with_mut 闭包内 Index 替换/push
+//   方法位;可变逻辑全提顶层 fn(E3070 全文件 var 名交集纪律,mw.ct 先例同款)。
+
+use web.core.{ Req, Resp, Pair, status, text, with, header, resp_status, resp_body, resp_header, req_full }
+use web.router.{ router, get, post, middleware, dispatch }
+use std.str.{ index_of, trim, starts_with, contains }
+use http.frm.csrf.{ csrf_issue, csrf_verify, csrf_cookie_get, csrf_form_get, csrf_set_cookie, ct_rc, ct_tok, cv_rc }
+use http.frm.limit.{ lim_cfg, lim_bkt, lim_bkt_new, lim_take, lim_acq, lim_rel, lcfg_ok, lcfg_cap, lt_ok, lt_retry, lt_tks, lt_last, lif_ok, lif_n }
+
+// ---- csrf 面 ----
+
+fn csrf_nm() -> Str {
+    return "csrf"
+}
+
+fn csrf_body() -> Str {
+    return "csrf rejected"
+}
+
+// csrf_set_cookie 行剥壳取头值体(前缀 "Set-Cookie: " 12 字节 + 尾 CRLF 2 字节;
+//   mw.ct sc_line 同式 —— 行构造恒出自 frm,注入面封口)
+fn sc_val(line: Str) -> Str {
+    return byte_slice(line, 12, line.len - 2)
+}
+
+// 序号 → nonce(十进制补零至 16,恒在 frm 域 [A-Za-z0-9]{16..64};I64 十进制
+//   ≤20 位 ≤64 上界,不越)
+fn nonce16(c: I64) -> Str {
+    var out = c.to_string()
+    while out.len < 16 {
+        out = "0" + out
+    }
+    return out
+}
+
+// 响应侧密封:签发新令牌(原子序号前进)→ Set-Cookie。签发拒(理论不可达,
+//   nonce16 恒在域)原样透回 —— 护栏不造空头。
+fn csrf_seal(resp: Resp, key: Str, seq: Atomic[I64]) -> Resp {
+    let t = csrf_issue(key, nonce16(seq.fetch_add(1)))
+    if ct_rc(t) != 1 {
+        return resp
+    }
+    return with(resp, "Set-Cookie", sc_val(csrf_set_cookie(ct_tok(t))))
+}
+
+// 写方法集(POST/PUT/DELETE/PATCH;余者安全面直通 —— GET/HEAD/OPTIONS 题面点名,
+//   其余非常规法从严亦不拦:v1 只钉写面,登记)
+fn is_write_m(m: Str) -> Bool {
+    if m == "POST" {
+        return true
+    }
+    if m == "PUT" {
+        return true
+    }
+    if m == "DELETE" {
+        return true
+    }
+    if m == "PATCH" {
+        return true
+    }
+    return false
+}
+
+// csrf_mw —— CSRF 双提交中间件(§4.5 形态 ③ 带状态工厂:原子序号随闭包)
+pub fn csrf_mw[S](key: Str) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+    let seq = Atomic[I64](0)
+    return |req, next| {
+        if !is_write_m(req.method) {
+            return csrf_seal(next(req), key, seq)
+        }
+        let ck = csrf_cookie_get(header[S](req, "Cookie"), csrf_nm())
+        let st = csrf_form_get(req.body, csrf_nm())
+        let v = csrf_verify(key, ck, st)
+        if cv_rc(v) != 1 {
+            return status(403, csrf_body())
+        }
+        return csrf_seal(next(req), key, seq)
+    }
+}
+
+// ---- limit 面 ----
+
+fn lim_body() -> Str {
+    return "lim rejected"
+}
+
+// 429 限流面(Retry-After = lt_retry 整数自拼 to_string;frm retry 口径)
+fn limited_resp(retry: I64) -> Resp {
+    return with(status(429, lim_body()), "Retry-After", retry.to_string())
+}
+
+// 503 shed 面(Retry-After 1 = frm lim_resp_503 常量礼让值;面区分登记:shed
+//   无时间估计)
+fn shed_resp() -> Resp {
+    return with(status(503, lim_body()), "Retry-After", "1")
+}
+
+// 键表容量(v1 定容;边界 ②)
+fn maxk() -> I32 {
+    return 1024
+}
+
+// per-key 键:X-Forwarded-For 首段(trim);缺省 "local"(边界 ①:可伪造,v1)
+fn xff_key(xff: Str) -> Str {
+    if xff.len == 0 {
+        return "local"
+    }
+    let c = index_of(xff, ",")
+    if c > 0 {
+        return trim(byte_slice(xff, 0, c))
+    }
+    return trim(xff)
+}
+
+// 键表条目(桶态以 frm LimBkt 值随行 —— (h) 纪律:桶字面量不直构,经
+//   lim_bkt/lim_bkt_new 构造面)
+struct BktEnt {
+    let k: Str
+    let b: LimBkt
+}
+
+// bkt_plan 判定产物:hit = 命中位次(-1 miss)/ ins = 是否入存(miss 且表未满)
+//   / take = 判定 / nb = 新桶态(hit ≥ 0 原位替换;ins 新条目随 push)
+struct BktUpd {
+    let hit: I32
+    let ins: Bool
+    let take: LimTake
+    let nb: LimBkt
+}
+
+// 键查找(首个命中即回;键唯一不变式 —— 入存只在 miss,push 不重键)
+fn bkt_find(ents: List[BktEnt], k: Str) -> I32 {
+    var i: I32 = 0
+    while i < ents.len {
+        if ents[i].k == k {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// 判定(纯面,可直测):命中 → lim_take 旧桶;miss 表未满 → 新满桶试取并记入存;
+//   miss 表满 → 并入 "local" 共享桶(在)或不记放行(不在 —— 边界 ② fail-open)
+fn bkt_plan(ents: List[BktEnt], k: Str, cfg: LimCfg, nowv: I64) -> BktUpd {
+    let hit = bkt_find(ents, k)
+    if hit >= 0 {
+        let t = lim_take(ents[hit].b, cfg, nowv, 1)
+        return BktUpd { hit: hit, ins: false, take: t, nb: lim_bkt(lt_tks(t), lt_last(t)) }
+    }
+    if ents.len >= maxk() && k != "local" {
+        let hl = bkt_find(ents, "local")
+        if hl >= 0 {
+            let tl = lim_take(ents[hl].b, cfg, nowv, 1)
+            return BktUpd { hit: hl, ins: false, take: tl, nb: lim_bkt(lt_tks(tl), lt_last(tl)) }
+        }
+        let tf = lim_take(lim_bkt_new(lcfg_cap(cfg), nowv), cfg, nowv, 1)
+        return BktUpd { hit: 0 - 1, ins: false, take: tf, nb: lim_bkt_new(lcfg_cap(cfg), nowv) }
+    }
+    let t2 = lim_take(lim_bkt_new(lcfg_cap(cfg), nowv), cfg, nowv, 1)
+    return BktUpd { hit: 0 - 1, ins: true, take: t2, nb: lim_bkt(lt_tks(t2), lt_last(t2)) }
+}
+
+// 临界区(键表读改写一把锁):E3070 口径 —— 闭包体 let/Index 替换/push/return,
+//   可变判定全在 bkt_plan 纯面
+fn lim_hit(ents: Mutex[List[BktEnt]], k: Str, cfg: LimCfg, nowv: I64) -> LimTake {
+    return ents.with_mut(|var list| {
+        let p = bkt_plan(list, k, cfg, nowv)
+        if p.hit >= 0 {
+            list[p.hit] = BktEnt { k: list[p.hit].k, b: p.nb }
+            return p.take
+        }
+        if p.ins {
+            list.push(BktEnt { k: k, b: p.nb })
+        }
+        return p.take
+    })
+}
+
+// 放行面:桶判定 → next / 429(泛型 —— S 内提,调用点显式 TypeArgs)
+fn lim_pass[S](ents: Mutex[List[BktEnt]], k: Str, cfg: LimCfg, nowv: I64, req: Req[S], next: fn(Req[S]) -> Resp) -> Resp {
+    let t = lim_hit(ents, k, cfg, nowv)
+    if lt_ok(t) == 1 {
+        return next(req)
+    }
+    return limited_resp(lt_retry(t))
+}
+
+// rate_limit_mw —— 令牌桶限流中间件(§4.5 形态 ③:键表 + in-flight 计数随闭包;
+//   now 注入 §8-A5,真钟归装配 `| | now_ms() / 1000` 形,测试面 fake 前进)
+pub fn rate_limit_mw[S](cap: I64, refil: I64, ivl: I64, maxif: I64, now: fn() -> I64) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+    let cfg = lim_cfg(cap, refil, ivl, maxif)
+    if lcfg_ok(cfg) != 1 {
+        panic("rate_limit_mw: cap/refil/ivl/maxif 必须为正")
+    }
+    let ents = Mutex[List[BktEnt]](List[BktEnt]())
+    let inf = Atomic[I64](0)
+    return |req, next| {
+        let a = lim_acq(inf.load(), maxif)
+        if lif_ok(a) != 1 {
+            return shed_resp()
+        }
+        inf.store(lif_n(a))
+        let k = xff_key(header[S](req, "X-Forwarded-For"))
+        let resp = lim_pass[S](ents, k, cfg, now(), req, next)
+        inf.store(lim_rel(inf.load()))
+        return resp
+    }
+}
+
+// ---- 测试(interp 臂;名 "2c " 前缀 = E5030 合并态撞名防) ----
+
+fn gd_req(method: Str, body: Str, xff: Str, ck: Str) -> Req[I64] {
+    var hs: List[Pair] = List[Pair]()
+    if ck.len > 0 {
+        hs.push(Pair { k: "Cookie", v: ck })
+    }
+    if xff.len > 0 {
+        hs.push(Pair { k: "X-Forwarded-For", v: xff })
+    }
+    return req_full[I64](method, "/do", body, hs, 0)
+}
+
+fn h_gd(r: Req[I64]) -> Resp {
+    return text("hit")
+}
+
+// Set-Cookie 行取令牌值("csrf=<tok>; ..." → <tok>;测试助手)
+fn sc_tok(sc: Str) -> Str {
+    let a = index_of(sc, "=")
+    let b = index_of(sc, ";")
+    return byte_slice(sc, a + 1, b)
+}
+
+test "2c csrf 安全方法直通、密封 Set-Cookie 与序号前进" {
+    let mw = csrf_mw[I64]("k-gd")
+    let g1 = mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))
+    assert(resp_status(g1) == 200)
+    assert(resp_body(g1) == "hit")
+    let sc1 = resp_header(g1, "Set-Cookie")
+    assert(starts_with(sc1, "csrf="))
+    assert(contains(sc1, "; Path=/; SameSite=Lax"))
+    let tok1 = sc_tok(sc1)
+    assert(tok1.len == 81)   // nonce16(16) + "." + hex64
+    // HEAD/OPTIONS 亦安全面直通且密封
+    assert(resp_status(mw(gd_req("HEAD", "", "", ""), |rq| h_gd(rq))) == 200)
+    assert(resp_status(mw(gd_req("OPTIONS", "", "", ""), |rq| h_gd(rq))) == 200)
+    // 序号前进:两次密封令牌相异(原子计数非冻结 —— nonce 熵源实证)
+    let g2 = mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))
+    let tok2 = sc_tok(resp_header(g2, "Set-Cookie"))
+    assert(tok2 != tok1)
+}
+
+test "2c csrf 写方法缺/错/坏令牌 403(handler 不可达)" {
+    let mw = csrf_mw[I64]("k-gd")
+    let iss = csrf_issue("k-gd", nonce16(99))
+    let tok = ct_tok(iss)
+    // 双端全缺 → 403(frm why 1/2 面)
+    let r1 = mw(gd_req("POST", "", "", ""), |rq| text("REACHED"))
+    assert(resp_status(r1) == 403)
+    assert(resp_body(r1) == "csrf rejected")
+    // 仅 cookie 端(缺提交端)→ 403
+    let r2 = mw(gd_req("POST", "", "", "csrf=" + tok), |rq| text("REACHED"))
+    assert(resp_status(r2) == 403)
+    // 仅提交端(缺 cookie 端)→ 403
+    let r3 = mw(gd_req("POST", "csrf=" + tok, "", ""), |rq| text("REACHED"))
+    assert(resp_status(r3) == 403)
+    // 双端不等(双提交破)→ 403
+    let other = ct_tok(csrf_issue("k-gd", nonce16(98)))
+    let r4 = mw(gd_req("POST", "csrf=" + other, "", "csrf=" + tok), |rq| text("REACHED"))
+    assert(resp_status(r4) == 403)
+    // 双端等但签名坏(篡改,形完好)→ 403
+    var flip: Str = "0"
+    if byte_at(tok, 17) == 48 {
+        flip = "1"
+    }
+    let tam = byte_slice(tok, 0, 17) + flip + byte_slice(tok, 18, tok.len)
+    let r5 = mw(gd_req("POST", "csrf=" + tam, "", "csrf=" + tam), |rq| text("REACHED"))
+    assert(resp_status(r5) == 403)
+    // 错密钥签发(自 k1,过不本门)→ 403
+    let tok1 = ct_tok(csrf_issue("k1", nonce16(97)))
+    let r6 = mw(gd_req("POST", "csrf=" + tok1, "", "csrf=" + tok1), |rq| text("REACHED"))
+    assert(resp_status(r6) == 403)
+    // PUT/DELETE/PATCH 同门
+    assert(resp_status(mw(gd_req("PUT", "csrf=" + other, "", "csrf=" + tok), |rq| text("REACHED"))) == 403)
+    assert(resp_status(mw(gd_req("DELETE", "csrf=" + other, "", "csrf=" + tok), |rq| text("REACHED"))) == 403)
+    assert(resp_status(mw(gd_req("PATCH", "csrf=" + other, "", "csrf=" + tok), |rq| text("REACHED"))) == 403)
+}
+
+test "2c csrf 正确令牌过闸与响应再密封" {
+    let mw = csrf_mw[I64]("k-gd")
+    let g = mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))
+    let tok = sc_tok(resp_header(g, "Set-Cookie"))
+    // issue → form body 带 token → cookie 同 token → 过(handler 可达)
+    let p = mw(gd_req("POST", "csrf=" + tok, "", "csrf=" + tok), |rq| h_gd(rq))
+    assert(resp_status(p) == 200)
+    assert(resp_body(p) == "hit")
+    // 响应侧再密封:新令牌(非提交令牌 —— 序号前进)
+    let sc2 = resp_header(p, "Set-Cookie")
+    assert(starts_with(sc2, "csrf="))
+    assert(sc_tok(sc2) != tok)
+}
+
+test "2c csrf 路由链集成(dispatch 面)" {
+    let csmw = csrf_mw[I64]("k-gd")
+    let app = middleware[I64](post[I64](get[I64](router[I64](0), "/f", h_gd), "/f", h_gd), |rq, nx| csmw(rq, nx))
+    let ok = dispatch[I64](app, "GET", "/f", "")
+    assert(resp_status(ok) == 200)
+    assert(resp_header(ok, "Set-Cookie").len > 0)
+    let blocked = dispatch[I64](app, "POST", "/f", "")
+    assert(resp_status(blocked) == 403)
+}
+
+test "2c limit cap 内过、超限 429 与时钟前进恢复" {
+    let clk = Atomic[I64](100)
+    let mw = rate_limit_mw[I64](2, 1, 10, 8, || clk.load())
+    // cap 内两发放行
+    assert(resp_status(mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))) == 200)
+    assert(resp_status(mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))) == 200)
+    // 第三发超限 → 429 + Retry-After 10(need 1 × ivl 10 / refil 1,frm ceil 口径)
+    let r3 = mw(gd_req("GET", "", "", ""), |rq| text("REACHED"))
+    assert(resp_status(r3) == 429)
+    assert(resp_body(r3) == "lim rejected")
+    assert(resp_header(r3, "Retry-After") == "10")
+    // 时钟 +9(不足一步)仍拒;+10(恰一步补 1)放行 —— now 注入可测(§8-A5)
+    clk.store(109)
+    assert(resp_status(mw(gd_req("GET", "", "", ""), |rq| text("REACHED"))) == 429)
+    clk.store(110)
+    assert(resp_status(mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))) == 200)
+    // XFF 独立桶:他键新桶不受 local 耗尽影响;第三发同键超限
+    clk.store(100)
+    assert(resp_status(mw(gd_req("GET", "", "9.9.9.9", ""), |rq| h_gd(rq))) == 200)
+    assert(resp_status(mw(gd_req("GET", "", "9.9.9.9", ""), |rq| h_gd(rq))) == 200)
+    assert(resp_status(mw(gd_req("GET", "", "9.9.9.9", ""), |rq| text("REACHED"))) == 429)
+    // 多跳 XFF 取首段:同首段同桶
+    assert(resp_status(mw(gd_req("GET", "", "9.9.9.9, 1.1.1.1", ""), |rq| text("REACHED"))) == 429)
+    assert(resp_status(mw(gd_req("GET", "", "1.1.1.1, 9.9.9.9", ""), |rq| h_gd(rq))) == 200)
+}
+
+test "2c limit shed 门 503 与释放复原" {
+    let clk = Atomic[I64](100)
+    // maxif=1:嵌套自调(外层已占 1 槽)→ 内层 acq(1,1) shed → 503 Retry-After 1
+    let mw = rate_limit_mw[I64](4, 1, 10, 1, || clk.load())
+    let nested = |rq, nx| mw(rq, |r2| mw(r2, |r3| text("deep")))
+    let r = mw(gd_req("GET", "", "", ""), nested)
+    assert(resp_status(r) == 503)
+    assert(resp_header(r, "Retry-After") == "1")
+    assert(resp_body(r) == "lim rejected")
+    // 释放复原:shed 不泄槽,平铺请求照常过(in-flight 门先于桶 —— 满载不耗桶)
+    assert(resp_status(mw(gd_req("GET", "", "", ""), |rq| h_gd(rq))) == 200)
+}
+
+test "2c limit 键表判定纯面(命中消费/新键入存/表满回退)" {
+    let c = lim_cfg(2, 1, 10, 8)
+    assert(lcfg_ok(c) == 1)
+    // 命中面:旧桶态消费(tks 2→1)
+    var small: List[BktEnt] = List[BktEnt]()
+    small.push(BktEnt { k: "a", b: lim_bkt(2, 100) })
+    let p5 = bkt_plan(small, "a", c, 100)
+    assert(p5.hit == 0)
+    assert(!p5.ins)
+    assert(lt_ok(p5.take) == 1 && lt_tks(p5.take) == 1)
+    // miss 表未满 → 新满桶试取并记入存
+    let p4 = bkt_plan(small, "b", c, 100)
+    assert(p4.hit == 0 - 1)
+    assert(p4.ins)
+    assert(lt_ok(p4.take) == 1 && lt_tks(p4.take) == 1)
+    // 表满 + 无 local 条目 → 溢出键不记放行(fail-open,边界 ② 钉死)
+    var full: List[BktEnt] = List[BktEnt]()
+    var i: I32 = 0
+    while i < maxk() {
+        full.push(BktEnt { k: "k" + i.to_string(), b: lim_bkt(0, 100) })
+        i += 1
+    }
+    let p1 = bkt_plan(full, "over", c, 100)
+    assert(p1.hit == 0 - 1)
+    assert(!p1.ins)
+    assert(lt_ok(p1.take) == 1)
+    // 表满 + local 在(满桶)→ 并入共享桶放行,hit 指 local 位次
+    full[5] = BktEnt { k: "local", b: lim_bkt(2, 100) }
+    let p2 = bkt_plan(full, "over", c, 100)
+    assert(p2.hit == 5)
+    assert(!p2.ins)
+    assert(lt_ok(p2.take) == 1 && lt_tks(p2.take) == 1)
+    // 表满 + local 空 → 并入共享桶受 429
+    full[5] = BktEnt { k: "local", b: lim_bkt(0, 100) }
+    let p3 = bkt_plan(full, "over", c, 100)
+    assert(p3.hit == 5)
+    assert(lt_ok(p3.take) == 0)
+}
