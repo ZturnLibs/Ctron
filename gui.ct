@@ -3350,12 +3350,19 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             if a1 > le {
                                 a1 = le
                             }
-                            if a1 > a0 {
+                            var ryy: I32 = 4 + ri * tpitch
+                            var rvis: Bool = true
+                            if thm == 2 {
+                                if ryy + tlh > thv {
+                                    rvis = false
+                                }
+                            }
+                            if a1 > a0 && rvis {
                                 var seg0: Str = byte_slice(tval, ls, a0)
                                 var seg: Str = byte_slice(tval, a0, a1)
                                 var hx: I32 = 4 + gui_ft_measure_n_wt(seg0, seg0.len, tsz4, 400, 0)
                                 var hw: I32 = gui_ft_measure_n_wt(seg, seg.len, tsz4, 400, 0)
-                                gui_sel_float(hx, 4 + ri * tpitch, hw, tlh, gui_theme_slot_get(7))
+                                gui_sel_float(hx, ryy, hw, tlh, gui_theme_slot_get(7))
                                 hits.push(id)
                                 hinst.push(inst)
                             }
@@ -3363,10 +3370,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         }
                     }
                 }
-                if gui_caret_blink() == 1 {
-                    gui_caret_float(tpx, tpy, 2, tlh, tfg4)
-                    hits.push(id)
-                    hinst.push(inst)
+                // 可视区守卫:裁切框外浮条不产渲染命令,配对推送必致命中错位
+                // (用户崩溃报告:rt_hover_node→gui_cmd_x100→clay_err abort)
+                var tvis: Bool = true
+                if thm == 2 {
+                    if tpy + tlh > thv {
+                        tvis = false
+                    }
+                }
+                if tvis {
+                    if gui_caret_blink() == 1 {
+                        gui_caret_float(tpx, tpy, 2, tlh, tfg4)
+                        hits.push(id)
+                        hinst.push(inst)
+                    }
                 }
             }
             if tph {
