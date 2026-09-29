@@ -3658,6 +3658,16 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     // IME 组词期键盘归输入法所有(退格=删拼音、Esc=取消组词均由 IME 处理;
     // 应用不得碰已确认文本——用户实测「组词退格误删前文」)
     if gui_ime_has_preedit() == 1 {
+        // 搜狗终末退格静默怪癖:组词删空时不回调任何 setMarkedText/unmark,
+        // 镜像残留末字符(用户实测「删空拼音仍留一字母+下划线」)——组词仅
+        // 剩单码点时收到退格,乐观自清(多字符路径 setMarkedText 正常不受扰;
+        // 他法后续回调清空幂等)
+        if k == 259 {
+            var pp: Str = gui_ime_preedit()
+            if pp.len <= 3 {
+                gui_ime_test_set("")
+            }
+        }
         return true
     }
     if k == 256 {
