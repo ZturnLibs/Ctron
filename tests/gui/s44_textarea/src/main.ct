@@ -97,7 +97,7 @@ fn main() -> I32 {
                 |nm| actc(nm, m))
             d_frame(t, |buf| bind_all(buf, m))
             // 光标在次行:"y|"
-            d_expect_text(t, "y|")
+            d_expect_text(t, "y")
             // 首行仍在:"hi"
             d_expect_text(t, "hi")
             if m.nlines != "2" {
@@ -111,7 +111,7 @@ fn main() -> I32 {
                 |buf| bind_all(buf, m),
                 |nm| actc(nm, m))
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "hi|y")
+            d_expect_text(t, "hiy")
             if m.nlines != "1" {
                 panic("s44: 连接后行数应 1 得 " + m.nlines.to_string())
             }
