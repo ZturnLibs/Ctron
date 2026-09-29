@@ -4244,76 +4244,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                             fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
                         }
                     }
-                    var cax: I32 = 0
-                    if t.ntag[fnode] == "textarea" {
-                        // 行定位:y→row(行盒=行高+gap2),x→行内最近边界
-                        var boxi2: I32 = -1
-                        var boxw2: I32 = 0
-                        var jj: I32 = 0
-                        while jj < hits.len {
-                            if hits[jj] == fnode {
-                                if jj < rects.len {
-                                    var wj2: I32 = gui_cmd_w100(rects[jj])
-                                    if wj2 > boxw2 {
-                                        boxw2 = wj2
-                                        boxi2 = rects[jj]
-                                    }
-                                }
-                            }
-                            jj += 1
-                        }
-                        cax = fbv.len
-                        if boxi2 >= 0 {
-                            var tsz5: I32 = gs2i(gt_cls_prop(t.ncls[fnode], "size", "16", t))
-                            var tpitch2: I32 = tsz5 + tsz5 / 4 + 2
-                            var row: I32 = (gui_evt_y() - gui_cmd_y100(boxi2) / 100 - 4) / tpitch2
-                            if row < 0 {
-                                row = 0
-                            }
-                            var lstarts2 = List[I32]()
-                            gui_ta_lines(fbv, lstarts2)
-                            if row >= lstarts2.len {
-                                row = lstarts2.len - 1
-                            }
-                            var ls2: I32 = lstarts2[row]
-                            var le2: I32 = fbv.len
-                            if row + 1 < lstarts2.len {
-                                le2 = lstarts2[row + 1] - 1
-                            }
-                            var line: Str = byte_slice(fbv, ls2, le2)
-                            var offx2: I32 = gui_evt_x() - gui_cmd_x100(boxi2) / 100 - 4
-                            var bi: I32 = 0
-                            var bbest: I32 = 0
-                            var bbd: I32 = offx2
-                            if bbd < 0 {
-                                bbd = 0 - bbd
-                            }
-                            while bi <= line.len {
-                                var okb2: Bool = true
-                                if bi < line.len {
-                                    var bb2: I32 = byte_at(line, bi)
-                                    if bb2 >= 128 && bb2 < 192 {
-                                        okb2 = false
-                                    }
-                                }
-                                if okb2 {
-                                    var w2: I32 = gui_ft_measure_n_wt(line, bi, tsz5, 400, 0)
-                                    var d2: I32 = w2 - offx2
-                                    if d2 < 0 {
-                                        d2 = 0 - d2
-                                    }
-                                    if d2 < bbd {
-                                        bbd = d2
-                                        bbest = bi
-                                    }
-                                }
-                                bi += 1
-                            }
-                            cax = ls2 + bbest
-                        }
-                    } else {
-                        cax = gui_caret_at_x(t, fnode, fbv, gui_evt_x(), rects, hits)
-                    }
+                    var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)
                     gui_caret_set(cax)
                     // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
                     // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
@@ -4498,76 +4429,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                             fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
                         }
                     }
-                    var cax: I32 = 0
-                    if t.ntag[fnode] == "textarea" {
-                        // 行定位:y→row(行盒=行高+gap2),x→行内最近边界
-                        var boxi2: I32 = -1
-                        var boxw2: I32 = 0
-                        var jj: I32 = 0
-                        while jj < hits.len {
-                            if hits[jj] == fnode {
-                                if jj < rects.len {
-                                    var wj2: I32 = gui_cmd_w100(rects[jj])
-                                    if wj2 > boxw2 {
-                                        boxw2 = wj2
-                                        boxi2 = rects[jj]
-                                    }
-                                }
-                            }
-                            jj += 1
-                        }
-                        cax = fbv.len
-                        if boxi2 >= 0 {
-                            var tsz5: I32 = gs2i(gt_cls_prop(t.ncls[fnode], "size", "16", t))
-                            var tpitch2: I32 = tsz5 + tsz5 / 4 + 2
-                            var row: I32 = (gui_evt_y() - gui_cmd_y100(boxi2) / 100 - 4) / tpitch2
-                            if row < 0 {
-                                row = 0
-                            }
-                            var lstarts2 = List[I32]()
-                            gui_ta_lines(fbv, lstarts2)
-                            if row >= lstarts2.len {
-                                row = lstarts2.len - 1
-                            }
-                            var ls2: I32 = lstarts2[row]
-                            var le2: I32 = fbv.len
-                            if row + 1 < lstarts2.len {
-                                le2 = lstarts2[row + 1] - 1
-                            }
-                            var line: Str = byte_slice(fbv, ls2, le2)
-                            var offx2: I32 = gui_evt_x() - gui_cmd_x100(boxi2) / 100 - 4
-                            var bi: I32 = 0
-                            var bbest: I32 = 0
-                            var bbd: I32 = offx2
-                            if bbd < 0 {
-                                bbd = 0 - bbd
-                            }
-                            while bi <= line.len {
-                                var okb2: Bool = true
-                                if bi < line.len {
-                                    var bb2: I32 = byte_at(line, bi)
-                                    if bb2 >= 128 && bb2 < 192 {
-                                        okb2 = false
-                                    }
-                                }
-                                if okb2 {
-                                    var w2: I32 = gui_ft_measure_n_wt(line, bi, tsz5, 400, 0)
-                                    var d2: I32 = w2 - offx2
-                                    if d2 < 0 {
-                                        d2 = 0 - d2
-                                    }
-                                    if d2 < bbd {
-                                        bbd = d2
-                                        bbest = bi
-                                    }
-                                }
-                                bi += 1
-                            }
-                            cax = ls2 + bbest
-                        }
-                    } else {
-                        cax = gui_caret_at_x(t, fnode, fbv, gui_evt_x(), rects, hits)
-                    }
+                    var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)
                     gui_caret_set(cax)
                     // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
                     // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
@@ -5287,10 +5149,12 @@ fn rt_drag_sel(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]
         return 0
     }
     if t.ntag[fn0] != "input" {
-        return 0
+        if t.ntag[fn0] != "textarea" {
+            return 0
+        }
     }
     var cur: Str = rt_in_val(t, fn0, bind)
-    var cax: I32 = gui_caret_at_x(t, fn0, cur, gui_mouse_x(), rects, hits)
+    var cax: I32 = gui_caret_at_click(t, fn0, cur, gui_mouse_x(), gui_mouse_y(), rects, hits)
     gui_caret_set(cax)
     return 1
 }
@@ -5391,6 +5255,77 @@ fn rt_feed_input_w(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
         j += 1
     }
     return 0
+}
+
+// 通用点击定位(input: x 单维;textarea: x+y 行列双维)
+fn gui_caret_at_click(t: GuiTree, node: I32, val: Str, px: I32, py: I32, rects: List[I32], hits: List[I32]) -> I32 {
+    if t.ntag[node] == "textarea" {
+        var boxi2: I32 = -1
+        var boxw2: I32 = 0
+        var jj: I32 = 0
+        while jj < hits.len {
+            if hits[jj] == node {
+                if jj < rects.len {
+                    var wj2: I32 = gui_cmd_w100(rects[jj])
+                    if wj2 > boxw2 {
+                        boxw2 = wj2
+                        boxi2 = rects[jj]
+                    }
+                }
+            }
+            jj += 1
+        }
+        if boxi2 < 0 {
+            return val.len
+        }
+        var tsz5: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
+        var tpitch2: I32 = tsz5 + tsz5 / 4 + 2
+        var row: I32 = (py - gui_cmd_y100(boxi2) / 100 - 4) / tpitch2
+        if row < 0 {
+            row = 0
+        }
+        var lstarts2 = List[I32]()
+        gui_ta_lines(val, lstarts2)
+        if row >= lstarts2.len {
+            row = lstarts2.len - 1
+        }
+        var ls2: I32 = lstarts2[row]
+        var le2: I32 = val.len
+        if row + 1 < lstarts2.len {
+            le2 = lstarts2[row + 1] - 1
+        }
+        var line: Str = byte_slice(val, ls2, le2)
+        var offx2: I32 = px - gui_cmd_x100(boxi2) / 100 - 4
+        var bi: I32 = 0
+        var bbest: I32 = 0
+        var bbd: I32 = offx2
+        if bbd < 0 {
+            bbd = 0 - bbd
+        }
+        while bi <= line.len {
+            var okb2: Bool = true
+            if bi < line.len {
+                var bb2: I32 = byte_at(line, bi)
+                if bb2 >= 128 && bb2 < 192 {
+                    okb2 = false
+                }
+            }
+            if okb2 {
+                var w2: I32 = gui_ft_measure_n_wt(line, bi, tsz5, 400, 0)
+                var d2: I32 = w2 - offx2
+                if d2 < 0 {
+                    d2 = 0 - d2
+                }
+                if d2 < bbd {
+                    bbd = d2
+                    bbest = bi
+                }
+            }
+            bi += 1
+        }
+        return ls2 + bbest
+    }
+    return gui_caret_at_x(t, node, val, px, rects, hits)
 }
 
 // P-M3:点击 x → 最近码点边界(成熟 GUI 点击定位光标):沿码点边界步行累计
