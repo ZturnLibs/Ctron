@@ -289,7 +289,7 @@
 
 ### T24 · `&Trait` 虚表 ABI 设计定稿
 
-- **预估:** 1–1.5 d(设计文档+评审)。**前置:** 无。**状态:** 待办
+- **预估:** 1–1.5 d(设计文档+评审)。**前置:** 无。**状态:** ✅ 已完成(2026-09-29;docs/superpowers/specs/2026-09-29-trait-object-abi.md)
 - **目标:** 设计文档:对象表示(data ptr + vtable ptr)、vtable 布局(方法槽序=trait 声明序,含默认方法/prop getter)、上行转换零成本、Send 位承载(§7.4 动态 Send 位预留面)。产出 `docs/superpowers/specs/2026-09-28-trait-object-abi.md`。
 - **要点:** 关键裁决项:①prop 在 vtable 是 getter 槽;②泛型 trait(省略:先只支持非泛型 trait 对象,泛型对象列 v2);③超 trait 的 vtable 前缀复用;④与 E3031(非 Send 静态存储)/E4042(C-ABI 回调禁捕获)交互;⑤能力对象(§8.1)是首要消费场景——`&Clock` 注入必须经此落地。
 - **验收:** 设计文档过用户评审(裁决项逐条拍板);T25/T26 按此施工。
@@ -297,7 +297,7 @@
 
 ### T25 · 发射侧动态分发 codegen
 
-- **预估:** 2–3 d。**前置:** T24。**状态:** 待办
+- **预估:** 2–3 d。**前置:** T24。**状态:** 待办(0929 侦察:interp 侧 &Trait 已通——07_capabilities 全绿;发射侧完全缺位——&Trait 参数发射为 int32_t,无 vtable,StructLit 崩;最小路径=①&Trait 型码入 ct_ty_code(新码如 "t:<Trait>")②vtable 常量发射(static const vt_<T> vt_<T>_for_<Type>)③构造位装箱({data,vtable})④调用位 ((vt_T*)obj.vtable)->m(obj.data);2-3d 专注)
 - **目标:** `trans_expr.ct` 对 `&Trait` 接收者方法调用发间接跳转(vtable 槽);上行转换发对象包装;解释器侧已有动态分派语义对齐即可。
 - **范围:** `compiler/src/trans_expr.ct`(方法解析分派点)、`trans_ty.ct`(&Trait 表示码)、`driver_emit.ct`(vtable 常量发射)、测试锚。
 - **要点:** 分派点识别:「接收者静态型别为 trait」的调用——sem 已知 trait 型别信息,直接槽号;非 trait 接收者路径(静态直调)零扰动。
@@ -573,10 +573,10 @@
 | T21 | 宿主检查面五件 | W4 | **已完成**(0928,五锚迁主套件;suite 94/94) | 见 git |
 | T22 | 宿主运行面两件 | W4 | **已完成**(0928 核销;前批已修,COVERAGE 过期条目清) | 见 git |
 | T23 | e2e 缺声明 6 件 | W4 | **已完成**(0928 核销;前批 P1b 已清) | 见 git |
-| T24 | 虚表 ABI 设计 | W5 | 待办 | — |
-| T25 | 动态分发 codegen | W5 | 待办 | — |
+| T24 | 虚表 ABI 设计 | W5 | **已完成**(0929,设计文档 9fbd332) | 见 git |
+| T25 | 动态分发 codegen | W5 | 待办(interp 侧已通;发射侧 2-3d 深水,侦察笔记入卡) | — |
 | T26 | 能力注入归位 | W5 | 待办 | — |
-| T27 | 闭包捕获收口【裁决】 | W5 | 待办(等裁决) | — |
+| T27 | 闭包捕获收口【裁决】 | W5 | **挂起**(裁决项已呈报,用户未答;A=按引用/B=拷贝终态/C=混合) | — |
 | T28 | GC 契约校准 | W6 | 待办 | — |
 | T29 | MVP tracing GC | W6 | 待办(等 S1) | — |
 | T30 | into_gc 真实化 | W6 | 待办 | — |
