@@ -78,6 +78,10 @@ static void ime_swz_unmarkText(id self, SEL _cmd) {
 static NSRect ime_swz_firstRect(id self, SEL _cmd, NSRange range, NSRangePointer actual) {
     // 域包反喂了光标 rect → 换算屏幕坐标返回(候选窗跟随光标);
     // 未反喂(无聚焦 input)→ 走原实现(旧行为:视图原点)
+    if (g_ime_trace()) {
+        fprintf(stderr, "[IME] firstRect ASKED crect=%d,%d %dx%d\n",
+                g_ime_crect[0], g_ime_crect[1], g_ime_crect[2], g_ime_crect[3]);
+    }
     if (g_ime_crect[2] > 0 && g_ime_crect[3] > 0) {
         NSView* v = (NSView*)self;
         NSWindow* w = [v window];
