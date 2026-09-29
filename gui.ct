@@ -3265,7 +3265,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             } else {
                 gui_alpha(0)
             }
-            gui_cfg(1, 2, 4, 4, 0, 0, 1, 0, thm, thv, tbgp)
+            // 垂直裁切(内容超高不出框;命中区=框体,溢出行不再外泄)
+            gui_cfg2(1, 2, 4, 4, 0, 0, 1, 0, thm, thv, tbgp, 1, 0)
             var tval: Str = ""
             if t.nbid[id] != "" {
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
