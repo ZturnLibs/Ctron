@@ -86,10 +86,15 @@ static NSRect ime_swz_firstRect(id self, SEL _cmd, NSRange range, NSRangePointer
         NSView* v = (NSView*)self;
         NSWindow* w = [v window];
         if (w != NULL) {
-            NSRect vr = NSMakeRect((CGFloat)g_ime_crect[0], (CGFloat)g_ime_crect[1],
-                                   (CGFloat)g_ime_crect[2], (CGFloat)g_ime_crect[3]);
-            NSRect winr = [v convertRect:vr toView:nil];
-            NSRect sr = [w convertRectToScreen:winr];
+            // 确定性换算(勿用 convertRect 链——flipped 视图歧义致面板漂移,用户
+            // 实测三态:左下/框下/左上):fed 坐标 = raylib 窗口系(内容视图左上原
+            // 点,y 向下);屏幕系 = AppKit 左下原点。contentView frame 给标题栏偏移。
+            NSRect wf = [w frame];
+            NSRect cb = [[w contentView] frame];
+            CGFloat sx = wf.origin.x + cb.origin.x + (CGFloat)g_ime_crect[0];
+            CGFloat sy = wf.origin.y + cb.origin.y + cb.size.height
+                       - (CGFloat)g_ime_crect[1] - (CGFloat)g_ime_crect[3];
+            NSRect sr = NSMakeRect(sx, sy, (CGFloat)g_ime_crect[2], (CGFloat)g_ime_crect[3]);
             if (g_ime_trace()) {
                 fprintf(stderr, "[IME] firstRect caret -> %.0f,%.0f %.0fx%.0f\n",
                         sr.origin.x, sr.origin.y, sr.size.width, sr.size.height);
