@@ -934,10 +934,12 @@ test "属主校验:他者统计/删除 404,条目不受扰" {
 }
 
 test "碰撞重试、输入校验负例与会话过期" {
-    // 碰撞重试:预占 fake 熵首个 code,建链应跳过(≤3 重试)取次位
+    // 碰撞重试:预占「建链将生成的首个 code」强制跳位(≤3 重试)。fake 熵调用序
+    // 确定性:①GET /register csrf seed(rnd8)②注册 salt(rnd16)③建链候选 1
+    // (rnd16 = fake_bytes(25,16) 撞)④候选 2(fake_bytes(26,16) 成)
     let rnd = mk_fake_rnd(23)
     let app = app_mem("dev-cts", clk_fix, rnd, 4)
-    let first = code_from(fake_bytes(23, 16))
+    let first = code_from(fake_bytes(25, 16))
     app.links.with_mut(|var l| {
         l.push(Link { id: 9001, owner: 1, code: first, url: "http://taken.example/x", created: 1, deleted: false })
     })
@@ -950,6 +952,7 @@ test "碰撞重试、输入校验负例与会话过期" {
     let code = code_of_flash(mk)
     assert(code.len == 7)
     assert(code != first)
+    assert(code == code_from(fake_bytes(26, 16)))
     // 预占码仍是原址(未被覆盖)
     let pre = dispatch_h[App](r, "GET", "/" + first, "", List[Pair]())
     assert(resp_header(pre, "Location") == "http://taken.example/x")
@@ -965,12 +968,15 @@ test "碰撞重试、输入校验负例与会话过期" {
     let gh = dispatch_h[App](r, "POST", "/login", "name=ghost0&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0))
     assert(resp_status(gh) == 303)
     assert(contains(set_cookie_of(gh), "wrong"))
-    // 会话过期:短 ttl 签发,验签钟 1501 > exp → 守卫 303
+    // 会话过期:短 ttl 签发,验签钟 1501 > exp → 守卫 303(/links/:code/stats
+    // 是守卫面;GET / 对匿名本就 200 落地,不作过期哨)
     let tok_exp = sid_of_resp(grant_session(redirect("/x"), "dev-cts", "alpha", 500, 1000))
     let late_app = app_mem("dev-cts", clk_expired, mk_fake_rnd(29), 4)
     let late = full_router(late_app)
-    assert(resp_status(dispatch_h[App](late, "GET", "/", "", hdr_cookie("sid=" + tok_exp))) == 303)
-    // 篡改 sid:验签拒 → 落地页(非仪表盘)
-    let tam = dispatch_h[App](late, "GET", "/", "", hdr_cookie("sid=" + tok_exp + "x"))
-    assert(resp_body(tam) == view_landing())
+    let ex = dispatch_h[App](late, "GET", "/links/abcd123/stats", "", hdr_cookie("sid=" + tok_exp))
+    assert(resp_status(ex) == 303)
+    assert(resp_header(ex, "Location") == "/login")
+    // 篡改 sid:验签拒 → 同 303(守卫面)
+    let tam = dispatch_h[App](late, "GET", "/links/abcd123/stats", "", hdr_cookie("sid=" + tok_exp + "x"))
+    assert(resp_status(tam) == 303)
 }
