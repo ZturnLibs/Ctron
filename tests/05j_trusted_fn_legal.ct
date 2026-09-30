@@ -1,5 +1,6 @@
 // 05j_trusted_fn_legal.ct —— v0.9·五 信任模型放宽(原 05j E4040 负例退役):
-// #[trusted] 于普通 fn 合法——含信任操作的 fn 显式入审计面;双宿主可调可编
+// #[trusted] 于普通 fn 合法——含信任操作的 fn 显式入审计面;双宿主可调可编,
+// test 块内可调(宿主 test 口径须含 test 块,正例一并锚定)
 #[trusted]
 fn audited_half(x: I32) -> I32 {
     return x / 2
@@ -8,4 +9,8 @@ fn audited_half(x: I32) -> I32 {
 fn main() -> I32 {
     assert_eq(audited_half(9), 4)
     return 0
+}
+
+test "trusted fn callable in audit surface" {
+    assert_eq(audited_half(10), 5)
 }
