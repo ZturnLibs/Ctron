@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=420' "$T/chk.out" && ok "自检 cc_run 绿,decls=420(0928-0929 spec-gap 批次合法累积+T26 两 extern,随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=423' "$T/chk.out" && ok "自检 cc_run 绿,decls=423(422=HEAD db16053 实测,前值 420 滞后 2 系 0929 批次未随批申报;+1 libroot W1 wrapper pkg_load_use_m,2026-09-30 随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -89,7 +89,7 @@ tc_fx fx_bound_ann_neg "E2050"
 tc_fx fx_str_esc_neg "非法转义"
 tc_fx fx_interp_neg "未终止的插值"
 tc_fx fx_trusted_neg "W8050"
-tc_fx fx_trusted_fn_neg "E4040"
+tc_fx fx_trusted_fn_neg "E4047"
 echo "== 2d) 诊断 i18n(§10.8;ANCHORLANG 构建锚) =="
 "$COMP/ctc.sh" check "$COMP/test/fx_type_neg.ct" --lang=en > "$T/tc_en.out" 2>&1
 erc=$?
@@ -815,6 +815,31 @@ if grep -q "legacy=1,234,567" "$T/rapp.out" && grep -q "total=CNY 1,234,567" "$T
     ok "真实依赖图五行锚定(菱形去重 + 三层链 + 双版本改名共存)"
 else
     bad "真实依赖图异常: $(head -3 "$T/rapp.out")"
+fi
+
+echo "== 3o) site root 解析(库根布局 2026-09-30:同级推导/SITEPATH 覆盖/W8902 带出路)=="
+SO="$T/site"
+mkdir -p "$SO/lib/std" "$SO/pkgs/zsite" "$SO/alt/zsite" "$SO/neg/lib/std"
+SRC_STR="$ROOT/std/str.ct"; [ -f "$SRC_STR" ] || SRC_STR="$ROOT/lib/std/str.ct"
+cp "$SRC_STR" "$SO/lib/std/str.ct"; cp "$SRC_STR" "$SO/neg/lib/std/str.ct"
+printf '// zsite.core —— site root 正例夹具\npub fn hi() -> Str { return "site-ok" }\n' > "$SO/pkgs/zsite/core.ct"
+printf 'pub fn hi() -> Str { return "alt-ok" }\n' > "$SO/alt/zsite/core.ct"
+printf 'use zsite.core.{hi}\nfn main() { println(hi()) }\n' > "$T/so_main.ct"
+if CTRON_STDPATH="$SO/lib/std" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$T/so1.out" 2>&1 && grep -q "site-ok" "$T/so1.out"; then
+    ok "site root 同级推导命中(dirname(libroot)/pkgs)"
+else
+    bad "site root 未命中: $(tail -2 "$T/so1.out")"
+fi
+if CTRON_STDPATH="$SO/lib/std" CTRON_SITEPATH="$SO/alt" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$T/so2.out" 2>&1 && grep -q "alt-ok" "$T/so2.out"; then
+    ok "CTRON_SITEPATH 覆盖生效(优先于同级推导)"
+else
+    bad "CTRON_SITEPATH 覆盖未生效: $(tail -2 "$T/so2.out")"
+fi
+if CTRON_STDPATH="$SO/neg/lib/std" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$T/so3.out" 2>&1; then
+    bad "包缺席却 rc=0"
+else
+    grep -q "E2020" "$T/so3.out" && ok "包缺席 E2020 兜底(use.read)" || bad "E2020 未兜底: $(head -2 "$T/so3.out")"
+    grep -q "W8902" "$T/so3.out" && grep -q "ctron pkg add zsite" "$T/so3.out" && ok "W8902 带出路(安装指引)" || bad "W8902 缺失: $(tail -3 "$T/so3.out")"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

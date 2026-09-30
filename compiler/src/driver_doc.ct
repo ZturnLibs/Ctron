@@ -630,7 +630,7 @@ fn doc_mod_rel(ep: Str) -> Str {
 }
 
 fn doc_std_mod(ep: Str) -> Str {
-    // §5.3:"std.<module>" 形 → 实文件四级解析:①CTRON_STDPATH ②exe 旁 ../lib/ctron/std
+    // §5.3:"std.<module>" 形 → 实文件四级解析:①CTRON_STDPATH ②exe 旁 ../lib/std(2026-09-30 库根布局)
     // ③cwd ./std(dev 仓库根)④cwd ../std(pkg_std_root 种子约定的 cwd 变体);
     // 域目录形(http.parse)经 doc_mod_rel 点号转路径
     var mod = doc_mod_rel(ep)
@@ -642,7 +642,7 @@ fn doc_std_mod(ep: Str) -> Str {
     }
     var exe = ctron_exe_path()
     if exe.len > 0 {
-        var r = pkg_exe_dir(exe) + "/../lib/ctron/std"
+        var r = pkg_exe_dir(exe) + "/../lib/std"
         if fs_exists(r + "/" + mod + ".ct") {
             return r + "/" + mod + ".ct"
         }
@@ -715,12 +715,18 @@ fn main() -> I32 {
         var ldiags = List[Str]()
         var lstack = List[Str]()
         lstack.push(epath)
-        file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
+        var lmisses = List[Str]()
+        file = pkg_load_use_m(file, pkg_dir_of(epath), lstack, ldiags, lmisses)
         if ldiags.len > 0 {
             var li: I32 = 0
             while li < ldiags.len {
                 println(ldiags[li])
                 li += 1
+            }
+            var mi: I32 = 0
+            while mi < lmisses.len {
+                println("W8902: 包 " + lmisses[mi] + " 未命中解析链(项目目录→lib→pkgs→deps);独立发布包试: ctron pkg add " + lmisses[mi])
+                mi += 1
             }
             return 1
         }
