@@ -25,7 +25,7 @@ curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.s
 
 > macOS Intel:v0.0.1 暂无预编译包——请走源码线(`ctron-0.0.1-src.tar.gz`,任意 cc `make` 即可)。
 
-预编译包布局:`ctron/bin/`(`ctc` 驱动 + `ctron-cc` / `ctron-chk` / `ctron-emit` 三个原生二进制)、`ctron/lib/ctron/std/`(标准库源码)、`ctron/share/doc/`(README 与 examples)、`ctron/VERSION`(版本 + git-sha)。
+预编译包布局:`bin/`(`ctc` 驱动 + `ctron-cc` / `ctron-chk` / `ctron-emit` 原生二进制)、`lib/`(std + 五个随发域 net/http/tls/db/ffi 及门面)、`vendor/`(随发域所需第三方 C)、`share/doc/`(README 与 examples)、`VERSION`(版本 + git-sha)。安装根即工具链根(默认 `~/.ctron`);扩展包住 `~/.ctron/pkgs/`,独立安装。
 
 ## 手动安装
 

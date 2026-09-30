@@ -33,11 +33,14 @@
 
 域包随所属泳道演进,不参与 std since 升版。**消费形态 = 顶层命名空间
 `use <域>.<子模块>.{...}`**(2026-09-23 起;`std.` 层仅 T1 核心,旧
-`use std.<域>.` 形态已移除)。**物理位置 = 仓库根与 `std/` 平级**
-(`gui/ net/ http/ tls/ db/ ffi/` + 各门面文件),安装布局 `lib/ctron/<域>` 1:1;
-loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-design.md。
-各域用法详见域内 README(`gui/README.md` 已备:快速上手/能力面/入口 API/
-驱动器/坑位;其余域随泳道补齐)。
+`use std.<域>.` 形态已移除)。**物理位置 = `lib/` 与 `pkgs/` 双区(宪章 v2.2,
+2026-09-30 库根布局,spec 2026-09-30-libroot-layout-design.md)**——随发域
+(net/http/tls/db/ffi + 门面三件)住 `lib/` 与 std/ 同区;registry 上游包
+(web/gui/s3/pkg + gui.ct 门面)住 `pkgs/`;安装布局 `~/.ctron/{lib,pkgs}`
+同构。loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-design.md;
+site root(①`CTRON_SITEPATH` ②库根同级 `pkgs/` 推导,W8902 带出路)见
+libroot spec。各域用法详见域内 README(`pkgs/gui/README.md` 已备:快速上手/
+能力面/入口 API/驱动器/坑位;其余域随泳道补齐)。
 
 | 档 | 域 | 内容 | 依赖 | 稳定口径 | 门禁 | 所有 |
 |---|---|---|---|---|---|---|
@@ -46,6 +49,10 @@ loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-
 | T2 | `tls` | TLS 门面(bind) | `vendor/tls/mbedtls` | P3-C 面 | 同上 | 服务器泳道 |
 | T2 | `db` | pg/redis 线协议 + pool + rowmap(§12.1) | libc/socket + 包内 `c_src/` | P5-C 面(§12 草案) | 同上 | 服务器线 P5 |
 | T3 | `gui` | clay+raylib 窄桥 + ctml 解析 + 域运行时 | `vendor/gui`(clay/raylib)+ 窗口系统(X11/GL) | SL 桥过渡(L1) | 永不进 std 通用门禁;泳道 headless 命令缓冲 | gui 泳道 |
+
+web/s3/pkg 三包(0926–0929 随泳道新增)物理落 `pkgs/`(registry 上游形态,
+web 已具 `Ctron.ctcl` 清单);档位入册随 registry 泳道补(gui 按拆分条件①
+为第一个迁出试点)。
 
 档的判定线 = **平台服务依赖**:T2 与 T3 的分界不是"有无大型 C 库",而是
 是否拖窗口/GPU 等平台服务;试金石 = headless 环境能否构建+跑绿验收。
@@ -93,7 +100,7 @@ CTCL 注册表包形态外置):
 档次迁移只许 T3→注册表,不许 T1→T2(核心面拖 C 即破坏 vendored 闭集)。
 
 **拆分触发条件**(何时把包请出 std):①CTCL 包管理器/注册表落地 → T3 全部
-迁出,gui 第一个;②API freeze(1.0)→ T1 冻结,T2 只冻结已稳面(§11 v0.8.1
+迁出,gui 第一个(gui 已物理预落位 `pkgs/`,2026-09-30;余=分发通道切换);②API freeze(1.0)→ T1 冻结,T2 只冻结已稳面(§11 v0.8.1
 先例),T3 明示不在范围;③平台矩阵展开(Windows/无显示 CI)→ T3 构建税自负。
 
 **悬案清账**:json_write 已并入 json(2026-09-23,宪章 v2 一域一模块裁决;C17 规避

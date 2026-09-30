@@ -13,6 +13,7 @@
 #   7) 分发三内建 fx_distinfo(native/dev 布局面):exe:nonempty/env:0/flag:0
 #   8) stdpath 两态:①CTRON_STDPATH 指路 → 1;缺省走③回落 → 2
 #      (①态需 env_get 实值面,仅 native 可观察;seed 面归 ci.sh 既有链路)
+#   9) 装机布局仿真(库根布局 2026-09-30):②exe/../lib 探测/T2 随发门面/site 同级推导,零 env
 # 前置:仓库根 ctc + compiler/bin/ctron-{cc,chk,emit}
 #       (ci.sh [4/7] native.sh 产出;dev 回落由 ctc 内建,本脚本不依赖 PATH)。
 set -eu
@@ -196,6 +197,34 @@ if [ $rc -eq 1 ] && grep -q 'E1001' "$T/fmt_n.out"; then
     ok "fmt 词法脏报错退出(规范 R8, rc=1)"
 else
     bad "fmt 词法脏 rc=$rc out=[$(cat "$T/fmt_n.out")]"
+fi
+
+echo "== 9) 装机布局仿真(库根布局 2026-09-30:②exe/../lib 探测 + T2 随发 + site 同级推导)=="
+IN="$T/inst"
+mkdir -p "$IN/bin" "$IN/pkgs/zsite"
+cp "$CBIN/ctron-cc" "$IN/bin/ctron-cc"
+cp -R "$ROOT/lib/." "$IN/lib/"
+printf 'use std.str.{contains}\nfn main() { if contains("abc", "b") { println("std-hit") } }\n' > "$T/i_std.ct"
+rc=0; "$IN/bin/ctron-cc" run "$T/i_std.ct" > "$T/i_std.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q "std-hit" "$T/i_std.out"; then
+    ok "装机态 std 命中(②探测 exe/../lib/std,零 env)"
+else
+    bad "装机态 std 异常 rc=$rc: $(tail -2 "$T/i_std.out")"
+fi
+printf 'use net.{Net_probe}\nfn main() { println("net-merged") }\n' > "$T/i_net.ct"
+rc=0; "$IN/bin/ctron-cc" run "$T/i_net.ct" > "$T/i_net.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q "net-merged" "$T/i_net.out"; then
+    ok "装机态 T2 域命中(net 门面,tarball 随发面)"
+else
+    bad "装机态 net 异常 rc=$rc: $(tail -2 "$T/i_net.out")"
+fi
+printf 'pub fn hi() -> Str { return "site-hit" }\n' > "$IN/pkgs/zsite/core.ct"
+printf 'use zsite.core.{hi}\nfn main() { println(hi()) }\n' > "$T/i_site.ct"
+rc=0; "$IN/bin/ctron-cc" run "$T/i_site.ct" > "$T/i_site.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q "site-hit" "$T/i_site.out"; then
+    ok "装机态 site 推导命中(工具链根/pkgs 同级,零 env)"
+else
+    bad "装机态 site 异常 rc=$rc: $(tail -2 "$T/i_site.out")"
 fi
 
 echo "ctc_smoke: $pass ok / $fail fail"
