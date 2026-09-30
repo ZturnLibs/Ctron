@@ -230,13 +230,13 @@ else
 fi
 echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
 drift=0
-for f in "$ROOT"/std/*.ct; do
+for f in "$ROOT"/lib/std/*.ct; do
     b=$(basename "$f")
     diff -q "$f" "$COMP/test/stdpkg/std/$b" > /dev/null 2>&1 || drift=1
 done
 for f in "$COMP"/test/stdpkg/std/*.ct; do
     b=$(basename "$f")
-    if [ ! -f "$ROOT/std/$b" ]; then drift=1; fi
+    if [ ! -f "$ROOT/lib/std/$b" ]; then drift=1; fi
 done
 if [ $drift -eq 0 ]; then
     ok "std 规范源与种子副本一致(无漂移)"
@@ -364,7 +364,7 @@ done
 echo "== 3j2) std 全模块自举单测(parity 矩阵自举臂;extern/c_src 依赖面除外) =="
 std_parity=0
 std_total=0
-for f in "$ROOT"/std/*.ct; do
+for f in "$ROOT"/lib/std/*.ct; do
     b=$(basename "$f")
     # config/net/tls:extern/c_src 依赖面;crypto:arena 大户保留豁免(1.5GB/86s,
     # linux 膨胀 3-4.5GB 贴边);fmap 已随 c6 原生快路径回收(487eaef:1.63 亿→
@@ -386,7 +386,7 @@ if [ -x "$RUSTBIN" ]; then
     newred=0
     knownred=0
     flipped=""
-    for f in "$ROOT"/std/*.ct; do
+    for f in "$ROOT"/lib/std/*.ct; do
         b=$(basename "$f" .ct)
         if echo " $known " | grep -q " $b "; then
             if ! CTRON_MAX_STEPS=0 "$RUSTBIN" test "$f" > /dev/null 2>&1; then
@@ -567,7 +567,7 @@ P
         Darwin) KNOWN4C=" heap opt iter " ;; # iter=T16 fn 字段发射在册
         *)      KNOWN4C=" opt iter " ;;
     esac
-    for f in "$ROOT"/std/*.ct; do
+    for f in "$ROOT"/lib/std/*.ct; do
         b=$(basename "$f" .ct)
         # crypto:arena 大户保留豁免(见 3j2 注);fmap 已随 c6 快路径回收
         case $b in config|net|tls|crypto) continue ;; esac
@@ -688,7 +688,7 @@ else
 fi
 
 (cd "$ROOT" && "$ROOT/ctc" doc std.str --format=json > "$T/doc6.out" 2>&1)
-if [ $? -eq 0 ] && grep -qF '"entry":"std/str.ct"' "$T/doc6.out" && grep -qF '"kind":"fn"' "$T/doc6.out"; then
+if [ $? -eq 0 ] && grep -qF '"entry":"lib/std/str.ct"' "$T/doc6.out" && grep -qF '"kind":"fn"' "$T/doc6.out"; then
     ok "doc std.<module> 形(§5.3:std 根四级解析,entry 归一)"
 else
     bad "doc std.<module> 异常: $(head -c 120 "$T/doc6.out")"
@@ -750,7 +750,7 @@ fi
 mkdir -p "$AD/stduse/impl" "$AD/c3/deps/mygeom.ctart"
 if "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom_str.ct" --ast=seal --astout="$AD/stduse" --astname=mygeom > "$T/seal3.out" 2>&1 \
    && grep -q "ast seal OK" "$T/seal3.out" \
-   && ln -sfn "$ROOT/std" "$AD/std" \
+   && ln -sfn "$ROOT/lib/std" "$AD/std" \
    && cp "$ROOT/tests/artifact_demo/consumer_str/main.ct" "$AD/c3/" \
    && cp -r "$AD/stduse/." "$AD/c3/deps/mygeom.ctart/" \
    && (cd "$AD/c3" && "$COMP/ctc.sh" main.ct > "$T/c3.out" 2>&1) \
@@ -810,7 +810,7 @@ mkdir -p "$R/app/deps/codecore.ctart" "$R/app/deps/fmtkit.ctart" "$R/app/deps/fm
 "$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/netlite/netlite.ct" --ast=seal --astout="$R/an" --astname=netlite > "$T/r4.out" 2>&1
 "$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/invoiceapi/invoiceapi.ct" --ast=seal --astout="$R/ai" --astname=invoiceapi > "$T/r5.out" 2>&1
 cp -r "$R/ac/." "$R/app/deps/codecore.ctart/" && cp -r "$R/af1/." "$R/app/deps/fmtkit.ctart/" && cp -r "$R/af2/." "$R/app/deps/fmtkit2.ctart/" && cp -r "$R/an/." "$R/app/deps/netlite.ctart/" && cp -r "$R/ai/." "$R/app/deps/invoiceapi.ctart/" && cp "$ROOT/tests/realdep_demo/app/main.ct" "$R/app/"
-(cd "$R/app" && CTRON_STDPATH="$ROOT/std" "$COMP/ctc.sh" main.ct > "$T/rapp.out" 2>&1)
+(cd "$R/app" && CTRON_STDPATH="$ROOT/lib/std" "$COMP/ctc.sh" main.ct > "$T/rapp.out" 2>&1)
 if grep -q "legacy=1,234,567" "$T/rapp.out" && grep -q "total=CNY 1,234,567" "$T/rapp.out" && grep -q "paid=75%" "$T/rapp.out" && grep -q "ref8=" "$T/rapp.out" && grep -q "resp=OK" "$T/rapp.out"; then
     ok "真实依赖图五行锚定(菱形去重 + 三层链 + 双版本改名共存)"
 else
@@ -820,7 +820,7 @@ fi
 echo "== 3o) site root 解析(库根布局 2026-09-30:同级推导/SITEPATH 覆盖/W8902 带出路)=="
 SO="$T/site"
 mkdir -p "$SO/lib/std" "$SO/pkgs/zsite" "$SO/alt/zsite" "$SO/neg/lib/std"
-SRC_STR="$ROOT/std/str.ct"; [ -f "$SRC_STR" ] || SRC_STR="$ROOT/lib/std/str.ct"
+SRC_STR="$ROOT/lib/std/str.ct"; [ -f "$SRC_STR" ] || SRC_STR="$ROOT/lib/std/str.ct"
 cp "$SRC_STR" "$SO/lib/std/str.ct"; cp "$SRC_STR" "$SO/neg/lib/std/str.ct"
 printf '// zsite.core —— site root 正例夹具\npub fn hi() -> Str { return "site-ok" }\n' > "$SO/pkgs/zsite/core.ct"
 printf 'pub fn hi() -> Str { return "alt-ok" }\n' > "$SO/alt/zsite/core.ct"

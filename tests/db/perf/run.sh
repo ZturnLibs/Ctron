@@ -11,9 +11,9 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
-DBPG="$ROOT/db/c_src/ctron_dbpg.c"
-DBENT="$ROOT/db/c_src/ctron_entropy.c"
+export CTRON_STDPATH="$ROOT/lib/std"
+DBPG="$ROOT/lib/db/c_src/ctron_dbpg.c"
+DBENT="$ROOT/lib/db/c_src/ctron_entropy.c"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 N="${CTRON_PERF_N:-1000}"
 echo "== tests/db/perf 简单查询回环性能门(P5-F F-C;ctron vs libpq 同构 ≤1.5×,min-of-3)=="

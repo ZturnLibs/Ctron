@@ -14,12 +14,12 @@ set -eu
 cd "$(dirname "$0")"
 ROOT=$(dirname "$(dirname "$(dirname "$(pwd)")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$EMIT" ]; then echo "coro_det: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
 "$EMIT" run src/main.ct > "$T/main.c"
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/coro_det" "$T/main.c" c_src/*.c
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/coro_det" "$T/main.c" c_src/*.c
 
 run_seed() {                                      # $1=seed  $2=outfile
     CTRON_RT=coro CTRON_RT_SEED="$1" "$T/coro_det" > "$2"

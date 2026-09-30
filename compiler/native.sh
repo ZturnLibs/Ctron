@@ -45,10 +45,10 @@ if [ -f "$ROOT/vendor/gui/build/libraylib.a" ]; then
     # 惯例同形:ft_shim 源 + freetype 头 + libfreetype/libsheenbidi 静态链
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" \
        -I"$ROOT/vendor/gui/freetype/include" \
-       -c "$ROOT/gui/c_src/ctron_gui.c" -o "$TMP/ctron_gui.o"
+       -c "$ROOT/pkgs/gui/c_src/ctron_gui.c" -o "$TMP/ctron_gui.o"
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" \
        -I"$ROOT/vendor/gui/freetype/include" \
-       -c "$ROOT/gui/c_src/ft_shim.c" -o "$TMP/ft_shim.o"
+       -c "$ROOT/pkgs/gui/c_src/ft_shim.c" -o "$TMP/ft_shim.o"
     GUI_O="$TMP/ctron_gui.o $TMP/ft_shim.o"
     case "$(uname)" in
         Darwin)

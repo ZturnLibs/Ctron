@@ -12,10 +12,10 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
-DBPG="$ROOT/db/c_src/ctron_dbpg.c"
-DBENT="$ROOT/db/c_src/ctron_entropy.c"
-DBREDIS="$ROOT/db/c_src/ctron_dbredis.c"
+export CTRON_STDPATH="$ROOT/lib/std"
+DBPG="$ROOT/lib/db/c_src/ctron_dbpg.c"
+DBENT="$ROOT/lib/db/c_src/ctron_entropy.c"
+DBREDIS="$ROOT/lib/db/c_src/ctron_dbredis.c"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 npass=0; nfail=0; nskip=0
 echo "== tests/db/nightly 真靶冒烟(P5-F;真 Postgres/Redis;非 CI 主环)=="

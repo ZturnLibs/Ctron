@@ -22,7 +22,7 @@ import shutil
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STD = os.path.join(ROOT, "std")
+STD = os.path.join(ROOT, "lib", "std")
 USE_RE = re.compile(r"^use std\.([a-z_]+(?:\.[a-z_]+)*)\.\{")
 
 

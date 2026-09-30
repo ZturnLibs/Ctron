@@ -16,7 +16,7 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 [ -x "$EMIT" ] || { echo "c10k: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; }
 
 N=${1:-${C10K_N:-10000}}
@@ -59,8 +59,8 @@ trap cleanup EXIT INT TERM
 echo "== c10k: 构建 ctecho(coro)+ driver(N=$N budget=${BUDGET}s) =="
 "$EMIT" run "$ROOT/examples/ctecho/src/main.ct" > "$T/ctecho.c" \
     || { echo "c10k: ctecho emit 失败" >&2; exit 1; }
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctecho" "$T/ctecho.c" \
-    "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctecho" "$T/ctecho.c" \
+    "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" \
     || { echo "c10k: ctecho 编译失败" >&2; exit 1; }
 cc -O1 -w -o "$T/driver" "$DIR/c_src/driver.c" \
     || { echo "c10k: driver 编译失败" >&2; exit 1; }

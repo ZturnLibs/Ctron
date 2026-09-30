@@ -17,21 +17,21 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$CC" ]; then echo "json_fidelity/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/json_fidelity 数值/布尔保真用例(P5-A)=="
 
 # ── std 规范源与种子副本漂移守卫(smoke.sh 3d 同款,本地即查)──
-if diff -q "$ROOT/std/json.ct" "$ROOT/compiler/test/stdpkg/std/json.ct" > /dev/null 2>&1; then
+if diff -q "$ROOT/lib/std/json.ct" "$ROOT/compiler/test/stdpkg/std/json.ct" > /dev/null 2>&1; then
     pass=$((pass+1)); echo "  PASS std/json.ct 种子副本无漂移"
 else
     fail=$((fail+1)); echo "  FAIL std/json.ct 种子副本漂移(cp std/json.ct compiler/test/stdpkg/std/)"
 fi
 
 # ── std/json.ct inline tests(解释器;种子单测同口径)──
-if "$CC" run "$ROOT/std/json.ct" > "$T/std_json.out" 2>&1; then
+if "$CC" run "$ROOT/lib/std/json.ct" > "$T/std_json.out" 2>&1; then
     pass=$((pass+1)); echo "  PASS std/json.ct (inline, interp)"
 else
     fail=$((fail+1)); echo "  FAIL std/json.ct (inline, interp)"; sed -n '1,5p' "$T/std_json.out"

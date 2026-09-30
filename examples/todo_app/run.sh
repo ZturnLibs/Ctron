@@ -15,7 +15,7 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 EMIT=${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}
 CC=cc
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 PORT=${TODO_APP_PORT:-8092}
 pass=0; fail=0
 T=$(mktemp -d /tmp/todoapp.XXXXXX)
@@ -49,7 +49,7 @@ mkdir -p "$T/data"
 if ! "$EMIT" run "$DIR/src/main.ct" > "$T/app.c" 2>"$T/emit.err"; then
     echo "todo-app-e2e: emit 失败" >&2; head -3 "$T/emit.err"; exit 1
 fi
-if ! $CC -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/app.bin" "$T/app.c" "$ROOT"/net/c_src/ctron_net.c 2>"$T/cc.err"; then
+if ! $CC -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/app.bin" "$T/app.c" "$ROOT"/net/c_src/ctron_net.c 2>"$T/cc.err"; then
     echo "todo-app-e2e: cc 失败" >&2; head -5 "$T/cc.err"; exit 1
 fi
 

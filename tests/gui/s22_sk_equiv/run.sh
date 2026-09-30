@@ -17,14 +17,14 @@ sh "$ROOT/vendor/gui/build.sh" > /dev/null
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
 # B 端探针编译一次(原生),双轮复用
-CTRON_STDPATH="$ROOT/std" "$EMIT" run "$DIR/src/probe.ct" > "$T/probe.c"
+CTRON_STDPATH="$ROOT/lib/std" "$EMIT" run "$DIR/src/probe.ct" > "$T/probe.c"
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
     Linux)  FW="-lX11 -lGL -lm -lpthread -ldl" ;;
     *) echo "s22: unsupported platform" >&2; exit 1 ;;
 esac
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$T/s22.bin" \
-   "$T/probe.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/probe.c" "$ROOT/pkgs/gui/c_src/ctron_gui.c" "$ROOT/pkgs/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 cd "$T"
 fail2=""

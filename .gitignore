@@ -42,3 +42,10 @@ tmp/
 
 # git worktrees (superpowers:using-git-worktrees)
 .worktrees/
+
+# 库根布局清噪(2026-09-30)
+imefix*.bin
+ul_*.log
+.DS_Store
+examples/*/src/main
+examples/*/src/main.c

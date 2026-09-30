@@ -26,7 +26,7 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 OPENSSL="${CTRON_INTEROP_OPENSSL:-/usr/bin/openssl}"
 
 if [ "${CTRON_NET_BENCH:-}" != "1" ]; then
@@ -55,10 +55,10 @@ cp "$T/cert.pem" "$T/ca.pem"
 "$EMIT" run "$DIR/../tls_interop/src/main.ct" > "$T/main.c" \
     || { echo "bench-tls: emit 失败"; exit 1; }
 printf '#define MBEDTLS_CONFIG_FILE "config-thread.h"\n' > "$T/mbcfg.h"
-cc -O1 -w -pthread -I"$ROOT/net/c_src" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" \
    -I"$ROOT/vendor/tls" -I"$ROOT/vendor/tls/mbedtls/include" -include "$T/mbcfg.h" \
    -o "$T/bench_tls_cli" "$T/main.c" \
-   "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" "$ROOT/net/c_src/ctron_tls.c" \
+   "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" "$ROOT/lib/net/c_src/ctron_tls.c" \
    "$ROOT/vendor/tls/build/lib/libmbedtls.a" \
    "$ROOT/vendor/tls/build/lib/libmbedx509.a" \
    "$ROOT/vendor/tls/build/lib/libmbedcrypto.a" -lpthread \

@@ -34,7 +34,7 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"   # 覆盖口:worktree 隔离构建验证用
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 
 if [ "${CTRON_CYCLE_BENCH:-}" != "1" ]; then
     echo "bench-cycle: SKIP(置 CTRON_CYCLE_BENCH=1 启用;本地/nightly 门禁,不入 CI 主环)"
@@ -66,9 +66,9 @@ GATE_FAIL=0
 echo "== bench-cycle: 全请求周期(P6-F,N=$N ×3 取最小;端口 $PORT)=="
 "$EMIT" run "$DIR/bench_cycle.ct" > "$T/ctron.c" 2>"$T/ctron.err" \
     || { echo "bench-cycle: FAIL emit"; sed -n '1,5p' "$T/ctron.err"; exit 2; }
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctron.bin" "$T/ctron.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/ctron.cc.err" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctron.bin" "$T/ctron.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/ctron.cc.err" \
     || { echo "bench-cycle: FAIL ctron 构建"; sed -n '1,5p' "$T/ctron.cc.err"; exit 2; }
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctron_coro.bin" "$T/ctron.c" "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" 2>>"$T/ctron.cc.err" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctron_coro.bin" "$T/ctron.c" "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" 2>>"$T/ctron.cc.err" \
     || { echo "bench-cycle: FAIL coro 构建"; sed -n '1,5p' "$T/ctron.cc.err"; exit 2; }
 cc -O1 -w -o "$T/base.bin" "$DIR/baseline_cycle.c" 2>"$T/base.cc.err" \
     || { echo "bench-cycle: FAIL C 基线构建"; sed -n '1,5p' "$T/base.cc.err"; exit 2; }
@@ -188,7 +188,7 @@ awk -v anchor="$ANCHOR" '
 { print }
 ' "$T/ctron.c" > "$T/ctron_cnt.c"
 grep -q "ctron_bump_n += 1" "$T/ctron_cnt.c" || { echo "bench-cycle: FAIL 计数注入未生效"; exit 2; }
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctron_cnt.bin" "$T/ctron_cnt.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/cnt.cc.err" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctron_cnt.bin" "$T/ctron_cnt.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/cnt.cc.err" \
     || { echo "bench-cycle: FAIL 计数构建"; sed -n '1,5p' "$T/cnt.cc.err"; exit 2; }
 
 cnt_run() { # $1=健康请求数 → 全局 BUMP

@@ -8,14 +8,14 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 [ -x "$EMIT" ] || { echo "rt_scopes/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/rt_scopes /debug/scopes 确定性用例(P7-F)=="
 
 if "$EMIT" run "$DIR/src/main.ct" > "$T/rs.c" 2>"$T/rs.err" \
-   && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/rs.bin" "$T/rs.c" "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" 2>"$T/rs.cc.err"; then
+   && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/rs.bin" "$T/rs.c" "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" 2>"$T/rs.cc.err"; then
     pass=$((pass+1)); echo "  PASS 构建(含 ctron_rt.c 链接)"
 else
     fail=$((fail+1)); echo "  FAIL 构建"; sed -n '1,5p' "$T/rs.err" "$T/rs.cc.err"; exit 1

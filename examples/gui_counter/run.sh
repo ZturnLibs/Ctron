@@ -11,13 +11,13 @@ EMIT="$ROOT/compiler/bin/ctron-emit"
 [ -x "$EMIT" ] || { echo "gui_counter: 缺 compiler/bin/ctron-emit" >&2; exit 2; }
 
 sh "$ROOT/vendor/gui/build.sh" > /dev/null
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 build() {
     "$EMIT" run "$DIR/src/main.ct" > "$T/gui_counter.c"
     cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$T/gui_counter.bin" \
-       "$T/gui_counter.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
+       "$T/gui_counter.c" "$ROOT/pkgs/gui/c_src/ctron_gui.c" "$ROOT/pkgs/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 }
 
 case "$(uname)" in

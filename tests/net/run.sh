@@ -11,7 +11,7 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
 # Task 5 起夹具 use net.*:显式指路源码树 std(gui_counter/run.sh 同款)
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$EMIT" ]; then echo "net/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
@@ -28,7 +28,7 @@ for d in "$DIR"/*/; do
     #(终审收账:补链条件收紧为仅 =coro,其他 CTRON_RT 值不再过匹配补链。)
     RTSRC=""
     if [ "${CTRON_RT:-}" = "coro" ] && [ ! -e "$d/c_src/ctron_rt.c" ]; then
-        RTSRC="$ROOT/net/c_src/ctron_rt.c"
+        RTSRC="$ROOT/lib/net/c_src/ctron_rt.c"
     fi
     # P3-C TLS 夹具:c_src 含 ctron_tls.c 时补 mbedTLS 头/库与自签证书。
     # 证书 openssl req -x509 本机生成(临时目录,零外联),路径经环境变量
@@ -59,7 +59,7 @@ for d in "$DIR"/*/; do
         TLENV="CTRON_SMOKE_CERT=$T/$name.pki/cert.pem CTRON_SMOKE_KEY=$T/$name.pki/key.pem CTRON_SMOKE_CA=$T/$name.pki/ca.pem"
     fi
     if "$EMIT" run "$e" > "$T/$name.c" 2>"$T/$name.err"; then
-        if cc -O1 -w -pthread -I"$ROOT/net/c_src" $TLCF -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC $TLLB 2>"$T/$name.cc.err"; then
+        if cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" $TLCF -o "$T/$name" "$T/$name.c" "$d"/c_src/*.c $RTSRC $TLLB 2>"$T/$name.cc.err"; then
             # 展开词不作赋值前缀(shell 语义)→ 经 env 注入夹具环境(TLENV 空 = 仅透传)
             if env $TLENV "$T/$name" run "$e" >"$T/$name.out" 2>&1; then
                 pass=$((pass+1)); echo "  PASS $name"
@@ -77,8 +77,8 @@ done
 # (主环已双矩阵跑其实钟臂;虚拟臂 jump=-1 免报)。
 csv_bin="$T/clock_sleep_v"
 if "$EMIT" run "$DIR/clock_sleep/src/main.ct" > "$T/csv.c" 2>"$T/csv.err" \
-   && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$csv_bin" "$T/csv.c" \
-        "$DIR"/clock_sleep/c_src/*.c "$ROOT/net/c_src/ctron_rt.c" 2>"$T/csv.cc.err"; then
+   && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$csv_bin" "$T/csv.c" \
+        "$DIR"/clock_sleep/c_src/*.c "$ROOT/lib/net/c_src/ctron_rt.c" 2>"$T/csv.cc.err"; then
     if CTRON_RT=coro CTRON_CLOCK=virtual "$csv_bin" run "$DIR/clock_sleep/src/main.ct" >"$T/csv.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS clock_sleep_virtual (coro+virtual)"
     else

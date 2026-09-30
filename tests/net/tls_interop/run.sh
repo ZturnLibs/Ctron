@@ -6,7 +6,7 @@
 #        强制版本);D2 = openssl s_client(-quiet -alpn http/1.1 -CAfile)↔ our
 #        server(固定应答)。ALPN 断言取我方面(tls_alpn()==提供值,权威面)。
 # 主环不入(tests/net/run.sh 只收带 c_src/ 的行为夹具;本目录无 c_src/,垫片
-# 直链 net/c_src 三件,13/13 口径不变)——本脚本为开发迭代入口,形同
+# 直链 lib/net/c_src 三件,13/13 口径不变)——本脚本为开发迭代入口,形同
 # tls_smoke/run.sh。前置:compiler/native.sh、cc、本机 openssl。
 # openssl 选点:/usr/bin/openssl(macOS LibreSSL;3.3.6 实测 TLS1.3 客户端/
 # 服务端 + s_server/s_client -alpn 均可用 —— 2026-09-21 本机验证,见 p3-task-4
@@ -21,7 +21,7 @@ set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 OPENSSL="${CTRON_INTEROP_OPENSSL:-/usr/bin/openssl}"
 [ -x "$EMIT" ] || { echo "tls_interop: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; }
 [ -x "$OPENSSL" ] || { echo "tls_interop: 缺 openssl($OPENSSL;可 CTRON_INTEROP_OPENSSL 指点)" >&2; exit 2; }
@@ -44,10 +44,10 @@ cp "$T/cert.pem" "$T/ca.pem"
 # ---- 构建:emit 一份 .ct → 单二进制,双角色运行期环境变量选择 ----
 "$EMIT" run "$DIR/src/main.ct" > "$T/main.c"
 printf '#define MBEDTLS_CONFIG_FILE "config-thread.h"\n' > "$T/mbcfg.h"
-cc -O1 -w -pthread -I"$ROOT/net/c_src" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" \
    -I"$ROOT/vendor/tls" -I"$ROOT/vendor/tls/mbedtls/include" -include "$T/mbcfg.h" \
    -o "$T/tls_interop" "$T/main.c" \
-   "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" "$ROOT/net/c_src/ctron_tls.c" \
+   "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" "$ROOT/lib/net/c_src/ctron_tls.c" \
    "$ROOT/vendor/tls/build/lib/libmbedtls.a" \
    "$ROOT/vendor/tls/build/lib/libmbedx509.a" \
    "$ROOT/vendor/tls/build/lib/libmbedcrypto.a" -lpthread

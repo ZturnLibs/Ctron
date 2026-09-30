@@ -9,7 +9,7 @@ set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 [ -x "$EMIT" ] || { echo "tls_smoke: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; }
 [ -f "$ROOT/vendor/tls/build/lib/libmbedcrypto.a" ] || sh "$ROOT/vendor/tls/build.sh"
 
@@ -20,7 +20,7 @@ cp "$T/cert.pem" "$T/ca.pem"
 
 "$EMIT" run "$DIR/src/main.ct" > "$T/main.c"
 printf '#define MBEDTLS_CONFIG_FILE "config-thread.h"\n' > "$T/mbcfg.h"
-cc -O1 -w -pthread -I"$ROOT/net/c_src" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" \
    -I"$ROOT/vendor/tls" -I"$ROOT/vendor/tls/mbedtls/include" -include "$T/mbcfg.h" \
    -o "$T/tls_smoke" "$T/main.c" "$DIR"/c_src/*.c \
    "$ROOT/vendor/tls/build/lib/libmbedtls.a" \
