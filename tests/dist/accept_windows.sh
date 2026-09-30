@@ -5,10 +5,10 @@
 # 运行环境:MSYS2 bash(github windows-latest + msys2/setup-msys2 MINGW64;mingw gcc 在 PATH)
 # 前置(cwd = 仓库根,release workflow windows job 已就位):
 #   bin/ctron-{cc,chk,emit}.exe    cc-only 构建(预发射 C 直接 gcc,绕过 seed)
-#   ctron/                          zip 载荷目录:bin/{ctc.cmd,ctc.ps1,ctron-*.exe}
+#   ctron/                          zip 载荷目录:bin/{ctron.cmd,ctron.ps1,ctron-*.exe}
 #                                   + lib/ctron/std + share/doc/README.md + VERSION(spec §2.2)
 #   dist-windows.zip                发布物本体(A2 段 Expand-Archive 解包自证)
-#   ctc                             sh 版驱动(仓库根检出件;帮助文本 conformance 基准)
+#   ctron                             sh 版驱动(仓库根检出件;帮助文本 conformance 基准)
 #   tests/06_crlf.ct                CRLF 回归夹具(检出件,真 CRLF 字节)
 #
 # 断言面(失败计数,末尾非零退出):
@@ -17,16 +17,16 @@
 #   A2) zip 自证:dist-windows.zip 经 Expand-Archive 解包到 scratch,对解包出的
 #      ctron/ 复验同一组布局断言(暂存树齐 ≠ zip 本体齐——Compress-Archive 丢空
 #      目录即此形态,zip 本体才是用户拿到的发布物)
-#   B) BOM 门:ctc.ps1 首三字节 = EF BB BF(PS 5.1 无 BOM 按 ANSI 解码,中文帮助乱码)
+#   B) BOM 门:ctron.ps1 首三字节 = EF BB BF(PS 5.1 无 BOM 按 ANSI 解码,中文帮助乱码)
 #   C) ps1 语法门:[scriptblock]::Create 全文解析(P2-2 移交:本机无 pwsh,语法验证落 CI)
 #   D) 编码三向断言(P2-2 审查移交 CI 必查第一项;归一化禁止 strip 非 ASCII):
-#      ① 驱动面:msys2 管道下 ctc.ps1 --help 输出按 UTF-8 断言含中文词
+#      ① 驱动面:msys2 管道下 ctron.ps1 --help 输出按 UTF-8 断言含中文词
 #        (powershell.exe 重定向 stdout 默认 OEM CP → 乱码 '?',ps1 第 5 行
 #        [Console]::OutputEncoding=UTF8 即为此而设;本断言就是它的回归钉)
-#      ② 发射面:含中文字面量程序经 ctc.ps1 build → 产物 .c 首字节无 BOM
+#      ② 发射面:含中文字面量程序经 ctron.ps1 build → 产物 .c 首字节无 BOM
 #        且中文串为正确 UTF-8 字节(WriteAllLines + UTF8Encoding($false) 回归钉)
 #      ③ 可执行面:zh.exe 运行输出中文不乱码(SetConsoleOutputCP(CP_UTF8) 回归钉)
-#   E) 并发夹具(§7.6):spawn/Channel 有界通道经 ctc.ps1 build + 运行;
+#   E) 并发夹具(§7.6):spawn/Channel 有界通道经 ctron.ps1 build + 运行;
 #      发射 C 含 pthread_create/join/mutex/cond,Windows 上即 winpthreads 通路。
 #      取最小内联夹具:tests/06_concurrency.ct 为 test 块形态且含 for 通配模式
 #      (`for _ in`),发射面命中 ct_stmt:for pat:PatWild panic(build 属 beta 能力面
@@ -36,13 +36,13 @@
 #      (标定:BOOTSTRAP.md §7,~1800 步击穿 8MB → ~4.6KB/步)——Windows 主线程
 #      默认 1MB 栈必炸,8MB 链接参数下须过;深度取 (220, 1740) 区间中段,双向留余
 #   G) CRLF 夹具(§5 第 8 项回归):tests/06_crlf.ct 经 build + run,另跑解释臂
-#   H) 驱动 conformance(§7.9):ctc.ps1 --help 与 sh 版归一化 diff(差异域白名单
+#   H) 驱动 conformance(§7.9):ctron.ps1 --help 与 sh 版归一化 diff(差异域白名单
 #      映射后必须零 diff)。归一化 = 剥 CR + 折叠空白,不做任何非 ASCII 处理。
 #      白名单 = P2-2 登记的刻意差异共三处:① CC 默认 cc→gcc(usage 一处);
 #      ② 产物 <stem>.exe / build/<name>.exe(build 详助两处);③ build 前置行
 #      mingw-w64(MSYS2 或 w64devkit)vs 本机 C 编译器——任务书"两处"为简记,
 #      ③ 为 P2-2 命令面对照表登记在案的第三处
-#   I) rc 矩阵经 ctc.cmd 垫片(用户入口全链:cmd → powershell → ctron-*):
+#   I) rc 矩阵经 ctron.cmd 垫片(用户入口全链:cmd → powershell → ctron-*):
 #      --version rc=0 且 = VERSION 文件;run 负例诊断 rc=1;未知子命令 rc=2;
 #      无 cc build rc=2 且 .c 已产出(CC=/nonexistent/cc 法,同 accept.sh)
 #
@@ -63,13 +63,13 @@ W=$(mktemp -d /tmp/ctron_awin.XXXXXX) || exit 2
 trap 'rm -rf "$W"' EXIT
 
 # ps1 驱动(zip 载荷,发布物本体)
-ps1() { powershell -NoProfile -ExecutionPolicy Bypass -File "$PKG/bin/ctc.ps1" "$@"; }
-# ctc.cmd 垫片(用户入口;cd 至同目录规避 msys2 对含反斜杠参数的转换歧义)
-shim() { ( cd "$PKG/bin" && cmd //c ctc.cmd "$@" ); }
+ps1() { powershell -NoProfile -ExecutionPolicy Bypass -File "$PKG/bin/ctron.ps1" "$@"; }
+# ctron.cmd 垫片(用户入口;cd 至同目录规避 msys2 对含反斜杠参数的转换歧义)
+shim() { ( cd "$PKG/bin" && cmd //c ctron.cmd "$@" ); }
 
 echo "== A) zip 载荷布局(spec §2.2,暂存树)== "
 PKG="$PWD/ctron"
-if [ -f "$PKG/bin/ctc.ps1" ] && [ -f "$PKG/bin/ctc.cmd" ] \
+if [ -f "$PKG/bin/ctron.ps1" ] && [ -f "$PKG/bin/ctron.cmd" ] \
     && [ -f "$PKG/bin/ctron-cc.exe" ] && [ -f "$PKG/bin/ctron-chk.exe" ] \
     && [ -f "$PKG/bin/ctron-emit.exe" ] && [ -f "$PKG/lib/ctron/std/str.ct" ] \
     && [ -f "$PKG/share/doc/README.md" ] && [ -f "$PKG/VERSION" ]; then
@@ -84,7 +84,7 @@ cp dist-windows.zip "$W/zip.zip" || cp "$PWD/dist-windows.zip" "$W/zip.zip"
 rc=0
 ( cd "$W" && powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path zip.zip -DestinationPath zipcheck -Force" ) > "$W/zipx.log" 2>&1 || rc=$?
 ZPKG="$W/zipcheck/ctron"
-if [ $rc -eq 0 ] && [ -f "$ZPKG/bin/ctc.ps1" ] && [ -f "$ZPKG/bin/ctc.cmd" ] \
+if [ $rc -eq 0 ] && [ -f "$ZPKG/bin/ctron.ps1" ] && [ -f "$ZPKG/bin/ctron.cmd" ] \
     && [ -f "$ZPKG/bin/ctron-cc.exe" ] && [ -f "$ZPKG/bin/ctron-chk.exe" ] \
     && [ -f "$ZPKG/bin/ctron-emit.exe" ] && [ -f "$ZPKG/lib/ctron/std/str.ct" ] \
     && [ -f "$ZPKG/share/doc/README.md" ] && [ -f "$ZPKG/VERSION" ]; then
@@ -93,21 +93,21 @@ else
     bad "zip 本体裁荷缺件或解包失败 rc=$rc:$ZPKG($(head -3 "$W/zipx.log"))"
 fi
 
-echo "== B) BOM 门(ctc.ps1 首三字节 EF BB BF)== "
-bom=$(head -c 3 "$PKG/bin/ctc.ps1" | od -An -tx1 | tr -d ' \n')
+echo "== B) BOM 门(ctron.ps1 首三字节 EF BB BF)== "
+bom=$(head -c 3 "$PKG/bin/ctron.ps1" | od -An -tx1 | tr -d ' \n')
 if [ "$bom" = "efbbbf" ]; then
-    ok "ctc.ps1 UTF-8 BOM 在(ef bb bf)"
+    ok "ctron.ps1 UTF-8 BOM 在(ef bb bf)"
 else
-    bad "ctc.ps1 首三字节 = [$bom],期望 efbbbf(BOM 被剥即 PS5.1 ANSI 乱码)"
+    bad "ctron.ps1 首三字节 = [$bom],期望 efbbbf(BOM 被剥即 PS5.1 ANSI 乱码)"
 fi
 
 echo "== C) ps1 语法门([scriptblock]::Create)== "
 rc=0
-powershell -NoProfile -ExecutionPolicy Bypass -Command 'try { [scriptblock]::Create((Get-Content -LiteralPath "ctron/bin/ctc.ps1" -Raw)) | Out-Null; exit 0 } catch { $host.UI.WriteErrorLine($_.ToString()); exit 1 }' 2> "$W/pserr.txt" || rc=$?
+powershell -NoProfile -ExecutionPolicy Bypass -Command 'try { [scriptblock]::Create((Get-Content -LiteralPath "ctron/bin/ctron.ps1" -Raw)) | Out-Null; exit 0 } catch { $host.UI.WriteErrorLine($_.ToString()); exit 1 }' 2> "$W/pserr.txt" || rc=$?
 if [ $rc -eq 0 ]; then
-    ok "ctc.ps1 全文语法解析通过"
+    ok "ctron.ps1 全文语法解析通过"
 else
-    bad "ctc.ps1 语法解析失败 rc=$rc:$(head -3 "$W/pserr.txt")"
+    bad "ctron.ps1 语法解析失败 rc=$rc:$(head -3 "$W/pserr.txt")"
 fi
 
 echo "== D) 编码三向断言(P2-2 移交;① 驱动面 UTF-8 中文词)== "
@@ -244,7 +244,7 @@ map_sh() {
         -e 's/前置:本机 C 编译器(可用 CC 覆盖)/前置:mingw-w64(MSYS2 或 w64devkit)/'
 }
 ps1 --help > "$W/ps1_h.txt" 2>&1
-sh ctc --help 2>&1 | norm | map_sh > "$W/sh_h.txt"
+sh ctron --help 2>&1 | norm | map_sh > "$W/sh_h.txt"
 norm < "$W/ps1_h.txt" > "$W/ps1_h.n"
 if diff "$W/sh_h.txt" "$W/ps1_h.n" > "$W/h.diff" 2>&1; then
     ok "--help 与 sh 版归一化后一致(白名单域映射后零 diff)"
@@ -252,7 +252,7 @@ else
     bad "--help 归一化 diff 非空:$(head -5 "$W/h.diff")"
 fi
 ps1 build --help > "$W/ps1_bh.txt" 2>&1
-sh ctc build --help 2>&1 | norm | map_sh > "$W/sh_bh.txt"
+sh ctron build --help 2>&1 | norm | map_sh > "$W/sh_bh.txt"
 norm < "$W/ps1_bh.txt" > "$W/ps1_bh.n"
 if diff "$W/sh_bh.txt" "$W/ps1_bh.n" > "$W/bh.diff" 2>&1; then
     ok "build --help 与 sh 版归一化后一致(.exe/前置行白名单域内)"
@@ -260,7 +260,7 @@ else
     bad "build --help 归一化 diff 非空:$(head -5 "$W/bh.diff")"
 fi
 
-echo "== I) rc 矩阵(经 ctc.cmd 垫片)== "
+echo "== I) rc 矩阵(经 ctron.cmd 垫片)== "
 rc=0; SHIMV=$(shim --version 2>&1) || rc=$?
 if [ $rc -eq 0 ] && [ "$SHIMV" = "ctron $(cat "$PKG/VERSION")" ]; then
     ok "cmd 垫片 --version = $SHIMV"
