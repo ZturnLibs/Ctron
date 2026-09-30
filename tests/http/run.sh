@@ -16,7 +16,7 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"   # 覆盖口:worktree 隔离构建验证用
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$CC" ]; then echo "http/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
@@ -26,7 +26,7 @@ echo "== tests/http 协议半层用例(§11.7;P4-A)=="
 # P4-C:sse/ws 纯叶入 interp;client.ct 触 net/bind 子树(W8052 使 interp rc=1)
 # → 其 inline tests 入下方 emit 专臂;crypto.ct(SHA-1 RFC 3174 向量)同 interp。
 for m in parse message sse ws; do
-    if "$CC" run "$ROOT/http/$m.ct" > "$T/std_$m.out" 2>&1; then
+    if "$CC" run "$ROOT/lib/http/$m.ct" > "$T/std_$m.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS http/$m.ct (inline)"
     else
         fail=$((fail+1)); echo "  FAIL http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$m.out"
@@ -40,13 +40,13 @@ done
 # frm_auth 夹具对拍
 for m in frm/router frm/middleware frm/cors frm/csrf frm/sechdr frm/limit frm/timeout frm/auth frm/body; do
     mn=$(basename "$m")
-    if "$CC" run "$ROOT/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
+    if "$CC" run "$ROOT/lib/http/$m.ct" > "$T/std_$mn.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS http/$m.ct (inline)"
     else
         fail=$((fail+1)); echo "  FAIL http/$m.ct (inline)"; sed -n '1,5p' "$T/std_$mn.out"
     fi
 done
-if "$CC" run "$ROOT/std/crypto.ct" > "$T/std_crypto.out" 2>&1; then
+if "$CC" run "$ROOT/lib/std/crypto.ct" > "$T/std_crypto.out" 2>&1; then
     pass=$((pass+1)); echo "  PASS std/crypto.ct (inline, sha1+sha256)"
 else
     fail=$((fail+1)); echo "  FAIL std/crypto.ct (inline)"; sed -n '1,5p' "$T/std_crypto.out"
@@ -108,7 +108,7 @@ if [ -x "$EMIT" ]; then
                     continue
                 fi
                 MZCF="-I$ROOT/vendor/deflate/miniz"
-                MZLB="$ROOT/http/c_src/ctron_deflate.c $ROOT/vendor/deflate/build/lib/libminiz.a"
+                MZLB="$ROOT/lib/http/c_src/ctron_deflate.c $ROOT/vendor/deflate/build/lib/libminiz.a"
                 ;;
         esac
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
@@ -143,7 +143,7 @@ fi
 
 # ── http/client.ct inline tests(P4-C;emit 专臂,net/bind 子树 W8052)──
 if [ -x "$EMIT" ]; then
-    if "$EMIT" run "$ROOT/http/client.ct" > "$T/std_client.e.c" 2>"$T/std_client.e.err" \
+    if "$EMIT" run "$ROOT/lib/http/client.ct" > "$T/std_client.e.c" 2>"$T/std_client.e.err" \
        && cc -O1 -w -o "$T/std_client.e.bin" "$T/std_client.e.c" 2>"$T/std_client.e.cc.err" \
        && "$T/std_client.e.bin" > "$T/std_client.e.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS http/client.ct (inline, emit)"
@@ -169,16 +169,16 @@ for dir in client_fixtures sse_ws; do
                     continue
                 fi
                 RTN=""
-                RTSRC2="$ROOT/net/c_src/ctron_net.c"
+                RTSRC2="$ROOT/lib/net/c_src/ctron_net.c"
                 for mode in default coro; do
                     RTF=""
                     RTENV=""
                     if [ "$mode" = "coro" ]; then
-                        RTF="$ROOT/net/c_src/ctron_rt.c"
+                        RTF="$ROOT/lib/net/c_src/ctron_rt.c"
                         RTENV="CTRON_RT=coro"
                     fi
                     if "$EMIT" run "$f" > "$T/$name.$mode.c" 2>"$T/$name.$mode.err" \
-                       && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.$mode.bin" "$T/$name.$mode.c" "$RTSRC2" $RTF 2>"$T/$name.$mode.cc.err" \
+                       && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$name.$mode.bin" "$T/$name.$mode.c" "$RTSRC2" $RTF 2>"$T/$name.$mode.cc.err" \
                        && env $RTENV timeout 60 "$T/$name.$mode.bin" > "$T/$name.$mode.out" 2>&1; then
                         pass=$((pass+1)); echo "  PASS $name ($mode)"
                     else
@@ -306,7 +306,7 @@ done
 if [ "${CTRON_ROUTE_BENCH:-}" = "1" ] && [ -x "$EMIT" ]; then
     B="frm_route_x_bench"
     if "$EMIT" run "$DIR/frm_route/x_bench.ct" > "$T/$B.c" 2>"$T/$B.err" \
-       && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$B.bin" "$T/$B.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/$B.cc.err"; then
+       && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$B.bin" "$T/$B.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/$B.cc.err"; then
         MIN=""; MINR=""
         R=1
         while [ "$R" -le 3 ]; do

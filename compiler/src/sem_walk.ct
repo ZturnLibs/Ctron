@@ -31,7 +31,7 @@ fn is_prelude_name(n: Str) -> Bool {
     return false
 }
 
-// walk_block/Expr:返回诊断行;ns = no_spawn 上下文
+// walk_block/Expr:返回诊断行;ns = no_spawn 上下文;tv = 当前 fn 未标 trusted(E4047 门)
 fn is_cmp_op(op: Str) -> Bool {
     return or2(op == "Lt", or2(op == "Gt", or2(op == "Le", or2(op == "Ge", or2(op == "Eq", op == "Ne")))))
 }
@@ -56,7 +56,7 @@ fn ext_cb_target(file: List[Str], nm: Str) -> Bool {
     }
     return false
 }
-fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
+fn walk_e(file: List[Str], e: List[Str], ns: Bool, tv: Bool, fns: List[Str], rets: List[Str], out: List[Str]) {
     var t = e[0]
     if t == "Call" {
         var cal = e[1]
@@ -91,17 +91,22 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
                 out.push(diag_render1("E4042", nline(e), cal[1]))
             }
         }
-        walk_e(file, cal, ns, fns, rets, out)
+        // E4047(v0.9·五 裁决甲读侧):ptr_as_view 要求所在 fn 标 #[trusted]
+        //(信任面审计;tv = 当前 fn 无 trusted 标注)
+        if tv && cal[0] == "Ident" && cal[1] == "ptr_as_view" {
+            out.push(diag_render0("E4047", nline(e)))
+        }
+        walk_e(file, cal, ns, tv, fns, rets, out)
         var ag = e[2]
         var i: I32 = 1
         while i < ag.len {
-            walk_e(file, ag[i], ns, fns, rets, out)
+            walk_e(file, ag[i], ns, tv, fns, rets, out)
             i += 1
         }
         return
     }
     if t == "Member" {
-        walk_e(file, e[1], ns, fns, rets, out)
+        walk_e(file, e[1], ns, tv, fns, rets, out)
         return
     }
     if t == "Binary" {
@@ -109,71 +114,71 @@ fn walk_e(file: List[Str], e: List[Str], ns: Bool, fns: List[Str], rets: List[St
         if is_cmp_op(e[1]) && e[2][0] == "Binary" && is_cmp_op(e[2][1]) {
             out.push("E1001@" + nline(e) + "(parse): " + diag_text0("E1001.chain"))
         }
-        walk_e(file, e[2], ns, fns, rets, out)
-        walk_e(file, e[3], ns, fns, rets, out)
+        walk_e(file, e[2], ns, tv, fns, rets, out)
+        walk_e(file, e[3], ns, tv, fns, rets, out)
         return
     }
     if t == "Unary" {
-        walk_e(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[2], ns, tv, fns, rets, out)
         return
     }
     if t == "Range" {
-        walk_e(file, e[2], ns, fns, rets, out)
-        walk_e(file, e[3], ns, fns, rets, out)
+        walk_e(file, e[2], ns, tv, fns, rets, out)
+        walk_e(file, e[3], ns, tv, fns, rets, out)
         return
     }
     if t == "Index" {
-        walk_e(file, e[1], ns, fns, rets, out)
-        walk_e(file, e[2], ns, fns, rets, out)
+        walk_e(file, e[1], ns, tv, fns, rets, out)
+        walk_e(file, e[2], ns, tv, fns, rets, out)
         return
     }
     if t == "TypeArgs" {
-        walk_e(file, e[1], ns, fns, rets, out)
+        walk_e(file, e[1], ns, tv, fns, rets, out)
         return
     }
     if t == "Try" {
-        walk_e(file, e[1], ns, fns, rets, out)
+        walk_e(file, e[1], ns, tv, fns, rets, out)
         return
     }
     if or2(t == "TupleE", t == "ArrLit") {
         var i2: I32 = 1
         while i2 < e.len {
-            walk_e(file, e[i2], ns, fns, rets, out)
+            walk_e(file, e[i2], ns, tv, fns, rets, out)
             i2 += 1
         }
         return
     }
     if t == "BlockExpr" {
-        walk_b(file, e[1], ns, fns, rets, out, false)
+        walk_b(file, e[1], ns, tv, fns, rets, out, false)
         return
     }
     if t == "If" {
-        walk_e(file, e[1], ns, fns, rets, out)
-        walk_b(file, e[2], ns, fns, rets, out, false)
-        walk_e(file, e[3], ns, fns, rets, out)
+        walk_e(file, e[1], ns, tv, fns, rets, out)
+        walk_b(file, e[2], ns, tv, fns, rets, out, false)
+        walk_e(file, e[3], ns, tv, fns, rets, out)
         return
     }
     if t == "Match" {
-        walk_e(file, e[1], ns, fns, rets, out)
+        walk_e(file, e[1], ns, tv, fns, rets, out)
         var arms = e[2]
         var i3: I32 = 1
         while i3 < arms.len {
             var a = arms[i3]
-            walk_e(file, a[2], ns, fns, rets, out)
+            walk_e(file, a[2], ns, tv, fns, rets, out)
             i3 += 1
         }
         return
     }
     if t == "Closure" {
-        walk_e(file, e[3], ns, fns, rets, out)
+        walk_e(file, e[3], ns, tv, fns, rets, out)
         return
     }
     if t == "Own" {
-        walk_b(file, e[2], ns, fns, rets, out, false)
+        walk_b(file, e[2], ns, tv, fns, rets, out, false)
         return
     }
     if t == "Scope" {
-        walk_b(file, e[2], ns, fns, rets, out, false)
+        walk_b(file, e[2], ns, tv, fns, rets, out, false)
         return
     }
 }
@@ -199,32 +204,32 @@ fn w8020_check(file: List[Str], ce: List[Str], fns: List[Str], rets: List[Str], 
     }
 }
 
-fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[Str], out: List[Str], body: Bool) {
+fn walk_b(file: List[Str], b: List[Str], ns: Bool, tv: Bool, fns: List[Str], rets: List[Str], out: List[Str], body: Bool) {
     var i: I32 = 1
     while i < b.len - 1 {
         var st = b[i]
         var t = st[0]
         if t == "Return" {
-            walk_e(file, st[1], ns, fns, rets, out)
+            walk_e(file, st[1], ns, tv, fns, rets, out)
         } else if t == "Let" {
             // W8040:绑定名遮蔽前奏符号(§3.8)
             var lp = st[2]
             if lp[0] == "PatId" && is_prelude_name(lp[1]) {
                 out.push(diag_render1("W8040", nline(st), lp[1]))
             }
-            walk_e(file, st[4], ns, fns, rets, out)
+            walk_e(file, st[4], ns, tv, fns, rets, out)
         } else if t == "While" {
-            walk_e(file, st[1], ns, fns, rets, out)
-            walk_b(file, st[2], ns, fns, rets, out, false)
+            walk_e(file, st[1], ns, tv, fns, rets, out)
+            walk_b(file, st[2], ns, tv, fns, rets, out, false)
         } else if t == "For" {
-            walk_e(file, st[2], ns, fns, rets, out)
-            walk_b(file, st[3], ns, fns, rets, out, false)
+            walk_e(file, st[2], ns, tv, fns, rets, out)
+            walk_b(file, st[3], ns, tv, fns, rets, out, false)
         } else if t == "Assign" {
-            walk_e(file, st[3], ns, fns, rets, out)
+            walk_e(file, st[3], ns, tv, fns, rets, out)
         } else if t == "Expr" {
             // W8020:丢弃 Option/Result 返回值
             w8020_check(file, st[1], fns, rets, out)
-            walk_e(file, st[1], ns, fns, rets, out)
+            walk_e(file, st[1], ns, tv, fns, rets, out)
         }
         i += 1
     }
@@ -233,5 +238,5 @@ fn walk_b(file: List[Str], b: List[Str], ns: Bool, fns: List[Str], rets: List[St
     if body {
         w8020_check(file, b[b.len - 1], fns, rets, out)
     }
-    walk_e(file, b[b.len - 1], ns, fns, rets, out)
+    walk_e(file, b[b.len - 1], ns, tv, fns, rets, out)
 }

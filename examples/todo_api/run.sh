@@ -10,7 +10,7 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
 CC=cc
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 PORT=${TODO_API_PORT:-8091}
 KEY=${TODO_API_KEY:-s3cret-key}
 pass=0; fail=0
@@ -49,10 +49,10 @@ fi
 RTS=""
 RTFLAG=""
 if [ "${CTRON_TODO_RT:-}" = "coro" ]; then
-    RTS="$ROOT/net/c_src/ctron_rt.c"
+    RTS="$ROOT/lib/net/c_src/ctron_rt.c"
     RTFLAG="CTRON_RT=coro"
 fi
-if ! $CC -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/todo.bin" "$T/todo.c" "$ROOT"/net/c_src/ctron_net.c $RTS 2>"$T/cc.err"; then
+if ! $CC -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/todo.bin" "$T/todo.c" "$ROOT"/net/c_src/ctron_net.c $RTS 2>"$T/cc.err"; then
     echo "todo-e2e: cc 失败" >&2; head -3 "$T/cc.err"; exit 1
 fi
 

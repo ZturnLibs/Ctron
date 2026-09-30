@@ -1,0 +1,8 @@
+// ctslink 示例清单;caps = 供应链审计标记:net.listen —— serve_net.ct(原生臂)听端口;
+// db.connect —— serve_net.ct 原生臂 env DSN 时连 PG(DDL 应用)/Redis(点击计数)
+pkg {
+    manifest_version = 1
+    name = "ctslink"
+    version = "0.1.0"
+    caps = ["net.listen", "db.connect"]
+}

@@ -8,13 +8,13 @@ ROOT=$(dirname "$(dirname "$DIR")")
 CC="${CTRON_CC:-$ROOT/compiler/bin/ctron-cc}"
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"
 CHK="${CTRON_CHK:-$ROOT/compiler/bin/ctron-chk}"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/pkg ctron pkg 用例(P8-D)=="
 
 if [ -x "$CHK" ] || [ -n "${CTRON_CHK:-}" ]; then
-    "$CHK" run "$ROOT/pkg/pkg.ct" > "$T/chk.out" 2>&1 || true
+    "$CHK" run "$ROOT/pkgs/pkg/pkg.ct" > "$T/chk.out" 2>&1 || true
     if grep -qE '^[E][0-9]' "$T/chk.out"; then
         fail=$((fail+1)); echo "  FAIL pkg/pkg.ct (sem)"; sed -n '1,3p' "$T/chk.out"
     else
@@ -29,7 +29,7 @@ for f in "$DIR"/corpus/*.ct; do
     else
         fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,3p' "$T/$name.out"
     fi
-    if "$EMIT" run "$f" > "$T/$name.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null && "$T/$name.bin" > "$T/$name.run" 2>&1; then
+    if "$EMIT" run "$f" > "$T/$name.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null && "$T/$name.bin" > "$T/$name.run" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (emit)"
     else
         fail=$((fail+1)); echo "  FAIL $name (emit)"
@@ -39,8 +39,8 @@ done
 # ── e2e 段(CTRON_PKG_E2E=1):registry ↔ ctpkg(vendor+lockfile 落盘验证)──
 if [ "${CTRON_PKG_E2E:-}" = "1" ]; then
     echo "== pkg e2e:registry ↔ pkg add =="
-    if "$EMIT" run "$DIR/registry.ct" > "$T/reg.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/reg.bin" "$T/reg.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null \
-       && "$EMIT" run "$ROOT/tools/ctpkg.ct" > "$T/tool.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/tool.bin" "$T/tool.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null; then
+    if "$EMIT" run "$DIR/registry.ct" > "$T/reg.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/reg.bin" "$T/reg.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null \
+       && "$EMIT" run "$ROOT/tools/ctpkg.ct" > "$T/tool.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/tool.bin" "$T/tool.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null; then
         PP=$((21000 + RANDOM % 20000))
         W=$(mktemp -d)
         mkdir -p "$W/vendor"

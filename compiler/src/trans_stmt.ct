@@ -40,6 +40,32 @@ fn ct_field_ty(file: List[Str], sname: Str, fname: Str) -> Str {
     return "i"
 }
 
+// T54:fn 型字段返回码(§6.1 fn 值字段提取):字段为 FnType → 返回型别码;
+// 非 fn 字段/未命中 → ""。let 绑定自字段提取的 F/G 码 fn 值据此挂 #fret 侧条目
+//(镜像 ct_fn 形参位口径;无此条目则 h(r) 落 "i",链上 resp.body 分派即翻车)
+fn ct_fnfield_ret(file: List[Str], sname: Str, fname: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && d[1] == sname {
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len {
+                var f = fs[j]
+                if f[2] == fname {
+                    if f[3][0] == "FnType" {
+                        return ct_ty_code(f[3][2], file)
+                    }
+                    return ""
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
 // ===== Drop 层栈(§6.4 发射面) =====
 // env "#dls" 条目 = 层串:层间 ';',层内条目间 ',',条目 = "名@型码"。
 // 串恒以 ';' 结尾(除空串);当前层 = 最后一个 ';' 之后的后缀。
@@ -519,7 +545,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             var oty = ct_typeof(otl, orenv, file)
             var ovx = ct_expr(otl, orenv, file)
-            if or2(oty == "L", or2(oty == "LI", oty == "A")) { ovx = "(" + ct_ctype(oty) + ")(" + ovx + ")" }
+            if or2(oty == "L", or2(ct_is_tlcode(oty), oty == "A")) { ovx = "(" + ct_ctype(oty) + ")(" + ovx + ")" }
             eln(ct_ctype(oty) + " t_" + pat[1] + " = " + ovx + ";", env)
             return env_bind(env, pat[1], oty)
         }
@@ -723,6 +749,22 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         }
                     }
                 }
+                // T54:fn 值字段提取(let h = e.h,字段型 fn(A)->R)同挂 #fret——
+                // 此前仅直调初值入码,h(r) 落 "i",链上 resp.body 即翻 Member 兜底
+                //(03l/03n 发射臂 Member@26/27 实证);P<内>/B: 接收者剥前缀后同型
+                if st[4][0] == "Member" {
+                    var bty8 = ct_strip_p(ct_typeof(st[4][1], env, file))
+                    if bty8.len > 2 && byte_slice(bty8, 0, 2) == "u:" {
+                        var frc9 = ct_fnfield_ret(file, byte_slice(bty8, 2, bty8.len), st[4][3])
+                        if frc9.len > 0 {
+                            if frc9 != "v" {
+                                if frc9 != "i" {
+                                    env = env_bind(env, "#fret:" + pat[1], frc9)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             var rhs = ct_expr(st[4], env, file)
             // extern 返回 fn(v0.7 §9.6):声明位装箱——ct_fnK 裸指针 → ct_clop
@@ -742,7 +784,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     }
                 }
             }
-            if or2(ty == "L", ty == "LI") { rhs = "(ctron_list*)(" + rhs + ")" }
+            if or2(ty == "L", ct_is_tlcode(ty)) { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
             // RAII(§6.4):struct 值绑定实现 Drop → 当前层登记,作用域出口逆序发射
@@ -802,7 +844,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var tv = ct_expr(tgt[1], env, file)
             var vt = ct_typeof(st[3], env, file)
             var vtxt = ct_arg_cast(vt, "s", ct_expr(st[3], env, file))
-            if tc == "LI" {
+            if or2(tc == "LI", tc == "L6") {
+                // 标量元素槽写(LI=int32/L6=int64):经 long 中转全宽入槽(镜像索引读)
                 vtxt = "(const char*)(long)(" + ct_expr(st[3], env, file) + ")"
             }
             eln("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + vtxt + ";", env)
@@ -889,7 +932,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("(*t_" + tgt[1] + ") " + ct_aop(st[2]) + " " + rhs2 + ";", env)
             return env
         }
-        if or2(tt == "L", tt == "LI") { rhs2 = "(ctron_list*)(" + rhs2 + ")" }
+        if or2(tt == "L", ct_is_tlcode(tt)) { rhs2 = "(ctron_list*)(" + rhs2 + ")" }
         if tt == "A" { rhs2 = "(ctron_cell*)(" + rhs2 + ")" }
         eln("t_" + tgt[1] + " " + ct_aop(st[2]) + " " + rhs2 + ";", env)
         return env

@@ -342,6 +342,13 @@ fn main() -> I32 {
             println("typedef struct \{ const char** d; int64_t n; } ctron_view_s;")
             println("typedef struct \{ double* d; int64_t n; } ctron_view_f;")
             println("typedef struct \{ float* d; int64_t n; } ctron_view_g;")
+            // 标量全集(ptr_as_view v0.9·五:裸指针读覆盖全部定宽标量)
+            println("typedef struct \{ uint64_t* d; int64_t n; } ctron_view_7;")
+            println("typedef struct \{ uint8_t* d; int64_t n; } ctron_view_w8u;")
+            println("typedef struct \{ int8_t* d; int64_t n; } ctron_view_w8s;")
+            println("typedef struct \{ uint16_t* d; int64_t n; } ctron_view_w16u;")
+            println("typedef struct \{ int16_t* d; int64_t n; } ctron_view_w16s;")
+            println("typedef struct \{ size_t* d; int64_t n; } ctron_view_z;")
             // 用户 struct 值类型(§6.1):typedef 先于原型与函数体;#[repr(...)] 变体
             // (packed/align(N),v0.7 §9.6)直出 GNU 属性(声明序布局不变)
             var si: I32 = 1

@@ -9,19 +9,19 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 CC="${CTRON_CC:-$ROOT/compiler/bin/ctron-cc}"
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$CC" ] || [ ! -x "$EMIT" ]; then echo "pb/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/pb protobuf 线格式用例(P7-B)=="
 
-if diff -q "$ROOT/std/pb.ct" "$ROOT/compiler/test/stdpkg/std/pb.ct" > /dev/null 2>&1; then
+if diff -q "$ROOT/lib/std/pb.ct" "$ROOT/compiler/test/stdpkg/std/pb.ct" > /dev/null 2>&1; then
     pass=$((pass+1)); echo "  PASS std/pb.ct 种子副本无漂移"
 else
     fail=$((fail+1)); echo "  FAIL std/pb.ct 种子副本漂移(cp std/pb.ct compiler/test/stdpkg/std/)"
 fi
 
-if "$CC" run "$ROOT/std/pb.ct" > "$T/li.out" 2>&1; then
+if "$CC" run "$ROOT/lib/std/pb.ct" > "$T/li.out" 2>&1; then
     pass=$((pass+1)); echo "  PASS std/pb.ct (inline, interp)"
 else
     fail=$((fail+1)); echo "  FAIL std/pb.ct (inline, interp)"; sed -n '1,5p' "$T/li.out"
@@ -31,7 +31,7 @@ fi
 # → 本腿以 chk 语义门替代,代码生成面由 corpus emit 臂覆盖。
 CHK="${CTRON_CHK:-$ROOT/compiler/bin/ctron-chk}"
 if [ -x "$CHK" ] || [ -n "${CTRON_CHK:-}" ]; then
-    if "$CHK" run "$ROOT/std/pb.ct" > "$T/li.chk" 2>&1; then
+    if "$CHK" run "$ROOT/lib/std/pb.ct" > "$T/li.chk" 2>&1; then
         pass=$((pass+1)); echo "  PASS std/pb.ct (sem, chk)"
     else
         fail=$((fail+1)); echo "  FAIL std/pb.ct (sem, chk)"; sed -n '1,5p' "$T/li.chk"
@@ -45,7 +45,7 @@ for f in "$DIR"/corpus/*.ct; do
     else
         fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
     fi
-    if "$EMIT" run "$f" > "$T/$name.c" 2>"$T/$name.err" && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/$name.cc.err" && "$T/$name.bin" > "$T/$name.run" 2>&1; then
+    if "$EMIT" run "$f" > "$T/$name.c" 2>"$T/$name.err" && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/$name.cc.err" && "$T/$name.bin" > "$T/$name.run" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (emit)"
     else
         fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.err" "$T/$name.cc.err" "$T/$name.run" 2>/dev/null

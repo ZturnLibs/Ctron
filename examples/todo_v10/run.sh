@@ -10,7 +10,7 @@ EMIT="$ROOT/compiler/bin/ctron-emit"
 sh "$ROOT/vendor/gui/build.sh" > /dev/null
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-CTRON_STDPATH="$ROOT/std" "$EMIT" run "$DIR/src/main.ct" > "$T/todo_v10.c"
+CTRON_STDPATH="$ROOT/lib/std" "$EMIT" run "$DIR/src/main.ct" > "$T/todo_v10.c"
 
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
@@ -19,7 +19,7 @@ case "$(uname)" in
 esac
 
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$T/todo_v10.bin" \
-   "$T/todo_v10.c" "$ROOT/gui/c_src/ctron_gui.c" "$ROOT/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
+   "$T/todo_v10.c" "$ROOT/pkgs/gui/c_src/ctron_gui.c" "$ROOT/pkgs/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
 
 cd "$DIR"
 if [ "${CTRON_GUI_RUN:-}" = "1" ]; then

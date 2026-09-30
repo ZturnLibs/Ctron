@@ -6,7 +6,7 @@
 
 ```bash
 curl -fsSL <releases>/install.sh | sh      # 或手动下载 tarball 解压
-export PATH="$HOME/.ctron/ctron/bin:$PATH"
+export PATH="$HOME/.ctron/bin:$PATH"
 ```
 
 ```bash

@@ -8,7 +8,7 @@
 
 ```bash
 curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
-export PATH="$HOME/.ctron/ctron/bin:$PATH"   # 按脚本提示写入 shell 配置
+export PATH="$HOME/.ctron/bin:$PATH"   # 按脚本提示写入 shell 配置
 ```
 
 **手动**——从 [Releases](https://github.com/ZturnLibs/Ctron/releases) 下载 `ctron-<版本>-<平台>.tar.gz`,解压后把其中的 `ctron/bin` 加入 `PATH` 即可(见[下载](download.md)的产物矩阵)。

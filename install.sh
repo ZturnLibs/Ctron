@@ -31,10 +31,13 @@ if [ -s "$TMP/SHA256SUMS" ]; then
 fi
 mkdir -p "$DIR"
 tar xzf "$TMP/$TARBALL" -C "$TMP"
-cp -R "$TMP"/ctron/. "$DIR/ctron/" 2>/dev/null || { mkdir -p "$DIR/ctron" && cp -R "$TMP"/ctron/. "$DIR/ctron/"; }
-echo "install.sh: 已装到 $DIR/ctron"
-"$DIR/ctron/bin/ctc" --version
-echo "export PATH=\"$DIR/ctron/bin:\$PATH\"   # 加入你的 shell 配置"
+cp -R "$TMP"/ctron/. "$DIR/"
+# 库根布局(2026-09-30):CTRON_INSTALL_DIR = 工具链根本身(bin/lib/pkgs/vendor 直入);
+# 检测旧布局(~/.ctron/ctron)仅提示不自动删(内容归属用户,诚实边界)
+[ -d "$DIR/ctron" ] && echo "提示: 检测到旧布局 $DIR/ctron(2026-09-30 前安装),确认新版可用后可自行删除" >&2
+echo "install.sh: 已装到 $DIR"
+"$DIR/bin/ctc" --version
+echo "export PATH=\"$DIR/bin:\$PATH\"   # 加入你的 shell 配置"
 # ${CC:-}:set -u 下 CC 未导出不可裸引(原稿 "$CC" 会误杀收尾提示步骤)
 command -v "${CC:-}" >/dev/null 2>&1 || command -v cc >/dev/null 2>&1 || {
     echo "提示: 未检测到 C 编译器 —— ctc run/check 不需要;ctc build 需要" >&2

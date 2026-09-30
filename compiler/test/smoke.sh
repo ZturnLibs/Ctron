@@ -35,9 +35,9 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=438' "$T/chk.out" && ok "自检 cc_run 绿,decls=438(S1 436+peer ffi+T29 两 GC extern,整合实测申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
-heck_decl() { # <源.ct> <期望decl>
-    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
+grep -q 'check OK decls=439' "$T/chk.out" && ok "自检 cc_run 绿,decls=439(合并树实测:远端 S1 基线 436+本地 E4047/ptr_as_view 线+libroot wrapper,2026-09-30 合并随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+check_decl() { # <源.ct> <期望decl>
+   "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
 }
 check_decl "$SH/sem_chk.ct"    109
@@ -89,7 +89,7 @@ tc_fx fx_bound_ann_neg "E2050"
 tc_fx fx_str_esc_neg "非法转义"
 tc_fx fx_interp_neg "未终止的插值"
 tc_fx fx_trusted_neg "W8050"
-tc_fx fx_trusted_fn_neg "E4040"
+tc_fx fx_trusted_fn_neg "E4047"
 echo "== 2d) 诊断 i18n(§10.8;ANCHORLANG 构建锚) =="
 "$COMP/ctc.sh" check "$COMP/test/fx_type_neg.ct" --lang=en > "$T/tc_en.out" 2>&1
 erc=$?
@@ -230,13 +230,13 @@ else
 fi
 echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
 drift=0
-for f in "$ROOT"/std/*.ct; do
+for f in "$ROOT"/lib/std/*.ct; do
     b=$(basename "$f")
     diff -q "$f" "$COMP/test/stdpkg/std/$b" > /dev/null 2>&1 || drift=1
 done
 for f in "$COMP"/test/stdpkg/std/*.ct; do
     b=$(basename "$f")
-    if [ ! -f "$ROOT/std/$b" ]; then drift=1; fi
+    if [ ! -f "$ROOT/lib/std/$b" ]; then drift=1; fi
 done
 if [ $drift -eq 0 ]; then
     ok "std 规范源与种子副本一致(无漂移)"
@@ -364,7 +364,7 @@ done
 echo "== 3j2) std 全模块自举单测(parity 矩阵自举臂;extern/c_src 依赖面除外) =="
 std_parity=0
 std_total=0
-for f in "$ROOT"/std/*.ct; do
+for f in "$ROOT"/lib/std/*.ct; do
     b=$(basename "$f")
     # config/net/tls:extern/c_src 依赖面;fmap 已随 c6 原生快路径回收(487eaef);
     # crypto 已随 S1 Val 换代+I64 字段直算回收(7.17 亿→5,560 万次分配、86s→~16s,
@@ -386,7 +386,7 @@ if [ -x "$RUSTBIN" ]; then
     newred=0
     knownred=0
     flipped=""
-    for f in "$ROOT"/std/*.ct; do
+    for f in "$ROOT"/lib/std/*.ct; do
         b=$(basename "$f" .ct)
         if echo " $known " | grep -q " $b "; then
             if ! CTRON_MAX_STEPS=0 "$RUSTBIN" test "$f" > /dev/null 2>&1; then
@@ -567,7 +567,7 @@ P
         Darwin) KNOWN4C=" heap opt iter " ;; # iter=T16 fn 字段发射在册
         *)      KNOWN4C=" opt iter " ;;
     esac
-    for f in "$ROOT"/std/*.ct; do
+    for f in "$ROOT"/lib/std/*.ct; do
         b=$(basename "$f" .ct)
         # crypto 已随 S1 回收(见 3j2 注);fmap 已随 c6 快路径回收
         case $b in config|net|tls) continue ;; esac
@@ -688,7 +688,7 @@ else
 fi
 
 (cd "$ROOT" && "$ROOT/ctc" doc std.str --format=json > "$T/doc6.out" 2>&1)
-if [ $? -eq 0 ] && grep -qF '"entry":"std/str.ct"' "$T/doc6.out" && grep -qF '"kind":"fn"' "$T/doc6.out"; then
+if [ $? -eq 0 ] && grep -qF '"entry":"lib/std/str.ct"' "$T/doc6.out" && grep -qF '"kind":"fn"' "$T/doc6.out"; then
     ok "doc std.<module> 形(§5.3:std 根四级解析,entry 归一)"
 else
     bad "doc std.<module> 异常: $(head -c 120 "$T/doc6.out")"
@@ -750,7 +750,7 @@ fi
 mkdir -p "$AD/stduse/impl" "$AD/c3/deps/mygeom.ctart"
 if "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom_str.ct" --ast=seal --astout="$AD/stduse" --astname=mygeom > "$T/seal3.out" 2>&1 \
    && grep -q "ast seal OK" "$T/seal3.out" \
-   && ln -sfn "$ROOT/std" "$AD/std" \
+   && ln -sfn "$ROOT/lib/std" "$AD/std" \
    && cp "$ROOT/tests/artifact_demo/consumer_str/main.ct" "$AD/c3/" \
    && cp -r "$AD/stduse/." "$AD/c3/deps/mygeom.ctart/" \
    && (cd "$AD/c3" && "$COMP/ctc.sh" main.ct > "$T/c3.out" 2>&1) \
@@ -810,11 +810,36 @@ mkdir -p "$R/app/deps/codecore.ctart" "$R/app/deps/fmtkit.ctart" "$R/app/deps/fm
 "$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/netlite/netlite.ct" --ast=seal --astout="$R/an" --astname=netlite > "$T/r4.out" 2>&1
 "$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/invoiceapi/invoiceapi.ct" --ast=seal --astout="$R/ai" --astname=invoiceapi > "$T/r5.out" 2>&1
 cp -r "$R/ac/." "$R/app/deps/codecore.ctart/" && cp -r "$R/af1/." "$R/app/deps/fmtkit.ctart/" && cp -r "$R/af2/." "$R/app/deps/fmtkit2.ctart/" && cp -r "$R/an/." "$R/app/deps/netlite.ctart/" && cp -r "$R/ai/." "$R/app/deps/invoiceapi.ctart/" && cp "$ROOT/tests/realdep_demo/app/main.ct" "$R/app/"
-(cd "$R/app" && CTRON_STDPATH="$ROOT/std" "$COMP/ctc.sh" main.ct > "$T/rapp.out" 2>&1)
+(cd "$R/app" && CTRON_STDPATH="$ROOT/lib/std" "$COMP/ctc.sh" main.ct > "$T/rapp.out" 2>&1)
 if grep -q "legacy=1,234,567" "$T/rapp.out" && grep -q "total=CNY 1,234,567" "$T/rapp.out" && grep -q "paid=75%" "$T/rapp.out" && grep -q "ref8=" "$T/rapp.out" && grep -q "resp=OK" "$T/rapp.out"; then
     ok "真实依赖图五行锚定(菱形去重 + 三层链 + 双版本改名共存)"
 else
     bad "真实依赖图异常: $(head -3 "$T/rapp.out")"
+fi
+
+echo "== 3o) site root 解析(库根布局 2026-09-30:同级推导/SITEPATH 覆盖/W8902 带出路)=="
+SO="$T/site"
+mkdir -p "$SO/lib/std" "$SO/pkgs/zsite" "$SO/alt/zsite" "$SO/neg/lib/std"
+SRC_STR="$ROOT/lib/std/str.ct"; [ -f "$SRC_STR" ] || SRC_STR="$ROOT/lib/std/str.ct"
+cp "$SRC_STR" "$SO/lib/std/str.ct"; cp "$SRC_STR" "$SO/neg/lib/std/str.ct"
+printf '// zsite.core —— site root 正例夹具\npub fn hi() -> Str { return "site-ok" }\n' > "$SO/pkgs/zsite/core.ct"
+printf 'pub fn hi() -> Str { return "alt-ok" }\n' > "$SO/alt/zsite/core.ct"
+printf 'use zsite.core.{hi}\nfn main() { println(hi()) }\n' > "$T/so_main.ct"
+if CTRON_STDPATH="$SO/lib/std" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$T/so1.out" 2>&1 && grep -q "site-ok" "$T/so1.out"; then
+    ok "site root 同级推导命中(dirname(libroot)/pkgs)"
+else
+    bad "site root 未命中: $(tail -2 "$T/so1.out")"
+fi
+if CTRON_STDPATH="$SO/lib/std" CTRON_SITEPATH="$SO/alt" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$T/so2.out" 2>&1 && grep -q "alt-ok" "$T/so2.out"; then
+    ok "CTRON_SITEPATH 覆盖生效(优先于同级推导)"
+else
+    bad "CTRON_SITEPATH 覆盖未生效: $(tail -2 "$T/so2.out")"
+fi
+if CTRON_STDPATH="$SO/neg/lib/std" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$T/so3.out" 2>&1; then
+    bad "包缺席却 rc=0"
+else
+    grep -q "E2020" "$T/so3.out" && ok "包缺席 E2020 兜底(use.read)" || bad "E2020 未兜底: $(head -2 "$T/so3.out")"
+    grep -q "W8902" "$T/so3.out" && grep -q "ctron pkg add zsite" "$T/so3.out" && ok "W8902 带出路(安装指引)" || bad "W8902 缺失: $(tail -3 "$T/so3.out")"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

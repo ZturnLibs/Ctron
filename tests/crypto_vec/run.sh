@@ -8,7 +8,7 @@
 #          登记):x_pbkdf2_hi(c=4096 档)、x_sha256_million(百万 'a')——
 #          解释器堆不回收(P5-B 登记 docs/c-rust-divergences.md),高块数
 #          档解释器口径不可实用;emit 口径各 ≈1s。x_uuid_live 另需真熵
-#          (interp 无 extern 运行时),单独 emit 块链 db/c_src/
+#          (interp 无 extern 运行时),单独 emit 块链 lib/db/c_src/
 #          ctron_entropy.c(tests/net 链法;uuid 纯形面已由 e_uuid_pure
 #          双臂承载)。
 #   interp 逐文件预算 ≈ 10 块压缩等效内(同上登记),故 RFC 4231 七例拆
@@ -21,7 +21,7 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$CC" ]; then echo "crypto_vec/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
@@ -29,7 +29,7 @@ echo "== tests/crypto_vec 密码学向量/uuid 用例(P5-B)=="
 
 # ── std 规范源与种子副本漂移守卫(smoke.sh 3d 同款,本地即查)──
 for m in crypto uuid; do
-    if diff -q "$ROOT/std/$m.ct" "$ROOT/compiler/test/stdpkg/std/$m.ct" > /dev/null 2>&1; then
+    if diff -q "$ROOT/lib/std/$m.ct" "$ROOT/compiler/test/stdpkg/std/$m.ct" > /dev/null 2>&1; then
         pass=$((pass+1)); echo "  PASS std/$m.ct 种子副本无漂移"
     else
         fail=$((fail+1)); echo "  FAIL std/$m.ct 种子副本漂移(cp std/$m.ct compiler/test/stdpkg/std/)"
@@ -37,7 +37,7 @@ for m in crypto uuid; do
 done
 
 # ── std/uuid.ct inline 声明冒烟(无 test 块;装载/类型检查即过)──
-if "$CC" run "$ROOT/std/uuid.ct" > "$T/std_uuid.out" 2>&1; then
+if "$CC" run "$ROOT/lib/std/uuid.ct" > "$T/std_uuid.out" 2>&1; then
     pass=$((pass+1)); echo "  PASS std/uuid.ct (decl smoke, interp)"
 else
     fail=$((fail+1)); echo "  FAIL std/uuid.ct (decl smoke, interp)"; sed -n '1,5p' "$T/std_uuid.out"
@@ -63,7 +63,7 @@ if [ -x "$EMIT" ]; then
         name=$(basename "$f" .ct)
         EXTRA=""
         if [ "$name" = "x_uuid_live" ]; then
-            EXTRA="$ROOT/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/lib/lib/db/c_src/ctron_entropy.c"
         fi
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
            && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" $EXTRA 2>"$T/$name.e.cc.err" \
