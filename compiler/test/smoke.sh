@@ -380,7 +380,7 @@ if [ $std_parity -eq 0 ]; then
     ok "std 全模块自举单测绿($std_total 模块)"
 fi
 echo "== 3j3) std 全模块 Rust 臂 parity(内建面欠账清单驱动;清账即翻绿提醒) =="
-RUSTBIN="$ROOT/compiler-rust/target/release/ctron"
+RUSTBIN="$ROOT/compiler-rust/target/release/ctronr"
 if [ -x "$RUSTBIN" ]; then
     known="json sort fs unicode gui time iter log ndjson pb"  # iter/log/ndjson/pb=0929 归因预存欠账(iter=T16 fn 字段域;log/ndjson/pb=R check 宽松度)
     newred=0
