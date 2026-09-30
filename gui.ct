@@ -3266,7 +3266,11 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     gui_alpha(tba)
                 }
             } else {
-                gui_alpha(0)
+                // 无样式默认 SURFACE 底(成熟 GUI 输入件观感;Clay 仅对 a>0 背景
+                // 产盒 RECT——折行宽回填 rt_feed_input_w 依赖盒子几何,无底则
+                // gui_in_w_get 恒 0→clamp 40px 误折行,s51 "xcdef" 实证)
+                gui_alpha(254)
+                tbgp = gui_theme_slot_get(1)
             }
             // 垂直裁切+滚动偏移(滚轮/光标跟随驱动;命中区=框体)
             var tscr: I32 = gui_ta_scroll_get(id)
@@ -3314,10 +3318,15 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var tsz4: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
                 var tlh: I32 = tsz4 + tsz4 / 4
                 var tpitch: I32 = tlh + 2
-                // 光标几何用显示串行表(组词内联后行结构与模型串不同);
-                // 选区高亮仍模型串行表(字节位=模型系)
+                // 光标几何用显示串视觉行表(组词内联后行结构与模型串不同;
+                // 折行同源 wrap 宽;选区高亮仍模型串字节系)
+                var gwrapw: I32 = gui_in_w_get(id) - 8
+                if gwrapw < 40 {
+                    gwrapw = 40
+                }
                 var lstarts = List[I32]()
-                gui_ta_lines(tshow, lstarts)
+                var lends = List[I32]()
+                ta_wrap(tshow, gwrapw, tsz4, lstarts, lends)
                 var tc2: I32 = gui_caret_get()
                 var tipre2: Str = gui_ime_preedit()
                 if tipre2 != "" {
@@ -3338,10 +3347,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     li += 1
                 }
                 var cline_start: I32 = lstarts[crow]
-                var cline_end: I32 = tshow.len
-                if crow + 1 < lstarts.len {
-                    cline_end = lstarts[crow + 1] - 1
-                }
+                var cline_end: I32 = lends[crow]
                 var tfg4: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
                 var tpre: Str = byte_slice(tshow, cline_start, tc2)
                 var tpx: I32 = 4 + gui_ft_measure_n_wt(tpre, tpre.len, tsz4, 400, 0)
@@ -3369,16 +3375,14 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         ts0 = tc2
                         ts1 = tan
                     }
-                    if ts1 > ts0 {
-                        var vstarts = List[I32]()
-                        gui_ta_lines(tval, vstarts)
-                        var ri: I32 = 0
-                        while ri < vstarts.len {
-                            var ls: I32 = vstarts[ri]
-                            var le: I32 = tval.len
-                            if ri + 1 < vstarts.len {
-                                le = vstarts[ri + 1] - 1
-                            }
+                if ts1 > ts0 {
+                    var vstarts = List[I32]()
+                    var vends = List[I32]()
+                    ta_wrap(tval, gwrapw, tsz4, vstarts, vends)
+                    var ri: I32 = 0
+                    while ri < vstarts.len {
+                        var ls: I32 = vstarts[ri]
+                        var le: I32 = vends[ri]
                             var a0: I32 = ts0
                             var a1: I32 = ts1
                             if a0 < ls {
@@ -3439,42 +3443,24 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var tfg2: I32 = gui_theme_slot_get(6)
                 gui_text(tshow, tsz2, rt_col_r(tfg2), rt_col_g(tfg2), rt_col_b(tfg2), 255)
             } else {
-                // 逐行渲染(\n 切分;光标 | 已内联)
+                // 视觉块渲染(折行;tshow 系)——与聚焦几何同表;空块渲染单空格
                 var tsz3: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
                 var tfg3: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-                var rem: Str = tshow
-                while rem.len > 0 {
-                    var nl: I32 = -1
-                    var qi: I32 = 0
-                    while qi < rem.len {
-                        if byte_at(rem, qi) == 10 {
-                            nl = qi
-                            break
-                        }
-                        qi += 1
-                    }
-                    if nl < 0 {
-                        gui_text(rem, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
-                        rem = ""
-                    } else {
-                        var ln: Str = byte_slice(rem, 0, nl)
-                        if ln == "" {
-                            // 空行占位:空串 TEXT 测高塌陷=视觉无新行(用户实测
-                            // 「回车无空行」);单空格撑行高
-                            ln = " "
-                        }
-                        gui_text(ln, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
-                        rem = byte_slice(rem, nl + 1, rem.len)
-                    }
+                var rwrapw: I32 = gui_in_w_get(id) - 8
+                if rwrapw < 40 {
+                    rwrapw = 40
                 }
-                if !tph {
-                    if tshow.len > 0 {
-                        if byte_at(tshow, tshow.len - 1) == 10 {
-                            var tsz9: I32 = gs2i(gt_cls_prop(c, "size", "16", t))
-                            var tfg9: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-                            gui_text(" ", tsz9, rt_col_r(tfg9), rt_col_g(tfg9), rt_col_b(tfg9), 255)
-                        }
+                var rvs = List[I32]()
+                var rve = List[I32]()
+                ta_wrap(tshow, rwrapw, tsz3, rvs, rve)
+                var rq: I32 = 0
+                while rq < rvs.len {
+                    var rtxt: Str = byte_slice(tshow, rvs[rq], rve[rq])
+                    if rtxt == "" {
+                        rtxt = " "
                     }
+                    gui_text(rtxt, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
+                    rq += 1
                 }
             }
             hits.push(id)
@@ -4059,42 +4045,46 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     }
     // textarea:↑↓ 行移(行内列保持,短行钳尾;纯扫描;嵌套 if——|| 非语言算符)
     if is_ta2 {
-        if k == 265 {
-            var ucs: I32 = ta_line_start(cur, caret)
-            if ucs > 0 {
-                var ucol: I32 = caret - ucs
-                var ut: I32 = ta_line_start(cur, ucs - 1)
-                var ul: I32 = ta_line_end(cur, ut) - ut
-                if ucol > ul {
-                    ucol = ul
+        if k == 265 || k == 264 {
+            // 视觉行系 ↑↓(wrap 折行后的显示行;列按像素保持,短行钳尾)
+            var wrapw3: I32 = gui_in_w_get(fn0) - 8
+            if wrapw3 < 40 {
+                wrapw3 = 40
+            }
+            var utsz: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+            var uvs = List[I32]()
+            var uve = List[I32]()
+            ta_wrap(cur, wrapw3, utsz, uvs, uve)
+            var urow: I32 = 0
+            var ui2: I32 = 0
+            while ui2 < uvs.len {
+                if uvs[ui2] <= caret {
+                    urow = ui2
                 }
-                if shd {
-                    if gui_sel_anchor_get() < 0 {
-                        gui_sel_anchor_set(caret)
-                    }
+                ui2 += 1
+            }
+            var urow2: I32 = urow
+            if k == 265 {
+                if urow > 0 {
+                    urow2 = urow - 1
                 }
-                gui_caret_set(ut + ucol)
-                if !shd {
-                    gui_sel_clear()
+            } else {
+                if urow + 1 < uvs.len {
+                    urow2 = urow + 1
                 }
             }
-            return true
-        }
-        if k == 264 {
-            var dce: I32 = ta_line_end(cur, caret)
-            if dce < cur.len {
-                var dcol: I32 = caret - ta_line_start(cur, caret)
-                var dt: I32 = dce + 1
-                var dl: I32 = ta_line_end(cur, dt) - dt
-                if dcol > dl {
-                    dcol = dl
+            var ucol2: I32 = caret - uvs[urow]
+            if urow2 != urow {
+                var ul: I32 = uve[urow2] - uvs[urow2]
+                if ucol2 > ul {
+                    ucol2 = ul
                 }
                 if shd {
                     if gui_sel_anchor_get() < 0 {
                         gui_sel_anchor_set(caret)
                     }
                 }
-                gui_caret_set(dt + dcol)
+                gui_caret_set(uvs[urow2] + ucol2)
                 if !shd {
                     gui_sel_clear()
                 }
@@ -4109,7 +4099,24 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             }
         }
         if is_ta2 {
-            gui_caret_set(ta_line_start(cur, caret))
+            // 视觉行 Home(wrap 折行后显示行行首;非逻辑行)
+            var hw4: I32 = gui_in_w_get(fn0) - 8
+            if hw4 < 40 {
+                hw4 = 40
+            }
+            var hsz4: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+            var hvs = List[I32]()
+            var hve = List[I32]()
+            ta_wrap(cur, hw4, hsz4, hvs, hve)
+            var hrow: I32 = 0
+            var hi4: I32 = 0
+            while hi4 < hvs.len {
+                if hvs[hi4] <= caret {
+                    hrow = hi4
+                }
+                hi4 += 1
+            }
+            gui_caret_set(hvs[hrow])
         } else {
             gui_caret_set(0)
         }
@@ -4125,7 +4132,24 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             }
         }
         if is_ta2 {
-            gui_caret_set(ta_line_end(cur, caret))
+            // 视觉行 End(显示行行尾;outE 不含 \n,直作插入点)
+            var ew4: I32 = gui_in_w_get(fn0) - 8
+            if ew4 < 40 {
+                ew4 = 40
+            }
+            var esz4: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+            var evs = List[I32]()
+            var eve = List[I32]()
+            ta_wrap(cur, ew4, esz4, evs, eve)
+            var erow: I32 = 0
+            var ei4: I32 = 0
+            while ei4 < evs.len {
+                if evs[ei4] <= caret {
+                    erow = ei4
+                }
+                ei4 += 1
+            }
+            gui_caret_set(eve[erow])
         } else {
             gui_caret_set(cur.len)
         }
@@ -5308,6 +5332,8 @@ fn gui_word_range(val: Str, pos: I32, out: List[I32]) -> I32 {
 }
 
 // 单行输入内宽回填(视口消费;每帧 collect 后:节点取配对最宽矩形,避浮条)
+// textarea 同源回填:折行(ta_wrap)/键盘导航/点击定位共用 gui_in_w_get,缺回填
+// 则恒 0→clamp 40px,长词被误折(s51 "xcdef" 实证)
 fn rt_feed_input_w(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
     var j: I32 = 0
     while j < hits.len {
@@ -5320,6 +5346,15 @@ fn rt_feed_input_w(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
                         var cw: I32 = gui_in_w_get(nd)
                         if wj > cw {
                             gui_in_w_set(nd, wj)
+                        }
+                    }
+                }
+                if t.ntag[nd] == "textarea" {
+                    if j < rects.len {
+                        var wj2: I32 = gui_cmd_w100(rects[j]) / 100
+                        var cw2: I32 = gui_in_w_get(nd)
+                        if wj2 > cw2 {
+                            gui_in_w_set(nd, wj2)
                         }
                     }
                 }
@@ -5353,9 +5388,15 @@ fn rt_ta_wheel(t: GuiTree, rects: List[I32], hits: List[I32], v: I32, bind: fn(L
     var tszw: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
     var pitchw: I32 = tszw + tszw / 4 + 2
     var val: Str = rt_in_val(t, fn0, bind)
-    var lw = List[I32]()
-    gui_ta_lines(val, lw)
-    var contenth: I32 = lw.len * pitchw + 8
+    // 内容高按视觉行数(折行撑高;同源 wrap 宽=内宽)
+    var wwhl: I32 = gui_in_w_get(fn0) - 8
+    if wwhl < 40 {
+        wwhl = 40
+    }
+    var wvs = List[I32]()
+    var wve = List[I32]()
+    ta_wrap(val, wwhl, tszw, wvs, wve)
+    var contenth: I32 = wvs.len * pitchw + 8
     var maxo: I32 = contenth - boxh
     if maxo < 0 {
         maxo = 0
@@ -5395,20 +5436,22 @@ fn gui_caret_at_click(t: GuiTree, node: I32, val: Str, px: I32, py: I32, rects: 
         }
         var tsz5: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
         var tpitch2: I32 = tsz5 + tsz5 / 4 + 2
+        var wpx2: I32 = gui_cmd_w100(boxi2) / 100 - 8
+        if wpx2 < 40 {
+            wpx2 = 40
+        }
         var row: I32 = (py - gui_cmd_y100(boxi2) / 100 - 4 + gui_ta_scroll_get(node)) / tpitch2
         if row < 0 {
             row = 0
         }
-        var lstarts2 = List[I32]()
-        gui_ta_lines(val, lstarts2)
-        if row >= lstarts2.len {
-            row = lstarts2.len - 1
+        var vls2 = List[I32]()
+        var vle2 = List[I32]()
+        ta_wrap(val, wpx2, tsz5, vls2, vle2)
+        if row >= vls2.len {
+            row = vls2.len - 1
         }
-        var ls2: I32 = lstarts2[row]
-        var le2: I32 = val.len
-        if row + 1 < lstarts2.len {
-            le2 = lstarts2[row + 1] - 1
-        }
+        var ls2: I32 = vls2[row]
+        var le2: I32 = vle2[row]
         var line: Str = byte_slice(val, ls2, le2)
         var offx2: I32 = px - gui_cmd_x100(boxi2) / 100 - 4
         var bi: I32 = 0
@@ -5569,34 +5612,71 @@ extern "c" fn gui_ta_scroll_get(node: I32) -> I32
 extern "c" fn gui_ime_prev_set(s: Str) -> I32
 extern "c" fn gui_ime_prev_eq(s: Str) -> I32
 
-// textarea 行几何:行起点数组(返回行数;out 逐行 push 起始字节位,末行含)
-// 字节位所在行的首字节位(跨 \n 回退)与尾字节位(\n 前或串尾)
-fn ta_line_start(val: Str, pos: I32) -> I32 {
-    var i: I32 = pos
-    if i > val.len {
-        i = val.len
-    }
-    while i > 0 {
-        if byte_at(val, i - 1) == 10 {
-            return i
+// 视觉行构建:按宽折行(码点贪心;换行符强制断;空逻辑行=空视觉行占位)
+// outS/outE = 每视觉行 [起,止) 字节位(止不含 \n)
+fn ta_wrap(val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I32 {
+    var i: I32 = 0
+    var n: I32 = val.len
+    while i <= n {
+        var ls: I32 = i
+        var hard: I32 = -1
+        var q: I32 = i
+        while q < n {
+            if byte_at(val, q) == 10 {
+                hard = q
+                q = n + 1
+            } else {
+                q += 1
+            }
         }
-        i -= 1
-    }
-    return 0
-}
-
-fn ta_line_end(val: Str, pos: I32) -> I32 {
-    var i: I32 = pos
-    if i > val.len {
-        i = val.len
-    }
-    while i < val.len {
-        if byte_at(val, i) == 10 {
-            return i
+        var le: I32 = n
+        if hard >= 0 {
+            le = hard
         }
-        i += 1
+        // 逻辑行 [ls,le):贪心折
+        var cs: I32 = ls
+        while cs < le {
+            var ce: I32 = cs
+            var lastok: I32 = cs
+            while ce < le {
+                var nb: I32 = ce + 1
+                while nb < le {
+                    var bb: I32 = byte_at(val, nb)
+                    if bb >= 128 && bb < 192 {
+                        nb += 1
+                    } else {
+                        break
+                    }
+                }
+                var wq: I32 = gui_ft_measure_n_wt(val, nb, size, 400, 0) - gui_ft_measure_n_wt(val, cs, size, 400, 0)
+                if wq > wpx {
+                    if lastok == cs {
+                        // 单码点超宽(极端):独占一行防死循环
+                        lastok = nb
+                    }
+                    break
+                }
+                lastok = nb
+                ce = nb
+                if nb >= le {
+                    break
+                }
+            }
+            outS.push(cs)
+            outE.push(lastok)
+            cs = lastok
+        }
+        // 空逻辑行占位
+        if cs == ls {
+            outS.push(ls)
+            outE.push(ls)
+        }
+        if hard < 0 {
+            break
+        }
+        i = hard + 1
     }
-    return val.len
+    return outS.len
 }
 
 fn gui_ta_lines(val: Str, out: List[I32]) -> I32 {
