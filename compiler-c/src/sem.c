@@ -1543,8 +1543,9 @@ static void check_ffi_decls(ck* k, const cfile* f) {
             int is_ext = fn->abi && !fn->body;
             if (is_ext && !has_attr(fn->attrs, fn->nattrs, "trusted"))
                 diag(k, "W8050", "extern 未标记 #[trusted](信任边界):%s", fn->name);
-            if (!is_ext && has_attr(fn->attrs, fn->nattrs, "trusted"))
-                diag(k, "E4040", "#[trusted] 用于非 extern 声明:%s", fn->name);
+            /* #[trusted] 于普通 fn(v0.9·五 信任模型放宽):合法——信任边界
+               改由 E4047(ptr_as_view 无 trusted 门)表达;宿主 E4047 随 ptr_as_view
+               宿主面二期(自举先行的既定差分方向) */
             if (has_attr(fn->attrs, fn->nattrs, "repr"))
                 diag(k, "E4041", "#[repr(c)] 用于非 struct 声明:%s", fn->name);
             if (fn->variadic && !is_ext)
