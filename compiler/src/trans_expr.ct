@@ -1031,10 +1031,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         // fn 值间接调用(env 命中 F<arity>):( (ct_fnK)t_f )( 实参... )
         if cal[0] == "Ident" && ct_env_has(env, cal[1]) {
-            var fvt = ct_env_ty(env, cal[1])
+            // T55:fvt 剥 P——捕获 fn 值绑 P<F…>;P 绑名 fv = "(*t_nm)"(格解引取 ct_clop)
+            var fvraw = ct_env_ty(env, cal[1])
+            var fvt = ct_strip_p(fvraw)
             if fvt.len > 1 && byte_at(fvt, 0) == 70 {
                 var far = byte_at(fvt, 1) - 48
                 var fv = "(t_" + cal[1] + ")"
+                if fvraw.len > 1 && byte_at(fvraw, 0) == 80 {
+                    fv = "(*t_" + cal[1] + ")"
+                }
                 var fargs = "((ct_clop)" + fv + ")->env"
                 if ag.len > 1 { fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) }
                 var fk: I32 = 2

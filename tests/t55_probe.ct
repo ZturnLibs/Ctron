@@ -1,0 +1,20 @@
+// 探针: 值位置捕获闭包经 fn 值返回+调用(中间件形态)
+struct Req { p: Str }
+struct Resp { body: Str }
+fn wrap(tag: Str) -> fn(Req) -> Resp {
+    return |r| {
+        return Resp { body: tag + ":" + r.p }
+    }
+}
+fn main() -> I32 {
+    let mid = wrap("mw")
+    let v = mid(Req { p: "/x" })
+    println(v.body)
+    return 0
+}
+
+test "middleware closure value" {
+    let mid = wrap("mw")
+    let v = mid(Req { p: "/y" })
+    assert_eq(v.body, "mw:/y")
+}

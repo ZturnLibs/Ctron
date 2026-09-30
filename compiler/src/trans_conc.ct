@@ -290,6 +290,16 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
     return cname
 }
 
+// 闭包值 shim 返回行(T55):struct 值(u:)经 union 低 8 字节过 ct_i 返回槽
+//(T54 同式,镜像 ct_cbtr 返回位);调用位 #fret 原型化指针按返回型读回同 8 字节
+//(>8 字节返回超 ct_i 单槽,沿 T54 既有挂账);其余标量/指针直包 (ct_i)(…)
+fn ct_clo_ret_line(code: Str, x: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        return "return (\{ union \{ " + ct_ctype(code) + " _s; ct_i _i; } _ru; _ru._s = " + x + "; _ru._i; });"
+    }
+    return "return (ct_i)(" + x + ");"
+}
+
 // with/with_mut 语句位发射(ANF:值落在 rc 变量;with_mut 无值)。
 // Mutex(m<内>):pthread 锁;Atomic/Global(A):glock。with 值拷贝(写不可见),
 // with_mut 指针绑定 P<内>(写可见)——镜像 eval recv[1] 语义。
@@ -427,6 +437,8 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
     }
     var caps = List[Str]()
     var codes = List[Str]()
+    // chains 旁表(T55):源名已 P 绑(嵌套闭包/with_mut)→ "1";codes 同步存剥后码
+    var chains = List[Str]()
     var pnames = List[Str]()
     var qi: I32 = 1
     while qi < cps.len {
@@ -437,8 +449,15 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
     while qi < raw.len {
         var nm = raw[qi]
         if !in_list(caps, nm) && !in_list(pnames, nm) && ct_env_has(env, nm) {
+            var cd = ct_env_ty(env, nm)
             caps.push(nm)
-            codes.push(ct_env_ty(env, nm))
+            if cd.len > 1 && byte_at(cd, 0) == 80 {
+                chains.push("1")
+                codes.push(ct_strip_p(cd))
+            } else {
+                chains.push("0")
+                codes.push(cd)
+            }
         }
         qi += 1
     }
@@ -461,9 +480,12 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
         var qlines = List[Str]()
         qlines.push("static ct_i " + shim + "(" + sig + ") \{")
         qlines.push("ct_i* _e = (ct_i*)_cp;")
+        // T55 捕获 decl:格指针 `T* t_nm = (T*)(long)_e[i]`——env 槽存 arena 格址,
+        // 体名 P 绑每处引用活解引用(by-reference v0;spawn 共用的 ct_cap_decl 未动)
         var ci2: I32 = 0
         while ci2 < caps.len {
-            qlines.push(ct_cap_decl(codes[ci2], caps[ci2], ci2))
+            var cd2 = ct_ctype(codes[ci2])
+            qlines.push(cd2 + "* t_" + caps[ci2] + " = (" + cd2 + "*)(long)_e[" + ci2.to_string() + "];")
             ci2 += 1
         }
         var env2 = env
@@ -510,13 +532,24 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                     pc = ct_ty_code(pty1, file)
                 }
             }
-            if pc == "i" {
+            if pc.len > 2 && byte_slice(pc, 0, 2) == "u:" {
+                // T54:struct 内参解盒——调用位 ct_wrap_i 对 u: 码传堆盒指针
+                //(ct_emit_clo 同式);旧 "(t_X)(long)_p" 长整转 struct 为非法 C
+                qlines.push(ct_ctype(pc) + " t_" + pn + " = *(t_" + byte_slice(pc, 2, pc.len) + "*)(long)_p" + pj.to_string() + ";")
+            } else if pc == "i" {
                 qlines.push("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
             } else {
                 qlines.push(ct_ctype(pc) + " t_" + pn + " = (" + ct_ctype(pc) + ")(long)_p" + pj.to_string() + ";")
             }
             env2 = env_bind(env2, pn, pc)
             pj += 1
+        }
+        // T55:捕获绑 P<码>(penv/benv 同源;Ident/Assign 既有 P 臂活解引用;
+        // 体位 let 重绑表头插入自然遮蔽)
+        var cj: I32 = 0
+        while cj < caps.len {
+            env2 = env_bind(env2, caps[cj], "P" + codes[cj])
+            cj += 1
         }
         var penv = env_bind(env2, "#p", "1")
         if body[0] == "Block" {
@@ -539,33 +572,43 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                 if or2(tl[0] == "Match", tl[0] == "If") {
                     ct_stmt(tl, renv, file, List[Str]())
                 } else {
+                    var tyc = ct_typeof(tl, renv, file)
                     var tx = ct_expr(tl, renv, file)
                     // Void 体(如 list.push 调用)不包 return——(ct_i)(void 表达式)
                     // 是非法 C;此前无条件包裹,gui L1 绑定钩子踩中(SL-0 探针发现)
-                    if ct_typeof(tl, renv, file) == "v" {
+                    if tyc == "v" {
                         println(tx + ";")
                     } else {
-                        println("return (ct_i)(" + tx + ");")
+                        // T55:u: 尾表达式走 union 低 8 字节式(T54 同口径)
+                        println(ct_clo_ret_line(tyc, tx))
                     }
                 }
             } else {
                 println("return 0;")
             }
         } else {
+            var vty = ct_typeof(body, benv, file)
             var vx = ct_expr(body, benv, file)
-            if ct_typeof(body, benv, file) == "v" {
+            if vty == "v" {
                 println(vx + ";")
             } else {
-                println("return (ct_i)(" + vx + ");")
+                println(ct_clo_ret_line(vty, vx))
             }
         }
         println("}")
         return "0"
     }
     var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
+    // T55 创建位:每捕获一 arena 格(ctron_amalloc,地址稳定永不释放)——值入格、
+    // 槽存格址;链式源(P 绑)已是格指针,直传同一格址(内外层共格)
     var ci3: I32 = 0
     while ci3 < caps.len {
-        acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = " + ct_wrap_i(codes[ci3], "t_" + caps[ci3]) + ";"
+        if chains[ci3] == "1" {
+            acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = (ct_i)(long)t_" + caps[ci3] + ";"
+        } else {
+            var cd3 = ct_ctype(codes[ci3])
+            acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = (ct_i)(long)(\{ " + cd3 + "* _g" + ci3.to_string() + " = (" + cd3 + "*)ctron_amalloc(sizeof(" + cd3 + ")); *_g" + ci3.to_string() + " = t_" + caps[ci3] + "; _g" + ci3.to_string() + "; });"
+        }
         ci3 += 1
     }
     acc = acc + " ct_clop _c" + ix + " = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c" + ix + "->fn = (void*)" + shim + "; _c" + ix + "->env = _e" + ix + "; _c" + ix + "; })"
