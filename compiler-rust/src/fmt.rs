@@ -18,6 +18,277 @@ struct Comment {
     text: String,
 }
 
+// =====================================================================
+// R9/R10 use 预处理(2026-09-30):导入排序 + 长组自动折行。
+// 落点 = 发射前的源文本重写(仅注释受控的 use 语句 span),主发射器零改动;
+// 归一化输出是定点(排序稳定 + 多行不回折),二次调用恒等,天然幂等。
+// 规范:docs/fmt-spec.md R9/R10;三宿主同构(ctronc fmt.c / 自举 fmt.ct)。
+// =====================================================================
+
+const USE_WRAP_COLS: usize = 100;
+
+struct UseItem {
+    /// 导入名 = 项首标识符(别名项 `a as b` 按原名 a)
+    key: String,
+    /// 项原文切片(token span 逐字)
+    text: String,
+}
+
+struct UseGroup {
+    items: Vec<UseItem>,
+    /// 原组是否以尾逗号收(重建多行时按原样保留)
+    trailing_comma: bool,
+    /// 组 `{`…`}` 之间原始无换行
+    single_line: bool,
+    /// 项键已非降序(未触发重排)
+    sorted: bool,
+}
+
+struct UseStmt {
+    /// `use` 记号 span.start
+    start: usize,
+    /// 末记号 span.end
+    end: usize,
+    /// 路径原文切片
+    path: String,
+    group: Option<UseGroup>,
+    /// 语句 span 内含注释(R9/R10 守卫:不排序不重排)
+    frozen: bool,
+}
+
+fn is_path_ident(t: &Tok) -> bool {
+    matches!(t, Tok::Ident(s) if s != "as")
+}
+
+/// 收集全部 use 语句;任何形态不识(路径含关键字/空项/未配对花括号等)→ None,
+/// 整文件放弃预处理退回纯 R1(安全阀,规范 R10)。
+fn collect_uses(
+    src: &str,
+    toks: &[Token],
+    partner: &[Option<usize>],
+    comments: &[Comment],
+) -> Option<Vec<UseStmt>> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < toks.len() {
+        if toks[i].tok != Tok::Use {
+            i += 1;
+            continue;
+        }
+        let start = toks[i].span.start;
+        // 路径:Ident ( `.` Ident )*;收段直至非 Dot 或 Dot+LBrace(组)
+        let mut segs: Vec<usize> = Vec::new();
+        let mut j = i + 1;
+        loop {
+            match toks.get(j) {
+                Some(t) if is_path_ident(&t.tok) => {
+                    segs.push(j);
+                    j += 1;
+                }
+                _ => return None,
+            }
+            match toks.get(j).map(|t| &t.tok) {
+                Some(Tok::Dot) => {
+                    if matches!(toks.get(j + 1).map(|t| &t.tok), Some(Tok::LBrace)) {
+                        break; // j 停在组前导 Dot
+                    }
+                    j += 1;
+                }
+                _ => break,
+            }
+        }
+        let (group, mut end_tok) =
+            if toks.get(j).map(|t| t.tok == Tok::Dot).unwrap_or(false)
+                && toks.get(j + 1).map(|t| t.tok == Tok::LBrace).unwrap_or(false)
+            {
+                let open = j + 1;
+                let close = (*partner.get(open)?)?;
+                // 组项:Ident*(含 as)+ 逗号分隔;空项/非 Ident → 形态不识
+                let mut items: Vec<UseItem> = Vec::new();
+                let mut cur: Vec<usize> = Vec::new();
+                let trailing;
+                let mut k = open + 1;
+                while k < close {
+                    match &toks[k].tok {
+                        Tok::Newline => {}
+                        Tok::Comma => {
+                            if cur.is_empty() {
+                                return None;
+                            }
+                            items.push(make_item(src, toks, &cur)?);
+                            cur.clear();
+                        }
+                        Tok::Ident(_) => cur.push(k),
+                        _ => return None,
+                    }
+                    k += 1;
+                }
+                if !cur.is_empty() {
+                    items.push(make_item(src, toks, &cur)?);
+                    trailing = false;
+                } else {
+                    trailing = !items.is_empty();
+                }
+                let single_line = !src[toks[open].span.end..toks[close].span.start]
+                    .as_bytes()
+                    .contains(&b'\n');
+                let sorted = items.windows(2).all(|w| w[0].key <= w[1].key);
+                let group = if items.is_empty() {
+                    None // 空组无事可做,按无组原样保留
+                } else {
+                    Some(UseGroup { items, trailing_comma: trailing, single_line, sorted })
+                };
+                (group, close)
+            } else {
+                (None, j - 1)
+            };
+        // 尾随别名(`use a.b.C as D`)并入语句 span,防排序后悬空
+        if matches!(toks.get(end_tok + 1).map(|t| &t.tok), Some(Tok::Ident(s)) if s == "as") {
+            match toks.get(end_tok + 2) {
+                Some(t) if is_path_ident(&t.tok) => end_tok += 2,
+                _ => return None,
+            }
+        }
+        let end = toks[end_tok].span.end;
+        let path = src[toks[segs[0]].span.start..toks[*segs.last().unwrap()].span.end].to_string();
+        let frozen = comments
+            .iter()
+            .any(|c| c.start < end && c.end > start);
+        out.push(UseStmt { start, end, path, group, frozen });
+        i = end_tok + 1;
+    }
+    Some(out)
+}
+
+fn make_item(src: &str, toks: &[Token], idx: &[usize]) -> Option<UseItem> {
+    let first = toks[idx[0]].span.start;
+    let last = toks[*idx.last().unwrap()].span.end;
+    let key = match &toks[idx[0]].tok {
+        Tok::Ident(s) if s != "as" => s.clone(),
+        _ => return None,
+    };
+    Some(UseItem { key, text: src[first..last].to_string() })
+}
+
+fn wrapped_form(path: &str, items: &[&UseItem], trailing: bool) -> String {
+    let mut s = format!("use {}.", path);
+    s.push_str("{\n");
+    for (k, it) in items.iter().enumerate() {
+        s.push_str("    ");
+        s.push_str(&it.text);
+        if trailing || k + 1 < items.len() {
+            s.push(',');
+        }
+        s.push('\n');
+    }
+    s.push('}');
+    s
+}
+
+/// 单语句改写判定与重建(R9/R10);不改写则原样切片。重建一律用排序后的项序。
+fn stmt_text(src: &str, s: &UseStmt) -> String {
+    let raw = src[s.start..s.end].to_string();
+    let Some(g) = &s.group else { return raw };
+    if s.frozen {
+        return raw;
+    }
+    let mut items: Vec<&UseItem> = g.items.iter().collect();
+    items.sort_by(|a, b| a.key.cmp(&b.key)); // 稳定;字节序
+    let items_join = items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>().join(", ");
+    let inline = format!("use {}.{{ {} }}", s.path, items_join);
+    let over_width = g.single_line && inline.len() > USE_WRAP_COLS;
+    if g.sorted && !over_width {
+        return raw;
+    }
+    if g.single_line {
+        if over_width {
+            return wrapped_form(&s.path, &items, true); // R9 自动折行恒补尾逗号
+        }
+        return inline; // 单行组排序:内联规范形态
+    }
+    wrapped_form(&s.path, &items, g.trailing_comma) // 多行组重排:每行一项,尾逗号按原样
+}
+
+/// R9/R10 入口:收集 → 分段(run)→ 段内稳定排序 → 逐语句改写 → 源文本拼接
+fn normalize_uses(
+    src: &str,
+    toks: &[Token],
+    partner: &[Option<usize>],
+    comments: &[Comment],
+) -> String {
+    let Some(all) = collect_uses(src, toks, partner, comments) else {
+        return src.to_string();
+    };
+    if all.is_empty() {
+        return src.to_string();
+    }
+    // run 分段:语句间 gap 无注释且自由换行 ≤ 1(空行/注释即分段)
+    let mut runs: Vec<Vec<&UseStmt>> = Vec::new();
+    for s in &all {
+        match runs.last_mut() {
+            Some(run) => {
+                let prev = *run.last().unwrap();
+                let gap_clean = !comments.iter().any(|c| c.start < s.start && c.end > prev.end);
+                let gap_free = free_newlines_in(src, comments, prev.end, s.start);
+                if gap_clean && gap_free <= 1 {
+                    run.push(s);
+                } else {
+                    runs.push(vec![s]);
+                }
+            }
+            None => runs.push(vec![s]),
+        }
+    }
+    let mut out = String::new();
+    let mut cursor = 0usize;
+    for run in &runs {
+        let run_start = run[0].start;
+        let run_end = run[run.len() - 1].end;
+        out.push_str(&src[cursor..run_start]);
+        // 注释守卫:run 整体 span 含注释 → 不排序(语句级 frozen 由 stmt_text 兜底)
+        let run_clean = !comments.iter().any(|c| c.start < run_end && c.end > run_start);
+        if run_clean {
+            let mut sorted = run.clone();
+            sorted.sort_by(|a, b| a.path.cmp(&b.path)); // str Ord = 字节序;sort_by 稳定
+            for (k, s) in sorted.iter().enumerate() {
+                if k > 0 {
+                    out.push('\n');
+                }
+                out.push_str(&stmt_text(src, s));
+            }
+        } else {
+            for (k, s) in run.iter().enumerate() {
+                if k > 0 {
+                    out.push('\n');
+                }
+                out.push_str(&stmt_text(src, s));
+            }
+        }
+        cursor = run_end;
+    }
+    out.push_str(&src[cursor..]);
+    out
+}
+
+/// [from, to) 自由换行数(扣注释占据的换行);与 Emitter::free_newlines 同口径
+fn free_newlines_in(src: &str, comments: &[Comment], from: usize, to: usize) -> usize {
+    if to <= from {
+        return 0;
+    }
+    let bytes = src.as_bytes();
+    let mut count = 0usize;
+    for i in from..to.min(bytes.len()) {
+        if bytes[i] != b'\n' {
+            continue;
+        }
+        if comments.iter().any(|c| i >= c.start && i < c.end) {
+            continue;
+        }
+        count += 1;
+    }
+    count
+}
+
 /// token 流序列化器;词法诊断非空时为 Err(fmt 只服务合法语法面)
 pub fn fmt_src(src: &str) -> Result<String, String> {
     let (toks, diags) = crate::lex(src);
@@ -30,6 +301,11 @@ pub fn fmt_src(src: &str) -> Result<String, String> {
     }
     let comments = extract_comments(src, &toks);
     let partner = match_braces(&toks);
+    let norm = normalize_uses(src, &toks, &partner, &comments);
+    if norm != src {
+        // 归一化输出是定点,二次进入必恒等(排序稳定 + 多行不回折 + 重建已排序)
+        return fmt_src(&norm);
+    }
     let mut em = Emitter {
         src,
         toks: &toks,
@@ -355,3 +631,5 @@ impl<'a> Emitter<'a> {
         }
     }
 }
+
+

@@ -9,5 +9,5 @@ name = "ctron"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ctron"
+name = "ctronr"
 path = "src/main.rs"

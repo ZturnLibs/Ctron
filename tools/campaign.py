@@ -4,7 +4,7 @@ import subprocess, sys, re, os
 from pathlib import Path
 
 ROOT = Path("/Users/zyj/ZturnLibs/Ctron")
-CT = ROOT / "compiler-rust/target/debug/ctron"
+CT = ROOT / "compiler-rust/target/debug/ctronr"
 TESTS = ROOT / "tests"
 TMP = Path("/tmp/ctron_campaign")
 os.makedirs(TMP, exist_ok=True)

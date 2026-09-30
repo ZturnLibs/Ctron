@@ -6,12 +6,11 @@
 // ---------------- Float 域(十进制定点,镜像 rt fmt 可观测语义) ----------------
 // 值 ["D", 规范十进制文本](规范: [-]int[.frac],frac 尾零修剪,零恒为 "0")。
 // 宿主 double 的二进制舍入细节挂账;工作精度 9 位有效(scale ≤ 9)。
-fn vD(t: Str) -> List[Str] {
-    var v = List[Str]()
-    v.push("D")
-    v.push(t)
-    return v
+fn vD(t: Str) -> Val {
+    return Val { tag: 6, iv: 0, b: false, s: t }
 }
+
+
 fn df_p10(k: I32) -> I64 {
     var r: I64 = 1
     var i: I32 = 0

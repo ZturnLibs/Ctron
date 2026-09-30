@@ -7,7 +7,7 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 CC="${CTRON_CC:-$ROOT/compiler/bin/ctron-cc}"
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 if [ ! -x "$CC" ] || [ ! -x "$EMIT" ]; then echo "trace/run: 缺少编译器二进制(先: compiler/native.sh)" >&2; exit 2; fi
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
@@ -16,7 +16,7 @@ echo "== tests/trace traceparent 用例(P7-C)=="
 # 模块语义门(零 inline test 大模块惯例;chk 语义 + 依赖形 emit 由 corpus 覆盖)
 CHK="${CTRON_CHK:-$ROOT/compiler/bin/ctron-chk}"
 if [ -x "$CHK" ] || [ -n "${CTRON_CHK:-}" ]; then
-    if "$CHK" run "$ROOT/http/frm/trace.ct" > "$T/chk.out" 2>&1; then
+    if "$CHK" run "$ROOT/lib/http/frm/trace.ct" > "$T/chk.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS http/frm/trace.ct (sem, chk)"
     else
         fail=$((fail+1)); echo "  FAIL http/frm/trace.ct (sem, chk)"; sed -n '1,5p' "$T/chk.out"
@@ -30,7 +30,7 @@ for f in "$DIR"/corpus/*.ct; do
     else
         fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"
     fi
-    if "$EMIT" run "$f" > "$T/$name.c" 2>"$T/$name.err" && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/$name.cc.err" && "$T/$name.bin" > "$T/$name.run" 2>&1; then
+    if "$EMIT" run "$f" > "$T/$name.c" 2>"$T/$name.err" && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/$name.cc.err" && "$T/$name.bin" > "$T/$name.run" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (emit)"
     else
         fail=$((fail+1)); echo "  FAIL $name (emit)"; sed -n '1,5p' "$T/$name.err" "$T/$name.cc.err" "$T/$name.run" 2>/dev/null
@@ -40,7 +40,7 @@ done
 # ── 传播 e2e 段(CTRON_TP_PROP=1 启用):A 提取→再注入→B 回显,trace-id 一致 ──
 if [ "${CTRON_TP_PROP:-}" = "1" ]; then
     echo "== trace 传播 e2e:双服务串联 trace-id 一致 =="
-    if "$EMIT" run "$DIR/prop_a.ct" > "$T/pa.c" 2>"$T/pa.err" && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/pa.bin" "$T/pa.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/pa.cc.err"        && "$EMIT" run "$DIR/prop_b.ct" > "$T/pbb.c" 2>"$T/pbb.err" && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/pbb.bin" "$T/pbb.c" "$ROOT/net/c_src/ctron_net.c" 2>"$T/pbb.cc.err"; then
+    if "$EMIT" run "$DIR/prop_a.ct" > "$T/pa.c" 2>"$T/pa.err" && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/pa.bin" "$T/pa.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/pa.cc.err"        && "$EMIT" run "$DIR/prop_b.ct" > "$T/pbb.c" 2>"$T/pbb.err" && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/pbb.bin" "$T/pbb.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/pbb.cc.err"; then
         AP=$((21000 + RANDOM % 9000))
         BP=$((30000 + RANDOM % 20000))
         ( PROP_B_PORT="$BP" "$T/pbb.bin" > "$T/pb.log" 2>&1 & )

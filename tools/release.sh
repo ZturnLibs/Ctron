@@ -11,7 +11,7 @@ VER=${1:?用法: release.sh <version>}; VER=${VER#v}
 OS=$(uname -s | tr '[:upper:]' '[:lower:]'); M=$(uname -m)
 case $M in arm64|aarch64) ARCH=arm64 ;; x86_64) ARCH=x86_64 ;; *) echo "不支持的架构 $M" >&2; exit 2 ;; esac
 DIST="$DIR/dist"; PKG="$DIST/ctron"
-rm -rf "$DIST" && mkdir -p "$PKG/bin" "$PKG/lib/ctron" "$PKG/share/doc" "$DIST/prebuilt"
+rm -rf "$DIST" && mkdir -p "$PKG/bin" "$PKG/lib" "$PKG/share/doc" "$DIST/prebuilt"
 
 # README 单点解析:git 仓库根现无 README.md(文档在 compiler/README.md),回落取之;
 # 真 release 摆入根 README 后自动优先生效(两落点同源,装机包与 src 件不缺页)
@@ -30,8 +30,11 @@ else
     sh "$DIR/compiler/native.sh"
 fi
 install -m 755 "$DIR/compiler/bin/ctron-cc" "$DIR/compiler/bin/ctron-chk" "$DIR/compiler/bin/ctron-emit" "$DIR/compiler/bin/ctron-fmt" "$PKG/bin/"
-install -m 755 "$DIR/ctc" "$PKG/bin/ctc"
-cp -R "$DIR/std/." "$PKG/lib/ctron/std/"
+install -m 755 "$DIR/ctron" "$PKG/bin/ctron"
+cp -R "$DIR/lib/." "$PKG/lib/"
+# 库根布局(2026-09-30):T2 随发六目录(std+net/http/tls/db/ffi+门面);pkgs/ 不入
+# tarball(registry 独立发布);vendor 仅携所发域所需子树(http→deflate,tls→mbedtls)
+mkdir -p "$PKG/vendor" && cp -R "$DIR/vendor/deflate" "$DIR/vendor/tls" "$PKG/vendor/"
 cp "$README" "$PKG/share/doc/"
 cp -R "$DIR/examples" "$PKG/share/doc/examples"
 printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$PKG/VERSION"
@@ -52,12 +55,13 @@ fi
 # 源码 tarball 组装件(仅打包,不重复构建;布局对齐源码线 Makefile:prebuilt/ std/ ctc Makefile)
 SRC="$DIST/ctron-src-$VER"; mkdir -p "$SRC/prebuilt"
 cp -R "$DIR/compiler/src" "$SRC/compiler-src"
-cp -R "$DIR/std" "$SRC/std"
+cp -R "$DIR/lib" "$SRC/lib"
+mkdir -p "$SRC/vendor" && cp -R "$DIR/vendor/deflate" "$DIR/vendor/tls" "$SRC/vendor/"
 cp "$DIST/prebuilt/"*.c "$SRC/prebuilt/"
-cp "$DIR/ctc" "$SRC/"; cp "$DIR/Makefile" "$SRC/"; cp "$README" "$SRC/"
-# P2-4 挂账补录:spec §2.3(L102)源码线布局含 ctc.ps1/ctc.cmd——Windows 在 MSYS2 里
+cp "$DIR/ctron" "$SRC/"; cp "$DIR/Makefile" "$SRC/"; cp "$README" "$SRC/"
+# P2-4 挂账补录:spec §2.3(L102)源码线布局含 ctron.ps1/ctron.cmd——Windows 在 MSYS2 里
 # 走 cc-only make 时驱动同包可得,src 件命令面三驱动齐备
-cp "$DIR/ctc.ps1" "$SRC/"; cp "$DIR/ctc.cmd" "$SRC/"
+cp "$DIR/ctron.ps1" "$SRC/"; cp "$DIR/ctron.cmd" "$SRC/"
 cp "$DIR/install.sh" "$SRC/" 2>/dev/null || true
 printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$SRC/VERSION"
 

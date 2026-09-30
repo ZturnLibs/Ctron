@@ -1127,6 +1127,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "byte_at" { return "i" }
             if cal[1] == "byte_slice" { return "s" }
             if cal[1] == "str_from_c" { return "s" }
+            // ptr_as_view(v0.9·五 裁决甲):&T 裸指针 → 只读视图;结果码 =
+            // v<元素码>(p<ec> 剥壳);非 p 码实参回落 "i"(发射臂另响亮失败)
+            if cal[1] == "ptr_as_view" {
+                var pvc = ct_typeof(e[2][1], env, file)
+                if pvc.len > 1 && byte_at(pvc, 0) == 112 {
+                    return "v" + byte_slice(pvc, 1, pvc.len)
+                }
+                return "i"
+            }
             // P0-3:fn 值调用(形参 env 命中 F/G 码)→ 返回型别取 #fret 侧条目
             //(ct_fn 绑定;聚合返回 → u:<名>,链上成员读/return 位全靠它);无条目 → 标量旧形态
             if ct_env_has(env, cal[1]) {

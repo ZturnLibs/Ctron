@@ -17,7 +17,7 @@
   python3 tools/bench.py --quick    # 减轮次(冒烟)
 
 前置: compiler-c/build/ctronc (make -C compiler-c)
-      compiler-rust/target/release/ctron (cargo build --release --manifest-path compiler-rust/Cargo.toml)
+      compiler-rust/target/release/ctronr (cargo build --release --manifest-path compiler-rust/Cargo.toml)
       cc (原生段)
 """
 import glob
@@ -29,7 +29,7 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 C = os.path.join(REPO, "compiler-c/build/ctronc")
-R = os.path.join(REPO, "compiler-rust/target/release/ctron")
+R = os.path.join(REPO, "compiler-rust/target/release/ctronr")
 BENCH = os.path.join(REPO, "tools/bench")
 BIG = os.path.join(REPO, "selfhosted/sem_chk.ct")
 QUICK = "--quick" in sys.argv

@@ -43,7 +43,7 @@ set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 
 if [ "${CTRON_NET_BENCH:-}" != "1" ]; then
     echo "bench: SKIP(置 CTRON_NET_BENCH=1 启用;本地/nightly 门禁,不入 CI 主环)"
@@ -109,11 +109,11 @@ cc -O1 -w -o "$T/baseline" "$DIR/baseline_echo.c" -lpthread \
     || { echo "bench: 基线编译失败"; exit 1; }
 "$EMIT" run "$ROOT/examples/ctecho/src/main.ct" > "$T/ctecho.c" \
     || { echo "bench: ctecho emit 失败"; exit 1; }
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctecho_p1" "$T/ctecho.c" \
-    "$ROOT/net/c_src/ctron_net.c" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctecho_p1" "$T/ctecho.c" \
+    "$ROOT/lib/net/c_src/ctron_net.c" \
     || { echo "bench: ctecho(p1) 编译失败"; exit 1; }
-cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/ctecho_coro" "$T/ctecho.c" \
-    "$ROOT/net/c_src/ctron_net.c" "$ROOT/net/c_src/ctron_rt.c" \
+cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctecho_coro" "$T/ctecho.c" \
+    "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" \
     || { echo "bench: ctecho(coro) 编译失败"; exit 1; }
 
 # 2) 起三服务(高随机端口 $$ 派生防 POSIX sh 空 RANDOM——P1 台账 M-T7-4;

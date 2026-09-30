@@ -8,14 +8,14 @@ ROOT=$(dirname "$(dirname "$DIR")")
 CC="${CTRON_CC:-$ROOT/compiler/bin/ctron-cc}"
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"
 CHK="${CTRON_CHK:-$ROOT/compiler/bin/ctron-chk}"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 [ -x "$EMIT" ] || { echo "connect/run: 缺少编译器二进制" >&2; exit 2; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/connect Connect 客户端用例(P8-A)=="
 
 if [ -x "$CHK" ] || [ -n "${CTRON_CHK:-}" ]; then
-    "$CHK" run "$ROOT/http/frm/connect.ct" > "$T/chk.out" 2>&1 || true
+    "$CHK" run "$ROOT/lib/http/frm/connect.ct" > "$T/chk.out" 2>&1 || true
     if grep -qE '^[E][0-9]' "$T/chk.out"; then
         fail=$((fail+1)); echo "  FAIL http/frm/connect.ct (sem, chk)"; sed -n '1,3p' "$T/chk.out"
     else
@@ -30,7 +30,7 @@ for f in "$DIR"/corpus/*.ct; do
     else
         fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,3p' "$T/$name.out"
     fi
-    if "$EMIT" run "$f" > "$T/$name.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null && "$T/$name.bin" > "$T/$name.run" 2>&1; then
+    if "$EMIT" run "$f" > "$T/$name.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null && "$T/$name.bin" > "$T/$name.run" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (emit)"
     else
         fail=$((fail+1)); echo "  FAIL $name (emit)"
@@ -39,8 +39,8 @@ done
 
 if [ "${CTRON_CONN_E2E:-}" = "1" ]; then
     echo "== connect e2e:srv ↔ send =="
-    if "$EMIT" run "$DIR/srv.ct" > "$T/srv.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/srv.bin" "$T/srv.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null \
-       && "$EMIT" run "$DIR/send.ct" > "$T/send.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/send.bin" "$T/send.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null; then
+    if "$EMIT" run "$DIR/srv.ct" > "$T/srv.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/srv.bin" "$T/srv.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null \
+       && "$EMIT" run "$DIR/send.ct" > "$T/send.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/send.bin" "$T/send.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null; then
         CPORT=$((21000 + RANDOM % 20000))
         ( CONN_PORT="$CPORT" "$T/srv.bin" > "$T/srv.log" 2>&1 & )
         sleep 1

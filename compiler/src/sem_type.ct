@@ -39,6 +39,7 @@ fn prelude_ok(nm: Str) -> Bool {
     if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "clo_handle"), or2(seq2(nm, "clo_cb2"), seq2(nm, "clo_cb3")))) { return true }
     if or2(seq2(nm, "dlopen"), or2(seq2(nm, "dlclose"), seq2(nm, "dlsym"))) { return true }
     if seq2(nm, "errno") { return true }
+    if seq2(nm, "ptr_as_view") { return true }
     return or2(seq2(nm, "Option"), or2(seq2(nm, "Result"), seq2(nm, "AnyError")))
 }
 

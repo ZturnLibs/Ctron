@@ -58,10 +58,20 @@ use std.enc.{hex_encode
 use std.hash.Hash
 use std.fs.{read_dir, write_dir}
 
-// use 别名(spec 2026-09-22 §2):组内混用/单符号;token 流直过,布局=原始间隙
+// use 别名(spec 2026-09-22 §2):组内混用/单符号;R10 起语句/项排序(别名按原名)
 use app.util.{
 double,
 triple as tri,
 }
 use app.extra.{widget_new as panel_new, addpair}
 use app.extra.widget_new as panel_new
+
+// R10 顶层语句排序:run 内按路径字节序稳定排,空行分段次序保留
+use zzz.mod
+use aaa.mod
+
+use m2.mod
+use m1.mod
+// R10 组内项排序(别名按原名)+ R9 超宽单行组自动折行恒补尾逗号
+use std.io.{write, read, flush}
+use std.net.{tcp_connect, tcp_listen, resolve_all, set_keepalive, set_nodelay, bind_addr, accept_loop}

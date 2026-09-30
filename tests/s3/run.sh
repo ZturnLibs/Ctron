@@ -8,13 +8,13 @@ ROOT=$(dirname "$(dirname "$DIR")")
 CC="${CTRON_CC:-$ROOT/compiler/bin/ctron-cc}"
 EMIT="${CTRON_EMIT:-$ROOT/compiler/bin/ctron-emit}"
 CHK="${CTRON_CHK:-$ROOT/compiler/bin/ctron-chk}"
-export CTRON_STDPATH="$ROOT/std"
+export CTRON_STDPATH="$ROOT/lib/std"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/s3 SigV4 签名链用例(P8-B)=="
 
 if [ -x "$CHK" ] || [ -n "${CTRON_CHK:-}" ]; then
-    "$CHK" run "$ROOT/s3/s3.ct" > "$T/chk.out" 2>&1 || true
+    "$CHK" run "$ROOT/pkgs/s3/s3.ct" > "$T/chk.out" 2>&1 || true
     if grep -qE '^[E][0-9]' "$T/chk.out"; then
         fail=$((fail+1)); echo "  FAIL s3/s3.ct (sem)"; sed -n '1,3p' "$T/chk.out"
     else
@@ -34,7 +34,7 @@ for f in "$DIR"/corpus/*.ct; do
         pass=$((pass+1)); echo "  SKIP $name (emit;i_ 前缀=interp 专臂,byte_slice 形参差异在册)"
         ;;
       *)
-        if "$EMIT" run "$f" > "$T/$name.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null && "$T/$name.bin" > "$T/$name.run" 2>&1; then
+        if "$EMIT" run "$f" > "$T/$name.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/$name.bin" "$T/$name.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null && "$T/$name.bin" > "$T/$name.run" 2>&1; then
             pass=$((pass+1)); echo "  PASS $name (emit)"
         else
             fail=$((fail+1)); echo "  FAIL $name (emit)"
@@ -46,7 +46,7 @@ done
 # ── e2e 段(CTRON_S3_E2E=1):mock 服务 ↔ 签名往返客户端(PUT/GET/DELETE)──
 if [ "${CTRON_S3_E2E:-}" = "1" ]; then
     echo "== s3 e2e:mock ↔ 签名往返 =="
-    if "$EMIT" run "$DIR/mock.ct" > "$T/mock.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/mock.bin" "$T/mock.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null        && "$EMIT" run "$DIR/roundtrip.ct" > "$T/rt.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/rt.bin" "$T/rt.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null; then
+    if "$EMIT" run "$DIR/mock.ct" > "$T/mock.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/mock.bin" "$T/mock.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null        && "$EMIT" run "$DIR/roundtrip.ct" > "$T/rt.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/rt.bin" "$T/rt.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null; then
         SP=$((21000 + RANDOM % 20000))
         ( S3_PORT="$SP" "$T/mock.bin" > "$T/mock.log" 2>&1 & )
         sleep 1
@@ -80,7 +80,7 @@ if [ "${CTRON_S3_MINIO:-}" = "1" ]; then
         MP=$(mktemp -d)
         ( env MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin "$MINIO_BIN" server "$MP/data" --address 127.0.0.1:9100 > "$T/minio.log" 2>&1 & )
         sleep 2
-        if "$EMIT" run "$DIR/roundtrip.ct" > "$T/rt.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/net/c_src" -o "$T/rt.bin" "$T/rt.c" "$ROOT/net/c_src/ctron_net.c" 2>/dev/null; then
+        if "$EMIT" run "$DIR/roundtrip.ct" > "$T/rt.c" 2>/dev/null && cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/rt.bin" "$T/rt.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>/dev/null; then
             S3_REAL=1 S3_MKBUCKET=1 S3_AK=minioadmin S3_SK=minioadmin S3_PORT=9100 timeout 25 "$T/rt.bin" > "$T/rt.log" 2>&1
             RRC=$?
             sleep 0.3

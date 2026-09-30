@@ -128,6 +128,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var cbp5 = pcs5[ai]
                     if cbp5.len > 2 && byte_slice(cbp5, 0, 2) == "u:" {
                         acall = acall + "*(t_" + byte_slice(cbp5, 2, cbp5.len) + "*)(long)_cbp" + ai.to_string()
+                    } else if cbp5.len > 1 && byte_at(cbp5, 0) == 112 {
+                        // 裸指针形参(v0.9·五):ct_i → T* 显式 cast(同 ct_cb_ref 侧)
+                        acall = acall + "(" + ct_abi_ctype(cbp5) + ")_cbp" + ai.to_string()
                     } else {
                         acall = acall + "_cbp" + ai.to_string()
                     }
@@ -984,6 +987,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "str_from_c" { return "ctron_str_from_c(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // errno(§9.6 v0.8 错误传播):最近一次系统调用/库调用的错误码(线程局域)
         if callee == "errno" { return "(int32_t)errno" }
+        // ptr_as_view(v0.9·五 裁决甲:路径 1 读侧):p<ec> → ctron_view_<ec>
+        // { (elem*)p, n };#[trusted] 所在 fn 由 sem E4047 前置把关
+        if callee == "ptr_as_view" {
+            var pvac = ct_typeof(ag[1], env, file)
+            if !(pvac.len > 1 && byte_at(pvac, 0) == 112) {
+                panic("emit:ptr_as_view 实参须为 &T 裸指针(p 码)")
+                return ""
+            }
+            var pec = byte_slice(pvac, 1, pvac.len)
+            var pvex = ct_expr(ag[1], env, file)
+            var pvn = ct_expr(ag[2], env, file)
+            return "(ctron_view_" + pec + ")\{ (" + ct_ctype(pec) + "*)(" + pvex + "), (int64_t)(" + pvn + ") }"
+        }
         // context-pointer 闭包糖(§9.6 v0.8):闭包装箱句柄(void* 语义)
         if callee == "clo_handle" {
             if ag.len < 2 || ag[1][0] != "Closure" {
@@ -1287,7 +1303,9 @@ fn ct_cb_ref(file: List[Str], ae: List[Str], ac: Str, ex: Str, pc: Str) -> Str {
                         aargs9 = aargs9 + ", "
                     }
                     asig9 = asig9 + "ct_i _cbp" + ai9.to_string()
-                    aargs9 = aargs9 + "_cbp" + ai9.to_string()
+                    // 实参按被调形参边界型 cast(v0.9·五):标量隐式收窄本可通过,
+                    // 指针形参(&T → p<ec>)ct_i → T* 须显式 cast
+                    aargs9 = aargs9 + "(" + ct_abi_ctype(ps9[ai9]) + ")_cbp" + ai9.to_string()
                     first9 = false
                     ai9 += 1
                 }

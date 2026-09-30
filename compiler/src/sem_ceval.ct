@@ -74,7 +74,7 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
         var i: I32 = cenvN.len - 1
         while i >= 0 {
             if seq2(cenvN[i], e[1]) {
-                return cok(cenvV[i])
+                return cok(v_unbox(cenvV[i]))
             }
             i -= 1
         }
@@ -86,13 +86,14 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
             if seq2(x[0], "over") { return x }
             return x
         }
-        if x[2][0] != "I" {
-            if x[2][0] == "6" {
-                return cok(v6(c6can("-" + x[2][1])))
+        var xu = v_unbox(x[2])
+        if xu.tag != 1 {
+            if xu.tag == 2 {
+                return cok(v6(c6can("-" + v6t(xu))))
             }
             return cun()
         }
-        return cok(vI(0 - dvi(x[2][1])))
+        return cok(vI(0 - xu.iv.as[I32]()))
     }
     if t == "Binary" {
         var op = e[1]
@@ -104,9 +105,11 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
         if r[0] != "k" { return r }
         // 6 域参与:算术经 val_arith(与运行期同口径,含 C99 截断 Div/Mod);
         // 比较经 vcmp(I↔6 混合已接);其余算符静默回退
-        if or2(l[2][0] == "6", r[2][0] == "6") {
+        var lu = v_unbox(l[2])
+        var ru = v_unbox(r[2])
+        if or2(lu.tag == 2, ru.tag == 2) {
             if is_cmp_op(op) {
-                var cv = vcmp(l[2], r[2])
+                var cv = vcmp(lu, ru)
                 var rb = false
                 if seq2(op, "Lt") { rb = cv < 0 }
                 if seq2(op, "Gt") { rb = cv > 0 }
@@ -117,13 +120,13 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
                 return cok(vB(rb))
             }
             if or2(seq2(op, "Add"), or2(seq2(op, "Sub"), or2(seq2(op, "Mul"), or2(seq2(op, "Div"), seq2(op, "Mod"))))) {
-                return cok(val_arith(op, l[2], r[2]))
+                return cok(val_arith(op, lu, ru))
             }
             return cun()
         }
-        if or2(l[2][0] != "I", r[2][0] != "I") { return cun() }
-        var a = dvi(l[2][1])
-        var b2 = dvi(r[2][1])
+        if or2(lu.tag != 1, ru.tag != 1) { return cun() }
+        var a = lu.iv.as[I32]()
+        var b2 = ru.iv.as[I32]()
         if is_cmp_op(op) {
             var rb = false
             if seq2(op, "Lt") { rb = a < b2 }
@@ -169,7 +172,7 @@ fn ceval_expr(file: List[Str], e: List[Str], cenvN: List[Str], cenvV: List[Str],
                 if ai >= ag.len { return cun() }
                 var av = ceval_expr(file, ag[ai], cenvN, cenvV, st)
                 if av[0] != "k" { return av }
-                if av[2][0] != "I" { return cun() }
+                if v_unbox(av[2]).tag != 1 { return cun() }
                 cenvN2.push(pr[2])
                 cenvV2.push(av[2])
             } else {
@@ -206,7 +209,7 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
             if v7[0] != "k" {
                 return v7
             }
-            if v7[2][0] != "I" {
+            if v_unbox(v7[2]).tag != 1 {
                 return cun()
             }
             cenvN.push(p7[1])
@@ -224,7 +227,7 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
             if v7[0] != "k" {
                 return v7
             }
-            if v7[2][0] != "I" {
+            if v_unbox(v7[2]).tag != 1 {
                 return cun()
             }
             var f7: I32 = -1
@@ -250,7 +253,7 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
                 if cv[0] != "k" {
                     return cv
                 }
-                if !truth(cv[2]) {
+                if !truth(v_unbox(cv[2])) {
                     g7 = false
                 } else {
                     var wb7 = st2[2]
@@ -284,8 +287,8 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
             if hiv[0] != "k" {
                 return hiv
             }
-            var lo8 = dvi(lov[2][1])
-            var hi8 = dvi(hiv[2][1])
+            var lo8 = v_unbox(lov[2]).iv.as[I32]()
+            var hi8 = v_unbox(hiv[2]).iv.as[I32]()
             if seq2(it8[1], "true") {
                 hi8 += 1
             }
@@ -295,7 +298,7 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
                     return cover()
                 }
                 cenvN.push(pat8[1])
-                cenvV.push(vI(k8))
+                cenvV.push(v_box(vI(k8)))
                 var body8 = st2[3]
                 if body8[0] == "BlockExpr" {
                     body8 = body8[1]
@@ -324,7 +327,7 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
                 return cv
             }
             var target = st2[2]
-            if !truth(cv[2]) {
+            if !truth(v_unbox(cv[2])) {
                 target = st2[3]
             }
             if target[0] == "BlockExpr" {
@@ -346,11 +349,11 @@ fn ceval_block(file: List[Str], b: List[Str], cenvN: List[Str], cenvV: List[Str]
     return ceval_expr(file, tl, cenvN, cenvV, st)
 }
 
-fn cok(v: List[Str]) -> List[Str] {
+fn cok(v: Val) -> List[Str] {
     var r = List[Str]()
     r.push("k")
     r.push("")
-    r.push(v)
+    r.push(v_box(v))
     return r
 }
 

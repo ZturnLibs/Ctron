@@ -231,33 +231,34 @@ fn sem_comp(file: List[Str], diags: List[Str]) {
             }
             var done = false
             if seq2(vr[0], "k") {
-                if knd.len > 0 && !vtag_ok(knd, vr[2][0]) {
-                    diag3(diags, "E2010.const", "", nm, knd, vr[2][0])
+                var rv = v_unbox(vr[2])
+                if knd.len > 0 && !vtag_ok(knd, vtag_str(rv)) {
+                    diag3(diags, "E2010.const", "", nm, knd, vtag_str(rv))
                     return
                 }
                 // I64 const 值域界门(§3.1.1):折叠值超 int64 → E2040
-                if seq2(vr[2][0], "6") && !c6_in_i64(vr[2][1]) {
+                if rv.tag == 2 && !c6_in_i64(v6t(rv)) {
                     diag1(diags, "E2040.const", "", nm)
                     return
                 }
-                env = env_add(env, nm, vr[2])
+                env = env_add(env, nm, rv)
                 done = true
             }
             if !done {
                 // ceval 不支持:回退全量求值(与 statics_env 同口径)
                 var vr2 = eval_expr(file, env, "", expr)
-                if vr2[0] != "k" {
+                if vr2.kind != "k" {
                     return
                 }
-                if knd.len > 0 && !vtag_ok(knd, vr2[2][0]) {
-                    diag3(diags, "E2010.const", "", nm, knd, vr2[2][0])
+                if knd.len > 0 && !vtag_ok(knd, vtag_str(vr2.v)) {
+                    diag3(diags, "E2010.const", "", nm, knd, vtag_str(vr2.v))
                     return
                 }
-                if seq2(vr2[2][0], "6") && !c6_in_i64(vr2[2][1]) {
+                if vr2.v.tag == 2 && !c6_in_i64(v6t(vr2.v)) {
                     diag1(diags, "E2040.const", "", nm)
                     return
                 }
-                env = env_add(env, nm, vr2[2])
+                env = env_add(env, nm, vr2.v)
             }
         }
         i += 1

@@ -1,18 +1,19 @@
 #!/bin/sh
 # parity.sh —— ctron fmt 三宿主对拍门禁(R-P2d 双宿主移植验收,ci.sh 可挂载)
 #
-# 三宿主:compiler-rust(参考实现,ctron fmt)/ compiler-c(ctronc fmt)/ compiler(自举,ctron-fmt)
+# 三宿主:compiler-rust(参考实现,ctronr fmt)/ compiler-c(ctronc fmt)/ compiler(自举,ctron-fmt)
 # 对语料逐文件断言:三方退出码一致,且成功时 stdout 逐字节一致(docs/fmt-spec.md 唯一权威)。
 # 词法脏语料(如 *.neg.ct 分号面)= 三方一致非零退出,计入 errskip(规范 R8:fmt 报错退出)。
-# 根目录:默认 tests examples std(roadmap/ 阶段区跳过);可传参覆盖。
+# 根目录:默认 tests examples lib/std(库根布局 W2 后 std 居 lib/std;roadmap/ 阶段区跳过);
+# 可传参覆盖。
 #
 # 前置:
 #   make -C compiler-c                     # C 宿主 ctronc(含 fmt 子命令)
 #   sh compiler/native.sh                  # 自举 ctron-fmt
-#   compiler-rust/target/release/ctron     # 缺则自动 cargo build --release
+#   compiler-rust/target/release/ctronr     # 缺则自动 cargo build --release
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-RUST="$DIR/compiler-rust/target/release/ctron"
+RUST="$DIR/compiler-rust/target/release/ctronr"
 CC="$DIR/compiler-c/build/ctronc"
 BOOT="$DIR/compiler/bin/ctron-fmt"
 
@@ -27,7 +28,7 @@ fi
 T=$(mktemp -d /tmp/ctron_parity.XXXXXX)
 trap 'rm -rf "$T"' EXIT
 
-ROOTS=${*:-"$DIR/tests $DIR/examples $DIR/std"}
+ROOTS=${*:-"$DIR/tests $DIR/examples $DIR/lib/std"}
 FILES=$(find $ROOTS -name '*.ct' -type f | grep -v '/roadmap/' | LC_ALL=C sort)
 ok=0; errskip=0; bad=0
 for f in $FILES; do

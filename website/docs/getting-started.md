@@ -8,7 +8,7 @@ From install to your first native executable in 10-15 minutes. `ctc` is the tool
 
 ```bash
 curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.sh | sh
-export PATH="$HOME/.ctron/ctron/bin:$PATH"   # add to your shell config as instructed
+export PATH="$HOME/.ctron/bin:$PATH"   # add to your shell config as instructed
 ```
 
 **Manual** — grab `ctron-<version>-<platform>.tar.gz` from [Releases](https://github.com/ZturnLibs/Ctron/releases) and put its `ctron/bin` directory on your `PATH` (see the asset matrix under [Download](download.md)).

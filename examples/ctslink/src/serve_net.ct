@@ -1,0 +1,403 @@
+// serve_net.ct —— ctslink 真 serve 臂(L6/L7 原生门;web_todo 同构拆分)
+//
+// 【本文件不入 interp 门】原生臂专用(ctron-emit run;use net/net.ct 门面会把
+// bind.ct 的 E4046 ×2(listen/accept 的 out_fd Box[Box64] 形参——v0.9「三 Box
+// 收口」硬错,头注在案)拉进合并态,interp 双门全红;web_todo serve_net.ct 同红
+// 实证在册)。故 serve 调用从 main.ct 拆出至此:
+//   - src/main.ct:装配 + 业务 + 视图 + test_call 语义门(interp 净土,零 socket);
+//   - 本文件:真 net 接线 + 原生熵(uuid_v4)+ env 注入存储。
+//
+// net extern 直 declare(消费侧自带面;std/uuid.ct ctron_entropy_fill 先例):
+// bind.ct 的 listen/accept 仍是 Box 形参(挂框架侧 &T 迁移),门面不可载;
+// 本文件按 v0.9 &T 形直 declare 五件(tcp_listen/tcp_accept 的 out_fd 以
+// &I64[] lane 视图过界,ABI 同 int64_t*,net_read_t 同形已放行在案),符号名
+// 与 net/c_src/ctron_net.c 垫片一致,链接零改。门面迁移落库后回改 use net
+// (一行,登记 README)。
+//
+// 运行(native 臂,门外语义;db c_src 一并链接——ctron_entropy/ctron_dbpg/
+// ctron_dbredis,uuid 真熵垫片宿主):
+//   compiler/bin/ctron-emit run examples/ctslink/src/serve_net.ct > /tmp/sl.c
+//   cc -O1 -w -pthread -I net/c_src -o /tmp/sl.bin /tmp/sl.c \
+//      net/c_src/ctron_net.c db/c_src/ctron_dbpg.c db/c_src/ctron_dbredis.c db/c_src/ctron_entropy.c
+//   /tmp/sl.bin   # 127.0.0.1:8093(env CTS_LINK_PORT);POST /__shutdown 排空退出
+//
+// 存储注入(pg.ct script/fd 双源同构口径,README「存储双源」在册):
+//   - env CTRON_REDIS_URL(redis://host:port)→ 计数器走 Redis 单连
+//     sl:clicks:<code> INCR/GET;连接失败/命令失败回 -1/0,不拦跳转(设计稿 §二);
+//   - env CTRON_PG_DSN(postgres://user:pass@host:port/db)→ 启动时 SCRAM 连接
+//     + schema.sql DDL 应用(CREATE TABLE IF NOT EXISTS),结果仅日志——v1 行
+//     存储仍内存(语义门/冒烟同源;PG 行存储双源化挂后续,README 差异表);
+//   - 未设 env → 纯内存面(run.sh 冒烟即此形态,零外部依赖)。
+//
+// 二进制边界(§7-8 在册):lane_str 为 ASCII 面——请求体含非 ASCII(中文表单值)
+// 读不回,登记设计稿 §五-4;响应侧 CJK 经 net_write_str 字节透传(发射臂正确,
+// interp utf8_enc U+FFFD 差异 §五-6,页面双臂差异登记)。
+
+// net 垫片 extern 直 declare(见头注;与 net/bind.ct 符号/ABI 一致)
+pub extern "c" fn ctron_net_tcp_listen(host: Str, port: I64, out_fd: &I64[]) -> I64
+pub extern "c" fn ctron_net_tcp_accept(lfd: I64, out_fd: &I64[]) -> I64
+pub extern "c" fn ctron_net_read_t(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_write_str(fd: I64, s: Str) -> I64
+pub extern "c" fn ctron_net_close(fd: I64) -> I64
+
+use std.uuid.{ uuid_v4 }
+use std.strconv.{ parse_i64, sc_get_l }
+use db.db.{ db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name }
+use db.pg.{ ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_terminate_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_err, pgs_emsg, pgs_sigok, pgr_rc, pgr_tag, pgr_emsg }
+use db.redis.{ ctron_dbredis_connect, redis_send_cmd_fd, redis_recv_fd, redis_get_cmd, redis_incr_cmd, RdsCell64, rs_rc, rs_ival, rs_sval, rs_isnull }
+use web.router.{ has_conflict }
+use web.serve.{ SrvIo, serve_with }
+use main.{ app_with, full_router }
+use std.str.{ join }
+
+// ASCII 表(32..126):`{` 字面量禁 → "\{" + "}" concat 拼(语言纪律同 main.ct)
+fn ascii_tbl() -> Str {
+    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz" + "\{" + "|}~"
+}
+
+// lane(每格一字节 I64)→ Str;web_todo 同款 ASCII 面(§7-8 边界见头注)。
+// §14-1:段收集 List 末次 join,不做循环串累加。
+fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+    var ps: List[Str] = List[Str]()
+    let tbl = ascii_tbl()
+    var i = a
+    while i < b {
+        let c = buf[i]
+        if c < 32 || c > 126 {
+            break
+        }
+        ps.push(byte_slice(tbl, c - 32, c - 31))
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// ---- 熵源:uuid_v4 真熵 → 字节(App.rnd 原生实现;interp 面 = main.ct fake) ----
+
+fn hexval(c: I32) -> I32 {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 55
+    }
+    return 0
+}
+
+// 一枚 uuid → 16 字节(去连字符,hex 对拼;熵不可用 = 空表 → 调用方 fail-fast)
+fn uuid_bytes() -> List[I32] {
+    let u = uuid_v4()
+    var nib = List[I32]()
+    var i: I32 = 0
+    while i < u.len {
+        let c = byte_at(u, i)
+        if c != 45 {
+            nib.push(hexval(c))
+        }
+        i += 1
+    }
+    var bs = List[I32]()
+    var j: I32 = 0
+    while j + 1 < nib.len {
+        bs.push(nib[j] * 16 + nib[j + 1])
+        j += 2
+    }
+    return bs
+}
+
+// App.rnd 原生形:取 k 字节(跨多枚 uuid;熵空 = panic 失败在启动,§7-5 口径)
+fn uuid_rnd(k: I32) -> List[I32] {
+    var out = List[I32]()
+    while out.len < k {
+        let bs = uuid_bytes()
+        if bs.len == 0 {
+            panic("ctslink: uuid 熵源不可用(getrandom/urandom 失败)")
+        }
+        var i: I32 = 0
+        while i < bs.len && out.len < k {
+            out.push(bs[i])
+            i += 1
+        }
+    }
+    return out
+}
+
+fn clk_unix() -> I64 {
+    return now_ms() / 1000
+}
+
+// ---- Redis 计数(单连;sl:clicks:<code>;失败 -1/0 不拦跳转) ----
+
+fn rd_key(code: Str) -> Str {
+    return "sl:clicks:" + code
+}
+
+// redis://host:port → 最小文法(nightly redis_smoke nlx_parse 同形;v0 无鉴权/db 段)
+struct RdTarget {
+    var ok: I64
+    var host: Str
+    var port: I64
+}
+
+fn rd_parse(url: Str) -> RdTarget {
+    var t = RdTarget { ok: 0, host: "", port: 0 }
+    if url.len < 10 {
+        return t
+    }
+    if byte_slice(url, 0, 8) != "redis://" {
+        return t
+    }
+    var rest = byte_slice(url, 8, url.len)
+    var colon: I32 = 0 - 1
+    var k: I32 = rest.len - 1
+    while k >= 0 {
+        if byte_at(rest, k) == 58 {
+            colon = k
+            k = 0 - 1
+        } else {
+            k -= 1
+        }
+    }
+    if colon <= 0 || colon + 1 >= rest.len {
+        return t
+    }
+    t.host = byte_slice(rest, 0, colon)
+    var acc: I64 = 0
+    var q: I32 = 0
+    while q < byte_slice(rest, colon + 1, rest.len).len {
+        let c = byte_at(rest, colon + 1 + q)
+        if c < 48 || c > 57 {
+            return t
+        }
+        acc = acc * 10 + (c - 48).as[I64]()
+        if acc > 65535 {
+            return t
+        }
+        q += 1
+    }
+    t.ok = 1
+    t.port = acc
+    return t
+}
+
+fn rd_incr(fd: I64, code: Str) -> I64 {
+    let rbuf: I64[4096] = [0]
+    let scr: I64[512] = [0]
+    let fill = Box[RdsCell64](RdsCell64 { v: 0 })
+    if redis_send_cmd_fd(fd, redis_incr_cmd(rd_key(code)), scr) != 0 {
+        return 0 - 1
+    }
+    let rep = redis_recv_fd(fd, rbuf, fill, scr)
+    if rs_rc(rep) != 0 {
+        return 0 - 1
+    }
+    return rs_ival(rep)
+}
+
+fn rd_get(fd: I64, code: Str) -> I64 {
+    let rbuf: I64[4096] = [0]
+    let scr: I64[512] = [0]
+    let fill = Box[RdsCell64](RdsCell64 { v: 0 })
+    if redis_send_cmd_fd(fd, redis_get_cmd(rd_key(code)), scr) != 0 {
+        return 0
+    }
+    let rep = redis_recv_fd(fd, rbuf, fill, scr)
+    if rs_rc(rep) != 0 || rs_isnull(rep) == 1 {
+        return 0
+    }
+    return sc_get_l(parse_i64(rs_sval(rep)), 0)
+}
+
+// 连接;未设/畸形/失败回 -1(main 按 fd 正负装配,失败日志明示)
+fn rd_connect(url: Str) -> I64 {
+    if url.len == 0 {
+        return 0 - 1
+    }
+    let t = rd_parse(url)
+    if t.ok != 1 {
+        println("ctslink: CTRON_REDIS_URL 畸形,计数走内存")
+        return 0 - 1
+    }
+    let hb = pg_str_bytes(t.host)
+    let hostl: I64[256] = [0]
+    var i: I64 = 0
+    while i < hb.len && i < 256 {
+        hostl[i] = hb[i]
+        i += 1
+    }
+    let fd = ctron_dbredis_connect(hostl, t.port)
+    if fd < 0 {
+        println("ctslink: redis 连接失败,计数走内存")
+        return 0 - 1
+    }
+    println("ctslink: redis 计数面就绪 " + t.host + ":" + t.port.to_string())
+    return fd
+}
+
+// ---- PG:env DSN → SCRAM 连接 + schema.sql DDL 应用(结果仅日志,v1 行存储仍内存) ----
+
+fn pg_boot(dsn: Str) -> I64 {
+    let d = dsn_parse(db_std(), dsn)
+    if pgd_ok(d) != 1 {
+        println("ctslink: CTRON_PG_DSN 畸形,行存储走内存")
+        return 0 - 1
+    }
+    var dbname = pgd_name(d)
+    if dbname.len == 0 {
+        dbname = pgd_user(d)
+    }
+    let hb = pg_str_bytes(pgd_host(d))
+    let hostl: I64[256] = [0]
+    var hi: I64 = 0
+    while hi < hb.len && hi < 256 {
+        hostl[hi] = hb[hi]
+        hi += 1
+    }
+    let fd = ctron_dbpg_connect(hostl, pgd_port(d))
+    if fd < 0 {
+        println("ctslink: pg 连接失败,行存储走内存")
+        return 0 - 1
+    }
+    let rbuf: I64[4096] = [0]
+    let scr: I64[512] = [0]
+    let fill = Box[PgCell64](PgCell64 { v: 0 })
+    pg_send_msg_fd(fd, pg_startup_msg(pgd_user(d), dbname, "ctslink"), scr)
+    let s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
+    if pgs_rc(s) != 0 || pgs_sigok(s) != 1 {
+        println("ctslink: pg SCRAM 失败 err=" + pgs_err(s).to_string() + " " + pgs_emsg(s))
+        ctron_dbpg_close(fd)
+        return 0 - 1
+    }
+    let rc = pg_apply_schema(fd)
+    pg_send_msg_fd(fd, pg_terminate_msg(), scr)
+    ctron_dbpg_close(fd)
+    if rc == 0 {
+        println("ctslink: pg schema 就绪(v1 行存储仍内存,DDL 已应用)")
+    }
+    return rc
+}
+
+fn pg_exec(fd: I64, sql: Str) -> I64 {
+    let rbuf: I64[4096] = [0]
+    let scr: I64[512] = [0]
+    let fill = Box[PgCell64](PgCell64 { v: 0 })
+    if pg_send_msg_fd(fd, pg_query_msg(sql), scr) != 0 {
+        return 0 - 1
+    }
+    let q = pg_query_fd(fd, rbuf, fill, scr)
+    if pgr_rc(q) != 0 {
+        println("ctslink: pg exec 失败 " + pgr_emsg(q))
+        return 0 - 1
+    }
+    println("ctslink: pg ok " + pgr_tag(q))
+    return 0
+}
+
+// DDL 与 schema.sql 一致(幂等;nightly/真跑亦可手工应用 schema.sql)
+fn pg_apply_schema(fd: I64) -> I64 {
+    let a = pg_exec(fd, "CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, name TEXT UNIQUE NOT NULL, pwhash TEXT NOT NULL, created BIGINT NOT NULL)")
+    if a != 0 {
+        return a
+    }
+    return pg_exec(fd, "CREATE TABLE IF NOT EXISTS links (id BIGINT PRIMARY KEY, owner BIGINT NOT NULL, code TEXT UNIQUE NOT NULL, url TEXT NOT NULL, created BIGINT NOT NULL, deleted BOOLEAN NOT NULL DEFAULT FALSE)")
+}
+
+fn pg_boot(dsn: Str) -> I64 {
+    let d = dsn_parse(db_std(), dsn)
+    if pgd_ok(d) != 1 {
+        println("ctslink: CTRON_PG_DSN 畸形,行存储走内存")
+        return 0 - 1
+    }
+    var dbname = pgd_name(d)
+    if dbname.len == 0 {
+        dbname = pgd_user(d)
+    }
+    let hb = pg_str_bytes(pgd_host(d))
+    let hostl: I64[256] = [0]
+    var hi: I64 = 0
+    while hi < hb.len && hi < 256 {
+        hostl[hi] = hb[hi]
+        hi += 1
+    }
+    let fd = ctron_dbpg_connect(hostl, pgd_port(d))
+    if fd < 0 {
+        println("ctslink: pg 连接失败,行存储走内存")
+        return 0 - 1
+    }
+    let rbuf: I64[4096] = [0]
+    let scr: I64[512] = [0]
+    let fill = Box[PgCell64](PgCell64 { v: 0 })
+    pg_send_msg_fd(fd, pg_startup_msg(pgd_user(d), dbname, "ctslink"), scr)
+    let s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
+    if pgs_rc(s) != 0 || pgs_sigok(s) != 1 {
+        println("ctslink: pg SCRAM 失败 err=" + pgs_err(s).to_string() + " " + pgs_emsg(s))
+        ctron_dbpg_close(fd)
+        return 0 - 1
+    }
+    let rc = pg_apply_schema(fd)
+    pg_send_msg_fd(fd, pg_terminate_msg(), scr)
+    ctron_dbpg_close(fd)
+    if rc == 0 {
+        println("ctslink: pg schema 就绪(v1 行存储仍内存,DDL 已应用)")
+    }
+    return rc
+}
+
+// ---- main:SrvIo 五件映射 net 垫片(web_todo 同构;extern 直 declare 见头注) ----
+
+fn main() {
+    let io = SrvIo {
+        listen: |h, p| {
+            let b: I64[1] = [0 - 1]
+            if ctron_net_tcp_listen(h, p, b) != 0 {
+                return 0 - 1
+            }
+            return b[0]
+        },
+        accept: |lfd| {
+            let b: I64[1] = [0 - 1]
+            if ctron_net_tcp_accept(lfd, b) != 0 {
+                return 0 - 1
+            }
+            return b[0]
+        },
+        read: |fd, cap| {
+            let buf: I64[4096] = [0]
+            let n = ctron_net_read_t(fd, buf, 4096, 5000)
+            if n <= 0 {
+                return ""
+            }
+            return lane_str(buf, 0, n)
+        },
+        write: |fd, s| {
+            return ctron_net_write_str(fd, s)
+        },
+        close: |fd| {
+            ctron_net_close(fd)
+        }
+    }
+    // env 注入(§8-A5 装配面:时钟/熵/计数器/迭代);rd fd 落 fn 顶层再被
+    // 闭包捕获(块内 let 捕获存活面不赌;rd_connect 失败即内存降级)
+    let port = sc_get_l(parse_i64(env_get("CTS_LINK_PORT")), 8093)
+    let ekey = env_get("CTS_LINK_KEY")
+    var key = "ctslink-dev"
+    if ekey.len > 0 {
+        key = "ctslink-" + ekey
+    }
+    let rfd = rd_connect(env_get("CTRON_REDIS_URL"))
+    var app: App = app_mem(key, clk_unix, uuid_rnd, 4096)
+    if rfd >= 0 {
+        app = app_with(key, clk_unix, uuid_rnd, 4096, |c| rd_incr(rfd, c), |c| rd_get(rfd, c))
+    }
+    pg_boot(env_get("CTRON_PG_DSN"))
+    let r = full_router(app)
+    if has_conflict[App](r) {
+        panic("ctslink: 路由冲突(装配自检,§7-5)")
+    }
+    println("ctslink: serve 127.0.0.1:" + port.to_string())
+    let rc = serve_with[App](io, "127.0.0.1", port, r)
+    println("ctslink: serve exit " + rc.to_string())
+}

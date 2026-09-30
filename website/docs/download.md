@@ -25,7 +25,7 @@ Every release ships 7 assets, all reachable at `https://github.com/ZturnLibs/Ctr
 
 > macOS Intel: no prebuilt tarball in v0.0.1 — use the source line (`ctron-0.0.1-src.tar.gz`, `make` with any cc).
 
-Prebuilt package layout: `ctron/bin/` (the `ctc` driver plus the `ctron-cc` / `ctron-chk` / `ctron-emit` native binaries), `ctron/lib/ctron/std/` (standard library source), `ctron/share/doc/` (README and examples), and `ctron/VERSION` (version + git-sha).
+Prebuilt package layout: `bin/` (the `ctc` driver plus the `ctron-cc` / `ctron-chk` / `ctron-emit` native binaries), `lib/` (std + the five shipped domains: net/http/tls/db/ffi, with facades), `vendor/` (third-party C for the shipped domains), `share/doc/` (README and examples), and `VERSION` (version + git-sha). Install root is the toolchain root itself (`~/.ctron` by default); extension packages live in `~/.ctron/pkgs/` and are installed separately.
 
 ## Manual install
 

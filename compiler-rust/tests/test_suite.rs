@@ -1,5 +1,5 @@
 //! R-P2c 集成验收:`ctron test` —— 发现/过滤/panic 标记/JSON/pkg 目录/退出码。
-//! lib 级走 ctron::testing::test_report;CLI 级走 CARGO_BIN_EXE_ctron。
+//! lib 级走 ctron::testing::test_report;CLI 级走 CARGO_BIN_EXE_ctronr。
 
 use ctron::sem::Profile;
 use ctron::testing::{test_report, TestStatus};
@@ -92,7 +92,7 @@ fn without_marker_a_panic_is_a_failure() {
 // ---------- CLI 级 ----------
 
 fn run_cli(args: &[&str]) -> (String, String, Option<i32>) {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ctron"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ctronr"))
         .args(args)
         .output()
         .expect("ctron 二进制可执行");

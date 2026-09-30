@@ -267,7 +267,7 @@ fn pkg_exe_dir(exe: Str) -> Str {
 }
 
 // pkg_std_installed —— std 是否处于"装机/显式指路"态:①CTRON_STDPATH 已设,或
-// ②exe 旁 ../lib/ctron/std 实存(探测 str.ct)。两者皆否(种子/源码树回落态)为 false,
+// ②exe 旁 ../lib/std 实存(探测 str.ct;2026-09-30 库根布局)。两者皆否(种子/源码树回落态)为 false,
 // 使③回落路径缺失维持静默(种子语料兼容;std.iter/stdweb 等 sem 内建命名空间不误伤)。
 fn pkg_std_installed(dir: Str) -> Bool {
     if env_get("CTRON_STDPATH").len > 0 {
@@ -275,7 +275,7 @@ fn pkg_std_installed(dir: Str) -> Bool {
     }
     var exe = ctron_exe_path()
     if exe.len > 0 {
-        var root = pkg_exe_dir(exe) + "/../lib/ctron/std"
+        var root = pkg_exe_dir(exe) + "/../lib/std"
         if fs_exists(root + "/str.ct") {
             return true
         }
@@ -283,7 +283,7 @@ fn pkg_std_installed(dir: Str) -> Bool {
     return false
 }
 
-// pkg_std_root —— std 根三级查找:①CTRON_STDPATH ②exe 旁 ../lib/ctron/std ③回落 ../std(种子约定)
+// pkg_std_root —— std 根三级查找:①CTRON_STDPATH ②exe 旁 ../lib/std(2026-09-30 库根布局) ③回落 ../std(种子约定)
 fn pkg_std_root(dir: Str) -> Str {
     var envp = env_get("CTRON_STDPATH")
     if envp.len > 0 {
@@ -291,7 +291,7 @@ fn pkg_std_root(dir: Str) -> Str {
     }
     var exe = ctron_exe_path()
     if exe.len > 0 {
-        var root = pkg_exe_dir(exe) + "/../lib/ctron/std"
+        var root = pkg_exe_dir(exe) + "/../lib/std"
         if fs_exists(root + "/str.ct") {
             return root
         }
@@ -304,7 +304,16 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
     // 合并后改写 run(ViewCall) 调用点并拼写 __gui_bind/__gui_act/__gui_run
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out: List[Str] = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true)
+    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, List[Str]())
+    return gui_ds_postmerge(out, unit, diags)
+}
+
+// pkg_load_use_m —— pkg_load_use 带 miss 收集(W8902 带出路半面;独立 fn 避碰
+// 在制 driver_emit.ct 调用点——emit 驱动 seam 待其落库后一行切换,2026-09-30 登记)
+fn pkg_load_use_m(file: List[Str], dir: Str, stack: List[Str], diags: List[Str], misses: List[Str]) -> List[Str] {
+    var unit = List[Str]()
+    var f2: List[Str] = gui_ds_premerge(file, unit)
+    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses)
     return gui_ds_postmerge(out, unit, diags)
 }
 
@@ -337,7 +346,7 @@ fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[S
 
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
-fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool) -> List[Str] {
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str]) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
@@ -393,10 +402,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
                 mpath = dir + rel + ".ct"
-                // 域根(2026-09-23 顶层命名空间):libroot(= std 根父目录)下
-                // <首段>[/<次段>…].ct 命中则用之(gui.* / net.* / http.* / tls.* /
-                // db.*;段映射镜像 std 分支,门面 = 域同名 .ct)。目录相对优先、
-                // ctart 仍保底——realdep/S2a 既有语义零扰动;未命中保持静默。
+                // 域根(2026-09-23 顶层命名空间;2026-09-30 门面入域目录):libroot
+                //(= std 根父目录)下 <首段>[/<次段>…].ct 命中则用之(gui.* / net.* /
+                // http.* / tls.* / db.*);两段门面形映射 <域>/<域>.ct(统一 db 形态,
+                // 容器只持目录)。目录相对优先、ctart 仍保底——realdep/S2a 既有语义
+                // 零扰动;未命中保持静默。
                 if !fs_exists(mpath) {
                     var sroot = pkg_std_root(dir)
                     if sroot.len > 0 {
@@ -411,15 +421,70 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         }
                         if cut > 0 {
                             var dpath = byte_slice(sroot, 0, cut)
-                            var j2c: I32 = 1
-                            while j2c < segs.len {
-                                dpath = dpath + "/" + segs[j2c]
-                                j2c += 1
+                            if segs.len == 2 {
+                                dpath = dpath + "/" + segs[1] + "/" + segs[1]
+                            } else {
+                                var j2c: I32 = 1
+                                while j2c < segs.len {
+                                    dpath = dpath + "/" + segs[j2c]
+                                    j2c += 1
+                                }
                             }
                             dpath = dpath + ".ct"
                             if fs_exists(dpath) {
                                 mpath = dpath
                             }
+                        }
+                    }
+                }
+                // site root(2026-09-30 库根布局):①CTRON_SITEPATH ②库根同级
+                // ../pkgs(dirname(libroot)/pkgs)下 <首段>[/<次段>…].ct 命中则用之
+                // ——libroot 探测后、ctart 保底前;段映射镜像域根分支;未命中保持静默。
+                if !fs_exists(mpath) {
+                    var spath = env_get("CTRON_SITEPATH")
+                    if spath.len == 0 {
+                        var sroot2 = pkg_std_root(dir)
+                        if sroot2.len > 0 {
+                            var cut2: I32 = 0 - 1
+                            var ci2: I32 = sroot2.len - 1
+                            while ci2 >= 0 {
+                                if byte_at(sroot2, ci2) == 47 {
+                                    cut2 = ci2
+                                    break
+                                }
+                                ci2 -= 1
+                            }
+                            if cut2 > 0 {
+                                var lroot2 = byte_slice(sroot2, 0, cut2)
+                                var cut3: I32 = 0 - 1
+                                var ci3: I32 = lroot2.len - 1
+                                while ci3 >= 0 {
+                                    if byte_at(lroot2, ci3) == 47 {
+                                        cut3 = ci3
+                                        break
+                                    }
+                                    ci3 -= 1
+                                }
+                                if cut3 > 0 {
+                                    spath = byte_slice(lroot2, 0, cut3) + "/pkgs"
+                                }
+                            }
+                        }
+                    }
+                    if spath.len > 0 {
+                        var ppath = spath
+                        if segs.len == 2 {
+                            ppath = ppath + "/" + segs[1] + "/" + segs[1]
+                        } else {
+                            var j2d: I32 = 1
+                            while j2d < segs.len {
+                                ppath = ppath + "/" + segs[j2d]
+                                j2d += 1
+                            }
+                        }
+                        ppath = ppath + ".ct"
+                        if fs_exists(ppath) {
+                            mpath = ppath
                         }
                     }
                 }
@@ -430,6 +495,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     if fs_exists(apath) {
                         mpath = apath
                     }
+                }
+                // W8902 半面:全链未命中的包形 use(≥3 段)静默收集,驱动层在
+                // 诊断输出时附加出路;单段=本地兄弟文件缺文件,维持旧口径不收集
+                if !fs_exists(mpath) && segs.len >= 3 {
+                    misses.push(segs[1])
                 }
             }
             // 已合并模块重入,分两半(2026-09-23 P1b merge-through 收紧):
@@ -550,7 +620,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         }
                         var stack2 = stack
                         stack2.push(mpath)
-                        mf = pkg_load_use_done(mf, dir, stack2, done, diags, false)
+                        mf = pkg_load_use_done(mf, dir, stack2, done, diags, false, misses)
                         if diags.len > 0 {
                             return out
                         }

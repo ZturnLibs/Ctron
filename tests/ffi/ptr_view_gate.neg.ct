@@ -1,0 +1,7 @@
+// tests/ffi/ptr_view_gate.neg.ct —— E4047:ptr_as_view 信任门(v0.9·五 裁决甲)
+// 承诺:裸指针读只发生在 #[trusted] fn 内;无标注 = 硬错(审计面落点)。
+//@ fail: E4047
+fn untrusted_read(p: &I64) -> I64 {
+    let v = ptr_as_view(p, 1)
+    return v[0]
+}
