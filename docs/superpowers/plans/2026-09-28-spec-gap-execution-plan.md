@@ -335,7 +335,7 @@
 
 ### T29 · MVP tracing GC(替换 bump-only)
 
-- **预估:** 4–5 d。**前置:** T28 + S1 Val 落库。**状态:** 待办
+- **预估:** 4–5 d。**前置:** T28 + S1 Val 落库。**状态:** 🟡 切片1 完成(0929;M1 保守根先行:超级块 mark-sweep+栈/chan/mcell/bump 四源根+spawn 退避门+CTRON_GC 旋钮;泄漏锚 cycle_reclaim 双档绿+suite/net 双档全绿;t29-gc-m1 分支待整合;余=精确帧位图 M1.5/db GC 矩阵/T30 依赖)
 - **目标:** 发射运行时新增 mark-sweep 回收器:类实例/List/String/Box 分配可回收;分配器可插拔口(env 或链接期选择:`CTRON_GC=off` 退 bump,bump 保留为 own/arena 专用——own 语义本就不进 GC)。
 - **范围:** 新 `compiler/src` 运行时模板段(或独立 `ctron_gc.c` 垫片文件,emit 打包)、`driver_emit.ct`(分配调用改 gc_alloc)、栈扫描(精确:trans 已知栈槽型别图;M1 可先保守对齐扫描但须设计注记)。
 - **要点:** ①对象头(标记位+型别描述子指针);②型别描述子表(发射期生成,字段布局/引用字段位图);③根集(栈+Global+任务栈——协程栈扫描是难点,MVP 可先 P1 阻塞运行时 supported,coro 列 M1.5);④触发点(分配量阈值)。

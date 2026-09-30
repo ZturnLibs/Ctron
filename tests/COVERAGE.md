@@ -756,3 +756,16 @@ suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_s
 - **guard.ct(9bf1e64)**:csrf 双提交(frm/csrf 薄收编,写方法 cookie vs form 令牌,败 403,通过面恒发新 cookie)+ 令牌桶限流(frm/limit 薄收编,per-key=XFF 首段[可伪造=v1 边界],in-flight shed 503,时钟注入可测,键表满 fail-open 纯面钉死);Mutex[List[BktEnt]] 原位替换写回经 429 断言自证
 - **门**:十文件 check OK + 裸跑 rc=0(mw/guard 走 canonical bin/ctron-cc + CTRON_STDPATH;seed 宿主 crypto 闭包挂死在册);suite 94/94+94/94(基线随上游演进)
 - **指针**:L6/L7=T54/T55 候选入册 spec-gap 计划(待用户裁决);压缩线两条件(x_web_compress 夹具+wire 形决策)不得滞留
+
+**2026-09-29 T29 切片1:M1 tracing GC 保守根先行落库**(spec-gap W6;§6.2/T28 M1 契约):
+- 发射运行时 mark-sweep:超级块刻切+头{sz,mk}+空闲链+空块 free;根=机器栈[帧址,
+  main 基]+chan 环+mcell 注册表+bump 区+载荷传播(list 魔数跟扫 items);list_new/Box/
+  Lu 盒入 GC 堆;spawn 置并发退避(任务栈不扫,自动回落 bump);CTRON_GC=1 开启,
+  默认 bump(浸泡后翻默认);阈值 CTRON_GC_THRESHOLD(8MB)。
+- 泄漏锚 `tests/gc/cycle_reclaim`(gc 泳道新立):自引用 List 环 200 轮,collect 后
+  live bytes 回落断言;双档 2/2。观测口 ct_gc_live_bytes/ct_gc_collect。
+- 验证:锚 2/2+suite 默认/GC 档 96/96×2+net 双矩阵 18/18×2+smoke 155/0;decl 422。
+- 登记(设计注记,任务卡保守扫描条款):①保守标记不保留纯内部指针/静态 C 全局不扫
+  (M1.5 精确帧位图=契约 §6.3 替换);②coro/并发档恒 bump(契约注记在案);③闭包 env/
+  view lane/字符串留 bump(M2 面);④S2a/语义零变更(解释臂无 GC,双臂一致)。
+- 余债:peer 本地链未含远端 T26 合并(锁 420 vs 436);本片在 t29-gc-m1 分支待整合。
