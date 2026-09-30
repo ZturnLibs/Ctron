@@ -98,6 +98,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("str_from_c")
     prel.push("clo_handle")
     prel.push("errno")
+    prel.push("ptr_as_view")
     prel.push("clo_cb2")
     prel.push("clo_cb3")
     prel.push("dlopen")

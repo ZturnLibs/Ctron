@@ -318,6 +318,12 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("byte_slice arity")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "ptr_as_view") {
+        // 裸指针读(v0.9·五 ptr_as_view)解释口径响亮拒绝:解释器的值地址
+        // 非 C ABI 对象地址;与指针形参同族口径,读通道走编译
+        panic("ptr_as_view 解释口径:裸指针读不支持(编译通道)")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "str_from_c") {
         // Str 编组(§9.6 v0.6):解释域无 C 堆,编组为恒等;发射面为 arena 深拷
         if vals.len == 1 && vals[0][0] == "S" {

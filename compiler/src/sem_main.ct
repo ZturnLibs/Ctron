@@ -78,7 +78,13 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 }
                 pi4 += 1
             }
-            walk_b(file, d[5], ns, fns, rets, diags, true)
+// E4047 门上下文:tv = 当前 fn 未标 #[trusted](信任面;trusted-on-fn 自
+// v0.9·五 合法化——含信任操作的 fn 显式入审计面)
+            var tv = true
+            if d.len >= 7 && attr_has(d[6], "trusted") {
+                tv = false
+            }
+            walk_b(file, d[5], ns, tv, fns, rets, diags, true)
             var e6 = sem_e3060(file, d, t)
             if e6 != "" {
                 diags.push(byte_slice(e6, 0, e6.len - 1))
@@ -114,7 +120,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 diags.push(byte_slice(ac, 0, ac.len - 1))
             }
         } else if t == "Test" {
-            walk_b(file, d[2], false, fns, rets, diags, true)
+            walk_b(file, d[2], false, true, fns, rets, diags, true)
             var e6b = sem_e3060(file, d, "Test")
             if e6b != "" {
                 diags.push(byte_slice(e6b, 0, e6b.len - 1))
@@ -219,10 +225,10 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 diag1(diags, "E4046.ret", nline(td), td[1])
             }
         } else if or2(td[0] == "Fn", td[0] == "FnPub") {
-            // fn 带 #[trusted]:# 分支 push anm 后补 nstamp(len 7,nline 安全)
-            if td.len > 6 && seq2(td[6], "trusted") {
-                diag1(diags, "E4040", nline(td), td[1])
-            } else if td.len > 6 && attr_is(td[6], "repr") {
+            // #[trusted] 于普通 fn(v0.9·五 信任模型放宽):合法——含信任操作
+            //(ptr_as_view)的 fn 显式入审计面;原 E4040(仅限 extern)收窄退役,
+            // 信任边界改由 E4047(ptr_as_view 无 trusted 门)表达。E4041 repr 检查保留
+            if td.len > 6 && attr_is(td[6], "repr") {
                 diag1(diags, "E4041", nline(td), td[1])
             }
             // E4044(v0.7 §9.6):变参形参仅限 extern "c" 声明

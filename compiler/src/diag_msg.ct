@@ -42,6 +42,7 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E4045.ret") { return "extern fixed-size array reference &T[N] return is unsupported (use &T[] view):%0" }
     if seq2(key, "E4046.param") { return "extern Box parameter is rejected; use &T (bare pointer, v0.9):%0.%1" }
     if seq2(key, "E4046.ret") { return "extern Box return is rejected; use &T (bare pointer, v0.9):%0" }
+    if seq2(key, "E4047") { return "ptr_as_view requires the enclosing fn to be #[trusted] (trust audit surface):%0" }
     if seq2(key, "E4040") { return "#[trusted] only allowed on extern declarations:%0" }
     if seq2(key, "E4044") { return "variadic parameter (...) only allowed on extern declarations:%0" }
     if seq2(key, "W8051") { return "repr(c) struct has a non-C-ABI field (§9.6):%0.%1" }
@@ -135,6 +136,7 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E4045.ret") { return "extern 定长数组引用 &T[N] 返回不支持(用 &T[] 视图):%0" }
     if seq2(key, "E4046.param") { return "extern Box 形参已拒收,改用 &T(裸指针,v0.9):%0.%1" }
     if seq2(key, "E4046.ret") { return "extern Box 返回已拒收,改用 &T(裸指针,v0.9):%0" }
+    if seq2(key, "E4047") { return "ptr_as_view 要求所在 fn 标注 #[trusted](信任面审计):%0" }
     if seq2(key, "E4040") { return "#[trusted] 仅限 extern 声明:%0" }
     if seq2(key, "E4044") { return "变参形参(...)仅限 extern 声明:%0" }
     if seq2(key, "W8051") { return "repr(c) struct 含非 C-ABI 字段(§9.6):%0.%1" }

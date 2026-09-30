@@ -1,0 +1,26 @@
+// tests/ffi/ptr_view —— ptr_as_view 裁决甲端到端:qsort 比较器读指针
+// 承诺:&T 裸指针 + #[trusted] fn 内 ptr_as_view(p, n) → 只读视图;
+// C 回调(cmp)读 Ctron 侧指针,Ctron 断言排序结果。
+#[trusted]
+fn icmp(a: &I32, b: &I32) -> I32 {
+    let va = ptr_as_view(a, 1)
+    let vb = ptr_as_view(b, 1)
+    let x = va[0]
+    let y = vb[0]
+    if x < y { return 0 - 1 }
+    if x > y { return 1 }
+    return 0
+}
+
+#[trusted]
+extern "c" fn my_qsort(base: &I32, n: USize, w: USize, cmp: fn(&I32, &I32) -> I32)
+
+test "qsort comparator reads pointers via ptr_as_view (trusted gate closed)" {
+    var arr: I32[5] = [30, 10, 40, 20, 50]
+    my_qsort(arr, 5, 4, icmp)
+    assert_eq(arr[0], 10)
+    assert_eq(arr[1], 20)
+    assert_eq(arr[2], 30)
+    assert_eq(arr[3], 40)
+    assert_eq(arr[4], 50)
+}
