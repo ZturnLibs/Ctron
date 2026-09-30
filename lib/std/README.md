@@ -35,9 +35,9 @@
 `use <域>.<子模块>.{...}`**(2026-09-23 起;`std.` 层仅 T1 核心,旧
 `use std.<域>.` 形态已移除)。**物理位置 = `lib/` 与 `pkgs/` 双区(宪章 v2.2,
 2026-09-30 库根布局,spec 2026-09-30-libroot-layout-design.md)**——随发域
-(net/http/tls/db/ffi + 门面三件)住 `lib/` 与 std/ 同区;registry 上游包
-(web/gui/s3/pkg + gui.ct 门面)住 `pkgs/`;安装布局 `~/.ctron/{lib,pkgs}`
-同构。loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-design.md;
+(net/http/tls/db/ffi)住 `lib/` 与 std/ 同区;registry 上游包(web/gui/s3/pkg)
+住 `pkgs/`;**门面 = `<域>/<域>.ct` 入域目录**(2026-09-30 用户裁决统一 db 形态,
+容器只持目录);安装布局 `~/.ctron/{lib,pkgs}`loader 域根三级解析见 docs/superpowers/specs/2026-09-23-domain-namespace-design.md;
 site root(①`CTRON_SITEPATH` ②库根同级 `pkgs/` 推导,W8902 带出路)见
 libroot spec。各域用法详见域内 README(`pkgs/gui/README.md` 已备:快速上手/
 能力面/入口 API/驱动器/坑位;其余域随泳道补齐)。

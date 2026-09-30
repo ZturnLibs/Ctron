@@ -27,8 +27,10 @@
 | pkgs/ | `Ctron/pkgs/{web,gui,s3,pkg}` | `~/.ctron/pkgs/<名>` | registry 上游四包 | 独立发布,用户安装 |
 | vendor/ | 仓库根顶层(不动) | `~/.ctron/vendor/<域>`(仅随发域所需子树:deflate/tls) | 第三方 C | 随需入 tarball |
 
-- std/ 全量原样迁入 `lib/std/`(模块+config.ct+README);门面归位:根级
-  `net.ct tls.ct ffi.ct` → `lib/`、`gui.ct` → `pkgs/`(门面双形态登记不修,§4.7)。
+- std/ 全量原样迁入 `lib/std/`(模块+config.ct+README);**门面 = `<域>/<域>.ct`
+  入域目录**(2026-09-30 晚用户裁决追加片:net/tls/ffi/gui 四门面 git mv 入各自
+  域目录,统一 db 既有形态,容器只持目录;loader 两段门面形映射同步改造,
+  use 语句零变化)。
 - **web 归 pkgs/**:应用层框架非基础传输面,且已具 `Ctron.ctcl` 清单=registry
   形态先行;若复审欲随发,一行 git mv 可改。
 - 装机根:`~/.ctron/{bin,lib,pkgs,vendor,share/doc}`;`cache/` 布局预留不落地
@@ -105,7 +107,12 @@
 5. **E2020 带出路纳入本波**(cold-start 配套)。
 6. **硬切文化**:旧 `~/.ctron/ctron` 用户重跑 install.sh;旧路径不命中响亮
    (W8901/E2020);pre-1.0 口径,与 e3bc073 同款。
-7. **门面双形态登记不修**(根级 vs 目录内,既有小债,非本波范围)。
+7. **门面双形态登记不修**(根级 vs 目录内,既有小债,非本波范围)——**已被裁决
+   8 推翻并收口**。
+8. **门面入域目录**(用户 2026-09-30 晚裁决):`<域>/<域>.ct` 统一 db 形态,lib/
+   pkgs/ 容器只持目录;loader 域根+site root 两段门面形映射改 `<域>/<域>.ct`
+   (目录相对/ctart/≥3 段形不动),use 消费面零变化;验收=smoke 148/0·net 18/0
+   (门面形重消费面)·gui s3_clay(site 门面+合成 use)·ctc_smoke 24/0·suite rc0。
 
 ## 5. 用户面影响摘要
 

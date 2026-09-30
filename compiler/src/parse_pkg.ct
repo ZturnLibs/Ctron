@@ -402,10 +402,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
                 mpath = dir + rel + ".ct"
-                // 域根(2026-09-23 顶层命名空间):libroot(= std 根父目录)下
-                // <首段>[/<次段>…].ct 命中则用之(gui.* / net.* / http.* / tls.* /
-                // db.*;段映射镜像 std 分支,门面 = 域同名 .ct)。目录相对优先、
-                // ctart 仍保底——realdep/S2a 既有语义零扰动;未命中保持静默。
+                // 域根(2026-09-23 顶层命名空间;2026-09-30 门面入域目录):libroot
+                //(= std 根父目录)下 <首段>[/<次段>…].ct 命中则用之(gui.* / net.* /
+                // http.* / tls.* / db.*);两段门面形映射 <域>/<域>.ct(统一 db 形态,
+                // 容器只持目录)。目录相对优先、ctart 仍保底——realdep/S2a 既有语义
+                // 零扰动;未命中保持静默。
                 if !fs_exists(mpath) {
                     var sroot = pkg_std_root(dir)
                     if sroot.len > 0 {
@@ -420,10 +421,14 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         }
                         if cut > 0 {
                             var dpath = byte_slice(sroot, 0, cut)
-                            var j2c: I32 = 1
-                            while j2c < segs.len {
-                                dpath = dpath + "/" + segs[j2c]
-                                j2c += 1
+                            if segs.len == 2 {
+                                dpath = dpath + "/" + segs[1] + "/" + segs[1]
+                            } else {
+                                var j2c: I32 = 1
+                                while j2c < segs.len {
+                                    dpath = dpath + "/" + segs[j2c]
+                                    j2c += 1
+                                }
                             }
                             dpath = dpath + ".ct"
                             if fs_exists(dpath) {
@@ -468,10 +473,14 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                     if spath.len > 0 {
                         var ppath = spath
-                        var j2d: I32 = 1
-                        while j2d < segs.len {
-                            ppath = ppath + "/" + segs[j2d]
-                            j2d += 1
+                        if segs.len == 2 {
+                            ppath = ppath + "/" + segs[1] + "/" + segs[1]
+                        } else {
+                            var j2d: I32 = 1
+                            while j2d < segs.len {
+                                ppath = ppath + "/" + segs[j2d]
+                                j2d += 1
+                            }
                         }
                         ppath = ppath + ".ct"
                         if fs_exists(ppath) {
