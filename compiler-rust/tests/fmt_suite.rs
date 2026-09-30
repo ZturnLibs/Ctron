@@ -288,7 +288,7 @@ fn cli_manifest_caps_and_remove_ops() {
 }
 
 fn run_cli(args: &[&str]) -> (String, String, Option<i32>) {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ctron"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ctronr"))
         .args(args)
         .output()
         .expect("ctron 二进制可执行");

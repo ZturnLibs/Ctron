@@ -228,8 +228,8 @@ fn section_interp(root: &PathBuf) {
 fn section_e2e(root: &PathBuf, quick: bool) {
     println!("## E. build 端到端与峰值内存(CLI 子进程)");
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let rel_bin = manifest.join("target/release/ctron");
-    let dbg_bin = manifest.join("target/debug/ctron");
+    let rel_bin = manifest.join("target/release/ctronr");
+    let dbg_bin = manifest.join("target/debug/ctronr");
     // 预算口径(§8.2):10 万行全量 debug 构建 < 5s —— 用 10k/45k 合成实测外推
     let mut cases: Vec<(&str, PathBuf)> = vec![
         ("06f_parallel.ct(并发,真实语料)", root.join("06f_parallel.ct")),

@@ -25,21 +25,21 @@
 - **`||` 逻辑或**(§4.3 第 0 层):短路、仅 Bool(prim_cat 宽松口径);零参闭包按语法位置消歧(§4.7 角色分离律)。
 - **break / continue**(§4.2):语句级、绑最近循环;E2070/E2071/E2072 三道静态门(E2071 = 越过带 Drop 局部的作用域,静态拒绝)。
 - **泛型调用点类型推断**(§3.9.1):省略 TypeArgs 从实参解出(Go 式);显式 TypeArgs 恒合法且按声明序对位检查。E2060/E2061。
-- **工具链**:`ctron test`(发现/过滤/JSON/pkg 目录)、`ctron fmt`(幂等,全语料三断言门禁);诊断码表见 `compiler/README.md` 第十二批。
+- **工具链**:`ctronr test`(发现/过滤/JSON/pkg 目录)、`ctronr fmt`(幂等,全语料三断言门禁);诊断码表见 `compiler/README.md` 第十二批。
 
 设计全文:`docs/superpowers/specs/2026-09-12-v07-operator-constitution.md`;语料:`tests/fixtures/`(R 线本地,移植自举线时提升共享)。
 
 ## 命令行
 
 ```
-ctron lex <file>              # 词法诊断
-ctron parse <file> [--ast]    # 解析诊断 + 确定性 AST 文本(跨实现差分产物)
-ctron check <file|包目录> [--profile bare|web|full]   # 目录 = Ctron.toml + src/*.ct 包级检查
-ctron run <file>              # 解释器执行全部 test 块(有 fn main 则运行 main,D1)
-ctron test <file|包目录> [--filter pat] [--format=json] [--deterministic]  # R-P2c:测试发现/过滤/JSON 报告/panic 标记
-ctron fmt <file|包目录> [-w|--check]      # R-P2d:规范格式化(token 流重排;规范见 docs/fmt-spec.md)
-ctron trans <file> [--with f.ct ...] [-o out.c]   # 转译为 C11(gnu11),多文件合并
-ctron build <file> [--with f.ct ...] [-o bin]     # trans + cc 一行得到原生二进制
+ctronr lex <file>              # 词法诊断
+ctronr parse <file> [--ast]    # 解析诊断 + 确定性 AST 文本(跨实现差分产物)
+ctronr check <file|包目录> [--profile bare|web|full]   # 目录 = Ctron.toml + src/*.ct 包级检查
+ctronr run <file>              # 解释器执行全部 test 块(有 fn main 则运行 main,D1)
+ctronr test <file|包目录> [--filter pat] [--format=json] [--deterministic]  # R-P2c:测试发现/过滤/JSON 报告/panic 标记
+ctronr fmt <file|包目录> [-w|--check]      # R-P2d:规范格式化(token 流重排;规范见 docs/fmt-spec.md)
+ctronr trans <file> [--with f.ct ...] [-o out.c]   # 转译为 C11(gnu11),多文件合并
+ctronr build <file> [--with f.ct ...] [-o bin]     # trans + cc 一行得到原生二进制
                                                  # (自动链接同包 c_src/*.c,FFI)
 ```
 
