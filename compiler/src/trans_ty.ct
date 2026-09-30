@@ -834,7 +834,10 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Float" { return "f" }
     if t == "Ident" {
         if seq2(e[1], "None") { return "R" }
-        if ct_env_has(env, e[1]) { return ct_env_ty(env, e[1]) }
+        // T55:P<内> 是存储码非值型别码——值型别查询剥 P 按内值(不剥则闭包体内
+        // `tag + ":"` 落裸 Ps+…分臂失败);裸存储消费方(Ident/Assign 发射走
+        // ct_env_ty 原码)不受影响
+        if ct_env_has(env, e[1]) { return ct_strip_p(ct_env_ty(env, e[1])) }
         // 全局 const:按注解型别(定义由 driver_emit 折叠直出)
         var ccn: I32 = 1
         while ccn < file.len {
@@ -1136,7 +1139,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // P0-3:fn 值调用(形参 env 命中 F/G 码)→ 返回型别取 #fret 侧条目
             //(ct_fn 绑定;聚合返回 → u:<名>,链上成员读/return 位全靠它);无条目 → 标量旧形态
             if ct_env_has(env, cal[1]) {
-                var cvt = ct_env_ty(env, cal[1])
+                // T55:fn 值捕获 P 绑(PF<arity>)同剥——否则体内 next(r) 的 #fret
+                // 返回型解析漏臂(中间件形态)
+                var cvt = ct_strip_p(ct_env_ty(env, cal[1]))
                 if or2(byte_at(cvt, 0) == 70, byte_at(cvt, 0) == 71) {
                     var fk2 = "#fret:" + cal[1]
                     if ct_env_has(env, fk2) { return ct_env_ty(env, fk2) }

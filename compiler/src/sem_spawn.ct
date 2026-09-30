@@ -25,6 +25,17 @@ fn cle(file: List[Str], e: List[Str], names: List[Str]) {
         cle(file, e[1], names)
         return
     }
+    // T55 值位置闭包:struct 字面量穿透——字段值位(LField[名@1, 值@2])同样捕获
+    //(探针 tag 恰在 Resp{body: tag+…} 字段值位,此前捕获集漏收 → 空 env + 体内裸名悬空)
+    if t == "StructLit" {
+        var fl = e[2]
+        var i4: I32 = 1
+        while i4 < fl.len {
+            cle(file, fl[i4][2], names)
+            i4 += 1
+        }
+        return
+    }
     if t == "Binary" {
         cle(file, e[2], names)
         cle(file, e[3], names)

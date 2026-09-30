@@ -1,0 +1,31 @@
+// T55 冒烟:need_login 中间件形态——闭包捕获 fn 值(next)+ 返回闭包(双管齐下)
+struct Req { p: Str }
+struct Resp { body: Str }
+
+fn app(r: Req) -> Resp {
+    return Resp { body: "app:" + r.p }
+}
+
+fn need_login(next: fn(Req) -> Resp) -> fn(Req) -> Resp {
+    return |r| {
+        if r.p == "/private" {
+            return Resp { body: "401" }
+        }
+        return next(r)
+    }
+}
+
+fn main() -> I32 {
+    let mw = need_login(app)
+    let a = mw(Req { p: "/open" })
+    println(a.body)
+    let b = mw(Req { p: "/private" })
+    println(b.body)
+    return 0
+}
+
+test "need_login middleware" {
+    let mw = need_login(app)
+    assert_eq(mw(Req { p: "/open" }).body, "app:/open")
+    assert_eq(mw(Req { p: "/private" }).body, "401")
+}
