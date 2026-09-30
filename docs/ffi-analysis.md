@@ -142,6 +142,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 - **切片 1(c386078)**:`&T` 形参 p<ec> 码(ct_ty_code Ref 非 Slice 非 trait 臂;ct_ctype 组合式 元素 C 型 + `*`,标量/u:/s/嵌套 p 自然成立);调用点实参取址(实参写变量名,发射面自动 `&`,限 Ident/成员链左值);E4045 收窄至 `&T[N]`(不可表示,用 `&T[]` 视图);解释桥裸指针形参响亮拒绝——**对设计笔记的修正**:笔记原稿拟"p: 帧 long 直传",落码时证伪——解释器的值地址不是 C ABI 对象地址,直传不成立,故为响亮 panic(指针通道走编译,run.sh 行为夹具的 `bin run` = 编译执行)。
 - **切片 2(本提交)**:返回位放行 + **passthrough**(实参已是指针值——另一 extern 的 `&T` 返回——直传不取址;消费惯用法 `let p = get_ptr(); consume(p)`);cimport `T*` → `&T`、`void*` → `&U8`(字节视角)、多级指针不支持;**cimport struct/union typedef 名表**(名|名 自映射——按值形参/返回此前一直被占位跳过,名表补齐后 `SPkt a`/`SPkt*` 全通);Box 收口 **E4046**(`Box[T]` extern 形参/返回硬错改道 `&T`——ABI 虽即 `T*`,Box 语义为 owned 堆盒,所有权谎言由 W8052 警示升级硬错;W8052 表同步去 Box)。
 - **施工发现**:①`ct_fn_ret` 的 `!= Named → i` 守卫把 Ref 返回塌成 int32(与形参双标——形参走 ct_ty_code 直通)——守卫去除,型节点统一交 ct_ty_code;②or2 括号坑复现:W8052 表删 Box 漏删一层闭括号(7 尾括号应为 6),静默成 E1001 块缺少。
+- **v0.9·四 追加(同日继续批)**:①ArrLit 字段位——StructLit 两处循环(普通+泛型)字段位 ArrLit 出 C 数组初始化器内嵌 designated init,struct 字面量构造数组字段解锁(此前仅 let 初值位,登记面销);②C 宿主同步债销——sem.c 补 ffi_bare_ref/ffi_arr_ref/ffi_box 三判定与 E4045/E4046 拦截面(&T 宿主口径=响亮拒绝"宿主发射面待对齐",&T[] 视图与 &Trait 放行,Box 单发 E4046,W8052 表同步去 Box;&T[N] 单发收窄口径)。宿主 run 口径绕 sem(rt 直跑)为宿主既有形态,诊断走 check 口径——与宿主七项诊断同管道。
 - 锚定:`tests/ffi/ptr_param/`(标量写透/双指针交换/struct 指针变异/gethostname 真libc)、`tests/ffi/cimport/`(SPkt* 返回 + passthrough)、`tests/ffi/box_ext.neg.ct`。
 - **二期候选(未实施)**:受 `#[trusted]` 审计的解引用原语(选项 B);`const`/可变性标注(现靠文档口径);cimport 多级指针。
 

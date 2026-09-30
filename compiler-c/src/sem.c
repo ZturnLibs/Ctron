@@ -1499,7 +1499,7 @@ static int ffi_nonabi(const cty* t, int depth) {
             return 1;
         }
         if (strcmp(h, "List") == 0 || strcmp(h, "Atomic") == 0
-            || strcmp(h, "Result") == 0 || strcmp(h, "Box") == 0
+            || strcmp(h, "Result") == 0
             || strcmp(h, "Mutex") == 0 || strcmp(h, "Channel") == 0
             || strcmp(h, "Global") == 0) return 1;
         return 0;
@@ -1510,6 +1510,29 @@ static int ffi_nonabi(const cty* t, int depth) {
     if (t->kind == TY_ARRAY)
         return ffi_nonabi(t->elem, depth + 1);
     return 0;
+}
+
+/* &T 裸引用(v0.9·三 宿主同步):宿主发射面无裸指针码(自举 p<ec> 已放行,
+   宿主待对齐)——响亮拒绝优于静默塌缩 int;&Trait 特征对象与 &T[] 视图放行 */
+static int ffi_bare_ref(const cfile* f, const cty* t) {
+    if (t->kind != TY_REF || !t->sub) return 0;
+    if (t->sub->kind == TY_SLICE) return 0;
+    if (t->sub->kind == TY_ARRAY) return 0; /* &T[N] 归 ffi_arr_ref 单报 */
+    if (t->sub->kind == TY_NAMED && t->sub->npath > 0) {
+        if (find_trait(f, t->sub->path[0])) return 0;
+    }
+    return 1;
+}
+
+/* &T[N](E4045 收窄口径):定长数组引用不可表示,用 &T[] 视图 */
+static int ffi_arr_ref(const cty* t) {
+    return t->kind == TY_REF && t->sub && t->sub->kind == TY_ARRAY;
+}
+
+/* Box[T](E4046 收口):extern 外参改道 &T(自举同批) */
+static int ffi_box(const cty* t) {
+    if (t->kind != TY_NAMED || t->npath == 0) return 0;
+    return strcmp(t->path[0], "Box") == 0;
 }
 
 static void check_ffi_decls(ck* k, const cfile* f) {
@@ -1532,9 +1555,24 @@ static void check_ffi_decls(ck* k, const cfile* f) {
                     if (pp->ty && ffi_nonabi(pp->ty, 0))
                         diag(k, "W8052", "extern 形参非 C-ABI 类型(§9.6):%s.%s",
                              fn->name, pp->name ? pp->name : "?");
+                    if (pp->ty && ffi_bare_ref(f, pp->ty))
+                        diag(k, "E4045", "extern 裸引用形参 &T 宿主不支持(自举已放行 p<ec>;宿主发射面待对齐,用 &T[] 视图):%s.%s",
+                             fn->name, pp->name ? pp->name : "?");
+                    if (pp->ty && ffi_arr_ref(pp->ty))
+                        diag(k, "E4045", "extern 定长数组引用 &T[N] 不支持(用 &T[] 视图):%s.%s",
+                             fn->name, pp->name ? pp->name : "?");
+                    if (pp->ty && ffi_box(pp->ty))
+                        diag(k, "E4046", "extern Box 形参已拒收,改用 &T(裸指针,v0.9):%s.%s",
+                             fn->name, pp->name ? pp->name : "?");
                 }
                 if (fn->ret && ffi_nonabi(fn->ret, 0))
                     diag(k, "W8052", "extern 返回非 C-ABI 类型(§9.6):%s", fn->name);
+                if (fn->ret && ffi_bare_ref(f, fn->ret))
+                    diag(k, "E4045", "extern 裸引用返回 &T 宿主不支持(自举已放行;宿主待对齐,用 &T[] 视图):%s", fn->name);
+                if (fn->ret && ffi_arr_ref(fn->ret))
+                    diag(k, "E4045", "extern 定长数组引用 &T[N] 返回不支持(用 &T[] 视图):%s", fn->name);
+                if (fn->ret && ffi_box(fn->ret))
+                    diag(k, "E4046", "extern Box 返回已拒收,改用 &T(裸指针,v0.9):%s", fn->name);
             }
         } else if (d->kind == D_STRUCT) {
             if (has_attr(d->strukt.attrs, d->strukt.nattrs, "repr")) {
