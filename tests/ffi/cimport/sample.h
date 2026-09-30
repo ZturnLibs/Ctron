@@ -44,4 +44,13 @@ extern SampleArr samplearr_make(int64_t total);
 extern int64_t samplearr_score_sum(SampleArr a);
 extern int64_t samplearr_sizeof(void);
 
+/* 裸指针面(v0.9·三 路径 1):T* → &T、返回 SPkt* → &SPkt、passthrough */
+typedef struct {
+    int64_t id;
+} SPkt;
+
+extern void spkt_fill(int64_t *p);
+extern SPkt *spkt_pick(int64_t id);
+extern int64_t spkt_peek(const SPkt *p);
+
 #endif

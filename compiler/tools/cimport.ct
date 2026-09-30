@@ -274,12 +274,12 @@ fn cimp_sig_of(tds: List[Str], nm: Str) -> Str {
 fn cimp_ty(t: Str, tds: List[Str]) -> Str {
     var tk = cimp_toks(t)
     var base = List[Str]()
-    var star = false
+    var stars: I32 = 0
     var j: I32 = 0
     while j < tk.len {
         var w = tk[j]
         if w == "*" {
-            star = true
+            stars += 1
         } else if !((w == "const") || (w == "volatile") || (w == "restrict") || (w == "signed")) {
             base.push(w)
         }
@@ -294,9 +294,22 @@ fn cimp_ty(t: Str, tds: List[Str]) -> Str {
         nm = nm + base[j]
         j += 1
     }
-    if star {
+    if stars > 0 {
+        // 指针映射(v0.9·三 裁决:路径 1 选项 A):单级 `char*` → Str(串惯例
+        // 不变)、`void*` → &U8(字节视角)、`T*` → &T(裸指针形参/返回/字段,
+        // 选项 A 只传不解);多级指针不支持
+        if stars > 1 {
+            return ""
+        }
         if (nm == "char") {
             return "Str"
+        }
+        if (nm == "void") {
+            return "&U8"
+        }
+        var et = cimp_ty(nm, tds)
+        if et.len > 0 {
+            return "&" + et
         }
         return ""
     }
@@ -867,6 +880,47 @@ fn cimp_ctron_align(ty: Str) -> I32 {
     return 0
 }
 
+// struct/union typedef 名提取(v0.9·三 名表):有花括号的声明,尾词标识符
+// 即名(复用 cimp_struct 取名口径;enum/函数 typedef 另有路径,此处宽收
+// 不冲突——tds 表先命中者胜)
+fn cimp_typedef_name(item: Str) -> Str {
+    var lb = -1
+    var rb = -1
+    var dep: I32 = 0
+    var i: I32 = 0
+    while i < item.len {
+        var c = byte_at(item, i)
+        if c == 123 {
+            dep += 1
+            if lb < 0 {
+                lb = i
+            }
+        } else if c == 125 {
+            dep -= 1
+            if dep == 0 && rb < 0 {
+                rb = i
+            }
+        }
+        i += 1
+    }
+    if lb < 0 || rb < 0 || rb < lb {
+        return ""
+    }
+    var tail = cimp_trim(byte_slice(item, rb + 1, item.len))
+    var tt = cimp_toks(tail)
+    if tt.len == 0 {
+        return ""
+    }
+    var nm = tt[tt.len - 1]
+    if nm == ";" && tt.len > 1 {
+        nm = tt[tt.len - 2]
+    }
+    if !cimp_is_ident_start(byte_at(nm, 0)) || cimp_is_tyword(nm) {
+        return ""
+    }
+    return nm
+}
+
 // enum typedef 名探测(tail 尾词;无 → "")
 fn cimp_enum_typedef_name(item: Str) -> Str {
     var hasenum = false
@@ -1425,6 +1479,17 @@ fn main() -> I32 {
                     }
                 }
                 i += 1
+            }
+            // struct/union typedef 名表(v0.9·三):名|名 自映射——按值形参/返回
+            // 出原名,指针 `X*` 经指针映射出 &X(裸指针裁决路径 1)。先于 item
+            // 映射建全(自引用成员可见)
+            var si2: I32 = 0
+            while si2 < items.len {
+                var snm2 = cimp_typedef_name(items[si2])
+                if snm2.len > 0 {
+                    tds.push(snm2 + "|" + snm2)
+                }
+                si2 += 1
             }
             i = 0
             while i < items.len {

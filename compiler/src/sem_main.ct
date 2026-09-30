@@ -195,17 +195,28 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                 }
                 // E4045 收窄(v0.9·三 裁决落码):&T 裸指针形参已放行(p<ec> 码,
                 // 路径 1 选项 A——只过界不解引用);仍拦 &T[N] 定长数组引用
-                //(不可表示,用 &T[] 视图)。返回位放行随切片 2
+                //(不可表示,用 &T[] 视图)
                 if epr[0] == "Param" && ext_arr_ref_ty(epr[3]) {
                     diag2(diags, "E4045.param", nline(td), td[1], epr[2])
+                }
+                // E4046(v0.9·三 Box 收口):&T 已可用,Box 外参改道硬错
+                if epr[0] == "Param" && ext_box_ty(epr[3]) {
+                    diag2(diags, "E4046.param", nline(td), td[1], epr[2])
                 }
                 ek += 1
             }
             if ext_nonabi_ty(td[4]) {
                 diag1(diags, "W8052.ret", nline(td), td[1])
             }
-            if ext_bare_ref_ty(file, td[4]) {
+            // 返回位随切片 2 放行:&T 返回合法(p<ec> → T*,选项 A 只传不解,
+            // 消费 = passthrough 给同型形参);仍拦 &T[N]
+            if ext_arr_ref_ty(td[4]) {
                 diag1(diags, "E4045.ret", nline(td), td[1])
+            }
+            // E4046(v0.9·三 Box 收口):Box[T] extern 形参/返回 = 所有权谎言
+            //(ABI 虽即 T*,Box 语义为 owned 堆盒)——&T 已可用,硬错改道
+            if ext_box_ty(td[4]) {
+                diag1(diags, "E4046.ret", nline(td), td[1])
             }
         } else if or2(td[0] == "Fn", td[0] == "FnPub") {
             // fn 带 #[trusted]:# 分支 push anm 后补 nstamp(len 7,nline 安全)
@@ -344,25 +355,6 @@ fn attr_arg(v: Str) -> Str {
     return ""
 }
 
-// &T 单引用检测(v0.9 §二·七):Ref 非 Slice(&T[] 视图)/非 trait 对象(胖指针)
-// = 裸引用。v0.9·三 起形参位合法(p<ec> 码);本判定现仅服务返回位闸门
-// (切片 2 放行)与历史口径
-// trait 判定用 sem 域 is_trait(sem 拼接序先于 trans,ct_is_trait 不可前引)
-fn ext_bare_ref_ty(file: List[Str], ty: List[Str]) -> Bool {
-    if ty[0] != "Ref" {
-        return false
-    }
-    if ty.len > 1 && ty[1].len > 0 {
-        if ty[1][0] == "Slice" {
-            return false
-        }
-        if ty[1][0] == "Named" && is_trait(file, ty[1][1]) {
-            return false
-        }
-    }
-    return true
-}
-
 // &T[N] 定长数组引用(v0.9·三 E4045 收窄面):Ref 内层 ArrayT——
 // 裸指针码不覆盖的不可表示形态,用 &T[] 视图替代
 fn ext_arr_ref_ty(ty: List[Str]) -> Bool {
@@ -370,6 +362,11 @@ fn ext_arr_ref_ty(ty: List[Str]) -> Bool {
         return false
     }
     return ty.len > 1 && ty[1].len > 0 && ty[1][0] == "ArrayT"
+}
+
+// Box[T] 检测(v0.9·三 E4046 收口面):extern 形参/返回的 Box 外参改道 &T
+fn ext_box_ty(ty: List[Str]) -> Bool {
+    return ty.len > 1 && ty[0] == "Named" && seq2(ty[1], "Box")
 }
 
 // C-ABI 类型治理(§9.6 v0.6):容器/能力类型不得跨 extern 边界(镜像 Rust
@@ -388,7 +385,8 @@ fn ext_nonabi_ty(ty: List[Str]) -> Bool {
             }
             return true
         }
-        if or2(seq2(h, "List"), or2(seq2(h, "Atomic"), or2(seq2(h, "Result"), or2(seq2(h, "Box"), or2(seq2(h, "Mutex"), or2(seq2(h, "Channel"), seq2(h, "Global"))))))) {
+        // Box 不在此列(v0.9·三 E4046 收口:硬错改道,警示面不再重复)
+        if or2(seq2(h, "List"), or2(seq2(h, "Atomic"), or2(seq2(h, "Result"), or2(seq2(h, "Mutex"), or2(seq2(h, "Channel"), seq2(h, "Global")))))) {
             return true
         }
         return false

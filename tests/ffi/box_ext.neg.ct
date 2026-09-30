@@ -1,0 +1,10 @@
+// tests/ffi/box_ext.neg.ct —— E4046:Box[T] extern 形参拒收(v0.9·三 Box 收口)
+// 承诺:&T 裸指针已可用,Box 外参(所有权谎言)由 W8052 警示升级硬错改道。
+//@ fail: E4046
+#[repr(c)]
+struct Pkt {
+    var id: I64
+}
+
+#[trusted]
+extern "c" fn takes_box(p: Box[Pkt]) -> I64

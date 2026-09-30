@@ -23,3 +23,9 @@ int64_t samplearr_score_sum(SampleArr a) {
     return (int64_t)a.scores[0] + a.scores[1] + a.scores[2] + a.scores[3];
 }
 int64_t samplearr_sizeof(void) { return (int64_t)sizeof(SampleArr); }
+
+/* 裸指针面(v0.9·三):解引用只在 C 侧,Ctron 只传 */
+void spkt_fill(int64_t *p) { *p = 7; }
+static SPkt g_sp = { 5 };
+SPkt *spkt_pick(int64_t id) { g_sp.id = id; return &g_sp; }
+int64_t spkt_peek(const SPkt *p) { return p->id; }

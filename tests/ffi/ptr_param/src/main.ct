@@ -21,6 +21,15 @@ extern "c" fn pkt_bump(p: &Pkt)
 #[trusted]
 extern "c" fn pkt_id(p: &Pkt) -> I64
 
+#[trusted]
+extern "c" fn gethostname(name: &U8, len: USize) -> I32
+
+test "libc gethostname through &U8 buffer (real-world pointer ABI)" {
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert_eq(gethostname(buf, 64), 0)
+    assert(byte_at(buf, 0) != 0)
+}
+
 test "scalar pointer write-through (C derefs, Ctron asserts effect)" {
     var v: I64 = 7
     fill(v)

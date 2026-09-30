@@ -401,7 +401,8 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
             var r = d[4]
             if r[0] == "None" { return "v" }
             if r[0] == "FnType" { return ct_ty_code(r, file) }
-            if r[0] != "Named" { return "i" }
+            // 守卫去除(v0.9·三):原 `!= Named → i` 把 Ref 返回(&T 裸指针,
+            // p<ec> 码)塌成 int32;型节点统一交 ct_ty_code(各形态有臂)
             return ct_ty_code(r, file)
         }
         i += 1

@@ -135,13 +135,15 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | **cimport union 升级 U8[N]** | 定长数组字段修复解锁:缓冲 `var raw: U8[N]`,N 按 C 公式精确计算(最大成员大小按联合对齐补齐)= C sizeof(union),互证从窗口断言收紧为**等值**;字节可寻址(byte_at 配方读成员);成员表含数组成员(大小/对齐表按元素折叠)。锚定:Vals\{double;char[12];long} → N=16 |
 | **E4045 裸引用拦截** | 探针实证 `&T`/`&Pkt` 单引用 extern 形参**静默塌缩 int32**(错 ABI,比不支持更糟);现 sem 硬错拦截(形参/返回双侧,`&T[]` 视图与 `&Trait` 胖指针放行;trait 判定用 sem 域 is_trait——拼接序先于 trans,ct_is_trait 不可前引)。语料零存量,拦截零破坏。锚定:`tests/ffi/bare_ref.neg.ct`。**C 宿主同步登记待办**(并发线占 compiler-c,热树纪律暂缓) |
 
-### 裸指针能力扩展设计笔记(呈裁决,未实施)
+### 裸指针能力扩展(✅ 2026-09-29 用户裁决:路径 1 + 选项 A,已落码)
 
-extern 边界现无裸指针形态:`&T` 单引用已被 E4045 拦截,唯一指针通道是 `&T[]` 视图(`(ptr,len)` 复合,非裸指针 ABI)。cimport 对 `void*`/`struct X*` 形参因此只能占位整跳。若要补齐,候选路径(按"能力优先于 hack"裁决框架,须跨宿主 ABI 评审):
+裁决记录:三路径(路径 1 `&T` 边界语义 = `T*` / 路径 2 opaque Ptr 内建 / 路径 3 维持现状)呈裁决后,用户按推荐拍板**路径 1 + 选项 A(指针只过界不解引用)**。两切片落库:
 
-1. **`&T` 边界语义 = `T*`**(推荐候选):给 ct_ty_code 增加 `p<ec>` 码,`ct_abi_ctype` 映射裸 `T*`;sem E4045 转放行(限定 extern 位);解释桥加 `p:` 帧(指针按 long 直传)。Rust `&T as extern`、Zig `*T` 同型。
-2. **opaque Ptr 内建**:新原始型 `Ptr`(void* 等价),`as` 换算;更 Rust-unsafe 风味,但丢失指向型信息。
-3. **维持现状**:cimport 占位 + 手写垫片(现状口径,零成本但 POSIX 头可消费面受限)。
+- **切片 1(c386078)**:`&T` 形参 p<ec> 码(ct_ty_code Ref 非 Slice 非 trait 臂;ct_ctype 组合式 元素 C 型 + `*`,标量/u:/s/嵌套 p 自然成立);调用点实参取址(实参写变量名,发射面自动 `&`,限 Ident/成员链左值);E4045 收窄至 `&T[N]`(不可表示,用 `&T[]` 视图);解释桥裸指针形参响亮拒绝——**对设计笔记的修正**:笔记原稿拟"p: 帧 long 直传",落码时证伪——解释器的值地址不是 C ABI 对象地址,直传不成立,故为响亮 panic(指针通道走编译,run.sh 行为夹具的 `bin run` = 编译执行)。
+- **切片 2(本提交)**:返回位放行 + **passthrough**(实参已是指针值——另一 extern 的 `&T` 返回——直传不取址;消费惯用法 `let p = get_ptr(); consume(p)`);cimport `T*` → `&T`、`void*` → `&U8`(字节视角)、多级指针不支持;**cimport struct/union typedef 名表**(名|名 自映射——按值形参/返回此前一直被占位跳过,名表补齐后 `SPkt a`/`SPkt*` 全通);Box 收口 **E4046**(`Box[T]` extern 形参/返回硬错改道 `&T`——ABI 虽即 `T*`,Box 语义为 owned 堆盒,所有权谎言由 W8052 警示升级硬错;W8052 表同步去 Box)。
+- **施工发现**:①`ct_fn_ret` 的 `!= Named → i` 守卫把 Ref 返回塌成 int32(与形参双标——形参走 ct_ty_code 直通)——守卫去除,型节点统一交 ct_ty_code;②or2 括号坑复现:W8052 表删 Box 漏删一层闭括号(7 尾括号应为 6),静默成 E1001 块缺少。
+- 锚定:`tests/ffi/ptr_param/`(标量写透/双指针交换/struct 指针变异/gethostname 真libc)、`tests/ffi/cimport/`(SPkt* 返回 + passthrough)、`tests/ffi/box_ext.neg.ct`。
+- **二期候选(未实施)**:受 `#[trusted]` 审计的解引用原语(选项 B);`const`/可变性标注(现靠文档口径);cimport 多级指针。
 
 ### v0.9 顺带发现/登记
 
