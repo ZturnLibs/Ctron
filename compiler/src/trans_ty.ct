@@ -266,10 +266,12 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         }
     }
     if nt[1] == "List" {
-        // List[I32] → LI(元素槽 int);List[<struct>] → Lu:<名>(T14-② 元素码贯通:
-        // push 装箱/索引取回按元素型;其余维持 "L"(char* 槽)不动)
+        // List[I32] → LI(元素槽 int);List[I64] → L6(T54:元素槽 int64 经 long 中转,
+        // 消「List[I64] 索引读静默截断」在册债);List[<struct>] → Lu:<名>(T14-② 元素
+        // 码贯通:push 装箱/索引取回按元素型);其余维持 "L"(char* 槽)不动
         if nt[2].len > 1 {
             if nt[2][1][0] == "Named" && nt[2][1][1] == "I32" { return "LI" }
+            if nt[2][1][0] == "Named" && nt[2][1][1] == "I64" { return "L6" }
             if nt[2][1][0] == "Named" && ct_is_struct(file, nt[2][1][1]) {
                 return "Lu:" + nt[2][1][1]
             }
@@ -284,7 +286,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
 // 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
 // Phase 4 并发:g=ct_scope* / k=ct_task* / h=ct_chan* / R=ct_res(Result 值) /
 //   m<内>=Mutex 单元(ct_mcell_<内>*)/ P<内>=内值指针伪码(with_mut 体内 Ident 解引用)
-// List 码族:T14-② —— "L"(char* 槽)/"LI"(int 槽)/"Lu:<名>"(struct 装箱槽)
+// List 码族:T14-② + T54 —— "L"(char* 槽)/"LI"(int 槽)/"L6"(int64 槽)/"Lu:<名>"(struct 装箱槽)
 fn ct_is_lcode(code: Str) -> Bool {
     if code.len > 3 {
         if byte_slice(code, 0, 3) == "Lu:" {
@@ -292,6 +294,13 @@ fn ct_is_lcode(code: Str) -> Bool {
         }
     }
     return false
+}
+
+// T54:定型元素 List 码族(LI/L6/Lu:)——容器 C 型同为 ctron_list*,元素槽按码取回
+fn ct_is_tlcode(code: Str) -> Bool {
+    if code == "LI" { return true }
+    if code == "L6" { return true }
+    return ct_is_lcode(code)
 }
 
 fn ct_ctype(code: Str) -> Str {
@@ -316,7 +325,7 @@ fn ct_ctype(code: Str) -> Str {
         // 元素码任意合法型——标量/struct u:/Str s/嵌套 p 均自然成立)
         return ct_ctype(byte_slice(code, 1, code.len)) + "*"
     }
-    if or2(code == "L", or2(code == "LI", ct_is_lcode(code))) { return "ctron_list*" }
+    if or2(code == "L", ct_is_tlcode(code)) { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "7" { return "uint64_t" }
@@ -781,6 +790,8 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
                                     if seq2(fty3[2][1][1], tpsg[k4]) {
                                         if vc == "LI" {
                                             slots[k4] = "i"
+                                        } else if vc == "L6" {
+                                            slots[k4] = "6"
                                         } else {
                                             slots[k4] = "s"
                                         }
@@ -958,6 +969,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return a_elem(ot)
         }
         if ot == "LI" { return "i" }
+        // T54:List[I64] 索引产 I64(码 6;曾落 "N" 致 == 误走 strcmp 段错误)
+        if ot == "L6" { return "6" }
         // Lu: 族(T14-②):索引产元素型(去 L 前缀)
         if ct_is_lcode(ot) { return byte_slice(ot, 1, ot.len) }
         if or2(ot == "L", ot == "N") { return "N" }
@@ -999,15 +1012,17 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             if base[0] == "Ident" && base[1] == "List" {
-                // List[I32] → LI(元素槽 int);List[<struct>] → Lu:<名>(T14-②);
-                // 型参实参经 env 替换码(单态化体);其余 → L
+                // List[I32] → LI(元素槽 int);List[I64] → L6(T54);List[<struct>] →
+                // Lu:<名>(T14-②);型参实参经 env 替换码(单态化体);其余 → L
                 if cal[2].len > 1 {
                     if cal[2][1][0] == "Named" {
                         if seq2(cal[2][1][1], "I32") { return "LI" }
+                        if seq2(cal[2][1][1], "I64") { return "L6" }
                         if ct_is_struct(file, cal[2][1][1]) { return "Lu:" + cal[2][1][1] }
                         if ct_env_has(env, cal[2][1][1]) {
                             var ec7 = ct_env_ty(env, cal[2][1][1])
                             if seq2(ec7, "i") { return "LI" }
+                            if seq2(ec7, "6") { return "L6" }
                         }
                     }
                 }
@@ -1018,6 +1033,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if cal[2].len > 1 {
                     if cal[2][1][0] == "Named" {
                         if seq2(cal[2][1][1], "I32") { return "LI" }
+                        if seq2(cal[2][1][1], "I64") { return "L6" }
                     }
                 }
                 return "L"
@@ -1437,7 +1453,7 @@ fn ct_field_code_inst(file: List[Str], ty: List[Str], snm: Str, encs: Str) -> St
             }
             k += 1
         }
-        // 嵌套型参下钻:List[K] 字段按元素实参码定型别槽(K→i → LI;其余 → L)
+        // 嵌套型参下钻:List[K] 字段按元素实参码定型别槽(K→i → LI;K→6 → L6;其余 → L)
         if seq2(ty[1], "List") && ty[2].len > 1 {
             if ty[2][1][0] == "Named" {
                 var k2: I32 = 0
@@ -1445,6 +1461,7 @@ fn ct_field_code_inst(file: List[Str], ty: List[Str], snm: Str, encs: Str) -> St
                     if seq2(ty[2][1][1], tps[k2]) {
                         var elc = ct_inst_decode(byte_slice(encs, k2, k2 + 1))
                         if seq2(elc, "i") { return "LI" }
+                        if seq2(elc, "6") { return "L6" }
                         return "L"
                     }
                     k2 += 1

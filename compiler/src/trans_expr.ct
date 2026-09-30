@@ -122,11 +122,24 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 ai = 0
                 while ai < pcs5.len {
                     if ai > 0 { acall = acall + ", " }
-                    acall = acall + "_cbp" + ai.to_string()
+                    // T54:struct 形参解盒——#fret 间接调用位 ct_wrap_i 对 u: 码传堆盒
+                    // 指针(trans_conc ct_wrap_i),蹦床按声明型解引用值拷贝;裸 ct_i
+                    // 直传 struct 按值形参为非法 C(探针 p3:incompatible type t_Req)
+                    var cbp5 = pcs5[ai]
+                    if cbp5.len > 2 && byte_slice(cbp5, 0, 2) == "u:" {
+                        acall = acall + "*(t_" + byte_slice(cbp5, 2, cbp5.len) + "*)(long)_cbp" + ai.to_string()
+                    } else {
+                        acall = acall + "_cbp" + ai.to_string()
+                    }
                     ai += 1
                 }
                 var aret = ct_fn_ret(file, e[1])
-                if aret.len > 1 && byte_at(aret, 0) == 71 {
+                if aret.len > 2 && byte_slice(aret, 0, 2) == "u:" {
+                    // T54:struct 返回经 union 低 8 字节过 ct_i 槽——调用点 #fret 按
+                    // 返回型原型化读回同 8 字节(Str 单字段 struct 即此;>8 字节返回型
+                    // 超 ct_i 单槽,既有挂账)。裸 struct→ct_i 强转非法 C(p3 探针实证)
+                    println("return (\{ union \{ " + ct_ctype(aret) + " _s; ct_i _i; } _ru; _ru._s = t_" + e[1] + "(" + acall + "); _ru._i; });")
+                } else if aret.len > 1 && byte_at(aret, 0) == 71 {
                     println("return (ct_i)(long)t_" + e[1] + "(" + acall + ");")
                 } else {
                     println("return (ct_i)t_" + e[1] + "(" + acall + ");")
@@ -275,6 +288,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // List[I32] 索引:槽经 long 取回标量
             return "((int32_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
         }
+        if ot == "L6" {
+            // T54:List[I64] 索引:槽经 long 全宽取回(消「索引读静默截断」在册债)
+            return "((int64_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
+        }
         if or2(ot == "L", ot == "N") {
             // List/节点索引:元素槽即 char*(节点 = 动态转型的 ctron_list*)
             return "((const char*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
@@ -306,7 +323,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return a_count(ot4)
             }
             var ot3 = ct_typeof(e[1], env, file)
-            if or2(ot3 == "L", or2(ot3 == "LI", ct_is_lcode(ot3))) {
+            if or2(ot3 == "L", ct_is_tlcode(ot3)) {
                 return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n"
             }
             if ot3 == "N" {
@@ -580,7 +597,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var gargs = ct_call_args_tg(ag, 1, env, file, base[1], cal[2])
                     var grc = ct_generic_retcode(file, base[1], tpsn, tys)
                     var gcall = mg + "(" + gargs + ")"
-                    if or2(grc == "L", grc == "LI") { gcall = "(ctron_list*)(" + gcall + ")" }
+                    if or2(grc == "L", ct_is_tlcode(grc)) { gcall = "(ctron_list*)(" + gcall + ")" }
                     return gcall
                 }
             }
@@ -607,7 +624,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     var marr = ct_expr(ag[1], env, file)
                     var mart = ct_typeof(ag[1], env, file)
-                    if or2(mart == "L", mart == "LI") {
+                    if or2(mart == "L", ct_is_tlcode(mart)) {
                     } else {
                         panic("emit:parallel 目标限 List")
                         return ""
@@ -809,7 +826,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return "(\{ " + boxty + "* _lb = (" + boxty + "*)ctron_amalloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
                 }
                 var pv = ct_arg_cast(a0t, "s", a0)
-                if or2(objt6 == "LI", !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(ct_is_lcode(a0t), or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))))) {
+                if or2(ct_is_tlcode(objt6), !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(ct_is_lcode(a0t), or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))))) {
                     // 标量元素:槽为 char*,经 long 中转(镜像 List 元素槽模型)
                     pv = "(const char*)(long)(" + a0 + ")"
                 }
@@ -1411,7 +1428,7 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
                     } else {
                         ty = ct_typeof(st[4], ew, file)
                     }
-                    if ty != "L" && ty != "LI" && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") && !(ty.len > 1 && or2(or3(byte_at(ty, 0) == 117, byte_at(ty, 0) == 66, byte_at(ty, 0) == 69), byte_at(ty, 0) == 119)) {
+                    if ty != "L" && !ct_is_tlcode(ty) && ty != "A" && ty != "R" && ty != "g" && ty != "k" && ty != "h" && !(ty.len > 1 && or2(byte_at(ty, 0) == 109, byte_at(ty, 0) == 80)) && !(ty.len >= 3 && byte_slice(ty, 0, 1) == "a") && !(ty.len > 1 && or2(or3(byte_at(ty, 0) == 117, byte_at(ty, 0) == 66, byte_at(ty, 0) == 69), byte_at(ty, 0) == 119)) {
                         out.push(pat[1] + ":" + ty)
                         ew = env_bind(ew, pat[1], ty)
                     }
