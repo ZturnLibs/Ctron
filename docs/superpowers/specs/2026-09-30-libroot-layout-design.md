@@ -1,6 +1,6 @@
 # 库根布局与包分区(lib/ + pkgs/)——设计方案
 
-> 状态:**已核准(2026-09-30,用户裁决:A′ 选型 + T2 随发);spec 复审中**
+> 状态:**已实施(2026-09-30;用户裁决:A′ 选型 + T2 随发;W1 loader 712e98b / W2 迁移 04ff0d7 / W3 分发 4c236bd / W4 验收=装机全回路三例绿+ci 九门;实施计划 plans/2026-09-30-libroot-layout.md)**
 > 上游:2026-09-23-domain-namespace-design.md(域包仓库根平铺=过渡形态,本稿升级为
 > 终态)、2026-09-23-std-tiering-design.md(三档宪章 v2)、2026-09-17-toolchain-
 > distribution-design.md(安装布局)、2026-09-21-closed-pkg-distribution-design.md

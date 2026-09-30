@@ -49,3 +49,4 @@ ul_*.log
 .DS_Store
 examples/*/src/main
 examples/*/src/main.c
+dist/
