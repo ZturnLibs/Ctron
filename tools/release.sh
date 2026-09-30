@@ -30,7 +30,7 @@ else
     sh "$DIR/compiler/native.sh"
 fi
 install -m 755 "$DIR/compiler/bin/ctron-cc" "$DIR/compiler/bin/ctron-chk" "$DIR/compiler/bin/ctron-emit" "$DIR/compiler/bin/ctron-fmt" "$PKG/bin/"
-install -m 755 "$DIR/ctc" "$PKG/bin/ctc"
+install -m 755 "$DIR/ctron" "$PKG/bin/ctron"
 cp -R "$DIR/lib/." "$PKG/lib/"
 # 库根布局(2026-09-30):T2 随发六目录(std+net/http/tls/db/ffi+门面);pkgs/ 不入
 # tarball(registry 独立发布);vendor 仅携所发域所需子树(http→deflate,tls→mbedtls)
@@ -58,10 +58,10 @@ cp -R "$DIR/compiler/src" "$SRC/compiler-src"
 cp -R "$DIR/lib" "$SRC/lib"
 mkdir -p "$SRC/vendor" && cp -R "$DIR/vendor/deflate" "$DIR/vendor/tls" "$SRC/vendor/"
 cp "$DIST/prebuilt/"*.c "$SRC/prebuilt/"
-cp "$DIR/ctc" "$SRC/"; cp "$DIR/Makefile" "$SRC/"; cp "$README" "$SRC/"
-# P2-4 挂账补录:spec §2.3(L102)源码线布局含 ctc.ps1/ctc.cmd——Windows 在 MSYS2 里
+cp "$DIR/ctron" "$SRC/"; cp "$DIR/Makefile" "$SRC/"; cp "$README" "$SRC/"
+# P2-4 挂账补录:spec §2.3(L102)源码线布局含 ctron.ps1/ctron.cmd——Windows 在 MSYS2 里
 # 走 cc-only make 时驱动同包可得,src 件命令面三驱动齐备
-cp "$DIR/ctc.ps1" "$SRC/"; cp "$DIR/ctc.cmd" "$SRC/"
+cp "$DIR/ctron.ps1" "$SRC/"; cp "$DIR/ctron.cmd" "$SRC/"
 cp "$DIR/install.sh" "$SRC/" 2>/dev/null || true
 printf '%s %s\n' "$VER" "$(git -C "$DIR" rev-parse --short HEAD)" > "$SRC/VERSION"
 

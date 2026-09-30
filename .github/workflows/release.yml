@@ -104,7 +104,7 @@ jobs:
         run: |
           VER=${GITHUB_REF_NAME#v}
           mkdir -p ctron/bin ctron/lib/ctron ctron/share/doc
-          cp bin/*.exe ctron/bin/; cp ctc.ps1 ctc.cmd ctron/bin/
+          cp bin/*.exe ctron/bin/; cp ctron.ps1 ctron.cmd ctron/bin/
           cp -R std ctron/lib/ctron/std
           # share/doc 落地:根 README 优先、compiler/README.md 兜底(与 release.sh 同解析序);
           # 空目录会被 Compress-Archive 丢弃,故必须有件
