@@ -355,7 +355,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             while gj < lf.len {
                 if !firstg { gacc = gacc + ", " }
                 firstg = false
-                gacc = gacc + "." + lf[gj][1] + " = " + ct_expr(lf[gj][2], env, file)
+                // 定长数组字段构造(v0.9·四):字段位 ArrLit → C 数组初始化器
+                if lf[gj][2][0] == "ArrLit" {
+                    var ga = ""
+                    var gj2: I32 = 1
+                    while gj2 < lf[gj][2].len {
+                        if gj2 > 1 { ga = ga + ", " }
+                        ga = ga + ct_expr(lf[gj][2][gj2], env, file)
+                        gj2 += 1
+                    }
+                    gacc = gacc + "." + lf[gj][1] + " = \{" + ga + "}"
+                } else {
+                    gacc = gacc + "." + lf[gj][1] + " = " + ct_expr(lf[gj][2], env, file)
+                }
                 gj += 1
             }
             return gacc + "}"
@@ -367,7 +379,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if j > 1 {
                 acc = acc + ", "
             }
-            acc = acc + "." + c[1] + " = " + ct_expr(c[2], env, file)
+            // 定长数组字段构造(v0.9·四):字段位 ArrLit → C 数组初始化器
+            //(此前 ArrLit 仅 let 初值位,struct 字面量构造数组字段不可达)
+            if c[2][0] == "ArrLit" {
+                var aa = ""
+                var aj: I32 = 1
+                while aj < c[2].len {
+                    if aj > 1 { aa = aa + ", " }
+                    aa = aa + ct_expr(c[2][aj], env, file)
+                    aj += 1
+                }
+                acc = acc + "." + c[1] + " = \{" + aa + "}"
+            } else {
+                acc = acc + "." + c[1] + " = " + ct_expr(c[2], env, file)
+            }
             j += 1
         }
         return acc + "}"
