@@ -687,7 +687,7 @@ else
     bad "doc per-fn 注释异常: $(cat "$T/doc5.out")"
 fi
 
-(cd "$ROOT" && "$ROOT/ctc" doc std.str --format=json > "$T/doc6.out" 2>&1)
+(cd "$ROOT" && "$ROOT/ctron" doc std.str --format=json > "$T/doc6.out" 2>&1)
 if [ $? -eq 0 ] && grep -qF '"entry":"lib/std/str.ct"' "$T/doc6.out" && grep -qF '"kind":"fn"' "$T/doc6.out"; then
     ok "doc std.<module> 形(§5.3:std 根四级解析,entry 归一)"
 else
