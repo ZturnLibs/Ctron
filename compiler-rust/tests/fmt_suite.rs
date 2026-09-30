@@ -127,7 +127,104 @@ fn lex_diags_are_an_error() {
     assert!(fmt_src(src).is_err(), "词法诊断必须报错而非静默输出");
 }
 
+// ---------- R9/R10 use 组自动折行与导入排序 ----------
+
+#[test]
+fn use_group_over_width_wraps_with_trailing_comma() {
+    let src = "use std.str.{alpha, beta, gamma, delta, epsilon, zeta, eta, theta, iota, kappa, lambda, mu, nu, xi, omicron}\n";
+    let out = fmt_ok(src);
+    assert!(out.starts_with("use std.str.{\n"), "超宽单行组应折行:\n{out}");
+    assert!(out.contains("    zeta,\n}"), "自动折行应补尾逗号:\n{out}");
+    assert_eq!(fmt_ok(&out), out, "折行形态必须幂等");
+}
+
+#[test]
+fn use_group_under_width_stays_inline() {
+    let src = "use std.fs.{write_dir, read_dir}\n";
+    assert_eq!(fmt_ok(src), "use std.fs.{ read_dir, write_dir }\n");
+}
+
+#[test]
+fn use_group_items_sorted_multiline_keeps_trailing_comma_choice() {
+    // 单行组:项排序
+    let out = fmt_ok("use app.util.{triple, double}\n");
+    assert_eq!(out, "use app.util.{ double, triple }\n");
+    // 多行组重排:每行一项,尾逗号按原样保留(区别于 R9 自动折行恒补)
+    let multi = "use app.util.{\ntriple,\ndouble\n}\n";
+    let out2 = fmt_ok(multi);
+    assert_eq!(out2, "use app.util.{\n    double,\n    triple\n}\n");
+    assert_eq!(fmt_ok(&out2), out2, "多行重排形态必须幂等");
+    // 原有尾逗号保留
+    let out3 = fmt_ok("use app.util.{\ntriple,\ndouble,\n}\n");
+    assert_eq!(out3, "use app.util.{\n    double,\n    triple,\n}\n");
+}
+
+#[test]
+fn use_alias_sorts_by_original_name() {
+    let out = fmt_ok("use app.util.{widget as w, gadget}\n");
+    assert_eq!(out, "use app.util.{ gadget, widget as w }\n");
+}
+
+#[test]
+fn use_ungrouped_alias_absorbed_into_statement() {
+    // 回归:无组 use 的尾随别名必须并入语句 span,否则排序后 `as Alias` 悬空
+    let src = "use b.mod\nuse a.sym as aliased\n";
+    assert_eq!(fmt_ok(src), "use a.sym as aliased\nuse b.mod\n");
+    let src2 = "use a.sym as aliased\nuse b.mod\n";
+    assert_eq!(fmt_ok(src2), src2, "已排序文件必须原样幂等");
+}
+
+#[test]
+fn use_statements_sort_within_run_blank_lines_split_runs() {
+    let src = "use b.mod\nuse a.mod\n\nuse z.mod\nuse y.mod\n";
+    let out = fmt_ok(src);
+    assert_eq!(
+        out,
+        "use a.mod\nuse b.mod\n\nuse y.mod\nuse z.mod\n",
+        "空行分段:段内排序,段间次序与空行保留"
+    );
+}
+
+#[test]
+fn use_comments_freeze_sort_and_rebuild() {
+    // 语句间注释 → 分段且不排序
+    let src = "use b.mod\n// keep\nuse a.mod\n";
+    assert_eq!(fmt_ok(src), "use b.mod\n// keep\nuse a.mod\n");
+    // 语句内注释 → 该语句冻结(不重排不折行)
+    let src2 = "use app.util.{\ntriple, // t\ndouble,\n}\n";
+    assert_eq!(
+        fmt_ok(src2),
+        "use app.util.{\n    triple, // t\n    double,\n}\n",
+        "语句 span 含注释 → 冻结,只走 R1 排版"
+    );
+}
+
+#[test]
+fn use_ungrouped_long_path_not_wrapped() {
+    let src = "use aaaa.bbbb.cccc.dddd.eeee.ffff.gggg.hhhh.iiii.jjjj.kkkk.llll.mmmm.nnnn.oooo\n";
+    let out = fmt_ok(src);
+    assert_eq!(out, src, "无组 use 不折行(R9)");
+}
+
 // ---------- 全语料三断言(roadmap 验收口径) ----------
+
+/// R10 修订口径:use 声明序列与其组内项序列按多重集比对(imports 已拆全路径)
+fn canon_file(f: &ctron::ast::File) -> (Vec<String>, Vec<String>) {
+    let mut plain: Vec<String> = Vec::new();
+    let mut uses: Vec<String> = Vec::new();
+    for d in &f.decls {
+        match d {
+            ctron::ast::Decl::Use(u) => {
+                let mut items: Vec<String> = u.imports.iter().map(|i| format!("{i:?}")).collect();
+                items.sort();
+                uses.push(items.join("\u{1}"));
+            }
+            other => plain.push(format!("{other:?}")),
+        }
+    }
+    uses.sort();
+    (plain, uses)
+}
 
 fn walk_ct(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -165,9 +262,11 @@ fn full_corpus_idempotent_and_parse_equal() {
             Err(e) => failures.push(format!("{rel}: 二次 fmt 失败: {e}")),
         }
         // 断言② AST 等价:parse(fmt(x)) == parse(x)
+        // use 声明按多重集比对(规范 R10:导入为集合语义,排序是规范行为;
+        // 组内项同理),其余声明顺序仍严格比对
         let (before, bd) = ctron::parse_src(&src);
         let (after, ad) = ctron::parse_src(&formatted);
-        if before != after || bd.len() != ad.len() {
+        if canon_file(&before) != canon_file(&after) || bd.len() != ad.len() {
             failures.push(format!("{rel}: fmt 前后 AST 不等"));
         }
     }

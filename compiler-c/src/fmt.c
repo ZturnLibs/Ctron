@@ -453,6 +453,315 @@ static size_t* match_braces(ctron_token* toks, size_t nt) {
     return partner;
 }
 
+// ---------- R9/R10 use 预处理(2026-09-30):导入排序 + 长组自动折行 ----------
+// 落点 = 发射前源文本重写(仅注释受控的 use 语句 span),主发射器零改动;
+// 归一化输出为定点(排序稳定 + 多行不回折),二次调用恒等,天然幂等。
+// 与 compiler-rust/src/fmt.rs collect_uses/normalize_uses 逐条对齐;
+// 三宿主输出逐字节一致由 tests/fmt/parity.sh 把关。规范:docs/fmt-spec.md R9/R10。
+
+#define USE_WRAP_COLS 100
+
+typedef struct {
+    const char* key; // 导入名 = 项首标识符(借用 toks arena;别名项按原名)
+    size_t s, e;     // 项文本字节范围
+} u_item;
+
+typedef struct {
+    u_item* items;
+    size_t ni;
+    int trailing;    // 原组以尾逗号收(重建多行按原样保留)
+    int single_line; // 组 {…} 之间原始无换行
+    int sorted;      // 项键已非降序
+} u_group;
+
+typedef struct {
+    size_t start, end; // 语句字节范围(use 记号起)
+    size_t ps, pe;     // 路径字节范围
+    u_group* group;    // NULL = 无组/空组
+    int frozen;        // 语句 span 含注释(不排序不重排)
+} u_stmt;
+
+static int is_path_ident(ctron_token* t) {
+    return t->kind == TOK_IDENT && !(t->text && strcmp(t->text, "as") == 0);
+}
+
+static int span_has_comment(fmt_comment* cs, size_t nc, size_t s, size_t e) {
+    for (size_t i = 0; i < nc; i++)
+        if (cs[i].start < e && cs[i].end > s) return 1;
+    return 0;
+}
+
+// [from, to) 自由换行数(扣注释占据的换行);与发射器 free_newlines 同口径
+static size_t use_free_nl(const char* src, fmt_comment* cs, size_t nc, size_t from, size_t to) {
+    if (to <= from) return 0;
+    size_t count = 0;
+    for (size_t i = from; i < to; i++) {
+        if (src[i] != '\n') continue;
+        int covered = 0;
+        for (size_t c = 0; c < nc; c++) {
+            if (cs[c].start > i) break;
+            if (i < cs[c].end) { covered = 1; break; }
+        }
+        if (!covered) count++;
+    }
+    return count;
+}
+
+// 收集全部 use 语句;返回 0 成功,-1 = 形态不识(整文件放弃预处理,退回纯 R1)
+static int collect_uses(const char* src, ctron_token* toks, size_t nt, size_t* partner,
+                        fmt_comment* comments, size_t nc, u_stmt** out, size_t* out_n) {
+    (void)src;
+    u_stmt* arr = NULL;
+    size_t n = 0, cap = 0;
+    size_t i = 0;
+    while (i < nt) {
+        if (toks[i].kind != TOK_USE) { i++; continue; }
+        u_stmt st;
+        memset(&st, 0, sizeof st);
+        st.start = toks[i].span.start;
+        size_t j = i + 1;
+        if (j >= nt || !is_path_ident(&toks[j])) return -1;
+        size_t pfirst = j, plast = j;
+        j++;
+        int grouped = 0;
+        size_t open = 0, close = 0;
+        for (;;) {
+            if (j < nt && toks[j].kind == TOK_DOT) {
+                if (j + 1 < nt && toks[j + 1].kind == TOK_LBRACE) { grouped = 1; break; }
+                j++;
+                if (j >= nt || !is_path_ident(&toks[j])) return -1;
+                plast = j;
+                j++;
+                continue;
+            }
+            break;
+        }
+        u_group* g = NULL;
+        size_t end_tok;
+        if (grouped) {
+            open = j + 1;
+            if (open >= nt) return -1;
+            close = partner[open];
+            if (close == NO_PAIR || close <= open) return -1;
+            g = (u_group*)xmalloc(sizeof(u_group));
+            memset(g, 0, sizeof *g);
+            u_item* items = NULL;
+            size_t ni = 0, cap2 = 0;
+            size_t cur_first = 0, cur_s = 0, cur_e = 0;
+            int in_cur = 0;
+            int bad = 0;
+            for (size_t k = open + 1; k < close; k++) {
+                ctron_token* t = &toks[k];
+                if (t->kind == TOK_NEWLINE) continue;
+                if (t->kind == TOK_COMMA) {
+                    if (!in_cur) { bad = 1; break; } // 空项(如 `.{ a,,b }`)
+                    if (ni == cap2) {
+                        cap2 = cap2 ? cap2 * 2 : 8;
+                        items = (u_item*)xrealloc(items, cap2 * sizeof(u_item));
+                    }
+                    items[ni].key = toks[cur_first].text;
+                    items[ni].s = cur_s;
+                    items[ni].e = cur_e;
+                    ni++;
+                    in_cur = 0;
+                } else if (t->kind == TOK_IDENT) {
+                    if (!in_cur) {
+                        cur_first = k;
+                        cur_s = t->span.start;
+                        if (t->text && strcmp(t->text, "as") == 0) { bad = 1; break; }
+                    }
+                    cur_e = t->span.end;
+                    in_cur = 1;
+                } else {
+                    bad = 1;
+                    break;
+                }
+            }
+            if (bad) { free(items); free(g); return -1; }
+            if (in_cur) {
+                if (ni == cap2) {
+                    cap2 = cap2 ? cap2 * 2 : 8;
+                    items = (u_item*)xrealloc(items, cap2 * sizeof(u_item));
+                }
+                items[ni].key = toks[cur_first].text;
+                items[ni].s = cur_s;
+                items[ni].e = cur_e;
+                ni++;
+                g->trailing = 0;
+            } else {
+                g->trailing = ni > 0;
+            }
+            g->items = items;
+            g->ni = ni;
+            if (ni == 0) { free(items); free(g); g = NULL; } // 空组无事可做
+            if (g) {
+                g->single_line = 1;
+                for (size_t b = toks[open].span.end; b < toks[close].span.start; b++)
+                    if (src[b] == '\n') { g->single_line = 0; break; }
+                g->sorted = 1;
+                for (size_t a = 0; a + 1 < g->ni; a++)
+                    if (strcmp(g->items[a].key, g->items[a + 1].key) > 0) { g->sorted = 0; break; }
+            }
+            end_tok = close;
+        } else {
+            end_tok = plast;
+        }
+        // 尾随别名(`use a.b.C as D`)并入语句 span,防排序后悬空
+        if (end_tok + 1 < nt && toks[end_tok + 1].kind == TOK_IDENT && toks[end_tok + 1].text &&
+            strcmp(toks[end_tok + 1].text, "as") == 0) {
+            if (end_tok + 2 >= nt || !is_path_ident(&toks[end_tok + 2])) return -1;
+            end_tok += 2;
+        }
+        st.end = toks[end_tok].span.end;
+        st.ps = toks[pfirst].span.start;
+        st.pe = toks[plast].span.end;
+        st.group = g;
+        st.frozen = span_has_comment(comments, nc, st.start, st.end);
+        if (n == cap) {
+            cap = cap ? cap * 2 : 8;
+            arr = (u_stmt*)xrealloc(arr, cap * sizeof(u_stmt));
+        }
+        arr[n++] = st;
+        i = end_tok + 1;
+    }
+    *out = arr;
+    *out_n = n;
+    return 0;
+}
+
+static int path_cmp(const char* src, const u_stmt* a, const u_stmt* b) {
+    size_t la = a->pe - a->ps, lb = b->pe - b->ps;
+    size_t m = la < lb ? la : lb;
+    int c = memcmp(src + a->ps, src + b->ps, m);
+    if (c) return c;
+    return la < lb ? -1 : la > lb ? 1 : 0;
+}
+
+// 单语句改写判定与重建(R9/R10);不改写则原样切片。重建一律用排序后的项序。
+static void stmt_text_append(obuf* o, const char* src, const u_stmt* st) {
+    const u_group* g = st->group;
+    if (!g || st->frozen) {
+        ob_putn(o, src + st->start, st->end - st->start);
+        return;
+    }
+    size_t n = g->ni;
+    size_t* ord = (size_t*)xmalloc(n * sizeof(size_t));
+    for (size_t a = 0; a < n; a++) ord[a] = a;
+    for (size_t a = 1; a < n; a++) { // 稳定插入排序,按 key 字节序
+        size_t v = ord[a], b = a;
+        while (b > 0 && strcmp(g->items[ord[b - 1]].key, g->items[v].key) > 0) {
+            ord[b] = ord[b - 1];
+            b--;
+        }
+        ord[b] = v;
+    }
+    // 内联规范形态(量宽用):use 路径.{ 项, 项 }
+    obuf in = {0};
+    ob_putn(&in, "use ", 4);
+    ob_putn(&in, src + st->ps, st->pe - st->ps);
+    ob_putn(&in, ".{ ", 3);
+    for (size_t a = 0; a < n; a++) {
+        if (a) ob_putn(&in, ", ", 2);
+        const u_item* it = &g->items[ord[a]];
+        ob_putn(&in, src + it->s, it->e - it->s);
+    }
+    ob_putn(&in, " }", 2);
+    int over = g->single_line && in.len > USE_WRAP_COLS;
+    if (g->sorted && !over) {
+        ob_putn(o, src + st->start, st->end - st->start);
+        free(in.buf);
+        free(ord);
+        return;
+    }
+    if (g->single_line) {
+        if (over) { // R9 自动折行:恒补尾逗号
+            ob_putn(o, "use ", 4);
+            ob_putn(o, src + st->ps, st->pe - st->ps);
+            ob_putn(o, ".{\n", 3);
+            for (size_t a = 0; a < n; a++) {
+                const u_item* it = &g->items[ord[a]];
+                ob_putn(o, "    ", 4);
+                ob_putn(o, src + it->s, it->e - it->s);
+                ob_putc(o, ',');
+                ob_putc(o, '\n');
+            }
+            ob_putc(o, '}');
+        } else {
+            ob_putn(o, in.buf, in.len); // 单行组排序:内联规范形态
+        }
+    } else { // 多行组重排:每行一项,尾逗号按原样
+        ob_putn(o, "use ", 4);
+        ob_putn(o, src + st->ps, st->pe - st->ps);
+        ob_putn(o, ".{\n", 3);
+        for (size_t a = 0; a < n; a++) {
+            const u_item* it = &g->items[ord[a]];
+            ob_putn(o, "    ", 4);
+            ob_putn(o, src + it->s, it->e - it->s);
+            if (g->trailing || a + 1 < n) ob_putc(o, ',');
+            ob_putc(o, '\n');
+        }
+        ob_putc(o, '}');
+    }
+    free(in.buf);
+    free(ord);
+}
+
+// R9/R10 入口;无 use / 形态不识时返回 NULL(源保持原样)
+static char* normalize_uses(const char* src, size_t len, ctron_token* toks, size_t nt,
+                            size_t* partner, fmt_comment* comments, size_t nc, size_t* out_len) {
+    u_stmt* stmts = NULL;
+    size_t ns = 0;
+    if (collect_uses(src, toks, nt, partner, comments, nc, &stmts, &ns) != 0) return NULL;
+    if (ns == 0) {
+        free(stmts);
+        return NULL;
+    }
+    obuf o = {0};
+    size_t cursor = 0;
+    size_t ri = 0;
+    while (ri < ns) {
+        // run:语句间仅单换行或同行、无注释、无空行(空行/注释即分段)
+        size_t re = ri;
+        while (re + 1 < ns) {
+            if (span_has_comment(comments, nc, stmts[re].end, stmts[re + 1].start)) break;
+            if (use_free_nl(src, comments, nc, stmts[re].end, stmts[re + 1].start) > 1) break;
+            re++;
+        }
+        ob_putn(&o, src + cursor, stmts[ri].start - cursor);
+        // 段内稳定排序(注释守卫:run 整体 span 含注释 → 原序)
+        size_t cnt = re - ri + 1;
+        size_t* idx = (size_t*)xmalloc(cnt * sizeof(size_t));
+        for (size_t a = 0; a < cnt; a++) idx[a] = ri + a;
+        if (!span_has_comment(comments, nc, stmts[ri].start, stmts[re].end)) {
+            for (size_t a = 1; a < cnt; a++) {
+                size_t v = idx[a], b = a;
+                while (b > 0 && path_cmp(src, &stmts[idx[b - 1]], &stmts[v]) > 0) {
+                    idx[b] = idx[b - 1];
+                    b--;
+                }
+                idx[b] = v;
+            }
+        }
+        for (size_t a = 0; a < cnt; a++) {
+            if (a) ob_putc(&o, '\n');
+            stmt_text_append(&o, src, &stmts[idx[a]]);
+        }
+        free(idx);
+        cursor = stmts[re].end;
+        ri = re + 1;
+    }
+    ob_putn(&o, src + cursor, len - cursor);
+    for (size_t a = 0; a < ns; a++) {
+        if (stmts[a].group) {
+            free(stmts[a].group->items);
+            free(stmts[a].group);
+        }
+    }
+    free(stmts);
+    *out_len = o.len;
+    return o.buf;
+}
+
 static char* finish(obuf* o) {
     // 规范:无前导空行,文件以单个换行结束
     size_t s = 0, e = o->len;
@@ -471,6 +780,8 @@ ctron_fmt_result ctron_fmt_src(const char* src, size_t len) {
     r.out = NULL;
     r.diags = NULL;
     r.ndiags = 0;
+    // R9/R10 预处理:归一化改变源则以新源重启(定点,二次恒等)
+    char* owned = NULL;
     ctron_lex_result lr = ctron_lex(src, len);
     if (lr.ndiags > 0) {
         r.diags = (ctron_fmt_diag*)xmalloc(lr.ndiags * sizeof(ctron_fmt_diag));
@@ -483,6 +794,35 @@ ctron_fmt_result ctron_fmt_src(const char* src, size_t len) {
         }
         ctron_lex_result_free(&lr);
         return r;
+    }
+    {
+        size_t nc0 = 0;
+        fmt_comment* comments0 = extract_comments(src, len, lr.toks, lr.ntoks, &nc0);
+        size_t* partner0 = match_braces(lr.toks, lr.ntoks);
+        size_t nlen = 0;
+        char* norm = normalize_uses(src, len, lr.toks, lr.ntoks, partner0, comments0, nc0, &nlen);
+        free(comments0);
+        free(partner0);
+        if (norm) {
+            ctron_lex_result_free(&lr);
+            owned = norm;
+            src = norm;
+            len = nlen;
+            lr = ctron_lex(src, len);
+            if (lr.ndiags > 0) { // 结构性不可达(只重排/插换行),防御性按诊断返回
+                r.diags = (ctron_fmt_diag*)xmalloc(lr.ndiags * sizeof(ctron_fmt_diag));
+                r.ndiags = lr.ndiags;
+                for (size_t i = 0; i < lr.ndiags; i++) {
+                    r.diags[i].line = lr.diags[i].span.line;
+                    r.diags[i].col = lr.diags[i].span.col;
+                    r.diags[i].code = strdup(lr.diags[i].code ? lr.diags[i].code : "");
+                    r.diags[i].message = strdup(lr.diags[i].message ? lr.diags[i].message : "");
+                }
+                ctron_lex_result_free(&lr);
+                free(owned);
+                return r;
+            }
+        }
     }
     F f;
     memset(&f, 0, sizeof f);
@@ -505,6 +845,7 @@ ctron_fmt_result ctron_fmt_src(const char* src, size_t len) {
     free(f.comments);
     free(f.partner);
     ctron_lex_result_free(&lr);
+    free(owned);
     return r;
 }
 

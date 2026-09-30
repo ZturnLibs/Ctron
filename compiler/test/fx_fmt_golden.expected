@@ -46,21 +46,39 @@ fn k(xs: List[I32]) {
 
 // R3 use 组:花括号多行性由原始间隙驱动(跨行保留/单行保留),项重排 1 级缩进
 use std.str.{
-    lines,
     contains,
+    lines,
 }
 
 use std.enc.{
     hex_encode
 }
 
-use std.hash.Hash
 use std.fs.{ read_dir, write_dir }
+use std.hash.Hash
 
-// use 别名(spec 2026-09-22 §2):组内混用/单符号;token 流直过,布局=原始间隙
+// use 别名(spec 2026-09-22 §2):组内混用/单符号;R10 起语句/项排序(别名按原名)
+use app.extra.{ addpair, widget_new as panel_new }
+use app.extra.widget_new as panel_new
 use app.util.{
     double,
     triple as tri,
 }
-use app.extra.{ widget_new as panel_new, addpair }
-use app.extra.widget_new as panel_new
+
+// R10 顶层语句排序:run 内按路径字节序稳定排,空行分段次序保留
+use aaa.mod
+use zzz.mod
+
+use m1.mod
+use m2.mod
+// R10 组内项排序(别名按原名)+ R9 超宽单行组自动折行恒补尾逗号
+use std.io.{ flush, read, write }
+use std.net.{
+    accept_loop,
+    bind_addr,
+    resolve_all,
+    set_keepalive,
+    set_nodelay,
+    tcp_connect,
+    tcp_listen,
+}
