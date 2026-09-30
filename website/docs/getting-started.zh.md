@@ -1,6 +1,6 @@
 # 入门
 
-从安装到第一个可执行,约一刻钟。`ctc` 是工具链唯一的用户入口:`run` / `check` 不依赖任何 C 工具链,只有 `build` 需要本机 C 编译器。
+从安装到第一个可执行,约一刻钟。`ctron` 是工具链唯一的用户入口:`run` / `check` 不依赖任何 C 工具链,只有 `build` 需要本机 C 编译器。
 
 ## 安装
 
@@ -20,27 +20,27 @@ tar xzf ctron-<版本>-src.tar.gz && cd ctron-src-<版本>
 make && make install PREFIX="$HOME/.ctron"
 ```
 
-> 首个 Release(v0.0.1)发布前,上面的下载路尚不可用;此阶段请克隆仓库、按 `compiler/BOOTSTRAP.md` 自举构建。装好后用 `ctc --version` 验证:装机形态输出 `ctron <版本> <git-sha>`,仓库 dev 形态输出 `ctron dev`。
+> 首个 Release(v0.0.1)发布前,上面的下载路尚不可用;此阶段请克隆仓库、按 `compiler/BOOTSTRAP.md` 自举构建。装好后用 `ctron --version` 验证:装机形态输出 `ctron <版本> <git-sha>`,仓库 dev 形态输出 `ctron dev`。
 
 ## Hello, Ctron
 
-`ctc new` 生成项目骨架:`Ctron.toml`(目前只有 `name` 一个字段)+ `Ctron.ctcl`(能力声明清单)+ `src/main.ct`(hello 程序)。`ctc run` 是纯解释执行——解析、语义检查、直接求值一条龙,零外部依赖,也是最快的上手路径:
+`ctron new` 生成项目骨架:`Ctron.toml`(目前只有 `name` 一个字段)+ `Ctron.ctcl`(能力声明清单)+ `src/main.ct`(hello 程序)。`ctron run` 是纯解释执行——解析、语义检查、直接求值一条龙,零外部依赖,也是最快的上手路径:
 
 ```bash
-$ ctc new hello && cd hello
-ctc: 已生成 hello/(ctc run hello/src/main.ct 试跑)
+$ ctron new hello && cd hello
+ctron: 已生成 hello/(ctron run hello/src/main.ct 试跑)
 
-$ ctc run src/main.ct
+$ ctron run src/main.ct
 hello, ctron
 ```
 
 ## 静态检查
 
 ```bash
-$ ctc check src/main.ct
+$ ctron check src/main.ct
 check OK decls=1
 
-$ ctc check src/main.ct --format=json
+$ ctron check src/main.ct --format=json
 {"diagnostics":[]}
 ```
 
@@ -49,8 +49,8 @@ $ ctc check src/main.ct --format=json
 ## 构建可执行
 
 ```bash
-$ ctc build src/main.ct
-ctc: 已构建 /path/to/hello/src/main
+$ ctron build src/main.ct
+ctron: 已构建 /path/to/hello/src/main
 
 $ ./src/main
 hello, ctron
@@ -60,11 +60,11 @@ hello, ctron
 
 ## 项目模式
 
-`ctc build` 不带参数即项目模式:读 `Ctron.toml` 的 `name`,入口固定 `src/main.ct`,产出 `build/<name>`;`c_src/*.c` 若存在则一并链接(FFI 场景):
+`ctron build` 不带参数即项目模式:读 `Ctron.toml` 的 `name`,入口固定 `src/main.ct`,产出 `build/<name>`;`c_src/*.c` 若存在则一并链接(FFI 场景):
 
 ```bash
-$ ctc build
-ctc: 已构建 build/hello
+$ ctron build
+ctron: 已构建 build/hello
 
 $ ./build/hello
 hello, ctron
@@ -72,8 +72,8 @@ hello, ctron
 
 ## 顺手记住
 
-- 子命令:`run` / `check` / `build` / `test` / `new`;`ctc --help` 总览,`ctc help <cmd>` 子命令详助。
-- 退出码:`0` 成功,`1` 程序诊断失败,`2` ctc 环境或用法错误。
+- 子命令:`run` / `check` / `build` / `test` / `new`;`ctron --help` 总览,`ctron help <cmd>` 子命令详助。
+- 退出码:`0` 成功,`1` 程序诊断失败,`2` ctron 环境或用法错误。
 - Windows:`run` / `check` / `new` 零前提;`build` 需 mingw-w64(MSYS2 `pacman -S mingw-w64-x86_64-gcc`,或免安装的 w64devkit),产物带 `.exe`。
 - `build` 与 Windows 整体处于 β:能力边界见根 `README.md` 与工具链分发设计(`docs/superpowers/specs/`)。
 

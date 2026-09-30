@@ -1,6 +1,6 @@
 # Getting Started
 
-From install to your first native executable in 10-15 minutes. `ctc` is the toolchain's only user-facing entry point: `run` and `check` never touch a C toolchain; only `build` needs a local C compiler.
+From install to your first native executable in 10-15 minutes. `ctron` is the toolchain's only user-facing entry point: `run` and `check` never touch a C toolchain; only `build` needs a local C compiler.
 
 ## Install
 
@@ -20,27 +20,27 @@ tar xzf ctron-<version>-src.tar.gz && cd ctron-src-<version>
 make && make install PREFIX="$HOME/.ctron"
 ```
 
-> Before the first release (v0.0.1) the download routes above are not live yet; until then, clone the repository and follow the bootstrap in `compiler/BOOTSTRAP.md`. Verify with `ctc --version`: an installed toolchain prints `ctron <version> <git-sha>`, a dev checkout prints `ctron dev`.
+> Before the first release (v0.0.1) the download routes above are not live yet; until then, clone the repository and follow the bootstrap in `compiler/BOOTSTRAP.md`. Verify with `ctron --version`: an installed toolchain prints `ctron <version> <git-sha>`, a dev checkout prints `ctron dev`.
 
 ## Hello, Ctron
 
-`ctc new` scaffolds a project: `Ctron.toml` (currently just the project `name` field), `Ctron.ctcl` (the capability-declaration manifest), and `src/main.ct` (a hello program). `ctc run` is pure interpretation — parse, check, evaluate in one pass with zero external dependencies, and the fastest way in. (Driver messages are Chinese in v0.0.x; the checker's summary line is English.)
+`ctron new` scaffolds a project: `Ctron.toml` (currently just the project `name` field), `Ctron.ctcl` (the capability-declaration manifest), and `src/main.ct` (a hello program). `ctron run` is pure interpretation — parse, check, evaluate in one pass with zero external dependencies, and the fastest way in. (Driver messages are Chinese in v0.0.x; the checker's summary line is English.)
 
 ```bash
-$ ctc new hello && cd hello
-ctc: 已生成 hello/(ctc run hello/src/main.ct 试跑)   # "generated hello/"
+$ ctron new hello && cd hello
+ctron: 已生成 hello/(ctron run hello/src/main.ct 试跑)   # "generated hello/"
 
-$ ctc run src/main.ct
+$ ctron run src/main.ct
 hello, ctron
 ```
 
 ## Static checks
 
 ```bash
-$ ctc check src/main.ct
+$ ctron check src/main.ct
 check OK decls=1
 
-$ ctc check src/main.ct --format=json
+$ ctron check src/main.ct --format=json
 {"diagnostics":[]}
 ```
 
@@ -49,8 +49,8 @@ Checking stops there and touches no files. `--format=json` emits structured diag
 ## Build an executable
 
 ```bash
-$ ctc build src/main.ct
-ctc: 已构建 /path/to/hello/src/main   # "built"
+$ ctron build src/main.ct
+ctron: 已构建 /path/to/hello/src/main   # "built"
 
 $ ./src/main
 hello, ctron
@@ -60,11 +60,11 @@ hello, ctron
 
 ## Project mode
 
-`ctc build` without arguments is project mode: it reads `name` from `Ctron.toml`, uses `src/main.ct` as the entry, and produces `build/<name>`. Any `c_src/*.c` files are linked in (the FFI path):
+`ctron build` without arguments is project mode: it reads `name` from `Ctron.toml`, uses `src/main.ct` as the entry, and produces `build/<name>`. Any `c_src/*.c` files are linked in (the FFI path):
 
 ```bash
-$ ctc build
-ctc: 已构建 build/hello   # "built build/hello"
+$ ctron build
+ctron: 已构建 build/hello   # "built build/hello"
 
 $ ./build/hello
 hello, ctron
@@ -72,7 +72,7 @@ hello, ctron
 
 ## Worth remembering
 
-- Subcommands: `run` / `check` / `build` / `test` / `new`; `ctc --help` for the overview, `ctc help <cmd>` for details. Exit codes: `0` success, `1` program diagnostics, `2` ctc environment or usage error.
+- Subcommands: `run` / `check` / `build` / `test` / `new`; `ctron --help` for the overview, `ctron help <cmd>` for details. Exit codes: `0` success, `1` program diagnostics, `2` ctron environment or usage error.
 - Windows: `run` / `check` / `new` have no prerequisites; `build` needs mingw-w64 (MSYS2 `pacman -S mingw-w64-x86_64-gcc`, or the single-file w64devkit) and produces `.exe` binaries.
 - `build` and Windows are beta overall: capability boundaries are documented in the root `README.md` and the toolchain distribution design under `docs/superpowers/specs/`.
 

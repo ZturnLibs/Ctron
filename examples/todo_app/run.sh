@@ -8,7 +8,7 @@
 # (Connection: close);探针 = 单连接单请求(printf %b 发真实 CRLF)。
 # 红账(2026-09-26):原生臂暂被编译器在册发射缺陷阻断(主分发预算家族,
 # 见 docs/c-rust-divergences.md「todo_app 复现族」节)——emit 失败即本缺陷,
-# 非应用代码;四模块 check 0E + ctc test 全绿为当前语义门,发射修复后本脚本
+# 非应用代码;四模块 check 0E + ctron test 全绿为当前语义门,发射修复后本脚本
 # 即为完整验收门(两相位含重启持久化)。可用 CTRON_EMIT= 指向健康二进制。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

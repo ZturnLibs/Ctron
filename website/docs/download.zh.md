@@ -25,7 +25,7 @@ curl -fsSL https://github.com/ZturnLibs/Ctron/releases/latest/download/install.s
 
 > macOS Intel:v0.0.1 暂无预编译包——请走源码线(`ctron-0.0.1-src.tar.gz`,任意 cc `make` 即可)。
 
-预编译包布局:`bin/`(`ctc` 驱动 + `ctron-cc` / `ctron-chk` / `ctron-emit` 原生二进制)、`lib/`(std + 五个随发域 net/http/tls/db/ffi 及门面)、`vendor/`(随发域所需第三方 C)、`share/doc/`(README 与 examples)、`VERSION`(版本 + git-sha)。安装根即工具链根(默认 `~/.ctron`);扩展包住 `~/.ctron/pkgs/`,独立安装。
+预编译包布局:`bin/`(`ctron` 驱动 + `ctron-cc` / `ctron-chk` / `ctron-emit` 原生二进制)、`lib/`(std + 五个随发域 net/http/tls/db/ffi 及门面)、`vendor/`(随发域所需第三方 C)、`share/doc/`(README 与 examples)、`VERSION`(版本 + git-sha)。安装根即工具链根(默认 `~/.ctron`);扩展包住 `~/.ctron/pkgs/`,独立安装。
 
 ## 手动安装
 
@@ -41,8 +41,8 @@ Windows:解压 zip 到 `%LOCALAPPDATA%\ctron`,把 `ctron\bin` 加入 `PATH`(`set
 
 ## 依赖与平台说明
 
-- `ctc run` / `check` / `test` / `new`:零外部依赖,任何平台开箱即用。
-- `ctc build`:需本机 C 编译器(默认 `cc`,`CC` 可覆盖)。macOS `xcode-select --install`;Linux 发行版 gcc。
+- `ctron run` / `check` / `test` / `new`:零外部依赖,任何平台开箱即用。
+- `ctron build`:需本机 C 编译器(默认 `cc`,`CC` 可覆盖)。macOS `xcode-select --install`;Linux 发行版 gcc。
 - Windows(β):仅 `build` 需 mingw-w64(MSYS2 `pacman -S mingw-w64-x86_64-gcc`,或单包免安装的 w64devkit);产物带 `.exe`。
 - 标准库以源码随包分发,`use std.*` 在任意工作目录都能解析到装机路径;macOS Gatekeeper 拦截时 `xattr -cr ctron`。
 

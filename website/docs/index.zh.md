@@ -15,9 +15,9 @@ Ctron 从设计之初就以 AI 生成代码为主要使用方式。语法、类�
 ## 三条命令
 
 ```bash
-ctc run main.ct      # 解释执行，不需要任何 C 工具链
-ctc check main.ct    # 静态检查，--format=json 出结构化诊断
-ctc build main.ct    # 发射 C → 本机 cc → 原生可执行
+ctron run main.ct      # 解释执行，不需要任何 C 工具链
+ctron check main.ct    # 静态检查，--format=json 出结构化诊断
+ctron build main.ct    # 发射 C → 本机 cc → 原生可执行
 ```
 
 解释路径零外部依赖。发射路径自包含——运行时全部内联，只含系统头文件。同一份源码，开发和部署不换语言。

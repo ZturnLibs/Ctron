@@ -10,9 +10,9 @@ export PATH="$HOME/.ctron/bin:$PATH"
 ```
 
 ```bash
-ctc run hello.ct    # 解释执行(零依赖)
-ctc check hello.ct  # 静态检查(--format=json 出 JSON 诊断)
-ctc build hello.ct  # 出可执行(需本机 C 编译器)
+ctron run hello.ct    # 解释执行(零依赖)
+ctron check hello.ct  # 静态检查(--format=json 出 JSON 诊断)
+ctron build hello.ct  # 出可执行(需本机 C 编译器)
 ```
 
 自举编译器见 compiler/README.md,发布工程见

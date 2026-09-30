@@ -1,6 +1,6 @@
 # 示例
 
-`examples/` 里有三个完整、可跑的 CLI 工具——它们同时是发布验收的考题。前置只有一个:可用的 `ctc`(安装见[入门](getting-started.md));三者构建形态相同,以 ctgrep 为例:`ctc build examples/ctgrep/src/main.ct`。它们共用同一入口模型:`ctron_entry()` 返回 CLI 单串,约定以字面 `run` 触发(`<二进制> run "<参数>"`),构建产物与解释执行行为一致。
+`examples/` 里有三个完整、可跑的 CLI 工具——它们同时是发布验收的考题。前置只有一个:可用的 `ctron`(安装见[入门](getting-started.md));三者构建形态相同,以 ctgrep 为例:`ctron build examples/ctgrep/src/main.ct`。它们共用同一入口模型:`ctron_entry()` 返回 CLI 单串,约定以字面 `run` 触发(`<二进制> run "<参数>"`),构建产物与解释执行行为一致。
 
 | 示例 | 对标 | 语义口径 |
 |---|---|---|

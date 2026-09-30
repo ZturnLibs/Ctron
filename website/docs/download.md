@@ -25,7 +25,7 @@ Every release ships 7 assets, all reachable at `https://github.com/ZturnLibs/Ctr
 
 > macOS Intel: no prebuilt tarball in v0.0.1 — use the source line (`ctron-0.0.1-src.tar.gz`, `make` with any cc).
 
-Prebuilt package layout: `bin/` (the `ctc` driver plus the `ctron-cc` / `ctron-chk` / `ctron-emit` native binaries), `lib/` (std + the five shipped domains: net/http/tls/db/ffi, with facades), `vendor/` (third-party C for the shipped domains), `share/doc/` (README and examples), and `VERSION` (version + git-sha). Install root is the toolchain root itself (`~/.ctron` by default); extension packages live in `~/.ctron/pkgs/` and are installed separately.
+Prebuilt package layout: `bin/` (the `ctron` driver plus the `ctron-cc` / `ctron-chk` / `ctron-emit` native binaries), `lib/` (std + the five shipped domains: net/http/tls/db/ffi, with facades), `vendor/` (third-party C for the shipped domains), `share/doc/` (README and examples), and `VERSION` (version + git-sha). Install root is the toolchain root itself (`~/.ctron` by default); extension packages live in `~/.ctron/pkgs/` and are installed separately.
 
 ## Manual install
 
@@ -41,8 +41,8 @@ Windows: unzip into `%LOCALAPPDATA%\ctron` and add `ctron\bin` to your `PATH` (v
 
 ## Dependencies and platform notes
 
-- `ctc run` / `check` / `test` / `new`: zero external dependencies, out of the box on every platform.
-- `ctc build`: needs a local C compiler (`cc` by default, override with `CC`). macOS: `xcode-select --install`; Linux: your distribution's gcc.
+- `ctron run` / `check` / `test` / `new`: zero external dependencies, out of the box on every platform.
+- `ctron build`: needs a local C compiler (`cc` by default, override with `CC`). macOS: `xcode-select --install`; Linux: your distribution's gcc.
 - Windows (beta): only `build` needs mingw-w64 (MSYS2 `pacman -S mingw-w64-x86_64-gcc`, or the single-file w64devkit); binaries get an `.exe` suffix.
 - The standard library ships as source, so `use std.*` resolves against the installed layout from any working directory. If macOS Gatekeeper complains: `xattr -cr ctron`.
 

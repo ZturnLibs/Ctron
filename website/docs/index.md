@@ -15,9 +15,9 @@ Ctron is designed from day one for AI code generation as the primary authoring w
 ## Three commands
 
 ```bash
-ctc run main.ct      # interpret — no C toolchain required
-ctc check main.ct    # static checks; --format=json for structured diagnostics
-ctc build main.ct    # emit C → local cc → native executable
+ctron run main.ct      # interpret — no C toolchain required
+ctron check main.ct    # static checks; --format=json for structured diagnostics
+ctron build main.ct    # emit C → local cc → native executable
 ```
 
 The interpretation path has zero external dependencies. The emit path is self-contained — the runtime is fully inlined with system headers only. Same source, no language switch between development and deployment.
