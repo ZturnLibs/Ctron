@@ -1,10 +1,10 @@
 #!/bin/sh
-# ctc_smoke.sh —— ctc 驱动冒烟(ci.sh [5/7])
+# ctron_smoke.sh —— ctron 驱动冒烟(ci.sh [5/9])
 #
 # 固化 Task 7 的端到端验证序列,断言集:
 #   1) --version rc=0 有输出
 #   2) --help rc=0 含 run/build/check 三词
-#   3) ctc run --help rc=0(五臂守卫抽查一臂)
+#   3) ctron run --help rc=0(五臂守卫抽查一臂)
 #   4) new → run → check → build 单文件 → build 项目模式全链(各步 rc 与产物)
 #   5) 未知子命令 rc=2
 #   6) 无 cc 路径:CC 指向不存在的绝对路径 + PATH 收窄,build rc=2 且 .c
@@ -14,19 +14,19 @@
 #   8) stdpath 两态:①CTRON_STDPATH 指路 → 1;缺省走③回落 → 2
 #      (①态需 env_get 实值面,仅 native 可观察;seed 面归 ci.sh 既有链路)
 #   9) 装机布局仿真(库根布局 2026-09-30):②exe/../lib 探测/T2 随发门面/site 同级推导,零 env
-# 前置:仓库根 ctc + compiler/bin/ctron-{cc,chk,emit}
-#       (ci.sh [4/7] native.sh 产出;dev 回落由 ctc 内建,本脚本不依赖 PATH)。
+# 前置:仓库根 ctron + compiler/bin/ctron-{cc,chk,emit}
+#       (ci.sh [4/7] native.sh 产出;dev 回落由 ctron 内建,本脚本不依赖 PATH)。
 set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)
-CTC="$ROOT/ctc"
+CTRON="$ROOT/ctron"
 CBIN="$ROOT/compiler/bin"
 
-[ -x "$CTC" ] || { echo "ctc_smoke: 缺少 $CTC" >&2; exit 2; }
-[ -x "$CBIN/ctron-cc" ] || { echo "ctc_smoke: 缺少 $CBIN/ctron-cc(先跑 compiler/native.sh)" >&2; exit 2; }
-[ -x "$CBIN/ctron-fmt" ] || { echo "ctc_smoke: 缺少 $CBIN/ctron-fmt(先跑 compiler/native.sh)" >&2; exit 2; }
+[ -x "$CTRON" ] || { echo "ctron_smoke: 缺少 $CTRON" >&2; exit 2; }
+[ -x "$CBIN/ctron-cc" ] || { echo "ctron_smoke: 缺少 $CBIN/ctron-cc(先跑 compiler/native.sh)" >&2; exit 2; }
+[ -x "$CBIN/ctron-fmt" ] || { echo "ctron_smoke: 缺少 $CBIN/ctron-fmt(先跑 compiler/native.sh)" >&2; exit 2; }
 
-T=$(mktemp -d /tmp/ctc_smoke.XXXXXX)
+T=$(mktemp -d /tmp/ctron_smoke.XXXXXX)
 trap 'rm -rf "$T"' EXIT
 
 pass=0; fail=0
@@ -34,7 +34,7 @@ ok()  { echo "  ok  : $1"; pass=$((pass+1)); }
 bad() { echo "  FAIL: $1"; fail=$((fail+1)); }
 
 echo "== 1) --version =="
-rc=0; "$CTC" --version > "$T/v.out" 2>&1 || rc=$?
+rc=0; "$CTRON" --version > "$T/v.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && [ -s "$T/v.out" ]; then
     ok "--version rc=0 有输出($(cat "$T/v.out"))"
 else
@@ -42,7 +42,7 @@ else
 fi
 
 echo "== 2) --help =="
-rc=0; "$CTC" --help > "$T/h.out" 2>&1 || rc=$?
+rc=0; "$CTRON" --help > "$T/h.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q 'run' "$T/h.out" && grep -q 'build' "$T/h.out" && grep -q 'check' "$T/h.out"; then
     ok "--help rc=0 含 run/build/check"
 else
@@ -50,36 +50,36 @@ else
 fi
 
 echo "== 3) 子命令 --help 守卫(五臂抽查 run 臂) =="
-rc=0; "$CTC" run --help > "$T/rh.out" 2>&1 || rc=$?
+rc=0; "$CTRON" run --help > "$T/rh.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && [ -s "$T/rh.out" ]; then
-    ok "ctc run --help rc=0 出详助"
+    ok "ctron run --help rc=0 出详助"
 else
-    bad "ctc run --help rc=$rc(应落详助而非把 --help 当文件名)"
+    bad "ctron run --help rc=$rc(应落详助而非把 --help 当文件名)"
 fi
 
 echo "== 4) 全链:new → run → check → build 单文件 → build 项目模式 =="
-rc=0; ( cd "$T" && "$CTC" new probe ) > "$T/new.out" 2>&1 || rc=$?
+rc=0; ( cd "$T" && "$CTRON" new probe ) > "$T/new.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && [ -f "$T/probe/Ctron.toml" ] && [ -f "$T/probe/Ctron.ctcl" ] && [ -f "$T/probe/src/main.ct" ]; then
     ok "new 脚手架(Ctron.toml + Ctron.ctcl + src/main.ct)"
 else
     bad "new rc=$rc 或缺脚手架文件"
 fi
 
-rc=0; "$CTC" run "$T/probe/src/main.ct" > "$T/run.out" 2>&1 || rc=$?
+rc=0; "$CTRON" run "$T/probe/src/main.ct" > "$T/run.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q 'hello, ctron' "$T/run.out"; then
     ok "run 解释执行 hello"
 else
     bad "run rc=$rc out=[$(cat "$T/run.out")]"
 fi
 
-rc=0; "$CTC" check "$T/probe/src/main.ct" > "$T/chk.out" 2>&1 || rc=$?
+rc=0; "$CTRON" check "$T/probe/src/main.ct" > "$T/chk.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q 'check OK' "$T/chk.out"; then
     ok "check 静态检查绿"
 else
     bad "check rc=$rc out=[$(cat "$T/chk.out")]"
 fi
 
-rc=0; "$CTC" build "$T/probe/src/main.ct" > "$T/b1.out" 2>&1 || rc=$?
+rc=0; "$CTRON" build "$T/probe/src/main.ct" > "$T/b1.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && [ -f "$T/probe/src/main.c" ] && [ -x "$T/probe/src/main" ]; then
     ok "build 单文件(<stem>.c + 可执行)"
 else
@@ -93,7 +93,7 @@ else
     bad "单文件产物执行 rc=$rc out=[$(cat "$T/exe1.out")]"
 fi
 
-rc=0; ( cd "$T/probe" && "$CTC" build ) > "$T/b2.out" 2>&1 || rc=$?
+rc=0; ( cd "$T/probe" && "$CTRON" build ) > "$T/b2.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && [ -f "$T/probe/build/probe.c" ] && [ -x "$T/probe/build/probe" ]; then
     ok "build 项目模式(build/probe.c + build/probe,读 Ctron.toml)"
 else
@@ -108,7 +108,7 @@ else
 fi
 
 echo "== 5) 未知子命令 =="
-rc=0; "$CTC" frobnicate > "$T/unk.out" 2>&1 || rc=$?
+rc=0; "$CTRON" frobnicate > "$T/unk.out" 2>&1 || rc=$?
 if [ $rc -eq 2 ]; then
     ok "未知子命令 rc=2"
 else
@@ -117,24 +117,24 @@ fi
 
 echo "== 6) 无 cc 路径(双出路)+ run 隔离性 =="
 printf 'fn main() {\n    println("hello, ctron")\n}\n' > "$T/nc.ct"
-rc=0; ( cd "$T" && CC=/nonexistent/cc PATH=/usr/bin:/bin "$CTC" build nc.ct ) > "$T/nocc.out" 2> "$T/nocc.err" || rc=$?
+rc=0; ( cd "$T" && CC=/nonexistent/cc PATH=/usr/bin:/bin "$CTRON" build nc.ct ) > "$T/nocc.out" 2> "$T/nocc.err" || rc=$?
 if [ $rc -eq 2 ] && [ -f "$T/nc.c" ] && grep -q '安装编译器' "$T/nocc.err"; then
     ok "无 cc:build rc=2,nc.c 先产出,stderr 双出路指引"
 else
     bad "无 cc build rc=$rc .c=$([ -f "$T/nc.c" ] && echo 有 || echo 无) err=[$(cat "$T/nocc.err")]"
 fi
 
-rc=0; ( cd "$T" && CC=/nonexistent/cc PATH=/usr/bin:/bin "$CTC" run nc.ct ) > "$T/nocc_run.out" 2>&1 || rc=$?
+rc=0; ( cd "$T" && CC=/nonexistent/cc PATH=/usr/bin:/bin "$CTRON" run nc.ct ) > "$T/nocc_run.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q 'hello, ctron' "$T/nocc_run.out"; then
     ok "无 cc 同环境 run rc=0(解释臂隔离,不受 cc 影响)"
 else
     bad "无 cc run rc=$rc out=[$(cat "$T/nocc_run.out")]"
 fi
 
-echo "== 7) 分发三内建:ctc run fx_distinfo(native/dev 布局面) =="
+echo "== 7) 分发三内建:ctron run fx_distinfo(native/dev 布局面) =="
 # dev 下 exe 旁无 lib → std 走③回落;fx_distinfo 不用 std,不受影响。
 # seed 面(compiler/ctc.sh 宿主 env_get 恒空)不入本脚本:依赖 seed 构建,归 ci.sh 既有链路。
-rc=0; "$CTC" run "$ROOT/tests/dist/fx_distinfo.ct" > "$T/dist.out" 2>&1 || rc=$?
+rc=0; "$CTRON" run "$ROOT/tests/dist/fx_distinfo.ct" > "$T/dist.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q '^exe:nonempty$' "$T/dist.out" \
     && grep -q '^env:0$' "$T/dist.out" && grep -q '^flag:0$' "$T/dist.out"; then
     ok "fx_distinfo 三内建:exe:nonempty/env:0/flag:0"
@@ -143,14 +143,14 @@ else
 fi
 
 echo "== 8) stdpath 两态:①CTRON_STDPATH 指路 / 缺省③回落 =="
-rc=0; CTRON_STDPATH="$ROOT/tests/modules/stdpath/fakestd" "$CTC" run "$ROOT/tests/modules/stdpath/src/main.ct" > "$T/sp1.out" 2>&1 || rc=$?
+rc=0; CTRON_STDPATH="$ROOT/tests/modules/stdpath/fakestd" "$CTRON" run "$ROOT/tests/modules/stdpath/src/main.ct" > "$T/sp1.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q '^1$' "$T/sp1.out"; then
     ok "CTRON_STDPATH=fakestd 命中①(不分词):输出 1"
 else
     bad "stdpath ①态 rc=$rc out=[$(cat "$T/sp1.out")]"
 fi
 
-rc=0; "$CTC" run "$ROOT/tests/modules/stdpath/src/main.ct" > "$T/sp2.out" 2>&1 || rc=$?
+rc=0; "$CTRON" run "$ROOT/tests/modules/stdpath/src/main.ct" > "$T/sp2.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && grep -q '^2$' "$T/sp2.out"; then
     ok "缺省走③回落(真分词):输出 2"
 else
@@ -159,22 +159,22 @@ fi
 
 echo "== 9) fmt 契约(R-P2d:file/pkg 目录/-w/--check/负例) =="
 printf 'fn main() {\nlet x=1\n}\n' > "$T/fmt_a.ct"
-rc=0; "$CTC" fmt "$T/fmt_a.ct" > "$T/fmt_d.out" 2>&1 || rc=$?
+rc=0; "$CTRON" fmt "$T/fmt_a.ct" > "$T/fmt_d.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && printf 'fn main() {\n    let x = 1\n}\n' | diff - "$T/fmt_d.out" > /dev/null 2>&1; then
     ok "fmt 默认打印规范格式"
 else
     bad "fmt 默认打印 rc=$rc out=[$(cat "$T/fmt_d.out")]"
 fi
 
-rc=0; "$CTC" fmt "$T/fmt_a.ct" --check > "$T/fmt_c.out" 2> "$T/fmt_c.err" || rc=$?
+rc=0; "$CTRON" fmt "$T/fmt_a.ct" --check > "$T/fmt_c.out" 2> "$T/fmt_c.err" || rc=$?
 if [ $rc -eq 1 ] && grep -q "$T/fmt_a.ct" "$T/fmt_c.out" && grep -q '待格式化' "$T/fmt_c.err"; then
     ok "fmt --check 列出待格式化 + rc=1"
 else
     bad "fmt --check rc=$rc out=[$(cat "$T/fmt_c.out")] err=[$(cat "$T/fmt_c.err")]"
 fi
 
-rc=0; "$CTC" fmt "$T/fmt_a.ct" -w > "$T/fmt_w.out" 2>&1 || rc=$?
-rc2=0; "$CTC" fmt "$T/fmt_a.ct" --check > /dev/null 2>&1 || rc2=$?
+rc=0; "$CTRON" fmt "$T/fmt_a.ct" -w > "$T/fmt_w.out" 2>&1 || rc=$?
+rc2=0; "$CTRON" fmt "$T/fmt_a.ct" --check > /dev/null 2>&1 || rc2=$?
 if [ $rc -eq 0 ] && [ $rc2 -eq 0 ] && grep -q 'let x = 1' "$T/fmt_a.ct"; then
     ok "fmt -w 原位写回,写后 --check rc=0"
 else
@@ -184,7 +184,7 @@ fi
 mkdir -p "$T/fmt_pkg/src"
 printf 'fn a() {}\n' > "$T/fmt_pkg/src/lib.ct"
 printf 'fn m() {\nlet y=2\n}\n' > "$T/fmt_pkg/src/main.ct"
-rc=0; "$CTC" fmt "$T/fmt_pkg" --check > "$T/fmt_p.out" 2>&1 || rc=$?
+rc=0; "$CTRON" fmt "$T/fmt_pkg" --check > "$T/fmt_p.out" 2>&1 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'src/main.ct' "$T/fmt_p.out" && ! grep -q 'src/lib.ct' "$T/fmt_p.out"; then
     ok "fmt pkg 目录(src/*.ct 展开,已格式化文件不列)"
 else
@@ -192,7 +192,7 @@ else
 fi
 
 printf 'fn main() {\nvar x = 1;\n}\n' > "$T/fmt_neg.ct"
-rc=0; "$CTC" fmt "$T/fmt_neg.ct" > "$T/fmt_n.out" 2>&1 || rc=$?
+rc=0; "$CTRON" fmt "$T/fmt_neg.ct" > "$T/fmt_n.out" 2>&1 || rc=$?
 if [ $rc -eq 1 ] && grep -q 'E1001' "$T/fmt_n.out"; then
     ok "fmt 词法脏报错退出(规范 R8, rc=1)"
 else
@@ -227,5 +227,5 @@ else
     bad "装机态 site 异常 rc=$rc: $(tail -2 "$T/i_site.out")"
 fi
 
-echo "ctc_smoke: $pass ok / $fail fail"
+echo "ctron_smoke: $pass ok / $fail fail"
 [ "$fail" -eq 0 ] || exit 1

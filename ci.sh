@@ -20,8 +20,8 @@ echo "[4/9] 验收冒烟(--full,含并发/枚举/fn 值发射/自举固定点/fm
 sh "$DIR/compiler/test/smoke.sh" --full
 python3 "$DIR/compiler/test/suite.py"
 
-echo "[5/9] ctc 驱动冒烟(run/check/build/fmt 契约/help/无 cc 路径)"
-sh "$DIR/tests/dist/ctc_smoke.sh"
+echo "[5/9] ctron 驱动冒烟(run/check/build/fmt 契约/help/无 cc 路径)"
+sh "$DIR/tests/dist/ctron_smoke.sh"
 
 echo "[6/9] 性能基线冒烟(发射一致性 + 后端加速比)"
 sh "$DIR/compiler/bench.sh" 2>&1 | tail -12
