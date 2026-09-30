@@ -1,5 +1,7 @@
 # 库根布局与包分区(lib/ + pkgs/)——设计方案
 
+> **更名记(2026-09-30)**:用户驱动 `ctc` 更名 **`ctron`**(硬切,无兼容壳;三分法:`ctron` 正身驱动 / `ctronc` C 宿主 / `ctronr` Rust 参考实现)。本文所涉命令名随文更新;开发期自举驱动 `compiler/ctc.sh` 名不变。
+
 > 状态:**已实施(2026-09-30;用户裁决:A′ 选型 + T2 随发;W1 loader 712e98b / W2 迁移 04ff0d7 / W3 分发 4c236bd / W4 验收=装机全回路三例绿+ci 九门;实施计划 plans/2026-09-30-libroot-layout.md)**
 > 上游:2026-09-23-domain-namespace-design.md(域包仓库根平铺=过渡形态,本稿升级为
 > 终态)、2026-09-23-std-tiering-design.md(三档宪章 v2)、2026-09-17-toolchain-
@@ -85,7 +87,7 @@
   `CTRON_INSTALL_DIR` 语义 = **工具链根本身**;PATH 提示 `$DIR/bin`;检测旧
   布局 `~/.ctron/ctron` 打印清理提示(**不自动删**,诚实边界)。
 - Makefile:源码线 `$(DEST)/lib/ctron/std` → `$(DEST)/lib`。
-- ctc_smoke 扩三件:装机态 hello(use std.x)/ use net.x(libroot ② 路径)/
+- ctron_smoke 扩三件:装机态 hello(use std.x)/ use net.x(libroot ② 路径)/
   模拟 site 包命中(pkgs)。
 
 ## 4. 决策记录
@@ -112,7 +114,7 @@
 8. **门面入域目录**(用户 2026-09-30 晚裁决):`<域>/<域>.ct` 统一 db 形态,lib/
    pkgs/ 容器只持目录;loader 域根+site root 两段门面形映射改 `<域>/<域>.ct`
    (目录相对/ctart/≥3 段形不动),use 消费面零变化;验收=smoke 148/0·net 18/0
-   (门面形重消费面)·gui s3_clay(site 门面+合成 use)·ctc_smoke 24/0·suite rc0。
+   (门面形重消费面)·gui s3_clay(site 门面+合成 use)·ctron_smoke 24/0·suite rc0。
 
 ## 5. 用户面影响摘要
 
@@ -123,7 +125,7 @@ install.sh + 改一条 PATH + 清残留目录(响亮失败,无静默错);长期�
 
 ## 6. 明确不做
 
-- 不做 `ctc pkg` 子命令面与 registry 协议(registry 泳道所有,E2020 只指路);
+- 不做 `ctron pkg` 子命令面与 registry 协议(registry 泳道所有,E2020 只指路);
 - 不动 ctart/deps 语义与 realdep/S2a 优先级(保底位不动);
 - 不做多用户系统级安装 per-user site 锚(触发未到);
 - 不动 Rust/C 臂源(Rust 面无 std/域解析;C 种随自举链重建自然同步);
@@ -137,9 +139,9 @@ install.sh + 改一条 PATH + 清残留目录(响亮失败,无静默错);长期�
   口径不变)+ native.sh 重建 + decl 锁核对(零新增纪律)。
 - **W2 物理迁移**:git mv 全清单 + 82 脚本 sed + 夹具/种副/文档路径 + 清噪;
   前置 = 在制泳道对齐。
-- **W3 分发面**:release.sh/install.sh/Makefile + ctc_smoke 扩三件 +
+- **W3 分发面**:release.sh/install.sh/Makefile + ctron_smoke 扩三件 +
   宪章 v2.2 + 文档站。
 - **W4 全量验收**:ci.sh 门禁全绿 + tests/{net,http,web,gui,s3} 关键腿 +
-  smoke(含种副逐字节)+ 真装机烟测(install.sh → ctc run hello,含
+  smoke(含种副逐字节)+ 真装机烟测(install.sh → ctron run hello,含
   use std.x/net.x)。
 - 分波 pathspec 落库,每波全绿即提交。

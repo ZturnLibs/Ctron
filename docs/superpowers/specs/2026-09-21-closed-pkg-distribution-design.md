@@ -1,5 +1,7 @@
 # 闭源包分发设计(.ctart 密封 AST 工件)
 
+> **更名记(2026-09-30)**:用户驱动 `ctc` 更名 **`ctron`**(硬切,无兼容壳;三分法:`ctron` 正身驱动 / `ctronc` C 宿主 / `ctronr` Rust 参考实现)。本文所涉命令名随文更新;开发期自举驱动 `compiler/ctc.sh` 名不变。
+
 > 状态:**设计裁定 v3(2026-09-22,实施中;非语言修订)**
 > 修订:v3(2026-09-22)——owner 经连续授权推进("继续推进剩余全部任务"),§12 决议
 > 1–4 视为核准实施(S1b 加速线与 S2+/S3/S4 需求方触发纪律保留不变);实施进度:
@@ -104,9 +106,9 @@ dep "std.str" { digest = "sha256:…" }         // 依赖 DAG → E5020 无环,�
 
 | 路径 | 消费 |
 |---|---|
-| `ctc check` | 仅吃 iface/main.cti(签名足以裁决消费方代码的类型面) |
-| `ctc run` | iface 进 sem;impl/*.ast 载入解释器执行 |
-| `ctc build` | iface 进 sem;发射器从 impl/*.ast 直接降 C → 本机 cc(消费者侧 AOT,§1 事实 4) |
+| `ctron check` | 仅吃 iface/main.cti(签名足以裁决消费方代码的类型面) |
+| `ctron run` | iface 进 sem;impl/*.ast 载入解释器执行 |
+| `ctron build` | iface 进 sem;发射器从 impl/*.ast 直接降 C → 本机 cc(消费者侧 AOT,§1 事实 4) |
 
 编译期检查逐条承接:
 
@@ -192,28 +194,28 @@ dep "mypkg" {
 
 ### 7.2 用户面(命令面与双方旅程)
 
-**原则:没有全局包安装。** 唯一的全局安装是工具链本身(与今日同:`install.sh | sh`);包永远**按项目获取**,与 vendoring 同一心智。驱动名以现役 `ctc` 为准(roadmap R-P7 的 `ctron add` 同义)。
+**原则:没有全局包安装。** 唯一的全局安装是工具链本身(与今日同:`install.sh | sh`);包永远**按项目获取**,与 vendoring 同一心智。驱动名以现役 `ctron` 为准(roadmap R-P7 的 `ctron add` 同义)。
 
 消费方(应用开发者):
 
 ```bash
-$ ctc add mypkg@1.2     # 查日志仓 → 写 dep 块(git+rev+blob)→ 取工件入 deps/mypkg.ctart/
+$ ctron add mypkg@1.2     # 查日志仓 → 写 dep 块(git+rev+blob)→ 取工件入 deps/mypkg.ctart/
                         # → 校验 SHA256SUMS = digest → 采样复放轨迹 → 钉 Ctron.lock
-$ ctc update mypkg      # 换 digest:重放轨迹 + diff attest
-$ ctc doc mypkg         # 读 iface/main.cti:契约头 / agent 面(D2 红利,闭源包照常)
-$ ctc run / ctc build   # §4 消费路径;use 语法与源码包一字不差
+$ ctron update mypkg      # 换 digest:重放轨迹 + diff attest
+$ ctron doc mypkg         # 读 iface/main.cti:契约头 / agent 面(D2 红利,闭源包照常)
+$ ctron run / ctron build   # §4 消费路径;use 语法与源码包一字不差
 ```
 
 - caps 流向:包 `meta.ctcl` 声明"需要",消费方 `Ctron.ctcl` 决定"授予";交集为空 = E4010 拦截,授予后越权 = 运行时门禁 panic(§6)。
-- 离线/无注册表路径:拿到工件目录拷入,`ctc pkg verify deps/mypkg.ctart`(校验 SHA256SUMS + 复放轨迹)即可,零网络协议依赖。
+- 离线/无注册表路径:拿到工件目录拷入,`ctron pkg verify deps/mypkg.ctart`(校验 SHA256SUMS + 复放轨迹)即可,零网络协议依赖。
 
 发布方(包作者):
 
 ```bash
-$ ctc test              # 包内 test 块,三宿主 conformance 全绿(parity 前置)
-$ ctc pkg seal          # 投影 iface + 剥名 impl + 生成 meta 表(§4 五项检查不过则 seal 不出)
-$ ctc pkg trace         # 录黄金轨迹(效果函数配 FakeFs 脚本)
-$ ctc pkg attest        # 生成 attest.ctcl
+$ ctron test              # 包内 test 块,三宿主 conformance 全绿(parity 前置)
+$ ctron pkg seal          # 投影 iface + 剥名 impl + 生成 meta 表(§4 五项检查不过则 seal 不出)
+$ ctron pkg trace         # 录黄金轨迹(效果函数配 FakeFs 脚本)
+$ ctron pkg attest        # 生成 attest.ctcl
 $ git push × 2          # 工件仓 + 日志记录
 ```
 
@@ -232,7 +234,7 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 | 远期 | **只读镜像/代理**(Go module proxy 式无状态缓存:规范源永远在 git,代理只做拉取加速/可用性/补齐被删仓) | 网络可达性成为真实问题(如 GitHub 国内不稳) | 趋近零,可随时重建,挂了不丢任何东西 |
 | 不做 | crates.io 式上传正典仓 | —(透明日志 + digest + 行为验证已覆盖其全部职能,且少一台必须不宕机的服务器) | — |
 
-- **UX 连续性**:`ctc add mypkg`(写 deps + 落 lock)、`ctc vendor mypkg`(拷工件目录)与源码包同一命令面;工件目录即分发单位,没有新心智模型。
+- **UX 连续性**:`ctron add mypkg`(写 deps + 落 lock)、`ctron vendor mypkg`(拷工件目录)与源码包同一命令面;工件目录即分发单位,没有新心智模型。
 
 ## 8. 兼容与演进
 
@@ -260,7 +262,7 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 > 实测占比 ≈44% 未触)。明细见 plans/2026-09-21-closed-pkg-s0-iface.md S1a 各节。
 | S2 | .ctart 目录 + meta 表 + `pkg_load_use` 工件分支(自签自验) | 编译器线 + 工具链 | check/run/build 三路吃工件;§4 检查对照表全过;双包 demo(源码消费方 ↔ 工件库) |
 | S3 | trace 协议(录制 + 复放 + 不符诊断) | std 线 + 编译器线 | 效果函数 FakeFs 录制回放确定性;不符用例命中新码 |
-| S4 | attest + 透明日志仓 + deps `blob =` 形(CTCL 立表) | 工具链 + 配置线 | **反投机律:以首个真实闭源分发需求方出现为启动条件**;deps 四形互斥负例拦截;`ctc add`/`pkg seal\|trace\|attest\|verify` 命令面 conformance(§7.2) |
+| S4 | attest + 透明日志仓 + deps `blob =` 形(CTCL 立表) | 工具链 + 配置线 | **反投机律:以首个真实闭源分发需求方出现为启动条件**;deps 四形互斥负例拦截;`ctron add`/`pkg seal\|trace\|attest\|verify` 命令面 conformance(§7.2) |
 
 触发重述:S1 即 §10.1 原计划(其自身触发条件不变);S2+ 以"出现真实闭源分发需求"为启动条件——本 spec 的作用是把届时要走的路一次说清,避免临场设计。
 

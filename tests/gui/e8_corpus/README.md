@@ -1,6 +1,6 @@
 # e8_corpus —— GUI 诊断负例语料(W3 接入前 gated)
 
-规范 §4.4 预留码的负例语料。W3(E8xxx 检查面进 ctc check)落地前,
+规范 §4.4 预留码的负例语料。W3(E8xxx 检查面进 ctron check)落地前,
 这些文件在 check 口径**全数通过**(gui 块直通)——不是 bug,是排期。
 W3 落地验收:每文件标注的 `gui expect:` 码逐一出现(run.sh 届时启用)。
 
