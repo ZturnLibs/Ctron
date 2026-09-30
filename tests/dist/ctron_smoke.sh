@@ -15,7 +15,7 @@
 #      (①态需 env_get 实值面,仅 native 可观察;seed 面归 ci.sh 既有链路)
 #   9) 装机布局仿真(库根布局 2026-09-30):②exe/../lib 探测/T2 随发门面/site 同级推导,零 env
 # 前置:仓库根 ctron + compiler/bin/ctron-{cc,chk,emit}
-#       (ci.sh [4/7] native.sh 产出;dev 回落由 ctron 内建,本脚本不依赖 PATH)。
+#       (ci.sh [3/9] native.sh 产出;dev 回落由 ctron 内建,本脚本不依赖 PATH)。
 set -eu
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)

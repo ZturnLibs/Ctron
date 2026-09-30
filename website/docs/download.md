@@ -39,6 +39,8 @@ export PATH="$PWD/ctron/bin:$PATH"      # add to your shell config
 
 Windows: unzip into `%LOCALAPPDATA%\ctron` and add `ctron\bin` to your `PATH` (via `setx` or System Settings).
 
+If you unzipped an older release over this install, stale `bin\ctc.ps1` / `bin\ctc.cmd` may remain from that zip — they are old-name leftovers, safe to delete; the current driver shims are `ctron.ps1` / `ctron.cmd`.
+
 ## Dependencies and platform notes
 
 - `ctron run` / `check` / `test` / `new`: zero external dependencies, out of the box on every platform.

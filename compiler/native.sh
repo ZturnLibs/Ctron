@@ -5,7 +5,7 @@
 #   bin/ctron-emit  编译器·发射驱动(parse → 生成等价 C,<bin> run <file> > out.c)
 #   bin/ctron-chk   编译器·检查驱动(parse → 语义 12 项,<bin> run <file> [--format=json|--profile=bare|--trusted])
 #   bin/ctron-fmt   格式化驱动(R-P2d 移植:scan5 → token 流重排 → stdout,<bin> run <file>;
-#                   词法诊断 rc=1;-w/--check/pkg 目录由 ctc 层编排,docs/fmt-spec.md)
+#                   词法诊断 rc=1;-w/--check/pkg 目录由 ctron 层编排,docs/fmt-spec.md)
 #   bin/ctron-doc   iface 投影驱动(闭源包分发 S0:pub 符号表 + trait/impl 面,
 #                   --format=json JSON 面;ctc.sh doc 同面)
 #
