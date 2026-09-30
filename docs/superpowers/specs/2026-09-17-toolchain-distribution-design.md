@@ -248,7 +248,7 @@ Windows 专项(在 1–5 之上追加):
 
 | 风险 | 概率 | 缓解 |
 |---|---|---|
-| linux 侧从未实测,首跑暴露 cc/glibc 差异 | 高 | workflow 首跑即为验证轮;cc 参数口径收在 ctron/native.sh 单点 |
+| linux 侧从未实测,首跑暴露 cc/glibc 差异 | 高 | workflow 首跑即为验证轮;cc 参数口径收在 compiler/native.sh 单点 |
 | winpthreads 并发行为与 mac/linux 不一致 | 中 | Windows 专项验收 5;β 标记兜底 |
 | 深递归在 Windows 默认栈下段错误 | 高(已论证) | 第 9 项改造,验收 6 钉死 |
 | GetModuleFileNameA 路径分隔符 | 低 | Win32 API 接受混用分隔符;验收 2 兜底;异常再归一化 |

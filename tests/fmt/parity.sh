@@ -1,5 +1,5 @@
 #!/bin/sh
-# parity.sh —— ctron fmt 三宿主对拍门禁(R-P2d 双宿主移植验收,ci.sh 可挂载)
+# parity.sh —— fmt 三宿主对拍门禁(R-P2d 双宿主移植验收,ci.sh 可挂载)
 #
 # 三宿主:compiler-rust(参考实现,ctronr fmt)/ compiler-c(ctronc fmt)/ compiler(自举,ctron-fmt)
 # 对语料逐文件断言:三方退出码一致,且成功时 stdout 逐字节一致(docs/fmt-spec.md 唯一权威)。

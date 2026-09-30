@@ -1,4 +1,4 @@
-//! R-P2c 集成验收:`ctron test` —— 发现/过滤/panic 标记/JSON/pkg 目录/退出码。
+//! R-P2c 集成验收:`ctronr test` —— 发现/过滤/panic 标记/JSON/pkg 目录/退出码。
 //! lib 级走 ctron::testing::test_report;CLI 级走 CARGO_BIN_EXE_ctronr。
 
 use ctron::sem::Profile;
@@ -95,7 +95,7 @@ fn run_cli(args: &[&str]) -> (String, String, Option<i32>) {
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_ctronr"))
         .args(args)
         .output()
-        .expect("ctron 二进制可执行");
+        .expect("ctronr 二进制可执行");
     (
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),

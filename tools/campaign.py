@@ -23,7 +23,7 @@ for f in files:
     w = re.search(r"//@\s*warn:\s*(\S+)", src)
     rows.append((f, name, kind, marker, (w.group(1) if w else None)))
 
-def ctron(*args, timeout=30):
+def ctronr(*args, timeout=30):
     try:
         r = subprocess.run([str(CT), *args], capture_output=True, text=True, timeout=timeout, cwd=str(ROOT))
         return r.returncode, r.stdout, r.stderr
@@ -36,7 +36,7 @@ for f, name, kind, marker, warn in rows:
     # —— 解释器路径(behavior/panic/web) ——
     interp = "—"
     if kind in ("behavior", "panic"):
-        rc, out, err = ctron("run", str(f))
+        rc, out, err = ctronr("run", str(f))
         if kind == "behavior":
             interp = "PASS" if rc == 0 else f"FAIL({err.strip()[:60] or out.strip()[:60]})"
         else:
@@ -44,11 +44,11 @@ for f, name, kind, marker, warn in rows:
             interp = "PASS" if "panic-ok" in out else f"FAIL(rc={rc})"
     elif kind == "neg":
         prof = ["--profile", "bare"] if name.startswith("08_bare") else []
-        rc, out, err = ctron("check", str(f), *prof)
+        rc, out, err = ctronr("check", str(f), *prof)
         codes = re.findall(r"[EW]\d{4}", err + out)
         interp = "PASS" if (marker in codes) else f"FAIL(want {marker}, got {codes or '无'})"
     elif kind == "lint":
-        rc, out, err = ctron("check", str(f))
+        rc, out, err = ctronr("check", str(f))
         codes = re.findall(r"[EW]\d{4}", err + out)
         interp = "PASS" if (warn in codes) else f"FAIL(want {warn}, got {codes or '无'})"
 
@@ -57,7 +57,7 @@ for f, name, kind, marker, warn in rows:
     if kind in ("behavior", "panic") and not name.startswith("10_web"):
         stem = name.replace(".", "_")
         c_path = TMP / f"{stem}.c"
-        rc, out, err = ctron("trans", str(f), "-o", str(c_path))
+        rc, out, err = ctronr("trans", str(f), "-o", str(c_path))
         if rc == 0:
             cc = subprocess.run(["cc", "-O1", "-w", "-std=gnu11", str(c_path), "-o", str(TMP / stem)],
                                 capture_output=True, text=True)

@@ -52,7 +52,7 @@ else
     "$DIR/compiler/ctc.sh" emit "$DIR/compiler/build/cc_fmt.ct"   "$DIST/prebuilt/ctron-fmt.c"  >/dev/null
 fi
 
-# 源码 tarball 组装件(仅打包,不重复构建;布局对齐源码线 Makefile:prebuilt/ std/ ctc Makefile)
+# 源码 tarball 组装件(仅打包,不重复构建;布局对齐源码线 Makefile:prebuilt/ std/ ctron Makefile)
 SRC="$DIST/ctron-src-$VER"; mkdir -p "$SRC/prebuilt"
 cp -R "$DIR/compiler/src" "$SRC/compiler-src"
 cp -R "$DIR/lib" "$SRC/lib"
