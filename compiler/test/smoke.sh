@@ -35,8 +35,8 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=422' "$T/chk.out" && ok "自检 cc_run 绿,decls=422(批次累积+T26 两 extern+T29 两 GC 观测 extern,随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
-check_decl() { # <源.ct> <期望decl>
+grep -q 'check OK decls=438' "$T/chk.out" && ok "自检 cc_run 绿,decls=438(S1 436+peer ffi+T29 两 GC extern,整合实测申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+heck_decl() { # <源.ct> <期望decl>
     "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
 }
@@ -196,7 +196,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
-for cv in fnval cloval clostr enumres fnret try tlist own generic gstruct derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith; do
+for cv in fnval cloval clostr enumres fnret try tlist own generic gstruct derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
@@ -366,10 +366,10 @@ std_parity=0
 std_total=0
 for f in "$ROOT"/std/*.ct; do
     b=$(basename "$f")
-    # config/net/tls:extern/c_src 依赖面;crypto:arena 大户保留豁免(1.5GB/86s,
-    # linux 膨胀 3-4.5GB 贴边);fmap 已随 c6 原生快路径回收(487eaef:1.63 亿→
-    # 1,510 万次分配、3GB→655MB/2.7s,2026-09-26)
-    case $b in config.ct|net.ct|tls.ct|crypto.ct) continue ;; esac
+    # config/net/tls:extern/c_src 依赖面;fmap 已随 c6 原生快路径回收(487eaef);
+    # crypto 已随 S1 Val 换代+I64 字段直算回收(7.17 亿→5,560 万次分配、86s→~16s,
+    # 2026-09-28,门 ≤3 亿/≤30s 达成)
+    case $b in config.ct|net.ct|tls.ct) continue ;; esac
     std_total=$((std_total+1))
     if ! "$COMP/bin/ctron-cc" run "$f" > /dev/null 2>&1; then
         bad "std 单测自举红: $b"
@@ -569,8 +569,8 @@ P
     esac
     for f in "$ROOT"/std/*.ct; do
         b=$(basename "$f" .ct)
-        # crypto:arena 大户保留豁免(见 3j2 注);fmap 已随 c6 快路径回收
-        case $b in config|net|tls|crypto) continue ;; esac
+        # crypto 已随 S1 回收(见 3j2 注);fmap 已随 c6 快路径回收
+        case $b in config|net|tls) continue ;; esac
         arm_ok=0
         if "$COMP/bin/ctron-emit" run "$f" > "$T/pe_$b.c" 2>/dev/null \
            && cc -O1 -w -o "$T/pe_$b.bin" "$T/pe_$b.c" 2>/dev/null; then

@@ -3,6 +3,7 @@
 // 成员与内建方法分派 call_mem(List/String/Option/Result/Scope/Channel/Mutex/
 // Atomic/parallel/Simd…)、eval_call 入口、variant_arity/conv_as 显式转换、
 // ns_map_reduce、utf8_cont/str_contains。
+// S1 Val 换代:实参表 vals 为 box 位面(复合恒等/标量旧编码),消费点 v_unbox。
 // =====================================================================
 
 // W4 E1:解释口径 extern 直调桥宿主口(实现在发射运行时 boilerplate,
@@ -19,82 +20,78 @@ extern "c" fn ctron_prog_args_n() -> I64
 #[trusted]
 extern "c" fn ctron_prog_args_at(i: I64) -> Str
 
-fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> List[Str] {
+fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> Flow {
     var ps = d[3]
     var nenv = List[Str]()
     var k: I32 = 1
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            nenv = env_add(nenv, pr[2], bind_of(file, vals[k - 1]))
+            nenv = env_add(nenv, pr[2], bind_of(file, v_unbox(vals[k - 1])))
         }
         k += 1
     }
     var br = run_block(file, nenv, out, d[5], false)
     var fl = "k"
-    if br[0] == "a" {
+    if br.kind == "a" {
         fl = "a"
     }
-    return e4(fl, env, br[3], br[2])
+    return e4(fl, env, br.v, br.out)
 }
-fn call_cv(file: List[Str], env: List[Str], out: Str, v: List[Str], vals: List[Str]) -> List[Str] {
-    if seq2(v[0], "F") {
-        var d = find_decl(file, v[1])
-        if d.len == 0 {
-            panic("no fn:" + v[1])
-            return e4("a", env, vV2(), out)
+fn call_cv(file: List[Str], env: List[Str], out: Str, v: Val, vals: List[Str]) -> Flow {
+    if v.tag == 8 {
+        if seq2(cx_of(v)[0], "F") {
+            var d = find_decl(file, cx_of(v)[1])
+            if d.len == 0 {
+                panic("no fn:" + cx_of(v)[1])
+                return e4("a", env, vV2(), out)
+            }
+            return call_decl_vals(file, env, out, d, vals)
         }
-        return call_decl_vals(file, env, out, d, vals)
-    }
-    if seq2(v[0], "C") {
-        var cap = v[3]
-        var cp = v[1]
-        var nenv = cap
-        var k: I32 = 1
-        while k < cp.len {
-            nenv = env_add(nenv, cp[k][2], vals[k - 1])
-            k += 1
+        if seq2(cx_of(v)[0], "C") {
+            var cap = cx_of(v)[3]
+            var cp = cx_of(v)[1]
+            var nenv = cap
+            var k: I32 = 1
+            while k < cp.len {
+                nenv = env_add(nenv, cp[k][2], v_unbox(vals[k - 1]))
+                k += 1
+            }
+            var br = eval_expr(file, nenv, out, cx_of(v)[2])
+            return e4(br.kind, env, br.v, br.out)
         }
-        var br = eval_expr(file, nenv, out, v[2])
-        // P0-2:闭包体内 return 就地取值,"r" 态不外泄调用方(镜像 call_decl_vals;
-        // 此前泄漏使调用方语句流截断——03j 解释臂静默丢输出根因)
-        if br[0] == "r" {
-            return e4("k", env, br[2], br[3])
-        }
-        return e4(br[0], env, br[2], br[3])
     }
     panic("call value")
     return e4("a", env, vV2(), out)
 }
-fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> List[Str] {
+fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> Flow {
     if seq2(nm, "StringBuilder") {
-        // StringBuilder()(§3.8.2;T03):值 = ["SB", 段…] —— 段列表即宿主 List,
-        // push 原地变、别名可见(镜像 vL 语义);to_string 拼段,len 为字节总和
+        // StringBuilder()(§3.8.2;T03):值 = SB 复合(段表挂 cx),push_str 原地变
         if vals.len == 0 {
             var sbv = List[Str]()
             sbv.push("SB")
-            return e4("k", env, sbv, out)
+            return e4("k", env, cx_val(sbv), out)
         }
         panic("StringBuilder arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "print") {
         if vals.len == 1 {
-            return e4("k", env, vV2(), out + fmt(vals[0]))
+            return e4("k", env, vV2(), out + fmt(v_unbox(vals[0])))
         }
         panic("print arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "println") {
         if vals.len == 1 {
-            return e4("k", env, vV2(), out + fmt(vals[0]) + "\n")
+            return e4("k", env, vV2(), out + fmt(v_unbox(vals[0])) + "\n")
         }
         panic("println arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "assert") {
         if vals.len == 1 {
-            if truth(vals[0]) {
+            if truth(v_unbox(vals[0])) {
                 return e4("k", env, vV2(), out)
             }
             // §6.4 对齐:消息在失败点入 out(时序同 native ctron_panic)
@@ -105,55 +102,65 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
     }
     if seq2(nm, "assert_eq") {
         if vals.len == 2 {
-            if veq(vals[0], vals[1]) {
+            if veq(v_unbox(vals[0]), v_unbox(vals[1])) {
                 return e4("k", env, vV2(), out)
             }
             // §6.4 对齐:同上,消息带操作数值
-            return e4("a", env, vV2(), out + "assert_eq failed: " + fmt(vals[0]) + " != " + fmt(vals[1]) + "\n")
+            return e4("a", env, vV2(), out + "assert_eq failed: " + fmt(v_unbox(vals[0])) + " != " + fmt(v_unbox(vals[1])) + "\n")
         }
         panic("assert_eq arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "assert_ne") {
         if vals.len == 2 {
-            if !veq(vals[0], vals[1]) {
+            if !veq(v_unbox(vals[0]), v_unbox(vals[1])) {
                 return e4("k", env, vV2(), out)
             }
-            return e4("a", env, vS("assert_ne failed: " + fmt(vals[0]) + " != " + fmt(vals[1])), out)
+            return e4("a", env, vS("assert_ne failed: " + fmt(v_unbox(vals[0])) + " != " + fmt(v_unbox(vals[1]))), out)
         }
         panic("assert_ne arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "read_file") {
-        if vals.len == 1 && vals[0][0] == "S" {
-            // 直返 Str(缺失 → 空串)——与原生发射口径对齐(SL-0.6 ⑯:此前返回
-            // T/Some 包装,解释口径 var s: Str = read_file(...) 直用 .len 即 panic,
-            // 同代码两口径语义分裂;rf.ct 最小复现 2026-09-20)
-            var rr = read_file(vals[0][1])
-            match rr {
-                Some(s) => { return e4("k", env, vS(s), out) }
-                None => { return e4("k", env, vS(""), out) }
+        if vals.len == 1 {
+            var r0 = v_unbox(vals[0])
+            if r0.tag == 5 {
+                // 直返 Str(缺失 → 空串)——与原生发射口径对齐(SL-0.6 ⑯:此前返回
+                // T/Some 包装,解释口径 var s: Str = read_file(...) 直用 .len 即 panic,
+                // 同代码两口径语义分裂;rf.ct 最小复现 2026-09-20)
+                var rr = read_file(r0.s)
+                match rr {
+                    Some(s) => {
+                        return e4("k", env, vS(s), out)
+                    }
+                    None => {
+                        return e4("k", env, vS(""), out)
+                    }
+                }
             }
         }
         panic("read_file args")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "read_dir") {
-        if vals.len == 1 && vals[0][0] == "S" {
-            var rd = read_dir(vals[0][1])
-            match rd {
-                Some(s2) => {
-                    var tv2 = List[Str]()
-                    tv2.push("T")
-                    tv2.push("Some")
-                    tv2.push(vS(s2))
-                    return e4("k", env, tv2, out)
-                }
-                None => {
-                    var tw2 = List[Str]()
-                    tw2.push("T")
-                    tw2.push("None")
-                    return e4("k", env, tw2, out)
+        if vals.len == 1 {
+            var r1 = v_unbox(vals[0])
+            if r1.tag == 5 {
+                var rd = read_dir(r1.s)
+                match rd {
+                    Some(s2) => {
+                        var tv2 = List[Str]()
+                        tv2.push("T")
+                        tv2.push("Some")
+                        tv2.push(v_box(vS(s2)))
+                        return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv2) }, out)
+                    }
+                    None => {
+                        var tw2 = List[Str]()
+                        tw2.push("T")
+                        tw2.push("None")
+                        return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tw2) }, out)
+                    }
                 }
             }
         }
@@ -161,31 +168,41 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "fs_exists") {
-        if vals.len == 1 && vals[0][0] == "S" {
-            if fs_exists(vals[0][1]) {
-                return e4("k", env, vB(true), out)
+        if vals.len == 1 {
+            var r2 = v_unbox(vals[0])
+            if r2.tag == 5 {
+                if fs_exists(r2.s) {
+                    return e4("k", env, vB(true), out)
+                }
+                return e4("k", env, vB(false), out)
             }
-            return e4("k", env, vB(false), out)
         }
         panic("fs_exists args")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "fs_write") {
-        if vals.len == 2 && vals[0][0] == "S" && vals[1][0] == "S" {
-            if fs_write(vals[0][1], vals[1][1]) {
-                return e4("k", env, vB(true), out)
+        if vals.len == 2 {
+            var r3 = v_unbox(vals[0])
+            var r4 = v_unbox(vals[1])
+            if r3.tag == 5 && r4.tag == 5 {
+                if fs_write(r3.s, r4.s) {
+                    return e4("k", env, vB(true), out)
+                }
+                return e4("k", env, vB(false), out)
             }
-            return e4("k", env, vB(false), out)
         }
         panic("fs_write args")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "fs_delete") {
-        if vals.len == 1 && vals[0][0] == "S" {
-            if fs_delete(vals[0][1]) {
-                return e4("k", env, vB(true), out)
+        if vals.len == 1 {
+            var r5 = v_unbox(vals[0])
+            if r5.tag == 5 {
+                if fs_delete(r5.s) {
+                    return e4("k", env, vB(true), out)
+                }
+                return e4("k", env, vB(false), out)
             }
-            return e4("k", env, vB(false), out)
         }
         panic("fs_delete args")
         return e4("a", env, vV2(), out)
@@ -272,7 +289,7 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         u.push(gui_sk_wrap_s(sv))
         u.push("props")
         u.push(gui_sk_wrap_s(sk_props))
-        return e4("k", env, u, out)
+        return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(u) }, out)
     }
     if seq2(nm, "ctron_exe_path") {
         if vals.len != 0 {
@@ -282,46 +299,65 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         return e4("k", env, vS(ctron_exe_path()), out)
     }
     if seq2(nm, "env_get") {
-        if vals.len == 1 && vals[0][0] == "S" {
-            return e4("k", env, vS(env_get(vals[0][1])), out)
+        if vals.len == 1 {
+            var r6 = v_unbox(vals[0])
+            if r6.tag == 5 {
+                return e4("k", env, vS(env_get(r6.s)), out)
+            }
         }
         panic("env_get args")
         return e4("k", env, vS(""), out)
     }
     if seq2(nm, "ctron_cli_flag") {
-        if vals.len == 1 && vals[0][0] == "S" {
-            return e4("k", env, vS(ctron_cli_flag(vals[0][1])), out)
+        if vals.len == 1 {
+            var r7 = v_unbox(vals[0])
+            if r7.tag == 5 {
+                return e4("k", env, vS(ctron_cli_flag(r7.s)), out)
+            }
         }
         panic("ctron_cli_flag args")
         return e4("k", env, vS(""), out)
     }
     if seq2(nm, "utf8_enc") {
-        if vals.len == 1 && vals[0][0] == "I" {
-            // dvi 转换不可省(同 byte_at 臂口径):vals[0][1] 是 "I" 前缀十进制文本,
-            // 裸传宿主内建会按非整值取 .i 得 0 → 恒出空串/NUL(2026-09-28 web 2a 实证)
-            return e4("k", env, vS(utf8_enc(dvi(vals[0][1]))), out)
+        if vals.len == 1 {
+            var r8 = v_unbox(vals[0])
+            if r8.tag == 1 {
+                return e4("k", env, vS(utf8_enc(dvi_str(r8.iv.as[I32]()))), out)
+            }
         }
         panic("utf8_enc arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "byte_at") {
-        if vals.len == 2 && vals[0][0] == "S" && vals[1][0] == "I" {
-            return e4("k", env, vI(byte_at(vals[0][1], dvi(vals[1][1]))), out)
+        if vals.len == 2 {
+            var r9 = v_unbox(vals[0])
+            var r10 = v_unbox(vals[1])
+            if r9.tag == 5 && r10.tag == 1 {
+                return e4("k", env, vI(byte_at(r9.s, r10.iv.as[I32]())), out)
+            }
         }
         panic("byte_at arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "byte_slice") {
-        if vals.len == 3 && vals[0][0] == "S" && vals[1][0] == "I" && vals[2][0] == "I" {
-            return e4("k", env, vS(byte_slice(vals[0][1], dvi(vals[1][1]), dvi(vals[2][1]))), out)
+        if vals.len == 3 {
+            var r11 = v_unbox(vals[0])
+            var r12 = v_unbox(vals[1])
+            var r13 = v_unbox(vals[2])
+            if r11.tag == 5 && r12.tag == 1 && r13.tag == 1 {
+                return e4("k", env, vS(byte_slice(r11.s, r12.iv.as[I32](), r13.iv.as[I32]())), out)
+            }
         }
         panic("byte_slice arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "str_from_c") {
         // Str 编组(§9.6 v0.6):解释域无 C 堆,编组为恒等;发射面为 arena 深拷
-        if vals.len == 1 && vals[0][0] == "S" {
-            return e4("k", env, vS(vals[0][1]), out)
+        if vals.len == 1 {
+            var r14 = v_unbox(vals[0])
+            if r14.tag == 5 {
+                return e4("k", env, vS(r14.s), out)
+            }
         }
         panic("str_from_c arity")
         return e4("a", env, vV2(), out)
@@ -347,7 +383,7 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         if vals.len == 1 {
             // §6.4 对齐:native ctron_panic 先印消息后展开——消息在 panic 点入 out
             //(流内位置一致);val 置空防 driver 末尾重印
-            return e4("a", env, vV2(), out + fmt(vals[0]) + "\n")
+            return e4("a", env, vV2(), out + fmt(v_unbox(vals[0])) + "\n")
         }
         panic("panic arity")
         return e4("a", env, vV2(), out)
@@ -361,13 +397,15 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             tv.push(vals[qq])
             qq += 1
         }
-        return e4("k", env, tv, out)
+        return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv) }, out)
     }
     var evb = env_at(env, nm)
     if evb.len > 0 {
-        var kv = evb[1]
-        if or2(seq2(kv[0], "C"), seq2(kv[0], "F")) {
-            return call_cv(file, env, out, kv, vals)
+        var kv = v_unbox(evb[1])
+        if kv.tag == 8 {
+            if or2(seq2(cx_of(kv)[0], "C"), seq2(cx_of(kv)[0], "F")) {
+                return call_cv(file, env, out, kv, vals)
+            }
         }
     }
     var d = find_decl(file, nm)
@@ -383,7 +421,7 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
                     tv3.push(vals[q3])
                     q3 += 1
                 }
-                return e4("k", env, tv3, out)
+                return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv3) }, out)
             }
             panic("variant arity:" + nm)
             return e4("a", env, vV2(), out)
@@ -419,37 +457,61 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             var f11: Str = ""
             var q: I32 = 0
             while q < vals.len {
-                var tg: Str = vals[q][0]
-                var pl: Str = vals[q][1]
-                if tg == "S" {
-                    pl = "s:" + pl
+                var xv = v_unbox(vals[q])
+                var pl: Str = ""
+                if xv.tag == 5 {
+                    pl = "s:" + xv.s
                 } else {
-                    if tg == "B" {
-                        if pl == "true" {
+                    if xv.tag == 4 {
+                        if xv.b {
                             pl = "i:1"
                         } else {
                             pl = "i:0"
                         }
                     } else {
-                        if tg == "I" {
-                            pl = "i:" + pl
+                        if xv.tag == 1 {
+                            pl = "i:" + dvi_str(xv.iv.as[I32]())
                         } else {
-                            panic("extern 解释口径:不支持参数类型 " + tg)
+                            panic("extern 解释口径:不支持参数类型 " + xv.tag.to_string())
                         }
                     }
                 }
-                if q == 0 { f0 = pl }
-                if q == 1 { f1 = pl }
-                if q == 2 { f2 = pl }
-                if q == 3 { f3 = pl }
-                if q == 4 { f4 = pl }
-                if q == 5 { f5 = pl }
-                if q == 6 { f6 = pl }
-                if q == 7 { f7 = pl }
-                if q == 8 { f8 = pl }
-                if q == 9 { f9 = pl }
-                if q == 10 { f10 = pl }
-                if q == 11 { f11 = pl }
+                if q == 0 {
+                    f0 = pl
+                }
+                if q == 1 {
+                    f1 = pl
+                }
+                if q == 2 {
+                    f2 = pl
+                }
+                if q == 3 {
+                    f3 = pl
+                }
+                if q == 4 {
+                    f4 = pl
+                }
+                if q == 5 {
+                    f5 = pl
+                }
+                if q == 6 {
+                    f6 = pl
+                }
+                if q == 7 {
+                    f7 = pl
+                }
+                if q == 8 {
+                    f8 = pl
+                }
+                if q == 9 {
+                    f9 = pl
+                }
+                if q == 10 {
+                    f10 = pl
+                }
+                if q == 11 {
+                    f11 = pl
+                }
                 if q > 11 {
                     panic("extern 解释口径:参数超 12")
                 }
@@ -488,19 +550,19 @@ fn variant_arity(file: List[Str], nm: Str) -> I32 {
     return 0 - 1
 }
 // T 快捷构造(枚举变体/Option/Result 值)
-fn vT(vt: Str, p: List[Str]) -> List[Str] {
+fn vT(vt: Str, p: Val) -> Val {
     var v = List[Str]()
     v.push("T")
     v.push(vt)
-    v.push(p)
-    return v
+    v.push(v_box(p))
+    return Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(v) }
 }
 // as[T]() 显式转换:浮转整截断;整窄化按宽度回绕;宽整型维持 I32 域
 // 6 域显式转换(§3.6 窄化=截断):二补截断 = v mod 2^N(负数取数学模),
 // 有符号目标再调回符号区间;8/16 位落 W 域,32 位落 I 域(镜像自举 U32=I32
 // 存储口径,与编译侧回绕语义一致),64 位留在 6 域
-fn conv_as_6(v: List[Str], tgt: Str) -> List[Str] {
-    var mag = c6can(v[1])
+fn conv_as_6(v: Val, tgt: Str) -> Val {
+    var mag = c6can(v6t(v))
     var neg = false
     if mag.len > 0 {
         if byte_at(mag, 0) == 45 {
@@ -543,7 +605,7 @@ fn conv_as_6(v: List[Str], tgt: Str) -> List[Str] {
     }
     if modv.len == 0 {
         if or2(tgt == "F64", tgt == "F32") {
-            return vD(df_can(v[1]))
+            return vD(df_can(v6t(v)))
         }
         return v
     }
@@ -580,8 +642,8 @@ fn conv_as_6(v: List[Str], tgt: Str) -> List[Str] {
     return vW(wl, dvi(m))
 }
 
-fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
-    if or2(v[0] == "6", v[0] == "7") {
+fn conv_as(v: Val, tgt: Str) -> Val {
+    if or2(v.tag == 2, v.tag == 3) {
         return conv_as_6(v, tgt)
     }
     if or2(tgt == "U64", tgt == "USize") {
@@ -589,8 +651,8 @@ fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
         return conv_as_6(v, tgt)
     }
     if or2(tgt == "F64", tgt == "F32") {
-        if or2(v[0] == "I", v[0] == "W") {
-            return vD(df_can(v[1]))
+        if or2(v.tag == 1, v.tag == 7) {
+            return vD(df_can(dvi_str(v.iv.as[I32]())))
         }
         return v
     }
@@ -606,10 +668,10 @@ fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
             wl = "i16"
         }
         var iv = 0
-        if v[0] == "D" {
-            iv = d_intpart(v[1])
+        if v.tag == 6 {
+            iv = d_intpart(v.s)
         } else {
-            iv = dvi(v[1])
+            iv = v.iv.as[I32]()
         }
         var s: I32 = 1
         var k: I32 = 0
@@ -626,11 +688,11 @@ fn conv_as(v: List[Str], tgt: Str) -> List[Str] {
         }
         return vW(wl, m)
     }
-    if v[0] == "D" {
-        return vI(d_intpart(v[1]))
+    if v.tag == 6 {
+        return vI(d_intpart(v.s))
     }
-    if v[0] == "W" {
-        return vI(dvi(v[1]))
+    if v.tag == 7 {
+        return vI(v.iv.as[I32]())
     }
     return v
 }
@@ -646,6 +708,634 @@ fn d_intpart(t: Str) -> I32 {
     }
     return dvi(byte_slice(t, 0, n))
 }
+// parallel.map/reduce(顺序化:闭包逐元素即刻执行)
+fn ns_map_reduce(file: List[Str], ob: Flow, vals: List[Str], ismap: Bool) -> Flow {
+    var av = v_unbox(vals[0])
+    if !(av.tag == 8) {
+        panic("parallel target")
+        return e4("a", ob.env, vV2(), ob.out)
+    }
+    if !or2(seq2(cx_of(av)[0], "A"), seq2(cx_of(av)[0], "L")) {
+        panic("parallel target")
+        return e4("a", ob.env, vV2(), ob.out)
+    }
+    if ismap {
+        var outv = List[Str]()
+        outv.push(cx_of(av)[0])
+        var i: I32 = 1
+        while i < cx_of(av).len {
+            var fa = List[Str]()
+            fa.push(cx_of(av)[i])
+            var er = call_cv(file, ob.env, ob.out, v_unbox(vals[1]), fa)
+            if er.kind != "k" {
+                return er
+            }
+            outv.push(v_box(er.v))
+            i += 1
+        }
+        return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(outv) }, ob.out)
+    }
+    var acc = v_unbox(vals[1])
+    var i2: I32 = 1
+    while i2 < cx_of(av).len {
+        var fa2 = List[Str]()
+        fa2.push(v_box(acc))
+        fa2.push(cx_of(av)[i2])
+        var er2 = call_cv(file, ob.env, ob.out, v_unbox(vals[2]), fa2)
+        if er2.kind != "k" {
+            return er2
+        }
+        acc = er2.v
+        i2 += 1
+    }
+    return e4("k", ob.env, acc, ob.out)
+}
+// UTF-8 续字节:0x80..0xBF
+fn utf8_cont(s: Str, k: I32) -> Bool {
+    var c = byte_at(s, k)
+    return c >= 128 && c < 192
+}
+// 子串包含(朴素匹配)
+fn str_contains(s: Str, sub: Str) -> Bool {
+    var n = s.len
+    var m = sub.len
+    if m == 0 {
+        return true
+    }
+    var i: I32 = 0
+    while i + m <= n {
+        var j: I32 = 0
+        var ok = true
+        while j < m && ok {
+            if byte_at(s, i + j) != byte_at(sub, j) {
+                ok = false
+            }
+            j += 1
+        }
+        if ok {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+// Option/Result 组合子(recv = T 复合值;cx 位面 ["T", 变体, 载荷?])
+fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: List[Str]) -> Flow {
+    var ob = eval_expr(file, env, out, cal[1])
+    if ob.kind != "k" {
+        return ob
+    }
+    var recv = ob.v
+    var m = cal[3]
+    // StringBuilder(§3.8.2;T03):须先于通用 to_string 分支
+    if recv.tag == 8 {
+        if seq2(cx_of(recv)[0], "SB") {
+            if seq2(m, "push_str") && vals.len == 1 {
+                var sv = v_unbox(vals[0])
+                if sv.tag != 5 {
+                    panic("push_str 需 Str")
+                }
+                cx_of(recv).push(sv.s)
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+            if seq2(m, "to_string") && vals.len == 0 {
+                var acc = ""
+                var si: I32 = 1
+                while si < cx_of(recv).len {
+                    acc = acc + cx_of(recv)[si]
+                    si += 1
+                }
+                return e4("k", ob.env, vS(acc), ob.out)
+            }
+            panic("StringBuilder 方法:" + m)
+            return e4("a", ob.env, vV2(), ob.out)
+        }
+    }
+    if seq2(m, "to_string") {
+        if vals.len == 0 {
+            return e4("k", ob.env, vS(fmt(recv)), ob.out)
+        }
+        panic("to_string arity")
+        return e4("a", env, vV2(), out)
+    }
+    // T26 Env 进程环境能力对象(§8.1;R-P2b 锚 07b):Env.system() 构造宿主
+    // 环境句柄;get 缺失=None;args=进程参数表(ctron_prog_args_* 运行时底座)
+    if recv.tag == 8 {
+        var erc26 = cx_of(recv)
+        if seq2(erc26[0], "NS") && seq2(erc26[1], "Env") && seq2(m, "system") && vals.len == 0 {
+            var ehv26 = List[Str]()
+            ehv26.push("NS")
+            ehv26.push("EnvHandle")
+            return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(ehv26) }, ob.out)
+        }
+        if seq2(erc26[0], "NS") && seq2(erc26[1], "EnvHandle") {
+            if seq2(m, "get") && vals.len == 1 {
+                var gkv26 = v_unbox(vals[0])
+                if gkv26.tag != 5 {
+                    panic("Env.get 需 Str")
+                }
+                var gev26 = env_get(gkv26.s)
+                if gev26.len == 0 {
+                    var gnv26 = List[Str]()
+                    gnv26.push("T")
+                    gnv26.push("None")
+                    return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(gnv26) }, ob.out)
+                }
+                var gsv26 = List[Str]()
+                gsv26.push("T")
+                gsv26.push("Some")
+                var gpl26 = vS(gev26)
+                gsv26.push(v_box(gpl26))
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(gsv26) }, ob.out)
+            }
+            if seq2(m, "args") && vals.len == 0 {
+                // List 值:L 记录 + 逐项 boxed(元素面=v_box(vS(...)))
+                var gav26 = List[Str]()
+                gav26.push("L")
+                var gna26: I64 = ctron_prog_args_n()
+                var gai26: I64 = 0
+                while gai26 < gna26 {
+                    var giv26 = vS(ctron_prog_args_at(gai26))
+                    gav26.push(v_box(giv26))
+                    gai26 += 1
+                }
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(gav26) }, ob.out)
+            }
+            panic("Env 方法:" + m)
+            return e4("a", ob.env, vV2(), ob.out)
+        }
+    }
+    // 并发域(顺序化模拟:spawn 即刻完整执行;结果与调度无关的测试面)
+    if recv.tag == 8 {
+        if seq2(cx_of(recv)[0], "SCOPE") && seq2(m, "spawn") && vals.len == 1 {
+            var noargs = List[Str]()
+            var sr = call_cv(file, ob.env, ob.out, v_unbox(vals[0]), noargs)
+            // sr.out 已含 ob.out(out 累加器透传),不得再拼 ob.out(曾致前置输出重放)
+            var tk = List[Str]()
+            tk.push("TASK")
+            if sr.kind == "a" {
+                tk.push("P")
+                tk.push(v_box(sr.v))
+            } else {
+                tk.push("K")
+                tk.push(v_box(sr.v))
+            }
+            return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tk) }, sr.out)
+        }
+        if seq2(cx_of(recv)[0], "TASK") && seq2(m, "join") && vals.len == 0 {
+            if seq2(cx_of(recv)[1], "P") {
+                return e4("a", ob.env, v_unbox(cx_of(recv)[2]), ob.out)
+            }
+            return e4("k", ob.env, v_unbox(cx_of(recv)[2]), ob.out)
+        }
+        if seq2(cx_of(recv)[0], "TASK") && seq2(m, "join_or") && vals.len == 0 {
+            var jr = List[Str]()
+            jr.push("T")
+            if seq2(cx_of(recv)[1], "P") {
+                jr.push("Err")
+                jr.push(v_box(vS("task panic")))
+            } else {
+                jr.push("Ok")
+                jr.push(cx_of(recv)[2])
+            }
+            return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(jr) }, ob.out)
+        }
+        if or2(seq2(cx_of(recv)[0], "MUX"), seq2(cx_of(recv)[0], "M")) && or2(seq2(m, "with_mut"), seq2(m, "with")) && vals.len == 1 {
+            var fa2 = List[Str]()
+            if seq2(cx_of(recv)[0], "M") && seq2(m, "with_mut") {
+                fa2.push(v_box(recv))
+            } else {
+                fa2.push(cx_of(recv)[1])
+            }
+            return call_cv(file, ob.env, ob.out, v_unbox(vals[0]), fa2)
+        }
+        if seq2(cx_of(recv)[0], "M") && seq2(m, "fetch_add") && vals.len == 1 {
+            var oldm = v_unbox(cx_of(recv)[1])
+            var rcx = cx_of(recv)
+            rcx[1] = v_box(val_arith("Add", oldm, v_unbox(vals[0])))
+            return e4("k", ob.env, oldm, ob.out)
+        }
+        if seq2(cx_of(recv)[0], "NS") && seq2(cx_of(recv)[1], "dom") {
+            // web 档(§9.2)stdweb.dom 最小 API;标题存 env 保留名(运行态无全局通道)
+            if seq2(m, "set_title") && vals.len == 1 {
+                // upsert:env_set 只换已存在键,首写须 env_add
+                var dk = env_at(env, "#dom:title")
+                var denv = env
+                if dk.len > 0 {
+                    denv = env_set(env, "#dom:title", v_unbox(vals[0]))
+                } else {
+                    denv = env_add(env, "#dom:title", v_unbox(vals[0]))
+                }
+                return e4("k", denv, vV2(), out)
+            }
+            if seq2(m, "title") && vals.len == 0 {
+                var te = env_at(env, "#dom:title")
+                var tv = vS("")
+                if te.len > 1 {
+                    tv = v_unbox(te[1])
+                }
+                return e4("k", env, tv, out)
+            }
+            panic("dom 方法:" + m)
+            return e4("a", env, vV2(), out)
+        }
+        if seq2(cx_of(recv)[0], "NS") && seq2(cx_of(recv)[1], "bit") {
+            // T01 bit.* 域:ob 适配旧 e4 形(ns_bit 内部读 ob[1]/ob[3]);ns_bit 内部
+            // 调用的 vI/v6/vB/e4 在 S1 后类型自洽,返回即 Flow
+            var obold = List[Str]()
+            obold.push(ob.kind)
+            obold.push(ob.env)
+            obold.push(v_box(ob.v))
+            obold.push(ob.out)
+            return ns_bit(m, vals, obold)
+        }
+        if seq2(cx_of(recv)[0], "NS") && seq2(m, "map") && vals.len == 2 {
+            return ns_map_reduce(file, ob, vals, true)
+        }
+        if seq2(cx_of(recv)[0], "NS") && seq2(m, "reduce") && vals.len == 3 {
+            return ns_map_reduce(file, ob, vals, false)
+        }
+        if seq2(cx_of(recv)[0], "CH") && seq2(m, "send") && vals.len == 1 {
+            var capn = v_unbox(cx_of(recv)[3]).iv.as[I32]()
+            var chq = cx_of(recv)[1]
+            if capn >= 0 && chq.len >= capn {
+                return e4("k", ob.env, vT("Err", vS("ScopeCancelled")), ob.out)
+            }
+            // T14②:struct 值语义=入箱即克隆(镜像 bind_of;发射臂 send 点堆盒拷贝
+            // 同判),源端改后接收端不变;List/M/类保持引用(bind_of 同口径)
+            chq.push(v_box(bind_of(file, v_unbox(vals[0]))))
+            return e4("k", ob.env, vT("Ok", vV2()), ob.out)
+        }
+        if seq2(cx_of(recv)[0], "CH") && seq2(m, "recv") && vals.len == 0 {
+            var cur = cx_of(recv)[2]
+            var q2 = cx_of(recv)[1]
+            var idx = dvi(cur[1])
+            if idx >= q2.len {
+                return e4("k", ob.env, vT("Err", vS("ScopeCancelled")), ob.out)
+            }
+            cur[1] = (idx + 1).to_string()
+            return e4("k", ob.env, vT("Ok", v_unbox(q2[idx])), ob.out)
+        }
+        if seq2(cx_of(recv)[0], "SIMD") && seq2(m, "splat") && vals.len == 1 {
+            var vc = List[Str]()
+            vc.push("VEC")
+            var n = dvi(cx_of(recv)[2])
+            var vi: I32 = 0
+            while vi < n {
+                vc.push(v_box(v_unbox(vals[0])))
+                vi += 1
+            }
+            return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(vc) }, ob.out)
+        }
+        if seq2(cx_of(recv)[0], "VEC") && seq2(m, "lane") && vals.len == 1 {
+            var li = v_unbox(vals[0]).iv.as[I32]()
+            return e4("k", ob.env, v_unbox(cx_of(recv)[li + 1]), ob.out)
+        }
+        if seq2(cx_of(recv)[0], "VEC") && seq2(m, "to_array") && vals.len == 0 {
+            var arr2 = List[Str]()
+            arr2.push("A")
+            var ai: I32 = 1
+            while ai < cx_of(recv).len {
+                arr2.push(cx_of(recv)[ai])
+                ai += 1
+            }
+            return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(arr2) }, ob.out)
+        }
+        if seq2(cx_of(recv)[0], "T") {
+            if seq2(m, "or") && vals.len == 1 {
+                if or2(seq2(cx_of(recv)[1], "Some"), seq2(cx_of(recv)[1], "Ok")) {
+                    if cx_of(recv).len == 3 {
+                        return e4("k", ob.env, v_unbox(cx_of(recv)[2]), ob.out)
+                    }
+                    return e4("k", ob.env, recv, ob.out)
+                }
+                return e4("k", ob.env, v_unbox(vals[0]), ob.out)
+            }
+            if seq2(m, "expect") && vals.len == 1 {
+                var ev = v_unbox(vals[0])
+                if ev.tag == 5 {
+                    if or2(seq2(cx_of(recv)[1], "Some"), seq2(cx_of(recv)[1], "Ok")) {
+                        if cx_of(recv).len == 3 {
+                            return e4("k", ob.env, v_unbox(cx_of(recv)[2]), ob.out)
+                        }
+                        return e4("k", ob.env, recv, ob.out)
+                    }
+                    return e4("a", ob.env, vS(ev.s), ob.out)
+                }
+            }
+            if seq2(m, "is_some") && vals.len == 0 {
+                return e4("k", ob.env, vB(or2(seq2(cx_of(recv)[1], "Some"), seq2(cx_of(recv)[1], "Ok"))), ob.out)
+            }
+            if seq2(m, "map") && vals.len == 1 {
+                if seq2(cx_of(recv)[1], "Some") && cx_of(recv).len == 3 {
+                    var fa = List[Str]()
+                    fa.push(cx_of(recv)[2])
+                    var mr = call_cv(file, ob.env, ob.out, v_unbox(vals[0]), fa)
+                    if mr.kind != "k" {
+                        return mr
+                    }
+                    var tv = List[Str]()
+                    tv.push("T")
+                    tv.push("Some")
+                    tv.push(v_box(mr.v))
+                    return e4("k", mr.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv) }, mr.out)
+                }
+                return e4("k", ob.env, recv, ob.out)
+            }
+            if seq2(m, "context") && vals.len == 1 {
+                var ev2 = v_unbox(vals[0])
+                if ev2.tag == 5 {
+                    if seq2(cx_of(recv)[1], "Err") {
+                        var p = recv
+                        if cx_of(recv).len == 3 {
+                            p = v_unbox(cx_of(recv)[2])
+                        }
+                        var cs = List[Str]()
+                        cs.push("T")
+                        cs.push("Some")
+                        cs.push(v_box(p))
+                        var eb = List[Str]()
+                        eb.push("U")
+                        eb.push("AnyError")
+                        eb.push("message")
+                        eb.push(v_box(vS(ev2.s)))
+                        eb.push("cause")
+                        eb.push(v_box(Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(cs) }))
+                        eb.push("trace")
+                        var trl = List[Str]()
+                        trl.push("L")
+                        trl.push(v_box(vS("ctx:" + ev2.s)))
+                        eb.push(v_box(Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(trl) }))
+                        var te = List[Str]()
+                        te.push("T")
+                        te.push("Err")
+                        te.push(v_box(Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(eb) }))
+                        return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(te) }, ob.out)
+                    }
+                    return e4("k", ob.env, recv, ob.out)
+                }
+            }
+        }
+        if seq2(cx_of(recv)[0], "U") && seq2(m, "eq") {
+            // @derive(Eq)(§3d):结构接收者逐字段相等(守卫拆嵌套:索引不得入急切复合条件)
+            if vals.len == 1 {
+                var ov2 = v_unbox(vals[0])
+                if ov2.tag == 8 {
+                    if seq2(cx_of(ov2)[0], "U") {
+                        return e4("k", ob.env, vB(eq_val(recv, ov2)), ob.out)
+                    }
+                }
+            }
+            panic("eq 需同型结构实参")
+            return e4("a", env, vV2(), out)
+        }
+        if seq2(cx_of(recv)[0], "U") && seq2(m, "show") && vals.len == 0 {
+            return e4("k", ob.env, vS(fmt(recv)), ob.out)
+        }
+        // C9f②:类实例方法/trait 默认方法(镜像 rt.c V_STRUCT&&is_class 先于 UFCS;
+        // 类找不到方法直接 panic,不落 UFCS)
+        if seq2(cx_of(recv)[0], "U") {
+            // impl 方法:类实例与 struct 值统一走 impl 分派(§4.8;struct 曾漏,
+            // 落 UFCS 找不到 impl 内方法即运行期失败)
+            var mth = find_impl_method(file, cx_of(recv)[1], m)
+            if mth.len > 0 {
+                return call_method_vals(file, ob.env, ob.out, mth, cx_of(recv), vals)
+            }
+            if is_class(file, cx_of(recv)[1]) {
+                panic("unknown method:" + m)
+                return e4("a", env, vV2(), out)
+            }
+        }
+    }
+    if seq2(m, "slice") {
+        if vals.len == 1 && recv.tag == 5 {
+            var rv = v_unbox(vals[0])
+            if rv.tag == 8 && seq2(cx_of(rv)[0], "R") {
+                var lo = v_unbox(cx_of(rv)[2]).iv.as[I32]()
+                var hi = v_unbox(cx_of(rv)[3]).iv.as[I32]()
+                if seq2(cx_of(rv)[1], "true") {
+                    hi += 1
+                }
+                var ln = recv.s.len
+                // UTF-8 边界(§3.3):切点不得落在续字节上
+                if lo > 0 && lo < ln && utf8_cont(recv.s, lo) {
+                    return e4("a", ob.env, vS("invalid utf8 boundary"), ob.out)
+                }
+                if hi > 0 && hi < ln && utf8_cont(recv.s, hi) {
+                    return e4("a", ob.env, vS("invalid utf8 boundary"), ob.out)
+                }
+                if lo < 0 {
+                    lo = 0
+                }
+                if hi > ln {
+                    hi = ln
+                }
+                if hi < lo {
+                    hi = lo
+                }
+                return e4("k", ob.env, vS(byte_slice(recv.s, lo, hi)), ob.out)
+            }
+        }
+        panic("slice args")
+        return e4("a", env, vV2(), out)
+    }
+        if seq2(m, "contains") && recv.tag == 5 && vals.len == 1 {
+            // §3.8.2 Str.contains(T09 夹具踩中补齐;此前仅 List.contains)
+            var sv2 = v_unbox(vals[0])
+            if sv2.tag != 5 {
+                panic("contains 需 Str")
+            }
+            return e4("k", ob.env, vB(str_contains(recv.s, sv2.s)), ob.out)
+        }
+    if recv.tag == 8 {
+        if seq2(m, "load") {
+            if seq2(cx_of(recv)[0], "M") && vals.len == 0 {
+                return e4("k", ob.env, v_unbox(cx_of(recv)[1]), ob.out)
+            }
+        }
+        if seq2(m, "store") {
+            if seq2(cx_of(recv)[0], "M") && vals.len == 1 {
+                var srcx = cx_of(recv)
+                srcx[1] = v_box(v_unbox(vals[0]))
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+        }
+        if seq2(m, "push") {
+            if seq2(cx_of(recv)[0], "L") && vals.len == 1 {
+                cx_of(recv).push(v_box(v_unbox(vals[0])))
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+        }
+        if seq2(m, "into_gc") {
+            if seq2(cx_of(recv)[0], "L") && vals.len == 0 {
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(vdeep(cx_of(recv))) }, ob.out)
+            }
+        }
+        if seq2(m, "contains") && seq2(cx_of(recv)[0], "L") && vals.len == 1 {
+            var fnd2 = false
+            var li: I32 = 1
+            var ov3 = v_unbox(vals[0])
+            while li < cx_of(recv).len && !fnd2 {
+                var el = v_unbox(cx_of(recv)[li])
+                if el.tag == 5 {
+                    if str_contains(el.s, fmt(ov3)) {
+                        fnd2 = true
+                    }
+                } else {
+                    if el.tag == 8 {
+                        if seq2(cx_of(el)[0], "L") {
+                            if str_contains(fmt(el), fmt(ov3)) {
+                                fnd2 = true
+                            }
+                        } else {
+                            if veq(el, ov3) {
+                                fnd2 = true
+                            }
+                        }
+                    } else {
+                        if veq(el, ov3) {
+                            fnd2 = true
+                        }
+                    }
+                }
+                li += 1
+            }
+            return e4("k", ob.env, vB(fnd2), ob.out)
+        }
+    }
+    var ddx = find_decl(file, m)
+    if ddx.len > 0 {
+        var fvv = List[Str]()
+        fvv.push(v_box(recv))
+        var qq: I32 = 0
+        while qq < vals.len {
+            fvv.push(vals[qq])
+            qq += 1
+        }
+        return call_decl_vals(file, ob.env, ob.out, ddx, fvv)
+    }
+    panic("method:" + m)
+    return e4("a", env, vV2(), out)
+}
+fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
+    var ag = e[2]
+    var vals = List[Str]()
+    var env2 = env
+    var out2 = out
+    var i: I32 = 1
+    while i < ag.len {
+        var ar = eval_expr(file, env2, out2, ag[i])
+        if ar.kind != "k" {
+            return ar
+        }
+        env2 = ar.env
+        out2 = ar.out
+        vals.push(v_box(ar.v))
+        i += 1
+    }
+    var cal = e[1]
+    if cal[0] == "Ident" {
+        return call_id(file, env2, out2, cal[1], vals)
+    }
+    if cal[0] == "Member" {
+        return call_mem(file, env2, out2, cal, vals)
+    }
+    // C9f①:List 构造 List[T]()(rt.c:同参忽略,恒空表;arena.list[T]() 同)
+    if cal[0] == "TypeArgs" {
+        var base = cal[1]
+        // as[T]() 显式转换(窄化截断,浮转整截断)
+        if base[0] == "Member" && seq2(base[3], "as") {
+            var ar = eval_expr(file, env2, out2, base[1])
+            if ar.kind != "k" {
+                return ar
+            }
+            var tgt = ""
+            if cal[2].len > 1 {
+                tgt = ty_head(cal[2][1])
+            }
+            return e4("k", ar.env, conv_as(ar.v, tgt), ar.out)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Channel") {
+            var cap = vals[0]
+            var q = List[Str]()
+            var cur = List[Str]()
+            cur.push("M")
+            cur.push("0")
+            var tx = List[Str]()
+            tx.push("CH")
+            tx.push(q)
+            tx.push(cur)
+            tx.push(cap)
+            var rx = List[Str]()
+            rx.push("CH")
+            rx.push(q)
+            rx.push(cur)
+            rx.push(cap)
+            var pr = List[Str]()
+            pr.push("P")
+            pr.push(v_box(Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tx) }))
+            pr.push(v_box(Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(rx) }))
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(pr) }, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Global") {
+            var gv = List[Str]()
+            gv.push("M")
+            if vals.len > 1 {
+                gv.push(vals[1])
+            } else {
+                gv.push(v_box(vV2()))
+            }
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(gv) }, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Box") {
+            var bv = List[Str]()
+            bv.push("BOX")
+            if vals.len > 0 {
+                bv.push(vals[0])
+            } else {
+                bv.push(v_box(vV2()))
+            }
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(bv) }, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Mutex") {
+            var mx = List[Str]()
+            mx.push("MUX")
+            if vals.len > 0 {
+                mx.push(vals[0])
+            } else {
+                mx.push(v_box(vV2()))
+            }
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(mx) }, out2)
+        }
+        var islist = false
+        if base[0] == "Ident" && seq2(base[1], "List") {
+            islist = true
+        }
+        if base[0] == "Member" && seq2(base[2], "Nm") && seq2(base[3], "list") && base[1][0] == "Ident" && seq2(base[1][1], "arena") {
+            islist = true
+        }
+        if islist {
+            return e4("k", env2, vL(), out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Atomic") {
+            var mv = List[Str]()
+            mv.push("M")
+            if vals.len > 0 {
+                mv.push(vals[0])
+            } else {
+                mv.push(v_box(vV2()))
+            }
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(mv) }, out2)
+        }
+        // 泛型 fn 调用(显式 TypeArgs):擦除型参,按名动态派发
+        if base[0] == "Ident" {
+            return call_id(file, env, out, base[1], vals)
+        }
+    }
+    panic("call target")
+    return e4("a", env, vV2(), out)
+}
+
 // ---------------- bit.* 位运算内建命名空间(§4.5;T01) ----------------
 // 文本域按位组合:and/or/xor/not 补码语义、shl 回绕、shr 有符号算术/无符号逻辑;
 // 移位数越界 [0, 宽度) → panic "bit shift range"(检查哲学与索引/溢出一致)。
@@ -755,7 +1445,7 @@ fn bit_signed(w: Str) -> Bool {
 }
 // 结果构造:入参 t 对有符号宽(i32/i64)为已折叠有符号文本,u32 为无符号幅值
 // (此处折有符号 32 表示——解释器 u32 惯例:4294967295 存 -1),u64 为无符号幅值(7 域)
-fn bit_ret(w: Str, u: Str, ob: List[Str]) -> List[Str] {
+fn bit_ret(w: Str, u: Str, ob: List[Str]) -> Flow {
     if seq2(w, "i32") {
         return e4("k", ob[1], vI(dvi(u)), ob[3])
     }
@@ -768,7 +1458,7 @@ fn bit_ret(w: Str, u: Str, ob: List[Str]) -> List[Str] {
     return e4("k", ob[1], v7(u), ob[3])
 }
 // bit.* 入口:方法名 = op_width;and/or/xor/not/shl/shr × i32/u32/i64/u64
-fn ns_bit(m: Str, vals: List[Str], ob: List[Str]) -> List[Str] {
+fn ns_bit(m: Str, vals: List[Str], ob: List[Str]) -> Flow {
     if vals.len < 1 {
         panic("bit 实参")
     }
@@ -850,571 +1540,4 @@ fn ns_bit(m: Str, vals: List[Str], ob: List[Str]) -> List[Str] {
     }
     panic("bit 方法:" + m)
     return e4("a", ob[1], vV2(), ob[3])
-}
-// parallel.map/reduce(顺序化:闭包逐元素即刻执行)
-fn ns_map_reduce(file: List[Str], ob: List[Str], vals: List[Str], ismap: Bool) -> List[Str] {
-    var av = vals[0]
-    if !or2(av[0] == "A", av[0] == "L") {
-        panic("parallel target")
-        return e4("a", ob[1], vV2(), ob[3])
-    }
-    if ismap {
-        var outv = List[Str]()
-        outv.push(av[0])
-        var i: I32 = 1
-        while i < av.len {
-            var fa = List[Str]()
-            fa.push(av[i])
-            var er = call_cv(file, ob[1], ob[3], vals[1], fa)
-            if er[0] != "k" {
-                return er
-            }
-            outv.push(er[2])
-            i += 1
-        }
-        return e4("k", ob[1], outv, ob[3])
-    }
-    var acc = vals[1]
-    var i2: I32 = 1
-    while i2 < av.len {
-        var fa2 = List[Str]()
-        fa2.push(acc)
-        fa2.push(av[i2])
-        var er2 = call_cv(file, ob[1], ob[3], vals[2], fa2)
-        if er2[0] != "k" {
-            return er2
-        }
-        acc = er2[2]
-        i2 += 1
-    }
-    return e4("k", ob[1], acc, ob[3])
-}
-// UTF-8 续字节:0x80..0xBF
-fn utf8_cont(s: Str, k: I32) -> Bool {
-    var c = byte_at(s, k)
-    return c >= 128 && c < 192
-}
-// 子串包含(朴素匹配)
-fn str_contains(s: Str, sub: Str) -> Bool {
-    var n = s.len
-    var m = sub.len
-    if m == 0 {
-        return true
-    }
-    var i: I32 = 0
-    while i + m <= n {
-        var j: I32 = 0
-        var ok = true
-        while j < m && ok {
-            if byte_at(s, i + j) != byte_at(sub, j) {
-                ok = false
-            }
-            j += 1
-        }
-        if ok {
-            return true
-        }
-        i += 1
-    }
-    return false
-}
-// Option/Result 组合子(recv = ["T", "Some/None/Ok/Err", payload?])
-fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: List[Str]) -> List[Str] {
-    var ob = eval_expr(file, env, out, cal[1])
-    if ob[0] != "k" {
-        return ob
-    }
-    var recv = ob[2]
-    var m = cal[3]
-    // StringBuilder(§3.8.2;T03):须先于通用 to_string 分支
-    if recv[0] == "SB" {
-        if seq2(m, "push_str") && vals.len == 1 {
-            if vals[0][0] != "S" {
-                panic("push_str 需 Str")
-            }
-            recv.push(vals[0][1])
-            return e4("k", ob[1], vV2(), ob[3])
-        }
-        if seq2(m, "to_string") && vals.len == 0 {
-            var acc = ""
-            var si: I32 = 1
-            while si < recv.len {
-                acc = acc + recv[si]
-                si += 1
-            }
-            return e4("k", ob[1], vS(acc), ob[3])
-        }
-        panic("StringBuilder 方法:" + m)
-        return e4("a", ob[1], vV2(), ob[3])
-    }
-    if seq2(m, "to_string") {
-        if vals.len == 0 {
-            return e4("k", ob[1], vS(fmt(recv)), ob[3])
-        }
-        panic("to_string arity")
-        return e4("a", env, vV2(), out)
-    }
-    // T26 Env 进程环境能力对象(§8.1;R-P2b 锚 07b):Env.system() 构造宿主
-    // 环境句柄;get 缺失=None;args=进程参数表(ctron_prog_args_* 运行时底座)
-    if recv[0] == "NS" && seq2(recv[1], "Env") && seq2(m, "system") && vals.len == 0 {
-        var ehv = List[Str]()
-        ehv.push("NS")
-        ehv.push("EnvHandle")
-        return e4("k", ob[1], ehv, ob[3])
-    }
-    if recv[0] == "NS" && seq2(recv[1], "EnvHandle") {
-        if seq2(m, "get") && vals.len == 1 && vals[0][0] == "S" {
-            var gev = env_get(vals[0][1])
-            if gev.len == 0 {
-                var gnv = List[Str]()
-                gnv.push("T")
-                gnv.push("None")
-                return e4("k", ob[1], gnv, ob[3])
-            }
-            var gsv = List[Str]()
-            gsv.push("T")
-            gsv.push("Some")
-            gsv.push(vS(gev))
-            return e4("k", ob[1], gsv, ob[3])
-        }
-        if seq2(m, "args") && vals.len == 0 {
-            var gav = vL()
-            var gna: I64 = ctron_prog_args_n()
-            var gai: I64 = 0
-            while gai < gna {
-                gav.push(vS(ctron_prog_args_at(gai)))
-                gai += 1
-            }
-            return e4("k", ob[1], gav, ob[3])
-        }
-        panic("Env 方法:" + m)
-        return e4("a", ob[1], vV2(), ob[3])
-    }
-    // 并发域(顺序化模拟:spawn 即刻完整执行;结果与调度无关的测试面)
-    if recv[0] == "SCOPE" && seq2(m, "spawn") && vals.len == 1 {
-        var noargs = List[Str]()
-        var sr = call_cv(file, ob[1], ob[3], vals[0], noargs)
-        // sr[3] 已含 ob[3](out 累加器透传),不得再拼 ob[3](曾致前置输出重放)
-        var tk = List[Str]()
-        tk.push("TASK")
-        if sr[0] == "a" {
-            tk.push("P")
-            tk.push(sr[3])
-        } else {
-            tk.push("K")
-            tk.push(sr[2])
-        }
-        return e4("k", ob[1], tk, sr[3])
-    }
-    if recv[0] == "TASK" && seq2(m, "join") && vals.len == 0 {
-        if seq2(recv[1], "P") {
-            return e4("a", ob[1], recv[2], ob[3])
-        }
-        return e4("k", ob[1], recv[2], ob[3])
-    }
-    if recv[0] == "TASK" && seq2(m, "join_or") && vals.len == 0 {
-        var jr = List[Str]()
-        jr.push("T")
-        if seq2(recv[1], "P") {
-            jr.push("Err")
-            jr.push(vS("task panic"))
-        } else {
-            jr.push("Ok")
-            jr.push(recv[2])
-        }
-        return e4("k", ob[1], jr, ob[3])
-    }
-    if or2(recv[0] == "MUX", recv[0] == "M") && or2(seq2(m, "with_mut"), seq2(m, "with")) && vals.len == 1 {
-        var fa2 = List[Str]()
-        if recv[0] == "M" && seq2(m, "with_mut") {
-            fa2.push(recv)
-        } else {
-            fa2.push(recv[1])
-        }
-        return call_cv(file, ob[1], ob[3], vals[0], fa2)
-    }
-    if recv[0] == "M" && seq2(m, "fetch_add") && vals.len == 1 {
-        var oldm = recv[1]
-        recv[1] = val_arith("Add", oldm, vals[0])
-        return e4("k", ob[1], oldm, ob[3])
-    }
-    if recv[0] == "NS" && seq2(recv[1], "dom") {
-        // web 档(§9.2)stdweb.dom 最小 API;标题存 env 保留名(运行态无全局通道)
-        if seq2(m, "set_title") && vals.len == 1 {
-            // upsert:env_set 只换已存在键,首写须 env_add
-            var dk = env_at(env, "#dom:title")
-            var denv = env
-            if dk.len > 0 {
-                denv = env_set(env, "#dom:title", vals[0])
-            } else {
-                denv = env_add(env, "#dom:title", vals[0])
-            }
-            return e4("k", denv, vV2(), out)
-        }
-        if seq2(m, "title") && vals.len == 0 {
-            var te = env_at(env, "#dom:title")
-            var tv = vS("")
-            if te.len > 1 {
-                tv = te[1]
-            }
-            return e4("k", env, tv, out)
-        }
-        panic("dom 方法:" + m)
-        return e4("a", env, vV2(), out)
-    }
-    if recv[0] == "NS" && seq2(m, "map") && vals.len == 2 {
-        return ns_map_reduce(file, ob, vals, true)
-    }
-    if recv[0] == "NS" && seq2(m, "reduce") && vals.len == 3 {
-        return ns_map_reduce(file, ob, vals, false)
-    }
-    if recv[0] == "NS" && seq2(recv[1], "bit") {
-        return ns_bit(m, vals, ob)
-    }
-    if recv[0] == "CH" && seq2(m, "send") && vals.len == 1 {
-        var capn = dvi(recv[3][1])
-        if capn >= 0 && recv[1].len >= capn {
-            return e4("k", ob[1], vT("Err", vS("ScopeCancelled")), ob[3])
-        }
-        recv[1].push(vals[0])
-        return e4("k", ob[1], vT("Ok", vV2()), ob[3])
-    }
-    if recv[0] == "CH" && seq2(m, "recv") && vals.len == 0 {
-        var cur = recv[2]
-        var q2 = recv[1]
-        var idx = dvi(cur[1])
-        if idx >= q2.len {
-            return e4("k", ob[1], vT("Err", vS("ScopeCancelled")), ob[3])
-        }
-        cur[1] = (idx + 1).to_string()
-        return e4("k", ob[1], vT("Ok", q2[idx]), ob[3])
-    }
-    if recv[0] == "SIMD" && seq2(m, "splat") && vals.len == 1 {
-        var vc = List[Str]()
-        vc.push("VEC")
-        var n = dvi(recv[2])
-        var vi: I32 = 0
-        while vi < n {
-            vc.push(vals[0])
-            vi += 1
-        }
-        return e4("k", ob[1], vc, ob[3])
-    }
-    if recv[0] == "VEC" && seq2(m, "lane") && vals.len == 1 {
-        return e4("k", ob[1], recv[dvi(vals[0][1]) + 1], ob[3])
-    }
-    if recv[0] == "VEC" && seq2(m, "to_array") && vals.len == 0 {
-        var arr2 = List[Str]()
-        arr2.push("A")
-        var ai: I32 = 1
-        while ai < recv.len {
-            arr2.push(recv[ai])
-            ai += 1
-        }
-        return e4("k", ob[1], arr2, ob[3])
-    }
-    if seq2(m, "slice") {
-        if vals.len == 1 && recv[0] == "S" && vals[0][0] == "R" {
-            var rv = vals[0]
-            var lo = dvi(rv[2][1])
-            var hi = dvi(rv[3][1])
-            if seq2(rv[1], "true") {
-                hi += 1
-            }
-            var ln = recv[1].len
-            // UTF-8 边界(§3.3):切点不得落在续字节上
-            if lo > 0 && lo < ln && utf8_cont(recv[1], lo) {
-                return e4("a", ob[1], vS("invalid utf8 boundary"), ob[3])
-            }
-            if hi > 0 && hi < ln && utf8_cont(recv[1], hi) {
-                return e4("a", ob[1], vS("invalid utf8 boundary"), ob[3])
-            }
-            if lo < 0 {
-                lo = 0
-            }
-            if hi > ln {
-                hi = ln
-            }
-            if hi < lo {
-                hi = lo
-            }
-            return e4("k", ob[1], vS(byte_slice(recv[1], lo, hi)), ob[3])
-        }
-        panic("slice args")
-        return e4("a", env, vV2(), out)
-    }
-    if seq2(m, "load") {
-        if recv[0] == "M" && vals.len == 0 {
-            return e4("k", ob[1], recv[1], ob[3])
-        }
-    }
-    if seq2(m, "store") {
-        if recv[0] == "M" && vals.len == 1 {
-            recv[1] = vals[0]
-            return e4("k", ob[1], vV2(), ob[3])
-        }
-    }
-    if seq2(m, "push") {
-        if recv[0] == "L" && vals.len == 1 {
-            recv.push(vals[0])
-            return e4("k", ob[1], vV2(), ob[3])
-        }
-    }
-    if seq2(m, "into_gc") {
-        if recv[0] == "L" && vals.len == 0 {
-            return e4("k", ob[1], vdeep(recv), ob[3])
-        }
-    }
-    if seq2(m, "contains") && recv[0] == "S" && vals.len == 1 {
-        // §3.8.2 Str.contains(此前仅 List.contains;T09 夹具踩中补齐)
-        if vals[0][0] != "S" {
-            panic("contains 需 Str")
-        }
-        return e4("k", ob[1], vB(str_contains(recv[1], vals[0][1])), ob[3])
-    }
-    if seq2(m, "contains") && recv[0] == "L" && vals.len == 1 {
-        var fnd2 = false
-        var li: I32 = 1
-        while li < recv.len && !fnd2 {
-            if or2(recv[li][0] == "S", recv[li][0] == "L") {
-                if str_contains(fmt(recv[li]), fmt(vals[0])) {
-                    fnd2 = true
-                }
-            } else {
-                if veq(recv[li], vals[0]) {
-                    fnd2 = true
-                }
-            }
-            li += 1
-        }
-        return e4("k", ob[1], vB(fnd2), ob[3])
-    }
-    // Option/Result 组合子(recv = ["T", "Some/None/Ok/Err", payload?])
-    if recv[0] == "T" {
-        if seq2(m, "or") && vals.len == 1 {
-            if or2(seq2(recv[1], "Some"), seq2(recv[1], "Ok")) {
-                if recv.len == 3 {
-                    return e4("k", ob[1], recv[2], ob[3])
-                }
-                return e4("k", ob[1], recv, ob[3])
-            }
-            return e4("k", ob[1], vals[0], ob[3])
-        }
-        if seq2(m, "expect") && vals.len == 1 && vals[0][0] == "S" {
-            if or2(seq2(recv[1], "Some"), seq2(recv[1], "Ok")) {
-                if recv.len == 3 {
-                    return e4("k", ob[1], recv[2], ob[3])
-                }
-                return e4("k", ob[1], recv, ob[3])
-            }
-            return e4("a", ob[1], vS(vals[0][1]), ob[3])
-        }
-        if seq2(m, "is_some") && vals.len == 0 {
-            return e4("k", ob[1], vB(or2(seq2(recv[1], "Some"), seq2(recv[1], "Ok"))), ob[3])
-        }
-        if seq2(m, "map") && vals.len == 1 {
-            if seq2(recv[1], "Some") && recv.len == 3 {
-                var fa = List[Str]()
-                fa.push(recv[2])
-                var mr = call_cv(file, ob[1], ob[3], vals[0], fa)
-                if mr[0] != "k" {
-                    return mr
-                }
-                var tv = List[Str]()
-                tv.push("T")
-                tv.push("Some")
-                tv.push(mr[2])
-                return e4("k", mr[1], tv, mr[3])
-            }
-            return e4("k", ob[1], recv, ob[3])
-        }
-        if seq2(m, "context") && vals.len == 1 && vals[0][0] == "S" {
-            if seq2(recv[1], "Err") {
-                var p = recv
-                if recv.len == 3 {
-                    p = recv[2]
-                }
-                var cs = List[Str]()
-                cs.push("T")
-                cs.push("Some")
-                cs.push(p)
-                var eb = List[Str]()
-                eb.push("U")
-                eb.push("AnyError")
-                eb.push("message")
-                eb.push(vS(vals[0][1]))
-                eb.push("cause")
-                eb.push(cs)
-                eb.push("trace")
-                var trl = List[Str]()
-                trl.push("L")
-                trl.push(vS("ctx:" + vals[0][1]))
-                eb.push(trl)
-                var te = List[Str]()
-                te.push("T")
-                te.push("Err")
-                te.push(eb)
-                return e4("k", ob[1], te, ob[3])
-            }
-            return e4("k", ob[1], recv, ob[3])
-        }
-    }
-    if recv[0] == "U" && seq2(m, "eq") {
-        // @derive(Eq)(§3d):结构接收者逐字段相等(守卫拆嵌套:索引不得入急切复合条件)
-        if vals.len == 1 {
-            if vals[0][0] == "U" {
-                return e4("k", ob[1], vB(eq_val(recv, vals[0])), ob[3])
-            }
-        }
-        panic("eq 需同型结构实参")
-        return e4("a", env, vV2(), out)
-    }
-    if recv[0] == "U" && seq2(m, "show") && vals.len == 0 {
-        return e4("k", ob[1], vS(fmt(recv)), ob[3])
-    }
-    // C9f②:类实例方法/trait 默认方法(镜像 rt.c V_STRUCT&&is_class 先于 UFCS;
-    // 类找不到方法直接 panic,不落 UFCS)
-    if recv[0] == "U" {
-        // impl 方法:类实例与 struct 值统一走 impl 分派(§4.8;struct 曾漏,
-        // 落 UFCS 找不到 impl 内方法即运行期失败)
-        var mth = find_impl_method(file, recv[1], m)
-        if mth.len > 0 {
-            return call_method_vals(file, ob[1], ob[3], mth, recv, vals)
-        }
-        if is_class(file, recv[1]) {
-            panic("unknown method:" + m)
-            return e4("a", env, vV2(), out)
-        }
-    }
-    var ddx = find_decl(file, m)
-    if ddx.len > 0 {
-        var fvv = List[Str]()
-        fvv.push(recv)
-        var qq: I32 = 0
-        while qq < vals.len {
-            fvv.push(vals[qq])
-            qq += 1
-        }
-        return call_decl_vals(file, ob[1], ob[3], ddx, fvv)
-    }
-    panic("method:" + m)
-    return e4("a", env, vV2(), out)
-}
-fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
-    var ag = e[2]
-    var vals = List[Str]()
-    var env2 = env
-    var out2 = out
-    var i: I32 = 1
-    while i < ag.len {
-        var ar = eval_expr(file, env2, out2, ag[i])
-        if ar[0] != "k" {
-            return ar
-        }
-        env2 = ar[1]
-        out2 = ar[3]
-        vals.push(ar[2])
-        i += 1
-    }
-    var cal = e[1]
-    if cal[0] == "Ident" {
-        return call_id(file, env2, out2, cal[1], vals)
-    }
-    if cal[0] == "Member" {
-        return call_mem(file, env2, out2, cal, vals)
-    }
-    // C9f①:List 构造 List[T]()(rt.c:同参忽略,恒空表;arena.list[T]() 同)
-    if cal[0] == "TypeArgs" {
-        var base = cal[1]
-        // as[T]() 显式转换(窄化截断,浮转整截断)
-        if base[0] == "Member" && seq2(base[3], "as") {
-            var ar = eval_expr(file, env2, out2, base[1])
-            if ar[0] != "k" {
-                return ar
-            }
-            var tgt = ""
-            if cal[2].len > 1 {
-                tgt = ty_head(cal[2][1])
-            }
-            return e4("k", ar[1], conv_as(ar[2], tgt), ar[3])
-        }
-        if base[0] == "Ident" && seq2(base[1], "Channel") {
-            var cap = vals[0]
-            var q = List[Str]()
-            var cur = List[Str]()
-            cur.push("M")
-            cur.push("0")
-            var tx = List[Str]()
-            tx.push("CH")
-            tx.push(q)
-            tx.push(cur)
-            tx.push(cap)
-            var rx = List[Str]()
-            rx.push("CH")
-            rx.push(q)
-            rx.push(cur)
-            rx.push(cap)
-            var pr = List[Str]()
-            pr.push("P")
-            pr.push(tx)
-            pr.push(rx)
-            return e4("k", env2, pr, out2)
-        }
-        if base[0] == "Ident" && seq2(base[1], "Global") {
-            var gv = List[Str]()
-            gv.push("M")
-            if vals.len > 1 {
-                gv.push(vals[1])
-            } else {
-                gv.push(vV2())
-            }
-            return e4("k", env2, gv, out2)
-        }
-        if base[0] == "Ident" && seq2(base[1], "Box") {
-            var bv = List[Str]()
-            bv.push("BOX")
-            if vals.len > 0 {
-                bv.push(vals[0])
-            } else {
-                bv.push(vV2())
-            }
-            return e4("k", env2, bv, out2)
-        }
-        if base[0] == "Ident" && seq2(base[1], "Mutex") {
-            var mx = List[Str]()
-            mx.push("MUX")
-            if vals.len > 0 {
-                mx.push(vals[0])
-            } else {
-                mx.push(vV2())
-            }
-            return e4("k", env2, mx, out2)
-        }
-        var islist = false
-        if base[0] == "Ident" && seq2(base[1], "List") {
-            islist = true
-        }
-        if base[0] == "Member" && seq2(base[2], "Nm") && seq2(base[3], "list") && base[1][0] == "Ident" && seq2(base[1][1], "arena") {
-            islist = true
-        }
-        if islist {
-            return e4("k", env2, vL(), out2)
-        }
-        if base[0] == "Ident" && seq2(base[1], "Atomic") {
-            var mv = List[Str]()
-            mv.push("M")
-            if vals.len > 0 {
-                mv.push(vals[0])
-            } else {
-                mv.push(vV2())
-            }
-            return e4("k", env2, mv, out2)
-        }
-        // 泛型 fn 调用(显式 TypeArgs):擦除型参,按名动态派发
-        if base[0] == "Ident" {
-            return call_id(file, env, out, base[1], vals)
-        }
-    }
-    panic("call target")
-    return e4("a", env, vV2(), out)
 }

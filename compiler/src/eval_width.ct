@@ -4,19 +4,19 @@
 // iadd_ov/isub_ov/imul_ov 有符号溢出判定(I32 域 panic 用)。
 // =====================================================================
 // ---------------- 宽度域(u8/i8/u16/i16 值标签 W:载荷在前、宽度在后) ----------------
-fn vW(w: Str, x: I32) -> List[Str] {
-    var v = List[Str]()
-    v.push("W")
-    v.push(x.to_string())
-    v.push(w)
-    return v
+fn vW(w: Str, x: I32) -> Val {
+    return Val { tag: 7, iv: x.as[I64](), b: false, s: w }
 }
-fn w_of(v: List[Str]) -> Str {
-    if v[0] == "W" {
-        return v[2]
+
+
+fn w_of(v: Val) -> Str {
+    if v.tag == 7 {
+        return v.s
     }
     return "i32"
 }
+
+
 fn w_rank(w: Str) -> I32 {
     if w == "i32" {
         return 3
@@ -57,15 +57,15 @@ fn w_min(w: Str) -> I32 {
     return 0 - 2147483647 - 1
 }
 // ≤16 位宽度下的回绕:I32 中间量安全;按 2^bits 取模,有符号再折回
-fn w_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
+fn w_arith(op: Str, a: Val, b: Val) -> Val {
     var wa = w_of(a)
     var wb = w_of(b)
     var w = wa
     if w_rank(wb) > w_rank(wa) {
         w = wb
     }
-    var x = dvi(a[1])
-    var y = dvi(b[1])
+    var x = a.iv.as[I32]()
+    var y = b.iv.as[I32]()
     var mx = w_max(w)
     var mn = w_min(w)
     if or2(seq2(op, "WrapAdd"), seq2(op, "WrapSub")) {
@@ -110,6 +110,8 @@ fn w_arith(op: Str, a: List[Str], b: List[Str]) -> List[Str] {
     }
     return vW(w, ari(op, x, y))
 }
+
+
 fn w_bits(w: Str) -> I32 {
     if or2(w == "u8", w == "i8") {
         return 8

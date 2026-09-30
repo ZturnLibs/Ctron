@@ -1,12 +1,13 @@
 // =====================================================================
-// eval_expr.ct —— 核心表达式遍历 eval_expr(file, env, out, e) → 值
+// eval_expr.ct —— 核心表达式遍历 eval_expr(file, env, out, e) → Flow
 // 字面量/Ident/二元·一元/比较/if·match 表达式/闭包/struct·枚举构造/UFCS/? 传播/
 // 元组与 .0/.1 索引/插值串/Box 解引用。语句与块见 eval_run.ct,调用见 eval_call.ct。
+// S1 Val 换代:标量值 Val 原生字段;复合值 cx 旧编码位面;流 Flow struct。
 // =====================================================================
-fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
     var t = e[0]
     if t == "Int" {
-        // 宽度后缀:u8/i8/u16/i16 → W 值;u64/usize → "7" 无符号 64 文本域(P1-B);
+        // 宽度后缀:u8/i8/u16/i16 → W 值;u64/usize → "7" 无符号 64 域(P1-B);
         // 其余(含 i32/u32/i64/isize)沿用 I32 域
         if e.len > 2 {
             var sfx = e[2]
@@ -45,63 +46,63 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     if t == "Ident" {
         var en = env_at(env, e[1])
         if en.len > 0 {
-            return e4("k", env, en[1], out)
+            return e4("k", env, v_unbox(en[1]), out)
         }
         if or2(seq2(e[1], "Some"), or2(seq2(e[1], "None"), or2(seq2(e[1], "Ok"), seq2(e[1], "Err")))) {
             var tv = List[Str]()
             tv.push("T")
             tv.push(e[1])
-            return e4("k", env, tv, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv) }, out)
         }
         if enum_var(file, e[1]) {
             var tv2 = List[Str]()
             tv2.push("T")
             tv2.push(e[1])
-            return e4("k", env, tv2, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv2) }, out)
         }
         var fnd = find_decl(file, e[1])
         if fnd.len > 0 {
             var fv = List[Str]()
             fv.push("F")
             fv.push(e[1])
-            return e4("k", env, fv, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(fv) }, out)
         }
         if seq2(e[1], "parallel") {
             var ns = List[Str]()
             ns.push("NS")
             ns.push("parallel")
-            return e4("k", env, ns, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(ns) }, out)
         }
         if seq2(e[1], "bit") {
             var nsb = List[Str]()
             nsb.push("NS")
             nsb.push("bit")
-            return e4("k", env, nsb, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nsb) }, out)
         }
         if seq2(e[1], "dom") {
             var ns = List[Str]()
             ns.push("NS")
             ns.push("dom")
-            return e4("k", env, ns, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(ns) }, out)
         }
         if seq2(e[1], "Env") {
             // T26 Env 进程环境命名空间(§8.1;R-P2b 锚 07b:Env.system/get/args)
             var nsv = List[Str]()
             nsv.push("NS")
             nsv.push("Env")
-            return e4("k", env, nsv, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nsv) }, out)
         }
         panic("unbound:" + e[1])
         return e4("a", env, vV2(), out)
     }
     if t == "Unary" {
         var ur = eval_expr(file, env, out, e[2])
-        if ur[0] != "k" {
+        if ur.kind != "k" {
             return ur
         }
         if seq2(e[1], "Neg") {
-            if ur[2][0] == "D" {
-                var dt = ur[2][1]
+            if ur.v.tag == 6 {
+                var dt = ur.v.s
                 if dt != "0" {
                     if byte_at(dt, 0) == 45 {
                         dt = byte_slice(dt, 1, dt.len)
@@ -109,144 +110,153 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
                         dt = "-" + dt
                     }
                 }
-                return e4("k", ur[1], vD(dt), ur[3])
+                return e4("k", ur.env, vD(dt), ur.out)
             }
-            // 6 域取负:文本符号翻转(c6can 归一 -0);MIN 取负溢出(§4.5)
-            if ur[2][0] == "6" {
-                var nt6 = c6can("-" + ur[2][1])
+            // 6 域取负:iv 原生走检查式零减(编译器源 0 变量=64 位宽,MIN 取负
+            // 硬溢出,消息同文本管线);s 巨型字面量文本槽走符号翻转冷路径
+            if ur.v.tag == 2 {
+                if ur.v.s == "" {
+                    var z64: I64 = 0
+                    return e4("k", ur.env, v6i(z64 - ur.v.iv), ur.out)
+                }
+                var nt6 = c6can("-" + v6t(ur.v))
                 if !c6_in_i64(nt6) {
                     panic("integer overflow (-)")
                 }
-                return e4("k", ur[1], v6(nt6), ur[3])
+                return e4("k", ur.env, v6(nt6), ur.out)
             }
-            return e4("k", ur[1], vI(0 - dvi(ur[2][1])), ur[3])
+            return e4("k", ur.env, vI(0 - ur.v.iv.as[I32]()), ur.out)
         }
-        return e4("k", ur[1], vB(!truth(ur[2])), ur[3])
+        return e4("k", ur.env, vB(!truth(ur.v)), ur.out)
     }
     if t == "Binary" {
         var op = e[1]
         if seq2(op, "OrOr") {
             var lor = eval_expr(file, env, out, e[2])
-            if lor[0] != "k" {
+            if lor.kind != "k" {
                 return lor
             }
-            if truth(lor[2]) {
-                return e4("k", lor[1], vB(true), lor[3])
+            if truth(lor.v) {
+                return e4("k", lor.env, vB(true), lor.out)
             }
-            var ror = eval_expr(file, lor[1], lor[3], e[3])
-            if ror[0] != "k" {
+            var ror = eval_expr(file, lor.env, lor.out, e[3])
+            if ror.kind != "k" {
                 return ror
             }
-            return e4("k", ror[1], vB(truth(ror[2])), ror[3])
+            return e4("k", ror.env, vB(truth(ror.v)), ror.out)
         }
         if seq2(op, "AndAnd") {
             var lr = eval_expr(file, env, out, e[2])
-            if lr[0] != "k" {
+            if lr.kind != "k" {
                 return lr
             }
-            if !truth(lr[2]) {
-                return e4("k", lr[1], vB(false), lr[3])
+            if !truth(lr.v) {
+                return e4("k", lr.env, vB(false), lr.out)
             }
-            var rr = eval_expr(file, lr[1], lr[3], e[3])
-            if rr[0] != "k" {
+            var rr = eval_expr(file, lr.env, lr.out, e[3])
+            if rr.kind != "k" {
                 return rr
             }
-            return e4("k", rr[1], vB(truth(rr[2])), rr[3])
+            return e4("k", rr.env, vB(truth(rr.v)), rr.out)
         }
         if seq2(op, "Or") {
             var lo = eval_expr(file, env, out, e[2])
-            if lo[0] != "k" {
+            if lo.kind != "k" {
                 return lo
             }
-            var lv = lo[2]
-            if seq2(lv[0], "T") {
-                if or2(seq2(lv[1], "Some"), seq2(lv[1], "Ok")) {
-                    if lv.len == 3 {
-                        return e4("k", lo[1], lv[2], lo[3])
+            var lv = lo.v
+            if lv.tag == 8 {
+                if seq2(cx_of(lv)[0], "T") {
+                    if or2(seq2(cx_of(lv)[1], "Some"), seq2(cx_of(lv)[1], "Ok")) {
+                        if cx_of(lv).len == 3 {
+                            return e4("k", lo.env, v_unbox(cx_of(lv)[2]), lo.out)
+                        }
+                        return e4("k", lo.env, lv, lo.out)
                     }
-                    return e4("k", lo[1], lv, lo[3])
                 }
             }
-            var ro = eval_expr(file, lo[1], lo[3], e[3])
-            if ro[0] != "k" {
+            var ro = eval_expr(file, lo.env, lo.out, e[3])
+            if ro.kind != "k" {
                 return ro
             }
-            return e4("k", ro[1], ro[2], ro[3])
+            return e4("k", ro.env, ro.v, ro.out)
         }
         var lr2 = eval_expr(file, env, out, e[2])
-        if lr2[0] != "k" {
+        if lr2.kind != "k" {
             return lr2
         }
-        var rr2 = eval_expr(file, lr2[1], lr2[3], e[3])
-        if rr2[0] != "k" {
+        var rr2 = eval_expr(file, lr2.env, lr2.out, e[3])
+        if rr2.kind != "k" {
             return rr2
         }
-        var a = lr2[2]
-        var b = rr2[2]
+        var a = lr2.v
+        var b = rr2.v
         if seq2(op, "Eq") {
-            return e4("k", rr2[1], vB(veq(a, b)), rr2[3])
+            return e4("k", rr2.env, vB(veq(a, b)), rr2.out)
         }
         if seq2(op, "Ne") {
-            return e4("k", rr2[1], vB(!veq(a, b)), rr2[3])
+            return e4("k", rr2.env, vB(!veq(a, b)), rr2.out)
         }
         if seq2(op, "Lt") {
-            return e4("k", rr2[1], vB(vcmp(a, b) < 0), rr2[3])
+            return e4("k", rr2.env, vB(vcmp(a, b) < 0), rr2.out)
         }
         if seq2(op, "Gt") {
-            return e4("k", rr2[1], vB(vcmp(a, b) > 0), rr2[3])
+            return e4("k", rr2.env, vB(vcmp(a, b) > 0), rr2.out)
         }
         if seq2(op, "Le") {
-            return e4("k", rr2[1], vB(vcmp(a, b) <= 0), rr2[3])
+            return e4("k", rr2.env, vB(vcmp(a, b) <= 0), rr2.out)
         }
         if seq2(op, "Ge") {
-            return e4("k", rr2[1], vB(vcmp(a, b) >= 0), rr2[3])
+            return e4("k", rr2.env, vB(vcmp(a, b) >= 0), rr2.out)
         }
         if seq2(op, "Add") {
-            if a[0] == "S" && b[0] == "S" {
-                return e4("k", rr2[1], vS(fmt(a) + fmt(b)), rr2[3])
+            if a.tag == 5 && b.tag == 5 {
+                return e4("k", rr2.env, vS(fmt(a) + fmt(b)), rr2.out)
             }
-            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+            return e4("k", rr2.env, val_arith(op, a, b), rr2.out)
         }
         if or3(seq2(op, "Sub"), seq2(op, "Mul"), seq2(op, "Div")) {
-            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+            return e4("k", rr2.env, val_arith(op, a, b), rr2.out)
         }
         if seq2(op, "Mod") {
-            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+            return e4("k", rr2.env, val_arith(op, a, b), rr2.out)
         }
         if or2(seq2(op, "WrapAdd"), seq2(op, "WrapSub")) {
-            return e4("k", rr2[1], val_arith(op, a, b), rr2[3])
+            return e4("k", rr2.env, val_arith(op, a, b), rr2.out)
         }
         panic("binop:" + op)
         return e4("a", env, vV2(), out)
     }
     if t == "Range" {
         var fr = eval_expr(file, env, out, e[2])
-        if fr[0] != "k" {
+        if fr.kind != "k" {
             return fr
         }
-        var tr = eval_expr(file, fr[1], fr[3], e[3])
-        if tr[0] != "k" {
+        var tr = eval_expr(file, fr.env, fr.out, e[3])
+        if tr.kind != "k" {
             return tr
         }
         var rv = List[Str]()
         rv.push("R")
         rv.push(e[1])
-        rv.push(fr[2])
-        rv.push(tr[2])
-        return e4("k", tr[1], rv, tr[3])
+        rv.push(v_box(fr.v))
+        rv.push(v_box(tr.v))
+        return e4("k", tr.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(rv) }, tr.out)
     }
     if t == "Member" {
         var ob = eval_expr(file, env, out, e[1])
-        if ob[0] != "k" {
+        if ob.kind != "k" {
             return ob
         }
-        var recv = ob[2]
+        var recv = ob.v
         if seq2(e[2], "TIdx") {
             var ti = e[3]
-            if recv[0] == "P" {
-                var pi2 = dvi(ti)
-                if pi2 + 1 < recv.len {
-                    return e4("k", ob[1], recv[pi2 + 1], ob[3])
+            if recv.tag == 8 {
+                if cx_of(recv)[0] == "P" {
+                    var pi2 = dvi(ti)
+                    if pi2 + 1 < cx_of(recv).len {
+                        return e4("k", ob.env, v_unbox(cx_of(recv)[pi2 + 1]), ob.out)
+                    }
                 }
             }
             panic("tindex:" + ti)
@@ -255,69 +265,83 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         if seq2(e[2], "Nm") {
             var m = e[3]
             if seq2(m, "len") {
-                if recv[0] == "S" {
-                    return e4("k", ob[1], vI(recv[1].len), ob[3])
+                if recv.tag == 5 {
+                    return e4("k", ob.env, vI(recv.s.len), ob.out)
                 }
-                if recv[0] == "A" {
-                    return e4("k", ob[1], vI(recv.len - 1), ob[3])
-                }
-                if recv[0] == "L" {
-                    return e4("k", ob[1], vI(recv.len - 1), ob[3])
-                }
-                if recv[0] == "SB" {
-                    var sbl: I32 = 0
-                    var sbi: I32 = 1
-                    while sbi < recv.len {
-                        sbl += recv[sbi].len
-                        sbi += 1
+                if recv.tag == 8 {
+                    if or2(seq2(cx_of(recv)[0], "A"), seq2(cx_of(recv)[0], "L")) {
+                        return e4("k", ob.env, vI(cx_of(recv).len - 1), ob.out)
                     }
-                    return e4("k", ob[1], vI(sbl), ob[3])
+                }
+                if recv.tag == 8 {
+                    if seq2(cx_of(recv)[0], "SB") {
+                        var sbl: I32 = 0
+                        var sbi: I32 = 1
+                        while sbi < cx_of(recv).len {
+                            sbl += cx_of(recv)[sbi].len
+                            sbi += 1
+                        }
+                        return e4("k", ob.env, vI(sbl), ob.out)
+                    }
                 }
                 var tn: Str = "?"
-                if recv.len > 1 { tn = recv[1] }
+                if recv.tag == 8 {
+                    if cx_of(recv).len > 1 {
+                        tn = cx_of(recv)[1]
+                    }
+                }
                 var en: Str = "?"
-                if e[1].len > 1 { en = e[1][0] + "/" + e[1][1] }
-                panic("len target recv=" + recv[0] + "/" + tn + " m=" + m + " recvexpr=" + en)
+                if e[1].len > 1 {
+                    en = e[1][0] + "/" + e[1][1]
+                }
+                panic("len target recv=" + recv_cname(recv) + "/" + tn + " m=" + m + " recvexpr=" + en)
                 return e4("a", env, vV2(), out)
             }
-            if recv[0] == "S" && seq2(m, "char_len") {
+            if recv.tag == 5 && seq2(m, "char_len") {
                 var cl: I32 = 0
                 var ci: I32 = 0
-                while ci < recv[1].len {
-                    if !utf8_cont(recv[1], ci) {
+                while ci < recv.s.len {
+                    if !utf8_cont(recv.s, ci) {
                         cl += 1
                     }
                     ci += 1
                 }
-                return e4("k", ob[1], vI(cl), ob[3])
+                return e4("k", ob.env, vI(cl), ob.out)
             }
-            if recv[0] == "BOX" && recv[1][0] == "U" {
-                var fv3 = u_field(recv[1], m)
-                if fv3.len > 0 {
-                    return e4("k", ob[1], fv3, ob[3])
-                }
-            }
-            if recv[0] == "P" && m.len > 0 && byte_at(m, 0) >= 48 && byte_at(m, 0) <= 57 {
-                var pi = dvi(m)
-                if pi + 1 < recv.len {
-                    return e4("k", ob[1], recv[pi + 1], ob[3])
-                }
-            }
-            if recv[0] == "U" {
-                var fv = u_field(recv, m)
-                if fv.len > 0 {
-                    return e4("k", ob[1], fv, ob[3])
-                }
-                // C9f②:类实例 impl prop(rt.c EX_MEMBER 字段→cls_prop 同序)
-                if is_class(file, recv[1]) {
-                    var pp = find_impl_prop(file, recv[1], m)
-                    if pp.len > 0 {
-                        var prr = call_prop_vals(file, ob[1], ob[3], pp, recv)
-                        return e4(prr[0], ob[1], prr[2], prr[3])
+            if recv.tag == 8 {
+                if cx_of(recv)[0] == "BOX" {
+                    var ivb = v_unbox(cx_of(recv)[1])
+                    if ivb.tag == 8 {
+                        if cx_of(ivb)[0] == "U" {
+                            var fv3 = u_field(cx_of(ivb), m)
+                            if fv3.len > 0 {
+                                return e4("k", ob.env, v_unbox(fv3), ob.out)
+                            }
+                        }
                     }
                 }
-                panic("field:" + m)
-                return e4("a", env, vV2(), out)
+                if cx_of(recv)[0] == "P" && m.len > 0 && byte_at(m, 0) >= 48 && byte_at(m, 0) <= 57 {
+                    var pi = dvi(m)
+                    if pi + 1 < cx_of(recv).len {
+                        return e4("k", ob.env, v_unbox(cx_of(recv)[pi + 1]), ob.out)
+                    }
+                }
+                if cx_of(recv)[0] == "U" {
+                    var fv = u_field(cx_of(recv), m)
+                    if fv.len > 0 {
+                        return e4("k", ob.env, v_unbox(fv), ob.out)
+                    }
+                    // C9f②:类实例 impl prop(rt.c EX_MEMBER 字段→cls_prop 同序)
+                    if is_class(file, cx_of(recv)[1]) {
+                        var pp = find_impl_prop(file, cx_of(recv)[1], m)
+                        if pp.len > 0 {
+                            var prr = call_prop_vals(file, ob.env, ob.out, pp, cx_of(recv))
+                            return e4(prr.kind, ob.env, prr.v, prr.out)
+                        }
+                    }
+                    panic("field:" + m)
+                    return e4("a", env, vV2(), out)
+                }
             }
             panic("member:" + m)
             return e4("a", env, vV2(), out)
@@ -327,22 +351,22 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     }
     if t == "If" {
         var cr = eval_expr(file, env, out, e[1])
-        if cr[0] != "k" {
+        if cr.kind != "k" {
             return cr
         }
-        if truth(cr[2]) {
-            var br = run_block(file, cr[1], cr[3], e[2], false)
-            return e4(br[0], br[1], br[3], br[2])
+        if truth(cr.v) {
+            var br = run_block(file, cr.env, cr.out, e[2], false)
+            return e4(br.kind, br.env, br.v, br.out)
         }
         var el = e[3]
         if el[0] == "None" {
-            return e4("k", cr[1], vV2(), cr[3])
+            return e4("k", cr.env, vV2(), cr.out)
         }
-        return eval_expr(file, cr[1], cr[3], el)
+        return eval_expr(file, cr.env, cr.out, el)
     }
     if t == "BlockExpr" {
         var br = run_block(file, env, out, e[1], false)
-        return e4(br[0], br[1], br[3], br[2])
+        return e4(br.kind, br.env, br.v, br.out)
     }
     if t == "Closure" {
         var cv = List[Str]()
@@ -350,7 +374,7 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         cv.push(e[1])
         cv.push(e[3])
         cv.push(env)
-        return e4("k", env, cv, out)
+        return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(cv) }, out)
     }
     if t == "TupleE" {
         var tp = List[Str]()
@@ -360,15 +384,15 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         var k5: I32 = 1
         while k5 < e.len {
             var er5 = eval_expr(file, env5, out5, e[k5])
-            if er5[0] != "k" {
+            if er5.kind != "k" {
                 return er5
             }
-            env5 = er5[1]
-            out5 = er5[3]
-            tp.push(er5[2])
+            env5 = er5.env
+            out5 = er5.out
+            tp.push(v_box(er5.v))
             k5 += 1
         }
-        return e4("k", env5, tp, out5)
+        return e4("k", env5, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tp) }, out5)
     }
     if t == "ArrLit" {
         var arr = List[Str]()
@@ -378,15 +402,15 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         var k: I32 = 1
         while k < e.len {
             var er = eval_expr(file, env2, out2, e[k])
-            if er[0] != "k" {
+            if er.kind != "k" {
                 return er
             }
-            env2 = er[1]
-            out2 = er[3]
-            arr.push(er[2])
+            env2 = er.env
+            out2 = er.out
+            arr.push(v_box(er.v))
             k += 1
         }
-        return e4("k", env2, arr, out2)
+        return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(arr) }, out2)
     }
     if t == "StructLit" {
         var su = List[Str]()
@@ -399,30 +423,34 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
         while k < lf.len {
             var fld = lf[k]
             var fv = eval_expr(file, env2, out2, fld[2])
-            if fv[0] != "k" {
+            if fv.kind != "k" {
                 return fv
             }
-            env2 = fv[1]
-            out2 = fv[3]
+            env2 = fv.env
+            out2 = fv.out
             su.push(fld[1])
-            su.push(fv[2])
+            su.push(v_box(fv.v))
             k += 1
         }
-        return e4("k", env2, su, out2)
+        return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(su) }, out2)
     }
     if t == "Index" {
         var ob = eval_expr(file, env, out, e[1])
-        if ob[0] != "k" {
+        if ob.kind != "k" {
             return ob
         }
-        var ix = eval_expr(file, ob[1], ob[3], e[2])
-        if ix[0] != "k" {
+        var ix = eval_expr(file, ob.env, ob.out, e[2])
+        if ix.kind != "k" {
             return ix
         }
-        var arrv = ob[2]
-        var idx = dvi(ix[2][1])
+        var arrv = ob.v
+        var idx = ix.v.iv.as[I32]()
         // C9f①:L 与 A 同布局(类别槽后逐元素),索引读同轨道(rt.c V_LIST/V_ARR 同分支)
-        if !or2(seq2(arrv[0], "A"), seq2(arrv[0], "L")) {
+        if arrv.tag != 8 {
+            panic("index target")
+            return e4("a", env, vV2(), out)
+        }
+        if !or2(seq2(cx_of(arrv)[0], "A"), seq2(cx_of(arrv)[0], "L")) {
             panic("index target")
             return e4("a", env, vV2(), out)
         }
@@ -430,35 +458,35 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             panic("index target")
             return e4("a", env, vV2(), out)
         }
-        if idx >= arrv.len - 1 {
+        if idx >= cx_of(arrv).len - 1 {
             panic("index target")
             return e4("a", env, vV2(), out)
         }
-        return e4("k", ix[1], arrv[idx + 1], ix[3])
+        return e4("k", ix.env, v_unbox(cx_of(arrv)[idx + 1]), ix.out)
     }
     if t == "Match" {
         var sr = eval_expr(file, env, out, e[1])
-        if sr[0] != "k" {
+        if sr.kind != "k" {
             return sr
         }
         var arms = e[2]
         var i2: I32 = 1
         var found = false
-        var res = e4("k", sr[1], vV2(), sr[3])
+        var res = e4("k", sr.env, vV2(), sr.out)
         while i2 < arms.len && !found {
             var arm = arms[i2]
-            var pm = pat_match(arm[1], sr[2], sr[1])
+            var pm = pat_match(arm[1], sr.v, sr.env)
             var hit = seq2(pm[0], "1")
             if hit && arm.len > 3 {
                 // 模式守卫(R-P3c):绑定环境下求守卫,不成立落下一臂
-                var gr = eval_expr(file, pm[1], sr[3], arm[3])
-                if gr[0] != "k" {
+                var gr = eval_expr(file, pm[1], sr.out, arm[3])
+                if gr.kind != "k" {
                     return gr
                 }
-                hit = truth(gr[2])
+                hit = truth(gr.v)
             }
             if hit {
-                var ae = eval_expr(file, pm[1], sr[3], arm[2])
+                var ae = eval_expr(file, pm[1], sr.out, arm[2])
                 res = ae
                 found = true
             }
@@ -476,39 +504,41 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
             sv.push("SIMD")
             sv.push(ty_head(e[2][1]))
             sv.push(e[2][2][1])
-            return e4("k", env, sv, out)
+            return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(sv) }, out)
         }
         return eval_expr(file, env, out, e[1])
     }
     if t == "Own" {
         var obr = run_block(file, env, out, e[2], false)
-        return e4(obr[0], obr[1], obr[3], obr[2])
+        return e4(obr.kind, obr.env, obr.v, obr.out)
     }
     if t == "Scope" {
         var scv = List[Str]()
         scv.push("SCOPE")
-        var nenv = env_add(env, e[1], scv)
+        var nenv = env_add(env, e[1], Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(scv) })
         var sbr = run_block(file, nenv, out, e[2], false)
-        return e4(sbr[0], sbr[1], sbr[3], sbr[2])
+        return e4(sbr.kind, sbr.env, sbr.v, sbr.out)
     }
     if t == "Try" {
         var xr = eval_expr(file, env, out, e[1])
-        if xr[0] != "k" {
+        if xr.kind != "k" {
             return xr
         }
-        var xv = xr[2]
-        if xv[0] == "T" {
-            if or2(seq2(xv[1], "None"), seq2(xv[1], "Err")) {
-                return e4("r", xr[1], xv, xr[3])
-            }
-            if or2(seq2(xv[1], "Some"), seq2(xv[1], "Ok")) {
-                if xv.len == 3 {
-                    return e4("k", xr[1], xv[2], xr[3])
+        var xv = xr.v
+        if xv.tag == 8 {
+            if seq2(cx_of(xv)[0], "T") {
+                if or2(seq2(cx_of(xv)[1], "None"), seq2(cx_of(xv)[1], "Err")) {
+                    return e4("r", xr.env, xv, xr.out)
                 }
-                return e4("k", xr[1], xv, xr[3])
+                if or2(seq2(cx_of(xv)[1], "Some"), seq2(cx_of(xv)[1], "Ok")) {
+                    if cx_of(xv).len == 3 {
+                        return e4("k", xr.env, v_unbox(cx_of(xv)[2]), xr.out)
+                    }
+                    return e4("k", xr.env, xv, xr.out)
+                }
             }
         }
-        return e4("k", xr[1], xv, xr[3])
+        return e4("k", xr.env, xv, xr.out)
     }
     if t == "Call" {
         return eval_call(file, env, out, e)
@@ -522,4 +552,11 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[St
     }
     panic("expr:" + t)
     return e4("a", env, vV2(), out)
+}
+// 复合值域名(诊断用;cx 位面 [0] 即原类别槽)
+fn recv_cname(v: Val) -> Str {
+    if v.tag == 8 {
+        return cx_of(v)[0]
+    }
+    return "scalar"
 }
