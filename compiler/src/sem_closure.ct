@@ -301,11 +301,18 @@ fn cscan(node: List[Str], muts: List[Str], diags: List[Str]) {
     if t == "Closure" {
         var names = List[Str]()
         cassign_names(node[3], names)
+        // 捕获判定收窄:闭包体自身 var 声明(含体内循环再赋值)不是捕获——
+        // 旧判定经全文件 muts 集合把闭包内 var+赋值惯用法(生产者/消费者循环)
+        // 全记 E3070,spawn 闭包内 while 计数被误伤(T14 验证矩阵实证)
+        var locals = List[Str]()
+        clet_names(node[3], locals)
         var i: I32 = 0
         while i < names.len {
             var nm = names[i]
             if in_list(muts, nm) {
-                donce1(diags, "E3070", "", nm)
+                if !in_list(locals, nm) {
+                    donce1(diags, "E3070", "", nm)
+                }
             }
             i += 1
         }
@@ -458,5 +465,142 @@ fn sem_closures(file: List[Str], diags: List[Str]) {
             cscan_b(d[2], muts, diags)
         }
         i += 1
+    }
+}
+
+// Let 声明名收集(镜像 cassign_names 遍历;赋值目标换声明模式;嵌套闭包不入——
+// 其局部属内层帧,其赋值也不入外层捕获名单)
+fn clet_b(b: List[Str], out: List[Str]) {
+    var i: I32 = 1
+    while i < b.len {
+        clet_names(b[i], out)
+        i += 1
+    }
+}
+
+fn clet_names(e: List[Str], out: List[Str]) {
+    var t = e[0]
+    if t == "Block" {
+        clet_b(e, out)
+        return
+    }
+    if t == "BlockExpr" {
+        clet_b(e[1], out)
+        return
+    }
+    if t == "Closure" {
+        return
+    }
+    if t == "Let" {
+        var pat = e[2]
+        if pat[0] == "PatId" {
+            out.push(pat[1])
+        } else if pat[0] == "PatTup" {
+            var pi: I32 = 1
+            while pi < pat.len {
+                if pat[pi][0] == "PatId" {
+                    out.push(pat[pi][1])
+                }
+                pi += 1
+            }
+        }
+        clet_names(e[4], out)
+        return
+    }
+    if t == "Assign" {
+        clet_names(e[1], out)
+        clet_names(e[3], out)
+        return
+    }
+    if t == "Call" {
+        clet_names(e[1], out)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            clet_names(ag[i], out)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        clet_names(e[1], out)
+        return
+    }
+    if t == "Binary" {
+        clet_names(e[2], out)
+        clet_names(e[3], out)
+        return
+    }
+    if t == "Unary" {
+        clet_names(e[2], out)
+        return
+    }
+    if t == "Range" {
+        clet_names(e[2], out)
+        clet_names(e[3], out)
+        return
+    }
+    if t == "Index" {
+        clet_names(e[1], out)
+        clet_names(e[2], out)
+        return
+    }
+    if t == "TypeArgs" {
+        clet_names(e[1], out)
+        return
+    }
+    if t == "Try" {
+        clet_names(e[1], out)
+        return
+    }
+    if or2(t == "TupleE", t == "ArrLit") {
+        var i2: I32 = 1
+        while i2 < e.len {
+            clet_names(e[i2], out)
+            i2 += 1
+        }
+        return
+    }
+    if t == "If" {
+        clet_names(e[1], out)
+        clet_b(e[2], out)
+        clet_names(e[3], out)
+        return
+    }
+    if t == "Match" {
+        clet_names(e[1], out)
+        var arms = e[2]
+        var i3: I32 = 1
+        while i3 < arms.len {
+            clet_names(arms[i3][2], out)
+            i3 += 1
+        }
+        return
+    }
+    if or2(t == "Own", t == "Scope") {
+        clet_b(e[2], out)
+        return
+    }
+    if t == "StructLit" {
+        var lf = e[2]
+        var i4: I32 = 1
+        while i4 < lf.len {
+            var c = lf[i4]
+            if seq2(c[0], "LField") {
+                clet_names(c[2], out)
+            }
+            i4 += 1
+        }
+        return
+    }
+    if t == "While" {
+        clet_names(e[1], out)
+        clet_b(e[2], out)
+        return
+    }
+    if t == "For" {
+        clet_names(e[2], out)
+        clet_b(e[3], out)
+        return
     }
 }

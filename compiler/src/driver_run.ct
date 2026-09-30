@@ -87,22 +87,22 @@ fn main() -> I32 {
             var d = find_decl(file, "main")
             if d.len > 0 {
                 var br = run_block(file, statics_env(file), "", d[5], false)
-                if br[0] == "a" {
+                if br.kind == "a" {
                     // P1-A2:panic 流也输出累积 out(Drop 体 println 已入账,§6.4 展开可观察)
-                    print(br[2])
-                    print(fmt(br[3]))
+                    print(br.out)
+                    print(fmt(br.v))
                     return 1
                 }
-                print(br[2])
+                print(br.out)
                 return 0
             }
             var tr = run_tests(file)
-            if tr[0] == "a" {
-                print(tr[2])
-                print(fmt(tr[3]))
+            if tr.kind == "a" {
+                print(tr.out)
+                print(fmt(tr.v))
                 return 1
             }
-            print(tr[2])
+            print(tr.out)
             return 0
         }
         None => {

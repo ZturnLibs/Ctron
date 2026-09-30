@@ -3,45 +3,49 @@
 // 作用域链;fmt 值→文本(v 域标签分发);e4/s4;expr_of_text 插值表达式复解析;
 // find_decl/unesc;eval_str 插值串求值;pm2/enum_var。
 // =====================================================================
-fn fmt(v: List[Str]) -> Str {
-    var k = v[0]
-    if k == "I" {
-        return v[1]
+fn fmt(v: Val) -> Str {
+    if v.tag == 1 {
+        return dvi_str(v.iv.as[I32]())
     }
-    if k == "W" {
-        return v[1]
+    if v.tag == 7 {
+        return dvi_str(v.iv.as[I32]())
     }
-    if k == "6" {
-        return v[1]
+    if v.tag == 2 {
+        return v6t(v)
     }
-    if k == "7" {
-        // U64/USize 域(P1-B):十进制文本直出
-        return v[1]
+    if v.tag == 3 {
+        return v7t(v)
     }
-    if k == "B" {
-        return v[1]
+    if v.tag == 4 {
+        if v.b {
+            return "true"
+        }
+        return "false"
     }
-    if k == "S" {
-        return v[1]
+    if v.tag == 5 {
+        return v.s
     }
-    if k == "D" {
-        return df_show(v[1])
+    if v.tag == 6 {
+        return df_show(v.s)
     }
-    if k == "V" {
+    if v.tag == 0 {
         return ""
     }
+    // 复合面(cx 旧编码位面):T/U 等
+    var k = cx_of(v)[0]
     if k == "T" {
         // Option/Result 值:变体名(无载荷 None/Err)或 变体(载荷)
-        if v.len == 3 {
-            return v[1] + "(" + fmt(v[2]) + ")"
+        if cx_of(v).len == 3 {
+            return cx_of(v)[1] + "(" + fmt(v_unbox(cx_of(v)[2])) + ")"
         }
-        return v[1]
+        return cx_of(v)[1]
     }
     if k == "U" {
-        return fmt_struct(v)
+        return fmt_struct(cx_of(v))
     }
     return "<value>"
 }
+
 
 // @derive(Show)(§3d):U 值结构化格式 Name(f=v,...) —— show 方法/插值两通道同族;
 // 字段值经 fmt 递归(嵌套 struct 自动下钻,与 emit 侧 ct_show_frag_dp 逐字对齐)
@@ -55,42 +59,56 @@ fn fmt_struct(v: List[Str]) -> Str {
         } else {
             s = s + ","
         }
-        s = s + v[i] + "=" + fmt(v[i + 1])
+        s = s + v[i] + "=" + fmt(v_unbox(v[i + 1]))
         i += 2
     }
     return s + ")"
 }
 
+
 // @derive(Eq)(§3d):U 值结构化逐字段相等 —— emit 侧 ct_eq_expr_dp 同族对齐;
 // 标量按规范文本比较(解释器标量值即文本),嵌套 struct 递归;型别名不同 → 不等;
 // 不支持的字段型别 panic(与发射面同界:标量/Str/嵌套 struct 之外不派生)
-fn eq_val(a: List[Str], b: List[Str]) -> Bool {
+fn eq_val(a: Val, b: Val) -> Bool {
     // U64/USize("7")跨域数值相等(P1-B):经 vcmp 幅值比较(I/6/W 文本皆可)
-    if or2(a[0] == "7", b[0] == "7") {
+    if or2(a.tag == 3, b.tag == 3) {
         return vcmp(a, b) == 0
     }
-    if !seq2(a[0], b[0]) {
+    if a.tag != b.tag {
         return false
     }
-    if or2(a[0] == "S", or2(a[0] == "I", or2(a[0] == "W", a[0] == "B"))) {
-        return seq2(a[1], b[1])
+    if a.tag == 5 {
+        return seq2(a.s, b.s)
     }
-    if a[0] == "U" {
-        if !seq2(a[1], b[1]) {
-            return false
-        }
-        var i: I32 = 2
-        while i < a.len {
-            if !eq_val(a[i + 1], b[i + 1]) {
+    if a.tag == 1 {
+        return a.iv == b.iv
+    }
+    if a.tag == 7 {
+        return a.iv == b.iv
+    }
+    if a.tag == 4 {
+        return a.b == b.b
+    }
+    if a.tag == 8 {
+        if seq2(cx_of(a)[0], "U") {
+            if !seq2(cx_of(a)[1], cx_of(b)[1]) {
                 return false
             }
-            i += 2
+            var i: I32 = 2
+            while i < cx_of(a).len {
+                if !eq_val(v_unbox(cx_of(a)[i + 1]), v_unbox(cx_of(b)[i + 1])) {
+                    return false
+                }
+                i += 2
+            }
+            return true
         }
-        return true
     }
-    panic("eq 字段型别:" + a[0])
+    panic("eq 字段型别:" + cx_of(a)[0])
     return false
 }
+
+
 fn env_at(env: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 0
     while i < env.len {
@@ -102,11 +120,11 @@ fn env_at(env: List[Str], nm: Str) -> List[Str] {
     }
     return List[Str]()
 }
-fn env_add(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
+fn env_add(env: List[Str], nm: Str, val: Val) -> List[Str] {
     var out = List[Str]()
     var en = List[Str]()
     en.push(nm)
-    en.push(val)
+    en.push(v_box(val))
     out.push(en)
     var i: I32 = 0
     while i < env.len {
@@ -115,7 +133,9 @@ fn env_add(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
     }
     return out
 }
-fn env_set(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
+
+
+fn env_set(env: List[Str], nm: Str, val: Val) -> List[Str] {
     var out = List[Str]()
     var done = false
     var i: I32 = 0
@@ -124,7 +144,7 @@ fn env_set(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
         if !done && seq2(en[0], nm) {
             var nb = List[Str]()
             nb.push(nm)
-            nb.push(val)
+            nb.push(v_box(val))
             out.push(nb)
             done = true
         } else {
@@ -134,6 +154,17 @@ fn env_set(env: List[Str], nm: Str, val: List[Str]) -> List[Str] {
     }
     return out
 }
+
+// 绑定读适配:条目旧编码 → Val(env_at 直用查miss,本助手取值)
+fn env_at_val(env: List[Str], nm: Str) -> Val {
+    var en = env_at(env, nm)
+    if en.len > 0 {
+        return v_unbox(en[1])
+    }
+    return vV2()
+}
+
+
 fn env_drop(env: List[Str], n: I32) -> List[Str] {
     var out = List[Str]()
     var i = n
@@ -170,22 +201,15 @@ fn env_dedupe(env: List[Str], n: I32) -> List[Str] {
     }
     return out
 }
-fn e4(fl: Str, env: List[Str], vv: List[Str], out: Str) -> List[Str] {
-    var r = List[Str]()
-    r.push(fl)
-    r.push(env)
-    r.push(vv)
-    r.push(out)
-    return r
+fn e4(fl: Str, env: List[Str], vv: Val, out: Str) -> Flow {
+    return Flow { kind: fl, env: env, v: vv, out: out }
 }
-fn s4(fl: Str, env: List[Str], out: Str, vv: List[Str]) -> List[Str] {
-    var r = List[Str]()
-    r.push(fl)
-    r.push(env)
-    r.push(out)
-    r.push(vv)
-    return r
+
+fn s4(fl: Str, env: List[Str], out: Str, vv: Val) -> Flow {
+    return Flow { kind: fl, env: env, v: vv, out: out }
 }
+
+
 fn expr_of_text(s: Str) -> List[Str] {
     var toks = List[Str]()
     var lns = List[Str]()
@@ -246,7 +270,7 @@ fn unesc(s: Str) -> Str {
     return out
 }
 
-fn eval_str(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str] {
+fn eval_str(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
     var parts = e[1]
     var acc = ""
     var env2 = env
@@ -258,17 +282,18 @@ fn eval_str(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> List[Str
         } else {
             var ex = expr_of_text(p[1])
             var er = eval_expr(file, env2, out, ex)
-            out = er[3]
-            if er[0] != "k" {
+            out = er.out
+            if er.kind != "k" {
                 return er
             }
-            env2 = er[1]
-            acc = acc + fmt(er[2])
+            env2 = er.env
+            acc = acc + fmt(er.v)
         }
         j += 1
     }
     return e4("k", env2, vS(acc), out)
 }
+
 fn pm2(ok: Str, env: List[Str]) -> List[Str] {
     var r = List[Str]()
     r.push(ok)

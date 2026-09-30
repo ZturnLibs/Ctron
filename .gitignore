@@ -50,3 +50,5 @@ ul_*.log
 examples/*/src/main
 examples/*/src/main.c
 dist/
+compiler-c/build
+.cache/

@@ -91,9 +91,9 @@ fn find_impl_prop(file: List[Str], cls: Str, m: Str) -> List[Str] {
     }
     return List[Str]()
 }
-fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], sv: List[Str], vals: List[Str]) -> List[Str] {
+fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], sv: List[Str], vals: List[Str]) -> Flow {
     var ps = mth[3]
-    var nenv = env_add(List[Str](), "self", bind_of(file, sv))
+    var nenv = env_add(List[Str](), "self", bind_of(file, v_unbox(sv)))
     var k: I32 = 1
     var ai: I32 = 0
     while k < ps.len {
@@ -101,9 +101,9 @@ fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], s
         if pr[0] == "Param" {
             // self 形参绑定接收者(不消耗实参);其余按值形参顺序取实参
             if seq2(pr[2], "self") {
-                nenv = env_add(nenv, "self", bind_of(file, sv))
+                nenv = env_add(nenv, "self", bind_of(file, v_unbox(sv)))
             } else {
-                nenv = env_add(nenv, pr[2], bind_of(file, vals[ai]))
+                nenv = env_add(nenv, pr[2], bind_of(file, v_unbox(vals[ai])))
                 ai += 1
             }
         }
@@ -111,17 +111,17 @@ fn call_method_vals(file: List[Str], env: List[Str], out: Str, mth: List[Str], s
     }
     var br = run_block(file, nenv, out, mth[5], false)
     var fl = "k"
-    if br[0] == "a" {
+    if br.kind == "a" {
         fl = "a"
     }
-    return e4(fl, env, br[3], br[2])
+    return e4(fl, env, br.v, br.out)
 }
-fn call_prop_vals(file: List[Str], env: List[Str], out: Str, pp: List[Str], sv: List[Str]) -> List[Str] {
-    var nenv = env_add(List[Str](), "self", sv)
+fn call_prop_vals(file: List[Str], env: List[Str], out: Str, pp: List[Str], sv: List[Str]) -> Flow {
+    var nenv = env_add(List[Str](), "self", Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(sv) })
     var br = run_block(file, nenv, out, pp[3], false)
     var fl = "k"
-    if br[0] == "a" {
+    if br.kind == "a" {
         fl = "a"
     }
-    return e4(fl, env, br[3], br[2])
+    return e4(fl, env, br.v, br.out)
 }
