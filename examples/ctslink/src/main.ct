@@ -1,0 +1,976 @@
+// main.ct —— ctslink:自托管短链示例(web.* 域包第二活示例;设计
+// docs/superpowers/specs/2026-09-29-ctslink-design.md,下称设计稿)
+//
+// 形态镜像 web_todo(src/main.ct interp 净土纪律):本文件零 socket、零 net——
+// 语义门全走 test_call/dispatch_h(spec §4.7 testkit 口径);真 serve 臂拆
+// src/serve_net.ct(SrvIo 五件映射 net.*,use net 的 W8052 会破 interp 合并态,
+// task-3-report 判决在册)。
+//
+// 存储双源(pg.ct script/fd 同构口径):语义门走内存 store 变体(Mutex[List]
+// 行,web_todo 语义门先例);PG(users/links,schema.sql DDL)+ Redis 单连
+// (sl:clicks:<code> 计数)挂原生臂 env 注入(serve_net.ct)——计数器经 App
+// fn 字段注入(§8-A5 时钟注入同款纪律,SrvIo fn 字段先例):main.ct 装
+// 内存实现,serve_net.ct env CTRON_REDIS_URL 时装 Redis 实现、失败回 -1
+// 不拦跳转(设计稿 §二「失败不拦跳转」)。
+//
+// use 严格树探针结论(设计稿 §五-5,本任务实测在册 README):std.crypto 直
+// use ⊕ web.mw 合并态 check/裸跑全绿(E5020 未触发——auth 单叶警示系保守
+// 口径,同名模块路径双达不构成双径)——口令哈希故直用 std/crypto,无垫片。
+//
+// CSRF 组合(设计稿 §一 中间件表 vs 实际面,README 差异表在册):web.guard
+// csrf_mw 的密封在响应侧轮换令牌(csrf_seal 恒签新),SSR 表单在 handler 内
+// 渲染、无法预知响应侧令牌——首访即 403 死锁(本任务探针实测)。v1 以
+// http.frm.csrf 原语(csrf_issue/csrf_verify 同 HMAC 硬化面)自组非旋转
+// 双提交 csrf_ssr_mw:安全方法缺 cookie 才签发(seed-on-miss),同值注入
+// req.params 供表单预嵌;写方法双提交验证,不合 403。旋转密封的 JS 填充
+// 形态挂框架志向。
+//
+// 视图纪律(web_todo 同款):动态值一律 ht_text/ht_esc 显式转义,结构常量
+// 手拼 + ht_el;web.view 与 web.mw 合并态 E5030 撞名在册,不 use web.view。
+//
+// 语言纪律:字面量禁 `{`(concat "\{"+"}")、无 `;`、泛型调用显式 TypeArgs、
+// 泛型 fn 不作值引用(中间件闭包适配)、循环体累加 List 收集 + join、
+// with/with_mut 闭包体一跳类型完备助手 fn(E3070/成员链实证,web_todo
+// README #3)、fn 值字段先落局部再调(serve.ct「io.read 直调 run 期 panic」
+// 口径,h_code/h_create/h_register 同款)。
+
+use web.core.{ Req, Resp, Pair, html, redirect, text, status, with, resp_status, resp_body, resp_header, param, form, session, header, req_set_params }
+use web.router.{ Router, router, get, post, dispatch, dispatch_h, test_call }
+use web.mw.{ with_sessions, grant_session, drop_session, flash, req_flash, log_requests }
+use web.guard.{ rate_limit_mw }
+use http.frm.csrf.{ csrf_issue, csrf_verify, csrf_cookie_get, csrf_form_get, csrf_set_cookie, ct_rc, ct_tok, cv_rc }
+use http.frm.html.{ ht_esc, ht_text, ht_el, ht_page }
+use std.crypto.{ pbkdf2_sha256, bytes_to_hex, bytes_from_hex }
+use std.str.{ join, starts_with, contains, index_of }
+
+// ---- 行(unix 秒;内存行 ↔ schema.sql 行一一对应) ----
+
+pub struct User {
+    let id: I64
+    let name: Str
+    let pwhash: Str          // pw_hash 形:pbkdf2$<iters>$<salt_hex>$<hash_hex>
+    let created: I64
+}
+
+pub struct Link {
+    let id: I64
+    let owner: I64           // users.id(= Link.owner 外键)
+    let code: Str
+    let url: Str
+    let created: I64
+    let deleted: Bool        // 墓碑(web_todo done 先例;渲染侧过滤)
+}
+
+// 内存计数行(Redis sl:clicks:<code> 的内存镜像;原生臂走 cnt_* fn 注入)
+pub struct Click {
+    let code: Str
+    let n: I64
+}
+
+// ---- 状态(fn 值字段 = SrvIo 先例;时钟/熵源/计数器全注入,§8-A5) ----
+
+pub struct App {
+    let users: Mutex[List[User]]
+    let links: Mutex[List[Link]]
+    let clicks: Mutex[List[Click]]
+    let next_id: Atomic[I64]
+    let key: Str
+    let clk: fn() -> I64              // unix 秒
+    let rnd: fn(I32) -> List[I32]     // 熵源字节(interp fake / 原生 uuid_v4)
+    let iters: I32                    // PBKDF2 迭代(装配注入:测试 4 / 生产 4096)
+    let dummy: Str                    // 未知名恒时比较用的假 pwhash(装配期按 iters 铸)
+    let cnt_incr: fn(Str) -> I64      // 计数注入口(失败回 -1,不拦跳转)
+    let cnt_get: fn(Str) -> I64
+}
+
+// 全参装配(serve_net.ct 原生臂 Redis 实现走此)
+pub fn app_with(key: Str, clk: fn() -> I64, rnd: fn(I32) -> List[I32], iters: I32, ci: fn(Str) -> I64, cg: fn(Str) -> I64) -> App {
+    return App {
+        users: Mutex[List[User]](List[User]()),
+        links: Mutex[List[Link]](List[Link]()),
+        clicks: Mutex[List[Click]](List[Click]()),
+        next_id: Atomic[I64](1),
+        key: key,
+        clk: clk,
+        rnd: rnd,
+        iters: iters,
+        dummy: pw_hash("ctron-dummy", "00000000000000000000000000000000", iters),
+        cnt_incr: ci,
+        cnt_get: cg
+    }
+}
+
+// 内存计数实现装配(语义门与无 Redis 冒烟;计数器 = Mutex[List[Click]])
+pub fn app_mem(key: Str, clk: fn() -> I64, rnd: fn(I32) -> List[I32], iters: I32) -> App {
+    let cs = Mutex[List[Click]](List[Click]())
+    return app_with(key, clk, rnd, iters, |c| clicks_incr(cs, c), |c| clicks_get(cs, c))
+}
+
+// ---- 口令面(std/crypto pbkdf2_sha256;探针结论:直 use 无 E5020) ----
+
+fn str_bytes(s: Str) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+    return out
+}
+
+// 存储形 pbkdf2$<iters>$<salt_hex>$<hash_hex>(设计稿 §二;dklen 32 = sha256)
+pub fn pw_hash(pass: Str, salt_hex: Str, iters: I32) -> Str {
+    let dk = pbkdf2_sha256(str_bytes(pass), bytes_from_hex(salt_hex), iters, 32)
+    return "pbkdf2$" + iters.to_string() + "$" + salt_hex + "$" + bytes_to_hex(dk)
+}
+
+// 存储形切段(第 n 个 '$' 位;n 从 0 计;越界回 -1)
+fn dollar_at(s: Str, n: I32) -> I32 {
+    var seen: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 36 {
+            if seen == n {
+                return i
+            }
+            seen += 1
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn digits_to_i32(s: Str) -> I32 {
+    var acc: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            return 0 - 1
+        }
+        acc = acc * 10 + (c - 48)
+        i += 1
+    }
+    return acc
+}
+
+// 定长 hex 无早退比较(域恒 64 hex;长度不等即刻假——形面,非时面;
+// 时序侧写登记 README 审计:std/crypto 无公开 ct_memcmp 面,v1 域定长 +
+// 全位累积,无逐字节早退)
+fn hex_ct_eq(a: Str, b: Str) -> Bool {
+    if a.len != b.len {
+        return false
+    }
+    var diff: I32 = 0
+    var i: I32 = 0
+    while i < a.len {
+        if byte_at(a, i) != byte_at(b, i) {
+            diff += 1
+        }
+        i += 1
+    }
+    return diff == 0
+}
+
+// 校验:重算 PBKDF2(stored 自带 iters/salt)+ 无早退 hex 比较
+pub fn pw_verify(pass: Str, stored: Str) -> Bool {
+    let d1 = dollar_at(stored, 0)
+    let d2 = dollar_at(stored, 1)
+    let d3 = dollar_at(stored, 2)
+    let d4 = dollar_at(stored, 3)
+    if d2 <= d1 || d3 <= d2 || d4 <= d3 || d4 + 1 >= stored.len {
+        return false
+    }
+    if byte_slice(stored, 0, d1) != "pbkdf2" {
+        return false
+    }
+    let iters = digits_to_i32(byte_slice(stored, d1 + 1, d2))
+    if iters <= 0 {
+        return false
+    }
+    let salt_hex = byte_slice(stored, d2 + 1, d3)
+    let want = byte_slice(stored, d3 + 1, d4)
+    if want.len != 64 {
+        return false
+    }
+    let dk = pbkdf2_sha256(str_bytes(pass), bytes_from_hex(salt_hex), iters, 32)
+    return hex_ct_eq(want, bytes_to_hex(dk))
+}
+
+// ---- 校验面(v1 ASCII 口径:lane_str 读面 ASCII,设计稿 §五-4) ----
+
+fn ascii_printable(s: Str) -> Bool {
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c < 33 || c > 126 {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 用户名 [a-z0-9_]{1..32}(v1 ASCII 面)
+fn name_ok(s: Str) -> Bool {
+    if s.len < 1 || s.len > 32 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        let lo = c >= 97 && c <= 122
+        let di = c >= 48 && c <= 57
+        let us = c == 95
+        if !(lo || di || us) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 口令可打印 ASCII 8..128(v1 lane_str 面;中文口令登记受限)
+fn pass_ok(s: Str) -> Bool {
+    if s.len < 8 || s.len > 128 {
+        return false
+    }
+    return ascii_printable(s)
+}
+
+// url 白名单:仅 http/https + 可打印 ASCII ≤2048(设计稿 §三)
+fn url_ok(s: Str) -> Bool {
+    if s.len < 8 || s.len > 2048 {
+        return false
+    }
+    if !ascii_printable(s) {
+        return false
+    }
+    return starts_with(s, "http://") || starts_with(s, "https://")
+}
+
+// ---- code 面:7 位 [a-z0-9],熵源经 App.rnd(原生 = uuid_v4 字节) ----
+
+fn alpha36() -> Str {
+    return "abcdefghijklmnopqrstuvwxyz0123456789"
+}
+
+pub fn code_from(r: List[I32]) -> Str {
+    let al = alpha36()
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < 7 {
+        let b = r[i % r.len]
+        let d = b % 36
+        ps.push(byte_slice(al, d, d + 1))
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// 熵 16 字节 → hex 32(salt_hex 用)
+fn rnd_hex(rnd: fn(I32) -> List[I32], n: I32) -> Str {
+    return bytes_to_hex(rnd(n))
+}
+
+// ---- 存储助手(Mutex 闭包一跳;成员链禁,E3070 口径) ----
+
+fn user_find(l: List[User], name: Str) -> User {
+    var i: I32 = 0
+    while i < l.len {
+        let u = l[i]
+        if u.name == name {
+            return u
+        }
+        i += 1
+    }
+    return User { id: 0 - 1, name: "", pwhash: "", created: 0 }
+}
+
+fn user_by_name(app: App, name: Str) -> User {
+    return app.users.with(|l| user_find(l, name))
+}
+
+// 活链查找(墓碑过滤;哨兵 id=-1)
+fn link_find(l: List[Link], code: Str) -> Link {
+    var i: I32 = 0
+    while i < l.len {
+        let t = l[i]
+        if !t.deleted && t.code == code {
+            return t
+        }
+        i += 1
+    }
+    return Link { id: 0 - 1, owner: 0 - 1, code: "", url: "", created: 0, deleted: true }
+}
+
+fn link_by_code(app: App, code: Str) -> Link {
+    return app.links.with(|l| link_find(l, code))
+}
+
+// code 空位检查(碰撞重试判)
+fn code_free(l: List[Link], code: Str) -> Bool {
+    var i: I32 = 0
+    while i < l.len {
+        if l[i].code == code {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 临界区:墓碑置位(id 定位;Index 整元素替换写回,guard.ct 实证形)
+fn link_tomb(l: List[Link], id: I64) -> I32 {
+    var i: I32 = 0
+    while i < l.len {
+        if l[i].id == id {
+            let t = l[i]
+            l[i] = Link { id: t.id, owner: t.owner, code: t.code, url: t.url, created: t.created, deleted: true }
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+// 临界区:本人活链行装配(属主过滤 + 墓碑过滤;List 收集 + join)
+fn rows_of(l: List[Link], owner: I64) -> Str {
+    var ps: List[Str] = List[Str]()
+    var i: I32 = 0
+    while i < l.len {
+        let t = l[i]
+        if !t.deleted && t.owner == owner {
+            ps.push(link_row(t.code, t.url))
+        }
+        i += 1
+    }
+    return join(ps, "")
+}
+
+// 计数内存实现(Mutex 一跳;Index 替换/push 写回)
+fn click_bump(l: List[Click], code: Str) -> I64 {
+    var i: I32 = 0
+    while i < l.len {
+        if l[i].code == code {
+            let n = l[i].n + 1
+            l[i] = Click { code: l[i].code, n: n }
+            return n
+        }
+        i += 1
+    }
+    l.push(Click { code: code, n: 1 })
+    return 1
+}
+
+fn click_read(l: List[Click], code: Str) -> I64 {
+    var i: I32 = 0
+    while i < l.len {
+        if l[i].code == code {
+            return l[i].n
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn clicks_incr(cs: Mutex[List[Click]], code: Str) -> I64 {
+    return cs.with_mut(|var l| click_bump(l, code))
+}
+
+fn clicks_get(cs: Mutex[List[Click]], code: Str) -> I64 {
+    return cs.with(|l| click_read(l, code))
+}
+
+// ---- CSRF(v1 非旋转双提交;frm 原语,见头注) ----
+
+fn csrf_name() -> Str {
+    return "csrf"
+}
+
+fn csrf_rej_body() -> Str {
+    return "csrf rejected"
+}
+
+// Set-Cookie 行剥壳(前缀 12 + 尾 CRLF 2;mw.ct sc_line 同式)
+fn csrf_line(tok: Str) -> Str {
+    let line = csrf_set_cookie(tok)
+    return byte_slice(line, 12, line.len - 2)
+}
+
+fn write_m(m: Str) -> Bool {
+    if m == "POST" {
+        return true
+    }
+    if m == "PUT" {
+        return true
+    }
+    if m == "DELETE" {
+        return true
+    }
+    if m == "PATCH" {
+        return true
+    }
+    return false
+}
+
+// params 追加一枚(值语义拷贝;req_set_params 同款)
+fn param_plus(ps: List[Pair], k: Str, v: Str) -> List[Pair] {
+    var out: List[Pair] = List[Pair]()
+    var i: I32 = 0
+    while i < ps.len {
+        out.push(ps[i])
+        i += 1
+    }
+    out.push(Pair { k: k, v: v })
+    return out
+}
+
+// 安全方法臂:seed-on-miss + 令牌注入 params(表单预嵌同值,响应侧补 cookie)
+fn csrf_safe_pass[S](req: Req[S], next: fn(Req[S]) -> Resp, key: Str, rnd: fn(I32) -> List[I32]) -> Resp {
+    let ck = csrf_cookie_get(header[S](req, "Cookie"), csrf_name())
+    var tok = ck
+    if tok.len == 0 {
+        let t = csrf_issue(key, rnd_hex(rnd, 8))
+        if ct_rc(t) != 1 {
+            return next(req)
+        }
+        tok = ct_tok(t)
+    }
+    let seeded = req_set_params[S](req, param_plus(req.params, csrf_name(), tok))
+    let resp = next(seeded)
+    if ck.len == 0 {
+        return with(resp, "Set-Cookie", csrf_line(tok))
+    }
+    return resp
+}
+
+// 写方法臂:双提交验证(cookie 端 vs 表单端,HMAC 硬化,frm 全语义面)
+fn csrf_write_pass[S](req: Req[S], next: fn(Req[S]) -> Resp, key: Str) -> Resp {
+    let ck = csrf_cookie_get(header[S](req, "Cookie"), csrf_name())
+    let st = csrf_form_get(req.body, csrf_name())
+    if cv_rc(csrf_verify(key, ck, st)) != 1 {
+        return status(403, csrf_rej_body())
+    }
+    return next(req)
+}
+
+// csrf_ssr_mw —— SSR 形态 CSRF 双提交(闭包体一跳;guard csrf_mw 差异见头注)
+pub fn csrf_ssr_mw[S](key: Str, rnd: fn(I32) -> List[I32]) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+    return |req, next| {
+        if write_m(req.method) {
+            return csrf_write_pass[S](req, next, key)
+        }
+        return csrf_safe_pass[S](req, next, key, rnd)
+    }
+}
+
+// ---- 视图(ht_text 显式转义;动态值位零裸插值) ----
+
+fn form_hidden_csrf(tok: Str) -> Str {
+    var out = "<input type=\"hidden\" name=\"csrf\" value=\""
+    return out + ht_text(tok) + "\">"
+}
+
+fn login_form(tok: Str) -> Str {
+    return "<form method=\"post\" action=\"/login\">" + form_hidden_csrf(tok)
+        + "<input name=\"name\"><input name=\"pass\" type=\"password\">"
+        + ht_el("button", "login") + "</form>"
+}
+
+fn register_form(tok: Str) -> Str {
+    return "<form method=\"post\" action=\"/register\">" + form_hidden_csrf(tok)
+        + "<input name=\"name\"><input name=\"pass\" type=\"password\">"
+        + ht_el("button", "register") + "</form>"
+}
+
+fn create_form(tok: Str) -> Str {
+    return "<form method=\"post\" action=\"/links\">" + form_hidden_csrf(tok)
+        + "<input name=\"url\">" + ht_el("button", "create") + "</form>"
+}
+
+fn del_form(code: Str, tok: Str) -> Str {
+    return "<form method=\"post\" action=\"/links/" + ht_text(code) + "/delete\">"
+        + form_hidden_csrf(tok) + ht_el("button", "delete") + "</form>"
+}
+
+fn link_row(code: Str, url: Str) -> Str {
+    return ht_el("li", ht_text(code) + " " + ht_el("a", ht_text(url))
+        + " " + ht_el("a", "/" + ht_text(code) + "/stats"))
+}
+
+fn view_err(msg: Str) -> Str {
+    return ht_el("p", ht_text(msg))
+}
+
+// 未登录落地页
+fn view_landing() -> Str {
+    let body = ht_el("h1", "ctslink")
+        + ht_el("p", "self-hosted url shortener")
+        + ht_el("a", "/login") + " " + ht_el("a", "/register")
+    return ht_page("ctslink", body)
+}
+
+// 表单页(login/register 共形;err flash 读即清)
+fn view_form(title: Str, action_body: Str, err: Str) -> Str {
+    var body = action_body
+    if err.len > 0 {
+        body = body + view_err(err)
+    }
+    return ht_page(title, body)
+}
+
+// 仪表盘(已登录 /)
+fn view_dash(rows: Str, tok: Str, tip: Str) -> Str {
+    var body = ht_el("h1", "dashboard") + create_form(tok)
+    if tip.len > 0 {
+        body = body + ht_el("p", ht_text(tip))
+    }
+    body = body + ht_el("ul", rows)
+    return ht_page("ctslink", body)
+}
+
+// 统计页(属主)
+fn view_stats(code: Str, url: Str, clicks: I64, created: I64) -> Str {
+    let body = ht_el("h1", ht_text(code))
+        + ht_el("p", ht_text(url))
+        + "<p class=\"num\">" + ht_text(clicks.to_string()) + "</p>"
+        + ht_el("p", ht_text(created.to_string()))
+    return ht_page("stats", body)
+}
+
+fn view_404() -> Str {
+    return ht_page("404", ht_el("p", "not found"))
+}
+
+// ---- 守卫(应用级登录面;with_sessions 只注入不代拦,mw.ct 口径) ----
+
+fn uid_of(req: Req[App]) -> Str {
+    return session[App](req, "uid")
+}
+
+// ---- handlers ----
+
+fn h_home(req: Req[App]) -> Resp {
+    let uid = uid_of(req)
+    if uid.len == 0 {
+        return html(view_landing())
+    }
+    let u = user_by_name(req.state, uid)
+    if u.id < 0 {
+        return html(view_landing())
+    }
+    let rows = req.state.links.with(|l| rows_of(l, u.id))
+    let tip = req_flash[App](req)
+    let tok = param[App](req, csrf_name())
+    return html(view_dash(rows, tok, tip))
+}
+
+fn h_healthz(req: Req[App]) -> Resp {
+    return text("ok")
+}
+
+fn h_login_form(req: Req[App]) -> Resp {
+    let tok = param[App](req, csrf_name())
+    return html(view_form("login", login_form(tok), ""))
+}
+
+fn h_register_form(req: Req[App]) -> Resp {
+    let tok = param[App](req, csrf_name())
+    return html(view_form("register", register_form(tok), ""))
+}
+
+fn h_register(req: Req[App]) -> Resp {
+    let name = form[App](req, "name")
+    let pass = form[App](req, "pass")
+    if !name_ok(name) || !pass_ok(pass) {
+        return flash(redirect("/register"), "name or pass invalid")
+    }
+    let clk = req.state.clk
+    let rnd = req.state.rnd
+    if user_by_name(req.state, name).id >= 0 {
+        return flash(redirect("/register"), "name taken")
+    }
+    let salt_hex = rnd_hex(rnd, 16)
+    let row = User { id: req.state.next_id.fetch_add(1), name: name, pwhash: pw_hash(pass, salt_hex, req.state.iters), created: clk() }
+    req.state.users.with_mut(|var l| {
+        l.push(row)
+    })
+    return flash(redirect("/login"), "registered, please login")
+}
+
+fn h_login(req: Req[App]) -> Resp {
+    let name = form[App](req, "name")
+    let pass = form[App](req, "pass")
+    let u = user_by_name(req.state, name)
+    // 恒时语义:未知名亦烧一次 PBKDF2(dummy 装配期同 iters 铸);失败不区分
+    // 无用户/错密,统一 302 + 同文 flash(设计稿 §三 防枚举)
+    var stored = req.state.dummy
+    if u.id >= 0 {
+        stored = u.pwhash
+    }
+    let okv = pw_verify(pass, stored)
+    if u.id < 0 || !okv {
+        return flash(redirect("/login"), "name or pass wrong")
+    }
+    let clk = req.state.clk
+    return grant_session(redirect("/"), req.state.key, u.name, 604800, clk())
+}
+
+fn h_logout(req: Req[App]) -> Resp {
+    return drop_session(redirect("/"), req.state.key)
+}
+
+// 建链:code 熵源 → 碰撞重试 ≤3(设计稿 §一)
+fn h_create(req: Req[App]) -> Resp {
+    let uid = uid_of(req)
+    if uid.len == 0 {
+        return redirect("/login")
+    }
+    let u = user_by_name(req.state, uid)
+    if u.id < 0 {
+        return redirect("/login")
+    }
+    let url = form[App](req, "url")
+    if !url_ok(url) {
+        return flash(redirect("/"), "url invalid")
+    }
+    let rnd = req.state.rnd
+    var code = ""
+    var tries: I32 = 0
+    while tries < 3 {
+        let cand = code_from(rnd(16))
+        let free = req.state.links.with(|l| code_free(l, cand))
+        if free {
+            code = cand
+            tries = 3
+        } else {
+            tries += 1
+        }
+    }
+    if code.len == 0 {
+        return flash(redirect("/"), "code gen failed")
+    }
+    let clk = req.state.clk
+    let row = Link { id: req.state.next_id.fetch_add(1), owner: u.id, code: code, url: url, created: clk(), deleted: false }
+    req.state.links.with_mut(|var l| {
+        l.push(row)
+    })
+    return flash(redirect("/"), "created " + code)
+}
+
+// 公开跳转:302 + INCR(计数失败不拦;rate_limit 由装配内裹)
+fn h_code(req: Req[App]) -> Resp {
+    let code = param[App](req, "code")
+    let lk = link_by_code(req.state, code)
+    if lk.id < 0 {
+        return status(404, view_404())
+    }
+    let ci = req.state.cnt_incr
+    ci(code)
+    return redirect(lk.url)
+}
+
+fn h_stats(req: Req[App]) -> Resp {
+    let uid = uid_of(req)
+    if uid.len == 0 {
+        return redirect("/login")
+    }
+    let u = user_by_name(req.state, uid)
+    let code = param[App](req, "code")
+    let lk = link_by_code(req.state, code)
+    if u.id < 0 || lk.id < 0 || lk.owner != u.id {
+        // 属主校验:他者条目与非-existent 同形 404(不泄露存在性)
+        return status(404, view_404())
+    }
+    let cg = req.state.cnt_get
+    return html(view_stats(lk.code, lk.url, cg(code), lk.created))
+}
+
+fn h_delete(req: Req[App]) -> Resp {
+    let uid = uid_of(req)
+    if uid.len == 0 {
+        return redirect("/login")
+    }
+    let u = user_by_name(req.state, uid)
+    let code = param[App](req, "code")
+    let lk = link_by_code(req.state, code)
+    if u.id < 0 || lk.id < 0 || lk.owner != u.id {
+        return status(404, view_404())
+    }
+    req.state.links.with_mut(|var l| link_tomb(l, lk.id))
+    return flash(redirect("/"), "deleted")
+}
+
+// ---- 装配(时钟/熵源在 App;rate_limit 只裹公开 /:code) ----
+
+pub fn full_router(app: App) -> Router[App] {
+    let clk = app.clk
+    let rl = rate_limit_mw[App](30, 1, 1, 64, clk)
+    let key = app.key
+    let rnd = app.rnd
+    return router[App](app)
+        .middleware(|rq, nx| log_requests[App](rq, nx))   // 泛型 fn 值引用不可 → 闭包适配
+        .middleware(with_sessions[App](key, clk))
+        .middleware(csrf_ssr_mw[App](key, rnd))
+        .get("/", h_home)
+        .get("/healthz", h_healthz)
+        .get("/register", h_register_form)
+        .post("/register", h_register)
+        .get("/login", h_login_form)
+        .post("/login", h_login)
+        .post("/logout", h_logout)
+        .post("/links", h_create)
+        .get("/links/:code/stats", h_stats)
+        .post("/links/:code/delete", h_delete)
+        .get("/:code", |rq| rl(rq, h_code))
+}
+
+// ---- 测试(test_call/dispatch_h 语义门;零 socket;fake 钟 + fake 熵) ----
+
+// fake 钟(§8-A5;固定 unix 秒)
+fn clk_fix() -> I64 {
+    return 1000
+}
+
+fn clk_expired() -> I64 {
+    return 1501
+}
+
+// fake 熵:种子原子前进 ×31+i×7 折叠(确定性 → code/碰撞重试可断言)
+fn fake_bytes(s: I64, k: I32) -> List[I32] {
+    var out = List[I32]()
+    var i: I32 = 0
+    while i < k {
+        out.push(((s * 31 + i * 7) % 256).as[I32]())
+        i += 1
+    }
+    return out
+}
+
+fn mk_fake_rnd(seed: I64) -> fn(I32) -> List[I32] {
+    let n = Atomic[I64](seed)
+    return |k| fake_bytes(n.fetch_add(1), k)
+}
+
+// Cookie 头列(单头;dispatch_h 入口)
+fn hdr_cookie(v: Str) -> List[Pair] {
+    var hs: List[Pair] = List[Pair]()
+    hs.push(Pair { k: "Cookie", v: v })
+    return hs
+}
+
+// 响应首枚 Set-Cookie 值(mw.ct 取首法)
+fn set_cookie_of(r: Resp) -> Str {
+    var i: I32 = 0
+    while i < r.headers.len {
+        if r.headers[i].k == "Set-Cookie" {
+            return r.headers[i].v
+        }
+        i += 1
+    }
+    return ""
+}
+
+// Set-Cookie 行首段值("k=v; ..." 分号前截断)
+fn cookie_val(line: Str) -> Str {
+    var i: I32 = 0
+    while i < line.len {
+        if byte_at(line, i) == 59 {
+            return byte_slice(line, 0, i)
+        }
+        i += 1
+    }
+    return line
+}
+
+// "k=v" 的 v 位
+fn eq_val(kv: Str) -> Str {
+    var i: I32 = 0
+    while i < kv.len {
+        if byte_at(kv, i) == 61 {
+            return byte_slice(kv, i + 1, kv.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
+// csrf 令牌(GET 响应 Set-Cookie;csrf_safe_pass seed-on-miss 签发)
+fn csrf_tok_of(r: Resp) -> Str {
+    return eq_val(cookie_val(set_cookie_of(r)))
+}
+
+// sid 值("sid=<tok>; ..." 首段)
+fn sid_of_resp(r: Resp) -> Str {
+    let kv = cookie_val(set_cookie_of(r))
+    return eq_val(kv)
+}
+
+// flash 里携的 code("created <7>" 尾 7 字节,penc 侧 ASCII 透传)
+fn code_of_flash(r: Resp) -> Str {
+    let v = eq_val(cookie_val(set_cookie_of(r)))
+    return byte_slice(v, v.len - 7, v.len)
+}
+
+test "落地/健康/表单页与未登录拦截、csrf 写门" {
+    let app = app_mem("dev-cts", clk_fix, mk_fake_rnd(1), 4)
+    let r = full_router(app)
+    // 落地页(未登录)与 test_call 测试口恒等
+    let d0 = dispatch_h[App](r, "GET", "/", "", List[Pair]())
+    assert(resp_status(d0) == 200)
+    assert(resp_body(d0) == view_landing())
+    assert(resp_status(test_call[App](r, "GET", "/", "")) == 200)
+    // 健康
+    let hz = dispatch_h[App](r, "GET", "/healthz", "", List[Pair]())
+    assert(resp_status(hz) == 200)
+    assert(resp_body(hz) == "ok")
+    // 登录表单页:首访 seed csrf(Set-Cookie)且表单预嵌同值
+    let lf = dispatch_h[App](r, "GET", "/login", "", List[Pair]())
+    assert(resp_status(lf) == 200)
+    let tok = csrf_tok_of(lf)
+    assert(tok.len == 81)
+    assert(contains(resp_body(lf), "value=\"" + tok + "\""))
+    // 未登录统计/删除面拦 303 /login(with_sessions 放行、应用守卫拦)
+    let st = dispatch_h[App](r, "GET", "/links/abcd123/stats", "", hdr_cookie("sid=x"))
+    assert(resp_status(st) == 303)
+    assert(resp_header(st, "Location") == "/login")
+    // csrf 写门:无令牌 POST 403(发布页/登录页均同门)
+    assert(resp_status(dispatch_h[App](r, "POST", "/links", "url=http%3A%2F%2Fx.example%2F1", List[Pair]())) == 403)
+    let lg = dispatch_h[App](r, "POST", "/login", "name=alpha&pass=passw0rd", List[Pair]())
+    assert(resp_status(lg) == 403)
+    assert(resp_body(lg) == "csrf rejected")
+    // 公开未知 code:404 页
+    let nf = dispatch_h[App](r, "GET", "/zzzzzzz", "", List[Pair]())
+    assert(resp_status(nf) == 404)
+    assert(contains(resp_body(nf), "not found"))
+}
+
+test "注册→登录→建链→公开跳转→统计→删除全链(fixed 钟 + fake 熵)" {
+    let app = app_mem("dev-cts", clk_fix, mk_fake_rnd(7), 4)
+    let r = full_router(app)
+    // 注册页 seed csrf
+    let rf = dispatch_h[App](r, "GET", "/register", "", List[Pair]())
+    assert(resp_status(rf) == 200)
+    let tok = csrf_tok_of(rf)
+    // 注册(规范化输入)→ 303 /login + flash
+    let reg = dispatch_h[App](r, "POST", "/register", "name=alpha&pass=passw0rd&csrf=" + tok, hdr_cookie("csrf=" + tok))
+    assert(resp_status(reg) == 303)
+    assert(resp_header(reg, "Location") == "/login")
+    assert(contains(set_cookie_of(reg), "registered"))
+    // 重复注册拒(name taken)
+    let reg2 = dispatch_h[App](r, "POST", "/register", "name=alpha&pass=passw0rd&csrf=" + tok, hdr_cookie("csrf=" + tok))
+    assert(contains(set_cookie_of(reg2), "taken"))
+    // 登录失败:错密(303 /login,统一文案;恒时比较走真 pwhash)
+    let bad = dispatch_h[App](r, "POST", "/login", "name=alpha&pass=wrongpass&csrf=" + tok, hdr_cookie("csrf=" + tok))
+    assert(resp_status(bad) == 303)
+    assert(resp_header(bad, "Location") == "/login")
+    assert(contains(set_cookie_of(bad), "wrong"))
+    // 登录成功 → grant_session 303 / + sid
+    let login = dispatch_h[App](r, "POST", "/login", "name=alpha&pass=passw0rd&csrf=" + tok, hdr_cookie("csrf=" + tok))
+    assert(resp_status(login) == 303)
+    assert(resp_header(login, "Location") == "/")
+    let sid = sid_of_resp(login)
+    assert(sid.len > 0)
+    assert(contains(set_cookie_of(login), "HttpOnly"))
+    assert(contains(set_cookie_of(login), "SameSite=Lax"))
+    // 仪表盘(空态)
+    let dash0 = dispatch_h[App](r, "GET", "/", "", hdr_cookie("sid=" + sid))
+    assert(resp_status(dash0) == 200)
+    assert(contains(resp_body(dash0), "action=\"/links\""))
+    // 建链 → 303 / + flash "created <code>"
+    let mk = dispatch_h[App](r, "POST", "/links", "url=http%3A%2F%2Fexample.com%2Fa&csrf=" + tok, hdr_cookie("sid=" + sid + "; csrf=" + tok))
+    assert(resp_status(mk) == 303)
+    assert(resp_header(mk, "Location") == "/")
+    let code = code_of_flash(mk)
+    assert(code.len == 7)
+    // flash 读即清:携 flash cookie 的 GET / 显示并回 Max-Age=0 清除行
+    let dash1 = dispatch_h[App](r, "GET", "/", "", hdr_cookie("sid=" + sid + "; web_flash=created%20" + code))
+    assert(resp_status(dash1) == 200)
+    assert(contains(resp_body(dash1), "created " + code))
+    assert(contains(set_cookie_of(dash1), "web_flash=;"))
+    // 公开跳转(无会话):302 + 真址;计数 +1
+    let go1 = dispatch_h[App](r, "GET", "/" + code, "", List[Pair]())
+    assert(resp_status(go1) == 302)
+    assert(resp_header(go1, "Location") == "http://example.com/a")
+    let go2 = dispatch_h[App](r, "GET", "/" + code, "", List[Pair]())
+    assert(resp_status(go2) == 302)
+    // 统计(属主):点击 2 + 建时 1000
+    let stats = dispatch_h[App](r, "GET", "/links/" + code + "/stats", "", hdr_cookie("sid=" + sid))
+    assert(resp_status(stats) == 200)
+    assert(contains(resp_body(stats), code))
+    assert(contains(resp_body(stats), "<p class=\"num\">2</p>"))
+    assert(contains(resp_body(stats), ">1000<"))
+    // 删除(属主)→ 303;跳转/统计转 404
+    let del = dispatch_h[App](r, "POST", "/links/" + code + "/delete", "csrf=" + tok, hdr_cookie("sid=" + sid + "; csrf=" + tok))
+    assert(resp_status(del) == 303)
+    assert(resp_status(dispatch_h[App](r, "GET", "/" + code, "", List[Pair]())) == 404)
+    assert(resp_status(dispatch_h[App](r, "GET", "/links/" + code + "/stats", "", hdr_cookie("sid=" + sid))) == 404)
+    // 注销:sid 即清(Max-Age=0)
+    let out = dispatch_h[App](r, "POST", "/logout", "csrf=" + tok, hdr_cookie("sid=" + sid + "; csrf=" + tok))
+    assert(resp_status(out) == 303)
+    assert(contains(set_cookie_of(out), "sid=; Path=/; HttpOnly; Max-Age=0"))
+}
+
+test "属主校验:他者统计/删除 404,条目不受扰" {
+    let app = app_mem("dev-cts", clk_fix, mk_fake_rnd(11), 4)
+    let r = full_router(app)
+    let t0 = csrf_tok_of(dispatch_h[App](r, "GET", "/register", "", List[Pair]()))
+    dispatch_h[App](r, "POST", "/register", "name=alpha&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0))
+    dispatch_h[App](r, "POST", "/register", "name=beta&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0))
+    let sid_a = sid_of_resp(dispatch_h[App](r, "POST", "/login", "name=alpha&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0)))
+    let sid_b = sid_of_resp(dispatch_h[App](r, "POST", "/login", "name=beta&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0)))
+    // alpha 建链
+    let mk = dispatch_h[App](r, "POST", "/links", "url=https%3A%2F%2Fexample.org%2Fp&csrf=" + t0, hdr_cookie("sid=" + sid_a + "; csrf=" + t0))
+    let code = code_of_flash(mk)
+    // beta 越权:统计/删除均 404(与不存在同形,不泄露)
+    let s1 = dispatch_h[App](r, "GET", "/links/" + code + "/stats", "", hdr_cookie("sid=" + sid_b))
+    assert(resp_status(s1) == 404)
+    let d1 = dispatch_h[App](r, "POST", "/links/" + code + "/delete", "csrf=" + t0, hdr_cookie("sid=" + sid_b + "; csrf=" + t0))
+    assert(resp_status(d1) == 404)
+    // 条目不受扰:跳转仍 302,alpha 统计仍在
+    assert(resp_status(dispatch_h[App](r, "GET", "/" + code, "", List[Pair]())) == 302)
+    assert(resp_status(dispatch_h[App](r, "GET", "/links/" + code + "/stats", "", hdr_cookie("sid=" + sid_a))) == 200)
+}
+
+test "碰撞重试、输入校验负例与会话过期" {
+    // 碰撞重试:预占 fake 熵首个 code,建链应跳过(≤3 重试)取次位
+    let rnd = mk_fake_rnd(23)
+    let app = app_mem("dev-cts", clk_fix, rnd, 4)
+    let first = code_from(fake_bytes(23, 16))
+    app.links.with_mut(|var l| {
+        l.push(Link { id: 9001, owner: 1, code: first, url: "http://taken.example/x", created: 1, deleted: false })
+    })
+    let r = full_router(app)
+    let t0 = csrf_tok_of(dispatch_h[App](r, "GET", "/register", "", List[Pair]()))
+    dispatch_h[App](r, "POST", "/register", "name=alpha&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0))
+    let sid = sid_of_resp(dispatch_h[App](r, "POST", "/login", "name=alpha&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0)))
+    let mk = dispatch_h[App](r, "POST", "/links", "url=http%3A%2F%2Fexample.com%2Fb&csrf=" + t0, hdr_cookie("sid=" + sid + "; csrf=" + t0))
+    assert(resp_status(mk) == 303)
+    let code = code_of_flash(mk)
+    assert(code.len == 7)
+    assert(code != first)
+    // 预占码仍是原址(未被覆盖)
+    let pre = dispatch_h[App](r, "GET", "/" + first, "", List[Pair]())
+    assert(resp_header(pre, "Location") == "http://taken.example/x")
+    // 校验负例:坏用户名 / 坏口令长 / 坏 scheme / 过长 url → 拒且不入库
+    let r1 = dispatch_h[App](r, "POST", "/register", "name=Alpha&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0))
+    assert(contains(set_cookie_of(r1), "invalid"))
+    let r2 = dispatch_h[App](r, "POST", "/register", "name=gamma&pass=short&csrf=" + t0, hdr_cookie("csrf=" + t0))
+    assert(contains(set_cookie_of(r2), "invalid"))
+    let r3 = dispatch_h[App](r, "POST", "/links", "url=ftp%3A%2F%2Fexample.com%2Fx&csrf=" + t0, hdr_cookie("sid=" + sid + "; csrf=" + t0))
+    assert(contains(set_cookie_of(r3), "invalid"))
+    assert(resp_status(dispatch_h[App](r, "GET", "/" + code, "", List[Pair]())) == 302)
+    // 未知用户登录:统一 303 文案(dummy 烧时,防枚举)
+    let gh = dispatch_h[App](r, "POST", "/login", "name=ghost0&pass=passw0rd&csrf=" + t0, hdr_cookie("csrf=" + t0))
+    assert(resp_status(gh) == 303)
+    assert(contains(set_cookie_of(gh), "wrong"))
+    // 会话过期:短 ttl 签发,验签钟 1501 > exp → 守卫 303
+    let tok_exp = sid_of_resp(grant_session(redirect("/x"), "dev-cts", "alpha", 500, 1000))
+    let late_app = app_mem("dev-cts", clk_expired, mk_fake_rnd(29), 4)
+    let late = full_router(late_app)
+    assert(resp_status(dispatch_h[App](late, "GET", "/", "", hdr_cookie("sid=" + tok_exp))) == 303)
+    // 篡改 sid:验签拒 → 落地页(非仪表盘)
+    let tam = dispatch_h[App](late, "GET", "/", "", hdr_cookie("sid=" + tok_exp + "x"))
+    assert(resp_body(tam) == view_landing())
+}
