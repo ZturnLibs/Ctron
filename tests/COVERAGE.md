@@ -405,7 +405,11 @@ R-P2d `ctron fmt` 由 Rust 宿主移植至 C 宿主与自举编译器,三宿主�
 | R9+R10(2026-09-30) | use 组自动折行(内联形态超 100 列,恒补尾逗号)+ 导入排序(组内项按名/顶层语句按路径,稳定字节序;空行分段次序保留;注释守卫冻结;无组尾随别名并入语句 span 防悬空) | spec R9/R10;三宿主同步(Rust fmt.rs 预处理/C fmt.c 1:1/自举 fmt.ct);suite_fmt 17 金样+432 语料幂等+93 trans 等价;fmt_suite 34 测(断言② 修订为 use 声明多重集比对);fx_fmt_golden 重冻结三宿主逐字节;parity 默认根适配 lib/std 后 494 绿 0 分歧 |
 
 已知红账(非本面):smoke conc_fs / std 快照漂移 / fs 种子单测(HEAD 既有,net·fs 泳道);
-suite_parse/sem 的语料对齐债(C 宿主解析器落后面,HEAD 既有);fmt_suite 01i(Rust 侧既有)。
+**suite_diff 差分墙 37 红(2026-09-30 复跑定性)**:`make -C compiler-c test` 的 suite_parse
+墙修复(顶层 walk 收正,0383fc3 镜像)后首次暴露——自举 lex_num/parse_ast 模板 vs C 词法器
+在新记号/并发语料(04e_break 族/04c_or/06_spawn·channel 族/08b)payload 级分歧 + pkg_chk
+模块级 7 包全红;非 CI 门(ci.sh 不含 make test),长期失修,归属自举差分面另案;
+fmt_suite 01i(Rust 侧既有)。
 
 **2026-09-21 续片修复**(compiler-c 门禁卫生):
 - `token.c` TOK_NAMES 表漏 "Ellipsis" 条目(§9.6 加 TOK_ELLIPSIS 未同步)→ 名字表

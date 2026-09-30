@@ -27,6 +27,9 @@ static int ends_with(const char* s, const char* suf) {
     return n >= m && strcmp(s + n - m, suf) == 0;
 }
 static void walk(const char* dir, strvec* out) {
+    // 只认 tests/ 顶层单文件用例:泳道子目录(net/http/doc_fix/artifact_demo/gui/…)
+    // 各有专属 runner 且系多文件包结构,单文件检查器无包上下文必误报
+    // (镜像 0383fc3 Rust check_suite scope 收正;对齐 meta_check 泳道 skip 口径)
     DIR* d = opendir(dir);
     if (!d) return;
     struct dirent* e;
@@ -34,11 +37,7 @@ static void walk(const char* dir, strvec* out) {
         if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
         char path[4096];
         snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
-        if (e->d_type == DT_DIR) {
-            if (strcmp(e->d_name, "roadmap") == 0) continue; // R 泳道阶段区(Rust roadmap_suite 门控,C 版随新语法实现后纳入)
-            walk(path, out);
-        }
-        else if (ends_with(e->d_name, ".ct")) sv_push(out, path);
+        if (ends_with(e->d_name, ".ct")) sv_push(out, path);
     }
     closedir(d);
 }
@@ -169,8 +168,12 @@ int main(int argc, char** argv) {
 
         int ok = 1;
         char why[512] = {0};
-        // (a) produced ⊆ expected
-        for (int i = 0; i < nprod && ok; i++) {
+        // 解析坏文件(pr.ndiags>0)走存在即可契约(镜像 Rust check_suite 的
+        // want⊆produced 语义):残 AST 上 sem 的附加诊断不计多余;干净文件保持
+        // produced ⊆ expected 严格全等
+        int parse_broken = (pr.ndiags > 0);
+        // (a) produced ⊆ expected(解析干净文件)
+        for (int i = 0; i < nprod && ok && !parse_broken; i++) {
             int in_exp = 0;
             for (int j = 0; j < x.n; j++)
                 if (strcmp(produced[i], x.codes[j]) == 0) { in_exp = 1; break; }

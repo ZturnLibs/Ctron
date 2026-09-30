@@ -24,6 +24,9 @@ static int ends_with(const char* s, const char* suf) {
 }
 
 static void walk(const char* dir, strvec* out) {
+    // 只认 tests/ 顶层单文件:泳道子目录(net/http/doc_fix/artifact_demo/gui/ffi/…)
+    // 各有专属 runner 且系多文件包结构/DSL 语料,单文件解析必误报
+    // (镜像 0383fc3 Rust 套件 scope 收正;对齐 meta_check 泳道 skip 口径)
     DIR* d = opendir(dir);
     if (!d) return;
     struct dirent* e;
@@ -31,11 +34,7 @@ static void walk(const char* dir, strvec* out) {
         if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
         char path[4096];
         snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
-        if (e->d_type == DT_DIR) {
-            if (strcmp(e->d_name, "roadmap") == 0) continue; // R 泳道阶段区(Rust roadmap_suite 门控,C 版随新语法实现后纳入)
-            walk(path, out);
-        }
-        else if (ends_with(e->d_name, ".ct")) sv_push(out, path);
+        if (ends_with(e->d_name, ".ct")) sv_push(out, path);
     }
     closedir(d);
 }
@@ -78,7 +77,11 @@ int main(int argc, char** argv) {
         if (!src) { fprintf(stderr, "无法读取 %s\n", files.items[i]); fails++; continue; }
         ctron_parse_result r = ctron_parse_src(src, len);
         int ok;
+        // neg 表(镜像 Rust parse_suite neg_want;0383fc3 补 01i/01j 口径)
         if (strcmp(name, "01c_parse.neg.ct") == 0) ok = has_code(&r, "E1001");
+        else if (strcmp(name, "01i_semicolon.neg.ct") == 0) ok = has_code(&r, "E1001");
+        else if (strcmp(name, "01j_impl_for.neg.ct") == 0) ok = has_code(&r, "E1001");
+        else if (strcmp(name, "01o_trailing_dot.neg.ct") == 0) ok = has_code(&r, "E1001");
         else if (strcmp(name, "06_static_var.neg.ct") == 0) ok = has_code(&r, "E3030");
         else ok = (r.ndiags == 0);
         if (!ok) {

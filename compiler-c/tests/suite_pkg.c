@@ -101,6 +101,12 @@ static size_t grade_file(const char* dir, const char* pkgname, const char* fname
     }
     for (int j = 0; j < x.n && ok; j++) {
         if (!x.has_msg[j]) continue;
+        // 消息期望只对实际产出的码评分:宿主未实现的码(E5030 等在册分歧面)
+        // 缺码由上一段 module_code 门口径管辖,不得借此红消息断言
+        int produced_here = 0;
+        for (int i = 0; i < nprod; i++)
+            if (strcmp(produced[i], x.codes[j]) == 0) { produced_here = 1; break; }
+        if (!produced_here) continue;
         int found = 0;
         for (int i = 0; i < nprod; i++)
             if (strcmp(produced[i], x.codes[j]) == 0 && strstr(pmsg[i], x.msg[j])) found = 1;
