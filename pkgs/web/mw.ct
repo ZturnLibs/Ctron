@@ -85,7 +85,7 @@ pub fn drop_session(r: Resp, key: Str) -> Resp {
 
 // sid cookie → 验签 → 注入 session 槽;失败原样放行(见头注)。响应侧顺带
 // 执行 flash 读即清(flash_sweep)。
-pub fn with_sessions[S](key: Str, now: fn() -> I64) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+pub fn with_sessions[S](key: Str, now: fn() -> I64) -> fn(&Req[S], fn(&Req[S]) -> Resp) -> Resp {
     return |req, next| {
         let sid = cookie[S](req, sess_name())
         let v = auth_tok_verify(key, sid, now())
@@ -99,7 +99,7 @@ pub fn with_sessions[S](key: Str, now: fn() -> I64) -> fn(Req[S], fn(Req[S]) -> 
 }
 
 // flash 读即清(响应侧):入请求携 web_flash 且响应未再写 flash 才补清除行
-fn flash_sweep[S](req: Req[S], resp: Resp) -> Resp {
+fn flash_sweep[S](req: &Req[S], resp: Resp) -> Resp {
     if cookie[S](req, flash_name()).len == 0 {
         return resp
     }
@@ -125,7 +125,7 @@ pub fn flash(r: Resp, msg: Str) -> Resp {
 
 // 读(§4.3 冻结名 req.flash()):读即清的「读」半边,清半边在 with_sessions
 // 响应侧(头注 flash 机制)。缺回空。
-pub fn req_flash[S](r: Req[S]) -> Str {
+pub fn req_flash[S](r: &Req[S]) -> Str {
     return pdec(cookie[S](r, flash_name()))
 }
 
@@ -155,7 +155,7 @@ fn penc(s: Str) -> Str {
 
 // 访问日志:next 后落一行(此时才有状态可印;§4.5 形态 ① 纯函数)。
 // 行形 "GET /x 200";行缓冲/逐条刷盘政策归 serve(Task 3),本件只 println。
-pub fn log_requests[S](r: Req[S], next: fn(Req[S]) -> Resp) -> Resp {
+pub fn log_requests[S](r: &Req[S], next: fn(&Req[S]) -> Resp) -> Resp {
     let resp = next(r)
     println(r.method + " " + r.path + " " + resp_status(resp).to_string())
     return resp
@@ -163,7 +163,7 @@ pub fn log_requests[S](r: Req[S], next: fn(Req[S]) -> Resp) -> Resp {
 
 // 组级超时档位(§4.5/§8.1):n<=0 装配即 panic(失败在启动,不在半夜);
 // 现阶段透传(头注诚实口径),真实现随并发波在闭包内换血。
-pub fn timeout_ms[S](ms: I64) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+pub fn timeout_ms[S](ms: I64) -> fn(&Req[S], fn(&Req[S]) -> Resp) -> Resp {
     if ms <= 0 {
         panic("timeout_ms: 上限必须为正,得 " + ms.to_string())
     }
@@ -183,11 +183,11 @@ fn clk_late() -> I64 {
     return 1501
 }
 
-fn h_who(r: Req[I64]) -> Resp {
+fn h_who(r: &Req[I64]) -> Resp {
     return text("uid=" + session[I64](r, "uid"))
 }
 
-fn g_need_login(r: Req[I64], next: fn(Req[I64]) -> Resp) -> Resp {
+fn g_need_login(r: &Req[I64], next: fn(&Req[I64]) -> Resp) -> Resp {
     if session[I64](r, "uid").len == 0 {
         return redirect("/login")
     }

@@ -113,7 +113,7 @@ fn is_write_m(m: Str) -> Bool {
 }
 
 // csrf_mw —— CSRF 双提交中间件(§4.5 形态 ③ 带状态工厂:原子序号随闭包)
-pub fn csrf_mw[S](key: Str) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+pub fn csrf_mw[S](key: Str) -> fn(&Req[S], fn(&Req[S]) -> Resp) -> Resp {
     let seq = Atomic[I64](0)
     return |req, next| {
         if !is_write_m(req.method) {
@@ -229,7 +229,7 @@ fn lim_hit(ents: Mutex[List[BktEnt]], k: Str, cfg: LimCfg, nowv: I64) -> LimTake
 }
 
 // 放行面:桶判定 → next / 429(泛型 —— S 内提,调用点显式 TypeArgs)
-fn lim_pass[S](ents: Mutex[List[BktEnt]], k: Str, cfg: LimCfg, nowv: I64, req: Req[S], next: fn(Req[S]) -> Resp) -> Resp {
+fn lim_pass[S](ents: Mutex[List[BktEnt]], k: Str, cfg: LimCfg, nowv: I64, req: &Req[S], next: fn(&Req[S]) -> Resp) -> Resp {
     let t = lim_hit(ents, k, cfg, nowv)
     if lt_ok(t) == 1 {
         return next(req)
@@ -239,7 +239,7 @@ fn lim_pass[S](ents: Mutex[List[BktEnt]], k: Str, cfg: LimCfg, nowv: I64, req: R
 
 // rate_limit_mw —— 令牌桶限流中间件(§4.5 形态 ③:键表 + in-flight 计数随闭包;
 //   now 注入 §8-A5,真钟归装配 `| | now_ms() / 1000` 形,测试面 fake 前进)
-pub fn rate_limit_mw[S](cap: I64, refil: I64, ivl: I64, maxif: I64, now: fn() -> I64) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+pub fn rate_limit_mw[S](cap: I64, refil: I64, ivl: I64, maxif: I64, now: fn() -> I64) -> fn(&Req[S], fn(&Req[S]) -> Resp) -> Resp {
     let cfg = lim_cfg(cap, refil, ivl, maxif)
     if lcfg_ok(cfg) != 1 {
         panic("rate_limit_mw: cap/refil/ivl/maxif 必须为正")
@@ -272,7 +272,7 @@ fn gd_req(method: Str, body: Str, xff: Str, ck: Str) -> Req[I64] {
     return req_full[I64](method, "/do", body, hs, 0)
 }
 
-fn h_gd(r: Req[I64]) -> Resp {
+fn h_gd(r: &Req[I64]) -> Resp {
     return text("hit")
 }
 

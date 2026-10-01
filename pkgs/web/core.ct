@@ -287,12 +287,12 @@ pub fn req_full[S](method: Str, path: Str, body: Str, hdrs: List[Pair], state: S
 }
 
 // params 注入(router 匹配后回填 :param;值语义拷贝换字段,Req 本体不动)
-pub fn req_set_params[S](r: Req[S], params: List[Pair]) -> Req[S] {
+pub fn req_set_params[S](r: &Req[S], params: List[Pair]) -> Req[S] {
     return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: params, session: r.session, state: r.state }
 }
 
 // session 注入(mw.with_sessions 验签后回填;params 同款值语义拷贝)
-pub fn req_set_session[S](r: Req[S], sess: List[Pair]) -> Req[S] {
+pub fn req_set_session[S](r: &Req[S], sess: List[Pair]) -> Req[S] {
     return Req { method: r.method, path: r.path, query: r.query, body: r.body, headers: r.headers, cookies: r.cookies, params: r.params, session: sess, state: r.state }
 }
 
@@ -425,7 +425,7 @@ fn utf8_one(v: I32) -> Str {
 
 // —— 取参访问器(§4.3 冻结名;六 Str 缺回空 + 类型化 Option)——
 
-pub fn param[S](r: Req[S], name: Str) -> Str {
+pub fn param[S](r: &Req[S], name: Str) -> Str {
     return pair_get(r.params, name)
 }
 
@@ -440,11 +440,11 @@ pub fn pair_get(ps: List[Pair], k: Str) -> Str {
     return ""
 }
 
-pub fn param_i64[S](r: Req[S], name: Str) -> Option[I64] {
+pub fn param_i64[S](r: &Req[S], name: Str) -> Option[I64] {
     return parse_i64(pair_get(r.params, name))
 }
 
-pub fn param_f64[S](r: Req[S], name: Str) -> Option[F64] {
+pub fn param_f64[S](r: &Req[S], name: Str) -> Option[F64] {
     return pf64(pair_get(r.params, name))
 }
 
@@ -514,32 +514,32 @@ fn pf64(s: Str) -> Option[F64] {
     return Some(acc)
 }
 
-pub fn query[S](r: Req[S], name: Str) -> Str {
+pub fn query[S](r: &Req[S], name: Str) -> Str {
     return pdec(q_raw(r.query, name))
 }
 
-pub fn query_all[S](r: Req[S], name: Str) -> List[Str] {
+pub fn query_all[S](r: &Req[S], name: Str) -> List[Str] {
     return pdec_all(r.query, name)
 }
 
-pub fn form[S](r: Req[S], name: Str) -> Str {
+pub fn form[S](r: &Req[S], name: Str) -> Str {
     return pdec(q_raw(r.body, name))
 }
 
-pub fn form_all[S](r: Req[S], name: Str) -> List[Str] {
+pub fn form_all[S](r: &Req[S], name: Str) -> List[Str] {
     return pdec_all(r.body, name)
 }
 
-pub fn header[S](r: Req[S], name: Str) -> Str {
+pub fn header[S](r: &Req[S], name: Str) -> Str {
     return hdr_get(r.headers, name)
 }
 
-pub fn cookie[S](r: Req[S], name: Str) -> Str {
+pub fn cookie[S](r: &Req[S], name: Str) -> Str {
     return pair_get(r.cookies, name)
 }
 
 // session 访问器(§4.3 冻结名 req.session("uid");with_sessions 注入后可用,缺回空)
-pub fn session[S](r: Req[S], name: Str) -> Str {
+pub fn session[S](r: &Req[S], name: Str) -> Str {
     return pair_get(r.session, name)
 }
 

@@ -128,7 +128,7 @@ pub fn openapi_json[S](r: Router[S], title: Str, ver: Str) -> Resp {
 
 // ---- 测试(名带 "2b " 前缀)----
 
-fn h_api(r: Req[I64]) -> Resp {
+fn h_api(r: &Req[I64]) -> Resp {
     return text("x")
 }
 
