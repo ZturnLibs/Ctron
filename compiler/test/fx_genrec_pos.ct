@@ -1,0 +1,19 @@
+// fx_genrec_pos.ct —— P0-A′ 泛型特化 seen 集:同码自引用合法化(语义翻转账)
+// 原 fx_genrec_neg 面目(loopr[T] 式体内自引用)由 emit 期硬拒改为:seen 集
+// (#gseen)复用在制实例 → 体内自调用成为普通运行期递归(C++ 模板单态化
+// 同款语义)。本夹具钉正例:同码递归特化编译并运行收敛(down[I32] 递降
+// 5 层返回 7;同码二次调用点走已发复用臂)。
+fn down[T](x: T, n: I32) -> T {
+    if n > 0 {
+        return down[T](x, n - 1)
+    }
+    return x
+}
+
+fn main() {
+    var r = down[I32](7, 5)
+    if r == 7 {
+        println("genrec-pos ok")
+    }
+    println(down[I32](42, 0))
+}

@@ -1,10 +1,21 @@
-// fx_genrec_neg.ct —— 递归泛型:预提升深度超限 → emit 期拦截("递归超限",rc=1)
-// 递归特化无 seen 集,预提升不设终点;深度 8 显式 panic(语义挂账,非终态设计)
-fn loopr[T](x: T) -> T {
-    return loopr[T](x)
+// fx_genrec_neg.ct —— P0-A′ 发散新码链负例:seen 集只复用同码,实参型别逐层
+// 增长(wrap[T] → wrap[Box2[T]] → wrap[Box2[Box2[T]]] …)每层铸新实例码
+// (u:Box2__… 长度前缀尾缀逐层加长,永不重复)→ seen 永不命中 → 深度背stop
+// (3→64)emit 期拦截("递归超限",rc=1)。
+// 注:List[T] 型码元位擦除(List[List[i]] 与 List[i] 同码)不构成新码链;
+// 新码发散须走泛型 struct 嵌套(P0-A U<名长>_<名> 嵌入编码逐层增长)。
+// 原同码自引用案(loopr[T])已随 P0-A′ 翻正为正例(见 fx_genrec_pos.ct)。
+struct Box2[S] {
+    let v: S
 }
 
-fn main() -> I32 {
-    println(loopr[I32](1))
-    return 0
+fn wrap[T](x: T) -> Box2[T] {
+    var n: Box2[T] = Box2 { v: x }
+    var d = wrap[Box2[T]](n)
+    return d.v
+}
+
+fn main() {
+    var w = wrap[I32](1)
+    println(w.v)
 }
