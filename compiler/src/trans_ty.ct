@@ -1594,6 +1594,16 @@ fn ct_scalar_ty(nm: Str) -> List[Str] {
     return nt
 }
 
+// P0-A′:List 型别节点构造(型参绑定容器码还原用)
+fn ct_list_ty_node(el: List[Str]) -> List[Str] {
+    var nt = mk("Named")
+    nt.push("List")
+    var ta = mk("TArgs")
+    ta.push(el)
+    nt.push(ta)
+    return nt
+}
+
 fn ct_targ_env(ty: List[Str], env: List[Str]) -> List[Str] {
     if ty[0] == "Named" {
         if ct_env_has(env, ty[1]) {
@@ -1602,10 +1612,50 @@ fn ct_targ_env(ty: List[Str], env: List[Str]) -> List[Str] {
             if seq2(ec, "s") { return ct_scalar_ty("Str") }
             if seq2(ec, "b") { return ct_scalar_ty("Bool") }
             if seq2(ec, "6") { return ct_scalar_ty("I64") }
+            // P0-A′:标量字母表补全(T↦f/g/7/z/w* 作裸实参)——此前无臂回落
+            // TPar 节点,ct_ty_code 兜底塌 "i" → 跨特化同码误并(seen 集错码复用)
+            if seq2(ec, "f") { return ct_scalar_ty("F64") }
+            if seq2(ec, "g") { return ct_scalar_ty("F32") }
+            if seq2(ec, "7") { return ct_scalar_ty("U64") }
+            if seq2(ec, "z") { return ct_scalar_ty("USize") }
+            if seq2(ec, "w8u") { return ct_scalar_ty("U8") }
+            if seq2(ec, "w8s") { return ct_scalar_ty("I8") }
+            if seq2(ec, "w16u") { return ct_scalar_ty("U16") }
+            if seq2(ec, "w16s") { return ct_scalar_ty("I16") }
             // P0-A:型参绑定 struct/实例码 → 具体型别节点还原(泛型传型贯通)
             if ec.len > 2 && byte_slice(ec, 0, 2) == "u:" {
                 return ct_inst_ty_node(ec)
             }
+            // P0-A′:List 族码还原(T↦容器码作裸实参)——同上,塌 "i" 误并防堵;
+            // "L" 素码元素不可知 → 空 TArgs 还原(ct_ty_code 回铸 "L",码忠实)
+            if seq2(ec, "LI") { return ct_list_ty_node(ct_scalar_ty("I32")) }
+            if seq2(ec, "L6") { return ct_list_ty_node(ct_scalar_ty("I64")) }
+            if ec.len > 3 && byte_slice(ec, 0, 3) == "Lu:" {
+                return ct_list_ty_node(ct_inst_ty_node("u:" + byte_slice(ec, 3, ec.len)))
+            }
+            if seq2(ec, "L") {
+                // 素码 "L" 元素不可知 → 空 TArgs 还原(ct_ty_code 回铸 "L",码忠实)
+                var nt9 = mk("Named")
+                nt9.push("List")
+                nt9.push(mk("TArgs"))
+                return nt9
+            }
+        }
+        // P0-A′:包装型实参深代入(Box2[T]/List[T] 等内含型参)——原样返回时内层
+        // TPar 于 ct_ty_code 兜底塌 "i"(Box2[Box2[i]] 误铸 u:Box2__I 同码:seen 集
+        // 在制复用即错码特化;发散新码链亦无法如实铸新)。逐槽递归重建,型参缺席
+        // 时重建节点与原节点码等价(双调用点零扰动)
+        if ty[2].len > 1 {
+            var nps = mk("TArgs")
+            var q2: I32 = 1
+            while q2 < ty[2].len {
+                nps.push(ct_targ_env(ty[2][q2], env))
+                q2 += 1
+            }
+            var out = mk("Named")
+            out.push(ty[1])
+            out.push(nps)
+            return out
         }
     }
     return ty

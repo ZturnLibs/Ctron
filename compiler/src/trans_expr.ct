@@ -3,6 +3,23 @@
 // 索引/插值串 ctron_str_concat 链接)、ct_call_args 实参(形参类型码插转换 L↔N/A)、
 // ct_assigned/ct_hoists 声明提升、ct_zero 零值、a_count/a_elem 定长数组码解析。
 // =====================================================================
+
+// P0-A′ 泛型特化 seen 集查询:#gseen 值以 ";" 连接实例码(在制∪已发);
+// 整段比对(非子串)防前缀码误命中。空集恒否。
+fn ct_seen_has(s: Str, code: Str) -> Bool {
+    var i: I32 = 0
+    while i < s.len {
+        var j = i
+        while j < s.len && byte_at(s, j) != 59 {
+            j += 1
+        }
+        if j - i == code.len && byte_slice(s, i, j) == code {
+            return true
+        }
+        i = j + 1
+    }
+    return false
+}
 fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" {
@@ -521,19 +538,28 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         gk += 1
                     }
                     // 定义发射判定:非特化体内,且(预提升模式 或 pass1)。
-                    // "#ph<深度>" 递增计数(预提升 phenv 的 "#p"=1 不走 pass1 分支),
-                    // 超限 = 递归泛型(无 seen 集,预提升不设终点)→ 显式拦截
+                    // "#ph<深度>" 递增计数(预提升 phenv 的 "#p"=1 不走 pass1 分支)。
+                    // P0-A′ seen 集:#gseen 以 ";" 连接已见实例码(在制∪已发),
+                    // 命中 → 复用:只发调用不再发定义/不再走体——同码自引用成为
+                    // 普通运行期递归调用(C++ 模板单态化同款语义;原「递归即拒」
+                    // 硬拦翻转,fx_genrec_pos 钉正例)。深度背stop 保留(3→64):
+                    // seen 集不保证终止——实参型别逐层增长(wrap[List[T]] 型)
+                    // 每层铸新码 seen 永不命中,新码无界链仍须显式拦截
+                    // (fx_genrec_neg 改钉此发散负例)。
+                    var gseen = ct_env_ty(env, "#gseen")
                     var emit_def = false
                     var phd: I32 = 0
                     var pk9: I32 = 1
-                    while pk9 <= 3 {
+                    while pk9 <= 64 {
                         if ct_env_has(env, "#ph" + pk9.to_string()) {
                             phd = pk9
                         }
                         pk9 += 1
                     }
-                    if phd > 0 {
-                        if phd >= 3 {
+                    if ct_seen_has(gseen, mg) {
+                        emit_def = false
+                    } else if phd > 0 {
+                        if phd >= 64 {
                             panic("emit:泛型特化递归超限:" + mg)
                             return ""
                         }
@@ -602,8 +628,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         if ic6.len > 0 {
                             genv = env_bind(genv, "#" + ct_struct_name_of(ic6), ic6)
                         }
-                        // 嵌套预提升:#p=1 静默遍历特化体,体内嵌套单态化的定义直出文件作用域
-                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), file, rcs)
+                        // 嵌套预提升:#p=1 静默遍历特化体,体内嵌套单态化的定义直出文件作用域;
+                        // #gseen 携带本码在制标记下行(体内同码自引用 → 复用为纯调用)
+                        var gseen2 = mg
+                        if gseen.len > 0 {
+                            gseen2 = gseen + ";" + mg
+                        }
+                        ct_body(spec[5], env_bind(env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), "#gseen", gseen2), file, rcs)
                         // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
                         pk3 = 1
                         while pk3 < ps2.len {
@@ -616,6 +647,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         println("//DD2:" + mg + " phd=" + phd.to_string())
                         println("#ifndef CT_SPEC_" + mg)
                         println("#define CT_SPEC_" + mg)
+                        // P0-A′:自引用前置原型(体内 seen 复用 → 体内同码自调用,
+                        // C 侧须先见原型;原型冗余无害,#ifndef 卫兵去重)
+                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ");")
                         println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
                         // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)
                         ct_body(spec[5], env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), file, rcs)
