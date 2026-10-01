@@ -183,23 +183,37 @@ pub fn addr_format(host: Str, port: I64) -> Str {
 
 // 监听;SO_REUSEADDR 于垫片内开启;port 传 0 由内核分配,实际端口经
 // net_tcp_sockname 回读。成功后可构造 TcpListener { fd: out_fd.v, port: <回读> }。
+// P0-B:bind 出参已迁 &Box64(E4046 收口),门面签名保持 Box[Box64] 不变,
+// 堆胞中间层经本地 cell 落 & 后回拷(调用点实参写变量名,发射面自动取址)。
 pub fn net_tcp_listen(net: StdNet, host: Str, port: I64, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_tcp_listen(host, port, out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_tcp_listen(host, port, cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 // 回读监听/绑定实际端口(:0 分配结果)
 pub fn net_tcp_sockname(net: StdNet, fd: I64, out_port: Box[Box64]) -> I64 {
-    return ctron_net_tcp_sockname(fd, out_port)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_tcp_sockname(fd, cell)
+    out_port.v = cell.v
+    return rc
 }
 
 // 接受连接;垫片在出口开 NODELAY+KEEPALIVE(§11.3)。构造 TcpStream { fd: out_fd.v }。
 pub fn net_tcp_accept(net: StdNet, lfd: I64, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_tcp_accept(lfd, out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_tcp_accept(lfd, cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 // 连接;NODELAY+KEEPALIVE 默认开(§11.3)。
 pub fn net_tcp_connect(net: StdNet, host: Str, port: I64, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_tcp_connect(host, port, out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_tcp_connect(host, port, cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 // 带超时读:timeout_ms <= 0 永久阻塞;>0 到时置 ETIMEDOUT 返 -1。
@@ -236,12 +250,18 @@ pub fn net_get_nodelay(net: StdNet, fd: I64) -> I64 {
 }
 
 pub fn net_udp_socket(net: StdNet, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_udp_socket(out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_udp_socket(cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 // UDP 绑定并回读实际端口(:0);自发自收回环的前置。
 pub fn net_udp_bind(net: StdNet, fd: I64, host: Str, port: I64, out_port: Box[Box64]) -> I64 {
-    return ctron_net_udp_bind(fd, host, port, out_port)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_udp_bind(fd, host, port, cell)
+    out_port.v = cell.v
+    return rc
 }
 
 pub fn net_udp_sendto(net: StdNet, fd: I64, host: Str, port: I64, buf: &I64[], n: I64) -> I64 {
@@ -259,15 +279,24 @@ pub fn net_udp_recvfrom(net: StdNet, fd: I64, buf: &I64[], cap: I64, timeout_ms:
 // 文件(后绑者赢);路径上限 104(darwin sun_path 104 / linux 108 取 min,含
 // NUL):超限 EINVAL。accept/connect 阻塞形态与 tcp 同(无新停车点)。
 pub fn net_unix_listen(net: StdNet, path: Str, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_unix_listen(path, out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_unix_listen(path, cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 pub fn net_unix_accept(net: StdNet, lfd: I64, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_unix_accept(lfd, out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_unix_accept(lfd, cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 pub fn net_unix_connect(net: StdNet, path: Str, out_fd: Box[Box64]) -> I64 {
-    return ctron_net_unix_connect(path, out_fd)
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_unix_connect(path, cell)
+    out_fd.v = cell.v
+    return rc
 }
 
 // 显式移除 socket 文件(listener Drop 只关 fd 不摘文件,见 UnixListener 注;
