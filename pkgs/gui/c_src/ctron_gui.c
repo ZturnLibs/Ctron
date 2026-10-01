@@ -688,7 +688,8 @@ int gui_drag_begin(void) { g_drag_input = 1; return 0; }
 int gui_drag_end(void) { g_drag_input = 0; return 0; }
 int gui_drag_active(void) { return g_drag_input; }
 
-// 点击计数(350ms/6px 聚类):2=双击 3=三击(后复位);连续计数防抖
+// 点击计数(350ms/6px 聚类):2=双击 3=三击 ≥4=四击+;簇内不复位,散簇归 1
+// (成熟连击阶梯:词→行→全选;旧版计到 3 即复位=三击直接全选,跳行级)
 static int g_last_click_ms = -100000;
 static int g_last_click_x = 0;
 static int g_last_click_y = 0;
@@ -707,6 +708,7 @@ int gui_click_kind(int px, int py) {
     if (dy < 0) { dy = -dy; }
     if (d >= 0 && d < 350 && dx < 6 && dy < 6) {
         g_click_n += 1;
+        if (g_click_n > 4) { g_click_n = 4; }
     } else {
         g_click_n = 1;
     }
@@ -714,7 +716,8 @@ int gui_click_kind(int px, int py) {
     g_last_click_x = px;
     g_last_click_y = py;
     if (g_click_n == 2) { return 1; }
-    if (g_click_n >= 3) { g_click_n = 0; return 2; }
+    if (g_click_n == 3) { return 2; }
+    if (g_click_n >= 4) { return 3; }
     return 0;
 }
 

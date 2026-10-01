@@ -4477,44 +4477,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                     ised = true
                 }
                 if ised {
-                    var hadf: Bool = gui_focus_node() == fnode
-                    gui_focus_set(fnode)
-                    var fbv: Str = ""
-                    if t.nbid[fnode] != "" {
-                        if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
-                            fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
-                        } else {
-                            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
-                        }
-                    }
-                    var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)
-                    gui_caret_set(cax)
-                    // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
-                    // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
-                    // 三击=全选;Shift+点击(已聚焦且有锚)=扩选到点击位
-                    var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
-                    if dblk == 1 {
-                        var wr = List[I32]()
-                        gui_word_range(fbv, cax, wr)
-                        if wr.len >= 2 {
-                            if wr[1] > wr[0] {
-                                gui_sel_anchor_set(wr[0])
-                                gui_caret_set(wr[1])
-                            }
-                        }
-                    } else {
-                        if dblk == 2 {
-                            gui_sel_anchor_set(0)
-                            gui_caret_set(fbv.len)
-                        } else {
-                            if gui_mod_shift() == 1 && hadf && gui_sel_anchor_get() >= 0 {
-                                gui_caret_set(cax)
-                            } else {
-                                gui_sel_anchor_set(cax)
-                                gui_drag_begin()
-                            }
-                        }
-                    }
+                    rt_click_text(t, fnode, bind, rects, hits)
                 } else {
                     gui_focus_set(-1)
                 }
@@ -4665,44 +4628,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     ised = true
                 }
                 if ised {
-                    var hadf: Bool = gui_focus_node() == fnode
-                    gui_focus_set(fnode)
-                    var fbv: Str = ""
-                    if t.nbid[fnode] != "" {
-                        if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
-                            fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
-                        } else {
-                            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
-                        }
-                    }
-                    var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)
-                    gui_caret_set(cax)
-                    // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
-                    // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
-                    // 三击=全选;Shift+点击(已聚焦且有锚)=扩选到点击位
-                    var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
-                    if dblk == 1 {
-                        var wr = List[I32]()
-                        gui_word_range(fbv, cax, wr)
-                        if wr.len >= 2 {
-                            if wr[1] > wr[0] {
-                                gui_sel_anchor_set(wr[0])
-                                gui_caret_set(wr[1])
-                            }
-                        }
-                    } else {
-                        if dblk == 2 {
-                            gui_sel_anchor_set(0)
-                            gui_caret_set(fbv.len)
-                        } else {
-                            if gui_mod_shift() == 1 && hadf && gui_sel_anchor_get() >= 0 {
-                                gui_caret_set(cax)
-                            } else {
-                                gui_sel_anchor_set(cax)
-                                gui_drag_begin()
-                            }
-                        }
-                    }
+                    rt_click_text(t, fnode, bind, rects, hits)
                 } else {
                     gui_focus_set(-1)
                 }
@@ -5116,6 +5042,41 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
     return gui_evt_key()
 }
 
+// 文本位置点击(headless):与窗口循环同一 rt_click_text 路径——连击阶梯
+// (词/行/全选)唯一断言口(d_click_xy 是按钮命中面,不含文本点击语义)
+pub fn d_click_text(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_click(x, y)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失")
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var name: Str = rt_hit_name(t.t, t.hits, t.hinst, rc2, x, y)
+    var fnode: I32 = rt_hover_node(rc2, t.hits, x, y)
+    var ised: Bool = false
+    if fnode >= 0 {
+        if fnode < t.t.ntag.len {
+            if t.t.ntag[fnode] == "input" {
+                ised = true
+            }
+            if t.t.ntag[fnode] == "textarea" {
+                ised = true
+            }
+        }
+    }
+    if ised {
+        rt_click_text(t.t, fnode, bind, rc2, t.hits)
+    } else {
+        gui_focus_set(-1)
+    }
+    if name != "" {
+        ev_fire(t.t, name, bind, act)
+    }
+    return 0
+}
+
 // 位置点击(headless):注入 xy 点击→真实命中路径(后向最优先)+焦点转移+ev_fire
 // ——遮罩吃穿透/卡片不透等位置语义的唯一断言口(d_click 按名绕过命中面)
 pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
@@ -5441,13 +5402,16 @@ fn gui_chr_cls(val: Str, i: I32) -> I32 {
 }
 
 // 双击选词:从点击边界按类别向两侧扩(同类连片;out[0]=start out[1]=end 字节位)
+// 类别选取:左邻优先,左邻为分隔时用右邻——点击词左缘(边界邻空白)时仍选中
+// 该词而非空白串(用户实测「双击没选对词语」根因)
 fn gui_word_range(val: Str, pos: I32, out: List[I32]) -> I32 {
     var s0: I32 = pos
     var s1: I32 = pos
-    var cls: I32 = 1
+    var cls: I32 = 0
     if s0 > 0 {
         cls = gui_chr_cls(val, s0 - 1)
-    } else {
+    }
+    if cls == 0 {
         if s1 < val.len {
             cls = gui_chr_cls(val, s1)
         }
@@ -5901,6 +5865,75 @@ extern "c" fn gui_ta_scroll_set(node: I32, y: I32) -> I32
 extern "c" fn gui_ta_scroll_get(node: I32) -> I32
 extern "c" fn gui_ime_prev_set(s: Str) -> I32
 extern "c" fn gui_ime_prev_eq(s: Str) -> I32
+
+// 文本点击选区(窗口循环 evt2 与 headless d_click_text 同源唯一入口):
+// 单击=光标定位(启动拖动锚)/双击=词/三击=视觉行/四击=全选(连击阶梯);
+// Shift+点击(已聚焦且有锚)=扩选到点击位
+fn rt_click_text(t: GuiTree, fnode: I32, bind: fn(List[Str]) -> Void, rects: List[I32], hits: List[I32]) -> I32 {
+    var hadf: Bool = gui_focus_node() == fnode
+    gui_focus_set(fnode)
+    var fbv: Str = ""
+    if t.nbid[fnode] != "" {
+        if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
+            fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
+        } else {
+            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
+        }
+    }
+    var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)
+    gui_caret_set(cax)
+    // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
+    // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
+    var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+    if dblk == 1 {
+        var wr = List[I32]()
+        gui_word_range(fbv, cax, wr)
+        if wr.len >= 2 {
+            if wr[1] > wr[0] {
+                gui_sel_anchor_set(wr[0])
+                gui_caret_set(wr[1])
+            }
+        }
+    } else {
+        if dblk == 2 {
+            // 三击=选视觉行(连击阶梯 词→行→全选;input=全串)
+            gui_sel_row(t, fnode, fbv, cax)
+        } else {
+            if dblk == 3 {
+                // 四击=全选
+                gui_sel_anchor_set(0)
+                gui_caret_set(fbv.len)
+            } else {
+                if gui_mod_shift() == 1 && hadf && gui_sel_anchor_get() >= 0 {
+                    gui_caret_set(cax)
+                } else {
+                    gui_sel_anchor_set(cax)
+                    gui_drag_begin()
+                }
+            }
+        }
+    }
+    return fnode
+}
+
+// 三击选行(连击阶梯 词→行→全选):textarea=视觉行(同源 wrap 宽);input=全串
+fn gui_sel_row(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
+    if t.ntag[node] == "textarea" {
+        var a: I32 = gui_ta_row_start(t, node, val, caret)
+        var b: I32 = gui_ta_row_end(t, node, val, caret)
+        if b > a {
+            gui_sel_anchor_set(a)
+            gui_caret_set(b)
+        } else {
+            gui_sel_anchor_set(a)
+            gui_caret_set(a)
+        }
+        return 0
+    }
+    gui_sel_anchor_set(0)
+    gui_caret_set(val.len)
+    return 0
+}
 
 // 光标所在视觉行界(⌘←→/⌘⌫/⌘⌦ 行首尾导航;与渲染/点击同源 wrap 宽)
 fn gui_ta_row_start(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {

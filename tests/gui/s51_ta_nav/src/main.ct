@@ -1,6 +1,6 @@
 // tests/gui/s51_ta_nav —— textarea 成熟导航/选区 headless 验收
 // 覆盖:↑↓ 行移列保持/Home/End 行内化/Shift+End 行内扩选/组词内联(d_ime_set)
-use gui.{test, d_focus, d_frame, d_expect_text, d_send_key, d_send_char, d_ime_set, d_mod, d_alt, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, Driver}
+use gui.{test, d_focus, d_frame, d_expect_text, d_expect_absent, d_send_key, d_send_char, d_ime_set, d_mod, d_alt, d_click_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, Driver}
 
 struct M {
     var v: Str
@@ -266,6 +266,175 @@ fn main() -> I32 {
                 }
             })
             d_expect_text(t, "QWabE")
+            // ===== 连击阶梯(双=词/三=视觉行/四=全选)+词左缘双击 =====
+            // 三击 row0(y≈22):当前 "A\nQWabE" → 行 "A" 被选,击键替换后余行仍在
+            d_click_text(t, 20, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 20, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 20, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 82, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "R")
+            d_expect_text(t, "QWabE")
+            // 四击 row1(y≈44):全选 → 全被替换
+            d_click_text(t, 20, 44, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 20, 44, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 20, 44, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 20, 44, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 90, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "Z")
+            d_expect_absent(t, "QWabE")
+            // 重建样例文本,双击词左缘(x=词首边界,左邻=空白)应选整词
+            d_send_char(t, 104, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 111, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 32, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 119, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 111, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 114, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 100, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "Zhello world")
+            d_click_text(t, 25, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 25, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 88, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "X world")
+            d_expect_absent(t, "Zhello")
+            // 双击 world 左缘(左邻=空格):选 world 而非空白串
+            d_click_text(t, 33, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_click_text(t, 33, 22, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 89, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "X Y")
+            d_expect_absent(t, "world")
         })
     return rc
 }
