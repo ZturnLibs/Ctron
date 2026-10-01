@@ -883,3 +883,11 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   绑定块(禁用即愈),静态缓存表/节点抽取与宿主旧值模型的型别二分(N 节点 lane 串 vs 表)
   未及定位。工作树干净回退,suite 99/99 复绿。
 - 复开注记:优先在 S1 Val 平面重试(旧宿主值模型是根因域);json JNum/JReal 回切随芯。
+
+**2026-10-02 非己债登记:fx_genrec_neg.ct emit 死循环(main 在案,P0-A′/T53 域)**:
+- 症状:ctc.sh emit compiler/test/fx_genrec_neg.ct → seed 解释发射无限循环(100% CPU
+  不终止;单案 timeout 100s 复现,产物 0 字节)。二分实证:stash 本线全部改动后同案
+  同挂——非 T48 线债。上一轮 smoke(合并前树)该案 emit 臂曾以 2 红完成,当前树病理化。
+- 影响:smoke [3/9] emit 臂在此案阻塞(门禁不可完成);CI 将以超时显红。
+- 归属:P0-A′ 泛型特化 seen 集/自编译期宿主静默崩(trans_stmt 绑定块二分在案,
+  36c9dda2 值模型型别二分根因域)——归 P0-A′/T53 泳道,本线不越界修。
