@@ -805,7 +805,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if st[4][0] == "Call" && st[4][1][0] == "Ident" {
                     var gd8 = ct_fn_decl(file, st[4][1][1])
                     if gd8.len > 0 && gd8[4][0] == "FnType" {
-                        var frc8 = ct_ty_code(gd8[4][2], file)
+                        // P0-A:fn→fn→R 链的 #fret 取最内返回码(签名尾段)
+                        var frc8 = ct_fsig_ret(ct_fsig_code(file, gd8[4]))
+                        if frc8.len == 0 {
+                            frc8 = ct_ty_code(gd8[4][2], file)
+                        }
                         if frc8 != "v" {
                             if frc8 != "i" {
                                 env = env_bind(env, "#fret:" + pat[1], frc8)

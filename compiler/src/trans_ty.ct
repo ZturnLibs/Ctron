@@ -530,6 +530,11 @@ fn ct_fsig_code(file: List[Str], ft: List[Str]) -> Str {
         }
         i += 1
     }
+    // P0-A:返回面 fn 型递归签名(fn(…) -> fn(…) -> Resp 链;ret 尾 = 最内
+    // 非 FnType 的返回码,ct_fsig_ret 末'}'后扫 '>' 即取)
+    if ft[2][0] == "FnType" {
+        return "F" + fa.to_string() + "\{" + acc + "}>" + ct_fsig_code(file, ft[2])
+    }
     return "F" + fa.to_string() + "\{" + acc + "}>" + ct_ty_code(ft[2], file)
 }
 
