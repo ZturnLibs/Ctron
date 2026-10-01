@@ -95,9 +95,9 @@ static NSRect ime_swz_firstRect(id self, SEL _cmd, NSRange range, NSRangePointer
             // 点,y 向下);屏幕系 = AppKit 左下原点。contentView frame 给标题栏偏移。
             NSRect wf = [w frame];
             NSRect cb = [[w contentView] frame];
-            // cx = 绝对光标 x(渲染期恒写)——替换而非相加:crect 常抓到光标条
-            // (x 已是光标位),相加即双计漂移;crect 仅供 y 与「已反喂」空态门
-            CGFloat ax = (g_ime_cx >= 0) ? (CGFloat)g_ime_cx : (CGFloat)g_ime_crect[0];
+            // 域包 feed 已拼装绝对光标条(框体矩形+渲染期恒写的框相对光标线),
+            // 此处只做窗口系→屏幕系换算;cx 为域包内部拼装原料,不再在此消费
+            CGFloat ax = (CGFloat)g_ime_crect[0];
             CGFloat sx = wf.origin.x + cb.origin.x + ax;
             CGFloat sy = wf.origin.y + cb.origin.y + cb.size.height
                        - (CGFloat)g_ime_crect[1] - (CGFloat)g_ime_crect[3];

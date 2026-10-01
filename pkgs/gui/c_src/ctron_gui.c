@@ -29,12 +29,17 @@ int gui_ime_prev_eq(const char* s) {
     return s[i] == 0 && g_ime_prev[i] == 0;
 }
 int g_ime_crect[4] = {0, 0, 0, 0};
-int g_ime_cx = -1; // 光标点在框内 x(渲染期写;候选窗锚合成)
+int g_ime_cx = -1; // 光标点框内 x(渲染期恒写;feed 拼装绝对光标条用)
+int g_ime_caret_line[2] = {-1, 0}; // 光标行框内 (y,h)(渲染期恒写;同上)
 // textarea 垂直滚动偏移(节点索引;滚轮/光标跟随驱动,渲染/点击/浮条补偿)
 static int g_ta_scroll[512];
 int gui_ta_scroll_set(int node, int y) { if (node >= 0 && node < 512) { g_ta_scroll[node] = y; } return 0; }
 int gui_ta_scroll_get(int node) { return (node >= 0 && node < 512) ? g_ta_scroll[node] : 0; }
 int gui_ime_cx_set(int x) { g_ime_cx = x; return 0; }
+int gui_ime_cx_get(void) { return g_ime_cx; }
+int gui_ime_caret_line_set(int y, int h) { g_ime_caret_line[0] = y; g_ime_caret_line[1] = h; return 0; }
+int gui_ime_caret_y(void) { return g_ime_caret_line[0]; }
+int gui_ime_caret_h(void) { return g_ime_caret_line[1]; }
 __attribute__((weak)) const char* gui_ime_preedit(void) { return g_ime_pre; }
 __attribute__((weak)) int gui_ime_has_preedit(void) { return g_ime_has_pre; }
 __attribute__((weak)) int gui_ime_set_caret(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; return 0; }

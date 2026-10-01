@@ -3216,10 +3216,11 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         hinst.push(inst)
                     }
                 }
-                // 光标 x 恒算恒写(候选窗锚 = 框 + 光标 x;组词首帧窄矩形未入帧
-                // 亦不退化为框左缘——用户实测面板未对齐光标根因)
+                // 光标线恒算恒写(候选窗锚 feed 拼装原料:框内 x 与 (y,h);
+                // 与 textarea 同契约)
                 var offx: I32 = ipd + gui_ft_measure_n_wt(pfx2, pfx2.len, isz2, wt2p, fam2p) - mvs
                 gui_ime_cx_set(offx)
+                gui_ime_caret_line_set(icy, ilh)
                 if blink == 1 {
                     gui_caret_float(offx, icy, 2, ilh, ifg2)
                     // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
@@ -3352,9 +3353,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var tpre: Str = byte_slice(tshow, cline_start, tc2)
                 var tpx: I32 = 4 + gui_ft_measure_n_wt(tpre, tpre.len, tsz4, 400, 0)
                 var tpy: I32 = 4 + crow * tpitch - tscr
-                // 光标 x 恒算恒写(候选窗锚=绝对光标 x;与 input 同口径,组词首帧
-                // 窄矩形未入帧亦不退化为框左缘)
+                // 光标线恒算恒写(候选窗锚=feed 拼装原料:框内 (x,y,h);
+                // 组词首帧窄矩形未入帧亦零竞态——框体矩形每帧必在)
                 gui_ime_cx_set(tpx)
+                gui_ime_caret_line_set(tpy, tlh)
                 // 光标跟随(行顶低于视口→上卷;行底超视口→下卷;固定高框才滚)
                 if thm == 2 {
                     var ctop: I32 = 4 + crow * tpitch
@@ -5574,12 +5576,20 @@ fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32]
 // P-M3:开窗自动聚焦首个 input(成熟语言输入体验:启动即可打字,无需点击;
 // caret 置尾 = append 惯例,与 click-to-focus 一致)
 fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
+    // 首个可编辑件(input 或 textarea,树序)——textarea 开窗即可打字,
+    // 与成熟编辑器开箱即输入同口径
     var afi: I32 = 0
     var af: I32 = -1
     while afi < t.ntag.len {
         if t.ntag[afi] == "input" {
             af = afi
             afi = t.ntag.len
+        }
+        if t.ntag[afi] == "textarea" {
+            if af < 0 {
+                af = afi
+                afi = t.ntag.len
+            }
         }
         afi += 1
     }
@@ -5598,16 +5608,39 @@ fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
     if fn0 < 0 {
         return 1
     }
-    // 取最窄正宽配对矩形(候选面板锚光标点=系统口径,用户对照实测):
-    // 优先光标条(2px)→组词下划线(跨光标,组词期恒在不随闪烁)→框体回落
+    // 拼装制(候选窗锚定终态契约):渲染期恒写框相对光标线(cx,cy,ch);
+    // 此处取聚焦节点最宽配对矩形=框体(每帧必在,无渲染帧竞态),拼出
+    // 绝对光标条反喂。回退=最窄正宽矩形(无框体输入件)。
+    // 竞态实证:输入法整个组词期仅询问一次首 rect,闪烁暗相帧窄矩形扫描
+    // 抓到滚动条 thumb(4x48 trace)→面板压住首行文字;框体恒在故拼装制
+    // 对询问时机零敏感。
+    var box: I32 = -1
     var best: I32 = -1
     var bw: I32 = 0
     var j: I32 = 0
+    // 盒判据:宽≥40 且高≥光标行高(排除光标条/下划线 h=2/thumb w=4 等浮条
+    // 被误当框体——无样式输入件浮条是仅有的配对矩形)
+    var boxmh: I32 = gui_ime_caret_h()
+    if boxmh < 8 {
+        boxmh = 8
+    }
     while j < hits.len {
         if hits[j] == fn0 {
             if j < rects.len {
                 var wj: I32 = gui_cmd_w100(rects[j])
+                var hj: I32 = gui_cmd_h100(rects[j])
                 if wj > 0 {
+                    if wj >= 4000 {
+                        if hj >= boxmh * 100 {
+                            if box < 0 {
+                                box = rects[j]
+                            } else {
+                                if wj > gui_cmd_w100(box) {
+                                    box = rects[j]
+                                }
+                            }
+                        }
+                    }
                     if best < 0 {
                         best = rects[j]
                         bw = wj
@@ -5622,6 +5655,14 @@ fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
         }
         j += 1
     }
+    if box >= 0 {
+        if gui_ime_cx_get() >= 0 {
+            if gui_ime_caret_h() > 0 {
+                gui_ime_set_caret(gui_cmd_x100(box) / 100 + gui_ime_cx_get(), gui_cmd_y100(box) / 100 + gui_ime_caret_y(), 2, gui_ime_caret_h())
+                return 0
+            }
+        }
+    }
     if best >= 0 {
         gui_ime_set_caret(gui_cmd_x100(best) / 100, gui_cmd_y100(best) / 100, gui_cmd_w100(best) / 100, gui_cmd_h100(best) / 100)
     }
@@ -5634,6 +5675,10 @@ extern "c" fn gui_ime_has_preedit() -> I32
 #[trusted]
 extern "c" fn gui_ime_set_caret(x: I32, y: I32, w: I32, h: I32) -> I32
 extern "c" fn gui_ime_cx_set(x: I32) -> I32
+extern "c" fn gui_ime_cx_get() -> I32
+extern "c" fn gui_ime_caret_line_set(y: I32, h: I32) -> I32
+extern "c" fn gui_ime_caret_y() -> I32
+extern "c" fn gui_ime_caret_h() -> I32
 extern "c" fn gui_ta_scroll_set(node: I32, y: I32) -> I32
 extern "c" fn gui_ta_scroll_get(node: I32) -> I32
 extern "c" fn gui_ime_prev_set(s: Str) -> I32
