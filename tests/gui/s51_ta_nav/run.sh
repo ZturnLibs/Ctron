@@ -13,6 +13,20 @@ case "$(uname)" in
     Linux)  FW="-lX11 -lGL -lm -lpthread -ldl" ;;
     *) echo "s51: unsupported" >&2; exit 1 ;;
 esac
+
+# --run:真窗探针(IME/快捷键/连击/右键菜单全量手测;textarea 在上=自动聚焦;
+# 独占名二进制+必链 ime_shim.m 候选窗锚定臂)
+if [ "${1:-}" = "--run" ]; then
+    CTRON_STDPATH="$ROOT/lib/std" "$EMIT" run "$DIR/probe.ct" > "$T/probe.c"
+    BIN="$T/ctron-ime-vl-$$"
+    cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$BIN" \
+       "$T/probe.c" "$ROOT/pkgs/gui/c_src/ctron_gui.c" "$ROOT/pkgs/gui/c_src/ft_shim.c" "$ROOT/pkgs/gui/c_src/ime_shim.m" \
+       "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW
+    echo "s51: 真窗探针已启动($BIN)——关窗退出"
+    cd "$DIR"
+    exec "$BIN"
+fi
+
 export CTRON_GUI_FT_OFF=1
 cc -O1 -w -I"$ROOT/vendor/gui/clay" -I"$ROOT/vendor/gui/raylib" -I"$ROOT/vendor/gui/freetype/include" -o "$T/s51.bin" \
    "$T/s51.c" "$ROOT/pkgs/gui/c_src/ctron_gui.c" "$ROOT/pkgs/gui/c_src/ft_shim.c" "$ROOT/vendor/gui/build/libfreetype.a" "$ROOT/vendor/gui/build/libraylib.a" $FW

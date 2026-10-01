@@ -1,0 +1,60 @@
+// IME/文本编辑真窗探针(s51 --run;textarea 在上=自动聚焦即 textarea)
+use gui.{rt_run_src, d_ime_set}
+
+struct St {
+    var draft: Str
+    var note: Str
+}
+
+view ImeT(m: Box[St]) {
+  <vbox class="root">
+    <label class="title">IME HAND</label>
+    <textarea bind={m.note} class="ta" on:input={save2}/>
+    <input bind={m.draft} class="fld" on:input={save}/>
+    <label class="mirror">{m.draft}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style title { fg: "#ffffff" size: 20 h: 34 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style ta { bg: "#222228" fg: "#ffffff" h: 96 size: 16 }
+style mirror { fg: "#22c55e" h: 30 }
+
+fn save(text: Str) {
+}
+fn save2(text: Str) {
+}
+
+fn bind_all(buf: List[Str], m: Box[St]) {
+    if buf[0] == "m.note" {
+        buf.push(m.note)
+    } else {
+        if buf[0] == "m.draft" {
+            buf.push(m.draft)
+        }
+    }
+}
+
+fn on_act(name: Str, m: Box[St]) {
+    if name.len >= 6 {
+        if byte_at(name, 0) == 115 && byte_at(name, 1) == 97 && byte_at(name, 2) == 118 && byte_at(name, 3) == 101 && byte_at(name, 4) == 50 && byte_at(name, 5) == 58 {
+            m.note = byte_slice(name, 6, name.len)
+            return
+        }
+    }
+    if name.len >= 5 {
+        if byte_at(name, 0) == 115 && byte_at(name, 1) == 97 && byte_at(name, 2) == 118 && byte_at(name, 3) == 101 && byte_at(name, 4) == 58 {
+            m.draft = byte_slice(name, 5, name.len)
+            return
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[St](St { draft: "ready", note: "n1\nn2\nn3" })
+    var rc: I32 = rt_run_src(src, "ime hand", 360, 300,
+        |buf| bind_all(buf, m),
+        |name| on_act(name, m))
+    return rc
+}
