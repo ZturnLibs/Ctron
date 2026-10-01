@@ -62,7 +62,7 @@ fn sd_target(path: Str, skip: I32) -> Str {
 
 // ---- handler 工厂(闭包捕获 dir/skip;with_sessions 捕获先例)----
 
-fn sd_at[S](dir: Str, skip: I32) -> fn(Req[S]) -> Resp {
+fn sd_at[S](dir: Str, skip: I32) -> fn(&Req[S]) -> Resp {
     return |req| {
         let target = sd_target(req.path, skip)
         let raw = st_serve(dir, target, header[S](req, "If-None-Match"), header[S](req, "Range"))
@@ -71,7 +71,7 @@ fn sd_at[S](dir: Str, skip: I32) -> fn(Req[S]) -> Resp {
 }
 
 // §4.1 冻结名面:static_dir(dir) → handler(剥首段;直挂/单段前缀形态)
-pub fn static_dir[S](dir: Str) -> fn(Req[S]) -> Resp {
+pub fn static_dir[S](dir: Str) -> fn(&Req[S]) -> Resp {
     return sd_at[S](dir, 1)
 }
 

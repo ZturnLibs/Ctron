@@ -24,7 +24,7 @@ pub struct JDoc {
     let entries: List[List[Str]]
 }
 
-pub fn json_of[S](r: Req[S]) -> JDoc {
+pub fn json_of[S](r: &Req[S]) -> JDoc {
     let p = parse(r.body)
     // 注:is_some 非 is_ok——interp 面组合子仅 is_some(对 Ok 同真;is_ok 仅
     // check/emit 面在册,interp 直呼 panic "method:is_ok",task-0-report 在册)

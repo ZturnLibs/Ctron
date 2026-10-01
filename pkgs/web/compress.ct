@@ -83,7 +83,7 @@ fn text_family(ct: Str) -> Bool {
 
 // ---- 四门判定(①②③④;纯面,interp 可测)----
 
-fn gzip_eligible[S](req: Req[S], resp: Resp, threshold: I32) -> Bool {
+fn gzip_eligible[S](req: &Req[S], resp: Resp, threshold: I32) -> Bool {
     if resp_header(resp, "Content-Encoding").len > 0 {
         return false
     }
@@ -126,7 +126,7 @@ fn apply_gzip(resp: Resp, gz: Str) -> Resp {
 
 // ---- 中间件(§4.5 形态 ②;判定 → 压缩 → 回退/上头)----
 
-pub fn compress_mw[S](threshold: I32) -> fn(Req[S], fn(Req[S]) -> Resp) -> Resp {
+pub fn compress_mw[S](threshold: I32) -> fn(&Req[S], fn(&Req[S]) -> Resp) -> Resp {
     return |req, next| {
         let resp = next(req)
         if !gzip_eligible[S](req, resp, threshold) {

@@ -102,7 +102,7 @@ fn del_hit(l: List[Todo], id: I64, uid: Str) -> Bool {
 
 // ---- 守卫(spec §5 逐字:session 槽空 → 303 /login) ----
 
-fn need_login(req: Req[App], next: fn(Req[App]) -> Resp) -> Resp {
+fn need_login(req: &Req[App], next: fn(&Req[App]) -> Resp) -> Resp {
     if session[App](req, "uid").len == 0 {
         return redirect("/login")
     }
@@ -119,7 +119,7 @@ fn guarded(app: App) -> Router[App] {
 
 // ---- handlers(spec §5 逐字;取参按 §4.3 冻结名,显式 TypeArgs) ----
 
-fn h_login(req: Req[App]) -> Resp {
+fn h_login(req: &Req[App]) -> Resp {
     let uid = form[App](req, "uid")
     if !user_auth(req.state, uid, form[App](req, "pass")) {
         return html(view_login("用户名或密码不对"))
@@ -143,7 +143,7 @@ fn rows_of(l: List[Todo], uid: Str) -> Str {
     return join(ps, "")
 }
 
-fn h_list(req: Req[App]) -> Resp {
+fn h_list(req: &Req[App]) -> Resp {
     let uid = session[App](req, "uid")
     let rows = req.state.todos.with(|l| rows_of(l, uid))   // Mutex.with:闭包体即临界区
     let tip = req_flash[App](req)
@@ -154,7 +154,7 @@ fn h_list(req: Req[App]) -> Resp {
     return html(ht_page("todo", body + list_view(rows)))
 }
 
-fn h_add(req: Req[App]) -> Resp {
+fn h_add(req: &Req[App]) -> Resp {
     let title = form[App](req, "title")
     if title.len == 0 || title.len > 512 {
         return redirect("/app")
@@ -166,7 +166,7 @@ fn h_add(req: Req[App]) -> Resp {
     return flash(redirect("/app"), "已添加")      // PRG 提示(§8.1;spec §5 伪码略,测试门在册)
 }
 
-fn h_del(req: Req[App]) -> Resp {
+fn h_del(req: &Req[App]) -> Resp {
     let id = param_i64[App](req, "id").or(0)
     // 应用自有删除逻辑(spec §5 h_del "应用自有逻辑"):墓碑 push 写回
     // (实证适配见 README——with_mut 闭包内对形参整体重绑不写回 Mutex,push 是
