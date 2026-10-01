@@ -3329,7 +3329,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
                 var lstarts = List[I32]()
                 var lends = List[I32]()
-                ta_wrap(tshow, gwrapw, tsz4, lstarts, lends)
+                ta_rows(id, tshow, gwrapw, tsz4, lstarts, lends)
                 var tc2: I32 = gui_caret_get()
                 var tipre2: Str = gui_ime_preedit()
                 if tipre2 != "" {
@@ -3360,15 +3360,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 gui_ime_cx_set(tpx)
                 gui_ime_caret_line_set(tpy, tlh)
                 // 光标跟随(行顶低于视口→上卷;行底超视口→下卷;固定高框才滚)
+                // 仅随光标变化执行:每帧强制回卷与滚轮互搏=滚动被弹回+闪烁
                 if thm == 2 {
-                    var ctop: I32 = 4 + crow * tpitch
-                    var cbot: I32 = ctop + tlh
-                    if ctop < tscr {
-                        gui_ta_scroll_set(id, ctop)
-                    } else {
-                        if cbot > tscr + thv {
-                            gui_ta_scroll_set(id, cbot - thv)
+                    var cgt: I32 = gui_caret_get()
+                    if cgt != gui_ta_follow_get(id) {
+                        var ctop: I32 = 4 + crow * tpitch
+                        var cbot: I32 = ctop + tlh
+                        if ctop < tscr {
+                            gui_ta_scroll_set(id, ctop)
+                        } else {
+                            if cbot > tscr + thv {
+                                gui_ta_scroll_set(id, cbot - thv)
+                            }
                         }
+                        gui_ta_follow_set(id, cgt)
                     }
                     tscr = gui_ta_scroll_get(id)
                     tpy = 4 + crow * tpitch - tscr
@@ -3385,7 +3390,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if ts1 > ts0 {
                     var vstarts = List[I32]()
                     var vends = List[I32]()
-                    ta_wrap(tval, gwrapw, tsz4, vstarts, vends)
+                    ta_rows(id, tval, gwrapw, tsz4, vstarts, vends)
                     var ri: I32 = 0
                     while ri < vstarts.len {
                         var ls: I32 = vstarts[ri]
@@ -3459,7 +3464,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
                 var rvs = List[I32]()
                 var rve = List[I32]()
-                ta_wrap(tshow, rwrapw, tsz3, rvs, rve)
+                ta_rows(id, tshow, rwrapw, tsz3, rvs, rve)
                 var rq: I32 = 0
                 while rq < rvs.len {
                     var rtxt: Str = byte_slice(tshow, rvs[rq], rve[rq])
@@ -4211,7 +4216,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             var utsz: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
             var uvs = List[I32]()
             var uve = List[I32]()
-            ta_wrap(cur, wrapw3, utsz, uvs, uve)
+            ta_rows(fn0, cur, wrapw3, utsz, uvs, uve)
             var urow: I32 = 0
             var ui2: I32 = 0
             while ui2 < uvs.len {
@@ -4264,7 +4269,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             var hsz4: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
             var hvs = List[I32]()
             var hve = List[I32]()
-            ta_wrap(cur, hw4, hsz4, hvs, hve)
+            ta_rows(fn0, cur, hw4, hsz4, hvs, hve)
             var hrow: I32 = 0
             var hi4: I32 = 0
             while hi4 < hvs.len {
@@ -4297,7 +4302,7 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             var esz4: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
             var evs = List[I32]()
             var eve = List[I32]()
-            ta_wrap(cur, ew4, esz4, evs, eve)
+            ta_rows(fn0, cur, ew4, esz4, evs, eve)
             var erow: I32 = 0
             var ei4: I32 = 0
             while ei4 < evs.len {
@@ -5606,7 +5611,7 @@ fn rt_ta_wheel(t: GuiTree, rects: List[I32], hits: List[I32], v: I32, bind: fn(L
     }
     var wvs = List[I32]()
     var wve = List[I32]()
-    ta_wrap(val, wwhl, tszw, wvs, wve)
+    ta_rows(fn0, val, wwhl, tszw, wvs, wve)
     var contenth: I32 = wvs.len * pitchw + 8
     var maxo: I32 = contenth - boxh
     if maxo < 0 {
@@ -5863,6 +5868,13 @@ extern "c" fn gui_ime_caret_y() -> I32
 extern "c" fn gui_ime_caret_h() -> I32
 extern "c" fn gui_ta_scroll_set(node: I32, y: I32) -> I32
 extern "c" fn gui_ta_scroll_get(node: I32) -> I32
+extern "c" fn gui_ta_follow_get(node: I32) -> I32
+extern "c" fn gui_ta_follow_set(node: I32, c: I32) -> I32
+extern "c" fn gui_wrap_cache_hit(node: I32, val: Str, w: I32, size: I32) -> I32
+extern "c" fn gui_wrap_cache_putrow(i: I32, s: I32, e: I32) -> I32
+extern "c" fn gui_wrap_cache_commit(node: I32, val: Str, w: I32, size: I32, rows: I32) -> I32
+extern "c" fn gui_wrap_row_s(i: I32) -> I32
+extern "c" fn gui_wrap_row_e(i: I32) -> I32
 extern "c" fn gui_ime_prev_set(s: Str) -> I32
 extern "c" fn gui_ime_prev_eq(s: Str) -> I32
 
@@ -5944,7 +5956,7 @@ fn gui_ta_row_start(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
     var sz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
     var vs = List[I32]()
     var ve = List[I32]()
-    ta_wrap(val, w, sz, vs, ve)
+    ta_rows(node, val, w, sz, vs, ve)
     var row: I32 = 0
     var i: I32 = 0
     while i < vs.len {
@@ -5964,7 +5976,7 @@ fn gui_ta_row_end(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
     var sz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
     var vs = List[I32]()
     var ve = List[I32]()
-    ta_wrap(val, w, sz, vs, ve)
+    ta_rows(node, val, w, sz, vs, ve)
     var row: I32 = 0
     var i: I32 = 0
     while i < vs.len {
@@ -5974,6 +5986,29 @@ fn gui_ta_row_end(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
         i += 1
     }
     return ve[row]
+}
+
+// 折行表共享缓存消费(单槽,键=节点+值+宽+字号):绘制/焦点几何/选区/滚轮/
+// 键导航同帧多份消费,值未变即整表复用(O(n²) 测量×4→×1,输入卡顿根治面)
+fn ta_rows(id: I32, val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I32 {
+    var n: I32 = gui_wrap_cache_hit(id, val, wpx, size)
+    if n < 0 {
+        ta_wrap(val, wpx, size, outS, outE)
+        var i: I32 = 0
+        while i < outS.len {
+            gui_wrap_cache_putrow(i, outS[i], outE[i])
+            i += 1
+        }
+        gui_wrap_cache_commit(id, val, wpx, size, outS.len)
+        return 0
+    }
+    var i2: I32 = 0
+    while i2 < n {
+        outS.push(gui_wrap_row_s(i2))
+        outE.push(gui_wrap_row_e(i2))
+        i2 += 1
+    }
+    return 0
 }
 
 // 视觉行构建:按宽折行(码点贪心;换行符强制断;空逻辑行=空视觉行占位)
@@ -5999,6 +6034,8 @@ fn ta_wrap(val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I
         }
         // 逻辑行 [ls,le):贪心折
         var cs: I32 = ls
+        // 行内基线测量提升(边界宽=前缀测量差;旧版每边界重测行首前缀)
+        var wbase: I32 = gui_ft_measure_n_wt(val, cs, size, 400, 0)
         while cs < le {
             var ce: I32 = cs
             var lastok: I32 = cs
@@ -6012,7 +6049,7 @@ fn ta_wrap(val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I
                         break
                     }
                 }
-                var wq: I32 = gui_ft_measure_n_wt(val, nb, size, 400, 0) - gui_ft_measure_n_wt(val, cs, size, 400, 0)
+                var wq: I32 = gui_ft_measure_n_wt(val, nb, size, 400, 0) - wbase
                 if wq > wpx {
                     if lastok == cs {
                         // 单码点超宽(极端):独占一行防死循环

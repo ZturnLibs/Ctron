@@ -35,6 +35,42 @@ int g_ime_caret_line[2] = {-1, 0}; // 光标行框内 (y,h)(渲染期恒写;同�
 static int g_ta_scroll[512];
 int gui_ta_scroll_set(int node, int y) { if (node >= 0 && node < 512) { g_ta_scroll[node] = y; } return 0; }
 int gui_ta_scroll_get(int node) { return (node >= 0 && node < 512) ? g_ta_scroll[node] : 0; }
+
+// 光标跟随游标存储(每节点;跟随仅在光标变化帧执行一次——旧版每帧强制回卷
+// 与滚轮互搏=滚动被弹回+整页上下跳闪烁,用户实测)
+static int g_ta_follow[512];
+int gui_ta_follow_get(int node) { return (node >= 0 && node < 512) ? g_ta_follow[node] : -1; }
+int gui_ta_follow_set(int node, int c) { if (node >= 0 && node < 512) { g_ta_follow[node] = c; } return 0; }
+
+// textarea 折行表缓存(单槽;键=节点+值+宽+字号。绘制/焦点几何/选区/滚轮/
+// 键导航每帧多份消费,旧版各建一份=O(n²) FT 测量×4,长文输入卡顿实证)
+#define WC_VAL_MAX 8192
+#define WC_ROW_MAX 1024
+static int g_wc_id = -1;
+static char g_wc_val[WC_VAL_MAX];
+static int g_wc_n = 0;
+static int g_wc_w = -1;
+static int g_wc_sz = -1;
+static int g_wc_rows = 0;
+static int g_wc_s[WC_ROW_MAX];
+static int g_wc_e[WC_ROW_MAX];
+int gui_wrap_cache_hit(int node, const char* val, int n, int w, int size) {
+    if (g_wc_id != node || g_wc_w != w || g_wc_sz != size || g_wc_n != n) { return -1; }
+    for (int i = 0; i < n; i++) { if (g_wc_val[i] != val[i]) { return -1; } }
+    return g_wc_rows;
+}
+int gui_wrap_cache_putrow(int i, int s, int e) {
+    if (i >= 0 && i < WC_ROW_MAX) { g_wc_s[i] = s; g_wc_e[i] = e; }
+    return 0;
+}
+int gui_wrap_cache_commit(int node, const char* val, int n, int w, int size, int rows) {
+    if (rows > WC_ROW_MAX || n > WC_VAL_MAX) { g_wc_id = -1; return 0; }
+    g_wc_id = node; g_wc_w = w; g_wc_sz = size; g_wc_n = n; g_wc_rows = rows;
+    for (int i = 0; i < n; i++) { g_wc_val[i] = val[i]; }
+    return 0;
+}
+int gui_wrap_row_s(int i) { return (i >= 0 && i < g_wc_rows) ? g_wc_s[i] : 0; }
+int gui_wrap_row_e(int i) { return (i >= 0 && i < g_wc_rows) ? g_wc_e[i] : 0; }
 int gui_ime_cx_set(int x) { g_ime_cx = x; return 0; }
 int gui_ime_cx_get(void) { return g_ime_cx; }
 int gui_ime_caret_line_set(int y, int h) { g_ime_caret_line[0] = y; g_ime_caret_line[1] = h; return 0; }
