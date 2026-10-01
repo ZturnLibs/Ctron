@@ -762,4 +762,26 @@ fmt_suite 01i(Rust 侧既有)。
 - **门**:十文件 check OK + 裸跑 rc=0(mw/guard 走 canonical bin/ctron-cc + CTRON_STDPATH;seed 宿主 crypto 闭包挂死在册);suite 94/94+94/94(基线随上游演进)
 - **指针**:L6/L7=T54/T55 候选入册 spec-gap 计划(待用户裁决);压缩线两条件(x_web_compress 夹具+wire 形决策)不得滞留
 
+**2026-09-29 T29 切片1:M1 tracing GC 保守根先行落库**(spec-gap W6;§6.2/T28 M1 契约):
+- 发射运行时 mark-sweep:超级块刻切+头{sz,mk}+空闲链+空块 free;根=机器栈[帧址,
+  main 基]+chan 环+mcell 注册表+bump 区+载荷传播(list 魔数跟扫 items);list_new/Box/
+  Lu 盒入 GC 堆;spawn 置并发退避(任务栈不扫,自动回落 bump);CTRON_GC=1 开启,
+  默认 bump(浸泡后翻默认);阈值 CTRON_GC_THRESHOLD(8MB)。
+- 泄漏锚 `tests/gc/cycle_reclaim`(gc 泳道新立):自引用 List 环 200 轮,collect 后
+  live bytes 回落断言;双档 2/2。观测口 ct_gc_live_bytes/ct_gc_collect。
+- 验证:锚 2/2+suite 默认/GC 档 96/96×2+net 双矩阵 18/18×2+smoke 155/0;decl 422。
+- 登记(设计注记,任务卡保守扫描条款):①保守标记不保留纯内部指针/静态 C 全局不扫
+  (M1.5 精确帧位图=契约 §6.3 替换);②coro/并发档恒 bump(契约注记在案);③闭包 env/
+  view lane/字符串留 bump(M2 面);④S2a/语义零变更(解释臂无 GC,双臂一致)。
+- 余债:peer 本地链未含远端 T26 合并(锁 420 vs 436);本片在 t29-gc-m1 分支待整合。
+
+**2026-09-30 T29 切片2:db GC 档验收+翻面证伪**(spec-gap W6;T29 验收面收口):
+- db GC 矩阵:db/run.sh 编译器自身臂 `env -u CTRON_GC` 豁免(自举编译器巨型 bump
+  arena 经 env 继承激活 GC → 保守扫描近挂死实证,46min CPU 病灶);GC=1 臂与默认臂
+  **同红集(40/14)**=GC 无害性证明(新增红=peer 库根重构 pg_* 符号 E2020×5+种子
+  漂移守卫路径陈旧×5,在册非 GC 债)。
+- **GC 默认档翻面证伪推迟**:同上病理;翻面前置=arena 界定/编译器自指豁免或精确
+  帧位图(切片3)。CTRON_GC 维持显式 opt-in。
+- 验收:T29 卡三条全过(泄漏锚/suite off 双档/net+db GC 档),卡转 ✅(切片3 增强另册)。
+
 **T55 销账(2026-09-30,提交 7590794)**:值位置闭包捕获原生臂落地——03j emit 同病顺带翻转(基线 2 errors→`mw:/x`),探针 t55_probe/t55_mw_smoke 双臂绿,suite 98/98×2;创建时快照边界+T27 注记在案(spec §9 L7)。

@@ -40,6 +40,9 @@ ERROR_CODES = {
     "E4041": "#[repr(c)] 用于非 struct 声明(§9.6 v0.6)",
     "E4042": "捕获闭包作 C-ABI 回调实参(无 env 槽;§9.6 v0.6)",
     "E4044": "变参形参(...)仅限 extern 声明(§9.6 v0.7)",
+    "E4045": "裸引用形参拦截(v0.9·二;FFI 泳道)",
+    "E4046": "Box 收口/裸指针能力面(FFI 泳道 14a8b73)",
+    "E4047": "ptr_as_view 裸指针读侧信任门(FFI 泳道 c7018f3)",
     "E4050": "类直接持有需确定性释放的资源字段(§6.2)",
     "E5010": "trait 孤儿规则违规",
     "E5020": "循环依赖",
@@ -95,6 +98,10 @@ def check_file(path: Path) -> list[str]:
     if len(relparts0) >= 3 and relparts0[0] == "http" and relparts0[1] in ("bench", "fuzz"):
         # http/bench|fuzz:性能/模糊驱动(bench.sh、fuzz/run.sh 自驱,非 test 块语义;
         # 同 gui/ 泳道"bench 夹具先例")。
+        return errors
+    if relparts0 and relparts0[0] == "gc" and "src" in relparts0:
+        # gc 包 main:由 tests/gc/run.sh 双档(gc=on/gc=off)驱动,非 test 块语义
+        # (net/ 泳道先例;T29)。
         return errors
     if relparts0 and relparts0[0] == "net" and "src" in relparts0:
         # net 包 main:由 tests/net/run.sh 双臂(原生==解释黄金对照)驱动,

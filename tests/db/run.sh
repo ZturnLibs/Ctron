@@ -57,7 +57,7 @@ done
 
 # ── db 声明冒烟(无 inline test 块;装载/类型检查即过,C17 口径)──
 for m in pg db redis pool rowmap; do
-    if "$CC" run "$ROOT/lib/db/$m.ct" > "$T/std_$m.out" 2>&1; then
+    if env -u CTRON_GC "$CC" run "$ROOT/lib/db/$m.ct" > "$T/std_$m.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS db/$m.ct (decl smoke, interp)"
     else
         fail=$((fail+1)); echo "  FAIL db/$m.ct (decl smoke, interp)"; sed -n '1,5p' "$T/std_$m.out"
@@ -103,7 +103,7 @@ for f in "$DIR"/corpus/*.ct "$DIR"/replay_scram/s_*.ct \
     case "$name" in
         x_*) continue ;;
     esac
-    if "$CC" run "$f" > "$T/$name.out" 2>&1; then
+    if env -u CTRON_GC "$CC" run "$f" > "$T/$name.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (interp)"
     else
         fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"

@@ -474,7 +474,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var bxt = ct_typeof(ag[1], env, file)
                 if bxt.len > 2 && byte_slice(bxt, 0, 2) == "u:" {
                     var btn = "t_" + byte_slice(bxt, 2, bxt.len)
-                    return "(\{ " + btn + "* _b = (" + btn + "*)ctron_amalloc(sizeof(" + btn + ")); *_b = " + ct_expr(ag[1], env, file) + "; _b; })"
+                    return "(\{ " + btn + "* _b = (" + btn + "*)ct_gc_alloc(sizeof(" + btn + ")); *_b = " + ct_expr(ag[1], env, file) + "; _b; })"
                 }
                 panic("emit:Box 载荷限值类型")
                 return ""
@@ -638,7 +638,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     ct_mcell_emit(mi)
                 }
                 var mtg = ct_mcell_tag(mi)
-                return "(\{ ct_mcell_" + mtg + "* _p = (ct_mcell_" + mtg + "*)malloc(sizeof(ct_mcell_" + mtg + ")); pthread_mutex_init(&_p->mu, 0); _p->v = " + minit + "; _p; })"
+                return "(\{ ct_mcell_" + mtg + "* _p = (ct_mcell_" + mtg + "*)malloc(sizeof(ct_mcell_" + mtg + ")); pthread_mutex_init(&_p->mu, 0); _p->v = " + minit + "; ct_mcreg_add((void*)_p, sizeof(*_p) / 8 + 2); _p; })"
             }
         }
         if cal[0] == "Member" {
@@ -851,7 +851,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // Lu: 族(T14-②):struct 元素装箱入槽(堆盒值拷贝;索引侧解引用取回)
                 if ct_is_lcode(objt6) {
                     var boxty = ct_ctype(byte_slice(objt6, 1, objt6.len))
-                    return "(\{ " + boxty + "* _lb = (" + boxty + "*)ctron_amalloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
+                    return "(\{ " + boxty + "* _lb = (" + boxty + "*)ct_gc_alloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
                 }
                 var pv = ct_arg_cast(a0t, "s", a0)
                 if or2(ct_is_tlcode(objt6), !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(ct_is_lcode(a0t), or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))))) {
@@ -964,6 +964,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "env_get" { return "ctron_env_get(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // T26 进程参数底座(§8.1 Env.args):发射模板同形助手
         if callee == "ctron_prog_args_n" { return "ctron_prog_args_n()" }
+        // T29 GC 观测口(泄漏锚;发射运行时模板定义)
+        if callee == "ct_gc_live_bytes" { return "ct_gc_live_bytes()" }
+        if callee == "ct_gc_collect" { return "ct_gc_collect()" }
         if callee == "ctron_prog_args_at" { return "ctron_prog_args_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "ctron_embedded" { return "ctron_embedded()" }
         if callee == "gui_sk_load" { return "gui_sk_load()" }

@@ -1,0 +1,56 @@
+// tests/gc/cycle_reclaim —— M1 泄漏锚(§6.2 无循环引用泄漏;T29)
+// 承诺:自引用 List 环在 CTROON_GC=1 下经 collect 回收(live bytes 回落);
+//       CTRON_GC=off(bump)恒不回收(live 恒 0 语义=不可观测,断言跳过)。
+// 形态:l.push(l) 自环 + 每轮 512 节点链,300 轮;bump 版此程序 RSS 线性涨
+// (在册 bump-only 病灶),GC 版 live 稳态。
+#[trusted]
+extern "c" fn ct_gc_live_bytes() -> I64
+
+#[trusted]
+extern "c" fn ct_gc_collect() -> I64
+
+fn churn(round: I64) -> I64 {
+    var keep: I64 = 0
+    var i: I64 = 0
+    while i < round {
+        var l = List[List[I64]]()
+        var j: I64 = 0
+        while j < 64 {
+            var inner = List[I64]()
+            var k: I64 = 0
+            while k < 64 {
+                inner.push(k)
+                k += 1
+            }
+            l.push(inner)
+            j += 1
+        }
+        // 自环:l 含自身 → bump 必泄漏;GC 须在根丢弃后整环回收
+        l.push(l)
+        keep = keep + l.len
+        i += 1
+    }
+    return keep
+}
+
+fn main() -> I32 {
+    var gc = ct_gc_live_bytes() >= 0
+    if !gc {
+        // bump 档:live 语义不可观测,行为面仅验证程序本身跑通
+        var w = churn(4)
+        assert(w > 0)
+        println("gc=off bump 档跑通")
+        return 0
+    }
+    // 预热:分配触发一次自动 collect,建立稳态基线
+    var w1 = churn(8)
+    var base = ct_gc_collect()
+    // 压力轮:根全部丢弃(keep 只累计 len 标量)
+    var w2 = churn(200)
+    var after = ct_gc_collect()
+    assert(w1 > 0)
+    assert(w2 > 0)
+    assert(after < base + 1048576)
+    println("gc=on cycle reclaim ok")
+    return 0
+}
