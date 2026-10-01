@@ -644,9 +644,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         // 「call to undeclared function」(自引用面由下方位 #ifndef 内原型
                         // 覆盖,互引面唯此前置可救;重复原型 C 合法)。型别载荷互引限
                         // 指针/盒形(值形 C 表意不可达,非本扩位)
-                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ");")
-                        ct_body(spec[5], env_bind(env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), "#gseen", gseen2), file, rcs)
-                        // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
+                        // 实例 typedef 须先于前置原型(原型签名引用实例型 t_X__Y,
+                        // typedef 缺席 = unknown type name;CT_TDEF_ 卫兵幂等,前置
+                        // 后下方重复发射无害)
                         pk3 = 1
                         while pk3 < ps2.len {
                             if ps2[pk3][0] == "Param" {
@@ -655,6 +655,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             pk3 += 1
                         }
                         ct_emit_inst_typedef(file, spec[4])
+                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ");")
+                        ct_body(spec[5], env_bind(env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), "#gseen", gseen2), file, rcs)
+                        // (实例 typedef 已前置——此间不再重复发射;发散链负例 64 层
+                        // 逐层增长码下 typedef 工作量超线性,双份即病态放大,实测
+                        // 12+ CPU 分钟不可收)
                         println("//DD2:" + mg + " phd=" + phd.to_string())
                         println("#ifndef CT_SPEC_" + mg)
                         println("#define CT_SPEC_" + mg)
