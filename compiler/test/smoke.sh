@@ -41,7 +41,7 @@ check_decl() { # <源.ct> <期望decl>
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
 }
 check_decl "$SH/sem_chk.ct"    109
-check_decl "$SH/parsetree.ct"   57
+check_decl "$SH/parsetree.ct"   60
 check_decl "$SH/ev2.ct"        107
 check_decl "$SH/cc.ct"         175
 

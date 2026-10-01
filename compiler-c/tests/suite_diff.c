@@ -108,6 +108,23 @@ static int diff_exec(const char* msrc, const char* ip, int seq, const char* labe
     return ok ? 0 : 1;
 }
 
+// 消息归一:自举双语诊断表 vs C 英文串的语言面分歧在册,模块级差分按「文件+码+计数」比
+static char* norm_msg(const char* s) {
+    size_t n = strlen(s);
+    char* out = (char*)malloc(n + 1);
+    if (!out) abort();
+    size_t o = 0, i = 0;
+    while (i < n) {
+        if (s[i] == ':' && i + 1 < n && s[i + 1] == ' ') {
+            while (i < n && s[i] != '\n') i++; // 消息文本剥离(保留行界)
+            continue;
+        }
+        out[o++] = s[i++];
+    }
+    out[o] = 0;
+    return out;
+}
+
 // 模块级 oracle 差分(seq=8):Ctron pkg_chk 对包目录输出 vs C ctron_pkg_check 非 JSON 文本
 static int diff_pkg(const char* msrc, const char* ip, int seq, const char* label) {
     (void)seq;
@@ -147,10 +164,14 @@ static int diff_pkg(const char* msrc, const char* ip, int seq, const char* label
     ctron_pkg_res_free(&r);
     const char* mo = mr.out ? mr.out : "";
     const char* cb = buf ? buf : "";
-    int ok = strcmp(mo, cb) == 0;
+    char* nm_c = norm_msg(cb);
+    char* nm_m = norm_msg(mo);
+    int ok = strcmp(nm_c, nm_m) == 0;
     if (!ok) {
-        fprintf(stderr, "%s 模块级差分失败\n  C: %s\n  Ctron: %s\n", label, cb, mo);
+        fprintf(stderr, "%s 模块级差分失败(文件+码归一)\n  C: %s\n  Ctron: %s\n", label, nm_c, nm_m);
     }
+    free(nm_c);
+    free(nm_m);
     free(buf);
     ctron_rt_run_free(&mr);
     return ok ? 0 : 1;

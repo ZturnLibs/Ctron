@@ -75,6 +75,8 @@ fn kw(text: Str) -> Str {
     if text == "while" { return "While" }
     if text == "for" { return "For" }
     if text == "in" { return "In" }
+    if text == "break" { return "Break" }
+    if text == "continue" { return "Continue" }
     if text == "return" { return "Return" }
     if text == "struct" { return "Struct" }
     if text == "class" { return "Class" }
@@ -108,6 +110,7 @@ fn op2(a: I32, b: I32) -> Str {
     if a == 60 && b == 61 { return "LtEq" }
     if a == 62 && b == 61 { return "GtEq" }
     if a == 38 && b == 38 { return "AndAnd" }
+    if a == 124 && b == 124 { return "OrOr" }
     if a == 45 && b == 62 { return "Arrow" }
     if a == 61 && b == 62 { return "FatArrow" }
     return "?"
@@ -146,6 +149,7 @@ fn end_cont(k: Str) -> Bool {
     if k == "Arrow" { return true }
     if k == "FatArrow" { return true }
     if k == "AndAnd" { return true }
+    if k == "OrOr" { return true }
     if k == "DotDot" { return true }
     if k == "DotDotEq" { return true }
     if k == "Plus" { return true }
@@ -184,6 +188,7 @@ fn next_cont(k: Str) -> Bool {
     if k == "LtEq" { return true }
     if k == "GtEq" { return true }
     if k == "AndAnd" { return true }
+    if k == "OrOr" { return true }
     if k == "DotDot" { return true }
     if k == "DotDotEq" { return true }
     return false
@@ -230,6 +235,16 @@ fn scan(src: Str, toks: List[Str]) {
             var word = byte_slice(src, start, i)
             if word == "_" {
                 toks.push("Underscore")
+            } else if word == "or" {
+                // 保留运算符字:成员位置的 or 是方法名(§5.2;C 侧 prev_is_dot 同口径,
+                // Newline 亦重置)
+                var prev = ""
+                if toks.len > 0 { prev = toks[toks.len - 1] }
+                if prev == "Dot" {
+                    toks.push("Ident:or")
+                } else {
+                    toks.push("Or")
+                }
             } else if kw(word) != "Ident" {
                 toks.push(kw(word))
             } else {
