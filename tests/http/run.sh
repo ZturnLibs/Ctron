@@ -261,6 +261,9 @@ done
 # body→json 叶 + guard 双叶并用皆纯叶,无 W8052)interp + emit 双计。
 # 确定性:时钟/sid 熵源恒注入参数(auth.ct 头注④;limit.ct 先例),
 # JWT 黄金向量离线预compute,零真钟零熵零外联。
+# 注(T31 探路,2026-10-01):a_jwt interp 臂 41GB/136s 无回收实证在册;
+# GC=1 委托两路证伪(首适应漫步挂死+深栈保守伪标 segv),M1.5 精确根集
+# 为唯一健全路径(见 COVERAGE 工作志)。interp 臂维持默认档。
 for f in "$DIR"/frm_auth/a_*.ct; do
     [ -f "$f" ] || continue
     name="frm_auth_$(basename "$f" .ct)"
