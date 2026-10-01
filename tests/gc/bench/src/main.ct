@@ -1,0 +1,23 @@
+// tests/gc/bench —— T32 GC 性能核(§9.4;分配 churn:List 建/填/弃 ×3k)
+// digest:两档输出恒 "300000"(正确性门);比值 = min×3(GC=1)/min×3(bump)
+fn churn(n: I64) -> I64 {
+    var acc: I64 = 0
+    var i: I64 = 0
+    while i < n {
+        var l = List[I64]()
+        var j: I64 = 0
+        while j < 100 {
+            l.push(j)
+            j += 1
+        }
+        acc = acc + l.len
+        i += 1
+    }
+    return acc
+}
+
+fn main() -> I32 {
+    var r = churn(3000)
+    println(r.to_string())
+    return 0
+}

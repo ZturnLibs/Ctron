@@ -229,3 +229,19 @@ fi
 
 echo "ctron_smoke: $pass ok / $fail fail"
 [ "$fail" -eq 0 ] || exit 1
+
+# ---- T36 build/target 后端接口(§9.7 插件化地板) ----
+T36=$(mktemp -d /tmp/ct36.XXXXXX)
+printf 'fn main() -> I32 {\n    println("t36-ok")\n    return 0\n}\n' > "$T36/a.ct"
+if "$ROOT/compiler/ctc.sh" build "$T36/a.ct" -o "$T36/a.bin" >/dev/null 2>&1 \
+   && "$T36/a.bin" run "$T36/a.ct" | grep -q "t36-ok"; then
+    ok "ctc build --target native 等价链(构建→运行)"
+else
+    bad "ctc build --target native 失败"
+fi
+if "$ROOT/compiler/ctc.sh" build "$T36/a.ct" --target=wasm32-unknown-unknown >/dev/null 2>&1; then
+    bad "ctc build 未注册 target 未拦截(期望 exit 2)"
+else
+    ok "ctc build 未注册 target 清晰诊断(exit 2)"
+fi
+rm -rf "$T36"

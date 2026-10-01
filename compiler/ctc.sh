@@ -23,7 +23,7 @@ PROF=full
 TAUSTED=0
 DIAGLANG=zh
 case ${1:-} in
-    check|emit|fmt|doc|ast) mode=$1; shift ;;
+    check|emit|fmt|doc|ast|build|targets) mode=$1; shift ;;
 esac
 for a in "$@"; do
     case $a in
@@ -31,15 +31,29 @@ for a in "$@"; do
         --trusted) TAUSTED=1 ;;
         --lang=*) DIAGLANG=${a#--lang=} ;;
     --deterministic) export CTRON_RT_SEED=1 ;;
+    --target=*) TARGET=${a#--target=} ;;
+    --target) TARGET_NEXT=1 ;;
     esac
 done
+# T36 后端注册表(§9.7 插件化地板):triple/链接器最小面;C native=首个后端,
+# wasm32/bare 随 T37/T40 注册——未列名=清晰诊断(fail-closed)。
+TARGET=${TARGET:-native}
+case $TARGET in
+    native) TGT_CC="cc -O2" ;;
+    *) echo "ctc.sh: 未注册后端 target: $TARGET(注册表: native;wasm32/bare 随 T37/T40)" >&2; exit 2 ;;
+esac
 if [ ! -x "$HOST" ]; then
     echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
-if [ $# -lt 1 ] || [ ! -f "$1" ]; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump]" >&2
+if [ "$mode" != "targets" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native] [-o bin] | ctc.sh targets" >&2
     exit 2
+fi
+
+if [ "$mode" = "targets" ]; then
+    echo "ctc.sh: 注册后端 target:native(cc -O2,宿主三件套;wasm32/bare 随 T37/T40 注册)"
+    exit 0
 fi
 
 IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
@@ -117,6 +131,19 @@ case $mode in
             emit_link_summary "$OUTC"
         fi
         ;;
+    build)
+        OUTBIN="ctron_app"
+        prev_o=0
+        for a2 in "$@"; do
+            if [ "$prev_o" = "1" ]; then OUTBIN="$a2"; prev_o=0; fi
+            case $a2 in -o) prev_o=1 ;; esac
+        done
+        TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
+        "$0" emit "$IN" "$TMPC" > /dev/null 2>&1 || { echo "ctc.sh: build 发射失败" >&2; exit 1; }
+        $TGT_CC "$TMPC" -o "$OUTBIN" || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
+        echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
+        rc=0
+        ;;
     fmt)
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_fmt.XXXXXX)
@@ -154,5 +181,5 @@ case $mode in
         rc=$?
         ;;
 esac
-rm -f ${TMP:-/dev/null}
+rm -f ${TMP:-}
 exit $rc

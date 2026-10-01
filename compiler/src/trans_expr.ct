@@ -697,23 +697,41 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     var marr = ct_expr(ag[1], env, file)
                     var mart = ct_typeof(ag[1], env, file)
+                    if mart.len > 1 && byte_at(mart, 0) == 97 {
+                        var w64 = "0"
+                        var ec = byte_slice(mart, 1, mart.len)
+                        if byte_at(ec, ec.len - 1) == 54 || byte_at(ec, ec.len - 1) == 55 { w64 = "1" }
+                        var mclo = ct_emit_clo(e, ag[2], env, file, 1)
+                        return "ct_pmap_par_a((void*)(" + marr + "), " + a_count(mart) + ", " + w64 + ", " + mclo + ")"
+                    }
                     if or2(mart == "L", ct_is_tlcode(mart)) {
                     } else {
-                        panic("emit:parallel 目标限 List")
+                        panic("emit:parallel 目标限 List/数组")
                         return ""
                     }
                     var mclo = ct_emit_clo(e, ag[2], env, file, 1)
-                    return "ct_parallel_mapL((ctron_list*)(" + marr + "), " + mclo + ")"
+                    // T33:CTRON_PAR=off 串行回退,默认 fork-join(§7.7;分块序固定=确定性)
+                    return "(getenv(\"CTRON_PAR\") != NULL && strcmp(getenv(\"CTRON_PAR\"), \"off\") == 0 ? ct_parallel_mapL((ctron_list*)(" + marr + "), " + mclo + ") : ct_pmap_par((ctron_list*)(" + marr + "), " + mclo + "))"
                 }
                 if m == "reduce" {
                     if ag.len < 4 {
                         panic("emit:parallel.reduce 实参")
                         return ""
                     }
+                    var rart = ct_typeof(ag[1], env, file)
+                    if rart.len > 1 && byte_at(rart, 0) == 97 {
+                        var rara = ct_expr(ag[1], env, file)
+                        var w64r = "0"
+                        var ec2 = byte_slice(rart, 1, rart.len)
+                        if byte_at(ec2, ec2.len - 1) == 54 || byte_at(ec2, ec2.len - 1) == 55 { w64r = "1" }
+                        var rclo = ct_emit_clo(e, ag[3], env, file, 2)
+                        var rini = ct_expr(ag[2], env, file)
+                        return "ct_pred_par_a((void*)(" + rara + "), " + a_count(rart) + ", " + w64r + ", " + rclo + ", (ct_i)(" + rini + "))"
+                    }
                     var rarr = ct_expr(ag[1], env, file)
                     var rinit = ct_expr(ag[2], env, file)
                     var rclo = ct_emit_clo(e, ag[3], env, file, 2)
-                    return "ct_parallel_reduceL((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + ")"
+                    return "(getenv(\"CTRON_PAR\") != NULL && strcmp(getenv(\"CTRON_PAR\"), \"off\") == 0 ? ct_parallel_reduceL((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + ") : ct_pred_par((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + "))"
                 }
                 panic("emit:parallel." + m)
                 return ""

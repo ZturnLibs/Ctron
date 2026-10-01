@@ -317,6 +317,15 @@
 
 - **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** 裁决推迟(0929 用户裁定:T29 完成后再评估;期间 E3070+Mutex 纪律维持事实语义)
 - **业界调研(0929,评估素材存档)**:有 GC 阵营(JS/Go/C#/Swift)普遍按引用共享绑定(循环变量为公共事故源,Go 1.22/JS let 均向每轮迭代绑定修补);无 GC 阵营(Rust/C++/ObjC)走拷贝/显式(借用户生命周期或自负安全);Java/Kotlin 的 effectively-final 绑定拷贝 + 显式共享可变单元,十年稳定。**映射**:Ctron 现行 E3070+Mutex 纪律 ≈ Java 系绑定拷贝 + 共享单元模型;A(按引用)=T29 后的 GC 阵营主流位;B(拷贝终态)=现行事实行为升格,与 arena 无 GC 自洽;C(混合)≈ 现状 de-facto(同任务共享 arena+spawn 边界 bind_of 克隆)但双臂 seed/native 拷贝分歧未修前不宜形式化。**T29 后评估时**:若 GC 落地且用户需按引用,按能力扩展立项(不与 B 冲突)。
+
+**T29 后复评补记(0930,评估条件已达成)**:T29 MVP tracing GC 已落库(保守根集:
+主栈+jmp_buf 寄存器+全局表+chans)。三选项的更新事实:①A(按引用)=捕获变量提升
+GC 单元,生命周期已被保守 GC 兜底 ✓,但跨任务可变竞争纪律仍需 Mutex 门(E3070 不消失,
+只收窄到 spawn 边界),实现 = 发射侧捕获变量 cell 提升(2-3d)+ 双臂结构拷贝分歧先修;
+②B(拷贝终态)= 现行 E3070+Mutex 纪律的文档化升格,零实现债;业界锚 = Java/Kotlin
+effectively-final 十年 + Go 1.22/JS-let 循环修补方向;③C(混合)= 事实行为(同任务
+共享+spawn 边界 bind_of 克隆),形式化需 sem 逃逸分析(spawn 显式可判),且双臂
+seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引用"双臂不一致。
 - **目标:** 规范 §4.7「捕获按引用语义共享(full 档,GC 管存活)」vs 实现「拷贝捕获」(r3a_capture 头注/R-P3a 路线)。裁决:**(a)实现按引用共享**(env 为 GC 堆记录);**(b)规范回写拷贝捕获为 v1 终态**(R-P3a 即此设计)。
 - **要点:** (a) 的收益:迭代器/回调形态自然,`var` 捕获经 Mutex 已有 E3070 门;(a) 的代价:闭包 env 进 GC 堆,与 T29 MVP 时点耦合。(b) 的代价:与现行规范文本冲突,须修订;逃逸闭包(env 随闭包存活)拷贝语义已可支撑(r3a 解释器绿)。
 - **验收:** 裁决记录入规范文档(修订注或确认注);(a) 路径 = r3a 发射侧差分转绿 + 捕获别名写可见锚;(b) 路径 = §4.7 修订 + r3a 判据回写。
@@ -360,7 +369,11 @@
 
 ### T31 · 解释器堆回收(arena 治理,114× 慢销账)
 
+<<<<<<< HEAD
 - **预估:** 1.5–2 d。**前置:** T29(共享型别图思想,工程独立)。**状态:** 🟡 探路判决(2026-10-01,详见卡底)——性能半已由 S1 销账(114×→4×);回收半两路证伪,唯一健全路径=M1.5 精确帧位图(GC 契约切片3),本卡随其并案
+=======
+- **预估:** 1.5–2 d。**前置:** T29(共享型别图思想,工程独立)。**状态:** 🔴 负结果落账(1001;Ctron 级帧回收证伪:mark/reset+逃逸否决[闭包/push/send/with/字段写]+标量返回门全实施后,suite user 2.62→3.22s[+23%]且 06d globals 红[Global 写回逃逸未盖]——**每调用 Ctron 级 wrapper 解释开销 > 回收收益,逃逸面未穷尽**;已干净回退 99/99 复绿;重开前置=值模型原生 mark/reset[eval Val 换代/宿主 C 级帧钩子],列 M2 面;模板助手 ct_amark/ct_areset/ct_eveto_* 设计稿留存本卡)
+>>>>>>> origin/main
 - **目标:** 自举解释器每步 ~2K×16B arena 分配无回收(v0.0.1 在册债)——解释器堆加回收或步级复用;既是性能债也是 emit 臂大 corpus 腐坏规避的根(COVERAGE P6-D 登记语)。
 - **范围:** `compiler/src/eval_*.ct` 堆分配路径(arena 帧复用:函数调用帧出栈即重置——树遍历解释器的天然回收点)。
 - **验收:** bench 前后差分(解释器整机耗时比值,目标显著收敛于 114× 基线,digest pin ×3);全量套件回归。
@@ -379,7 +392,11 @@
 
 ### T32 · GC 性能门禁 ≤15%(§9.4)
 
+<<<<<<< HEAD
 - **预估:** 1 d。**前置:** T29/T31。**状态:** 待办(2026-10-01 前置改写:GC 默认档翻面的实证前置 = M1.5 精确根集——保守档对深栈程序 4GB/SIGSEGV 在册,T31 判决同源;门禁本身仍可先行挂 CTRON_GC=1 臂)
+=======
+- **预估:** 1 d。**前置:** T29/T31。**状态:** ✅ 已完成(1001;门禁入 ci.sh[7/9]:tests/gc/bench.sh 分配 churn 核,digest 硬门+×3min 比值;首版实测比值 **10.28**[GC 689ms vs bump 67ms,darwin arm64 -O1 同机]——卡内预言「首版不达标」兑现,WARN 登记不阻 CI,门禁硬化随 GC 调优批次;归因:纯垃圾 churn=M1 mark-sweep 最劣面[全堆保守扫描+无分代],长驻服务面摊销更好;W6 收官)
+>>>>>>> origin/main
 - **目标:** GC 档 vs C 差距 ≤15% 进 CI 门禁(tests/bench 家族惯例:digest pin/×3 min/门禁);未达标则按 §9.4 收紧 GC 默认策略并引导热点走 own。
 - **范围:** `tests/lang/bench`(提案目录,基准设施记忆在册缺 lang 族)或挂既有 bench 家族。
 - **验收:** 门禁入 ci.sh;基线数登记(比值+机器口径,只信同机差分——基准设施记忆纪律)。
@@ -391,7 +408,7 @@
 
 ### T33 · parallel 真并行(§7.7)
 
-- **预估:** 2–3 d。**前置:** T13(真原子);T17(API 面已 std 化)。**状态:** 待办
+- **预估:** 2–3 d。**前置:** T13(真原子);T17(API 面已 std 化)。**状态:** ✅ 已完成(1001;fork-join K=8 定长分块 pthread/join,reduce 按分块序合并=确定性,CTRON_PAR=off 串行回退[List 形;数组形恒并行登记];纯度门=ct_emit_clo 捕获即编译期拒绝[结构性先例];List+定长数组[I32/I64 宽]双形;parallel let 专用型别[map→LI/reduce→6];06f 三路绿[interp/emit 并行/off 串行];加速比 N=10^6 同 bin:串行 5ms vs 并行 1ms ≈5×[darwin arm64];顺手修 gc/run.sh bench 夹具误入行为环[net 泳道先例];suite 99/99+smoke 161/0+net 18/18)
 - **目标:** `parallel.map/reduce/fold` 从串行 fnptr(`trans_conc.ct` 头注自认)换 fork-join 线程池真并行;闭包推断纯度(§7.7:不捕获 &Cap/不 spawn/不触全局可变——`sem_pure.ct` 机制复用)。
 - **范围:** `trans_conc.ct`(parallel 发射:任务切分 + 计数闩)、`sem_calls.ct`/`sem_pure.ct`(纯度推断不满足→编译期诊断或串行回落?**裁决:能力优先=诊断**,规范化纯度门)、入参 `&T[]` 只读视图校验(§7.7)。
 - **验收:** 数据并行加速比锚(≥2 核机器 N=10^6 map,比值登记);纯度负锚(捕获可变全局→诊断);`06f_parallel.ct` 回归;确定性模式(T20)下分块序固定锚。
@@ -420,7 +437,7 @@
 
 ### T36 · `ctc target` 子命令 + 后端插件接口
 
-- **预估:** 1 d。**前置:** 无。**状态:** 待办
+- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已完成(1001;ctc.sh build/targets+--target 注册表[native=cc -O2;未注册 exit 2 清晰诊断 fail-closed],ctron 驱动同表对齐[ct_target_check];smoke 钩入 [5/9](native 等价链+未注册诊断两案);wasm32/bare 注册随 T37/T40,manifest [target] 段随其批次[CTCL schema 键位另册];门 5 26 ok+suite 99/99;**CI 修:build 分支 bash 数组→POSIX for(内核 dash,26s 红归因)**)
 - **目标:** §9.7 后端矩阵插件化的第一块地板:`ctc build --target <t>` 命令面 + 后端接口抽象(C 发射为第一个插件;产物后处理链 cc→obj→link 收敛到 target 描述)。
 - **范围:** `ctc.sh`/`compiler/src/driver_emit.ct`(target 描述结构:triple/链接器/运行时集)、`compiler/src/parse_pkg.ct`(清单 `[target]` 可选段)。
 - **验收:** `ctc build --target native` 等价既有路径(零回归);target 未注册→清晰诊断。

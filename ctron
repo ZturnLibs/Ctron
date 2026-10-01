@@ -77,7 +77,17 @@ cc_missing_guidance() {
     echo "  ② C 已发射到 $1 —— 可手动编译,或拿到任何有 cc 的机器上: cc -O2 -w $1 -o <名>" >&2
 }
 
+# T36 后端注册表(§9.7;与 compiler/ctc.sh 同表——native 首个后端,wasm32/bare 随 T37/T40)
+ct_target_check() {
+    CTRON_TARGET=${CTRON_TARGET:-native}
+    case $CTRON_TARGET in
+        native) : ;;
+        *) die2 "未注册后端 target: $CTRON_TARGET(注册表: native;wasm32/bare 随 T37/T40)" ;;
+    esac
+}
+
 cmd_build() {
+    ct_target_check
     IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
     STEM=$(basename "${IN%.ct}")
     OUTDIR=$(dirname "$IN")
@@ -87,7 +97,7 @@ cmd_build() {
         exit 2
     fi
     (CDPATH= cd -- "$OUTDIR" && "$CC_BIN" -O2 -w -pthread "$STEM.c" -o "$STEM") || exit 2
-    echo "ctron: 已构建 $OUTDIR/$STEM"
+    echo "ctron: 已构建 $OUTDIR/$STEM(target: $CTRON_TARGET)"
 }
 
 cmd_build_proj() {
@@ -139,6 +149,11 @@ case $CMD in
         exec "$BIN/ctron-doc" run "$IN" "$@"
         ;;
     build)
+        for a in "$@"; do
+            case $a in
+                --target=*) CTRON_TARGET=${a#--target=} ;;
+            esac
+        done
         if [ $# -ge 1 ]; then cmd_build "$1"; else cmd_build_proj; fi ;;
     test)
         [ $# -ge 1 ] || die2 "test 需要输入文件"
