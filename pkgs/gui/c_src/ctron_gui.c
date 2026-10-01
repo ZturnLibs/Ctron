@@ -811,7 +811,75 @@ int gui_caret_float(int offx, int y, int w, int h, int bg) {
     return 0;
 }
 
-// ---- 右键编辑菜单(文本组件 v1:复制/剪切/粘贴/全选;操作域包 rt_edit_op) ----
+// ---- 撤销/重做(文本编辑;每节点独立栈 64 深,域包 rt_in_fire 类提交点
+// 推「编辑前」快照;⌘Z/⌘Y 交叉搬移;新编辑清空重做=标准语义) ----
+#define UNDO_CAP 64
+typedef struct { char* v; int n; int caret; } CtxSnap;
+typedef struct { CtxSnap* a; int n; int cap; } CtxStack;
+static CtxStack g_undo_s[512];
+static CtxStack g_redo_s[512];
+static int g_undo_mute = 0;
+static char g_undo_popbuf[65536];
+static int g_undo_popn = 0;
+static int g_undo_popcaret = 0;
+static void ctx_snap_free(CtxSnap* sp) { if (sp->v) { free(sp->v); sp->v = NULL; } }
+static void ctx_stack_push(CtxStack* st, const char* v, int n, int caret) {
+    if (st->n == UNDO_CAP) {
+        ctx_snap_free(&st->a[0]);
+        memmove(&st->a[0], &st->a[1], sizeof(CtxSnap) * (UNDO_CAP - 1));
+        st->n = UNDO_CAP - 1;
+    }
+    if (st->n >= st->cap) {
+        int nc = st->cap ? st->cap * 2 : 8;
+        CtxSnap* na = (CtxSnap*)realloc(st->a, sizeof(CtxSnap) * (size_t)nc);
+        if (na == NULL) { return; }
+        st->a = na; st->cap = nc;
+    }
+    char* copy = (char*)malloc((size_t)n + 1);
+    if (copy == NULL) { return; }
+    memcpy(copy, v, (size_t)n);
+    copy[n] = 0;
+    st->a[st->n].v = copy;
+    st->a[st->n].n = n;
+    st->a[st->n].caret = caret;
+    st->n++;
+}
+static CtxStack* ctx_stack_at(int node, int redo) { return redo ? &g_redo_s[node] : &g_undo_s[node]; }
+int gui_undo_mute(int on) { g_undo_mute = on; return 0; }
+// 编辑提交前推快照(mute 期间跳过=粘贴逐码点/撤销恢复不重复推);新编辑清重做
+int gui_undo_push(int node, const char* v, int n, int caret) {
+    if (g_undo_mute) { return 0; }
+    if (node < 0 || node >= 512) { return 0; }
+    ctx_stack_push(&g_undo_s[node], v, n, caret);
+    CtxStack* r = &g_redo_s[node];
+    while (r->n > 0) { r->n--; ctx_snap_free(&r->a[r->n]); }
+    return 0;
+}
+// 定向原始推(undo/redo 搬移用;不受 mute/清栈语义约束)
+int gui_undo_stack_push(int node, const char* v, int n, int caret, int redo) {
+    if (node < 0 || node >= 512) { return 0; }
+    ctx_stack_push(ctx_stack_at(node, redo), v, n, caret);
+    return 0;
+}
+// 弹出(node+侧);1=有,经 gui_undo_val()/gui_undo_caret() 取回
+int gui_undo_pop(int node, int redo) {
+    if (node < 0 || node >= 512) { return 0; }
+    CtxStack* st = ctx_stack_at(node, redo);
+    if (st->n == 0) { return 0; }
+    st->n--;
+    CtxSnap* sp = &st->a[st->n];
+    int m = sp->n < (int)sizeof(g_undo_popbuf) ? sp->n : (int)sizeof(g_undo_popbuf) - 1;
+    memcpy(g_undo_popbuf, sp->v, (size_t)m);
+    g_undo_popbuf[m] = 0;
+    g_undo_popn = m;
+    g_undo_popcaret = sp->caret;
+    ctx_snap_free(sp);
+    return 1;
+}
+const char* gui_undo_val(void) { return g_undo_popbuf; }
+int gui_undo_caret(void) { return g_undo_popcaret; }
+
+// ---- 右键编辑菜单(文本组件 v1:撤销/重做/剪切/复制/粘贴/全选;操作域包 rt_edit_op) ----
 static int g_ctx_on = 0;
 static int g_ctx_node = -1;
 static int g_ctx_ox = 0, g_ctx_oy = 0;   // 菜单相对节点盒偏移(渲染浮盒)
@@ -837,6 +905,8 @@ int gui_menu_begin(int offx, int offy, int w, int h, int bg) {
         .zIndex = 200,
     };
     Clay_LayoutConfig lay = {0};
+    // 纵向排布(Clay 默认 LTR,子项会横排换行——实测全项同 y/全选丢失)
+    lay.layoutDirection = CLAY_TOP_TO_BOTTOM;
     lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)w, (float)w } }, .type = CLAY__SIZING_TYPE_FIXED };
     lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
     lay.padding = (Clay_Padding){ .left = 4, .right = 4, .top = 4, .bottom = 4 };

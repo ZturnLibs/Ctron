@@ -39,6 +39,12 @@ extern "c" fn gui_ctx_ay() -> I32
 extern "c" fn gui_menu_begin(offx: I32, offy: I32, w: I32, h: I32, bg: I32) -> I32
 extern "c" fn gui_menu_item(h: I32, bg: I32, hover: I32) -> I32
 extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
+extern "c" fn gui_undo_mute(on: I32) -> I32
+extern "c" fn gui_undo_push(node: I32, v: Str, n: I32, caret: I32) -> I32
+extern "c" fn gui_undo_stack_push(node: I32, v: Str, n: I32, caret: I32, redo: I32) -> I32
+extern "c" fn gui_undo_pop(node: I32, redo: I32) -> I32
+extern "c" fn gui_undo_val() -> Str
+extern "c" fn gui_undo_caret() -> I32
 
 #[trusted]
 // 形参 I32:与解释桥 int×N cast(栈参 4 字节步长)及 shim int 形参三层一致
@@ -3254,7 +3260,6 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var ifw: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
                 gui_text_w(ishow, isz, ifw, rt_col_r(ifg), rt_col_g(ifg), rt_col_b(ifg), 255)
             }
-            rt_menu_render(id, hits, hinst, inst)
             hits.push(id)
             hinst.push(inst)
         } else {
@@ -3511,7 +3516,6 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                 }
             }
-            rt_menu_render(id, hits, hinst, inst)
             hits.push(id)
             hinst.push(inst)
         } else {
@@ -3666,6 +3670,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         }
         }
     }
+    rt_menu_render(hits, hinst, 0)
     gui_close()
     return 0
 }
@@ -3845,7 +3850,7 @@ fn rt_menu_click(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
     if mx3 >= gui_ctx_ax() {
         if mx3 < gui_ctx_ax() + 112 {
             if my3 >= gui_ctx_ay() {
-                if my3 < gui_ctx_ay() + 112 {
+                if my3 < gui_ctx_ay() + 164 {
                     inmenu = true
                 }
             }
@@ -3857,15 +3862,21 @@ fn rt_menu_click(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
         gui_focus_set(mnode)
         var idx3: I32 = (my3 - gui_ctx_ay() - 4) / 26
         if idx3 == 0 {
-            rt_edit_op(t, mnode, bind, act, 67)
+            rt_edit_op(t, mnode, bind, act, 90)
         }
         if idx3 == 1 {
-            rt_edit_op(t, mnode, bind, act, 88)
+            rt_edit_op(t, mnode, bind, act, 89)
         }
         if idx3 == 2 {
-            rt_edit_op(t, mnode, bind, act, 86)
+            rt_edit_op(t, mnode, bind, act, 88)
         }
         if idx3 == 3 {
+            rt_edit_op(t, mnode, bind, act, 67)
+        }
+        if idx3 == 4 {
+            rt_edit_op(t, mnode, bind, act, 86)
+        }
+        if idx3 == 5 {
             rt_edit_op(t, mnode, bind, act, 65)
         }
     }
@@ -3906,25 +3917,25 @@ fn rt_ctx_open_at(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
     return rn
 }
 
-// 右键菜单渲染(文本件分支尾;仅渲染本节点菜单)。悬停行=accent 高亮 RECT
-// (配对推 hits;透明行不产 RECT 不配对——命中不变量)
-fn rt_menu_render(id: I32, hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
+// 右键菜单渲染(根元素闭合前,挂根=不受 textarea 裁切;偏移=菜单绝对坐标
+// ——根盒在窗原点;裁切容器内浮条会被 Clay 剔除,文本件分支挂法作废)。
+// 悬停行=accent 高亮 RECT(配对推 hits;透明行不产 RECT 不配对——命中不变量)
+fn rt_menu_render(hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
     if gui_ctx_on() == 0 {
-        return 0
-    }
-    if gui_ctx_node() != id {
         return 0
     }
     var mx4: I32 = gui_mouse_x()
     var my4: I32 = gui_mouse_y()
-    gui_menu_begin(gui_ctx_ox(), gui_ctx_oy(), 112, 112, gui_theme_slot_get(2))
+    gui_menu_begin(gui_ctx_ax(), gui_ctx_ay(), 112, 164, gui_theme_slot_get(2))
     var labels = List[Str]()
-    labels.push("复制")
+    labels.push("撤销")
+    labels.push("重做")
     labels.push("剪切")
+    labels.push("复制")
     labels.push("粘贴")
     labels.push("全选")
     var i: I32 = 0
-    while i < 4 {
+    while i < 6 {
         var hov: I32 = 0
         var ry4: I32 = gui_ctx_ay() + 4 + i * 26
         if my4 >= ry4 {
@@ -3941,7 +3952,7 @@ fn rt_menu_render(id: I32, hits: List[I32], hinst: List[I32], inst: I32) -> I32 
         gui_text(labels[i], 13, rt_col_r(fg4), rt_col_g(fg4), rt_col_b(fg4), 255)
         gui_close()
         if hov == 1 {
-            hits.push(id)
+            hits.push(-1)
             hinst.push(inst)
         }
         i += 1
@@ -3980,9 +3991,48 @@ fn rt_edit_op(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void, act: fn(Str, L
         gui_clip_push()
         return true
     }
+    if op == 90 {
+        // ⌘Z 撤销(Shift+⌘Z=重做):弹出快照恢复,当前态进对侧栈(交叉搬移)
+        var redo0: I32 = 0
+        if gui_mod_shift() == 1 {
+            redo0 = 1
+        }
+        if gui_undo_pop(node, redo0) == 1 {
+            var uv: Str = gui_undo_val()
+            var uc: I32 = gui_undo_caret()
+            var cur9: Str = rt_in_val(t, node, bind)
+            var cc9: I32 = gui_caret_get()
+            if redo0 == 1 {
+                gui_undo_stack_push(node, cur9, cur9.len, cc9, 0)
+            } else {
+                gui_undo_stack_push(node, cur9, cur9.len, cc9, 1)
+            }
+            gui_undo_mute(1)
+            gui_caret_set(uc)
+            rt_in_fire(t, node, "input", uv, act)
+            gui_undo_mute(0)
+        }
+        return true
+    }
+    if op == 89 {
+        // ⌘Y 重做
+        if gui_undo_pop(node, 1) == 1 {
+            var uv2: Str = gui_undo_val()
+            var uc2: I32 = gui_undo_caret()
+            var cur8: Str = rt_in_val(t, node, bind)
+            var cc8: I32 = gui_caret_get()
+            gui_undo_stack_push(node, cur8, cur8.len, cc8, 0)
+            gui_undo_mute(1)
+            gui_caret_set(uc2)
+            rt_in_fire(t, node, "input", uv2, act)
+            gui_undo_mute(0)
+        }
+        return true
+    }
     if op == 88 {
         // 剪切 = 复制 + 删段
         if sb > sa {
+            gui_undo_push(node, v1, v1.len, c1)
             gui_clip_set_c(byte_slice(v1, sa, sb))
             gui_clip_push()
             var cut1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
@@ -3998,6 +4048,8 @@ fn rt_edit_op(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void, act: fn(Str, L
         var pi: I32 = 0
         var pn: I32 = gui_clip_len()
         if pn > 0 {
+            gui_undo_push(node, v1, v1.len, c1)
+            gui_undo_mute(1)
             if sb > sa {
                 var del1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
                 gui_sel_clear()
@@ -4031,6 +4083,7 @@ fn rt_edit_op(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void, act: fn(Str, L
                 rt_input_char(t, bind, act, cp)
                 pi += adv
             }
+            gui_undo_mute(0)
         }
         return true
     }
@@ -4053,6 +4106,9 @@ fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
             return false
         }
     }
+    // 撤销快照:编辑提交前推「编辑前」值+光标(粘贴逐码点由 rt_edit_op mute)
+    var pv0: Str = rt_in_val(t, fn0, bind)
+    gui_undo_push(fn0, pv0, pv0.len, gui_caret_get())
     // 选区消费:非空选区先真删(输入替换选区,成熟 GUI 口径)
     var sel_end0: I32 = rt_sel_take()
     if sel_end0 >= 0 {
@@ -4150,6 +4206,9 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
     }
     if k == 261 {
         isdel3 = true
+    }
+    if isdel3 {
+        gui_undo_push(fn0, cur, cur.len, caret)
     }
     if isdel3 {
         var sel_end3: I32 = rt_sel_take()

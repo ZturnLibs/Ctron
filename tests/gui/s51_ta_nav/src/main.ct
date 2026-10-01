@@ -451,8 +451,8 @@ fn main() -> I32 {
             }
             d_expect_text(t, "复制")
             d_expect_text(t, "全选")
-            // 点「全选」项(第 4 项:pad4+3*pitch26,中心 y=124)
-            d_click_text(t, 86, 124, |buf| {
+            // 点「全选」项(第 6 项:pad4+5*pitch26,中心 y=176)
+            d_click_text(t, 86, 176, |buf| {
                 if buf[0] == "m.v" {
                     buf.push(m.v)
                 }
@@ -468,6 +468,34 @@ fn main() -> I32 {
                     buf.push(m.v)
                 }
             }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "Q")
+            d_expect_absent(t, "X")
+            // ===== 撤销/重做(⌘Z 弹快照恢复 / ⌘Y 重做) =====
+            d_mod(t, 1)
+            d_send_key(t, 90, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "X Y")
+            d_mod(t, 1)
+            d_send_key(t, 89, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
             d_frame(t, |buf| {
                 if buf[0] == "m.v" {
                     buf.push(m.v)
