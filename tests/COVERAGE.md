@@ -838,3 +838,10 @@ T02 守卫穷尽(E2030 守卫臂不算覆盖)逻辑。fmt_suite 01i(Rust 侧既�
 - 加速比锚:N=10^6 同 bin 对照,串行 5ms vs 并行 1ms ≈**5×**(darwin arm64,cc -O1)。
 - 06f 三路绿(interp/emit 并行/emit off);suite 99/99+smoke 161/0+net 18/18;
   gc/run.sh 补 bench 夹具 skip(net 泳道先例)。
+
+**2026-10-01 T36 ctc target 后端接口落库**(spec-gap W8 地板;§9.7):
+- ctc.sh:`build <input> [-o bin] [--target=]`+`targets` 子命令;注册表 fail-closed
+  (native=cc -O2;未列名 exit 2 清晰诊断点名注册表与 T37/T40 归属);ctron 安装驱动
+  同表对齐(ct_target_check,build 臂 --target= 环境承载)。
+- smoke [5/9] 两案:native 等价链(构建→运行逐字)/未注册 target 拦截。
+- manifest [target] 可选段随 T37 批次(CTCL schema 键位),本片纯命令面零发射语义变化。
