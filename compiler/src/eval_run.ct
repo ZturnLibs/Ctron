@@ -51,7 +51,9 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
                 if or2(h == "U64", h == "USize") {
                     vv = v7(dvi_str(er.v.iv.as[I32]()))
                 }
-                if h == "ISize" {
+                if or2(h == "I64", h == "ISize") {
+                    // T29 伴随修:I64/ISize 注解 = 拓宽到 6 域(I64 漏,注解 let 绑
+                    // I32 面值后按 I32 检查算术误炸;发射臂 C 隐式拓宽故不显)
                     vv = v6(dvi_str(er.v.iv.as[I32]()))
                 }
             }
