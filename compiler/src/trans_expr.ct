@@ -1724,6 +1724,12 @@ fn ct_emit_inst_typedef(file: List[Str], nt: List[Str]) {
             while fj < fs.len {
                 var fd = fs[fj]
                 var dc = ct_field_code_inst(file, fd[3], snm, encs)
+                // P0-A:字段引用嵌套实例(u:X__尾缀)先出其 typedef(C 依序完整型);
+                // Lu: 装箱槽 ctron_list* 自足,无需 typedef
+                if dc.len > 2 && byte_slice(dc, 0, 2) == "u:" && ct_struct_inst_split(dc).len > 1 {
+                    var dnt = ct_inst_ty_node(dc)
+                    ct_emit_inst_typedef(file, dnt)
+                }
                 line = line + ct_ctype(dc) + " " + fd[2] + "; "
                 fj += 1
             }

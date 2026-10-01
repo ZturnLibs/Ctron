@@ -299,6 +299,9 @@ fn scan(src: Str, toks: List[Str]) {
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 raw.push("&&")
                 i += 2
+            } else if b == 124 && i + 1 < n && byte_at(src, i + 1) == 124 {
+                raw.push("||")
+                i += 2
             } else if b == 61 && i + 1 < n && byte_at(src, i + 1) == 62 {
                 raw.push("=>")
                 i += 2
@@ -570,6 +573,11 @@ fn parse_match(toks: List[Str], cur: Atomic[I32]) -> Str {
             go = false
         } else {
             var pat = parse_pattern(toks, cur)
+            // 模式守卫(R-P3c):pat if cond => body;C 侧参考 dump 不含守卫,吞掉不印
+            if tok(toks, cur) == "if" {
+                adv(cur)
+                parse_expr(toks, cur)
+            }
             adv(cur)
             var ae = parse_expr(toks, cur)
             if k > 0 {
@@ -621,6 +629,25 @@ fn parse_pat_fields(toks: List[Str], cur: Atomic[I32]) -> Str {
 }
 
 fn parse_pattern(toks: List[Str], cur: Atomic[I32]) -> Str {
+    // 或模式替身(R-P3c):pat | pat;C 侧 ast_show 的 Rust Debug 口径 Or([...])
+    var first = parse_pattern_one(toks, cur)
+    if tok(toks, cur) == "|" {
+        var all = first
+        var go = true
+        while go {
+            if tok(toks, cur) == "|" {
+                adv(cur)
+                all = all + ", " + parse_pattern_one(toks, cur)
+            } else {
+                go = false
+            }
+        }
+        return "Or([" + all + "])"
+    }
+    return first
+}
+
+fn parse_pattern_one(toks: List[Str], cur: Atomic[I32]) -> Str {
     var t = tok(toks, cur)
     if t == "_" {
         adv(cur)
@@ -709,7 +736,39 @@ fn parse_pattern(toks: List[Str], cur: Atomic[I32]) -> Str {
 }
 
 fn parse_expr(toks: List[Str], cur: Atomic[I32]) -> Str {
-    return parse_and(toks, cur)
+    return parse_oror(toks, cur)
+}
+
+// v0.7 修订一镜像:第 0 层 ||(中缀位;起始位 || 为零参闭包,parse_primary 分派)
+fn parse_oror(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var l = parse_or(toks, cur)
+    var go = true
+    while go {
+        if tok(toks, cur) == "||" {
+            adv(cur)
+            var r = parse_or(toks, cur)
+            l = "Binary \{ op: OrOr, lhs: " + l + ", rhs: " + r + "}"
+        } else {
+            go = false
+        }
+    }
+    return l
+}
+
+// v0.7 修订一镜像:or 中缀(成员位置 x.or( 由 postfix 作名字吞掉,不到此层)
+fn parse_or(toks: List[Str], cur: Atomic[I32]) -> Str {
+    var l = parse_and(toks, cur)
+    var go = true
+    while go {
+        if tok(toks, cur) == "or" {
+            adv(cur)
+            var r = parse_and(toks, cur)
+            l = "Binary \{ op: Or, lhs: " + l + ", rhs: " + r + "}"
+        } else {
+            go = false
+        }
+    }
+    return l
 }
 
 fn parse_and(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -1003,6 +1062,17 @@ fn parse_primary(toks: List[Str], cur: Atomic[I32]) -> Str {
     if t == "|" {
         return parse_closure(toks, cur)
     }
+    if t == "||" {
+        // v0.7 修订一镜像:起始位 || = 零参闭包(§4.7 角色分离,parse_oror 之上由 primary 分派)
+        adv(cur)
+        var ret = "None"
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            ret = parse_type(toks, cur)
+        }
+        var body = parse_expr(toks, cur)
+        return "Closure \{ params: [], ret: " + ret + ", body: " + body + "}"
+    }
     if t == "own" {
         return parse_own(toks, cur)
     }
@@ -1282,6 +1352,20 @@ fn parse_block(toks: List[Str], cur: Atomic[I32]) -> Str {
             }
             ss = ss + "Return(" + e + ")"
             k += 1
+        } else if t == "break" {
+            adv(cur)
+            if k > 0 {
+                ss = ss + ", "
+            }
+            ss = ss + "Break"
+            k += 1
+        } else if t == "continue" {
+            adv(cur)
+            if k > 0 {
+                ss = ss + ", "
+            }
+            ss = ss + "Continue"
+            k += 1
         } else if t == "while" {
             adv(cur)
             var cond = parse_expr(toks, cur)
@@ -1404,6 +1488,15 @@ fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
         vis = "Pub"
         adv(cur)
     }
+    var abi = "None"
+    if tok(toks, cur) == "extern" {
+        adv(cur)
+        var ab = tok(toks, cur)
+        if byte_at(ab, 0) == 34 {
+            abi = ab
+            adv(cur)
+        }
+    }
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -1464,7 +1557,7 @@ fn parse_fndecl(toks: List[Str], cur: Atomic[I32], tag: Str) -> Str {
         adv(cur)
         body = parse_block(toks, cur)
     }
-    var out = tag + " \{ attrs: " + attrs + ", vis: " + vis + ", is_comptime: " + isc + ", abi: None, name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
+    var out = tag + " \{ attrs: " + attrs + ", vis: " + vis + ", is_comptime: " + isc + ", abi: " + abi + ", name: \"" + nm + "\", type_params: " + tp + ", params: [" + ps + "], ret: " + ret
     out = out + ", body: " + body + "}"
     return out
 }
@@ -1612,7 +1705,17 @@ fn decl_kind(toks: List[Str], cur: Atomic[I32]) -> Str {
             go = false
         }
     }
-    return toks[i]
+    var kd = toks[i]
+    if kd == "extern" {
+        // extern ["c"] fn ...:穿透到真实声明种类
+        i += 1
+        var ab = toks[i]
+        if byte_at(ab, 0) == 34 {
+            i += 1
+        }
+        kd = toks[i]
+    }
+    return kd
 }
 
 fn parse_derive(toks: List[Str], cur: Atomic[I32]) -> Str {
@@ -1874,8 +1977,10 @@ fn parse_enum(toks: List[Str], cur: Atomic[I32]) -> Str {
 
 fn parse_use(toks: List[Str], cur: Atomic[I32]) -> Str {
     adv(cur)
-    var segs = ""
-    var k: I32 = 0
+    var path = ""
+    var pk: I32 = 0
+    var imports = ""
+    var ik: I32 = 0
     var go = true
     while go {
         var a = tok(toks, cur)
@@ -1887,20 +1992,31 @@ fn parse_use(toks: List[Str], cur: Atomic[I32]) -> Str {
             adv(cur)
         } else if a == "\{" {
             adv(cur)
+            // 组展开:每名各成全路径条目(C 侧 show_decl 同口径;组内 NL 不敏感)
             var more2 = true
             while more2 {
                 var bb = tok(toks, cur)
-                if bb == "}" {
+                if or2(bb == "}", bb == "#EOF") {
                     more2 = false
-                } else if bb == "#EOF" {
-                    more2 = false
+                } else if bb == "NL" {
+                    adv(cur)
                 } else {
                     adv(cur)
-                    if k > 0 {
-                        segs = segs + ", "
+                    var nm = bb
+                    var alias = ""
+                    if tok(toks, cur) == "as" {
+                        adv(cur)
+                        alias = tok(toks, cur)
+                        adv(cur)
                     }
-                    segs = segs + "\"" + bb + "\""
-                    k += 1
+                    if ik > 0 {
+                        imports = imports + ", "
+                    }
+                    imports = imports + "[" + path + ", \"" + nm + "\"]"
+                    if alias != "" {
+                        imports = imports + " as " + alias
+                    }
+                    ik += 1
                     if tok(toks, cur) == "," {
                         adv(cur)
                     }
@@ -1910,16 +2026,26 @@ fn parse_use(toks: List[Str], cur: Atomic[I32]) -> Str {
                 adv(cur)
             }
             go = false
+        } else if a == "as" {
+            adv(cur)
+            var al = tok(toks, cur)
+            adv(cur)
+            imports = "[" + path + "] as " + al
+            ik += 1
+            go = false
         } else {
             adv(cur)
-            if k > 0 {
-                segs = segs + ", "
+            if pk > 0 {
+                path = path + ", "
             }
-            segs = segs + "\"" + a + "\""
-            k += 1
+            path = path + "\"" + a + "\""
+            pk += 1
         }
     }
-    return "Use \{ imports: [[" + segs + "]] }"
+    if ik == 0 {
+        imports = "[" + path + "]"
+    }
+    return "Use \{ imports: [" + imports + "] }"
 }
 
 fn parse_const(toks: List[Str], cur: Atomic[I32]) -> Str {

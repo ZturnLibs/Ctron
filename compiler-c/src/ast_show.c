@@ -428,6 +428,15 @@ static void show_pat(FILE* o, cpat* p) {
         }
         fputc('}', o);
         break;
+    case PAT_OR:
+        // 或模式(R-P3c):Rust Debug 口径 Or([pat, pat]);此前漏 case dump 成空 pattern
+        fputs("Or([", o);
+        for (size_t i = 0; i < p->nalts; i++) {
+            if (i) fputs(", ", o);
+            show_pat(o, p->alts[i]);
+        }
+        fputs("])", o);
+        break;
     }
 }
 

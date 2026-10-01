@@ -793,6 +793,9 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
                                             slots[k4] = "i"
                                         } else if vc == "L6" {
                                             slots[k4] = "6"
+                                        } else if vc.len > 3 && byte_slice(vc, 0, 3) == "Lu:" {
+                                            // P0-A:struct/实例元素槽 → 实参码回填(镜像 Lu: 定型)
+                                            slots[k4] = "u:" + byte_slice(vc, 3, vc.len)
                                         } else {
                                             slots[k4] = "s"
                                         }
@@ -1017,7 +1020,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if base[0] == "Ident" && base[1] == "List" {
                 // List[I32] → LI(元素槽 int);List[I64] → L6(T54);List[<struct>] →
-                // Lu:<名>(T14-②);型参实参经 env 替换码(单态化体);其余 → L
+                // Lu:<名>(T14-②);型参实参经 env 替换码(单态化体;P0-A:struct/
+                // 实例码同贯通);List[Inst[TPar]] 嵌套实例元素经 env 代入后取实例码;其余 → L
                 if cal[2].len > 1 {
                     if cal[2][1][0] == "Named" {
                         if seq2(cal[2][1][1], "I32") { return "LI" }
@@ -1027,6 +1031,28 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                             var ec7 = ct_env_ty(env, cal[2][1][1])
                             if seq2(ec7, "i") { return "LI" }
                             if seq2(ec7, "6") { return "L6" }
+                            if ec7.len > 2 && byte_slice(ec7, 0, 2) == "u:" { return "L" + ec7 }
+                        }
+                        // 嵌套实例元素:元素型实参逐个经 env 解析(裸 TPar → 实参节点)
+                        //(实例码就地构造:ct_inst_of_ty 在 trans_expr,拼接序后位不前向引用)
+                        if cal[2][1][2].len > 1 {
+                            var sub8 = mk("Named")
+                            sub8.push(cal[2][1][1])
+                            var ta8 = mk("TArgs")
+                            var t8: I32 = 1
+                            while t8 < cal[2][1][2].len {
+                                ta8.push(ct_targ_env(cal[2][1][2][t8], env))
+                                t8 += 1
+                            }
+                            if ct_struct_tps(file, sub8[1]).len > 0 {
+                                var cs8 = List[Str]()
+                                var q8: I32 = 1
+                                while q8 < sub8[2].len {
+                                    cs8.push(ct_ty_code(sub8[2][q8], file))
+                                    q8 += 1
+                                }
+                                return "L" + ct_struct_inst_code(sub8[1], cs8)
+                            }
                         }
                     }
                 }
@@ -1394,17 +1420,24 @@ fn ct_struct_tps(file: List[Str], nm: Str) -> List[Str] {
     return out
 }
 
-// 实例化码 → 尾缀(标量/Str:i→I s→S b→B 6→L;其余 panic)
+// 实例化码 → 尾缀(P0-A 载荷扩位:标量/Str:i→I s→S b→B 6→L;
+// struct 实参 u:<名>(具体或嵌套实例 u:名__尾缀)→ U<名长>_<名>,嵌入按值布局——
+// 实例 typedef 字段槽即实参 C 型,与标量槽同构;长度前缀消歧名内下划线/尾缀字符。
+// 其余(F64/List/fn 值/Result 载荷等)仍 panic 登记债)
 fn ct_inst_encode(code: Str) -> Str {
     if code == "i" { return "I" }
     if code == "s" { return "S" }
     if code == "b" { return "B" }
     if code == "6" { return "L" }
-    panic("emit:泛型 struct 载荷限标量/Str:" + code)
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        var tail = byte_slice(code, 2, code.len)
+        return "U" + tail.len.to_string() + "_" + tail
+    }
+    panic("emit:泛型 struct 载荷限标量/Str/struct:" + code)
     return ""
 }
 
-// 尾缀 → 码(解码逆映射)
+// 尾缀 → 码(标量单字符解码逆映射;变长 U 段经 ct_inst_arg_codes 位置解析)
 fn ct_inst_decode(ch: Str) -> Str {
     if ch == "I" { return "i" }
     if ch == "S" { return "s" }
@@ -1412,6 +1445,78 @@ fn ct_inst_decode(ch: Str) -> Str {
     if ch == "L" { return "6" }
     panic("emit:泛型 struct 尾缀不可解码:" + ch)
     return ""
+}
+
+// P0-A:实例化尾缀 → 实参码表(位置解析)。I/S/B/L 单字符;i/s/b/6 同旧;
+// U<十进制长>_<名> → u:<名>(名可含下划线/嵌套实例尾缀,长度前缀定界)
+fn ct_inst_arg_codes(encs: Str) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < encs.len {
+        var ch = byte_at(encs, i)
+        if ch == 73 {
+            out.push("i")
+            i += 1
+        } else if ch == 83 {
+            out.push("s")
+            i += 1
+        } else if ch == 66 {
+            out.push("b")
+            i += 1
+        } else if ch == 76 {
+            out.push("6")
+            i += 1
+        } else if ch == 85 {
+            var j = i + 1
+            var nd = ""
+            while j < encs.len && byte_at(encs, j) != 95 {
+                nd = nd + byte_slice(encs, j, j + 1)
+                j += 1
+            }
+            var nl = dvi(nd)
+            out.push("u:" + byte_slice(encs, j + 1, j + 1 + nl))
+            i = j + 1 + nl
+        } else {
+            panic("emit:泛型 struct 尾缀不可解析:" + byte_slice(encs, i, i + 1) + " @" + encs)
+            return out
+        }
+    }
+    return out
+}
+
+// P0-A:实例化码 → 具体型别节点(TPar 槽代入源;嵌套实例递归还原,
+// 标量码还原 I32/Str/Bool/I64;ct_ty_code 对还原节点往返同码)
+fn ct_inst_ty_node(code: Str) -> List[Str] {
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        var nt = mk("Named")
+        var ta = mk("TArgs")
+        var info = ct_struct_inst_split(code)
+        if info.len > 1 {
+            var bar = 0
+            var i: I32 = 0
+            while i < info.len {
+                if byte_at(info, i) == 124 { bar = i }
+                i += 1
+            }
+            nt.push(byte_slice(info, 0, bar))
+            var codes = ct_inst_arg_codes(byte_slice(info, bar + 1, info.len))
+            var k: I32 = 0
+            while k < codes.len {
+                ta.push(ct_inst_ty_node(codes[k]))
+                k += 1
+            }
+        } else {
+            nt.push(ct_struct_name_of(code))
+        }
+        nt.push(ta)
+        return nt
+    }
+    if code == "i" { return ct_scalar_ty("I32") }
+    if code == "s" { return ct_scalar_ty("Str") }
+    if code == "b" { return ct_scalar_ty("Bool") }
+    if code == "6" { return ct_scalar_ty("I64") }
+    panic("emit:实例码型别还原限标量/struct:" + code)
+    return mk("Named")
 }
 
 // 实例化 struct 码:u:<名>__<尾缀>
@@ -1457,34 +1562,27 @@ fn ct_struct_name_of(code: Str) -> Str {
     return byte_slice(code, 2, code.len)
 }
 
-// 实例化域字段码:TPar 名槽 → 对应实参码;具体型别 → 原码
+// 实例化域字段码:P0-A 改写——实参码经 ct_inst_ty_node 还原型别节点,
+// ct_mono_subst_ty 全树代入(裸 TPar/List[TPar]/List[Inst[TPar]]/嵌套实例一概贯通),
+// 再 ct_ty_code 定槽码。此前仅手写两支(裸 TPar 单字符解码 + List[TPar] 下钻),
+// struct 实参与嵌套实例无臂(泛型载荷扩位前不可达)
 fn ct_field_code_inst(file: List[Str], ty: List[Str], snm: Str, encs: Str) -> Str {
     var tps = ct_struct_tps(file, snm)
-    if ty[0] == "Named" {
-        var k: I32 = 0
-        while k < tps.len {
-            if seq2(ty[1], tps[k]) {
-                return ct_inst_decode(byte_slice(encs, k, k + 1))
-            }
-            k += 1
-        }
-        // 嵌套型参下钻:List[K] 字段按元素实参码定型别槽(K→i → LI;K→6 → L6;其余 → L)
-        if seq2(ty[1], "List") && ty[2].len > 1 {
-            if ty[2][1][0] == "Named" {
-                var k2: I32 = 0
-                while k2 < tps.len {
-                    if seq2(ty[2][1][1], tps[k2]) {
-                        var elc = ct_inst_decode(byte_slice(encs, k2, k2 + 1))
-                        if seq2(elc, "i") { return "LI" }
-                        if seq2(elc, "6") { return "L6" }
-                        return "L"
-                    }
-                    k2 += 1
-                }
-            }
-        }
+    if tps.len == 0 {
+        return ct_ty_code(ty, file)
     }
-    return ct_ty_code(ty, file)
+    var codes = ct_inst_arg_codes(encs)
+    if codes.len != tps.len {
+        panic("emit:泛型 struct 实参数与型参不符:" + snm + ":" + encs)
+        return "i"
+    }
+    var tys = List[Str]()
+    var k: I32 = 0
+    while k < codes.len {
+        tys.push(ct_inst_ty_node(codes[k]))
+        k += 1
+    }
+    return ct_ty_code(ct_mono_subst_ty(ty, tps, tys), file)
 }
 
 // 嵌套泛型调用:型参实参经 env 解析(外层单态化点绑定的型参名 → 具体标量/Str 节点;
@@ -1504,6 +1602,10 @@ fn ct_targ_env(ty: List[Str], env: List[Str]) -> List[Str] {
             if seq2(ec, "s") { return ct_scalar_ty("Str") }
             if seq2(ec, "b") { return ct_scalar_ty("Bool") }
             if seq2(ec, "6") { return ct_scalar_ty("I64") }
+            // P0-A:型参绑定 struct/实例码 → 具体型别节点还原(泛型传型贯通)
+            if ec.len > 2 && byte_slice(ec, 0, 2) == "u:" {
+                return ct_inst_ty_node(ec)
+            }
         }
     }
     return ty
