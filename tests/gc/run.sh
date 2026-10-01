@@ -11,6 +11,7 @@ pass=0; fail=0
 for d in "$DIR"/*/; do
     [ -f "$d/src/main.ct" ] || continue
     name=$(basename "$d")
+    [ "$name" = "bench" ] && continue
     CTRON_STDPATH="$ROOT/std" "$EMIT" run "$d/src/main.ct" > "$T/$name.c" 2>"$T/$name.err" \
         || { echo "  FAIL $name (emit)"; fail=$((fail+1)); continue; }
     cc -O1 -w -o "$T/$name.bin" "$T/$name.c" || { echo "  FAIL $name (cc)"; fail=$((fail+1)); continue; }

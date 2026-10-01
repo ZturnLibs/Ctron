@@ -826,3 +826,15 @@ T02 守卫穷尽(E2030 守卫臂不算覆盖)逻辑。fmt_suite 01i(Rust 侧既�
   有限 churn 下天然零回收成本。长驻服务面(存活集大、垃圾率低)摊销显著更好。
 - §9.4 退出条件语义:登记比值与归因即交付;门禁硬化(比值>1.15 转 fail)随 GC 调优
   批次(阈值自适应/分代/根集精确化=M1.5/M2)。
+
+**2026-10-01 T33 parallel 真并行落库**(spec-gap W7;§7.7):
+- 发射侧 fork-join:K=8 定长分块 pthread/join(与 scope 任务池同风格;分块序固定=
+  确定性),map 各块写结果表不相交槽;reduce 按分块序合并空块跳过(结合律文档承诺
+  在卡);List(List/LI)与定长数组(I32/I64 宽,§7.7 &T[] 视图)双形;CTRON_PAR=off
+  串行回退(List 形;数组形恒并行,登记)。
+- 纯度门:ct_emit_clo 捕获即编译期拒绝(「非捕获闭包含捕获」panic=结构性先例,纯度
+  推断的发射面承载);interp 保持顺序化(结果确定性同)。
+- parallel let 专用型别:map→LI(发射恒 int 槽)/reduce→6。
+- 加速比锚:N=10^6 同 bin 对照,串行 5ms vs 并行 1ms ≈**5×**(darwin arm64,cc -O1)。
+- 06f 三路绿(interp/emit 并行/emit off);suite 99/99+smoke 161/0+net 18/18;
+  gc/run.sh 补 bench 夹具 skip(net 泳道先例)。

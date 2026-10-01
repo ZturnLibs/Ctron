@@ -372,7 +372,7 @@
 
 ### T33 · parallel 真并行(§7.7)
 
-- **预估:** 2–3 d。**前置:** T13(真原子);T17(API 面已 std 化)。**状态:** 待办
+- **预估:** 2–3 d。**前置:** T13(真原子);T17(API 面已 std 化)。**状态:** ✅ 已完成(1001;fork-join K=8 定长分块 pthread/join,reduce 按分块序合并=确定性,CTRON_PAR=off 串行回退[List 形;数组形恒并行登记];纯度门=ct_emit_clo 捕获即编译期拒绝[结构性先例];List+定长数组[I32/I64 宽]双形;parallel let 专用型别[map→LI/reduce→6];06f 三路绿[interp/emit 并行/off 串行];加速比 N=10^6 同 bin:串行 5ms vs 并行 1ms ≈5×[darwin arm64];顺手修 gc/run.sh bench 夹具误入行为环[net 泳道先例];suite 99/99+smoke 161/0+net 18/18)
 - **目标:** `parallel.map/reduce/fold` 从串行 fnptr(`trans_conc.ct` 头注自认)换 fork-join 线程池真并行;闭包推断纯度(§7.7:不捕获 &Cap/不 spawn/不触全局可变——`sem_pure.ct` 机制复用)。
 - **范围:** `trans_conc.ct`(parallel 发射:任务切分 + 计数闩)、`sem_calls.ct`/`sem_pure.ct`(纯度推断不满足→编译期诊断或串行回落?**裁决:能力优先=诊断**,规范化纯度门)、入参 `&T[]` 只读视图校验(§7.7)。
 - **验收:** 数据并行加速比锚(≥2 核机器 N=10^6 map,比值登记);纯度负锚(捕获可变全局→诊断);`06f_parallel.ct` 回归;确定性模式(T20)下分块序固定锚。
