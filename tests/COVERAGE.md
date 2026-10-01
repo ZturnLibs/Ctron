@@ -411,10 +411,17 @@ lex_num/parse_ast/parsetree 补齐 v0.7 修订一(||/&&/or 中缀+成员位置�
 use 组逐名展开(含 as 别名/组内 NL 不敏感)+ extern ABI + struct 字段逗号 + @derive class;
 顺手修 C 侧真 bug:ast_show.c 漏 PAT_OR case(或模式 dump 成空 pattern,Rust Debug 口径
 Or([...]) 补齐);pkg_chk 模块级 7 包按「文件+码+计数」归一(自举双语诊断表 vs C 英文串
-的语言面分歧在册,消息文本剥离)。**余 4 红(另案)**:①sem_chk.ct oracle(第三块模板,
-树上 W8010 语义)在 03n/03l/07a 崩「索引目标非数组」——较新构造(List[Struct] 成员链等)
-未同步,独立进程可复现非进程内问题;②02f_match_guard_exhaustive 语义差分——sem_chk 欠
-T02 守卫穷尽(E2030 守卫臂不算覆盖)逻辑。fmt_suite 01i(Rust 侧既有)。
+的语言面分歧在册,消息文本剥离)。**余 4 红 已于 2026-10-01 全数销账(57ba086 续片,sem_chk.ct 同步)**:第三块 oracle
+sem_chk.ct(树上语义,4086 行)移植同款解析器补丁(13 锚)+ Guarded 标记入 Arm 节点+
+E2030 守卫感知(守卫臂不算覆盖不触发整臂,T02 语义;或模式臂各替身依序入覆盖)+ 守卫
+条件消费修正;03n/03l/07a 崩溃清零、02f 守卫穷尽精确命中「缺变体 X Y」、02f 正例保持
+零诊断;smoke sem_chk decl 锁 109→112 随批申报。**suite_diff 终态:412 cases / 0
+failures,墙全拆。** 其后首曝两门:suite_trans 15/0 绿;suite_corpus_trans 44 pass/
+12 红=四泳道在册发射面旧债首次曝光(t55_mw_smoke/t55_probe=T55 泳道;03l_list_struct_
+member/03n_struct_fn_field_array/03k_fn_call_chain_member/06_crlf=List[struct] 截断族
+在册;03l_as_u64_negsrc/03i_width_checked=as[U64] C 宿主三红在册;06_concurrency/
+03j_closure_param_member/05i_into_gc_deep_copy=并发/闭包成员/into_gc 发射缺口在册;
+03k_u64_overflow.panic=宿主 panic 面口径),归属各自泳道不入本面。fmt_suite 01i(Rust 侧既有)。
 
 **2026-09-21 续片修复**(compiler-c 门禁卫生):
 - `token.c` TOK_NAMES 表漏 "Ellipsis" 条目(§9.6 加 TOK_ELLIPSIS 未同步)→ 名字表

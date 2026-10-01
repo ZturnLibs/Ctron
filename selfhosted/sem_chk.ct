@@ -242,6 +242,9 @@ fn scan(src: Str, toks: List[Str]) {
             } else if b == 38 && i + 1 < n && byte_at(src, i + 1) == 38 {
                 raw.push("&&")
                 i += 2
+            } else if b == 124 && i + 1 < n && byte_at(src, i + 1) == 124 {
+                raw.push("||")
+                i += 2
             } else if b == 43 && i + 1 < n && byte_at(src, i + 1) == 37 {
                 raw.push("+%")
                 i += 2
@@ -671,6 +674,20 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
         ow.push(p_block(toks, cur))
         return ow
     }
+    if t == "||" {
+        // v0.7 修订一镜像:起始位 || = 零参闭包(§4.7 角色分离)
+        adv(cur)
+        var cl = mk("Closure")
+        cl.push(mk("CPs"))
+        var ret0 = mk("None")
+        if tok(toks, cur) == "->" {
+            adv(cur)
+            ret0 = p_typ(toks, cur)
+        }
+        cl.push(ret0)
+        cl.push(p_stmt_expr(toks, cur, "1"))
+        return cl
+    }
     if t == "|" {
         adv(cur)
         var cl = mk("Closure")
@@ -747,7 +764,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
     }
     if t == "(" {
         adv(cur)
-        var e0 = p_and(toks, cur, "1")
+        var e0 = p_oror(toks, cur, "1")
         if tok(toks, cur) == "," {
             var tn = mk("TupleE")
             tn.push(e0)
@@ -755,7 +772,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
             while more {
                 if tok(toks, cur) == "," {
                     adv(cur)
-                    tn.push(p_and(toks, cur, "1"))
+                    tn.push(p_oror(toks, cur, "1"))
                 } else {
                     more = false
                 }
@@ -947,10 +964,62 @@ fn p_typ(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
 }
 
 fn p_stmt_expr(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
-    return p_and(toks, cur, al)
+    return p_oror(toks, cur, al)
+}
+
+// v0.7 修订一镜像:第 0 层 ||(起始位 || 零参闭包由 p_pri 分派)
+fn p_oror(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_or(toks, cur, al)
+    var go = true
+    while go {
+        if tok(toks, cur) == "||" {
+            adv(cur)
+            var nb = mk("Binary")
+            nb.push("OrOr")
+            nb.push(l)
+            nb.push(p_or(toks, cur, al))
+            l = nb
+        } else { go = false }
+    }
+    return l
+}
+
+// v0.7 修订一镜像:or 中缀(成员位置 x.or( 由 p_post 作名字吞掉)
+fn p_or(toks: List[Str], cur: Atomic[I32], al: Str) -> List[Str] {
+    var l = p_and(toks, cur, al)
+    var go = true
+    while go {
+        if tok(toks, cur) == "or" {
+            adv(cur)
+            var nb = mk("Binary")
+            nb.push("Or")
+            nb.push(l)
+            nb.push(p_and(toks, cur, al))
+            l = nb
+        } else { go = false }
+    }
+    return l
 }
 
 fn p_pattern(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
+    // 或模式替身(R-P3c):pat | pat;C 侧 ast_show 的 Rust Debug 口径 Or([...])
+    var first = p_pattern_one(toks, cur)
+    if tok(toks, cur) == "|" {
+        var np = mk("PatOr")
+        np.push(first)
+        var go2 = true
+        while go2 {
+            if tok(toks, cur) == "|" {
+                adv(cur)
+                np.push(p_pattern_one(toks, cur))
+            } else { go2 = false }
+        }
+        return np
+    }
+    return first
+}
+
+fn p_pattern_one(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     var t = tok(toks, cur)
     if t == "_" {
         adv(cur)
@@ -1072,6 +1141,12 @@ fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
         if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
             var ma = mk("Arm")
             ma.push(p_pattern(toks, cur))
+            // 模式守卫(R-P3c/T02):Guarded 标记入节点,守卫臂不算覆盖;pnode 不印
+            if tok(toks, cur) == "if" {
+                adv(cur)
+                ma.push(mk("Guarded"))
+                p_stmt_expr(toks, cur, "1") // 守卫条件消费(dump/覆盖均不印)
+            }
             adv(cur)
             ma.push(p_stmt_expr(toks, cur, "1"))
             arms.push(ma)
@@ -1086,7 +1161,7 @@ fn p_match(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
 fn p_if(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     adv(cur)
     var ni = mk("If")
-    ni.push(p_and(toks, cur, "0"))
+    ni.push(p_oror(toks, cur, "0"))
     adv(cur)
     ni.push(p_block(toks, cur))
     var els = mk("None")
@@ -1132,6 +1207,12 @@ fn p_block(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 re.push(p_stmt_expr(toks, cur, "1"))
             }
             nb.push(re)
+        } else if t == "break" {
+            adv(cur)
+            nb.push(mk("Break"))
+        } else if t == "continue" {
+            adv(cur)
+            nb.push(mk("Continue"))
         } else if or2(t == "let", t == "var") {
             var isv = "false"
             if t == "var" { isv = "true" }
@@ -1328,6 +1409,9 @@ fn p_struct2(toks: List[Str], cur: Atomic[I32], dr: List[Str]) -> List[Str] {
         }
         if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
             fs.push(p_field(toks, cur))
+            if tok(toks, cur) == "," {
+                adv(cur)
+            }
         }
     }
     adv(cur)
@@ -1540,6 +1624,7 @@ fn p_enum(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
 fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     adv(cur)
     var nu = mk("Use")
+    var path = mk("Sg")
     var more = true
     while more {
         var a = tok(toks, cur)
@@ -1547,14 +1632,33 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             adv(cur)
         } else if a == "\{" {
             adv(cur)
+            // 组展开:每名各成全路径条目(C 侧 show_decl 同口径;组内 NL 不敏感)
             var more2 = true
             while more2 {
                 var b2 = tok(toks, cur)
-                if or2(b2 == "}", b2 == "#EOF") {
-                    more2 = false
+                if or2(b2 == "}", or2(b2 == "#EOF", b2 == "NL")) {
+                    if b2 == "NL" {
+                        adv(cur)
+                    } else {
+                        more2 = false
+                    }
                 } else {
-                    nu.push(b2)
                     adv(cur)
+                    var ue = mk("Ue")
+                    var sg = mk("Sg")
+                    var sj: I32 = 1
+                    while sj < path.len {
+                        sg.push(path[sj])
+                        sj += 1
+                    }
+                    sg.push(b2)
+                    ue.push(sg)
+                    if tok(toks, cur) == "as" {
+                        adv(cur)
+                        ue.push(tok(toks, cur))
+                        adv(cur)
+                    }
+                    nu.push(ue)
                     if tok(toks, cur) == "," {
                         adv(cur)
                     }
@@ -1566,14 +1670,27 @@ fn p_use(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
             more = false
         } else if a == "#EOF" {
             more = false
+        } else if a == "as" {
+            adv(cur)
+            var ue = mk("Ue")
+            ue.push(path)
+            ue.push(tok(toks, cur))
+            adv(cur)
+            nu.push(ue)
+            more = false
         } else {
-            nu.push(a)
+            path.push(a)
             adv(cur)
             var nx = tok(toks, cur)
             if nx != "." {
                 more = false
             }
         }
+    }
+    if nu.len == 1 {
+        var ue = mk("Ue")
+        ue.push(path)
+        nu.push(ue)
     }
     return nu
 }
@@ -1678,9 +1795,29 @@ fn p_file(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
                 nf.push(p_enum2(toks, cur, dr2))
             } else if t2 == "trait" {
                 nf.push(p_trait(toks, cur))
+            } else if t2 == "class" {
+                nf.push(p_class(toks, cur))
             } else {
                 nf.push(p_fn(toks, cur))
             }
+        } else if t == "extern" {
+            // extern ["c"] fn ...:ABI 入节点(FnX),dump 对齐 C 侧 abi 字段
+            adv(cur)
+            var ab = tok(toks, cur)
+            var abistr = ""
+            if byte_at(ab, 0) == 34 {
+                abistr = ab
+                adv(cur)
+            }
+            var nf2 = p_fn2(toks, cur, "Fn")
+            var nx = mk("FnX")
+            nx.push(abistr)
+            var cj: I32 = 1
+            while cj < nf2.len {
+                nx.push(nf2[cj])
+                cj += 1
+            }
+            nf.push(nx)
         } else if t == "test" {
             nf.push(p_test(toks, cur))
         } else if t == "enum" {
@@ -1847,6 +1984,29 @@ fn pnode(n: List[Str]) -> Str {
         out = out + "], tail: " + pnode(n[n.len - 1]) + "}"
     } else if t == "Return" {
         out = out + "Return(" + pnode(n[1]) + ")"
+    } else if t == "Break" {
+        out = out + "Break"
+    } else if t == "Continue" {
+        out = out + "Continue"
+    } else if t == "PatOr" {
+        out = out + "Or(["
+        var oi: I32 = 1
+        while oi < n.len {
+            if oi > 1 { out = out + ", " }
+            out = out + pnode(n[oi])
+            oi += 1
+        }
+        out = out + "])"
+    } else if t == "FnX" {
+        out = out + "Fn \{ attrs: [], vis: Private, is_comptime: false, abi: " + n[1] + ", name: \"" + n[2] + "\", type_params: [" + pjoin(n[3]) + "], params: ["
+        var psx = n[4]
+        var jx: I32 = 1
+        while jx < psx.len {
+            if jx > 1 { out = out + ", " }
+            out = out + pnode(psx[jx])
+            jx += 1
+        }
+        out = out + "], ret: " + pnode(n[5]) + ", body: " + pnode(n[6]) + "}"
     } else if t == "Let" {
         out = out + "Let \{ is_var: " + n[1] + ", pattern: " + pnode(n[2]) + ", ty: " + pnode(n[3]) + ", expr: " + pnode(n[4]) + "}"
     } else if t == "Expr" {
@@ -1926,7 +2086,13 @@ fn pnode(n: List[Str]) -> Str {
         }
         out = out + "]}"
     } else if t == "Arm" {
-        out = out + "MatchArm \{ pattern: " + pnode(n[1]) + ", expr: " + pnode(n[2]) + "}"
+        var ei3: I32 = 2
+        if n.len > 2 {
+            if n[2].len > 0 {
+                if n[2][0] == "Guarded" { ei3 = 3 }
+            }
+        }
+        out = out + "MatchArm \{ pattern: " + pnode(n[1]) + ", expr: " + pnode(n[ei3]) + "}"
     } else if t == "PatWild" {
         out = out + "Wildcard"
     } else if t == "PatLitI" {
@@ -2019,14 +2185,26 @@ fn pnode(n: List[Str]) -> Str {
     } else if t == "Items" {
         out = out + pjoin(n)
     } else if t == "Use" {
-        out = out + "Use \{ imports: [["
-        var uj: I32 = 1
-        while uj < n.len {
-            if uj > 1 { out = out + ", " }
-            out = out + "\"" + n[uj] + "\""
-            uj += 1
+        out = out + "Use \{ imports: ["
+        var ui: I32 = 1
+        while ui < n.len {
+            if ui > 1 { out = out + ", " }
+            var ue = n[ui]
+            var sg = ue[1]
+            out = out + "["
+            var uj: I32 = 1
+            while uj < sg.len {
+                if uj > 1 { out = out + ", " }
+                out = out + "\"" + sg[uj] + "\""
+                uj += 1
+            }
+            out = out + "]"
+            if ue.len > 2 {
+                out = out + " as " + ue[2]
+            }
+            ui += 1
         }
-        out = out + "]] }"
+        out = out + "] }"
     } else if t == "Const" {
         out = out + "Const \{ name: \"" + n[1] + "\", ty: " + pnode(n[2]) + ", expr: " + pnode(n[3]) + "}"
     } else if t == "Static" {
@@ -3278,10 +3456,31 @@ fn xe(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: Li
             while ai < arms.len && !whole {
                 var arm = arms[ai]
                 var pat = arm[1]
-                if or2(pat[0] == "PatWild", pat[0] == "PatId") {
-                    whole = true
-                } else if pat[0] == "PatAgg" {
-                    covered.push(pat[1])
+                // 模式守卫(T02/R-P3c):守卫臂不参与穷尽(不覆盖、不整臂)
+                var ei: I32 = 2
+                if arm.len > 2 {
+                    if arm[2].len > 0 {
+                        if arm[2][0] == "Guarded" { ei = 3 }
+                    }
+                }
+                if ei == 2 {
+                    if pat[0] == "PatOr" {
+                        // 或模式臂:各替身依序入覆盖(T02;Rust 口径)
+                        var oi: I32 = 1
+                        while oi < pat.len {
+                            var sub = pat[oi]
+                            if or2(sub[0] == "PatWild", sub[0] == "PatId") {
+                                whole = true
+                            } else if sub[0] == "PatAgg" {
+                                covered.push(sub[1])
+                            }
+                            oi += 1
+                        }
+                    } else if or2(pat[0] == "PatWild", pat[0] == "PatId") {
+                        whole = true
+                    } else if pat[0] == "PatAgg" {
+                        covered.push(pat[1])
+                    }
                 }
                 ai += 1
             }
@@ -3310,12 +3509,19 @@ fn xe(file: List[Str], e: List[Str], envN: List[Str], envT: List[Str], diags: Li
                 }
             }
         }
-        // 继续递归
+        // 继续递归(臂表达式下标随 Guarded 偏移)
         xe(file, e[1], envN, envT, diags)
         var arms2 = e[2]
         var aj: I32 = 1
         while aj < arms2.len {
-            xe(file, arms2[aj][2], envN, envT, diags)
+            var arm2 = arms2[aj]
+            var ei2: I32 = 2
+            if arm2.len > 2 {
+                if arm2[2].len > 0 {
+                    if arm2[2][0] == "Guarded" { ei2 = 3 }
+                }
+            }
+            xe(file, arm2[ei2], envN, envT, diags)
             aj += 1
         }
         return
