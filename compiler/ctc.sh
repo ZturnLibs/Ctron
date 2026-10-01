@@ -133,11 +133,10 @@ case $mode in
         ;;
     build)
         OUTBIN="ctron_app"
-        scan=("$@")
-        si=0
-        while [ $si -lt ${#scan[@]} ]; do
-            if [ "${scan[$si]}" = "-o" ] && [ $((si + 1)) -lt ${#scan[@]} ]; then OUTBIN="${scan[$((si + 1))]}"; fi
-            si=$((si + 1))
+        prev_o=0
+        for a2 in "$@"; do
+            if [ "$prev_o" = "1" ]; then OUTBIN="$a2"; prev_o=0; fi
+            case $a2 in -o) prev_o=1 ;; esac
         done
         TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
         "$0" emit "$IN" "$TMPC" > /dev/null 2>&1 || { echo "ctc.sh: build 发射失败" >&2; exit 1; }

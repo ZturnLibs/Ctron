@@ -401,7 +401,7 @@
 
 ### T36 · `ctc target` 子命令 + 后端插件接口
 
-- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已完成(1001;ctc.sh build/targets+--target 注册表[native=cc -O2;未注册 exit 2 清晰诊断 fail-closed],ctron 驱动同表对齐[ct_target_check];smoke 钩入 [5/9](native 等价链+未注册诊断两案);wasm32/bare 注册随 T37/T40,manifest [target] 段随其批次[CTCL schema 键位另册];门 5 26 ok+suite 99/99)
+- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已完成(1001;ctc.sh build/targets+--target 注册表[native=cc -O2;未注册 exit 2 清晰诊断 fail-closed],ctron 驱动同表对齐[ct_target_check];smoke 钩入 [5/9](native 等价链+未注册诊断两案);wasm32/bare 注册随 T37/T40,manifest [target] 段随其批次[CTCL schema 键位另册];门 5 26 ok+suite 99/99;**CI 修:build 分支 bash 数组→POSIX for(内核 dash,26s 红归因)**)
 - **目标:** §9.7 后端矩阵插件化的第一块地板:`ctc build --target <t>` 命令面 + 后端接口抽象(C 发射为第一个插件;产物后处理链 cc→obj→link 收敛到 target 描述)。
 - **范围:** `ctc.sh`/`compiler/src/driver_emit.ct`(target 描述结构:triple/链接器/运行时集)、`compiler/src/parse_pkg.ct`(清单 `[target]` 可选段)。
 - **验收:** `ctc build --target native` 等价既有路径(零回归);target 未注册→清晰诊断。
