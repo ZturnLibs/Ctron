@@ -1,0 +1,41 @@
+// tests/lang/bench —— T44 own/热点数值核(§9.4 P3 出口硬指标;§10.3 同机差分纪律)
+// 形态:纯算术核 k1(发射 1:1 直下 C 的代码质量面,Lehmer LCG 全程 <2^63 零溢出歧义)
+//      + arena 面 k2(每轮 List 填充/求长,对 C 侧惯用复用缓冲——allocator 税归因位)
+// digest:输出恒定两行(k1/k2 校验和),emit 产物与 C 参照逐字节一致为正确性门;
+// 比值 = min×3(ctron bin)/min×3(cc ref.c),门 ≤1.05,未达标 WARN 登记归因。
+
+fn k1(n: I64) -> I64 {
+    var acc: I64 = 1
+    var i: I64 = 0
+    while i < n {
+        acc = (acc * 48271) % 2147483647
+        var t: I64 = (acc % 1000) * ((acc % 997) + 1)
+        acc = (acc + t) % 2147483647
+        i += 1
+    }
+    return acc
+}
+
+fn k2(n: I64) -> I64 {
+    var acc: I64 = 0
+    var i: I64 = 0
+    while i < n {
+        var l = List[I64]()
+        var j: I64 = 0
+        while j < 16 {
+            l.push((i * 31 + j * 7) % 1000)
+            j += 1
+        }
+        acc = (acc + l.len) % 2147483647
+        i += 1
+    }
+    return acc
+}
+
+fn main() -> I32 {
+    var a = k1(5000000)
+    var b = k2(400000)
+    println(a.to_string())
+    println(b.to_string())
+    return 0
+}

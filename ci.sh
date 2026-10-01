@@ -29,6 +29,7 @@ sh "$DIR/compiler/bench.sh" 2>&1 | tail -12
 echo "[7/9] FFI 边界微基准(跨 C-ABI)+ GC 性能登记(§9.4;digest 硬门+比值 WARN)"
 sh "$DIR/compiler/test/bench_ffi.sh" 2>&1 | tail -16
 sh "$DIR/tests/gc/bench.sh" 2>&1 | tail -3
+sh "$DIR/tests/lang/bench/bench.sh" 2>&1 | tail -3
 
 echo "[8/9] GUI 阶梯(S1–S9 headless:布局桥/事件/绑定竖切/命令缓冲断言/FreeType 中文)"
 # W5 门禁挂载(2026-09-19)。headless 断言无显示依赖,xvfb 仅未来窗口冒烟所需。

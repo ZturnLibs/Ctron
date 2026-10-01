@@ -841,3 +841,18 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   (db GC 档维持 T29 时点验收口径:库根重构在册红静默,CI 九门不含 db)。
   ②真债量化 + 深栈保守根集不稳实证入册,为 M1.5 优先级依据。③T32(GC 门禁/翻面)
   前置同理改写为「M1.5 后」,保守档翻面对深栈程序实证不安全。
+
+**2026-10-02 T44 own ±5% 性能门禁落库**(spec-gap W9;§9.4 P3 出口硬指标):
+- tests/lang/bench 第一族(基准设施在册缺 lang kernel 族,本件补位):src/main.ct
+  [k1=Lehmer LCG 纯算术核(48271/2147483647 全程 <2^63,零溢出歧义——Ctron/C 两侧
+  digest 可对拍的先决条件;无位算符纪律)+k2=每轮 16 元 List 填充(arena 面)]
+  + src/ref.c C 同构对照(k2 侧惯用 C=栈缓冲复用)+ bench.sh(digest 硬门=
+  ctron emit 产物输出 vs C 逐字节一致 + ×3 取 min + CTRON_EMIT 覆盖口
+  [http/run.sh 同款]);挂 ci.sh[7/9](T32 gc/bench 同段连跑)。
+- 首版实测(darwin arm64 -O1 同机):**总比值 1.161 WARN**[ctron 72ms vs C 62ms]
+  ——登记即交付(T32 先例)。**k1 分解归因:63 vs 67ms = 比值 0.94 ≤1.05 达标
+  ——P3 代码质量面(发射 1:1 热路径)过线**;总比值超标全在 k2 allocator 税
+  (每轮 List vs C 复用栈缓冲)——热点回切建议=复用 List/定长数组惯用法,
+  等 list_set/定长数组惯形成熟后门禁可硬化。
+- 脚本坑(已修):bench 目录三层(tests/lang/bench/)而 T32 两层(tests/gc/),
+  ROOT 上溯层数差一层——首跑「缺编译器二进制」假象真因,非 bin 缺席。

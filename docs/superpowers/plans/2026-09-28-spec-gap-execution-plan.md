@@ -496,7 +496,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T44 · own ±5% 性能门禁(§9.4 P3 出口硬指标)
 
-- **预估:** 1 d。**前置:** 无。**状态:** 待办
+- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已完成(1002;tests/lang/bench 第一族落地:src/main.ct[k1 Lehmer 纯算术核全程 <2^63 零溢出歧义+k2 每 16 元 List 填充 arena 面]+src/ref.c C 同构对照+bench.sh[digest 硬门 emit 产物 vs C 逐字节一致+×3min+CTRON_EMIT 覆盖口];入 ci.sh[7/9]。首版实测**总比值 1.161 WARN**[ctron 72ms vs C 62ms,darwin arm64 -O1 同机];k1 分解归因:**纯算术核 63 vs 67ms=比值 0.94 ≤1.05 达标——发射代码质量面过 P3**;总比值超标全在 k2 allocator 税[每轮 List vs C 复用栈缓冲],热点回切建议=复用 List/定长数组惯用法[等 list_set/定长数组惯形成熟后门禁可硬化])
 - **目标:** own/热点路径与 C 互有 5% 内进门禁;基准设施记忆在册缺 lang kernel 族——本件顺带立 `tests/lang/bench` 第一族(与 T32 共用目录)。
 - **验收:** own 基准(arena 数值核/C 同构对照)×3 min 比值 ≤1.05 门禁入 ci.sh;未达标登记归因(热点回切建议)。
 - **坑位:** 只信同机差分(基准设施纪律);与 T32 共享 bench harness,宜连续执行。
