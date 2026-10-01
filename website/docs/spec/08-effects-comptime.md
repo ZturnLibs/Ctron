@@ -18,6 +18,7 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 ## 8.2 能力审计
 
 - 包清单声明能力上限(§2.7 `[caps]`);程序实际使用集 ⊆ 声明集,超出 = E4010。
+- 服务器档键集(v0.8):`net.listen` / `net.connect` / `net.resolve`(§11.1)、`db.connect`(§12.1)——语义同 fs 键:manifest 声明上限,实际使用集 ⊆ 声明集,超出 = E4010;`#[pure]` 触达 = E4020。
 - main 的能力由**运行时初始化**按 manifest 授予(启动期失败优于运行期越权)。
 - `Global[T]` 可变全局纳入审计视图(§7.6)。
 
@@ -36,7 +37,8 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 
 ## 8.4 comptime:有边界的编译期执行
 
-- `comptime fn` 在编译期(CVM)执行:**`#[pure]` 语义 + 总时间预算**(默认 1s/编译单元,清单可调)。超预算 E6010;副作用/不确定性 E6020。
+- `comptime fn` 在编译期(CVM)执行:**`#[pure]` 语义 + 总步数预算**(默认 1200 步/编译单元,可调)。超预算 E6010;副作用/不确定性 E6020。
+  > **修订注(2026-09-28,T08 用户裁决)**:预算口径由 v0.3 草案的「1s 时间预算」改为**步数预算为 v1 终态**——步数天然确定可复现(同输入同判定),与 §10.3 确定性编译无张力;时间口径依赖宿主时钟,同输入不可复现,故不采用。编译器内置 1200 步/编译单元(E6010 判据,`sem_ceval.ct` ceval)。清单键 `comptime.budget_ms`(CTCL 注册表,C 宿主 pkg 解析+fail-closed 校验)为声明位,当前不进入预算执行;其量纲命名与步数口径的统一(如 `budget_steps`)随 CTCL 迁移批次(spec-gap T48)统一定夺。
 - `const NAME: T = expr`:expr 在编译期求值(可调用 `comptime fn`);`static let` 的常量形式同理(§7.6)。
 - 泛型值参数(`comptime N: USize`,定长数组维度 `T[N]`)是 v0.3 唯一的类型级 comptime;**类型产出函数**(`fn Matrix(comptime N) -> type`)预留 v2。
 - **parametricity 保持**:comptime 代码不得反射泛型参数的运行时类型(E6030);类型反射仅经显式 `@derive` 声明,插件展开为普通代码——杜绝 Zig comptime 式泛型反射。
