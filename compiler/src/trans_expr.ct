@@ -546,7 +546,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     // seen 集不保证终止——实参型别逐层增长(wrap[List[T]] 型)
                     // 每层铸新码 seen 永不命中,新码无界链仍须显式拦截
                     // (fx_genrec_neg 改钉此发散负例)。
-                    var gseen = ct_env_ty(env, "#gseen")
+                    // 注:ct_env_ty 缺键回落 "i"(非空),须以 has 先判——裸回落值
+                    // 混入集合虽因 mg 恒带 "t_" 前缀永不命中,仍不依赖该巧合
+                    var gseen = ""
+                    if ct_env_has(env, "#gseen") {
+                        gseen = ct_env_ty(env, "#gseen")
+                    }
                     var emit_def = false
                     var phd: I32 = 0
                     var pk9: I32 = 1
