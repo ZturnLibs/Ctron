@@ -1,6 +1,6 @@
 // tests/gui/s51_ta_nav —— textarea 成熟导航/选区 headless 验收
 // 覆盖:↑↓ 行移列保持/Home/End 行内化/Shift+End 行内扩选/组词内联(d_ime_set)
-use gui.{test, d_focus, d_frame, d_expect_text, d_expect_absent, d_send_key, d_send_char, d_ime_set, d_mod, d_alt, d_click_text, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, Driver}
+use gui.{test, d_focus, d_frame, d_expect_text, d_expect_absent, d_send_key, d_send_char, d_ime_set, d_mod, d_alt, d_click_text, d_rclick, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_x100, d_cmd_y100, d_cmd_w100, Driver}
 
 struct M {
     var v: Str
@@ -435,8 +435,66 @@ fn main() -> I32 {
             })
             d_expect_text(t, "X Y")
             d_expect_absent(t, "world")
+            // ===== 右键编辑菜单(复制/剪切/粘贴/全选) =====
+            d_rclick(t, 30, 30, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            if !has_rect(30, 30, 112) {
+                panic("s51: 右键菜单未渲染")
+            }
+            d_expect_text(t, "复制")
+            d_expect_text(t, "全选")
+            // 点「全选」项(第 4 项:pad4+3*pitch26,中心 y=124)
+            d_click_text(t, 86, 124, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_absent(t, "复制")
+            d_send_char(t, 81, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "Q")
+            d_expect_absent(t, "X")
         })
     return rc
+}
+
+fn has_rect(x: I32, y: I32, w: I32) -> Bool {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_x100(i) == x * 100 {
+                if d_cmd_y100(i) == y * 100 {
+                    if d_cmd_w100(i) == w * 100 {
+                        return true
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return false
 }
 
 fn has_text(t: Box[Driver], sub: Str) -> Bool {

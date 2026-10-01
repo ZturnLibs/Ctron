@@ -28,6 +28,17 @@ extern "c" fn gui_open() -> I32
 
 #[trusted]
 extern "c" fn gui_close() -> I32
+extern "c" fn gui_ctx_open(node: I32, ox: I32, oy: I32, ax: I32, ay: I32) -> I32
+extern "c" fn gui_ctx_close() -> I32
+extern "c" fn gui_ctx_on() -> I32
+extern "c" fn gui_ctx_node() -> I32
+extern "c" fn gui_ctx_ox() -> I32
+extern "c" fn gui_ctx_oy() -> I32
+extern "c" fn gui_ctx_ax() -> I32
+extern "c" fn gui_ctx_ay() -> I32
+extern "c" fn gui_menu_begin(offx: I32, offy: I32, w: I32, h: I32, bg: I32) -> I32
+extern "c" fn gui_menu_item(h: I32, bg: I32, hover: I32) -> I32
+extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
 
 #[trusted]
 // 形参 I32:与解释桥 int×N cast(栈参 4 字节步长)及 shim int 形参三层一致
@@ -3243,6 +3254,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var ifw: I32 = gs2i(gt_cls_prop(c, "font_weight", "400", t))
                 gui_text_w(ishow, isz, ifw, rt_col_r(ifg), rt_col_g(ifg), rt_col_b(ifg), 255)
             }
+            rt_menu_render(id, hits, hinst, inst)
             hits.push(id)
             hinst.push(inst)
         } else {
@@ -3499,6 +3511,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                 }
             }
+            rt_menu_render(id, hits, hinst, inst)
             hits.push(id)
             hinst.push(inst)
         } else {
@@ -3799,6 +3812,237 @@ fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, Lis
 }
 
 // 字符输入:焦点 input 插入码点(utf8_enc)并 fire on:input;非焦点返回 false 回落
+// 节点盒矩形索引(配对最宽;无盒 -1)
+fn rt_node_box(rects: List[I32], hits: List[I32], node: I32) -> I32 {
+    var best: I32 = -1
+    var j: I32 = 0
+    while j < hits.len {
+        if hits[j] == node {
+            if j < rects.len {
+                if best < 0 {
+                    best = rects[j]
+                } else {
+                    if gui_cmd_w100(rects[j]) > gui_cmd_w100(best) {
+                        best = rects[j]
+                    }
+                }
+            }
+        }
+        j += 1
+    }
+    return best
+}
+
+// 菜单开启时的点击拦截:菜单内=执行对应编辑操作(吞点击);菜单外=仅关闭。
+// 返回 1=点击已消费。几何契约与 gui_menu_begin 同步:容器 112x112,pad4,项 pitch26
+fn rt_menu_click(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    if gui_ctx_on() == 0 {
+        return 0
+    }
+    var mx3: I32 = gui_evt_x()
+    var my3: I32 = gui_evt_y()
+    var inmenu: Bool = false
+    if mx3 >= gui_ctx_ax() {
+        if mx3 < gui_ctx_ax() + 112 {
+            if my3 >= gui_ctx_ay() {
+                if my3 < gui_ctx_ay() + 112 {
+                    inmenu = true
+                }
+            }
+        }
+    }
+    var mnode: I32 = gui_ctx_node()
+    gui_ctx_close()
+    if inmenu {
+        gui_focus_set(mnode)
+        var idx3: I32 = (my3 - gui_ctx_ay() - 4) / 26
+        if idx3 == 0 {
+            rt_edit_op(t, mnode, bind, act, 67)
+        }
+        if idx3 == 1 {
+            rt_edit_op(t, mnode, bind, act, 88)
+        }
+        if idx3 == 2 {
+            rt_edit_op(t, mnode, bind, act, 86)
+        }
+        if idx3 == 3 {
+            rt_edit_op(t, mnode, bind, act, 65)
+        }
+    }
+    return 1
+}
+
+// 右键开菜单(循环 evt5 与 d_rclick 同源):命中可编辑件→聚焦+开;否则关
+fn rt_ctx_open_at(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
+    var rn: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+    if rn < 0 {
+        gui_ctx_close()
+        return -1
+    }
+    if rn >= t.ntag.len {
+        gui_ctx_close()
+        return -1
+    }
+    var ised: Bool = false
+    if t.ntag[rn] == "input" {
+        ised = true
+    }
+    if t.ntag[rn] == "textarea" {
+        ised = true
+    }
+    if ised == false {
+        gui_ctx_close()
+        return -1
+    }
+    gui_focus_set(rn)
+    var bx: I32 = rt_node_box(rects, hits, rn)
+    var ox: I32 = gui_evt_x()
+    var oy: I32 = gui_evt_y()
+    if bx >= 0 {
+        ox = gui_evt_x() - gui_cmd_x100(bx) / 100
+        oy = gui_evt_y() - gui_cmd_y100(bx) / 100
+    }
+    gui_ctx_open(rn, ox, oy, gui_evt_x(), gui_evt_y())
+    return rn
+}
+
+// 右键菜单渲染(文本件分支尾;仅渲染本节点菜单)。悬停行=accent 高亮 RECT
+// (配对推 hits;透明行不产 RECT 不配对——命中不变量)
+fn rt_menu_render(id: I32, hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
+    if gui_ctx_on() == 0 {
+        return 0
+    }
+    if gui_ctx_node() != id {
+        return 0
+    }
+    var mx4: I32 = gui_mouse_x()
+    var my4: I32 = gui_mouse_y()
+    gui_menu_begin(gui_ctx_ox(), gui_ctx_oy(), 112, 112, gui_theme_slot_get(2))
+    var labels = List[Str]()
+    labels.push("复制")
+    labels.push("剪切")
+    labels.push("粘贴")
+    labels.push("全选")
+    var i: I32 = 0
+    while i < 4 {
+        var hov: I32 = 0
+        var ry4: I32 = gui_ctx_ay() + 4 + i * 26
+        if my4 >= ry4 {
+            if my4 < ry4 + 26 {
+                if mx4 >= gui_ctx_ax() {
+                    if mx4 < gui_ctx_ax() + 112 {
+                        hov = 1
+                    }
+                }
+            }
+        }
+        gui_menu_item(26, gui_theme_slot_get(7), hov)
+        var fg4: I32 = gui_theme_slot_get(5)
+        gui_text(labels[i], 13, rt_col_r(fg4), rt_col_g(fg4), rt_col_b(fg4), 255)
+        gui_close()
+        if hov == 1 {
+            hits.push(id)
+            hinst.push(inst)
+        }
+        i += 1
+    }
+    gui_close()
+    return 0
+}
+
+// 编辑操作(⌘C/X/V/A 与右键菜单共用;op=67 复制 88 剪切 86 粘贴 65 全选)
+fn rt_edit_op(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, op: I32) -> Bool {
+    var v1: Str = rt_in_val(t, node, bind)
+    var an1: I32 = gui_sel_anchor_get()
+    var c1: I32 = gui_caret_get()
+    if c1 > v1.len {
+        c1 = v1.len
+    }
+    if an1 < 0 {
+        an1 = c1
+    }
+    if an1 > v1.len {
+        an1 = v1.len
+    }
+    var sa: I32 = an1
+    var sb: I32 = c1
+    if sa > sb {
+        sa = c1
+        sb = an1
+    }
+    if op == 67 {
+        // 复制(有选区复制选区;无选区全值——简易 GUI 惯例)
+        if sb > sa {
+            gui_clip_set_c(byte_slice(v1, sa, sb))
+        } else {
+            gui_clip_set_c(v1)
+        }
+        gui_clip_push()
+        return true
+    }
+    if op == 88 {
+        // 剪切 = 复制 + 删段
+        if sb > sa {
+            gui_clip_set_c(byte_slice(v1, sa, sb))
+            gui_clip_push()
+            var cut1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
+            gui_sel_clear()
+            gui_caret_set(sa)
+            rt_in_fire(t, node, "input", cut1, act)
+        }
+        return true
+    }
+    if op == 86 {
+        // 粘贴:系统→内部→逐码点走编辑管线(UTF-8 解码;选区先消费)
+        gui_clip_sync()
+        var pi: I32 = 0
+        var pn: I32 = gui_clip_len()
+        if pn > 0 {
+            if sb > sa {
+                var del1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
+                gui_sel_clear()
+                gui_caret_set(sa)
+                rt_in_fire(t, node, "input", del1, act)
+            }
+            while pi < pn {
+                var b0: I32 = gui_clip_byte(pi)
+                var cp: I32 = b0
+                var adv: I32 = 1
+                if b0 >= 240 {
+                    cp = (b0 - 240) * 262144
+                    cp = cp + (gui_clip_byte(pi + 1) - 128) * 4096
+                    cp = cp + (gui_clip_byte(pi + 2) - 128) * 64
+                    cp = cp + (gui_clip_byte(pi + 3) - 128)
+                    adv = 4
+                } else {
+                    if b0 >= 224 {
+                        cp = (b0 - 224) * 4096
+                        cp = cp + (gui_clip_byte(pi + 1) - 128) * 64
+                        cp = cp + (gui_clip_byte(pi + 2) - 128)
+                        adv = 3
+                    } else {
+                        if b0 >= 192 {
+                            cp = (b0 - 192) * 64
+                            cp = cp + (gui_clip_byte(pi + 1) - 128)
+                            adv = 2
+                        }
+                    }
+                }
+                rt_input_char(t, bind, act, cp)
+                pi += adv
+            }
+        }
+        return true
+    }
+    if op == 65 {
+        // 全选
+        gui_sel_anchor_set(0)
+        gui_caret_set(v1.len)
+        return true
+    }
+    return false
+}
+
 fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, ch: I32) -> Bool {
     var fn0: I32 = gui_focus_node()
     if fn0 < 0 {
@@ -3870,103 +4114,23 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         return true
     }
     if k == 256 {
+        if gui_ctx_on() == 1 {
+            gui_ctx_close()
+            return true
+        }
         gui_focus_set(-1)
         gui_caret_set(0)
         return true
     }
     var shd: Bool = gui_mod_shift() == 1
     // 编辑快捷键(⌘/Ctrl 统一 gui_mod_ctrl):C 复制 / X 剪切 / V 粘贴 / A 全选
+    // (操作体抽取 rt_edit_op,右键菜单同源)
     if gui_mod_ctrl() == 1 {
         var kU: I32 = k
         if kU >= 97 && kU <= 122 {
             kU = kU - 32
         }
-        var v1: Str = rt_in_val(t, fn0, bind)
-        var an1: I32 = gui_sel_anchor_get()
-        var c1: I32 = gui_caret_get()
-        if c1 > v1.len {
-            c1 = v1.len
-        }
-        if an1 < 0 {
-            an1 = c1
-        }
-        if an1 > v1.len {
-            an1 = v1.len
-        }
-        var sa: I32 = an1
-        var sb: I32 = c1
-        if sa > sb {
-            sa = c1
-            sb = an1
-        }
-        if kU == 67 {
-            // 复制(有选区复制选区;无选区全值——简易 GUI 惯例)
-            if sb > sa {
-                gui_clip_set_c(byte_slice(v1, sa, sb))
-            } else {
-                gui_clip_set_c(v1)
-            }
-            gui_clip_push()
-            return true
-        }
-        if kU == 88 {
-            // 剪切 = 复制 + 删段
-            if sb > sa {
-                gui_clip_set_c(byte_slice(v1, sa, sb))
-                gui_clip_push()
-                var cut1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
-                gui_sel_clear()
-                gui_caret_set(sa)
-                rt_in_fire(t, fn0, "input", cut1, act)
-            }
-            return true
-        }
-        if kU == 86 {
-            // 粘贴:系统→内部→逐码点走编辑管线(UTF-8 解码;选区先消费)
-            gui_clip_sync()
-            var pi: I32 = 0
-            var pn: I32 = gui_clip_len()
-            if pn > 0 {
-                if sb > sa {
-                    var del1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
-                    gui_sel_clear()
-                    gui_caret_set(sa)
-                    rt_in_fire(t, fn0, "input", del1, act)
-                }
-                while pi < pn {
-                    var b0: I32 = gui_clip_byte(pi)
-                    var cp: I32 = b0
-                    var adv: I32 = 1
-                    if b0 >= 240 {
-                        cp = (b0 - 240) * 262144
-                        cp = cp + (gui_clip_byte(pi + 1) - 128) * 4096
-                        cp = cp + (gui_clip_byte(pi + 2) - 128) * 64
-                        cp = cp + (gui_clip_byte(pi + 3) - 128)
-                        adv = 4
-                    } else {
-                        if b0 >= 224 {
-                            cp = (b0 - 224) * 4096
-                            cp = cp + (gui_clip_byte(pi + 1) - 128) * 64
-                            cp = cp + (gui_clip_byte(pi + 2) - 128)
-                            adv = 3
-                        } else {
-                            if b0 >= 192 {
-                                cp = (b0 - 192) * 64
-                                cp = cp + (gui_clip_byte(pi + 1) - 128)
-                                adv = 2
-                            }
-                        }
-                    }
-                    rt_input_char(t, bind, act, cp)
-                    pi += adv
-                }
-            }
-            return true
-        }
-        if kU == 65 {
-            // 全选
-            gui_sel_anchor_set(0)
-            gui_caret_set(v1.len)
+        if rt_edit_op(t, fn0, bind, act, kU) {
             return true
         }
     }
@@ -4470,6 +4634,14 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         rt_drag_sel(t, rects, hits, bind)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
+            if rt_menu_click(t, bind, act) == 1 {
+                evt = 0
+            }
+        }
+        if evt == 5 {
+            rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
             // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
             var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
@@ -4620,6 +4792,14 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
             }
         }
         var evt: I32 = gui_poll_event()
+        if evt == 2 {
+            if rt_menu_click(t, bind, act) == 1 {
+                evt = 0
+            }
+        }
+        if evt == 5 {
+            rt_ctx_open_at(t, rects, hits)
+        }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
             // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
@@ -5055,6 +5235,9 @@ pub fn d_click_text(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void,
     if evt != 2 {
         panic("gui test: 点击事件丢失")
     }
+    if rt_menu_click(t.t, bind, act) == 1 {
+        return 0
+    }
     var rc2 = List[I32]()
     var n: I32 = gui_cmd_count()
     rt_collect_rects(n, rc2)
@@ -5082,6 +5265,20 @@ pub fn d_click_text(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void,
     return 0
 }
 
+// 右键位置点击(headless):evt5 注入;与循环同路径开/关菜单
+pub fn d_rclick(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_rclick(x, y)
+    var evt: I32 = gui_poll_event()
+    if evt != 5 {
+        panic("gui test: 右键事件丢失")
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    rt_ctx_open_at(t.t, rc2, t.hits)
+    return 0
+}
+
 // 位置点击(headless):注入 xy 点击→真实命中路径(后向最优先)+焦点转移+ev_fire
 // ——遮罩吃穿透/卡片不透等位置语义的唯一断言口(d_click 按名绕过命中面)
 pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
@@ -5089,6 +5286,9 @@ pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, a
     var evt: I32 = gui_poll_event()
     if evt != 2 {
         panic("gui test: 点击事件丢失")
+    }
+    if rt_menu_click(t.t, bind, act) == 1 {
+        return 0
     }
     var rc2 = List[I32]()
     var n: I32 = gui_cmd_count()

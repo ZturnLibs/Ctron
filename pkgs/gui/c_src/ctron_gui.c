@@ -127,6 +127,9 @@ void gui_inject_char(int ch) {
 void gui_inject_click(int x, int y) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
 }
+void gui_inject_rclick(int x, int y) {
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 5, 0, x, y }; g_qtail++; }
+}
 // 脚本化拖动注入(测试/自动化):压下帧(evt2@x1)→12 移动帧(mouse_down=1,
 // mouse_x 插值 x1→x2)→释放;gui_mouse_x/down 在注入期受控
 static int g_idrg_act = 0;
@@ -201,6 +204,11 @@ int gui_poll_event(void) {
         Vector2 p = GetMousePosition();
         g_cur = (GuiEvent){ 2, 0, (int)p.x, (int)p.y };
         return 2;
+    }
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        Vector2 p = GetMousePosition();
+        g_cur = (GuiEvent){ 5, 0, (int)p.x, (int)p.y };
+        return 5;
     }
     return 0;
 }
@@ -800,6 +808,59 @@ int gui_caret_float(int offx, int y, int w, int h, int bg) {
     Clay__OpenElement();
     Clay__ConfigureOpenElement(decl);
     Clay__CloseElement();
+    return 0;
+}
+
+// ---- 右键编辑菜单(文本组件 v1:复制/剪切/粘贴/全选;操作域包 rt_edit_op) ----
+static int g_ctx_on = 0;
+static int g_ctx_node = -1;
+static int g_ctx_ox = 0, g_ctx_oy = 0;   // 菜单相对节点盒偏移(渲染浮盒)
+static int g_ctx_ax = 0, g_ctx_ay = 0;   // 菜单绝对窗坐标(拦截/悬停判定)
+void gui_ctx_open(int node, int ox, int oy, int ax, int ay) {
+    g_ctx_on = 1; g_ctx_node = node; g_ctx_ox = ox; g_ctx_oy = oy; g_ctx_ax = ax; g_ctx_ay = ay;
+}
+void gui_ctx_close(void) { g_ctx_on = 0; g_ctx_node = -1; }
+int gui_ctx_on(void) { return g_ctx_on; }
+int gui_ctx_node(void) { return g_ctx_node; }
+int gui_ctx_ox(void) { return g_ctx_ox; }
+int gui_ctx_oy(void) { return g_ctx_oy; }
+int gui_ctx_ax(void) { return g_ctx_ax; }
+int gui_ctx_ay(void) { return g_ctx_ay; }
+
+// 菜单浮盒(开始;子项渲染后 gui_close 收口)。几何契约(域包拦截同步):
+// 容器 w=112 h=112,内边距 4,子项 pitch 26 h 24(4 项)
+int gui_menu_begin(int offx, int offy, int w, int h, int bg) {
+    Clay_ElementDeclaration decl = {0};
+    decl.floating = (Clay_FloatingElementConfig){
+        .attachTo = CLAY_ATTACH_TO_PARENT,
+        .offset = { .x = (float)offx, .y = (float)offy },
+        .zIndex = 200,
+    };
+    Clay_LayoutConfig lay = {0};
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { (float)w, (float)w } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.padding = (Clay_Padding){ .left = 4, .right = 4, .top = 4, .bottom = 4 };
+    decl.layout = lay;
+    decl.backgroundColor = (Clay_Color){ (float)((bg >> 16) & 255), (float)((bg >> 8) & 255), (float)(bg & 255), 255.0f };
+    Clay__OpenElement();
+    Clay__ConfigureOpenElement(decl);
+    return 0;
+}
+// 菜单子项行(开始;gui_text 后 gui_close 收口)。hover=1 高亮,0 透明(不产
+// RECT 不配对——命中不变量)
+int gui_menu_item(int h, int bg, int hover) {
+    Clay_ElementDeclaration decl = {0};
+    Clay_LayoutConfig lay = {0};
+    lay.sizing.width = (Clay_SizingAxis){ .size = { .minMax = { 0, 0 } }, .type = CLAY__SIZING_TYPE_GROW };
+    lay.sizing.height = (Clay_SizingAxis){ .size = { .minMax = { (float)h, (float)h } }, .type = CLAY__SIZING_TYPE_FIXED };
+    lay.padding = (Clay_Padding){ .left = 10, .right = 10, .top = 0, .bottom = 0 };
+    lay.childAlignment = (Clay_ChildAlignment){ CLAY_ALIGN_X_LEFT, CLAY_ALIGN_Y_CENTER };
+    decl.layout = lay;
+    if (hover) {
+        decl.backgroundColor = (Clay_Color){ (float)((bg >> 16) & 255), (float)((bg >> 8) & 255), (float)(bg & 255), 255.0f };
+    }
+    Clay__OpenElement();
+    Clay__ConfigureOpenElement(decl);
     return 0;
 }
 
