@@ -889,6 +889,93 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // T09 修:旧码 ct_call_args(ag, 2,…) 把 ag 当作含接收者的实参表——
             // 成员调用的 ag 只有实参(接收者在 cal[1]),from=2 恒漏首实参且
             // 个数核对错位(04g 发射臂 rc=1 即此);主套件从不发射故长期隐形)
+            // P0-A:泛型方法位(UFCS)——`r.query("q")` 形(Req[S] 族收口缝)。
+            // 旧臂裸 t_<m> 直落:泛型被调无单态化后缀 → 定义缺位,C 未定义
+            // 函数(t_query/t_cookie/t_param 全族)。接收者实例码供型参实参:
+            // 首参注解剥 & 层后基名对位接收者实例(u:<基>__<尾缀>),TArgs 槽
+            // 裸 TPar 按位绑接收者实参码(Req[I64] 接收者 → S="6");余型参
+            // 回落实参位首层命中(镜像泛型直调臂),未中落 "i"(__i 家族自洽,
+            // 定义/调用两侧同码不漂)。单态化定义/链/原型/调用串组装全走
+            // ct_spec_call_emit(recvx = 接收者按首参槽形:p<内> 已指针直传、
+            // u: 值取址/装盒,镜像 req_set_session__u_App(t_req) 既有约定)。
+            var ugd = ct_fn_decl(file, m)
+            if ugd.len > 0 && ugd[2].len > 1 && ugd[3].len > 1 {
+                var utpsn = List[Str]()
+                var utys = List[Str]()
+                var uq: I32 = 1
+                while uq < ugd[2].len {
+                    utpsn.push(ugd[2][uq][1])
+                    utys.push("i")
+                    uq += 1
+                }
+                var uft = ugd[3][1][3]
+                if uft.len > 0 && uft[0] == "Ref" { uft = uft[1] }
+                var urc = objt
+                if urc.len > 1 && byte_at(urc, 0) == 112 { urc = byte_slice(urc, 1, urc.len) }
+                if uft[0] == "Named" && uft[2].len > 1 && urc.len > 2 && byte_slice(urc, 0, 2) == "u:" {
+                    var uinfo = ct_struct_inst_split(urc)
+                    if uinfo.len > 1 {
+                        var ubar: I32 = 0
+                        var uci: I32 = 0
+                        while uci < uinfo.len {
+                            if byte_at(uinfo, uci) == 124 { ubar = uci }
+                            uci += 1
+                        }
+                        // 首参基名 == 接收者基名才按位绑(异基不妄绑)
+                        if seq2(uft[1], byte_slice(uinfo, 0, ubar)) {
+                            var ucodes = ct_inst_arg_codes(byte_slice(uinfo, ubar + 1, uinfo.len))
+                            var uslot: I32 = 1
+                            while uslot < uft[2].len {
+                                if uslot - 1 < ucodes.len {
+                                    var utn = uft[2][uslot]
+                                    if utn[0] == "Named" && utn[2].len < 2 {
+                                        var uk: I32 = 0
+                                        while uk < utpsn.len {
+                                            if seq2(utn[1], utpsn[uk]) {
+                                                utys[uk] = ct_inst_ty_node(ucodes[uslot - 1])
+                                            }
+                                            uk += 1
+                                        }
+                                    }
+                                }
+                                uslot += 1
+                            }
+                        }
+                    }
+                }
+                // 余型参:实参位首层裸 TPar 命中(形参 j ↔ 实参 ag[j-1],j≥2)
+                var upi: I32 = 2
+                while upi < ugd[3].len {
+                    if upi - 1 < ag.len {
+                        var upt = ugd[3][upi][3]
+                        if upt[0] == "Named" && upt[2].len < 2 {
+                            var uk2: I32 = 0
+                            while uk2 < utpsn.len {
+                                if seq2(upt[1], utpsn[uk2]) {
+                                    utys[uk2] = ct_inst_ty_node(ct_typeof(ag[upi - 1], env, file))
+                                }
+                                uk2 += 1
+                            }
+                        }
+                    }
+                    upi += 1
+                }
+                // 接收者按首参槽形:p<内> 码直传(已是指针)/u: 值码取址/装盒
+                var upc0 = ct_ty_code(ct_mono_subst_ty(ugd[3][1][3], utpsn, utys), file)
+                var urx = ""
+                if upc0.len > 1 && byte_at(upc0, 0) == 112 {
+                    if objt.len > 1 && byte_at(objt, 0) == 112 {
+                        urx = obj
+                    } else {
+                        urx = "(&(" + obj + "))"
+                    }
+                } else if upc0.len > 2 && byte_slice(upc0, 0, 2) == "u:" {
+                    urx = ct_arg_cast("6", "6", ct_wrap_i(objt, obj))
+                } else {
+                    urx = ct_arg_cast(objt, upc0, obj)
+                }
+                return ct_spec_call_emit(file, env, ag, m, mk("None"), utpsn, utys, ugd, urx)
+            }
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
             if pcs.len > 0 { p0 = pcs[0] }
