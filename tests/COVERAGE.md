@@ -420,10 +420,13 @@ failures,墙全拆。** 其后首曝两门:suite_trans 15/0 绿;suite_corpus_tra
 **48 pass/8 红(1c98531 续片)**:真病灶=trans.c 的 main 装配优先级反了(有 test 块时
 user_main 整个被丢,语义对齐 rt_run_main 口径=有 fn main 只跑 main)+ Void main 被发射成
 `return (int)user_main()`(gcc 拒;按 TY_NAMED Void 分档 void 调用 rc=0)——03l/03n/
-03k/06_crlf 四件清零。**余 8 红=三族在册债**:width/as-U64 C 宿主三处红×3(03i/03l_as_
-u64/03k_u64_overflow,夹具注释自带缺陷清单:wrap_int 64 位无掩码/as 实参 decl 按有符号
-拒/字面量位自适应丢 us)+ 发射缺口×3(03j 闭包参成员/05i into_gc 深拷贝/06_concurrency)
-+ T55 泳道×2(t55_mw_smoke/t55_probe),归属各自泳道。fmt_suite 01i(Rust 侧既有)。
+03k/06_crlf 四件清零。**余 8 红 → 5 红(2026-10-01 续片收口)**:width/as-U64 三件清零,双根因——
+①as 助手掩码 `1ULL<<bits` 在 bits=64 为 UB → `& 0ULL` 恒零(64 位无符号改值位直通,
+§3.6 负值模 2^64);②U64 checked 算术经 int64 存储为负 → int128 范围检查误判(03i 误报
+溢出/03k 漏检)→ uint64 参数 + __builtin_*_overflow(§4.5 溢出 panic 语义)。
+make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后续门)。
+**终态 51 pass / 5 红,全部 cc 失败=他泳道在册发射缺口**:03j 闭包参成员/
+05i into_gc 深拷贝/06_concurrency×1/T55 泳道×2(t55_mw_smoke/t55_probe)。fmt_suite 01i(Rust 侧既有)。
 
 **2026-09-21 续片修复**(compiler-c 门禁卫生):
 - `token.c` TOK_NAMES 表漏 "Ellipsis" 条目(§9.6 加 TOK_ELLIPSIS 未同步)→ 名字表

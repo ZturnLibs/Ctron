@@ -83,9 +83,10 @@ test: $(BUILD)/test_lex $(BUILD)/test_parse $(BUILD)/suite_lex $(BUILD)/suite_pa
 	./$(BUILD)/suite_run ../selfhosted
 	./$(BUILD)/suite_diff ../selfhosted
 	./$(BUILD)/suite_trans tests/trans_fixtures
-	./$(BUILD)/suite_corpus_trans ../tests
-	./$(BUILD)/suite_modules ../tests/modules
+		./$(BUILD)/suite_modules ../tests/modules
 	./$(BUILD)/suite_fmt ../tests
+	# 红门置尾:corpus_trans 余 5 红=他泳道在册发射缺口(cc 失败),不遮蔽后续门
+	./$(BUILD)/suite_corpus_trans ../tests
 
 clean:
 	rm -rf $(BUILD)

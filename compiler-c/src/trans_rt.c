@@ -70,6 +70,22 @@ void emit_helper(tc* c, const char* name) {
         else if (is_c == 2) snprintf(omsg, sizeof omsg, "integer overflow (idx assign)");
         else if (is_c == 3) snprintf(omsg, sizeof omsg, "integer overflow (member assign)");
         else snprintf(omsg, sizeof omsg, "integer overflow (%s)", op);
+        if (us && bits >= 64) {
+            // U64 checked 算术:值 ≥2^63 经 int64 存储为负,int128 范围检查必然误判
+            // (03i 误报溢出/03k 漏检)——uint64_t 参数 + builtin 溢出检查
+            // (§4.5 checked 语义:溢出 panic;div/mod 无溢出面,零除门足矣)
+            sb_f(o, "static uint64_t %s(uint64_t a, uint64_t b) {\n", name);
+            if (!strcmp(base, "div") || !strcmp(base, "mod")) {
+                sb_f(o, "    if (b == 0) ctron_panic(\"%s\");\n", zmsg);
+                sb_f(o, "    return a %s b;\n}\n", op);
+            } else {
+                sb_f(o, "    uint64_t r;\n"
+                    "    if (__builtin_%s_overflow(a, b, &r)) ctron_panic(\"%s\");\n"
+                    "    return r;\n}\n",
+                    !strcmp(base, "sub") ? "sub" : !strcmp(base, "mul") ? "mul" : "add", omsg);
+            }
+            return;
+        }
         sb_f(o, "static %s %s(int64_t a, int64_t b) {\n", ct, name);
         if (!strcmp(base, "div") || !strcmp(base, "mod"))
             sb_f(o, "    if (b == 0) ctron_panic(\"%s\");\n", zmsg);
@@ -180,7 +196,11 @@ void emit_helper(tc* c, const char* name) {
     }
     if (!strcmp(fam, "as")) {
         sb_f(o, "static %s %s(int64_t v) {\n", ct, name);
-        if (us)
+        if (us && bits >= 64)
+            // 64 位无符号:值位直通即模 2^64(1ULL<<64 是 UB,不得走掩码路;
+            // §3.6 窄化语义:负值模 2^64 折回,-1 → 2^64-1)
+            sb_f(o, "    return (%s)v;\n}\n", ct);
+        else if (us)
             sb_f(o, "    uint64_t r = (uint64_t)v & %lluULL;\n"
                 "    return (%s)(int64_t)r;\n}\n", (1ULL << bits) - 1, ct);
         else if (bits < 64)
