@@ -891,3 +891,5 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
 - 影响:smoke [3/9] emit 臂在此案阻塞(门禁不可完成);CI 将以超时显红。
 - 归属:P0-A′ 泛型特化 seen 集/自编译期宿主静默崩(trans_stmt 绑定块二分在案,
   36c9dda2 值模型型别二分根因域)——归 P0-A′/T53 泳道,本线不越界修。
+
+**原生 e2e 翻账(2026-10-01,f50ff59b)**:web_todo serve_net 原生全链绿——未登录 /app 303 → POST /login(demo/demo123)303+HMAC Set-Cookie → 带 cookie /app 200(真 todo 页)→ POST /__shutdown 200 排空 SERVER_RC=0;根因双头(陈旧 bin/ctron-emit + P-化 UFCS 泛型方法臂裸 t_<m> 12 未定义)由 72f3a26d typedef 前置+f50ff59b 接收者实例码型参绑定收口;评审 MERGE-READY(独立复跑 99/99×2)。T54/T55 原生臂自此全账翻正。

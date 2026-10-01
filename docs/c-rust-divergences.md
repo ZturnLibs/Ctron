@@ -228,8 +228,8 @@ P4 波(std/http 协议半层落地)实测的发射面事实,皆编译器泳道�
   (ct_typeof 对跨模块 let 绑定取不到 `u:` 型别)。**绿面**:同模块成员
   读写、struct 按值跨模块流动、消费方把值作实参回传跨模块 fn、消费方侧
   struct 字面量构造。绕行 = 成员访问留在所属模块,公开面 = struct 返回 +
-  标量 getter(std/http parse.ct 的 http_rc/sl_vs 面即此形;Box[Box64]
-  出参通道为另一已知好形)。
+  标量 getter(std/http parse.ct 的 http_rc/sl_vs 面即此形;extern 边界
+  出参 P0-B 起以 &T 裸指针为正形,见篇末销账)。
 - **Box[多字段 struct] 深链/整读/字段赋值不可发射**:`b.v.f` 链
   (ct_expr:Member@N)、`let h = b.v` 整读、`out.v.f = x`(`ct_stmt:struct
   字段赋值未支持`)、`out.v = StructLit` 整赋全红;绿面仅 Box64 标量出参
@@ -733,10 +733,9 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
   缺口既有);meta_check 460 件绿;tests/http 111/0、tests/net 18/0 双矩阵零差。
 - **兑现度**:examples/web_todo、examples/ctslink 原生臂越过载荷 panic——
   `t_Router__U3_App{t_App state;...}`/`t_Req__U3_App` 等实例 typedef 正确落 C;
-  双例现止于**下一档在册债**:泛型特化递归超限(`t_dispatch_h__u_App`,
-  run_chain[S] 闭包自引,fx_genrec_neg 钉定的「无 seen 集」语义挂账,非终态
-  设计)——解除需特化原型前置+seen 集,独立工作项;再往后为 P0-B net bind
-  E4046(他泳道在制)。03e_generics_types emit 同由载荷 panic 前进至 class
+  双例曾止于泛型特化递归超限——**已由 P0-A′ seen 集解除**(篇末节;同码自引用
+  复用为运行期递归,`t_dispatch_h__u_App` 前进);再往后为 P0-B net bind
+  E4046(亦已销账,见 P0-B 节)。03e_generics_types emit 同由载荷 panic 前进至 class
   字面量「非值类型」(T26 在册,class 字面量发射全缺)。
 - **复验随批(2026-10-01,Approved 意见收口)**:ct_let_insts_e If 语句 else 臂补
   裸 Block fallback(与 then 臂同防;p_if 现行 else=BlockExpr 包裹,实证走通,
@@ -749,3 +748,78 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
   ——体面预扫 lifting 至全语句面时一并补。
   ③ ct_struct_inst_split 以首个 `__` 分割——struct 名自身含 `__` 时误切(既有
   编码命名约束,与本扩位无关;语料零覆盖,登记为名字纪律)。
+
+## P0-B net bind.ct 出参迁 &T 销账(2026-10-01,编译泳道移交单 P0-B,服务器泳道执行)
+
+- **销账**:E4046 ×9(`net/bind.ct` 全族出参 `Box[Box64]` 形——tcp_listen/sockname/
+  accept/connect/udp_socket/udp_bind/unix_listen/accept/connect 的 out_fd/out_port)
+  解除,`use net` 整树 check/emit 双臂复活(tcp_echo chk `check OK decls=64` rc=0;
+  修复前 chk rc=1 六响)。**机理**:v0.9·三「三 Box 收口」(14a8b73)裁 Box 外参为
+  所有权谎言硬错改道 &T;`&Box64` 过界发 `p<u:Box64>` 码 → C `t_Box64*`,与
+  ctron_net.c 侧 `typedef struct { int64_t v; } Box64;` 镜像 ABI 同型,符号名零改。
+  **探针实证**(移交单第一步要求):独立夹具 `extern fn probe_out_fd(p: &Box64) ->
+  I64` emit 产物 `extern int64_t probe_out_fd(t_Box64* t_p)` + 调用点
+  `(t_Box64*)(&(t_cell))`(Ident 实参发射面自动取址),C 侧 shim `out->v = 4242`
+  写透回读端到端绿。
+- **sem 同步收口(本单新增,消除双臂分叉)**:发射臂 auto-& 仅 extern 臂
+  (trans_expr.ct 裸指针形参位:Ident/成员链取址,其余响亮失败),check 臂
+  `compat()` 原无 `ref:n:X ← n:X` 规则 → 迁移后 `use net` check 臂改红 E2010
+  (tests/ffi/ptr_param pkt_* 同形,ffi run.sh 仅 emit 臂故长期未曝)。补
+  sem_type.ct `ext_ref_lv_ok`:被调须 FnExt + 实参限左值(Ident/成员链)+
+  具名型全同,与发射契约逐条对齐;负例守恒(非左值 `f(mk())`/异型 `take(c)`
+  仍 E2010)。**普通 fn &T 形参不放**(ct_arg_cast 按值直传无取址发射)。
+  随批:smoke decl 锁 439→440(+ext_ref_lv_ok)。
+- **门禁**:tests/net 双矩阵 18/18 ×2(默认+CTRON_RT=coro);todo_api e2e
+  22/22(emit+cc+全链断言;其 run.sh cc 行 net c_src 路径随 09-30 库根布局
+  重指 `ROOT/net/`→`ROOT/lib/net/`,f1e1c3e 同族漏网随批修);tests/db 40/54
+  与基线零差(57ba086 隔离 worktree 复跑同单,14 败全部先在:5×种子副本
+  漂移 `std/db/*` 旧径 + b_handshake/pool_wait interp + 7 emit
+  前置声明缺口,均非本单扰动面);ffi 33/33(box_ext.neg E4046 负例仍拦)。
+  web_todo/ctslink serve 臂的下一档在册债:泛型特化递归超限
+  (`t_dispatch_h__u_App`,P0-A 销账号已登记「解除需特化原型前置+seen 集」)
+  ——**已由 P0-A′ 解除**(篇末节),57ba086 基线复现同单实证先在。
+- **附注(P5-B 随单核验)**:`std/db` ctron_entropy.c extern 面
+  (`ctron_entropy_fill(int64_t* buf, int64_t n)` ← std/uuid.ct
+  `buf: &I64[]`)无 Box 形参,view-lane 惯例与 §9.6 在册口径一致,零扰动免迁。
+
+## P0-A′ 泛型特化 seen 集(2026-10-01,编译泳道;P0-A 销账号「特化原型前置+seen 集」独立工作项)
+
+- **销账**:泛型特化「递归即拒」硬拦(`emit:泛型特化递归超限`,深度 3)翻转为
+  C++ 模板单态化同款语义:trans_expr.ct 特化点 `#gseen`("; " 连接实例码,在制∪
+  已发)整段比对命中 → 复用已发实例只发调用——同码自引用/互引成为普通运行期
+  递归。深度背stop 保留抬高 3→64:seen 集不保证终止,实参型别逐层增长
+  (wrap[Box2[T]] 型)每层铸新码永不命中,新码无界链仍显式拦截
+  (fx_genrec_neg 改钉此发散负例;原 loopr[T] 案翻正为 fx_genrec_pos)。
+- **机理三件套**:①嵌套预提升下行携带 #gseen(本码在制标记);②特化体内同码
+  自调用 → 定义发射前置原型先行(C 侧须先见原型;#ifndef 卫兵去重);③解码
+  对称(trans_ty.ct ct_targ_env):标量字母表补全(f/g/7/z/w8u/w8s/w16u/w16s
+  此前无臂回落 TPar,ct_ty_code 兜底塌 "i" → 跨特化同码误并,seen 集在制复用
+  即错码特化)+ List 族码还原(LI/L6/Lu:/L)+ 包装型实参逐槽深代入(Box2[T]
+  内含型参原样返回时内层 TPar 塌 "i",Box2[Box2[i]] 误铸同码)。
+- **interp parity**:解释臂泛型调用为「擦除型参,按名动态派发」(eval_call.ct),
+  无预提升无拦截——同码自引用运行期天然收敛,双臂语义对齐;emit 臂新增的
+  静态背stop(发散新码链)严于 interp(其推迟到运行期栈溢出),静态-动态门差
+  与「负例 emit 期拦截」惯例一致。
+- **门禁**:smoke 串行绿面 150/0(seen 集 pos/neg 双钉);后随互引增补
+  (fx_genrec_mut)与 typedef 前置两修,终态口径见 git log 72f3a26;
+  suite 99/99 双侧零差 + ffi 27/27 + modules 16/17(2 红先在:use_alias_nat 系
+  CTRON_STDPATH 下 W8901 早退分支与夹具期望漂移、dup_static 系宿主臂,均非
+  本单扰动面);meta_check 461 件绿;tests/net 18/18;Box2 P0-A 夹具
+  fx_gpayload emit 仍绿。
+- **兑现度**:ctslink serve_net emit 越过原红点——`泛型特化递归超限:
+  t_dispatch_h__u_App` 消失,同码重复实例(phd=0/phd=2 双臂)与深度 5 嵌套链
+  (t_route_tier__u_App phd=5)、App struct 载荷实例(t_Router__U3_App)照发,
+  前进 950 行 C 后止于**下一档在册债**:跨模块成员访问红面(main:314
+  pgd_name(d) 结果 Member,§「跨模块成员访问不可发射」在册)——dispatch_h
+  特化本体在该止点之后,待该债解除后复跑钉证。
+- **随批性能登记(非本单修,深度 3→64 放大暴露)**:发散新码链负例
+  (fx_genrec_neg,Box2 嵌套 64 层)fresh emit 成本病态(12+ CPU 分钟;
+  缓存命中路径不受影响)——ct_emit_inst_typedef 字段递归对已印型仅 print
+  卫兵去重、compute 仍全量重做(每层重扫 file+逐级重拆编码),层均成本随时
+  深指数化;根治须 typedef compute 侧 memo(无模块级全局惯例,需穿 env 或
+  立静态),独立工作项。
+- **随批观察(非本单,已甄别)**:tests/http 105/111,6 红全为 x_ e2e
+  (client/sse/ws ×default+coro,运行期 assert failed)——夹具走
+  Box[Box64]/net 门面貌;1daf176 基线(不含本单)emit 臂同夹具复跑同响
+  (emit/cc 双绿 + run assert failed),红先在,最可疑引入面为 0428ddd
+  (P0-B)net.ct 门面重写(其门禁未含 tests/http),归 P0-B 泳道跟复。
