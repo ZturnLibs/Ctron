@@ -110,11 +110,9 @@ fn need_login(req: &Req[App], next: fn(&Req[App]) -> Resp) -> Resp {
 }
 
 fn guarded(app: App) -> Router[App] {
-    return router[App](app)
-        .middleware(need_login)               // 组级守卫写一次,组内全路由生效(spec §7-1)
-        .get("/", h_list)
-        .post("/add", h_add)
-        .post("/del/:id", h_del)
+    // P0-A 发射适配:链式 UFCS(.middleware/.get/.post)→ 显式 TypeArgs 直调
+    //(E2060 口径:泛型调用显式实参;发射面泛型 UFCS 特化位未落地,登记翻账)
+    return post[App](post[App](get[App](middleware[App](router[App](app), need_login), "/", h_list), "/add", h_add), "/del/:id", h_del)
 }
 
 // ---- handlers(spec §5 逐字;取参按 §4.3 冻结名,显式 TypeArgs) ----
@@ -180,11 +178,8 @@ fn h_del(req: &Req[App]) -> Resp {
 // ---- 装配(spec §5 main 内联链提成 fn;时钟注入 §8-A5) ----
 
 pub fn full_router_at(app: App, now: fn() -> I64) -> Router[App] {
-    let r0 = router[App](app)
-        .middleware(|rq, nx| log_requests[App](rq, nx))   // 泛型 fn 值引用不可 → 闭包适配
-        .middleware(with_sessions[App](app.key, now))
-        .get("/", |rq| redirect("/app"))
-        .post("/login", h_login)
+    // P0-A 发射适配:同 guarded——链式 UFCS → 显式 TypeArgs(E2060 口径)
+    let r0 = post[App](get[App](middleware[App](middleware[App](router[App](app), |rq, nx| log_requests[App](rq, nx)), with_sessions[App](app.key, now)), "/", |rq| redirect("/app")), "/login", h_login)
     return mount_at[App](r0, "/app", guarded(app))
 }
 

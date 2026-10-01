@@ -477,6 +477,22 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
                 }
                 mi2 += 1
             }
+            // P0-A:&T 形参(pu: 码)实例 typedef 预扫——非泛型 fn 的 &Req[S] 形参
+            // 的实例 typedef 须先于原型前置区(t_Req__X* 原型位)
+            var pi7: I32 = 1
+            while pi7 < file.len {
+                var pd7 = file[pi7]
+                if or2(pd7[0] == "Fn", or2(pd7[0] == "FnPub", pd7[0] == "FnC")) {
+                    var pk7: I32 = 1
+                    while pk7 < pd7[3].len {
+                        if pd7[3][pk7][0] == "Param" {
+                            inst_try_collect(insts, ct_ty_code(pd7[3][pk7][3], file))
+                        }
+                        pk7 += 1
+                    }
+                }
+                pi7 += 1
+            }
             var mobud = 8192
             var mbe = env_get("CTRON_MONO_BUDGET")
             if mbe.len > 0 {
@@ -490,6 +506,28 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             //(嵌套依序;实例嵌入实参 struct,声明序即拓扑序前提与语料一致);
             // 枚举同旧。余下实例(仅 fn 签名/体注解可达)随后统一直出。
             var td_done = List[Str]()
+            // P0-A:Mutex 字段 mcell 前置(App.todos: Mutex[List[Todo]] 即此形)——
+            // mcell typedef 旧仅构造点 pass1 直出,struct typedef 先于一切 fn 体,
+            // 字段槽 ct_mcell_<tag> 无定义即 C 未声明型
+            var mcdone = List[Str]()
+            var si0: I32 = 1
+            while si0 < file.len {
+                var sd0 = file[si0]
+                if sd0[0] == "Struct" {
+                    var fj00: I32 = 1
+                    while fj00 < sd0[4].len {
+                        var fc00 = ct_ty_code(sd0[4][fj00][3], file)
+                        if fc00.len > 1 && byte_at(fc00, 0) == 109 {
+                            if !in_list(mcdone, fc00) {
+                                mcdone.push(fc00)
+                                ct_mcell_emit(byte_slice(fc00, 1, fc00.len))
+                            }
+                        }
+                        fj00 += 1
+                    }
+                }
+                si0 += 1
+            }
             var si: I32 = 1
             while si < file.len {
                 var sd = file[si]
@@ -1083,6 +1121,12 @@ fn ct_let_insts_b(b: List[Str], file: List[Str], out: List[Str]) {
 
 // P0-A 预扫收集:实例码(u:名__尾缀)或 Lu: 装箱槽元素实例 → 入表去重
 fn inst_try_collect(out: List[Str], code: Str) {
+    // P0-A:&T 形参(p<…> 码)剥壳收集
+    if code.len > 1 && byte_at(code, 0) == 112 {
+        var inner = byte_slice(code, 1, code.len)
+        inst_try_collect(out, inner)
+        return
+    }
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         if ct_struct_inst_split(code).len > 1 {
             if !in_list(out, code) {

@@ -268,11 +268,27 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[1] == "List" {
         // List[I32] → LI(元素槽 int);List[I64] → L6(T54:元素槽 int64 经 long 中转,
         // 消「List[I64] 索引读静默截断」在册债);List[<struct>] → Lu:<名>(T14-② 元素
-        // 码贯通:push 装箱/索引取回按元素型);其余维持 "L"(char* 槽)不动
+        // 码贯通:push 装箱/索引取回按元素型);P0-A:元素为嵌套泛型实例(List[Route[S]]
+        // 场,S 已具体化)→ Lu:名__尾缀 定型装箱槽(镜像 ct_typeof TypeArgs-List 臂,
+        // 槽码缺臂时 Index 读落 "N"、Member 值位即 panic);其余维持 "L"(char* 槽)不动
         if nt[2].len > 1 {
             if nt[2][1][0] == "Named" && nt[2][1][1] == "I32" { return "LI" }
             if nt[2][1][0] == "Named" && nt[2][1][1] == "I64" { return "L6" }
+            // P0-A:List[fn(...)] → LF<签名码>(元素槽存 ct_clop 指针;签名段供
+            // 闭包实参形参码 #clcodes 与 #fret 返回码——run_chain/not_found_h 链)
+            if nt[2][1][0] == "FnType" {
+                return "L" + ct_fsig_code(file, nt[2][1])
+            }
             if nt[2][1][0] == "Named" && ct_is_struct(file, nt[2][1][1]) {
+                if nt[2][1][2].len > 1 && ct_struct_tps(file, nt[2][1][1]).len > 0 {
+                    var csL = List[Str]()
+                    var qL: I32 = 1
+                    while qL < nt[2][1][2].len {
+                        csL.push(ct_ty_code(nt[2][1][2][qL], file))
+                        qL += 1
+                    }
+                    return "L" + ct_struct_inst_code(nt[2][1][1], csL)
+                }
                 return "Lu:" + nt[2][1][1]
             }
         }
@@ -280,6 +296,15 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     }
     if or2(nt[1] == "Sender", or2(nt[1] == "Receiver", nt[1] == "Channel")) { return "h" }
     if nt[1] == "Atomic" { return "A" }
+    // P0-A:Mutex[X] 注解 → m<X 码>(镜像 ct_typeof Call-TypeArgs 臂)。struct 字段
+    // 注解位(App.todos: Mutex[List[Todo]])此前无臂落 "i"——槽型/布局/with 接收者
+    // 三面全错
+    if nt[1] == "Mutex" {
+        if nt[2].len > 1 {
+            return "m" + ct_ty_code(nt[2][1], file)
+        }
+        return "mi"
+    }
     return "i"
 }
 
@@ -290,6 +315,12 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
 fn ct_is_lcode(code: Str) -> Bool {
     if code.len > 3 {
         if byte_slice(code, 0, 3) == "Lu:" {
+            return true
+        }
+    }
+    // P0-A:LF<签名码>(List[fn] 定型元素槽)同族——装箱/取回/列表 C 型共用
+    if code.len > 2 {
+        if byte_at(code, 0) == 76 && byte_at(code, 1) == 70 {
             return true
         }
     }
@@ -358,8 +389,13 @@ fn ct_ctype(code: Str) -> Str {
             var di: I32 = 1
             while di < code.len {
                 if !is_digit(byte_at(code, di)) {
-                    all_dg = false
-                    di = code.len
+                    // P0-A:签名尾段("F2{…}>r",LF 列表元素值码)同属 ct_clop 槽
+                    if byte_at(code, di) == 123 {
+                        di = code.len
+                    } else {
+                        all_dg = false
+                        di = code.len
+                    }
                 }
                 di += 1
             }
@@ -377,7 +413,9 @@ fn ct_ctype(code: Str) -> Str {
         if ir.len > 2 && byte_slice(ir, 0, 2) == "u:" {
             ir = "u" + byte_slice(ir, 2, ir.len)
         }
-        return "ct_mcell_" + ir + "*"
+        // P0-A:Lu: 内经同一 ct_mcell_tag 清洗(裸 "ct_mcell_Lu:X" 的冒号非法 C;
+        // 与 ct_mcell_emit/with 锁面/cap_decl 三处同标签,约定一处)
+        return "ct_mcell_" + ct_mcell_tag_inner(ir) + "*"
     }
     if code.len > 1 && byte_at(code, 0) == 80 {
         return ct_ctype(byte_slice(code, 1, code.len)) + "*"
@@ -401,6 +439,119 @@ fn ct_strip_p(code: Str) -> Str {
     return code
 }
 
+// P0-A:fn 签名码拆解——"F2{u:Req__X;F1}>u:Resp" 形(LF 列表元素码的值码):
+// ct_fsig_params → 花括号内 ';'-连接形参码串;ct_fsig_ret → '>' 后返回码。
+// 无签名段(裸 F2/G1)→ ""(消费位按无提示回落)
+fn ct_fsig_params(code: Str) -> Str {
+    var b = -1
+    var e = -1
+    var i: I32 = 0
+    while i < code.len {
+        // 首枚 '{'(嵌套签名 F1{…} 作形参时,内层花括号不得覆盖外层起点);
+        // 末枚 '}'(返回码在末枚之后)
+        if b < 0 {
+            if byte_at(code, i) == 123 {
+                b = i
+            }
+        }
+        if byte_at(code, i) == 125 {
+            e = i
+        }
+        i += 1
+    }
+    if or2(b < 0, e <= b) {
+        return ""
+    }
+    return byte_slice(code, b + 1, e)
+}
+
+fn ct_fsig_ret(code: Str) -> Str {
+    // 从末枚 '}' 之后起扫 '>'——嵌套签名(F1{…}>r 作形参)内含 '>',首现即错
+    var st: I32 = 0
+    var i: I32 = 0
+    while i < code.len {
+        if byte_at(code, i) == 125 {
+            st = i + 1
+        }
+        i += 1
+    }
+    while st < code.len {
+        if byte_at(code, st) == 62 {
+            return byte_slice(code, st + 1, code.len)
+        }
+        st += 1
+    }
+    return ""
+}
+
+// P0-A:签名段按位取("a;b;c" 第 k 段,0 基;越界 → "")——间接调用位闭包实参的
+// #clcodes 源(trans_expr fn 值门)
+fn ct_fseg_at(segs: Str, k: I32) -> Str {
+    var cur: I32 = 0
+    var si: I32 = 0
+    var i: I32 = 0
+    while i <= segs.len {
+        // 边界序:先判 i==len 再取 byte_at(or2 不短路,OOB 读即脏)
+        if i == segs.len {
+            if cur == k {
+                return byte_slice(segs, si, i)
+            }
+            return ""
+        }
+        if byte_at(segs, i) == 59 {
+            if cur == k {
+                return byte_slice(segs, si, i)
+            }
+            cur += 1
+            si = i + 1
+        }
+        i += 1
+    }
+    return ""
+}
+
+// P0-A:FnType 节点 → 签名码("F2{u:Req__X;F1}>u:Resp";内参码 ';'-连接,
+// 嵌套 fn 内参自带花括号不含 ';' 自然分段)
+fn ct_fsig_code(file: List[Str], ft: List[Str]) -> Str {
+    var fa = ft[1].len - 1
+    var acc = ""
+    var i: I32 = 1
+    while i < ft[1].len {
+        if i > 1 {
+            acc = acc + ";"
+        }
+        // P0-A:fn 型内参递归签名码(续链形 fn(Req, fn(Req)->Resp)->Resp 的第二参
+        // 须带自身签名,闭包实参 #clcodes 一层展开即得形参码;裸 ct_ty_code 落
+        // "F1" 无签名段,展开空 → 形参退 int32)
+        if ft[1][i][0] == "FnType" {
+            acc = acc + ct_fsig_code(file, ft[1][i])
+        } else {
+            acc = acc + ct_ty_code(ft[1][i], file)
+        }
+        i += 1
+    }
+    // P0-A:返回面 fn 型递归签名(fn(…) -> fn(…) -> Resp 链;ret 尾 = 最内
+    // 非 FnType 的返回码,ct_fsig_ret 末'}'后扫 '>' 即取)
+    if ft[2][0] == "FnType" {
+        return "F" + fa.to_string() + "\{" + acc + "}>" + ct_fsig_code(file, ft[2])
+    }
+    return "F" + fa.to_string() + "\{" + acc + "}>" + ct_ty_code(ft[2], file)
+}
+
+// P0-A:mcell C 标签清洗:冒号非法 C 标识符——u:X → uX(既有规则保形)、
+// Lu:X → LuX;消费位 ct_ctype m 臂/trans_conc ct_mcell_tag(单一实现)
+fn ct_mcell_tag_inner(inner: Str) -> Str {
+    var acc = ""
+    var i: I32 = 0
+    while i < inner.len {
+        if byte_at(inner, i) != 58 {
+            acc = acc + byte_slice(inner, i, i + 1)
+        }
+        i += 1
+    }
+    return acc
+}
+
 // 用户 fn 返回类型码
 fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
     var i: I32 = 1
@@ -409,7 +560,11 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
         if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
             var r = d[4]
             if r[0] == "None" { return "v" }
-            if r[0] == "FnType" { return ct_ty_code(r, file) }
+            if r[0] == "FnType" {
+                // P0-A:值位返回码带签名(同 ct_generic_retcode 口径;闭包实参
+                // 形参码/#fret 结构返回靠签名段)
+                return ct_fsig_code(file, r)
+            }
             // 守卫去除(v0.9·三):原 `!= Named → i` 把 Ref 返回(&T 裸指针,
             // p<ec> 码)塌成 int32;型节点统一交 ct_ty_code(各形态有臂)
             return ct_ty_code(r, file)
@@ -417,6 +572,20 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
         i += 1
     }
     return "i"
+}
+
+// fn 声明在案判定(四种 decl 均算;裸 fn 引用实参 fval 包装的判别位——
+// 形参/局部持有的闭包值同名不在此列,旧 rfpcs.len>0 口径漏 0 参 fn)
+fn ct_fn_decl_any(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
+            return true
+        }
+        i += 1
+    }
+    return false
 }
 
 // 用户 fn 形参类型码表(按 Param 顺序)
@@ -812,6 +981,21 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
         }
         gj += 1
     }
+    // P0-A:S 槽 env 兜底——单态化体 genv 绑「型参名→实参码」(trans_expr 特化位),
+    // 型参仅嵌套现形(fn 型字段 Route.h: fn(Req[S]) -> Resp / List[Route[S]] 元素)时
+    // 字面量值位推不出槽码,直接取 env 型参绑定;未绑仍 "" → ct_inst_encode 响亮
+    // 失败(不静默错译)
+    var zi2: I32 = 0
+    while zi2 < tpsg.len {
+        if slots[zi2].len == 0 {
+            if ct_env_has(env, tpsg[zi2]) {
+                slots[zi2] = ct_env_ty(env, tpsg[zi2])
+            } else {
+                panic("emit:实例槽未定:" + e[1] + " 型参" + tpsg[zi2] + " @" + nline(e))
+            }
+        }
+        zi2 += 1
+    }
     return ct_struct_inst_code(e[1], slots)
 }
 
@@ -934,6 +1118,10 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         var oft0 = ct_typeof(e[1], env, file)
         var oft = ct_strip_p(oft0)
+        // P0-A:&T 形参(pu: 码)字段读——解引用到 u: 查型(§4.9 借用语义)
+        if oft.len > 3 && byte_slice(oft, 0, 3) == "pu:" {
+            oft = "u:" + byte_slice(oft, 3, oft.len)
+        }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
             if ct_struct_tps(file, ct_struct_name_of(oft)).len > 0 {
                 return ct_field_ty_inst(file, oft, e[3])
@@ -1000,7 +1188,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     gg = 1
                     while gg < cal[2].len {
-                        gtys.push(cal[2][gg])
+                        // P0-A:实参节点经 env 代入(单态化体 genv 绑 型参→实参码;
+                        // 裸 TPr 不代入则 Match[S] 落 TPar→"i" → u:Match__I 错实例)
+                        gtys.push(ct_targ_env(cal[2][gg], env))
                         gg += 1
                     }
                     return ct_generic_retcode(file, base[1], gtpsn, gtys)
@@ -1022,19 +1212,17 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // List[I32] → LI(元素槽 int);List[I64] → L6(T54);List[<struct>] →
                 // Lu:<名>(T14-②);型参实参经 env 替换码(单态化体;P0-A:struct/
                 // 实例码同贯通);List[Inst[TPar]] 嵌套实例元素经 env 代入后取实例码;其余 → L
+                // P0-A 序修正:嵌套实例元素臂前移——List[Route[I64]]() 场 Route 是
+                // struct,旧序 ct_is_struct 臂短路 "Lu:Route"(无尾缀),push 位
+                // "#名" 钉型与索引读解箱双双失据(Lu:Route 非实例码)
                 if cal[2].len > 1 {
                     if cal[2][1][0] == "Named" {
                         if seq2(cal[2][1][1], "I32") { return "LI" }
                         if seq2(cal[2][1][1], "I64") { return "L6" }
-                        if ct_is_struct(file, cal[2][1][1]) { return "Lu:" + cal[2][1][1] }
-                        if ct_env_has(env, cal[2][1][1]) {
-                            var ec7 = ct_env_ty(env, cal[2][1][1])
-                            if seq2(ec7, "i") { return "LI" }
-                            if seq2(ec7, "6") { return "L6" }
-                            if ec7.len > 2 && byte_slice(ec7, 0, 2) == "u:" { return "L" + ec7 }
+                        // P0-A:List[fn(...)]() 构造 → LF<签名码>(与 ct_ty_code 注解臂同形)
+                        if cal[2][1][0] == "FnType" {
+                            return "L" + ct_fsig_code(file, cal[2][1])
                         }
-                        // 嵌套实例元素:元素型实参逐个经 env 解析(裸 TPar → 实参节点)
-                        //(实例码就地构造:ct_inst_of_ty 在 trans_expr,拼接序后位不前向引用)
                         if cal[2][1][2].len > 1 {
                             var sub8 = mk("Named")
                             sub8.push(cal[2][1][1])
@@ -1053,6 +1241,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                                 }
                                 return "L" + ct_struct_inst_code(sub8[1], cs8)
                             }
+                        }
+                        if ct_is_struct(file, cal[2][1][1]) { return "Lu:" + cal[2][1][1] }
+                        if ct_env_has(env, cal[2][1][1]) {
+                            var ec7 = ct_env_ty(env, cal[2][1][1])
+                            if seq2(ec7, "i") { return "LI" }
+                            if seq2(ec7, "6") { return "L6" }
+                            if ec7.len > 2 && byte_slice(ec7, 0, 2) == "u:" { return "L" + ec7 }
                         }
                     }
                 }
@@ -1134,6 +1329,54 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "map" { return "L" }
             if or2(m == "reduce", or2(m == "expect", m == "with")) { return "i" }
             if or2(m == "is_err", m == "is_ok") { return "b" }
+            // P0-A:泛型成员调用(UFCS)返回实例化——.middleware(...) 链的接收者
+            // 型别贯通:decl 首参 = 接收者型(Router[S])时,返回槽的 TPar 按接收者
+            // 实例码尾缀具体化(Router[S] → Router__X);否则链式 .get/.post 的
+            // 接收者落 TPar→"i" 错实例,特化面 __I/__L 劈叉无界增殖
+            var gd29 = ct_fn_decl(file, m)
+            if gd29.len > 0 && gd29[2].len > 1 {
+                var rob29 = ct_strip_p(ct_typeof(cal[1], env, file))
+                if rob29.len > 2 && byte_slice(rob29, 0, 2) == "u:" && ct_struct_inst_split(rob29).len > 1 {
+                    var p0n29 = gd29[3][1][3]
+                    var rt29 = gd29[4]
+                    if p0n29[0] == "Named" && p0n29[2].len > 1 && rt29[0] == "Named" && rt29[2].len > 1 {
+                        var info29 = ct_struct_inst_split(rob29)
+                        var bar29: I32 = 0
+                        var cq29: I32 = 0
+                        while cq29 < info29.len {
+                            if byte_at(info29, cq29) == 124 { bar29 = cq29 }
+                            cq29 += 1
+                        }
+                        var codes29 = ct_inst_arg_codes(byte_slice(info29, bar29 + 1, info29.len))
+                        var cs29 = List[Str]()
+                        var w29: I32 = 1
+                        var ok29 = true
+                        while w29 < rt29[2].len {
+                            var tpn29 = rt29[2][w29][1]
+                            var found29 = "na"
+                            var q29: I32 = 1
+                            while q29 < p0n29[2].len {
+                                if seq2(p0n29[2][q29][1], tpn29) {
+                                    if q29 - 1 < codes29.len {
+                                        found29 = codes29[q29 - 1]
+                                    }
+                                }
+                                q29 += 1
+                            }
+                            if found29 == "na" {
+                                ok29 = false
+                                w29 = rt29[2].len
+                            } else {
+                                cs29.push(found29)
+                            }
+                            w29 += 1
+                        }
+                        if ok29 {
+                            return ct_struct_inst_code(rt29[1], cs29)
+                        }
+                    }
+                }
+            }
             return ct_fn_ret(file, m)
         }
         if cal[0] == "Ident" {
@@ -1307,6 +1550,11 @@ fn ct_generic_retcode(file: List[Str], nm: Str, tpsn: List[Str], tys: List[Str])
     var gdecl = ct_fn_decl(file, nm)
     if gdecl.len == 0 { return "i" }
     var rt = ct_mono_subst_ty(gdecl[4], tpsn, tys)
+    // P0-A:返回 fn 型 → 签名码(值位;闭包实参形参码/#fret 结构返回全靠签名段;
+    // 槽位注解仍走 ct_ty_code 的裸 F<arity>)
+    if rt[0] == "FnType" {
+        return ct_fsig_code(file, rt)
+    }
     return ct_ty_code(rt, file)
 }
 
@@ -1359,7 +1607,11 @@ fn ct_fntype_pcodes_tg(file: List[Str], callee: Str, want: I32, targs: List[Str]
                                     inn = ct_mono_subst_ty(inn, tpsn, tys)
                                 }
                             }
-                            acc = acc + ct_ty_code(inn, file)
+                            if inn[0] == "FnType" {
+                                acc = acc + ct_fsig_code(file, inn)
+                            } else {
+                                acc = acc + ct_ty_code(inn, file)
+                            }
                             first = false
                             j += 1
                         }
@@ -1377,6 +1629,12 @@ fn ct_fntype_pcodes_tg(file: List[Str], callee: Str, want: I32, targs: List[Str]
 }
 
 fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] {
+    // P0-A:&T 透传下钻(&Req[S] 形参位的 S 槽代入;旧臂原样返回致 Req__I 错实例)
+    if t[0] == "Ref" {
+        var nr = mk("Ref")
+        nr.push(ct_mono_subst_ty(t[1], tpsn, tys))
+        return nr
+    }
     if t[0] == "Named" {
         var k: I32 = 0
         while k < tpsn.len {
@@ -1397,6 +1655,20 @@ fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] 
             nt.push(ta)
             return nt
         }
+    }
+    // P0-A:FnType 下钻——run_chain 型 List[fn(Req[S], …)] 形参的单态化,fn 内参
+    // (Req[S]) 的 S 槽须随代入(旧臂原样返回,体内闭包形参码落 TPar→i 错实例)
+    if t[0] == "FnType" {
+        var nf = mk("FnType")
+        var nps = mk("Ps")
+        var p2: I32 = 1
+        while p2 < t[1].len {
+            nps.push(ct_mono_subst_ty(t[1][p2], tpsn, tys))
+            p2 += 1
+        }
+        nf.push(nps)
+        nf.push(ct_mono_subst_ty(t[2], tpsn, tys))
+        return nf
     }
     return t
 }
@@ -1657,6 +1929,114 @@ fn ct_targ_env(ty: List[Str], env: List[Str]) -> List[Str] {
             out.push(nps)
             return out
         }
+        // P0-A:TArgs 下钻——List[Route[S]] 型嵌套型参随 env 代入(注解位单态化;
+        // 旧臂仅顶层替换,嵌套 TPar 落 ct_ty_code "i" → Lu:Route__I 错实例)
+        if ty[2].len > 1 {
+            var nt = mk("Named")
+            nt.push(ty[1])
+            var ta = mk("TArgs")
+            var m3: I32 = 1
+            while m3 < ty[2].len {
+                ta.push(ct_targ_env(ty[2][m3], env))
+                m3 += 1
+            }
+            nt.push(ta)
+            return nt
+        }
     }
     return ty
+}
+
+// P0-A:单态化链成员判定。chain 形如 ",t_a__i,t_b__u_App,"(首尾逗号卫兵),
+// mg 为 C 标识符(含 _ 与字母数字,无逗号)→ 子串 ",mg," 即成员。
+// 消费位:trans_expr 泛型特化 emit_def(链上同实例不再下钻,真递归收敛点)
+fn ct_chain_has(chain: Str, mg: Str) -> Bool {
+    var pat = "," + mg + ","
+    if pat.len > chain.len {
+        return false
+    }
+    var i: I32 = 0
+    while i + pat.len <= chain.len {
+        var ok = true
+        var j: I32 = 0
+        while j < pat.len {
+            if byte_at(chain, i + j) != byte_at(pat, j) {
+                ok = false
+                j = pat.len
+            }
+            j += 1
+        }
+        if ok {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// P0-A 扩位②:字段声明型别节点(具体 struct 场;未命中 → None 节点)。
+// 消费位:StructLit 字段位闭包的形参码提示(#clcodes;fn 型字段载荷 T54/T55 面)
+fn ct_field_ty_node(file: List[Str], snm: Str, fname: Str) -> List[Str] {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && d[1] == snm {
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len {
+                if fs[j][2] == fname {
+                    return fs[j][3]
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return mk("None")
+}
+
+// P0-A 扩位②:实例化场字段声明型别节点——型参经实例码还原节点全树代入
+//(镜像 ct_field_code_inst,返回节点而非槽码;FnType 内参码须具体型才准)。
+// 实参数不符 → 声明原样(与 ct_field_code_inst 的 panic 面分立:此处是提示位)
+fn ct_field_ty_node_inst(file: List[Str], snm: Str, fname: Str, encs: Str) -> List[Str] {
+    var ty = ct_field_ty_node(file, snm, fname)
+    var tps = ct_struct_tps(file, snm)
+    if or2(tps.len == 0, ty[0] != "FnType") {
+        return ty
+    }
+    var codes = ct_inst_arg_codes(encs)
+    if codes.len != tps.len {
+        return ty
+    }
+    var tys = List[Str]()
+    var k: I32 = 0
+    while k < codes.len {
+        tys.push(ct_inst_ty_node(codes[k]))
+        k += 1
+    }
+    return ct_mono_subst_ty(ty, tps, tys)
+}
+
+// P0-A 扩位②:FnType 节点内参码串(逗号分隔,槽 1 起;非 FnType → "")。
+// 消费位:StructLit 字段位闭包 #clcodes(ct_emit_clov 形参码提示;§4 闭包 ABI)
+fn ct_fntype_inner(file: List[Str], ft: List[Str]) -> Str {
+    if ft[0] != "FnType" {
+        return ""
+    }
+    var acc = ""
+    var i: I32 = 1
+    while i < ft[1].len {
+        if i > 1 {
+            acc = acc + ","
+        }
+        // P0-A:fn 型内参带签名(续链形 fn(Req, fn(Req)->Resp)->Resp 的内参
+        // 形参码须含返回面,#fret 才能原型化结构返回)
+        if ft[1][i][0] == "FnType" {
+            acc = acc + ct_fsig_code(file, ft[1][i])
+        } else {
+            acc = acc + ct_ty_code(ft[1][i], file)
+        }
+        i += 1
+    }
+    return acc
 }
