@@ -296,17 +296,30 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
         if (has_ginit) // const 运行时初始化(原型在头部,先于 main/测试体)
             sb_f(&c.m_sb, "static void ctron_ginit(void) {\n%s}\n", c.ginit_sb.d);
         int has_fn_main = 0;
-        for (size_t i = 0; i < f->ndecls; i++)
-            if (f->decls[i].kind == D_FN && !strcmp(f->decls[i].fn_.name, "main")) has_fn_main = 1;
-        if (ntests) {
+        int main_void = 0;
+        for (size_t i = 0; i < f->ndecls; i++) {
+            if (f->decls[i].kind == D_FN && !strcmp(f->decls[i].fn_.name, "main")) {
+                has_fn_main = 1;
+                // Void main:rc 恒 0(rt_run_main 对 Void main 同口径)
+                cty* mret = f->decls[i].fn_.ret;
+                main_void = (!mret || (mret->kind == TY_NAMED && mret->npath == 1 &&
+                                       !strcmp(mret->path[0], "Void")));
+            }
+        }
+        // 语义对齐 rt:有 fn main 则只跑 main(ctron_rt_run_main 口径),test 块次之
+        if (has_fn_main) {
+            if (main_void)
+                sb_f(&c.body, "int main(void) {\n    if (setjmp(ctron_panic_frame)) return 1;\n%s    ctron_user_main();\n    return 0;\n}\n",
+                     has_ginit ? "    ctron_ginit();\n" : "");
+            else
+                sb_f(&c.body, "int main(void) {\n    if (setjmp(ctron_panic_frame)) return 1;\n%s    return (int)ctron_user_main();\n}\n",
+                     has_ginit ? "    ctron_ginit();\n" : "");
+        } else if (ntests) {
             sb_f(&c.body, "int main(void) {\n    if (setjmp(ctron_panic_frame)) return 1;\n");
             if (has_ginit) sb_s(&c.body, "    ctron_ginit();\n");
             for (size_t i = 0; i < f->ndecls; i++)
                 if (f->decls[i].kind == D_TEST) sb_f(&c.body, "    ctron_test_%zu();\n", i);
             sb_s(&c.body, "    return 0;\n}\n");
-        } else if (has_fn_main) {
-            sb_f(&c.body, "int main(void) {\n    if (setjmp(ctron_panic_frame)) return 1;\n%s    return (int)ctron_user_main();\n}\n",
-                 has_ginit ? "    ctron_ginit();\n" : "");
         } else {
             terr(&c, "v1:文件既无 fn main 也无 test 块");
         }

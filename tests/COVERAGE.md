@@ -416,12 +416,14 @@ sem_chk.ct(树上语义,4086 行)移植同款解析器补丁(13 锚)+ Guarded �
 E2030 守卫感知(守卫臂不算覆盖不触发整臂,T02 语义;或模式臂各替身依序入覆盖)+ 守卫
 条件消费修正;03n/03l/07a 崩溃清零、02f 守卫穷尽精确命中「缺变体 X Y」、02f 正例保持
 零诊断;smoke sem_chk decl 锁 109→112 随批申报。**suite_diff 终态:412 cases / 0
-failures,墙全拆。** 其后首曝两门:suite_trans 15/0 绿;suite_corpus_trans 44 pass/
-12 红=四泳道在册发射面旧债首次曝光(t55_mw_smoke/t55_probe=T55 泳道;03l_list_struct_
-member/03n_struct_fn_field_array/03k_fn_call_chain_member/06_crlf=List[struct] 截断族
-在册;03l_as_u64_negsrc/03i_width_checked=as[U64] C 宿主三红在册;06_concurrency/
-03j_closure_param_member/05i_into_gc_deep_copy=并发/闭包成员/into_gc 发射缺口在册;
-03k_u64_overflow.panic=宿主 panic 面口径),归属各自泳道不入本面。fmt_suite 01i(Rust 侧既有)。
+failures,墙全拆。** 其后首曝两门:suite_trans 15/0 绿;suite_corpus_trans 初测 44 pass/12 红,当日
+**48 pass/8 红(1c98531 续片)**:真病灶=trans.c 的 main 装配优先级反了(有 test 块时
+user_main 整个被丢,语义对齐 rt_run_main 口径=有 fn main 只跑 main)+ Void main 被发射成
+`return (int)user_main()`(gcc 拒;按 TY_NAMED Void 分档 void 调用 rc=0)——03l/03n/
+03k/06_crlf 四件清零。**余 8 红=三族在册债**:width/as-U64 C 宿主三处红×3(03i/03l_as_
+u64/03k_u64_overflow,夹具注释自带缺陷清单:wrap_int 64 位无掩码/as 实参 decl 按有符号
+拒/字面量位自适应丢 us)+ 发射缺口×3(03j 闭包参成员/05i into_gc 深拷贝/06_concurrency)
++ T55 泳道×2(t55_mw_smoke/t55_probe),归属各自泳道。fmt_suite 01i(Rust 侧既有)。
 
 **2026-09-21 续片修复**(compiler-c 门禁卫生):
 - `token.c` TOK_NAMES 表漏 "Ellipsis" 条目(§9.6 加 TOK_ELLIPSIS 未同步)→ 名字表
