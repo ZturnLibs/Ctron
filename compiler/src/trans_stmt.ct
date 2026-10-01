@@ -456,7 +456,10 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
     }
     var p1 = seq2(ct_pass(fenv), "1")
     if !p1 {
-        eln("\{", fenv)
+        // P0-A:"#nobrace" 位(特化盒槽序言在 ct_body 前直出,花括号由发射位自带)
+        if !ct_env_has(fenv, "#nobrace") {
+            eln("\{", fenv)
+        }
     }
     var denv = dls_push(fenv)
     var env2 = ct_stmts(b, denv, file, "", hreg)

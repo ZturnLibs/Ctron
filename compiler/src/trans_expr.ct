@@ -1474,7 +1474,28 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
         if ct_env_has(aenv, "#fval") {
             ax = ct_env_ty(aenv, "#fval")
         }
-        args = args + ct_arg_cast(ac, pc, ax)
+        // P0-A Param 面:泛型特化被调 + u:-码实参 → ct_wrap_i 堆盒(特化形参
+        // 槽 = int64 盒指针,帧序言解盒;非泛型被调保持 by-value 原样)
+        var boxed30 = false
+        if callee != "" {
+            if ac.len > 2 && byte_slice(ac, 0, 2) == "u:" {
+                var pgd30 = ct_fn_decl(file, callee)
+                if pgd30.len > 0 && pgd30[2].len > 1 {
+                    // P0-A:盒型按钉定后 env 的实参型别(字面量槽推断与 #名 钉型一致)
+                    var acb30 = ct_typeof(ag[i], aenv, file)
+                    if acb30.len > 2 && byte_slice(acb30, 0, 2) == "u:" {
+                        ac = acb30
+                    }
+                    ax = ct_wrap_i(ac, ax)
+                    boxed30 = true
+                }
+            }
+        }
+        if boxed30 {
+            args = args + ct_arg_cast("6", "6", ax)
+        } else {
+            args = args + ct_arg_cast(ac, pc, ax)
+        }
         i += 1
     }
     if callee != "" {
@@ -1550,16 +1571,36 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     spec.push(mg)
                     spec.push(mk("TPs"))
                     var ps2 = mk("Ps")
+                    // P0-A:subst 型别节点/原名平行表(u:-形参盒槽化后 genv/引脚仍按
+                    // 原名+subst 型别绑定;签名槽 = int64 盒指针)
+                    var substnodes = List[Str]()
+                    var orignames = List[Str]()
+                    var upnames = List[Str]()
+                    var upcodes = List[Str]()
                     var pk: I32 = 1
                     while pk < gdecl[3].len {
                         var pr = gdecl[3][pk]
                         if pr[0] == "Param" {
+                            var subst26 = ct_mono_subst_ty(pr[3], tpsn, tys)
+                            var pc26 = ct_ty_code(subst26, file)
+                            substnodes.push(subst26)
+                            orignames.push(pr[2])
                             var np = mk("Param")
                             np.push(pr[1])
-                            np.push(pr[2])
-                            np.push(ct_mono_subst_ty(pr[3], tpsn, tys))
+                            if pc26.len > 2 && byte_slice(pc26, 0, 2) == "u:" {
+                                // P0-A Param 面:struct 形参过 ct_i 边界 = int64 盒槽
+                                // + 帧序言 T54 式解盒(续体/首跳/递归自跳三面同约定)
+                                np.push(pr[2] + "_s")
+                                np.push(ct_scalar_ty("I64"))
+                                upnames.push(pr[2])
+                                upcodes.push(pc26)
+                            } else {
+                                np.push(pr[2])
+                                np.push(subst26)
+                            }
                             ps2.push(np)
                         } else {
+                            substnodes.push(mk("None"))
                             ps2.push(pr)
                         }
                         pk += 1
@@ -1568,25 +1609,28 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
                     spec.push(gdecl[5])
                     var rcs = ct_ty_code(spec[4], file)
-                    // 形参 env:替换后型别码绑定(镜像 ct_fn),体内 Member/字段访问按静态型别分派
+                    // 形参 env:按原名绑替换后型别码(盒槽形参解盒后即原 struct 值,
+                    // 体内 Member/字段访问/F-gate 包裹全部沿用)
                     var genv = List[Str]()
                     var gk2: I32 = 1
                     while gk2 < ps2.len {
                         var gr2 = ps2[gk2]
+                        var sn2 = substnodes[gk2 - 1]
                         if gr2[0] == "Param" {
-                            genv = env_bind(genv, gr2[2], ct_ty_code(gr2[3], file))
-                            var elc9 = ct_opt_elem_strict(file, gr2[3])
+                            var onm2 = orignames[gk2 - 1]
+                            genv = env_bind(genv, onm2, ct_ty_code(sn2, file))
+                            var elc9 = ct_opt_elem_strict(file, sn2)
                             if elc9.len > 0 {
-                                genv = env_bind(genv, "#elem:" + gr2[2], elc9)
+                                genv = env_bind(genv, "#elem:" + onm2, elc9)
                             }
                             // P0-A:FnType 形参 #fret 侧条目(镜像 ct_fn 绑定)——
                             // run_chain 的 h(req) 结构返回经 #fret 原型化,缺臂落
                             // ct_i 返回槽(>8B struct 即错型)
-                            if gr2[3][0] == "FnType" {
-                                var frc10 = ct_ty_code(gr2[3][2], file)
+                            if sn2[0] == "FnType" {
+                                var frc10 = ct_ty_code(sn2[2], file)
                                 if frc10 != "v" {
                                     if frc10 != "i" {
-                                        genv = env_bind(genv, "#fret:" + gr2[2], frc10)
+                                        genv = env_bind(genv, "#fret:" + onm2, frc10)
                                     }
                                 }
                             }
@@ -1625,7 +1669,7 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     var pk3: I32 = 1
                     while pk3 < ps2.len {
                         if ps2[pk3][0] == "Param" {
-                            var ic5 = ct_inst_of_ty(file, ps2[pk3][3])
+                            var ic5 = ct_inst_of_ty(file, substnodes[pk3 - 1])
                             if ic5.len > 0 {
                                 genv = env_bind(genv, "#" + ct_struct_name_of(ic5), ic5)
                             }
@@ -1645,7 +1689,7 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     pk3 = 1
                     while pk3 < ps2.len {
                         if ps2[pk3][0] == "Param" {
-                            ct_emit_inst_typedef(file, ps2[pk3][3])
+                            ct_emit_inst_typedef(file, substnodes[pk3 - 1])
                         }
                         pk3 += 1
                     }
@@ -1654,6 +1698,17 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     println("#ifndef CT_SPEC_" + mg)
                     println("#define CT_SPEC_" + mg)
                     println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
+                    // P0-A Param 面:盒槽形参帧序言 T54 式解盒(u:-形参 → int64 盒槽,
+                    // 调用位 ct_wrap_i 堆盒;解盒即原 struct 值,体内三面调用全沿用)。
+                    // "#nobrace":花括号由此处自带(ct_body 位跳过)
+                    genv = env_bind(genv, "#nobrace", "1")
+                    println("\{")
+                    var upi26: I32 = 0
+                    while upi26 < upnames.len {
+                        var upc26 = upcodes[upi26]
+                        println("t_" + byte_slice(upc26, 2, upc26.len) + " t_" + upnames[upi26] + " = *(t_" + byte_slice(upc26, 2, upc26.len) + "*)(long)t_" + upnames[upi26] + "_s;")
+                        upi26 += 1
+                    }
                     // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)
                     ct_body(spec[5], env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), file, rcs)
                     println("#endif")
@@ -1669,7 +1724,12 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                         while pk26 < gdecl[3].len {
                             var pr26 = gdecl[3][pk26]
                             if pr26[0] == "Param" {
-                                prp26 = prp26 + ", " + ct_ctype(ct_ty_code(ct_mono_subst_ty(pr26[3], tpsn, tys), file))
+                                var pc28 = ct_ty_code(ct_mono_subst_ty(pr26[3], tpsn, tys), file)
+                                if pc28.len > 2 && byte_slice(pc28, 0, 2) == "u:" {
+                                    prp26 = prp26 + ", int64_t"
+                                } else {
+                                    prp26 = prp26 + ", " + ct_ctype(pc28)
+                                }
                             }
                             pk26 += 1
                         }
@@ -1717,7 +1777,14 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                                 }
                             }
                         }
-                        gargs = gargs + ", " + ct_arg_cast(ct_typeof(ag[gi9], aenv9, file), pc9, ct_expr(ag[gi9], aenv9, file))
+                        var ac9 = ct_typeof(ag[gi9], aenv9, file)
+                        var ax9 = ct_expr(ag[gi9], aenv9, file)
+                        if ac9.len > 2 && byte_slice(ac9, 0, 2) == "u:" {
+                            ax9 = ct_wrap_i(ac9, ax9)
+                            gargs = gargs + ", " + ct_arg_cast("6", "6", ax9)
+                        } else {
+                            gargs = gargs + ", " + ct_arg_cast(ac9, pc9, ax9)
+                        }
                         gi9 += 1
                     }
                 } else {
