@@ -257,10 +257,49 @@ fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: 
         }
         if !skip {
             env2 = ct_stmt(st, env2, file, hreg)
+            // T30 into_gc 型别图侧条目:let x = List[T]()/arena.list[T]() → #elem/#elemsz/#ielem
+            if st[0] == "Let" && st[2][0] == "PatId" && st[4][0] == "Call" && st[4][1][0] == "TypeArgs" && st[4][1][2].len > 1 {
+                var e30 = ct_ig_elem_code(st[4][1][2][1], file)
+                var z30 = "0"
+                if e30 == "3" && st[4][1][2][1][0] == "Named" {
+                    z30 = "sizeof(" + ct_ctype("u:" + st[4][1][2][1][1]) + ")"
+                }
+                var ie30 = "1"
+                if e30 == "2" {
+                    var in30 = st[4][1][2][1]
+                    if in30[0] == "TypeArgs" && in30[2].len > 1 {
+                        ie30 = ct_ig_elem_code(in30[2][1], file)
+                    } else if in30[0] == "Named" && in30[2].len > 1 {
+                        ie30 = ct_ig_elem_code(in30[2][1], file)
+                    }
+                }
+                env2 = env_bind(env_bind(env_bind(env2, "#elem:" + st[2][1], e30), "#elemsz:" + st[2][1], z30), "#ielem:" + st[2][1], ie30)
+            }
         }
         i += 1
     }
     return env2
+}
+
+// T30:into_gc 元素模式码(0=标量槽/1=Str/2=嵌套表/3=struct 盒;深度>2 层编译期拒绝)
+fn ct_ig_elem_code(ty: List[Str], file: List[Str]) -> Str {
+    if ty[0] == "TypeArgs" {
+        var h30 = ty[1]
+        if h30[0] == "Named" {
+            if seq2(h30[1], "List") { return "2" }
+        }
+        return "2"
+    }
+    if ty[0] == "Named" {
+        var n30 = ty[1]
+        if seq2(n30, "List") { return "2" }
+        if or2(seq2(n30, "I32"), or2(seq2(n30, "I64"), or2(seq2(n30, "U32"), or2(seq2(n30, "U64"), or2(seq2(n30, "I8"), or2(seq2(n30, "U8"), or2(seq2(n30, "I16"), or2(seq2(n30, "U16"), or2(seq2(n30, "ISize"), seq2(n30, "USize")))))))))) { return "0" }
+        if seq2(n30, "Str") { return "1" }
+        if or2(seq2(n30, "Bool"), or2(seq2(n30, "F64"), seq2(n30, "F32"))) { return "0" }
+        if ct_is_struct(file, n30) { return "3" }
+        return "1"
+    }
+    return "1"
 }
 
 // match 作值(当前仅 fn 体尾槽位):Option[Str] 两臂,结果写入 t_mr(<rc> 型)
@@ -515,6 +554,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             return env_bind(renv4, pat[1], "g")
         }
         if pat[0] == "PatId" {
+            // T30:into_gc let —— 返回型=接收者 List 码;真深拷经 trans_expr #elem 分派
+            if st[4][0] == "Call" && st[4][1][0] == "Member" && st[4][1][3] == "into_gc" {
+                var rot = ct_typeof(st[4][1][1], env, file)
+                eln(ct_ctype(rot) + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";", env)
+                return env_bind(env, pat[1], rot)
+            }
             if st[4][0] == "Call" {
                 if st[4][1][0] == "Member" {
                     if st[4][1][3] == "with" {

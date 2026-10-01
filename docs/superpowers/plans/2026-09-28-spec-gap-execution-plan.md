@@ -344,7 +344,7 @@
 
 ### T30 · `into_gc` 深拷贝语义真实化(§6.3)
 
-- **预估:** 1–1.5 d。**前置:** T29。**状态:** 待办
+- **预估:** 1–1.5 d。**前置:** T29。**状态:** ✅ 已完成(0930;发射侧真深拷=let #elem/#elemsz/#ielem 侧条目+ct_ig_l 静态模式分派[0 标量/1 Str/2 嵌套一层/3 struct 盒],无绑定位恒等回退 v1 兼容;C 宿主 list_clone_deep 内部 V_LIST 槽递归[嵌套别名 2!=1 实证;clone_val 通用口语义不动,误改曾致 conc 15 红 smoke 实证回退];新锚 05i_into_gc_deep_copy[int/Str 平坦+出块存活]双臂双档绿;05g emit 臂红=存量 own 块尾 return void 缺口[A/B 基线实证]登记;嵌套读侧 lane strcmp 缺口登记;顺手修 peer 库根重构 suite.py stdpath 两处[主循环裸跑+modules 段→lib/std,99/99 复绿])
 - **目标:** arena 与 GC 堆物理分离后,`into_gc()` 发射侧从恒等变真深拷贝(O(数据量)),翻转规范 v1 语义;`tests/05g_into_gc_isolation.ct` 语义复核。
 - **范围:** `trans_expr.ct`(into_gc 发射:遍历 arena 值按型别图深拷入 GC 堆)、型别描述子(T29 产出复用)。
 - **验收:** 隔离锚(出块后源 arena 释放,GC 副本存活且独立);05/05g 族回归;GC=off 档下 into_gc 恒等(文档明记)。

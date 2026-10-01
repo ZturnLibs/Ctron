@@ -785,3 +785,18 @@ fmt_suite 01i(Rust 侧既有)。
 - 验收:T29 卡三条全过(泄漏锚/suite off 双档/net+db GC 档),卡转 ✅(切片3 增强另册)。
 
 **T55 销账(2026-09-30,提交 7590794)**:值位置闭包捕获原生臂落地——03j emit 同病顺带翻转(基线 2 errors→`mw:/x`),探针 t55_probe/t55_mw_smoke 双臂绿,suite 98/98×2;创建时快照边界+T27 注记在案(spec §9 L7)。
+
+**2026-09-30 T30 into_gc 深拷真实化落库**(spec-gap W6;§6.3):
+- 发射侧 from 恒等 → 真深拷:let 构造位绑 #elem/#elemsz/#ielem(List[T]/arena.list[T];
+  Option/Result #elem 先例),into_gc 位 ct_ig_l(src,mode,esz,imode) 静态分派
+  (0=标量槽/1=Str strdup/2=嵌套表一层递归/3=struct 盒 memcpy);无绑定位恒等回退(v1 兼容,
+  GC=off 档同语义=拷贝目标 arena 化,隔离不变)。
+- C 宿主嵌套别名修复:list_clone_deep 内部对 V_LIST 槽递归(g[0].push 别名污染 inner=2!=1
+  实证);clone_val 通用口保持 List=引用共享语义不动(初版误改通用口→conc 族 15 红,
+  smoke 实证后回退收窄——教训:clone_val 是宿主全量克隆口,语义改动只准入 into_gc 专用径)。
+- 新锚 05i_into_gc_deep_copy(int/Str 平坦+出 fn 域存活+双向独立)interp/emit×
+  默认/GC=1 四象限绿;suite 99/99 双线(含新锚)。
+- 登记三笔:①05g emit 臂红=存量 own 块尾 return void 发射缺口(A/B 基线实证,非本批);
+  ②嵌套 List 发射读侧 int 槽 strcmp(0x5) 崩=lane 读型不对称存量(嵌套拷贝本身双侧通,
+  锚裁剪登记);③peer 库根重构 suite.py 两处 stdpath 陈旧(主循环裸跑/modules 段),
+  lib/std 修正后 99/99 复绿——根因是 03m/07a 两个 std 导入件红而 CI 前次未及跑本批。

@@ -1,0 +1,40 @@
+// 05i_into_gc_deep_copy.ct —— into_gc 真深拷(§6.3;T30):GC 侧与原件互不影响,
+// 出块(fncall 域)后副本存活;发射侧静态 #elem 型别图分派(ct_ig_l;T30),
+// 无绑定位恒等回退(v1 兼容)。own 块尾 return void 发射缺口在册,own 形锚留 05g(interp)。
+fn make_ints() -> List[I32] {
+    var a = arena.list[I32]()
+    a.push(7)
+    var g = a.into_gc()
+    g.push(9)
+    assert_eq(a.len, 1)
+    assert_eq(g.len, 2)
+    return g
+}
+
+fn make_strs() -> List[Str] {
+    var a = arena.list[Str]()
+    a.push("arena")
+    var g = a.into_gc()
+    g.push("gc")
+    assert_eq(a.len, 1)
+    assert_eq(g.len, 2)
+    return g
+}
+
+test "into_gc int lanes independent" {
+    var g = make_ints()
+    assert_eq(g.len, 2)
+    assert_eq(g[0], 7)
+    assert_eq(g[1], 9)
+}
+
+test "into_gc str lanes deep" {
+    var g = make_strs()
+    assert_eq(g.len, 2)
+    assert_eq(g[0], "arena")
+    assert_eq(g[1], "gc")
+}
+
+// 嵌套 List 深拷:C 宿主/自举 interp 双侧已通(clone_val/ct_ig_l 递归);发射臂读侧
+// 嵌套 int 槽索引 strcmp(0x5) 崩=存量 lane 读型缺口(lane 字面量槽数不对称家族),
+// 锚裁剪登记,随该债回切。

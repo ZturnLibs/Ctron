@@ -175,7 +175,11 @@ void list_push(rt* R, listnode* ln, val item) {
 }
 val list_clone_deep(rt* R, const listnode* ln) {
     val v = v_list(R);
-    for (size_t i = 0; i < ln->n; i++) list_push(R, v.lst, clone_val(R, ln->items[i]));
+    for (size_t i = 0; i < ln->n; i++) {
+        val it = ln->items[i];
+        if (it.k == V_LIST) it = list_clone_deep(R, it.lst); // T30 嵌套臂:into_gc 别名隔离
+        list_push(R, v.lst, clone_val(R, it));
+    }
     return v;
 }
 

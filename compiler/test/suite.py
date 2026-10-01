@@ -100,7 +100,7 @@ for kind, pat in CATS:
         if mk.get("target") and mk["target"][0] != "full":
             skip["target"] += 1
             continue
-        rc, out = run(CC, path, "run")
+        rc, out = run(CC, path, "run", {"CTRON_STDPATH": os.path.join(ROOT, "lib", "std")})
         ok, why = verdict(kind, mk, rc, out)
         score[kind][1] += 1
         if ok:
@@ -164,7 +164,7 @@ for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
                     rc, out = p3.returncode, p3.stdout + p3.stderr
                     ok, why = verdict(kind, mk, rc, out)
     else:
-        rc, out = run(CC, entry, "run", {"CTRON_STDPATH": os.path.join(ROOT, "std")})
+        rc, out = run(CC, entry, "run", {"CTRON_STDPATH": os.path.join(ROOT, "lib", "std")})
         ok, why = verdict(kind, mk, rc, out)
     if ok:
         mpass[0] += 1
@@ -235,7 +235,7 @@ if os.path.isdir(ffi_dir):
         kind = "neg" if base.endswith(".neg.ct") else "lint"
         mk = markers(path)
         fpass[1] += 1
-        rc, out = run(CC, path, "run")
+        rc, out = run(CC, path, "run", {"CTRON_STDPATH": os.path.join(ROOT, "lib", "std")})
         ok, why = verdict(kind, mk, rc, out)
         if kind == "lint":
             ok = all(c in out for c in mk.get("warn", []))
