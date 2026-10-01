@@ -65,7 +65,7 @@ fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
     match read_file(dir + "/../Ctron.toml") {
         Some(t0) => {
             if t0.len > 0 {
-                diags.push("Ctron.toml: E5040 清单格式已硬切 CTCL(T48):检测到遗留 Ctron.toml——请迁移为 Ctron.ctcl:pkg { manifest_version = 1, ... }")
+                diags.push("Ctron.toml: E5040 清单格式已硬切 CTCL(T48):检测到遗留 Ctron.toml——请迁移为 Ctron.ctcl:pkg \{ manifest_version = 1, ... }")
             }
         }
         None => {}
