@@ -839,7 +839,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return ""
             }
             if m == "into_gc" {
-                // arena 数据出块唯一入口(§5.3);发射侧 List 恒在 GC 堆 → 恒等(镜像 eval)
+                // T30 真深拷(§6.3):静态 #elem 型别图分派;无绑定位恒等(v1 兼容回退)
+                if cal[1][0] == "Ident" {
+                    var igm = ct_env_ty(env, "#elem:" + cal[1][1])
+                    if igm.len > 0 {
+                        var igz = ct_env_ty(env, "#elemsz:" + cal[1][1])
+                        if igz.len == 0 { igz = "0" }
+                        var igim = ct_env_ty(env, "#ielem:" + cal[1][1])
+                        if igim.len == 0 { igim = "1" }
+                        return "ct_ig_l((ctron_list*)(" + obj + "), " + igm + ", " + igz + ", " + igim + ")"
+                    }
+                }
                 return "(" + obj + ")"
             }
             if m == "push" {
