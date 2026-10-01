@@ -738,3 +738,14 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
   设计)——解除需特化原型前置+seen 集,独立工作项;再往后为 P0-B net bind
   E4046(他泳道在制)。03e_generics_types emit 同由载荷 panic 前进至 class
   字面量「非值类型」(T26 在册,class 字面量发射全缺)。
+- **复验随批(2026-10-01,Approved 意见收口)**:ct_let_insts_e If 语句 else 臂补
+  裸 Block fallback(与 then 臂同防;p_if 现行 else=BlockExpr 包裹,实证走通,
+  fallback 为解析形变防波);fx_gpayload 增 if/else 双臂体面实例注解 let 用例
+  (两运行路径都钉)。**登记三(文档,不实现)**:
+  ① `List[<实例>]` 注解位丢 TArgs——trans_ty.ct ct_ty_code List 分支按元素名键
+  (ct_is_struct → `Lu:<名>`),实例元素只出首名不带尾缀,与构造位 typeof(env
+  代入后全码)不一致;债「Box[inst] 丢实参」姊妹条,注解位命中即槽码/值码劈叉。
+  ② ct_let_insts_e 缺值位 Match 臂(mono_e 有;值位 match 体注解 let 现不入预扫)
+  ——体面预扫 lifting 至全语句面时一并补。
+  ③ ct_struct_inst_split 以首个 `__` 分割——struct 名自身含 `__` 时误切(既有
+  编码命名约束,与本扩位无关;语料零覆盖,登记为名字纪律)。

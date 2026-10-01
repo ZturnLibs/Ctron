@@ -32,6 +32,18 @@ fn snd(p: Box2[Pair[I32, Str]]) -> Str {
     return p.v.second
 }
 
+// if/else 双臂体面实例注解 let(then=裸 Block/else=BlockExpr 两形都钉):
+// 预扫任一臂漏收集即 C 未定义型(cc 期响亮拦截)
+fn pickb(c: Bool) -> I32 {
+    if c {
+        let a: Box2[App] = Box2 { v: App { n: 11, name: "then" } }
+        return a.v.n
+    } else {
+        let b: Box2[Pair[I32, Str]] = Box2 { v: Pair { first: 2, second: "else" } }
+        return b.v.first + 30
+    }
+}
+
 fn main() -> I32 {
     let a = App { n: 42, name: "app" }
     let b: Box2[App] = Box2 { v: a }
@@ -44,5 +56,7 @@ fn main() -> I32 {
     println(snd(q))
     println(h.b.v.name)
     println(h.b.v.n.to_string())
+    println(pickb(true).to_string())
+    println(pickb(false).to_string())
     return 0
 }

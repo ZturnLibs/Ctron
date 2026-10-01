@@ -1002,15 +1002,20 @@ fn ct_let_insts_e(e: List[Str], file: List[Str], out: List[Str]) {
     }
     if t == "If" {
         ct_let_insts_e(e[1], file, out)
+        // then 臂:语句位为裸 Block(值位 BlockExpr 包装),双形 fallback
         if e[2].len > 1 && e[2][0] == "BlockExpr" {
             ct_let_insts_b(e[2][1], file, out)
         } else {
             ct_let_insts_b(e[2], file, out)
         }
+        // else 臂:BlockExpr(p_if 现行形)/ If 链 / 裸 Block fallback(与 then 臂
+        // 同防;裸 Block 形若在,注解 let 不再漏预扫——P0-A 复验 Important 项)
         if e[3][0] == "If" {
             ct_let_insts_e(e[3], file, out)
         } else if e[3][0] == "BlockExpr" {
             ct_let_insts_b(e[3][1], file, out)
+        } else if e[3].len > 1 && e[3][0] == "Block" {
+            ct_let_insts_b(e[3], file, out)
         }
         return
     }
