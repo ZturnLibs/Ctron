@@ -1,0 +1,48 @@
+// fx_gpayload.ct —— P0-A 泛型 struct 载荷扩位:struct/嵌套实例型参实参(嵌入按值)
+// 此前 ct_inst_encode 限标量/Str 四码,u: 实参确定性 panic(emit 臂);扩位后
+// u:<名> → U<名长>_<名> 尾缀,实例 typedef 字段槽即实参 C 型(t_App v)。
+// 覆盖:具体 struct 实参 / 嵌套实例实参 Box2[Box2[i]] / 混合槽序 / 实例入具体字段
+struct App {
+    let n: I32
+    let name: Str
+}
+
+struct Box2[S] {
+    let v: S
+}
+
+struct Pair[A, B] {
+    let first: A
+    let second: B
+}
+
+struct Hold {
+    let b: Box2[App]
+}
+
+fn unbox(b: Box2[App]) -> I32 {
+    return b.v.n
+}
+
+fn deep(b: Box2[Box2[I32]]) -> I32 {
+    return b.v.v
+}
+
+fn snd(p: Box2[Pair[I32, Str]]) -> Str {
+    return p.v.second
+}
+
+fn main() -> I32 {
+    let a = App { n: 42, name: "app" }
+    let b: Box2[App] = Box2 { v: a }
+    let n: Box2[Box2[I32]] = Box2 { v: Box2 { v: 7 } }
+    let q: Box2[Pair[I32, Str]] = Box2 { v: Pair { first: 1, second: "deep" } }
+    let h = Hold { b: Box2 { v: App { n: 5, name: "held" } } }
+    println(unbox(b).to_string())
+    println(b.v.name)
+    println(deep(n).to_string())
+    println(snd(q))
+    println(h.b.v.name)
+    println(h.b.v.n.to_string())
+    return 0
+}

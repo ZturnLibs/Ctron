@@ -711,3 +711,30 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
 - 门禁卫生:cc_run decl 锁 402→420(spec-gap 批次合法累积+T26 两 extern 申报);
   smoke 3j3/3k known 清单补 iter/log/ndjson/pb(预存欠账归因:iter=T16 fn 字段域,
   log/ndjson/pb=R check 宽松度);stdpkg 补 iter.ct 种子副本(T17 遗漏)。
+
+## P0-A 泛型 struct 载荷扩位销账(2026-10-01,编译泳道移交单 P0-A)
+
+- **销账**:`emit:泛型 struct 载荷限标量/Str:<code>` 确定性 panic(2026-09-30 移交单
+  P0-A;trans_ty.ct ct_inst_encode 仅 i/s/b/6 四码)解除。**机理(裁定:嵌入按值,
+  非装箱指针)**:实例 typedef 布局机本就逐型参出具体 C 型字段(ct_field_code_inst →
+  ct_ctype),struct 实参槽直放实参 C 型(值语义与 i/s/b/6 槽同构;装箱则需构造点
+  分配+别名面,偏离解释臂动态值语义)。编码:`u:<名>`(具体或嵌套实例 `u:名__尾缀`)
+  → 尾缀 `U<名长>_<名>`——长度前缀消歧名内下划线/嵌套尾缀;解码新增
+  ct_inst_arg_codes 位置解析(替原逐字符定长索引)。实例码往返:ct_inst_ty_node
+  还原型别节点(嵌套递归),ct_field_code_inst 改经 ct_mono_subst_ty 全树代入——
+  裸 TPar/List[TPar]/List[Inst[TPar]] 一概贯通(struct 元素 → Lu: 定型装箱槽)。
+- **随批修复(预扫漏出,载荷扩位前不可达的既有红)**:①实例 typedef 预扫仅 fn
+  参数/返回注解——裸 let/var 注解与具体 struct 字段位实例(probe:`var p: Pair[I32,Str]`
+  无签名位)C 未定义型;扩为 Fn/FnPub/Test 体面 let 注解 + Struct 字段 + 实例字段
+  嵌套传递闭包(不动点),发射序改「具体 struct 声明序直出、字段引用实例先出」
+  (C 依序完整型);②特化点 ct_emit_inst_typedef 同步嵌套字段实例先出。
+- **门禁**:smoke 149/0(新增 fx_gpayload:具体/嵌套 Box2[Box2[i]]/混槽/实例入
+  具体字段,原生==解释逐字);suite 96/98 与基线零差(2 红=read_or/Fs use 能力
+  缺口既有);meta_check 460 件绿;tests/http 111/0、tests/net 18/0 双矩阵零差。
+- **兑现度**:examples/web_todo、examples/ctslink 原生臂越过载荷 panic——
+  `t_Router__U3_App{t_App state;...}`/`t_Req__U3_App` 等实例 typedef 正确落 C;
+  双例现止于**下一档在册债**:泛型特化递归超限(`t_dispatch_h__u_App`,
+  run_chain[S] 闭包自引,fx_genrec_neg 钉定的「无 seen 集」语义挂账,非终态
+  设计)——解除需特化原型前置+seen 集,独立工作项;再往后为 P0-B net bind
+  E4046(他泳道在制)。03e_generics_types emit 同由载荷 panic 前进至 class
+  字面量「非值类型」(T26 在册,class 字面量发射全缺)。
