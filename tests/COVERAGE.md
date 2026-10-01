@@ -800,3 +800,14 @@ fmt_suite 01i(Rust 侧既有)。
   ②嵌套 List 发射读侧 int 槽 strcmp(0x5) 崩=lane 读型不对称存量(嵌套拷贝本身双侧通,
   锚裁剪登记);③peer 库根重构 suite.py 两处 stdpath 陈旧(主循环裸跑/modules 段),
   lib/std 修正后 99/99 复绿——根因是 03m/07a 两个 std 导入件红而 CI 前次未及跑本批。
+
+**2026-10-01 T31 帧回收负结果落账**(spec-gap W6;bench 纪律:只信同机差分):
+- 实施面:ct_amark/ct_areset/ct_eveto_* 模板助手(T26 钻孔四件套)+call_decl_vals/call_cv
+  Ctron 级 wrapper+五处逃逸否决(闭包创建/push/send/with_mut/Member·Index Assign)+
+  标量返回门(tag 5/8 否)+out 增长门。
+- 结果:suite user 2.62s→3.22s(+23%,real 14.92→24.64s 含子进程噪声)+ 06d_globals
+  红(Global with_mut 写回逃逸未盖)→ **证伪**:解释器每调用一次 Ctron 级 wrapper 的
+  dispatch 开销高于帧内 bump 复用收益;且逃逸面(任意 pre-call 容器/字段的写入路径)
+  无法穷尽审计。已干净回退,suite 99/99 复绿。
+- 重开前置:值模型原生 mark/reset(eval Val C 级帧钩子/宿主 rt 同源),列 M2;
+  模板助手设计稿留存计划卡。T31 不阻 T32(GC 门禁对 emit 臂计量)。
