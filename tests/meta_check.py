@@ -95,6 +95,9 @@ def check_file(path: Path) -> list[str]:
         # doc_fix|doc_fix_neg:ctron doc 命令黄金夹具(闭源包分发线 S0.6/S0.7a),
         # 由 doc 套件直驱;不按主流 test 块规则元检查(同 gui/dist 泳道先例)。
         return errors
+    if len(relparts0) >= 3 and relparts0[0] == "lang" and relparts0[1] == "bench":
+        # lang/bench:T32/T44 性能核(bench.sh 自驱,无 test 块语义;http/bench 先例)。
+        return errors
     if len(relparts0) >= 3 and relparts0[0] == "http" and relparts0[1] in ("bench", "fuzz"):
         # http/bench|fuzz:性能/模糊驱动(bench.sh、fuzz/run.sh 自驱,非 test 块语义;
         # 同 gui/ 泳道"bench 夹具先例")。
