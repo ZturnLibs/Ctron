@@ -856,3 +856,14 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   等 list_set/定长数组惯形成熟后门禁可硬化。
 - 脚本坑(已修):bench 目录三层(tests/lang/bench/)而 T32 两层(tests/gc/),
   ROOT 上溯层数差一层——首跑「缺编译器二进制」假象真因,非 bin 缺席。
+
+**2026-10-02 T53 实施中断落账**(spec-gap W9;§12.6 前置工项):
+- 病灶实证:emit Result/Option 载荷——F64 经 int64 槽无位语义(写 `(ct_i)(2.5)` 截断、
+  读端 let 推断 i32 双截;I64 直槽本已 64 位,在册「2^63-1 读回 -1」待另证路径)。
+- 方案已写就:ct_f2i/ct_i2f memcpy 位转助手+ct_res_wrap f/g 位承载+#prel 载荷码侧条目
+  (静态缓存表 RPC_N/C)+expect/or 读端 ct_i2f 还原——注解 let 消费形
+  (`let v: F64 = r.expect("x")`)信息链已证可达。
+- 卡点:自编译期宿主静默崩(cc_run emit 时宿主 rt 死,无诊断输出);二分定位到 trans_stmt
+  绑定块(禁用即愈),静态缓存表/节点抽取与宿主旧值模型的型别二分(N 节点 lane 串 vs 表)
+  未及定位。工作树干净回退,suite 99/99 复绿。
+- 复开注记:优先在 S1 Val 平面重试(旧宿主值模型是根因域);json JNum/JReal 回切随芯。
