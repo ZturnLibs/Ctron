@@ -646,6 +646,15 @@ static void pkg_free(pkg* p) {
 static void pkg_load(pkg* p, const char* root, pkg_res* r) {
     char mpath[4096];
     snprintf(mpath, sizeof mpath, "%s/Ctron.ctcl", root);
+    /* T48 fail-closed:遗留 TOML 清单 = 迁移诊断(TOML 面移除;三线消息逐字一致) */
+    char tpath[4096];
+    snprintf(tpath, sizeof tpath, "%s/Ctron.toml", root);
+    FILE* tf = fopen(tpath, "rb");
+    if (tf) {
+        fclose(tf);
+        push(r, "Ctron.toml", "E5040",
+             "清单格式已硬切 CTCL(T48):检测到遗留 Ctron.toml——请迁移为 Ctron.ctcl:pkg { manifest_version = 1, ... }");
+    }
     ctcl_load(p, mpath, r);
     char dir[4096];
     snprintf(dir, sizeof dir, "%s/src", root);

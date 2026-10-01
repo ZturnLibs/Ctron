@@ -1,5 +1,5 @@
 pkg {
     manifest_version = 1
-    name = "variadic"
+    name = "ffi_variadic"
     version = "0.1.0"
 }

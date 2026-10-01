@@ -28,12 +28,12 @@ ctron —— Ctron 工具链驱动
   ctron doc <file.ct> [--format=json]
                              iface 投影:pub 符号表 + trait/impl 面 + 契约注释
   ctron build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)
-  ctron build                  项目模式:读 Ctron.toml(入口 src/main.ct,链接 c_src/*.c)
+  ctron build                  项目模式:读 Ctron.ctcl(入口 src/main.ct,链接 c_src/*.c)
   ctron test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)
   ctron fmt <file|pkg目录> [-w|--check]
                              规范格式化(docs/fmt-spec.md):默认打印;-w 原位写回;
                              --check 列出待格式化文件后非零退出
-  ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
+  ctron new <dir>              脚手架:hello + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
 环境变量:CC(默认 cc)、CTRON_STDPATH(覆盖标准库位置)
@@ -47,7 +47,7 @@ case $1 in
 ctron build —— 发射 C 并编译为可执行
   ctron build <file.ct>   产物 <stem> 与 <stem>.c(与源同目录)
   ctron build             项目模式:入口 src/main.ct,产物 build/<name>;
-                        Ctron.toml 声明的 c_src/*.c 一并链接
+                        Ctron.ctcl 同目录 c_src/*.c 一并链接
 前置:本机 C 编译器(可用 CC 覆盖);缺失时 C 照常发射,并给出两条出路
 H
 ;;
@@ -56,7 +56,7 @@ H
     run) echo "ctron run <file.ct> —— 解释执行;不需要 C 编译器";;
     test) echo "ctron test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账";;
     fmt) echo "ctron fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出";;
-    new) echo "ctron new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)";;
+    new) echo "ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)";;
     *) usage;;
 esac
 }
@@ -101,8 +101,11 @@ cmd_build() {
 }
 
 cmd_build_proj() {
-    [ -f Ctron.toml ] || die2 "项目模式需 Ctron.toml"
-    NAME=$(sed -n 's/^name *= *"\(.*\)"/\1/p' Ctron.toml | head -1)
+    if [ ! -f Ctron.ctcl ] && [ -f Ctron.toml ]; then
+        die2 "清单格式已硬切 CTCL(T48):检测到 Ctron.toml——请迁移为 Ctron.ctcl:pkg { manifest_version = 1, name = \"…\", version = \"…\" }(设计:docs/superpowers/specs/2026-09-16-config-language-v1.md)"
+    fi
+    [ -f Ctron.ctcl ] || die2 "项目模式需 Ctron.ctcl"
+    NAME=$(sed -n 's/^ *name *= *"\(.*\)".*/\1/p' Ctron.ctcl | head -1)
     [ -n "$NAME" ] || NAME=$(basename "$PWD")
     [ -f src/main.ct ] || die2 "缺入口 src/main.ct"
     mkdir -p build
@@ -207,7 +210,6 @@ case $CMD in
     new)
         [ $# -ge 1 ] || die2 "new 需要目录名"
         mkdir -p "$1/src" || exit 2
-        printf 'name = "%s"\n' "$(basename "$1")" > "$1/Ctron.toml"
         printf 'pkg {\n    manifest_version = 1\n    name = "%s"\n    version = "0.1.0"\n}\n' "$(basename "$1")" > "$1/Ctron.ctcl"
         printf 'fn main() {\n    println("hello, ctron")\n}\n' > "$1/src/main.ct"
         echo "ctron: 已生成 $1/(ctron run $1/src/main.ct 试跑)"

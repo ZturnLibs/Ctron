@@ -856,3 +856,20 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   等 list_set/定长数组惯形成熟后门禁可硬化。
 - 脚本坑(已修):bench 目录三层(tests/lang/bench/)而 T32 两层(tests/gc/),
   ROOT 上溯层数差一层——首跑「缺编译器二进制」假象真因,非 bin 缺席。
+
+**2026-10-02 T48 CTCL 清单硬切收尾落库**(spec-gap W9;§2.7 修订注兑现;设计 2026-09-16-config-language-v1.md):
+- 实况盘点:三线解析器宿主(pkg.c ctcl_load,E5040–5050 冻结码面)与 R 线(check.rs 同码
+  族)早已就绪,自举 caps 检测已读 .ctcl——本件实为收尾三件:①tests/ffi 18 份遗留
+  .toml 机械迁移(pkg 块形,name 保号)→**全仓 Ctron.toml 清零(104 份全 CTCL)**;
+  ②ctron 安装器硬切:new 仅产 .ctcl/build 项目模式读 .ctcl(name 提取兼容缩进)/
+  遗留 .toml fail-closed 拒构+迁移诊断/help 文案三处;③三线迁移诊断逐字一致:
+  "Ctron.toml: E5040 清单格式已硬切 CTCL(T48):检测到遗留 Ctron.toml——请迁移为
+  Ctron.ctcl:pkg { manifest_version = 1, ... }"(pkg.c pkg_load/parse_pkg.ct
+  pkg_check_caps[read_file 缺失回落 Some("") 故以非空判定]/main.rs 包级检查三处)。
+- 规范三注翻面:§2.7 标题与修订注改 CTCL 完成时态/README 登记同步/08-effects
+  comptime 注销账(budget_ms 键名维持声明位,改名留待预算执行实装);sync_site_spec
+  全量同步 --check 无漂移。
+- 门禁:ctron_smoke 25/25(含双新探针:new 不再产 .toml/遗留 .toml 迁移诊断拒构)+
+  suite 99/99+ffi 33/0(18 份迁移零破坏)+cargo check 0(警告预存)。
+- 中途异常登记:native.sh 重建中 seed 进程遭外部 SIGTERM(疑对端清场误伤)——产物
+  完整性经 suite/ctron_smoke 全绿证伪,非本批债。

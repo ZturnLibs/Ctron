@@ -60,6 +60,16 @@ fn pkg_is_prelude_sym(nm: Str) -> Bool {
 }
 
 fn pkg_check_caps(mf: List[Str], dir: Str, diags: List[Str]) {
+    // T48 fail-closed(§2.7 修订注兑现):遗留 TOML 清单 = 迁移诊断(TOML 面移除;
+    // read_file 缺失回落 Some("") 故以非空判定存在性;三线消息逐字一致)
+    match read_file(dir + "/../Ctron.toml") {
+        Some(t0) => {
+            if t0.len > 0 {
+                diags.push("Ctron.toml: E5040 清单格式已硬切 CTCL(T48):检测到遗留 Ctron.toml——请迁移为 Ctron.ctcl:pkg { manifest_version = 1, ... }")
+            }
+        }
+        None => {}
+    }
     // E4010(§8.2):use std.<key>.<Name>(key ∈ {fs,time,net,db}) 且本文件有 &Name 参数,
     // 而 Ctron.toml [caps] 未声明该 key
     var i: I32 = 1

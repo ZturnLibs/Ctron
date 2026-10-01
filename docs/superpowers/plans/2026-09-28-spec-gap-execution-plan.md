@@ -526,7 +526,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T48 · CTCL 清单迁移(§2.7 修订注兑现)
 
-- **预估:** 1.5–2 d。**前置:** 无。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-02;实况=三线解析器宿主/R 线早已就绪[pkg.c ctcl_load E5040-5050 冻结面+check.rs 同码],自举 caps 面已读 .ctcl——本件实为收尾:①tests/ffi 18 份 .toml 机械迁移[全仓 .toml 清零,104 份全 CTCL];②ctron 安装器硬切[new 仅产 .ctcl/build 项目模式读 .ctcl+.toml 遗留 fail-closed 拒构+help 文案三处];③三线迁移诊断逐字一致[E5040 清单格式已硬切 CTCL:pkg.c pkg_load/parse_pkg.ct pkg_check_caps/main.rs 包级检查];④ctron_smoke 双探针[new 不再产 .toml+遗留 .toml 迁移诊断拒构];⑤规范三注翻面[§2.7/README 登记/08 budget_ms 键名维持声明位]+sync_site_spec 无漂移。门禁:ctron_smoke 25/25[含双新探针]+suite 99/99+ffi 33/0+cargo check 0;R 线 main.rs strip_prefix 硬 grep 已在先期批次拔除)
 - **目标:** 包清单 `Ctron.toml` → `Ctron.ctcl` 三线硬切(规范定义:`2026-09-16-config-language-v1.md`,fail-closed 注册表/caps 列表形/deps 三互斥形全有)。
 - **范围:** 三线解析器统一切换(`parse_pkg.ct`/宿主/R 线)、在库全部 `Ctron.toml` 迁移、安装/CI 脚本。
 - **验收:** 在库包全迁;TOML 面移除(fail-closed:读到 .toml 给迁移诊断);全量套件+examples 回归。

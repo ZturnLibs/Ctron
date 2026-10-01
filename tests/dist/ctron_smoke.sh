@@ -59,8 +59,8 @@ fi
 
 echo "== 4) 全链:new → run → check → build 单文件 → build 项目模式 =="
 rc=0; ( cd "$T" && "$CTRON" new probe ) > "$T/new.out" 2>&1 || rc=$?
-if [ $rc -eq 0 ] && [ -f "$T/probe/Ctron.toml" ] && [ -f "$T/probe/Ctron.ctcl" ] && [ -f "$T/probe/src/main.ct" ]; then
-    ok "new 脚手架(Ctron.toml + Ctron.ctcl + src/main.ct)"
+if [ $rc -eq 0 ] && [ ! -f "$T/probe/Ctron.toml" ] && [ -f "$T/probe/Ctron.ctcl" ] && [ -f "$T/probe/src/main.ct" ]; then
+    ok "new 脚手架(Ctron.ctcl + src/main.ct;T48 硬切后不再产 .toml)"
 else
     bad "new rc=$rc 或缺脚手架文件"
 fi
@@ -95,9 +95,20 @@ fi
 
 rc=0; ( cd "$T/probe" && "$CTRON" build ) > "$T/b2.out" 2>&1 || rc=$?
 if [ $rc -eq 0 ] && [ -f "$T/probe/build/probe.c" ] && [ -x "$T/probe/build/probe" ]; then
-    ok "build 项目模式(build/probe.c + build/probe,读 Ctron.toml)"
+    ok "build 项目模式(build/probe.c + build/probe,读 Ctron.ctcl)"
 else
     bad "build 项目模式 rc=$rc out=[$(cat "$T/b2.out")]"
+fi
+
+# T48 fail-closed:遗留 .toml 项目 = 迁移诊断且拒绝构建(TOML 面移除)
+mkdir -p "$T/legacy/src"
+printf 'fn main() {\n    println("x")\n}\n' > "$T/legacy/src/main.ct"
+printf '[package]\nname = "legacy"\nversion = "0.1.0"\n' > "$T/legacy/Ctron.toml"
+rc=0; ( cd "$T/legacy" && "$CTRON" build ) > "$T/b3.out" 2>&1 || rc=$?
+if [ $rc -ne 0 ] && grep -q "硬切 CTCL" "$T/b3.out"; then
+    ok "T48 fail-closed(遗留 Ctron.toml → 迁移诊断且拒构)"
+else
+    bad "T48 fail-closed rc=$rc out=[$(cat "$T/b3.out")]"
 fi
 
 rc=0; "$T/probe/build/probe" > "$T/exe2.out" 2>&1 || rc=$?

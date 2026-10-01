@@ -530,6 +530,11 @@ fn main() -> ExitCode {
             // 包级检查:<目录>(含 Ctron.ctcl + src/*.ct)
             if std::path::Path::new(&path).is_dir() {
                 let dir = std::path::Path::new(&path);
+                // T48 fail-closed:遗留 TOML 清单 = 迁移诊断(TOML 面移除;三线消息逐字一致)
+                let toml = std::fs::read_to_string(dir.join("Ctron.toml")).unwrap_or_default();
+                if !toml.is_empty() {
+                    println!("Ctron.toml: E5040 清单格式已硬切 CTCL(T48):检测到遗留 Ctron.toml——请迁移为 Ctron.ctcl:pkg {{ manifest_version = 1, ... }}");
+                }
                 let ctcl = std::fs::read_to_string(dir.join("Ctron.ctcl")).unwrap_or_default();
                 let (manifest, manifest_diags) = ctron::check::parse_manifest(&ctcl);
                 for m in &manifest_diags {
