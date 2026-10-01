@@ -413,6 +413,14 @@ void ctron_gui_flush(void) {
                 break;
             }
             default: break;
+            case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
+                // 垂直裁切容器(gui_cfg2 clipv)落地口:此前 flush 无 scissor
+                // 处理,textarea 固定高框内容超高直接溢出框外(用户实测)
+                BeginScissorMode((int)b.x, (int)b.y, (int)b.width, (int)b.height);
+                break;
+            case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
+                EndScissorMode();
+                break;
         }
     }
 }
@@ -499,6 +507,9 @@ int gui_now_ms(void); // 前向(定义在 tick 原语段,此处在其上)
 static int g_caret_anchor_ms = -1;
 void gui_caret_set(int i) { g_caret = i; g_caret_anchor_ms = gui_now_ms(); }
 int gui_caret_blink(void) {
+    // 组词期光标恒实(成熟编辑器口径;亦使候选窗喂入的「最窄矩形」确定性抓到
+    // 光标条而非滚动条 thumb/下划线——闪烁暗相抓错对象,候选窗锚框角实证)
+    if (gui_ime_has_preedit()) { return 1; }
     int now = gui_now_ms();
     if (g_caret_anchor_ms < 0) { return 1; }
     int d = now - g_caret_anchor_ms;

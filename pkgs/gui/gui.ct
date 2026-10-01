@@ -3352,6 +3352,9 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var tpre: Str = byte_slice(tshow, cline_start, tc2)
                 var tpx: I32 = 4 + gui_ft_measure_n_wt(tpre, tpre.len, tsz4, 400, 0)
                 var tpy: I32 = 4 + crow * tpitch - tscr
+                // 光标 x 恒算恒写(候选窗锚=绝对光标 x;与 input 同口径,组词首帧
+                // 窄矩形未入帧亦不退化为框左缘)
+                gui_ime_cx_set(tpx)
                 // 光标跟随(行顶低于视口→上卷;行底超视口→下卷;固定高框才滚)
                 if thm == 2 {
                     var ctop: I32 = 4 + crow * tpitch
@@ -3461,6 +3464,30 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                     gui_text(rtxt, tsz3, rt_col_r(tfg3), rt_col_g(tfg3), rt_col_b(tfg3), 255)
                     rq += 1
+                }
+                // 溢出滚动条(右缘细 thumb;内容高=视觉行×pitch+8,与滚轮/光标跟随
+                // 同源口径;浮条配对推 hits 不变量)
+                if thm == 2 {
+                    var srch: I32 = rvs.len * (tsz3 + tsz3 / 4 + 2) + 8
+                    if srch > thv {
+                        var trackh: I32 = thv - 8
+                        var thumbh: I32 = trackh * thv / srch
+                        if thumbh < 16 {
+                            thumbh = 16
+                        }
+                        var maxo: I32 = srch - thv
+                        if maxo < 1 {
+                            maxo = 1
+                        }
+                        var soff: I32 = tscr
+                        if soff > maxo {
+                            soff = maxo
+                        }
+                        var thumby: I32 = 4 + (trackh - thumbh) * soff / maxo
+                        gui_sel_float(rwrapw + 2, thumby, 4, thumbh, gui_theme_slot_get(3))
+                        hits.push(id)
+                        hinst.push(inst)
+                    }
                 }
             }
             hits.push(id)
