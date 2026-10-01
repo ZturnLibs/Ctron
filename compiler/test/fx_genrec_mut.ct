@@ -1,0 +1,21 @@
+// fx_genrec_mut.ct —— P0-A′ 泛型特化互引 seen 集:a→b→a 同码互引(A 体实例化 B,
+// B 体回引 A)。seen 集(在制∪已发)令 B 体对 A 的回引复用为纯调用,双特化皆落
+// 定义;互引面要求本实例原型先于嵌套预提升直出的被引定义可见(emit 侧互引原型
+// 前置,否则 C 侧 call to undeclared function)。运行期 a[I32](9,3) 递降 3 层返 9。
+fn a[T](x: T, n: I32) -> T {
+    if n > 0 {
+        return b[T](x, n - 1)
+    }
+    return x
+}
+
+fn b[T](x: T, n: I32) -> T {
+    return a[T](x, n)
+}
+
+fn main() {
+    var r = a[I32](9, 3)
+    if r == 9 {
+        println("genrec-mut ok")
+    }
+}

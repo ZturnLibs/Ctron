@@ -639,6 +639,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         if gseen.len > 0 {
                             gseen2 = gseen + ";" + mg
                         }
+                        // P0-A′:互引原型前置——嵌套预提升可能先把被引实例的定义体直出
+                        // (A↔B 互引:B 体引用 A),本实例原型须先于嵌套定义可见,否则 C 侧
+                        // 「call to undeclared function」(自引用面由下方位 #ifndef 内原型
+                        // 覆盖,互引面唯此前置可救;重复原型 C 合法)。型别载荷互引限
+                        // 指针/盒形(值形 C 表意不可达,非本扩位)
+                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ");")
                         ct_body(spec[5], env_bind(env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), "#gseen", gseen2), file, rcs)
                         // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
                         pk3 = 1

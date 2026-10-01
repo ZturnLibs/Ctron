@@ -121,6 +121,16 @@ if "$COMP/ctc.sh" emit "$COMP/test/fx_genrec_pos.ct" "$T/gp.c" > /dev/null 2>&1 
 else
     bad "同码递归特化异常: $(head -2 "$T/gp.out" 2>/dev/null)"
 fi
+# P0-A′ 互引 seen 集:a→b→a 同码互引,双特化皆落定义 + 互引原型前置
+# (嵌套预提升直出的被引定义先于本定义,本实例原型须先可见)
+if "$COMP/ctc.sh" emit "$COMP/test/fx_genrec_mut.ct" "$T/gm.c" > /dev/null 2>&1 \
+   && cc -O1 -w -o "$T/gm.bin" "$T/gm.c" 2>/dev/null \
+   && "$T/gm.bin" run "$COMP/test/fx_genrec_mut.ct" > "$T/gm.out" 2>&1 \
+   && grep -q "genrec-mut ok" "$T/gm.out"; then
+    ok "互引特化 seen 集(a→b→a 双定义+互引原型前置,P0-A′)"
+else
+    bad "互引特化异常: $(head -2 "$T/gm.out" 2>/dev/null)"
+fi
 # T14-② List[struct] 发射底座((h) 族首件):装箱 push/类型化索引/for-in/字段
 if "$COMP/ctc.sh" emit "$COMP/test/fx_list_struct.ct" "$T/ls.c" > /dev/null 2>&1 \
    && cc -O1 -w -o "$T/ls.bin" "$T/ls.c" 2>/dev/null \
