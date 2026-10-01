@@ -574,6 +574,20 @@ fn ct_fn_ret(file: List[Str], nm: Str) -> Str {
     return "i"
 }
 
+// fn 声明在案判定(四种 decl 均算;裸 fn 引用实参 fval 包装的判别位——
+// 形参/局部持有的闭包值同名不在此列,旧 rfpcs.len>0 口径漏 0 参 fn)
+fn ct_fn_decl_any(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
 // 用户 fn 形参类型码表(按 Param 顺序)
 fn ct_fn_pcodes(file: List[Str], nm: Str) -> List[Str] {
     var out = List[Str]()
@@ -1104,6 +1118,10 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         var oft0 = ct_typeof(e[1], env, file)
         var oft = ct_strip_p(oft0)
+        // P0-A:&T 形参(pu: 码)字段读——解引用到 u: 查型(§4.9 借用语义)
+        if oft.len > 3 && byte_slice(oft, 0, 3) == "pu:" {
+            oft = "u:" + byte_slice(oft, 3, oft.len)
+        }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
             if ct_struct_tps(file, ct_struct_name_of(oft)).len > 0 {
                 return ct_field_ty_inst(file, oft, e[3])
@@ -1611,6 +1629,12 @@ fn ct_fntype_pcodes_tg(file: List[Str], callee: Str, want: I32, targs: List[Str]
 }
 
 fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] {
+    // P0-A:&T 透传下钻(&Req[S] 形参位的 S 槽代入;旧臂原样返回致 Req__I 错实例)
+    if t[0] == "Ref" {
+        var nr = mk("Ref")
+        nr.push(ct_mono_subst_ty(t[1], tpsn, tys))
+        return nr
+    }
     if t[0] == "Named" {
         var k: I32 = 0
         while k < tpsn.len {

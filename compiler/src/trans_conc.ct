@@ -16,6 +16,19 @@ fn eln(s: Str, env: List[Str]) {
     println(s)
 }
 
+// 串字节累积和(闭包 shim 判别位):同源码行多闭包(嵌套 |rq| g(|r2| h(r2)))
+// 旧共用 L<行> 名,#ifndef 卫兵留首枚——内层先出时守卫适配体被静默丢弃
+//(mw.ct with_sessions 集成 bad 臂 200 实证)。判别位 = 参名/捕获/自由名累积和;
+// 判别位相同 ⇔ shim 文本相同(体内只引参/捕获/自由名)⇔ 可互换,无碰撞面
+fn ct_str_bsum(s: Str, h: I32) -> I32 {
+    var i: I32 = 0
+    while i < s.len {
+        h = (h * 31) + byte_at(s, i)
+        i += 1
+    }
+    return h
+}
+
 fn ct_pass(env: List[Str]) -> Str {
     return ct_env_ty(env, "#p")
 }
@@ -154,14 +167,15 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
             ct_expr(body, senvp, file)
         }
         var qw: I32 = 0
-        // P0-A:shim 定义 #ifndef 卫兵(同 ct_emit_clov;prewalk 重跑面)
+        // P0-A:shim 定义 #ifndef 卫兵(同 ct_emit_clov;prewalk 重跑面)——
+        // 卫兵罩全 shim(头+体+}),旧中途 #endif 与尾 #endif 双闭致 C
+        // "#endif without #if"(ffi/cb_panic_task 探针)
         println("#ifndef CT_SHIM_" + shim)
         println("#define CT_SHIM_" + shim)
         while qw < qlines.len {
             println(qlines[qw])
             qw += 1
         }
-        println("#endif")
         var senv = env_bind(env_bind(env, "#p", "2"), "#shim", "1")
         if body[0] == "Block" {
             var senv2 = ct_stmts(body, senv, file, "", List[Str]())
@@ -230,7 +244,23 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
         qi += 1
     }
     var ix = nline(site)
-    var cname = "ct_clo_" + ct_env_ty(env, "#clofn") + "_L" + ix
+    // P0-A:同行列闭包判别位(参名 + 自由名;见 ct_str_bsum 注)
+    var dsx: I32 = 7919
+    var qi4: I32 = 0
+    while qi4 < cps.len {
+        dsx = ct_str_bsum(cps[qi4 + 1][2], dsx)
+        qi4 += 1
+    }
+    qi4 = 0
+    while qi4 < raw.len {
+        dsx = ct_str_bsum(raw[qi4], dsx)
+        qi4 += 1
+    }
+    var dss = dsx.to_string()
+    if byte_at(dss, 0) == 45 {
+        dss = "n" + byte_slice(dss, 1, dss.len)
+    }
+    var cname = "ct_clo_" + ct_env_ty(env, "#clofn") + "_L" + ix + "x" + dss
     if seq2(ct_pass(env), "1") {
         var sig0 = ""
         var pi0: I32 = 0
@@ -495,7 +525,24 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
         return ""
     }
     var ix = nline(site)
-    var shim = "ct_clo_" + ct_env_ty(env, "#clofn") + "_L" + ix
+    // P0-A:同行列闭包判别位(参名 + 捕获名/码;见 ct_str_bsum 注)
+    var dsx: I32 = 7919
+    var qi5: I32 = 0
+    while qi5 < pnames.len {
+        dsx = ct_str_bsum(pnames[qi5], dsx)
+        qi5 += 1
+    }
+    qi5 = 0
+    while qi5 < caps.len {
+        dsx = ct_str_bsum(caps[qi5], dsx)
+        dsx = ct_str_bsum(codes[qi5], dsx)
+        qi5 += 1
+    }
+    var dss2 = dsx.to_string()
+    if byte_at(dss2, 0) == 45 {
+        dss2 = "n" + byte_slice(dss2, 1, dss2.len)
+    }
+    var shim = "ct_clo_" + ct_env_ty(env, "#clofn") + "_L" + ix + "x" + dss2
     if seq2(ct_pass(env), "1") {
         var sig = "void* _cp"
         var pi: I32 = 0
@@ -663,7 +710,9 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
     return acc
 }
 
-// Result/Option 载荷入 ct_res.v:用户枚举装箱(amalloc),指针/标量直入
+// Result/Option 载荷入 ct_res.v:用户枚举装箱(amalloc),指针/标量直入;
+// F64 载荷位型双关(union 复合字面量)——旧 (ct_i) 直转截断小数
+//(param_f64.or(0.0)==2.5 探针;interp v_value D 位原生双精度的发射等价)
 fn ct_res_wrap(code: Str, x: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
         var ct = ct_ctype(code)
@@ -671,6 +720,9 @@ fn ct_res_wrap(code: Str, x: Str) -> Str {
     }
     if or2(code == "s", code == "N") {
         return "(ct_i)(long)(" + x + ")"
+    }
+    if code == "f" {
+        return "((union \{ double _d; ct_i _i; })\{ ._d = (" + x + ") })._i"
     }
     return "(ct_i)(" + x + ")"
 }

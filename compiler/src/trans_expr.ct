@@ -190,6 +190,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             var od = ct_expr(e[3], env, file)
             var odt = ct_typeof(e[3], env, file)
             var odct = ct_ctype(odt)
+            // d 载荷位型双关回读(与 ct_res_wrap 的 F64 入槽配对;旧 (long) 直转
+            // 双向截断——Some(2.5) 入槽即 2)
+            if odt == "f" {
+                return "(((" + olo + ").variant == 0) ? ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + olo + ").v })._d : (" + od + "))"
+            }
             return "(" + odct + ")((" + olo + ").variant == 0 ? (ct_i)(long)(" + olo + ").v : (ct_i)(long)(" + od + "))"
         }
         var op = ct_op(e[1])
@@ -344,6 +349,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "strlen((const char*)(" + ct_expr(e[1], env, file) + "))"
         }
         var oft = ct_strip_p(ct_typeof(e[1], env, file))
+        // P0-A:&T 形参(pu: 码)字段读 → 解引用成员
+        if oft.len > 3 && byte_slice(oft, 0, 3) == "pu:" {
+            return "(*" + ct_expr(e[1], env, file) + ")." + e[3]
+        }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
             // struct 字段读取(§6.1 值类型;P<内> 解引用后同型)
             return "(" + ct_expr(e[1], env, file) + ")." + e[3]
@@ -543,7 +552,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         panic("emit:泛型实参数")
                         return ""
                     }
-                    return ct_spec_call_emit(file, env, ag, base[1], cal[2], tpsn, tys, gdecl, "")
+                    var targsr = List[Str]()
+                    targsr.push("TArgs")
+                    var gk4: I32 = 0
+                    while gk4 < tys.len {
+                        targsr.push(tys[gk4])
+                        gk4 += 1
+                    }
+                    return ct_spec_call_emit(file, env, ag, base[1], targsr, tpsn, tys, gdecl, "")
                 }
             }
             if base[0] == "Ident" && base[1] == "Mutex" {
@@ -703,6 +719,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var dflt = ct_expr(ag[1], env, file)
                 var dt = ct_typeof(ag[1], env, file)
                 var dct = ct_ctype(dt)
+                // f 载荷位型双关回读(与 ct_res_wrap 写侧配对;同 Binary Or 臂)
+                if dt == "f" {
+                    return "(((" + obj + ").variant == 0) ? ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + obj + ").v })._d : (" + dflt + "))"
+                }
                 return "(" + dct + ")((" + obj + ").variant == 0 ? (ct_i)(long)(" + obj + ").v : (ct_i)(long)(" + dflt + "))"
             }
             if objt.len > 1 && byte_at(objt, 0) == 113 {
@@ -1403,8 +1423,12 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
             if pc.len > 0 {
                 if byte_at(pc, 0) == 70 {
                     if ag[i][0] == "Ident" {
-                        var rfpcs = ct_fn_pcodes(file, ag[i][1])
-                        if rfpcs.len > 0 {
+                        // P0-A:判别位移 decl 在案(旧 rfpcs.len>0 漏 0 参 fn——
+                        // clk_fix/clk_unix 形裸地址直填 ct_clop,env=邻接码字节
+                        // ≠哨兵 → 调 fn 槽=代码字节即 SIGSEGV);形参/局部闭包
+                        // 值(非 decl)恒直传不过包装
+                        if ct_fn_decl_any(file, ag[i][1]) {
+                            var rfpcs = ct_fn_pcodes(file, ag[i][1])
                             if rfpcs.len == byte_at(pc, 1) - 48 {
                                 aenv = env_bind(env, "#fval", ct_fval_emit(file, ag[i][1], "C" + nline(ag[i])))
                             }
@@ -1473,6 +1497,54 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
         var ax = ct_expr(ag[i], aenv, file)
         if ct_env_has(aenv, "#fval") {
             ax = ct_env_ty(aenv, "#fval")
+        }
+        // P0-A:&T 形参(§4.9 值→&T 自动借用)——实参已为指针(pu:)直传;
+        // 左值(Ident/成员)取址;右值(调用结果)堆盒取指针
+        if pc.len > 1 && byte_at(pc, 0) == 112 {
+            // P0-A:&T 形参借用(§4.9)——cast 型按型参代入后型别(Raw TPar 位
+            // Req[S]→Req__I 与特化定义 __U3_App 劈叉即错型)
+            var pty32 = mk("None")
+            if callee != "" {
+                var gd32 = ct_fn_decl(file, callee)
+                if gd32.len > 0 {
+                    if i < gd32[3].len {
+                        if gd32[2].len > 1 && targs.len > 1 {
+                            var tp32 = List[Str]()
+                            var ty32 = List[Str]()
+                            var gq32: I32 = 1
+                            while gq32 < gd32[2].len {
+                                tp32.push(gd32[2][gq32][1])
+                                gq32 += 1
+                            }
+                            var gq33: I32 = 1
+                            while gq33 < targs.len {
+                                ty32.push(targs[gq33])
+                                gq33 += 1
+                            }
+                            if tp32.len == ty32.len {
+                                pty32 = ct_mono_subst_ty(gd32[3][i][3], tp32, ty32)
+                            }
+                        } else {
+                            pty32 = gd32[3][i][3]
+                        }
+                    }
+                }
+            }
+            var pc32 = pc
+            if pty32[0] != "None" {
+                pc32 = ct_ty_code(pty32, file)
+            }
+            var isptr31 = ac.len > 1 && byte_at(ac, 0) == 112
+            if !isptr31 {
+                if or2(ag[i][0] == "Ident", ag[i][0] == "Member") {
+                    ax = "(" + ct_ctype(pc32) + ")(&(" + ax + "))"
+                } else {
+                    var inner31 = byte_slice(pc32, 1, pc32.len)
+                    ax = "(" + ct_ctype(pc32) + ")(long)" + ct_wrap_i(inner31, ax)
+                }
+                // 借用后实参即指针(下游 u:-盒槽跳过)
+                ac = pc32
+            }
         }
         // P0-A Param 面:泛型特化被调 + u:-码实参 → ct_wrap_i 堆盒(特化形参
         // 槽 = int64 盒指针,帧序言解盒;非泛型被调保持 by-value 原样)
@@ -1757,12 +1829,16 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                         if ag[gi9][0] == "Ident" {
                             if pc9.len > 0 {
                                 if byte_at(pc9, 0) == 70 {
-                                    var rfpcs9 = ct_fn_pcodes(file, ag[gi9][1])
-                                    if rfpcs9.len == byte_at(pc9, 1) - 48 {
-                                        var fv9 = ct_fval_emit(file, ag[gi9][1], "C" + nline(ag[gi9]))
-                                        gargs = gargs + ", " + fv9
-                                        gi9 += 1
-                                        continue
+                                    // P0-A:同 ct_call_args_tg——decl 在案判别位
+                                    //(0 参 fn 补包装;形参/局部闭包值直传)
+                                    if ct_fn_decl_any(file, ag[gi9][1]) {
+                                        var rfpcs9 = ct_fn_pcodes(file, ag[gi9][1])
+                                        if rfpcs9.len == byte_at(pc9, 1) - 48 {
+                                            var fv9 = ct_fval_emit(file, ag[gi9][1], "C" + nline(ag[gi9]))
+                                            gargs = gargs + ", " + fv9
+                                            gi9 += 1
+                                            continue
+                                        }
                                     }
                                 }
                             }
@@ -1823,6 +1899,10 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
             if pc31.len > 2 && byte_slice(pc31, 0, 2) == "u:" {
                 acc31 = "*(t_" + byte_slice(pc31, 2, pc31.len) + "*)(long)_p" + ai31.to_string()
             } else {
+                if pc31.len > 1 && byte_at(pc31, 0) == 112 {
+                    // P0-A:&T 形参(pu: 码)——ct_i 槽指针直传
+                    acc31 = "(" + ct_ctype(pc31) + ")(long)_p" + ai31.to_string()
+                } else {
                 if or2(seq2(pc31, "s"), seq2(pc31, "N")) {
                     acc31 = "(const char*)(long)_p" + ai31.to_string()
                 } else {
@@ -1834,6 +1914,7 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
                         }
                     }
                 }
+            }
             }
             if ai31 > 0 { aargs31 = aargs31 + ", " }
             aargs31 = aargs31 + acc31
@@ -2111,6 +2192,10 @@ fn ct_eq_expr_dp(a: Str, b: Str, ty: Str, env: List[Str], file: List[Str], dp: I
 
 // 单态化支撑:具体实例型别节点 → 实例码(非实例/无实参 → "")
 fn ct_inst_of_ty(file: List[Str], nt: List[Str]) -> Str {
+    // P0-A:&T 实参(pu: 码)透过 Ref 收集实例 typedef(&Req[S] 形参位)
+    if nt[0] == "Ref" {
+        return ct_inst_of_ty(file, nt[1])
+    }
     if nt[0] == "Named" {
         if nt[2].len > 1 {
             if ct_struct_tps(file, nt[1]).len > 0 {
@@ -2130,6 +2215,11 @@ fn ct_inst_of_ty(file: List[Str], nt: List[Str]) -> Str {
 // 单态化点实例 typedef 直出(C 重复 typedef 合法,免去去重状态);
 // 实参为嵌套实例时递归。pass1 内调用,先于 pass2 引用。
 fn ct_emit_inst_typedef(file: List[Str], nt: List[Str]) {
+    // P0-A:&T 透传(&Req[S] 形参位的实例 typedef)
+    if nt[0] == "Ref" {
+        ct_emit_inst_typedef(file, nt[1])
+        return
+    }
     if nt[0] != "Named" {
         return
     }

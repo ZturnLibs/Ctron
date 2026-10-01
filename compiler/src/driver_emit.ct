@@ -463,6 +463,22 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
                 }
                 mi2 += 1
             }
+            // P0-A:&T 形参(pu: 码)实例 typedef 预扫——非泛型 fn 的 &Req[S] 形参
+            // 的实例 typedef 须先于原型前置区(t_Req__X* 原型位)
+            var pi7: I32 = 1
+            while pi7 < file.len {
+                var pd7 = file[pi7]
+                if or2(pd7[0] == "Fn", or2(pd7[0] == "FnPub", pd7[0] == "FnC")) {
+                    var pk7: I32 = 1
+                    while pk7 < pd7[3].len {
+                        if pd7[3][pk7][0] == "Param" {
+                            inst_try_collect(insts, ct_ty_code(pd7[3][pk7][3], file))
+                        }
+                        pk7 += 1
+                    }
+                }
+                pi7 += 1
+            }
             var mobud = 8192
             var mbe = env_get("CTRON_MONO_BUDGET")
             if mbe.len > 0 {
@@ -1091,6 +1107,12 @@ fn ct_let_insts_b(b: List[Str], file: List[Str], out: List[Str]) {
 
 // P0-A 预扫收集:实例码(u:名__尾缀)或 Lu: 装箱槽元素实例 → 入表去重
 fn inst_try_collect(out: List[Str], code: Str) {
+    // P0-A:&T 形参(p<…> 码)剥壳收集
+    if code.len > 1 && byte_at(code, 0) == 112 {
+        var inner = byte_slice(code, 1, code.len)
+        inst_try_collect(out, inner)
+        return
+    }
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         if ct_struct_inst_split(code).len > 1 {
             if !in_list(out, code) {

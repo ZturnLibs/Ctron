@@ -275,6 +275,10 @@ fn compat(exp: Str, act: Str, e: List[Str], file: List[Str], tc: List[Str]) -> B
                 return true
             }
         }
+        // P0-A §4.9:值→&T 自动借用(&T 形参收 T 值;Req 本就只读,interp 同值透传)
+        if seq2(tn, act) {
+            return true
+        }
     }
     if seq2(byte_slice(exp, 0, 2), "n:") {
         if is_trait(file, byte_slice(exp, 2, exp.len)) {
