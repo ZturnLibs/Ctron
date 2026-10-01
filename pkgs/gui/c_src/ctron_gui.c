@@ -555,6 +555,13 @@ int gui_mod_ctrl(void) {
     if (IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)) { return 1; }
     return 0;
 }
+int g_mod_alt = 0;
+int gui_mod_alt(void) {
+    if (g_mod_alt > 0) { return 1; }
+    if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) { return 1; }
+    return 0;
+}
+void gui_inject_alt(int m) { g_mod_alt = m; }
 
 // 复制到系统剪贴板(内部缓冲 → 系统;真窗 Cmd+C 后调)
 void gui_clip_push(void) {
