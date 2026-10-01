@@ -20,19 +20,22 @@ fn ct_pass(env: List[Str]) -> Str {
     return ct_env_ty(env, "#p")
 }
 
-// mcell C 标签:类型码 "u:Acc" 中的冒号非法 → "uAcc"
+// mcell C 标签:类型码内冒号非法 → 逐字清洗(u:X → uX、Lu:X → LuX;实现单一化
+// 于 trans_ty ct_mcell_tag_inner,与 ct_ctype m 臂同标签)
 fn ct_mcell_tag(inner: Str) -> Str {
-    if inner.len > 2 && byte_slice(inner, 0, 2) == "u:" {
-        return "u" + byte_slice(inner, 2, inner.len)
-    }
-    return inner
+    return ct_mcell_tag_inner(inner)
 }
 
 // Mutex 单元 typedef:仅在 pass1 于构造站点发射一次(C11 下重复亦合法,此处去重
 // 交由站点唯一性;跨 fn 顺序由"全部 pass1 先于全部 pass2"保证)
 fn ct_mcell_emit(inner: Str) {
     var tg = ct_mcell_tag(inner)
+    // P0-A:#ifndef 卫兵——匿名 struct 重复 typedef 亦为重定义(C11 的同形豁免
+    // 只对具名 typedef 成立;Mutex 字段前置 + 构造点双发即撞)
+    println("#ifndef CT_MCELL_" + tg)
+    println("#define CT_MCELL_" + tg)
     println("typedef struct \{ pthread_mutex_t mu; " + ct_ctype(inner) + " v; } ct_mcell_" + tg + ";")
+    println("#endif")
 }
 
 // 捕获/回传值包 ct_i:指针域经 long 中转;struct 值/Mutex 不入本片
@@ -151,10 +154,14 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
             ct_expr(body, senvp, file)
         }
         var qw: I32 = 0
+        // P0-A:shim 定义 #ifndef 卫兵(同 ct_emit_clov;prewalk 重跑面)
+        println("#ifndef CT_SHIM_" + shim)
+        println("#define CT_SHIM_" + shim)
         while qw < qlines.len {
             println(qlines[qw])
             qw += 1
         }
+        println("#endif")
         var senv = env_bind(env_bind(env, "#p", "2"), "#shim", "1")
         if body[0] == "Block" {
             var senv2 = ct_stmts(body, senv, file, "", List[Str]())
@@ -183,6 +190,7 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
             println("return 0;")
         }
         println("}")
+        println("#endif")
         return "0"
     }
     var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
@@ -264,10 +272,14 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
             ct_expr(cbody, penv0, file)
         }
         var qi0: I32 = 0
+        // P0-A:shim 定义 #ifndef 卫兵(同 ct_emit_clov;prewalk 重跑面)
+        println("#ifndef CT_CLO_" + cname)
+        println("#define CT_CLO_" + cname)
         while qi0 < qlines0.len {
             println(qlines0[qi0])
             qi0 += 1
         }
+        println("#endif")
         var renv0 = env_bind(env_bind(env2, "#p", "2"), "#shim", "2")
         if cbody[0] == "Block" {
             var renv2 = ct_stmts(cbody, renv0, file, "", List[Str]())
@@ -285,6 +297,7 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
             println("return (ct_i)(" + bx2 + ");")
         }
         println("}")
+        println("#endif")
         return "0"
     }
     return cname
@@ -295,7 +308,9 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
 //(>8 字节返回超 ct_i 单槽,沿 T54 既有挂账);其余标量/指针直包 (ct_i)(…)
 fn ct_clo_ret_line(code: Str, x: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
-        return "return (\{ union \{ " + ct_ctype(code) + " _s; ct_i _i; } _ru; _ru._s = " + x + "; _ru._i; });"
+        // P0-A:u:-尾返回 = 堆盒指针(ct_i)——旧 union 低 8 字节式对 >8B struct
+        //(Resp/Req 链)即截断,调用位 #fret 按指针解盒(双侧同约定)
+        return "return (\{ " + ct_ctype(code) + "* _rb = (" + ct_ctype(code) + "*)ctron_amalloc(sizeof(" + ct_ctype(code) + ")); *_rb = " + x + "; (ct_i)(long)_rb; });"
     }
     return "return (ct_i)(" + x + ");"
 }
@@ -345,7 +360,21 @@ fn ct_emit_with_stmt(site: List[Str], obj: Str, objt: Str, clo: List[Str], env: 
     }
     if rc != "" {
         if seq2(rcdecl, "1") {
-            eln(ct_ctype(rc) + " " + rc + ";", env)
+            // P0-A:声明型 = 闭包尾值型——旧 ct_ctype(rc) 对名取型恒落 int32_t,
+            // Str/struct 载荷的 with 值(let/返回位)声明即错型;尾 None 保底 i
+            var wty = "i"
+            if cbody[0] == "Block" {
+                var wtl = cbody[cbody.len - 1]
+                if wtl[0] != "None" {
+                    wty = ct_typeof(wtl, env2, file)
+                }
+            } else {
+                wty = ct_typeof(cbody, env2, file)
+            }
+            if wty == "v" {
+                wty = "i"
+            }
+            eln(ct_ctype(wty) + " " + rc + ";", env)
         }
     }
     if cbody[0] == "Block" {
@@ -542,6 +571,20 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                 qlines.push(ct_ctype(pc) + " t_" + pn + " = (" + ct_ctype(pc) + ")(long)_p" + pj.to_string() + ";")
             }
             env2 = env_bind(env2, pn, pc)
+            // P0-A:fn 型形参(F 签名码)挂 #fret——体内 <名>(…) 间接调用的
+            // 结构返回原型化源(flash_sweep 的 next(req) 即此形)
+            if pc.len > 1 {
+                if byte_at(pc, 0) == 70 {
+                    var pfret = ct_fsig_ret(pc)
+                    if pfret.len > 0 {
+                        if pfret != "v" {
+                            if pfret != "i" {
+                                env2 = env_bind(env2, "#fret:" + pn, pfret)
+                            }
+                        }
+                    }
+                }
+            }
             pj += 1
         }
         // T55:捕获绑 P<码>(penv/benv 同源;Ident/Assign 既有 P 臂活解引用;
@@ -559,6 +602,10 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             ct_expr(body, penv, file)
         }
         var qi: I32 = 0
+        // P0-A:shim 定义 #ifndef 卫兵——同一特化的 def 文本由 CT_SPEC_ 去重,但其
+        // prewalk 每个调用点重跑,体内闭包 shim(行号命名)随重跑重复定义
+        println("#ifndef CT_CLO_" + shim)
+        println("#define CT_CLO_" + shim)
         while qi < qlines.len {
             println(qlines[qi])
             qi += 1
@@ -596,6 +643,7 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             }
         }
         println("}")
+        println("#endif")
         return "0"
     }
     var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"

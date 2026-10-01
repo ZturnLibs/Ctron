@@ -131,6 +131,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     } else if cbp5.len > 1 && byte_at(cbp5, 0) == 112 {
                         // 裸指针形参(v0.9·五):ct_i → T* 显式 cast(同 ct_cb_ref 侧)
                         acall = acall + "(" + ct_abi_ctype(cbp5) + ")_cbp" + ai.to_string()
+                    } else if cbp5.len > 1 && or2(byte_at(cbp5, 0) == 70, byte_at(cbp5, 0) == 71) {
+                        // P0-A:fn 型形参——ct_i 槽 → ct_clop 显式 cast(need_x 型
+                        // fn(Req, fn(Req)->Resp)->Resp 的裸值装箱蹦床;旧裸传 _cbpK
+                        // 为 ct_i,被调形参 ct_clop 即非法转换)
+                        acall = acall + "(ct_clop)(long)_cbp" + ai.to_string()
                     } else {
                         acall = acall + "_cbp" + ai.to_string()
                     }
@@ -138,10 +143,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
                 var aret = ct_fn_ret(file, e[1])
                 if aret.len > 2 && byte_slice(aret, 0, 2) == "u:" {
-                    // T54:struct 返回经 union 低 8 字节过 ct_i 槽——调用点 #fret 按
-                    // 返回型原型化读回同 8 字节(Str 单字段 struct 即此;>8 字节返回型
-                    // 超 ct_i 单槽,既有挂账)。裸 struct→ct_i 强转非法 C(p3 探针实证)
-                    println("return (\{ union \{ " + ct_ctype(aret) + " _s; ct_i _i; } _ru; _ru._s = t_" + e[1] + "(" + acall + "); _ru._i; });")
+                    // P0-A:u:-返回 = 堆盒指针(ct_i;双侧同约定,调用位 #fret 解盒)
+                    println("return (\{ " + ct_ctype(aret) + "* _rb = (" + ct_ctype(aret) + "*)ctron_amalloc(sizeof(" + ct_ctype(aret) + ")); *_rb = t_" + e[1] + "(" + acall + "); (ct_i)(long)_rb; });")
                 } else if aret.len > 1 && byte_at(aret, 0) == 71 {
                     println("return (ct_i)(long)t_" + e[1] + "(" + acall + ");")
                 } else {
@@ -151,6 +154,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 println("#endif")
             }
             return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = (void*)1; _c; })"
+        }
+        // P0-A:裸 fn 引用值位 → env-first 解箱 shim(旧裸地址直填 fn 槽,env=垃圾)
+        var fpcs26 = ct_fn_pcodes(file, e[1])
+        if or2(fpcs26.len == 1, or2(fpcs26.len == 2, fpcs26.len == 3)) {
+            return ct_fval_emit(file, e[1], "L" + nline(e))
         }
         return "t_" + e[1]
     }
@@ -375,18 +383,39 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             while gj < lf.len {
                 if !firstg { gacc = gacc + ", " }
                 firstg = false
+                // P0-A 扩位②:fn 型字段 + 闭包字面量 → 绑 '#clcodes'(shim 形参码
+                // 提示,§4 闭包 ABI;镜像调用点 ct_call_args_tg 位)。字段声明型别
+                // 节点经实例码代入(泛型字段 fn(Req[S]) -> Resp 的 S 槽具体化)。
+                // 防御口径:仅 FnType 字段 + Closure 实参触发;内参码取不到不绑,
+                // 回落 ClosureParam 注解/"i"
+                var gfenv = env
+                if lf[gj][2][0] == "Closure" {
+                    var ginfo26 = ct_struct_inst_split(inst)
+                    if ginfo26.len > 1 {
+                        var gbar26: I32 = 0
+                        var gq26: I32 = 0
+                        while gq26 < ginfo26.len {
+                            if byte_at(ginfo26, gq26) == 124 { gbar26 = gq26 }
+                            gq26 += 1
+                        }
+                        var gcc26 = ct_fntype_inner(file, ct_field_ty_node_inst(file, e[1], lf[gj][1], byte_slice(ginfo26, gbar26 + 1, ginfo26.len)))
+                        if gcc26.len > 0 {
+                            gfenv = env_bind(env, "#clcodes", gcc26)
+                        }
+                    }
+                }
                 // 定长数组字段构造(v0.9·四):字段位 ArrLit → C 数组初始化器
                 if lf[gj][2][0] == "ArrLit" {
                     var ga = ""
                     var gj2: I32 = 1
                     while gj2 < lf[gj][2].len {
                         if gj2 > 1 { ga = ga + ", " }
-                        ga = ga + ct_expr(lf[gj][2][gj2], env, file)
+                        ga = ga + ct_expr(lf[gj][2][gj2], gfenv, file)
                         gj2 += 1
                     }
                     gacc = gacc + "." + lf[gj][1] + " = \{" + ga + "}"
                 } else {
-                    gacc = gacc + "." + lf[gj][1] + " = " + ct_expr(lf[gj][2], env, file)
+                    gacc = gacc + "." + lf[gj][1] + " = " + ct_expr(lf[gj][2], gfenv, file)
                 }
                 gj += 1
             }
@@ -399,6 +428,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if j > 1 {
                 acc = acc + ", "
             }
+            // P0-A 扩位②:fn 型字段 + 闭包字面量 → 绑 '#clcodes'(具体 struct 场,
+            // SrvIo 五件 listen/accept/read/write/close 即此形;声明 FnType 内参码直取)
+            var cfenv = env
+            if c[2][0] == "Closure" {
+                var ccc26 = ct_fntype_inner(file, ct_field_ty_node(file, e[1], c[1]))
+                if ccc26.len > 0 {
+                    cfenv = env_bind(env, "#clcodes", ccc26)
+                }
+            }
             // 定长数组字段构造(v0.9·四):字段位 ArrLit → C 数组初始化器
             //(此前 ArrLit 仅 let 初值位,struct 字面量构造数组字段不可达)
             if c[2][0] == "ArrLit" {
@@ -406,12 +444,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var aj: I32 = 1
                 while aj < c[2].len {
                     if aj > 1 { aa = aa + ", " }
-                    aa = aa + ct_expr(c[2][aj], env, file)
+                    aa = aa + ct_expr(c[2][aj], cfenv, file)
                     aj += 1
                 }
                 acc = acc + "." + c[1] + " = \{" + aa + "}"
             } else {
-                acc = acc + "." + c[1] + " = " + ct_expr(c[2], env, file)
+                acc = acc + "." + c[1] + " = " + ct_expr(c[2], cfenv, file)
             }
             j += 1
         }
@@ -505,128 +543,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         panic("emit:泛型实参数")
                         return ""
                     }
-                    var mg = "t_" + base[1] + "__"
-                    gk = 0
-                    while gk < tys.len {
-                        var tc = ct_ty_code(tys[gk], file)
-                        var ms = ""
-                        var mb: I32 = 0
-                        while mb < tc.len {
-                            var bc = byte_at(tc, mb)
-                            if bc == 58 { ms = ms + "_" } else { ms = ms + byte_slice(tc, mb, mb + 1) }
-                            mb += 1
-                        }
-                        mg = mg + ms
-                        if gk < tys.len - 1 { mg = mg + "_" }
-                        gk += 1
-                    }
-                    // 定义发射判定:非特化体内,且(预提升模式 或 pass1)。
-                    // "#ph<深度>" 递增计数(预提升 phenv 的 "#p"=1 不走 pass1 分支),
-                    // 超限 = 递归泛型(无 seen 集,预提升不设终点)→ 显式拦截
-                    var emit_def = false
-                    var phd: I32 = 0
-                    var pk9: I32 = 1
-                    while pk9 <= 3 {
-                        if ct_env_has(env, "#ph" + pk9.to_string()) {
-                            phd = pk9
-                        }
-                        pk9 += 1
-                    }
-                    if phd > 0 {
-                        if phd >= 3 {
-                            panic("emit:泛型特化递归超限:" + mg)
-                            return ""
-                        }
-                        emit_def = true
-                    } else {
-                        if !ct_env_has(env, "#spec") {
-                            if seq2(ct_pass(env), "1") {
-                                emit_def = true
-                            }
-                        }
-                    }
-                    if emit_def {
-                        var spec = mk("Fn")
-                        spec.push(mg)
-                        spec.push(mk("TPs"))
-                        var ps2 = mk("Ps")
-                        var pk: I32 = 1
-                        while pk < gdecl[3].len {
-                            var pr = gdecl[3][pk]
-                            if pr[0] == "Param" {
-                                var np = mk("Param")
-                                np.push(pr[1])
-                                np.push(pr[2])
-                                np.push(ct_mono_subst_ty(pr[3], tpsn, tys))
-                                ps2.push(np)
-                            } else {
-                                ps2.push(pr)
-                            }
-                            pk += 1
-                        }
-                        spec.push(ps2)
-                        spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
-                        spec.push(gdecl[5])
-                        var rcs = ct_ty_code(spec[4], file)
-                        // 形参 env:替换后型别码绑定(镜像 ct_fn),体内 Member/字段访问按静态型别分派
-                        var genv = List[Str]()
-                        var gk2: I32 = 1
-                        while gk2 < ps2.len {
-                            var gr2 = ps2[gk2]
-                            if gr2[0] == "Param" {
-                                genv = env_bind(genv, gr2[2], ct_ty_code(gr2[3], file))
-                                var elc9 = ct_opt_elem_strict(file, gr2[3])
-                                if elc9.len > 0 {
-                                    genv = env_bind(genv, "#elem:" + gr2[2], elc9)
-                                }
-                            }
-                            gk2 += 1
-                        }
-                        // 型参名 → 实参码(体内 List[K] 等 typeof 依据;tpsn/tys 为 push 构建 0 基!)
-                        var tk2: I32 = 0
-                        while tk2 < tpsn.len {
-                            genv = env_bind(genv, tpsn[tk2], ct_ty_code(tys[tk2], file))
-                            tk2 += 1
-                        }
-                        var pk3: I32 = 1
-                        while pk3 < ps2.len {
-                            if ps2[pk3][0] == "Param" {
-                                var ic5 = ct_inst_of_ty(file, ps2[pk3][3])
-                                if ic5.len > 0 {
-                                    genv = env_bind(genv, "#" + ct_struct_name_of(ic5), ic5)
-                                }
-                            }
-                            pk3 += 1
-                        }
-                        var ic6 = ct_inst_of_ty(file, spec[4])
-                        if ic6.len > 0 {
-                            genv = env_bind(genv, "#" + ct_struct_name_of(ic6), ic6)
-                        }
-                        // 嵌套预提升:#p=1 静默遍历特化体,体内嵌套单态化的定义直出文件作用域
-                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), file, rcs)
-                        // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
-                        pk3 = 1
-                        while pk3 < ps2.len {
-                            if ps2[pk3][0] == "Param" {
-                                ct_emit_inst_typedef(file, ps2[pk3][3])
-                            }
-                            pk3 += 1
-                        }
-                        ct_emit_inst_typedef(file, spec[4])
-                        println("//DD2:" + mg + " phd=" + phd.to_string())
-                        println("#ifndef CT_SPEC_" + mg)
-                        println("#define CT_SPEC_" + mg)
-                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
-                        // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)
-                        ct_body(spec[5], env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), file, rcs)
-                        println("#endif")
-                    }
-                    // TypeArgs 调用实参自槽 1 起(成员调用槽 1 为接收者,此处无)
-                    var gargs = ct_call_args_tg(ag, 1, env, file, base[1], cal[2])
-                    var grc = ct_generic_retcode(file, base[1], tpsn, tys)
-                    var gcall = mg + "(" + gargs + ")"
-                    if or2(grc == "L", ct_is_tlcode(grc)) { gcall = "(ctron_list*)(" + gcall + ")" }
-                    return gcall
+                    return ct_spec_call_emit(file, env, ag, base[1], cal[2], tpsn, tys, gdecl, "")
                 }
             }
             if base[0] == "Ident" && base[1] == "Mutex" {
@@ -639,6 +556,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
                 var mtg = ct_mcell_tag(mi)
                 return "(\{ ct_mcell_" + mtg + "* _p = (ct_mcell_" + mtg + "*)malloc(sizeof(ct_mcell_" + mtg + ")); pthread_mutex_init(&_p->mu, 0); _p->v = " + minit + "; ct_mcreg_add((void*)_p, sizeof(*_p) / 8 + 2); _p; })"
+            }
+            // P0-A:非泛型被调 + TypeArgs 位——chain_append 形(S 仅 fn 内参自由现形,
+            // 源无 [S];sem 隐式型参)——发射侧 TypeArgs 即恒等,按声明形参码直调。
+            // 旧无此臂:落入 callee=cal[1](TypeArgs 基节点,类型混淆)拼出 t_<乱码>
+            if base[0] == "Ident" {
+                var ngdecl = ct_fn_decl(file, base[1])
+                if ngdecl.len > 0 {
+                    if ngdecl[2].len < 2 {
+                        return "t_" + base[1] + "(" + ct_call_args_tg(ag, 1, env, file, base[1], cal[2]) + ")"
+                    }
+                }
             }
         }
         if cal[0] == "Member" {
@@ -835,7 +763,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return "(" + neg + "(" + obj + ").variant)"
             }
             if or2(m == "with", m == "with_mut") {
-                panic("emit:with 仅语句位(let/Expr)")
+                panic("emit:with 仅语句位(let/Expr) @" + nline(e) + " recv=" + objt)
                 return ""
             }
             if m == "into_gc" {
@@ -854,9 +782,22 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if m == "push" {
                 var a0 = ""
-                if ag.len > 1 { a0 = ct_expr(ag[1], env, file) }
+                var penv27 = env
+                if ag.len > 1 {
+                    // P0-A:实例元素槽 push 位钉型——泛型 struct 字面量实参的实例码
+                    // 经 "#名" env 钉定(ct_structlit_inst pin 优先),测试体裸形
+                    // `rs.push(Route { ... })`(S 仅嵌套现形,值位推不出)即此面
+                    var pobjt27 = ct_typeof(cal[1], env, file)
+                    if pobjt27.len > 3 && byte_slice(pobjt27, 0, 3) == "Lu:" {
+                        var pelc27 = "u:" + byte_slice(pobjt27, 3, pobjt27.len)
+                        if ct_struct_inst_split(pelc27).len > 1 {
+                            penv27 = env_bind(env, "#" + ct_struct_name_of(pelc27), pelc27)
+                        }
+                    }
+                    a0 = ct_expr(ag[1], penv27, file)
+                }
                 var a0t = "i"
-                if ag.len > 1 { a0t = ct_typeof(ag[1], env, file) }
+                if ag.len > 1 { a0t = ct_typeof(ag[1], penv27, file) }
                 var objt6 = ct_typeof(cal[1], env, file)
                 // Lu: 族(T14-②):struct 元素装箱入槽(堆盒值拷贝;索引侧解引用取回)
                 if ct_is_lcode(objt6) {
@@ -1059,12 +1000,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
         }
         // fn 值间接调用(env 命中 F<arity>):( (ct_fnK)t_f )( 实参... )
+        // P0-A:N 槽臂——List[fn] 索引读落 "N"(char* 槽,元素即 ct_clop 指针);
+        // 调用位 env 命中 N 时按调用点实参个数定 arity,#fret:<名>(返回位注入,
+        // trans_stmt Return 臂)供结构返回原型化。run_chain 中间件平铺链即此形
         if cal[0] == "Ident" && ct_env_has(env, cal[1]) {
             // T55:fvt 剥 P——捕获 fn 值绑 P<F…>;P 绑名 fv = "(*t_nm)"(格解引取 ct_clop)
             var fvraw = ct_env_ty(env, cal[1])
             var fvt = ct_strip_p(fvraw)
-            if fvt.len > 1 && byte_at(fvt, 0) == 70 {
-                var far = byte_at(fvt, 1) - 48
+            var ncall = seq2(fvt, "N")
+            if or2(fvt.len > 1 && byte_at(fvt, 0) == 70, ncall) {
+                var far: I32 = ag.len - 1
+                if !ncall {
+                    far = byte_at(fvt, 1) - 48
+                }
+                // P0-A:签名段形参码 → 闭包实参 #clcodes("F2{u:Req__X;F1}>r" 拆段,
+                // 第 k 实参位闭包取第 k-1 段;run_chain 续链闭包的 rq 形参码源)
+                var fsegs = ct_fsig_params(fvt)
+                println("//GATEDBG2 fvt=" + fvt + " @" + nline(e))
                 var fv = "(t_" + cal[1] + ")"
                 if fvraw.len > 1 && byte_at(fvraw, 0) == 80 {
                     fv = "(*t_" + cal[1] + ")"
@@ -1073,7 +1025,25 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) }
                 var fk: I32 = 2
                 while fk <= far {
-                    if ag.len > fk { fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[fk], env, file), ct_expr(ag[fk], env, file)) } else { fargs = fargs + ", 0" }
+                    if ag.len > fk {
+                        var faenv = env
+                        if ag[fk][0] == "Closure" {
+                            var fseg = ct_fseg_at(fsegs, fk - 1)
+                            // P0-A:段本身为 fn 签名码("F1{…}>r"——续链闭包实参)时,
+                            // 闭包形参码取其内参段(一层展开;#clcodes 消费位按逗号
+                            // 分段,签名形参 ';'-连接不含逗号,展开后即纯码串)
+                            if fseg.len > 1 && byte_at(fseg, 0) == 70 {
+                                var fseg2 = ct_fsig_params(fseg)
+                                if fseg2.len > 0 {
+                                    fseg = fseg2
+                                }
+                            }
+                            if fseg.len > 0 {
+                                faenv = env_bind(env, "#clcodes", fseg)
+                            }
+                        }
+                        fargs = fargs + ", " + ct_wrap_i(ct_typeof(ag[fk], faenv, file), ct_expr(ag[fk], faenv, file))
+                    } else { fargs = fargs + ", 0" }
                     fk += 1
                 }
                 var fhead = "((ct_cfn" + far.to_string() + ")(((ct_clop)" + fv + ")->fn))"
@@ -1103,7 +1073,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     if fretc.len > 0 {
                         if fretc != "i" {
                             if fretc != "v" {
-                                var frt = ct_ctype(fretc)
+                                // P0-A:u:-返回 → 堆盒指针约定——原型 ct_i(*)(…),调用后
+                                // 按返回型解盒(双侧同约定:shim/cbtr 尾 = 盒指针;旧
+                                // union 低 8 字节式对 >8B struct 即截断)
+                                var boxed26 = fretc.len > 2 && byte_slice(fretc, 0, 2) == "u:"
+                                var frt = "ct_i"
+                                if !boxed26 {
+                                    frt = ct_ctype(fretc)
+                                }
                                 var rp = "void"
                                 if far > 0 {
                                     rp = "ct_i"
@@ -1121,6 +1098,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                                 }
                                 fhead = "((" + frt + "(*)(" + fp2 + "))(((ct_clop)" + fv + ")->fn))"
                                 rhead = "((" + frt + "(*)(" + rp + "))(((ct_clop)" + fv + ")->fn))"
+                                if boxed26 {
+                                    var dual26 = "(((ct_clop)" + fv + ")->env == (void*)1 ? " + rhead + "(" + rargs + ") : " + fhead + "(" + fargs + "))"
+                                    return "(*(" + ct_ctype(fretc) + "*)(long)(" + dual26 + "))"
+                                }
                             }
                         }
                     }
@@ -1236,6 +1217,37 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return "(\{ ct_res " + eo + "; const char* _ep = " + ecall + "; " + eo + ".variant = (_ep == 0); " + eo + ".v = (ct_i)(long)_ep; " + eo + "; })"
             }
             return ecall
+        }
+        // P0-A:泛型直调(无 TypeArgs 位,sem 隐式推断形)——core.ct 测试的
+        // req_full("GET", …, 0) 即此形。各 TP 自首层命中该 TP 的实参位取码,
+        // 未命中落 "i"(与 TPar→i 槽口径一致;__i 家族自洽)
+        var pgd30 = ct_fn_decl(file, callee)
+        if pgd30.len > 0 && pgd30[2].len > 1 {
+            var tpsn30 = List[Str]()
+            var tys30 = List[Str]()
+            var gq40: I32 = 1
+            while gq40 < pgd30[2].len {
+                tpsn30.push(pgd30[2][gq40][1])
+                tys30.push("i")
+                gq40 += 1
+            }
+            var pj40: I32 = 1
+            while pj40 < pgd30[3].len {
+                if pj40 < ag.len {
+                    var pty40 = pgd30[3][pj40][3]
+                    if pty40[0] == "Named" && pty40[2].len < 2 {
+                        var k40: I32 = 0
+                        while k40 < tpsn30.len {
+                            if seq2(pty40[1], tpsn30[k40]) {
+                                tys30[k40] = ct_inst_ty_node(ct_typeof(ag[pj40], env, file))
+                            }
+                            k40 += 1
+                        }
+                    }
+                }
+                pj40 += 1
+            }
+            return ct_spec_call_emit(file, env, ag, callee, mk("None"), tpsn30, tys30, pgd30, "")
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }
@@ -1386,6 +1398,64 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
         var pc = "i"
         if callee != "" && i - 1 < pcs.len { pc = pcs[i - 1] }
         var aenv = env
+        // P0-A:裸 fn 引用实参(F 型形参位)→ env-first 解箱 shim(旧裸地址直填)
+        if callee != "" {
+            if pc.len > 0 {
+                if byte_at(pc, 0) == 70 {
+                    if ag[i][0] == "Ident" {
+                        var rfpcs = ct_fn_pcodes(file, ag[i][1])
+                        if rfpcs.len > 0 {
+                            if rfpcs.len == byte_at(pc, 1) - 48 {
+                                aenv = env_bind(env, "#fval", ct_fval_emit(file, ag[i][1], "C" + nline(ag[i])))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // P0-A:泛型 struct 字面量实参钉型——被调形参(显式 TypeArgs 位经型参代入)
+        // 为实例码时,以 "#名" env 钉实例(ct_structlit_inst pin 优先);测试体裸形
+        // `has_conflict[I64](Router { ... })`(state: 0 直槽值位误推 i)即此面
+        if ag[i][0] == "StructLit" {
+            var pinned = "#" + ag[i][1]
+            if !ct_env_has(env, pinned) {
+                if ct_struct_tps(file, ag[i][1]).len > 0 {
+                    if targs.len > 1 {
+                        var gd28 = ct_fn_decl(file, callee)
+                        if gd28.len > 0 && gd28[2].len > 1 {
+                            if i - 1 < gd28[3].len - 1 + 1 {
+                                var pi28 = i
+                                if pi28 < gd28[3].len {
+                                    if gd28[3][pi28][0] == "Param" {
+                                        var tpsn28 = List[Str]()
+                                        var gq28: I32 = 1
+                                        while gq28 < gd28[2].len {
+                                            tpsn28.push(gd28[2][gq28][1])
+                                            gq28 += 1
+                                        }
+                                        var tys28 = List[Str]()
+                                        var gq29: I32 = 1
+                                        while gq29 < targs.len {
+                                            tys28.push(targs[gq29])
+                                            gq29 += 1
+                                        }
+                                        if tpsn28.len == tys28.len {
+                                            var sub28 = ct_mono_subst_ty(gd28[3][pi28][3], tpsn28, tys28)
+                                            var pc28 = ct_ty_code(sub28, file)
+                                            if pc28.len > 2 && byte_slice(pc28, 0, 2) == "u:" {
+                                                if ct_struct_inst_split(pc28).len > 1 {
+                                                    aenv = env_bind(env, pinned, pc28)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // fn 型形参 + 闭包字面量实参:绑 '#clcodes'(shim 形参码提示,§4 闭包 ABI;
         // 防御口径:仅 'F'/'G' 码 + Closure 实参触发,内参码取不到则不绑,回落注解/"i")
         if callee != "" {
@@ -1400,7 +1470,11 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
                 }
             }
         }
-        args = args + ct_arg_cast(ac, pc, ct_expr(ag[i], aenv, file))
+        var ax = ct_expr(ag[i], aenv, file)
+        if ct_env_has(aenv, "#fval") {
+            ax = ct_env_ty(aenv, "#fval")
+        }
+        args = args + ct_arg_cast(ac, pc, ax)
         i += 1
     }
     if callee != "" {
@@ -1415,6 +1489,308 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
 
 // 块语句序列(不含花括号与尾槽)
 // 体内是否存在对该名的 Assign(递归所有子块)
+// P0-A:泛型特化发射 + 调用串组装(自 TypeArgs 位抽出;UFCS 泛型位复用)。
+// tpsn/tys 为型参名/实参节点表(0 基 push 形); callee 为被调名; targs 为调用点
+// TypeArgs 节点表(实参 cast/闭包形参码 #clcodes 的代入源)。
+fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str, targs: List[Str], tpsn: List[Str], tys: List[Str], gdecl: List[Str], recvx: Str) -> Str {
+                    var mg = "t_" + callee + "__"
+                    var gk = 0
+                    while gk < tys.len {
+                        var tc = ct_ty_code(tys[gk], file)
+                        var ms = ""
+                        var mb: I32 = 0
+                        while mb < tc.len {
+                            var bc = byte_at(tc, mb)
+                            if bc == 58 { ms = ms + "_" } else { ms = ms + byte_slice(tc, mb, mb + 1) }
+                            mb += 1
+                        }
+                        mg = mg + ms
+                        if gk < tys.len - 1 { mg = mg + "_" }
+                        gk += 1
+                    }
+
+                // 定义发射判定:非特化体内,且(预提升模式 或 pass1)。
+                // "#ph<深度>" 递增计数(预提升 phenv 的 "#p"=1 不走 pass1 分支)。
+                // P0-A 单态化链("#phchain"):本 descent 已在发射(链上)的同实例
+                // 不重下钻——run_chain 型闭包自递归与 web.* serve→limit→dispatch_h
+                // →route_match→dummy_route 五层泛型嵌套,旧深度帽 3 必撞真语料;
+                // 链断即收敛(每个实例每次 descent 至多全发一次),深度帽仍留(24)
+                // 拦真·新实例无界递归(如 f[T]→f[List[T]] 逐层新码)。链上命中仅
+                // 出块域前置原型(自/互递归 C 前向声明),定义在其祖先发射位。
+                var emit_def = false
+                var phd: I32 = 0
+                var pk9: I32 = 1
+                while pk9 <= 8 {
+                    if ct_env_has(env, "#ph" + pk9.to_string()) {
+                        phd = pk9
+                    }
+                    pk9 += 1
+                }
+                var chainx = ","
+                if ct_env_has(env, "#phchain") {
+                    chainx = ct_env_ty(env, "#phchain")
+                }
+                if phd > 0 {
+                    if phd >= 8 {
+                        panic("emit:泛型特化递归超限:" + mg)
+                        return ""
+                    }
+                    if !ct_chain_has(chainx, mg) {
+                        emit_def = true
+                    }
+                } else {
+                    if !ct_env_has(env, "#spec") {
+                        if seq2(ct_pass(env), "1") {
+                            emit_def = true
+                        }
+                    }
+                }
+                if emit_def {
+                    var spec = mk("Fn")
+                    spec.push(mg)
+                    spec.push(mk("TPs"))
+                    var ps2 = mk("Ps")
+                    var pk: I32 = 1
+                    while pk < gdecl[3].len {
+                        var pr = gdecl[3][pk]
+                        if pr[0] == "Param" {
+                            var np = mk("Param")
+                            np.push(pr[1])
+                            np.push(pr[2])
+                            np.push(ct_mono_subst_ty(pr[3], tpsn, tys))
+                            ps2.push(np)
+                        } else {
+                            ps2.push(pr)
+                        }
+                        pk += 1
+                    }
+                    spec.push(ps2)
+                    spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
+                    spec.push(gdecl[5])
+                    var rcs = ct_ty_code(spec[4], file)
+                    // 形参 env:替换后型别码绑定(镜像 ct_fn),体内 Member/字段访问按静态型别分派
+                    var genv = List[Str]()
+                    var gk2: I32 = 1
+                    while gk2 < ps2.len {
+                        var gr2 = ps2[gk2]
+                        if gr2[0] == "Param" {
+                            genv = env_bind(genv, gr2[2], ct_ty_code(gr2[3], file))
+                            var elc9 = ct_opt_elem_strict(file, gr2[3])
+                            if elc9.len > 0 {
+                                genv = env_bind(genv, "#elem:" + gr2[2], elc9)
+                            }
+                            // P0-A:FnType 形参 #fret 侧条目(镜像 ct_fn 绑定)——
+                            // run_chain 的 h(req) 结构返回经 #fret 原型化,缺臂落
+                            // ct_i 返回槽(>8B struct 即错型)
+                            if gr2[3][0] == "FnType" {
+                                var frc10 = ct_ty_code(gr2[3][2], file)
+                                if frc10 != "v" {
+                                    if frc10 != "i" {
+                                        genv = env_bind(genv, "#fret:" + gr2[2], frc10)
+                                    }
+                                }
+                            }
+                        }
+                        gk2 += 1
+                    }
+                    // P0-A:闭包命名前缀——特化体 genv 旧无 #clofn,体内闭包 shim
+                    // 取 ct_env_ty 默认 "i" → ct_clo_i_L<行> 跨特化撞名重定义
+                    genv = env_bind(genv, "#clofn", mg)
+                    // P0-A:返回 fn 型特化的 #retfn 侧条目(镜像 ct_fn;返回位闭包
+                    // 形参码经型参代入——with_sessions 型 fn(Req[S], fn)->Resp 即此)
+                    if spec[4][0] == "FnType" {
+                        var racc26 = ""
+                        var rpi26: I32 = 1
+                        while rpi26 < spec[4][1].len {
+                            if rpi26 > 1 {
+                                racc26 = racc26 + ","
+                            }
+                            if spec[4][1][rpi26][0] == "FnType" {
+                                racc26 = racc26 + ct_fsig_code(file, spec[4][1][rpi26])
+                            } else {
+                                racc26 = racc26 + ct_ty_code(spec[4][1][rpi26], file)
+                            }
+                            rpi26 += 1
+                        }
+                        if racc26.len > 0 {
+                            genv = env_bind(genv, "#retfn", racc26)
+                        }
+                    }
+                    // 型参名 → 实参码(体内 List[K] 等 typeof 依据;tpsn/tys 为 push 构建 0 基!)
+                    var tk2: I32 = 0
+                    while tk2 < tpsn.len {
+                        genv = env_bind(genv, tpsn[tk2], ct_ty_code(tys[tk2], file))
+                        tk2 += 1
+                    }
+                    var pk3: I32 = 1
+                    while pk3 < ps2.len {
+                        if ps2[pk3][0] == "Param" {
+                            var ic5 = ct_inst_of_ty(file, ps2[pk3][3])
+                            if ic5.len > 0 {
+                                genv = env_bind(genv, "#" + ct_struct_name_of(ic5), ic5)
+                            }
+                        }
+                        pk3 += 1
+                    }
+                    var ic6 = ct_inst_of_ty(file, spec[4])
+                    if ic6.len > 0 {
+                        genv = env_bind(genv, "#" + ct_struct_name_of(ic6), ic6)
+                    }
+                    // P0-A:单态化链入 env——本 def 的 prewalk 带祖先链,链上同实例
+                    // 不重下钻(真递归收敛点;run_chain 闭包自递归即此形)
+                    genv = env_bind(genv, "#phchain", chainx + mg + ",")
+                    // 嵌套预提升:#p=1 静默遍历特化体,体内嵌套单态化的定义直出文件作用域
+                    ct_body(spec[5], env_bind(env_bind(genv, "#p", "1"), "#ph" + (phd + 1).to_string(), "1"), file, rcs)
+                    // 实例 typedef 先于特化签名(同实参多调用点:#ifndef 卫兵去重)
+                    pk3 = 1
+                    while pk3 < ps2.len {
+                        if ps2[pk3][0] == "Param" {
+                            ct_emit_inst_typedef(file, ps2[pk3][3])
+                        }
+                        pk3 += 1
+                    }
+                    ct_emit_inst_typedef(file, spec[4])
+                    println("//DD2:" + mg + " phd=" + phd.to_string())
+                    println("#ifndef CT_SPEC_" + mg)
+                    println("#define CT_SPEC_" + mg)
+                    println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
+                    // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)
+                    ct_body(spec[5], env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), file, rcs)
+                    println("#endif")
+                }
+                if phd > 0 {
+                    if ct_chain_has(chainx, mg) {
+                        // P0-A:链上同实例——仅块域前置原型(定义在其祖先发射位,
+                        // 文本后置:C 前向声明补齐自/互递归面),不再下钻
+                        var fret26 = ct_mono_subst_ty(gdecl[4], tpsn, tys)
+                        var prt26 = ct_ctype(ct_ty_code(fret26, file))
+                        var prp26 = ""
+                        var pk26: I32 = 1
+                        while pk26 < gdecl[3].len {
+                            var pr26 = gdecl[3][pk26]
+                            if pr26[0] == "Param" {
+                                prp26 = prp26 + ", " + ct_ctype(ct_ty_code(ct_mono_subst_ty(pr26[3], tpsn, tys), file))
+                            }
+                            pk26 += 1
+                        }
+                        var pra26 = ""
+                        if prp26.len > 2 {
+                            pra26 = byte_slice(prp26, 2, prp26.len)
+                        }
+                        // 块域原型不带 static(C 禁块域 static 存储类;定义位
+                        // 本就无 static 外链,声明一致)
+                        println(prt26 + " " + mg + "(" + pra26 + ");")
+                    }
+                }
+                // TypeArgs 调用实参自槽 1 起;UFCS 位(recvx 非空)接收者即
+                // 首参(已按 p0 cast),实参对位 pcs[1..],闭包实参 #clcodes 经
+                // targs(推断层)代入
+                var gargs = ""
+                if recvx.len > 0 {
+                    gargs = recvx
+                    var pcs9 = ct_fn_pcodes(file, callee)
+                    var gi9: I32 = 1
+                    while gi9 < ag.len {
+                        var pc9 = "i"
+                        if gi9 < pcs9.len { pc9 = pcs9[gi9] }
+                        var aenv9 = env
+                        if ag[gi9][0] == "Ident" {
+                            if pc9.len > 0 {
+                                if byte_at(pc9, 0) == 70 {
+                                    var rfpcs9 = ct_fn_pcodes(file, ag[gi9][1])
+                                    if rfpcs9.len == byte_at(pc9, 1) - 48 {
+                                        var fv9 = ct_fval_emit(file, ag[gi9][1], "C" + nline(ag[gi9]))
+                                        gargs = gargs + ", " + fv9
+                                        gi9 += 1
+                                        continue
+                                    }
+                                }
+                            }
+                        }
+                        if ag[gi9][0] == "Closure" {
+                            if pc9.len > 0 {
+                                if byte_at(pc9, 0) == 70 {
+                                    var cc9 = ct_fntype_pcodes_tg(file, callee, gi9, targs)
+                                    if cc9.len > 0 {
+                                        aenv9 = env_bind(env, "#clcodes", cc9)
+                                    }
+                                }
+                            }
+                        }
+                        gargs = gargs + ", " + ct_arg_cast(ct_typeof(ag[gi9], aenv9, file), pc9, ct_expr(ag[gi9], aenv9, file))
+                        gi9 += 1
+                    }
+                } else {
+                    gargs = ct_call_args_tg(ag, 1, env, file, callee, targs)
+                }
+                var grc = ct_generic_retcode(file, callee, tpsn, tys)
+                var gcall = mg + "(" + gargs + ")"
+                if or2(grc == "L", ct_is_tlcode(grc)) { gcall = "(ctron_list*)(" + gcall + ")" }
+                return gcall
+}
+
+// P0-A:裸 fn 引用 → env-first 解箱 shim(ct_clop;env ≠ 哨兵)——T55 闭包 ABI
+// 同约定:u:-形参解盒、u:/fn-返回盒化;旧裸地址直填 fn 槽(env=邻接内存垃圾,
+// fhead env-first 首参即烂)——with_sessions 的 now 捕获、post(..., h_login) 即此面
+fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
+    var pcs31 = ct_fn_pcodes(file, nm)
+    var anm31 = "ct_fval_" + nm + "_" + tag
+    var far31 = pcs31.len
+    var ret31 = ct_fn_ret(file, nm)
+    {
+        var asig31 = "void* _cp"
+        var ai31: I32 = 0
+        while ai31 < far31 {
+            asig31 = asig31 + ", ct_i _p" + ai31.to_string()
+            ai31 += 1
+        }
+        println("#ifndef CT_FVAL_" + anm31)
+        println("#define CT_FVAL_" + anm31)
+        println("static ct_i " + anm31 + "(" + asig31 + ") \{")
+        var aargs31 = ""
+        ai31 = 0
+        while ai31 < far31 {
+            var pc31 = "i"
+            if ai31 < pcs31.len { pc31 = pcs31[ai31] }
+            var acc31 = "(int32_t)_p" + ai31.to_string()
+            if pc31.len > 2 && byte_slice(pc31, 0, 2) == "u:" {
+                acc31 = "*(t_" + byte_slice(pc31, 2, pc31.len) + "*)(long)_p" + ai31.to_string()
+            } else {
+                if or2(seq2(pc31, "s"), seq2(pc31, "N")) {
+                    acc31 = "(const char*)(long)_p" + ai31.to_string()
+                } else {
+                    if or2(seq2(pc31, "6"), or2(seq2(pc31, "7"), seq2(pc31, "z"))) {
+                        acc31 = "(int64_t)(long)_p" + ai31.to_string()
+                    } else {
+                        if pc31.len > 1 && or2(byte_at(pc31, 0) == 70, byte_at(pc31, 0) == 71) {
+                            acc31 = "(ct_clop)(long)_p" + ai31.to_string()
+                        }
+                    }
+                }
+            }
+            if ai31 > 0 { aargs31 = aargs31 + ", " }
+            aargs31 = aargs31 + acc31
+            ai31 += 1
+        }
+        if ret31.len > 2 && byte_slice(ret31, 0, 2) == "u:" {
+            println("return (\{ " + ct_ctype(ret31) + "* _rb = (" + ct_ctype(ret31) + "*)ctron_amalloc(sizeof(" + ct_ctype(ret31) + ")); *_rb = t_" + nm + "(" + aargs31 + "); (ct_i)(long)_rb; });")
+        } else {
+            if ret31.len > 1 && or2(byte_at(ret31, 0) == 70, byte_at(ret31, 0) == 71) {
+                println("return (ct_i)(long)t_" + nm + "(" + aargs31 + ");")
+            } else {
+                if or2(seq2(ret31, "s"), seq2(ret31, "N")) {
+                    println("return (ct_i)(long)t_" + nm + "(" + aargs31 + ");")
+                } else {
+                    println("return (ct_i)t_" + nm + "(" + aargs31 + ");")
+                }
+            }
+        }
+        println("}")
+        println("#endif")
+    }
+    return "(\{ ct_clop _cfv = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _cfv->fn = (void*)" + anm31 + "; _cfv->env = (void*)0; _cfv; })"
+}
+
 fn ct_assigned(nm: Str, b: List[Str]) -> Bool {
     var i: I32 = 1
     while i < b.len - 1 {

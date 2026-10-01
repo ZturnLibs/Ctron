@@ -20,23 +20,20 @@ use web.serve.{ SrvIo, serve_with }
 use main.{ app_of, full_router }
 use std.str.{ join }
 
-// ASCII 表(32..126):`{` 字面量禁 → "\{" + "}" concat 拼(语言纪律同 main.ct)
-fn ascii_tbl() -> Str {
-    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz" + "\{" + "|}~"
-}
-
-// lane(每格一字节 I64)→ Str;todo_api 探针同款 ASCII 面(§7-8 边界见头注)。
-// §14-1:段收集 List 末次 join,不做循环串累加。
+// lane(每格一字节 I64)→ Str;HTTP 头面 = ASCII(32..126)+ 控制字节 9..13
+//(HTTP 头必需的 \t..\r)。单字节经 utf8_enc 直出(发射臂 native utf8_enc 对
+// <0x80 码点即单字节原样;双臂劈叉在册 P1-4 只涉 interp,本文件不入 interp 门)。
+// 其余字节截断(§7-8 ASCII 边界维持)。§14-1:段收集 List 末次 join。
 fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
     var ps: List[Str] = List[Str]()
-    let tbl = ascii_tbl()
     var i = a
     while i < b {
         let c = buf[i]
-        if c < 32 || c > 126 {
+        if (c >= 32 && c <= 126) || (c >= 9 && c <= 13) {
+            ps.push(utf8_enc(c))
+        } else {
             break
         }
-        ps.push(byte_slice(tbl, c - 32, c - 31))
         i += 1
     }
     return join(ps, "")

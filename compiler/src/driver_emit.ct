@@ -476,6 +476,28 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             //(嵌套依序;实例嵌入实参 struct,声明序即拓扑序前提与语料一致);
             // 枚举同旧。余下实例(仅 fn 签名/体注解可达)随后统一直出。
             var td_done = List[Str]()
+            // P0-A:Mutex 字段 mcell 前置(App.todos: Mutex[List[Todo]] 即此形)——
+            // mcell typedef 旧仅构造点 pass1 直出,struct typedef 先于一切 fn 体,
+            // 字段槽 ct_mcell_<tag> 无定义即 C 未声明型
+            var mcdone = List[Str]()
+            var si0: I32 = 1
+            while si0 < file.len {
+                var sd0 = file[si0]
+                if sd0[0] == "Struct" {
+                    var fj00: I32 = 1
+                    while fj00 < sd0[4].len {
+                        var fc00 = ct_ty_code(sd0[4][fj00][3], file)
+                        if fc00.len > 1 && byte_at(fc00, 0) == 109 {
+                            if !in_list(mcdone, fc00) {
+                                mcdone.push(fc00)
+                                ct_mcell_emit(byte_slice(fc00, 1, fc00.len))
+                            }
+                        }
+                        fj00 += 1
+                    }
+                }
+                si0 += 1
+            }
             var si: I32 = 1
             while si < file.len {
                 var sd = file[si]

@@ -448,11 +448,17 @@ fn ct_is_value(tg: Str) -> Bool {
 
 fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] {
     var hreg = List[Str]()
-    var p1 = seq2(ct_pass(env), "1")
-    if !p1 {
-        eln("\{", env)
+    // P0-A:本 fn 返回码入 env("#fnret")——return 位 N 槽 fn 值调用(mw(…))
+    // 的 #fret 侧条目源(List[fn] 索引读槽无声明返回型可查)
+    var fenv = env
+    if rc != "v" {
+        fenv = env_bind(env, "#fnret", rc)
     }
-    var denv = dls_push(env)
+    var p1 = seq2(ct_pass(fenv), "1")
+    if !p1 {
+        eln("\{", fenv)
+    }
+    var denv = dls_push(fenv)
     var env2 = ct_stmts(b, denv, file, "", hreg)
     var tl = b[b.len - 1]
     if p1 {
@@ -465,13 +471,13 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
                 while ai1 < arms1.len {
                     var ab1 = arms1[ai1][2]
                     if ab1[0] == "BlockExpr" {
-                        ct_stmts(ab1[1], env, file, "", hreg)
+                        ct_stmts(ab1[1], fenv, file, "", hreg)
                     }
                     ai1 += 1
                 }
             } else if tl[0] == "Own" {
                 // own 块尾位:体平铺发现遍历(与 pass2 同构,输出门控丢弃)
-                ct_stmts(tl[2], env, file, "", hreg)
+                ct_stmts(tl[2], fenv, file, "", hreg)
             } else if or2(rc == "v", !ct_is_value(tl[0])) {
                 var es1 = List[Str]()
                 es1.push("Expr")
@@ -496,11 +502,11 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         } else if tl[0] == "Match" {
             ct_match_value(tl, env2, file, rc, hreg)
             env2 = dls_pop_emit(env2, file)
-            eln("return t_mr;", env)
+            eln("return t_mr;", fenv)
         } else if tl[0] == "If" {
-            eln(ct_ctype(rc) + " t_rv = " + ct_if_value(tl, env2, file) + ";", env)
+            eln(ct_ctype(rc) + " t_rv = " + ct_if_value(tl, env2, file) + ";", fenv)
             env2 = dls_pop_emit(env2, file)
-            eln("return t_rv;", env)
+            eln("return t_rv;", fenv)
         } else if tl[0] == "Own" {
             // own 块尾位(§4.9):体平铺;own 尾值即块值,体尾 return 已由语句发射退出
             var ocbody3 = tl[2]
@@ -516,7 +522,7 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         } else {
             eln(ct_ctype(rc) + " t_rv = " + ct_expr(tl, env2, file) + ";", env)
             env2 = dls_pop_emit(env2, file)
-            eln("return t_rv;", env)
+            eln("return t_rv;", fenv)
         }
     } else {
         env2 = dls_pop_emit(env2, file)
@@ -712,7 +718,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if or2(pat[0] == "PatId", pat[0] == "PatAgg" && pat[2][0] == "SubUnit") {
             var ty = "i"
             if st[3][0] != "None" {
-                ty = ct_ty_code(st[3], file)
+                // P0-A:注解节点经 env 型参代入(ct_targ_env TArgs 下钻)——单态化体
+                // 的 `var rs: List[Route[S]]` 嵌套 TPar 旧落 ct_ty_code "i" →
+                // Lu:Route__I 错实例(与 #Router 槽/字段码三面劈叉)
+                ty = ct_ty_code(ct_targ_env(st[3], env), file)
             } else {
                 ty = ct_typeof(st[4], env, file)
             }
@@ -783,6 +792,16 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             // 此后 <名>(…) 间接调用与链上成员读按 R 原型化(镜像种子 decl_ty_tc 存槽)
             var chf: I32 = byte_at(ty, 0)
             if or2(chf == 70, chf == 71) {
+                // P0-A:LF 列表元素签名码("F1{…}>u:Resp",Index 读)——返回码随码
+                // 附带,直拆入 #fret(not_found_h[0]/mws[idx] 的 h(…)/mw(…) 即此形)
+                var fret10 = ct_fsig_ret(ty)
+                if fret10.len > 0 {
+                    if fret10 != "v" {
+                        if fret10 != "i" {
+                            env = env_bind(env, "#fret:" + pat[1], fret10)
+                        }
+                    }
+                }
                 if st[4][0] == "Call" && st[4][1][0] == "Ident" {
                     var gd8 = ct_fn_decl(file, st[4][1][1])
                     if gd8.len > 0 && gd8[4][0] == "FnType" {
@@ -1459,6 +1478,46 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var rcc = ct_env_ty(env, "#retfn")
             if rcc.len > 0 {
                 renv = env_bind(env, "#clcodes", rcc)
+            }
+        }
+        // P0-A:N 槽 fn 值调用位 #fret 注入——run_chain 的 `return mw(…)`:mw 自
+        // List[fn] 索引读("N" 槽,声明返回型不可查),返回码取 #fnret(本 fn 返回)
+        if st[1][0] == "Call" {
+            if st[1][1][0] == "Ident" {
+                if ct_env_has(env, st[1][1][1]) {
+                    if seq2(ct_env_ty(env, st[1][1][1]), "N") {
+                        if ct_env_has(env, "#fnret") {
+                            var fnr = ct_env_ty(env, "#fnret")
+                            if fnr != "i" {
+                                if fnr != "v" {
+                                    renv = env_bind(renv, "#fret:" + st[1][1][1], fnr)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // P0-A:return 位 with/with_mut(ANF 前置)——eval 口径闭包值即表达式值,
+        // 语句位 rc="" 丢弃合法,返回位须落临时再返回;web.guard lim_hit 即此形
+        if st[1][0] == "Call" {
+            if st[1][1][0] == "Member" {
+                if or2(st[1][1][3] == "with", st[1][1][3] == "with_mut") {
+                    var robjt = ct_typeof(st[1][1][1], env, file)
+                    if or2(robjt == "A", robjt.len > 1 && byte_at(robjt, 0) == 109) {
+                        var rismut = st[1][1][3] == "with_mut"
+                        var rinner = "i"
+                        if robjt.len > 1 && byte_at(robjt, 0) == 109 {
+                            rinner = byte_slice(robjt, 1, robjt.len)
+                        }
+                        var rcl = st[1][2][1]
+                        var rtname = "t_wret" + nline(st)
+                        var robj = ct_expr(st[1][1][1], env, file)
+                        ct_emit_with_stmt(st[1], robj, robjt, rcl, env, file, rismut, rtname, hreg, "1")
+                        eln("return " + rtname + ";", env)
+                        return env
+                    }
+                }
             }
         }
         eln("return " + ct_expr(st[1], renv, file) + ";", env)

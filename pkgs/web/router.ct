@@ -494,9 +494,11 @@ test "匹配优先级 静态 > :param > *splat" {
 }
 
 test "中间件链短路与穿透" {
-    // 冻结名 UFCS 面:具体类型语境下由接收者推断(router(0).get / r0.middleware)
-    let r0 = router[I64](0).get("/x", h_hello)
-    let r1 = r0.middleware(need_x)
+    // 冻结名 UFCS 面:具体类型语境下由接收者推断(router(0).get / r0.middleware)。
+    // P0-A 发射适配:泛型 UFCS 特化位未落地(E2060 显式 TypeArgs 口径),两行改
+    // 显式直调——interp/发射双臂同语义,UFCS 推断面由本测试上半段历史在册。
+    let r0 = get[I64](router[I64](0), "/x", h_hello)
+    let r1 = middleware[I64](r0, need_x)
     let blocked = dispatch[I64](r1, "GET", "/x", "")
     assert(resp_status(blocked) == 303)
     assert(resp_header(blocked, "Location") == "/login")
@@ -592,7 +594,8 @@ test "2b not_found/method_not_allowed 覆写挂点" {
     assert(resp_status(d404) == 404)
     assert(resp_body(d404) == "404 not found")
     // 覆写 404:handler 收完整 req(可读 path);值语义换槽
-    let app = r0.not_found(h_404).method_not_allowed(h_405)
+    // P0-A 发射适配:泛型 UFCS 特化位未落地(E2060 口径)→ 显式直调
+    let app = method_not_allowed[I64](not_found[I64](r0, h_404), h_405)
     let c404 = dispatch[I64](app, "GET", "/nope", "")
     assert(resp_status(c404) == 404)
     assert(resp_body(c404) == "nf:/nope")
@@ -631,7 +634,7 @@ test "dispatch_h headers 进 handler 与覆写臂 headered" {
     let got = dispatch_h[I64](r0, "GET", "/who", "", hs)
     assert(resp_body(got) == "u=tok9;ua=probe")
     // 覆写 404 臂同收 headered Req(task-2 交接①收口)
-    let app = r0.not_found(h_404ck)
+    let app = not_found[I64](r0, h_404ck)
     let c = dispatch_h[I64](app, "GET", "/nope", "", hs)
     assert(resp_body(c) == "ck=tok9")
     // 查询串:匹配面剥 query(此前查询串恒 404),req_full 内自分裂 path/query
