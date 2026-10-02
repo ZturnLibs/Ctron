@@ -1,0 +1,209 @@
+// tests/gui/s52_event_seams —— 交互缝四件:on:submit / on:dblclick / hover:名 / mods
+use gui.{test, d_focus, d_frame, d_expect_text, d_expect_absent, d_send_key, d_send_char,
+         d_click, d_click_text, d_dblclick, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_mod, d_hover, ev_arg_i, Driver}
+
+struct M {
+    var sub: Str
+    var done: Str
+    var clicks: Str
+    var dbls: Str
+    var mods: Str
+    var hov: Str
+}
+
+view EvS(m: Box[M]) {
+  <vbox class="root">
+    <button class="b3" on:click={modstick(m, mods)}>mod</button>
+    <input bind={m.sub} class="fld" on:input={sv} on:submit={go}/>
+    <label class="m1">{m.done}</label>
+    <button class="b1" on:click={tick} on:dblclick={dblt}>dbl</button>
+    <button class="b2" hover:ho on:click={noop}>hov</button>
+    <when cond={ho}>
+      <label class="tip">HOVERED</label>
+    </when>
+    <label class="m2">{m.clicks}</label>
+    <label class="m3">{m.dbls}</label>
+    <label class="m4">{m.mods}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style m1 { fg: "#22c55e" h: 24 }
+style b1 { h: 28 bg: "#333340" }
+style b2 { h: 28 bg: "#333340" }
+style b3 { h: 28 bg: "#333340" }
+style tip { fg: "#f59e0b" h: 22 }
+style m2 { fg: "#22c55e" h: 22 }
+style m3 { fg: "#22c55e" h: 22 }
+style m4 { fg: "#22c55e" h: 22 }
+
+fn sv(text: Str) {
+}
+fn go(text: Str) {
+}
+fn tick() {
+}
+fn dblt() {
+}
+fn noop() {
+}
+fn modstick(mm: Box[M], md: I32) {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.sub" {
+        buf.push(m.sub)
+    }
+    if buf[0] == "m.done" {
+        buf.push(m.done)
+    }
+    if buf[0] == "m.clicks" {
+        buf.push(m.clicks)
+    }
+    if buf[0] == "m.dbls" {
+        buf.push(m.dbls)
+    }
+    if buf[0] == "m.mods" {
+        buf.push(m.mods)
+    }
+    if buf[0] == "ho" {
+        buf.push("b:0")
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    // on:input 名通道:"sv:值"
+    if name.len >= 3 {
+        if byte_at(name, 0) == 115 && byte_at(name, 1) == 118 && byte_at(name, 2) == 58 {
+            m.sub = byte_slice(name, 3, name.len)
+            return
+        }
+    }
+    // on:submit 名通道:"go:值"(回车提交当前值,镜像 on:input 契约)
+    if name.len >= 3 {
+        if byte_at(name, 0) == 103 && byte_at(name, 1) == 111 && byte_at(name, 2) == 58 {
+            m.done = byte_slice(name, 3, name.len)
+            return
+        }
+    }
+    if name == "tick" {
+        m.clicks = m.clicks + "c"
+        return
+    }
+    if name == "dblt" {
+        m.dbls = m.dbls + "d"
+        return
+    }
+    if name == "modstick" {
+        // S4:mods 内建名——ev_fire 求值实参,act 解码(i: 打标)
+        m.mods = ev_arg_i(args, 1).to_string()
+        return
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](M { sub: "", done: "", clicks: "", dbls: "", mods: "", hov: "" })
+    var rc: I32 = test(src, 320, 420,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, act2, key2| {
+            d_focus(t)
+            d_send_char(t, 104, |buf| {
+                if buf[0] == "m.sub" {
+                    buf.push(m.sub)
+                }
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            }, |nm, ar| act(nm, ar, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.sub" {
+                    buf.push(m.sub)
+                }
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            }, |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            })
+            d_expect_absent(t, "hi")
+            // 回车提交:on:submit 名通道送当前值 → m.done 镜像显示
+            d_send_key(t, 257, |buf| {
+                if buf[0] == "m.sub" {
+                    buf.push(m.sub)
+                }
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            }, |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            })
+            d_expect_text(t, "hi")
+            // ===== S2:on:dblclick(单击计 click,双击计 dblclick) =====
+            act(d_click(t, "tick"), List[Str](), m)
+            act(d_click(t, "tick"), List[Str](), m)
+            act(d_dblclick(t, "tick"), List[Str](), m)
+            d_frame(t, |buf| {
+                    if buf[0] == "m.clicks" {
+                    buf.push(m.clicks)
+                }
+            })
+            d_expect_text(t, "cc")
+            d_frame(t, |buf| {
+                if buf[0] == "m.dbls" {
+                    buf.push(m.dbls)
+                }
+            })
+            d_expect_text(t, "d")
+            // ===== S3:hover:名(悬停注册 → when 消费) =====
+            d_hover(t, "noop")
+            d_frame(t, |buf| {
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            })
+            d_expect_text(t, "HOVERED")
+            d_hover(t, "")
+            d_frame(t, |buf| {
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            })
+            d_expect_absent(t, "HOVERED")
+            // ===== S4:mods 内建名(ev_fire 实参求值,带位解码) =====
+            d_mod(t, 1)
+            d_click_text(t, 41, 22, |buf| {
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            }, |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| {
+                if buf[0] == "m.mods" {
+                    buf.push(m.mods)
+                }
+            })
+            d_expect_text(t, "1")
+            d_click_text(t, 41, 22, |buf| {
+                if buf[0] == "m.done" {
+                    buf.push(m.done)
+                }
+            }, |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.mods" {
+                    buf.push(m.mods)
+                }
+            })
+            d_expect_text(t, "0")
+        })
+    return rc
+}
+

@@ -36,6 +36,40 @@ static int g_ta_scroll[512];
 int gui_ta_scroll_set(int node, int y) { if (node >= 0 && node < 512) { g_ta_scroll[node] = y; } return 0; }
 int gui_ta_scroll_get(int node) { return (node >= 0 && node < 512) ? g_ta_scroll[node] : 0; }
 
+// hover:名 bind 暴露(§2.4 显式扩展点)——运行时名值表(帧戳失效,槽复用):
+// 渲染期注册(hov==节点),bind 询问先查此表(悬停值属运行时,一帧滞后可接受)
+#define HOV_N 64
+static char g_hov_name[HOV_N][48];
+static int g_hov_val[HOV_N];
+static int g_hov_frame[HOV_N];
+int gui_frame_count(void);
+void gui_hover_bind_set(const char* n, int v) {
+    int f = gui_frame_count();
+    int i = 0;
+    while (i < HOV_N) {
+        if (g_hov_frame[i] == f) {
+            if (strncmp(g_hov_name[i], n, 47) == 0) { g_hov_val[i] = v; return; }
+        } else {
+            snprintf(g_hov_name[i], sizeof(g_hov_name[i]), "%s", n);
+            g_hov_val[i] = v;
+            g_hov_frame[i] = f;
+            return;
+        }
+        i++;
+    }
+}
+int gui_hover_bind_get(const char* n) {
+    int f = gui_frame_count();
+    int i = 0;
+    while (i < HOV_N) {
+        if (g_hov_frame[i] == f) {
+            if (strncmp(g_hov_name[i], n, 47) == 0) { return g_hov_val[i]; }
+        }
+        i++;
+    }
+    return -1;
+}
+
 // 滚动条 thumb 拖拽(按下 thumb=拖拽模式;逐帧 mouse 跟随,松开结束)
 static int g_thdrag_on = 0;
 static int g_thdrag_node = -1;

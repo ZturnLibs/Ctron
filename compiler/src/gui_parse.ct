@@ -297,6 +297,14 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             }
         }
         var an: Str = eat_tok(tks, cur)
+        if an == "hover" {
+            // S3:hover:名 裸属性——检查面放行(消费 token 不产 IR);
+            // 生效面=内嵌形态(域包 gt_attrs 入事件表);文件形态忽略=登记限制
+            if eat_tok(tks, cur) != ":" {
+                panic("gui E8100: hover 期待冒号")
+            }
+            eat_tok(tks, cur)
+        } else {
         if an == "on" {
             if eat_tok(tks, cur) != ":" {
                 panic("gui E8100: on 期待冒号")
@@ -342,6 +350,7 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             if an == "in" {
                 bv = av
             }
+        }
         }
     }
     eat_tok(tks, cur)
@@ -1701,6 +1710,14 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
             }
         }
         var an: Str = eat_tok(tks, cur)
+        if an == "hover" {
+            // S3:hover:名 裸属性——检查面放行(消费 token 不产 IR);
+            // 生效面=内嵌形态(域包 gt_attrs 入事件表);文件形态忽略=登记限制
+            if eat_tok(tks, cur) != ":" {
+                panic("gui E8100: hover 期待冒号")
+            }
+            eat_tok(tks, cur)
+        } else {
         if an == "on" {
             // on:名=花括号事件表达式:块开逐 token 校验(曾盲吃 5 漏收尾闭,W3 口径),
             // 块体 8c-3 平衡捕获(单标识符旧契约为特例;配对 } 由捕获消费)
@@ -1762,6 +1779,13 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                                     imp = 1
                                 }
                                 if tag == "textarea" {
+                                    imp = 1
+                                }
+                            }
+                            if evn == "submit" {
+                                if tag == "input" {
+                                    // on:submit 隐式尾参 value——回车提交经名通道
+                                    // ("头名:值")送达,镜像 on:input 契约
                                     imp = 1
                                 }
                             }
@@ -1862,6 +1886,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
             }
+        }
         }
     }
     if tag == "when" {
@@ -2347,6 +2372,14 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             }
         }
         var an: Str = gui_sk_word(tks, cur)
+        if an == "hover" {
+            // S3:hover:名 裸属性——sk 树入事件表(name="hover",fn=名),
+            // 与域包 gt_attrs 同构;渲染注册/询问钩通用(文件形态同生效)
+            gui_sk_word(tks, cur)
+            var hnm: Str = gui_sk_word(tks, cur)
+            ev_name.push("hover")
+            ev_fn.push(hnm)
+        } else {
         if an == "on" {
             gui_sk_word(tks, cur)
             var evn: Str = gui_sk_word(tks, cur)
@@ -2397,6 +2430,7 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             if an == "placeholder" {
                 out4[3] = av
             }
+        }
         }
     }
     return 0

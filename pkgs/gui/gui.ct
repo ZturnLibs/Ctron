@@ -39,6 +39,8 @@ extern "c" fn gui_ctx_ay() -> I32
 extern "c" fn gui_menu_begin(offx: I32, offy: I32, w: I32, h: I32, bg: I32) -> I32
 extern "c" fn gui_menu_item(h: I32, bg: I32, hover: I32) -> I32
 extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
+extern "c" fn gui_hover_bind_set(n: Str, v: I32) -> I32
+extern "c" fn gui_hover_bind_get(n: Str) -> I32
 extern "c" fn gui_thdrag_begin(node: I32, my: I32, s0: I32) -> I32
 extern "c" fn gui_thdrag_end() -> I32
 extern "c" fn gui_thdrag_on() -> I32
@@ -1177,6 +1179,14 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             break
         }
         var an: Str = gword(src, cur)
+        if an == "hover" {
+            // S3:hover:名 裸属性——悬停态 bind 暴露(§2.4 显式扩展点):
+            // 入事件表(name="hover",fn=名),渲染期注册,bind 询问钩消费
+            glit(src, cur, 58)
+            var hn7: Str = gword(src, cur)
+            t.ev_name.push("hover")
+            t.ev_fn.push(hn7)
+        } else {
         if an == "on" {
             glit(src, cur, 58)
             var evn: Str = gword(src, cur)
@@ -1222,6 +1232,7 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
                 // 波次五a:image 源路径(与 placeholder 同 strs 槽位;各自元素取用)
                 strs.push(av)
             }
+        }
         }
     }
     return out
@@ -2038,6 +2049,28 @@ pub fn rt_bind_items(t: GuiTree, bind: fn(List[Str]) -> Void, listname: Str) -> 
 }
 
 fn rt_bind_text(bind: fn(List[Str]) -> Void, name: Str) -> Str {
+    // S3:hover:名 询问钩——悬停值属运行时(先于应用 bind;1 帧滞后)。
+    // when={名} 简单槽问 "when:名"(剥前缀查表)
+    var hvn: Str = name
+    if hvn.len > 5 {
+        if byte_at(hvn, 0) == 119 && byte_at(hvn, 1) == 104 && byte_at(hvn, 2) == 101 && byte_at(hvn, 3) == 110 && byte_at(hvn, 4) == 58 {
+            hvn = byte_slice(hvn, 5, hvn.len)
+        }
+    }
+    var hvq: I32 = gui_hover_bind_get(hvn)
+    if hvq >= 0 {
+        // when: 通道值契约 = "1"/"0"(fv != "1" 即隐藏);bxv 裸名 = b: 打标
+        if hvn != name {
+            if hvq == 1 {
+                return "1"
+            }
+            return "0"
+        }
+        if hvq == 1 {
+            return "b:1"
+        }
+        return "b:0"
+    }
     var buf = List[Str]()
     buf.push(name)
     bind(buf)
@@ -2193,6 +2226,12 @@ fn bxv_ws(e: Str, cur: Atomic[I32]) -> I32 {
 // 未答(空)回落裸名 bind 通道;非 props 视图零改动直问通道。
 // 已知边界(登记):each 列表询问("each:名")不经本链,仍走裸名通道。
 fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
+    // S4:事件实参内建名 mods——当前事件修饰键位(1=ctrl/⌘ 2=shift 4=alt);
+    // 零语法变更,{fn(m, mods)} 实参面自然 arity 适配
+    if path == "mods" {
+        var mv: I32 = gui_hotkey_mods()
+        return "i:" + mv.to_string()
+    }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
         if gt_sk_has(t.props, root) {
@@ -2706,6 +2745,10 @@ pub fn rt_hover_node(rects: List[I32], hits: List[I32], px: I32, py: I32) -> I32
         var py100: I32 = py * 100
         if px100 >= gui_cmd_x100(ci) && px100 < gui_cmd_x100(ci) + gui_cmd_w100(ci) {
             if py100 >= gui_cmd_y100(ci) && py100 < gui_cmd_y100(ci) + gui_cmd_h100(ci) {
+                // 尾部浮条 RECT 无配对 hit(Clay 浮条尾置)——越界即非交互面
+                if j >= hits.len {
+                    return -1
+                }
                 return hits[j]
             }
         }
@@ -2718,6 +2761,21 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
     // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
     // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
     var tag: Str = t.ntag[id]
+    // S3:hover:名 注册(每帧;hov=上帧命中节点,一帧滞后可接受)
+    {
+        var he: I32 = 0
+        while he < t.nec[id] {
+            var hgi: I32 = t.nes[id] + he
+            if t.ev_name[hgi] == "hover" {
+                var hvv: I32 = 0
+                if hov == id {
+                    hvv = 1
+                }
+                gui_hover_bind_set(t.ev_fn[hgi], hvv)
+            }
+            he += 1
+        }
+    }
     // 波次四:ViewCall 展开——查组件注册表,实参求值入 env(末位优先),
     // 拼接组件体子树;无 gui_open(纯拼接,组件体自带根元素)
     var callname: Str = ""
@@ -3222,11 +3280,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         }
                         if sx1 > sx0 {
                             gui_sel_float(sx0, icy, sx1 - sx0, ilh, gui_theme_slot_get(7))
-                            // 选区浮条 RECT ↔ 命中表配对(漏推则 rects/hits 计数
-                            // 错位:后续元素配对偏移+输入框宽缓存污染→视口失效
-                            // →全文绘制折行=用户实测「连击后文字上移」)
-                            hits.push(id)
-                            hinst.push(inst)
+                            // 浮条不配对推:Clay 把浮条命令挪到缓冲尾,按发射序推
+                            // hits=首个浮条起全链配对错位(按钮点成输入框实证)
                         }
                     }
                 }
@@ -3236,9 +3291,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     var us1: I32 = ipd + gui_ft_measure_n_wt(pfx2, pfx2.len, isz2, wt2p, fam2p) - mvs
                     if us1 > us0 {
                         gui_sel_float(us0, icy + ilh - 2, us1 - us0, 2, ifg2)
-                        // 下划线 RECT ↔ 命中表配对(与选区/光标条同口径,防计数错位)
-                        hits.push(id)
-                        hinst.push(inst)
+                        // 浮条不配对推(Clay 浮条命令尾置,见选区浮条注)
                     }
                 }
                 // 光标线恒算恒写(候选窗锚 feed 拼装原料:框内 x 与 (y,h);
@@ -3248,9 +3301,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 gui_ime_caret_line_set(icy, ilh)
                 if blink == 1 {
                     gui_caret_float(offx, icy, 2, ilh, ifg2)
-                    // 浮条 RECT ↔ 命中表配对(点条=点输入;熄灭相无 RECT 不配对)
-                    hits.push(id)
-                    hinst.push(inst)
+                    // 浮条不配对推(Clay 浮条命令尾置,见选区浮条注)
                 }
                 ishow = ""
             }
@@ -3445,8 +3496,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                                 var hx: I32 = 4 + gui_ft_measure_n_wt(seg0, seg0.len, tsz4, 400, 0)
                                 var hw: I32 = gui_ft_measure_n_wt(seg, seg.len, tsz4, 400, 0)
                                 gui_sel_float(hx, ryy, hw, tlh, gui_theme_slot_get(7))
-                                hits.push(id)
-                                hinst.push(inst)
+                                // 浮条不配对推(Clay 浮条命令尾置)
                             }
                             ri += 1
                         }
@@ -3469,13 +3519,11 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             uls = 4
                         }
                         gui_sel_float(uls, tpy + tlh - 2, tpx - uls, 2, tfg4)
-                        hits.push(id)
-                        hinst.push(inst)
+                        // 浮条不配对推(Clay 浮条命令尾置)
                     }
                     if gui_caret_blink() == 1 {
                         gui_caret_float(tpx, tpy, 2, tlh, tfg4)
-                        hits.push(id)
-                        hinst.push(inst)
+                        // 浮条不配对推(Clay 浮条命令尾置)
                     }
                 }
             }
@@ -3523,8 +3571,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         }
                         var thumby: I32 = 4 + (trackh - thumbh) * soff / maxo
                         gui_sel_float(rwrapw + 2, thumby, 4, thumbh, gui_theme_slot_get(3))
-                        hits.push(id)
-                        hinst.push(inst)
+                        // 浮条不配对推(Clay 浮条命令尾置)
                     }
                 }
             }
@@ -3825,7 +3872,6 @@ fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
 // 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
 fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
     var h: Str = rt_in_handler(t, node, evname)
-    fs_write("/tmp/ta_dbg2", "FIRE ev=" + evname + " h=" + h + " plen=" + payload.len.to_string() + "\n")
     if h != "" {
         act(h + ":" + payload, List[Str]())
     }
@@ -3975,10 +4021,6 @@ fn rt_menu_render(hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
         var fg4: I32 = gui_theme_slot_get(5)
         gui_text(labels[i], 13, rt_col_r(fg4), rt_col_g(fg4), rt_col_b(fg4), 255)
         gui_close()
-        if hov == 1 {
-            hits.push(-1)
-            hinst.push(inst)
-        }
         i += 1
     }
     gui_close()
@@ -4584,10 +4626,8 @@ fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
             rt_in_fire(t, fn0, "input", nw3, act)
             return true
         }
-        var sh: Str = rt_in_handler(t, fn0, "submit")
-        if sh != "" {
-            act(sh, List[Str]())
-        }
+        // on:submit:回车提交,值经名通道送达(镜像 on:input 契约)
+        rt_in_fire(t, fn0, "submit", rt_in_val(t, fn0, bind), act)
         return true
     }
     if k == 86 {
@@ -4761,8 +4801,26 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                 gui_focus_set(-1)
             }
             if name != "" {
-                // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
-                ev_fire(t, name, bind, act)
+                // S2:on:dblclick——双击命中带 dblclick 事件的元素=只发 dblclick
+                // (不发 click;单双击聚类 gui_click_kind,编辑件已在 rt_click_text 消费)
+                var kdn: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                var fired2: I32 = 0
+                if kdn == 1 {
+                    var dn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+                    if dn7 >= 0 {
+                        if dn7 < t.ntag.len {
+                            var de7: Str = rt_in_handler(t, dn7, "dblclick")
+                            if de7 != "" {
+                                ev_fire(t, de7, bind, act)
+                                fired2 = 1
+                            }
+                        }
+                    }
+                }
+                if fired2 == 0 {
+                    // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
+                    ev_fire(t, name, bind, act)
+                }
             }
         } else {
             if evt == 4 {
@@ -4921,8 +4979,26 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                 gui_focus_set(-1)
             }
             if name != "" {
-                // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
-                ev_fire(t, name, bind, act)
+                // S2:on:dblclick——双击命中带 dblclick 事件的元素=只发 dblclick
+                // (不发 click;单双击聚类 gui_click_kind,编辑件已在 rt_click_text 消费)
+                var kdn: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                var fired2: I32 = 0
+                if kdn == 1 {
+                    var dn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+                    if dn7 >= 0 {
+                        if dn7 < t.ntag.len {
+                            var de7: Str = rt_in_handler(t, dn7, "dblclick")
+                            if de7 != "" {
+                                ev_fire(t, de7, bind, act)
+                                fired2 = 1
+                            }
+                        }
+                    }
+                }
+                if fired2 == 0 {
+                    // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
+                    ev_fire(t, name, bind, act)
+                }
             }
         } else {
             if evt == 4 {
@@ -5363,6 +5439,50 @@ pub fn d_click_text(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void,
         ev_fire(t.t, name, bind, act)
     }
     return 0
+}
+
+// 双击(headless):两击同位注入;返回元素 on:dblclick 处理头名(夹具 act 自
+// 分发,与 d_click 同模式;真窗单双击聚类在循环 gui_click_kind)
+pub fn d_dblclick(t: Box[Driver], name: Str) -> Str {
+    // 按动作头定位节点(d_btn_index 的 btns↔rects 索引在多控件页会错位
+    // ——实测点到 input),再取该节点盒中心注入双击
+    var node: I32 = -1
+    var i: I32 = 0
+    while i < t.t.ntag.len {
+        var e: I32 = 0
+        while e < t.t.nec[i] {
+            var gi: I32 = t.t.nes[i] + e
+            if ev_head(t.t.ev_fn[gi]) == name {
+                node = i
+            }
+            e += 1
+        }
+        i += 1
+    }
+    if node < 0 {
+        panic("gui test: 未知动作 " + name)
+        return ""
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var bi: I32 = rt_node_box(rc2, t.hits, node)
+    if bi < 0 {
+        panic("gui test: 动作无盒 " + name)
+        return ""
+    }
+    var cx: I32 = gui_cmd_x100(bi) / 100 + gui_cmd_w100(bi) / 200
+    var cy: I32 = gui_cmd_y100(bi) / 100 + gui_cmd_h100(bi) / 200
+    gui_inject_click(cx, cy)
+    gui_poll_event()
+    gui_inject_click(cx, cy)
+    gui_poll_event()
+    var de: Str = rt_in_handler(t.t, node, "dblclick")
+    if de != "" {
+        return de
+    }
+    panic("gui test: 元素无 on:dblclick " + name)
+    return ""
 }
 
 // 右键位置点击(headless):evt5 注入;与循环同路径开/关菜单
