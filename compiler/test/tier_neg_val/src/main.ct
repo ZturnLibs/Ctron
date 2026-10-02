@@ -1,0 +1,4 @@
+// tier_neg_val —— 清单 tier 越域值 → E5040.tier(fail-closed)
+fn main() -> I32 {
+    return 0
+}

@@ -1,0 +1,4 @@
+// std/laxx.ct —— T35 夹具:无标注模块(缺标注不设门,渐进承诺)
+pub fn lx_id(v: I32) -> I32 {
+    return v
+}

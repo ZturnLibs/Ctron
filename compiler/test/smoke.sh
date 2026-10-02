@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=439' "$T/chk.out" && ok "自检 cc_run 绿,decls=439(合并树实测:远端 S1 基线 436+本地 E4047/ptr_as_view 线+libroot wrapper+P0-B ext_ref_lv_ok(sem_type.ct &T extern 左值实参收口),2026-10-01 合并随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=443' "$T/chk.out" && ok "自检 cc_run 绿,decls=443(合并树实测:2026-10-01 锁 439+T35 分层 stdlib 机制核四 fn[pkg_tier_rank/pkg_manifest_tier/pkg_mod_tier/pkg_load_use_t],2026-10-02 合并随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -247,6 +247,49 @@ if [ $? -eq 0 ]; then
     ok "full 档同源通过(档位门控生效)"
 else
     bad "full 档误拦"
+fi
+echo "== 3c2) T35 分层 stdlib(档位门:清单 tier 键+头注 //@ tier+E3040.tier) =="
+"$COMP/ctc.sh" check "$COMP/test/tier_neg_alloc/src/main.ct" > "$T/tier1.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier1.out"; then
+    ok "T35 core 包 use alloc 层模块 = E3040.tier"
+else
+    bad "T35 alloc 档未拦: $(cat "$T/tier1.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_neg_std/src/main.ct" > "$T/tier2.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier2.out"; then
+    ok "T35 core 包 use std 层模块 = E3040.tier"
+else
+    bad "T35 std 档未拦: $(cat "$T/tier2.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_neg_val/src/main.ct" > "$T/tier3.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E5040" "$T/tier3.out"; then
+    ok "T35 清单 tier 越域值 = E5040.tier(fail-closed)"
+else
+    bad "T35 值域未拦: $(cat "$T/tier3.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_prof_neg/src/main.ct" --profile=bare > "$T/tier4.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier4.out"; then
+    ok "T35 bare 档钳门(use 面)= E3040.tier"
+else
+    bad "T35 bare 钳未拦: $(cat "$T/tier4.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_prof_neg/src/main.ct" > "$T/tier5.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 full 档同夹具不拦(钳门精确)"
+else
+    bad "T35 full 档误拦: $(cat "$T/tier5.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_pos/src/main.ct" > "$T/tier6.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 core 包 use core+无标注模块 = 过"
+else
+    bad "T35 pos 误拦: $(cat "$T/tier6.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_pos/src/main.ct" --profile=bare > "$T/tier7.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 core 包 bare 双证(档位面+分配面)"
+else
+    bad "T35 pos bare 误拦: $(cat "$T/tier7.out")"
 fi
 echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
 drift=0
