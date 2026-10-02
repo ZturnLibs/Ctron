@@ -306,6 +306,8 @@ fn ct_ig_elem_code(ty: List[Str], file: List[Str]) -> Str {
 fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: List[Str]) -> List[Str] {
     eln("const char* t_mv = (const char*)(" + ct_expr(e[1], env, file) + ");", env)
     eln(ct_ctype(rc) + " t_mr;", env)
+    var rmv = ct_reg_line("mr", rc)
+    if rmv.len > 0 { eln(rmv, env) }
     var arms = e[2]
     var someIx: I32 = -1
     var noneIx: I32 = -1
@@ -459,6 +461,10 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         // P0-A:"#nobrace" 位(特化盒槽序言在 ct_body 前直出,花括号由发射位自带)
         if !ct_env_has(fenv, "#nobrace") {
             eln("\{", fenv)
+            // T31 M1.5:帧节点序言+#frpro 形参注册(ct_fn/方法/drop 挂入)
+            if ct_env_has(fenv, "#frpro") {
+                eln(ct_env_ty(fenv, "#frpro"), fenv)
+            }
         }
     }
     var denv = dls_push(fenv)
@@ -508,6 +514,8 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
             eln("return t_mr;", fenv)
         } else if tl[0] == "If" {
             eln(ct_ctype(rc) + " t_rv = " + ct_if_value(tl, env2, file) + ";", fenv)
+            var rti = ct_reg_line("rv", rc)
+            if rti.len > 0 { eln(rti, fenv) }
             env2 = dls_pop_emit(env2, file)
             eln("return t_rv;", fenv)
         } else if tl[0] == "Own" {
@@ -524,6 +532,8 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
             env2 = dls_pop_emit(env2, file)
         } else {
             eln(ct_ctype(rc) + " t_rv = " + ct_expr(tl, env2, file) + ";", env)
+            var rtv = ct_reg_line("rv", rc)
+            if rtv.len > 0 { eln(rtv, env) }
             env2 = dls_pop_emit(env2, file)
             eln("return t_rv;", fenv)
         }
@@ -567,6 +577,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if st[4][0] == "Call" && st[4][1][0] == "Member" && st[4][1][1][0] == "Ident" && st[4][1][1][1] == "parallel" {
                 if st[4][1][3] == "map" {
                     eln("ctron_list* t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";", env)
+                    var rlp = ct_reg_line(pat[1], "LI")
+                    if rlp.len > 0 { eln(rlp, env) }
                     return env_bind(env, pat[1], "LI")
                 }
                 if st[4][1][3] == "reduce" {
@@ -578,6 +590,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if st[4][0] == "Call" && st[4][1][0] == "Member" && st[4][1][3] == "into_gc" {
                 var rot = ct_typeof(st[4][1][1], env, file)
                 eln(ct_ctype(rot) + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";", env)
+                var rlg = ct_reg_line(pat[1], rot)
+                if rlg.len > 0 { eln(rlg, env) }
                 return env_bind(env, pat[1], rot)
             }
             if st[4][0] == "Call" {
@@ -612,6 +626,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var ovx = ct_expr(otl, orenv, file)
             if or2(oty == "L", or2(ct_is_tlcode(oty), oty == "A")) { ovx = "(" + ct_ctype(oty) + ")(" + ovx + ")" }
             eln(ct_ctype(oty) + " t_" + pat[1] + " = " + ovx + ";", env)
+            var rlo = ct_reg_line(pat[1], oty)
+            if rlo.len > 0 { eln(rlo, env) }
             return env_bind(env, pat[1], oty)
         }
         // P0-G:let x/_ = match R { Ok(v) => v, Err(m) => {…} } —— ANF,目标即临时
@@ -624,8 +640,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 var ruq = nline(st)
                 var rme = "t_mrr" + ruq
                 eln("ct_res " + rme + " = " + ct_expr(st[4][1], env, file) + ";", env)
+                var rmr = ct_reg_line("mrr" + ruq, "R")
+                if rmr.len > 0 { eln(rmr, env) }
                 var sec = ct_opt_elem_expr(file, st[4][1], env)
                 eln(ct_ctype(sec) + " t_" + dn7 + ";", env)
+                var rdr = ct_reg_line(dn7, sec)
+                if rdr.len > 0 { eln(rdr, env) }
                 var rarms = st[4][2]
                 var ok7: I32 = -1
                 var some7: I32 = -1
@@ -694,6 +714,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var qv = "t_q" + nline(st)
             var ec2 = ct_try_elem(file, st[4], env)
             eln("ct_res " + qv + " = " + ct_expr(st[4][1], env, file) + ";", env)
+            var rqt = ct_reg_line("q" + nline(st), "R")
+            if rqt.len > 0 { eln(rqt, env) }
             eln("if (" + qv + ".variant != 0) \{ return " + qv + "; }", env)
             eln(ct_ctype(ec2) + " t_" + pat[1] + " = (" + ct_ctype(ec2) + ")" + qv + ".v;", env)
             return env_bind(env, pat[1], ec2)
@@ -752,6 +774,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     j += 1
                 }
                 eln(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};", env)
+                // T31 M1.5:定长数组槽=整块域扫(sz=N*sizeof 手拼,ct_ctype 不识 a 码)
+                eln("if (ct_frn.pn < 32) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ct_ctype(ec) + ") * " + n + "; ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)
                 return env_bind(env, pat[1], ty)
             }
             if ty.len > 1 && byte_at(ty, 0) == 118 {
@@ -869,6 +893,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if or2(ty == "L", ct_is_tlcode(ty)) { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
+            // T31 M1.5:通用绑定位 GC 槽注册(标量族经谓词空返回跳过)
+            var rlg2 = ct_reg_line(pat[1], ty)
+            if rlg2.len > 0 { eln(rlg2, env) }
             // RAII(§6.4):struct 值绑定实现 Drop → 当前层登记,作用域出口逆序发射
             if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
                 if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
@@ -1391,6 +1418,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             // for x in List[I32]:槽经 long 取标量
             var larr = ct_expr(it, env, file)
             eln("ctron_list* t_li = (ctron_list*)(" + larr + ");", env)
+            var rli = ct_reg_line("li", "L")
+            if rli.len > 0 { eln(rli, env) }
             eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
             eln("    int32_t t_" + v0 + " = (int32_t)(long)t_li->items[ctron_i];", env)
             ct_block(body, env_bind(env, v0, "i"), file, hreg)
@@ -1430,6 +1459,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 getL = "(*(" + ct_ctype(ecodeL) + "*)t_ll->items[ctron_i])"
             }
             eln("ctron_list* t_ll = (ctron_list*)(" + larrL + ");", env)
+            var rll = ct_reg_line("ll", "L")
+            if rll.len > 0 { eln(rll, env) }
             eln("for (int64_t ctron_i = 0; ctron_i < t_ll->n; ctron_i++) \{", env)
             eln("    " + ct_ctype(ecodeL) + " t_" + v0 + " = " + getL + ";", env)
             ct_block(body, env_bind(env, v0, ecodeL), file, hreg)
