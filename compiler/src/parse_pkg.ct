@@ -264,6 +264,113 @@ fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
     return false
 }
 
+// ---- T35 分层 stdlib(§9 档位矩阵:core < alloc < std)----
+// pkg_tier_rank —— 档位序;未识别值按 std(调用方已各自验证值域)
+fn pkg_tier_rank(t: Str) -> I32 {
+    if seq2(t, "core") { return 0 }
+    if seq2(t, "alloc") { return 1 }
+    return 2
+}
+
+// pkg_manifest_tier —— 清单 pkg 块 tier 键(消费方申报档):缺省 "std"(不设限,
+// 渐进承诺);越域值 = E5040.tier fail-closed(T48 清单面硬切同族)。文本扫描
+// 镜像 pkg_caps_allowed(键首词边界 + = " 引号值;phase-1 仅规范形态清单)。
+fn pkg_manifest_tier(dir: Str, diags: List[Str]) -> Str {
+    var t = ""
+    match read_file(dir + "/../Ctron.ctcl") {
+        Some(x) => { t = x }
+        None => { return "std" }
+    }
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "tier") && pkg_ctcl_pre(t, i) {
+            var j = i + 4
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 61 {
+                j += 1
+                while j < t.len && byte_at(t, j) == 32 {
+                    j += 1
+                }
+                if j < t.len && byte_at(t, j) == 34 {
+                    j += 1
+                    var v = ""
+                    while j < t.len && byte_at(t, j) != 34 && byte_at(t, j) != 10 {
+                        v = v + byte_slice(t, j, j + 1)
+                        j += 1
+                    }
+                    if or2(seq2(v, "core"), or2(seq2(v, "alloc"), seq2(v, "std"))) {
+                        return v
+                    }
+                    diag1(diags, "E5040.tier", "", v)
+                    return "std"
+                }
+            }
+        }
+        i += 1
+    }
+    return "std"
+}
+
+// pkg_mod_tier —— std 模块头注档位提取:首注释块内 `//@ tier: core|alloc|std`;
+// 缺标注/越域标注 = ""(不设门——渐进承诺,未标注模块不受档位面约束;
+// 标注只认头部,首非注释行即止,空白行跳过不断链)。
+fn pkg_mod_tier(src: Str) -> Str {
+    var i: I32 = 0
+    while i < src.len {
+        var ls = i
+        while ls < src.len && or2(byte_at(src, ls) == 32, byte_at(src, ls) == 9) {
+            ls += 1
+        }
+        if ls >= src.len {
+            return ""
+        }
+        var e = ls
+        while e < src.len && byte_at(src, e) != 10 {
+            e += 1
+        }
+        if ls + 1 < e && byte_at(src, ls) == 47 && byte_at(src, ls + 1) == 47 {
+            // 注释行:"//" 后随 '@' 即标记形("//@ 词: 值")
+            if ls + 2 < e && byte_at(src, ls + 2) == 64 {
+                var w = ""
+                var j = ls + 3
+                while j < e && byte_at(src, j) == 32 {
+                    j += 1
+                }
+                while j < e && byte_at(src, j) != 32 && byte_at(src, j) != 58 {
+                    w = w + byte_slice(src, j, j + 1)
+                    j += 1
+                }
+                if seq2(w, "tier") && j < e && byte_at(src, j) == 58 {
+                    var j3 = j + 1
+                    while j3 < e && byte_at(src, j3) == 32 {
+                        j3 += 1
+                    }
+                    var v = ""
+                    while j3 < e && byte_at(src, j3) != 32 && byte_at(src, j3) != 9 {
+                        v = v + byte_slice(src, j3, j3 + 1)
+                        j3 += 1
+                    }
+                    if or2(seq2(v, "core"), or2(seq2(v, "alloc"), seq2(v, "std"))) {
+                        return v
+                    }
+                    return ""
+                }
+            }
+            i = e + 1
+        } else {
+            if ls == e {
+                // 空白行:跳过,注释块续扫
+                i = e + 1
+            } else {
+                return ""
+            }
+        }
+    }
+    return ""
+}
+
 // pkg_exe_dir —— 取可执行文件所在目录(无分隔符则空串;与 pkg_dir_of 的 "." 缺省区分)
 fn pkg_exe_dir(exe: Str) -> Str {
     var i = exe.len - 1
@@ -314,16 +421,27 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
     // 合并后改写 run(ViewCall) 调用点并拼写 __gui_bind/__gui_act/__gui_run
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, List[Str]())
+    var out = pkg_load_use_t(f2, dir, stack, List[Str](), diags, List[Str](), "full")
     return gui_ds_postmerge(out, unit, diags)
 }
 
 // pkg_load_use_m —— pkg_load_use 带 miss 收集(W8902 带出路半面;独立 fn 避碰
 // 在制 driver_emit.ct 调用点——emit 驱动 seam 待其落库后一行切换,2026-09-30 登记)
+// T35:manifest-only 门(prof 恒 full;doc 驱动 5 参调用面保持零改动)
 fn pkg_load_use_m(file: List[Str], dir: Str, stack: List[Str], diags: List[Str], misses: List[Str]) -> List[Str] {
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses)
+    var out = pkg_load_use_t(f2, dir, stack, List[Str](), diags, misses, "full")
+    return gui_ds_postmerge(out, unit, diags)
+}
+
+// pkg_load_use_t —— T35 档位门入口(prof = sem_walk2 同源档位串;bare 钳 core
+// 于 pkg_load_use_done 内)。独立 fn 避碰 driver_doc.ct 的 _m 5 参调用面
+//(P1b「独立 fn 避碰」先例);check/run 两驱动先行接线,emit 随 seam 落库再切。
+fn pkg_load_use_t(file: List[Str], dir: Str, stack: List[Str], diags: List[Str], misses: List[Str], prof: Str) -> List[Str] {
+    var unit = List[Str]()
+    var f2: List[Str] = gui_ds_premerge(file, unit)
+    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof)
     return gui_ds_postmerge(out, unit, diags)
 }
 
@@ -356,10 +474,19 @@ fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[S
 
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
-fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str]) -> List[Str] {
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
+    }
+    // T35:消费方有效档 = 清单 tier 键(缺省 std);bare 档钳到 core(§9:bare 目标
+    // stdlib 层 = core)。E5040.tier 已推则加载即止(驱动对 ldiags 非空 rc=1)。
+    var tier = pkg_manifest_tier(dir, diags)
+    if diags.len > 0 {
+        return file
+    }
+    if seq2(prof, "bare") && pkg_tier_rank(tier) > 0 {
+        tier = "core"
     }
     var out = file
     var i: I32 = 1
@@ -542,7 +669,16 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
             var src = read_file(mpath)
             match src {
                 Some(ms) => {
-                        var mf = List[Str]()
+                    // T35 档位门:std 模块头注 //@ tier 高于消费方有效档 → use 点
+                    // 一次 E3040.tier,加载即止(替代 merge 后 bare 体检在 std 内部
+                    // 的洪水;缺标注不设门)。注:门只可能命中真模块文件——退化形
+                    // `use std`(segs.len==2)的 mpath 恒不存在,不入此分支。
+                    var mt = pkg_mod_tier(ms)
+                    if mt.len > 0 && pkg_tier_rank(mt) > pkg_tier_rank(tier) {
+                        diag1(diags, "E3040.tier", "", segs[2] + "(" + mt + ")")
+                        return out
+                    }
+                    var mf = List[Str]()
                         var is_ast = mpath.len >= 4
                         if is_ast {
                             if byte_at(mpath, mpath.len - 4) == 46 {
@@ -630,7 +766,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         }
                         var stack2 = stack
                         stack2.push(mpath)
-                        mf = pkg_load_use_done(mf, dir, stack2, done, diags, false, misses)
+                        mf = pkg_load_use_done(mf, dir, stack2, done, diags, false, misses, prof)
                         if diags.len > 0 {
                             return out
                         }

@@ -1,0 +1,6 @@
+// tier_neg_alloc —— core 包 use alloc 层模块 → E3040.tier(§9 档位矩阵)
+use std.strx.{ sx_count }
+
+fn main() -> I32 {
+    return sx_count(1)
+}

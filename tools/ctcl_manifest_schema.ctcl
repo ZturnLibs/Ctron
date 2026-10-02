@@ -50,6 +50,11 @@ regkey "pkg.caps" {
     sorted = true              // 集合语义:规范形态排序
 }
 
+regkey "pkg.tier" {
+    type = "str"
+    pattern = "(core|alloc|std)"   // T35 分层 stdlib:包申报档(§9 档位矩阵);缺省 std(缺键不校)
+}
+
 regkey "comptime.budget_ms" {
     type = "int"
     min = 1

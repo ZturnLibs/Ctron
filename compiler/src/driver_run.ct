@@ -64,8 +64,9 @@ fn main() -> I32 {
                 }
                 return 1
             }
+            var run_prof = "ANCHORPROFILE"
             var lmisses = List[Str]()
-            file = pkg_load_use_m(file, pkg_dir_of(epath), lstack, ldiags, lmisses)
+            file = pkg_load_use_t(file, pkg_dir_of(epath), lstack, ldiags, lmisses, run_prof)
             if ldiags.len > 0 {
                 var li: I32 = 0
                 while li < ldiags.len {
@@ -79,7 +80,7 @@ fn main() -> I32 {
                 }
                 return 1
             }
-            var sems = sem_walk2(file, "ANCHORPROFILE")
+            var sems = sem_walk2(file, run_prof)
             if !seq2(sems, "") {
                 print(strip_at(sems))
                 return 1

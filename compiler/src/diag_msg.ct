@@ -98,6 +98,8 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E3050.umove") { return "use-after-move (moved):arena handle %0" }
     if seq2(key, "E3040.own") { return "GC allocation inside an own block (allocation):%0" }
     if seq2(key, "E3040.noalloc") { return "GC allocation in a no_alloc context (allocation):%0" }
+    if seq2(key, "E3040.tier") { return "std module %0 exceeds this build's tier ceiling (manifest tier key / --profile)" }
+    if seq2(key, "E5040.tier") { return "unknown manifest tier value (allowed: core/alloc/std):%0" }
     if seq2(key, "E3010") { return "spawn captures a non-Send value (Send):%0" }
     if seq2(key, "E2030") { return "match not exhaustive (not exhaustive):missing variant %0" }
     if seq2(key, "E3070") { return "closure mutable capture without an explicit Mutex[T] wrapper:%0 (suggest: use Mutex[T].with_mut)" }
@@ -195,6 +197,8 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E3050.umove") { return "use-after-move(moved):arena 句柄 %0" }
     if seq2(key, "E3040.own") { return "own 块内 GC 分配(allocation):%0" }
     if seq2(key, "E3040.noalloc") { return "no_alloc 上下文 GC 分配(allocation):%0" }
+    if seq2(key, "E3040.tier") { return "std 模块 %0 层级超出本包档位上限(清单 tier 键/--profile 档;见模块头 //@ tier)" }
+    if seq2(key, "E5040.tier") { return "清单 tier 值未识别(允许 core/alloc/std):%0" }
     if seq2(key, "E3010") { return "spawn 捕获非 Send(Send):%0" }
     if seq2(key, "E2030") { return "match 不穷尽(not exhaustive):缺变体 %0" }
     if seq2(key, "E3070") { return "闭包可变捕获未显式 Mutex[T] 包装:%0(建议:改用 Mutex[T].with_mut)" }

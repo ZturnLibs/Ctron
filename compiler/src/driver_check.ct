@@ -280,8 +280,16 @@ fn main() -> I32 {
                 }
                 return 1
             }
+            var chk_fmt = ctron_cli_flag("format")
+            if chk_fmt.len == 0 {
+                chk_fmt = "ANCHORFMT"
+            }
+            var chk_prof = ctron_cli_flag("profile")
+            if chk_prof.len == 0 {
+                chk_prof = "ANCHORPROFILE"
+            }
             var lmisses = List[Str]()
-            file = pkg_load_use_m(file, pkg_dir_of(epath), lstack, ldiags, lmisses)
+            file = pkg_load_use_t(file, pkg_dir_of(epath), lstack, ldiags, lmisses, chk_prof)
             if ldiags.len > 0 {
                 var li: I32 = 0
                 while li < ldiags.len {
@@ -294,14 +302,6 @@ fn main() -> I32 {
                     mi += 1
                 }
                 return 1
-            }
-            var chk_fmt = ctron_cli_flag("format")
-            if chk_fmt.len == 0 {
-                chk_fmt = "ANCHORFMT"
-            }
-            var chk_prof = ctron_cli_flag("profile")
-            if chk_prof.len == 0 {
-                chk_prof = "ANCHORPROFILE"
             }
             var sems = sem_walk2(file, chk_prof)
             if or2(seq2(chk_fmt, "1"), seq2(chk_fmt, "json")) {
