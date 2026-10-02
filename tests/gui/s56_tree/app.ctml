@@ -1,0 +1,23 @@
+// tests/gui/s56_tree —— GUI-18 tree 组件 v1:扁平表配方
+// (应用侧重算可见集,view 纯 each 渲染;缩进/▸▾ 前缀编码进行串;
+//  点击经实例后缀 tree_pick:N 定位可见行。递归 view 形态依赖自引用
+//  struct/下标表达式,登记 v2 候选。)
+view Tree (title: Str) {
+  <vbox class="w-tree">
+    <label class="w-tree-t">{title}</label>
+    <each r in={trows}>
+      <button class="w-trow" on:click={tree_pick}>{r}</button>
+    </each>
+  </vbox>
+}
+view Root {
+  <vbox class="root">
+    <Tree title: "文件树"/>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style w-tree { direction: column gap: 2 }
+style w-tree-t { fg: TEXT_MUTED size: 13 h: 20 }
+style w-trow { h: 26 w: 200 bg: SURFACE }
+style state { fg: "#22c55e" h: 22 }
