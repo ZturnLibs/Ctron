@@ -611,7 +611,10 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T30 | into_gc 真实化 | W6 | 待办 | — |
 | T31 | 解释器回收 | W6 | 待办 | — |
 | T32 | GC 门禁 ≤15% | W6 | 待办 | — |
-| T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复) | — |
+| T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复;**0930 精确定稿**:ct_emit_clo 的 #ifndef 卫兵在 prewalk/实发两遍
+间错位——发射 C 出现「fn 首行后即 #endif、return 与 } 落卫兵外」的截断 shim(闭包无
+返回路径→运行期垃圾;fx_conc_parallel/cloval 双夹具实证)。修法=卫兵只在实发遍 emission
+(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修 | — |
 | T34 | 栈经济 P9 | W7 | 待办 | — |
 | T35 | 分层 stdlib 机制 | W8 | 待办 | — |
 | T36 | ctc target+后端接口 | W8 | 待办 | — |
