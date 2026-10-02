@@ -155,6 +155,14 @@ void gui_inject_drag(int x1, int y, int x2) {
 }
 // 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
 // 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本)
+// 键重复状态(编辑键族;字符事件/换键/释放即重置)
+int gui_now_ms(void);
+static int g_rep_key = 0;
+static int g_rep_ms = 0;
+static int g_rep_fired = 0;
+static int g_rep_watched(int k) {
+    return (k >= 262 && k <= 265) || k == 259 || k == 261 || k == 268 || k == 269;
+}
 int gui_poll_event(void) {
     {
         static int cl_tr = -1;
@@ -185,6 +193,8 @@ int gui_poll_event(void) {
         static int ime_tr = -1;
         if (ime_tr < 0) { ime_tr = (getenv("CTRON_GUI_IME_TRACE") != NULL); }
         if (ime_tr) { fprintf(stderr, "[POLLC] char=%d\n", c); }
+        g_rep_key = 0;
+        g_rep_fired = 0;
         g_cur = (GuiEvent){ 3, c, 0, 0 };
         int nx = GetCharPressed();
         while (nx > 0 && g_qtail < 256) {
@@ -206,6 +216,11 @@ int gui_poll_event(void) {
             g_qtail++;
             nk = GetKeyPressed();
         }
+        // 键重复登记(raylib GetKeyPressed 不派发 GLFW_REPEAT——按住方向键/
+        // 退格不连续移动删除,用户实测;自建重复见 poll 尾)
+        g_rep_key = k;
+        g_rep_ms = gui_now_ms();
+        g_rep_fired = 0;
         return 1;
     }
     float wv = GetMouseWheelMove();
@@ -223,6 +238,23 @@ int gui_poll_event(void) {
         Vector2 p = GetMousePosition();
         g_cur = (GuiEvent){ 5, 0, (int)p.x, (int)p.y };
         return 5;
+    }
+    // 键重复(raylib 不派发 GLFW_REPEAT;初按 500ms 后 66ms 间隔,成熟口径;
+    // 仅编辑键族:方向/退格/前删/Home/End。字符事件与松键重置)
+    if (g_rep_key != 0) {
+        if (!IsKeyDown(g_rep_key)) {
+            g_rep_key = 0;
+            g_rep_fired = 0;
+        } else if (g_rep_watched(g_rep_key)) {
+            int now = gui_now_ms();
+            int delay = g_rep_fired ? 66 : 500;
+            if (now - g_rep_ms >= delay) {
+                g_rep_ms = now;
+                g_rep_fired = 1;
+                g_cur = (GuiEvent){ 1, g_rep_key, 0, 0 };
+                return 1;
+            }
+        }
     }
     return 0;
 }
