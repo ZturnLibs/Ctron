@@ -485,6 +485,23 @@ void gui_px_clear(void) { g_px_n = 0; }
 static int g_scroll_off = 0;
 int gui_scroll_add(int d) { g_scroll_off += d; if (g_scroll_off < 0) { g_scroll_off = 0; } return g_scroll_off; }
 int gui_scroll_off(void) { return g_scroll_off; }
+void gui_scroll_set(int v) { g_scroll_off = (v > 0) ? v : 0; }
+
+// ---- GUI-14:程序化聚焦/滚动请求槽(一次性:emit 期消费或帧末清) ----
+static char g_focus_req[256] = {0};
+static char g_scroll_req[256] = {0};
+const char *gui_focus_req_get(void) { return g_focus_req; }
+void gui_focus_req_set(const char *n) {
+    if (n) { size_t k = 0; for (; k < 255 && n[k]; k++) { g_focus_req[k] = n[k]; } g_focus_req[k] = 0; }
+    else { g_focus_req[0] = 0; }
+}
+void gui_focus_req_clear(void) { g_focus_req[0] = 0; }
+const char *gui_scroll_req_get(void) { return g_scroll_req; }
+void gui_scroll_req_set(const char *n) {
+    if (n) { size_t k = 0; for (; k < 255 && n[k]; k++) { g_scroll_req[k] = n[k]; } g_scroll_req[k] = 0; }
+    else { g_scroll_req[0] = 0; }
+}
+void gui_scroll_req_clear(void) { g_scroll_req[0] = 0; }
 
 int gui_open(void) {
     if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }

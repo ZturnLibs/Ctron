@@ -214,12 +214,21 @@ extern "c" fn gui_scroll_add(d: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_scroll_off() -> I32
+extern "c" fn gui_scroll_set(v: I32) -> Void
 
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
 #[trusted]
 extern "c" fn gui_focus_set(i: I32) -> Void
+
+// GUI-14:程序化聚焦/滚动请求槽(一次性;应用自 act 闭包发起)
+extern "c" fn gui_focus_req_get() -> Str
+extern "c" fn gui_focus_req_set(n: Str) -> Void
+extern "c" fn gui_focus_req_clear() -> Void
+extern "c" fn gui_scroll_req_get() -> Str
+extern "c" fn gui_scroll_req_set(n: Str) -> Void
+extern "c" fn gui_scroll_req_clear() -> Void
 
 #[trusted]
 extern "c" fn gui_focus_node() -> I32
@@ -3624,6 +3633,15 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ival = bxv_show(bxv_eval(t, t.nbid[id], bind, itemvar, item))
                 }
             }
+            // GUI-14:程序化聚焦请求消费——bind 名匹配即聚焦(光标置尾,与
+            // click-to-focus 同口径);一次性,消费即清
+            if t.nbid[id] != "" {
+                if t.nbid[id] == gui_focus_req_get() {
+                    gui_focus_set(id)
+                    gui_caret_set(ival.len)
+                    gui_focus_req_clear()
+                }
+            }
             var ifoc: Bool = false
             if gui_focus_node() == id {
                 ifoc = true
@@ -3924,6 +3942,14 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var tfoc: Bool = false
             if gui_focus_node() == id {
                 tfoc = true
+            }
+            // GUI-14:程序化聚焦请求消费(textarea 同 input 口径)
+            if t.nbid[id] != "" {
+                if t.nbid[id] == gui_focus_req_get() {
+                    gui_focus_set(id)
+                    gui_caret_set(tval.len)
+                    gui_focus_req_clear()
+                }
             }
             var tshow: Str = tval
             var tph: Bool = false
@@ -4620,6 +4646,9 @@ fn rt_menu_render(hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
         i += 1
     }
     gui_close()
+    // GUI-14:未消费聚焦请求帧末过期(一次性语义;消费点在 input/textarea
+    // emit;挂真帧函数尾,勿落 rt_emit 每节点尾——GUI-18 同款坑位)
+    gui_focus_req_clear()
     return 0
 }
 
@@ -5378,6 +5407,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    rt_scroll_req_apply(t, rects, hits)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
     SetConfigFlags(8192)
@@ -5536,6 +5566,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         rects = List[I32]()
         rt_collect_rects(nfr, rects)
         gui_ime_feed_caret(rects, hits)
+        rt_scroll_req_apply(t, rects, hits)
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -5559,6 +5590,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    rt_scroll_req_apply(t, rects, hits)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
     SetConfigFlags(8192)
@@ -5589,6 +5621,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     rects = List[I32]()
                     rt_collect_rects(n, rects)
                     gui_ime_feed_caret(rects, hits)
+                    rt_scroll_req_apply(t, rects, hits)
                     rt_feed_input_w(t, rects, hits)
                 }
             }
@@ -5756,6 +5789,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         rects = List[I32]()
         rt_collect_rects(nfr, rects)
         gui_ime_feed_caret(rects, hits)
+        rt_scroll_req_apply(t, rects, hits)
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -6290,6 +6324,10 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
     var n: I32 = rt_draw_frame(t.t, bind, t.w, t.h, nh, hi, t.hov, t.actn)
     t.hits = nh
     t.hinst = hi
+    // GUI-14:滚动可见请求应用(headless 口径;rects 本帧现收,真窗在 collect 点)
+    var rc = List[I32]()
+    rt_collect_rects(n, rc)
+    rt_scroll_req_apply(t.t, rc, nh)
     return n
 }
 
@@ -7164,6 +7202,112 @@ fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32]
 
 // P-M3:开窗自动聚焦首个 input(成熟语言输入体验:启动即可打字,无需点击;
 // caret 置尾 = append 惯例,与 click-to-focus 一致)
+// ==================== GUI-14:程序化聚焦/滚动可见(§11.7;运行时本地态,按名寻址) ====================
+// 视图层发起的一次性请求:应用在 act 闭包内 gui_focus_req("m.email") /
+// gui_scroll_req("m.tail"),下一帧 emit 期按 bind 名匹配消费(光标置尾)/
+// collect 期定位于最近 scroll:1 容器(垂直钳位);未消费帧末过期。
+// 名 = 元素 bind 表达式原文(each 行内同名槽歧义,v1 限唯一名)。
+
+// 程序化聚焦:名 = 目标 input/textarea 的 bind 表达式原文
+pub fn gui_focus_req(name: Str) -> I32 {
+    gui_focus_req_set(name)
+    return 0
+}
+
+// 程序化滚动可见:名 = 目标元素 bind 表达式原文(唯一名;each 行 v2)
+pub fn gui_scroll_req(name: Str) -> I32 {
+    gui_scroll_req_set(name)
+    return 0
+}
+
+// 程序化滚动置位:应用自算内容几何(GUI-21 virtual 配方天然拥有行高×下标),
+// 负值钳 0;与 scroll_req 共享同一偏移槽
+pub fn gui_scroll_to(px: I32) -> I32 {
+    gui_scroll_set(px)
+    return 0
+}
+
+// collect 期应用:找名节点→最近 scroll:1 祖先→垂直可见性钳位调偏移
+//(×100 命令几何域,偏移域为 px,差值 /100);应用即清(未命中同清=一次性)
+fn rt_scroll_req_apply(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
+    // 落取即拷贝(+"" 分配新串):请求槽是 C 侧静态缓冲,clear 会穿透指针
+    var rq: Str = gui_scroll_req_get() + ""
+    if rq == "" {
+        return 0
+    }
+    gui_scroll_req_clear()
+    var n: I32 = -1
+    var i: I32 = 0
+    while i < t.ntag.len {
+        if t.nbid[i] == rq {
+            n = i
+            i = t.ntag.len
+        }
+        i += 1
+    }
+    if n < 0 {
+        return 0
+    }
+    // 父表一遍(nfc/ns 反向)
+    var par = List[I32]()
+    var pi: I32 = 0
+    while pi < t.ntag.len {
+        par.push(-1)
+        pi += 1
+    }
+    var ri: I32 = 0
+    while ri < t.ntag.len {
+        if t.nfc[ri] >= 0 {
+            var pp: I32 = ri
+            var ch: I32 = t.nfc[ri]
+            while ch >= 0 {
+                par[ch] = pp
+                ch = t.ns[ch]
+            }
+        }
+        ri += 1
+    }
+    // 目标无命中面(label 素面不推 hits)则取最近有盒祖先(区域语义)
+    var bn: I32 = n
+    var nb: I32 = rt_node_box(rects, hits, bn)
+    while nb < 0 && bn >= 0 {
+        bn = par[bn]
+        if bn >= 0 {
+            nb = rt_node_box(rects, hits, bn)
+        }
+    }
+    if nb < 0 {
+        return 0
+    }
+    // 最近 scroll:1 祖先
+    var s: I32 = par[bn]
+    while s >= 0 {
+        if gt_cls_prop(t.ncls[s], "scroll", "", t) != "" {
+            var sb: I32 = rt_node_box(rects, hits, s)
+            if sb >= 0 {
+                var nt: I32 = gui_cmd_y100(nb)
+                var nbm: I32 = nt + gui_cmd_h100(nb)
+                var st: I32 = gui_cmd_y100(sb)
+                var sbm: I32 = st + gui_cmd_h100(sb)
+                var delta: I32 = 0
+                if nt < st {
+                    delta = nt - st
+                } else {
+                    if nbm > sbm {
+                        delta = nbm - sbm
+                    }
+                }
+                if delta != 0 {
+                    gui_scroll_add(delta / 100)
+                }
+                return delta
+            }
+            return 0
+        }
+        s = par[s]
+    }
+    return 0
+}
 fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
     // 首个可编辑件(input 或 textarea,树序)——textarea 开窗即可打字,
     // 与成熟编辑器开箱即输入同口径
