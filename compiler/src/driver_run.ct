@@ -44,7 +44,9 @@ fn main() -> I32 {
             var lns = List[Str]()
             var cols = List[Str]()
             var pdiags = List[Str]()
-            scan4(s, toks, lns, cols, pdiags)
+            // doc-test 提升(§10.4):```c 围栏块 → 文件尾合成 test 块(driver_doctest.ct)
+            var s2 = doctest_lift(s)
+            scan4(s2, toks, lns, cols, pdiags)
             var cur = Atomic[I32](0)
             var file = p_file(toks, cur, lns, cols, pdiags)
             // 模块加载器(§2):use 解析 → 可见性 → 合并;无 use 时为无感直通

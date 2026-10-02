@@ -1,0 +1,100 @@
+// =====================================================================
+// driver_doctest.ct —— doc-test 提升(spec §10.4;tests/README.md §8)
+// `///` 文档注释中的 ```c 围栏代码块在 check/test/run 面提升为文件尾合成
+// test 块(名 doctest:L<围栏起始行>),与被文档符号同模块作用域编译并执行;
+// 断言失败 = 测试失败。原文件文本逐字节不动(行号零漂移),提升只做尾部
+// 追加。提升规则(钉子):
+//   · 围栏标签须恰为 `c`(README §8 格式锚;其余标签/裸 ``` = 散文不提升);
+//   · 围栏未闭合、或围栏中途出现非 /// 行 = 丢弃该块(回退散文语义);
+//   · 内容行 = 剥 `///` 前缀与紧随的一个空格,其余逐字节保留;
+//   · 仅提升入口文件(driver 侧 read_file 之后、scan4 之前);use 依赖包
+//     不提升;emit/fmt/doc/ast 驱动不接本面(发射/格式化/iface 不见合成块)。
+// =====================================================================
+fn doctest_lift(src: Str) -> Str {
+    var suf = ""
+    var blk = List[Str]()
+    var blkline: I32 = 0
+    var mode: I32 = 0
+    var i: I32 = 0
+    var lineno: I32 = 1
+    var n = src.len
+    while i < n {
+        var j = i
+        while j < n && byte_at(src, j) != 10 {
+            j += 1
+        }
+        // 行 [i, j):前导空白后是否 /// 文档行
+        var p = i
+        while p < j && or2(byte_at(src, p) == 32, byte_at(src, p) == 9) {
+            p += 1
+        }
+        var isdoc = false
+        if p + 2 < j {
+            if byte_at(src, p) == 47 && byte_at(src, p + 1) == 47 && byte_at(src, p + 2) == 47 {
+                isdoc = true
+            }
+        }
+        if mode == 1 {
+            if !isdoc {
+                // 围栏中途混入非文档行:未闭合,丢块
+                mode = 0
+                blk = List[Str]()
+            } else {
+                var cs = p + 3
+                if cs < j && byte_at(src, cs) == 32 {
+                    cs += 1
+                }
+                var e = j
+                while e > cs && or2(byte_at(src, e - 1) == 32, or2(byte_at(src, e - 1) == 9, byte_at(src, e - 1) == 13)) {
+                    e -= 1
+                }
+                if e - cs >= 3 && byte_at(src, cs) == 96 && byte_at(src, cs + 1) == 96 && byte_at(src, cs + 2) == 96 {
+                    // 围栏终止:落块(空块跳过)
+                    if blk.len > 0 {
+                        suf = suf + "test \"doctest:L" + blkline.to_string() + "\" \{\n"
+                        var k: I32 = 0
+                        while k < blk.len {
+                            suf = suf + blk[k] + "\n"
+                            k += 1
+                        }
+                        suf = suf + "}\n"
+                    }
+                    blk = List[Str]()
+                    mode = 0
+                } else {
+                    blk.push(byte_slice(src, cs, e))
+                }
+            }
+        } else {
+            if isdoc {
+                var cs = p + 3
+                if cs < j && byte_at(src, cs) == 32 {
+                    cs += 1
+                }
+                var e = j
+                while e > cs && or2(byte_at(src, e - 1) == 32, or2(byte_at(src, e - 1) == 9, byte_at(src, e - 1) == 13)) {
+                    e -= 1
+                }
+                if e - cs >= 3 && byte_at(src, cs) == 96 && byte_at(src, cs + 1) == 96 && byte_at(src, cs + 2) == 96 {
+                    // 围栏开启:标签须恰为 c
+                    var ts = cs + 3
+                    while ts < e && or2(byte_at(src, ts) == 32, byte_at(src, ts) == 9) {
+                        ts += 1
+                    }
+                    if e - ts == 1 && byte_at(src, ts) == 99 {
+                        mode = 1
+                        blkline = lineno
+                        blk = List[Str]()
+                    }
+                }
+            }
+        }
+        i = j + 1
+        lineno += 1
+    }
+    if suf.len == 0 {
+        return src
+    }
+    // 尾部追加(\n 保底:源末行无换行时先补终止)
+    return src + "\n" + suf
+}

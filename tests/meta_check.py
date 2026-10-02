@@ -95,6 +95,11 @@ def check_file(path: Path) -> list[str]:
         # doc_fix|doc_fix_neg:ctron doc 命令黄金夹具(闭源包分发线 S0.6/S0.7a),
         # 由 doc 套件直驱;不按主流 test 块规则元检查(同 gui/dist 泳道先例)。
         return errors
+    if relparts0 and relparts0[0] == "doctest":
+        # doctest/ 泳道:doc-test(§10.4)机制语料,tests/doctest/run.sh 直驱
+        # bin/ctron-cc/ctron-emit 双面 rc 期望(含故意失败件),非 test 块语义
+        # (gui/log 泳道先例);格式锚 00_doctest.ct 在根,走主流元检查。
+        return errors
     if len(relparts0) >= 3 and relparts0[0] == "lang" and relparts0[1] == "bench":
         # lang/bench:T32/T44 性能核(bench.sh 自驱,无 test 块语义;http/bench 先例)。
         return errors

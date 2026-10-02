@@ -79,7 +79,7 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 | 插值字段/方法链(`{clock.now()}`) | ❌ | |
 | 多行首点链式排版(§1.6 新规则) | ❌ | **v0.4 新规则无测试** |
 | 比较不可链(parse 负例) | ❌ | 需先注册 E1xxx 码 |
-| doc-test(`///` 代码块) | ❌ | 格式亦未定义 |
+| doc-test(`///` 代码块) | ✅ | 机制落库(driver_doctest.ct 提升制,1003):锚 `00_doctest.ct`(多块+非 c 标签跳过)+`doctest/corpus/` 六件(执行/编译负例、标签与丢弃纪律、行号零漂移 JSON span 锚、emit 面盲区)+`doctest/run.sh` 九断言;C 宿主对照不提升(登记) |
 
 ## §2 名字与模块(8 项:❌8 —— 整章未覆盖)
 
@@ -143,7 +143,7 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 1. **多文件测试格式未定义**——§2 整章(8 项)+ FFI 依赖它。需在 `tests/README.md` 定义:目录即项目(`tests/modules/xxx/{Ctron.toml,src/...}`)、`//@ fail` 归属文件行号、neg 判定范围。
 2. **E1xxx 解析错误码零注册**——比较不可链等 parse 负例无法编写;需先扩注册表(如 E1001 通用语法错误)。
-3. **doc-test 无格式样例**——`///` 代码块的编译运行语义需要首个样例钉死。
+3. ~~doc-test 无格式样例~~ **已解决(2026-10-03)**——格式由 README §8 钉死(围栏标签须 `c`、丢弃纪律、行号零漂移),机制落库 `compiler/src/driver_doctest.ct`(check/test/run 驱动提升制);锚 `00_doctest.ct`+语料 `doctest/`。
 4. (规范小缺口,审计中发现)数组字面量 `[1,2,3]` 的类型归属(`T[N]` 直标还是先 `T[N]` 再退化)未明确。
 
 ## 补测 backlog(26 个文件,按优先级)
