@@ -1,0 +1,28 @@
+// tests/gui/s64_grid —— GUI-26 grid 布局 v1:GROW 均分网格行配方
+// (Clay v0.14 无 Grid API——核查结论入册;v1=hbox 内多 GROW 子自动等宽,
+//  行=组件实例(实参两列值);多列数据驱动(each 行内取平行列表第 i 项)
+//  依赖 GUI-13 下标,登记 v2)
+view Row (a: Str, b: Str) {
+  <hbox class="grow">
+    <label class="cell">{a}</label>
+    <label class="cell2">{b}</label>
+  </hbox>
+}
+view Root {
+  <vbox class="root">
+    <Row a: "名称" b: "大小"/>
+    <Row a: "main.ct" b: "12 KB"/>
+    <Row a: "lib.ct" b: "48 KB"/>
+    <hbox class="grow">
+      <spacer class="col"/>
+      <spacer class="col"/>
+    </hbox>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 2 padding: 8 }
+style grow { direction: row gap: 4 h: 26 }
+style cell { fg: TEXT size: 13 h: 22 bg: SURFACE }
+style cell2 { fg: TEXT_MUTED size: 13 h: 22 bg: ELEVATED }
+style col { h: 22 bg: BORDER }
+style state { fg: "#22c55e" h: 22 }
