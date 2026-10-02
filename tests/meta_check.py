@@ -102,6 +102,9 @@ def check_file(path: Path) -> list[str]:
         # http/bench|fuzz:性能/模糊驱动(bench.sh、fuzz/run.sh 自驱,非 test 块语义;
         # 同 gui/ 泳道"bench 夹具先例")。
         return errors
+    if relparts0 and relparts0[0] == "w7" and "src" in relparts0:
+        # w7 泳道(T34 栈经济):tests/w7/run.sh 驱动,非 test 块语义(gc/ 泳道先例)。
+        return errors
     if relparts0 and relparts0[0] == "gc" and "src" in relparts0:
         # gc 包 main:由 tests/gc/run.sh 双档(gc=on/gc=off)驱动,非 test 块语义
         # (net/ 泳道先例;T29)。

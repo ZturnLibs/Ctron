@@ -1,0 +1,29 @@
+// tests/w7/stack_ovf —— T34 最小符合径锚:协程栈触顶 panic(§7.1)
+// CTRON_RT_STACK_KB=64 小栈钉死,任务内深递归(每帧 4KB 局部数组)→ guard 命中
+// → 明确诊断 "stack overflow"(替代裸段错误);消息经 stderr,rc=101。
+fn depth(n: I64, pad: I64) -> I64 {
+    var buf: I64[512] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var i: I64 = 0
+    while i < 512 {
+        buf[i] = n + i
+        i += 1
+    }
+    buf[0] = n
+    buf[511] = pad
+    if n > 0 {
+        var r = depth(n - 1, buf[0] + buf[511])
+        return r + buf[0]
+    }
+    return buf[511]
+}
+
+fn main() -> I32 {
+    scope { |sc|
+        let t = sc.spawn(|| {
+            return depth(100000, 1)
+        })
+        t.join()
+    }
+    println("no-overflow")
+    return 0
+}

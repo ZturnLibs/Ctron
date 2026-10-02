@@ -891,3 +891,14 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
 - 影响:smoke [3/9] emit 臂在此案阻塞(门禁不可完成);CI 将以超时显红。
 - 归属:P0-A′ 泛型特化 seen 集/自编译期宿主静默崩(trans_stmt 绑定块二分在案,
   36c9dda2 值模型型别二分根因域)——归 P0-A′/T53 泳道,本线不越界修。
+
+**2026-10-02 T34 最小符合径落地**(spec-gap W7;§7.1):
+- 「大栈+触顶 panic」字面闭环:rt 栈缺省已 1MB(CTRON_RT_STACK_KB 4–1024 可配,存量)
+  + guard 页(存量)+ **新增溢出诊断链**:sigaltstack(主线程+每 worker 入口)+SIGSEGV/
+  SIGBUS 双号 handler+g_all 定位 fault 所属协程栈→明确诊断 "task stack overflow"
+  后终止(rc=101);非协程栈(主线程)链回默认处置。
+- 新锚 tests/w7/stack_ovf(w7 泳道新立):64KB 小栈钉死+深递归 4KB 活帧→触顶诊断。
+- 坑位实录:①SA_ONSTACK 线程局部,worker 入口须各自安装(缺=handler 在已打穿栈上跑
+  →SIGILL);②darwin guard 命中 SIGBUS/SIGSEGV 双号;③SROA 删未全用数组,锚须全槽
+  循环写;④尾调用 -O1 转迭代,递归压栈须非尾形。
+- net 双矩阵 18/18;suite 99/99。指针修复/增长拷贝/work-stealing 列 P9 正案另册。
