@@ -1,0 +1,13 @@
+// tests/gui/s63_ellipsis —— GUI-22 文本单行省略:ellipsis 标记 + max_w 预算
+// (逐码点截断+…;断言取跨测量路径稳定性质——截断发生/省略号结尾/短文本原样)
+view Root {
+  <vbox class="root">
+    <label class="long" ellipsis="1">这是一段超长的文本内容需要被截断处理</label>
+    <label class="short">短文本</label>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style long { fg: TEXT size: 13 h: 20 ellipsis: 1 max_w: 100 }
+style short { fg: TEXT_MUTED size: 13 h: 20 }
+style state { fg: "#22c55e" h: 22 }

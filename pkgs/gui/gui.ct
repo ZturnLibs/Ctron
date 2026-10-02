@@ -3176,6 +3176,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if ff2 < 0 {
                 ff2 = 0
             }
+            // GUI-22:ellipsis 标记+max_w 预算 → 单行省略(行钳制登记 v2)
+            if gt_cls_prop(c, "ellipsis", "", t) != "" {
+                var mw2: Str = gt_cls_prop(c, "max_w", "", t)
+                if mw2 != "" {
+                    txt = rt_ellipsis(txt, gs2i(mw2), sz, ff2 * 10000 + fw2)
+                }
+            }
             gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
         if tag == "input" {
@@ -6174,6 +6181,40 @@ fn rt_drop_fire(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         i += 1
     }
     return 1
+}
+
+// GUI-22:文本测量(直调 ft 实测;-1=无字体/FT_OFF 回启发式字节式)
+fn rt_meas_w(s: Str, px: I32, wt: I32) -> I32 {
+    var wi: I32 = gui_ft_measure_n_wt(s, s.len, px, wt, 0)
+    if wi >= 0 {
+        return wi
+    }
+    return s.len * px * 55 / 100
+}
+
+// GUI-22:单行省略——超 maxw 预算逐码点截断+…(切点只在 UTF-8 首字节;
+// 测量轮直调,启发式回退与黄金口径同式)
+fn rt_ellipsis(s: Str, maxw: I32, px: I32, wt: I32) -> Str {
+    if maxw <= 0 {
+        return s
+    }
+    var ew: I32 = rt_meas_w("…", px, wt)
+    if rt_meas_w(s, px, wt) + ew <= maxw {
+        return s
+    }
+    var cut: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b / 64 != 2 {
+            if rt_meas_w(byte_slice(s, 0, i), px, wt) + ew > maxw {
+                break
+            }
+            cut = i
+        }
+        i += 1
+    }
+    return byte_slice(s, 0, cut) + "…"
 }
 
 // GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧
