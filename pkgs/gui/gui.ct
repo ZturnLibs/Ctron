@@ -2022,6 +2022,23 @@ fn gt_cls_prop(classes: Str, prop: Str, dflt: Str, t: GuiTree) -> Str {
     }
     return dflt
 }
+
+// GUI-16 值驱动宽高(v1):维度值 "{expr}" 形态逐帧求值——style 值以引号串
+// 写花括号表达式(w: "{n}"),裸词保持字面量(词法 gword 不吃花括号,引号串
+// 经 gstr 原样入表);产出经 gs2i 转整。v1 不做缓存:即时模式每帧重放,
+// 小表达式成本可忽略(样式折叠缓存设计留完整面)。
+fn gt_dim_v(t: GuiTree, v: Str, bind: fn(List[Str]) -> Void) -> I32 {
+    if v.len >= 3 {
+        if byte_at(v, 0) == 123 && byte_at(v, v.len - 1) == 125 {
+            return gs2i(bxv_eval(t, byte_slice(v, 1, v.len - 1), bind))
+        }
+    }
+    return gs2i(v)
+}
+
+fn gt_dim(t: GuiTree, c: Str, prop: Str, dflt: Str, bind: fn(List[Str]) -> Void) -> I32 {
+    return gt_dim_v(t, gt_cls_prop(c, prop, dflt, t), bind)
+}
 // ==================== 运行时(绑定求值/布局发射/命中/循环) ====================
 
 fn rt_col_r(p: I32) -> I32 {
@@ -2259,6 +2276,14 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     }
     if path == "dragpy" {
         return "i:" + gui_dgev_py().to_string()
+    }
+    // GUI-17:绝对指针内建(注入期受控)——permille 相对武装盒在分隔条/窗格
+    // 场景会饱和(盒即非量程),布局拖拽以绝对坐标为值源
+    if path == "mousex" {
+        return "i:" + gui_mouse_x().to_string()
+    }
+    if path == "mousey" {
+        return "i:" + gui_mouse_y().to_string()
     }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
@@ -2972,8 +2997,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         } else {
             gui_alpha(0)
         }
-        gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
-                2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
+        gui_cfg(0, 0, 0, 0, 1, 1, 2, gt_dim(t, c, "w", "66", bind),
+                2, gt_dim(t, c, "h", "54", bind), bgp)
         var fgs: Str = gt_st_prop(c, "fg", "#ffffff", t, st)
         if dis {
             if gt_cls_prop(c, "disabled_fg", "", t) == "" {
@@ -3052,8 +3077,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     cbgp = g_parse_color("#3a3a44")
                 }
             }
-            gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "28", t)),
-                    2, gs2i(gt_cls_prop(c, "h", "28", t)), cbgp)
+            gui_cfg(0, 0, 0, 0, 1, 1, 2, gt_dim(t, c, "w", "28", bind),
+                    2, gt_dim(t, c, "h", "28", bind), cbgp)
             if ck {
                 var cfp: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
                 gui_text_w("x", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
@@ -3072,7 +3097,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ax = 1
                 }
             }
-            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gs2i(gt_cls_prop(c, "h", "40", t)), 0)
+            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gt_dim(t, c, "h", "40", bind), 0)
             var txt: Str = t.npre[id]
             if t.nbid[id] != "" {
                 if t.nbid[id] == itemvar {
@@ -3694,7 +3719,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var hs: Str = gt_cls_prop(c, "h", "", t)
             if hs != "" {
                 hmode = 2
-                hval = gs2i(hs)
+                hval = gt_dim_v(t, hs, bind)
             }
             var bgp2: I32 = 0
             var bgv2: Str = gt_st_prop(c, "bg", "", t, st)
@@ -5626,6 +5651,37 @@ pub fn d_drag(t: Box[Driver], x1: I32, y: I32, x2: I32, bind: fn(List[Str]) -> V
     gui_dgev_setnode(fn0)
     ev_fire(t.t, de, bind, act)
     gui_mouse_override(x2, y)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_clear()
+    gui_dgev_end()
+    return 0
+}
+
+// 垂直拖拽(headless):x 固定,y1→y2;两帧口径与 d_drag 同源(GUI-17 分隔条)
+pub fn d_dragv(t: Box[Driver], x: I32, y1: I32, y2: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var fn0: I32 = rt_hover_node(rc2, t.hits, x, y1)
+    if fn0 < 0 {
+        panic("gui test: 拖拽起点未命中")
+        return -1
+    }
+    var de: Str = rt_in_expr(t.t, fn0, "drag")
+    if de == "" {
+        panic("gui test: 元素无 on:drag node=" + fn0.to_string() + " tag=" + t.t.ntag[fn0])
+        return -1
+    }
+    var bi: I32 = rt_node_box(rc2, t.hits, fn0)
+    if bi < 0 {
+        panic("gui test: 拖拽元素无盒")
+        return -1
+    }
+    gui_mouse_override(x, y1)
+    gui_dgev_begin(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    gui_dgev_setnode(fn0)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_override(x, y2)
     ev_fire(t.t, de, bind, act)
     gui_mouse_clear()
     gui_dgev_end()
