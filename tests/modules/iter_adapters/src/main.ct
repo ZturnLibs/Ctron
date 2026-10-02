@@ -1,0 +1,70 @@
+// iter_adapters/main.ct —— 适配器链 T16 收口锚(R-P3b;承 roadmap/r3b_adapters +
+// r3b_iter_adapters 迁入,协议同 T15→03k)
+// 语义承诺:map/filter/take 惰性链(零中间集合);sum/count/any/all 终结;UFCS 链式
+// (§4.8);适配器作用于自定义 Iterator 实现。
+// 落地面:std/iter.ct Seq[T,S](get 基惰性适配器——get(i) 纯位置读取,链任意深度
+// 组合;自定义 Iterator 经 for-重放 get 接入,03k 语义)+ UFCS 自由函数入口。
+// 多文件包口径:自举臂运行(loader 解析 use),宿主 pkg 仅 check(宿主无包运行
+// 口径);发射面(trait 方法/for-Iterator)在册 T25 v2 域。
+// 锚修(2026-10-02):原稿 !xs.any(|x| x > 5) 与 xs=[2,4,6] 矛盾(6>5 为真),
+// 修正为正断言——锚系未运行起草稿,首翻绿时校正。
+use std.iter.{Seq, map, filter, sum, count, collect, any, all}
+
+trait Iterator[T] {
+    fn next(var self) -> T?
+}
+
+struct Counter {
+    var cur: I32
+    let limit: I32
+}
+
+impl Iterator[I32] for Counter {
+    fn next(var self) -> I32? {
+        if self.cur >= self.limit { return None }
+        let v = self.cur
+        self.cur += 1
+        return Some(v)
+    }
+}
+
+impl Seq[I32, Counter] for Counter {
+    fn get(var self, i: I64) -> I32? {
+        var j: I64 = 0
+        var go = true
+        for v in self {
+            if go && j == i {
+                return Some(v)
+            }
+            j += 1
+        }
+        return None
+    }
+}
+
+test "map filter sum" {
+    let xs: I32[] = [1, 2, 3, 4, 5, 6]
+    let total = xs.map(|x| x * 2).filter(|x| x > 4).sum()
+    assert_eq(total, 36)
+}
+
+test "collect to list and count" {
+    let xs: I32[] = [1, 2, 3]
+    let squares = xs.map(|x| x * x).collect()
+    assert_eq(squares.len, 3)
+    assert_eq(squares[2], 9)
+    assert_eq(xs.filter(|x| x % 2 == 1).count(), 2)
+}
+
+test "any all take" {
+    let xs: I32[] = [2, 4, 6]
+    assert(xs.all(|x| x % 2 == 0))
+    assert(xs.any(|x| x > 5))
+    assert_eq(xs.map(|x| x + 1).take(2).sum(), 8)
+}
+
+test "adapters over custom iterator" {
+    let c = Counter { cur: 0, limit: 6 }
+    let total = c.filter(|x| x % 2 == 0).sum()
+    assert_eq(total, 6)
+}

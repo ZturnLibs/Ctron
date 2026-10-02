@@ -675,6 +675,31 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
 - **suite 89/89 双线——主套件首次 100%**(自举+宿主全绿);cargo 14/0;meta/db/net/http
   基线全维持(唯一红=http frm_auth_a_jwt interp OOM 预存在,归 T31 arena 债)。
 
+**2026-10-02 T16 UFCS 链式收口**(spec-gap W3;§4.8/R-P3b):
+- **std/iter.ct v2**:`trait Seq[T, S]` get 基惰性适配器(get(i)=纯位置读取,无内部状态;
+  map/filter/take/sum/count/collect/any/all 默认方法,match 抽值)+ RawSeq/MapSeq/FilterSeq/
+  TakeSeq 泛型 struct(类型正确 impl 形 `impl Seq[T, MapSeq[T,S]] for MapSeq[T,S]`——trait 的
+  S 实参=具体自身型,默认方法 `it: S ← self` 才对齐)+ 数组 UFCS 自由函数入口(pub fn
+  map/filter/take 包装 RawSeq;sum/count/collect/any/all 快路径直终结)。0928 函数面
+  (iter_map/maparr_* 前缀族)零消费者,整体替换。
+- **get 基裁决**:interp 逐调用拷贝接收者,var-self 写回在册(T15 发射臂登记同源),
+  next 基适配器叠适配器上游永不推进(探针实证挂死);get(i) 无状态,链任意深度组合
+  安全。自定义 Iterator 经 for-重放 get 接入(03k env 线程化语义)。fn 值字段调用须先绑
+  局部(`let g = self.f; g(x)`——直接 `self.f(x)` 成员调用不识别)。
+- **锚迁 modules/iter_adapters**(带 use 多文件包:自举臂运行+宿主 pkg check;宿主无包
+  运行口径,单文件 use 不合并,07a/06f 的 std.fs/parallel 走内建命名空间故单文件可绿)。
+  roadmap_suite.rs 两表行按翻转协议删除。锚修:原稿 `!xs.any(|x| x>5)` 与 xs=[2,4,6]
+  矛盾(6>5 为真),首翻绿校正为正断言。
+- **在册债**:①发射臂 trait 方法调用未发射(t_bump/t_hi 未定义,04g/p11 实证)+ for-over-
+  Iterator 未发射(03k emit 报 ct_stmt:for)——T25 v2 域;②var-self 写回语义(interp p6/
+  p7/p8 实证不写回)= 泛 var 引用语义系统改造;③C 宿主解析器不认 pub trait/pub struct
+  (TOK_PUB 只路由 fn);④自宿装载器 pub trait/pub struct+泛型字面量经 use 即坏(E2020
+  错判/E5030 幽灵 decl 名"T")——本件以非 pub trait(T26 恒可见)+非 pub struct 绕行,
+  loader×pub 为独立 bug 待修。
+- **suite 99/99 双臂**(含新 modules 用例;96→99 为并行泳道增量);meta/manifest 四线
+  对拍全绿;modules 段 dup_static(宿主 neg)/use_alias_nat(自举 neg)两红为对端在飞
+  WIP/既有账,与本件无涉。
+
 **2026-09-28 T21 宿主检查面红账五件销账**(spec-gap W4):
 - r6b(E4050 类持资源字段)/r6c(as[U64] 负源模 2^64)/r6d(W8050)/r6e(E4040)/r6f(E6010)
   五锚迁入主套件 05h/03l/05i/05j/05k;r6d/r6e 宿主先前行已绿(免改)。

@@ -209,12 +209,14 @@
 
 ### T16 · 惰性适配器链(r3b_adapters)
 
-- **预估:** 1–1.5 d。**前置:** T15。**状态:** 🟡 部分完成(2026-09-28;std/iter.ct 函数面交付;UFCS 链式=函数重载/泛型 trait 分发需求,皆 T25 域阻塞,r3b 两锚维持红)
+- **预估:** 1–1.5 d。**前置:** T15。**状态:** ✅ 已完成(2026-10-02;Seq[T,S] get 基惰性适配器 + UFCS 入口,锚迁 modules/iter_adapters;suite 99/99 双臂;发射面在册 T25 v2 域)
 - **目标:** `iter.map/filter/take/...` 适配器作用 Iterator 之上,惰性、单态化零成本;翻转 `tests/roadmap/r3b_adapters.ct`。
 - **范围:** `std/`(新 `iter.ct` 或随 T15 文件);纯 stdlib 实现(适配器 = 持 Iterator 的 struct + impl Iterator),**编译器零改动为设计目标**。
 - **要点:** 每适配器一个泛型 struct(如 `struct MapIter[A, B] { it: A, f: fn(A) -> B? }`——fn 值作字段,函数类型字段面 §3.1 已有);惰性 = next 时才调 f;单态化自动获得零成本。
 - **验收:** r3b_adapters 翻转;适配器组合冒烟(map+filter+take 链);发射产物含特化(链不塌 box)。
 - **坑位:** 闭包捕获语义=拷贝终态(T27 已裁决转正),适配器内 fn 字段只存纯函数/捕获闭包——锚样例避免依赖按引用共享;若锚头注要求引用捕获,该断言挂 T27 后回切。
+- **落地形态(2026-10-02 收口)**:`std/iter.ct` v2 = `trait Seq[T, S]`(get 基:fn get(var self, i) -> T? 纯位置读取 + map/filter/take/sum/count/collect/any/all 默认方法)+ RawSeq/MapSeq/FilterSeq/TakeSeq 泛型 struct(类型正确 impl 形 `impl Seq[T, MapSeq[T,S]] for MapSeq[T,S]`)+ 数组 UFCS 自由函数入口(`pub fn map(xs: I32[], f)` 等,§4.8 首参接收者)。**get 基而非 next 基的裁决**:interp 逐调用拷贝接收者,var-self 写回语义在册(T15 发射臂登记同源),next 基适配器叠适配器永不推进(p12 实证挂死);get(i) 无状态,链任意深度组合安全。自定义 Iterator 经 for-重放 get 接入(03k 语义)。锚迁 `tests/modules/iter_adapters`(带 use 的多文件包:自举臂运行+宿主 pkg check——宿主无包运行口径,单文件 use 不合并)。锚修:原稿 `!xs.any(|x| x>5)` 与 xs=[2,4,6] 矛盾,首翻绿校正为正断言。
+- **余债登记**:①发射臂 trait 方法调用未发射(t_bump/t_hi 未定义,04g/p11 实证——T25 v1 仅 &Trait 对象面)+ for-over-Iterator 未发射(03k emit `ct_stmt:for iter:Ident`);②var-self 写回语义(interp p6/p7/p8 实证不写回,for 糖 env 线程化为唯一特路;发射臂按值传 mutation 丢,T15 已登记)= 泛 var 引用语义系统改造;③C 宿主解析器不认 `pub trait`/`pub struct`(parse_decl TOK_PUB 只路由 fn);④自宿装载器 `pub trait`/`pub struct`+泛型字面量经 use 合并即坏(E2020 错判/E5030 幽灵)——std/iter.ct 以非 pub trait(T26 恒可见口径)+非 pub struct 绕行,④为 loader×pub 独立 bug 待修;⑤Rust 参考臂 get 基链覆盖随 T25 v2 后评估(roadmap_suite 表行已按翻转协议删除)。
 
 ### T17 · std/iter 模块归位 + parallel 迁 stdlib(§7.7)
 
@@ -594,7 +596,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T13 | Atomic 真原子 | W2 | **已完成**(0928,__atomic SEQ_CST 三面,双矩阵精确 200k) | 见 git |
 | T14 | Channel 去限制 | W2 | **已完成**(0928,三片 0e004a2/b6d26fe/369b9bc;pool 消费方迁移随 db 泳道) |<!-- 并行注意:远端 main 另有编译器线平行实现(ba28f4b 链 614a5c8 堆环+dac9aec interp 克隆),两史分叉待裁决合并 --> 见 git |
 | T15 | Iterator trait | W3 | **已完成**(0928,三线 interp;发射臂 var-self 引用语义在册) | 见 git |
-| T16 | 适配器链 | W3 | **部分完成**(0928,std/iter.ct 函数面;UFCS 链=T25 阻塞在册) | 见 git |
+| T16 | 适配器链 | W3 | **已完成**(1002,Seq[T,S] get 基惰性适配器+UFCS 入口;锚迁 modules/iter_adapters;suite 99/99;发射面/var-self 在册) | 见 git |
 | T17 | std/iter 归位 | W3 | **已完成**(0928,06f 翻转;suite 89/89 首次 100%) | 见 git |
 | T18 | 列级 span | W4 | **已完成**(0928,解析错精确 LINE:COL;sem 行对列 1) | 见 git |
 | T19 | fix-it 首批 | W4 | **已完成**(0928,E3030 精确 edit+E2020/W8010 note) | 见 git |
@@ -660,7 +662,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 |---|---|---|
 | W1(T01-T08) | 8/8 | bit 模块/模式守卫/StringBuilder/W 码锚/行尾点/E6030/E6040/T08 裁决 |
 | W2(T09-T14) | 6/6 | resolve 多记录/sleep_ns+虚拟钟/caps 细分/gzip/Atomic 真原子/Channel 三片 |
-| W3(T15-T17) | 3/3 | Iterator for 三线/std/iter/06f 翻转(T16 部分:UFCS 链阻塞) |
+| W3(T15-T17) | 3/3 | Iterator for 三线/std/iter/06f 翻转(T16 收口:Seq get 基+UFCS,发射面在册) |
 | W4(T18-T23) | 6/6 | 列级 span/fix-it/deterministic+缓存/宿主红账全清 |
 | W5(T24-T25) | 2/4 | 虚表 ABI 设计/&Trait 发射侧动态分发(vtable+thunk+装箱+分发) |
 

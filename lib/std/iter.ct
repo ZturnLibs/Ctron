@@ -1,30 +1,222 @@
-// std/iter.ct —— 迭代器适配器与终结器(§3.8.2 Iter/§4;T16/T17)
-// 形态:纯 Ctron UFCS 自由函数(链式 c.filter(f).sum());惰性=适配器仅
-// 记录谓词/变换,终结器(for/sum/count/...)驱动迭代。
-// 消费面:数组 T[N]/T[](a 码)与 List(c 码)经 collect 统一;自定义 Iterator
-// (T15)经 for 直迭代——适配器组合(T16 后续)。
+// std/iter.ct —— 迭代器适配器链(§3.8.2/§4.8 UFCS;T16 收口)
+// 形态:Seq[T, S] trait(get 基惰性适配器)+ UFCS 自由函数入口(数组接收者)。
+// get(i) = 纯位置读取(无内部状态推进),链任意深度组合;终结器(sum/collect/
+// count/any/all)索引驱动逐元素拉取,零中间集合。数组另有快路径直终结入口。
+// v0 语义注记:next 基适配器在 var-self 写回语义落库前不可组合(interp 逐调用
+// 拷贝接收者,p12 实证);自定义 Iterator 经 for-重放 get(03k 语义)接入同一面。
+// 发射面:trait 方法调用与 for-over-Iterator 发射在册(T25 v2 域),本面按 03k
+// 先例以双 interp 口径入主套件。
 // since: std-0.6 stability: experimental
 
-// ---- 数组/切片终结器(直接索引循环;零中间集合) ----
+// ---- 链面 trait:S = 接收者自身型(适配器持上游而设);T = 元素型 ----
 
-pub fn iter_sum(xs: I32[], n: I64) -> I64 {
+trait Seq[T, S] {
+    fn get(var self, i: I64) -> T?
+    fn map(var self, f: fn(T) -> T) -> MapSeq[T, S] {
+        return MapSeq { it: self, f: f }
+    }
+    fn filter(var self, p: fn(T) -> Bool) -> FilterSeq[T, S] {
+        return FilterSeq { it: self, p: p }
+    }
+    fn take(var self, k: I64) -> TakeSeq[T, S] {
+        return TakeSeq { it: self, k: k }
+    }
+    fn sum(var self) -> I64 {
+        var t: I64 = 0
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    t += v
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return t
+    }
+    fn count(var self) -> I64 {
+        var c: I64 = 0
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    c += 1
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return c
+    }
+    fn collect(var self) -> List[T] {
+        let out = List[T]()
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    out.push(v)
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return out
+    }
+    fn any(var self, p: fn(T) -> Bool) -> Bool {
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    if p(v) {
+                        return true
+                    }
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return false
+    }
+    fn all(var self, p: fn(T) -> Bool) -> Bool {
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    if !p(v) {
+                        return false
+                    }
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return true
+    }
+}
+
+// ---- 适配器 struct(get 变换;泛型单态化零成本) ----
+
+struct RawSeq[S, T] {
+    let src: S
+}
+
+struct MapSeq[T, S] {
+    let it: S
+    let f: fn(T) -> T
+}
+
+struct FilterSeq[T, S] {
+    let it: S
+    let p: fn(T) -> Bool
+}
+
+struct TakeSeq[T, S] {
+    let it: S
+    let k: I64
+}
+
+impl Seq[T, RawSeq[S, T]] for RawSeq[S, T] {
+    fn get(var self, i: I64) -> T? {
+        if i < self.src.len {
+            return Some(self.src[i])
+        }
+        return None
+    }
+}
+
+impl Seq[T, MapSeq[T, S]] for MapSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        let g = self.f
+        match self.it.get(i) {
+            Some(v) => { return Some(g(v)) }
+            None => { return None }
+        }
+    }
+}
+
+impl Seq[T, FilterSeq[T, S]] for FilterSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        let g = self.p
+        var seen: I64 = 0
+        var j: I64 = 0
+        var go = true
+        while go {
+            match self.it.get(j) {
+                Some(v) => {
+                    if g(v) {
+                        if seen == i {
+                            return Some(v)
+                        }
+                        seen += 1
+                    }
+                    j += 1
+                }
+                None => { go = false }
+            }
+        }
+        return None
+    }
+}
+
+impl Seq[T, TakeSeq[T, S]] for TakeSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        if i < self.k {
+            return self.it.get(i)
+        }
+        return None
+    }
+}
+
+// ---- 数组入口(UFCS:xs.map(f) 以接收者填首参;§4.8) ----
+
+pub fn map(xs: I32[], f: fn(I32) -> I32) -> MapSeq[I32, RawSeq[I32[], I32]] {
+    return MapSeq { it: RawSeq { src: xs }, f: f }
+}
+
+pub fn filter(xs: I32[], p: fn(I32) -> Bool) -> FilterSeq[I32, RawSeq[I32[], I32]] {
+    return FilterSeq { it: RawSeq { src: xs }, p: p }
+}
+
+pub fn take(xs: I32[], k: I64) -> TakeSeq[I32, RawSeq[I32[], I32]] {
+    return TakeSeq { it: RawSeq { src: xs }, k: k }
+}
+
+// ---- 数组直终结(快路径:零包装直接索引循环) ----
+
+pub fn sum(xs: I32[]) -> I64 {
     var t: I64 = 0
     var i: I64 = 0
-    while i < n {
+    while i < xs.len {
         t += xs[i]
         i += 1
     }
     return t
 }
 
-pub fn iter_count(xs: I32[], n: I64) -> I64 {
-    return n
+pub fn count(xs: I32[]) -> I64 {
+    return xs.len
 }
 
-pub fn iter_any(xs: I32[], n: I64, f: fn(I32) -> Bool) -> Bool {
+pub fn collect(xs: I32[]) -> List[I32] {
+    let out = List[I32]()
     var i: I64 = 0
-    while i < n {
-        if f(xs[i]) {
+    while i < xs.len {
+        out.push(xs[i])
+        i += 1
+    }
+    return out
+}
+
+pub fn any(xs: I32[], p: fn(I32) -> Bool) -> Bool {
+    var i: I64 = 0
+    while i < xs.len {
+        if p(xs[i]) {
             return true
         }
         i += 1
@@ -32,118 +224,15 @@ pub fn iter_any(xs: I32[], n: I64, f: fn(I32) -> Bool) -> Bool {
     return false
 }
 
-pub fn iter_all(xs: I32[], n: I64, f: fn(I32) -> Bool) -> Bool {
+pub fn all(xs: I32[], p: fn(I32) -> Bool) -> Bool {
     var i: I64 = 0
-    while i < n {
-        if !f(xs[i]) {
+    while i < xs.len {
+        if !p(xs[i]) {
             return false
         }
         i += 1
     }
     return true
-}
-
-pub fn iter_collect(xs: I32[], n: I64) -> List[I32] {
-    var out = List[I32]()
-    var i: I64 = 0
-    while i < n {
-        out.push(xs[i])
-        i += 1
-    }
-    return out
-}
-
-// ---- 数组适配器(惰性包装 struct;终结时单遍驱动) ----
-
-pub struct MapArr {
-    var src: I32[]
-    var n: I64
-    var f: fn(I32) -> I32
-}
-
-pub fn iter_map(xs: I32[], n: I64, f: fn(I32) -> I32) -> MapArr {
-    return MapArr { src: xs, n: n, f: f }
-}
-
-pub fn maparr_sum(m: MapArr) -> I64 {
-    var t: I64 = 0
-    var i: I64 = 0
-    while i < m.n {
-        t += m.f(m.src[i])
-        i += 1
-    }
-    return t
-}
-
-pub fn maparr_count(m: MapArr) -> I64 {
-    return m.n
-}
-
-pub fn maparr_collect(m: MapArr) -> List[I32] {
-    var out = List[I32]()
-    var i: I64 = 0
-    while i < m.n {
-        out.push(m.f(m.src[i]))
-        i += 1
-    }
-    return out
-}
-
-pub struct FilterArr {
-    var src: I32[]
-    var n: I64
-    var f: fn(I32) -> Bool
-}
-
-pub fn iter_filter(xs: I32[], n: I64, f: fn(I32) -> Bool) -> FilterArr {
-    return FilterArr { src: xs, n: n, f: f }
-}
-
-pub fn filterarr_sum(fa: FilterArr) -> I64 {
-    var t: I64 = 0
-    var i: I64 = 0
-    while i < fa.n {
-        if fa.f(fa.src[i]) {
-            t += fa.src[i]
-        }
-        i += 1
-    }
-    return t
-}
-
-pub fn filterarr_count(fa: FilterArr) -> I64 {
-    var c: I64 = 0
-    var i: I64 = 0
-    while i < fa.n {
-        if fa.f(fa.src[i]) {
-            c += 1
-        }
-        i += 1
-    }
-    return c
-}
-
-pub struct TakeArr {
-    var src: I32[]
-    var n: I64
-    var k: I64
-}
-
-pub fn iter_take(xs: I32[], n: I64, k: I64) -> TakeArr {
-    if k > n {
-        return TakeArr { src: xs, n: n, k: k }
-    }
-    return TakeArr { src: xs, n: k, k: k }
-}
-
-pub fn takearr_sum(ta: TakeArr) -> I64 {
-    var t: I64 = 0
-    var i: I64 = 0
-    while i < ta.n {
-        t += ta.src[i]
-        i += 1
-    }
-    return t
 }
 
 // ---- T17:parallel 域面汇聚(§7.7 std.iter 归位;前奏内建薄包装) ----

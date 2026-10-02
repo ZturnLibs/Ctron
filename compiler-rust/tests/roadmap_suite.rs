@@ -41,8 +41,10 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         // ---- R-P3 闭包/迭代器/模式 ----
         ("r3a_capture.ct", "R-P3a", Status::Green),
         ("r3a_capture_var.neg.ct", "R-P3a", Status::NegPending("E3070")),
-        ("r3b_adapters.ct", "R-P3b", Status::RunRed),
-        ("r3b_iter_adapters.ct", "R-P3b", Status::RunRed),
+        // r3b_adapters/r3b_iter_adapters 已翻转(T16,2026-10-02):适配器链入
+        // std/iter.ct(Seq[T,S] get 基惰性适配器 + UFCS 入口),锚迁主套件
+        // modules/iter_adapters(多文件包口径:自举臂运行+宿主 pkg check;发射面
+        // trait 方法/for-Iterator 在册 T25 v2 域,R 线 get 基链覆盖随后件评估)
         // ---- R-P2d fmt 夹具(行为测试身份,今天绿) ----
         ("r2d_fmt_fixture.ct", "R-P2d", Status::Green),
         ("r2d_fmt_chain.ct", "R-P2d", Status::Green),
