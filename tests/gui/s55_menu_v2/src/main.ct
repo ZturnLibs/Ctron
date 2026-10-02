@@ -1,0 +1,78 @@
+// tests/gui/s55_menu_v2 —— MenuBar v2:overlay 锚定 + hover 级联子菜单
+// (视图在 app.ctml 文件形态——编译侧词法不吃内嵌 view 中文叶,在册)
+use gui.{test, d_frame, d_expect_text, d_expect_absent, d_click, d_hover, Driver}
+
+struct M {
+    var open: Bool
+    var state: Str
+}
+
+fn menu_toggle() {
+}
+fn menu_pick() {
+}
+fn noop() {
+}
+fn export_pdf() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "open" {
+        if m.open {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "menu_toggle" {
+        if m.open {
+            m.open = false
+        } else {
+            m.open = true
+        }
+        return
+    }
+    if name == "menu_pick" {
+        m.open = false
+        m.state = "已打开"
+        return
+    }
+    if name == "export_pdf" {
+        m.open = false
+        m.state = "已导出 PDF"
+        return
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { open: false, state: "" })
+    var rc: I32 = test(src, 320, 200,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "已打开")
+            actc(d_click(t, "menu_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "打开")
+            d_expect_text(t, "导出")
+            // hover 级联:悬停导出 → 子菜单 PDF 出现
+            d_hover(t, "noop")
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "PDF")
+            actc(d_click(t, "export_pdf"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已导出 PDF")
+            d_expect_absent(t, "PDF")
+            println("S55-MENUBAR-GREEN")
+        })
+    return rc
+}

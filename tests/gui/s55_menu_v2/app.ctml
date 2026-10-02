@@ -1,0 +1,34 @@
+view Bar (open: Bool) {
+  <vbox class="barwrap">
+  <hbox class="bar">
+    <button class="trg" on:click={menu_toggle}>文件</button>
+  </hbox>
+  <when cond={open}>
+    <overlay class="mfloat" on:click={menu_toggle}>
+      <vbox class="opts">
+        <button class="opt" on:click={menu_pick}>打开</button>
+        <button class="opt" hover:ex on:click={noop}>导出</button>
+        <when cond={ex}>
+          <button class="opt" on:click={export_pdf}>PDF</button>
+        </when>
+      </vbox>
+    </overlay>
+  </when>
+  </vbox>
+}
+
+view Root {
+  <vbox class="root">
+    <Bar open: {open}/>
+    <label class="state">{state}</label>
+  </vbox>
+}
+
+style root { direction: column gap: 8 padding: 8 }
+style barwrap { direction: column gap: 4 }
+style bar { direction: row gap: 12 }
+style trg { h: 30 bg: SURFACE }
+style mfloat { bg: MASK }
+style opts { direction: column gap: 2 }
+style opt { h: 26 bg: ELEVATED }
+style state { fg: "#22c55e" h: 22 }

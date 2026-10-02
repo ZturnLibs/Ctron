@@ -1152,6 +1152,13 @@ int gui_cfg3(int dir, int gap, int padx, int pady, int ax, int ay,
 // 列表 NULL 安全计数(编译构建树 gui_sk_load 不含波次四新字段时为 NULL;
 // Ctron 侧不可判空,经此助手门控——vreg/env 读取前置条件)
 typedef struct { unsigned long long magic; char **items; int n; int cap; } CtronListC;
+// 原地截断(作用域 env 出栈用;共享列表对象,赋值重绑穿不回按值树参)
+void gui_list_truncate(void *l, int n) {
+    if (l == NULL) { return; }
+    CtronListC *cl = (CtronListC *)l;
+    if (n >= 0 && n < cl->n) { cl->n = n; }
+}
+
 int gui_list_ns(const void *l) {
     if (l == NULL) { return 0; }
     return ((const CtronListC *)l)->n;

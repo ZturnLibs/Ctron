@@ -42,6 +42,7 @@ extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
 extern "c" fn gui_dgev_begin(x: I32, y: I32, w: I32, h: I32) -> I32
 extern "c" fn gui_dgev_end() -> I32
 extern "c" fn gui_dgev_on() -> I32
+extern "c" fn gui_list_truncate(l: List[Str], n: I32) -> I32
 extern "c" fn gui_dgev_setnode(n: I32) -> I32
 extern "c" fn gui_dgev_node() -> I32
 extern "c" fn gui_dgev_px() -> I32
@@ -2827,9 +2828,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         if vroot < 0 {
             panic("gui: 未知组件 " + callname)
         }
-        // 实参先求值(父作用域)→垫未提供 prop 默认空串→推实参(env 末位优先)。
-        // 旧序「先垫后求值」在同名嵌套时自遮蔽:内层垫空先入 env,实参表达式
-        // 引用同名外层 prop 即得空(Menu→Menu open 实证)——求值必须先于垫
+        // 作用域 env:标记→实参求值(父作用域)→垫未提供→推实参→emit→截断还原。
+        // 旧「追加不弹」=实参永远命中上一帧旧推送(一帧滞后→同名嵌套永久冻结,
+        // s55 实证);作用域化后每次展开实参恒读父作用域新鲜值
+        var env_mark: I32 = t.env_n.len
         var pi: I32 = 0
         var vpsn: I32 = gs2i(t.npre[id])
         var vpnn: I32 = gs2i(t.nbid[id])
@@ -2888,6 +2890,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         t.env_n.push("__slot__")
         t.env_v.push(sroot.to_string())
         rt_emit(t, bind, itemvar, item, vroot, hits, hinst, inst, hov, actn)
+        // 截断还原(作用域出栈):共享列表对象原地截断(t 按值传参,字段重绑
+        // 只改副本=首次实证;C 助手写 ctron_list.n)
+        gui_list_truncate(t.env_n, env_mark)
+        gui_list_truncate(t.env_v, env_mark)
         return 0
     }
     // P2 slot 锚:组件体内的 <slot/> 在展开期拼接当前实例的投影子树。
@@ -2927,7 +2933,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if gt_slot_simple(t.nflag[id]) && t.props.len == 0 {
                 fv = rt_bind_text(bind, "when:" + t.nflag[id])
             } else {
-                if bxv_truth(bxv_eval(t, t.nflag[id], bind)) {
+                var bv2: Str = bxv_eval(t, t.nflag[id], bind)
+                if bxv_truth(bv2) {
                     fv = "1"
                 }
             }
