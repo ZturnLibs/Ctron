@@ -26,6 +26,11 @@ view Dialog (title: Str, open: Bool) {
     <overlay class="w-mask" on:click={dialog_close()}>
       <vbox class="w-card">
         <label class="w-title">{title}</label>
+        <label class="w-body">此操作将写入模型并关闭对话框</label>
+        <hbox class="w-actions">
+          <button class="w-act" on:click={dialog_cancel}>取消</button>
+          <button class="w-act w-actp" on:click={dialog_confirm}>确认</button>
+        </hbox>
       </vbox>
     </overlay>
   </when>
@@ -100,7 +105,11 @@ style w-list { direction: column gap: 2 }
 style w-list-t { fg: TEXT_MUTED size: 13 h: 20 }
 style w-row { bg: SURFACE fg: TEXT w: 170 h: 28 }
 style w-mask { bg: MASK align: center }
-style w-card { bg: ELEVATED w: 200 h: 100 }
+style w-card { bg: ELEVATED w: 230 h: 140 }
+style w-body { fg: TEXT_MUTED size: 13 h: 20 }
+style w-actions { direction: row gap: 10 }
+style w-act { bg: SURFACE fg: TEXT w: 86 h: 30 }
+style w-actp { bg: ACCENT fg: "#ffffff" }
 style w-title { fg: TEXT size: 18 h: 28 }
 style state { fg: TEXT_MUTED size: 13 h: 22 }
 style w-menu { direction: column gap: 4 }

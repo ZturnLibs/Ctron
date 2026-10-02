@@ -27,6 +27,10 @@ fn dialog_open() {
 }
 fn dialog_close() {
 }
+fn dialog_confirm() {
+}
+fn dialog_cancel() {
+}
 
 fn act(name: Str, args: List[Str], m: Box[Model]) {
     if name == "sel_toggle" {
@@ -49,7 +53,15 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
     }
     if name == "dialog_close" {
         m.dopen = false
+        m.state = "已关闭(遮罩)"
+    }
+    if name == "dialog_confirm" {
+        m.dopen = false
         m.state = "已确认"
+    }
+    if name == "dialog_cancel" {
+        m.dopen = false
+        m.state = "已取消"
     }
     if name == "menu_toggle" {
         if m.mopen {
@@ -196,10 +208,21 @@ fn main() -> I32 {
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_absent(t, "raylib")
             d_expect_text(t, "已选")
-            // 模态:开 → Esc 关(键盘模态链)
+            // 模态:开 → 取消按钮 → 已取消;再开 → 确认按钮 → 已确认;
+            // 遮罩/Esc 关 = 已关闭(遮罩)
             actc("dialog_open", List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "确认操作?")
+            actc(d_click(t, "dialog_cancel"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已取消")
+            actc("dialog_open", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            actc(d_click(t, "dialog_confirm"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已确认")
+            actc("dialog_open", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
             var esk: I32 = d_send_key(t, 256,
                 |buf| bind_all(buf, m),
                 |nm, ar| act(nm, ar, m))
@@ -207,7 +230,7 @@ fn main() -> I32 {
                 panic("widgets: 模态 Esc 未消费")
             }
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "已确认")
+            d_expect_text(t, "已关闭(遮罩)")
             // 主题切换:light 全套换装
             k2(d_press_key(t, 50))
             d_frame(t, |buf| bind_all(buf, m))
