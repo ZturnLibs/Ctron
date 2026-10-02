@@ -408,8 +408,10 @@ static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
     Clay_ElementDeclaration decl = { 0 };
     decl.layout = lay;
     // macOS 观感:控件默认圆角 6px(gui_radius 可覆写;纯色盒视觉由 flush 按
-    // Clay cornerRadius 走 DrawRectangleRounded)
+    // Clay cornerRadius 走 DrawRectangleRounded)。覆写消费即复位(-1)——
+    // 元素级圆角(switch 药丸/radio 圆)不得 latch 成全局态
     float crv = (g_pending_radius >= 0) ? (float)g_pending_radius : 6.0f;
+    g_pending_radius = -1;
     decl.cornerRadius = (Clay_CornerRadius){ crv, crv, crv, crv };
     decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
                                          (float)((bg_packed >> 8) & 255),

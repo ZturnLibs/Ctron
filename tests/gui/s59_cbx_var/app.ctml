@@ -1,0 +1,21 @@
+view Root {
+  <vbox class="root">
+    <label class="title">checkbox 变体</label>
+    <checkbox class="sw" switch checked={sw} on:click={sw_toggle}/>
+    <label class="swl">通知开关:{swl}</label>
+    <vbox class="rbox">
+      <each rg in={rgs}>
+        <checkbox class="rd" radio checked={rmark} on:click={r_pick}/>
+      </each>
+    </vbox>
+    <label class="state">{state}</label>
+  </vbox>
+}
+
+style root { direction: column gap: 10 padding: 16 }
+style title { fg: TEXT size: 18 h: 26 }
+style sw { w: 44 h: 26 }
+style swl { fg: TEXT_MUTED size: 13 h: 20 }
+style rbox { direction: column gap: 6 }
+style rd { w: 22 h: 22 }
+style state { fg: "#22c55e" h: 22 }
