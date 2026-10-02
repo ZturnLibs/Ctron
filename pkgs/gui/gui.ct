@@ -420,14 +420,14 @@ fn gspan(src: Str, cur: Atomic[I32], stop: I32) -> Str {
     }
     var e: I32 = i
     while start < e {
-        var c0: I32 = byte_at(src, start)
-        if c0 == 32 {
+        var c0w: I32 = byte_at(src, start)
+        if c0w == 32 {
             start += 1
         } else {
-            if c0 == 10 {
+            if c0w == 10 {
                 start += 1
             } else {
-                if c0 == 9 {
+                if c0w == 9 {
                     start += 1
                 } else {
                     break
@@ -1196,6 +1196,16 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             t.ev_name.push("hover")
             t.ev_fn.push(hn7)
         } else {
+        if an == "password" {
+            // input 变体:掩码显示(渲染期扫事件表;零 schema)
+            t.ev_name.push("password")
+            t.ev_fn.push("")
+        } else {
+        if an == "numeric" {
+            // input 变体:数字过滤(退格/删除不受限)
+            t.ev_name.push("numeric")
+            t.ev_fn.push("")
+        } else {
         if an == "on" {
             glit(src, cur, 58)
             var evn: Str = gword(src, cur)
@@ -1243,6 +1253,8 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             }
         }
         }
+        }
+        }
     }
     return out
 }
@@ -1269,14 +1281,14 @@ fn gt_leaf_text(src: Str, cur: Atomic[I32], t: GuiTree) -> I32 {
         }
     }
     while start < e {
-        var c0: I32 = byte_at(src, start)
-        if c0 == 32 {
+        var c0t: I32 = byte_at(src, start)
+        if c0t == 32 {
             start += 1
         } else {
-            if c0 == 10 {
+            if c0t == 10 {
                 start += 1
             } else {
-                if c0 == 9 {
+                if c0t == 9 {
                     start += 1
                 } else {
                     break
@@ -3171,6 +3183,29 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if ipre != "" {
                     idisp = byte_slice(ival, 0, ic) + ipre + byte_slice(ival, ic, ival.len)
                 }
+                // password 变体:每码点一 •(掩码在视口切片前,内部度量自洽)
+                if rt_has_mark(t, id, "password") {
+                    var dots: Str = ""
+                    var di2: I32 = 0
+                    while di2 < idisp.len {
+                        dots = dots + "•"
+                        var b7: I32 = byte_at(idisp, di2)
+                        if b7 >= 240 {
+                            di2 += 4
+                        } else {
+                            if b7 >= 224 {
+                                di2 += 3
+                            } else {
+                                if b7 >= 192 {
+                                    di2 += 2
+                                } else {
+                                    di2 += 1
+                                }
+                            }
+                        }
+                    }
+                    idisp = dots
+                }
                 if idisp == "" {
                     idisp = " "
                 }
@@ -3902,6 +3937,19 @@ fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
     return ""
 }
 
+// 节点标记事件(password/numeric 裸属性经事件表承载;fn 恒空串)
+fn rt_has_mark(t: GuiTree, node: I32, mark: Str) -> Bool {
+    var e: I32 = 0
+    while e < t.nec[node] {
+        var gi: I32 = t.nes[node] + e
+        if t.ev_name[gi] == mark {
+            return true
+        }
+        e += 1
+    }
+    return false
+}
+
 // 事件完整表达式(拖拽缝触发用——头名会丢调用形态实参)
 fn rt_in_expr(t: GuiTree, node: I32, evname: Str) -> Str {
     var e: I32 = 0
@@ -4216,6 +4264,24 @@ fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
     if t.ntag[fn0] != "input" {
         if t.ntag[fn0] != "textarea" {
             return false
+        }
+    }
+    // numeric 变体:仅 数字/./-(消费不插入;退格/删除走键管线不受限)
+    if rt_has_mark(t, fn0, "numeric") {
+        var okn: Bool = false
+        if ch >= 48 {
+            if ch <= 57 {
+                okn = true
+            }
+        }
+        if ch == 46 {
+            okn = true
+        }
+        if ch == 45 {
+            okn = true
+        }
+        if okn == false {
+            return true
         }
     }
     // 撤销快照:编辑提交前推「编辑前」值+光标(粘贴逐码点由 rt_edit_op mute)

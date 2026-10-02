@@ -1,0 +1,105 @@
+// tests/gui/s54_input_var —— input 变体(password 掩码 / numeric 过滤)
+use gui.{test, d_frame, d_expect_text, d_expect_absent, d_send_key, d_send_char, d_click_text, Driver}
+
+struct M {
+    var pw: Str
+    var num: Str
+}
+
+view Vars {
+  <vbox class="root">
+    <input bind={m.pw} class="fld" password on:input={pw_in}/>
+    <label class="m1">{m.pw}</label>
+    <input bind={m.num} class="fld" numeric on:input={num_in}/>
+    <label class="m2">{m.num}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style m1 { fg: "#22c55e" h: 22 }
+style m2 { fg: "#22c55e" h: 22 }
+
+fn pw_in(text: Str) {
+}
+fn num_in(text: Str) {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.pw" {
+        buf.push(m.pw)
+    }
+    if buf[0] == "m.num" {
+        buf.push(m.num)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    // on:input 名通道
+    if name.len >= 6 {
+        if byte_at(name, 0) == 112 && byte_at(name, 1) == 119 && byte_at(name, 2) == 95 {
+            m.pw = byte_slice(name, 6, name.len)
+            return
+        }
+    }
+    if name.len >= 7 {
+        if byte_at(name, 0) == 110 && byte_at(name, 1) == 117 && byte_at(name, 2) == 109 && byte_at(name, 3) == 95 {
+            m.num = byte_slice(name, 7, name.len)
+            return
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](M { pw: "", num: "" })
+    var rc: I32 = test(src, 320, 200,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, act2, key2| {
+            // 密码框:输入 abc → 模型 "abc" + 显示 "•••"
+            d_click_text(t, 160, 26, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_send_char(t, 97, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_send_char(t, 98, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_send_char(t, 99, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "•••")
+            // 数字框(Tab 切换):输入 1,a,2,3 → 过滤为 "123"
+            d_send_key(t, 258, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_send_char(t, 49, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_send_char(t, 97, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_send_char(t, 50, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_send_char(t, 51, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "123")
+        })
+    return rc
+}

@@ -305,6 +305,23 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             }
             eat_tok(tks, cur)
         } else {
+        if an == "password" {
+            // input 变体裸属性——检查面放行;sk 面入事件表(见 gui_sk_attrs)
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
+        if an == "numeric" {
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
         if an == "on" {
             if eat_tok(tks, cur) != ":" {
                 panic("gui E8100: on 期待冒号")
@@ -350,6 +367,8 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             if an == "in" {
                 bv = av
             }
+        }
+        }
         }
         }
     }
@@ -1718,6 +1737,23 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
             }
             eat_tok(tks, cur)
         } else {
+        if an == "password" {
+            // input 变体裸属性——检查面放行;sk 面入事件表(见 gui_sk_attrs)
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
+        if an == "numeric" {
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
         if an == "on" {
             // on:名=花括号事件表达式:块开逐 token 校验(曾盲吃 5 漏收尾闭,W3 口径),
             // 块体 8c-3 平衡捕获(单标识符旧契约为特例;配对 } 由捕获消费)
@@ -1886,6 +1922,8 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
             }
+        }
+        }
         }
         }
     }
@@ -2380,6 +2418,16 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             ev_name.push("hover")
             ev_fn.push(hnm)
         } else {
+        if an == "password" {
+            gui_sk_word(tks, cur)
+            ev_name.push("password")
+            ev_fn.push("")
+        } else {
+        if an == "numeric" {
+            gui_sk_word(tks, cur)
+            ev_name.push("numeric")
+            ev_fn.push("")
+        } else {
         if an == "on" {
             gui_sk_word(tks, cur)
             var evn: Str = gui_sk_word(tks, cur)
@@ -2430,6 +2478,8 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             if an == "placeholder" {
                 out4[3] = av
             }
+        }
+        }
         }
         }
     }
