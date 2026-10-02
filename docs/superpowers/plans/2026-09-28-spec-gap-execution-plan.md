@@ -432,11 +432,11 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T35 · 分层 stdlib 机制(core < alloc < std)
 
-- **预估:** 1–1.5 d(设计+manifest+首批分层标注)。**前置:** 无。**状态:** 待办
+- **预估:** 1–1.5 d(设计+manifest+首批分层标注)。**前置:** 无。**状态:** ✅ 已完成(1002;机制核=清单 `tier` 键[缺省 std]+模块头注 `//@ tier:` 提取[缺标注不设门,渐进承诺]+use 点 `E3040.tier` 档位门一次诊断加载即止[bare 档钳 core;E5040.tier 值域 fail-closed;`pkg_load_use_t` 独立入口避碰 driver_emit/doc 调用面,emit 随 seam 落库再切]+schema regkey `pkg.tier`;首批标注 26 模块 core 5[math/hash/log/opt/pb]/alloc 16/std 5[fs/time/process/rand/uuid]+stdpkg/examples 副本同步[漂移门绿];锚 9 断言入 smoke 3c2 段[seed 臂夹具本地 std 七+native 臂真库二];**真库 core 五模块 bare 体检自证=core 档音遍性**[tier_real_pos decls=75 零诊断];修复前实证:bare+use alloc 模块=std 内部 E3040 洪水→use 点一次即止;decl 锁 439→443 随批申报;suite 99/99 双臂+smoke 170 ok[余 3 红=conc 双发射红/Rust iter 清账,基线复现在册非本件];计划 docs/superpowers/plans/2026-10-02-t35-tiered-stdlib.md;**登记债:三线 parity(pkg.c 清单 tier 键/sem.c bare 钳口径/main.rs Manifest.tier 字段+R 线检查面)、域包 tier 标注[随 registry]、emit/doc 驱动接线[随 emit seam]**)
 - **目标:** 三档分层落地机制:①std 各模块声明最低档(`core`=无分配标量/切片面,`alloc`=List/String/Box,`std`=net/fs/time);②包清单声明最低所需层;③bare 档引用 alloc 层=E3040 族诊断。设计底稿:`docs/superpowers/specs/2026-09-23-std-tiering-design.md`(分层宪章 v2 已落地 6e7ad0c,T1/T2/T3 分层在册——按其延伸到档位面)。
 - **范围:** `parse_pkg.ct`(清单新键)、`std/*.ct` 头注标注批次、sem 检查。
-- **验收:** 锚(bare 包 use std 层模块→E;core 包 use alloc 模块→E);分层宪章既有 44 处消费不红。
-- **坑位:** 分层宪章(T1 核心 20/T2/T3)按「主题」分,档位按「分配面」分——两轴交叉,清单化勿重演大迁移(标注渐进,勿一次性搬)。
+- **验收:** 锚(bare 包 use std 层模块→E;core 包 use alloc 模块→E)✓;分层宪章既有 44 处消费不红 ✓(缺标注不设门+清单缺省 std 双重宽松,漂移/stdpkg 门绿)。
+- **坑位:** 分层宪章(T1 核心 20/T2/T3)按「主题」分,档位按「分配面」分——两轴交叉,清单化勿重演大迁移(标注渐进,勿一次性搬)。→ 落码印证:零结构迁移,26 行头注+清单一键;两轴条款成文 lib/std/README.md「档位轴」节。**新增坑位:①共享检出树多泳道并发,未提交编辑会被 peer `git stash` 连带卷走(本次 Task 1 四件被卷入 t31wip stash,恢复=`git checkout <stash> -- <my paths>` 单边提取,stash 副本含对方件勿整体 pop);②selective merge 连带 Test 块亦吃 bare 体检查——core 档标注前须核其自带 test 零分配(本次五模块实证 0 命中);③vendored examples std 副本有硬链接形态(ctslink/web_todo),同步经 cp「identical」即已共享**。
 
 ### T36 · `ctc target` 子命令 + 后端插件接口
 
@@ -627,7 +627,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 返回路径→运行期垃圾;fx_conc_parallel/cloval 双夹具实证)。修法=卫兵只在实发遍 emission
 (pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修 | — |
 | T34 | 栈经济 P9 | W7 | **已完成**:1002 两波——最小符合径(触顶诊断链 a77f141f)+正案收官(work-stealing 落码+可增长栈判决入册:A/B 双阻塞于发射器机器,退路 1MB 大栈=§7.1 字面终形,解锁条件单列;ws_steal 锚+c10k 满额 PASS+A/B 差分 ≤0.5%) | — |
-| T35 | 分层 stdlib 机制 | W8 | 待办 | — |
+| T35 | 分层 stdlib 机制 | W8 | ✅ 1002 | — |
 | T36 | ctc target+后端接口 | W8 | 待办 | — |
 | T37 | wasm MVP | W8 | 待办 | — |
 | T38 | WasmGC+JSPI | W8 | 待办 | — |

@@ -969,3 +969,28 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   1418912/1453851µs(差 ≤0.5%),比值三红(1.21–1.27)在原版 rt 同等复现=本机窗口
   P1 臂提速环境属性(p1-vs-C 同轮 1.13↔0.97 摆动),非本件回归;本件绿轮比值
   1.030/1.039 优于在册历史带(1.025–1.128)**。
+
+**2026-10-02 T35:分层 stdlib 机制(core < alloc < std)落库**(spec-gap W8;§9 档位矩阵):
+- 机制核(7550f8bc):清单 pkg 块 `tier` 键(缺省 std;E5040.tier 值域 fail-closed)+
+  模块头注 `//@ tier:` 提取(首注释块;缺标注不设门渐进承诺)+ use 点 `E3040.tier`
+  档位门一次诊断加载即止(bare 档钳 core;`pkg_load_use_t` 独立入口避碰
+  driver_emit/doc 调用面)+ schema regkey `pkg.tier`。修复前实证:bare+use alloc 模块
+  = std 内部 E3040 洪水(诊断指向 std 源行,归因错乱)→ 现 use 点一响即止。
+- 首批标注(425a4374):26 模块头注 core 5[math/hash/log/opt/pb]/alloc 16/std 5
+  [fs/time/process/rand/uuid],分配面+OS 面双轴;stdpkg/examples 副本同步
+  (examples/ctgrep、ctwc、ctwf 三例 vendored 副本顺势转正入库)。
+- 锚(332b423f/41fc493a):smoke 3c2 段 9 断言——seed 臂夹具本地 std 七(alloc/std
+  档负例+值域+bare 钳门双跑+core 正例 full/bare 双证)+ native 臂真库二(core 五模块
+  bare 体检自证=core 档音遍性[tier_real_pos decls=75 零诊断];tier=core use std.str
+  单响)。decl 锁 439→443 随批申报(+4 fn)。
+- 门:suite 99/99 双臂;smoke 170 ok(余 3 红=conc 双发射红[T33 在册 8ac3d1da]+
+  Rust iter 清账[基线复现既有翻绿,账面属 R 线];meta_check cbox×3=peer 在飞缺清单,
+  均构造性无关,基线 worktree 实证)。
+- 坑位:①共享检出树多泳道并发,未提交编辑会被 peer `git stash` 连带卷走(Task 1 四件
+  被卷入 t31wip stash;恢复=`git checkout <stash> -- <my paths>` 单边提取,勿整体
+  pop——stash 混对方 trans_* WIP);②selective merge 连带 Test 块亦吃 bare 体检查,
+  core 档标注前须核其自带 test 零分配(五模块实证 0 命中);③vendored examples std 有
+  硬链接形态(ctslink/web_todo),cp 报 identical 即已共享。
+- 登记债:三线 parity(pkg.c 清单 tier 键/sem.c bare 钳口径/main.rs Manifest.tier+
+  R 线检查面)、域包 tier 标注(随 registry)、emit/doc 驱动 prof 接线(随 emit seam)、
+  单文件裸跑 bare(无清单时 use 门不设,仅体检查面)。
