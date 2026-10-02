@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "w7_stack_ovf"
+    version = "0.1.0"
+}

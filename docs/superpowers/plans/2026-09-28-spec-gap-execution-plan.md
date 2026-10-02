@@ -408,7 +408,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T34 · work-stealing + 可增长连续栈(P9 栈经济专案)
 
-- **预估:** 6–8 d。**前置:** T33(共享池基建)。**状态:** 待办
+- **预估:** 6–8 d。**前置:** T33(共享池基建)。**状态:** 🟡 最小符合径落地(1002;§7.1 字面=「大栈+触顶 panic」:rt_stack_size 缺省已 1MB[env 可配 4–1024]+guard 页[存量]+**新增溢出诊断链**[sigaltstack 每 worker/主线程安装+SIGSEGV/SIGBUS 双号+g_all 定位+明确诊断 rc=101];新锚 tests/w7/stack_ovf[64KB 小栈钉死+深递归 4KB 活帧]绿;net 双矩阵 18/18;坑位实录=①SA_ONSTACK 线程局部,worker 入口须各自安装 ②darwin guard 命中走 SIGBUS 与 SIGSEGV 双号 ③SROA 删未全用数组,锚须全槽循环写 ④尾调用被 -O1 转迭代;**指针修复/增长拷贝/work-stealing 列 P9 正案另册**)
 - **目标:** §7.10 过渡口径(64KB 固定 mmap 栈+确定性优先调度)升级为完全符合:①可增长连续栈(拷贝式,上限 1MB 默认可配,触顶=任务边界 panic);②work-stealing 调度器。设计底稿:`docs/superpowers/specs/2026-09-26-server-p9-stack-economy-design.md`(已存在,按其执行)。
 - **范围:** `net/c_src/ctron_rt.c`(栈管理改拷贝式增长)、调度器就绪队列改 steal 双端队列、coro 上下文切换兼容、`tests/net/` 栈压力夹具。
 - **要点:** 拷贝式增长 = 栈溢出检测(guard page)+ 分配新块 + 拷贝 + 指针修复——**协程栈内指针修复是全件最深水**(栈上局部引用/帧链,需 trans 配合栈槽元数据);若 trans 侧元数据不可得,退路=大栈预算+panic 上限(规范 §7.1 上限口径本身允许)并登记。

@@ -140,6 +140,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 #include <sched.h>
+#include <signal.h>
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
@@ -708,8 +709,11 @@ static void idle_backoff(void)
         atomic_store_explicit(&g_backoff, b + 1, memory_order_relaxed);
 }
 
+static void rt_altstack_install(void);
+
 static void *worker_main(void *p)
 {
+    rt_altstack_install();   /* T34:每 worker 线程各自 sigaltstack(SA_ONSTACK 线程局部) */
     rt_worker *ws = (rt_worker*)p;
     rt_coro *just_desched = NULL;
     rt_coro *retire = NULL;          /* (P2-B 修复) FOREVER 离场待回收,跨迭代保留:
@@ -991,11 +995,53 @@ static void reactor_start_locked(void)
 }
 
 /* ───────────────────────── 冻结 API ───────────────────────── */
+/* ── T34 最小符合径:栈触顶 panic(§7.1;guard 页命中 → 明确诊断后终止)──
+ * 经 g_all 全体链定位 fault 地址所属协程栈;非协程栈(主线程)链回默认处置。
+ * async-signal-safe 面:write/_exit/链遍历(只读,致命路径容忍竞态窗口)。 */
+static void rt_segv_handler(int sig, siginfo_t *si, void *uc);
+
+static void rt_altstack_install(void)
+{
+    stack_t ss;
+    struct sigaction sa;
+    ss.ss_sp = malloc(SIGSTKSZ);
+    ss.ss_size = SIGSTKSZ;
+    ss.ss_flags = 0;
+    sigaltstack(&ss, 0);
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = rt_segv_handler;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, 0);
+    sigaction(SIGBUS, &sa, 0);
+}
+
+static void rt_segv_handler(int sig, siginfo_t *si, void *uc)
+{
+    void *fault = si->si_addr;
+    const rt_coro *c = g_all;
+    (void)sig; (void)uc;
+    while (c) {
+        if (c->stack && (const char *)fault >= (const char *)c->stack &&
+            (const char *)fault < (const char *)c->stack + c->stack_map_sz) {
+            static const char msg[] =
+                "ctron_rt: task stack overflow(guard 命中,触顶;§7.1/T34)\n";
+            write(2, msg, sizeof msg - 1);
+            _exit(101);
+        }
+        c = c->allnext;
+    }
+    signal(SIGSEGV, SIG_DFL);
+    signal(SIGBUS, SIG_DFL);
+    raise(sig == SIGBUS ? SIGBUS : SIGSEGV);
+}
+
 void ctron_rt_init(int workers)
 {
     int i;
     rt_lock();
     if (g_inited) { rt_unlock(); return; }           /* 幂等 */
+    rt_altstack_install();   /* T34:主线程侧安装(worker 入口各自再装) */
 #if defined(__linux__)
     {   /* P3-A:idle cv 时基 = CLOCK_MONOTONIC(绝对时限 timedwait 用;
          * darwin 走相对时限变体,用静态初始化 cv,无需此处初始化) */
