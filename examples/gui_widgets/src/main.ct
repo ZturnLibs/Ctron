@@ -10,6 +10,11 @@ struct Model {
     var dopen: Bool
     var state: Str
     var dark: Bool
+
+    var mopen: Bool
+    var mself: I32
+    var lsel: I32
+    var tsel: I32
 }
 
 fn sel_toggle() {
@@ -45,6 +50,29 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
     if name == "dialog_close" {
         m.dopen = false
         m.state = "已确认"
+    }
+    if name == "menu_toggle" {
+        if m.mopen {
+            m.mopen = false
+        } else {
+            m.mopen = true
+        }
+    }
+    if name == "menu_pick" {
+        m.mopen = false
+        m.mself = 0
+        m.state = "菜单已选"
+    }
+    if name == "edit_menu" {
+        m.state = "编辑菜单(演示触发)"
+    }
+    if name == "list_sel" {
+        m.lsel = 0
+        m.state = "兴趣已选"
+    }
+    if name == "tab_pick" {
+        m.tsel = 0
+        m.state = "表格行已选"
     }
 }
 
@@ -82,6 +110,45 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
         buf.push("写发布说明")
         buf.push("打标签 v0.1")
     }
+    if buf[0] == "mopen" {
+        if m.mopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "each:mitems" {
+        if m.mself == 0 {
+            buf.push("✓ 打开")
+        } else {
+            buf.push("打开")
+        }
+        buf.push("另存为")
+    }
+    if buf[0] == "each:litems" {
+        if m.lsel == 0 {
+            buf.push("> 读书")
+        } else {
+            buf.push("读书")
+        }
+        if m.lsel == 1 {
+            buf.push("> 跑步")
+        } else {
+            buf.push("跑步")
+        }
+    }
+    if buf[0] == "each:titems" {
+        if m.tsel == 0 {
+            buf.push("> 张三 · 32")
+        } else {
+            buf.push("张三 · 32")
+        }
+        if m.tsel == 1 {
+            buf.push("> 李四 · 28")
+        } else {
+            buf.push("李四 · 28")
+        }
+    }
 }
 
 // 键 1/2 切主题(应用侧演示;陈列室不内置快捷键合约)
@@ -99,7 +166,7 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -110,7 +177,7 @@ fn main() -> I32 {
     }
     var src: Str = read_file("app.ctml")
     theme_apply(theme_dark())
-    var rc: I32 = test(src, 360, 520,
+    var rc: I32 = test(src, 360, 680,
         |buf| bind_all(buf, m),
         |name, args| act(name, args, m),
         |k| apply_key(k, m),
@@ -145,6 +212,29 @@ fn main() -> I32 {
             k2(d_press_key(t, 50))
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "light")
+            // ===== 组件目录第二波 =====
+            // Menu:开 → 项可见 → pick → ✓ 前缀 + 收起
+            actc(d_click(t, "menu_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "打开")
+            actc(d_click(t, "menu_pick"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "另存为")
+            // 重开验选中前缀持久(pick 收起菜单)
+            actc(d_click(t, "menu_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "✓ 打开")
+            // List:行点选 → "> " 前缀
+            actc(d_click(t, "list_sel"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 读书")
+            // Table:行点选 → "> " 前缀
+            actc(d_click(t, "tab_pick"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 张三 · 32")
+            // Divider/Card:渲染存在
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "卡片内容:ELEVATED 包装")
             println("WIDGETS-GREEN")
         })
     return rc

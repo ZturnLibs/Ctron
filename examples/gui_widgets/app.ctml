@@ -30,6 +30,45 @@ view Dialog (title: Str, open: Bool) {
     </overlay>
   </when>
 }
+// 组件目录第二波:Menu(下拉 v1 内联展开)/MenuBar(hbox 组合)/
+// List(选择列表 单选)/Table(列头+行选中)/Divider/Card(纯样式 recipes)
+view Menu (open: Bool) {
+  <vbox class="w-menu">
+    <button class="w-trigger" on:click={menu_toggle}>文件</button>
+    <when cond={open}>
+      <vbox class="w-opts">
+        <each mi in={mitems}>
+          <button class="w-opt" on:click={menu_pick}>{mi}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+view MenuBar (open: Bool) {
+  <hbox class="w-bar">
+    <Menu open: {open}/>
+    <button class="w-trigger" on:click={edit_menu}>编辑</button>
+  </hbox>
+}
+view List (title: Str) {
+  <vbox class="w-list">
+    <label class="w-list-t">{title}</label>
+    <each li in={litems}>
+      <button class="w-row" on:click={list_sel}>{li}</button>
+    </each>
+  </vbox>
+}
+view Table {
+  <vbox class="w-table">
+    <hbox class="w-thead">
+      <label class="w-th">名称</label>
+      <label class="w-th">大小</label>
+    </hbox>
+    <each ti in={titems}>
+      <button class="w-tr" on:click={tab_pick}>{ti}</button>
+    </each>
+  </vbox>
+}
 view Widgets {
   <vbox class="root">
     <label class="title">Ctron 组件陈列室</label>
@@ -38,6 +77,14 @@ view Widgets {
     <WList title: "待办清单"/>
     <button class="op" on:click={dialog_open}>打开对话框</button>
     <Dialog title: "确认操作?" open: {dopen}/>
+    <Menu open: {mopen}/>
+    <MenuBar open: {mopen}/>
+    <List title: "兴趣列表"/>
+    <Table/>
+    <spacer class="w-div"/>
+    <vbox class="w-card2">
+      <label class="w-ct">卡片内容:ELEVATED 包装</label>
+    </vbox>
     <label class="state">{state}</label>
   </vbox>
 }
@@ -56,3 +103,12 @@ style w-mask { bg: MASK align: center }
 style w-card { bg: ELEVATED w: 200 h: 100 }
 style w-title { fg: TEXT size: 18 h: 28 }
 style state { fg: TEXT_MUTED size: 13 h: 22 }
+style w-menu { direction: column gap: 4 }
+style w-bar { direction: row gap: 12 }
+style w-table { direction: column gap: 2 }
+style w-thead { direction: row gap: 24 }
+style w-th { fg: TEXT_MUTED size: 13 w: 90 h: 22 }
+style w-tr { bg: SURFACE fg: TEXT w: 200 h: 26 }
+style w-div { h: 2 w: 200 bg: BORDER }
+style w-card2 { bg: ELEVATED w: 220 h: 60 }
+style w-ct { fg: TEXT size: 13 h: 20 }

@@ -2025,10 +2025,8 @@ pub fn rt_bind_items(t: GuiTree, bind: fn(List[Str]) -> Void, listname: Str) -> 
         if gui_list_ns(t.env_v) > 0 {
             var ei: I32 = t.env_n.len - 1
             while ei >= 0 {
-                println("T-BINDSCAN ei=" + ei.to_string() + " en=" + t.env_n[ei] + " want=" + listname)
                 if t.env_n[ei] == listname {
                     if gui_is_list(t.env_v[ei]) == 1 {
-                        println("T-BINDHIT")
                         return gui_as_list(t.env_v[ei])
                     }
                 }
