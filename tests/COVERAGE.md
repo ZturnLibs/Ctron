@@ -1026,3 +1026,41 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   形即炸「仅语句位」)——语句/let/return 尾/闭包体尾已全接,任意嵌套表达式位待 ANF
   提升机(capability 项);T33 parallel ct_emit_clo OOB 独立在册(bsum 修复后复现依旧,
   卫兵假说待 T33 作者复证)。
+
+**2026-10-03 T16 续波·惰性适配器面收口**(R-P3b 承诺余项;UFCS 链式续篇):
+- **std/iter.ct v3**:适配器补 skip(位置平移)/take_while(前缀扫描)/rev(无状态重
+  扫反读)/enumerate(Pair[I64,T] 索引对)/zip(同型 S 逐位 Pair[T,T])/chain(前段
+  尽则重扫 a 长再读 b);终结子补 fold(I64 累计)/reduce(T? 空即 None)/foreach
+  (无返回 fn 型 fn(T) 首证,返回计数 I64)/min/max(泛型 T 比较运算首证,稳定取
+  先)/last/position(谓词→I64?)。数组 UFCS 入口同批补齐(包装 RawSeq 或快路径
+  直终结,I32 单型口径承 T16);from_list(List[I32])→ListSeq[T] 接入 List。
+- **探针四证(施工前)**:①泛型 trait impl for class(同文件 class)通,class var
+  字段跨接收者拷贝持久(引用共享);②无返回 fn 型 `fn(T)` 文法可选返回位实装可用,
+  闭包块体适配通;③trait 默认方法内泛型 T `<`/`>` 比较通;④泛型 struct 裸字面量
+  推断(Pair[F,G])通。**前奏 class 直 impl 不挂**:`impl Seq[T, List[T]] for
+  List[T]` 后 `xs.get(i)` 报「method:get」——内建类型方法派发表不含用户 trait impl,
+  List 接入改 ListSeq 包装 struct(与 RawSeq 同构)。
+- **接收者拷贝边界(interp 实证)**:class 实例存入 struct 字段即被拷贝——裸绑定
+  直调 `p.get(0)` mutation 持久;经字段派发 `w.get(0)`(w.it 持同类实例)或再绑定
+  `let q = w.it` 后调,mutation 皆丢。惰性观测的 class 计数法在 trait 链上不可用,
+  锚改「有界拉动终局」证法(limit=20 亿 Counter × take(3) 瞬通,急切排空必超时)。
+- **同型 zip/chain 裁决**:trait 二参方法 other 与 self 同适配器型 S(泛型方法位
+  不引入新型参,零先例);数组入口双侧同包 RawSeq 故 xs.zip(ys)/xs.chain(ys) 直
+  用,xs.take(3).chain(ys.take(2)) 同型链通;异型两侧(map 后 zip 裸数组)登记。
+  rev/chain 的 get 为 O(n) 重扫/次(总量 O(n·m)),正确性优先,缓存化待 var-self
+  写回语义落库。
+- **min/max 名义**:与 std/math 二元 min/max 同名不同签(Ctron 无重载);use 显式
+  导入制下同导两名才 E5030,方法调用形(xs.max())不走自由函数命名空间——锚仅导
+  iter 名,双导冲突场景登记 hazard 不设门。
+- **锚扩 iter_adapters**:原四段(T16)+续波八段(skip/take_while/rev+enumerate/
+  zip/chain/fold+reduce+min+max/foreach+last+position/from_list+空面/惰性/自定义
+  Seq 上新适配器);use 两行补新名。suite 主套件 99/99 双臂零新增红;modules 段
+  17/18(dup_static/use_alias_nat=对端在飞/既有账);ffi cbox 三红 stash 归因
+  =HEAD 基线固有(emit 臂 E2020 use cbox_* 未找到),非本件。smoke 158 ok/2 红:
+  decls 实测 450 vs 锁 449=GUI-21(gui_scroll_add/scrolloff)编译声明已落库未申报,
+  GUI 泳道债(主树在飞 smoke.sh 即在处理);conc_parallel=T33 在册——皆非本件。
+- **登记债**:①发射臂 trait 方法调用/for-over-Iterator 未发射(T25 v2 域,T16 既
+  有);②前奏 class(List)直 impl trait 派发不挂(本件新证,method:get)——包装
+  struct 绕行,真接入待 eval 派发表扩;③class 实例经 struct 字段存储拷贝语义(本
+  件新证)——与 W8010「浅拷贝共享类字段」lint 口径相悖,归 interp 值语义整备域
+  裁决(共享 or 拷贝,两口径取一);④异型 zip/chain(泛型方法位新型参)v2。

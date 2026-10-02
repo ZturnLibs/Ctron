@@ -4,11 +4,18 @@
 // (§4.8);适配器作用于自定义 Iterator 实现。
 // 落地面:std/iter.ct Seq[T,S](get 基惰性适配器——get(i) 纯位置读取,链任意深度
 // 组合;自定义 Iterator 经 for-重放 get 接入,03k 语义)+ UFCS 自由函数入口。
+// 续波(2026-10-03,R-P3b 承诺面收口):适配器补 skip/take_while/rev/enumerate/
+// zip/chain;终结子补 fold/reduce/foreach/min/max/last/position;Pair 元组位;
+// ListSeq 接入 List;惰性证法=有界拉动终局(超大 limit Counter×take(k) 瞬通,
+// 急切实现必超时)——class 实例存入 struct 字段即被拷贝(interp 实证:裸绑定
+// 直调 mutation 持久,经字段派发丢失),class 计数观察法在 trait 链上不可用。
 // 多文件包口径:自举臂运行(loader 解析 use),宿主 pkg 仅 check(宿主无包运行
 // 口径);发射面(trait 方法/for-Iterator)在册 T25 v2 域。
 // 锚修(2026-10-02):原稿 !xs.any(|x| x > 5) 与 xs=[2,4,6] 矛盾(6>5 为真),
 // 修正为正断言——锚系未运行起草稿,首翻绿时校正。
 use std.iter.{Seq, map, filter, sum, count, collect, any, all}
+use std.iter.{take, skip, take_while, rev, enumerate, zip, chain, from_list}
+use std.iter.{fold, reduce, foreach, min, max, last, position}
 
 trait Iterator[T] {
     fn next(var self) -> T?
@@ -42,6 +49,14 @@ impl Seq[I32, Counter] for Counter {
     }
 }
 
+test "lazy pull counted" {
+    // 惰性 = take(k) 上游拉动恒 ≤ k:超大 limit 若被急切排空必超时,怠惰瞬通
+    let c = Counter { cur: 0, limit: 2000000000 }
+    assert_eq(c.take(3).sum(), 3)
+    let c2 = Counter { cur: 0, limit: 2000000000 }
+    assert_eq(c2.take(3).take(1).count(), 1)
+}
+
 test "map filter sum" {
     let xs: I32[] = [1, 2, 3, 4, 5, 6]
     let total = xs.map(|x| x * 2).filter(|x| x > 4).sum()
@@ -67,4 +82,129 @@ test "adapters over custom iterator" {
     let c = Counter { cur: 0, limit: 6 }
     let total = c.filter(|x| x % 2 == 0).sum()
     assert_eq(total, 6)
+}
+
+// ---- 续波(2026-10-03):R-P3b 承诺面余项 ----
+
+test "skip and take while" {
+    let xs: I32[] = [1, 2, 3, 4, 5, 6]
+    assert_eq(xs.skip(1).sum(), 20)
+    assert_eq(xs.skip(10).count(), 0)
+    assert_eq(xs.take_while(|x| x < 4).sum(), 6)
+    assert_eq(xs.take_while(|x| x < 0).count(), 0)
+}
+
+test "rev and enumerate" {
+    let xs: I32[] = [1, 2, 3]
+    let r = xs.rev().collect()
+    assert_eq(r[0], 3)
+    assert_eq(r[2], 1)
+    let en = enumerate(xs)
+    var acc: I64 = 0
+    var i: I64 = 0
+    var go = true
+    while go {
+        match en.get(i) {
+            Some(p) => {
+                acc += p.fst + p.snd
+                i += 1
+            }
+            None => { go = false }
+        }
+    }
+    assert_eq(acc, 9)
+}
+
+test "zip and chain" {
+    let xs: I32[] = [1, 2, 3]
+    let ys: I32[] = [10, 20, 30]
+    let z = xs.zip(ys)
+    var acc: I64 = 0
+    var i: I64 = 0
+    var go = true
+    while go {
+        match z.get(i) {
+            Some(p) => {
+                acc += p.fst * p.snd
+                i += 1
+            }
+            None => { go = false }
+        }
+    }
+    assert_eq(acc, 140)
+    assert_eq(z.take(2).count(), 2)
+    assert_eq(z.count(), 3)
+    assert_eq(xs.take(3).chain(ys.take(2)).sum(), 36)
+    assert_eq(chain(xs, ys).count(), 6)
+}
+
+test "fold reduce min max" {
+    let xs: I32[] = [1, 2, 3, 4, 5, 6]
+    assert_eq(xs.fold(100, |acc, v| acc + v), 121)
+    let m = xs.reduce(|a, b| { if a > b { a } else { b } })
+    match m {
+        Some(v) => { assert_eq(v, 6) }
+        None => { assert(false) }
+    }
+    match xs.max() {
+        Some(v) => { assert_eq(v, 6) }
+        None => { assert(false) }
+    }
+    let neg: I32[] = [-3, -1, -7]
+    match neg.min() {
+        Some(v) => { assert_eq(v, -7) }
+        None => { assert(false) }
+    }
+}
+
+test "foreach last position" {
+    let xs: I32[] = [2, 4, 6]
+    let out = List[I32]()
+    let n = foreach(xs, |v| {
+        out.push(v + 1)
+    })
+    assert_eq(n, 3)
+    assert_eq(out[0], 3)
+    assert_eq(out[2], 7)
+    match xs.last() {
+        Some(v) => { assert_eq(v, 6) }
+        None => { assert(false) }
+    }
+    match xs.position(|v| v > 3) {
+        Some(ix) => { assert_eq(ix, 1) }
+        None => { assert(false) }
+    }
+    match xs.position(|v| v > 100) {
+        Some(_) => { assert(false) }
+        None => { assert(true) }
+    }
+}
+
+test "from list seq and empty faces" {
+    let ls = List[I32]()
+    ls.push(3)
+    ls.push(1)
+    ls.push(2)
+    assert_eq(from_list(ls).map(|x| x * 2).sum(), 12)
+    assert_eq(from_list(ls).count(), 3)
+    let empty = List[I32]()
+    match from_list(empty).min() {
+        Some(_) => { assert(false) }
+        None => { assert(true) }
+    }
+    match from_list(empty).reduce(|a, b| { if a > b { a } else { b } }) {
+        Some(_) => { assert(false) }
+        None => { assert(true) }
+    }
+    match from_list(empty).last() {
+        Some(_) => { assert(false) }
+        None => { assert(true) }
+    }
+}
+
+test "wave2 over custom seq" {
+    let c = Counter { cur: 0, limit: 6 }
+    assert_eq(c.take_while(|x| x < 3).sum(), 3)
+    let c2 = Counter { cur: 0, limit: 5 }
+    assert_eq(c2.skip(2).count(), 3)
 }

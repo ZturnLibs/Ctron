@@ -1,10 +1,21 @@
-// std/iter.ct —— 迭代器适配器链(§3.8.2/§4.8 UFCS;T16 收口)
+// std/iter.ct —— 迭代器适配器链(§3.8.2/§4.8 UFCS;T16 收口 + 续波 R-P3b 面)
 //@ tier: alloc
 // 形态:Seq[T, S] trait(get 基惰性适配器)+ UFCS 自由函数入口(数组接收者)。
 // get(i) = 纯位置读取(无内部状态推进),链任意深度组合;终结器(sum/collect/
-// count/any/all)索引驱动逐元素拉取,零中间集合。数组另有快路径直终结入口。
+// count/any/all/fold/reduce/foreach/min/max/last/position)索引驱动逐元素拉取,
+// 零中间集合。数组另有快路径直终结入口。
+// 续波(2026-10-03,R-P3b 承诺面收口):适配器补 skip/take_while/rev/enumerate/
+// zip/chain;终结子补 fold/reduce/foreach/min/max/last/position;Pair[F,G] 载
+// enumerate/zip 元组位;ListSeq[T] 接入 List(前奏 class 直 impl trait 派发不挂,
+// 探针实证——包装 struct 同 RawSeq 形,from_list 入口)。
 // v0 语义注记:next 基适配器在 var-self 写回语义落库前不可组合(interp 逐调用
 // 拷贝接收者,p12 实证);自定义 Iterator 经 for-重放 get(03k 语义)接入同一面。
+// zip/chain 为同型 S 面(other 与 self 同适配器型):数组入口双侧同包 RawSeq 故
+// xs.zip(ys)/xs.chain(ys) 直用;异型两侧(如 map 后 zip 裸数组)登记后续。
+// rev/chain 的 get 为无状态重扫(O(n) 每次,总量 O(n·m)):正确性优先,缓存化
+// 待有状态接收语义(var-self 写回)落库后评估。
+// min/max 与 std/math 的二元 min/max 同名不同签:use 显式导入制下同导两名才
+// E5030;方法调用形(xs.max())不走自由函数命名空间,无冲突。
 // 发射面:trait 方法调用与 for-over-Iterator 发射在册(T25 v2 域),本面按 03k
 // 先例以双 interp 口径入主套件。
 // since: std-0.6 stability: experimental
@@ -21,6 +32,24 @@ trait Seq[T, S] {
     }
     fn take(var self, k: I64) -> TakeSeq[T, S] {
         return TakeSeq { it: self, k: k }
+    }
+    fn skip(var self, n: I64) -> SkipSeq[T, S] {
+        return SkipSeq { it: self, n: n }
+    }
+    fn take_while(var self, p: fn(T) -> Bool) -> TakeWhileSeq[T, S] {
+        return TakeWhileSeq { it: self, p: p }
+    }
+    fn rev(var self) -> RevSeq[T, S] {
+        return RevSeq { it: self }
+    }
+    fn enumerate(var self) -> EnumSeq[T, S] {
+        return EnumSeq { it: self }
+    }
+    fn zip(var self, other: S) -> ZipSeq[T, S] {
+        return ZipSeq { it: self, ot: other }
+    }
+    fn chain(var self, other: S) -> ChainSeq[T, S] {
+        return ChainSeq { a: self, b: other }
     }
     fn sum(var self) -> I64 {
         var t: I64 = 0
@@ -99,12 +128,146 @@ trait Seq[T, S] {
         }
         return true
     }
+    fn fold(var self, init: I64, f: fn(I64, T) -> I64) -> I64 {
+        var acc: I64 = init
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    acc = f(acc, v)
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return acc
+    }
+    fn reduce(var self, f: fn(T, T) -> T) -> T? {
+        var acc: T? = None
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    match acc {
+                        Some(a) => { acc = Some(f(a, v)) }
+                        None => { acc = Some(v) }
+                    }
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return acc
+    }
+    fn foreach(var self, f: fn(T)) -> I64 {
+        var n: I64 = 0
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    f(v)
+                    n += 1
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return n
+    }
+    fn min(var self) -> T? {
+        var best: T? = None
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    match best {
+                        Some(b) => {
+                            if v < b {
+                                best = Some(v)
+                            }
+                        }
+                        None => { best = Some(v) }
+                    }
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return best
+    }
+    fn max(var self) -> T? {
+        var best: T? = None
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    match best {
+                        Some(b) => {
+                            if b < v {
+                                best = Some(v)
+                            }
+                        }
+                        None => { best = Some(v) }
+                    }
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return best
+    }
+    fn last(var self) -> T? {
+        var out: T? = None
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    out = Some(v)
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return out
+    }
+    fn position(var self, p: fn(T) -> Bool) -> I64? {
+        var i: I64 = 0
+        var go = true
+        while go {
+            match self.get(i) {
+                Some(v) => {
+                    if p(v) {
+                        return Some(i)
+                    }
+                    i += 1
+                }
+                None => { go = false }
+            }
+        }
+        return None
+    }
 }
 
 // ---- 适配器 struct(get 变换;泛型单态化零成本) ----
 
+// Pair —— enumerate/zip 的二元组元(fst=索引/左,snd=值/右)
+struct Pair[F, G] {
+    let fst: F
+    let snd: G
+}
+
 struct RawSeq[S, T] {
     let src: S
+}
+
+struct ListSeq[T] {
+    let src: List[T]
 }
 
 struct MapSeq[T, S] {
@@ -122,7 +285,44 @@ struct TakeSeq[T, S] {
     let k: I64
 }
 
+struct SkipSeq[T, S] {
+    let it: S
+    let n: I64
+}
+
+struct TakeWhileSeq[T, S] {
+    let it: S
+    let p: fn(T) -> Bool
+}
+
+struct RevSeq[T, S] {
+    let it: S
+}
+
+struct EnumSeq[T, S] {
+    let it: S
+}
+
+struct ZipSeq[T, S] {
+    let it: S
+    let ot: S
+}
+
+struct ChainSeq[T, S] {
+    let a: S
+    let b: S
+}
+
 impl Seq[T, RawSeq[S, T]] for RawSeq[S, T] {
+    fn get(var self, i: I64) -> T? {
+        if i < self.src.len {
+            return Some(self.src[i])
+        }
+        return None
+    }
+}
+
+impl Seq[T, ListSeq[T]] for ListSeq[T] {
     fn get(var self, i: I64) -> T? {
         if i < self.src.len {
             return Some(self.src[i])
@@ -174,6 +374,107 @@ impl Seq[T, TakeSeq[T, S]] for TakeSeq[T, S] {
     }
 }
 
+impl Seq[T, SkipSeq[T, S]] for SkipSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        return self.it.get(i + self.n)
+    }
+}
+
+impl Seq[T, TakeWhileSeq[T, S]] for TakeWhileSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        let g = self.p
+        var seen: I64 = 0
+        var j: I64 = 0
+        var go = true
+        while go {
+            match self.it.get(j) {
+                Some(v) => {
+                    if g(v) {
+                        if seen == i {
+                            return Some(v)
+                        }
+                        seen += 1
+                        j += 1
+                    } else {
+                        go = false
+                    }
+                }
+                None => { go = false }
+            }
+        }
+        return None
+    }
+}
+
+impl Seq[T, RevSeq[T, S]] for RevSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        // 无状态重扫:每次 get 计上游全长(正确性优先;缓存待 var-self 写回语义)
+        var total: I64 = 0
+        var j: I64 = 0
+        var go = true
+        while go {
+            match self.it.get(j) {
+                Some(_) => {
+                    total += 1
+                    j += 1
+                }
+                None => { go = false }
+            }
+        }
+        if i < total {
+            return self.it.get(total - 1 - i)
+        }
+        return None
+    }
+}
+
+impl Seq[T, EnumSeq[T, S]] for EnumSeq[T, S] {
+    fn get(var self, i: I64) -> Pair[I64, T]? {
+        match self.it.get(i) {
+            Some(v) => { return Some(Pair { fst: i, snd: v }) }
+            None => { return None }
+        }
+    }
+}
+
+impl Seq[T, ZipSeq[T, S]] for ZipSeq[T, S] {
+    fn get(var self, i: I64) -> Pair[T, T]? {
+        match self.it.get(i) {
+            Some(a) => {
+                match self.ot.get(i) {
+                    Some(b) => { return Some(Pair { fst: a, snd: b }) }
+                    None => { return None }
+                }
+            }
+            None => { return None }
+        }
+    }
+}
+
+impl Seq[T, ChainSeq[T, S]] for ChainSeq[T, S] {
+    fn get(var self, i: I64) -> T? {
+        match self.a.get(i) {
+            Some(v) => { return Some(v) }
+            None => {
+                // a.get(i) 已尽则 a 长 m ≤ i:无状态重扫取 m,再读 b 的 i-m 位
+                var m: I64 = 0
+                var j: I64 = 0
+                var go = true
+                while go {
+                    match self.a.get(j) {
+                        Some(_) => {
+                            m += 1
+                            j += 1
+                        }
+                        None => { go = false }
+                    }
+                }
+                return self.b.get(i - m)
+            }
+        }
+    }
+}
+
 // ---- 数组入口(UFCS:xs.map(f) 以接收者填首参;§4.8) ----
 
 pub fn map(xs: I32[], f: fn(I32) -> I32) -> MapSeq[I32, RawSeq[I32[], I32]] {
@@ -186,6 +487,34 @@ pub fn filter(xs: I32[], p: fn(I32) -> Bool) -> FilterSeq[I32, RawSeq[I32[], I32
 
 pub fn take(xs: I32[], k: I64) -> TakeSeq[I32, RawSeq[I32[], I32]] {
     return TakeSeq { it: RawSeq { src: xs }, k: k }
+}
+
+pub fn skip(xs: I32[], n: I64) -> SkipSeq[I32, RawSeq[I32[], I32]] {
+    return SkipSeq { it: RawSeq { src: xs }, n: n }
+}
+
+pub fn take_while(xs: I32[], p: fn(I32) -> Bool) -> TakeWhileSeq[I32, RawSeq[I32[], I32]] {
+    return TakeWhileSeq { it: RawSeq { src: xs }, p: p }
+}
+
+pub fn rev(xs: I32[]) -> RevSeq[I32, RawSeq[I32[], I32]] {
+    return RevSeq { it: RawSeq { src: xs } }
+}
+
+pub fn enumerate(xs: I32[]) -> EnumSeq[I32, RawSeq[I32[], I32]] {
+    return EnumSeq { it: RawSeq { src: xs } }
+}
+
+pub fn zip(xs: I32[], ys: I32[]) -> ZipSeq[I32, RawSeq[I32[], I32]] {
+    return ZipSeq { it: RawSeq { src: xs }, ot: RawSeq { src: ys } }
+}
+
+pub fn chain(xs: I32[], ys: I32[]) -> ChainSeq[I32, RawSeq[I32[], I32]] {
+    return ChainSeq { a: RawSeq { src: xs }, b: RawSeq { src: ys } }
+}
+
+pub fn from_list(xs: List[I32]) -> ListSeq[I32] {
+    return ListSeq { src: xs }
 }
 
 // ---- 数组直终结(快路径:零包装直接索引循环) ----
@@ -234,6 +563,88 @@ pub fn all(xs: I32[], p: fn(I32) -> Bool) -> Bool {
         i += 1
     }
     return true
+}
+
+pub fn fold(xs: I32[], init: I64, f: fn(I64, I32) -> I64) -> I64 {
+    var acc: I64 = init
+    var i: I64 = 0
+    while i < xs.len {
+        acc = f(acc, xs[i])
+        i += 1
+    }
+    return acc
+}
+
+pub fn reduce(xs: I32[], f: fn(I32, I32) -> I32) -> I32? {
+    if xs.len == 0 {
+        return None
+    }
+    var acc: I32 = xs[0]
+    var i: I64 = 1
+    while i < xs.len {
+        acc = f(acc, xs[i])
+        i += 1
+    }
+    return Some(acc)
+}
+
+pub fn foreach(xs: I32[], f: fn(I32)) -> I64 {
+    var n: I64 = 0
+    var i: I64 = 0
+    while i < xs.len {
+        f(xs[i])
+        n += 1
+        i += 1
+    }
+    return n
+}
+
+pub fn min(xs: I32[]) -> I32? {
+    if xs.len == 0 {
+        return None
+    }
+    var best: I32 = xs[0]
+    var i: I64 = 1
+    while i < xs.len {
+        if xs[i] < best {
+            best = xs[i]
+        }
+        i += 1
+    }
+    return Some(best)
+}
+
+pub fn max(xs: I32[]) -> I32? {
+    if xs.len == 0 {
+        return None
+    }
+    var best: I32 = xs[0]
+    var i: I64 = 1
+    while i < xs.len {
+        if best < xs[i] {
+            best = xs[i]
+        }
+        i += 1
+    }
+    return Some(best)
+}
+
+pub fn last(xs: I32[]) -> I32? {
+    if xs.len == 0 {
+        return None
+    }
+    return Some(xs[xs.len - 1])
+}
+
+pub fn position(xs: I32[], p: fn(I32) -> Bool) -> I64? {
+    var i: I64 = 0
+    while i < xs.len {
+        if p(xs[i]) {
+            return Some(i)
+        }
+        i += 1
+    }
+    return None
 }
 
 // ---- T17:parallel 域面汇聚(§7.7 std.iter 归位;前奏内建薄包装) ----

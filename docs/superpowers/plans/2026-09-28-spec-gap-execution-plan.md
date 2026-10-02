@@ -209,7 +209,7 @@
 
 ### T16 · 惰性适配器链(r3b_adapters)
 
-- **预估:** 1–1.5 d。**前置:** T15。**状态:** ✅ 已完成(2026-10-02;Seq[T,S] get 基惰性适配器 + UFCS 入口,锚迁 modules/iter_adapters;suite 99/99 双臂;发射面在册 T25 v2 域)
+- **预估:** 1–1.5 d。**前置:** T15。**状态:** ✅ 已完成(2026-10-02;Seq[T,S] get 基惰性适配器 + UFCS 入口,锚迁 modules/iter_adapters;suite 99/99 双臂;发射面在册 T25 v2 域)。**续波收口(2026-10-03,R-P3b 承诺余项)**:适配器补 skip/take_while/rev/enumerate/zip/chain + 终结子补 fold/reduce/foreach/min/max/last/position + from_list 接入 List(ListSeq 包装——前奏 class 直 impl 派发不挂,新证);锚扩 iter_adapters 十二段;探针四证(无返回 fn 型/泛型 T 比较/class var 字段/Pair 推断)+ 接收者拷贝边界新证(class 经 struct 字段存储被拷贝);登记债追加,见 COVERAGE 2026-10-03 行
 - **目标:** `iter.map/filter/take/...` 适配器作用 Iterator 之上,惰性、单态化零成本;翻转 `tests/roadmap/r3b_adapters.ct`。
 - **范围:** `std/`(新 `iter.ct` 或随 T15 文件);纯 stdlib 实现(适配器 = 持 Iterator 的 struct + impl Iterator),**编译器零改动为设计目标**。
 - **要点:** 每适配器一个泛型 struct(如 `struct MapIter[A, B] { it: A, f: fn(A) -> B? }`——fn 值作字段,函数类型字段面 §3.1 已有);惰性 = next 时才调 f;单态化自动获得零成本。
