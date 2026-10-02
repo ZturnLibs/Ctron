@@ -171,6 +171,7 @@ extern "c" fn gui_mod_shift() -> I32
 
 #[trusted]
 extern "c" fn gui_alpha(a: I32) -> Void
+extern "c" fn gui_radius(px: I32) -> Void
 
 #[trusted]
 extern "c" fn gui_cmd_bg_a(i: I32) -> I32
@@ -576,6 +577,12 @@ pub fn theme_apply(t: Theme) -> I32 {
 // 平台 id:0=mac 1=win 2=linux(§2.5;I32 跨界,Str 面由调用方映射)
 pub fn gui_platform() -> I32 {
     return gui_platform_id()
+}
+
+// 注入优先时钟(ms;headless d_tick 钉相位,真窗真时钟)——toast 定时/
+// 防抖类配方的时间源(§2.7 tick 消费)
+pub fn gui_now() -> I32 {
+    return gui_now_ms()
 }
 
 // 宿主明暗:true=dark(探测不可得回退 dark;进程内缓存)
@@ -1208,6 +1215,16 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             t.ev_name.push("numeric")
             t.ev_fn.push("")
         } else {
+        if an == "switch" {
+            // checkbox 变体:药丸滑块视觉(渲染期 rt_has_mark 消费;零 schema)
+            t.ev_name.push("switch")
+            t.ev_fn.push("")
+        } else {
+        if an == "radio" {
+            // checkbox 变体:单选圆钮视觉(机制全同 checkbox,单选清他在模型)
+            t.ev_name.push("radio")
+            t.ev_fn.push("")
+        } else {
         if an == "on" {
             glit(src, cur, 58)
             var evn: Str = gword(src, cur)
@@ -1253,6 +1270,8 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
                 // 波次五a:image 源路径(与 placeholder 同 strs 槽位;各自元素取用)
                 strs.push(av)
             }
+        }
+        }
         }
         }
         }
@@ -2786,6 +2805,9 @@ pub fn rt_hover_node(rects: List[I32], hits: List[I32], px: I32, py: I32) -> I32
 }
 
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32, hits: List[I32], hinst: List[I32], inst: I32, hov: I32, actn: I32) -> I32 {
+    if id >= t.ntag.len {
+        panic("EACHDBG 越界 id=" + id.to_string() + " ntag.len=" + t.ntag.len.to_string())
+    }
     // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
     // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
     var tag: Str = t.ntag[id]
@@ -3052,12 +3074,53 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     cbgp = g_parse_color("#3a3a44")
                 }
             }
-            gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "28", t)),
-                    2, gs2i(gt_cls_prop(c, "h", "28", t)), cbgp)
-            if ck {
+            // 变体(switch/radio 裸属性,事件表承载):视觉换装,机制全同——
+            // switch=药丸 44x26+旋钮 ● 位置承载态;radio=圆 22x22+●/○;
+            // 裸 checkbox=28x28+x 全量原样(s27 站岗)。字形叶字面量直调,
+            // 不经 Str 变量(发射臂分支内 Str 变量 UB 面绕行)
+            var is_sw: Bool = rt_has_mark(t, id, "switch")
+            var is_rd: Bool = rt_has_mark(t, id, "radio")
+            var cbw: I32 = gs2i(gt_cls_prop(c, "w", "28", t))
+            var cbh: I32 = gs2i(gt_cls_prop(c, "h", "28", t))
+            var cax: I32 = 1
+            if is_sw {
+                cbw = gs2i(gt_cls_prop(c, "w", "44", t))
+                cbh = gs2i(gt_cls_prop(c, "h", "26", t))
+                gui_radius(cbh / 2)
+                if ck {
+                    cax = 2
+                } else {
+                    cax = 0
+                }
+            }
+            if is_rd {
+                cbw = gs2i(gt_cls_prop(c, "w", "22", t))
+                cbh = gs2i(gt_cls_prop(c, "h", "22", t))
+                gui_radius(cbw / 2)
+            }
+            gui_cfg(0, 0, 0, 0, cax, 1, 2, cbw,
+                    2, cbh, cbgp)
+            if is_sw {
                 var cfp: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-                gui_text_w("x", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                gui_text_w("●", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
                          rt_col_r(cfp), rt_col_g(cfp), rt_col_b(cfp), 255)
+            } else {
+            if is_rd {
+                var cfp2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                if ck {
+                    gui_text_w("●", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                             rt_col_r(cfp2), rt_col_g(cfp2), rt_col_b(cfp2), 255)
+                } else {
+                    gui_text_w("○", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                             rt_col_r(cfp2), rt_col_g(cfp2), rt_col_b(cfp2), 255)
+                }
+            } else {
+            if ck {
+                var cfp3: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                gui_text_w("x", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                         rt_col_r(cfp3), rt_col_g(cfp3), rt_col_b(cfp3), 255)
+            }
+            }
             }
             hits.push(id)
             hinst.push(inst)
