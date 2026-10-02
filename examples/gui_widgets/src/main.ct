@@ -344,10 +344,17 @@ fn main() -> I32 {
             d_expect_text(t, "Ctron 组件陈列室")
             d_expect_text(t, "选择框架…")
             d_expect_absent(t, "raylib")
-            // 开下拉 → 选项可见
+            // 开下拉 → 选项可见;overlay 悬浮:下方轨道 y 不动(不推挤,GUI-10)
+            var ty0 = List[I32]()
+            track_xy(ty0)
             actc(d_click(t, "sel_toggle"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "raylib")
+            var ty1 = List[I32]()
+            track_xy(ty1)
+            if ty1[1] != ty0[1] {
+                panic("widgets: select 下拉推挤了下方内容")
+            }
             // 点选(实例后缀事件) → 收起+选中回显
             actc(d_click(t, "sel_pick"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))

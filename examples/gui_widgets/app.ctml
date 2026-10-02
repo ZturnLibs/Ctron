@@ -1,15 +1,19 @@
 // examples/gui_widgets —— 组件陈列室:Select/WList/Dialog 三件套+图像+主题
 // 键 1-2 切主题(dark/light);点触发器开下拉,点选项收起;open 按钮开模态
 // 组件三件套(同源声明;跨文件分发待 view 导入)
+// select v2:下拉 overlay 悬浮(遮罩层不推挤后续内容;静态锚=MenuBar v2 同源,
+// 动态锚=查询触发器矩形留 v3 登记)
 view Select (label: Str, open: Bool) {
   <vbox class="w-select">
     <button class="w-trigger" on:click={sel_toggle()}>{label}</button>
     <when cond={open}>
-      <vbox class="w-opts">
-        <each o in={opts}>
-          <button class="w-opt" on:click={sel_pick()}>{o}</button>
-        </each>
-      </vbox>
+      <overlay class="w-mask" on:click={sel_toggle()}>
+        <vbox class="w-opts">
+          <each o in={opts}>
+            <button class="w-opt" on:click={sel_pick()}>{o}</button>
+          </each>
+        </vbox>
+      </overlay>
     </when>
   </vbox>
 }
