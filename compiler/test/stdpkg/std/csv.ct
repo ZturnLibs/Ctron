@@ -1,4 +1,5 @@
 // std/csv.ct —— CSV(RFC 4180 子集;引号转义;CRLF/LF 行界;确定性行序)
+//@ tier: alloc
 // since: std-0.2 stability: experimental
 // 口径:解析严格化——引号必须闭合,否则 None;字段中段引号按字面(宽松 v0);
 // 写出按需加引号!(含 , " CR LF 的字段);行界 LF

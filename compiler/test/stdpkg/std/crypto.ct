@@ -1,4 +1,5 @@
 // std/crypto.ct —— 密码学原语(纯 Ctron;§12 纯 Ctron 驱动的规范级前置)
+//@ tier: alloc
 // since: std-0.5 stability: experimental
 // 口径:SHA-256 首件(FIPS 180-4);验收锚 = RFC 6234/FIPS 标准向量
 // 实现:位函数走 bit.* 内建命名空间(§4.5,T01;自举发射臂原生 C 位运算,解释臂文本域组合);

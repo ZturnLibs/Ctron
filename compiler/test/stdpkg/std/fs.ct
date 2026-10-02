@@ -1,4 +1,5 @@
 // std/fs.ct —— fs 便利层(fs_exists/read_file 内建之上;纯 Ctron)
+//@ tier: std
 // 命名 r 前缀族避免与内建/其他模块撞名(use 合并单一命名空间)。
 //
 // ---- 能力 trait(§8.1;R-P2b 锚迁主套件 07a)----
