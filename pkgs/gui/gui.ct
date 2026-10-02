@@ -3203,12 +3203,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             // gt_dim 值驱动宽(GUI-16 地基,merge 采主仓口径)
             var is_sw: Bool = rt_has_mark(t, id, "switch")
             var is_rd: Bool = rt_has_mark(t, id, "radio")
-            var cbw: I32 = gs2i(gt_dim(t, c, "w", "28", bind))
-            var cbh: I32 = gs2i(gt_dim(t, c, "h", "28", bind))
+            var cbw: I32 = gt_dim(t, c, "w", "28", bind)
+            var cbh: I32 = gt_dim(t, c, "h", "28", bind)
             var cax: I32 = 1
             if is_sw {
-                cbw = gs2i(gt_dim(t, c, "w", "44", bind))
-                cbh = gs2i(gt_dim(t, c, "h", "26", bind))
+                cbw = gt_dim(t, c, "w", "44", bind)
+                cbh = gt_dim(t, c, "h", "26", bind)
                 gui_radius(cbh / 2)
                 if ck {
                     cax = 2
@@ -3217,8 +3217,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
             }
             if is_rd {
-                cbw = gs2i(gt_dim(t, c, "w", "22", bind))
-                cbh = gs2i(gt_dim(t, c, "h", "22", bind))
+                cbw = gt_dim(t, c, "w", "22", bind)
+                cbh = gt_dim(t, c, "h", "22", bind)
                 gui_radius(cbw / 2)
             }
             gui_cfg(0, 0, 0, 0, cax, 1, 2, cbw,
