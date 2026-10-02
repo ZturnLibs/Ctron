@@ -1480,6 +1480,28 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             // T55:显式 return 经 ct_clo_ret_line——u: 走 union 低 8 字节式
             //(探针/中间件体 return Resp{…} / return next(r) 皆此臂)
+            // with/with_mut return 位同主干 ANF 前置(r3a bump:闭包体 return m.with 形;
+            // #shim=2 早于主干 return 臂,漏接即 ct_expr 落「仅语句位」panic)
+            if st[1][0] == "Call" {
+                if st[1][1][0] == "Member" {
+                    if or2(st[1][1][3] == "with", st[1][1][3] == "with_mut") {
+                        var robjt2 = ct_typeof(st[1][1][1], env, file)
+                        if or2(robjt2 == "A", robjt2.len > 1 && byte_at(robjt2, 0) == 109) {
+                            var rismut2 = st[1][1][3] == "with_mut"
+                            var rinner2 = "i"
+                            if robjt2.len > 1 && byte_at(robjt2, 0) == 109 {
+                                rinner2 = byte_slice(robjt2, 1, robjt2.len)
+                            }
+                            var rcl2 = st[1][2][1]
+                            var rtname2 = "t_wret" + nline(st)
+                            var robj2 = ct_expr(st[1][1][1], env, file)
+                            ct_emit_with_stmt(st[1], robj2, robjt2, rcl2, env, file, rismut2, rtname2, hreg, "1")
+                            eln(ct_clo_ret_line(rinner2, rtname2), env)
+                            return env
+                        }
+                    }
+                }
+            }
             var rv2 = ct_expr(st[1], env, file)
             var rt2 = ct_typeof(st[1], env, file)
             eln(ct_clo_ret_line(rt2, rv2), env)

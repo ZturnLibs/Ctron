@@ -317,7 +317,7 @@
 
 ### T27 · 闭包捕获语义收口【需用户裁决】
 
-- **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** ✅ 已完成·B 终态转正(2026-09-30 用户裁决,台账 619 行;**10-02 残余收口**:§4.7 补快照句+§8.4 错引改 §6.2+§6.2 补能力扩展位 bullet+§10 E3070 行翻终态+README T27 版记+R-P3a 只读借用条款终态注+r3a 锚头注回切+T55 快照边界注翻面[COVERAGE/挂起节];r3a 锚解释臂双宿主复验绿,原生臂红=在册 T33 ct_emit_clo 卫兵错位[p0a 合流后复验,非本件债])
+- **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** ✅ 已完成·B 终态转正(2026-09-30 用户裁决,台账 619 行;**10-02 残余收口**:§4.7 补快照句+§8.4 错引改 §6.2+§6.2 补能力扩展位 bullet+§10 E3070 行翻终态+README T27 版记+R-P3a 只读借用条款终态注+r3a 锚头注回切+T55 快照边界注翻面[COVERAGE/挂起节];r3a 锚解释臂双宿主复验绿,原生臂红=在册 T33 ct_emit_clo 卫兵错位[p0a 合流后复验,非本件债];**10-03 原生臂复验收官=r3a 双臂全绿,本件终态无残余**:红因经干净基线二分实证非卫兵[ct_emit_clov 卫兵形态=单对 #ifndef 包整 shim,完好]——p0a 合并 46e11d70 引爆 ct_str_bsum I32 乘 31 链溢出(判别位新入捕获名/型别码,`|x| x + base` 第 3 字符即破界)+闭包体尾槽/return 位 with·with_mut ANF 漏接(ct_expr「仅语句位」恒拒,eval 两侧皆合法)+同 fn 多 with 同名形参 C 顶层重定义,三修落码 trans_conc.ct/trans_stmt.ct(修法详注=r3a 锚头注);fx_cloval/探针四形/r3a 发射+cc+运行全绿,suite 99/99+smoke 170/3(余 2 红=T33 parallel OOB/Rust iter 清账,皆在册非本件);连带小修=固定点段版本行竞态过滤(两路 build.sh 各自采样 git describe,机刷并发落库窗口即假红)+GATEDBG2 调试打印清退(trans_expr p0a 遗留发射产物污染)+decl 锁 444→449 随批申报(+1 本件 ct_clo_with_tail,+4 GUI-17/12 批已落库未申报归 GUI 泳道);**登记债=with 在任意表达式位 emit ANF 缺口(eval 合法,`return bump() + m.with(...)` 形;语句/let/return 尾/闭包体尾已全接,任意嵌套表达式位待 ANF 提升机,capability 项非 hack)**;T33 parallel ct_emit_clo OOB 独立在册非本件)
 - **业界调研(0929,评估素材存档)**:有 GC 阵营(JS/Go/C#/Swift)普遍按引用共享绑定(循环变量为公共事故源,Go 1.22/JS let 均向每轮迭代绑定修补);无 GC 阵营(Rust/C++/ObjC)走拷贝/显式(借用户生命周期或自负安全);Java/Kotlin 的 effectively-final 绑定拷贝 + 显式共享可变单元,十年稳定。**映射**:Ctron 现行 E3070+Mutex 纪律 ≈ Java 系绑定拷贝 + 共享单元模型;A(按引用)=T29 后的 GC 阵营主流位;B(拷贝终态)=现行事实行为升格,与 arena 无 GC 自洽;C(混合)≈ 现状 de-facto(同任务共享 arena+spawn 边界 bind_of 克隆)但双臂 seed/native 拷贝分歧未修前不宜形式化。**T29 后评估时**:若 GC 落地且用户需按引用,按能力扩展立项(不与 B 冲突)。
 
 **T29 后复评补记(0930,评估条件已达成)**:T29 MVP tracing GC 已落库(保守根集:
@@ -625,7 +625,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复;**0930 精确定稿**:ct_emit_clo 的 #ifndef 卫兵在 prewalk/实发两遍
 间错位——发射 C 出现「fn 首行后即 #endif、return 与 } 落卫兵外」的截断 shim(闭包无
 返回路径→运行期垃圾;fx_conc_parallel/cloval 双夹具实证)。修法=卫兵只在实发遍 emission
-(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修 | — |
+(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修。**10-03 T27 复验注**:r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef 包整 shim),r3a 原生臂真因=bsum I32 溢出+with ANF 漏接(已随 T27-B 收口三修);本件 parallel 面 ct_emit_clo OOB("index out of bounds")独立仍在册,bsum 修复后复验依旧复现,卫兵假说待 T33 作者按上法定稿时再证 | — |
 | T34 | 栈经济 P9 | W7 | **已完成**:1002 两波——最小符合径(触顶诊断链 a77f141f)+正案收官(work-stealing 落码+可增长栈判决入册:A/B 双阻塞于发射器机器,退路 1MB 大栈=§7.1 字面终形,解锁条件单列;ws_steal 锚+c10k 满额 PASS+A/B 差分 ≤0.5%) | — |
 | T35 | 分层 stdlib 机制 | W8 | ✅ 1002 | — |
 | T36 | ctc target+后端接口 | W8 | 待办 | — |

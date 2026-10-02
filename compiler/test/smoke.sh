@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=444' "$T/chk.out" && ok "自检 cc_run 绿,decls=444(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=449' "$T/chk.out" && ok "自检 cc_run 绿,decls=449(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报=444;+T27-B 原生臂收口一 fn[ct_clo_with_tail:闭包体尾/return 位 with ANF 助手]+GUI-17/12 批已落库未申报四 fn[归 GUI 泳道补登记],2026-10-03 随批申报=449)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -628,7 +628,11 @@ P
     if "$COMP/ctc.sh" emit "$COMP/build/cc_emit.ct" "$T/cc_emit.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cc_emitter.bin" "$T/cc_emit.c" 2>/dev/null; then
         "$T/cc_emitter.bin" run "$COMP/build/cc_run.ct" > "$T/c2.c" 2>&1
-        diff -q "$T/cc_self.c" "$T/c2.c" > /dev/null 2>&1 && ok "固定点:发射产物逐字节复现" || bad "固定点:两路发射产物分歧"
+        # 版本行除外:两路各自 build.sh 采样 git describe,跑门窗口内 HEAD 移动
+        # (机刷并发落库)即两侧版本串不同——发射不变量是编译器逻辑,非版本戳
+        grep -v 'static const char\* ctron_version' "$T/cc_self.c" > "$T/cc_self_nv.c"
+        grep -v 'static const char\* ctron_version' "$T/c2.c" > "$T/c2_nv.c"
+        diff -q "$T/cc_self_nv.c" "$T/c2_nv.c" > /dev/null 2>&1 && ok "固定点:发射产物逐字节复现(版本行除外)" || bad "固定点:两路发射产物分歧"
     else
         bad "发射器自发射失败"
     fi

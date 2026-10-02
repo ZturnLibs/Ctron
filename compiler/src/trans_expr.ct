@@ -1123,7 +1123,6 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // P0-A:签名段形参码 → 闭包实参 #clcodes("F2{u:Req__X;F1}>r" 拆段,
                 // 第 k 实参位闭包取第 k-1 段;run_chain 续链闭包的 rq 形参码源)
                 var fsegs = ct_fsig_params(fvt)
-                println("//GATEDBG2 fvt=" + fvt + " @" + nline(e))
                 var fv = "(t_" + cal[1] + ")"
                 if fvraw.len > 1 && byte_at(fvraw, 0) == 80 {
                     fv = "(*t_" + cal[1] + ")"
