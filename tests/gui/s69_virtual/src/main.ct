@@ -1,4 +1,4 @@
-// tests/gui/s66_virtual —— GUI-21 虚拟化长列表 headless 验收
+// tests/gui/s69_virtual —— GUI-21 虚拟化长列表 headless 验收
 // 三段:初始窗口(0-5 行)→ 滚 5 行(窗口 5-10,首行 row0 消失)→ 回滚归位
 // (数据 1000 行,渲染恒 6 行=O(1))
 use gui.{test, d_frame, d_expect_text, d_expect_absent, d_scroll, scroll_off, Driver}

@@ -1,4 +1,4 @@
-// tests/gui/s66_virtual —— GUI-21 虚拟化长列表 v1:scroll 容器+可见窗口配方
+// tests/gui/s69_virtual —— GUI-21 虚拟化长列表 v1:scroll 容器+可见窗口配方
 // (scroll 标记容器=clip 裁剪+滚轮偏移 C 槽;内容总高 h: "{totalh}" 撑 O(1)
 //  滚动条长——GUI-16 值驱动;bind 组装仅可见窗口行(含前占位)——O(1) 渲染行数;
 //  overscan/非均匀行高登记 v2,virtual each 标签形态待 GUI-13 后协调)
