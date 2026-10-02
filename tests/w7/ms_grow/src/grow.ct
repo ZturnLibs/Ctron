@@ -1,0 +1,20 @@
+// tests/w7/ms_grow —— P9 栈面全量锚:A′ 分段+调用窗回收+再入续跑(§7.1)
+// CTRON_MORESTACK 发射期门下,64KB 小栈上 2 万层深递归(缺省形必触顶)经
+// morestack 序言机器生长算完;同源 OFF 形 = 触顶诊断 rc=101(run.sh 对拍)。
+fn depth(n: I64) -> I64 {
+    if n <= 0 {
+        return 0
+    }
+    return 1 + depth(n - 1)
+}
+
+fn main() -> I32 {
+    scope { |sc|
+        let t = sc.spawn(|| {
+            return depth(20000)
+        })
+        let r = t.join()
+        println(r)
+    }
+    return 0
+}

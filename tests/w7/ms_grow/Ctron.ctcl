@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "w7_ms_grow"
+    version = "0.1.0"
+}
