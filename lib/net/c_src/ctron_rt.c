@@ -151,12 +151,13 @@
  *   根区间改写+callee-saved 寄存器镜像修复三件机器;分段式 guard 续跑亦需
  *   发射器 prologue 配合;退路「1MB 大栈+guard+触顶诊断」(a77f141f)为
  *   §7.1 字面终形,详见 docs/superpowers/specs/2026-09-26-server-p9-*。
- *   栈面全量(2026-10-03,解锁条件拍板动刀):A′=分段+钉住+再入续跑 ——
+ *   栈面全量(2026-10-03,解锁条件拍板动刀):A′=分段+调用窗回收+再入续跑 ——
  *   发射器序言检查(CTRON_MORESTACK 发射期门,缺省不注入)失败 →
  *   ctron_rt_stk_grow 分配新段(mmap+guard,尺寸同任务栈,不入池不碰 G),
- *   rt_swap 切段执行「本函数重入 thunk」,返回值拷回原调用点;段钉住至任务
- *   死亡(stack_retire 随 munmap 终结,逃逸栈地址恒有效);每任务段数上限
- *   RT_MS_SEG_MAX,超限走触顶诊断同族 rc=101(分段抖动上限)。切换 asm
+ *   rt_swap 切段执行「本函数重入 thunk」,返回值拷回原调用点;段=调用窗
+ *   生命周期(go 1.2 free-on-return:窗内帧全数返回即 munmap;逃逸死帧地址
+ *   与固定栈同契约 UB,跨 park 停车段存活),残余链在 stack_retire 清;
+ *   链深上限 RT_MS_SEG_MAX,超限走触顶诊断同族 rc=101。切换 asm
  *   零改动(rt_swap/rt_ctx_init 只加调用方);计划:
  *   docs/superpowers/plans/2026-10-03-p9-morestack-machine.md。
  *
@@ -213,12 +214,11 @@ static size_t rt_stack_size(void)
 #define RT_LQ_CAP       256                    /* T34 work-stealing:本地就绪环容量(2 的幂) */
 #define RT_MAP_BUCKETS  1024                   /* key→record 哈希(2 的幂) */
 #define RT_BACKOFF_MAX_SHIFT 3                 /* 空闲退避上限:20µs << 3 = 160µs */
-/* T34 栈面全量(A′分段+钉住):序言检查安全余量(需罩住 grow 自身帧 +
- * rt_swap 的 callee-saved 推栈 + 宿主编译器帧宽出倍差);段数上限 =
- * 分段抖动(go 1.2 已知病:驻留旧段尾部的调用方循环调深函数,每轮一段)
- * 的资源闸,超限即触顶诊断同族 rc=101。 */
+/* T34 栈面全量(A′分段+调用窗回收):序言检查安全余量(需罩住 grow 自身帧 +
+ * rt_swap 的 callee-saved 推栈 + 宿主编译器帧宽出倍差);链深上限(并发段链
+ * 资源闸;段随调用窗 free-on-return,go 1.2 同款,见 ctron_rt_stk_grow)。 */
 #define RT_MS_MARGIN    2048u
-#define RT_MS_SEG_MAX   64
+#define RT_MS_SEG_MAX   256
 
 /* guard 页大小取真页粒度(darwin/arm64 页为 16KB)。 */
 static long rt_pagesize(void)
@@ -344,8 +344,9 @@ enum {
 
 enum { DESCHED_PARK = 1, DESCHED_YIELD = 2, DESCHED_FOREVER = 3 };
 
-/* T34 栈面全量:增长段(分段+钉住)。链头挂 rt_coro::segs,死亡时
- * stack_retire 逐段 munmap;段不回池(逃逸栈地址钉住至任务死亡)。 */
+/* T34 栈面全量:增长段(分段+调用窗回收)。链头挂 rt_coro::segs;正常路径
+ * grow 返回时即出链 munmap(free-on-return),stack_retire 只清残余链
+ * (panic/longjmp 跳越 grow 返回路径时残留)。段不回池。 */
 typedef struct rt_seg {
     struct rt_seg *nx;
     void          *base;         /* mmap 基址(含 guard 页) */
@@ -720,8 +721,9 @@ static unsigned char *stack_alloc(size_t *map_sz)
  * 然后入池/释放。 */
 static void stack_retire(rt_coro *c)
 {
-    /* T34 栈面全量:增长段链随任务死亡终结(钉住语义 = 存活期不回收;
-     * 死亡任务栈上的逃逸地址本就悬垂,与主栈同口径)。 */
+    /* T34 栈面全量:残余增长段链清偿(正常路径 grow 返回已自清;此处只接
+     * panic/longjmp 跳越 grow 返回路径的残留——死亡任务栈上的逃逸地址
+     * 本就悬垂,与主栈同口径)。 */
     while (c->segs) {
         rt_seg *sg = c->segs;
         c->segs = sg->nx;
@@ -1199,10 +1201,10 @@ static void rt_segv_handler(int sig, siginfo_t *si, void *uc)
     raise(sig == SIGBUS ? SIGBUS : SIGSEGV);
 }
 
-/* ── T34 栈面全量:A′ 分段+钉住+再入续跑(§7.1;2026-10-03)──
+/* ── T34 栈面全量:A′ 分段+调用窗回收+再入续跑(§7.1;2026-10-03)──
  * 发射器序言检查(CTRON_MORESTACK 发射期门)失败 → ctron_rt_stk_grow:
  * 分配新段(mmap+guard,尺寸同任务栈;不入池、不碰 G——段为任务私有,
- * 死亡即 munmap)→ rt_swap 切段执行「本函数重入 thunk」→ 返回值拷回原
+ * 窗终即 munmap)→ rt_swap 切段执行「本函数重入 thunk」→ 返回值拷回原
  * 调用点。切换复用既有 rt_swap/rt_ctx_init(asm 零改动);交接槽挂任务
  * (ms_fn/ms_args/ms_ret/ms_back),rt_swap 期间仅本任务读写。
  * 哑元/强符号:P2-D 模板模式——垫片 weak 定义,本处强定义链接期顶替
@@ -1267,7 +1269,13 @@ void ctron_rt_stk_grow(void (*fn)(void *, void *), void *args, void *ret)
     c->stk_hi = c->stk_lo + (msz - (size_t)rt_pagesize());
     rt_ctx_init(&sg->ctx, c->stk_lo, msz - (size_t)rt_pagesize(), ms_tramp);
     rt_swap(&from, &sg->ctx);
-    /* 切回:恢复旧段栈界(sg 本身留链上,死亡时统一回收) */
+    /* 切回:恢复旧段栈界;本段随调用窗终结(LIFO 出链 munmap)——段上帧
+     * 全数返回后其地址本就悬垂(与固定栈帧复用同契约),跨 park 停车段
+     * 存活(park 在窗内,帧活)。RT_MS_SEG_MAX = 链深上限。 */
+    c->segs = sg->nx;
+    c->nsegs--;
+    munmap(sg->base, sg->map_sz);
+    free(sg);
     c->stk_lo = saved_lo;
     c->stk_hi = saved_hi;
 }
@@ -1276,10 +1284,13 @@ static void ms_tramp(void)
 {
     rt_coro *c = rt_tls_cur();
     rt_ctx scratch;
+    /* ms_back 必须先于 fn(args) 取快照:窗口内的嵌套 grow 会覆写共享槽,
+     * 迟读 = 外层 tramp 切回内层已出链的帧,重复 pop(double-free 实证)。 */
+    rt_ctx *back = c->ms_back;
     void (*fn)(void *, void *) = c->ms_fn;
     void *args = c->ms_args, *ret = c->ms_ret;
     fn(args, ret);
-    rt_swap(&scratch, c->ms_back);
+    rt_swap(&scratch, back);
     _exit(101);                              /* 不可达:切回即不返回 */
 }
 

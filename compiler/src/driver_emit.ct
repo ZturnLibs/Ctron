@@ -171,6 +171,14 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("__attribute__((weak)) void ctron_rt_notify_done(void* key) \{ (void)key; }")
             println("__attribute__((weak)) void ctron_rt_cancel_wake_all(void) \{ }")
             println("__attribute__((weak)) void* ctron_rt_current(void) \{ return 0; }")
+            // P9 栈面全量(A′ 分段+钉住+再入续跑):序言检查强钩子哑元——
+            // ctron_rt.c 强定义链接期顶替(P2-D 同款);检查仅 CTRON_MORESTACK
+            // 发射期注入,哑元态(未链 rt)恒 0/不可达。size_t 对齐 rt 侧签名。
+            // 哑元同挂发射期门:默认发射逐字节与旧形一致(黄金站岗)。
+            if !seq2(env_get("CTRON_MORESTACK"), "") && !seq2(env_get("CTRON_MORESTACK"), "0") {
+                println("__attribute__((weak)) int ctron_rt_stk_low(size_t need) \{ (void)need; return 0; }")
+                println("__attribute__((weak)) void ctron_rt_stk_grow(void (*fn)(void*, void*), void* a, void* r) \{ (void)fn; (void)a; (void)r; }")
+            }
             // 判据冻结口径:ct_rt_active = 真 rt 已链且 CTRON_RT=coro;ct_rt_coro_ctx =
             // 再加 current() 非空(协程上下文)——口径同 ctron_net.c ct_rt_parkable,
             // 因 park 对裸线程是契约外 no-op,裸线程调用面(如 main)保持 pthread 原语。
