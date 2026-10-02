@@ -224,7 +224,6 @@ struct Val {
 
 // 标量 cx 槽哨兵:仅作值使用(裸名禁成员/下标调用——发射面 ct_typeof 缺口);
 // 只读共享,标量 cx 永不写入(写面全部 tag=8 守卫),双臂身份无观察差异
-static let VNIL: List[Str] = List[Str]()
 
 // 流 = Flow 结构体(S1 换代):每表达式/语句节点一个,e4/s4 元组消除;
 // kind:k 正常 / r return / a 断言失败 / b break / c continue(Str 与原编码同形)
@@ -250,42 +249,42 @@ fn cx_of(v: Val) -> List[Str] {
 }
 
 fn vI(x: I32) -> Val {
-    return Val { tag: 1, iv: x.as[I64](), b: false, s: "", cx: VNIL }
+    return Val { tag: 1, iv: x.as[I64](), b: false, s: "" }
 }
 
 fn vB(b: Bool) -> Val {
-    return Val { tag: 4, iv: 0, b: b, s: "", cx: VNIL }
+    return Val { tag: 4, iv: 0, b: b, s: "" }
 }
 
 fn vS(s: Str) -> Val {
-    return Val { tag: 5, iv: 0, b: false, s: s, cx: VNIL }
+    return Val { tag: 5, iv: 0, b: false, s: s }
 }
 
 fn vV2() -> Val {
-    return Val { tag: 0, iv: 0, b: false, s: "", cx: VNIL }
+    return Val { tag: 0, iv: 0, b: false, s: "" }
 }
 
 // I64 域:iv 原生承载;超 I64 文本(巨型字面量)回 s 槽零损
 fn v6(t: Str) -> Val {
     var m = c6can(t)
     if c6_in_i64(m) {
-        return Val { tag: 2, iv: c6_i64v(m), b: false, s: "", cx: VNIL }
+        return Val { tag: 2, iv: c6_i64v(m), b: false, s: "" }
     }
-    return Val { tag: 2, iv: 0, b: false, s: m, cx: VNIL }
+    return Val { tag: 2, iv: 0, b: false, s: m }
 }
 
 // U64 域:iv 承载 ≤2^63-1;超域回 s 槽(文本零损,消费端 v7t 分流)
 fn v7(t: Str) -> Val {
     var m = c6can(t)
     if c6_i64ok(m) {
-        return Val { tag: 3, iv: c6_i64v(m), b: false, s: "", cx: VNIL }
+        return Val { tag: 3, iv: c6_i64v(m), b: false, s: "" }
     }
-    return Val { tag: 3, iv: 0, b: false, s: m, cx: VNIL }
+    return Val { tag: 3, iv: 0, b: false, s: m }
 }
 
 // I64 字段直构(检查式算术产出,iv 必在域内;零文本)
 fn v6i(x: I64) -> Val {
-    return Val { tag: 2, iv: x, b: false, s: "", cx: VNIL }
+    return Val { tag: 2, iv: x, b: false, s: "" }
 }
 
 // 6/7 域文本投影(iv 原生 → 规范十进制;文本槽直返)
@@ -393,7 +392,7 @@ fn v_unbox(l: List[Str]) -> Val {
         return vW(l[2], dvi(l[1]))
     }
     if k0 == "D" {
-        return Val { tag: 6, iv: 0, b: false, s: l[1], cx: VNIL }
+        return Val { tag: 6, iv: 0, b: false, s: l[1] }
     }
     return Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(l) }
 }

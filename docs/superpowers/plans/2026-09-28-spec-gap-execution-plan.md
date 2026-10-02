@@ -611,7 +611,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T30 | into_gc 真实化 | W6 | 待办 | — |
 | T31 | 解释器回收 | W6 | 待办 | — |
 | T32 | GC 门禁 ≤15% | W6 | 待办 | — |
-| T33 | parallel 真并行 | W7 | 待办 | — |
+| T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复) | — |
 | T34 | 栈经济 P9 | W7 | 待办 | — |
 | T35 | 分层 stdlib 机制 | W8 | 待办 | — |
 | T36 | ctc target+后端接口 | W8 | 待办 | — |
