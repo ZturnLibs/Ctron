@@ -124,7 +124,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 - **F32 = C `float`(IEEE 754 binary32),F64 = C `double`**;extern 边界按声明型直出,不隐式加宽。编译通道值保真(f_widen 证人);解释桥(ctron_ext_dispatch)仅有 "i:"/"s:" 两帧,**float 形参响亮 panic**(「extern 解释口径:不支持参数类型」),不静默错值——float 帧支持登记后续。
 - 带浮点形参的 **C 回调**(ct_fnK 全 int64 原型)同属不支持口径:fn 指针 typedef 全 `ct_i`,float 实参经 int 寄存器即错值;以 W8052 类推的手写垫片惯例规避,登记后续。
 - **C 宿主分歧**:compiler-c 把 F32/F64 统折 `ty_flt`(trans.c:527),F32 注解同为 double——自举发射面为准,C 宿主对齐登记在册(镜像 #8 宿主七项诊断的差分方向)。
-- ffi 域包载荷域:Ok(I64) 经发射面 Result 载荷槽 32 位,域承诺 \|rc\| < 2^31(POSIX rc 恒真;json.ct §载荷槽注记同源)。
+- ffi 域包载荷域:~~Ok(I64) 经发射面 Result 载荷槽 32 位~~ **T53(2026-10-02)已翻面**——载荷槽 ct_i 64 位 + expect/match 读侧按载荷码整宽往返,Ok(I64) 全域保真;\|rc\| < 2^31 保守承诺保留(POSIX rc 恒真),约束依据改登记为读侧修复前的历史口径。
 
 ### v0.9·二 追加批次(2026-09-29):定长数组字段 + union U8[N] + 裸引用拦截
 
@@ -219,7 +219,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 6 | ~~USize↔size_t 别名冲突~~ | ✅ v0.7 | 码 "z" → size_t;libc strlen 直连 |
 | 7 | ~~I64 定长数组发射计数解析缺陷~~ **已修复**——`a_split` 回溯拆分(计数最长数字前缀 + 余段合法元素码首字符校验;`a36` = 3×I64 不再读成 36×I32);补齐发射缺失的定长数组元素写路径(`t_buf[i]` 直写 + 声明计数越界守卫,此前误走 ctron_list 分支);锚定 `tests/ffi/i64_buffer/`(I64 视图过界求和/写透) | ✅ v0.8 | — |
 | 8 | ~~宿主线未同步 FFI 诊断~~ **已落地**——七项移植 C 宿主 sem(W8050/E4040/E4041/E4042/E4044/W8051/W8052),含变参四件套(TOK_ELLIPSIS/cfn.variadic/参数表尾标/E4044);六夹具逐一触发验证;差分 oracle 的 FFI 诊断口径闭合 | ✅ v0.8 | — |
-| 9 | ~~错误传播约定(errno → Result)~~ | ✅ v0.9 | 首步 `errno()` 内建(v0.8);**深层折叠已落地**——std.ffi 包 `sys_result(rc) -> Result[I64, Str]`(rc<0 折 Err(err_str(errno())),strerror 经包垫片中转避 const 冲突,str_from_c 深拷;Ok 载荷域承诺 \|rc\|<2^31——发射面 Result 载荷槽 32 位,json.ct prior art)。锚定:`tests/ffi/err_wrap/`(编译通道;解释桥 Str 返回截断 E3 在册) |
+| 9 | ~~错误传播约定(errno → Result)~~ | ✅ v0.9 | 首步 `errno()` 内建(v0.8);**深层折叠已落地**——std.ffi 包 `sys_result(rc) -> Result[I64, Str]`(rc<0 折 Err(err_str(errno())),strerror 经包垫片中转避 const 冲突,str_from_c 深拷;Ok 载荷域承诺 \|rc\|<2^31——T53 后约束依据翻面:载荷槽 64 位+读侧整宽,承诺保留为保守包络)。锚定:`tests/ffi/err_wrap/`(编译通道;解释桥 Str 返回截断 E3 在册) |
 | 10 | ~~发射的形参缺省静默通过~~ **已修复**——"补 0"垫片会把缺参洗成合法 C(cc rc=0 实证);现 ct_arity_range/ct_arity_parse 发射期断言(声明在案的被调个数不符即硬失败;变参 ≥ min;内建/未声明不查);编译器自身三拼接在守卫下全过(无潜伏 arity bug) | ✅ v0.8 | — |
 | 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃;已删除解阻塞,impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② ~~if 条件 `||` 解析错位~~ **已修复**——根因:`p_if` 条件误用 `p_and`(不消费 `\|\|`),`if` 条件含 `\|\|` 即解析错位(下游 `StructLit 非值类型`/签名吞没);语料对 if 条件 `\|\|` 零覆盖故长期隐形(while 走 p_stmt_expr→p_oror 本就对)。修复:p_if 改 `p_oror` + 04d_bool_or 回归锚。③ ~~`cimp_toks`+`cimp_proto` 同文件 native sem 崩溃~~ **已关闭(=②重复)**——该源型含 `if 三词或链`,②修复后 ctron-cc 原生驱动 cimport rc=0(输出与 seed 逐字一致);run.sh 已切原生驱动优先、seed 退化备用 | 中 | ①②③全部处置 |
 | 12 | ~~panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧)~~ | ✅ v0.8 | 全语境落地——回调蹦栈 `ctron_cb_depth` + `ctron_panic` 三路判定(回调内=消息+exit(1) 不越 C 帧;task 态=pmsg+cancel+longjmp;否则 exit);`cb_panic/` + `cb_panic_task/` 双夹具钉死(§四表此行此前漏销账,本次补) |

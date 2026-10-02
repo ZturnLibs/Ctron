@@ -44,3 +44,49 @@ test "error context chain" {
         Ok(_) => assert(false)
     }
 }
+
+// ---- T53:union 载荷 64 位化(§12.6 前置闭环;发射臂位型双关,解释臂原生)----
+fn t53_i64(v: I64) -> Result[I64, Str] {
+    return Ok(v)
+}
+
+fn t53_f64(v: F64) -> Result[F64, Str] {
+    return Ok(v)
+}
+
+fn t53_opt(v: F64) -> Option[F64] {
+    return Some(v)
+}
+
+fn t53_try(v: F64) -> Result[F64, Str] {
+    let x = t53_f64(v)?
+    return Ok(x)
+}
+
+fn t53_mf(v: F64) -> F64 {
+    match t53_f64(v) {
+        Ok(x) => { return x }
+        Err(m) => { return 0.0 - 1.0 }
+    }
+}
+
+test "t53 I64 payload full-width" {
+    var imax = 9223372036854775807
+    assert_eq(t53_i64(imax).expect("i"), imax)
+    let inf = t53_i64(imax).expect("i")
+    assert_eq(inf, imax)
+    assert_eq(t53_i64(imax).or(0 - 1), imax)
+}
+
+test "t53 F64 payload bit-faithful" {
+    assert_eq(t53_f64(2.5).expect("f"), 2.5)
+    let inf = t53_f64(2.5).expect("f")
+    assert_eq(inf, 2.5)
+    let ann: F64 = t53_f64(2.5).expect("f")
+    assert_eq(ann, 2.5)
+    assert_eq(t53_opt(2.5).expect("o"), 2.5)
+    assert_eq(t53_f64(2.5).or(0.0), 2.5)
+    assert_eq(t53_mf(2.5), 2.5)
+    let tv = t53_try(2.5).expect("t")
+    assert_eq(tv, 2.5)
+}

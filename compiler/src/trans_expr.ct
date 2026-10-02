@@ -775,6 +775,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "expect" {
                 var emsg = "\"expect failed\""
                 if ag.len > 1 { emsg = ct_expr(ag[1], env, file) }
+                // T53:载荷码经接收者恢复(#elem 侧条目/被调声明 Result[..] 首参)——
+                // f 位型双关回读(与 ct_res_wrap f 臂配对;旧 _r.v 裸值消费位直转双向失真);
+                // 非 f 码 _r.v 直槽(int 族整宽;Str/聚合码回落旧行为,聚合消费走 match 臂)
+                var pec = ct_opt_elem_expr(file, cal[1], env)
+                if pec == "f" {
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(_r.v) })._d; })"
+                }
                 return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } _r.v; })"
             }
             if or2(m == "is_err", m == "is_ok") {
@@ -1347,9 +1354,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }
     if t == "Try" {
-        // 表达式位 ?(§5 NULL 模型):ct_res 解包,Err/None 短路 return,载荷按元素码转型
+        // 表达式位 ?(§5 NULL 模型):ct_res 解包,Err/None 短路 return,载荷按元素码转型;
+        // T53:f 载荷位型双关回读(旧 (double) 直转双向失真)
         var ec = ct_try_elem(file, e, env)
         var qv = "t_q" + nline(e)
+        if ec == "f" {
+            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d; })"
+        }
         return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
     }
     if t == "BlockExpr" {

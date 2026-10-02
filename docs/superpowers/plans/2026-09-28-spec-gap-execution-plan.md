@@ -645,7 +645,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T50 | 闭源 S1/S2【条件】 | W9 | 挂起 | — |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | 待办 | — |
 | T52 | 插件沙箱(derive+lint) | W9 | 待办 | — |
-| T53 | emit union 载荷 64 位化 | W9 | 待办 | — |
+| T53 | emit union 载荷 64 位化 | W9 | **已完成**(1002;五病灶全修[expect 型别/expect 位还原/语句形 match-Ok 硬编码 int32/Try 两语句位/json (h) 绕行],json JNum/JReal 回切摘除,芯=wrap+or 先行 a000a6ad;探针 14 项双臂绿+e_t53_payload64 双臂锚+json_fidelity 13/13+suite 99/99+web_todo 92 裸跑 rc=0) | 见 git |
 
 ---
 
@@ -705,4 +705,4 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T53 · emit union 载荷 64 位化(实施中断,2026-10-02)
 
-- **预估:** 1.5–2 d。**前置:** 无。**状态:** 🟡 实施中断(病灶实证=F64 载荷经 int64 槽无位语义:写 `(ct_i)(2.5)` 截断、读端 let 推断 i32 再截;I64 直槽本已 64 位。方案=ct_f2i/ct_i2f 位转助手+ct_res_wrap f/g 位承载+#prel 载荷码侧条目[静态缓存表 RPC_N/C]+expect/or 读端位还原。**卡点=自编译期宿主静默崩**:二分定位到 trans_stmt 绑定块(禁用即愈),静态表/节点抽取与宿主旧值模型的型别二分(N 节点 lane 串 vs 表)未及定位;工作树已干净回退,suite 99/99 复绿。复开注记:①优先在 S1 平面重试(旧宿主值模型是根因域)②expect 注解 let 消费形已证可达(`let v: F64 = r.expect()` 正确产出 double t_v 所需的全部信息链,仅缺 #prel 绑定存活)③json JNum/JReal 回切随芯)
+- **预估:** 1.5–2 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-02,S1 平面复开即愈——上轮 #prel 助手表方案整体弃用,改 P0-A 同款内联 C11 union 复合字面量位双关,零新符号零 #prel)。**芯已先行**:wrap 写侧+or 两读侧由 a000a6ad(P0-A 收口四缝)落库;本件补齐余面+回切。**病灶全图(五点)**:①expect 静态型别硬编码 "i"(trans_ty 两处)——推断 let 按 int32 消费,I64 载荷 >2^31 截(2^63-1→-1 实证)、F64 错值;②expect 发射无位还原(trans_expr);③语句形 match 的 Ok 臂硬编码 `int32_t t_x=(int32_t)rme.v`(trans_stmt 1184——match 面截断根,注意 match-R 发射共**四条路径**:let-match 形/语句形/块尾值形 ct_match_value=Option 模型/表达式形,只有前二载标量载荷);④Try 两语句位 `(double)` 值直转;⑤json (h) 族绕行面。**修法**:载荷码统一经 ct_opt_elem_expr 恢复(接收者 Ident=#elem 侧条目[P0-G 已绑]/被调声明 Result[..] 首参——跨包 ct_fn_decl 通);f 码位双关回读(与 ct_res_wrap f 臂配对),6/7 整宽直槽,标量安全族 {f,6,7,z,b} 入 expect 型别,聚合/Str 码回落旧行为(零扰动)。**json JNum/JReal 回切**:jget_* Result 面成唯一 pub 数值面,jnum_*/jreal_*/jn_*/jr_* 摘除,jint64/jf64 私有 (k,v) 对保留,jv_*/jk_* 内迁 `.or(dft)`/match(pkgs/web/json.ct jd_i64+lib/http/frm/body.ct 注释同步)。**验收**:探针 14 项四读侧×I64(2^63 双界)/F64 双臂全绿(基线 emit bad=9 清零);新锚 tests/02_option_result.ct 两 test 块(套件 interp 双宿主)+tests/json_fidelity/corpus/e_t53_payload64.ct(run.sh 双臂);json_fidelity 13/13、suite 99/99 双列、web_todo 原生裸跑 92 rc=0(big=5000000000 大值载荷实证)、http/run 99 过(红=基线同红:e2e 五件 origin/main 预存、gzip 族 vendored 前置已补建)。**坑位**:①match-R 四条发射路径逐条排摸(1184 硬编码行藏在 okIx 臂);②`?` 表达式位只在 Result 返回函数内合法(emit `return t_q` 撞宿主 fn 签名=cc 硬错,interp 动态返回侥幸——探针首版踩);③I64_MIN 字面量直写合法(绿夹具在案),`0 - imax - 1` 不可用(seed 算术宽度取左);④自举期宿主静默崩(S1 平面前)确证随去 cx 化消失——本件三次自举全过)

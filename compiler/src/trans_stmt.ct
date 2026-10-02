@@ -652,7 +652,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     eln("if (" + rme + ".variant == 0) \{", env)
                     var venv = env
                     if vpt[2].len > 1 && vpt[2][1][0] == "PatId" && vpt[2][1][1] != "_" {
-                        eln(ct_ctype(sec) + " t_" + vpt[2][1][1] + " = (" + ct_ctype(sec) + ")(long)(" + rme + ".v);", env)
+                        // T53:f 载荷位型双关(旧 (double)(long) 值直转双向失真)
+                        var pvx8 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
+                        if sec == "f" {
+                            pvx8 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                        }
+                        eln(ct_ctype(sec) + " t_" + vpt[2][1][1] + " = " + pvx8 + ";", env)
                         venv = env_bind(env, vpt[2][1][1], sec)
                     }
                     if vbe[0] == "BlockExpr" {
@@ -689,13 +694,17 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 return env
             }
         }
-        // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷 i32)
+        // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷按元素码;T53:f 位型双关)
         if pat[0] == "PatId" && st[4][0] == "Try" {
             var qv = "t_q" + nline(st)
             var ec2 = ct_try_elem(file, st[4], env)
             eln("ct_res " + qv + " = " + ct_expr(st[4][1], env, file) + ";", env)
             eln("if (" + qv + ".variant != 0) \{ return " + qv + "; }", env)
-            eln(ct_ctype(ec2) + " t_" + pat[1] + " = (" + ct_ctype(ec2) + ")" + qv + ".v;", env)
+            var vx6 = "(" + ct_ctype(ec2) + ")" + qv + ".v"
+            if ec2 == "f" {
+                vx6 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d"
+            }
+            eln(ct_ctype(ec2) + " t_" + pat[1] + " = " + vx6 + ";", env)
             return env_bind(env, pat[1], ec2)
         }
         // Phase 4:let (tx, rx) = Channel[T](cap) —— 双名同一 ct_chan*
@@ -1122,7 +1131,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln("if (" + rme + ".variant == 0) \{", env)
                 var senv = env
                 if spt[2].len > 1 && spt[2][1][0] == "PatId" && spt[2][1][1] != "_" {
-                    eln(ct_ctype(sec) + " t_" + spt[2][1][1] + " = (" + ct_ctype(sec) + ")(long)(" + rme + ".v);", env)
+                    // T53:f 载荷位型双关(与 let-match 臂同款;旧 (double)(long) 值直转失真)
+                    var pvx9 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
+                    if sec == "f" {
+                        pvx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                    }
+                    eln(ct_ctype(sec) + " t_" + spt[2][1][1] + " = " + pvx9 + ";", env)
                     senv = env_bind(env, spt[2][1][1], sec)
                 }
                 if sbe[0] == "BlockExpr" {
@@ -1167,8 +1181,21 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         eln(ct_ctype(recvElem) + " t_" + opt[2][1][1] + " = *(" + ct_ctype(recvElem) + "*)(long)" + rme + ".v;", env)
                         oenv = env_bind(env, opt[2][1][1], recvElem)
                     } else {
-                        eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
-                        oenv = env_bind(env, opt[2][1][1], "i")
+                        // T53:载荷码恢复(#elem/被调声明首参)——旧硬编码 int32(
+                        // I64 载荷 >2^31 截断、F64 载荷错值根);f 位型双关,
+                        // 6/7 整宽直槽;i 码保持原行(零扰动回落)
+                        var sec9 = ct_opt_elem_expr(file, st[1], env)
+                        if or2(sec9 == "f", or2(sec9 == "6", sec9 == "7")) {
+                            var vx9 = "(" + ct_ctype(sec9) + ")(long)" + rme + ".v"
+                            if sec9 == "f" {
+                                vx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                            }
+                            eln(ct_ctype(sec9) + " t_" + opt[2][1][1] + " = " + vx9 + ";", env)
+                            oenv = env_bind(env, opt[2][1][1], sec9)
+                        } else {
+                            eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
+                            oenv = env_bind(env, opt[2][1][1], "i")
+                        }
                     }
                 }
                 if obe[0] == "BlockExpr" {
