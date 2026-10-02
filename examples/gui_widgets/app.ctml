@@ -84,6 +84,14 @@ view MultiList (title: Str) {
     </each>
   </vbox>
 }
+// Progress(v1 分段折衷,GUI-11):值驱动宽(GUI-16)前的分段形态——
+// bind 组装块字符条(█/░×10)+ 百分比叶,固定宽不依赖逐帧宽求值
+view Progress {
+  <vbox class="w-prog">
+    <label class="w-pbar">{pbar}</label>
+    <label class="w-pct">{pct}</label>
+  </vbox>
+}
 view Table {
   <vbox class="w-table">
     <hbox class="w-thead">
@@ -106,6 +114,7 @@ view Widgets {
     <Menu open: {mopen}/>
     <MenuBar open: {mopen}/>
     <Slider val: {sval}/>
+    <Progress/>
     <List title: "兴趣列表"/>
     <MultiList title: "多选技能"/>
     <Table/>
@@ -147,3 +156,6 @@ style w-ct { fg: TEXT size: 13 h: 20 }
 style w-slider { direction: column gap: 4 }
 style w-track { h: 8 w: 220 bg: BORDER }
 style w-val { fg: TEXT_MUTED size: 13 h: 20 }
+style w-prog { direction: column gap: 4 }
+style w-pbar { fg: ACCENT size: 16 h: 24 }
+style w-pct { fg: TEXT_MUTED size: 13 h: 20 }

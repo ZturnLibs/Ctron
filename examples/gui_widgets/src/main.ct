@@ -20,6 +20,7 @@ struct Model {
     var m2b: Str
     var m2c: Str
     var selhi: I32
+    var pval: I32
 }
 
 fn sel_toggle() {
@@ -178,6 +179,18 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
         m.sval = (ev_arg_i(args, 0) / 10).to_string()
         return
     }
+    if name == "prog_set" {
+        // progress v1:千分比 → 百分比(0-100 钳位)
+        var pv: I32 = ev_arg_i(args, 0) / 10
+        if pv < 0 {
+            pv = 0
+        }
+        if pv > 100 {
+            pv = 100
+        }
+        m.pval = pv
+        return
+    }
 }
 
 fn bind_all(buf: List[Str], m: Box[Model]) {
@@ -273,6 +286,24 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
             buf.push("李四 · 28")
         }
     }
+    if buf[0] == "pbar" {
+        // 分段条:10 格,█=已填 ░=未填(值驱动宽 GUI-16 前的 v1 折衷)
+        var filled: I32 = m.pval / 10
+        var bar: Str = ""
+        var i9: I32 = 0
+        while i9 < 10 {
+            if i9 < filled {
+                bar = bar + "█"
+            } else {
+                bar = bar + "░"
+            }
+            i9 += 1
+        }
+        buf.push(bar)
+    }
+    if buf[0] == "pct" {
+        buf.push(m.pval.to_string())
+    }
 }
 
 // 键 1/2 切主题 + select 键盘导航(selopen 时:↓↑ 移高亮/Enter 选取/Esc 关)
@@ -323,7 +354,7 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0 })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, pval: 0 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -453,6 +484,25 @@ fn main() -> I32 {
             d_drag(t, txy[0], txy[1], txy[0] + 110, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "42")
+            // ===== Progress(v1 分段折衷,GUI-11) =====
+            // prog_set 千分比 → 百分比;分段条 10 格 █/░ + 数值叶
+            var pargs = List[Str]()
+            pargs.push("i:500")
+            actc("prog_set", pargs)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "█████░░░░░")
+            d_expect_text(t, "50")
+            var pargs2 = List[Str]()
+            pargs2.push("i:1000")
+            actc("prog_set", pargs2)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "██████████")
+            // 超界钳位:200% → 100%
+            var pargs3 = List[Str]()
+            pargs3.push("i:2000")
+            actc("prog_set", pargs3)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "100")
             println("WIDGETS-GREEN")
         })
     return rc
