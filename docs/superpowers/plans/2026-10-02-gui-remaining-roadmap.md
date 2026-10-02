@@ -6,7 +6,16 @@
 > 数据面修复(浮条配对/作用域 env)。六红(s33/34/36/38/43/44)为发射泳道
 > 红账,不在本清单。
 
-## A 档:P1 组件尾巴(纯组合件,可立即动工;每项 0.5 天内)
+## A 档:P1 组件尾巴(纯组合件,可立即动工;每项 0.5 天内)——✅ 2026-10-03 全档销账
+> 九条全落库(gui-a-tail 分支,夹具 s66_cbx_var/s67_comp_a/s68_menu_acc+陈列室):
+> 引擎面=checkbox switch/radio 裸属性变体+元素级圆角(gui_radius 消费即复位)
+> +pub gui_now+each 行简单名 checked 的 eachrow inst.to_string 修复(发射臂
+> int 直接作 char* 崩,触发面=GUI-03 radio);视图面=tabs(when cond={cur==N}
+> 数值条件)/badge/accordion(slot)/tooltip(hover 通道)/toast(透明 overlay+
+> gui_now 窗口)/menu 加速器(acc_of 与 gui_hotkey 同动作 id,⌘ 经 gui_platform)
+> /menu 键盘导航(↓↑/Enter/Esc 键闭包拦截,快捷键 d_mod+d_send_key 实发)。
+> 坑位:button 文本按词折行拆 TEXT(行宽须显式,三犯);发射臂分支内 Str 变量
+> 绕行(字形叶字面量直调)。
 
 - **GUI-01 tabs 组件**——标签页:触发器行 + when 内容切换(复用 Select 机制);陈列室+断言。
 - **GUI-02 switch 组件**——checkbox 滑块变体(视觉改造,机制全同)。
