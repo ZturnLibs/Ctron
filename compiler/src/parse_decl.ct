@@ -706,9 +706,10 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
             }
         } else if t == "view" {
             // GUI 块认领(W1,§11.1):GuiBlock 子节点,sem/eval 直通
-            nf.push(gui_block(toks, cur, "view"))
+            // GUI-12:lns/cols 随入,块体行:列位置槽(d[6])供重建原文切片
+            nf.push(gui_block(toks, cur, "view", lns, cols))
         } else if t == "style" {
-            nf.push(gui_block(toks, cur, "style"))
+            nf.push(gui_block(toks, cur, "style", lns, cols))
         } else if t == "pub" {
             adv(cur)
             if tok(toks, cur) == "(" {

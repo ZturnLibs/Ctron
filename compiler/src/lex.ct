@@ -422,7 +422,8 @@ fn scan4(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
 }
 
 // 单字符标点集(镜像 seed 词法器 switch;集合外 = 无法识别字符)
-// 注:源码串内花括号须 \{ \} 转义(裸 { 开启插值,批次十二教训)
+// 注:串内 { 须 \{ 转义(裸 { 开启插值,批次十二教训);} 裸写即可——
+// \} 是 E1001 非法转义(GUI-12 批次实证,勿被旧注"\\{ \\}"说法带偏)
 fn lex_single(b: I32) -> Bool {
     var ks = "+-*/%=<>?!.,:[]()\{}|&#@"
     var k: I32 = 0
