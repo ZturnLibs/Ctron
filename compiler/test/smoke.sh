@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=449' "$T/chk.out" && ok "自检 cc_run 绿,decls=449(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报=444;+T27-B 原生臂收口一 fn[ct_clo_with_tail:闭包体尾/return 位 with ANF 助手]+GUI-17/12 批已落库未申报四 fn[归 GUI 泳道补登记],2026-10-03 随批申报=449)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=450' "$T/chk.out" && ok "自检 cc_run 绿,decls=450(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报=444;+T27-B 原生臂收口一 fn[ct_clo_with_tail:闭包体尾/return 位 with ANF 助手]+GUI-17/12 批已落库未申报四 fn[归 GUI 泳道补登记],2026-10-03 随批申报=449;+GUI D 档十提交批未申报一 fn[GUI-21 等 1003 6bdfc813..718db27b,归 GUI 泳道补登记;pristine 二进制同读 450 实证非 P9 栈面件],2026-10-03 随批申报=450)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
