@@ -16,6 +16,9 @@ struct Model {
     var lsel: I32
     var tsel: I32
     var sval: Str
+    var m2a: Str
+    var m2b: Str
+    var m2c: Str
 }
 
 fn sel_toggle() {
@@ -118,6 +121,56 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
         m.tsel = 0
         m.state = "表格行已选"
     }
+    if name.len > 7 {
+        // 多选:ml2_pick:N——ctrl+click 纯切换,无修饰=单选清他
+        if byte_at(name, 0) == 109 && byte_at(name, 1) == 115 && byte_at(name, 2) == 108 && byte_at(name, 3) == 50 && byte_at(name, 4) == 95 && byte_at(name, 5) == 112 && byte_at(name, 6) == 105 && byte_at(name, 7) == 99 && byte_at(name, 8) == 107 && byte_at(name, 9) == 58 {
+            var ni: I32 = 0
+            var k9: I32 = 10
+            while k9 < name.len {
+                ni = ni * 10 + (byte_at(name, k9) - 48)
+                k9 += 1
+            }
+            var md: I32 = ev_arg_i(args, 0)
+            var mark: Str = "> "
+            if md == 1 {
+                // ctrl+click:切换
+                if ni == 0 {
+                    if m.m2a == "> " {
+                        m.m2a = ""
+                        mark = ""
+                    }
+                }
+                if ni == 1 {
+                    if m.m2b == "> " {
+                        m.m2b = ""
+                        mark = ""
+                    }
+                }
+                if ni == 2 {
+                    if m.m2c == "> " {
+                        m.m2c = ""
+                        mark = ""
+                    }
+                }
+            } else {
+                // 无修饰:单选清他
+                m.m2a = ""
+                m.m2b = ""
+                m.m2c = ""
+            }
+            if ni == 0 {
+                m.m2a = mark
+            }
+            if ni == 1 {
+                m.m2b = mark
+            }
+            if ni == 2 {
+                m.m2c = mark
+            }
+            m.state = "多选已更新"
+            return
+        }
+    }
     if name == "slide" {
         // 拖拽事件缝:dragpx 千分比 → 百分比
         m.sval = (ev_arg_i(args, 0) / 10).to_string()
@@ -189,6 +242,11 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
     if buf[0] == "sval" {
         buf.push(m.sval)
     }
+    if buf[0] == "each:m2items" {
+        buf.push(m.m2a + "Python")
+        buf.push(m.m2b + "Rust")
+        buf.push(m.m2c + "Go")
+    }
     if buf[0] == "each:titems" {
         if m.tsel == 0 {
             buf.push("> 张三 · 32")
@@ -218,7 +276,7 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0" })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "" })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -229,7 +287,7 @@ fn main() -> I32 {
     }
     var src: Str = read_file("app.ctml")
     theme_apply(theme_dark())
-    var rc: I32 = test(src, 360, 760,
+    var rc: I32 = test(src, 360, 900,
         |buf| bind_all(buf, m),
         |name, args| act(name, args, m),
         |k| apply_key(k, m),
@@ -298,6 +356,22 @@ fn main() -> I32 {
             // Divider/Card:渲染存在
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "卡片内容:ELEVATED 包装")
+            // ===== MultiList(click 单选 / ctrl+click 切换) =====
+            actc("msl2_pick:0", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> Python")
+            // ctrl+click:纯切换(加入,不清他)
+            var cargs = List[Str]()
+            cargs.push("i:1")
+            actc("msl2_pick:1", cargs)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> Python")
+            d_expect_text(t, "> Rust")
+            // 无修饰 click:单选清他
+            actc("msl2_pick:2", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> Go")
+            d_expect_absent(t, "> Python")
             // ===== Slider(拖拽事件缝:on:drag + dragpx 内建名) =====
             // 轨道矩形运行时扫描(w=220 特征),坐标免布局估计
             var txy = List[I32]()

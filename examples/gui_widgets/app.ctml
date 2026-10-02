@@ -70,6 +70,16 @@ view Slider (val: I32) {
     <label class="w-val">{val}</label>
   </vbox>
 }
+// MultiList(多选 list):click 单选清他,ctrl+click 纯切换(mods 内建名);
+// 行状态由模型标记列表驱动(前缀重建配方)
+view MultiList (title: Str) {
+  <vbox class="w-list">
+    <label class="w-list-t">{title}</label>
+    <each mi in={m2items}>
+      <button class="w-row" on:click={ml2_pick(mods)}>{mi}</button>
+    </each>
+  </vbox>
+}
 view Table {
   <vbox class="w-table">
     <hbox class="w-thead">
@@ -93,6 +103,7 @@ view Widgets {
     <MenuBar open: {mopen}/>
     <Slider val: {sval}/>
     <List title: "兴趣列表"/>
+    <MultiList title: "多选技能"/>
     <Table/>
     <spacer class="w-div"/>
     <vbox class="w-card2">
