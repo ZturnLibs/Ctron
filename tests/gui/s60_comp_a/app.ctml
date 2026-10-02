@@ -1,0 +1,74 @@
+// tests/gui/s60_comp_a —— A 档五件视图组件:tabs/badge/accordion/tooltip/toast
+// tabs=触发器行(each+"> "前缀)+when cond={cur == N} 数值条件切换;
+// accordion=头按钮+when+slot 投影(gt 形态专属);tooltip=hover 通道+when;
+// toast=透明 overlay(不挡命中)+gui_now 对比自动消失(d_tick 钉时钟)。
+view Tabs (cur: I32) {
+  <vbox class="k-tabs">
+    <hbox class="k-tabrow">
+      <each tb in={tabs}>
+        <button class="k-tab" on:click={tab_go}>{tb}</button>
+      </each>
+    </hbox>
+    <when cond={cur == 0}>
+      <label class="k-tabp">概览内容</label>
+    </when>
+    <when cond={cur == 1}>
+      <label class="k-tabp">详情内容</label>
+    </when>
+  </vbox>
+}
+view Badge (text: Str) {
+  <label class="k-badge">{text}</label>
+}
+view Accordion (title: Str, open: Bool) {
+  <vbox class="k-acc">
+    <button class="k-acch" on:click={acc_toggle}>{title}</button>
+    <when cond={open}>
+      <slot/>
+    </when>
+  </vbox>
+}
+view Tooltip (text: Str) {
+  <hbox class="k-tipw">
+    <button class="k-tiptrg" hover:ktt on:click={tip_noop}>悬停我</button>
+    <when cond={ktt}>
+      <label class="k-tip">{text}</label>
+    </when>
+  </hbox>
+}
+view Toast (show: Bool, msg: Str) {
+  <when cond={show}>
+    <overlay class="k-toast">
+      <label class="k-toastt">{msg}</label>
+    </overlay>
+  </when>
+}
+view Root {
+  <vbox class="root">
+    <label class="title">A 档组件尾巴</label>
+    <Tabs cur: {tcur}/>
+    <Badge text: "NEW"/>
+    <Accordion title: "详细信息" open: {accopen}>
+      <label class="k-accb">折叠内容主体</label>
+    </Accordion>
+    <Tooltip text: "提示文案内容"/>
+    <label class="state">{state}</label>
+    <Toast show: {toastshow} msg: {toastmsg}/>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style title { fg: TEXT size: 18 h: 26 }
+style k-tabs { direction: column gap: 4 }
+style k-tabrow { direction: row gap: 6 }
+style k-tab { bg: SURFACE fg: TEXT w: 130 h: 28 }
+style k-tabp { fg: TEXT_MUTED size: 14 h: 24 }
+style k-badge { bg: ACCENT fg: "#ffffff" size: 12 w: 52 h: 20 }
+style k-acc { direction: column gap: 4 }
+style k-acch { bg: SURFACE fg: TEXT w: 150 h: 30 }
+style k-accb { fg: TEXT_MUTED size: 13 h: 22 }
+style k-tipw { direction: row gap: 8 }
+style k-tiptrg { bg: SURFACE fg: TEXT w: 90 h: 28 }
+style k-tip { fg: TEXT_MUTED size: 12 h: 20 }
+style k-toast { bg: "#00000000" align: center }
+style k-toastt { bg: ELEVATED fg: TEXT size: 14 w: 160 h: 36 }
+style state { fg: "#22c55e" h: 22 }

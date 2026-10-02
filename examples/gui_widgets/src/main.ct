@@ -2,7 +2,7 @@
 // headless:开下拉→点选→开模态→Esc 关,四段断言;--rt_run_src 真窗手玩
 use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_drag, d_mod, d_press_key, gui_hotkey, ev_arg_i,
          d_expect_text, d_expect_absent, d_cmd_count, d_cmd_type, d_cmd_w100, d_cmd_x100, d_cmd_y100, d_cmd_h100, theme_apply, theme_auto_apply,
-         theme_dark, theme_light}
+         theme_dark, theme_light, d_tick, gui_now, d_hover, d_click_inst, d_cmd_text_len}
 
 struct Model {
     var picked: Str
@@ -21,6 +21,10 @@ struct Model {
     var m2c: Str
     var selhi: I32
     var pval: I32
+    var tcur: I32
+    var accopen: Bool
+    var toast_at: I32
+    var toast_msg: Str
 }
 
 fn sel_toggle() {
@@ -67,6 +71,14 @@ fn track_xy(out: List[I32]) -> I32 {
     return -1
 }
 fn modstick(mm: Box[Model], md: I32) {
+}
+fn tab_go() {
+}
+fn acc_toggle() {
+}
+fn tip_noop() {
+}
+fn toast_show() {
 }
 
 fn act(name: Str, args: List[Str], m: Box[Model]) {
@@ -174,6 +186,35 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
             return
         }
     }
+    if name.len > 6 {
+        // tabs 实例后缀:tab_go:N
+        if byte_at(name, 0) == 116 && byte_at(name, 1) == 97 && byte_at(name, 2) == 98 && byte_at(name, 3) == 95 && byte_at(name, 4) == 103 && byte_at(name, 5) == 111 && byte_at(name, 6) == 58 {
+            var ti9: I32 = 0
+            var tk9: I32 = 7
+            while tk9 < name.len {
+                ti9 = ti9 * 10 + (byte_at(name, tk9) - 48)
+                tk9 += 1
+            }
+            m.tcur = ti9
+            m.state = "切页"
+            return
+        }
+    }
+    if name == "acc_toggle" {
+        if m.accopen {
+            m.accopen = false
+        } else {
+            m.accopen = true
+        }
+        m.state = "折叠"
+        return
+    }
+    if name == "toast_show" {
+        m.toast_at = gui_now()
+        m.toast_msg = "已保存"
+        m.state = "toast 弹出"
+        return
+    }
     if name == "slide" {
         // 拖拽事件缝:dragpx 千分比 → 百分比
         m.sval = (ev_arg_i(args, 0) / 10).to_string()
@@ -214,6 +255,42 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
         } else {
             buf.push("b:0")
         }
+    }
+    if buf[0] == "tcur" {
+        buf.push("i:" + m.tcur.to_string())
+    }
+    if buf[0] == "each:tabs" {
+        if m.tcur == 0 {
+            buf.push("> 概览")
+        } else {
+            buf.push("概览")
+        }
+        if m.tcur == 1 {
+            buf.push("> 详情")
+        } else {
+            buf.push("详情")
+        }
+    }
+    if buf[0] == "accopen" {
+        if m.accopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "toastshow" {
+        if m.toast_msg != "" {
+            if gui_now() - m.toast_at < 1500 {
+                buf.push("b:1")
+            } else {
+                buf.push("b:0")
+            }
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "toastmsg" {
+        buf.push(m.toast_msg)
     }
     if buf[0] == "state" {
         buf.push(m.state)
@@ -354,7 +431,7 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, pval: 0 })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, tcur: 0, accopen: false, toast_at: 0, toast_msg: "", pval: 0 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -365,7 +442,7 @@ fn main() -> I32 {
     }
     var src: Str = read_file("app.ctml")
     theme_apply(theme_dark())
-    var rc: I32 = test(src, 360, 900,
+    var rc: I32 = test(src, 360, 1300,
         |buf| bind_all(buf, m),
         |name, args| act(name, args, m),
         |k| apply_key(k, m),
@@ -503,6 +580,32 @@ fn main() -> I32 {
             actc("prog_set", pargs3)
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "100")
+            // ===== A 档组件尾巴(GUI-01/04/05/06/07) =====
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "概览内容")
+            d_expect_text(t, "NEW")
+            d_expect_absent(t, "折叠内容主体")
+            actc(d_click_inst(t, "tab_go", 1), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "详情内容")
+            d_expect_text(t, "> 详情")
+            actc(d_click(t, "acc_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "折叠内容主体")
+            d_hover(t, "tip_noop")
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "提示文案内容")
+            d_tick(t, 100)
+            actc("toast_show", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "toast 弹出")
+            d_expect_text(t, "已保存")
+            d_tick(t, 5000)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "已保存")
+            actc(d_click(t, "acc_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "折叠内容主体")
             println("WIDGETS-GREEN")
         })
     return rc
