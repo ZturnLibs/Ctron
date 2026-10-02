@@ -3013,7 +3013,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
                     var ans: Str = ""
                     if itemvar != "" {
-                        ans = rt_bind_text(bind, "eachrow:" + t.nbid[id] + ":" + inst)
+                        ans = rt_bind_text(bind, "eachrow:" + t.nbid[id] + ":" + inst.to_string())
                     }
                     if ans == "" {
                         ans = rt_bind_text(bind, t.nbid[id])
