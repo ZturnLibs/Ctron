@@ -275,6 +275,7 @@ extern "c" fn gui_evt_y() -> I32
 
 #[trusted]
 extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+extern "c" fn SetConfigFlags(flags: I32) -> Void
 
 #[trusted]
 extern "c" fn CloseWindow() -> Void
@@ -4878,6 +4879,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     gui_ime_feed_caret(rects, hits)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
+    SetConfigFlags(8192)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     while !WindowShouldClose() {
@@ -5051,6 +5053,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     gui_ime_feed_caret(rects, hits)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
+    SetConfigFlags(8192)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     var frames: I32 = 0
