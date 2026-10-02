@@ -110,7 +110,7 @@ CI 矩阵(R-P4d)、doctest 执行(R-P5b)、LSP(R-P6b)、WASI 产物(R-P6a)、git
 
 | 码 | 含义 | 章节 |
 |---|---|---|
-| **E3070** | 闭包可变捕获未显式 `Mutex[T]` 包装 | §4.7(v0.6 草案) |
+| **E3070** | 闭包可变捕获未显式 `Mutex[T]` 包装 | §4.7(T27 终态) |
 
 注册位置:tests/README.md §4、tests/meta_check.py `ERROR_CODES`、docs/spec/10(预留行,同 E3031 先例)。
 

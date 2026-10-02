@@ -826,7 +826,7 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   帧位图(切片3)。CTRON_GC 维持显式 opt-in。
 - 验收:T29 卡三条全过(泄漏锚/suite off 双档/net+db GC 档),卡转 ✅(切片3 增强另册)。
 
-**T55 销账(2026-09-30,提交 7590794)**:值位置闭包捕获原生臂落地——03j emit 同病顺带翻转(基线 2 errors→`mw:/x`),探针 t55_probe/t55_mw_smoke 双臂绿,suite 98/98×2;创建时快照边界+T27 注记在案(spec §9 L7)。
+**T55 销账(2026-09-30,提交 7590794)**:值位置闭包捕获原生臂落地——03j emit 同病顺带翻转(基线 2 errors→`mw:/x`),探针 t55_probe/t55_mw_smoke 双臂绿,suite 98/98×2;创建时快照边界+T27 注记在案(spec §9 L7)。**T27-B 收口(2026-10-02)**:快照边界的语义地位由 T27 裁决判定 = 规范行为(创建时拷贝,外层再赋值不可见,§4.7 终态)——不再是实现限制;T55 残余疑义销案。
 
 **2026-09-30 T30 into_gc 深拷真实化落库**(spec-gap W6;§6.3):
 - 发射侧 from 恒等 → 真深拷:let 构造位绑 #elem/#elemsz/#ielem(List[T]/arena.list[T];

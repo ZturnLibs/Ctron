@@ -214,7 +214,7 @@
 - **范围:** `std/`(新 `iter.ct` 或随 T15 文件);纯 stdlib 实现(适配器 = 持 Iterator 的 struct + impl Iterator),**编译器零改动为设计目标**。
 - **要点:** 每适配器一个泛型 struct(如 `struct MapIter[A, B] { it: A, f: fn(A) -> B? }`——fn 值作字段,函数类型字段面 §3.1 已有);惰性 = next 时才调 f;单态化自动获得零成本。
 - **验收:** r3b_adapters 翻转;适配器组合冒烟(map+filter+take 链);发射产物含特化(链不塌 box)。
-- **坑位:** 闭包捕获语义=拷贝终态(T27 已裁决转正),适配器内 fn 字段只存纯函数/捕获闭包——锚样例避免依赖按引用共享;若锚头注要求引用捕获,该断言挂 T27 后回切。
+- **坑位:** 闭包捕获语义=拷贝终态(T27 已裁决转正),适配器内 fn 字段只存纯函数/捕获闭包——锚样例避免依赖按引用共享(T27 终态下引用捕获断言不成立,创建时拷贝即规范)。
 - **落地形态(2026-10-02 收口)**:`std/iter.ct` v2 = `trait Seq[T, S]`(get 基:fn get(var self, i) -> T? 纯位置读取 + map/filter/take/sum/count/collect/any/all 默认方法)+ RawSeq/MapSeq/FilterSeq/TakeSeq 泛型 struct(类型正确 impl 形 `impl Seq[T, MapSeq[T,S]] for MapSeq[T,S]`)+ 数组 UFCS 自由函数入口(`pub fn map(xs: I32[], f)` 等,§4.8 首参接收者)。**get 基而非 next 基的裁决**:interp 逐调用拷贝接收者,var-self 写回语义在册(T15 发射臂登记同源),next 基适配器叠适配器永不推进(p12 实证挂死);get(i) 无状态,链任意深度组合安全。自定义 Iterator 经 for-重放 get 接入(03k 语义)。锚迁 `tests/modules/iter_adapters`(带 use 的多文件包:自举臂运行+宿主 pkg check——宿主无包运行口径,单文件 use 不合并)。锚修:原稿 `!xs.any(|x| x>5)` 与 xs=[2,4,6] 矛盾,首翻绿校正为正断言。
 - **余债登记**:①发射臂 trait 方法调用未发射(t_bump/t_hi 未定义,04g/p11 实证——T25 v1 仅 &Trait 对象面)+ for-over-Iterator 未发射(03k emit `ct_stmt:for iter:Ident`);②var-self 写回语义(interp p6/p7/p8 实证不写回,for 糖 env 线程化为唯一特路;发射臂按值传 mutation 丢,T15 已登记)= 泛 var 引用语义系统改造;③C 宿主解析器不认 `pub trait`/`pub struct`(parse_decl TOK_PUB 只路由 fn);④自宿装载器 `pub trait`/`pub struct`+泛型字面量经 use 合并即坏(E2020 错判/E5030 幽灵)——std/iter.ct 以非 pub trait(T26 恒可见口径)+非 pub struct 绕行,④为 loader×pub 独立 bug 待修;⑤Rust 参考臂 get 基链覆盖随 T25 v2 后评估(roadmap_suite 表行已按翻转协议删除)。
 
@@ -317,7 +317,7 @@
 
 ### T27 · 闭包捕获语义收口【需用户裁决】
 
-- **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** 裁决推迟(0929 用户裁定:T29 完成后再评估;期间 E3070+Mutex 纪律维持事实语义)
+- **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** ✅ 已完成·B 终态转正(2026-09-30 用户裁决,台账 619 行;**10-02 残余收口**:§4.7 补快照句+§8.4 错引改 §6.2+§6.2 补能力扩展位 bullet+§10 E3070 行翻终态+README T27 版记+R-P3a 只读借用条款终态注+r3a 锚头注回切+T55 快照边界注翻面[COVERAGE/挂起节];r3a 锚解释臂双宿主复验绿,原生臂红=在册 T33 ct_emit_clo 卫兵错位[p0a 合流后复验,非本件债])
 - **业界调研(0929,评估素材存档)**:有 GC 阵营(JS/Go/C#/Swift)普遍按引用共享绑定(循环变量为公共事故源,Go 1.22/JS let 均向每轮迭代绑定修补);无 GC 阵营(Rust/C++/ObjC)走拷贝/显式(借用户生命周期或自负安全);Java/Kotlin 的 effectively-final 绑定拷贝 + 显式共享可变单元,十年稳定。**映射**:Ctron 现行 E3070+Mutex 纪律 ≈ Java 系绑定拷贝 + 共享单元模型;A(按引用)=T29 后的 GC 阵营主流位;B(拷贝终态)=现行事实行为升格,与 arena 无 GC 自洽;C(混合)≈ 现状 de-facto(同任务共享 arena+spawn 边界 bind_of 克隆)但双臂 seed/native 拷贝分歧未修前不宜形式化。**T29 后评估时**:若 GC 落地且用户需按引用,按能力扩展立项(不与 B 冲突)。
 
 **T29 后复评补记(0930,评估条件已达成)**:T29 MVP tracing GC 已落库(保守根集:
@@ -685,7 +685,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 - ~~**T27 裁决门**~~: **已裁决(2026-09-30,B 终态转正,台账 608 行;r-roadmap §4.7 终态确认在案;spec §4.7 正文修订 10-01 补齐)**
 - **T54 ✅(已销账,2026-09-30)参数化 List 码 + 装箱容器 ABI**: 容器 ABI 由 T14-② 落地(参数化 List 码 `Lu:<名>`/LI/L6+堆盒 push+索引解引用);收口件补 fn 值链(#fret 字段提取位 ct_fnfield_ret+裸 fn 蹦床/shim `u:` 解盒)——03l/03n 正本 emit 臂绿(03l:`HIT /app -> app:alice`+`SUM 42`),spec §9 P0-1/L6 销账。suite 96/96+96/96 零移动;遗留另录(不扩界):e.h 直呼形态、>8B struct fn 值返回、ct_cb_ref extern 回调
-- **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性挂 T27 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
+- **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性已由 T27-B 终态判定 = 不可见,创建时快照即规范语义,10-02 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
 - **T29-T32 GC 全件**: 等 S1 Val 迁移落库(在飞 /tmp/s1-val)
 - **T50 闭源 S1/S2**: 触发条件未到
 - **T37-T40 wasm/bare**: T36 target 接口是前置
