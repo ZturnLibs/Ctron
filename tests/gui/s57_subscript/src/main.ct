@@ -1,0 +1,79 @@
+// tests/gui/s57_subscript —— GUI-13:视图表达式下标与字符串切分(items[i] + 内建族)
+// 验收面:
+// 1) 编译路径:desugar 下标根路由 each: 通道(生成 while push 分支;gen 零改动复用)+
+//    检查面内建白名单门(E8195);prop: 依赖照旧(m.active 标量分支)
+// 2) 运行时 bxv:路径后缀 [expr] 下标(rt_bind_items 实例 env List 前置回落 each:
+//    通道)+ 内建 cut/fld/sethas/contains + 列表 .len 回落计数
+// 3) 回归锁:{m.items.len} 点链 .len 既有 I32 路径不受路由迁移影响
+use gui.{test, d_frame, d_expect_text, d_expect_absent}
+
+struct Model {
+    var items: List[Str]
+    var active: I32
+    var sels: Str
+    var rows: List[Str]
+}
+
+view SubApp(m: Model) {
+  <vbox class="root">
+    <label class="cur">{m.items[m.active]}</label>
+    <label class="cut">{cut(m.items[0], 0, 3)}</label>
+    <label class="cnt">{m.items.len}</label>
+    <each r in={m.rows}>
+      <label class="col">{fld(r, "·", 1)}</label>
+    </each>
+    <each u in={m.items}>
+      <when cond={sethas(m.sels, ",", u)}>
+        <label class="hit">{u}</label>
+      </when>
+    </each>
+    <when cond={contains(m.sels, "eta")}>
+      <label class="sub">HASBETA</label>
+    </when>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style cur { fg: "#ffffff" h: 30 }
+style cut { fg: "#22c55e" h: 30 }
+style cnt { fg: "#60a5fa" h: 30 }
+style col { fg: "#ffffff" h: 30 }
+style hit { fg: "#f59e0b" h: 30 }
+style sub { fg: "#ffffff" h: 30 }
+
+fn make() -> Model {
+    var rows = List[Str]()
+    rows.push("a·one")
+    rows.push("b·two")
+    var items = List[Str]()
+    items.push("alpha")
+    items.push("beta")
+    return Model { items: items, active: 1, sels: "beta", rows: rows }
+}
+
+// headless 自动验收:合成 fn 直驱(与生成装配同契约)
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 320, 480,
+        |buf| __gui_bind_SubApp(buf, m),
+        |name, ar| __gui_act_SubApp(name, ar, m),
+        |k| { },
+        |t, act, key| {
+            d_frame(t, |buf| __gui_bind_SubApp(buf, m))
+            d_expect_text(t, "beta")
+            d_expect_text(t, "alp")
+            d_expect_text(t, "2")
+            d_expect_text(t, "one")
+            d_expect_text(t, "two")
+            d_expect_absent(t, "alpha")
+            d_expect_text(t, "HASBETA")
+        })
+    return rc
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(SubApp(m: make()))
+}
