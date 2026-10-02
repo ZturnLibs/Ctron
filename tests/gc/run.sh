@@ -15,12 +15,12 @@ for d in "$DIR"/*/; do
     CTRON_STDPATH="$ROOT/std" "$EMIT" run "$d/src/main.ct" > "$T/$name.c" 2>"$T/$name.err" \
         || { echo "  FAIL $name (emit)"; fail=$((fail+1)); continue; }
     cc -O1 -w -o "$T/$name.bin" "$T/$name.c" || { echo "  FAIL $name (cc)"; fail=$((fail+1)); continue; }
-    if CTRON_GC=1 "$T/$name.bin" run "$d/src/main.ct" > "$T/$name.on" 2>&1 && grep -q "cycle reclaim ok\|bump 档跑通" "$T/$name.on"; then
+    if CTRON_GC=1 "$T/$name.bin" run "$d/src/main.ct" > "$T/$name.on" 2>&1 && grep -q "cycle reclaim ok\|bump 档跑通\|deep stack ok\|precise root ok" "$T/$name.on"; then
         pass=$((pass+1)); echo "  PASS $name (gc=on)"
     else
         echo "  FAIL $name (gc=on): $(tail -1 "$T/$name.on")"; fail=$((fail+1))
     fi
-    if CTRON_GC=off "$T/$name.bin" run "$d/src/main.ct" > "$T/$name.off" 2>&1 && grep -q "bump 档跑通" "$T/$name.off"; then
+    if CTRON_GC=off "$T/$name.bin" run "$d/src/main.ct" > "$T/$name.off" 2>&1 && grep -q "bump 档跑通\|deep stack ok\|precise root ok" "$T/$name.off"; then
         pass=$((pass+1)); echo "  PASS $name (gc=off)"
     else
         echo "  FAIL $name (gc=off): $(tail -1 "$T/$name.off")"; fail=$((fail+1))

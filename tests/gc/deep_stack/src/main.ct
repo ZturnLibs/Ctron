@@ -1,0 +1,60 @@
+// tests/gc/deep_stack —— S1 硬化锚(T31 重开):路径② 证伪病理形状复现
+// 病理=深递归(每帧持 List)+帧内 churn+collect 深发。旧标记器(递归下潜+内部
+// 指针当块头读)在此形状=野扫 SIGSEGV/标记栈爆;S1(尺寸类块起点归约+worklist
+// 迭代标记)必须双档跑通,且帧驻 List(保守栈档根)在收集中逐字完好。
+// 预算注:S1 档收集成本=O(栈+arena) 保守扫(arena 根集在册),逐帧收集×深栈
+// =O(N²)——收集按每 32 层一次降频,总量 ~125 次,CI 预算内。
+// 断言面:①程序完成(无 SIGSEGV/栈爆)②帧驻 keep 内容校验(无 UAF 症状)。
+#[trusted]
+extern "c" fn ct_gc_collect() -> I64
+
+#[trusted]
+extern "c" fn ct_gc_live_bytes() -> I64
+
+fn deep(n: I64, acc: I64) -> I64 {
+    var keep = List[Str]()
+    keep.push("anchor-A")
+    keep.push("level-B")
+    if n <= 0 {
+        return acc
+    }
+    var j: I64 = 0
+    while j < 32 {
+        var t = List[List[I64]]()
+        var k: I64 = 0
+        while k < 4 {
+            var inner = List[I64]()
+            inner.push(k)
+            t.push(inner)
+            k += 1
+        }
+        // 深栈内主动收集(bump 档返回 -1=无操作);每 32 层一次
+        if j == 16 {
+            var m: I64 = 32
+            if n % m == 0 {
+                var live = ct_gc_collect()
+                if live >= 0 {
+                    var live2 = live + 1
+                    assert(live2 > 0)
+                }
+            }
+        }
+        j += 1
+    }
+    var r = deep(n - 1, acc + 1)
+    if keep[0] != "anchor-A" {
+        panic("deep_stack: 帧驻 List 在收集中被腐坏(UAF 症状)")
+    }
+    if keep[1] != "level-B" {
+        panic("deep_stack: 帧驻 List 在收集中被腐坏(UAF 症状)")
+    }
+    return r
+}
+
+fn main() -> I32 {
+    var w = deep(4000, 0)
+    var want: I64 = 4000
+    assert(w == want)
+    println("deep stack ok")
+    return 0
+}
