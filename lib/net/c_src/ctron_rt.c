@@ -151,6 +151,14 @@
  *   根区间改写+callee-saved 寄存器镜像修复三件机器;分段式 guard 续跑亦需
  *   发射器 prologue 配合;退路「1MB 大栈+guard+触顶诊断」(a77f141f)为
  *   §7.1 字面终形,详见 docs/superpowers/specs/2026-09-26-server-p9-*。
+ *   栈面全量(2026-10-03,解锁条件拍板动刀):A′=分段+钉住+再入续跑 ——
+ *   发射器序言检查(CTRON_MORESTACK 发射期门,缺省不注入)失败 →
+ *   ctron_rt_stk_grow 分配新段(mmap+guard,尺寸同任务栈,不入池不碰 G),
+ *   rt_swap 切段执行「本函数重入 thunk」,返回值拷回原调用点;段钉住至任务
+ *   死亡(stack_retire 随 munmap 终结,逃逸栈地址恒有效);每任务段数上限
+ *   RT_MS_SEG_MAX,超限走触顶诊断同族 rc=101(分段抖动上限)。切换 asm
+ *   零改动(rt_swap/rt_ctx_init 只加调用方);计划:
+ *   docs/superpowers/plans/2026-10-03-p9-morestack-machine.md。
  *
  */
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
@@ -205,6 +213,12 @@ static size_t rt_stack_size(void)
 #define RT_LQ_CAP       256                    /* T34 work-stealing:本地就绪环容量(2 的幂) */
 #define RT_MAP_BUCKETS  1024                   /* key→record 哈希(2 的幂) */
 #define RT_BACKOFF_MAX_SHIFT 3                 /* 空闲退避上限:20µs << 3 = 160µs */
+/* T34 栈面全量(A′分段+钉住):序言检查安全余量(需罩住 grow 自身帧 +
+ * rt_swap 的 callee-saved 推栈 + 宿主编译器帧宽出倍差);段数上限 =
+ * 分段抖动(go 1.2 已知病:驻留旧段尾部的调用方循环调深函数,每轮一段)
+ * 的资源闸,超限即触顶诊断同族 rc=101。 */
+#define RT_MS_MARGIN    2048u
+#define RT_MS_SEG_MAX   64
 
 /* guard 页大小取真页粒度(darwin/arm64 页为 16KB)。 */
 static long rt_pagesize(void)
@@ -330,6 +344,15 @@ enum {
 
 enum { DESCHED_PARK = 1, DESCHED_YIELD = 2, DESCHED_FOREVER = 3 };
 
+/* T34 栈面全量:增长段(分段+钉住)。链头挂 rt_coro::segs,死亡时
+ * stack_retire 逐段 munmap;段不回池(逃逸栈地址钉住至任务死亡)。 */
+typedef struct rt_seg {
+    struct rt_seg *nx;
+    void          *base;         /* mmap 基址(含 guard 页) */
+    size_t         map_sz;
+    rt_ctx         ctx;          /* 段入口上下文(ms_tramp) */
+} rt_seg;
+
 typedef struct rt_coro {
     void          *key;          /* 调用方私有 opaque key,rt 只作等值比较 */
     void         (*fn)(void*);
@@ -352,6 +375,19 @@ typedef struct rt_coro {
     struct rt_coro *jnext;       /* join 等待者链(挂在目标 record 上) */
     struct rt_coro *allnext;     /* 全体协程链(cancel 广播遍历) */
     struct rt_coro *mapnext;     /* key 哈希桶链(record 为墓碑,不回收) */
+
+    /* T34 栈面全量:当前栈界(主栈或最新增长段的可用区 [lo,hi);栈自 hi 向
+     * lo 生长)。随任务走(park/迁移后仍指其停车时所在段);序言检查与
+     * grow 切换均经此读写——写者只有任务自身运行流(创建初始化/grow 切换/
+     * 切回恢复),与 G 无涉。 */
+    char           *stk_lo, *stk_hi;
+    rt_seg         *segs;        /* 增长段链(钉住;死亡时 stack_retire 回收) */
+    int             nsegs;
+    /* grow 切换交接槽(任务私有;rt_swap 期间仅本任务读写): */
+    void (*ms_fn)(void *, void *);
+    void           *ms_args;
+    void           *ms_ret;
+    rt_ctx         *ms_back;     /* 切回目标(grow 帧内的 from 上下文) */
 } rt_coro;
 
 typedef struct rt_worker {
@@ -684,6 +720,16 @@ static unsigned char *stack_alloc(size_t *map_sz)
  * 然后入池/释放。 */
 static void stack_retire(rt_coro *c)
 {
+    /* T34 栈面全量:增长段链随任务死亡终结(钉住语义 = 存活期不回收;
+     * 死亡任务栈上的逃逸地址本就悬垂,与主栈同口径)。 */
+    while (c->segs) {
+        rt_seg *sg = c->segs;
+        c->segs = sg->nx;
+        munmap(sg->base, sg->map_sz);
+        free(sg);
+    }
+    c->nsegs = 0;
+    c->stk_lo = c->stk_hi = NULL;
     unsigned char *lo = c->stack + rt_pagesize();
     size_t ssz = rt_stack_size();
     long used = (long)ssz;                           /* 全脏兜底:整栈用满 */
@@ -1153,6 +1199,90 @@ static void rt_segv_handler(int sig, siginfo_t *si, void *uc)
     raise(sig == SIGBUS ? SIGBUS : SIGSEGV);
 }
 
+/* ── T34 栈面全量:A′ 分段+钉住+再入续跑(§7.1;2026-10-03)──
+ * 发射器序言检查(CTRON_MORESTACK 发射期门)失败 → ctron_rt_stk_grow:
+ * 分配新段(mmap+guard,尺寸同任务栈;不入池、不碰 G——段为任务私有,
+ * 死亡即 munmap)→ rt_swap 切段执行「本函数重入 thunk」→ 返回值拷回原
+ * 调用点。切换复用既有 rt_swap/rt_ctx_init(asm 零改动);交接槽挂任务
+ * (ms_fn/ms_args/ms_ret/ms_back),rt_swap 期间仅本任务读写。
+ * 哑元/强符号:P2-D 模板模式——垫片 weak 定义,本处强定义链接期顶替
+ * (Mach-O/ELF 双侧已证语义);检查未注入则本两钩子不可达。 */
+static void ms_tramp(void);
+
+static unsigned char *ms_seg_alloc(size_t *map_sz)
+{
+    long ps = rt_pagesize();
+    unsigned char *base = mmap(NULL, *map_sz, PROT_READ | PROT_WRITE,
+                               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (base == MAP_FAILED) return NULL;
+    (void)mprotect(base, (size_t)ps, PROT_NONE);         /* guard(同主栈) */
+    return base;
+}
+
+int ctron_rt_stk_low(size_t need)
+{
+    rt_coro *c = rt_tls_cur();               /* noinline 访问器(TLS 槽位缓存危害对策) */
+    char probe;
+    uintptr_t sp;
+    if (!c || !c->stk_lo) return 0;          /* 裸线程/主栈:OS 自生长,无段语义 */
+    sp = (uintptr_t)&probe;
+    if (sp < (uintptr_t)c->stk_lo || sp >= (uintptr_t)c->stk_hi)
+        return 0;                            /* 不在本任务栈界内(裸线程回调面) */
+    return (sp - (uintptr_t)c->stk_lo) < (uintptr_t)(need + RT_MS_MARGIN);
+}
+
+void ctron_rt_stk_grow(void (*fn)(void *, void *), void *args, void *ret)
+{
+    rt_coro *c = rt_tls_cur();
+    rt_ctx from;
+    char *saved_lo = c->stk_lo, *saved_hi = c->stk_hi;
+    size_t msz;
+    unsigned char *base;
+    rt_seg *sg;
+    if (!c || !c->stk_lo) return;            /* 不可达:low 强定义下才可能为 1 */
+    if (c->nsegs >= RT_MS_SEG_MAX) {
+        static const char msg[] =
+            "ctron_rt: task stack growth exceeded segment cap"
+            "(分段抖动上限;§7.1/T34)\n";
+        write(2, msg, sizeof msg - 1);
+        _exit(101);
+    }
+    msz = rt_stack_size() + (size_t)rt_pagesize();
+    base = ms_seg_alloc(&msz);
+    sg = (rt_seg *)malloc(sizeof *sg);
+    if (!base || !sg) {
+        static const char msg[] =
+            "ctron_rt: task stack growth alloc failed(段分配失败;§7.1/T34)\n";
+        write(2, msg, sizeof msg - 1);
+        _exit(101);
+    }
+    sg->base = base;
+    sg->map_sz = msz;
+    sg->nx = c->segs;
+    c->segs = sg;
+    c->nsegs++;
+    /* 交接槽 + 栈界切新段(grow 帧在旧段,from 上下文随帧存续) */
+    c->ms_fn = fn; c->ms_args = args; c->ms_ret = ret; c->ms_back = &from;
+    c->stk_lo = (char *)base + rt_pagesize();
+    c->stk_hi = c->stk_lo + (msz - (size_t)rt_pagesize());
+    rt_ctx_init(&sg->ctx, c->stk_lo, msz - (size_t)rt_pagesize(), ms_tramp);
+    rt_swap(&from, &sg->ctx);
+    /* 切回:恢复旧段栈界(sg 本身留链上,死亡时统一回收) */
+    c->stk_lo = saved_lo;
+    c->stk_hi = saved_hi;
+}
+
+static void ms_tramp(void)
+{
+    rt_coro *c = rt_tls_cur();
+    rt_ctx scratch;
+    void (*fn)(void *, void *) = c->ms_fn;
+    void *args = c->ms_args, *ret = c->ms_ret;
+    fn(args, ret);
+    rt_swap(&scratch, c->ms_back);
+    _exit(101);                              /* 不可达:切回即不返回 */
+}
+
 void ctron_rt_init(int workers)
 {
     int i;
@@ -1235,6 +1365,10 @@ void *ctron_rt_run(void (*fn)(void*), void *arg, void *key)
     c->state = RT_ST_READY;
     c->desched_kind = 0;
     rt_ctx_init(&c->ctx, c->stack + rt_pagesize(), rt_stack_size(), rt_tramp);
+    /* T34 栈面全量:初始栈界 = 主栈可用区(guard 页之上);增长段链空。 */
+    c->stk_lo = (char *)c->stack + rt_pagesize();
+    c->stk_hi = c->stk_lo + rt_stack_size();
+    c->segs = NULL; c->nsegs = 0;
 
     rt_lock();
     c->allnext = g_all;

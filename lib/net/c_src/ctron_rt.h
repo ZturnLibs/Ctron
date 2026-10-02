@@ -84,6 +84,15 @@ int64_t ctron_rt_yield_bench(int rounds);
  * 消费,不参与任何行为契约;种子模式(CTRON_RT_SEED)恒 0。 */
 int64_t ctron_rt_steals(void);
 
+/* (T34 栈面全量,A′ 分段+钉住+再入续跑)发射器序言检查强钩子——垫片侧
+ * weak 哑元,本处强定义链接期顶替(P2-D 模板模式)。stk_low=当前任务栈
+ * 余量 < need+MARGIN(裸线程/主栈恒 0);stk_grow=切段执行 thunk(args)
+ * 并把返回值写入 ret(仅协程上下文可达)。CTRON_MORESTACK 未注入检查则
+ * 二者不可达。 */
+#include <stddef.h>
+int     ctron_rt_stk_low(size_t need);
+void    ctron_rt_stk_grow(void (*fn)(void *, void *), void *args, void *ret);
+
 #ifdef __cplusplus
 }
 #endif
