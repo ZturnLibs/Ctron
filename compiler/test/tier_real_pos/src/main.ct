@@ -1,0 +1,29 @@
+// tier_real_pos —— 真库 core 五模块全量消费+bare 体检查 = core 档音遍性自证
+use std.math.{ clamp, is_pow2 }
+use std.hash.{ djb2 }
+use std.opt.{ opt_get_i }
+use std.log.{ lg_enabled, lg_info }
+use std.pb.{ pb_w_varint }
+
+fn main() -> I32 {
+    let c = clamp(5, 0, 3)
+    let p = is_pow2(64)
+    let h = djb2("ctron")
+    let o = opt_get_i(Some(7), 0)
+    let e = lg_enabled(lg_info(), lg_info())
+    let w = pb_w_varint()
+    if c == 3 {
+        if p {
+            if h != 0 {
+                if o == 7 {
+                    if e {
+                        if w >= 0 {
+                            return 0
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return 1
+}

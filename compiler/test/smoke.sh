@@ -291,6 +291,18 @@ if [ $? -eq 0 ]; then
 else
     bad "T35 pos bare 误拦: $(cat "$T/tier7.out")"
 fi
+CTRON_STDPATH="$ROOT/lib/std" "$ROOT/ctron" check "$COMP/test/tier_real_pos/src/main.ct" --profile=bare > "$T/tier8.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 真库 core 五模块 bare 体检自证(native 臂)"
+else
+    bad "T35 真库 core 自证红: $(cat "$T/tier8.out")"
+fi
+CTRON_STDPATH="$ROOT/lib/std" "$ROOT/ctron" check "$COMP/test/tier_real_neg/src/main.ct" > "$T/tier9.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier9.out"; then
+    ok "T35 真库 use 门单响(E3040.tier,加载即止)"
+else
+    bad "T35 真库 use 门异常: $(cat "$T/tier9.out")"
+fi
 echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
 drift=0
 for f in "$ROOT"/lib/std/*.ct; do
