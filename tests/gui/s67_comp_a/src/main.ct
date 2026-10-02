@@ -1,4 +1,4 @@
-// tests/gui/s60_comp_a —— A 档五件视图组件 headless 验收
+// tests/gui/s67_comp_a —— A 档五件视图组件 headless 验收
 // tabs(数值条件切换)/badge(纯样式)/accordion(slot 投影)/tooltip(hover 通道)/
 // toast(透明 overlay + gui_now 自动消失,d_tick 钉确定性时钟)。
 use gui.{test, d_frame, d_click, d_click_inst, d_hover, d_expect_text, d_expect_absent, d_tick, gui_now}

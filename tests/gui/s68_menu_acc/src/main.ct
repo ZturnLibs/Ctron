@@ -1,4 +1,4 @@
-// tests/gui/s61_menu_acc —— GUI-08/09 headless 验收(加速器/键盘导航/快捷键实发)
+// tests/gui/s68_menu_acc —— GUI-08/09 headless 验收(加速器/键盘导航/快捷键实发)
 use gui.{test, d_frame, d_click, d_press_key, d_send_key, d_mod, gui_hotkey, gui_platform,
          d_expect_text, d_expect_absent}
 

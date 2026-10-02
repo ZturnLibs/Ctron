@@ -1,4 +1,4 @@
-// tests/gui/s59_cbx_var —— A 档 GUI-02/03:checkbox switch/radio 变体
+// tests/gui/s66_cbx_var —— A 档 GUI-02/03:checkbox switch/radio 变体
 // 承载=裸属性入事件表(password/numeric 同款);渲染支 rt_has_mark 分支:
 // switch=药丸 44x26 旋钮 ● 左右滑,radio=圆 22x22 ●/○;radio 组 each 行
 // 实例后缀 r_pick:N → 单选清他(MultiList 反向)。headless 直驱全链。
