@@ -39,6 +39,15 @@ extern "c" fn gui_ctx_ay() -> I32
 extern "c" fn gui_menu_begin(offx: I32, offy: I32, w: I32, h: I32, bg: I32) -> I32
 extern "c" fn gui_menu_item(h: I32, bg: I32, hover: I32) -> I32
 extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
+extern "c" fn gui_dgev_begin(x: I32, y: I32, w: I32, h: I32) -> I32
+extern "c" fn gui_dgev_end() -> I32
+extern "c" fn gui_dgev_on() -> I32
+extern "c" fn gui_dgev_setnode(n: I32) -> I32
+extern "c" fn gui_dgev_node() -> I32
+extern "c" fn gui_dgev_px() -> I32
+extern "c" fn gui_dgev_py() -> I32
+extern "c" fn gui_mouse_override(x: I32, y: I32) -> I32
+extern "c" fn gui_mouse_clear() -> I32
 extern "c" fn gui_hover_bind_set(n: Str, v: I32) -> I32
 extern "c" fn gui_hover_bind_get(n: Str) -> I32
 extern "c" fn gui_thdrag_begin(node: I32, my: I32, s0: I32) -> I32
@@ -2230,6 +2239,13 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
         var mv: I32 = gui_hotkey_mods()
         return "i:" + mv.to_string()
     }
+    // 拖拽事件缝内建名:指针在 on:drag 元素盒内的千分比(0-1000)
+    if path == "dragpx" {
+        return "i:" + gui_dgev_px().to_string()
+    }
+    if path == "dragpy" {
+        return "i:" + gui_dgev_py().to_string()
+    }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
         if gt_sk_has(t.props, root) {
@@ -3886,6 +3902,19 @@ fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
     return ""
 }
 
+// 事件完整表达式(拖拽缝触发用——头名会丢调用形态实参)
+fn rt_in_expr(t: GuiTree, node: I32, evname: Str) -> Str {
+    var e: I32 = 0
+    while e < t.nec[node] {
+        var gi: I32 = t.nes[node] + e
+        if t.ev_name[gi] == evname {
+            return t.ev_fn[gi]
+        }
+        e += 1
+    }
+    return ""
+}
+
 // 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
 fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
     var h: Str = rt_in_handler(t, node, evname)
@@ -4788,10 +4817,29 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     while !WindowShouldClose() {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
+        rt_dgev_frame(t, bind, act)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
                 evt = 0
+            }
+        }
+        if evt == 2 {
+            // 拖拽事件缝武装:命中带 on:drag 的元素(盒几何入 C;首发一次=
+            // 点击即设值;移动逐帧由 rt_dgev_frame 触发)
+            var dgn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if dgn7 >= 0 {
+                if dgn7 < t.ntag.len {
+                    var dde7: Str = rt_in_expr(t, dgn7, "drag")
+                    if dde7 != "" {
+                        var dbi7: I32 = rt_node_box(rects, hits, dgn7)
+                        if dbi7 >= 0 {
+                            gui_dgev_begin(gui_cmd_x100(dbi7) / 100, gui_cmd_y100(dbi7) / 100, gui_cmd_w100(dbi7) / 100, gui_cmd_h100(dbi7) / 100)
+                            gui_dgev_setnode(dgn7)
+                            ev_fire(t, dde7, bind, act)
+                        }
+                    }
+                }
             }
         }
         if evt == 5 {
@@ -4943,6 +4991,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     while !WindowShouldClose() {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
+        rt_dgev_frame(t, bind, act)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -4970,6 +5019,24 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
                 evt = 0
+            }
+        }
+        if evt == 2 {
+            // 拖拽事件缝武装:命中带 on:drag 的元素(盒几何入 C;首发一次=
+            // 点击即设值;移动逐帧由 rt_dgev_frame 触发)
+            var dgn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if dgn7 >= 0 {
+                if dgn7 < t.ntag.len {
+                    var dde7: Str = rt_in_expr(t, dgn7, "drag")
+                    if dde7 != "" {
+                        var dbi7: I32 = rt_node_box(rects, hits, dgn7)
+                        if dbi7 >= 0 {
+                            gui_dgev_begin(gui_cmd_x100(dbi7) / 100, gui_cmd_y100(dbi7) / 100, gui_cmd_w100(dbi7) / 100, gui_cmd_h100(dbi7) / 100)
+                            gui_dgev_setnode(dgn7)
+                            ev_fire(t, dde7, bind, act)
+                        }
+                    }
+                }
             }
         }
         if evt == 5 {
@@ -5458,6 +5525,37 @@ pub fn d_click_text(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void,
     return 0
 }
 
+// 拖拽(headless):override 鼠标位,武装+首发,再拖至终点触发;清覆盖
+pub fn d_drag(t: Box[Driver], x1: I32, y: I32, x2: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var fn0: I32 = rt_hover_node(rc2, t.hits, x1, y)
+    if fn0 < 0 {
+        panic("gui test: 拖拽起点未命中")
+        return -1
+    }
+    var de: Str = rt_in_expr(t.t, fn0, "drag")
+    if de == "" {
+        panic("gui test: 元素无 on:drag node=" + fn0.to_string())
+        return -1
+    }
+    var bi: I32 = rt_node_box(rc2, t.hits, fn0)
+    if bi < 0 {
+        panic("gui test: 拖拽元素无盒")
+        return -1
+    }
+    gui_mouse_override(x1, y)
+    gui_dgev_begin(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    gui_dgev_setnode(fn0)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_override(x2, y)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_clear()
+    gui_dgev_end()
+    return 0
+}
+
 // 双击(headless):两击同位注入;返回元素 on:dblclick 处理头名(夹具 act 自
 // 分发,与 d_click 同模式;真窗单双击聚类在循环 gui_click_kind)
 pub fn d_dblclick(t: Box[Driver], name: Str) -> Str {
@@ -5796,6 +5894,24 @@ fn rt_sel_take() -> I32 {
     gui_sel_clear()
     gui_caret_set(s0)
     return s1
+}
+
+// 拖拽事件缝逐帧(on:drag 武装中且按住=触发;表达式内建名取 permille;
+// 松开解除。evt2 武装在循环命中后)
+fn rt_dgev_frame(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    if gui_dgev_on() == 0 {
+        return 0
+    }
+    if gui_mouse_down() == 0 {
+        gui_dgev_end()
+        return 0
+    }
+    var node: I32 = gui_dgev_node()
+    var de: Str = rt_in_expr(t, node, "drag")
+    if de != "" {
+        ev_fire(t, de, bind, act)
+    }
+    return 1
 }
 
 // 滚动条 thumb 拖拽逐帧跟随(几何与渲染 thumb 同源:trackh=boxh-8,

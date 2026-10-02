@@ -63,6 +63,13 @@ view List (title: Str) {
     </each>
   </vbox>
 }
+// Slider(拖拽事件缝消费):轨道 on:drag,值=dragpx 千分比→百分比
+view Slider (val: I32) {
+  <vbox class="w-slider">
+    <spacer class="w-track" on:drag={slide(dragpx)}/>
+    <label class="w-val">{val}</label>
+  </vbox>
+}
 view Table {
   <vbox class="w-table">
     <hbox class="w-thead">
@@ -84,6 +91,7 @@ view Widgets {
     <Dialog title: "确认操作?" open: {dopen}/>
     <Menu open: {mopen}/>
     <MenuBar open: {mopen}/>
+    <Slider val: {sval}/>
     <List title: "兴趣列表"/>
     <Table/>
     <spacer class="w-div"/>
@@ -121,3 +129,6 @@ style w-tr { bg: SURFACE fg: TEXT w: 200 h: 26 }
 style w-div { h: 2 w: 200 bg: BORDER }
 style w-card2 { bg: ELEVATED w: 220 h: 60 }
 style w-ct { fg: TEXT size: 13 h: 20 }
+style w-slider { direction: column gap: 4 }
+style w-track { h: 8 w: 220 bg: BORDER }
+style w-val { fg: TEXT_MUTED size: 13 h: 20 }

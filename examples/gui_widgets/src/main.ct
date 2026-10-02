@@ -1,7 +1,7 @@
 // examples/gui_widgets —— 组件陈列室(Select/WList/Dialog 全交互演示)
 // headless:开下拉→点选→开模态→Esc 关,四段断言;--rt_run_src 真窗手玩
-use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_mod, d_press_key, gui_hotkey,
-         d_expect_text, d_expect_absent, theme_apply, theme_auto_apply,
+use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_drag, d_mod, d_press_key, gui_hotkey, ev_arg_i,
+         d_expect_text, d_expect_absent, d_cmd_count, d_cmd_type, d_cmd_w100, d_cmd_x100, d_cmd_y100, d_cmd_h100, theme_apply, theme_auto_apply,
          theme_dark, theme_light}
 
 struct Model {
@@ -15,6 +15,7 @@ struct Model {
     var mself: I32
     var lsel: I32
     var tsel: I32
+    var sval: Str
 }
 
 fn sel_toggle() {
@@ -30,6 +31,37 @@ fn dialog_close() {
 fn dialog_confirm() {
 }
 fn dialog_cancel() {
+}
+fn slide(p: I32) {
+}
+fn track_xy(out: List[I32]) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            // spacer=全宽分隔线语义(w 不消费,实测 328x8);以 h=8 特征寻轨
+            if d_cmd_h100(i) == 800 {
+                if d_cmd_w100(i) > 30000 {
+                    out.push(d_cmd_x100(i) / 100 + 30)
+                    out.push(d_cmd_y100(i) / 100 + 4)
+                    return 0
+                }
+            }
+        }
+        i += 1
+    }
+    var seen: Str = ""
+    var j2: I32 = 0
+    while j2 < n {
+        if d_cmd_type(j2) == 2 {
+            seen = seen + (d_cmd_w100(j2) / 100).to_string() + "x" + (d_cmd_h100(j2) / 100).to_string() + " "
+        }
+        j2 += 1
+    }
+    panic("widgets: 轨道未渲染 seen=[" + seen + "]")
+    return -1
+}
+fn modstick(mm: Box[Model], md: I32) {
 }
 
 fn act(name: Str, args: List[Str], m: Box[Model]) {
@@ -85,6 +117,11 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
     if name == "tab_pick" {
         m.tsel = 0
         m.state = "表格行已选"
+    }
+    if name == "slide" {
+        // 拖拽事件缝:dragpx 千分比 → 百分比
+        m.sval = (ev_arg_i(args, 0) / 10).to_string()
+        return
     }
 }
 
@@ -149,6 +186,9 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
             buf.push("跑步")
         }
     }
+    if buf[0] == "sval" {
+        buf.push(m.sval)
+    }
     if buf[0] == "each:titems" {
         if m.tsel == 0 {
             buf.push("> 张三 · 32")
@@ -178,7 +218,7 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1 })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0" })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -189,7 +229,7 @@ fn main() -> I32 {
     }
     var src: Str = read_file("app.ctml")
     theme_apply(theme_dark())
-    var rc: I32 = test(src, 360, 680,
+    var rc: I32 = test(src, 360, 760,
         |buf| bind_all(buf, m),
         |name, args| act(name, args, m),
         |k| apply_key(k, m),
@@ -258,6 +298,13 @@ fn main() -> I32 {
             // Divider/Card:渲染存在
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "卡片内容:ELEVATED 包装")
+            // ===== Slider(拖拽事件缝:on:drag + dragpx 内建名) =====
+            // 轨道矩形运行时扫描(w=220 特征),坐标免布局估计
+            var txy = List[I32]()
+            track_xy(txy)
+            d_drag(t, txy[0], txy[1], txy[0] + 110, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "42")
             println("WIDGETS-GREEN")
         })
     return rc

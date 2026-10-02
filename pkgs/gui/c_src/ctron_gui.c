@@ -623,13 +623,44 @@ int gui_os_dark_id(void) {
 }
 
 // ---- 指针位置/按下读面(§2.1 真窗 hover;headless 走 d_hover/d_active 注入) ----
+// 鼠标位置覆盖(headless 确定性;拖拽缝/悬停断言用,清零回真窗指针)
+static int g_mouse_ov = 0;
+static int g_mouse_ox = 0;
+static int g_mouse_oy = 0;
+void gui_mouse_override(int x, int y) { g_mouse_ov = 1; g_mouse_ox = x; g_mouse_oy = y; }
+void gui_mouse_clear(void) { g_mouse_ov = 0; }
+
+// 拖拽事件缝(on:drag:按下武装,移动逐帧触发;盒几何供 permille 内建)
+static int g_dgev_on = 0;
+static int g_dgev_box[4] = {0, 0, 0, 0};
+void gui_dgev_begin(int x, int y, int w, int h) {
+    g_dgev_on = 1; g_dgev_box[0] = x; g_dgev_box[1] = y; g_dgev_box[2] = w; g_dgev_box[3] = h;
+}
+void gui_dgev_end(void) { g_dgev_on = 0; }
+int gui_dgev_on(void) { return g_dgev_on; }
+static int g_dgev_node = -1;
+void gui_dgev_setnode(int n) { g_dgev_node = n; }
+int gui_dgev_node(void) { return g_dgev_node; }
+static int dgev_permille(int rel, int span) {
+    if (span < 1) { span = 1; }
+    int p = rel * 1000 / span;
+    if (p < 0) { p = 0; }
+    if (p > 1000) { p = 1000; }
+    return p;
+}
+int gui_mouse_x(void);
+int gui_mouse_y(void);
+int gui_dgev_px(void) { return dgev_permille((int)gui_mouse_x() - g_dgev_box[0], g_dgev_box[2]); }
+int gui_dgev_py(void) { return dgev_permille((int)gui_mouse_y() - g_dgev_box[1], g_dgev_box[3]); }
+
 int gui_mouse_x(void) {
+    if (g_mouse_ov) { return g_mouse_ox; }
     if (g_idrg_act && g_idrg_ph >= 1) {
         return g_idrg_x1 + (g_idrg_x2 - g_idrg_x1) * (g_idrg_ph > 12 ? 12 : g_idrg_ph) / 12;
     }
     Vector2 p = GetMousePosition(); return (int)p.x;
 }
-int gui_mouse_y(void) { Vector2 p = GetMousePosition(); return (int)p.y; }
+int gui_mouse_y(void) { if (g_mouse_ov) { return g_mouse_oy; } Vector2 p = GetMousePosition(); return (int)p.y; }
 int gui_mouse_down(void) {
     if (g_idrg_act && g_idrg_ph >= 1 && g_idrg_ph <= 12) { return 1; }
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { return 1; }
