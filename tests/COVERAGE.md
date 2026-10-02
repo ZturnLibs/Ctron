@@ -85,16 +85,17 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 多文件 `use`/全限定路径、组导入 `{}`、`pub`、`pub(pkg)`、遮蔽、孤儿规则 E5010、循环依赖 E5020、caps 越权 E4010——**全部缺失**。根因:测试格式目前只支持单文件,多文件项目格式未定义(见"基建缺口")。
 
-## §3 类型系统(25 项:✅10 🟡4 ❌11)
+## §3 类型系统(26 项:✅11 🟡3 ❌11)
 
 | 特性 | 状态 | 锚点/缺口 |
 |---|---|---|
 | 检查算术+回绕、Option、Result、enum 具名/单元变体、元组、定长数组、泛型 fn、Box、`&Trait` 隐式上行 | ✅ | `01/02/03/04/07` |
-| Str/String(`to_string` 仅出现在 neg)、`@derive`(仅 Error)、数组字面量类型归属、切片可变写(仅 bare) | 🟡 | |
+| Str/String 独立类型(§3.8.1 类型表成员):显式注解位端到端+to_string 升格(发射面真分配)+String→Str 隐式降格 | ✅ | `03c_str_string.ct`(注解段)+`03c_str2string.neg.ct`(E2010 单向门);独立码面登记 v2 |
+| `@derive`(仅 Error)、数组字面量类型归属、切片可变写(仅 bare) | 🟡 | |
 | 数值宽度全集(I8..I64/ISize…) | ❌ | 仅用 I32/U8/U32/U64/F64 |
 | `as[T]()` 显式转换 | ❌ | |
 | `T?` 语法糖 | ❌ | |
-| `T[N] → T[]` 退化、隐式转换清单(String→Str、T[]→&T[]、值→&T) | ❌ | |
+| `T[N] → T[]` 退化、隐式转换清单(T[]→&T[]、值→&T;String→Str 已随 2026-10-03 销账) | ❌ | |
 | **`&T[]` 只读视图二分(v0.4)** | ❌ | **新特性无任何测试** |
 | enum 元组变体(`Timeout(U64)`) | ❌ | |
 | match 字面量模式、struct 模式 | ❌ | |
@@ -1027,6 +1028,35 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   提升机(capability 项);T33 parallel ct_emit_clo OOB 独立在册(bsum 修复后复现依旧,
   卫兵假说待 T33 作者复证)。
 
+
+**2026-10-03 String 独立类型落库**(§3.8.1 前奏类型表成员;§3.1/§3.3/§3.6):
+- 缺口实证:发射面 `String` 注解无类型码臂 → ct_ty_code 尾默认塌缩 `"i"`——注解位落
+  `int32_t`,槽型/赋值/传参全错(p2 探针逐字:`int32_t t_owned = (const char*)(...)`);
+  `.to_string()` 发射臂透传(零拷贝别名),与 sem 面(所有 to_string 记分配,E3040 双上下文
+  已正确)及解释臂(产新值)三方分歧。
+- v1 口径(独立面在 sem 键,码面同 Str):ct_ty_code 补 `String → "s"` 臂——C 表示与 Str
+  同(const char*),独立性载于 sem 键 n:String(k_strish)+E2010 单向门(String→Str 隐式降格、
+  Str→String 拒)+to_string 升格唯一路径。独立码 "S" 登记 v2:已被 ct_inst_encode 的 Str 槽
+  字母表(I/S/B/L)占用,须连动单态化键两侧再立。
+- to_string 发射面真分配:接收码 "s" → `ctron_byte_slice(x,0,strlen)`(与 concat 同
+  ctron_amalloc 源,堆拷贝);接收码 "N"(内部节点引用)保持透传不动。
+- 锚:03c 扩第三段(显式 String 注解端到端:声明/降格/contains/strcmp 面 ==/升格往返)——
+  03c 原两段走无注解路径,两臂本就绿,新段钉住注解位防塌缩回归;新负锚 03c_str2string.neg.ct
+  (变量+字面量双违例,各报 E2010)。
+- 宿主对齐:C 参考宿主 sem.c 原为类别制保守子集(Str/String 同类 3),负锚在自举 cc 正确
+  报 E2010 而宿主放行(suite 分歧清单立红灯)→ 宿主 ST_LET 判定位补 String 注解单向门
+  (方法调用 derive_type NULL 保守面自然放行 to_string 升格;字面量/Str 变量初值报 E2010);
+  make compiler-c 后双线一致。
+- 探针:显式注解/无注解/struct 字段 String/fn 形参返回 String/成员面(contains/==/concat/
+  println/char_len)双臂逐点;发射 C 逐行核(t_owned=const char*+真拷贝)。
+- 验收:suite 100/100 双线(自举 cc+C 宿主);smoke 非全量 158 ok(3 红=decls 451[peer GUI-13
+  在飞新增 fn 申报位]/conc_parallel[T33 在册]/Rust iter[清账在册]皆非本件);meta_check 4 红=
+  cbox 族缺 Ctron.ctcl(T45 基线在册)。
+- 登记债:①String 独立码面(v2,见上);②contains 发射 typeof 缺臂(trans_ty 无 arm →
+  println 落 %d 打 "1",解释臂打 "true"——T09 面既有分歧,本件探针 p6 实证后登记);③
+  fmt 返回型 Str vs 规范 String(§3.8.2;隐式降格下观察等价,随 fmt 面整备);④struct 派生
+  谓词标量集含 Str 不含 String(§3.9.2,String 字段 struct 不满足 Show/Eq bound);⑤
+  slice(range)/iter() 发射臂缺口(§3.8.2 其余成员,既有在册)。
 **2026-10-03 T16 续波·惰性适配器面收口**(R-P3b 承诺余项;UFCS 链式续篇):
 - **std/iter.ct v3**:适配器补 skip(位置平移)/take_while(前缀扫描)/rev(无状态重
   扫反读)/enumerate(Pair[I64,T] 索引对)/zip(同型 S 逐位 Pair[T,T])/chain(前段

@@ -238,6 +238,12 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if ct_is_struct(file, nt[1]) { return "u:" + nt[1] }
     if ct_is_enum(file, nt[1]) { return "E:" + nt[1] }
     if nt[1] == "Str" { return "s" }
+    // String(§3.8.1 前奏类型表成员;§3.1 持有型):此前无臂静默塌缩 "i"
+    //(int32_t)——注解位槽型/赋值/传参全错(p2 探针实证)。v1 口径:与 "s" 同
+    // C 表示(const char*),独立面在 sem 键 n:String(E2010 单向门:String→Str
+    // 隐式降格、Str→String 须 to_string 升格);独立码面(签名码/单态化键区分)
+    // 登记债——"S" 已被 ct_inst_encode 的 Str 槽字母表占用,须连动两侧再立
+    if nt[1] == "String" { return "s" }
     if nt[1] == "Bool" { return "b" }
     if nt[1] == "F64" { return "f" }
     // F32 独立码 "g"(v0.9 精度约定):此前折叠进 "f"(C double)致 extern

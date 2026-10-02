@@ -843,7 +843,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return ""
                 }
                 if objt == "b" { return "((" + obj + ") ? \"true\" : \"false\")" }
-                if or2(objt == "s", objt == "N") { return "(const char*)(" + obj + ")" }
+                // Str/String 升格(§3.3/§6.5):发射面此前透传(零拷贝别名)——
+                // 与 sem 面(所有 .to_string() 记分配,E3040)及解释臂(新值)分歧。
+                // 经 ctron_byte_slice 落真堆拷贝(与 concat 同 ctron_amalloc 源);
+                // N 为内部节点引用表示,保持透传不动
+                if objt == "s" { return "ctron_byte_slice((const char*)(" + obj + "), 0, (int)strlen((const char*)(" + obj + ")))" }
+                if objt == "N" { return "(const char*)(" + obj + ")" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }

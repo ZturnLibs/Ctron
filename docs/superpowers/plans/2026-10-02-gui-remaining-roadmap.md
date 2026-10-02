@@ -40,18 +40,19 @@
 - **GUI-15 用户级 on:after 定时事件**——tick 原语 → 事件通道(防抖/延迟动作/toast 地基)。
 - **GUI-16 值驱动宽高**——`w: {expr}` 逐帧求值(绕过样式折叠缓存的设计案);解锁 progress/fill/环形。
 
-## D 档:P2 B 档(各自独立,中等工作量)
+## D 档:P2 B 档(各自独立,中等工作量)——✅ 1003 十条全落库
 
-- **GUI-17 可拖分隔条**——消费拖拽事件缝(已落) + 值驱动宽(联动 GUI-16)。
-- **GUI-18 tree 组件**——view 递归(已支持)+ 缩进 + 折叠 when 组合。
-- **GUI-19 combobox**——input + select 合体(输入过滤 + 下拉)。
-- **GUI-20 OS 文件拖入**——raylib IsFileDropped 现成;事件缝消费。
-- **GUI-21 虚拟化长列表**——virtual each + row-h + overscan(master 设计蓝本已写)。
-- **GUI-22 文本 ellipsis/行钳制**——测量轮截断 + 省略号。
-- **GUI-23 链接 OpenURL**——text 元素 action 面(raylib OpenURL 现成)。
-- **GUI-24 窗口级 API**——关闭拦截/全屏最大化/无边框/图标。
-- **GUI-25 canvas 树内整合**——CTML canvas 元素 + 每帧绘制回调(gui_cjk 直绘已有)。
-- **GUI-26 grid 布局**——前置:核查 Clay grid 支持面(已登记)。
+- **GUI-17 可拖分隔条**——✅ 1003 2b3176ea:水平分隔(上下窗格)d_dragv 驱动+mousey 绝对指针内建(permille 相对盒在分隔条场景饱和);前置 GUI-16 最小面同提交落地。
+- **GUI-18 tree 组件**——✅ 1003 6bdfc813:扁平表配方(应用侧可见集重算+缩进/▸▾ 前缀),点击经实例后缀定位(s56);递归 view 形态依赖下标表达式留 v2。
+- **GUI-19 combobox**——✅ 1003 03859b7e:输入即开(on:input 过滤+下拉同帧)+overlay 下拉+点选填入(s59);过滤谓词应用侧手写(GUI-13 落库可换 contains)。
+- **GUI-20 OS 文件拖入**——✅ 1003 ffa4acd1:窗口级 on:drop(事件码 6,IsFileDropped 轮询+IsWindowReady 门),逐文件 fire+droppath/dropn 内建;headless d_drop(s61)。
+- **GUI-21 虚拟化长列表**——✅ 1003 718db27b(6663cf9b 改号 s69):scroll 标记容器(gui_cfg2 clip+偏移槽)进共享运行时+可见窗口配方(bind 只组装窗口行,前占位+总高 O(1));overscan/virtual each 标签形态留 v2。
+- **GUI-22 文本 ellipsis/行钳制**——✅ 1003 b638b4f4:label ellipsis+max_w 预算,rt_meas_w 直调 ft 实测(FT_OFF 回启发式)+逐码点截断(s63);行钳制(maxlines)留 v2。
+- **GUI-23 链接 OpenURL**——✅ 1003 ffa4acd1:link 样式按钮 on:click 内 open_link(headless 记录槽 d_open_url 断言,真窗 raylib OpenURL)(s60)。
+- **GUI-24 窗口级 API**——✅ 1003 a21734e0:关闭拦截(根 on:close+glfw flag 复位吞请求)+win_op 编码面(fullscreen/max/min/restore/undecorated/bordered)+win_icon(s62);真窗拦截语义待 --run 手验。
+- **GUI-25 canvas 树内整合**——✅ 1003 b92f8ea2:canvas 标记属性容器(零新标签)+每帧 on:draw(rt_canvas_frame)+canvas_px 绘制原语(headless 记录槽)(s65);真窗直绘待 --run 手验。
+- **GUI-26 grid 布局**——✅ 1003 37f76691:核查结论=Clay v0.14 无 Grid API(升级牵连黄金金值,登记裁决项);v1=GROW 均分网格行配方(hbox 多 GROW 子自动等宽,s64);多列数据驱动依赖 GUI-13 下标留 v2。
+- 附带:**GUI-16 值驱动宽高最小面**(1003 2b3176ea)随 GUI-17 落地——`w:/h: "{expr}"` 逐帧求值(gt_dim/gt_dim_v,引号串载体);容器 w 消费因 s37 存量口径站岗撤销,完整面(容器宽+样式折叠缓存)仍是 C 档议题。
 
 ## E 档:跨泳道(GUI 需求,编译/构建面执行,需协调)
 
