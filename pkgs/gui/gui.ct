@@ -39,6 +39,12 @@ extern "c" fn gui_ctx_ay() -> I32
 extern "c" fn gui_menu_begin(offx: I32, offy: I32, w: I32, h: I32, bg: I32) -> I32
 extern "c" fn gui_menu_item(h: I32, bg: I32, hover: I32) -> I32
 extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
+extern "c" fn gui_thdrag_begin(node: I32, my: I32, s0: I32) -> I32
+extern "c" fn gui_thdrag_end() -> I32
+extern "c" fn gui_thdrag_on() -> I32
+extern "c" fn gui_thdrag_node() -> I32
+extern "c" fn gui_thdrag_y0() -> I32
+extern "c" fn gui_thdrag_s0() -> I32
 extern "c" fn gui_undo_mute(on: I32) -> I32
 extern "c" fn gui_undo_push(node: I32, v: Str, n: I32, caret: I32) -> I32
 extern "c" fn gui_undo_stack_push(node: I32, v: Str, n: I32, caret: I32, redo: I32) -> I32
@@ -3384,7 +3390,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         var ctop: I32 = 4 + crow * tpitch
                         var cbot: I32 = ctop + tlh
                         if ctop < tscr {
-                            gui_ta_scroll_set(id, ctop)
+                            // 上卷保 4px 顶 padding(卷到行顶=pad 被吃,thumb
+                            // 比例与视觉同步差 4px 实证)
+                            var nt6: I32 = ctop - 4
+                            if nt6 < 0 {
+                                nt6 = 0
+                            }
+                            gui_ta_scroll_set(id, nt6)
                         } else {
                             if cbot > tscr + thv {
                                 gui_ta_scroll_set(id, cbot - thv)
@@ -4691,6 +4703,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     SetTargetFPS(60)
     while !WindowShouldClose() {
         rt_drag_sel(t, rects, hits, bind)
+        rt_thumb_drag(t, rects, hits, bind)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
@@ -4827,6 +4840,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var frames: I32 = 0
     while !WindowShouldClose() {
         rt_drag_sel(t, rects, hits, bind)
+        rt_thumb_drag(t, rects, hits, bind)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -5620,6 +5634,62 @@ fn rt_sel_take() -> I32 {
     return s1
 }
 
+// 滚动条 thumb 拖拽逐帧跟随(几何与渲染 thumb 同源:trackh=boxh-8,
+// thumbh=max(16,trackh*boxh/contenth),比例换算钳 [0,maxo];松开结束)
+fn rt_thumb_drag(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void) -> I32 {
+    if gui_thdrag_on() == 0 {
+        return 0
+    }
+    if gui_mouse_down() == 0 {
+        gui_thdrag_end()
+        return 0
+    }
+    var node: I32 = gui_thdrag_node()
+    if node < 0 {
+        gui_thdrag_end()
+        return 0
+    }
+    var hs: Str = gt_cls_prop(t.ncls[node], "h", "", t)
+    if hs == "" {
+        gui_thdrag_end()
+        return 0
+    }
+    var boxh: I32 = gs2i(hs)
+    var tsz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
+    var pitch: I32 = tsz + tsz / 4 + 2
+    var val: Str = rt_in_val(t, node, bind)
+    var w: I32 = gui_in_w_get(node) - 8
+    if w < 40 {
+        w = 40
+    }
+    var vs = List[I32]()
+    var ve = List[I32]()
+    ta_rows(node, val, w, tsz, vs, ve)
+    var contenth: I32 = vs.len * pitch + 8
+    var maxo: I32 = contenth - boxh
+    if maxo <= 0 {
+        return 0
+    }
+    var trackh: I32 = boxh - 8
+    var thumbh: I32 = trackh * boxh / contenth
+    if thumbh < 16 {
+        thumbh = 16
+    }
+    var den: I32 = trackh - thumbh
+    if den < 1 {
+        den = 1
+    }
+    var ns: I32 = gui_thdrag_s0() + (gui_mouse_y() - gui_thdrag_y0()) * maxo / den
+    if ns > maxo {
+        ns = maxo
+    }
+    if ns < 0 {
+        ns = 0
+    }
+    gui_ta_scroll_set(node, ns)
+    return 1
+}
+
 // 输入拖动选区(逐帧:按下命中输入锚定,拖动更新活动端,松开结束)
 fn rt_drag_sel(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void) -> I32 {
     if gui_drag_active() == 0 {
@@ -6149,6 +6219,53 @@ fn rt_click_text(t: GuiTree, fnode: I32, bind: fn(List[Str]) -> Void, rects: Lis
             fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
         } else {
             fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
+        }
+    }
+    // thumb 命中:右缘 thumb 区按下=拖拽滚动(不定位光标、不启文本拖选;
+    // 命中区比 4px 视觉宽各放 2px,几何与渲染/逐帧跟随同源)
+    var tbb: I32 = rt_node_box(rects, hits, fnode)
+    if tbb >= 0 {
+        var tw: I32 = gui_in_w_get(fnode) - 8
+        if tw < 40 {
+            tw = 40
+        }
+        var tsz6: I32 = gs2i(gt_cls_prop(t.ncls[fnode], "size", "16", t))
+        var tp6: I32 = tsz6 + tsz6 / 4 + 2
+        var tc6 = List[I32]()
+        var td6 = List[I32]()
+        ta_rows(fnode, fbv, tw, tsz6, tc6, td6)
+        var tch6: I32 = tc6.len * tp6 + 8
+        var tbh6: I32 = gui_cmd_h100(tbb) / 100
+        if tch6 > tbh6 {
+            var tmax6: I32 = tch6 - tbh6
+            var ttr6: I32 = tbh6 - 8
+            var tth6: I32 = ttr6 * tbh6 / tch6
+            if tth6 < 16 {
+                tth6 = 16
+            }
+            var tscr6: I32 = gui_ta_scroll_get(fnode)
+            var ttx: I32 = gui_cmd_x100(tbb) / 100 + tw + 2
+            var tty: I32 = gui_cmd_y100(tbb) / 100 + 4 + (ttr6 - tth6) * tscr6 / tmax6
+            var mx6: I32 = gui_evt_x()
+            var my6: I32 = gui_evt_y()
+            var inx6: Bool = false
+            if mx6 >= ttx - 2 {
+                if mx6 <= ttx + 6 {
+                    inx6 = true
+                }
+            }
+            var iny6: Bool = false
+            if my6 >= tty - 2 {
+                if my6 <= tty + tth6 + 2 {
+                    iny6 = true
+                }
+            }
+            if inx6 {
+                if iny6 {
+                    gui_thdrag_begin(fnode, my6, tscr6)
+                    return fnode
+                }
+            }
         }
     }
     var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)

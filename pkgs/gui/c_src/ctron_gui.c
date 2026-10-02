@@ -36,6 +36,20 @@ static int g_ta_scroll[512];
 int gui_ta_scroll_set(int node, int y) { if (node >= 0 && node < 512) { g_ta_scroll[node] = y; } return 0; }
 int gui_ta_scroll_get(int node) { return (node >= 0 && node < 512) ? g_ta_scroll[node] : 0; }
 
+// 滚动条 thumb 拖拽(按下 thumb=拖拽模式;逐帧 mouse 跟随,松开结束)
+static int g_thdrag_on = 0;
+static int g_thdrag_node = -1;
+static int g_thdrag_y0 = 0;
+static int g_thdrag_s0 = 0;
+void gui_thdrag_begin(int node, int my, int s0) {
+    g_thdrag_on = 1; g_thdrag_node = node; g_thdrag_y0 = my; g_thdrag_s0 = s0;
+}
+void gui_thdrag_end(void) { g_thdrag_on = 0; g_thdrag_node = -1; }
+int gui_thdrag_on(void) { return g_thdrag_on; }
+int gui_thdrag_node(void) { return g_thdrag_node; }
+int gui_thdrag_y0(void) { return g_thdrag_y0; }
+int gui_thdrag_s0(void) { return g_thdrag_s0; }
+
 // 光标跟随游标存储(每节点;跟随仅在光标变化帧执行一次——旧版每帧强制回卷
 // 与滚轮互搏=滚动被弹回+整页上下跳闪烁,用户实测)
 static int g_ta_follow[512];

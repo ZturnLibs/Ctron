@@ -503,6 +503,263 @@ fn main() -> I32 {
             })
             d_expect_text(t, "Q")
             d_expect_absent(t, "X")
+            // ===== 滚动条 thumb(几何位置随滚动比例;点 thumb 不动光标) =====
+            // 重建 6 行溢出内容(h80:内容高 6*22+8=140,maxo=60)
+            d_mod(t, 1)
+            d_send_key(t, 65, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 110, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 49, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 10, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 110, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 50, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 10, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 110, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 51, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 10, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 110, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 52, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 10, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 110, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 53, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 10, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 108, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 105, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 110, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 101, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 54, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "line1")
+            d_expect_text(t, "line2")
+            d_expect_text(t, "line3")
+            d_expect_text(t, "line6")
+            // ⌘↑ 顶部:thumb 在轨道顶(y=盒y+4=12)
+            d_mod(t, 1)
+            d_send_key(t, 265, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            if !has_rect(306, 12, 4) {
+                panic("s51: thumb 未在轨道顶")
+            }
+            // ⌘↓:跟随卷到露出末行(scroll=cbot-thv=54 非轨底 60);
+            // thumb y = 8+4+(72-41)*54/60 = 39
+            d_mod(t, 1)
+            d_send_key(t, 264, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            if !has_rect(306, 39, 4) {
+                panic("s51: thumb 未在跟随位")
+            }
+            // 点 thumb(x=306)不定位光标:随后字符仍插在文首(⌘↑ 归位后验;
+            // 先刷帧——点击命中用当前帧几何)
+            d_mod(t, 1)
+            d_send_key(t, 265, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_click_text(t, 306, 12, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 75, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "Kline1")
+            d_expect_absent(t, "line1K")
         })
     return rc
 }
