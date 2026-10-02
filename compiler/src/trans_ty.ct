@@ -1139,7 +1139,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if e[3] == "fetch_add" { return "i" }
         if e[3] == "with_mut" { return "v" }
         if e[3] == "map" { return "L" }
-        if or2(e[3] == "reduce", or2(e[3] == "expect", or2(e[3] == "with", e[3] == "fetch_add"))) { return "i" }
+        // T53:expect 静态型别=载荷码恢复(标量安全族直返)——旧硬编码 i 使
+        // 推断 let 按 int32 消费(I64 载荷 >2^31 截断,F64 载荷错值);
+        // Str/聚合码回落 i(裸槽按 int32 消费的 v0 行为不变,聚合消费走 match 臂)
+        if e[3] == "expect" {
+            var pecT = ct_opt_elem_expr(file, e[1], env)
+            if or2(pecT == "f", or2(pecT == "6", or2(pecT == "7", or2(pecT == "z", pecT == "b")))) { return pecT }
+            return "i"
+        }
+        if or2(e[3] == "reduce", or2(e[3] == "with", e[3] == "fetch_add")) { return "i" }
         if or2(e[3] == "is_err", e[3] == "is_ok") { return "b" }
     }
     if t == "TypeArgs" {
@@ -1327,7 +1335,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "fetch_add" { return "i" }
             if m == "with_mut" { return "v" }
             if m == "map" { return "L" }
-            if or2(m == "reduce", or2(m == "expect", m == "with")) { return "i" }
+            // T53:expect 静态型别=载荷码恢复(与成员读位同口径;回落 i 同注)
+            if m == "expect" {
+                var pecC = ct_opt_elem_expr(file, cal[1], env)
+                if or2(pecC == "f", or2(pecC == "6", or2(pecC == "7", or2(pecC == "z", pecC == "b")))) { return pecC }
+                return "i"
+            }
+            if or2(m == "reduce", m == "with") { return "i" }
             if or2(m == "is_err", m == "is_ok") { return "b" }
             // P0-A:泛型成员调用(UFCS)返回实例化——.middleware(...) 链的接收者
             // 型别贯通:decl 首参 = 接收者型(Router[S])时,返回槽的 TPar 按接收者

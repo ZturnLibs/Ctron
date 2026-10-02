@@ -2,12 +2,12 @@
 //
 // 语义登记(v1 口径,偏离/志向逐条):
 //
-//   ① JSON 绑定面(std/json 结构面强制 —— 32 位 Result 载荷纪律):
+//   ① JSON 绑定面(jv_*/jk_* 便捷面;T53 后 std/json 内部恒经 jget_* Result
+//   数值面——发射臂 union 载荷 64 位+位双关闭环,跨模块 Result 数值载荷保真):
 //   body_json(text, cap) = 解析入口(text.len > cap 即拒,先于 parse);
 //   parse 的 Result[List,_] match 为发射面已证形(json_fidelity d_ 先例,
-//   Err-Str 载荷绿)。字段提取【只】走 jv_*/jk_* 结构通道(值 jv_* 带
-//   默认 / kind jk_*;JNum/JReal struct + 标量 getter 内封装)—— jget_*
-//   Result 数值面跨模块禁(Ok-I64 截断在案)。字符串面 = qtag(qtag=="s")
+//   Err-Str 载荷绿)。字段提取【只】走 jv_*/jk_*(值 jv_* 带默认 /
+//   kind jk_*)。字符串面 = qtag(qtag=="s")
 //   + qval(载荷原文)。required 语义 = breq_i64:rc 1 ok / 0 noent /
 //   2 他类(kind 细分经 bj_i64_kind);带默认语义 = bj_i64。
 //
@@ -132,7 +132,7 @@ pub fn body_json(text: Str, cap: I64) -> BJson {
     return BJson { rc: 1, why: body_err_ok(), emsg: "", es: es }
 }
 
-// 带默认读取(jv_ 结构通道;dft 域)
+// 带默认读取(jv_ 便捷面;dft 域)
 pub fn bj_i64(b: BJson, path: Str, dft: I64) -> I64 {
     return jv_i64(b.es, path, dft)
 }

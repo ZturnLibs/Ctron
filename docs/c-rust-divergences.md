@@ -312,15 +312,15 @@ P4 服务器泳道(P4-B 压缩 / P4-C 客户端·SSE·WS / P4-D 基准·fuzz)移
   (ct_res 载荷槽整数型,无法承载 double;Rust 参考线 trans.rs 以
   Pay::F→double 按载荷定型,即该缺陷的正确形态)。**两缺陷均仅 C 线
   emit;Rust 线(trans.rs)整型 `__int128`/ct_i 承载 + 载荷定型,不受累。**
-  **绕行 = 结构通道 + 标量 getter**
-  (std/http parse.ct getter 面 prior art):std/json 数值访问器内走
-  `JNum{k:I64,v:I64}` / `JReal{k:I64,v:F64}`(struct 标量字段 64 位实证绿,
-  plain I64/F64 返回绿),消费方经 `jv_*/jk_*` 或 `jn_*/jr_*` getter 取值;
-  `jget_*` Result 面留同模块/解释口径与 Err 原文面。修法 = emit 侧 match
-  绑定去 `(int32_t)` 截断、按载荷宽度重绑(I64 档;槽已宽无需改);
-  F64 档需载荷槽按载荷定型(Pay::F→double 形)——两项独立挂 P9
-  (strconv.parse_i64 的 Option[I64] 大值面同疑受累,其单测未入 emit 臂
-  故未暴露)。(源:P5 Task 1 探针 loc/mi/ml/mn;机理勘误:P5 Task 2 复核
+  **✅ 已修复(T53,2026-10-02)——本条翻面为历史登记**:载荷槽恒 ct_i 64 位,
+  F64 以 C11 union 复合字面量位型双关入槽(ct_res_wrap f 臂,a000a6ad 先行)/
+  回读(expect/match-Ok 两语句路径/Try 两语句位/or 双臂五读侧全配对);
+  I64 档按载荷宽度重绑(expect 静态型别随载荷码,标量安全族 {f,6,7,z,b};
+  语句形 match-Ok 的 `int32_t` 硬编码行摘除)。**json JNum/JReal 结构通道
+  已回切摘除**(jget_* Result 面为唯一 pub 数值面;jv_*/jk_* 内部恒经
+  jget_*;strconv.parse_i64 的 Option[I64] 大值面随之解除同疑,emit 臂
+  常设哨 = tests/json_fidelity/corpus/e_t53_payload64.ct 双臂)。
+  (源:P5 Task 1 探针 loc/mi/ml/mn;机理勘误:P5 Task 2 复核
   trans_stmt.ct:996/driver_emit.ct:102-103/trans.rs:4,635)
 - **(i) 解释器 F64 值域定宽三实例 + 语义歧**(emit 真 double 恒正确,双口径
   漂移,双臂一致语义钳窗口径见 std/json.ct 区块头注):

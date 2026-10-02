@@ -884,6 +884,20 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   未及定位。工作树干净回退,suite 99/99 复绿。
 - 复开注记:优先在 S1 Val 平面重试(旧宿主值模型是根因域);json JNum/JReal 回切随芯。
 
+**2026-10-02 T53 ✅ 收官落账**(同日复开,S1 平面即愈;上轮 #prel 助手表方案弃用):
+- 芯先行:wrap 写侧+or 双读侧由 a000a6ad(P0-A)落库;本件补齐五病灶——expect 静态型别
+  硬编码 "i"(trans_ty 两处,推断 let int32 截 I64 根)/expect 发射无位还原/语句形
+  match-Ok `int32_t` 硬编码行(trans_stmt okIx 臂;match-R 发射共四路径逐条排摸)/
+  Try 两语句位 `(double)` 值直转/json (h) 绕行面。载荷码统一 ct_opt_elem_expr 恢复,
+  f 码内联 union 位双关(零新符号零 #prel,三次自举全过——宿主静默崩确证随去 cx 化消失)。
+- json JNum/JReal 回切:jget_* Result 面唯一 pub 数值面,jnum_*/jreal_*/jn_*/jr_* 摘除,
+  jv_*/jk_* 内迁 jget_*;pkgs/web/json.ct jd_i64、lib/http/frm/body.ct 注释同步。
+- 验收:探针 14 项四读侧×I64(2^63 双界)/F64 双臂绿(基线 emit bad=9 清零);
+  锚=02_option_result.ct 两 test 块+json_fidelity/corpus/e_t53_payload64.ct 双臂;
+  json_fidelity 13/13、suite 99/99 双列、web_todo 原生 92 裸跑 rc=0(big=5000000000
+  大值载荷)、http/run 105 过(6 红=基线同红:x_client_e2e/sse_ws e2e 五件 origin/main
+  预存,x_ws_e2e 主树 bin 对拍实证;gzip 族 vendored miniz 补建后转绿)。
+
 **2026-10-02 非己债登记:fx_genrec_neg.ct emit 死循环(main 在案,P0-A′/T53 域)**:
 - 症状:ctc.sh emit compiler/test/fx_genrec_neg.ct → seed 解释发射无限循环(100% CPU
   不终止;单案 timeout 100s 复现,产物 0 字节)。二分实证:stash 本线全部改动后同案
