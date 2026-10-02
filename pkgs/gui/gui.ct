@@ -216,6 +216,14 @@ extern "c" fn gui_scroll_add(d: I32) -> I32
 extern "c" fn gui_scroll_off() -> I32
 extern "c" fn gui_scroll_set(v: I32) -> Void
 
+// GUI-15:on:after 定时事件(元素存活域一次性;on:input 重臂=防抖)
+extern "c" fn gui_after_bump() -> Void
+extern "c" fn gui_after_arm(node: I32, ms: I32) -> I32
+extern "c" fn gui_after_touch(node: I32) -> I32
+extern "c" fn gui_after_armed(node: I32) -> I32
+extern "c" fn gui_after_due(node: I32) -> I32
+extern "c" fn gui_after_disarm(node: I32) -> I32
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
@@ -1321,6 +1329,15 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             glit(src, cur, 58)
             var evn: Str = gword(src, cur)
             glit(src, cur, 61)
+            gws(src, cur)
+            if byte_at(src, cur.load()) == 34 {
+                // GUI-15:on:after="ms:handler" 引号串事件(定时;存活域一次性)
+                var qv3: Str = gstr(src, cur)
+                t.ev_name.push(evn)
+                t.ev_fn.push(qv3)
+                gws(src, cur)
+                continue
+            }
             glit(src, cur, 123)
             // SL-8c-3:事件表达式平衡捕获(编译侧 gui_bx_expr 同规范形;单标识符
             // 旧契约为其特例)——glit 已过 {,捕获消费至配对 }
@@ -3249,6 +3266,23 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             he += 1
         }
     }
+    // GUI-15:on:after 定时事件——存活域布防(每帧 touch;首见 arm;重臂归
+    // on:input 防抖;when 假不经此路=seen 过期不 fire,定时随灶消亡。
+    // 注:裸块勿用——emit 器块 lowering 撞 t_blk0(T27-B 同族),平铺函数域)
+    var ae: I32 = 0
+    while ae < t.nec[id] {
+        var agi: I32 = t.nes[id] + ae
+        if t.ev_name[agi] == "after" {
+            gui_after_touch(id)
+            if gui_after_armed(id) == 0 {
+                var ams: I32 = rt_after_ms(t.ev_fn[agi])
+                if ams > 0 {
+                    gui_after_arm(id, ams)
+                }
+            }
+        }
+        ae += 1
+    }
     // 波次四:ViewCall 展开——查组件注册表,实参求值入 env(末位优先),
     // 拼接组件体子树;无 gui_open(纯拼接,组件体自带根元素)
     var callname: Str = ""
@@ -4336,6 +4370,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
 
 pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32], hov: I32, actn: I32) -> I32 {
     gui_frame_tick()
+    gui_after_bump()
     gui_begin_layout(w, h)
     // 应用根 = 最后声明的视图(组件先声明后用惯例;单视图退化为 0);
     // gui_list_ni 门控——编译构建树无 vreg 字段(NULL)
@@ -4496,6 +4531,20 @@ fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, Lis
     var h: Str = rt_in_handler(t, node, evname)
     if h != "" {
         act(h + ":" + payload, List[Str]())
+        // GUI-15:on:input 重臂同节点 on:after(防抖口径:每击键重置期限)
+        if evname == "input" {
+            var e2: I32 = 0
+            while e2 < t.nec[node] {
+                var g2: I32 = t.nes[node] + e2
+                if t.ev_name[g2] == "after" {
+                    var ams2: I32 = rt_after_ms(t.ev_fn[g2])
+                    if ams2 > 0 {
+                        gui_after_arm(node, ams2)
+                    }
+                }
+                e2 += 1
+            }
+        }
     }
     return 0
 }
@@ -5408,6 +5457,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
     rt_scroll_req_apply(t, rects, hits)
+    rt_after_pump(t, bind, act)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
     SetConfigFlags(8192)
@@ -5567,6 +5617,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         rt_collect_rects(nfr, rects)
         gui_ime_feed_caret(rects, hits)
         rt_scroll_req_apply(t, rects, hits)
+        rt_after_pump(t, bind, act)
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -5591,6 +5642,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
     rt_scroll_req_apply(t, rects, hits)
+    rt_after_pump(t, bind, act)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
     SetConfigFlags(8192)
@@ -5622,6 +5674,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     rt_collect_rects(n, rects)
                     gui_ime_feed_caret(rects, hits)
                     rt_scroll_req_apply(t, rects, hits)
+                    rt_after_pump(t, bind, act)
                     rt_feed_input_w(t, rects, hits)
                 }
             }
@@ -5790,6 +5843,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         rt_collect_rects(nfr, rects)
         gui_ime_feed_caret(rects, hits)
         rt_scroll_req_apply(t, rects, hits)
+        rt_after_pump(t, bind, act)
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -7308,6 +7362,69 @@ fn rt_scroll_req_apply(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
     }
     return 0
 }
+// ==================== GUI-15:on:after 定时事件(§2.7 tick→事件通道) ====================
+// 视图元素属性 on:after="ms:handler":元素存活域一次性定时——首见布防,期限
+// 即 fire act(handler) 一次并拆防;when 假(灶灭)不 fire;on:input 同节点重臂
+// =防抖口径(每击键重置期限)。headless 时钟=d_tick 注入口径,d_after_pump
+// 显式泵;真窗循环每帧自动泵。handler v1=简单名(E8120 门在册)。
+
+// "ms:handler" 冒号前毫秒;非形态回 -1
+fn rt_after_ms(e: Str) -> I32 {
+    var ci: I32 = 0
+    while ci < e.len {
+        if byte_at(e, ci) == 58 {
+            break
+        }
+        ci += 1
+    }
+    if ci == 0 {
+        return -1
+    }
+    if ci >= e.len {
+        return -1
+    }
+    var ms: I32 = gs2i(byte_slice(e, 0, ci))
+    if ms <= 0 {
+        return -1
+    }
+    return ms
+}
+
+// 到期泵:due 节点拆防即 fire(一次性);隐灶(seen 过期)不 fire
+pub fn rt_after_pump(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var i: I32 = 0
+    while i < t.ntag.len {
+        var e: I32 = 0
+        while e < t.nec[i] {
+            var gi: I32 = t.nes[i] + e
+            if t.ev_name[gi] == "after" {
+                if gui_after_due(i) {
+                    gui_after_disarm(i)
+                    var afn: Str = t.ev_fn[gi]
+                    var ci: I32 = 0
+                    while ci < afn.len {
+                        if byte_at(afn, ci) == 58 {
+                            break
+                        }
+                        ci += 1
+                    }
+                    if ci < afn.len {
+                        act(byte_slice(afn, ci + 1, afn.len), List[Str]())
+                    }
+                }
+            }
+            e += 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+// headless 泵(d_tick 注入时钟推进后由断言脚本显式调)
+pub fn d_after_pump(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    return rt_after_pump(t.t, bind, act)
+}
+
 fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
     // 首个可编辑件(input 或 textarea,树序)——textarea 开窗即可打字,
     // 与成熟编辑器开箱即输入同口径

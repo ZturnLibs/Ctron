@@ -384,15 +384,23 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
                 panic("gui E8100: on 期待等号")
             }
             var ob: Str = eat_tok(tks, cur)
-            if ob.len != 1 {
-                panic("gui E8100: on 期待块开")
+            if ob.len >= 2 {
+                if byte_at(ob, 0) == 34 {
+                    // GUI-15:on:after="ms:handler" 引号串事件——原样透传内嵌源
+                    onf = ob
+                }
             }
-            if byte_at(ob, 0) != 123 {
-                panic("gui E8100: on 期待块开")
+            if onf == "" {
+                if ob.len != 1 {
+                    panic("gui E8100: on 期待块开")
+                }
+                if byte_at(ob, 0) != 123 {
+                    panic("gui E8100: on 期待块开")
+                }
+                // 8c-3:事件表达式平衡捕获(单标识符旧契约为其特例;gui_bx_expr
+                // 消费至配对 } 并剥行尾 ~ 标记)
+                onf = gui_bx_expr(tks, cur)
             }
-            // 8c-3:事件表达式平衡捕获(单标识符旧契约为其特例;gui_bx_expr
-            // 消费至配对 } 并剥行尾 ~ 标记)
-            onf = gui_bx_expr(tks, cur)
         } else {
             if eat_tok(tks, cur) != "=" {
                 panic("gui E8100: 属性期待等号")
@@ -2040,10 +2048,58 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                 bad = -1
             } else {
                 var ob: Str = eat_tok(tks, cur)
-                if ob.len != 1 {
-                    gdiags.push("E8100: on 期待块开")
-                    bad = -1
-                } else {
+                if ob.len >= 2 {
+                    if byte_at(ob, 0) == 34 {
+                        // GUI-15:on:after="ms:handler" 引号串事件——仅 after 受持;
+                        // 形态 = 非零毫秒:简单名(E8120 处理器存在门沿用)
+                        if evn != "after" {
+                            gdiags.push("E8110: on:" + evn + " 不受持引号事件(仅 after) ")
+                            bad = -1
+                        } else {
+                            var qv: Str = byte_slice(ob, 1, ob.len - 1)
+                            var ci2: I32 = 0
+                            while ci2 < qv.len {
+                                if byte_at(qv, ci2) == 58 {
+                                    break
+                                }
+                                ci2 += 1
+                            }
+                            var msok: Bool = ci2 > 0 && ci2 < qv.len
+                            if msok {
+                                var mi: I32 = 0
+                                while mi < ci2 {
+                                    var mb: I32 = byte_at(qv, mi)
+                                    if mb < 48 || mb > 57 {
+                                        msok = false
+                                        mi = ci2
+                                    }
+                                    mi += 1
+                                }
+                                var mv: I32 = 0
+                                var mi2: I32 = 0
+                                while mi2 < ci2 {
+                                    mv = mv * 10 + (byte_at(qv, mi2) - 48)
+                                    mi2 += 1
+                                }
+                                if mv <= 0 {
+                                    msok = false
+                                }
+                                var hd: Str = byte_slice(qv, ci2 + 1, qv.len)
+                                if !gui_ck_has_style(fns, hd) {
+                                    gdiags.push("E8120: 事件处理器未声明 " + hd + "(on:" + evn + ")")
+                                    bad = -1
+                                    msok = false
+                                }
+                            }
+                            if !msok {
+                                gdiags.push("E8110: on:after 期待 \"毫秒:处理器名\" 得 " + qv)
+                                bad = -1
+                            }
+                            hn = " "
+                        }
+                    }
+                }
+                if ob.len == 1 {
                     if byte_at(ob, 0) != 123 {
                         gdiags.push("E8100: on 期待块开")
                         bad = -1
@@ -2718,6 +2774,16 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             var evn: Str = gui_sk_word(tks, cur)
             gui_sk_word(tks, cur)
             var ob: Str = gui_sk_word(tks, cur)
+            var ev_branch: I32 = 0
+            if ob.len >= 2 {
+                if byte_at(ob, 0) == 34 {
+                    // GUI-15:on:after="ms:handler" 引号串事件(定时;存活域一次性)
+                    ev_name.push(evn)
+                    ev_fn.push(byte_slice(ob, 1, ob.len - 1))
+                    ev_branch = 1
+                }
+            }
+            if ev_branch == 0 {
             // 块开守卫(缺 { 错位吞词,镜像 check 面 W3 教训)后 8c-3 平衡捕获
             if ob.len != 1 {
                 panic("gui: on 期待块开")
@@ -2728,6 +2794,7 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             var fnn: Str = gui_bx_expr(tks, cur)
             ev_name.push(evn)
             ev_fn.push(fnn)
+            }
         } else {
             gui_sk_word(tks, cur)
             var av: Str = ""

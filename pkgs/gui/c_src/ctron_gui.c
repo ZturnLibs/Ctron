@@ -487,6 +487,25 @@ int gui_scroll_add(int d) { g_scroll_off += d; if (g_scroll_off < 0) { g_scroll_
 int gui_scroll_off(void) { return g_scroll_off; }
 void gui_scroll_set(int v) { g_scroll_off = (v > 0) ? v : 0; }
 
+// ---- GUI-15:on:after 定时事件(元素存活域一次性;on:input 重臂=防抖) ----
+static int g_after_dl[512];
+static int g_after_seen[512];
+static int g_frame_no = 0;
+void gui_after_bump(void) { g_frame_no += 1; }
+int gui_after_arm(int node, int ms) {
+    if (node >= 0 && node < 512) { g_after_dl[node] = gui_now_ms() + ms; g_after_seen[node] = g_frame_no; }
+    return 0;
+}
+int gui_after_touch(int node) { if (node >= 0 && node < 512) { g_after_seen[node] = g_frame_no; } return 0; }
+int gui_after_armed(int node) { return (node >= 0 && node < 512) ? (g_after_dl[node] != 0) : 0; }
+int gui_after_due(int node) {
+    if (node >= 0 && node < 512) {
+        return (g_after_dl[node] != 0) && (g_after_seen[node] == g_frame_no) && (gui_now_ms() >= g_after_dl[node]);
+    }
+    return 0;
+}
+int gui_after_disarm(int node) { if (node >= 0 && node < 512) { g_after_dl[node] = 0; } return 0; }
+
 // ---- GUI-14:程序化聚焦/滚动请求槽(一次性:emit 期消费或帧末清) ----
 static char g_focus_req[256] = {0};
 static char g_scroll_req[256] = {0};

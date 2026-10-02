@@ -209,12 +209,21 @@ fn attrs(src: Str, cur: Atomic[I32], el: I32, ev_el: List[I32],
             lit(src, cur, 58)
             var evn: Str = word(src, cur)
             lit(src, cur, 61)
-            lit(src, cur, 123)
-            var fnn: Str = word(src, cur)
-            lit(src, cur, 125)
-            ev_el.push(el)
-            ev_name.push(evn)
-            ev_fn.push(fnn)
+            ws(src, cur)
+            if byte_at(src, cur.load()) == 123 {
+                lit(src, cur, 123)
+                var fnn: Str = word(src, cur)
+                lit(src, cur, 125)
+                ev_el.push(el)
+                ev_name.push(evn)
+                ev_fn.push(fnn)
+            } else {
+                // GUI-15:on:after="ms:handler" 引号串事件(定时;存活域一次性)
+                var qv: Str = str_lit(src, cur)
+                ev_el.push(el)
+                ev_name.push(evn)
+                ev_fn.push(qv)
+            }
         } else {
             lit(src, cur, 61)
             var av: Str = str_lit(src, cur)
