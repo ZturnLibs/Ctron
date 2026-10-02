@@ -80,6 +80,10 @@ void    ctron_rt_forget_fd(int64_t fd);
  * ns/次 = 返回值 / (2*rounds)。裸线程回退 sched_yield 配对测量。 */
 int64_t ctron_rt_yield_bench(int rounds);
 
+/* (T34 新增,work-stealing 观测)跨 worker 偷取累计次数。仅观测/测试锚
+ * 消费,不参与任何行为契约;种子模式(CTRON_RT_SEED)恒 0。 */
+int64_t ctron_rt_steals(void);
+
 #ifdef __cplusplus
 }
 #endif

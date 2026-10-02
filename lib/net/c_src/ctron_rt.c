@@ -124,9 +124,34 @@
  *   重新加锁 —— finalize/timers/pop 与 popper 认领全部在锁内串行。
  * 空闲策略(P3-A 改版):空队 = cv 时限退避等待(20µs→160µs 递增,事件量
  *   交付见上节;无条件超时自醒保看门狗/定时器有界)。
- * 栈:64KB mmap + 低地址 1 页 PROT_NONE guard(页粒度取 sysconf,darwin/arm64
- *   页为 16KB,写死 4KB 会被 mprotect 取整放大、殃及栈本体);0xA5 填充用于
- *   DONE 时登记高水位(仅登记,不强制);空闲池(上限 256)复用。
+ * 栈(P9 起):mmap 栈 + 低地址 1 页 PROT_NONE guard(页粒度取 sysconf,
+ *   darwin/arm64 页为 16KB,写死 4KB 会被 mprotect 取整放大、殃及栈本体);
+ *   尺寸 env 可配(CTRON_RT_STACK_KB,缺省 1024 = 大 VA+惰性提交口径,T34
+ *   最小符合径 a77f141f;匿名 mmap 零填充,惰性分页);空闲池(上限 256)
+ *   复用;触顶 = sigaltstack 诊断链 rc=101(T34 最小径)。
+ *
+ * ══ T34 work-stealing(§7.1 调度口径;2026-10-02)══
+ *   形态:两级就绪结构。①全局 FIFO 链(P2 原形)——裸线程侧全部推入
+ *   (reactor 交付/裸 wake/main spawn)与本地溢出泼回;种子模式唯一使用面。
+ *   ②本地环形双端队(每 worker,容量 256)——worker 上下文内的推入收口本
+ *   worker:yield 回队/定时器醒/wake/spawn 全走 owner 尾端(LIFO,刚 yield
+ *   的协程最热,ping-pong/yield 负载局部性);饥饿 worker 弹出链 = 本地→
+ *   全局→自邻位轮转偷取(受害者头端,最老者,FIFO 利广依赖)。
+ *   锁纪律:两级队全部 G 内读写 —— 不变量 I/II 的 G 串行化论证(completer
+ *   定稿与 pop 同临界区、出队即认领)原样成立,零新增无锁不变量;G 竞争面
+ *   与改前同(P3-A 门禁不回退为验收项,非目标=吞吐重构)。
+ *   溢出:本地队满 256 → 老的一半按序泼回全局队(自 head 顺序摘,先后序
+ *   保持;泼回者 = worker,不踢醒,同 worker 推入口径)。
+ *   踢醒:P3-A 口径不变 —— 仅非 worker 推全局队踢醒一名睡者;worker 推
+ *   本地队不踢(惊动同侪只添偷活噪声),饥饿者吃 ≤160µs cv 自醒后 steal
+ *   兜底。窃取计数 g_steals 经 ctron_rt_steals() 观测导出(w7 锚消费)。
+ *   种子模式(P2-E)全量旁路:worker 推入也走全局队、弹出走 LCG 抽取、
+ *   nworkers 压 1 ⇒ 确定性契约逐字节不变(coro_det 常设回归站岗)。
+ *   栈面(§7.1 可增长连续栈):正案判决同日入册 —— 拷贝式需 emit 栈图+
+ *   根区间改写+callee-saved 寄存器镜像修复三件机器;分段式 guard 续跑亦需
+ *   发射器 prologue 配合;退路「1MB 大栈+guard+触顶诊断」(a77f141f)为
+ *   §7.1 字面终形,详见 docs/superpowers/specs/2026-09-26-server-p9-*。
+ *
  */
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
 #define _DARWIN_C_SOURCE 1 /* MAP_ANON/_SC_NPROCESSORS_ONLN 等 BSD 面 */
@@ -177,6 +202,7 @@ static size_t rt_stack_size(void)
 }
 #define RT_POOL_CAP     256                    /* 栈空闲池上限 */
 #define RT_MAX_WORKERS  64
+#define RT_LQ_CAP       256                    /* T34 work-stealing:本地就绪环容量(2 的幂) */
 #define RT_MAP_BUCKETS  1024                   /* key→record 哈希(2 的幂) */
 #define RT_BACKOFF_MAX_SHIFT 3                 /* 空闲退避上限:20µs << 3 = 160µs */
 
@@ -331,6 +357,13 @@ typedef struct rt_coro {
 typedef struct rt_worker {
     pthread_t  th;
     rt_ctx     sched;            /* 切回 worker 自身 pthread 栈的上下文 */
+    int        idx;              /* 本 worker 下标(steal 受害者轮转起点;init 时写定) */
+    /* T34 work-stealing:本地就绪环形双端队 —— owner 尾端 push/pop(LIFO,
+     * 刚 yield 的协程最热);他 worker 偷头端(最老者,FIFO 利广依赖)。G 内
+     * 读写(不引入无锁不变量;不变量 I/II 的 G 串行化论证原样保留)。 */
+    rt_coro   *lq[RT_LQ_CAP];
+    size_t     lq_head;          /* 最老元素下标(模 RT_LQ_CAP) */
+    size_t     lq_len;           /* 现存元素数 */
 } rt_worker;
 
 typedef struct {                 /* 定时器最小堆条目 */
@@ -360,6 +393,7 @@ static int   g_npool = 0;
 
 static _Atomic long g_hwm_stack = 0;        /* 高水位登记(仅登记,不强制) */
 static _Atomic unsigned g_backoff;          /* 空闲退避档位(良性竞争) */
+static _Atomic long g_steals = 0;           /* T34:跨 worker 偷取累计(仅观测) */
 
 /* P3-A 事件量交付:空队 worker 在 cv 上限时退避等待;ready_push 在推入者非
  * worker 且 g_sleepers>0 时 signal 踢醒一名(见文件头注 P3-A ①)。 */
@@ -414,19 +448,82 @@ static size_t key_bucket(void *k)
     return (size_t)x & (RT_MAP_BUCKETS - 1);
 }
 
-/* ───────────────────────── 就绪队(G 内) ───────────────────────── */
-static void ready_push(rt_coro *c)
+/* ───────────────────────── 就绪队(G 内) ─────────────────────────
+ * T34 work-stealing 两级结构:
+ *   全局队(单 FIFO 链,同 P2 原形)——裸线程侧全部推入(reactor 交付/裸
+ *     wake/spawn)与本地队溢出泼回;种子模式(P2-E)唯一使用面。
+ *   本地队(每 worker 环形双端,见 rt_worker)——worker 上下文内的推入
+ *     (yield 回队/定时器醒/wake/spawn)收口本 worker,吃满局部性;饥饿
+ *     worker 经 steal 轮转取他队最老者。全程 G 内,无锁纪律零新增。 */
+static void gq_push(rt_coro *c)
 {
     c->qnext = NULL;
     if (g_ready_tail) g_ready_tail->qnext = c;
     else              g_ready_head = c;
     g_ready_tail = c;
-    /* P3-A 事件量交付:入队 = 队列工作 → 退避复位;推入者非 worker(reactor
-     * 交付 / 裸线程 wake、spawn)且有 worker 睡在 cv 上 → 踢醒一名。worker
-     * 自身推入不踢:其循环原地继续弹出,惊动同侪只添偷活/迁移噪声(yield/
-     * ping-pong 负载敏感);此类突发最坏退回 ≤160µs 时限自醒,与旧轮询同界。
-     * 种子闸未开不踢:闸前不可弹出,spawn 风暴期逐次踢醒只添噪声。 */
+}
+
+static rt_coro *gq_pop(void)
+{
+    rt_coro *c = g_ready_head;
+    if (!c) return NULL;
+    g_ready_head = c->qnext;
+    if (!g_ready_head) g_ready_tail = NULL;
+    c->qnext = NULL;
+    return c;
+}
+
+/* 本地队 owner 端推(LIFO 尾端);满则老的一半泼回全局队头序保持
+ * (自 head 起顺序摘——泼回后全局队内先后序 = 原本地队老→新,G 内无并发)。 */
+static void lq_push(rt_worker *w, rt_coro *c)
+{
+    if (w->lq_len == RT_LQ_CAP) {
+        size_t spill = w->lq_len / 2, i;
+        for (i = 0; i < spill; i++) {
+            gq_push(w->lq[w->lq_head]);
+            w->lq_head = (w->lq_head + 1) & (RT_LQ_CAP - 1);
+            w->lq_len--;
+        }
+    }
+    w->lq[(w->lq_head + w->lq_len) & (RT_LQ_CAP - 1)] = c;
+    w->lq_len++;
+}
+
+/* owner 弹(尾端,最热);空返回 NULL。 */
+static rt_coro *lq_pop(rt_worker *w)
+{
+    rt_coro *c;
+    if (w->lq_len == 0) return NULL;
+    w->lq_len--;
+    c = w->lq[(w->lq_head + w->lq_len) & (RT_LQ_CAP - 1)];
+    return c;
+}
+
+/* 偷取弹(头端,最老——广依赖公平);空返回 NULL。 */
+static rt_coro *lq_steal(rt_worker *w)
+{
+    rt_coro *c;
+    if (w->lq_len == 0) return NULL;
+    c = w->lq[w->lq_head];
+    w->lq_head = (w->lq_head + 1) & (RT_LQ_CAP - 1);
+    w->lq_len--;
+    return c;
+}
+
+/* 统一就绪推入(P2 原 ready_push 的 T34 路由版):
+ *   worker 上下文且非种子模式 → 本 worker 本地队(无踢醒:P3-A 同款论证,
+ *     惊动同侪只添偷活噪声;饥饿者 ≤160µs 自醒后 steal 兜底);
+ *   裸线程(reactor/裸 wake/main spawn)或种子模式 → 全局队 + 踢醒一名
+ *     睡者(闸未开不踢,P2-E 口径逐字节保留)。 */
+static void ready_push(rt_coro *c)
+{
+    rt_worker *w = rt_tls_worker();
     atomic_store_explicit(&g_backoff, 0, memory_order_relaxed);
+    if (w != NULL && !g_seed_mode) {
+        lq_push(w, c);
+        return;
+    }
+    gq_push(c);
     if (g_sleepers > 0 && rt_tls_worker() == NULL &&
         !(g_seed_mode && !g_gate_open))
         pthread_cond_signal(&g_idle_cv);
@@ -462,10 +559,30 @@ static rt_coro *ready_pop(void)
         c->qnext = NULL;
         return c;
     }
-    g_ready_head = c->qnext;
-    if (!g_ready_head) g_ready_tail = NULL;
-    c->qnext = NULL;
-    return c;
+    return gq_pop();
+}
+
+/* T34 work-stealing:worker 弹出链 —— 种子模式走 ready_pop(P2-E LCG 抽取
+ * 位,确定性契约);非种子 = 本地队 → 全局队 → 邻位起轮转偷取(各受害者取
+ * 一,取到即返;下轮迭代继续 = 实质虹吸)。返回 NULL = 全域确空,调用方走
+ * idle 退避。 */
+static rt_coro *worker_pop(rt_worker *self)
+{
+    rt_coro *c;
+    int k;
+    if (g_seed_mode) return ready_pop();
+    c = lq_pop(self);
+    if (c) return c;
+    c = gq_pop();
+    if (c) return c;
+    for (k = 1; k < g_nworkers; k++) {
+        c = lq_steal(&g_workers[(self->idx + k) % g_nworkers]);
+        if (c) {
+            atomic_fetch_add_explicit(&g_steals, 1, memory_order_relaxed);
+            return c;
+        }
+    }
+    return NULL;
 }
 
 /* ───────────────────────── key→record 哈希(G 内) ───────────────────────── */
@@ -734,7 +851,7 @@ static void *worker_main(void *p)
         /* P2-E spawn 闸:种子模式下,裸线程首个 join_key 前不弹出(见文件
          * 头注)——否则 main 的 spawn 入队与弹出并发,就绪集合时刻非确定。
          * 闸关时走下方空队路径(idle 退避/retire 回收照常)。 */
-        c = (g_seed_mode && !g_gate_open) ? NULL : ready_pop();
+        c = (g_seed_mode && !g_gate_open) ? NULL : worker_pop(ws);
         if (!c) {
             if (retire) {                /* (P2-B 修复) 空队也照常回收,不再丢弃 */
                 rt_unlock();
@@ -1075,6 +1192,7 @@ void ctron_rt_init(int workers)
                                                         (多 worker 本身即非确定源;压过调用方/env 的任何 worker 数) */
     g_nworkers = workers;
     for (i = 0; i < workers; i++) {
+        g_workers[i].idx = i;                        /* T34:steal 轮转起点(init 写定,worker 未见) */
         if (pthread_create(&g_workers[i].th, NULL, worker_main, &g_workers[i]) != 0)
             abort();
     }
@@ -1373,6 +1491,13 @@ int64_t ctron_rt_yield_bench(int rounds)
     }
     t1 = now_ns();
     return (int64_t)(t1 - t0);                       /* rounds 次"配对"的总 ns */
+}
+
+/* T34 work-stealing 观测口:worker 间偷取累计次数(仅观测,不参与任何契约;
+ * 种子模式恒 0)。加法导出,冻结接口不动。 */
+int64_t ctron_rt_steals(void)
+{
+    return atomic_load_explicit(&g_steals, memory_order_relaxed);
 }
 
 /* ───────────────────────── P7-F /debug/scopes 快照 ─────────────────────────

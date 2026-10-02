@@ -1,0 +1,137 @@
+// tests/w7/ws_steal —— T34 work-stealing 锚:单 worker 本地队蓄 burst + 饥饿者偷取
+//
+// 形态学:main(裸线程)spawn 8 接收者(全部即刻 park 在空通道)→ 睡 30ms
+// (确保全 park、worker 进空闲 tick)→ spawn 发送者 S(全局队 → 某 worker W
+// 弹出)。S 一次性 send 8 值(cap 8 全缓冲,唤醒经 coro_wake 落 **W 的本地
+// 队**)后立即进入 ~10ms 纯算术忙循环(不 yield 不 park)→ W 被钉死在 S 上,
+// 本地队蓄 8 个就绪接收者;其余 worker 本地/全局全空 → 唯一活路 = steal。
+// 断言:8 值全收(count=8,sum=36)+ ctron_rt_steals() > 0(窃取真实发生)。
+// 种子模式不进本锚(w7/run.sh 不设 CTRON_RT_SEED;种子下 steals 恒 0)。
+extern "c" fn ctron_rt_steals() -> I64
+extern "c" fn ctron_net_sleep_ms(ms: I64)
+
+fn main() -> I32 {
+    let cnt = Atomic[I32](0)
+    let sum = Atomic[I32](0)
+    let total_stolen = scope { |sc|
+        let (tx, rx) = Channel[I32](8)
+        var r1 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r2 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r3 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r4 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r5 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r6 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r7 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        var r8 = sc.spawn(|| {
+            match rx.recv() {
+                Ok(v) => {
+                cnt.fetch_add(1)
+                sum.fetch_add(v)
+                return 0
+            }
+                Err(_) => { return 2 }
+            }
+        })
+        // 全 park 等待窗:裸线程 nanosleep,worker 面清空进入空闲 tick
+        ctron_net_sleep_ms(30)
+        var s = sc.spawn(|| {
+            tx.send(1).expect("s1")
+            tx.send(2).expect("s2")
+            tx.send(3).expect("s3")
+            tx.send(4).expect("s4")
+            tx.send(5).expect("s5")
+            tx.send(6).expect("s6")
+            tx.send(7).expect("s7")
+            tx.send(8).expect("s8")
+            // 忙循环钉住本 worker(不 yield 不 park):本地队 burst 蓄满窗
+            var x: I64 = 0
+            var i: I64 = 0
+            while i < 10000000 {
+                x += i
+                i += 1
+            }
+            if x == 49999995000000 {
+                return 0
+            }
+            return 9
+        })
+        r1.join()
+        r2.join()
+        r3.join()
+        r4.join()
+        r5.join()
+        r6.join()
+        r7.join()
+        r8.join()
+        s.join()
+        ctron_rt_steals()
+    }
+    assert(cnt.load() == 8)
+    assert(sum.load() == 36)
+    assert(total_stolen > 0)
+    println("ws_steal ok: 8/8 recv, steals>0")
+    return 0
+}

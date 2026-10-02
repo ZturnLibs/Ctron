@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "w7_ws_steal"
+    version = "0.1.0"
+}
