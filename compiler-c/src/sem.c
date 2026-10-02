@@ -1049,6 +1049,18 @@ static void check_block(ctx* c, cblock* b) {
                         if (lcat && lcat != acat)
                             diag(c->k, "E2010", "类型不匹配:期望 %s,实得 %s", ann,
                                  lname ? lname : cat_name(lcat));
+                        // §3.6 单向门(2026-10-03 宿主对齐):String 注解收 Str 系初值拒,
+                        // 持有型唯一升格路是 s.to_string()(方法调用 derive_type NULL,
+                        // 保守面自然放行);Str 注解收 String 初值仍放行(隐式降格,§3.3)
+                        else if (acat == 3 && ann && strcmp(ann, "String") == 0) {
+                            const char* hn2 = NULL;
+                            if (st->e->kind == EX_STR) hn2 = "Str";
+                            else if (st->e->kind != EX_BOOL && st->e->kind != EX_INT
+                                     && st->e->kind != EX_FLOAT)
+                                hn2 = head_name(derive_type(c, st->e));
+                            if (hn2 && strcmp(hn2, "Str") == 0)
+                                diag(c->k, "E2010", "类型不匹配:期望 String,实得 %s", hn2);
+                        }
                     }
                 }
                 check_shadow_prelude(c, st->pat->name); // W8040
