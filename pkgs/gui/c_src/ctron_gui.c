@@ -142,6 +142,8 @@ static Clay_RenderCommandArray g_cmds = { 0 };
 
 // 8 位色 alpha 通道(§7):gui_alpha 置位 → 下一次 gui_cfg 消费即复位 255(单线程折叠序)
 int g_pending_alpha = 255;
+int g_pending_radius = -1; // 元素圆角覆写(-1=默认 6)
+void gui_radius(int px) { g_pending_radius = px; }
 
 // 图像纹理缓存(flush 专用;定义在文件尾,flush 分支前向声明)
 static Texture2D *gui_tex_cache_get(const char *path);
@@ -405,6 +407,10 @@ static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
     }
     Clay_ElementDeclaration decl = { 0 };
     decl.layout = lay;
+    // macOS 观感:控件默认圆角 6px(gui_radius 可覆写;纯色盒视觉由 flush 按
+    // Clay cornerRadius 走 DrawRectangleRounded)
+    float crv = (g_pending_radius >= 0) ? (float)g_pending_radius : 6.0f;
+    decl.cornerRadius = (Clay_CornerRadius){ crv, crv, crv, crv };
     decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
                                          (float)((bg_packed >> 8) & 255),
                                          (float)(bg_packed & 255),
@@ -501,8 +507,15 @@ void ctron_gui_flush(void) {
         switch (c->commandType) {
             case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
                 Clay_Color col = c->renderData.rectangle.backgroundColor;
+                // 圆角按元素声明(Clay cornerRadius;DrawRectangleRounded 的
+                // roundness = 半径/半短边,钳 [0,0.5])
+                float cr = c->renderData.rectangle.cornerRadius.topLeft;
+                float half = b.width < b.height ? b.width : b.height;
+                float rnd = half > 0.5f ? cr / (half * 0.5f) : 0.0f;
+                if (rnd < 0.0f) { rnd = 0.0f; }
+                if (rnd > 0.5f) { rnd = 0.5f; }
                 DrawRectangleRounded(
-                    (Rectangle){ b.x, b.y, b.width, b.height }, 0.15f, 8,
+                    (Rectangle){ b.x, b.y, b.width, b.height }, rnd, 8,
                     (Color){ (unsigned char)col.r, (unsigned char)col.g,
                              (unsigned char)col.b, (unsigned char)col.a });
                 break;

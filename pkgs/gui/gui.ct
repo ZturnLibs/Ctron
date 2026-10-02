@@ -708,9 +708,9 @@ pub fn theme_light() -> Theme {
 // theme_mac_dark:macOS HIG 味·深:大圆角 6/10/14,mac 蓝 #0a84ff(味诠释非拟真)
 pub fn theme_mac_dark() -> Theme {
     return Theme {
-        bg_base: "#1e1e1e"
-        surface: "#282828"
-        elevated: "#323232"
+        bg_base: "#282828"
+        surface: "#1e1e1e"
+        elevated: "#3a3a3c"
         border: "#3d3d3d"
         border_strong: "#4d4d4d"
         text: "#e8e8ed"

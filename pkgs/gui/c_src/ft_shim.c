@@ -36,16 +36,35 @@ static const char* k_fonts[] = {
     0
 };
 
+// 默认族多脸链(macOS:SF Pro 拉丁优先,Hiragino/PingFang 兜 CJK;平台外原序)
+static FT_Face g_def_faces[6];
+static int g_ndef_faces = 0;
+static int g_def_init = 0;
+static void ft_def_init(void) {
+    if (g_def_init) { return; }
+    g_def_init = 1;
+    const char* list[8];
+    int n = 0;
+#if defined(__APPLE__)
+    list[n++] = "/System/Library/Fonts/SFNS.ttf";
+#endif
+    for (int i = 0; k_fonts[i] && n < 7; i++) { list[n++] = k_fonts[i]; }
+    for (int i = 0; i < n; i++) {
+        FT_Face f = 0;
+        if (FT_New_Face(g_ft, list[i], 0, &f) == 0) { g_def_faces[g_ndef_faces++] = f; }
+    }
+}
+
 int ft_load_cjk(int px) {
     if (!g_ft_ready) {
         if (FT_Init_FreeType(&g_ft) != 0) { return -1; }
         g_ft_ready = 1;
     }
-    for (int i = 0; k_fonts[i]; i++) {
-        if (FT_New_Face(g_ft, k_fonts[i], 0, &g_face) == 0) {
-            FT_Set_Pixel_Sizes(g_face, 0, (FT_UInt)px);
-            return 0;
-        }
+    ft_def_init();
+    for (int i = 0; i < g_ndef_faces; i++) {
+        g_face = g_def_faces[i];
+        FT_Set_Pixel_Sizes(g_face, 0, (FT_UInt)px);
+        return 0;
     }
     return -1;
 }
@@ -110,8 +129,16 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
         if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_RENDER) == 0) {
             sl = g_face->glyph;
         } else {
+            // 默认族多脸回退(macOS SF Pro 拉丁/CJK 兜底;跳过当前面 0)
+            for (int di = 1; di < g_ndef_faces; di++) {
+                FT_Set_Pixel_Sizes(g_def_faces[di], 0, (FT_UInt)g_ft_px);
+                if (FT_Load_Char(g_def_faces[di], (FT_ULong)cp, FT_LOAD_RENDER) == 0) {
+                    sl = g_def_faces[di]->glyph;
+                    break;
+                }
+            }
             // 回退链(§2.8 P2):当前面缺字→遍历注册族面
-            for (int fi = 0; fi < g_nfam; fi++) {
+            for (int fi = 0; sl == 0 && fi < g_nfam; fi++) {
                 if (!g_fams[fi].ok) { continue; }
                 int saved_px = g_fams[fi].px;
                 FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)g_ft_px);
@@ -195,9 +222,17 @@ static int ft_measure_n_w(const char* s, int len, int px, int weight, int fam) {
         if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) == 0) {
             w += (int)(g_face->glyph->advance.x >> 6) + bdelta;
         } else {
-            // 回退链:当前面缺字→注册族面(与渲染轮同序,测量==渲染不变式)
+            // 默认族多脸回退(与渲染轮同序)
             int fb_w = -1;
-            for (int fi = 0; fi < g_nfam; fi++) {
+            for (int di = 1; di < g_ndef_faces; di++) {
+                FT_Set_Pixel_Sizes(g_def_faces[di], 0, (FT_UInt)px);
+                if (FT_Load_Char(g_def_faces[di], (FT_ULong)cp, FT_LOAD_DEFAULT) == 0) {
+                    fb_w = (int)(g_def_faces[di]->glyph->advance.x >> 6) + bdelta;
+                    break;
+                }
+            }
+            // 回退链:当前面缺字→注册族面(与渲染轮同序,测量==渲染不变式)
+            for (int fi = 0; fb_w < 0 && fi < g_nfam; fi++) {
                 if (!g_fams[fi].ok) { continue; }
                 FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)px);
                 if (FT_Load_Char(g_fams[fi].face, (FT_ULong)cp, FT_LOAD_DEFAULT) == 0) {

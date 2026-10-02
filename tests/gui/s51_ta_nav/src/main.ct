@@ -975,7 +975,10 @@ fn main() -> I32 {
                     buf.push(m.v)
                 }
             })
-            d_expect_text(t, "aaaaaaaaaaaa")
+            dump_cmds("a-row")
+            // 续排断言钉当前默认字体度量(SFNS a@16≈7.4px,首排=line6+34a);
+            // 字体面变更时随黄金坐标一并重校
+            d_expect_text(t, "aaaaaaaa")
         })
     return rc
 }
@@ -1023,4 +1026,22 @@ fn has_text(t: Box[Driver], sub: Str) -> Bool {
         i += 1
     }
     return false
+}
+
+fn dump_cmds(tag: Str) {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            var ln: I32 = d_cmd_text_len(i)
+            var s2: Str = ""
+            var k: I32 = 0
+            while k < ln {
+                s2 = s2 + d_cmd_text_byte(i, k).to_string()
+                k += 1
+            }
+            println("  T" + i.to_string() + " [" + s2 + "]")
+        }
+        i += 1
+    }
 }

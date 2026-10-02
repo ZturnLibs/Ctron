@@ -65,8 +65,8 @@ fn main() -> I32 {
             // mac 深/浅
             theme_apply(theme_mac_dark())
             d_frame(t, |buf| bind_noop(buf))
-            if scan_bg(40, 40, 40) != 1 {
-                panic("s32: mac_dark SURFACE #282828 未现")
+            if scan_bg(30, 30, 30) != 1 {
+                panic("s32: mac_dark SURFACE #1e1e1e 未现")
             }
             if scan_bg(10, 132, 255) != 1 {
                 panic("s32: mac_dark ACCENT #0a84ff 未现")
