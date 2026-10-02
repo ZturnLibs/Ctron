@@ -1,0 +1,99 @@
+// tests/gui/s53_nested —— 组件嵌套 props 传递(第二波登记缝的最小复现)
+use gui.{test, d_frame, d_expect_text, d_expect_absent, d_click, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, d_cmd_y100, Driver}
+
+struct M {
+    var flag: Bool
+    var text: Str
+}
+
+// 内层:字符串 prop + Bool prop(when 消费)
+view Inner (t: Str, on: Bool) {
+  <vbox class="in">
+    <label class="in-t">{t}</label>
+    <when cond={on}>
+      <label class="in-on">INNER_ON</label>
+    </when>
+  </vbox>
+}
+
+// 外层:透传(嵌套实证面)
+view Outer (f: Str, on: Bool) {
+  <vbox class="out">
+    <Inner t: {f} on: {on}/>
+  </vbox>
+}
+
+view Root {
+  <vbox class="root">
+    <Outer f: "hello" on: {flag}/>
+    <button class="tg" on:click={tog}>toggle</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style in { direction: column gap: 4 }
+style out { direction: column gap: 4 }
+style in-t { fg: "#22c55e" h: 22 }
+style in-on { fg: "#f59e0b" h: 22 }
+style tg { h: 28 bg: "#333340" }
+
+fn tog() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "flag" {
+        if m.flag {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "tog" {
+        if m.flag {
+            m.flag = false
+        } else {
+            m.flag = true
+        }
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](M { flag: false, text: "" })
+    var rc: I32 = test(src, 320, 200,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, act2, key2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "hello")
+            // flag=false:INNER-ON 不渲染
+            d_expect_absent(t, "INNER_ON")
+            // toggle 后:嵌套 Bool prop 驱动 when
+            act(d_click(t, "tog"), List[Str](), m)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "INNER_ON")
+            println("S53-NESTED-GREEN")
+        })
+    return rc
+}
+
+fn dump_cmds(tag: Str) {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            var ln: I32 = d_cmd_text_len(i)
+            var s2: Str = ""
+            var k: I32 = 0
+            while k < ln {
+                s2 = s2 + d_cmd_text_byte(i, k).to_string()
+                k += 1
+            }
+            println("  T" + i.to_string() + " y=" + (d_cmd_y100(i) / 100).to_string() + " [" + s2 + "]")
+        }
+        i += 1
+    }
+}

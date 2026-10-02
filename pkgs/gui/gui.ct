@@ -2798,16 +2798,14 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         if vroot < 0 {
             panic("gui: 未知组件 " + callname)
         }
-        // 默认先垫(props 声明,空串),实例实参后入覆盖——env 末位优先语义
-        var dpi: I32 = 0
-        while dpi < vpn {
-            t.env_n.push(t.props[vps + dpi])
-            t.env_v.push("")
-            dpi += 1
-        }
+        // 实参先求值(父作用域)→垫未提供 prop 默认空串→推实参(env 末位优先)。
+        // 旧序「先垫后求值」在同名嵌套时自遮蔽:内层垫空先入 env,实参表达式
+        // 引用同名外层 prop 即得空(Menu→Menu open 实证)——求值必须先于垫
         var pi: I32 = 0
         var vpsn: I32 = gs2i(t.npre[id])
         var vpnn: I32 = gs2i(t.nbid[id])
+        var pn2 = List[Str]()
+        var pv2 = List[Str]()
         while pi < vpnn {
             var pname: Str = t.vc_prop[vpsn + pi]
             var pexpr: Str = t.vc_expr[vpsn + pi]
@@ -2824,11 +2822,32 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                 }
             }
-            t.env_n.push(pname)
-            t.env_v.push(pval)
-            if pname == "items" {
-            }
+            pn2.push(pname)
+            pv2.push(pval)
             pi += 1
+        }
+        var dpi: I32 = 0
+        while dpi < vpn {
+            var dp: Str = t.props[vps + dpi]
+            var provided: Bool = false
+            var ci2: I32 = 0
+            while ci2 < pn2.len {
+                if pn2[ci2] == dp {
+                    provided = true
+                }
+                ci2 += 1
+            }
+            if provided == false {
+                t.env_n.push(dp)
+                t.env_v.push("")
+            }
+            dpi += 1
+        }
+        var pj: I32 = 0
+        while pj < pn2.len {
+            t.env_n.push(pn2[pj])
+            t.env_v.push(pv2[pj])
+            pj += 1
         }
         // slot 投影:实例子树根入 env("__slot__" 恒不与真实路径根撞),
         // 末位优先——嵌套组件(A 槽内实例 B)内层覆盖外层,无需弹栈;
