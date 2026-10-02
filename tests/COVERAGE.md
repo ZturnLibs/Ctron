@@ -903,3 +903,44 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   →SIGILL);②darwin guard 命中 SIGBUS/SIGSEGV 双号;③SROA 删未全用数组,锚须全槽
   循环写;④尾调用 -O1 转迭代,递归压栈须非尾形。
 - net 双矩阵 18/18;suite 99/99。指针修复/增长拷贝/work-stealing 列 P9 正案另册。
+
+**2026-10-02 T34 正案收官:work-stealing 落码 + 可增长连续栈判决**(spec-gap W7;§7.1/§7.10):
+- **work-stealing(§7.1 调度口径兑现)**:ctron_rt 就绪结构两级化——①全局 FIFO 链
+  (P2 原形;裸线程侧推入[reactor/裸 wake/main spawn]+本地溢出泼回;种子模式唯一面)
+  ②每 worker 环形双端本地队(RT_LQ_CAP 256;owner 尾端 push/pop=LIFO[yield 回队/定时器
+  醒/wake/spawn 收口本 worker,吃满局部性];他 worker 偷头端=最老者,FIFO 利广依赖)。
+  饥饿 worker 弹出链=本地→全局→邻位起轮转偷取(取一即返,下轮继续=实质虹吸)。
+- 锁纪律:两级队全部 G 内——不变量 I/II 的 G 串行化论证(completer 定稿与 pop 同临界区/
+  出队即认领)原样成立,零新增无锁不变量;本件非吞吐重构,G 竞争面与改前同。
+- 溢出:本地队满 256 → 老的一半按序泼回全局队(先后序保持)。踢醒 P3-A 口径不变:
+  仅非 worker 推全局队踢;worker 推本地队不踢(惊动同侪=偷活噪声),饥饿者 ≤160µs cv
+  自醒后 steal 兜底。种子模式(P2-E)全量旁路:推全局/弹 LCG/单 worker ⇒ 确定性契约
+  逐字节不变。
+- 新锚 tests/w7/ws_steal(w7/run.sh 增 expect_ok 期望类):单点蓄 burst 形态学——8 接收者
+  先 park 满 30ms 窗→发送者 S 一次 send 8 值(唤醒经 coro_wake 落 S 之 worker 的本地队)
+  →S 立入 10M 次纯算术忙循环(不 yield 不 park)钉住本 worker→他 worker 本地/全局全空,
+  唯一活路=steal。三断言 count=8/sum=36/ctron_rt_steals()>0;10 遍连跑+10 遍满载
+  (load 6–15 对端泳道并行)全绿。
+- **可增长连续栈判决(入册 2026-09-26-server-p9-address-audit.md 终节)**:A/B 双阻塞
+  于发射器机器——B(拷贝式)需三件机器:emit 栈帧布局表+drop 注册表等全局根区间改写+
+  **callee-saved 寄存器镜像修复(新增:x19–x28/rbx,r12–r15 可持栈对象地址,无栈图不可修,
+  保守区间改写对地址值整数不健全[FFI 面假阳性])**;A(分段+钉住)指针安全性成立但
+  guard 续跑同需发射器序言检查(叶帧搬移后 arm64 尾声 ldp 相对回卷落新段≠调用方旧段帧,
+  sp 相对寻址局部全踩)。退路「1MB 大栈+guard+触顶诊断」(a77f141f)= §7.1 字面终形
+  (上限可配+触顶 panic 全量兑现,未承诺起步尺寸);解锁条件=发射器 morestack 序言机器
+  (触发:C100K+ 实测栈内存瓶颈或 lane 预算化到顶)。§7.10 过渡口径注记自此收窄为
+  调度面(本次随 work-stealing 落地一并合龙)。
+- 观测口:ctron_rt_steals() 加法导出(冻结接口不动;种子模式恒 0)。
+- 回归:w7 双锚 2/2;net 双矩阵 18/18;coro_det 种子重放 101/101;rt_core_smoke 绿
+  (ns/yield 90ns 门内);suite 99/99 双臂;smoke 161/2(双红=fx_conc_parallel/fx_cloval,
+  T33 发射臂 emitter OOB 在册[8ac3d1da「干净树复现」+d23f6ec0 修法定稿],本泳道 diff
+  仅 rt C+w7 夹具构造性无关)。
+- 坑位:①ready_pop 种子路径勿死代码化(worker_pop 须显式分流;-Wunused 站岗)②锚断言禁
+  `;`(E1001 坑 20 重犯)③bench 同机差分对负载极敏感:对端双自举+gc 测试满载期比值
+  0.92→1.85 漂移,静默窗口纪律前置于门禁判读。
+- 验收回填:c10k 满额 PASS(N=10000/10000 回显全绿+fd 泄漏判据 delta=0,connect 0.6s/
+  total 0.9s);bench 门禁二 ns/yield 63/63/48ns(历史最好带,门 ≤200);**门禁三 A/B
+  差分定案:同一树 stash 交错两轮,coro 绝对值改前 1419115/1447175µs vs 改后
+  1418912/1453851µs(差 ≤0.5%),比值三红(1.21–1.27)在原版 rt 同等复现=本机窗口
+  P1 臂提速环境属性(p1-vs-C 同轮 1.13↔0.97 摆动),非本件回归;本件绿轮比值
+  1.030/1.039 优于在册历史带(1.025–1.128)**。
