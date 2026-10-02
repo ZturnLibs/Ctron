@@ -446,6 +446,41 @@ int gui_win_icon(const char* path) {
 }
 const char* gui_win_icon_last(void) { return g_win_icon_last; }
 
+// ---- GUI-25:canvas 树内整合(标记属性容器+每帧绘制回调) ----
+// 盒几何/节点 id 由 rt_emit 存槽;gui_px 相对盒画点(真窗 DrawRectangle,
+// headless 记录槽断言)
+static int g_cv_x = 0, g_cv_y = 0, g_cv_w = 0, g_cv_h = 0, g_cv_node = -1;
+int gui_canvas_setbox(int x, int y, int w, int h) {
+    g_cv_x = x; g_cv_y = y; g_cv_w = w; g_cv_h = h;
+    return 0;
+}
+int gui_canvas_setnode(int n) { g_cv_node = n; return g_cv_node; }
+int gui_canvas_x(void) { return g_cv_x; }
+int gui_canvas_y(void) { return g_cv_y; }
+int gui_canvas_w(void) { return g_cv_w; }
+int gui_canvas_h(void) { return g_cv_h; }
+int gui_canvas_node(void) { return g_cv_node; }
+#define CV_PX_MAX 4096
+static int g_px_buf[CV_PX_MAX][5];
+static int g_px_n = 0;
+int gui_px(int x, int y, int r, int g, int b) {
+    if (g_px_n < CV_PX_MAX) {
+        g_px_buf[g_px_n][0] = x; g_px_buf[g_px_n][1] = y;
+        g_px_buf[g_px_n][2] = r; g_px_buf[g_px_n][3] = g; g_px_buf[g_px_n][4] = b;
+        g_px_n++;
+    }
+    if (g_cv_node >= 0 && IsWindowReady()) {
+        DrawRectangle(g_cv_x + x, g_cv_y + y, 1, 1, (Color){ (unsigned char)r, (unsigned char)g, (unsigned char)b, 255 });
+    }
+    return g_px_n;
+}
+int gui_px_n(void) { return g_px_n; }
+int gui_px_at(int i, int comp) {
+    if (i < 0 || i >= g_px_n || comp < 0 || comp > 4) { return -1; }
+    return g_px_buf[i][comp];
+}
+void gui_px_clear(void) { g_px_n = 0; }
+
 int gui_open(void) {
     if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }
     Clay__OpenElement();

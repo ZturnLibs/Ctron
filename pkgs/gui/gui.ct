@@ -174,6 +174,40 @@ extern "c" fn gui_win_icon(path: Str) -> I32
 #[trusted]
 extern "c" fn gui_win_icon_last() -> Str
 
+// GUI-25:canvas 树内整合(标记属性容器;绘制点相对盒,headless 记录槽)
+#[trusted]
+extern "c" fn gui_canvas_setbox(x: I32, y: I32, w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_setnode(n: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_x() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_y() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_w() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_h() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_node() -> I32
+
+#[trusted]
+extern "c" fn gui_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_px_n() -> I32
+
+#[trusted]
+extern "c" fn gui_px_at(i: I32, comp: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_px_clear() -> I32
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
@@ -2335,6 +2369,19 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     if path == "dropn" {
         return "i:" + gui_drop_count().to_string()
     }
+    // GUI-25:canvas 盒几何内建(绘制回调里消费)
+    if path == "canvasx" {
+        return "i:" + gui_canvas_x().to_string()
+    }
+    if path == "canvasy" {
+        return "i:" + gui_canvas_y().to_string()
+    }
+    if path == "canvasw" {
+        return "i:" + gui_canvas_w().to_string()
+    }
+    if path == "canvash" {
+        return "i:" + gui_canvas_h().to_string()
+    }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
         if gt_sk_has(t.props, root) {
@@ -3800,6 +3847,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 hits.push(id)
                 hinst.push(inst)
             }
+            // GUI-25:canvas 标记容器——节点 id 存槽(盒几何循环层自 rects 取)
+            if gt_cls_prop(c, "canvas", "", t) != "" {
+                gui_canvas_setnode(id)
+            }
             if tag == "overlay" {
                 // 波次三(§2.3):浮层容器——Clay floating 全屏附着 zIndex=1;
                 // align: center → 子元素居中(dialog 卡片);x/y 偏移(下拉锚定 v2)
@@ -4975,6 +5026,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
+        rt_canvas_frame(t, rects, hits, bind, act)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
@@ -5153,6 +5205,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
+        rt_canvas_frame(t, rects, hits, bind, act)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -6017,6 +6070,28 @@ pub fn d_close_req(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, Lis
     return 1
 }
 
+// GUI-25 headless 驱动:手动触发绘制帧(清点槽→同步盒→fire on:draw)
+pub fn d_draw(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_px_clear()
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    return rt_canvas_frame(t.t, rc2, t.hits, bind, act)
+}
+
+pub fn d_px_n() -> I32 {
+    return gui_px_n()
+}
+
+pub fn d_px_at(i: I32, comp: I32) -> I32 {
+    return gui_px_at(i, comp)
+}
+
+// 绘制原语(应用 on:draw 回调内调;坐标相对 canvas 盒)
+pub fn canvas_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32 {
+    return gui_px(x, y, r, g, b)
+}
+
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
 pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
     var n: I32 = gui_cmd_count()
@@ -6215,6 +6290,24 @@ fn rt_ellipsis(s: Str, maxw: I32, px: I32, wt: I32) -> Str {
         i += 1
     }
     return byte_slice(s, 0, cut) + "…"
+}
+
+// GUI-25:canvas 绘制帧——盒几何自 rects 同步+on:draw fire(真窗每帧;
+// headless 经 d_draw 驱动)
+fn rt_canvas_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var node: I32 = gui_canvas_node()
+    if node < 0 {
+        return 0
+    }
+    var bi: I32 = rt_node_box(rects, hits, node)
+    if bi >= 0 {
+        gui_canvas_setbox(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    }
+    var de: Str = rt_in_expr(t, node, "draw")
+    if de != "" {
+        ev_fire(t, de, bind, act)
+    }
+    return 1
 }
 
 // GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧

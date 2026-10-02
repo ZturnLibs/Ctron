@@ -1,0 +1,64 @@
+// tests/gui/s65_canvas —— GUI-25 canvas 树内整合 headless 验收
+// 三段:d_draw 触发(10 点入槽)→ 点色/坐标槽断言 → 二次触发清槽重画
+use gui.{test, d_frame, d_expect_text, d_draw, d_px_n, d_px_at, canvas_px, Driver}
+
+struct M {
+    var state: Str
+}
+
+fn paint() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "paint" {
+        // 画 10 点横线(红)
+        var x: I32 = 0
+        while x < 10 {
+            canvas_px(x, 5, 255, 0, 0)
+            x += 1
+        }
+        m.state = "画10点"
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 绘制帧触发:on:draw fire+点入槽
+            var fired: I32 = d_draw(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            if fired != 1 {
+                panic("s65: canvas 绘制帧未触发")
+            }
+            if d_px_n() != 10 {
+                panic("s65: 点数不符 n=" + d_px_n().to_string())
+            }
+            // S2 点槽内容:首点 (0,5,255,0,0)
+            if d_px_at(0, 0) != 0 || d_px_at(0, 1) != 5 || d_px_at(0, 2) != 255 {
+                panic("s65: 首点不符")
+            }
+            if d_px_at(9, 0) != 9 {
+                panic("s65: 末点 x 不符")
+            }
+            m.state = "画10点"
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "画10点")
+            // S3 二次触发:清槽重画(幂等)
+            d_draw(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            if d_px_n() != 10 {
+                panic("s65: 二次绘制点数不符 n=" + d_px_n().to_string())
+            }
+            println("S65-CANVAS-GREEN")
+        })
+    return rc
+}
