@@ -421,7 +421,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
     // 合并后改写 run(ViewCall) 调用点并拼写 __gui_bind/__gui_act/__gui_run
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out = pkg_load_use_t(f2, dir, stack, List[Str](), diags, List[Str](), "full")
+    var out = pkg_load_use_t(f2, dir, stack, diags, List[Str](), "full")
     return gui_ds_postmerge(out, unit, diags)
 }
 
@@ -431,7 +431,7 @@ fn pkg_load_use(file: List[Str], dir: Str, stack: List[Str], diags: List[Str]) -
 fn pkg_load_use_m(file: List[Str], dir: Str, stack: List[Str], diags: List[Str], misses: List[Str]) -> List[Str] {
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out = pkg_load_use_t(f2, dir, stack, List[Str](), diags, misses, "full")
+    var out = pkg_load_use_t(f2, dir, stack, diags, misses, "full")
     return gui_ds_postmerge(out, unit, diags)
 }
 
