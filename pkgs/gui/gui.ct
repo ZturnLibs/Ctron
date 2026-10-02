@@ -6437,9 +6437,11 @@ fn ta_wrap(val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I
         }
         // 逻辑行 [ls,le):贪心折
         var cs: I32 = ls
-        // 行内基线测量提升(边界宽=前缀测量差;旧版每边界重测行首前缀)
-        var wbase: I32 = gui_ft_measure_n_wt(val, cs, size, 400, 0)
         while cs < le {
+            // 行内基线测量提升(边界宽=前缀测量差)——基线必须随行首走:
+            // 提到行组外则续行全前缀宽误作行内宽,续行逐字断行(用户实测
+            // 「行末打单词新行一字母一行」实证)
+            var wbase: I32 = gui_ft_measure_n_wt(val, cs, size, 400, 0)
             var ce: I32 = cs
             var lastok: I32 = cs
             while ce < le {

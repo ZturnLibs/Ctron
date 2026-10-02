@@ -760,6 +760,222 @@ fn main() -> I32 {
             })
             d_expect_text(t, "Kline1")
             d_expect_absent(t, "line1K")
+            // ===== 折行续行(行末打长词:余字符同排,非逐字断行) =====
+            // ⌘↓ 到文末,续打 40 个 a:逻辑行 line6+40a=45 字符,FT_OFF 8.8px/字
+            // 296px 行宽→首排 33 字符,续排 12 个 a(逐字断行则无 12 连排)
+            d_mod(t, 1)
+            d_send_key(t, 264, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_mod(t, 0)
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_send_char(t, 97, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            }, |nm| act_sv(nm, m))
+            d_frame(t, |buf| {
+                if buf[0] == "m.v" {
+                    buf.push(m.v)
+                }
+            })
+            d_expect_text(t, "aaaaaaaaaaaa")
         })
     return rc
 }
