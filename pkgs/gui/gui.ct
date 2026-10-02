@@ -4661,6 +4661,21 @@ fn rt_focus_next(t: GuiTree, cur: I32, rev: I32) -> I32 {
 
 // 光标形状(P2):悬停节点→形状(input=2 I-beam,可点元素=4 手型,余 0 默认)
 fn rt_cursor_for(t: GuiTree, hov: I32) -> I32 {
+    // 右键菜单开启:菜单区内=默认箭头(成熟菜单口径;下层 I-beam/手型穿透
+    // 即用户实测「悬浮光标形状不对」)
+    if gui_ctx_on() == 1 {
+        var mx: I32 = gui_mouse_x()
+        var my: I32 = gui_mouse_y()
+        if mx >= gui_ctx_ax() {
+            if mx < gui_ctx_ax() + 112 {
+                if my >= gui_ctx_ay() {
+                    if my < gui_ctx_ay() + 164 {
+                        return 0
+                    }
+                }
+            }
+        }
+    }
     if hov < 0 {
         return 0
     }
