@@ -160,13 +160,32 @@ static int *g_text_weights = NULL;
 static int g_text_weights_cap = 0;
 static int g_text_weights_n = 0;
 
-// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput) ----
+// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput 5=右键 6=Drop) ----
 // 容量 256:进程累计、不回卷——gui_calc headless 全场景 ~70 次注入,64 会静默丢尾。
 typedef struct { int type; int key; int x; int y; } GuiEvent;
 static GuiEvent g_queue[256];
 static int g_qhead = 0;
 static int g_qtail = 0;
 static GuiEvent g_cur = { 0, 0, 0, 0 };
+
+// ---- GUI-20:OS 文件拖入(真窗 IsFileDropped 轮询;headless 注入) ----
+// 事件码 6=Drop;槽存本次拖入全部路径,Ctron 侧逐文件 setcur 后 ev_fire
+#define GUI_DROP_MAX 16
+static char g_drop_paths[GUI_DROP_MAX][512];
+static int g_drop_n = 0;
+static int g_drop_cur = 0;
+int gui_drop_begin(void) { g_drop_n = 0; g_drop_cur = 0; return 0; }
+int gui_drop_add(const char* p) {
+    if (g_drop_n < GUI_DROP_MAX && p) { snprintf(g_drop_paths[g_drop_n], 512, "%s", p); g_drop_n++; }
+    return g_drop_n;
+}
+int gui_drop_count(void) { return g_drop_n; }
+int gui_drop_setcur(int i) { if (i >= 0 && i < g_drop_n) { g_drop_cur = i; } return g_drop_cur; }
+const char* gui_drop_path(void) { return (g_drop_n > 0) ? g_drop_paths[g_drop_cur] : ""; }
+const char* gui_drop_path_at(int i) { return (i >= 0 && i < g_drop_n) ? g_drop_paths[i] : ""; }
+void gui_inject_drop(void) {
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 6, 0, 0, 0 }; g_qtail++; }
+}
 
 void gui_inject_key(int key) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 1, key, 0, 0 }; g_qtail++; }
@@ -190,7 +209,7 @@ void gui_inject_drag(int x1, int y, int x2) {
     g_idrg_x1 = x1; g_idrg_x2 = x2; g_idrg_y = y;
 }
 // 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
-// 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本)
+// 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本) 5=右键 6=Drop
 // 键重复状态(编辑键族;字符事件/换键/释放即重置)
 int gui_now_ms(void);
 static int g_rep_key = 0;
@@ -274,6 +293,14 @@ int gui_poll_event(void) {
         Vector2 p = GetMousePosition();
         g_cur = (GuiEvent){ 5, 0, (int)p.x, (int)p.y };
         return 5;
+    }
+    // GUI-20:OS 文件拖入(IsWindowReady 门——headless 无窗不轮询)
+    if (IsWindowReady() && IsFileDropped()) {
+        FilePathList fl = LoadDroppedFiles();
+        gui_drop_begin();
+        for (unsigned int di = 0; di < fl.count; di++) { gui_drop_add(fl.paths[di]); }
+        UnloadDroppedFiles(fl);
+        if (g_drop_n > 0) { g_cur = (GuiEvent){ 6, g_drop_n, 0, 0 }; return 6; }
     }
     // 键重复(raylib 不派发 GLFW_REPEAT;初按 500ms 后 66ms 间隔,成熟口径;
     // 仅编辑键族:方向/退格/前删/Home/End。字符事件与松键重置)
@@ -369,6 +396,19 @@ static int gui_trace(void) {
     return gui_trace_on;
 }
 static int gui_trace_n = 0;
+
+// ---- GUI-23:链接 OpenURL(真窗 raylib OpenURL;headless 记录槽不真开) ----
+// headless 判定与夹具口径一致:CTRON_GUI_FT_OFF / CTRON_GUI_HEADLESS 任一在即记录
+static char g_open_url_last[512] = {0};
+int gui_open_url(const char* url) {
+    if (gui_trace()) { fprintf(stderr, "T%03d open_url %s\n", ++gui_trace_n, url ? url : ""); }
+    if (url) { snprintf(g_open_url_last, sizeof g_open_url_last, "%s", url); }
+    if (getenv("CTRON_GUI_FT_OFF") || getenv("CTRON_GUI_HEADLESS")) { return 0; }
+    OpenURL(url);
+    return 0;
+}
+const char* gui_open_url_last(void) { return g_open_url_last; }
+
 int gui_open(void) {
     if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }
     Clay__OpenElement();

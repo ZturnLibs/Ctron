@@ -1,0 +1,62 @@
+// tests/gui/s60_link —— GUI-23 链接 OpenURL headless 验收
+// 三段:点击链接 1 → 槽记录 URL+状态;点击链接 2 → 覆盖;未点击 → 槽空
+use gui.{test, d_frame, d_expect_text, d_click, d_open_url, open_link, Driver}
+
+struct M {
+    var state: Str
+}
+
+fn open_docs() {
+}
+fn open_repo() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "open_docs" {
+        open_link("https://ctron.dev/docs")
+        m.state = "已打开文档"
+        return
+    }
+    if name == "open_repo" {
+        open_link("https://github.com/ZturnLibs/Ctron")
+        m.state = "已打开仓库"
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 初始:槽空(未点击不打开)
+            d_frame(t, |buf| bind_all(buf, m))
+            if d_open_url() != "" {
+                panic("s60: 初始槽应空 got=[" + d_open_url() + "]")
+            }
+            // S2 点击文档链接:槽记录 + 状态行
+            actc(d_click(t, "open_docs"), List[Str]())
+            if d_open_url() != "https://ctron.dev/docs" {
+                panic("s60: 文档链接槽不符 got=[" + d_open_url() + "]")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已打开文档")
+            // S3 点击仓库链接:槽覆盖
+            actc(d_click(t, "open_repo"), List[Str]())
+            if d_open_url() != "https://github.com/ZturnLibs/Ctron" {
+                panic("s60: 仓库链接槽不符 got=[" + d_open_url() + "]")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已打开仓库")
+            println("S60-LINK-GREEN")
+        })
+    return rc
+}

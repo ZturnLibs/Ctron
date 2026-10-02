@@ -132,6 +132,32 @@ extern "c" fn gui_mouse_x() -> I32
 #[trusted]
 extern "c" fn gui_mouse_y() -> I32
 
+// GUI-23:链接 OpenURL(headless 记录槽,真窗 raylib OpenURL)
+#[trusted]
+extern "c" fn gui_open_url(url: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_open_url_last() -> Str
+
+// GUI-20:OS 文件拖入(事件码 6;槽=本次拖入路径集)
+#[trusted]
+extern "c" fn gui_drop_begin() -> I32
+
+#[trusted]
+extern "c" fn gui_drop_add(p: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_drop_count() -> I32
+
+#[trusted]
+extern "c" fn gui_drop_setcur(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_drop_path() -> Str
+
+#[trusted]
+extern "c" fn gui_inject_drop() -> I32
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
@@ -2284,6 +2310,14 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     }
     if path == "mousey" {
         return "i:" + gui_mouse_y().to_string()
+    }
+    // GUI-20:文件拖入内建——droppath=当前文件(setcur 游标),dropn=本次总数
+    // (串产出裸串不打标:i:/b: 是仅有的两种标)
+    if path == "droppath" {
+        return gui_drop_path()
+    }
+    if path == "dropn" {
+        return "i:" + gui_drop_count().to_string()
     }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
@@ -4945,6 +4979,9 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         if evt == 5 {
             rt_ctx_open_at(t, rects, hits)
         }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
+        }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
             // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
@@ -5142,6 +5179,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         }
         if evt == 5 {
             rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
         }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
@@ -5688,6 +5728,22 @@ pub fn d_dragv(t: Box[Driver], x: I32, y1: I32, y2: I32, bind: fn(List[Str]) -> 
     return 0
 }
 
+// 文件拖入(headless):paths 填 C 槽后直触 rt_drop_fire(真窗经 evt=6 分发;
+// GUI-20 测试缝)
+pub fn d_drop(t: Box[Driver], paths: List[Str], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_drop_begin()
+    var i: I32 = 0
+    while i < paths.len {
+        gui_drop_add(paths[i])
+        i += 1
+    }
+    if rt_drop_fire(t.t, bind, act) == 0 {
+        panic("gui test: 根元素无 on:drop")
+        return -1
+    }
+    return gui_drop_count()
+}
+
 // 双击(headless):两击同位注入;返回元素 on:dblclick 处理头名(夹具 act 自
 // 分发,与 d_click 同模式;真窗单双击聚类在循环 gui_click_kind)
 pub fn d_dblclick(t: Box[Driver], name: Str) -> Str {
@@ -5897,6 +5953,16 @@ pub fn d_cmd_bg_a(i: I32) -> I32 {
     return gui_cmd_bg_a(i)
 }
 
+// GUI-23:链接动作面——应用 on:click 内调 open_link;headless 槽记录,
+// d_open_url 断言回收(真窗直 raylib OpenURL)
+pub fn open_link(url: Str) -> I32 {
+    return gui_open_url(url)
+}
+
+pub fn d_open_url() -> Str {
+    return gui_open_url_last()
+}
+
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
 pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
     var n: I32 = gui_cmd_count()
@@ -6042,6 +6108,23 @@ fn rt_dgev_frame(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
     var de: Str = rt_in_expr(t, node, "drag")
     if de != "" {
         ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-20:文件拖入触发(窗口级事件,on:drop 声明在根元素)——逐文件 fire,
+// droppath 内建随 setcur 游标走,dropn=本次总数
+fn rt_drop_fire(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var de: Str = rt_in_expr(t, gui_root_id(t), "drop")
+    if de == "" {
+        return 0
+    }
+    var n: I32 = gui_drop_count()
+    var i: I32 = 0
+    while i < n {
+        gui_drop_setcur(i)
+        ev_fire(t, de, bind, act)
+        i += 1
     }
     return 1
 }
