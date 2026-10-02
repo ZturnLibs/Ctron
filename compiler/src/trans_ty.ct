@@ -210,7 +210,9 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         return "a" + an + ct_ty_code(nt[1], file)
     }
     if nt[0] != "Named" { return "i" }
-    if nt[0] == "Named" && nt[2].len > 1 {
+    // 泛型推断可产 2 槽裸 Named(无 TArgs 槽)——nt[2] 读取须先验 nt.len
+    //(T45 探针实证:&T 字段单态化后 ct_ty_code OOB 读崩发射器)
+    if nt[0] == "Named" && nt.len > 2 && nt[2].len > 1 {
         // Box[P] 注解 → B:P(堆单值指针;与构造点 typeof 同码);
         // 用户声明 Box struct 时走通用泛型实例路径
         if seq2(nt[1], "Box") {
@@ -221,7 +223,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
             }
         }
     }
-    if nt[0] == "Named" && nt[2].len > 1 {
+    if nt[0] == "Named" && nt.len > 2 && nt[2].len > 1 {
         // 泛型 struct 实例化注解优先于具体 struct 分支
         if ct_struct_tps(file, nt[1]).len > 0 {
             var cs = List[Str]()
@@ -253,7 +255,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     if nt[1] == "U64" { return "7" }
     if nt[1] == "ISize" { return "6" }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
-    if nt[0] == "Named" && nt[2].len > 1 {
+    if nt[0] == "Named" && nt.len > 2 && nt[2].len > 1 {
         // 泛型 struct 实例化注解:Pair[I32, Str] → u:Pair__I_S(实参限标量/Str)
         if ct_struct_tps(file, nt[1]).len > 0 {
             var cs = List[Str]()
@@ -271,7 +273,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         // 码贯通:push 装箱/索引取回按元素型);P0-A:元素为嵌套泛型实例(List[Route[S]]
         // 场,S 已具体化)→ Lu:名__尾缀 定型装箱槽(镜像 ct_typeof TypeArgs-List 臂,
         // 槽码缺臂时 Index 读落 "N"、Member 值位即 panic);其余维持 "L"(char* 槽)不动
-        if nt[2].len > 1 {
+        if nt.len > 2 && nt[2].len > 1 {
             if nt[2][1][0] == "Named" && nt[2][1][1] == "I32" { return "LI" }
             if nt[2][1][0] == "Named" && nt[2][1][1] == "I64" { return "L6" }
             // P0-A:List[fn(...)] → LF<签名码>(元素槽存 ct_clop 指针;签名段供
@@ -972,6 +974,18 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
                                     k4 += 1
                                 }
                             }
+                        } else if fty3[0] == "Ref" && fty3[1].len > 1 && fty3[1][0] == "Named" && fty3[1].len > 2 && fty3[1][2].len < 2 {
+                            // T45:&T 字段槽推断(CBox 路径)——场值为指针(pu:<内层>)
+                            // 剥 p 取内层码作槽(u:Thing/w8u 等);仅首层 Named 裸型参
+                            var k5: I32 = 0
+                            while k5 < tpsg.len {
+                                if seq2(fty3[1][1], tpsg[k5]) {
+                                    if vc.len > 1 && byte_at(vc, 0) == 112 {
+                                        slots[k5] = byte_slice(vc, 1, vc.len)
+                                    }
+                                }
+                                k5 += 1
+                            }
                         }
                     }
                     fj3 += 1
@@ -1417,6 +1431,21 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return "i"
                 }
             }
+            // T45:泛型直调返回码——推断单源回填槽后代入返回型(旧路径 TPar→"i"
+            // 塌 CBox__I,与实发 __V 实例错型:CBox 式 let b = cbox_own(p) 即中)
+            var gcd45 = ct_fn_decl(file, cal[1])
+            if gcd45.len > 0 && gcd45[2].len > 1 {
+                var gtpsn45 = List[Str]()
+                var gq45: I32 = 1
+                while gq45 < gcd45[2].len {
+                    gtpsn45.push(gcd45[2][gq45][1])
+                    gq45 += 1
+                }
+                var gtys45 = ct_call_infer_tys(file, env, e[2], cal[1])
+                if gtys45.len == gtpsn45.len {
+                    return ct_generic_retcode(file, cal[1], gtpsn45, gtys45)
+                }
+            }
             return ct_fn_ret(file, cal[1])
         }
     }
@@ -1695,12 +1724,22 @@ fn ct_struct_tps(file: List[Str], nm: Str) -> List[Str] {
 // 实例化码 → 尾缀(P0-A 载荷扩位:标量/Str:i→I s→S b→B 6→L;
 // struct 实参 u:<名>(具体或嵌套实例 u:名__尾缀)→ U<名长>_<名>,嵌入按值布局——
 // 实例 typedef 字段槽即实参 C 型,与标量槽同构;长度前缀消歧名内下划线/尾缀字符。
-// 其余(F64/List/fn 值/Result 载荷等)仍 panic 登记债)
+// T45:标量字母表扩位 f/g/7/z/w8u/w8s/w16u/w16s(F/G/M/N/V/W/X/Y——大写单字符,
+// 与 I/S/B/L 不撞;CBox[T]{var p:&T} 的 U8 槽即 V)——定长数组/F64 数组/List/fn 值/
+// Result 载荷等仍 panic 登记债)
 fn ct_inst_encode(code: Str) -> Str {
     if code == "i" { return "I" }
     if code == "s" { return "S" }
     if code == "b" { return "B" }
     if code == "6" { return "L" }
+    if code == "f" { return "F" }
+    if code == "g" { return "G" }
+    if code == "7" { return "M" }
+    if code == "z" { return "N" }
+    if code == "w8u" { return "V" }
+    if code == "w8s" { return "W" }
+    if code == "w16u" { return "X" }
+    if code == "w16s" { return "Y" }
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         var tail = byte_slice(code, 2, code.len)
         return "U" + tail.len.to_string() + "_" + tail
@@ -1715,6 +1754,14 @@ fn ct_inst_decode(ch: Str) -> Str {
     if ch == "S" { return "s" }
     if ch == "B" { return "b" }
     if ch == "L" { return "6" }
+    if ch == "F" { return "f" }
+    if ch == "G" { return "g" }
+    if ch == "M" { return "7" }
+    if ch == "N" { return "z" }
+    if ch == "V" { return "w8u" }
+    if ch == "W" { return "w8s" }
+    if ch == "X" { return "w16u" }
+    if ch == "Y" { return "w16s" }
     panic("emit:泛型 struct 尾缀不可解码:" + ch)
     return ""
 }
@@ -1737,6 +1784,30 @@ fn ct_inst_arg_codes(encs: Str) -> List[Str] {
             i += 1
         } else if ch == 76 {
             out.push("6")
+            i += 1
+        } else if ch == 70 {
+            out.push("f")
+            i += 1
+        } else if ch == 71 {
+            out.push("g")
+            i += 1
+        } else if ch == 77 {
+            out.push("7")
+            i += 1
+        } else if ch == 78 {
+            out.push("z")
+            i += 1
+        } else if ch == 86 {
+            out.push("w8u")
+            i += 1
+        } else if ch == 87 {
+            out.push("w8s")
+            i += 1
+        } else if ch == 88 {
+            out.push("w16u")
+            i += 1
+        } else if ch == 89 {
+            out.push("w16s")
             i += 1
         } else if ch == 85 {
             var j = i + 1
@@ -1787,6 +1858,16 @@ fn ct_inst_ty_node(code: Str) -> List[Str] {
     if code == "s" { return ct_scalar_ty("Str") }
     if code == "b" { return ct_scalar_ty("Bool") }
     if code == "6" { return ct_scalar_ty("I64") }
+    // T45:标量字母表补全(镜像 ct_targ_env 还原臂;泛型直调 &T 形参推断经
+    // "pu:<内层码>" 剥壳还原 w8u/f/g/7/z 等,否则响应亮 panic 堵 CBox 路径)
+    if code == "f" { return ct_scalar_ty("F64") }
+    if code == "g" { return ct_scalar_ty("F32") }
+    if code == "7" { return ct_scalar_ty("U64") }
+    if code == "z" { return ct_scalar_ty("USize") }
+    if code == "w8u" { return ct_scalar_ty("U8") }
+    if code == "w8s" { return ct_scalar_ty("I8") }
+    if code == "w16u" { return ct_scalar_ty("U16") }
+    if code == "w16s" { return ct_scalar_ty("I16") }
     panic("emit:实例码型别还原限标量/struct:" + code)
     return mk("Named")
 }
@@ -1874,6 +1955,91 @@ fn ct_list_ty_node(el: List[Str]) -> List[Str] {
     ta.push(el)
     nt.push(ta)
     return nt
+}
+
+// T45:泛型直调(无 TypeArgs 位)型参槽推断——trans_expr 发射位与 ct_typeof
+// 返回码位共用的单源。种子 I32 节点(与 TPar→i 槽口径一致),三臂回填:
+// ①裸 Named 型参直等 TP;②&T 型参剥 p 前缀取内层码(CBox 式 cbox_own[T](p:&T));
+// ③带 TArgs 型参(CBox[T] 式)按实参实例尾缀解码回填同位槽。
+fn ct_call_infer_tys(file: List[Str], env: List[Str], ag: List[Str], callee: Str) -> List[Str] {
+    var pgd = ct_fn_decl(file, callee)
+    var tpsn = List[Str]()
+    var tys = List[Str]()
+    if pgd.len == 0 || pgd[2].len < 2 {
+        return tys
+    }
+    var gq: I32 = 1
+    while gq < pgd[2].len {
+        tpsn.push(pgd[2][gq][1])
+        tys.push(ct_scalar_ty("I32"))
+        gq += 1
+    }
+    var pj: I32 = 1
+    while pj < pgd[3].len {
+        if pj < ag.len {
+            var pty = pgd[3][pj][3]
+            if pty[0] == "Named" && pty.len > 2 && pty[2].len < 2 {
+                var k0: I32 = 0
+                while k0 < tpsn.len {
+                    if seq2(pty[1], tpsn[k0]) {
+                        tys[k0] = ct_inst_ty_node(ct_typeof(ag[pj], env, file))
+                    }
+                    k0 += 1
+                }
+            } else if pty[0] == "Ref" && pty[1].len > 1 && pty[1][0] == "Named" && pty[1].len > 2 && pty[1][2].len < 2 {
+                var k1: I32 = 0
+                while k1 < tpsn.len {
+                    if seq2(pty[1][1], tpsn[k1]) {
+                        var vc = ct_typeof(ag[pj], env, file)
+                        if vc.len > 1 && byte_at(vc, 0) == 112 {
+                            tys[k1] = ct_inst_ty_node(byte_slice(vc, 1, vc.len))
+                        }
+                    }
+                    k1 += 1
+                }
+            } else if pty[0] == "Named" && pty.len > 2 && pty[2].len > 1 && ct_struct_tps(file, pty[1]).len > 0 {
+                var vc2 = ct_typeof(ag[pj], env, file)
+                if vc2.len > 2 && byte_slice(vc2, 0, 2) == "u:" {
+                    var info2 = ct_struct_inst_split(vc2)
+                    if info2.len > 1 && seq2(ct_struct_name_of(vc2), pty[1]) {
+                        var bar2: I32 = 0
+                        var q2: I32 = 0
+                        while q2 < info2.len {
+                            if byte_at(info2, q2) == 124 {
+                                bar2 = q2
+                            }
+                            q2 += 1
+                        }
+                        var codes2 = ct_inst_arg_codes(byte_slice(info2, bar2 + 1, info2.len))
+                        var stps = ct_struct_tps(file, pty[1])
+                        var j2: I32 = 1
+                        while j2 < pty[2].len {
+                            if pty[2][j2][0] == "Named" {
+                                var k2: I32 = 0
+                                while k2 < tpsn.len {
+                                    if seq2(pty[2][j2][1], tpsn[k2]) {
+                                        var si: I32 = 0
+                                        while si < stps.len {
+                                            if seq2(stps[si], pty[2][j2][1]) {
+                                                if si < codes2.len {
+                                                    tys[k2] = ct_inst_ty_node(codes2[si])
+                                                }
+                                            }
+                                            si += 1
+                                        }
+                                    }
+                                    k2 += 1
+                                }
+                            }
+                            j2 += 1
+                        }
+                    }
+                }
+            }
+        }
+        pj += 1
+    }
+    return tys
 }
 
 fn ct_targ_env(ty: List[Str], env: List[Str]) -> List[Str] {

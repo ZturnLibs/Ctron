@@ -16,6 +16,7 @@
 - 后端 WasmGC;GC 用宿主;任务挂起经 JSPI/栈切换;wasm threads 启用时恢复全量 Send 检查(§7.8)。
 - JS 桥:类型化(无 `any` 泄漏);JS 异常在边界转为 `Result`;JS 回调按 web 档 Send 近似规则;DOM/Canvas/Fetch 经 `stdweb`。
 - **stdweb 最小 API(v0.5 钉死,P1-D 起可用)**:`use stdweb.dom` 后——`dom.set_title(Str) -> Void`、`dom.title() -> Str`。其余 DOM/Canvas/Fetch 以此模式逐版扩充(锚定测试:`10_web_dom.ct`)。
+- **自举侧现状(T45 注记,v0.9·六)**:所有权三约定之 2 落地——`CBox[T]`(std ffi 域包):C→Ctron 移交 `cbox_own`、调用期借用 `cbox_borrow`(约定之 3)、移交赴 C `cbox_into_raw`、显式释放 `cbox_free`(#[trusted] 释放面);所有权哨 = C 侧登记表(值拷贝不复制哨状态,双 free/free 后使用响亮 panic),CBox 恒编译通道(解释桥指针截断)。解释口径 extern 直调桥 float 帧闭合(f:/g: 帧按声明型驱动 + Ri:/Rf:/Rg: 返回别 + ABI 正确 SIMD 类 cast + 浮返 "%.17g" 文本零损回传;>4 参浮形状响亮 panic);整返回升 long 全宽(int 截断缺口 bootstrap 侧销)。cimport union/struct/enum 关键字限定指针形参(`union Vals*` 剥词走 typedef 名表)。锚定:`tests/ffi/`(cbox 三目录/ext_finterp 双通道/cimport union 形参)。
 - **自举侧现状(v0.7 注记)**:动态面——`#[dlsym]` 运行期 thunk(`dlsym(RTLD_DEFAULT)`)+ `dlopen/dlclose/dlsym` 内建;变参 extern(形参表尾 `...`,非 extern = E4044);`#[link_name(x)]` 符号重命名与堆叠属性;导出面 `#[export]`(非静态 C 符号包装,嵌入面);extern 返回 fn 解禁(声明位装箱,env 哨兵双路径);`USize` → `size_t`(码 "z");`#[repr(packed)]`/`#[repr(align(N))]`;C 头自动消费 `compiler/tools/cimport.ct`(decl 级子集:原型/#define/标量 struct,真实 math.h 实测 71 绑定)。锚定:`tests/ffi/`(cimport/dyn_link/variadic/export/ext_fn_ret/layout)。
 - **自举侧现状(v0.6 注记)**:`--profile=web` 下 `stdweb.dom` 检查面与运行面已可用(`dom` 为内建命名空间,标题存运行态;full 档 = E2020 拦截);发射面产出 `ctron_dom_set_title/ctron_dom_title` C stub,真实 JS 桥由 WasmGC 后端(P1-D)替换。
 

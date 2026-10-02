@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=443' "$T/chk.out" && ok "自检 cc_run 绿,decls=443(合并树实测:2026-10-01 锁 439+T35 分层 stdlib 机制核四 fn[pkg_tier_rank/pkg_manifest_tier/pkg_mod_tier/pkg_load_use_t],2026-10-02 合并随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=444' "$T/chk.out" && ok "自检 cc_run 绿,decls=444(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"

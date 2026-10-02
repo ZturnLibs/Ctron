@@ -1326,34 +1326,18 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ecall
         }
         // P0-A:泛型直调(无 TypeArgs 位,sem 隐式推断形)——core.ct 测试的
-        // req_full("GET", …, 0) 即此形。各 TP 自首层命中该 TP 的实参位取码,
-        // 未命中落 "i"(与 TPar→i 槽口径一致;__i 家族自洽)
+        // req_full("GET", …, 0) 即此形。型参槽推断单源 ct_call_infer_tys
+        //(T45:种子槽原推码串 "i" 与命中臂节点异型——串被当节点解引用 SEGV
+        // 实证;&T 形参此前永不命中 → CBox 式 cbox_own[T](p: &T) 直调即崩)
         var pgd30 = ct_fn_decl(file, callee)
         if pgd30.len > 0 && pgd30[2].len > 1 {
             var tpsn30 = List[Str]()
-            var tys30 = List[Str]()
             var gq40: I32 = 1
             while gq40 < pgd30[2].len {
                 tpsn30.push(pgd30[2][gq40][1])
-                tys30.push("i")
                 gq40 += 1
             }
-            var pj40: I32 = 1
-            while pj40 < pgd30[3].len {
-                if pj40 < ag.len {
-                    var pty40 = pgd30[3][pj40][3]
-                    if pty40[0] == "Named" && pty40[2].len < 2 {
-                        var k40: I32 = 0
-                        while k40 < tpsn30.len {
-                            if seq2(pty40[1], tpsn30[k40]) {
-                                tys30[k40] = ct_inst_ty_node(ct_typeof(ag[pj40], env, file))
-                            }
-                            k40 += 1
-                        }
-                    }
-                }
-                pj40 += 1
-            }
+            var tys30 = ct_call_infer_tys(file, env, ag, callee)
             return ct_spec_call_emit(file, env, ag, callee, mk("None"), tpsn30, tys30, pgd30, "")
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
@@ -1767,7 +1751,16 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     spec.push(ps2)
                     spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
                     spec.push(gdecl[5])
-                    var rcs = ct_ty_code(spec[4], file)
+                    // T45:void 泛型特化——None 返回节点 ct_ty_code 无臂落 "i",
+                    // 特化头发 int32_t 且尾调用被捕值(t_rv),尾为 void 外调即
+                    // int32_t=void 编译错(cbox_free[T] 首证);对齐 ct_fn_ret 的
+                    // None→"v" 口径
+                    var rcs = "i"
+                    if spec[4].len > 0 && spec[4][0] == "None" {
+                        rcs = "v"
+                    } else {
+                        rcs = ct_ty_code(spec[4], file)
+                    }
                     // 形参 env:按原名绑替换后型别码(盒槽形参解盒后即原 struct 值,
                     // 体内 Member/字段访问/F-gate 包裹全部沿用)
                     var genv = List[Str]()

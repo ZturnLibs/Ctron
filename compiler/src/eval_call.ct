@@ -8,9 +8,14 @@
 
 // W4 E1:解释口径 extern 直调桥宿主口(实现在发射运行时 boilerplate,
 // driver_emit.ct 侧 ctron_ext_dispatch;dlsym 直调宿主链接的 vendored 符号)。
+// T45 float 帧:返回 I64(long 传输,消 int 截断=close(-1) 回转缺口);浮返
+// 值经 ctron_ext_fret() 文本缓冲("%.17g" 往返零损)二次取回。
 // 注:参数表必须单行——C 宿主解析器不支持跨行参数表(2026-09-19 实证)
 #[trusted]
-extern "c" fn ctron_ext_dispatch(nm: Str, a0: Str, a1: Str, a2: Str, a3: Str, a4: Str, a5: Str, a6: Str, a7: Str, a8: Str, a9: Str, a10: Str, a11: Str) -> I32
+extern "c" fn ctron_ext_dispatch(nm: Str, a0: Str, a1: Str, a2: Str, a3: Str, a4: Str, a5: Str, a6: Str, a7: Str, a8: Str, a9: Str, a10: Str, a11: Str) -> I64
+
+#[trusted]
+extern "c" fn ctron_ext_fret() -> Str
 
 // T26 进程参数底座(§8.1 Env.args):发射运行时模板定义(driver_emit.ct
 // main 入口寄存 argc/argv),自举解释器经 extern 直调(同 ctron_ext_dispatch 形)
@@ -465,20 +470,48 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             while q < vals.len {
                 var xv = v_unbox(vals[q])
                 var pl: Str = ""
-                if xv.tag == 5 {
-                    pl = "s:" + xv.s
+                // T45 float 帧:浮形参按声明型驱动(F64→"f:"/F32→"g:",载荷 =
+                // 解释器浮值文本,strtod/strtof 按声明位取近,边界语义与解释
+                // 折叠一致);整型域新增 I64/U64 i 帧(long 传输,旧仅 I32)
+                var ptn = xdecl[3][q + 1][3]
+                if ptn[0] == "Named" && ptn[1] == "F64" {
+                    if xv.tag != 6 {
+                        panic("extern 解释口径:F64 形参须浮值")
+                        return e4("i", env, vV2(), out)
+                    }
+                    pl = "f:" + xv.s
                 } else {
-                    if xv.tag == 4 {
-                        if xv.b {
-                            pl = "i:1"
-                        } else {
-                            pl = "i:0"
+                    if ptn[0] == "Named" && ptn[1] == "F32" {
+                        if xv.tag != 6 {
+                            panic("extern 解释口径:F32 形参须浮值")
+                            return e4("i", env, vV2(), out)
                         }
+                        pl = "g:" + xv.s
                     } else {
-                        if xv.tag == 1 {
-                            pl = "i:" + dvi_str(xv.iv.as[I32]())
+                        if xv.tag == 5 {
+                            pl = "s:" + xv.s
                         } else {
-                            panic("extern 解释口径:不支持参数类型 " + xv.tag.to_string())
+                            if xv.tag == 4 {
+                                if xv.b {
+                                    pl = "i:1"
+                                } else {
+                                    pl = "i:0"
+                                }
+                            } else {
+                                if xv.tag == 1 {
+                                    pl = "i:" + dvi_str(xv.iv.as[I32]())
+                                } else {
+                                    if xv.tag == 2 {
+                                        pl = "i:" + v6t(xv)
+                                    } else {
+                                        if xv.tag == 3 {
+                                            pl = "i:" + v7t(xv)
+                                        } else {
+                                            panic("extern 解释口径:不支持参数类型 " + xv.tag.to_string())
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -523,8 +556,27 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
                 }
                 q += 1
             }
-            var rr: I32 = ctron_ext_dispatch(nm, f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11)
-            return e4("k", env, vI(rr), out)
+            // T45:返回别前缀(Ri:/Rf:/Rg:)按声明返回型;浮返 = fret 文本缓冲
+            // 二次取回(D 码文本 Val);I64 返回升 long 全宽(旧 int 截断消)
+            var rtn = xdecl[4]
+            var retc = "i"
+            if rtn[0] == "Named" && rtn[1] == "F64" {
+                retc = "f"
+            }
+            if rtn[0] == "Named" && rtn[1] == "F32" {
+                retc = "g"
+            }
+            var rr: I64 = ctron_ext_dispatch("R" + retc + ":" + nm, f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11)
+            if retc == "f" {
+                return e4("k", env, Val { tag: 6, iv: 0, b: false, s: ctron_ext_fret() }, out)
+            }
+            if retc == "g" {
+                return e4("k", env, Val { tag: 6, iv: 0, b: false, s: ctron_ext_fret() }, out)
+            }
+            if rtn[0] == "Named" && rtn[1] == "I64" {
+                return e4("k", env, v6i(rr), out)
+            }
+            return e4("k", env, vI(rr.as[I32]()), out)
         }
         panic("no fn:" + nm)
         return e4("a", env, vV2(), out)

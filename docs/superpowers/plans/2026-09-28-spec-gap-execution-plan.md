@@ -514,7 +514,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T45 · CBox[T] + FFI 余账三件(§9.6)
 
-- **预估:** 2 d。**前置:** 无。**状态:** 待办
+- **预估:** 2 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-02;实况=三件余账中「定长数组字段塌缩」v0.9·二/四 已先期销账(本件复核),实落两件+计划外编译器泛型发射面四缺口修复:①CBox[T] 落 lib/ffi(struct+自由泛型函数面+C 侧登记表哨,双违例负锚 cbox_dblfree/cbox_useafter;class 字面量发射不可用=T25 v2 域新登记,方法面走自由函数);②解释桥 float 帧(f:/g: 帧+Ri:/Rf:/Rg: 返回别+SIMD 类 ABI cast+形状表≤4 参全展开+浮返 "%.17g" 零损;ext_finterp 编译+解释双通道;整返回升 long=close(-1) bootstrap 缺口随销);③cimport union/struct/enum 关键字限定指针形参(union Vals* 端到端);④泛型直调推断单源 ct_call_infer_tys(种子码串/型节点异型 SEGV+&T 形参永不命中)+实例槽码字母表扩位(F/G/M/N/V/W/X/Y)+void 泛型特化(None→v,尾调用捕值首证)+ct_ty_code nt[2] OOB 守卫;smoke decls 锁 443→444 申报;T35 parse_pkg pkg_load_use_t 调用 arity 破损顺修(阻塞重建,机械对齐 def 6 参)。门禁:ffi 37/37+suite 99/99 双列+smoke 166/7(7 红=T33×2+T16 iter+ctecho 端口竞态+本批翻 444 后复验余量对齐在册债))
 - **目标:** ①`CBox[T]` 跨边界所有权包装(Ctron-owned:drop 责任显式,§9.6 三约定之 2);②FFI 泳道在册余账:union 指针形参、解释桥 float 帧、定长数组字段塌缩(ffi 记忆登记)。
 - **范围:** `ffi.ct`/`std`(CBox 定义:含 #[trusted] drop 面)、`trans_expr.ct`/`eval_call.ct`(三件逐修)、`tests/ffi/` 扩展。
 - **验收:** CBox 所有权锚(移交/释放各一次,双违例负锚);三件余账各自行为锚;ffi 27/27 保持。
@@ -637,7 +637,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T42 | 体积门禁+ISR | W8 | 待办 | — |
 | T43 | ctc 子命令 | W9 | 待办 | — |
 | T44 | own ±5% 门禁 | W9 | 待办 | — |
-| T45 | CBox+FFI 余账 | W9 | 待办 | — |
+| T45 | CBox+FFI 余账 | W9 | ✅ 完成(1002) | — |
 | T46 | st_serve IO 粘合 | W9 | 待办 | — |
 | T47 | multipart | W9 | 待办 | — |
 | T48 | CTCL 迁移 | W9 | 待办 | — |

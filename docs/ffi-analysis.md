@@ -147,10 +147,30 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 - 锚定:`tests/ffi/ptr_param/`(标量写透/双指针交换/struct 指针变异/gethostname 真libc)、`tests/ffi/cimport/`(SPkt* 返回 + passthrough)、`tests/ffi/box_ext.neg.ct`。
 - **二期候选(未实施)**:受 `#[trusted]` 审计的解引用原语(选项 B);`const`/可变性标注(现靠文档口径);cimport 多级指针。
 
+### T45 批次(2026-10-02):CBox[T] + FFI 余账三件(§9.6)
+
+计划卡三件余账的实况判定与落码:
+
+| 件 | 判定与落地 |
+|---|---|
+| **CBox[T](约定之 2,Ctron-owned)** | 新落。`lib/ffi`:`struct CBox[T] { var p: &T }` + 自由泛型函数面 `cbox_own/cbox_borrow/cbox_into_raw/cbox_free`(v0 发射面 trait 方法调用为 T25 v2 在册域,实证 method dispatch 裸名直出不通,自由函数面为准);**所有权哨 = C 侧登记表**(ctron_cbox_reg/live/take/drop,void* 承接,256 槽)——struct 值拷贝不复制哨状态,任何别名副本同见真值,哨后操作响亮 panic(双 free / free 后使用)。泛型 extern 单态化为声明态码(int32_t*)跨 TU 对 void* 定义,指针调用约定同型。锚定:`tests/ffi/cbox/`(own+borrow+into_raw+free 三锚,C 侧计数器平衡)+ `cbox_dblfree/` + `cbox_useafter/`(双违例负锚,panic 语义)。**解释桥指针截断故 CBox 恒编译通道**(包内无 test 块,与 err_wrap 同约定)。 |
+| **union 指针形参** | 实况判定:**核心路已随 v0.9·二/三 闭合**(手写 `&UVals` extern=探针实证;cimport `UV*` typedef 形=U8[N] 缓冲修复后全通)。余角补齐:**cimp_ty 词过滤补 struct/union/enum 关键字透明化**——`union Vals* v` 形此前 nm 并词查名表不中→整形参跳过,现剥词走 typedef 名表。锚定:`tests/ffi/cimport/` 增 `union Vals*` 形参端到端(C 写读往返;夹具 union 加 tag=匿名 typedef union 无 tag,`union X*` 隐式声明新不完整类型,C 经典坑)。 |
+| **解释桥 float 帧** | 新落。帧编码扩 `f:<F64 文本>`/`g:<F32 文本>`(声明型驱动);符号名前缀 `Ri:/Rf:/Rg:` = 返回别;**整返回升 long 全宽**(旧 int 截断=close(-1) 回转缺口 bootstrap 侧随批销);浮参/浮返按 ABI 正确函数指针 cast(全 long cast 直调浮函数=SIMD/通用寄存器类错配,形状表按(返回别,元数≤4,浮参 mask)全展开,>4 参浮形状响亮 panic);F32 实参位 preserving 入 double 槽低 32 字节(端序分支),浮返经 fret 文本缓冲("%.17g" 往返零损)。靶 = 运行时模板 `ctron_fx_*` 四件(外部链接=dlsym 可见,hermetic 零 libc 依赖,值全二进制精确)。锚定:`tests/ffi/ext_finterp/` compiled+interpreted 双通道同源断言。**C 宿主桥(ctronc)float 帧对齐在册**(自举先行既定差分方向)。 |
+| **定长数组字段塌缩** | 复核:**v0.9·二/四 已全销**(发射两处字段循环 + ArrLit 字段位;`tests/ffi/arr_field/` 在库),本件无余码。 |
+
+**随批编译器修复(泛型发射面,CBox 路径实证的四个缺口)**:
+
+1. **泛型直调推断单源化**(`ct_call_infer_tys`,trans_ty):旧直调块种子槽推**码串 "i"** 而命中臂推**型节点**——异型直通 ct_ty_code 时串被当节点解引用(SEGV);`&T` 形参(Ref)此前永不命中→槽恒种子(`cbox_own[T](p: &T)` 直调即崩)。三臂:裸 Named 直等 TP / Ref 剥 p 前缀取内层码 / 带 TArgs 型参按实参实例尾缀解码回填同位槽。发射位与 ct_typeof 返回码位共用(ct_typeof 旧径 TPar→"i" 塌 `CBox__I` 与实发 `__V` 错型,`let b = cbox_own(p)` 即中)。
+2. **实例槽码字母表扩位**(ct_inst_encode/decode/arg_codes):f/g/7/z/w8u/w8s/w16u/w16s → F/G/M/N/V/W/X/Y(大写单字符不撞 I/S/B/L;`CBox[U8]` 槽即 V);ct_inst_ty_node 镜像补标量还原臂。
+3. **void 泛型特化**(ct_spec_call_emit):None 返回节点 ct_ty_code 无臂落 "i"——特化头发 int32_t 且尾调用被捕值(t_rv),尾为 void 外调即 `int32_t=void` 编译错(cbox_free[T] 首证;存量靠实参丢弃侥幸);对齐 ct_fn_ret None→"v" 口径。
+4. **ct_ty_code nt[2] OOB 守卫**(三处):泛型推断可产 2 槽裸 Named(无 TArgs 槽),无守卫读 nt[2] OOB 崩发射器(&T 字段单态化实证)。
+
+**新登记债**:①class 字面量发射不可用(`ct_expr:StructLit 非值类型`——ct_is_struct 门,class 构造仅泛型 fn 内裸字面量可达但调用即 SEGV 链,本件以 struct 承载,CBox class 形态登记 T25 v2 同域);②f 后缀 F32 字面量自举解释器不可用(E2020 "unresolved:f";型注解绑定 `let h: F32 = 5.0` 双通道可用);③`let _ = <expr>` 发射臂 PatWild 不支持(夹具改写规避);④smoke 自检 decls 锁 443→444(随批+ctron_ext_fret 一 extern,申报在案)。
+
 ### v0.9 顺带发现/登记
 
 - ~~**定长数组 struct 字段发射塌缩**~~ ✅ v0.9·二 修复(两处字段循环 + 成员索引读写;`tests/ffi/arr_field/` 钉死);余登记:ArrLit 仅 let 初值位,struct 字面量内数组构造仍堵(构造走 extern make 配方)。
-- **seed/C 宿主解释桥 close(-1) 回转缺口**:errno_basics 在 seed `test` 口径下 close(-1) 不回 -1(bridge int 返回链),FFI 夹具验收通道 = run.sh 编译通道(bin run = 编译执行,`run` 参数仅覆 CLI 输入锚)。归宿主解释桥在册。
+- **seed/C 宿主解释桥 close(-1) 回转缺口**:errno_basics 在 seed `test` 口径下 close(-1) 不回 -1(bridge int 返回链),FFI 夹具验收通道 = run.sh 编译通道(bin run = 编译执行,`run` 参数仅覆 CLI 输入锚)。~~bootstrap 侧~~ ✅ T45 修(整返回升 long 全宽;ext_finterp 负值回转面);C 宿主桥仍在册。
 - **use 合并私有 decl 撞名**:std 包内私有 extern(dup/close)与消费方本地 extern 同名即 E5030——包面收敛原则(只 pub 消费面)写入 ffi 域包头注。
 
 ---

@@ -28,11 +28,15 @@ struct bits {
 
 /* union:cimport 以 U8[N] 字节缓冲承载(N = 最大成员按联合对齐补齐 = C sizeof);
    本例最大成员 char[12]=12B、联合对齐 8 → N = 16 = C sizeof */
-typedef union {
+typedef union Vals {
     double d;
     char s[12];
     long l;
 } Vals;
+
+/* T45:union 关键字限定指针形参(cimp_ty 剥 struct/union/enum 词后走 typedef 名表) */
+extern void vals_poke_k(union Vals* v, int64_t tag);
+extern int64_t vals_peek_k(union Vals* v);
 
 /* 定长数组字段(v0.9):scores → var scores: I32[4],布局与 C 同构(sizeof=24) */
 typedef struct {

@@ -1,0 +1,18 @@
+// tests/ffi/cbox_useafter —— CBox 违例负锚二:free 后使用(borrow 哨后
+// 响亮 panic;into_raw 移交后同哨,同面拒绝)
+//@ panic: CBox: use after free
+use ffi.{cbox_own, cbox_borrow, cbox_free}
+
+#[repr(c)]
+struct Thing {
+    var v: I64
+}
+
+#[trusted]
+extern "c" fn thing_make(v: I64) -> &Thing
+
+test "use after free is rejected by the ownership sentinel" {
+    let b = cbox_own(thing_make(2))
+    cbox_free(b)
+    let _p = cbox_borrow(b)
+}

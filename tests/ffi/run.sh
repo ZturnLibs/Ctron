@@ -33,6 +33,8 @@ for d in "$DIR"/*/; do
     [ "$name" = "link_math" ] && continue  # #[link] 面由下方 link_math 专道驱动(无 c_src)
     [ "$name" = "pkgconf" ] && continue   # pkg-config 解析面由下方 pkgconf 专道驱动(假 .pc,不可真链)
     [ "$name" = "err_wrap" ] && continue  # std.ffi 包装面由下方 err_wrap 专道驱动(须 CTRON_STDPATH)
+    case "$name" in cbox|cbox_dblfree|cbox_useafter) continue ;; esac  # CBox 面由下方 cbox 专道驱动(须 CTRON_STDPATH+ffi 垫片)
+    [ "$name" = "ext_finterp" ] && continue  # 解释桥 float 帧由下方专道驱动(双通道)
     if [ ! -d "$d/c_src" ]; then
         # 纯 libc 夹具(无 c_src):emit → cc → 运行(errno_basics 等)
         e0="$d/src/main.ct"
@@ -180,6 +182,53 @@ if [ -d "$ewd/src" ]; then
         pass=$((pass + 1))
     else
         echo "  [FAIL] err_wrap — $(head -1 "$T/ew.emiterr" 2>/dev/null)$(head -1 "$T/ew.ccerr" 2>/dev/null)$(head -c 120 "$T/ew.out" 2>/dev/null)"
+        fail=$((fail + 1))
+    fi
+fi
+
+# ---- cbox:CBox[T] 所有权包装(T45;std 路径 + ffi 垫片 + 编译通道) ----
+# 正锚(cbox:移交/借用/释放)+ 违例负锚(dblfree/useafter:守卫 panic 语义)
+for cb in cbox cbox_dblfree cbox_useafter; do
+    cbd="$DIR/$cb"
+    [ -d "$cbd/src" ] || continue
+    e="$cbd/src/main.ct"
+    if CTRON_STDPATH="$ROOT/lib/std" "$EMIT" run "$e" > "$T/$cb.c" 2>"$T/$cb.emiterr" \
+       && cc -O1 -w -o "$T/$cb.bin" "$T/$cb.c" "$cbd"/c_src/*.c "$ROOT"/lib/ffi/c_src/*.c 2>"$T/$cb.ccerr" \
+       && "$T/$cb.bin" run "$e" > "$T/$cb.out" 2>&1; then
+        cbrc=0
+    else
+        cbrc=$?
+    fi
+    pmark=$(grep -o '^//@ panic: .*' "$e" | head -1 | sed 's|^//@ panic: ||')
+    if [ "$cb" != "cbox" ] && [ -n "$pmark" ] && [ $cbrc -ne 0 ] && grep -q "$pmark" "$T/$cb.out"; then
+        echo "  [ok] $cb(panic 语义: $pmark)"
+        pass=$((pass + 1))
+    elif [ "$cb" = "cbox" ] && [ $cbrc -eq 0 ]; then
+        echo "  [ok] cbox(own/borrow/into_raw/free 三锚 + 审计平衡)"
+        pass=$((pass + 1))
+    else
+        echo "  [FAIL] $cb — rc=$cbrc: $(head -1 "$T/$cb.emiterr" 2>/dev/null)$(head -1 "$T/$cb.ccerr" 2>/dev/null)$(head -c 120 "$T/$cb.out" 2>/dev/null)"
+        fail=$((fail + 1))
+    fi
+done
+
+# ---- ext_finterp:解释桥 float 帧(T45;compiled+interp 双通道) ----
+efd="$DIR/ext_finterp"
+if [ -d "$efd/src" ]; then
+    e="$efd/src/main.ct"
+    ok1=0
+    ok2=0
+    if "$EMIT" run "$e" > "$T/ef.c" 2>"$T/ef.emiterr"        && cc -O1 -w -o "$T/ef.bin" "$T/ef.c" 2>"$T/ef.ccerr"        && "$T/ef.bin" run "$e" > "$T/ef.out" 2>&1; then
+        ok1=1
+    fi
+    if "$CC_BIN" run "$e" > "$T/efi.out" 2>&1; then
+        ok2=1
+    fi
+    if [ $ok1 -eq 1 ] && [ $ok2 -eq 1 ]; then
+        echo "  [ok] ext_finterp(编译+解释双通道 float 帧)"
+        pass=$((pass + 1))
+    else
+        echo "  [FAIL] ext_finterp — compiled=$ok1 interp=$ok2: $(head -1 "$T/ef.emiterr" 2>/dev/null)$(head -1 "$T/ef.ccerr" 2>/dev/null)$(head -c 160 "$T/efi.out" 2>/dev/null)"
         fail=$((fail + 1))
     fi
 fi
