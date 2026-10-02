@@ -1,0 +1,90 @@
+// tests/gui/s62_win —— GUI-24 窗口级 API headless 验收
+// 四段:关闭拦截(事件转达,脚本继续=未退出)→ 全屏 → 无边框 → 图标槽
+use gui.{test, d_frame, d_expect_text, d_click, d_close_req, d_win_op_last, win_op, win_icon, d_win_icon_last, Driver}
+
+struct M {
+    var state: Str
+}
+
+fn win_close() {
+}
+fn go_full() {
+}
+fn go_max() {
+}
+fn go_undec() {
+}
+fn set_icon() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "win_close" {
+        m.state = "拦截到关闭"
+        return
+    }
+    if name == "go_full" {
+        win_op(1)
+        m.state = "全屏已切"
+        return
+    }
+    if name == "go_max" {
+        win_op(2)
+        m.state = "已最大化"
+        return
+    }
+    if name == "go_undec" {
+        win_op(5)
+        m.state = "无边框已切"
+        return
+    }
+    if name == "set_icon" {
+        win_icon("icon.png")
+        m.state = "图标已设"
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 初始
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "窗口控制")
+            // S2 关闭请求 → 拦截转事件(脚本继续跑 = 未退出)
+            var ci: I32 = d_close_req(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            if ci != 1 {
+                panic("s62: 关闭拦截未触发")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "拦截到关闭")
+            // S3 全屏操作:槽记录 op=1(headless 不真切,真窗 raylib 生效)
+            actc(d_click(t, "go_full"), List[Str]())
+            if d_win_op_last() != 1 {
+                panic("s62: 全屏 op 未达 got=" + d_win_op_last().to_string())
+            }
+            // S4 无边框操作:op=5
+            actc(d_click(t, "go_undec"), List[Str]())
+            if d_win_op_last() != 5 {
+                panic("s62: 无边框 op 未达 got=" + d_win_op_last().to_string())
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "无边框已切")
+            // S5 图标:槽记录路径(headless 不真加载,真窗 LoadImage+SetWindowIcon)
+            actc(d_click(t, "set_icon"), List[Str]())
+            if d_win_icon_last() != "icon.png" {
+                panic("s62: 图标槽不符 got=[" + d_win_icon_last() + "]")
+            }
+            println("S62-WIN-GREEN")
+        })
+    return rc
+}

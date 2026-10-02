@@ -409,6 +409,43 @@ int gui_open_url(const char* url) {
 }
 const char* gui_open_url_last(void) { return g_open_url_last; }
 
+// ---- GUI-24:窗口级 API(真窗生效;headless 记录槽断言) ----
+// op: 1=fullscreen 2=maximize 3=minimize 4=restore 5=undecorated 6=bordered
+extern void glfwSetWindowShouldClose(void* window, int value);
+static int g_win_op_last = 0;
+int gui_win_op(int op) {
+    g_win_op_last = op;
+    if (!IsWindowReady()) { return 0; }
+    switch (op) {
+        case 1: ToggleFullscreen(); break;
+        case 2: MaximizeWindow(); break;
+        case 3: MinimizeWindow(); break;
+        case 4: RestoreWindow(); break;
+        case 5: SetWindowState(FLAG_WINDOW_UNDECORATED); break;
+        case 6: ClearWindowState(FLAG_WINDOW_UNDECORATED); break;
+        default: break;
+    }
+    return 0;
+}
+int gui_win_op_last(void) { return g_win_op_last; }
+// 关闭拦截:有 on:close 声明时,关闭请求被吞(GLFW flag 复位)转事件,应用定去留
+int gui_win_close_req(void) {
+    if (!WindowShouldClose()) { return 0; }
+    glfwSetWindowShouldClose(GetWindowHandle(), 0);
+    return 1;
+}
+// 窗口图标(headless 记录槽;真窗 LoadImage+SetWindowIcon)
+static char g_win_icon_last[512] = {0};
+int gui_win_icon(const char* path) {
+    if (gui_trace()) { fprintf(stderr, "T%03d win_icon %s\n", ++gui_trace_n, path ? path : ""); }
+    if (path) { snprintf(g_win_icon_last, sizeof g_win_icon_last, "%s", path); }
+    if (!IsWindowReady()) { return 0; }
+    Image ic = LoadImage(path);
+    if (ic.data != 0) { SetWindowIcon(ic); UnloadImage(ic); }
+    return 0;
+}
+const char* gui_win_icon_last(void) { return g_win_icon_last; }
+
 int gui_open(void) {
     if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }
     Clay__OpenElement();

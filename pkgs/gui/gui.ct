@@ -158,6 +158,22 @@ extern "c" fn gui_drop_path() -> Str
 #[trusted]
 extern "c" fn gui_inject_drop() -> I32
 
+// GUI-24:窗口级 API(op 编码见 ctron_gui.c;close_req=拦截式关闭请求)
+#[trusted]
+extern "c" fn gui_win_op(op: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_win_op_last() -> I32
+
+#[trusted]
+extern "c" fn gui_win_close_req() -> I32
+
+#[trusted]
+extern "c" fn gui_win_icon(path: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_win_icon_last() -> Str
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
@@ -4948,7 +4964,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     SetConfigFlags(8192)
     InitWindow(w, h, title)
     SetTargetFPS(60)
-    while !WindowShouldClose() {
+    while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
@@ -5126,7 +5142,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     InitWindow(w, h, title)
     SetTargetFPS(60)
     var frames: I32 = 0
-    while !WindowShouldClose() {
+    while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
@@ -5963,6 +5979,37 @@ pub fn d_open_url() -> Str {
     return gui_open_url_last()
 }
 
+// GUI-24:窗口操作面——1=fullscreen 2=maximize 3=minimize 4=restore
+// 5=undecorated 6=bordered(headless 记录槽,真窗 raylib 生效;图标待图像管线)
+pub fn win_op(op: I32) -> I32 {
+    return gui_win_op(op)
+}
+
+pub fn d_win_op_last() -> I32 {
+    return gui_win_op_last()
+}
+
+// 窗口图标(headless 记录槽,真窗 LoadImage+SetWindowIcon)
+pub fn win_icon(path: Str) -> I32 {
+    return gui_win_icon(path)
+}
+
+pub fn d_win_icon_last() -> Str {
+    return gui_win_icon_last()
+}
+
+// GUI-24 headless 驱动:模拟关闭请求——根有 on:close 则 fire(拦截语义,
+// 脚本继续即「未退出」)返回 1;无声明 panic(真窗此时会退出)
+pub fn d_close_req(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t.t, gui_root_id(t.t), "close")
+    if ce == "" {
+        panic("gui test: 根元素无 on:close")
+        return 0
+    }
+    ev_fire(t.t, ce, bind, act)
+    return 1
+}
+
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
 pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
     var n: I32 = gui_cmd_count()
@@ -6125,6 +6172,22 @@ fn rt_drop_fire(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str])
         gui_drop_setcur(i)
         ev_fire(t, de, bind, act)
         i += 1
+    }
+    return 1
+}
+
+// GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧
+// 吞掉转事件(应用定去留),返回 1 续跑;无声明保持原语义(退出返 0)
+fn rt_close_check(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t, gui_root_id(t), "close")
+    if ce != "" {
+        if gui_win_close_req() == 1 {
+            ev_fire(t, ce, bind, act)
+        }
+        return 1
+    }
+    if WindowShouldClose() {
+        return 0
     }
     return 1
 }
