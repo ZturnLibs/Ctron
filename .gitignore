@@ -52,3 +52,6 @@ examples/*/src/main.c
 dist/
 compiler-c/build
 .cache/
+
+# ZCode 工具本地忽略配置(自动同步自 .gitignore,工具私有不入库)
+.zcodeignore
