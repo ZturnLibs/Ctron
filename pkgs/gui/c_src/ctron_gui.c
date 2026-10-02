@@ -481,6 +481,11 @@ int gui_px_at(int i, int comp) {
 }
 void gui_px_clear(void) { g_px_n = 0; }
 
+// ---- GUI-21:scroll 滚动偏移(应用侧累计;容器 clip 消费) ----
+static int g_scroll_off = 0;
+int gui_scroll_add(int d) { g_scroll_off += d; if (g_scroll_off < 0) { g_scroll_off = 0; } return g_scroll_off; }
+int gui_scroll_off(void) { return g_scroll_off; }
+
 int gui_open(void) {
     if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }
     Clay__OpenElement();

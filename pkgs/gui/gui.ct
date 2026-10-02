@@ -208,6 +208,13 @@ extern "c" fn gui_px_at(i: I32, comp: I32) -> I32
 #[trusted]
 extern "c" fn gui_px_clear() -> I32
 
+// GUI-21:scroll 滚动偏移(应用侧累计;容器 clip 消费)
+#[trusted]
+extern "c" fn gui_scroll_add(d: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_scroll_off() -> I32
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
@@ -2125,7 +2132,12 @@ fn gt_cls_prop(classes: Str, prop: Str, dflt: Str, t: GuiTree) -> Str {
 fn gt_dim_v(t: GuiTree, v: Str, bind: fn(List[Str]) -> Void) -> I32 {
     if v.len >= 3 {
         if byte_at(v, 0) == 123 && byte_at(v, v.len - 1) == 125 {
-            return gs2i(bxv_eval(t, byte_slice(v, 1, v.len - 1), bind))
+            var r2: Str = bxv_eval(t, byte_slice(v, 1, v.len - 1), bind)
+            // 内建名产出带标(i:/b:),裸串(bind 名)原样——解标后转整
+            if bxv_istag(r2) {
+                return bxv_iv(r2)
+            }
+            return gs2i(r2)
         }
     }
     return gs2i(v)
@@ -2400,6 +2412,10 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     }
     if path == "canvash" {
         return "i:" + gui_canvas_h().to_string()
+    }
+    // GUI-21:scroll 偏移内建(应用 bind 组装可见窗口行消费)
+    if path == "scrolloff" {
+        return "i:" + gui_scroll_off().to_string()
     }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
@@ -3968,7 +3984,12 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             // 仅 max_h:高 GROW{0,max} 钳制
                             gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 3, 0, bgp2, 0, gs2i(mmh))
                         } else {
-                            gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+                            // GUI-21:scroll 标记容器——clip 裁剪+偏移位移(virtual each 配方基座)
+                            if gt_cls_prop(c, "scroll", "", t) != "" {
+                                gui_cfg2(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2, 1, gui_scroll_off())
+                            } else {
+                                gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+                            }
                         }
                     }
                 }
@@ -5165,7 +5186,10 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
             }
         } else {
             if evt == 4 {
-                rt_ta_wheel(t, rects, hits, gui_evt_key(), bind)
+                // GUI-21:textarea 未消费的滚轮进 scroll 偏移(步长应用侧换算)
+                if rt_ta_wheel(t, rects, hits, gui_evt_key(), bind) == 0 {
+                    gui_scroll_add(gui_evt_key() * 66)
+                }
             }
             if evt == 3 {
                 // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
@@ -5367,7 +5391,10 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
             }
         } else {
             if evt == 4 {
-                rt_ta_wheel(t, rects, hits, gui_evt_key(), bind)
+                // GUI-21:textarea 未消费的滚轮进 scroll 偏移(步长应用侧换算)
+                if rt_ta_wheel(t, rects, hits, gui_evt_key(), bind) == 0 {
+                    gui_scroll_add(gui_evt_key() * 66)
+                }
             }
             if evt == 3 {
                 // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
@@ -6149,6 +6176,20 @@ pub fn d_px_n() -> I32 {
 
 pub fn d_px_at(i: I32, comp: I32) -> I32 {
     return gui_px_at(i, comp)
+}
+
+// GUI-21 headless 驱动:滚动偏移累计(与真窗滚轮同槽)
+pub fn d_scroll(t: Box[Driver], delta: I32) -> I32 {
+    return gui_scroll_add(delta)
+}
+
+pub fn d_scroll_off() -> I32 {
+    return gui_scroll_off()
+}
+
+// 应用面:当前滚动偏移(bind 组装可见窗口行消费)
+pub fn scroll_off() -> I32 {
+    return gui_scroll_off()
 }
 
 // 绘制原语(应用 on:draw 回调内调;坐标相对 canvas 盒)

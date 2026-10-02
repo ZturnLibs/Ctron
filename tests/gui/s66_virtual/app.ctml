@@ -1,0 +1,23 @@
+// tests/gui/s66_virtual —— GUI-21 虚拟化长列表 v1:scroll 容器+可见窗口配方
+// (scroll 标记容器=clip 裁剪+滚轮偏移 C 槽;内容总高 h: "{totalh}" 撑 O(1)
+//  滚动条长——GUI-16 值驱动;bind 组装仅可见窗口行(含前占位)——O(1) 渲染行数;
+//  overscan/非均匀行高登记 v2,virtual each 标签形态待 GUI-13 后协调)
+view Root {
+  <vbox class="root">
+    <vbox class="scr">
+      <vbox class="body">
+        <spacer class="rows-top"/>
+        <each r in={vrows}>
+          <label class="row">{r}</label>
+        </each>
+      </vbox>
+    </vbox>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style scr { direction: column h: 110 bg: SURFACE }
+style body { direction: column }
+style row { fg: TEXT size: 13 h: 22 }
+style rows-top { h: "{scrolloff}" }
+style state { fg: "#22c55e" h: 22 }
