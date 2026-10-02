@@ -1,0 +1,28 @@
+// tests/gui/s61_menu_acc —— A 档 GUI-08/09:menu 加速器显示 + 展开态键盘导航
+// 加速器=应用侧 gui_hotkey 注册与菜单行显示共用动作 id(acc_of 映射),
+// ⌘/Ctrl 字样经 gui_platform 分叉;键盘导航=展开态 ↓↑/Enter/Esc 键闭包拦截
+// (select 键盘导航同配方),"> "前缀重建;快捷键实发=d_mod+d_send_key。
+view MMenu (open: Bool) {
+  <vbox class="m-wrap">
+    <button class="m-trg" on:click={ed_toggle}>编辑</button>
+    <when cond={open}>
+      <vbox class="m-opts">
+        <each mi in={m3items}>
+          <button class="m-opt" on:click={ed_pick}>{mi}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+view Root {
+  <vbox class="root">
+    <MMenu open: {edopen}/>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style m-wrap { direction: column gap: 4 }
+style m-trg { bg: SURFACE fg: TEXT w: 90 h: 30 }
+style m-opts { direction: column gap: 2 }
+style m-opt { bg: ELEVATED fg: TEXT w: 240 h: 28 }
+style state { fg: "#22c55e" h: 22 }

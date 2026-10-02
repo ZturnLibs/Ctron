@@ -2,7 +2,7 @@
 // headless:开下拉→点选→开模态→Esc 关,四段断言;--rt_run_src 真窗手玩
 use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_drag, d_mod, d_press_key, gui_hotkey, ev_arg_i,
          d_expect_text, d_expect_absent, d_cmd_count, d_cmd_type, d_cmd_w100, d_cmd_x100, d_cmd_y100, d_cmd_h100, theme_apply, theme_auto_apply,
-         theme_dark, theme_light, d_tick, gui_now, d_hover, d_click_inst, d_cmd_text_len}
+         theme_dark, theme_light, d_tick, gui_now, d_hover, d_click_inst, d_cmd_text_len, gui_platform}
 
 struct Model {
     var picked: Str
@@ -25,6 +25,8 @@ struct Model {
     var accopen: Bool
     var toast_at: I32
     var toast_msg: Str
+    var edopen: Bool
+    var e3hi: I32
 }
 
 fn sel_toggle() {
@@ -79,6 +81,31 @@ fn acc_toggle() {
 fn tip_noop() {
 }
 fn toast_show() {
+}
+fn ed_toggle() {
+}
+fn ed_pick() {
+}
+
+// 加速器显示:与 gui_hotkey 注册共用动作 id;⌘/Ctrl 经 gui_platform 分叉
+fn acc_of(action: Str) -> Str {
+    var p: Str = "Ctrl+"
+    if gui_platform() == 0 {
+        p = "⌘"
+    }
+    if action == "undo" {
+        return p + "Z"
+    }
+    if action == "redo" {
+        return p + "Y"
+    }
+    if action == "cut" {
+        return p + "X"
+    }
+    if action == "copy" {
+        return p + "C"
+    }
+    return ""
 }
 
 fn act(name: Str, args: List[Str], m: Box[Model]) {
@@ -215,6 +242,38 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
         m.state = "toast 弹出"
         return
     }
+    if name == "ed_toggle" {
+        if m.edopen {
+            m.edopen = false
+        } else {
+            m.edopen = true
+        }
+        return
+    }
+    if name == "undo" {
+        m.state = "已撤销"
+        return
+    }
+    if name == "redo" {
+        m.state = "已重做"
+        return
+    }
+    if name == "cut" {
+        m.state = "已剪切"
+        return
+    }
+    if name == "copy" {
+        m.state = "已复制"
+        return
+    }
+    if name.len > 7 {
+        // ed_pick:N 行点击
+        if byte_at(name, 0) == 101 && byte_at(name, 1) == 100 && byte_at(name, 2) == 95 && byte_at(name, 3) == 112 && byte_at(name, 4) == 105 && byte_at(name, 5) == 99 && byte_at(name, 6) == 107 && byte_at(name, 7) == 58 {
+            m.edopen = false
+            m.state = "已选行"
+            return
+        }
+    }
     if name == "slide" {
         // 拖拽事件缝:dragpx 千分比 → 百分比
         m.sval = (ev_arg_i(args, 0) / 10).to_string()
@@ -254,6 +313,35 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
             buf.push("b:1")
         } else {
             buf.push("b:0")
+        }
+    }
+    if buf[0] == "edopen" {
+        if m.edopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "each:eitems" {
+        if m.e3hi == 0 {
+            buf.push("> 撤销  " + acc_of("undo"))
+        } else {
+            buf.push("撤销  " + acc_of("undo"))
+        }
+        if m.e3hi == 1 {
+            buf.push("> 重做  " + acc_of("redo"))
+        } else {
+            buf.push("重做  " + acc_of("redo"))
+        }
+        if m.e3hi == 2 {
+            buf.push("> 剪切  " + acc_of("cut"))
+        } else {
+            buf.push("剪切  " + acc_of("cut"))
+        }
+        if m.e3hi == 3 {
+            buf.push("> 复制  " + acc_of("copy"))
+        } else {
+            buf.push("复制  " + acc_of("copy"))
         }
     }
     if buf[0] == "tcur" {
@@ -385,6 +473,30 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
 
 // 键 1/2 切主题 + select 键盘导航(selopen 时:↓↑ 移高亮/Enter 选取/Esc 关)
 fn apply_key(k: I32, m: Box[Model]) {
+    if m.edopen {
+        if k == 265 {
+            if m.e3hi < 3 {
+                m.e3hi = m.e3hi + 1
+            }
+            return
+        }
+        if k == 264 {
+            if m.e3hi > 0 {
+                m.e3hi = m.e3hi - 1
+            }
+            return
+        }
+        if k == 257 {
+            m.edopen = false
+            m.state = "键盘已选"
+            return
+        }
+        if k == 256 {
+            m.edopen = false
+            m.state = "编辑菜单已取消"
+            return
+        }
+    }
     if m.selopen {
         if k == 265 {
             if m.selhi > 0 {
@@ -431,7 +543,11 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, tcur: 0, accopen: false, toast_at: 0, toast_msg: "", pval: 0 })
+    gui_hotkey("mod+z", "undo")
+    gui_hotkey("mod+shift+z", "redo")
+    gui_hotkey("mod+x", "cut")
+    gui_hotkey("mod+c", "copy")
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, tcur: 0, accopen: false, toast_at: 0, toast_msg: "", pval: 0, edopen: false, e3hi: 0 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -606,6 +722,32 @@ fn main() -> I32 {
             actc(d_click(t, "acc_toggle"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_absent(t, "折叠内容主体")
+            // ===== GUI-08/09:编辑菜单加速器+键盘导航 =====
+            actc(d_click(t, "ed_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 撤销  ⌘Z")
+            d_expect_text(t, "复制  ⌘C")
+            k2(d_press_key(t, 265))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 重做  ⌘Y")
+            k2(d_press_key(t, 257))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "> 重做  ⌘Y")
+            d_expect_text(t, "键盘已选")
+            actc(d_click(t, "ed_toggle"), List[Str]())
+            k2(d_press_key(t, 256))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "编辑菜单已取消")
+            d_mod(t, 1)
+            var hk1: I32 = d_send_key(t, 90,
+                |buf| bind_all(buf, m),
+                |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            if hk1 != 0 {
+                panic("widgets: mod+z 未消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已撤销")
             println("WIDGETS-GREEN")
         })
     return rc
