@@ -1,0 +1,23 @@
+// tests/gui/s58_split —— GUI-17 可拖分隔条 v1:水平分隔(上下窗格)
+// (分隔条=全宽窄高拖动带,on:drag 消费拖拽事件缝;上窗格高值驱动
+//  h: "{paneh}" —— GUI-16 v1 的 {expr} 维度逐帧求值;拖拽值源=mousey
+//  绝对指针内建——permille 相对武装盒在分隔条场景会饱和)
+view Root {
+  <vbox class="root">
+    <vbox class="pane">
+      <label class="pt">UP</label>
+    </vbox>
+    <spacer class="divider" on:drag={split_drag(mousey)}/>
+    <vbox class="pane2">
+      <label class="pt2">DOWN</label>
+      <label class="state">{state}</label>
+    </vbox>
+  </vbox>
+}
+style root { direction: column gap: 4 padding: 8 }
+style pane { direction: column h: "{paneh}" w: 280 bg: SURFACE }
+style divider { h: 12 w: 280 bg: BORDER }
+style pane2 { direction: column bg: ELEVATED }
+style pt { fg: "#ffffff" h: 20 }
+style pt2 { fg: "#ffffff" h: 20 }
+style state { fg: "#22c55e" h: 20 }

@@ -1,0 +1,89 @@
+// tests/gui/s58_split —— GUI-17 可拖分隔条 v1 headless 验收
+// 三段:初始定高 → 垂直拖拽(d_dragv)上窗格变高 → 再拖变矮(双向)
+use gui.{test, d_frame, d_expect_text, d_dragv, d_cmd_count, d_cmd_type, d_cmd_h100, d_cmd_w100, d_cmd_x100, d_cmd_y100, ev_arg_i, Driver}
+
+struct M {
+    var paneh: I32
+    var state: Str
+}
+
+fn split_drag() {
+}
+
+fn pane_h(t: Box[Driver], want: I32) -> I32 {
+    // 特征寻上窗格背景盒:唯一 h=want 的 RECT
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    var seen: Str = ""
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            seen = seen + "[" + (d_cmd_x100(i) / 100).to_string() + "," + (d_cmd_y100(i) / 100).to_string() + " " + (d_cmd_w100(i) / 100).to_string() + "x" + (d_cmd_h100(i) / 100).to_string() + "] "
+            if d_cmd_h100(i) == want * 100 {
+                return 1
+            }
+        }
+        i += 1
+    }
+    println("s58: rects=" + seen + "want=" + want.to_string())
+    return 0
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "paneh" {
+        buf.push(m.paneh.to_string())
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn name_is_split(name: Str) -> Bool {
+    // 调用形事件头名直发(Slider 同契约,无实例后缀)
+    return name == "split_drag"
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name_is_split(name) {
+        // mousey 绝对指针 → 上窗格高(顶部 padding 8 对齐;下界钳 40)
+        var my: I32 = ev_arg_i(args, 0) - 8
+        if my < 40 {
+            my = 40
+        }
+        m.paneh = my
+        m.state = "pane=" + m.paneh.to_string()
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { paneh: 120, state: "" })
+    var rc: I32 = test(src, 320, 320,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 初始定高:窗格背景盒 h=120
+            d_frame(t, |buf| bind_all(buf, m))
+            if pane_h(t, 120) != 1 {
+                panic("s58: 初始窗格高 120 未渲染")
+            }
+            d_expect_text(t, "UP")
+            d_expect_text(t, "DOWN")
+            // S2 垂直下拖:分隔条 y≈134 → y=260,窗格高 252
+            d_dragv(t, 150, 134, 260, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            if pane_h(t, 252) != 1 {
+                panic("s58: 拖拽后窗格高 252 未渲染")
+            }
+            d_expect_text(t, "pane=252")
+            // S3 上拖变矮:divider 已随 pane 下移(8+252+4=264..276),起点 270 → y=120,窗格高 112
+            d_dragv(t, 150, 270, 120, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            if pane_h(t, 112) != 1 {
+                panic("s58: 回拖窗格高 112 未渲染")
+            }
+            d_expect_text(t, "pane=112")
+            println("S58-SPLIT-GREEN")
+        })
+    return rc
+}

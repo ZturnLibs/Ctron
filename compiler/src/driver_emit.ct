@@ -284,7 +284,8 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
             // SL-7α 内嵌形态:程序自身 view/style GuiBlock 重建为 CTML 常量,
             // ctron_embedded() 供域包 run_d 文件缺失时兜底(独立二进制零 CWD 依赖)
-            println("static const char* ctron_embed_src = \"" + ct_cstr(gui_blocks_src(file)) + "\";")
+            // GUI-12:带源文本重建——块体原文切片,叶字面量不再被词法切-连插空格
+            println("static const char* ctron_embed_src = \"" + ct_cstr(gui_blocks_src_raw(file, s)) + "\";")
             println("static const char* ctron_embedded(void) \{ return ctron_embed_src; }")
             println("static const char* ctron_dom_title_buf = \"\";")
             println("static void ctron_dom_set_title(const char* s) \{ ctron_dom_title_buf = s; }")

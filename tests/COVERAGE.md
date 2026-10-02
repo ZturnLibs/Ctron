@@ -994,3 +994,35 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
 - 登记债:三线 parity(pkg.c 清单 tier 键/sem.c bare 钳口径/main.rs Manifest.tier+
   R 线检查面)、域包 tier 标注(随 registry)、emit/doc 驱动 prof 接线(随 emit seam)、
   单文件裸跑 bare(无清单时 use 门不设,仅体检查面)。
+
+**2026-10-03 T27-B:闭包捕获语义收口·原生臂复验收官(r3a 双臂全绿)**(spec-gap W5;
+T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂红」翻面):
+- 归因(干净基线 worktree 逐提交二分):破窗=p0a 合并 46e11d70(绿→红单步),非在册
+  「ct_emit_clo 卫兵错位」——r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef
+  包整 shim)。真红三连:①`ct_str_bsum` 判别位 I32 `h*31+b` 链溢出(p0a 把捕获名/型别码
+  纳入哈希,4 字符捕获名 `base` 第 3 字符即破 I32;shim 名后缀 236033764 与
+  bsum("x")→("n")→("i") 逐字吻合=实锤)→ 模归约 `(h % 69000000) * 31 + b`(最大中间值
+  21.39 亿 < 2^31,确定性/双宿主一致);②闭包体尾槽与 return 位(#shim=2 早返臂)的
+  with/with_mut 不走 ANF——`ct_expr` 恒拒「仅语句位」,eval 两侧皆合法 → `ct_clo_with_tail`
+  助手(trans_conc)+ return 位前置(trans_stmt),预扫两处同助手通路面(eln 门控零输出);
+  ③同 fn 多 with 同名形参双双内联 → C 顶层重定义(r3a bump = with_mut+with 双连)→
+  ct_emit_with_stmt 发射整体入 C 作用域括号(rc 声明位在括号外,存活到消费点)。
+- 验收:fx_cloval 发射+运行 107/105/25 对拍解释臂;探针四形(裸 with_mut 尾/return 位/
+  test 内 r3a 形/普通 fn 双 with)全绿;r3a 发射+cc+运行 rc=0(断言全过)+负锚 E3070
+  正响;suite 99/99;smoke 170/3(余 2 红=conc_parallel[T33 在册,bsum 修复后复现依旧,
+  OOB 独立]/Rust iter 清账[R 线],皆基线非本件)。
+- 连带三小修:①自举固定点段「两路发射产物分歧」=版本行竞态假红——两路各自 build.sh
+  采样 git describe,机刷并发落库窗口内 HEAD 移动即两侧版本串不同(diff 仅此一行实证)
+  → 门禁改版本行除外对拍(发射不变量是编译器逻辑非版本戳);②GATEDBG2 调试 println
+  清退(trans_expr,p0a 合并遗留,污染一切含 fn 值调用的发射产物);③decl 锁 444→449
+  随批申报(+1 本件 ct_clo_with_tail;+4=GUI-17/12 批已落库未申报,归 GUI 泳道补登记)。
+- 坑位:①seed 侧 arithmetic gate(interp/emit 双宿主一致语义:中间值 128 位+fits 检查)
+  会咬发射器自身代码——哈希/判别位类算术一律模归约或有界累加,勿裸写乘法链;②emit 的
+  with ANF 是「逐位置接线」形态(语句/let/return 尾/闭包体尾各自一臂),新位置接入时
+  预扫(pass-1)与实发(pass-2)都要过同一助手,漏预扫=中途 panic 截断发射产物;③
+  T20 emit 缓存键含 build/cc_emit.ct 哈希但 build.sh 先于发射重跑,跨版本缓存条目
+  (ANCHORVERSION 陈物)曾混入对拍——缓存目录清退后未复现,存疑登记。
+- 登记债:with 在任意表达式位的 emit ANF 缺口(eval 合法;`return bump() + m.with(...)`
+  形即炸「仅语句位」)——语句/let/return 尾/闭包体尾已全接,任意嵌套表达式位待 ANF
+  提升机(capability 项);T33 parallel ct_emit_clo OOB 独立在册(bsum 修复后复现依旧,
+  卫兵假说待 T33 作者复证)。

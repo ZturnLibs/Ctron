@@ -11,7 +11,7 @@ view Inner (t: Str, on: Bool) {
   <vbox class="in">
     <label class="in-t">{t}</label>
     <when cond={on}>
-      <label class="in-on">INNER_ON</label>
+      <label class="in-on">INNER-ON</label>
     </when>
   </vbox>
 }
@@ -69,12 +69,12 @@ fn main() -> I32 {
         |t, act2, key2| {
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "hello")
-            // flag=false:INNER-ON 不渲染
-            d_expect_absent(t, "INNER_ON")
+            // flag=false:INNER-ON 不渲染(连字符叶原样保真,GUI-12)
+            d_expect_absent(t, "INNER-ON")
             // toggle 后:嵌套 Bool prop 驱动 when
             act(d_click(t, "tog"), List[Str](), m)
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "INNER_ON")
+            d_expect_text(t, "INNER-ON")
             println("S53-NESTED-GREEN")
         })
     return rc

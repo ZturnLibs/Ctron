@@ -132,6 +132,82 @@ extern "c" fn gui_mouse_x() -> I32
 #[trusted]
 extern "c" fn gui_mouse_y() -> I32
 
+// GUI-23:链接 OpenURL(headless 记录槽,真窗 raylib OpenURL)
+#[trusted]
+extern "c" fn gui_open_url(url: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_open_url_last() -> Str
+
+// GUI-20:OS 文件拖入(事件码 6;槽=本次拖入路径集)
+#[trusted]
+extern "c" fn gui_drop_begin() -> I32
+
+#[trusted]
+extern "c" fn gui_drop_add(p: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_drop_count() -> I32
+
+#[trusted]
+extern "c" fn gui_drop_setcur(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_drop_path() -> Str
+
+#[trusted]
+extern "c" fn gui_inject_drop() -> I32
+
+// GUI-24:窗口级 API(op 编码见 ctron_gui.c;close_req=拦截式关闭请求)
+#[trusted]
+extern "c" fn gui_win_op(op: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_win_op_last() -> I32
+
+#[trusted]
+extern "c" fn gui_win_close_req() -> I32
+
+#[trusted]
+extern "c" fn gui_win_icon(path: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_win_icon_last() -> Str
+
+// GUI-25:canvas 树内整合(标记属性容器;绘制点相对盒,headless 记录槽)
+#[trusted]
+extern "c" fn gui_canvas_setbox(x: I32, y: I32, w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_setnode(n: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_x() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_y() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_w() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_h() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_node() -> I32
+
+#[trusted]
+extern "c" fn gui_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_px_n() -> I32
+
+#[trusted]
+extern "c" fn gui_px_at(i: I32, comp: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_px_clear() -> I32
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
@@ -2041,6 +2117,23 @@ fn gt_cls_prop(classes: Str, prop: Str, dflt: Str, t: GuiTree) -> Str {
     }
     return dflt
 }
+
+// GUI-16 值驱动宽高(v1):维度值 "{expr}" 形态逐帧求值——style 值以引号串
+// 写花括号表达式(w: "{n}"),裸词保持字面量(词法 gword 不吃花括号,引号串
+// 经 gstr 原样入表);产出经 gs2i 转整。v1 不做缓存:即时模式每帧重放,
+// 小表达式成本可忽略(样式折叠缓存设计留完整面)。
+fn gt_dim_v(t: GuiTree, v: Str, bind: fn(List[Str]) -> Void) -> I32 {
+    if v.len >= 3 {
+        if byte_at(v, 0) == 123 && byte_at(v, v.len - 1) == 125 {
+            return gs2i(bxv_eval(t, byte_slice(v, 1, v.len - 1), bind))
+        }
+    }
+    return gs2i(v)
+}
+
+fn gt_dim(t: GuiTree, c: Str, prop: Str, dflt: Str, bind: fn(List[Str]) -> Void) -> I32 {
+    return gt_dim_v(t, gt_cls_prop(c, prop, dflt, t), bind)
+}
 // ==================== 运行时(绑定求值/布局发射/命中/循环) ====================
 
 fn rt_col_r(p: I32) -> I32 {
@@ -2278,6 +2371,35 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     }
     if path == "dragpy" {
         return "i:" + gui_dgev_py().to_string()
+    }
+    // GUI-17:绝对指针内建(注入期受控)——permille 相对武装盒在分隔条/窗格
+    // 场景会饱和(盒即非量程),布局拖拽以绝对坐标为值源
+    if path == "mousex" {
+        return "i:" + gui_mouse_x().to_string()
+    }
+    if path == "mousey" {
+        return "i:" + gui_mouse_y().to_string()
+    }
+    // GUI-20:文件拖入内建——droppath=当前文件(setcur 游标),dropn=本次总数
+    // (串产出裸串不打标:i:/b: 是仅有的两种标)
+    if path == "droppath" {
+        return gui_drop_path()
+    }
+    if path == "dropn" {
+        return "i:" + gui_drop_count().to_string()
+    }
+    // GUI-25:canvas 盒几何内建(绘制回调里消费)
+    if path == "canvasx" {
+        return "i:" + gui_canvas_x().to_string()
+    }
+    if path == "canvasy" {
+        return "i:" + gui_canvas_y().to_string()
+    }
+    if path == "canvasw" {
+        return "i:" + gui_canvas_w().to_string()
+    }
+    if path == "canvash" {
+        return "i:" + gui_canvas_h().to_string()
     }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
@@ -2994,8 +3116,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         } else {
             gui_alpha(0)
         }
-        gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
-                2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
+        gui_cfg(0, 0, 0, 0, 1, 1, 2, gt_dim(t, c, "w", "66", bind),
+                2, gt_dim(t, c, "h", "54", bind), bgp)
         var fgs: Str = gt_st_prop(c, "fg", "#ffffff", t, st)
         if dis {
             if gt_cls_prop(c, "disabled_fg", "", t) == "" {
@@ -3077,15 +3199,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             // 变体(switch/radio 裸属性,事件表承载):视觉换装,机制全同——
             // switch=药丸 44x26+旋钮 ● 位置承载态;radio=圆 22x22+●/○;
             // 裸 checkbox=28x28+x 全量原样(s27 站岗)。字形叶字面量直调,
-            // 不经 Str 变量(发射臂分支内 Str 变量 UB 面绕行)
+            // 不经 Str 变量(发射臂分支内 Str 变量 UB 面绕行);几何走
+            // gt_dim 值驱动宽(GUI-16 地基,merge 采主仓口径)
             var is_sw: Bool = rt_has_mark(t, id, "switch")
             var is_rd: Bool = rt_has_mark(t, id, "radio")
-            var cbw: I32 = gs2i(gt_cls_prop(c, "w", "28", t))
-            var cbh: I32 = gs2i(gt_cls_prop(c, "h", "28", t))
+            var cbw: I32 = gs2i(gt_dim(t, c, "w", "28", bind))
+            var cbh: I32 = gs2i(gt_dim(t, c, "h", "28", bind))
             var cax: I32 = 1
             if is_sw {
-                cbw = gs2i(gt_cls_prop(c, "w", "44", t))
-                cbh = gs2i(gt_cls_prop(c, "h", "26", t))
+                cbw = gs2i(gt_dim(t, c, "w", "44", bind))
+                cbh = gs2i(gt_dim(t, c, "h", "26", bind))
                 gui_radius(cbh / 2)
                 if ck {
                     cax = 2
@@ -3094,8 +3217,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 }
             }
             if is_rd {
-                cbw = gs2i(gt_cls_prop(c, "w", "22", t))
-                cbh = gs2i(gt_cls_prop(c, "h", "22", t))
+                cbw = gs2i(gt_dim(t, c, "w", "22", bind))
+                cbh = gs2i(gt_dim(t, c, "h", "22", bind))
                 gui_radius(cbw / 2)
             }
             gui_cfg(0, 0, 0, 0, cax, 1, 2, cbw,
@@ -3135,7 +3258,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ax = 1
                 }
             }
-            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gs2i(gt_cls_prop(c, "h", "40", t)), 0)
+            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gt_dim(t, c, "h", "40", bind), 0)
             var txt: Str = t.npre[id]
             if t.nbid[id] != "" {
                 if t.nbid[id] == itemvar {
@@ -3163,6 +3286,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var ff2: I32 = gs2i(gt_cls_prop(c, "font_family", "0", t))
             if ff2 < 0 {
                 ff2 = 0
+            }
+            // GUI-22:ellipsis 标记+max_w 预算 → 单行省略(行钳制登记 v2)
+            if gt_cls_prop(c, "ellipsis", "", t) != "" {
+                var mw2: Str = gt_cls_prop(c, "max_w", "", t)
+                if mw2 != "" {
+                    txt = rt_ellipsis(txt, gs2i(mw2), sz, ff2 * 10000 + fw2)
+                }
             }
             gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
@@ -3757,7 +3887,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var hs: Str = gt_cls_prop(c, "h", "", t)
             if hs != "" {
                 hmode = 2
-                hval = gs2i(hs)
+                hval = gt_dim_v(t, hs, bind)
             }
             var bgp2: I32 = 0
             var bgv2: Str = gt_st_prop(c, "bg", "", t, st)
@@ -3780,6 +3910,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if bgv2 != "" {
                 hits.push(id)
                 hinst.push(inst)
+            }
+            // GUI-25:canvas 标记容器——节点 id 存槽(盒几何循环层自 rects 取)
+            if gt_cls_prop(c, "canvas", "", t) != "" {
+                gui_canvas_setnode(id)
             }
             if tag == "overlay" {
                 // 波次三(§2.3):浮层容器——Clay floating 全屏附着 zIndex=1;
@@ -4952,10 +5086,11 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     SetConfigFlags(8192)
     InitWindow(w, h, title)
     SetTargetFPS(60)
-    while !WindowShouldClose() {
+    while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
+        rt_canvas_frame(t, rects, hits, bind, act)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
@@ -4982,6 +5117,9 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         }
         if evt == 5 {
             rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
         }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
@@ -5127,10 +5265,11 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     InitWindow(w, h, title)
     SetTargetFPS(60)
     var frames: I32 = 0
-    while !WindowShouldClose() {
+    while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
+        rt_canvas_frame(t, rects, hits, bind, act)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -5180,6 +5319,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         }
         if evt == 5 {
             rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
         }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
@@ -5695,6 +5837,53 @@ pub fn d_drag(t: Box[Driver], x1: I32, y: I32, x2: I32, bind: fn(List[Str]) -> V
     return 0
 }
 
+// 垂直拖拽(headless):x 固定,y1→y2;两帧口径与 d_drag 同源(GUI-17 分隔条)
+pub fn d_dragv(t: Box[Driver], x: I32, y1: I32, y2: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var fn0: I32 = rt_hover_node(rc2, t.hits, x, y1)
+    if fn0 < 0 {
+        panic("gui test: 拖拽起点未命中")
+        return -1
+    }
+    var de: Str = rt_in_expr(t.t, fn0, "drag")
+    if de == "" {
+        panic("gui test: 元素无 on:drag node=" + fn0.to_string() + " tag=" + t.t.ntag[fn0])
+        return -1
+    }
+    var bi: I32 = rt_node_box(rc2, t.hits, fn0)
+    if bi < 0 {
+        panic("gui test: 拖拽元素无盒")
+        return -1
+    }
+    gui_mouse_override(x, y1)
+    gui_dgev_begin(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    gui_dgev_setnode(fn0)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_override(x, y2)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_clear()
+    gui_dgev_end()
+    return 0
+}
+
+// 文件拖入(headless):paths 填 C 槽后直触 rt_drop_fire(真窗经 evt=6 分发;
+// GUI-20 测试缝)
+pub fn d_drop(t: Box[Driver], paths: List[Str], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_drop_begin()
+    var i: I32 = 0
+    while i < paths.len {
+        gui_drop_add(paths[i])
+        i += 1
+    }
+    if rt_drop_fire(t.t, bind, act) == 0 {
+        panic("gui test: 根元素无 on:drop")
+        return -1
+    }
+    return gui_drop_count()
+}
+
 // 双击(headless):两击同位注入;返回元素 on:dblclick 处理头名(夹具 act 自
 // 分发,与 d_click 同模式;真窗单双击聚类在循环 gui_click_kind)
 pub fn d_dblclick(t: Box[Driver], name: Str) -> Str {
@@ -5904,6 +6093,69 @@ pub fn d_cmd_bg_a(i: I32) -> I32 {
     return gui_cmd_bg_a(i)
 }
 
+// GUI-23:链接动作面——应用 on:click 内调 open_link;headless 槽记录,
+// d_open_url 断言回收(真窗直 raylib OpenURL)
+pub fn open_link(url: Str) -> I32 {
+    return gui_open_url(url)
+}
+
+pub fn d_open_url() -> Str {
+    return gui_open_url_last()
+}
+
+// GUI-24:窗口操作面——1=fullscreen 2=maximize 3=minimize 4=restore
+// 5=undecorated 6=bordered(headless 记录槽,真窗 raylib 生效;图标待图像管线)
+pub fn win_op(op: I32) -> I32 {
+    return gui_win_op(op)
+}
+
+pub fn d_win_op_last() -> I32 {
+    return gui_win_op_last()
+}
+
+// 窗口图标(headless 记录槽,真窗 LoadImage+SetWindowIcon)
+pub fn win_icon(path: Str) -> I32 {
+    return gui_win_icon(path)
+}
+
+pub fn d_win_icon_last() -> Str {
+    return gui_win_icon_last()
+}
+
+// GUI-24 headless 驱动:模拟关闭请求——根有 on:close 则 fire(拦截语义,
+// 脚本继续即「未退出」)返回 1;无声明 panic(真窗此时会退出)
+pub fn d_close_req(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t.t, gui_root_id(t.t), "close")
+    if ce == "" {
+        panic("gui test: 根元素无 on:close")
+        return 0
+    }
+    ev_fire(t.t, ce, bind, act)
+    return 1
+}
+
+// GUI-25 headless 驱动:手动触发绘制帧(清点槽→同步盒→fire on:draw)
+pub fn d_draw(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_px_clear()
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    return rt_canvas_frame(t.t, rc2, t.hits, bind, act)
+}
+
+pub fn d_px_n() -> I32 {
+    return gui_px_n()
+}
+
+pub fn d_px_at(i: I32, comp: I32) -> I32 {
+    return gui_px_at(i, comp)
+}
+
+// 绘制原语(应用 on:draw 回调内调;坐标相对 canvas 盒)
+pub fn canvas_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32 {
+    return gui_px(x, y, r, g, b)
+}
+
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
 pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
     var n: I32 = gui_cmd_count()
@@ -6049,6 +6301,91 @@ fn rt_dgev_frame(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
     var de: Str = rt_in_expr(t, node, "drag")
     if de != "" {
         ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-20:文件拖入触发(窗口级事件,on:drop 声明在根元素)——逐文件 fire,
+// droppath 内建随 setcur 游标走,dropn=本次总数
+fn rt_drop_fire(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var de: Str = rt_in_expr(t, gui_root_id(t), "drop")
+    if de == "" {
+        return 0
+    }
+    var n: I32 = gui_drop_count()
+    var i: I32 = 0
+    while i < n {
+        gui_drop_setcur(i)
+        ev_fire(t, de, bind, act)
+        i += 1
+    }
+    return 1
+}
+
+// GUI-22:文本测量(直调 ft 实测;-1=无字体/FT_OFF 回启发式字节式)
+fn rt_meas_w(s: Str, px: I32, wt: I32) -> I32 {
+    var wi: I32 = gui_ft_measure_n_wt(s, s.len, px, wt, 0)
+    if wi >= 0 {
+        return wi
+    }
+    return s.len * px * 55 / 100
+}
+
+// GUI-22:单行省略——超 maxw 预算逐码点截断+…(切点只在 UTF-8 首字节;
+// 测量轮直调,启发式回退与黄金口径同式)
+fn rt_ellipsis(s: Str, maxw: I32, px: I32, wt: I32) -> Str {
+    if maxw <= 0 {
+        return s
+    }
+    var ew: I32 = rt_meas_w("…", px, wt)
+    if rt_meas_w(s, px, wt) + ew <= maxw {
+        return s
+    }
+    var cut: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b / 64 != 2 {
+            if rt_meas_w(byte_slice(s, 0, i), px, wt) + ew > maxw {
+                break
+            }
+            cut = i
+        }
+        i += 1
+    }
+    return byte_slice(s, 0, cut) + "…"
+}
+
+// GUI-25:canvas 绘制帧——盒几何自 rects 同步+on:draw fire(真窗每帧;
+// headless 经 d_draw 驱动)
+fn rt_canvas_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var node: I32 = gui_canvas_node()
+    if node < 0 {
+        return 0
+    }
+    var bi: I32 = rt_node_box(rects, hits, node)
+    if bi >= 0 {
+        gui_canvas_setbox(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    }
+    var de: Str = rt_in_expr(t, node, "draw")
+    if de != "" {
+        ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧
+// 吞掉转事件(应用定去留),返回 1 续跑;无声明保持原语义(退出返 0)
+fn rt_close_check(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t, gui_root_id(t), "close")
+    if ce != "" {
+        if gui_win_close_req() == 1 {
+            ev_fire(t, ce, bind, act)
+        }
+        return 1
+    }
+    if WindowShouldClose() {
+        return 0
     }
     return 1
 }

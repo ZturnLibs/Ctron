@@ -1,0 +1,14 @@
+// tests/gui/s60_link —— GUI-23 链接 OpenURL:链接=link 样式按钮+on:click
+// (act 内 open_link;headless 记录槽 d_open_url 回收断言,真窗 raylib OpenURL)
+view Root {
+  <vbox class="root">
+    <label class="title">文档</label>
+    <button class="lk" on:click={open_docs}>打开在线文档</button>
+    <button class="lk" on:click={open_repo}>仓库主页</button>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style title { fg: TEXT size: 16 h: 24 }
+style lk { h: 26 bg: SURFACE fg: "#3b82f6" }
+style state { fg: "#22c55e" h: 22 }
