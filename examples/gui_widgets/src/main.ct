@@ -21,6 +21,7 @@ struct Model {
     var m2c: Str
     var selhi: I32
     var pval: I32
+    var pw: I32
     var tcur: I32
     var accopen: Bool
     var toast_at: I32
@@ -52,7 +53,8 @@ fn track_xy(out: List[I32]) -> I32 {
         if d_cmd_type(i) == 2 {
             // spacer=全宽分隔线语义(w 不消费,实测 328x8);以 h=8 特征寻轨
             if d_cmd_h100(i) == 800 {
-                if d_cmd_w100(i) > 30000 {
+                // GUI-16 统一语义:spacer 轨道 w:220 旧忽略恒 GROW,现 FIXED 220
+                if d_cmd_w100(i) > 20000 {
                     out.push(d_cmd_x100(i) / 100 + 30)
                     out.push(d_cmd_y100(i) / 100 + 4)
                     return 0
@@ -289,6 +291,8 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
             pv = 100
         }
         m.pval = pv
+        // v2 连续条:fill 宽 = 百分比 × 200 轨道(px)
+        m.pw = pv * 2
         return
     }
 }
@@ -451,23 +455,11 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
             buf.push("李四 · 28")
         }
     }
-    if buf[0] == "pbar" {
-        // 分段条:10 格,█=已填 ░=未填(值驱动宽 GUI-16 前的 v1 折衷)
-        var filled: I32 = m.pval / 10
-        var bar: Str = ""
-        var i9: I32 = 0
-        while i9 < 10 {
-            if i9 < filled {
-                bar = bar + "█"
-            } else {
-                bar = bar + "░"
-            }
-            i9 += 1
-        }
-        buf.push(bar)
-    }
     if buf[0] == "pct" {
         buf.push(m.pval.to_string())
+    }
+    if buf[0] == "m.pw" {
+        buf.push(m.pw.to_string())
     }
 }
 
@@ -547,7 +539,7 @@ fn main() -> I32 {
     gui_hotkey("mod+shift+z", "redo")
     gui_hotkey("mod+x", "cut")
     gui_hotkey("mod+c", "copy")
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, tcur: 0, accopen: false, toast_at: 0, toast_msg: "", pval: 0, edopen: false, e3hi: 0 })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, tcur: 0, accopen: false, toast_at: 0, toast_msg: "", pval: 0, pw: 0, edopen: false, e3hi: 0 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -674,22 +666,42 @@ fn main() -> I32 {
             // 轨道矩形运行时扫描(w=220 特征),坐标免布局估计
             var txy = List[I32]()
             track_xy(txy)
-            d_drag(t, txy[0], txy[1], txy[0] + 110, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // 轨道 FIXED 220(GUI-16 统一语义):txy[0]=轨左+30,终点 +80
+            // = 轨内 110px = 500‰ → 50
+            d_drag(t, txy[0], txy[1], txy[0] + 80, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "42")
-            // ===== Progress(v1 分段折衷,GUI-11) =====
-            // prog_set 千分比 → 百分比;分段条 10 格 █/░ + 数值叶
+            d_expect_text(t, "50")
+            // ===== Progress(v2 连续条,GUI-16 完整面) =====
+            // prog_set 千分比 → 百分比;fill 宽 = 百分比×2 px(轨道 200)
             var pargs = List[Str]()
             pargs.push("i:500")
             actc("prog_set", pargs)
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "█████░░░░░")
             d_expect_text(t, "50")
+            // fill 寻址:轨道/fill 均 h10(h100==1000),50% 时 w100==10000 唯一
+            var pfi: I32 = -1
+            var ci5: I32 = 0
+            while ci5 < d_cmd_count() {
+                if d_cmd_type(ci5) == 2 {
+                    if d_cmd_h100(ci5) == 1000 {
+                        if d_cmd_w100(ci5) == 10000 {
+                            pfi = ci5
+                            ci5 = d_cmd_count()
+                        }
+                    }
+                }
+                ci5 += 1
+            }
+            if pfi < 0 {
+                panic("widgets: progress fill 未现")
+            }
             var pargs2 = List[Str]()
             pargs2.push("i:1000")
             actc("prog_set", pargs2)
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "██████████")
+            if d_cmd_w100(pfi) != 20000 {
+                panic("widgets: fill 100% 未生效 w100=" + d_cmd_w100(pfi).to_string())
+            }
             // 超界钳位:200% → 100%
             var pargs3 = List[Str]()
             pargs3.push("i:2000")

@@ -14,7 +14,7 @@ view SizeDemo {
 style root { direction: column gap: 8 padding: 16 }
 style mx { bg: "#2f9e63" max_w: 80 h: 30 }
 style mh { bg: "#2563eb" min_h: 60 w: 50 }
-style free { bg: "#c83c3c" w: 40 h: 20 }
+style free { bg: "#c83c3c" h: 20 }
 
 fn bind_noop(buf: List[Str]) {
 }
@@ -71,7 +71,8 @@ fn main() -> I32 {
             if fi < 0 {
                 panic("s37: free #c83c3c 未现")
             }
-            // 容器宽度存量口径 = grow(288);w 样式对容器不生效(zitie 同款事实)
+            // 容器宽度统一语义(GUI-16 完整面):无 w 容器维持 GROW(288);
+            // w 在(裸词/引号串)即 FIXED——正例归 s72_contw
             if d_cmd_w100(fi) != 28800 {
                 panic("s37: 无约束 w 受扰 w100=" + d_cmd_w100(fi).to_string())
             }

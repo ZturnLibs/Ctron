@@ -157,7 +157,9 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
   可见消费者=光标闪烁——**仅注入时钟激活**(d_tick 确定性口径),真窗常亮至 P2 转正。
 - **尺寸约束**:容器样式 `min_w/max_w/min_h/max_h`——max=钳制填充(GROW{min,max}),
   min=托底 hug(FIT{min,∞});装包 min*100000+max(min<21000/max<100000);
-  容器宽度存量口径 = grow(w 样式对容器不生效,zitie 同款事实)。
+  容器宽度统一语义(GUI-16 完整面):`w` 在(裸词字面/引号串 "{expr}" 逐帧)
+  即 FIXED,不写维持 GROW;scroll/overlay 豁免(宽=父宽);与 min/max_w 同现
+  时 w 胜。引号串求值每帧重放不进折叠缓存(缓存存原文)。
 - **快捷键表**:`gui_hotkey("mod+s", "save")` 注册(run 前任意时机),mods 位
   1=ctrl/cmd 2=shift 4=alt;事件路由链=焦点编辑键 > 模态 Esc/吞 > **快捷键表** >
   key 闭包;未中回落。菜单加速器显示随组件波次。

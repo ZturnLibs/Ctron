@@ -4284,6 +4284,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var mnw: Str = gt_cls_prop(c, "min_w", "", t)
                 var mmh: Str = gt_cls_prop(c, "max_h", "", t)
                 var mnh: Str = gt_cls_prop(c, "min_h", "", t)
+                // GUI-16 完整面:容器宽统一语义——w 在(裸词字面/引号串逐帧)即
+                // FIXED;不写维持 GROW(存量口径);scroll/overlay 豁免(裁决②)。
+                // w 与 min/max_w 同现时 w 胜(FIXED=显式意图)
+                var cwv: Str = gt_cls_prop(c, "w", "", t)
+                var cwm: I32 = 1
+                var cwvl: I32 = 0
+                if cwv != "" {
+                    cwm = 2
+                    cwvl = gt_dim_v(t, cwv, bind)
+                }
                 if mmw != "" {
                     // max_w 在:宽 GROW{min,max} 钳制;高按其自身约束
                     var mn2: I32 = 0
@@ -4309,22 +4319,34 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             hv3 = 0
                         }
                     }
-                    gui_cfg3(dir, gap, pad, pad, 0, 0, 3, 0, h3, hv3, bgp2, wmm, hmm2)
+                    if cwm == 2 {
+                        gui_cfg3(dir, gap, pad, pad, 0, 0, 2, cwvl, h3, hv3, bgp2, 0, hmm2)
+                    } else {
+                        gui_cfg3(dir, gap, pad, pad, 0, 0, 3, 0, h3, hv3, bgp2, wmm, hmm2)
+                    }
                 } else {
                     if mnh != "" {
                         // 仅 min_h:高 FIT{min,∞} 托底
                         var hv4: I32 = gs2i(mnh) * 100000 + 32000
-                        gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 4, 0, bgp2, 0, hv4)
+                        if cwm == 2 {
+                            gui_cfg3(dir, gap, pad, pad, 0, 0, 2, cwvl, 4, 0, bgp2, 0, hv4)
+                        } else {
+                            gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 4, 0, bgp2, 0, hv4)
+                        }
                     } else {
                         if mmh != "" {
                             // 仅 max_h:高 GROW{0,max} 钳制
-                            gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 3, 0, bgp2, 0, gs2i(mmh))
+                            if cwm == 2 {
+                                gui_cfg3(dir, gap, pad, pad, 0, 0, 2, cwvl, 3, 0, bgp2, 0, gs2i(mmh))
+                            } else {
+                                gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 3, 0, bgp2, 0, gs2i(mmh))
+                            }
                         } else {
                             // GUI-21:scroll 标记容器——clip 裁剪+偏移位移(virtual each 配方基座)
                             if gt_cls_prop(c, "scroll", "", t) != "" {
                                 gui_cfg2(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2, 1, gui_scroll_off())
                             } else {
-                                gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+                                gui_cfg(dir, gap, pad, pad, 0, 0, cwm, cwvl, hmode, hval, bgp2)
                             }
                         }
                     }

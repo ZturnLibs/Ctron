@@ -88,7 +88,9 @@ view MultiList (title: Str) {
 // bind 组装块字符条(█/░×10)+ 百分比叶,固定宽不依赖逐帧宽求值
 view Progress {
   <vbox class="w-prog">
-    <label class="w-pbar">{pbar}</label>
+    <hbox class="w-ptk">
+      <hbox class="w-pfl"/>
+    </hbox>
     <label class="w-pct">{pct}</label>
   </vbox>
 }
@@ -219,13 +221,14 @@ style w-thead { direction: row gap: 24 }
 style w-th { fg: TEXT_MUTED size: 13 w: 90 h: 22 }
 style w-tr { bg: SURFACE fg: TEXT w: 200 h: 26 }
 style w-div { h: 2 w: 200 bg: BORDER }
-style w-card2 { bg: ELEVATED w: 220 h: 60 }
+style w-card2 { bg: ELEVATED h: 60 }
 style w-ct { fg: TEXT size: 13 h: 20 }
 style w-slider { direction: column gap: 4 }
 style w-track { h: 8 w: 220 bg: BORDER }
 style w-val { fg: TEXT_MUTED size: 13 h: 20 }
 style w-prog { direction: column gap: 4 }
-style w-pbar { fg: ACCENT size: 16 h: 24 }
+style w-ptk { direction: column w: 200 h: 10 bg: DISABLED_BG }
+style w-pfl { direction: column w: "{m.pw}" h: 10 bg: ACCENT }
 style w-pct { fg: TEXT_MUTED size: 13 h: 20 }
 style w-tabs { direction: column gap: 4 }
 style w-tabrow { direction: row gap: 6 }
