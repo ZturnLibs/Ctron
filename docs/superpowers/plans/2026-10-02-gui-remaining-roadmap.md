@@ -35,10 +35,10 @@
 
 ## C 档:引擎能力缝(小改动,解锁多组件)
 
-- **GUI-13 表达式下标与字符串切分**——`items[i]` 下标 + 切分内建;解锁 Table 多列、多选集解析、字符串处理族(规格多处以"前置"引用)。
-- **GUI-14 程序化 focus() / scroll_into_view**——焦点原语开放给 view 层(解除 §7 宪法例外;表单提交后聚焦/错误行滚动可见)。
-- **GUI-15 用户级 on:after 定时事件**——tick 原语 → 事件通道(防抖/延迟动作/toast 地基)。
-- **GUI-16 值驱动宽高**——`w: {expr}` 逐帧求值(绕过样式折叠缓存的设计案);解锁 progress/fill/环形。
+- **GUI-13 表达式下标与字符串切分**——✅ 1003 9ded6221:`items[i]` 下标(each: 通道路由+组件 env List 前置)+内建四件 cut/fld/sethas/contains+bxv 全家族 itemvar/item 穿参+检查面 E8195 形态门;s57+e8195 语料。Table 多列/多选集解析/字符串族解锁落地。
+- **GUI-14 程序化 focus() / scroll_into_view**——✅ 1003 2f226fe8:gui_focus_req(name)/gui_scroll_req(name)/gui_scroll_to(px) 三原语(API 面,零新属性;emit 期消费/collect 期钳位/一次性帧末过期);s70 六段。§7 例外以「运行时本地态按名寻址」解除。
+- **GUI-15 用户级 on:after 定时事件**——✅ 1003 1350a3a8:on:after="ms:handler" 引号串事件(元素存活域一次性+on:input 重臂防抖+隐灶不燃);解析三面引号通道;d_after_pump 显式泵/d_tick 确定性;s71 六段。toast/延迟动作/防抖地基落地。
+- **GUI-16 值驱动宽高**——**v1 已随 1003 2b3176ea 落地**(w:/h: "{expr}" 引号串载体逐帧求值,元素面);本档余留=完整面:容器宽消费(s37「容器宽恒 GROW」存量口径站岗,破坏性语义变更需裁决)+样式折叠缓存交互(gt_dim_v 已逐帧绕缓存,完整面待定缓存契约)。设计案另册待裁决。
 
 ## D 档:P2 B 档(各自独立,中等工作量)——✅ 1003 十条全落库
 
