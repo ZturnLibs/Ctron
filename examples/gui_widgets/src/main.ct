@@ -19,6 +19,7 @@ struct Model {
     var m2a: Str
     var m2b: Str
     var m2c: Str
+    var selhi: I32
 }
 
 fn sel_toggle() {
@@ -78,6 +79,7 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
     if name == "sel_pick" {
         m.selopen = false
         m.picked = "Ctron"
+        m.selhi = 0
         m.state = "已选"
     }
     if name == "list_pick" {
@@ -204,9 +206,21 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
         buf.push(m.state)
     }
     if buf[0] == "each:opts" {
-        buf.push("Ctron")
-        buf.push("raylib")
-        buf.push("Clay")
+        if m.selhi == 0 {
+            buf.push("> Ctron")
+        } else {
+            buf.push("Ctron")
+        }
+        if m.selhi == 1 {
+            buf.push("> raylib")
+        } else {
+            buf.push("raylib")
+        }
+        if m.selhi == 2 {
+            buf.push("> Clay")
+        } else {
+            buf.push("Clay")
+        }
     }
     if buf[0] == "each:items" {
         buf.push("写发布说明")
@@ -261,8 +275,41 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
     }
 }
 
-// 键 1/2 切主题(应用侧演示;陈列室不内置快捷键合约)
+// 键 1/2 切主题 + select 键盘导航(selopen 时:↓↑ 移高亮/Enter 选取/Esc 关)
 fn apply_key(k: I32, m: Box[Model]) {
+    if m.selopen {
+        if k == 265 {
+            if m.selhi > 0 {
+                m.selhi = m.selhi - 1
+            }
+            return
+        }
+        if k == 264 {
+            if m.selhi < 2 {
+                m.selhi = m.selhi + 1
+            }
+            return
+        }
+        if k == 257 {
+            m.selopen = false
+            if m.selhi == 0 {
+                m.picked = "Ctron"
+            } else {
+                if m.selhi == 1 {
+                    m.picked = "raylib"
+                } else {
+                    m.picked = "Clay"
+                }
+            }
+            m.state = "键盘已选"
+            return
+        }
+        if k == 256 {
+            m.selopen = false
+            m.state = "选择已取消"
+            return
+        }
+    }
     if k == 49 {
         theme_apply(theme_dark())
         m.dark = true
@@ -276,7 +323,7 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "" })
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -306,6 +353,26 @@ fn main() -> I32 {
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_absent(t, "raylib")
             d_expect_text(t, "已选")
+            // ===== select 键盘导航(↓↑ 移高亮/Enter 选取/Esc 关) =====
+            actc(d_click(t, "sel_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "Ctron")
+            k2(d_press_key(t, 264))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> raylib")
+            k2(d_press_key(t, 264))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> Clay")
+            k2(d_press_key(t, 257))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "> Clay")
+            d_expect_text(t, "Clay")
+            d_expect_text(t, "键盘已选")
+            actc(d_click(t, "sel_toggle"), List[Str]())
+            k2(d_press_key(t, 256))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "> Ctron")
+            d_expect_text(t, "选择已取消")
             // 模态:开 → 取消按钮 → 已取消;再开 → 确认按钮 → 已确认;
             // 遮罩/Esc 关 = 已关闭(遮罩)
             actc("dialog_open", List[Str]())
