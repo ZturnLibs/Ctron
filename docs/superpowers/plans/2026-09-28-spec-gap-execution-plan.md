@@ -396,6 +396,16 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 > sb 扫描即 churn 主病灶。S2=精确帧链根集(槽注册制)施工中。坑位新增:①native.sh
 > 不重拼接+管道尾 $? 假 0——改 src 后必须 build.sh→native.sh 裸跑看真 RC;②用户程序
 > 面 or2 无定义发射(t_or2 未声明)——测试程序用双 if 规避。
+>
+> **S2 ✅ M1.5 精确帧根集落库(2026-10-02,分支 t31-m15)**:槽注册制编码(契约 §6.3
+> 实施注已补)——帧内联定长池 pool[32]+__thread ct_fp+cleanup 尾声+longjmp 落点复位;
+> 六类帧宿主+绑定位注册+实参 ANF 提升;unbox 拷贝免注册。**gc/run 9/9 三档(新增
+> precise-only=CONSERV=0 纯精确档全绿=M1.5 主证)**;suite 99/99+net 18/18+smoke
+> 160/3(3 红=同伴在册债)+bench 1.000+**A/B 帧税 +3.4%**。known-limitation:循环体
+> gc-let→池递增→ovf 保守回退(健全);**a_jwt 红账未解锁(interp 臂主体驻 bump,
+> 全解=S4 分配位点翻面)**;池界重置+vtable 等实参面 ANF 化=后续件。坑位续增:
+> `\}` E1001 四连踩(闭括号恒裸写);nline(st) 末槽=行戳仅语句节点有(For 末槽=体,
+> byte_at(List) 炸)——池式注册已废除后缀。
 
 ### T32 · GC 性能门禁 ≤15%(§9.4)
 
