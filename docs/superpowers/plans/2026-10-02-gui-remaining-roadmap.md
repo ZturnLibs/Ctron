@@ -1,10 +1,10 @@
 # GUI 剩余工作完整清单(按优先级,逐条可执行)
 
-> 2026-10-02 基线。前置已销账:输入体验全集、交互缝四件、拖拽缝+Slider、
-> 组件嵌套 props、作用域 env、MenuBar v2、select 键盘导航、多选 list、
-> input 变体、macOS 观感+DPI、MenuBar/Table/List/Select/Dialog/WList 组件、
-> 数据面修复(浮条配对/作用域 env)。六红(s33/34/36/38/43/44)为发射泳道
-> 红账,不在本清单。
+> 2026-10-02 基线,1003 全面收官:A/B/C/D 档全清+v2 尾巴(GUI-21/22)+E 档
+> (GUI-28/29)+六红清零(ebebfc7f 发射三缝:env 先行判别/蹦床 void+B: 臂/s33
+> 名通道契约;阶梯 82 过 0 败=历史首次全绿);GUI-25 真窗手验通过(fb7d4289)。
+> 残余=F 档裁决件、G 档远期、GUI-27 组件跨文件导入(排期靠后)、typed-props
+> 组件实参(cf2132cf 登记)。
 
 ## A 档:P1 组件尾巴(纯组合件,可立即动工;每项 0.5 天内)——✅ 2026-10-03 全档销账
 > 九条全落库(gui-a-tail 分支,夹具 s66_cbx_var/s67_comp_a/s68_menu_acc+陈列室):
@@ -46,19 +46,19 @@
 - **GUI-18 tree 组件**——✅ 1003 6bdfc813:扁平表配方(应用侧可见集重算+缩进/▸▾ 前缀),点击经实例后缀定位(s56);递归 view 形态依赖下标表达式留 v2。
 - **GUI-19 combobox**——✅ 1003 03859b7e:输入即开(on:input 过滤+下拉同帧)+overlay 下拉+点选填入(s59);过滤谓词应用侧手写(GUI-13 落库可换 contains)。
 - **GUI-20 OS 文件拖入**——✅ 1003 ffa4acd1:窗口级 on:drop(事件码 6,IsFileDropped 轮询+IsWindowReady 门),逐文件 fire+droppath/dropn 内建;headless d_drop(s61)。
-- **GUI-21 虚拟化长列表**——✅ 1003 718db27b(6663cf9b 改号 s69):scroll 标记容器(gui_cfg2 clip+偏移槽)进共享运行时+可见窗口配方(bind 只组装窗口行,前占位+总高 O(1));overscan/virtual each 标签形态留 v2。
-- **GUI-22 文本 ellipsis/行钳制**——✅ 1003 b638b4f4:label ellipsis+max_w 预算,rt_meas_w 直调 ft 实测(FT_OFF 回启发式)+逐码点截断(s63);行钳制(maxlines)留 v2。
+- **GUI-21 虚拟化长列表**——✅ 1003 718db27b(6663cf9b 改号 s69):scroll 标记容器(gui_cfg2 clip+偏移槽)进共享运行时+可见窗口配方(bind 只组装窗口行,前占位+总高 O(1));**v2 ✅ 1003 c7f22a47:virtual each 标签形态**(each class virtual:N+运行时窗口,固定 overscan 2,合成占位空盒;itemvar/实例下标窗内保真;视口外 overscan 行 Clay 剔除=可观测契约;s76)。
+- **GUI-22 文本 ellipsis/行钳制**——✅ 1003 b638b4f4:label ellipsis+max_w 预算,rt_meas_w 直调 ft 实测(FT_OFF 回启发式)+逐码点截断(s63);**v2 ✅ 1003 2401107a:maxlines 行钳制**(label maxlines:N 串级行钳+尾行省略;多行布局=Clay 原生 \n 拆行,ft 侧零改动——\n 化 measure/raster 曾致 s51 黄金度量回归已回退;s75)。
 - **GUI-23 链接 OpenURL**——✅ 1003 ffa4acd1:link 样式按钮 on:click 内 open_link(headless 记录槽 d_open_url 断言,真窗 raylib OpenURL)(s60)。
 - **GUI-24 窗口级 API**——✅ 1003 a21734e0:关闭拦截(根 on:close+glfw flag 复位吞请求)+win_op 编码面(fullscreen/max/min/restore/undecorated/bordered)+win_icon(s62);真窗拦截语义待 --run 手验。
-- **GUI-25 canvas 树内整合**——✅ 1003 b92f8ea2:canvas 标记属性容器(零新标签)+每帧 on:draw(rt_canvas_frame)+canvas_px 绘制原语(headless 记录槽)(s65);真窗直绘待 --run 手验。
-- **GUI-26 grid 布局**——✅ 1003 37f76691:核查结论=Clay v0.14 无 Grid API(升级牵连黄金金值,登记裁决项);v1=GROW 均分网格行配方(hbox 多 GROW 子自动等宽,s64);多列数据驱动依赖 GUI-13 下标留 v2。
+- **GUI-25 canvas 树内整合**——✅ 1003 b92f8ea2:canvas 标记属性容器(零新标签)+每帧 on:draw(rt_canvas_frame)+canvas_px 绘制原语(headless 记录槽)(s65);**真窗直绘 ✅ 1003 fb7d4289 手验通过**(双层遮挡修复:fire 移绘制相 flush 后——帧头 fire 被 clear 抹、flush 前 fire 被盒背景盖;真窗截图像素实证;连带登记两条编译债:顶层可变全局 var 双驱 SIGSEGV/Box 字段复合赋值发射 panic)。
+- **GUI-26 grid 布局**——✅ 1003 37f76691:核查结论=Clay v0.14 无 Grid API(升级牵连黄金金值,登记裁决项);v1=GROW 均分网格行配方(hbox 多 GROW 子自动等宽,s64);**多列数据驱动 ✅ 1003 对端 15ecef4f(grid each+下标实参)+dd0d3cbd(Table 多列+按钮带子树)**。
 - 附带:**GUI-16 值驱动宽高最小面**(1003 2b3176ea)随 GUI-17 落地——`w:/h: "{expr}"` 逐帧求值(gt_dim/gt_dim_v,引号串载体);容器 w 消费因 s37 存量口径站岗撤销,完整面(容器宽+样式折叠缓存)仍是 C 档议题。
 
 ## E 档:跨泳道(GUI 需求,编译/构建面执行,需协调)
 
 - **GUI-27 组件跨文件 view 导入**——最大痛点:组件现只能同文件声明;编译面 view 导入(多次登记,需与发射泳道排期)。
-- **GUI-28 ctcl gui.entry 烘焙**(J18)——UI 入口声明进包清单,构建期烘焙默认锚。
-- **GUI-29 ctc 自动链接 + `ctc new --gui` 脚手架**(J19-④⑤)——30 行链接咒语从示例消失。
+- **GUI-28 ctcl gui.entry 烘焙**(J18)——✅ 1003 09232060:清单 gui 节 entry 键→emit 期烘焙 ctron_gui_entry 常量(新内建四注册面;无清单恒 app.ctml 零迁移);gui.ct 四消费点(锚读取+热重载监视);s73 三缝断言。
+- **GUI-29 ctc 自动链接 + `ctc new --gui` 脚手架**(J19-④⑤)——✅ 1003 09232060:dependencies.gui 探测→自动链接 vendored 全套(awk END-exit 覆盖坑=found 标志);ctc new <dir> --gui 双路模板;gui_calc run.sh 咒语吸收为零细节消费示范;s74 e2e。
 
 ## F 档:待用户裁决(不裁决不动)
 
