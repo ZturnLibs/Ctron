@@ -1,0 +1,156 @@
+// tests/gui/s75_maxlines —— GUI-22 v2:maxlines 行钳制 headless 验收
+// 四段:①3 行钳 2=截断+尾行省略(A\nB…)②行数未超=原样 ③无 maxlines=\n
+// 多行自然渲染(全量)④maxlines:0=透传(负例锚)。断言面=TEXT 命令字节
+// (d_cmd_text_byte 逐字节;钳制发生在 rt_emit 文本通道,命令串即钳制结果)。
+use gui.{test, d_frame, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte}
+
+struct Model {
+    var t1: Str
+    var t2: Str
+    var t3: Str
+    var t4: Str
+}
+
+fn make() -> Model {
+    return Model { t1: "A\nB\nC", t2: "A\nB", t3: "A\nB\nC", t4: "X\nY" }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "t1" {
+        buf.push(m.t1)
+    }
+    if buf[0] == "t2" {
+        buf.push(m.t2)
+    }
+    if buf[0] == "t3" {
+        buf.push(m.t3)
+    }
+    if buf[0] == "t4" {
+        buf.push(m.t4)
+    }
+}
+
+// 第 k 个 TEXT 命令下标(type==1;k 从 0 起)-1=不足
+fn text_cmd(k: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var seen: I32 = 0
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if seen == k {
+                return i
+            }
+            seen += 1
+        }
+        i += 1
+    }
+    return -1
+}
+
+// TEXT 命令字节逐位比对(期望表逐项核对,长度先钳)
+fn eq_text(i: I32, b0: I32, b1: I32, b2: I32, b3: I32, b4: I32, b5: I32, wantlen: I32) -> Str {
+    if i < 0 {
+        return "cmd 缺席"
+    }
+    if d_cmd_text_len(i) != wantlen {
+        return "长度 " + d_cmd_text_len(i).to_string()
+    }
+    if wantlen > 0 {
+        if d_cmd_text_byte(i, 0) != b0 {
+            return "b0"
+        }
+    }
+    if wantlen > 1 {
+        if d_cmd_text_byte(i, 1) != b1 {
+            return "b1"
+        }
+    }
+    if wantlen > 2 {
+        if d_cmd_text_byte(i, 2) != b2 {
+            return "b2"
+        }
+    }
+    if wantlen > 3 {
+        if d_cmd_text_byte(i, 3) != b3 {
+            return "b3"
+        }
+    }
+    if wantlen > 4 {
+        if d_cmd_text_byte(i, 4) != b4 {
+            return "b4"
+        }
+    }
+    if wantlen > 5 {
+        if d_cmd_text_byte(i, 5) != b5 {
+            return "b5"
+        }
+    }
+    return ""
+}
+
+fn suite() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[Model](make())
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |nm, ar| { },
+        |k| { },
+        |t, act2, key2| {
+            // Clay 按行拆 TEXT 命令:\n 多行文本=逐行命令(顺序=树序)。
+            // ①钳 2 行:A | B…(…=U+2026=226,128,166)
+            var e0: Str = eq_text(text_cmd(0), 65, 0, 0, 0, 0, 0, 1)
+            if e0 != "" {
+                panic("s75: 行1 失证 " + e0)
+            }
+            var e1: Str = eq_text(text_cmd(1), 66, 226, 128, 166, 0, 0, 4)
+            if e1 != "" {
+                panic("s75: 行2 省略失证 " + e1)
+            }
+            // ②行数未超:A | B 原样两行
+            var e2: Str = eq_text(text_cmd(2), 65, 0, 0, 0, 0, 0, 1)
+            if e2 != "" {
+                panic("s75: 未超行1 失证 " + e2)
+            }
+            var e3: Str = eq_text(text_cmd(3), 66, 0, 0, 0, 0, 0, 1)
+            if e3 != "" {
+                panic("s75: 未超行2 失证 " + e3)
+            }
+            // ③无 maxlines:全量三行 A | B | C
+            var e4: Str = eq_text(text_cmd(4), 65, 0, 0, 0, 0, 0, 1)
+            if e4 != "" {
+                panic("s75: 无标记行1 失证 " + e4)
+            }
+            var e5: Str = eq_text(text_cmd(5), 66, 0, 0, 0, 0, 0, 1)
+            if e5 != "" {
+                panic("s75: 无标记行2 失证 " + e5)
+            }
+            var e6: Str = eq_text(text_cmd(6), 67, 0, 0, 0, 0, 0, 1)
+            if e6 != "" {
+                panic("s75: 无标记行3 失证 " + e6)
+            }
+            // ④maxlines:0 透传:X | Y
+            var e7: Str = eq_text(text_cmd(7), 88, 0, 0, 0, 0, 0, 1)
+            if e7 != "" {
+                panic("s75: 零值透传行1 失证 " + e7)
+            }
+            var e8: Str = eq_text(text_cmd(8), 89, 0, 0, 0, 0, 0, 1)
+            if e8 != "" {
+                panic("s75: 零值透传行2 失证 " + e8)
+            }
+            // 二次帧稳定(测量轮/缓存轮同结果)
+            d_frame(t, |buf| bind_all(buf, m))
+            var e9: Str = eq_text(text_cmd(1), 66, 226, 128, 166, 0, 0, 4)
+            if e9 != "" {
+                panic("s75: 二次帧失稳 " + e9)
+            }
+            println("S75-MAXLINES-GREEN")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s75: headless 验收件(真窗面略)")
+    return 0
+}

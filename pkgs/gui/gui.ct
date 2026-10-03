@@ -3674,12 +3674,18 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if ff2 < 0 {
                 ff2 = 0
             }
-            // GUI-22:ellipsis 标记+max_w 预算 → 单行省略(行钳制登记 v2)
+            // GUI-22:ellipsis 标记+max_w 预算 → 单行省略
             if gt_cls_prop(c, "ellipsis", "", t) != "" {
                 var mw2: Str = gt_cls_prop(c, "max_w", "", t)
                 if mw2 != "" {
                     txt = rt_ellipsis(txt, gs2i(mw2), sz, ff2 * 10000 + fw2)
                 }
+            }
+            // GUI-22 v2:maxlines 行钳制——显式 \n 行截 N 行+尾行省略
+            //(先钳行后省略;ellipsis 与 maxlines 同现时按行钳结果测宽)
+            var mlv: Str = gt_cls_prop(c, "maxlines", "", t)
+            if mlv != "" {
+                txt = rt_maxlines(txt, gs2i(mlv))
             }
             gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
@@ -6844,6 +6850,41 @@ fn rt_ellipsis(s: Str, maxw: I32, px: I32, wt: I32) -> Str {
         i += 1
     }
     return byte_slice(s, 0, cut) + "…"
+}
+
+// GUI-22 v2:maxlines 行钳制——按显式 \n 行截前 N 行,截断时尾行收 …;
+// 行源=显式换行(按宽折行属 textarea 折行表面);N<=0 透传(负例锚)
+fn rt_maxlines(s: Str, n: I32) -> Str {
+    if n <= 0 {
+        return s
+    }
+    var out: Str = ""
+    var row: I32 = 0
+    var seg: I32 = 0
+    var i: I32 = 0
+    var truncated: Bool = false
+    while i <= s.len {
+        if i == s.len || byte_at(s, i) == 10 {
+            if row < n {
+                if row > 0 {
+                    out = out + "\n"
+                }
+                out = out + byte_slice(s, seg, i)
+            } else {
+                truncated = true
+            }
+            row += 1
+            seg = i + 1
+            if i == s.len {
+                break
+            }
+        }
+        i += 1
+    }
+    if truncated {
+        out = out + "…"
+    }
+    return out
 }
 
 // GUI-25:canvas 绘制帧——盒几何自 rects 同步+on:draw fire(真窗每帧;

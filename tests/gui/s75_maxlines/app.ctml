@@ -1,0 +1,15 @@
+// tests/gui/s75_maxlines —— GUI-22 v2:maxlines 行钳制(标记属性零新标签;
+// 文本走 bind 通道,\n 在夹具源内以转义产生——ctml 叶内不写裸换行)
+view Root {
+  <vbox class="root">
+    <label class="l1">{t1}</label>
+    <label class="l2">{t2}</label>
+    <label class="l3">{t3}</label>
+    <label class="l4">{t4}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style l1 { fg: "#ffffff" h: 40 maxlines: 2 }
+style l2 { fg: "#ffffff" h: 40 maxlines: 5 }
+style l3 { fg: "#ffffff" h: 60 }
+style l4 { fg: "#ffffff" h: 24 maxlines: 0 }
