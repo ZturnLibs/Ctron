@@ -444,15 +444,16 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
         buf.push(m.m2c + "Go")
     }
     if buf[0] == "each:titems" {
+        // v2 多列:行串 = 名·值(fld 单元格拆列);选中前缀随数据流走
         if m.tsel == 0 {
-            buf.push("> 张三 · 32")
+            buf.push("> az·32")
         } else {
-            buf.push("张三 · 32")
+            buf.push("az·32")
         }
         if m.tsel == 1 {
-            buf.push("> 李四 · 28")
+            buf.push("> bq·28")
         } else {
-            buf.push("李四 · 28")
+            buf.push("bq·28")
         }
     }
     if buf[0] == "pct" {
@@ -639,10 +640,11 @@ fn main() -> I32 {
             actc(d_click(t, "list_sel"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "> 读书")
-            // Table:行点选 → "> " 前缀
+            // Table v2 多列(GUI-13 fld):单元格拆列对齐列头,行点选 → "> " 前缀随名列
             actc(d_click(t, "tab_pick"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "> 张三 · 32")
+            d_expect_text(t, "> az")
+            d_expect_text(t, "32")
             // Divider/Card:渲染存在
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "卡片内容:ELEVATED 包装")
@@ -764,3 +766,5 @@ fn main() -> I32 {
         })
     return rc
 }
+
+
