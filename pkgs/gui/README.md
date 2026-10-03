@@ -126,7 +126,10 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
   - `Dialog`(when+overlay 模态+遮罩 close;键盘模态链 Esc 关)。
   事件头=组件合约,应用侧按头实现即接;列表 props 经同名 `each:名` bind 通道透传。
 - **组件×each**:each 内组件实例,实参引用迭代变量(`name: {u}`)走展开期 itemvar 直取。
-- 已知限:组件内 when/each 可用;跨文件分发(view 导入)与 dialog 内容投影待后续。
+- 已知限:组件内 when/each 可用;跨文件分发(view 导入)与 dialog 内容投影待后续;
+  **按钮带子树**(多列单元格行/图标按钮,v2 表格消费);**递归 view** 可用
+  (view 自调用+串深终止,s73 探针)——真递归 tree 阻在 typed-props:组件实参
+  纯串通道不过 struct(自引用 struct 本体 chk/emit 双臂已证绿,缺口在通道)。
 
 ## 主题面(波次一,2026-09-25)
 

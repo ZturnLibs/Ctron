@@ -1,0 +1,21 @@
+// tests/gui/s73_treerec —— D 档 v2 尾巴③:递归 view 形态探针
+// view 自调用 + 串深递归(cut 收短,when len==0 止)。真递归 tree 的
+// typed-props 缺口另册登记(自引用 struct 本体双臂已证绿)。
+view Nest (d: Str) {
+  <vbox class="nv">
+    <label class="nl">{d}</label>
+    <when cond={d.len > 0}>
+      <Nest d: {cut(d, 0, d.len - 1)}/>
+    </when>
+  </vbox>
+}
+view Root {
+  <vbox class="root">
+    <Nest d: "abc"/>
+    <label class="state">RECDONE</label>
+  </vbox>
+}
+style root { direction: column gap: 2 padding: 8 }
+style nv { direction: column padding: 8 bg: "#111111" }
+style nl { fg: TEXT h: 20 }
+style state { fg: "#22c55e" h: 22 }

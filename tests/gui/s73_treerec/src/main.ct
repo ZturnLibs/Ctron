@@ -1,0 +1,84 @@
+// tests/gui/s73_treerec —— D 档 v2 尾巴③:递归 view 形态探针(GUI-18 tree v2 前置)
+// 递归组件(view 自调用)+ 串深递归终止(cut 收短,when len==0 止);
+// 嵌套几何 = 每层左缘右移(padding 累进),w100 递减断言。
+// 登记缺口:真递归 tree 需 struct 走 props 通道——自引用 struct 本体双臂已证
+// (chk/emit 递归计数绿),缺的是组件实参 typed-props(现纯串,§4 组件章登记)。
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_x100, d_cmd_w100, Driver}
+
+struct M {
+    var state: Str
+}
+
+// 递归 view:每层渲染本层深度串;串非空则递归收短一层
+view Nest (d: Str) {
+  <vbox class="nv">
+    <label class="nl">{d}</label>
+    <when cond={d.len > 0}>
+      <Nest d: {cut(d, 0, d.len - 1)}/>
+    </when>
+  </vbox>
+}
+
+view Root {
+  <vbox class="root">
+    <Nest d: "abc"/>
+    <label class="state">RECDONE</label>
+  </vbox>
+}
+style root { direction: column gap: 2 padding: 8 }
+
+style nl { fg: TEXT h: 20 }
+style state { fg: "#22c55e" h: 22 }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn noop(name: Str, args: List[Str]) {
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_noop(buf),
+        |name, args| noop(name, args),
+        |k| { },
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            // 三层串标签齐现(递归展开且按数据终止)
+            d_expect_text(t, "abc")
+            d_expect_text(t, "ab")
+            d_expect_text(t, "a")
+            // 嵌套几何:深层左缘 > 浅层(padding 累进),宽随左缘递减
+            // 嵌套几何:nv 各层宽 = 父-16(304→288→272,值唯一可寻址),
+            // 深层左缘右移
+            var x2: I32 = -1
+            var x3: I32 = -1
+            var n: I32 = d_cmd_count()
+            var i: I32 = 0
+            while i < n {
+                if d_cmd_type(i) == 2 {
+                    if d_cmd_w100(i) == 28800 {
+                        x2 = d_cmd_x100(i)
+                    }
+                    if d_cmd_w100(i) == 27200 {
+                        x3 = d_cmd_x100(i)
+                    }
+                }
+                i += 1
+            }
+            if x2 < 0 {
+                panic("s73: 二层 nv 未现(28800)")
+            }
+            if x3 < 0 {
+                panic("s73: 三层 nv 未现(27200)")
+            }
+            if x3 <= x2 {
+                panic("s73: 深层左缘未右移 x2=" + x2.to_string() + " x3=" + x3.to_string())
+            }
+            // 终止后 RECDONE 照常渲染(递归无死循环)
+            d_expect_text(t, "RECDONE")
+            println("S73-TREEREC-GREEN")
+        })
+    return rc
+}
