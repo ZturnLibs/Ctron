@@ -160,13 +160,32 @@ static int *g_text_weights = NULL;
 static int g_text_weights_cap = 0;
 static int g_text_weights_n = 0;
 
-// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput) ----
+// ---- 事件注入队列(S4 测试缝;事件码:1=KeyDown 2=Click 3=TextInput 5=右键 6=Drop) ----
 // 容量 256:进程累计、不回卷——gui_calc headless 全场景 ~70 次注入,64 会静默丢尾。
 typedef struct { int type; int key; int x; int y; } GuiEvent;
 static GuiEvent g_queue[256];
 static int g_qhead = 0;
 static int g_qtail = 0;
 static GuiEvent g_cur = { 0, 0, 0, 0 };
+
+// ---- GUI-20:OS 文件拖入(真窗 IsFileDropped 轮询;headless 注入) ----
+// 事件码 6=Drop;槽存本次拖入全部路径,Ctron 侧逐文件 setcur 后 ev_fire
+#define GUI_DROP_MAX 16
+static char g_drop_paths[GUI_DROP_MAX][512];
+static int g_drop_n = 0;
+static int g_drop_cur = 0;
+int gui_drop_begin(void) { g_drop_n = 0; g_drop_cur = 0; return 0; }
+int gui_drop_add(const char* p) {
+    if (g_drop_n < GUI_DROP_MAX && p) { snprintf(g_drop_paths[g_drop_n], 512, "%s", p); g_drop_n++; }
+    return g_drop_n;
+}
+int gui_drop_count(void) { return g_drop_n; }
+int gui_drop_setcur(int i) { if (i >= 0 && i < g_drop_n) { g_drop_cur = i; } return g_drop_cur; }
+const char* gui_drop_path(void) { return (g_drop_n > 0) ? g_drop_paths[g_drop_cur] : ""; }
+const char* gui_drop_path_at(int i) { return (i >= 0 && i < g_drop_n) ? g_drop_paths[i] : ""; }
+void gui_inject_drop(void) {
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 6, 0, 0, 0 }; g_qtail++; }
+}
 
 void gui_inject_key(int key) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 1, key, 0, 0 }; g_qtail++; }
@@ -190,7 +209,7 @@ void gui_inject_drag(int x1, int y, int x2) {
     g_idrg_x1 = x1; g_idrg_x2 = x2; g_idrg_y = y;
 }
 // 取下一事件:注入队列优先,再合并 raylib 轮询(headless 下惰性)
-// 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本)
+// 事件码:1=KeyDown 2=Click 3=TextInput(§12.3b GetCharPressed → 上屏文本) 5=右键 6=Drop
 // 键重复状态(编辑键族;字符事件/换键/释放即重置)
 int gui_now_ms(void);
 static int g_rep_key = 0;
@@ -274,6 +293,14 @@ int gui_poll_event(void) {
         Vector2 p = GetMousePosition();
         g_cur = (GuiEvent){ 5, 0, (int)p.x, (int)p.y };
         return 5;
+    }
+    // GUI-20:OS 文件拖入(IsWindowReady 门——headless 无窗不轮询)
+    if (IsWindowReady() && IsFileDropped()) {
+        FilePathList fl = LoadDroppedFiles();
+        gui_drop_begin();
+        for (unsigned int di = 0; di < fl.count; di++) { gui_drop_add(fl.paths[di]); }
+        UnloadDroppedFiles(fl);
+        if (g_drop_n > 0) { g_cur = (GuiEvent){ 6, g_drop_n, 0, 0 }; return 6; }
     }
     // 键重复(raylib 不派发 GLFW_REPEAT;初按 500ms 后 66ms 间隔,成熟口径;
     // 仅编辑键族:方向/退格/前删/Home/End。字符事件与松键重置)
@@ -369,6 +396,132 @@ static int gui_trace(void) {
     return gui_trace_on;
 }
 static int gui_trace_n = 0;
+
+// ---- GUI-23:链接 OpenURL(真窗 raylib OpenURL;headless 记录槽不真开) ----
+// headless 判定与夹具口径一致:CTRON_GUI_FT_OFF / CTRON_GUI_HEADLESS 任一在即记录
+static char g_open_url_last[512] = {0};
+int gui_open_url(const char* url) {
+    if (gui_trace()) { fprintf(stderr, "T%03d open_url %s\n", ++gui_trace_n, url ? url : ""); }
+    if (url) { snprintf(g_open_url_last, sizeof g_open_url_last, "%s", url); }
+    if (getenv("CTRON_GUI_FT_OFF") || getenv("CTRON_GUI_HEADLESS")) { return 0; }
+    OpenURL(url);
+    return 0;
+}
+const char* gui_open_url_last(void) { return g_open_url_last; }
+
+// ---- GUI-24:窗口级 API(真窗生效;headless 记录槽断言) ----
+// op: 1=fullscreen 2=maximize 3=minimize 4=restore 5=undecorated 6=bordered
+extern void glfwSetWindowShouldClose(void* window, int value);
+static int g_win_op_last = 0;
+int gui_win_op(int op) {
+    g_win_op_last = op;
+    if (!IsWindowReady()) { return 0; }
+    switch (op) {
+        case 1: ToggleFullscreen(); break;
+        case 2: MaximizeWindow(); break;
+        case 3: MinimizeWindow(); break;
+        case 4: RestoreWindow(); break;
+        case 5: SetWindowState(FLAG_WINDOW_UNDECORATED); break;
+        case 6: ClearWindowState(FLAG_WINDOW_UNDECORATED); break;
+        default: break;
+    }
+    return 0;
+}
+int gui_win_op_last(void) { return g_win_op_last; }
+// 关闭拦截:有 on:close 声明时,关闭请求被吞(GLFW flag 复位)转事件,应用定去留
+int gui_win_close_req(void) {
+    if (!WindowShouldClose()) { return 0; }
+    glfwSetWindowShouldClose(GetWindowHandle(), 0);
+    return 1;
+}
+// 窗口图标(headless 记录槽;真窗 LoadImage+SetWindowIcon)
+static char g_win_icon_last[512] = {0};
+int gui_win_icon(const char* path) {
+    if (gui_trace()) { fprintf(stderr, "T%03d win_icon %s\n", ++gui_trace_n, path ? path : ""); }
+    if (path) { snprintf(g_win_icon_last, sizeof g_win_icon_last, "%s", path); }
+    if (!IsWindowReady()) { return 0; }
+    Image ic = LoadImage(path);
+    if (ic.data != 0) { SetWindowIcon(ic); UnloadImage(ic); }
+    return 0;
+}
+const char* gui_win_icon_last(void) { return g_win_icon_last; }
+
+// ---- GUI-25:canvas 树内整合(标记属性容器+每帧绘制回调) ----
+// 盒几何/节点 id 由 rt_emit 存槽;gui_px 相对盒画点(真窗 DrawRectangle,
+// headless 记录槽断言)
+static int g_cv_x = 0, g_cv_y = 0, g_cv_w = 0, g_cv_h = 0, g_cv_node = -1;
+int gui_canvas_setbox(int x, int y, int w, int h) {
+    g_cv_x = x; g_cv_y = y; g_cv_w = w; g_cv_h = h;
+    return 0;
+}
+int gui_canvas_setnode(int n) { g_cv_node = n; return g_cv_node; }
+int gui_canvas_x(void) { return g_cv_x; }
+int gui_canvas_y(void) { return g_cv_y; }
+int gui_canvas_w(void) { return g_cv_w; }
+int gui_canvas_h(void) { return g_cv_h; }
+int gui_canvas_node(void) { return g_cv_node; }
+#define CV_PX_MAX 4096
+static int g_px_buf[CV_PX_MAX][5];
+static int g_px_n = 0;
+int gui_px(int x, int y, int r, int g, int b) {
+    if (g_px_n < CV_PX_MAX) {
+        g_px_buf[g_px_n][0] = x; g_px_buf[g_px_n][1] = y;
+        g_px_buf[g_px_n][2] = r; g_px_buf[g_px_n][3] = g; g_px_buf[g_px_n][4] = b;
+        g_px_n++;
+    }
+    if (g_cv_node >= 0 && IsWindowReady()) {
+        DrawRectangle(g_cv_x + x, g_cv_y + y, 1, 1, (Color){ (unsigned char)r, (unsigned char)g, (unsigned char)b, 255 });
+    }
+    return g_px_n;
+}
+int gui_px_n(void) { return g_px_n; }
+int gui_px_at(int i, int comp) {
+    if (i < 0 || i >= g_px_n || comp < 0 || comp > 4) { return -1; }
+    return g_px_buf[i][comp];
+}
+void gui_px_clear(void) { g_px_n = 0; }
+
+// ---- GUI-21:scroll 滚动偏移(应用侧累计;容器 clip 消费) ----
+static int g_scroll_off = 0;
+int gui_scroll_add(int d) { g_scroll_off += d; if (g_scroll_off < 0) { g_scroll_off = 0; } return g_scroll_off; }
+int gui_scroll_off(void) { return g_scroll_off; }
+void gui_scroll_set(int v) { g_scroll_off = (v > 0) ? v : 0; }
+
+// ---- GUI-15:on:after 定时事件(元素存活域一次性;on:input 重臂=防抖) ----
+static int g_after_dl[512];
+static int g_after_seen[512];
+static int g_frame_no = 0;
+void gui_after_bump(void) { g_frame_no += 1; }
+int gui_after_arm(int node, int ms) {
+    if (node >= 0 && node < 512) { g_after_dl[node] = gui_now_ms() + ms; g_after_seen[node] = g_frame_no; }
+    return 0;
+}
+int gui_after_touch(int node) { if (node >= 0 && node < 512) { g_after_seen[node] = g_frame_no; } return 0; }
+int gui_after_armed(int node) { return (node >= 0 && node < 512) ? (g_after_dl[node] != 0) : 0; }
+int gui_after_due(int node) {
+    if (node >= 0 && node < 512) {
+        return (g_after_dl[node] != 0) && (g_after_seen[node] == g_frame_no) && (gui_now_ms() >= g_after_dl[node]);
+    }
+    return 0;
+}
+int gui_after_disarm(int node) { if (node >= 0 && node < 512) { g_after_dl[node] = 0; } return 0; }
+
+// ---- GUI-14:程序化聚焦/滚动请求槽(一次性:emit 期消费或帧末清) ----
+static char g_focus_req[256] = {0};
+static char g_scroll_req[256] = {0};
+const char *gui_focus_req_get(void) { return g_focus_req; }
+void gui_focus_req_set(const char *n) {
+    if (n) { size_t k = 0; for (; k < 255 && n[k]; k++) { g_focus_req[k] = n[k]; } g_focus_req[k] = 0; }
+    else { g_focus_req[0] = 0; }
+}
+void gui_focus_req_clear(void) { g_focus_req[0] = 0; }
+const char *gui_scroll_req_get(void) { return g_scroll_req; }
+void gui_scroll_req_set(const char *n) {
+    if (n) { size_t k = 0; for (; k < 255 && n[k]; k++) { g_scroll_req[k] = n[k]; } g_scroll_req[k] = 0; }
+    else { g_scroll_req[0] = 0; }
+}
+void gui_scroll_req_clear(void) { g_scroll_req[0] = 0; }
+
 int gui_open(void) {
     if (gui_trace()) { fprintf(stderr, "T%03d open\n", ++gui_trace_n); }
     Clay__OpenElement();
@@ -408,8 +561,10 @@ static int gui_cfg_impl(int dir, int gap, int padx, int pady, int ax, int ay,
     Clay_ElementDeclaration decl = { 0 };
     decl.layout = lay;
     // macOS 观感:控件默认圆角 6px(gui_radius 可覆写;纯色盒视觉由 flush 按
-    // Clay cornerRadius 走 DrawRectangleRounded)
+    // Clay cornerRadius 走 DrawRectangleRounded)。覆写消费即复位(-1)——
+    // 元素级圆角(switch 药丸/radio 圆)不得 latch 成全局态
     float crv = (g_pending_radius >= 0) ? (float)g_pending_radius : 6.0f;
+    g_pending_radius = -1;
     decl.cornerRadius = (Clay_CornerRadius){ crv, crv, crv, crv };
     decl.backgroundColor = (Clay_Color){ (float)((bg_packed >> 16) & 255),
                                          (float)((bg_packed >> 8) & 255),
@@ -1152,6 +1307,13 @@ int gui_cfg3(int dir, int gap, int padx, int pady, int ax, int ay,
 // 列表 NULL 安全计数(编译构建树 gui_sk_load 不含波次四新字段时为 NULL;
 // Ctron 侧不可判空,经此助手门控——vreg/env 读取前置条件)
 typedef struct { unsigned long long magic; char **items; int n; int cap; } CtronListC;
+// 原地截断(作用域 env 出栈用;共享列表对象,赋值重绑穿不回按值树参)
+void gui_list_truncate(void *l, int n) {
+    if (l == NULL) { return; }
+    CtronListC *cl = (CtronListC *)l;
+    if (n >= 0 && n < cl->n) { cl->n = n; }
+}
+
 int gui_list_ns(const void *l) {
     if (l == NULL) { return 0; }
     return ((const CtronListC *)l)->n;

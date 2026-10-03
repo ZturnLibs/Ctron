@@ -1,0 +1,220 @@
+// tests/gui/s66_cbx_var —— A 档 GUI-02/03:checkbox switch/radio 变体
+// 承载=裸属性入事件表(password/numeric 同款);渲染支 rt_has_mark 分支:
+// switch=药丸 44x26 旋钮 ● 左右滑,radio=圆 22x22 ●/○;radio 组 each 行
+// 实例后缀 r_pick:N → 单选清他(MultiList 反向)。headless 直驱全链。
+use gui.{test, d_frame, d_click, d_click_inst, d_expect_text,
+         d_cmd_count, d_cmd_type, d_cmd_w100, d_cmd_h100, d_cmd_x100,
+         d_cmd_text_byte}
+
+struct M {
+    var sw: Bool
+    var rsel: I32
+    var state: Str
+}
+
+fn sw_toggle() {
+}
+fn r_pick() {
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "sw_toggle" {
+        if m.sw {
+            m.sw = false
+        } else {
+            m.sw = true
+        }
+        return
+    }
+    // each 行实例后缀:r_pick:N → 单选清他
+    if name.len > 6 {
+        if byte_at(name, 0) == 114 && byte_at(name, 1) == 95 && byte_at(name, 2) == 112 && byte_at(name, 3) == 105 && byte_at(name, 4) == 99 && byte_at(name, 5) == 107 && byte_at(name, 6) == 58 {
+            var ni: I32 = 0
+            var k9: I32 = 7
+            while k9 < name.len {
+                ni = ni * 10 + (byte_at(name, k9) - 48)
+                k9 += 1
+            }
+            m.rsel = ni
+            m.state = "已选甲"
+            if ni == 1 {
+                m.state = "已选乙"
+            }
+            return
+        }
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "sw" {
+        if m.sw {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "swl" {
+        if m.sw {
+            buf.push("已开启")
+        } else {
+            buf.push("已关闭")
+        }
+    }
+    if buf[0] == "each:rgs" {
+        buf.push("甲")
+        buf.push("乙")
+    }
+    // each 行 checkbox checked:行域查询(eachrow:rmark:N)优先,回落裸名
+    if buf[0] == "eachrow:rmark:0" {
+        if m.rsel == 0 {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "eachrow:rmark:1" {
+        if m.rsel == 1 {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+// 恰三字节 ●(U+25CF=E2 97 8F)的 TEXT 命令下标;无则 -1
+// (第 4 字节越界返 -1 = 全文等判据,排除 ● 起头的更长文本)
+fn dot_cmd() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if d_cmd_text_byte(i, 0) == 226 && d_cmd_text_byte(i, 1) == 151 && d_cmd_text_byte(i, 2) == 143 {
+                if d_cmd_text_byte(i, 3) == 0 - 1 {
+                    return i
+                }
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// 恰三字节 ○(U+25CB=E2 97 8B)的 TEXT 命令下标;无则 -1
+fn ring_cmd() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if d_cmd_text_byte(i, 0) == 226 && d_cmd_text_byte(i, 1) == 151 && d_cmd_text_byte(i, 2) == 139 {
+                if d_cmd_text_byte(i, 3) == 0 - 1 {
+                    return i
+                }
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn count_rings() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    var c: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if d_cmd_text_byte(i, 0) == 226 && d_cmd_text_byte(i, 1) == 151 && d_cmd_text_byte(i, 2) == 139 {
+                if d_cmd_text_byte(i, 3) == 0 - 1 {
+                    c += 1
+                }
+            }
+        }
+        i += 1
+    }
+    return c
+}
+
+// switch 药丸 RECT(w=44 h=26 特征)下标;无则 -1
+fn sw_box() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_w100(i) == 4400 && d_cmd_h100(i) == 2600 {
+                return i
+            }
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// radio 圆 RECT(w=22 h=22 特征)计数
+fn rd_boxes() -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    var c: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_w100(i) == 2200 && d_cmd_h100(i) == 2200 {
+                c += 1
+            }
+        }
+        i += 1
+    }
+    return c
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { sw: false, rsel: 0, state: "" })
+    var rc: I32 = test(src, 320, 300,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| k,
+        |t, actc, k2| {
+            // 初态:switch 药丸+左旋钮;radio 甲●乙○
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "通知开关:已关闭")
+            if sw_box() < 0 {
+                panic("s59: switch 药丸盒 44x26 未渲染")
+            }
+            if rd_boxes() != 2 {
+                panic("s59: radio 圆盒 22x22 应两枚")
+            }
+            var dot0: I32 = dot_cmd()
+            if dot0 < 0 {
+                panic("s59: switch 旋钮 ● 未渲染")
+            }
+            if ring_cmd() < 0 {
+                panic("s59: radio 未选 ○ 未渲染")
+            }
+            // 未选态:旋钮靠左(● x 与药丸盒 x 差 < 8px)
+            var swb: I32 = sw_box()
+            if d_cmd_x100(dot0) - d_cmd_x100(swb) > 800 {
+                panic("s59: 未选态旋钮应靠左")
+            }
+            // 开关:点击 → 旋钮右滑+文案翻转
+            actc(d_click(t, "sw_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "通知开关:已开启")
+            var dot1: I32 = dot_cmd()
+            if dot1 < 0 {
+                panic("s59: 开态旋钮 ● 丢失")
+            }
+            if d_cmd_x100(dot1) - d_cmd_x100(sw_box()) < 1000 {
+                panic("s59: 开态旋钮应右滑")
+            }
+            // radio 组:点乙(实例后缀)→ 单选清他
+            actc(d_click_inst(t, "r_pick", 1), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已选乙")
+            if count_rings() != 1 {
+                panic("s59: radio 单选清他后应恰一 ○")
+            }
+            println("S59-CBXVAR-GREEN")
+        })
+    return rc
+}

@@ -102,10 +102,36 @@ static unsigned long utf8_next_n(const unsigned char* s, int len, int* i) {
 
 // 两遍渲染核心(测宽 → 画);定长口径,ft_render/缓存路径共用
 // weight≥600 = 合成加粗(§2.8):outline Embolden + advance 增量 px/24(测宽轮同加,缓冲不溢)
+static float ft_dpi_cached = -1.0f;
+static float ft_dpi(void) {
+    if (ft_dpi_cached < 0.0f) {
+        // 无窗(headless)恒 1——有窗才读显示器 scale(主屏 scale 会污染
+        // headless 光栅化,s8/28 像素计数实证)
+        float f = 1.0f;
+        if (IsWindowReady()) {
+            Vector2 d = GetWindowScaleDPI();
+            f = d.y;
+        }
+        if (f < 1.0f) { f = 1.0f; }
+        if (f > 4.0f) { f = 4.0f; }
+        ft_dpi_cached = f;
+    }
+    return ft_dpi_cached;
+}
+
 static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int weight, int fam) {
     if (ft_ensure_fam(g_ft_px, fam) != 0) { return -1; }
+    // DPI:光栅化按设备像素(点×scale),draw 按 1/dpi 缩回点——Retina 高清。
+    // 基准=面当前 ppem(direct ft_render 路径不经 ensure,g_ft_px 恒 0 实证)
+    int base_px = (int)(g_face->size->metrics.x_ppem);
+    if (base_px < 1) { base_px = g_ft_px; }
+    if (base_px < 1) { base_px = 16; }
+    float g_ft_px_r = (float)base_px * ft_dpi();
+    int g_ft_px_i = (int)(g_ft_px_r + 0.5f);
+    if (g_ft_px_i < 1) { g_ft_px_i = 1; }
+    FT_Set_Pixel_Sizes(g_face, 0, (FT_UInt)g_ft_px_i);
     int bold = (weight >= 600) ? 1 : 0;
-    int bdelta = bold ? (g_ft_px / 24 + 1) : 0;
+    int bdelta = bold ? (g_ft_px_i / 24 + 1) : 0;
     int asc = g_face->size->metrics.ascender >> 6;
     int hgt = (int)((g_face->size->metrics.height >> 6)) + 4;
     int i = 0;
@@ -113,8 +139,21 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
     while (i < len) {
         unsigned long cp = utf8_next_n((const unsigned char*)utf8, len, &i);
         if (cp == 0) { break; }
-        if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) != 0) { continue; }
-        pen += (int)(g_face->glyph->advance.x >> 6) + bdelta;
+        if (FT_Load_Char(g_face, (FT_ULong)cp, FT_LOAD_DEFAULT) != 0) {
+            // 默认族多脸回退(与渲染轮同序;SFNS 无 CJK,实测 s8 宽度=0 实证)
+            int adv = -1;
+            for (int di = 1; di < g_ndef_faces; di++) {
+                FT_Set_Pixel_Sizes(g_def_faces[di], 0, (FT_UInt)g_ft_px_i);
+                if (FT_Load_Char(g_def_faces[di], (FT_ULong)cp, FT_LOAD_DEFAULT) == 0) {
+                    adv = (int)(g_def_faces[di]->glyph->advance.x >> 6);
+                    break;
+                }
+            }
+            if (adv < 0) { continue; }
+            pen += adv + bdelta;
+        } else {
+            pen += (int)(g_face->glyph->advance.x >> 6) + bdelta;
+        }
     }
     g_bw = pen + 8;
     g_bh = hgt;
@@ -131,7 +170,7 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
         } else {
             // 默认族多脸回退(macOS SF Pro 拉丁/CJK 兜底;跳过当前面 0)
             for (int di = 1; di < g_ndef_faces; di++) {
-                FT_Set_Pixel_Sizes(g_def_faces[di], 0, (FT_UInt)g_ft_px);
+                FT_Set_Pixel_Sizes(g_def_faces[di], 0, (FT_UInt)g_ft_px_i);
                 if (FT_Load_Char(g_def_faces[di], (FT_ULong)cp, FT_LOAD_RENDER) == 0) {
                     sl = g_def_faces[di]->glyph;
                     break;
@@ -141,7 +180,7 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
             for (int fi = 0; sl == 0 && fi < g_nfam; fi++) {
                 if (!g_fams[fi].ok) { continue; }
                 int saved_px = g_fams[fi].px;
-                FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)g_ft_px);
+                FT_Set_Pixel_Sizes(g_fams[fi].face, 0, (FT_UInt)g_ft_px_i);
                 if (FT_Load_Char(g_fams[fi].face, (FT_ULong)cp, FT_LOAD_RENDER) == 0) {
                     sl = g_fams[fi].face->glyph;
                     break;
@@ -150,7 +189,7 @@ static int ft_render_n_w(const char* utf8, int len, int r, int g, int b, int wei
             }
             if (!sl) { continue; }
         }
-        if (bold) { if (sl->format == FT_GLYPH_FORMAT_OUTLINE) { FT_Outline_Embolden(&sl->outline, (FT_Pos)(g_ft_px / 16 + 1)); } }
+        if (bold) { if (sl->format == FT_GLYPH_FORMAT_OUTLINE) { FT_Outline_Embolden(&sl->outline, (FT_Pos)(g_ft_px_i / 16 + 1)); } }
         int bx = pen + sl->bitmap_left;
         int by = asc - sl->bitmap_top;
         int bw = (int)sl->bitmap.width;
@@ -347,10 +386,15 @@ int gui_ft_text_draw(int slot, int x, int y, int r, int g, int b, int a) {
         img.mipmaps = 1;
         img.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
         e->tex = LoadTextureFromImage(img);
+        SetTextureFilter(e->tex, TEXTURE_FILTER_BILINEAR);
         e->uploaded = 1;
     }
-    DrawTexture(e->tex, x, y, (Color){ (unsigned char)r, (unsigned char)g,
-                                       (unsigned char)b, (unsigned char)a });
+    float ds = ft_dpi();
+    DrawTexturePro(e->tex,
+        (Rectangle){ 0, 0, (float)e->w, (float)e->h },
+        (Rectangle){ (float)x, (float)y, (float)e->w / ds, (float)e->h / ds },
+        (Vector2){ 0, 0 }, 0.0f,
+        (Color){ (unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a });
     return 0;
 }
 

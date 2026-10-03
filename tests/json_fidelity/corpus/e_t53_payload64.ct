@@ -1,0 +1,85 @@
+// tests/json_fidelity/corpus/e_t53_payload64.ct —— T53 union 载荷 64 位化:
+// 跨模块 Result 数值载荷四读侧(expect 推断/注解、match-Ok、? 传播、or)
+// 位型双关往返 + I64 整宽直槽(2^63 上界);jv_/jk_ 便捷面内部迁 jget_*
+// 后行为回归。断言式夹具(tests/json_fidelity/run.sh 双臂)。
+// 历史注:本面旧由 JNum/JReal 结构通道绕行((h) 族 32 位载荷槽在册),
+// T53 载荷槽 ct_i 64 位 + F64 位双关闭环后回切,本夹具即其常设哨。
+use std.json.{ jget_i64, jget_f64, jv_i64, jv_f64, jk_i64, jk_f64 }
+
+fn aent(p: Str, t: Str, v: Str) -> List[Str] {
+    var e = List[Str]()
+    e.push(p)
+    e.push(t)
+    e.push(v)
+    return e
+}
+
+fn atable() -> List[List[Str]] {
+    var es = List[List[Str]]()
+    es.push(aent("$", "o", ""))
+    es.push(aent("$.max", "n", "9223372036854775807"))
+    es.push(aent("$.min", "n", "-9223372036854775808"))
+    es.push(aent("$.r2", "n", "2.5"))
+    es.push(aent("$.rn", "n", "-2.5"))
+    es.push(aent("$.q", "n", "0.25"))
+    es.push(aent("$.frac", "n", "1.5"))
+    es.push(aent("$.str", "s", "42"))
+    return es
+}
+
+// Result 直返面(跨模块载荷往返;四读侧分用)
+fn rmax() -> Result[I64, Str] {
+    return jget_i64(atable(), "$.max")
+}
+
+fn rf64() -> Result[F64, Str] {
+    return jget_f64(atable(), "$.r2")
+}
+
+fn tmin() -> Result[I64, Str] {
+    let v = jget_i64(atable(), "$.min")?
+    return Ok(v)
+}
+
+fn mf64() -> F64 {
+    match jget_f64(atable(), "$.r2") {
+        Ok(v) => { return v }
+        Err(e) => { return 0.0 - 1.0 }
+    }
+}
+
+fn main() -> I32 {
+    var imax = 9223372036854775807
+    var bad = 0
+    // expect 推断 let(typeof=载荷码;I64 整宽)
+    let a = jget_i64(atable(), "$.max").expect("a")
+    if a != imax { bad += 1 }
+    // Result 直返 + expect
+    let b = rmax().expect("b")
+    if b != imax { bad += 1 }
+    // expect 注解 let(F64 位保真)
+    let c: F64 = jget_f64(atable(), "$.r2").expect("c")
+    if c != 2.5 { bad += 1 }
+    let d = rf64().expect("d")
+    if d != 2.5 { bad += 1 }
+    // ? 传播(I64 整宽,载荷原文含 I64_MIN)
+    let f = tmin().expect("f")
+    if f != -9223372036854775808 { bad += 1 }
+    // match-Ok(F64 位保真)
+    if mf64() != 2.5 { bad += 1 }
+    // or 面(F64/I64)
+    if jget_f64(atable(), "$.rn").or(9.0) != 0.0 - 2.5 { bad += 1 }
+    if jget_i64(atable(), "$.frac").or(0 - 1) != 0 - 1 { bad += 1 }
+    // jv_/jk_ 便捷面(内部迁 jget_* 后回归)
+    if jv_i64(atable(), "$.max", 0) != imax { bad += 1 }
+    if jv_f64(atable(), "$.q", 9.0) != 0.25 { bad += 1 }
+    if jk_i64(atable(), "$.max") != "ok" { bad += 1 }
+    if jk_i64(atable(), "$.frac") != "frac" { bad += 1 }
+    if jk_f64(atable(), "$.str") != "type" { bad += 1 }
+    if bad > 0 {
+        println("T53 PAYLOAD64 FAIL bad=" + bad.to_string())
+        return 1
+    }
+    println("T53 PAYLOAD64 OK")
+    return 0
+}

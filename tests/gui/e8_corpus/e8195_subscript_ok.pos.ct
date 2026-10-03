@@ -1,0 +1,15 @@
+// gui expect: OK —— GUI-13:下标与内建族检查面正例(白名单内建 + 下标根/索引依赖
+// 均为合法引用;路由与求值归合成面/bxv,本语料只锁检查面不误伤)
+view P (items: List[Str], active: I32) {
+  <vbox class="root">
+    <label class="cur">{items[active]}</label>
+    <label class="cut">{cut(items[0], 0, 3)}</label>
+    <when cond={contains(items[active], "x")}>
+      <label class="row">hit</label>
+    </when>
+  </vbox>
+}
+style root { direction: column }
+style cur { fg: "#ffffff" }
+style cut { fg: "#22c55e" }
+style row { fg: "#ffffff" }

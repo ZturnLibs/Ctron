@@ -1,0 +1,13 @@
+// dt_skip_midbreak.ct —— 围栏中途混入非 /// 行:块丢弃、内容不泄漏
+/// 返回两数之和(围栏被真声明打断,块丢弃——失败断言不得执行;
+/// add2 本体必须照常编译,证丢弃非吞码)。
+///
+/// ```c
+/// assert_eq(add2(1, 1), 3)
+pub fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}
+/// ```
+test "add2 still compiles" {
+    assert_eq(add2(2, 3), 5)
+}

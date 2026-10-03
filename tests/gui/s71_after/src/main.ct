@@ -1,0 +1,134 @@
+// tests/gui/s71_after —— GUI-15:on:after 定时事件(§2.7 tick→事件通道)
+// 元素存活域一次性:when 灶上的 on:after="2000:close" → 到期 fire act 一次;
+// 防抖口径:input on:input 重臂同节点 on:after——连击不 fire,静默超限 fire;
+// 隐灶:when 提前关闭(seen 过期)不 fire。时钟=d_tick 注入(绝对置位),泵显式。
+// 排版纪律:双 lambda 调用逐参独占块形(同行双 lambda 撞 clo 名,s33 在册坑)。
+use gui.{test, d_click, d_frame, d_tick, d_after_pump, d_expect_text, d_expect_absent, d_send_char, gui_focus_req}
+
+struct Model {
+    var open: Str
+    var q: Str
+    var committed: Str
+}
+
+view AfterApp (m: Model) {
+  <vbox class="root">
+    <button class="show" on:click={show}>show</button>
+    <when cond={m.open}>
+      <label class="toast" on:after="2000:close">SAVED</label>
+    </when>
+    <input bind={m.q} class="fld" on:input={q_in} on:after="1500:commit"/>
+    <label class="cmir">{m.committed}</label>
+  </vbox>
+}
+style root { direction: column gap: 6 padding: 8 }
+style show { bg: "#2563eb" fg: "#ffffff" w: 90 h: 36 }
+style toast { bg: "#f59e0b" fg: "#ffffff" h: 32 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style cmir { fg: "#22c55e" h: 24 }
+
+fn make() -> Model {
+    return Model { open: "", q: "", committed: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "m.open" {
+        if m.open != "" {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "m.q" {
+        buf.push(m.q)
+    }
+    if buf[0] == "m.committed" {
+        buf.push(m.committed)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "show" {
+        m.open = "1"
+        return
+    }
+    if name == "close" {
+        m.open = ""
+        return
+    }
+    if name == "commit" {
+        m.committed = "OK:" + m.q
+        return
+    }
+    // on:input 名通道:q_in:<text>
+    if name.len >= 5 {
+        if byte_at(name, 0) == 113 && byte_at(name, 1) == 95 && byte_at(name, 2) == 105 && byte_at(name, 3) == 110 && byte_at(name, 4) == 58 {
+            m.q = byte_slice(name, 5, name.len)
+            return
+        }
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    return test(src, 320, 320,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| { },
+        |t, act2, key2| {
+            // 时钟口径:d_tick=绝对置位(注入钟),时间线全程绝对毫秒
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "SAVED")
+            // toast:show 布防(期限 2000);半程 1200 不 fire
+            act2(d_click(t, "show"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "SAVED")
+            d_tick(t, 1200)
+            d_after_pump(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "SAVED")
+            // 满程 2400:toast fire close(输入定时 1500 亦到期,commit 空 q 无扰)
+            d_tick(t, 2400)
+            d_after_pump(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "SAVED")
+            // 一次性:再 pump 不复燃
+            d_after_pump(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "SAVED")
+            // 防抖:'a'@2400 重臂(3900),3000 不 fire;'b'@3000 重臂(4500),
+            // 3100 不 fire;4600 静默超限 fire → committed="ab"
+            // headless 无 autofocus——GUI-14 原语自喂聚焦
+            gui_focus_req("m.q")
+            d_frame(t, |buf| bind_all(buf, m))
+            d_send_char(t, 97, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_tick(t, 3000)
+            d_after_pump(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "OK:a")
+            d_send_char(t, 98, |buf| {
+                bind_all(buf, m)
+            }, |nm, ar| {
+                act(nm, ar, m)
+            })
+            d_tick(t, 3100)
+            d_after_pump(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_tick(t, 4600)
+            d_after_pump(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "OK:ab")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s71: headless 验收件(真窗面略)")
+    return 0
+}

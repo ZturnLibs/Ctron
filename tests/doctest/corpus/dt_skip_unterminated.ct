@@ -1,0 +1,8 @@
+// dt_skip_unterminated.ct —— 未闭合围栏:```c 无终止 ``` = 丢弃该块(回退散文)
+/// 返回两数之和(围栏未闭合,下面的失败断言不得执行)。
+///
+/// ```c
+/// assert_eq(add2(0, 0), 999)
+pub fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}

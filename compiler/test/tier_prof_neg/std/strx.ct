@@ -1,0 +1,7 @@
+// std/strx.ct —— T35 夹具:alloc 档 mini 模块
+//@ tier: alloc
+pub fn sx_count(n: I32) -> I32 {
+    var xs = List[I32]()
+    xs.push(n)
+    return xs.len
+}

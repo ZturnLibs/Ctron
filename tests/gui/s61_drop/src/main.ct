@@ -1,0 +1,63 @@
+// tests/gui/s61_drop —— GUI-20 OS 文件拖入 headless 验收
+// 三段:单文件 → 多文件(逐文件 fire)→ 空拖不下(want 缺省)
+use gui.{test, d_frame, d_expect_text, d_drop, ev_arg_s, Driver}
+
+struct M {
+    var lastf: Str
+    var state: Str
+    var total: I32
+}
+
+fn drop_in() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "lastf" {
+        buf.push(m.lastf)
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn name_is_drop(name: Str) -> Bool {
+    return name == "drop_in"
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name_is_drop(name) {
+        m.lastf = ev_arg_s(args, 0)
+        m.total = m.total + 1
+        m.state = "第" + m.total.to_string() + "个:" + m.lastf
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { lastf: "", state: "", total: 0 })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 初始
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "拖入文件")
+            // S2 多文件拖入:逐文件 fire 两回调
+            var ps: List[Str] = List[Str]()
+            ps.push("notes.txt")
+            ps.push("图.png")
+            var dn: I32 = d_drop(t, ps, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            // 终态断言:total 递增到 2 = 两文件逐个 fire 均到
+            d_expect_text(t, "第2个:图.png")
+            // S3 单文件
+            var p1: List[Str] = List[Str]()
+            p1.push("README.md")
+            d_drop(t, p1, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "第3个:README.md")
+            println("S61-DROP-GREEN")
+        })
+    return rc
+}

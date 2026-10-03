@@ -1,0 +1,12 @@
+// tests/gui/s65_canvas —— GUI-25 canvas 树内整合 v1:标记属性容器+每帧绘制回调
+// (canvas 标记走 style 块零新标签;on:draw 每帧 fire,绘制原语 gui_px 相对盒
+//  画点——真窗 DrawRectangle,headless 记录槽断言;盒几何内建 canvasx/y/w/h)
+view Root {
+  <vbox class="root">
+    <vbox class="cv" on:draw={paint}/>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style cv { direction: column h: 80 bg: SURFACE canvas: 1 }
+style state { fg: "#22c55e" h: 22 }

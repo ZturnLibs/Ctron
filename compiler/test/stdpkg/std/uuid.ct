@@ -1,4 +1,5 @@
 // std/uuid.ct —— RFC 9562 UUID(v4 真熵 / v7 unix_ms 前缀;§12 纯 Ctron 驱动)
+//@ tier: std
 // since: std-0.5 stability: experimental
 // 口径:零 std 依赖叶(不 use 任何 std 模块——加载器严格互斥树,db 将同时
 // 消费 uuid 与 crypto,uuid 用 crypto 即菱形 E5020);位装配以纯算术(div/mod

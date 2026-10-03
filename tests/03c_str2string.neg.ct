@@ -1,0 +1,11 @@
+// 03c_str2string.neg.ct —— 隐式转换单向门(§3.6):String→Str 有,Str→String 无
+// (持有型只能经 s.to_string() 显式升格,§3.3;直赋=把借用视图当持有,拒)
+//@ fail: E2010
+
+fn main() {
+    let s: Str = "lit"
+    let owned: String = s            // E2010:Str→String 无隐式
+    let direct: String = "lit"       // E2010:字面量是 Str,同门
+    println(owned.len)
+    println(direct.len)
+}

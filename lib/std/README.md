@@ -106,6 +106,21 @@ CTCL 注册表包形态外置):
 **悬案清账**:json_write 已并入 json(2026-09-23,宪章 v2 一域一模块裁决;C17 规避
 解除——合并面 43 decls 宿主 test 10/10 复验绿);域目录形态已随宪章 v2 转正(组织宪章 #1)。
 
+### 档位轴(T35,2026-10-02)
+
+分层宪章按「主题/依赖面」分 T1/T2/T3;档位按「分配面」分三档,两轴交叉互不替代
+(spec §9 档位矩阵:full→`core < alloc < std`,bare→`core`):
+
+- `core`(全档位可用):无 GC 分配、无 OS 面——math/hash/log/opt/pb;
+- `alloc`:GC 分配面(List/String/Box)——str/map/set/heap/json 等 16 模块;
+- `std`:OS 服务面(fs/time/process/rand/uuid)。
+
+机制:模块头注 `//@ tier: core|alloc|std`(首注释块内;**缺标注 = 不设门**,渐进
+收紧);包清单 `tier = "core|alloc|std"` 声明申报档(缺省 std);use 点档位越界 =
+E3040(变体 `.tier`)一次诊断、加载即止;`--profile=bare` 将有效档钳到 core。
+音遍性由真库锚自证(tier_real_pos:bare 体检 core 五模块全量消费零诊断)。
+域包(net/http/tls/db/gui)暂不在标注面(缺标注不设门),随 registry 泳道渐进入册。
+
 ## 分发与同步
 
 - **规范源**:本目录。`compiler/test/stdpkg/std/` 是**同步副本**(测试种子),

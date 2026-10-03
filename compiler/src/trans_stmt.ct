@@ -672,7 +672,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     eln("if (" + rme + ".variant == 0) \{", env)
                     var venv = env
                     if vpt[2].len > 1 && vpt[2][1][0] == "PatId" && vpt[2][1][1] != "_" {
-                        eln(ct_ctype(sec) + " t_" + vpt[2][1][1] + " = (" + ct_ctype(sec) + ")(long)(" + rme + ".v);", env)
+                        // T53:f 载荷位型双关(旧 (double)(long) 值直转双向失真)
+                        var pvx8 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
+                        if sec == "f" {
+                            pvx8 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                        }
+                        eln(ct_ctype(sec) + " t_" + vpt[2][1][1] + " = " + pvx8 + ";", env)
                         venv = env_bind(env, vpt[2][1][1], sec)
                     }
                     if vbe[0] == "BlockExpr" {
@@ -709,7 +714,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 return env
             }
         }
-        // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷 i32)
+        // Phase 5:let x = expr? —— ct_res 解包 + Err 短路 return(载荷按元素码;T53:f 位型双关)
         if pat[0] == "PatId" && st[4][0] == "Try" {
             var qv = "t_q" + nline(st)
             var ec2 = ct_try_elem(file, st[4], env)
@@ -717,7 +722,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var rqt = ct_reg_line("q" + nline(st), "R")
             if rqt.len > 0 { eln(rqt, env) }
             eln("if (" + qv + ".variant != 0) \{ return " + qv + "; }", env)
-            eln(ct_ctype(ec2) + " t_" + pat[1] + " = (" + ct_ctype(ec2) + ")" + qv + ".v;", env)
+            var vx6 = "(" + ct_ctype(ec2) + ")" + qv + ".v"
+            if ec2 == "f" {
+                vx6 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d"
+            }
+            eln(ct_ctype(ec2) + " t_" + pat[1] + " = " + vx6 + ";", env)
             return env_bind(env, pat[1], ec2)
         }
         // Phase 4:let (tx, rx) = Channel[T](cap) —— 双名同一 ct_chan*
@@ -1149,7 +1158,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln("if (" + rme + ".variant == 0) \{", env)
                 var senv = env
                 if spt[2].len > 1 && spt[2][1][0] == "PatId" && spt[2][1][1] != "_" {
-                    eln(ct_ctype(sec) + " t_" + spt[2][1][1] + " = (" + ct_ctype(sec) + ")(long)(" + rme + ".v);", env)
+                    // T53:f 载荷位型双关(与 let-match 臂同款;旧 (double)(long) 值直转失真)
+                    var pvx9 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
+                    if sec == "f" {
+                        pvx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                    }
+                    eln(ct_ctype(sec) + " t_" + spt[2][1][1] + " = " + pvx9 + ";", env)
                     senv = env_bind(env, spt[2][1][1], sec)
                 }
                 if sbe[0] == "BlockExpr" {
@@ -1194,8 +1208,21 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         eln(ct_ctype(recvElem) + " t_" + opt[2][1][1] + " = *(" + ct_ctype(recvElem) + "*)(long)" + rme + ".v;", env)
                         oenv = env_bind(env, opt[2][1][1], recvElem)
                     } else {
-                        eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
-                        oenv = env_bind(env, opt[2][1][1], "i")
+                        // T53:载荷码恢复(#elem/被调声明首参)——旧硬编码 int32(
+                        // I64 载荷 >2^31 截断、F64 载荷错值根);f 位型双关,
+                        // 6/7 整宽直槽;i 码保持原行(零扰动回落)
+                        var sec9 = ct_opt_elem_expr(file, st[1], env)
+                        if or2(sec9 == "f", or2(sec9 == "6", sec9 == "7")) {
+                            var vx9 = "(" + ct_ctype(sec9) + ")(long)" + rme + ".v"
+                            if sec9 == "f" {
+                                vx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                            }
+                            eln(ct_ctype(sec9) + " t_" + opt[2][1][1] + " = " + vx9 + ";", env)
+                            oenv = env_bind(env, opt[2][1][1], sec9)
+                        } else {
+                            eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
+                            oenv = env_bind(env, opt[2][1][1], "i")
+                        }
                     }
                 }
                 if obe[0] == "BlockExpr" {
@@ -1511,6 +1538,28 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             // T55:显式 return 经 ct_clo_ret_line——u: 走 union 低 8 字节式
             //(探针/中间件体 return Resp{…} / return next(r) 皆此臂)
+            // with/with_mut return 位同主干 ANF 前置(r3a bump:闭包体 return m.with 形;
+            // #shim=2 早于主干 return 臂,漏接即 ct_expr 落「仅语句位」panic)
+            if st[1][0] == "Call" {
+                if st[1][1][0] == "Member" {
+                    if or2(st[1][1][3] == "with", st[1][1][3] == "with_mut") {
+                        var robjt2 = ct_typeof(st[1][1][1], env, file)
+                        if or2(robjt2 == "A", robjt2.len > 1 && byte_at(robjt2, 0) == 109) {
+                            var rismut2 = st[1][1][3] == "with_mut"
+                            var rinner2 = "i"
+                            if robjt2.len > 1 && byte_at(robjt2, 0) == 109 {
+                                rinner2 = byte_slice(robjt2, 1, robjt2.len)
+                            }
+                            var rcl2 = st[1][2][1]
+                            var rtname2 = "t_wret" + nline(st)
+                            var robj2 = ct_expr(st[1][1][1], env, file)
+                            ct_emit_with_stmt(st[1], robj2, robjt2, rcl2, env, file, rismut2, rtname2, hreg, "1")
+                            eln(ct_clo_ret_line(rinner2, rtname2), env)
+                            return env
+                        }
+                    }
+                }
+            }
             var rv2 = ct_expr(st[1], env, file)
             var rt2 = ct_typeof(st[1], env, file)
             eln(ct_clo_ret_line(rt2, rv2), env)

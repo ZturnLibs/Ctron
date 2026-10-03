@@ -42,6 +42,7 @@ extern "c" fn gui_inject_rclick(x: I32, y: I32) -> I32
 extern "c" fn gui_dgev_begin(x: I32, y: I32, w: I32, h: I32) -> I32
 extern "c" fn gui_dgev_end() -> I32
 extern "c" fn gui_dgev_on() -> I32
+extern "c" fn gui_list_truncate(l: List[Str], n: I32) -> I32
 extern "c" fn gui_dgev_setnode(n: I32) -> I32
 extern "c" fn gui_dgev_node() -> I32
 extern "c" fn gui_dgev_px() -> I32
@@ -131,11 +132,111 @@ extern "c" fn gui_mouse_x() -> I32
 #[trusted]
 extern "c" fn gui_mouse_y() -> I32
 
+// GUI-23:链接 OpenURL(headless 记录槽,真窗 raylib OpenURL)
+#[trusted]
+extern "c" fn gui_open_url(url: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_open_url_last() -> Str
+
+// GUI-20:OS 文件拖入(事件码 6;槽=本次拖入路径集)
+#[trusted]
+extern "c" fn gui_drop_begin() -> I32
+
+#[trusted]
+extern "c" fn gui_drop_add(p: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_drop_count() -> I32
+
+#[trusted]
+extern "c" fn gui_drop_setcur(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_drop_path() -> Str
+
+#[trusted]
+extern "c" fn gui_inject_drop() -> I32
+
+// GUI-24:窗口级 API(op 编码见 ctron_gui.c;close_req=拦截式关闭请求)
+#[trusted]
+extern "c" fn gui_win_op(op: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_win_op_last() -> I32
+
+#[trusted]
+extern "c" fn gui_win_close_req() -> I32
+
+#[trusted]
+extern "c" fn gui_win_icon(path: Str) -> I32
+
+#[trusted]
+extern "c" fn gui_win_icon_last() -> Str
+
+// GUI-25:canvas 树内整合(标记属性容器;绘制点相对盒,headless 记录槽)
+#[trusted]
+extern "c" fn gui_canvas_setbox(x: I32, y: I32, w: I32, h: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_setnode(n: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_x() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_y() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_w() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_h() -> I32
+
+#[trusted]
+extern "c" fn gui_canvas_node() -> I32
+
+#[trusted]
+extern "c" fn gui_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_px_n() -> I32
+
+#[trusted]
+extern "c" fn gui_px_at(i: I32, comp: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_px_clear() -> I32
+
+// GUI-21:scroll 滚动偏移(应用侧累计;容器 clip 消费)
+#[trusted]
+extern "c" fn gui_scroll_add(d: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_scroll_off() -> I32
+extern "c" fn gui_scroll_set(v: I32) -> Void
+
+// GUI-15:on:after 定时事件(元素存活域一次性;on:input 重臂=防抖)
+extern "c" fn gui_after_bump() -> Void
+extern "c" fn gui_after_arm(node: I32, ms: I32) -> I32
+extern "c" fn gui_after_touch(node: I32) -> I32
+extern "c" fn gui_after_armed(node: I32) -> I32
+extern "c" fn gui_after_due(node: I32) -> I32
+extern "c" fn gui_after_disarm(node: I32) -> I32
+
 #[trusted]
 extern "c" fn gui_mouse_down() -> I32
 
 #[trusted]
 extern "c" fn gui_focus_set(i: I32) -> Void
+
+// GUI-14:程序化聚焦/滚动请求槽(一次性;应用自 act 闭包发起)
+extern "c" fn gui_focus_req_get() -> Str
+extern "c" fn gui_focus_req_set(n: Str) -> Void
+extern "c" fn gui_focus_req_clear() -> Void
+extern "c" fn gui_scroll_req_get() -> Str
+extern "c" fn gui_scroll_req_set(n: Str) -> Void
+extern "c" fn gui_scroll_req_clear() -> Void
 
 #[trusted]
 extern "c" fn gui_focus_node() -> I32
@@ -170,6 +271,7 @@ extern "c" fn gui_mod_shift() -> I32
 
 #[trusted]
 extern "c" fn gui_alpha(a: I32) -> Void
+extern "c" fn gui_radius(px: I32) -> Void
 
 #[trusted]
 extern "c" fn gui_cmd_bg_a(i: I32) -> I32
@@ -275,6 +377,7 @@ extern "c" fn gui_evt_y() -> I32
 
 #[trusted]
 extern "c" fn InitWindow(w: I32, h: I32, title: Str) -> Void
+extern "c" fn SetConfigFlags(flags: I32) -> Void
 
 #[trusted]
 extern "c" fn CloseWindow() -> Void
@@ -574,6 +677,12 @@ pub fn theme_apply(t: Theme) -> I32 {
 // 平台 id:0=mac 1=win 2=linux(§2.5;I32 跨界,Str 面由调用方映射)
 pub fn gui_platform() -> I32 {
     return gui_platform_id()
+}
+
+// 注入优先时钟(ms;headless d_tick 钉相位,真窗真时钟)——toast 定时/
+// 防抖类配方的时间源(§2.7 tick 消费)
+pub fn gui_now() -> I32 {
+    return gui_now_ms()
 }
 
 // 宿主明暗:true=dark(探测不可得回退 dark;进程内缓存)
@@ -1206,10 +1315,29 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
             t.ev_name.push("numeric")
             t.ev_fn.push("")
         } else {
+        if an == "switch" {
+            // checkbox 变体:药丸滑块视觉(渲染期 rt_has_mark 消费;零 schema)
+            t.ev_name.push("switch")
+            t.ev_fn.push("")
+        } else {
+        if an == "radio" {
+            // checkbox 变体:单选圆钮视觉(机制全同 checkbox,单选清他在模型)
+            t.ev_name.push("radio")
+            t.ev_fn.push("")
+        } else {
         if an == "on" {
             glit(src, cur, 58)
             var evn: Str = gword(src, cur)
             glit(src, cur, 61)
+            gws(src, cur)
+            if byte_at(src, cur.load()) == 34 {
+                // GUI-15:on:after="ms:handler" 引号串事件(定时;存活域一次性)
+                var qv3: Str = gstr(src, cur)
+                t.ev_name.push(evn)
+                t.ev_fn.push(qv3)
+                gws(src, cur)
+                continue
+            }
             glit(src, cur, 123)
             // SL-8c-3:事件表达式平衡捕获(编译侧 gui_bx_expr 同规范形;单标识符
             // 旧契约为其特例)——glit 已过 {,捕获消费至配对 }
@@ -1251,6 +1379,8 @@ fn gt_attrs(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: Lis
                 // 波次五a:image 源路径(与 placeholder 同 strs 槽位;各自元素取用)
                 strs.push(av)
             }
+        }
+        }
         }
         }
         }
@@ -2020,6 +2150,28 @@ fn gt_cls_prop(classes: Str, prop: Str, dflt: Str, t: GuiTree) -> Str {
     }
     return dflt
 }
+
+// GUI-16 值驱动宽高(v1):维度值 "{expr}" 形态逐帧求值——style 值以引号串
+// 写花括号表达式(w: "{n}"),裸词保持字面量(词法 gword 不吃花括号,引号串
+// 经 gstr 原样入表);产出经 gs2i 转整。v1 不做缓存:即时模式每帧重放,
+// 小表达式成本可忽略(样式折叠缓存设计留完整面)。
+fn gt_dim_v(t: GuiTree, v: Str, bind: fn(List[Str]) -> Void) -> I32 {
+    if v.len >= 3 {
+        if byte_at(v, 0) == 123 && byte_at(v, v.len - 1) == 125 {
+            var r2: Str = bxv_eval(t, byte_slice(v, 1, v.len - 1), bind, "", "")
+            // 内建名产出带标(i:/b:),裸串(bind 名)原样——解标后转整
+            if bxv_istag(r2) {
+                return bxv_iv(r2)
+            }
+            return gs2i(r2)
+        }
+    }
+    return gs2i(v)
+}
+
+fn gt_dim(t: GuiTree, c: Str, prop: Str, dflt: Str, bind: fn(List[Str]) -> Void) -> I32 {
+    return gt_dim_v(t, gt_cls_prop(c, prop, dflt, t), bind)
+}
 // ==================== 运行时(绑定求值/布局发射/命中/循环) ====================
 
 fn rt_col_r(p: I32) -> I32 {
@@ -2228,6 +2380,194 @@ fn bxv_show(v: Str) -> Str {
     return v
 }
 
+// ==================== GUI-13:视图表达式下标与字符串切分内建 ====================
+// 值模型:串内建实参须裸串(带型即拒);整实参须 i: 带;布尔产出 b:1/b:0。
+// fail-closed:形态错 panic(与既有求值器口径一致);数据不可得回落空串(通道口径)。
+
+fn bxv_cut(s: Str, a: I32, b: I32) -> Str {
+    var lo: I32 = a
+    var hi: I32 = b
+    if lo < 0 {
+        lo = 0
+    }
+    if hi > s.len {
+        hi = s.len
+    }
+    if lo > hi {
+        return ""
+    }
+    return byte_slice(s, lo, hi)
+}
+
+fn bxv_fld(s: Str, sep: Str, idx: I32) -> Str {
+    if sep.len == 0 {
+        panic("gui 表达式求值:fld 分隔串须非空")
+    }
+    var n: I32 = s.len
+    var m: I32 = sep.len
+    var i: I32 = 0
+    var fstart: I32 = 0
+    var fi: I32 = 0
+    while i < n {
+        var eq: Bool = false
+        if i + m <= n {
+            eq = true
+            var k: I32 = 0
+            while k < m {
+                if byte_at(s, i + k) != byte_at(sep, k) {
+                    eq = false
+                    k = m
+                }
+                k += 1
+            }
+        }
+        if eq {
+            if fi == idx {
+                return byte_slice(s, fstart, i)
+            }
+            fi += 1
+            i = i + m
+            fstart = i
+        } else {
+            i += 1
+        }
+    }
+    if fi == idx {
+        return byte_slice(s, fstart, n)
+    }
+    return ""
+}
+
+fn bxv_sethas(s: Str, sep: Str, v: Str) -> Str {
+    if sep.len == 0 {
+        panic("gui 表达式求值:sethas 分隔串须非空")
+    }
+    var n: I32 = s.len
+    var m: I32 = sep.len
+    var i: I32 = 0
+    var fstart: I32 = 0
+    while i < n {
+        var eq: Bool = false
+        if i + m <= n {
+            eq = true
+            var k: I32 = 0
+            while k < m {
+                if byte_at(s, i + k) != byte_at(sep, k) {
+                    eq = false
+                    k = m
+                }
+                k += 1
+            }
+        }
+        if eq {
+            if byte_slice(s, fstart, i) == v {
+                return "b:1"
+            }
+            i = i + m
+            fstart = i
+        } else {
+            i += 1
+        }
+    }
+    if byte_slice(s, fstart, n) == v {
+        return "b:1"
+    }
+    return "b:0"
+}
+
+fn bxv_contains(s: Str, sub: Str) -> Str {
+    var n: I32 = s.len
+    var m: I32 = sub.len
+    if m == 0 {
+        return "b:1"
+    }
+    var i: I32 = 0
+    while i + m <= n {
+        var eq: Bool = true
+        var k: I32 = 0
+        while k < m {
+            if byte_at(s, i + k) != byte_at(sub, k) {
+                eq = false
+                k = m
+            }
+            k += 1
+        }
+        if eq {
+            return "b:1"
+        }
+        i += 1
+    }
+    return "b:0"
+}
+
+// 实参型卫:整实参须 i: 带型(b: 即报型别错);串实参须裸
+fn bxv_intarg(v: Str, name: Str) -> I32 {
+    if !bxv_istag(v) {
+        panic("gui 表达式求值:" + name + " 整实参须整")
+    }
+    if byte_at(v, 0) != 105 {
+        panic("gui 表达式求值:" + name + " 整实参得布尔")
+    }
+    return bxv_iv(v)
+}
+
+fn bxv_strarg(v: Str, name: Str) -> Str {
+    if bxv_istag(v) {
+        panic("gui 表达式求值:" + name + " 串实参得带型")
+    }
+    return v
+}
+
+// 内建分发(词表 = 检查面 gui_bx_form_gate 白名单同源;新增双侧同步)
+fn bxv_call(name: Str, args: List[Str]) -> Str {
+    if name == "cut" {
+        if args.len != 3 {
+            panic("gui 表达式求值:cut 期待 3 实参")
+        }
+        return bxv_cut(bxv_strarg(args[0], "cut"), bxv_intarg(args[1], "cut"), bxv_intarg(args[2], "cut"))
+    }
+    if name == "fld" {
+        if args.len != 3 {
+            panic("gui 表达式求值:fld 期待 3 实参")
+        }
+        return bxv_fld(bxv_strarg(args[0], "fld"), bxv_strarg(args[1], "fld"), bxv_intarg(args[2], "fld"))
+    }
+    if name == "sethas" {
+        if args.len != 3 {
+            panic("gui 表达式求值:sethas 期待 3 实参")
+        }
+        return bxv_sethas(bxv_strarg(args[0], "sethas"), bxv_strarg(args[1], "sethas"), bxv_strarg(args[2], "sethas"))
+    }
+    if name == "contains" {
+        if args.len != 2 {
+            panic("gui 表达式求值:contains 期待 2 实参")
+        }
+        return bxv_contains(bxv_strarg(args[0], "contains"), bxv_strarg(args[1], "contains"))
+    }
+    panic("gui 表达式求值:未知内建 " + name)
+    return ""
+}
+
+// 下标:根路径经列表通道取项(rt_bind_items 实例 env List 指针前置,回落
+// each: 通道);索引须 i: 带型,越界回落空串(数据面口径,非形态错)
+fn bxv_sub(t: GuiTree, bind: fn(List[Str]) -> Void, path: Str, iv: Str) -> Str {
+    if !bxv_istag(iv) {
+        panic("gui 表达式求值:下标须整数")
+    }
+    if byte_at(iv, 0) != 105 {
+        panic("gui 表达式求值:下标须整数")
+    }
+    var ix: I32 = bxv_iv(iv)
+    var lines: List[Str] = rt_bind_items(t, bind, path)
+    if ix < 0 {
+        return ""
+    }
+    if ix >= lines.len {
+        return ""
+    }
+    return lines[ix]
+}
+
 fn bxv_ws(e: Str, cur: Atomic[I32]) -> I32 {
     while cur.load() < e.len {
         var b: I32 = byte_at(e, cur.load())
@@ -2244,7 +2584,7 @@ fn bxv_ws(e: Str, cur: Atomic[I32]) -> I32 {
 // "prop:" 前缀问 props 环境(装配期捕获实例的解析面;8c-4 归 gui.run 生成),
 // 未答(空)回落裸名 bind 通道;非 props 视图零改动直问通道。
 // 已知边界(登记):each 列表询问("each:名")不经本链,仍走裸名通道。
-fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
+fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
     // S4:事件实参内建名 mods——当前事件修饰键位(1=ctrl/⌘ 2=shift 4=alt);
     // 零语法变更,{fn(m, mods)} 实参面自然 arity 适配
     if path == "mods" {
@@ -2257,6 +2597,46 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void) -> Str {
     }
     if path == "dragpy" {
         return "i:" + gui_dgev_py().to_string()
+    }
+    // GUI-17:绝对指针内建(注入期受控)——permille 相对武装盒在分隔条/窗格
+    // 场景会饱和(盒即非量程),布局拖拽以绝对坐标为值源
+    if path == "mousex" {
+        return "i:" + gui_mouse_x().to_string()
+    }
+    if path == "mousey" {
+        return "i:" + gui_mouse_y().to_string()
+    }
+    // GUI-20:文件拖入内建——droppath=当前文件(setcur 游标),dropn=本次总数
+    // (串产出裸串不打标:i:/b: 是仅有的两种标)
+    if path == "droppath" {
+        return gui_drop_path()
+    }
+    if path == "dropn" {
+        return "i:" + gui_drop_count().to_string()
+    }
+    // GUI-25:canvas 盒几何内建(绘制回调里消费)
+    if path == "canvasx" {
+        return "i:" + gui_canvas_x().to_string()
+    }
+    if path == "canvasy" {
+        return "i:" + gui_canvas_y().to_string()
+    }
+    if path == "canvasw" {
+        return "i:" + gui_canvas_w().to_string()
+    }
+    if path == "canvash" {
+        return "i:" + gui_canvas_h().to_string()
+    }
+    // GUI-21:scroll 偏移内建(应用 bind 组装可见窗口行消费)
+    if path == "scrolloff" {
+        return "i:" + gui_scroll_off().to_string()
+    }
+    // GUI-13:each 项变量直答(展开上下文经参穿入;嵌套 each 内层遮蔽外层;
+    // 纯 {项} 槽的 itemvar 直取捷径不变,本路服务表达式内引用)
+    if itemvar != "" {
+        if path == itemvar {
+            return item
+        }
     }
     if t.props.len > 0 {
         var root: Str = bxv_root(path)
@@ -2296,7 +2676,7 @@ fn bxv_root(path: Str) -> Str {
 
 // 路径求值:名通道询问;bare 回答 = 串值(s: 不打标,原样即串);
 // 尾 .len 后缀对串回答取字节长(对 i:/b: 带型回答不适用,原样返回)
-fn bxv_path(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+fn bxv_path(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
     var start: I32 = cur.load()
     while cur.load() < e.len {
         var b: I32 = byte_at(e, cur.load())
@@ -2307,7 +2687,7 @@ fn bxv_path(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -
         }
     }
     var path: Str = byte_slice(e, start, cur.load())
-    var ans: Str = bxv_ask(t, path, bind)
+    var ans: Str = bxv_ask(t, path, bind, itemvar, item)
     if bxv_istag(ans) {
         return ans
     }
@@ -2316,8 +2696,16 @@ fn bxv_path(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -
         if byte_slice(path, pl - 4, pl) == ".len" {
             var base: Str = byte_slice(path, 0, pl - 4)
             if gt_slot_simple(base) {
-                var bans: Str = bxv_ask(t, base, bind)
+                var bans: Str = bxv_ask(t, base, bind, itemvar, item)
                 if !bxv_istag(bans) {
+                    // GUI-13:列表回落——串问空且列表通道有项时回项数
+                    //(既有串长口径不变;列表根 prop: 标量分支已路由走,串问恒空)
+                    if bans == "" {
+                        var lns: List[Str] = rt_bind_items(t, bind, base)
+                        if lns.len > 0 {
+                            return bxv_tagi(lns.len)
+                        }
+                    }
                     return bxv_tagi(bans.len)
                 }
             }
@@ -2326,7 +2714,7 @@ fn bxv_path(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -
     return ans
 }
 
-fn bxv_primary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+fn bxv_primary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
     bxv_ws(e, cur)
     if cur.load() >= e.len {
         return ""
@@ -2334,7 +2722,7 @@ fn bxv_primary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void
     var b: I32 = byte_at(e, cur.load())
     if b == 40 {
         cur.store(cur.load() + 1)
-        var v: Str = bxv_cmp(t, e, cur, bind)
+        var v: Str = bxv_cmp(t, e, cur, bind, itemvar, item)
         bxv_ws(e, cur)
         if cur.load() < e.len {
             if byte_at(e, cur.load()) == 41 {
@@ -2378,18 +2766,91 @@ fn bxv_primary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void
         }
     }
     if (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 {
-        return bxv_path(t, e, cur, bind)
+        // GUI-13 后缀探针:路径文本预扫,后随 ( → 内建调用 / [ → 下标 /
+        // 其余回 bxv_path 既有通道问询(点链/.len 口径不变)
+        var save: I32 = cur.load()
+        var pstart: I32 = cur.load()
+        while cur.load() < e.len {
+            var pc: I32 = byte_at(e, cur.load())
+            if pc == 46 || pc == 95 || (pc >= 48 && pc <= 57) || (pc >= 65 && pc <= 90) || (pc >= 97 && pc <= 122) {
+                cur.store(cur.load() + 1)
+            } else {
+                break
+            }
+        }
+        var ptext: Str = byte_slice(e, pstart, cur.load())
+        bxv_ws(e, cur)
+        var dotted: Bool = false
+        var di: I32 = 0
+        while di < ptext.len {
+            if byte_at(ptext, di) == 46 {
+                dotted = true
+                di = ptext.len
+            }
+            di += 1
+        }
+        if cur.load() < e.len {
+            var nb: I32 = byte_at(e, cur.load())
+            if nb == 40 {
+                if dotted {
+                    panic("gui 表达式求值:内建名须裸名 " + ptext)
+                }
+                cur.store(cur.load() + 1)
+                var args = List[Str]()
+                bxv_ws(e, cur)
+                if cur.load() < e.len {
+                    if byte_at(e, cur.load()) == 41 {
+                        cur.store(cur.load() + 1)
+                        return bxv_call(ptext, args)
+                    }
+                }
+                while true {
+                    args.push(bxv_cmp(t, e, cur, bind, itemvar, item))
+                    bxv_ws(e, cur)
+                    if cur.load() >= e.len {
+                        panic("gui 表达式求值:内建实参未闭合 " + ptext)
+                    }
+                    var ab: I32 = byte_at(e, cur.load())
+                    if ab == 44 {
+                        cur.store(cur.load() + 1)
+                    } else {
+                        if ab == 41 {
+                            cur.store(cur.load() + 1)
+                            return bxv_call(ptext, args)
+                        } else {
+                            panic("gui 表达式求值:内建实参形态 " + ptext)
+                        }
+                    }
+                }
+            }
+            if nb == 91 {
+                cur.store(cur.load() + 1)
+                bxv_ws(e, cur)
+                var iv: Str = bxv_cmp(t, e, cur, bind, itemvar, item)
+                bxv_ws(e, cur)
+                if cur.load() >= e.len {
+                    panic("gui 表达式求值:下标未闭合 " + ptext)
+                }
+                if byte_at(e, cur.load()) != 93 {
+                    panic("gui 表达式求值:下标期待 ]")
+                }
+                cur.store(cur.load() + 1)
+                return bxv_sub(t, bind, ptext, iv)
+            }
+        }
+        cur.store(save)
+        return bxv_path(t, e, cur, bind, itemvar, item)
     }
     panic("gui 表达式求值:非法记号 " + byte_slice(e, cur.load(), cur.load() + 1))
     return ""
 }
 
-fn bxv_unary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
+fn bxv_unary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
     bxv_ws(e, cur)
     if cur.load() < e.len {
         if byte_at(e, cur.load()) == 45 {
             cur.store(cur.load() + 1)
-            var v: Str = bxv_unary(t, e, cur, bind)
+            var v: Str = bxv_unary(t, e, cur, bind, itemvar, item)
             if bxv_istag(v) {
                 if byte_at(v, 0) == 105 {
                     return bxv_tagi(-bxv_iv(v))
@@ -2398,11 +2859,11 @@ fn bxv_unary(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) 
             panic("gui 表达式求值:负号仅适用整数")
         }
     }
-    return bxv_primary(t, e, cur, bind)
+    return bxv_primary(t, e, cur, bind, itemvar, item)
 }
 
-fn bxv_mul(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
-    var l: Str = bxv_unary(t, e, cur, bind)
+fn bxv_mul(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
+    var l: Str = bxv_unary(t, e, cur, bind, itemvar, item)
     while true {
         bxv_ws(e, cur)
         if cur.load() >= e.len {
@@ -2413,7 +2874,7 @@ fn bxv_mul(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) ->
             return l
         }
         cur.store(cur.load() + 1)
-        var r: Str = bxv_unary(t, e, cur, bind)
+        var r: Str = bxv_unary(t, e, cur, bind, itemvar, item)
         if op == 42 {
             l = bxv_tagi(bxv_iv(l) * bxv_iv(r))
         } else {
@@ -2427,8 +2888,8 @@ fn bxv_mul(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) ->
     return l
 }
 
-fn bxv_add(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
-    var l: Str = bxv_mul(t, e, cur, bind)
+fn bxv_add(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
+    var l: Str = bxv_mul(t, e, cur, bind, itemvar, item)
     while true {
         bxv_ws(e, cur)
         if cur.load() >= e.len {
@@ -2439,7 +2900,7 @@ fn bxv_add(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) ->
             return l
         }
         cur.store(cur.load() + 1)
-        var r: Str = bxv_mul(t, e, cur, bind)
+        var r: Str = bxv_mul(t, e, cur, bind, itemvar, item)
         var lstr: Bool = !bxv_istag(l)
         var rstr: Bool = !bxv_istag(r)
         if op == 43 {
@@ -2458,8 +2919,8 @@ fn bxv_add(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) ->
     return l
 }
 
-fn bxv_cmp(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) -> Str {
-    var l: Str = bxv_add(t, e, cur, bind)
+fn bxv_cmp(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
+    var l: Str = bxv_add(t, e, cur, bind, itemvar, item)
     bxv_ws(e, cur)
     if cur.load() >= e.len {
         return l
@@ -2485,7 +2946,7 @@ fn bxv_cmp(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) ->
     } else {
         return l
     }
-    var r: Str = bxv_add(t, e, cur, bind)
+    var r: Str = bxv_add(t, e, cur, bind, itemvar, item)
     var res: Bool = false
     var numeric: Bool = bxv_istag(l) && bxv_istag(r)
     if op == "==" {
@@ -2531,9 +2992,9 @@ fn bxv_cmp(t: GuiTree, e: Str, cur: Atomic[I32], bind: fn(List[Str]) -> Void) ->
     return "b:0"
 }
 
-fn bxv_eval(t: GuiTree, e: Str, bind: fn(List[Str]) -> Void) -> Str {
+fn bxv_eval(t: GuiTree, e: Str, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str) -> Str {
     var cur = Atomic[I32](0)
-    var v: Str = bxv_cmp(t, e, cur, bind)
+    var v: Str = bxv_cmp(t, e, cur, bind, itemvar, item)
     return v
 }
 
@@ -2624,7 +3085,7 @@ fn ev_eval_args(t: GuiTree, args: Str, bind: fn(List[Str]) -> Void, out: List[St
                     } else {
                         if c == 44 {
                             if depth == 0 {
-                                out.push(bxv_eval(t, byte_slice(args, start, i), bind))
+                                out.push(bxv_eval(t, byte_slice(args, start, i), bind, "", ""))
                                 start = i + 1
                             }
                         }
@@ -2636,7 +3097,7 @@ fn ev_eval_args(t: GuiTree, args: Str, bind: fn(List[Str]) -> Void, out: List[St
     }
     var last: Str = byte_slice(args, start, args.len)
     if last != "" {
-        out.push(bxv_eval(t, last, bind))
+        out.push(bxv_eval(t, last, bind, "", ""))
     }
 }
 
@@ -2784,6 +3245,9 @@ pub fn rt_hover_node(rects: List[I32], hits: List[I32], px: I32, py: I32) -> I32
 }
 
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32, hits: List[I32], hinst: List[I32], inst: I32, hov: I32, actn: I32) -> I32 {
+    if id >= t.ntag.len {
+        panic("EACHDBG 越界 id=" + id.to_string() + " ntag.len=" + t.ntag.len.to_string())
+    }
     // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
     // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
     var tag: Str = t.ntag[id]
@@ -2801,6 +3265,23 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             }
             he += 1
         }
+    }
+    // GUI-15:on:after 定时事件——存活域布防(每帧 touch;首见 arm;重臂归
+    // on:input 防抖;when 假不经此路=seen 过期不 fire,定时随灶消亡。
+    // 注:裸块勿用——emit 器块 lowering 撞 t_blk0(T27-B 同族),平铺函数域)
+    var ae: I32 = 0
+    while ae < t.nec[id] {
+        var agi: I32 = t.nes[id] + ae
+        if t.ev_name[agi] == "after" {
+            gui_after_touch(id)
+            if gui_after_armed(id) == 0 {
+                var ams: I32 = rt_after_ms(t.ev_fn[agi])
+                if ams > 0 {
+                    gui_after_arm(id, ams)
+                }
+            }
+        }
+        ae += 1
     }
     // 波次四:ViewCall 展开——查组件注册表,实参求值入 env(末位优先),
     // 拼接组件体子树;无 gui_open(纯拼接,组件体自带根元素)
@@ -2826,9 +3307,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         if vroot < 0 {
             panic("gui: 未知组件 " + callname)
         }
-        // 实参先求值(父作用域)→垫未提供 prop 默认空串→推实参(env 末位优先)。
-        // 旧序「先垫后求值」在同名嵌套时自遮蔽:内层垫空先入 env,实参表达式
-        // 引用同名外层 prop 即得空(Menu→Menu open 实证)——求值必须先于垫
+        // 作用域 env:标记→实参求值(父作用域)→垫未提供→推实参→emit→截断还原。
+        // 旧「追加不弹」=实参永远命中上一帧旧推送(一帧滞后→同名嵌套永久冻结,
+        // s55 实证);作用域化后每次展开实参恒读父作用域新鲜值
+        var env_mark: I32 = t.env_n.len
         var pi: I32 = 0
         var vpsn: I32 = gs2i(t.npre[id])
         var vpnn: I32 = gs2i(t.nbid[id])
@@ -2846,7 +3328,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         // each 活动项直取(组件×each:实参引用迭代变量)
                         pval = item
                     } else {
-                        pval = bxv_eval(t, pexpr, bind)
+                        pval = bxv_eval(t, pexpr, bind, itemvar, item)
                     }
                 }
             }
@@ -2887,6 +3369,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         t.env_n.push("__slot__")
         t.env_v.push(sroot.to_string())
         rt_emit(t, bind, itemvar, item, vroot, hits, hinst, inst, hov, actn)
+        // 截断还原(作用域出栈):共享列表对象原地截断(t 按值传参,字段重绑
+        // 只改副本=首次实证;C 助手写 ctron_list.n)
+        gui_list_truncate(t.env_n, env_mark)
+        gui_list_truncate(t.env_v, env_mark)
         return 0
     }
     // P2 slot 锚:组件体内的 <slot/> 在展开期拼接当前实例的投影子树。
@@ -2926,7 +3412,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if gt_slot_simple(t.nflag[id]) && t.props.len == 0 {
                 fv = rt_bind_text(bind, "when:" + t.nflag[id])
             } else {
-                if bxv_truth(bxv_eval(t, t.nflag[id], bind)) {
+                var bv2: Str = bxv_eval(t, t.nflag[id], bind, itemvar, item)
+                if bxv_truth(bv2) {
                     fv = "1"
                 }
             }
@@ -2943,7 +3430,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if gt_slot_simple(t.nflag[id]) && t.props.len == 0 {
                 dis = gt_ck_truth(rt_bind_text(bind, t.nflag[id]))
             } else {
-                dis = bxv_truth(bxv_eval(t, t.nflag[id], bind))
+                dis = bxv_truth(bxv_eval(t, t.nflag[id], bind, itemvar, item))
             }
         }
         if dis {
@@ -2964,8 +3451,8 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         } else {
             gui_alpha(0)
         }
-        gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "66", t)),
-                2, gs2i(gt_cls_prop(c, "h", "54", t)), bgp)
+        gui_cfg(0, 0, 0, 0, 1, 1, 2, gt_dim(t, c, "w", "66", bind),
+                2, gt_dim(t, c, "h", "54", bind), bgp)
         var fgs: Str = gt_st_prop(c, "fg", "#ffffff", t, st)
         if dis {
             if gt_cls_prop(c, "disabled_fg", "", t) == "" {
@@ -2981,7 +3468,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 // each 活动项:项文本直取(不经绑定通道;label 同款)
                 btxt = btxt + item + t.npost[id]
             } else {
-                btxt = btxt + bxv_show(bxv_eval(t, t.nbid[id], bind)) + t.npost[id]
+                btxt = btxt + bxv_show(bxv_eval(t, t.nbid[id], bind, itemvar, item)) + t.npost[id]
             }
         } else {
             btxt = btxt + t.npost[id]
@@ -3005,14 +3492,14 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
                     var ans: Str = ""
                     if itemvar != "" {
-                        ans = rt_bind_text(bind, "eachrow:" + t.nbid[id] + ":" + inst)
+                        ans = rt_bind_text(bind, "eachrow:" + t.nbid[id] + ":" + inst.to_string())
                     }
                     if ans == "" {
                         ans = rt_bind_text(bind, t.nbid[id])
                     }
                     ck = gt_ck_truth(ans)
                 } else {
-                    ck = bxv_truth(bxv_eval(t, t.nbid[id], bind))
+                    ck = bxv_truth(bxv_eval(t, t.nbid[id], bind, itemvar, item))
                 }
             }
             if t.nflag[id] != "" {
@@ -3021,7 +3508,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         st = 3
                     }
                 } else {
-                    if bxv_truth(bxv_eval(t, t.nflag[id], bind)) {
+                    if bxv_truth(bxv_eval(t, t.nflag[id], bind, itemvar, item)) {
                         st = 3
                     }
                 }
@@ -3044,12 +3531,54 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     cbgp = g_parse_color("#3a3a44")
                 }
             }
-            gui_cfg(0, 0, 0, 0, 1, 1, 2, gs2i(gt_cls_prop(c, "w", "28", t)),
-                    2, gs2i(gt_cls_prop(c, "h", "28", t)), cbgp)
-            if ck {
+            // 变体(switch/radio 裸属性,事件表承载):视觉换装,机制全同——
+            // switch=药丸 44x26+旋钮 ● 位置承载态;radio=圆 22x22+●/○;
+            // 裸 checkbox=28x28+x 全量原样(s27 站岗)。字形叶字面量直调,
+            // 不经 Str 变量(发射臂分支内 Str 变量 UB 面绕行);几何走
+            // gt_dim 值驱动宽(GUI-16 地基,merge 采主仓口径)
+            var is_sw: Bool = rt_has_mark(t, id, "switch")
+            var is_rd: Bool = rt_has_mark(t, id, "radio")
+            var cbw: I32 = gt_dim(t, c, "w", "28", bind)
+            var cbh: I32 = gt_dim(t, c, "h", "28", bind)
+            var cax: I32 = 1
+            if is_sw {
+                cbw = gt_dim(t, c, "w", "44", bind)
+                cbh = gt_dim(t, c, "h", "26", bind)
+                gui_radius(cbh / 2)
+                if ck {
+                    cax = 2
+                } else {
+                    cax = 0
+                }
+            }
+            if is_rd {
+                cbw = gt_dim(t, c, "w", "22", bind)
+                cbh = gt_dim(t, c, "h", "22", bind)
+                gui_radius(cbw / 2)
+            }
+            gui_cfg(0, 0, 0, 0, cax, 1, 2, cbw,
+                    2, cbh, cbgp)
+            if is_sw {
                 var cfp: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
-                gui_text_w("x", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                gui_text_w("●", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
                          rt_col_r(cfp), rt_col_g(cfp), rt_col_b(cfp), 255)
+            } else {
+            if is_rd {
+                var cfp2: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                if ck {
+                    gui_text_w("●", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                             rt_col_r(cfp2), rt_col_g(cfp2), rt_col_b(cfp2), 255)
+                } else {
+                    gui_text_w("○", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                             rt_col_r(cfp2), rt_col_g(cfp2), rt_col_b(cfp2), 255)
+                }
+            } else {
+            if ck {
+                var cfp3: I32 = g_parse_color(gt_st_prop(c, "fg", "#ffffff", t, st))
+                gui_text_w("x", gs2i(gt_cls_prop(c, "size", "18", t)), 400,
+                         rt_col_r(cfp3), rt_col_g(cfp3), rt_col_b(cfp3), 255)
+            }
+            }
             }
             hits.push(id)
             hinst.push(inst)
@@ -3064,7 +3593,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     ax = 1
                 }
             }
-            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gs2i(gt_cls_prop(c, "h", "40", t)), 0)
+            gui_cfg(0, 0, 0, 0, ax, 1, 1, 0, 2, gt_dim(t, c, "h", "40", bind), 0)
             var txt: Str = t.npre[id]
             if t.nbid[id] != "" {
                 if t.nbid[id] == itemvar {
@@ -3077,7 +3606,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                         txt = txt + bxv_show(rt_bind_text(bind, t.nbid[id])) + t.npost[id]
                     } else {
                         // SL-8b:表达式槽求值(每帧活值)
-                        txt = txt + bxv_show(bxv_eval(t, t.nbid[id], bind)) + t.npost[id]
+                        txt = txt + bxv_show(bxv_eval(t, t.nbid[id], bind, itemvar, item)) + t.npost[id]
                     }
                 }
             } else {
@@ -3092,6 +3621,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var ff2: I32 = gs2i(gt_cls_prop(c, "font_family", "0", t))
             if ff2 < 0 {
                 ff2 = 0
+            }
+            // GUI-22:ellipsis 标记+max_w 预算 → 单行省略(行钳制登记 v2)
+            if gt_cls_prop(c, "ellipsis", "", t) != "" {
+                var mw2: Str = gt_cls_prop(c, "max_w", "", t)
+                if mw2 != "" {
+                    txt = rt_ellipsis(txt, gs2i(mw2), sz, ff2 * 10000 + fw2)
+                }
             }
             gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
         } else {
@@ -3128,7 +3664,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
                     ival = bxv_show(rt_bind_text(bind, t.nbid[id]))
                 } else {
-                    ival = bxv_show(bxv_eval(t, t.nbid[id], bind))
+                    ival = bxv_show(bxv_eval(t, t.nbid[id], bind, itemvar, item))
+                }
+            }
+            // GUI-14:程序化聚焦请求消费——bind 名匹配即聚焦(光标置尾,与
+            // click-to-focus 同口径);一次性,消费即清
+            if t.nbid[id] != "" {
+                if t.nbid[id] == gui_focus_req_get() {
+                    gui_focus_set(id)
+                    gui_caret_set(ival.len)
+                    gui_focus_req_clear()
                 }
             }
             var ifoc: Bool = false
@@ -3425,12 +3970,20 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 if gt_slot_simple(t.nbid[id]) && t.props.len == 0 {
                     tval = bxv_show(rt_bind_text(bind, t.nbid[id]))
                 } else {
-                    tval = bxv_show(bxv_eval(t, t.nbid[id], bind))
+                    tval = bxv_show(bxv_eval(t, t.nbid[id], bind, itemvar, item))
                 }
             }
             var tfoc: Bool = false
             if gui_focus_node() == id {
                 tfoc = true
+            }
+            // GUI-14:程序化聚焦请求消费(textarea 同 input 口径)
+            if t.nbid[id] != "" {
+                if t.nbid[id] == gui_focus_req_get() {
+                    gui_focus_set(id)
+                    gui_caret_set(tval.len)
+                    gui_focus_req_clear()
+                }
             }
             var tshow: Str = tval
             var tph: Bool = false
@@ -3686,7 +4239,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             var hs: Str = gt_cls_prop(c, "h", "", t)
             if hs != "" {
                 hmode = 2
-                hval = gs2i(hs)
+                hval = gt_dim_v(t, hs, bind)
             }
             var bgp2: I32 = 0
             var bgv2: Str = gt_st_prop(c, "bg", "", t, st)
@@ -3710,6 +4263,10 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 hits.push(id)
                 hinst.push(inst)
             }
+            // GUI-25:canvas 标记容器——节点 id 存槽(盒几何循环层自 rects 取)
+            if gt_cls_prop(c, "canvas", "", t) != "" {
+                gui_canvas_setnode(id)
+            }
             if tag == "overlay" {
                 // 波次三(§2.3):浮层容器——Clay floating 全屏附着 zIndex=1;
                 // align: center → 子元素居中(dialog 卡片);x/y 偏移(下拉锚定 v2)
@@ -3727,6 +4284,16 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                 var mnw: Str = gt_cls_prop(c, "min_w", "", t)
                 var mmh: Str = gt_cls_prop(c, "max_h", "", t)
                 var mnh: Str = gt_cls_prop(c, "min_h", "", t)
+                // GUI-16 完整面:容器宽统一语义——w 在(裸词字面/引号串逐帧)即
+                // FIXED;不写维持 GROW(存量口径);scroll/overlay 豁免(裁决②)。
+                // w 与 min/max_w 同现时 w 胜(FIXED=显式意图)
+                var cwv: Str = gt_cls_prop(c, "w", "", t)
+                var cwm: I32 = 1
+                var cwvl: I32 = 0
+                if cwv != "" {
+                    cwm = 2
+                    cwvl = gt_dim_v(t, cwv, bind)
+                }
                 if mmw != "" {
                     // max_w 在:宽 GROW{min,max} 钳制;高按其自身约束
                     var mn2: I32 = 0
@@ -3752,18 +4319,35 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                             hv3 = 0
                         }
                     }
-                    gui_cfg3(dir, gap, pad, pad, 0, 0, 3, 0, h3, hv3, bgp2, wmm, hmm2)
+                    if cwm == 2 {
+                        gui_cfg3(dir, gap, pad, pad, 0, 0, 2, cwvl, h3, hv3, bgp2, 0, hmm2)
+                    } else {
+                        gui_cfg3(dir, gap, pad, pad, 0, 0, 3, 0, h3, hv3, bgp2, wmm, hmm2)
+                    }
                 } else {
                     if mnh != "" {
                         // 仅 min_h:高 FIT{min,∞} 托底
                         var hv4: I32 = gs2i(mnh) * 100000 + 32000
-                        gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 4, 0, bgp2, 0, hv4)
+                        if cwm == 2 {
+                            gui_cfg3(dir, gap, pad, pad, 0, 0, 2, cwvl, 4, 0, bgp2, 0, hv4)
+                        } else {
+                            gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 4, 0, bgp2, 0, hv4)
+                        }
                     } else {
                         if mmh != "" {
                             // 仅 max_h:高 GROW{0,max} 钳制
-                            gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 3, 0, bgp2, 0, gs2i(mmh))
+                            if cwm == 2 {
+                                gui_cfg3(dir, gap, pad, pad, 0, 0, 2, cwvl, 3, 0, bgp2, 0, gs2i(mmh))
+                            } else {
+                                gui_cfg3(dir, gap, pad, pad, 0, 0, 1, 0, 3, 0, bgp2, 0, gs2i(mmh))
+                            }
                         } else {
-                            gui_cfg(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2)
+                            // GUI-21:scroll 标记容器——clip 裁剪+偏移位移(virtual each 配方基座)
+                            if gt_cls_prop(c, "scroll", "", t) != "" {
+                                gui_cfg2(dir, gap, pad, pad, 0, 0, 1, 0, hmode, hval, bgp2, 1, gui_scroll_off())
+                            } else {
+                                gui_cfg(dir, gap, pad, pad, 0, 0, cwm, cwvl, hmode, hval, bgp2)
+                            }
                         }
                     }
                 }
@@ -3808,6 +4392,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
 
 pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32], hov: I32, actn: I32) -> I32 {
     gui_frame_tick()
+    gui_after_bump()
     gui_begin_layout(w, h)
     // 应用根 = 最后声明的视图(组件先声明后用惯例;单视图退化为 0);
     // gui_list_ni 门控——编译构建树无 vreg 字段(NULL)
@@ -3921,7 +4506,7 @@ fn rt_in_val(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void) -> Str {
     // props 视图走求值器(prop: 链解析+裸名回落,与显示路径同口径)——
     // 旧 return "" = 组词/编辑 cur 恒空:新字替换非追加(只留末字)/
     // 退格 caret=0 无效/点击光标置 0 三症状同根
-    return bxv_show(bxv_eval(t, t.nbid[node], bind))
+    return bxv_show(bxv_eval(t, t.nbid[node], bind, "", ""))
 }
 
 // on:<evname> 处理器头名提取(节点事件表扫描);未声明返回 ""
@@ -3968,6 +4553,20 @@ fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, Lis
     var h: Str = rt_in_handler(t, node, evname)
     if h != "" {
         act(h + ":" + payload, List[Str]())
+        // GUI-15:on:input 重臂同节点 on:after(防抖口径:每击键重置期限)
+        if evname == "input" {
+            var e2: I32 = 0
+            while e2 < t.nec[node] {
+                var g2: I32 = t.nes[node] + e2
+                if t.ev_name[g2] == "after" {
+                    var ams2: I32 = rt_after_ms(t.ev_fn[g2])
+                    if ams2 > 0 {
+                        gui_after_arm(node, ams2)
+                    }
+                }
+                e2 += 1
+            }
+        }
     }
     return 0
 }
@@ -4118,6 +4717,9 @@ fn rt_menu_render(hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
         i += 1
     }
     gui_close()
+    // GUI-14:未消费聚焦请求帧末过期(一次性语义;消费点在 input/textarea
+    // emit;挂真帧函数尾,勿落 rt_emit 每节点尾——GUI-18 同款坑位)
+    gui_focus_req_clear()
     return 0
 }
 
@@ -4876,14 +5478,18 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    rt_scroll_req_apply(t, rects, hits)
+    rt_after_pump(t, bind, act)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
+    SetConfigFlags(8192)
     InitWindow(w, h, title)
     SetTargetFPS(60)
-    while !WindowShouldClose() {
+    while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
+        rt_canvas_frame(t, rects, hits, bind, act)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
@@ -4910,6 +5516,9 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         }
         if evt == 5 {
             rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
         }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
@@ -4955,7 +5564,10 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
             }
         } else {
             if evt == 4 {
-                rt_ta_wheel(t, rects, hits, gui_evt_key(), bind)
+                // GUI-21:textarea 未消费的滚轮进 scroll 偏移(步长应用侧换算)
+                if rt_ta_wheel(t, rects, hits, gui_evt_key(), bind) == 0 {
+                    gui_scroll_add(gui_evt_key() * 66)
+                }
             }
             if evt == 3 {
                 // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
@@ -5026,6 +5638,8 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         rects = List[I32]()
         rt_collect_rects(nfr, rects)
         gui_ime_feed_caret(rects, hits)
+        rt_scroll_req_apply(t, rects, hits)
+        rt_after_pump(t, bind, act)
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -5049,15 +5663,19 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
     rt_collect_rects(n, rects)
     gui_ime_feed_caret(rects, hits)
+    rt_scroll_req_apply(t, rects, hits)
+    rt_after_pump(t, bind, act)
     rt_feed_input_w(t, rects, hits)
     gui_autofocus_first_input(t, bind)
+    SetConfigFlags(8192)
     InitWindow(w, h, title)
     SetTargetFPS(60)
     var frames: I32 = 0
-    while !WindowShouldClose() {
+    while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
+        rt_canvas_frame(t, rects, hits, bind, act)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -5077,6 +5695,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                     rects = List[I32]()
                     rt_collect_rects(n, rects)
                     gui_ime_feed_caret(rects, hits)
+                    rt_scroll_req_apply(t, rects, hits)
+                    rt_after_pump(t, bind, act)
                     rt_feed_input_w(t, rects, hits)
                 }
             }
@@ -5107,6 +5727,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         }
         if evt == 5 {
             rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
         }
         if evt == 2 {
             var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
@@ -5152,7 +5775,10 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
             }
         } else {
             if evt == 4 {
-                rt_ta_wheel(t, rects, hits, gui_evt_key(), bind)
+                // GUI-21:textarea 未消费的滚轮进 scroll 偏移(步长应用侧换算)
+                if rt_ta_wheel(t, rects, hits, gui_evt_key(), bind) == 0 {
+                    gui_scroll_add(gui_evt_key() * 66)
+                }
             }
             if evt == 3 {
                 // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
@@ -5238,6 +5864,8 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         rects = List[I32]()
         rt_collect_rects(nfr, rects)
         gui_ime_feed_caret(rects, hits)
+        rt_scroll_req_apply(t, rects, hits)
+        rt_after_pump(t, bind, act)
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
@@ -5622,6 +6250,53 @@ pub fn d_drag(t: Box[Driver], x1: I32, y: I32, x2: I32, bind: fn(List[Str]) -> V
     return 0
 }
 
+// 垂直拖拽(headless):x 固定,y1→y2;两帧口径与 d_drag 同源(GUI-17 分隔条)
+pub fn d_dragv(t: Box[Driver], x: I32, y1: I32, y2: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var fn0: I32 = rt_hover_node(rc2, t.hits, x, y1)
+    if fn0 < 0 {
+        panic("gui test: 拖拽起点未命中")
+        return -1
+    }
+    var de: Str = rt_in_expr(t.t, fn0, "drag")
+    if de == "" {
+        panic("gui test: 元素无 on:drag node=" + fn0.to_string() + " tag=" + t.t.ntag[fn0])
+        return -1
+    }
+    var bi: I32 = rt_node_box(rc2, t.hits, fn0)
+    if bi < 0 {
+        panic("gui test: 拖拽元素无盒")
+        return -1
+    }
+    gui_mouse_override(x, y1)
+    gui_dgev_begin(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    gui_dgev_setnode(fn0)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_override(x, y2)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_clear()
+    gui_dgev_end()
+    return 0
+}
+
+// 文件拖入(headless):paths 填 C 槽后直触 rt_drop_fire(真窗经 evt=6 分发;
+// GUI-20 测试缝)
+pub fn d_drop(t: Box[Driver], paths: List[Str], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_drop_begin()
+    var i: I32 = 0
+    while i < paths.len {
+        gui_drop_add(paths[i])
+        i += 1
+    }
+    if rt_drop_fire(t.t, bind, act) == 0 {
+        panic("gui test: 根元素无 on:drop")
+        return -1
+    }
+    return gui_drop_count()
+}
+
 // 双击(headless):两击同位注入;返回元素 on:dblclick 处理头名(夹具 act 自
 // 分发,与 d_click 同模式;真窗单双击聚类在循环 gui_click_kind)
 pub fn d_dblclick(t: Box[Driver], name: Str) -> Str {
@@ -5725,6 +6400,10 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
     var n: I32 = rt_draw_frame(t.t, bind, t.w, t.h, nh, hi, t.hov, t.actn)
     t.hits = nh
     t.hinst = hi
+    // GUI-14:滚动可见请求应用(headless 口径;rects 本帧现收,真窗在 collect 点)
+    var rc = List[I32]()
+    rt_collect_rects(n, rc)
+    rt_scroll_req_apply(t.t, rc, nh)
     return n
 }
 
@@ -5829,6 +6508,83 @@ pub fn d_cmd_bg_b(i: I32) -> I32 {
 
 pub fn d_cmd_bg_a(i: I32) -> I32 {
     return gui_cmd_bg_a(i)
+}
+
+// GUI-23:链接动作面——应用 on:click 内调 open_link;headless 槽记录,
+// d_open_url 断言回收(真窗直 raylib OpenURL)
+pub fn open_link(url: Str) -> I32 {
+    return gui_open_url(url)
+}
+
+pub fn d_open_url() -> Str {
+    return gui_open_url_last()
+}
+
+// GUI-24:窗口操作面——1=fullscreen 2=maximize 3=minimize 4=restore
+// 5=undecorated 6=bordered(headless 记录槽,真窗 raylib 生效;图标待图像管线)
+pub fn win_op(op: I32) -> I32 {
+    return gui_win_op(op)
+}
+
+pub fn d_win_op_last() -> I32 {
+    return gui_win_op_last()
+}
+
+// 窗口图标(headless 记录槽,真窗 LoadImage+SetWindowIcon)
+pub fn win_icon(path: Str) -> I32 {
+    return gui_win_icon(path)
+}
+
+pub fn d_win_icon_last() -> Str {
+    return gui_win_icon_last()
+}
+
+// GUI-24 headless 驱动:模拟关闭请求——根有 on:close 则 fire(拦截语义,
+// 脚本继续即「未退出」)返回 1;无声明 panic(真窗此时会退出)
+pub fn d_close_req(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t.t, gui_root_id(t.t), "close")
+    if ce == "" {
+        panic("gui test: 根元素无 on:close")
+        return 0
+    }
+    ev_fire(t.t, ce, bind, act)
+    return 1
+}
+
+// GUI-25 headless 驱动:手动触发绘制帧(清点槽→同步盒→fire on:draw)
+pub fn d_draw(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_px_clear()
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    return rt_canvas_frame(t.t, rc2, t.hits, bind, act)
+}
+
+pub fn d_px_n() -> I32 {
+    return gui_px_n()
+}
+
+pub fn d_px_at(i: I32, comp: I32) -> I32 {
+    return gui_px_at(i, comp)
+}
+
+// GUI-21 headless 驱动:滚动偏移累计(与真窗滚轮同槽)
+pub fn d_scroll(t: Box[Driver], delta: I32) -> I32 {
+    return gui_scroll_add(delta)
+}
+
+pub fn d_scroll_off() -> I32 {
+    return gui_scroll_off()
+}
+
+// 应用面:当前滚动偏移(bind 组装可见窗口行消费)
+pub fn scroll_off() -> I32 {
+    return gui_scroll_off()
+}
+
+// 绘制原语(应用 on:draw 回调内调;坐标相对 canvas 盒)
+pub fn canvas_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32 {
+    return gui_px(x, y, r, g, b)
 }
 
 // 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
@@ -5976,6 +6732,91 @@ fn rt_dgev_frame(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]
     var de: Str = rt_in_expr(t, node, "drag")
     if de != "" {
         ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-20:文件拖入触发(窗口级事件,on:drop 声明在根元素)——逐文件 fire,
+// droppath 内建随 setcur 游标走,dropn=本次总数
+fn rt_drop_fire(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var de: Str = rt_in_expr(t, gui_root_id(t), "drop")
+    if de == "" {
+        return 0
+    }
+    var n: I32 = gui_drop_count()
+    var i: I32 = 0
+    while i < n {
+        gui_drop_setcur(i)
+        ev_fire(t, de, bind, act)
+        i += 1
+    }
+    return 1
+}
+
+// GUI-22:文本测量(直调 ft 实测;-1=无字体/FT_OFF 回启发式字节式)
+fn rt_meas_w(s: Str, px: I32, wt: I32) -> I32 {
+    var wi: I32 = gui_ft_measure_n_wt(s, s.len, px, wt, 0)
+    if wi >= 0 {
+        return wi
+    }
+    return s.len * px * 55 / 100
+}
+
+// GUI-22:单行省略——超 maxw 预算逐码点截断+…(切点只在 UTF-8 首字节;
+// 测量轮直调,启发式回退与黄金口径同式)
+fn rt_ellipsis(s: Str, maxw: I32, px: I32, wt: I32) -> Str {
+    if maxw <= 0 {
+        return s
+    }
+    var ew: I32 = rt_meas_w("…", px, wt)
+    if rt_meas_w(s, px, wt) + ew <= maxw {
+        return s
+    }
+    var cut: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b / 64 != 2 {
+            if rt_meas_w(byte_slice(s, 0, i), px, wt) + ew > maxw {
+                break
+            }
+            cut = i
+        }
+        i += 1
+    }
+    return byte_slice(s, 0, cut) + "…"
+}
+
+// GUI-25:canvas 绘制帧——盒几何自 rects 同步+on:draw fire(真窗每帧;
+// headless 经 d_draw 驱动)
+fn rt_canvas_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var node: I32 = gui_canvas_node()
+    if node < 0 {
+        return 0
+    }
+    var bi: I32 = rt_node_box(rects, hits, node)
+    if bi >= 0 {
+        gui_canvas_setbox(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    }
+    var de: Str = rt_in_expr(t, node, "draw")
+    if de != "" {
+        ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧
+// 吞掉转事件(应用定去留),返回 1 续跑;无声明保持原语义(退出返 0)
+fn rt_close_check(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t, gui_root_id(t), "close")
+    if ce != "" {
+        if gui_win_close_req() == 1 {
+            ev_fire(t, ce, bind, act)
+        }
+        return 1
+    }
+    if WindowShouldClose() {
+        return 0
     }
     return 1
 }
@@ -6437,6 +7278,175 @@ fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32]
 
 // P-M3:开窗自动聚焦首个 input(成熟语言输入体验:启动即可打字,无需点击;
 // caret 置尾 = append 惯例,与 click-to-focus 一致)
+// ==================== GUI-14:程序化聚焦/滚动可见(§11.7;运行时本地态,按名寻址) ====================
+// 视图层发起的一次性请求:应用在 act 闭包内 gui_focus_req("m.email") /
+// gui_scroll_req("m.tail"),下一帧 emit 期按 bind 名匹配消费(光标置尾)/
+// collect 期定位于最近 scroll:1 容器(垂直钳位);未消费帧末过期。
+// 名 = 元素 bind 表达式原文(each 行内同名槽歧义,v1 限唯一名)。
+
+// 程序化聚焦:名 = 目标 input/textarea 的 bind 表达式原文
+pub fn gui_focus_req(name: Str) -> I32 {
+    gui_focus_req_set(name)
+    return 0
+}
+
+// 程序化滚动可见:名 = 目标元素 bind 表达式原文(唯一名;each 行 v2)
+pub fn gui_scroll_req(name: Str) -> I32 {
+    gui_scroll_req_set(name)
+    return 0
+}
+
+// 程序化滚动置位:应用自算内容几何(GUI-21 virtual 配方天然拥有行高×下标),
+// 负值钳 0;与 scroll_req 共享同一偏移槽
+pub fn gui_scroll_to(px: I32) -> I32 {
+    gui_scroll_set(px)
+    return 0
+}
+
+// collect 期应用:找名节点→最近 scroll:1 祖先→垂直可见性钳位调偏移
+//(×100 命令几何域,偏移域为 px,差值 /100);应用即清(未命中同清=一次性)
+fn rt_scroll_req_apply(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
+    // 落取即拷贝(+"" 分配新串):请求槽是 C 侧静态缓冲,clear 会穿透指针
+    var rq: Str = gui_scroll_req_get() + ""
+    if rq == "" {
+        return 0
+    }
+    gui_scroll_req_clear()
+    var n: I32 = -1
+    var i: I32 = 0
+    while i < t.ntag.len {
+        if t.nbid[i] == rq {
+            n = i
+            i = t.ntag.len
+        }
+        i += 1
+    }
+    if n < 0 {
+        return 0
+    }
+    // 父表一遍(nfc/ns 反向)
+    var par = List[I32]()
+    var pi: I32 = 0
+    while pi < t.ntag.len {
+        par.push(-1)
+        pi += 1
+    }
+    var ri: I32 = 0
+    while ri < t.ntag.len {
+        if t.nfc[ri] >= 0 {
+            var pp: I32 = ri
+            var ch: I32 = t.nfc[ri]
+            while ch >= 0 {
+                par[ch] = pp
+                ch = t.ns[ch]
+            }
+        }
+        ri += 1
+    }
+    // 目标无命中面(label 素面不推 hits)则取最近有盒祖先(区域语义)
+    var bn: I32 = n
+    var nb: I32 = rt_node_box(rects, hits, bn)
+    while nb < 0 && bn >= 0 {
+        bn = par[bn]
+        if bn >= 0 {
+            nb = rt_node_box(rects, hits, bn)
+        }
+    }
+    if nb < 0 {
+        return 0
+    }
+    // 最近 scroll:1 祖先
+    var s: I32 = par[bn]
+    while s >= 0 {
+        if gt_cls_prop(t.ncls[s], "scroll", "", t) != "" {
+            var sb: I32 = rt_node_box(rects, hits, s)
+            if sb >= 0 {
+                var nt: I32 = gui_cmd_y100(nb)
+                var nbm: I32 = nt + gui_cmd_h100(nb)
+                var st: I32 = gui_cmd_y100(sb)
+                var sbm: I32 = st + gui_cmd_h100(sb)
+                var delta: I32 = 0
+                if nt < st {
+                    delta = nt - st
+                } else {
+                    if nbm > sbm {
+                        delta = nbm - sbm
+                    }
+                }
+                if delta != 0 {
+                    gui_scroll_add(delta / 100)
+                }
+                return delta
+            }
+            return 0
+        }
+        s = par[s]
+    }
+    return 0
+}
+// ==================== GUI-15:on:after 定时事件(§2.7 tick→事件通道) ====================
+// 视图元素属性 on:after="ms:handler":元素存活域一次性定时——首见布防,期限
+// 即 fire act(handler) 一次并拆防;when 假(灶灭)不 fire;on:input 同节点重臂
+// =防抖口径(每击键重置期限)。headless 时钟=d_tick 注入口径,d_after_pump
+// 显式泵;真窗循环每帧自动泵。handler v1=简单名(E8120 门在册)。
+
+// "ms:handler" 冒号前毫秒;非形态回 -1
+fn rt_after_ms(e: Str) -> I32 {
+    var ci: I32 = 0
+    while ci < e.len {
+        if byte_at(e, ci) == 58 {
+            break
+        }
+        ci += 1
+    }
+    if ci == 0 {
+        return -1
+    }
+    if ci >= e.len {
+        return -1
+    }
+    var ms: I32 = gs2i(byte_slice(e, 0, ci))
+    if ms <= 0 {
+        return -1
+    }
+    return ms
+}
+
+// 到期泵:due 节点拆防即 fire(一次性);隐灶(seen 过期)不 fire
+pub fn rt_after_pump(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var i: I32 = 0
+    while i < t.ntag.len {
+        var e: I32 = 0
+        while e < t.nec[i] {
+            var gi: I32 = t.nes[i] + e
+            if t.ev_name[gi] == "after" {
+                if gui_after_due(i) {
+                    gui_after_disarm(i)
+                    var afn: Str = t.ev_fn[gi]
+                    var ci: I32 = 0
+                    while ci < afn.len {
+                        if byte_at(afn, ci) == 58 {
+                            break
+                        }
+                        ci += 1
+                    }
+                    if ci < afn.len {
+                        act(byte_slice(afn, ci + 1, afn.len), List[Str]())
+                    }
+                }
+            }
+            e += 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+// headless 泵(d_tick 注入时钟推进后由断言脚本显式调)
+pub fn d_after_pump(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    return rt_after_pump(t.t, bind, act)
+}
+
 fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
     // 首个可编辑件(input 或 textarea,树序)——textarea 开窗即可打字,
     // 与成熟编辑器开箱即输入同口径
@@ -6564,7 +7574,7 @@ fn rt_click_text(t: GuiTree, fnode: I32, bind: fn(List[Str]) -> Void, rects: Lis
         if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
             fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
         } else {
-            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind))
+            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind, "", ""))
         }
     }
     // thumb 命中:右缘 thumb 区按下=拖拽滚动(不定位光标、不启文本拖选;

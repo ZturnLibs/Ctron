@@ -15,3 +15,15 @@ test "string to str implicit demotion" {
     assert_eq(back.len, 6)
     assert_eq(byte_len(owned), 6)    // 实参 String → 形参 Str,隐式
 }
+
+test "string annotation: independent type(§3.8.1 类型表成员)" {
+    // 显式 String 注解此前发射面塌缩 int32(无类型码臂);本段钉住注解位
+    // 端到端(声明/降格/成员面),双通道同口径
+    let owned: String = "héllo".to_string()
+    assert_eq(owned.len, 6)
+    assert(owned.contains("él"))     // §3.8.2 Str/String 共享成员面
+    let back: Str = owned            // 降格后 == / concat 走 strcmp 面直通
+    assert_eq(back, "héllo")
+    let up: String = back.to_string() // Str→String 唯一路径:to_string 升格
+    assert_eq(up.len, 6)
+}

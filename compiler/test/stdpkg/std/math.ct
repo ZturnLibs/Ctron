@@ -1,4 +1,5 @@
 // std/math.ct —— 数学助手(整数域;F64 面随 C2 解除后升版)
+//@ tier: core
 // since: std-0.3 stability: experimental
 // 口径:整数域纯函数,无浮点依赖;PI/E 等 F64 常量随 C2 解除(P2);
 // ceil_div/isqrt 挂起(C17 宿主 OOM,算法正确,待宿主修复复位)

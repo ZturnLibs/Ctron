@@ -1,0 +1,21 @@
+// tests/gui/s62_win —— GUI-24 窗口级 API:关闭拦截 + 窗口操作
+// (on:close 声明在根元素——关闭请求转事件应用定去留;win_op 编码
+//  1=fullscreen 2=maximize 3=minimize 4=restore 5=undecorated 6=bordered,
+//  headless 记录槽 d_win_op_last 断言,真窗 raylib 生效)
+view Root {
+  <vbox class="root" on:close={win_close}>
+    <label class="title">窗口控制</label>
+    <button class="w1" on:click={go_full}>全屏</button>
+    <button class="w2" on:click={go_max}>最大化</button>
+    <button class="w3" on:click={go_undec}>无边框</button>
+    <button class="w4" on:click={set_icon}>设图标</button>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 6 padding: 8 }
+style title { fg: TEXT size: 16 h: 24 }
+style w1 { h: 28 bg: SURFACE fg: TEXT }
+style w2 { h: 28 bg: SURFACE fg: TEXT }
+style w3 { h: 28 bg: SURFACE fg: TEXT }
+style w4 { h: 28 bg: SURFACE fg: TEXT }
+style state { fg: "#22c55e" h: 22 }

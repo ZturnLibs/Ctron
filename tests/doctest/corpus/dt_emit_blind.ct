@@ -1,0 +1,13 @@
+// dt_emit_blind.ct —— 发射面盲区:emit/fmt/doc 驱动不接提升,发射 C 不见合成 test 块
+/// 返回两数之和(存在可提升块,但发射面必须视而不见)。
+///
+/// ```c
+/// assert_eq(add2(40, 2), 42)
+/// ```
+pub fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}
+
+test "plain test" {
+    assert_eq(add2(1, 2), 3)
+}

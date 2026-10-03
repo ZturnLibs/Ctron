@@ -209,12 +209,12 @@
 
 ### T16 · 惰性适配器链(r3b_adapters)
 
-- **预估:** 1–1.5 d。**前置:** T15。**状态:** ✅ 已完成(2026-10-02;Seq[T,S] get 基惰性适配器 + UFCS 入口,锚迁 modules/iter_adapters;suite 99/99 双臂;发射面在册 T25 v2 域)
+- **预估:** 1–1.5 d。**前置:** T15。**状态:** ✅ 已完成(2026-10-02;Seq[T,S] get 基惰性适配器 + UFCS 入口,锚迁 modules/iter_adapters;suite 99/99 双臂;发射面在册 T25 v2 域)。**续波收口(2026-10-03,R-P3b 承诺余项)**:适配器补 skip/take_while/rev/enumerate/zip/chain + 终结子补 fold/reduce/foreach/min/max/last/position + from_list 接入 List(ListSeq 包装——前奏 class 直 impl 派发不挂,新证);锚扩 iter_adapters 十二段;探针四证(无返回 fn 型/泛型 T 比较/class var 字段/Pair 推断)+ 接收者拷贝边界新证(class 经 struct 字段存储被拷贝);登记债追加,见 COVERAGE 2026-10-03 行
 - **目标:** `iter.map/filter/take/...` 适配器作用 Iterator 之上,惰性、单态化零成本;翻转 `tests/roadmap/r3b_adapters.ct`。
 - **范围:** `std/`(新 `iter.ct` 或随 T15 文件);纯 stdlib 实现(适配器 = 持 Iterator 的 struct + impl Iterator),**编译器零改动为设计目标**。
 - **要点:** 每适配器一个泛型 struct(如 `struct MapIter[A, B] { it: A, f: fn(A) -> B? }`——fn 值作字段,函数类型字段面 §3.1 已有);惰性 = next 时才调 f;单态化自动获得零成本。
 - **验收:** r3b_adapters 翻转;适配器组合冒烟(map+filter+take 链);发射产物含特化(链不塌 box)。
-- **坑位:** 闭包捕获语义=拷贝终态(T27 已裁决转正),适配器内 fn 字段只存纯函数/捕获闭包——锚样例避免依赖按引用共享;若锚头注要求引用捕获,该断言挂 T27 后回切。
+- **坑位:** 闭包捕获语义=拷贝终态(T27 已裁决转正),适配器内 fn 字段只存纯函数/捕获闭包——锚样例避免依赖按引用共享(T27 终态下引用捕获断言不成立,创建时拷贝即规范)。
 - **落地形态(2026-10-02 收口)**:`std/iter.ct` v2 = `trait Seq[T, S]`(get 基:fn get(var self, i) -> T? 纯位置读取 + map/filter/take/sum/count/collect/any/all 默认方法)+ RawSeq/MapSeq/FilterSeq/TakeSeq 泛型 struct(类型正确 impl 形 `impl Seq[T, MapSeq[T,S]] for MapSeq[T,S]`)+ 数组 UFCS 自由函数入口(`pub fn map(xs: I32[], f)` 等,§4.8 首参接收者)。**get 基而非 next 基的裁决**:interp 逐调用拷贝接收者,var-self 写回语义在册(T15 发射臂登记同源),next 基适配器叠适配器永不推进(p12 实证挂死);get(i) 无状态,链任意深度组合安全。自定义 Iterator 经 for-重放 get 接入(03k 语义)。锚迁 `tests/modules/iter_adapters`(带 use 的多文件包:自举臂运行+宿主 pkg check——宿主无包运行口径,单文件 use 不合并)。锚修:原稿 `!xs.any(|x| x>5)` 与 xs=[2,4,6] 矛盾,首翻绿校正为正断言。
 - **余债登记**:①发射臂 trait 方法调用未发射(t_bump/t_hi 未定义,04g/p11 实证——T25 v1 仅 &Trait 对象面)+ for-over-Iterator 未发射(03k emit `ct_stmt:for iter:Ident`);②var-self 写回语义(interp p6/p7/p8 实证不写回,for 糖 env 线程化为唯一特路;发射臂按值传 mutation 丢,T15 已登记)= 泛 var 引用语义系统改造;③C 宿主解析器不认 `pub trait`/`pub struct`(parse_decl TOK_PUB 只路由 fn);④自宿装载器 `pub trait`/`pub struct`+泛型字面量经 use 合并即坏(E2020 错判/E5030 幽灵)——std/iter.ct 以非 pub trait(T26 恒可见口径)+非 pub struct 绕行,④为 loader×pub 独立 bug 待修;⑤Rust 参考臂 get 基链覆盖随 T25 v2 后评估(roadmap_suite 表行已按翻转协议删除)。
 
@@ -317,7 +317,7 @@
 
 ### T27 · 闭包捕获语义收口【需用户裁决】
 
-- **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** 裁决推迟(0929 用户裁定:T29 完成后再评估;期间 E3070+Mutex 纪律维持事实语义)
+- **预估:** 0.5 d(裁决)+ 2–3 d(实现,若裁按引用)。**前置:** T29(GC MVP)后实现。**状态:** ✅ 已完成·B 终态转正(2026-09-30 用户裁决,台账 619 行;**10-02 残余收口**:§4.7 补快照句+§8.4 错引改 §6.2+§6.2 补能力扩展位 bullet+§10 E3070 行翻终态+README T27 版记+R-P3a 只读借用条款终态注+r3a 锚头注回切+T55 快照边界注翻面[COVERAGE/挂起节];r3a 锚解释臂双宿主复验绿,原生臂红=在册 T33 ct_emit_clo 卫兵错位[p0a 合流后复验,非本件债];**10-03 原生臂复验收官=r3a 双臂全绿,本件终态无残余**:红因经干净基线二分实证非卫兵[ct_emit_clov 卫兵形态=单对 #ifndef 包整 shim,完好]——p0a 合并 46e11d70 引爆 ct_str_bsum I32 乘 31 链溢出(判别位新入捕获名/型别码,`|x| x + base` 第 3 字符即破界)+闭包体尾槽/return 位 with·with_mut ANF 漏接(ct_expr「仅语句位」恒拒,eval 两侧皆合法)+同 fn 多 with 同名形参 C 顶层重定义,三修落码 trans_conc.ct/trans_stmt.ct(修法详注=r3a 锚头注);fx_cloval/探针四形/r3a 发射+cc+运行全绿,suite 99/99+smoke 170/3(余 2 红=T33 parallel OOB/Rust iter 清账,皆在册非本件);连带小修=固定点段版本行竞态过滤(两路 build.sh 各自采样 git describe,机刷并发落库窗口即假红)+GATEDBG2 调试打印清退(trans_expr p0a 遗留发射产物污染)+decl 锁 444→449 随批申报(+1 本件 ct_clo_with_tail,+4 GUI-17/12 批已落库未申报归 GUI 泳道);**登记债=with 在任意表达式位 emit ANF 缺口(eval 合法,`return bump() + m.with(...)` 形;语句/let/return 尾/闭包体尾已全接,任意嵌套表达式位待 ANF 提升机,capability 项非 hack)**;T33 parallel ct_emit_clo OOB 独立在册非本件)
 - **业界调研(0929,评估素材存档)**:有 GC 阵营(JS/Go/C#/Swift)普遍按引用共享绑定(循环变量为公共事故源,Go 1.22/JS let 均向每轮迭代绑定修补);无 GC 阵营(Rust/C++/ObjC)走拷贝/显式(借用户生命周期或自负安全);Java/Kotlin 的 effectively-final 绑定拷贝 + 显式共享可变单元,十年稳定。**映射**:Ctron 现行 E3070+Mutex 纪律 ≈ Java 系绑定拷贝 + 共享单元模型;A(按引用)=T29 后的 GC 阵营主流位;B(拷贝终态)=现行事实行为升格,与 arena 无 GC 自洽;C(混合)≈ 现状 de-facto(同任务共享 arena+spawn 边界 bind_of 克隆)但双臂 seed/native 拷贝分歧未修前不宜形式化。**T29 后评估时**:若 GC 落地且用户需按引用,按能力扩展立项(不与 B 冲突)。
 
 **T29 后复评补记(0930,评估条件已达成)**:T29 MVP tracing GC 已落库(保守根集:
@@ -442,11 +442,11 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T35 · 分层 stdlib 机制(core < alloc < std)
 
-- **预估:** 1–1.5 d(设计+manifest+首批分层标注)。**前置:** 无。**状态:** 待办
+- **预估:** 1–1.5 d(设计+manifest+首批分层标注)。**前置:** 无。**状态:** ✅ 已完成(1002;机制核=清单 `tier` 键[缺省 std]+模块头注 `//@ tier:` 提取[缺标注不设门,渐进承诺]+use 点 `E3040.tier` 档位门一次诊断加载即止[bare 档钳 core;E5040.tier 值域 fail-closed;`pkg_load_use_t` 独立入口避碰 driver_emit/doc 调用面,emit 随 seam 落库再切]+schema regkey `pkg.tier`;首批标注 26 模块 core 5[math/hash/log/opt/pb]/alloc 16/std 5[fs/time/process/rand/uuid]+stdpkg/examples 副本同步[漂移门绿];锚 9 断言入 smoke 3c2 段[seed 臂夹具本地 std 七+native 臂真库二];**真库 core 五模块 bare 体检自证=core 档音遍性**[tier_real_pos decls=75 零诊断];修复前实证:bare+use alloc 模块=std 内部 E3040 洪水→use 点一次即止;decl 锁 439→443 随批申报;suite 99/99 双臂+smoke 170 ok[余 3 红=conc 双发射红/Rust iter 清账,基线复现在册非本件];计划 docs/superpowers/plans/2026-10-02-t35-tiered-stdlib.md;**登记债:三线 parity(pkg.c 清单 tier 键/sem.c bare 钳口径/main.rs Manifest.tier 字段+R 线检查面)、域包 tier 标注[随 registry]、emit/doc 驱动接线[随 emit seam]**)
 - **目标:** 三档分层落地机制:①std 各模块声明最低档(`core`=无分配标量/切片面,`alloc`=List/String/Box,`std`=net/fs/time);②包清单声明最低所需层;③bare 档引用 alloc 层=E3040 族诊断。设计底稿:`docs/superpowers/specs/2026-09-23-std-tiering-design.md`(分层宪章 v2 已落地 6e7ad0c,T1/T2/T3 分层在册——按其延伸到档位面)。
 - **范围:** `parse_pkg.ct`(清单新键)、`std/*.ct` 头注标注批次、sem 检查。
-- **验收:** 锚(bare 包 use std 层模块→E;core 包 use alloc 模块→E);分层宪章既有 44 处消费不红。
-- **坑位:** 分层宪章(T1 核心 20/T2/T3)按「主题」分,档位按「分配面」分——两轴交叉,清单化勿重演大迁移(标注渐进,勿一次性搬)。
+- **验收:** 锚(bare 包 use std 层模块→E;core 包 use alloc 模块→E)✓;分层宪章既有 44 处消费不红 ✓(缺标注不设门+清单缺省 std 双重宽松,漂移/stdpkg 门绿)。
+- **坑位:** 分层宪章(T1 核心 20/T2/T3)按「主题」分,档位按「分配面」分——两轴交叉,清单化勿重演大迁移(标注渐进,勿一次性搬)。→ 落码印证:零结构迁移,26 行头注+清单一键;两轴条款成文 lib/std/README.md「档位轴」节。**新增坑位:①共享检出树多泳道并发,未提交编辑会被 peer `git stash` 连带卷走(本次 Task 1 四件被卷入 t31wip stash,恢复=`git checkout <stash> -- <my paths>` 单边提取,stash 副本含对方件勿整体 pop);②selective merge 连带 Test 块亦吃 bare 体检查——core 档标注前须核其自带 test 零分配(本次五模块实证 0 命中);③vendored examples std 副本有硬链接形态(ctslink/web_todo),同步经 cp「identical」即已共享**。
 
 ### T36 · `ctc target` 子命令 + 后端插件接口
 
@@ -524,7 +524,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T45 · CBox[T] + FFI 余账三件(§9.6)
 
-- **预估:** 2 d。**前置:** 无。**状态:** 待办
+- **预估:** 2 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-02;实况=三件余账中「定长数组字段塌缩」v0.9·二/四 已先期销账(本件复核),实落两件+计划外编译器泛型发射面四缺口修复:①CBox[T] 落 lib/ffi(struct+自由泛型函数面+C 侧登记表哨,双违例负锚 cbox_dblfree/cbox_useafter;class 字面量发射不可用=T25 v2 域新登记,方法面走自由函数);②解释桥 float 帧(f:/g: 帧+Ri:/Rf:/Rg: 返回别+SIMD 类 ABI cast+形状表≤4 参全展开+浮返 "%.17g" 零损;ext_finterp 编译+解释双通道;整返回升 long=close(-1) bootstrap 缺口随销);③cimport union/struct/enum 关键字限定指针形参(union Vals* 端到端);④泛型直调推断单源 ct_call_infer_tys(种子码串/型节点异型 SEGV+&T 形参永不命中)+实例槽码字母表扩位(F/G/M/N/V/W/X/Y)+void 泛型特化(None→v,尾调用捕值首证)+ct_ty_code nt[2] OOB 守卫;smoke decls 锁 443→444 申报;T35 parse_pkg pkg_load_use_t 调用 arity 破损顺修(阻塞重建,机械对齐 def 6 参)。门禁:ffi 37/37+suite 99/99 双列+smoke 166/7(7 红=T33×2+T16 iter+ctecho 端口竞态+本批翻 444 后复验余量对齐在册债))
 - **目标:** ①`CBox[T]` 跨边界所有权包装(Ctron-owned:drop 责任显式,§9.6 三约定之 2);②FFI 泳道在册余账:union 指针形参、解释桥 float 帧、定长数组字段塌缩(ffi 记忆登记)。
 - **范围:** `ffi.ct`/`std`(CBox 定义:含 #[trusted] drop 面)、`trans_expr.ct`/`eval_call.ct`(三件逐修)、`tests/ffi/` 扩展。
 - **验收:** CBox 所有权锚(移交/释放各一次,双违例负锚);三件余账各自行为锚;ffi 27/27 保持。
@@ -635,9 +635,9 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复;**0930 精确定稿**:ct_emit_clo 的 #ifndef 卫兵在 prewalk/实发两遍
 间错位——发射 C 出现「fn 首行后即 #endif、return 与 } 落卫兵外」的截断 shim(闭包无
 返回路径→运行期垃圾;fx_conc_parallel/cloval 双夹具实证)。修法=卫兵只在实发遍 emission
-(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修 | — |
+(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修。**10-03 T27 复验注**:r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef 包整 shim),r3a 原生臂真因=bsum I32 溢出+with ANF 漏接(已随 T27-B 收口三修);本件 parallel 面 ct_emit_clo OOB("index out of bounds")独立仍在册,bsum 修复后复验依旧复现,卫兵假说待 T33 作者按上法定稿时再证 | — |
 | T34 | 栈经济 P9 | W7 | **已完成**:1002 两波——最小符合径(触顶诊断链 a77f141f)+正案收官(work-stealing 落码+可增长栈判决入册:A/B 双阻塞于发射器机器,退路 1MB 大栈=§7.1 字面终形,解锁条件单列;ws_steal 锚+c10k 满额 PASS+A/B 差分 ≤0.5%) | — |
-| T35 | 分层 stdlib 机制 | W8 | 待办 | — |
+| T35 | 分层 stdlib 机制 | W8 | ✅ 1002 | — |
 | T36 | ctc target+后端接口 | W8 | 待办 | — |
 | T37 | wasm MVP | W8 | 待办 | — |
 | T38 | WasmGC+JSPI | W8 | 待办 | — |
@@ -647,7 +647,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T42 | 体积门禁+ISR | W8 | 待办 | — |
 | T43 | ctc 子命令 | W9 | 待办 | — |
 | T44 | own ±5% 门禁 | W9 | 待办 | — |
-| T45 | CBox+FFI 余账 | W9 | 待办 | — |
+| T45 | CBox+FFI 余账 | W9 | ✅ 完成(1002) | — |
 | T46 | st_serve IO 粘合 | W9 | 待办 | — |
 | T47 | multipart | W9 | 待办 | — |
 | T48 | CTCL 迁移 | W9 | 待办 | — |
@@ -655,7 +655,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T50 | 闭源 S1/S2【条件】 | W9 | 挂起 | — |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | 待办 | — |
 | T52 | 插件沙箱(derive+lint) | W9 | 待办 | — |
-| T53 | emit union 载荷 64 位化 | W9 | 待办 | — |
+| T53 | emit union 载荷 64 位化 | W9 | **已完成**(1002;五病灶全修[expect 型别/expect 位还原/语句形 match-Ok 硬编码 int32/Try 两语句位/json (h) 绕行],json JNum/JReal 回切摘除,芯=wrap+or 先行 a000a6ad;探针 14 项双臂绿+e_t53_payload64 双臂锚+json_fidelity 13/13+suite 99/99+web_todo 92 裸跑 rc=0) | 见 git |
 
 ---
 
@@ -695,7 +695,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 - ~~**T27 裁决门**~~: **已裁决(2026-09-30,B 终态转正,台账 608 行;r-roadmap §4.7 终态确认在案;spec §4.7 正文修订 10-01 补齐)**
 - **T54 ✅(已销账,2026-09-30)参数化 List 码 + 装箱容器 ABI**: 容器 ABI 由 T14-② 落地(参数化 List 码 `Lu:<名>`/LI/L6+堆盒 push+索引解引用);收口件补 fn 值链(#fret 字段提取位 ct_fnfield_ret+裸 fn 蹦床/shim `u:` 解盒)——03l/03n 正本 emit 臂绿(03l:`HIT /app -> app:alice`+`SUM 42`),spec §9 P0-1/L6 销账。suite 96/96+96/96 零移动;遗留另录(不扩界):e.h 直呼形态、>8B struct fn 值返回、ct_cb_ref extern 回调
-- **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性挂 T27 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
+- **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性已由 T27-B 终态判定 = 不可见,创建时快照即规范语义,10-02 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
 - **T29-T32 GC 全件**: 等 S1 Val 迁移落库(在飞 /tmp/s1-val)
 - **T50 闭源 S1/S2**: 触发条件未到
 - **T37-T40 wasm/bare**: T36 target 接口是前置
@@ -715,4 +715,4 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T53 · emit union 载荷 64 位化(实施中断,2026-10-02)
 
-- **预估:** 1.5–2 d。**前置:** 无。**状态:** 🟡 实施中断(病灶实证=F64 载荷经 int64 槽无位语义:写 `(ct_i)(2.5)` 截断、读端 let 推断 i32 再截;I64 直槽本已 64 位。方案=ct_f2i/ct_i2f 位转助手+ct_res_wrap f/g 位承载+#prel 载荷码侧条目[静态缓存表 RPC_N/C]+expect/or 读端位还原。**卡点=自编译期宿主静默崩**:二分定位到 trans_stmt 绑定块(禁用即愈),静态表/节点抽取与宿主旧值模型的型别二分(N 节点 lane 串 vs 表)未及定位;工作树已干净回退,suite 99/99 复绿。复开注记:①优先在 S1 平面重试(旧宿主值模型是根因域)②expect 注解 let 消费形已证可达(`let v: F64 = r.expect()` 正确产出 double t_v 所需的全部信息链,仅缺 #prel 绑定存活)③json JNum/JReal 回切随芯)
+- **预估:** 1.5–2 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-02,S1 平面复开即愈——上轮 #prel 助手表方案整体弃用,改 P0-A 同款内联 C11 union 复合字面量位双关,零新符号零 #prel)。**芯已先行**:wrap 写侧+or 两读侧由 a000a6ad(P0-A 收口四缝)落库;本件补齐余面+回切。**病灶全图(五点)**:①expect 静态型别硬编码 "i"(trans_ty 两处)——推断 let 按 int32 消费,I64 载荷 >2^31 截(2^63-1→-1 实证)、F64 错值;②expect 发射无位还原(trans_expr);③语句形 match 的 Ok 臂硬编码 `int32_t t_x=(int32_t)rme.v`(trans_stmt 1184——match 面截断根,注意 match-R 发射共**四条路径**:let-match 形/语句形/块尾值形 ct_match_value=Option 模型/表达式形,只有前二载标量载荷);④Try 两语句位 `(double)` 值直转;⑤json (h) 族绕行面。**修法**:载荷码统一经 ct_opt_elem_expr 恢复(接收者 Ident=#elem 侧条目[P0-G 已绑]/被调声明 Result[..] 首参——跨包 ct_fn_decl 通);f 码位双关回读(与 ct_res_wrap f 臂配对),6/7 整宽直槽,标量安全族 {f,6,7,z,b} 入 expect 型别,聚合/Str 码回落旧行为(零扰动)。**json JNum/JReal 回切**:jget_* Result 面成唯一 pub 数值面,jnum_*/jreal_*/jn_*/jr_* 摘除,jint64/jf64 私有 (k,v) 对保留,jv_*/jk_* 内迁 `.or(dft)`/match(pkgs/web/json.ct jd_i64+lib/http/frm/body.ct 注释同步)。**验收**:探针 14 项四读侧×I64(2^63 双界)/F64 双臂全绿(基线 emit bad=9 清零);新锚 tests/02_option_result.ct 两 test 块(套件 interp 双宿主)+tests/json_fidelity/corpus/e_t53_payload64.ct(run.sh 双臂);json_fidelity 13/13、suite 99/99 双列、web_todo 原生裸跑 92 rc=0(big=5000000000 大值载荷实证)、http/run 99 过(红=基线同红:e2e 五件 origin/main 预存、gzip 族 vendored 前置已补建)。**坑位**:①match-R 四条发射路径逐条排摸(1184 硬编码行藏在 okIx 臂);②`?` 表达式位只在 Result 返回函数内合法(emit `return t_q` 撞宿主 fn 签名=cc 硬错,interp 动态返回侥幸——探针首版踩);③I64_MIN 字面量直写合法(绿夹具在案),`0 - imax - 1` 不可用(seed 算术宽度取左);④自举期宿主静默崩(S1 平面前)确证随去 cx 化消失——本件三次自举全过)

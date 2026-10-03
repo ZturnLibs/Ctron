@@ -124,7 +124,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 - **F32 = C `float`(IEEE 754 binary32),F64 = C `double`**;extern 边界按声明型直出,不隐式加宽。编译通道值保真(f_widen 证人);解释桥(ctron_ext_dispatch)仅有 "i:"/"s:" 两帧,**float 形参响亮 panic**(「extern 解释口径:不支持参数类型」),不静默错值——float 帧支持登记后续。
 - 带浮点形参的 **C 回调**(ct_fnK 全 int64 原型)同属不支持口径:fn 指针 typedef 全 `ct_i`,float 实参经 int 寄存器即错值;以 W8052 类推的手写垫片惯例规避,登记后续。
 - **C 宿主分歧**:compiler-c 把 F32/F64 统折 `ty_flt`(trans.c:527),F32 注解同为 double——自举发射面为准,C 宿主对齐登记在册(镜像 #8 宿主七项诊断的差分方向)。
-- ffi 域包载荷域:Ok(I64) 经发射面 Result 载荷槽 32 位,域承诺 \|rc\| < 2^31(POSIX rc 恒真;json.ct §载荷槽注记同源)。
+- ffi 域包载荷域:~~Ok(I64) 经发射面 Result 载荷槽 32 位~~ **T53(2026-10-02)已翻面**——载荷槽 ct_i 64 位 + expect/match 读侧按载荷码整宽往返,Ok(I64) 全域保真;\|rc\| < 2^31 保守承诺保留(POSIX rc 恒真),约束依据改登记为读侧修复前的历史口径。
 
 ### v0.9·二 追加批次(2026-09-29):定长数组字段 + union U8[N] + 裸引用拦截
 
@@ -147,10 +147,30 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 - 锚定:`tests/ffi/ptr_param/`(标量写透/双指针交换/struct 指针变异/gethostname 真libc)、`tests/ffi/cimport/`(SPkt* 返回 + passthrough)、`tests/ffi/box_ext.neg.ct`。
 - **二期候选(未实施)**:受 `#[trusted]` 审计的解引用原语(选项 B);`const`/可变性标注(现靠文档口径);cimport 多级指针。
 
+### T45 批次(2026-10-02):CBox[T] + FFI 余账三件(§9.6)
+
+计划卡三件余账的实况判定与落码:
+
+| 件 | 判定与落地 |
+|---|---|
+| **CBox[T](约定之 2,Ctron-owned)** | 新落。`lib/ffi`:`struct CBox[T] { var p: &T }` + 自由泛型函数面 `cbox_own/cbox_borrow/cbox_into_raw/cbox_free`(v0 发射面 trait 方法调用为 T25 v2 在册域,实证 method dispatch 裸名直出不通,自由函数面为准);**所有权哨 = C 侧登记表**(ctron_cbox_reg/live/take/drop,void* 承接,256 槽)——struct 值拷贝不复制哨状态,任何别名副本同见真值,哨后操作响亮 panic(双 free / free 后使用)。泛型 extern 单态化为声明态码(int32_t*)跨 TU 对 void* 定义,指针调用约定同型。锚定:`tests/ffi/cbox/`(own+borrow+into_raw+free 三锚,C 侧计数器平衡)+ `cbox_dblfree/` + `cbox_useafter/`(双违例负锚,panic 语义)。**解释桥指针截断故 CBox 恒编译通道**(包内无 test 块,与 err_wrap 同约定)。 |
+| **union 指针形参** | 实况判定:**核心路已随 v0.9·二/三 闭合**(手写 `&UVals` extern=探针实证;cimport `UV*` typedef 形=U8[N] 缓冲修复后全通)。余角补齐:**cimp_ty 词过滤补 struct/union/enum 关键字透明化**——`union Vals* v` 形此前 nm 并词查名表不中→整形参跳过,现剥词走 typedef 名表。锚定:`tests/ffi/cimport/` 增 `union Vals*` 形参端到端(C 写读往返;夹具 union 加 tag=匿名 typedef union 无 tag,`union X*` 隐式声明新不完整类型,C 经典坑)。 |
+| **解释桥 float 帧** | 新落。帧编码扩 `f:<F64 文本>`/`g:<F32 文本>`(声明型驱动);符号名前缀 `Ri:/Rf:/Rg:` = 返回别;**整返回升 long 全宽**(旧 int 截断=close(-1) 回转缺口 bootstrap 侧随批销);浮参/浮返按 ABI 正确函数指针 cast(全 long cast 直调浮函数=SIMD/通用寄存器类错配,形状表按(返回别,元数≤4,浮参 mask)全展开,>4 参浮形状响亮 panic);F32 实参位 preserving 入 double 槽低 32 字节(端序分支),浮返经 fret 文本缓冲("%.17g" 往返零损)。靶 = 运行时模板 `ctron_fx_*` 四件(外部链接=dlsym 可见,hermetic 零 libc 依赖,值全二进制精确)。锚定:`tests/ffi/ext_finterp/` compiled+interpreted 双通道同源断言。**C 宿主桥(ctronc)float 帧对齐在册**(自举先行既定差分方向)。 |
+| **定长数组字段塌缩** | 复核:**v0.9·二/四 已全销**(发射两处字段循环 + ArrLit 字段位;`tests/ffi/arr_field/` 在库),本件无余码。 |
+
+**随批编译器修复(泛型发射面,CBox 路径实证的四个缺口)**:
+
+1. **泛型直调推断单源化**(`ct_call_infer_tys`,trans_ty):旧直调块种子槽推**码串 "i"** 而命中臂推**型节点**——异型直通 ct_ty_code 时串被当节点解引用(SEGV);`&T` 形参(Ref)此前永不命中→槽恒种子(`cbox_own[T](p: &T)` 直调即崩)。三臂:裸 Named 直等 TP / Ref 剥 p 前缀取内层码 / 带 TArgs 型参按实参实例尾缀解码回填同位槽。发射位与 ct_typeof 返回码位共用(ct_typeof 旧径 TPar→"i" 塌 `CBox__I` 与实发 `__V` 错型,`let b = cbox_own(p)` 即中)。
+2. **实例槽码字母表扩位**(ct_inst_encode/decode/arg_codes):f/g/7/z/w8u/w8s/w16u/w16s → F/G/M/N/V/W/X/Y(大写单字符不撞 I/S/B/L;`CBox[U8]` 槽即 V);ct_inst_ty_node 镜像补标量还原臂。
+3. **void 泛型特化**(ct_spec_call_emit):None 返回节点 ct_ty_code 无臂落 "i"——特化头发 int32_t 且尾调用被捕值(t_rv),尾为 void 外调即 `int32_t=void` 编译错(cbox_free[T] 首证;存量靠实参丢弃侥幸);对齐 ct_fn_ret None→"v" 口径。
+4. **ct_ty_code nt[2] OOB 守卫**(三处):泛型推断可产 2 槽裸 Named(无 TArgs 槽),无守卫读 nt[2] OOB 崩发射器(&T 字段单态化实证)。
+
+**新登记债**:①class 字面量发射不可用(`ct_expr:StructLit 非值类型`——ct_is_struct 门,class 构造仅泛型 fn 内裸字面量可达但调用即 SEGV 链,本件以 struct 承载,CBox class 形态登记 T25 v2 同域);②f 后缀 F32 字面量自举解释器不可用(E2020 "unresolved:f";型注解绑定 `let h: F32 = 5.0` 双通道可用);③`let _ = <expr>` 发射臂 PatWild 不支持(夹具改写规避);④smoke 自检 decls 锁 443→444(随批+ctron_ext_fret 一 extern,申报在案)。
+
 ### v0.9 顺带发现/登记
 
 - ~~**定长数组 struct 字段发射塌缩**~~ ✅ v0.9·二 修复(两处字段循环 + 成员索引读写;`tests/ffi/arr_field/` 钉死);余登记:ArrLit 仅 let 初值位,struct 字面量内数组构造仍堵(构造走 extern make 配方)。
-- **seed/C 宿主解释桥 close(-1) 回转缺口**:errno_basics 在 seed `test` 口径下 close(-1) 不回 -1(bridge int 返回链),FFI 夹具验收通道 = run.sh 编译通道(bin run = 编译执行,`run` 参数仅覆 CLI 输入锚)。归宿主解释桥在册。
+- **seed/C 宿主解释桥 close(-1) 回转缺口**:errno_basics 在 seed `test` 口径下 close(-1) 不回 -1(bridge int 返回链),FFI 夹具验收通道 = run.sh 编译通道(bin run = 编译执行,`run` 参数仅覆 CLI 输入锚)。~~bootstrap 侧~~ ✅ T45 修(整返回升 long 全宽;ext_finterp 负值回转面);C 宿主桥仍在册。
 - **use 合并私有 decl 撞名**:std 包内私有 extern(dup/close)与消费方本地 extern 同名即 E5030——包面收敛原则(只 pub 消费面)写入 ffi 域包头注。
 
 ---
@@ -199,7 +219,7 @@ FFI 三线(自举 `compiler/`、C 宿主 `compiler-c/`、`compiler-rust/`)在本
 | 6 | ~~USize↔size_t 别名冲突~~ | ✅ v0.7 | 码 "z" → size_t;libc strlen 直连 |
 | 7 | ~~I64 定长数组发射计数解析缺陷~~ **已修复**——`a_split` 回溯拆分(计数最长数字前缀 + 余段合法元素码首字符校验;`a36` = 3×I64 不再读成 36×I32);补齐发射缺失的定长数组元素写路径(`t_buf[i]` 直写 + 声明计数越界守卫,此前误走 ctron_list 分支);锚定 `tests/ffi/i64_buffer/`(I64 视图过界求和/写透) | ✅ v0.8 | — |
 | 8 | ~~宿主线未同步 FFI 诊断~~ **已落地**——七项移植 C 宿主 sem(W8050/E4040/E4041/E4042/E4044/W8051/W8052),含变参四件套(TOK_ELLIPSIS/cfn.variadic/参数表尾标/E4044);六夹具逐一触发验证;差分 oracle 的 FFI 诊断口径闭合 | ✅ v0.8 | — |
-| 9 | ~~错误传播约定(errno → Result)~~ | ✅ v0.9 | 首步 `errno()` 内建(v0.8);**深层折叠已落地**——std.ffi 包 `sys_result(rc) -> Result[I64, Str]`(rc<0 折 Err(err_str(errno())),strerror 经包垫片中转避 const 冲突,str_from_c 深拷;Ok 载荷域承诺 \|rc\|<2^31——发射面 Result 载荷槽 32 位,json.ct prior art)。锚定:`tests/ffi/err_wrap/`(编译通道;解释桥 Str 返回截断 E3 在册) |
+| 9 | ~~错误传播约定(errno → Result)~~ | ✅ v0.9 | 首步 `errno()` 内建(v0.8);**深层折叠已落地**——std.ffi 包 `sys_result(rc) -> Result[I64, Str]`(rc<0 折 Err(err_str(errno())),strerror 经包垫片中转避 const 冲突,str_from_c 深拷;Ok 载荷域承诺 \|rc\|<2^31——T53 后约束依据翻面:载荷槽 64 位+读侧整宽,承诺保留为保守包络)。锚定:`tests/ffi/err_wrap/`(编译通道;解释桥 Str 返回截断 E3 在册) |
 | 10 | ~~发射的形参缺省静默通过~~ **已修复**——"补 0"垫片会把缺参洗成合法 C(cc rc=0 实证);现 ct_arity_range/ct_arity_parse 发射期断言(声明在案的被调个数不符即硬失败;变参 ≥ min;内建/未声明不查);编译器自身三拼接在守卫下全过(无潜伏 arity bug) | ✅ v0.8 | — |
 | 11 | **自举解析器/发射器在册**(v0.8 收窄+处置):① ~~死代码触发~~——`ct_impl_method_fns`(零调用方)存在于解析树即触发发射崩溃;已删除解阻塞,impl 方法泳道重落地前需先修发射器对无行号戳合成节点的兼容。② ~~if 条件 `||` 解析错位~~ **已修复**——根因:`p_if` 条件误用 `p_and`(不消费 `\|\|`),`if` 条件含 `\|\|` 即解析错位(下游 `StructLit 非值类型`/签名吞没);语料对 if 条件 `\|\|` 零覆盖故长期隐形(while 走 p_stmt_expr→p_oror 本就对)。修复:p_if 改 `p_oror` + 04d_bool_or 回归锚。③ ~~`cimp_toks`+`cimp_proto` 同文件 native sem 崩溃~~ **已关闭(=②重复)**——该源型含 `if 三词或链`,②修复后 ctron-cc 原生驱动 cimport rc=0(输出与 seed 逐字一致);run.sh 已切原生驱动优先、seed 退化备用 | 中 | ①②③全部处置 |
 | 12 | ~~panic 跨边界策略(C 调 Ctron 回调中 longjmp 越 C 帧)~~ | ✅ v0.8 | 全语境落地——回调蹦栈 `ctron_cb_depth` + `ctron_panic` 三路判定(回调内=消息+exit(1) 不越 C 帧;task 态=pmsg+cancel+longjmp;否则 exit);`cb_panic/` + `cb_panic_task/` 双夹具钉死(§四表此行此前漏销账,本次补) |

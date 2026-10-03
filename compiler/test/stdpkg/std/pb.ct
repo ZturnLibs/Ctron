@@ -1,4 +1,5 @@
 // std/pb.ct —— protobuf 线格式编解码(P7-B;T1 档:零 use 纯函数,无 IO 无时钟)
+//@ tier: core
 //
 // 形态纪律(router/log 同款零 use 纯模块):字节道 = &I64[] lane(每字节一条
 //   I64,0..255;I8-typedef 列 P9);写面 = (buf,cap,pos) 游标返新 pos,越界

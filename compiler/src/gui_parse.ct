@@ -1,14 +1,16 @@
 // =====================================================================
 // gui_parse.ct —— GUI 块认领与折叠(W1/W2;规范 specs/2026-09-16-gui-ctml-design.md §11.1)
 // W1:顶层 view/style 块在 token 流上的平衡扫描认领,记 File 子节点 GuiBlock:
-//    [1]=kind [2]=name [3]=块内 token 数 [4]=块内 token 空格连接串(词法 token 无空格,无损)
+//    [1]=kind [2]=name [3]=块内 token 数 [4]=块内 token 空格连接串 [6]=体 {/} 行:列
+//    (GUI-12:[4] 的空格连接非无损——词法切词处重建会插空格,叶 "INNER-ON"→
+//    "INNER -ON";保真径=[6] 坐标反推源字节切片,gui_blocks_src_raw 消费)
 // W2:gui_lower 折叠——token 串 → 结构化 IR 文本 dump(--dump-gui 口径);
 //    颜色 #RRGGBB 格式校验(E8130 前身,W3 接诊断面);令牌查用户常量随 W3(sem 表)。
 // 契约:eat_tok 助手(花括号字面量不可词法化)(触发插值扫描吞引号,E1001)——一律字节码比较;
 //       注释中不放花括号字符(发射口径词法分歧,见计划文档登记)。
 // =====================================================================
 
-fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
+fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str, lns: List[Str], cols: List[Str]) -> List[Str] {
     var nd = mk("GuiBlock")
     nd.push(kind)
     adv(cur)
@@ -54,6 +56,10 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
         }
     }
     var joined: Str = name
+    // GUI-12 内嵌重建保真:块体原文切片面。rawok=false 时 d[6] 留空=消费侧
+    // 回退 token 重建;style extends 的头经 token 流承载(切片会丢 extends 对),
+    // 故仅 extends 关 raw——顺带根治连字符样式名重建丢后缀("in-t"→"in" 实证)
+    var rawok: Bool = true
     if kind == "style" {
         // P-W2:extends 对并入 joined——started 旗会丢弃 { 前的 token,
         // 而 check/skeleton/lower 三面的 extends 消费全走 joined 串
@@ -64,12 +70,15 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
                 var pn2: Str = tok(toks, cur)
                 adv(cur)
                 joined = joined + " extends " + pn2
+                rawok = false
             }
         }
     }
     var depth: I32 = 0
     var toks_n: I32 = 1
     var started: Bool = false
+    var pos: Str = ""
+    var pos1: Str = ""
     while true {
         var t: Str = tok(toks, cur)
         if t == "#EOF" {
@@ -90,6 +99,7 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
             depth += 1
             started = true
             if depth == 1 {
+                pos1 = gui_pos_at(lns, cols, cur.load())
                 adv(cur)
                 continue
             }
@@ -97,6 +107,14 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
             if is_close {
                 depth -= 1
                 if depth == 0 {
+                    if rawok {
+                        var pos2: Str = gui_pos_at(lns, cols, cur.load())
+                        if pos1.len > 0 {
+                            if pos2.len > 0 {
+                                pos = pos1 + " " + pos2
+                            }
+                        }
+                    }
                     adv(cur)
                     break
                 }
@@ -111,7 +129,23 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str) -> List[Str] {
     nd.push(toks_n.to_string())
     nd.push(joined)
     nd.push(props)
+    nd.push(pos)
     return nd
+}
+
+// token 行:列 → "行 列" 串(无位置面/越界 = 空,消费侧回退;gui_ctml_file
+// 自有词法无 lns/cols,传空表即走此路)
+fn gui_pos_at(lns: List[Str], cols: List[Str], i: I32) -> Str {
+    if i < 0 {
+        return ""
+    }
+    if i >= lns.len {
+        return ""
+    }
+    if i >= cols.len {
+        return ""
+    }
+    return lns[i] + " " + cols[i]
 }
 
 // ---- token 串拆分(词法 token 无空格,空格单切无损) ----
@@ -322,6 +356,25 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
                 }
             }
         } else {
+        if an == "switch" {
+            // checkbox 变体裸属性(药丸滑块)——三面放行;sk 面入事件表
+            // (渲染期 rt_has_mark 消费,密码/数字同款承载)
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
+        if an == "radio" {
+            // checkbox 变体裸属性(单选圆钮)——同 switch 承载
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
         if an == "on" {
             if eat_tok(tks, cur) != ":" {
                 panic("gui E8100: on 期待冒号")
@@ -331,15 +384,23 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
                 panic("gui E8100: on 期待等号")
             }
             var ob: Str = eat_tok(tks, cur)
-            if ob.len != 1 {
-                panic("gui E8100: on 期待块开")
+            if ob.len >= 2 {
+                if byte_at(ob, 0) == 34 {
+                    // GUI-15:on:after="ms:handler" 引号串事件——原样透传内嵌源
+                    onf = ob
+                }
             }
-            if byte_at(ob, 0) != 123 {
-                panic("gui E8100: on 期待块开")
+            if onf == "" {
+                if ob.len != 1 {
+                    panic("gui E8100: on 期待块开")
+                }
+                if byte_at(ob, 0) != 123 {
+                    panic("gui E8100: on 期待块开")
+                }
+                // 8c-3:事件表达式平衡捕获(单标识符旧契约为其特例;gui_bx_expr
+                // 消费至配对 } 并剥行尾 ~ 标记)
+                onf = gui_bx_expr(tks, cur)
             }
-            // 8c-3:事件表达式平衡捕获(单标识符旧契约为其特例;gui_bx_expr
-            // 消费至配对 } 并剥行尾 ~ 标记)
-            onf = gui_bx_expr(tks, cur)
         } else {
             if eat_tok(tks, cur) != "=" {
                 panic("gui E8100: 属性期待等号")
@@ -367,6 +428,8 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
             if an == "in" {
                 bv = av
             }
+        }
+        }
         }
         }
         }
@@ -482,6 +545,15 @@ fn gui_lower_style(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str]) -
 // 形态 = 空格化 token(kind 名 { token* })——域包词法 glit 前置 gws,全容忍;
 // ctron_embedded 内建(eval/emit 双口径)据此返回,run_d 文件缺失时兜底。
 fn gui_blocks_src(file: List[Str]) -> Str {
+    return gui_blocks_src_raw(file, "")
+}
+
+// SL-7α:程序自身 GuiBlock 重建为 CTML 文本(内嵌 view/style 块端到端的数据源)。
+// GUI-12 保真径:src 非空且 GuiBlock 带行:列位置槽(d[6])时,块体按源字节
+// 切片原文直出——词法切-连的空格损失不再发生(叶 "INNER-ON" 不再重建为
+// "INNER -ON");探针校验不过(跨文件坐标/无源面)回退 token 空格连接旧径。
+fn gui_blocks_src_raw(file: List[Str], src: Str) -> Str {
+    var starts = gui_line_starts(src)
     var out: Str = ""
     var i: I32 = 1
     while i < file.len {
@@ -491,54 +563,143 @@ fn gui_blocks_src(file: List[Str]) -> Str {
             continue
         }
         if d[0] == "GuiBlock" {
-            // 8c-2:props 形参表(d[5])随重建——否则内嵌兜底源丢 props,
-            // 域包 gt_parse 捕获空表,求值切换/链解析静默失效
-            out = out + d[1] + " " + d[2] + d[5] + " \{"
-            var tks = List[Str]()
-            gui_split(d[4], tks)
-            var k: I32 = 1
-            while k < tks.len {
-                var tk: Str = tks[k]
-                // 剥行尾标记 ~:join 流的换行编码只服务 dump/check 面,域包词法
-                // 不认(gspan 值位 "8~" 会在 ~ 处断词 → 期待标识符)
-                if tk.len > 1 {
-                    if byte_at(tk, tk.len - 1) == 126 {
-                        tk = byte_slice(tk, 0, tk.len - 1)
-                    }
-                }
-                if tk == "<" {
-                    if k + 1 < tks.len {
-                        if tks[k + 1] == "/" {
-                            // </ 粘连:容器闭合探测是裸字节检查(gui.ct 子循环 peek2),
-                            // "< /" 会被误判为子元素开头 → gword("/") 期待标识符
-                            out = out + " </"
-                            k += 2
-                            continue
+            var got: Bool = false
+            if src.len > 0 {
+                if d.len >= 7 {
+                    if d[6].len > 0 {
+                        var body: Str = gui_raw_body(src, starts, d[6])
+                        if body.len > 0 {
+                            // 8c-2:props 形参表(d[5])随重建——否则内嵌兜底源丢 props,
+                            // 域包 gt_parse 捕获空表,求值切换/链解析静默失效
+                            got = true
+                            out = out + d[1] + " " + d[2] + d[5] + " \{" + body + "} "
                         }
                     }
                 }
-                if tk == "=" {
-                    if k + 1 < tks.len {
-                        var nk2: Str = tks[k + 1]
-                        if nk2.len == 1 {
-                            if byte_at(nk2, 0) == 123 {
-                                // ={ 粘连:attr 值花括号探测同为裸字节检查(= 后直接看 {),
-                                // "= {" 会走 gstr 误期待引号串
-                                out = out + " =\{"
-                                k += 2
-                                continue
-                            }
-                        }
-                    }
-                }
-                out = out + " " + tk
-                k += 1
             }
-            out = out + " } "
+            if !got {
+                out = out + gui_blocks_rejoin(d)
+            }
         }
         i += 1
     }
     return out
+}
+
+// 旧径:块体 token 空格连接串 → 逐 token 重排(词法切词处插空格,连字符/
+// 标点叶失真;保留作无位置面/探针不过的回退)
+fn gui_blocks_rejoin(d: List[Str]) -> Str {
+    var out: Str = ""
+    // 8c-2:props 形参表(d[5])随重建(同上)
+    out = out + d[1] + " " + d[2] + d[5] + " \{"
+    var tks = List[Str]()
+    gui_split(d[4], tks)
+    var k: I32 = 1
+    while k < tks.len {
+        var tk: Str = tks[k]
+        // 剥行尾标记 ~:join 流的换行编码只服务 dump/check 面,域包词法
+        // 不认(gspan 值位 "8~" 会在 ~ 处断词 → 期待标识符)
+        if tk.len > 1 {
+            if byte_at(tk, tk.len - 1) == 126 {
+                tk = byte_slice(tk, 0, tk.len - 1)
+            }
+        }
+        if tk == "<" {
+            if k + 1 < tks.len {
+                if tks[k + 1] == "/" {
+                    // </ 粘连:容器闭合探测是裸字节检查(gui.ct 子循环 peek2),
+                    // "< /" 会被误判为子元素开头 → gword("/") 期待标识符
+                    out = out + " </"
+                    k += 2
+                    continue
+                }
+            }
+        }
+        if tk == "=" {
+            if k + 1 < tks.len {
+                var nk2: Str = tks[k + 1]
+                if nk2.len == 1 {
+                    if byte_at(nk2, 0) == 123 {
+                        // ={ 粘连:attr 值花括号探测同为裸字节检查(= 后直接看 {),
+                        // "= {" 会走 gstr 误期待引号串
+                        out = out + " =\{"
+                        k += 2
+                        continue
+                    }
+                }
+            }
+        }
+        out = out + " " + tk
+        k += 1
+    }
+    out = out + " } "
+    return out
+}
+
+// 源文本行起始字节表(starts[0]=0;遇 \n 记下一行起点)
+fn gui_line_starts(src: Str) -> List[I32] {
+    var starts = List[I32]()
+    starts.push(0)
+    var n: I32 = src.len
+    var i: I32 = 0
+    while i < n {
+        if byte_at(src, i) == 10 {
+            starts.push(i + 1)
+        }
+        i += 1
+    }
+    return starts
+}
+
+// 位置串("l1 c1 l2 c2")→ 开/闭花括号字节切片块体;探针不过 = 空(回退)。
+// 探针双验:两坐标处字节须真为 { 与 }(跨文件坐标必错位),杜绝错切。
+fn gui_raw_body(src: Str, starts: List[I32], pos: Str) -> Str {
+    var ps = List[I32]()
+    var j: I32 = 0
+    var acc: I32 = 0 - 1
+    var n: I32 = pos.len
+    while j <= n {
+        var b: I32 = 32
+        if j < n {
+            b = byte_at(pos, j)
+        }
+        if b == 32 {
+            if acc >= 0 {
+                ps.push(acc)
+                acc = 0 - 1
+            }
+        } else {
+            if b < 48 || b > 57 {
+                return ""
+            }
+            if acc < 0 {
+                acc = 0
+            }
+            acc = acc * 10 + (b - 48)
+        }
+        j += 1
+    }
+    if ps.len != 4 {
+        return ""
+    }
+    if ps[0] < 1 || ps[0] > starts.len {
+        return ""
+    }
+    if ps[2] < 1 || ps[2] > starts.len {
+        return ""
+    }
+    var open: I32 = starts[ps[0] - 1] + ps[1] - 1
+    var close: I32 = starts[ps[2] - 1] + ps[3] - 1
+    if open < 0 || close >= src.len || open + 2 > close {
+        return ""
+    }
+    if byte_at(src, open) != 123 {
+        return ""
+    }
+    if byte_at(src, close) != 125 {
+        return ""
+    }
+    return byte_slice(src, open + 1, close)
 }
 
 // ==================== SL-8c-4②:gui.run 装配合成 ====================
@@ -915,18 +1076,21 @@ fn gui_ctml_tokens(src: Str, out: List[Str]) -> I32 {
 }
 
 // 独立 .ctml 源 → File 节(子 = GuiBlock;顶层扫 view/style 关键字交 gui_block 认领)
+// 自有标记词法无 lns/cols:传空表,d[6] 位置槽留空(消费侧自动回退 token 重建)
 fn gui_ctml_file(src: Str) -> List[Str] {
     var toks = List[Str]()
     gui_ctml_tokens(src, toks)
+    var nol = List[Str]()
+    var noc = List[Str]()
     var file = mk("File")
     var cur = Atomic[I32](0)
     while cur.load() < toks.len {
         var t: Str = toks[cur.load()]
         if t == "view" {
-            file.push(gui_block(toks, cur, "view"))
+            file.push(gui_block(toks, cur, "view", nol, noc))
         } else {
             if t == "style" {
-                file.push(gui_block(toks, cur, "style"))
+                file.push(gui_block(toks, cur, "style", nol, noc))
             } else {
                 cur.store(cur.load() + 1)
             }
@@ -1173,8 +1337,10 @@ fn gui_ev_head2(e: Str, argc: List[I32], aout: List[Str]) -> Str {
     return head
 }
 
-// 8c-4 地基:完整点链路径提取(含段;"m.count" 整链;字符串字面量内跳过)
-fn gui_bx_dotted(e: Str, out: List[Str]) {
+// 8c-4 地基:完整点链路径提取(含段;"m.count" 整链;字符串字面量内跳过)。
+// GUI-13:subs 收下标根(ident 直随 [ 者,全点链路径)——collect 据此路由 each:
+// 通道;out 与 subs 各自去重、可同名共存
+fn gui_bx_dotted(e: Str, out: List[Str], subs: List[Str]) {
     var i: I32 = 0
     var instr: Bool = false
     while i < e.len {
@@ -1202,8 +1368,25 @@ fn gui_bx_dotted(e: Str, out: List[Str]) {
                         }
                     }
                     var path: Str = byte_slice(e, start, i)
-                    if !gui_ck_has_style(out, path) {
-                        out.push(path)
+                    // 内建调用名(直随 ()非引用:不入 paths/subs(E8110 误报防;
+                    // 白名单核对归 gui_bx_form_gate)
+                    var iscall: Bool = false
+                    if i < e.len {
+                        if byte_at(e, i) == 40 {
+                            iscall = true
+                        }
+                    }
+                    if !iscall {
+                        if !gui_ck_has_style(out, path) {
+                            out.push(path)
+                        }
+                        if i < e.len {
+                            if byte_at(e, i) == 91 {
+                                if !gui_ck_has_style(subs, path) {
+                                    subs.push(path)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1387,13 +1570,92 @@ fn gui_ty_head_node(t: List[Str]) -> Str {
 // 8c-4 地基:绑定/事件实参表达式统一引用门——props 视图内:
 //   根 ∈ each 项 scope → 不设门;根 ∈ prop → 段级类型门;否则根越界 E8110。
 // 裸名单视图(props 空)零设门(8c-1 契约)
+// GUI-13:视图表达式形态门——下标括号平衡(串字面量感知)+ 内建调用名白名单
+// (词表 = 域包 bxv_call 分发同源,新增双侧同步);违规 E8195 编译期拦截,
+// 运行时 bxv 同文法 panic 兜底。on: 事件槽豁免(不经本门,与 E8190 同规)
+fn gui_bx_form_gate(e: Str, gdiags: List[Str], where: Str) -> I32 {
+    var i: I32 = 0
+    var instr: Bool = false
+    var depth: I32 = 0
+    while i < e.len {
+        var b: I32 = byte_at(e, i)
+        if instr {
+            if b == 92 {
+                i += 1
+            } else {
+                if b == 34 {
+                    instr = false
+                }
+            }
+        } else {
+            if b == 34 {
+                instr = true
+            } else {
+                if b == 91 {
+                    depth += 1
+                } else {
+                    if b == 93 {
+                        depth -= 1
+                        if depth < 0 {
+                            gdiags.push("E8195: 视图表达式下标括号不匹配 " + where)
+                            return -1
+                        }
+                    } else {
+                        if (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 {
+                            var start: I32 = i
+                            while i < e.len {
+                                var c: I32 = byte_at(e, i)
+                                if c == 95 || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) {
+                                    i += 1
+                                } else {
+                                    break
+                                }
+                            }
+                            var name: Str = byte_slice(e, start, i)
+                            var j: I32 = i
+                            while j < e.len {
+                                var w: I32 = byte_at(e, j)
+                                if w == 32 || w == 9 {
+                                    j += 1
+                                } else {
+                                    break
+                                }
+                            }
+                            if j < e.len {
+                                if byte_at(e, j) == 40 {
+                                    if !(name == "cut" || name == "fld" || name == "sethas" || name == "contains") {
+                                        gdiags.push("E8195: 视图表达式未知内建 " + name + " 于 " + where)
+                                        return -1
+                                    }
+                                }
+                            }
+                            continue
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    if depth != 0 {
+        gdiags.push("E8195: 视图表达式下标括号不匹配 " + where)
+        return -1
+    }
+    return 0
+}
+
 fn gui_ck_bx_gate(e: Str, props: List[Str], ptyps: List[Str], pscope: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], gdiags: List[Str], where: Str) -> I32 {
+    // GUI-13:形态门先于 props 门——裸名通道视图同样受内建白名单/括号平衡约束
+    if gui_bx_form_gate(e, gdiags, where) < 0 {
+        return -1
+    }
     if props.len == 0 {
         return 0
     }
     var bad: I32 = 0
     var paths = List[Str]()
-    gui_bx_dotted(e, paths)
+    var subs = List[Str]()
+    gui_bx_dotted(e, paths, subs)
     var ii: I32 = 0
     while ii < paths.len {
         var p: Str = paths[ii]
@@ -1754,6 +2016,24 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                 }
             }
         } else {
+        if an == "switch" {
+            // checkbox 变体裸属性(药丸滑块)——检查面放行;sk 面入事件表
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
+        if an == "radio" {
+            // checkbox 变体裸属性(单选圆钮)——同 switch 承载
+            if cur.load() < tks.len {
+                if tks[cur.load()] == ":" {
+                    eat_tok(tks, cur)
+                    eat_tok(tks, cur)
+                }
+            }
+        } else {
         if an == "on" {
             // on:名=花括号事件表达式:块开逐 token 校验(曾盲吃 5 漏收尾闭,W3 口径),
             // 块体 8c-3 平衡捕获(单标识符旧契约为特例;配对 } 由捕获消费)
@@ -1768,10 +2048,58 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                 bad = -1
             } else {
                 var ob: Str = eat_tok(tks, cur)
-                if ob.len != 1 {
-                    gdiags.push("E8100: on 期待块开")
-                    bad = -1
-                } else {
+                if ob.len >= 2 {
+                    if byte_at(ob, 0) == 34 {
+                        // GUI-15:on:after="ms:handler" 引号串事件——仅 after 受持;
+                        // 形态 = 非零毫秒:简单名(E8120 处理器存在门沿用)
+                        if evn != "after" {
+                            gdiags.push("E8110: on:" + evn + " 不受持引号事件(仅 after) ")
+                            bad = -1
+                        } else {
+                            var qv: Str = byte_slice(ob, 1, ob.len - 1)
+                            var ci2: I32 = 0
+                            while ci2 < qv.len {
+                                if byte_at(qv, ci2) == 58 {
+                                    break
+                                }
+                                ci2 += 1
+                            }
+                            var msok: Bool = ci2 > 0 && ci2 < qv.len
+                            if msok {
+                                var mi: I32 = 0
+                                while mi < ci2 {
+                                    var mb: I32 = byte_at(qv, mi)
+                                    if mb < 48 || mb > 57 {
+                                        msok = false
+                                        mi = ci2
+                                    }
+                                    mi += 1
+                                }
+                                var mv: I32 = 0
+                                var mi2: I32 = 0
+                                while mi2 < ci2 {
+                                    mv = mv * 10 + (byte_at(qv, mi2) - 48)
+                                    mi2 += 1
+                                }
+                                if mv <= 0 {
+                                    msok = false
+                                }
+                                var hd: Str = byte_slice(qv, ci2 + 1, qv.len)
+                                if !gui_ck_has_style(fns, hd) {
+                                    gdiags.push("E8120: 事件处理器未声明 " + hd + "(on:" + evn + ")")
+                                    bad = -1
+                                    msok = false
+                                }
+                            }
+                            if !msok {
+                                gdiags.push("E8110: on:after 期待 \"毫秒:处理器名\" 得 " + qv)
+                                bad = -1
+                            }
+                            hn = " "
+                        }
+                    }
+                }
+                if ob.len == 1 {
                     if byte_at(ob, 0) != 123 {
                         gdiags.push("E8100: on 期待块开")
                         bad = -1
@@ -1922,6 +2250,8 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
             }
+        }
+        }
         }
         }
         }
@@ -2428,11 +2758,32 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             ev_name.push("numeric")
             ev_fn.push("")
         } else {
+        if an == "switch" {
+            // checkbox 变体裸属性 → 事件表(域包 rt_has_mark 渲染期消费)
+            gui_sk_word(tks, cur)
+            ev_name.push("switch")
+            ev_fn.push("")
+        } else {
+        if an == "radio" {
+            gui_sk_word(tks, cur)
+            ev_name.push("radio")
+            ev_fn.push("")
+        } else {
         if an == "on" {
             gui_sk_word(tks, cur)
             var evn: Str = gui_sk_word(tks, cur)
             gui_sk_word(tks, cur)
             var ob: Str = gui_sk_word(tks, cur)
+            var ev_branch: I32 = 0
+            if ob.len >= 2 {
+                if byte_at(ob, 0) == 34 {
+                    // GUI-15:on:after="ms:handler" 引号串事件(定时;存活域一次性)
+                    ev_name.push(evn)
+                    ev_fn.push(byte_slice(ob, 1, ob.len - 1))
+                    ev_branch = 1
+                }
+            }
+            if ev_branch == 0 {
             // 块开守卫(缺 { 错位吞词,镜像 check 面 W3 教训)后 8c-3 平衡捕获
             if ob.len != 1 {
                 panic("gui: on 期待块开")
@@ -2443,6 +2794,7 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             var fnn: Str = gui_bx_expr(tks, cur)
             ev_name.push(evn)
             ev_fn.push(fnn)
+            }
         } else {
             gui_sk_word(tks, cur)
             var av: Str = ""
@@ -2478,6 +2830,8 @@ fn gui_sk_attrs(tks: List[Str], cur: Atomic[I32], ev_name: List[Str], ev_fn: Lis
             if an == "placeholder" {
                 out4[3] = av
             }
+        }
+        }
         }
         }
         }
@@ -3304,28 +3658,38 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
         }
         ri4 += 1
     }
+    // GUI-13:依赖两遍提取——先全量 paths+subs,再路由:下标根入 lists(each:
+    // 通道多推分支,gen 复用零改动),标量依赖照旧 prop: 分支;lists 去重
+    //(既有 each 重复列表名潜在双分支一并收口)
+    var allps = List[Str]()
+    var allsub = List[Str]()
     var i: I32 = 0
     while i < exprs.len {
-        var ps = List[Str]()
-        gui_bx_dotted(exprs[i], ps)
-        var j: I32 = 0
-        while j < ps.len {
-            var rt: Str = ps[j]
-            var di: I32 = 0
-            while di < ps[j].len {
-                if byte_at(ps[j], di) == 46 {
-                    rt = byte_slice(ps[j], 0, di)
-                    di = ps[j].len
-                }
-                di += 1
+        gui_bx_dotted(exprs[i], allps, allsub)
+        i += 1
+    }
+    i = 0
+    while i < allps.len {
+        var rt: Str = allps[i]
+        var di: I32 = 0
+        while di < allps[i].len {
+            if byte_at(allps[i], di) == 46 {
+                rt = byte_slice(allps[i], 0, di)
+                di = allps[i].len
             }
-            if gui_ck_has_style(pnames, rt) {
-                if !gui_ck_has_style(paths, ps[j]) {
-                    paths.push(ps[j])
-                    pty.push(gui_ds_path_ty(ps[j], pnames, ptyps, stns, sfk, stv))
+            di += 1
+        }
+        if gui_ck_has_style(pnames, rt) {
+            if gui_ck_has_style(allsub, allps[i]) {
+                if !gui_ck_has_style(lists, allps[i]) {
+                    lists.push(allps[i])
+                }
+            } else {
+                if !gui_ck_has_style(paths, allps[i]) {
+                    paths.push(allps[i])
+                    pty.push(gui_ds_path_ty(allps[i], pnames, ptyps, stns, sfk, stv))
                 }
             }
-            j += 1
         }
         i += 1
     }

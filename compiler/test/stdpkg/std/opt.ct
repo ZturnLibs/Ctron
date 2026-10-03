@@ -1,4 +1,5 @@
 // std/opt.ct —— Option/Result 组合子补齐(前奏 map/or/expect 之外的链式缺口)
+//@ tier: core
 // since: std-0.2 stability: experimental
 // 口径:与 `?`/`or` 语义对齐(§4.4/§5.3);命名无同义别名(运算符宪法精神)
 

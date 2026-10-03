@@ -1,0 +1,6 @@
+pkg {
+    manifest_version = 1
+    name = "tier_real_neg"
+    version = "0.1.0"
+    tier = "core"
+}

@@ -1,0 +1,57 @@
+// tests/ffi/cbox —— CBox[T] 跨边界所有权包装(T45;§9.6 所有权三约定之 2)
+// 承诺:cbox_own(C→Ctron 移交)/ borrow(约定之 3 调用期借用)/
+// into_raw(Ctron→C 移交,责任过界)/ free(#[trusted] 释放面)——
+// 移交、释放各一次;双违例负锚见 cbox_dblfree / cbox_useafter;
+// 面形态:自由泛型函数(v0 发射面 trait 方法调用为 T25 v2 在册域)。
+// 审计计数器钉 C 侧 malloc/destroy 平衡(into_raw 面零泄漏)。
+use ffi.{cbox_own, cbox_borrow, cbox_into_raw, cbox_free}
+
+#[repr(c)]
+struct Thing {
+    var v: I64
+}
+
+#[trusted]
+extern "c" fn thing_make(v: I64) -> &Thing
+
+#[trusted]
+extern "c" fn thing_bump(t: &Thing)
+
+#[trusted]
+extern "c" fn thing_value(t: &Thing) -> I64
+
+#[trusted]
+extern "c" fn thing_destroy(t: &Thing)
+
+#[trusted]
+extern "c" fn box_audit() -> I64
+
+#[trusted]
+extern "c" fn box_raw(n: I64) -> &U8
+
+#[trusted]
+extern "c" fn box_raw_poke(p: &U8, i: I64, b: U8)
+
+#[trusted]
+extern "c" fn box_raw_peek(p: &U8, i: I64) -> I64
+
+test "own + borrow: C mutates through the borrowed pointer, box frees once" {
+    let b = cbox_own(thing_make(5))
+    thing_bump(cbox_borrow(b))
+    assert_eq(thing_value(cbox_borrow(b)), 6)
+    cbox_free(b)
+}
+
+test "into_raw: ownership hands off to C, C destroys (audit balanced)" {
+    let a0 = box_audit()
+    let b = cbox_own(thing_make(9))
+    thing_destroy(cbox_into_raw(b))
+    assert_eq(box_audit(), a0)
+}
+
+test "byte box: second instantiation shares the free transit" {
+    let bb = cbox_own(box_raw(16))
+    box_raw_poke(cbox_borrow(bb), 3, 217)
+    assert_eq(box_raw_peek(cbox_borrow(bb), 3), 217)
+    cbox_free(bb)
+}

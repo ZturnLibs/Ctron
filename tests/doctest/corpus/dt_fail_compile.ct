@@ -1,0 +1,9 @@
+// dt_fail_compile.ct —— doc-test 编译面负例:例码类型错误 = check 失败(E2010)
+/// 返回两数之和(本文件示例故意类型错)。
+///
+/// ```c
+/// let x: I32 = "s"
+/// ```
+pub fn add2(a: I32, b: I32) -> I32 {
+    return a + b
+}

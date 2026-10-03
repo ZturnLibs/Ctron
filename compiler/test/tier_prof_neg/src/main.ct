@@ -1,0 +1,6 @@
+// tier_prof_neg —— bare 档钳门:无清单键(full 缺省 std)+ --profile=bare → E3040.tier
+use std.strx.{ sx_count }
+
+fn main() -> I32 {
+    return sx_count(2)
+}

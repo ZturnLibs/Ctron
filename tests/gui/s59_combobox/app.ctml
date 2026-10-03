@@ -1,0 +1,33 @@
+// tests/gui/s59_combobox —— GUI-19 combobox 组件:input + select 合体
+// (输入过滤 on:input 名通道 → 模型 filter,输入即开下拉(combobox 常见
+//  交互);overlay 下拉 = select v2 同款;点选填入回 input。过滤谓词应用
+//  侧手写 has_sub——v0 无切分/contains 内建,GUI-13 落库后可换内建。
+//  注:点击开下拉本可用 on:click+d_click_xy,但 d_click_xy 发射口径
+//  act 收 NULL 崩(s34 红账同源),v1 绕开登记债。)
+view Combo (open: Bool) {
+  <vbox class="cb">
+    <input bind={cbtext} class="cb-f" on:input={cbf}/>
+    <when cond={open}>
+      <overlay class="cb-mask" on:click={cb_close}>
+        <vbox class="cb-opts">
+          <each o in={cbopts}>
+            <button class="cb-opt" on:click={cb_pick}>{o}</button>
+          </each>
+        </vbox>
+      </overlay>
+    </when>
+  </vbox>
+}
+view Root {
+  <vbox class="root">
+    <Combo open: {cbopen}/>
+    <label class="cb-v">{cbval}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style cb { direction: column gap: 4 }
+style cb-f { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style cb-mask { bg: MASK align: center }
+style cb-opts { direction: column gap: 2 }
+style cb-opt { bg: ELEVATED fg: TEXT w: 150 h: 28 }
+style cb-v { fg: "#22c55e" h: 22 }

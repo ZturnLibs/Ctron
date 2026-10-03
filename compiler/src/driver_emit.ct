@@ -294,29 +294,57 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             println("static const char* ctron_anchor = \"" + ct_cstr(anch) + "\";")
             // SL-7α 内嵌形态:程序自身 view/style GuiBlock 重建为 CTML 常量,
             // ctron_embedded() 供域包 run_d 文件缺失时兜底(独立二进制零 CWD 依赖)
-            println("static const char* ctron_embed_src = \"" + ct_cstr(gui_blocks_src(file)) + "\";")
+            // GUI-12:带源文本重建——块体原文切片,叶字面量不再被词法切-连插空格
+            println("static const char* ctron_embed_src = \"" + ct_cstr(gui_blocks_src_raw(file, s)) + "\";")
             println("static const char* ctron_embedded(void) \{ return ctron_embed_src; }")
             println("static const char* ctron_dom_title_buf = \"\";")
             println("static void ctron_dom_set_title(const char* s) \{ ctron_dom_title_buf = s; }")
             println("static const char* ctron_dom_title(void) \{ return ctron_dom_title_buf; }")
             println("static int32_t ctron_char_len(const char* s) \{ int32_t n = 0; while (*s) \{ if ((*s & 0xC0) != 0x80) \{ n += 1; } s += 1; } return n; }")
             println("static const char* ctron_read_file_cli(const char* p) \{ if (ctron_cli_input) \{ return ctron_read_file(ctron_cli_input); } return ctron_read_file(p); }")
-            // W4 E1:解释口径 extern 直调桥(帧编码 "i:<int>"/"s:<str>",空帧终止;
-            // dlsym(RTLD_DEFAULT) 直调宿主进程链接符号——bin/ctron-cc 由 native.sh
-            // 链 vendored 库(whole-archive + rdynamic);用户二进制无引用,死码消除)
+            // W4 E1:解释口径 extern 直调桥(帧编码 "i:<int>"/"s:<str>"/
+            // "f:<F64 文本>"/"g:<F32 文本>",空帧终止;符号名前缀 "Ri:"/"Rf:"/"Rg:"
+            // = 返回别声明,裸名 = 整返回旧形;dlsym(RTLD_DEFAULT) 直调宿主进程
+            // 链接符号——bin/ctron-cc 由 native.sh 链 vendored 库(whole-archive +
+            // rdynamic);用户二进制无引用,死码消除)
+            // T45 float 帧:整返回走 long 传输(旧 int 截断=close(-1) 回转缺口在册
+            // 面,bootstrap 桥随本批修复);浮参/浮返按 ABI 正确函数指针 cast——
+            // float/double 走 SIMD 寄存器类,全 long cast 直调浮函数=寄存器类错配;
+            // 形状表按 (返回别, 元数≤4, 浮参 mask) 展开全 case,>4 参浮形状响亮
+            // panic 不静默。F32 实参经 ctron_ext_f32slot 位 preserving 放入 double
+            // 槽低 32 位(callee 读 s 寄存器=低 32),返回浮值经 fret 文本缓冲
+            // ("%.17g" 往返零损)回传解释器。
             // Windows 无 dlfcn:整段桥按 _WIN32 排除,桩保持响亮失败(β 口径)
             println("#if !defined(_WIN32)")
+            println("static char ctron_ext_fretbuf[64];")
+            println("const char* ctron_ext_fret(void) \{ return ctron_ext_fretbuf; }")
+            println("static double ctron_ext_f32slot(float fv) \{ double dx = 0.0; unsigned ctron_f32u; memcpy(&ctron_f32u, &fv, 4);")
+            println("#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__")
+            println("    memcpy(((char*)&dx) + 4, &ctron_f32u, 4);")
+            println("#else")
+            println("    memcpy(((char*)&dx) + 0, &ctron_f32u, 4);")
+            println("#endif")
+            println("    return dx; }")
+            // T45 解释桥行为锚靶(hermetic:零 libc/libm 依赖,值全二进制精确;
+            // 外部链接=dlsym 可见,compiled/interp 双通道同源)
+            println("double ctron_fx_scale(double v, double k) \{ return v * k; }")
+            println("float ctron_fx_half(float v) \{ return v / 2.0f; }")
+            println("int ctron_fx_f2i(double v) \{ return (int)v; }")
+            println("double ctron_fx_mix(double v, int64_t sh) \{ double r = v; while (sh > 0) \{ r = r * 2.0; sh--; } return r; }")
             println("static long ctron_ext_dispatch0(const char* nm, int n, const char** fr) \{")
-            println("    void* p; long u[12]; int i; int k = 0;")
+            println("    void* p; long u[12]; double d[12]; unsigned fm = 0; int i; int k = 0;")
+            println("    char rc = 'i'; const char* sym = nm;")
+            println("    if (nm[0] == 'R' && nm[1] && nm[2] == ':') \{ rc = nm[1]; sym = nm + 3; }")
             println("    for (i = 0; i < n; i++) \{")
             println("        if (!fr[i] || !fr[i][0]) \{ break; }")
             println("        if (fr[i][1] != ':') \{ ctron_panic(\"extern 帧损坏\"); }")
             println("        if (getenv(\"CTRON_GUI_TRACE\") != 0) \{ fprintf(stderr, \"FR[%d]=%s\\n\", i, fr[i] ? fr[i] : \"(null)\"); }")
-            println("        if (fr[i][0] == 'i') \{ u[k++] = strtol(fr[i] + 2, 0, 10); } else \{ if (fr[i][0] == 's') \{ u[k++] = (long)(fr[i] + 2); } else \{ ctron_panic(\"extern 解释口径:不支持参数类型\"); } }")
+            println("        if (fr[i][0] == 'i') \{ u[k++] = strtol(fr[i] + 2, 0, 10); } else \{ if (fr[i][0] == 's') \{ u[k++] = (long)(fr[i] + 2); } else \{ if (fr[i][0] == 'f') \{ d[k] = strtod(fr[i] + 2, 0); fm |= 1u << k; k++; } else \{ if (fr[i][0] == 'g') \{ d[k] = ctron_ext_f32slot(strtof(fr[i] + 2, 0)); fm |= 1u << k; k++; } else \{ ctron_panic(\"extern 解释口径:不支持参数类型\"); } } } }")
             println("    }")
             println("    if (getenv(\"CTRON_GUI_TRACE\") != 0) \{ fprintf(stderr, \"DISPATCH nm=%s n=%d k=%d\\n\", nm, n, k); }")
-            println("    p = dlsym(RTLD_DEFAULT, nm);")
+            println("    p = dlsym(RTLD_DEFAULT, sym);")
             println("    if (!p) \{ ctron_panic(\"extern 符号未找到(解释口径:符号须链接进解释器宿主)\"); }")
+            println("    if (rc == 'i' && fm == 0) \{")
             println("    switch (k) \{")
             println("        case 0: return (long)((long (*)(void))p)();")
             println("        case 1: return ((long (*)(long))p)(u[0]);")
@@ -332,15 +360,78 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             println("        case 11: return ((long (*)(int, int, int, int, int, int, int, int, int, int, int))p)(u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8], u[9], u[10]);")
             println("        default: return ((long (*)(int, int, int, int, int, int, int, int, int, int, int, int))p)(u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8], u[9], u[10], u[11]);")
             println("    }")
+            println("    }")
+            // T45:float 形状表(返回别 × 元数 ≤4 × 浮参 mask 全展开;每 case 一行)
+            println("    switch ((((rc == 'f') ? 1u : (rc == 'g') ? 2u : 0u) << 28) | (((unsigned)k) << 24) | fm) \{")
+            var rc45: I32 = 1
+            while rc45 <= 3 {
+                var k45: I32 = 0
+                while k45 <= 4 {
+                    var fmlim: I32 = 1
+                    var c45: I32 = 0
+                    while c45 < k45 {
+                        fmlim = fmlim * 2
+                        c45 += 1
+                    }
+                    var fm45: I32 = 0
+                    while fm45 < fmlim {
+                        if !(rc45 == 3 && fm45 == 0) {
+                            var cty = ""
+                            var carg = ""
+                            var j45: I32 = 0
+                            while j45 < k45 {
+                                var pw: I32 = 1
+                                var c46: I32 = 0
+                                while c46 < j45 {
+                                    pw = pw * 2
+                                    c46 += 1
+                                }
+                                var isf = fm45 / pw % 2 == 1
+                                if j45 > 0 {
+                                    cty = cty + ", "
+                                    carg = carg + ", "
+                                }
+                                if isf {
+                                    cty = cty + "double"
+                                    carg = carg + "d[" + j45.to_string() + "]"
+                                } else {
+                                    cty = cty + "long"
+                                    carg = carg + "u[" + j45.to_string() + "]"
+                                }
+                                j45 += 1
+                            }
+                            var cls45: I32 = 0
+                            if !(rc45 == 3) {
+                                cls45 = rc45
+                            }
+                            var shape45 = cls45 * 268435456 + k45 * 16777216 + fm45
+                            if rc45 == 1 {
+                                println("        case " + shape45.to_string() + ": \{ double r = ((double (*)(" + cty + "))p)(" + carg + "); snprintf(ctron_ext_fretbuf, 64, \"%.17g\", r); return 0; }")
+                            } else {
+                                if rc45 == 2 {
+                                    println("        case " + shape45.to_string() + ": \{ float r = ((float (*)(" + cty + "))p)(" + carg + "); snprintf(ctron_ext_fretbuf, 64, \"%.17g\", (double)r); return 0; }")
+                                } else {
+                                    println("        case " + shape45.to_string() + ": return ((long (*)(" + cty + "))p)(" + carg + ");")
+                                }
+                            }
+                        }
+                        fm45 += 1
+                    }
+                    k45 += 1
+                }
+                rc45 += 1
+            }
+            println("        default: ctron_panic(\"extern 解释口径:float 形状不支持(>4 参)\"); return 0;")
+            println("    }")
             println("}")
-            println("int ctron_ext_dispatch(const char* nm, const char* a0, const char* a1, const char* a2, const char* a3, const char* a4, const char* a5, const char* a6, const char* a7, const char* a8, const char* a9, const char* a10, const char* a11) \{")
+            println("int64_t ctron_ext_dispatch(const char* nm, const char* a0, const char* a1, const char* a2, const char* a3, const char* a4, const char* a5, const char* a6, const char* a7, const char* a8, const char* a9, const char* a10, const char* a11) \{")
             println("    const char* fr[12];")
             println("    fr[0] = a0; fr[1] = a1; fr[2] = a2; fr[3] = a3; fr[4] = a4; fr[5] = a5;")
             println("    fr[6] = a6; fr[7] = a7; fr[8] = a8; fr[9] = a9; fr[10] = a10; fr[11] = a11;")
-            println("    return (int)ctron_ext_dispatch0(nm, 12, fr);")
+            println("    return ctron_ext_dispatch0(nm, 12, fr);")
             println("}")
             println("#else")
-            println("int ctron_ext_dispatch(const char* nm, const char* a0, const char* a1, const char* a2, const char* a3, const char* a4, const char* a5, const char* a6, const char* a7, const char* a8, const char* a9, const char* a10, const char* a11) \{ (void)nm; (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; (void)a8; (void)a9; (void)a10; (void)a11; ctron_panic(\"extern 解释口径:Windows β 不支持\"); return 0; }")
+            println("int64_t ctron_ext_dispatch(const char* nm, const char* a0, const char* a1, const char* a2, const char* a3, const char* a4, const char* a5, const char* a6, const char* a7, const char* a8, const char* a9, const char* a10, const char* a11) \{ (void)nm; (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; (void)a8; (void)a9; (void)a10; (void)a11; ctron_panic(\"extern 解释口径:Windows β 不支持\"); return 0; }")
             println("#endif")
             println("static const char* ctron_version = \"ANCHORVERSION\";")
             println("static const char* ctron_cli_fmt = NULL;")

@@ -1,0 +1,61 @@
+// tests/gui/s69_virtual —— GUI-21 虚拟化长列表 headless 验收
+// 三段:初始窗口(0-5 行)→ 滚 5 行(窗口 5-10,首行 row0 消失)→ 回滚归位
+// (数据 1000 行,渲染恒 6 行=O(1))
+use gui.{test, d_frame, d_expect_text, d_expect_absent, d_scroll, scroll_off, Driver}
+
+struct M {
+    var state: Str
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    println("BIND-ASK [" + buf[0] + "]")
+    if buf[0] == "each:vrows" {
+        // 可见窗口 6 行(首行序=off/行高 22;虚拟化核心=只组装窗口行)
+        var first: I32 = scroll_off() / 22
+        var i: I32 = 0
+        while i < 6 {
+            buf.push("row" + (first + i).to_string())
+            i += 1
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 初始窗口:row0-row5 可见(虚拟渲染恒 6 行)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "row0")
+            d_expect_text(t, "row5")
+            d_expect_absent(t, "row6")
+            d_expect_absent(t, "row999")
+            // S2 下滚 5 行(110px):窗口移到 5-10
+            d_scroll(t, 110)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "row5")
+            d_expect_text(t, "row10")
+            d_expect_absent(t, "row0")
+            d_expect_absent(t, "row4")
+            m.state = "滚到" + (scroll_off() / 22).to_string()
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "滚到5")
+            // S3 回滚归位
+            d_scroll(t, 0 - 110)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "row0")
+            d_expect_absent(t, "row6")
+            println("S66-VIRTUAL-GREEN")
+        })
+    return rc
+}

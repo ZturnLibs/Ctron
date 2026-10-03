@@ -1,0 +1,5 @@
+// std/fsx.ct —— T35 夹具:std 档 mini 模块
+//@ tier: std
+pub fn fx_ping() -> I32 {
+    return 1
+}

@@ -1,15 +1,19 @@
 // examples/gui_widgets —— 组件陈列室:Select/WList/Dialog 三件套+图像+主题
 // 键 1-2 切主题(dark/light);点触发器开下拉,点选项收起;open 按钮开模态
 // 组件三件套(同源声明;跨文件分发待 view 导入)
+// select v2:下拉 overlay 悬浮(遮罩层不推挤后续内容;静态锚=MenuBar v2 同源,
+// 动态锚=查询触发器矩形留 v3 登记)
 view Select (label: Str, open: Bool) {
   <vbox class="w-select">
     <button class="w-trigger" on:click={sel_toggle()}>{label}</button>
     <when cond={open}>
-      <vbox class="w-opts">
-        <each o in={opts}>
-          <button class="w-opt" on:click={sel_pick()}>{o}</button>
-        </each>
-      </vbox>
+      <overlay class="w-mask" on:click={sel_toggle()}>
+        <vbox class="w-opts">
+          <each o in={opts}>
+            <button class="w-opt" on:click={sel_pick()}>{o}</button>
+          </each>
+        </vbox>
+      </overlay>
     </when>
   </vbox>
 }
@@ -49,10 +53,10 @@ view Menu (open: Bool) {
     </when>
   </vbox>
 }
-view MenuBar (open: Bool) {
+view MenuBar (open: Bool, edopen: Bool) {
   <hbox class="w-bar">
     <Menu open: {open}/>
-    <button class="w-trigger" on:click={edit_menu}>编辑</button>
+    <EditMenu open: {edopen}/>
   </hbox>
 }
 view List (title: Str) {
@@ -80,6 +84,77 @@ view MultiList (title: Str) {
     </each>
   </vbox>
 }
+// Progress(v1 分段折衷,GUI-11):值驱动宽(GUI-16)前的分段形态——
+// bind 组装块字符条(█/░×10)+ 百分比叶,固定宽不依赖逐帧宽求值
+view Progress {
+  <vbox class="w-prog">
+    <hbox class="w-ptk">
+      <hbox class="w-pfl"/>
+    </hbox>
+    <label class="w-pct">{pct}</label>
+  </vbox>
+}
+// EditMenu(GUI-08/09):行文本=标题+加速器(acc_of 与 gui_hotkey 注册共用
+// 动作 id,⌘/Ctrl 经 gui_platform 分叉);展开态键盘导航=键闭包拦截配方
+view EditMenu (open: Bool) {
+  <vbox class="w-menu">
+    <button class="w-trigger" on:click={ed_toggle}>编辑</button>
+    <when cond={open}>
+      <vbox class="w-opts">
+        <each ei in={eitems}>
+          <button class="w-opt" on:click={ed_pick}>{ei}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+// ===== A 档组件尾巴(GUI-01/04/05/06/07) =====
+// Tabs:触发器行(each+"> "选中前缀)+ when cond={cur == N} 数值条件切换
+view Tabs (cur: I32) {
+  <vbox class="w-tabs">
+    <hbox class="w-tabrow">
+      <each tb in={tabs}>
+        <button class="w-tab" on:click={tab_go}>{tb}</button>
+      </each>
+    </hbox>
+    <when cond={cur == 0}>
+      <label class="w-tabp">概览内容</label>
+    </when>
+    <when cond={cur == 1}>
+      <label class="w-tabp">详情内容</label>
+    </when>
+  </vbox>
+}
+// Badge:纯样式小徽标
+view Badge (text: Str) {
+  <label class="w-badge">{text}</label>
+}
+// Accordion:头按钮 + when + slot 投影(内容宿主注入)
+view Accordion (title: Str, open: Bool) {
+  <vbox class="w-acc">
+    <button class="w-acch" on:click={acc_toggle}>{title}</button>
+    <when cond={open}>
+      <slot/>
+    </when>
+  </vbox>
+}
+// Tooltip:trigger hover 通道 + when;v1 单实例(通道名 wtt 固定)
+view Tooltip (text: Str) {
+  <hbox class="w-tipw">
+    <button class="w-tiptrg" hover:wtt on:click={tip_noop}>悬停我</button>
+    <when cond={wtt}>
+      <label class="w-tip">{text}</label>
+    </when>
+  </hbox>
+}
+// Toast:透明 overlay(不挡命中)+ gui_now 窗口对比自动消失
+view Toast (show: Bool, msg: Str) {
+  <when cond={show}>
+    <overlay class="w-toast">
+      <label class="w-toastt">{msg}</label>
+    </overlay>
+  </when>
+}
 view Table {
   <vbox class="w-table">
     <hbox class="w-thead">
@@ -100,8 +175,15 @@ view Widgets {
     <button class="op" on:click={dialog_open}>打开对话框</button>
     <Dialog title: "确认操作?" open: {dopen}/>
     <Menu open: {mopen}/>
-    <MenuBar open: {mopen}/>
+    <MenuBar open: {mopen} edopen: {edopen}/>
     <Slider val: {sval}/>
+    <Progress/>
+    <Tabs cur: {tcur}/>
+    <Badge text: "NEW"/>
+    <Accordion title: "详细信息" open: {accopen}>
+      <label class="w-accb">折叠内容主体</label>
+    </Accordion>
+    <Tooltip text: "提示文案内容"/>
     <List title: "兴趣列表"/>
     <MultiList title: "多选技能"/>
     <Table/>
@@ -110,6 +192,7 @@ view Widgets {
       <label class="w-ct">卡片内容:ELEVATED 包装</label>
     </vbox>
     <label class="state">{state}</label>
+    <Toast show: {toastshow} msg: {toastmsg}/>
   </vbox>
 }
 style root { direction: column gap: 10 padding: 16 }
@@ -138,8 +221,25 @@ style w-thead { direction: row gap: 24 }
 style w-th { fg: TEXT_MUTED size: 13 w: 90 h: 22 }
 style w-tr { bg: SURFACE fg: TEXT w: 200 h: 26 }
 style w-div { h: 2 w: 200 bg: BORDER }
-style w-card2 { bg: ELEVATED w: 220 h: 60 }
+style w-card2 { bg: ELEVATED h: 60 }
 style w-ct { fg: TEXT size: 13 h: 20 }
 style w-slider { direction: column gap: 4 }
 style w-track { h: 8 w: 220 bg: BORDER }
 style w-val { fg: TEXT_MUTED size: 13 h: 20 }
+style w-prog { direction: column gap: 4 }
+style w-ptk { direction: column w: 200 h: 10 bg: DISABLED_BG }
+style w-pfl { direction: column w: "{m.pw}" h: 10 bg: ACCENT }
+style w-pct { fg: TEXT_MUTED size: 13 h: 20 }
+style w-tabs { direction: column gap: 4 }
+style w-tabrow { direction: row gap: 6 }
+style w-tab { bg: SURFACE fg: TEXT w: 130 h: 28 }
+style w-tabp { fg: TEXT_MUTED size: 14 h: 24 }
+style w-badge { bg: ACCENT fg: "#ffffff" size: 12 w: 52 h: 20 }
+style w-acc { direction: column gap: 4 }
+style w-acch { bg: SURFACE fg: TEXT w: 150 h: 30 }
+style w-accb { fg: TEXT_MUTED size: 13 h: 22 }
+style w-tipw { direction: row gap: 8 }
+style w-tiptrg { bg: SURFACE fg: TEXT w: 90 h: 28 }
+style w-tip { fg: TEXT_MUTED size: 12 h: 20 }
+style w-toast { bg: "#00000000" align: center }
+style w-toastt { bg: ELEVATED fg: TEXT size: 14 w: 160 h: 36 }

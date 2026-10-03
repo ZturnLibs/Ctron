@@ -1,4 +1,5 @@
 // std/path.ct —— 路径纯函数(join/dir/base/ext/is_abs/normalize;Unix `/` 口径)
+//@ tier: alloc
 // since: std-0.2 stability: experimental
 // 口径:字节级;不触碰文件系统;normalize 越根 `..` 丢弃;空路径 = "."
 

@@ -1,4 +1,5 @@
 // std/ndjson.ct —— NDJSON 逐行游标(P8-C;T1 档:零 use 纯函数,无 IO 无时钟)
+//@ tier: alloc
 //
 // 形态(router/pb 同款零 use 纯模块):lane 游标面(不整载——消费方按窗口
 //   逐行取用,行文本经可印表 Str 化后交 std/json parse;大文件分块喂入 =

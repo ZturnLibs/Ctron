@@ -775,6 +775,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "expect" {
                 var emsg = "\"expect failed\""
                 if ag.len > 1 { emsg = ct_expr(ag[1], env, file) }
+                // T53:载荷码经接收者恢复(#elem 侧条目/被调声明 Result[..] 首参)——
+                // f 位型双关回读(与 ct_res_wrap f 臂配对;旧 _r.v 裸值消费位直转双向失真);
+                // 非 f 码 _r.v 直槽(int 族整宽;Str/聚合码回落旧行为,聚合消费走 match 臂)
+                var pec = ct_opt_elem_expr(file, cal[1], env)
+                if pec == "f" {
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(_r.v) })._d; })"
+                }
                 return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } _r.v; })"
             }
             if or2(m == "is_err", m == "is_ok") {
@@ -843,7 +850,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return ""
                 }
                 if objt == "b" { return "((" + obj + ") ? \"true\" : \"false\")" }
-                if or2(objt == "s", objt == "N") { return "(const char*)(" + obj + ")" }
+                // Str/String 升格(§3.3/§6.5):发射面此前透传(零拷贝别名)——
+                // 与 sem 面(所有 .to_string() 记分配,E3040)及解释臂(新值)分歧。
+                // 经 ctron_byte_slice 落真堆拷贝(与 concat 同 ctron_amalloc 源);
+                // N 为内部节点引用表示,保持透传不动
+                if objt == "s" { return "ctron_byte_slice((const char*)(" + obj + "), 0, (int)strlen((const char*)(" + obj + ")))" }
+                if objt == "N" { return "(const char*)(" + obj + ")" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
@@ -1123,7 +1135,6 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // P0-A:签名段形参码 → 闭包实参 #clcodes("F2{u:Req__X;F1}>r" 拆段,
                 // 第 k 实参位闭包取第 k-1 段;run_chain 续链闭包的 rq 形参码源)
                 var fsegs = ct_fsig_params(fvt)
-                println("//GATEDBG2 fvt=" + fvt + " @" + nline(e))
                 var fv = "(t_" + cal[1] + ")"
                 if fvraw.len > 1 && byte_at(fvraw, 0) == 80 {
                     fv = "(*t_" + cal[1] + ")"
@@ -1326,42 +1337,30 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ecall
         }
         // P0-A:泛型直调(无 TypeArgs 位,sem 隐式推断形)——core.ct 测试的
-        // req_full("GET", …, 0) 即此形。各 TP 自首层命中该 TP 的实参位取码,
-        // 未命中落 "i"(与 TPar→i 槽口径一致;__i 家族自洽)
+        // req_full("GET", …, 0) 即此形。型参槽推断单源 ct_call_infer_tys
+        //(T45:种子槽原推码串 "i" 与命中臂节点异型——串被当节点解引用 SEGV
+        // 实证;&T 形参此前永不命中 → CBox 式 cbox_own[T](p: &T) 直调即崩)
         var pgd30 = ct_fn_decl(file, callee)
         if pgd30.len > 0 && pgd30[2].len > 1 {
             var tpsn30 = List[Str]()
-            var tys30 = List[Str]()
             var gq40: I32 = 1
             while gq40 < pgd30[2].len {
                 tpsn30.push(pgd30[2][gq40][1])
-                tys30.push("i")
                 gq40 += 1
             }
-            var pj40: I32 = 1
-            while pj40 < pgd30[3].len {
-                if pj40 < ag.len {
-                    var pty40 = pgd30[3][pj40][3]
-                    if pty40[0] == "Named" && pty40[2].len < 2 {
-                        var k40: I32 = 0
-                        while k40 < tpsn30.len {
-                            if seq2(pty40[1], tpsn30[k40]) {
-                                tys30[k40] = ct_inst_ty_node(ct_typeof(ag[pj40], env, file))
-                            }
-                            k40 += 1
-                        }
-                    }
-                }
-                pj40 += 1
-            }
+            var tys30 = ct_call_infer_tys(file, env, ag, callee)
             return ct_spec_call_emit(file, env, ag, callee, mk("None"), tpsn30, tys30, pgd30, "")
         }
         return "t_" + callee + "(" + ct_call_args(ag, 1, env, file, callee) + ")"
     }
     if t == "Try" {
-        // 表达式位 ?(§5 NULL 模型):ct_res 解包,Err/None 短路 return,载荷按元素码转型
+        // 表达式位 ?(§5 NULL 模型):ct_res 解包,Err/None 短路 return,载荷按元素码转型;
+        // T53:f 载荷位型双关回读(旧 (double) 直转双向失真)
         var ec = ct_try_elem(file, e, env)
         var qv = "t_q" + nline(e)
+        if ec == "f" {
+            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d; })"
+        }
         return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
     }
     if t == "BlockExpr" {
@@ -1777,7 +1776,16 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     spec.push(ps2)
                     spec.push(ct_mono_subst_ty(gdecl[4], tpsn, tys))
                     spec.push(gdecl[5])
-                    var rcs = ct_ty_code(spec[4], file)
+                    // T45:void 泛型特化——None 返回节点 ct_ty_code 无臂落 "i",
+                    // 特化头发 int32_t 且尾调用被捕值(t_rv),尾为 void 外调即
+                    // int32_t=void 编译错(cbox_free[T] 首证);对齐 ct_fn_ret 的
+                    // None→"v" 口径
+                    var rcs = "i"
+                    if spec[4].len > 0 && spec[4][0] == "None" {
+                        rcs = "v"
+                    } else {
+                        rcs = ct_ty_code(spec[4], file)
+                    }
                     // 形参 env:按原名绑替换后型别码(盒槽形参解盒后即原 struct 值,
                     // 体内 Member/字段访问/F-gate 包裹全部沿用)
                     var genv = List[Str]()

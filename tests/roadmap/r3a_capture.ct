@@ -1,7 +1,11 @@
-// r3a_capture.ct —— 捕获闭包(R-P3a,v0.6 §4.7)
-// 语义承诺:默认按值拷贝捕获;闭包可逃逸返回(环境随闭包存活,多次调用互不干扰);
-//          可变捕获必须 Mutex[T](裸 var 捕获 = E3070,见 r3a_capture_var.neg.ct)
-// 锚点:解释器今天应绿(Rc 环境已实现);原生后端 R-P3a(env 结构体泛化)落地后差分转绿
+// r3a_capture.ct —— 捕获闭包(R-P3a,§4.7 T27 终态:创建时拷贝绑定值)
+// 语义承诺:捕获 = 创建时拷贝(外层绑定再赋值不可见);闭包可逃逸返回(多次调用互不干扰);
+//          可变共享必须显式单元 Mutex[T](裸 var 捕获 = E3070,见 r3a_capture_var.neg.ct)
+// 锚点:双臂全绿(2026-10-03 T27-B 残余收口)。原生臂红因三修(非在册卫兵:ct_emit_clov
+//      卫兵形态实证完好)——①ct_str_bsum 判别位 I32 乘 31 链溢出(p0a 合并捕获名/型别码
+//      入哈希引爆)→ 模归约 69000000;②闭包体尾槽/return 位 with·with_mut ANF 漏接
+//      (ct_expr 恒拒「仅语句位」)→ ct_clo_with_tail 助手 + #shim=2 臂前置;③同 fn 多
+//      with 同名形参 C 顶层重定义 → ct_emit_with_stmt 发射整体入 C 作用域括号
 fn make_adder(n: I32) -> fn(I32) -> I32 {
     return |x| x + n
 }

@@ -2,7 +2,7 @@
 // headless:开下拉→点选→开模态→Esc 关,四段断言;--rt_run_src 真窗手玩
 use gui.{rt_run_kb_anchor, test, d_frame, d_click, d_send_key, d_drag, d_mod, d_press_key, gui_hotkey, ev_arg_i,
          d_expect_text, d_expect_absent, d_cmd_count, d_cmd_type, d_cmd_w100, d_cmd_x100, d_cmd_y100, d_cmd_h100, theme_apply, theme_auto_apply,
-         theme_dark, theme_light}
+         theme_dark, theme_light, d_tick, gui_now, d_hover, d_click_inst, d_cmd_text_len, gui_platform}
 
 struct Model {
     var picked: Str
@@ -19,6 +19,15 @@ struct Model {
     var m2a: Str
     var m2b: Str
     var m2c: Str
+    var selhi: I32
+    var pval: I32
+    var pw: I32
+    var tcur: I32
+    var accopen: Bool
+    var toast_at: I32
+    var toast_msg: Str
+    var edopen: Bool
+    var e3hi: I32
 }
 
 fn sel_toggle() {
@@ -44,7 +53,8 @@ fn track_xy(out: List[I32]) -> I32 {
         if d_cmd_type(i) == 2 {
             // spacer=全宽分隔线语义(w 不消费,实测 328x8);以 h=8 特征寻轨
             if d_cmd_h100(i) == 800 {
-                if d_cmd_w100(i) > 30000 {
+                // GUI-16 统一语义:spacer 轨道 w:220 旧忽略恒 GROW,现 FIXED 220
+                if d_cmd_w100(i) > 20000 {
                     out.push(d_cmd_x100(i) / 100 + 30)
                     out.push(d_cmd_y100(i) / 100 + 4)
                     return 0
@@ -66,6 +76,39 @@ fn track_xy(out: List[I32]) -> I32 {
 }
 fn modstick(mm: Box[Model], md: I32) {
 }
+fn tab_go() {
+}
+fn acc_toggle() {
+}
+fn tip_noop() {
+}
+fn toast_show() {
+}
+fn ed_toggle() {
+}
+fn ed_pick() {
+}
+
+// 加速器显示:与 gui_hotkey 注册共用动作 id;⌘/Ctrl 经 gui_platform 分叉
+fn acc_of(action: Str) -> Str {
+    var p: Str = "Ctrl+"
+    if gui_platform() == 0 {
+        p = "⌘"
+    }
+    if action == "undo" {
+        return p + "Z"
+    }
+    if action == "redo" {
+        return p + "Y"
+    }
+    if action == "cut" {
+        return p + "X"
+    }
+    if action == "copy" {
+        return p + "C"
+    }
+    return ""
+}
 
 fn act(name: Str, args: List[Str], m: Box[Model]) {
     if name == "sel_toggle" {
@@ -78,6 +121,7 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
     if name == "sel_pick" {
         m.selopen = false
         m.picked = "Ctron"
+        m.selhi = 0
         m.state = "已选"
     }
     if name == "list_pick" {
@@ -171,9 +215,84 @@ fn act(name: Str, args: List[Str], m: Box[Model]) {
             return
         }
     }
+    if name.len > 6 {
+        // tabs 实例后缀:tab_go:N
+        if byte_at(name, 0) == 116 && byte_at(name, 1) == 97 && byte_at(name, 2) == 98 && byte_at(name, 3) == 95 && byte_at(name, 4) == 103 && byte_at(name, 5) == 111 && byte_at(name, 6) == 58 {
+            var ti9: I32 = 0
+            var tk9: I32 = 7
+            while tk9 < name.len {
+                ti9 = ti9 * 10 + (byte_at(name, tk9) - 48)
+                tk9 += 1
+            }
+            m.tcur = ti9
+            m.state = "切页"
+            return
+        }
+    }
+    if name == "acc_toggle" {
+        if m.accopen {
+            m.accopen = false
+        } else {
+            m.accopen = true
+        }
+        m.state = "折叠"
+        return
+    }
+    if name == "toast_show" {
+        m.toast_at = gui_now()
+        m.toast_msg = "已保存"
+        m.state = "toast 弹出"
+        return
+    }
+    if name == "ed_toggle" {
+        if m.edopen {
+            m.edopen = false
+        } else {
+            m.edopen = true
+        }
+        return
+    }
+    if name == "undo" {
+        m.state = "已撤销"
+        return
+    }
+    if name == "redo" {
+        m.state = "已重做"
+        return
+    }
+    if name == "cut" {
+        m.state = "已剪切"
+        return
+    }
+    if name == "copy" {
+        m.state = "已复制"
+        return
+    }
+    if name.len > 7 {
+        // ed_pick:N 行点击
+        if byte_at(name, 0) == 101 && byte_at(name, 1) == 100 && byte_at(name, 2) == 95 && byte_at(name, 3) == 112 && byte_at(name, 4) == 105 && byte_at(name, 5) == 99 && byte_at(name, 6) == 107 && byte_at(name, 7) == 58 {
+            m.edopen = false
+            m.state = "已选行"
+            return
+        }
+    }
     if name == "slide" {
         // 拖拽事件缝:dragpx 千分比 → 百分比
         m.sval = (ev_arg_i(args, 0) / 10).to_string()
+        return
+    }
+    if name == "prog_set" {
+        // progress v1:千分比 → 百分比(0-100 钳位)
+        var pv: I32 = ev_arg_i(args, 0) / 10
+        if pv < 0 {
+            pv = 0
+        }
+        if pv > 100 {
+            pv = 100
+        }
+        m.pval = pv
+        // v2 连续条:fill 宽 = 百分比 × 200 轨道(px)
+        m.pw = pv * 2
         return
     }
 }
@@ -200,13 +319,90 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
             buf.push("b:0")
         }
     }
+    if buf[0] == "edopen" {
+        if m.edopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "each:eitems" {
+        if m.e3hi == 0 {
+            buf.push("> 撤销  " + acc_of("undo"))
+        } else {
+            buf.push("撤销  " + acc_of("undo"))
+        }
+        if m.e3hi == 1 {
+            buf.push("> 重做  " + acc_of("redo"))
+        } else {
+            buf.push("重做  " + acc_of("redo"))
+        }
+        if m.e3hi == 2 {
+            buf.push("> 剪切  " + acc_of("cut"))
+        } else {
+            buf.push("剪切  " + acc_of("cut"))
+        }
+        if m.e3hi == 3 {
+            buf.push("> 复制  " + acc_of("copy"))
+        } else {
+            buf.push("复制  " + acc_of("copy"))
+        }
+    }
+    if buf[0] == "tcur" {
+        buf.push("i:" + m.tcur.to_string())
+    }
+    if buf[0] == "each:tabs" {
+        if m.tcur == 0 {
+            buf.push("> 概览")
+        } else {
+            buf.push("概览")
+        }
+        if m.tcur == 1 {
+            buf.push("> 详情")
+        } else {
+            buf.push("详情")
+        }
+    }
+    if buf[0] == "accopen" {
+        if m.accopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "toastshow" {
+        if m.toast_msg != "" {
+            if gui_now() - m.toast_at < 1500 {
+                buf.push("b:1")
+            } else {
+                buf.push("b:0")
+            }
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "toastmsg" {
+        buf.push(m.toast_msg)
+    }
     if buf[0] == "state" {
         buf.push(m.state)
     }
     if buf[0] == "each:opts" {
-        buf.push("Ctron")
-        buf.push("raylib")
-        buf.push("Clay")
+        if m.selhi == 0 {
+            buf.push("> Ctron")
+        } else {
+            buf.push("Ctron")
+        }
+        if m.selhi == 1 {
+            buf.push("> raylib")
+        } else {
+            buf.push("raylib")
+        }
+        if m.selhi == 2 {
+            buf.push("> Clay")
+        } else {
+            buf.push("Clay")
+        }
     }
     if buf[0] == "each:items" {
         buf.push("写发布说明")
@@ -259,10 +455,73 @@ fn bind_all(buf: List[Str], m: Box[Model]) {
             buf.push("李四 · 28")
         }
     }
+    if buf[0] == "pct" {
+        buf.push(m.pval.to_string())
+    }
+    if buf[0] == "m.pw" {
+        buf.push(m.pw.to_string())
+    }
 }
 
-// 键 1/2 切主题(应用侧演示;陈列室不内置快捷键合约)
+// 键 1/2 切主题 + select 键盘导航(selopen 时:↓↑ 移高亮/Enter 选取/Esc 关)
 fn apply_key(k: I32, m: Box[Model]) {
+    if m.edopen {
+        if k == 265 {
+            if m.e3hi < 3 {
+                m.e3hi = m.e3hi + 1
+            }
+            return
+        }
+        if k == 264 {
+            if m.e3hi > 0 {
+                m.e3hi = m.e3hi - 1
+            }
+            return
+        }
+        if k == 257 {
+            m.edopen = false
+            m.state = "键盘已选"
+            return
+        }
+        if k == 256 {
+            m.edopen = false
+            m.state = "编辑菜单已取消"
+            return
+        }
+    }
+    if m.selopen {
+        if k == 265 {
+            if m.selhi > 0 {
+                m.selhi = m.selhi - 1
+            }
+            return
+        }
+        if k == 264 {
+            if m.selhi < 2 {
+                m.selhi = m.selhi + 1
+            }
+            return
+        }
+        if k == 257 {
+            m.selopen = false
+            if m.selhi == 0 {
+                m.picked = "Ctron"
+            } else {
+                if m.selhi == 1 {
+                    m.picked = "raylib"
+                } else {
+                    m.picked = "Clay"
+                }
+            }
+            m.state = "键盘已选"
+            return
+        }
+        if k == 256 {
+            m.selopen = false
+            m.state = "选择已取消"
+            return
+        }
+    }
     if k == 49 {
         theme_apply(theme_dark())
         m.dark = true
@@ -276,7 +535,11 @@ fn apply_key(k: I32, m: Box[Model]) {
 }
 
 fn main() -> I32 {
-    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "" })
+    gui_hotkey("mod+z", "undo")
+    gui_hotkey("mod+shift+z", "redo")
+    gui_hotkey("mod+x", "cut")
+    gui_hotkey("mod+c", "copy")
+    var m = Box[Model](Model { picked: "", selopen: false, dopen: false, state: "", dark: true, mopen: false, mself: 0 - 1, lsel: 0 - 1, tsel: 0 - 1, sval: "0", m2a: "", m2b: "", m2c: "", selhi: 0, tcur: 0, accopen: false, toast_at: 0, toast_msg: "", pval: 0, pw: 0, edopen: false, e3hi: 0 })
     if env_get("CTRON_GUI_HEADLESS") == "" {
         theme_auto_apply()
         var rc: I32 = rt_run_kb_anchor("Ctron 组件陈列室", 360, 520,
@@ -287,7 +550,7 @@ fn main() -> I32 {
     }
     var src: Str = read_file("app.ctml")
     theme_apply(theme_dark())
-    var rc: I32 = test(src, 360, 900,
+    var rc: I32 = test(src, 360, 1300,
         |buf| bind_all(buf, m),
         |name, args| act(name, args, m),
         |k| apply_key(k, m),
@@ -297,15 +560,42 @@ fn main() -> I32 {
             d_expect_text(t, "Ctron 组件陈列室")
             d_expect_text(t, "选择框架…")
             d_expect_absent(t, "raylib")
-            // 开下拉 → 选项可见
+            // 开下拉 → 选项可见;overlay 悬浮:下方轨道 y 不动(不推挤,GUI-10)
+            var ty0 = List[I32]()
+            track_xy(ty0)
             actc(d_click(t, "sel_toggle"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_text(t, "raylib")
+            var ty1 = List[I32]()
+            track_xy(ty1)
+            if ty1[1] != ty0[1] {
+                panic("widgets: select 下拉推挤了下方内容")
+            }
             // 点选(实例后缀事件) → 收起+选中回显
             actc(d_click(t, "sel_pick"), List[Str]())
             d_frame(t, |buf| bind_all(buf, m))
             d_expect_absent(t, "raylib")
             d_expect_text(t, "已选")
+            // ===== select 键盘导航(↓↑ 移高亮/Enter 选取/Esc 关) =====
+            actc(d_click(t, "sel_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "Ctron")
+            k2(d_press_key(t, 264))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> raylib")
+            k2(d_press_key(t, 264))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> Clay")
+            k2(d_press_key(t, 257))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "> Clay")
+            d_expect_text(t, "Clay")
+            d_expect_text(t, "键盘已选")
+            actc(d_click(t, "sel_toggle"), List[Str]())
+            k2(d_press_key(t, 256))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "> Ctron")
+            d_expect_text(t, "选择已取消")
             // 模态:开 → 取消按钮 → 已取消;再开 → 确认按钮 → 已确认;
             // 遮罩/Esc 关 = 已关闭(遮罩)
             actc("dialog_open", List[Str]())
@@ -376,9 +666,100 @@ fn main() -> I32 {
             // 轨道矩形运行时扫描(w=220 特征),坐标免布局估计
             var txy = List[I32]()
             track_xy(txy)
-            d_drag(t, txy[0], txy[1], txy[0] + 110, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // 轨道 FIXED 220(GUI-16 统一语义):txy[0]=轨左+30,终点 +80
+            // = 轨内 110px = 500‰ → 50
+            d_drag(t, txy[0], txy[1], txy[0] + 80, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
             d_frame(t, |buf| bind_all(buf, m))
-            d_expect_text(t, "42")
+            d_expect_text(t, "50")
+            // ===== Progress(v2 连续条,GUI-16 完整面) =====
+            // prog_set 千分比 → 百分比;fill 宽 = 百分比×2 px(轨道 200)
+            var pargs = List[Str]()
+            pargs.push("i:500")
+            actc("prog_set", pargs)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "50")
+            // fill 寻址:轨道/fill 均 h10(h100==1000),50% 时 w100==10000 唯一
+            var pfi: I32 = -1
+            var ci5: I32 = 0
+            while ci5 < d_cmd_count() {
+                if d_cmd_type(ci5) == 2 {
+                    if d_cmd_h100(ci5) == 1000 {
+                        if d_cmd_w100(ci5) == 10000 {
+                            pfi = ci5
+                            ci5 = d_cmd_count()
+                        }
+                    }
+                }
+                ci5 += 1
+            }
+            if pfi < 0 {
+                panic("widgets: progress fill 未现")
+            }
+            var pargs2 = List[Str]()
+            pargs2.push("i:1000")
+            actc("prog_set", pargs2)
+            d_frame(t, |buf| bind_all(buf, m))
+            if d_cmd_w100(pfi) != 20000 {
+                panic("widgets: fill 100% 未生效 w100=" + d_cmd_w100(pfi).to_string())
+            }
+            // 超界钳位:200% → 100%
+            var pargs3 = List[Str]()
+            pargs3.push("i:2000")
+            actc("prog_set", pargs3)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "100")
+            // ===== A 档组件尾巴(GUI-01/04/05/06/07) =====
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "概览内容")
+            d_expect_text(t, "NEW")
+            d_expect_absent(t, "折叠内容主体")
+            actc(d_click_inst(t, "tab_go", 1), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "详情内容")
+            d_expect_text(t, "> 详情")
+            actc(d_click(t, "acc_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "折叠内容主体")
+            d_hover(t, "tip_noop")
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "提示文案内容")
+            d_tick(t, 100)
+            actc("toast_show", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "toast 弹出")
+            d_expect_text(t, "已保存")
+            d_tick(t, 5000)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "已保存")
+            actc(d_click(t, "acc_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "折叠内容主体")
+            // ===== GUI-08/09:编辑菜单加速器+键盘导航 =====
+            actc(d_click(t, "ed_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 撤销  ⌘Z")
+            d_expect_text(t, "复制  ⌘C")
+            k2(d_press_key(t, 265))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 重做  ⌘Y")
+            k2(d_press_key(t, 257))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "> 重做  ⌘Y")
+            d_expect_text(t, "键盘已选")
+            actc(d_click(t, "ed_toggle"), List[Str]())
+            k2(d_press_key(t, 256))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "编辑菜单已取消")
+            d_mod(t, 1)
+            var hk1: I32 = d_send_key(t, 90,
+                |buf| bind_all(buf, m),
+                |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            if hk1 != 0 {
+                panic("widgets: mod+z 未消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已撤销")
             println("WIDGETS-GREEN")
         })
     return rc

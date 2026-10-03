@@ -1,0 +1,161 @@
+// tests/gui/s56_tree —— GUI-18 tree 组件 v1(扁平表配方)headless 验收
+// 四段:初始折叠 → 展开项目 → 展开 src 见孙 → 选中叶 → 折叠归位
+use gui.{test, d_frame, d_expect_text, d_expect_absent, d_click_inst, Driver}
+
+struct M {
+    var p_open: Bool
+    var s_open: Bool
+    var state: Str
+}
+
+fn tree_pick() {
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "each:trows" {
+        if m.p_open {
+            buf.push("▾ 项目")
+            if m.s_open {
+                buf.push("  ▾ src")
+                buf.push("    • main.ct")
+            } else {
+                buf.push("  ▸ src")
+            }
+            buf.push("  • docs")
+        } else {
+            buf.push("▸ 项目")
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn name_is_pick(name: Str) -> Bool {
+    // "tree_pick:" 前缀(t=116 r=114 e=101 e=101 _=95 p=112 i=105 c=99 k=107 :=58)
+    if name.len < 10 {
+        return false
+    }
+    if byte_at(name, 0) != 116 {
+        return false
+    }
+    if byte_at(name, 1) != 114 {
+        return false
+    }
+    if byte_at(name, 2) != 101 {
+        return false
+    }
+    if byte_at(name, 3) != 101 {
+        return false
+    }
+    if byte_at(name, 4) != 95 {
+        return false
+    }
+    if byte_at(name, 5) != 112 {
+        return false
+    }
+    if byte_at(name, 6) != 105 {
+        return false
+    }
+    if byte_at(name, 7) != 99 {
+        return false
+    }
+    if byte_at(name, 8) != 107 {
+        return false
+    }
+    if byte_at(name, 9) != 58 {
+        return false
+    }
+    return true
+}
+
+// 可见行号 → 节点动作(与 bind_all 同构的可见集)
+fn tree_act(m: Box[M], row: I32) {
+    if !m.p_open {
+        // 可见集:["▸ 项目"]
+        if row == 0 {
+            m.p_open = true
+            m.state = "展开 项目"
+        }
+        return
+    }
+    // p_open 可见集:["▾ 项目","▸|▾ src","(• main.ct)","  • docs"]
+    if row == 0 {
+        m.p_open = false
+        m.state = "折叠 项目"
+        return
+    }
+    if row == 1 {
+        m.s_open = !m.s_open
+        if m.s_open {
+            m.state = "展开 src"
+        } else {
+            m.state = "折叠 src"
+        }
+        return
+    }
+    if row == 2 {
+        if m.s_open {
+            m.state = "选中 main.ct"
+        } else {
+            m.state = "选中 docs"
+        }
+        return
+    }
+    if row == 3 {
+        m.state = "选中 docs"
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name_is_pick(name) {
+        var ni: I32 = 0
+        var k: I32 = 10
+        while k < name.len {
+            ni = ni * 10 + (byte_at(name, k) - 48)
+            k += 1
+        }
+        tree_act(m, ni)
+    }
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { p_open: false, s_open: false, state: "" })
+    var rc: I32 = test(src, 320, 300,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 初始折叠:仅根行可见
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "src")
+            d_expect_absent(t, "main.ct")
+            d_expect_text(t, "▸ 项目")
+            // S2 展开项目:子层出现
+            actc(d_click_inst(t, "tree_pick", 0), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "  ▸ src")
+            d_expect_text(t, "  • docs")
+            d_expect_absent(t, "main.ct")
+            d_expect_text(t, "展开 项目")
+            // S3 展开 src:孙叶可见
+            actc(d_click_inst(t, "tree_pick", 1), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "  ▾ src")
+            d_expect_text(t, "main.ct")
+            d_expect_text(t, "展开 src")
+            // S4 选中孙叶:实例后缀定位行 2
+            actc(d_click_inst(t, "tree_pick", 2), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "选中 main.ct")
+            // S5 折叠项目:整树收起
+            actc(d_click_inst(t, "tree_pick", 0), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "main.ct")
+            d_expect_absent(t, "docs")
+            d_expect_text(t, "折叠 项目")
+            println("S56-TREE-GREEN")
+        })
+    return rc
+}

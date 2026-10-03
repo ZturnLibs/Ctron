@@ -1,4 +1,5 @@
 // std/json.ct —— JSON 解析与序列化(路径展平 DOM;RFC 8259;写出半边已并入)
+//@ tier: alloc
 // 写出半边(原 json_write.ct)2026-09-23 并入:宪章 v2 一域一模块裁决(09-21 spec §8.3.1);
 // C17 规避解除——合并面 43 decls 宿主 test 10/10 复验绿(2026-09-23 实证)
 // 词法注意:字符串内禁含裸 { 与 ;(见 HANDOFF §4);助手先于调用者排列
@@ -419,12 +420,12 @@ pub fn qval(entries: List[List[Str]], path: Str) -> Str {
 //   ≤17 位有效数字 + 逐步 ×10/÷10 单舍入,较 strtod 可差 1–2 ulp(2^53+1
 //   读回 2^53 可检);本文件及消费方夹具小数字面量禁指数形态、禁 F64 转
 //   Str(解释器 e 形字面量误析、emit F64 to_string 乱值,见 divergences (i))。
-// 发射面结构(h) 族:emit 的 Result/Option union 载荷槽 32 位——Ok(I64) 截断
-//   /Ok(F64) 错值(2^63-1 读回 -1 实证;Err-Str 与 Bool 载荷绿),故跨模块
-//   数值消费走 JNum/JReal 结构通道(struct 标量字段 + plain 标量 getter,
-//   http parse.ct getter 面 prior art),Result 面 jget_* 留同模块/
-//   解释口径与 Err 载荷原文面。消费速查:值 jv_*;kind jk_*(返回 "ok" 或
-//   kind 段);结构面 jnum_i64/jreal_f64 + jn_k/jn_v/jr_k/jr_v。
+// 数值保真(T53,2026-10-02):emit 的 Result/Option union 载荷槽=ct_i 64 位,
+//   F64 载荷 C11 union 位型双关入槽/回读(ct_res_wrap f 臂与 expect/match-Ok/
+//   Try/or 四读侧配对),I64 整宽直槽,expect 推断 let 型别随载荷码——跨模块
+//   数值消费恒走 Result 面 jget_*。历史绕行 JNum/JReal 结构通道已回切摘除
+//   (pub 面 jnum_*/jreal_*/jn_*/jr_* 退场);jint64/jf64 以私有 (k,v) 对保留
+//   为解析内件。消费速查:值 jv_*;kind jk_*(返回 "ok" 或 kind 段);类型化 jget_*。
 
 struct JNum {
     k: I64
@@ -692,8 +693,7 @@ fn jf64(s: Str) -> JReal {
     return okr
 }
 
-// ---- Result 面(jget_*;同模块/解释口径与 Err 载荷原文面;跨模块数值
-// 消费勿 match 其 Ok 载荷——(h) 族 union 载荷槽 32 位,见区块头注)----
+// ---- Result 面(jget_*;T53 数值保真闭环后的唯一 pub 数值消费面)----
 
 // 错误标签路径三分(kind 段 → 载荷原文)
 fn jtagk(tag: Str, path: Str, want: Str) -> Str {
@@ -754,79 +754,16 @@ pub fn jget_bool(entries: List[List[Str]], path: Str) -> Result[Bool, Str] {
     return Err(jmkerr("syn", path))
 }
 
-// ---- 结构通道面(跨模块数值消费;发射面安全,见区块头注)----
-
-// 路径 → JNum(k/v;i64 定宽检测全量)
-pub fn jnum_i64(entries: List[List[Str]], path: Str) -> JNum {
-    var tag = qtag(entries, path)
-    if tag == "" {
-        var e1 = JNum { k: 1, v: 0 }
-        return e1
-    }
-    if tag == "z" {
-        var e2 = JNum { k: 2, v: 0 }
-        return e2
-    }
-    if tag != "n" {
-        var e3 = JNum { k: 3, v: 0 }
-        return e3
-    }
-    return jint64(qval(entries, path))
-}
-
-// 路径 → JReal(k/v;f64 全形态,量级窗见区块头注)
-pub fn jreal_f64(entries: List[List[Str]], path: Str) -> JReal {
-    var tag = qtag(entries, path)
-    if tag == "" {
-        var e1 = JReal { k: 1, v: 0.0 }
-        return e1
-    }
-    if tag == "z" {
-        var e2 = JReal { k: 2, v: 0.0 }
-        return e2
-    }
-    if tag != "n" {
-        var e3 = JReal { k: 3, v: 0.0 }
-        return e3
-    }
-    return jf64(qval(entries, path))
-}
-
-// 结构 getter(标量出参;消费方经此读 JNum/JReal)
-pub fn jn_k(n: JNum) -> I64 {
-    return n.k
-}
-
-pub fn jn_v(n: JNum) -> I64 {
-    return n.v
-}
-
-pub fn jr_k(r: JReal) -> I64 {
-    return r.k
-}
-
-pub fn jr_v(r: JReal) -> F64 {
-    return r.v
-}
-
-// ---- 带默认/kind 便捷面(jv_*/jk_*;发射面安全)----
+// ---- 带默认/kind 便捷面(jv_*/jk_*;T53 后内部恒经 Result 面 jget_*)----
 
 // 带默认读取:I64(错误面吞没取 dft;kind 查询用 jk_i64)
 pub fn jv_i64(entries: List[List[Str]], path: Str, dft: I64) -> I64 {
-    var n = jnum_i64(entries, path)
-    if n.k == 0 {
-        return n.v
-    }
-    return dft
+    return jget_i64(entries, path).or(dft)
 }
 
 // 带默认读取:F64
 pub fn jv_f64(entries: List[List[Str]], path: Str, dft: F64) -> F64 {
-    var r = jreal_f64(entries, path)
-    if r.k == 0 {
-        return r.v
-    }
-    return dft
+    return jget_f64(entries, path).or(dft)
 }
 
 // 带默认读取:Bool
@@ -844,19 +781,27 @@ pub fn jv_bool(entries: List[List[Str]], path: Str, dft: Bool) -> Bool {
 
 // kind 查询:"ok" 或 noent/null/type/frac/range/syn(载荷原文经 jget_* Err)
 pub fn jk_i64(entries: List[List[Str]], path: Str) -> Str {
-    var n = jnum_i64(entries, path)
-    if n.k == 0 {
-        return "ok"
+    let r = jget_i64(entries, path)
+    match r {
+        Ok(_) => {
+            return "ok"
+        }
+        Err(e) => {
+            return jerr_kind(e)
+        }
     }
-    return jkname(n.k)
 }
 
 pub fn jk_f64(entries: List[List[Str]], path: Str) -> Str {
-    var r = jreal_f64(entries, path)
-    if r.k == 0 {
-        return "ok"
+    let r = jget_f64(entries, path)
+    match r {
+        Ok(_) => {
+            return "ok"
+        }
+        Err(e) => {
+            return jerr_kind(e)
+        }
     }
-    return jkname(r.k)
 }
 
 pub fn jk_bool(entries: List[List[Str]], path: Str) -> Str {

@@ -49,3 +49,63 @@ test "sys_result folds nonneg rc into Ok (interp-safe; Err/strerror arm in err_w
         }
     }
 }
+
+// ---- CBox[T]:跨边界所有权包装(§9.6 所有权三约定之 2,Ctron-owned)----
+// 承诺:C 堆块所有权入盒后,释放责任显式(cbox_free = #[trusted] 释放面);
+// 所有权哨在 C 侧登记表(指针注册/注销)——struct 值拷贝不复制哨状态,任何
+// 别名副本同见真值;哨后操作响亮 panic(双 free / free 后使用,不静默)。
+// 面形态:自由泛型函数(v0 发射面 trait 方法调用为 T25 v2 在册域,泛型直调
+// 推断已随 T45 修通;解释桥指针截断故 CBox 恒编译通道,解释口径不可用)。
+// GC 交互:盒壳在 GC 堆(仅 {p} 两字),载荷恒为 C malloc 块——§9.6「arena
+// 内存不交 C 长期持有」禁令由「必须经本盒」兑现;壳被回收而未 free = 泄漏
+// 不悬垂,责任显式在消费者(v0 无终结器;验收锚 tests/ffi/cbox)。
+
+// 登记表面:泛型 extern 单态化为声明态码(int32_t*),跨 TU 对 void* 定义
+// (指针调用约定同型);Bool 以 int 落界(三线统一)。
+#[trusted]
+extern "c" fn ctron_cbox_reg[T](p: &T)
+
+#[trusted]
+extern "c" fn ctron_cbox_live[T](p: &T) -> Bool
+
+#[trusted]
+extern "c" fn ctron_cbox_take[T](p: &T)
+
+#[trusted]
+extern "c" fn ctron_cbox_drop[T](p: &T)
+
+struct CBox[T] {
+    var p: &T
+}
+
+// C→Ctron 移交入口(bindgen 包装作者面):p = C 创建/移交的堆块首址,
+// 非空承诺在 C 契约侧(NULL 分流列 v2 Option 面);入盒即注册。
+pub fn cbox_own[T](p: &T) -> CBox[T] {
+    ctron_cbox_reg(p)
+    return CBox { p: p }
+}
+
+// 借用(约定之 3):&T 交调用期,不外泄不存;哨后响亮 panic
+pub fn cbox_borrow[T](b: CBox[T]) -> &T {
+    if !ctron_cbox_live(b.p) {
+        panic("CBox: use after free")
+    }
+    return b.p
+}
+
+// 移交赴 C(约定之 2 反向):所有权离盒,释放责任随之过界;哨后响亮 panic
+pub fn cbox_into_raw[T](b: CBox[T]) -> &T {
+    if !ctron_cbox_live(b.p) {
+        panic("CBox: use after free")
+    }
+    ctron_cbox_take(b.p)
+    return b.p
+}
+
+// 释放(#[trusted] 面):注销 + free;双 free 响亮 panic
+pub fn cbox_free[T](b: CBox[T]) {
+    if !ctron_cbox_live(b.p) {
+        panic("CBox: double free")
+    }
+    ctron_cbox_drop(b.p)
+}

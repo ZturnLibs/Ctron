@@ -1,0 +1,40 @@
+// tests/ffi/ext_finterp —— 解释桥 float 帧(T45)
+// 承诺:解释口径 extern 直调桥按声明型发 f:/g: 帧,ABI 正确 SIMD 寄存器类
+// cast;浮返经 fret 文本缓冲("%.17g")零损回传;整返回 long 全宽。
+// 靶 = 运行时模板 ctron_fx_*(hermetic 零 libc 依赖,值全二进制精确)——
+// compiled(emit+cc)与 interpreted(bin/ctron-cc run)双通道同源断言。
+// 旧口径:float 形参响亮 panic(不静默),本锚为该登记面的闭合。
+
+#[trusted]
+extern "c" fn ctron_fx_scale(v: F64, k: F64) -> F64
+
+#[trusted]
+extern "c" fn ctron_fx_half(v: F32) -> F32
+
+#[trusted]
+extern "c" fn ctron_fx_f2i(v: F64) -> I32
+
+#[trusted]
+extern "c" fn ctron_fx_mix(v: F64, sh: I64) -> F64
+
+fn main() -> I32 {
+    // f64×f64→f64(全浮形状 rc=f mask=0b11)
+    let s = ctron_fx_scale(3.0, 2.5)
+    if !(s == 7.5) {
+        panic("ext_finterp: scale mismatch")
+    }
+    // f32→f32(rc=g 单浮参;f 后缀字面量解释器不可用,型注解绑定双通道同源)
+    let hv: F32 = 5.0
+    let h = ctron_fx_half(hv)
+    if !(h == 2.5) {
+        panic("ext_finterp: half mismatch")
+    }
+    // (double)→int(浮参 + 整返回:rc=i mask=0b1)
+    assert_eq(ctron_fx_f2i(3.75), 3)
+    // (double,long)→double(混合形状:mask=0b01)
+    let m = ctron_fx_mix(1.5, 3)
+    if !(m == 12.0) {
+        panic("ext_finterp: mix mismatch")
+    }
+    return 0
+}

@@ -1,0 +1,14 @@
+// tests/gui/s61_drop —— GUI-20 OS 文件拖入:窗口级 on:drop(根元素声明)
+// (逐文件 fire,droppath 内建=当前文件,dropn=本次总数;headless d_drop
+//  填 C 槽直触,真窗 IsWindowReady 门 + IsFileDropped 轮询 → evt=6)
+view Root {
+  <vbox class="root" on:drop={drop_in(droppath)}>
+    <label class="title">拖入文件</label>
+    <label class="last">{lastf}</label>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style title { fg: TEXT size: 16 h: 24 }
+style last { fg: TEXT_MUTED h: 22 }
+style state { fg: "#22c55e" h: 22 }

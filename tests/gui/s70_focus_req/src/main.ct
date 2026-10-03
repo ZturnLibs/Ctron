@@ -1,0 +1,151 @@
+// tests/gui/s70_focus_req —— GUI-14:程序化聚焦/滚动可见(§11.7 API 面)
+// gui_focus_req("m.b")(act 闭包发起,emit 期 bind 名匹配消费,光标置尾)+
+// gui_scroll_req("m.tail")(collect 期定位于最近 scroll:1 容器,垂直钳位)。
+// 判别口径:未绑定编辑失焦即还原(Esc),绑定侧 on:input 持久化——mirror-only
+// 见 "x" 即证字符落在目标 input;滚动以 d_scroll_off>0 + TAIL 入视口/行首出
+// 视口双证。
+use gui.{test, d_click, d_frame, d_expect_text, d_expect_absent, d_send_char, d_send_key, d_scroll_off, gui_focus_req, gui_scroll_req, gui_scroll_to}
+
+struct Model {
+    var a: Str
+    var b: Str
+    var rows: List[Str]
+    var tail: Str
+}
+
+view FocusApp (m: Model) {
+  <vbox class="root">
+    <input bind={m.a} class="fld"/>
+    <button class="go" on:click={to_b}>go b</button>
+    <input bind={m.b} class="fld" on:input={b_in}/>
+    <label class="mir">{m.b}</label>
+    <vbox class="roll">
+      <each r in={m.rows}>
+        <label class="row">{r}</label>
+      </each>
+      <hbox class="tailbox">
+        <label class="tail">{m.tail}</label>
+      </hbox>
+    </vbox>
+    <button class="jp" on:click={jump}>jump</button>
+    <button class="jp" on:click={toend}>to end</button>
+  </vbox>
+}
+style root { direction: column gap: 6 padding: 8 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style go { bg: "#2563eb" fg: "#ffffff" w: 90 h: 36 }
+style jp { bg: "#0ea5e9" fg: "#ffffff" w: 90 h: 36 }
+style mir { fg: "#22c55e" h: 24 }
+style roll { direction: column gap: 2 scroll: 1 h: 120 bg: "#111114" }
+style row { fg: "#ffffff" h: 30 }
+style tailbox { direction: column bg: "#1a1a1e" }
+style tail { fg: "#f59e0b" h: 30 }
+
+fn make() -> Model {
+    var rows = List[Str]()
+    var i: I32 = 1
+    while i <= 12 {
+        if i < 10 {
+            rows.push("r0" + i.to_string())
+        } else {
+            rows.push("r" + i.to_string())
+        }
+        i += 1
+    }
+    return Model { a: "", b: "", rows: rows, tail: "TAIL" }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "m.a" {
+        buf.push(m.a)
+    }
+    if buf[0] == "m.b" {
+        buf.push(m.b)
+    }
+    if buf[0] == "m.tail" {
+        buf.push(m.tail)
+    }
+    if buf[0] == "each:m.rows" {
+        var i: I32 = 0
+        while i < m.rows.len {
+            buf.push(m.rows[i])
+            i += 1
+        }
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "to_b" {
+        gui_focus_req("m.b")
+        return
+    }
+    if name == "jump" {
+        gui_scroll_req("m.tail")
+        return
+    }
+    if name == "toend" {
+        // 12 行×32px(30+gap2)=384 内容,容器 120——滚到底
+        gui_scroll_to(384 - 120)
+        return
+    }
+    // on:input 名通道:b_in:<text>
+    if name.len >= 5 {
+        if byte_at(name, 0) == 98 && byte_at(name, 1) == 95 && byte_at(name, 2) == 105 && byte_at(name, 3) == 110 && byte_at(name, 4) == 58 {
+            m.b = byte_slice(name, 5, name.len)
+            return
+        }
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    return test(src, 320, 480,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| { },
+        |t, act2, key2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // 负例:初始 autofocus=首 input(a,无 on:input)——字符落 a,
+            // Esc 失焦即还原,无任何持久 "x"
+            d_send_char(t, 120, |buf| bind_all(buf, m), |n, ar| act(n, ar, m))
+            act2(d_click(t, "to_b"))
+            d_send_key(t, 27, |buf| bind_all(buf, m), |n, ar| act(n, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "x")
+            // 正例:程序化聚焦 b → 字符落 b → on:input 持久化 → 失焦仍显示
+            act2(d_click(t, "to_b"))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_send_char(t, 120, |buf| bind_all(buf, m), |n, ar| act(n, ar, m))
+            d_send_key(t, 27, |buf| bind_all(buf, m), |n, ar| act(n, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "x")
+            // 滚动可见:TAIL 初始视口外;程序化请求 → 偏移 >0,次帧 TAIL 入
+            // 视口、行首出视口
+            d_expect_absent(t, "TAIL")
+            act2(d_click(t, "jump"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var off: I32 = d_scroll_off()
+            if off <= 0 {
+                panic("s70: scroll_req 未生效 off=" + off.to_string())
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "TAIL")
+            d_expect_absent(t, "r01")
+            // scroll_to 直置位(应用自算几何;回滚后滚到底,TAIL 仍在视口)
+            act2(d_click(t, "toend"))
+            d_frame(t, |buf| bind_all(buf, m))
+            var off2: I32 = d_scroll_off()
+            if off2 != 264 {
+                panic("s70: scroll_to 未生效 off=" + off2.to_string())
+            }
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s70: headless 验收件(真窗面略)")
+    return 0
+}

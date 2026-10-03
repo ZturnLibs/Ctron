@@ -1,0 +1,71 @@
+// tests/gui/s64_grid —— GUI-26 grid v1(GROW 均分)headless 验收
+// 两段:行文本渲染 → 等宽性(同行两列盒宽相等=GROW 均分)
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_h100, d_cmd_w100, Driver}
+
+struct M {
+    var state: Str
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+}
+
+// 同行两列等宽:找 h=22 的 spacer RECT 对(GROW 均分→两盒同宽)
+fn cols_equal(t: Box[Driver]) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_h100(i) == 2200 {
+                var j: I32 = i + 1
+                while j < n {
+                    if d_cmd_type(j) == 2 {
+                        if d_cmd_h100(j) == 2200 {
+                            if d_cmd_w100(i) == d_cmd_w100(j) {
+                                return d_cmd_w100(i)
+                            }
+                            return 0 - (d_cmd_w100(i) * 1000 + d_cmd_w100(j))
+                        }
+                    }
+                    j += 1
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn main() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { state: "" })
+    var rc: I32 = test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| { },
+        |t, actc, k2| {
+            // S1 行文本渲染(组件实参直排)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "main.ct")
+            d_expect_text(t, "12 KB")
+            d_expect_text(t, "48 KB")
+            // S2 等宽性:同行两列盒宽相等(GROW 均分;内容区 304-gap4→约 150)
+            var cw: I32 = cols_equal(t)
+            if cw <= 0 {
+                panic("s64: 列宽不均分 cw=" + cw.to_string())
+            }
+            if cw < 14000 || cw > 16000 {
+                panic("s64: 均分宽度出格 cw=" + cw.to_string())
+            }
+            m.state = "均分✓"
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "均分✓")
+            println("S64-GRID-GREEN")
+        })
+    return rc
+}

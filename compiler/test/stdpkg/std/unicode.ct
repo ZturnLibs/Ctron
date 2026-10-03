@@ -1,4 +1,5 @@
 // std/unicode.ct —— UTF-8 解码面(码点读取/合法性/计数;字节级纪律的码点侧补充)
+//@ tier: alloc
 // since: std-0.2 stability: experimental
 // 口径:非法序列返回 -1 / false(不 panic);过约简检查;显式非目标:字素分割/
 // 大小写映射/宽度表(需 Unicode 数据表,等真实需求);编码方向用内建 utf8_enc

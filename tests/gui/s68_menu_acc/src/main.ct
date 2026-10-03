@@ -1,0 +1,218 @@
+// tests/gui/s68_menu_acc —— GUI-08/09 headless 验收(加速器/键盘导航/快捷键实发)
+use gui.{test, d_frame, d_click, d_press_key, d_send_key, d_mod, gui_hotkey, gui_platform,
+         d_expect_text, d_expect_absent}
+
+struct M {
+    var edopen: Bool
+    var m3hi: I32
+    var state: Str
+}
+
+fn ed_toggle() {
+}
+fn ed_pick() {
+}
+
+// 加速器显示:与 gui_hotkey 注册共用动作 id(单一真源=动作 id 字符串);
+// ⌘/Ctrl 字样经 gui_platform 分叉(0=mac 1=win 2=linux)
+fn acc_of(action: Str) -> Str {
+    var p: Str = "Ctrl+"
+    if gui_platform() == 0 {
+        p = "⌘"
+    }
+    if action == "undo" {
+        return p + "Z"
+    }
+    if action == "redo" {
+        return p + "Y"
+    }
+    if action == "cut" {
+        return p + "X"
+    }
+    if action == "copy" {
+        return p + "C"
+    }
+    return ""
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "ed_toggle" {
+        if m.edopen {
+            m.edopen = false
+        } else {
+            m.edopen = true
+        }
+        return
+    }
+    // 行点击(实例后缀 ed_pick:N)= 键盘 Enter 同路:选 m3hi 行
+    if name.len > 7 {
+        if byte_at(name, 0) == 101 && byte_at(name, 1) == 100 && byte_at(name, 2) == 95 && byte_at(name, 3) == 112 && byte_at(name, 4) == 105 && byte_at(name, 5) == 99 && byte_at(name, 6) == 107 && byte_at(name, 7) == 58 {
+            var ni: I32 = 0
+            var k9: I32 = 8
+            while k9 < name.len {
+                ni = ni * 10 + (byte_at(name, k9) - 48)
+                k9 += 1
+            }
+            m.m3hi = ni
+            m.edopen = false
+            m.state = "已选行"
+            if ni == 0 {
+                m.state = "已撤销"
+            }
+            if ni == 1 {
+                m.state = "已重做"
+            }
+            return
+        }
+    }
+    // 快捷键动作(与 acc_of 同 id)
+    if name == "undo" {
+        m.state = "已撤销"
+        return
+    }
+    if name == "redo" {
+        m.state = "已重做"
+        return
+    }
+    if name == "cut" {
+        m.state = "已剪切"
+        return
+    }
+    if name == "copy" {
+        m.state = "已复制"
+        return
+    }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "edopen" {
+        if m.edopen {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "each:m3items" {
+        // 行文本=标题+间隔+加速器(同动作 id);"> "前缀=键盘高亮行
+        if m.m3hi == 0 {
+            buf.push("> 撤销  " + acc_of("undo"))
+        } else {
+            buf.push("撤销  " + acc_of("undo"))
+        }
+        if m.m3hi == 1 {
+            buf.push("> 重做  " + acc_of("redo"))
+        } else {
+            buf.push("重做  " + acc_of("redo"))
+        }
+        if m.m3hi == 2 {
+            buf.push("> 剪切  " + acc_of("cut"))
+        } else {
+            buf.push("剪切  " + acc_of("cut"))
+        }
+        if m.m3hi == 3 {
+            buf.push("> 复制  " + acc_of("copy"))
+        } else {
+            buf.push("复制  " + acc_of("copy"))
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+// 展开态键盘导航:↓↑ 移高亮(钳位)/Enter 选取/Esc 关闭(select 同配方)
+fn apply_key(k: I32, m: Box[M]) {
+    if m.edopen {
+        if k == 265 {
+            if m.m3hi < 3 {
+                m.m3hi = m.m3hi + 1
+            }
+            return
+        }
+        if k == 264 {
+            if m.m3hi > 0 {
+                m.m3hi = m.m3hi - 1
+            }
+            return
+        }
+        if k == 257 {
+            m.edopen = false
+            m.state = "已选行"
+            if m.m3hi == 0 {
+                m.state = "已撤销"
+            }
+            if m.m3hi == 1 {
+                m.state = "已重做"
+            }
+            if m.m3hi == 2 {
+                m.state = "已剪切"
+            }
+            if m.m3hi == 3 {
+                m.state = "已复制"
+            }
+            return
+        }
+        if k == 256 {
+            m.edopen = false
+            m.state = "菜单已取消"
+            return
+        }
+    }
+}
+
+fn main() -> I32 {
+    // 快捷键注册(动作 id 与 acc_of 显示同源)
+    gui_hotkey("mod+z", "undo")
+    gui_hotkey("mod+shift+z", "redo")
+    gui_hotkey("mod+x", "cut")
+    gui_hotkey("mod+c", "copy")
+    var src: Str = read_file("app.ctml")
+    var m = Box[M](M { edopen: false, m3hi: 0, state: "" })
+    var rc: I32 = test(src, 320, 420,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| apply_key(k, m),
+        |t, actc, k2| {
+            // 收起态
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "撤销")
+            // 开菜单:加速器可见(mac 口径 ⌘;gui_platform 分叉)
+            actc(d_click(t, "ed_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 撤销  ⌘Z")
+            d_expect_text(t, "重做  ⌘Y")
+            d_expect_text(t, "剪切  ⌘X")
+            d_expect_text(t, "复制  ⌘C")
+            // 键盘导航:↓ 移高亮(初始 0 → 1)
+            k2(d_press_key(t, 265))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "> 重做  ⌘Y")
+            d_expect_absent(t, "> 撤销  ⌘Z")
+            // Enter 选取 → 关菜单+动作落地
+            k2(d_press_key(t, 257))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "重做  ⌘Y")
+            d_expect_text(t, "已重做")
+            // 重开 → Esc 关闭
+            actc(d_click(t, "ed_toggle"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "剪切  ⌘X")
+            k2(d_press_key(t, 256))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "剪切  ⌘X")
+            d_expect_text(t, "菜单已取消")
+            // 快捷键实发:mod+z → undo(与菜单行同动作 id)
+            d_mod(t, 1)
+            var r1: I32 = d_send_key(t, 90,
+                |buf| bind_all(buf, m),
+                |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            if r1 != 0 {
+                panic("s61: mod+z 未消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已撤销")
+            println("S61-MENUACC-GREEN")
+        })
+    return rc
+}

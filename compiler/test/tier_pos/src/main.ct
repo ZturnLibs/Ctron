@@ -1,0 +1,12 @@
+// tier_pos —— core 包 use core+无标注模块 → full/bare 双过(档位面+分配面双绿)
+use std.mathx.{ mx_add }
+use std.laxx.{ lx_id }
+
+fn main() -> I32 {
+    let a = mx_add(1, 2)
+    let b = lx_id(a)
+    if b == 3 {
+        return 0
+    }
+    return 1
+}

@@ -11,12 +11,12 @@
 // json_of = std/json parse 的 Req.body 包装(路径展平 DOM;坏体 ok=false + 空条目,
 // 后续 jd_* 恒 None——校验失败不炸请求循环,422 交由调用点 err_json 统一回形)。
 // jd_* 收编口径:str/bool 走 qtag/qval 纯函数查询面(零 union 载荷往返回路);
-// i64 走 jnum_i64 结构通道 + jn_k/jn_v 标量 getter——std/json 头注 (h) 族在册:
-// 跨模块 Result Ok(I64) 载荷发射槽 32 位,禁 match 其 Ok 载荷。整数语法形态限定
-// (小数/指数 → None)与 I64 域越界 → None 均由 std/jnum_i64 原样继承。
+// i64 走 jget_i64 Result 面(T53 数值保真闭环后为 std/json 唯一 pub 数值面;
+// 原 jnum_i64 结构通道已回切摘除)。整数语法形态限定(小数/指数 → None)
+// 与 I64 域越界 → None 均由 std/jget_i64 原样继承。
 
 use std.str.{ starts_with }
-use std.json.{ parse, qtag, qval, jnum_i64, jn_k, jn_v }
+use std.json.{ parse, qtag, qval, jget_i64 }
 use web.core.{ Req, Pair, req_full }
 
 pub struct JDoc {
@@ -62,11 +62,11 @@ pub fn jd_bool(d: JDoc, path: Str) -> Option[Bool] {
     return None
 }
 
-// 取值:标签须 n 且整数语法形态(小数/指数/越 I64 域 → None;经 jnum_i64 结构通道)
+// 取值:标签须 n 且整数语法形态(小数/指数/越 I64 域 → None;经 jget_i64 Result 面)
 pub fn jd_i64(d: JDoc, path: Str) -> Option[I64] {
-    let n = jnum_i64(d.entries, jd_path(path))
-    if jn_k(n) == 0 {
-        return Some(jn_v(n))
+    let r = jget_i64(d.entries, jd_path(path))
+    if r.is_ok() {
+        return Some(r.expect("jd"))
     }
     return None
 }
@@ -88,11 +88,11 @@ pub fn jd_str_between(d: JDoc, path: Str, lo: I32, hi: I32) -> Option[Str] {
 }
 
 pub fn jd_i64_between(d: JDoc, path: Str, lo: I64, hi: I64) -> Option[I64] {
-    let n = jnum_i64(d.entries, jd_path(path))
-    if jn_k(n) != 0 {
+    let r = jget_i64(d.entries, jd_path(path))
+    if r.is_err() {
         return None
     }
-    let v = jn_v(n)
+    let v = r.expect("jdb")
     if v < lo {
         return None
     }

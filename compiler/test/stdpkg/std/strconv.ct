@@ -1,4 +1,5 @@
 // std/strconv.ct —— 文本与数值互转(parse_i64/parse_bool;format_hex/bin 移交 v0.3)
+//@ tier: alloc
 // since: std-0.2 stability: experimental
 // 口径:parse_i64 溢出返回 None(阈值比较法,无除法);前导 0/前导 + 允许;
 // format_hex/format_bin v0.2 仅收非负输入(负数补码面待 P1-B,C10 死区);

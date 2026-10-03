@@ -1,4 +1,5 @@
 // std/enc.ct —— 编码工具(hex/base64/percent;RFC 4648/3986 口径)
+//@ tier: alloc
 // since: std-0.2 stability: experimental
 // 口径:编码方向字节透传;解码输出限**可打印 ASCII**(32-126),否则 None——
 // C8 约束(解释面 Str 只能由源码字面量切片构建,见 v0.2 API 规范 §0;

@@ -1,0 +1,6 @@
+// tier_real_neg —— 真库 alloc 档(core 包 use std.str)→ use 点 E3040 单响
+use std.str.{ words }
+
+fn main() -> I32 {
+    return 0
+}

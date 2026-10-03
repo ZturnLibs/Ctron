@@ -1,0 +1,152 @@
+// tests/gui/s72_contw —— GUI-16 完整面:容器宽统一语义(裁决 ①②)
+// w 在(裸词字面/引号串逐帧)即 FIXED;不写维持 GROW(存量口径);
+// scroll 容器豁免(宽=父宽);FIXED 容器 × GROW 子混排(Clay 布局试金石)。
+// 读面 = 命令缓冲几何按 bg 寻址(s37 同款)。
+use gui.{test, d_click, d_frame, d_cmd_count, d_cmd_type, d_cmd_bg_r, d_cmd_bg_g, d_cmd_bg_b,
+         d_cmd_w100, d_cmd_h100}
+
+struct Model {
+    var bw: Str
+}
+
+view ContW (m: Model) {
+  <vbox class="root">
+    <vbox class="fix"/>
+    <vbox class="val"/>
+    <vbox class="grow"/>
+    <vbox class="roll">
+      <label class="inr">X</label>
+    </vbox>
+    <vbox class="host">
+      <vbox class="kid"/>
+    </vbox>
+    <button class="wide" on:click={wide}>wide</button>
+    <button class="narrow" on:click={narrow}>narrow</button>
+  </vbox>
+}
+style root { direction: column gap: 4 padding: 8 }
+style fix { direction: column w: 150 h: 12 bg: "#2f9e63" }
+style val { direction: column w: "{m.bw}" h: 12 bg: "#2563eb" }
+style grow { direction: column h: 12 bg: "#c83c3c" }
+style roll { direction: column scroll: 1 w: 90 h: 40 bg: "#f59e0b" }
+style inr { fg: "#ffffff" h: 30 }
+style host { direction: column w: 200 h: 40 bg: "#8b5cf6" }
+style kid { direction: column h: 12 bg: "#eab308" }
+style wide { bg: "#334155" fg: "#ffffff" w: 80 h: 30 }
+style narrow { bg: "#334155" fg: "#ffffff" w: 80 h: 30 }
+
+fn make() -> Model {
+    return Model { bw: "120" }
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "prop:m.bw" {
+        buf.push(m.bw)
+    }
+    if buf[0] == "m.bw" {
+        buf.push(m.bw)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "wide" {
+        m.bw = "240"
+        return
+    }
+    if name == "narrow" {
+        m.bw = "60"
+        return
+    }
+}
+
+// 按 bg 色找 RECT 命令下标;-1 未现(s37 同款)
+fn find_ca(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return i
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    return test(src, 320, 320,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| { },
+        |t, act2, key2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // 裸词字面:fix w:150 → FIXED 15000
+            var fi: I32 = find_ca(47, 158, 99)
+            if fi < 0 {
+                panic("s72: fix 未现")
+            }
+            if d_cmd_w100(fi) != 15000 {
+                panic("s72: 裸词 w 150 未生效 w100=" + d_cmd_w100(fi).to_string())
+            }
+            // 引号串值驱动:val w:"{m.bw}" 初始 120 → 12000
+            var vi: I32 = find_ca(37, 99, 235)
+            if vi < 0 {
+                panic("s72: val 未现")
+            }
+            if d_cmd_w100(vi) != 12000 {
+                panic("s72: 值驱动初始 120 未生效 w100=" + d_cmd_w100(vi).to_string())
+            }
+            // 不写维持 GROW(存量口径):grow 容器 = 内容宽 304(320-2×8 pad)
+            var gi: I32 = find_ca(200, 60, 60)
+            if gi < 0 {
+                panic("s72: grow 未现")
+            }
+            if d_cmd_w100(gi) != 30400 {
+                panic("s72: 无 w 容器 GROW 受扰 w100=" + d_cmd_w100(gi).to_string())
+            }
+            // scroll 豁免(裁决②):roll 有 w:90 但宽=父宽 304
+            var ri: I32 = find_ca(245, 158, 11)
+            if ri < 0 {
+                panic("s72: roll 未现")
+            }
+            if d_cmd_w100(ri) == 9000 {
+                panic("s72: scroll 容器不应吃 w(豁免)")
+            }
+            // FIXED 容器 × GROW 子混排:kid 在 host(200,无 pad)内 = 20000
+            var hi: I32 = find_ca(234, 179, 8)
+            if hi < 0 {
+                panic("s72: kid 未现")
+            }
+            if d_cmd_w100(hi) != 20000 {
+                panic("s72: GROW 子未填满 FIXED 父 w100=" + d_cmd_w100(hi).to_string())
+            }
+            // 值驱动逐帧:wide → 24000
+            act2(d_click(t, "wide"))
+            d_frame(t, |buf| bind_all(buf, m))
+            if d_cmd_w100(vi) != 24000 {
+                panic("s72: 值驱动 wide 240 未生效 w100=" + d_cmd_w100(vi).to_string())
+            }
+            // narrow → 6000
+            act2(d_click(t, "narrow"))
+            d_frame(t, |buf| bind_all(buf, m))
+            if d_cmd_w100(vi) != 6000 {
+                panic("s72: 值驱动 narrow 60 未生效 w100=" + d_cmd_w100(vi).to_string())
+            }
+            println("S72-CONTW-GREEN")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s72: headless 验收件(真窗面略)")
+    return 0
+}

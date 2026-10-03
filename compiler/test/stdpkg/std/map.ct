@@ -1,4 +1,5 @@
 // std/map.ct —— Map[K, V] 种子(双 List 平行槽;函数式:put 返回新映射)
+//@ tier: alloc
 // K 需可 ==(bound Eq:标量原生可等/派生结构体逐字段);调用点经显式 TypeArgs 实例化(v0)
 struct Map[K, V] {
     let ks: List[K]

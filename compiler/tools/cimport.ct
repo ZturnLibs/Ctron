@@ -281,7 +281,12 @@ fn cimp_ty(t: Str, tds: List[Str]) -> Str {
         if w == "*" {
             stars += 1
         } else if !((w == "const") || (w == "volatile") || (w == "restrict") || (w == "signed")) {
-            base.push(w)
+            // T45:struct/union/enum 关键字限定形透明化——`union UV* u` 型面剥词
+            // 后走 typedef 名表(此前 nm 并词 "union UV" 查表不中 → 整形参
+            // 跳过;typedef 名表 v0.9·三 已收 union 名)
+            if !((w == "struct") || (w == "union") || (w == "enum")) {
+                base.push(w)
+            }
         }
         j += 1
     }

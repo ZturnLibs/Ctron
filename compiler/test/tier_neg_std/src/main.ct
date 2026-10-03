@@ -1,0 +1,6 @@
+// tier_neg_std —— core 包 use std 层模块 → E3040.tier(§9:bare→core 层)
+use std.fsx.{ fx_ping }
+
+fn main() -> I32 {
+    return fx_ping()
+}

@@ -1,0 +1,1230 @@
+// std/json.ct —— JSON 解析与序列化(路径展平 DOM;RFC 8259;写出半边已并入)
+//@ tier: alloc
+// 写出半边(原 json_write.ct)2026-09-23 并入:宪章 v2 一域一模块裁决(09-21 spec §8.3.1);
+// C17 规避解除——合并面 43 decls 宿主 test 10/10 复验绿(2026-09-23 实证)
+// 词法注意:字符串内禁含裸 { 与 ;(见 HANDOFF §4);助手先于调用者排列
+
+// ============ 序列化 ============
+
+// Str → JSON 字符串字面量(含引号;控制字符转义;UTF-8 透传)
+pub fn esc(s: Str) -> Str {
+    var e = "\\"
+    var q = "\""
+    var out = q
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 34 {
+            out = out + q
+        } else if c == 92 {
+            out = out + e + e
+        } else if c == 8 {
+            out = out + e + "b"
+        } else if c == 9 {
+            out = out + e + "t"
+        } else if c == 10 {
+            out = out + e + "n"
+        } else if c == 12 {
+            out = out + e + "f"
+        } else if c == 13 {
+            out = out + e + "r"
+        } else if c < 32 {
+            var hi = byte_slice("0123456789ABCDEF", c / 16, c / 16 + 1)
+            var lo = byte_slice("0123456789ABCDEF", c % 16, c % 16 + 1)
+            out = out + e + "u00" + hi + lo
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out + q
+}
+
+// ============ 解析助手(先于调用者排列) ============
+
+// 字母数字表(\u 解码用;A-Z a-z 0-9 共 62 字符,零词法风险)。
+// \u 解码覆盖字母数字码点;其余(符号/控制/代理对)保留原样(v0 口径)
+// C7 纪律:条件禁顶层 ||(解释器误解析),逐一拆为布尔变量/嵌套 if
+
+fn jprint() -> Str {
+    return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+}
+
+// 4 位十六进制 → 码点(非法字符按 0 计)
+fn hex4(s: Str, i: I32) -> I32 {
+    var v: I32 = 0
+    var k: I32 = 0
+    while k < 4 {
+        var c = byte_at(s, i + k)
+        var d: I32 = 0
+        if c >= 48 && c <= 57 { d = c - 48 } else if c >= 97 && c <= 102 { d = c - 97 + 10 } else if c >= 65 && c <= 70 { d = c - 65 + 10 }
+        v = v * 16 + d
+        k += 1
+    }
+    return v
+}
+
+// 跳过空白(条件不写顶层 || ——C7:解释器 || 误解析,见 v0.2 API 规范 §0)
+fn jskip(s: Str, i: I32) -> I32 {
+    var i2 = i
+    while i2 < s.len {
+        var c = byte_at(s, i2)
+        var isws = false
+        if c == 32 {
+            isws = true
+        }
+        if c == 9 {
+            isws = true
+        }
+        if c == 10 {
+            isws = true
+        }
+        if c == 13 {
+            isws = true
+        }
+        if isws {
+            i2 += 1
+        } else {
+            return i2
+        }
+    }
+    return i2
+}
+
+// JSON 字符串转义还原(\u 仅解码表内字符;其余原样保留,v0 口径)
+pub fn junesc(s: Str) -> Str {
+    var e = "\\"
+    var q = "\""
+    var out = ""
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 92 && i + 1 < s.len {
+            var d = byte_at(s, i + 1)
+            if d == 34 { out = out + q } else if d == 92 { out = out + e } else if d == 47 { out = out + "/" } else if d == 110 { out = out + "\n" } else if d == 116 { out = out + "\t" } else if d == 114 { out = out + "\r" } else if d == 117 && i + 5 < s.len {
+                var cp = hex4(s, i + 2)
+                var ch = ""
+                if cp >= 48 && cp <= 57 {
+                    ch = byte_slice(jprint(), cp - 48, cp - 47)
+                } else if cp >= 65 && cp <= 90 {
+                    ch = byte_slice(jprint(), cp - 55, cp - 54)
+                } else if cp >= 97 && cp <= 122 {
+                    ch = byte_slice(jprint(), cp - 87, cp - 86)
+                }
+                if ch == "" {
+                    out = out + byte_slice(s, i, i + 6)
+                    i += 6
+                } else {
+                    out = out + ch
+                    i += 6
+                }
+            } else {
+                out = out + byte_slice(s, i, i + 2)
+                i += 2
+            }
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
+
+// 解析结果条目:[路径, 标签, 值]。标签:z=null b=Bool n=number s=Str
+// a=数组 o=对象(值为空串)。Bool/number 值为原文。根路径 "$"。
+// 条目顺序:父先于子(对象/数组在开括号处记录)。
+
+// 共享解析态(err 槽非空 = 已出错)
+fn jstate() -> List[Str] {
+    var st = List[Str]()
+    st.push("")
+    st.push("")
+    return st
+}
+
+fn jerr(st: List[Str], msg: Str) {
+    if st[0] == "" { st[0] = msg }
+}
+
+// 数值扫描(RFC 8259 ABNF 严格):-?(0|[1-9]d*)(.d+)?([eE][+-]?d+)?
+// 返回结束下标;语法违例返回 -1
+fn jnum_end(s: Str, i: I32) -> I32 {
+    var i2 = i
+    if i2 < s.len && byte_at(s, i2) == 45 { i2 += 1 }
+    if i2 >= s.len { return -1 }
+    var c = byte_at(s, i2)
+    if c == 48 {
+        i2 += 1
+        if i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { return -1 }
+    } else if c >= 49 && c <= 57 {
+        i2 += 1
+        while i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { i2 += 1 }
+    } else {
+        return -1
+    }
+    if i2 < s.len && byte_at(s, i2) == 46 {
+        var j = i2 + 1
+        var dok = false
+        if j < s.len {
+            var cj = byte_at(s, j)
+            if cj >= 48 {
+                if cj <= 57 {
+                    dok = true
+                }
+            }
+        }
+        if !dok {
+            return -1
+        }
+        while j < s.len && byte_at(s, j) >= 48 && byte_at(s, j) <= 57 { j += 1 }
+        i2 = j
+    }
+    var ise = false
+    if i2 < s.len {
+        var ce = byte_at(s, i2)
+        if ce == 101 {
+            ise = true
+        }
+        if ce == 69 {
+            ise = true
+        }
+    }
+    if ise {
+        i2 += 1
+        if i2 < s.len {
+            var cs = byte_at(s, i2)
+            if cs == 43 {
+                i2 += 1
+            }
+            if cs == 45 {
+                i2 += 1
+            }
+        }
+        var dok = false
+        if i2 < s.len {
+            var ci = byte_at(s, i2)
+            if ci >= 48 {
+                if ci <= 57 {
+                    dok = true
+                }
+            }
+        }
+        if !dok {
+            return -1
+        }
+        while i2 < s.len && byte_at(s, i2) >= 48 && byte_at(s, i2) <= 57 { i2 += 1 }
+    }
+    return i2
+}
+
+// 字符串扫描:返回结束下标(闭引号后);错误返回 -1
+fn jstr_end(s: Str, i: I32) -> I32 {
+    var i2 = i + 1
+    while i2 < s.len {
+        var c = byte_at(s, i2)
+        if c == 34 { return i2 }
+        if c == 92 { i2 += 1 }
+        if c < 32 { return -1 }
+        i2 += 1
+    }
+    return -1
+}
+
+// 值解析:pre 为当前路径;dp 为容器深度(限 512);
+// 返回新下标;错误置 st[0] 并返回 -1
+fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]], dp: I32) -> I32 {
+    if dp > 512 {
+        jerr(st, "嵌套超限(depth):@" + pre)
+        return -1
+    }
+    var i2 = jskip(s, i)
+    if i2 >= s.len {
+        jerr(st, "意外结束 @" + pre)
+        return -1
+    }
+    var c = byte_at(s, i2)
+    if c == 123 {
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("o")
+        ent.push("")
+        out.push(ent)
+        var penv = pre + "."
+        i2 = jskip(s, i2 + 1)
+        if i2 < s.len && byte_at(s, i2) == 125 { return jskip(s, i2 + 1) }
+        while i2 < s.len {
+            if byte_at(s, i2) != 34 {
+                jerr(st, "对象键须为字符串 @" + pre)
+                return -1
+            }
+            var kend = jstr_end(s, i2)
+            if kend < 0 {
+                jerr(st, "键字符串未闭合 @" + pre)
+                return -1
+            }
+            var key = junesc(byte_slice(s, i2 + 1, kend))
+            i2 = jskip(s, kend + 1)
+            var colon = false
+            if i2 < s.len {
+                if byte_at(s, i2) == 58 {
+                    colon = true
+                }
+            }
+            if !colon {
+                jerr(st, "对象缺冒号 @" + pre)
+                return -1
+            }
+            var ni = jval(s, jskip(s, i2 + 1), penv + key, st, out, dp + 1)
+            if ni < 0 { return -1 }
+            i2 = jskip(s, ni)
+            if i2 < s.len && byte_at(s, i2) == 44 { i2 = jskip(s, i2 + 1) } else if i2 < s.len && byte_at(s, i2) == 125 { return jskip(s, i2 + 1) } else {
+                jerr(st, "对象缺 } 或 , @" + pre)
+                return -1
+            }
+        }
+        jerr(st, "对象未闭合 @" + pre)
+        return -1
+    }
+    if c == 91 {
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("a")
+        ent.push("")
+        out.push(ent)
+        var parr = pre + "."
+        i2 = jskip(s, i2 + 1)
+        if i2 < s.len && byte_at(s, i2) == 93 { return jskip(s, i2 + 1) }
+        var idx: I32 = 0
+        while i2 < s.len {
+            var ni = jval(s, i2, parr + idx.to_string(), st, out, dp + 1)
+            if ni < 0 { return -1 }
+            idx += 1
+            i2 = jskip(s, ni)
+            if i2 < s.len && byte_at(s, i2) == 44 { i2 = jskip(s, i2 + 1) } else if i2 < s.len && byte_at(s, i2) == 93 { return jskip(s, i2 + 1) } else {
+                jerr(st, "数组缺 ] 或 , @" + pre)
+                return -1
+            }
+        }
+        jerr(st, "数组未闭合 @" + pre)
+        return -1
+    }
+    if c == 34 {
+        var send = jstr_end(s, i2)
+        if send < 0 {
+            jerr(st, "字符串未闭合 @" + pre)
+            return -1
+        }
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("s")
+        ent.push(junesc(byte_slice(s, i2 + 1, send)))
+        out.push(ent)
+        return jskip(s, send + 1)
+    }
+    if c == 116 && i2 + 4 <= s.len && byte_slice(s, i2, i2 + 4) == "true" {
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("b")
+        ent.push("true")
+        out.push(ent)
+        return jskip(s, i2 + 4)
+    }
+    if c == 102 && i2 + 5 <= s.len && byte_slice(s, i2, i2 + 5) == "false" {
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("b")
+        ent.push("false")
+        out.push(ent)
+        return jskip(s, i2 + 5)
+    }
+    if c == 110 && i2 + 4 <= s.len && byte_slice(s, i2, i2 + 4) == "null" {
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("z")
+        ent.push("")
+        out.push(ent)
+        return jskip(s, i2 + 4)
+    }
+    var isnum = false
+    if c == 45 {
+        isnum = true
+    }
+    if c >= 48 {
+        if c <= 57 {
+            isnum = true
+        }
+    }
+    if isnum {
+        var ne = jnum_end(s, i2)
+        if ne < 0 {
+            jerr(st, "数字语法 @" + pre)
+            return -1
+        }
+        var ent = List[Str]()
+        ent.push(pre)
+        ent.push("n")
+        ent.push(byte_slice(s, i2, ne))
+        out.push(ent)
+        return jskip(s, ne)
+    }
+    jerr(st, "意外字节 @" + pre)
+    return -1
+}
+
+// 解析 JSON 文本 → 展平条目表([路径, 标签, 值] 的列表);
+// 解析失败 → Err(消息)。查询用 qtag/qval。
+pub fn parse(s: Str) -> Result[List[List[Str]], Str] {
+    var st = jstate()
+    var out = List[List[Str]]()
+    var ni = jval(s, 0, "$", st, out, 0)
+    if ni < 0 {
+        return Err(st[0])
+    }
+    var end = jskip(s, ni)
+    if end < s.len {
+        return Err("结尾有多余内容")
+    }
+    return Ok(out)
+}
+
+// 查询:路径对应的标签(空串 = 不存在)
+pub fn qtag(entries: List[List[Str]], path: Str) -> Str {
+    var i: I32 = 0
+    while i < entries.len {
+        if entries[i][0] == path { return entries[i][1] }
+        i += 1
+    }
+    return ""
+}
+
+// 查询:路径对应的值(标量原文;容器为空串;不存在为空串)
+pub fn qval(entries: List[List[Str]], path: Str) -> Str {
+    var i: I32 = 0
+    while i < entries.len {
+        if entries[i][0] == path { return entries[i][2] }
+        i += 1
+    }
+    return ""
+}
+
+// ============ 类型化访问器(数值/布尔保真;P5 前置) ============
+// 消费方 = 行映射(P5)/请求体绑定(P6)。错误载荷统一形态 "<kind>@<路径>",
+// jerr_kind 取 kind 段(kind 恒不含 '@';'@' 可存于键名,故取首段仍安全)。
+// 三分判别:缺路径 noent/标签 null/标签不符 type;null 正向判别 = qtag=="z"。
+// jget_i64:仅整数语法形态(-?数字串);小数点/指数形态 → frac;
+//   I64 域越界 → range(非 silent 回绕;C10:宽域零播种 + 正负分途
+//   累加 + 乘前阈值比较,同 strconv.parse_i64 惯用法)。
+// jget_f64:量级窗 |值| ≤ I64_MAX(解释器值域定宽 (i) 族:F64 整值越 2^63
+//   乘法即 panic——为双臂一致语义钳窗,emit 臂真 double 全域可算,窗即 v0
+//   口径);出窗 → range;下溢(≈1e-340 档)钳 0。精度口径:尾数取
+//   ≤17 位有效数字 + 逐步 ×10/÷10 单舍入,较 strtod 可差 1–2 ulp(2^53+1
+//   读回 2^53 可检);本文件及消费方夹具小数字面量禁指数形态、禁 F64 转
+//   Str(解释器 e 形字面量误析、emit F64 to_string 乱值,见 divergences (i))。
+// 发射面结构(h) 族:emit 的 Result/Option union 载荷槽 32 位——Ok(I64) 截断
+//   /Ok(F64) 错值(2^63-1 读回 -1 实证;Err-Str 与 Bool 载荷绿),故跨模块
+//   数值消费走 JNum/JReal 结构通道(struct 标量字段 + plain 标量 getter,
+//   http parse.ct getter 面 prior art),Result 面 jget_* 留同模块/
+//   解释口径与 Err 载荷原文面。消费速查:值 jv_*;kind jk_*(返回 "ok" 或
+//   kind 段);结构面 jnum_i64/jreal_f64 + jn_k/jn_v/jr_k/jr_v。
+
+struct JNum {
+    k: I64
+    v: I64
+}
+
+struct JReal {
+    k: I64
+    v: F64
+}
+
+fn jmkerr(kind: Str, path: Str) -> Str {
+    return kind + "@" + path
+}
+
+// kind 码 → 段名(k 恒非 0)
+fn jkname(k: I64) -> Str {
+    if k == 1 { return "noent" }
+    if k == 2 { return "null" }
+    if k == 3 { return "type" }
+    if k == 4 { return "frac" }
+    if k == 5 { return "range" }
+    return "syn"
+}
+
+// 错误载荷 kind 段(首个 '@' 前;无 '@' 时原样返回)
+pub fn jerr_kind(e: Str) -> Str {
+    var i: I32 = 0
+    while i < e.len {
+        if byte_at(e, i) == 64 { return byte_slice(e, 0, i) }
+        i += 1
+    }
+    return e
+}
+
+// I64_MAX/10 哨兵:乘 10 前界门(C10;i 族 F64 整值越域乘法解释器即炸)
+fn jf_sent() -> F64 {
+    return 922337203685477580.0
+}
+
+// 整数语法形态数值原文 → JNum(k: 0=ok/4=frac/5=range/6=syn;值仅 k=0 有效)
+fn jint64(s: Str) -> JNum {
+    var neg = false
+    var i: I32 = 0
+    if s.len > 0 {
+        if byte_at(s, 0) == 45 {
+            neg = true
+            i = 1
+        }
+    }
+    if i >= s.len {
+        var e0 = JNum { k: 6, v: 0 }
+        return e0
+    }
+    var i0 = i
+    // C10:宽域零播种;正负分开累加,无取负(NEG 会触发算术腐蚀)
+    var w: I64 = 4294967296
+    var acc: I64 = w - w
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isd = false
+        if c >= 48 {
+            if c <= 57 {
+                isd = true
+            }
+        }
+        if !isd {
+            var ef = JNum { k: 4, v: 0 }
+            return ef
+        }
+        var d: I64 = c - 48
+        if neg {
+            if acc < -922337203685477580 {
+                var er = JNum { k: 5, v: 0 }
+                return er
+            }
+            if acc == -922337203685477580 {
+                if d > 8 {
+                    var er2 = JNum { k: 5, v: 0 }
+                    return er2
+                }
+            }
+            acc = acc * 10 - d
+        } else {
+            if acc > 922337203685477580 {
+                var er3 = JNum { k: 5, v: 0 }
+                return er3
+            }
+            if acc == 922337203685477580 {
+                if d > 7 {
+                    var er4 = JNum { k: 5, v: 0 }
+                    return er4
+                }
+            }
+            acc = acc * 10 + d
+        }
+        i += 1
+    }
+    // 前导零防御(parse 已按 RFC 拒;直构条目兜底;置于形态判别后,
+    // 使 "0.5" 归 frac 而非 syn)
+    if byte_at(s, i0) == 48 {
+        if s.len > i0 + 1 {
+            var ez = JNum { k: 6, v: 0 }
+            return ez
+        }
+    }
+    var okn = JNum { k: 0, v: acc }
+    return okn
+}
+
+// 数值原文 → JReal(k: 0=ok/6=syn/5=range;值仅 k=0 有效)
+fn jf64(s: Str) -> JReal {
+    var neg = false
+    var i: I32 = 0
+    if s.len > 0 {
+        if byte_at(s, 0) == 45 {
+            neg = true
+            i = 1
+        }
+    }
+    if i >= s.len {
+        var e0 = JReal { k: 6, v: 0.0 }
+        return e0
+    }
+    var m: F64 = 0.0
+    var e: I32 = 0
+    var sig: I32 = 0
+    var frac = false
+    var seen = false
+    var ine = false
+    var sent = jf_sent()
+    while i < s.len {
+        var c = byte_at(s, i)
+        var isd = false
+        if c >= 48 {
+            if c <= 57 {
+                isd = true
+            }
+        }
+        if isd {
+            seen = true
+            var d: F64 = (c - 48).as[F64]()
+            var isz = false
+            if m == 0.0 {
+                if d == 0.0 {
+                    isz = true
+                }
+            }
+            if isz {
+                // 前导零不计有效位;小数侧仍逐位降幂(0.001 量级正确)
+                if frac {
+                    e -= 1
+                }
+            } else if sig < 17 {
+                m = m * 10.0 + d
+                sig += 1
+                if frac {
+                    e -= 1
+                }
+            } else {
+                // 尾数满:整数侧弃尾升幂保量级;小数侧权重已低于保留位(精度注)
+                if !frac {
+                    e += 1
+                }
+            }
+            i += 1
+        } else if c == 46 {
+            if frac {
+                var ed = JReal { k: 6, v: 0.0 }
+                return ed
+            }
+            frac = true
+            i += 1
+        } else if c == 101 {
+            // 指数段(101 == 'e';69 == 'E' 同形)
+            ine = true
+            i += 1
+            break
+        } else if c == 69 {
+            ine = true
+            i += 1
+            break
+        } else {
+            var eb = JReal { k: 6, v: 0.0 }
+            return eb
+        }
+    }
+    if !seen {
+        var es = JReal { k: 6, v: 0.0 }
+        return es
+    }
+    var ei: I32 = 0
+    if ine {
+        // 指数段解析(≤6 位计,超出位忽略——量级早已出窗);C10 宽域零播种
+        var eneg = false
+        if i < s.len {
+            var cs = byte_at(s, i)
+            if cs == 45 {
+                eneg = true
+                i += 1
+            } else if cs == 43 {
+                i += 1
+            }
+        }
+        if i >= s.len {
+            // "1e" 形态(RFC 已拒;直构兜底)
+            var ee = JReal { k: 6, v: 0.0 }
+            return ee
+        }
+        var w: I64 = 4294967296
+        var adj: I64 = w - w
+        var adjn: I32 = 0
+        while i < s.len {
+            var c2 = byte_at(s, i)
+            var isd2 = false
+            if c2 >= 48 {
+                if c2 <= 57 {
+                    isd2 = true
+                }
+            }
+            if !isd2 {
+                var eexp = JReal { k: 6, v: 0.0 }
+                return eexp
+            }
+            if adjn < 6 {
+                var d2: I64 = c2 - 48
+                adj = adj * 10 + d2
+                adjn += 1
+            }
+            i += 1
+        }
+        ei = adj.as[I32]()
+        if eneg {
+            ei = 0 - ei
+        }
+    }
+    var e2 = e + ei
+    if m == 0.0 {
+        var z0 = JReal { k: 0, v: 0.0 }
+        return z0
+    }
+    if e2 < -340 {
+        // 下溢钳 0(量级窗口径;避免超长除法循环)
+        var z1 = JReal { k: 0, v: 0.0 }
+        return z1
+    }
+    // 升幂:乘 10 前逐次哨兵界门(出窗 = Err,解释器值域内恒安全)
+    while e2 > 0 {
+        if m > sent {
+            var er = JReal { k: 5, v: 0.0 }
+            return er
+        }
+        m = m * 10.0
+        e2 -= 1
+    }
+    // 降幂:逐步单舍入(小数值走真 double 路径,解释器值域内恒安全)
+    while e2 < 0 {
+        m = m / 10.0
+        e2 += 1
+    }
+    if neg {
+        m = 0.0 - m
+    }
+    var okr = JReal { k: 0, v: m }
+    return okr
+}
+
+// ---- Result 面(jget_*;同模块/解释口径与 Err 载荷原文面;跨模块数值
+// 消费勿 match 其 Ok 载荷——(h) 族 union 载荷槽 32 位,见区块头注)----
+
+// 错误标签路径三分(kind 段 → 载荷原文)
+fn jtagk(tag: Str, path: Str, want: Str) -> Str {
+    if tag == "" {
+        return jmkerr("noent", path)
+    }
+    if tag == "z" {
+        return jmkerr("null", path)
+    }
+    if tag != want {
+        return jmkerr("type", path)
+    }
+    return ""
+}
+
+// 类型化读取:I64(标签须 n 且整数语法形态)
+pub fn jget_i64(entries: List[List[Str]], path: Str) -> Result[I64, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var r = jint64(qval(entries, path))
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(r.v)
+}
+
+// 类型化读取:F64(标签须 n;量级窗/精度口径见区块头注)
+pub fn jget_f64(entries: List[List[Str]], path: Str) -> Result[F64, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var r = jf64(qval(entries, path))
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(r.v)
+}
+
+// 类型化读取:Bool(标签须 b;Bool 载荷发射面绿,Result 面可用)
+pub fn jget_bool(entries: List[List[Str]], path: Str) -> Result[Bool, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "b")
+    if bad != "" {
+        return Err(bad)
+    }
+    var v = qval(entries, path)
+    if v == "true" {
+        return Ok(true)
+    }
+    if v == "false" {
+        return Ok(false)
+    }
+    return Err(jmkerr("syn", path))
+}
+
+// ---- 结构通道面(跨模块数值消费;发射面安全,见区块头注)----
+
+// 路径 → JNum(k/v;i64 定宽检测全量)
+pub fn jnum_i64(entries: List[List[Str]], path: Str) -> JNum {
+    var tag = qtag(entries, path)
+    if tag == "" {
+        var e1 = JNum { k: 1, v: 0 }
+        return e1
+    }
+    if tag == "z" {
+        var e2 = JNum { k: 2, v: 0 }
+        return e2
+    }
+    if tag != "n" {
+        var e3 = JNum { k: 3, v: 0 }
+        return e3
+    }
+    return jint64(qval(entries, path))
+}
+
+// 路径 → JReal(k/v;f64 全形态,量级窗见区块头注)
+pub fn jreal_f64(entries: List[List[Str]], path: Str) -> JReal {
+    var tag = qtag(entries, path)
+    if tag == "" {
+        var e1 = JReal { k: 1, v: 0.0 }
+        return e1
+    }
+    if tag == "z" {
+        var e2 = JReal { k: 2, v: 0.0 }
+        return e2
+    }
+    if tag != "n" {
+        var e3 = JReal { k: 3, v: 0.0 }
+        return e3
+    }
+    return jf64(qval(entries, path))
+}
+
+// 结构 getter(标量出参;消费方经此读 JNum/JReal)
+pub fn jn_k(n: JNum) -> I64 {
+    return n.k
+}
+
+pub fn jn_v(n: JNum) -> I64 {
+    return n.v
+}
+
+pub fn jr_k(r: JReal) -> I64 {
+    return r.k
+}
+
+pub fn jr_v(r: JReal) -> F64 {
+    return r.v
+}
+
+// ---- 带默认/kind 便捷面(jv_*/jk_*;发射面安全)----
+
+// 带默认读取:I64(错误面吞没取 dft;kind 查询用 jk_i64)
+pub fn jv_i64(entries: List[List[Str]], path: Str, dft: I64) -> I64 {
+    var n = jnum_i64(entries, path)
+    if n.k == 0 {
+        return n.v
+    }
+    return dft
+}
+
+// 带默认读取:F64
+pub fn jv_f64(entries: List[List[Str]], path: Str, dft: F64) -> F64 {
+    var r = jreal_f64(entries, path)
+    if r.k == 0 {
+        return r.v
+    }
+    return dft
+}
+
+// 带默认读取:Bool
+pub fn jv_bool(entries: List[List[Str]], path: Str, dft: Bool) -> Bool {
+    let r = jget_bool(entries, path)
+    match r {
+        Ok(v) => {
+            return v
+        }
+        Err(_) => {
+            return dft
+        }
+    }
+}
+
+// kind 查询:"ok" 或 noent/null/type/frac/range/syn(载荷原文经 jget_* Err)
+pub fn jk_i64(entries: List[List[Str]], path: Str) -> Str {
+    var n = jnum_i64(entries, path)
+    if n.k == 0 {
+        return "ok"
+    }
+    return jkname(n.k)
+}
+
+pub fn jk_f64(entries: List[List[Str]], path: Str) -> Str {
+    var r = jreal_f64(entries, path)
+    if r.k == 0 {
+        return "ok"
+    }
+    return jkname(r.k)
+}
+
+pub fn jk_bool(entries: List[List[Str]], path: Str) -> Str {
+    let r = jget_bool(entries, path)
+    match r {
+        Ok(_) => {
+            return "ok"
+        }
+        Err(e) => {
+            return jerr_kind(e)
+        }
+    }
+}
+// ============ 写出半边(2026-09-23 自 json_write.ct 并入;助手先于调用者) ============
+// 路径展平 DOM(wesc 转义逆操作 + jw_keys)按条目 DFS 重放为 JSON 文本
+// since: std-0.3(并入面)stability: experimental
+// 口径:输入为 json.ct parse 产物(父先子后 DFS 条目,路径以 "." 分段,
+// 根为 "$");键与字符串值写出时经 wesc 重转义;数字/布尔/null 按原文
+pub fn wesc(s: Str) -> Str {
+    var e = "\\"
+    var q = "\""
+    var out = q
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 34 {
+            out = out + q
+        } else if c == 92 {
+            out = out + e + e
+        } else if c == 8 {
+            out = out + e + "b"
+        } else if c == 9 {
+            out = out + e + "t"
+        } else if c == 10 {
+            out = out + e + "n"
+        } else if c == 12 {
+            out = out + e + "f"
+        } else if c == 13 {
+            out = out + e + "r"
+        } else if c < 32 {
+            var hi = byte_slice("0123456789ABCDEF", c / 16, c / 16 + 1)
+            var lo = byte_slice("0123456789ABCDEF", c % 16, c % 16 + 1)
+            out = out + e + "u00" + hi + lo
+        } else {
+            out = out + byte_slice(s, i, i + 1)
+        }
+        i += 1
+    }
+    return out + q
+}
+
+// 路径深度 = '.' 计数(根 "$" 为 0)
+pub fn jw_depth(path: Str) -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < path.len {
+        if byte_at(path, i) == 46 {
+            n += 1
+        }
+        i += 1
+    }
+    return n
+}
+
+// child 是否为 parent 的直接成员(前缀匹配且深度恰 +1)
+fn jw_child(child: Str, parent: Str, pd: I32) -> Bool {
+    if jw_depth(child) != pd + 1 {
+        return false
+    }
+    var pl = parent.len
+    if child.len <= pl {
+        return false
+    }
+    if byte_at(child, pl) != 46 {
+        return false
+    }
+    var i: I32 = 0
+    while i < pl {
+        if byte_at(child, i) != byte_at(parent, i) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 路径最后一段(对象键名或数组下标文本)
+fn jw_lastseg(path: Str) -> Str {
+    var i = path.len - 1
+    while i >= 0 {
+        if byte_at(path, i) == 46 {
+            return byte_slice(path, i + 1, path.len)
+        }
+        i -= 1
+    }
+    return path
+}
+
+// 枚举 path 的直接成员名(对象=键序列,数组=下标序列"0","1",…)
+pub fn jw_keys(entries: List[List[Str]], path: Str) -> List[Str] {
+    var out = List[Str]()
+    var pd = jw_depth(path)
+    var i: I32 = 0
+    while i < entries.len {
+        if jw_child(entries[i][0], path, pd) {
+            out.push(jw_lastseg(entries[i][0]))
+        }
+        i += 1
+    }
+    return out
+}
+
+// 递归写出:ni 为当前值条目下标,depth 为其深度;返回下一个未消费下标
+fn jw_val(entries: List[List[Str]], ni: I32, depth: I32, out: List[Str]) -> I32 {
+    var tag = entries[ni][1]
+    var val = entries[ni][2]
+    if tag == "s" {
+        out.push(wesc(val))
+        return ni + 1
+    }
+    if tag == "n" {
+        out.push(val)
+        return ni + 1
+    }
+    if tag == "b" {
+        out.push(val)
+        return ni + 1
+    }
+    if tag == "z" {
+        out.push("null")
+        return ni + 1
+    }
+    // C9:字面量禁裸 { ——用 utf8_enc 从码点构造
+    var open_c = utf8_enc(123)
+    var close_c = utf8_enc(125)
+    if tag == "a" {
+        open_c = "["
+        close_c = "]"
+    }
+    out.push(open_c)
+    var j = ni + 1
+    var first = true
+    var parent = entries[ni][0]
+    while j < entries.len {
+        if !jw_child(entries[j][0], parent, depth) {
+            break
+        }
+        if !first {
+            out.push(",")
+        }
+        first = false
+        if tag == "o" {
+            out.push(wesc(jw_lastseg(entries[j][0])) + ":")
+        }
+        j = jw_val(entries, j, depth + 1, out)
+    }
+    out.push(close_c)
+    return j
+}
+
+// 写出:entries(json.ct parse 产物)→ 紧凑 JSON 文本;空表 → None
+pub fn write_json(entries: List[List[Str]]) -> Option[Str] {
+    if entries.len == 0 {
+        return None
+    }
+    var out = List[Str]()
+    jw_val(entries, 0, 0, out)
+    var s = ""
+    var i: I32 = 0
+    while i < out.len {
+        s = s + out[i]
+        i += 1
+    }
+    return Some(s)
+}
+
+// 条目构造助手(测试与调用方共用)
+pub fn jw_ent(path: Str, tag: Str, val: Str) -> List[Str] {
+    var e = List[Str]()
+    e.push(path)
+    e.push(tag)
+    e.push(val)
+    return e
+}
+
+// ============ 测试 ============
+
+test "esc round trip" {
+    let e = esc("tab\there")
+    assert_eq(e, "\"tab\\there\"")
+}
+
+test "numbers strict per RFC ABNF" {
+    let bad1 = parse("[01]")
+    let bad2 = parse("[1.]")
+    let bad3 = parse("[-.5]")
+    let bad4 = parse("[-]")
+    let ok1 = parse("[0, 10, -3.5, 1e2, -2E-3]")
+    let v_ok1 = match ok1 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qtag(v_ok1, "$.0"), "n")
+    assert_eq(qval(v_ok1, "$.1"), "10")
+    assert_eq(qval(v_ok1, "$.4"), "-2E-3")
+    let n1 = match bad1 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n1.len, 0)
+    let n2 = match bad2 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n2.len, 0)
+    let n3 = match bad3 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n3.len, 0)
+    let n4 = match bad4 {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(n4.len, 0)
+}
+
+test "parse array of scalars" {
+    let r = parse("[1, 2, true, null]")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qval(es, "$.0"), "1")
+    assert_eq(qtag(es, "$.2"), "b")
+    assert_eq(qtag(es, "$.3"), "z")
+}
+
+test "parse nested arrays" {
+    let r = parse("[[1, 2], [3]]")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qtag(es, "$"), "a")
+    assert_eq(qtag(es, "$.0"), "a")
+    assert_eq(qval(es, "$.0.0"), "1")
+    assert_eq(qval(es, "$.1.0"), "3")
+}
+
+// 深度正例:30 层嵌套(>512 超限负例由发射线夹具承载;解释面 100 层即触发
+// 宿主双解释递归栈段错误,C12 登记)
+test "depth parse ok under limit" {
+    var deep = ""
+    var i: I32 = 0
+    while i < 30 {
+        deep = deep + "["
+        i += 1
+    }
+    i = 0
+    while i < 30 {
+        deep = deep + "]"
+        i += 1
+    }
+    let r = parse(deep)
+    let _ = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+}
+test "write json array golden" {
+    var es = List[List[Str]]()
+    es.push(jw_ent("$", "a", ""))
+    es.push(jw_ent("$.0", "n", "1"))
+    es.push(jw_ent("$.1", "n", "2"))
+    es.push(jw_ent("$.2", "b", "true"))
+    es.push(jw_ent("$.3", "z", ""))
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            return 1
+        }
+    }
+    assert_eq(text, "[" + "1" + "," + "2" + "," + "true" + "," + "null" + "]")
+}
+
+test "write json object golden" {
+    var es = List[List[Str]]()
+    es.push(jw_ent("$", "o", ""))
+    es.push(jw_ent("$.name", "s", "张三"))
+    es.push(jw_ent("$.n", "n", "-3.5"))
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            return 1
+        }
+    }
+    var ob = utf8_enc(123)
+    var cb = utf8_enc(125)
+    assert_eq(text, ob + "\"name\":\"张三\"," + "\"n\":-3.5" + cb)
+}
+
+test "write json nested golden" {
+    var es = List[List[Str]]()
+    es.push(jw_ent("$", "o", ""))
+    es.push(jw_ent("$.a", "a", ""))
+    es.push(jw_ent("$.a.0", "n", "1"))
+    es.push(jw_ent("$.a.1", "o", ""))
+    es.push(jw_ent("$.a.1.b", "z", ""))
+    es.push(jw_ent("$.s", "s", "x\ty"))
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            return 1
+        }
+    }
+    var ob = utf8_enc(123)
+    var cb = utf8_enc(125)
+    assert_eq(text, ob + "\"a\":[1," + ob + "\"b\":null" + cb + "]," + "\"s\":\"x\\ty\"" + cb)
+}
+
+test "jw_keys enumerates members" {
+    var es = List[List[Str]]()
+    es.push(jw_ent("$", "o", ""))
+    es.push(jw_ent("$.b", "n", "1"))
+    es.push(jw_ent("$.a", "b", "true"))
+    es.push(jw_ent("$.c", "a", ""))
+    es.push(jw_ent("$.c.0", "n", "9"))
+    let ks = jw_keys(es, "$")
+    assert_eq(ks.len, 3)
+    assert_eq(ks[0], "b")
+    assert_eq(ks[1], "a")
+    assert_eq(ks[2], "c")
+    let inner = jw_keys(es, "$.c")
+    assert_eq(inner.len, 1)
+    assert_eq(inner[0], "0")
+    assert_eq(jw_keys(es, "$.b").len, 0)
+}
+
+test "jw_ent helper shape" {
+    var e = jw_ent("$.x", "s", "v")
+    assert_eq(e.len, 3)
+    assert_eq(e[0], "$.x")
+    assert_eq(e[1], "s")
+    assert_eq(e[2], "v")
+}

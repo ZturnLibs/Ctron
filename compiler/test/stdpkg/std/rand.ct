@@ -1,4 +1,5 @@
 // std/rand.ct —— 确定性伪随机(MINSTD/Park–Miller + Schrage;I64 承载 I32 值域)
+//@ tier: std
 // since: std-0.2 stability: experimental
 // 口径:种子型纯函数,无全局状态、无真实熵(宪章 8);模数 2147483647(2^31−1);
 // 真实熵源归系统域(process),本模块恒可复现;

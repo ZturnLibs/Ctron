@@ -1,0 +1,9 @@
+// gui expect: E8195 —— GUI-13:视图表达式内建白名单门(未知调用名编译期拦截;
+// 事件槽豁免不在本语料面)
+view P {
+  <vbox class="root">
+    <label class="row">{upper(name)}</label>
+  </vbox>
+}
+style root { direction: column }
+style row { fg: "#ffffff" }

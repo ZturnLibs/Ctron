@@ -1,4 +1,5 @@
 // std/process.ct —— 进程环境能力面(§8.1;R-P2b 锚迁主套件 07b)
+//@ tier: std
 // since: std-0.2 stability: experimental
 //
 // Env 为前奏隐式能力命名空间(§3.8 隐式可用;同 parallel/bit 先例):

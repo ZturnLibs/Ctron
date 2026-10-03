@@ -79,22 +79,23 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 | 插值字段/方法链(`{clock.now()}`) | ❌ | |
 | 多行首点链式排版(§1.6 新规则) | ❌ | **v0.4 新规则无测试** |
 | 比较不可链(parse 负例) | ❌ | 需先注册 E1xxx 码 |
-| doc-test(`///` 代码块) | ❌ | 格式亦未定义 |
+| doc-test(`///` 代码块) | ✅ | 机制落库(driver_doctest.ct 提升制,1003):锚 `00_doctest.ct`(多块+非 c 标签跳过)+`doctest/corpus/` 六件(执行/编译负例、标签与丢弃纪律、行号零漂移 JSON span 锚、emit 面盲区)+`doctest/run.sh` 九断言;C 宿主对照不提升(登记) |
 
 ## §2 名字与模块(8 项:❌8 —— 整章未覆盖)
 
 多文件 `use`/全限定路径、组导入 `{}`、`pub`、`pub(pkg)`、遮蔽、孤儿规则 E5010、循环依赖 E5020、caps 越权 E4010——**全部缺失**。根因:测试格式目前只支持单文件,多文件项目格式未定义(见"基建缺口")。
 
-## §3 类型系统(25 项:✅10 🟡4 ❌11)
+## §3 类型系统(26 项:✅11 🟡3 ❌11)
 
 | 特性 | 状态 | 锚点/缺口 |
 |---|---|---|
 | 检查算术+回绕、Option、Result、enum 具名/单元变体、元组、定长数组、泛型 fn、Box、`&Trait` 隐式上行 | ✅ | `01/02/03/04/07` |
-| Str/String(`to_string` 仅出现在 neg)、`@derive`(仅 Error)、数组字面量类型归属、切片可变写(仅 bare) | 🟡 | |
+| Str/String 独立类型(§3.8.1 类型表成员):显式注解位端到端+to_string 升格(发射面真分配)+String→Str 隐式降格 | ✅ | `03c_str_string.ct`(注解段)+`03c_str2string.neg.ct`(E2010 单向门);独立码面登记 v2 |
+| `@derive`(仅 Error)、数组字面量类型归属、切片可变写(仅 bare) | 🟡 | |
 | 数值宽度全集(I8..I64/ISize…) | ❌ | 仅用 I32/U8/U32/U64/F64 |
 | `as[T]()` 显式转换 | ❌ | |
 | `T?` 语法糖 | ❌ | |
-| `T[N] → T[]` 退化、隐式转换清单(String→Str、T[]→&T[]、值→&T) | ❌ | |
+| `T[N] → T[]` 退化、隐式转换清单(T[]→&T[]、值→&T;String→Str 已随 2026-10-03 销账) | ❌ | |
 | **`&T[]` 只读视图二分(v0.4)** | ❌ | **新特性无任何测试** |
 | enum 元组变体(`Timeout(U64)`) | ❌ | |
 | match 字面量模式、struct 模式 | ❌ | |
@@ -142,7 +143,7 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 1. **多文件测试格式未定义**——§2 整章(8 项)+ FFI 依赖它。需在 `tests/README.md` 定义:目录即项目(`tests/modules/xxx/{Ctron.toml,src/...}`)、`//@ fail` 归属文件行号、neg 判定范围。
 2. **E1xxx 解析错误码零注册**——比较不可链等 parse 负例无法编写;需先扩注册表(如 E1001 通用语法错误)。
-3. **doc-test 无格式样例**——`///` 代码块的编译运行语义需要首个样例钉死。
+3. ~~doc-test 无格式样例~~ **已解决(2026-10-03)**——格式由 README §8 钉死(围栏标签须 `c`、丢弃纪律、行号零漂移),机制落库 `compiler/src/driver_doctest.ct`(check/test/run 驱动提升制);锚 `00_doctest.ct`+语料 `doctest/`。
 4. (规范小缺口,审计中发现)数组字面量 `[1,2,3]` 的类型归属(`T[N]` 直标还是先 `T[N]` 再退化)未明确。
 
 ## 补测 backlog(26 个文件,按优先级)
@@ -826,7 +827,7 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   帧位图(切片3)。CTRON_GC 维持显式 opt-in。
 - 验收:T29 卡三条全过(泄漏锚/suite off 双档/net+db GC 档),卡转 ✅(切片3 增强另册)。
 
-**T55 销账(2026-09-30,提交 7590794)**:值位置闭包捕获原生臂落地——03j emit 同病顺带翻转(基线 2 errors→`mw:/x`),探针 t55_probe/t55_mw_smoke 双臂绿,suite 98/98×2;创建时快照边界+T27 注记在案(spec §9 L7)。
+**T55 销账(2026-09-30,提交 7590794)**:值位置闭包捕获原生臂落地——03j emit 同病顺带翻转(基线 2 errors→`mw:/x`),探针 t55_probe/t55_mw_smoke 双臂绿,suite 98/98×2;创建时快照边界+T27 注记在案(spec §9 L7)。**T27-B 收口(2026-10-02)**:快照边界的语义地位由 T27 裁决判定 = 规范行为(创建时拷贝,外层再赋值不可见,§4.7 终态)——不再是实现限制;T55 残余疑义销案。
 
 **2026-09-30 T30 into_gc 深拷真实化落库**(spec-gap W6;§6.3):
 - 发射侧 from 恒等 → 真深拷:let 构造位绑 #elem/#elemsz/#ielem(List[T]/arena.list[T];
@@ -909,6 +910,20 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   未及定位。工作树干净回退,suite 99/99 复绿。
 - 复开注记:优先在 S1 Val 平面重试(旧宿主值模型是根因域);json JNum/JReal 回切随芯。
 
+**2026-10-02 T53 ✅ 收官落账**(同日复开,S1 平面即愈;上轮 #prel 助手表方案弃用):
+- 芯先行:wrap 写侧+or 双读侧由 a000a6ad(P0-A)落库;本件补齐五病灶——expect 静态型别
+  硬编码 "i"(trans_ty 两处,推断 let int32 截 I64 根)/expect 发射无位还原/语句形
+  match-Ok `int32_t` 硬编码行(trans_stmt okIx 臂;match-R 发射共四路径逐条排摸)/
+  Try 两语句位 `(double)` 值直转/json (h) 绕行面。载荷码统一 ct_opt_elem_expr 恢复,
+  f 码内联 union 位双关(零新符号零 #prel,三次自举全过——宿主静默崩确证随去 cx 化消失)。
+- json JNum/JReal 回切:jget_* Result 面唯一 pub 数值面,jnum_*/jreal_*/jn_*/jr_* 摘除,
+  jv_*/jk_* 内迁 jget_*;pkgs/web/json.ct jd_i64、lib/http/frm/body.ct 注释同步。
+- 验收:探针 14 项四读侧×I64(2^63 双界)/F64 双臂绿(基线 emit bad=9 清零);
+  锚=02_option_result.ct 两 test 块+json_fidelity/corpus/e_t53_payload64.ct 双臂;
+  json_fidelity 13/13、suite 99/99 双列、web_todo 原生 92 裸跑 rc=0(big=5000000000
+  大值载荷)、http/run 105 过(6 红=基线同红:x_client_e2e/sse_ws e2e 五件 origin/main
+  预存,x_ws_e2e 主树 bin 对拍实证;gzip 族 vendored miniz 补建后转绿)。
+
 **2026-10-02 非己债登记:fx_genrec_neg.ct emit 死循环(main 在案,P0-A′/T53 域)**:
 - 症状:ctc.sh emit compiler/test/fx_genrec_neg.ct → seed 解释发射无限循环(100% CPU
   不终止;单案 timeout 100s 复现,产物 0 字节)。二分实证:stash 本线全部改动后同案
@@ -970,6 +985,129 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   P1 臂提速环境属性(p1-vs-C 同轮 1.13↔0.97 摆动),非本件回归;本件绿轮比值
   1.030/1.039 优于在册历史带(1.025–1.128)**。
 
+**2026-10-02 T35:分层 stdlib 机制(core < alloc < std)落库**(spec-gap W8;§9 档位矩阵):
+- 机制核(7550f8bc):清单 pkg 块 `tier` 键(缺省 std;E5040.tier 值域 fail-closed)+
+  模块头注 `//@ tier:` 提取(首注释块;缺标注不设门渐进承诺)+ use 点 `E3040.tier`
+  档位门一次诊断加载即止(bare 档钳 core;`pkg_load_use_t` 独立入口避碰
+  driver_emit/doc 调用面)+ schema regkey `pkg.tier`。修复前实证:bare+use alloc 模块
+  = std 内部 E3040 洪水(诊断指向 std 源行,归因错乱)→ 现 use 点一响即止。
+- 首批标注(425a4374):26 模块头注 core 5[math/hash/log/opt/pb]/alloc 16/std 5
+  [fs/time/process/rand/uuid],分配面+OS 面双轴;stdpkg/examples 副本同步
+  (examples/ctgrep、ctwc、ctwf 三例 vendored 副本顺势转正入库)。
+- 锚(332b423f/41fc493a):smoke 3c2 段 9 断言——seed 臂夹具本地 std 七(alloc/std
+  档负例+值域+bare 钳门双跑+core 正例 full/bare 双证)+ native 臂真库二(core 五模块
+  bare 体检自证=core 档音遍性[tier_real_pos decls=75 零诊断];tier=core use std.str
+  单响)。decl 锁 439→443 随批申报(+4 fn)。
+- 门:suite 99/99 双臂;smoke 170 ok(余 3 红=conc 双发射红[T33 在册 8ac3d1da]+
+  Rust iter 清账[基线复现既有翻绿,账面属 R 线];meta_check cbox×3=peer 在飞缺清单,
+  均构造性无关,基线 worktree 实证)。
+- 坑位:①共享检出树多泳道并发,未提交编辑会被 peer `git stash` 连带卷走(Task 1 四件
+  被卷入 t31wip stash;恢复=`git checkout <stash> -- <my paths>` 单边提取,勿整体
+  pop——stash 混对方 trans_* WIP);②selective merge 连带 Test 块亦吃 bare 体检查,
+  core 档标注前须核其自带 test 零分配(五模块实证 0 命中);③vendored examples std 有
+  硬链接形态(ctslink/web_todo),cp 报 identical 即已共享。
+- 登记债:三线 parity(pkg.c 清单 tier 键/sem.c bare 钳口径/main.rs Manifest.tier+
+  R 线检查面)、域包 tier 标注(随 registry)、emit/doc 驱动 prof 接线(随 emit seam)、
+  单文件裸跑 bare(无清单时 use 门不设,仅体检查面)。
+
+**2026-10-03 T27-B:闭包捕获语义收口·原生臂复验收官(r3a 双臂全绿)**(spec-gap W5;
+T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂红」翻面):
+- 归因(干净基线 worktree 逐提交二分):破窗=p0a 合并 46e11d70(绿→红单步),非在册
+  「ct_emit_clo 卫兵错位」——r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef
+  包整 shim)。真红三连:①`ct_str_bsum` 判别位 I32 `h*31+b` 链溢出(p0a 把捕获名/型别码
+  纳入哈希,4 字符捕获名 `base` 第 3 字符即破 I32;shim 名后缀 236033764 与
+  bsum("x")→("n")→("i") 逐字吻合=实锤)→ 模归约 `(h % 69000000) * 31 + b`(最大中间值
+  21.39 亿 < 2^31,确定性/双宿主一致);②闭包体尾槽与 return 位(#shim=2 早返臂)的
+  with/with_mut 不走 ANF——`ct_expr` 恒拒「仅语句位」,eval 两侧皆合法 → `ct_clo_with_tail`
+  助手(trans_conc)+ return 位前置(trans_stmt),预扫两处同助手通路面(eln 门控零输出);
+  ③同 fn 多 with 同名形参双双内联 → C 顶层重定义(r3a bump = with_mut+with 双连)→
+  ct_emit_with_stmt 发射整体入 C 作用域括号(rc 声明位在括号外,存活到消费点)。
+- 验收:fx_cloval 发射+运行 107/105/25 对拍解释臂;探针四形(裸 with_mut 尾/return 位/
+  test 内 r3a 形/普通 fn 双 with)全绿;r3a 发射+cc+运行 rc=0(断言全过)+负锚 E3070
+  正响;suite 99/99;smoke 170/3(余 2 红=conc_parallel[T33 在册,bsum 修复后复现依旧,
+  OOB 独立]/Rust iter 清账[R 线],皆基线非本件)。
+- 连带三小修:①自举固定点段「两路发射产物分歧」=版本行竞态假红——两路各自 build.sh
+  采样 git describe,机刷并发落库窗口内 HEAD 移动即两侧版本串不同(diff 仅此一行实证)
+  → 门禁改版本行除外对拍(发射不变量是编译器逻辑非版本戳);②GATEDBG2 调试 println
+  清退(trans_expr,p0a 合并遗留,污染一切含 fn 值调用的发射产物);③decl 锁 444→449
+  随批申报(+1 本件 ct_clo_with_tail;+4=GUI-17/12 批已落库未申报,归 GUI 泳道补登记)。
+- 坑位:①seed 侧 arithmetic gate(interp/emit 双宿主一致语义:中间值 128 位+fits 检查)
+  会咬发射器自身代码——哈希/判别位类算术一律模归约或有界累加,勿裸写乘法链;②emit 的
+  with ANF 是「逐位置接线」形态(语句/let/return 尾/闭包体尾各自一臂),新位置接入时
+  预扫(pass-1)与实发(pass-2)都要过同一助手,漏预扫=中途 panic 截断发射产物;③
+  T20 emit 缓存键含 build/cc_emit.ct 哈希但 build.sh 先于发射重跑,跨版本缓存条目
+  (ANCHORVERSION 陈物)曾混入对拍——缓存目录清退后未复现,存疑登记。
+- 登记债:with 在任意表达式位的 emit ANF 缺口(eval 合法;`return bump() + m.with(...)`
+  形即炸「仅语句位」)——语句/let/return 尾/闭包体尾已全接,任意嵌套表达式位待 ANF
+  提升机(capability 项);T33 parallel ct_emit_clo OOB 独立在册(bsum 修复后复现依旧,
+  卫兵假说待 T33 作者复证)。
+
+
+**2026-10-03 String 独立类型落库**(§3.8.1 前奏类型表成员;§3.1/§3.3/§3.6):
+- 缺口实证:发射面 `String` 注解无类型码臂 → ct_ty_code 尾默认塌缩 `"i"`——注解位落
+  `int32_t`,槽型/赋值/传参全错(p2 探针逐字:`int32_t t_owned = (const char*)(...)`);
+  `.to_string()` 发射臂透传(零拷贝别名),与 sem 面(所有 to_string 记分配,E3040 双上下文
+  已正确)及解释臂(产新值)三方分歧。
+- v1 口径(独立面在 sem 键,码面同 Str):ct_ty_code 补 `String → "s"` 臂——C 表示与 Str
+  同(const char*),独立性载于 sem 键 n:String(k_strish)+E2010 单向门(String→Str 隐式降格、
+  Str→String 拒)+to_string 升格唯一路径。独立码 "S" 登记 v2:已被 ct_inst_encode 的 Str 槽
+  字母表(I/S/B/L)占用,须连动单态化键两侧再立。
+- to_string 发射面真分配:接收码 "s" → `ctron_byte_slice(x,0,strlen)`(与 concat 同
+  ctron_amalloc 源,堆拷贝);接收码 "N"(内部节点引用)保持透传不动。
+- 锚:03c 扩第三段(显式 String 注解端到端:声明/降格/contains/strcmp 面 ==/升格往返)——
+  03c 原两段走无注解路径,两臂本就绿,新段钉住注解位防塌缩回归;新负锚 03c_str2string.neg.ct
+  (变量+字面量双违例,各报 E2010)。
+- 宿主对齐:C 参考宿主 sem.c 原为类别制保守子集(Str/String 同类 3),负锚在自举 cc 正确
+  报 E2010 而宿主放行(suite 分歧清单立红灯)→ 宿主 ST_LET 判定位补 String 注解单向门
+  (方法调用 derive_type NULL 保守面自然放行 to_string 升格;字面量/Str 变量初值报 E2010);
+  make compiler-c 后双线一致。
+- 探针:显式注解/无注解/struct 字段 String/fn 形参返回 String/成员面(contains/==/concat/
+  println/char_len)双臂逐点;发射 C 逐行核(t_owned=const char*+真拷贝)。
+- 验收:suite 100/100 双线(自举 cc+C 宿主);smoke 非全量 158 ok(3 红=decls 451[peer GUI-13
+  在飞新增 fn 申报位]/conc_parallel[T33 在册]/Rust iter[清账在册]皆非本件);meta_check 4 红=
+  cbox 族缺 Ctron.ctcl(T45 基线在册)。
+- 登记债:①String 独立码面(v2,见上);②contains 发射 typeof 缺臂(trans_ty 无 arm →
+  println 落 %d 打 "1",解释臂打 "true"——T09 面既有分歧,本件探针 p6 实证后登记);③
+  fmt 返回型 Str vs 规范 String(§3.8.2;隐式降格下观察等价,随 fmt 面整备);④struct 派生
+  谓词标量集含 Str 不含 String(§3.9.2,String 字段 struct 不满足 Show/Eq bound);⑤
+  slice(range)/iter() 发射臂缺口(§3.8.2 其余成员,既有在册)。
+**2026-10-03 T16 续波·惰性适配器面收口**(R-P3b 承诺余项;UFCS 链式续篇):
+- **std/iter.ct v3**:适配器补 skip(位置平移)/take_while(前缀扫描)/rev(无状态重
+  扫反读)/enumerate(Pair[I64,T] 索引对)/zip(同型 S 逐位 Pair[T,T])/chain(前段
+  尽则重扫 a 长再读 b);终结子补 fold(I64 累计)/reduce(T? 空即 None)/foreach
+  (无返回 fn 型 fn(T) 首证,返回计数 I64)/min/max(泛型 T 比较运算首证,稳定取
+  先)/last/position(谓词→I64?)。数组 UFCS 入口同批补齐(包装 RawSeq 或快路径
+  直终结,I32 单型口径承 T16);from_list(List[I32])→ListSeq[T] 接入 List。
+- **探针四证(施工前)**:①泛型 trait impl for class(同文件 class)通,class var
+  字段跨接收者拷贝持久(引用共享);②无返回 fn 型 `fn(T)` 文法可选返回位实装可用,
+  闭包块体适配通;③trait 默认方法内泛型 T `<`/`>` 比较通;④泛型 struct 裸字面量
+  推断(Pair[F,G])通。**前奏 class 直 impl 不挂**:`impl Seq[T, List[T]] for
+  List[T]` 后 `xs.get(i)` 报「method:get」——内建类型方法派发表不含用户 trait impl,
+  List 接入改 ListSeq 包装 struct(与 RawSeq 同构)。
+- **接收者拷贝边界(interp 实证)**:class 实例存入 struct 字段即被拷贝——裸绑定
+  直调 `p.get(0)` mutation 持久;经字段派发 `w.get(0)`(w.it 持同类实例)或再绑定
+  `let q = w.it` 后调,mutation 皆丢。惰性观测的 class 计数法在 trait 链上不可用,
+  锚改「有界拉动终局」证法(limit=20 亿 Counter × take(3) 瞬通,急切排空必超时)。
+- **同型 zip/chain 裁决**:trait 二参方法 other 与 self 同适配器型 S(泛型方法位
+  不引入新型参,零先例);数组入口双侧同包 RawSeq 故 xs.zip(ys)/xs.chain(ys) 直
+  用,xs.take(3).chain(ys.take(2)) 同型链通;异型两侧(map 后 zip 裸数组)登记。
+  rev/chain 的 get 为 O(n) 重扫/次(总量 O(n·m)),正确性优先,缓存化待 var-self
+  写回语义落库。
+- **min/max 名义**:与 std/math 二元 min/max 同名不同签(Ctron 无重载);use 显式
+  导入制下同导两名才 E5030,方法调用形(xs.max())不走自由函数命名空间——锚仅导
+  iter 名,双导冲突场景登记 hazard 不设门。
+- **锚扩 iter_adapters**:原四段(T16)+续波八段(skip/take_while/rev+enumerate/
+  zip/chain/fold+reduce+min+max/foreach+last+position/from_list+空面/惰性/自定义
+  Seq 上新适配器);use 两行补新名。suite 主套件 99/99 双臂零新增红;modules 段
+  17/18(dup_static/use_alias_nat=对端在飞/既有账);ffi cbox 三红 stash 归因
+  =HEAD 基线固有(emit 臂 E2020 use cbox_* 未找到),非本件。smoke 158 ok/2 红:
+  decls 实测 450 vs 锁 449=GUI-21(gui_scroll_add/scrolloff)编译声明已落库未申报,
+  GUI 泳道债(主树在飞 smoke.sh 即在处理);conc_parallel=T33 在册——皆非本件。
+- **登记债**:①发射臂 trait 方法调用/for-over-Iterator 未发射(T25 v2 域,T16 既
+  有);②前奏 class(List)直 impl trait 派发不挂(本件新证,method:get)——包装
+  struct 绕行,真接入待 eval 派发表扩;③class 实例经 struct 字段存储拷贝语义(本
+  件新证)——与 W8010「浅拷贝共享类字段」lint 口径相悖,归 interp 值语义整备域
+  裁决(共享 or 拷贝,两口径取一);④异型 zip/chain(泛型方法位新型参)v2。
 **2026-10-02 T31 重开落库:M1.5 精确帧根集(S1+S2,分支 t31-m15)**(spec-gap W6;契约 §6.3):
 - **S1 标记器硬化(ba73779a)**:超块单尺寸类+内部指针 O(1) 块起点归约+头双门+
   worklist 迭代标记——路线② SIGSEGV 两机制(载荷当头读野扫/递归标记栈爆)销账;

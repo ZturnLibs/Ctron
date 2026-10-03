@@ -32,6 +32,10 @@ fn main() -> I32 {
     assert_eq(SAMPLE_NAME, "ctron")
     // union 字节缓冲:cimport 的 N(最大成员按联合对齐补齐)须等于 C sizeof(Vals)=16
     assert_eq(uvals_size_is(Vals_raw_len()), 1)
+    // T45:union 关键字限定指针形参(union Vals* → &Vals)——C 写读往返
+    var vv = Vals { raw: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+    vals_poke_k(vv, 90125)
+    assert_eq(vals_peek_k(vv), 90125)
     // 定长数组字段:布局同构(sizeof=24)+ 成员索引读写
     var sa = samplearr_make(100)
     assert_eq(sa.total, 100)

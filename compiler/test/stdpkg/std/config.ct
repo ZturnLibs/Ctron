@@ -1,4 +1,5 @@
 // std/config.ct —— CTCL(Ctron Config Language)标准库模块(§9 支持路线 L1/L2)
+//@ tier: alloc
 // 规范:docs/superpowers/specs/2026-09-16-config-language-v1.md
 // API:config_diags(src) -> List[Str](逐条 "E504x 消息全文";合法清单 = 空列表)
 // 本模块为黄金对拍第四线(selfhosted/ctcl_chk.ct)的同源内核:

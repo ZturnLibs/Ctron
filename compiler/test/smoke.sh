@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=443' "$T/chk.out" && ok "自检 cc_run 绿,decls=443(439+T31 重开 M1.5 四助手:ct_gc_slot_kind/ct_reg_line_c/ct_reg_line/ct_fr_prologue,2026-10-02 随批申报)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=455' "$T/chk.out" && ok "自检 cc_run 绿,decls=455(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报=444;+T27-B 原生臂收口一 fn[ct_clo_with_tail:闭包体尾/return 位 with ANF 助手]+GUI-17/12 批已落库未申报四 fn[归 GUI 泳道补登记],2026-10-03 随批申报=449;+GUI-13 视图表达式形态门一 fn[gui_bx_form_gate],2026-10-03 随批申报=450;对端 D 档批一 fn 已落库未申报归 GUI 泳道补登记,2026-10-03 随批申报=451;+T31 重开 M1.5 四助手[ct_gc_slot_kind/ct_reg_line_c/ct_reg_line/ct_fr_prologue],2026-10-03 随批申报=455)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -247,6 +247,61 @@ if [ $? -eq 0 ]; then
     ok "full 档同源通过(档位门控生效)"
 else
     bad "full 档误拦"
+fi
+echo "== 3c2) T35 分层 stdlib(档位门:清单 tier 键+头注 //@ tier+E3040.tier) =="
+"$COMP/ctc.sh" check "$COMP/test/tier_neg_alloc/src/main.ct" > "$T/tier1.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier1.out"; then
+    ok "T35 core 包 use alloc 层模块 = E3040.tier"
+else
+    bad "T35 alloc 档未拦: $(cat "$T/tier1.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_neg_std/src/main.ct" > "$T/tier2.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier2.out"; then
+    ok "T35 core 包 use std 层模块 = E3040.tier"
+else
+    bad "T35 std 档未拦: $(cat "$T/tier2.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_neg_val/src/main.ct" > "$T/tier3.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E5040" "$T/tier3.out"; then
+    ok "T35 清单 tier 越域值 = E5040.tier(fail-closed)"
+else
+    bad "T35 值域未拦: $(cat "$T/tier3.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_prof_neg/src/main.ct" --profile=bare > "$T/tier4.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier4.out"; then
+    ok "T35 bare 档钳门(use 面)= E3040.tier"
+else
+    bad "T35 bare 钳未拦: $(cat "$T/tier4.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_prof_neg/src/main.ct" > "$T/tier5.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 full 档同夹具不拦(钳门精确)"
+else
+    bad "T35 full 档误拦: $(cat "$T/tier5.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_pos/src/main.ct" > "$T/tier6.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 core 包 use core+无标注模块 = 过"
+else
+    bad "T35 pos 误拦: $(cat "$T/tier6.out")"
+fi
+"$COMP/ctc.sh" check "$COMP/test/tier_pos/src/main.ct" --profile=bare > "$T/tier7.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 core 包 bare 双证(档位面+分配面)"
+else
+    bad "T35 pos bare 误拦: $(cat "$T/tier7.out")"
+fi
+CTRON_STDPATH="$ROOT/lib/std" "$ROOT/ctron" check "$COMP/test/tier_real_pos/src/main.ct" --profile=bare > "$T/tier8.out" 2>&1
+if [ $? -eq 0 ]; then
+    ok "T35 真库 core 五模块 bare 体检自证(native 臂)"
+else
+    bad "T35 真库 core 自证红: $(cat "$T/tier8.out")"
+fi
+CTRON_STDPATH="$ROOT/lib/std" "$ROOT/ctron" check "$COMP/test/tier_real_neg/src/main.ct" > "$T/tier9.out" 2>&1
+if [ $? -ne 0 ] && grep -q "E3040" "$T/tier9.out"; then
+    ok "T35 真库 use 门单响(E3040.tier,加载即止)"
+else
+    bad "T35 真库 use 门异常: $(cat "$T/tier9.out")"
 fi
 echo "== 3d) std 种子包(use std.*:IntMap/IntSet) =="
 drift=0
@@ -573,7 +628,11 @@ P
     if "$COMP/ctc.sh" emit "$COMP/build/cc_emit.ct" "$T/cc_emit.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cc_emitter.bin" "$T/cc_emit.c" 2>/dev/null; then
         "$T/cc_emitter.bin" run "$COMP/build/cc_run.ct" > "$T/c2.c" 2>&1
-        diff -q "$T/cc_self.c" "$T/c2.c" > /dev/null 2>&1 && ok "固定点:发射产物逐字节复现" || bad "固定点:两路发射产物分歧"
+        # 版本行除外:两路各自 build.sh 采样 git describe,跑门窗口内 HEAD 移动
+        # (机刷并发落库)即两侧版本串不同——发射不变量是编译器逻辑,非版本戳
+        grep -v 'static const char\* ctron_version' "$T/cc_self.c" > "$T/cc_self_nv.c"
+        grep -v 'static const char\* ctron_version' "$T/c2.c" > "$T/c2_nv.c"
+        diff -q "$T/cc_self_nv.c" "$T/c2_nv.c" > /dev/null 2>&1 && ok "固定点:发射产物逐字节复现(版本行除外)" || bad "固定点:两路发射产物分歧"
     else
         bad "发射器自发射失败"
     fi

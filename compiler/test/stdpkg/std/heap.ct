@@ -1,4 +1,5 @@
 // std/heap.ct —— 二叉堆(比较器注入;小顶;函数式返回新 List,宪章 3)
+//@ tier: alloc
 // since: std-0.2 stability: experimental
 // 口径:cmp(a,b) < 0 表示 a 优先级高(在前);push/pop 每次重建 O(n) 拷贝 +
 // O(log n) 筛(文档化,v0 接受);堆序:cmp(xs[i], xs[父]) ≥ 0

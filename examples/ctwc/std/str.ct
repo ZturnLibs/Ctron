@@ -1,4 +1,5 @@
 // std/str.ct —— Str 工具种子(words/contains/lines/count_ch;字节级,UTF-8 透传)
+//@ tier: alloc
 
 // 空白分隔切词(空格/制表/换行/回车;与 wc 词口径一致)
 pub fn words(s: Str) -> List[Str] {

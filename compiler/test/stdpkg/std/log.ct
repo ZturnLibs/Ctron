@@ -1,4 +1,5 @@
 // std/log.ct —— 结构化 kv 日志(P7-A;T1 档:零 use 纯函数,无 extern 无时钟)
+//@ tier: core
 //
 // 形态纪律(router/enc 同款零 use 纯模块):本模块不取时钟、不落 IO ——
 //   ts 由消费方传(now_iso_utc()),写出由消费方 println;本模块只做

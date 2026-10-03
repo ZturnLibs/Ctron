@@ -1,4 +1,5 @@
 // std/fmap.ct —— FMap[V]:Str 键哈希映射(开放寻址,定容 256 槽,线性探查)
+//@ tier: alloc
 // 哈希 = djb2 mod 100003(全程 < 2^31,不触 eval 乘法溢出守卫,双面精确一致);
 // 槽位 = 哈希 % 256。
 // 函数式 API(fput 返回新映射,镜像 eval 结构体读即深克隆的语义锚)。
@@ -143,11 +144,6 @@ pub fn fvals[V](m: FMap[V]) -> List[V] {
     return m.vals
 }
 
-// 值表(插入序,与 fwords 一一对应)
-pub fn fvals[V](m: FMap[V]) -> List[V] {
-    return m.vals
-}
-
 test "fput/fget/fhas basics" {
     var m = fnew[I32]()
     assert(flen[I32](m) == 0)
@@ -207,4 +203,37 @@ test "fmap saturates at 256 (silent drop, v0)" {
     assert(flen[I32](m) == 256)
     assert(fget[I32](m, "w0", -1) == 0)
     assert(fget[I32](m, "w299", -1) == -1)
+}
+
+
+// ============ v0.3 完备性:删除(函数式,返回新映射;槽位紧缩不保序——
+// 开放寻址删除 Tombstone 会破坏探测链,采用"取活词表重建"策略,迭代序=v2 哈希序) ============
+
+// 删除键:不存在时原样返回
+pub fn fdel[V](m: FMap[V], k: Str) -> FMap[V] {
+    if !fhas[V](m, k) {
+        return m
+    }
+    var w = fwords[V](m)
+    var out = fnew[V]()
+    var i: I32 = 0
+    while i < w.len {
+        if w[i] != k {
+            out = fput[V](out, w[i], fget[V](m, w[i], 0))
+        }
+        i += 1
+    }
+    return out
+}
+
+test "fdel removes key" {
+    var m = fnew[I32]()
+    m = fput[I32](m, "a", 1)
+    m = fput[I32](m, "b", 2)
+    m = fdel[I32](m, "a")
+    assert_eq(flen[I32](m), 1)
+    assert(fhas[V](m, "b"))
+    assert(!fhas[V](m, "a"))
+    var m2 = fdel[I32](m, "a")
+    assert_eq(flen[I32](m2), 1)
 }

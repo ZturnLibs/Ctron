@@ -1,4 +1,5 @@
 // std/set.ct —— Set[V] 种子(List 成员;函数式:add 返回新集合)
+//@ tier: alloc
 // V 需可 ==(add 去重 bound Eq);add 体内嵌套调用 mem[V](单态化嵌套解析)
 struct Set[V] {
     let items: List[V]
