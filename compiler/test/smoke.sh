@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=455' "$T/chk.out" && ok "自检 cc_run 绿,decls=455(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报=444;+T27-B 原生臂收口一 fn[ct_clo_with_tail:闭包体尾/return 位 with ANF 助手]+GUI-17/12 批已落库未申报四 fn[归 GUI 泳道补登记],2026-10-03 随批申报=449;+GUI-13 视图表达式形态门一 fn[gui_bx_form_gate],2026-10-03 随批申报=450;对端 D 档批一 fn 已落库未申报归 GUI 泳道补登记,2026-10-03 随批申报=451;+T31 重开 M1.5 四助手[ct_gc_slot_kind/ct_reg_line_c/ct_reg_line/ct_fr_prologue],2026-10-03 随批申报=455)" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=451' "$T/chk.out" && ok "自检 cc_run 绿,decls=451(合并树实测:2026-10-01 锁 439+T35 分层机制核四 fn,+T45 解释桥 fret 宿主口一 extern[ctron_ext_fret],2026-10-02 随批申报=444;+T27-B 原生臂收口一 fn[ct_clo_with_tail:闭包体尾/return 位 with ANF 助手]+GUI-17/12 批已落库未申报四 fn[归 GUI 泳道补登记],2026-10-03 随批申报=449;+GUI-13 视图表达式形态门一 fn[gui_bx_form_gate],2026-10-03 随批申报=450;对端 D 档批一 fn 已落库未申报归 GUI 泳道补登记,2026-10-03 随批申报=451;T31 M1.5 四助手仅入发射驱动链 cc_emit,cc_run 计数不含,2026-10-03 注)" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
