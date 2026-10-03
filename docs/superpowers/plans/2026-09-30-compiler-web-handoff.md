@@ -68,3 +68,9 @@ forget_fd/close 重排(P4-A)、chunked 2^59 乘前门(86eac25)、c10k 泄漏门�
 2. P1-1 与 P0-A 触及相邻发射面(trans_stmt/trans_ty),建议同一会话处理避免二次冲突;P1-2/P1-5 是 interp 一行级,随手批;
 3. 每项修复后:回写 docs/c-rust-divergences.md 销账 + 对应示例 run.sh 复跑(验证清单见 P0-B);
 4. 本单未含服务器泳道自身的 P9 志向档(io_uring/h2 等),彼处与编译项无依赖耦合。
+
+## 执行状态(2026-10-01/03 更新)
+
+- **P0-A:✅ 销账**(396975a 泛型 struct 载荷扩位=嵌入按值/U<len>_ 无碰撞编码/双发射路径 cycle-safe;8c1f9d2 收口=else 臂 Block fallback+双解析形钉;复审 Approved)。**遗留 P0-A′ 立项**:泛型特化递归超限(fx_genrec_neg 钉定的无 seen 集语义)——**后随 P9 栈面波(f59932db 泛型特化位同批)已解**,ctslink emit 已过该点。
+- **P0-B:✅ 销账**(0428ddd,2026-10-01:bind.ct 全族出参迁 &Box64 裸指针形,E4046 解除,`use net` 整树复活;tests/net 双矩阵绿经本泳道复验)。registry 泳道自身的 pkg.ct &T 迁移(04ff0d7 归属登记)仍归彼处。
+- **新增最后一项(本表 P0-C,带完整案卷)**:**合成 fn 载荷 struct 的定义序**——emit 对 fn 返回载体(t_SessPut/t_BktEnt 族)按 fn 遍历位交错发射,ctsl的 t_BktEnt(:426)按值内嵌 t_LimBkt 而其定义在后 → `unknown type`(P0-A review 已注"声明序即拓扑序前提"为真债;前置声明 prelude 已在树但不解按值内嵌——C 要求完整类型)。**复现**:`ctron-emit run examples/ctslink/src/serve_net.ct` → sl.c:426 unknown type t_LimBkt(2026-10-03 二进制实测)。**修法(两选一)**:(a) 载荷发射延迟到具体 struct 块之后(最小);(b) 定义拓扑序(完全体,按值字段依赖建图)。**半成品**:工作树 driver_emit.ct 有未提交的具名形+prelude 部分(指针面有效);驱动二进制 2026-10-03 22:19 已含 P0-A′ 解除,仅剩本项。验证:ctslink 原生构建(cc 路径=lib/net/c_src + lib/db/c_src,布局迁移后)+ loopback curl 全链。
