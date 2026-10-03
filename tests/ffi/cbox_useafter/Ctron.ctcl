@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "ffi_cbox_useafter"
+    version = "0.1.0"
+}

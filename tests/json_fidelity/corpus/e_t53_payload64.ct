@@ -83,3 +83,8 @@ fn main() -> I32 {
     println("T53 PAYLOAD64 OK")
     return 0
 }
+
+test "t53 payload64 roundtrip" {
+    assert_eq(jk_i64(atable(), "$.max"), "ok")
+    assert_eq(jk_f64(atable(), "$.r2"), "ok")
+}
