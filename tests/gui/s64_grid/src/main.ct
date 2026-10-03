@@ -10,6 +10,19 @@ fn bind_all(buf: List[Str], m: Box[M]) {
     if buf[0] == "state" {
         buf.push(m.state)
     }
+    // v2 多列数据驱动:平行列表 + 带型下标列表(each idx in={pids})
+    if buf[0] == "each:pids" {
+        buf.push("i:0")
+        buf.push("i:1")
+    }
+    if buf[0] == "each:names" {
+        buf.push("main.ct")
+        buf.push("lib.ct")
+    }
+    if buf[0] == "each:sizes" {
+        buf.push("12 KB")
+        buf.push("48 KB")
+    }
 }
 
 fn act(name: Str, args: List[Str], m: Box[M]) {
