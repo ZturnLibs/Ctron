@@ -51,7 +51,8 @@ fn act(name: Str, m: Box[Model]) {
     if head_of(name) == "set_draft" {
         m.draft = payload_of(name)
     }
-    if name == "add" {
+    // 名通道契约:submit 亦携载荷(add:hiXYZ),head 拆名同 set_draft 口径
+    if head_of(name) == "add" {
         m.state = "submitted"
     }
 }

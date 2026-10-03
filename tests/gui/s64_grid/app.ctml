@@ -11,8 +11,9 @@ view Row (a: Str, b: Str) {
 view Root {
   <vbox class="root">
     <Row a: "名称" b: "大小"/>
-    <Row a: "main.ct" b: "12 KB"/>
-    <Row a: "lib.ct" b: "48 KB"/>
+    <each idx in={pids}>
+      <Row a: {names[idx]} b: {sizes[idx]}/>
+    </each>
     <hbox class="grow">
       <spacer class="col"/>
       <spacer class="col"/>

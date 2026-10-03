@@ -128,6 +128,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var cbp5 = pcs5[ai]
                     if cbp5.len > 2 && byte_slice(cbp5, 0, 2) == "u:" {
                         acall = acall + "*(t_" + byte_slice(cbp5, 2, cbp5.len) + "*)(long)_cbp" + ai.to_string()
+                    } else if cbp5.len > 2 && byte_slice(cbp5, 0, 2) == "B:" {
+                        // Box[T] 形参 = 堆单值指针直传(t_P*;与 u: 按值解引用异构)
+                        acall = acall + "(t_" + byte_slice(cbp5, 2, cbp5.len) + "*)(long)_cbp" + ai.to_string()
                     } else if cbp5.len > 1 && byte_at(cbp5, 0) == 112 {
                         // 裸指针形参(v0.9·五):ct_i → T* 显式 cast(同 ct_cb_ref 侧)
                         acall = acall + "(" + ct_abi_ctype(cbp5) + ")_cbp" + ai.to_string()
@@ -147,6 +150,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     println("return (\{ " + ct_ctype(aret) + "* _rb = (" + ct_ctype(aret) + "*)ctron_amalloc(sizeof(" + ct_ctype(aret) + ")); *_rb = t_" + e[1] + "(" + acall + "); (ct_i)(long)_rb; });")
                 } else if aret.len > 1 && byte_at(aret, 0) == 71 {
                     println("return (ct_i)(long)t_" + e[1] + "(" + acall + ");")
+                } else if seq2(aret, "v") {
+                    // void 返回:调用后回 0((ct_i) 作用于 void 调用为非法 C)
+                    println("t_" + e[1] + "(" + acall + "); return 0;")
                 } else {
                     println("return (ct_i)t_" + e[1] + "(" + acall + ");")
                 }
@@ -1512,11 +1518,14 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
                         // P0-A:判别位移 decl 在案(旧 rfpcs.len>0 漏 0 参 fn——
                         // clk_fix/clk_unix 形裸地址直填 ct_clop,env=邻接码字节
                         // ≠哨兵 → 调 fn 槽=代码字节即 SIGSEGV);形参/局部闭包
-                        // 值(非 decl)恒直传不过包装
-                        if ct_fn_decl_any(file, ag[i][1]) {
-                            var rfpcs = ct_fn_pcodes(file, ag[i][1])
-                            if rfpcs.len == byte_at(pc, 1) - 48 {
-                                aenv = env_bind(env, "#fval", ct_fval_emit(file, ag[i][1], "C" + nline(ag[i])))
+                        // 值(非 decl)恒直传不过包装。env 先行判别:域包体内
+                        // 同名形参撞用户全局 fn 时 decl 查找误包装(六红 s33 族根因)
+                        if !ct_env_has(env, ag[i][1]) {
+                            if ct_fn_decl_any(file, ag[i][1]) {
+                                var rfpcs = ct_fn_pcodes(file, ag[i][1])
+                                if rfpcs.len == byte_at(pc, 1) - 48 {
+                                    aenv = env_bind(env, "#fval", ct_fval_emit(file, ag[i][1], "C" + nline(ag[i])))
+                                }
                             }
                         }
                     }
@@ -1942,14 +1951,17 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                             if pc9.len > 0 {
                                 if byte_at(pc9, 0) == 70 {
                                     // P0-A:同 ct_call_args_tg——decl 在案判别位
-                                    //(0 参 fn 补包装;形参/局部闭包值直传)
-                                    if ct_fn_decl_any(file, ag[gi9][1]) {
-                                        var rfpcs9 = ct_fn_pcodes(file, ag[gi9][1])
-                                        if rfpcs9.len == byte_at(pc9, 1) - 48 {
-                                            var fv9 = ct_fval_emit(file, ag[gi9][1], "C" + nline(ag[gi9]))
-                                            gargs = gargs + ", " + fv9
-                                            gi9 += 1
-                                            continue
+                                    //(0 参 fn 补包装);env 先行:形参/局部闭包值
+                                    // 直传(域包体内同名形参撞用户全局 fn 误包装同根)
+                                    if !ct_env_has(env, ag[gi9][1]) {
+                                        if ct_fn_decl_any(file, ag[gi9][1]) {
+                                            var rfpcs9 = ct_fn_pcodes(file, ag[gi9][1])
+                                            if rfpcs9.len == byte_at(pc9, 1) - 48 {
+                                                var fv9 = ct_fval_emit(file, ag[gi9][1], "C" + nline(ag[gi9]))
+                                                gargs = gargs + ", " + fv9
+                                                gi9 += 1
+                                                continue
+                                            }
                                         }
                                     }
                                 }
@@ -2011,22 +2023,27 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
             if pc31.len > 2 && byte_slice(pc31, 0, 2) == "u:" {
                 acc31 = "*(t_" + byte_slice(pc31, 2, pc31.len) + "*)(long)_p" + ai31.to_string()
             } else {
-                if pc31.len > 1 && byte_at(pc31, 0) == 112 {
-                    // P0-A:&T 形参(pu: 码)——ct_i 槽指针直传
-                    acc31 = "(" + ct_ctype(pc31) + ")(long)_p" + ai31.to_string()
+                if pc31.len > 2 && byte_slice(pc31, 0, 2) == "B:" {
+                    // Box[T] 形参 = 堆单值指针直传(t_P*;与 u: 按值解引用异构)
+                    acc31 = "(t_" + byte_slice(pc31, 2, pc31.len) + "*)(long)_p" + ai31.to_string()
                 } else {
-                if or2(seq2(pc31, "s"), seq2(pc31, "N")) {
-                    acc31 = "(const char*)(long)_p" + ai31.to_string()
-                } else {
-                    if or2(seq2(pc31, "6"), or2(seq2(pc31, "7"), seq2(pc31, "z"))) {
-                        acc31 = "(int64_t)(long)_p" + ai31.to_string()
+                    if pc31.len > 1 && byte_at(pc31, 0) == 112 {
+                        // P0-A:&T 形参(pu: 码)——ct_i 槽指针直传
+                        acc31 = "(" + ct_ctype(pc31) + ")(long)_p" + ai31.to_string()
                     } else {
-                        if pc31.len > 1 && or2(byte_at(pc31, 0) == 70, byte_at(pc31, 0) == 71) {
-                            acc31 = "(ct_clop)(long)_p" + ai31.to_string()
+                        if or2(seq2(pc31, "s"), seq2(pc31, "N")) {
+                            acc31 = "(const char*)(long)_p" + ai31.to_string()
+                        } else {
+                            if or2(seq2(pc31, "6"), or2(seq2(pc31, "7"), seq2(pc31, "z"))) {
+                                acc31 = "(int64_t)(long)_p" + ai31.to_string()
+                            } else {
+                                if pc31.len > 1 && or2(byte_at(pc31, 0) == 70, byte_at(pc31, 0) == 71) {
+                                    acc31 = "(ct_clop)(long)_p" + ai31.to_string()
+                                }
+                            }
                         }
                     }
                 }
-            }
             }
             if ai31 > 0 { aargs31 = aargs31 + ", " }
             aargs31 = aargs31 + acc31
@@ -2041,7 +2058,12 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
                 if or2(seq2(ret31, "s"), seq2(ret31, "N")) {
                     println("return (ct_i)(long)t_" + nm + "(" + aargs31 + ");")
                 } else {
-                    println("return (ct_i)t_" + nm + "(" + aargs31 + ");")
+                    if seq2(ret31, "v") {
+                        // void 返回:调用后回 0((ct_i) 作用于 void 调用为非法 C,六红 s33 族病灶)
+                        println("t_" + nm + "(" + aargs31 + "); return 0;")
+                    } else {
+                        println("return (ct_i)t_" + nm + "(" + aargs31 + ");")
+                    }
                 }
             }
         }

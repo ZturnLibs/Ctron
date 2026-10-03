@@ -162,7 +162,12 @@ view Table {
       <label class="w-th">大小</label>
     </hbox>
     <each ti in={titems}>
-      <button class="w-tr" on:click={tab_pick}>{ti}</button>
+      <button class="w-tr" on:click={tab_pick}>
+        <hbox class="w-trin">
+          <label class="w-td1">{fld(ti, "·", 0)}</label>
+          <label class="w-td2">{fld(ti, "·", 1)}</label>
+        </hbox>
+      </button>
     </each>
   </vbox>
 }
@@ -219,7 +224,10 @@ style w-bar { direction: row gap: 12 }
 style w-table { direction: column gap: 2 }
 style w-thead { direction: row gap: 24 }
 style w-th { fg: TEXT_MUTED size: 13 w: 90 h: 22 }
-style w-tr { bg: SURFACE fg: TEXT w: 200 h: 26 }
+style w-tr { bg: SURFACE w: 200 h: 26 }
+style w-trin { direction: row }
+style w-td1 { fg: TEXT w: 90 h: 24 }
+style w-td2 { fg: TEXT h: 24 }
 style w-div { h: 2 w: 200 bg: BORDER }
 style w-card2 { bg: ELEVATED h: 60 }
 style w-ct { fg: TEXT size: 13 h: 20 }

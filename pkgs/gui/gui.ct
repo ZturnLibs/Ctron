@@ -1758,10 +1758,55 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
     }
     glit(src, cur, 62)
     if is_leaf {
+        // GUI:button 带子树形态(多列单元格行/图标按钮)——子树容器式解析,
+        // btns 注册照旧;显示侧按钮分支不关盒,子经共享尾循环落按钮盒内
+        gws(src, cur)
+        var childmode: Bool = false
         if byte_at(src, cur.load()) == 60 {
             if byte_at(src, cur.load() + 1) != 47 {
-                panic("gui: 叶子不得嵌套")
+                childmode = true
             }
+        }
+        if childmode {
+            t.ntag.push(tag)
+            t.ncls.push(c)
+            t.npre.push("")
+            t.nbid.push("")
+            t.npost.push("")
+            t.nfc.push(-1)
+            t.ns.push(-1)
+            t.nes.push(estart)
+            t.nec.push(t.ev_name.len - estart)
+            t.nflag.push(gt_cond_pick(conds, cstart))
+            var prevk: I32 = -1
+            while true {
+                gws(src, cur)
+                if byte_at(src, cur.load()) == 60 {
+                    if byte_at(src, cur.load() + 1) == 47 {
+                        break
+                    }
+                }
+                var kid: I32 = gt_node(src, cur, t, conds, binds, strs, depth + 1)
+                var fcl: List[I32] = t.nfc
+                var nsl: List[I32] = t.ns
+                if prevk < 0 {
+                    fcl[id] = kid
+                } else {
+                    nsl[prevk] = kid
+                }
+                prevk = kid
+            }
+            glit(src, cur, 60)
+            glit(src, cur, 47)
+            var et3: Str = gword(src, cur)
+            if et3 != tag {
+                panic("gui: 闭合标签不匹配 " + et3)
+            }
+            glit(src, cur, 62)
+            if tag == "button" {
+                t.btns.push(id)
+            }
+            return id
         }
         gt_leaf_text(src, cur, t)
         t.ntag.push(tag)
@@ -3481,6 +3526,13 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
         } else {
             hits.push(id)
             hinst.push(inst)
+        }
+        // GUI:按钮子树(多列单元格行/图标按钮)——子循环贴分支尾(共享尾循环
+        // 只在容器支,按钮支够不着)
+        var chb: I32 = t.nfc[id]
+        while chb >= 0 {
+            rt_emit(t, bind, itemvar, item, chb, hits, hinst, inst, hov, actn)
+            chb = t.ns[chb]
         }
     } else {
         if tag == "checkbox" {
