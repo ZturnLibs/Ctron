@@ -23,7 +23,7 @@ PROF=full
 TAUSTED=0
 DIAGLANG=zh
 case ${1:-} in
-    check|emit|fmt|doc|ast|build|targets) mode=$1; shift ;;
+    check|emit|fmt|doc|ast|build|targets|new) mode=$1; shift ;;
 esac
 for a in "$@"; do
     case $a in
@@ -46,9 +46,133 @@ if [ ! -x "$HOST" ]; then
     echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
-if [ "$mode" != "targets" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native] [-o bin] | ctc.sh targets" >&2
+if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh targets" >&2
     exit 2
+fi
+
+# J19-⑤:脚手架 ctc new <dir> [--gui]——ctcl(pkg+gui.entry+dependencies.gui)
+# + src/main.ct(headless 守卫+真窗锚双路模板)+ app.ctml。--gui 缺省 = 裸 .ct 脚手架。
+if [ "$mode" = "new" ]; then
+    NEWDIR=""
+    NEWGUI=0
+    for a4 in "$@"; do
+        case $a4 in
+            --gui) NEWGUI=1 ;;
+            *) if [ -z "$NEWDIR" ]; then NEWDIR="$a4"; fi ;;
+        esac
+    done
+    if [ -z "$NEWDIR" ]; then
+        echo "用法: ctc.sh new <dir> [--gui]" >&2
+        exit 2
+    fi
+    APP=$(basename "$NEWDIR")
+    mkdir -p "$NEWDIR/src"
+    if [ "$NEWGUI" = "1" ]; then
+        cat > "$NEWDIR/Ctron.ctcl" <<EOF
+pkg {
+    manifest_version = 1
+    name = "$APP"
+    version = "0.1.0"
+}
+
+gui {
+    entry = "app.ctml"
+}
+
+dependencies {
+    gui
+}
+EOF
+        cat > "$NEWDIR/app.ctml" <<'EOF'
+// 入口 ctml(清单 gui.entry 指向;开发环默认源;内嵌兜底块见 src/main.ct)
+view App {
+  <vbox class="root">
+    <label class="title">Hello Ctron</label>
+    <button class="btn" on:click={tap}>点我</button>
+    <label class="st">{hits}</label>
+  </vbox>
+}
+style root { direction: column gap: 12 padding: 24 }
+style title { size: 20 h: 30 }
+style btn { w: 120 h: 36 }
+style st { fg: "#888888" size: 14 h: 22 }
+EOF
+        cat > "$NEWDIR/src/main.ct" <<EOF
+// $APP —— ctc new --gui 脚手架(J19-⑤)
+// 构建:ctc.sh build src/main.ct -o app(dependencies.gui 自动链接 GUI 域库)
+// 真窗:./app run src/main.ct;headless 冒烟:CTRON_GUI_HEADLESS=1 ./app run src/main.ct
+use gui.{rt_run_kb_anchor, test, d_frame, d_expect_text}
+
+// 内嵌兜底块(app.ctml 缺席时真窗/测试可用;SL-7α 独立二进制零 CWD 依赖)
+view App {
+  <vbox class="root">
+    <label class="title">Hello Ctron</label>
+  </vbox>
+}
+style root { direction: column gap: 12 padding: 24 }
+style title { size: 20 h: 30 }
+
+struct Model {
+    var hits: I32
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "hits" {
+        buf.push(m.hits.to_string())
+    }
+}
+
+fn act(name: Str, m: Box[Model]) {
+    if name == "tap" {
+        m.hits = m.hits + 1
+    }
+}
+
+fn main() -> I32 {
+    var m = Box[Model](Model { hits: 0 })
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        var src: Str = read_file("app.ctml")
+        if src == "" {
+            src = ctron_embedded()
+        }
+        return test(src, 360, 240,
+            |buf| bind_all(buf, m),
+            |nm| act(nm, m),
+            |k| { },
+            |t, actc, keyc| {
+                d_frame(t, |buf| bind_all(buf, m))
+                d_expect_text(t, "Hello Ctron")
+                println("scaffold: headless OK")
+            })
+    }
+    return rt_run_kb_anchor("Hello Ctron", 360, 240,
+        |buf| bind_all(buf, m),
+        |nm| act(nm, m),
+        |k| { })
+}
+EOF
+        echo "ctc.sh: 已脚手架 $NEWDIR(pkg+gui.entry+dependencies.gui+src/main.ct+app.ctml)"
+        echo "  下一步: cd $NEWDIR && (ctc.sh build src/main.ct -o app) && CTRON_GUI_HEADLESS=1 ./app run src/main.ct"
+    else
+        cat > "$NEWDIR/Ctron.ctcl" <<EOF
+pkg {
+    manifest_version = 1
+    name = "$APP"
+    version = "0.1.0"
+}
+EOF
+        cat > "$NEWDIR/src/main.ct" <<EOF
+// $APP —— ctc new 脚手架
+fn main() -> I32 {
+    println("hello from $APP")
+    return 0
+}
+EOF
+        echo "ctc.sh: 已脚手架 $NEWDIR(pkg+src/main.ct)"
+        echo "  下一步: cd $NEWDIR && ctc.sh run src/main.ct"
+    fi
+    exit 0
 fi
 
 if [ "$mode" = "targets" ]; then
@@ -138,9 +262,29 @@ case $mode in
             if [ "$prev_o" = "1" ]; then OUTBIN="$a2"; prev_o=0; fi
             case $a2 in -o) prev_o=1 ;; esac
         done
+        # J19-④:清单 dependencies.gui → 自动链接 GUI 域库(vendored raylib/freetype
+        # + ctron_gui 桥 + 平台框架参数)——30 行链接咒语从示例 run.sh 消失。
+        # 域解析只在驱动壳层(与 #[link] pkg-config 面同哲学)。
+        manifest_gui_dep() {
+            MF="$1"
+            [ -f "$MF" ] || return 1
+            # 注:awk 的 END 无条件覆盖块内 exit 状态,须以 found 标志收口
+            awk 'BEGIN{f=0; found=0} /dependencies[[:space:]]*\{/{f=1} f{ if ($0 ~ /[[:space:]]\}[[:space:]]*$/ || $0 ~ /^\}/) f=0; if ($0 ~ /(^|[[:space:]])gui([[:space:]]*$|[[:space:]]+[^=])/) { found=1; exit 0 } } END{ exit !found }' "$MF"
+        }
+        GUILDFLAGS=""
+        if manifest_gui_dep "$(dirname "$IN")/../Ctron.ctcl"; then
+            export CTRON_STDPATH="${CTRON_STDPATH:-$ROOT/lib/std}"
+            sh "$ROOT/vendor/gui/build.sh" > /dev/null
+            case "$(uname)" in
+                Darwin) GUILDFLAGS="-I$ROOT/vendor/gui/clay -I$ROOT/vendor/gui/raylib -I$ROOT/vendor/gui/freetype/include $ROOT/pkgs/gui/c_src/ctron_gui.c $ROOT/pkgs/gui/c_src/ft_shim.c $ROOT/vendor/gui/build/libfreetype.a $ROOT/vendor/gui/build/libraylib.a -framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
+                Linux)  GUILDFLAGS="-I$ROOT/vendor/gui/clay -I$ROOT/vendor/gui/raylib -I$ROOT/vendor/gui/freetype/include $ROOT/pkgs/gui/c_src/ctron_gui.c $ROOT/pkgs/gui/c_src/ft_shim.c $ROOT/vendor/gui/build/libfreetype.a $ROOT/vendor/gui/build/libraylib.a -lX11 -lGL -lm -lpthread -ldl" ;;
+                *) echo "ctc.sh: GUI 自动链接不支持平台 $(uname)" >&2; exit 2 ;;
+            esac
+        fi
         TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
         "$0" emit "$IN" "$TMPC" > /dev/null 2>&1 || { echo "ctc.sh: build 发射失败" >&2; exit 1; }
-        $TGT_CC "$TMPC" -o "$OUTBIN" || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
+        # shellcheck disable=SC2086
+        $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
         echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
         rc=0
         ;;

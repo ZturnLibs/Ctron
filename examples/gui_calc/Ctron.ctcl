@@ -3,3 +3,12 @@ pkg {
     name = "gui_calc"
     version = "0.1.0"
 }
+
+gui {
+    entry = "app.ctml"
+}
+
+dependencies {
+    gui
+}
+

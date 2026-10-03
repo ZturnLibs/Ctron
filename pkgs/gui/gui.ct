@@ -5938,16 +5938,16 @@ pub fn rt_run_kb(t: GuiTree, title: Str, w: I32, h: I32,
     return rt_window_loop(t, title, w, h, bind, act, key, true)
 }
 
-// d 变体:热重载路径固定 "app.ctml"(默认锚)
+// d 变体:热重载路径 = 清单 gui.entry 烘焙值(J18;缺省 "app.ctml")
 pub fn rt_run_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
                 bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
-    return rt_window_loop_d(t, src, "app.ctml", title, w, h, bind, act, rt_nokey, false)
+    return rt_window_loop_d(t, src, ctron_gui_entry(), title, w, h, bind, act, rt_nokey, false)
 }
 
 pub fn rt_run_kb_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
                    bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                    key: fn(I32) -> Void) -> I32 {
-    return rt_window_loop_d(t, src, "app.ctml", title, w, h, bind, act, key, true)
+    return rt_window_loop_d(t, src, ctron_gui_entry(), title, w, h, bind, act, key, true)
 }
 
 // ==================== 入口与测试驱动(headless) ====================
@@ -6712,12 +6712,13 @@ pub fn rt_run_kb_src(src: Str, title: Str, w: I32, h: I32,
     return rt_run_kb(t, title, w, h, bind, act, key)
 }
 
-// d 变体:默认锚 "app.ctml" + 热重载环(60 帧内容比对,变更原址重解析)
+// d 变体:默认锚 = 清单 gui.entry 烘焙值(J18;缺省 "app.ctml")+ 热重载环
+//(60 帧内容比对,变更原址重解析)
 pub fn rt_run_anchor(title: Str, w: I32, h: I32,
              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
     // 独立二进制零 CWD 依赖)
-    var src: Str = read_file("app.ctml")
+    var src: Str = read_file(ctron_gui_entry())
     if src == "" {
         src = ctron_embedded()
     }
@@ -6729,7 +6730,7 @@ pub fn rt_run_anchor(title: Str, w: I32, h: I32,
 pub fn rt_run_kb_anchor(title: Str, w: I32, h: I32,
                 bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                 key: fn(I32) -> Void) -> I32 {
-    var src: Str = read_file("app.ctml")
+    var src: Str = read_file(ctron_gui_entry())
     if src == "" {
         src = ctron_embedded()
     }

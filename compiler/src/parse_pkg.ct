@@ -313,6 +313,43 @@ fn pkg_manifest_tier(dir: Str, diags: List[Str]) -> Str {
     return "std"
 }
 
+// pkg_manifest_gui_entry —— 清单 gui 块 entry 键(J18):UI 入口 ctml 相对路径,
+// 构建期烘焙为运行锚默认值;缺省 ""(消费侧回落 "app.ctml" 存量口径)。
+// 文本扫描镜像 pkg_manifest_tier(键首词边界 + = " 引号值;phase-1 规范形态清单)。
+fn pkg_manifest_gui_entry(dir: Str) -> Str {
+    match read_file(dir + "/../Ctron.ctcl") {
+        Some(x) => {
+            var i: I32 = 0
+            while i < x.len {
+                if pkg_ctcl_at(x, i, "entry") && pkg_ctcl_pre(x, i) {
+                    var j = i + 5
+                    while j < x.len && byte_at(x, j) == 32 {
+                        j += 1
+                    }
+                    if j < x.len && byte_at(x, j) == 61 {
+                        j += 1
+                        while j < x.len && byte_at(x, j) == 32 {
+                            j += 1
+                        }
+                        if j < x.len && byte_at(x, j) == 34 {
+                            j += 1
+                            var v = ""
+                            while j < x.len && byte_at(x, j) != 34 && byte_at(x, j) != 10 {
+                                v = v + byte_slice(x, j, j + 1)
+                                j += 1
+                            }
+                            return v
+                        }
+                    }
+                }
+                i += 1
+            }
+            return ""
+        }
+        None => { return "" }
+    }
+}
+
 // pkg_mod_tier —— std 模块头注档位提取:首注释块内 `//@ tier: core|alloc|std`;
 // 缺标注/越域标注 = ""(不设门——渐进承诺,未标注模块不受档位面约束;
 // 标注只认头部,首非注释行即止,空白行跳过不断链)。
@@ -942,4 +979,128 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
         i += 1
     }
     return out
+}
+
+// ---- T52 §2.1 插件注册表提取(plugin "kind.name" { path = …; codes = [...] }) ----
+// 文本扫描式(同 pkg_caps_allowed 形):定位 plugin 键词 → 引号块名 → 块体字段。
+// 返回平表每插件 3 槽 [fullkey, path, codesJoined(";")];derive 形 codesJoined=""。
+// v1 诊断面最小:缺 path/块体残形不入表(CI ctcl_check fail-closed 兜底;
+// 加载点以 fs_exists 失败 → E5060.load 收口)。
+fn pkg_plugins(dir: Str) -> List[Str] {
+    var out = List[Str]()
+    var t = ""
+    match read_file(dir + "/../Ctron.ctcl") {
+        Some(x) => { t = x }
+        None => { return out }
+    }
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "plugin") && pkg_ctcl_pre(t, i) {
+            var j = i + 6
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 34 {
+                var k = j + 1
+                while k < t.len && byte_at(t, k) != 34 {
+                    k += 1
+                }
+                if k < t.len {
+                    var nm = byte_slice(t, j + 1, k)
+                    var b = k + 1
+                    while b < t.len && byte_at(t, b) != 123 {
+                        b += 1
+                    }
+                    if b < t.len {
+                        // 块体 [b+1, e):CTCL 深度恒 1,块内无嵌套花括号
+                        var e = b + 1
+                        while e < t.len && byte_at(t, e) != 125 {
+                            e += 1
+                        }
+                        if e < t.len {
+                            var body = byte_slice(t, b + 1, e)
+                            out.push(nm)
+                            out.push(pkg_plugin_field(body, "path"))
+                            out.push(pkg_plugin_codes(body))
+                        }
+                    }
+                }
+                i = k
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// 块体内 "key = \"value\"" 引号值提取(行式;CTCL 值无转义,D4 死数据)
+fn pkg_plugin_field(body: Str, key: Str) -> Str {
+    var i: I32 = 0
+    while i < body.len {
+        if pkg_ctcl_at(body, i, key) && pkg_ctcl_pre(body, i) {
+            var j = i + key.len
+            while j < body.len && byte_at(body, j) == 32 {
+                j += 1
+            }
+            if j < body.len && byte_at(body, j) == 61 {
+                j += 1
+                while j < body.len && byte_at(body, j) == 32 {
+                    j += 1
+                }
+                if j < body.len && byte_at(body, j) == 34 {
+                    var k = j + 1
+                    while k < body.len && byte_at(body, k) != 34 {
+                        k += 1
+                    }
+                    if k < body.len {
+                        return byte_slice(body, j + 1, k)
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 块体内 codes = ["W9xxx", ...] 引号词提取,分号拼接;缺省 = ""
+fn pkg_plugin_codes(body: Str) -> Str {
+    var i: I32 = 0
+    while i < body.len {
+        if pkg_ctcl_at(body, i, "codes") && pkg_ctcl_pre(body, i) {
+            var j = i + 5
+            while j < body.len && byte_at(body, j) == 32 {
+                j += 1
+            }
+            if j < body.len && byte_at(body, j) == 61 {
+                j += 1
+                while j < body.len && byte_at(body, j) == 32 {
+                    j += 1
+                }
+                if j < body.len && byte_at(body, j) == 91 {
+                    j += 1
+                    var out = ""
+                    while j < body.len && byte_at(body, j) != 93 {
+                        if byte_at(body, j) == 34 {
+                            var k = j + 1
+                            while k < body.len && byte_at(body, k) != 34 {
+                                k += 1
+                            }
+                            if k < body.len {
+                                if out.len > 0 {
+                                    out = out + ";"
+                                }
+                                out = out + byte_slice(body, j + 1, k)
+                                j = k
+                            }
+                        }
+                        j += 1
+                    }
+                    return out
+                }
+            }
+        }
+        i += 1
+    }
+    return ""
 }

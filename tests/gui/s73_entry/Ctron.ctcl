@@ -1,0 +1,9 @@
+pkg {
+    manifest_version = 1
+    name = "s73_entry"
+    version = "0.1.0"
+}
+
+gui {
+    entry = "ui/main.ctml"
+}

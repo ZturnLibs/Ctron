@@ -1,0 +1,47 @@
+// tests/gui/s73_entry —— J18:ctcl gui.entry 烘焙——运行锚默认值单一真源
+// 清单 gui { entry = "ui/main.ctml" } → 发射期烘焙 ctron_gui_entry() 常量。
+// 断言三缝:①烘焙值=清单键 ②锚文件按烘焙路径可读 ③锚内容经 headless 渲染。
+// 存量口径(无清单=「app.ctml」回落臂)由其余全部夹具整体站岗。
+use gui.{test, d_frame, d_expect_text}
+
+view Fallback {
+  <vbox class="root">
+    <label class="st">EMBEDDED-FALLBACK</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style st { fg: "#aaaaaa" size: 16 h: 26 }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    // 缝①:烘焙值 = 清单 gui.entry(发射期 pkg_manifest_gui_entry 烘焙)
+    if ctron_gui_entry() != "ui/main.ctml" {
+        panic("s73: gui.entry 烘焙值扰 entry=" + ctron_gui_entry())
+    }
+    // 缝②:锚文件按烘焙路径可读(CWD 相对,run.sh cd 夹具目录)
+    var anch: Str = read_file(ctron_gui_entry())
+    if anch == "" {
+        panic("s73: 锚文件不可读 " + ctron_gui_entry())
+    }
+    // 缝③:锚内容经 headless 渲染(入口真源到达视图;rt_run_anchor 同源读取)
+    return test(anch, 320, 240,
+        |buf| bind_noop(buf),
+        |nm, ar| { },
+        |k| { },
+        |t, act2, key2| {
+            d_frame(t, |buf| bind_noop(buf))
+            d_expect_text(t, "ENTRY-BAKE-OK")
+            println("S73-ENTRY-GREEN")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s73: headless 验收件(真窗面略)")
+    return 0
+}

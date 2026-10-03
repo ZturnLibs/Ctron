@@ -1045,6 +1045,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "ct_gc_collect" { return "ct_gc_collect()" }
         if callee == "ctron_prog_args_at" { return "ctron_prog_args_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "ctron_embedded" { return "ctron_embedded()" }
+        // J18:清单 gui.entry 烘焙常量(运行锚默认值;prelude 恒定义)
+        if callee == "ctron_gui_entry" { return "ctron_gui_entry()" }
         if callee == "gui_sk_load" { return "gui_sk_load()" }
 
         if callee == "read_file" {

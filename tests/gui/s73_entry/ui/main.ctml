@@ -1,0 +1,9 @@
+// tests/gui/s73_entry/ui/main.ctml —— J18 清单 gui.entry 指向的入口 ctml;
+// 内容特征字 ENTRY-BAKE-OK 供锚内容渲染断言(与内嵌兜底块刻意异文)。
+view Entry {
+  <vbox class="root">
+    <label class="st">ENTRY-BAKE-OK</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style st { fg: "#22cc88" size: 16 h: 26 }

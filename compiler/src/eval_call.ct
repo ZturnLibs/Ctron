@@ -235,6 +235,15 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         }
         return e4("k", env, vS(gui_blocks_src(file)), out)
     }
+    if seq2(nm, "ctron_gui_entry") {
+        // J18:清单 gui.entry(interp 口径现读清单;发射口径烘焙常量,双口径
+        // 同语义)。无清单/无键 = "app.ctml" 存量默认
+        var gent = pkg_manifest_gui_entry(pkg_dir_of(ctron_entry()))
+        if seq2(gent, "") {
+            gent = "app.ctml"
+        }
+        return e4("k", env, vS(gent), out)
+    }
     if seq2(nm, "gui_sk_load") {
         // SL-7β2:编译期骨架 → GuiTree U 值(解释口径换源)。表以 vS/vI 节点包裹,
         // 与 gt_parse 解释执行的值形态同构(β3 发射口径 = 同名 C 静态构造,双口径同函数名)
