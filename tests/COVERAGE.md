@@ -1259,3 +1259,13 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
 - 实操红线:改 c10k 相关载具后,**跨轮次测量必须等 TIME_WAIT 排干或用
   RST 收尾**(上一条 2026-10-03 密度回填段的 SO_LINGER 修正即为同族教训;
   本轮再证一次:污染池上 2 地址臂假红于 #16308,排干后同点位复判)。
+
+**CI [1/9] manifest diff 门揭示债(2026-10-03,T31 合流 push 后首次全量曝光;归 CTCL 语法泳道)**:
+本地 80 提交(T35/T45/T48/T52/GUI 各批)首推 origin 后,ci.sh [1/9] tests/manifest/diff.py
+四线对拍暴露 CTCL 语法三处漂移:①`tier` 键——seed 侧(parse_pkg.ct pkg_check_caps)已识
+(golden 过),C 宿主侧 pkg.c PKG_KEYS 仍 4 键(tier 全线 E5043),T35 批遗漏;②`plugin` 块
+——T52 语法(json_demo/lint_demo/sandbox_escape 三清单),C 侧 E5044,seed 侧 lint_demo
+的 `dep{codes}` 亦不认——**两侧与 golden 三方互斥,需泳道裁决合法 plugin schema 后双端
+补齐**;③negative/005_unknown_key 的合法键提示串两侧行未同步(含 tier 与否)。
+非 T31 债,登记不修(语法意图裁决权在 CTCL 泳道);修复径=pkg.c 镜像 parse_pkg.ct
+(tier 键+E5046 值域+plugin 块)或 golden 回写,二者取一由 schema 意图定。
