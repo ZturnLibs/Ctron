@@ -2268,5 +2268,5 @@ fn ct_reg_line(nm: Str, code: Str) -> Str {
 // fn 帧节点序言行(ct_fn/vtable 方法/drop/spec 特化/闭包 shim 共用)。cleanup=全部
 // return 路径统一尾声(longjmp 跳过 cleanup → 唯一落点 ct_shim_tramp 显式 ct_fp=0)。
 fn ct_fr_prologue() -> Str {
-    return "struct ct_fr ct_frn __attribute__((cleanup(ct_fp_pop))); ct_frn.up = ct_fp; ct_frn.pn = 0; ct_frn.ovf = 0; ct_fp = &ct_frn;"
+    return "struct ct_fr ct_frn __attribute__((cleanup(ct_fp_pop))); ct_frn.up = ct_fp; ct_frn.pn = 0; ct_frn.ovf = 0; ct_frn.spn = 0; ct_fp = &ct_frn;"
 }
