@@ -1282,3 +1282,24 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
 - 流程实录(机刷协作样本):本泳道 merge 进行中窗口,对端以整树卷带方式把
   p9-ms 全支合入 main(f725f5c3 等携带)并推进其 P0-C——我方 merge 现场
   被取代=正常协作;残余两修正以 pathspec 限定补落,零冲突。
+
+**2026-10-04 GUI-27 组件跨文件 view 导入**(gui 泳道):
+- 形态:`pub view` 导出 + `use mod.{A, B}` 导入(spec §4.3.1 定案落地)。
+  运行时 = gt_anchor_src 锚合并(DFS imports-先/入口后,应用根=最后声明视图
+  契约保持;热重载探针同源,无 use 行文件字节恒等);检查面 = use 装载器
+  (node 级合并,GuiBlock 追加槽 d[7]=fileid/d[8]=pub,无槽=通配可见,内嵌
+  形态零波及)+可见性门(独立形态:未知组件 E8100/未导入组件 E8100;直接
+  导入语义不传递)。骨架/发射面零改动。
+- 验收:e8_corpus 51/51(新五件:use_priv/use_missing/viewcall_unknown 负例
+  + use_ok 正例);阶梯 s78_xfileview 全绿(导入渲染/私有内部件/slot 投影/
+  事件 fire;阶梯 82 过/1 败=s30_props_d 基线既有段错误,worktree HEAD 基线
+  与主树双环境复现,归 P9/T31 栈面或发射在飞件,本泳道移交);suite 100/100
+  双列;smoke 158 ok/2 fail(均基线既有)。
+- **decls 锁申报**:编译面 +8 fn(gui_blk_fileid/gui_blk_pub/gui_ctml_dir/
+  gui_ctml_mod_path/gui_use_names/gui_ctml_file_use/gui_vis_ok/gui_ck_view_vis),
+  worktree 实测 cc_run 自检 decls 472→479(+7;smoke 该件基线已红,锁数与
+  主树在飞件一并归口)。runtime +5 fn 在 pkgs/gui不入 compiler 锁。
+- 顺修两存量缺口(独立 .ctml 检查面,GUI-27 首曝):①独立词法左右圆括号入
+  单字符集——view props 形参表捕获(8c-1)要求单字符 `(`,独立面捕获从未
+  工作(实例 prop 门全空转),按「内嵌/独立同语法同路径」对齐;②实例子树
+  走查先吃开尖——此前 tag 吃到 `<` 脱轨级联误报(投影实例带子树从未入语料)。

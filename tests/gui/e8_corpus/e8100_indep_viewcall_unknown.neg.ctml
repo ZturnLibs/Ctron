@@ -1,0 +1,8 @@
+// gui expect: E8100 —— GUI-27:独立 .ctml 未声明组件标签(大写首字母,
+// 此前「认领不误报」,导入机制落地后转正 E8100)
+view P {
+  <vbox class="root">
+    <Ghost t: "x"/>
+  </vbox>
+}
+style root { direction: column }
