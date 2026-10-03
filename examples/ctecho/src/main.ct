@@ -35,7 +35,11 @@ fn main() {
     let net = Net_probe()
     let port = sc_get_l(parse_i64(env_get("CTECHO_PORT")), 8080)
     let lfd_box = Box[Box64](Box64 { v: 0 })
-    if net_tcp_listen(net, "127.0.0.1", port, lfd_box) != 0 {
+    // 绑 0.0.0.0(P9 C100K 前置,2026-10-03):同一端口在全部 127.x 回环地址
+    // 应答,配合 c10k driver C10K_ADDRS 把 (src,dst,dport) 元组空间乘开——
+    // macOS 临时端口池 16384/元组是单地址拓扑的硬顶(实测 N≥16000 即
+    // EADDRNOTAVAIL)。对 127.0.0.1 客户端零语义变化。
+    if net_tcp_listen(net, "0.0.0.0", port, lfd_box) != 0 {
         panic(last_net_error().message)
     }
     let port_box = Box[Box64](Box64 { v: 0 })
@@ -44,7 +48,7 @@ fn main() {
     }
     let real = port_box.v
     let ln = TcpListener { fd: lfd_box.v, port: real.as[I32]() }
-    println("ctecho listening on 127.0.0.1:" + real.to_string())
+    println("ctecho listening on 0.0.0.0:" + real.to_string())
     scope { |s|
         while true {
             let afd_box = Box[Box64](Box64 { v: 0 })
