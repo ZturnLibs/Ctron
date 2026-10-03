@@ -1,0 +1,95 @@
+// tests/gui/s78_themepkg —— GUI-31:主题包分发形态(use themes 可导入包全链)
+// 形态:主题 = 包(pkgs/themes/themes.ct,每主题一枚 pub fn 构造全套 gui.Theme),
+// 不进引擎;内置 theme_dark/light/mac_* 族保持平台×明暗最小核。验收三层:
+// 1) 链接面:use themes.{nord, dracula} 跨包请求 Theme 构造 fn,emit/cc 全过
+// 2) 换装面:theme_apply(nord()) 后 BG_BASE 令牌即换(换令牌=换全套,§3.4)
+// 3) 装配面:标准合成装配(view+run)下事件处理器消费包 fn 零特殊
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_bg_r,
+         d_cmd_bg_g, d_cmd_bg_b, theme_apply}
+use themes.{nord, dracula}
+
+struct M {
+    var name: Str
+}
+
+view TP (m: M) {
+  <vbox class="root">
+    <vbox class="sw"/>
+    <label class="st">{m.name}</label>
+    <button class="b1" on:click={go_nord(m)}>nord</button>
+    <button class="b2" on:click={go_drac(m)}>dracula</button>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style sw { h: 40 bg: BG_BASE }
+style st { fg: "#9ca3af" h: 24 }
+style b1 { w: 100 h: 36 }
+style b2 { w: 100 h: 36 }
+
+fn make() -> M {
+    return M { name: "auto" }
+}
+
+// 包消费两步:构造(use themes fn)→ 一步换装(gui theme_apply);事件处理器
+// 内直调=装配面零特殊(合成 act 分支按头分发到本 fn)
+fn go_nord(m: Box[M]) {
+    theme_apply(nord())
+    m.name = "nord"
+}
+
+fn go_drac(m: Box[M]) {
+    theme_apply(dracula())
+    m.name = "dracula"
+}
+
+// BG_BASE 色板读色(同 gui_themes 口径:扫 cmd 表盒底色)
+fn base_at(r: I32, g: I32, b: I32) -> I32 {
+    var n: I32 = d_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 2 {
+            if d_cmd_bg_r(i) == r {
+                if d_cmd_bg_g(i) == g {
+                    if d_cmd_bg_b(i) == b {
+                        return 1
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    var rc: I32 = test(src, 320, 480,
+        |buf| __gui_bind_TP(buf, m),
+        |name, ar| __gui_act_TP(name, ar, m),
+        |k| { },
+        |t, act, key| {
+            // nord:#2E3440 = (46,52,64)
+            act("go_nord")
+            d_frame(t, |buf| __gui_bind_TP(buf, m))
+            d_expect_text(t, "nord")
+            if base_at(46, 52, 64) != 1 {
+                panic("s78: nord BG_BASE #2E3440 未现")
+            }
+            // dracula:#282A36 = (40,42,54) —— 换令牌=换全套
+            act("go_drac")
+            d_frame(t, |buf| __gui_bind_TP(buf, m))
+            d_expect_text(t, "dracula")
+            if base_at(40, 42, 54) != 1 {
+                panic("s78: dracula BG_BASE #282A36 未现")
+            }
+        })
+    return rc
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(TP(m: make()))
+}

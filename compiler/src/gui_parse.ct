@@ -2854,6 +2854,12 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
     if tag == "input" {
         is_input = true
     }
+    // GUI-30 前置缝:textarea 与 input 同为自闭合叶子(bind 进 nbid;旧走通用
+    // 自闭合分支 nbid.push(itemvar)=恒空,装配面 collect 面丢 bind——显示面走
+    // 运行时 gt 树故无症状,默认写回面(bset 收集)首曝)
+    if tag == "textarea" {
+        is_input = true
+    }
     var is_check: Bool = false
     if tag == "checkbox" {
         is_check = true
@@ -3502,7 +3508,8 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
 
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str]) -> I32 {
+// bset/bty = GUI-30 默认写回集(无 on:input 的 input/textarea 点链 bind + 型别)
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str], bset: List[Str], bty: List[Str]) -> I32 {
     // 单一树走查统一收集(I32 双栈,子树承 in_each 旗;域包 gs2i 不可见
     // 于编译器,禁字符串栈):标量路径表达式 / each 列表 / 行域 checkbox /
     // in-each 事件(实例分发)/ input on:input 处理器(名通道)
@@ -3613,6 +3620,31 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
                     if nflag[id] != "" {
                         exprs.push(nflag[id])
                     }
+                    // GUI-30:默认写回集——input/textarea 无 on:input(应用未接管)
+                    // 且 bind 为纯点链且型别可写(Str/I32)者收入 bset;有处理器 =
+                    // 受控契约原样(零分支合成)。表达式槽/未知型别豁免(现状=丢)
+                    if ntag[id] == "input" || ntag[id] == "textarea" {
+                        if nbid[id] != "" {
+                            if !rt_ds_node_has_input_evt(nes[id], nec[id], f_evn) {
+                                var ps0 = List[Str]()
+                                var sub0 = List[Str]()
+                                gui_bx_dotted(nbid[id], ps0, sub0)
+                                if ps0.len == 1 {
+                                    if sub0.len == 0 {
+                                        if ps0[0] == nbid[id] {
+                                            var tyw: Str = gui_ds_path_ty(nbid[id], pnames, ptyps, stns, sfk, stv)
+                                            if tyw == "Str" || tyw == "I32" {
+                                                if !gui_ck_has_style(bset, nbid[id]) {
+                                                    bset.push(nbid[id])
+                                                    bty.push(tyw)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             var e: I32 = 0
@@ -3706,8 +3738,21 @@ fn tag_is_input_evt(tag: Str, nbid: Str) -> Bool {
     return false
 }
 
+// 节点事件表含 on:input 否(GUI-30 bset 收集的受控契约判据;nes 为全局事件
+// 名表基址偏移,f_evn 即该表)
+fn rt_ds_node_has_input_evt(nes0: I32, nec0: I32, f_evn: List[Str]) -> Bool {
+    var e: I32 = 0
+    while e < nec0 {
+        if f_evn[nes0 + e] == "input" {
+            return true
+        }
+        e += 1
+    }
+    return false
+}
+
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str]) -> List[Str] {
+fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str], bset: List[Str], bty: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -4013,6 +4058,26 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
             a2 = a2 + "        }\n"
             a2 = a2 + "    }\n"
         }
+        k += 1
+    }
+    // GUI-30:持久化默认化写回分支("__bs:路径:全文" → 路径 = 全文)。运行时
+    // rt_in_fire 无 on:input 处理器时改发此头(bind 变量唯一值源不变:显示每帧
+    // 从变量读,输入即写回;第二值源不存在)。Str 直赋;I32 经 ev_arg_i 桥
+    k = 0
+    while k < bset.len {
+        var rwB: Str = gui_ds_rw(bset[k], pnames, ptoks)
+        var plB: I32 = bset[k].len + 6
+        a2 = a2 + "    if name.len >= " + plB.to_string() + " \{\n"
+        a2 = a2 + "        if byte_slice(name, 0, " + plB.to_string() + ") == \"__bs:" + bset[k] + ":\" \{\n"
+        if bty[k] == "I32" {
+            a2 = a2 + "            var bsv = List[Str]()\n"
+            a2 = a2 + "            bsv.push(byte_slice(name, " + plB.to_string() + ", name.len))\n"
+            a2 = a2 + "            " + rwB + " = ev_arg_i(bsv, 0)\n"
+        } else {
+            a2 = a2 + "            " + rwB + " = byte_slice(name, " + plB.to_string() + ", name.len)\n"
+        }
+        a2 = a2 + "        }\n"
+        a2 = a2 + "    }\n"
         k += 1
     }
     a2 = a2 + "}\n"
@@ -4678,8 +4743,10 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var cvn = List[Str]()
     var cvf = List[Str]()
     var ciev = List[Str]()
-    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev)
-    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev)
+    var bset = List[Str]()
+    var bty = List[Str]()
+    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev, bset, bty)
+    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev, bset, bty)
     // made = p_file 产物(File 节点):[0] 是 "File" 头字符串,从 1 起拼——
     // 从 0 拼即把头串当 decl 注入,trans/emit 面遍历 d[0] 解引用即 SEGV(s41 根因)
     var k: I32 = 1

@@ -4660,6 +4660,8 @@ fn rt_in_expr(t: GuiTree, node: I32, evname: Str) -> Str {
 }
 
 // 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
+// GUI-30:持久化默认化——input/textarea 无 on:input 处理器时改发 __bs: 写回
+// 头(装配面合成对应分支,bind 变量即写即读;有处理器=受控契约原样)
 fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
     var h: Str = rt_in_handler(t, node, evname)
     if h != "" {
@@ -4676,6 +4678,13 @@ fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, Lis
                     }
                 }
                 e2 += 1
+            }
+        }
+    } else {
+        if evname == "input" {
+            var bid: Str = t.nbid[node]
+            if bid != "" {
+                act("__bs:" + bid + ":" + payload, List[Str]())
             }
         }
     }
