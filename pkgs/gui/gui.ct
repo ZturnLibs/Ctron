@@ -4417,14 +4417,67 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     panic("gui 绑定表达式解释求值待 SL-8b list: " + t.npre[id])
                 }
                 var items = rt_bind_items(t, bind, t.npre[id])
-                var ii: I32 = 0
-                while ii < items.len {
-                    var ch: I32 = t.nfc[id]
-                    while ch >= 0 {
-                        rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii, hov, actn)
-                        ch = t.ns[ch]
+                // GUI-21 v2:virtual 标签形态——class virtual:N(N=窗口行数,
+                // overscan 固定 2 行),行高=模板首孩子 class h;发射=前占位
+                //(start×rowh 空盒)+窗口行+尾占位,滚动偏移驱窗 O(窗口);
+                // v1 配方(手动 spacer+窗口 bind)语义等价,应用侧零算术
+                var vwin: Str = gt_cls_prop(c, "virtual", "", t)
+                if vwin != "" {
+                    var ch0: I32 = t.nfc[id]
+                    var rowh: I32 = 26
+                    if ch0 >= 0 {
+                        rowh = gs2i(gt_cls_prop(t.ncls[ch0], "h", "26", t))
                     }
-                    ii += 1
+                    if rowh <= 0 {
+                        rowh = 26
+                    }
+                    var vn: I32 = gs2i(vwin)
+                    if vn <= 0 {
+                        vn = 10
+                    }
+                    var start: I32 = gui_scroll_off() / rowh - 2
+                    if start < 0 {
+                        start = 0
+                    }
+                    if start > items.len {
+                        start = items.len
+                    }
+                    var end: I32 = start + vn + 4
+                    if end > items.len {
+                        end = items.len
+                    }
+                    var toppx: I32 = start * rowh
+                    if toppx > 0 {
+                        gui_open()
+                        gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 2, toppx, 0)
+                        gui_close()
+                    }
+                    var ii: I32 = start
+                    while ii < end {
+                        var ch: I32 = t.nfc[id]
+                        while ch >= 0 {
+                            rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii, hov, actn)
+                            ch = t.ns[ch]
+                        }
+                        ii += 1
+                    }
+                    var botpx: I32 = (items.len - end) * rowh
+                    if botpx > 0 {
+                        gui_open()
+                        gui_cfg(0, 0, 0, 0, 0, 0, 1, 0, 2, botpx, 0)
+                        gui_close()
+                    }
+
+                } else {
+                    var ii: I32 = 0
+                    while ii < items.len {
+                        var ch: I32 = t.nfc[id]
+                        while ch >= 0 {
+                            rt_emit(t, bind, t.nbid[id], items[ii], ch, hits, hinst, ii, hov, actn)
+                            ch = t.ns[ch]
+                        }
+                        ii += 1
+                    }
                 }
             } else {
                 var ch: I32 = t.nfc[id]

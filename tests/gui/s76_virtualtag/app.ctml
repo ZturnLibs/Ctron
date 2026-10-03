@@ -1,0 +1,17 @@
+// tests/gui/s76_virtualtag —— GUI-21 v2:virtual each 标签形态(零编译面:
+// each class virtual:N + 运行时窗口;应用侧写全量 each,零窗口算术)
+view Root {
+  <vbox class="root">
+    <vbox class="scr">
+      <each r in={allitems} class="vtag">
+        <label class="row">{r}</label>
+      </each>
+    </vbox>
+    <label class="state">{state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style scr { direction: column h: 110 bg: SURFACE scroll: 1 }
+style vtag { virtual: 6 }
+style row { fg: TEXT size: 13 h: 22 }
+style state { fg: "#22c55e" h: 22 }

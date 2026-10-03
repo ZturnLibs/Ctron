@@ -1,0 +1,114 @@
+// tests/gui/s76_virtualtag —— GUI-21 v2 virtual each 标签形态 headless 验收
+// 四段:①O(窗口) 发射(200 项 only 窗口 6+overscan 4=10 行 TEXT 命令)
+// ②初窗内容=item 0..9 ③滚动 220px(=10 行×22)→ 窗口=item 8..17(overscan 2 行)
+// ④滚回顶=item 0..9 复归。bind 全量应答(200 push),窗口算术全在运行时。
+use gui.{test, d_frame, d_expect_text, d_scroll, d_scroll_off, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte}
+
+struct Model {
+    var state: Str
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "each:allitems" {
+        // 全量应答(窗口化在运行时;v1 是应用侧窗口,此处对照)
+        var i: I32 = 0
+        while i < 200 {
+            buf.push("item " + i.to_string())
+            i += 1
+        }
+    }
+    if buf[0] == "state" {
+        buf.push(m.state)
+    }
+}
+
+fn text_n() -> I32 {
+    var n: I32 = d_cmd_count()
+    var c: I32 = 0
+    var i: I32 = 0
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            c += 1
+        }
+        i += 1
+    }
+    return c
+}
+
+// 第 k 个 TEXT 命令是否恰为 want(字节序比对)
+fn text_is(k: I32, want: Str) -> Bool {
+    var i: I32 = 0
+    var seen: I32 = 0
+    var n: I32 = d_cmd_count()
+    while i < n {
+        if d_cmd_type(i) == 1 {
+            if seen == k {
+                if d_cmd_text_len(i) != want.len {
+                    return false
+                }
+                var j: I32 = 0
+                while j < want.len {
+                    if d_cmd_text_byte(i, j) != byte_at(want, j) {
+                        return false
+                    }
+                    j += 1
+                }
+                return true
+            }
+            seen += 1
+        }
+        i += 1
+    }
+    return false
+}
+
+fn suite() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[Model](Model { state: "" })
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |nm, ar| { },
+        |k| { },
+        |t, act2, key2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // ①O(窗口):10 行(6 窗+overscan 4)
+            if text_n() != 10 {
+                panic("s76: 窗口行数扰 n=" + text_n().to_string())
+            }
+            // ②初窗内容
+            if !text_is(0, "item 0") {
+                panic("s76: 首行失证")
+            }
+            if !text_is(9, "item 9") {
+                panic("s76: 末行失证")
+            }
+            // ③滚动 220px=10 行 → 运行时窗 [8,18);视口外 overscan 行由 Clay
+            // 剔除(正当),可观测=9 行可见,item 0..8 全部消失
+            d_scroll(t, 220)
+            d_frame(t, |buf| bind_all(buf, m))
+            if text_n() > 10 {
+                panic("s76: 滚后行数超窗 n=" + text_n().to_string())
+            }
+            if !text_is(0, "item 9") {
+                panic("s76: 滚后首行失证")
+            }
+            if !text_is(text_n() - 1, "item 17") {
+                panic("s76: 滚后末行失证")
+            }
+            // ④滚回顶:窗口复归
+            d_scroll(t, 0 - 220)
+            d_frame(t, |buf| bind_all(buf, m))
+            if !text_is(0, "item 0") {
+                panic("s76: 回滚首行失证")
+            }
+            println("S76-VIRTUALTAG-GREEN")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s76: headless 验收件(真窗面略)")
+    return 0
+}
