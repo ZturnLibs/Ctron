@@ -84,6 +84,17 @@ int64_t ctron_rt_yield_bench(int rounds);
  * 消费,不参与任何行为契约;种子模式(CTRON_RT_SEED)恒 0。 */
 int64_t ctron_rt_steals(void);
 
+/* (T51 新增,§9.5 观测)reactor 后端名:kqueue/io_uring/epoll/poll;
+ * reactor 未惰性启动(尚无协程 wait_fd)时 "none"。冒烟矩阵与诊断消费,
+ * 不参与任何行为契约。linux 族运行时探测(io_uring 优先,NODROP 特性
+ * 门,否则 epoll);env CTRON_RT_REACTOR=epoll|io_uring 可压制选择。 */
+const char *ctron_rt_reactor_name(void);
+
+/* (T51 新增,§9.5 观测)NUMA 在线节点数。linux 探测
+ * /sys/devices/system/node/nodeN;其他平台/无拓扑面恒 1。v0 只探测登记
+ * (CTRON_RT_NUMA 选项值面先立,感知分配/亲和为志向),行为无差。 */
+int     ctron_rt_numa_nodes(void);
+
 #ifdef __cplusplus
 }
 #endif

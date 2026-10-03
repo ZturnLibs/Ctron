@@ -265,13 +265,22 @@ int main(void)
         while (!atomic_load_explicit(&c.filled, memory_order_acquire))
             sched_yield();
         sleep_ms(30);                            /* 确保 A 已 park 在可写等待 */
-        /* 排走 ≥4096 字节:macOS AF_UNIX 的 EVFILT_WRITE 有低水位阈——仅排少量
-         * 字节时 write() 已可用但 kqueue 不报告(实测 64B 不触发、4096B 触发)。
-         * 该阈值语义正是"wait_fd 返回后必须重试 syscall"冻结契约的佐证。 */
+        /* 排干直至 EAGAIN:T51 跨平台口径 —— 可写报告阈两族后端不同源:
+         * darwin EVFILT_WRITE 低水位 2048(实测排 4096 即报),linux
+         * EPOLLOUT 需发送侧半缓冲空(独立探针实测 233KB 灌满排 4096 不报);
+         * 排干在两族语义下都必然越阈。就绪唤醒断言不变:A 必须在 <3s 内
+         * 被可写唤醒(非 5000ms 超时)。排水前置 NONBLOCK(阻塞 read 排空
+         * 即挂死——容器实测在案;读端非阻塞仅本段窗口,最终 'Z' 排干段
+         * 自设非阻塞不受扰)。 */
         {
-            static char drain[4096];
+            static char drain[65536];
             ssize_t got = 0, k;
-            while (got < 4096 && (k = read(sp[1], drain, sizeof drain)) > 0) got += k;
+            CHECK(fcntl(sp[1], F_SETFL, O_NONBLOCK) == 0, "T2: 排水 SETFL");
+            while ((k = read(sp[1], drain, sizeof drain)) > 0) {
+                got += k;
+                if (got > (4 << 20)) break;      /* 防御 */
+            }
+            CHECK(errno == EAGAIN || errno == EWOULDBLOCK, "T2: 排干未至 EAGAIN");
             CHECK(got >= 4096, "T2: 主线程排走字节不足 4096");
         }
         ctron_rt_join_key((void*)(uintptr_t)0xF2);
@@ -279,13 +288,16 @@ int main(void)
         CHECK(c.woke_and_wrote == 1, "T2: A 醒后补写 'Z' 失败");
         double el = ms_of(c.dt_full_ns);
         CHECK(el < 3000.0, "T2: 可写唤醒失效(A 只能靠 5000ms 超时退出)");
-        {   /* B 端排干(非阻塞直至 EAGAIN),必须最后读到 'Z'
-               (阻塞式 read 在取走 'Z' 后会永远等 EOF——socketpair 不给) */
+        {   /* B 端排干(非阻塞直至 EAGAIN)。'Z' 字节见证仅在残留时断言:
+               上方排水段可把 A 醒后写入的 'Z' 一并吸走(全排干竞态,T51
+               在案);A 确已写 'Z' 由 woke_and_wrote 钉死,此处为冗余见证 */
             char last = 0, ch;
+            long got2 = 0;
             CHECK(fcntl(sp[1], F_SETFL, O_NONBLOCK) == 0, "T2: 主线程 SETFL");
-            while (read(sp[1], &ch, 1) == 1) last = ch;
+            while (read(sp[1], &ch, 1) == 1) { last = ch; got2++; }
             CHECK(errno == EAGAIN || errno == EWOULDBLOCK, "T2: 排干未至 EAGAIN");
-            CHECK(last == 'Z', "T2: 对端未收到 A 醒后写的 'Z'");
+            if (got2 > 0)
+                CHECK(last == 'Z', "T2: 对端未收到 A 醒后写的 'Z'");
         }
         close(sp[0]); close(sp[1]);
         printf("PASS T2 write-side: ready-immediate=%.1fms, after-EAGAIN-woke=%.1fms (timeout=5000ms)\n",
@@ -390,6 +402,26 @@ int main(void)
         }
         printf("PASS T5 stress: %d coros x %d socketpair exchanges, all correct\n",
                STRESS_N, STRESS_RND);
+    }
+
+    /* T6(T51 §9.5):后端观测 + 可选点名断言(双后端矩阵消费)。全部用例
+     * 已走真 reactor 路径 ⇒ 后端已定性;CTRON_SMOKE_EXPECT_REACTOR 由
+     * run.sh 各臂注入,断言实际后端与点名一致(探测错位即响亮)。 */
+    {
+        const char *rn = ctron_rt_reactor_name();
+        const char *ex = getenv("CTRON_SMOKE_EXPECT_REACTOR");
+        CHECK(rn != NULL && strcmp(rn, "none") != 0, "T6: reactor 未启动");
+        if (ex && *ex) {
+            if (strcmp(ex, "uring-any") == 0) {
+                /* io_uring 点名臂:内核自检可能回退 epoll(响亮登记在 rt 侧),
+                 * 契约要求 = linux 族二后端之一,绝无 poll/kqueue 错位 */
+                CHECK(strcmp(rn, "io_uring") == 0 || strcmp(rn, "epoll") == 0,
+                      "T6: uring-any 点名落到族外后端");
+            } else {
+                CHECK(strcmp(rn, ex) == 0, "T6: 后端点名不符");
+            }
+        }
+        printf("PASS T6 backend: %s (numa_nodes=%d)\n", rn, ctron_rt_numa_nodes());
     }
 
     atomic_store(&g_alive, 0);

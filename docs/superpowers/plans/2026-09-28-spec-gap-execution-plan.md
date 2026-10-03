@@ -560,7 +560,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T51 · 异步 IO 补全 + Simd 自动向量化评估(§9.5)
 
-- **预估:** 1.5–2 d(评估面)+ 未估(实施,按评估结论)。**前置:** 无。**状态:** 待办
+- **预估:** 1.5–2 d(评估面)+ 未估(实施,按评估结论)。**前置:** 无。**状态:** ✅ 已完成(2026-10-03;评估报告=docs/simd-vectorization-analysis.md,实施按报告志向分级另立)
 - **目标:** §9.5 硬件利用三残项:①io_uring(linux)/IOCP(windows) 接入现有 reactor 族(kqueue/epoll/poll 已有);②NUMA 感知分配与任务亲和(运行时选项);③`Simd[E,N]` 自动向量化评估(现纯解释/发射模拟)。
 - **范围:** `net/c_src/ctron_rt.c`(reactor 后端注册面)、发射模板、评估报告落 `docs/ffi-analysis.md` 同级或 bench 报告。
 - **要点:** io_uring 与 kqueue/epoll 同构(完成队列轮询),reactor 抽象已有(CTRON_RT=coro);windows/IOCP 无靶机则登记环境依赖;Simd 自动向量化评估结论二选一:发射侧对 `Simd` 元素级白名单运算直发 SIMD intrinsics/`-ftree-vectorizable` 提示(工程量大,列志向),或规范挂「v0 为语义模拟,向量化志向」注——**评估报告即本件交付,实施另立**。
@@ -643,7 +643,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T48 | CTCL 迁移 | W9 | 待办 | — |
 | T49 | lockfile+workspace | W9 | 待办 | — |
 | T50 | 闭源 S1/S2【条件】 | W9 | 挂起 | — |
-| T51 | 异步 IO+Simd 向量化评估 | W9 | 待办 | — |
+| T51 | 异步 IO+Simd 向量化评估 | W9 | **已完成**(1003;①io_uring 后端落库[POLL_ADD 天然 one-shot 同构映射+G 内单生产者+免 tick+双 NOP 自检门响亮回退,6.10-linuxkit array 异常立案];②NUMA 选项位+拓扑探测[行为位=志向];③Simd 评估报告选 B 落 docs/simd-vectorization-analysis.md[clang -O2 width4 实证/gcc -O3;寄存器驻留=志向];IOCP 环境依赖登记;reactor 冒烟双臂挂 ci.sh;net 18/18+coro_det 101/101+w7+suite 100/100) | 见 git |
 | T52 | 插件沙箱(derive+lint) | W9 | 待办 | — |
 | T53 | emit union 载荷 64 位化 | W9 | **已完成**(1002;五病灶全修[expect 型别/expect 位还原/语句形 match-Ok 硬编码 int32/Try 两语句位/json (h) 绕行],json JNum/JReal 回切摘除,芯=wrap+or 先行 a000a6ad;探针 14 项双臂绿+e_t53_payload64 双臂锚+json_fidelity 13/13+suite 99/99+web_todo 92 裸跑 rc=0) | 见 git |
 

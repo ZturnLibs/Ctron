@@ -16,9 +16,15 @@ sh "$DIR/compiler/build.sh"
 echo "[3/9] 自举出原生四件套(ctron-cc/chk/emit/fmt;冒烟与测试集的原生臂前置)"
 sh "$DIR/compiler/native.sh"
 
-echo "[4/9] 验收冒烟(--full,含并发/枚举/fn 值发射/自举固定点/fmt 金样)+ tests/ 一致性测试集(对照 C 参考宿主)"
+echo "[4/9] 验收冒烟(--full,含并发/枚举/fn 值发射/自举固定点/fmt 金样)+ tests/ 一致性测试集(对照 C 参考宿主)+ rt 纯 C 冒烟(coro 调度器与 reactor 后端矩阵)"
 sh "$DIR/compiler/test/smoke.sh" --full
 python3 "$DIR/compiler/test/suite.py"
+
+# T51 §9.5:rt 纯 C 冒烟(coro 调度器 + reactor wait_fd 全契约)。秒级、
+# 零依赖、仅回环;reactor 后端双臂同形(linux 族 = epoll 点名 + io_uring
+# 点名,后者内核自检不过时响亮登记回退;darwin = kqueue 单臂)。
+sh "$DIR/tests/net/rt_core_smoke/run.sh"
+sh "$DIR/tests/net/rt_reactor_smoke/run.sh"
 
 echo "[5/9] ctron 驱动冒烟(run/check/build/fmt 契约/help/无 cc 路径)"
 sh "$DIR/tests/dist/ctron_smoke.sh"

@@ -102,7 +102,7 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 | `prop` 属性(定义+使用) | ❌ | 前奏 `.len` 隐含,用户定义无 |
 | trait 默认方法体、超 trait 组合(`Env: Clock + Fs`) | ❌ | 仅 `: Cap` 标记 |
 | 泛型 struct/class、bound(`T: Show`)、`@derive(Show, Eq)` | ❌ | |
-| `Simd[E, N]` | ❌ | |
+| `Simd[E, N]` | 🟡 | 语义/标量模拟在库(09_simd.ct);T51 评估:循环级自动向量化实证(clang -O2 width4/gcc -O3),寄存器驻留=志向 |
 | **函数类型 `fn(...) -> T`(v0.4)** | ❌ | **新特性无测试** |
 
 ## §4 表达式(16 项:✅9 🟡2 ❌5)
@@ -133,7 +133,12 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 ## §9 档位与互操作(6 项:✅1 ❌3 ⛧2)
 
-✅ bare target 标记+arena。❌ `extern "c"`+`#[trusted]` FFI、Simd 硬件利用、产物体积口径。⛭ JS 桥、WasmGC(需对应后端)。
+✅ bare target 标记+arena。❌ `extern "c"`+`#[trusted]` FFI、产物体积口径。⛭ JS 桥、WasmGC(需对应后端)。
+> **T51(2026-10-03)**:§9.5 三残项收口——①异步 IO 统一层 io_uring 后端落库
+> (自检双 NOP 门+响亮回退;reactor 冒烟双臂挂 ci.sh);②NUMA 选项位+拓扑探测
+> (感知分配=志向,多节点靶机触发);③Simd 向量化评估报告落
+> `docs/simd-vectorization-analysis.md`(结论 B=v0 语义模拟挂注+志向分级;clang -O2
+> 循环级向量化实证,width 4)。§9 硬件利用行项从 ❌ 翻 🟡(语义模拟在库,寄存器级=志向)。
 
 ## §10 诊断与符合性(4 项:✅2 ⛧2)
 

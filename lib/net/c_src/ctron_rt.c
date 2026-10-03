@@ -48,11 +48,17 @@
  *
  * ══ P2-B reactor(wait_fd 就绪后台线程)══
  *   专用 reactor 线程,首次协程 wait_fd 惰性创建,进程生命周期常驻不 join
- *   (与 worker 同口径)。后端三选一(编译期):kqueue(darwin,EVFILT_READ/
- *   WRITE)/ epoll(linux,EPOLLIN|OUT)/ POSIX poll 循环(其他,100ms 轮询节奏
- *   ——已登记限制;Windows 移植需换 WSAPoll)。一律水平触发(ET/one-shot+rearm
- *   列 P9),kevent/epoll_wait 统一压 100ms 上限——新登记的"注册时即就绪"事件
- *   不依赖后端对挂起等待的即时唤醒语义,最坏 100ms 兜底交付。
+ *   (与 worker 同口径)。后端族(编译期):kqueue(darwin,EVFILT_READ/
+ *   WRITE)/ linux 族(io_uring 探测胜出或 epoll 回退,EPOLLIN|OUT)/ POSIX
+ *   poll 循环(其他,100ms 轮询节奏——已登记限制;Windows 移植需换 WSAPoll;
+ *   IOCP=windows 族未建,环境依赖登记见 T51 评估)。linux 族内 io_uring/
+ *   epoll 运行时探测定夺(NODROP 特性门,T51),env CTRON_RT_REACTOR=
+ *   epoll|io_uring 压制,ctron_rt_reactor_name() 观测。
+ *   一律水平触发(io_uring=POLL_ADD 完成即一次性内生 one-shot;ET/one-shot
+ *   +rearm 列 P9),kevent/epoll_wait 统一压 100ms 上限——新登记的"注册时
+ *   即就绪"事件不依赖后端对挂起等待的即时唤醒语义,最坏 100ms 兜底交付
+ *   (io_uring 豁免:提交方自带 enter 冲刷,就绪判定在提交时,完成即原生
+ *   唤醒,免 tick)。
  *   fd+方向 → key 登记表与后端兴趣增删全部在全局锁 G 内(与 park/wake 同锁,
  *   无第二把锁、无锁序问题)。wait_fd:登记 + 后端注册(park 前同一次 G 持有内
  *   完成)→ coro_suspend(DESCHED_PARK);reactor 就绪 → 摘登记 → coro_wake_locked
@@ -171,6 +177,7 @@
 #include <errno.h>
 #include <fcntl.h>                               /* F_GETFD:摘后端兴趣前探 fd 存活 */
 #include <poll.h>                                /* 裸线程 wait_fd 回退 + poll 后端 */
+#include <dirent.h>                              /* T51 NUMA 拓扑探测(/sys 节点计) */
 #include <sys/mman.h>
 #if defined(__APPLE__)
 #include <sys/event.h>                           /* kqueue(P2-B reactor 后端) */
@@ -827,6 +834,7 @@ static void idle_backoff(void)
 }
 
 static void rt_altstack_install(void);
+static void rt_numa_probe(void);              /* T51 NUMA 拓扑探测(init 调用,定义在访问器区) */
 
 static void *worker_main(void *p)
 {
@@ -894,14 +902,27 @@ static rt_fdwait *g_fdmap[RT_FDMAP_BUCKETS];  /* 登记表(G 内读写) */
 #if defined(__APPLE__)
 # define RT_BACKEND_KQUEUE 1
 #elif defined(__linux__)
-# define RT_BACKEND_EPOLL 1
+# define RT_BACKEND_EPOLL 1                   /* linux 族:io_uring(探测胜出)/epoll(回退) */
 #else
 # define RT_BACKEND_POLL 1                    /* POSIX poll 循环(Windows 移植需换 WSAPoll;登记限制) */
+#endif
+
+#if defined(RT_BACKEND_EPOLL) && !defined(RT_NO_IOURING)
+# define RT_IOURING_CAP 1                     /* T51 §9.5:io_uring 候选(运行时探测定夺) */
 #endif
 
 static int       g_rb_fd = -1;                /* kqueue/epoll 描述符;poll 回退恒为 -1 */
 static int       g_reactor_started = 0;       /* G 内读写 */
 static pthread_t g_reactor_th;
+
+/* T51:linux 族内 io_uring/epoll 运行时后端谓词。kqueue/poll 族恒 0(编译期
+ * 常量,谓词分支被死码消除);RT_URING() 调用点恒在 G 内或后端定性后单线程。 */
+#if defined(RT_IOURING_CAP)
+static int g_rb_uring = 0;                    /* 1=io_uring;0=epoll(启动时定性,此后只读) */
+# define RT_URING() g_rb_uring
+#else
+# define RT_URING() 0
+#endif
 
 static size_t fd_bucket(int fd, int dir)
 {
@@ -952,6 +973,232 @@ static void fdwait_sweep_bucket_locked(size_t b)
  * wait_fd:每读的 EV_ADD/EV_DELETE + F_GETFD 三笔收敛为每停一笔。
  * 返回 0=成功,-1=后端拒绝(fd 已坏)——调用方将不 park 直接返回,让调用方
  * 重试 syscall 见错。 */
+#if defined(RT_IOURING_CAP)
+/* ═══════════ T51 §9.5 io_uring 后端(完成队列族,linux) ═══════════
+ * 与 kqueue/epoll 的就绪队列同构映射:每次武装 = 一笔 IORING_OP_POLL_ADD
+ * SQE(完成即消费,天然 one-shot,与 EV_ONESHOT/EPOLLONESHOT 口径重合);
+ * 就绪交付 = CQE → reactor_deliver_locked(armed 吞发/last-wins 全复用,
+ * 零新契约)。仅用 POLL_ADD/POLL_REMOVE 两操作,POLL_ADD 完成即一次性 ——
+ * epoll 的 in_rb/乐观 MOD/EEXIST 升级/交付连坐重挂四面在 io_uring 无存在
+ * 必要(one-shot 是内核原生的,非注册语义拼出)。
+ *
+ * uapi 手定义(不引 <linux/io_uring.h>):零外部依赖纪律 + darwin 侧可
+ * 语法编译验证;布局对 kernel uapi 逐字节钉死(6.x 源照抄,向后兼容读面:
+ * poll 事件走偏移 28 —— 旧内核读 u16 poll_events、新内核读 u32
+ * poll32_events,共址,POLLIN=1/POLLOUT=4 皆 u16 域内)。
+ *
+ * 线程模型:全部提交(G 内)由武装/摘除方直推直 flush(单生产者经 G 串行
+ * 化,SQ 尾 store-release);reactor 线程是唯一消费者 —— 阻塞在
+ * io_uring_enter(GETEVENTS, min_complete=1),内核原生唤醒(完成即醒),
+ * 无需 kqueue/epoll 的 100ms 兜底 tick:「注册时即就绪」由 POLL_ADD 提交
+ * 时的内核就绪检查即时交付(提交方自己的 enter 调用顺带冲刷)。
+ * 探测门(io_uring_setup 成功 + NODROP 特性):NODROP ≥5.5 —— CQ 溢出
+ * 内核等待而非丢弃,契约不容丢事件;POLL_REMOVE 恰同代。不满足 → epoll
+ * 回退,行为同形。env CTRON_RT_REACTOR=epoll 压制回 epoll;=io_uring 点名
+ * 而环境不给 → abort(后端创建失败惯例)。 */
+static void reactor_deliver_locked(int fd, int dir);   /* 前向:ctio_drain 交付面(定义在 arm 之后) */
+struct ctio_sqe {                             /* io_uring_sqe 前 64B(只用所列字段) */
+    uint8_t  opcode;
+    uint8_t  flags;
+    uint16_t ioprio;
+    int32_t  fd;
+    uint64_t off;                             /* POLL_REMOVE:待取消 req 的 user_data */
+    uint64_t addr;
+    uint32_t len;
+    uint32_t ev;                              /* 偏移 28:poll_events/poll32_events 共址 */
+    uint64_t user_data;                       /* 偏移 32 */
+};
+struct ctio_cqe {                             /* io_uring_cqe(16B) */
+    uint64_t user_data;
+    int32_t  res;
+    uint32_t flags;
+};
+struct ctio_sq_off { uint32_t head, tail, ring_mask, ring_entries, flags, dropped, array, resv1; uint64_t user_addr; };
+struct ctio_cq_off { uint32_t head, tail, ring_mask, ring_entries, overflow, cqes, flags, resv1; uint64_t user_addr; };
+struct ctio_params {
+    uint32_t sq_entries, cq_entries, flags, sq_thread_cpu, sq_thread_idle, features, wq_fd;
+    uint32_t resv[3];
+    struct ctio_sq_off sq_off;
+    struct ctio_cq_off cq_off;
+};
+#define CTIO_OP_POLL_ADD    6                 /* uapi 枚举序:NOP=0..WRITE_FIXED=5 */
+#define CTIO_OP_POLL_REMOVE 7
+#define CTIO_SETUP_CQSIZE   (1u << 3)
+#define CTIO_ENTER_GETEVENTS 1u
+#define CTIO_FEAT_NODROP    (1u << 1)         /* 探测门:≥5.5(溢出等待 + POLL_REMOVE) */
+#define CTIO_FEAT_SINGLE_MMAP (1u << 0)        /* SQ/CQ 单区映射(新布局族) */
+#define CTIO_TAG_REMOVE     (1ull << 62)      /* REMOVE 回执哨兵(真实 ud = fd*2+dir < 2^62) */
+
+static int       g_uring_fd = -1;
+static uint8_t  *g_sq_ring;                   /* SQ 环(header + array[]) */
+static struct ctio_sqe *g_sqes;               /* SQE 数组(独立 mmap 段) */
+static uint8_t  *g_cq_ring;                   /* CQ 环 */
+static struct ctio_sq_off g_sq_off;
+static struct ctio_cq_off g_cq_off;
+static uint32_t  g_sq_mask;
+static uint32_t  g_cq_mask;
+static unsigned  g_sq_pending = 0;            /* G 内:已 push 未 flush 计数 */
+static int       g_selftest_seen = 0;         /* 自检已核对 CQE 数(init 前单线程) */
+
+static long ctio_sys(long nr, long a, long b, long c, long d)
+{
+#if defined(__x86_64__) || defined(__aarch64__)
+    return syscall(nr, a, b, c, d);           /* setup=425/enter=426(x86_64 与 arm64 同号) */
+#else
+    (void)nr; (void)a; (void)b; (void)c; (void)d;
+    return -ENOSYS;                           /* 其他架构:探测必败 → epoll 回退 */
+#endif
+}
+
+static uint64_t ctio_ud(int fd, int dir)
+{
+    return ((uint64_t)(uint32_t)(unsigned)fd << 1) | (uint64_t)(unsigned)dir;
+}
+
+/* G 内:push 一笔 SQE(只写不提交;flush 成对)。环满不该发生(单生产者
+ * 逐笔即推即冲),发生即拒绝(调用方按后端拒绝口径不 park 直返)。 */
+static int ctio_push_locked(const struct ctio_sqe *s)
+{
+    uint32_t tail = __atomic_load_n((uint32_t *)(g_sq_ring + g_sq_off.tail), __ATOMIC_RELAXED);
+    uint32_t head = __atomic_load_n((uint32_t *)(g_sq_ring + g_sq_off.head), __ATOMIC_ACQUIRE);
+    uint32_t slot;
+    if ((uint32_t)(tail - head) > g_sq_mask) return -1;   /* 满(防御,契约上不可达) */
+    slot = tail & g_sq_mask;
+    ((uint32_t *)(g_sq_ring + g_sq_off.array))[slot] = slot;   /* sqarray 恒等映射 */
+    g_sqes[slot] = *s;
+    __atomic_store_n((uint32_t *)(g_sq_ring + g_sq_off.tail), tail + 1, __ATOMIC_RELEASE);
+    g_sq_pending++;
+    return 0;
+}
+
+/* G 内:enter 冲刷全部 pending。失败回卷(单生产者,G 内,安全)。 */
+static int ctio_flush_locked(void)
+{
+    int r;
+    if (g_sq_pending == 0) return 0;
+    do {
+        r = (int)ctio_sys(426, g_uring_fd, (long)g_sq_pending, 0, 0);   /* io_uring_enter:只提交 */
+    } while (r < 0 && errno == EINTR);
+    if (r < 0) {
+        uint32_t tail = __atomic_load_n((uint32_t *)(g_sq_ring + g_sq_off.tail), __ATOMIC_RELAXED);
+        __atomic_store_n((uint32_t *)(g_sq_ring + g_sq_off.tail), tail - (uint32_t)g_sq_pending,
+                         __ATOMIC_RELEASE);
+        g_sq_pending = 0;
+        return -1;
+    }
+    g_sq_pending = 0;                          /* 提交数 ≤ pending 恒成立(G 串行) */
+    return 0;
+}
+
+/* G 内:武装 = 一笔 POLL_ADD 即推即冲。完成即一次性(one-shot 内生)。
+ * 已就绪 fd 由内核在提交时判定,CQE 即刻落地并唤醒阻塞中的 reactor ——
+ * 免 100ms 兜底 tick 的「注册即就绪」路径。失败(环满/flush 败)= 后端
+ * 拒绝,调用方不 park 直接重试 syscall 见错(同 kqueue/epoll 拒绝口径)。 */
+static int ctio_arm_poll_locked(rt_fdwait *e)
+{
+    struct ctio_sqe s;
+    memset(&s, 0, sizeof s);
+    s.opcode = CTIO_OP_POLL_ADD;
+    s.fd = e->fd;
+    s.ev = (uint32_t)(e->dir == RT_FD_WRITE ? POLLOUT : POLLIN);
+    s.user_data = ctio_ud(e->fd, e->dir);
+    if (ctio_push_locked(&s) != 0) return -1;
+    return ctio_flush_locked();
+}
+
+/* G 内:fd 关闭钩子配套 —— 双方向 POLL_REMOVE(取消在飞 POLL_ADD,释放
+ * 文件引用;io_uring 不随 close 自动摘,与 kqueue/epoll 的内核自动摘差异
+ * 在此补齐)。已完成的取消响 ENOENT(哨兵 CQE,收割时吞)。 */
+static void ctio_forget_polls_locked(int fd)
+{
+    int d;
+    for (d = 0; d < 2; d++) {
+        struct ctio_sqe s;
+        memset(&s, 0, sizeof s);
+        s.opcode = CTIO_OP_POLL_REMOVE;
+        s.fd = -1;
+        s.off = ctio_ud(fd, d);               /* 匹配待取消 req 的 user_data */
+        s.user_data = CTIO_TAG_REMOVE | ctio_ud(fd, d);
+        if (ctio_push_locked(&s) == 0) (void)ctio_flush_locked();
+    }
+}
+
+/* reactor 线程:收割全部可用 CQE 并按 armed 吞发交付;无主 CQE(取消回执/
+ * 迟到重复/REMOVE 哨兵)一律吞 —— 同 reactor_deliver_locked 的吞发判据。 */
+static void ctio_drain_deliver_locked(void)
+{
+    for (;;) {
+        uint32_t head = __atomic_load_n((uint32_t *)(g_cq_ring + g_cq_off.head), __ATOMIC_RELAXED);
+        uint32_t tail = __atomic_load_n((uint32_t *)(g_cq_ring + g_cq_off.tail), __ATOMIC_ACQUIRE);
+        struct ctio_cqe *cqes;
+        uint64_t ud;
+        if (head == tail) return;
+        cqes = (struct ctio_cqe *)(g_cq_ring + g_cq_off.cqes);
+        ud = cqes[head & g_cq_mask].user_data;
+        __atomic_store_n((uint32_t *)(g_cq_ring + g_cq_off.head), head + 1, __ATOMIC_RELEASE);
+        if (ud & CTIO_TAG_REMOVE) continue;
+        reactor_deliver_locked((int)(ud >> 1), (int)(ud & 1u));
+    }
+}
+
+/* 开机自检(启动线程,reactor 未起,G 已持有):**两笔** NOP 往返 —— 提交后
+ * 界定等待(~40ms 上限)逐笔收割 CQE,ud/res 逐字核对。两笔缺一不可:单笔
+ * 在「array 间接层失效」的内核上会侥幸全对(恒消费 slot0;6.10-linuxkit
+ * 实测在案),双发才钉死顺序消费正确性。任何一环不达(内核 ABI 不在预期
+ * 形态/极端过载)即 -1,调用方回退 epoll —— io_uring 后端永不以坏环上线
+ * (环境探测先行,契约不破)。 */
+static int ctio_selftest(void)
+{
+    int k;
+    for (k = 0; k < 2; k++) {
+        struct ctio_sqe s;
+        memset(&s, 0, sizeof s);
+        s.opcode = 0;                          /* IORING_OP_NOP */
+        s.user_data = 0xDEAD0001ull + (uint64_t)k;
+        if (ctio_push_locked(&s) != 0) return -1;
+    }
+    if (ctio_flush_locked() != 0) return -1;
+    {
+        int i;
+        for (i = 0; i < 400; i++) {            /* 400 × 100µs = 40ms 上限 */
+            uint32_t head = __atomic_load_n((uint32_t *)(g_cq_ring + g_cq_off.head), __ATOMIC_RELAXED);
+            uint32_t tail = __atomic_load_n((uint32_t *)(g_cq_ring + g_cq_off.tail), __ATOMIC_ACQUIRE);
+            if (head != tail) {
+                struct ctio_cqe *cqes = (struct ctio_cqe *)(g_cq_ring + g_cq_off.cqes);
+                uint64_t ud = cqes[head & g_cq_mask].user_data;
+                int32_t res = cqes[head & g_cq_mask].res;
+                __atomic_store_n((uint32_t *)(g_cq_ring + g_cq_off.head), head + 1, __ATOMIC_RELEASE);
+                if (ud != 0xDEAD0001ull + g_selftest_seen || res != 0) return -1;
+                if (++g_selftest_seen == 2) return 0;
+                continue;
+            }
+            {
+                struct timespec ts = { 0, 100 * 1000 };
+                nanosleep(&ts, NULL);
+            }
+        }
+    }
+    return -1;                                 /* 40ms 无 CQE:环不通 */
+}
+
+static void *reactor_main_uring(void *unused)
+{
+    (void)unused;
+    for (;;) {
+        int r = (int)ctio_sys(426, g_uring_fd, 0, 1, CTIO_ENTER_GETEVENTS);   /* 阻塞至 ≥1 CQE */
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            struct timespec ts = { 0, 10 * 1000 * 1000 };   /* 非常规错:退避续跑 */
+            nanosleep(&ts, NULL);
+            continue;
+        }
+        rt_lock();
+        ctio_drain_deliver_locked();
+        rt_unlock();
+    }
+}
+#endif /* RT_IOURING_CAP */
+
 static int fdwatch_arm_locked(rt_fdwait *e)
 {
 #if defined(RT_BACKEND_KQUEUE)
@@ -961,6 +1208,7 @@ static int fdwatch_arm_locked(rt_fdwait *e)
     /* EV_ADD 幂等更新:首次注册与重启用同形 */
     return kevent(g_rb_fd, &ke, 1, NULL, 0, NULL) == 0 ? 0 : -1;
 #elif defined(RT_BACKEND_EPOLL)
+    if (RT_URING()) return ctio_arm_poll_locked(e);   /* T51:io_uring 接管武装 */
     struct epoll_event ev;
     /* epoll one-shot 按 fd 整体注册:掩码 = 两方向 armed 并集(未武装方向
      * 不入掩码 —— 驻留旧登记不得消费本次 one-shot、不得引入虚假交付)。 */
@@ -1003,10 +1251,11 @@ static void reactor_deliver_locked(int fd, int dir)
     if (c) coro_wake_locked(c);            /* PARKED→入队;DESCHED/RUNNING→pending;
                                               READY/DONE 吸收(不变量 II) */
 #if defined(RT_BACKEND_EPOLL)
-    /* epoll one-shot 按 fd 连坐:本方向交付消费掉了整条注册,反向仍 armed 时
-     * 须以反向掩码重挂,否则反向等待者被本次连带(只能靠超时醒)。仅同 fd
-     * 双向并发等待才发生;kqueue 滤波器按方向独立,无此路径。 */
-    {
+    if (!RT_URING()) {
+        /* epoll one-shot 按 fd 连坐:本方向交付消费掉了整条注册,反向仍
+         * armed 时须以反向掩码重挂,否则反向等待者被本次连带(只能靠超时
+         * 醒)。仅同 fd 双向并发等待才发生;kqueue 滤波器按方向独立,无此
+         * 路径;io_uring 亦无(POLL_ADD 按方向独立一次性)。 */
         rt_fdwait *o = fdwait_find_locked(fd, dir == RT_FD_WRITE ? RT_FD_READ : RT_FD_WRITE);
         if (o && o->armed) (void)fdwatch_arm_locked(o);
     }
@@ -1036,6 +1285,7 @@ static void *reactor_main(void *unused)
 static void *reactor_main(void *unused)
 {
     struct epoll_event evs[64];
+    if (RT_URING()) return reactor_main_uring(unused);   /* T51:io_uring 接管事件循环 */
     (void)unused;
     for (;;) {
         int n = epoll_wait(g_rb_fd, evs, 64, 100);
@@ -1103,8 +1353,94 @@ static void reactor_start_locked(void)
     g_rb_fd = kqueue();
     if (g_rb_fd < 0) abort();
 #elif defined(RT_BACKEND_EPOLL)
-    g_rb_fd = epoll_create1(0);
-    if (g_rb_fd < 0) abort();
+# if defined(RT_IOURING_CAP)
+    {   /* T51:io_uring 探测定夺(env CTRON_RT_REACTOR 可压制)。探测门 =
+         * setup 成功 + NODROP 特性(≥5.5:CQ 溢出内核等待不丢 CQE +
+         * POLL_REMOVE 同代);任一不满足 → epoll 回退(交付语义同形,
+         * 后端选择仅是实现细节)。env 点名 io_uring 而环境不给 → abort
+         * (后端创建失败惯例);点名 epoll → 跳过探测;未设/未知值 → auto。 */
+        const char *rv = getenv("CTRON_RT_REACTOR");
+        int want = !(rv && *rv && strcmp(rv, "epoll") == 0);
+        if (want) {
+            struct ctio_params p;
+            int fd;
+            memset(&p, 0, sizeof p);
+            p.flags = CTIO_SETUP_CQSIZE;
+            p.cq_entries = 1024;               /* 突发就绪余量(G 内即时收割,防御性) */
+            fd = (int)ctio_sys(425, 64, (long)&p, 0, 0);        /* io_uring_setup */
+            if (fd >= 0 && (p.features & CTIO_FEAT_NODROP)) {
+                /* 映射(liburing 同法):SINGLE_MMAP 族(≥5.4;6.10+ 新布局为其
+                 * 强化——SQ/CQ 头交织同一区:SQ head@0/tail@4,CQ head@8/tail@12,
+                 * CQ 段嵌在 SQ 区内,array 区尾)只做一次 offset-0 映射,sq/cq 基
+                 * 同址;无 SINGLE_MMAP 的旧布局才分立 0x8000000。
+                 * 坑位实测(6.10-linuxkit):①mask 是环内偏移,真值要从映射环读
+                 * (拿偏移当掩码 → 第二笔 CQE 永远读回 slot0);②array 间接层在
+                 * 新布局下行为存疑 → 开机 NOP 自检(下方)不过即回退 epoll。 */
+                size_t sq_sz = (size_t)p.sq_off.array + (size_t)p.sq_entries * sizeof(uint32_t);
+                size_t cq_sz = (size_t)p.cq_off.cqes + (size_t)p.cq_entries * sizeof(struct ctio_cqe);
+                size_t sqe_sz = (size_t)p.sq_entries * sizeof(struct ctio_sqe);
+                int single = (p.features & CTIO_FEAT_SINGLE_MMAP) ? 1 : 0;
+                size_t ring_sz = single ? (sq_sz > cq_sz ? sq_sz : cq_sz) : sq_sz;
+                uint8_t *ring = (uint8_t *)mmap(NULL, ring_sz, PROT_READ | PROT_WRITE,
+                                                MAP_SHARED | MAP_POPULATE, fd, 0);
+                if (single) {
+                    g_sq_ring = ring;
+                    g_cq_ring = ring;
+                } else if (ring != MAP_FAILED) {
+                    ring_sz = sq_sz;
+                    g_sq_ring = ring;
+                    g_cq_ring = (uint8_t *)mmap(NULL, cq_sz, PROT_READ | PROT_WRITE,
+                                                MAP_SHARED | MAP_POPULATE, fd, 0x8000000ULL);
+                } else {
+                    g_cq_ring = MAP_FAILED;
+                }
+                g_sqes = (struct ctio_sqe *)mmap(NULL, sqe_sz, PROT_READ | PROT_WRITE,
+                                                 MAP_SHARED | MAP_POPULATE, fd, 0x10000000ULL);
+                if (ring != MAP_FAILED && g_cq_ring != MAP_FAILED && g_sqes != MAP_FAILED) {
+                    uint32_t i;
+                    for (i = 0; i < p.sq_entries; i++)        /* sqarray 恒等初值 */
+                        ((uint32_t *)(g_sq_ring + p.sq_off.array))[i] = i;
+                    g_sq_off = p.sq_off;
+                    g_cq_off = p.cq_off;
+                    /* ring_mask 是环内偏移,真值在映射环里(liburing 同法)——
+                     * 拿偏移当掩码会让第 2 个 CQE 永远读回 slot0(实测在案) */
+                    g_sq_mask = *(uint32_t *)(g_sq_ring + p.sq_off.ring_mask);
+                    g_cq_mask = *(uint32_t *)(g_cq_ring + p.cq_off.ring_mask);
+                    g_uring_fd = fd;
+                    if (ctio_selftest() == 0) {
+                        g_rb_uring = 1;        /* 定性后只读:arm/deliver/forget 谓词分支 */
+                    } else {
+                        /* 自检不过(内核 ABI 不在预期形态):回退 epoll,契约不破 */
+                        munmap(g_sqes, sqe_sz);
+                        munmap(g_sq_ring, ring_sz);
+                        if (!single) munmap(g_cq_ring, cq_sz);
+                        close(fd);
+                        g_sq_ring = NULL; g_cq_ring = NULL; g_sqes = NULL; g_uring_fd = -1;
+                    }
+                } else {
+                    if (ring != MAP_FAILED) munmap(g_sq_ring, ring_sz);
+                    if (!single && g_cq_ring != MAP_FAILED) munmap(g_cq_ring, cq_sz);
+                    if (g_sqes != MAP_FAILED) munmap(g_sqes, sqe_sz);
+                    close(fd);
+                    g_sq_ring = NULL; g_cq_ring = NULL; g_sqes = NULL;
+                }
+            } else if (fd >= 0) {
+                close(fd);                     /* 特性门不过(5.1–5.4):epoll 回退 */
+            }
+        }
+        if (g_rb_uring == 0 && rv && *rv && strcmp(rv, "io_uring") == 0) {
+            /* 点名 io_uring 而自检不过:内核在位但 ABI 不合本运行时预期 ——
+             * 响亮登记后回退 epoll(同 IOCP 无靶机口径,不静默不硬炸;
+             * 探测失败细节见 docs/simd-vectorization-analysis.md T51 段) */
+            static const char msg[] = "ctron_rt: io_uring 点名但自检不过(内核 ABI 不合预期),回退 epoll(T51 登记)\n";
+            write(2, msg, sizeof msg - 1);
+        }
+    }
+# endif
+    if (g_rb_uring == 0) {
+        g_rb_fd = epoll_create1(0);
+        if (g_rb_fd < 0) abort();
+    }
 #endif
     if (pthread_create(&g_reactor_th, NULL, reactor_main, NULL) != 0) abort();
     g_reactor_started = 1;                 /* pthread_create 先行 ⇒ reactor_main 读
@@ -1180,6 +1516,15 @@ void ctron_rt_init(int workers)
                 g_seed_state = (uint64_t)v;
             }
         }
+    }
+    {   /* T51 §9.5:NUMA 选项位(CTRON_RT_NUMA)。v0 只探测登记不改行为
+         * (off/on/auto 值面先立;感知分配/亲和=志向),观测口
+         * ctron_rt_numa_nodes()。 */
+        const char *e = getenv("CTRON_RT_NUMA");
+        if (e && strcmp(e, "on") == 0) {
+            /* on 点名:节点数 >1 的亲和/分配行为属志向,当前仅登记于观测口 */
+        }
+        rt_numa_probe();
     }
     if (workers <= 0) {
         long n = sysconf(_SC_NPROCESSORS_ONLN);
@@ -1470,7 +1815,59 @@ void ctron_rt_forget_fd(int64_t fd64)
     rt_lock();
     for (d = 0; d < 2; d++)
         free(fdwait_take_locked(fd, d));
+#if defined(RT_IOURING_CAP)
+    if (RT_URING()) ctio_forget_polls_locked(fd);   /* io_uring 不随 close 自动摘:显式取消 */
+#endif
     rt_unlock();
+}
+
+/* T51 §9.5 观测口:reactor 后端名(kqueue/io_uring/epoll/poll;未启动 =
+ * "none")。冒烟与诊断消费,冻结接口新增不改旧。 */
+const char *ctron_rt_reactor_name(void)
+{
+    if (!g_reactor_started) return "none";
+#if defined(RT_BACKEND_KQUEUE)
+    return "kqueue";
+#elif defined(RT_BACKEND_EPOLL)
+    return RT_URING() ? "io_uring" : "epoll";
+#else
+    return "poll";
+#endif
+}
+
+/* T51 §9.5 NUMA 选项位:CTRON_RT_NUMA=off|on|auto(缺省 auto;v0 语义 =
+ * 拓扑探测登记,行为无差 —— 感知分配/自动亲和为志向,见
+ * docs/simd-vectorization-analysis.md)。观测口 ctron_rt_numa_nodes():
+ * linux 探测在线节点数(/sys/devices/system/node/nodeN),其他平台恒 1。 */
+static int g_numa_nodes = 1;
+
+int ctron_rt_numa_nodes(void)
+{
+    return g_numa_nodes;
+}
+
+static void rt_numa_probe(void)
+{
+#if defined(__linux__)
+    DIR *dp = opendir("/sys/devices/system/node");
+    struct dirent *de;
+    int n = 0;
+    if (!dp) return;                           /* 无拓扑面(容器/老内核):恒 1 */
+    while ((de = readdir(dp)) != NULL) {
+        const char *s = de->d_name;
+        if (strncmp(s, "node", 4) == 0) {
+            int ok = 0;
+            for (s += 4; *s; s++)
+                if (*s < '0' || *s > '9') break;
+                else ok = 1;
+            if (ok && *s == '\0') n++;
+        }
+    }
+    closedir(dp);
+    if (n > 0) g_numa_nodes = n;
+#else
+    (void)0;
+#endif
 }
 
 int64_t ctron_rt_yield_bench(int rounds)

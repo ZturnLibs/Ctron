@@ -41,6 +41,18 @@
 - NUMA 感知分配与任务亲和(运行时选项)。
 - GPU(`kernel` 块 → SPIR-V/PTX):预留 v2,经 codegen 插件(§10.5)。
 
+- **自举侧现状(T51 注,2026-10-03)**:异步 I/O 统一层四后端落库
+  (`lib/net/c_src/ctron_rt.c` reactor)——kqueue(darwin)/ epoll(linux)/
+  **io_uring(linux,运行时探测:NODROP 特性门 + 开机双 NOP 自检,不过响亮登记回退
+  epoll;env `CTRON_RT_REACTOR=epoll|io_uring` 压制;`ctron_rt_reactor_name()` 观测)**/
+  POSIX poll(其他)。同构映射 = POLL_ADD 天然 one-shot ≙ EV_ONESHOT/EPOLLONESHOT,
+  armed 吞发/last-wins 零新契约;reactor 单消费者阻塞 enter,免 100ms 兜底 tick。
+  `CTRON_RT_NUMA=off|on|auto` 选项位 + `ctron_rt_numa_nodes()` 拓扑探测已立
+  (linux `/sys/devices/system/node`),感知分配/任务亲和为志向(触发条件 = 多节点
+  靶机)。IOCP:windows 无 net 靶机,环境依赖登记。双臂同形冒烟挂 `ci.sh`
+  (linux = epoll + io_uring 双点名;darwin = kqueue)。Simd v0 = 语义/标量模拟,
+  向量化评估结论与志向分级见 `docs/simd-vectorization-analysis.md`(§3.11 同注)。
+
 ## 9.6 FFI 与 `#[trusted]`
 
 - `extern "c"` 函数声明 + `#[trusted]` 标记 = safe 子集外**唯一**入口;包级审计(`ctron lint --trusted`)。声明语法(v0.5):
