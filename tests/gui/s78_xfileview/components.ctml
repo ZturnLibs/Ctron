@@ -1,0 +1,25 @@
+// tests/gui/s77_xfileview —— GUI-27 组件跨文件 view 导入:组件库文件
+// pub view 导出;私有 view 仅供本文件内部组合(spec §4.3.1 可见性模型);
+// Row 内部消费私有 Chip + 开 slot 投影锚 = 同文件互引用 + 传递面覆盖
+pub view Badge (t: Str) {
+  <hbox class="bdg">
+    <button class="bdg-dot" on:click={badge_hit}>●</button>
+    <label class="bdg-t">{t}</label>
+  </hbox>
+}
+view Chip (n: I32) {
+  <label class="chip">n={n}</label>
+}
+pub view Row (title: Str) {
+  <vbox class="row">
+    <label class="row-t">{title}</label>
+    <Chip n: {7}/>
+    <slot/>
+  </vbox>
+}
+style bdg { direction: row gap: 4 }
+style bdg-dot { fg: "#ef4444" bg: "#334155" }
+style bdg-t { fg: TEXT }
+style chip { fg: "#64748b" }
+style row { direction: column gap: 2 }
+style row-t { fg: TEXT size: 13 }

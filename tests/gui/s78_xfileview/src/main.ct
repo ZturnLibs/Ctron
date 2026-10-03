@@ -1,0 +1,50 @@
+// tests/gui/s78_xfileview —— GUI-27 组件跨文件 view 导入 headless 验收(发射原生)
+// 载入走 gt_anchor_src 锚合并(导入文件先入,入口最后):无合并则 Root 的
+// <Badge>/<Row> 实例展开期 panic「未知组件」。四段:
+// ①导入 pub view Badge 渲染(●按钮+文本) ②导入 Row 内部私有 Chip(n=7,
+// 同文件互引用) ③slot 投影保宿主语义 ④导入组件事件 fire(badge_hit 经 act)
+use gui.{test, gt_anchor_src, d_frame, d_expect_text, d_click}
+
+struct Model {
+    var hits: I32
+}
+
+fn bind_all(buf: List[Str], m: Box[Model]) {
+}
+
+fn suite() -> I32 {
+    var src: Str = gt_anchor_src("app.ctml")
+    var m = Box[Model](Model { hits: 0 })
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |nm, ar| {
+            if nm == "badge_hit" {
+                m.hits = m.hits + 1
+            }
+        },
+        |k| { },
+        |t, actc, key2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // ①导入组件体渲染
+            d_expect_text(t, "你好")
+            // ②导入组件内部私有件+标题
+            d_expect_text(t, "行")
+            d_expect_text(t, "n=7")
+            // ③slot 投影(宿主标签经实例子树拼接)
+            d_expect_text(t, "投影")
+            // ④导入组件事件:点击 ● 按钮 → act 分发 badge_hit
+            actc(d_click(t, "badge_hit"), List[Str]())
+            if m.hits != 1 {
+                panic("s78: 导入组件事件未达 act")
+            }
+            println("S78-XFILEVIEW-GREEN")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    panic("s78: headless 验收件(真窗面略)")
+    return 0
+}

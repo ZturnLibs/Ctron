@@ -57,7 +57,7 @@
 
 ## E 档:跨泳道(GUI 需求,编译/构建面执行,需协调)
 
-- ⏳ **GUI-27(未做) 组件跨文件 view 导入**——最大痛点:组件现只能同文件声明;编译面 view 导入(多次登记,需与发射泳道排期)。
+- ✅ **GUI-27(已销账) 组件跨文件 view 导入**——✅ 1004:`pub view` 导出 + `use mod.{A, B}` 导入(spec §4.3.1);运行时锚合并 gt_anchor_src(DFS imports 先/入口后,热重载探针同源,无 use 行字节恒等)+检查面 use 装载器(node 级合并,pub/fileid 槽,可见性门 E8100);顺修两存量缺口(独立词法括号单字符=props 捕获首次可用/实例子树开尖先吃=投影走查脱轨);夹具 s78+语料五件(e8_corpus 51/51);骨架/发射面零波及(s49 内嵌跨模块面互不重叠)。
 - ✅ **GUI-28(已销账) ctcl gui.entry 烘焙**(J18)——✅ 1003 09232060:清单 gui 节 entry 键→emit 期烘焙 ctron_gui_entry 常量(新内建四注册面;无清单恒 app.ctml 零迁移);gui.ct 四消费点(锚读取+热重载监视);s73 三缝断言。
 - ✅ **GUI-29(已销账) ctc 自动链接 + `ctc new --gui` 脚手架**(J19-④⑤)——✅ 1003 09232060:dependencies.gui 探测→自动链接 vendored 全套(awk END-exit 覆盖坑=found 标志);ctc new <dir> --gui 双路模板;gui_calc run.sh 咒语吸收为零细节消费示范;s74 e2e。
 

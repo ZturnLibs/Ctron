@@ -1,0 +1,9 @@
+// gui expect: OK —— GUI-27:use 导入 pub view 后实例化(检查面金路:
+// 装载器合并 + 可见性门放行 + props 深查全绿)
+use xcomp.{Badge}
+view P {
+  <vbox class="root">
+    <Badge t: "好"/>
+  </vbox>
+}
+style root { direction: column gap: 4 }

@@ -215,14 +215,21 @@ fn main() -> I32 {
                 // 独立 .ctml 检查(SL-6c;§5.1 语法缝):标记 tokenizer → GuiBlock File 节
                 // → gui_check_file 同径走查,不经 .ct 词法/解析/语义。诊断先出(收集式
                 // 不中止),警告随 OK 行后印(E8193 警告级不置 rc)
-                var gfile = gui_ctml_file(s)
+                // GUI-27:use 装载器换装(node 级跨文件合并;pub/fileid 槽;环守卫;
+                // 导入边随检可见性)。无 use 行 = 单文件,合并恒等旧径
                 var cml_dump = ctron_cli_flag("dumpgui")
                 if cml_dump.len == 0 {
                     cml_dump = "ANCHORDUMPGUI"
                 }
                 var cml_diags = List[Str]()
                 var cml_warns = List[Str]()
-                gui_check_file(gfile, cml_diags, cml_warns, true)
+                var gseen = List[Str]()
+                var gimp_f = List[Str]()
+                var gimp_t = List[Str]()
+                var gfid = Atomic[I32](0)
+                var gfile = mk("File")
+                gui_ctml_file_use(epath, gseen, gfile, cml_diags, gfid, gimp_f, gimp_t)
+                gui_check_file(gfile, cml_diags, cml_warns, true, gimp_f, gimp_t)
                 if cml_diags.len > 0 {
                     var ci: I32 = 0
                     while ci < cml_diags.len {
@@ -375,7 +382,8 @@ fn main() -> I32 {
                 // SL-7β1:检查面先行(诊断 rc=1 即返,非法标记不做骨架倾倒)
                 var gdiags = List[Str]()
                 var gwarns = List[Str]()
-                gui_check_file(file, gdiags, gwarns, false)
+                // 内嵌形态无导入边(d[7] 无槽=通配可见,GUI-27 口径)
+                gui_check_file(file, gdiags, gwarns, false, List[Str](), List[Str]())
                 var gi: I32 = 0
                 while gi < gdiags.len {
                     println(gdiags[gi])

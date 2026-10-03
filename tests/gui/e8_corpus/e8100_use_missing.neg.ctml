@@ -1,0 +1,9 @@
+// gui expect: E8100 —— GUI-27:use 目标模块缺文件
+use xcomp.Nope
+view P {
+  <vbox class="root">
+    <label class="a">x</label>
+  </vbox>
+}
+style root { direction: column }
+style a { fg: TEXT }

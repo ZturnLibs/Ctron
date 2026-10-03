@@ -1,0 +1,12 @@
+// GUI-27 语料用组件模块:pub view 导出 + 私有 view(供 use 负例核名/可见性)
+pub view Badge (t: Str) {
+  <vbox class="bdg">
+    <label class="bdg-t">{t}</label>
+  </vbox>
+}
+view Chip (n: I32) {
+  <label class="chip">n={n}</label>
+}
+style bdg { direction: column gap: 2 }
+style bdg-t { fg: TEXT }
+style chip { fg: "#64748b" }
