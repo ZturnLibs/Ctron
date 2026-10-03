@@ -5541,7 +5541,6 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
-        rt_canvas_frame(t, rects, hits, bind, act)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
@@ -5695,6 +5694,10 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
+        // GUI-25 真窗直绘:canvas fire 在 flush 之后——帧头 fire 被 clear 抹除、
+        // flush 前 fire 被盒背景矩形覆盖(手验 1003 双层实证);UI 之上画点=z 序本义
+        gui_px_clear()
+        rt_canvas_frame(t, rects, hits, bind, act)
         EndDrawing()
     }
     CloseWindow()
@@ -5727,7 +5730,6 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, bind, act)
-        rt_canvas_frame(t, rects, hits, bind, act)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -5921,6 +5923,10 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         BeginDrawing()
         gui_clear(27, 27, 29)
         ctron_gui_flush()
+        // GUI-25 真窗直绘:canvas fire 在 flush 之后——帧头 fire 被 clear 抹除、
+        // flush 前 fire 被盒背景矩形覆盖(手验 1003 双层实证);UI 之上画点=z 序本义
+        gui_px_clear()
+        rt_canvas_frame(t, rects, hits, bind, act)
         EndDrawing()
     }
     CloseWindow()
