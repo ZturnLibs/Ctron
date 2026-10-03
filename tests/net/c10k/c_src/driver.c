@@ -161,8 +161,15 @@ int main(int argc, char **argv)
     }
     double t_all = now_s() - t0;
 
-    for (int i = 0; i < n; i++)
-        if (fd[i] >= 0) close(fd[i]);
+    /* 收尾 SO_LINGER(1,0) RST(bench_cycle 同款口径,2026-10-03):响应字节
+     * 已按序送达后 RST 关闭,驱动侧零 TIME_WAIT——回显全量 + 后续轮次不再
+     * 吃临时端口池耗尽(connect #106 EADDRNOTAVAIL 实证污染路径)。 */
+    for (int i = 0; i < n; i++) {
+        if (fd[i] < 0) continue;
+        struct linger lg = { 1, 0 };
+        (void)setsockopt(fd[i], SOL_SOCKET, SO_LINGER, &lg, sizeof lg);
+        close(fd[i]);
+    }
 
     printf("c10k-driver: N=%d echo_ok=%d fail=%d connect=%.1fs total=%.1fs\n",
            n, ok, bad, t_conn, t_all);

@@ -1074,3 +1074,22 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   ctronc emit 面无序言机器(bootstrap 链内用,用户程序不经其发射面;divergences 立档);
   ③est 为发射期启发式,精确帧宽不可得(C 发射后宿主 cc 自由布局=T34 判决同源),
   触顶诊断兜底的「最后防线」性质不变。
+
+**2026-10-03 P9 密度回填:生长态小栈 C10K 实测(栈面全量后续测量件)**(tests/net/c10k):
+- 载具:ctecho(coro)@N=10000,density.sh 采样壳(外部轮询服务进程 RSS 取峰,
+  0.3s 步;run.sh 全套判据原样站岗)。**A/B 同 driver 同机**(bench 家族惯例):
+  - 基线(1MB VA 缺省):max RSS 402MB = 40.2KB/conn;
+  - **生长态(CTRON_MORESTACK=1 + CTRON_RT_STACK_KB=64):max RSS 170MB =
+    17.0KB/conn ⇒ 2.36× 密度**,回显 10000/10000+探活+fd delta=0 全绿——
+    生长机器在满载 C10K 并发下稳态成立(每任务 64KB VA+按需段,RSS 实测
+    ≈13KB 栈页+lane,与 0926 lean 形 6-9KB/conn 同量级且无 lane 悬崖)。
+- **拓扑顶在册**:N≥16000 即 `connect #N: Can't assign requested address`
+  ——macOS 临时端口池(49152-65535=16384)对单 (dst ip,dst port) 元组空间
+  硬顶,~60% 占用后 bind 选择劣化(16K 池 < 20000 目标必然不可达)。非栈
+  机器问题(基线/生长臂同因同点位)。**C100K 前置升级件=driver 多监听端口
+  分片**(把 (src,dst,dport) 元组空间乘开;127.0.0.0/8 多地址同效),另册。
+- 载具修正:driver 收尾 SO_LINGER(1,0) RST(bench_cycle 同款口径)——普通
+  close 使驱动侧每轮吃 N 个 TIME_WAIT(msl 15s×2),跨轮次污染临时端口池
+  (先跑 1MB@10K 基线后,后续臂 connect #106 即 EADDRNOTAVAIL 的污染路径
+  实证);RST 后零 TIME_WAIT,轮次自含可复现。响应字节 RST 前已按序送达,
+  判据面无涉。
