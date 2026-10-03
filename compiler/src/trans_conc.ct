@@ -166,6 +166,8 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
         // 嵌套闭包支持:预扫(#p=1 门控体内输出,内层闭包 shim 先行直出)后冲刷
         var qlines = List[Str]()
         qlines.push("static void* " + shim + "(void* _ep) \{")
+        // T31 M1.5:spawn shim 帧(任务线程 GC 退避,帧纯为体内 with/let 注册行编译通过)
+        qlines.push(ct_fr_prologue())
         qlines.push("ct_i* _e = (ct_i*)_ep;")
         var ci2: I32 = 0
         while ci2 < caps.len {
@@ -285,6 +287,8 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
         // 嵌套闭包支持:预扫(内层 shim 先行直出)后冲刷头部/形参行(同捕获 shim)
         var qlines0 = List[Str]()
         qlines0.push("static ct_i " + cname + "(" + sig0 + ") \{")
+        // T31 M1.5:闭包 shim 帧(体内 let 注册经 ct_stmt;形参槽此处直注)
+        qlines0.push(ct_fr_prologue())
         var pj2: I32 = 0
         var env2 = env
         while pj2 < np {
@@ -303,6 +307,10 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
                 qlines0.push("int32_t t_" + pn + " = (int32_t)_p" + pj2.to_string() + ";")
             } else {
                 qlines0.push(ct_ctype(pc0) + " t_" + pn + " = (" + ct_ctype(pc0) + ")(long)_p" + pj2.to_string() + ";")
+            }
+            var rlc0 = ct_reg_line(pn, pc0)
+            if rlc0.len > 0 {
+                qlines0.push(rlc0)
             }
             env2 = env_bind(env2, pn, pc0)
             pj2 += 1
@@ -442,6 +450,8 @@ fn ct_emit_with_stmt(site: List[Str], obj: Str, objt: Str, clo: List[Str], env: 
                 wty = "i"
             }
             eln(ct_ctype(wty) + " " + rc + ";", env)
+            var rwr = ct_reg_line_c(rc, wty)
+            if rwr.len > 0 { eln(rwr, env) }
         }
     }
     // C 作用域括号:with 体整体成块——同 fn 多 with 的同名形参/局部(t_c 等)
@@ -451,8 +461,12 @@ fn ct_emit_with_stmt(site: List[Str], obj: Str, objt: Str, clo: List[Str], env: 
     eln(lockL, env)
     if ismut {
         eln(ct_ctype(inner) + "* t_" + pname + " = &" + acc + ";", env)
+        var rwm = ct_reg_line(pname, "P" + inner)
+        if rwm.len > 0 { eln(rwm, env) }
     } else {
         eln(ct_ctype(inner) + " t_" + pname + " = " + acc + ";", env)
+        var rwi = ct_reg_line(pname, inner)
+        if rwi.len > 0 { eln(rwi, env) }
     }
     if cbody[0] == "Block" {
         var renv = ct_stmts(cbody, env2, file, "", hreg)
@@ -603,6 +617,8 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
         // (C 先声明后用),之后才冲刷本 shim 头部/形参行
         var qlines = List[Str]()
         qlines.push("static ct_i " + shim + "(" + sig + ") \{")
+        // T31 M1.5:捕获闭包 shim 帧(体内 let 注册经 ct_stmt;捕获格驻 arena=根扫覆盖)
+        qlines.push(ct_fr_prologue())
         qlines.push("ct_i* _e = (ct_i*)_cp;")
         // T55 捕获 decl:格指针 `T* t_nm = (T*)(long)_e[i]`——env 槽存 arena 格址,
         // 体名 P 绑每处引用活解引用(by-reference v0;spawn 共用的 ct_cap_decl 未动)
@@ -664,6 +680,10 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
                 qlines.push("int32_t t_" + pn + " = (int32_t)_p" + pj.to_string() + ";")
             } else {
                 qlines.push(ct_ctype(pc) + " t_" + pn + " = (" + ct_ctype(pc) + ")(long)_p" + pj.to_string() + ";")
+            }
+            var rlc1 = ct_reg_line(pn, pc)
+            if rlc1.len > 0 {
+                qlines.push(rlc1)
             }
             env2 = env_bind(env2, pn, pc)
             // P0-A:fn 型形参(F 签名码)挂 #fret——体内 <名>(…) 间接调用的

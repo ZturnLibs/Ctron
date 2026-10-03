@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=471' "$T/chk.out" && ok "自检 cc_run 绿,decls=471(合并树实测:2026-10-03 GUI 泳道锁 451;对端 T51/GUI-21 批并入后基数上移;+T52 插件沙箱随批申报二十 fn[pkg_plugins/pkg_plugin_field/pkg_plugin_codes 清单注册表三+plugin.ct 十七:sbx_banned_call/sbx_banned_mem/plugin_scan/plugin_scb/plugin_purity/plugin_load/plugin_call/pl_builtin_drv/pl_derive_input/pl_parse_product/pl_product_gate/plugin_expand/pl_depth/pl_lint_fn/pl_code_in/plugin_lint],批3 实测 467+lint 批四=471;锁 451→471 含对端 T51/GUI-21 并入基数变动])" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=471' "$T/chk.out" && ok "自检 cc_run 绿,decls=471(合并树实测:2026-10-03 GUI 泳道锁 451;对端 T51/GUI-21 批并入后基数上移;+T52 插件沙箱随批申报二十 fn;T31 M1.5 四助手仅入发射驱动链 cc_emit,cc_run 计数不含(2026-10-03 注)[pkg_plugins/pkg_plugin_field/pkg_plugin_codes 清单注册表三+plugin.ct 十七:sbx_banned_call/sbx_banned_mem/plugin_scan/plugin_scb/plugin_purity/plugin_load/plugin_call/pl_builtin_drv/pl_derive_input/pl_parse_product/pl_product_gate/plugin_expand/pl_depth/pl_lint_fn/pl_code_in/plugin_lint],批3 实测 467+lint 批四=471;锁 451→471 含对端 T51/GUI-21 并入基数变动])" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"

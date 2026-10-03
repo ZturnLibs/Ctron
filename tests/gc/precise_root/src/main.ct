@@ -1,0 +1,62 @@
+// tests/gc/precise_root —— M1.5 精确帧根集锚(T31 重开 S2)
+// 存活向:帧驻 List(唯一引用=局部槽)在显式收集中逐字完好——精确帧链根集主证;
+//        CTRON_GC_CONSERV=0 档(纯精确,主栈保守扫关)下同绿=M1.5 直接验收。
+// 回收向:弃引后 live 回落(churn 垃圾真回收)。
+#[trusted]
+extern "c" fn ct_gc_collect() -> I64
+
+#[trusted]
+extern "c" fn ct_gc_live_bytes() -> I64
+
+fn hold_and_check(n: I64) -> I64 {
+    var keep = List[I64]()
+    var i: I64 = 0
+    while i < n {
+        keep.push(i)
+        i += 1
+    }
+    // churn:垃圾压力触发内部分配;keep 唯一引用=本帧局部
+    var j: I64 = 0
+    while j < 64 {
+        var junk = List[I64]()
+        junk.push(j)
+        j += 1
+    }
+    var live = ct_gc_collect()
+    if live > 0 {
+        var live2 = live + 1
+        assert(live2 > 1)
+    }
+    var sum: I64 = 0
+    var k: I64 = 0
+    while k < n {
+        sum += keep[k]
+        k += 1
+    }
+    return sum
+}
+
+fn main() -> I32 {
+    var gc = ct_gc_live_bytes() >= 0
+    if !gc {
+        var w = hold_and_check(64)
+        var w0: I64 = 2016
+        assert(w == w0)
+        println("bump 档跑通")
+        return 0
+    }
+    var w1 = hold_and_check(1024)
+    var want: I64 = 523776
+    assert(w1 == want)
+    var base = ct_gc_collect()
+    var i: I64 = 0
+    while i < 4096 {
+        var t = List[I64]()
+        t.push(i)
+        i += 1
+    }
+    var after = ct_gc_collect()
+    assert(after < base + 524288)
+    println("precise root ok")
+    return 0
+}

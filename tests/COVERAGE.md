@@ -1113,6 +1113,40 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   struct 绕行,真接入待 eval 派发表扩;③class 实例经 struct 字段存储拷贝语义(本
   件新证)——与 W8010「浅拷贝共享类字段」lint 口径相悖,归 interp 值语义整备域
   裁决(共享 or 拷贝,两口径取一);④异型 zip/chain(泛型方法位新型参)v2。
+**2026-10-02 T31 重开落库:M1.5 精确帧根集(S1+S2,分支 t31-m15)**(spec-gap W6;契约 §6.3):
+- **S1 标记器硬化(ba73779a)**:超块单尺寸类+内部指针 O(1) 块起点归约+头双门+
+  worklist 迭代标记——路线② SIGSEGV 两机制(载荷当头读野扫/递归标记栈爆)销账;
+  新锚 tests/gc/deep_stack(4000 层深递归×帧驻 List×深栈内收集)双档绿。**意外红利:
+  T32 bench 比值 10.28→1.000-1.150(§9.4 ≤1.15 目标首次达标)**——旧 first-fit 自由链
+  走链+mkword 双倍超块扫描即 churn 主病灶(GC 689ms→20ms 级)。
+- **S2 精确帧根集(槽注册制)**:契约 §6.3 编码实施注——原文「ct_fm_<fn> 位图常量+帧
+  偏移」在本发射架构不可知(C 编译器定帧布局),实施为**槽注册制**:帧内联定长池
+  pool[32],注册=写 pool[pn++](幂等重执行安全);链式槽节点方案否决(循环体重绑=
+  自环挂死/无界增长,b2a 语料实证)。>32 槽或 break 跳过池重置 → ovf,该轮收集回退
+  保守栈扫(健全性不破)。__thread ct_fp(pmap 8 线程推拉隔离);longjmp 跳过 cleanup
+  →唯一落点 ct_shim_tramp 显式复位。发射面六类帧宿主(ct_fn/vtable 方法/drop/spec
+  特化/闭包 shim/spawn shim/test 块)+绑定位注册+调用实参 ANF 提升(多实参求值悬窗
+  封死);unbox 拷贝免注册(引用已被被拷贝存储覆盖)。GC 槽谓词=L/tlcode/Box/u:/R/
+  E:/t:/P/p;标量与 bump/注册表族跳过。
+- **验收**:gc/run 9/9 三档(on/off/**precise-only**=CTRON_GC_CONSERV=0 纯精确档,
+  cycle_reclaim+deep_stack+新锚 precise_root 全绿=M1.5 主证);suite 99/99;net 18/18;
+  smoke 160/3(3 红全同伴在册债);**A/B 帧税 +3.4%**(×3min 同机差分,自举发射
+  326→337ms);gc/bench 比值 1.000。decl 锁 439→443(四助手随批申报)。
+- **known-limitation(S4 前置登记)**:①gc-let 在循环体内→池按迭代递增→该 fn 退化
+  ovf 保守回退(健全;池界重置=后续件);②vtable/成员调用等其余实参拼装面 ANF 化=
+  后续件;③**a_jwt 红账仍未解锁**——interp 臂分配主体驻 bump arena(串/items 数组),
+  精确帧只救 GC 堆 List 头;全解=分配位点翻面(items/串→GC 堆)+arena 根扫退役=S4。
+- 坑位新增:①native.sh 不重拼接+管道尾 $? 假 0——改 src 必 build.sh→native.sh 裸跑
+  看真 RC,采样二进制符号核新旧;②用户程序面 or2 无定义发射(t_or2 未声明),测试
+  程序双 if 规避;③Ctron 字符串 `\}` 非法转义(E1001)四连踩——闭括号恒裸写;
+  ④nline(st) 取节点末槽当行戳,非语句节点(For 末槽=体)传入即 byte_at(List) 炸
+  ——注册后缀设计已整体废除(池式无后缀)。
+
+**a_jwt 复测追记(2026-10-03)**:GC=off interp 臂 rc=0(路径环境修复后);GC=1+CONSERV=0
+纯精确档 interp 臂 **22min CPU 未完终止**——interp 形态(let 在 eval 循环体内)池按迭代
+递增→快速 ovf→每轮收集回退保守全扫,与 3 亿分配×高频收集相乘=O(N²) 退化。**判决:M1.5
+对 emit 臂是免费票(帧税 +3.4%),对 interp 臂非免费票——a_jwt 红账解锁条件维持=S4
+(池界重置机器+分配位点翻面+arena 根扫退役),精确帧为其健全性地基而非终点。**
 ## T52 插件沙箱 derive + lint(2026-10-03;§8.3/§10.6/§12.5)
 
 - **协议面**:插件 = 普通 Ctron 包;清单 `plugin "kind.name"` 键控块(CTCL 注册表

@@ -1594,6 +1594,16 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
         var ax = ct_expr(ag[i], aenv, file)
         if ct_env_has(aenv, "#fval") {
             ax = ct_env_ty(aenv, "#fval")
+        } else if seq2("", "1") {
+            // T31 M1.5(S2d):实参 ANF 提升+GC 槽注册——多实参调用求值悬窗
+            //(先求值实参仅存 C 临时,继后实参表达式内 GC → 精确根集盲区 UAF)。
+            // 提升为具名临时(语句表达式局部=当前帧栈_extent)后,借用/包装链
+            // 皆对纯标识符做串手术,合法 C。槽节点死 extent 后读旧值=可读过标记。
+            var hnm = "_ca" + i.to_string()
+            var hrl = ct_reg_line_c(hnm, ac)
+            if hrl.len > 0 {
+                ax = "(\{ " + ct_ctype(ac) + " " + hnm + " = " + ax + "; " + hrl + " " + hnm + "; })"
+            }
         }
         // P0-A:&T 形参(§4.9 值→&T 自动借用)——实参已为指针(pu:)直传;
         // 左值(Ident/成员)取址;右值(调用结果)堆盒取指针
@@ -1882,13 +1892,20 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     genv = env_bind(genv, "#nobrace", "1")
                     println("\{")
                     var upi26: I32 = 0
+                    // T31 M1.5:spec 帧节点+解盒形参注册(#nobrace 面,直出不经 ct_body)
+                    var spfr26 = ct_fr_prologue()
                     while upi26 < upnames.len {
                         var upc26 = upcodes[upi26]
                         println("t_" + byte_slice(upc26, 2, upc26.len) + " t_" + upnames[upi26] + " = *(t_" + byte_slice(upc26, 2, upc26.len) + "*)(long)t_" + upnames[upi26] + "_s;")
+                        var srl26 = ct_reg_line(upnames[upi26], upc26)
+                        if srl26.len > 0 {
+                            spfr26 = spfr26 + " " + srl26
+                        }
                         upi26 += 1
                     }
-                    // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)
-                    ct_body(spec[5], env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), file, rcs)
+                    println(spfr26)
+                    // 真实体:#p=2(eln 直出)+ #spec=1(嵌套单态化只发调用)+ #frpro(帧在,提升门)
+                    ct_body(spec[5], env_bind(env_bind(env_bind(genv, "#p", "2"), "#spec", "1"), "#frpro", "1"), file, rcs)
                     println("#endif")
                 }
                 if phd > 0 {

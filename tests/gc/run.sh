@@ -25,6 +25,12 @@ for d in "$DIR"/*/; do
     else
         echo "  FAIL $name (gc=off): $(tail -1 "$T/$name.off")"; fail=$((fail+1))
     fi
+    # M1.5 纯精确档:主栈保守扫关(CTRON_GC_CONSERV=0),帧链根集单证
+    if CTRON_GC=1 CTRON_GC_CONSERV=0 "$T/$name.bin" run "$d/src/main.ct" > "$T/$name.precise" 2>&1 && grep -q "cycle reclaim ok\|bump 档跑通\|deep stack ok\|precise root ok" "$T/$name.precise"; then
+        pass=$((pass+1)); echo "  PASS $name (precise-only)"
+    else
+        echo "  FAIL $name (precise-only): $(tail -1 "$T/$name.precise")"; fail=$((fail+1))
+    fi
 done
 echo "gc/run: pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

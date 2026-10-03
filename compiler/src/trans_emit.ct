@@ -91,9 +91,24 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     if seq2(pass, "2") {
         println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
     }
+    // T31 M1.5:帧节点序言+指针族形参注册(#frpro;ct_body 花括号后直出)
+    var frp = ct_fr_prologue()
+    var fpk: I32 = 1
+    var fpi: I32 = 0
+    while fpk < ps.len {
+        var fp2 = ps[fpk]
+        if fp2[0] == "Param" {
+            var frl = ct_reg_line(fp2[2], ct_ty_code(fp2[3], file))
+            if frl.len > 0 {
+                frp = frp + " " + frl
+            }
+            fpi += 1
+        }
+        fpk += 1
+    }
     // 闭包命名前缀:ct_clo_<fn>_L<行>(跨文件合并下行号撞号,fn 名合并面唯一)
     env = env_bind(env, "#clofn", d[1])
-    var penv = env_bind(env, "#p", pass)
+    var penv = env_bind(env_bind(env, "#p", pass), "#frpro", frp)
     ct_body(d[5], penv, file, rc)
 }
 
@@ -225,6 +240,21 @@ fn ct_vtable_emit(file: List[Str]) {
                     }
                     // 方法函数体(self 绑定具体型)
                     println("static " + ct_ctype(mr25) + " t_" + cn + "__" + it2[1] + "(" + ct_ctype("u:" + cn) + " t_self" + sigx + ")")
+                    // T31 M1.5:方法帧(self=u: 值结构体 kind1+指针族形参)
+                    var mfrp25 = ct_fr_prologue() + " " + ct_reg_line("self", "u:" + cn)
+                    var mpi25: I32 = 1
+                    var mi25: I32 = 0
+                    while mpi25 < ps26b.len {
+                        if ps26b[mpi25][0] == "Param" && ps26b[mpi25][2] != "self" {
+                            var mrl25 = ct_reg_line(ps26b[mpi25][2], ct_ty_code(ps26b[mpi25][3], file))
+                            if mrl25.len > 0 {
+                                mfrp25 = mfrp25 + " " + mrl25
+                            }
+                            mi25 += 1
+                        }
+                        mpi25 += 1
+                    }
+                    menv25 = env_bind(menv25, "#frpro", mfrp25)
                     ct_body(it2[5], menv25, file, mr25)
                     // thunk(返回型=impl 方法返回;void 无 return)
                     if seq2(mr25, "v") {
@@ -272,6 +302,8 @@ fn ct_drop_fn(d: List[Str], file: List[Str], pass: Str) {
                 println("static void t_" + ftn + "__drop(t_" + ftn + " t_self) ")
             }
             var menv = env_bind(env_bind(env_bind(List[Str](), "self", "u:" + ftn), "#clofn", ftn + "__drop"), "#p", pass)
+            // T31 M1.5:drop 帧(self=u: 值结构体 kind1)
+            menv = env_bind(menv, "#frpro", ct_fr_prologue() + " " + ct_reg_line("self", "u:" + ftn))
             ct_body(it[5], menv, file, "v")
         }
         mi += 1

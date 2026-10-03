@@ -2226,3 +2226,47 @@ fn ct_fntype_inner(file: List[Str], ft: List[Str]) -> Str {
     }
     return acc
 }
+
+// =====================================================================
+// T31 重开 M1.5:GC 精确帧根集(槽注册制,契约 §6.3 编码实施形)。
+// 发射器不知 C 编译器帧偏移 → 槽节点持 &局部(地址逃逸入 __thread ct_fp 链,
+// 强制 C 层落内存+不透明调用前写回),收集时按帧链走查。kind 1=值结构体
+// (u:/E:/R,载荷盒可藏 List 引用)整块域扫;kind 0=词槽直标。
+// =====================================================================
+// GC 槽注册谓词:GC 堆引用承载族须入帧链(L/tlcode/Box/u:/R/E:/t: 胖指
+// 针/P/p 裸指针);标量与 bump/注册表承载族(s/N/A/h/k/m/g/6/7/z/w*/i/b/f/
+// v 视图/q SIMD/F/G fn 值[env 驻 arena])不注册。返回 ""=不注册。
+fn ct_gc_slot_kind(code: Str) -> Str {
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" { return "1" }
+    if code.len > 2 && byte_slice(code, 0, 2) == "E:" { return "1" }
+    if code == "R" { return "1" }
+    if code.len > 2 && byte_slice(code, 0, 2) == "B:" { return "0" }
+    if code.len > 2 && byte_slice(code, 0, 2) == "t:" { return "0" }
+    if code.len > 1 {
+        if or2(byte_at(code, 0) == 112, byte_at(code, 0) == 80) { return "0" }
+    }
+    if code == "L" { return "0" }
+    if ct_is_tlcode(code) { return "0" }
+    return ""
+}
+
+// 绑定位注册行(cn=完整 C 名;""=标量族跳过)。帧内联池幂等写:重复执行(循环体重绑)
+// 只是 pn 递增→池满 ovf 降级保守,健全性不破;无链表无后缀,无 nline 陷阱。
+fn ct_reg_line_c(cn: Str, code: Str) -> Str {
+    var k = ct_gc_slot_kind(code)
+    if k == "" { return "" }
+    var szt = "8"
+    if k == "1" { szt = "sizeof(" + ct_ctype(code) + ")" }
+    return "if (ct_frn.pn < 32) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&" + cn + "; ct_frn.pool[ct_frn.pn].kind = " + k + "; ct_frn.pool[ct_frn.pn].sz = " + szt + "; ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }"
+}
+
+// 绑定位注册行(nm=去 t_ 前缀名)
+fn ct_reg_line(nm: Str, code: Str) -> Str {
+    return ct_reg_line_c("t_" + nm, code)
+}
+
+// fn 帧节点序言行(ct_fn/vtable 方法/drop/spec 特化/闭包 shim 共用)。cleanup=全部
+// return 路径统一尾声(longjmp 跳过 cleanup → 唯一落点 ct_shim_tramp 显式 ct_fp=0)。
+fn ct_fr_prologue() -> Str {
+    return "struct ct_fr ct_frn __attribute__((cleanup(ct_fp_pop))); ct_frn.up = ct_fp; ct_frn.pn = 0; ct_frn.ovf = 0; ct_fp = &ct_frn;"
+}
