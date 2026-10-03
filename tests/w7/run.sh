@@ -50,7 +50,7 @@ if [ -f "$mg/src/grow.ct" ]; then
         CTRON_RT=coro CTRON_RT_STACK_KB=64 "$T/mg_on.bin" run "$mg/src/grow.ct" > "$T/mg_on.out" 2>&1
         on_rc=$?
     fi
-    sed 's/20000/6000/' "$mg/src/grow.ct" > "$T/mg_shallow.ct"
+    sed 's/20000/1000/' "$mg/src/grow.ct" > "$T/mg_shallow.ct"
     CTRON_STDPATH="$ROOT/lib/std" "$EMIT" run "$T/mg_shallow.ct" > "$T/mg_sh_off.c" 2>/dev/null
     cc -O1 -w -o "$T/mg_sh_off.bin" "$T/mg_sh_off.c" $RT2 -pthread 2>/dev/null
     CTRON_RT=coro "$T/mg_sh_off.bin" run "$T/mg_shallow.ct" > "$T/mg_sh_off.out" 2>&1

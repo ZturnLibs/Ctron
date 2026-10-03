@@ -225,7 +225,7 @@ static size_t rt_stack_size(void)
  * rt_swap 的 callee-saved 推栈 + 宿主编译器帧宽出倍差);链深上限(并发段链
  * 资源闸;段随调用窗 free-on-return,go 1.2 同款,见 ctron_rt_stk_grow)。 */
 #define RT_MS_MARGIN    2048u
-#define RT_MS_SEG_MAX   256
+#define RT_MS_SEG_MAX   1024
 
 /* guard 页大小取真页粒度(darwin/arm64 页为 16KB)。 */
 static long rt_pagesize(void)
