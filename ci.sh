@@ -29,6 +29,9 @@ sh "$DIR/tests/net/rt_reactor_smoke/run.sh"
 echo "[5/9] ctron 驱动冒烟(run/check/build/fmt 契约/help/无 cc 路径)"
 sh "$DIR/tests/dist/ctron_smoke.sh"
 
+echo "[5.5/9] 插件沙箱阶梯(T52:derive+lint 五锚,interp/emit 双臂+确定性)"
+sh "$DIR/tests/plugins/run.sh"
+
 echo "[6/9] 性能基线冒烟(发射一致性 + 后端加速比)"
 sh "$DIR/compiler/bench.sh" 2>&1 | tail -12
 

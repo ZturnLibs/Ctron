@@ -48,6 +48,7 @@ ERROR_CODES = {
     "E5020": "循环依赖",
     "E5030": "use 导入同名 decl",
     "E5035": "use 别名与已有 decl 冲突(§2 包路径别名)",
+    "E5060": "derive 插件未声明/插件包加载或接口面不符(T52 插件沙箱)",
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",
     "E6030": "comptime 反射泛型运行时类型(parametricity)",
@@ -60,6 +61,7 @@ ERROR_CODES = {
     "W8051": "repr(c) struct 含非 C-ABI 字段(§9.6 v0.6)",
     "W8052": "extern 形参/返回非 C-ABI 类型(§9.6 v0.6)",
     "W8053": "extern 返回 fn 类型(dormant:v0.7 返回向合法化,码位保留)",
+    "W9001": "fn 顶层语句数超限(T52 官方 lint 样例码;第三方 W9xxx 须经清单 plugin codes 声明)",
 }
 
 MARKER_RE = re.compile(r"^//@\s*(\w+)\s*:\s*(.+?)\s*$")
@@ -86,6 +88,11 @@ def check_file(path: Path) -> list[str]:
     if "gui" in relparts0:
         # gui/ 泳道夹具由 run.sh 驱动(CTML S 泳道:构建+链接为主,窗口运行为交互验收);
         # 不按主流 test 块规则元检查(同 bench 夹具先例)。计划:2026-09-16-gui-mvp-ladder。
+        return errors
+    if relparts0 and relparts0[0] == "plugins":
+        # plugins/ 泳道:T52 插件沙箱夹具(run.sh 自驱;包形多文件 + lint 夹具为
+        # main 程序形非 test 块语义;gui/dist 泳道先例)。W9xxx 第三方码纪律 =
+        # 插件清单 plugin 块 codes 先进表(§10.6),由阶梯与清单校验承担。
         return errors
     if "dist" in relparts0:
         # dist/ 分发夹具为普通 main 程序,由 ctc.sh/ctron-cc 直驱 + expected/*.out 黄金对照

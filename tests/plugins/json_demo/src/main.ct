@@ -1,0 +1,18 @@
+// json_demo —— T52 官方 derive(Json) 端到端正锚(§8.3 插件展开 = 普通代码)
+// to_json 产物 = 自由 fn(UFCS 调用;值接收;trait impl 发射为在册缺口);Str 值转义
+// 覆盖引号/反斜杠;interp 臂见 tests/plugins/run.sh(emit 同构双臂)。
+
+@derive(Json)
+struct P {
+    let x: I32
+    let s: Str
+}
+
+test "derive json to_json" {
+    let p = P { x: 1, s: "hi" }
+    println(to_json(p))
+    assert_eq(p.to_json(), "\{" + "\"x\":1,\"s\":\"hi\"" + "}")
+    let p2 = P { x: 2, s: "a\"b" }
+    assert_eq(p2.to_json(), "\{" + "\"x\":2,\"s\":\"a\\\"b\"" + "}")
+    println("json-ok")
+}

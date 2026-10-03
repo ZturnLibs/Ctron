@@ -1,0 +1,49 @@
+// plugin.ct —— 编译器插件接口包 v1(T52;§8.3/§10.6 插件扩展点)
+//
+// 插件 = 普通 Ctron 包:derive 插件约定入口 `pub fn ctron_derive(input: DeriveInput) -> Str`
+// (返回合成 Ctron 源码文本);lint 插件约定入口 `pub fn ctron_lint(unit: LintUnit) -> List[LintDiag]`
+// (返回 W9xxx 诊断,码须在插件清单 plugin 块 codes 中先进表)。
+// 编译器在本包声明与自身值镜像间做字段名序核对,不符 = E5060.iface(fail-closed)。
+//
+// v1 冻结面:加字段 = 破坏性扩展,须走修订程序(设计案 §2.2:
+// docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md)。
+
+pub struct DeriveField {
+    let name: Str
+    let ty: Str
+    let mutable: Bool
+}
+
+pub struct DeriveInput {
+    let type_name: Str
+    let fields: List[DeriveField]
+}
+
+pub struct LintFn {
+    let name: Str
+    let line: I32
+    let params: List[Str]
+    let ret: Str
+    let attrs: List[Str]
+    let stmts: I32
+    let depth: I32
+}
+
+// LintFn.line:v1 恒 0(fn 节点无行号戳,p_fn2 不 nstamp;anm/stamp 尾槽序约束
+// 下加戳需动 p_file 各 fn 分支,列 v2 与 T18 列级 span 同族)——插件诊断以
+// msg 携带 fn name 定位;LintDiag.line 同步回传,诊断渲染保留行位
+pub struct LintUnit {
+    let module: Str
+    let fns: List[LintFn]
+}
+
+pub struct LintDiag {
+    let code: Str
+    let line: I32
+    let msg: Str
+}
+
+// 注:derive(Json) 的目标 trait 由消费侧定义(pub trait 为 v0 不支持面,在册;
+// 库内 trait 皆裸声明属包内)。官方 derive_json 插件契约 = 用户包声明
+// `trait Json { fn to_json(&self) -> Str }`,插件产物 impl Json for T 解析可见。
+// 接口包 v1 只承载插件输入/输出数据类型,不承载 trait(协议面零 vtable 依赖)。

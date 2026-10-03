@@ -1,0 +1,10 @@
+pkg {
+    manifest_version = 1
+    name = "lint_demo"
+    version = "0.1.0"
+}
+
+plugin "lint.toolong" {
+    path = "../../../compiler/plugins/lint_toolong"
+    codes = ["W9001"]
+}

@@ -306,6 +306,17 @@ fn main() -> I32 {
                 }
                 return 1
             }
+            // T52 插件沙箱:derive 展开钩子(sem 前;产物注入主 file,§3)
+            var pldiags = List[Str]()
+            file = plugin_expand(file, pkg_dir_of(epath), pldiags)
+            if pldiags.len > 0 {
+                var pli: I32 = 0
+                while pli < pldiags.len {
+                    println(epath + ":" + pldiags[pli])
+                    pli += 1
+                }
+                return 1
+            }
             var sems = sem_walk2(file, chk_prof)
             if or2(seq2(chk_fmt, "1"), seq2(chk_fmt, "json")) {
                 print("\{\"diagnostics\":[")
@@ -341,6 +352,17 @@ fn main() -> I32 {
                 return 1
             }
             println("check OK decls=" + (file.len - 1).to_string())
+            // T52 lint 插件管线(sem 全绿后;W 级打印不置 rc,E 级沙箱违规走 pldiags 置 rc)
+            var lindiags = List[Str]()
+            plugin_lint(file, pkg_dir_of(epath), epath, lindiags)
+            if lindiags.len > 0 {
+                var li2: I32 = 0
+                while li2 < lindiags.len {
+                    println(epath + ":" + lindiags[li2])
+                    li2 += 1
+                }
+                return 1
+            }
             var chk_dump = ctron_cli_flag("dumpgui")
             if chk_dump.len == 0 {
                 chk_dump = "ANCHORDUMPGUI"

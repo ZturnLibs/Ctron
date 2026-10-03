@@ -30,6 +30,8 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 | `#[trusted]` | 开放不健全操作(仅 FFI/底层,§9.6);包级可枚举审计 | lint 统计 |
 | `@derive(A, B)` | 声明式代码生成,由沙箱内 derive 插件展开(普通代码,非宏手术) | 插件诊断 |
 
+> **修订注(2026-10-03,T52 插件沙箱 v1 落库)**:插件 = 普通 Ctron 包(清单 `plugin "kind.name"` 块声明,CTCL 注册表增殖文法零改动);编译器进程内以受限调用面执行(复用自举解释器 = comptime CVM 全量形态,零进程外插件/动态链接/FFI)。沙箱边界三层:①静态纯度门(extern 禁 + I/O/时钟/并发白名单 + 能力调用门,E6020.sandbox 域);②静态规模门(256 KiB/512 decl;执行期步数预算列 v2——`Global[T]` 实证为单绑定持久盒无跨调用计数载体,与 comptime v0→v1 同演进路径);③确定性(禁时钟/环境/并发,同输入同输出锚)。derive 插件约定入口 `ctron_derive(DeriveInput) -> Str`(合成源码文本经重 parse 注入,产物禁 use/test/@derive 递归);内建集 {Show, Eq, Error} 维持 v0 声明性口径不动。设计案与 HIR 暴露宽度裁决:`docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md`。
+
 - 编译器可利用 `#[pure]` 做优化与并行证明;`parallel.map` 闭包的纯度由**推断**得出(规则同上,§7.7),无需在闭包上书写注解。
 - `#[trusted]` 数量与位置随包发布元数据上报;`ctron lint --trusted` 列出全部信任边界。
 

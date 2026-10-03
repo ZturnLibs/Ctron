@@ -47,6 +47,17 @@ fn main() -> I32 {
                 }
                 return 1
             }
+            // T52 插件沙箱:derive 展开钩子(发射前;产物注入主 file,与 check/run 同口径)
+            var pldiags = List[Str]()
+            file = plugin_expand(file, pkg_dir_of(epath), pldiags)
+            if pldiags.len > 0 {
+                var pli: I32 = 0
+                while pli < pldiags.len {
+                    println(epath + ":" + pldiags[pli])
+                    pli += 1
+                }
+                return 1
+            }
             // CLI 化:先取输入 main 的锚字面量(作默认值),再把调用点换为标记
             var anch = ct_find_main_anchor(file)
             file = ct_swap_anchor(file)

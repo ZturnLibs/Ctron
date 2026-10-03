@@ -1,0 +1,568 @@
+// =====================================================================
+// plugin.ct —— T52 插件沙箱底座(§8.3/§10.6):加载 + 纯度门 + 进程内执行
+// 插件 = 普通 Ctron 包(清单 plugin "kind.name" { path = … });本文件实现:
+//   plugin_load   插件包加载(src/main.ct → parse → use 合并 → 静态规模门 → 纯度门)
+//   plugin_purity 沙箱静态门:extern 禁 + I/O/时钟/并发白名单扫描 + 能力调用门
+//   plugin_call   进程内执行(call_id 复用 = comptime CVM 全量形态;零进程外插件)
+// 白名单与 comptime 表(sem_comptime comp_banned_*)各自独立成表:插件面为
+// 确定性硬锚必须加禁时钟/编组族,两表不互相牵动(设计案 §5.1)。
+// 执行期步数预算 = v2(Global[T] 实证为单绑定持久盒,跨调用不共享,无计数
+// 载体;与 comptime v0→v1 同演进路径)。设计案:specs/2026-10-03-t52-plugin-sandbox.md
+// =====================================================================
+
+// ---- 沙箱白名单(T52 §5.1;插件表 ⊋ comp 表) ----
+// 自由 fn:I/O/时钟/C 编组/动态链接(插件包禁用;assert/panic 放行同 comptime 口径)
+fn sbx_banned_call(nm: Str) -> Bool {
+    if or2(seq2(nm, "print"), seq2(nm, "println")) { return true }
+    if or2(seq2(nm, "read_file"), seq2(nm, "read_dir")) { return true }
+    if or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), seq2(nm, "fs_delete"))) { return true }
+    if or2(seq2(nm, "now_ms"), seq2(nm, "now_ms_text")) { return true }
+    if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "errno"), or2(seq2(nm, "dlopen"), or2(seq2(nm, "dlclose"), seq2(nm, "dlsym"))))) { return true }
+    return false
+}
+
+// 成员调用:并发/可变全局族(插件接口面无需并发与 Global;with 族属 MUX/M 盒)
+fn sbx_banned_mem(nm: Str) -> Bool {
+    return or2(seq2(nm, "spawn"), or2(seq2(nm, "send"), or2(seq2(nm, "recv"), or2(seq2(nm, "store"), or2(seq2(nm, "fetch_add"), or2(seq2(nm, "with"), seq2(nm, "with_mut")))))))
+}
+
+// 下钻扫描(结构镜像 sem_comptime scan_comp/scanp;白名单换沙箱表)
+fn plugin_scan(file: List[Str], e: List[Str], diags: List[Str], fnm: Str) {
+    var t = e[0]
+    if t == "Call" {
+        var cal = e[1]
+        var rt = root_name(cal)
+        if sbx_banned_call(rt) {
+            diag1(diags, "E6020.sandbox", nline(e), "禁用调用 " + rt + "(fn " + fnm + ")")
+        }
+        // Env 能力对象面(§8.2):&Env 接收者任意成员 = 环境读取逃逸面
+        if cal[0] == "Member" && cal[1][0] == "Ident" && seq2(cal[1][1], "Env") {
+            diag1(diags, "E6020.sandbox", nline(e), "禁用 Env 访问(fn " + fnm + ")")
+        }
+        if cal[0] == "Member" && cal[2] == "Nm" && sbx_banned_mem(cal[3]) {
+            diag1(diags, "E6020.sandbox", nline(e), "禁用 ." + cal[3] + "(fn " + fnm + ")")
+        }
+        plugin_scan(file, cal, diags, fnm)
+        var ag = e[2]
+        var i: I32 = 1
+        while i < ag.len {
+            plugin_scan(file, ag[i], diags, fnm)
+            i += 1
+        }
+        return
+    }
+    if t == "Member" {
+        plugin_scan(file, e[1], diags, fnm)
+        return
+    }
+    if t == "Binary" {
+        plugin_scan(file, e[2], diags, fnm)
+        plugin_scan(file, e[3], diags, fnm)
+        return
+    }
+    if t == "Unary" {
+        plugin_scan(file, e[2], diags, fnm)
+        return
+    }
+    if t == "Range" {
+        plugin_scan(file, e[2], diags, fnm)
+        plugin_scan(file, e[3], diags, fnm)
+        return
+    }
+    if t == "Index" {
+        plugin_scan(file, e[1], diags, fnm)
+        plugin_scan(file, e[2], diags, fnm)
+        return
+    }
+    if t == "StructLit" {
+        var lf = e[2]
+        var k: I32 = 1
+        while k < lf.len {
+            plugin_scan(file, lf[k][2], diags, fnm)
+            k += 1
+        }
+        return
+    }
+    if t == "ArrLit" {
+        var k2: I32 = 1
+        while k2 < e.len {
+            plugin_scan(file, e[k2], diags, fnm)
+            k2 += 1
+        }
+        return
+    }
+    if t == "Match" {
+        // 匹配臂载荷与守卫下钻(arm = [Arm, pattern, body, (guard)])
+        var cs = e[2]
+        var k3: I32 = 1
+        while k3 < cs.len {
+            plugin_scan(file, cs[k3][2], diags, fnm)
+            if cs[k3].len > 3 {
+                plugin_scan(file, cs[k3][3], diags, fnm)
+            }
+            k3 += 1
+        }
+        return
+    }
+    if t == "BlockExpr" {
+        plugin_scb(file, e[1], diags, fnm)
+        return
+    }
+    if t == "If" {
+        plugin_scan(file, e[1], diags, fnm)
+        var th = e[2]
+        if th[0] == "BlockExpr" {
+            plugin_scb(file, th[1], diags, fnm)
+        } else {
+            plugin_scan(file, th, diags, fnm)
+        }
+        var el = e[3]
+        if el[0] != "None" {
+            if el[0] == "BlockExpr" {
+                plugin_scb(file, el[1], diags, fnm)
+            } else {
+                plugin_scan(file, el, diags, fnm)
+            }
+        }
+        return
+    }
+}
+
+// 语句下钻(Let/While/For/Expr/Return;镜像 scanp 语句面)
+fn plugin_scb(file: List[Str], b: List[Str], diags: List[Str], fnm: Str) {
+    var i: I32 = 1
+    while i < b.len {
+        var st = b[i]
+        var t = st[0]
+        if t == "Let" {
+            plugin_scan(file, st[4], diags, fnm)
+        } else if t == "While" {
+            plugin_scan(file, st[1], diags, fnm)
+            plugin_scb(file, st[2], diags, fnm)
+        } else if t == "For" {
+            plugin_scan(file, st[2], diags, fnm)
+            plugin_scb(file, st[3], diags, fnm)
+        } else if t == "Expr" {
+            plugin_scan(file, st[1], diags, fnm)
+        } else if t == "Return" {
+            if st[1].len > 1 {
+                plugin_scan(file, st[1], diags, fnm)
+            }
+        } else if t == "Assign" {
+            plugin_scan(file, st[3], diags, fnm)
+        }
+        i += 1
+    }
+}
+
+// ---- 纯度门(T52 §5.1):extern 禁 + 白名单扫描 + 能力调用门 ----
+fn plugin_purity(pf: List[Str], diags: List[Str]) {
+    var i: I32 = 1
+    while i < pf.len {
+        var d = pf[i]
+        if d[0] == "FnExt" {
+            diag1(diags, "E6020.sandbox", "", "extern 声明 " + d[1] + "(插件包禁 FFI)")
+        } else if or2(d[0] == "FnC", d[0] == "FnPub") {
+            plugin_scb(pf, d[5], diags, d[1])
+            // 能力调用门(&Cap 接收者方法调用 = 非纯;sem_pure 判定机制同源复用)
+            var capd = sem_cap(pf, d, "E6020.sandbox")
+            if capd.len > 0 {
+                diag1(diags, "E6020.sandbox", "", "能力调用(fn " + d[1] + ";插件包必须纯)")
+            }
+        }
+        i += 1
+    }
+}
+
+// ---- 插件包加载(T52;独立 AST,不并入主 file) ----
+// relpath 相对清单所在目录(包根);入口 = <path>/src/main.ct(标准包形态,
+// use ctron.plugin 经 pkg_load_use_t 既有解析链)。返回空表 = 加载失败(diags 已报)。
+fn plugin_load(dir: Str, relpath: Str, diags: List[Str], entry: Str) -> List[Str] {
+    var pdir = dir + "/../" + relpath
+    var src = ""
+    match read_file(pdir + "/src/main.ct") {
+        Some(x) => { src = x }
+        None => {
+            diag1(diags, "E5060.load", "", relpath + "(src/main.ct 不可读)")
+            return List[Str]()
+        }
+    }
+    // read_file 缺失回落 Some("") 非真实空源(T48 同款坑);以非空判存在性
+    if src.len == 0 {
+        diag1(diags, "E5060.load", "", relpath + "(src/main.ct 不可读)")
+        return List[Str]()
+    }
+    // 静态规模门(§5.2):源码 ≤ 256 KiB
+    if src.len > 262144 {
+        diag1(diags, "E5060.iface", "", relpath + "(插件包超静态规模门 256KiB)")
+        return List[Str]()
+    }
+    var toks = List[Str]()
+    var lns = List[Str]()
+    var cols = List[Str]()
+    var pdiags = List[Str]()
+    var s2 = doctest_lift(src)
+    scan4(s2, toks, lns, cols, pdiags)
+    var cur = Atomic[I32](0)
+    var pf = p_file(toks, cur, lns, cols, pdiags)
+    if pdiags.len > 0 {
+        diag1(diags, "E5060.load", "", relpath + "(解析失败)")
+        return List[Str]()
+    }
+    // 静态规模门(§5.2):decl ≤ 512
+    if pf.len > 513 {
+        diag1(diags, "E5060.iface", "", relpath + "(插件包超静态规模门 512 decl)")
+        return List[Str]()
+    }
+    // use 合并(接口包 ctron.plugin 等;独立加载栈与诊断面)
+    var stack = List[Str]()
+    stack.push(pdir + "/src/main.ct")
+    var ldiags = List[Str]()
+    var misses = List[Str]()
+    pf = pkg_load_use_t(pf, pdir + "/src", stack, ldiags, misses, "std")
+    if or2(ldiags.len > 0, misses.len > 0) {
+        diag1(diags, "E5060.load", "", relpath + "(use 解析失败)")
+        return List[Str]()
+    }
+    plugin_purity(pf, diags)
+    if diags.len > 0 {
+        return List[Str]()
+    }
+    // 约定入口存在门(find_decl 空 = E5060.iface;call_id 对空 decl 无守卫)
+    var ent = find_decl(pf, entry)
+    if ent.len == 0 {
+        diag1(diags, "E5060.iface", "", relpath + "(缺约定入口 " + entry + ")")
+        return List[Str]()
+    }
+    return pf
+}
+
+// ---- 进程内执行(comptime CVM 全量形态复用;零进程外插件) ----
+// 返回 Flow,调用方按 kind=="k" 取 .v;非 k(插件 panic 除外)由调用方转 E5060.iface。
+fn plugin_call(pf: List[Str], fnname: Str, arg: Val) -> Flow {
+    var vals = List[Str]()
+    vals.push(v_box(arg))
+    // 直连 call_decl_vals(入口存在已由 plugin_load 门):经 call_id 分派链
+    // 对插件形 AST 实证段错误(根因未究,在册);直连同时省内建分派一遭
+    var d = find_decl(pf, fnname)
+    return call_decl_vals(pf, List[Str](), "", d, vals)
+}
+
+// ---- derive 展开钩子(T52 §3;三驱动 pkg_load_use 后共用) ----
+// 内建 derive 集(v0 声明性口径不动,§3.11):Show/Eq/Error
+fn pl_builtin_drv(nm: Str) -> Bool {
+    return or2(seq2(nm, "Show"), or2(seq2(nm, "Eq"), seq2(nm, "Error")))
+}
+
+// DeriveInput Val 构造(AST 直读;形态 = pkgs/ctron/plugin.ct v1 镜像)
+fn pl_derive_input(d: List[Str]) -> Val {
+    var fs = List[Str]()
+    fs.push("L")
+    var fitems = d[4]
+    var k: I32 = 1
+    while k < fitems.len {
+        var f = fitems[k]
+        // Field = ["Field", isv, name, ty, (行号戳)](首槽标签)
+        var fd = List[Str]()
+        fd.push("U")
+        fd.push("DeriveField")
+        fd.push("name")
+        fd.push(v_box(vS(f[2])))
+        fd.push("ty")
+        fd.push(v_box(vS(ty_head(f[3]))))
+        fd.push("mutable")
+        fd.push(v_box(vB(seq2(f[1], "true"))))
+        fs.push(v_box(cx_val(fd)))
+        k += 1
+    }
+    var di = List[Str]()
+    di.push("U")
+    di.push("DeriveInput")
+    di.push("type_name")
+    di.push(v_box(vS(d[1])))
+    di.push("fields")
+    di.push(v_box(cx_val(fs)))
+    return cx_val(di)
+}
+
+// 产物文本重 parse(scan4+p_file 同源;失败 = E5060.iface)
+fn pl_parse_product(src: Str, diags: List[Str]) -> List[Str] {
+    var toks = List[Str]()
+    var lns = List[Str]()
+    var cols = List[Str]()
+    var pdiags = List[Str]()
+    scan4(src, toks, lns, cols, pdiags)
+    var cur = Atomic[I32](0)
+    var pf = p_file(toks, cur, lns, cols, pdiags)
+    if pdiags.len > 0 {
+        diag1(diags, "E5060.iface", "", "derive 产物解析失败(插件返回非法 Ctron 源码)")
+        return List[Str]()
+    }
+    return pf
+}
+
+// 产物约束门(§3):禁 Use / test / @derive(Struct/Enum 槽2 Drvs、Class 尾槽)
+fn pl_product_gate(pf: List[Str], diags: List[Str]) -> Bool {
+    var q: I32 = 1
+    while q < pf.len {
+        var d = pf[q]
+        if d[0] == "Use" {
+            diag1(diags, "E5060.iface", "", "derive 产物含 use(产物必须自包含)")
+            return false
+        }
+        if d[0] == "Test" {
+            diag1(diags, "E5060.iface", "", "derive 产物含 test 块")
+            return false
+        }
+        if or2(d[0] == "Struct", d[0] == "Enum") {
+            if d[2].len > 1 {
+                diag1(diags, "E5060.iface", "", "derive 产物带 @derive(禁递归 derive)")
+                return false
+            }
+        }
+        if d[0] == "Class" {
+            var tl = d[d.len - 1]
+            if tl.len > 0 && tl[0] == "Drvs" && tl.len > 1 {
+                diag1(diags, "E5060.iface", "", "derive 产物带 @derive(禁递归 derive)")
+                return false
+            }
+        }
+        q += 1
+    }
+    return true
+}
+
+// 展开主入口:扫 Struct/Enum 非内建 derive 名 → 清单 derive.<名> → 插件展开 → 产物注入尾。
+// 无非内建名时零开销直通(不读清单)。
+fn plugin_expand(file: List[Str], dir: Str, diags: List[Str]) -> List[Str] {
+    var need = false
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Struct", d[0] == "Enum") {
+            var dr = d[2]
+            var k: I32 = 1
+            while k < dr.len {
+                if !pl_builtin_drv(dr[k]) {
+                    need = true
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    if !need {
+        return file
+    }
+    var plugins = pkg_plugins(dir)
+    var out = file
+    i = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Struct", d[0] == "Enum") {
+            var dr = d[2]
+            var k: I32 = 1
+            while k < dr.len {
+                var nm = dr[k]
+                if !pl_builtin_drv(nm) {
+                    var pk: I32 = 0
+                    var ppath = ""
+                    while pk < plugins.len {
+                        if seq2(plugins[pk], "derive." + nm) {
+                            ppath = plugins[pk + 1]
+                        }
+                        pk += 3
+                    }
+                    if seq2(ppath, "") {
+                        diag1(diags, "E5060.nodecl", nline(d), nm)
+                    } else {
+                        var pf = plugin_load(dir, ppath, diags, "ctron_derive")
+                        if pf.len > 1 {
+                            var inp = pl_derive_input(d)
+                            var fl = plugin_call(pf, "ctron_derive", inp)
+                            if fl.kind != "k" {
+                                diag1(diags, "E5060.iface", nline(d), nm + "(ctron_derive 执行失败或返回非 Str)")
+                            } else {
+                                if fl.v.tag != 5 {
+                                    diag1(diags, "E5060.iface", nline(d), nm + "(ctron_derive 返回须为 Str)")
+                                } else {
+                                    var prod = pl_parse_product(fl.v.s, diags)
+                                    if prod.len > 0 {
+                                        if !pl_product_gate(prod, diags) {
+                                            return out
+                                        }
+                                        var nout = List[Str]()
+                                        var q: I32 = 0
+                                        while q < out.len {
+                                            nout.push(out[q])
+                                            q += 1
+                                        }
+                                        var q2: I32 = 1
+                                        while q2 < prod.len {
+                                            nout.push(prod[q2])
+                                            q2 += 1
+                                        }
+                                        out = nout
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                k += 1
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// ---- lint 插件管线(T52 §4;check 驱动 sem 全绿后) ----
+// LintUnit = 声明级投影(HIR 暴露宽度 v1 裁决:fn 签名/注解位/语句计数/嵌套深度,
+// 不暴露编译器内部 AST);诊断 = W 级打印不置 rc;码须在清单 codes 先进表。
+fn pl_depth(b: List[Str]) -> I32 {
+    var mx: I32 = 0
+    var i: I32 = 1
+    while i < b.len {
+        var st = b[i]
+        var t = st[0]
+        var d2: I32 = 0
+        if t == "While" {
+            d2 = pl_depth(st[2])
+        } else if t == "For" {
+            d2 = pl_depth(st[3])
+        } else if t == "If" {
+            d2 = pl_depth(st[2])
+            var el = st[3]
+            if el[0] == "BlockExpr" {
+                var d3 = pl_depth(el[1])
+                if d3 > d2 {
+                    d2 = d3
+                }
+            }
+        }
+        if d2 + 1 > mx {
+            mx = d2 + 1
+        }
+        i += 1
+    }
+    return mx
+}
+
+// LintFn Val 构造(AST 直读;形态 = pkgs/ctron/plugin.ct v1 镜像)
+fn pl_lint_fn(d: List[Str]) -> Val {
+    var ps = List[Str]()
+    ps.push("L")
+    var pp = d[3]
+    var k: I32 = 1
+    while k < pp.len {
+        var pr = pp[k]
+        if pr[0] == "Param" {
+            // Param = ["Param", isv, name, ty];元素 = "name:ty" 编码
+            ps.push(v_box(vS(pr[2] + ":" + ty_head(pr[3]))))
+        }
+        k += 1
+    }
+    var at = List[Str]()
+    at.push("L")
+    // attrs 位 v1 恒空(#[attr] AST 收集面留 v2;lint 样例不消费)
+    var ret = ""
+    var rt = d[4]
+    if rt.len > 1 {
+        ret = ty_head(rt)
+    }
+    var lf = List[Str]()
+    lf.push("U")
+    lf.push("LintFn")
+    lf.push("name")
+    lf.push(v_box(vS(d[1])))
+    lf.push("line")
+    lf.push(v_box(vI(dvi(nline(d)))))
+    lf.push("params")
+    lf.push(v_box(cx_val(ps)))
+    lf.push("ret")
+    lf.push(v_box(vS(ret)))
+    lf.push("attrs")
+    lf.push(v_box(cx_val(at)))
+    lf.push("stmts")
+    lf.push(v_box(vI(pl_depth(d[5]) * 0 + (d[5].len - 1))))
+    lf.push("depth")
+    lf.push(v_box(vI(pl_depth(d[5]))))
+    return cx_val(lf)
+}
+
+// 清单 codes 串(分号拼)中是否含码
+fn pl_code_in(codes: Str, code: Str) -> Bool {
+    var i: I32 = 0
+    while i + code.len <= codes.len {
+        if byte_slice(codes, i, i + code.len) == code {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// lint 主入口:清单 lint.* → 插件执行 → 诊断 W 级打印(W 不置 rc)
+fn plugin_lint(file: List[Str], dir: Str, epath: Str, diags: List[Str]) {
+    var plugins = pkg_plugins(dir)
+    if plugins.len == 0 {
+        return
+    }
+    var pk: I32 = 0
+    while pk < plugins.len {
+        var key = plugins[pk]
+        var cut: I32 = 0
+        var ci: I32 = 0
+        while ci < key.len {
+            if byte_at(key, ci) == 46 {
+                cut = ci
+            }
+            ci += 1
+        }
+        var kind = byte_slice(key, 0, cut)
+        if kind == "lint" {
+            var pf = plugin_load(dir, plugins[pk + 1], diags, "ctron_lint")
+            if pf.len > 1 {
+                // LintUnit 构造(全 fn 面;含 derive 注入产物——产物同属模块代码)
+                var fs = List[Str]()
+                fs.push("L")
+                var i: I32 = 1
+                while i < file.len {
+                    var d = file[i]
+                    if or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "Fn")) {
+                        fs.push(v_box(pl_lint_fn(d)))
+                    }
+                    i += 1
+                }
+                var mod2 = epath
+                var lu = List[Str]()
+                lu.push("U")
+                lu.push("LintUnit")
+                lu.push("module")
+                lu.push(v_box(vS(mod2)))
+                lu.push("fns")
+                lu.push(v_box(cx_val(fs)))
+                var fl = plugin_call(pf, "ctron_lint", cx_val(lu))
+                if fl.kind == "k" && fl.v.tag == 8 {
+                    var ds = cx_of(fl.v)
+                    var q: I32 = 1
+                    while q < ds.len {
+                        var dg = v_unbox(ds[q])
+                        if dg.tag == 8 {
+                            var code = v_unbox(u_field(cx_of(dg), "code")).s
+                            var ln = v_unbox(u_field(cx_of(dg), "line")).iv.as[I32]()
+                            var msg = v_unbox(u_field(cx_of(dg), "msg")).s
+                            var cs = plugins[pk + 2]
+                            if pl_code_in(cs, code) {
+                                println(epath + ":" + code + "@" + ln.to_string() + ": " + msg)
+                            }
+                        }
+                        q += 1
+                    }
+                }
+            }
+        }
+        pk += 3
+    }
+}

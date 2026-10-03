@@ -1113,3 +1113,33 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   struct 绕行,真接入待 eval 派发表扩;③class 实例经 struct 字段存储拷贝语义(本
   件新证)——与 W8010「浅拷贝共享类字段」lint 口径相悖,归 interp 值语义整备域
   裁决(共享 or 拷贝,两口径取一);④异型 zip/chain(泛型方法位新型参)v2。
+## T52 插件沙箱 derive + lint(2026-10-03;§8.3/§10.6/§12.5)
+
+- **协议面**:插件 = 普通 Ctron 包;清单 `plugin "kind.name"` 键控块(CTCL 注册表
+  增殖,schema 已注册 tools/ctcl_manifest_schema.ctcl;ctcl_check keyed mutex 容缺
+  修正=数据驱动化);接口包 `pkgs/ctron/plugin.ct`(DeriveInput/DeriveField/
+  LintUnit/LintFn/LintDiag 六 struct;LintFn.line v1 恒 0=fn 节点无行号戳,行号
+  精度列 v2);约定入口 `ctron_derive`/`ctron_lint`(plugin_load 入口参数化门)。
+- **沙箱底座**(compiler/src/plugin.ct,新拼入 build.sh):plugin_load(独立 AST
+  +use 合并+静态规模门 256KiB/512decl)+plugin_purity(FnExt extern 禁+sandbox
+  白名单扫描(comp 表超集:加禁时钟/编组/动态链接+Env 面)+sem_cap 能力门复用
+  E6020.sandbox)+plugin_call(call_decl_vals 直连;**经 call_id 分派链对插件形
+  AST 段错误实证,根因未究在册**,直连同语义)。
+- **derive 展开钩子**(三驱动 check/run/emit 的 pkg_load 后):内建集
+  {Show,Eq,Error} v0 口径不动;非内建名查清单 derive.<名>(缺=E5060.nodecl);
+  产物=合成源码文本重 parse 注入尾,约束门(禁 Use/test/@derive 递归=产品 gate)。
+- **lint 管线**(check 驱动 sem 全绿后):LintUnit 声明级投影(fn 签名/stmts/
+  depth 递归计;attrs 位 v1 恒空);codes 外码丢弃;W 级不置 rc。
+- **官方样例**:derive_json(`@derive(Json)` → `fn to_json(self: T) -> Str` 自由
+  fn/UFCS,**trait impl 形态弃用=发射臂在册缺口**;Str 转义 helper 名带类型)+
+  lint_toolong(stmts>50 → W9001;第三方码纪律=清单 codes 先进表)。
+- **锚**:tests/plugins/{json_demo(interp+emit 双臂+native 运行),lint_demo
+  (W9001),no_decl(E5060),sandbox_escape(E6020 插件触 I/O)}+确定性双跑
+  逐字一致;阶梯 tests/plugins/run.sh 六锚挂 ci.sh [5.5/9]。
+- **登记债**:①执行期步数预算(E6010 复用)=v2:Global[T] 实证单绑定持久盒跨
+  调用不共享,编译器源码无跨调用计数载体(eval 签名穿针属大手术;与 comptime
+  v0→v1 同演进路径,死循环挂起为 v1 已知边界);②call_id 分派链插件形 AST 段
+  错误根因;③LintFn 行号戳(p_fn2 无 nstamp,anm/stamp 尾槽序约束);④表达式级
+  lint 面=HIR 暴露宽度 v2 裁决;⑤lint 诊断内容寻址缓存=T20 形态复用 v2;⑥
+  derive 产物不支持型别的编译期诊断通道(现=空串回落 E5060.iface);⑦三线 parity
+  (plugin 块 C/Rust 校验器+接口包 use 解析,与 T35 同口径);⑧attrs 位 AST 收集。

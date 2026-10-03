@@ -1,0 +1,69 @@
+// derive_json —— T52 官方 derive 插件样例(§8.3 声明式代码生成;设计案 §6)
+// ctron_derive:字段驱动合成「模块级 JSON 转义 helper + impl Json for <T>(to_json)」。
+// 产物 = 普通 Ctron 源码文本(人可读、可手写等价物,§3 非宏手术);Json trait 由
+// 接口包 ctron.plugin 提供(用户包 use 引入,产物自身零 use 自包含)。
+// 字段面 v1:I32/I64/F64(to_string)/Bool(if 表达式两臂)/Str(转义);其他型别
+// 返回空串 → 编译器对空产物报 E5060.iface(插件无诊断通道,v1 口径)。
+// 产物文本的元字符经插件侧变量一次转义(q=引号 bs=反斜杠 lb=花括号开)。
+use ctron.plugin.{ DeriveInput }
+
+pub fn ctron_derive(input: DeriveInput) -> Str {
+    let q = "\""
+    let bs = "\\"
+    let lb = "\{"
+    var body = ""
+    var first = true
+    var k: I32 = 0
+    var ok = true
+    while k < input.fields.len {
+        let f = input.fields[k]
+        var comma = ""
+        if !first {
+            comma = ","
+        }
+        if f.ty == "I32" || f.ty == "I64" || f.ty == "F64" {
+            body = body + "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + q + " + self." + f.name + ".to_string()" + "\n"
+        } else {
+            if f.ty == "Bool" {
+                body = body + "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + q + " + (if self." + f.name + " " + lb + " " + q + "true" + q + " } else " + lb + " " + q + "false" + q + " })" + "\n"
+            } else {
+                if f.ty == "Str" {
+                    body = body + "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + bs + q + q + " + __esc_" + input.type_name + "(self." + f.name + ") + " + q + bs + q + q + "\n"
+                } else {
+                    ok = false
+                }
+            }
+        }
+        first = false
+        k += 1
+    }
+    if !ok {
+        return "DBG tn=" + input.type_name + " nf=" + input.fields.len.to_string()
+    }
+    // 产物:模块级转义 helper(名带类型防多 derive 撞名)+ impl Json for <T>
+    var esc = "__esc_" + input.type_name
+    var out = "fn " + esc + "(s: Str) -> Str " + lb + "\n"
+    out = out + "    var r = \"\"" + "\n"
+    out = out + "    var i: I32 = 0" + "\n"
+    out = out + "    while i < s.len " + lb + "\n"
+    out = out + "        let c = byte_at(s, i)" + "\n"
+    out = out + "        if c == 34 " + lb + "\n"
+    out = out + "            r = r + " + q + bs + bs + bs + q + q + "\n"
+    out = out + "        } else " + lb + "\n"
+    out = out + "            if c == 92 " + lb + "\n"
+    out = out + "                r = r + " + q + bs + bs + bs + bs + q + "\n"
+    out = out + "            } else " + lb + "\n"
+    out = out + "                r = r + byte_slice(s, i, i + 1)" + "\n"
+    out = out + "            }" + "\n"
+    out = out + "        }" + "\n"
+    out = out + "        i += 1" + "\n"
+    out = out + "    }" + "\n"
+    out = out + "    return r" + "\n"
+    out = out + "}" + "\n"
+    out = out + "fn to_json(self: " + input.type_name + ") -> Str " + lb + "\n"
+    out = out + "    var b = " + q + bs + lb + q + "\n"
+    out = out + body
+    out = out + "    return b + " + q + "}" + q + "\n"
+    out = out + "}" + "\n"
+    return out
+}

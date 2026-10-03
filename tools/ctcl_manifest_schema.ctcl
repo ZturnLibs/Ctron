@@ -24,6 +24,11 @@ reg "dep" {
     mutex = ["path", "git+rev", "version"]   // 三来源互斥:恰取一组完整出现(E5049)
 }
 
+reg "plugin" {
+    kind = "keyed"
+    name_pattern = "(derive|lint)\\.[A-Za-z][A-Za-z0-9_]*"   // T52 插件沙箱:块名 = kind.name;重复名 = E5045
+}
+
 // ---------- 键声明(regkey "块.键";声明序 = 规范形态键序) ----------
 
 regkey "pkg.manifest_version" {
@@ -74,4 +79,13 @@ regkey "dep.rev" {
 
 regkey "dep.version" {
     type = "str"
+}
+
+regkey "plugin.path" {
+    type = "str"
+    required = true            // T52:插件包目录(相对清单所在目录)
+}
+
+regkey "plugin.codes" {
+    type = "list"              // lint 形必填(W9xxx 第三方码先进表再使用,§10.6);derive 形禁止
 }

@@ -1,0 +1,17 @@
+// lint_toolong —— T52 官方 lint 插件样例(§10.6):fn 顶层语句数 > 50 → W9001。
+// 第三方码纪律「先进表再使用」:W9001 声明于消费清单 plugin 块 codes 后使用。
+use ctron.plugin.{ LintUnit, LintDiag }
+
+pub fn ctron_lint(unit: LintUnit) -> List[LintDiag] {
+    var out = List[LintDiag]()
+    var k: I32 = 0
+    while k < unit.fns.len {
+        let f = unit.fns[k]
+        if f.stmts > 50 {
+            var d = LintDiag { code: "W9001", line: f.line, msg: "函数过长(顶层语句 " + f.stmts.to_string() + " > 50):" + f.name }
+            out.push(d)
+        }
+        k += 1
+    }
+    return out
+}

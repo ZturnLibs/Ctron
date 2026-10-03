@@ -100,6 +100,10 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E3040.noalloc") { return "GC allocation in a no_alloc context (allocation):%0" }
     if seq2(key, "E3040.tier") { return "std module %0 exceeds this build's tier ceiling (manifest tier key / --profile)" }
     if seq2(key, "E5040.tier") { return "unknown manifest tier value (allowed: core/alloc/std):%0" }
+    if seq2(key, "E5060.nodecl") { return "undeclared derive plugin (add plugin \"derive.%0\" to Ctron.ctcl):%0" }
+    if seq2(key, "E5060.load") { return "plugin package load failed (check the path key of the plugin block in Ctron.ctcl):%0" }
+    if seq2(key, "E5060.iface") { return "plugin interface violation (entry fn or value shape mismatch with ctron.plugin v1):%0" }
+    if seq2(key, "E6020.sandbox") { return "plugin sandbox violation (plugin packages must be pure and deterministic):%0" }
     if seq2(key, "E3010") { return "spawn captures a non-Send value (Send):%0" }
     if seq2(key, "E2030") { return "match not exhaustive (not exhaustive):missing variant %0" }
     if seq2(key, "E3070") { return "closure mutable capture without an explicit Mutex[T] wrapper:%0 (suggest: use Mutex[T].with_mut)" }
@@ -199,6 +203,10 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E3040.noalloc") { return "no_alloc 上下文 GC 分配(allocation):%0" }
     if seq2(key, "E3040.tier") { return "std 模块 %0 层级超出本包档位上限(清单 tier 键/--profile 档;见模块头 //@ tier)" }
     if seq2(key, "E5040.tier") { return "清单 tier 值未识别(允许 core/alloc/std):%0" }
+    if seq2(key, "E5060.nodecl") { return "derive 插件未声明(清单加 plugin \"derive.%0\" 块):%0" }
+    if seq2(key, "E5060.load") { return "插件包加载失败(核对 Ctron.ctcl plugin 块 path 键):%0" }
+    if seq2(key, "E5060.iface") { return "插件接口面不符(入口 fn 或值形态与 ctron.plugin v1 镜像不一致):%0" }
+    if seq2(key, "E6020.sandbox") { return "插件沙箱违规(插件包必须纯且确定):%0" }
     if seq2(key, "E3010") { return "spawn 捕获非 Send(Send):%0" }
     if seq2(key, "E2030") { return "match 不穷尽(not exhaustive):缺变体 %0" }
     if seq2(key, "E3070") { return "闭包可变捕获未显式 Mutex[T] 包装:%0(建议:改用 Mutex[T].with_mut)" }

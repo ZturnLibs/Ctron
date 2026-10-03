@@ -1,0 +1,11 @@
+// no_decl —— T52 负锚:@derive 引用未声明插件 = E5060.nodecl(清单缺 plugin 块)
+//@ fail: E5060
+//@ msg: derive 插件未声明
+@derive(Nope)
+struct P {
+    let x: I32
+}
+
+fn main() -> I32 {
+    return 0
+}

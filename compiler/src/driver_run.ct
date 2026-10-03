@@ -82,6 +82,17 @@ fn main() -> I32 {
                 }
                 return 1
             }
+            // T52 插件沙箱:derive 展开钩子(sem 前;产物注入主 file,§3)
+            var pldiags = List[Str]()
+            file = plugin_expand(file, pkg_dir_of(epath), pldiags)
+            if pldiags.len > 0 {
+                var pli: I32 = 0
+                while pli < pldiags.len {
+                    println(epath + ":" + pldiags[pli])
+                    pli += 1
+                }
+                return 1
+            }
             var sems = sem_walk2(file, run_prof)
             if !seq2(sems, "") {
                 print(strip_at(sems))

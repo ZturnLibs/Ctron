@@ -1,0 +1,11 @@
+// sandbox_escape —— T52 负锚:derive 插件内触 I/O = E6020.sandbox(沙箱逃逸拦截)
+//@ fail: E6020
+//@ msg: 插件沙箱违规
+@derive(Evil)
+struct P {
+    let x: I32
+}
+
+fn main() -> I32 {
+    return 0
+}

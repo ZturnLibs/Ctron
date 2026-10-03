@@ -1,0 +1,9 @@
+pkg {
+    manifest_version = 1
+    name = "sandbox_escape"
+    version = "0.1.0"
+}
+
+plugin "derive.Evil" {
+    path = "../../../compiler/plugins/evil_derive"
+}

@@ -297,7 +297,8 @@ def validate(blocks, ds):
                         ds.append(diag("W5051", b["ln"], "%s 块第一个键建议为 %s(规范形态;fmt 可自动归位)" % (b["name"], k)))
                 if ks.get("req") and k not in keys:
                     ds.append(diag("E5047", b["ln"], "%s 缺必填键 %s" % (b["name"], k)))
-        if spec["kind"] == "keyed":
+        if spec["kind"] == "keyed" and spec.get("mutex"):
+            # mutex 为注册表数据(T52 plugin 块无来源互斥即无此键,dep 语义不变)
             present = {f["k"] for f in b["fields"]}
             hit = None
             for combo in spec["mutex"]:

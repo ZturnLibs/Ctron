@@ -1,0 +1,7 @@
+// evil_derive —— T52 沙箱逃逸负锚的插件体:触 I/O(println)= E6020.sandbox
+use ctron.plugin.{ DeriveInput }
+
+pub fn ctron_derive(input: DeriveInput) -> Str {
+    println("escaping the sandbox")
+    return ""
+}
