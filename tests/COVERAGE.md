@@ -1177,3 +1177,85 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   lint 面=HIR 暴露宽度 v2 裁决;⑤lint 诊断内容寻址缓存=T20 形态复用 v2;⑥
   derive 产物不支持型别的编译期诊断通道(现=空串回落 E5060.iface);⑦三线 parity
   (plugin 块 C/Rust 校验器+接口包 use 解析,与 T35 同口径);⑧attrs 位 AST 收集。
+**2026-10-03 P9 栈面全量落地:morestack 序言机器(A′ 分段+调用窗回收+再入续跑)**(spec-gap T34 解锁条件拍板动刀;§7.1/§7.10):
+- **解锁拍板**:T34 判决书单列解锁条件「发射器 morestack 序言检查」,触发条件
+  (C100K+ 栈内存瓶颈/lane 预算化到顶)经用户令 2026-10-03 直接触发;计划
+  docs/superpowers/plans/2026-10-03-p9-morestack-machine.md;worktree /tmp/ctron-p9ms
+  先行(红线①),五片 S1-S5 逐 commit pathspec。
+- **发射面(bin/ctron-emit)**:每个具体用户 fn 定义序言插栈限检查
+  `ctron_rt_stk_low(est)`+失败臂(实参值拷入 f<i> 桶→`ctron_rt_stk_grow(thunk,&ar,&r)`
+  →返回 r__)——零帧搬移、零栈图、零寄存器镜像修复,T34 判决的 B 案三件机器全部回避;
+  泛型单态化特化位(ct_spec_call_emit)同批(盒槽形参特化跳过=登记债,margin 兜底);
+  main/Test 块/闭包·spawn shim 不注入。est=256+96×(语句级 Let 步查 ct_ms_lets_b/e+形参)
+  封顶 32768(粗估;真帧超估由 rt 侧 MARGIN+guard 触顶诊断兜底)。
+  **门=CTRON_MORESTACK 发射期(env_get,CTRON_MONO_BUDGET 同款零注册税);缺省发射
+  逐字节与旧形一致**(黄金对照实证,唯一差=ANCHORVERSION 行,设计明文豁免);
+  weak 哑元同挂门。序言行经 `#mspro` env 位 ct_body 花括号后消费(#nobrace 先例)。
+- **rt 面(ctron_rt.c)**:rt_coro 增当前栈界 stk_lo/stk_hi(随任务走,创建初始化)+
+  增长段链+grow 交接槽;强钩子 stk_low(余量<est+RT_MS_MARGIN 2048 即告;裸线程/主栈
+  恒 0)/stk_grow(mmap+guard 新段不入池不碰 G→rt_swap 切段跑 thunk→返回值拷回→
+  **段随调用窗 free-on-return**)。切换 asm 零改动(rt_swap/rt_ctx_init 只加调用方)。
+  链深上限 RT_MS_SEG_MAX 256 超限=触顶诊断同族 rc=101(纯失控保险;段容量×链深
+  =深度上限,64KB 栈≈15 万层)。
+- **设计修正两件(实施中实证)**:①「钉住」收紧为「段=调用窗生命周期」(go 1.2
+  free-on-return):钉住使分段抖动(驻留旧段尾部的调用方循环调深函数,每轮一段)指数
+  烧段必撞顶;free-on-return 下段上帧全数返回才 munmap,逃逸死帧地址与固定栈帧复用
+  同契约 UB,跨 park 停车段存活(park 在窗内帧活),与计划稿的钉住语义差异在册。
+  ②ms_tramp 必须先取 `c->ms_back` 快照再跑 thunk:窗口内嵌套 grow 覆写共享槽,迟读=
+  外层 tramp 切回内层已出链帧重复 pop(double-free,lldb 野 free 回溯+反汇编实锤;
+  probe.c 单层窗掩盖、嵌套窗 100% 复现——手工探针必须含嵌套窗形态)。
+- 新锚 tests/w7/ms_grow(run.sh 专属块;同源程序四断言):OFF@64KB=触顶诊断 rc=101 /
+  ON@64KB=2 万层深递归生长算完 rc=0 值正确 / 浅深度(6K)OFF@1MB 与 ON@64KB 输出
+  逐字节一致(同形兼容)/ 生长态同种子双跑逐字节一致(确定性)。
+- 门禁:net 双矩阵 18/18(缺省与 CTRON_MORESTACK=1 双轮,含 coro_det 同种子 101/101
+  逐字节)/ w7 3/3 / rt_core_smoke ns/yield 95ns(门 ≤200)/ suite 99/99 双臂 /
+  smoke 159/1(余红=fx_conc_parallel,T33 发射臂 OOB 在册;**decl 锁 449→450 随批
+  正名:+1=GUI D 档十提交批未申报[pristine 二进制同读 450 实证非本件],归 GUI 泳道**)/
+  **bench-cycle 机器开:全请求周期 ratio 1.026× ≤1.05 硬门 PASS(coro-vs-C 归档
+  1.003×;每函数入口一次 weak 调用的热路径代价实测不可辨)+ no_alloc 稳态差分=0 PASS**/
+  c10k 满额 PASS(N=10000,fd delta=0)。
+- 坑位:①Ctron 源串 `\}` 非法转义 E1001(裸 `}` 合法;与「裸 { 须 \{」同族另一侧,
+  自宿严格词法);②`var fn` 上下文关键字宽容(解析通过;仍改 fname 求稳);③native.sh
+  仅 cc_run.ct 缺席才跑 build.sh,但 ctc.sh emit 自带 build.sh 再拼+T20 内容寻址缓存
+  键含 cc_emit.ct 哈希——改编译器源后首跑静默失败时先查「语法错误被重定向进输出文件」
+  (ctc.sh emit 的 HOST 诊断走 stdout→OUTC);④夹具递归必须真终止+线性(链深锚用指数
+  调用树会把生长对拍变成 3^n 烧机)。
+- 登记债:①盒槽形参泛型特化无序言(est/margin 兜底,guard 触顶诊断可辨);②C 宿主
+  ctronc emit 面无序言机器(bootstrap 链内用,用户程序不经其发射面;divergences 立档);
+  ③est 为发射期启发式,精确帧宽不可得(C 发射后宿主 cc 自由布局=T34 判决同源),
+  触顶诊断兜底的「最后防线」性质不变。
+
+**2026-10-03 P9 密度回填:生长态小栈 C10K 实测(栈面全量后续测量件)**(tests/net/c10k):
+- 载具:ctecho(coro)@N=10000,density.sh 采样壳(外部轮询服务进程 RSS 取峰,
+  0.3s 步;run.sh 全套判据原样站岗)。**A/B 同 driver 同机**(bench 家族惯例):
+  - 基线(1MB VA 缺省):max RSS 402MB = 40.2KB/conn;
+  - **生长态(CTRON_MORESTACK=1 + CTRON_RT_STACK_KB=64):max RSS 170MB =
+    17.0KB/conn ⇒ 2.36× 密度**,回显 10000/10000+探活+fd delta=0 全绿——
+    生长机器在满载 C10K 并发下稳态成立(每任务 64KB VA+按需段,RSS 实测
+    ≈13KB 栈页+lane,与 0926 lean 形 6-9KB/conn 同量级且无 lane 悬崖)。
+- **拓扑顶在册**:N≥16000 即 `connect #N: Can't assign requested address`
+  ——macOS 临时端口池(49152-65535=16384)对单 (dst ip,dst port) 元组空间
+  硬顶,~60% 占用后 bind 选择劣化(16K 池 < 20000 目标必然不可达)。非栈
+  机器问题(基线/生长臂同因同点位)。**C100K 前置升级件=driver 多监听端口
+  分片**(把 (src,dst,dport) 元组空间乘开;127.0.0.0/8 多地址同效),另册。
+- 载具修正:driver 收尾 SO_LINGER(1,0) RST(bench_cycle 同款口径)——普通
+  close 使驱动侧每轮吃 N 个 TIME_WAIT(msl 15s×2),跨轮次污染临时端口池
+  (先跑 1MB@10K 基线后,后续臂 connect #106 即 EADDRNOTAVAIL 的污染路径
+  实证);RST 后零 TIME_WAIT,轮次自含可复现。响应字节 RST 前已按序送达,
+  判据面无涉。
+
+**2026-10-03 P9 C100K 前置:拓扑分片载具 + macOS 全局端口池实证**(tests/net/c10k):
+- 载具:ctecho 绑 0.0.0.0(同一端口全 127.x 应答;对 127.0.0.1 客户端零语义
+  变化)+ driver C10K_ADDRS 目的地址轮转(127.0.0.1..N;i%addrs;缺省 1 零变化,
+  上限 64)。分片设计前提=「临时端口池按 (src,dst,dport) 元组各 16384」。
+- **macOS 实证否证该前提**:2 地址 N=20000 失败点 connect #16308 落在
+  127.0.0.1(该地址轮转下仅承载 ~8154 连接)——macOS 临时端口分配为**全局
+  位图,不分目的元组**(16308 总在途≈池顶)。多目的地址在 macOS 无效;
+  IPv6(::1)独立池可再翻倍(另册,sockaddr_in6 路径)。**C100K 满额门 =
+  Linux nightly 目标**(Linux inet_hash_connect 元组感知,跨目的复用成立;
+  分片载具为其就位)。
+- 回归:标准 c10k N=10000 双臂(生长态 170MB/默认 416MB)全绿零变化——
+  ANY 绑定+分片 driver 缺省面对既有判据零影响。
+- 实操红线:改 c10k 相关载具后,**跨轮次测量必须等 TIME_WAIT 排干或用
+  RST 收尾**(上一条 2026-10-03 密度回填段的 SO_LINGER 修正即为同族教训;
+  本轮再证一次:污染池上 2 地址臂假红于 #16308,排干后同点位复判)。

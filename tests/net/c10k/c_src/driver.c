@@ -6,7 +6,7 @@
  * 超时即败,不悬挂。
  *
  * 用法: driver <port> <N> [budget_s=180]
- * 输出末行: c10k-driver: N=<n> echo_ok=<k> fail=<f> elapsed=<t>s
+ * 输出末行: c10k-driver: N=<n> addrs=<a> echo_ok=<k> fail=<f> ...s
  *
  * 实现口径:非阻塞 connect(EINPROGRESS 常态)+ poll(POLLOUT)/getsockopt
  * (SO_ERROR) 收敛建连(监听 backlog 溢出的 SYN 重传由 budget 兜住);
@@ -121,7 +121,17 @@ int main(int argc, char **argv)
         memset(msg[i], 'A' + (i % 26), 64);
     }
 
-    /* 段一:全量非阻塞建连(全部保持打开 → 并发度 = n) */
+    /* 段一:全量非阻塞建连(全部保持打开 → 并发度 = n)
+     * C10K_ADDRS(P9 C100K 前置,2026-10-03):目的地址在 127.0.0.1..N 轮转
+     * ——临时端口池按 (src,dst,dport) 元组各 16384,单地址拓扑 N≥16000 即
+     * EADDRNOTAVAIL(实测);分片把元组空间乘开(服务端绑 0.0.0.0 即可)。 */
+    int addrs = 1;
+    {
+        const char *e = getenv("C10K_ADDRS");
+        if (e && *e) addrs = atoi(e);
+        if (addrs < 1) addrs = 1;
+        if (addrs > 64) addrs = 64;
+    }
     for (int i = 0; i < n; i++) {
         int s = socket(AF_INET, SOCK_STREAM, 0);
         if (s < 0) {
@@ -135,10 +145,11 @@ int main(int argc, char **argv)
         struct sockaddr_in a;
         memset(&a, 0, sizeof a);
         a.sin_family = AF_INET;
-        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK + (unsigned long)(i % addrs));
         a.sin_port = htons((unsigned short)port);
         if (connect(s, (struct sockaddr *)&a, sizeof a) != 0 && errno != EINPROGRESS) {
-            fprintf(stderr, "driver: connect #%d: %s\n", i, strerror(errno));
+            fprintf(stderr, "driver: connect #%d (127.0.0.%d): %s\n",
+                    i, 1 + (i % addrs), strerror(errno));
             return 1;
         }
         fd[i] = s;
@@ -161,10 +172,17 @@ int main(int argc, char **argv)
     }
     double t_all = now_s() - t0;
 
-    for (int i = 0; i < n; i++)
-        if (fd[i] >= 0) close(fd[i]);
+    /* 收尾 SO_LINGER(1,0) RST(bench_cycle 同款口径,2026-10-03):响应字节
+     * 已按序送达后 RST 关闭,驱动侧零 TIME_WAIT——回显全量 + 后续轮次不再
+     * 吃临时端口池耗尽(connect #106 EADDRNOTAVAIL 实证污染路径)。 */
+    for (int i = 0; i < n; i++) {
+        if (fd[i] < 0) continue;
+        struct linger lg = { 1, 0 };
+        (void)setsockopt(fd[i], SOL_SOCKET, SO_LINGER, &lg, sizeof lg);
+        close(fd[i]);
+    }
 
-    printf("c10k-driver: N=%d echo_ok=%d fail=%d connect=%.1fs total=%.1fs\n",
+    printf("c10k-driver: N=%d addrs=%d echo_ok=%d fail=%d connect=%.1fs total=%.1fs\n", n, addrs,
            n, ok, bad, t_conn, t_all);
     free(fd); free(state); free(msg);
     return (ok == n && bad == 0) ? 0 : 1;

@@ -1885,12 +1885,23 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     println("//DD2:" + mg + " phd=" + phd.to_string())
                     println("#ifndef CT_SPEC_" + mg)
                     println("#define CT_SPEC_" + mg)
+                    // P9 栈面全量:特化位序言机器(盒槽形参特化跳过——桶捕 _s 槽名
+                    // 与解盒序言纠缠,v1 登记面;margin 兜底)。mg 前置原型:thunk
+                    // 先于定义引用 mg(特化无 up-front 原型区)。
+                    var mspro26 = ""
+                    if upnames.len == 0 {
+                        println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ");")
+                        mspro26 = ct_ms_pre(mg, spec, file, rcs)
+                    }
                     println(ct_ctype(rcs) + " " + mg + "(" + ct_params_str(spec, file) + ") ")
                     // P0-A Param 面:盒槽形参帧序言 T54 式解盒(u:-形参 → int64 盒槽,
                     // 调用位 ct_wrap_i 堆盒;解盒即原 struct 值,体内三面调用全沿用)。
                     // "#nobrace":花括号由此处自带(ct_body 位跳过)
                     genv = env_bind(genv, "#nobrace", "1")
                     println("\{")
+                    if mspro26.len > 0 {
+                        println(mspro26)
+                    }
                     var upi26: I32 = 0
                     // T31 M1.5:spec 帧节点+解盒形参注册(#nobrace 面,直出不经 ct_body)
                     var spfr26 = ct_fr_prologue()

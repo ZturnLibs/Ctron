@@ -466,6 +466,10 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
                 eln(ct_env_ty(fenv, "#frpro"), fenv)
             }
         }
+        // P9 栈面全量:"#mspro" 位(morestack 序言检查行,紧随花括号)
+        if ct_env_has(fenv, "#mspro") {
+            eln(ct_env_ty(fenv, "#mspro"), fenv)
+        }
     }
     var denv = dls_push(fenv)
     var env2 = ct_stmts(b, denv, file, "", hreg)

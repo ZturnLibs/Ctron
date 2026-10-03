@@ -823,3 +823,20 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
   Box[Box64]/net 门面貌;1daf176 基线(不含本单)emit 臂同夹具复跑同响
   (emit/cc 双绿 + run assert failed),红先在,最可疑引入面为 0428ddd
   (P0-B)net.ct 门面重写(其门禁未含 tests/http),归 P0-B 泳道跟复。
+
+## P9 栈面发射面(2026-10-03;morestack 序言机器)
+
+自宿发射器(bin/ctron-emit)的 morestack 序言机器(A′ 分段+调用窗回收+再入续跑;
+`CTRON_MORESTACK` 发射期门,缺省零注入)存在如下宿主间分歧,均在册:
+
+- **C 宿主 ctronc emit 面无序言机器**:ctronc 发射的程序无栈限检查,协程深递归
+  保持 1MB 上限+guard+触顶诊断(§7.1 字面终形)语义。用途边界:ctronc 仅 bootstrap
+  链内使用(编译 bin/ctron-* 自身),用户程序一律经 bin/ctron-cc/bin/ctron-emit
+  发射,不经 ctronc 发射面——分歧无用户可达面;自宿发射器反超 C 宿主为既定方向
+  (工具链命名三分法:ctron=正身)。合龙触发:ctronc 退出 bootstrap 专职之日。
+- **盒槽形参泛型特化无序言**(自宿面,ct_spec_call_emit upnames>0 跳过):特化的
+  u:-盒槽形参名带 `_s` 后缀与解盒序言纠缠,序言桶捕获需特化版形参形态——v1 跳过,
+  est/margin 兜底+guard 触顶诊断可辨;登记为 capability 项。
+- **est 为发射期启发式**:256+96×(Let 节点+形参) 封顶 32768,非精确帧宽——C 发射
+  后宿主 cc 自由布局,T34 判决书同源结论(精确栈图不可得);低估由 rt 侧
+  RT_MS_MARGIN(2048)+guard 触顶诊断兜底,「生长优先、诊断保底」双层语义。
