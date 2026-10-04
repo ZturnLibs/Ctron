@@ -1046,7 +1046,10 @@ fn gui_ctml_tokens(src: Str, out: List[Str]) -> I32 {
                     out.push(byte_slice(src, i, j + 1))
                     i = j + 1
                 } else {
-                    if b == 60 || b == 62 || b == 61 || b == 123 || b == 125 || b == 58 || b == 59 {
+                    // GUI-27:左右圆括号入单字符集——view props 形参表捕获
+                    // (gui_block 8c-1 期待单字符括号,内嵌 .ct 词法即此形);
+                    // 独立流对齐内嵌流(内嵌/独立同语法同路径,§5.1)
+                    if b == 60 || b == 62 || b == 61 || b == 123 || b == 125 || b == 58 || b == 59 || b == 40 || b == 41 {
                         out.push(byte_slice(src, i, i + 1))
                         i += 1
                     } else {
@@ -1056,7 +1059,7 @@ fn gui_ctml_tokens(src: Str, out: List[Str]) -> I32 {
                             if wb == 32 || wb == 9 || wb == 10 || wb == 13 {
                                 break
                             }
-                            if wb == 60 || wb == 62 || wb == 61 || wb == 123 || wb == 125 || wb == 58 || wb == 59 || wb == 47 || wb == 34 {
+                            if wb == 60 || wb == 62 || wb == 61 || wb == 123 || wb == 125 || wb == 58 || wb == 59 || wb == 47 || wb == 34 || wb == 40 || wb == 41 {
                                 break
                             }
                             j2 += 1
@@ -1097,6 +1100,238 @@ fn gui_ctml_file(src: Str) -> List[Str] {
         }
     }
     return file
+}
+
+// ==================== GUI-27:跨文件 view 导入(use 装载器) ====================
+// 规格 §4.3.1:pub view 导出 + use mod.Name 导入,view 默认文件私有。
+// GuiBlock 追加槽:d[7]=fileid(逐文件递增) d[8]=pub("1"/"");旧节点无槽 =
+// 通配可见(内嵌形态与单文件路径零波及,访问器兜底)。
+// 合并序 = DFS imports-先-自身-后(应用根=最后声明视图契约);路径集环守卫。
+
+fn gui_blk_fileid(d: List[Str]) -> Str {
+    if d.len > 7 {
+        return d[7]
+    }
+    return ""
+}
+
+fn gui_blk_pub(d: List[Str]) -> Str {
+    if d.len > 8 {
+        return d[8]
+    }
+    return ""
+}
+
+fn gui_ctml_dir(p: Str) -> Str {
+    var i: I32 = p.len - 1
+    while i >= 0 {
+        if byte_at(p, i) == 47 {
+            return byte_slice(p, 0, i)
+        }
+        i -= 1
+    }
+    return ""
+}
+
+fn gui_ctml_mod_path(dir: Str, mod: Str) -> Str {
+    if dir.len == 0 {
+        return mod + ".ctml"
+    }
+    return dir + "/" + mod + ".ctml"
+}
+
+// use 行名称收集:点分单名 / 花括号列表(词法:逗号非单字符,缀词尾随剥)
+fn gui_use_names(toks: List[Str], cur: Atomic[I32], out: List[Str]) -> I32 {
+    var br: Bool = false
+    while cur.load() < toks.len {
+        var t: Str = toks[cur.load()]
+        if t.len == 1 {
+            var tb: I32 = byte_at(t, 0)
+            if tb == 123 {
+                br = true
+                cur.store(cur.load() + 1)
+                continue
+            }
+            if tb == 125 {
+                cur.store(cur.load() + 1)
+                break
+            }
+        }
+        if t == "." {
+            cur.store(cur.load() + 1)
+            continue
+        }
+        var nm: Str = t
+        if byte_at(nm, nm.len - 1) == 44 {
+            nm = byte_slice(nm, 0, nm.len - 1)
+        }
+        if nm != "" {
+            out.push(nm)
+        }
+        cur.store(cur.load() + 1)
+        if !br {
+            break
+        }
+    }
+    return 0
+}
+
+// 独立 .ctml use 装载器(node 级合并)。返回本文件 fileid(缺文件 = -1)。
+// 诊断(收集式):E8100 use 目标不存在 <path> / E8100 use 名未导出 <mod>.<Name>
+fn gui_ctml_file_use(path: Str, seen: List[Str], file: List[Str], gdiags: List[Str], fid: Atomic[I32], imp_from: List[Str], imp_to: List[Str]) -> I32 {
+    var si: I32 = 0
+    while si < seen.len {
+        if seen[si] == path {
+            return 0
+        }
+        si += 1
+    }
+    // read_file 双口径:seed 解释 = Option[Str](driver_check 同款 match 形),
+    // 原生发射 = Str 直返——match 形两宿通吃
+    var text: Str = ""
+    var ruse = read_file(path)
+    match ruse {
+        Some(tx) => { text = tx }
+        None => { }
+    }
+    if text == "" {
+        gdiags.push("E8100: use 目标不存在 " + path)
+        return -1
+    }
+    seen.push(path)
+    var myid: I32 = fid.load()
+    fid.store(myid + 1)
+    var toks = List[Str]()
+    gui_ctml_tokens(text, toks)
+    var nol = List[Str]()
+    var noc = List[Str]()
+    var dir: Str = gui_ctml_dir(path)
+    var cur = Atomic[I32](0)
+    while cur.load() < toks.len {
+        var t: Str = toks[cur.load()]
+        if t == "use" {
+            cur.store(cur.load() + 1)
+            if cur.load() >= toks.len {
+                continue
+            }
+            // 词法不切点:路径整体一词("xcomp.Badge");模块 = 首段,
+            // 点分尾段即单名;花括号名单形(xcomp 点大括号 A/B)名单随后续 token
+            var mod: Str = toks[cur.load()]
+            cur.store(cur.load() + 1)
+            var dot: I32 = -1
+            var ci3: I32 = 0
+            while ci3 < mod.len {
+                if byte_at(mod, ci3) == 46 {
+                    dot = ci3
+                    break
+                }
+                ci3 += 1
+            }
+            var mseg: Str = mod
+            var names = List[Str]()
+            if dot >= 0 {
+                mseg = byte_slice(mod, 0, dot)
+                var tail: Str = byte_slice(mod, dot + 1, mod.len)
+                if tail != "" {
+                    names.push(tail)
+                }
+            }
+            if cur.load() < toks.len {
+                var nt: Str = toks[cur.load()]
+                // 花括号开符一律字节码比较(字符串裸开括号须转义,坑位在册)
+                if nt.len == 1 {
+                    if byte_at(nt, 0) == 123 {
+                        gui_use_names(toks, cur, names)
+                    }
+                }
+            }
+            mod = mseg
+            var mpath: Str = gui_ctml_mod_path(dir, mod)
+            var before: I32 = file.len
+            var rid: I32 = gui_ctml_file_use(mpath, seen, file, gdiags, fid, imp_from, imp_to)
+            if rid >= 0 {
+                imp_from.push(myid.to_string())
+                imp_to.push(rid.to_string())
+            }
+            // 名称逐一核 pub 视图(仅并入了的本模块块段)
+            var ni: I32 = 0
+            while ni < names.len {
+                var found: Bool = false
+                var bi: I32 = before
+                while bi < file.len {
+                    var d = file[bi]
+                    if d[0] == "GuiBlock" {
+                        if d[1] == "view" {
+                            if d[2] == names[ni] {
+                                if gui_blk_pub(d) == "1" {
+                                    found = true
+                                }
+                            }
+                        }
+                    }
+                    bi += 1
+                }
+                if !found {
+                    gdiags.push("E8100: use 名未导出 " + mod + "." + names[ni])
+                }
+                ni += 1
+            }
+            continue
+        }
+        var ispub: Bool = false
+        if t == "pub" {
+            ispub = true
+            cur.store(cur.load() + 1)
+            if cur.load() >= toks.len {
+                continue
+            }
+            t = toks[cur.load()]
+        }
+        if t == "view" {
+            var nd = gui_block(toks, cur, "view", nol, noc)
+            nd.push(myid.to_string())
+            if ispub {
+                nd.push("1")
+            } else {
+                nd.push("")
+            }
+            file.push(nd)
+            continue
+        }
+        if t == "style" {
+            var nd2 = gui_block(toks, cur, "style", nol, noc)
+            nd2.push(myid.to_string())
+            nd2.push("")
+            file.push(nd2)
+            continue
+        }
+        cur.store(cur.load() + 1)
+    }
+    return myid
+}
+
+// 可见性判定:本文件全可见;他文件须 pub 且为本文件**直接导入**(规格=
+// 显式逐级导入,不传递);无槽通配(内嵌/单文件旧节点)
+fn gui_vis_ok(vf: Str, vp: Str, fid: Str, imp_from: List[Str], imp_to: List[Str]) -> Bool {
+    if vf == "" {
+        return true
+    }
+    if vf == fid {
+        return true
+    }
+    if vp != "1" {
+        return false
+    }
+    var i: I32 = 0
+    while i < imp_from.len {
+        if imp_from[i] == fid {
+            if imp_to[i] == vf {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
 }
 
 // ==================== gui_check:检查面(W3;§4.4 E8xxx 语料验收)====================
@@ -1776,7 +2011,25 @@ fn gui_ck_tag(tag: Str, gdiags: List[Str]) -> I32 {
 //        单标识符旧契约仅存在性;indep 独立形态两门均跳)
 //   E8193 each 体含 input 型控件(警告入 gwarns,不置 rc;key 原语未落地前索引对齐即串位)
 // sawin = 子树 input 计数累加器(Atomic;each 据此发 E8193,嵌套 each 各自报)。
-fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], pscope: List[Str], vr_nm: List[Str], vr_pp: List[Str], iscomp: Bool, fbox: List[Str]) -> I32 {
+// GUI-27:实例可见性门。返回 0=可见/可深查;-1=不可见(诊断已入列)。
+// 未知(不在 vr_nm)= E8100 未声明组件;他文件非 pub 或未直导 = E8100 未导入组件
+fn gui_ck_view_vis(tag: Str, vr_nm: List[Str], vr_file: List[Str], vr_pub: List[Str], vfid: Str, imp_from: List[Str], imp_to: List[Str], gdiags: List[Str]) -> I32 {
+    var i: I32 = 0
+    while i < vr_nm.len {
+        if vr_nm[i] == tag {
+            if gui_vis_ok(vr_file[i], vr_pub[i], vfid, imp_from, imp_to) {
+                return 0
+            }
+            gdiags.push("E8100: 未导入组件 " + tag + "(私有 view 须经 pub 导出并 use 导入)")
+            return -1
+        }
+        i += 1
+    }
+    gdiags.push("E8100: 未声明组件 " + tag)
+    return -1
+}
+
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], pscope: List[Str], vr_nm: List[Str], vr_pp: List[Str], vr_file: List[Str], vr_pub: List[Str], vfid: Str, imp_from: List[Str], imp_to: List[Str], iscomp: Bool, fbox: List[Str]) -> I32 {
     var bad: I32 = 0
     if depth > 8 {
         gdiags.push("E8100: 嵌套超限(限深 8)")
@@ -1816,6 +2069,16 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     var fb4: I32 = byte_at(tag, 0)
     if fb4 >= 65 {
         if fb4 <= 90 {
+            // GUI-27:导入可见性门(独立 ctml 形态;无槽通配=恒过)。未知 =
+            // E8100 未声明组件;他文件非 pub 或未直导 = E8100 未导入组件。
+            // 门不过则后续 props 深查静默(消未知视图逐参 E8110 噪声)
+            var vok: I32 = 0
+            if indep {
+                vok = gui_ck_view_vis(tag, vr_nm, vr_file, vr_pub, vfid, imp_from, imp_to, gdiags)
+                if vok < 0 {
+                    bad = -1
+                }
+            }
             var passed = List[Str]()
             while cur.load() < tks.len {
                 var pk3: Str = tks[cur.load()]
@@ -1877,8 +2140,11 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     cpi += 1
                 }
                 if !found {
-                    gdiags.push("E8110: 实例未知 prop " + pn2 + "(组件 " + tag + " 未声明)")
-                    bad = -1
+                    // GUI-27:门不过(未知/不可见)时 E8100 已入列,props 逐参 E8110 静默
+                    if vok >= 0 {
+                        gdiags.push("E8110: 实例未知 prop " + pn2 + "(组件 " + tag + " 未声明)")
+                        bad = -1
+                    }
                 }
                 passed.push(pn2)
             }
@@ -1915,8 +2181,11 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                                     gi2 += 1
                                 }
                                 if got == 0 {
-                                    gdiags.push("E8100: 实例缺 prop " + want + "(组件 " + tag + ")")
-                                    bad = -1
+                                    // GUI-27:门不过时缺 prop 亦静默(E8100 已入列)
+                                    if vok >= 0 {
+                                        gdiags.push("E8100: 实例缺 prop " + want + "(组件 " + tag + ")")
+                                        bad = -1
+                                    }
                                 }
                             }
                             ci2 += 1
@@ -1960,9 +2229,13 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                                     }
                                 }
                             }
+                            // 实例子树先吃开尖再递归(镜像通用容器递归;此前
+                            // tag 吃到 "<" 脱轨级联误报——实例带子树从未入语料
+                            // 的存量缺口,GUI-27 投影夹具首曝)
+                            cur.store(cur.load() + 1)
                         }
                     }
-                    var cb2: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, iscomp, fbox)
+                    var cb2: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
                     if cb2 < 0 {
                         bad = -1
                     }
@@ -2316,7 +2589,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 cur.store(cur.load() + 1)
-                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, iscomp, fbox)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
                 if cb < 0 {
                     bad = -1
                 }
@@ -2397,7 +2670,7 @@ fn gui_props_names(d5: Str, out: List[Str]) -> I32 {
     return 0
 }
 
-fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: Bool) -> I32 {
+fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: Bool, imp_from: List[Str], imp_to: List[Str]) -> I32 {
     // 第一遍:样式名表 + Fn/FnExt 名表与形参个数表(E8120 存在/签名门依据)
     var sn = List[Str]()
     var fns = List[Str]()
@@ -2407,6 +2680,9 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
     // 实例实参名核对/缺失 prop 门依据;视图可居后被用模块(跨文件)亦可本文件
     var vr_nm = List[Str]()
     var vr_pp = List[Str]()
+    // GUI-27:可见性平行表(d[7]=fileid d[8]=pub;无槽=通配 "")
+    var vr_file = List[Str]()
+    var vr_pub = List[Str]()
     // 契约Ⅱ-b:desugar 靶视图名(run(<Ident>) 标记检出;无标记="")与
     // Box 首参处理器名表——组件视图事件首参 Box = 模型捕获 +1 豁免依据
     var tgt: Str = gui_ds_marker_file(file)
@@ -2431,6 +2707,8 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
         if vd[0] == "GuiBlock" {
             if vd[1] == "view" {
                 vr_nm.push(vd[2])
+                vr_file.push(gui_blk_fileid(vd))
+                vr_pub.push(gui_blk_pub(vd))
                 var pp2 = List[Str]()
                 if vd.len > 5 {
                     gui_props_names(vd[5], pp2)
@@ -2528,7 +2806,9 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                         iscomp = true
                     }
                 }
-                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, vptyps, stns, sfk, stv, emptyscope, vr_nm, vr_pp, iscomp, fbox)
+                // GUI-27:本视图所属 fileid(可见性基准;无槽=通配 "")
+                var vfid: Str = gui_blk_fileid(d)
+                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, vptyps, stns, sfk, stv, emptyscope, vr_nm, vr_pp, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
                 }
             } else {
                 if d[1] == "style" {
@@ -2852,6 +3132,12 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
     }
     var is_input: Bool = false
     if tag == "input" {
+        is_input = true
+    }
+    // GUI-30 前置缝:textarea 与 input 同为自闭合叶子(bind 进 nbid;旧走通用
+    // 自闭合分支 nbid.push(itemvar)=恒空,装配面 collect 面丢 bind——显示面走
+    // 运行时 gt 树故无症状,默认写回面(bset 收集)首曝)
+    if tag == "textarea" {
         is_input = true
     }
     var is_check: Bool = false
@@ -3502,7 +3788,8 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
 
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
-fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str]) -> I32 {
+// bset/bty = GUI-30 默认写回集(无 on:input 的 input/textarea 点链 bind + 型别)
+fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str], bset: List[Str], bty: List[Str]) -> I32 {
     // 单一树走查统一收集(I32 双栈,子树承 in_each 旗;域包 gs2i 不可见
     // 于编译器,禁字符串栈):标量路径表达式 / each 列表 / 行域 checkbox /
     // in-each 事件(实例分发)/ input on:input 处理器(名通道)
@@ -3613,6 +3900,31 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
                     if nflag[id] != "" {
                         exprs.push(nflag[id])
                     }
+                    // GUI-30:默认写回集——input/textarea 无 on:input(应用未接管)
+                    // 且 bind 为纯点链且型别可写(Str/I32)者收入 bset;有处理器 =
+                    // 受控契约原样(零分支合成)。表达式槽/未知型别豁免(现状=丢)
+                    if ntag[id] == "input" || ntag[id] == "textarea" {
+                        if nbid[id] != "" {
+                            if !rt_ds_node_has_input_evt(nes[id], nec[id], f_evn) {
+                                var ps0 = List[Str]()
+                                var sub0 = List[Str]()
+                                gui_bx_dotted(nbid[id], ps0, sub0)
+                                if ps0.len == 1 {
+                                    if sub0.len == 0 {
+                                        if ps0[0] == nbid[id] {
+                                            var tyw: Str = gui_ds_path_ty(nbid[id], pnames, ptyps, stns, sfk, stv)
+                                            if tyw == "Str" || tyw == "I32" {
+                                                if !gui_ck_has_style(bset, nbid[id]) {
+                                                    bset.push(nbid[id])
+                                                    bty.push(tyw)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             var e: I32 = 0
@@ -3706,8 +4018,21 @@ fn tag_is_input_evt(tag: Str, nbid: Str) -> Bool {
     return false
 }
 
+// 节点事件表含 on:input 否(GUI-30 bset 收集的受控契约判据;nes 为全局事件
+// 名表基址偏移,f_evn 即该表)
+fn rt_ds_node_has_input_evt(nes0: I32, nec0: I32, f_evn: List[Str]) -> Bool {
+    var e: I32 = 0
+    while e < nec0 {
+        if f_evn[nes0 + e] == "input" {
+            return true
+        }
+        e += 1
+    }
+    return false
+}
+
 // 合成三 fn(源文本 → 真解析拼写单元,File 节)
-fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str]) -> List[Str] {
+fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], ordn: List[Str], paths: List[Str], pty: List[Str], lists: List[Str], evn: List[Str], evf: List[Str], inps: List[Str], ievs: List[Str], crows: List[Str], cty: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], cvn: List[Str], cvf: List[Str], ciev: List[Str], bset: List[Str], bty: List[Str]) -> List[Str] {
     var ptoks = List[Str]()
     var boxes = List[Str]()
     var ii: I32 = 0
@@ -4013,6 +4338,26 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
             a2 = a2 + "        }\n"
             a2 = a2 + "    }\n"
         }
+        k += 1
+    }
+    // GUI-30:持久化默认化写回分支("__bs:路径:全文" → 路径 = 全文)。运行时
+    // rt_in_fire 无 on:input 处理器时改发此头(bind 变量唯一值源不变:显示每帧
+    // 从变量读,输入即写回;第二值源不存在)。Str 直赋;I32 经 ev_arg_i 桥
+    k = 0
+    while k < bset.len {
+        var rwB: Str = gui_ds_rw(bset[k], pnames, ptoks)
+        var plB: I32 = bset[k].len + 6
+        a2 = a2 + "    if name.len >= " + plB.to_string() + " \{\n"
+        a2 = a2 + "        if byte_slice(name, 0, " + plB.to_string() + ") == \"__bs:" + bset[k] + ":\" \{\n"
+        if bty[k] == "I32" {
+            a2 = a2 + "            var bsv = List[Str]()\n"
+            a2 = a2 + "            bsv.push(byte_slice(name, " + plB.to_string() + ", name.len))\n"
+            a2 = a2 + "            " + rwB + " = ev_arg_i(bsv, 0)\n"
+        } else {
+            a2 = a2 + "            " + rwB + " = byte_slice(name, " + plB.to_string() + ", name.len)\n"
+        }
+        a2 = a2 + "        }\n"
+        a2 = a2 + "    }\n"
         k += 1
     }
     a2 = a2 + "}\n"
@@ -4678,8 +5023,10 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var cvn = List[Str]()
     var cvf = List[Str]()
     var ciev = List[Str]()
-    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev)
-    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev)
+    var bset = List[Str]()
+    var bty = List[Str]()
+    gui_ds_collect_slots(file, dn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev, bset, bty)
+    var made: List[Str] = gui_ds_gen(file, vname, dn, dt, ordn, paths, pty, lists, evn, evf, inps, ievs, crows, cty, stns, sfk, stv, cvn, cvf, ciev, bset, bty)
     // made = p_file 产物(File 节点):[0] 是 "File" 头字符串,从 1 起拼——
     // 从 0 拼即把头串当 decl 注入,trans/emit 面遍历 d[0] 解引用即 SEGV(s41 根因)
     var k: I32 = 1

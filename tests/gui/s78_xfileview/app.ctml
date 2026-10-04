@@ -1,0 +1,14 @@
+// tests/gui/s77_xfileview —— GUI-27:消费方;use 导入 + 实例 + slot 投影。
+// 组件体在 components.ctml,本文件仅 use 行 + Root;锚合并后 vreg 全可见
+use components.{Badge, Row}
+
+view Root {
+  <vbox class="root">
+    <Badge t: "你好"/>
+    <Row title: "行">
+      <label class="proj">投影</label>
+    </Row>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 8 }
+style proj { fg: "#22c55e" }

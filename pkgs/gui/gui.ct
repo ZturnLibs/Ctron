@@ -1955,6 +1955,168 @@ fn gt_props_names(seg: Str, t: GuiTree) -> I32 {
     return 0
 }
 
+// ==================== GUI-27:跨文件 view 导入(锚合并) ====================
+// 规格 §4.3.1:pub view 导出 + use mod.Name 导入。运行时合并 = DFS
+// imports-先-自身-后(应用根=最后声明视图契约保持),文本级拼接(运行时
+// 解析无行:列,零位置顾虑);路径集环守卫;缺文件跳过(红归检查面)。
+// 无 use 行文件字节恒等 = 热重载/内嵌兜底回归保障(w4/s26 口径)。
+
+fn gt_anchor_dir(p: Str) -> Str {
+    var i: I32 = p.len - 1
+    while i >= 0 {
+        if byte_at(p, i) == 47 {
+            return byte_slice(p, 0, i)
+        }
+        i -= 1
+    }
+    return ""
+}
+
+fn gt_anchor_join(dir: Str, mod: Str) -> Str {
+    if dir.len == 0 {
+        return mod + ".ctml"
+    }
+    return dir + "/" + mod + ".ctml"
+}
+
+// 顶层 use 行模块名提取(行式;串/注释感知,{} 深度>0 不采;模块 = 首段)
+fn gt_anchor_uses(src: Str, out: List[Str]) -> I32 {
+    var n: I32 = src.len
+    var i: I32 = 0
+    var depth: I32 = 0
+    while i < n {
+        var b: I32 = byte_at(src, i)
+        if b == 34 {
+            i += 1
+            while i < n {
+                if byte_at(src, i) == 92 {
+                    i += 2
+                    continue
+                }
+                if byte_at(src, i) == 34 {
+                    i += 1
+                    break
+                }
+                i += 1
+            }
+            continue
+        }
+        if b == 47 {
+            if i + 1 < n {
+                if byte_at(src, i + 1) == 47 {
+                    while i < n {
+                        if byte_at(src, i) == 10 {
+                            break
+                        }
+                        i += 1
+                    }
+                    continue
+                }
+            }
+        }
+        if b == 123 {
+            depth += 1
+        }
+        if b == 125 {
+            if depth > 0 {
+                depth -= 1
+            }
+        }
+        if depth == 0 {
+            if b == 117 {
+                if i + 4 <= n {
+                    // "use"+空白 才算导入行("user" 等词不误采)
+                    if byte_at(src, i + 1) == 115 {
+                        if byte_at(src, i + 2) == 101 {
+                            var nb: I32 = byte_at(src, i + 3)
+                            if nb == 32 || nb == 9 {
+                                var pb: I32 = 10
+                                if i > 0 {
+                                    pb = byte_at(src, i - 1)
+                                }
+                                if pb == 10 || pb == 9 || pb == 32 || pb == 13 {
+                                    var j: I32 = i + 4
+                                    while j < n {
+                                        var wb: I32 = byte_at(src, j)
+                                        if wb == 32 || wb == 9 {
+                                            j += 1
+                                            continue
+                                        }
+                                        break
+                                    }
+                                    var s: I32 = j
+                                    while j < n {
+                                        var mb: I32 = byte_at(src, j)
+                                        if mb == 46 || mb == 123 || mb == 32 || mb == 9 || mb == 10 || mb == 13 {
+                                            break
+                                        }
+                                        j += 1
+                                    }
+                                    if j > s {
+                                        out.push(byte_slice(src, s, j))
+                                    }
+                                    while i < n {
+                                        if byte_at(src, i) == 10 {
+                                            break
+                                        }
+                                        i += 1
+                                    }
+                                    continue
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn gt_anchor_walk(path: Str, seen: List[Str], out: List[Str]) -> I32 {
+    var si: I32 = 0
+    while si < seen.len {
+        if seen[si] == path {
+            return 0
+        }
+        si += 1
+    }
+    var text: Str = read_file(path)
+    if text == "" {
+        return 0
+    }
+    seen.push(path)
+    var mods = List[Str]()
+    gt_anchor_uses(text, mods)
+    var dir: Str = gt_anchor_dir(path)
+    var mi: I32 = 0
+    while mi < mods.len {
+        gt_anchor_walk(gt_anchor_join(dir, mods[mi]), seen, out)
+        mi += 1
+    }
+    out.push(text)
+    return 0
+}
+
+// 锚合并源:入口 ctml + 其 use 闭包的合并文本(热重载探针同源)。
+// 无 use 行 = 与 read_file 字节恒等(单文件零迁移)
+pub fn gt_anchor_src(anchor: Str) -> Str {
+    var out = List[Str]()
+    var seen = List[Str]()
+    gt_anchor_walk(anchor, seen, out)
+    var src: Str = ""
+    var i: I32 = 0
+    while i < out.len {
+        if i > 0 {
+            src = src + "\n"
+        }
+        src = src + out[i]
+        i += 1
+    }
+    return src
+}
+
 pub fn gt_parse(src: Str) -> GuiTree {
     var t: GuiTree = gt_new()
     var binds = List[Str]()
@@ -1969,6 +2131,18 @@ pub fn gt_parse(src: Str) -> GuiTree {
             break
         }
         var w: Str = gword(src, cur)
+        // GUI-27:pub 导出标记吞并(pub 后必 view/style);use 导入行跳读至行尾
+        if w == "pub" {
+            w = gword(src, cur)
+        }
+        if w == "use" {
+            while cur.load() < n {
+                if byte_at(src, cur.load()) == 10 {
+                    break
+                }
+                cur.store(cur.load() + 1)
+            }
+        } else {
         if w == "view" {
             var vname: Str = gword(src, cur)
             gws(src, cur)
@@ -2016,6 +2190,7 @@ pub fn gt_parse(src: Str) -> GuiTree {
             } else {
                 panic("gui: 顶层仅 view/style,得 " + w)
             }
+        }
         }
     }
     gt_ext_resolve(t, ext)
@@ -4660,6 +4835,8 @@ fn rt_in_expr(t: GuiTree, node: I32, evname: Str) -> Str {
 }
 
 // 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
+// GUI-30:持久化默认化——input/textarea 无 on:input 处理器时改发 __bs: 写回
+// 头(装配面合成对应分支,bind 变量即写即读;有处理器=受控契约原样)
 fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
     var h: Str = rt_in_handler(t, node, evname)
     if h != "" {
@@ -4676,6 +4853,13 @@ fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, Lis
                     }
                 }
                 e2 += 1
+            }
+        }
+    } else {
+        if evname == "input" {
+            var bid: Str = t.nbid[node]
+            if bid != "" {
+                act("__bs:" + bid + ":" + payload, List[Str]())
             }
         }
     }
@@ -5792,7 +5976,9 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
         frames += 1
         if frames >= 60 {
             frames = 0
-            var src2: Str = read_file(reload)
+            // GUI-27:探针走锚合并源(无 use 行 = read_file 字节恒等;导入族
+            // 变更(components.ctml 等)同帧可见)
+            var src2: Str = gt_anchor_src(reload)
             // 空源守卫(SL-7α):文件缺失(内嵌兜底形态/运行中被删)不重解析——
             // 此前 src2="" != src 会 gt_parse("") 清空 UI
             if src2 != "" {
@@ -6782,8 +6968,8 @@ pub fn rt_run_kb_src(src: Str, title: Str, w: I32, h: I32,
 pub fn rt_run_anchor(title: Str, w: I32, h: I32,
              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
-    // 独立二进制零 CWD 依赖)
-    var src: Str = read_file(ctron_gui_entry())
+    // 独立二进制零 CWD 依赖)。GUI-27:锚合并源(use 闭包 DFS,入口最后)
+    var src: Str = gt_anchor_src(ctron_gui_entry())
     if src == "" {
         src = ctron_embedded()
     }
@@ -6795,7 +6981,7 @@ pub fn rt_run_anchor(title: Str, w: I32, h: I32,
 pub fn rt_run_kb_anchor(title: Str, w: I32, h: I32,
                 bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
                 key: fn(I32) -> Void) -> I32 {
-    var src: Str = read_file(ctron_gui_entry())
+    var src: Str = gt_anchor_src(ctron_gui_entry())
     if src == "" {
         src = ctron_embedded()
     }

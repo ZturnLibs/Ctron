@@ -1,0 +1,241 @@
+// themes/themes.ct —— 主题包(GUI-31:主题作为可导入包的分发形态)
+//
+// 形态裁决(2026-10-04,F 档):主题 = 包,不进引擎。内置 theme_dark/light/mac_*/
+// win_*/linux_* 族(平台×明暗缺省,gui.ct)保持最小核;品味主题经本包分发——
+// 每主题一枚 pub fn 构造全套 gui.Theme(25 字段),应用 use 后一步换装:
+//
+//   use gui.{theme_apply}
+//   use themes.{nord, dracula}
+//   ...
+//   theme_apply(nord())
+//
+// 令牌契约(§3.4):色 14 字段 #RRGGBB;尺寸 11 字段 I32 逻辑像素。尺寸全部
+// 对齐缺省(theme_default)——主题差异在色板;radius/size/space 个性化另册。
+// 新主题入包守则:全套 25 字段一个不少;色值取上游官方基色,无上游杜撰的
+// 槽(border_strong/mask 等)按明度梯度就近推导并注释来源。
+
+use gui.{ Theme }
+
+// ---- Nord(polar night;上游 nordtheme.com)----
+
+pub fn nord() -> Theme {
+    return Theme {
+        bg_base: "#2E3440"
+        surface: "#3B4252"
+        elevated: "#434C5E"
+        border: "#4C566A"
+        border_strong: "#616E88"
+        text: "#ECEFF4"
+        text_muted: "#7B88A1"
+        accent: "#88C0D0"
+        accent_hover: "#8FBCBB"
+        danger: "#BF616A"
+        success: "#A3BE8C"
+        mask: "#242933"
+        disabled_fg: "#6f7d95"
+        disabled_bg: "#3B4252"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// ---- Nord Snow Storm(浅色;snow storm 三色作面 + frost 作强调)----
+
+pub fn nord_light() -> Theme {
+    return Theme {
+        bg_base: "#ECEFF4"
+        surface: "#E5E9F0"
+        elevated: "#D8DEE9"
+        border: "#C7CFDA"
+        border_strong: "#AEB8C7"
+        text: "#2E3440"
+        text_muted: "#616E88"
+        accent: "#5E81AC"
+        accent_hover: "#81A1C1"
+        danger: "#BF616A"
+        success: "#A3BE8C"
+        mask: "#D8DEE9"
+        disabled_fg: "#AEB8C7"
+        disabled_bg: "#E5E9F0"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// ---- SolarizedDark(base03/base02 面;base0 正文;base1 标题)----
+
+pub fn solarized_dark() -> Theme {
+    return Theme {
+        bg_base: "#002B36"
+        surface: "#073642"
+        elevated: "#0B4453"
+        border: "#0A3E4A"
+        border_strong: "#16535F"
+        text: "#93A1A1"
+        text_muted: "#657B83"
+        accent: "#268BD2"
+        accent_hover: "#2AA198"
+        danger: "#DC322F"
+        success: "#859900"
+        mask: "#001A20"
+        disabled_fg: "#586E75"
+        disabled_bg: "#073642"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// ---- SolarizedLight(base3/base2 面;base01 正文;base00 弱化)----
+
+pub fn solarized_light() -> Theme {
+    return Theme {
+        bg_base: "#FDF6E3"
+        surface: "#EEE8D5"
+        elevated: "#E4DDC8"
+        border: "#DDD6C1"
+        border_strong: "#C9C2AC"
+        text: "#586E75"
+        text_muted: "#93A1A1"
+        accent: "#268BD2"
+        accent_hover: "#2AA198"
+        danger: "#DC322F"
+        success: "#859900"
+        mask: "#E4DDC8"
+        disabled_fg: "#AEA79F"
+        disabled_bg: "#EEE8D5"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// ---- Dracula(上游 draculatheme.com;elevated/border 取 current line 梯度)----
+
+pub fn dracula() -> Theme {
+    return Theme {
+        bg_base: "#282A36"
+        surface: "#303344"
+        elevated: "#3A3D4D"
+        border: "#44475A"
+        border_strong: "#6272A4"
+        text: "#F8F8F2"
+        text_muted: "#6272A4"
+        accent: "#BD93F9"
+        accent_hover: "#FF79C6"
+        danger: "#FF5555"
+        success: "#50FA7B"
+        mask: "#191A21"
+        disabled_fg: "#6272A4"
+        disabled_bg: "#343746"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// ---- Gruvbox Dark(bg0/bg1/bg2 面;fg1 正文;orange 强调)----
+
+pub fn gruvbox_dark() -> Theme {
+    return Theme {
+        bg_base: "#282828"
+        surface: "#3C3836"
+        elevated: "#504945"
+        border: "#504945"
+        border_strong: "#665C54"
+        text: "#EBDBB2"
+        text_muted: "#A89984"
+        accent: "#FE8019"
+        accent_hover: "#FABD2F"
+        danger: "#FB4934"
+        success: "#B8BB26"
+        mask: "#1D2021"
+        disabled_fg: "#7C6F64"
+        disabled_bg: "#3C3836"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// ---- Tokyo Night(bg/bg_highlight 面;fg 正文;blue 强调)----
+
+pub fn tokyo_night() -> Theme {
+    return Theme {
+        bg_base: "#1A1B26"
+        surface: "#24283B"
+        elevated: "#292E42"
+        border: "#292E42"
+        border_strong: "#3B4261"
+        text: "#C0CAF5"
+        text_muted: "#565F89"
+        accent: "#7AA2F7"
+        accent_hover: "#BB9AF7"
+        danger: "#F7768E"
+        success: "#9ECE6A"
+        mask: "#101014"
+        disabled_fg: "#414868"
+        disabled_bg: "#24283B"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}

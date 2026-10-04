@@ -1,0 +1,98 @@
+// tests/gui/s77_binddef —— GUI-30:textarea/input 持久化默认化(无 on:input 自动写回)
+// 契约:bind 变量仍是唯一值源——显示每帧从变量读(rt_in_val),输入经 rt_in_fire
+// 无处理器时改发 "__bs:路径:全文" 写回头,装配面合成对应分支即写即读;第二值源
+// 不存在(引擎零缓冲)。有 on:input = 受控契约原样(合成面不生成分支,应用接管)。
+// 验收四层:
+// 1) 合成直驱:act("__bs:...") 直接写回模型(bind 变量即写即读)
+// 2) I32 桥:numeric 输入 ev_arg_i 解码写回
+// 3) 运行时全链:d_send_char 打字 → rt_in_fire 默认 fire → 写回 → echo 更新
+// 4) 受控口:on:input 有处理器者走 handler,默认分支不生成(合成面收集豁免)
+use gui.{test, d_frame, d_expect_text, d_send_key, d_send_char, d_click_text}
+
+struct M {
+    var draft: Str
+    var num: I32
+    var body: Str
+    var keep: Str
+}
+
+view Def (m: M) {
+  <vbox class="root">
+    <input bind={m.draft} class="fld"/>
+    <label class="e1">{m.draft}</label>
+    <input bind={m.num} class="fld"/>
+    <label class="e2">{m.num}</label>
+    <textarea bind={m.body} class="ta"/>
+    <label class="e3">{m.body}</label>
+    <input bind={m.keep} class="fld" on:input={grab(m)}/>
+    <label class="e4">{m.keep}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style fld { bg: "#2a2a2e" fg: "#ffffff" h: 36 }
+style ta { bg: "#1a1a22" fg: "#ffffff" h: 60 }
+style e1 { fg: "#22c55e" h: 22 }
+style e2 { fg: "#22c55e" h: 22 }
+style e3 { fg: "#22c55e" h: 22 }
+style e4 { fg: "#22c55e" h: 22 }
+
+fn make() -> M {
+    return M { draft: "", num: 0, body: "", keep: "" }
+}
+
+// 受控口处理器:应用显式接管写回(与默认写回同效,此处示范契约并存)
+fn grab(mm: Box[M], text: Str) {
+    mm.keep = text
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    var rc: I32 = test(src, 320, 480,
+        |buf| __gui_bind_Def(buf, m),
+        |name, ar| __gui_act_Def(name, ar, m),
+        |k| { },
+        |t, act, key| {
+            // 1) 合成直驱:写回头直达装配分支
+            act("__bs:m.draft:abc")
+            d_frame(t, |buf| __gui_bind_Def(buf, m))
+            d_expect_text(t, "abc")
+            // 2) I32 桥:I32 绑定经 ev_arg_i 解码写回(numeric 过滤属 s54 变体面;
+            //    本夹具不带 numeric——现役债:numeric 标记 input × textarea 并存
+            //    emit 段 segfault,HEAD 复现在案,与此片无关)
+            act("__bs:m.num:42")
+            d_frame(t, |buf| __gui_bind_Def(buf, m))
+            d_expect_text(t, "42")
+            // 3) 运行时全链:首 input 点击聚焦,打字 'd' → 追加 → "abcd"
+            d_click_text(t, 160, 34, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_send_char(t, 100, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_frame(t, |buf| __gui_bind_Def(buf, m))
+            d_expect_text(t, "abcd")
+            // 3b) I32 运行时打字:先复位 0,Tab+点击聚焦打 '7' → "7"(I32 绑定编辑
+            //     =十进制串语义:42 后追加 '7' 得 427 为正确行为,探针实证)
+            act("__bs:m.num:0")
+            d_send_key(t, 258, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_click_text(t, 160, 108, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_send_char(t, 55, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_frame(t, |buf| __gui_bind_Def(buf, m))
+            d_expect_text(t, "7")
+            // 3c) textarea:打字 'T' → body 自动写回
+            d_click_text(t, 160, 194, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_send_char(t, 84, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_frame(t, |buf| __gui_bind_Def(buf, m))
+            d_expect_text(t, "T")
+            // 4) 受控口:有 on:input 者走 handler(grab 显式写回),零默认分支干扰
+            d_click_text(t, 160, 280, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_send_char(t, 120, |buf| __gui_bind_Def(buf, m), |nm, ar| __gui_act_Def(nm, ar, m))
+            d_frame(t, |buf| __gui_bind_Def(buf, m))
+            d_expect_text(t, "x")
+        })
+    return rc
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Def(m: make()))
+}

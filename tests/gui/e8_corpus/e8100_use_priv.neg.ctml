@@ -1,0 +1,8 @@
+// gui expect: E8100 —— GUI-27:use 导入私有 view(Chip 未 pub)未导出名
+use xcomp.Chip
+view P {
+  <vbox class="root">
+    <Chip n: {1}/>
+  </vbox>
+}
+style root { direction: column }

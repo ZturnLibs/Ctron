@@ -3,8 +3,9 @@
 > 2026-10-02 基线,1003 全面收官:A/B/C/D 档全清+v2 尾巴(GUI-21/22)+E 档
 > (GUI-28/29)+六红清零(ebebfc7f 发射三缝:env 先行判别/蹦床 void+B: 臂/s33
 > 名通道契约;阶梯 82 过 0 败=历史首次全绿);GUI-25 真窗手验通过(fb7d4289)。
-> 残余=F 档裁决件、G 档远期、GUI-27 组件跨文件导入(排期靠后)、typed-props
-> 组件实参(cf2132cf 登记)。
+> 1004:F 档两裁决件销账(GUI-30 持久化默认化/GUI-31 主题包)。
+> 残余=GUI-27 组件跨文件导入(排期靠后)、typed-props 组件实参(cf2132cf 登记)、
+> numeric×textarea emit segfault(1004 立案)、G 档远期。
 
 ## A 档:P1 组件尾巴(纯组合件,可立即动工;每项 0.5 天内)——✅ 2026-10-03 全档销账
 > 九条全落库(gui-a-tail 分支,夹具 s66_cbx_var/s67_comp_a/s68_menu_acc+陈列室):
@@ -56,14 +57,16 @@
 
 ## E 档:跨泳道(GUI 需求,编译/构建面执行,需协调)
 
-- ⏳ **GUI-27(未做) 组件跨文件 view 导入**——最大痛点:组件现只能同文件声明;编译面 view 导入(多次登记,需与发射泳道排期)。
+- ✅ **GUI-27(已销账) 组件跨文件 view 导入**——✅ 1004:`pub view` 导出 + `use mod.{A, B}` 导入(spec §4.3.1);运行时锚合并 gt_anchor_src(DFS imports 先/入口后,热重载探针同源,无 use 行字节恒等)+检查面 use 装载器(node 级合并,pub/fileid 槽,可见性门 E8100);顺修两存量缺口(独立词法括号单字符=props 捕获首次可用/实例子树开尖先吃=投影走查脱轨);夹具 s78+语料五件(e8_corpus 51/51);骨架/发射面零波及(s49 内嵌跨模块面互不重叠)。
 - ✅ **GUI-28(已销账) ctcl gui.entry 烘焙**(J18)——✅ 1003 09232060:清单 gui 节 entry 键→emit 期烘焙 ctron_gui_entry 常量(新内建四注册面;无清单恒 app.ctml 零迁移);gui.ct 四消费点(锚读取+热重载监视);s73 三缝断言。
 - ✅ **GUI-29(已销账) ctc 自动链接 + `ctc new --gui` 脚手架**(J19-④⑤)——✅ 1003 09232060:dependencies.gui 探测→自动链接 vendored 全套(awk END-exit 覆盖坑=found 标志);ctc new <dir> --gui 双路模板;gui_calc run.sh 咒语吸收为零细节消费示范;s74 e2e。
 
-## F 档:待用户裁决(不裁决不动)
+## F 档:裁决件——✅ 2026-10-04 两项全销账
 
-- ⏳ **GUI-30(未做) textarea/input 持久化默认化**——受控契约(现状)vs 自动同步(引入第二值源);影响所有输入应用模板。
-- ⏳ **GUI-31(未做) 主题包分发形态**——主题作为可导入包 vs 内置枚举扩充。
+- ✅ **GUI-30(已销账) textarea/input 持久化默认化**——✅ 1004:裁决=自动同步为默认(bind 变量唯一值源不变:显示每帧从变量读,输入即写回;第二值源不存在,引擎零缓冲);受控契约保留=有 on:input 者应用接管,合成面零分支。机制=collect 面收「无 on:input 的 input/textarea 纯点链 bind+型别(Str/I32)」入 bset,gen 面 act 合成 "__bs:路径:全文" 写回分支(Str 直赋;I32 经 ev_arg_i 桥,nsyms 已注册);运行时 rt_in_fire 无处理器时改发写回头。连带缝合=gui_sk_node is_input 漏 textarea(装配面 nbid 恒空,显示面走 gt 树无症状,写回面首曝)。I32 绑定编辑=十进制串语义(42 后打 7 得 427,探针实证)。s77 四层断言(合成直驱/I32 桥/运行时全链/受控口)+六夹具回归门全绿。
+- ✅ **GUI-31(已销账) 主题包分发形态**——✅ 1004:裁决=主题作为可导入包(不进引擎;内置 theme_dark/light/mac_* 族保持平台×明暗最小核,与 0924「能力优先于 hack」横切裁决同向)。落点=pkgs/themes/themes.ct(Nord/NordLight/SolarizedDark/SolarizedLight/Dracula/GruvboxDark/TokyoNight 七主题,每主题一枚 pub fn 构造全套 gui.Theme 25 字段,尺寸全对齐缺省);消费=`use themes.{nord}` + `theme_apply(nord())` 两步;跨包 Theme 构造/use 请求零特殊。s78 三层断言(链接/换装令牌折叠/标准装配事件消费);样式面引用令牌(bg: BG_BASE)方随换装(盒无令牌引用则色不随)。
+- ⚠️ **现役债立案(1004,s77 排障途中 HEAD 复现)**:numeric 标记 input × textarea 节点并存 → emit 段 segfault(strlen NULL)。最小形态=视图含 `<input bind={x} numeric/>` 与任意 `<textarea/>`;单独任一均过。与 GUI-30 改动无关(HEAD 版二进制同崩),s77 已绕开(不带 numeric);根因待查(疑装配改写或 trans 面)。
+- ⚠️ **现役债立案(1004,全量回归发现;s30_props_d 运行段 segfault)**:t_rt_emit 渲染行走读野指针(0xad39...),emit/cc 段均过。**纯 HEAD 全树复现**(我方工作树+P0-C 半成品分别 stash 三级对照全崩)=已提交基线现役债,与 F 档改动无关。GC 默认 bump(未开)排除悬挂回收;嫌疑=T31 M1.5 精确帧根集(353e16b8)或 P9 栈面(ea678b40)合流后 s30 形态首踩(1003 阶梯全绿在合流前,合流后未复跑全阶梯);87 夹具中独此一家。归 GC/发射泳道复核,复现=`sh tests/gui/s30_props_d/run.sh`。
 
 ## G 档:C 档远期(裁决 #9 在册,排期靠后、目标不删)
 
