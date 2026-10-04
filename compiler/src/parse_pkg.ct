@@ -916,9 +916,16 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         var j4: I32 = 1
                         while j4 < mf.len {
                             if mf[j4][0] != "Use" {
-                                // 选择性合并跳过判定(spec §4.2):7-kind 不在 keep → 不并入
+                                // 选择性合并跳过判定(spec §4.2):7-kind 不在 keep → 不并入。
+                                // 仅顶层(top)过滤:包边界=可见性收敛点。嵌套站点(门面内部
+                                // 合并,2026-10-04 拆分阶段二)wholesale 并入——门面+兄弟文件
+                                // =同一逻辑模块的分文件,跨子文件私有引用在各自站点的 keep
+                                // 互相看不见(render→parse 内部件 s19 实红),平面视图语义须
+                                // 同单文件;全局收敛由顶层闭包定点承担
                                 var named = pkg_is_named_kind(mf[j4][0])
-                                if named && !refs_ok {
+                                if named && !top {
+                                    // 嵌套 wholesale:整模块并入
+                                } else if named && !refs_ok {
                                     // 保守回退:视为 keep(整模块合并)
                                 } else if named {
                                     var ink3 = false
@@ -958,6 +965,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                 if dup {
                                     if redo {
                                         // 重入补并:符号已在视图(前次合并并入)→ 跳过即免重
+                                        j4 += 1
+                                        continue
+                                    }
+                                    if !top {
+                                        // 嵌套 wholesale:同名=菱形内部胶水,首胜静默跳过
                                         j4 += 1
                                         continue
                                     }
