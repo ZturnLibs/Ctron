@@ -11,6 +11,7 @@
 //   EditMenu: ed_toggle / ed_pick            Tabs:   tab_go
 //   Accordion: acc_toggle                    Tooltip: tip_noop
 //   Table:  tab_pick                         Toast:  (无;show prop 驱动)
+//   Palette: pal_type(文本通道)/pal_go(submit 通道)/pal_pick(行) / pal_close
 //
 // 消费(声明级 use,GuiBlock 恒随合并——锚一个符号,视图+样式全量并入):
 //   use gui_widgets.{gui_widgets_ver}
@@ -20,7 +21,7 @@
 // ⚠️ 在册观察(2026-10-04):kebab 横线类名(w-select)经跨包 use 合并后样式
 // 不应用(行宽塌缩→文本按词折行),snake_case 正常;宿主同名样式须删除避免双份。
 pub fn gui_widgets_ver() -> Str {
-    return "gui_widgets/0.2"
+    return "gui_widgets/0.3"
 }
 
 view Select (label: Str, open: Bool, opts: List[Str]) {
@@ -192,6 +193,23 @@ view Table (items: List[Str]) {
   </vbox>
 }
 
+// Palette(GUI-40 命令面板;纯 prop 契约):open 显隐/q 输入显示(rows 过滤在宿主
+// bind 面)/行点击 pal_pick(实例后缀行号)/Enter=pal_go(submit 通道)/遮罩与
+// Esc(pal_close)。过滤谓词、高亮前缀("> ")、动作执行全在宿主;input 焦点经
+// gui_focus_req("q")(bind 路径=prop 名)由宿主在打开时发起。
+view Palette (open: Bool, q: Str, rows: List[Str]) {
+  <when cond={open}>
+    <overlay class="w_mask" on:click={pal_close}>
+      <vbox class="w_pal">
+        <input class="w_palq" bind={q} on:input={pal_type()} on:submit={pal_go()} placeholder="输入命令…"/>
+        <each it in={rows}>
+          <button class="w_palrow" on:click={pal_pick}>{it}</button>
+        </each>
+      </vbox>
+    </overlay>
+  </when>
+}
+
 // ===== 样式预设(snake_case;令牌色随 theme_apply 换装;几何值=陈列室原值) =====
 style w_select { direction: column gap: 4 }
 style w_trigger { bg: SURFACE fg: TEXT w: 150 h: 34 }
@@ -236,6 +254,9 @@ style w_tiptrg { bg: SURFACE fg: TEXT w: 90 h: 28 }
 style w_tip { fg: TEXT_MUTED size: 12 h: 20 }
 style w_toast { bg: "#00000000" align: center }
 style w_toastt { bg: ELEVATED fg: TEXT size: 14 w: 160 h: 36 }
+style w_pal { direction: column gap: 6 padding: 12 bg: ELEVATED w: 300 }
+style w_palq { bg: SURFACE fg: TEXT w: 276 h: 32 }
+style w_palrow { bg: SURFACE fg: TEXT w: 276 h: 28 }
 style w_div { h: 2 w: 200 bg: BORDER }
 style w_card2 { bg: ELEVATED h: 60 }
 style w_ct { fg: TEXT size: 13 h: 20 }

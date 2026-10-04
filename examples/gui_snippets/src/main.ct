@@ -134,6 +134,16 @@ fn set_content(m: Box[Model], text: Str) {
     m.content = text
 }
 
+// Palette 桩(库 0.3 新事件头;本例未实例化,骨架面全量注册=按需备桩)
+fn pal_type(m: Box[Model], text: Str) {
+}
+fn pal_go(m: Box[Model], text: Str) {
+}
+fn pal_pick(m: Box[Model], row: I32) {
+}
+fn pal_close(m: Box[Model]) {
+}
+
 fn headless_suite() -> I32 {
     var src: Str = ctron_embedded()
     var m = Box[Model](make())

@@ -1,0 +1,319 @@
+// tests/gui/s79_palette —— GUI-40 headless 验收(热键开/过滤/键盘导航/Enter 执行/关面板)
+// 消费共享库 pkgs/gui_widgets(Palette+w_pal 预设;锚 gui_widgets_ver 一符全量并入);
+// 骨架面按合并库全量注册事件表=库全事件头桩按需备齐(16 组件先例 + Palette 四头)。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_click, d_click_inst, d_send_key, d_send_char, d_press_key, d_mod, d_expect_text,
+         d_expect_absent, gui_hotkey, gui_focus_req}
+
+struct M {
+    var palopen: Bool
+    var palq: Str
+    var prows: List[Str]
+    var phi: I32
+    var state: Str
+    var cmds: List[Str]
+}
+
+// —— 库全事件头桩(未实例化组件;骨架面合并库全量注册)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+
+// —— Palette 桩(库 0.3 本件首消费;签名=调用形+文本尾参+Ⅱ-b 模型捕获)——
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+
+// —— Palette 宿主面(过滤/高亮/执行全在此;纯 prop 契约)——
+fn make() -> M {
+    var cs = List[Str]()
+    cs.push("Open File")
+    cs.push("Save Doc")
+    cs.push("Theme Toggle")
+    cs.push("Quit App")
+    return M { palopen: false, palq: "", prows: List[Str](), phi: 0, state: "", cmds: cs }
+}
+
+// 手写字节扫描包含(Ctron 宿主面不经 bxv;Str.contains 发射缺臂在册绕开)
+fn has_sub(s: Str, sub: Str) -> Bool {
+    if sub.len == 0 {
+        return true
+    }
+    var i: I32 = 0
+    while i + sub.len <= s.len {
+        var j: I32 = 0
+        var ok: Bool = true
+        while j < sub.len {
+            if byte_at(s, i + j) != byte_at(sub, j) {
+                ok = false
+            }
+            j += 1
+        }
+        if ok {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// 过滤空间第 k 项(phi/pal_pick 全在过滤空间;pal_type 重置 phi=0)
+fn vis_cmd(m: Box[M], k: I32) -> Str {
+    var i: I32 = 0
+    var n: I32 = 0
+    while i < m.cmds.len {
+        if has_sub(m.cmds[i], m.palq) {
+            if n == k {
+                return m.cmds[i]
+            }
+            n += 1
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 渲染数据面:组件局部 prop 名由宿主应答(组件内 bind 源名通道,装配不改写
+// ——sk 实证 nbid="q"),其余委托生成 __gui_bind_Root(m.* 槽+prop:* 装配通道)
+fn bind_host(buf: List[Str], m: Box[M]) {
+    if buf[0] == "q" {
+        buf.push(m.palq)
+    }
+    __gui_bind_Root(buf, m)
+}
+
+// 过滤+高亮重建(act 侧维护 m.prows;渲染数据面走生成 __gui_bind_Root)
+fn refilter(m: Box[M]) {
+    var nr = List[Str]()
+    var i: I32 = 0
+    var k: I32 = 0
+    while i < m.cmds.len {
+        if has_sub(m.cmds[i], m.palq) {
+            if k == m.phi {
+                nr.push("> " + m.cmds[i])
+            } else {
+                nr.push(m.cmds[i])
+            }
+            k += 1
+        }
+        i += 1
+    }
+    m.prows = nr
+}
+
+fn vis_count(m: Box[M]) -> I32 {
+    var i: I32 = 0
+    var n: I32 = 0
+    while i < m.cmds.len {
+        if has_sub(m.cmds[i], m.palq) {
+            n += 1
+        }
+        i += 1
+    }
+    return n
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    // 热键动作:开面板+清过滤+聚焦输入(emit 期 bind 路径 "q" 匹配消费)
+    if name == "pal" {
+        m.palopen = true
+        m.palq = ""
+        m.phi = 0
+        refilter(m)
+        m.state = "OPENED"
+        gui_focus_req("q")
+        return
+    }
+    // on:input 文本通道:pal_type:<全文>
+    if name.len >= 9 {
+        if byte_at(name, 0) == 112 && byte_at(name, 1) == 97 && byte_at(name, 2) == 108 && byte_at(name, 3) == 95 && byte_at(name, 4) == 116 && byte_at(name, 5) == 121 && byte_at(name, 6) == 112 && byte_at(name, 7) == 101 && byte_at(name, 8) == 58 {
+            m.palq = byte_slice(name, 9, name.len)
+            m.phi = 0
+            refilter(m)
+            return
+        }
+    }
+    // on:submit 通道:pal_go:<全文>=执行高亮行
+    if name.len >= 7 {
+        if byte_at(name, 0) == 112 && byte_at(name, 1) == 97 && byte_at(name, 2) == 108 && byte_at(name, 3) == 95 && byte_at(name, 4) == 103 && byte_at(name, 5) == 111 && byte_at(name, 6) == 58 {
+            m.state = "RAN " + vis_cmd(m, m.phi)
+            m.palopen = false
+            return
+        }
+    }
+    // 行点击(实例后缀 pal_pick:N)= 执行过滤空间第 N 行
+    if name.len >= 9 {
+        if byte_at(name, 0) == 112 && byte_at(name, 1) == 97 && byte_at(name, 2) == 108 && byte_at(name, 3) == 95 && byte_at(name, 4) == 112 && byte_at(name, 5) == 105 && byte_at(name, 6) == 99 && byte_at(name, 7) == 107 && byte_at(name, 8) == 58 {
+            var ni: I32 = 0
+            var k9: I32 = 9
+            while k9 < name.len {
+                ni = ni * 10 + (byte_at(name, k9) - 48)
+                k9 += 1
+            }
+            m.state = "RAN " + vis_cmd(m, ni)
+            m.palopen = false
+            return
+        }
+    }
+    if name == "pal_close" {
+        m.palopen = false
+        return
+    }
+}
+
+// 展开态键盘导航:↓↑ 在过滤空间移高亮(钳位;单行 input 不消费裸 ↓↑ → 落键闭包)
+fn apply_key(k: I32, m: Box[M]) {
+    if m.palopen {
+        if k == 264 {
+            if m.phi < vis_count(m) - 1 {
+                m.phi = m.phi + 1
+                refilter(m)
+            }
+            return
+        }
+        if k == 265 {
+            if m.phi > 0 {
+                m.phi = m.phi - 1
+                refilter(m)
+            }
+            return
+        }
+    }
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <Palette open: {m.palopen} q: {m.palq} rows: {m.prows}/>
+    <label class="ttl">PAL</label>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style state { fg: "#22c55e" h: 22 }
+style ttl { fg: "#e5e7eb" h: 24 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        gui_hotkey("mod+k", "pal")
+        var src: Str = ctron_embedded()
+        var m = Box[M](make())
+        var rc: I32 = test(src, 340, 430,
+        |buf| bind_host(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| apply_key(k, m),
+        |t, actc, k2| {
+            // ① 初始关闭(静态标尺先证渲染面活着)
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "PAL")
+            d_expect_absent(t, "Open File")
+            // ② 热键开:mod+k 实发消费+四行全显+高亮首行
+            d_mod(t, 1)
+            var r1: I32 = d_send_key(t, 75,
+                |buf| bind_host(buf, m),
+                |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            if r1 != 0 {
+                panic("s79: mod+k 未消费")
+            }
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "OPENED")
+            var dn: I32 = d_cmd_count()
+            var di: I32 = 0
+            while di < dn {
+                var ty: I32 = d_cmd_type(di)
+                var txt: Str = ""
+                if ty == 1 {
+                    var tl: I32 = d_cmd_text_len(di)
+                    var bi: I32 = 0
+                    while bi < tl {
+                        txt = txt + char_str(d_cmd_text_byte(di, bi))
+                        bi += 1
+                    }
+                }
+                println("T-CMD " + di.to_string() + " t=" + ty.to_string() + " [" + txt + "]")
+                di += 1
+            }
+            d_expect_text(t, "> Open File")
+            d_expect_text(t, "Save Doc")
+            d_expect_text(t, "Theme Toggle")
+            d_expect_text(t, "Quit App")
+            // ③ 输入过滤:'e' → 三行留/Quit 出/高亮重置首行
+            d_send_char(t, 101, |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "> Open File")
+            d_expect_absent(t, "Quit App")
+            // ④ 键盘导航:↓ 高亮移第二行(过滤空间)
+            k2(d_press_key(t, 264))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "> Save Doc")
+            d_expect_absent(t, "> Open File")
+            // ⑤ Enter 执行高亮行:submit 通道 → RAN+关面板
+            d_send_key(t, 257, |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "RAN Save Doc")
+            d_expect_absent(t, "Theme Toggle")
+            // ⑥ 重开(过滤清零)→ 行点击执行(实例后缀过滤空间第 2 行)
+            actc("pal", List[Str]())
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "> Open File")
+            // 浮条内按钮 rects 尾置配对错位(在册)——行命中走 P-H1 后缀名直驱,
+            // 真实命中归真窗 --run 手验
+            actc("pal_pick:2", List[Str]())
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "RAN Theme Toggle")
+            d_expect_absent(t, "Quit App")
+            // ⑦ Esc 关:首击失焦(面板仍在)次击 overlay on:click → 关
+            actc("pal", List[Str]())
+            d_frame(t, |buf| bind_host(buf, m))
+            d_send_key(t, 256, |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "> Open File")
+            d_send_key(t, 256, |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_absent(t, "Theme Toggle")
+            println("S79-PALETTE-GREEN " + gui_widgets_ver())
+        })
+        return rc
+    }
+    gui_hotkey("mod+k", "pal")
+    return run(Root(m: make()))
+}
