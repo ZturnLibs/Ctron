@@ -1,0 +1,7 @@
+// 门面 re-export:本文件不定义 bval,经自家 use 并入后对消费方可导
+// (2026-10-04 装载器:可见性门移到内嵌 use 展开之后;gui 域包拆分的地基能力)
+use app.sub.{bval}
+
+pub fn wrap() -> I32 {
+    return bval() + 10
+}

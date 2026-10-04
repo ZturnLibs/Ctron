@@ -1,0 +1,2329 @@
+// gui_driver.ct —— gui 域包·驱动面(gui.ct 拆分阶段二⑤;2026-09-27 拆分规划)
+//
+// 内容:rt_window_loop 双循环(真窗+headless d 循环)+ rt_nokey 缺省键 + 入口
+// 装配(rt_run/rt_run_kb/rt_run_d/rt_run_kb_d/rt_run_src/rt_run_kb_src/
+// rt_run_anchor)+ 入口与测试驱动(test/test_sk/Driver/d_* 全族)+ 输入辅助
+// (char_str/热重载探针/杂项)+ GUI-15 on:after 定时事件。
+// 无 use 行:扁平视图名字解析全局;消费=门面 use gui.gui_driver.{test, d_frame,
+// d_click, rt_run_kb_src}(锚例;其余 pub 符号照旧经 gui.{...} 请求)。
+
+fn rt_nokey(k: I32) -> Void {
+}
+
+fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
+                  bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+                  key: fn(I32) -> Void, has_key: Bool) -> I32 {
+    var rects = List[I32]()
+    var hits = List[I32]()
+    var hinst = List[I32]()
+    gui_clay_init(w, h)
+    var hov: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+    var dn: I32 = gui_mouse_down()
+    var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
+    rt_collect_rects(n, rects)
+    gui_ime_feed_caret(rects, hits)
+    rt_scroll_req_apply(t, rects, hits)
+    rt_after_pump(t, bind, act)
+    rt_feed_input_w(t, rects, hits)
+    gui_autofocus_first_input(t, bind)
+    SetConfigFlags(8192)
+    InitWindow(w, h, title)
+    SetTargetFPS(60)
+    while rt_close_check(t, bind, act) == 1 {
+        rt_drag_sel(t, rects, hits, bind)
+        rt_thumb_drag(t, rects, hits, bind)
+        rt_dgev_frame(t, bind, act)
+        var evt: I32 = gui_poll_event()
+        if evt == 2 {
+            if rt_menu_click(t, bind, act) == 1 {
+                evt = 0
+            }
+        }
+        if evt == 2 {
+            // 拖拽事件缝武装:命中带 on:drag 的元素(盒几何入 C;首发一次=
+            // 点击即设值;移动逐帧由 rt_dgev_frame 触发)
+            var dgn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if dgn7 >= 0 {
+                if dgn7 < t.ntag.len {
+                    var dde7: Str = rt_in_expr(t, dgn7, "drag")
+                    if dde7 != "" {
+                        var dbi7: I32 = rt_node_box(rects, hits, dgn7)
+                        if dbi7 >= 0 {
+                            gui_dgev_begin(gui_cmd_x100(dbi7) / 100, gui_cmd_y100(dbi7) / 100, gui_cmd_w100(dbi7) / 100, gui_cmd_h100(dbi7) / 100)
+                            gui_dgev_setnode(dgn7)
+                            ev_fire(t, dde7, bind, act)
+                        }
+                    }
+                }
+            }
+        }
+        if evt == 5 {
+            rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
+        }
+        if evt == 2 {
+            var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
+            // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
+            var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if fnode >= 0 {
+                var ised: Bool = false
+                if t.ntag[fnode] == "input" {
+                    ised = true
+                }
+                if t.ntag[fnode] == "textarea" {
+                    ised = true
+                }
+                if ised {
+                    rt_click_text(t, fnode, bind, rects, hits)
+                } else {
+                    gui_focus_set(-1)
+                }
+            } else {
+                gui_focus_set(-1)
+            }
+            if name != "" {
+                // S2:on:dblclick——双击命中带 dblclick 事件的元素=只发 dblclick
+                // (不发 click;单双击聚类 gui_click_kind,编辑件已在 rt_click_text 消费)
+                var kdn: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                var fired2: I32 = 0
+                if kdn == 1 {
+                    var dn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+                    if dn7 >= 0 {
+                        if dn7 < t.ntag.len {
+                            var de7: Str = rt_in_handler(t, dn7, "dblclick")
+                            if de7 != "" {
+                                ev_fire(t, de7, bind, act)
+                                fired2 = 1
+                            }
+                        }
+                    }
+                }
+                if fired2 == 0 {
+                    // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
+                    ev_fire(t, name, bind, act)
+                }
+            }
+        } else {
+            if evt == 4 {
+                // GUI-21:textarea 未消费的滚轮进 scroll 偏移(步长应用侧换算)
+                if rt_ta_wheel(t, rects, hits, gui_evt_key(), bind) == 0 {
+                    gui_scroll_add(gui_evt_key() * 66)
+                }
+            }
+            if evt == 3 {
+                // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
+                var ic: Bool = rt_input_char(t, bind, act, gui_evt_key())
+                if !ic {
+                    if has_key {
+                        key(gui_evt_key())
+                    }
+                }
+            } else {
+                if evt == 1 {
+                    // 波次二:焦点 input 编辑键优先(消费边界=不进 key 闭包,s33 锁)
+                    var ik: Bool = rt_input_key(t, bind, act, gui_evt_key())
+                    if !ik {
+                        // 波次三:键盘模态——末帧有 overlay:Esc 转其 on:click(自锁
+                        // 修复=Esc 永可达),余键吞,键闭包挂起
+                        var ov: I32 = rt_top_overlay(t, hits)
+                        if ov >= 0 {
+                            if gui_evt_key() == 256 {
+                                var oh: Str = rt_in_handler(t, ov, "click")
+                                if oh != "" {
+                                    act(oh, List[Str]())
+                                }
+                            }
+                        } else {
+                            // P2:Tab 焦点环(导航位,先于快捷键表;Shift 反向)
+                            if gui_evt_key() == 258 {
+                                var md: I32 = gui_hotkey_mods()
+                                var sh: I32 = md / 2
+                                var sh2: I32 = sh / 2
+                                var rev: I32 = 0
+                                if sh - sh2 * 2 == 1 {
+                                    rev = 1
+                                }
+                                var nf: I32 = rt_focus_next(t, gui_focus_node(), rev)
+                                gui_focus_set(nf)
+                                if nf >= 0 {
+                                    var fbv2: Str = rt_in_val(t, nf, bind)
+                                    gui_caret_set(fbv2.len)
+                                } else {
+                                    gui_caret_set(0)
+                                }
+                            } else {
+                                // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                                var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                                if hk >= 0 {
+                                    var han: Str = ""
+                                    var hi: I32 = 0
+                                    while hi < hk {
+                                        han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                        hi += 1
+                                    }
+                                    act(han, List[Str]())
+                                } else {
+                                    if has_key {
+                                        key(gui_evt_key())
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        var hv2: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+        gui_cursor_set(rt_cursor_for(t, hv2))
+        var nfr: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hv2, gui_mouse_down())
+        rects = List[I32]()
+        rt_collect_rects(nfr, rects)
+        gui_ime_feed_caret(rects, hits)
+        rt_scroll_req_apply(t, rects, hits)
+        rt_after_pump(t, bind, act)
+        BeginDrawing()
+        gui_clear(27, 27, 29)
+        ctron_gui_flush()
+        // GUI-25 真窗直绘:canvas fire 在 flush 之后——帧头 fire 被 clear 抹除、
+        // flush 前 fire 被盒背景矩形覆盖(手验 1003 双层实证);UI 之上画点=z 序本义
+        gui_px_clear()
+        rt_canvas_frame(t, rects, hits, bind, act)
+        EndDrawing()
+    }
+    CloseWindow()
+    return 0
+}
+
+// 带热重载的循环(R2/W4-E3 收编):每 60 帧比对 CTML 内容,变更即原址重解析
+// (骨架/几何刷新,rects 重收集;用户闭包与状态不动)
+fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I32,
+                    bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+                    key: fn(I32) -> Void, has_key: Bool) -> I32 {
+    var rects = List[I32]()
+    var hits = List[I32]()
+    var hinst = List[I32]()
+    gui_clay_init(w, h)
+    var hov: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+    var dn: I32 = gui_mouse_down()
+    var n: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hov, dn)
+    rt_collect_rects(n, rects)
+    gui_ime_feed_caret(rects, hits)
+    rt_scroll_req_apply(t, rects, hits)
+    rt_after_pump(t, bind, act)
+    rt_feed_input_w(t, rects, hits)
+    gui_autofocus_first_input(t, bind)
+    SetConfigFlags(8192)
+    InitWindow(w, h, title)
+    SetTargetFPS(60)
+    var frames: I32 = 0
+    while rt_close_check(t, bind, act) == 1 {
+        rt_drag_sel(t, rects, hits, bind)
+        rt_thumb_drag(t, rects, hits, bind)
+        rt_dgev_frame(t, bind, act)
+        frames += 1
+        if frames >= 60 {
+            frames = 0
+            // GUI-27:探针走锚合并源(无 use 行 = read_file 字节恒等;导入族
+            // 变更(components.ctml 等)同帧可见)
+            var src2: Str = gt_anchor_src(reload)
+            // 空源守卫(SL-7α):文件缺失(内嵌兜底形态/运行中被删)不重解析——
+            // 此前 src2="" != src 会 gt_parse("") 清空 UI
+            if src2 != "" {
+                if src2 != src {
+                    var t2: GuiTree = gt_parse(src2)
+                    t = t2
+                    src = src2
+                    hits = List[I32]()
+                    hinst = List[I32]()
+                    var hv3: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+                    gui_cursor_set(rt_cursor_for(t, hv3))
+                    n = rt_draw_frame(t, bind, w, h, hits, hinst, hv3, gui_mouse_down())
+                    rects = List[I32]()
+                    rt_collect_rects(n, rects)
+                    gui_ime_feed_caret(rects, hits)
+                    rt_scroll_req_apply(t, rects, hits)
+                    rt_after_pump(t, bind, act)
+                    rt_feed_input_w(t, rects, hits)
+                }
+            }
+        }
+        var evt: I32 = gui_poll_event()
+        if evt == 2 {
+            if rt_menu_click(t, bind, act) == 1 {
+                evt = 0
+            }
+        }
+        if evt == 2 {
+            // 拖拽事件缝武装:命中带 on:drag 的元素(盒几何入 C;首发一次=
+            // 点击即设值;移动逐帧由 rt_dgev_frame 触发)
+            var dgn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if dgn7 >= 0 {
+                if dgn7 < t.ntag.len {
+                    var dde7: Str = rt_in_expr(t, dgn7, "drag")
+                    if dde7 != "" {
+                        var dbi7: I32 = rt_node_box(rects, hits, dgn7)
+                        if dbi7 >= 0 {
+                            gui_dgev_begin(gui_cmd_x100(dbi7) / 100, gui_cmd_y100(dbi7) / 100, gui_cmd_w100(dbi7) / 100, gui_cmd_h100(dbi7) / 100)
+                            gui_dgev_setnode(dgn7)
+                            ev_fire(t, dde7, bind, act)
+                        }
+                    }
+                }
+            }
+        }
+        if evt == 5 {
+            rt_ctx_open_at(t, rects, hits)
+        }
+        if evt == 6 {
+            rt_drop_fire(t, bind, act)
+        }
+        if evt == 2 {
+            var name: Str = rt_hit_name(t, hits, hinst, rects, gui_evt_x(), gui_evt_y())
+            // 波次二:click-to-focus——命中 input 聚焦(光标置尾),命中其它失焦
+            var fnode: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+            if fnode >= 0 {
+                var ised: Bool = false
+                if t.ntag[fnode] == "input" {
+                    ised = true
+                }
+                if t.ntag[fnode] == "textarea" {
+                    ised = true
+                }
+                if ised {
+                    rt_click_text(t, fnode, bind, rects, hits)
+                } else {
+                    gui_focus_set(-1)
+                }
+            } else {
+                gui_focus_set(-1)
+            }
+            if name != "" {
+                // S2:on:dblclick——双击命中带 dblclick 事件的元素=只发 dblclick
+                // (不发 click;单双击聚类 gui_click_kind,编辑件已在 rt_click_text 消费)
+                var kdn: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                var fired2: I32 = 0
+                if kdn == 1 {
+                    var dn7: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+                    if dn7 >= 0 {
+                        if dn7 < t.ntag.len {
+                            var de7: Str = rt_in_handler(t, dn7, "dblclick")
+                            if de7 != "" {
+                                ev_fire(t, de7, bind, act)
+                                fired2 = 1
+                            }
+                        }
+                    }
+                }
+                if fired2 == 0 {
+                    // SL-8c-3:事件表达式触发面(单标识符旧契约直发,调用形态按头分发)
+                    ev_fire(t, name, bind, act)
+                }
+            }
+        } else {
+            if evt == 4 {
+                // GUI-21:textarea 未消费的滚轮进 scroll 偏移(步长应用侧换算)
+                if rt_ta_wheel(t, rects, hits, gui_evt_key(), bind) == 0 {
+                    gui_scroll_add(gui_evt_key() * 66)
+                }
+            }
+            if evt == 3 {
+                // 波次二:焦点 input 消费字符(编辑管线),未聚焦原样弃置(旧口径)
+                var ic: Bool = rt_input_char(t, bind, act, gui_evt_key())
+                if !ic {
+                    if has_key {
+                        key(gui_evt_key())
+                    }
+                }
+            } else {
+                if evt == 1 {
+                    // 波次二:焦点 input 编辑键优先(消费边界=不进 key 闭包,s33 锁)
+                    var ik: Bool = rt_input_key(t, bind, act, gui_evt_key())
+                    if !ik {
+                        // 波次三:键盘模态——末帧有 overlay:Esc 转其 on:click(自锁
+                        // 修复=Esc 永可达),余键吞,键闭包挂起
+                        var ov: I32 = rt_top_overlay(t, hits)
+                        if ov >= 0 {
+                            if gui_evt_key() == 256 {
+                                var oh: Str = rt_in_handler(t, ov, "click")
+                                if oh != "" {
+                                    act(oh, List[Str]())
+                                }
+                            }
+                        } else {
+                            // P2:Tab 焦点环(导航位,先于快捷键表;Shift 反向)
+                            if gui_evt_key() == 258 {
+                                var mdb: I32 = gui_hotkey_mods()
+                                var shb: I32 = mdb / 2
+                                var shb2: I32 = shb / 2
+                                var revb: I32 = 0
+                                if shb - shb2 * 2 == 1 {
+                                    revb = 1
+                                }
+                                var nfb: I32 = rt_focus_next(t, gui_focus_node(), revb)
+                                gui_focus_set(nfb)
+                                if nfb >= 0 {
+                                    var fbv: Str = rt_in_val(t, nfb, bind)
+                                    var cax: I32 = gui_caret_at_x(t, nfb, fbv, gui_evt_x(), rects, hits)
+                                    gui_caret_set(cax)
+                                    var dblk2: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+                                    if dblk2 == 1 {
+                                        var wr2 = List[I32]()
+                                        gui_word_range(fbv, cax, wr2)
+                                        if wr2.len >= 2 {
+                                            if wr2[1] > wr2[0] {
+                                                gui_sel_anchor_set(wr2[0])
+                                                gui_caret_set(wr2[1])
+                                            }
+                                        }
+                                    } else {
+                                        gui_sel_anchor_set(cax)
+                                        gui_drag_begin()
+                                    }
+                                } else {
+                                    gui_caret_set(0)
+                                }
+                            } else {
+                                // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                                var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                                if hk >= 0 {
+                                    var han: Str = ""
+                                    var hi: I32 = 0
+                                    while hi < hk {
+                                        han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                        hi += 1
+                                    }
+                                    act(han, List[Str]())
+                                } else {
+                                    if has_key {
+                                        key(gui_evt_key())
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        var hv2: I32 = rt_hover_node(rects, hits, gui_mouse_x(), gui_mouse_y())
+        gui_cursor_set(rt_cursor_for(t, hv2))
+        var nfr: I32 = rt_draw_frame(t, bind, w, h, hits, hinst, hv2, gui_mouse_down())
+        rects = List[I32]()
+        rt_collect_rects(nfr, rects)
+        gui_ime_feed_caret(rects, hits)
+        rt_scroll_req_apply(t, rects, hits)
+        rt_after_pump(t, bind, act)
+        BeginDrawing()
+        gui_clear(27, 27, 29)
+        ctron_gui_flush()
+        // GUI-25 真窗直绘:canvas fire 在 flush 之后——帧头 fire 被 clear 抹除、
+        // flush 前 fire 被盒背景矩形覆盖(手验 1003 双层实证);UI 之上画点=z 序本义
+        gui_px_clear()
+        rt_canvas_frame(t, rects, hits, bind, act)
+        EndDrawing()
+    }
+    CloseWindow()
+    return 0
+}
+
+pub fn rt_run(t: GuiTree, title: Str, w: I32, h: I32,
+              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    return rt_window_loop(t, title, w, h, bind, act, rt_nokey, false)
+}
+
+pub fn rt_run_kb(t: GuiTree, title: Str, w: I32, h: I32,
+                 bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+                 key: fn(I32) -> Void) -> I32 {
+    return rt_window_loop(t, title, w, h, bind, act, key, true)
+}
+
+// d 变体:热重载路径 = 清单 gui.entry 烘焙值(J18;缺省 "app.ctml")
+pub fn rt_run_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
+                bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    return rt_window_loop_d(t, src, ctron_gui_entry(), title, w, h, bind, act, rt_nokey, false)
+}
+
+pub fn rt_run_kb_d(t: GuiTree, src: Str, title: Str, w: I32, h: I32,
+                   bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+                   key: fn(I32) -> Void) -> I32 {
+    return rt_window_loop_d(t, src, ctron_gui_entry(), title, w, h, bind, act, key, true)
+}
+
+// ==================== 入口与测试驱动(headless) ====================
+
+pub struct Driver {
+    var t: GuiTree
+    var rects: List[I32]
+    var hits: List[I32]
+    var hinst: List[I32]
+    var hov: I32
+    var actn: I32
+    var w: I32
+    var h: I32
+}
+
+fn d_btn_index(t: GuiTree, name: Str) -> I32 {
+    var j: I32 = 0
+    while j < t.btns.len {
+        var node: I32 = t.btns[j]
+        var e: I32 = 0
+        while e < t.nec[node] {
+            var gi: I32 = t.nes[node] + e
+            // SL-8c-3:按头匹配(单标识符旧契约全等特例;表达式 {d1(m)} ↔ d_click(t,"d1"))
+            if ev_head(t.ev_fn[gi]) == name {
+                return j
+            }
+            e += 1
+        }
+        j += 1
+    }
+    return -1
+}
+
+pub fn d_click(t: Box[Driver], name: Str) -> Str {
+    var j: I32 = d_btn_index(t.t, name)
+    if j < 0 {
+        panic("gui test: 未知动作 " + name)
+        return ""
+    }
+    var ci: I32 = t.rects[j]
+    var cx: I32 = gui_cmd_x100(ci) / 100 + gui_cmd_w100(ci) / 200
+    var cy: I32 = gui_cmd_y100(ci) / 100 + gui_cmd_h100(ci) / 200
+    gui_inject_click(cx, cy)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失 " + name)
+        return ""
+    }
+    return name
+}
+
+// 交互态注入口(§2.1 headless):名→命中节点(d_btn_index 按钮面);"" 清除
+pub fn d_hover(t: Box[Driver], name: Str) -> I32 {
+    if name == "" {
+        t.hov = -1
+        t.actn = 0
+        return 0
+    }
+    var bi: I32 = d_btn_index(t.t, name)
+    if bi >= 0 {
+        var bl: List[I32] = t.t.btns
+        t.hov = bl[bi]
+    }
+    return 0
+}
+
+pub fn d_active(t: Box[Driver], on: I32) -> I32 {
+    t.actn = on
+    return 0
+}
+
+// 焦点注入口(§2.2 headless):聚焦树内首个 input;失焦 = d_blur
+#[trusted]
+extern "c" fn gui_ime_test_set(text: Str) -> I32
+
+// P-M3:headless 组词注入(test 驱动面;渲染即断言,零真窗)
+pub fn d_ime_set(text: Str) -> I32 {
+    return gui_ime_test_set(text)
+}
+
+pub fn d_focus(t: Box[Driver]) -> I32 {
+    var i: I32 = 0
+    while i < t.t.ntag.len {
+        if t.t.ntag[i] == "input" {
+            gui_focus_set(i)
+            gui_caret_set(0)
+            return 0
+        }
+        if t.t.ntag[i] == "textarea" {
+            gui_focus_set(i)
+            gui_caret_set(0)
+            return 0
+        }
+        if t.t.ntag[i] == "textarea" {
+            gui_focus_set(i)
+            gui_caret_set(0)
+            return 0
+        }
+        i += 1
+    }
+    return -1
+}
+
+pub fn d_blur(t: Box[Driver]) -> I32 {
+    gui_focus_set(-1)
+    gui_caret_set(0)
+    return 0
+}
+
+// 剪贴板注入口(headless 直控缓冲;真窗路径 rt_input_key 粘贴前自系统同步)
+pub fn d_clip(t: Box[Driver], s: Str) -> I32 {
+    gui_clip_set_c(s)
+    return 0
+}
+
+// 修饰键注入口(headless;真窗 gui_mod_ctrl 回落 IsKeyDown)
+pub fn d_mod(t: Box[Driver], on: I32) -> I32 {
+    gui_inject_mod(on)
+    return 0
+}
+
+// alt 修饰键注入口(headless;词跳/删词验收)
+pub fn d_alt(t: Box[Driver], on: I32) -> I32 {
+    gui_inject_alt(on)
+    return 0
+}
+
+// tick 注入(§2.7 headless):设定确定性时钟;光标闪烁等 tick 消费者激活
+pub fn d_tick(t: Box[Driver], ms: I32) -> I32 {
+    gui_inject_ms(ms)
+    return 0
+}
+
+pub fn d_frames() -> I32 {
+    return gui_frame_count()
+}
+
+// 字体族注册(§2.8 P2):路径验载成功返回族 id(1..8,0=默认族),失败 -1;
+// 样式侧 font_family: <id 数字>;combo 编码 = id*10000+字重
+pub fn gui_font_register(path: Str) -> I32 {
+    return gui_font_register_c(path)
+}
+
+// 快捷键注册(§2.11 应用侧):combo = "mod+s"/"ctrl+shift+k"/"alt+1";
+// mods 位 1=ctrl/cmd 2=shift 4=alt;action 直发 act
+pub fn gui_hotkey(combo: Str, action: Str) -> I32 {
+    var mods: I32 = 0
+    var key: I32 = 0
+    var part: Str = ""
+    var i: I32 = 0
+    while i <= combo.len {
+        if i == combo.len {
+            if byte_at(combo, combo.len - 1) == 43 {
+                part = part
+            } else {
+                if i > 0 {
+                    if byte_at(combo, i - 1) != 43 {
+                        // 末段=键位
+                        var kb: I32 = byte_at(combo, i - 1)
+                        if kb >= 97 {
+                            if kb <= 122 {
+                                kb = kb - 32
+                            }
+                        }
+                        key = kb
+                    }
+                }
+            }
+            // 收尾段处理(见下方统一逻辑的替代——此处仅处理单段组合)
+        }
+        i += 1
+    }
+    // 逐段扫描(+' 分隔;Ctron 无 split,字节态机)
+    mods = 0
+    key = 0
+    var j: I32 = 0
+    var seg: Str = ""
+    while j <= combo.len {
+        var ch: I32 = 43
+        if j < combo.len {
+            ch = byte_at(combo, j)
+        }
+        if ch == 43 || j == combo.len {
+            if seg == "mod" {
+                mods = mods + 1
+            }
+            if seg == "ctrl" {
+                mods = mods + 1
+            }
+            if seg == "shift" {
+                mods = mods + 2
+            }
+            if seg == "alt" {
+                mods = mods + 4
+            }
+            if seg.len == 1 {
+                var kb: I32 = byte_at(seg, 0)
+                if kb >= 97 {
+                    if kb <= 122 {
+                        kb = kb - 32
+                    }
+                }
+                key = kb
+            }
+            seg = ""
+        } else {
+            seg = seg + utf8_enc(ch)
+        }
+        j += 1
+    }
+    if key != 0 {
+        gui_hotkey_set(mods, key, action)
+    }
+    return 0
+}
+
+// headless 编辑管线注入口:注入→poll→焦点 input 编辑管线路由;消费返 0,未消费返原码
+// (与窗口循环同一管线;s33 键消费边界夹具依赖此语义)
+pub fn d_send_char(t: Box[Driver], ch: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_char(ch)
+    var evt: I32 = gui_poll_event()
+    if evt != 3 {
+        panic("gui test: 字符事件丢失")
+    }
+    var k: I32 = gui_evt_key()
+    if rt_input_char(t.t, bind, act, k) {
+        return 0
+    }
+    return k
+}
+
+pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_key(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 1 {
+        panic("gui test: 键事件丢失")
+    }
+    if rt_input_key(t.t, bind, act, gui_evt_key()) {
+        return 0
+    }
+    // 键盘模态镜像(窗口循环同语义):overlay 在场 Esc 转 on:click、余键吞
+    var ov: I32 = rt_top_overlay(t.t, t.hits)
+    if ov >= 0 {
+        if gui_evt_key() == 256 {
+            var oh: Str = rt_in_handler(t.t, ov, "click")
+            if oh != "" {
+                act(oh, List[Str]())
+            }
+        }
+        return 0
+    }
+    // Tab 焦点环镜像(窗口循环同语义)
+    if gui_evt_key() == 258 {
+        var mdm: I32 = gui_hotkey_mods()
+        var shm: I32 = mdm / 2
+        var shm2: I32 = shm / 2
+        var revm: I32 = 0
+        if shm - shm2 * 2 == 1 {
+            revm = 1
+        }
+        var nfm: I32 = rt_focus_next(t.t, gui_focus_node(), revm)
+        gui_focus_set(nfm)
+        if nfm >= 0 {
+            var fvb: Str = rt_in_val(t.t, nfm, bind)
+            gui_caret_set(fvb.len)
+        } else {
+            gui_caret_set(0)
+        }
+        return 0
+    }
+    // 快捷键表镜像(窗口循环同语义)
+    var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+    if hk >= 0 {
+        var han: Str = ""
+        var hi: I32 = 0
+        while hi < hk {
+            han = han + utf8_enc(gui_hotkey_action_byte(hi))
+            hi += 1
+        }
+        act(han)
+        return 0
+    }
+    return gui_evt_key()
+}
+
+// 文本位置点击(headless):与窗口循环同一 rt_click_text 路径——连击阶梯
+// (词/行/全选)唯一断言口(d_click_xy 是按钮命中面,不含文本点击语义)
+pub fn d_click_text(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_click(x, y)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失")
+    }
+    if rt_menu_click(t.t, bind, act) == 1 {
+        return 0
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var name: Str = rt_hit_name(t.t, t.hits, t.hinst, rc2, x, y)
+    var fnode: I32 = rt_hover_node(rc2, t.hits, x, y)
+    var ised: Bool = false
+    if fnode >= 0 {
+        if fnode < t.t.ntag.len {
+            if t.t.ntag[fnode] == "input" {
+                ised = true
+            }
+            if t.t.ntag[fnode] == "textarea" {
+                ised = true
+            }
+        }
+    }
+    if ised {
+        rt_click_text(t.t, fnode, bind, rc2, t.hits)
+    } else {
+        gui_focus_set(-1)
+    }
+    if name != "" {
+        ev_fire(t.t, name, bind, act)
+    }
+    return 0
+}
+
+// 拖拽(headless):override 鼠标位,武装+首发,再拖至终点触发;清覆盖
+pub fn d_drag(t: Box[Driver], x1: I32, y: I32, x2: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var fn0: I32 = rt_hover_node(rc2, t.hits, x1, y)
+    if fn0 < 0 {
+        panic("gui test: 拖拽起点未命中")
+        return -1
+    }
+    var de: Str = rt_in_expr(t.t, fn0, "drag")
+    if de == "" {
+        panic("gui test: 元素无 on:drag node=" + fn0.to_string())
+        return -1
+    }
+    var bi: I32 = rt_node_box(rc2, t.hits, fn0)
+    if bi < 0 {
+        panic("gui test: 拖拽元素无盒")
+        return -1
+    }
+    gui_mouse_override(x1, y)
+    gui_dgev_begin(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    gui_dgev_setnode(fn0)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_override(x2, y)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_clear()
+    gui_dgev_end()
+    return 0
+}
+
+// 垂直拖拽(headless):x 固定,y1→y2;两帧口径与 d_drag 同源(GUI-17 分隔条)
+pub fn d_dragv(t: Box[Driver], x: I32, y1: I32, y2: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var fn0: I32 = rt_hover_node(rc2, t.hits, x, y1)
+    if fn0 < 0 {
+        panic("gui test: 拖拽起点未命中")
+        return -1
+    }
+    var de: Str = rt_in_expr(t.t, fn0, "drag")
+    if de == "" {
+        panic("gui test: 元素无 on:drag node=" + fn0.to_string() + " tag=" + t.t.ntag[fn0])
+        return -1
+    }
+    var bi: I32 = rt_node_box(rc2, t.hits, fn0)
+    if bi < 0 {
+        panic("gui test: 拖拽元素无盒")
+        return -1
+    }
+    gui_mouse_override(x, y1)
+    gui_dgev_begin(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    gui_dgev_setnode(fn0)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_override(x, y2)
+    ev_fire(t.t, de, bind, act)
+    gui_mouse_clear()
+    gui_dgev_end()
+    return 0
+}
+
+// 文件拖入(headless):paths 填 C 槽后直触 rt_drop_fire(真窗经 evt=6 分发;
+// GUI-20 测试缝)
+pub fn d_drop(t: Box[Driver], paths: List[Str], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_drop_begin()
+    var i: I32 = 0
+    while i < paths.len {
+        gui_drop_add(paths[i])
+        i += 1
+    }
+    if rt_drop_fire(t.t, bind, act) == 0 {
+        panic("gui test: 根元素无 on:drop")
+        return -1
+    }
+    return gui_drop_count()
+}
+
+// 双击(headless):两击同位注入;返回元素 on:dblclick 处理头名(夹具 act 自
+// 分发,与 d_click 同模式;真窗单双击聚类在循环 gui_click_kind)
+pub fn d_dblclick(t: Box[Driver], name: Str) -> Str {
+    // 按动作头定位节点(d_btn_index 的 btns↔rects 索引在多控件页会错位
+    // ——实测点到 input),再取该节点盒中心注入双击
+    var node: I32 = -1
+    var i: I32 = 0
+    while i < t.t.ntag.len {
+        var e: I32 = 0
+        while e < t.t.nec[i] {
+            var gi: I32 = t.t.nes[i] + e
+            if ev_head(t.t.ev_fn[gi]) == name {
+                node = i
+            }
+            e += 1
+        }
+        i += 1
+    }
+    if node < 0 {
+        panic("gui test: 未知动作 " + name)
+        return ""
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var bi: I32 = rt_node_box(rc2, t.hits, node)
+    if bi < 0 {
+        panic("gui test: 动作无盒 " + name)
+        return ""
+    }
+    var cx: I32 = gui_cmd_x100(bi) / 100 + gui_cmd_w100(bi) / 200
+    var cy: I32 = gui_cmd_y100(bi) / 100 + gui_cmd_h100(bi) / 200
+    gui_inject_click(cx, cy)
+    gui_poll_event()
+    gui_inject_click(cx, cy)
+    gui_poll_event()
+    var de: Str = rt_in_handler(t.t, node, "dblclick")
+    if de != "" {
+        return de
+    }
+    panic("gui test: 元素无 on:dblclick " + name)
+    return ""
+}
+
+// 右键位置点击(headless):evt5 注入;与循环同路径开/关菜单
+pub fn d_rclick(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_rclick(x, y)
+    var evt: I32 = gui_poll_event()
+    if evt != 5 {
+        panic("gui test: 右键事件丢失")
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    rt_ctx_open_at(t.t, rc2, t.hits)
+    return 0
+}
+
+// 位置点击(headless):注入 xy 点击→真实命中路径(后向最优先)+焦点转移+ev_fire
+// ——遮罩吃穿透/卡片不透等位置语义的唯一断言口(d_click 按名绕过命中面)
+pub fn d_click_xy(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_click(x, y)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失")
+    }
+    if rt_menu_click(t.t, bind, act) == 1 {
+        return 0
+    }
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    var name: Str = rt_hit_name(t.t, t.hits, t.hinst, rc2, x, y)
+    var fnode: I32 = rt_hover_node(rc2, t.hits, x, y)
+    if fnode >= 0 {
+        if t.t.ntag[fnode] == "input" {
+            gui_focus_set(fnode)
+        } else {
+            gui_focus_set(-1)
+        }
+    }
+    if name != "" {
+        ev_fire(t.t, name, bind, act)
+    }
+    return 0
+}
+
+pub fn d_press_key(t: Box[Driver], k: I32) -> I32 {
+    gui_inject_key(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 1 {
+        panic("gui test: 键事件丢失")
+        return -1
+    }
+    return k
+}
+
+pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
+    var nh = List[I32]()
+    var hi = List[I32]()
+    var n: I32 = rt_draw_frame(t.t, bind, t.w, t.h, nh, hi, t.hov, t.actn)
+    t.hits = nh
+    t.hinst = hi
+    // GUI-14:滚动可见请求应用(headless 口径;rects 本帧现收,真窗在 collect 点)
+    var rc = List[I32]()
+    rt_collect_rects(n, rc)
+    rt_scroll_req_apply(t.t, rc, nh)
+    return n
+}
+
+// 注入字符事件(type 3),返回字符码(应用键钩子自行编辑模型)
+// SL-8c-4④:实例分发按压——each 行按钮的驱动面(rt_hit_name "名:下标"
+// 契约的镜像;按名+实例定矩形,补 d_click 单实例几何缺口)
+pub fn d_click_inst(t: Box[Driver], name: Str, inst: I32) -> Str {
+    var found: I32 = -1
+    var j: I32 = 0
+    while j < t.hits.len {
+        var node: I32 = t.hits[j]
+        if node >= 0 {
+            if t.hinst[j] == inst {
+                var e: I32 = 0
+                while e < t.t.nec[node] {
+                    var gi: I32 = t.t.nes[node] + e
+                    if ev_head(t.t.ev_fn[gi]) == name {
+                        found = j
+                    }
+                    e += 1
+                }
+            }
+        }
+        j += 1
+    }
+    if found < 0 {
+        panic("gui test: 未知动作 " + name + ":" + inst.to_string())
+        return ""
+    }
+    var ci: I32 = t.rects[found]
+    var cx: I32 = gui_cmd_x100(ci) / 100 + gui_cmd_w100(ci) / 200
+    var cy: I32 = gui_cmd_y100(ci) / 100 + gui_cmd_h100(ci) / 200
+    gui_inject_click(cx, cy)
+    var evt: I32 = gui_poll_event()
+    if evt != 2 {
+        panic("gui test: 点击事件丢失 " + name)
+        return ""
+    }
+    return name + ":" + inst.to_string()
+}
+
+pub fn d_type_char(t: Box[Driver], k: I32) -> I32 {
+    gui_inject_char(k)
+    var evt: I32 = gui_poll_event()
+    if evt != 3 {
+        panic("gui test: 字符事件丢失")
+        return -1
+    }
+    return gui_evt_key()
+}
+
+pub fn d_expect_text(t: Box[Driver], want: Str) -> I32 {
+    return rt_expect_text(want)
+}
+
+// 命令缓冲诊断访问器(自断言钩子/夹具排查用;type: 1=TEXT 2=RECT)
+pub fn d_cmd_count() -> I32 {
+    return gui_cmd_count()
+}
+
+pub fn d_cmd_type(i: I32) -> I32 {
+    return gui_cmd_type(i)
+}
+
+pub fn d_cmd_text_len(i: I32) -> I32 {
+    return gui_cmd_text_len(i)
+}
+
+pub fn d_cmd_text_byte(i: I32, j: I32) -> I32 {
+    return gui_cmd_text_byte(i, j)
+}
+
+// 几何(×100 整数域;黄金帧差分/夹具布局断言用)
+pub fn d_cmd_x100(i: I32) -> I32 {
+    return gui_cmd_x100(i)
+}
+
+pub fn d_cmd_y100(i: I32) -> I32 {
+    return gui_cmd_y100(i)
+}
+
+pub fn d_cmd_w100(i: I32) -> I32 {
+    return gui_cmd_w100(i)
+}
+
+pub fn d_cmd_h100(i: I32) -> I32 {
+    return gui_cmd_h100(i)
+}
+
+// 颜色读回(RECT 命令背景色 0-255;交互态/主题折叠断言用)
+pub fn d_cmd_bg_r(i: I32) -> I32 {
+    return gui_cmd_bg_r(i)
+}
+
+pub fn d_cmd_bg_g(i: I32) -> I32 {
+    return gui_cmd_bg_g(i)
+}
+
+pub fn d_cmd_bg_b(i: I32) -> I32 {
+    return gui_cmd_bg_b(i)
+}
+
+pub fn d_cmd_bg_a(i: I32) -> I32 {
+    return gui_cmd_bg_a(i)
+}
+
+// GUI-23:链接动作面——应用 on:click 内调 open_link;headless 槽记录,
+// d_open_url 断言回收(真窗直 raylib OpenURL)
+pub fn open_link(url: Str) -> I32 {
+    return gui_open_url(url)
+}
+
+pub fn d_open_url() -> Str {
+    return gui_open_url_last()
+}
+
+// GUI-24:窗口操作面——1=fullscreen 2=maximize 3=minimize 4=restore
+// 5=undecorated 6=bordered(headless 记录槽,真窗 raylib 生效;图标待图像管线)
+pub fn win_op(op: I32) -> I32 {
+    return gui_win_op(op)
+}
+
+pub fn d_win_op_last() -> I32 {
+    return gui_win_op_last()
+}
+
+// 窗口图标(headless 记录槽,真窗 LoadImage+SetWindowIcon)
+pub fn win_icon(path: Str) -> I32 {
+    return gui_win_icon(path)
+}
+
+pub fn d_win_icon_last() -> Str {
+    return gui_win_icon_last()
+}
+
+// GUI-24 headless 驱动:模拟关闭请求——根有 on:close 则 fire(拦截语义,
+// 脚本继续即「未退出」)返回 1;无声明 panic(真窗此时会退出)
+pub fn d_close_req(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t.t, gui_root_id(t.t), "close")
+    if ce == "" {
+        panic("gui test: 根元素无 on:close")
+        return 0
+    }
+    ev_fire(t.t, ce, bind, act)
+    return 1
+}
+
+// GUI-25 headless 驱动:手动触发绘制帧(清点槽→同步盒→fire on:draw)
+pub fn d_draw(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_px_clear()
+    var rc2 = List[I32]()
+    var n: I32 = gui_cmd_count()
+    rt_collect_rects(n, rc2)
+    return rt_canvas_frame(t.t, rc2, t.hits, bind, act)
+}
+
+pub fn d_px_n() -> I32 {
+    return gui_px_n()
+}
+
+pub fn d_px_at(i: I32, comp: I32) -> I32 {
+    return gui_px_at(i, comp)
+}
+
+// GUI-21 headless 驱动:滚动偏移累计(与真窗滚轮同槽)
+pub fn d_scroll(t: Box[Driver], delta: I32) -> I32 {
+    return gui_scroll_add(delta)
+}
+
+pub fn d_scroll_off() -> I32 {
+    return gui_scroll_off()
+}
+
+// 应用面:当前滚动偏移(bind 组装可见窗口行消费)
+pub fn scroll_off() -> I32 {
+    return gui_scroll_off()
+}
+
+// 绘制原语(应用 on:draw 回调内调;坐标相对 canvas 盒)
+pub fn canvas_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32 {
+    return gui_px(x, y, r, g, b)
+}
+
+// 负断言:want 不出现在任何 TEXT 命令(when 隐藏面)
+pub fn d_expect_absent(t: Box[Driver], want: Str) -> I32 {
+    var n: I32 = gui_cmd_count()
+    var i: I32 = 0
+    while i < n {
+        if gui_cmd_type(i) == 1 {
+            if gui_cmd_text_len(i) == want.len {
+                var ok: Bool = true
+                var j: I32 = 0
+                while j < want.len {
+                    if gui_cmd_text_byte(i, j) != byte_at(want, j) {
+                        ok = false
+                        j = want.len
+                    }
+                    j += 1
+                }
+                if ok {
+                    panic("gui test: 负断言失败,显示出现 [" + want + "]")
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
+pub fn test(src: Str, w: I32, h: I32,
+            bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+            key: fn(I32) -> Void,
+            script: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    theme_auto_apply()
+    var t: GuiTree = gt_parse(src)
+    gui_clay_init(w, h)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
+    rt_collect_rects(n, d.rects)
+    rt_feed_input_w(d.t, d.rects, d.hits)
+    script(d, act, key)
+    return 0
+}
+
+// SL-7β2:骨架直通测试入口——树已由编译期解析(gui_sk_load)给出,不再经
+// gt_parse;其余口径与 test 完全一致(d_* 驱动断言族全可用)
+pub fn test_sk(t: GuiTree, w: I32, h: I32,
+               bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+               key: fn(I32) -> Void,
+               script: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void) -> I32 {
+    theme_auto_apply()
+    gui_clay_init(w, h)
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
+    var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
+    rt_collect_rects(n, d.rects)
+    rt_feed_input_w(d.t, d.rects, d.hits)
+    script(d, act, key)
+    return 0
+}
+
+pub fn rt_run_src(src: Str, title: Str, w: I32, h: I32,
+           bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    theme_auto_apply()
+    var t: GuiTree = gt_parse(src)
+    return rt_run(t, title, w, h, bind, act)
+}
+
+pub fn rt_run_kb_src(src: Str, title: Str, w: I32, h: I32,
+              bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+              key: fn(I32) -> Void) -> I32 {
+    theme_auto_apply()
+    var t: GuiTree = gt_parse(src)
+    return rt_run_kb(t, title, w, h, bind, act, key)
+}
+
+// d 变体:默认锚 = 清单 gui.entry 烘焙值(J18;缺省 "app.ctml")+ 热重载环
+//(60 帧内容比对,变更原址重解析)
+pub fn rt_run_anchor(title: Str, w: I32, h: I32,
+             bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    // 文件优先(开发环 + 热重载),缺失回落内嵌块(SL-7α:程序自身 view/style,
+    // 独立二进制零 CWD 依赖)。GUI-27:锚合并源(use 闭包 DFS,入口最后)
+    var src: Str = gt_anchor_src(ctron_gui_entry())
+    if src == "" {
+        src = ctron_embedded()
+    }
+    theme_auto_apply()
+    var t: GuiTree = gt_parse(src)
+    return rt_run_d(t, src, title, w, h, bind, act)
+}
+
+pub fn rt_run_kb_anchor(title: Str, w: I32, h: I32,
+                bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void,
+                key: fn(I32) -> Void) -> I32 {
+    var src: Str = gt_anchor_src(ctron_gui_entry())
+    if src == "" {
+        src = ctron_embedded()
+    }
+    theme_auto_apply()
+    var t: GuiTree = gt_parse(src)
+    return rt_run_kb_d(t, src, title, w, h, bind, act, key)
+}
+
+// ==================== 输入辅助 ====================
+
+// 字符码 → 单字符 Str(TextInput/type 3 事件;utf8_enc 透传)
+pub fn char_str(k: I32) -> Str {
+    return utf8_enc(k)
+}
+
+// SL-8c-4④:事件名实例后缀取整("头:N" 尾部数字;无后缀 = 0)——
+// 合成 act 的逐行事件分支消费(P-H1 命中契约的解码侧)
+// 选区非空时消费:置 caret=s0,返回 s1(调用方执行真删 [s0,s1));-1 = 无选区
+// (旧版返回 Bool 且调用方以消费后 caret 拼接 = [0,s0)+[s0,end) 原串重组,
+// 什么都没删——用户实测「Delete 不删选中」根因)
+fn rt_sel_take() -> I32 {
+    var an: I32 = gui_sel_anchor_get()
+    if an < 0 {
+        return -1
+    }
+    var ca: I32 = gui_caret_get()
+    var s0: I32 = an
+    var s1: I32 = ca
+    if s0 > s1 {
+        s0 = ca
+        s1 = an
+    }
+    if s1 <= s0 {
+        return -1
+    }
+    gui_sel_clear()
+    gui_caret_set(s0)
+    return s1
+}
+
+// 拖拽事件缝逐帧(on:drag 武装中且按住=触发;表达式内建名取 permille;
+// 松开解除。evt2 武装在循环命中后)
+fn rt_dgev_frame(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    if gui_dgev_on() == 0 {
+        return 0
+    }
+    if gui_mouse_down() == 0 {
+        gui_dgev_end()
+        return 0
+    }
+    var node: I32 = gui_dgev_node()
+    var de: Str = rt_in_expr(t, node, "drag")
+    if de != "" {
+        ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-20:文件拖入触发(窗口级事件,on:drop 声明在根元素)——逐文件 fire,
+// droppath 内建随 setcur 游标走,dropn=本次总数
+fn rt_drop_fire(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var de: Str = rt_in_expr(t, gui_root_id(t), "drop")
+    if de == "" {
+        return 0
+    }
+    var n: I32 = gui_drop_count()
+    var i: I32 = 0
+    while i < n {
+        gui_drop_setcur(i)
+        ev_fire(t, de, bind, act)
+        i += 1
+    }
+    return 1
+}
+
+// GUI-22:文本测量(直调 ft 实测;-1=无字体/FT_OFF 回启发式字节式)
+fn rt_meas_w(s: Str, px: I32, wt: I32) -> I32 {
+    var wi: I32 = gui_ft_measure_n_wt(s, s.len, px, wt, 0)
+    if wi >= 0 {
+        return wi
+    }
+    return s.len * px * 55 / 100
+}
+
+// GUI-22:单行省略——超 maxw 预算逐码点截断+…(切点只在 UTF-8 首字节;
+// 测量轮直调,启发式回退与黄金口径同式)
+fn rt_ellipsis(s: Str, maxw: I32, px: I32, wt: I32) -> Str {
+    if maxw <= 0 {
+        return s
+    }
+    var ew: I32 = rt_meas_w("…", px, wt)
+    if rt_meas_w(s, px, wt) + ew <= maxw {
+        return s
+    }
+    var cut: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        var b: I32 = byte_at(s, i)
+        if b / 64 != 2 {
+            if rt_meas_w(byte_slice(s, 0, i), px, wt) + ew > maxw {
+                break
+            }
+            cut = i
+        }
+        i += 1
+    }
+    return byte_slice(s, 0, cut) + "…"
+}
+
+// GUI-22 v2:maxlines 行钳制——按显式 \n 行截前 N 行,截断时尾行收 …;
+// 行源=显式换行(按宽折行属 textarea 折行表面);N<=0 透传(负例锚)
+fn rt_maxlines(s: Str, n: I32) -> Str {
+    if n <= 0 {
+        return s
+    }
+    var out: Str = ""
+    var row: I32 = 0
+    var seg: I32 = 0
+    var i: I32 = 0
+    var truncated: Bool = false
+    while i <= s.len {
+        if i == s.len || byte_at(s, i) == 10 {
+            if row < n {
+                if row > 0 {
+                    out = out + "\n"
+                }
+                out = out + byte_slice(s, seg, i)
+            } else {
+                truncated = true
+            }
+            row += 1
+            seg = i + 1
+            if i == s.len {
+                break
+            }
+        }
+        i += 1
+    }
+    if truncated {
+        out = out + "…"
+    }
+    return out
+}
+
+// GUI-25:canvas 绘制帧——盒几何自 rects 同步+on:draw fire(真窗每帧;
+// headless 经 d_draw 驱动)
+fn rt_canvas_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var node: I32 = gui_canvas_node()
+    if node < 0 {
+        return 0
+    }
+    var bi: I32 = rt_node_box(rects, hits, node)
+    if bi >= 0 {
+        gui_canvas_setbox(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+    }
+    var de: Str = rt_in_expr(t, node, "draw")
+    if de != "" {
+        ev_fire(t, de, bind, act)
+    }
+    return 1
+}
+
+// GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧
+// 吞掉转事件(应用定去留),返回 1 续跑;无声明保持原语义(退出返 0)
+fn rt_close_check(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var ce: Str = rt_in_expr(t, gui_root_id(t), "close")
+    if ce != "" {
+        if gui_win_close_req() == 1 {
+            ev_fire(t, ce, bind, act)
+        }
+        return 1
+    }
+    if WindowShouldClose() {
+        return 0
+    }
+    return 1
+}
+
+// 滚动条 thumb 拖拽逐帧跟随(几何与渲染 thumb 同源:trackh=boxh-8,
+// thumbh=max(16,trackh*boxh/contenth),比例换算钳 [0,maxo];松开结束)
+fn rt_thumb_drag(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void) -> I32 {
+    if gui_thdrag_on() == 0 {
+        return 0
+    }
+    if gui_mouse_down() == 0 {
+        gui_thdrag_end()
+        return 0
+    }
+    var node: I32 = gui_thdrag_node()
+    if node < 0 {
+        gui_thdrag_end()
+        return 0
+    }
+    var hs: Str = gt_cls_prop(t.ncls[node], "h", "", t)
+    if hs == "" {
+        gui_thdrag_end()
+        return 0
+    }
+    var boxh: I32 = gs2i(hs)
+    var tsz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
+    var pitch: I32 = tsz + tsz / 4 + 2
+    var val: Str = rt_in_val(t, node, bind)
+    var w: I32 = gui_in_w_get(node) - 8
+    if w < 40 {
+        w = 40
+    }
+    var vs = List[I32]()
+    var ve = List[I32]()
+    ta_rows(node, val, w, tsz, vs, ve)
+    var contenth: I32 = vs.len * pitch + 8
+    var maxo: I32 = contenth - boxh
+    if maxo <= 0 {
+        return 0
+    }
+    var trackh: I32 = boxh - 8
+    var thumbh: I32 = trackh * boxh / contenth
+    if thumbh < 16 {
+        thumbh = 16
+    }
+    var den: I32 = trackh - thumbh
+    if den < 1 {
+        den = 1
+    }
+    var ns: I32 = gui_thdrag_s0() + (gui_mouse_y() - gui_thdrag_y0()) * maxo / den
+    if ns > maxo {
+        ns = maxo
+    }
+    if ns < 0 {
+        ns = 0
+    }
+    gui_ta_scroll_set(node, ns)
+    return 1
+}
+
+// 输入拖动选区(逐帧:按下命中输入锚定,拖动更新活动端,松开结束)
+fn rt_drag_sel(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void) -> I32 {
+    if gui_drag_active() == 0 {
+        return 0
+    }
+    if gui_mouse_down() == 0 {
+        gui_drag_end()
+        return 0
+    }
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return 0
+    }
+    if t.ntag[fn0] != "input" {
+        if t.ntag[fn0] != "textarea" {
+            return 0
+        }
+    }
+    var cur: Str = rt_in_val(t, fn0, bind)
+    var cax: I32 = gui_caret_at_click(t, fn0, cur, gui_mouse_x(), gui_mouse_y(), rects, hits)
+    gui_caret_set(cax)
+    return 1
+}
+
+// 字符类别(双击选词):0=分隔(空白/标点) 1=词(字母数字_) 2=CJK(多字节连片)
+fn gui_chr_cls(val: Str, i: I32) -> I32 {
+    var b: I32 = byte_at(val, i)
+    if b >= 128 {
+        return 2
+    }
+    if b == 95 {
+        return 1
+    }
+    if b >= 48 && b <= 57 {
+        return 1
+    }
+    if b >= 65 && b <= 90 {
+        return 1
+    }
+    if b >= 97 && b <= 122 {
+        return 1
+    }
+    return 0
+}
+
+// 双击选词:从点击边界按类别向两侧扩(同类连片;out[0]=start out[1]=end 字节位)
+// 类别选取:左邻优先,左邻为分隔时用右邻——点击词左缘(边界邻空白)时仍选中
+// 该词而非空白串(用户实测「双击没选对词语」根因)
+fn gui_word_range(val: Str, pos: I32, out: List[I32]) -> I32 {
+    var s0: I32 = pos
+    var s1: I32 = pos
+    var cls: I32 = 0
+    if s0 > 0 {
+        cls = gui_chr_cls(val, s0 - 1)
+    }
+    if cls == 0 {
+        if s1 < val.len {
+            cls = gui_chr_cls(val, s1)
+        }
+    }
+    while s0 > 0 {
+        if gui_chr_cls(val, s0 - 1) == cls {
+            // 多字节回退到码点首
+            var bc: I32 = s0 - 1
+            while bc > 0 {
+                var bb: I32 = byte_at(val, bc)
+                if bb >= 128 && bb < 192 {
+                    bc -= 1
+                } else {
+                    break
+                }
+            }
+            if gui_chr_cls(val, bc) != cls {
+                break
+            }
+            s0 = bc
+        } else {
+            break
+        }
+    }
+    while s1 < val.len {
+        if gui_chr_cls(val, s1) == cls {
+            // 多字节前进到码点尾
+            var fe: I32 = s1 + 1
+            while fe < val.len {
+                var fb: I32 = byte_at(val, fe)
+                if fb >= 128 && fb < 192 {
+                    fe += 1
+                } else {
+                    break
+                }
+            }
+            s1 = fe
+        } else {
+            break
+        }
+    }
+    out.push(s0)
+    out.push(s1)
+    return 0
+}
+
+// 词跳(成熟 GUI Alt+←→ 口径):分隔类(cls 0)跳过、词类连片(字母数字/_
+// /CJK 多字节)跨过;码点边界安全。prev=前一词首,next=后一词尾
+fn gui_word_prev(val: Str, pos: I32) -> I32 {
+    var i: I32 = pos
+    if i > val.len {
+        i = val.len
+    }
+    if i < 0 {
+        i = 0
+    }
+    while i > 0 {
+        var bc: I32 = i - 1
+        while bc > 0 {
+            var bb: I32 = byte_at(val, bc)
+            if bb >= 128 && bb < 192 {
+                bc -= 1
+            } else {
+                break
+            }
+        }
+        if gui_chr_cls(val, bc) != 0 {
+            break
+        }
+        i = bc
+    }
+    while i > 0 {
+        var bc2: I32 = i - 1
+        while bc2 > 0 {
+            var bb2: I32 = byte_at(val, bc2)
+            if bb2 >= 128 && bb2 < 192 {
+                bc2 -= 1
+            } else {
+                break
+            }
+        }
+        if gui_chr_cls(val, bc2) == 0 {
+            break
+        }
+        i = bc2
+    }
+    return i
+}
+
+fn gui_word_next(val: Str, pos: I32) -> I32 {
+    var i: I32 = pos
+    if i > val.len {
+        i = val.len
+    }
+    if i < 0 {
+        i = 0
+    }
+    while i < val.len {
+        if gui_chr_cls(val, i) != 0 {
+            break
+        }
+        var fe: I32 = i + 1
+        while fe < val.len {
+            var fb: I32 = byte_at(val, fe)
+            if fb >= 128 && fb < 192 {
+                fe += 1
+            } else {
+                break
+            }
+        }
+        i = fe
+    }
+    while i < val.len {
+        if gui_chr_cls(val, i) == 0 {
+            break
+        }
+        var fe2: I32 = i + 1
+        while fe2 < val.len {
+            var fb2: I32 = byte_at(val, fe2)
+            if fb2 >= 128 && fb2 < 192 {
+                fe2 += 1
+            } else {
+                break
+            }
+        }
+        i = fe2
+    }
+    return i
+}
+
+// 单行输入内宽回填(视口消费;每帧 collect 后:节点取配对最宽矩形,避浮条)
+// textarea 同源回填:折行(ta_wrap)/键盘导航/点击定位共用 gui_in_w_get,缺回填
+// 则恒 0→clamp 40px,长词被误折(s51 "xcdef" 实证)
+fn rt_feed_input_w(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
+    var j: I32 = 0
+    while j < hits.len {
+        var nd: I32 = hits[j]
+        if nd >= 0 {
+            if nd < t.ntag.len {
+                if t.ntag[nd] == "input" {
+                    if j < rects.len {
+                        var wj: I32 = gui_cmd_w100(rects[j]) / 100
+                        var cw: I32 = gui_in_w_get(nd)
+                        if wj > cw {
+                            gui_in_w_set(nd, wj)
+                        }
+                    }
+                }
+                if t.ntag[nd] == "textarea" {
+                    if j < rects.len {
+                        var wj2: I32 = gui_cmd_w100(rects[j]) / 100
+                        var cw2: I32 = gui_in_w_get(nd)
+                        if wj2 > cw2 {
+                            gui_in_w_set(nd, wj2)
+                        }
+                    }
+                }
+            }
+        }
+        j += 1
+    }
+    return 0
+}
+
+// textarea 滚轮滚动(聚焦态;每档 3 行;钳 [0, 内容高-框高])
+fn rt_ta_wheel(t: GuiTree, rects: List[I32], hits: List[I32], v: I32, bind: fn(List[Str]) -> Void) -> I32 {
+    if v == 0 {
+        return 0
+    }
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return 0
+    }
+    if fn0 >= t.ntag.len {
+        return 0
+    }
+    if t.ntag[fn0] != "textarea" {
+        return 0
+    }
+    var hs: Str = gt_cls_prop(t.ncls[fn0], "h", "", t)
+    if hs == "" {
+        return 0
+    }
+    var boxh: I32 = gs2i(hs)
+    var tszw: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+    var pitchw: I32 = tszw + tszw / 4 + 2
+    var val: Str = rt_in_val(t, fn0, bind)
+    // 内容高按视觉行数(折行撑高;同源 wrap 宽=内宽)
+    var wwhl: I32 = gui_in_w_get(fn0) - 8
+    if wwhl < 40 {
+        wwhl = 40
+    }
+    var wvs = List[I32]()
+    var wve = List[I32]()
+    ta_rows(fn0, val, wwhl, tszw, wvs, wve)
+    var contenth: I32 = wvs.len * pitchw + 8
+    var maxo: I32 = contenth - boxh
+    if maxo < 0 {
+        maxo = 0
+    }
+    var curs: I32 = gui_ta_scroll_get(fn0)
+    curs = curs - v * 3 * pitchw
+    if curs > maxo {
+        curs = maxo
+    }
+    if curs < 0 {
+        curs = 0
+    }
+    gui_ta_scroll_set(fn0, curs)
+    return 1
+}
+
+// 通用点击定位(input: x 单维;textarea: x+y 行列双维)
+fn gui_caret_at_click(t: GuiTree, node: I32, val: Str, px: I32, py: I32, rects: List[I32], hits: List[I32]) -> I32 {
+    if t.ntag[node] == "textarea" {
+        var boxi2: I32 = -1
+        var boxw2: I32 = 0
+        var jj: I32 = 0
+        while jj < hits.len {
+            if hits[jj] == node {
+                if jj < rects.len {
+                    var wj2: I32 = gui_cmd_w100(rects[jj])
+                    if wj2 > boxw2 {
+                        boxw2 = wj2
+                        boxi2 = rects[jj]
+                    }
+                }
+            }
+            jj += 1
+        }
+        if boxi2 < 0 {
+            return val.len
+        }
+        var tsz5: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
+        var tpitch2: I32 = tsz5 + tsz5 / 4 + 2
+        var wpx2: I32 = gui_cmd_w100(boxi2) / 100 - 8
+        if wpx2 < 40 {
+            wpx2 = 40
+        }
+        var row: I32 = (py - gui_cmd_y100(boxi2) / 100 - 4 + gui_ta_scroll_get(node)) / tpitch2
+        if row < 0 {
+            row = 0
+        }
+        var vls2 = List[I32]()
+        var vle2 = List[I32]()
+        ta_wrap(val, wpx2, tsz5, vls2, vle2)
+        if row >= vls2.len {
+            row = vls2.len - 1
+        }
+        var ls2: I32 = vls2[row]
+        var le2: I32 = vle2[row]
+        var line: Str = byte_slice(val, ls2, le2)
+        var offx2: I32 = px - gui_cmd_x100(boxi2) / 100 - 4
+        var bi: I32 = 0
+        var bbest: I32 = 0
+        var bbd: I32 = offx2
+        if bbd < 0 {
+            bbd = 0 - bbd
+        }
+        while bi <= line.len {
+            var okb2: Bool = true
+            if bi < line.len {
+                var bb2: I32 = byte_at(line, bi)
+                if bb2 >= 128 && bb2 < 192 {
+                    okb2 = false
+                }
+            }
+            if okb2 {
+                var w2: I32 = gui_ft_measure_n_wt(line, bi, tsz5, 400, 0)
+                var d2: I32 = w2 - offx2
+                if d2 < 0 {
+                    d2 = 0 - d2
+                }
+                if d2 < bbd {
+                    bbd = d2
+                    bbest = bi
+                }
+            }
+            bi += 1
+        }
+        return ls2 + bbest
+    }
+    return gui_caret_at_x(t, node, val, px, rects, hits)
+}
+
+// P-M3:点击 x → 最近码点边界(成熟 GUI 点击定位光标):沿码点边界步行累计
+// 前缀实测宽(与布局同源),取 |w-off| 最小边界;框体定位取该节点配对矩形中
+// 最宽者(浮条 2px RECT 亦配对命中,须避开)
+fn gui_caret_at_x(t: GuiTree, node: I32, val: Str, clickx: I32, rects: List[I32], hits: List[I32]) -> I32 {
+    var boxi: I32 = -1
+    var boxw: I32 = 0
+    var j: I32 = 0
+    while j < hits.len {
+        if hits[j] == node {
+            if j < rects.len {
+                var wj: I32 = gui_cmd_w100(rects[j])
+                if wj > boxw {
+                    boxw = wj
+                    boxi = rects[j]
+                }
+            }
+        }
+        j += 1
+    }
+    if boxi < 0 {
+        return val.len
+    }
+    var ipd2: I32 = gs2i(gt_cls_prop(t.ncls[node], "pad", "8", t))
+    var off: I32 = clickx - gui_cmd_x100(boxi) / 100 - ipd2 + gui_in_xo_get(node)
+    var isz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "20", t))
+    var ifw: I32 = gs2i(gt_cls_prop(t.ncls[node], "font_weight", "400", t))
+    var wt2: I32 = ifw % 10000
+    var fam2: I32 = ifw / 10000
+    var best: I32 = 0
+    var bestd: I32 = off
+    if bestd < 0 {
+        bestd = 0 - bestd
+    }
+    var i: I32 = 0
+    while i <= val.len {
+        var okb: Bool = true
+        if i < val.len {
+            var b: I32 = byte_at(val, i)
+            if b >= 128 && b < 192 {
+                okb = false
+            }
+        }
+        if okb {
+            var w: I32 = gui_ft_measure_n_wt(val, i, isz, wt2, fam2)
+            var d: I32 = w - off
+            if d < 0 {
+                d = 0 - d
+            }
+            if d < bestd {
+                bestd = d
+                best = i
+            }
+        }
+        i += 1
+    }
+    return best
+}
+
+// P-M3:开窗自动聚焦首个 input(成熟语言输入体验:启动即可打字,无需点击;
+// caret 置尾 = append 惯例,与 click-to-focus 一致)
+
+// ==================== GUI-15:on:after 定时事件(§2.7 tick→事件通道) ====================
+// 视图元素属性 on:after="ms:handler":元素存活域一次性定时——首见布防,期限
+// 即 fire act(handler) 一次并拆防;when 假(灶灭)不 fire;on:input 同节点重臂
+// =防抖口径(每击键重置期限)。headless 时钟=d_tick 注入口径,d_after_pump
+// 显式泵;真窗循环每帧自动泵。handler v1=简单名(E8120 门在册)。
+
+// "ms:handler" 冒号前毫秒;非形态回 -1
+fn rt_after_ms(e: Str) -> I32 {
+    var ci: I32 = 0
+    while ci < e.len {
+        if byte_at(e, ci) == 58 {
+            break
+        }
+        ci += 1
+    }
+    if ci == 0 {
+        return -1
+    }
+    if ci >= e.len {
+        return -1
+    }
+    var ms: I32 = gs2i(byte_slice(e, 0, ci))
+    if ms <= 0 {
+        return -1
+    }
+    return ms
+}
+
+// 到期泵:due 节点拆防即 fire(一次性);隐灶(seen 过期)不 fire
+pub fn rt_after_pump(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var i: I32 = 0
+    while i < t.ntag.len {
+        var e: I32 = 0
+        while e < t.nec[i] {
+            var gi: I32 = t.nes[i] + e
+            if t.ev_name[gi] == "after" {
+                if gui_after_due(i) {
+                    gui_after_disarm(i)
+                    var afn: Str = t.ev_fn[gi]
+                    var ci: I32 = 0
+                    while ci < afn.len {
+                        if byte_at(afn, ci) == 58 {
+                            break
+                        }
+                        ci += 1
+                    }
+                    if ci < afn.len {
+                        act(byte_slice(afn, ci + 1, afn.len), List[Str]())
+                    }
+                }
+            }
+            e += 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+// headless 泵(d_tick 注入时钟推进后由断言脚本显式调)
+pub fn d_after_pump(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    return rt_after_pump(t.t, bind, act)
+}
+
+fn gui_autofocus_first_input(t: GuiTree, bind: fn(List[Str]) -> Void) -> I32 {
+    // 首个可编辑件(input 或 textarea,树序)——textarea 开窗即可打字,
+    // 与成熟编辑器开箱即输入同口径
+    var afi: I32 = 0
+    var af: I32 = -1
+    while afi < t.ntag.len {
+        if t.ntag[afi] == "input" {
+            af = afi
+            afi = t.ntag.len
+        }
+        if t.ntag[afi] == "textarea" {
+            if af < 0 {
+                af = afi
+                afi = t.ntag.len
+            }
+        }
+        afi += 1
+    }
+    if af > 0 {
+        gui_focus_set(af)
+        var av: Str = rt_in_val(t, af, bind)
+        gui_caret_set(av.len)
+    }
+    return af
+}
+
+// P-M3:聚焦节点 rect 反喂 IME shim(候选窗定位;cmd ×100 域;v1 静态布局
+// 口径——反喂点 = collect 时点,动态布局随帧刷新登记)
+fn gui_ime_feed_caret(rects: List[I32], hits: List[I32]) -> I32 {
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return 1
+    }
+    // 拼装制(候选窗锚定终态契约):渲染期恒写框相对光标线(cx,cy,ch);
+    // 此处取聚焦节点最宽配对矩形=框体(每帧必在,无渲染帧竞态),拼出
+    // 绝对光标条反喂。回退=最窄正宽矩形(无框体输入件)。
+    // 竞态实证:输入法整个组词期仅询问一次首 rect,闪烁暗相帧窄矩形扫描
+    // 抓到滚动条 thumb(4x48 trace)→面板压住首行文字;框体恒在故拼装制
+    // 对询问时机零敏感。
+    var box: I32 = -1
+    var best: I32 = -1
+    var bw: I32 = 0
+    var j: I32 = 0
+    // 盒判据:宽≥40 且高≥光标行高(排除光标条/下划线 h=2/thumb w=4 等浮条
+    // 被误当框体——无样式输入件浮条是仅有的配对矩形)
+    var boxmh: I32 = gui_ime_caret_h()
+    if boxmh < 8 {
+        boxmh = 8
+    }
+    while j < hits.len {
+        if hits[j] == fn0 {
+            if j < rects.len {
+                var wj: I32 = gui_cmd_w100(rects[j])
+                var hj: I32 = gui_cmd_h100(rects[j])
+                if wj > 0 {
+                    if wj >= 4000 {
+                        if hj >= boxmh * 100 {
+                            if box < 0 {
+                                box = rects[j]
+                            } else {
+                                if wj > gui_cmd_w100(box) {
+                                    box = rects[j]
+                                }
+                            }
+                        }
+                    }
+                    if best < 0 {
+                        best = rects[j]
+                        bw = wj
+                    } else {
+                        if wj < bw {
+                            bw = wj
+                            best = rects[j]
+                        }
+                    }
+                }
+            }
+        }
+        j += 1
+    }
+    if box >= 0 {
+        if gui_ime_cx_get() >= 0 {
+            if gui_ime_caret_h() > 0 {
+                gui_ime_set_caret(gui_cmd_x100(box) / 100 + gui_ime_cx_get(), gui_cmd_y100(box) / 100 + gui_ime_caret_y(), 2, gui_ime_caret_h())
+                return 0
+            }
+        }
+    }
+    if best >= 0 {
+        gui_ime_set_caret(gui_cmd_x100(best) / 100, gui_cmd_y100(best) / 100, gui_cmd_w100(best) / 100, gui_cmd_h100(best) / 100)
+    }
+    return 0
+}
+
+#[trusted]
+extern "c" fn gui_ime_preedit() -> Str
+extern "c" fn gui_ime_has_preedit() -> I32
+#[trusted]
+extern "c" fn gui_ime_set_caret(x: I32, y: I32, w: I32, h: I32) -> I32
+extern "c" fn gui_ime_cx_set(x: I32) -> I32
+extern "c" fn gui_ime_cx_get() -> I32
+extern "c" fn gui_ime_caret_line_set(y: I32, h: I32) -> I32
+extern "c" fn gui_ime_caret_y() -> I32
+extern "c" fn gui_ime_caret_h() -> I32
+extern "c" fn gui_ta_scroll_set(node: I32, y: I32) -> I32
+extern "c" fn gui_ta_scroll_get(node: I32) -> I32
+extern "c" fn gui_ta_follow_get(node: I32) -> I32
+extern "c" fn gui_ta_follow_set(node: I32, c: I32) -> I32
+extern "c" fn gui_wrap_cache_hit(node: I32, val: Str, w: I32, size: I32) -> I32
+extern "c" fn gui_wrap_cache_putrow(i: I32, s: I32, e: I32) -> I32
+extern "c" fn gui_wrap_cache_commit(node: I32, val: Str, w: I32, size: I32, rows: I32) -> I32
+extern "c" fn gui_wrap_row_s(i: I32) -> I32
+extern "c" fn gui_wrap_row_e(i: I32) -> I32
+extern "c" fn gui_ime_prev_set(s: Str) -> I32
+extern "c" fn gui_ime_prev_eq(s: Str) -> I32
+
+// 文本点击选区(窗口循环 evt2 与 headless d_click_text 同源唯一入口):
+// 单击=光标定位(启动拖动锚)/双击=词/三击=视觉行/四击=全选(连击阶梯);
+// Shift+点击(已聚焦且有锚)=扩选到点击位
+fn rt_click_text(t: GuiTree, fnode: I32, bind: fn(List[Str]) -> Void, rects: List[I32], hits: List[I32]) -> I32 {
+    var hadf: Bool = gui_focus_node() == fnode
+    gui_focus_set(fnode)
+    var fbv: Str = ""
+    if t.nbid[fnode] != "" {
+        if gt_slot_simple(t.nbid[fnode]) && t.props.len == 0 {
+            fbv = bxv_show(rt_bind_text(bind, t.nbid[fnode]))
+        } else {
+            fbv = bxv_show(bxv_eval(t, t.nbid[fnode], bind, "", ""))
+        }
+    }
+    // thumb 命中:右缘 thumb 区按下=拖拽滚动(不定位光标、不启文本拖选;
+    // 命中区比 4px 视觉宽各放 2px,几何与渲染/逐帧跟随同源)
+    var tbb: I32 = rt_node_box(rects, hits, fnode)
+    if tbb >= 0 {
+        var tw: I32 = gui_in_w_get(fnode) - 8
+        if tw < 40 {
+            tw = 40
+        }
+        var tsz6: I32 = gs2i(gt_cls_prop(t.ncls[fnode], "size", "16", t))
+        var tp6: I32 = tsz6 + tsz6 / 4 + 2
+        var tc6 = List[I32]()
+        var td6 = List[I32]()
+        ta_rows(fnode, fbv, tw, tsz6, tc6, td6)
+        var tch6: I32 = tc6.len * tp6 + 8
+        var tbh6: I32 = gui_cmd_h100(tbb) / 100
+        if tch6 > tbh6 {
+            var tmax6: I32 = tch6 - tbh6
+            var ttr6: I32 = tbh6 - 8
+            var tth6: I32 = ttr6 * tbh6 / tch6
+            if tth6 < 16 {
+                tth6 = 16
+            }
+            var tscr6: I32 = gui_ta_scroll_get(fnode)
+            var ttx: I32 = gui_cmd_x100(tbb) / 100 + tw + 2
+            var tty: I32 = gui_cmd_y100(tbb) / 100 + 4 + (ttr6 - tth6) * tscr6 / tmax6
+            var mx6: I32 = gui_evt_x()
+            var my6: I32 = gui_evt_y()
+            var inx6: Bool = false
+            if mx6 >= ttx - 2 {
+                if mx6 <= ttx + 6 {
+                    inx6 = true
+                }
+            }
+            var iny6: Bool = false
+            if my6 >= tty - 2 {
+                if my6 <= tty + tth6 + 2 {
+                    iny6 = true
+                }
+            }
+            if inx6 {
+                if iny6 {
+                    gui_thdrag_begin(fnode, my6, tscr6)
+                    return fnode
+                }
+            }
+        }
+    }
+    var cax: I32 = gui_caret_at_click(t, fnode, fbv, gui_evt_x(), gui_evt_y(), rects, hits)
+    gui_caret_set(cax)
+    // 双击选词不启拖动(按压仍按住数帧,逐帧拖动会把词选光标
+    // 拽回点击位——选区截成 [词首,点击位],用户实测「只选 re」)
+    var dblk: I32 = gui_click_kind(gui_evt_x(), gui_evt_y())
+    if dblk == 1 {
+        var wr = List[I32]()
+        gui_word_range(fbv, cax, wr)
+        if wr.len >= 2 {
+            if wr[1] > wr[0] {
+                gui_sel_anchor_set(wr[0])
+                gui_caret_set(wr[1])
+            }
+        }
+    } else {
+        if dblk == 2 {
+            // 三击=选视觉行(连击阶梯 词→行→全选;input=全串)
+            gui_sel_row(t, fnode, fbv, cax)
+        } else {
+            if dblk == 3 {
+                // 四击=全选
+                gui_sel_anchor_set(0)
+                gui_caret_set(fbv.len)
+            } else {
+                if gui_mod_shift() == 1 && hadf && gui_sel_anchor_get() >= 0 {
+                    gui_caret_set(cax)
+                } else {
+                    gui_sel_anchor_set(cax)
+                    gui_drag_begin()
+                }
+            }
+        }
+    }
+    return fnode
+}
+
+// 三击选行(连击阶梯 词→行→全选):textarea=视觉行(同源 wrap 宽);input=全串
+fn gui_sel_row(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
+    if t.ntag[node] == "textarea" {
+        var a: I32 = gui_ta_row_start(t, node, val, caret)
+        var b: I32 = gui_ta_row_end(t, node, val, caret)
+        if b > a {
+            gui_sel_anchor_set(a)
+            gui_caret_set(b)
+        } else {
+            gui_sel_anchor_set(a)
+            gui_caret_set(a)
+        }
+        return 0
+    }
+    gui_sel_anchor_set(0)
+    gui_caret_set(val.len)
+    return 0
+}
+
+// 光标所在视觉行界(⌘←→/⌘⌫/⌘⌦ 行首尾导航;与渲染/点击同源 wrap 宽)
+fn gui_ta_row_start(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
+    var w: I32 = gui_in_w_get(node) - 8
+    if w < 40 {
+        w = 40
+    }
+    var sz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
+    var vs = List[I32]()
+    var ve = List[I32]()
+    ta_rows(node, val, w, sz, vs, ve)
+    var row: I32 = 0
+    var i: I32 = 0
+    while i < vs.len {
+        if vs[i] <= caret {
+            row = i
+        }
+        i += 1
+    }
+    return vs[row]
+}
+
+fn gui_ta_row_end(t: GuiTree, node: I32, val: Str, caret: I32) -> I32 {
+    var w: I32 = gui_in_w_get(node) - 8
+    if w < 40 {
+        w = 40
+    }
+    var sz: I32 = gs2i(gt_cls_prop(t.ncls[node], "size", "16", t))
+    var vs = List[I32]()
+    var ve = List[I32]()
+    ta_rows(node, val, w, sz, vs, ve)
+    var row: I32 = 0
+    var i: I32 = 0
+    while i < vs.len {
+        if vs[i] <= caret {
+            row = i
+        }
+        i += 1
+    }
+    return ve[row]
+}
+
+// 折行表共享缓存消费(单槽,键=节点+值+宽+字号):绘制/焦点几何/选区/滚轮/
+// 键导航同帧多份消费,值未变即整表复用(O(n²) 测量×4→×1,输入卡顿根治面)
+fn ta_rows(id: I32, val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I32 {
+    var n: I32 = gui_wrap_cache_hit(id, val, wpx, size)
+    if n < 0 {
+        ta_wrap(val, wpx, size, outS, outE)
+        var i: I32 = 0
+        while i < outS.len {
+            gui_wrap_cache_putrow(i, outS[i], outE[i])
+            i += 1
+        }
+        gui_wrap_cache_commit(id, val, wpx, size, outS.len)
+        return 0
+    }
+    var i2: I32 = 0
+    while i2 < n {
+        outS.push(gui_wrap_row_s(i2))
+        outE.push(gui_wrap_row_e(i2))
+        i2 += 1
+    }
+    return 0
+}
+
+// 视觉行构建:按宽折行(码点贪心;换行符强制断;空逻辑行=空视觉行占位)
+// outS/outE = 每视觉行 [起,止) 字节位(止不含 \n)
+fn ta_wrap(val: Str, wpx: I32, size: I32, outS: List[I32], outE: List[I32]) -> I32 {
+    var i: I32 = 0
+    var n: I32 = val.len
+    while i <= n {
+        var ls: I32 = i
+        var hard: I32 = -1
+        var q: I32 = i
+        while q < n {
+            if byte_at(val, q) == 10 {
+                hard = q
+                q = n + 1
+            } else {
+                q += 1
+            }
+        }
+        var le: I32 = n
+        if hard >= 0 {
+            le = hard
+        }
+        // 逻辑行 [ls,le):贪心折
+        var cs: I32 = ls
+        while cs < le {
+            // 行内基线测量提升(边界宽=前缀测量差)——基线必须随行首走:
+            // 提到行组外则续行全前缀宽误作行内宽,续行逐字断行(用户实测
+            // 「行末打单词新行一字母一行」实证)
+            var wbase: I32 = gui_ft_measure_n_wt(val, cs, size, 400, 0)
+            var ce: I32 = cs
+            var lastok: I32 = cs
+            while ce < le {
+                var nb: I32 = ce + 1
+                while nb < le {
+                    var bb: I32 = byte_at(val, nb)
+                    if bb >= 128 && bb < 192 {
+                        nb += 1
+                    } else {
+                        break
+                    }
+                }
+                var wq: I32 = gui_ft_measure_n_wt(val, nb, size, 400, 0) - wbase
+                if wq > wpx {
+                    if lastok == cs {
+                        // 单码点超宽(极端):独占一行防死循环
+                        lastok = nb
+                    }
+                    break
+                }
+                lastok = nb
+                ce = nb
+                if nb >= le {
+                    break
+                }
+            }
+            outS.push(cs)
+            outE.push(lastok)
+            cs = lastok
+        }
+        // 空逻辑行占位
+        if cs == ls {
+            outS.push(ls)
+            outE.push(ls)
+        }
+        if hard < 0 {
+            break
+        }
+        i = hard + 1
+    }
+    return outS.len
+}
+
+fn gui_ta_lines(val: Str, out: List[I32]) -> I32 {
+    out.push(0)
+    var i: I32 = 0
+    while i < val.len {
+        if byte_at(val, i) == 10 {
+            out.push(i + 1)
+        }
+        i += 1
+    }
+    return out.len
+}
+
+pub fn ev_suffix_i(name: Str) -> I32 {
+    var j: I32 = name.len
+    while j > 0 {
+        var d: I32 = byte_at(name, j - 1)
+        if d >= 48 && d <= 57 {
+            j -= 1
+        } else {
+            break
+        }
+    }
+    if j > 1 {
+        if byte_at(name, j - 1) == 58 {
+            return gs2i(byte_slice(name, j, name.len))
+        }
+    }
+    return 0
+}
+

@@ -1,0 +1,322 @@
+// tests/gui/s80_datepick —— G 档 GUI-38:DatePick/TimePick(库 0.4)headless 验收
+// 月历/周头/格式全 prop(locale 不进引擎);历法=std time.ct(days_from_civil/
+// weekday 0=Sunday/leap_days_in_month);行点击=头名位定列+实例后缀定行(dpN:R);
+// 时分步进=显参通道 tp_step("h+1" 形,滑杆同款);回绕=宿主钳位。
+use gui_widgets.{gui_widgets_ver}
+use std.time.{days_from_civil, weekday, leap_days_in_month}
+use gui.{test, d_frame, d_expect_text, d_expect_absent, ev_arg_s}
+
+struct M {
+    var y: I32
+    var mo: I32
+    var sd: I32
+    var hh: I32
+    var mm: I32
+    var ym: Str
+    var hd: Str
+    var hh_s: Str
+    var mm_s: Str
+    var weeks: List[Str]
+    var state: Str
+}
+
+// —— 库全事件头桩(DatePick/TimePick 实逻辑驻桩,窗口模式直调;headless 经 act 同源)——
+fn dp_prev(m: Box[M]) {
+    m.mo = m.mo - 1
+    if m.mo < 1 {
+        m.mo = 12
+        m.y = m.y - 1
+    }
+    rebuild(m)
+}
+fn dp_next(m: Box[M]) {
+    m.mo = m.mo + 1
+    if m.mo > 12 {
+        m.mo = 1
+        m.y = m.y + 1
+    }
+    rebuild(m)
+}
+fn dp0(m: Box[M], row: I32) {
+    dp_cell(m, 0, row)
+}
+fn dp1(m: Box[M], row: I32) {
+    dp_cell(m, 1, row)
+}
+fn dp2(m: Box[M], row: I32) {
+    dp_cell(m, 2, row)
+}
+fn dp3(m: Box[M], row: I32) {
+    dp_cell(m, 3, row)
+}
+fn dp4(m: Box[M], row: I32) {
+    dp_cell(m, 4, row)
+}
+fn dp5(m: Box[M], row: I32) {
+    dp_cell(m, 5, row)
+}
+fn dp6(m: Box[M], row: I32) {
+    dp_cell(m, 6, row)
+}
+fn tp_step(m: Box[M], s: Str) {
+    var d: I32 = 0
+    var k: I32 = 2
+    while k < s.len {
+        d = d * 10 + (byte_at(s, k) - 48)
+        k += 1
+    }
+    if byte_at(s, 1) == 45 {
+        d = -d
+    }
+    if byte_at(s, 0) == 104 {
+        m.hh = (m.hh + d % 24 + 24) % 24
+    } else {
+        m.mm = (m.mm + d % 60 + 60) % 60
+    }
+    rebuild(m)
+}
+
+// —— 其余库全事件头桩(未实例化组件;骨架面合并库全量注册)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { y: 2026, mo: 10, sd: 15, hh: 9, mm: 5, ym: "", hd: "一|二|三|四|五|六|日", hh_s: "", mm_s: "", weeks: List[Str](), state: "" }
+}
+
+fn p2(n: I32) -> Str {
+    if n < 10 {
+        return "0" + n.to_string()
+    }
+    return n.to_string()
+}
+
+// 月历重建:周一首列 lead=(weekday+6)%7(weekday 0=Sunday);恒 6 行 42 格;
+// 选中日 "> " 前缀;越界日(前后月)空串;sd 越界钳到当月。
+fn rebuild(m: Box[M]) {
+    var dim: I32 = leap_days_in_month(m.y, m.mo)
+    if m.sd > dim {
+        m.sd = dim
+    }
+    var lead: I32 = (weekday(days_from_civil(m.y, m.mo, 1)) + 6) % 7
+    m.ym = m.y.to_string() + "年" + m.mo.to_string() + "月"
+    m.hh_s = p2(m.hh)
+    m.mm_s = p2(m.mm)
+    var nw = List[Str]()
+    var r: I32 = 0
+    while r < 6 {
+        var row: Str = ""
+        var c: I32 = 0
+        while c < 7 {
+            var ci: I32 = r * 7 + c
+            var day: I32 = ci - lead + 1
+            if c > 0 {
+                row = row + "|"
+            }
+            if day >= 1 && day <= dim {
+                if day == m.sd {
+                    row = row + ">" + day.to_string()
+                } else {
+                    row = row + day.to_string()
+                }
+            }
+            c += 1
+        }
+        nw.push(row)
+        r += 1
+    }
+    m.weeks = nw
+}
+
+fn dp_cell(m: Box[M], col: I32, row: I32) {
+    var dim: I32 = leap_days_in_month(m.y, m.mo)
+    var lead: I32 = (weekday(days_from_civil(m.y, m.mo, 1)) + 6) % 7
+    var day: I32 = row * 7 + col - lead + 1
+    if day >= 1 && day <= dim {
+        m.sd = day
+        m.state = "SEL " + m.y.to_string() + "-" + p2(m.mo) + "-" + p2(m.sd)
+    }
+    rebuild(m)
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "dp_prev" {
+        dp_prev(m)
+        return
+    }
+    if name == "dp_next" {
+        dp_next(m)
+        return
+    }
+    if name == "tp_step" {
+        tp_step(m, ev_arg_s(args, 0))
+        return
+    }
+    // dpN:R 行点击(头名位=列,实例后缀=行)
+    if name.len >= 5 {
+        if byte_at(name, 0) == 100 && byte_at(name, 1) == 112 && byte_at(name, 3) == 58 {
+            var col: I32 = byte_at(name, 2) - 48
+            var row: I32 = 0
+            var k: I32 = 4
+            while k < name.len {
+                row = row * 10 + (byte_at(name, k) - 48)
+                k += 1
+            }
+            dp_cell(m, col, row)
+            return
+        }
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    rebuild(m)
+    return test(src, 360, 480,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // ① 初始:月标题/周头/选中前缀
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "2026年10月")
+            d_expect_text(t, "一")
+            d_expect_text(t, ">15")
+            // ② 换月往返
+            actc("dp_next", List[Str]())
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "2026年11月")
+            actc("dp_prev", List[Str]())
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "2026年10月")
+            // ③ 格点击选 20 日:行/列由真历法驱动(Thu 首周一列 lead=3 → 20 日=行3列1)
+            var lead: I32 = (weekday(days_from_civil(2026, 10, 1)) + 6) % 7
+            var cell: I32 = lead + 19
+            var r20: I32 = cell / 7
+            var c20: I32 = cell - r20 * 7
+            var nm: Str = "dp" + utf8_enc(48 + c20) + ":" + r20.to_string()
+            actc(nm, List[Str]())
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, ">20")
+            d_expect_absent(t, ">15")
+            d_expect_text(t, "SEL 2026-10-20")
+            // ④ 空白位点击=无操作(前导空格)
+            var nb: Str = "dp0:0"
+            actc(nb, List[Str]())
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "SEL 2026-10-20")
+            // ⑤ 平月 2 月:2027-02 无 29
+            var n: I32 = 0
+            while n < 4 {
+                actc("dp_next", List[Str]())
+                n += 1
+            }
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "2027年2月")
+            d_expect_text(t, "28")
+            d_expect_absent(t, "29")
+            // ⑥ 闰月 2 月:2028-02 有 29;sd 钳位 20 仍在
+            n = 0
+            while n < 12 {
+                actc("dp_next", List[Str]())
+                n += 1
+            }
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "2028年2月")
+            d_expect_text(t, "29")
+            d_expect_text(t, ">20")
+            // ⑦ TimePick:步进/回绕
+            d_expect_text(t, "09")
+            d_expect_text(t, "05")
+            var a1 = List[Str]()
+            a1.push("h+1")
+            actc("tp_step", a1)
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "10")
+            var a2 = List[Str]()
+            a2.push("m-1")
+            actc("tp_step", a2)
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "04")
+            n = 0
+            while n < 4 {
+                actc("tp_step", a2)
+                n += 1
+            }
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "00")
+            actc("tp_step", a2)
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "59")
+            var a3 = List[Str]()
+            a3.push("h+1")
+            n = 0
+            while n < 14 {
+                actc("tp_step", a3)
+                n += 1
+            }
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "00")
+            println("S80-DATEPICK-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <DatePick ym: {m.ym} hd: {m.hd} weeks: {m.weeks}/>
+    <TimePick hh: {m.hh_s} mm: {m.mm_s}/>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

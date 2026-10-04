@@ -1,0 +1,572 @@
+// gui_theme/gui_theme.ct —— 主题面独立包(gui.ct 拆分阶段一;2026-09-27 拆分规划)
+//
+// 内容:Theme struct(25 字段=槽序)+ theme_default/apply + 平台探测三件 +
+// 内置八主题×2 族 + theme_contrast + 令牌解析(gtok_*/g_parse_color/g_parse_alpha/
+// gs2i/ghex1)+ 槽 extern(gui_theme_slot/slot_get/applied/platform_id/os_dark_id/
+// now_ms)。零依赖:不引用 GuiTree/rt_emit/编辑管线/解析器——纯数据+纯函数。
+//
+// 消费:gui.ct 门面 use gui_theme.{...} 原样 re-export,消费面 use gui.{...} 不变;
+// 应用也可直连 use gui_theme.{Theme, theme_apply, ...}(跨包 use,site-root 寻址)。
+// 令牌契约(§3.4):色 14 字段 #RRGGBB,尺寸 11 字段 I32;槽序 = Theme 字段序。
+
+#[trusted]
+extern "c" fn gui_theme_slot(i: I32, v: I32) -> Void
+
+#[trusted]
+extern "c" fn gui_theme_slot_get(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_theme_applied() -> I32
+
+#[trusted]
+extern "c" fn gui_platform_id() -> I32
+
+#[trusted]
+extern "c" fn gui_os_dark_id() -> I32
+
+#[trusted]
+extern "c" fn gui_now_ms() -> I32
+
+// 十六进制一位(色解析用;#RRGGBB(A) 两段拆位)
+fn ghex1(b: I32) -> I32 {
+    if b >= 48 {
+        if b <= 57 {
+            return b - 48
+        }
+    }
+    if b >= 97 {
+        if b <= 102 {
+            return b - 87
+        }
+    }
+    if b >= 65 {
+        if b <= 70 {
+            return b - 55
+        }
+    }
+    panic("gui: 非法十六进制")
+    return 0
+}
+
+// ==================== 主题面(§3.4;Theme 全字段=槽序,theme_apply 一步换装) ====================
+
+// 字段序 = gtok_index 槽序 = 规格 §3.1;色 14 字段 #RRGGBB,尺寸 11 字段 I32
+pub struct Theme {
+    var bg_base: Str
+    var surface: Str
+    var elevated: Str
+    var border: Str
+    var border_strong: Str
+    var text: Str
+    var text_muted: Str
+    var accent: Str
+    var accent_hover: Str
+    var danger: Str
+    var success: Str
+    var mask: Str
+    var disabled_fg: Str
+    var disabled_bg: Str
+    var radius_sm: I32
+    var radius_md: I32
+    var radius_lg: I32
+    var size_xs: I32
+    var size_sm: I32
+    var size_md: I32
+    var size_lg: I32
+    var size_xl: I32
+    var space_sm: I32
+    var space_md: I32
+    var space_lg: I32
+}
+
+// 缺省深色主题(值镜像 theme.ct;跨文件 const 不随选择性合并发射,故自含字面量)
+// mask 临时 6 位不透明,#RRGGBBAA 随 overlay 波次
+pub fn theme_default() -> Theme {
+    return Theme {
+        bg_base: "#181820"
+        surface: "#22222e"
+        elevated: "#2a2a38"
+        border: "#32323f"
+        border_strong: "#454553"
+        text: "#e6e6eb"
+        text_muted: "#9a9aa8"
+        accent: "#2563eb"
+        accent_hover: "#3b82f6"
+        danger: "#c83c3c"
+        success: "#2f9e63"
+        mask: "#0a0a12"
+        disabled_fg: "#6b6b78"
+        disabled_bg: "#23232d"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// 一步换装:色字段过 g_parse_color 折 packed,尺寸直写;槽即活值,折叠自动跟随
+pub fn theme_apply(t: Theme) -> I32 {
+    gui_theme_slot(0, g_parse_color(t.bg_base))
+    gui_theme_slot(1, g_parse_color(t.surface))
+    gui_theme_slot(2, g_parse_color(t.elevated))
+    gui_theme_slot(3, g_parse_color(t.border))
+    gui_theme_slot(4, g_parse_color(t.border_strong))
+    gui_theme_slot(5, g_parse_color(t.text))
+    gui_theme_slot(6, g_parse_color(t.text_muted))
+    gui_theme_slot(7, g_parse_color(t.accent))
+    gui_theme_slot(8, g_parse_color(t.accent_hover))
+    gui_theme_slot(9, g_parse_color(t.danger))
+    gui_theme_slot(10, g_parse_color(t.success))
+    gui_theme_slot(11, g_parse_color(t.mask))
+    gui_theme_slot(12, g_parse_color(t.disabled_fg))
+    gui_theme_slot(13, g_parse_color(t.disabled_bg))
+    gui_theme_slot(14, t.radius_sm)
+    gui_theme_slot(15, t.radius_md)
+    gui_theme_slot(16, t.radius_lg)
+    gui_theme_slot(17, t.size_xs)
+    gui_theme_slot(18, t.size_sm)
+    gui_theme_slot(19, t.size_md)
+    gui_theme_slot(20, t.size_lg)
+    gui_theme_slot(21, t.size_xl)
+    gui_theme_slot(22, t.space_sm)
+    gui_theme_slot(23, t.space_md)
+    gui_theme_slot(24, t.space_lg)
+    return 0
+}
+
+// 平台 id:0=mac 1=win 2=linux(§2.5;I32 跨界,Str 面由调用方映射)
+pub fn gui_platform() -> I32 {
+    return gui_platform_id()
+}
+
+// 注入优先时钟(ms;headless d_tick 钉相位,真窗真时钟)——toast 定时/
+// 防抖类配方的时间源(§2.7 tick 消费)
+pub fn gui_now() -> I32 {
+    return gui_now_ms()
+}
+
+// 宿主明暗:true=dark(探测不可得回退 dark;进程内缓存)
+pub fn gui_os_dark() -> Bool {
+    if gui_os_dark_id() == 1 {
+        return true
+    }
+    return false
+}
+
+// 缺省主题:CTRON_GUI_THEME 八值钉值 > 平台×明暗(theme_auto 语义,§3.4)
+pub fn theme_auto() -> Theme {
+    var pin: Str = env_get("CTRON_GUI_THEME")
+    if pin == "dark" { return theme_dark() }
+    if pin == "light" { return theme_light() }
+    if pin == "mac_dark" { return theme_mac_dark() }
+    if pin == "mac_light" { return theme_mac_light() }
+    if pin == "win_dark" { return theme_win_dark() }
+    if pin == "win_light" { return theme_win_light() }
+    if pin == "linux_dark" { return theme_linux_dark() }
+    if pin == "linux_light" { return theme_linux_light() }
+    var pid: I32 = gui_platform_id()
+    var dk: I32 = gui_os_dark_id()
+    if pid == 0 {
+        if dk == 1 { return theme_mac_dark() }
+        return theme_mac_light()
+    }
+    if pid == 1 {
+        if dk == 1 { return theme_win_dark() }
+        return theme_win_light()
+    }
+    if dk == 1 { return theme_linux_dark() }
+    return theme_linux_light()
+}
+
+// 入口缺省换装:用户此前显式 theme_apply 过则不扰(显式优先)
+pub fn theme_auto_apply() -> I32 {
+    if gui_theme_applied() == 0 {
+        return theme_apply(theme_auto())
+    }
+    return 0
+}
+
+
+
+// theme_contrast:高对比无障碍(纯黑底/纯白字/强边框/无灰阶中间态;§5 P2 高对比档)
+pub fn theme_contrast() -> Theme {
+    return Theme {
+        bg_base: "#000000"
+        surface: "#000000"
+        elevated: "#101010"
+        border: "#ffffff"
+        border_strong: "#ffffff"
+        text: "#ffffff"
+        text_muted: "#ffffff"
+        accent: "#ffff00"
+        accent_hover: "#ffff00"
+        danger: "#ff6666"
+        success: "#66ff66"
+        mask: "#000000"
+        disabled_fg: "#808080"
+        disabled_bg: "#000000"
+        radius_sm: 0
+        radius_md: 0
+        radius_lg: 0
+        size_xs: 14
+        size_sm: 16
+        size_md: 18
+        size_lg: 22
+        size_xl: 26
+        space_sm: 6
+        space_md: 10
+        space_lg: 18
+    }
+}
+
+// ---- 内置八主题(§3.5;域命名空间仓库根平铺,故驻门面;第三方主题=任意 .ct 文件构造 Theme) ----
+
+// theme_dark:独立基准:深色扁平现代(Linear/GitHub Dark,裁决 #3)
+pub fn theme_dark() -> Theme {
+    return Theme {
+        bg_base: "#181820"
+        surface: "#22222e"
+        elevated: "#2a2a38"
+        border: "#32323f"
+        border_strong: "#454553"
+        text: "#e6e6eb"
+        text_muted: "#9a9aa8"
+        accent: "#2563eb"
+        accent_hover: "#3b82f6"
+        danger: "#c83c3c"
+        success: "#2f9e63"
+        mask: "#0a0a12"
+        disabled_fg: "#6b6b78"
+        disabled_bg: "#23232d"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_light:独立基准:同语汇浅色(与 dark 共享形状/间距)
+pub fn theme_light() -> Theme {
+    return Theme {
+        bg_base: "#f5f5f7"
+        surface: "#ffffff"
+        elevated: "#ffffff"
+        border: "#d8d8de"
+        border_strong: "#b9b9c2"
+        text: "#1a1a24"
+        text_muted: "#6e6e7a"
+        accent: "#2563eb"
+        accent_hover: "#1d4fd8"
+        danger: "#c83c3c"
+        success: "#2f9e63"
+        mask: "#0a0a12"
+        disabled_fg: "#9a9aa8"
+        disabled_bg: "#ececf2"
+        radius_sm: 4
+        radius_md: 8
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_mac_dark:macOS HIG 味·深:大圆角 6/10/14,mac 蓝 #0a84ff(味诠释非拟真)
+pub fn theme_mac_dark() -> Theme {
+    return Theme {
+        bg_base: "#282828"
+        surface: "#1e1e1e"
+        elevated: "#3a3a3c"
+        border: "#3d3d3d"
+        border_strong: "#4d4d4d"
+        text: "#e8e8ed"
+        text_muted: "#98989f"
+        accent: "#0a84ff"
+        accent_hover: "#3395ff"
+        danger: "#ff453a"
+        success: "#32d74b"
+        mask: "#0a0a0a"
+        disabled_fg: "#6e6e76"
+        disabled_bg: "#2a2a2a"
+        radius_sm: 6
+        radius_md: 10
+        radius_lg: 14
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_mac_light:macOS HIG 味·浅:与 mac_dark 共享形状
+pub fn theme_mac_light() -> Theme {
+    return Theme {
+        bg_base: "#f2f2f4"
+        surface: "#ffffff"
+        elevated: "#ffffff"
+        border: "#d5d5da"
+        border_strong: "#b6b6bf"
+        text: "#1d1d1f"
+        text_muted: "#7a7a82"
+        accent: "#0068da"
+        accent_hover: "#0058b8"
+        danger: "#d70015"
+        success: "#248a3d"
+        mask: "#0a0a0a"
+        disabled_fg: "#a0a0a8"
+        disabled_bg: "#e8e8ec"
+        radius_sm: 6
+        radius_md: 10
+        radius_lg: 14
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_win_dark:Fluent 味·深:Mica 灰阶,小圆角 2/4/8,accent #4cc2ff
+pub fn theme_win_dark() -> Theme {
+    return Theme {
+        bg_base: "#202020"
+        surface: "#272727"
+        elevated: "#2d2d2d"
+        border: "#383838"
+        border_strong: "#4a4a4a"
+        text: "#ffffff"
+        text_muted: "#9d9d9d"
+        accent: "#4cc2ff"
+        accent_hover: "#47b1e8"
+        danger: "#ff6169"
+        success: "#6ccb5f"
+        mask: "#0a0a0a"
+        disabled_fg: "#8d8d8d"
+        disabled_bg: "#292929"
+        radius_sm: 2
+        radius_md: 4
+        radius_lg: 8
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_win_light:Fluent 味·浅:与 win_dark 共享形状,accent #005fb8
+pub fn theme_win_light() -> Theme {
+    return Theme {
+        bg_base: "#f3f3f3"
+        surface: "#fbfbfb"
+        elevated: "#ffffff"
+        border: "#e0e0e0"
+        border_strong: "#c8c8c8"
+        text: "#1a1a1a"
+        text_muted: "#5d5d5d"
+        accent: "#005fb8"
+        accent_hover: "#1a79c8"
+        danger: "#c13438"
+        success: "#0f7b0f"
+        mask: "#0a0a0a"
+        disabled_fg: "#b0b0b0"
+        disabled_bg: "#ececec"
+        radius_sm: 2
+        radius_md: 4
+        radius_lg: 8
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_linux_dark:Adwaita 味·深:中圆角 4/6/12,GNOME 蓝 #3584e4
+pub fn theme_linux_dark() -> Theme {
+    return Theme {
+        bg_base: "#222226"
+        surface: "#2e2e32"
+        elevated: "#3a3a3f"
+        border: "#44444a"
+        border_strong: "#5a5a62"
+        text: "#ffffff"
+        text_muted: "#9a9da3"
+        accent: "#3584e4"
+        accent_hover: "#4a90e8"
+        danger: "#e01b24"
+        success: "#2ec27e"
+        mask: "#0a0a0a"
+        disabled_fg: "#7d7d84"
+        disabled_bg: "#2c2c30"
+        radius_sm: 4
+        radius_md: 6
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+// theme_linux_light:Adwaita 味·浅:与 linux_dark 共享形状,accent #1c71d8
+pub fn theme_linux_light() -> Theme {
+    return Theme {
+        bg_base: "#fafafb"
+        surface: "#ffffff"
+        elevated: "#ffffff"
+        border: "#dedede"
+        border_strong: "#c0c0c4"
+        text: "#2d2d33"
+        text_muted: "#77777e"
+        accent: "#1c71d8"
+        accent_hover: "#1b6acb"
+        danger: "#e01b24"
+        success: "#2ec27e"
+        mask: "#0a0a0a"
+        disabled_fg: "#9c9ca2"
+        disabled_bg: "#efeff1"
+        radius_sm: 4
+        radius_md: 6
+        radius_lg: 12
+        size_xs: 12
+        size_sm: 14
+        size_md: 16
+        size_lg: 20
+        size_xl: 24
+        space_sm: 4
+        space_md: 8
+        space_lg: 16
+    }
+}
+
+fn gtok_index(w: Str) -> I32 {
+    // 槽序 = 规格 §3.1 令牌序 = Theme 字段序(0-13 色 packed,14-24 尺寸 I32)
+    if w == "BG_BASE" { return 0 }
+    if w == "SURFACE" { return 1 }
+    if w == "ELEVATED" { return 2 }
+    if w == "BORDER" { return 3 }
+    if w == "BORDER_STRONG" { return 4 }
+    if w == "TEXT" { return 5 }
+    if w == "TEXT_MUTED" { return 6 }
+    if w == "ACCENT" { return 7 }
+    if w == "ACCENT_HOVER" { return 8 }
+    if w == "DANGER" { return 9 }
+    if w == "SUCCESS" { return 10 }
+    if w == "MASK" { return 11 }
+    if w == "DISABLED_FG" { return 12 }
+    if w == "DISABLED_BG" { return 13 }
+    if w == "RADIUS_SM" { return 14 }
+    if w == "RADIUS_MD" { return 15 }
+    if w == "RADIUS_LG" { return 16 }
+    if w == "SIZE_XS" { return 17 }
+    if w == "SIZE_SM" { return 18 }
+    if w == "SIZE_MD" { return 19 }
+    if w == "SIZE_LG" { return 20 }
+    if w == "SIZE_XL" { return 21 }
+    if w == "SPACE_SM" { return 22 }
+    if w == "SPACE_MD" { return 23 }
+    if w == "SPACE_LG" { return 24 }
+    return -1
+}
+
+// 存储期两段式(§2.4):令牌名 → "@槽位" 标记;折叠期 gs2i/g_parse_color 见 @ 直读槽
+pub fn gtok_mark(w: Str) -> Str {
+    var i: I32 = gtok_index(w)
+    if i >= 0 {
+        return "@" + i.to_string()
+    }
+    return w
+}
+
+fn gtok_slot(v: Str) -> I32 {
+    var r: I32 = 0
+    var i: I32 = 1
+    while i < v.len {
+        r = r * 10 + (byte_at(v, i) - 48)
+        i += 1
+    }
+    return r
+}
+
+fn g_parse_color(v: Str) -> I32 {
+    if v.len > 1 {
+        if byte_at(v, 0) == 64 {
+            return gui_theme_slot_get(gtok_slot(v))
+        }
+    }
+    if byte_at(v, 0) == 35 {
+        if v.len != 7 {
+            if v.len != 9 {
+                panic("gui: 颜色须 #RRGGBB(A),得 " + v)
+            }
+        }
+        var r: I32 = ghex1(byte_at(v, 1)) * 16 + ghex1(byte_at(v, 2))
+        var g: I32 = ghex1(byte_at(v, 3)) * 16 + ghex1(byte_at(v, 4))
+        var b: I32 = ghex1(byte_at(v, 5)) * 16 + ghex1(byte_at(v, 6))
+        return r * 65536 + g * 256 + b
+    }
+    panic("gui: 未知颜色令牌 " + v)
+    return 0
+}
+
+// 8 位色 alpha 通道(§7;C1 修订=#RRGGBB(A)):len 9 取末两位十六进制,6 位=255
+pub fn g_parse_alpha(v: Str) -> I32 {
+    if v.len == 9 {
+        if byte_at(v, 0) == 35 {
+            return ghex1(byte_at(v, 7)) * 16 + ghex1(byte_at(v, 8))
+        }
+    }
+    return 255
+}
+
+pub fn gs2i(s: Str) -> I32 {
+    if s.len > 1 {
+        if byte_at(s, 0) == 64 {
+            return gui_theme_slot_get(gtok_slot(s))
+        }
+    }
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        v = v * 10 + (byte_at(s, i) - 48)
+        i += 1
+    }
+    return v
+}

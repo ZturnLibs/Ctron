@@ -2,7 +2,9 @@
 // 组件居 widgets.ct(Select/WList/Dialog),根视图 run(ViewCall) 一行装配;
 // 组件事件首参 Box = 模型捕获直传(Ⅱ-b),组件事件即可改宿主模型;
 // headless 直驱合成 fn 全链:列表过滤选择/新建/保存/删除模态/Esc 关。
-use widgets.{snip_tag}
+// 组件消费共享库:pkgs/gui_widgets(Select/WList/Dialog+w-* 预设;
+// GuiBlock 恒随合并,锚 gui_widgets_ver 一符全量并入;事件处理器仍驻宿主)
+use gui_widgets.{gui_widgets_ver}
 use gui.{test, d_frame, d_click, d_send_key,
          d_expect_text, d_expect_absent, d_cmd_count, d_cmd_type, d_cmd_text_len, d_cmd_text_byte, char_str}
 
@@ -21,6 +23,10 @@ struct Model {
     var status: Str
     var delopen: Bool
     var editing: Bool
+}
+
+fn snip_tag() -> Str {
+    return "SNIP"
 }
 
 fn make() -> Model {
@@ -72,12 +78,92 @@ fn del_confirm(m: Box[Model]) {
     m.status = "deleted"
 }
 
-fn dialog_dismiss(m: Box[Model]) {
+// 库全事件名集空壳桩:骨架面按合并库全量注册事件表(未实例化组件也在),
+// 消费方按需备桩;实际行为经 act 名字分发(本应用仅实例化 Select/WList/Dialog)
+fn menu_toggle(m: Box[Model]) {
+}
+
+fn menu_pick(m: Box[Model], row: I32) {
+}
+
+fn list_sel(m: Box[Model], row: I32) {
+}
+
+fn slide(m: Box[Model], p: Str) {
+}
+
+fn ml2_pick(m: Box[Model], row: I32) {
+}
+
+fn ed_toggle(m: Box[Model]) {
+}
+
+fn ed_pick(m: Box[Model], row: I32) {
+}
+
+fn tab_go(m: Box[Model], row: I32) {
+}
+
+fn acc_toggle(m: Box[Model]) {
+}
+
+fn tip_noop(m: Box[Model]) {
+}
+
+fn tab_pick(m: Box[Model], row: I32) {
+}
+
+fn wtt() -> Bool {
+    return false
+}
+
+// 统一对话框契约(pkgs/gui_widgets):遮罩/取消=仅关,确认=删并关
+fn dialog_close(m: Box[Model]) {
     m.delopen = false
+}
+
+fn dialog_cancel(m: Box[Model]) {
+    m.delopen = false
+}
+
+fn dialog_confirm(m: Box[Model]) {
+    del_confirm(m)
 }
 
 fn set_content(m: Box[Model], text: Str) {
     m.content = text
+}
+
+// Palette 桩(库 0.3 新事件头;本例未实例化,骨架面全量注册=按需备桩)
+fn pal_type(m: Box[Model], text: Str) {
+}
+fn pal_go(m: Box[Model], text: Str) {
+}
+fn pal_pick(m: Box[Model], row: I32) {
+}
+fn pal_close(m: Box[Model]) {
+}
+
+// DatePick/TimePick 桩(库 0.4 新事件头;本例未实例化,骨架面全量注册=按需备桩)
+fn dp_prev(m: Box[Model]) {
+}
+fn dp_next(m: Box[Model]) {
+}
+fn dp0(m: Box[Model], row: I32) {
+}
+fn dp1(m: Box[Model], row: I32) {
+}
+fn dp2(m: Box[Model], row: I32) {
+}
+fn dp3(m: Box[Model], row: I32) {
+}
+fn dp4(m: Box[Model], row: I32) {
+}
+fn dp5(m: Box[Model], row: I32) {
+}
+fn dp6(m: Box[Model], row: I32) {
+}
+fn tp_step(m: Box[Model], s: Str) {
 }
 
 fn headless_suite() -> I32 {
@@ -125,9 +211,9 @@ fn headless_suite() -> I32 {
                 |buf| __gui_bind_Snippets(buf, m),
                 |nm, ar| __gui_act_Snippets(nm, ar, m))
             d_frame(t, |buf| __gui_bind_Snippets(buf, m))
-            // dialog_dismiss 关窗但不改 status(仅遮罩 close,非确认删)
+            // dialog_close 关窗但不改 status(仅遮罩 close,非确认删)
             d_expect_absent(t, "Delete this snippet?")
-            println("SNIPPETS-GREEN")
+            println("SNIPPETS-GREEN " + gui_widgets_ver())
         })
     return rc
 }
@@ -160,16 +246,6 @@ style actrow { direction: row gap: 8 h: 40 }
 style save { bg: "#22c55e" fg: "#0b0f19" w: 80 h: 32 }
 style del { bg: "#7f1d1d" fg: "#ffffff" w: 90 h: 32 }
 style status { fg: "#9ca3af" size: 12 h: 20 }
-style w_select { direction: column gap: 4 }
-style w_trigger { bg: "#374151" fg: "#e5e7eb" w: 100 h: 34 }
-style w_opts { direction: column gap: 2 }
-style w_opt { bg: "#1f2937" fg: "#e5e7eb" w: 100 h: 30 }
-style w_list { direction: column gap: 4 }
-style w_list_t { fg: "#e5e7eb" h: 26 }
-style w_row { bg: "#1f2937" fg: "#e5e7eb" w: 380 h: 30 }
-style w_mask { bg: "#000000" h: 500 }
-style w_card { direction: column gap: 8 padding: 16 bg: "#1f2937" w: 260 h: 110 }
-style w_title { fg: "#ffffff" h: 28 }
 
 fn main() -> I32 {
     if env_get("CTRON_GUI_HEADLESS") != "" {

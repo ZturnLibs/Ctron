@@ -1303,6 +1303,42 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   单字符集——view props 形参表捕获(8c-1)要求单字符 `(`,独立面捕获从未
   工作(实例 prop 门全空转),按「内嵌/独立同语法同路径」对齐;②实例子树
   走查先吃开尖——此前 tag 吃到 `<` 脱轨级联误报(投影实例带子树从未入语料)。
+
+**2026-10-04 G 档 GUI-40 command palette**(gui 泳道,波一首件):
+- **交付面**:pkgs/gui_widgets 0.3 +Palette 组件(open/q/rows 三 prop+pal_type/pal_go/
+  pal_pick/pal_close 四事件头+w_pal 三样式);gui_snippets 桩同步四件;夹具 s79_palette
+  五径断言(热键 mod+k 实发消费/过滤 'e' 三行留 Quit 出/↓ 过滤空间移高亮/Enter=
+  pal_go 执行关面板/Esc 首击失焦次击 overlay 关+pal_pick 行点击直驱)。
+- **能力补齐(编译面,本件首缝)**:desugar 生成器组件视图 input/submit 文本通道——
+  收集面组件视图 on:input(原整类丢弃)与 on:submit on input(原误入 cvf 无尾参)
+  收 cvinps 新列,生成面镜像 inps 前缀分支+Ⅱ-b 模型捕获(签名门 iscomp+imp 原已
+  按此收,仅生成器欠臂)。**decls 锁申报:cc_run 零新顶层 fn**(gui_ds_collect_slots/
+  gui_ds_gen 均原位改签名+加列,480 基线漂移维持对端拆分批归口);pkgs/gui_widgets
+  +4 decl(视图+样式)不入 compiler 锁。
+- **在册新坑**:①组件内 bind 源名通道——装配不改写 nbid(sk 实证组件 input nbid="q"),
+  显示/聚焦走组件局部名,宿主包装闭包应答后委托生成 bind(s79 bind_host 形态);
+  ②内嵌源重建序=本地块前/合并块后,非糖路消费者 rt_draw_frame 根=最后视图选中
+  库件渲染空树(s49 挪尾仅糖路受益)——**跨包库消费必须走 run(ViewCall) 糖路**;
+  ③浮条内按钮 d_click_inst OOB(浮条 rects 尾置配对错位在册坑新面),行命中走
+  P-H1 后缀名 actc 直驱,真实命中归真窗。
+- **门**:阶梯 83 过/1 败(s30 在册基线债);suite 100/100 双列;smoke 170/2(两红=
+  decls 锁 471→480 对端拆分批漂移+conc_parallel 对端在飞,均非本件,较基线 170/3
+  反少一红);gui_snippets+gui_widgets 陈列室双绿。真窗 --run 手验待用户
+  (run.sh --run)。
+
+**2026-10-04 G 档 GUI-38 date/time picker**(gui 泳道,波一第二件):
+- **交付面**:pkgs/gui_widgets 0.4 +DatePick(ym/hd/weeks prop+dp_prev/dp_next+
+  dp0..dp6 七列头,行点击=头名位定列+实例后缀定行)+TimePick(hh/mm 预格式化串+
+  tp_step 显参通道 "h+1" 形,滑杆同款)+w_dpk/w_tpk 样式族;gui_snippets/s79 桩
+  同步 +11;夹具 s80_datepick(月历渲染/换月往返/真历法驱动格点击含空白位无操作/
+  平月 2027-02 无 29/闰月 2028-02 有 29/sd 越界钳位/时分步进与双向回绕)。
+- **decls 锁申报**:cc_run 零改动(本件零编译面);pkgs/gui_widgets +10 decl
+  (2 view+8 style)不入 compiler 锁。
+- **坑位**:组件格内选日前缀含空格(" > 15"形)在窄按钮(w:34)按词折行拆 TEXT
+  ——断言须单词形(">15"),w_dpkc 放宽 38;组件 each 行内七列只能硬列 fld+
+  七头(实例后缀仅携带行号,列身份只能由头名承载,each 内显参不被生成器解码)。
+- **门**:阶梯 84 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账
+  维持);gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
 **S4① 池界重置机器落库+复测追记(2026-10-03)**:帧内嵌保存栈(sv[8]+spn,免命名陷阱)
 ——While/For×5 环开保存、环合恢复、break/continue 位弹栈(弹内层栈与跳转语义对齐,
 防陈旧保存值误缩活槽;return 由帧 cleanup 兜底;panic=ct_fp=0)。循环体 gc-let 不再

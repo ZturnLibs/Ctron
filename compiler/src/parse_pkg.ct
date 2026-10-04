@@ -738,6 +738,51 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         mf = p_file(toks2, cur2, lns2, cols2, pd2)
                         }
                         pkg_check_caps(mf, dir, diags)
+                        // E5035:别名与本文件已有 decl 撞名(spec §4.4;P1a 先查入口面,
+                        // 合并流内撞名由既有 E5030 兜底)
+                        var k8: I32 = 0
+                        while k8 < syms.len {
+                            if syms[k8 + 1] != syms[k8] {
+                                var m9: I32 = 1
+                                while m9 < out.len {
+                                    if out[m9].len > 1 && out[m9][1] == syms[k8 + 1] {
+                                        diag1(diags, "E5035", "", syms[k8 + 1])
+                                        return out
+                                    }
+                                    m9 += 1
+                                }
+                            }
+                            k8 += 2
+                        }
+                        if diags.len > 0 {
+                            return out
+                        }
+                        var stack2 = stack
+                        stack2.push(mpath)
+                        // redo(顶层补并重入,SL-8c-4② desugar 注入 use 走此路):
+                        // 隔离 done 表重展开——共享 done 会让重载的门面自家 use 行
+                        // 被 done-skip 剥除,裸门面缺子模块符号,门/闭包双双落空
+                        // (拆分阶段二② s41_run_d ev_arg_* 实红)。stack 同隔离:
+                        // 首轮展开已把子模块记入单调曾展开集,共享会把 redo 合法
+                        // 重并误判成环(E5020.circ gui_theme 实红)。环防护由隔离
+                        // stack 承担;菱形双并仅同展开内相关,门面子文件零交叉 use 不触
+                        var edone = done
+                        var estack = stack2
+                        if redo {
+                            edone = List[Str]()
+                            edone.push(mpath)
+                            estack = List[Str]()
+                            estack.push(mpath)
+                        }
+                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof)
+                        if diags.len > 0 {
+                            return out
+                        }
+                        // 可见性:请求符号必须存在且为 pub(v0:FnPub)。
+                        // 门面 re-export(2026-10-04 拆分阶段一):门在内嵌 use 展开
+                        // 之后——门面转发符号(本文件不定义、经自家 use 并入)对消费方
+                        // 可导;展开只增不减,直连语义零扰动(裸模块命中面不变)。
+                        // P1a:syms 为交替对(name,alias),步长 2 对读;可见性按本名 sn 判
                         // 可见性:请求符号必须存在且为 pub(v0:FnPub)。
                         // P1a:syms 为交替对(name,alias),步长 2 对读;可见性按本名 sn 判
                             var k3: I32 = 0
@@ -782,31 +827,6 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                             }
                             k3 += 2
                         }
-                        // E5035:别名与本文件已有 decl 撞名(spec §4.4;P1a 先查入口面,
-                        // 合并流内撞名由既有 E5030 兜底)
-                        var k8: I32 = 0
-                        while k8 < syms.len {
-                            if syms[k8 + 1] != syms[k8] {
-                                var m9: I32 = 1
-                                while m9 < out.len {
-                                    if out[m9].len > 1 && out[m9][1] == syms[k8 + 1] {
-                                        diag1(diags, "E5035", "", syms[k8 + 1])
-                                        return out
-                                    }
-                                    m9 += 1
-                                }
-                            }
-                            k8 += 2
-                        }
-                        if diags.len > 0 {
-                            return out
-                        }
-                        var stack2 = stack
-                        stack2.push(mpath)
-                        mf = pkg_load_use_done(mf, dir, stack2, done, diags, false, misses, prof)
-                        if diags.len > 0 {
-                            return out
-                        }
                         // —— 选择性合并(spec §4.2):7-kind = 请求 ∪ 闭包;非 7-kind 恒随;
                         //    遍历失败/未知形态 → 保守整模块(= P1a 行为)——
                         var ktags = List[Str]()
@@ -823,6 +843,18 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         while grow {
                             grow = false
                             var acc = List[Str]()
+                            // 消费方引用闭包(2026-10-04 拆分阶段二):门面自身的
+                            // 声明(out)对本模块符号的引用也进 keep——门面渲染/驱动
+                            // 代码跨文件调用模块内部助手(gt_cls_prop 类),不在请求
+                            // 清单里、也不在模块内闭包上,此前会被门面级 keep 丢弃。
+                            // 只超集收紧方向:零引用符号仍不搭车(geom _hidden 语义不变)
+                            var jo: I32 = 1
+                            while jo < out.len {
+                                if out[jo][0] != "Use" {
+                                    if !pkg_refs_walk(out[jo], ktags, kshapes, acc, 0) { refs_ok = false }
+                                }
+                                jo += 1
+                            }
                             var j9: I32 = 1
                             while j9 < mf.len {
                                 // 遍历面 = 将随合并走的 decl(非 Use;7-kind 须在 keep):
@@ -884,9 +916,16 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         var j4: I32 = 1
                         while j4 < mf.len {
                             if mf[j4][0] != "Use" {
-                                // 选择性合并跳过判定(spec §4.2):7-kind 不在 keep → 不并入
+                                // 选择性合并跳过判定(spec §4.2):7-kind 不在 keep → 不并入。
+                                // 仅顶层(top)过滤:包边界=可见性收敛点。嵌套站点(门面内部
+                                // 合并,2026-10-04 拆分阶段二)wholesale 并入——门面+兄弟文件
+                                // =同一逻辑模块的分文件,跨子文件私有引用在各自站点的 keep
+                                // 互相看不见(render→parse 内部件 s19 实红),平面视图语义须
+                                // 同单文件;全局收敛由顶层闭包定点承担
                                 var named = pkg_is_named_kind(mf[j4][0])
-                                if named && !refs_ok {
+                                if named && !top {
+                                    // 嵌套 wholesale:整模块并入
+                                } else if named && !refs_ok {
                                     // 保守回退:视为 keep(整模块合并)
                                 } else if named {
                                     var ink3 = false
@@ -926,6 +965,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                 if dup {
                                     if redo {
                                         // 重入补并:符号已在视图(前次合并并入)→ 跳过即免重
+                                        j4 += 1
+                                        continue
+                                    }
+                                    if !top {
+                                        // 嵌套 wholesale:同名=菱形内部胶水,首胜静默跳过
                                         j4 += 1
                                         continue
                                     }

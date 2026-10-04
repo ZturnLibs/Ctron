@@ -1,0 +1,985 @@
+// gui_edit.ct —— gui 域包·编辑面(gui.ct 拆分阶段二④;2026-09-27 拆分规划)
+//
+// 内容:input/textarea 编辑管线(rt_in_val/rt_in_handler/rt_in_expr/rt_in_fire/
+// rt_has_mark/rt_edit_op/rt_input_char 全族)+ 菜单/右键/上下文缝(rt_menu_click/
+// rt_menu_render/rt_ctx_open_at/gui_root_id/rt_node_box)。
+// 无 use 行:扁平视图名字解析全局;消费=门面 use gui.gui_edit.{rt_input_char}。
+
+// ==================== input 编辑管线(波次二 §2.2) ====================
+
+// 值活问:焦点 input 当前文本(bind 单一起源;简单名通道,表达式槽编辑 v1 不支持)
+fn rt_in_val(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void) -> Str {
+    if t.nbid[node] == "" {
+        return ""
+    }
+    // props 视图走求值器(prop: 链解析+裸名回落,与显示路径同口径)——
+    // 旧 return "" = 组词/编辑 cur 恒空:新字替换非追加(只留末字)/
+    // 退格 caret=0 无效/点击光标置 0 三症状同根
+    return bxv_show(bxv_eval(t, t.nbid[node], bind, "", ""))
+}
+
+// on:<evname> 处理器头名提取(节点事件表扫描);未声明返回 ""
+fn rt_in_handler(t: GuiTree, node: I32, evname: Str) -> Str {
+    var e: I32 = 0
+    while e < t.nec[node] {
+        var gi: I32 = t.nes[node] + e
+        if t.ev_name[gi] == evname {
+            return ev_head(t.ev_fn[gi])
+        }
+        e += 1
+    }
+    return ""
+}
+
+// 节点标记事件(password/numeric 裸属性经事件表承载;fn 恒空串)
+fn rt_has_mark(t: GuiTree, node: I32, mark: Str) -> Bool {
+    var e: I32 = 0
+    while e < t.nec[node] {
+        var gi: I32 = t.nes[node] + e
+        if t.ev_name[gi] == mark {
+            return true
+        }
+        e += 1
+    }
+    return false
+}
+
+// 事件完整表达式(拖拽缝触发用——头名会丢调用形态实参)
+fn rt_in_expr(t: GuiTree, node: I32, evname: Str) -> Str {
+    var e: I32 = 0
+    while e < t.nec[node] {
+        var gi: I32 = t.nes[node] + e
+        if t.ev_name[gi] == evname {
+            return t.ev_fn[gi]
+        }
+        e += 1
+    }
+    return ""
+}
+
+// 「名:载荷」直发(§2.2 事件通道;载荷任意文本,分发取首个冒号)
+// GUI-30:持久化默认化——input/textarea 无 on:input 处理器时改发 __bs: 写回
+// 头(装配面合成对应分支,bind 变量即写即读;有处理器=受控契约原样)
+fn rt_in_fire(t: GuiTree, node: I32, evname: Str, payload: Str, act: fn(Str, List[Str]) -> Void) -> I32 {
+    var h: Str = rt_in_handler(t, node, evname)
+    if h != "" {
+        act(h + ":" + payload, List[Str]())
+        // GUI-15:on:input 重臂同节点 on:after(防抖口径:每击键重置期限)
+        if evname == "input" {
+            var e2: I32 = 0
+            while e2 < t.nec[node] {
+                var g2: I32 = t.nes[node] + e2
+                if t.ev_name[g2] == "after" {
+                    var ams2: I32 = rt_after_ms(t.ev_fn[g2])
+                    if ams2 > 0 {
+                        gui_after_arm(node, ams2)
+                    }
+                }
+                e2 += 1
+            }
+        }
+    } else {
+        if evname == "input" {
+            var bid: Str = t.nbid[node]
+            if bid != "" {
+                act("__bs:" + bid + ":" + payload, List[Str]())
+            }
+        }
+    }
+    return 0
+}
+
+// 字符输入:焦点 input 插入码点(utf8_enc)并 fire on:input;非焦点返回 false 回落
+// 节点盒矩形索引(配对最宽;无盒 -1)
+fn rt_node_box(rects: List[I32], hits: List[I32], node: I32) -> I32 {
+    var best: I32 = -1
+    var j: I32 = 0
+    while j < hits.len {
+        if hits[j] == node {
+            if j < rects.len {
+                if best < 0 {
+                    best = rects[j]
+                } else {
+                    if gui_cmd_w100(rects[j]) > gui_cmd_w100(best) {
+                        best = rects[j]
+                    }
+                }
+            }
+        }
+        j += 1
+    }
+    return best
+}
+
+// 菜单开启时的点击拦截:菜单内=执行对应编辑操作(吞点击);菜单外=仅关闭。
+// 返回 1=点击已消费。几何契约与 gui_menu_begin 同步:容器 112x112,pad4,项 pitch26
+fn rt_menu_click(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    if gui_ctx_on() == 0 {
+        return 0
+    }
+    var mx3: I32 = gui_evt_x()
+    var my3: I32 = gui_evt_y()
+    var inmenu: Bool = false
+    if mx3 >= gui_ctx_ax() {
+        if mx3 < gui_ctx_ax() + 112 {
+            if my3 >= gui_ctx_ay() {
+                if my3 < gui_ctx_ay() + 164 {
+                    inmenu = true
+                }
+            }
+        }
+    }
+    var mnode: I32 = gui_ctx_node()
+    gui_ctx_close()
+    if inmenu {
+        gui_focus_set(mnode)
+        var idx3: I32 = (my3 - gui_ctx_ay() - 4) / 26
+        if idx3 == 0 {
+            rt_edit_op(t, mnode, bind, act, 90)
+        }
+        if idx3 == 1 {
+            rt_edit_op(t, mnode, bind, act, 89)
+        }
+        if idx3 == 2 {
+            rt_edit_op(t, mnode, bind, act, 88)
+        }
+        if idx3 == 3 {
+            rt_edit_op(t, mnode, bind, act, 67)
+        }
+        if idx3 == 4 {
+            rt_edit_op(t, mnode, bind, act, 86)
+        }
+        if idx3 == 5 {
+            rt_edit_op(t, mnode, bind, act, 65)
+        }
+    }
+    return 1
+}
+
+// 右键开菜单(循环 evt5 与 d_rclick 同源):命中可编辑件→聚焦+开;否则关
+fn rt_ctx_open_at(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
+    var rn: I32 = rt_hover_node(rects, hits, gui_evt_x(), gui_evt_y())
+    if rn < 0 {
+        gui_ctx_close()
+        return -1
+    }
+    if rn >= t.ntag.len {
+        gui_ctx_close()
+        return -1
+    }
+    var ised: Bool = false
+    if t.ntag[rn] == "input" {
+        ised = true
+    }
+    if t.ntag[rn] == "textarea" {
+        ised = true
+    }
+    if ised == false {
+        gui_ctx_close()
+        return -1
+    }
+    gui_focus_set(rn)
+    var bx: I32 = rt_node_box(rects, hits, rn)
+    var ox: I32 = gui_evt_x()
+    var oy: I32 = gui_evt_y()
+    if bx >= 0 {
+        ox = gui_evt_x() - gui_cmd_x100(bx) / 100
+        oy = gui_evt_y() - gui_cmd_y100(bx) / 100
+    }
+    gui_ctx_open(rn, ox, oy, gui_evt_x(), gui_evt_y())
+    return rn
+}
+
+// 应用根节点 id(最后声明视图;单视图退化 0)——rt_emit 尾部菜单挂点守卫用
+fn gui_root_id(t: GuiTree) -> I32 {
+    if gui_list_ni(t.vreg_root) > 0 {
+        return t.vreg_root[t.vreg_name.len - 1]
+    }
+    return 0
+}
+
+// 右键菜单渲染(根元素闭合前,挂根=不受 textarea 裁切;偏移=菜单绝对坐标
+// ——根盒在窗原点;裁切容器内浮条会被 Clay 剔除,文本件分支挂法作废)。
+// 悬停行=accent 高亮 RECT(配对推 hits;透明行不产 RECT 不配对——命中不变量)
+fn rt_menu_render(hits: List[I32], hinst: List[I32], inst: I32) -> I32 {
+    if gui_ctx_on() == 0 {
+        return 0
+    }
+    var mx4: I32 = gui_mouse_x()
+    var my4: I32 = gui_mouse_y()
+    gui_menu_begin(gui_ctx_ax(), gui_ctx_ay(), 112, 164, gui_theme_slot_get(2))
+    var labels = List[Str]()
+    labels.push("撤销")
+    labels.push("重做")
+    labels.push("剪切")
+    labels.push("复制")
+    labels.push("粘贴")
+    labels.push("全选")
+    var i: I32 = 0
+    while i < 6 {
+        var hov: I32 = 0
+        var ry4: I32 = gui_ctx_ay() + 4 + i * 26
+        if my4 >= ry4 {
+            if my4 < ry4 + 26 {
+                if mx4 >= gui_ctx_ax() {
+                    if mx4 < gui_ctx_ax() + 112 {
+                        hov = 1
+                    }
+                }
+            }
+        }
+        gui_menu_item(26, gui_theme_slot_get(7), hov)
+        var fg4: I32 = gui_theme_slot_get(5)
+        gui_text(labels[i], 13, rt_col_r(fg4), rt_col_g(fg4), rt_col_b(fg4), 255)
+        gui_close()
+        i += 1
+    }
+    gui_close()
+    // GUI-14:未消费聚焦请求帧末过期(一次性语义;消费点在 input/textarea
+    // emit;挂真帧函数尾,勿落 rt_emit 每节点尾——GUI-18 同款坑位)
+    gui_focus_req_clear()
+    return 0
+}
+
+// 编辑操作(⌘C/X/V/A 与右键菜单共用;op=67 复制 88 剪切 86 粘贴 65 全选)
+fn rt_edit_op(t: GuiTree, node: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, op: I32) -> Bool {
+    var v1: Str = rt_in_val(t, node, bind)
+    var an1: I32 = gui_sel_anchor_get()
+    var c1: I32 = gui_caret_get()
+    if c1 > v1.len {
+        c1 = v1.len
+    }
+    if an1 < 0 {
+        an1 = c1
+    }
+    if an1 > v1.len {
+        an1 = v1.len
+    }
+    var sa: I32 = an1
+    var sb: I32 = c1
+    if sa > sb {
+        sa = c1
+        sb = an1
+    }
+    if op == 67 {
+        // 复制(有选区复制选区;无选区全值——简易 GUI 惯例)
+        if sb > sa {
+            gui_clip_set_c(byte_slice(v1, sa, sb))
+        } else {
+            gui_clip_set_c(v1)
+        }
+        gui_clip_push()
+        return true
+    }
+    if op == 90 {
+        // ⌘Z 撤销(Shift+⌘Z=重做):弹出快照恢复,当前态进对侧栈(交叉搬移)
+        var redo0: I32 = 0
+        if gui_mod_shift() == 1 {
+            redo0 = 1
+        }
+        if gui_undo_pop(node, redo0) == 1 {
+            var uv: Str = gui_undo_val()
+            var uc: I32 = gui_undo_caret()
+            var cur9: Str = rt_in_val(t, node, bind)
+            var cc9: I32 = gui_caret_get()
+            if redo0 == 1 {
+                gui_undo_stack_push(node, cur9, cur9.len, cc9, 0)
+            } else {
+                gui_undo_stack_push(node, cur9, cur9.len, cc9, 1)
+            }
+            gui_undo_mute(1)
+            gui_caret_set(uc)
+            rt_in_fire(t, node, "input", uv, act)
+            gui_undo_mute(0)
+        }
+        return true
+    }
+    if op == 89 {
+        // ⌘Y 重做
+        if gui_undo_pop(node, 1) == 1 {
+            var uv2: Str = gui_undo_val()
+            var uc2: I32 = gui_undo_caret()
+            var cur8: Str = rt_in_val(t, node, bind)
+            var cc8: I32 = gui_caret_get()
+            gui_undo_stack_push(node, cur8, cur8.len, cc8, 0)
+            gui_undo_mute(1)
+            gui_caret_set(uc2)
+            rt_in_fire(t, node, "input", uv2, act)
+            gui_undo_mute(0)
+        }
+        return true
+    }
+    if op == 88 {
+        // 剪切 = 复制 + 删段
+        if sb > sa {
+            gui_undo_push(node, v1, v1.len, c1)
+            gui_clip_set_c(byte_slice(v1, sa, sb))
+            gui_clip_push()
+            var cut1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
+            gui_sel_clear()
+            gui_caret_set(sa)
+            rt_in_fire(t, node, "input", cut1, act)
+        }
+        return true
+    }
+    if op == 86 {
+        // 粘贴:系统→内部→逐码点走编辑管线(UTF-8 解码;选区先消费)
+        gui_clip_sync()
+        var pi: I32 = 0
+        var pn: I32 = gui_clip_len()
+        if pn > 0 {
+            gui_undo_push(node, v1, v1.len, c1)
+            gui_undo_mute(1)
+            if sb > sa {
+                var del1: Str = byte_slice(v1, 0, sa) + byte_slice(v1, sb, v1.len)
+                gui_sel_clear()
+                gui_caret_set(sa)
+                rt_in_fire(t, node, "input", del1, act)
+            }
+            while pi < pn {
+                var b0: I32 = gui_clip_byte(pi)
+                var cp: I32 = b0
+                var adv: I32 = 1
+                if b0 >= 240 {
+                    cp = (b0 - 240) * 262144
+                    cp = cp + (gui_clip_byte(pi + 1) - 128) * 4096
+                    cp = cp + (gui_clip_byte(pi + 2) - 128) * 64
+                    cp = cp + (gui_clip_byte(pi + 3) - 128)
+                    adv = 4
+                } else {
+                    if b0 >= 224 {
+                        cp = (b0 - 224) * 4096
+                        cp = cp + (gui_clip_byte(pi + 1) - 128) * 64
+                        cp = cp + (gui_clip_byte(pi + 2) - 128)
+                        adv = 3
+                    } else {
+                        if b0 >= 192 {
+                            cp = (b0 - 192) * 64
+                            cp = cp + (gui_clip_byte(pi + 1) - 128)
+                            adv = 2
+                        }
+                    }
+                }
+                rt_input_char(t, bind, act, cp)
+                pi += adv
+            }
+            gui_undo_mute(0)
+        }
+        return true
+    }
+    if op == 65 {
+        // 全选
+        gui_sel_anchor_set(0)
+        gui_caret_set(v1.len)
+        return true
+    }
+    return false
+}
+
+pub fn rt_input_char(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, ch: I32) -> Bool {
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return false
+    }
+    if t.ntag[fn0] != "input" {
+        if t.ntag[fn0] != "textarea" {
+            return false
+        }
+    }
+    // numeric 变体:仅 数字/./-(消费不插入;退格/删除走键管线不受限)
+    if rt_has_mark(t, fn0, "numeric") {
+        var okn: Bool = false
+        if ch >= 48 {
+            if ch <= 57 {
+                okn = true
+            }
+        }
+        if ch == 46 {
+            okn = true
+        }
+        if ch == 45 {
+            okn = true
+        }
+        if okn == false {
+            return true
+        }
+    }
+    // 撤销快照:编辑提交前推「编辑前」值+光标(粘贴逐码点由 rt_edit_op mute)
+    var pv0: Str = rt_in_val(t, fn0, bind)
+    gui_undo_push(fn0, pv0, pv0.len, gui_caret_get())
+    // 选区消费:非空选区先真删(输入替换选区,成熟 GUI 口径)
+    var sel_end0: I32 = rt_sel_take()
+    if sel_end0 >= 0 {
+        var v2: Str = rt_in_val(t, fn0, bind)
+        var dl: I32 = gui_caret_get()
+        var nw0: Str = byte_slice(v2, 0, dl) + byte_slice(v2, sel_end0, v2.len)
+        rt_in_fire(t, fn0, "input", nw0, act)
+    }
+    var cur: Str = rt_in_val(t, fn0, bind)
+    var caret: I32 = gui_caret_get()
+    if caret > cur.len {
+        caret = cur.len
+    }
+    if caret < 0 {
+        caret = 0
+    }
+    var ins: Str = utf8_enc(ch)
+    var nw: Str = byte_slice(cur, 0, caret) + ins + byte_slice(cur, caret, cur.len)
+    gui_caret_set(caret + ins.len)
+    gui_sel_clear()
+    rt_in_fire(t, fn0, "input", nw, act)
+    return true
+}
+
+// 编辑键:退格/删除(字节级,沿 s12 口径;码点级随 M3)/←→/Home/End/Enter=submit/
+// Esc=失焦/Ctrl+V=粘贴;结构编辑后 fire on:input。未消费返回 false 回落 key 闭包
+fn rt_input_key(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, k: I32) -> Bool {
+    var fn0: I32 = gui_focus_node()
+    if fn0 < 0 {
+        return false
+    }
+    var is_ta2: Bool = false
+    if t.ntag[fn0] == "textarea" {
+        is_ta2 = true
+    }
+    if t.ntag[fn0] != "input" {
+        if !is_ta2 {
+            return false
+        }
+    }
+    // IME 组词期键盘归输入法所有(退格=删拼音、Esc=取消组词均由 IME 处理;
+    // 应用不得碰已确认文本——用户实测「组词退格误删前文」)
+    if gui_ime_has_preedit() == 1 {
+        // 搜狗终末退格静默怪癖:组词删空时不回调任何 setMarkedText/unmark,
+        // 镜像残留末字符(用户实测「删空拼音仍留一字母+下划线」)——组词仅
+        // 剩单码点时收到退格,乐观自清(多字符路径 setMarkedText 正常不受扰;
+        // 他法后续回调清空幂等)
+        if k == 259 {
+            // 搜狗终末退格静默判别:镜像未随上次退格变化(IME 零回调)=静默终末,
+            // 清镜像;已变化(setMarkedText 已缩)=IME 活跃,只消费不清(单码点
+            // 乐观清无法区分两者——用户实测「两字母一起删+面板剩一字符」)
+            var pp: Str = gui_ime_preedit()
+            if gui_ime_prev_eq(pp) {
+                gui_ime_test_set("")
+            } else {
+                gui_ime_prev_set(pp)
+            }
+        }
+        return true
+    }
+    if k == 256 {
+        if gui_ctx_on() == 1 {
+            gui_ctx_close()
+            return true
+        }
+        gui_focus_set(-1)
+        gui_caret_set(0)
+        return true
+    }
+    var shd: Bool = gui_mod_shift() == 1
+    // 编辑快捷键(⌘/Ctrl 统一 gui_mod_ctrl):C 复制 / X 剪切 / V 粘贴 / A 全选
+    // (操作体抽取 rt_edit_op,右键菜单同源)
+    if gui_mod_ctrl() == 1 {
+        var kU: I32 = k
+        if kU >= 97 && kU <= 122 {
+            kU = kU - 32
+        }
+        if rt_edit_op(t, fn0, bind, act, kU) {
+            return true
+        }
+    }
+    var cur: Str = rt_in_val(t, fn0, bind)
+    var caret: I32 = gui_caret_get()
+    if caret > cur.len {
+        caret = cur.len
+    }
+    if caret < 0 {
+        caret = 0
+    }
+    // 选区消费:仅编辑键(退格/删除)消费删段;移动键带选区=光标照移不删
+    // (成熟口径;旧版不分键型,拖选后按 ← 即误删选中文本)
+    var isdel3: Bool = false
+    if k == 259 {
+        isdel3 = true
+    }
+    if k == 261 {
+        isdel3 = true
+    }
+    if isdel3 {
+        gui_undo_push(fn0, cur, cur.len, caret)
+    }
+    if isdel3 {
+        var sel_end3: I32 = rt_sel_take()
+        if sel_end3 >= 0 {
+            var v3: Str = rt_in_val(t, fn0, bind)
+            var dl3: I32 = gui_caret_get()
+            var nw3: Str = byte_slice(v3, 0, dl3) + byte_slice(v3, sel_end3, v3.len)
+            rt_in_fire(t, fn0, "input", nw3, act)
+            return true
+        }
+    }
+    if k == 259 {
+        if gui_mod_ctrl() == 1 {
+            // ⌘⌫ 删到行首(ta=视觉行行首;input=串首)
+            var ls5: I32 = 0
+            if is_ta2 {
+                ls5 = gui_ta_row_start(t, fn0, cur, caret)
+            }
+            if caret > ls5 {
+                var nw5: Str = byte_slice(cur, 0, ls5) + byte_slice(cur, caret, cur.len)
+                gui_caret_set(ls5)
+                gui_sel_clear()
+                rt_in_fire(t, fn0, "input", nw5, act)
+            }
+            return true
+        }
+        if gui_mod_alt() == 1 {
+            // alt⌫ 删前一词(词首到光标)
+            var wp5: I32 = gui_word_prev(cur, caret)
+            if wp5 < caret {
+                var nw6: Str = byte_slice(cur, 0, wp5) + byte_slice(cur, caret, cur.len)
+                gui_caret_set(wp5)
+                gui_sel_clear()
+                rt_in_fire(t, fn0, "input", nw6, act)
+            }
+            return true
+        }
+        if caret > 0 {
+            // UTF-8 码点级退格(字节级剁碎 CJK 码点;连续字节随首字节一并删)
+            var bc: I32 = caret - 1
+            while bc > 0 {
+                var b: I32 = byte_at(cur, bc)
+                if b >= 128 && b < 192 {
+                    bc -= 1
+                } else {
+                    break
+                }
+            }
+            var nw: Str = byte_slice(cur, 0, bc) + byte_slice(cur, caret, cur.len)
+            gui_caret_set(bc)
+            gui_sel_clear()
+            rt_in_fire(t, fn0, "input", nw, act)
+        }
+        return true
+    }
+    if k == 261 {
+        if gui_mod_ctrl() == 1 {
+            // ⌘⌦ 删到行尾(ta=视觉行行尾;input=串尾)
+            var le5: I32 = cur.len
+            if is_ta2 {
+                le5 = gui_ta_row_end(t, fn0, cur, caret)
+            }
+            if le5 > caret {
+                var nw7: Str = byte_slice(cur, 0, caret) + byte_slice(cur, le5, cur.len)
+                gui_sel_clear()
+                rt_in_fire(t, fn0, "input", nw7, act)
+            }
+            return true
+        }
+        if gui_mod_alt() == 1 {
+            // alt⌦ 删后一词(光标到词尾)
+            var wn5: I32 = gui_word_next(cur, caret)
+            if wn5 > caret {
+                var nw8: Str = byte_slice(cur, 0, caret) + byte_slice(cur, wn5, cur.len)
+                gui_sel_clear()
+                rt_in_fire(t, fn0, "input", nw8, act)
+            }
+            return true
+        }
+        if caret < cur.len {
+            // 码点级前删(跳过首字节的连续字节)
+            var de: I32 = caret + 1
+            while de < cur.len {
+                var b2: I32 = byte_at(cur, de)
+                if b2 >= 128 && b2 < 192 {
+                    de += 1
+                } else {
+                    break
+                }
+            }
+            var nw2: Str = byte_slice(cur, 0, caret) + byte_slice(cur, de, cur.len)
+            gui_sel_clear()
+            rt_in_fire(t, fn0, "input", nw2, act)
+        }
+        return true
+    }
+    if k == 263 {
+        // ⌘← 行首(ta=视觉行行首;input=串首)/ alt← 前一词首;Shift 扩选
+        var tgt4: I32 = -1
+        if gui_mod_ctrl() == 1 {
+            tgt4 = 0
+            if is_ta2 {
+                tgt4 = gui_ta_row_start(t, fn0, cur, caret)
+            }
+        }
+        if gui_mod_alt() == 1 {
+            tgt4 = gui_word_prev(cur, caret)
+        }
+        if tgt4 >= 0 {
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
+            gui_caret_set(tgt4)
+            if !shd {
+                gui_sel_clear()
+            }
+            return true
+        }
+        if caret > 0 {
+            // 码点级左移(落在连续字节上时回退到码点首);Shift=扩选(锚保持)
+            var lc: I32 = caret - 1
+            while lc > 0 {
+                var b3: I32 = byte_at(cur, lc)
+                if b3 >= 128 && b3 < 192 {
+                    lc -= 1
+                } else {
+                    break
+                }
+            }
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
+            gui_caret_set(lc)
+            if !shd {
+                gui_sel_clear()
+            }
+        }
+        return true
+    }
+    if k == 262 {
+        // ⌘→ 行尾(ta=视觉行行尾;input=串尾)/ alt→ 后一词尾;Shift 扩选
+        var tgt5: I32 = -1
+        if gui_mod_ctrl() == 1 {
+            tgt5 = cur.len
+            if is_ta2 {
+                tgt5 = gui_ta_row_end(t, fn0, cur, caret)
+            }
+        }
+        if gui_mod_alt() == 1 {
+            tgt5 = gui_word_next(cur, caret)
+        }
+        if tgt5 >= 0 {
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
+            gui_caret_set(tgt5)
+            if !shd {
+                gui_sel_clear()
+            }
+            return true
+        }
+        if caret < cur.len {
+            // 码点级右移;Shift=扩选(锚保持)
+            var rc2: I32 = caret + 1
+            while rc2 < cur.len {
+                var b4: I32 = byte_at(cur, rc2)
+                if b4 >= 128 && b4 < 192 {
+                    rc2 += 1
+                } else {
+                    break
+                }
+            }
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
+            gui_caret_set(rc2)
+            if !shd {
+                gui_sel_clear()
+            }
+        }
+        return true
+    }
+    // ⌘↑/⌘↓ 文档首/尾(双组件通用;Shift 扩选)
+    if k == 265 {
+        if gui_mod_ctrl() == 1 {
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
+            gui_caret_set(0)
+            if !shd {
+                gui_sel_clear()
+            }
+            return true
+        }
+    }
+    if k == 264 {
+        if gui_mod_ctrl() == 1 {
+            if shd {
+                if gui_sel_anchor_get() < 0 {
+                    gui_sel_anchor_set(caret)
+                }
+            }
+            gui_caret_set(cur.len)
+            if !shd {
+                gui_sel_clear()
+            }
+            return true
+        }
+    }
+    // textarea:↑↓ 行移(行内列保持,短行钳尾;纯扫描;嵌套 if——|| 非语言算符)
+    if is_ta2 {
+        if k == 265 || k == 264 {
+            // 视觉行系 ↑↓(wrap 折行后的显示行;列按像素保持,短行钳尾)
+            var wrapw3: I32 = gui_in_w_get(fn0) - 8
+            if wrapw3 < 40 {
+                wrapw3 = 40
+            }
+            var utsz: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+            var uvs = List[I32]()
+            var uve = List[I32]()
+            ta_rows(fn0, cur, wrapw3, utsz, uvs, uve)
+            var urow: I32 = 0
+            var ui2: I32 = 0
+            while ui2 < uvs.len {
+                if uvs[ui2] <= caret {
+                    urow = ui2
+                }
+                ui2 += 1
+            }
+            var urow2: I32 = urow
+            if k == 265 {
+                if urow > 0 {
+                    urow2 = urow - 1
+                }
+            } else {
+                if urow + 1 < uvs.len {
+                    urow2 = urow + 1
+                }
+            }
+            var ucol2: I32 = caret - uvs[urow]
+            if urow2 != urow {
+                var ul: I32 = uve[urow2] - uvs[urow2]
+                if ucol2 > ul {
+                    ucol2 = ul
+                }
+                if shd {
+                    if gui_sel_anchor_get() < 0 {
+                        gui_sel_anchor_set(caret)
+                    }
+                }
+                gui_caret_set(uvs[urow2] + ucol2)
+                if !shd {
+                    gui_sel_clear()
+                }
+            }
+            return true
+        }
+    }
+    if k == 268 {
+        if shd {
+            if gui_sel_anchor_get() < 0 {
+                gui_sel_anchor_set(caret)
+            }
+        }
+        if is_ta2 {
+            // 视觉行 Home(wrap 折行后显示行行首;非逻辑行)
+            var hw4: I32 = gui_in_w_get(fn0) - 8
+            if hw4 < 40 {
+                hw4 = 40
+            }
+            var hsz4: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+            var hvs = List[I32]()
+            var hve = List[I32]()
+            ta_rows(fn0, cur, hw4, hsz4, hvs, hve)
+            var hrow: I32 = 0
+            var hi4: I32 = 0
+            while hi4 < hvs.len {
+                if hvs[hi4] <= caret {
+                    hrow = hi4
+                }
+                hi4 += 1
+            }
+            gui_caret_set(hvs[hrow])
+        } else {
+            gui_caret_set(0)
+        }
+        if !shd {
+            gui_sel_clear()
+        }
+        return true
+    }
+    if k == 269 {
+        if shd {
+            if gui_sel_anchor_get() < 0 {
+                gui_sel_anchor_set(caret)
+            }
+        }
+        if is_ta2 {
+            // 视觉行 End(显示行行尾;outE 不含 \n,直作插入点)
+            var ew4: I32 = gui_in_w_get(fn0) - 8
+            if ew4 < 40 {
+                ew4 = 40
+            }
+            var esz4: I32 = gs2i(gt_cls_prop(t.ncls[fn0], "size", "16", t))
+            var evs = List[I32]()
+            var eve = List[I32]()
+            ta_rows(fn0, cur, ew4, esz4, evs, eve)
+            var erow: I32 = 0
+            var ei4: I32 = 0
+            while ei4 < evs.len {
+                if evs[ei4] <= caret {
+                    erow = ei4
+                }
+                ei4 += 1
+            }
+            gui_caret_set(eve[erow])
+        } else {
+            gui_caret_set(cur.len)
+        }
+        if !shd {
+            gui_sel_clear()
+        }
+        return true
+    }
+
+    if k == 257 {
+        if is_ta2 {
+            var cur3: Str = rt_in_val(t, fn0, bind)
+            var c3: I32 = gui_caret_get()
+            if c3 > cur3.len {
+                c3 = cur3.len
+            }
+            if c3 < 0 {
+                c3 = 0
+            }
+            var nw3: Str = byte_slice(cur3, 0, c3) + "\n" + byte_slice(cur3, c3, cur3.len)
+            gui_caret_set(c3 + 1)
+            gui_sel_clear()
+            rt_in_fire(t, fn0, "input", nw3, act)
+            return true
+        }
+        // on:submit:回车提交,值经名通道送达(镜像 on:input 契约)
+        rt_in_fire(t, fn0, "submit", rt_in_val(t, fn0, bind), act)
+        return true
+    }
+    if k == 86 {
+        if gui_mod_ctrl() == 1 {
+            gui_clip_sync()
+            var n: I32 = gui_clip_len()
+            var cs: Str = ""
+            var i: I32 = 0
+            while i < n {
+                cs = cs + utf8_enc(gui_clip_byte(i))
+                i += 1
+            }
+            var nw3: Str = byte_slice(cur, 0, caret) + cs + byte_slice(cur, caret, cur.len)
+            gui_caret_set(caret + cs.len)
+            rt_in_fire(t, fn0, "input", nw3, act)
+            return true
+        }
+        return false
+    }
+    return false
+}
+
+// Tab 焦点环(P2):树序 input 收集,cur 相对环进/环退(Shift 反向);无 input 返 -1
+fn rt_focus_next(t: GuiTree, cur: I32, rev: I32) -> I32 {
+    var ids = List[I32]()
+    var i: I32 = 0
+    while i < t.ntag.len {
+        if t.ntag[i] == "input" {
+            ids.push(i)
+        }
+        if t.ntag[i] == "textarea" {
+            ids.push(i)
+        }
+        i += 1
+    }
+    if ids.len == 0 {
+        return -1
+    }
+    if cur < 0 {
+        if rev == 1 {
+            return ids[ids.len - 1]
+        }
+        return ids[0]
+    }
+    var pos: I32 = -1
+    var j: I32 = 0
+    while j < ids.len {
+        if ids[j] == cur {
+            pos = j
+        }
+        j += 1
+    }
+    if pos < 0 {
+        if rev == 1 {
+            return ids[ids.len - 1]
+        }
+        return ids[0]
+    }
+    var np: I32 = pos + 1
+    if rev == 1 {
+        np = pos - 1
+    }
+    if np >= ids.len {
+        np = 0
+    }
+    if np < 0 {
+        np = ids.len - 1
+    }
+    return ids[np]
+}
+
+// 光标形状(P2):悬停节点→形状(input=2 I-beam,可点元素=4 手型,余 0 默认)
+fn rt_cursor_for(t: GuiTree, hov: I32) -> I32 {
+    // 右键菜单开启:菜单区内=默认箭头(成熟菜单口径;下层 I-beam/手型穿透
+    // 即用户实测「悬浮光标形状不对」)
+    if gui_ctx_on() == 1 {
+        var mx: I32 = gui_mouse_x()
+        var my: I32 = gui_mouse_y()
+        if mx >= gui_ctx_ax() {
+            if mx < gui_ctx_ax() + 112 {
+                if my >= gui_ctx_ay() {
+                    if my < gui_ctx_ay() + 164 {
+                        return 0
+                    }
+                }
+            }
+        }
+    }
+    if hov < 0 {
+        return 0
+    }
+    if t.ntag[hov] == "input" {
+        return 2
+    }
+    if t.ntag[hov] == "textarea" {
+        return 2
+    }
+    var e: I32 = 0
+    while e < t.nec[hov] {
+        var gi: I32 = t.nes[hov] + e
+        if t.ev_name[gi] == "click" {
+            return 4
+        }
+        e += 1
+    }
+    return 0
+}
+
+// 键盘模态检出(§2.3):末帧 hits 扫描取最后声明的 overlay(绘制序顶层);无则 -1
+fn rt_top_overlay(t: GuiTree, hits: List[I32]) -> I32 {
+    var found: I32 = -1
+    var j: I32 = 0
+    while j < hits.len {
+        var node: I32 = hits[j]
+        if node >= 0 {
+            if t.ntag[node] == "overlay" {
+                found = node
+            }
+        }
+        j += 1
+    }
+    return found
+}
