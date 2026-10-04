@@ -91,4 +91,5 @@ Select/WList/Dialog 组件视图 + w-* 样式预设 → `pkgs/gui_widgets/`(或 
   门面终态 520 行(头注+use 面+GuiTree+extern 窄桥+运行时辅助);**GuiTree struct 留驻门面=终态**(发射序+结构可见性本位,勿再外移)。
 - 阶段三 3a0c2562:组件库 pkgs/gui_widgets(Select/WList/Dialog+w_* 令牌预设),gui_snippets 首消费方;⚠️ kebab 类名跨包合并样式不应用(在册观察),库取 snake_case。
 - 终态行数:gui.ct 520 / gui_parse 1431 / gui_expr 943 / gui_render 1481 / gui_edit 985 / gui_driver 2329 / gui_theme 572 / gui_widgets 60。
+- 阶段三全量统一 360b04dd:库扩容至 16 组件规范形态(纯 prop 化,统一对话框三路契约);**内嵌词法 UTF-8 叶能力落地**(is_ac/is_ident_start/cont 加 ≥0x80,双宿主同批;推翻「中文叶须文件形态」在册限制);gui_snippets 适配统一契约+库全事件名集桩(骨架面按合并库全量注册事件表)。陈列室消费缓行两在册缺口:手写 bind×类型化列表 props、自定义键闭包×desugar 形态(候专门切片)。
 - 验收线:阶梯 82 过/1 败(s30_props_d 在册)+ suite 100/100 双列 + ffi 37/0 + smoke 170/3(decls 锁漂移/conc_parallel/Rust 臂,均基线既有)。
