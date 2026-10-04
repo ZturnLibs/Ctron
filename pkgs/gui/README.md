@@ -9,7 +9,7 @@ clay + raylib 窄桥、CTML 视图解析、域运行时与 headless 验收驱动
 ```
 gui.ct            门面:入口 API + 运行时 + 解析 + 驱动器(消费面唯一入口)
 gui/parse.ct      CTML 解析(gt_* 词法/树构建;SL-8a 表达式槽捕获)
-gui/theme.ct      主题令牌面(缺省值文档;换装=Theme 字面量+theme_apply)
+pkgs/gui_theme/   主题面(拆分阶段一;Theme+八主题族+令牌解析;use gui_theme.{...})
 pkgs/themes/      主题包(GUI-31:主题作为可导入包;use themes.{nord,...})
 gui/bind/raylib.ct  extern 窄桥(#[trusted];用户不接触)
 gui/c_src/        C 胶水单一真源(ctron_gui.c 等;native 链接面)
