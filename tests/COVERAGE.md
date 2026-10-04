@@ -1322,3 +1322,18 @@ b2a/b2c/bat1 全链绿;gc/run 9/9+suite 100/100 双列+net 18/18。
 +`b.add(x)` 走 UFCS 臂产出 `t_add` 未定义(main 树二进制同现,正确名应 t_Bag__add;
 T45 台账「class 字面量发射不可用」邻域,固有方法派发=另册)。
 **decl 锁代抬**:471→480(对端 T52 后批次 +9 fn 漏抬,主树实测同 480,随批申报)。
+
+**S4③ 分配位点翻面+arena 根扫退役落库(2026-10-03)**:28 个 amalloc 位点翻 ct_gc_alloc
+(串全家/list_push items/pmap 结果数组/cell_new/ct_wrap_i 与 send 盒/闭包 env 数组/
+ct_clop+FnExt 盒/Result-Option 载荷盒/尾返回盒);**保留 bump=纯标量域**(SIMD 算术
+scratch/视图 .d/read_dir 可增长 scratch——零 GC 引用,免池化)。GC=off/conc 路径经
+ct_gc_alloc 内建回退 bump,双档行为不变。**arena 根扫默认退役**(CTRON_GC_ARENASCAN=1
+逃逸)——三锚(cycle_reclaim/deep_stack/precise_root)纯精确档全绿=翻面自足证。
+门禁:gc/run 9/9 三档+suite 100/100 双列+net 18/18+bench 1.000(真重建 bin)。
+**a_jwt 红账判定(2026-10-03,S4③ 后)**:GC=1 interp 臂 RSS **41GB→70MB 平台**
+(585×,52min CPU 稳如磐石;开销=活集大×收集频次,归 M2 分代域;CI 不受影响=套件
+恒 GC=off)。完备性跑=大阈值(CTRON_GC_THRESHOLD=256MB)对拍双臂输出。**红账解锁**。
+坑位续增:①CTRON_GC sweep 误翻 amalloc 定义名+真回退自递归——全量重命名前先枚举
+不可翻位点;②Ctron 串字面量内插 getenv("X") 引号必须转义(E1001 实参表缺 );
+③管道尾 $? 假 0 第五踩(head 接管返回值);④夹具 main 返回值=rc( bat1 返回 a.len=1
+被误读为崩溃)。
