@@ -1,0 +1,6 @@
+use app.facade.{bval, wrap}
+
+test "facade re-export: facade 转发符号对消费方可导可调" {
+    assert_eq(bval(), 41)
+    assert_eq(wrap(), 51)
+}

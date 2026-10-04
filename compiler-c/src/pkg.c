@@ -715,8 +715,10 @@ static int local_type_or_trait(const pkg* p, const char* n) {
     return 0;
 }
 
-// 模块的 pub 项集合(含 pub 与 pub(pkg))
-static int mod_has_pub_item(const mod* m, const char* name) {
+// 模块的 pub 项集合(含 pub 与 pub(pkg));门面 re-export(2026-10-04):
+// 本文件未定义时随本模块 use 导入面传递——源模块 pub 即可导(对齐自举
+// parse_pkg 可见性门移到内嵌 use 展开之后的语义;depth 守卫传导链)
+static int mod_has_pub_item(const pkg* p, const mod* m, const char* name, int depth) {
     const cfile* f = m->pr.file;
     for (size_t j = 0; j < f->ndecls; j++) {
         const cdecl* d = &f->decls[j];
@@ -735,6 +737,22 @@ static int mod_has_pub_item(const mod* m, const char* name) {
             if (d->kind == D_FN) return vis == VIS_PUB || vis == VIS_PUBPKG;
             // 类型默认 pub(pkg)?保守:类型视为包可见
             return 1;
+        }
+    }
+    if (depth > 0 && p != NULL) {
+        for (size_t j = 0; j < f->ndecls; j++) {
+            const cdecl* d = &f->decls[j];
+            if (d->kind != D_USE) continue;
+            for (size_t k = 0; k < d->use.nimports; k++) {
+                const cimport* imp = &d->use.imports[k];
+                if (imp->nsegs != 3) continue;
+                if (strcmp(imp->segs[0], p->pkg_name ? p->pkg_name : "") != 0) continue;
+                if (strcmp(imp->segs[1], m->stem) == 0) continue;
+                if (strcmp(imp->segs[2], name) != 0) continue;
+                mod* t = pkg_find_mod(p, imp->segs[1]);
+                if (!t) continue;
+                if (mod_has_pub_item(p, t, name, depth - 1)) return 1;
+            }
         }
     }
     return 0;
@@ -805,7 +823,7 @@ static void check_use_visibility(pkg_res* r, const pkg* p, const mod* m) {
                 push(r, m->rel, "E2020", "未知模块(secret):%s", mstem);
                 continue;
             }
-            if (!mod_has_pub_item(target, item)) {
+            if (!mod_has_pub_item(p, target, item, 4)) {
                 push(r, m->rel, "E2020", "不可见模块项(secret):%s 未 pub", item);
             }
         }

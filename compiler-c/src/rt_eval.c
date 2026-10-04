@@ -990,9 +990,15 @@ val eval_expr(rt* R, cexpr* e) {
                 return o;
             }
             if (!strcmp(nm, "env_get")) {
+                // 2026-10-04:桩→真读 getenv——pkg_std_root 的 CTRON_STDPATH 分支在
+                // seed(解释)路径恒空,site-root(pkgs/*)解析从未走通;与原生发射
+                // 口径对齐。缺失/空值仍返 "",既有确定性行为不变。
+                val pv = eval_expr(R, e->elems[0]);
+                const char* key = (pv.k == V_STR && pv.s) ? pv.s : "";
+                const char* ev = getenv(key);
                 val o = {0};
                 o.k = V_STR;
-                o.s = "";
+                o.s = ctron_arena_strndup(R->a, ev ? ev : "", ev ? strlen(ev) : 0);
                 return o;
             }
             if (!strcmp(nm, "ctron_cli_flag")) {

@@ -1,0 +1,3 @@
+pub fn bval() -> I32 {
+    return 41
+}
