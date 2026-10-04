@@ -1,0 +1,59 @@
+// gui_widgets/gui_widgets.ct —— 组件库(gui.ct 拆分阶段三;2026-09-27 拆分规划)
+//
+// Select/WList/Dialog 三件套 + w-* 样式预设。视图只含结构(纯 prop 驱动),
+// 事件处理器驻留宿主应用(名字解析在合并视图上,合约Ⅱ-b 模型捕获):
+//   sel_toggle / sel_pick / list_pick / dialog_dismiss
+// 宿主按需定义,签名自由(首参 Box[Model] 即捕获直传)。
+//
+// 消费(声明级 use,GuiBlock 恒随合并——锚一个符号,视图+样式全量并入):
+//   use gui_widgets.{gui_widgets_ver}
+//   ... <Select label: {m.catlabel} open: {m.catopen} opts: {m.opts}/>
+// 样式预设:snake_case 类名(w_select 族)+主题令牌色(随 theme_apply 换装)。
+// ⚠️ 在册观察(2026-10-04):kebab 横线类名(w-select)经跨包 use 合并后样式
+// 不应用(行宽塌缩→文本按词折行),snake_case 正常;宿主同名样式须删除避免双份。
+pub fn gui_widgets_ver() -> Str {
+    return "gui_widgets/0.1"
+}
+
+view Select (label: Str, open: Bool, opts: List[Str]) {
+  <vbox class="w_select">
+    <button class="w_trigger" on:click={sel_toggle()}>{label}</button>
+    <when cond={open}>
+      <vbox class="w_opts">
+        <each o in={opts}>
+          <button class="w_opt" on:click={sel_pick()}>{o}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+
+view WList (title: Str, items: List[Str]) {
+  <vbox class="w_list">
+    <label class="w_list_t">{title}</label>
+    <each it in={items}>
+      <button class="w_row" on:click={list_pick()}>{it}</button>
+    </each>
+  </vbox>
+}
+
+view Dialog (title: Str, open: Bool) {
+  <when cond={open}>
+    <overlay class="w_mask" on:click={dialog_dismiss()}>
+      <vbox class="w_card">
+        <label class="w_title">{title}</label>
+      </vbox>
+    </overlay>
+  </when>
+}
+
+style w_select { direction: column gap: 4 }
+style w_trigger { bg: SURFACE fg: TEXT w: 150 h: 34 }
+style w_opts { direction: column gap: 2 }
+style w_opt { bg: ELEVATED fg: TEXT w: 150 h: 28 }
+style w_list { direction: column gap: 4 }
+style w_list_t { fg: TEXT_MUTED size: 13 h: 20 }
+style w_row { bg: ELEVATED fg: TEXT w: 380 h: 30 }
+style w_mask { bg: MASK align: center }
+style w_card { direction: column gap: 8 padding: 16 bg: ELEVATED w: 260 h: 110 }
+style w_title { fg: TEXT h: 28 }
