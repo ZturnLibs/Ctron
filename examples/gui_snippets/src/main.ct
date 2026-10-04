@@ -78,8 +78,56 @@ fn del_confirm(m: Box[Model]) {
     m.status = "deleted"
 }
 
-fn dialog_dismiss(m: Box[Model]) {
+// 库全事件名集空壳桩:骨架面按合并库全量注册事件表(未实例化组件也在),
+// 消费方按需备桩;实际行为经 act 名字分发(本应用仅实例化 Select/WList/Dialog)
+fn menu_toggle(m: Box[Model]) {
+}
+
+fn menu_pick(m: Box[Model], row: I32) {
+}
+
+fn list_sel(m: Box[Model], row: I32) {
+}
+
+fn slide(m: Box[Model], p: Str) {
+}
+
+fn ml2_pick(m: Box[Model], row: I32) {
+}
+
+fn ed_toggle(m: Box[Model]) {
+}
+
+fn ed_pick(m: Box[Model], row: I32) {
+}
+
+fn tab_go(m: Box[Model], row: I32) {
+}
+
+fn acc_toggle(m: Box[Model]) {
+}
+
+fn tip_noop(m: Box[Model]) {
+}
+
+fn tab_pick(m: Box[Model], row: I32) {
+}
+
+fn wtt() -> Bool {
+    return false
+}
+
+// 统一对话框契约(pkgs/gui_widgets):遮罩/取消=仅关,确认=删并关
+fn dialog_close(m: Box[Model]) {
     m.delopen = false
+}
+
+fn dialog_cancel(m: Box[Model]) {
+    m.delopen = false
+}
+
+fn dialog_confirm(m: Box[Model]) {
+    del_confirm(m)
 }
 
 fn set_content(m: Box[Model], text: Str) {
@@ -131,7 +179,7 @@ fn headless_suite() -> I32 {
                 |buf| __gui_bind_Snippets(buf, m),
                 |nm, ar| __gui_act_Snippets(nm, ar, m))
             d_frame(t, |buf| __gui_bind_Snippets(buf, m))
-            // dialog_dismiss 关窗但不改 status(仅遮罩 close,非确认删)
+            // dialog_close 关窗但不改 status(仅遮罩 close,非确认删)
             d_expect_absent(t, "Delete this snippet?")
             println("SNIPPETS-GREEN " + gui_widgets_ver())
         })

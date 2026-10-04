@@ -1,29 +1,39 @@
 // gui_widgets/gui_widgets.ct —— 组件库(gui.ct 拆分阶段三;2026-09-27 拆分规划)
 //
-// Select/WList/Dialog 三件套 + w-* 样式预设。视图只含结构(纯 prop 驱动),
-// 事件处理器驻留宿主应用(名字解析在合并视图上,合约Ⅱ-b 模型捕获):
-//   sel_toggle / sel_pick / list_pick / dialog_dismiss
-// 宿主按需定义,签名自由(首参 Box[Model] 即捕获直传)。
+// 16 组件全量规范形态(2026-10-04 全量统一):Select/WList/Dialog/Menu/EditMenu/
+// MenuBar/List/MultiList/Slider/Progress/Tabs/Badge/Accordion/Tooltip/Toast/Table。
+// 纯 prop 契约:组件体仅消费自家 prop 与内建名(dragpx/mods/fld),宿主模型零耦合;
+// 事件处理器驻留宿主(名字扁平视图解析,合约Ⅱ-b 模型捕获直传)。宿主按需定义:
+//   Select: sel_toggle / sel_pick            Dialog: dialog_close / dialog_cancel / dialog_confirm
+//   WList:  list_pick                        Menu:   menu_toggle / menu_pick
+//   List:   list_sel                         Slider: slide
+//   MultiList: ml2_pick                      Progress: (无;值经 prop,宿主 act 改模型)
+//   EditMenu: ed_toggle / ed_pick            Tabs:   tab_go
+//   Accordion: acc_toggle                    Tooltip: tip_noop
+//   Table:  tab_pick                         Toast:  (无;show prop 驱动)
 //
 // 消费(声明级 use,GuiBlock 恒随合并——锚一个符号,视图+样式全量并入):
 //   use gui_widgets.{gui_widgets_ver}
 //   ... <Select label: {m.catlabel} open: {m.catopen} opts: {m.opts}/>
-// 样式预设:snake_case 类名(w_select 族)+主题令牌色(随 theme_apply 换装)。
+// 样式预设:snake_case 类名(w_* 族)+主题令牌色(随 theme_apply 换装);
+// 几何敏感值按陈列室原值(spacer 轨道 220x8/progress 轨 200x10/fill=百分比×2)。
 // ⚠️ 在册观察(2026-10-04):kebab 横线类名(w-select)经跨包 use 合并后样式
 // 不应用(行宽塌缩→文本按词折行),snake_case 正常;宿主同名样式须删除避免双份。
 pub fn gui_widgets_ver() -> Str {
-    return "gui_widgets/0.1"
+    return "gui_widgets/0.2"
 }
 
 view Select (label: Str, open: Bool, opts: List[Str]) {
   <vbox class="w_select">
     <button class="w_trigger" on:click={sel_toggle()}>{label}</button>
     <when cond={open}>
-      <vbox class="w_opts">
-        <each o in={opts}>
-          <button class="w_opt" on:click={sel_pick()}>{o}</button>
-        </each>
-      </vbox>
+      <overlay class="w_mask" on:click={sel_toggle()}>
+        <vbox class="w_opts">
+          <each o in={opts}>
+            <button class="w_opt" on:click={sel_pick()}>{o}</button>
+          </each>
+        </vbox>
+      </overlay>
     </when>
   </vbox>
 }
@@ -39,21 +49,193 @@ view WList (title: Str, items: List[Str]) {
 
 view Dialog (title: Str, open: Bool) {
   <when cond={open}>
-    <overlay class="w_mask" on:click={dialog_dismiss()}>
+    <overlay class="w_mask" on:click={dialog_close()}>
       <vbox class="w_card">
         <label class="w_title">{title}</label>
+        <label class="w_body">此操作将写入模型并关闭对话框</label>
+        <hbox class="w_actions">
+          <button class="w_act" on:click={dialog_cancel}>取消</button>
+          <button class="w_act w_actp" on:click={dialog_confirm}>确认</button>
+        </hbox>
       </vbox>
     </overlay>
   </when>
 }
 
+view Menu (open: Bool, items: List[Str]) {
+  <vbox class="w_menu">
+    <button class="w_trigger" on:click={menu_toggle}>文件</button>
+    <when cond={open}>
+      <vbox class="w_opts">
+        <each mi in={items}>
+          <button class="w_opt" on:click={menu_pick}>{mi}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+
+view EditMenu (open: Bool, items: List[Str]) {
+  <vbox class="w_menu">
+    <button class="w_trigger" on:click={ed_toggle}>编辑</button>
+    <when cond={open}>
+      <vbox class="w_opts">
+        <each ei in={items}>
+          <button class="w_opt" on:click={ed_pick}>{ei}</button>
+        </each>
+      </vbox>
+    </when>
+  </vbox>
+}
+
+view MenuBar (open: Bool, edopen: Bool, items: List[Str], eitems: List[Str]) {
+  <hbox class="w_bar">
+    <Menu open: {open} items: {items}/>
+    <EditMenu open: {edopen} items: {eitems}/>
+  </hbox>
+}
+
+view List (title: Str, items: List[Str]) {
+  <vbox class="w_list">
+    <label class="w_list_t">{title}</label>
+    <each li in={items}>
+      <button class="w_row" on:click={list_sel}>{li}</button>
+    </each>
+  </vbox>
+}
+
+view MultiList (title: Str, items: List[Str]) {
+  <vbox class="w_list">
+    <label class="w_list_t">{title}</label>
+    <each mi in={items}>
+      <button class="w_row" on:click={ml2_pick(mods)}>{mi}</button>
+    </each>
+  </vbox>
+}
+
+view Slider (val: I32) {
+  <vbox class="w_slider">
+    <spacer class="w_track" on:drag={slide(dragpx)}/>
+    <label class="w_val">{val}</label>
+  </vbox>
+}
+
+view Progress (pct: I32) {
+  <vbox class="w_prog">
+    <hbox class="w_ptk">
+      <hbox class="w_pfl"/>
+    </hbox>
+    <label class="w_pct">{pct}</label>
+  </vbox>
+}
+
+view Tabs (cur: I32, tabs: List[Str]) {
+  <vbox class="w_tabs">
+    <hbox class="w_tabrow">
+      <each tb in={tabs}>
+        <button class="w_tab" on:click={tab_go}>{tb}</button>
+      </each>
+    </hbox>
+    <when cond={cur == 0}>
+      <label class="w_tabp">概览内容</label>
+    </when>
+    <when cond={cur == 1}>
+      <label class="w_tabp">详情内容</label>
+    </when>
+  </vbox>
+}
+
+view Badge (text: Str) {
+  <label class="w_badge">{text}</label>
+}
+
+view Accordion (title: Str, open: Bool) {
+  <vbox class="w_acc">
+    <button class="w_acch" on:click={acc_toggle}>{title}</button>
+    <when cond={open}>
+      <slot/>
+    </when>
+  </vbox>
+}
+
+view Tooltip (text: Str) {
+  <hbox class="w_tipw">
+    <button class="w_tiptrg" hover:wtt on:click={tip_noop}>悬停我</button>
+    <when cond={wtt}>
+      <label class="w_tip">{text}</label>
+    </when>
+  </hbox>
+}
+
+view Toast (show: Bool, msg: Str) {
+  <when cond={show}>
+    <overlay class="w_toast">
+      <label class="w_toastt">{msg}</label>
+    </overlay>
+  </when>
+}
+
+view Table (items: List[Str]) {
+  <vbox class="w_table">
+    <hbox class="w_thead">
+      <label class="w_th">名称</label>
+      <label class="w_th">大小</label>
+    </hbox>
+    <each ti in={items}>
+      <button class="w_tr" on:click={tab_pick}>
+        <hbox class="w_trin">
+          <label class="w_td1">{fld(ti, "·", 0)}</label>
+          <label class="w_td2">{fld(ti, "·", 1)}</label>
+        </hbox>
+      </button>
+    </each>
+  </vbox>
+}
+
+// ===== 样式预设(snake_case;令牌色随 theme_apply 换装;几何值=陈列室原值) =====
 style w_select { direction: column gap: 4 }
 style w_trigger { bg: SURFACE fg: TEXT w: 150 h: 34 }
 style w_opts { direction: column gap: 2 }
 style w_opt { bg: ELEVATED fg: TEXT w: 150 h: 28 }
-style w_list { direction: column gap: 4 }
+style w_list { direction: column gap: 2 }
 style w_list_t { fg: TEXT_MUTED size: 13 h: 20 }
-style w_row { bg: ELEVATED fg: TEXT w: 380 h: 30 }
+style w_row { bg: SURFACE fg: TEXT w: 380 h: 28 }
 style w_mask { bg: MASK align: center }
-style w_card { direction: column gap: 8 padding: 16 bg: ELEVATED w: 260 h: 110 }
-style w_title { fg: TEXT h: 28 }
+style w_card { direction: column gap: 8 padding: 16 bg: ELEVATED w: 260 }
+style w_title { fg: TEXT size: 18 h: 28 }
+style w_body { fg: TEXT_MUTED size: 13 h: 20 }
+style w_actions { direction: row gap: 10 }
+style w_act { bg: SURFACE fg: TEXT w: 86 h: 30 }
+style w_actp { bg: ACCENT fg: "#ffffff" }
+style w_menu { direction: column gap: 4 }
+style w_bar { direction: row gap: 12 }
+style w_table { direction: column gap: 2 }
+style w_thead { direction: row gap: 24 }
+style w_th { fg: TEXT_MUTED size: 13 w: 90 h: 22 }
+style w_tr { bg: SURFACE w: 200 h: 26 }
+style w_trin { direction: row }
+style w_td1 { fg: TEXT w: 90 h: 24 }
+style w_td2 { fg: TEXT h: 24 }
+style w_slider { direction: column gap: 4 }
+style w_track { h: 8 w: 220 bg: BORDER }
+style w_val { fg: TEXT_MUTED size: 13 h: 20 }
+style w_prog { direction: column gap: 4 }
+style w_ptk { direction: column w: 200 h: 10 bg: DISABLED_BG }
+style w_pfl { direction: column w: "{pct * 2}" h: 10 bg: ACCENT }
+style w_pct { fg: TEXT_MUTED size: 13 h: 20 }
+style w_tabs { direction: column gap: 4 }
+style w_tabrow { direction: row gap: 6 }
+style w_tab { bg: SURFACE fg: TEXT w: 130 h: 28 }
+style w_tabp { fg: TEXT_MUTED size: 14 h: 24 }
+style w_badge { bg: ACCENT fg: "#ffffff" size: 12 w: 52 h: 20 }
+style w_acc { direction: column gap: 4 }
+style w_acch { bg: SURFACE fg: TEXT w: 150 h: 30 }
+style w_accb { fg: TEXT_MUTED size: 13 h: 22 }
+style w_tipw { direction: row gap: 8 }
+style w_tiptrg { bg: SURFACE fg: TEXT w: 90 h: 28 }
+style w_tip { fg: TEXT_MUTED size: 12 h: 20 }
+style w_toast { bg: "#00000000" align: center }
+style w_toastt { bg: ELEVATED fg: TEXT size: 14 w: 160 h: 36 }
+style w_div { h: 2 w: 200 bg: BORDER }
+style w_card2 { bg: ELEVATED h: 60 }
+style w_ct { fg: TEXT size: 13 h: 20 }

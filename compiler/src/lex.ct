@@ -9,7 +9,7 @@ fn or3(a: Bool, b: Bool, c: Bool) -> Bool { return or2(or2(a, b), c) }
 fn is_digit(b: I32) -> Bool { return b >= 48 && b <= 57 }
 fn is_alpha(b: I32) -> Bool { return or2(b >= 65 && b <= 90, b >= 97 && b <= 122) }
 fn is_al(b: I32) -> Bool { return or2(is_alpha(b), b == 95) }
-fn is_ac(b: I32) -> Bool { return or2(is_al(b), is_digit(b)) }
+fn is_ac(b: I32) -> Bool { return or2(is_al(b), or2(is_digit(b), b >= 128)) }
 
 fn is_hex(b: I32) -> Bool { return or2(b >= 48 && b <= 57, or2(b >= 65 && b <= 70, b >= 97 && b <= 102)) }
 fn is_oct(b: I32) -> Bool { return b >= 48 && b <= 55 }
@@ -276,7 +276,10 @@ fn scan5(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
                 pdiags.push(line.to_string() + ":" + c0.to_string() + " E1001: " + err)
             }
             rpush(toks, lns, cols, tstarts, tends, line, c0, q0, i, byte_slice(src, q0, i))
-        } else if is_al(b) {
+        } else if or2(is_al(b), b >= 128) {
+            // 词法字符集含 ≥0x80(2026-10-04:UTF-8 多字节序列=词内连续,内嵌
+            // .ct 视图中文叶依赖;此前落 E1001.badchar,中文叶被迫文件形态。
+            // 镜像 C 宿主 lexer.c is_ident_start/cont 同批)
             var start = i
             while i < n && is_ac(byte_at(src, i)) { i += 1 }
             rpush(toks, lns, cols, tstarts, tends, line, c0, start, i, byte_slice(src, start, i))

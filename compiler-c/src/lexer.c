@@ -81,8 +81,8 @@ static void lx_err(lexer* lx, ctron_span sp, const char* fmt, ...) {
     dvec_push(&lx->diags, d);
 }
 
-static int is_ident_start(unsigned char c) { return isalpha(c) || c == '_'; }
-static int is_ident_cont(unsigned char c) { return isalnum(c) || c == '_'; }
+static int is_ident_start(unsigned char c) { return isalpha(c) || c == '_' || c >= 128; }
+static int is_ident_cont(unsigned char c) { return isalnum(c) || c == '_' || c >= 128; }
 static int is_digit_c(unsigned char c) { return isdigit(c); }
 
 /// 行内空白与注释(含 /// 与 //@)是 trivia;换行不在此处理(它是记号)。
