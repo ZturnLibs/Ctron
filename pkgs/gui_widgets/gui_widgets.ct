@@ -14,6 +14,8 @@
 //   Palette: pal_type(文本通道)/pal_go(submit 通道)/pal_pick(行) / pal_close
 //   DatePick: dp_prev / dp_next / dp0..dp6(行后缀=行,头名位=列)——月历/周头全 prop
 //   TimePick: tp_step(显参通道,"h+1"/"m-1" 形)——locale(周首日/月名)走 props
+//   ColorPick: cp_paint(绘制帧)/cp_drag(显参 dragpx/dragpy 带标 permille)/
+//     cp_hue(行)/cp_hex(文本通道)——SV 方 canvas 标记容器;组件内 bind=源名通道
 //
 // 消费(声明级 use,GuiBlock 恒随合并——锚一个符号,视图+样式全量并入):
 //   use gui_widgets.{gui_widgets_ver}
@@ -23,7 +25,7 @@
 // ⚠️ 在册观察(2026-10-04):kebab 横线类名(w-select)经跨包 use 合并后样式
 // 不应用(行宽塌缩→文本按词折行),snake_case 正常;宿主同名样式须删除避免双份。
 pub fn gui_widgets_ver() -> Str {
-    return "gui_widgets/0.4"
+    return "gui_widgets/0.5"
 }
 
 view Select (label: Str, open: Bool, opts: List[Str]) {
@@ -260,6 +262,27 @@ view TimePick (hh: Str, mm: Str) {
   </hbox>
 }
 
+// ColorPick(GUI-39 取色器;纯 prop 契约):SV 方=canvas 标记容器(style canvas:1,
+// 盒相对画点由宿主 cp_paint 每帧画);色相条=宿主 hues 色表 each 按钮(cp_hue 行);
+// hex 输入=组件内 bind 源名通道("hex",宿主包装应答——组件 bind 不改写 nbid 在册);
+// 预览 swatch=样式 bg 表达式消费 cur prop(Progress fill 同款);cp_drag 显参=
+// dragpx/dragpy 带标 permille("i:NNN"),宿主折算 SV 写回 cur。
+view ColorPick (cur: Str, hex: Str, hues: List[Str]) {
+  <vbox class="w_cpk">
+    <vbox class="w_cpksv" on:draw={cp_paint} on:drag={cp_drag(dragpx, dragpy)}/>
+    <hbox class="w_cpkhuer">
+      <each h in={hues}>
+        <button class="w_cpkh" on:click={cp_hue}>{h}</button>
+      </each>
+    </hbox>
+    <input class="w_cpkhex" bind={hex} on:input={cp_hex} placeholder="#RRGGBB"/>
+    <hbox class="w_cpkin">
+      <label class="w_cpksw">sw</label>
+      <label class="w_cpkcur">{cur}</label>
+    </hbox>
+  </vbox>
+}
+
 // ===== 样式预设(snake_case;令牌色随 theme_apply 换装;几何值=陈列室原值) =====
 style w_select { direction: column gap: 4 }
 style w_trigger { bg: SURFACE fg: TEXT w: 150 h: 34 }
@@ -318,6 +341,14 @@ style w_tpk { direction: row gap: 4 }
 style w_tpkb { bg: SURFACE fg: TEXT w: 28 h: 28 }
 style w_tpkt { fg: TEXT size: 16 w: 34 h: 28 }
 style w_tpkc { fg: TEXT_MUTED size: 16 w: 12 h: 28 }
+style w_cpk { direction: column gap: 8 }
+style w_cpksv { direction: column w: 160 h: 120 bg: "#1a1a2e" canvas: 1 }
+style w_cpkhuer { direction: row gap: 2 }
+style w_cpkh { bg: SURFACE fg: TEXT size: 12 w: 26 h: 22 }
+style w_cpkhex { bg: SURFACE fg: TEXT w: 160 h: 30 }
+style w_cpkin { direction: row gap: 8 }
+style w_cpksw { direction: column w: 40 h: 24 bg: "{cur}" }
+style w_cpkcur { fg: TEXT_MUTED size: 13 h: 24 }
 style w_div { h: 2 w: 200 bg: BORDER }
 style w_card2 { bg: ELEVATED h: 60 }
 style w_ct { fg: TEXT size: 13 h: 20 }

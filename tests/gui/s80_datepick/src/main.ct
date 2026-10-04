@@ -136,6 +136,16 @@ fn p2(n: I32) -> Str {
 
 // 月历重建:周一首列 lead=(weekday+6)%7(weekday 0=Sunday);恒 6 行 42 格;
 // 选中日 "> " 前缀;越界日(前后月)空串;sd 越界钳到当月。
+// ColorPick 桩(库 0.5 新事件头;本件未实例化,骨架面全量注册=按需备桩)
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+
 fn rebuild(m: Box[M]) {
     var dim: I32 = leap_days_in_month(m.y, m.mo)
     if m.sd > dim {

@@ -1339,3 +1339,21 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   七头(实例后缀仅携带行号,列身份只能由头名承载,each 内显参不被生成器解码)。
 - **门**:阶梯 84 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账
   维持);gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-39 color picker**(gui 泳道,波一第三件):
+- **交付面**:pkgs/gui_widgets 0.5 +ColorPick(SV 方=canvas 标记容器+cp_paint 每帧
+  盒相对画点/cp_drag 显参 dragpx/py/cp_hue 色相条行/cp_hex 文本通道;组件内 bind
+  源名通道 "hex" 宿主包装应答)+gui_theme.color_parse pub 面(#RRGGBB→打包);
+  gui_snippets/s79/s80 桩同步 +4;夹具 s81 四径(color_parse 打包对拍/canvas 渐变
+  像素四点断言/色相点击+拖拽选点写回精确 hex/hex 键入采纳含失焦重聚焦)。
+- **decls 锁申报**:cc_run 零改动(本件零编译面);pkgs/gui_widgets +8 decl
+  (1 view+7 style)、gui_theme +1 fn(color_parse,非发射链不入锁)。
+- **🩸 坑位四条**:①canvas 登记挂可见容器支——theme_default SURFACE 折叠空串走
+  透明支不登记 → d_draw 恒 0;canvas 容器必须显式 bg(十六进制直色);②像素槽
+  容量 4096 帽——160x120 全画 19200 越帽,4px 步进 1200 点;点槽布局=(x,y,r,g,b)
+  非 (r,g,b)(s65 可证);③样式色槽表达式不支持(bg:"{cur}" 不折叠不产 RECT;
+  宽度槽 GUI-16 前例之外)——立册缺口,swatch 动态色候能力切片;④组件格内
+  交互件焦点:拖拽点击(非输入)即失焦,后续键入前必须 gui_focus_req 重聚焦;
+  d_px 像素索引=px/step 行主序。
+- **门**:阶梯 85 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。

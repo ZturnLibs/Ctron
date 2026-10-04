@@ -547,6 +547,11 @@ fn g_parse_color(v: Str) -> I32 {
 }
 
 // 8 位色 alpha 通道(§7;C1 修订=#RRGGBB(A)):len 9 取末两位十六进制,6 位=255
+// color_parse:hex 颜色串 → 打包色(GUI-39 pub 面;#RRGGBB 检查面同款语义)
+pub fn color_parse(hex: Str) -> I32 {
+    return g_parse_color(hex)
+}
+
 pub fn g_parse_alpha(v: Str) -> I32 {
     if v.len == 9 {
         if byte_at(v, 0) == 35 {
