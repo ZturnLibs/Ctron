@@ -1325,3 +1325,17 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   decls 锁 471→480 对端拆分批漂移+conc_parallel 对端在飞,均非本件,较基线 170/3
   反少一红);gui_snippets+gui_widgets 陈列室双绿。真窗 --run 手验待用户
   (run.sh --run)。
+
+**2026-10-04 G 档 GUI-38 date/time picker**(gui 泳道,波一第二件):
+- **交付面**:pkgs/gui_widgets 0.4 +DatePick(ym/hd/weeks prop+dp_prev/dp_next+
+  dp0..dp6 七列头,行点击=头名位定列+实例后缀定行)+TimePick(hh/mm 预格式化串+
+  tp_step 显参通道 "h+1" 形,滑杆同款)+w_dpk/w_tpk 样式族;gui_snippets/s79 桩
+  同步 +11;夹具 s80_datepick(月历渲染/换月往返/真历法驱动格点击含空白位无操作/
+  平月 2027-02 无 29/闰月 2028-02 有 29/sd 越界钳位/时分步进与双向回绕)。
+- **decls 锁申报**:cc_run 零改动(本件零编译面);pkgs/gui_widgets +10 decl
+  (2 view+8 style)不入 compiler 锁。
+- **坑位**:组件格内选日前缀含空格(" > 15"形)在窄按钮(w:34)按词折行拆 TEXT
+  ——断言须单词形(">15"),w_dpkc 放宽 38;组件 each 行内七列只能硬列 fld+
+  七头(实例后缀仅携带行号,列身份只能由头名承载,each 内显参不被生成器解码)。
+- **门**:阶梯 84 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账
+  维持);gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。

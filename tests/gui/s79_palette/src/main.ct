@@ -63,6 +63,28 @@ fn pal_pick(m: Box[M], row: I32) {
 fn pal_close(m: Box[M]) {
 }
 
+// DatePick/TimePick 桩(库 0.4 新事件头;本件未实例化,骨架面全量注册=按需备桩)
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+
 // —— Palette 宿主面(过滤/高亮/执行全在此;纯 prop 契约)——
 fn make() -> M {
     var cs = List[Str]()

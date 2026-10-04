@@ -144,6 +144,28 @@ fn pal_pick(m: Box[Model], row: I32) {
 fn pal_close(m: Box[Model]) {
 }
 
+// DatePick/TimePick 桩(库 0.4 新事件头;本例未实例化,骨架面全量注册=按需备桩)
+fn dp_prev(m: Box[Model]) {
+}
+fn dp_next(m: Box[Model]) {
+}
+fn dp0(m: Box[Model], row: I32) {
+}
+fn dp1(m: Box[Model], row: I32) {
+}
+fn dp2(m: Box[Model], row: I32) {
+}
+fn dp3(m: Box[Model], row: I32) {
+}
+fn dp4(m: Box[Model], row: I32) {
+}
+fn dp5(m: Box[Model], row: I32) {
+}
+fn dp6(m: Box[Model], row: I32) {
+}
+fn tp_step(m: Box[Model], s: Str) {
+}
+
 fn headless_suite() -> I32 {
     var src: Str = ctron_embedded()
     var m = Box[Model](make())
