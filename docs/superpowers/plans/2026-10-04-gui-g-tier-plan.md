@@ -2,6 +2,10 @@
 
 > 2026-10-04 立稿。来源=路线图 G 档(裁决 #9 在册:排期靠后、目标不删);
 > 基线=1004 F 档销账后(7a9aebcf,A–F 档全清,阶梯 82 过/1 败=基线现役债)。
+> **1004 晚校准**:对端落库 gui.ct 拆分三阶段+组件库独立(ab260198 规划→
+> 40b08df4..360b04dd 六提交,字节级搬移能力面不变)——本文各件落点文件引用、
+> 组件落点裁决(§4 决策 7)与地基盘点新能力节已按新布局改写:
+> pkgs/gui=520 行门面(GuiTree 留驻)+五子文件+pkgs/gui_theme(主题)+pkgs/gui_widgets(组件库 16 件)。
 > 本文回答:13 项各自**做什么/依赖什么地基/缝多大/怎么排波次/哪些必须先裁决**。
 > 执行仍走惯例:每件计划先行(mini)→ 夹具先行 → 双口径验证 → 阶梯全绿 → 落库 → 记忆。
 
@@ -38,7 +42,19 @@
 
 关键单点说明(逐项规划的地基引用):
 
-- **帧循环**(gui.ct rt_window_loop):每帧序 = drag 状态机 → poll_event(码 1 键/2 点/
+- **布局与符号落位(拆分后)**:gui_driver.ct=双循环(rt_window_loop/_d)+d_*/Driver
+  全族+gui_hotkey+rt_meas_w+on:after 泵;gui_render.ct=交互态+渲染分派(rt_emit)+
+  rt_hit_name;gui_edit.ct=input/textarea 编辑管线+右键菜单缝(rt_input_char pub 锚);
+  gui_expr.ct=bxv_* 求值器+ev_arg_*;gui_parse.ct=词法+gt_parse+锚合并;门面=声明+胶水
+  (GuiTree 留驻为终态)。pkgs/gui_theme=Theme+令牌解析(g_parse_color 在此);
+  pkgs/gui_widgets=组件库 16 件(纯 prop 契约+w_* snake_case 样式预设;Select/WList/
+  Dialog 先例)。
+- **新能力(规划立稿后落库)**:①**view props 支持 List[Str] 型别**(Select opts/
+  WList items 先例)——数据入参走类型化列表,「逗号串惯例」退役(List[I32] 待实测);
+  ②Dialog 富形态组件(三路 dialog_close/cancel/confirm)可作 date/color 弹层容器;
+  ③门面 re-export 装载器能力(gui_theme 先例)——域内新子文件可经门面收口;
+  ④内嵌词法 UTF-8 叶(≥0x80 词内连续)——内嵌 .ct 中文叶 E1001 在册限制解除。
+- **帧循环**(gui_driver.ct rt_window_loop):每帧序 = drag 状态机 → poll_event(码 1 键/2 点/
   3 字符/4 滚轮/5 右键/6 文件拖入)→ 事件路由链(focus input → overlay → Tab → hotkey 表
   → key 闭包)→ 重组装 bind → rects 重收集 → BeginDrawing/clear/**flush**/canvas 直绘/EndDrawing。
   新事件族=扩事件码或复用码加子态;canvas 在 flush 后 = overlay z 序(GUI-41 线图裁决点的根因)。
@@ -57,8 +73,9 @@
 | 三(文本/布局) | GUI-33 → 34 | 排版与布局深水面;黄金度量面敏感(s21) | ~3.5–5 天 |
 | 四(架构级) | GUI-36 → 35 → 32 | 各需前置评审;32 最大且需窗口层决策 | ~7–10 天 |
 
-排序理由:波一全部零缝且互相独立,先落产生即时用户价值并验证组合件惯法(为后续组件
-立模板);波二三件都是"事件/并发面小缝+大验收面",chord 最小先行;波三触碰文本排版
+排序理由:波一全部零缝且互相独立,先落产生即时用户价值并按组件库既立惯例
+(pkgs/gui_widgets 纯 prop 契约)续件;波二三件都是"事件/并发面小缝+大验收面",
+chord 最小先行;波三触碰文本排版
 核心路径(s21 黄金度量/ft 面),排在中段、单独波次便于回归归因;波四每件带架构评审门,
 GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机刷并行;波内按序(共享文件面)。**
 
@@ -90,8 +107,9 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   }
   ```
 
-- 落点:pkgs/gui 门面收口(components 段)+ examples/gui_widgets 陈列室段;
-  模糊匹配 v1=contains 子序计分(应用侧纯函数)。
+- 落点:pkgs/gui_widgets 组件库(第四件套,snake_case 类名+w_* 样式预设家族)+
+  examples/gui_widgets 陈列室段;模糊匹配 v1=contains 子序计分(应用侧纯函数);
+  键盘导航复用库内 Select/WList 配方。
 - 验收:headless——hotkey 触发开、过滤行数、↓/Enter 执行路径(d_send_key 序列)、
   Esc 关闭;渲染面 d_cmd 断言面板层级。
 - 夹具槽 s79_palette。裁决点:无。
@@ -112,8 +130,10 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   // 弹层消费:icon button → overlay 挂 date_pick
   ```
 
-- 落点:同上组合件段;**弹层动态锚**(GUI-10 v3 遗留:查询触发器矩形)若随件落,
-  作为共享小缝先行(color picker 弹层同消费)——否则 v1 内联展开形态。
+- 落点:pkgs/gui_widgets 组件库;**弹层容器=库内 Dialog 富形态组件**(三路
+  dialog_close/cancel/confirm)优先——**弹层动态锚**(GUI-10 v3 遗留:查询触发器
+  矩形)仅锚定形态需要,若随件落作为共享小缝先行(color picker 同消费),
+  否则 v1 走 Dialog 模态/内联展开形态。
 - 验收:月历 correctness(跨月/闰年/周对齐,驱动=std time.ct 对拍)、选中写回、
   time_pick 步进键盘路径。
 - 夹具槽 s80_datepick。裁决点:弹层动态锚随件 or 内联先行(执行时定,倾向随件)。
@@ -130,19 +150,19 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   }
   ```
 
-- 落点:组合件段;顺手小件=`gui_color_parse(hex) -> I32` pub 面(现 g_parse_color
-  内部,检查面同款语义 #RRGGBB)。
+- 落点:pkgs/gui_widgets 组件库;顺手小件=`gui_color_parse(hex) -> I32` pub 面
+  (现 pkgs/gui_theme g_parse_color 内部,检查面同款语义 #RRGGBB)。
 - 验收:canvas 像素探针(d_px_at)验 SV 渐变、hex 双向、拖拽选点(d_drag)写回。
 - 夹具槽 s81_colorpick。裁决点:无。
 
 ### GUI-42 过渡动画 v1(零缝·库,波一,0.5 天)
 
-- 目标:pkgs/gui 门面内 anim 库(ease 函数族 + 时间线帮手),bind 每帧重算+
+- 目标:pkgs/gui 域内 gui_anim.ct(ease 函数族 + 时间线帮手),bind 每帧重算+
   值驱动 w/h 消费;陈列室动效段(展开/滑入/淡入)。
 - 草图:
 
   ```ct
-  // pkgs/gui/anim.ct(门面 re-export)
+  // pkgs/gui/gui_anim.ct(门面 re-export,消费面 use gui.{...} 不变)
   pub fn ease_out_cubic(u: F64) -> F64 { ... }      // 无三元:if 表达式
   pub fn anim(now: I32, t0: I32, ms: I32, a: I32, b: I32) -> I32 {
       // u = 钳位((now-t0)/ms) → eased lerp → I32;gui_now() 驱动
@@ -150,29 +170,33 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   // 消费:h: "{anim(gui_now(), t0, 240, 0, 320)}" ——值驱动尺寸/位置逐帧演化
   ```
 
-- 落点:pkgs/gui/anim.ct + 陈列室;**写码前核对双宿主 F64 坑位清单**(host-divergences)。
+- 落点:pkgs/gui 域内子文件 gui_anim.ct+门面 re-export(装载器 re-export 能力
+  gui_theme 先例已解锁;anim=纯函数库非视图,不进 gui_widgets 组件包)+
+  陈列室;**写码前核对双宿主 F64 坑位清单**(host-divergences)。
 - 验收:d_tick 驱动帧,断言关键帧值(单调/终点钳位/超时恒值);真窗 --run 手验顺滑。
 - 夹具槽 s82_anim。裁决点:声明式 `transition:` 属性(引擎代插值)**不在本件**,
   另行裁决(见 §4 决策 5)。
 
 ### GUI-41 chart v1(条图零缝/线图 overlay,波一,1–1.5 天)
 
-- 目标:pkgs/charts 前身——pkgs/gui 门面内 chart 段:bar_chart/sparkline(树内
-  Clay RECT)+ line_chart(canvas);轴/刻度=label 组合。数据入参=逗号串
-  (view props 型别惯例,GUI-13 cut/fld 解析)。
+- 目标:chart 组件家族进 pkgs/gui_widgets:bar_chart/sparkline(树内 Clay RECT)+
+  line_chart(canvas);轴/刻度=label 组合。数据入参=**类型化列表 prop**
+  (List[Str] 先例 Select/WList;数值列 List[I32] 待实测,回落逗号串+cut/fld)。
 - 草图:
 
   ```ct
-  view bar_chart(values: Str, w: I32, h: I32) {
+  view bar_chart(values: List[Str], h: I32) {
       <hbox class="grow">  // each 条:值驱动 h%(GUI-16✓),max 归一应用侧
       </hbox>
   }
-  view line_chart(values: Str, w: I32, h: I32) {
+  view line_chart(values: List[Str], w: I32, h: I32) {
       <canvas w="{w}" h="{h}" on:draw={plot_line}/>   // v1=overlay z 序(见裁决 4)
   }
   ```
 
-- 落点:chart 段 + 陈列室数据段;hover tooltip v2(依赖命中查询,已有 rt_hit_name)。
+- 落点:pkgs/gui_widgets 组件库(w_chart* 样式家族)+ 陈列室数据段;hover
+  tooltip v2(依赖命中查询 rt_hit_name,gui_render.ct);成规模后另立 pkgs/charts
+  候分层四问(见裁决 7)。
 - 验收:渲染面 d_cmd_x/w 断言条几何(归一正确性)、canvas 像素探针验折线;
   零数据/单点/负值边界。
 - 夹具槽 s83_chart。裁决点:线图树内 z 序(见 §4 决策 4)。
@@ -180,9 +204,10 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 ### GUI-43 chord 序列组合键(引擎小缝,波二首件,1 天)
 
 - 目标:序列热键("g g"、"mod+d d" vim 风格),非前缀键零干扰(不吞)。
-- 落点:gui_hotkey 解析器扩**空格分隔序列**(单段兼容字节恒等);gui_hotkey_match
-  加前缀臂:首中前缀→武装(gui_now 戳),超时(默认 800ms,gui_hotkey_chord_ms
-  可配)或非前缀键→解除并按原路由;完成→act。渲染面不动。
+- 落点:gui_driver.ct(拆分后 gui_hotkey 落位)解析器扩**空格分隔序列**(单段
+  兼容字节恒等);gui_hotkey_match 加前缀臂:首中前缀→武装(gui_now 戳),超时
+  (默认 800ms,gui_hotkey_chord_ms 可配)或非前缀键→解除并按原路由;完成→act。
+  渲染面不动。
 - 验收:headless d_send_key 序列断言(完成/超时/干扰键不吞三径);既有 s33 键消费
   边界回归(单段路径字节恒等)。
 - 夹具槽 s84_chord。裁决点:武装期视觉指示(HUD)v1 不做(另立案)。
@@ -198,7 +223,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   // → 命中带 on:dropin 节点 → fire(handler, payload=首发实参)
   ```
 
-- 落点:rt_window_loop 释放路径(dgev armed 分支)+ 检查面 dropin 事件名收编;
+- 落点:gui_driver.ct 释放路径(双循环 dgev armed 分支)+ 检查面 dropin 事件名
+  收编(brace 形预计直通,实测再定);命中查询复用 rt_hit_name(gui_render.ct);
   d_drag 探针扩展断言 dropin 触发与 payload;over 高亮(v2)与自动滚动(v2)不进本件。
 - 验收:重排端到端(d_drag 拖 row1→row3,断言序变)、payload 保真、无目标释放=无火。
 - 夹具槽 s85_dragdrop。裁决点:payload 形态 v1=首发 drag 实参直传(多值=应用侧
@@ -215,8 +241,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   // 帧首 drain(gui 注册面):gui_async_on("on_result") → drain 非空即 act("on_result",[item])
   ```
 
-- 落点:ctron_gui.c(互斥锁队列 post/drain,~40 行 C)+ gui.ct 注册面 + 帧首
-  drain 挂点(rt_window_loop 与 headless d_frame 同挂)+ 检查面零改动。
+- 落点:ctron_gui.c(互斥锁队列 post/drain,~40 行 C)+ 注册面收进 gui_driver.ct
+  (帧首 drain 挂点=双循环与 headless d_frame 同文件同挂)+ 检查面零改动。
   **路线图前提修正**:spawn/Channel 已落地,"等语言面"已兑现;v1 不需要 try_recv
   (ct_ch_* 应用 TU static,跨 TU 不可达,见 §1);try_recv 语言缝另立案编译泳道
   (泛化价值,非本件阻塞项)。
@@ -235,9 +261,9 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   ```
 
 - 落点:引擎面=rich 属性收编(检查面+运行时):文本解析→span 段(字重 W5c✓/
-  颜色/链接标记)→逐段 rt_meas_w 排放(单行 v1);链接段 hover 光标+click
-  open_link✓。**多行 wrap 富文本 v2**(Clay 拆行与分段排版协同是深水面,
-  s51/s75 教训在册)。
+  颜色/链接标记)→逐段测宽排放(单行 v1;测量=rt_meas_w,gui_driver.ct;排放臂
+  在 rt_emit,gui_render.ct);链接段 hover 光标+click open_link✓。**多行 wrap
+  富文本 v2**(Clay 拆行与分段排版协同是深水面,s51/s75 教训在册)。
 - 验收:分段测宽对拍(纯串拼接 vs 分段和,ft 面)、hit 命中链接段、转义
   (字面 `*` 的逃逸形态);既有 ellipsis/maxlines 回归。
 - 夹具槽 s87_richtext。裁决点:标记语法(§4 决策 2)。
@@ -246,8 +272,9 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 - 目标:dir="rtl" 元素级(继承)布局镜像;文字面 bidi 已有(s14/s15/s17)。
 - 落点:引擎面=hbox 子序反转+pad/margin 左右对调+text align 起始侧对调
-  (rt_emit 组装臂);dir 解析与继承(检查面收编);渲染面 d_cmd_x100 断言镜像。
-  scroll/overlay/菜单锚随镜像自洽(v1 不做独立 rtl 变体夹具,统一走镜像)。
+  (组装臂=rt_emit,gui_render.ct);dir 解析与继承(检查面收编);渲染面
+  d_cmd_x100 断言镜像。scroll/overlay/菜单锚随镜像自洽(v1 不做独立 rtl 变体
+  夹具,统一走镜像)。
 - 验收:镜像坐标断言(嵌套 hbox 双层)、文字 bidi 与布局镜像叠加、ltr 零回归
   (黄金 s21 字节/度量恒等)。
 - 夹具槽 s88_rtl。裁决点:根级整体 vs 元素级继承——推荐**元素级+继承**(局部
@@ -257,8 +284,9 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 - 目标:触摸事件族与基础手势(tap/longpress/swipe;pinch v2)。
 - 落点:事件面=触摸码族(raylib GetTouch*/GetGesture* 拉模式✓)+合成规则
-  (桌面单触=鼠标既有路径零分叉);手势状态机引擎侧(阈值可配);新事件
-  on:tap/on:longpress/on:swipe(检查面收编+方向参数);headless d_gesture 注入探针。
+  (桌面单触=鼠标既有路径零分叉);手势状态机引擎侧(阈值可配,挂 gui_driver.ct
+  双循环 poll 面);新事件 on:tap/on:longpress/on:swipe(brace 形预计直通+
+  方向参数);headless d_gesture 注入探针(gui_driver.ct d_* 家族)。
 - 验收:手势识别四径断言(阈值边界)、触摸与鼠标共存、既有 click/dblclick 零回归。
 - 夹具槽 s89_touch。裁决点:目标平台 v1=桌面触屏(开发机可验),移动端(M3)
   与 IME M3 同窗评审(§4 决策 3)。
@@ -266,10 +294,11 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 ### GUI-35 无障碍 v1(架构级·平台 shim,波四,3+ 天)
 
 - 目标:语义标注面全平台落 + macOS 屏幕阅读器播报 v1(shim 先行一家)。
-- 落点:①语义面(检查面+运行时):aria_role/aria_label 属性收编入 GuiTree 槽,
-  缺省 role 由 tag 推(button/input/label…);headless d_a11y_dump() 树投影探针
-  (语义树可断言,不依赖平台)。②平台 shim:mac NSAccessibility(子树投影+焦点
-  跟随播报;焦点环 rt_focus_next✓ 为导航序真源);Win UIA/Linux AT-SPI 另立案。
+- 落点:①语义面(检查面+运行时):aria_role/aria_label 属性收编入 GuiTree 槽
+  (GuiTree 留驻门面=声明本位),缺省 role 由 tag 推(button/input/label…);
+  headless d_a11y_dump() 树投影探针(gui_driver.ct d_* 家族;语义树可断言,
+  不依赖平台)。②平台 shim:mac NSAccessibility(子树投影+焦点跟随播报;焦点环
+  rt_focus_next✓ 为导航序真源);Win UIA/Linux AT-SPI 另立案。
 - 验收:d_a11y_dump 全量断言(role/label/focus 链);真窗 VoiceOver 手验记录
   (可达性=播报+焦点导航,非全操作 v1)。
 - 夹具槽 s90_a11y。裁决点:平台范围与深度(§4 决策 3)。
@@ -287,7 +316,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
   gui_window_close(win)
   ```
 
-- 落点:gui.ct 窗口管理器段(最大单件)+ 驱动器扩展(d_win_probe);
+- 落点:gui_driver.ct 窗口循环面扩窗口管理器段(最大单件;每窗独立 GuiTree+
+  rects+overlay 栈+焦点,复用门面 GuiTree 声明)+ 驱动器扩展(d_win_probe);
   **OS 级多窗=窗口层换装(SDL3,spec §3.2 预注册替换路径)另案评审**——牵
   native.sh 链接面/三平台矩阵,不在 v1。
 - 验收:headless 双窗事件路由断言(焦点切换/各自 overlay/关闭语义)、z 序与
@@ -304,15 +334,21 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 | 4 | GUI-41 | 线图 z 序 | A v1 接受 overlay(canvas 盖 UI),树内 canvas 缝另案 / B 本件立案 Clay CUSTOM 贯通 | **A**(条图树内零缝已覆盖多数场景;CUSTOM 贯通=G 档尾独立件) |
 | 5 | GUI-42 | 声明式 transition 属性(引擎代插值) | A 不做,库形态终结 / B 另案立案 | **B 另案**(库先行收集真实需求,避免引擎面过早固化;不阻塞本件) |
 | 6 | GUI-44 | 上屏通道 | A C 胶水投递队列(零编译泳道波及,推荐)/ B 等 try_recv 语言缝 | **A**(try_recv 另案编译泳道,泛化价值保留) |
-| 7 | 组件落点 | date/color/palette/chart/anim 放哪 | A pkgs/gui 门面内(消费 use gui.{...} 不变)/ B 独立 pkgs | **A**(GUI 域能力非独立域;独立域留给真分工需求,分层宪章四问再启) |
+| 7 | 组件落点 | date/color/palette/chart/anim 放哪(**格局已变:pkgs/gui_widgets 组件库包已立**) | A 视图类进 pkgs/gui_widgets 家族(Select/WList/Dialog 先例;snake_case 类名+令牌色),anim 纯函数库走 gui 域子文件+门面 re-export / B 另立 pkgs/charts 等独立包 / C 塞回 gui 门面 | **A**(视图组件随库;成规模后独立包候分层四问再启) |
 
 ## 5. 风险与在册交互
 
 - **基线现役债两笔不归本档**(s30_props_d 野指针、numeric×textarea emit segfault):
   波次执行中全量回归遇红按三级对照流程归因(基线 worktree 复现即移交原册),不堵塞。
 - **发射泳道在飞三文件**(driver_emit/trans_conc/trans_expr):本档波一/波二全部
-  零编译面波及(新事件名 on:dropin 等走 brace 形直通,GUI-20 on:drop 先例;引号
+  零编译面波及(新事件名 on:dropin 等走 brace 形直通,GUI-20 先例;引号
   串形态才受持检查面);若裁决 6 转 B 路或 try_recv 立案,须与发射泳道协调静默窗。
+- **组件库协作约束(1004 拆分落库新登记,规划校准时收编)**:①kebab 类名经跨包
+  use 合并后样式不应用(w-select 实红观察在册)——新组件类名一律 snake_case
+  直至观察销案;②陈列室消费两缺口在册(手写 bind×类型化列表 props/自定义键
+  闭包×desugar 形态)——组件消费形态设计时避开,候专门切片;③组件契约=
+  纯 prop(组件体仅消费自家 prop 与内建名,事件处理器驻宿主)——波一五件
+  照此办理;④内嵌中文叶 E1001 限制已解除(UTF-8 词法),陈列室/夹具可直用中文叶。
 - **文本排版深水面**(波三):s21 黄金度量/s51 ft flush/s75 maxlines 三处敏感,
   GUI-33/34 执行时黄金对照先行、分臂落、逐臂回归。
 - **坑位引用**(写码前必读):无三元(if 表达式)/无位运算(算术等价)/F64 双宿主
