@@ -79,3 +79,16 @@ Select/WList/Dialog 组件视图 + w-* 样式预设 → `pkgs/gui_widgets/`(或 
 - **阶段二前置**:peer loader 兄弟文件 import 落地(路线图在册)
 - **parse.ct/theme.ct 清理**:确认零消费后 `git rm`(独立小 commit)
 - **不急的事**:渲染/编辑/驱动三块互相纠缠最深,放阶段二最后拆
+
+## 执行状态(2026-10-04,三阶段全部落地)
+
+- 阶段一 40b08df4:主题面→pkgs/gui_theme(572 行;规划 1374 估算含解析器前缀,实测主题面 572)。
+  装载器解锁两件:可见性门移到内嵌 use 展开之后(门面 re-export);seed env_get 桩→真 getenv(site-root 在 seed 首次走通)。
+- 清理 7d0717fa:parse.ct/theme.ct 死副本删除。
+- 阶段二① 1580a606:解析面→gui_parse.ct+消费方引用闭包(门面跨文件引用进 keep)。
+- 阶段二② 37fcc25e:表达式面→gui_expr.ct+顶层 redo 隔离重展开(desugar 注入 use 路径)。
+- 阶段二③④⑤ c1873a49:渲染/编辑/驱动三面独立+嵌套 wholesale 合并(嵌套站点不过滤,全局收敛在顶层闭包)。
+  门面终态 520 行(头注+use 面+GuiTree+extern 窄桥+运行时辅助);**GuiTree struct 留驻门面=终态**(发射序+结构可见性本位,勿再外移)。
+- 阶段三 3a0c2562:组件库 pkgs/gui_widgets(Select/WList/Dialog+w_* 令牌预设),gui_snippets 首消费方;⚠️ kebab 类名跨包合并样式不应用(在册观察),库取 snake_case。
+- 终态行数:gui.ct 520 / gui_parse 1431 / gui_expr 943 / gui_render 1481 / gui_edit 985 / gui_driver 2329 / gui_theme 572 / gui_widgets 60。
+- 验收线:阶梯 82 过/1 败(s30_props_d 在册)+ suite 100/100 双列 + ffi 37/0 + smoke 170/3(decls 锁漂移/conc_parallel/Rust 臂,均基线既有)。
