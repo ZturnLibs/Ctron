@@ -630,11 +630,40 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if tobjt.len > 2 && byte_slice(tobjt, 0, 2) == "t:" {
                 var ttn = byte_slice(tobjt, 2, tobjt.len)
                 var tobjE = ct_expr(cal[1], env, file)
-                var dargs26 = tobjE + ".data"
+                // T31 S4②:实参文本一次收集(副作用语义同旧);槽族经帧池提升注册
+                //(多实参悬窗:先求值实参仅存 C 临时,继后实参表达式内 GC=盲区 UAF)
+                var vtexts = List[Str]()
+                var vcodes = List[Str]()
                 var di26: I32 = 1
                 while di26 < ag.len {
-                    dargs26 = dargs26 + ", " + ct_expr(ag[di26], env, file)
+                    vcodes.push(ct_typeof(ag[di26], env, file))
+                    vtexts.push(ct_expr(ag[di26], env, file))
                     di26 += 1
+                }
+                var vregs = ct_reg_line_c("_cvr", tobjt)
+                var vhas = vregs != ""
+                var di27: I32 = 0
+                while di27 < vcodes.len {
+                    if ct_reg_line_c("_cv" + (di27 + 1).to_string(), vcodes[di27]) != "" { vhas = true }
+                    di27 += 1
+                }
+                if vhas {
+                    var vpre = ct_ctype(tobjt) + " _cvr = " + tobjE + "; " + vregs
+                    var vcall = "_cvr.data"
+                    di27 = 0
+                    while di27 < vtexts.len {
+                        var vsx = "_cv" + (di27 + 1).to_string()
+                        vpre = vpre + " " + ct_ctype(vcodes[di27]) + " " + vsx + " = " + vtexts[di27] + "; " + ct_reg_line_c(vsx, vcodes[di27])
+                        vcall = vcall + ", " + vsx
+                        di27 += 1
+                    }
+                    return "(\{ " + vpre + " ((vt_" + ttn + "*)_cvr.vtable)->" + m + "(" + vcall + "); })"
+                }
+                var dargs26 = tobjE + ".data"
+                var di28: I32 = 0
+                while di28 < vtexts.len {
+                    dargs26 = dargs26 + ", " + vtexts[di28]
+                    di28 += 1
                 }
                 return "((vt_" + ttn + "*)" + tobjE + ".vtable)->" + m + "(" + dargs26 + ")"
             }
@@ -979,6 +1008,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     upi += 1
                 }
                 // 接收者按首参槽形:p<内> 码直传(已是指针)/u: 值码取址/装盒
+                // T31 S4②:接收者槽族先落帧池临时(_cur),后续取址/装盒/cast 皆对已根槽
+                var ureg = ct_reg_line_c("_cur", objt)
+                var upre = ""
+                if ureg != "" {
+                    upre = ct_ctype(objt) + " _cur = " + obj + "; " + ureg
+                    obj = "_cur"
+                }
                 var upc0 = ct_ty_code(ct_mono_subst_ty(ugd[3][1][3], utpsn, utys), file)
                 var urx = ""
                 if upc0.len > 1 && byte_at(upc0, 0) == 112 {
@@ -992,20 +1028,53 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 } else {
                     urx = ct_arg_cast(objt, upc0, obj)
                 }
-                return ct_spec_call_emit(file, env, ag, m, mk("None"), utpsn, utys, ugd, urx)
+                var ures = ct_spec_call_emit(file, env, ag, m, mk("None"), utpsn, utys, ugd, urx)
+                if upre != "" {
+                    return "(\{ " + upre + " " + ures + "; })"
+                }
+                return ures
             }
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"
             if pcs.len > 0 { p0 = pcs[0] }
-            var ufargs = ""
+            // T31 S4②:实参文本一次收集;接收者/槽族实参经帧池提升注册
+            var utexts = List[Str]()
+            var ucodes = List[Str]()
             var ui: I32 = 1
             while ui < ag.len {
-                if ui > 1 { ufargs = ufargs + ", " }
-                var pcu = "i"
-                if ui < pcs.len { pcu = pcs[ui] }
-                var acu = ct_typeof(ag[ui], env, file)
-                ufargs = ufargs + ct_arg_cast(acu, pcu, ct_expr(ag[ui], env, file))
+                ucodes.push(ct_typeof(ag[ui], env, file))
+                utexts.push(ct_expr(ag[ui], env, file))
                 ui += 1
+            }
+            var mregs = ct_reg_line_c("_cmr", objt)
+            var mhas = mregs != ""
+            var ui2: I32 = 0
+            while ui2 < ucodes.len {
+                if ct_reg_line_c("_cm" + (ui2 + 1).to_string(), ucodes[ui2]) != "" { mhas = true }
+                ui2 += 1
+            }
+            var ufargs = ""
+            var ui3: I32 = 0
+            while ui3 < utexts.len {
+                var pcu3 = "i"
+                if ui3 + 1 < pcs.len { pcu3 = pcs[ui3 + 1] }
+                if ui3 > 0 { ufargs = ufargs + ", " }
+                ufargs = ufargs + ct_arg_cast(ucodes[ui3], pcu3, utexts[ui3])
+                ui3 += 1
+            }
+            if mhas {
+                var mpre = ct_ctype(objt) + " _cmr = " + obj + "; " + mregs
+                var mcall = ct_arg_cast(objt, p0, "_cmr")
+                var ui4: I32 = 0
+                while ui4 < utexts.len {
+                    var msx = "_cm" + (ui4 + 1).to_string()
+                    mpre = mpre + " " + ct_ctype(ucodes[ui4]) + " " + msx + " = " + utexts[ui4] + "; " + ct_reg_line_c(msx, ucodes[ui4])
+                    var pcu4 = "i"
+                    if ui4 + 1 < pcs.len { pcu4 = pcs[ui4 + 1] }
+                    mcall = mcall + ", " + ct_arg_cast(ucodes[ui4], pcu4, msx)
+                    ui4 += 1
+                }
+                return "(\{ " + mpre + " t_" + m + "(" + mcall + "); })"
             }
             if ufargs.len > 0 {
                 return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ", " + ufargs + ")"
