@@ -828,6 +828,18 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         while grow {
                             grow = false
                             var acc = List[Str]()
+                            // 消费方引用闭包(2026-10-04 拆分阶段二):门面自身的
+                            // 声明(out)对本模块符号的引用也进 keep——门面渲染/驱动
+                            // 代码跨文件调用模块内部助手(gt_cls_prop 类),不在请求
+                            // 清单里、也不在模块内闭包上,此前会被门面级 keep 丢弃。
+                            // 只超集收紧方向:零引用符号仍不搭车(geom _hidden 语义不变)
+                            var jo: I32 = 1
+                            while jo < out.len {
+                                if out[jo][0] != "Use" {
+                                    if !pkg_refs_walk(out[jo], ktags, kshapes, acc, 0) { refs_ok = false }
+                                }
+                                jo += 1
+                            }
                             var j9: I32 = 1
                             while j9 < mf.len {
                                 // 遍历面 = 将随合并走的 decl(非 Use;7-kind 须在 keep):
