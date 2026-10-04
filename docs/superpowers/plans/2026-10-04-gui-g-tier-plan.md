@@ -21,6 +21,10 @@
 4. **机刷协作守则**:夹具号 s79 起建议槽,**执行前实测再占**(撞号分目录不撞号,
    s78_xfileview/s78_themepkg 先例);提交 pathspec 限定;发射泳道在飞三文件
    (driver_emit/trans_conc/trans_expr)零交集原则继续。
+5. **惯例面补记(1004 深夜复审增补)**:引擎/检查面改动随件=诊断码按 spec §10
+   注册表登记+e8_corpus 负例随件;pkgs/gui 域 decls 锁申报+COVERAGE 本日记;
+   组件事件头按 backlog 合约表(组件事件头=合约,列表 props 经同名 each:名
+   bind 通道透传)。
 
 ## 1. 地基盘点(1004 考据快照)
 
@@ -109,7 +113,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 - 落点:pkgs/gui_widgets 组件库(第四件套,snake_case 类名+w_* 样式预设家族)+
   examples/gui_widgets 陈列室段;模糊匹配 v1=contains 子序计分(应用侧纯函数);
-  键盘导航复用库内 Select/WList 配方。
+  键盘导航复用库内 Select/WList 配方;打开即 gui_focus_req 面板输入(GUI-14✓,
+  零缝确认)。
 - 验收:headless——hotkey 触发开、过滤行数、↓/Enter 执行路径(d_send_key 序列)、
   Esc 关闭;渲染面 d_cmd 断言面板层级。
 - 夹具槽 s79_palette。裁决点:无。
@@ -133,7 +138,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 - 落点:pkgs/gui_widgets 组件库;**弹层容器=库内 Dialog 富形态组件**(三路
   dialog_close/cancel/confirm)优先——**弹层动态锚**(GUI-10 v3 遗留:查询触发器
   矩形)仅锚定形态需要,若随件落作为共享小缝先行(color picker 同消费),
-  否则 v1 走 Dialog 模态/内联展开形态。
+  否则 v1 走 Dialog 模态/内联展开形态。locale 不进引擎:周首日/月名/格式走
+  props 应用侧(最小完备,引擎零 locale 概念)。
 - 验收:月历 correctness(跨月/闰年/周对齐,驱动=std time.ct 对拍)、选中写回、
   time_pick 步进键盘路径。
 - 夹具槽 s80_datepick。裁决点:弹层动态锚随件 or 内联先行(执行时定,倾向随件)。
@@ -172,7 +178,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 - 落点:pkgs/gui 域内子文件 gui_anim.ct+门面 re-export(装载器 re-export 能力
   gui_theme 先例已解锁;anim=纯函数库非视图,不进 gui_widgets 组件包)+
-  陈列室;**写码前核对双宿主 F64 坑位清单**(host-divergences)。
+  陈列室;实现优先 **I32 千分比算术**(permille lerp,无除零可钳),F64 仅在
+  ease 曲线必需处用且写码前核对双宿主 F64 坑位清单(host-divergences)。
 - 验收:d_tick 驱动帧,断言关键帧值(单调/终点钳位/超时恒值);真窗 --run 手验顺滑。
 - 夹具槽 s82_anim。裁决点:声明式 `transition:` 属性(引擎代插值)**不在本件**,
   另行裁决(见 §4 决策 5)。
@@ -196,7 +203,8 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 - 落点:pkgs/gui_widgets 组件库(w_chart* 样式家族)+ 陈列室数据段;hover
   tooltip v2(依赖命中查询 rt_hit_name,gui_render.ct);成规模后另立 pkgs/charts
-  候分层四问(见裁决 7)。
+  候分层四问(见裁决 7)。哲学面:线图复用既有 canvas 直绘面(GUI-25),
+  **零新绘制原语**(§13.1 判据 3);条图=Clay RECT 原生。
 - 验收:渲染面 d_cmd_x/w 断言条几何(归一正确性)、canvas 像素探针验折线;
   零数据/单点/负值边界。
 - 夹具槽 s83_chart。裁决点:线图树内 z 序(见 §4 决策 4)。
@@ -262,8 +270,10 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 - 落点:引擎面=rich 属性收编(检查面+运行时):文本解析→span 段(字重 W5c✓/
   颜色/链接标记)→逐段测宽排放(单行 v1;测量=rt_meas_w,gui_driver.ct;排放臂
-  在 rt_emit,gui_render.ct);链接段 hover 光标+click open_link✓。**多行 wrap
-  富文本 v2**(Clay 拆行与分段排版协同是深水面,s51/s75 教训在册)。
+  在 rt_emit,gui_render.ct);链接段 hover 光标+click open_link✓。**v1 限制
+  登记**:富文本不与折行系组合(ellipsis/maxlines 对 rich 标记不适用,断言其
+  显式拒绝或忽略);**多行 wrap 富文本 v2**(Clay 拆行与分段排版协同是深水面,
+  s51/s75 教训在册)。
 - 验收:分段测宽对拍(纯串拼接 vs 分段和,ft 面)、hit 命中链接段、转义
   (字面 `*` 的逃逸形态);既有 ellipsis/maxlines 回归。
 - 夹具槽 s87_richtext。裁决点:标记语法(§4 决策 2)。
@@ -297,8 +307,9 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 - 落点:①语义面(检查面+运行时):aria_role/aria_label 属性收编入 GuiTree 槽
   (GuiTree 留驻门面=声明本位),缺省 role 由 tag 推(button/input/label…);
   headless d_a11y_dump() 树投影探针(gui_driver.ct d_* 家族;语义树可断言,
-  不依赖平台)。②平台 shim:mac NSAccessibility(子树投影+焦点跟随播报;焦点环
-  rt_focus_next✓ 为导航序真源);Win UIA/Linux AT-SPI 另立案。
+  不依赖平台)。视觉可达性侧已有地基可交叉引用:高对比主题 theme_contrast
+  (05186db,gui_theme 在库)。②平台 shim:mac NSAccessibility(子树投影+焦点
+  跟随播报;焦点环 rt_focus_next✓ 为导航序真源);Win UIA/Linux AT-SPI 另立案。
 - 验收:d_a11y_dump 全量断言(role/label/focus 链);真窗 VoiceOver 手验记录
   (可达性=播报+焦点导航,非全操作 v1)。
 - 夹具槽 s90_a11y。裁决点:平台范围与深度(§4 决策 3)。
@@ -309,6 +320,11 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 - 形态(裁决 1 定向后的推荐路):**v1=引擎级虚拟多窗**(单 OS 宿主窗):窗口管理器
   (每窗独立 GuiTree+rects+overlay 栈+焦点;自绘标题栏/拖拽移动/缩放/z 序;
   事件路由=焦点窗优先),raylib/Clay 全局态零波及(v1 不换底层)。
+  **哲学定位注(0924「替身」禁令红线)**:v1 定性=**引擎浮板/面板能力**(检查器/
+  浮板/多文档面板,同 dock 类工具包先例),**不是 OS 多窗的替身**——API 命名与
+  文档须诚实区分(命名并入裁决 1:gui_board_open 类命名,或 window 名+文档明示
+  引擎级),OS 级多窗作为真能力另案评审,不以 v1 冒充其语义。热重载范围 v1=
+  主窗(_d 循环既有),虚拟窗是否随主窗重解析随件实测登记。
 
   ```ct
   var win: I32 = gui_window_open("检查器", 320, 480, inspector_view)
@@ -328,7 +344,7 @@ GUI-32 压轴(窗口层决策未裁决前不动)。**波间无硬依赖,可机�
 
 | # | 件 | 问题 | 选项 | 推荐 |
 |---|---|---|---|---|
-| 1 | GUI-32 | 多窗形态 | A 虚拟多窗 v1,OS 级另案评审 / B 直接窗口层换装 SDL3 / C 只做虚拟不做 OS 级 | **A**(不动底层先解锁应用形态;OS 级牵三平台另评) |
+| 1 | GUI-32 | 多窗形态 | A 虚拟多窗 v1,OS 级另案评审 / B 直接窗口层换装 SDL3 / C 只做虚拟不做 OS 级 | **A**(不动底层先解锁应用形态;OS 级牵三平台另评;**v1 API 命名须与 OS 窗诚实区分**——gui_board_open 类命名或文档明示引擎级,守 0924 替身红线) |
 | 2 | GUI-33 | 内联标记语法 | A markdown 子集 / B 自定义尖括号 tag | **A**(无嵌套尖括号转义冲突,用户熟悉;`*` 逃逸形态随件定) |
 | 3 | GUI-35/36 | 平台范围 | A mac shim+桌面触屏先行,Win/Linux/移动另案 / B 三平台齐上 | **A**(开发机可验;语义面全平台落,shim 分步) |
 | 4 | GUI-41 | 线图 z 序 | A v1 接受 overlay(canvas 盖 UI),树内 canvas 缝另案 / B 本件立案 Clay CUSTOM 贯通 | **A**(条图树内零缝已覆盖多数场景;CUSTOM 贯通=G 档尾独立件) |
