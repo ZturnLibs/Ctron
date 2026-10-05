@@ -1404,6 +1404,17 @@ fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str
     }
 }
 
+// TEXT fg 探针(富含色断言;pub extern 带参 E2020 怪相在册——包装 fn 绕行)
+pub fn d_cmd_text_fg_r(i: I32) -> I32 {
+    return gui_cmd_text_fg_r(i)
+}
+pub fn d_cmd_text_fg_g(i: I32) -> I32 {
+    return gui_cmd_text_fg_g(i)
+}
+pub fn d_cmd_text_fg_b(i: I32) -> I32 {
+    return gui_cmd_text_fg_b(i)
+}
+
 // headless 驱动面(d_frame 无 act 参——fixture 帧循环显式驱动)
 pub fn d_async_drain(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
     rt_async_drain(t.t, bind, act)
