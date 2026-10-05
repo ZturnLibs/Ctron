@@ -38,6 +38,19 @@ sh "$DIR/compiler/bench.sh" 2>&1 | tail -12
 echo "[7/9] FFI 边界微基准(跨 C-ABI)+ GC 性能登记(§9.4;digest 硬门+比值 WARN)"
 sh "$DIR/compiler/test/bench_ffi.sh" 2>&1 | tail -16
 sh "$DIR/tests/gc/bench.sh" 2>&1 | tail -3
+
+# T31 事故回归探针(2026-10-05):发射确定性双环境——编译器在 CTRON_GC=1 下自身
+# 被 GC 化,发射产物必须与 off 逐字一致(s/N 槽注册+盒类 bump 的常驻守门哨)
+PT=$(mktemp -d)
+CTRON_STDPATH="$DIR/lib/std" CTRON_GC=1 "$DIR/compiler/bin/ctron-emit" run "$DIR/compiler/build/cc_run.ct" > "$PT/emit_gc1.c" 2>/dev/null
+env -u CTRON_GC CTRON_STDPATH="$DIR/lib/std" "$DIR/compiler/bin/ctron-emit" run "$DIR/compiler/build/cc_run.ct" > "$PT/emit_off.c" 2>/dev/null
+if ! diff -q "$PT/emit_gc1.c" "$PT/emit_off.c" > /dev/null 2>&1; then
+    echo "[FAIL] 发射确定性双环境探针分歧(编译器 GC 化输出漂移;归 GC 泳道)" >&2
+    rm -rf "$PT"
+    exit 1
+fi
+rm -rf "$PT"
+echo "  ok  : 发射确定性双环境探针(GC=1/off 大语料发射逐字一致)"
 sh "$DIR/tests/lang/bench/bench.sh" 2>&1 | tail -3
 
 echo "[8/9] GUI 阶梯(S1–S9 headless:布局桥/事件/绑定竖切/命令缓冲断言/FreeType 中文)"
