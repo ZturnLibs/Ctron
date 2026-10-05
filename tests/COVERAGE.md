@@ -1409,3 +1409,9 @@ wlput realloc 失败静默降级=漏标(OOM 健壮性债在册,修法=worklist �
 UAF)改为 ctron_panic 响亮退出(消息点名「标记候选丢失」)——梯内负载性 flake 的
 静默腐坏路径自此转为可诊断失败。随批两修:wlput 先于 ctron_panic 定义需前向声明;
 串字面量内引号转义第六踩。门禁(真重建):gc/run 9/9+suite 100/100+bench 1.000+net 18/18。
+
+**auth 家族 GC=1 对拍补全(2026-10-05)**:a_body 双臂 rc=0 输出逐字一致;a_guard/a_sess
+GC=1 600s 超时(off 正常)——interp 重负载 CPU 墙在 auth 家族复现,与 15-20× 刻画一致。
+**GC=1 边界画像定稿**:轻/中负载(全语义套件+net+gui 阶梯+轻 http 夹具)全绿;重负载
+(interp 巨语料:a_jwt/guard/sess/db-pg/编译器自举)CPU 15-20×,RSS 恒有界。翻面决策
+的完整证据面=套件绿✓+RSS 有界✓+CPU 墙(M2 域)✓+OOM 响亮化✓。
