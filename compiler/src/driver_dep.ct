@@ -1,0 +1,613 @@
+// =====================================================================
+// driver_dep.ct —— T49 依赖解析驱动(ctron-dep;ctc.sh dep 同面)
+// 输入锚 ANCHORINPUT = Ctron.ctcl 路径。流程:清单 → dep 扫描(E5049/E5046)
+//   → workspace 成员并集(E5051)→ 逐 dep 解析(lock 钉定 → 已安装 → registry,
+//   E5052)→ digest 计算/校验(E5053)→ Ctron.lock 规范形态写回(无时间戳,
+//   name 字节序;二跑逐字节稳定)。
+// 诊断格式:编译器同族 "Ctron.ctcl: E50xx msg"(rc=1);lock 面归 Ctron.lock。
+// 解析优先序(单个 version dep):①lock 钉定(满足约束)②已安装 pkgs/<名>/
+//   (满足约束)③registry 最高满足版——确定性 + 离线优先。
+// =====================================================================
+
+// registry 根:①CTRON_REGPATH ②~/.ctron/registry(本地目录协议,零网络)
+fn dep_reg_root() -> Str {
+    var r = env_get("CTRON_REGPATH")
+    if r.len > 0 {
+        return r
+    }
+    var h = env_get("HOME")
+    if h.len > 0 {
+        return h + "/.ctron/registry"
+    }
+    return ""
+}
+
+// 单文件摘要(缺失/空 = "")
+fn dep_file_digest(path: Str) -> Str {
+    match read_file(path) {
+        Some(s) => {
+            if s.len == 0 {
+                return ""
+            }
+            return pkg_sha256_hex(s)
+        }
+        None => { return "" }
+    }
+    return ""
+}
+
+// 去尾换行(sha256 文件内容)
+fn dep_trim_nl(s: Str) -> Str {
+    var out = s
+    while out.len > 0 {
+        var c = byte_at(out, out.len - 1)
+        if or2(c == 10, c == 13) {
+            out = byte_slice(out, 0, out.len - 1)
+        } else {
+            break
+        }
+    }
+    return out
+}
+
+// digest 值剥 "sha256:" 前缀(lock 存储形态 → 裸 hex)
+fn dep_strip_sha(d: Str) -> Str {
+    if d.len > 7 {
+        if byte_slice(d, 0, 7) == "sha256:" {
+            return byte_slice(d, 7, d.len)
+        }
+    }
+    return d
+}
+
+// ---- Ctron.lock 平表(4 槽组 [name, version, digest, rev];文件缺/空 → 空表)----
+fn dep_lock_of(mfdir: Str) -> List[Str] {
+    var out = List[Str]()
+    match read_file(mfdir + "/Ctron.lock") {
+        Some(t) => {
+            if t.len == 0 {
+                return out
+            }
+            var i: I32 = 0
+            while i < t.len {
+                if pkg_ctcl_at(t, i, "pkg") && pkg_ctcl_pre(t, i) {
+                    var j = i + 3
+                    while j < t.len && byte_at(t, j) == 32 {
+                        j += 1
+                    }
+                    if j < t.len && byte_at(t, j) == 34 {
+                        var k = j + 1
+                        while k < t.len && byte_at(t, k) != 34 {
+                            k += 1
+                        }
+                        if k < t.len {
+                            var nm = byte_slice(t, j + 1, k)
+                            var b = k + 1
+                            while b < t.len && byte_at(t, b) != 123 {
+                                b += 1
+                            }
+                            if b < t.len {
+                                var e = b + 1
+                                while e < t.len && byte_at(t, e) != 125 {
+                                    e += 1
+                                }
+                                if e < t.len {
+                                    var body = byte_slice(t, b + 1, e)
+                                    out.push(nm)
+                                    out.push(pkg_plugin_field(body, "version"))
+                                    out.push(dep_strip_sha(pkg_plugin_field(body, "digest")))
+                                    out.push(pkg_plugin_field(body, "rev"))
+                                }
+                            }
+                            i = k
+                        }
+                    }
+                }
+                i += 1
+            }
+        }
+        None => {}
+    }
+    return out
+}
+
+// lock 平表按名查槽基(4 槽组);未命中 -1
+fn dep_lock_slot(locks: List[Str], nm: Str) -> I32 {
+    var i: I32 = 0
+    while i + 3 < locks.len {
+        if locks[i] == nm {
+            return i
+        }
+        i += 4
+    }
+    return 0 - 1
+}
+
+// ---- registry 版本挑选:约束过滤 + 数字三元最大 ----
+fn dep_registry_pick(regroot: Str, name: Str, constraint: Str) -> Str {
+    var names = List[Str]()
+    match read_dir(regroot + "/" + name) {
+        Some(ls) => {
+            var i: I32 = 0
+            var cur = ""
+            while i < ls.len {
+                var c = byte_at(ls, i)
+                if c == 10 {
+                    if cur.len > 0 {
+                        names.push(cur)
+                    }
+                    cur = ""
+                } else {
+                    cur = cur + byte_slice(ls, i, i + 1)
+                }
+                i += 1
+            }
+            if cur.len > 0 {
+                names.push(cur)
+            }
+        }
+        None => { return "" }
+    }
+    var best = ""
+    var i2: I32 = 0
+    while i2 < names.len {
+        var v = names[i2]
+        if pkg_constraint_ok(constraint, v) {
+            if best.len == 0 {
+                best = v
+            } else {
+                if pkg_ver_cmp(v, best) > 0 {
+                    best = v
+                }
+            }
+        }
+        i2 += 1
+    }
+    return best
+}
+
+// ---- 条目平表(7 槽组 [name, version, source, path, git, rev, digest])----
+fn dep_ent_find(entries: List[Str], nm: Str) -> I32 {
+    var i: I32 = 0
+    while i + 6 < entries.len {
+        if entries[i] == nm {
+            return i
+        }
+        i += 7
+    }
+    return 0 - 1
+}
+
+// 条目提交:同名 7 槽全等 = 幂等丢弃;不等 = E5051 冲突防线(workspace 并集)
+fn dep_ent_commit(entries: List[Str], nm: Str, ver: Str, src: Str, pv: Str, gv: Str, rv: Str, dg: Str, diags: List[Str]) {
+    var eslot = dep_ent_find(entries, nm)
+    if eslot >= 0 {
+        var same = or2(entries[eslot + 1] == ver, false)
+        if entries[eslot + 2] == src {
+            if entries[eslot + 3] == pv {
+                if entries[eslot + 4] == gv {
+                    if entries[eslot + 5] == rv {
+                        if entries[eslot + 6] == dg {
+                            same = true
+                        }
+                    }
+                }
+            }
+        }
+        if !same {
+            diags.push("Ctron.ctcl: E5051 workspace 成员依赖冲突:" + nm + "(多次解析结果不一致)")
+        }
+        return
+    }
+    entries.push(nm)
+    entries.push(ver)
+    entries.push(src)
+    entries.push(pv)
+    entries.push(gv)
+    entries.push(rv)
+    entries.push(dg)
+}
+
+// 条目按 name 插入排序(7 槽组整体换位;规范形态字节序)
+fn dep_entries_sort(entries: List[Str]) {
+    var a: I32 = 7
+    while a < entries.len {
+        var b = a - 7
+        while b >= 0 {
+            if pkg_names_lt(entries[a], entries[b]) {
+                var k: I32 = 0
+                while k < 7 {
+                    var tmp = entries[b + k]
+                    entries[b + k] = entries[a + k]
+                    entries[a + k] = tmp
+                    k += 1
+                }
+                b -= 7
+            } else {
+                break
+            }
+        }
+        a += 7
+    }
+}
+
+// 目录下清单 version 键(缺清单/缺键 = dflt;单 match 每函数约束的拆出件)
+fn dep_manifest_ver(dir: Str, dflt: Str) -> Str {
+    var v = dflt
+    match read_file(dir + "/Ctron.ctcl") {
+        Some(mt) => {
+            if mt.len > 0 {
+                var x = pkg_plugin_field(mt, "version")
+                if x.len > 0 {
+                    v = x
+                }
+            }
+        }
+        None => {}
+    }
+    return v
+}
+
+// registry 版本 sha256 文件内容(去尾换行;缺 = "")
+fn dep_reg_sha(regroot: Str, nm: Str, ver: Str) -> Str {
+    var r = ""
+    match read_file(regroot + "/" + nm + "/" + ver + "/sha256") {
+        Some(x) => { r = dep_trim_nl(x) }
+        None => {}
+    }
+    return r
+}
+
+// 单 dep 解析(nm/form/val/extra 出 pkg_deps_text 4 槽组;本 fn 零 match——
+// 发射约束「单 match 每函数(t_mv)」,读取面全走辅助)
+fn dep_resolve_one(mfdir: Str, regroot: Str, locks: List[Str], nm: Str, form: Str, val: Str, extra: Str, entries: List[Str], diags: List[Str], notes: List[Str]) {
+    if form == "path" {
+        var depdir = mfdir + "/" + val
+        if !fs_exists(depdir) {
+            diags.push("Ctron.ctcl: E5052 dep 解析失败:path 依赖 " + nm + " 目录不存在:" + depdir)
+            return
+        }
+        var ver = dep_manifest_ver(depdir, "0.0.0")
+        var dg = pkg_tree_digest(depdir)
+        if dg.len == 0 {
+            diags.push("Ctron.ctcl: E5052 dep 解析失败:path 依赖 " + nm + " 无 .ct 源:" + depdir)
+            return
+        }
+        dep_ent_commit(entries, nm, ver, "path", val, "", "", dg, diags)
+        return
+    }
+    if form == "version" {
+        var bad = pkg_constraint_check(val)
+        if bad.len > 0 {
+            diags.push("Ctron.ctcl: E5046 键 version 值 '" + val + "' 不符合 " + bad)
+            return
+        }
+        var insdir = mfdir + "/pkgs/" + nm
+        var insmod = insdir + "/" + nm + ".ct"
+        // ① lock 钉定(满足约束 → 锁胜,可复现;digest 必核)
+        var lslot = dep_lock_slot(locks, nm)
+        if lslot >= 0 {
+            var lv = locks[lslot + 1]
+            var ld = locks[lslot + 2]
+            if pkg_constraint_ok(val, lv) {
+                var actual = dep_file_digest(insmod)
+                if actual.len == 0 {
+                    diags.push("Ctron.ctcl: E5052 dep 解析失败:" + nm + " 未安装(试: ctron add " + nm + "@" + lv + ")")
+                    return
+                }
+                if actual != ld {
+                    diags.push("Ctron.lock: E5053 lock 内容寻址不符:" + nm + "(试: ctron add " + nm + " 重装,或删 Ctron.lock 重解析)")
+                    return
+                }
+                dep_ent_commit(entries, nm, lv, "registry", "", "", "", ld, diags)
+                return
+            }
+        }
+        // ② 已安装满足(离线优先)
+        var iv = dep_manifest_ver(insdir, "")
+        if iv.len > 0 {
+            if pkg_constraint_ok(val, iv) {
+                var dg2 = dep_file_digest(insmod)
+                if dg2.len > 0 {
+                    dep_ent_commit(entries, nm, iv, "registry", "", "", "", dg2, diags)
+                    return
+                }
+            }
+        }
+        // ③ registry 最高满足版(须已安装且版本一致)
+        var pick = dep_registry_pick(regroot, nm, val)
+        if pick.len == 0 {
+            diags.push("Ctron.ctcl: E5052 dep 解析失败:" + nm + " 无满足 " + val + " 的已发布版本(registry: " + regroot + ")")
+            return
+        }
+        if iv != pick {
+            diags.push("Ctron.ctcl: E5052 dep 解析失败:" + nm + " 需 " + pick + "(试: ctron add " + nm + "@" + pick + ")")
+            return
+        }
+        var actual2 = dep_file_digest(insmod)
+        if actual2.len == 0 {
+            diags.push("Ctron.ctcl: E5052 dep 解析失败:" + nm + " 安装损坏:缺 module")
+            return
+        }
+        var rsha = dep_reg_sha(regroot, nm, pick)
+        if rsha.len > 0 {
+            if rsha != actual2 {
+                diags.push("Ctron.lock: E5053 lock 内容寻址不符:" + nm + "(registry sha256 与实装 module 不一致)")
+                return
+            }
+        }
+        dep_ent_commit(entries, nm, pick, "registry", "", "", "", actual2, diags)
+        return
+    }
+    // git 形:v0 不取网(坑位:T43 对外发布面禁令)——消费 pkgs/ 安装位,lock 钉 rev+digest
+    var insdir2 = mfdir + "/pkgs/" + nm
+    var insmod2 = insdir2 + "/" + nm + ".ct"
+    var dg3 = dep_file_digest(insmod2)
+    if dg3.len == 0 {
+        diags.push("Ctron.ctcl: E5052 dep 解析失败:" + nm + "(git 形)未安装于 pkgs/(v0 不取网;试: ctron add " + nm + " 或手动拷入)")
+        return
+    }
+    var ver2 = dep_manifest_ver(insdir2, "0.0.0")
+    var lslot2 = dep_lock_slot(locks, nm)
+    if lslot2 >= 0 {
+        var lrev = locks[lslot2 + 3]
+        var ld2 = locks[lslot2 + 2]
+        if lrev == extra {
+            if ld2.len > 0 {
+                if dg3 != ld2 {
+                    diags.push("Ctron.lock: E5053 lock 内容寻址不符:" + nm + "(试: ctron add " + nm + " 重装,或删 Ctron.lock 重解析)")
+                    return
+                }
+            }
+            dep_ent_commit(entries, nm, ver2, "git", "", val, extra, dg3, diags)
+            return
+        }
+    }
+    notes.push("ctron-dep: git \"" + nm + "\" 钉定 rev=" + extra)
+    dep_ent_commit(entries, nm, ver2, "git", "", val, extra, dg3, diags)
+}
+
+// ---- workspace 段(T49;§5 注册表)----
+
+// workspace 记录块探测(空块合法)
+fn dep_has_ws(t: Str) -> Bool {
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "workspace") && pkg_ctcl_pre(t, i) {
+            var j = i + 9
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 123 {
+                return true
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
+// 索引前换行计数 → 行号(1 基;E5045 首现行号)
+fn dep_line_of(t: Str, idx: I32) -> I32 {
+    var ln: I32 = 1
+    var i: I32 = 0
+    while i < idx && i < t.len {
+        if byte_at(t, i) == 10 {
+            ln += 1
+        }
+        i += 1
+    }
+    return ln
+}
+
+// member 键控块平表 [名, path];缺 path → E5051;重复名 → E5045(四线同文案)
+fn dep_ws_members(t: Str, diags: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var seen = List[Str]()
+    var seenln = List[I32]()
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "member") && pkg_ctcl_pre(t, i) {
+            var j = i + 6
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 34 {
+                var k = j + 1
+                while k < t.len && byte_at(t, k) != 34 {
+                    k += 1
+                }
+                if k < t.len {
+                    var nm = byte_slice(t, j + 1, k)
+                    var b = k + 1
+                    while b < t.len && byte_at(t, b) != 123 {
+                        b += 1
+                    }
+                    if b < t.len {
+                        var e = b + 1
+                        while e < t.len && byte_at(t, e) != 125 {
+                            e += 1
+                        }
+                        if e < t.len {
+                            var body = byte_slice(t, b + 1, e)
+                            var pv = pkg_plugin_field(body, "path")
+                            var ln = dep_line_of(t, i)
+                            var dupi: I32 = 0 - 1
+                            var si: I32 = 0
+                            while si < seen.len {
+                                if seen[si] == nm {
+                                    dupi = si
+                                }
+                                si += 1
+                            }
+                            if dupi >= 0 {
+                                diags.push("Ctron.ctcl: E5045 重复的 member \"" + nm + "\"(首次在第 " + seenln[dupi].to_string() + " 行);同名块禁止追加")
+                            } else {
+                                seen.push(nm)
+                                seenln.push(ln)
+                            }
+                            if pv.len == 0 {
+                                diags.push("Ctron.ctcl: E5051 member \"" + nm + "\" 缺必填键 path")
+                            }
+                            out.push(nm)
+                            out.push(pv)
+                        }
+                    }
+                    i = k
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// 成员清单读取入并集(嵌 workspace = E5051;缺文件 = E5051;单 match 每函数拆出)
+fn dep_member_read(mfs: List[Str], mdir: Str, nm: Str, diags: List[Str]) -> I32 {
+    var ok: I32 = 0
+    match read_file(mdir + "/Ctron.ctcl") {
+        Some(mt) => {
+            if mt.len > 0 {
+                if dep_has_ws(mt) {
+                    diags.push("Ctron.ctcl: E5051 workspace 嵌套不允许:" + nm)
+                } else {
+                    mfs.push(mdir)
+                    mfs.push(mt)
+                    ok = 1
+                }
+            }
+        }
+        None => {
+            diags.push("Ctron.ctcl: E5051 member \"" + nm + "\" path 不存在:" + mdir)
+        }
+    }
+    return ok
+}
+
+// ---- lock 组装与写回 ----
+fn dep_lock_write(mfdir: Str, entries: List[Str]) -> Bool {
+    dep_entries_sort(entries)
+    var out = "// Ctron.lock —— 依赖解析产物(内容寻址;勿手编,ctron-dep 生成)\n"
+    out = out + "lock \{\n    manifest_version = 1\n}\n"
+    var i: I32 = 0
+    while i + 6 < entries.len {
+        out = out + "\npkg \"" + entries[i] + "\" \{\n"
+        out = out + "    version = \"" + entries[i + 1] + "\"\n"
+        out = out + "    source = \"" + entries[i + 2] + "\"\n"
+        if entries[i + 3].len > 0 {
+            out = out + "    path = \"" + entries[i + 3] + "\"\n"
+        }
+        if entries[i + 4].len > 0 {
+            out = out + "    git = \"" + entries[i + 4] + "\"\n"
+        }
+        if entries[i + 5].len > 0 {
+            out = out + "    rev = \"" + entries[i + 5] + "\"\n"
+        }
+        out = out + "    digest = \"sha256:" + entries[i + 6] + "\"\n}\n"
+        i += 7
+    }
+    var prev = ""
+    match read_file(mfdir + "/Ctron.lock") {
+        Some(p) => { prev = p }
+        None => {}
+    }
+    if prev == out {
+        return false
+    }
+    return fs_write(mfdir + "/Ctron.lock", out)
+}
+
+fn main() -> I32 {
+    // 双口径(driver_check 同款):read_file 实参必须字面量——发射时 ct_swap_anchor
+    // 换 CLI 标记,原生 ctron-dep 响应 `run <file>`;seed 面由 ctc.sh sed 换靶。
+    // 路径推导用 ctron_entry()(空回落字面量变量 = seed 换靶后的真路径)。
+    let mfpath = "ANCHORINPUT"
+    var epath = ctron_entry()
+    if seq2(epath, "") {
+        epath = mfpath
+    }
+    var mfdir = pkg_dir_of(epath)
+    var mftext = ""
+    var mfok = false
+    // 锚读必须 let + read_file(字面量) 形(ct_swap_anchor 只换 main 首个此形;
+    // 字面量发射时换 CLI 标记,原生 ctron-dep 响应 `run <file>`;seed 面 ctc.sh sed 换靶)
+    let src = read_file("ANCHORINPUT")
+    match src {
+        Some(x) => {
+            if x.len > 0 {
+                mftext = x
+                mfok = true
+            }
+        }
+        None => {}
+    }
+    if !mfok {
+        println("ctron-dep: 清单不可读:" + epath)
+        return 1
+    }
+    var diags = List[Str]()
+    var notes = List[Str]()
+    var entries = List[Str]()
+    // workspace:根清单有 workspace 块 → 成员清单展开(成员再嵌 workspace = E5051)
+    var mfs = List[Str]()
+    mfs.push(mfdir)
+    mfs.push(mftext)
+    var nmember: I32 = 0
+    if dep_has_ws(mftext) {
+        var mems = dep_ws_members(mftext, diags)
+        var mi: I32 = 0
+        while mi + 1 < mems.len {
+            if mems[mi + 1].len > 0 {
+                var mdir = mfdir + "/" + mems[mi + 1]
+                var pushed = dep_member_read(mfs, mdir, mems[mi], diags)
+                nmember += pushed
+            }
+            mi += 2
+        }
+    }
+    var locks = dep_lock_of(mfdir)
+    var regroot = dep_reg_root()
+    // 逐清单 dep 解析(根 + 成员;diags 非空即止)
+    var mi2: I32 = 0
+    while mi2 + 1 < mfs.len {
+        if diags.len > 0 {
+            break
+        }
+        var d2 = pkg_deps_text(mfs[mi2 + 1], diags)
+        var di: I32 = 0
+        while di + 3 < d2.len {
+            if diags.len > 0 {
+                break
+            }
+            if d2[di + 1].len > 0 {
+                dep_resolve_one(mfs[mi2], regroot, locks, d2[di], d2[di + 1], d2[di + 2], d2[di + 3], entries, diags, notes)
+            }
+            di += 4
+        }
+        mi2 += 2
+    }
+    if diags.len > 0 {
+        var i: I32 = 0
+        while i < diags.len {
+            println(diags[i])
+            i += 1
+        }
+        return 1
+    }
+    var changed = dep_lock_write(mfdir, entries)
+    var ni: I32 = 0
+    while ni < notes.len {
+        println(notes[ni])
+        ni += 1
+    }
+    var verb = "无变化"
+    if changed {
+        verb = "已写回"
+    }
+    var wsnote = ""
+    if nmember > 0 {
+        wsnote = ",成员 " + nmember.to_string()
+    }
+    println("ctron-dep: 已解析 " + (entries.len / 7).to_string() + " 依赖 → " + mfdir + "/Ctron.lock(" + verb + wsnote + ")")
+    return 0
+}

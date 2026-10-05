@@ -1,0 +1,6 @@
+use libmath.{add}
+
+fn main() -> I32 {
+    println(add(2, 3).to_string())
+    return 0
+}

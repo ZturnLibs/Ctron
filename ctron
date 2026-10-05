@@ -19,6 +19,10 @@ CC_BIN=${CC:-cc}
 
 die2() { echo "ctron: $*" >&2; exit 2; }
 
+sha256_file() {
+    if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi
+}
+
 usage() {
 cat <<'USAGE'
 ctron —— Ctron 工具链驱动
@@ -38,8 +42,9 @@ ctron —— Ctron 工具链驱动
                              lint 汇总:错误红(rc=1),警告默认只汇总;
                              --trusted 信任审计枚举(§9.6);--strict 警告也红
   ctron bench [族]            基准族入口(lang/gc/http/net/ffi;dev 布局)
-  ctron add <名>[@<版本约束>] 骨架:registry 未接(T49),仅参数校验+出路指引
-  ctron publish               骨架:registry 未接(T49),只读清单零网络零写入
+  ctron add <名>[@<版本约束>] 装包:写 dep 块 + pkgs/ 安装 + 刷新 Ctron.lock(T49 本地 registry)
+  ctron publish               发布当前目录单文件包到本地 registry(T49;CTRON_REGPATH,缺省 ~/.ctron/registry)
+  ctron lock                  解析依赖并生成/校验 Ctron.lock(内容寻址)
   ctron new <dir>              脚手架:hello + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -74,8 +79,9 @@ ctron bench [族] —— tests/ 基准族统一入口(T43;dev 布局,脚本自�
 无族名列出注册表;未注册族名清晰诊断(fail-closed)。
 H
 ;;
-    add) echo "ctron add <name>[@<版本约束>] —— 骨架:registry 未接(T49),仅参数校验+出路指引(手动编辑 Ctron.ctcl dependencies);零写入零网络";;
-    publish) echo "ctron publish —— 骨架:registry 未接(T49),只读本地清单报告将发布面;对外发布面启用须经用户确认";;
+    add) echo "ctron add <name>[@<版本约束>] —— 本地 registry 装包(T49):写 dep 块 + pkgs/<名>/ 安装(module+manifest)+ ctron-dep 刷新 Ctron.lock;registry = CTRON_REGPATH 或 ~/.ctron/registry;零网络";;
+    publish) echo "ctron publish —— 当前目录单文件包发布到本地 registry(T49):manifest+module+sha256 三件落 <reg>/<名>/<版>/;版本不可覆盖;零网络(对外发布面启用仍须经用户确认)";;
+    lock) echo "ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)";;
     new) echo "ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)";;
     *) usage;;
 esac
@@ -224,6 +230,24 @@ cmd_build_proj() {
     NAME=$(sed -n 's/^ *name *= *"\(.*\)".*/\1/p' Ctron.ctcl | head -1)
     [ -n "$NAME" ] || NAME=$(basename "$PWD")
     [ -f src/main.ct ] || die2 "缺入口 src/main.ct"
+    # T49:清单含 dep → 先过依赖解析(lock 生成/校验),再发射
+    if grep -q '^dep "' Ctron.ctcl 2>/dev/null; then
+        if [ -x "$BIN/ctron-dep" ]; then
+            "$BIN/ctron-dep" run "$PWD/Ctron.ctcl" || exit 1
+        else
+            echo "ctron: 清单含 dep 但缺 ctron-dep,跳过 lock 校验(重装工具链解锁)" >&2
+        fi
+    fi
+    # T49:workspace 根清单 → 逐成员子构建
+    if grep -q '^workspace' Ctron.ctcl 2>/dev/null; then
+        WSPATHS=$(awk '/^member "/{n=$0; sub(/^member "/,"",n); sub(/".*$/,"",n); m=n} /^[[:space:]]*path[[:space:]]*=[[:space:]]*"/{if(m!=""){v=$0; sub(/.*= *"/,"",v); sub(/".*$/,"",v); print m" "v; m=""}}' Ctron.ctcl)
+        for WSE in $WSPATHS; do
+            MDIR=${WSE%% *}
+            echo "ctron: workspace 成员 $MDIR"
+            (CDPATH= cd -- "$MDIR" && "$0" build) || exit 1
+        done
+        exit 0
+    fi
     mkdir -p build
     "$BIN/ctron-emit" run "$PWD/src/main.ct" > "build/$NAME.c" || exit 1
     if ! have_cc; then
@@ -240,7 +264,7 @@ cmd_build_proj() {
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
 case $CMD in
-    run|check|build|test|new|fmt|doc|lint|bench|add|publish)
+    run|check|build|test|new|fmt|doc|lint|bench|add|publish|lock)
         case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
 esac
 case $CMD in
@@ -340,21 +364,64 @@ case $CMD in
     add)
         [ $# -ge 1 ] || die2 "add 需要依赖名(形: <name>[@<版本约束>])"
         add_validate "$1"
-        echo "ctron: add 骨架——registry 未接(T49 前置未到):依赖解析/lockfile/本地 registry 协议未实装,未做任何写入。" >&2
-        echo "  出路:手动编辑 Ctron.ctcl dependencies 块(三互斥形,docs/superpowers/specs/2026-09-16-config-language-v1.md);" >&2
-        echo "        本地路径依赖与 deps/<pkg>.ctart 工件回落已在解析链生效。" >&2
-        exit 2
+        [ -f Ctron.ctcl ] || die2 "add: 当前目录缺 Ctron.ctcl(项目模式)"
+        REG=${CTRON_REGPATH:-$HOME/.ctron/registry}
+        [ -d "$REG/$ADD_NAME" ] || die2 "add: registry 无包 $ADD_NAME(registry: $REG;试: ctron publish)"
+        if [ -z "$ADD_REQ" ]; then
+            ADD_VER=$(ls "$REG/$ADD_NAME" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+        else
+            case $ADD_REQ in
+                *.*.*) ADD_VER=$ADD_REQ ;;
+                *)
+                    # 前缀约束(X / X.Y)匹配:case 模式带括号不可入 $()(模式内 ) 会
+                    # 提前闭合命令替换,T43 同族坑)——先收集再排序取最大
+                    CANDS=""
+                    for v in $(ls "$REG/$ADD_NAME"); do
+                        case $v in
+                            "$ADD_REQ"|"$ADD_REQ".*) CANDS="$CANDS $v" ;;
+                        esac
+                    done
+                    ADD_VER=$(printf '%s\n' $CANDS | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+                    ;;
+            esac
+        fi
+        [ -n "$ADD_VER" ] || die2 "add: $ADD_NAME 无满足约束 $ADD_REQ 的版本"
+        [ -f "$REG/$ADD_NAME/$ADD_VER/module" ] || die2 "add: registry 损坏:缺 module($ADD_NAME@$ADD_VER)"
+        if grep -q "dep \"$ADD_NAME\"" Ctron.ctcl; then
+            echo "ctron: dep \"$ADD_NAME\" 已在清单(不重复追加)" >&2
+        else
+            printf '\ndep "%s" {\n    version = "%s"\n}\n' "$ADD_NAME" "$ADD_VER" >> Ctron.ctcl
+        fi
+        mkdir -p "pkgs/$ADD_NAME"
+        cp "$REG/$ADD_NAME/$ADD_VER/module" "pkgs/$ADD_NAME/$ADD_NAME.ct"
+        cp "$REG/$ADD_NAME/$ADD_VER/manifest" "pkgs/$ADD_NAME/Ctron.ctcl"
+        echo "ctron: 已安装 pkgs/$ADD_NAME/($ADD_NAME@$ADD_VER)"
+        [ -x "$BIN/ctron-dep" ] || die2 "add: 缺 ctron-dep(重装工具链;或试: ctc.sh dep Ctron.ctcl)"
+        "$BIN/ctron-dep" run "$PWD/Ctron.ctcl" || exit 1
+        ;;
+    lock)
+        [ -f Ctron.ctcl ] || die2 "lock: 当前目录缺 Ctron.ctcl"
+        [ -x "$BIN/ctron-dep" ] || die2 "lock: 缺 ctron-dep(重装工具链;或试: ctc.sh dep Ctron.ctcl)"
+        "$BIN/ctron-dep" run "$PWD/Ctron.ctcl"
         ;;
     publish)
         [ -f Ctron.ctcl ] || die2 "publish 需项目清单 Ctron.ctcl(当前目录)"
         PUB_NAME=$(sed -n 's/^ *name *= *"\(.*\)".*/\1/p' Ctron.ctcl | head -1)
         [ -n "$PUB_NAME" ] || PUB_NAME=$(basename "$PWD")
         PUB_VER=$(sed -n 's/^ *version *= *"\(.*\)".*/\1/p' Ctron.ctcl | head -1)
-        [ -n "$PUB_VER" ] || PUB_VER="0.0.0"
-        echo "ctron: publish 骨架——将发布 $PUB_NAME@$PUB_VER,但 registry 未接(T49)。" >&2
-        echo "  对外发布面启用须经用户确认;骨架只读本地清单,零网络零写入。" >&2
-        echo "  本地替代:deps/ 路径依赖与 deps/<pkg>.ctart 闭源工件消费已可用(工件密封随 T50 触发线)。" >&2
-        exit 2
+        [ -n "$PUB_VER" ] || die2 "publish: 清单缺 version"
+        echo "$PUB_VER" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' || die2 "publish: version '$PUB_VER' 不符严格 semver"
+        [ -f src/main.ct ] || die2 "publish: v0 registry 单文件包,需 src/main.ct"
+        PN=$(find src -name '*.ct' | wc -l | tr -d ' ')
+        [ "$PN" = "1" ] || die2 "publish: v0 registry 单文件包(src/ 下有 $PN 个 .ct);多文件 tar 志向"
+        REG=${CTRON_REGPATH:-$HOME/.ctron/registry}
+        PTGT="$REG/$PUB_NAME/$PUB_VER"
+        [ -e "$PTGT" ] && die2 "publish: $PUB_NAME@$PUB_VER 已发布(版本不可覆盖)"
+        mkdir -p "$PTGT" || exit 2
+        cp Ctron.ctcl "$PTGT/manifest"
+        cp src/main.ct "$PTGT/module"
+        sha256_file "$PTGT/module" > "$PTGT/sha256"
+        echo "ctron: 已发布 $PUB_NAME@$PUB_VER → $PTGT(sha256:$(cat "$PTGT/sha256"))"
         ;;
     *)
         echo "ctron: 未知子命令 '$CMD'(详见 ctron --help)" >&2
