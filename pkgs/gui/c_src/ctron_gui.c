@@ -650,6 +650,9 @@ int gui_cmd_text_byte(int i, int j) {
 }
 // 背景色读回(S4/S5 断言用;Clay_Color 分量 = 0..255 浮点)
 int gui_cmd_bg_r(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.r; }
+int gui_cmd_text_fg_r(int i) { return (int)cmd(i)->renderData.text.textColor.r; }
+int gui_cmd_text_fg_g(int i) { return (int)cmd(i)->renderData.text.textColor.g; }
+int gui_cmd_text_fg_b(int i) { return (int)cmd(i)->renderData.text.textColor.b; }
 int gui_cmd_bg_g(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.g; }
 int gui_cmd_bg_b(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.b; }
 int gui_cmd_bg_a(int i) { return (int)cmd(i)->renderData.rectangle.backgroundColor.a; }

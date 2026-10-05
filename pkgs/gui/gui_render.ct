@@ -456,7 +456,63 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             if mlv != "" {
                 txt = rt_maxlines(txt, gs2i(mlv))
             }
-            gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
+            // GUI-33:rich v1——class 标记 "rich"+markdown 子集(**b**=weight 700
+            // @@c@@=teal;direction:row 样式=分段水平流;链接/转义/多行 wrap v2)
+            var rdv: I32 = 0
+            if gt_cls_prop(c, "rich", "", t) != "" {
+                var ri: I32 = 0
+                var run: Str = ""
+                var wgt: I32 = 400
+                var cr: I32 = rt_col_r(fgp2)
+                var cg: I32 = rt_col_g(fgp2)
+                var cb: I32 = rt_col_b(fgp2)
+                while ri < txt.len {
+                    var flushed: I32 = 0
+                    if ri + 1 < txt.len {
+                        if byte_at(txt, ri) == 42 && byte_at(txt, ri + 1) == 42 {
+                            gui_text_w(run, sz, ff2 * 10000 + wgt, cr, cg, cb, 255)
+                            flushed = 1
+                            if wgt == 400 {
+                                wgt = 700
+                            } else {
+                                wgt = 400
+                            }
+                            ri += 2
+                            run = ""
+                        }
+                    }
+                    if flushed == 0 {
+                        if ri + 1 < txt.len {
+                            if byte_at(txt, ri) == 64 && byte_at(txt, ri + 1) == 64 {
+                                gui_text_w(run, sz, ff2 * 10000 + wgt, cr, cg, cb, 255)
+                                flushed = 1
+                                if wgt == 400 {
+                                    cr = 78
+                                    cg = 201
+                                    cb = 176
+                                    wgt = 700
+                                } else {
+                                    cr = rt_col_r(fgp2)
+                                    cg = rt_col_g(fgp2)
+                                    cb = rt_col_b(fgp2)
+                                    wgt = 400
+                                }
+                                ri += 2
+                                run = ""
+                            }
+                        }
+                    }
+                    if flushed == 0 {
+                        run = run + utf8_enc(byte_at(txt, ri))
+                        ri += 1
+                    }
+                }
+                gui_text_w(run, sz, ff2 * 10000 + wgt, cr, cg, cb, 255)
+                rdv = 1
+            }
+            if rdv == 0 {
+                gui_text_w(txt, sz, ff2 * 10000 + fw2, rt_col_r(fgp2), rt_col_g(fgp2), rt_col_b(fgp2), 255)
+            }
         } else {
         if tag == "input" {
             // 波次二(§2.2):真文本框——盒+值文本(bind 单一起源)+焦点光标(| 前缀

@@ -1,0 +1,168 @@
+// tests/gui/s87_richtext —— G 档 GUI-33:rich v1(class 标记+markdown 子集)验收
+// **bold**=weight 700 / `code`=teal;direction:row 分段水平流;
+// 链接色/多行 wrap/链接点击 v2 在册。段=独立 TEXT 命令(fg 探针配色断言)。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_text_fg_r,
+         d_cmd_text_fg_g, d_cmd_text_fg_b, d_cmd_text_len, d_cmd_text_byte, char_str}
+
+struct M {
+    var state: Str
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { state: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "noop" {
+        return
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 360, 200,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            // 段扫描:Bold(bold 段 fg=基色 TEXT)/plain/code(teal 78,201,176)
+            var dn: I32 = d_cmd_count()
+            var di: I32 = 0
+            var nbold: I32 = 0
+            var ncode: I32 = 0
+            var nplain: I32 = 0
+            while di < dn {
+                if d_cmd_type(di) == 1 {
+                    var tl: I32 = d_cmd_text_len(di)
+                    var bi: I32 = 0
+                    var tx: Str = ""
+                    while bi < tl {
+                        tx = tx + char_str(d_cmd_text_byte(di, bi))
+                        bi += 1
+                    }
+                    if tx == "Bold" {
+                        nbold += 1
+                    }
+                    if tx == " plain " {
+                        nplain += 1
+                    }
+                    if tx == "code" {
+                        ncode += 1
+                        if d_cmd_text_fg_r(di) != 78 || d_cmd_text_fg_g(di) != 201 || d_cmd_text_fg_b(di) != 176 {
+                            panic("s87: code 段色不符")
+                        }
+                    }
+                }
+                di += 1
+            }
+            if nbold != 1 || nplain != 1 || ncode != 1 {
+                panic("s87: 分段不符 b=" + nbold.to_string() + " p=" + nplain.to_string() + " c=" + ncode.to_string())
+            }
+            println("S87-RICHTEXT-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <label class="rich">**Bold** plain @@code@@</label>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style rich { direction: row rich: 1 }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

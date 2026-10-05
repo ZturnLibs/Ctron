@@ -300,6 +300,9 @@ extern "c" fn gui_canvas_node() -> I32
 pub extern "c" fn gui_canvas_reset() -> I32
 pub extern "c" fn gui_canvas_count() -> I32
 pub extern "c" fn gui_canvas_node_i(i: I32) -> I32
+extern "c" fn gui_cmd_text_fg_r(i: I32) -> I32
+extern "c" fn gui_cmd_text_fg_g(i: I32) -> I32
+extern "c" fn gui_cmd_text_fg_b(i: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32
@@ -434,6 +437,8 @@ extern "c" fn gui_hotkey_match(key: I32, mods: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_hotkey_action_byte(i: I32) -> I32
+
+
 
 #[trusted]
 extern "c" fn gui_chord_register(steps: Str, action: Str) -> Void

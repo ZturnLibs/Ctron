@@ -1547,3 +1547,17 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
 - **🩸 坑**:嵌套分支下标 xs[0](⑳ 家族再犯)——扫描期就地单调断言免下标。
 - **门**:阶梯 90 过/1 败(s30 在册);suite 100/100;smoke 170/2;双陈列室绿;
   真窗 --run 待用户。
+
+**2026-10-04 G 档 GUI-33 富文本 v1**(gui 泳道,波三):
+- **交付面**:class 标记 "rich"+样式属性 rich:1(标记=类+同名属性同款)——label 叶
+  发射(markdown 子集:**b**=weight 700/@@c@@=teal;direction:row=分段水平流,
+  gui_text_w 逐段 weight/色)+gui_cmd_text_fg_r/g/b 探针(C 侧 TEXT textColor)。
+  s87:三分段+code 段色断言。链接色/转义/多行 wrap/链接点击 v2 在册;dir 属性/
+  反引号(E1001 非法字符)→@@ 形。
+- **🩸 坑四**:①标记=类+同名属性,缺属性则 fold 空(踩);②label 文本=npre 槽
+  (tph=占位符路径,富分支正位=叶发射 460 位,weight 打包 ff2*10000+fw2);
+  ③pub extern 带参 E2020.use 未找到(无参可、#[trusted]+pub 疑误解析)——包装
+  fn 绕行(d_open_url 同款);④值位 if(分支尾)需后续语句破位;⑤拼接回滚吞段
+  ——引擎文件探针一律 git checkout 重做。
+- **门**:阶梯 91 过/1 败(s30 在册);suite 100/100;smoke 171/1;双陈列室绿;
+  真窗 --run 待用户。
