@@ -1,0 +1,219 @@
+// tests/gui/s82_anim —— G 档 GUI-42:动画纯函数库(门面 re-export)headless 验收
+// 两段:①纯值断言(ease 恒等/中点/回弹过冲与端点/lerp 双向/prog 钳位);
+// ②d_tick 帧驱动(bind 每帧算 anim_out_cubic 经 prop 通道,值驱动 w 槽 + 回显
+// label):0→138→210→240 关键帧精确 + 超时恒值钳位 + 渲染面 w100 几何随动。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_tick, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_w100,
+         anim_prog, ease_linear, ease_out_cubic, ease_in_cubic, ease_in_out, ease_out_back,
+         lerp_i, anim_i, anim_out_cubic, gui_now}
+
+struct M {
+    var t0: I32
+    var aw: I32
+    var state: Str
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+
+// —— 其余库全事件头桩(未实例化组件;骨架面合并库全量注册)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+
+fn make() -> M {
+    return M { t0: 0, aw: 0, state: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    // 动画消费形态 v1:bind 每帧算,双通道出值(叶槽走 "m.aw",样式折叠走
+    // "prop:m.aw" 装配通道——s72 双应答同款;bxv 槽不持 fn 实参在册)
+    m.aw = anim_out_cubic(gui_now(), m.t0, 400, 0, 240)
+    if buf[0] == "m.aw" {
+        buf.push(m.aw.to_string())
+    }
+    if buf[0] == "prop:m.aw" {
+        buf.push(m.aw.to_string())
+    }
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "noop" {
+        return
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    m.t0 = gui_now()
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // ① 纯值:ease 恒等/端点/中点
+            if ease_linear(500) != 500 {
+                panic("s82: linear")
+            }
+            if ease_out_cubic(500) != 875 || ease_out_cubic(0) != 0 || ease_out_cubic(1000) != 1000 {
+                panic("s82: out_cubic")
+            }
+            if ease_in_cubic(500) != 125 {
+                panic("s82: in_cubic")
+            }
+            if ease_in_out(250) != 62 || ease_in_out(500) != 500 || ease_in_out(750) != 938 {
+                panic("s82: in_out")
+            }
+            // 回弹:端点归位 + 中段过冲 >1000
+            if ease_out_back(0) < 0 || ease_out_back(0) > 3 || ease_out_back(1000) != 1000 {
+                panic("s82: back 端点")
+            }
+            if ease_out_back(700) <= 1000 {
+                panic("s82: back 无过冲")
+            }
+            // lerp 双向/负域
+            if lerp_i(0, 100, 500) != 50 || lerp_i(100, 0, 500) != 50 || lerp_i(-40, 40, 500) != 0 {
+                panic("s82: lerp")
+            }
+            // prog 钳位:负Elapsed=0/超时=1000/ms<=0 恒 1000
+            var tn: I32 = gui_now()
+            if anim_prog(tn - 5, tn, 400) != 0 || anim_prog(tn + 500, tn, 400) != 1000 {
+                panic("s82: prog 钳位")
+            }
+            if anim_prog(tn, tn, 0) != 1000 {
+                panic("s82: prog ms0")
+            }
+            // anim_i 泛型入口(fn 实参,宿主面)
+            if anim_i(tn, tn, 400, 0, 240, ease_out_cubic) != 0 {
+                panic("s82: anim_i 起点非 0")
+            }
+            // ② 帧驱动:关键帧精确(t0=开帧时刻;d_tick 推注入时钟)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "0")
+            d_tick(t, 100)
+            d_frame(t, |buf| bind_all(buf, m))
+            // 时钟置位 100/400=250‰ → out_cubic 579 → 240*579/1000=138
+            // (gui_inject_ms=置位语义,逐帧给绝对时刻)
+            d_expect_text(t, "138")
+            // 渲染面:值驱动 w 槽随动(ACCENT 条 RECT w100=值×100)
+            var dn: I32 = d_cmd_count()
+            var di: I32 = 0
+            var hit: I32 = 0
+            while di < dn {
+                if d_cmd_type(di) == 2 {
+                    if d_cmd_w100(di) == 13800 {
+                        hit += 1
+                    }
+                }
+                di += 1
+            }
+            if hit < 1 {
+                panic("s82: 值驱动 w 未随动")
+            }
+            d_tick(t, 200)
+            d_frame(t, |buf| bind_all(buf, m))
+            // 200/400=500‰ → 875 → 210
+            d_expect_text(t, "210")
+            d_tick(t, 400)
+            d_frame(t, |buf| bind_all(buf, m))
+            // 400/400 → 终点 240
+            d_expect_text(t, "240")
+            d_tick(t, 900)
+            d_frame(t, |buf| bind_all(buf, m))
+            // 超时恒值钳位
+            d_expect_text(t, "240")
+            println("S82-ANIM-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <hbox class="bar"/>
+    <label class="val">{m.aw}</label>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style bar { direction: column h: 20 bg: "#2563eb" w: "{m.aw}" }
+style val { fg: TEXT h: 22 }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

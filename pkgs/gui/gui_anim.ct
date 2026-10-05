@@ -1,0 +1,93 @@
+// gui_anim.ct —— 过渡动画纯函数库(GUI-42 v1;波一;零引擎缝)
+//
+// 定位:纯函数库非视图(不进 gui_widgets 组件包;门面 re-export,消费
+// use gui.{anim_i} 形态不变)。地基=bind 每帧重算+值驱动 w/h(GUI-16)+
+// gui_now 注入时钟(d_tick 确定性)——动画闭环纯库即可,零引擎改动。
+//
+// 算术纪律:I32 千分比全域(进度/ease 入出 0-1000),无 F64、无位运算、
+// 无除零(除数恒 1000/1e6 常量或钳正);中间量上限 ~5e8 < I32 max。
+// 时间源=gui_now()(注入优先:headless d_tick 钉相位,真窗真时钟)。
+//
+// 消费形态(值驱动槽):
+//   view Grow (t0: I32) {
+//     <vbox class="card">
+//       <hbox class="bar" w: "{anim_i(gui_now(), t0, 400, 0, 240, ease_out_cubic)}"/>
+//       <label class="val">{anim_i(gui_now(), t0, 400, 0, 240, ease_out_cubic)}</label>
+//     </vbox>
+//   }
+
+// 进度千分比:t0 起 ms 毫秒内 0→1000,钳位(elapsed<0→0,≥ms→1000,ms≤0 恒 1000)
+pub fn anim_prog(now: I32, t0: I32, ms: I32) -> I32 {
+    if ms <= 0 {
+        return 1000
+    }
+    var e: I32 = now - t0
+    if e <= 0 {
+        return 0
+    }
+    if e >= ms {
+        return 1000
+    }
+    return e * 1000 / ms
+}
+
+// 线性
+pub fn ease_linear(u: I32) -> I32 {
+    return u
+}
+
+// 出立方:1-(1-u)^3;千分比恒等式 1000-(1000-u)^3/1e6(中间量 ≤1e9)
+pub fn ease_out_cubic(u: I32) -> I32 {
+    var d: I32 = 1000 - u
+    return 1000 - d * d * d / 1000000
+}
+
+// 入立方:u^3/1e6
+pub fn ease_in_cubic(u: I32) -> I32 {
+    return u * u * u / 1000000
+}
+
+// 入出平滑:前半 4u^3/1e6,后半 1000-4(1000-u)^3/1e6(中点 500 恒等)
+pub fn ease_in_out(u: I32) -> I32 {
+    if u < 500 {
+        return 4 * u * u * u / 1000000
+    }
+    var d: I32 = 1000 - u
+    return 1000 - 4 * d * d * d / 1000000
+}
+
+// 出回弹:过冲 ~8% 后回落(1+c3 x^3+c1 x^2,x=u-1000;先除后乘防爆 I32;
+// c1=1702 整除补偿,u=0 处舍入 -1→+1)
+pub fn ease_out_back(u: I32) -> I32 {
+    var x: I32 = u - 1000
+    var c3t: I32 = (x * x * x / 1000000) * 2701 / 1000
+    var c1t: I32 = x * x * 1702 / 1000000
+    return 1000 + c3t + c1t
+}
+
+// 千分比插值:a→b 按 p(0-1000;反向 b<a 同式)
+pub fn lerp_i(a: I32, b: I32, p: I32) -> I32 {
+    return a + (b - a) * p / 1000
+}
+
+// 组合帮手:t0 起 ms 毫秒,ease 曲线从 a 到 b(bind 每帧重算,值驱动槽直接消费)
+pub fn anim_i(now: I32, t0: I32, ms: I32, a: I32, b: I32, ease: fn(I32) -> I32) -> I32 {
+    return lerp_i(a, b, ease(anim_prog(now, t0, ms)))
+}
+
+// —— ease 定形包装族(bxv 槽不持 fn 实参;宿主 bind 帧算经 prop 通道消费)——
+pub fn anim_linear(now: I32, t0: I32, ms: I32, a: I32, b: I32) -> I32 {
+    return anim_i(now, t0, ms, a, b, ease_linear)
+}
+pub fn anim_out_cubic(now: I32, t0: I32, ms: I32, a: I32, b: I32) -> I32 {
+    return anim_i(now, t0, ms, a, b, ease_out_cubic)
+}
+pub fn anim_in_cubic(now: I32, t0: I32, ms: I32, a: I32, b: I32) -> I32 {
+    return anim_i(now, t0, ms, a, b, ease_in_cubic)
+}
+pub fn anim_in_out(now: I32, t0: I32, ms: I32, a: I32, b: I32) -> I32 {
+    return anim_i(now, t0, ms, a, b, ease_in_out)
+}
+pub fn anim_out_back(now: I32, t0: I32, ms: I32, a: I32, b: I32) -> I32 {
+    return anim_i(now, t0, ms, a, b, ease_out_back)
+}

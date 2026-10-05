@@ -501,6 +501,7 @@ extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> I32
 extern "c" fn ctron_gui_flush() -> I32
 
 // 解析面独立文件(拆分阶段二①):迷你词法+GuiTree+CTML 解析+锚合并
+use gui.gui_anim.{anim_prog, ease_linear, ease_out_cubic, ease_in_cubic, ease_in_out, ease_out_back, lerp_i, anim_i, anim_linear, anim_out_cubic, anim_in_cubic, anim_in_out, anim_out_back}
 use gui.gui_parse.{gt_parse, gt_anchor_src, sk_dump}
 use gui.gui_expr.{ev_arg_len, ev_arg_s, ev_arg_i, ev_arg_b}
 use gui.gui_render.{rt_draw_frame, rt_hover_node, rt_collect_rects, rt_hit_name, rt_expect_text, gui_focus_req}

@@ -1357,3 +1357,22 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   d_px 像素索引=px/step 行主序。
 - **门**:阶梯 85 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
   gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-42 过渡动画 v1**(gui 泳道,波一第四件):
+- **交付面**:pkgs/gui/gui_anim.ct 纯函数库——anim_prog(进度千分比钳位)/ease 五族
+  (linear/out_cubic/in_cubic/in_out/out_back c1=1702 整除补偿)/lerp_i/anim_i(fn
+  泛型入口)/五 ease 定形包装;门面 re-export(use gui.gui_anim.{13 符号},消费
+  use gui.{...} 不变)。全部 I32 千分比算术(中间量 ≤1.7e9 防爆,无 F64/位运算)。
+  夹具 s82:纯值断言(ease 恒等/中点/回弹过冲端点)+d_tick 帧驱动(0→138→210→240
+  关键帧精确+渲染面 w100=13800 随动+超时恒值钳位)。
+- **decls 锁申报**:cc_run 零改动(零编译面);pkgs/gui 域 +17 fn(纯库,域 fn
+  不入 compiler 锁);门面 use 行 +5 符号。
+- **🩸 坑位三条**:①d_tick=gui_inject_ms **置位语义**非累加——帧驱动给绝对时刻;
+  ②动画值进 CTML 的通道=宿主 bind 帧算+**双通道应答**(叶槽 "m.aw"/样式折叠
+  "prop:m.aw" 装配通道,s72 双应答同款;bxv 槽不持 fn 实参→ease 定形包装族);
+  ③值驱动 w 是样式块语法(w:"{expr}" 冒号形),元素属性 = 形不认;主题令牌
+  ACCENT/SURFACE 在 theme_default 折叠空串→透明无 RECT(显式十六进制 bg)。
+- **陈列室动效段缓行**:主陈列室消费组件库两缺口在册(手写 bind×类型化 props/
+  键闭包×desugar)——动效演示样候缺口切片随行;s82 即验收场。
+- **门**:阶梯 86 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验顺滑待用户。
