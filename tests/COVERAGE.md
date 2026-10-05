@@ -1605,3 +1605,20 @@ expression -w write -s 8 -- &(t_d)->t.vreg_name→continue;draw 只读树参数,
 清空两次(同伴清理竞态)+vendor/内存态漂移=调试会话需 /tmp 外目录(如 ~/s30dbg)或
 静默窗**。③完整复现序列(下段照抄):emit→cc -O0 -g→sh run.sh(断言+139);探针版
 (fprintf 三段)全绿。责任泳道=GC(本件)。此为 T31 重开在 origin 全链交付后唯一在办。
+
+**s30 watchpoint 终实验(2026-10-05 深夜八)**:硬件 watchpoint(零扰动)钉存活 Driver 树
+副本(&t_t.vreg_name, draw 调用行断点后设)→continue 全程——**零命中+程序 rc=0 完整跑通**
+(33+ 调用全绿)。结论定型:**本 bug 避开一切附着观察**(探针扰动即变、硬件 watchpoint 下
+不现形)=布局敏感未初始化读取/编译器级形态病,二进制级探针在此环境不可能收敛。
+**终局工具=Linux MSAN(docker 容器路线,命令全备)**:
+docker run --rm -v /tmp/t31m15:/w -w /w ubuntu:24.04 bash -c
+  "apt-get update && apt-get install -y clang libx11-dev libxcursor-dev libxrandr-dev
+   libxinerama-dev libxi-dev libgl1-mesa-dev && bash vendor/gui/build.sh &&
+   cc -O1 -g -fsanitize=memory -fsanitize-memory-track-origins=2 -o /tmp/s30
+   tests/gui/s30_props_d/s30_msan.c pkgs/gui/c_src/ctron_gui.c pkgs/gui/c_src/ft_shim.c
+   vendor/gui/build/libfreetype.a vendor/gui/build/libraylib.a -lX11 -lGL -lm -lpthread -ldl
+   && cd tests/gui/s30_props_d && /tmp/s30 run src/main.ct"
+(s30_msan.c=现编译器对 s30 的发射产物,已验证本机 -O1 确定性崩)。MSAN 对发射代码
+(全仪器)的未初始化读取=直接报告+origin 链。前置注意:容器内 Linux raylib 首建需
+上列 X11 头;MSAN 对未仪器 libfreetype/raylib 写后读=可能有 FP,过滤=origin 指向
+CTRON 发射行者为准。
