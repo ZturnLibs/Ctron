@@ -471,6 +471,10 @@ pub struct Driver {
     var actn: I32
     var w: I32
     var h: I32
+    var bt: GuiTree
+    var brects: List[I32]
+    var bhits: List[I32]
+    var bhinst: List[I32]
 }
 
 fn d_btn_index(t: GuiTree, name: Str) -> I32 {
@@ -1290,7 +1294,7 @@ pub fn test(src: Str, w: I32, h: I32,
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     gui_clay_init(w, h)
-    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h, bt: t, brects: List[I32](), bhits: List[I32](), bhinst: List[I32]() })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
     rt_feed_input_w(d.t, d.rects, d.hits)
@@ -1306,7 +1310,7 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
                script: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void) -> I32 {
     theme_auto_apply()
     gui_clay_init(w, h)
-    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h })
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h, bt: t, brects: List[I32](), bhits: List[I32](), bhinst: List[I32]() })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
     rt_feed_input_w(d.t, d.rects, d.hits)
@@ -1468,6 +1472,52 @@ fn ax_dump_walk(t: GuiTree, id: I32, depth: I32) -> Str {
     return acc
 }
 
+// GUI-32 v1:浮板窗管器(单浮板;标量态驻 C)。gui_board_open 入请求队列;
+// 循环 take→解析 src 为浮板 GuiTree→每帧 emit+指令平移 blit+板框直绘;
+// 点击路由=板框内走浮板树(标题栏拖/关闭盒),板外走主树。
+// v1 边界:单浮板(多板=v2 C 数组扩展)/键闭包与滚轮主窗专用/热重载不涉浮板。
+pub fn gui_board_open(title: Str, src: Str, x: I32, y: I32, w: I32, h: I32) -> I32 {
+    gui_board_open_req(title, src, x, y, w, h)
+    return 0
+}
+
+// 板框几何命中:0=板外 1=板体 2=标题栏 3=关闭盒(标题栏右缘 20px)
+fn gui_board_zone(px: I32, py: I32) -> I32 {
+    if gui_board_open_flag() == 0 {
+        return 0
+    }
+    var bx: I32 = gui_board_x()
+    var by: I32 = gui_board_y()
+    if px < bx || py < by || px >= bx + gui_board_w() || py >= by + gui_board_h() {
+        return 0
+    }
+    if py < by + 24 {
+        if px >= bx + gui_board_w() - 20 {
+            return 3
+        }
+        return 2
+    }
+    return 1
+}
+
+// 浮板 take:pump 请求→解析 src→返回浮板 GuiTree(调用方持循环局部)
+fn rt_board_take() -> GuiTree {
+    var title: Str = gui_board_title()
+    var src: Str = gui_board_src()
+    gui_board_activate()
+    return gt_parse(src)
+}
+
+// 浮板渲染:独立 layout(bw×bh)→emit→返回指令计数(调用方平移 blit)
+fn rt_board_render(btree: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void, hits: List[I32], hinst: List[I32]) -> I32 {
+    var bw: I32 = gui_board_w()
+    var bh: I32 = gui_board_h()
+    gui_begin_layout(bw, bh)
+    rt_emit(btree, bind, "", "", 0, hits, hinst, 0, 0, 0)
+    gui_end_layout()
+    return gui_cmd_count()
+}
+
 // GUI-44:异步队列帧首 drain——spawn 任务经 C 互斥队列投递,此处逐件 fire
 // (FIFO;action=gui_async_on 注册名;UI 线程唯一触 UI)
 fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
@@ -1480,6 +1530,100 @@ fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str
         act(ctron_gui_async_action(), args)
         i += 1
     }
+}
+
+// 板框几何命中:0=板外 1=板体 2=标题栏 3=关闭盒(标题栏右缘 20px)
+fn gui_board_zone(px: I32, py: I32) -> I32 {
+    if gui_board_open_flag() == 0 {
+        return 0
+    }
+    var bx: I32 = gui_board_x()
+    var by: I32 = gui_board_y()
+    if px < bx || py < by || px >= bx + gui_board_w() || py >= by + gui_board_h() {
+        return 0
+    }
+    if py < by + 24 {
+        if px >= bx + gui_board_w() - 20 {
+            return 3
+        }
+        return 2
+    }
+    return 1
+}
+
+// GUI-32 v1:浮板帧驱动(循环与 headless 共源)——pump 请求→独立 layout
+// emit 浮板树(bh-24 内容区)→指令平移 blit 到(bx,by+24)→板 rects 收集
+// (区间型 2 命令)→标题栏/关闭盒浮条。bt 驻 Driver(循环局部持久)。
+pub fn d_board_frame(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
+    if gui_board_open_pend() == 1 {
+        var title: Str = gui_board_title()
+        var src: Str = gui_board_src()
+        gui_board_activate()
+        t.bt = gt_parse(src)
+    }
+    if gui_board_close_req() == 1 {
+        gui_board_close()
+        t.brects = List[I32]()
+        t.bhits = List[I32]()
+        t.bhinst = List[I32]()
+        return
+    }
+    if gui_board_open_flag() == 0 {
+        return
+    }
+    var bx: I32 = gui_board_x()
+    var by: I32 = gui_board_y()
+    var bw: I32 = gui_board_w()
+    var bh: I32 = gui_board_h()
+    // 双 pass:主 pass 命令 save→浮板 pass emit→merge 拼接→平移浮板区间
+    gui_cmds_save()
+    t.bhits = List[I32]()
+    t.bhinst = List[I32]()
+    gui_begin_layout(bw, bh - 24)
+    rt_emit(t.bt, bind, "", "", 0, t.bhits, t.bhinst, 0, 0, 0)
+    gui_end_layout()
+    gui_cmds_merge()
+    var mainN: I32 = g_main_cmds_len()
+    var post: I32 = gui_cmd_count()
+    gui_cmds_shift_range(mainN, post - mainN, bx, by + 24)
+    t.brects = List[I32]()
+    var ri: I32 = mainN
+    while ri < post {
+        if gui_cmd_type(ri) == 2 {
+            t.brects.push(ri)
+        }
+        ri += 1
+    }
+    gui_sel_float(bx, by, bw, 24, gui_theme_slot_get(2))
+    gui_sel_float(bx + bw - 20, by, 20, 24, gui_theme_slot_get(9))
+}
+
+// 浮板点击路由(headless+循环共享):0=板外(走主树)/1=板体(浮板树命中→fire)
+// /2=标题栏(拖拽臂)/3=关闭盒。返回 fire 的动作名(空=未 fire)
+pub fn d_board_click(t: Box[Driver], x: I32, y: I32) -> Str {
+    var zone: I32 = gui_board_zone(x, y)
+    if zone == 3 {
+        gui_board_close_req_set()
+        return "__close__"
+    }
+    if zone == 2 {
+        gui_board_drag_on(x, y)
+        return "__drag__"
+    }
+    if zone == 1 {
+        var nm: Str = rt_hit_name(t.bt, t.bhits, t.bhinst, t.brects, x, y)
+        if nm != "" {
+            return ev_head(nm)
+        }
+        return ""
+    }
+    return ""
+}
+
+// 浮板拖拽跟随(headless):拖拽中则落位
+pub fn d_board_drag_to(t: Box[Driver], x: I32, y: I32) -> I32 {
+    gui_board_drag_to(x, y)
+    return 0
 }
 
 // TEXT fg 探针(富含色断言;pub extern 带参 E2020 怪相在册——包装 fn 绕行)
