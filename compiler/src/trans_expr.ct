@@ -502,6 +502,25 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return ""
             }
             if base[0] == "Ident" && base[1] == "List" { return "ctron_list_new()" }
+            // T41 §6.6:Arena.fixed(n)——n 字节栈上驻留(alloca 不得驻 helper:
+            // helper 返回即释放;statement 表达式在调用者帧分配)
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "Arena" && base[2] == "Nm" && base[3] == "fixed" {
+                var asz = "0"
+                if ag.len > 1 { asz = ct_expr(ag[1], env, file) }
+                return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + asz + "))); t_a.off = 0; t_a.cap = (int64_t)(" + asz + "); t_a; })"
+            }
+            // T41 §6.6:arena.zeros[T](n)——显式分配器零填充切片(view {d,n};
+            // 走 ct_arena_bump 前进,零 GC 分配)
+            if base[0] == "Member" && base[2] == "Nm" && base[3] == "zeros" {
+                var aro = ct_expr(base[1], env, file)
+                var ecc = "i"
+                if cal[2].len > 1 && cal[2][1].len > 1 { ecc = ct_ty_code(cal[2][1], file) }
+                var an2 = "0"
+                if ag.len > 1 { an2 = ct_expr(ag[1], env, file) }
+                var ctp = ct_ctype(ecc)
+                if ctp.len > 2 && byte_slice(ctp, 0, 2) == "u:" { ctp = "t_" + byte_slice(ctp, 2, ctp.len) }
+                return "(\{ ctron_view_" + ecc + " t_av; int64_t t_an = (int64_t)(" + an2 + "); t_av.d = (" + ctp + "*)ct_arena_bump(&(" + aro + "), t_an * (int64_t)sizeof(" + ctp + ")); memset(t_av.d, 0, (size_t)(t_an * sizeof(" + ctp + "))); t_av.n = t_an; t_av; })"
+            }
             // arena.list[T]():镜像 eval(arena 透明,List 即 GC 堆表)
             if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "arena" && base[2] == "Nm" && base[3] == "list" {
                 return "ctron_list_new()"
@@ -593,6 +612,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if cal[0] == "Member" {
             var m = cal[3]
+            // T41 §6.6:Arena.fixed(n)(无类型实参面,callee=纯 Member)——
+            // n 字节栈上驻留(alloca 不得驻 helper,statement 表达式调用者帧分配)
+            if cal[1][0] == "Ident" && cal[1][1] == "Arena" && m == "fixed" {
+                var asz2 = "0"
+                if ag.len > 1 { asz2 = ct_expr(ag[1], env, file) }
+                return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + asz2 + "))); t_a.off = 0; t_a.cap = (int64_t)(" + asz2 + "); t_a; })"
+            }
             if cal[1][0] == "Ident" && cal[1][1] == "parallel" {
                 // parallel 命名空间:map(arr, clo1) / reduce(arr, init, clo2) —— 串行逐元素(镜像 eval)
                 if m == "map" {

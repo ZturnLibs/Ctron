@@ -494,7 +494,11 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T41 · bare 分配器族 Region/Pool/Static(§6.6)
 
-- **预估:** 1.5–2 d。**前置:** T35(分层面)、T40(才有 bare 消费场景)。**状态:** 待办
+- **预估:** 1.5–2 d。**前置:** T35(分层面)、T40(才有 bare 消费场景)。**状态:** ◐ 核心已落(1006;t40-bare)——`Arena` 值类型(code "Q",ct_arena{base,off,cap} 值传递)+`Arena.fixed(n)`(statement-expr 调用者帧 alloca;alloca 不得驻 helper)+`arena.zeros[T](n)`(ct_arena_bump 前进+零填充 view{d,n};泛元素码 via ct_ctype)+视图元素复合赋值(`seen[i]+=e` 读改写,越界守卫同 Eq;溢出守卫债)+minilibc 静态池 malloc 16KiB(切片字面量 amalloc 面引用时取材;发射运行时首块 4MB→16KB 双靶齐治[ARM 写 0 落 flash 别名侥幸绿,RV virt 未映射才暴露])。验收:**08_bare 双靶裸机真跑绿(bare 门 ⑦ 节 13/13)**;E3040 负例族保持(check face);interpret 臂未做(bare 通道=发射臂真跑,check 面双臂同语义)。**余债:Region/Pool/Static/ArenaList 族+zeros 溢出守卫+eval 臂+C 宿主 parity**
+- **目标:** 前奏类型 `Region/Pool/Static` 落地:`Arena.fixed(n)` 转正(测试跳过解除)、`Region`(嵌套区段)、`Pool`(定长对象池)、`Static`(编译期静态分配)。
+- **范围:** `sem_calls.ct` 前奏注册、发射垫片(静态内存段布局)、`tests/08_bare.ct` 扩展。
+- **验收:** 08_bare 转正跑绿;E3040 负例族保持;core 层容器传 arena 可用锚(§6.6)。
+- **坑位:** Static 面涉及链接期布局(段属性),MVP=固定大小静态数组声明宏面;列志向的 ISR 约束归 T42。→ 落码新坑:emit 缓存哈希含 cc_emit.ct 但 build.sh 有条件跳过重拼——改 src 后 emit 产物可静默陈旧(4MB 常量实证),强制 sh build.sh 再验
 - **目标:** 前奏类型 `Region/Pool/Static` 落地:`Arena.fixed(n)` 转正(测试跳过解除)、`Region`(嵌套区段)、`Pool`(定长对象池)、`Static`(编译期静态分配)。
 - **范围:** `sem_calls.ct` 前奏注册、发射垫片(静态内存段布局)、`tests/08_bare.ct` 扩展。
 - **验收:** 08_bare 转正跑绿;E3040 负例族保持;core 层容器传 arena 可用锚(§6.6)。
@@ -651,7 +655,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T38 | WasmGC+JSPI | W8 | 待办 | — |
 | T39 | stdweb 真实化 | W8 | 待办 | — |
 | T40 | bare 交叉编译 | W8 | ✅ 1006 | t40-bare(待合流) |
-| T41 | bare 分配器族 | W8 | 待办 | — |
+| T41 | bare 分配器族 | W8 | ◐ 核心 1006 | Region/Pool/Static 余债 |
 | T42 | 体积门禁+ISR | W8 | ✅ 1006 | t40-bare(待合流) |
 | T43 | ctc 子命令 | W9 | 待办 | — |
 | T44 | own ±5% 门禁 | W9 | 待办 | — |

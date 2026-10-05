@@ -288,6 +288,31 @@ void _ct_longjmp(jmp_buf env, int v) {
 
 /* ---------------- 杂项 ---------------- */
 char* getenv(const char* name) { (void)name; return 0; }
+
+/* ---------------- 堆面:静态池 bump(预算化;无 free) ----------------
+ * 发射 C 的切片字面量面(ctron_amalloc)在 bare 下被引用时自此取材;
+ * 池尽 = 返回 0(调用方响亮路径)。16KiB 预算计入 100KB 体积口径(.bss)。 */
+static unsigned char ct_heap_pool[16384];
+static size_t ct_heap_off = 0;
+void* malloc(size_t n) {
+    n = (n + 15) & ~(size_t)15;
+    if (ct_heap_off + n > sizeof(ct_heap_pool)) { return 0; }
+    void* p = &ct_heap_pool[ct_heap_off];
+    ct_heap_off += n;
+    return p;
+}
+void free(void* p) { (void)p; }
+void* calloc(size_t a, size_t b) {
+    size_t n = a * b;
+    void* p = malloc(n);
+    if (p) { memset(p, 0, n); }
+    return p;
+}
+void* realloc(void* p, size_t n) {
+    void* q = malloc(n);
+    if (p && q) { memcpy(q, p, n); }
+    return q;
+}
 int abs(int v) { return v < 0 ? -v : v; }
 long labs(long v) { return v < 0 ? -v : v; }
 long long llabs(long long v) { return v < 0 ? -v : v; }

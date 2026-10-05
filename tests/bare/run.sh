@@ -150,6 +150,43 @@ if [ "$RVOK" = "1" ]; then
 else
     skp 9 "riscv 体积门(无 RISC-V ELF;工具链登记)"
 fi
+echo "== ⑦ 08_bare 转正(T41 §6.6:显式 arena 值族真跑;零 GC) =="
+if "$CTC" check "$ROOT/tests/08_bare.ct" >"$T/08b_chk.out" 2>&1; then
+    ok 11 "08_bare check 面(Arena.fixed/zeros 解析+型别)"
+else
+    bad 11 "08_bare check 红: $(tail -1 "$T/08b_chk.out")"
+fi
+for tgv in thumbv7em-none-eabi riscv32imac-unknown-none; do
+    B08="$T/08b_${tgv}.elf"
+    if "$CTC" build "$ROOT/tests/08_bare.ct" --target "$tgv" -o "$B08" >"$T/08b_b.out" 2>&1; then
+        Q8=""
+        QARG8=""
+        if [ "$tgv" = "thumbv7em-none-eabi" ]; then
+            if command -v qemu-system-arm >/dev/null 2>&1; then Q8=$(command -v qemu-system-arm); QARG8="-M netduinoplus2"; fi
+        else
+            if command -v qemu-system-riscv32 >/dev/null 2>&1; then Q8=$(command -v qemu-system-riscv32); QARG8="-M virt -bios none"; fi
+        fi
+        if [ -z "$Q8" ] && docker image inspect ctron-bare-tools:latest >/dev/null 2>&1; then
+            DT8="$ROOT/.cache/bare/gate_$$"; mkdir -p "$DT8"
+            cp "$B08" "$DT8/hello.elf"
+            QBIN8="qemu-system-arm"; [ "$tgv" = "riscv32imac-unknown-none" ] && QBIN8="qemu-system-riscv32"
+            O8=$(run_to 60 docker run --rm -v "$ROOT":/ctroot -w /ctroot ctron-bare-tools:latest sh -c "timeout 20 $QBIN8 $QARG8 -nographic -monitor none -semihosting-config enable=on,target=native -kernel .cache/bare/gate_$$/hello.elf" 2>&1 || true)
+            rm -rf "$DT8"
+            if printf '%s' "$O8" | grep -q "exhausted"; then
+                bad "12-$tgv" "08_bare 裸机 panic: $(printf '%s' "$O8" | head -1)"
+            else
+                ok "12-$tgv" "08_bare 裸机真跑(断言过)"
+            fi
+        elif [ -n "$Q8" ]; then
+            run_to 30 "$Q8" $QARG8 -nographic -monitor none -semihosting-config enable=on,target=native -kernel "$B08" >/dev/null 2>&1 && ok "12-$tgv" "08_bare 裸机真跑" || bad "12-$tgv" "08_bare 裸机失败"
+        else
+            skp "08_bare@$tgv" "qemu 不在(环境登记)"
+        fi
+    else
+        bad "13-$tgv" "08_bare 构建失败: $(tail -1 "$T/08b_b.out")"
+    fi
+done
+
 NATBIN="$T/hello_nat"
 if "$CTC" build "$DIR/hello.ct" -o "$NATBIN" >"$T/nat.out" 2>&1; then
     if gate_sz "$NATBIN" 1048576 "full hello 产物"; then ok 10 "full < 1MB 目标"; else bad 10 "full 产物超 1MB(§9.4 目标)"; fi

@@ -86,7 +86,7 @@ fn main() -> I32 {
             println("static char* ctron_abase = 0;")
             println("static size_t ctron_aoff = 0;")
             println("static size_t ctron_acap = 0;")
-            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)4194304; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; return p; }")
+            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)16384; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; return p; }")
             // 运行时辅助:容器/单元格/字节域/读文件(必须先于使用它的原型)
             println("typedef struct \{ unsigned long long magic; char** items; int n; int cap; } ctron_list;")
             // T29 M1 GC 前向声明(核心实现在 ct_chans 声明之后;保守根先行,
@@ -491,6 +491,9 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             // 切片视图 typedef(§3.6,P1-D):标量元素码全集无条件前置(宿主 ctron_arr_*/R 线 ct_arr 同形)
             println("typedef struct \{ int32_t* d; int64_t n; } ctron_view_i;")
             println("typedef struct \{ int64_t* d; int64_t n; } ctron_view_6;")
+            println("typedef struct \{ void* base; int64_t off; int64_t cap; } ct_arena;")
+            println("static void* ct_arena_bump(ct_arena* a, long long n) \{ if (a->off + n > a->cap) \{ ctron_panic(\"arena exhausted\"); } void* p = (char*)a->base + a->off; a->off += n; return p; }")
+            println("static ctron_view_i ct_arena_zeros_i(ct_arena* a, long long n) \{ ctron_view_i v; v.d = (int32_t*)ct_arena_bump(a, n * 4); memset(v.d, 0, (size_t)(n * 4)); v.n = n; return v; }")
             println("typedef struct \{ int* d; int64_t n; } ctron_view_b;")
             println("typedef struct \{ const char** d; int64_t n; } ctron_view_s;")
             println("typedef struct \{ double* d; int64_t n; } ctron_view_f;")
