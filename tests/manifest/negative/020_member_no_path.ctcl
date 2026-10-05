@@ -1,0 +1,9 @@
+// expect-error: E5051
+pkg {
+    manifest_version = 1
+    name = "ws"
+    version = "0.1.0"
+}
+
+member "broken" {
+}

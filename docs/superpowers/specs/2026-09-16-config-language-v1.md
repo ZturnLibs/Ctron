@@ -139,6 +139,8 @@ IDENT     = [a-z_][a-z0-9_]*                          ; "奇怪的名字"一律�
 | pkg | | caps | List[Str] | 成员 ∈ 能力注册表(§8:fs, time, …);集合语义,规范形态排序 |
 | comptime | 记录,可选 | budget_ms | I64 | ≥ 1 |
 | dep | 键控,可选,名 = 包名,重复名 = E | path / git+rev / version | Str | 三形互斥(E5049);`git` 形必须伴随 `rev` |
+| workspace | 记录,可选,≤1 | (v0 无键) | — | 工作区根标记(T49);空块合法;未知键 = E5043 |
+| member | 键控,可选,名 = 成员名,重复名 = E | path | Str | 相对工作区根(T49);缺 path = E5051 |
 
 ## 6. 诊断注册表(规范性;三线输出须逐字节一致)
 
@@ -156,6 +158,9 @@ IDENT     = [a-z_][a-z0-9_]*                          ; "奇怪的名字"一律�
 | E5049 | E | dep 来源互斥/缺来源 | "dep 需要且仅需要一种来源:path \| git+rev \| version" |
 | E5050 | E | manifest_version 缺席或 ≠1 | "pkg 缺语言版本键 manifest_version(必须存在且 = 1)" |
 | W5051 | W | 版本键未居首(规范形态偏离) | "pkg 块第一个键建议为 manifest_version(规范形态;fmt 可自动归位)" |
+| E5051 | E | workspace/member 块错(member 缺 path/重复 member/workspace 嵌套) | "member %r 缺必填键 path" / "重复的 member %r(首次在第 %d 行)" / "workspace 嵌套不允许" |
+| E5052 | E | dep 解析失败(T49 解析器工具面:path 目录缺失/未安装/registry 无满足版本) | "dep 解析失败:%s(试: ctron add %s@%s)" |
+| E5053 | E | lock 内容寻址不符(实装 digest ≠ lock digest) | "lock 内容寻址不符:%s(试: ctron add %s 重装,或删 Ctron.lock 重解析)" |
 
 恢复策略(规范性):`#` → 剥离后按 `//` 续解析;块名实参缺空格 → 提示后照常开块;嵌套/单行块与内联表 → **按括号平衡跳读**至错误构造闭合,一构造一报,不吞外层块的 `}`;多行列表与值位置对象字面量(JSON/YAML 肌肉记忆的高频错法)→ 专码单报,消息必须直接给出合法去处(键控块 `块 "名" { … }`);值非法字段保留键存在性,不触发缺键连报。
 
@@ -167,7 +172,7 @@ IDENT     = [a-z_][a-z0-9_]*                          ; "奇怪的名字"一律�
 
 ## 8. 规范形态(canonical form;偏离 = W 级)
 
-1. 块序:按注册表声明序(`pkg` → `comptime` → `dep*`);dep 按块名字节序字典排;键序:按注册表声明序(未知键垫底,保持原相对序)。
+1. 块序:按注册表声明序(`pkg` → `comptime` → `dep*` → `workspace` → `member*`);dep/member 按块名字节序字典排;键序:按注册表声明序(未知键垫底,保持原相对序)。
 2. `caps` 成员排序(集合语义)。
 3. 缩进 4 空格;`=` 两侧单空格,不对齐;块间恰一空行;块内无空行;行尾注释前两空格。
 4. 字符串转义仅 `\"` 与 `\\`;`-0` 归一 `0`;整数无前导零;文件尾单换行。
@@ -224,8 +229,8 @@ L1 最小 API 面:`parse(src) -> Result[ValueTree, ConfigError]`;`get_str / get_
 
 ## 12. 开放项
 
-- lockfile(`Ctron.lock`)注册表随 v0.6 依赖解析立表;复用本文法 + 规范渲染输出(三线零新增解析器)。
-- workspace/profile 注册表键随特性落地修订(§3 预留位)。
+- ~~lockfile(`Ctron.lock`)注册表随 v0.6 依赖解析立表~~ **已立表(T49,2026-10-06)**:`Ctron.lock` = `lock { manifest_version = 1 }` + `pkg "名" { version / source / path? / git? / rev? / digest }`(键序 = 注册表声明序,dep 按名字节序;digest = `sha256:<64hex 小写>`,version 形 = 安装 module 文件摘要,path/git 形 = 安装树顶层 `*.ct` 按名序 `名\n字节数\n内容` 拼接摘要;无时间戳,`ctron-dep` 生成,二跑逐字节稳定)。lock 由工具链独占读写,三线解析器不消费。
+- ~~workspace/profile 注册表键随特性落地修订(§3 预留位)~~ **workspace 已落地(T49)**:`workspace {}` 根标记 + `member "名" { path }` 键控块(§5);profile 仍预留。
 - 能力注册表与规范 §8 的同步机制(当前人工同步,meta_check 可校验)。
 - `std.config` 立项(模块 API 与 comptime 边界;comptime 读配置默认不做,重议须过否决记录)。
 - L2 三线迁移:schema-as-CTCL 已有 Python 参考实现;`validate` API 与 C/Rust/自举 stdlib 对齐待排。

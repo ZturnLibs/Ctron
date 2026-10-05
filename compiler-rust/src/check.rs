@@ -168,6 +168,10 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
     let mut has_comptime = false;
     let mut dep_active = false;
     let mut dep = [false; 4]; // path / git / rev / version
+    let mut member_active = false;
+    let mut m_has_path = false;
+    let mut member_arg = String::new();
+    let mut seen_members: Vec<(String, usize)> = Vec::new();
     let mut tree: Vec<MBlock> = Vec::new();
     let mut cur: Option<usize> = None;
     let mut lead: Vec<Option<String>> = Vec::new();
@@ -286,6 +290,15 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
                     }
                     dep_active = false;
                 }
+                if member_active {
+                    if !m_has_path {
+                        diags.push(format!(
+                            "Ctron.ctcl: E5051 member \"{member_arg}\" 缺必填键 path"
+                        ));
+                    }
+                    member_arg.clear();
+                    member_active = false;
+                }
                 block.clear();
                 cur = None;
                 continue;
@@ -347,8 +360,8 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
                 );
                 continue;
             }
-            if id != "pkg" && id != "comptime" && id != "dep" {
-                diags.push(format!("Ctron.ctcl: E5044 未知块 {id};合法块:comptime, dep, pkg"));
+            if id != "pkg" && id != "comptime" && id != "dep" && id != "workspace" && id != "member" {
+                diags.push(format!("Ctron.ctcl: E5044 未知块 {id};合法块:comptime, dep, member, pkg, workspace"));
                 block = "skip".into();
                 continue;
             }
@@ -375,6 +388,29 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
                 diags.push("Ctron.ctcl: E5041 pkg 是记录块,不带名字实参".into());
                 block = "skip".into();
                 continue;
+            } else if id == "workspace" && arg.is_some() {
+                diags.push("Ctron.ctcl: E5041 workspace 是记录块,不带名字实参".into());
+                block = "skip".into();
+                continue;
+            } else if id == "member" {
+                let Some(a) = arg.clone() else {
+                    diags.push("Ctron.ctcl: E5041 member 是键控块:dep \"名\" { ... }".into());
+                    block = "skip".into();
+                    continue;
+                };
+                if !is_name(&a) {
+                    pend.push(format!("Ctron.ctcl: E5048 键控块名 '{a}' 不符合包名规则"));
+                }
+                if let Some((_, first_ln)) = seen_members.iter().find(|(nm, _)| nm == &a) {
+                    diags.push(format!(
+                        "Ctron.ctcl: E5045 重复的 member \"{a}\"(首次在第 {first_ln} 行);同名块禁止追加"
+                    ));
+                } else {
+                    seen_members.push((a.clone(), ln0 + 1));
+                }
+                member_active = true;
+                m_has_path = false;
+                member_arg = a;
             }
             if id == "pkg" {
                 b_saw_pkg = true;
@@ -601,7 +637,19 @@ pub fn parse_manifest_full(src: &str) -> (sem::Manifest, Vec<String>, Vec<MBlock
                     "Ctron.ctcl: E5043 块 dep 中未知键 {key};合法键:path, git, rev, version"
                 )),
             }
-        }
+            } else if block == "workspace" {
+                pend.push(format!(
+                    "Ctron.ctcl: E5043 块 workspace 中未知键 {key};合法键:(无)"
+                ));
+            } else if block == "member" {
+                if key == "path" {
+                    m_has_path = true;
+                } else {
+                    pend.push(format!(
+                        "Ctron.ctcl: E5043 块 member 中未知键 {key};合法键:path"
+                    ));
+                }
+            }
     }
 
     if !block.is_empty() {
