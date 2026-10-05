@@ -1597,3 +1597,11 @@ draw 存活期间钉 Driver 树副本**:`break set -f s30.c -l 11045`(draw 调�
 树参数,存活期任何写=_smasher_实锤。本轮已验:watch 钉错对象(死槽)必得伪影,此前
 「S2 后某构建 20/20 过」疑同类(观察对象/构建批次错位)。工具链已验证可复现(断点脚本
 +watchpoint 语法=watchpoint set expression -w write -s 8 -- <expr>)。
+
+**s30 观察点正确用法与共机环境告警(2026-10-05 深夜七,终)**:①watchpoint 正确观察对象
+=**phase-1 draw 存活期间的 Driver 树副本**(break 于 draw 调用行→watchpoint set
+expression -w write -s 8 -- &(t_d)->t.vreg_name→continue;draw 只读树参数,存活期任何
+写=smasher);已验死槽观察=伪影(test_sk 栈复用)。②**共机告警:/tmp 调试目录被外部
+清空两次(同伴清理竞态)+vendor/内存态漂移=调试会话需 /tmp 外目录(如 ~/s30dbg)或
+静默窗**。③完整复现序列(下段照抄):emit→cc -O0 -g→sh run.sh(断言+139);探针版
+(fprintf 三段)全绿。责任泳道=GC(本件)。此为 T31 重开在 origin 全链交付后唯一在办。
