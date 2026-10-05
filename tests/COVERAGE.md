@@ -1589,3 +1589,11 @@ s30 仍崩——**帧尺寸/栈耗尽类排除**(浅递归下亦崩);结合七�
 始化栈垃圾(毒填不现毒模式)、非帧尺寸——**收敛=帧机器存在即触发的值链类伤,定位工具
 =MSAN(本机 Apple clang 不可用;CI ubuntu 加 MSAN 诊断 job=可行路线,登记)**。池守卫
 32 复位(单点 trans_ty.ct ct_reg_line_c)。
+
+**s30 watchpoint 方法学修正(2026-10-05 深夜六)**:watch t_test 已死帧的 t_t.vreg_name
+命中 test_sk 栈复用重写(11060:1 尾声)=**伪影**(死槽复用正常)。正确观察点=**phase-1
+draw 存活期间钉 Driver 树副本**:`break set -f s30.c -l 11045`(draw 调用行)→
+`watchpoint set expression -w write -s 8 -- &(t_d)->t.vreg_name`→continue——draw 只读
+树参数,存活期任何写=_smasher_实锤。本轮已验:watch 钉错对象(死槽)必得伪影,此前
+「S2 后某构建 20/20 过」疑同类(观察对象/构建批次错位)。工具链已验证可复现(断点脚本
++watchpoint 语法=watchpoint set expression -w write -s 8 -- <expr>)。
