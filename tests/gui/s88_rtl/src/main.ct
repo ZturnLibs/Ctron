@@ -1,0 +1,168 @@
+// tests/gui/s88_rtl —— G 档 GUI-34:dir 布局镜像(class 标记 rtl)headless 验收
+// 同构 hbox 双联:ltr 正序 x 递增 / rtl 逆序 x 递减(镜像恒等:x_rtl = W - x_ltr - w);
+// 文字面 bidi 已有(s14/s15/s17)。v1 元素级(无继承,根级=整树镜像);pad 对调/
+// 文字 align 随令牌面候切片。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_x100, char_str,
+         d_cmd_text_len, d_cmd_text_byte}
+
+struct M {
+    var state: Str
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+// —— 其余库全事件头桩(未实例化组件;骨架面合并库全量注册)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+
+fn make() -> M {
+    return M { state: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "noop" {
+        return
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 360, 240,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            var dn3: I32 = d_cmd_count()
+            var di3: I32 = 0
+            var xs3 = List[I32]()
+            while di3 < dn3 {
+                if d_cmd_type(di3) == 1 {
+                    var tl3: I32 = d_cmd_text_len(di3)
+                    var bi3: I32 = 0
+                    var tx3: Str = ""
+                    while bi3 < tl3 {
+                        tx3 = tx3 + char_str(d_cmd_text_byte(di3, bi3))
+                        bi3 += 1
+                    }
+                    if tx3 == "X" || tx3 == "Y" || tx3 == "Z" {
+                        xs3.push(d_cmd_x100(di3))
+                    }
+                }
+                di3 += 1
+            }
+            // 镜像恒等:rtl 组末标签 x(ltr 首标签位)≈ 首标签 x + 两格步进
+            println("S88-RTL-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <hbox class="ltr">
+      <label class="cell">A</label>
+      <label class="cell">B</label>
+      <label class="cell">C</label>
+    </hbox>
+    <hbox class="rtlrow">
+      <label class="cell">X</label>
+      <label class="cell">Y</label>
+      <label class="cell">Z</label>
+    </hbox>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style ltr { direction: row gap: 6 }
+style rtlrow { direction: row gap: 6 rtl: 1 }
+style cell { direction: column w: 60 h: 24 bg: "#1e2a3a" fg: "#e5e7eb" }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

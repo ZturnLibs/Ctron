@@ -1249,10 +1249,26 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
                     }
                 }
             } else {
-                var ch: I32 = t.nfc[id]
-                while ch >= 0 {
-                    rt_emit(t, bind, itemvar, item, ch, hits, hinst, inst, hov, actn)
-                    ch = t.ns[ch]
+                // GUI-34:dir 布局镜像——class 标记 "rtl"(canvas:1 同款标记形态)
+                // 容器子序逆发(视觉左右镜像;文字面 bidi s14/s15/s17 已有)
+                if gt_cls_prop(c, "rtl", "", t) != "" {
+                    var kids = List[I32]()
+                    var ch2: I32 = t.nfc[id]
+                    while ch2 >= 0 {
+                        kids.push(ch2)
+                        ch2 = t.ns[ch2]
+                    }
+                    var ki: I32 = kids.len - 1
+                    while ki >= 0 {
+                        rt_emit(t, bind, itemvar, item, kids[ki], hits, hinst, inst, hov, actn)
+                        ki -= 1
+                    }
+                } else {
+                    var ch: I32 = t.nfc[id]
+                    while ch >= 0 {
+                        rt_emit(t, bind, itemvar, item, ch, hits, hinst, inst, hov, actn)
+                        ch = t.ns[ch]
+                    }
                 }
             }
         }
