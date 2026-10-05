@@ -2247,6 +2247,9 @@ fn ct_gc_slot_kind(code: Str) -> Str {
     }
     if code == "L" { return "0" }
     if ct_is_tlcode(code) { return "0" }
+    // S4③ 追补:串翻面后 char*(s/N)即 GC 对象——槽必须注册(旧判「bump 串无引用」过期)
+    if code == "s" { return "0" }
+    if code == "N" { return "0" }
     return ""
 }
 

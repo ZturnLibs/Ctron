@@ -62,7 +62,7 @@ fn ct_wrap_i(code: Str, x: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         // T14-③:struct 值入通道 = 堆盒值拷贝(send 装箱;match Ok 臂按 hR 码解引用)
         var bt = ct_ctype(code)
-        return "(\{ " + bt + "* _cb = (" + bt + "*)ct_gc_alloc(sizeof(" + bt + ")); *_cb = (" + x + "); (ct_i)(long)_cb; })"
+        return "(\{ " + bt + "* _cb = (" + bt + "*)ctron_amalloc(sizeof(" + bt + ")); *_cb = (" + x + "); (ct_i)(long)_cb; })"
     }
     return "(ct_i)(" + x + ")"
 }
@@ -222,7 +222,7 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
         println("#endif")
         return "0"
     }
-    var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ct_gc_alloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
+    var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
     var ci3: I32 = 0
     while ci3 < caps.len {
         acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = " + ct_wrap_i(codes[ci3], "t_" + caps[ci3]) + ";"
@@ -361,7 +361,7 @@ fn ct_clo_ret_line(code: Str, x: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         // P0-A:u:-尾返回 = 堆盒指针(ct_i)——旧 union 低 8 字节式对 >8B struct
         //(Resp/Req 链)即截断,调用位 #fret 按指针解盒(双侧同约定)
-        return "return (\{ " + ct_ctype(code) + "* _rb = (" + ct_ctype(code) + "*)ct_gc_alloc(sizeof(" + ct_ctype(code) + ")); *_rb = " + x + "; (ct_i)(long)_rb; });"
+        return "return (\{ " + ct_ctype(code) + "* _rb = (" + ct_ctype(code) + "*)ctron_amalloc(sizeof(" + ct_ctype(code) + ")); *_rb = " + x + "; (ct_i)(long)_rb; });"
     }
     return "return (ct_i)(" + x + ");"
 }
@@ -777,7 +777,7 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
         println("#endif")
         return "0"
     }
-    var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ct_gc_alloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
+    var acc = "(\{ ct_i* _e" + ix + " = (ct_i*)ctron_amalloc(sizeof(ct_i) * " + caps.len.to_string() + ");"
     // T55 创建位:每捕获一 arena 格(ctron_amalloc,地址稳定永不释放)——值入格、
     // 槽存格址;链式源(P 绑)已是格指针,直传同一格址(内外层共格)
     var ci3: I32 = 0
@@ -786,11 +786,11 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
             acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = (ct_i)(long)t_" + caps[ci3] + ";"
         } else {
             var cd3 = ct_ctype(codes[ci3])
-            acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = (ct_i)(long)(\{ " + cd3 + "* _g" + ci3.to_string() + " = (" + cd3 + "*)ct_gc_alloc(sizeof(" + cd3 + ")); *_g" + ci3.to_string() + " = t_" + caps[ci3] + "; _g" + ci3.to_string() + "; });"
+            acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = (ct_i)(long)(\{ " + cd3 + "* _g" + ci3.to_string() + " = (" + cd3 + "*)ctron_amalloc(sizeof(" + cd3 + ")); *_g" + ci3.to_string() + " = t_" + caps[ci3] + "; _g" + ci3.to_string() + "; });"
         }
         ci3 += 1
     }
-    acc = acc + " ct_clop _c" + ix + " = (ct_clop)ct_gc_alloc(sizeof(ct_clo)); _c" + ix + "->fn = (void*)" + shim + "; _c" + ix + "->env = _e" + ix + "; _c" + ix + "; })"
+    acc = acc + " ct_clop _c" + ix + " = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c" + ix + "->fn = (void*)" + shim + "; _c" + ix + "->env = _e" + ix + "; _c" + ix + "; })"
     return acc
 }
 
@@ -800,7 +800,7 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
 fn ct_res_wrap(code: Str, x: Str) -> Str {
     if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
         var ct = ct_ctype(code)
-        return "(\{ " + ct + "* _b = (" + ct + "*)ct_gc_alloc(sizeof(" + ct + ")); *_b = " + x + "; (ct_i)(long)_b; })"
+        return "(\{ " + ct + "* _b = (" + ct + "*)ctron_amalloc(sizeof(" + ct + ")); *_b = " + x + "; (ct_i)(long)_b; })"
     }
     if or2(code == "s", code == "N") {
         return "(ct_i)(long)(" + x + ")"

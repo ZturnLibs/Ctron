@@ -147,7 +147,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var aret = ct_fn_ret(file, e[1])
                 if aret.len > 2 && byte_slice(aret, 0, 2) == "u:" {
                     // P0-A:u:-返回 = 堆盒指针(ct_i;双侧同约定,调用位 #fret 解盒)
-                    println("return (\{ " + ct_ctype(aret) + "* _rb = (" + ct_ctype(aret) + "*)ct_gc_alloc(sizeof(" + ct_ctype(aret) + ")); *_rb = t_" + e[1] + "(" + acall + "); (ct_i)(long)_rb; });")
+                    println("return (\{ " + ct_ctype(aret) + "* _rb = (" + ct_ctype(aret) + "*)ctron_amalloc(sizeof(" + ct_ctype(aret) + ")); *_rb = t_" + e[1] + "(" + acall + "); (ct_i)(long)_rb; });")
                 } else if aret.len > 1 && byte_at(aret, 0) == 71 {
                     println("return (ct_i)(long)t_" + e[1] + "(" + acall + ");")
                 } else if seq2(aret, "v") {
@@ -159,7 +159,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 println("}")
                 println("#endif")
             }
-            return "(\{ ct_clop _c = (ct_clop)ct_gc_alloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = (void*)1; _c; })"
+            return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = (void*)1; _c; })"
         }
         // P0-A:裸 fn 引用值位 → env-first 解箱 shim(旧裸地址直填 fn 槽,env=垃圾)
         var fpcs26 = ct_fn_pcodes(file, e[1])
@@ -527,7 +527,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var bxt = ct_typeof(ag[1], env, file)
                 if bxt.len > 2 && byte_slice(bxt, 0, 2) == "u:" {
                     var btn = "t_" + byte_slice(bxt, 2, bxt.len)
-                    return "(\{ " + btn + "* _b = (" + btn + "*)ct_gc_alloc(sizeof(" + btn + ")); *_b = " + ct_expr(ag[1], env, file) + "; _b; })"
+                    return "(\{ " + btn + "* _b = (" + btn + "*)ctron_amalloc(sizeof(" + btn + ")); *_b = " + ct_expr(ag[1], env, file) + "; _b; })"
                 }
                 panic("emit:Box 载荷限值类型")
                 return ""
@@ -727,7 +727,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     sN = num_text(cal[1][2][2][1])
                 }
                 var sct = ct_ctype(sEc)
-                return "(\{ ctron_view_" + sEc + " t_sv; t_sv.n = " + sN + "; t_sv.d = (" + sct + "*)ct_gc_alloc(sizeof(" + sct + ") * " + sN + "); \{ int64_t t_si; for (t_si = 0; t_si < " + sN + "; t_si++) \{ t_sv.d[t_si] = (" + sct + ")(" + ct_expr(ag[1], env, file) + "); } } t_sv; })"
+                return "(\{ ctron_view_" + sEc + " t_sv; t_sv.n = " + sN + "; t_sv.d = (" + sct + "*)ctron_amalloc(sizeof(" + sct + ") * " + sN + "); \{ int64_t t_si; for (t_si = 0; t_si < " + sN + "; t_si++) \{ t_sv.d[t_si] = (" + sct + ")(" + ct_expr(ag[1], env, file) + "); } } t_sv; })"
             }
             var obj = ct_expr(cal[1], env, file)
             var objt = ct_typeof(cal[1], env, file)
@@ -864,7 +864,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // Lu: 族(T14-②):struct 元素装箱入槽(堆盒值拷贝;索引侧解引用取回)
                 if ct_is_lcode(objt6) {
                     var boxty = ct_ctype(byte_slice(objt6, 1, objt6.len))
-                    return "(\{ " + boxty + "* _lb = (" + boxty + "*)ct_gc_alloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
+                    return "(\{ " + boxty + "* _lb = (" + boxty + "*)ctron_amalloc(sizeof(" + boxty + ")); *_lb = " + a0 + "; ctron_list_push((ctron_list*)(" + obj + "), (const char*)_lb); })"
                 }
                 var pv = ct_arg_cast(a0t, "s", a0)
                 if or2(ct_is_tlcode(objt6), !or2(or2(a0t == "s", a0t == "N"), or2(a0t == "L", or2(ct_is_lcode(a0t), or2(a0t == "A", or2(a0t == "g", or2(a0t == "k", or2(a0t == "h", a0t == "R")))))))) {
@@ -2132,7 +2132,7 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
             ai31 += 1
         }
         if ret31.len > 2 && byte_slice(ret31, 0, 2) == "u:" {
-            println("return (\{ " + ct_ctype(ret31) + "* _rb = (" + ct_ctype(ret31) + "*)ct_gc_alloc(sizeof(" + ct_ctype(ret31) + ")); *_rb = t_" + nm + "(" + aargs31 + "); (ct_i)(long)_rb; });")
+            println("return (\{ " + ct_ctype(ret31) + "* _rb = (" + ct_ctype(ret31) + "*)ctron_amalloc(sizeof(" + ct_ctype(ret31) + ")); *_rb = t_" + nm + "(" + aargs31 + "); (ct_i)(long)_rb; });")
         } else {
             if ret31.len > 1 && or2(byte_at(ret31, 0) == 70, byte_at(ret31, 0) == 71) {
                 println("return (ct_i)(long)t_" + nm + "(" + aargs31 + ");")
@@ -2152,7 +2152,7 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
         println("}")
         println("#endif")
     }
-    return "(\{ ct_clop _cfv = (ct_clop)ct_gc_alloc(sizeof(ct_clo)); _cfv->fn = (void*)" + anm31 + "; _cfv->env = (void*)0; _cfv; })"
+    return "(\{ ct_clop _cfv = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _cfv->fn = (void*)" + anm31 + "; _cfv->env = (void*)0; _cfv; })"
 }
 
 fn ct_assigned(nm: Str, b: List[Str]) -> Bool {
