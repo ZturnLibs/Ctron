@@ -1415,3 +1415,13 @@ GC=1 600s 超时(off 正常)——interp 重负载 CPU 墙在 auth 家族复现,
 **GC=1 边界画像定稿**:轻/中负载(全语义套件+net+gui 阶梯+轻 http 夹具)全绿;重负载
 (interp 巨语料:a_jwt/guard/sess/db-pg/编译器自举)CPU 15-20×,RSS 恒有界。翻面决策
 的完整证据面=套件绿✓+RSS 有界✓+CPU 墙(M2 域)✓+OOM 响亮化✓。
+
+**CTCL manifest 四线对拍债闭账(2026-10-05)**:pkg.c + selfhosted/ctcl_chk.ct 双硬编码
+解析器同步 schema 真源(tools/ctcl_manifest_schema.ctcl 早已全量:tier/plugin/codes)
+——①pkg 合法键+=tier(E5046 值域 (core|alloc|std),消息逐字对齐 python 臂);②plugin
+块准入(keyed;path/codes);③dep += codes;④未知键/未知块提示串同步(含 tier/plugin);
+⑤双解析器输出改码升稳定排序(python 臂同序;gui_calc 的 E5040 行序分歧即此销账);
+⑥ctcl_chk 的 skip 块键行静默化(未知块键行曾误投 dep 臂)。四线对拍 136 例 ALL GREEN
+(meta_check/manifest run/selftest/suite 100/100 随批全绿)。**D7 终点登记**:pkg.c 与
+ctcl_chk.ct 仍为硬编码grammar(第三/四份拷贝),schema 数据驱动化(C/自举线接
+ctcl_manifest_schema.ctcl 加载器)=CTCL 泳道架构件,本件为最小 goldens 满足同步。

@@ -212,7 +212,7 @@ static int ctcl_close(const char* k, const char** keys, size_t n, char* out, siz
     return 0;
 }
 
-static const char* PKG_KEYS[] = {"manifest_version", "name", "version", "caps"};
+static const char* PKG_KEYS[] = {"manifest_version", "name", "version", "caps", "tier"};
 static const char* COMPTIME_KEYS[] = {"budget_ms"};
 static const char* DEP_KEYS[] = {"path", "git", "rev", "version"};
 
@@ -341,8 +341,8 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
                 push(r, "Ctron.ctcl", "E5040", "块外只允许块头(NAME [\"名\"]) {");
                 continue;
             }
-            if (strcmp(id, "pkg") != 0 && strcmp(id, "comptime") != 0 && strcmp(id, "dep") != 0) {
-                push(r, "Ctron.ctcl", "E5044", "未知块 %s;合法块:comptime, dep, pkg", id);
+            if (strcmp(id, "pkg") != 0 && strcmp(id, "comptime") != 0 && strcmp(id, "dep") != 0 && strcmp(id, "plugin") != 0) {
+                push(r, "Ctron.ctcl", "E5044", "未知块 %s;合法块:comptime, dep, pkg, plugin", id);
                 snprintf(block, sizeof block, "skip");
                 continue;
             }
@@ -570,11 +570,18 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
                 } else if (vkind >= 0) {
                     push(&pend, "Ctron.ctcl", "E5046", "caps 的类型应为 list");
                 }
+            } else if (strcmp(key, "tier") == 0) {
+                if (vkind == 0) {
+                    if (strcmp(vc, "core") != 0 && strcmp(vc, "alloc") != 0 && strcmp(vc, "std") != 0)
+                        push(&pend, "Ctron.ctcl", "E5046", "键 tier 值 '%s' 不符合 (core|alloc|std)", vc);
+                } else if (vkind > 0) {
+                    push(&pend, "Ctron.ctcl", "E5046", "tier 的类型应为 str");
+                }
             } else {
                 char hint[128] = {0}, close[32];
-                if (ctcl_close(key, PKG_KEYS, 4, close, sizeof close))
+                if (ctcl_close(key, PKG_KEYS, 5, close, sizeof close))
                     snprintf(hint, sizeof hint, ";你是不是想要 %s?", close);
-                push(&pend, "Ctron.ctcl", "E5043", "块 pkg 中未知键 %s%s;合法键:manifest_version, name, version, caps", key, hint);
+                push(&pend, "Ctron.ctcl", "E5043", "块 pkg 中未知键 %s%s;合法键:manifest_version, name, version, caps, tier", key, hint);
             }
         } else if (strcmp(block, "comptime") == 0) {
             if (strcmp(key, "budget_ms") == 0) {
@@ -1142,6 +1149,16 @@ ctron_manifest ctron_manifest_check(const char* path) {
     m.has_comptime = p.has_comptime;
     m.budget_ok = p.budget_ok;
     m.budget_ms = p.budget_ms;
+    /* T35/T52 对齐:python 臂按 code 升序输出(稳定,同码保行序)——四线消息全文对拍要求逐字同序 */
+    for (size_t i = 1; i < r.n; i++) {
+        pkg_diag e = r.d[i];
+        size_t j = i;
+        while (j > 0 && strcmp(r.d[j - 1].code, e.code) > 0) {
+            r.d[j] = r.d[j - 1];
+            j -= 1;
+        }
+        r.d[j] = e;
+    }
     m.diags = r;
     pkg_free(&p);
     return m;
