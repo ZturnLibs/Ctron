@@ -100,3 +100,8 @@
 - 自举链定案:主树发射器发 cc_emit → 追加一代 C 实现(helper)→ 新发射器 → 发 cc_run(自含)——此后每代自含
 - smoke 156/4:余 4 项 = ①自检 decls=482 基线漂移(新增 fs_mkdir/extern +2,预期,随提交更新基线)②conc_parallel 发射(待查,或 HEAD 既有)③native/seed 口径(seed rt_eval.c 缺 fs_mkdir native,已登记)④doc std 模块(worktree 环境面)
 - 后续:Loom 侧 F16/F17 规避回归删除;seed rt_eval.c 补 fs_mkdir native
+
+## FB-2 验收补全(2026-10-06)
+- decls 基线 480→482 随批更新(惯例如注);smoke 157/3
+- 余 3 项归因完成:①conc_parallel 发射段错误——**主树二进制(与本批无关)对同一 fixture 同样 139**(fixture 自 Phase 4 未变)→ 既有 s30/发射链范畴,登记移交;②native/seed 口径——同源(seed rt_eval 缺 fs_mkdir native 已登记);③doc std 模块——worktree 环境面
+- **FB-1+FB-2 验收就此闭合**:双臂行为 ✓、panic 回归 ✓、smoke 基线更新 ✓、余 3 项均归因既有并移交
