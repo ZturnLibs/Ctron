@@ -728,8 +728,8 @@ fn validate_text(t: Str) -> List[Str] {
                 ds.push("E5040 块外只允许块头(NAME [\"名\"]) " + c_lb())
                 continue
             }
-            if !or2(seq2(id, "pkg"), or2(seq2(id, "comptime"), seq2(id, "dep"))) {
-                ds.push("E5044 未知块 " + id + ";合法块:comptime, dep, pkg")
+            if !or2(seq2(id, "pkg"), or2(seq2(id, "comptime"), or2(seq2(id, "dep"), seq2(id, "plugin")))) {
+                ds.push("E5044 未知块 " + id + ";合法块:comptime, dep, pkg, plugin")
                 block = "skip"
                 continue
             }
@@ -892,7 +892,7 @@ fn validate_text(t: Str) -> List[Str] {
         seen_keys.push(key)
 
         if seq2(block, "pkg") {
-            var known = or2(or2(seq2(key, "manifest_version"), seq2(key, "name")), or2(seq2(key, "version"), seq2(key, "caps")))
+            var known = or2(or2(or2(seq2(key, "manifest_version"), seq2(key, "name")), or2(seq2(key, "version"), seq2(key, "caps"))), seq2(key, "tier"))
             if !known {
                 var hint = ""
                 var keys_l = List[Str]()
@@ -900,11 +900,12 @@ fn validate_text(t: Str) -> List[Str] {
                 keys_l.push("name")
                 keys_l.push("version")
                 keys_l.push("caps")
+                keys_l.push("tier")
                 var d = c_close(key, keys_l)
                 if d.len > 0 {
                     hint = ";你是不是想要 " + d + "?"
                 }
-                ds.push("E5043 块 pkg 中未知键 " + key + hint + ";合法键:manifest_version, name, version, caps")
+                ds.push("E5043 块 pkg 中未知键 " + key + hint + ";合法键:manifest_version, name, version, caps, tier")
                 continue
             }
             if seq2(key, "manifest_version") {
@@ -942,6 +943,14 @@ fn validate_text(t: Str) -> List[Str] {
                     ds.push("E5046 version 的类型应为 str")
                 } else if !c_is_semver(items[0]) {
                     ds.push("E5046 键 version 值 '" + items[0] + "' 不符合 " + c_semver_pat())
+                }
+            } else if seq2(key, "tier") {
+                if vkind == 0 {
+                    if !or2(or2(seq2(items[0], "core"), or2(seq2(items[0], "alloc"), seq2(items[0], "std"))), false) {
+                        ds.push("E5046 键 tier 值 '" + items[0] + "' 不符合 (core|alloc|std)")
+                    }
+                } else if vkind > 0 {
+                    ds.push("E5046 tier 的类型应为 str")
                 }
             } else {
                 if vkind == 3 {
@@ -997,10 +1006,10 @@ fn validate_text(t: Str) -> List[Str] {
             } else {
                 ds.push("E5043 块 comptime 中未知键 " + key + ";合法键:budget_ms")
             }
-        } else {
-            var known2 = or2(or2(seq2(key, "path"), seq2(key, "git")), or2(seq2(key, "rev"), seq2(key, "version")))
+        } else if seq2(block, "dep") {
+            var known2 = or2(or2(seq2(key, "path"), seq2(key, "git")), or2(or2(seq2(key, "rev"), seq2(key, "version")), seq2(key, "codes")))
             if !known2 {
-                ds.push("E5043 块 dep 中未知键 " + key + ";合法键:path, git, rev, version")
+                ds.push("E5043 块 dep 中未知键 " + key + ";合法键:path, git, rev, version, codes")
                 continue
             }
             if seq2(key, "path") {
@@ -1009,9 +1018,16 @@ fn validate_text(t: Str) -> List[Str] {
                 has_git = 1
             } else if seq2(key, "rev") {
                 has_rev = 1
-            } else {
+            } else if seq2(block, "plugin") {
+                var knownp = or2(seq2(key, "path"), seq2(key, "codes"))
+                if !knownp {
+                    ds.push("E5043 块 plugin 中未知键 " + key + ";合法键:path, codes")
+                    continue
+                }
+            } else if seq2(block, "dep") {
                 has_version = 1
             }
+            // skip 块(未知块)键行=静默(T52 对齐 python 臂)
         }
     }
 
@@ -1092,6 +1108,18 @@ fn main() -> I32 {
             }
             print("== " + n + "\n")
             var ds = validate_text(txt)
+            // 码升稳定排序(python 臂同序;同码保行序)
+            var si: I32 = 1
+            while si < ds.len {
+                var se = ds[si]
+                var sj: I32 = si
+                while sj > 0 && c_cmp(byte_slice(ds[sj - 1], 0, 5), byte_slice(se, 0, 5)) > 0 {
+                    ds[sj] = ds[sj - 1]
+                    sj -= 1
+                }
+                ds[sj] = se
+                si += 1
+            }
             var k: I32 = 0
             while k < ds.len {
                 print(ds[k] + "\n")
