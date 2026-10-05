@@ -43,3 +43,14 @@
 - 修复落地后:Loom-Cprofile 台账对应条目标"已关闭",Loom 侧规避代码删除(回归验证);
 - c-rust-divergences.md:FB-3/FB-13 涉及的双臂分歧登记;
 - 本表为活文档:每 FB 完成即在总表标日期与提交号。
+
+## 实施状态(2026-10-05)
+
+### FB-1:已实施,待自举验证(工作树)
+- `compiler/src/driver_emit.ct:112`:ctron_byte_slice 模板加 `n<0 || a<0 || a+n>strlen(s)` → `ctron_panic("byte_slice: range out of bounds")`
+- `compiler/src/eval_call.ct`(byte_slice 分发):解释臂同口径三重校验(嵌套 if,规避 && 不短路)
+- `tests/07e_byte_slice_range.panic.ct`:新增(`//@ panic: byte_slice`),meta_check 通过(532 文件)
+- **阻塞:native.sh 自举重建静默失败(sh -x 显示 ctc.sh emit 在链内失败,手动单独 emit 同一文件成功)——需按 BOOTSTRAP.md 流程排查(ladder/native 链),验证完成前不提交**
+- 验证清单(解除阻塞后):①`bin/ctron-cc run tests/07e...` panic 消息含 byte_slice;②发射臂等价验证(emit Loom verifyd 崩溃用例);③smoke --full;④suite 记分卡 ≥ 现状;⑤固定点
+
+### FB-2:五点锚点已勘察(见总表),未实施
