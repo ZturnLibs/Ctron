@@ -990,6 +990,7 @@ make test 红门置尾(corpus_trans 移至 modules/fmt 之后,红门不遮蔽后
   P1 臂提速环境属性(p1-vs-C 同轮 1.13↔0.97 摆动),非本件回归;本件绿轮比值
   1.030/1.039 优于在册历史带(1.025–1.128)**。
 
+<<<<<<< HEAD
 **2026-10-02 T35:分层 stdlib 机制(core < alloc < std)落库**(spec-gap W8;§9 档位矩阵):
 - 机制核(7550f8bc):清单 pkg 块 `tier` 键(缺省 std;E5040.tier 值域 fail-closed)+
   模块头注 `//@ tier:` 提取(首注释块;缺标注不设门渐进承诺)+ use 点 `E3040.tier`
@@ -1508,3 +1509,17 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
 与 T11「R 线对象面细键欠账在册」同族)——CI 无 cargo=SKIP 不红,本地开发卫生债,
 归 ctronr 泳道。c/sh/python 三臂经 pkg.c+ctcl_chk 同步件(99176da9)与 cherry-pick
 (16a40a4f)已全绿;主树 CI [1/9] 自此不红。
+=======
+**s30_props_d 段错误定案追查(2026-10-05,GC 泳道自查)**:git bisect 铁证——**首坏提交=
+23bc9578(S2 M1.5 帧链落地本commit)**;ba73779a(S1)与 f725f5c3(pre-S2 main)全绿。分层
+剥离实验(对发射产物 C 做外科剥离):剥全部帧机器=绿;仅剥注册行/环存行/环恢复行=仍崩;
+仅剥 ct_fp 链推入(248 处)=绿。**触发面=ct_fp 链推入/弹出机制本身**,非注册行、非池溢出、
+非栈溢出(崩点帧深仅 5,O0/O1 同崩,GC 未开)。症状=GuiTree.vreg_name 持错值(bump 邻位
+非列表对象),read .n 即崩;崩点漂移(gui_root_id/gui_list_ns)、-O0 同崩、跨轮次微抖=含
+未初始化读取类成分或链副作用路径。下一步精确起点:①双二进制(pre-S2/现)对 gui_root_id
+全调用序列做 vreg_* 逐值对拍找首分歧(本轮 lldb 脚本化受阻,建议改用断点脚本文件+日志
+重定向);②重点审视 S2 帧发射对「大结构值参(GuiTree)+其内 list 字段」fn 的代码形态差
+(取址入池=参数被迫内存驻留,与调用方提升临时/复型副本的交互);③s30=数据驱动族夹具,
+d_send_char/d_tick fire 路径(C→Ctron 重入)为高疑场景。责任=GC 泳道(S2 本件),修复前
+s30 维持在册红(同伴各批「s30 在册」即此)。
+>>>>>>> 05c28c20 (docs(gc): s30 段错误定案追查入册——bisect 钉死 S2 本commit;剥层实验定触发面=ct_fp 链机制;下一步三路精确起点)
