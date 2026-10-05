@@ -90,6 +90,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("read_dir")
     prel.push("fs_exists")
     prel.push("fs_write")
+    prel.push("fs_mkdir")
     prel.push("fs_delete")
     prel.push("now_ms")
     prel.push("now_ms_text")

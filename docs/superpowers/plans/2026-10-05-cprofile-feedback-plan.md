@@ -66,3 +66,9 @@
 - 双臂防护落地并终验:解释臂(main 探针 rc=1+消息)、发射臂(模板 strlen 边界+panic,rc=1+消息);合法切片不受影响(行为面由既有语料兜底)
 - 过程实录(全部为可复用经验):①`\}` 非法转义(README 在册坑,重蹈——模板规则:`{` 转义 `\{`,`}` 恒裸写);②模板顺序:byte_slice 在 ctron_panic 定义前 → 前置声明一行解决;③native.sh 静默失败根因=seed 宿主发射器落后(spn)+T20 缓存掩盖 → 自举链绕行(bin/ctron-emit 直发,实测可行);④管道 head 吞退出码(第二次踩,立规:验收一律重定向文件);⑤smoke 90/64 基线在有无补丁下完全一致 → 64 项为 HEAD/环境既有(与并行会话在途状态相关),非本批引入
 - 遗留登记:①自举单步对无 main 文件的 test 块执行在新链 rc=0(旧 21:14 二进制 rc=1)——源起并行会话未提交的 driver_run 在途改动,HEAD 即如此,非本批引入,登记给并行会话;②panic 测试的双臂统一验证口径
+
+## FB-2 状态(fb1 worktree,2026-10-05)
+- 已落:prelude 名单(parse_pkg/sem_calls)、解释臂分发(eval_call)、发射映射(trans_expr:1062)、运行时模板+includes(driver_emit,include 已置于 helper 前)、plugin/sem_type/trans_ty 三注册点
+- 阻塞单点:编译器源内部分发调用 `fs_mkdir(r5.s)` 发射为 `t_fs_mkdir`(user-fn 路径)而非映射的 `ctron_fs_mkdir`——fs_write 同形调用却正确映射。下一步:找出两姊妹内建在 sem/emit decl 表上的差异点(疑 sem_builtin 签名表或 fn-decl 创建路径还有一处注册),对齐即通
+- 验证(映射通后):重建双二进制 → 解释臂 fs_mkdir 行为测试(创建/已存在/嵌套)→ 发射臂同 → smoke/suite 基线对照(90/64 既有)
+- FB-1 已在本分支提交(4ed1b0d0),双臂终验 rc=1+消息 ✓

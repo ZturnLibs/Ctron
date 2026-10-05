@@ -52,7 +52,7 @@ fn pkg_is_prelude_sym(nm: Str) -> Bool {
     if or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "panic"), seq2(nm, "assert")))) { return true }
     if or2(seq2(nm, "assert_eq"), or2(seq2(nm, "assert_ne"), seq2(nm, "expect"))) { return true }
     if or2(seq2(nm, "fmt"), or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "char_len")))) { return true }
-    if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), seq2(nm, "fs_delete"))))) { return true }
+    if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), seq2(nm, "fs_mkdir")))))) { return true }
     if or2(seq2(nm, "now_ms"), or2(seq2(nm, "now_ms_text"), seq2(nm, "str_from_c"))) { return true }
     if seq2(nm, "Env") { return true }
     if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }

@@ -199,6 +199,19 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("fs_write args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "fs_mkdir") {
+        if vals.len == 1 {
+            var r5 = v_unbox(vals[0])
+            if r5.tag == 5 {
+                if fs_mkdir(r5.s) {
+                    return e4("k", env, vB(true), out)
+                }
+                return e4("k", env, vB(false), out)
+            }
+        }
+        panic("fs_mkdir args")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "fs_delete") {
         if vals.len == 1 {
             var r5 = v_unbox(vals[0])
