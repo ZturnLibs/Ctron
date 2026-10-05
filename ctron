@@ -10,6 +10,7 @@
 set -u
 BIN=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$BIN")
+DEVROOT=$BIN
 # dev 兼容回落:仅当同目录无二进制、且仓库 dev 布局命中时才切换,安装布局不受影响
 if [ ! -x "$BIN/ctron-cc" ] && [ -x "$BIN/compiler/bin/ctron-cc" ]; then
     BIN="$BIN/compiler/bin"
@@ -33,6 +34,12 @@ ctron —— Ctron 工具链驱动
   ctron fmt <file|pkg目录> [-w|--check]
                              规范格式化(docs/fmt-spec.md):默认打印;-w 原位写回;
                              --check 列出待格式化文件后非零退出
+  ctron lint <file|pkg目录> [--trusted] [--strict]
+                             lint 汇总:错误红(rc=1),警告默认只汇总;
+                             --trusted 信任审计枚举(§9.6);--strict 警告也红
+  ctron bench [族]            基准族入口(lang/gc/http/net/ffi;dev 布局)
+  ctron add <名>[@<版本约束>] 骨架:registry 未接(T49),仅参数校验+出路指引
+  ctron publish               骨架:registry 未接(T49),只读清单零网络零写入
   ctron new <dir>              脚手架:hello + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -56,6 +63,19 @@ H
     run) echo "ctron run <file.ct> —— 解释执行;不需要 C 编译器";;
     test) echo "ctron test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账";;
     fmt) echo "ctron fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出";;
+    lint) echo "ctron lint <file.ct|pkg目录> [--trusted] [--strict] —— check 命令化+汇总(§9.7):错误 rc=1;警告默认只汇总不红,--strict 才红;--trusted 信任边界审计枚举 #[trusted] extern(§9.6)";;
+    bench) cat <<'H'
+ctron bench [族] —— tests/ 基准族统一入口(T43;dev 布局,脚本自定位仓库根,任目录可跑)
+  lang   own/热点算术核 vs C 同构对照(T44;门 ≤1.05,WARN 档)
+  gc     GC 档 vs bump 档 churn(T32;门 ≤1.15)
+  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)
+  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)
+  ffi    FFI 边界微基准四场景(报告制)
+无族名列出注册表;未注册族名清晰诊断(fail-closed)。
+H
+;;
+    add) echo "ctron add <name>[@<版本约束>] —— 骨架:registry 未接(T49),仅参数校验+出路指引(手动编辑 Ctron.ctcl dependencies);零写入零网络";;
+    publish) echo "ctron publish —— 骨架:registry 未接(T49),只读本地清单报告将发布面;对外发布面启用须经用户确认";;
     new) echo "ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)";;
     *) usage;;
 esac
@@ -75,6 +95,102 @@ cc_missing_guidance() {
     echo "  两条出路:" >&2
     echo "  ① 安装编译器后重跑:macOS 'xcode-select --install' / linux 发行版 gcc / windows MSYS2 或 w64devkit" >&2
     echo "  ② C 已发射到 $1 —— 可手动编译,或拿到任何有 cc 的机器上: cc -O2 -w $1 -o <名>" >&2
+}
+
+# T43 lint(§9.7):check 命令化+汇总。口径:错误(E####)红 rc=1;警告(W####)
+# 默认只汇总不红(常规 lint 面;check 的警告也 rc=1 是既有严格面,二面并存);
+# --trusted 透传 ctron-chk 信任边界审计(§9.6);--strict 警告也红。
+cmd_lint() {
+    LINT_TARGET=$1; shift
+    LINT_TRUSTED=0; LINT_STRICT=0
+    for a in "$@"; do
+        case $a in
+            --trusted) LINT_TRUSTED=1 ;;
+            --strict) LINT_STRICT=1 ;;
+            *) die2 "lint 未知旗标: $a(支持: --trusted --strict)" ;;
+        esac
+    done
+    if [ -d "$LINT_TARGET" ]; then
+        LINT_DIR="$LINT_TARGET"
+        [ -d "$LINT_TARGET/src" ] && LINT_DIR="$LINT_TARGET/src"
+        LINT_FILES=$(find "$LINT_DIR" -maxdepth 1 -type f -name '*.ct' | LC_ALL=C sort)
+        [ -n "$LINT_FILES" ] || die2 "lint 目录无 .ct 文件: $LINT_TARGET"
+    else
+        [ -f "$LINT_TARGET" ] || die2 "lint 目标不存在: $LINT_TARGET"
+        LINT_FILES="$LINT_TARGET"
+    fi
+    LINT_TMP=$(mktemp /tmp/ctron_lint.XXXXXX)
+    LINT_TOT_E=0; LINT_TOT_W=0; LINT_NF=0; LINT_HARD=0
+    for f in $LINT_FILES; do
+        LINT_NF=$((LINT_NF+1))
+        [ $LINT_NF -gt 1 ] && echo "-- $f"
+        if [ $LINT_TRUSTED -eq 1 ]; then
+            "$BIN/ctron-chk" run "$f" --trusted > "$LINT_TMP" 2>&1
+        else
+            "$BIN/ctron-chk" run "$f" > "$LINT_TMP" 2>&1
+        fi
+        CHKR=$?
+        grep -v '^check OK' "$LINT_TMP"
+        LINT_FE=$(grep -c '^E[0-9][0-9][0-9][0-9]' "$LINT_TMP")
+        LINT_FW=$(grep -c '^W[0-9][0-9][0-9][0-9]' "$LINT_TMP")
+        # 驱动 rc≥2 且无 E 行 = 非诊断面异常(崩/缺件),按硬错误计
+        [ "$CHKR" -ge 2 ] && [ "$LINT_FE" -eq 0 ] && LINT_HARD=$((LINT_HARD+1))
+        LINT_TOT_E=$((LINT_TOT_E+LINT_FE)); LINT_TOT_W=$((LINT_TOT_W+LINT_FW))
+    done
+    rm -f "$LINT_TMP"
+    echo "lint: $LINT_NF 文件,$((LINT_TOT_E+LINT_HARD)) 个错误 / $LINT_TOT_W 警告"
+    [ $((LINT_TOT_E+LINT_HARD)) -gt 0 ] && exit 1
+    [ $LINT_STRICT -eq 1 ] && [ $LINT_TOT_W -gt 0 ] && exit 1
+    exit 0
+}
+
+# T43 bench(§9.7):tests/ 基准族统一入口。注册表同 ctc.sh targets 哲学:
+# 未列名=清晰诊断(fail-closed);脚本自定位仓库根,任目录可跑;仅 dev 布局随发。
+# 路径基=DEVROOT(回落前的脚本目录):dev=仓库根;装机=bin(ROOT 是装机语义 exe/../,
+# dev 下指仓库父目录,直接用会指错——smoke 实测两族双败在案)。
+cmd_bench() {
+    if [ $# -lt 1 ]; then
+        echo "ctron bench —— 基准族注册表(§9.4 性能口径;脚本内含门禁与归因)"
+        echo "  lang   own/热点算术核 vs C 同构对照(T44;门 ≤1.05,WARN 档)"
+        echo "  gc     GC 档 vs bump 档 churn(T32;门 ≤1.15)"
+        echo "  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)"
+        echo "  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)"
+        echo "  ffi    FFI 边界微基准四场景(报告制)"
+        echo "用法: ctron bench <族>"
+        exit 0
+    fi
+    BENCH_S=""
+    case $1 in
+        lang) BENCH_S="$DEVROOT/tests/lang/bench/bench.sh" ;;
+        gc) BENCH_S="$DEVROOT/tests/gc/bench.sh" ;;
+        http) BENCH_S="$DEVROOT/tests/http/bench/bench.sh" ;;
+        net) BENCH_S="$DEVROOT/tests/net/bench/bench.sh" ;;
+        ffi) BENCH_S="$DEVROOT/compiler/test/bench_ffi.sh" ;;
+        *) die2 "未注册基准族: $1(注册表: lang gc http net ffi;ctron bench 看详)" ;;
+    esac
+    [ -f "$BENCH_S" ] || die2 "基准族脚本缺席: $BENCH_S(基准族仅 dev 布局随发;装机形态未含)"
+    sh "$BENCH_S"
+}
+
+# T43 add(§9.7):骨架。registry 未接(T49 前置未到)——只做参数校验+出路指引,
+# 零写入零网络(fail-closed;publish 涉对外发布面,未经用户确认不得接真 registry)。
+add_validate() {
+    ADD_SPEC=$1
+    ADD_NAME=${ADD_SPEC%%@*}
+    ADD_REQ=""
+    case $ADD_SPEC in
+        *@*) ADD_REQ=${ADD_SPEC#*@} ;;
+    esac
+    case $ADD_NAME in
+        ""|*[!A-Za-z0-9_-]*|[-0-9]*) die2 "add: 依赖名非法: '$ADD_NAME'(形: <name>[@<版本约束>],name = [A-Za-z_][A-Za-z0-9_-]*)" ;;
+    esac
+    if [ -n "$ADD_REQ" ]; then
+        # 版本约束白名单校验走 grep(方括号不经 shell case 解析;case 模式内
+        # 裸 < > 被 bash 解析器当重定向记号,引号嵌套也救不回——实测三连败)
+        if printf '%s' "$ADD_REQ" | grep -q '[^A-Za-z0-9.^~<>=,*_-]'; then
+            die2 "add: 版本约束非法: '$ADD_REQ'(semver 约束形,T49 实装)"
+        fi
+    fi
 }
 
 # T36 后端注册表(§9.7;与 compiler/ctc.sh 同表——native 首个后端,wasm32/bare 随 T37/T40)
@@ -124,7 +240,7 @@ cmd_build_proj() {
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
 case $CMD in
-    run|check|build|test|new|fmt|doc)
+    run|check|build|test|new|fmt|doc|lint|bench|add|publish)
         case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
 esac
 case $CMD in
@@ -213,6 +329,32 @@ case $CMD in
         printf 'pkg {\n    manifest_version = 1\n    name = "%s"\n    version = "0.1.0"\n}\n' "$(basename "$1")" > "$1/Ctron.ctcl"
         printf 'fn main() {\n    println("hello, ctron")\n}\n' > "$1/src/main.ct"
         echo "ctron: 已生成 $1/(ctron run $1/src/main.ct 试跑)"
+        ;;
+    lint)
+        [ $# -ge 1 ] || die2 "lint 需要输入文件或 pkg 目录"
+        cmd_lint "$@"
+        ;;
+    bench)
+        cmd_bench "$@"
+        ;;
+    add)
+        [ $# -ge 1 ] || die2 "add 需要依赖名(形: <name>[@<版本约束>])"
+        add_validate "$1"
+        echo "ctron: add 骨架——registry 未接(T49 前置未到):依赖解析/lockfile/本地 registry 协议未实装,未做任何写入。" >&2
+        echo "  出路:手动编辑 Ctron.ctcl dependencies 块(三互斥形,docs/superpowers/specs/2026-09-16-config-language-v1.md);" >&2
+        echo "        本地路径依赖与 deps/<pkg>.ctart 工件回落已在解析链生效。" >&2
+        exit 2
+        ;;
+    publish)
+        [ -f Ctron.ctcl ] || die2 "publish 需项目清单 Ctron.ctcl(当前目录)"
+        PUB_NAME=$(sed -n 's/^ *name *= *"\(.*\)".*/\1/p' Ctron.ctcl | head -1)
+        [ -n "$PUB_NAME" ] || PUB_NAME=$(basename "$PWD")
+        PUB_VER=$(sed -n 's/^ *version *= *"\(.*\)".*/\1/p' Ctron.ctcl | head -1)
+        [ -n "$PUB_VER" ] || PUB_VER="0.0.0"
+        echo "ctron: publish 骨架——将发布 $PUB_NAME@$PUB_VER,但 registry 未接(T49)。" >&2
+        echo "  对外发布面启用须经用户确认;骨架只读本地清单,零网络零写入。" >&2
+        echo "  本地替代:deps/ 路径依赖与 deps/<pkg>.ctart 闭源工件消费已可用(工件密封随 T50 触发线)。" >&2
+        exit 2
         ;;
     *)
         echo "ctron: 未知子命令 '$CMD'(详见 ctron --help)" >&2

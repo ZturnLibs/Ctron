@@ -14,6 +14,11 @@
 #   8) stdpath 两态:①CTRON_STDPATH 指路 → 1;缺省走③回落 → 2
 #      (①态需 env_get 实值面,仅 native 可观察;seed 面归 ci.sh 既有链路)
 #   9) 装机布局仿真(库根布局 2026-09-30):②exe/../lib 探测/T2 随发门面/site 同级推导,零 env
+#  10) T43 lint:干净件归零/警告只汇总不红/--strict 红/错误红/--trusted 信任审计
+#      透传/pkg 目录展开(跨文件 use 解析+多文件头)/未知旗标 rc=2
+#  11) T43 bench:无族名注册表/未注册族 fail-closed/lang 真跑(digest+×3min)/net 缺省 SKIP
+#  12) T43 add/publish 骨架:合法形与带约束形均 fail-closed rc=2(registry 未接);
+#      名非法/缺清单拦截;publish 报将发布面(name@version)
 # 前置:仓库根 ctron + compiler/bin/ctron-{cc,chk,emit}
 #       (ci.sh [3/9] native.sh 产出;dev 回落由 ctron 内建,本脚本不依赖 PATH)。
 set -eu
@@ -236,6 +241,128 @@ if [ $rc -eq 0 ] && grep -q "site-hit" "$T/i_site.out"; then
     ok "装机态 site 推导命中(工具链根/pkgs 同级,零 env)"
 else
     bad "装机态 site 异常 rc=$rc: $(tail -2 "$T/i_site.out")"
+fi
+
+echo "== 10) T43 lint(check 命令化+汇总:警告不红/错误红/--strict/--trusted/pkg 目录) =="
+printf 'fn main() {\n    println("x")\n}\n' > "$T/lint_ok.ct"
+rc=0; "$CTRON" lint "$T/lint_ok.ct" > "$T/l1.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q '0 个错误 / 0 警告' "$T/l1.out"; then
+    ok "lint 干净件 rc=0 汇总归零"
+else
+    bad "lint 干净件 rc=$rc out=[$(cat "$T/l1.out")]"
+fi
+
+printf 'fn main() {\n    var unused1 = 7\n    println("x")\n}\n' > "$T/lint_w.ct"
+rc=0; "$CTRON" lint "$T/lint_w.ct" > "$T/l2.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q 'W8030' "$T/l2.out" && grep -q '1 警告' "$T/l2.out"; then
+    ok "lint 警告只汇总不红(常规 lint 口径;check 同件 rc=1 二面并存)"
+else
+    bad "lint 警告件 rc=$rc out=[$(cat "$T/l2.out")]"
+fi
+
+rc=0; "$CTRON" lint "$T/lint_w.ct" --strict > "$T/l3.out" 2>&1 || rc=$?
+if [ $rc -eq 1 ] && grep -q '1 警告' "$T/l3.out"; then
+    ok "lint --strict 警告也红(rc=1)"
+else
+    bad "lint --strict rc=$rc out=[$(cat "$T/l3.out")]"
+fi
+
+printf 'fn main() {\n    let x: I32 = "s"\n}\n' > "$T/lint_e.ct"
+rc=0; "$CTRON" lint "$T/lint_e.ct" > "$T/l4.out" 2>&1 || rc=$?
+if [ $rc -eq 1 ] && grep -q 'E2010' "$T/l4.out" && grep -q '1 个错误' "$T/l4.out"; then
+    ok "lint 错误红(rc=1,E 计数)"
+else
+    bad "lint 错误件 rc=$rc out=[$(cat "$T/l4.out")]"
+fi
+
+rc=0; "$CTRON" lint "$ROOT/tests/modules/ffi_math/src/main.ct" --trusted > "$T/l5.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q 'trusted: ctron_add@' "$T/l5.out"; then
+    ok "lint --trusted 信任审计枚举透传(§9.6)"
+else
+    bad "lint --trusted rc=$rc out=[$(cat "$T/l5.out")]"
+fi
+
+mkdir -p "$T/lint_pkg/src"
+printf 'pub fn twice(x: I32) -> I32 { return x * 2 }\n' > "$T/lint_pkg/src/lib.ct"
+printf 'use lib.{twice}\nfn main() {\n    var u = 1\n    println(twice(21))\n}\n' > "$T/lint_pkg/src/main.ct"
+rc=0; "$CTRON" lint "$T/lint_pkg" > "$T/l6.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q '2 文件' "$T/l6.out" && grep -q 'W8030' "$T/l6.out" && grep -q '^-- ' "$T/l6.out"; then
+    ok "lint pkg 目录(src/*.ct 展开+跨文件 use 解析+多文件头)"
+else
+    bad "lint pkg rc=$rc out=[$(cat "$T/l6.out")]"
+fi
+
+rc=0; "$CTRON" lint "$T/lint_ok.ct" --bogus > "$T/l7.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ]; then
+    ok "lint 未知旗标 rc=2"
+else
+    bad "lint 未知旗标 rc=$rc(约定 2)"
+fi
+
+echo "== 11) T43 bench(族注册表+dev 脚本入口+fail-closed) =="
+rc=0; "$CTRON" bench > "$T/b1.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q 'lang' "$T/b1.out" && grep -q 'ffi' "$T/b1.out"; then
+    ok "bench 无族名列注册表"
+else
+    bad "bench 注册表 rc=$rc out=[$(cat "$T/b1.out")]"
+fi
+
+rc=0; "$CTRON" bench frobnicate > "$T/b2.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ]; then
+    ok "bench 未注册族 fail-closed rc=2"
+else
+    bad "bench 未注册族 rc=$rc(约定 2)"
+fi
+
+rc=0; "$CTRON" bench lang > "$T/b3.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q '比值' "$T/b3.out"; then
+    ok "bench lang 真跑(digest pin+×3 取 min): $(grep '比值' "$T/b3.out")"
+else
+    bad "bench lang rc=$rc out=[$(cat "$T/b3.out")]"
+fi
+
+rc=0; "$CTRON" bench net > "$T/b4.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q 'SKIP' "$T/b4.out"; then
+    ok "bench net 缺省 SKIP rc=0(env 门禁惯例透传)"
+else
+    bad "bench net rc=$rc out=[$(cat "$T/b4.out")]"
+fi
+
+echo "== 12) T43 add/publish(骨架 fail-closed:registry 未接,零写入零网络) =="
+rc=0; "$CTRON" add mypkg > "$T/a1.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'registry 未接' "$T/a1.out"; then
+    ok "add 合法形 → 骨架诊断 rc=2"
+else
+    bad "add 合法形 rc=$rc out=[$(cat "$T/a1.out")]"
+fi
+
+rc=0; "$CTRON" add 'mypkg@^1.2' > "$T/a2.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'registry 未接' "$T/a2.out"; then
+    ok "add 带版本约束合法形 → 骨架诊断 rc=2"
+else
+    bad "add 带约束 rc=$rc out=[$(cat "$T/a2.out")]"
+fi
+
+rc=0; "$CTRON" add '9bad name' > "$T/a3.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q '依赖名非法' "$T/a3.out"; then
+    ok "add 依赖名非法拦截 rc=2"
+else
+    bad "add 名非法 rc=$rc out=[$(cat "$T/a3.out")]"
+fi
+
+rc=0; ( cd "$T/probe" && "$CTRON" publish ) > "$T/p1.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'probe@0.1.0' "$T/p1.out" && grep -q 'registry 未接' "$T/p1.out"; then
+    ok "publish 骨架读清单报将发布面 rc=2"
+else
+    bad "publish rc=$rc out=[$(cat "$T/p1.out")]"
+fi
+
+mkdir -p "$T/pub_empty"
+rc=0; ( cd "$T/pub_empty" && "$CTRON" publish ) > "$T/p2.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'Ctron.ctcl' "$T/p2.out"; then
+    ok "publish 缺清单拦截 rc=2"
+else
+    bad "publish 缺清单 rc=$rc out=[$(cat "$T/p2.out")]"
 fi
 
 echo "ctron_smoke: $pass ok / $fail fail"
