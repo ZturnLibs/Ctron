@@ -555,7 +555,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T49 · lockfile 内容寻址 + workspace + add/publish 实装(§2.7)
 
-- **预估:** 2 d。**前置:** T48。**状态:** 待办
+- **预估:** 2 d。**前置:** T48。**状态:** ✅ 已完成(2026-10-06;实况=七批落库:①workspace/member 四线注册[自举/C/Rust/Python,E5051-5053 立表,黄金语料三例,四线对拍 139 ALL GREEN];②pkg_dep.ct[dep 扫描 E5049 四线同文案+semver 约束工具+sha256 自包含移植];③装载器 dep 探针入解析链②[path 门面/pkgs 安装位双形,W8902 收集扩 dep 表点名+出路文案对齐 ctron add];④driver_dep.ct=ctron-dep[lock 内容寻址生成,lock 钉定→已安装→registry 三级解析,E5052/E5053,二跑逐字节稳定锚,ctc.sh dep 同面,native 六件];⑤workspace 用例[根 workspace{}+member 双成员,成员并集+根共享 lock];⑥ctron add/publish/lock T43 骨架转实[publish 单文件包+版本不可覆盖+semver 门;add=dep 块+pkgs/ 安装+lock 刷新;ctron.ps1 同文;e2e tests/pkg/run.sh 11 断言+ctron_smoke 第 12 腿改实装口径];⑦§2.7 落地注+本台账回写)。命令面=顶层 ctron add/publish/lock(T43 实装名对齐,W8902 留债销账)。余债:git 形不取网(rev 钉定已锁,fetch 志向)/多文件包 tar 志向/真 registry 待用户裁决(T43 坑位)/lock 解析仅 ctron-dep 自扫(C/Rust 不读 lock)/diff.py Rust 臂二进制名陈旧(ctronr)+Rust 线缺 plugin 块注册(T52 线债)随批登记
 - **目标:** 依赖解析:严格 semver + lockfile(内容寻址)+ workspace;`ctc add/publish` 从 T43 骨架转实(本地 registry 面)。
 - **范围:** `parse_pkg.ct`(deps 解析/lock 生成)、`ctpkg` registry 本地协议、workspace 段。
 - **验收:** deps 解析锚(三互斥形/semver 约束);lock 二跑稳定(内容寻址 digest);workspace 用例。
@@ -651,7 +651,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T46 | st_serve IO 粘合 | W9 | 待办 | — |
 | T47 | multipart | W9 | 待办 | — |
 | T48 | CTCL 迁移 | W9 | 待办 | — |
-| T49 | lockfile+workspace | W9 | 待办 | — |
+| T49 | lockfile+workspace | W9 | ✅ | 2026-10-06 |
 | T50 | 闭源 S1/S2【条件】 | W9 | 挂起 | — |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | **已完成**(1003;①io_uring 后端落库[POLL_ADD 天然 one-shot 同构映射+G 内单生产者+免 tick+双 NOP 自检门响亮回退,6.10-linuxkit array 异常立案];②NUMA 选项位+拓扑探测[行为位=志向];③Simd 评估报告选 B 落 docs/simd-vectorization-analysis.md[clang -O2 width4 实证/gcc -O3;寄存器驻留=志向];IOCP 环境依赖登记;reactor 冒烟双臂挂 ci.sh;net 18/18+coro_det 101/101+w7+suite 100/100) | 见 git |
 | T52 | 插件沙箱(derive+lint) | W9 | **已完成**(2026-10-03;协议=清单 plugin 块+接口包 ctron.plugin+约定入口;沙箱=纯度门 E6020.sandbox+静态规模门[执行期预算列 v2];derive(Json)=自由 fn/UFCS 产物[trait impl 发射缺口在册];lint_toolong=W9001 清单 codes 先进表;阶梯六锚挂 ci.sh[5.5/9] 含确定性双跑; suite 100/100 双跑;烟主段 159/2 双红在册[T33 conc_parallel/Rust iter 清账]+ctron_smoke 25/25;债八项入 COVERAGE) | 见 git |
