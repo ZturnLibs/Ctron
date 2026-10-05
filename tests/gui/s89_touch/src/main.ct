@@ -1,0 +1,184 @@
+// tests/gui/s89_touch —— G 档 GUI-36:长按/轻扫手势(C 跟踪器+注入缝)headless 验收
+// 四径:longpress(压 700ms 帧→fire 带压点)/swipe 左/右(位移>50 方向 8 向化)/
+// tap=click 同义(不另设,在册)/干扰(短压无手势)。窗口循环挂 rt_gesture_frame
+// (真窗同源);方向入参=合成调用形字面。
+use gui.{test, d_frame, d_tick, d_touch_press, d_touch_release, d_touch_frame,
+         d_expect_text, ev_arg_s}
+
+struct M {
+    var state: Str
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+// 手势桩(本件头;窗口模式直调)
+fn card_lp(m: Box[M]) {
+}
+fn card_sw(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { state: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "card_lp" {
+        m.state = "LP@" + ev_arg_s(args, 0)
+        return
+    }
+    if name == "card_sw" {
+        m.state = "SW" + ev_arg_s(args, 0)
+        return
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 360, 240,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // ① longpress:先入注入域(tick 1000)→ 压 (100,60) → tick 1800(距压 800>600)
+            d_tick(t, 1000)
+            d_touch_press(t, 100, 60, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_tick(t, 1800)
+            d_frame(t, |buf| bind_all(buf, m))
+            d_touch_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.state != "LP@100" {
+                panic("s89: longpress 不符 " + m.state)
+            }
+            // 释放(清跟踪态)
+            d_touch_release(t, 100, 60, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // ② swipe 左:压 (150,60) → 释放 (60,62) → SW L
+            d_touch_press(t, 150, 60, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_touch_release(t, 60, 62, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_touch_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.state != "SWL" {
+                panic("s89: swipe 左不符 " + m.state)
+            }
+            // ③ swipe 右:压 (60,60) → 释放 (170,58) → SW R
+            d_touch_press(t, 60, 60, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_touch_release(t, 170, 58, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_touch_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.state != "SWR" {
+                panic("s89: swipe 右不符 " + m.state)
+            }
+            // ④ 干扰:压 (30,30)(卡外)tick 700 帧 → 无 fire(state 保持 SWR)
+            d_touch_press(t, 30, 30, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_tick(t, 700)
+            d_touch_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_touch_release(t, 30, 30, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.state != "SWR" {
+                panic("s89: 卡外长按误 fire")
+            }
+            println("S89-TOUCH-GREEN")
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <button class="card" on:longpress={card_lp(m)} on:swipe={card_sw(m)}>card</button>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style card { direction: column w: 200 h: 60 bg: "#1e2a3a" fg: "#e5e7eb" }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

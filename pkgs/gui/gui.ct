@@ -455,6 +455,24 @@ extern "c" fn gui_chord_action_byte(i: I32) -> I32
 #[trusted]
 extern "c" fn gui_chord_ms(ms: I32) -> I32
 
+extern "c" fn gui_inject_press(x: I32, y: I32) -> I32
+
+extern "c" fn gui_inject_release(x: I32, y: I32) -> I32
+
+extern "c" fn gui_gesture_longpress_due() -> I32
+
+extern "c" fn gui_gesture_lp_x() -> I32
+
+extern "c" fn gui_gesture_lp_y() -> I32
+
+extern "c" fn gui_gesture_swipe_take() -> I32
+
+extern "c" fn gui_gesture_swipe_dir() -> Str
+
+extern "c" fn gui_gesture_sw_x() -> I32
+
+extern "c" fn gui_gesture_sw_y() -> I32
+
 #[trusted]
 extern "c" fn ctron_gui_async_post(s: Str) -> Void
 

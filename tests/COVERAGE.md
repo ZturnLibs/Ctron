@@ -1561,3 +1561,16 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   ——引擎文件探针一律 git checkout 重做。
 - **门**:阶梯 91 过/1 败(s30 在册);suite 100/100;smoke 171/1;双陈列室绿;
   真窗 --run 待用户。
+
+**2026-10-04 G 档 GUI-36 触摸/手势 v1**(gui 泳道,波四):
+- **交付面**:C 手势跟踪器(press/release 注入缝 gui_inject_press/release+长按
+  600ms 帧检+轻扫 50px 8 向分类)+rt_gesture_frame(命中 on:longpress/on:swipe
+  fire;合成调用形带压点/直调带方向)+d_touch_press/release/frame 三件驱动面;
+  双循环帧挂(真窗同源)。s89 四径:longpress(压 800ms)/swipe 左/右/卡外干扰。
+  tap=click 同义不另设(在册);pinch/移动端 M3 另案。
+- **🩸 坑四**:①gui_now_ms 时钟域——press 前必须先入注入域(d_tick),真时钟
+  ts 跨域为负永不 due;②d_touch_frame 自采 rects(rt_draw_frame 5 参=hits 非
+  rects——本件首误);③手势 fire 后** cmds 槽滞后一帧**(双帧断言);④swipe 方向
+  合成转义直调 act(List push),不经 ev_fire 转义面。
+- **门**:阶梯 92 过/1 败(s30 在册);suite 100/100;smoke 170/2;双陈列室绿;
+  真窗 --run 手验待用户。

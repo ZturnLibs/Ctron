@@ -196,6 +196,48 @@ void gui_inject_char(int ch) {
 void gui_inject_click(int x, int y) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
 }
+
+// ---- 手势跟踪(GUI-36 v1):press/release 注入缝 + 长按/轻扫分类。
+int gui_now_ms(void);
+// press 记时刻位置;帧检 now-ts>600 → longpress fire 一次(节点由 Ctron 查);
+// release 距离>50 → swipe(方向 8 向量化:L/R/U/D)。tap=click 同义不另设 ----
+static int g_gs_press = 0;
+static int g_gs_ts = 0, g_gs_x = 0, g_gs_y = 0;
+static int g_gs_lp = 0;
+static char g_gs_sw[8] = {0};
+static int g_gs_sw_n = 0;
+static int g_gs_lpx = 0, g_gs_lpy = 0;
+void gui_inject_press(int x, int y) {
+    if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 2, 0, x, y }; g_qtail++; }
+    g_gs_press = 1; g_gs_lp = 0;
+    g_gs_ts = gui_now_ms(); g_gs_x = x; g_gs_y = y;
+}
+void gui_inject_release(int x, int y) {
+    g_gs_press = 0;
+    int dx = x - g_gs_x, dy = y - g_gs_y;
+    int adx = dx > 0 ? dx : -dx, ady = dy > 0 ? dy : -dy;
+    g_gs_sw_n = 0;
+    if (adx > 50 || ady > 50) {
+        if (adx > ady) { g_gs_sw[0] = dx > 0 ? 'R' : 'L'; }
+        else { g_gs_sw[0] = dy > 0 ? 'D' : 'U'; }
+        g_gs_sw[1] = 0;
+        g_gs_sw_n = 1;
+    }
+}
+int gui_gesture_longpress_due(void) {
+    if (g_gs_press == 1 && g_gs_lp == 0 && gui_now_ms() - g_gs_ts > 600) { g_gs_lp = 1; g_gs_lpx = g_gs_x; g_gs_lpy = g_gs_y; return 1; }
+    return 0;
+}
+int gui_gesture_lp_x(void) { return g_gs_lpx; }
+int gui_gesture_lp_y(void) { return g_gs_lpy; }
+int gui_gesture_swipe_take(void) {
+    int r = g_gs_sw_n;
+    g_gs_sw_n = 0;
+    return r;
+}
+const char *gui_gesture_swipe_dir(void) { return g_gs_sw; }
+int gui_gesture_sw_x(void) { return g_gs_x; }
+int gui_gesture_sw_y(void) { return g_gs_y; }
 void gui_inject_rclick(int x, int y) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 5, 0, x, y }; g_qtail++; }
 }

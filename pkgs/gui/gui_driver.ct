@@ -1404,6 +1404,55 @@ fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str
     }
 }
 
+// GUI-36:手势帧检(longpress 到期 fire,节点=命中查询)+轻扫 release 消费
+fn rt_gesture_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
+    if gui_gesture_longpress_due() == 1 {
+        var lpn: I32 = rt_hover_node(rects, hits, gui_gesture_lp_x(), gui_gesture_lp_y())
+        println("GS due hit=" + lpn.to_string() + " de.len=" + rt_in_handler(t, lpn, "longpress").len.to_string())
+        if lpn >= 0 {
+            var dexp: Str = rt_in_handler(t, lpn, "longpress")
+            if dexp != "" {
+                ev_fire(t, dexp + "(" + gui_gesture_lp_x().to_string() + "," + gui_gesture_lp_y().to_string() + ")", bind, act)
+            }
+        }
+    }
+    if gui_gesture_swipe_take() == 1 {
+        var dir: Str = gui_gesture_swipe_dir()
+        var sxn: I32 = rt_hover_node(rects, hits, gui_gesture_sw_x(), gui_gesture_sw_y())
+        if sxn >= 0 {
+            var dexp2: Str = rt_in_handler(t, sxn, "swipe")
+            if dexp2 != "" {
+                var arr = List[Str]()
+                arr.push(dir)
+                act(dexp2, arr)
+            }
+        }
+    }
+}
+
+// headless 手势三件:press/release(启 C 跟踪)+frame(帧检)
+pub fn d_touch_press(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_press(x, y)
+    var evt: I32 = gui_poll_event()
+    var evt2: I32 = evt
+    if evt == 2 {
+        if rt_menu_click(t.t, bind, act) == 1 {
+            evt2 = 0
+        }
+    }
+    return evt2
+}
+pub fn d_touch_release(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+    gui_inject_release(x, y)
+    return 0
+}
+pub fn d_touch_frame(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
+    var n: I32 = gui_cmd_count()
+    var rc2 = List[I32]()
+    rt_collect_rects(n, rc2)
+    rt_gesture_frame(t.t, rc2, t.hits, bind, act)
+}
+
 // headless 驱动面(d_frame 无 act 参——fixture 帧循环显式驱动)
 pub fn d_async_drain(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
     rt_async_drain(t.t, bind, act)
