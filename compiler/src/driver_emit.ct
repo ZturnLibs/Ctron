@@ -153,7 +153,8 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static ct_sb* ct_gc_sbs = 0;")
             println("static char** ct_gc_wl = 0;")
             println("static size_t ct_gc_wln = 0, ct_gc_wlc = 0;")
-            println("static void ct_gc_wlput(char* lo, char* hi) \{ if (ct_gc_wln + 2 > ct_gc_wlc) \{ size_t nc = ct_gc_wlc ? ct_gc_wlc * 2 : 4096; char** nw = (char**)realloc(ct_gc_wl, nc * sizeof(char*)); if (!nw) \{ return; } ct_gc_wl = nw; ct_gc_wlc = nc; } ct_gc_wl[ct_gc_wln++] = lo; ct_gc_wl[ct_gc_wln++] = hi; }")
+            println("static void ctron_panic(const char* m);")
+            println("static void ct_gc_wlput(char* lo, char* hi) \{ if (ct_gc_wln + 2 > ct_gc_wlc) \{ size_t nc = ct_gc_wlc ? ct_gc_wlc * 2 : 4096; char** nw = (char**)realloc(ct_gc_wl, nc * sizeof(char*)); if (!nw) \{ ctron_panic(\"gc: worklist OOM(realloc败=标记候选丢失=静默UAF,响亮退出)\"); } ct_gc_wl = nw; ct_gc_wlc = nc; } ct_gc_wl[ct_gc_wln++] = lo; ct_gc_wl[ct_gc_wln++] = hi; }")
             // S2(T31 重开 M1.5):精确帧链根集(契约 §6.3;编码=槽注册制——发射器不知 C 帧
             // 偏移,槽节点持 &局部 强制落内存+每 fn 帧节点 cleanup 尾声统一)。kind 0=词槽
             // 直标/1=值结构体(u:/R/E:)域扫。__thread=多线程推拉隔离(pmap 8 线程);收集
