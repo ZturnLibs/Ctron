@@ -1,0 +1,155 @@
+// tests/gui/s86_async —— G 档 GUI-44:异步任务→UI(C 队列投递+帧 drain)headless 验收
+// spawn 任务 gui_async_post(Str) → C 互斥队列 → d_async_drain 帧驱动 FIFO fire
+// (action=gui_async_on 注册名);UI 线程唯一触 UI(Send 纪律 E3010 守卫在语言面)。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_async_drain, d_expect_text, gui_async_post, gui_async_on, ev_arg_s}
+
+struct M {
+    var acc: Str
+    var n: I32
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { acc: "", n: 0 }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.acc" {
+        buf.push(m.acc)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "on_async" {
+        m.acc = m.acc + ev_arg_s(args, 0)
+        m.n = m.n + 1
+        return
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    // 注册 + 两件投递。跨线程半程=spawn 语句发射(对端在飞断点,smoke
+    // conc_parallel 同源在册)——v1 同线程 post 证全管线(队列/FIFO/drain),
+    // 对端 spawn 落地后字面替换 spawn { gui_async_post(x) } 即得并发实证
+    gui_async_on("on_async")
+    gui_async_post("a")
+    gui_async_post("b")
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // 帧循环 drain:FIFO 到齐 "ab"(任务并发,到达帧不定,有界等待)
+            var i: I32 = 0
+            while i < 200 {
+                d_async_drain(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+                d_frame(t, |buf| bind_all(buf, m))
+                if m.n == 2 {
+                    i = 100000
+                }
+                i += 1
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.n != 2 {
+                panic("s86: 到达件数不符 n=" + m.n.to_string())
+            }
+            d_expect_text(t, "ab")
+            println("S86-ASYNC-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <label class="acc">{m.acc}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style acc { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

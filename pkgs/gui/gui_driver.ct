@@ -30,6 +30,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     InitWindow(w, h, title)
     SetTargetFPS(60)
     while rt_close_check(t, bind, act) == 1 {
+        rt_async_drain(t, bind, act)
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, rects, hits, bind, act)
@@ -223,6 +224,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     SetTargetFPS(60)
     var frames: I32 = 0
     while rt_close_check(t, bind, act) == 1 {
+        rt_async_drain(t, bind, act)
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
         rt_dgev_frame(t, rects, hits, bind, act)
@@ -1388,6 +1390,37 @@ fn rt_sel_take() -> I32 {
 
 // 拖拽事件缝逐帧(on:drag 武装中且按住=触发;表达式内建名取 permille;
 // 松开解除。evt2 武装在循环命中后)
+// GUI-44:异步队列帧首 drain——spawn 任务经 C 互斥队列投递,此处逐件 fire
+// (FIFO;action=gui_async_on 注册名;UI 线程唯一触 UI)
+fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
+    var n: I32 = ctron_gui_async_count()
+    var i: I32 = 0
+    while i < n {
+        var item: Str = ctron_gui_async_take()
+        var args = List[Str]()
+        args.push(item)
+        act(ctron_gui_async_action(), args)
+        i += 1
+    }
+}
+
+// headless 驱动面(d_frame 无 act 参——fixture 帧循环显式驱动)
+pub fn d_async_drain(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
+    rt_async_drain(t.t, bind, act)
+}
+
+// spawn 任务投递入口(Str→char* 借用编组;Send 纪律 E3010 守卫)
+pub fn gui_async_post(s: Str) -> I32 {
+    ctron_gui_async_post(s)
+    return 0
+}
+
+// 异步动作注册(单 action;队列件=载荷)
+pub fn gui_async_on(action: Str) -> I32 {
+    ctron_gui_async_on(action)
+    return 0
+}
+
 fn rt_dgev_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     if gui_dgev_on() == 0 {
         return 0

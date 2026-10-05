@@ -1523,3 +1523,17 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   名(rK_drop),press-click 在 headless d_dragv 中不 fire(自含)。
 - **门**:阶梯 89 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
   gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-44 异步→UI**(gui 泳道,波二第三件):
+- **交付面**:C 互斥投递队列(容量 32,post 满静默弃;strdup 持有+take 静态回程
+  缓冲)+gui_async_post/on pub 面+rt_async_drain(逐件 fire 注册 action,载荷单
+  Str)+双循环帧首挂点+headless d_async_drain 驱动面。s86:双投递 FIFO "ab" 帧
+  循环到齐+计数断言。
+- **跨线程半程缓行**:spawn 语句发射=对端在飞断点(smoke conc_parallel 同源
+  在册,t_spawn 裸标识)——v1 同线程 post 证全管线(队列/FIFO/drain),对端
+  spawn 落地后字面替换 spawn { gui_async_post(x) } 即得并发实证。
+- **🩸 坑位**:①闭包体 spawn 发射盲区(t_spawn 裸标识,函数体同断)——归发射
+  泳道;②ArrLit 仅 let 初值位(call 实参用 List 构造);③Driver 无 act 域
+  (headless 驱动面显式传闭包)。
+- **门**:阶梯 90 过/1 败(s30 在册);suite 100/100;smoke 170/2;双陈列室绿;
+  真窗 --run 待用户。

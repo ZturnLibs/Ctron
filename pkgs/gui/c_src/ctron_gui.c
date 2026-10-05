@@ -1262,6 +1262,53 @@ int gui_hotkey_action_byte(int i) {
     return (unsigned char)g_hotkeys[g_hk_last].action[i];
 }
 
+// ---- 异步投递队列(GUI-44):spawn 任务 post → UI 线程帧首 drain fire。
+// 互斥锁队列(容量 32,post 满静默弃);action 单注册(注册面 gui_async_on)----
+#include <pthread.h>
+static char *g_async_q[32];
+static int g_async_n = 0;
+static char g_async_action[64] = {0};
+static pthread_mutex_t g_async_mu;
+static int g_async_mu_on = 0;
+static void async_mu(void) {
+    if (!g_async_mu_on) { pthread_mutex_init(&g_async_mu, 0); g_async_mu_on = 1; }
+}
+void ctron_gui_async_post(const char *s) {
+    async_mu();
+    pthread_mutex_lock(&g_async_mu);
+    if (g_async_n < 32) { g_async_q[g_async_n] = strdup(s ? s : ""); g_async_n++; }
+    pthread_mutex_unlock(&g_async_mu);
+}
+void ctron_gui_async_on(const char *action) {
+    async_mu();
+    pthread_mutex_lock(&g_async_mu);
+    snprintf(g_async_action, sizeof g_async_action, "%s", action ? action : "");
+    pthread_mutex_unlock(&g_async_mu);
+}
+int ctron_gui_async_count(void) {
+    async_mu();
+    pthread_mutex_lock(&g_async_mu);
+    int n = g_async_n;
+    pthread_mutex_unlock(&g_async_mu);
+    return n;
+}
+static char g_async_ret[512];
+const char *ctron_gui_async_take(void) {
+    async_mu();
+    pthread_mutex_lock(&g_async_mu);
+    g_async_ret[0] = 0;
+    if (g_async_n > 0) {
+        snprintf(g_async_ret, sizeof g_async_ret, "%s", g_async_q[0]);
+        free(g_async_q[0]);
+        int i = 1;
+        while (i < g_async_n) { g_async_q[i - 1] = g_async_q[i]; i++; }
+        g_async_n--;
+    }
+    pthread_mutex_unlock(&g_async_mu);
+    return g_async_ret;
+}
+const char *ctron_gui_async_action(void) { return g_async_action; }
+
 // ---- chord 序列组合键(GUI-43):空格分隔序列("g g"/"mod+d d");前缀武装→步进→
 // 完成 fire;超时或非前缀键=解除并按原路由(不吞键)。时间源=注入优先时钟
 // (headless d_tick 钉相位,真窗真时钟);表 8 条 × 4 步 ----
