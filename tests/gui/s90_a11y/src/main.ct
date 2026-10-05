@@ -1,0 +1,178 @@
+// tests/gui/s90_a11y —— G 档 GUI-35 v1:无障碍语义投影 headless 验收
+// role 推导(button/input/label)+叶文本载荷;d_ax_dump 全树。
+// mac NSAccessibility shim 另案挂此投影(VoiceOver 手验随 shim 批)。
+use gui.{test, d_frame, d_ax_dump}
+
+struct M {
+    var state: Str
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { state: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "noop" {
+        return
+    }
+}
+
+// 子串扫描(dump 全文 contain 判;下标坑绕行——就地逐字节)
+fn has_sub(s: Str, sub: Str) -> I32 {
+    if sub.len == 0 {
+        return 1
+    }
+    var i: I32 = 0
+    while i + sub.len <= s.len {
+        var j: I32 = 0
+        var ok: I32 = 1
+        while j < sub.len {
+            if byte_at(s, i + j) != byte_at(sub, j) {
+                ok = 0
+            }
+            j += 1
+        }
+        if ok == 1 {
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_all(buf, m))
+            var dump: Str = d_ax_dump(t)
+            // 三 role 推导 + 文本载荷
+            if has_sub(dump, "button button") != 1 {
+                panic("s90: button role 缺")
+            }
+            if has_sub(dump, "textbox input") != 1 {
+                panic("s90: textbox role 缺")
+            }
+            if has_sub(dump, "text label") != 1 {
+                panic("s90: text role 缺")
+            }
+            if has_sub(dump, "'保存'") != 1 {
+                panic("s90: 按钮文本缺")
+            }
+            if has_sub(dump, "'标题文字'") != 1 {
+                panic("s90: 标签文本缺")
+            }
+            if has_sub(dump, "bind=m.state") != 1 {
+                panic("s90: bind 路径缺")
+            }
+            println("S90-A11Y-GREEN")
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <button class="b">保存</button>
+    <input class="i" bind={m.state}/>
+    <label class="l">标题文字</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style b { direction: column w: 90 h: 30 bg: "#2563eb" fg: "#ffffff" }
+style i { direction: column w: 160 h: 30 bg: "#111827" fg: "#e5e7eb" }
+style l { fg: "#e5e7eb" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

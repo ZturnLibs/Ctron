@@ -1552,3 +1552,25 @@ fn rt_scroll_req_apply(t: GuiTree, rects: List[I32], hits: List[I32]) -> I32 {
     }
     return 0
 }
+
+
+// GUI-35 v1:无障碍语义投影——role 由 tag 推(button=button/input=textbox/
+// label=text/checkbox=checkbox/其余=generic)。
+pub fn ax_role_of(tag: Str) -> Str {
+    if tag == "button" {
+        return "button"
+    }
+    if tag == "input" {
+        return "textbox"
+    }
+    if tag == "textarea" {
+        return "textbox"
+    }
+    if tag == "checkbox" {
+        return "checkbox"
+    }
+    if tag == "label" {
+        return "text"
+    }
+    return "generic"
+}

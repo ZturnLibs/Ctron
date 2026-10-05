@@ -47,7 +47,7 @@ fn ct_mcell_emit(inner: Str) {
     // 只对具名 typedef 成立;Mutex 字段前置 + 构造点双发即撞)
     println("#ifndef CT_MCELL_" + tg)
     println("#define CT_MCELL_" + tg)
-    println("typedef struct ct_mcell_" + tg + " \{ pthread_mutex_t mu; " + ct_ctype(inner) + " v; } ct_mcell_" + tg + ";")
+    println("typedef struct \{ pthread_mutex_t mu; " + ct_ctype(inner) + " v; } ct_mcell_" + tg + ";")
     println("#endif")
 }
 

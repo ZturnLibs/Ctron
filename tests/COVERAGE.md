@@ -1574,3 +1574,24 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   合成转义直调 act(List push),不经 ev_fire 转义面。
 - **门**:阶梯 92 过/1 败(s30 在册);suite 100/100;smoke 170/2;双陈列室绿;
   真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-35 无障碍 v1 + 发射链治愈**(gui 泳道,波四第二件):
+- **交付面**:ax_role_of(role 推导:button/input/textarea/checkbox/label/generic)
+  +d_ax_dump/ax_dump_walk(树投影:role+叶文本 '引号'+bind 路径,缩进两空格/层)
+  ——三 fn 驻门面 gui.ct 本体;gui_render/gui_driver 零改动。s90 六断言
+  (三 role 推导/两文本载荷/bind 路径)。
+- **发射链治愈(重大)**:t31-m15 分支前沿 emission 三件(driver_emit 大重构
+  439 行/trans_conc/trans_expr)checkout 入 main——smoke 115/54→171/2 治愈。
+  根因链:35bd03f6 合入的 t31-m15 为中间态,peer WIP(修复态)曾被会话 checkout
+  丢弃→bins 重建自破损态→s23 总线错+全 fixtures emit 段错误。本件取分支前沿
+  即完整态。
+- **🩸 坑位五**:①**门面 re-export 触发 emit 段错误**——gui_driver 的 fn 经
+  门面 gui_driver 组 re-export(gui.ct use 列表)即崩(d_ax_dump/ax_dump_walk
+  bisect 实证;驻门面本体即愈)——re-export 链发射缺陷立册;②嵌套 worktree
+  remove 卡会话 shell(cwd 删除);③bisect 连环字符串替换必错——git checkout
+  重来做;④grep "ax_" 误匹配 max_w/max_h(假阳性 7 处);⑤s89 双帧断言
+  (手势 fire 后 cmds 槽滞后一帧)。
+- **门**:阶梯 93 过/2 败(s30 基线+s23=t31m15 发射回归在册)/suite 100/101
+  (s23 同源)/smoke 171/2(对端两账)/双陈列室绿;真窗 --run 待用户。
+- **GUI-35 v1 边界**:role 推导+投影面全量;aria_label 属性面(需解析槽)
+  /mac NSAccessibility shim(VoiceOver 手验)另案。

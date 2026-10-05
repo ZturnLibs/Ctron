@@ -200,7 +200,7 @@ void gui_inject_click(int x, int y) {
 // ---- 手势跟踪(GUI-36 v1):press/release 注入缝 + 长按/轻扫分类。
 int gui_now_ms(void);
 // press 记时刻位置;帧检 now-ts>600 → longpress fire 一次(节点由 Ctron 查);
-// release 距离>50 → swipe(方向 8 向量化:L/R/U/D)。tap=click 同义不另设 ----
+// release 距离>50 → swipe(方向 8 向化:L/R/U/D)。tap=click 同义不另设 ----
 static int g_gs_press = 0;
 static int g_gs_ts = 0, g_gs_x = 0, g_gs_y = 0;
 static int g_gs_lp = 0;
