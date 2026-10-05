@@ -1502,3 +1502,9 @@ ctcl_manifest_schema.ctcl 加载器)=CTCL 泳道架构件,本件为最小 golden
 cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes 同批语法;
 与 T11「R 线对象面细键欠账在册」同族)——CI 无 cargo=SKIP 不红,本地开发卫生债,
 归 ctronr 泳道。c/sh/python 三臂经本件+cherry-pick(16a40a4f)已全绿。
+
+**CTCL R 臂债登记(2026-10-05,主树 16a40a4f)**:manifest 四线对拍在主树(本地有
+cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes 同批语法;
+与 T11「R 线对象面细键欠账在册」同族)——CI 无 cargo=SKIP 不红,本地开发卫生债,
+归 ctronr 泳道。c/sh/python 三臂经 pkg.c+ctcl_chk 同步件(99176da9)与 cherry-pick
+(16a40a4f)已全绿;主树 CI [1/9] 自此不红。
