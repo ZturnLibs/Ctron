@@ -1,0 +1,4 @@
+// libmath —— T49 path 依赖夹具(门面形)
+pub fn add(a: I32, b: I32) -> I32 {
+    return a + b
+}

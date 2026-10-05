@@ -1,0 +1,10 @@
+pkg {
+    manifest_version = 1
+    name = "depneg"
+    version = "0.1.0"
+}
+
+dep "x" {
+    path = "x"
+    version = "1.0"
+}

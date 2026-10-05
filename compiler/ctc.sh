@@ -23,7 +23,7 @@ PROF=full
 TAUSTED=0
 DIAGLANG=zh
 case ${1:-} in
-    check|emit|fmt|doc|ast|build|targets|new) mode=$1; shift ;;
+    check|emit|fmt|doc|ast|build|targets|new|dep) mode=$1; shift ;;
 esac
 for a in "$@"; do
     case $a in
@@ -47,7 +47,7 @@ if [ ! -x "$HOST" ]; then
     exit 2
 fi
 if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh targets" >&2
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh dep <Ctron.ctcl> | ctc.sh targets" >&2
     exit 2
 fi
 
@@ -310,6 +310,13 @@ case $mode in
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_ast.XXXXXX)
         sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORAST|$ASTMODE|" -e "s|ANCHOROUT|$ASTOUT|" -e "s|ANCHORNAME|$ASTNAME|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_ast.ct" > "$TMP"
+        "$HOST" run "$TMP"
+        rc=$?
+        ;;
+    dep)
+        "$DIR/build.sh" >/dev/null
+        TMP=$(mktemp /tmp/ctron_dep.XXXXXX)
+        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_dep.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
         ;;
