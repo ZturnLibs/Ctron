@@ -86,7 +86,7 @@
 - ✅ **GUI-33(已销账) 富文本 v1**——231c63da+94879efe 补遗:class 标记 rich+markdown 子集(**b**/@@c@@)分段水平流+s87 段色;链接色/多行 wrap/链接点击 v2 在册。
 - ✅ **GUI-36(已销账) 触摸/手势 v1**——c1af7906:C 手势跟踪器(longpress 600ms/swipe 50px 8 向)+注入缝+s89 四径;tap=click 同义;pinch/移动端 M3 另案。
 - ✅ **GUI-35(已销账) 无障碍 v1**——5d5e4c08:ax_role_of 推导+d_ax_dump 树投影+s90 六断言;aria_label 属性面/mac NSAccessibility shim(VoiceOver 手验)另案。**随件:发射链治愈**(t31-m15 前沿 emission 三件入 main,smoke 115/54→171/2;s23 Bus error=t31m15 发射回归在册)。
-- ⏳ **GUI-32(在册) 多窗口 v1(引擎级浮板)**——规划就绪(plan §3:gui_board_open 守 0924 替身红线/每浮板独立 GuiTree+事件路由焦点板优先);待发射链稳定窗口开工(s91 夹具槽已留)。
+- ✅ **GUI-32(已销账) 多窗口 v1(引擎级浮板)**——f9641bc5:C 浮板窗管器(单浮板标量态)+双 pass 命令拼接(gui_cmds_save/merge)+d_board_frame/click 驱动面+Driver 四域;s91 五径。v1 边界:单浮板/键闭包主窗/热重载不涉浮板/拖拽跟随真窗专用;v2 多板+键路由浮板优先在册。命名 gui_board_* 文档明示引擎级浮板(0924 替身红线 ✓)。
 
 ## 执行建议
 
