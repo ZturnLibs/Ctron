@@ -359,7 +359,18 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             var r12 = v_unbox(vals[1])
             var r13 = v_unbox(vals[2])
             if r11.tag == 5 && r12.tag == 1 && r13.tag == 1 {
-                return e4("k", env, vS(byte_slice(r11.s, r12.iv.as[I32](), r13.iv.as[I32]())), out)
+                var a2: I32 = r12.iv.as[I32]()
+                var b2: I32 = r13.iv.as[I32]()
+                if b2 < a2 {
+                    panic("byte_slice: range out of bounds")
+                }
+                if a2 < 0 {
+                    panic("byte_slice: range out of bounds")
+                }
+                if b2 > r11.s.len {
+                    panic("byte_slice: range out of bounds")
+                }
+                return e4("k", env, vS(byte_slice(r11.s, a2, b2)), out)
             }
         }
         panic("byte_slice arity")
