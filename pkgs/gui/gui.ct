@@ -451,6 +451,21 @@ extern "c" fn gui_chord_action_byte(i: I32) -> I32
 extern "c" fn gui_chord_ms(ms: I32) -> I32
 
 #[trusted]
+extern "c" fn ctron_gui_async_post(s: Str) -> Void
+
+#[trusted]
+extern "c" fn ctron_gui_async_on(action: Str) -> Void
+
+#[trusted]
+extern "c" fn ctron_gui_async_count() -> I32
+
+#[trusted]
+extern "c" fn ctron_gui_async_take() -> Str
+
+#[trusted]
+extern "c" fn ctron_gui_async_action() -> Str
+
+#[trusted]
 extern "c" fn gui_cfg3(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
                        wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32,
                        wminmax: I32, hminmax: I32) -> I32
