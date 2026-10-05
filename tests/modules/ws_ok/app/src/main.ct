@@ -1,0 +1,6 @@
+use libm.{mul}
+
+fn main() -> I32 {
+    println(mul(6, 7).to_string())
+    return 0
+}
