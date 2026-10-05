@@ -1,0 +1,355 @@
+// x_serve —— P4-B/T46 框架半层 IO 粘合 e2e(emit 专臂;真回环 loopback)
+// 服务端 = sv_serve_fd(frm/serve.ct 规范循环面,sc.spawn 协程;闭包内无
+// assert/panic,显式返码 —— x_client_e2e 同款纪律)+ 分解直调面(主面串行,
+// 请求缓冲 lane 在本作用域,体经 List[I32] 字节道达 mp_parse —— 二进制安全
+// 零装箱,T46×T47 接线锚)+ 有界循环面(sv_serve_n 语义:败连接不计)。
+// 客户端 = client_request(P4-C 全功能面:GET/POST/CL 分框/重定向无关)+ 裸
+// socket 面(tcp_echo 同款)。钉住:
+//   - GET 200 / 404(router miss)/ 405(frm_rc_method 面)/ POST CL 体回声
+//   - 静态真盘(st_serve:fs_write 落盘 → 200 + text/html + ETag;CWD 相对径)
+//   - 中间件链序(mw_outer∘mw_mid 嵌套装配,响应体 a[b[core]] 即序证)
+//   - shutdown 端点(POST /__shutdown loop 直拦)→ 200 draining + join 返 2
+//   - 错误映射:GARBAGE 行畸 → 400(sv_status_of);CL 900000 > body_limit
+//     → 413 且不读体;chunked 请求体 → 501(未走线,sv_bkind 分支锚在
+//     serve.ct 纯面;此处 400/413 走线实证)
+//   - multipart 上传:二进制体(PNG 魔数 0x89.. 含高位/CRLF)过 TCP →
+//     sv_read_req/sv_read_body_cl → sv_body_bytes → mp_parse 两件断言
+//     (字段件 + 文件件精确字节)
+// use 树(严格互斥,serve.ct 头注预算面):serve{client→parse,message,bind}
+// + middleware{router→enc} + static{crypto} + body{std.json} 四子树并用。
+// CI 纪律:仅回环、:0、零外联;双 RT 矩阵(默认 + CTRON_RT=coro)由 run.sh
+// 双跑。traversal 403 面 = st_traversal_ok 单测锚(frm_static);走线路由表
+// 即第一道守卫(`..` 段不匹配任何模式 → 404),不走线重复锚。
+use http.frm.serve.{ sv_serve_fd, sv_read_req, sv_read_body_cl, sv_body_bytes, sv_str_range, sv_resp, sv_resp_ct, sv_rc, sv_n, sv_bkind, sv_hend, sv_clen, sv_ms, sv_ml, sv_ts, sv_tl }
+use http.frm.middleware.{ frm_match, frm_rc_match, frm_rc_method, frm_rc_miss, frm_m_get, frm_m_post, fr_rc, fr_id }
+use http.frm.static.{ st_serve }
+use http.frm.body.{ mp_parse, mp_rc, mp_why, mp_err_ok, mp_n, mp_name, mp_fname, mp_field, mp_dlen, mp_data }
+
+// 路由表(P6-A comptime 核:消费方侧 const Str 字面量表;id = 声明序一基)
+const ROUTES: Str = "GET /hi|POST /echo|GET /file|GET /chain"
+
+// ---- 夹具助手(fx_ 前缀;合并命名空间 E5030 纪律) ----
+
+// Str → lane(填充;返长)
+fn fx_fill(buf: &I64[], s: Str) -> I64 {
+    var i: I32 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+// lane 段 ↔ Str 等值
+fn fx_eq_bytes(buf: &I64[], off: I64, want: Str) -> I64 {
+    var i: I32 = 0
+    while i < want.len {
+        if buf[off + i.as[I64]()] != byte_at(want, i).as[I64]() {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// lane 段含子串(头区 Content-Type 断言面)
+fn fx_has(buf: &I64[], a: I64, b: I64, s: Str) -> I64 {
+    if s.len.as[I64]() > b - a {
+        return 0
+    }
+    var i = a
+    while i + s.len.as[I64]() <= b {
+        if fx_eq_bytes(buf, i, s) == 1 {
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+// 方法 Str → 方法码(router token 域;未知 → 0)
+fn fx_mcode(m: Str) -> I64 {
+    if m == "GET" {
+        return frm_m_get()
+    }
+    if m == "POST" {
+        return frm_m_post()
+    }
+    return 0
+}
+
+// Str 字节追加进 List[I32](multipart 报文组装)
+fn fx_push(out: List[I32], s: Str) {
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+}
+
+// 读到对端关(响应读取;server Connection: close → eof 即完整)
+fn fx_read_all(fd: I64, buf: &I64[], cap: I64, scr: &I64[]) -> I64 {
+    var n: I64 = 0
+    var going: I32 = 1
+    while going == 1 {
+        let r = client_read_t(fd, scr, 2048, 5000)
+        if r <= 0 {
+            going = 0
+        } else {
+            var i: I64 = 0
+            while i < r {
+                if n + i < cap {
+                    buf[n + i] = scr[i]
+                }
+                i += 1
+            }
+            n = n + r
+        }
+    }
+    return n
+}
+
+// ---- 派发器(frm 消费方面:comptime 表 + 显式分发;spawn 闭包内调用 ——
+// 无 assert/panic,恒返完整响应) ----
+fn sv_disp(m: Str, t: Str, b: Str) -> Str {
+    var tb: I64[256] = [0, 0, 0, 0]
+    let tl = fx_fill(tb, t)
+    let mt = frm_match(ROUTES, fx_mcode(m), tb, 0, tl)
+    let rc = fr_rc(mt)
+    if rc == frm_rc_match() {
+        let id = fr_id(mt)
+        if id == 1 {
+            return sv_resp_ct(200, "text/plain", "hi from sv_serve")
+        }
+        if id == 2 {
+            return sv_resp_ct(200, "text/plain", "echo:" + b)
+        }
+        if id == 3 {
+            return st_serve(".", "/e2e_sv_static.html", "", "")
+        }
+        if id == 4 {
+            return mw_outer(t, 0,|r, k| mw_mid(r, k,|r2, k2| sv_resp_ct(200, "text/plain", "core" + k2.to_string())))
+        }
+        return sv_resp(404, "route id miss")
+    }
+    if rc == frm_rc_method() {
+        return sv_resp(405, "method not allowed")
+    }
+    return sv_resp(404, "not found")
+}
+
+// 中间件两件(P6-A 链形:值变换 + 嵌套装配;序 = a 外 b 内)
+fn mw_outer(req: Str, h: I64, next: fn (Str, I64) -> Str) -> Str {
+    return next(req, h * 10 + 1)
+}
+
+fn mw_mid(req: Str, h: I64, next: fn (Str, I64) -> Str) -> Str {
+    return next(req, h * 10 + 2)
+}
+
+// ---- 规范循环面 e2e ----
+
+test "sv canonical loop e2e GET POST static mw 404 405 shutdown" {
+    let net = http_net()
+    assert(fs_write("e2e_sv_static.html", "<h1>st-sv</h1>"))
+    let lfd_box = Box[Box64](Box64 { v: 0 - 1 })
+    assert(client_listen("127.0.0.1", 0, lfd_box) == 0)
+    let port_box = Box[Box64](Box64 { v: 0 })
+    assert(client_sockname(lfd_box.v, port_box) == 0)
+    let port = port_box.v
+    assert(port > 0)
+
+    var out = scope {
+        |sc|
+        // 服务端协程:规范循环(spawn 闭包捕获 = 标量 lfd;派发闭包字面量直入参)
+        var srv = sc.spawn(|| {
+            return sv_serve_fd(lfd_box.v,|m, t, b| sv_disp(m, t, b), 65536, 0 - 1, 5000)
+        })
+        var buf: I64[8192] = [0, 0, 0, 0]
+        var scr: I64[2048] = [0, 0]
+        var eb: I64[64] = [0, 0, 0, 0]
+        let bfd = Box[Box64](Box64 { v: 0 - 1 })
+        let bhh = Box[Box64](Box64 { v: 0 })
+        let bpt = Box[Box64](Box64 { v: 0 })
+        let bru = Box[Box64](Box64 { v: 0 })
+
+        // GET 命中(各腿前置 bfd.v=-1:服务器 Connection: close 串行口径下
+        // client_request 的复用尝试恒为陈旧发送+重试,纯增时窗;e2e 不消费
+        // keep-alive 语义,复用面由 x_client_e2e 自覆盖)
+        bfd.v = 0 - 1
+        var r1 = client_request(net, "GET", "127.0.0.1", port, "/hi", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r1) == 0 && rr_status(r1) == 200)
+        assert(fx_eq_bytes(buf, rr_body_off(r1), "hi from sv_serve") == 1)
+        // GET miss → 404(frm_rc_miss 面)
+        bfd.v = 0 - 1
+        var r2 = client_request(net, "GET", "127.0.0.1", port, "/nope", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r2) == 0 && rr_status(r2) == 404)
+        // 方法不齐 → 405(frm_rc_method 面)
+        bfd.v = 0 - 1
+        var r3 = client_request(net, "POST", "127.0.0.1", port, "/hi", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r3) == 0 && rr_status(r3) == 405)
+        // POST CL 体回声(体跨读环经 sv_read_body_cl)
+        let bn = fx_fill(eb, "hello sv")
+        bfd.v = 0 - 1
+        var r4 = client_request(net, "POST", "127.0.0.1", port, "/echo", "", eb, bn, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r4) == 0 && rr_status(r4) == 200)
+        assert(fx_eq_bytes(buf, rr_body_off(r4), "echo:hello sv") == 1)
+        // 静态真盘:200 + text/html + 体;ETag/CL 头在
+        bfd.v = 0 - 1
+        var r5 = client_request(net, "GET", "127.0.0.1", port, "/file", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r5) == 0 && rr_status(r5) == 200)
+        assert(fx_eq_bytes(buf, rr_body_off(r5), "<h1>st-sv</h1>") == 1)
+        assert(fx_has(buf, 0, rr_body_off(r5), "Content-Type: text/html") == 1)
+        assert(fx_has(buf, 0, rr_body_off(r5), "ETag: ") == 1)
+        // 中间件链序:a 外 b 内(嵌套装配序即执行序)
+        bfd.v = 0 - 1
+        var r6 = client_request(net, "GET", "127.0.0.1", port, "/chain", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r6) == 0 && rr_status(r6) == 200)
+        assert(fx_eq_bytes(buf, rr_body_off(r6), "core12") == 1)
+        // shutdown 端点(loop 直拦)→ 200 draining;join 返 2
+        bfd.v = 0 - 1
+        var r7 = client_request(net, "POST", "127.0.0.1", port, "/__shutdown", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        assert(rr_rc(r7) == 0 && rr_status(r7) == 200)
+        assert(fx_eq_bytes(buf, rr_body_off(r7), "draining") == 1)
+
+        let src = srv.join()
+        assert(src == 2)
+        0
+    }
+    assert(fs_delete("e2e_sv_static.html"))
+}
+
+// ---- 分解直调面 e2e(二进制 multipart 过 TCP;T46×T47 接线) ----
+
+test "sv decomposed face multipart binary e2e" {
+    let lfd_box = Box[Box64](Box64 { v: 0 - 1 })
+    assert(client_listen("127.0.0.1", 0, lfd_box) == 0)
+    let port_box = Box[Box64](Box64 { v: 0 })
+    assert(client_sockname(lfd_box.v, port_box) == 0)
+    let port = port_box.v
+
+    // —— 客户端:组 multipart 报文(头 Str + 二进制体 lane)——
+    var parts: List[I32] = List[I32]()
+    fx_push(parts, "--XB\r\nContent-Disposition: form-data; name=\"note\"\r\n\r\nhello upload\r\n")
+    fx_push(parts, "--XB\r\nContent-Disposition: form-data; name=\"bin\"; filename=\"x.dat\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+    // 文件件字节:PNG 魔数(高位 0x89 + CRLF + 0x1A)——二进制安全实证载体
+    parts.push(137)
+    parts.push(80)
+    parts.push(78)
+    parts.push(71)
+    parts.push(13)
+    parts.push(10)
+    parts.push(26)
+    parts.push(10)
+    fx_push(parts, "\r\n--XB--\r\n")
+    let blen = parts.len.as[I64]()
+    var blane: I64[512] = [0, 0, 0, 0]
+    var pi: I32 = 0
+    while pi < parts.len {
+        blane[pi] = parts[pi].as[I64]()
+        pi += 1
+    }
+    var head = "POST /up HTTP/1.1\r\nHost: t\r\nContent-Type: multipart/form-data; boundary=XB\r\nContent-Length: " + blen.to_string() + "\r\n\r\n"
+
+    let cfd_box = Box[Box64](Box64 { v: 0 - 1 })
+    assert(client_connect("127.0.0.1", port, cfd_box) == 0)
+    assert(client_write_str(cfd_box.v, head) == head.len.as[I64]())
+    assert(client_write(cfd_box.v, blane, blen) == blen)
+
+    // —— 服务端(同进程串行:分解直调面,缓冲 lane 在本作用域)——
+    let afd_box = Box[Box64](Box64 { v: 0 - 1 })
+    assert(client_accept(lfd_box.v, afd_box) == 0)
+    var rbuf: I64[8192] = [0, 0, 0, 0]
+    var scr: I64[2048] = [0, 0]
+    let sr = sv_read_req(afd_box.v, rbuf, 8192, scr, 2048, 5000)
+    assert(sv_rc(sr) == 1)
+    assert(sv_bkind(sr) == 0)
+    assert(sv_clen(sr) == blen)
+    assert(sv_ml(sr) == 4)
+    let m = sv_str_range(rbuf, sv_ms(sr), sv_ms(sr) + sv_ml(sr))
+    let t = sv_str_range(rbuf, sv_ts(sr), sv_ts(sr) + sv_tl(sr))
+    assert(m == "POST")
+    assert(t == "/up")
+    let nfin = sv_read_body_cl(afd_box.v, rbuf, sv_n(sr), sv_hend(sr), sv_clen(sr), 8192, scr, 2048, 5000)
+    assert(nfin == sv_hend(sr) + blen)
+    // 体 → 字节道 → multipart 解析(T47 面;二进制全 0..255 保真)
+    let bytes = sv_body_bytes(rbuf, sv_hend(sr), sv_clen(sr))
+    let mp = mp_parse(bytes, blen, "XB", 65536)
+    assert(mp_rc(mp) == 1)
+    assert(mp_why(mp) == mp_err_ok())
+    assert(mp_n(mp) == 2)
+    assert(mp_name(mp, 0) == "note")
+    assert(mp_fname(mp, 0) == "")
+    assert(mp_field(mp, 0) == "hello upload")
+    assert(mp_name(mp, 1) == "bin")
+    assert(mp_fname(mp, 1) == "x.dat")
+    assert(mp_dlen(mp, 1) == 8)
+    let d1 = mp_data(mp, 1)
+    assert(d1[0] == 137)
+    assert(d1[1] == 80)
+    assert(d1[2] == 78)
+    assert(d1[3] == 71)
+    assert(d1[4] == 13)
+    assert(d1[5] == 10)
+    assert(d1[6] == 26)
+    assert(d1[7] == 10)
+    assert(client_write_str(afd_box.v, sv_resp_ct(200, "text/plain", "up ok 2 parts")) > 0)
+    client_close(afd_box.v)
+
+    // —— 客户端读响应(parse 响应面)——
+    var qbuf: I64[2048] = [0, 0, 0, 0]
+    var qscr: I64[2048] = [0, 0]
+    let qn = fx_read_all(cfd_box.v, qbuf, 2048, qscr)
+    assert(qn > 0)
+    let rh = http_parse_head(qbuf, qn, http_limits_default())
+    assert(http_rc(rh) == 1)
+    assert(http_is_resp(rh) == 1)
+    assert(http_status_of(rh) == 200)
+    assert(fx_eq_bytes(qbuf, http_head_end(rh), "up ok 2 parts") == 1)
+    client_close(cfd_box.v)
+    client_close(lfd_box.v)
+}
+
+// ---- 有界循环面 + 错误映射 e2e(败连接不计;400/413 走线) ----
+
+test "sv bounded loop err mapping 400 413" {
+    let lfd_box = Box[Box64](Box64 { v: 0 - 1 })
+    assert(client_listen("127.0.0.1", 0, lfd_box) == 0)
+    let port_box = Box[Box64](Box64 { v: 0 })
+    assert(client_sockname(lfd_box.v, port_box) == 0)
+    let port = port_box.v
+
+    // 三连接先行(请求全落内核缓冲;backlog FIFO 定序)
+    let c1 = Box[Box64](Box64 { v: 0 - 1 })
+    let c2 = Box[Box64](Box64 { v: 0 - 1 })
+    let c3 = Box[Box64](Box64 { v: 0 - 1 })
+    assert(client_connect("127.0.0.1", port, c1) == 0)
+    assert(client_write_str(c1.v, "GARBAGE\r\n\r\n") > 0) // 行畸 err 1 → 400
+    assert(client_connect("127.0.0.1", port, c2) == 0)
+    assert(client_write_str(c2.v, "POST /x HTTP/1.1\r\nContent-Length: 900000\r\n\r\n") > 0) // CL > body_limit → 413 不读体
+    assert(client_connect("127.0.0.1", port, c3) == 0)
+    assert(client_write_str(c3.v, "GET /hi HTTP/1.1\r\nHost: t\r\n\r\n") > 0) // 唯一好连接 → 计数满 → 返 0
+
+    let src = sv_serve_fd(lfd_box.v,|m, t, b| sv_disp(m, t, b), 65536, 1, 5000)
+    assert(src == 0)
+
+    // 各连接响应(服务端已 close → 读到 eof 即完整)
+    var qbuf: I64[2048] = [0, 0, 0, 0]
+    var qscr: I64[2048] = [0, 0]
+    let n1 = fx_read_all(c1.v, qbuf, 2048, qscr)
+    assert(n1 > 0)
+    let h1 = http_parse_head(qbuf, n1, http_limits_default())
+    assert(http_rc(h1) == 1 && http_status_of(h1) == 400)
+    let n2 = fx_read_all(c2.v, qbuf, 2048, qscr)
+    assert(n2 > 0)
+    let h2 = http_parse_head(qbuf, n2, http_limits_default())
+    assert(http_rc(h2) == 1 && http_status_of(h2) == 413)
+    let n3 = fx_read_all(c3.v, qbuf, 2048, qscr)
+    assert(n3 > 0)
+    let h3 = http_parse_head(qbuf, n3, http_limits_default())
+    assert(http_rc(h3) == 1 && http_status_of(h3) == 200)
+    client_close(c1.v)
+    client_close(c2.v)
+    client_close(c3.v)
+    client_close(lfd_box.v)
+}

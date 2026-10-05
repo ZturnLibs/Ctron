@@ -1,0 +1,154 @@
+// i_multipart —— T47 multipart/form-data 验收夹具(§11.7 框架半层;RFC 2046 §5.1)
+// 真实浏览器上传样例形:curl/WebKit 风长横线边界 + preamble + quoted-string
+// name/filename 双形 + per-part Content-Type + 二进制文件件(PNG 魔数:高位
+// 0x89/0x9a、内嵌 CRLF、0x1A EOF 字节)+ close delimiter + epilogue。
+// 载体 = 字节道 List[I32](二进制文件件 Str 载不下,body.ct 头注登记;传输面
+// 接线 = serve_e2e/x_serve 上传腿:sv_body_bytes → mp_parse 全链)。
+// 负锚:总量 cap 先验超限 → why 1;close delimiter 缺失 → why 4。
+// boundary 面:RFC 2046 bchars quoted/unquoted 双形 + CI 大小写(mp_boundary)。
+use http.frm.body.{
+    mb_rc,
+    mb_v,
+    mp_boundary,
+    mp_data,
+    mp_dlen,
+    mp_err_cap,
+    mp_err_noclose,
+    mp_err_ok,
+    mp_field,
+    mp_fname,
+    mp_n,
+    mp_name,
+    mp_parse,
+    mp_rc,
+    mp_why,
+}
+
+// Str 字节追加(字面段)
+fn up_push(out: List[I32], s: Str) {
+    var i: I32 = 0
+    while i < s.len {
+        out.push(byte_at(s, i))
+        i += 1
+    }
+}
+
+// 字节道段 ↔ Str 等值(可印域)
+fn up_eq_str(d: List[I32], a: I64, want: Str) -> I64 {
+    if want.len.as[I64]() != d.len.as[I64]() - a {
+        return 0
+    }
+    var i: I32 = 0
+    while i < want.len {
+        if d[a + i.as[I64]()] != byte_at(want, i).as[I64]() {
+            return 0
+        }
+        i += 1
+    }
+    return 1
+}
+
+// ---- 真实浏览器上传样例(curl -F 形;边界 = 横线族 + 十进制串,bchars 域内)----
+
+// 边界经 fn 出面(模块级裸 const 引导 interp run 期 unbound,web 域包 serve
+// 同款登记;值 = curl -F 惯例长横线 + 十进制串,bchars 域内 ≤70)
+fn up_bnd() -> Str {
+    return "---------------------------7353249167787192653123456789"
+}
+
+fn up_browser_body() -> List[I32] {
+    var out = List[I32]()
+    // preamble(浏览器不发,容忍面锚;RFC 2046 §5.1.1 首 delimiter 前丢弃)
+    up_push(out, "socket scan in progress...\r\n")
+    // 件 1:表单字段(值含空格与 UTF-8 安全可印段)
+    up_push(out, "--" + up_bnd() + "\r\n")
+    up_push(out, "Content-Disposition: form-data; name=\"note\"\r\n")
+    up_push(out, "\r\n")
+    up_push(out, "hello multipart upload\r\n")
+    // 件 2:文件件(quoted filename + per-part Content-Type + 二进制体)
+    up_push(out, "--" + up_bnd() + "\r\n")
+    up_push(out, "Content-Disposition: form-data; name=\"doc\"; filename=\"screenshot.png\"\r\n")
+    up_push(out, "Content-Type: image/png\r\n")
+    up_push(out, "\r\n")
+    // PNG 魔数 + 高位字节 + 内嵌 CRLF(体中 CRLF 不得误判 delimiter —— 行首锚定)
+    out.push(137)
+    out.push(80)
+    out.push(78)
+    out.push(71)
+    out.push(13)
+    out.push(10)
+    out.push(26)
+    out.push(10)
+    out.push(200)
+    out.push(255)
+    out.push(13)
+    out.push(10)
+    up_push(out, "\r\n")
+    // close delimiter + epilogue
+    up_push(out, "--" + up_bnd() + "--\r\n")
+    up_push(out, "client linger bytes, ignored by parser\r\n")
+    return out
+}
+
+test "browser upload sample parse" {
+    let body = up_browser_body()
+    let p = mp_parse(body, body.len.as[I64](), up_bnd(), 65536)
+    assert(mp_rc(p) == 1)
+    assert(mp_why(p) == mp_err_ok())
+    assert(mp_n(p) == 2)
+    // 件 1:字段(quoted name;无 filename)
+    assert(mp_name(p, 0) == "note")
+    assert(mp_fname(p, 0) == "")
+    assert(mp_field(p, 0) == "hello multipart upload")
+    // 件 2:文件(quoted filename + 二进制字节精确,含高位/CR/LF/0x1A)
+    assert(mp_name(p, 1) == "doc")
+    assert(mp_fname(p, 1) == "screenshot.png")
+    assert(mp_dlen(p, 1) == 12)
+    let d = mp_data(p, 1)
+    assert(d[0] == 137)
+    assert(d[1] == 80)
+    assert(d[2] == 78)
+    assert(d[3] == 71)
+    assert(d[4] == 13)
+    assert(d[5] == 10)
+    assert(d[6] == 26)
+    assert(d[7] == 10)
+    assert(d[8] == 200)
+    assert(d[9] == 255)
+    assert(d[10] == 13)
+    assert(d[11] == 10)
+    // 体中 "--" 前缀行首锚定:件 1 值内的横线是数据不是 delimiter(RFC 2046 §5.1.1)
+    var mid = List[I32]()
+    up_push(mid, "--" + up_bnd() + "\r\n")
+    up_push(mid, "Content-Disposition: form-data; name=\"m\"\r\n")
+    up_push(mid, "\r\n")
+    up_push(mid, "data--" + up_bnd() + "tail\r\n")
+    up_push(mid, "--" + up_bnd() + "--\r\n")
+    let p2 = mp_parse(mid, mid.len.as[I64](), up_bnd(), 65536)
+    assert(mp_rc(p2) == 1 && mp_n(p2) == 1)
+    assert(up_eq_str(mp_data(p2, 0), 0, "data--" + up_bnd() + "tail") == 1)
+}
+
+test "multipart cap and noclose negative anchors" {
+    let body = up_browser_body()
+    // 总量 cap 先验超限 → why 1(传输层 sv body_limit 之外的第二道门)
+    assert(mp_why(mp_parse(body, body.len.as[I64](), up_bnd(), 16)) == mp_err_cap())
+    // close delimiter 缺失 → why 4(截断上传 fail-closed)
+    var trunc = List[I32]()
+    up_push(trunc, "--" + up_bnd() + "\r\n")
+    up_push(trunc, "Content-Disposition: form-data; name=\"t\"\r\n")
+    up_push(trunc, "\r\n")
+    up_push(trunc, "v\r\n")
+    assert(mp_why(mp_parse(trunc, trunc.len.as[I64](), up_bnd(), 65536)) == mp_err_noclose())
+}
+
+test "boundary extraction quoted and unquoted" {
+    // RFC 2046 §5.1.1:bchars 域双形 + 参数 CI;引号形去引号取值
+    assert(mb_rc(mp_boundary("multipart/form-data; boundary=" + up_bnd())) == 1)
+    assert(mb_v(mp_boundary("multipart/form-data; boundary=" + up_bnd())) == up_bnd())
+    assert(mb_v(mp_boundary("multipart/form-data; boundary=\"" + up_bnd() + "\"")) == up_bnd())
+    assert(mb_v(mp_boundary("MULTIPART/FORM-DATA; BOUNDARY=ci-case-9")) == "ci-case-9")
+    // 尾空格引号形拒 / 域外字符拒(构造期注入封口,body.ct 负矩阵同源)
+    assert(mb_rc(mp_boundary("multipart/form-data; boundary=\"pad \"")) == 0)
+    assert(mb_rc(mp_boundary("multipart/form-data")) == 0)
+}
