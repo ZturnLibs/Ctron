@@ -1567,3 +1567,11 @@ probe 断言 ④去 count label——**最小形=vbox+单静态 label+bind 闭�
 项**;最小形使诊断面缩至 gt_new/gt_parse/gt_node/rt_emit/rt_draw 小集合(列表全长可整
 打)。负界守卫已入 gui_render(健壮性保留)。下段首件=最小形上整打并行列表各长度+内容,
 与 pre-S2 同形对拍,失配点即元凶。
+
+**s30 0xA1 毒填实验(2026-10-05 深夜终)**:amalloc 分配 memset 0xA1 后崩址=0x4f00021f8
+(真实 bump 区地址,非 0xA1 模式)——**未初始化读取类排除;定性终版=类型混淆:vreg_name
+字段持真实 bump 分配指针但所指对象非 ctron_list(跨型字段写/并行列表失配族)**。崩溃点
+=draw 帧 gui_list_ns(vreg_name) 读 .n。探针/毒化/剥层三系工具对本 bug 全部失效
+(探针扰动即变;毒填不改坏指针;ASAN 不见 bump 内越界)——**下段首件=最小形上 dump
+全 26 列表 length+逐字段(已在册探针写法),对 pre-S2 同 fixture 找 vreg_name 首次
+ diverge 的写者;或 ctron_gui.c 的 C 侧写 GuiTree 字段面审查(d 族 C 助手直写树字段?)**。
