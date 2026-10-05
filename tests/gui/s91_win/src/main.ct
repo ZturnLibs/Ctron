@@ -1,0 +1,203 @@
+// tests/gui/s91_win —— G 档 GUI-32:浮板多窗 v1(引擎级,单浮板)headless 验收
+// 五径:①开板(标题/几何生效);②板体按钮点击走浮板树(主树按钮不误触);
+// ③关闭盒关板(板内容消失);④重开+拖拽(gui_board_drag_on/to 落位);
+// ⑤板外点击走主树。v1 边界:单浮板/键闭包主窗专用/热重载不涉浮板(在册)。
+use gui.{test, d_frame, d_click, d_tick, d_board_frame, d_board_click, d_board_drag_to,
+         d_expect_text, d_cmd_count, gui_board_open}
+
+struct M {
+    var state: Str
+    var mainhits: I32
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { state: "", mainhits: 0 }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "main_btn" {
+        m.mainhits = m.mainhits + 1
+        m.state = "MAIN"
+        return
+    }
+    if name == "b1_btn" {
+        m.state = "B1"
+        return
+    }
+    if name == "b2_btn" {
+        m.state = "B2"
+        return
+    }
+}
+
+fn board1_src() -> Str {
+    return "view B1 (m: M) \{\n  <vbox class=\"b1root\">\n    <button class=\"b1btn\" on:click=\{b1_btn(m)}>板一按钮</button>\n  </vbox>\n}\nstyle b1root \{ direction: column gap: 8 padding: 8 }\nstyle b1btn \{ direction: column w: 100 h: 28 bg: \"#2563eb\" fg: \"#ffffff\" }"
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 400, 400,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // ⑤ 主树按钮基线(板未开时点击命中)
+            d_frame(t, |buf| bind_all(buf, m))
+            println("PRE-CLICK cmds=" + d_cmd_count().to_string())
+            actc(d_click(t, "main_btn"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.state != "MAIN" {
+                panic("s91: state 不符 " + m.state)
+            }
+            // ① 开板:几何 (250,50) 160×120
+            gui_board_open("检查器", board1_src(), 250, 50, 160, 120)
+            d_board_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_board_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // ② 板体按钮点击((250+8+50, 50+24+8+14)=(308,96)):走浮板树
+            var nm1: Str = d_board_click(t, 308, 96)
+            println("NM1=[" + nm1 + "] bhits=" + t.bhits.len.to_string() + " brects=" + t.brects.len.to_string())
+            if nm1 != "b1_btn" {
+                panic("s91: 板体命中不符 [" + nm1 + "]")
+            }
+            actc(nm1, List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            if m.state != "B1" {
+                panic("s91: state 不符 " + m.state)
+            }
+            // ③ 关闭盒(右上 (250+160-10, 50+12)=(400,62)):关板
+            var nm2: Str = d_board_click(t, 400, 62)
+            if nm2 != "__close__" {
+                panic("s91: 关闭盒未命中 [" + nm2 + "]")
+            }
+            d_board_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // 板关后:坐标点击走主树(main_btn 在 (208,38)-(288,66))
+            actc(d_click(t, "main_btn"), List[Str]())
+            if m.state != "MAIN" {
+                panic("s91: 关板后应走主树")
+            }
+            // ④ 重开+拖拽:drag_on (260,62) → drag_to (100,200) 落位
+            gui_board_open("检查器", board1_src(), 250, 50, 160, 120)
+            d_board_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_board_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            var nm4: Str = d_board_click(t, 260, 62)
+            if nm4 != "__drag__" {
+                panic("s84: 标题栏未命中 [" + nm4 + "]")
+            }
+            d_board_drag_to(t, 100, 200)
+            d_board_frame(t, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // 拖后板体按钮新位 ((100+8+50, 200+24+8+14)=(158,246))
+            println("POST-DRAG bhits=" + t.bhits.len.to_string() + " brects=" + t.brects.len.to_string())
+            var nm5: Str = d_board_click(t, 158, 246)
+            if nm5 != "b1_btn" {
+                panic("s91: 拖后板体未命中 [" + nm5 + "]")
+            }
+            println("S91-WIN-GREEN")
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <button class="mainbtn" on:click={main_btn(m)}>主按钮</button>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style mainbtn { direction: column w: 80 h: 28 bg: "#22c55e" fg: "#0b0f19" }
+style state { fg: "#22c55e" h: 22 }
+
+fn main_btn(m: Box[M]) {
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

@@ -1595,3 +1595,25 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   (s23 同源)/smoke 171/2(对端两账)/双陈列室绿;真窗 --run 待用户。
 - **GUI-35 v1 边界**:role 推导+投影面全量;aria_label 属性面(需解析槽)
   /mac NSAccessibility shim(VoiceOver 手验)另案。
+
+**2026-10-04 G 档 GUI-32 多窗 v1**(gui 泳道,收官件):
+- **交付面**:C 浮板窗管器(单浮板标量态:gui_board_open_req 入队/activate/几何/
+  拖拽/关闭)+gui_cmds_save/merge 双 pass 命令拼接(主 pass 快照→浮板 pass→
+  malloc 拼接→区间平移)+gui_board_open/close pub 面+d_board_frame(双 pass
+  帧驱动:独立 layout emit 浮板树→merge→平移 blit→板 rects 收集→标题栏/关闭盒
+  浮条)+d_board_click(zone 路由:板体→rt_hit_name 浮板树/标题→drag/关闭盒)
+  +Driver 加 bt/brects/bhits/bhinst 四域。s91 五径:主树基线/开板板体命中/
+  关闭盒关板+关后主树恢复/重开+标题栏拖拽落位。
+- **decls 锁申报**:cc_run 零改动;pkgs/gui +21 extern(board 全族+cmds_save/
+  merge/len)+Driver +4 域;C 侧 ~60 行。
+- **v1 边界在册**:单浮板(多板=v2 C 数组扩展)/键闭包与滚轮主窗专用/热重载
+  不涉浮板/拖拽跟随=真窗专用(headless 靠 d_board_drag_to 显式落位)。
+- **🩸 坑四**:①gui_begin_layout 重置 Clay 命令缓冲——双 layout pass 须
+  gui_cmds_save/merge C 侧拼接(偏移 blit 模型的根基);②drag-follow 不能进
+  d_board_frame(headless gui_mouse=(0,0) 覆盖显式落位);③本地视图裸事件头
+  0 参调用再犯;④pub extern 带参 E2020 再犯(包装 fn 绕);⑤Clay cmd 访问器
+  cmd() 定义序——前置 static 声明。
+- **门**:阶梯 94 过/2 败(s30 基线+s23 t31m15 回归)/suite 100/100/smoke
+  170/2(对端两账)/双陈列室绿;真窗 --run 手验待用户。
+- **GUI-32 后续**:v2 多板(C 数组)+键路由浮板优先+热重载浮板+每板独立
+  bind/act;命名守 0924 替身红线(gui_board_* 文档明示引擎级浮板)。
