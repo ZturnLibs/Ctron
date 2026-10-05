@@ -510,7 +510,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T43 · ctc 子命令补齐(§9.7)
 
-- **预估:** 1 d。**前置:** 无。**状态:** 待办
+- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-05;实况=纯驱动壳层件,编译器零触碰:①`ctron lint <file|pkg目录> [--trusted] [--strict]`=check 命令化+汇总——错误(E####)红 rc=1,警告(W####)默认只汇总不红(check 同件 rc=1 严格面二面并存),--trusted 透传既有信任审计枚举面(§9.6,driver_check.ct 零改),--strict 警告也红;pkg 目录=src/*.ct 展开(fmt 同款惯例),跨文件 use 解析实测无碍,多文件带 `-- <file>` 头+末行汇总 `lint: N 文件,E 个错误 / W 警告`;②`ctron bench [族]`=五族注册表(lang/gc/http/net/ffi,脚本自定位仓库根任目录可跑)+未注册族/脚本缺席 fail-closed rc=2,env 门禁族(http/net 缺省 SKIP)惯例透传;③`ctron add <名>[@<约束>]`/`ctron publish`=T49 前置骨架——add 只做参数校验(名形 [A-Za-z_][A-Za-z0-9_-]*+版本约束白名单)+「registry 未接」出路指引,publish 只读本地清单报将发布面(name@version),均 rc=2 零写入零网络(反投机律:对外发布面启用须经用户确认);ctron.ps1 同文(β 口径,Windows conformance 债维持)。门禁:ctron_smoke 41/41(T43 新腿 19 断言+存量 22 全绿;lint 七/bench 四/add-pub 五+节序)+meta_check 532 绿。坑位两条在册:case 模式内裸 `<`/`>` 被 bash 解析器当重定向记号(引号嵌套也救不回,版本约束白名单校验改 grep 方括号实现);ROOT 是装机语义 exe/../,dev 布局下指仓库父目录——bench 族路径基须用 DEVROOT(回落前脚本目录),smoke 两族双败实证后修正。余债:W8902 出路文案「ctron pkg add」与实装命令名 ctron add 未对齐(三驱动文件字串+smoke 3o 锚联动,随 T49 add 实装一并改))
 - **目标:** `ctc lint`(信任审计已有 `driver_check.ct --trusted` 面,命令化+常规 lint 汇总)、`ctc bench`(tests/bench 家族入口)、`ctc add/publish`(依赖 T49 语义,先命令骨架+明确「未接 registry」诊断)。
 - **验收:** lint/bench 真用;add/publish 骨架 + fail-closed 提示。
 - **坑位:** publish 涉及对外发布面,**未经用户确认不得接真 registry**——骨架件只做本地协议。
@@ -645,7 +645,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T40 | bare 交叉编译 | W8 | 待办 | — |
 | T41 | bare 分配器族 | W8 | 待办 | — |
 | T42 | 体积门禁+ISR | W8 | 待办 | — |
-| T43 | ctc 子命令 | W9 | 待办 | — |
+| T43 | ctc 子命令 | W9 | ✅ 完成(1005) | — |
 | T44 | own ±5% 门禁 | W9 | 待办 | — |
 | T45 | CBox+FFI 余账 | W9 | ✅ 完成(1002) | — |
 | T46 | st_serve IO 粘合 | W9 | 待办 | — |

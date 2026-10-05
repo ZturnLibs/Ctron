@@ -1390,25 +1390,10 @@ fn rt_sel_take() -> I32 {
 
 // 拖拽事件缝逐帧(on:drag 武装中且按住=触发;表达式内建名取 permille;
 // 松开解除。evt2 武装在循环命中后)
-// GUI-44:异步队列帧首 drain——spawn 任务经 C 互斥队列投递,此处逐件 fire
-// (FIFO;action=gui_async_on 注册名;UI 线程唯一触 UI)
-fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
-    var n: I32 = ctron_gui_async_count()
-    var i: I32 = 0
-    while i < n {
-        var item: Str = ctron_gui_async_take()
-        var args = List[Str]()
-        args.push(item)
-        act(ctron_gui_async_action(), args)
-        i += 1
-    }
-}
-
 // GUI-36:手势帧检(longpress 到期 fire,节点=命中查询)+轻扫 release 消费
 fn rt_gesture_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
     if gui_gesture_longpress_due() == 1 {
         var lpn: I32 = rt_hover_node(rects, hits, gui_gesture_lp_x(), gui_gesture_lp_y())
-        println("GS due hit=" + lpn.to_string() + " de.len=" + rt_in_handler(t, lpn, "longpress").len.to_string())
         if lpn >= 0 {
             var dexp: Str = rt_in_handler(t, lpn, "longpress")
             if dexp != "" {
@@ -1430,7 +1415,6 @@ fn rt_gesture_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List
     }
 }
 
-// headless 手势三件:press/release(启 C 跟踪)+frame(帧检)
 pub fn d_touch_press(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     gui_inject_press(x, y)
     var evt: I32 = gui_poll_event()
@@ -1446,11 +1430,58 @@ pub fn d_touch_release(t: Box[Driver], x: I32, y: I32, bind: fn(List[Str]) -> Vo
     gui_inject_release(x, y)
     return 0
 }
+
 pub fn d_touch_frame(t: Box[Driver], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
     var n: I32 = gui_cmd_count()
     var rc2 = List[I32]()
     rt_collect_rects(n, rc2)
     rt_gesture_frame(t.t, rc2, t.hits, bind, act)
+}
+
+pub fn d_ax_dump(t: Box[Driver]) -> Str {
+    return ax_dump_walk(t.t, 0, 0)
+}
+
+fn ax_dump_walk(t: GuiTree, id: I32, depth: I32) -> Str {
+    var pad: Str = ""
+    var pi: I32 = 0
+    while pi < depth {
+        pad = pad + "  "
+        pi += 1
+    }
+    var role: Str = ax_role_of(t.ntag[id])
+    var line: Str = pad + role + " " + t.ntag[id]
+    var txt: Str = t.npre[id]
+    if t.nbid[id] != "" {
+        line = line + " bind=" + t.nbid[id]
+    }
+    if txt != "" {
+        line = line + " '" + txt + "'"
+    }
+    var nl: Str = utf8_enc(10)
+    var acc: Str = line + nl
+    var ch: I32 = t.nfc[id]
+    while ch >= 0 {
+        acc = acc + ax_dump_walk(t, ch, depth + 1)
+        ch = t.ns[ch]
+    }
+    return acc
+}
+
+// GUI-44:异步队列帧首 drain——spawn 任务经 C 互斥队列投递,此处逐件 fire
+// (FIFO;action=gui_async_on 注册名;UI 线程唯一触 UI)
+fn rt_async_drain(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) {
+    var n: I32 = ctron_gui_async_count()
+    var i: I32 = 0
+    while i < n {
+        var item: Str = ctron_gui_async_take()
+        var args = List[Str]()
+        args.push(item)
+        act(ctron_gui_async_action(), args)
+        i += 1
+    }
+}
+
 // TEXT fg 探针(富含色断言;pub extern 带参 E2020 怪相在册——包装 fn 绕行)
 pub fn d_cmd_text_fg_r(i: I32) -> I32 {
     return gui_cmd_text_fg_r(i)

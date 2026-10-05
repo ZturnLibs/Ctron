@@ -68,24 +68,25 @@
 - ⚠️ **现役债立案(1004,s77 排障途中 HEAD 复现)**:numeric 标记 input × textarea 节点并存 → emit 段 segfault(strlen NULL)。最小形态=视图含 `<input bind={x} numeric/>` 与任意 `<textarea/>`;单独任一均过。与 GUI-30 改动无关(HEAD 版二进制同崩),s77 已绕开(不带 numeric);根因待查(疑装配改写或 trans 面)。
 - ⚠️ **现役债立案(1004,全量回归发现;s30_props_d 运行段 segfault)**:t_rt_emit 渲染行走读野指针(0xad39...),emit/cc 段均过。**纯 HEAD 全树复现**(我方工作树+P0-C 半成品分别 stash 三级对照全崩)=已提交基线现役债,与 F 档改动无关。GC 默认 bump(未开)排除悬挂回收;嫌疑=T31 M1.5 精确帧根集(353e16b8)或 P9 栈面(ea678b40)合流后 s30 形态首踩(1003 阶梯全绿在合流前,合流后未复跑全阶梯);87 夹具中独此一家。归 GC/发射泳道复核,复现=`sh tests/gui/s30_props_d/run.sh`。
 
-## G 档:C 档远期(裁决 #9 在册,排期靠后、目标不删)
+## G 档:C 档远期(裁决 #9 在册)——✅ 2026-10-04 十二件销账,GUI-32 一件在册
 
-> 执行规划(2026-10-04)见 `2026-10-04-gui-g-tier-plan.md`:四波分解(组合五连→
-> 交互缝三件→文本双件→架构三件)+ 地基盘点 + 七裁决点。
+> 执行规划见 `2026-10-04-gui-g-tier-plan.md`;收尾态见 `2026-10-04-gui-g-tier-handoff.md`。
+> 四波连推:组合五连/交互缝三件/文本双件/架构+触摸+无障碍;发射链治愈
+> (t31-m15 前沿三件入主,smoke 115/54→171/2)。
 
-- ⏳ **GUI-32(未做) 多窗口**(架构级:raylib 单窗假设,需窗口层决策评审)
-- ⏳ **GUI-33(未做) 富文本/inline markup**
-- ⏳ **GUI-34(未做) RTL 布局镜像**(文字 bidi 已有)
-- ⏳ **GUI-35(未做) 无障碍树/屏幕阅读器**
-- ⏳ **GUI-36(未做) 触摸/手势**
-- ⏳ **GUI-37(未做) 内部拖放**(列表重排/drop target;依赖拖拽事件缝 ✓)
-- ⏳ **GUI-38(未做) date/time picker**
-- ⏳ **GUI-39(未做) color picker**
-- ⏳ **GUI-40(未做) command palette**
-- ⏳ **GUI-41(未做) chart**
-- ⏳ **GUI-42(未做) 过渡动画**(插值,消费 tick ✓)
-- ⏳ **GUI-43(未做) chord 序列组合键**(消费 §2.11 ✓)
-- ⏳ **GUI-44(未做) 异步任务到 UI**(跨泳道:语言面线程/通道就绪后合流)
+- ✅ **GUI-40(已销账) command palette**——e9ec0f41:库 0.3 Palette 组件+desugar 组件文本通道臂+s79 五径。
+- ✅ **GUI-38(已销账) date/time picker**——eddca1c6:库 0.4 DatePick(七列头)/TimePick(tp_step 显参)+s80 历法驱动。
+- ✅ **GUI-39(已销账) color picker**——775bc6cf:库 0.5 ColorPick(canvas SV 方/拖拽选点/hex 双向)+color_parse pub+s81 四径。
+- ✅ **GUI-42(已销账) 过渡动画 v1**——58fc148f:gui_anim.ct 纯函数库(ease 五族/lerp/anim_i)+门面 re-export+s82 关键帧。
+- ✅ **GUI-41(已销账) chart v1**——c3318009:库 0.6 BarChart/LineChart(canvas)+多 canvas 能力+s83 像素几何。
+- ✅ **GUI-43(已销账) chord 序列组合键**——69760e9c:C 状态机(武装/步进/完成/超时)+空格序列解析+三点路由+s84 四径。
+- ✅ **GUI-37(已销账) 内部拖放**——8d930b80:释放臂 on:dropin 命中+permille 调用形 fire+s85 换序。
+- ✅ **GUI-44(已销账) 异步任务到 UI**——a88dbe41:C 互斥队列+帧首 drain FIFO+s86(跨线程半程=spawn 发射对端在飞断点,同源在册)。
+- ✅ **GUI-34(已销账) RTL 布局镜像**——2221d308:class 标记 rtl 子序逆发+s88 双联单调;s14/s15/s17 文字面已有。
+- ✅ **GUI-33(已销账) 富文本 v1**——231c63da+94879efe 补遗:class 标记 rich+markdown 子集(**b**/@@c@@)分段水平流+s87 段色;链接色/多行 wrap/链接点击 v2 在册。
+- ✅ **GUI-36(已销账) 触摸/手势 v1**——c1af7906:C 手势跟踪器(longpress 600ms/swipe 50px 8 向)+注入缝+s89 四径;tap=click 同义;pinch/移动端 M3 另案。
+- ✅ **GUI-35(已销账) 无障碍 v1**——5d5e4c08:ax_role_of 推导+d_ax_dump 树投影+s90 六断言;aria_label 属性面/mac NSAccessibility shim(VoiceOver 手验)另案。**随件:发射链治愈**(t31-m15 前沿 emission 三件入 main,smoke 115/54→171/2;s23 Bus error=t31m15 发射回归在册)。
+- ⏳ **GUI-32(在册) 多窗口 v1(引擎级浮板)**——规划就绪(plan §3:gui_board_open 守 0924 替身红线/每浮板独立 GuiTree+事件路由焦点板优先);待发射链稳定窗口开工(s91 夹具槽已留)。
 
 ## 执行建议
 
