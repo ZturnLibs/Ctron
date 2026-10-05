@@ -59,8 +59,8 @@ pub fn rt_hover_node(rects: List[I32], hits: List[I32], px: I32, py: I32) -> I32
 }
 
 fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id: I32, hits: List[I32], hinst: List[I32], inst: I32, hov: I32, actn: I32) -> I32 {
-    if id >= t.ntag.len {
-        panic("EACHDBG 越界 id=" + id.to_string() + " ntag.len=" + t.ntag.len.to_string())
+    if id >= t.ntag.len || id < 0 {
+        panic("EACHDBG 越界 id=" + id.to_string() + " ntag.len=" + t.ntag.len.to_string() + " caller=s30dbg")
     }
     // tag/cls 先读:when 门需在 gui_open 之前定夺(Clay 严序 Open→Configure→Close,
     // 开而未配即关 = CloseElement 崩;when 假必须零触碰)
