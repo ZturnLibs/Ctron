@@ -54,3 +54,10 @@
 - 验证清单(解除阻塞后):①`bin/ctron-cc run tests/07e...` panic 消息含 byte_slice;②发射臂等价验证(emit Loom verifyd 崩溃用例);③smoke --full;④suite 记分卡 ≥ 现状;⑤固定点
 
 ### FB-2:五点锚点已勘察(见总表),未实施
+
+## 实施状态更新二(2026-10-05 晚,并行会话冲突发现)
+
+1. **FB-1 补丁被并行会话覆盖**:`\}` 转义修复后发射已通(1.6MB 产物),但 native.sh 编译暴露 deeper 问题期间,工作树的 driver_emit.ct/eval_call.ct 被并行会话的 s30-GC 调试循环改写(当前 diff 440 行均非本批);eval_call.ct 的 FB-1 编辑已丢失。
+2. **结论:本批次不得在主工作树实施**——必须开专用 worktree(仓库惯例:`.worktrees/<名>`,参照 asan/p0a 先例),基线 = 含本规划的提交 d3bab5ec。
+3. **新登记(基础设施)**:native.sh 自举链依赖 seed 宿主(compiler-c)发射器,该发射器已落后当前发射特性(spn 作用域保存/恢复)——**T20 缓存命中时掩盖,缓存未命中必然失败**。工项:同步 seed 宿主或 native.sh 改走自举发射链(bin/ctron-emit 直发,本轮实测可行:emit1/emit2 均 rc=0)。
+4. 下轮执行序:①开 .worktrees/fb1(git worktree add,基线含规划);②重放 FB-1 双臂补丁(本文件含精确锚点);③走自举发射链重建(bin/ctron-emit → cc,绕 seed);④五步验收;⑤FB-2 五点实施。
