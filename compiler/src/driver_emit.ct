@@ -375,7 +375,7 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             // 直标/1=值结构体(u:/R/E:)域扫。__thread=多线程推拉隔离(pmap 8 线程);收集
             // 仅主线程,任务线程分配已退避 bump。主栈保守扫降级 CTRON_GC_CONSERV 逃逸档。
             println("typedef struct ct_frs \{ void** addr; int kind; size_t sz; } ct_frs;")
-            println("typedef struct ct_fr \{ struct ct_fr* up; ct_frs pool[32]; int pn; int ovf; } ct_fr;")
+            println("typedef struct ct_fr \{ struct ct_fr* up; ct_frs pool[32]; int pn; int ovf; int sv[8]; int spn; } ct_fr;")
             println("static __thread ct_fr* ct_fp = 0;")
             println("static void ct_fp_pop(void* p) \{ ct_fp = ((ct_fr*)p)->up; }")
             println("static int ct_gc_conserv = 0;")

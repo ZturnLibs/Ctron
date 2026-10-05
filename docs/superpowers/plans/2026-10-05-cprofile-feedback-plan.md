@@ -72,3 +72,11 @@
 - 阻塞单点:编译器源内部分发调用 `fs_mkdir(r5.s)` 发射为 `t_fs_mkdir`(user-fn 路径)而非映射的 `ctron_fs_mkdir`——fs_write 同形调用却正确映射。下一步:找出两姊妹内建在 sem/emit decl 表上的差异点(疑 sem_builtin 签名表或 fn-decl 创建路径还有一处注册),对齐即通
 - 验证(映射通后):重建双二进制 → 解释臂 fs_mkdir 行为测试(创建/已存在/嵌套)→ 发射臂同 → smoke/suite 基线对照(90/64 既有)
 - FB-1 已在本分支提交(4ed1b0d0),双臂终验 rc=1+消息 ✓
+
+## FB-2 追加定位(2026-10-05 深夜)
+- 自举链双步法已跑通(主树发射器引导 → worktree 自举),新事实:
+  ①HEAD 的 driver_emit.ct 结构体模板缺 spn(并行会话未提交改动的一部分)——已补(int sv[8]; int spn;),该修复独立有效
+  ②即便用主树新发射器,内部调用 fs_mkdir(r5.s) 仍发射 t_fs_mkdir——**排除发射器版本因素,确认是 sem/emit decl 表注册差异**
+- 剩余单点:找出 fs_write 与 fs_mkdir 在 sem fn-decl 表上的差异(疑 prelude 名单创建 decl 时 arity/signature 表还有一处;或 ct_call 早于 1062 行的分支对有 decl 的 prelude 名走 user-fn 路径,而 fs_write 因某种表项被豁免)
+- 定位手法建议:在 trans_expr 的 user-fn 分支入口打印 callee,一次重建即可看见 fs_write/fs_mkdir 各走哪条;或 diff 两者的 sem decl dump(ctc.sh ast)
+- 全部改动保留在 fb1 worktree 工作树(未提交部分=driver_emit struct spn 修复+注册点七处),FB-1 已提交(4ed1b0d0)
