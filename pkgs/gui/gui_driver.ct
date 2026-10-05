@@ -154,19 +154,23 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
                                     gui_caret_set(0)
                                 }
                             } else {
-                                // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
-                                var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
-                                if hk >= 0 {
-                                    var han: Str = ""
-                                    var hi: I32 = 0
-                                    while hi < hk {
-                                        han = han + utf8_enc(gui_hotkey_action_byte(hi))
-                                        hi += 1
-                                    }
-                                    act(han, List[Str]())
-                                } else {
-                                    if has_key {
-                                        key(gui_evt_key())
+                                // GUI-43:chord 臂(快捷键表同位;2=完成 fire/1=武装消费/0=原路由)
+                                var crc: I32 = gui_chord_route(gui_evt_key(), gui_hotkey_mods(), act)
+                                if crc == 0 {
+                                    // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                                    var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                                    if hk >= 0 {
+                                        var han: Str = ""
+                                        var hi: I32 = 0
+                                        while hi < hk {
+                                            han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                            hi += 1
+                                        }
+                                        act(han, List[Str]())
+                                    } else {
+                                        if has_key {
+                                            key(gui_evt_key())
+                                        }
                                     }
                                 }
                             }
@@ -385,19 +389,23 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
                                     gui_caret_set(0)
                                 }
                             } else {
-                                // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
-                                var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
-                                if hk >= 0 {
-                                    var han: Str = ""
-                                    var hi: I32 = 0
-                                    while hi < hk {
-                                        han = han + utf8_enc(gui_hotkey_action_byte(hi))
-                                        hi += 1
-                                    }
-                                    act(han, List[Str]())
-                                } else {
-                                    if has_key {
-                                        key(gui_evt_key())
+                                // GUI-43:chord 臂(快捷键表同位;2=完成 fire/1=武装消费/0=原路由)
+                                var crc: I32 = gui_chord_route(gui_evt_key(), gui_hotkey_mods(), act)
+                                if crc == 0 {
+                                    // 波次五b:快捷键表(§2.11 路由链第三位;未中回落 key 闭包)
+                                    var hk: I32 = gui_hotkey_match(gui_evt_key(), gui_hotkey_mods())
+                                    if hk >= 0 {
+                                        var han: Str = ""
+                                        var hi: I32 = 0
+                                        while hi < hk {
+                                            han = han + utf8_enc(gui_hotkey_action_byte(hi))
+                                            hi += 1
+                                        }
+                                        act(han, List[Str]())
+                                    } else {
+                                        if has_key {
+                                            key(gui_evt_key())
+                                        }
                                     }
                                 }
                             }
@@ -593,7 +601,107 @@ pub fn gui_font_register(path: Str) -> I32 {
 
 // 快捷键注册(§2.11 应用侧):combo = "mod+s"/"ctrl+shift+k"/"alt+1";
 // mods 位 1=ctrl/cmd 2=shift 4=alt;action 直发 act
+// chord 路由共享帮手(三点同源):2=完成(fire)/1=武装消费/0=不处理走原路由
+fn gui_chord_route(k: I32, md: I32, act2: fn(Str, List[Str]) -> Void) -> I32 {
+    var cr: I32 = gui_chord_match(k, md)
+    if cr == 2 {
+        var han: Str = ""
+        var hi: I32 = 0
+        var hn: I32 = gui_chord_action_len()
+        while hi < hn {
+            han = han + utf8_enc(gui_chord_action_byte(hi))
+            hi += 1
+        }
+        act2(han, List[Str]())
+        return 2
+    }
+    if cr == 1 {
+        return 1
+    }
+    return 0
+}
+
+// 单段 combo 解析(mod/ctrl+1 shift+2 alt+4;单字符键位大写)→ mods*1000+key
+fn hk_token_modskey(tok: Str) -> I32 {
+    var mods: I32 = 0
+    var key: I32 = 0
+    var seg: Str = ""
+    var j: I32 = 0
+    while j <= tok.len {
+        var ch: I32 = 43
+        if j < tok.len {
+            ch = byte_at(tok, j)
+        }
+        if ch == 43 || j == tok.len {
+            if seg == "mod" {
+                mods = mods + 1
+            }
+            if seg == "ctrl" {
+                mods = mods + 1
+            }
+            if seg == "shift" {
+                mods = mods + 2
+            }
+            if seg == "alt" {
+                mods = mods + 4
+            }
+            if seg.len == 1 {
+                var kb: I32 = byte_at(seg, 0)
+                if kb >= 97 {
+                    if kb <= 122 {
+                        kb = kb - 32
+                    }
+                }
+                key = kb
+            }
+            seg = ""
+        } else {
+            seg = seg + utf8_enc(ch)
+        }
+        j += 1
+    }
+    return mods * 1000 + key
+}
+
 pub fn gui_hotkey(combo: Str, action: Str) -> I32 {
+    // GUI-43:空格分隔 = chord 序列("g g"/"mod+d d")——wire "mods:key;…" 交 C 表;
+    // 无空格走原单段路径(字节恒等)
+    var has_sp: Bool = false
+    var spi: I32 = 0
+    while spi < combo.len {
+        if byte_at(combo, spi) == 32 {
+            has_sp = true
+        }
+        spi += 1
+    }
+    if has_sp {
+        var wire: Str = ""
+        var first: Bool = true
+        var ti: I32 = 0
+        var tok: Str = ""
+        while ti <= combo.len {
+            var tc: I32 = 32
+            if ti < combo.len {
+                tc = byte_at(combo, ti)
+            }
+            if tc == 32 || ti == combo.len {
+                if tok.len > 0 {
+                    var mk: I32 = hk_token_modskey(tok)
+                    if !first {
+                        wire = wire + ";"
+                    }
+                    wire = wire + (mk / 1000).to_string() + ":" + (mk - (mk / 1000) * 1000).to_string()
+                    first = false
+                }
+                tok = ""
+            } else {
+                tok = tok + utf8_enc(tc)
+            }
+            ti += 1
+        }
+        gui_chord_register(wire, action)
+        return 0
+    }
     var mods: I32 = 0
     var key: I32 = 0
     var part: Str = ""
@@ -716,6 +824,11 @@ pub fn d_send_key(t: Box[Driver], k: I32, bind: fn(List[Str]) -> Void, act: fn(S
         } else {
             gui_caret_set(0)
         }
+        return 0
+    }
+    // GUI-43:chord 臂镜像;完成/武装皆消费(返 0)
+    var crc: I32 = gui_chord_route(gui_evt_key(), gui_hotkey_mods(), act)
+    if crc >= 1 {
         return 0
     }
     // 快捷键表镜像(窗口循环同语义)

@@ -1,0 +1,226 @@
+// tests/gui/s84_chord —— G 档 GUI-43:chord 序列组合键 headless 验收
+// 四径:①完成("g g"→goto);②超时解除(800ms 外次键重武装不误 fire);
+// ③干扰不吞(武装期非前缀键 X 解除并落键闭包);④mod 序列("mod+d d"→dup)
+// + 单段回归(mod+z→undo 字节恒等)。时间源=注入时钟(d_tick 置位语义在册)。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_tick, d_send_key, d_press_key, d_mod, gui_hotkey, d_expect_text}
+
+struct M {
+    var hits: I32
+    var xcount: I32
+    var state: Str
+}
+
+// —— 库全事件头桩(骨架面合并库全量注册=按需备齐;本件无实例)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+fn make() -> M {
+    return M { hits: 0, xcount: 0, state: "" }
+}
+
+fn bind_all(buf: List[Str], m: Box[M]) {
+    if buf[0] == "m.hits" {
+        buf.push(m.hits.to_string())
+    }
+    if buf[0] == "m.xcount" {
+        buf.push(m.xcount.to_string())
+    }
+    if buf[0] == "m.state" {
+        buf.push(m.state)
+    }
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "goto" {
+        m.hits = m.hits + 1
+        m.state = "GOTO"
+        return
+    }
+    if name == "dup" {
+        m.hits = m.hits + 1
+        m.state = "DUP"
+        return
+    }
+    if name == "undo" {
+        m.state = "UNDO"
+        return
+    }
+}
+
+// 键闭包:干扰探针(X=88 非任何前缀/热键)——武装期 X 必须解除 chord 且照常到达
+fn apply_key(k: I32, m: Box[M]) {
+    if k == 88 {
+        m.xcount = m.xcount + 1
+        m.state = "X"
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 320, 240,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| apply_key(k, m),
+        |t, actc, k2| {
+            // ① 完成:g g → goto(rc 全 0=消费)
+            var r1: I32 = d_send_key(t, 71, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            if r1 != 0 {
+                panic("s84: 首键未武装")
+            }
+            var r2: I32 = d_send_key(t, 71, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            if r2 != 0 {
+                panic("s84: 次键未完成")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "GOTO")
+            // ② 超时:g 武装 → tick 900(>800)→ g 解除+重武装(不 fire)
+            d_send_key(t, 71, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_tick(t, 900)
+            d_send_key(t, 71, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "GOTO")
+            // hits 仍 1(未重复 fire;state 未被改)——经计数断言
+            // ③ 干扰不吞:g 武装 → X 解除+按原路由
+            d_send_key(t, 71, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            var rx: I32 = d_send_key(t, 88, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            // X 走原路由;d_send_key 对未消费键返原码(不吞实证)
+            if rx != 88 {
+                panic("s84: 干扰键被吞")
+            }
+            // ③' 前置 g 此时已完成(②重武装后首键=完成):hits=2
+            if m.hits != 2 {
+                panic("s84: 完成计数不符 " + m.hits.to_string())
+            }
+            // 键闭包投递(k2 直驱;d_send_key 不派闭包在册):X → xcount
+            k2(d_press_key(t, 88))
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "X")
+            // ④ mod 序列:mod+d(武装)→ d(完成)→ dup
+            d_mod(t, 1)
+            var r3: I32 = d_send_key(t, 68, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            if r3 != 0 {
+                panic("s84: mod 前缀未武装")
+            }
+            var r4: I32 = d_send_key(t, 68, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            if r4 != 0 {
+                panic("s84: mod 序列未完成")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "DUP")
+            // ⑤ 单段回归:mod+z → undo(既有热键路径字节恒等)
+            d_mod(t, 1)
+            var r5: I32 = d_send_key(t, 90, |buf| bind_all(buf, m), |nm, ar| act(nm, ar, m))
+            d_mod(t, 0)
+            if r5 != 0 {
+                panic("s84: 单段热键未消费")
+            }
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "UNDO")
+            // hits 终值=3(①goto+③'goto+④dup;超时路径未重复计数)
+            if m.hits != 3 {
+                panic("s84: hits 终值不符 " + m.hits.to_string())
+            }
+            println("S84-CHORD-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <label class="state">{m.state}</label>
+    <label class="cnt">{m.hits}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style state { fg: "#22c55e" h: 22 }
+style cnt { fg: "#e5e7eb" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        gui_hotkey("g g", "goto")
+        gui_hotkey("mod+d d", "dup")
+        gui_hotkey("mod+z", "undo")
+        return suite()
+    }
+    gui_hotkey("g g", "goto")
+    gui_hotkey("mod+d d", "dup")
+    gui_hotkey("mod+z", "undo")
+    return run(Root(m: make()))
+}

@@ -1262,6 +1262,83 @@ int gui_hotkey_action_byte(int i) {
     return (unsigned char)g_hotkeys[g_hk_last].action[i];
 }
 
+// ---- chord 序列组合键(GUI-43):空格分隔序列("g g"/"mod+d d");前缀武装→步进→
+// 完成 fire;超时或非前缀键=解除并按原路由(不吞键)。时间源=注入优先时钟
+// (headless d_tick 钉相位,真窗真时钟);表 8 条 × 4 步 ----
+typedef struct { int mods; int key; } GuiKeyStep;
+typedef struct { GuiKeyStep steps[4]; int nsteps; char action[64]; } GuiChord;
+static GuiChord g_chords[8];
+static int g_nchords = 0;
+static int g_chord_idx = -1;
+static int g_chord_step = 0;
+static int g_chord_ts = 0;
+static int g_chord_ms = 800;
+static char g_chord_fire[64];
+static int g_chord_fire_n = 0;
+void gui_chord_register(const char *steps, const char *action) {
+    if (g_nchords >= 8) { return; }
+    GuiChord *c = &g_chords[g_nchords];
+    c->nsteps = 0;
+    const char *p = steps ? steps : "";
+    while (*p && c->nsteps < 4) {
+        int mods = 0, key = 0;
+        int n = 0;
+        while (*p && *p != ':' && n < 8) { mods = mods * 10 + (*p - '0'); p++; n++; }
+        if (*p == ':') { p++; }
+        n = 0;
+        while (*p && *p != ';' && n < 4) { key = key * 10 + (*p - '0'); p++; n++; }
+        if (*p == ';') { p++; }
+        c->steps[c->nsteps].mods = mods;
+        c->steps[c->nsteps].key = key;
+        c->nsteps++;
+    }
+    strncpy(c->action, action ? action : "", 63);
+    c->action[63] = 0;
+    g_nchords++;
+}
+void gui_chord_ms(int ms) { if (ms > 0) { g_chord_ms = ms; } }
+int gui_chord_match(int key, int mods) {
+    int now = gui_now_ms();
+    if (g_chord_step > 0 && now - g_chord_ts > g_chord_ms) {
+        g_chord_step = 0;
+        g_chord_idx = -1;
+    }
+    if (g_chord_step > 0) {
+        GuiChord *c = &g_chords[g_chord_idx];
+        if (c->steps[g_chord_step].key == key && c->steps[g_chord_step].mods == mods) {
+            g_chord_step++;
+            if (g_chord_step >= c->nsteps) {
+                strncpy(g_chord_fire, c->action, 63);
+                g_chord_fire[63] = 0;
+                g_chord_fire_n = (int)strlen(c->action);
+                g_chord_step = 0;
+                g_chord_idx = -1;
+                return 2;
+            }
+            g_chord_ts = now;
+            return 1;
+        }
+        g_chord_step = 0;
+        g_chord_idx = -1;
+    }
+    int i = 0;
+    while (i < g_nchords) {
+        if (g_chords[i].steps[0].key == key && g_chords[i].steps[0].mods == mods) {
+            g_chord_idx = i;
+            g_chord_step = 1;
+            g_chord_ts = now;
+            return 1;
+        }
+        i++;
+    }
+    return 0;
+}
+int gui_chord_action_len(void) { return g_chord_fire_n; }
+int gui_chord_action_byte(int i) {
+    if (i < 0 || i >= g_chord_fire_n) { return -1; }
+    return (unsigned char)g_chord_fire[i];
+}
+
 // ---- 尺寸约束(§2.10):minmax packed = min*100000+max(上限 max<100000/min<21000);mode 3=GROW{min,max}(max 钳制
 // 填充),mode 4=FIT{min,∞}(min 托底 hug 内容)——Clay GROW 不读 max/FIT 不读 min 的实证分工 ----
 int gui_cfg3(int dir, int gap, int padx, int pady, int ax, int ay,

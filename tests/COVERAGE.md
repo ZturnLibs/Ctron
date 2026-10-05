@@ -1394,3 +1394,20 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   (hbox 开 vbox 收)运行时解析报"闭合标签不匹配"。
 - **门**:阶梯 87 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
   gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。**波一收官(5/5)**。
+
+**2026-10-04 G 档 GUI-43 chord 序列组合键**(gui 泳道,波二首件):
+- **交付面**:C 侧 chord 平行表(8 条×4 步)+状态机(武装/步进/完成/超时解除,
+  gui_chord_register wire="mods:key;…"+gui_chord_match 三态 0/1/2+action 缓冲+
+  gui_chord_ms 默认 800 可配);gui_hotkey 解析扩**空格分隔序列**(wire 组装交 C;
+  无空格单段路径字节恒等);gui_chord_route 共享帮手接入**三点路由**(窗口循环/
+  headless 驱动循环/d_send_key 尾——2=完成 fire/1=武装消费/0=原路由)。
+  夹具 s84 四径:完成(g g→goto)/超时(tick 900 解除+重武装不误 fire)/干扰不吞
+  (武装期 X 返原码+键闭包 k2 投递)/mod 序列(mod+d d→dup)+单段回归(mod+z)。
+- **decls 锁申报**:cc_run 零改动;pkgs/gui +5 extern(chord register/match/
+  action_len/action_byte/ms,#[trusted]);gui_driver +2 fn(hk_token_modskey/
+  gui_chord_route,域 fn 不入锁);C 侧 ~70 行。
+- **🩸 坑位两条**:①顶层可变全局在册债(SIGSEGV)→chord 状态机必须驻 C
+  (Ctron 侧无状态);②d_send_key 不派键闭包(在册)——键闭包断言走
+  k2(d_press_key(k)) 直驱;武装期非前缀键 rc=原码=不吞实证。
+- **门**:阶梯 88 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。

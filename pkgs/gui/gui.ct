@@ -436,6 +436,21 @@ extern "c" fn gui_hotkey_match(key: I32, mods: I32) -> I32
 extern "c" fn gui_hotkey_action_byte(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_chord_register(steps: Str, action: Str) -> Void
+
+#[trusted]
+extern "c" fn gui_chord_match(key: I32, mods: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_chord_action_len() -> I32
+
+#[trusted]
+extern "c" fn gui_chord_action_byte(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_chord_ms(ms: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_cfg3(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
                        wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32,
                        wminmax: I32, hminmax: I32) -> I32
