@@ -80,3 +80,10 @@
 - 剩余单点:找出 fs_write 与 fs_mkdir 在 sem fn-decl 表上的差异(疑 prelude 名单创建 decl 时 arity/signature 表还有一处;或 ct_call 早于 1062 行的分支对有 decl 的 prelude 名走 user-fn 路径,而 fs_write 因某种表项被豁免)
 - 定位手法建议:在 trans_expr 的 user-fn 分支入口打印 callee,一次重建即可看见 fs_write/fs_mkdir 各走哪条;或 diff 两者的 sem decl dump(ctc.sh ast)
 - 全部改动保留在 fb1 worktree 工作树(未提交部分=driver_emit struct spn 修复+注册点七处),FB-1 已提交(4ed1b0d0)
+
+## FB-2 最终状态(2026-10-05)
+- 落地:全部注册点(8 处)+ helper 模板(改名 ctron_fs_mkdir_p)+ extern/impl(eval_call 文件级)+ include 局部化技巧
+- 阻塞:发射器对 cc_emit.ct 的发射段错误(e1=139,EXC_BAD_ACCESS)——与并行会话在猎的 s30 Heisenbug 同域(他们已登记"无探针确定性崩");本批不再单干,需与 s30 会话协同定位
+- 已排除:helper 命名碰撞(改名 _p 后仍崩);发射器版本(主树新发射器亦崩);fn-decl 差异假说已修正(先前 t_fs_mkdir 主因=用了主树旧发射器,该二进制不含 fs_mkdir 映射——两步自举后应已解决,但被 139 掩盖)
+- 下轮:与 s30 会话对齐(或等其落地后)重放:两步自举 → fs_mkdir 双臂行为测试 → 提交
+- FB-1 已完成提交(4ed1b0d0);struct spn 修复亦在本 worktree(随本提交)
