@@ -1339,6 +1339,78 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   七头(实例后缀仅携带行号,列身份只能由头名承载,each 内显参不被生成器解码)。
 - **门**:阶梯 84 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账
   维持);gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-39 color picker**(gui 泳道,波一第三件):
+- **交付面**:pkgs/gui_widgets 0.5 +ColorPick(SV 方=canvas 标记容器+cp_paint 每帧
+  盒相对画点/cp_drag 显参 dragpx/py/cp_hue 色相条行/cp_hex 文本通道;组件内 bind
+  源名通道 "hex" 宿主包装应答)+gui_theme.color_parse pub 面(#RRGGBB→打包);
+  gui_snippets/s79/s80 桩同步 +4;夹具 s81 四径(color_parse 打包对拍/canvas 渐变
+  像素四点断言/色相点击+拖拽选点写回精确 hex/hex 键入采纳含失焦重聚焦)。
+- **decls 锁申报**:cc_run 零改动(本件零编译面);pkgs/gui_widgets +8 decl
+  (1 view+7 style)、gui_theme +1 fn(color_parse,非发射链不入锁)。
+- **🩸 坑位四条**:①canvas 登记挂可见容器支——theme_default SURFACE 折叠空串走
+  透明支不登记 → d_draw 恒 0;canvas 容器必须显式 bg(十六进制直色);②像素槽
+  容量 4096 帽——160x120 全画 19200 越帽,4px 步进 1200 点;点槽布局=(x,y,r,g,b)
+  非 (r,g,b)(s65 可证);③样式色槽表达式不支持(bg:"{cur}" 不折叠不产 RECT;
+  宽度槽 GUI-16 前例之外)——立册缺口,swatch 动态色候能力切片;④组件格内
+  交互件焦点:拖拽点击(非输入)即失焦,后续键入前必须 gui_focus_req 重聚焦;
+  d_px 像素索引=px/step 行主序。
+- **门**:阶梯 85 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-42 过渡动画 v1**(gui 泳道,波一第四件):
+- **交付面**:pkgs/gui/gui_anim.ct 纯函数库——anim_prog(进度千分比钳位)/ease 五族
+  (linear/out_cubic/in_cubic/in_out/out_back c1=1702 整除补偿)/lerp_i/anim_i(fn
+  泛型入口)/五 ease 定形包装;门面 re-export(use gui.gui_anim.{13 符号},消费
+  use gui.{...} 不变)。全部 I32 千分比算术(中间量 ≤1.7e9 防爆,无 F64/位运算)。
+  夹具 s82:纯值断言(ease 恒等/中点/回弹过冲端点)+d_tick 帧驱动(0→138→210→240
+  关键帧精确+渲染面 w100=13800 随动+超时恒值钳位)。
+- **decls 锁申报**:cc_run 零改动(零编译面);pkgs/gui 域 +17 fn(纯库,域 fn
+  不入 compiler 锁);门面 use 行 +5 符号。
+- **🩸 坑位三条**:①d_tick=gui_inject_ms **置位语义**非累加——帧驱动给绝对时刻;
+  ②动画值进 CTML 的通道=宿主 bind 帧算+**双通道应答**(叶槽 "m.aw"/样式折叠
+  "prop:m.aw" 装配通道,s72 双应答同款;bxv 槽不持 fn 实参→ease 定形包装族);
+  ③值驱动 w 是样式块语法(w:"{expr}" 冒号形),元素属性 = 形不认;主题令牌
+  ACCENT/SURFACE 在 theme_default 折叠空串→透明无 RECT(显式十六进制 bg)。
+- **陈列室动效段缓行**:主陈列室消费组件库两缺口在册(手写 bind×类型化 props/
+  键闭包×desugar)——动效演示样候缺口切片随行;s82 即验收场。
+- **门**:阶梯 86 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验顺滑待用户。
+
+**2026-10-04 G 档 GUI-41 chart v1**(gui 泳道,波一收官件):
+- **交付面**:pkgs/gui_widgets 0.6 +BarChart/LineChart(canvas 画条/折线,vals/pts
+  纯 prop,归一/钳位在宿主;sparkline=LineChart 窄形);夹具 s83(条像素几何三首点
+  +x 步进/折线首中末插值/空·单值边界/宿主钳位纯值);**引擎能力:多 canvas**——
+  gui_canvas_node 单槽 → 16 容量列表(gui_canvas_reset 帧首复位+setnode 去重追加
+  +count/node_i indexed 读,C 胶水 ~10 行)+rt_draw_frame 帧首 reset+rt_canvas_frame
+  遍历 fire(d_draw 返回值=fire 数,双图=2)。
+- **decls 锁申报**:cc_run 零改动;pkgs/gui +3 pub extern(reset/count/node_i)+
+  C 侧三 fn;pkgs/gui_widgets +4 decl(2 view+2 style);消费方桩税:gui_snippets/
+  s79/s80/s81/s82 各 +2(lt_paint/bc_paint)。
+- **🩸 立册缝与坑**:①**each 迭代变量的样式折叠不通**(叶槽 {it} 可、样式块 {v}
+  折空——fold 询问无 item 上下文)——条图树内 RECT 形候引擎切片,v1 canvas 化;
+  ②双 canvas 同像素槽(槽全局,点数=两图之和,断言偏移=前图点数);③d_draw 返回
+  =fire 数非 1;④pub extern 才可导包(裸 extern E2020.use.priv);⑤闭合标签错配
+  (hbox 开 vbox 收)运行时解析报"闭合标签不匹配"。
+- **门**:阶梯 87 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。**波一收官(5/5)**。
+
+**2026-10-04 G 档 GUI-43 chord 序列组合键**(gui 泳道,波二首件):
+- **交付面**:C 侧 chord 平行表(8 条×4 步)+状态机(武装/步进/完成/超时解除,
+  gui_chord_register wire="mods:key;…"+gui_chord_match 三态 0/1/2+action 缓冲+
+  gui_chord_ms 默认 800 可配);gui_hotkey 解析扩**空格分隔序列**(wire 组装交 C;
+  无空格单段路径字节恒等);gui_chord_route 共享帮手接入**三点路由**(窗口循环/
+  headless 驱动循环/d_send_key 尾——2=完成 fire/1=武装消费/0=原路由)。
+  夹具 s84 四径:完成(g g→goto)/超时(tick 900 解除+重武装不误 fire)/干扰不吞
+  (武装期 X 返原码+键闭包 k2 投递)/mod 序列(mod+d d→dup)+单段回归(mod+z)。
+- **decls 锁申报**:cc_run 零改动;pkgs/gui +5 extern(chord register/match/
+  action_len/action_byte/ms,#[trusted]);gui_driver +2 fn(hk_token_modskey/
+  gui_chord_route,域 fn 不入锁);C 侧 ~70 行。
+- **🩸 坑位两条**:①顶层可变全局在册债(SIGSEGV)→chord 状态机必须驻 C
+  (Ctron 侧无状态);②d_send_key 不派键闭包(在册)——键闭包断言走
+  k2(d_press_key(k)) 直驱;武装期非前缀键 rc=原码=不吞实证。
+- **门**:阶梯 88 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
 **S4① 池界重置机器落库+复测追记(2026-10-03)**:帧内嵌保存栈(sv[8]+spn,免命名陷阱)
 ——While/For×5 环开保存、环合恢复、break/continue 位弹栈(弹内层栈与跳转语义对齐,
 防陈旧保存值误缩活槽;return 由帧 cleanup 兜底;panic=ct_fp=0)。循环体 gc-let 不再
@@ -1425,3 +1497,8 @@ GC=1 600s 超时(off 正常)——interp 重负载 CPU 墙在 auth 家族复现,
 (meta_check/manifest run/selftest/suite 100/100 随批全绿)。**D7 终点登记**:pkg.c 与
 ctcl_chk.ct 仍为硬编码grammar(第三/四份拷贝),schema 数据驱动化(C/自举线接
 ctcl_manifest_schema.ctcl 加载器)=CTCL 泳道架构件,本件为最小 goldens 满足同步。
+
+**CTCL R 臂债登记(2026-10-05,主树 16a40a4a)**:manifest 四线对拍在主树(本地有
+cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes 同批语法;
+与 T11「R 线对象面细键欠账在册」同族)——CI 无 cargo=SKIP 不红,本地开发卫生债,
+归 ctronr 泳道。c/sh/python 三臂经本件+cherry-pick(16a40a4f)已全绿。

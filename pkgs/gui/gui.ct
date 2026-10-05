@@ -297,6 +297,9 @@ extern "c" fn gui_canvas_h() -> I32
 
 #[trusted]
 extern "c" fn gui_canvas_node() -> I32
+pub extern "c" fn gui_canvas_reset() -> I32
+pub extern "c" fn gui_canvas_count() -> I32
+pub extern "c" fn gui_canvas_node_i(i: I32) -> I32
 
 #[trusted]
 extern "c" fn gui_px(x: I32, y: I32, r: I32, g: I32, b: I32) -> I32
@@ -433,6 +436,21 @@ extern "c" fn gui_hotkey_match(key: I32, mods: I32) -> I32
 extern "c" fn gui_hotkey_action_byte(i: I32) -> I32
 
 #[trusted]
+extern "c" fn gui_chord_register(steps: Str, action: Str) -> Void
+
+#[trusted]
+extern "c" fn gui_chord_match(key: I32, mods: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_chord_action_len() -> I32
+
+#[trusted]
+extern "c" fn gui_chord_action_byte(i: I32) -> I32
+
+#[trusted]
+extern "c" fn gui_chord_ms(ms: I32) -> I32
+
+#[trusted]
 extern "c" fn gui_cfg3(dir: I32, gap: I32, padx: I32, pady: I32, ax: I32, ay: I32,
                        wmode: I32, wval: I32, hmode: I32, hval: I32, bg: I32,
                        wminmax: I32, hminmax: I32) -> I32
@@ -501,6 +519,7 @@ extern "c" fn gui_clear(r: I32, g: I32, b: I32) -> I32
 extern "c" fn ctron_gui_flush() -> I32
 
 // 解析面独立文件(拆分阶段二①):迷你词法+GuiTree+CTML 解析+锚合并
+use gui.gui_anim.{anim_prog, ease_linear, ease_out_cubic, ease_in_cubic, ease_in_out, ease_out_back, lerp_i, anim_i, anim_linear, anim_out_cubic, anim_in_cubic, anim_in_out, anim_out_back}
 use gui.gui_parse.{gt_parse, gt_anchor_src, sk_dump}
 use gui.gui_expr.{ev_arg_len, ev_arg_s, ev_arg_i, ev_arg_b}
 use gui.gui_render.{rt_draw_frame, rt_hover_node, rt_collect_rects, rt_hit_name, rt_expect_text, gui_focus_req}

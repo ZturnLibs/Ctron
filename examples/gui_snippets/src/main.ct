@@ -166,6 +166,22 @@ fn dp6(m: Box[Model], row: I32) {
 fn tp_step(m: Box[Model], s: Str) {
 }
 
+// ColorPick 桩(库 0.5 新事件头;按需备桩)
+fn cp_paint(m: Box[Model]) {
+}
+fn cp_drag(m: Box[Model], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[Model], row: I32) {
+}
+fn cp_hex(m: Box[Model], text: Str) {
+}
+fn lt_paint(m: Box[Model]) {
+}
+fn bc_paint(m: Box[Model]) {
+}
+
+
+
 fn headless_suite() -> I32 {
     var src: Str = ctron_embedded()
     var m = Box[Model](make())

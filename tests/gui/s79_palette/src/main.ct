@@ -85,6 +85,22 @@ fn dp6(m: Box[M], row: I32) {
 fn tp_step(m: Box[M], s: Str) {
 }
 
+// ColorPick 桩(库 0.5 新事件头;按需备桩)
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+
+
 // —— Palette 宿主面(过滤/高亮/执行全在此;纯 prop 契约)——
 fn make() -> M {
     var cs = List[Str]()

@@ -450,11 +450,15 @@ const char* gui_win_icon_last(void) { return g_win_icon_last; }
 // 盒几何/节点 id 由 rt_emit 存槽;gui_px 相对盒画点(真窗 DrawRectangle,
 // headless 记录槽断言)
 static int g_cv_x = 0, g_cv_y = 0, g_cv_w = 0, g_cv_h = 0, g_cv_node = -1;
+static int g_cv_nodes[16]; static int g_cv_ncount = 0;
+void gui_canvas_reset(void) { g_cv_ncount = 0; g_cv_node = -1; }
+int gui_canvas_count(void) { return g_cv_ncount; }
+int gui_canvas_node_i(int i) { if (i < 0 || i >= g_cv_ncount) { return -1; } return g_cv_nodes[i]; }
 int gui_canvas_setbox(int x, int y, int w, int h) {
     g_cv_x = x; g_cv_y = y; g_cv_w = w; g_cv_h = h;
     return 0;
 }
-int gui_canvas_setnode(int n) { g_cv_node = n; return g_cv_node; }
+int gui_canvas_setnode(int n) { g_cv_node = n; if (g_cv_ncount < 16) { g_cv_nodes[g_cv_ncount] = n; g_cv_ncount += 1; } return g_cv_node; }
 int gui_canvas_x(void) { return g_cv_x; }
 int gui_canvas_y(void) { return g_cv_y; }
 int gui_canvas_w(void) { return g_cv_w; }
@@ -1256,6 +1260,83 @@ int gui_hotkey_match(int key, int mods) {
 int gui_hotkey_action_byte(int i) {
     if (g_hk_last < 0 || i < 0 || i >= 64) { return -1; }
     return (unsigned char)g_hotkeys[g_hk_last].action[i];
+}
+
+// ---- chord 序列组合键(GUI-43):空格分隔序列("g g"/"mod+d d");前缀武装→步进→
+// 完成 fire;超时或非前缀键=解除并按原路由(不吞键)。时间源=注入优先时钟
+// (headless d_tick 钉相位,真窗真时钟);表 8 条 × 4 步 ----
+typedef struct { int mods; int key; } GuiKeyStep;
+typedef struct { GuiKeyStep steps[4]; int nsteps; char action[64]; } GuiChord;
+static GuiChord g_chords[8];
+static int g_nchords = 0;
+static int g_chord_idx = -1;
+static int g_chord_step = 0;
+static int g_chord_ts = 0;
+static int g_chord_ms = 800;
+static char g_chord_fire[64];
+static int g_chord_fire_n = 0;
+void gui_chord_register(const char *steps, const char *action) {
+    if (g_nchords >= 8) { return; }
+    GuiChord *c = &g_chords[g_nchords];
+    c->nsteps = 0;
+    const char *p = steps ? steps : "";
+    while (*p && c->nsteps < 4) {
+        int mods = 0, key = 0;
+        int n = 0;
+        while (*p && *p != ':' && n < 8) { mods = mods * 10 + (*p - '0'); p++; n++; }
+        if (*p == ':') { p++; }
+        n = 0;
+        while (*p && *p != ';' && n < 4) { key = key * 10 + (*p - '0'); p++; n++; }
+        if (*p == ';') { p++; }
+        c->steps[c->nsteps].mods = mods;
+        c->steps[c->nsteps].key = key;
+        c->nsteps++;
+    }
+    strncpy(c->action, action ? action : "", 63);
+    c->action[63] = 0;
+    g_nchords++;
+}
+void gui_chord_ms(int ms) { if (ms > 0) { g_chord_ms = ms; } }
+int gui_chord_match(int key, int mods) {
+    int now = gui_now_ms();
+    if (g_chord_step > 0 && now - g_chord_ts > g_chord_ms) {
+        g_chord_step = 0;
+        g_chord_idx = -1;
+    }
+    if (g_chord_step > 0) {
+        GuiChord *c = &g_chords[g_chord_idx];
+        if (c->steps[g_chord_step].key == key && c->steps[g_chord_step].mods == mods) {
+            g_chord_step++;
+            if (g_chord_step >= c->nsteps) {
+                strncpy(g_chord_fire, c->action, 63);
+                g_chord_fire[63] = 0;
+                g_chord_fire_n = (int)strlen(c->action);
+                g_chord_step = 0;
+                g_chord_idx = -1;
+                return 2;
+            }
+            g_chord_ts = now;
+            return 1;
+        }
+        g_chord_step = 0;
+        g_chord_idx = -1;
+    }
+    int i = 0;
+    while (i < g_nchords) {
+        if (g_chords[i].steps[0].key == key && g_chords[i].steps[0].mods == mods) {
+            g_chord_idx = i;
+            g_chord_step = 1;
+            g_chord_ts = now;
+            return 1;
+        }
+        i++;
+    }
+    return 0;
+}
+int gui_chord_action_len(void) { return g_chord_fire_n; }
+int gui_chord_action_byte(int i) {
+    if (i < 0 || i >= g_chord_fire_n) { return -1; }
+    return (unsigned char)g_chord_fire[i];
 }
 
 // ---- 尺寸约束(§2.10):minmax packed = min*100000+max(上限 max<100000/min<21000);mode 3=GROW{min,max}(max 钳制

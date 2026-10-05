@@ -1,0 +1,351 @@
+// tests/gui/s81_colorpick —— G 档 GUI-39:ColorPick(库 0.5)headless 验收
+// 四径:canvas SV 渐变像素(d_draw+d_px_at 角/中点)/拖拽选点(d_drag→dragpx/py
+// 带标 permille→SV 折算写回 cur+swatch bg 跟随)/色相条点击(cp_hue 行)/hex 输入
+// 双向(组件内 bind 源名通道 "hex" 宿主包装应答+cp_hex 文本通道)。
+// HSV→RGB 全 I32 算术(无位运算:打包/拆包走乘除)。
+use gui_widgets.{gui_widgets_ver}
+use gui_theme.{color_parse}
+use gui.{test, d_frame, d_draw, d_px_n, d_px_at, d_drag, d_send_char,
+         d_expect_text, ev_arg_s, gui_focus_req}
+
+struct M {
+    var hue: I32
+    var svx: I32
+    var svy: I32
+    var cur: Str
+    var hexin: Str
+    var hues: List[Str]
+    var state: Str
+}
+
+// —— ColorPick 事件头(实逻辑驻桩,窗口模式直调;headless 经 act 同源)——
+fn cp_paint(m: Box[M]) {
+    // SV 渐变:x=饱和度 0→1000,y 上=明度 1000 下=0;盒相对画点;
+    // 4px 步进(像素槽容量 4096 帽,160x120 全画=19200 越帽)
+    var py: I32 = 0
+    while py < 120 {
+        var px: I32 = 0
+        while px < 160 {
+            var s: I32 = px * 1000 / 159
+            var v: I32 = 1000 - py * 1000 / 119
+            var p: I32 = hsv_pack(m.hue, s, v)
+            canvas_px(px, py, p / 65536, p / 256 - (p / 65536) * 256, p - (p / 65536) * 65536 - (p / 256 - (p / 65536) * 256) * 256)
+            px += 4
+        }
+        py += 4
+    }
+    m.state = "PAINTED"
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+    m.svx = untag(px)
+    m.svy = untag(py)
+    rebuild(m)
+}
+fn cp_hue(m: Box[M], row: I32) {
+    m.hue = row * 30
+    rebuild(m)
+}
+fn cp_hex(m: Box[M], text: Str) {
+    m.hexin = text
+    if text.len == 7 {
+        if byte_at(text, 0) == 35 {
+            m.cur = text
+            m.state = "HEX"
+        }
+    }
+}
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
+
+
+// —— 其余库全事件头桩(未实例化组件;骨架面合并库全量注册)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+
+fn make() -> M {
+    var hs = List[Str]()
+    var i: I32 = 0
+    while i < 12 {
+        hs.push((i * 30).to_string())
+        i += 1
+    }
+    var m = M { hue: 0, svx: 1000, svy: 0, cur: "", hexin: "", hues: hs, state: "" }
+    return m
+}
+
+// 带标串拆包(内建名 dragpx/py 产出 "i:NNN";经 ev_arg_s 解码后可能已无标——
+// 双形态兼容:i: 前缀从 2 起,裸数字从 0 起)
+fn untag(s: Str) -> I32 {
+    var r: I32 = 0
+    var k: I32 = 0
+    if s.len >= 2 {
+        if byte_at(s, 0) == 105 && byte_at(s, 1) == 58 {
+            k = 2
+        }
+    }
+    while k < s.len {
+        r = r * 10 + (byte_at(s, k) - 48)
+        k += 1
+    }
+    return r
+}
+
+// HSV→打包色(I32 乘除;c=色度/1000 域,六个扇区线性)
+fn hsv_pack(h: I32, s: I32, v: I32) -> I32 {
+    var c: I32 = v * s / 1000
+    var sec: I32 = h / 60
+    var up: I32 = c * (h - sec * 60) / 60
+    var dn: I32 = c - up
+    var mm: I32 = v - c
+    var r: I32 = 0
+    var g: I32 = 0
+    var b: I32 = 0
+    if sec == 0 {
+        r = c
+        g = up
+    }
+    if sec == 1 {
+        r = dn
+        g = c
+    }
+    if sec == 2 {
+        g = c
+        b = up
+    }
+    if sec == 3 {
+        g = dn
+        b = c
+    }
+    if sec == 4 {
+        r = up
+        b = c
+    }
+    if sec == 5 {
+        r = c
+        b = dn
+    }
+    var r8: I32 = (r + mm) * 255 / 1000
+    var g8: I32 = (g + mm) * 255 / 1000
+    var b8: I32 = (b + mm) * 255 / 1000
+    return r8 * 65536 + g8 * 256 + b8
+}
+
+fn pack_hex(p: I32) -> Str {
+    var r: I32 = p / 65536
+    var g: I32 = p / 256 - r * 256
+    var b: I32 = p - r * 65536 - g * 256
+    return "#" + hex2(r) + hex2(g) + hex2(b)
+}
+
+fn hexd(n: I32) -> Str {
+    if n < 10 {
+        return utf8_enc(48 + n)
+    }
+    return utf8_enc(87 + n)
+}
+
+fn hex2(n: I32) -> Str {
+    return hexd(n / 16) + hexd(n - (n / 16) * 16)
+}
+
+fn rebuild(m: Box[M]) {
+    m.cur = pack_hex(hsv_pack(m.hue, m.svx, 1000 - m.svy))
+}
+
+fn bind_host(buf: List[Str], m: Box[M]) {
+    // 组件内 bind 源名通道("hex";装配不改写 nbid 在册)
+    if buf[0] == "hex" {
+        buf.push(m.hexin)
+    }
+    __gui_bind_Root(buf, m)
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "cp_paint" {
+        cp_paint(m)
+        return
+    }
+    if name == "cp_drag" {
+        cp_drag(m, ev_arg_s(args, 0), ev_arg_s(args, 1))
+        return
+    }
+    // cp_hue:N 色相条行点击
+    if name.len > 6 {
+        if byte_at(name, 0) == 99 && byte_at(name, 1) == 112 && byte_at(name, 2) == 95 && byte_at(name, 3) == 104 && byte_at(name, 4) == 117 && byte_at(name, 5) == 101 && byte_at(name, 6) == 58 {
+            var ni: I32 = 0
+            var k: I32 = 7
+            while k < name.len {
+                ni = ni * 10 + (byte_at(name, k) - 48)
+                k += 1
+            }
+            cp_hue(m, ni)
+            return
+        }
+    }
+    // cp_hex:<全文> 文本通道
+    if name.len >= 7 {
+        if byte_at(name, 0) == 99 && byte_at(name, 1) == 112 && byte_at(name, 2) == 95 && byte_at(name, 3) == 104 && byte_at(name, 4) == 101 && byte_at(name, 5) == 120 && byte_at(name, 6) == 58 {
+            cp_hex(m, byte_slice(name, 7, name.len))
+            return
+        }
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    rebuild(m)
+    return test(src, 420, 460,
+        |buf| bind_host(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // 0) color_parse pub 面:#ff0000 → 打包 16711680
+            if color_parse("#ff0000") != 16711680 {
+                panic("s81: color_parse 打包不符")
+            }
+            // ① 初始:hue0 s1000 v1000 = 纯红
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "#ff0000")
+            // ② canvas SV 渐变:角/中点像素(d_draw 触发绘制帧)
+            var fired: I32 = d_draw(t, |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+            if fired != 1 {
+                panic("s81: 绘制帧未触发")
+            }
+            if d_px_n() != 1200 {
+                panic("s81: 点数不符 n=" + d_px_n().to_string())
+            }
+            // 点槽布局=(x,y,r,g,b)(s65 同款);行宽 40 点(4px 步进)
+            // (0,0)=s0 v1000 → 白
+            if d_px_at(0, 0) != 0 || d_px_at(0, 1) != 0 || d_px_at(0, 2) != 255 || d_px_at(0, 3) != 255 || d_px_at(0, 4) != 255 {
+                panic("s81: 左上应白")
+            }
+            // (156,0)=s981 v1000 h0 → (255,4,4);索引=px/4=39
+            if d_px_at(39, 0) != 156 || d_px_at(39, 2) != 255 || d_px_at(39, 3) != 4 || d_px_at(39, 4) != 4 {
+                panic("s81: 右上应红")
+            }
+            // (0,116)=s0 v25 → (6,6,6);行 116/4=29 → 起 29*40=1160
+            if d_px_at(1160, 1) != 116 || d_px_at(1160, 2) != 6 || d_px_at(1160, 4) != 6 {
+                panic("s81: 左下应暗")
+            }
+            // (80,0)=s503 v1000 h0 → (255,126,126);索引=20
+            if d_px_at(20, 0) != 80 || d_px_at(20, 3) != 126 || d_px_at(20, 4) != 126 {
+                panic("s81: 中上不符")
+            }
+            // ③ 色相条点击 h60 → 黄;swatch bg 跟随(渲染面 RECT bg 探针)
+            actc("cp_hue:2", List[Str]())
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "#ffff00")
+            // swatch bg 动态跟随=样式色槽表达式(在册缺口:色槽折叠不支持
+            // 表达式,宽度槽 GUI-16 前例之外)——v1 断言骑 cur 文本,色槽
+            // 动态化候能力切片;swatch 保留 bg:"{cur}" 意图形态
+            // ④ 拖拽选点:canvas 盒 @(16,16) 160x120;终位 (100,60) → s525 v634 h60
+            d_drag(t, 50, 60, 100, |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, pack_hex(hsv_pack(60, (100 - 16) * 1000 / 160, 1000 - (60 - 16) * 1000 / 120)))
+            // ⑤ hex 输入双向:重聚焦(④ 拖拽点击非输入即失焦)→键入 7 字符→cur 采纳
+            actc("cp_hue:0", List[Str]())
+            rebuild(m)
+            m.hexin = ""
+            gui_focus_req("hex")
+            d_frame(t, |buf| bind_host(buf, m))
+            var chs = List[I32]()
+            chs.push(35)
+            chs.push(102)
+            chs.push(102)
+            chs.push(48)
+            chs.push(48)
+            chs.push(48)
+            chs.push(48)
+            var ci: I32 = 0
+            while ci < chs.len {
+                d_send_char(t, chs[ci], |buf| bind_host(buf, m), |nm, ar| act(nm, ar, m))
+                ci += 1
+            }
+            d_frame(t, |buf| bind_host(buf, m))
+            d_frame(t, |buf| bind_host(buf, m))
+            d_expect_text(t, "#ff0000")
+            println("S81-COLORPICK-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <ColorPick cur: {m.cur} hex: {m.hexin} hues: {m.hues}/>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}

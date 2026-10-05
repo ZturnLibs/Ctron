@@ -1,0 +1,263 @@
+// tests/gui/s83_chart —— G 档 GUI-41:BarChart/LineChart(库 0.6)headless 验收
+// 三径:①条几何(条高像素串 each 值驱动 h;x 步进=条宽+gap;空/单值/负钳边界,
+// 钳位在宿主);②折线像素(d_draw→lt_paint 盒相对画点,千分比 y 线性插值,
+// 4px 步进 4096 帽);③渲染面值断言全显式十六进制 bg(default 令牌折叠空在册)。
+// 归一在宿主(纯 prop 契约):raw*120/max 钳 ≥0;轴/刻度=宿主 label 组合(v1)。
+use gui_widgets.{gui_widgets_ver}
+use gui.{test, d_frame, d_draw, d_px_n, d_px_at, d_cmd_count, d_cmd_type,
+         d_cmd_x100, d_cmd_w100, d_cmd_h100, gs2i, gui_canvas_count}
+
+struct M {
+    var vals: List[Str]
+    var pts: List[Str]
+    var state: Str
+}
+
+// —— 库全事件头桩(LineChart 实逻辑驻桩,窗口模式直调;headless 经 act 同源)——
+fn lt_paint(m: Box[M]) {
+    // 折线:pts=千分比 y;canvas 200x80;x 4px 步进(像素槽 4096 帽),
+    // 段内线性插值;色 #22c55e 显式
+    var n: I32 = m.pts.len
+    if n < 2 {
+        return
+    }
+    var x: I32 = 0
+    while x < 200 {
+        var f: I32 = x * (n - 1)
+        var seg: I32 = f / 200
+        var frac: I32 = (f - seg * 200) * 1000 / 200
+        var y0: I32 = gs2i(m.pts[seg])
+        var y1: I32 = 0
+        if seg + 1 < n {
+            y1 = gs2i(m.pts[seg + 1])
+        }
+        var yp: I32 = y0 + (y1 - y0) * frac / 1000
+        var py: I32 = 80 - yp * 80 / 1000
+        canvas_px(x, py, 34, 197, 94)
+        x += 4
+    }
+    m.state = "PLOTTED"
+}
+fn bc_paint(m: Box[M]) {
+    // 条:i∈[0,n) x0=8+i*28,宽 24,自底向上;2px 步进(帽 4096 在册);
+    // 3 条 40/80/120px → 240+480+720=1440 点
+    var i: I32 = 0
+    while i < m.vals.len {
+        var h: I32 = gs2i(m.vals[i])
+        var x0: I32 = 8 + i * 28
+        var yy: I32 = 120 - h
+        while yy < 120 {
+            var xx: I32 = x0
+            while xx < x0 + 24 {
+                canvas_px(xx, yy, 37, 99, 235)
+                xx += 2
+            }
+            yy += 2
+        }
+        i += 1
+    }
+}
+
+// —— 其余库全事件头桩(未实例化组件;骨架面合并库全量注册)——
+fn sel_toggle(m: Box[M]) {
+}
+fn sel_pick(m: Box[M], row: I32) {
+}
+fn list_pick(m: Box[M], row: I32) {
+}
+fn list_sel(m: Box[M], row: I32) {
+}
+fn ml2_pick(m: Box[M], row: I32) {
+}
+fn menu_toggle(m: Box[M]) {
+}
+fn menu_pick(m: Box[M], row: I32) {
+}
+fn ed_toggle(m: Box[M]) {
+}
+fn ed_pick(m: Box[M], row: I32) {
+}
+fn tab_go(m: Box[M], row: I32) {
+}
+fn acc_toggle(m: Box[M]) {
+}
+fn tip_noop(m: Box[M]) {
+}
+fn tab_pick(m: Box[M], row: I32) {
+}
+fn slide(m: Box[M], p: Str) {
+}
+fn wtt() -> Bool {
+    return false
+}
+fn dialog_close(m: Box[M]) {
+}
+fn dialog_cancel(m: Box[M]) {
+}
+fn dialog_confirm(m: Box[M]) {
+}
+fn pal_type(m: Box[M], text: Str) {
+}
+fn pal_go(m: Box[M], text: Str) {
+}
+fn pal_pick(m: Box[M], row: I32) {
+}
+fn pal_close(m: Box[M]) {
+}
+fn dp_prev(m: Box[M]) {
+}
+fn dp_next(m: Box[M]) {
+}
+fn dp0(m: Box[M], row: I32) {
+}
+fn dp1(m: Box[M], row: I32) {
+}
+fn dp2(m: Box[M], row: I32) {
+}
+fn dp3(m: Box[M], row: I32) {
+}
+fn dp4(m: Box[M], row: I32) {
+}
+fn dp5(m: Box[M], row: I32) {
+}
+fn dp6(m: Box[M], row: I32) {
+}
+fn tp_step(m: Box[M], s: Str) {
+}
+fn cp_paint(m: Box[M]) {
+}
+fn cp_drag(m: Box[M], px: Str, py: Str) {
+}
+fn cp_hue(m: Box[M], row: I32) {
+}
+fn cp_hex(m: Box[M], text: Str) {
+}
+
+fn make() -> M {
+    var vs = List[Str]()
+    vs.push("40")
+    vs.push("80")
+    vs.push("120")
+    var ps = List[Str]()
+    ps.push("0")
+    ps.push("500")
+    ps.push("1000")
+    ps.push("250")
+    return M { vals: vs, pts: ps, state: "" }
+}
+
+// 宿主归一:raw→像素(raw*120/max;负值/零 max 钳 0——空安全)
+fn bar_px(raw: I32, max: I32) -> I32 {
+    if max <= 0 {
+        return 0
+    }
+    if raw < 0 {
+        return 0
+    }
+    return raw * 120 / max
+}
+
+fn act(name: Str, args: List[Str], m: Box[M]) {
+    if name == "lt_paint" {
+        lt_paint(m)
+        return
+    }
+    if name == "bc_paint" {
+        bc_paint(m)
+        return
+    }
+}
+
+fn suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[M](make())
+    return test(src, 360, 420,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| k,
+        |t, actc, k2| {
+            // 0) 宿主钳位纯值
+            if bar_px(10, 30) != 40 || bar_px(-5, 30) != 0 || bar_px(10, 0) != 0 {
+                panic("s83: bar_px 钳位不符")
+            }
+            // ① 条几何(像素域):d_draw 三条 → 1440 点;各条首点 (x0, 120-h)
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            println("CVCOUNT " + gui_canvas_count().to_string())
+            var fired0: I32 = d_draw(t, |buf| __gui_bind_Root(buf, m), |nm, ar| act(nm, ar, m))
+            if fired0 != 2 {
+                panic("s83: 条绘制帧未触发 f=" + fired0.to_string())
+            }
+            // 双 canvas 同槽:条 1440 + 折线 50 = 1490(条先画)
+            if d_px_n() != 1490 {
+                panic("s83: 条点数不符 n=" + d_px_n().to_string())
+            }
+            // 条 0 首点 (8, 80);条 1 起 240 → (36, 40);条 2 起 720 → (64, 0)
+            if d_px_at(0, 0) != 8 || d_px_at(0, 1) != 80 || d_px_at(0, 2) != 37 {
+                panic("s83: 条0 不符")
+            }
+            if d_px_at(240, 0) != 36 || d_px_at(240, 1) != 40 {
+                panic("s83: 条1 不符")
+            }
+            if d_px_at(720, 0) != 64 || d_px_at(720, 1) != 0 {
+                panic("s83: 条2 不符")
+            }
+            // ② 折线像素:d_draw 触发,50 点,首/中/末三点插值断言
+            var fired: I32 = d_draw(t, |buf| __gui_bind_Root(buf, m), |nm, ar| act(nm, ar, m))
+            if fired != 2 {
+                panic("s83: 绘制帧未触发 f=" + fired.to_string())
+            }
+            if d_px_n() != 1490 {
+                panic("s83: 点数不符 n=" + d_px_n().to_string())
+            }
+            // 首点=条 0 (0, 80)(槽序:条先画);折线首点在 1440
+            if d_px_at(0, 0) != 8 || d_px_at(0, 1) != 80 || d_px_at(0, 2) != 37 {
+                panic("s83: 首点不符")
+            }
+            if d_px_at(1440, 0) != 0 || d_px_at(1440, 1) != 80 || d_px_at(1440, 2) != 34 {
+                panic("s83: 折线首点不符")
+            }
+            // x=100(索引 1440+25):f=300,seg=1,frac=500 → y‰=750 → py=80-60=20
+            if d_px_at(1465, 0) != 100 || d_px_at(1465, 1) != 20 || d_px_at(1465, 4) != 94 {
+                panic("s83: 中点不符")
+            }
+            // 末点 x=196(索引 1489):seg=2 frac=940 → y‰=1000-750*940/1000=295 → py=80-23=57
+            if d_px_at(1489, 0) != 196 || d_px_at(1489, 1) != 57 {
+                panic("s83: 末点不符")
+            }
+            // ③ 边界:空 vals → 0 点不崩
+            m.vals = List[Str]()
+            d_draw(t, |buf| __gui_bind_Root(buf, m), |nm, ar| act(nm, ar, m))
+            if d_px_n() != 50 {
+                panic("s83: 空数据仍有条 n=" + d_px_n().to_string())
+            }
+            // ④ 单值:一条 h=60 → 30 行 ×12 = 360 点,首点 (8, 60)
+            var one = List[Str]()
+            one.push("60")
+            m.vals = one
+            d_draw(t, |buf| __gui_bind_Root(buf, m), |nm, ar| act(nm, ar, m))
+            if d_px_n() != 410 {
+                panic("s83: 单值点数不符 n=" + d_px_n().to_string())
+            }
+            if d_px_at(0, 0) != 8 || d_px_at(0, 1) != 60 {
+                panic("s83: 单值首点不符")
+            }
+            println("S83-CHART-GREEN " + gui_widgets_ver())
+        })
+}
+
+view Root (m: M) {
+  <vbox class="root">
+    <BarChart vals: {m.vals}/>
+    <LineChart pts: {m.pts}/>
+    <label class="state">{m.state}</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style state { fg: "#22c55e" h: 22 }
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return suite()
+    }
+    return run(Root(m: make()))
+}
