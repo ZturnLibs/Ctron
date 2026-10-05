@@ -1622,3 +1622,11 @@ docker run --rm -v /tmp/t31m15:/w -w /w ubuntu:24.04 bash -c
 (全仪器)的未初始化读取=直接报告+origin 链。前置注意:容器内 Linux raylib 首建需
 上列 X11 头;MSAN 对未仪器 libfreetype/raylib 写后读=可能有 FP,过滤=origin 指向
 CTRON 发射行者为准。
+
+**s30 MSAN 容器路线状态(2026-10-05 深夜九,终)**:docker 可用✓、ubuntu:24.04 容器✓、
+容器内编译✓(缺 IME 声明已用 -include 头解)、binutils/ar 装法已明——**卡点=每
+docker run=全新容器,apt 依赖逐轮重装+网络/apt 偶发抖动**(binutils 装后 ar 仍失
+踪一轮=apt 抖动)。解法=docker commit 固化依赖层(-v 挂载 /tmp/t31m15 不变):
+`docker run --name msan-base ubuntu:24.04 ...安装... && docker commit msan-base
+ubuntu-msan` 后所有后续轮用 ubuntu-msan(依赖固化,零抖动)。构建命令=深夜八段
+全备。此为下段首件的最后一公里(工具路线全部就绪,唯容器固化一步)。
