@@ -1376,3 +1376,21 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   键闭包×desugar)——动效演示样候缺口切片随行;s82 即验收场。
 - **门**:阶梯 86 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
   gui_snippets+gui_widgets 双绿;真窗 --run 手验顺滑待用户。
+
+**2026-10-04 G 档 GUI-41 chart v1**(gui 泳道,波一收官件):
+- **交付面**:pkgs/gui_widgets 0.6 +BarChart/LineChart(canvas 画条/折线,vals/pts
+  纯 prop,归一/钳位在宿主;sparkline=LineChart 窄形);夹具 s83(条像素几何三首点
+  +x 步进/折线首中末插值/空·单值边界/宿主钳位纯值);**引擎能力:多 canvas**——
+  gui_canvas_node 单槽 → 16 容量列表(gui_canvas_reset 帧首复位+setnode 去重追加
+  +count/node_i indexed 读,C 胶水 ~10 行)+rt_draw_frame 帧首 reset+rt_canvas_frame
+  遍历 fire(d_draw 返回值=fire 数,双图=2)。
+- **decls 锁申报**:cc_run 零改动;pkgs/gui +3 pub extern(reset/count/node_i)+
+  C 侧三 fn;pkgs/gui_widgets +4 decl(2 view+2 style);消费方桩税:gui_snippets/
+  s79/s80/s81/s82 各 +2(lt_paint/bc_paint)。
+- **🩸 立册缝与坑**:①**each 迭代变量的样式折叠不通**(叶槽 {it} 可、样式块 {v}
+  折空——fold 询问无 item 上下文)——条图树内 RECT 形候引擎切片,v1 canvas 化;
+  ②双 canvas 同像素槽(槽全局,点数=两图之和,断言偏移=前图点数);③d_draw 返回
+  =fire 数非 1;④pub extern 才可导包(裸 extern E2020.use.priv);⑤闭合标签错配
+  (hbox 开 vbox 收)运行时解析报"闭合标签不匹配"。
+- **门**:阶梯 87 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。**波一收官(5/5)**。

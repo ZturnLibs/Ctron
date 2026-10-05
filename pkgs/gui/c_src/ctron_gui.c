@@ -450,11 +450,15 @@ const char* gui_win_icon_last(void) { return g_win_icon_last; }
 // 盒几何/节点 id 由 rt_emit 存槽;gui_px 相对盒画点(真窗 DrawRectangle,
 // headless 记录槽断言)
 static int g_cv_x = 0, g_cv_y = 0, g_cv_w = 0, g_cv_h = 0, g_cv_node = -1;
+static int g_cv_nodes[16]; static int g_cv_ncount = 0;
+void gui_canvas_reset(void) { g_cv_ncount = 0; g_cv_node = -1; }
+int gui_canvas_count(void) { return g_cv_ncount; }
+int gui_canvas_node_i(int i) { if (i < 0 || i >= g_cv_ncount) { return -1; } return g_cv_nodes[i]; }
 int gui_canvas_setbox(int x, int y, int w, int h) {
     g_cv_x = x; g_cv_y = y; g_cv_w = w; g_cv_h = h;
     return 0;
 }
-int gui_canvas_setnode(int n) { g_cv_node = n; return g_cv_node; }
+int gui_canvas_setnode(int n) { g_cv_node = n; if (g_cv_ncount < 16) { g_cv_nodes[g_cv_ncount] = n; g_cv_ncount += 1; } return g_cv_node; }
 int gui_canvas_x(void) { return g_cv_x; }
 int gui_canvas_y(void) { return g_cv_y; }
 int gui_canvas_w(void) { return g_cv_w; }

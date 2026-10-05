@@ -1273,6 +1273,7 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
 pub fn rt_draw_frame(t: GuiTree, bind: fn(List[Str]) -> Void, w: I32, h: I32, hits: List[I32], hinst: List[I32], hov: I32, actn: I32) -> I32 {
     gui_frame_tick()
     gui_after_bump()
+    gui_canvas_reset()
     gui_begin_layout(w, h)
     // 应用根 = 最后声明的视图(组件先声明后用惯例;单视图退化为 0);
     // gui_list_ni 门控——编译构建树无 vreg 字段(NULL)

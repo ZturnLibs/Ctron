@@ -22,6 +22,10 @@ fn cp_hue(m: Box[M], row: I32) {
 }
 fn cp_hex(m: Box[M], text: Str) {
 }
+fn lt_paint(m: Box[M]) {
+}
+fn bc_paint(m: Box[M]) {
+}
 
 // —— 其余库全事件头桩(未实例化组件;骨架面合并库全量注册)——
 fn sel_toggle(m: Box[M]) {

@@ -16,6 +16,8 @@
 //   TimePick: tp_step(显参通道,"h+1"/"m-1" 形)——locale(周首日/月名)走 props
 //   ColorPick: cp_paint(绘制帧)/cp_drag(显参 dragpx/dragpy 带标 permille)/
 //     cp_hue(行)/cp_hex(文本通道)——SV 方 canvas 标记容器;组件内 bind=源名通道
+//   BarChart: (无事件;vals=条高像素串,归一/负值钳位在宿主)——零数据安全
+//   LineChart: lt_paint(绘制帧;pts=千分比 y 串,宿主画折线)——sparkline=同件小形
 //
 // 消费(声明级 use,GuiBlock 恒随合并——锚一个符号,视图+样式全量并入):
 //   use gui_widgets.{gui_widgets_ver}
@@ -25,7 +27,7 @@
 // ⚠️ 在册观察(2026-10-04):kebab 横线类名(w-select)经跨包 use 合并后样式
 // 不应用(行宽塌缩→文本按词折行),snake_case 正常;宿主同名样式须删除避免双份。
 pub fn gui_widgets_ver() -> Str {
-    return "gui_widgets/0.5"
+    return "gui_widgets/0.6"
 }
 
 view Select (label: Str, open: Bool, opts: List[Str]) {
@@ -283,6 +285,23 @@ view ColorPick (cur: Str, hex: Str, hues: List[Str]) {
   </vbox>
 }
 
+// BarChart(GUI-41 条图 v1;纯 prop 契约):vals=条高像素串(宿主归一 max→像素,
+// 负值/空安全钳位);bc_paint canvas 画条(各项样式折叠不通 each 迭代变量——
+// 立册缝,树内 RECT 形候切片);轴/刻度=宿主 label 组合;条底色显式十六进制。
+view BarChart (vals: List[Str]) {
+  <vbox class="w_chart">
+    <vbox class="w_chartcv" on:draw={bc_paint}/>
+  </vbox>
+}
+
+// LineChart(GUI-41 折线 v1;纯 prop 契约):pts=千分比 y 串(0-1000,宿主归一);
+// canvas 盒相对画点折线(4px 步进,像素槽 4096 帽在册);sparkline=同件窄形。
+view LineChart (pts: List[Str]) {
+  <vbox class="w_lchart">
+    <vbox class="w_lchartcv" on:draw={lt_paint}/>
+  </vbox>
+}
+
 // ===== 样式预设(snake_case;令牌色随 theme_apply 换装;几何值=陈列室原值) =====
 style w_select { direction: column gap: 4 }
 style w_trigger { bg: SURFACE fg: TEXT w: 150 h: 34 }
@@ -349,6 +368,10 @@ style w_cpkhex { bg: SURFACE fg: TEXT w: 160 h: 30 }
 style w_cpkin { direction: row gap: 8 }
 style w_cpksw { direction: column w: 40 h: 24 bg: "{cur}" }
 style w_cpkcur { fg: TEXT_MUTED size: 13 h: 24 }
+style w_chart { direction: column h: 130 }
+style w_chartcv { direction: column w: 200 h: 120 bg: "#111827" canvas: 1 }
+style w_lchart { direction: column }
+style w_lchartcv { direction: column w: 200 h: 80 bg: "#111827" canvas: 1 }
 style w_div { h: 2 w: 200 bg: BORDER }
 style w_card2 { bg: ELEVATED h: 60 }
 style w_ct { fg: TEXT size: 13 h: 20 }

@@ -1378,19 +1378,25 @@ fn rt_maxlines(s: Str, n: I32) -> Str {
 // GUI-25:canvas 绘制帧——盒几何自 rects 同步+on:draw fire(真窗每帧;
 // headless 经 d_draw 驱动)
 fn rt_canvas_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
-    var node: I32 = gui_canvas_node()
-    if node < 0 {
-        return 0
+    // GUI-41:多 canvas 遍历(帧首 gui_canvas_reset,emit 期 setnode 去重追加)
+    var ci: I32 = 0
+    var fired: I32 = 0
+    while ci < gui_canvas_count() {
+        var node: I32 = gui_canvas_node_i(ci)
+        if node >= 0 {
+            var bi: I32 = rt_node_box(rects, hits, node)
+            if bi >= 0 {
+                gui_canvas_setbox(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
+            }
+            var de: Str = rt_in_expr(t, node, "draw")
+            if de != "" {
+                ev_fire(t, de, bind, act)
+                fired += 1
+            }
+        }
+        ci += 1
     }
-    var bi: I32 = rt_node_box(rects, hits, node)
-    if bi >= 0 {
-        gui_canvas_setbox(gui_cmd_x100(bi) / 100, gui_cmd_y100(bi) / 100, gui_cmd_w100(bi) / 100, gui_cmd_h100(bi) / 100)
-    }
-    var de: Str = rt_in_expr(t, node, "draw")
-    if de != "" {
-        ev_fire(t, de, bind, act)
-    }
-    return 1
+    return fired
 }
 
 // GUI-24:关闭检查(真窗循环每帧头)——根有 on:close 时关闭请求被 C 侧

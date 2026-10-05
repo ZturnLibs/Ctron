@@ -175,6 +175,12 @@ fn cp_hue(m: Box[Model], row: I32) {
 }
 fn cp_hex(m: Box[Model], text: Str) {
 }
+fn lt_paint(m: Box[Model]) {
+}
+fn bc_paint(m: Box[Model]) {
+}
+
+
 
 fn headless_suite() -> I32 {
     var src: Str = ctron_embedded()
