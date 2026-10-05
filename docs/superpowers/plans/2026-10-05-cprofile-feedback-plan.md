@@ -93,3 +93,10 @@
 - 本轮全部 139 段错误 = **已知的 bins 破损态**:并行会话 main 提交 5d5e4c08 明确登记"35bd03f6 合入的中间态+peer WIP 丢弃致 bins 破损(s23 总线错/s19 段错误/70 夹具崩)"并已完成"发射链治愈"(emission 三件 checkout 入 main,smoke 115/54→171/2)
 - **对 fb1 的行动指令**:①`git merge main`(取得治愈后的 emission 三件;driver_emit.ct 若冲突,以 main 侧为基底重放 FB-1 模板编辑+FB-2 模板,两处锚点都在本文件);②两步自举重建;③FB-1 panic 测试 + FB-2 fs_mkdir 行为测试双臂验证;④提交
 - 本 worktree 当前态:FB-1 补丁 ✓(工作树)+ FB-2 八处注册点 ✓(工作树)+ 测试 07e ✓——全部未失,仅待治愈基线上的重建验证
+
+## FB-2 完成(2026-10-06,fb1 worktree)
+- fs_mkdir 全链落地:8 处注册点 + runtime helper 模板(别名包装 ctron_fs_mkdir_p → ctron_fs_mkdir,新旧发射器二进制兼容)+ 编译器源内 impl(extern 同 TU helper)
+- 双臂验证:解释臂 fs_mkdir 创建/存在/幂等 ✓ + 目录真实创建 ✓;发射臂同 ✓;FB-1 panic 回归 ✓(rc=1+消息)
+- 自举链定案:主树发射器发 cc_emit → 追加一代 C 实现(helper)→ 新发射器 → 发 cc_run(自含)——此后每代自含
+- smoke 156/4:余 4 项 = ①自检 decls=482 基线漂移(新增 fs_mkdir/extern +2,预期,随提交更新基线)②conc_parallel 发射(待查,或 HEAD 既有)③native/seed 口径(seed rt_eval.c 缺 fs_mkdir native,已登记)④doc std 模块(worktree 环境面)
+- 后续:Loom 侧 F16/F17 规避回归删除;seed rt_eval.c 补 fs_mkdir native
