@@ -32,7 +32,7 @@ fn rt_window_loop(t: GuiTree, title: Str, w: I32, h: I32,
     while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
-        rt_dgev_frame(t, bind, act)
+        rt_dgev_frame(t, rects, hits, bind, act)
         var evt: I32 = gui_poll_event()
         if evt == 2 {
             if rt_menu_click(t, bind, act) == 1 {
@@ -225,7 +225,7 @@ fn rt_window_loop_d(t: GuiTree, src: Str, reload: Str, title: Str, w: I32, h: I3
     while rt_close_check(t, bind, act) == 1 {
         rt_drag_sel(t, rects, hits, bind)
         rt_thumb_drag(t, rects, hits, bind)
-        rt_dgev_frame(t, bind, act)
+        rt_dgev_frame(t, rects, hits, bind, act)
         frames += 1
         if frames >= 60 {
             frames = 0
@@ -910,8 +910,9 @@ pub fn d_drag(t: Box[Driver], x1: I32, y: I32, x2: I32, bind: fn(List[Str]) -> V
     ev_fire(t.t, de, bind, act)
     gui_mouse_override(x2, y)
     ev_fire(t.t, de, bind, act)
+    // GUI-37:释放走共享臂(命中 dropin → fire → end)
+    rt_dgev_frame(t.t, rc2, t.hits, bind, act)
     gui_mouse_clear()
-    gui_dgev_end()
     return 0
 }
 
@@ -941,8 +942,9 @@ pub fn d_dragv(t: Box[Driver], x: I32, y1: I32, y2: I32, bind: fn(List[Str]) -> 
     ev_fire(t.t, de, bind, act)
     gui_mouse_override(x, y2)
     ev_fire(t.t, de, bind, act)
+    // GUI-37:释放走共享臂(dgev_on+鼠标抬起 → 命中 dropin → fire → end)
+    rt_dgev_frame(t.t, rc2, t.hits, bind, act)
     gui_mouse_clear()
-    gui_dgev_end()
     return 0
 }
 
@@ -1386,11 +1388,37 @@ fn rt_sel_take() -> I32 {
 
 // 拖拽事件缝逐帧(on:drag 武装中且按住=触发;表达式内建名取 permille;
 // 松开解除。evt2 武装在循环命中后)
-fn rt_dgev_frame(t: GuiTree, bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
+fn rt_dgev_frame(t: GuiTree, rects: List[I32], hits: List[I32], bind: fn(List[Str]) -> Void, act: fn(Str, List[Str]) -> Void) -> I32 {
     if gui_dgev_on() == 0 {
         return 0
     }
     if gui_mouse_down() == 0 {
+        // GUI-37:释放命中 drop 目标(on:dropin 元素)→ fire(实参=释放点在
+        // 目标盒内 permille,数值字面调用形合成;目标 each 行=宿主按位换算)
+        var hx: I32 = gui_mouse_x()
+        var hy: I32 = gui_mouse_y()
+        var tnode: I32 = rt_hover_node(rects, hits, hx, hy)
+        if tnode >= 0 {
+            var dexp: Str = rt_in_handler(t, tnode, "dropin")
+            if dexp != "" {
+                var bi: I32 = rt_node_box(rects, hits, tnode)
+                if bi >= 0 {
+                    var bx: I32 = gui_cmd_x100(bi) / 100
+                    var by: I32 = gui_cmd_y100(bi) / 100
+                    var bw: I32 = gui_cmd_w100(bi) / 100
+                    var bh2: I32 = gui_cmd_h100(bi) / 100
+                    var ppx: I32 = 0
+                    var ppy: I32 = 0
+                    if bw > 0 {
+                        ppx = (hx - bx) * 1000 / bw
+                    }
+                    if bh2 > 0 {
+                        ppy = (hy - by) * 1000 / bh2
+                    }
+                    ev_fire(t, dexp + "(" + ppx.to_string() + "," + ppy.to_string() + ")", bind, act)
+                }
+            }
+        }
         gui_dgev_end()
         return 0
     }

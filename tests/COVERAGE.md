@@ -1411,3 +1411,18 @@ T27 终态=创建时拷贝转正的最后一块:锚头注挂着的「原生臂�
   k2(d_press_key(k)) 直驱;武装期非前缀键 rc=原码=不吞实证。
 - **门**:阶梯 88 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
   gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
+
+**2026-10-04 G 档 GUI-37 内部拖放**(gui 泳道,波二第二件):
+- **交付面**:rt_dgev_frame 释放臂(签名+rects/hits)——鼠标抬起命中 on:dropin
+  元素 → 合成 permille 调用形 fire(实参=释放点在目标盒内千分比)→ end;
+  d_drag/d_dragv 尾改走共享释放臂(headless 同源)。s85 夹具:三行九头
+  (DatePick 硬列模式),drag 实参携行号定源/命中 dropin 定目标 → 换序,行序
+  TEXT 列序断言。零数据(无 dropin 命中)=原 end 语义不变。
+- **decls 锁申报**:cc_run 零改动;gui_driver 签名扩展(rt_dgev_frame)+两尾改。
+- **🩸 坑位三条**:①**d_drag/d_dragv 自含直呼 dgev_end**——headless 释放逻辑
+  必须走共享臂否则 dropin 不可达;②**本地视图裸事件头生成 0 参调用**(cvf 组件
+  头有 mcap、evf 本地头无)——本地头一律调用形 {h(m)},绝对/相对路径 emit 差异
+  为烟雾弹(真因即此);③源身份=drag 实参携行号(rK_drag(1)),目标=dropin 头
+  名(rK_drop),press-click 在 headless d_dragv 中不 fire(自含)。
+- **门**:阶梯 89 过/1 败(s30 在册);suite 100/100 双列;smoke 170/2(对端两账);
+  gui_snippets+gui_widgets 双绿;真窗 --run 手验待用户。
