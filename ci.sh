@@ -32,6 +32,20 @@ sh "$DIR/tests/dist/ctron_smoke.sh"
 echo "[5.5/9] 插件沙箱阶梯(T52:derive+lint 五锚,interp/emit 双臂+确定性)"
 sh "$DIR/tests/plugins/run.sh"
 
+# T40/T42:bare 档门(交叉编译双靶真跑 + 体积门禁 100KB/1MB + 超限样自证)。
+# 工具链三通道随 ctc.sh(env/宿主/docker);全缺 = 环境登记 SKIP(门绿),
+# 有工具链则门红不豁免。ISR 锚随 tests/ 一致性测试集(42_isr_*)。
+BARE_OUT=$(mktemp)
+if sh "$DIR/tests/bare/run.sh" > "$BARE_OUT" 2>&1; then
+    tail -6 "$BARE_OUT"
+else
+    echo "[FAIL] bare 档门红(T40/T42;见上)" >&2
+    cat "$BARE_OUT" >&2
+    rm -f "$BARE_OUT"
+    exit 1
+fi
+rm -f "$BARE_OUT"
+
 echo "[6/9] 性能基线冒烟(发射一致性 + 后端加速比)"
 sh "$DIR/compiler/bench.sh" 2>&1 | tail -12
 

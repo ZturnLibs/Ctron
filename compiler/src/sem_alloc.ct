@@ -405,6 +405,8 @@ fn sem_alloc(file: List[Str], d: List[Str], tag: Str, prof: Str) -> Str {
     if tag != "Test" {
         body = d[5]
         if has_noalloc(d) { na = true }
+        // T42 §6.6:#[isr] 中断处理函数默认 no_alloc 约束(与 #[no_alloc] 同判据)
+        if d.len >= 7 && attr_has(d[6], "isr") { na = true }
     }
     al_b(file, body, false, na, arenaB, gcL, diags)
     var out = ""

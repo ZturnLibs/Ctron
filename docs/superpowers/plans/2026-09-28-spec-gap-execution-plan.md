@@ -482,7 +482,11 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T40 · bare 交叉编译(§9.3)
 
-- **预估:** 3–4 d。**前置:** T36。**状态:** 待办
+- **预估:** 3–4 d。**前置:** T36。**状态:** ✅ 已完成(1006;t40-bare 分支)——双靶注册(thumbv7em-none-eabi/riscv32imac-unknown-none)+bare 构建管线:发射 C 与 native 同文,靶差全在 lib/rt/bare 运行时文件集(minilibc stub 头十件承接发射 C 无条件宿主头+semihosting 输出/exit+mem/str 七件+startup 双面+链接脚本双份[静态栈 8K+guard 页 1K+链接期 ASSERT]);工具链三通道(CTRON_BARE_CC/LD env→宿主 clang+ld.lld→docker ctron-bare-tools;Apple clang 无 RISC-V 后端+无 lld=常态,docker 通道必走)。验收:裸机 hello 双靶 qemu 真跑绿(tests/bare/run.sh 10/10;ARM netduinoplus2 8332 字节/RV virt 12424 字节,半主机 SYS_WRITE0 输出断言)。**血坑五条在册:①RISC-V mtvec 低 2 位=mode 位,trap 靶须 4 字节对齐(非对齐=csrw 本身非法指令→陷阱环 epc=0);②RISC-V 复位 sp=残值,入口须 naked(ARM 硬件从向量表装 SP 无此坑,sw ra@sp=0 store fault 实证);③半主机 ebreak 须全宽 32 位编码,RVC 下 c.ebreak(0x9002)不被 qemu 序列识别(norvc 包裹);④argc/argv 须显式清零(bare main() 无参调用寄存器残渣≥3 闯 argv 扫描→HardFault);⑤lld ARM 64K 页对齐制造文件空洞(8KB 实体→134KB 文件),-z max-page-size=256+-s 压实=体积口径。⑥perl alarm 超时包装:exec @ARGV 前须 shift 掉时长参(否则 exec 程序"60"落空,输出假空)**
+- **目标:** `ctc build --target thumbv7em-none-eabi` / `riscv32imac-unknown-none`:工具链自包含(内嵌 lld + minilibc 选项),零 OS 依赖运行时裁剪。
+- **范围:** T36 注册 bare targets、运行时 bare 变体(无 pthread/无 fs/net;静态栈+guard page)、QEMU/模拟器冒烟测试(qemu-system-arm 环境探测)。
+- **验收:** 裸机 hello(el,QEMU 跑通或硬件在环);`08_bare.ct` 从 suite 跳过转正。
+- **坑位:** lld 依赖本机 llvm 工具链——环境探测与 CI 靶登记;minilibc 自带子集(syscall stub)工程量控制:先 semihosting。→ 落码印证:发射 C 全 static 运行时+-ffunction-sections/--gc-sections=堆/线程/fs 族整体 DCE,minilibc 无需堆实现;libgcc(交叉 gcc multilib 变体)补 __aeabi_* 软浮助手;QEMU docker 通道(netduinoplus2/virt+semihosting-config target=native);**余债:08_bare 转正随 T41(Arena.fixed 语言面)**
 - **目标:** `ctc build --target thumbv7em-none-eabi` / `riscv32imac-unknown-none`:工具链自包含(内嵌 lld + minilibc 选项),零 OS 依赖运行时裁剪。
 - **范围:** T36 注册 bare targets、运行时 bare 变体(无 pthread/无 fs/net;静态栈+guard page)、QEMU/模拟器冒烟测试(qemu-system-arm 环境探测)。
 - **验收:** 裸机 hello(el,QEMU 跑通或硬件在环);`08_bare.ct` 从 suite 跳过转正。
@@ -498,7 +502,11 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T42 · 体积门禁 + ISR 约束(§9.4/§6.6)
 
-- **预估:** 1 d。**前置:** T40/T41。**状态:** 待办
+- **预估:** 1 d。**前置:** T40/T41。**状态:** ✅ 已完成(1006;t40-bare 分支)——①体积门禁:tests/bare/run.sh §6 节 gate_sz(100KB 硬指标双靶实测 8.3KB/12.4KB+full <1MB 目标 52KB)+超限样自证(150KB 假 ELF 必拒=红绿可演示),ci.sh [6/9] 前挂 bare 档门(工具链全缺=环境登记 SKIP 门绿,有工具链门红不豁免);②ISR:#[isr] 属性语义展开=#[no_alloc]+#[no_spawn] 双约束(sem_alloc na 钳+sem_main ns 上下文+sem_spawn2 跳过;属性面复用零新诊断码),锚三件 42_isr_alloc.neg/42_isr_spawn.neg/42_isr_ok(E3040/E4030/放行)+smoke 3p 五锚。**登记债:#[isr] C 参考宿主 parity(suite.py 分歧 2 件在册,随三线 parity 批次)**
+- **目标:** bare+core < 100KB(硬指标)与 full < 1MB(目标)进 CI 门禁;ISR 默认 `#[no_alloc] #[no_spawn]` 约束检查(bare 档中断处理函数标注识别)。
+- **范围:** `ci.sh` 体积门禁步、`sem_walk.ct`(ISR 标注约束,属性面复用 no_alloc/no_spawn)。
+- **验收:** 门禁红绿可演示(故造超限样);ISR 负锚。
+- **坑位:** 100KB 口径=release 优化档(-Os)+minilibc——CI 里 clang -Os 对裸靶可用性随 T40 环境登记。→ 落码印证:口径=ld.lld -s 后 ELF 字节(符号表/调试段不算运行时);ISR 检查面全档生效(标注语义,不拘 bare)
 - **目标:** bare+core < 100KB(硬指标)与 full < 1MB(目标)进 CI 门禁;ISR 默认 `#[no_alloc] #[no_spawn]` 约束检查(bare 档中断处理函数标注识别)。
 - **范围:** `ci.sh` 体积门禁步、`sem_walk.ct`(ISR 标注约束,属性面复用 no_alloc/no_spawn)。
 - **验收:** 门禁红绿可演示(故造超限样);ISR 负锚。
@@ -642,9 +650,9 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T37 | wasm MVP | W8 | 待办 | — |
 | T38 | WasmGC+JSPI | W8 | 待办 | — |
 | T39 | stdweb 真实化 | W8 | 待办 | — |
-| T40 | bare 交叉编译 | W8 | 待办 | — |
+| T40 | bare 交叉编译 | W8 | ✅ 1006 | t40-bare(待合流) |
 | T41 | bare 分配器族 | W8 | 待办 | — |
-| T42 | 体积门禁+ISR | W8 | 待办 | — |
+| T42 | 体积门禁+ISR | W8 | ✅ 1006 | t40-bare(待合流) |
 | T43 | ctc 子命令 | W9 | 待办 | — |
 | T44 | own ±5% 门禁 | W9 | 待办 | — |
 | T45 | CBox+FFI 余账 | W9 | ✅ 完成(1002) | — |
