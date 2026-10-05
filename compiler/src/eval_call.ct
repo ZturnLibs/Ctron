@@ -1,14 +1,3 @@
-// fs_mkdir 宿主实现(FB-2):内部实现前置声明同 TU 的 runtime helper ctron_fs_mkdir
-//(单文件发射,static 定义已在同文件;用户程序走 trans_expr:1062 映射,同 helper,DRY)
-#[trusted]
-extern "c" fn ctron_fs_mkdir_p(path: Str) -> I32
-
-fn fs_mkdir(path: Str) -> Bool {
-    let rc = ctron_fs_mkdir_p(path)
-    if rc == 1 { return true }
-    return false
-}
-
     if seq2(nm, "fs_mkdir") {
         if vals.len == 1 {
             var r5 = v_unbox(vals[0])
