@@ -529,6 +529,18 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if cal[2].len > 1 {
                     tgtc = ct_ty_code(cal[2][1], file)
                 }
+                // FB 批 P0:Str 源 as 数值 = 解析(镜像 conv_as 6 域;旧裸 cast
+                // 把指针当数值——"42".to_string().as[I64]() emit=指针低位实证)
+                var sc12 = ct_typeof(base[1], env, file)
+                if sc12 == "s" || sc12 == "N" {
+                    if tgtc == "7" { return "(uint64_t)ctron_str_to_i64(" + aobj + ")" }
+                    if tgtc == "z" { return "(size_t)ctron_str_to_i64(" + aobj + ")" }
+                    if tgtc == "6" { return "ctron_str_to_i64(" + aobj + ")" }
+                    if tgtc == "i" { return "(int32_t)ctron_str_to_i64(" + aobj + ")" }
+                    if tgtc.len > 2 && byte_at(tgtc, 0) == 119 {
+                        return "(" + ct_ctype(tgtc) + ")ctron_str_to_i64(" + aobj + ")"
+                    }
+                }
                 if tgtc == "7" { return "(uint64_t)(" + aobj + ")" }
                 if tgtc == "6" { return "(int64_t)(" + aobj + ")" }
                 if tgtc == "i" { return "(int32_t)(" + aobj + ")" }
