@@ -103,8 +103,9 @@ cty* parse_type(cparser* p) {
             t->npath = nseg;
             t->args = NULL;
             t->nargs = 0;
-            // [ ] 消歧:空 → 切片交后缀;单整型 → 定长数组;其余 → 类型实参
-            if (at_k(p, TOK_LBRACKET) && !bracket_content_is_empty(p)) {
+            // [ ] 消歧:空 → 切片交后缀;单整型 → 定长数组;其余 → 类型实参。
+            // 嵌套数组(T[N][M])= while 多缀链(旧单发,第二缀落语句流级联)
+            while (at_k(p, TOK_LBRACKET) && !bracket_content_is_empty(p)) {
                 if (bracket_content_is_single_int(p)) {
                     bump_tok(p);
                     cexpr* size = parse_expr(p);
