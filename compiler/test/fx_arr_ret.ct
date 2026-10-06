@@ -1,0 +1,12 @@
+// fx_arr_ret.ct —— FB-8 返回面:T[N] 返回=amalloc 拷贝出指针(调用方值收)
+fn mk() -> I32[3] {
+    var b: I32[3] = [7, 8, 9]
+    return b
+}
+
+fn main() -> I32 {
+    let r = mk()
+    println(r[0].to_string())
+    println(r[2].to_string())
+    return 0
+}

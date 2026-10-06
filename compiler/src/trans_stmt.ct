@@ -775,6 +775,16 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 ty = ct_typeof(st[4], env, file)
             }
             if ty.len >= 3 && byte_slice(ty, 0, 1) == "a" {
+                // FB-8 返回面:T[N] let 收 a 码表达式(调用返 elem*)→ 声明+memcpy
+                //(值收自存储;旧误走 ArrLit 访问把 Args 当元素 → Args@0)
+                if st[4][0] != "ArrLit" {
+                    var n9 = a_count(ty)
+                    var ec9 = ct_ctype(a_elem(ty))
+                    eln(ec9 + " t_" + pat[1] + "[" + n9 + "];", env)
+                    eln("memcpy(t_" + pat[1] + ", " + ct_expr(st[4], env, file) + ", sizeof(" + ec9 + ") * " + n9 + ");", env)
+                    eln("if (ct_frn.pn < 32) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ec9 + ") * " + n9 + "; ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)
+                    return env_bind(env, pat[1], ty)
+                }
                 // 定长数组 let:<elem C 类型> t_<名>[<N>] = { elems };
                 var n = a_count(ty)
                 var ec = a_elem(ty)
@@ -1676,6 +1686,18 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
                         return env
                     }
                 }
+            }
+        }
+        // FB-8 返回面:T[N] 返回 = amalloc 拷贝出指针(镜像 ct_clo_ret_line u:
+        // 堆盒式;调用方 elem* 接,GC 管理;旧直返形参指针=调用点临时悬垂)
+        if ct_env_has(env, "#fnret") {
+            var frt8 = ct_env_ty(env, "#fnret")
+            if frt8.len >= 3 && byte_slice(frt8, 0, 1) == "a" && st[1][0] != "None" {
+                var rex8 = ct_expr(st[1], renv, file)
+                var rn8 = a_count(frt8)
+                var re8 = ct_ctype(a_elem(frt8))
+                eln("return (\{ " + re8 + "* t_rn8 = (" + re8 + "*)ctron_amalloc(sizeof(" + re8 + ") * " + rn8 + "); memcpy(t_rn8, " + rex8 + ", sizeof(" + re8 + ") * " + rn8 + "); t_rn8; });", env)
+                return env
             }
         }
         eln("return " + ct_expr(st[1], renv, file) + ";", env)
