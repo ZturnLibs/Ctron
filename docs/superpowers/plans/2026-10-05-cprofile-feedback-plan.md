@@ -120,3 +120,9 @@
 - main 已并入 fb1(7c44d04c 之后 main 前进:T46/47 http serve、T49 pkg registry[decl 锁 480→506]、T50 WIP);唯一冲突 smoke decls 已解:**506+2=508**(T49 二十六 fn + FB-2 二),smoke 156/4
 - 4 失败归因:①conc_parallel=主树同源在册红 ✓既有;②T35 use 门(空详情)③native/seed 口径 ④**W8902 缺失(use hi 得裸 E2020)——疑与 T49 解析链 W8902 流互动(merge 对 parse_pkg 的自动合并),待 T50 落地后对纯 main 对照归因**
 - fb1 分支自此含 main 全量+FB-1/FB-2:后续 main 合并 fb1 应近平凡(或 fast-forward 窗口)
+
+## ✅ FB-1/FB-2 合入 main 完成(2026-10-06)
+- main 快进合并 fb1(2f7aa4a7,含 T50 0a9c2c51 全量);主树二经两步自举重建(build_fb.sh)
+- 终验:①FB-1 panic rc=1+消息 ✓ ②FB-2 fs_mkdir 嵌套创建/幂等 ✓ ③**Loom CI 对新编译器全绿**(跨项目回归)④Ctron smoke 166/2、meta_check 1 败——与主树 T50 提交登记的基线**逐项吻合**(conc_parallel+Rust 臂 iter+dep_mutex_neg,均并行会话在册非本批)
+- Cprofile 台账闭环:F16(mkdir 缺失)与 F22b(byte_slice 越界)两项**已关闭**;Loom 侧规避(扁平布局/负参防护)可随下次 Loom 编译器基线声明升级删除
+- 余:FB-3+(P0 字面量域/视图宽度,锚点在册)、fb1 分支留存可删
