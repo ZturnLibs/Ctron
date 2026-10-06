@@ -522,7 +522,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T43 · ctc 子命令补齐(§9.7)
 
-- **预估:** 1 d。**前置:** 无。**状态:** 待办
+- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已完成(2026-10-05;实况=纯驱动壳层件,编译器零触碰:①`ctron lint <file|pkg目录> [--trusted] [--strict]`=check 命令化+汇总——错误(E####)红 rc=1,警告(W####)默认只汇总不红(check 同件 rc=1 严格面二面并存),--trusted 透传既有信任审计枚举面(§9.6,driver_check.ct 零改),--strict 警告也红;pkg 目录=src/*.ct 展开(fmt 同款惯例),跨文件 use 解析实测无碍,多文件带 `-- <file>` 头+末行汇总 `lint: N 文件,E 个错误 / W 警告`;②`ctron bench [族]`=五族注册表(lang/gc/http/net/ffi,脚本自定位仓库根任目录可跑)+未注册族/脚本缺席 fail-closed rc=2,env 门禁族(http/net 缺省 SKIP)惯例透传;③`ctron add <名>[@<约束>]`/`ctron publish`=T49 前置骨架——add 只做参数校验(名形 [A-Za-z_][A-Za-z0-9_-]*+版本约束白名单)+「registry 未接」出路指引,publish 只读本地清单报将发布面(name@version),均 rc=2 零写入零网络(反投机律:对外发布面启用须经用户确认);ctron.ps1 同文(β 口径,Windows conformance 债维持)。门禁:ctron_smoke 41/41(T43 新腿 19 断言+存量 22 全绿;lint 七/bench 四/add-pub 五+节序)+meta_check 532 绿。坑位两条在册:case 模式内裸 `<`/`>` 被 bash 解析器当重定向记号(引号嵌套也救不回,版本约束白名单校验改 grep 方括号实现);ROOT 是装机语义 exe/../,dev 布局下指仓库父目录——bench 族路径基须用 DEVROOT(回落前脚本目录),smoke 两族双败实证后修正。余债:W8902 出路文案「ctron pkg add」与实装命令名 ctron add 未对齐(三驱动文件字串+smoke 3o 锚联动,随 T49 add 实装一并改))
 - **目标:** `ctc lint`(信任审计已有 `driver_check.ct --trusted` 面,命令化+常规 lint 汇总)、`ctc bench`(tests/bench 家族入口)、`ctc add/publish`(依赖 T49 语义,先命令骨架+明确「未接 registry」诊断)。
 - **验收:** lint/bench 真用;add/publish 骨架 + fail-closed 提示。
 - **坑位:** publish 涉及对外发布面,**未经用户确认不得接真 registry**——骨架件只做本地协议。
@@ -544,7 +544,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T46 · HTTP 框架半层 IO 粘合 st_serve(P4-B)+ e2e 回切
 
-- **预估:** 2 d。**前置:** 无(独立于编译器泳道)。**状态:** 待办
+- **预估:** 2 d。**前置:** 无(独立于编译器泳道)。**状态:** ✅ 已完成(2026-10-06;实况=粘合层落 `lib/http/frm/serve.ct`(全件 sv_ 前缀——static.ct 已占 st_ 与 st_serve 本名,合并命名空间同名 decl 即 E5030)。双面形态:①规范循环面 sv_serve/sv_serve_n/sv_serve_fd——派发 fn 值取参数形 `fn(Str,Str,Str)->Str`(frm_route 闭包链发射已证;struct-fn 字段×spawn 闭包捕获未证不取),sv_serve_fd 外置监听 fd(spawn 捕获只剩标量,端口 sockname 回读无竞态),内置 8KB 缓冲超限 413 不读体、chunked 请求体 501、shutdown 端点 `POST /__shutdown` 返 2;②分解直调面 sv_read_req/sv_read_body_cl/sv_body_bytes——请求缓冲 lane 在消费方作用域,体经 List[I32] 字节道达 mp_parse(二进制安全零装箱)。use 面仅 http.client 单级(connect.ct 先例),parse/message/bind 符号合并贯穿直引;消费方树预算 serve+middleware+static+body 四子树互斥并用(x_serve 实证)。err→状态映射 400 族/414/431/413/505/501。e2e=tests/http/serve_e2e/x_serve 真回环(GET 200/404/405+POST CL 体回声+真盘静态 st_serve+中间件链序(h 算术入 body)+multipart 二进制上传+400/413 走线+shutdown join=2)双 RT 矩阵:默认 pthread 20/20+coro 6/6。**计划外治愈发射面两主树同源红**(x_client_e2e/sse/ws 六件存量红全数回绿,T23「同源则并销」兑现):①Box[T] 实参过 extern 裸指针形参双重取址(trans_expr.ct p 参分支:Box 码 B:* 直传,原 &(ptr) 使垫片出参写调用方不可见——client_listen lfd=-1 根因);②emit 运行时 arena bump 无锁,scope spawn 双线程并发分配同 offset 互踩(driver_emit.ct 运行时预置自旋锁;TSan 净=非用户码竞争)。夹具坑三条在册:parse.ct http_head_end 语义=体起点(增量/一次性一致),非 web 栈 CRLFCRLF 起点,+4 即双跳;中间件契约=返回 wire,包裹 wire 即坏报文(链序断言走 h 算术入 body);sv_conn 体读缺失=头体分片到达竞态(本地回环 ~30%,打印即愈 Heisenberg,体读补后 20/20 销)。门:tests/http 116/0+tests/net 18/0+smoke 43/0(T49 合流后重拼含 ctron-dep)+suite 100/101·101/101(cbox 三件 emit 红=基线归因实证主树同源,非本批)。
 - **目标:** 服务器 IO 粘合:accept→parse→router→respond 服务循环(`st_serve`),接通 `http/frm/` 16 件与 `net` 门面;`tests/http/run.sh`「IO 粘合归 P4-B+」注记兑现;设计底稿 `2026-09-27-web-framework-design.md`。
 - **范围:** 新 `http/frm/serve.ct`(或 net 侧)、`tests/http/` e2e(真回环)。
 - **验收:** 真窗 e2e(GET/POST/静态/中间件链)双运行时矩阵;e2e 缺声明红件联动 T23(同源则并销)。
@@ -552,7 +552,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T47 · multipart(§11.7 框架半层)
 
-- **预估:** 1 d。**前置:** T46。**状态:** 待办
+- **预估:** 1 d。**前置:** T46。**状态:** ✅ 已完成(2026-10-06;实况=解析器 P6-C 已在库(body.ct mp_* 族:RFC 2046 §5.1 行首锚定/quoted+token 双形/why 1-9/4 槽上限/总量 cap 先验),本件=验收面收口:①corpus i_multipart.ct 真浏览器样例(curl -F 惯例长横线边界+preamble 容忍+quoted name/filename+per-part Content-Type+PNG 魔数二进制件 0x89/0x1A/体中 `--` 行首锚定不误判+epilogue)interp+emit 双臂;②负锚=cap 超限 why 1+close 缺失 why 4(corpus 级);③boundary 引号变体锚(quoted/unquoted/CI/尾空格拒);④二进制安全传输面=serve_e2e/x_serve 上传腿(sv_body_bytes→mp_parse 12 字节精确,T46×T47 接线锚)。坑:模块级裸 const 引导 interp run 期 unbound(web serve 同款),fn 出面绕行;body.ct interp 臂存量噪声「数字语法 @$.0」(rc=0,非本批引入,在册)。frm 套件回归=tests/http 116/0。余债维持 body.ct 登记口径:大文件流式=P8。)
 - **目标:** multipart/form-data 解析(文件上传面):`http/frm/` 补 multipart,边界解析/大小上限/临时面。
 - **验收:** corpus 夹具(真实浏览器上传样例)+ 上限负锚;frm 套件回归。
 - **坑位:** 二进制安全(零拷贝切片视图 &T[] 面);RFC 2046 边界引号变体。
@@ -567,7 +567,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T49 · lockfile 内容寻址 + workspace + add/publish 实装(§2.7)
 
-- **预估:** 2 d。**前置:** T48。**状态:** 待办
+- **预估:** 2 d。**前置:** T48。**状态:** ✅ 已完成(2026-10-06;实况=七批落库:①workspace/member 四线注册[自举/C/Rust/Python,E5051-5053 立表,黄金语料三例,四线对拍 139 ALL GREEN];②pkg_dep.ct[dep 扫描 E5049 四线同文案+semver 约束工具+sha256 自包含移植];③装载器 dep 探针入解析链②[path 门面/pkgs 安装位双形,W8902 收集扩 dep 表点名+出路文案对齐 ctron add];④driver_dep.ct=ctron-dep[lock 内容寻址生成,lock 钉定→已安装→registry 三级解析,E5052/E5053,二跑逐字节稳定锚,ctc.sh dep 同面,native 六件];⑤workspace 用例[根 workspace{}+member 双成员,成员并集+根共享 lock];⑥ctron add/publish/lock T43 骨架转实[publish 单文件包+版本不可覆盖+semver 门;add=dep 块+pkgs/ 安装+lock 刷新;ctron.ps1 同文;e2e tests/pkg/run.sh 11 断言+ctron_smoke 第 12 腿改实装口径];⑦§2.7 落地注+本台账回写)。命令面=顶层 ctron add/publish/lock(T43 实装名对齐,W8902 留债销账)。余债:git 形不取网(rev 钉定已锁,fetch 志向)/多文件包 tar 志向/真 registry 待用户裁决(T43 坑位)/lock 解析仅 ctron-dep 自扫(C/Rust 不读 lock)/diff.py Rust 臂二进制名陈旧(ctronr)+Rust 线缺 plugin 块注册(T52 线债)随批登记
 - **目标:** 依赖解析:严格 semver + lockfile(内容寻址)+ workspace;`ctc add/publish` 从 T43 骨架转实(本地 registry 面)。
 - **范围:** `parse_pkg.ct`(deps 解析/lock 生成)、`ctpkg` registry 本地协议、workspace 段。
 - **验收:** deps 解析锚(三互斥形/semver 约束);lock 二跑稳定(内容寻址 digest);workspace 用例。
@@ -575,7 +575,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T50 · 闭源分发 S1/S2【条件触发件】
 
-- **预估:** 未估(按 spec S1+S2 触发条件)。**前置:** T49 + 用户触发。**状态:** 待办(挂起,触发条件未到)
+- **预估:** 未估(按 spec S1+S2 触发条件)。**前置:** T49 + 用户触发。**状态:** ✅ 主体完成(2026-10-06;用户点名触发。S1a 序列化/回读 + S2a 工件端到端已先行落库(见闭源分发泳道);本批 = D8-2 L2 摘要校验(E5054/E5055 fail-closed,seal 编排层 SHA256SUMS+self_digest)+ S1a-iii match/enum 工件补验 + E2020.use.read 工件点名。余债:S1b 缓存接线(加速触发线挂账:面积×3/占比>60%,实测 ≈44% 未触)/ L1 升 ctc pkg verify 命令面 + L3 in-language 重算 + 命名空间(均 S3/S4 需求方触发))
 - **目标:** 闭源包分发泳道 spec v2(`2026-09-21-closed-pkg-distribution-design.md`)的 S1(_iface 投影编译)/S2(ctart 工件分发+解析链③实装)。**登记纪律:触发条件勿提前**(记忆口径)。
 - **验收:** 按该 spec 各阶段出口。
 - **坑位:** 本件是占位卡——用户点名即先重读 spec 触发条件,未到则呈报不开工。
@@ -654,17 +654,17 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T37 | wasm MVP | W8 | 待办 | — |
 | T38 | WasmGC+JSPI | W8 | 待办 | — |
 | T39 | stdweb 真实化 | W8 | 待办 | — |
-| T40 | bare 交叉编译 | W8 | ✅ 1006 | t40-bare(待合流) |
+| T40 | bare 交叉编译 | W8 | ✅ 1006 | t40-bare(预合流解态) |
 | T41 | bare 分配器族 | W8 | ◐ 核心 1006 | Region/Pool/Static 余债 |
-| T42 | 体积门禁+ISR | W8 | ✅ 1006 | t40-bare(待合流) |
-| T43 | ctc 子命令 | W9 | 待办 | — |
+| T42 | 体积门禁+ISR | W8 | ✅ 1006 | t40-bare(预合流解态) |
+| T43 | ctc 子命令 | W9 | ✅ 完成(1005) | — |
 | T44 | own ±5% 门禁 | W9 | 待办 | — |
 | T45 | CBox+FFI 余账 | W9 | ✅ 完成(1002) | — |
-| T46 | st_serve IO 粘合 | W9 | 待办 | — |
-| T47 | multipart | W9 | 待办 | — |
+| T46 | st_serve IO 粘合 | W9 | **已完成**(1006,frm/serve.ct+e2e 双 RT;附发射面两修复治愈六件存量红) | 见 git |
+| T47 | multipart | W9 | **已完成**(1006,解析器 P6-C 已在库;corpus i_multipart 验收收口) | 见 git |
 | T48 | CTCL 迁移 | W9 | 待办 | — |
-| T49 | lockfile+workspace | W9 | 待办 | — |
-| T50 | 闭源 S1/S2【条件】 | W9 | 挂起 | — |
+| T49 | lockfile+workspace | W9 | ✅ | 2026-10-06 |
+| T50 | 闭源 S1/S2【条件】 | W9 | ✅ 主体完成(1006 D8-2 L2+S1a-iii;余 S1b 加速挂账+S3/S4 需求方触发) | — |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | **已完成**(1003;①io_uring 后端落库[POLL_ADD 天然 one-shot 同构映射+G 内单生产者+免 tick+双 NOP 自检门响亮回退,6.10-linuxkit array 异常立案];②NUMA 选项位+拓扑探测[行为位=志向];③Simd 评估报告选 B 落 docs/simd-vectorization-analysis.md[clang -O2 width4 实证/gcc -O3;寄存器驻留=志向];IOCP 环境依赖登记;reactor 冒烟双臂挂 ci.sh;net 18/18+coro_det 101/101+w7+suite 100/100) | 见 git |
 | T52 | 插件沙箱(derive+lint) | W9 | **已完成**(2026-10-03;协议=清单 plugin 块+接口包 ctron.plugin+约定入口;沙箱=纯度门 E6020.sandbox+静态规模门[执行期预算列 v2];derive(Json)=自由 fn/UFCS 产物[trait impl 发射缺口在册];lint_toolong=W9001 清单 codes 先进表;阶梯六锚挂 ci.sh[5.5/9] 含确定性双跑; suite 100/100 双跑;烟主段 159/2 双红在册[T33 conc_parallel/Rust iter 清账]+ctron_smoke 25/25;债八项入 COVERAGE) | 见 git |
 | T53 | emit union 载荷 64 位化 | W9 | **已完成**(1002;五病灶全修[expect 型别/expect 位还原/语句形 match-Ok 硬编码 int32/Try 两语句位/json (h) 绕行],json JNum/JReal 回切摘除,芯=wrap+or 先行 a000a6ad;探针 14 项双臂绿+e_t53_payload64 双臂锚+json_fidelity 13/13+suite 99/99+web_todo 92 裸跑 rc=0) | 见 git |
@@ -709,7 +709,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 - **T54 ✅(已销账,2026-09-30)参数化 List 码 + 装箱容器 ABI**: 容器 ABI 由 T14-② 落地(参数化 List 码 `Lu:<名>`/LI/L6+堆盒 push+索引解引用);收口件补 fn 值链(#fret 字段提取位 ct_fnfield_ret+裸 fn 蹦床/shim `u:` 解盒)——03l/03n 正本 emit 臂绿(03l:`HIT /app -> app:alice`+`SUM 42`),spec §9 P0-1/L6 销账。suite 96/96+96/96 零移动;遗留另录(不扩界):e.h 直呼形态、>8B struct fn 值返回、ct_cb_ref extern 回调
 - **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性已由 T27-B 终态判定 = 不可见,创建时快照即规范语义,10-02 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
 - **T29-T32 GC 全件**: 等 S1 Val 迁移落库(在飞 /tmp/s1-val)
-- **T50 闭源 S1/S2**: 触发条件未到
+- **T50 闭源 S1/S2**: ✅ 主体完成(1006 用户点名触发;D8-2 L2+S1a-iii 落库;余 S1b 加速挂账/S3-S4 需求方触发)
 - **T37-T40 wasm/bare**: T36 target 接口是前置
 
 ### 关键坑位速查(10 条血泪)

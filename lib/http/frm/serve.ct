@@ -1,0 +1,425 @@
+// http/frm/serve.ct —— 框架半层 IO 粘合(P4-B/T46;accept→read→parse→dispatch→respond)
+//
+// 定位(§11.7 分层纪律):frm 16 件纯层与 net 门面之间的唯一 IO use 点。
+// tests/http/run.sh「IO 粘合归 P4-B+」注记由本件兑现;协议编解码全走
+// http.parse(P4-A 既有半层,含走私面 400 族/上限 413/414/431/505),本件零解析零拼装
+// 报文头(响应三位十进制状态行除外——message.ct msg_response_head 亦可,取直拼与
+// static.ct st_resp_raw 同式以保 frm 响应面一家亲)。
+//
+// use 面(加载器严格树,client.ct 头注同款登记):本件【只】use http.client
+// (单级;connect.ct 先例,发射已证)。parse/message/bind 符号经 use 合并贯穿
+// 直引(middleware 门面同款);消费方严禁再直 use http.parse/http.message/
+// net.bind/http.client —— 同叶双径即 E5020。消费方树预算:serve{client→
+// parse,message,bind} + middleware{router→enc} + static{crypto} 三子树互斥
+// 可并用(x_serve e2e 即三树全量)。
+//
+// 前缀纪律:全件 sv_(pub + 私有;合并命名空间同名 decl 即 E5030,bd_/au_ 同款;
+// static.ct 已占 st_ 前缀与 st_serve 本名,message.ct ChunkSt getter 亦 st_)。
+//
+// 双面形态(装箱边界事实决定,P6-A 探针实证「fn 值装箱调用只走标量/Str」):
+//   ① 规范循环面 sv_serve/sv_serve_n:派发 fn 值参数 disp =
+//      fn(method: Str, target: Str, body: Str) -> Str(全 Str 装箱安全;
+//      middleware 链 fn(Str,I64)->Str 同族已发射实证;fn 值取参数形而非
+//      struct 字段 —— 字段形×spawn 闭包捕获未证,参数形 frm_route 闭包链
+//      已证)。body = 印刷域文本
+//      (sv_str_range 全有全无;JSON/urlencoded 域无损,含 '{'——插值转义
+//      例外面)。二进制体(文件上传)走 ②。
+//   ② 分解直调面 sv_read_req/sv_read_body_cl/sv_body_bytes:请求缓冲 lane
+//      在消费方作用域,体经 List[I32] 字节道直达 mp_parse(body.ct)——
+//      二进制安全零装箱(x_serve 上传腿即证;T46×T47 接线锚)。
+// 缓冲口径:①面 8KB 内置(hend+clen 超即 413 不读体,Connection: close 使
+// 短读安全);②面缓冲消费方自定,体上限sv 先验 + parse lim.max_body(1MiB
+// 缺省)双门。chunked 请求体 → 501(v1 无分框;parse err 13 同映射)。
+//
+// 错误面:parse err 码 → 状态(sv_status_of):行畸/token/头/fold/smuggle/CL
+// → 400;行超 → 414;头超族 → 431;CL 超 → 413;版本 → 505;TE → 501。
+// 读 IO 败(io/eof)且零字节 → 静默关(客户端预请求即走);有部分字节 → 400。
+//
+// shutdown 端点(§6 惯例,web 域包 serve 同款):POST /__shutdown loop 直拦
+// (不过派发)→ 200 "draining" 后停循环关监听;sv_serve/sv_serve_n 返 2。
+// 返回码:0 = nmax 服务满 / 1 = 监听败 / 2 = shutdown / 3 = accept 败。
+// HEAD 不自动改写(frm 派发消费方自裁,router frm_m_head 槽在;web 域包
+// serve_with 的 HEAD 自动面属彼栈)。
+// v1 串行:一连接一请求,pipelining 多余字节随 close 丢弃(web 域包 §8.2 同款);
+// keep-alive 挂 L6/L7 并发波。真并发服务(sc.spawn × sv_serve)= e2e 双 RT
+// 矩阵实证(default 线程 + CTRON_RT=coro 协程停车于 net 垫片)。
+
+use http.client.{ client_accept, client_close, client_listen, client_read_t, client_write_str }
+
+// ---- 私铸助手(sv_ 前缀;合并命名空间 E5030 纪律,见头注) ----
+
+// 十进制非负 → Str(状态码/Content-Length;自拼——static.ct st_digits 同式,
+// I64.to_string 发射面未经frm实证不取)
+fn sv_digits(n: I64) -> Str {
+    if n <= 0 {
+        return "0"
+    }
+    var out = ""
+    var v = n
+    while v > 0 {
+        out = byte_slice("0123456789", (v % 10).as[I32](), (v % 10 + 1).as[I32]()) + out
+        v = v / 10
+    }
+    return out
+}
+
+// 单字节 → Str(0x20..0x7E 全 printable 含 '{'——插值转义 \{ 例外面;
+// body.ct bd_ch 系表格同式但 bd 系拒 '{',本件文本面必须放行 JSON 体)
+fn sv_ch(b: I64) -> Str {
+    if b < 32 || b > 126 {
+        return ""
+    }
+    if b == 123 {
+        return "\{"
+    }
+    if b < 123 {
+        return byte_slice(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz", (b - 32).as[I32](), (b - 31).as[I32]())
+    }
+    return byte_slice("|}~", (b - 124).as[I32](), (b - 123).as[I32]())
+}
+
+// ---- 读道结果(请求头;消费方经 getter 读 —— 跨模块成员读不可发射,(h) 绕行) ----
+
+pub struct SvRead {
+    let rc: I64 // 1 ok / -1 解析败(err 码) / -2 IO 败 / -3 eof / -4 头超缓冲
+    let err: I64 // parse err 码(rc=-1 时有效;http_err_* 族)
+    let n: I64 // 已缓冲字节
+    let ms: I64
+    let ml: I64
+    let ts: I64
+    let tl: I64
+    let hend: I64 // 头区终点(体起点)
+    let clen: I64 // Content-Length(>=0;bkind=1 时 -1)
+    let bkind: I64 // 0 = 无体/CL;1 = chunked(501 面)
+}
+
+fn sv_read_new() -> SvRead {
+    return SvRead { rc: 0, err: 0, n: 0, ms: 0, ml: 0, ts: 0, tl: 0, hend: 0, clen: 0, bkind: 0 }
+}
+
+pub fn sv_rc(r: SvRead) -> I64 { return r.rc }
+pub fn sv_err(r: SvRead) -> I64 { return r.err }
+pub fn sv_n(r: SvRead) -> I64 { return r.n }
+pub fn sv_ms(r: SvRead) -> I64 { return r.ms }
+pub fn sv_ml(r: SvRead) -> I64 { return r.ml }
+pub fn sv_ts(r: SvRead) -> I64 { return r.ts }
+pub fn sv_tl(r: SvRead) -> I64 { return r.tl }
+pub fn sv_hend(r: SvRead) -> I64 { return r.hend }
+pub fn sv_clen(r: SvRead) -> I64 { return r.clen }
+pub fn sv_bkind(r: SvRead) -> I64 { return r.bkind }
+
+// 增量头读(parse 每读一块重扫;cx_read_resp 同构,请求面):
+// 头完 rc=1;畸形 rc=-1(err);超缓冲 rc=-4;对端 IO 败 rc=-2;净 eof rc=-3。
+pub fn sv_read_req(fd: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64, tmo_ms: I64) -> SvRead {
+    var out = sv_read_new()
+    let lim = http_limits_default()
+    var n: I64 = 0
+    var going: I32 = 1
+    while going == 1 {
+        let h = http_parse_head(buf, n, lim)
+        let prc = http_rc(h)
+        if prc == 1 {
+            going = 0
+            out = SvRead { rc: 1, err: 0, n: n, ms: http_method_start(h), ml: http_method_len(h), ts: http_target_start(h), tl: http_target_len(h), hend: http_head_end(h), clen: http_clen(h), bkind: http_body_kind(h) }
+        } else {
+            if prc == 0 - 1 {
+                going = 0
+                out = SvRead { rc: 0 - 1, err: http_err_of(h), n: n, ms: 0, ml: 0, ts: 0, tl: 0, hend: 0, clen: 0, bkind: 0 }
+            } else {
+                if n >= cap {
+                    going = 0
+                    out = SvRead { rc: 0 - 4, err: 0, n: n, ms: 0, ml: 0, ts: 0, tl: 0, hend: 0, clen: 0, bkind: 0 }
+                } else {
+                    let r = client_read_t(fd, scr, scap, tmo_ms)
+                    if r < 0 {
+                        going = 0
+                        out = SvRead { rc: 0 - 2, err: 0, n: n, ms: 0, ml: 0, ts: 0, tl: 0, hend: 0, clen: 0, bkind: 0 }
+                    } else {
+                        if r == 0 {
+                            going = 0
+                            out = SvRead { rc: 0 - 3, err: 0, n: n, ms: 0, ml: 0, ts: 0, tl: 0, hend: 0, clen: 0, bkind: 0 }
+                        } else {
+                            var i: I64 = 0
+                            while i < r {
+                                if n + i < cap {
+                                    buf[n + i] = scr[i]
+                                }
+                                i += 1
+                            }
+                            n = n + r
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return out
+}
+
+// CL 体读齐(头后追加; lane 无偏移读面,scratch 转运)。败 -1。
+pub fn sv_read_body_cl(fd: I64, buf: &I64[], n0: I64, hend: I64, clen: I64, cap: I64, scr: &I64[], scap: I64, tmo_ms: I64) -> I64 {
+    var n = n0
+    let need = hend + clen
+    while n < need {
+        let r = client_read_t(fd, scr, scap, tmo_ms)
+        if r <= 0 {
+            return 0 - 1
+        }
+        var i: I64 = 0
+        while i < r {
+            if n + i < cap {
+                buf[n + i] = scr[i]
+            }
+            i += 1
+        }
+        n = n + r
+    }
+    return n
+}
+
+// 体/段 lane → List[I32] 字节道(二进制安全全 0..255;mp_parse 入口载体)
+pub fn sv_body_bytes(buf: &I64[], a: I64, n: I64) -> List[I32] {
+    var out = List[I32]()
+    var i: I64 = 0
+    while i < n {
+        out.push(buf[a + i].as[I32]())
+        i += 1
+    }
+    return out
+}
+
+// lane 段 → Str(印刷域全有全无:任一非 0x20..0x7E 字节 → "";frm_slice_str
+// 域一致;二进制面走 sv_body_bytes —— 文本面与字节面的分界即此)
+pub fn sv_str_range(src: &I64[], a: I64, b: I64) -> Str {
+    var out = ""
+    var i = a
+    while i < b {
+        let s = sv_ch(src[i])
+        if s == "" {
+            return ""
+        }
+        out = out + s
+        i += 1
+    }
+    return out
+}
+
+// ---- 响应面(状态行 + text/plain + CL + close;响应组装唯此一处) ----
+
+pub fn sv_reason(n: I64) -> Str {
+    if n == 200 { return "OK" }
+    if n == 201 { return "Created" }
+    if n == 204 { return "No Content" }
+    if n == 206 { return "Partial Content" }
+    if n == 303 { return "See Other" }
+    if n == 304 { return "Not Modified" }
+    if n == 400 { return "Bad Request" }
+    if n == 403 { return "Forbidden" }
+    if n == 404 { return "Not Found" }
+    if n == 405 { return "Method Not Allowed" }
+    if n == 409 { return "Conflict" }
+    if n == 413 { return "Payload Too Large" }
+    if n == 414 { return "URI Too Long" }
+    if n == 422 { return "Unprocessable Entity" }
+    if n == 429 { return "Too Many Requests" }
+    if n == 431 { return "Request Header Fields Too Large" }
+    if n == 500 { return "Internal Server Error" }
+    if n == 501 { return "Not Implemented" }
+    if n == 503 { return "Service Unavailable" }
+    return "Unknown"
+}
+
+pub fn sv_resp(status: I64, body: Str) -> Str {
+    return "HTTP/1.1 " + sv_digits(status) + " " + sv_reason(status) + "\r\n" + "Content-Type: text/plain\r\n" + "Content-Length: " + sv_digits(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + body
+}
+
+pub fn sv_resp_ct(status: I64, ctype: Str, body: Str) -> Str {
+    return "HTTP/1.1 " + sv_digits(status) + " " + sv_reason(status) + "\r\n" + "Content-Type: " + ctype + "\r\n" + "Content-Length: " + sv_digits(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + body
+}
+
+// parse err 码 → 状态(400 族缺省;414/431/413/505/501 各归位)
+pub fn sv_status_of(err: I64) -> I64 {
+    if err == 2 { return 414 }
+    if err == 3 { return 505 }
+    if err == 8 { return 431 }
+    if err == 9 { return 431 }
+    if err == 10 { return 431 }
+    if err == 13 { return 501 }
+    if err == 14 { return 413 }
+    return 400
+}
+
+// ---- 规范循环面 ----
+
+// 单连接全周期(读头→映射→[读体]→派发→写)。返:1 服务 / 2 shutdown / 0 败(已应答或静默)。
+fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64) -> I32 {
+    let r = sv_read_req(fd, buf, cap, scr, scap, tmo_ms)
+    let rc = sv_rc(r)
+    if rc != 1 {
+        if sv_n(r) == 0 && (rc == 0 - 2 || rc == 0 - 3) {
+            return 0
+        }
+        var st: I64 = 400
+        if rc == 0 - 1 {
+            st = sv_status_of(sv_err(r))
+        }
+        if rc == 0 - 4 {
+            st = 431
+        }
+        client_write_str(fd, sv_resp(st, sv_reason(st)))
+        return 0
+    }
+    if sv_bkind(r) == 1 {
+        client_write_str(fd, sv_resp(501, "chunked request body not supported"))
+        return 0
+    }
+    let hend = sv_hend(r)
+    let clen = sv_clen(r)
+    if clen > body_limit || hend + clen > cap {
+        // 超限不读体(close 使短读安全;web 域包 serve_with 同款 413 面)
+        client_write_str(fd, sv_resp(413, "payload too large"))
+        return 0
+    }
+    let m = sv_str_range(buf, sv_ms(r), sv_ms(r) + sv_ml(r))
+    let t = sv_str_range(buf, sv_ts(r), sv_ts(r) + sv_tl(r))
+    if m == "POST" && t == "/__shutdown" {
+        client_write_str(fd, sv_resp(200, "draining"))
+        return 2
+    }
+    // 体读齐(头与体分片到达是常态;先读后切 —— 缺此步即体截断竞态)
+    if clen > 0 {
+        let nb = sv_read_body_cl(fd, buf, sv_n(r), hend, clen, cap, scr, scap, tmo_ms)
+        if nb < 0 {
+            client_write_str(fd, sv_resp(400, "bad request"))
+            return 0
+        }
+    }
+    var body = ""
+    if clen > 0 {
+        body = sv_str_range(buf, hend, hend + clen)
+    }
+    let resp = h(m, t, body)
+    client_write_str(fd, resp)
+    return 1
+}
+
+// 循环核(nmax < 0 = 不限)。监听 fd 由调用方关。
+fn sv_run(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64) -> I32 {
+    var served: I32 = 0
+    var unbounded: I32 = 0
+    if nmax < 0 {
+        unbounded = 1
+    }
+    var going: I32 = 1
+    while going == 1 {
+        if served >= nmax && unbounded == 0 {
+            going = 0
+        } else {
+            let ab = Box[Box64](Box64 { v: 0 - 1 })
+            if client_accept(lfd, ab) != 0 {
+                return 3
+            }
+            let out = sv_conn(ab.v, h, body_limit, tmo_ms, buf, cap, scr, scap)
+            client_close(ab.v)
+            if out == 2 {
+                return 2
+            }
+            if out == 1 {
+                served += 1
+            }
+        }
+    }
+    return 0
+}
+
+// 外置监听面:调用方自持 listen fd(client_listen :0 → client_sockname 回读
+// 实际端口后交入;spawn 闭包捕获只剩标量 fd —— e2e 双 RT 矩阵即此形)。
+// 本面不关监听(调用方所有权);缓冲内置 8KB/2KB。返码同 sv_serve_n。
+pub fn sv_serve_fd(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64) -> I32 {
+    var buf: I64[8192] = [0, 0, 0, 0]
+    var scr: I64[2048] = [0, 0]
+    return sv_run(lfd, h, body_limit, nmax, tmo_ms, buf, 8192, scr, 2048)
+}
+
+// 有界服务:恰 nmax 个连接(败连接不计)后返 0;shutdown 提前返 2。
+// 测试面(e2e 单进程确定性)+ 自定义循环积木。
+pub fn sv_serve_n(host: Str, port: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64) -> I32 {
+    let lb = Box[Box64](Box64 { v: 0 - 1 })
+    if client_listen(host, port, lb) != 0 {
+        return 1
+    }
+    let out = sv_serve_fd(lb.v, h, body_limit, nmax, tmo_ms)
+    client_close(lb.v)
+    return out
+}
+
+// 常驻服务:服务至 shutdown(返 2)或 accept 败(返 3);监听败返 1。
+pub fn sv_serve(host: Str, port: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64) -> I32 {
+    return sv_serve_n(host, port, h, body_limit, 0 - 1, tmo_ms)
+}
+
+// ---- 测试(纯面;emit 专臂 —— 本件 use 图含 net/bind,interp W8052 rc=1,
+// 与 client.ct inline 同款;socket 面归 serve_e2e/x_serve 双 RT 矩阵) ----
+
+test "sv_reason and sv_resp exact wire" {
+    assert(sv_reason(200) == "OK")
+    assert(sv_reason(431) == "Request Header Fields Too Large")
+    assert(sv_reason(501) == "Not Implemented")
+    assert(sv_reason(418) == "Unknown")
+    assert(sv_resp(404, "nope") == "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnope")
+    assert(sv_resp_ct(200, "text/html", "<h1>hi</h1>") == "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 11\r\nConnection: close\r\n\r\n<h1>hi</h1>")
+    assert(sv_resp(200, "") == "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    // 三位十进制自拼:非 3 位状态与多位 CL
+    assert(sv_resp(702, "x") == "HTTP/1.1 702 Unknown\r\nContent-Type: text/plain\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx")
+    assert(sv_digits(0) == "0")
+    assert(sv_digits(1048576) == "1048576")
+}
+
+test "sv_ch table printable full domain with brace" {
+    assert(sv_ch(32) == " ")
+    assert(sv_ch(65) == "A")
+    assert(sv_ch(122) == "z")
+    assert(sv_ch(123) == "\{") // '{' 放行(文本面 JSON 体无损的关键)
+    assert(sv_ch(124) == "|")
+    assert(sv_ch(126) == "~")
+    assert(sv_ch(31) == "")
+    assert(sv_ch(127) == "")
+    assert(sv_ch(0) == "")
+}
+
+test "sv_str_range printable whole-or-nothing" {
+    var lane: I64[8] = [72, 101, 108, 108, 111, 0, 0, 0] // "Hello"
+    assert(sv_str_range(lane, 0, 5) == "Hello")
+    // 高位字节 → 全有全无 ""(二进制面分界)
+    var bin: I64[4] = [65, 200, 66, 0]
+    assert(sv_str_range(bin, 0, 3) == "")
+    // '{' 与 '|}~' 域内无损
+    var j: I64[4] = [123, 124, 125, 126]
+    assert(sv_str_range(j, 0, 4) == "\{|}~")
+    assert(sv_str_range(lane, 0, 0) == "")
+}
+
+test "sv_body_bytes binary-safe full byte domain" {
+    var lane: I64[6] = [137, 80, 78, 71, 13, 10] // PNG 魔数含高位与 CR LF
+    let b = sv_body_bytes(lane, 0, 6)
+    assert(b.len == 6)
+    assert(b[0] == 137)
+    assert(b[1] == 80)
+    assert(b[4] == 13)
+    assert(b[5] == 10)
+    let b2 = sv_body_bytes(lane, 1, 3)
+    assert(b2.len == 3)
+    assert(b2[0] == 80)
+}
+
+test "sv_status_of parse err mapping" {
+    assert(sv_status_of(1) == 400) // 行畸
+    assert(sv_status_of(2) == 414) // 行超
+    assert(sv_status_of(3) == 505) // 版本
+    assert(sv_status_of(8) == 431) // 单头超
+    assert(sv_status_of(10) == 431) // 头总超
+    assert(sv_status_of(11) == 400) // 走私 TE+CL
+    assert(sv_status_of(13) == 501) // TE 末编码非 chunked
+    assert(sv_status_of(14) == 413) // CL 超
+    assert(sv_status_of(0) == 400)
+}

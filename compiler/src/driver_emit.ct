@@ -86,7 +86,14 @@ fn main() -> I32 {
             println("static char* ctron_abase = 0;")
             println("static size_t ctron_aoff = 0;")
             println("static size_t ctron_acap = 0;")
-            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)16384; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; return p; }")
+            println("static int ctron_alock = 0;")
+            // T46:arena bump 自旋锁——scope spawn(pthread)双线程并发分配原先
+            // 无锁同 offset 互踩(serve_e2e 服务端响应串被主线程分配覆写实证,
+            // x_client_e2e/sse/ws 六红同源);单线程路径一次 TAS+release 开销
+            // 可忽略。并发 GC 路径 ct_spawn 置 ct_gc_conc 后同样退化为本函数,
+            // 锁此一处即覆盖。__sync 内建 = gcc/clang;MSVC 无此内建,emit 面
+            // Windows 支持本身在册为债。
+            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; while (__sync_lock_test_and_set(&ctron_alock, 1)) \{ } if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)4194304; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; __sync_lock_release(&ctron_alock); return p; }")
             // 运行时辅助:容器/单元格/字节域/读文件(必须先于使用它的原型)
             println("typedef struct \{ unsigned long long magic; char** items; int n; int cap; } ctron_list;")
             // T29 M1 GC 前向声明(核心实现在 ct_chans 声明之后;保守根先行,
@@ -109,7 +116,8 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static void ctron_print_i64(int64_t v) \{ printf(\"%lld" + bs() + "n\", (long long)v); }")
             println("static int ctron_byte_at(const char* s, int i) \{ return (int)(unsigned char)s[i]; }")
             println("static const char* ctron_utf8_enc(int cp) \{ static const char* rep = \"\\xEF\\xBF\\xBD\"; unsigned char b[5]; int un = 0; if (cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) \{ return rep; } if (cp < 0x80) \{ b[un++] = (unsigned char)cp; } else if (cp < 0x800) \{ b[un++] = (unsigned char)(0xC0 | (cp >> 6)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); } else if (cp < 0x10000) \{ b[un++] = (unsigned char)(0xE0 | (cp >> 12)); b[un++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); } else \{ b[un++] = (unsigned char)(0xF0 | (cp >> 18)); b[un++] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F)); b[un++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); } b[un] = 0; char* r = (char*)ct_gc_alloc((size_t)un + 1); memcpy(r, b, (size_t)un); r[un] = 0; return r; }")
-            println("static const char* ctron_byte_slice(const char* s, int a, int b) \{ int n = b - a; char* r = (char*)ct_gc_alloc((size_t)n + 1); memcpy(r, s + a, (size_t)n); r[n] = 0; return r; }")
+            println("static void ctron_panic(const char* m);")
+            println("static const char* ctron_byte_slice(const char* s, int a, int b) \{ int n = b - a; if (n < 0 || a < 0 || (long)a + (long)n > (long)strlen(s)) \{ ctron_panic(\"byte_slice: range out of bounds\"); } char* r = (char*)ct_gc_alloc((size_t)n + 1); memcpy(r, s + a, (size_t)n); r[n] = 0; return r; }")
             // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned,免 free;
             // 语言面 str_from_c;解释器口径为恒等——解释域无 C 堆)
             println("static const char* ctron_str_from_c(const char* p) \{ size_t n = strlen(p); char* r = (char*)ct_gc_alloc(n + 1); memcpy(r, p, n + 1); return r; }")
@@ -117,6 +125,8 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static const char* ctron_read_dir(const char* path) \{ DIR* d = opendir(path); if (!d) \{ return NULL; } size_t cap = 256; size_t len = 0; char* r = (char*)malloc(cap); r[0] = 0; struct dirent* de; while ((de = readdir(d)) != NULL) \{ if (strcmp(de->d_name, \".\") == 0 || strcmp(de->d_name, \"..\") == 0) \{ continue; } size_t bl = strlen(de->d_name); while (len + bl + 2 > cap) \{ cap *= 2; } char* nb = (char*)realloc(r, cap); r = nb; memcpy(r + len, de->d_name, bl); len += bl; r[len] = 10; len += 1; } closedir(d); r[len] = 0; return r; }")
             println("static int ctron_fs_exists(const char* path) \{ FILE* f = fopen(path, \"rb\"); if (!f) \{ return 0; } fclose(f); return 1; }")
             println("static int ctron_fs_write(const char* path, const char* data) \{ FILE* f = fopen(path, \"wb\"); if (!f) \{ return 0; } size_t n = strlen(data); size_t w = fwrite(data, 1, n, f); fclose(f); return w == n; }")
+            println("static int ctron_fs_mkdir(const char* path) \{\n#include <sys/stat.h>\n#include <errno.h>\n char tmp[4096]; size_t len = strlen(path); if (len == 0 || len >= sizeof(tmp)) \{ return 0; } memcpy(tmp, path, len + 1); for (char* p = tmp + 1; *p; p++) \{ if (*p == '/') \{ *p = 0; if (mkdir(tmp, 0755) != 0 && errno != EEXIST) \{ return 0; } *p = '/'; } } if (mkdir(tmp, 0755) != 0 && errno != EEXIST) \{ return 0; } return 1; }")
+            println("int32_t ctron_fs_mkdir_p(const char* path) \{ return (int32_t)ctron_fs_mkdir(path); }")
             println("static int ctron_fs_delete(const char* path) \{ return remove(path) == 0; }")
             println("static int64_t ctron_now_ms(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; }")
             println("static const char* ctron_now_ms_text(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%lld\", ms); return r; }")

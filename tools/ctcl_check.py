@@ -16,7 +16,7 @@ HEAD = re.compile(r"(%s)(\s*(\"(?:[^\"\\]|\\.)*\"))?\s*\{\s*$" % IDENT)
 FIELD = re.compile(r"(%s)\s*=\s*(.+?)\s*$" % IDENT)
 
 # schema 方言允许的旗标(reg 块级 / regkey 键级);未知旗标 = 加载失败(L0 纪律)
-_REG_FLAGS = {"kind", "required", "name_pattern", "mutex"}
+_REG_FLAGS = {"kind", "required", "name_pattern", "mutex", "required_keys"}
 _REGKEY_FLAGS = {"type", "const", "first", "min", "pattern", "members", "sorted", "required"}
 _TYPES = {"str", "int", "bool", "list"}
 
@@ -309,6 +309,12 @@ def validate(blocks, ds):
                     hit = combo
             if hit is None:
                 ds.append(diag("E5049", b["ln"], "dep 需要且仅需要一种来源:path | git+rev | version"))
+        if spec.get("required_keys"):
+            # T49 member:E5051(规范 §6;非 E5047——member 是键控块,缺键属 workspace 块错族)
+            present = {f["k"] for f in b["fields"]}
+            for rk in spec["required_keys"]:
+                if rk not in present:
+                    ds.append(diag("E5051", b["ln"], '%s "%s" 缺必填键 %s' % (b["name"], b["arg"], rk)))
     for bname, bspec in SCHEMA.items():
         if bspec["kind"] != "record":
             continue

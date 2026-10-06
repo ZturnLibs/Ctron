@@ -1,0 +1,7 @@
+// 07e_byte_slice_range.panic.ct —— byte_slice 范围校验:负长度/越界即 panic(FB-1,源自 Loom F22b)
+//@ panic: byte_slice
+
+test "byte_slice negative range panics" {
+    let s = "hello"
+    let _ = byte_slice(s, 3, 1)               // b < a → panic,消息含 "byte_slice"
+}

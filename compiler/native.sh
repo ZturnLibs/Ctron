@@ -8,6 +8,7 @@
 #                   词法诊断 rc=1;-w/--check/pkg 目录由 ctron 层编排,docs/fmt-spec.md)
 #   bin/ctron-doc   iface 投影驱动(闭源包分发 S0:pub 符号表 + trait/impl 面,
 #                   --format=json JSON 面;ctc.sh doc 同面)
+#   bin/ctron-dep   依赖解析驱动(T49:lock 内容寻址生成+digest 校验;ctc.sh dep 同面)
 #
 # 生成路径(自举链):发射器(cc_emit)编译编译器源 → C → 本机 cc。
 # 宿主 seed(compiler-c/build/ctronc)只在 ctc.sh emit 内部出现 —— 首次引导职责。
@@ -30,6 +31,7 @@ mkdir -p "$BIN"
 "$DIR/ctc.sh" emit "$DIR/build/cc_check.ct" "$TMP/ctron_chk.c" > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_fmt.ct"  "$TMP/ctron_fmt.c"  > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_doc.ct"  "$TMP/ctron_doc.c"  > /dev/null
+"$DIR/ctc.sh" emit "$DIR/build/cc_dep.ct"  "$TMP/ctron_dep.c"  > /dev/null
 
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
@@ -75,3 +77,6 @@ echo "native: bin/ctron-fmt(格式化驱动)← $(wc -l < "$TMP/ctron_fmt.c") �
 
 cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c"
 echo "native: bin/ctron-doc(iface 投影驱动)← $(wc -l < "$TMP/ctron_doc.c") 行 C"
+
+cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c"
+echo "native: bin/ctron-dep(依赖解析驱动,T49)← $(wc -l < "$TMP/ctron_dep.c") 行 C"

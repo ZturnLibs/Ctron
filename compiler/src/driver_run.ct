@@ -77,7 +77,7 @@ fn main() -> I32 {
                 }
                 var mi: I32 = 0
                 while mi < lmisses.len {
-                    println("W8902: 包 " + lmisses[mi] + " 未命中解析链(项目目录→lib→pkgs→deps);独立发布包试: ctron pkg add " + lmisses[mi])
+                    println("W8902: 包 " + lmisses[mi] + " 未命中解析链(项目目录→dep→lib→pkgs→deps);registry 包试: ctron add " + lmisses[mi])
                     mi += 1
                 }
                 return 1

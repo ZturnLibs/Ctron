@@ -48,6 +48,8 @@ ERROR_CODES = {
     "E5020": "循环依赖",
     "E5030": "use 导入同名 decl",
     "E5035": "use 别名与已有 decl 冲突(§2 包路径别名)",
+    "E5054": "依赖工件摘要不符(闭源分发 D8-2 L2 记录-比对)",
+    "E5055": "工件摘要未验(缺 self_digest/dep.digest;fail-closed 拒载)",
     "E5060": "derive 插件未声明/插件包加载或接口面不符(T52 插件沙箱)",
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",
@@ -160,6 +162,11 @@ def check_file(path: Path) -> list[str]:
     relparts = path.relative_to(ROOT).parts
     in_modules = "modules" in relparts or ("ffi" in relparts and "src" in relparts)
     if in_modules:
+        # T49 装载器负例夹具:清单本身即 E5049 负样本(三互斥同现),由 smoke
+        # 装载器断言驱动——不走清单 judge(同 gui/net 泳道 skip 先例)
+        case_dirs_negative_manifest = {"dep_mutex_neg"}
+        if len(relparts) >= 2 and relparts[1] in case_dirs_negative_manifest:
+            return errors
         if not (path.parent.parent / "Ctron.ctcl").exists():
             errors.append("modules 用例缺少 Ctron.ctcl(项目根)")
         else:

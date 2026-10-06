@@ -347,3 +347,32 @@ E-PKG-DEP-UNVERIFIED(meta 缺 self_digest 或缺 dep 记录)。
 E-PKG-DEP-UNVERIFIED)+ 篡改负例(改字节 → L1 shasum -c 失败)。
 
 状态:设计成文(2026-09-22);L2 实现按下片。
+
+## D8-2 L2 落地(2026-10-06,T50 批):摘要校验 + seal 编排 + S1a-iii 补验全绿
+
+- **诊断码分配**:E-PKG-DEP-MISMATCH = **E5054**、E-PKG-DEP-UNVERIFIED = **E5055**
+  (E5054-5056 核实空闲;diag_msg.ct 双语模板 + meta_check.py 码表 +
+  docs/spec/10-diagnostics-conformance.md 三面注册)。
+- **seal 编排(ctc.sh ast 面编排层,编译器热路径零触碰)**:`--depdigest=<名>:sha256:<hex>`
+  (分号多值)经临时文件锚 ANCHORDEPFILE 注入 driver_ast seal 模式 → meta dep 块;
+  编排层算 SHA256SUMS(`impl/**` 载荷,路径字节序,**不含 meta**——self_digest 入
+  meta,含之即循环)+ self_digest = sha256(SHA256SUMS 字节) 插入 artifact 块
+  (meta 首块,首个 `^}` 即其闭括号);darwin shasum / linux sha256sum 双封装 ctc_sha。
+- **加载期校验(pkg_load_use_done 工件分支)**:五 fn(pkg_meta_find/pkg_meta_strval/
+  pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify,decl 锁 506→511 随批申报);
+  消费方身份经第九参 ameta 穿线(包装 fn 签名零扰动);done 语义不变(已验依赖随
+  done 跳过);顶层源消费方无记录面 = L2 诚实边界(钉定归 T49 lock 域)。
+- **S1a-iii 补验**:geom_match 夹具(pub enum + match 表达式位,4991132 解析修复后
+  工件路径回归锚)密封消费 r1=7/r2=12 双臂绿——enum 裸变体不跨模块,消费方只用
+  fn 值导入形。
+- **同批小改**:E2020.use.read 于 deps/<pkg>.ctart 存在而 impl 未命中时点名工件。
+- **门**:smoke 3p 腿八断言(编排自证/正例 t=12/E5054 双摘要/E5055 两侧形/L1 篡改
+  shasum -c/match 补验)+ 3m/3n 封印改走依赖序 depdigest;全量 smoke 166 ok / 2 fail
+  (两败主树在册:conc_parallel 发射红 + Rust 臂 iter 翻绿待清账);meta_check 1 败
+  主树在册(dep_mutex_neg E5049,基线实证);native 七驱动重建。
+- **坑**:art_dir/next_meta 声明须在 std/非 std 分支外(校验点在分支汇合后,
+  块内声明不可见 = 未解析名称实红一次)。
+
+状态:✅ L2 完成(2026-10-06)。余:L1 升 `ctc pkg verify` 命令面(S4)、L3
+in-language sha256 重算(S3/S4)、命名空间(S4)、S1b 缓存接线(加速触发线挂账维持,
+2026-09-22 实测占比 ≈44% 未触)。

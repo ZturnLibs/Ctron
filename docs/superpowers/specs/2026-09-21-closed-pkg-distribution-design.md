@@ -266,6 +266,15 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 
 触发重述:S1 即 §10.1 原计划(其自身触发条件不变);S2+ 以"出现真实闭源分发需求"为启动条件——本 spec 的作用是把届时要走的路一次说清,避免临场设计。
 
+> **S2 落地注(2026-10-06,T50 批)**:S2 主体 + D8-2 L2 完整性收口落库——工件端到端
+> (seal→deps 消费→碰撞/双版本/传递/菱形)、加载期摘要校验(E5054 需求≠实际 /
+> E5055 缺 self_digest 或 dep 记录,fail-closed,t=7 静默错版本洞已闭)、seal 编排层
+> (--depdigest 旗标 + SHA256SUMS + self_digest;impl/** 载荷字节序,不含 meta)、
+> S1a-iii match/enum 工件路径补验。诊断码占位名落定:E-PKG-DEP-MISMATCH=E5054、
+> E-PKG-DEP-UNVERIFIED=E5055。余:S1b 缓存接线(加速触发线挂账维持)、L1 升
+> `ctc pkg verify` 命令面、L3 in-language sha256 重算、跨发布者命名空间(均
+> S3/S4 需求方触发)。明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 落地节。
+
 ## 11. 风险
 
 | 风险 | 概率 | 缓解 |

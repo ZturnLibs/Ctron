@@ -238,6 +238,77 @@ int gui_gesture_swipe_take(void) {
 const char *gui_gesture_swipe_dir(void) { return g_gs_sw; }
 int gui_gesture_sw_x(void) { return g_gs_x; }
 int gui_gesture_sw_y(void) { return g_gs_y; }
+// ---- 浮板窗管器(GUI-32 v1):单浮板;标量态全驻 C。
+// gui_board_open_req 入请求队列(title/src 二串);循环 take 后 Ctron 解析 src
+// 为浮板 GuiTree;渲染=浮板 emit 指令平移 blit(gui_cmds_shift_range);
+// 标题栏拖拽/关闭盒坐标判定在 Ctron 循环 ----
+static int g_bd_req = 0;
+static char g_bd_title[64] = {0};
+static char *g_bd_src = 0;
+static int g_bd_x = 0, g_bd_y = 0, g_bd_w = 0, g_bd_h = 0;
+static int g_bd_open = 0;
+static int g_bd_drag = 0;
+static int g_bd_close_req = 0;
+void gui_board_open_req(const char *title, const char *src, int x, int y, int w, int h) {
+    if (g_bd_req) { return; }
+    snprintf(g_bd_title, sizeof g_bd_title, "%s", title ? title : "");
+    if (g_bd_src) { free(g_bd_src); }
+    g_bd_src = strdup(src ? src : "");
+    g_bd_x = x; g_bd_y = y; g_bd_w = w; g_bd_h = h;
+    g_bd_req = 1;
+}
+int gui_board_open_pend(void) { return g_bd_req; }
+const char *gui_board_title(void) { return g_bd_title; }
+const char *gui_board_src(void) { return g_bd_src; }
+void gui_board_activate(void) { g_bd_open = 1; g_bd_req = 0; g_bd_drag = 0; g_bd_close_req = 0; }
+int gui_board_open_flag(void) { return g_bd_open; }
+int gui_board_x(void) { return g_bd_x; }
+int gui_board_y(void) { return g_bd_y; }
+int gui_board_w(void) { return g_bd_w; }
+int gui_board_h(void) { return g_bd_h; }
+void gui_board_move(int dx, int dy) { g_bd_x += dx; g_bd_y += dy; }
+void gui_board_drag_on(int x, int y) { g_bd_drag = 1; g_bd_x = x; g_bd_y = y; }
+void gui_board_drag_to(int x, int y) { if (g_bd_drag) { g_bd_x = x; g_bd_y = y; } }
+void gui_board_drag_off(void) { g_bd_drag = 0; }
+int gui_board_dragging(void) { return g_bd_drag; }
+void gui_board_close(void) { g_bd_open = 0; g_bd_close_req = 0; }
+int gui_board_close_req(void) { return g_bd_close_req; }
+void gui_board_close_req_set(void) { if (g_bd_open) { g_bd_close_req = 1; } }
+// 指令平移 blit:浮板 emit 的指令区间整体位移(dx,dy)
+static Clay_RenderCommand *cmd(int i);
+// GUI-32:双 pass 命令合并——主 pass 命令快照→浮板 pass→拼接恢复
+static Clay_RenderCommandArray g_main_cmds = { 0 };
+static Clay_RenderCommand *g_merge_arr = 0;
+static int g_merge_cap = 0;
+void gui_cmds_save(void) { g_main_cmds = g_cmds; }
+int g_main_cmds_len(void) { return g_main_cmds.length; }
+void gui_cmds_merge(void) {
+    int total = g_main_cmds.length + g_cmds.length;
+    if (total > g_merge_cap) {
+        if (g_merge_arr) { free(g_merge_arr); }
+        g_merge_arr = (Clay_RenderCommand *)malloc(sizeof(Clay_RenderCommand) * total);
+        g_merge_cap = total;
+    }
+    int i = 0;
+    while (i < g_main_cmds.length) { g_merge_arr[i] = g_main_cmds.internalArray[i]; i++; }
+    i = 0;
+    while (i < g_cmds.length) { g_merge_arr[g_main_cmds.length + i] = g_cmds.internalArray[i]; i++; }
+    g_cmds.internalArray = g_merge_arr;
+    g_cmds.length = total;
+    g_cmds.capacity = total;
+}
+void gui_cmds_shift_range(int from, int count, int dx, int dy) {
+    int i = from;
+    int end = from + count;
+    while (i < end) {
+        Clay_RenderCommand *c = cmd(i);
+        if (c != 0) {
+            c->boundingBox.x += (float)dx;
+            c->boundingBox.y += (float)dy;
+        }
+        i++;
+    }
+}
 void gui_inject_rclick(int x, int y) {
     if (g_qtail < 256) { g_queue[g_qtail] = (GuiEvent){ 5, 0, x, y }; g_qtail++; }
 }

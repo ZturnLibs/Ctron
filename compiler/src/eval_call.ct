@@ -1,3 +1,13 @@
+// fs_mkdir 宿主实现(FB-2):extern 同 TU runtime helper(单文件发射;用户程序走 trans_expr 映射,同 helper)
+#[trusted]
+extern "c" fn ctron_fs_mkdir_p(path: Str) -> I32
+
+fn fs_mkdir(path: Str) -> Bool {
+    let rc = ctron_fs_mkdir_p(path)
+    if rc == 1 { return true }
+    return false
+}
+
 // =====================================================================
 // eval_call.ct —— 调用域:fn 值/声明调用(call_decl_vals/call_cv/call_id)、
 // 成员与内建方法分派 call_mem(List/String/Option/Result/Scope/Channel/Mutex/
@@ -199,6 +209,19 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("fs_write args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "fs_mkdir") {
+        if vals.len == 1 {
+            var r5 = v_unbox(vals[0])
+            if r5.tag == 5 {
+                if fs_mkdir(r5.s) {
+                    return e4("k", env, vB(true), out)
+                }
+                return e4("k", env, vB(false), out)
+            }
+        }
+        panic("fs_mkdir args")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "fs_delete") {
         if vals.len == 1 {
             var r5 = v_unbox(vals[0])
@@ -359,7 +382,15 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             var r12 = v_unbox(vals[1])
             var r13 = v_unbox(vals[2])
             if r11.tag == 5 && r12.tag == 1 && r13.tag == 1 {
-                return e4("k", env, vS(byte_slice(r11.s, r12.iv.as[I32](), r13.iv.as[I32]())), out)
+                var a2: I32 = r12.iv.as[I32]()
+                var b2: I32 = r13.iv.as[I32]()
+                if b2 < a2 {
+                    panic("byte_slice: range out of bounds")
+                }
+                if a2 < 0 {
+                    panic("byte_slice: range out of bounds")
+                }
+                return e4("k", env, vS(byte_slice(r11.s, a2, b2)), out)
             }
         }
         panic("byte_slice arity")

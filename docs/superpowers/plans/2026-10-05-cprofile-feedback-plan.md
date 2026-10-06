@@ -61,3 +61,73 @@
 2. **结论:本批次不得在主工作树实施**——必须开专用 worktree(仓库惯例:`.worktrees/<名>`,参照 asan/p0a 先例),基线 = 含本规划的提交 d3bab5ec。
 3. **新登记(基础设施)**:native.sh 自举链依赖 seed 宿主(compiler-c)发射器,该发射器已落后当前发射特性(spn 作用域保存/恢复)——**T20 缓存命中时掩盖,缓存未命中必然失败**。工项:同步 seed 宿主或 native.sh 改走自举发射链(bin/ctron-emit 直发,本轮实测可行:emit1/emit2 均 rc=0)。
 4. 下轮执行序:①开 .worktrees/fb1(git worktree add,基线含规划);②重放 FB-1 双臂补丁(本文件含精确锚点);③走自举发射链重建(bin/ctron-emit → cc,绕 seed);④五步验收;⑤FB-2 五点实施。
+
+## FB-1 完成(2026-10-05,fb1 worktree 分支)
+- 双臂防护落地并终验:解释臂(main 探针 rc=1+消息)、发射臂(模板 strlen 边界+panic,rc=1+消息);合法切片不受影响(行为面由既有语料兜底)
+- 过程实录(全部为可复用经验):①`\}` 非法转义(README 在册坑,重蹈——模板规则:`{` 转义 `\{`,`}` 恒裸写);②模板顺序:byte_slice 在 ctron_panic 定义前 → 前置声明一行解决;③native.sh 静默失败根因=seed 宿主发射器落后(spn)+T20 缓存掩盖 → 自举链绕行(bin/ctron-emit 直发,实测可行);④管道 head 吞退出码(第二次踩,立规:验收一律重定向文件);⑤smoke 90/64 基线在有无补丁下完全一致 → 64 项为 HEAD/环境既有(与并行会话在途状态相关),非本批引入
+- 遗留登记:①自举单步对无 main 文件的 test 块执行在新链 rc=0(旧 21:14 二进制 rc=1)——源起并行会话未提交的 driver_run 在途改动,HEAD 即如此,非本批引入,登记给并行会话;②panic 测试的双臂统一验证口径
+
+## FB-2 状态(fb1 worktree,2026-10-05)
+- 已落:prelude 名单(parse_pkg/sem_calls)、解释臂分发(eval_call)、发射映射(trans_expr:1062)、运行时模板+includes(driver_emit,include 已置于 helper 前)、plugin/sem_type/trans_ty 三注册点
+- 阻塞单点:编译器源内部分发调用 `fs_mkdir(r5.s)` 发射为 `t_fs_mkdir`(user-fn 路径)而非映射的 `ctron_fs_mkdir`——fs_write 同形调用却正确映射。下一步:找出两姊妹内建在 sem/emit decl 表上的差异点(疑 sem_builtin 签名表或 fn-decl 创建路径还有一处注册),对齐即通
+- 验证(映射通后):重建双二进制 → 解释臂 fs_mkdir 行为测试(创建/已存在/嵌套)→ 发射臂同 → smoke/suite 基线对照(90/64 既有)
+- FB-1 已在本分支提交(4ed1b0d0),双臂终验 rc=1+消息 ✓
+
+## FB-2 追加定位(2026-10-05 深夜)
+- 自举链双步法已跑通(主树发射器引导 → worktree 自举),新事实:
+  ①HEAD 的 driver_emit.ct 结构体模板缺 spn(并行会话未提交改动的一部分)——已补(int sv[8]; int spn;),该修复独立有效
+  ②即便用主树新发射器,内部调用 fs_mkdir(r5.s) 仍发射 t_fs_mkdir——**排除发射器版本因素,确认是 sem/emit decl 表注册差异**
+- 剩余单点:找出 fs_write 与 fs_mkdir 在 sem fn-decl 表上的差异(疑 prelude 名单创建 decl 时 arity/signature 表还有一处;或 ct_call 早于 1062 行的分支对有 decl 的 prelude 名走 user-fn 路径,而 fs_write 因某种表项被豁免)
+- 定位手法建议:在 trans_expr 的 user-fn 分支入口打印 callee,一次重建即可看见 fs_write/fs_mkdir 各走哪条;或 diff 两者的 sem decl dump(ctc.sh ast)
+- 全部改动保留在 fb1 worktree 工作树(未提交部分=driver_emit struct spn 修复+注册点七处),FB-1 已提交(4ed1b0d0)
+
+## FB-2 最终状态(2026-10-05)
+- 落地:全部注册点(8 处)+ helper 模板(改名 ctron_fs_mkdir_p)+ extern/impl(eval_call 文件级)+ include 局部化技巧
+- 阻塞:发射器对 cc_emit.ct 的发射段错误(e1=139,EXC_BAD_ACCESS)——与并行会话在猎的 s30 Heisenbug 同域(他们已登记"无探针确定性崩");本批不再单干,需与 s30 会话协同定位
+- 已排除:helper 命名碰撞(改名 _p 后仍崩);发射器版本(主树新发射器亦崩);fn-decl 差异假说已修正(先前 t_fs_mkdir 主因=用了主树旧发射器,该二进制不含 fs_mkdir 映射——两步自举后应已解决,但被 139 掩盖)
+- 下轮:与 s30 会话对齐(或等其落地后)重放:两步自举 → fs_mkdir 双臂行为测试 → 提交
+- FB-1 已完成提交(4ed1b0d0);struct spn 修复亦在本 worktree(随本提交)
+
+## 收官定位(2026-10-05 深夜,并行会话提交互证)
+
+- 本轮全部 139 段错误 = **已知的 bins 破损态**:并行会话 main 提交 5d5e4c08 明确登记"35bd03f6 合入的中间态+peer WIP 丢弃致 bins 破损(s23 总线错/s19 段错误/70 夹具崩)"并已完成"发射链治愈"(emission 三件 checkout 入 main,smoke 115/54→171/2)
+- **对 fb1 的行动指令**:①`git merge main`(取得治愈后的 emission 三件;driver_emit.ct 若冲突,以 main 侧为基底重放 FB-1 模板编辑+FB-2 模板,两处锚点都在本文件);②两步自举重建;③FB-1 panic 测试 + FB-2 fs_mkdir 行为测试双臂验证;④提交
+- 本 worktree 当前态:FB-1 补丁 ✓(工作树)+ FB-2 八处注册点 ✓(工作树)+ 测试 07e ✓——全部未失,仅待治愈基线上的重建验证
+
+## FB-2 完成(2026-10-06,fb1 worktree)
+- fs_mkdir 全链落地:8 处注册点 + runtime helper 模板(别名包装 ctron_fs_mkdir_p → ctron_fs_mkdir,新旧发射器二进制兼容)+ 编译器源内 impl(extern 同 TU helper)
+- 双臂验证:解释臂 fs_mkdir 创建/存在/幂等 ✓ + 目录真实创建 ✓;发射臂同 ✓;FB-1 panic 回归 ✓(rc=1+消息)
+- 自举链定案:主树发射器发 cc_emit → 追加一代 C 实现(helper)→ 新发射器 → 发 cc_run(自含)——此后每代自含
+- smoke 156/4:余 4 项 = ①自检 decls=482 基线漂移(新增 fs_mkdir/extern +2,预期,随提交更新基线)②conc_parallel 发射(待查,或 HEAD 既有)③native/seed 口径(seed rt_eval.c 缺 fs_mkdir native,已登记)④doc std 模块(worktree 环境面)
+- 后续:Loom 侧 F16/F17 规避回归删除;seed rt_eval.c 补 fs_mkdir native
+
+## FB-2 验收补全(2026-10-06)
+- decls 基线 480→482 随批更新(惯例如注);smoke 157/3
+- 余 3 项归因完成:①conc_parallel 发射段错误——**主树二进制(与本批无关)对同一 fixture 同样 139**(fixture 自 Phase 4 未变)→ 既有 s30/发射链范畴,登记移交;②native/seed 口径——同源(seed rt_eval 缺 fs_mkdir native 已登记);③doc std 模块——worktree 环境面
+- **FB-1+FB-2 验收就此闭合**:双臂行为 ✓、panic 回归 ✓、smoke 基线更新 ✓、余 3 项均归因既有并移交
+
+## FB-1/FB-2 验收清单完成(2026-10-06)
+- ①解释臂 panic 测试 ✓(rc=1+消息)②发射臂 ✓(strlen 防护)③smoke 157/3(3 项归因既有)④**suite 100/101 = 主线基线持平**(并行治愈提交同数;03m=L4 待立项探针 + cbox=worktree ffi 环境,均既有)⑤build_fb.sh 过渡自举脚本固化(行首锚定存在性检查;追加一代 C 实现,此后自含)
+- 新增坑三条入册:①build 存在性 grep 误匹配 printf 数据行(行首锚定);②extern 符号若与模板符号同名,发射器自举代差必崩(改名+别名包装解);③函数体外浮语句=发射器列表树失配崩触发形状(s30 同族)
+- fb1 分支就绪待合:FB-1+FB-2+基线+本文件;合并窗口需与并行会话协调
+
+## seed 宿主补齐(2026-10-06)
+- compiler-c/src/rt_eval.c 加 fs_mkdir native(逐级创建,EEXIST 容忍,镜像 fs_write 形态)+ sys/stat/errno includes;make 过,seed 路径 probe 全通(创建/存在)
+- smoke 维持 157/3(余:conc_parallel 段错误=主树二进制同样崩[s30/发射链范畴已移交]、native/seed 口径——seed 补齐后待重验、doc std=worktree 环境)
+- fb1 分支就绪,合并窗口待与并行会话协调
+
+## 预合并完成(2026-10-06)
+- main 已并入 fb1(7c44d04c 之后 main 前进:T46/47 http serve、T49 pkg registry[decl 锁 480→506]、T50 WIP);唯一冲突 smoke decls 已解:**506+2=508**(T49 二十六 fn + FB-2 二),smoke 156/4
+- 4 失败归因:①conc_parallel=主树同源在册红 ✓既有;②T35 use 门(空详情)③native/seed 口径 ④**W8902 缺失(use hi 得裸 E2020)——疑与 T49 解析链 W8902 流互动(merge 对 parse_pkg 的自动合并),待 T50 落地后对纯 main 对照归因**
+- fb1 分支自此含 main 全量+FB-1/FB-2:后续 main 合并 fb1 应近平凡(或 fast-forward 窗口)
+
+## ✅ FB-1/FB-2 合入 main 完成(2026-10-06)
+- main 快进合并 fb1(2f7aa4a7,含 T50 0a9c2c51 全量);主树二经两步自举重建(build_fb.sh)
+- 终验:①FB-1 panic rc=1+消息 ✓ ②FB-2 fs_mkdir 嵌套创建/幂等 ✓ ③**Loom CI 对新编译器全绿**(跨项目回归)④Ctron smoke 166/2、meta_check 1 败——与主树 T50 提交登记的基线**逐项吻合**(conc_parallel+Rust 臂 iter+dep_mutex_neg,均并行会话在册非本批)
+- Cprofile 台账闭环:F16(mkdir 缺失)与 F22b(byte_slice 越界)两项**已关闭**;Loom 侧规避(扁平布局/负参防护)可随下次 Loom 编译器基线声明升级删除
+- 余:FB-3+(P0 字面量域/视图宽度,锚点在册)、fb1 分支留存可删
+
+## FB-5 复核关闭(2026-10-06)
+- F15(U8.as[I64] 符号扩展)**当前编译器双臂均不复现**(探针:U8[200].as[I64] → 两臂 W=200 零扩展正确)——原观测疑为 F10(I64 数组视图)在同期的混淆归因
+- 处置:FB-5 关闭;Loom 侧 u8widen 防御壳保留(已验证绿,无删除收益);台账 F15 标"未复现(复核 2026-10-06)"
+- FB 批次状态:FB-1 ✅ FB-2 ✅(已合 main)FB-5 关闭;下一批实际工项 = FB-3/FB-4(字面量域/视图宽度,P0 静默错值族,需先做最小复现探针归因到 emitter 具体行)

@@ -1,5 +1,7 @@
 #include "rt_internal.h"
 #include <errno.h>
+#include <sys/stat.h>
+#include <errno.h>
 #include <time.h>
 
 // rt_eval.c —— 域辅助(和类型/数组/类/并发)+ 表达式求值(C4-i)
@@ -1050,6 +1052,20 @@ val eval_expr(rt* R, cexpr* e) {
                 size_t w = fwrite(data, 1, dn, f);
                 fclose(f);
                 return v_bool(w == dn);
+            }
+            if (!strcmp(nm, "fs_mkdir")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "fs_mkdir 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                char tmp[4096];
+                size_t len = strlen(path);
+                if (len == 0 || len >= sizeof(tmp)) return v_bool(0);
+                memcpy(tmp, path, len + 1);
+                for (char* p = tmp + 1; *p; p++) {
+                    if (*p == '/') { *p = 0; if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return v_bool(0); *p = '/'; }
+                }
+                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) return v_bool(0);
+                return v_bool(1);
             }
             if (!strcmp(nm, "fs_delete")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "fs_delete 实参");

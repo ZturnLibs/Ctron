@@ -269,6 +269,11 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
     int nseen = 0, ndeps = 0;
     int saw_pkg = 0, saw_name = 0, saw_version = 0, has_mver = 0, mver_ok = 0;
     int dep_active = 0, has_path = 0, has_git = 0, has_rev = 0, has_version = 0;
+    int member_active = 0, m_has_path = 0;
+    char seen_members[CTCL_MAXKEYS][64];
+    int seen_member_ln[CTCL_MAXKEYS];
+    int nmembers = 0;
+    char member_arg[64] = {0};
     int skipping = 0, bal = 0;
     pkg_res pend = {0};
     int b_saw_pkg = 0, b_has_mver = 0, b_mver_ok = 0, b_saw_name = 0, b_saw_version = 0;
@@ -341,8 +346,8 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
                 push(r, "Ctron.ctcl", "E5040", "块外只允许块头(NAME [\"名\"]) {");
                 continue;
             }
-            if (strcmp(id, "pkg") != 0 && strcmp(id, "comptime") != 0 && strcmp(id, "dep") != 0 && strcmp(id, "plugin") != 0) {
-                push(r, "Ctron.ctcl", "E5044", "未知块 %s;合法块:comptime, dep, pkg, plugin", id);
+            if (strcmp(id, "pkg") != 0 && strcmp(id, "comptime") != 0 && strcmp(id, "dep") != 0 && strcmp(id, "plugin") != 0 && strcmp(id, "workspace") != 0 && strcmp(id, "member") != 0) {
+                push(r, "Ctron.ctcl", "E5044", "未知块 %s;合法块:comptime, dep, member, pkg, plugin, workspace", id);
                 snprintf(block, sizeof block, "skip");
                 continue;
             }
@@ -374,10 +379,42 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
                 snprintf(block, sizeof block, "skip");
                 continue;
             }
+            if (strcmp(id, "workspace") == 0 && has_arg) {
+                push(r, "Ctron.ctcl", "E5041", "workspace 是记录块,不带名字实参");
+                snprintf(block, sizeof block, "skip");
+                continue;
+            }
+            if (strcmp(id, "member") == 0) {
+                if (!has_arg) {
+                    push(r, "Ctron.ctcl", "E5041", "member 是键控块:dep \"名\" { ... }");
+                    snprintf(block, sizeof block, "skip");
+                    continue;
+                }
+                if (!c_is_name(arg)) {
+                    push(&pend, "Ctron.ctcl", "E5048", "键控块名 '%s' 不符合包名规则", arg);
+                    snprintf(block, sizeof block, "skip");
+                    continue;
+                }
+                int dupi = -1;
+                for (int i = 0; i < nmembers; i++)
+                    if (strcmp(seen_members[i], arg) == 0) dupi = i;
+                if (dupi >= 0)
+                    push(&pend, "Ctron.ctcl", "E5045", "重复的 member \"%s\"(首次在第 %d 行);同名块禁止追加", arg, seen_member_ln[dupi]);
+                else if (nmembers < CTCL_MAXKEYS) {
+                    snprintf(seen_members[nmembers], 64, "%s", arg);
+                    seen_member_ln[nmembers] = ln_num;
+                    nmembers++;
+                }
+            }
             if (strcmp(id, "pkg") == 0) b_saw_pkg = 1;
             if (strcmp(id, "dep") == 0) {
                 dep_active = 1;
                 has_path = has_git = has_rev = has_version = 0;
+            }
+            if (strcmp(id, "member") == 0) {
+                member_active = 1;
+                m_has_path = 0;
+                snprintf(member_arg, sizeof member_arg, "%s", arg);
             }
             snprintf(block, sizeof block, "%s", id);
             continue;
@@ -415,6 +452,12 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
                 else if (np == 0)
                     push(r, "Ctron.ctcl", "E5049", "dep 需要且仅需要一种来源:path | git+rev | version");
                 dep_active = 0;
+            }
+            if (member_active) {
+                if (!m_has_path)
+                    push(r, "Ctron.ctcl", "E5051", "member \"%s\" 缺必填键 path", member_arg);
+                member_arg[0] = '\0';
+                member_active = 0;
             }
             block[0] = '\0';
             continue;
@@ -603,6 +646,11 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
             else if (strcmp(key, "rev") == 0) has_rev = 1;
             else if (strcmp(key, "version") == 0) has_version = 1;
             else push(&pend, "Ctron.ctcl", "E5043", "块 dep 中未知键 %s;合法键:path, git, rev, version", key);
+        } else if (strcmp(block, "workspace") == 0) {
+            push(&pend, "Ctron.ctcl", "E5043", "块 workspace 中未知键 %s;合法键:(无)", key);
+        } else if (strcmp(block, "member") == 0) {
+            if (strcmp(key, "path") == 0) m_has_path = 1;
+            else push(&pend, "Ctron.ctcl", "E5043", "块 member 中未知键 %s;合法键:path", key);
         }
     }
 

@@ -6,6 +6,10 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $ErrorActionPreference = 'Stop'
 $Bin = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $Bin
+$DevRoot = $Bin
+if (-not (Test-Path (Join-Path $Bin 'ctron-cc.exe')) -and (Test-Path (Join-Path $Bin 'compiler/bin/ctron-cc.exe'))) {
+	$Bin = Join-Path $Bin 'compiler/bin'
+}
 if ($env:CC) { $Cc = $env:CC } else { $Cc = 'gcc' }
 $global:LASTEXITCODE = 0
 
@@ -24,6 +28,13 @@ ctron —— Ctron 工具链驱动
   ctron fmt <file|pkg目录> [-w|--check]
                              规范格式化(docs/fmt-spec.md):默认打印;-w 原位写回;
                              --check 列出待格式化文件后非零退出
+  ctron lint <file|pkg目录> [--trusted] [--strict]
+                             lint 汇总:错误红(rc=1),警告默认只汇总;
+                             --trusted 信任审计枚举(§9.6);--strict 警告也红
+  ctron bench [族]            基准族入口(lang/gc/http/net/ffi;dev 布局)
+  ctron add <名>[@<版本约束>] 装包:写 dep 块 + pkgs/ 安装 + 刷新 Ctron.lock(T49 本地 registry)
+  ctron publish               发布当前目录单文件包到本地 registry(T49;CTRON_REGPATH,缺省 ~/.ctron/registry)
+  ctron lock                  解析依赖并生成/校验 Ctron.lock(内容寻址)
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -51,6 +62,16 @@ ctron build —— 发射 C 并编译为可执行
 		Write-Output 'ctron test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账'
 	} elseif ($c -eq 'fmt') {
 		Write-Output 'ctron fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出'
+	} elseif ($c -eq 'lint') {
+		Write-Output 'ctron lint <file.ct|pkg目录> [--trusted] [--strict] —— check 命令化+汇总(§9.7):错误 rc=1;警告默认只汇总不红,--strict 才红;--trusted 信任边界审计枚举 #[trusted] extern(§9.6)'
+	} elseif ($c -eq 'bench') {
+		Write-Output "ctron bench [族] —— tests/ 基准族统一入口(T43;dev 布局)`n  lang   own/热点算术核 vs C 同构对照(T44;门 ≤1.05,WARN 档)`n  gc     GC 档 vs bump 档 churn(T32;门 ≤1.15)`n  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)`n  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)`n  ffi    FFI 边界微基准四场景(报告制)`n无族名列出注册表;未注册族名清晰诊断(fail-closed)。"
+	} elseif ($c -eq 'add') {
+		Write-Output 'ctron add <name>[@<版本约束>] —— 本地 registry 装包(T49):写 dep 块 + pkgs/<名>/ 安装(module+manifest)+ ctron-dep 刷新 Ctron.lock;registry = CTRON_REGPATH 或 ~/.ctron/registry;零网络'
+	} elseif ($c -eq 'publish') {
+		Write-Output 'ctron publish —— 当前目录单文件包发布到本地 registry(T49):manifest+module+sha256 三件落 <reg>/<名>/<版>/;版本不可覆盖;零网络(对外发布面启用仍须经用户确认)'
+	} elseif ($c -eq 'lock') {
+		Write-Output 'ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)'
 	} elseif ($c -eq 'new') {
 		Write-Output 'ctron new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)'
 	} else { Usage }
@@ -109,10 +130,86 @@ function Build-Proj {
 	Write-Output "ctron: 已构建 build/$name.exe"
 }
 
+# T43 lint(§9.7):check 命令化+汇总。口径与 sh 版同文:错误(E####)红 rc=1;
+# 警告(W####)默认只汇总不红;--trusted 透传信任审计;--strict 警告也红。
+function Lint-Target($t, $trusted, $strict) {
+	$files = @()
+	if (Test-Path $t -PathType Container) {
+		$dir = $t
+		if (Test-Path (Join-Path $t 'src') -PathType Container) { $dir = Join-Path $t 'src' }
+		$files = @(Get-ChildItem -Path (Join-Path $dir '*.ct') -File | Sort-Object -Property Name | ForEach-Object { $_.FullName })
+		if ($files.Count -eq 0) { [Console]::Error.WriteLine("ctron: lint 目录无 .ct 文件: $t"); exit 2 }
+	} elseif (Test-Path $t) {
+		$files = @((Resolve-Path $t).Path)
+	} else {
+		[Console]::Error.WriteLine("ctron: lint 目标不存在: $t"); exit 2
+	}
+	$tmp = [System.IO.Path]::GetTempFileName()
+	$totE = 0; $totW = 0; $nf = 0; $hard = 0
+	foreach ($f in $files) {
+		$nf++
+		if ($nf -gt 1) { Write-Output "-- $f" }
+		$chkArgs = @('run', $f)
+		if ($trusted) { $chkArgs += '--trusted' }
+		& (Join-Path $Bin 'ctron-chk.exe') @chkArgs > $tmp 2>&1
+		$chkRc = $LASTEXITCODE
+		$lines = @(Get-Content $tmp)
+		$es = @($lines | Where-Object { $_ -match '^E\d{4}' })
+		$ws = @($lines | Where-Object { $_ -match '^W\d{4}' })
+		$lines | Where-Object { $_ -notmatch '^check OK' } | Write-Output
+		if (($chkRc -ge 2) -and ($es.Count -eq 0)) { $hard++ }
+		$totE += $es.Count; $totW += $ws.Count
+	}
+	Remove-Item $tmp -ErrorAction SilentlyContinue
+	Write-Output "lint: $nf 文件,$($totE + $hard) 个错误 / $totW 警告"
+	if (($totE + $hard) -gt 0) { exit 1 }
+	if ($strict -and ($totW -gt 0)) { exit 1 }
+	exit 0
+}
+
+# T43 bench(§9.7):tests/ 基准族统一入口。注册表 fail-closed(同 sh 版;同 ctc.sh targets 哲学)。
+function Bench-Cmd($fam) {
+	if (-not $fam) {
+		Write-Output 'ctron bench —— 基准族注册表(§9.4 性能口径;脚本内含门禁与归因)'
+		Write-Output '  lang   own/热点算术核 vs C 同构对照(T44;门 ≤1.05,WARN 档)'
+		Write-Output '  gc     GC 档 vs bump 档 churn(T32;门 ≤1.15)'
+		Write-Output '  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)'
+		Write-Output '  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)'
+		Write-Output '  ffi    FFI 边界微基准四场景(报告制)'
+		Write-Output '用法: ctron bench <族>'
+		exit 0
+	}
+	$map = @{ 'lang' = 'tests/lang/bench/bench.sh'; 'gc' = 'tests/gc/bench.sh'; 'http' = 'tests/http/bench/bench.sh'; 'net' = 'tests/net/bench/bench.sh'; 'ffi' = 'compiler/test/bench_ffi.sh' }
+	if (-not $map.ContainsKey($fam)) {
+		[Console]::Error.WriteLine("ctron: 未注册基准族: $fam(注册表: lang gc http net ffi;ctron bench 看详)"); exit 2
+	}
+	# 路径基 = DevRoot(回落前的脚本目录):dev=仓库根;Root 是装机语义 exe/../
+	$s = Join-Path $DevRoot ($map[$fam] -replace '/', [IO.Path]::DirectorySeparatorChar)
+	if (-not (Test-Path $s)) {
+		[Console]::Error.WriteLine("ctron: 基准族脚本缺席: $s(基准族仅 dev 布局随发;装机形态未含)"); exit 2
+	}
+	& sh $s
+	exit $LASTEXITCODE
+}
+
+# T43 add/publish(§9.7):骨架。registry 未接(T49 前置未到)——只做参数校验+
+# 出路指引,零写入零网络(fail-closed;对外发布面启用须经用户确认)。
+function Add-Validate($spec) {
+	$name = $spec.Split('@')[0]
+	$req = ''
+	if ($spec.Contains('@')) { $req = $spec.Substring($spec.IndexOf('@') + 1) }
+	if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_-]*$') {
+		[Console]::Error.WriteLine("ctron: add: 依赖名非法: '$name'(形: <name>[@<版本约束>],name = [A-Za-z_][A-Za-z0-9_-]*)"); exit 2
+	}
+	if (($req -ne '') -and ($req -notmatch '^[A-Za-z0-9.^~<>=,*_-]+$')) {
+		[Console]::Error.WriteLine("ctron: add: 版本约束非法: '$req'(semver 约束形,T49 实装)"); exit 2
+	}
+}
+
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
-if ($cmd -in 'run','check','build','test','new','fmt','doc' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
+if ($cmd -in 'run','check','build','test','new','fmt','doc','lint','bench','add','publish','lock' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
 	Help-Cmd $cmd; exit 0
 }
 switch ($cmd) {
@@ -188,6 +285,70 @@ switch ($cmd) {
 		Set-Content -Path "$($rest[0])/src/main.ct" -Value "fn main() {`n    println(`"hello, ctron`")`n}"
 		Write-Output "ctron: 已生成 $($rest[0])/(ctron run $($rest[0])/src/main.ct 试跑)"
 		exit 0 }
+	'lint' {
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: lint 需要输入文件或 pkg 目录'); exit 2 }
+		$trusted = $false; $strict = $false
+		foreach ($a in ($rest | Select-Object -Skip 1)) {
+			if ($a -eq '--trusted') { $trusted = $true } elseif ($a -eq '--strict') { $strict = $true }
+			else { [Console]::Error.WriteLine("ctron: lint 未知旗标: $a(支持: --trusted --strict)"); exit 2 }
+		}
+		Lint-Target $rest[0] $trusted $strict }
+	'bench' { Bench-Cmd $(if ($rest.Count -ge 1) { $rest[0] } else { $null }) }
+	'add' {
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: add 需要依赖名(形: <name>[@<版本约束>])'); exit 2 }
+		Add-Validate $rest[0]
+		if (-not (Test-Path 'Ctron.ctcl')) { [Console]::Error.WriteLine('ctron: add: 当前目录缺 Ctron.ctcl(项目模式)'); exit 2 }
+		$reg = $env:CTRON_REGPATH; if (-not $reg) { $reg = Join-Path $HOME '.ctron/registry' }
+		$name = $rest[0].Split('@')[0]
+		$req = ''; if ($rest[0].Contains('@')) { $req = $rest[0].Substring($rest[0].IndexOf('@') + 1) }
+		if (-not (Test-Path (Join-Path $reg $name))) { [Console]::Error.WriteLine("ctron: add: registry 无包 $name(registry: $reg;试: ctron publish)"); exit 2 }
+		$cands = @(Get-ChildItem (Join-Path $reg $name) -Name | Where-Object { if ($req -eq '') { $true } else { ($_ -eq $req) -or ($_.StartsWith("$req.")) } })
+		if ($cands.Count -lt 1) { [Console]::Error.WriteLine("ctron: add: $name 无满足约束 $req 的版本"); exit 2 }
+		$ver = $cands | Sort-Object { $_ -split '\.' | ForEach-Object { [int]($_ -replace '[^0-9].*$','') } } | Select-Object -Last 1
+		$mod = Join-Path $reg "$name/$ver/module"
+		if (-not (Test-Path $mod)) { [Console]::Error.WriteLine("ctron: add: registry 损坏:缺 module($name@$ver)"); exit 2 }
+		$mf = Select-String -Path Ctron.ctcl -Pattern ('^dep\s*"' + $name + '"') | Select-Object -First 1
+		if ($mf) {
+			[Console]::Error.WriteLine("ctron: dep \"$name\" 已在清单(不重复追加)")
+		} else {
+			Add-Content -Path Ctron.ctcl -Value ("`ndep `"$name`" {`n    version = `"$ver`"`n}")
+		}
+		New-Item -ItemType Directory -Force -Path (Join-Path (Get-Location).Path "pkgs/$name") | Out-Null
+		Copy-Item $mod (Join-Path (Get-Location).Path "pkgs/$name/$name.ct") -Force
+		Copy-Item (Join-Path $reg "$name/$ver/manifest") (Join-Path (Get-Location).Path "pkgs/$name/Ctron.ctcl") -Force
+		Write-Output "ctron: 已安装 pkgs/$name/($name@$ver)"
+		$dep = Join-Path $Bin 'ctron-dep.exe'
+		if (-not (Test-Path $dep)) { $dep = Join-Path $Bin 'ctron-dep' }
+		if (-not (Test-Path $dep)) { [Console]::Error.WriteLine('ctron: add: 缺 ctron-dep(重装工具链)'); exit 2 }
+		& $dep run (Join-Path (Get-Location).Path 'Ctron.ctcl')
+		exit $LASTEXITCODE }
+	'publish' {
+		if (-not (Test-Path 'Ctron.ctcl')) { [Console]::Error.WriteLine('ctron: publish 需项目清单 Ctron.ctcl(当前目录)'); exit 2 }
+		$m = Select-String -Path Ctron.ctcl -Pattern '^\s*name\s*=\s*"(.*)"' | Select-Object -First 1
+		$name = if ($m) { $m.Matches[0].Groups[1].Value } else { Split-Path -Leaf (Get-Location).Path }
+		$v = Select-String -Path Ctron.ctcl -Pattern '^\s*version\s*=\s*"(.*)"' | Select-Object -First 1
+		$ver = if ($v) { $v.Matches[0].Groups[1].Value } else { '' }
+		if ($ver -eq '') { [Console]::Error.WriteLine('ctron: publish: 清单缺 version'); exit 2 }
+		if ($ver -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$') { [Console]::Error.WriteLine("ctron: publish: version '$ver' 不符严格 semver"); exit 2 }
+		if (-not (Test-Path 'src/main.ct')) { [Console]::Error.WriteLine('ctron: publish: v0 registry 单文件包,需 src/main.ct'); exit 2 }
+		$pn = @(Get-ChildItem src -Filter '*.ct' -Recurse -Name).Count
+		if ($pn -ne 1) { [Console]::Error.WriteLine("ctron: publish: v0 registry 单文件包(src/ 下有 $pn 个 .ct);多文件 tar 志向"); exit 2 }
+		$reg = $env:CTRON_REGPATH; if (-not $reg) { $reg = Join-Path $HOME '.ctron/registry' }
+		$tgt = Join-Path $reg "$name/$ver"
+		if (Test-Path $tgt) { [Console]::Error.WriteLine("ctron: publish: $name@$ver 已发布(版本不可覆盖)"); exit 2 }
+		New-Item -ItemType Directory -Force -Path $tgt | Out-Null
+		Copy-Item Ctron.ctcl (Join-Path $tgt 'manifest')
+		Copy-Item src/main.ct (Join-Path $tgt 'module')
+		(Get-FileHash -Path (Join-Path $tgt 'module') -Algorithm SHA256).Hash.ToLower() | Set-Content -Path (Join-Path $tgt 'sha256') -NoNewline
+		Write-Output "ctron: 已发布 $name@$ver → $tgt(sha256:$(Get-Content (Join-Path $tgt 'sha256')))"
+		exit 0 }
+	'lock' {
+		if (-not (Test-Path 'Ctron.ctcl')) { [Console]::Error.WriteLine('ctron: lock: 当前目录缺 Ctron.ctcl'); exit 2 }
+		$dep = Join-Path $Bin 'ctron-dep.exe'
+		if (-not (Test-Path $dep)) { $dep = Join-Path $Bin 'ctron-dep' }
+		if (-not (Test-Path $dep)) { [Console]::Error.WriteLine('ctron: lock: 缺 ctron-dep(重装工具链)'); exit 2 }
+		& $dep run (Join-Path (Get-Location).Path 'Ctron.ctcl')
+		exit $LASTEXITCODE }
 	default { [Console]::Error.WriteLine("ctron: 未知子命令 '$cmd'(详见 ctron --help)"); exit 2 }
 }
 exit 0
