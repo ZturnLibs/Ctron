@@ -35,6 +35,9 @@ ctron —— Ctron 工具链驱动
   ctron add <名>[@<版本约束>] 装包:写 dep 块 + pkgs/ 安装 + 刷新 Ctron.lock(T49 本地 registry)
   ctron publish               发布当前目录单文件包到本地 registry(T49;CTRON_REGPATH,缺省 ~/.ctron/registry)
   ctron lock                  解析依赖并生成/校验 Ctron.lock(内容寻址)
+  ctron pkg verify <artifact-dir>
+                             密封工件(.ctart)摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算
+                             + self_digest 重算;fail-closed,不过即 rc=1
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -72,6 +75,8 @@ ctron build —— 发射 C 并编译为可执行
 		Write-Output 'ctron publish —— 当前目录单文件包发布到本地 registry(T49):manifest+module+sha256 三件落 <reg>/<名>/<版>/;版本不可覆盖;零网络(对外发布面启用仍须经用户确认)'
 	} elseif ($c -eq 'lock') {
 		Write-Output 'ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)'
+	} elseif ($c -eq 'pkg') {
+		Write-Output 'ctron pkg verify <artifact-dir> —— 密封工件摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算 + self_digest=sha256(SHA256SUMS 字节) 重算比对;缺 meta/SHA256SUMS/impl 或任一成员不符即 fail-closed rc=1;trace 复放腿归 S3'
 	} elseif ($c -eq 'new') {
 		Write-Output 'ctron new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)'
 	} else { Usage }
@@ -209,7 +214,7 @@ function Add-Validate($spec) {
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
-if ($cmd -in 'run','check','build','test','new','fmt','doc','lint','bench','add','publish','lock' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
+if ($cmd -in 'run','check','build','test','new','fmt','doc','lint','bench','add','publish','lock','pkg' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
 	Help-Cmd $cmd; exit 0
 }
 switch ($cmd) {
@@ -349,6 +354,45 @@ switch ($cmd) {
 		if (-not (Test-Path $dep)) { [Console]::Error.WriteLine('ctron: lock: 缺 ctron-dep(重装工具链)'); exit 2 }
 		& $dep run (Join-Path (Get-Location).Path 'Ctron.ctcl')
 		exit $LASTEXITCODE }
+	'pkg' {
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify <工件目录>)'); exit 2 }
+		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify)"); exit 2 }
+		if ($rest.Count -lt 2) { [Console]::Error.WriteLine('ctron: pkg verify 需要工件目录(.ctart)'); exit 2 }
+		if (-not (Test-Path $rest[1] -PathType Container)) { [Console]::Error.WriteLine("ctron: pkg verify: 工件目录不存在: $($rest[1])"); exit 2 }
+		$pvDir = $rest[1]
+		$pvBad = $false; $pvN = 0
+		# ① 形态面(§3.5 后缀即契约:自称 .ctart 而缺成员 = 损坏/伪造,fail-closed)
+		foreach ($pvF in @('meta.ctcl','SHA256SUMS')) {
+			if (-not (Test-Path (Join-Path $pvDir $pvF) -PathType Leaf)) { [Console]::Error.WriteLine("ctron pkg verify: 缺 $pvF(fail-closed 拒载)"); $pvBad = $true }
+		}
+		if (-not (Test-Path (Join-Path $pvDir 'impl') -PathType Container)) { [Console]::Error.WriteLine('ctron pkg verify: 缺 impl/(密封实现目录;fail-closed 拒载)'); $pvBad = $true }
+		if ($pvBad) { exit 1 }
+		# ② SHA256SUMS 逐成员重算(路径字节序由 seal 保证,此处只对账;SHA256SUMS 是不可信输入)
+		foreach ($pvLine in @(Get-Content (Join-Path $pvDir 'SHA256SUMS'))) {
+			if ($pvLine -eq '') { continue }
+			$pvIdx = $pvLine.IndexOf('  ')
+			$pvHex = if ($pvIdx -ge 0) { $pvLine.Substring(0, $pvIdx) } else { $pvLine }
+			if ($pvIdx -lt 0 -or $pvHex -notmatch '^[0-9a-f]{64}$') { [Console]::Error.WriteLine("ctron pkg verify: SHA256SUMS 行畸形: $pvLine"); $pvBad = $true; continue }
+			$pvRel = $pvLine.Substring($pvIdx + 2)
+			if ($pvRel -match '\.\.' -or $pvRel.StartsWith('/') -or $pvRel -eq '') { [Console]::Error.WriteLine("ctron pkg verify: 成员路径越界: $pvRel"); $pvBad = $true; continue }
+			$pvMember = Join-Path $pvDir ($pvRel -replace '/', [IO.Path]::DirectorySeparatorChar)
+			if (-not (Test-Path $pvMember -PathType Leaf)) { [Console]::Error.WriteLine("ctron pkg verify: 成员缺失: $pvRel"); $pvBad = $true; continue }
+			$pvAct = (Get-FileHash -Path $pvMember -Algorithm SHA256).Hash.ToLower()
+			if ($pvAct -ne $pvHex) { [Console]::Error.WriteLine("ctron pkg verify: 成员摘要不符: $pvRel 记录 $pvHex 实际 $pvAct"); $pvBad = $true }
+			$pvN++
+		}
+		# ③ self_digest 重算 = sha256(SHA256SUMS 字节)(D8-2 冻结定义;与成员腿相互独立)
+		$pvSd = Select-String -Path (Join-Path $pvDir 'meta.ctcl') -Pattern 'self_digest = "(.*)"'
+		$pvSdv = if ($pvSd) { $pvSd[0].Matches[0].Groups[1].Value } else { '' }
+		$pvSum = (Get-FileHash -Path (Join-Path $pvDir 'SHA256SUMS') -Algorithm SHA256).Hash.ToLower()
+		if ($pvSdv -eq '') {
+			[Console]::Error.WriteLine('ctron pkg verify: meta 缺 self_digest(fail-closed;工件须经 ctc.sh ast --ast=seal 摘要步骤)'); $pvBad = $true
+		} elseif ($pvSdv -ne "sha256:$pvSum") {
+			[Console]::Error.WriteLine("ctron pkg verify: self_digest 不符: 记录 $pvSdv 实际 sha256:$pvSum"); $pvBad = $true
+		}
+		# ④ 判决
+		if (-not $pvBad) { Write-Output "ctron pkg verify OK: $pvDir($pvN 成员,self_digest sha256:$pvSum)"; exit 0 }
+		exit 1 }
 	default { [Console]::Error.WriteLine("ctron: 未知子命令 '$cmd'(详见 ctron --help)"); exit 2 }
 }
 exit 0

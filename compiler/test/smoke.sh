@@ -986,6 +986,48 @@ else
     bad "match/enum 工件异常: $(tail -2 "$T/dg9b.out")"
 fi
 
+# ---------------- 3r) T50/L1 ctron pkg verify 命令面(工件摘要自洽 fail-closed) ----------------
+echo "== 3r) T50/L1 ctron pkg verify 命令面(工件摘要自洽 fail-closed)=="
+if "$ROOT/ctron" pkg verify "$DG/bh" > "$T/q1.out" 2>&1; then
+    grep -q "pkg verify OK" "$T/q1.out" && ok "pkg verify 正例:诚实工件自洽过验" || bad "OK 无文案: $(cat "$T/q1.out")"
+else
+    bad "pkg verify 正例误拒: $(cat "$T/q1.out")"
+fi
+rm -rf "$DG/vf" && cp -r "$DG/bh" "$DG/vf" && printf 'X' >> "$DG/vf/impl/base.ast"
+if "$ROOT/ctron" pkg verify "$DG/vf" > "$T/q2.out" 2>&1; then
+    bad "篡改 impl 字节未检出"
+else
+    grep -q "成员摘要不符: impl/base.ast" "$T/q2.out" && ok "成员腿:篡改 impl 字节点名路径与双摘要" || bad "无成员不符文案: $(cat "$T/q2.out")"
+fi
+rm -rf "$DG/vs" && cp -r "$DG/bh" "$DG/vs"
+awk 'NR==1{c=substr($0,1,1); r=(c=="0")?"1":"0"; sub(/^./,r)} {print}' "$DG/bh/SHA256SUMS" > "$DG/vs/SHA256SUMS"
+if "$ROOT/ctron" pkg verify "$DG/vs" > "$T/q3.out" 2>&1; then
+    bad "SHA256SUMS 记录被改未检出"
+else
+    grep -q "成员摘要不符" "$T/q3.out" && ok "成员腿:SHA256SUMS 记录行翻改即不符" || bad "无成员不符文案: $(cat "$T/q3.out")"
+fi
+rm -rf "$DG/vm" && cp -r "$DG/bh" "$DG/vm" && rm "$DG/vm/SHA256SUMS"
+if "$ROOT/ctron" pkg verify "$DG/vm" > "$T/q4.out" 2>&1; then
+    bad "缺 SHA256SUMS 未拒"
+else
+    grep -q "缺 SHA256SUMS" "$T/q4.out" && ok "形态腿:缺 SHA256SUMS fail-closed 拒载" || bad "无缺失文案: $(cat "$T/q4.out")"
+fi
+rm -rf "$DG/ve" && cp -r "$DG/bh" "$DG/ve"
+VEH=$(head -1 "$DG/ve/SHA256SUMS" | cut -d' ' -f1)
+printf '%s  ../evil\n' "$VEH" >> "$DG/ve/SHA256SUMS"
+if "$ROOT/ctron" pkg verify "$DG/ve" > "$T/q5.out" 2>&1; then
+    bad "成员路径越界未拒"
+else
+    grep -q "路径越界" "$T/q5.out" && ok "越界腿:成员路径含 .. 拒绝(不可信输入面)" || bad "无越界文案: $(cat "$T/q5.out")"
+fi
+rm -rf "$DG/vd" && cp -r "$DG/bh" "$DG/vd"
+awk '/self_digest/{sub(/sha256:./,"sha256:x")} {print}' "$DG/bh/meta.ctcl" > "$DG/vd/meta.ctcl"
+if "$ROOT/ctron" pkg verify "$DG/vd" > "$T/q6.out" 2>&1; then
+    bad "self_digest 记录被改未检出"
+else
+    grep -q "self_digest 不符" "$T/q6.out" && ok "self_digest 腿:记录串与 SHA256SUMS 字节重算不符" || bad "无 self_digest 文案: $(cat "$T/q6.out")"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

@@ -271,9 +271,12 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 > E5055 缺 self_digest 或 dep 记录,fail-closed,t=7 静默错版本洞已闭)、seal 编排层
 > (--depdigest 旗标 + SHA256SUMS + self_digest;impl/** 载荷字节序,不含 meta)、
 > S1a-iii match/enum 工件路径补验。诊断码占位名落定:E-PKG-DEP-MISMATCH=E5054、
-> E-PKG-DEP-UNVERIFIED=E5055。余:S1b 缓存接线(加速触发线挂账维持)、L1 升
-> `ctc pkg verify` 命令面、L3 in-language sha256 重算、跨发布者命名空间(均
-> S3/S4 需求方触发)。明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 落地节。
+> E-PKG-DEP-UNVERIFIED=E5055。**L1 命令面已落库(同日第二批)**:`ctron pkg verify`
+> (sh+ps1 同文;形态 fail-closed + SHA256SUMS 逐成员重算 + self_digest 重算;
+> smoke 3r 腿六断言,189 ok/0 fail)。余:S1b 缓存接线(加速触发线挂账维持)、
+> L3 in-language sha256 重算(载体重已证 = std crypto sha256_hex)、trace 录制/
+> 复放协议(S3,= §7.2 verify 的复放腿)、跨发布者命名空间(S4;均需求方触发)。
+> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 落地节。
 
 ## 11. 风险
 

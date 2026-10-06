@@ -376,3 +376,26 @@ E-PKG-DEP-UNVERIFIED)+ 篡改负例(改字节 → L1 shasum -c 失败)。
 状态:✅ L2 完成(2026-10-06)。余:L1 升 `ctc pkg verify` 命令面(S4)、L3
 in-language sha256 重算(S3/S4)、命名空间(S4)、S1b 缓存接线(加速触发线挂账维持,
 2026-09-22 实测占比 ≈44% 未触)。
+
+## L1 落地(2026-10-06,T50 批):`ctron pkg verify` 命令面全绿
+
+- **命令面**:用户 CLI `./ctron` 新增 `pkg verify <artifact-dir>`(纯 shell 编排层,
+  与 T49 add/publish/lock 同面;ctc.sh 不进安装布局不加面,零重复);ctron.ps1 四处
+  同文(usage/Help-Cmd/拦截表/dispatch 臂,Get-FileHash 直译同算法)。
+- **四段算法(fail-closed,rc 0/1/2)**:①形态面(meta.ctcl/SHA256SUMS/impl/ 三件齐,
+  §3.5 后缀即契约)②SHA256SUMS 逐行解析重算(畸形行/路径越界[绝对形或含 `..`=
+  不可信输入面]/成员缺失/摘要不符逐项点名,多失败累积)③self_digest 重算
+  (sha256(SHA256SUMS 字节) vs meta artifact 块记录,与成员腿相互独立)④判决。
+  载体 = `./ctron` 既有 sha256_file(darwin shasum / linux sha256sum 双封装)。
+- **门**:smoke 3r 腿六断言(正例/篡改 impl/记录行翻改/缺 SHA256SUMS/越界/
+  self_digest 翻改)两轮 6/6;全量 **189 ok / 0 fail**(首跑 ctecho probe3 一败 =
+  在册 flake 复跑过,同 D8-2 批先例);meta_check 通过;**编译器零触碰**
+  (decl 锁不动、native 不涉、无新诊断码——shell 面不进 E 码注册表)。
+- **ps1 挂账**:ctron.ps1 pkg verify 待 Windows conformance(同 doc 先例;本机无 pwsh)。
+- **诚实边界**:verify 对账的是"SHA256SUMS 内部自洽 + self_digest 与 SHA256SUMS
+  字节一致";封印方若一开始就伪造自洽的 SUMS+self_digest,verify 不能发现——
+  那是 L3(in-language 重算+attest)与 trace 复放(S3)的辖区,维持触发线挂账。
+
+状态:✅ L1 完成(2026-10-06)。余:L3 in-language sha256 重算(载体重已证=
+lib/std/crypto.ct `sha256_hex`;S3/S4)、trace 录制/复放协议(S3,§7.2 verify
+后半段)、命名空间(S4)、S1b 缓存接线(加速触发线挂账维持,≈44% 未触)。
