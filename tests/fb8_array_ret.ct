@@ -1,0 +1,18 @@
+// fb8_array_ret.ct —— FB-8 返回面:定长数组按值返回(FB-8 余债销账锚)
+fn mk() -> I32[3] {
+    var b: I32[3] = [7, 8, 9]
+    return b
+}
+
+fn main() -> I32 {
+    let r = mk()
+    assert_eq(r[0], 7)
+    assert_eq(r[2], 9)
+    return 0
+}
+
+test "array return by value" {
+    let r = mk()
+    assert_eq(r[0], 7)
+    assert_eq(r[1], 8)
+}
