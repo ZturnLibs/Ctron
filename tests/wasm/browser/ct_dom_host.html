@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!-- ct_dom_host.html —— T39 浏览器端到端宿主页(stdweb.dom 真 JS 桥)
+     用法:与被测 app.wasm 同目录起静态服务,浏览器打开本页?wasm=app.wasm
+     面板自检:dom.set_title 真实 document.title 生效 + dom.set_body 生效;
+     window.ctWasmStatus 暴露给自动化读取(ready/ok/title/errs)。 -->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>ctron-dom-host</title>
+<style>
+  #panel { font: 14px/1.6 monospace; margin: 2em; white-space: pre-wrap; }
+  .ok { color: #0a0; } .bad { color: #c00; }
+</style>
+</head>
+<body>
+<div id="body-slot"></div>
+<pre id="panel">booting…</pre>
+<script>
+(() => {
+  const panel = document.getElementById('panel');
+  const slot = document.getElementById('body-slot');
+  const status = { ready: false, ok: false, title: '', body: '', errs: [], log: [] };
+  window.ctWasmStatus = status;
+
+  const print = (s) => { status.log.push(s); panel.textContent += s; };
+  const fail = (m) => { status.errs.push(m); panel.innerHTML += '\n<span class="bad">FAIL: ' + m + '</span>'; };
+
+  const wasmUrl = new URLSearchParams(location.search).get('wasm') || 'app.wasm';
+
+  // T38 桥 ABI:JS 异常边界 → i32 status(0=ok;异常被 glue catch 转码,不穿 wasm)
+  const glue = {
+    env: {
+      ct_print: (ptr, len) => {
+        const bytes = new Uint8Array(inst.exports.memory.buffer, ptr, len);
+        print(new TextDecoder().decode(bytes));
+      },
+      ct_exit: (code) => { print('\n[exit ' + code + ']'); },
+      ct_dom_set_title: (ptr, len) => {
+        try {
+          const bytes = new Uint8Array(inst.exports.memory.buffer, ptr, len);
+          document.title = new TextDecoder().decode(bytes);
+          return 0;
+        } catch (e) { status.errs.push(String(e)); return 1; }
+      },
+      ct_dom_set_body: (ptr, len) => {
+        try {
+          const bytes = new Uint8Array(inst.exports.memory.buffer, ptr, len);
+          const html = new TextDecoder().decode(bytes);
+          slot.innerHTML = html;
+          status.body = html;
+          return 0;
+        } catch (e) { status.errs.push(String(e)); return 1; }
+    },
+  }};
+  let inst = null;
+
+  (async () => {
+    const bytes = await (await fetch(wasmUrl)).arrayBuffer();
+    inst = await WebAssembly.instantiate(bytes, glue);
+    const code = inst.exports.main(0, 0);
+    status.title = document.title;
+    status.ok = (code === 0)
+      && (document.title === 'Ctron wasm dom')
+      && (status.body.indexOf('<b id="ct-body-marker">') >= 0)
+      && status.errs.length === 0;
+    status.ready = true;
+    panel.innerHTML += '\n<span class="' + (status.ok ? 'ok">BROWSER-E2E PASS' : 'bad">BROWSER-E2E FAIL') + '</span>';
+  })().catch(e => { fail('instantiate: ' + e); status.ready = true; });
+})();
+</script>
+</body>
+</html>

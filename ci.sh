@@ -46,6 +46,20 @@ else
 fi
 rm -f "$BARE_OUT"
 
+# T37:wasm 档门(交叉编译→node 真跑三案 + #[link] FFI 禁用负锚)。
+# node 三通道随 tests/wasm/run.sh(PATH → 打包内置运行时 → docker node 镜像);
+# 全缺 = 环境登记 SKIP(门绿),有 node 则门红不豁免。编译工具链三通道随 ctc.sh。
+WASM_OUT=$(mktemp)
+if sh "$DIR/tests/wasm/run.sh" > "$WASM_OUT" 2>&1; then
+    tail -6 "$WASM_OUT"
+else
+    echo "[FAIL] wasm 档门红(T37;见上)" >&2
+    cat "$WASM_OUT" >&2
+    rm -f "$WASM_OUT"
+    exit 1
+fi
+rm -f "$WASM_OUT"
+
 echo "[6/9] 性能基线冒烟(发射一致性 + 后端加速比)"
 sh "$DIR/compiler/bench.sh" 2>&1 | tail -12
 

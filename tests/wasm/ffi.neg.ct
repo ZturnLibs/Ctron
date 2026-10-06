@@ -1,0 +1,9 @@
+// ffi.neg.ct —— wasm target 禁用 FFI 面(T37:wasm 无 dlopen,#[link] 诊断非静默)
+// 期望:ctc.sh build 本文件 --target wasm32-unknown-unknown → rc=2 + 清晰诊断
+#[link(name = "m")]
+#[trusted]
+extern "c" fn sqrt(x: F64) -> F64
+
+fn main() -> I32 {
+    return 0
+}

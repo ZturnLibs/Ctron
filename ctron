@@ -206,7 +206,8 @@ ct_target_check() {
     case $CTRON_TARGET in
         native) : ;;
         thumbv7em-none-eabi|riscv32imac-unknown-none) : ;;
-        *) die2 "未注册后端 target: $CTRON_TARGET(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none;wasm32 随 T37)" ;;
+        wasm32-unknown-unknown) : ;;
+        *) die2 "未注册后端 target: $CTRON_TARGET(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none, wasm32-unknown-unknown)" ;;
     esac
 }
 

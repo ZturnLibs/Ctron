@@ -1013,6 +1013,17 @@ if "$COMP/ctc.sh" check "$ROOT/tests/42_isr_ok.ct" > "$T/t42o.out" 2>&1; then
 else
     bad "T42 isr 合规体误拦: $(head -2 "$T/t42o.out")"
 fi
+echo "== 3q) T37 wasm 档(注册表/未注册诊断沿用 3p;FFI 禁用诊断) =="
+if "$COMP/ctc.sh" targets | grep -q "wasm32-unknown-unknown"; then
+    ok "T37 targets 表 wasm32 在册"
+else
+    bad "T37 targets 表缺 wasm32"
+fi
+if "$COMP/ctc.sh" build "$ROOT/tests/wasm/ffi.neg.ct" --target wasm32-unknown-unknown -o "$T/t37ffi.wasm" > "$T/t37ffi.out" 2>&1; then
+    bad "T37 wasm #[link] FFI 未拦"
+else
+    grep -q "FFI 在 wasm target 禁用" "$T/t37ffi.out" && ok "T37 wasm FFI 禁用诊断(非静默)" || bad "T37 wasm FFI 诊断文案: $(head -1 "$T/t37ffi.out")"
+fi
 
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"

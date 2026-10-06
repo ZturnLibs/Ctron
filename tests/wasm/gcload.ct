@@ -1,0 +1,16 @@
+// gcload.ct —— wasm 档分配压力样例(T38)
+// 线性内存 MVP 的宿主 GC 压力同源锚:WasmGC 宿主 GC 随工具链裁决登记债
+// (clang 18.1.3 无 -mattr=+gc,见台账),本样先钉 bump 池/arena 面压力真跑:
+// 5 万次插值拼接 churn(3 alloc/次 ≈ 4.8MB),取材 16MiB 静态池,预期 rc=0。
+// 期望输出:1338890(=50000×22 + 0..49999 十进制位和 238890)
+fn main() -> I32 {
+    var n: I32 = 0
+    var i: I32 = 0
+    while i < 50000 {
+        let s = "churn {i} padding-padding"
+        n += s.len
+        i += 1
+    }
+    println(n)
+    return 0
+}

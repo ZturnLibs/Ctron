@@ -1,0 +1,11 @@
+// strfmt.ct —— wasm 档字符串面(T37):插值/拼接走 GC arena(ct_gc_alloc→16MiB 静态池)
+// 构建:ctc.sh build strfmt.ct --target wasm32-unknown-unknown -o strfmt.wasm
+// 运行:node ct_wasm_run.js strfmt.wasm(期望输出:hello wasm 42 / 13)
+fn main() -> I32 {
+    let name = "wasm"
+    let n = 42
+    println("hello {name} {n}")
+    let s = "concat" + "enation"
+    println(s.len)
+    return 0
+}
