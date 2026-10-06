@@ -14,10 +14,10 @@
 | FB-3 | F6/F9/F7 | 字面量 ≥2^31 在数组元素位/比较位按 I32 折断(4294967296→0);bit.* 实参同病(发射 693 行 uint64 cast 正确,疑实参字面量发射截断) | 字面量发射位:trans_expr.ct Int 分支 + comptime 折叠(sem_ceval.ct);I64 值域直入清单(§3.1.1)未含"数组元素赋值/比较位" | P0 | 下一批(需先做最小复现探针归因:字面量发射 vs 折叠) |
 | FB-4 | F10/F13 | I64 数组视图元素读 / 循环体标量赋值按 int32(静默错值,最危险) | 发射侧元素读/赋值的宽度槽(trans_expr.ct Index/Assign 分支的 ctype 推断) | P0 | 下一批 |
 | FB-5 | F15 | `U8.as[I64]()` 按符号扩展 | conv_as 的 U8→I64 路径应零扩展 | P0 | 下一批(修复后 Loom 的 u8widen 规避可删除) |
-| FB-6 | F18 | `&&` 不短路(已知坑,HANDOFF §4;Loom 再次踩中) | eval 臂 B_AND 求值序 + 发射臂条件化 | P0 | 下一批 |
+| FB-6 | F18 | `&&` 不短路(已知坑,HANDOFF §4;Loom 再次踩中) | eval 臂 B_AND 求值序 + 发射臂条件化 | P0 | ✅ 不复现销账(1006 双臂探针:&&/|| 短路序均正确,副作用右 operand 未求值;近期发射链重构顺带治愈或 F18 归因有偏,台账留探针口径) |
 | FB-7 | F14 | 发射器把复杂表达式临时变量提升到所在 C 块且不去重 → 多语句同块重定义 | trans_expr.ct 临时命名(按语句唯一化或最小作用域) | P1 | 后续 |
-| FB-8 | F5 | 定长数组按值传参/返回(TupleE/Args@0) | trans_expr.ct 数组实参/返回码路径 | P1 | 后续 |
-| FB-9 | F20 | 元组在循环体内 return 发射失败 | trans_stmt.ct Return/Tuple 分支 | P1 | 后续 |
+| FB-8 | F5 | 定长数组按值传参/返回(TupleE/Args@0) | trans_expr.ct 数组实参/返回码路径 | P1 | ◐ 传参面落库(1006,fb6-and 分支):ct_ctype 补 a 码 elem* 臂+调用位 Ident 栈拷贝语句表达式+interp call_decl_vals ArrayT 形参 A 记录递归深拷(旧:emit 塌缩 elem 编译错/interp 共享记录静默污染)。锚 fx_arr_byval(smoke 3c 扫描)+tests/fb8_array_byval。**余债:返回面指针 ABI 悬垂风险(现塌缩编译错=fail-closed)+非 Ident 实参形+嵌套 T[N][M] 索引(sem "索引目标非数组")+C 宿主 parity(suite 分歧 1 件在册,宿主 call_decl 别名未修)**。坑:包裹条件必须核形参码 pc——视图借用面(pc=v 码)禁拷(复合字面量内语句表达式产悬垂尾,fx_slice/ctecho 双实证);跨模块被调 pcs 空→pc="i" 守卫天然放行=正确口径。smoke 178/0 新基线(decl 锁 513→514 随批申报) |
+| FB-9 | F20 | 元组在循环体内 return 发射失败 | trans_stmt.ct Return/Tuple 分支 | P1 | ✅ 落库(1006,fb6-and):真面=发射器元组支持整体缺位(eval 有/trans 全无,"byte_at 目标需 Str" seed 宿主 panic)。落地:元组码 "TP:elem,..."(异构 boxed list ABI,ctron_list*;整型 long 装箱/Str 直存/u: 堆盒,浮点槽 fail-closed 债)×五臂=ct_typeof TupleE/Member 数字成员+ct_ty_code TupleT+ct_ctype TP+ct_expr 构造与解箱+ct_tp_elem 帮手(decl 锁 514→515 随批申报)。**随批修:While 提升臂末冒号切分→首冒号(含冒号型码[u:/TP:]即碎,"t_t:TP" 垃圾声明;u: 提升潜在雷同治)**。锚 fx_tuple(smoke 扫描 179/0)+tests/fb9_tuple(双宿主过零分歧);Loom 原形(循环内 return 元组)双臂逐字一致。余债:嵌套元组段切分/浮点槽/struct 槽跨元组 parity |
 | FB-10 | F3 | `.as[]` 链在调用结果上,解释臂 "call target" panic | eval_call.ct 成员链下钻 | P2 | 后续 |
 | FB-11 | F19 | 字面量含 `{}` 发射臂插值误析(`\{` 转义解释/发射不一致) | 插值扫描(qtext/parts_of)对 `\{` 的双通道一致化 | P2 | 后续 |
 | FB-12 | F22a | 发射臂 CLI 入口=argv[2] 单串(与解释臂语义不同) | driver_emit.ct main 模板;需规范裁决后统一 | P2 | 后续 |

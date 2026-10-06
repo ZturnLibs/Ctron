@@ -183,6 +183,17 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         if nt[2][0] == "FnType" { fk = "G" }
         return fk + fa.to_string()
     }
+    if nt[0] == "TupleT" {
+        // FB-9:元组类型码(TupleT 逐元素;镜像 TupleE 值码 "TP:...")
+        var tps4 = ""
+        var k4: I32 = 1
+        while k4 < nt.len {
+            if k4 > 1 { tps4 = tps4 + "," }
+            tps4 = tps4 + ct_ty_code(nt[k4], file)
+            k4 += 1
+        }
+        return "TP:" + tps4
+    }
     if nt[0] == "Slice" {
         // §3.6 切片视图码:v<元素码>(单字符前缀,余串即元素码)
         return "v" + ct_ty_code(nt[1], file)
@@ -441,6 +452,16 @@ fn ct_ctype(code: Str) -> Str {
     }
     if code.len > 1 && byte_at(code, 0) == 80 {
         return ct_ctype(byte_slice(code, 1, code.len)) + "*"
+    }
+    // FB-8/F5:T[N] 定长数组码("a<n><ec>")——形参/返回 ABI 落元素指针
+    //(C 数组实参退化同构,t_buf[i] 下标面天然兼容);值语义由调用位临时
+    // 拷贝承接(ct_call_args_tg a 码包裹)。返回面指针 ABI 债在册(悬垂面)
+    if code.len > 1 && byte_at(code, 0) == 97 {
+        return ct_ctype(a_elem(code)) + "*"
+    }
+    // FB-9:元组 "TP:..." → ctron_list*(异构 boxed list;槽位 LI/T54 惯例)
+    if code.len > 2 && byte_slice(code, 0, 3) == "TP:" {
+        return "ctron_list*"
     }
     return "int32_t"
 }
@@ -1201,6 +1222,25 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if or2(e[3] == "reduce", or2(e[3] == "with", e[3] == "fetch_add")) { return "i" }
         if or2(e[3] == "is_err", e[3] == "is_ok") { return "b" }
+    }
+    if t == "Member" && e[3].len > 0 && byte_at(e[3], 0) >= 48 && byte_at(e[3], 0) <= 57 {
+        // FB-9:元组数字成员型别 = TP 码对应段
+        var otr5 = ct_typeof(e[1], env, file)
+        if otr5.len > 2 && byte_slice(otr5, 0, 3) == "TP:" {
+            return ct_tp_elem(otr5, e[3])
+        }
+    }
+    // FB-9:元组值码 "TP:<elem码,...>"(异构 boxed list ABI;构造/数字成员
+    // 解箱在 trans_expr 同名臂。嵌套元组段切分=债,浮点槽 fail-closed)
+    if t == "TupleE" {
+        var tps7 = ""
+        var k7: I32 = 1
+        while k7 < e.len {
+            if k7 > 1 { tps7 = tps7 + "," }
+            tps7 = tps7 + ct_typeof(e[k7], env, file)
+            k7 += 1
+        }
+        return "TP:" + tps7
     }
     if t == "TypeArgs" {
         // Simd[E,N](§9.5):q<N><ec> 向量码(P1-C2 标量模拟;C 表示复用 ctron_view_<ec>)
