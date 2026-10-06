@@ -458,7 +458,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T37 · wasm MVP 后端(wasm32)
 
-- **预估:** 3–4 d。**前置:** T36。**状态:** 待办
+- **预估:** 3–4 d。**前置:** T36。**状态:** ✅ 已完成(2026-10-06;t37-wasm 7b3e3f13)——发射 C 复用(native 同文,靶差零进编译器,T40 铁律镜像)+`lib/rt/wasm32/`(stub 头族承编译面+wasm_libc 本体:`env.ct_print(ptr,len)`/`env.ct_exit(code)` 导入输出退出面、mem/str 七件+vsnprintf 核[与 bare_libc 同文]+数值转换 atol/strtol/strtod 家族、16MiB 线性内存静态池 bump 堆[GC arena 首块 4MB 自此取材]、单线程口径 §7.8)+ctc.sh/ctron 双驱动靶注册与构建管线(工具链三通道 `CTRON_WASM_CC` env→宿主 clang[wasm32 后端]→docker ctron-bare-tools 镜像[与 bare 同镜像];链接 `-nostdlib --no-entry --export=main --export-memory --gc-sections -s -z stack-size=1M`)+FFI 禁用诊断(`#[link]` 面 wasm target 必拒 rc=2,语义诊断先于工具链解析[工具链无关可锚])+tests/wasm 门 6/6/0(hello/arith[I64/F64/递归]/strfmt[插值/拼接走 GC arena]node 真跑三案+ffi 负锚+体积报告[hello 4702B];node 三通道 PATH→打包内置运行时通配→docker node 镜像,全缺=SKIP 环境登记 bare 先例)+ci.sh 挂门(bare 门后)+smoke 3q 锚(注册表+FFI 诊断,工具链无关)+meta_check wasm/ 泳道豁免。门:wasm 6/6/0+meta_check 550 全绿;执行宿主=本机打包 node(Raycast 通道,gate 通配),wasmtime-py venv 备份通道在册 README。**坑位三条在册:①peer 并发 checkout 卷走未提交编辑(ctc.sh 一次+未跟踪 hello.ct 一次,amend 前单命令核 HEAD 惯例再验);②emit 缓存哈希先于 build.sh 首跑在新鲜 worktree shasum 报错(非致命);③插值语法=裸 `{expr}`,`\{` 是字面花括号转义(01d 语料,样例初版踩)**。**余债:WASI 靶/通道族、title() 宿主回读、sem 级 FFI-on-wasm E 码(现=ctc.sh 驱动层诊断)——随 T38 批**
 - **目标:** `--target wasm32-unknown-unknown`:C 发射产物经 clang `--target=wasm32` 编译为 wasm(后处理插件路径,零新代码生成器);运行时裁剪(pthread 族→单线程 stub,通道/Mutex 列 web 档 §7.8 单线程口径)。
 - **范围:** T36 接口注册 wasm target、运行时单线程变体模板、`tests/`(wasm 产物冒烟:node/wasmtime 执行)。
 - **验收:** 最小程序(.ct→wasm→node 执行输出正确);no_alloc 子集先行(§9.1 兼容方向:core 子集);GC/并发全量列 T38 后。
@@ -466,7 +466,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T38 · WasmGC + JSPI + 类型化 JS 桥(§9.2)
 
-- **预估:** 4–6 d。**前置:** T37。**状态:** 待办
+- **预估:** 4–6 d。**前置:** T37。**状态:** ✅ 桥已落+WasmGC/JSPI 裁决登记(2026-10-06;t37-wasm)——**WasmGC 工具链实证裁决:不可行**(docker clang 18.1.3 无 `-mattr=+gc` 特性[unknown argument],C 前端不发 GC 类型段,宿主亦无 wasm GC 运行时;按本条「不可行则登记环境依赖」条款登记,复活条件=clang ≥19/21 带 wasm GC 对象面+专用后端,属新代码生成路径级工程);**JSPI 单列**(计划明许;单线程口径 §7.8 下无消费者,fetch 异步面随真 WASI 批)。**已落:类型化 JS 桥 ABI**(lib/rt/wasm32/README 契约:import 面 `(ptr,len)` 双参定长串/`->i32` status 码 0=ok/1=宿主异常边界捕获,JS 胶水 try/catch 转码不穿 wasm;env.ct_print/ct_exit/ct_dom_set_title/ct_dom_set_body 四口)+**宿主 GC 压力样例**(tests/wasm/gcload.ct:5 万次插值 churn≈4.8MB 取材 16MiB 静态池,真跑断言 1338890;线性内存 MVP 同源锚,宿主 GC 面随 WasmGC 复活)。**坑位:①桥 import 单参 `const char*` 形与胶水 `(ptr,len)` 约定失配→len 取寄存器残渣打印 2MB 常量池垃圾(实证),统一双参定长约定;②`WebAssembly.instantiate(buffer,imports)` 返回 `{module,instance}` 非 instance(node 两步式 compile 不踩,宿主页曾踩)**
 - **目标:** 真 web 档后端:WasmGC 目标(类/List 落宿主 GC)、JSPI 任务挂起、类型化 JS 桥(JS 异常边界转 Result,§9.2)。
 - **范围:** 新代码生成路径(wasm GC 类型段)或 clang WasmGC 靶适配;`stdweb` 桥 ABI。
 - **验收:** 浏览器真窗冒烟(dom.set_title 真 DOM 生效——现在 C stub 假实现换真);宿主 GC 压力样例。
@@ -474,7 +474,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T39 · stdweb 真实化(§9.2)
 
-- **预估:** 1–1.5 d。**前置:** T38(桥可用)。**状态:** 待办
+- **预估:** 1–1.5 d。**前置:** T38(桥可用)。**状态:** ✅ 已完成(2026-10-06;t37-wasm)——发射面:driver_emit.ct dom 块 `#if defined(__wasm__)` 分支(env.ct_dom_set_title/ct_dom_set_body 双参 import 桥,调用补 strlen;native 侧 #else 零行为变化,10_web_dom 语义保持);第二面裁决=**dom.set_body**(评审条款二择一:fetch 需异步=JSPI 领域随裁剪项,set_body 同步同型零新机制;连带 body() 读回 getter 与 title 对称);sem 面:trans_expr/trans_ty/eval_call 三臂 set_body/body 镜像(eval 臂 env 键 "#dom:body");tests/10_web_dom.ct 扩 body 往返锚(web 档跑绿,full 档 E2020 拦截保持 rc=1);浏览器端到端锚=tests/wasm/browser/ct_dom_host.html 自检页(document.title 真实变 "Ctron wasm dom"+body 真实注入+panel PASS,本机 IAB 真窗实证 2026-10-06;CI=环境登记 SKIP,node 臂 host shim 同构断言随 wasm 门⑥)。**坑位:dom.set_title 单参 import 曾打印 2MB 常量池垃圾(T38 坑①同源)**
 - **目标:** `dom.set_title/title` 从 C stub 换真 JS 桥;按「以此模式逐版扩充」承诺扩第二面(`dom.set_body`/`fetch` 择一,评审拍板)。
 - **范围:** `stdweb` 内建面(`sem_calls.ct` prof==web 分支)、桥绑定、`tests/10_web_dom.ct` 扩展。
 - **验收:** 浏览器端到端锚;`10_web_dom.ct` 双靶(full 档 E2020 拦截语义保持)。
@@ -651,9 +651,9 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T34 | 栈经济 P9 | W7 | **已完成**:1002 两波——最小符合径(触顶诊断链 a77f141f)+正案收官(work-stealing 落码+可增长栈判决入册:A/B 双阻塞于发射器机器,退路 1MB 大栈=§7.1 字面终形,解锁条件单列;ws_steal 锚+c10k 满额 PASS+A/B 差分 ≤0.5%) | — |
 | T35 | 分层 stdlib 机制 | W8 | ✅ 1002 | — |
 | T36 | ctc target+后端接口 | W8 | 待办 | — |
-| T37 | wasm MVP | W8 | 待办 | — |
-| T38 | WasmGC+JSPI | W8 | 待办 | — |
-| T39 | stdweb 真实化 | W8 | 待办 | — |
+| T37 | wasm MVP | W8 | ✅ 1006(7b3e3f13) | WASI 靶族/title 回读/sem 级 FFI E 码 |
+| T38 | WasmGC+JSPI | W8 | ✅ 桥落/WasmGC+JSPI 裁决登记 1006 | WasmGC 复活随 clang≥19 GC 面 |
+| T39 | stdweb 真实化 | W8 | ✅ 1006 | title 宿主回读在册 |
 | T40 | bare 交叉编译 | W8 | ✅ 1006 | a2036c5b 已汇流;余债=宿主线 ISR 检查 parity |
 | T41 | bare 分配器族 | W8 | ◐ 核心 1006 | Region/Pool/Static 余债 |
 | T42 | 体积门禁+ISR | W8 | ✅ 1006 | a2036c5b 已汇流 |

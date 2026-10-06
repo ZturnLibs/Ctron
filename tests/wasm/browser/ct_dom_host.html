@@ -56,12 +56,13 @@
 
   (async () => {
     const bytes = await (await fetch(wasmUrl)).arrayBuffer();
-    inst = await WebAssembly.instantiate(bytes, glue);
+    const mod = await WebAssembly.compile(bytes);
+    inst = await WebAssembly.instantiate(mod, glue);
     const code = inst.exports.main(0, 0);
     status.title = document.title;
     status.ok = (code === 0)
       && (document.title === 'Ctron wasm dom')
-      && (status.body.indexOf('<b id="ct-body-marker">') >= 0)
+      && (status.body.indexOf("<b id='ct-body-marker'>") >= 0)
       && status.errs.length === 0;
     status.ready = true;
     panel.innerHTML += '\n<span class="' + (status.ok ? 'ok">BROWSER-E2E PASS' : 'bad">BROWSER-E2E FAIL') + '</span>';

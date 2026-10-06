@@ -11,6 +11,12 @@ set -u
 BIN=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$BIN")
 DEVROOT=$BIN
+# T37 随批修:脚本目录即仓库根(dev 布局/worktree 同构)时 ROOT 取脚本目录——
+# 非 native 靶委派 "$ROOT/compiler/ctc.sh" 此前取 dirname 落到仓库外(worktree 必红;
+# 安装布局脚本在 <prefix>/bin,dirname 即 <prefix>,不受影响)
+if [ -f "$BIN/compiler/ctc.sh" ]; then
+    ROOT=$BIN
+fi
 # dev 兼容回落:仅当同目录无二进制、且仓库 dev 布局命中时才切换,安装布局不受影响
 if [ ! -x "$BIN/ctron-cc" ] && [ -x "$BIN/compiler/bin/ctron-cc" ]; then
     BIN="$BIN/compiler/bin"

@@ -45,6 +45,23 @@ node tests/wasm/ct_wasm_run.js app.wasm
 MVP 范围(T37):no_alloc/core 子集先行;FFI 面(`#[link]`)在 wasm target 禁用
 (诊断非静默,rc=2)。WasmGC/JSPI/类型化 JS 桥列 T38;stdweb 真实化列 T39。
 
+## T38 类型化 JS 桥 ABI(§9.2)
+
+桥走线性内存 import 面(**WasmGC 裁决:当前工具链不可行**——docker clang 18.1.3
+无 `-mattr=+gc` 特性[C 前端不发 GC 类型段],宿主亦无 wasm GC 运行时;
+按计划条款登记环境依赖,JSPI 同批单列):
+
+| import | 签名 | 语义 |
+|---|---|---|
+| `env.ct_print` | `(ptr: i32, len: i32)` | stdout 字节直写 |
+| `env.ct_exit` | `(code: i32)` | 进程退出 |
+| `env.ct_dom_set_title` | `(ptr: i32, len: i32) -> i32` | 0=ok;JS 异常被宿主胶水 catch → 非 0(异常边界不穿 wasm) |
+| `env.ct_dom_set_body` | `(ptr: i32, len: i32) -> i32` | 同上(set_body 第二面,T39) |
+
+状态码约定:`0=ok,1=宿主异常被边界捕获`;字符串实参一律 `(ptr,len)` 对、
+UTF-8 原样、宿主零分配(读 linear memory 视图)。`dom.title()` 读
+`ctron_dom_title_buf`(最近一次 set 的值;宿主外部改名的回读列债)。
+
 ## 验收门
 
 `tests/wasm/run.sh`(ci.sh [6/9] 前挂载;门序:注册表/hello/arith/strfmt 真跑
