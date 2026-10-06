@@ -399,3 +399,34 @@ in-language sha256 重算(S3/S4)、命名空间(S4)、S1b 缓存接线(加速触
 状态:✅ L1 完成(2026-10-06)。余:L3 in-language sha256 重算(载体重已证=
 lib/std/crypto.ct `sha256_hex`;S3/S4)、trace 录制/复放协议(S3,§7.2 verify
 后半段)、命名空间(S4)、S1b 缓存接线(加速触发线挂账维持,≈44% 未触)。
+
+## L3 三宿主测量裁决(2026-10-07,T50 批):load 期重算不可默认开,维持 S3/S4 挂账
+
+- **测量目击**(同一 2560B/40 块输入,三宿主摘要逐字一致 `68a9fa90…`=crypto.ct 与
+  CORE vendored 副本双实现 parity 锚):
+
+  | 宿主 | 40 块(2560B) | 75KB 工件(str.ct.ast 档,1170 块)外推 |
+  |---|---|---|
+  | seed 解释器(ctc.sh/ctronc) | 单块即 86.4s CPU | **≈27 小时——判死** |
+  | 自宿主发射解释器(bin/ctron-cc) | 9.6s | ≈4.7 分钟——仅 CI 小件可用 |
+  | native 发射 C | <0.4s(计时粒度内) | 毫秒级——**唯一可行载体** |
+
+  与 crypto_vec run.sh 在册「interp 臂逐文件预算 ≈10 块」完全互证(其 interp 臂
+  = bin/ctron-cc,10 块 ≈2.4s ✓;seed 面从来不可用)。
+- **裁决**:加载期 in-language 重算**不可默认开**——它必须跑在消费方驱动宿主上,
+  而三宿主两不可用(seed 灾难级/ctron-cc 分钟级),默认开 = 在慢宿主上
+  fail-open-by-slowness,违 fail-closed 宪法(D7)与 parity 纪律。
+  **L3 维持 S3/S4 触发线挂账**,载体定为**独立发射验证器**(ctron-dep 先例:
+  in-language 写、发射 native 跑,C 速哈希,零编译器热路径触碰)——与
+  attest/trace 工具同批是 S3/S4 的自然首件。
+- **顺手收获**:①std crypto.ct 与 compiler CORE 的 pkg_dep.ct vendored sha256
+  结构同构,三宿主摘要一致——将来 S3/S4 验证器两实现任选;②emit 面 std 合并缺口
+  再添两实例(用户程序 `use std.crypto`/StringBuilder → 发射产物 t_sha256_hex/
+  t_StringBuilder 未定义,host-divergences 在册债同族);③解释器性能债(自举
+  interp 每步 arena 分配无回收)新增具体锚:seed 算术模拟循环 ≈1.3s/轮 64-bit。
+- **测量教训(假缺陷警示)**:本轮一度把「timeout 击杀+管道尾读+stdout 缓冲丢失+
+  管道后 `$?` 取尾命令」误读成 seed 非确定挂死,追查半日方知全部是慢——
+  hash 类探针一律「外置 time+直跑不管道+完整跑完不设短 timeout」。
+
+状态:✅ L3 裁决落账(2026-10-07,维持挂账+载体定案)。余不变:L3(S3/S4)、
+trace(S3)、命名空间(S4)、S1b(加速线)。
