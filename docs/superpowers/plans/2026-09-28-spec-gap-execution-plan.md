@@ -654,7 +654,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T37 | wasm MVP | W8 | 待办 | — |
 | T38 | WasmGC+JSPI | W8 | 待办 | — |
 | T39 | stdweb 真实化 | W8 | 待办 | — |
-| T40 | bare 交叉编译 | W8 | ✅ 1006 | a2036c5b 已汇流;余债=宿主线 ISR 检查 parity |
+| T40 | bare 交叉编译 | W8 | ✅ 1006 | a2036c5b 已汇流;宿主线 ISR parity 已清(789bd7a5)|
 | T41 | bare 分配器族 | W8 | ◐ 核心 1006 | Region/Pool/Static 余债 |
 | T42 | 体积门禁+ISR | W8 | ✅ 1006 | a2036c5b 已汇流 |
 | T43 | ctc 子命令 | W9 | ✅ 完成(1005) | — |
