@@ -8,8 +8,11 @@
 #        链接需求;对拍即 divergences (h)(跨模块 struct 形)的常设回归哨。
 #   两臂同一夹具集双计 pass;任一臂红即红。pass>0 空集守卫(tests/net 同款)。
 #   双运行时矩阵(CTRON_RT=coro)不适用:纯层无停车点,无 rt 依赖。
-# 网络端到端行为(HTTP over TCP)归框架半层波次(P4-B+),届时入 tests/net
-# 双矩阵口径;本目录 CI 纪律同 tests/net:仅回环、零外联(纯层实为离线)。
+# 网络端到端行为(HTTP over TCP)= T46/P4-B 已兑现:lib/http/frm/serve.ct
+# (IO 粘合:accept→sv_read_req→parse→派发→respond;frm 16 件与 net 门面间
+# 唯一 IO use 点)+ tests/http/serve_e2e/x_serve(真回环 GET/POST/静态/中间
+# 件链/multipart 二进制上传/400·413 映射/shutdown,双 RT 矩阵,下方
+# serve_e2e 段)。本目录 CI 纪律同 tests/net:仅回环、零外联。
 # 前置:compiler/native.sh、cc(副臂)
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -152,6 +155,19 @@ if [ -x "$EMIT" ]; then
     fi
 fi
 
+# ── http/frm/serve.ct inline tests(T46;emit 专臂,client→bind 子树 W8052;
+#    纯面单测——reason/resp 精确串、sv_ch 全域含 '{'、体字节道二进制安全、
+#    err→状态映射;socket 面归 serve_e2e/x_serve 双 RT 矩阵)──
+if [ -x "$EMIT" ]; then
+    if "$EMIT" run "$ROOT/lib/http/frm/serve.ct" > "$T/std_serve.e.c" 2>"$T/std_serve.e.err" \
+       && cc -O1 -w -o "$T/std_serve.e.bin" "$T/std_serve.e.c" 2>"$T/std_serve.e.cc.err" \
+       && "$T/std_serve.e.bin" > "$T/std_serve.e.out" 2>&1; then
+        pass=$((pass+1)); echo "  PASS http/frm/serve.ct (inline, emit)"
+    else
+        fail=$((fail+1)); echo "  FAIL http/frm/serve.ct (inline, emit)"; sed -n '1,5p' "$T/std_serve.e.out" "$T/std_serve.e.cc.err" "$T/std_serve.e.err" 2>/dev/null
+    fi
+fi
+
 # ── P4-C 行为夹具:client_fixtures(客户端)与 sse_ws(SSE/WS)──
 # 臂分工(结构性登记,enc_fixtures x_ 同口径):凡 use http.client 的夹具,
 # 其 use 图必带 net/bind.ct —— 解释口径 W8052(rc=1)且垫片无绑定 → x_ 前缀
@@ -159,7 +175,7 @@ fi
 # 默认(裸线程)+ CTRON_RT=coro(补链 ctron_rt.c;服务端协程停车于 net 垫片)
 # 各整跑、各计一例 —— tests/net 双矩阵口径在本目录的延伸。
 # a_ 前缀 = 纯面(零 IO;interp + emit 双计),同 enc_fixtures a_。
-for dir in client_fixtures sse_ws; do
+for dir in client_fixtures sse_ws serve_e2e; do
     for f in "$DIR/$dir"/*.ct; do
         [ -f "$f" ] || continue
         name="${dir}_$(basename "$f" .ct)"

@@ -86,7 +86,14 @@ fn main() -> I32 {
             println("static char* ctron_abase = 0;")
             println("static size_t ctron_aoff = 0;")
             println("static size_t ctron_acap = 0;")
-            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)4194304; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; return p; }")
+            println("static int ctron_alock = 0;")
+            // T46:arena bump 自旋锁——scope spawn(pthread)双线程并发分配原先
+            // 无锁同 offset 互踩(serve_e2e 服务端响应串被主线程分配覆写实证,
+            // x_client_e2e/sse/ws 六红同源);单线程路径一次 TAS+release 开销
+            // 可忽略。并发 GC 路径 ct_spawn 置 ct_gc_conc 后同样退化为本函数,
+            // 锁此一处即覆盖。__sync 内建 = gcc/clang;MSVC 无此内建,emit 面
+            // Windows 支持本身在册为债。
+            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; while (__sync_lock_test_and_set(&ctron_alock, 1)) \{ } if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)4194304; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; __sync_lock_release(&ctron_alock); return p; }")
             // 运行时辅助:容器/单元格/字节域/读文件(必须先于使用它的原型)
             println("typedef struct \{ unsigned long long magic; char** items; int n; int cap; } ctron_list;")
             // T29 M1 GC 前向声明(核心实现在 ct_chans 声明之后;保守根先行,

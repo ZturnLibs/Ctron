@@ -1,0 +1,11 @@
+// Ctron.lock —— 依赖解析产物(内容寻址;勿手编,ctron-dep 生成)
+lock {
+    manifest_version = 1
+}
+
+pkg "libm" {
+    version = "0.1.0"
+    source = "path"
+    path = "../libm"
+    digest = "sha256:3e6c4c893fa3e336a3935efe3c310d12cc406ea189b2823cede1806b3ea65ad8"
+}

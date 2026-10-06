@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import ctcl_check as C  # noqa: E402
 
-SCOPED = {"E5042", "E5043", "E5044", "E5045", "E5047", "E5049", "E5050"}
+SCOPED = {"E5042", "E5043", "E5044", "E5045", "E5047", "E5049", "E5050", "E5051"}
 CBIN = os.path.join(ROOT, "compiler-c", "build", "ctronc")
 RBIN_CANDIDATES = [
     os.path.join(ROOT, "compiler-rust", "target", "debug", "ctron"),

@@ -453,6 +453,50 @@ extern "c" fn gui_chord_action_byte(i: I32) -> I32
 #[trusted]
 extern "c" fn gui_chord_ms(ms: I32) -> I32
 
+extern "c" fn gui_board_open_req(title: Str, src: Str, x: I32, y: I32, w: I32, h: I32) -> Void
+
+extern "c" fn gui_board_open_pend() -> I32
+
+extern "c" fn gui_board_title() -> Str
+
+extern "c" fn gui_board_src() -> Str
+
+extern "c" fn gui_board_activate() -> I32
+
+extern "c" fn gui_board_open_flag() -> I32
+
+extern "c" fn gui_board_x() -> I32
+
+extern "c" fn gui_board_y() -> I32
+
+extern "c" fn gui_board_w() -> I32
+
+extern "c" fn gui_board_h() -> I32
+
+extern "c" fn gui_board_move(dx: I32, dy: I32) -> I32
+
+extern "c" fn gui_board_drag_on(x: I32, y: I32) -> I32
+
+extern "c" fn gui_board_drag_to(x: I32, y: I32) -> I32
+
+extern "c" fn gui_board_drag_off() -> I32
+
+extern "c" fn gui_board_dragging() -> I32
+
+extern "c" fn gui_board_close() -> I32
+
+extern "c" fn gui_board_close_req() -> I32
+
+extern "c" fn gui_board_close_req_set() -> I32
+
+extern "c" fn gui_cmds_shift_range(from: I32, count: I32, dx: I32, dy: I32) -> I32
+
+extern "c" fn gui_cmds_save() -> I32
+
+extern "c" fn gui_cmds_merge() -> I32
+
+extern "c" fn g_main_cmds_len() -> I32
+
 extern "c" fn gui_inject_press(x: I32, y: I32) -> I32
 
 extern "c" fn gui_inject_release(x: I32, y: I32) -> I32

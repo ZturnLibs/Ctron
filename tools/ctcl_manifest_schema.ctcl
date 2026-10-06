@@ -29,6 +29,16 @@ reg "plugin" {
     name_pattern = "(derive|lint)\\.[A-Za-z][A-Za-z0-9_]*"   // T52 插件沙箱:块名 = kind.name;重复名 = E5045
 }
 
+reg "workspace" {
+    kind = "record"            // T49:工作区根标记;v0 无键(空块合法)
+}
+
+reg "member" {
+    kind = "keyed"
+    name_pattern = "[a-z][a-z0-9_-]*"        // T49:块名 = 成员名;重复名 = E5045
+    required_keys = ["path"]                 // 缺 path = E5051
+}
+
 // ---------- 键声明(regkey "块.键";声明序 = 规范形态键序) ----------
 
 regkey "pkg.manifest_version" {
@@ -79,6 +89,10 @@ regkey "dep.rev" {
 
 regkey "dep.version" {
     type = "str"
+}
+
+regkey "member.path" {
+    type = "str"               // T49:成员目录,相对工作区根
 }
 
 regkey "plugin.path" {

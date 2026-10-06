@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=482' "$T/chk.out" && ok "自检 cc_run 绿,decls=482(FB-2 +2:fs_mkdir extern+fn,2026-10-06;前注:合并树实测:471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;原注:2026-10-03 GUI 泳道锁 451;对端 T51/GUI-21 批并入后基数上移;+T52 插件沙箱随批申报二十 fn;T31 M1.5 四助手仅入发射驱动链 cc_emit,cc_run 计数不含(2026-10-03 注)[pkg_plugins/pkg_plugin_field/pkg_plugin_codes 清单注册表三+plugin.ct 十七:sbx_banned_call/sbx_banned_mem/plugin_scan/plugin_scb/plugin_purity/plugin_load/plugin_call/pl_builtin_drv/pl_derive_input/pl_parse_product/pl_product_gate/plugin_expand/pl_depth/pl_lint_fn/pl_code_in/plugin_lint],批3 实测 467+lint 批四=471;锁 451→471 含对端 T51/GUI-21 并入基数变动])" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=508' "$T/chk.out" && ok "自检 cc_run 绿,decls=508(锁 506→508:FB-2 +2[fs_mkdir extern+fn,2026-10-06];前注:锁 480→506:T49 随批申报二十六 fn[pkg_dep.ct 二十六:pkg_z64/pkg_p2/xor32/and32/not32/rotr32/shr32/pkg_msgb/pkg_hexch/pkg_hex_word/pkg_kk_at/pkg_block_word/pkg_sha256_hex 十三 sha256 移植+pkg_deps_of/pkg_deps_text/pkg_dep_slot/pkg_cseg/pkg_ctag/pkg_constraint_check/pkg_ver_seg/pkg_ver_cmp/pkg_constraint_ok/pkg_names_lt/pkg_names_sort/pkg_tree_digest/pkg_tree_accum 十三 dep 面];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -918,7 +918,7 @@ if CTRON_STDPATH="$SO/neg/lib/std" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$
     bad "包缺席却 rc=0"
 else
     grep -q "E2020" "$T/so3.out" && ok "包缺席 E2020 兜底(use.read)" || bad "E2020 未兜底: $(head -2 "$T/so3.out")"
-    grep -q "W8902" "$T/so3.out" && grep -q "ctron pkg add zsite" "$T/so3.out" && ok "W8902 带出路(安装指引)" || bad "W8902 缺失: $(tail -3 "$T/so3.out")"
+    grep -q "W8902" "$T/so3.out" && grep -q "ctron add zsite" "$T/so3.out" && ok "W8902 带出路(安装指引)" || bad "W8902 缺失: $(tail -3 "$T/so3.out")"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

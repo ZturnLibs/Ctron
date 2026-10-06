@@ -516,6 +516,12 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
     if diags.len > 0 {
         return file
     }
+    // T49:dep 块扫描(三互斥 E5049 尽早报;phase-1 文本扫描口径)。清单极小,
+    // 每次调用重扫(同 pkg_caps_allowed 每文件重扫先例);表同时供下方 dep 探针用。
+    var ddeps = pkg_deps_of(dir, diags)
+    if diags.len > 0 {
+        return file
+    }
     // T35:消费方有效档 = 清单 tier 键(缺省 std);bare 档钳到 core(§9:bare 目标
     // stdlib 层 = core)。E5040.tier 已推则加载即止(驱动对 ldiags 非空 rc=1)。
     var tier = pkg_manifest_tier(dir, diags)
@@ -563,6 +569,8 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
             } else {
+                // T49:dep 表点名首段(探针 + miss 收集共用)
+                var dslot = pkg_dep_slot(ddeps, segs[1])
                 // 单段 use:rel 取首段本身(同目录兄弟文件形态 dir/<mod>.ct);
                 // 多段:首段=域/包名,rel 取 seg2 起子路径(既有口径)
                 var rel = ""
@@ -576,6 +584,42 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
                 mpath = dir + rel + ".ct"
+                // T49 dep 探针(解析链②):dep 表点名首段 → path 形取依赖目录门面/
+                // 子路径,version/git 形取项目 pkgs/<名>/ 安装位。目录相对(①)优先
+                // 不变;dep 表之后仍有域根/site/ctart 兜底,既有语义零扰动。
+                if !fs_exists(mpath) && dslot >= 0 {
+                    var dform = ddeps[dslot + 1]
+                    var dval = ddeps[dslot + 2]
+                    var cand = ""
+                    if dform == "path" {
+                        if segs.len == 2 {
+                            cand = dir + "/../" + dval + "/" + segs[1] + ".ct"
+                        } else {
+                            var jr: I32 = 2
+                            var relr = ""
+                            while jr < segs.len {
+                                relr = relr + "/" + segs[jr]
+                                jr += 1
+                            }
+                            cand = dir + "/../" + dval + relr + ".ct"
+                        }
+                    } else {
+                        if segs.len == 2 {
+                            cand = dir + "/../pkgs/" + segs[1] + "/" + segs[1] + ".ct"
+                        } else {
+                            var jr2: I32 = 1
+                            var relr2 = ""
+                            while jr2 < segs.len {
+                                relr2 = relr2 + "/" + segs[jr2]
+                                jr2 += 1
+                            }
+                            cand = dir + "/../pkgs" + relr2 + ".ct"
+                        }
+                    }
+                    if fs_exists(cand) {
+                        mpath = cand
+                    }
+                }
                 // 域根(2026-09-23 顶层命名空间;2026-09-30 门面入域目录):libroot
                 //(= std 根父目录)下 <首段>[/<次段>…].ct 命中则用之(gui.* / net.* /
                 // http.* / tls.* / db.*);两段门面形映射 <域>/<域>.ct(统一 db 形态,
@@ -672,7 +716,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                 }
                 // W8902 半面:全链未命中的包形 use(≥3 段)静默收集,驱动层在
                 // 诊断输出时附加出路;单段=本地兄弟文件缺文件,维持旧口径不收集
-                if !fs_exists(mpath) && segs.len >= 3 {
+                if !fs_exists(mpath) && or2(segs.len >= 3, dslot >= 0) {
                     misses.push(segs[1])
                 }
             }

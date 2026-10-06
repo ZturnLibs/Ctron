@@ -1,0 +1,908 @@
+// =====================================================================
+// pkg_dep.ct —— T49 依赖解析(§2.7):清单 dep 块扫描(三互斥 E5049,文案镜像
+// C/Rust 线)+ semver 约束工具 + sha256(内容寻址;自包含移植 std/crypto.ct
+// 12-504 行,前缀 pkg_ 避撞;phase-1 文本扫描口径同 pkg_plugins/pkg_caps_allowed
+// ——规范形态清单,fail-closed 全量清单诊断由四线解析面承担)。
+// =====================================================================
+
+// 宽域零播种(strconv 同款):I64 变量以大字面量差分构造,值标签落在 6 域,
+// 避免自举口径对小值按 I32 界假阳(乘 2 跨 2 的 31 次方即误报)
+fn pkg_z64() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+// 2 的 k 次幂(k ∈ 0..31;I64 承载)
+fn pkg_p2(k: I32) -> I64 {
+    var r: I64 = pkg_z64() + 1
+    var i: I32 = 0
+    while i < k {
+        r = r * 2
+        i += 1
+    }
+    return r
+}
+
+// 32 位异或(值域恒 0 到 4294967295;载荷恒 <2^32,i32 截断语义即所需)
+fn xor32(a: I64, b: I64) -> I64 {
+    return bit.xor_i64(a, b)
+}
+
+// 32 位与
+fn and32(a: I64, b: I64) -> I64 {
+    return bit.and_i64(a, b)
+}
+
+// 32 位取反(xor 0xFFFFFFFF 掩码——not_i64 会翻满 64 位,不可用)
+fn not32(a: I64) -> I64 {
+    var mask: I64 = pkg_z64() + 4294967295
+    return bit.xor_i64(a, mask)
+}
+
+// 循环右移:低 32-n 位左移拼接高 n 位(拆分走算术,拼接走 bit;载荷 <2^32 无回绕差)
+fn rotr32(v: I64, n: I32) -> I64 {
+    var pn: I64 = pkg_p2(n)
+    var high = v / pn
+    var low = v - high * pn
+    return bit.or_i64(bit.shl_i64(low, 32 - n), high)
+}
+
+// 逻辑右移(载荷非负,算术右移即逻辑右移)
+fn shr32(v: I64, n: I32) -> I64 {
+    return bit.shr_i64(v, n)
+}
+
+// 消息字节入 64 位域(自举口径无隐式拓宽,经 I64 加法中转)
+fn pkg_msgb(msg: Str, g: I32) -> I64 {
+    var t: I64 = pkg_z64()
+    t = t + byte_at(msg, g)
+    return t
+}
+
+// 十六进制小写数位
+fn pkg_hexch(v: I64) -> Str {
+    if v == 0 {
+        return "0"
+    }
+    if v == 1 {
+        return "1"
+    }
+    if v == 2 {
+        return "2"
+    }
+    if v == 3 {
+        return "3"
+    }
+    if v == 4 {
+        return "4"
+    }
+    if v == 5 {
+        return "5"
+    }
+    if v == 6 {
+        return "6"
+    }
+    if v == 7 {
+        return "7"
+    }
+    if v == 8 {
+        return "8"
+    }
+    if v == 9 {
+        return "9"
+    }
+    if v == 10 {
+        return "a"
+    }
+    if v == 11 {
+        return "b"
+    }
+    if v == 12 {
+        return "c"
+    }
+    if v == 13 {
+        return "d"
+    }
+    if v == 14 {
+        return "e"
+    }
+    return "f"
+}
+
+// 32 位词转 8 位十六进制小写串
+fn pkg_hex_word(h: I64) -> Str {
+    var out = ""
+    var pw: I64 = pkg_z64() + 268435456
+    var k7: I32 = 0
+    while k7 < 8 {
+        out = out + pkg_hexch(h / pw % 16)
+        pw = pw / 16
+        k7 += 1
+    }
+    return out
+}
+
+// 轮常量(前 64 素数立方根小数部分前 32 位;FIPS 180-4 4.2.2)
+fn pkg_kk_at(i: I32) -> I64 {
+    var v: I64 = pkg_z64()
+    if i == 0 {
+        v = 1116352408
+    }
+    if i == 1 {
+        v = 1899447441
+    }
+    if i == 2 {
+        v = 3049323471
+    }
+    if i == 3 {
+        v = 3921009573
+    }
+    if i == 4 {
+        v = 961987163
+    }
+    if i == 5 {
+        v = 1508970993
+    }
+    if i == 6 {
+        v = 2453635748
+    }
+    if i == 7 {
+        v = 2870763221
+    }
+    if i == 8 {
+        v = 3624381080
+    }
+    if i == 9 {
+        v = 310598401
+    }
+    if i == 10 {
+        v = 607225278
+    }
+    if i == 11 {
+        v = 1426881987
+    }
+    if i == 12 {
+        v = 1925078388
+    }
+    if i == 13 {
+        v = 2162078206
+    }
+    if i == 14 {
+        v = 2614888103
+    }
+    if i == 15 {
+        v = 3248222580
+    }
+    if i == 16 {
+        v = 3835390401
+    }
+    if i == 17 {
+        v = 4022224774
+    }
+    if i == 18 {
+        v = 264347078
+    }
+    if i == 19 {
+        v = 604807628
+    }
+    if i == 20 {
+        v = 770255983
+    }
+    if i == 21 {
+        v = 1249150122
+    }
+    if i == 22 {
+        v = 1555081692
+    }
+    if i == 23 {
+        v = 1996064986
+    }
+    if i == 24 {
+        v = 2554220882
+    }
+    if i == 25 {
+        v = 2821834349
+    }
+    if i == 26 {
+        v = 2952996808
+    }
+    if i == 27 {
+        v = 3210313671
+    }
+    if i == 28 {
+        v = 3336571891
+    }
+    if i == 29 {
+        v = 3584528711
+    }
+    if i == 30 {
+        v = 113926993
+    }
+    if i == 31 {
+        v = 338241895
+    }
+    if i == 32 {
+        v = 666307205
+    }
+    if i == 33 {
+        v = 773529912
+    }
+    if i == 34 {
+        v = 1294757372
+    }
+    if i == 35 {
+        v = 1396182291
+    }
+    if i == 36 {
+        v = 1695183700
+    }
+    if i == 37 {
+        v = 1986661051
+    }
+    if i == 38 {
+        v = 2177026350
+    }
+    if i == 39 {
+        v = 2456956037
+    }
+    if i == 40 {
+        v = 2730485921
+    }
+    if i == 41 {
+        v = 2820302411
+    }
+    if i == 42 {
+        v = 3259730800
+    }
+    if i == 43 {
+        v = 3345764771
+    }
+    if i == 44 {
+        v = 3516065817
+    }
+    if i == 45 {
+        v = 3600352804
+    }
+    if i == 46 {
+        v = 4094571909
+    }
+    if i == 47 {
+        v = 275423344
+    }
+    if i == 48 {
+        v = 430227734
+    }
+    if i == 49 {
+        v = 506948616
+    }
+    if i == 50 {
+        v = 659060556
+    }
+    if i == 51 {
+        v = 883997877
+    }
+    if i == 52 {
+        v = 958139571
+    }
+    if i == 53 {
+        v = 1322822218
+    }
+    if i == 54 {
+        v = 1537002063
+    }
+    if i == 55 {
+        v = 1747873779
+    }
+    if i == 56 {
+        v = 1955562222
+    }
+    if i == 57 {
+        v = 2024104815
+    }
+    if i == 58 {
+        v = 2227730452
+    }
+    if i == 59 {
+        v = 2361852424
+    }
+    if i == 60 {
+        v = 2428436474
+    }
+    if i == 61 {
+        v = 2756734187
+    }
+    if i == 62 {
+        v = 3204031479
+    }
+    if i == 63 {
+        v = 3329325298
+    }
+    return v
+}
+
+// 块内第 j 个消息词(g = 全局字节位;fin = 末块;qlen = 位长域内偏移,非位长域传 -1)
+fn pkg_block_word(msg: Str, g: I32, n: I32, fin: I32, qlen: I32, bits: I64) -> I64 {
+    var w0: I64 = pkg_z64()
+    var w1: I64 = pkg_z64()
+    var w2: I64 = pkg_z64()
+    var w3: I64 = pkg_z64()
+    if g < n {
+        w0 = pkg_msgb(msg, g)
+    }
+    if g + 1 < n {
+        w1 = pkg_msgb(msg, g + 1)
+    }
+    if g + 2 < n {
+        w2 = pkg_msgb(msg, g + 2)
+    }
+    if g + 3 < n {
+        w3 = pkg_msgb(msg, g + 3)
+    }
+    if g == n {
+        w0 = pkg_z64() + 128
+    }
+    if g + 1 == n {
+        w1 = pkg_z64() + 128
+    }
+    if g + 2 == n {
+        w2 = pkg_z64() + 128
+    }
+    if g + 3 == n {
+        w3 = pkg_z64() + 128
+    }
+    if fin == 1 {
+        if qlen >= 0 {
+            var sh: I64 = pkg_p2((7 - qlen) * 8)
+            w0 = bits / sh % 256
+            w1 = bits / (sh / 256) % 256
+            w2 = bits / (sh / 65536) % 256
+            w3 = bits / (sh / 16777216) % 256
+        }
+    }
+    return (w0 * 16777216 + w1 * 65536 + w2 * 256 + w3) % 4294967296
+}
+
+// SHA-256 摘要,小写 64 位十六进制串;消息按字节级
+fn pkg_sha256_hex(msg: Str) -> Str {
+    let m32: I64 = 4294967296
+    let n: I32 = msg.len
+    var nblocks: I32 = (n + 72) / 64
+    var bits: I64 = pkg_z64() + 8
+    bits = bits * n
+    var h0: I64 = 1779033703
+    var h1: I64 = 3144134277
+    var h2: I64 = 1013904242
+    var h3: I64 = 2773480762
+    var h4: I64 = 1359893119
+    var h5: I64 = 2600822924
+    var h6: I64 = 528734635
+    var h7: I64 = 1541459225
+    var bi: I32 = 0
+    while bi < nblocks {
+        var v0 = pkg_block_word(msg, bi * 64, n, 0, -1, bits)
+        var v1 = pkg_block_word(msg, bi * 64 + 4, n, 0, -1, bits)
+        var v2 = pkg_block_word(msg, bi * 64 + 8, n, 0, -1, bits)
+        var v3 = pkg_block_word(msg, bi * 64 + 12, n, 0, -1, bits)
+        var v4 = pkg_block_word(msg, bi * 64 + 16, n, 0, -1, bits)
+        var v5 = pkg_block_word(msg, bi * 64 + 20, n, 0, -1, bits)
+        var v6 = pkg_block_word(msg, bi * 64 + 24, n, 0, -1, bits)
+        var v7 = pkg_block_word(msg, bi * 64 + 28, n, 0, -1, bits)
+        var v8 = pkg_block_word(msg, bi * 64 + 32, n, 0, -1, bits)
+        var v9 = pkg_block_word(msg, bi * 64 + 36, n, 0, -1, bits)
+        var v10 = pkg_block_word(msg, bi * 64 + 40, n, 0, -1, bits)
+        var v11 = pkg_block_word(msg, bi * 64 + 44, n, 0, -1, bits)
+        var v12 = pkg_block_word(msg, bi * 64 + 48, n, 0, -1, bits)
+        var v13 = pkg_block_word(msg, bi * 64 + 52, n, 0, -1, bits)
+        var v14 = pkg_block_word(msg, bi * 64 + 56, n, 0, -1, bits)
+        var v15 = pkg_block_word(msg, bi * 64 + 60, n, 1, bi * 64 + 60 - (nblocks * 64 - 8), bits)
+        var a = h0
+        var b = h1
+        var c = h2
+        var d = h3
+        var e = h4
+        var f = h5
+        var gv = h6
+        var hh = h7
+        var ri: I32 = 0
+        while ri < 64 {
+            var wt: I64 = pkg_z64()
+            if ri == 0 {
+                wt = v0
+            }
+            if ri == 1 {
+                wt = v1
+            }
+            if ri == 2 {
+                wt = v2
+            }
+            if ri == 3 {
+                wt = v3
+            }
+            if ri == 4 {
+                wt = v4
+            }
+            if ri == 5 {
+                wt = v5
+            }
+            if ri == 6 {
+                wt = v6
+            }
+            if ri == 7 {
+                wt = v7
+            }
+            if ri == 8 {
+                wt = v8
+            }
+            if ri == 9 {
+                wt = v9
+            }
+            if ri == 10 {
+                wt = v10
+            }
+            if ri == 11 {
+                wt = v11
+            }
+            if ri == 12 {
+                wt = v12
+            }
+            if ri == 13 {
+                wt = v13
+            }
+            if ri == 14 {
+                wt = v14
+            }
+            if ri == 15 {
+                wt = v15
+            }
+            if ri >= 16 {
+                wt = (xor32(xor32(rotr32(v14, 17), rotr32(v14, 19)), shr32(v14, 10)) + v9 + xor32(xor32(rotr32(v1, 7), rotr32(v1, 18)), shr32(v1, 3)) + v0) % m32
+            }
+            var s1v = xor32(xor32(rotr32(e, 6), rotr32(e, 11)), rotr32(e, 25))
+            var chv = xor32(and32(e, f), and32(not32(e), gv))
+            var t1 = (hh + s1v + chv + pkg_kk_at(ri) + wt) % m32
+            var s0v = xor32(xor32(rotr32(a, 2), rotr32(a, 13)), rotr32(a, 22))
+            var mjv = xor32(xor32(and32(a, b), and32(a, c)), and32(b, c))
+            var t2 = (s0v + mjv) % m32
+            hh = gv
+            gv = f
+            f = e
+            e = (d + t1) % m32
+            d = c
+            c = b
+            b = a
+            a = (t1 + t2) % m32
+            if ri >= 16 {
+                v0 = v1
+                v1 = v2
+                v2 = v3
+                v3 = v4
+                v4 = v5
+                v5 = v6
+                v6 = v7
+                v7 = v8
+                v8 = v9
+                v9 = v10
+                v10 = v11
+                v11 = v12
+                v12 = v13
+                v13 = v14
+                v14 = v15
+                v15 = wt
+            }
+            ri += 1
+        }
+        h0 = (h0 + a) % m32
+        h1 = (h1 + b) % m32
+        h2 = (h2 + c) % m32
+        h3 = (h3 + d) % m32
+        h4 = (h4 + e) % m32
+        h5 = (h5 + f) % m32
+        h6 = (h6 + gv) % m32
+        h7 = (h7 + hh) % m32
+        bi += 1
+    }
+    return pkg_hex_word(h0) + pkg_hex_word(h1) + pkg_hex_word(h2) + pkg_hex_word(h3) + pkg_hex_word(h4) + pkg_hex_word(h5) + pkg_hex_word(h6) + pkg_hex_word(h7)
+}
+// ---- dep 块扫描 ----
+// 返回平表每 dep 4 槽 [name, form, value, extra]:
+//   form = "path"    → value = 路径;extra = ""
+//   form = "git"     → value = URL; extra = rev
+//   form = "version" → value = 约束; extra = ""
+//   form = ""(三互斥/缺来源已推 E5049)→ 调用方跳过
+fn pkg_deps_of(dir: Str, diags: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    match read_file(dir + "/../Ctron.ctcl") {
+        Some(x) => {
+            // 发射语境 read_file 缺失回落 Some("")(T48 双口径):空文本 = 无清单
+            if x.len == 0 {
+                return out
+            }
+            return pkg_deps_text(x, diags)
+        }
+        None => { return out }
+    }
+    return out
+}
+
+// dep 块文本扫描(驱动面复用:ctron-dep 手持清单原文,不经 dir/../ 二次定位)
+fn pkg_deps_text(t: Str, diags: List[Str]) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "dep") && pkg_ctcl_pre(t, i) {
+            var j = i + 3
+            while j < t.len && byte_at(t, j) == 32 {
+                j += 1
+            }
+            if j < t.len && byte_at(t, j) == 34 {
+                var k = j + 1
+                while k < t.len && byte_at(t, k) != 34 {
+                    k += 1
+                }
+                if k < t.len {
+                    var nm = byte_slice(t, j + 1, k)
+                    var b = k + 1
+                    while b < t.len && byte_at(t, b) != 123 {
+                        b += 1
+                    }
+                    if b < t.len {
+                        var e = b + 1
+                        while e < t.len && byte_at(t, e) != 125 {
+                            e += 1
+                        }
+                        if e < t.len {
+                            var body = byte_slice(t, b + 1, e)
+                            var pv = pkg_plugin_field(body, "path")
+                            var gv = pkg_plugin_field(body, "git")
+                            var rv = pkg_plugin_field(body, "rev")
+                            var vv = pkg_plugin_field(body, "version")
+                            // C 线同判:g = [path, git&&rev, version](git 无 rev 塌缩缺来源臂)
+                            var has_p = pv.len > 0
+                            var has_g = false
+                            if gv.len > 0 {
+                                if rv.len > 0 {
+                                    has_g = true
+                                }
+                            }
+                            var has_v = vv.len > 0
+                            var np: I32 = 0
+                            if has_p {
+                                np += 1
+                            }
+                            if has_g {
+                                np += 1
+                            }
+                            if has_v {
+                                np += 1
+                            }
+                            if np >= 2 {
+                                // labels 注册表序 path < git+rev < version,取同现前两
+                                var l1 = "path"
+                                var l2 = "git+rev"
+                                if !has_p {
+                                    l1 = "git+rev"
+                                    l2 = "version"
+                                } else {
+                                    if !has_g {
+                                        l2 = "version"
+                                    }
+                                }
+                                diags.push("Ctron.ctcl: E5049 dep 来源互斥:" + l1 + " 与 " + l2 + " 同现")
+                            } else {
+                                if np == 0 {
+                                    diags.push("Ctron.ctcl: E5049 dep 需要且仅需要一种来源:path | git+rev | version")
+                                } else {
+                                    if has_p {
+                                        out.push(nm)
+                                        out.push("path")
+                                        out.push(pv)
+                                        out.push("")
+                                    } else {
+                                        if has_g {
+                                            out.push(nm)
+                                            out.push("git")
+                                            out.push(gv)
+                                            out.push(rv)
+                                        } else {
+                                            out.push(nm)
+                                            out.push("version")
+                                            out.push(vv)
+                                            out.push("")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    i = k
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+// dep 平表按名查槽基(4 槽组);未命中 -1
+fn pkg_dep_slot(deps: List[Str], nm: Str) -> I32 {
+    var i: I32 = 0
+    while i + 3 < deps.len {
+        if deps[i] == nm {
+            return i
+        }
+        i += 4
+    }
+    return 0 - 1
+}
+
+// ---- semver 约束工具(ctron-dep 解析器工具面;四线解析面不校验 dep 值语法)----
+
+// 数字段读取:i 处须为数字且无前导零;返回段尾下标,-1 = 非法
+fn pkg_cseg(v: Str, i: I32) -> I32 {
+    if i >= v.len {
+        return 0 - 1
+    }
+    var c = byte_at(v, i)
+    if c < 48 || c > 57 {
+        return 0 - 1
+    }
+    if c == 48 {
+        return i + 1
+    }
+    var j = i
+    while j < v.len {
+        var d = byte_at(v, j)
+        if d < 48 || d > 57 {
+            break
+        }
+        j += 1
+    }
+    return j
+}
+
+// pre/build 标签读取:i 处起 [0-9A-Za-z.\-]+ 非空;返回尾下标,-1 = 非法
+fn pkg_ctag(v: Str, i: I32) -> I32 {
+    if i >= v.len {
+        return 0 - 1
+    }
+    var j = i
+    while j < v.len {
+        var c = byte_at(v, j)
+        var okc = false
+        if or2(c >= 48 && c <= 57, c >= 97 && c <= 122) {
+            okc = true
+        }
+        if or2(c >= 65 && c <= 90, or2(c == 45, c == 46)) {
+            okc = true
+        }
+        if !okc {
+            return 0 - 1
+        }
+        j += 1
+    }
+    return j
+}
+
+// 约束文法:X | X.Y | X.Y.Z(数字段无前导零;全形可续 -pre 与 +build)。
+// 返回 "" = 合法;非空 = E5046 消息尾。
+fn pkg_constraint_check(v: Str) -> Str {
+    var bad = "约束文法:X | X.Y | X.Y.Z(数字段无前导零)"
+    var i = pkg_cseg(v, 0)
+    if i < 0 {
+        return bad
+    }
+    if i >= v.len {
+        return ""
+    }
+    if byte_at(v, i) != 46 {
+        return bad
+    }
+    var i2 = pkg_cseg(v, i + 1)
+    if i2 < 0 {
+        return bad
+    }
+    if i2 >= v.len {
+        return ""
+    }
+    if byte_at(v, i2) != 46 {
+        return bad
+    }
+    var i3 = pkg_cseg(v, i2 + 1)
+    if i3 < 0 {
+        return bad
+    }
+    if i3 >= v.len {
+        return ""
+    }
+    var c = byte_at(v, i3)
+    if c == 45 {
+        var j = pkg_ctag(v, i3 + 1)
+        if j < 0 {
+            return bad
+        }
+        if j >= v.len {
+            return ""
+        }
+        if byte_at(v, j) == 43 {
+            var k = pkg_ctag(v, j + 1)
+            if or2(k < 0, k < v.len) {
+                return bad
+            }
+            return ""
+        }
+        return bad
+    }
+    if c == 43 {
+        var k2 = pkg_ctag(v, i3 + 1)
+        if or2(k2 < 0, k2 < v.len) {
+            return bad
+        }
+        return ""
+    }
+    return bad
+}
+
+// 版本数字段 n(0/1/2)取值;-pre/+build 截断;缺省 0
+fn pkg_ver_seg(v: Str, n: I32) -> I64 {
+    var i: I32 = 0
+    var seg: I32 = 0
+    var acc: I64 = pkg_z64()
+    while i < v.len {
+        var c = byte_at(v, i)
+        if c >= 48 && c <= 57 {
+            acc = acc * 10 + (c - 48).as[I64]()
+            i += 1
+        } else {
+            if c == 46 {
+                if seg == n {
+                    return acc
+                }
+                seg += 1
+                acc = pkg_z64()
+                i += 1
+            } else {
+                break
+            }
+        }
+    }
+    if seg == n {
+        return acc
+    }
+    return pkg_z64()
+}
+
+// 版本比较(仅数字三元):-1/0/1
+fn pkg_ver_cmp(a: Str, b: Str) -> I32 {
+    var s: I32 = 0
+    while s < 3 {
+        var va = pkg_ver_seg(a, s)
+        var vb = pkg_ver_seg(b, s)
+        if va < vb {
+            return 0 - 1
+        }
+        if va > vb {
+            return 1
+        }
+        s += 1
+    }
+    return 0
+}
+
+// 约束满足:caret 语义(X → [X.0.0, X+1.0.0);X.Y → [X.Y.0, X+1.0.0);
+// 全形与带 -pre 的约束 = 精确匹配
+fn pkg_constraint_ok(c: Str, v: Str) -> Bool {
+    var dots: I32 = 0
+    var pre = false
+    var q: I32 = 0
+    while q < c.len {
+        var c2 = byte_at(c, q)
+        if c2 == 46 {
+            dots += 1
+        }
+        if c2 == 45 {
+            pre = true
+        }
+        q += 1
+    }
+    if pre {
+        return seq2(c, v)
+    }
+    if dots == 2 {
+        return seq2(c, v)
+    }
+    var lo0 = pkg_ver_seg(c, 0)
+    var lo1 = pkg_ver_seg(c, 1)
+    var v0 = pkg_ver_seg(v, 0)
+    var v1 = pkg_ver_seg(v, 1)
+    if v0 != lo0 {
+        return false
+    }
+    if dots == 0 {
+        return true
+    }
+    if v1 < lo1 {
+        return false
+    }
+    return true
+}
+
+// 字节序小于(名称排序用;逐字节,短前缀为小)
+fn pkg_names_lt(a: Str, b: Str) -> Bool {
+    var i: I32 = 0
+    while i < a.len && i < b.len {
+        if byte_at(a, i) != byte_at(b, i) {
+            return byte_at(a, i) < byte_at(b, i)
+        }
+        i += 1
+    }
+    return a.len < b.len
+}
+
+// 名称平表插入排序(字节序;read_dir 顺序不定)
+fn pkg_names_sort(names: List[Str]) {
+    var a: I32 = 1
+    while a < names.len {
+        var v = names[a]
+        var b = a - 1
+        while b >= 0 {
+            if pkg_names_lt(v, names[b]) {
+                names[b + 1] = names[b]
+                b -= 1
+            } else {
+                break
+            }
+        }
+        names[b + 1] = v
+        a += 1
+    }
+}
+
+// 目录顶层 *.ct 树摘要:名按字节序,名+换行+字节数+换行+内容依序拼接 sha256;
+// 无 .ct 文件/读失败 = ""
+fn pkg_tree_digest(dir: Str) -> Str {
+    var names = List[Str]()
+    match read_dir(dir) {
+        Some(ls) => {
+            var i: I32 = 0
+            var cur = ""
+            while i < ls.len {
+                var c = byte_at(ls, i)
+                if c == 10 {
+                    if cur.len > 3 {
+                        if byte_slice(cur, cur.len - 3, cur.len) == ".ct" {
+                            names.push(cur)
+                        }
+                    }
+                    cur = ""
+                } else {
+                    cur = cur + byte_slice(ls, i, i + 1)
+                }
+                i += 1
+            }
+        }
+        None => { return "" }
+    }
+    pkg_names_sort(names)
+    var acc = ""
+    var k: I32 = 0
+    while k < names.len {
+        // 单 match 每函数(发射约束 t_mv):文件读取拆 pkg_tree_accum
+        acc = pkg_tree_accum(dir, names[k], acc)
+        if acc.len == 0 {
+            return ""
+        }
+        k += 1
+    }
+    return pkg_sha256_hex(acc)
+}
+
+// 树摘要单文件累计(缺文件 = "" 哨兵;空文件 = 非空累计,二者可分)
+fn pkg_tree_accum(dir: Str, nm: Str, acc: Str) -> Str {
+    match read_file(dir + "/" + nm) {
+        Some(s) => {
+            return acc + nm + "\n" + s.len.to_string() + "\n" + s
+        }
+        None => { return "" }
+    }
+    return ""
+}

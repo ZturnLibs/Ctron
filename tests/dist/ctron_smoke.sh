@@ -17,8 +17,9 @@
 #  10) T43 lint:干净件归零/警告只汇总不红/--strict 红/错误红/--trusted 信任审计
 #      透传/pkg 目录展开(跨文件 use 解析+多文件头)/未知旗标 rc=2
 #  11) T43 bench:无族名注册表/未注册族 fail-closed/lang 真跑(digest+×3min)/net 缺省 SKIP
-#  12) T43 add/publish 骨架:合法形与带约束形均 fail-closed rc=2(registry 未接);
-#      名非法/缺清单拦截;publish 报将发布面(name@version)
+#  12) T49 add/publish/lock 实装(本地 registry 协议,零网络,隔离 CTRON_REGPATH):
+#      缺清单/名非法/registry 无包 fail-closed;publish 三件落盘+版本不可覆盖;
+#      add 装 dep 块+pkgs/+lock;lock 二跑逐字节稳定(内容寻址)
 # 前置:仓库根 ctron + compiler/bin/ctron-{cc,chk,emit}
 #       (ci.sh [3/9] native.sh 产出;dev 回落由 ctron 内建,本脚本不依赖 PATH)。
 set -eu
@@ -328,19 +329,14 @@ else
     bad "bench net rc=$rc out=[$(cat "$T/b4.out")]"
 fi
 
-echo "== 12) T43 add/publish(骨架 fail-closed:registry 未接,零写入零网络) =="
-rc=0; "$CTRON" add mypkg > "$T/a1.out" 2>&1 || rc=$?
-if [ $rc -eq 2 ] && grep -q 'registry 未接' "$T/a1.out"; then
-    ok "add 合法形 → 骨架诊断 rc=2"
+echo "== 12) T49 add/publish/lock 实装(本地 registry 协议,零网络,隔离 CTRON_REGPATH) =="
+REGT="$T/t49reg"
+mkdir -p "$T/pub_empty"
+rc=0; ( cd "$T/pub_empty" && CTRON_REGPATH="$REGT" "$CTRON" publish ) > "$T/p2.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'Ctron.ctcl' "$T/p2.out"; then
+    ok "publish 缺清单拦截 rc=2"
 else
-    bad "add 合法形 rc=$rc out=[$(cat "$T/a1.out")]"
-fi
-
-rc=0; "$CTRON" add 'mypkg@^1.2' > "$T/a2.out" 2>&1 || rc=$?
-if [ $rc -eq 2 ] && grep -q 'registry 未接' "$T/a2.out"; then
-    ok "add 带版本约束合法形 → 骨架诊断 rc=2"
-else
-    bad "add 带约束 rc=$rc out=[$(cat "$T/a2.out")]"
+    bad "publish 缺清单 rc=$rc out=[$(cat "$T/p2.out")]"
 fi
 
 rc=0; "$CTRON" add '9bad name' > "$T/a3.out" 2>&1 || rc=$?
@@ -350,19 +346,43 @@ else
     bad "add 名非法 rc=$rc out=[$(cat "$T/a3.out")]"
 fi
 
-rc=0; ( cd "$T/probe" && "$CTRON" publish ) > "$T/p1.out" 2>&1 || rc=$?
-if [ $rc -eq 2 ] && grep -q 'probe@0.1.0' "$T/p1.out" && grep -q 'registry 未接' "$T/p1.out"; then
-    ok "publish 骨架读清单报将发布面 rc=2"
+rc=0; ( cd "$T/probe" && CTRON_REGPATH="$REGT" "$CTRON" add libmath9x ) > "$T/a4.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q 'registry 无包' "$T/a4.out"; then
+    ok "add registry 无包 fail-closed rc=2"
+else
+    bad "add 无包 rc=$rc out=[$(cat "$T/a4.out")]"
+fi
+
+rc=0; ( cd "$T/probe" && CTRON_REGPATH="$REGT" "$CTRON" publish ) > "$T/p1.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && [ -f "$REGT/probe/0.1.0/sha256" ] && [ -f "$REGT/probe/0.1.0/module" ] && [ -f "$REGT/probe/0.1.0/manifest" ]; then
+    ok "publish 三件落盘(manifest+module+sha256)"
 else
     bad "publish rc=$rc out=[$(cat "$T/p1.out")]"
 fi
 
-mkdir -p "$T/pub_empty"
-rc=0; ( cd "$T/pub_empty" && "$CTRON" publish ) > "$T/p2.out" 2>&1 || rc=$?
-if [ $rc -eq 2 ] && grep -q 'Ctron.ctcl' "$T/p2.out"; then
-    ok "publish 缺清单拦截 rc=2"
+rc=0; ( cd "$T/probe" && CTRON_REGPATH="$REGT" "$CTRON" publish ) > "$T/p3.out" 2>&1 || rc=$?
+if [ $rc -eq 2 ] && grep -q '版本不可覆盖' "$T/p3.out"; then
+    ok "二次发布被拒(不可变性)rc=2"
 else
-    bad "publish 缺清单 rc=$rc out=[$(cat "$T/p2.out")]"
+    bad "二次发布 rc=$rc out=[$(cat "$T/p3.out")]"
+fi
+
+mkdir -p "$T/t49app/src"
+printf 'pkg {\n    manifest_version = 1\n    name = "t49app"\n    version = "0.1.0"\n}\n' > "$T/t49app/Ctron.ctcl"
+printf 'fn main() -> I32 {\n    return 0\n}\n' > "$T/t49app/src/main.ct"
+rc=0; ( cd "$T/t49app" && CTRON_REGPATH="$REGT" "$CTRON" add probe@0.1.0 ) > "$T/a5.out" 2>&1 || rc=$?
+if [ $rc -eq 0 ] && grep -q 'dep "probe"' "$T/t49app/Ctron.ctcl" && [ -f "$T/t49app/pkgs/probe/probe.ct" ] && [ -f "$T/t49app/Ctron.lock" ]; then
+    ok "add 实装(dep 块+pkgs/ 安装+lock 刷新)"
+else
+    bad "add 实装 rc=$rc out=[$(cat "$T/a5.out")]"
+fi
+
+cp "$T/t49app/Ctron.lock" "$T/lock1"
+rc=0; ( cd "$T/t49app" && CTRON_REGPATH="$REGT" "$CTRON" lock ) > /dev/null 2>&1 || rc=$?
+if [ $rc -eq 0 ] && cmp -s "$T/lock1" "$T/t49app/Ctron.lock"; then
+    ok "lock 二跑稳定(内容寻址)"
+else
+    bad "lock 二跑 rc=$rc"
 fi
 
 echo "ctron_smoke: $pass ok / $fail fail"

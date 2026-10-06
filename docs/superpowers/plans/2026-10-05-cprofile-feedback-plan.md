@@ -115,3 +115,8 @@
 - compiler-c/src/rt_eval.c 加 fs_mkdir native(逐级创建,EEXIST 容忍,镜像 fs_write 形态)+ sys/stat/errno includes;make 过,seed 路径 probe 全通(创建/存在)
 - smoke 维持 157/3(余:conc_parallel 段错误=主树二进制同样崩[s30/发射链范畴已移交]、native/seed 口径——seed 补齐后待重验、doc std=worktree 环境)
 - fb1 分支就绪,合并窗口待与并行会话协调
+
+## 预合并完成(2026-10-06)
+- main 已并入 fb1(7c44d04c 之后 main 前进:T46/47 http serve、T49 pkg registry[decl 锁 480→506]、T50 WIP);唯一冲突 smoke decls 已解:**506+2=508**(T49 二十六 fn + FB-2 二),smoke 156/4
+- 4 失败归因:①conc_parallel=主树同源在册红 ✓既有;②T35 use 门(空详情)③native/seed 口径 ④**W8902 缺失(use hi 得裸 E2020)——疑与 T49 解析链 W8902 流互动(merge 对 parse_pkg 的自动合并),待 T50 落地后对纯 main 对照归因**
+- fb1 分支自此含 main 全量+FB-1/FB-2:后续 main 合并 fb1 应近平凡(或 fast-forward 窗口)

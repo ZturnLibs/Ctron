@@ -533,6 +533,11 @@ fn validate_text(t: Str) -> List[Str] {
     var seen_keys = List[Str]()
     var seen_deps = List[Str]()
     var seen_dep_ln = List[I32]()
+    var member_active = false
+    var m_has_path = false
+    var member_arg = ""
+    var seen_members = List[Str]()
+    var seen_member_ln = List[I32]()
     var comptime_seen = false
     var budget_ok = false
     var budget: I32 = 0
@@ -632,6 +637,13 @@ fn validate_text(t: Str) -> List[Str] {
                     }
                     dep_active = false
                 }
+                if member_active {
+                    if !m_has_path {
+                        ds.push("E5051 member \"" + member_arg + "\" 缺必填键 path")
+                    }
+                    member_arg = ""
+                    member_active = false
+                }
                 block = ""
                 continue
             }
@@ -728,8 +740,8 @@ fn validate_text(t: Str) -> List[Str] {
                 ds.push("E5040 块外只允许块头(NAME [\"名\"]) " + c_lb())
                 continue
             }
-            if !or2(seq2(id, "pkg"), or2(seq2(id, "comptime"), or2(seq2(id, "dep"), seq2(id, "plugin")))) {
-                ds.push("E5044 未知块 " + id + ";合法块:comptime, dep, pkg, plugin")
+            if !or2(seq2(id, "pkg"), or2(seq2(id, "comptime"), or2(seq2(id, "dep"), or2(seq2(id, "plugin"), or2(seq2(id, "workspace"), seq2(id, "member")))))) {
+                ds.push("E5044 未知块 " + id + ";合法块:comptime, dep, member, pkg, plugin, workspace")
                 block = "skip"
                 continue
             }
@@ -768,6 +780,38 @@ fn validate_text(t: Str) -> List[Str] {
                 ds.push("E5041 pkg 是记录块,不带名字实参")
                 block = "skip"
                 continue
+            } else if seq2(id, "workspace") && arg.len > 0 {
+                ds.push("E5041 workspace 是记录块,不带名字实参")
+                block = "skip"
+                continue
+            } else if seq2(id, "member") {
+                if arg.len == 0 {
+                    ds.push("E5041 member 是键控块:dep \"名\" " + c_lb() + " ... " + c_rb())
+                    block = "skip"
+                    continue
+                }
+                if !c_is_name(arg) {
+                    ds.push("E5048 键控块名 '" + arg + "' 不符合包名规则")
+                    block = "skip"
+                    continue
+                }
+                var dupi: I32 = -1
+                var i4: I32 = 0
+                while i4 < seen_members.len {
+                    if seq2(seen_members[i4], arg) {
+                        dupi = i4
+                    }
+                    i4 += 1
+                }
+                if dupi >= 0 {
+                    ds.push("E5045 重复的 member \"" + arg + "\"(首次在第 " + seen_member_ln[dupi].to_string() + " 行);同名块禁止追加")
+                } else {
+                    seen_members.push(arg)
+                    seen_member_ln.push(ln)
+                }
+                member_active = true
+                m_has_path = false
+                member_arg = arg
             }
             if seq2(id, "pkg") {
                 b_saw_pkg = true
@@ -1028,6 +1072,14 @@ fn validate_text(t: Str) -> List[Str] {
                 has_version = 1
             }
             // skip 块(未知块)键行=静默(T52 对齐 python 臂)
+        } else if seq2(block, "workspace") {
+            ds.push("E5043 块 workspace 中未知键 " + key + ";合法键:(无)")
+        } else if seq2(block, "member") {
+            if seq2(key, "path") {
+                m_has_path = true
+            } else {
+                ds.push("E5043 块 member 中未知键 " + key + ";合法键:path")
+            }
         }
     }
 

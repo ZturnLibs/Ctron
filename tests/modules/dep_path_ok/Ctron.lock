@@ -1,0 +1,11 @@
+// Ctron.lock —— 依赖解析产物(内容寻址;勿手编,ctron-dep 生成)
+lock {
+    manifest_version = 1
+}
+
+pkg "libmath" {
+    version = "0.1.0"
+    source = "path"
+    path = "libmath"
+    digest = "sha256:75eb375388b5360e43010520db72a7da1620192c079657fe66afe91da26357d7"
+}
