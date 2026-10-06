@@ -261,9 +261,11 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
     var ix = nline(site)
     // P0-A:同行列闭包判别位(参名 + 自由名;见 ct_str_bsum 注)
     var dsx: I32 = 7919
-    var qi4: I32 = 0
+    // T33 根因:差一越界——qi4 < cps.len 配 cps[qi4 + 1] 末轮读 cps[cps.len]
+    // ("index out of bounds",parallel 发射面在册红独立真因;镜像 clov 从 1 起)
+    var qi4: I32 = 1
     while qi4 < cps.len {
-        dsx = ct_str_bsum(cps[qi4 + 1][2], dsx)
+        dsx = ct_str_bsum(cps[qi4][2], dsx)
         qi4 += 1
     }
     qi4 = 0
@@ -276,6 +278,7 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
         dss = "n" + byte_slice(dss, 1, dss.len)
     }
     var cname = "ct_clo_" + ct_env_ty(env, "#clofn") + "_L" + ix + "x" + dss
+
     if seq2(ct_pass(env), "1") {
         var sig0 = ""
         var pi0: I32 = 0
@@ -293,11 +296,13 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
         var env2 = env
         while pj2 < np {
             var pn = cps[pj2 + 1][2]
-            // ClosureParam 注解优先(§4.7):Str/List 形参经 64 位槽位透明传递
+            // ClosureParam 注解优先(§4.7):Str/List 形参经 64 位槽位透明传递。
+            // T33 根因:无注解参节点仅 3 槽(tag/isv/名),注解位缺省——旧无守卫
+            // 直读 [3] 越界("index out of bounds",fx_conc_parallel 发射面在册红
+            // 独立真因;台账卫兵假说非本病灶,卫兵形态复验完好)
             var pc0 = "i"
-            var pty0 = cps[pj2 + 1][3]
-            if pty0[0] != "None" {
-                pc0 = ct_ty_code(pty0, file)
+            if cps[pj2 + 1].len > 3 && cps[pj2 + 1][3][0] != "None" {
+                pc0 = ct_ty_code(cps[pj2 + 1][3], file)
             }
             if pc0.len > 2 && byte_slice(pc0, 0, 2) == "u:" {
                 // T54:struct 内参解盒——调用位 ct_wrap_i 对 u: 码传堆盒指针
@@ -330,7 +335,9 @@ fn ct_emit_clo(site: List[Str], clo: List[Str], env: List[Str], file: List[Str],
             println(qlines0[qi0])
             qi0 += 1
         }
-        println("#endif")
+        // T33 卫兵闭合位修正:此处不得落 #endif——pass-2 体/返回行必须在卫兵内
+        //(旧行为:qlines0 后即闭,体行全落卫兵外 → "#endif without #if" 编译错;
+        // 镜像 ct_emit_clov 单闭合位 = 末尾 "}" 之后)
         var renv0 = env_bind(env_bind(env2, "#p", "2"), "#shim", "2")
         if cbody[0] == "Block" {
             var renv2 = ct_stmts(cbody, renv0, file, "", List[Str]())

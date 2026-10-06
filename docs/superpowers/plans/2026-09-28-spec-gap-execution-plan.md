@@ -640,7 +640,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复;**0930 精确定稿**:ct_emit_clo 的 #ifndef 卫兵在 prewalk/实发两遍
 间错位——发射 C 出现「fn 首行后即 #endif、return 与 } 落卫兵外」的截断 shim(闭包无
 返回路径→运行期垃圾;fx_conc_parallel/cloval 双夹具实证)。修法=卫兵只在实发遍 emission
-(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修。**10-03 T27 复验注**:r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef 包整 shim),r3a 原生臂真因=bsum I32 溢出+with ANF 漏接(已随 T27-B 收口三修);本件 parallel 面 ct_emit_clo OOB("index out of bounds")独立仍在册,bsum 修复后复验依旧复现,卫兵假说待 T33 作者按上法定稿时再证 | — |
+(pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修。**10-03 T27 复验注**:r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef 包整 shim),r3a 原生臂真因=bsum I32 溢出+with ANF 漏接(已随 T27-B 收口三修);本件 parallel 面 ct_emit_clo OOB("index out of bounds")独立仍在册,bsum 修复后复验依旧复现,卫兵假说待 T33 作者按上法定稿时再证。**1006 收官(t33-clo,双根因实修):①trans_conc dsx 判别位循环差一越界(qi4 < cps.len 配 cps[qi4+1],末轮读 cps[cps.len]——OOB 真因,P0-A 引入即全输入面必炸);②ct_emit_clo 卫兵序列过早闭合(qlines0 后即 #endif,pass-2 体/返回行全落卫兵外 → "#endif without #if"——台账卫兵假说部分命中)。 ClosureParam 注解位读取加 len 守卫(防御面)。门:fx_conc_parallel 发射→编译→运行=20 全链绿+块体/嵌套闭包手验(smoke 3b 原生==解释逐字一致);smoke 177/0 首次全绿;bare 15/15;suite 103/104(唯一分歧=03m_binary_nul_probe L4 生死探针,主树基线同败,能力缺口登记非回归) | — |
 | T34 | 栈经济 P9 | W7 | **已完成**:1002 两波——最小符合径(触顶诊断链 a77f141f)+正案收官(work-stealing 落码+可增长栈判决入册:A/B 双阻塞于发射器机器,退路 1MB 大栈=§7.1 字面终形,解锁条件单列;ws_steal 锚+c10k 满额 PASS+A/B 差分 ≤0.5%) | — |
 | T35 | 分层 stdlib 机制 | W8 | ✅ 1002 | — |
 | T36 | ctc target+后端接口 | W8 | **已完成**(1001,--target 注册表+fail-closed 诊断;native/bare 双靶已注册,wasm32 随 T37) | 见卡 |
