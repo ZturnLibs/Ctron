@@ -110,3 +110,8 @@
 - ①解释臂 panic 测试 ✓(rc=1+消息)②发射臂 ✓(strlen 防护)③smoke 157/3(3 项归因既有)④**suite 100/101 = 主线基线持平**(并行治愈提交同数;03m=L4 待立项探针 + cbox=worktree ffi 环境,均既有)⑤build_fb.sh 过渡自举脚本固化(行首锚定存在性检查;追加一代 C 实现,此后自含)
 - 新增坑三条入册:①build 存在性 grep 误匹配 printf 数据行(行首锚定);②extern 符号若与模板符号同名,发射器自举代差必崩(改名+别名包装解);③函数体外浮语句=发射器列表树失配崩触发形状(s30 同族)
 - fb1 分支就绪待合:FB-1+FB-2+基线+本文件;合并窗口需与并行会话协调
+
+## seed 宿主补齐(2026-10-06)
+- compiler-c/src/rt_eval.c 加 fs_mkdir native(逐级创建,EEXIST 容忍,镜像 fs_write 形态)+ sys/stat/errno includes;make 过,seed 路径 probe 全通(创建/存在)
+- smoke 维持 157/3(余:conc_parallel 段错误=主树二进制同样崩[s30/发射链范畴已移交]、native/seed 口径——seed 补齐后待重验、doc std=worktree 环境)
+- fb1 分支就绪,合并窗口待与并行会话协调
