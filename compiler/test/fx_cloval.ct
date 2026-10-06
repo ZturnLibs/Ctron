@@ -1,4 +1,6 @@
 // fx_cloval.ct —— Phase 5:带捕获闭包值(创建时快照;存变量/作实参/间接调用)
+// 块体闭包体内 return(T27 泳道 1006:调用边界收编 "r" 流——闭包 return=
+// 调用值非外层 fn 返回;eval 臂此前裸传致 fn main 被静默吞掉)
 fn invoke(f: fn(I32) -> I32, v: I32) -> I32 {
     return f(v)
 }
@@ -13,5 +15,21 @@ fn main() -> I32 {
     println(r1.to_string())
     println(r2.to_string())
     println(r3.to_string())
+    // ① 纯块体 return
+    let f41 = || {
+        return 41
+    }
+    println(f41().to_string())
+    // ② 条件早退 return+块尾值混形
+    let early = |x| {
+        if x > 0 {
+            return x * 2
+        }
+        x + 1
+    }
+    println(early(10).to_string())
+    println(early(0 - 3).to_string())
+    // ③ 早退 return 经具名 fn 值间接调用
+    println(invoke(early, 7).to_string())
     return 0
 }

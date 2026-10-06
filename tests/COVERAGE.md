@@ -1649,3 +1649,24 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   (唯一分歧=03m L4 生死探针,主树基线同败在册)+fx_with_expr 双臂逐字一致+
   fx_conc_mutex 双臂 7/7+min 形四连(标量写回 10/10/struct 恒等/块体尾表达式)绿;
   decl 锁 513 不变(+1 ct_with_clo_ty 仅入 cc_emit,cc_run 口径锁零新增)。
+
+## 2026-10-06 续批(t27-cloret)——块体闭包 return 流收编+捕获面写回终式
+
+- **块体闭包体内 return 静默吞 main 清偿**:真因=`call_cv` 闭包臂把体内 return 的
+  "r" 流裸传(具名 fn 边界 call_decl_vals 本就收编为 k 只放行 "a";spawn 位点
+  sr.kind=="a" 判别本就吸收;Rust 宿主 Ok(v) 同口径)——裸调用表达式位直穿到外层
+  语句流,main 被当成 return 结束(rc=0 零输出)。修=call_cv C 臂+with_mut 内联路
+  两处同式收编(镜像 call_decl_vals)。fx_cloval 扩三面:纯块体 return/条件早退
+  return+块尾值混形/经 fn 值间接调用——双臂逐字一致(107/105/25/41/20/-2/14)。
+- **修好边界即翻出被掩蔽旧账**:r3a 于自举臂首次真跑(修前其测试被 "r" 流静默吞掉
+  从未执行=Rust 臂绿+发射臂绿双掩蔽),暴露**捕获面 with_mut 写不持久**(bump 二连
+  1!=2;env_set 换绑只活本调用流 env,跨调用共享 cap 原样)。终式=**双路并施**:
+  env_at 绑定盒槽原地换(native 直用+捕获双形态唯一持续路)+env_set 流换绑
+  (seed×cc_run 直用形唯一传播路)。**引擎劈叉实证**:Flow struct 拷贝在 seed 深
+  克隆 cx 列表(S1「cx 包装表」同族),槽写落克隆体;捕获形 seed 仍断(cap 调用间
+  不回写)=旧账维持登记(native 1/2/3 vs seed 1/1/1)。
+- **随批代修**:tests/fb7_loop_relet.ct(对端 FB-7 夹具)缺 test 块违反 meta 行为
+  语料规则——main 体原样入 test 块(0809df8a 代修先例),meta 复绿。
+- **门**(t27-cloret 分支基线,c877adac 之上):smoke --full **193 ok/0 fail**+
+  meta 全绿+suite 分歧=fb7/fb8 宿主列(对端在册 parity 债,非本批)+fx_cloval/
+  fx_with_expr 双臂逐字一致+捕获探针 native 1/2/3+min9 双引擎 10/10。

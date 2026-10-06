@@ -93,7 +93,16 @@ fn call_cv(file: List[Str], env: List[Str], out: Str, v: Val, vals: List[Str]) -
                 k += 1
             }
             var br = eval_expr(file, nenv, out, cx_of(v)[2])
-            return e4(br.kind, env, br.v, br.out)
+            // 调用边界收编流(镜像 call_decl_vals):闭包体内 return 的 "r" 流
+            // 此前裸传——裸调用表达式位直穿到外层语句流,fn main 静默吞掉其余体
+            //(rc=0 零输出,`let g = || \{ return 41 \}` 实证;spawn 位点本就吸收,
+            // Rust 宿主 Ok(v) 同口径)。break/continue 越界闭包=sem E2071/72 域,
+            // 与具名 fn 同式收编为 k
+            var cfl = "k"
+            if br.kind == "a" {
+                cfl = "a"
+            }
+            return e4(cfl, env, br.v, br.out)
         }
     }
     panic("call value")
@@ -1046,21 +1055,33 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             var wbr = eval_expr(file, wnenv, ob.out, wc[2])
             if seq2(wbr.kind, "k") && wps.len > 1 {
                 var wpe = env_at(wbr.env, wps[1][2])
-                if wpe.len > 1 {
-                    // 写回=env 绑定槽替换(双宿主可移植):cx 槽内写在 seed 的
-                    // struct 拷贝语义下别名断裂(本地 MUX 实证:终值算到、槽写
-                    // 执行、绑定不传播)=S1 在册「cx 包装表」同族;Ident 接收者
-                    // 经 env_set 换绑 MUX 盒,非 Ident(临时接收者)写无 alias
-                    // 可观察,跳过
-                    if cal[1][0] == "Ident" {
-                        var wmx = List[Str]()
-                        wmx.push("MUX")
-                        wmx.push(wpe[1])
-                        return e4(wbr.kind, env_set(env, cal[1][1], Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(wmx) }), wbr.v, wbr.out)
+                if wpe.len > 1 && cal[1][0] == "Ident" {
+                    // 写回双路并施(引擎语义劈叉实证):①env_at 绑定盒槽原地换=
+                    // native 双形态(直用+捕获共享 cap)传播路;②env_set 流换绑=
+                    // seed×cc_run 直用形唯一传播路(seed 的 Flow struct 拷贝深克
+                    // 隆 cx 列表,槽写落克隆体=S1 在册「cx 包装表」同族;捕获形
+                    // seed 不可达=cap 在调用间不回写,旧账维持登记)。env_set 换
+                    // 绑时未触条目按对象共享,双写幂等一致
+                    var wnm = cal[1][1]
+                    var wen = env_at(env, wnm)
+                    if wen.len > 1 {
+                        wen[1][1] = wpe[1]
                     }
+                    var wmx = List[Str]()
+                    wmx.push("MUX")
+                    wmx.push(wpe[1])
+                    var wfl = "k"
+                    if wbr.kind == "a" {
+                        wfl = "a"
+                    }
+                    return e4(wfl, env_set(env, wnm, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(wmx) }), wbr.v, wbr.out)
                 }
             }
-            return e4(wbr.kind, ob.env, wbr.v, wbr.out)
+            var wfl2 = "k"
+            if wbr.kind == "a" {
+                wfl2 = "a"
+            }
+            return e4(wfl2, ob.env, wbr.v, wbr.out)
         }
         if seq2(cx_of(recv)[0], "M") && seq2(m, "fetch_add") && vals.len == 1 {
             var oldm = v_unbox(cx_of(recv)[1])
