@@ -103,6 +103,8 @@ cc_missing_guidance() {
     echo "  ② C 已发射到 $1 —— 可手动编译,或拿到任何有 cc 的机器上: cc -O2 -w $1 -o <名>" >&2
 }
 
+# T36 后端注册表(§9.7;与 compiler/ctc.sh 同表)。T40:bare 双靶注册——
+# 构建管线与 ctc.sh 同源(bare 工具链三通道 env/宿主/docker 见 lib/rt/bare/README.md)
 # T43 lint(§9.7):check 命令化+汇总。口径:错误(E####)红 rc=1;警告(W####)
 # 默认只汇总不红(常规 lint 面;check 的警告也 rc=1 是既有严格面,二面并存);
 # --trusted 透传 ctron-chk 信任边界审计(§9.6);--strict 警告也红。
@@ -199,12 +201,12 @@ add_validate() {
     fi
 }
 
-# T36 后端注册表(§9.7;与 compiler/ctc.sh 同表——native 首个后端,wasm32/bare 随 T37/T40)
 ct_target_check() {
     CTRON_TARGET=${CTRON_TARGET:-native}
     case $CTRON_TARGET in
         native) : ;;
-        *) die2 "未注册后端 target: $CTRON_TARGET(注册表: native;wasm32/bare 随 T37/T40)" ;;
+        thumbv7em-none-eabi|riscv32imac-unknown-none) : ;;
+        *) die2 "未注册后端 target: $CTRON_TARGET(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none;wasm32 随 T37)" ;;
     esac
 }
 
@@ -213,6 +215,12 @@ cmd_build() {
     IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
     STEM=$(basename "${IN%.ct}")
     OUTDIR=$(dirname "$IN")
+    if [ "$CTRON_TARGET" != "native" ]; then
+        # T40 bare 靶:委派 ctc.sh 同管线(minilibc+startup+链接脚本+工具链解析)
+        "$ROOT/compiler/ctc.sh" build "$IN" --target "$CTRON_TARGET" -o "$OUTDIR/$STEM" || exit 2
+        echo "ctron: 已构建 $OUTDIR/$STEM(target: $CTRON_TARGET)"
+        exit 0
+    fi
     "$BIN/ctron-emit" run "$IN" > "$OUTDIR/$STEM.c" || exit 1
     if ! have_cc; then
         cc_missing_guidance "$OUTDIR/$STEM.c"
@@ -292,9 +300,12 @@ case $CMD in
         exec "$BIN/ctron-doc" run "$IN" "$@"
         ;;
     build)
+        prev_t=0
         for a in "$@"; do
+            if [ "$prev_t" = "1" ]; then CTRON_TARGET=$a; prev_t=0; continue; fi
             case $a in
                 --target=*) CTRON_TARGET=${a#--target=} ;;
+                --target) prev_t=1 ;;
             esac
         done
         if [ $# -ge 1 ]; then cmd_build "$1"; else cmd_build_proj; fi ;;

@@ -1,0 +1,9 @@
+// 42_isr_alloc.neg.ct —— T42 §6.6:#[isr] 中断处理函数默认 no_alloc 约束
+//@ fail: E3040
+//@ msg: no_alloc
+
+#[isr]
+fn on_tick() -> I32 {
+    let s = "x".to_string()    // E3040:ISR 默认 no_alloc,String 分配被拒
+    return 0
+}

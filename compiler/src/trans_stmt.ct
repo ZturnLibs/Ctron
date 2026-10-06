@@ -934,11 +934,29 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         var tgt = st[1]
         if tgt[0] == "Index" {
             // 索引赋值:目标 List/节点,元素槽 char*
+            var tc0 = ct_typeof(tgt[1], env, file)
+            // T41:切片视图元素复合赋值(+=等)——读改写展开(越界守卫同 Eq;
+            // 登记债:视图元素面无溢出守卫帮手,镜像标量 ctron_w_* 族待切)
+            if st[2] != "Eq" && tc0.len > 1 && byte_at(tc0, 0) == 118 {
+                if tgt[1][0] != "Ident" {
+                    panic("ct_stmt:视图索引写接收者限 Ident")
+                    return env
+                }
+                var cop = "+"
+                if st[2] == "SubEq" { cop = "-" }
+                if st[2] == "MulEq" { cop = "*" }
+                if st[2] == "DivEq" { cop = "/" }
+                if st[2] == "ModEq" { cop = "%" }
+                var iexpr = ct_expr(tgt[2], env, file)
+                var lhs = "t_" + tgt[1][1] + ".d[" + iexpr + "]"
+                eln("if (" + iexpr + " < 0 || " + iexpr + " >= t_" + tgt[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); }", env)
+                eln(lhs + " = " + ct_arg_cast(ct_typeof(st[3], env, file), byte_slice(tc0, 1, tc0.len), "(" + lhs + " " + cop + " " + ct_expr(st[3], env, file) + ")") + ";", env)
+                return env
+            }
             if st[2] != "Eq" {
                 panic("ct_stmt:index 复合赋值")
                 return env
             }
-            var tc0 = ct_typeof(tgt[1], env, file)
             if tc0.len > 1 && byte_at(tc0, 0) == 118 {
                 // 切片视图元素写(§3.6):越界守卫 + d[i] 直写(写透过,镜像 eval 原地)
                 if tgt[1][0] != "Ident" {

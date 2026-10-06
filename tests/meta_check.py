@@ -123,6 +123,10 @@ def check_file(path: Path) -> list[str]:
         # gc 包 main:由 tests/gc/run.sh 双档(gc=on/gc=off)驱动,非 test 块语义
         # (net/ 泳道先例;T29)。
         return errors
+    if relparts0 and relparts0[0] == "bare":
+        # bare 泳道(T40-T42):裸机语料由 tests/bare/run.sh 双靶 qemu 驱动,
+        # hello.ct 为 bare-metal main 程序无 test 块语义(net/ 泳道先例)。
+        return errors
     if relparts0 and relparts0[0] == "net" and "src" in relparts0:
         # net 包 main:由 tests/net/run.sh 双臂(原生==解释黄金对照)驱动,
         # 不按主流 test 块规则元检查(同 dist/ 泳道先例)。

@@ -986,6 +986,34 @@ else
     bad "match/enum 工件异常: $(tail -2 "$T/dg9b.out")"
 fi
 
+# ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
+echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
+if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then
+    ok "T40 targets 表 bare 双靶在册"
+else
+    bad "T40 targets 表缺 bare 双靶"
+fi
+if "$COMP/ctc.sh" build "$T/nothing.ct" --target no-such-triple > "$T/t40u.out" 2>&1; then
+    bad "T40 未注册 target 未拦截"
+else
+    grep -q "未注册后端" "$T/t40u.out" && ok "T40 未注册诊断(fail-closed)" || bad "T40 未注册诊断文案: $(head -1 "$T/t40u.out")"
+fi
+if "$COMP/ctc.sh" check "$ROOT/tests/42_isr_alloc.neg.ct" > "$T/t42a.out" 2>&1; then
+    bad "T42 #[isr] no_alloc 未拦"
+else
+    grep -q "E3040" "$T/t42a.out" && ok "T42 #[isr] 默认 no_alloc(E3040)" || bad "T42 isr alloc 缺 E3040: $(head -1 "$T/t42a.out")"
+fi
+if "$COMP/ctc.sh" check "$ROOT/tests/42_isr_spawn.neg.ct" > "$T/t42s.out" 2>&1; then
+    bad "T42 #[isr] no_spawn 未拦"
+else
+    grep -q "E4030" "$T/t42s.out" && ok "T42 #[isr] 默认 no_spawn(E4030)" || bad "T42 isr spawn 缺 E4030: $(head -1 "$T/t42s.out")"
+fi
+if "$COMP/ctc.sh" check "$ROOT/tests/42_isr_ok.ct" > "$T/t42o.out" 2>&1; then
+    ok "T42 #[isr] 标量体放行"
+else
+    bad "T42 isr 合规体误拦: $(head -2 "$T/t42o.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

@@ -1,0 +1,12 @@
+// 42_isr_spawn.neg.ct —— T42 §6.6:#[isr] 中断处理函数默认 no_spawn 约束
+//@ fail: E4030
+//@ msg: spawn
+
+#[isr]
+fn on_edge() -> I32 {
+    scope { |s|
+        let t = s.spawn(|| 1)  // E4030:ISR 默认 no_spawn,任务派生被拒
+        t.join()
+    }
+    return 0
+}

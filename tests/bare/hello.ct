@@ -1,0 +1,7 @@
+// hello.ct —— bare 档裸机 hello(T40 §9.3 验收锚:裸机 hello)
+// 构建:ctc.sh build hello.ct --target thumbv7em-none-eabi -o hello_arm.elf
+// 运行:qemu 半主机(见 run.sh;输出走 SYS_WRITE0)
+fn main() -> I32 {
+    println("hello bare")
+    return 0
+}

@@ -259,6 +259,9 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     // eval 值域仍共享 "7",分层不动)
     if nt[1] == "USize" { return "z" }
     if nt[1] == "U64" { return "7" }
+    // T41 §6.6:Arena 显式分配器值类型("Q";ct_arena{base,off,cap} 值传递,
+    // Arena.fixed 栈上驻留,zero 族走 ct_arena_bump 前进)
+    if nt[1] == "Arena" { return "Q" }
     if nt[1] == "ISize" { return "6" }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "Named" && nt.len > 2 && nt[2].len > 1 {
@@ -355,6 +358,7 @@ fn ct_ctype(code: Str) -> Str {
         return "t_" + byte_slice(code, 2, code.len) + "*"
     }
     if code == "s" { return "const char*" }
+    if code == "Q" { return "ct_arena" }
     if code == "N" { return "const char*" }
     if code == "b" { return "int" }
     if code == "f" { return "double" }
@@ -1280,6 +1284,18 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                 }
                 return "L"
+            }
+            // T41 §6.6:arena.zeros[T](n) → v<元素码>(显式分配器切片;
+            // 发射位 trans_expr 同名臂 statement 表达式直构 view)
+            if base[0] == "Member" && base[2] == "Nm" && base[3] == "zeros" {
+                if cal[2].len > 1 && cal[2][1].len > 1 {
+                    return "v" + ct_ty_code(cal[2][1], file)
+                }
+                return "vi"
+            }
+            // T41 §6.6:Arena.fixed(n) → Q(ct_arena 值)
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "Arena" && base[2] == "Nm" && base[3] == "fixed" {
+                return "Q"
             }
             // arena.list[T]():与 List[T] 同型别(透明 arena,§5.3)
             if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "arena" && base[2] == "Nm" && base[3] == "list" {

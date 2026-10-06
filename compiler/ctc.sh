@@ -34,29 +34,35 @@ DIAGLANG=zh
 case ${1:-} in
     check|emit|fmt|doc|ast|build|targets|new|dep) mode=$1; shift ;;
 esac
+prev_t=0
 for a in "$@"; do
+    if [ "$prev_t" = "1" ]; then TARGET=$a; prev_t=0; continue; fi
     case $a in
         --profile=*) PROF=${a#--profile=} ;;
         --trusted) TAUSTED=1 ;;
         --lang=*) DIAGLANG=${a#--lang=} ;;
     --deterministic) export CTRON_RT_SEED=1 ;;
     --target=*) TARGET=${a#--target=} ;;
-    --target) TARGET_NEXT=1 ;;
+    --target) prev_t=1 ;;
     esac
 done
-# T36 后端注册表(§9.7 插件化地板):triple/链接器最小面;C native=首个后端,
-# wasm32/bare 随 T37/T40 注册——未列名=清晰诊断(fail-closed)。
+# T36 后端注册表(§9.7 插件化地板):triple/链接器最小面;C native=首个后端。
+# T40(§9.3):bare 双靶注册(thumbv7em-none-eabi/riscv32imac-unknown-none)——
+# 发射 C 与 native 同文,靶差全在 lib/rt/bare 运行时文件集(minilibc+startup+链接脚本);
+# wasm32 随 T37 注册——未列名=清晰诊断(fail-closed)。
 TARGET=${TARGET:-native}
+BARE=0
 case $TARGET in
     native) TGT_CC="cc -O2" ;;
-    *) echo "ctc.sh: 未注册后端 target: $TARGET(注册表: native;wasm32/bare 随 T37/T40)" >&2; exit 2 ;;
+    thumbv7em-none-eabi|riscv32imac-unknown-none) BARE=1 ;;
+    *) echo "ctc.sh: 未注册后端 target: $TARGET(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none;wasm32 随 T37)" >&2; exit 2 ;;
 esac
 if [ ! -x "$HOST" ]; then
     echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
 if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh dep <Ctron.ctcl> | ctc.sh targets" >&2
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native|thumbv7em-none-eabi|riscv32imac-unknown-none] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh dep <Ctron.ctcl> | ctc.sh targets" >&2
     exit 2
 fi
 
@@ -185,7 +191,11 @@ EOF
 fi
 
 if [ "$mode" = "targets" ]; then
-    echo "ctc.sh: 注册后端 target:native(cc -O2,宿主三件套;wasm32/bare 随 T37/T40 注册)"
+    echo "ctc.sh: 注册后端 target:"
+    echo "  native                   cc -O2,宿主三件套"
+    echo "  thumbv7em-none-eabi      bare 档 ARM(cortex-M4;§9.3 tier-1,semihosting)"
+    echo "  riscv32imac-unknown-none bare 档 RISC-V rv32imac(§9.3 tier-1,qemu virt)"
+    echo "  (wasm32 随 T37;工具链解析: CTRON_BARE_CC/CTRON_BARE_LD env → 宿主 clang+ld.lld → docker ctron-bare-tools)"
     exit 0
 fi
 
@@ -214,6 +224,85 @@ emit_link_summary() {
             echo "ctc.sh: 链接标志(pkg-config 解析):$PR"
         fi
     fi
+}
+
+# T40:bare 工具链三通道(env → 宿主 clang+ld.lld → docker ctron-bare-tools)
+# 与构建管线。发射 C 与 native 同文;靶差全在 lib/rt/bare(见其 README)。
+# 失败=响亮诊断 exit 2(fail-closed),不静默降级。
+BARE_CC="" ; BARE_LD="" ; BARE_MODE=""
+bare_toolchain() {
+    NEED="$1"   # arm|riscv
+    if [ -n "$BARE_MODE" ]; then return 0; fi
+    if [ -n "${CTRON_BARE_CC:-}" ] && [ -n "${CTRON_BARE_LD:-}" ]; then
+        BARE_CC="$CTRON_BARE_CC"; BARE_LD="$CTRON_BARE_LD"; BARE_MODE=env; return 0
+    fi
+    HC=""
+    for c in clang /opt/homebrew/opt/llvm/bin/clang /usr/local/opt/llvm/bin/clang; do
+        if command -v "$c" >/dev/null 2>&1 || [ -x "$c" ]; then HC="$c"; break; fi
+    done
+    HL=""
+    for l in ld.lld /opt/homebrew/opt/llvm/bin/ld.lld /usr/local/opt/llvm/bin/ld.lld; do
+        if command -v "$l" >/dev/null 2>&1 || [ -x "$l" ]; then HL="$l"; break; fi
+    done
+    TGT_OK=0
+    if [ -n "$HC" ]; then
+        case $NEED in
+            arm)   "$HC" --print-targets 2>/dev/null | grep -q "^ *arm  *- ARM" && TGT_OK=1 ;;
+            riscv) "$HC" --print-targets 2>/dev/null | grep -qi "^ *riscv.*RISC-V" && TGT_OK=1 ;;
+        esac
+    fi
+    if [ "$TGT_OK" = "1" ] && [ -n "$HL" ]; then
+        BARE_CC="$HC"; BARE_LD="$HL"; BARE_MODE=host; return 0
+    fi
+    if docker image inspect ctron-bare-tools:latest >/dev/null 2>&1; then
+        BARE_MODE=docker; return 0
+    fi
+    MISS=""
+    [ -z "$HC" ] && MISS="clang 未找到"
+    if [ -n "$HC" ] && [ "$TGT_OK" != "1" ] && [ "$NEED" = "riscv" ]; then MISS="本机 clang 无 RISC-V 后端(Apple clang 裁剪,常态)"; fi
+    if [ -n "$HC" ] && [ "$TGT_OK" != "1" ] && [ "$NEED" = "arm" ]; then MISS="本机 clang 无 ARM 后端"; fi
+    [ -z "$HL" ] && MISS="$MISS${MISS:+;} ld.lld 未找到(brew install llvm)"
+    echo "ctc.sh: bare target $TARGET 工具链不可用: $MISS" >&2
+    echo "  通道任选: ①brew install llvm(宿主 clang+ld.lld) ②docker build -t ctron-bare-tools(docs/rogo 或 tests/bare/README) ③CTRON_BARE_CC/CTRON_BARE_LD 指认" >&2
+    return 2
+}
+
+bare_build_pipeline() {
+    SRC="$1"; OUT="$2"
+    RT="$ROOT/lib/rt/bare"
+    case $TARGET in
+        thumbv7em-none-eabi)      TTGT=arm;   TCPU="--target=armv7em-none-eabi -mcpu=cortex-m4 -mthumb -mfloat-abi=soft"; TLINK=cortex-m4; TSTART=start_arm ;;
+        riscv32imac-unknown-none) TTGT=riscv; TCPU="--target=riscv32-unknown-elf -march=rv32imac -mabi=ilp32 -msmall-data-limit=0"; TLINK=rv32; TSTART=start_riscv ;;
+    esac
+    bare_toolchain "$TTGT" || return 2
+    BFLAGS="-std=gnu11 -Os -g0 -ffreestanding -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -ffunction-sections -fdata-sections -fno-common -D__thread= -w"
+    if [ "$BARE_MODE" = "docker" ]; then
+        mkdir -p "$ROOT/.cache/bare"
+        REL_SRC=${SRC#"$ROOT"/}
+        RTREL="lib/rt/bare"
+        RELOUT=$(mktemp -u ".cache/bare/out_XXXXXX")
+        docker run --rm -v "$ROOT":/ctroot -w /ctroot ctron-bare-tools:latest sh -c "
+            clang $TCPU $BFLAGS -isystem $RTREL/include -c '$REL_SRC' -o '$RELOUT.o' &&
+            clang $TCPU $BFLAGS -isystem $RTREL/include -c $RTREL/src/bare_libc.c -o '$RELOUT.libc.o' &&
+            clang $TCPU $BFLAGS -isystem $RTREL/include -c $RTREL/src/$TSTART.c -o '$RELOUT.start.o' &&
+            LG=\$(case $TTGT in arm) arm-none-eabi-gcc -mcpu=cortex-m4 -mfloat-abi=soft -mthumb -print-libgcc-file-name ;; riscv) riscv64-unknown-elf-gcc -march=rv32imac -mabi=ilp32 -print-libgcc-file-name ;; esac) &&
+            ld.lld -T $RTREL/link/$TLINK.ld --gc-sections -s -z max-page-size=256 -o '$RELOUT' '$RELOUT.o' '$RELOUT.libc.o' '$RELOUT.start.o' \"\$LG\"
+        " || { echo "ctc.sh: bare 构建 docker 通道失败(ctron-bare-tools)" >&2; return 1; }
+        mkdir -p "$(dirname "$OUT")"
+        mv "$ROOT/$RELOUT" "$OUT" || { echo "ctc.sh: bare 产物取回失败" >&2; return 1; }
+    else
+        "$BARE_CC" $TCPU $BFLAGS -isystem "$RT/include" -c "$SRC" -o "$SRC.bare.o" || { echo "ctc.sh: bare 编译失败(app 面)" >&2; return 1; }
+        "$BARE_CC" $TCPU $BFLAGS -isystem "$RT/include" -c "$RT/src/bare_libc.c" -o "$SRC.libc.o" || { echo "ctc.sh: bare 编译失败(minilibc)" >&2; return 1; }
+        "$BARE_CC" $TCPU $BFLAGS -isystem "$RT/include" -c "$RT/src/$TSTART.c" -o "$SRC.start.o" || { echo "ctc.sh: bare 编译失败(startup)" >&2; return 1; }
+        LG=""
+        case $TTGT in
+            arm)   command -v arm-none-eabi-gcc >/dev/null 2>&1 && LG=$(arm-none-eabi-gcc -mcpu=cortex-m4 -mfloat-abi=soft -mthumb -print-libgcc-file-name) ;;
+            riscv) command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 && LG=$(riscv64-unknown-elf-gcc -march=rv32imac -mabi=ilp32 -print-libgcc-file-name) ;;
+        esac
+        "$BARE_LD" -T "$RT/link/$TLINK.ld" --gc-sections -s -z max-page-size=256 -o "$OUT" "$SRC.bare.o" "$SRC.libc.o" "$SRC.start.o" $LG || { echo "ctc.sh: bare 链接失败(ld.lld)" >&2; return 1; }
+    fi
+    echo "ctc.sh: bare 体积口径(ELF 总量): $(wc -c < "$OUT" | tr -d ' ') 字节"
+    return 0
 }
 
 case $mode in
@@ -290,11 +379,34 @@ case $mode in
                 *) echo "ctc.sh: GUI 自动链接不支持平台 $(uname)" >&2; exit 2 ;;
             esac
         fi
-        TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
+        if [ "$BARE" = "1" ]; then
+            # bare 靶:先解析工具链(定 BARE_MODE),TMPC/ELF 落 ROOT/.cache/bare(docker 挂载面内)
+            case $TARGET in
+                thumbv7em-none-eabi) bare_toolchain arm || exit 2 ;;
+                *) bare_toolchain riscv || exit 2 ;;
+            esac
+            mkdir -p "$ROOT/.cache/bare"
+            TMPC=$(mktemp "$ROOT/.cache/bare/src_XXXXXX") && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
+        else
+            TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
+        fi
         "$0" emit "$IN" "$TMPC" > /dev/null 2>&1 || { echo "ctc.sh: build 发射失败" >&2; exit 1; }
-        # shellcheck disable=SC2086
-        $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
-        echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
+        if [ "$BARE" = "1" ]; then
+            TELF="$OUTBIN"
+            if [ "$BARE_MODE" = "docker" ]; then
+                TELF=$(mktemp -u "$ROOT/.cache/bare/app_XXXXXX.elf")
+            fi
+            bare_build_pipeline "$TMPC" "$TELF" || { rm -f "$TMPC" "$TELF"; exit 2; }
+            if [ "$BARE_MODE" = "docker" ] && [ "$TELF" != "$OUTBIN" ]; then
+                mv "$TELF" "$OUTBIN" || { echo "ctc.sh: bare 产物归位失败" >&2; exit 1; }
+            fi
+            rm -f "$TMPC"
+            echo "ctc.sh: 已构建 $OUTBIN(target: $TARGET;运行: qemu 半主机,见 lib/rt/bare/README.md)"
+        else
+            # shellcheck disable=SC2086
+            $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
+            echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
+        fi
         rc=0
         ;;
     fmt)

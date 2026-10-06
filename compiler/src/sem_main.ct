@@ -66,6 +66,12 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
             if d.len >= 7 && d[6] == "no_spawn" {
                 ns = true
             }
+            // T42 §6.6:#[isr] 中断处理函数默认 no_spawn 约束(spawn 面与 walk 上下文双禁)
+            var isr = false
+            if d.len >= 7 && attr_has(d[6], "isr") {
+                isr = true
+                ns = true
+            }
             var ps4 = d[3]
             var pi4: I32 = 1
             while pi4 < ps4.len {
@@ -101,7 +107,7 @@ fn sem_walk2(file: List[Str], prof: Str) -> Str {
                     diags.push(byte_slice(ec, 0, ec.len - 1))
                 }
             }
-            if !(d.len >= 7 && d[6] == "no_spawn") {
+            if !(d.len >= 7 && d[6] == "no_spawn") && !isr {
                 var es = sem_spawn2(file, d, t)
                 if es != "" {
                     diags.push(byte_slice(es, 0, es.len - 1))

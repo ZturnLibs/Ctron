@@ -1,0 +1,17 @@
+// 42_isr_ok.ct —— T42 §6.6:#[isr] 标注识别面(标量体合规,零分配零派生)
+#[isr]
+fn on_tick(acc: I32) -> I32 {
+    return acc + 1
+}
+
+fn main() -> I32 {
+    var n: I32 = 0
+    n = on_tick(n)
+    n = on_tick(n)
+    println(n)
+    return 0
+}
+
+test "isr scalar ok" {
+    assert_eq(on_tick(41), 42)
+}
