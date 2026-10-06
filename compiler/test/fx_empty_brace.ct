@@ -1,0 +1,7 @@
+// fx_empty_brace.ct —— FB-11/F19:字面量含 {} 与 \{ 转义(双通道一致)
+fn main() -> I32 {
+    println("{}")
+    println("a{}b\{n}c{}")
+    println("\{x}")
+    return 0
+}
