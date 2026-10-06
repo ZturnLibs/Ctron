@@ -162,6 +162,11 @@ def check_file(path: Path) -> list[str]:
     relparts = path.relative_to(ROOT).parts
     in_modules = "modules" in relparts or ("ffi" in relparts and "src" in relparts)
     if in_modules:
+        # T49 装载器负例夹具:清单本身即 E5049 负样本(三互斥同现),由 smoke
+        # 装载器断言驱动——不走清单 judge(同 gui/net 泳道 skip 先例)
+        case_dirs_negative_manifest = {"dep_mutex_neg"}
+        if len(relparts) >= 2 and relparts[1] in case_dirs_negative_manifest:
+            return errors
         if not (path.parent.parent / "Ctron.ctcl").exists():
             errors.append("modules 用例缺少 Ctron.ctcl(项目根)")
         else:
