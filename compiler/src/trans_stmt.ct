@@ -1089,6 +1089,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if cand.len > 0 {
             eln("\{", env)
         }
+        // FB-7/F14:包装块内同名同型只发首现声明(旧按站点重复发 → C 重定义
+        // "redefinition of 't_t'",Loom 生成器语料 t_t×N 实证);后续站点由体内
+        // let 的提升赋值面承接
+        var wem7 = List[Str]()
         var hi: I32 = 0
         while hi < cand.len {
             var en = cand[hi]
@@ -1111,8 +1115,15 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 }
                 reg += 1
             }
+            var wgot7 = false
+            var wq7: I32 = 0
+            while wq7 < wem7.len {
+                if seq2(wem7[wq7], nm) { wgot7 = true }
+                wq7 += 1
+            }
             if prev == "" {
                 eln(ct_ctype(ty) + " t_" + nm + " = " + ct_zero(ty) + ";", env)
+                wem7.push(nm)
                 hreg.push(nm + ":" + ty)
                 hl.push(nm + ":" + ty)
                 envw = env_bind(envw, nm, ty)
@@ -1125,8 +1136,19 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 }
             } else {
                 if prev == ty {
-                    // 同名同型:前次声明可能在兄弟块作用域,本站点亦发零初始化声明(C 遮蔽安全)
-                    eln(ct_ctype(ty) + " t_" + nm + " = " + ct_zero(ty) + ";", env)
+                    // 同名同型:兄弟块作用域场景下本包装块须自持一份声明;
+                    // 但同包装块内只发首现(FB-7:旧按站点重发 = C 重定义),
+                    // 后续站点由体内 let 提升赋值承接
+                    var wdup7 = false
+                    var wq8: I32 = 0
+                    while wq8 < wem7.len {
+                        if seq2(wem7[wq8], nm) { wdup7 = true }
+                        wq8 += 1
+                    }
+                    if !wdup7 {
+                        eln(ct_ctype(ty) + " t_" + nm + " = " + ct_zero(ty) + ";", env)
+                        wem7.push(nm)
+                    }
                     hl.push(nm + ":" + ty)
                     envw = env_bind(envw, nm, ty)
                 }

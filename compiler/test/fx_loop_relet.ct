@@ -1,0 +1,12 @@
+// fx_loop_relet.ct —— FB-7/F14:循环体同名 let 多站点(提升声明只发首现)
+fn main() -> I32 {
+    var i: I32 = 0
+    while i < 2 {
+        let t = i + 1
+        println(t.to_string())
+        let t = t * 3
+        println(t.to_string())
+        i += 1
+    }
+    return 0
+}

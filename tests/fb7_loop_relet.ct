@@ -1,0 +1,12 @@
+// fb7_loop_relet.ct —— FB-7/F14:循环体同名 let 多站点(发射提升面 C 重定义回归锚)
+fn main() -> I32 {
+    var i: I32 = 0
+    while i < 2 {
+        let t = i + 1
+        assert_eq(t, i + 1)
+        let t = t * 3
+        assert_eq(t, (i + 1) * 3)
+        i += 1
+    }
+    return 0
+}
