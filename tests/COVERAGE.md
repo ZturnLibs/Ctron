@@ -1630,3 +1630,11 @@ docker run=全新容器,apt 依赖逐轮重装+网络/apt 偶发抖动**(binutil
 `docker run --name msan-base ubuntu:24.04 ...安装... && docker commit msan-base
 ubuntu-msan` 后所有后续轮用 ubuntu-msan(依赖固化,零抖动)。构建命令=深夜八段
 全备。此为下段首件的最后一公里(工具路线全部就绪,唯容器固化一步)。
+
+**s30 MSAN 容器路线终态(2026-10-06 凌晨)**:容器 raylib Linux 重建撞 GLFW 子模块/依赖缺
+(与 freetype 同族),且 vendor 目录在双会话(Mac 阶梯↔容器 MSAN)间反复翻转=**共活窗口内
+不可收敛,与 /tmp 竞态同根**。已验证可复用的资产:ubuntu-msan 固化镜像(clang+binutils
++X11 头+make 全齐)、容器内编译流程、-include 声明头方案、MSAN 命令行。**下段首件
+(终版路线)=CI ubuntu runner 加 MSAN 诊断 job**(runner=稳定 apt+无共机竞态;gui 链接
+按 [8/8] RUN_GUI skip 逻辑同理,MSAN job 只跑 s30 一锚或以 stub 链接),或隔离机窗口。
+本泳道七轮+毒化+探针+watchpoint+容器共 12 轮取证全部在册,交付面已闭合。
