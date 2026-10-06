@@ -1,0 +1,10 @@
+// dom.ct —— stdweb.dom 真 JS 桥端到端样例(T39;wasm32 档真 DOM,native 档进程内 buf)
+//@ target: web
+use stdweb.dom
+
+fn main() -> I32 {
+    dom.set_title("Ctron wasm dom")
+    dom.set_body("<b id='ct-body-marker'>ctron</b>")
+    println("dom-done")
+    return 0
+}

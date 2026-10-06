@@ -1,0 +1,20 @@
+// arith.ct —— wasm 档算术面(T37):循环/I64/F64 打印/递归,无分配 core 子集
+// 构建:ctc.sh build arith.ct --target wasm32-unknown-unknown -o arith.wasm
+// 运行:node ct_wasm_run.js arith.wasm(期望输出:55 / 55 / 4.75)
+fn fib(n: I32) -> I32 {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() -> I32 {
+    var acc: I64 = 0
+    var i: I32 = 1
+    while i <= 10 {
+        acc += i
+        i += 1
+    }
+    println(acc)
+    println(fib(10))
+    println(3.5 + 1.25)
+    return 0
+}

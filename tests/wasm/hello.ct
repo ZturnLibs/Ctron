@@ -1,0 +1,4 @@
+fn main() -> I32 {
+    println("hello wasm")
+    return 0
+}

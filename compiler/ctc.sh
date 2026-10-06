@@ -52,17 +52,19 @@ done
 # wasm32 随 T37 注册——未列名=清晰诊断(fail-closed)。
 TARGET=${TARGET:-native}
 BARE=0
+WASM=0
 case $TARGET in
     native) TGT_CC="cc -O2" ;;
     thumbv7em-none-eabi|riscv32imac-unknown-none) BARE=1 ;;
-    *) echo "ctc.sh: 未注册后端 target: $TARGET(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none;wasm32 随 T37)" >&2; exit 2 ;;
+    wasm32-unknown-unknown) WASM=1 ;;
+    *) echo "ctc.sh: 未注册后端 target: $TARGET(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none, wasm32-unknown-unknown)" >&2; exit 2 ;;
 esac
 if [ ! -x "$HOST" ]; then
     echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
 if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
-    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native|thumbv7em-none-eabi|riscv32imac-unknown-none] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh dep <Ctron.ctcl> | ctc.sh targets" >&2
+    echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native|thumbv7em-none-eabi|riscv32imac-unknown-none|wasm32-unknown-unknown] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh dep <Ctron.ctcl> | ctc.sh targets" >&2
     exit 2
 fi
 
@@ -195,7 +197,8 @@ if [ "$mode" = "targets" ]; then
     echo "  native                   cc -O2,宿主三件套"
     echo "  thumbv7em-none-eabi      bare 档 ARM(cortex-M4;§9.3 tier-1,semihosting)"
     echo "  riscv32imac-unknown-none bare 档 RISC-V rv32imac(§9.3 tier-1,qemu virt)"
-    echo "  (wasm32 随 T37;工具链解析: CTRON_BARE_CC/CTRON_BARE_LD env → 宿主 clang+ld.lld → docker ctron-bare-tools)"
+    echo "  wasm32-unknown-unknown   web 档 MVP(T37;no_alloc/core 子集,单线程口径 §7.8;node 真跑)"
+    echo "  (工具链解析: bare=CTRON_BARE_CC/CTRON_BARE_LD env → 宿主 clang+ld.lld → docker ctron-bare-tools;wasm=CTRON_WASM_CC env → 宿主 clang[wasm32 后端] → docker ctron-bare-tools)"
     exit 0
 fi
 
@@ -305,6 +308,64 @@ bare_build_pipeline() {
     return 0
 }
 
+# T37:wasm32 工具链三通道(env → 宿主 clang[wasm32 后端] → docker ctron-bare-tools)
+# 与构建管线。发射 C 与 native 同文;靶差全在 lib/rt/wasm32(wasm_libc:输出/退出面
+# 走 env.* import,堆=16MiB 线性内存静态池;单线程口径 §7.8)。失败=响亮诊断 exit 2。
+WASM_CC="" ; WASM_MODE=""
+wasm_toolchain() {
+    if [ -n "$WASM_MODE" ]; then return 0; fi
+    if [ -n "${CTRON_WASM_CC:-}" ]; then
+        WASM_CC="$CTRON_WASM_CC"; WASM_MODE=env; return 0
+    fi
+    HC=""
+    for c in clang /opt/homebrew/opt/llvm/bin/clang /usr/local/opt/llvm/bin/clang; do
+        if command -v "$c" >/dev/null 2>&1 || [ -x "$c" ]; then HC="$c"; break; fi
+    done
+    TGT_OK=0
+    if [ -n "$HC" ]; then
+        "$HC" --print-targets 2>/dev/null | grep -qi "^ *wasm32" && TGT_OK=1
+    fi
+    if [ "$TGT_OK" = "1" ]; then
+        WASM_CC="$HC"; WASM_MODE=host; return 0
+    fi
+    if docker image inspect ctron-bare-tools:latest >/dev/null 2>&1; then
+        WASM_MODE=docker; return 0
+    fi
+    MISS="带 wasm32 后端的 clang 未找到(Apple clang 裁剪,常态)"
+    echo "ctc.sh: wasm target $TARGET 工具链不可用: $MISS" >&2
+    echo "  通道任选: ①brew install llvm(宿主 clang+wasm-ld) ②docker 镜像 ctron-bare-tools ③CTRON_WASM_CC 指认" >&2
+    return 2
+}
+
+wasm_build_pipeline() {
+    SRC="$1"; OUT="$2"
+    WTGT="--target=wasm32-unknown-unknown"
+    WFLAGS="-std=gnu11 -Os -g0 -ffreestanding -ffunction-sections -fdata-sections -fno-common -D__thread= -w"
+    WLINK="-nostdlib -Wl,--no-entry -Wl,--export=main -Wl,--export-memory -Wl,--gc-sections -Wl,-s -Wl,-z,stack-size=1048576"
+    wasm_toolchain || return 2
+    RTREL="lib/rt/wasm32"
+    if [ "$WASM_MODE" = "docker" ]; then
+        mkdir -p "$ROOT/.cache/wasm"
+        REL_SRC=${SRC#"$ROOT"/}
+        RELOUT=$(mktemp -u ".cache/wasm/out_XXXXXX")
+        docker run --rm -v "$ROOT":/ctroot -w /ctroot ctron-bare-tools:latest sh -c "
+            clang $WTGT $WFLAGS -isystem $RTREL/include -c '$REL_SRC' -o '$RELOUT.app.o' &&
+            clang $WTGT $WFLAGS -isystem $RTREL/include -c $RTREL/src/wasm_libc.c -o '$RELOUT.libc.o' &&
+            clang $WTGT $WLINK -o '$RELOUT.wasm' '$RELOUT.app.o' '$RELOUT.libc.o'
+        " || { echo "ctc.sh: wasm 构建 docker 通道失败(ctron-bare-tools)" >&2; return 1; }
+        mkdir -p "$(dirname "$OUT")"
+        mv "$ROOT/$RELOUT.wasm" "$OUT" || { echo "ctc.sh: wasm 产物取回失败" >&2; return 1; }
+    else
+        "$WASM_CC" $WTGT $WFLAGS -isystem "$ROOT/$RTREL/include" -c "$SRC" -o "$SRC.app.o" || { echo "ctc.sh: wasm 编译失败(app 面)" >&2; return 1; }
+        "$WASM_CC" $WTGT $WFLAGS -isystem "$ROOT/$RTREL/include" -c "$ROOT/$RTREL/src/wasm_libc.c" -o "$SRC.libc.o" || { echo "ctc.sh: wasm 编译失败(wasm_libc)" >&2; return 1; }
+        mkdir -p "$(dirname "$OUT")"
+        "$WASM_CC" $WTGT $WLINK -o "$OUT" "$SRC.app.o" "$SRC.libc.o" || { echo "ctc.sh: wasm 链接失败(clang→wasm-ld)" >&2; return 1; }
+        rm -f "$SRC.app.o" "$SRC.libc.o"
+    fi
+    echo "ctc.sh: wasm 体积口径(.wasm 字节): $(wc -c < "$OUT" | tr -d ' ')"
+    return 0
+}
+
 case $mode in
     run)
         "$DIR/build.sh" >/dev/null
@@ -355,6 +416,7 @@ case $mode in
         ;;
     build)
         OUTBIN="ctron_app"
+        [ "$WASM" = "1" ] && OUTBIN="ctron_app.wasm"
         prev_o=0
         for a2 in "$@"; do
             if [ "$prev_o" = "1" ]; then OUTBIN="$a2"; prev_o=0; fi
@@ -387,10 +449,21 @@ case $mode in
             esac
             mkdir -p "$ROOT/.cache/bare"
             TMPC=$(mktemp "$ROOT/.cache/bare/src_XXXXXX") && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
+        elif [ "$WASM" = "1" ]; then
+            # wasm 靶:TMPC 落 ROOT/.cache/wasm(docker 挂载面内);
+            # 工具链解析延迟到 wasm_build_pipeline——FFI 语义诊断先于环境解析(与工具链无关)
+            mkdir -p "$ROOT/.cache/wasm"
+            TMPC=$(mktemp "$ROOT/.cache/wasm/src_XXXXXX") && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
         else
             TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
         fi
         "$0" emit "$IN" "$TMPC" > /dev/null 2>&1 || { echo "ctc.sh: build 发射失败" >&2; exit 1; }
+        if [ "$WASM" = "1" ] && grep -q "ctron:link" "$TMPC"; then
+            # T37:wasm 无 dlopen——FFI 面(#[link])在 wasm target 禁用,诊断非静默
+            echo "ctc.sh: wasm32 target 检测到 #[link] FFI 面——wasm 无 dlopen,FFI 在 wasm target 禁用(T37;诊断非静默)" >&2
+            rm -f "$TMPC"
+            exit 2
+        fi
         if [ "$BARE" = "1" ]; then
             TELF="$OUTBIN"
             if [ "$BARE_MODE" = "docker" ]; then
@@ -402,6 +475,17 @@ case $mode in
             fi
             rm -f "$TMPC"
             echo "ctc.sh: 已构建 $OUTBIN(target: $TARGET;运行: qemu 半主机,见 lib/rt/bare/README.md)"
+        elif [ "$WASM" = "1" ]; then
+            TWASM="$OUTBIN"
+            if [ "$WASM_MODE" = "docker" ]; then
+                TWASM=$(mktemp -u "$ROOT/.cache/wasm/app_XXXXXX.wasm")
+            fi
+            wasm_build_pipeline "$TMPC" "$TWASM" || { rm -f "$TMPC" "$TWASM"; exit 2; }
+            if [ "$WASM_MODE" = "docker" ] && [ "$TWASM" != "$OUTBIN" ]; then
+                mv "$TWASM" "$OUTBIN" || { echo "ctc.sh: wasm 产物归位失败" >&2; exit 1; }
+            fi
+            rm -f "$TMPC"
+            echo "ctc.sh: 已构建 $OUTBIN(target: $TARGET;运行: node 胶水,见 lib/rt/wasm32/README.md)"
         else
             # shellcheck disable=SC2086
             $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }

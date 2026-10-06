@@ -1014,7 +1014,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             return e4("k", ob.env, oldm, ob.out)
         }
         if seq2(cx_of(recv)[0], "NS") && seq2(cx_of(recv)[1], "dom") {
-            // web 档(§9.2)stdweb.dom 最小 API;标题存 env 保留名(运行态无全局通道)
+            // web 档(§9.2)stdweb.dom 最小 API;标题/体存 env 保留名(运行态无全局通道)
             if seq2(m, "set_title") && vals.len == 1 {
                 // upsert:env_set 只换已存在键,首写须 env_add
                 var dk = env_at(env, "#dom:title")
@@ -1033,6 +1033,25 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                     tv = v_unbox(te[1])
                 }
                 return e4("k", env, tv, out)
+            }
+            // T39 第二面:dom.set_body/body(与 title 同构,env 键 "#dom:body")
+            if seq2(m, "set_body") && vals.len == 1 {
+                var bk = env_at(env, "#dom:body")
+                var benv = env
+                if bk.len > 0 {
+                    benv = env_set(env, "#dom:body", v_unbox(vals[0]))
+                } else {
+                    benv = env_add(env, "#dom:body", v_unbox(vals[0]))
+                }
+                return e4("k", benv, vV2(), out)
+            }
+            if seq2(m, "body") && vals.len == 0 {
+                var be = env_at(env, "#dom:body")
+                var bv = vS("")
+                if be.len > 1 {
+                    bv = v_unbox(be[1])
+                }
+                return e4("k", env, bv, out)
             }
             panic("dom 方法:" + m)
             return e4("a", env, vV2(), out)
