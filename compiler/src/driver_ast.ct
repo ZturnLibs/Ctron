@@ -122,6 +122,16 @@ fn main() -> I32 {
         if name.len == 0 {
             name = "ANCHORNAME"
         }
+        // D8-2 L2:依赖需求摘要块由编排层经临时文件注入(seal 时依赖工件须先封,
+        // 编排层自其 meta 读 self_digest 拼旗标);格式 = 逐块
+        // `dep "<名>" {\n  digest = "<sha256:…>"\n}\n`(ctc.sh ast --depdigest 面写入)
+        var depblocks = ""
+        match read_file("ANCHORDEPFILE") {
+            Some(x) => {
+                depblocks = x
+            }
+            None => {}
+        }
         var st0 = epath.len - 1
         while st0 >= 0 {
             if byte_at(epath, st0) == 47 {
@@ -136,7 +146,7 @@ fn main() -> I32 {
             }
         }
         var w1 = fs_write(outdir + "/impl/" + stem + ".ast", ser)
-        var meta = "artifact \"" + name + "\" \{\n  manifest_version = 1\n}\nmodule \"" + stem + "\" \{\n  decls = " + (file.len - 1).to_string() + "\n  bytes = " + (ser.len).to_string() + "\n}\n"
+        var meta = "artifact \"" + name + "\" \{\n  manifest_version = 1\n}\n" + depblocks + "module \"" + stem + "\" \{\n  decls = " + (file.len - 1).to_string() + "\n  bytes = " + (ser.len).to_string() + "\n}\n"
         var w2 = fs_write(outdir + "/meta.ctcl", meta)
         if or2(!w1, !w2) {
             println("E-AST-SEAL: 写出失败(目录须先建:" + outdir + ")")

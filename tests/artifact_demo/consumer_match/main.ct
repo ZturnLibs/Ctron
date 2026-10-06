@@ -1,0 +1,6 @@
+use mygeom.geom_match.{apply, pick}
+
+fn main() {
+    println("r1=" + apply(pick(5), 3, 4).to_string())
+    println("r2=" + apply(pick(0 - 5), 3, 4).to_string())
+}
