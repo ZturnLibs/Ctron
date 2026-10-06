@@ -15,7 +15,25 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 cc -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/ctecho" "$T/ctecho.c" "$ROOT/lib/net/c_src/ctron_net.c" "$ROOT/lib/net/c_src/ctron_rt.c" || exit 1
 PORT=${CTECHO_PORT:-$(( (RANDOM % 20000) + 30000 ))}
 CTECHO_PORT=$PORT "$T/ctecho" > "$T/srv.log" 2>&1 & SRV=$!
-sleep 0.5
+# 就绪门(2026-10-07 flake 治愈):固定 sleep 0.5 在冷启/负载下不够(实测冷启
+# 就绪 0.869s——probe 空回 = 连接早于 listen)。nc -z 每 50ms 轮询,10s 上限。
+ready=0
+i=0
+while [ "$i" -lt 200 ]; do
+    if nc -z 127.0.0.1 "$PORT" 2>/dev/null; then
+        ready=1
+        break
+    fi
+    sleep 0.05
+    i=$((i+1))
+done
+if [ "$ready" != 1 ]; then
+    echo "ctecho: 服务 10s 未就绪(port $PORT)" >&2
+    kill "$SRV" 2>/dev/null
+    wait "$SRV" 2>/dev/null
+    cat "$T/srv.log" >&2
+    exit 1
+fi
 fail=0
 for i in 1 2 3; do
     got=$(printf "hello$i" | nc -w 2 127.0.0.1 "$PORT")
