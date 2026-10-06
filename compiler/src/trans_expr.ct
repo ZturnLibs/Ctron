@@ -322,7 +322,47 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         panic("ct_expr:index 目标非 List/数组:" + ot + " 名:" + e[1][1] + " 下标:" + e[2][1] + " 节点元数:" + e.len.to_string() + " 尾槽tag:" + e[e.len - 1][0])
         return ""
     }
+    if t == "TupleE" {
+        // FB-9:元组构造——amalloc 异构 list(整型经 long 装箱、Str 直存、
+        // u: 堆盒 ct_wrap_i;浮点槽 fail-closed 债;嵌套元组债)
+        var tp9 = "(\{ ctron_list* t_tpl = ctron_list_new();"
+        var k9: I32 = 1
+        while k9 < e.len {
+            var ec9 = ct_typeof(e[k9], env, file)
+            var ex9 = ct_expr(e[k9], env, file)
+            if ec9 == "s" {
+                tp9 = tp9 + " ctron_list_push(t_tpl, " + ex9 + ");"
+            } else if ec9.len > 2 && byte_slice(ec9, 0, 2) == "u:" {
+                tp9 = tp9 + " ctron_list_push(t_tpl, (const char*)(long)" + ct_wrap_i(ec9, ex9) + ");"
+            } else if or2(ec9 == "f", ec9 == "g") {
+                panic("emit:元组浮点槽未支持(登记债)")
+                return ""
+            } else {
+                tp9 = tp9 + " ctron_list_push(t_tpl, (const char*)(long)(" + ex9 + "));"
+            }
+            k9 += 1
+        }
+        return tp9 + " t_tpl; })"
+    }
     if t == "Member" {
+        // FB-9:元组数字成员(t.0)——TP 码静态元素型解箱(镜像 LI/L6 惯例)
+        var otr9 = ct_typeof(e[1], env, file)
+        if otr9.len > 2 && byte_slice(otr9, 0, 3) == "TP:" && e[3].len > 0 && byte_at(e[3], 0) >= 48 && byte_at(e[3], 0) <= 57 {
+            var want9 = e[3]
+            var hit9 = ct_tp_elem(otr9, want9)
+            var rcv9 = ct_expr(e[1], env, file)
+            if hit9 == "s" {
+                return "((const char*)((ctron_list*)(" + rcv9 + "))->items[" + want9 + "])"
+            }
+            if hit9.len > 2 && byte_slice(hit9, 0, 2) == "u:" {
+                return "(*(" + ct_ctype(hit9) + "*)((ctron_list*)(" + rcv9 + "))->items[" + want9 + "])"
+            }
+            if or2(hit9 == "f", hit9 == "g") {
+                panic("emit:元组浮点槽未支持(登记债)")
+                return ""
+            }
+            return "(" + ct_ctype(hit9) + ")(long)((ctron_list*)(" + rcv9 + "))->items[" + want9 + "]"
+        }
         if e[3] == "char_len" {
             // §3.1.1 前奏 Str API:UTF-8 首字节计数(非续字节)
             return "ctron_char_len((const char*)(" + ct_expr(e[1], env, file) + "))"
@@ -2359,6 +2399,27 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
         i += 1
     }
     return out
+}
+
+// FB-9:TP 码第 idx 段元素码(浅切分;嵌套元组段=登记债)
+fn ct_tp_elem(code: Str, idx: Str) -> Str {
+    var seg5 = byte_slice(code, 3, code.len)
+    var ci5: I32 = 0
+    var cur5 = ""
+    var hit5 = ""
+    var q5: I32 = 0
+    while q5 < seg5.len {
+        if byte_at(seg5, q5) == 44 {
+            if ci5.to_string() == idx { hit5 = cur5 }
+            ci5 += 1
+            cur5 = ""
+        } else {
+            cur5 = cur5 + byte_slice(seg5, q5, q5 + 1)
+        }
+        q5 += 1
+    }
+    if ci5.to_string() == idx { hit5 = cur5 }
+    return hit5
 }
 
 fn ct_zero(code: Str) -> Str {

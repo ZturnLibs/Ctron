@@ -197,7 +197,7 @@ fn dls_reject_unhoisted(body: List[Str], env: List[Str], file: List[Str], hl: Li
                 var colon = -1
                 var k: I32 = 0
                 while k < hl[hk].len {
-                    if byte_at(hl[hk], k) == 58 { colon = k }
+                    if byte_at(hl[hk], k) == 58 && colon == 0 { colon = k }
                     k += 1
                 }
                 if colon > 0 && byte_slice(hl[hk], 0, colon) == nm { inhl = true }
@@ -1092,10 +1092,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         var hi: I32 = 0
         while hi < cand.len {
             var en = cand[hi]
+            // FB-9:首冒号切分(nm 无冒号恒正确;旧末冒号对含冒号型码
+            // [u:/TP:] 即碎,"t_t:TP" 垃圾声明实证)
             var colon = 0
             var k2: I32 = 0
             while k2 < en.len {
-                if byte_at(en, k2) == 58 { colon = k2 }
+                if byte_at(en, k2) == 58 && colon == 0 { colon = k2 }
                 k2 += 1
             }
             var nm = byte_slice(en, 0, colon)
