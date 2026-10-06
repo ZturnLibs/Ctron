@@ -287,7 +287,31 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     if t == "Index" {
         var ot = ct_typeof(e[1], env, file)
         if ot.len >= 3 && byte_slice(ot, 0, 1) == "a" {
-            if e[1][0] == "Ident" { return "t_" + e[1][1] + "[" + ct_expr(e[2], env, file) + "]" }
+            if e[1][0] == "Ident" {
+                // 嵌套 ac(a2a2i):参数 ABI=elem*(线性),访问位转型行指针
+                var md8 = ""
+                var rc11 = ot
+                while rc11.len >= 3 && byte_slice(rc11, 0, 1) == "a" {
+                    md8 = md8 + "[" + a_count(rc11) + "]"
+                    rc11 = a_elem(rc11)
+                }
+                if md8.len > byte_slice(md8, 0, 0).len && md8.contains("[") {
+                    var c11 = -1
+                    var q11: I32 = 0
+                    while q11 < md8.len {
+                        if byte_at(md8, q11) == 93 {
+                            c11 = q11
+                            break
+                        }
+                        q11 += 1
+                    }
+                    if c11 + 1 < md8.len {
+                        var tail11 = byte_slice(md8, c11 + 1, md8.len)
+                        return "((" + ct_ctype(rc11) + " (*)" + tail11 + ")(t_" + e[1][1] + "))[" + ct_expr(e[2], env, file) + "]"
+                    }
+                }
+                return "t_" + e[1][1] + "[" + ct_expr(e[2], env, file) + "]"
+            }
             // 成员/链式接收者(v0.9 定长数组字段):C 成员表达式直下标
             // (t_p.buf 局部链形态,镜像 Ident 臂口径)
             return "(" + ct_expr(e[1], env, file) + ")[" + ct_expr(e[2], env, file) + "]"
@@ -1871,9 +1895,15 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
         // 仅形参码同为 a 码时包裹(视图借用面 &T[]/T[]=v 码不拷,复合字面量
         // 内语句表达式会产生悬垂数组尾,fx_slice 实证);实参限 Ident,右值形债在册
         if ac.len > 1 && byte_at(ac, 0) == 97 && pc.len > 1 && byte_at(pc, 0) == 97 && ag[i][0] == "Ident" {
-            var acn8 = a_count(ac)
-            var ace8 = ct_ctype(a_elem(ac))
-            ax = "(\{ " + ace8 + " t_acp" + i.to_string() + "[" + acn8 + "]; memcpy(t_acp" + i.to_string() + ", " + ax + ", sizeof(t_acp" + i.to_string() + ")); t_acp" + i.to_string() + "; })"
+            // 嵌套 ac(a2a2i)= 全维链声明+整块拷贝(旧顶层单维=截断拷贝+指针数组解引用 SEGV)
+            var dims8 = ""
+            var rc8 = ac
+            while rc8.len >= 3 && byte_slice(rc8, 0, 1) == "a" {
+                dims8 = dims8 + "[" + a_count(rc8) + "]"
+                rc8 = a_elem(rc8)
+            }
+            var ace8 = ct_ctype(rc8)
+            ax = "(\{ " + ace8 + " t_acp" + i.to_string() + dims8 + "; memcpy(t_acp" + i.to_string() + ", " + ax + ", sizeof(" + ace8 + dims8 + ")); t_acp" + i.to_string() + "; })"
         }
         if ct_env_has(aenv, "#fval") {
             ax = ct_env_ty(aenv, "#fval")
@@ -2477,6 +2507,22 @@ fn ct_tp_elem(code: Str, idx: Str) -> Str {
     }
     if ci5.to_string() == idx { hit5 = cur5 }
     return hit5
+}
+
+// 嵌套数组字面 → C 嵌套花括号(FB-8 嵌套面;元素 ArrLit 递归,余 ct_expr)
+fn ct_arr_lit_braces(al: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var out = "\{"
+    var k: I32 = 1
+    while k < al.len {
+        if k > 1 { out = out + ", " }
+        if al[k][0] == "ArrLit" {
+            out = out + ct_arr_lit_braces(al[k], env, file)
+        } else {
+            out = out + ct_expr(al[k], env, file)
+        }
+        k += 1
+    }
+    return out + "}"
 }
 
 fn ct_zero(code: Str) -> Str {

@@ -363,6 +363,20 @@ int is_variant(const rt* R, const char* name) {
     return 0;
 }
 
+// FB-8 宿主 parity:T[N] 形参值语义——V_ARR 递归深拷(镜像自举 arr_copy_val;
+// 旧 env_let 按值拷 val 结构但 items 指针共享 → 被调改元污染调用方)
+static val arr_deep_copy(rt* R, val v) {
+    if (v.k != V_ARR || v.nitems == 0) return v;
+    val* items = (val*)ctron_arena_alloc(R->a, v.nitems * sizeof(val));
+    for (size_t i = 0; i < v.nitems; i++) items[i] = arr_deep_copy(R, v.items[i]);
+    val r = v;
+    r.items = items;
+    return r;
+}
+static int ty_is_array(const cty* ty) {
+    return ty && ty->kind == TY_ARRAY;
+}
+
 // 以既有实参值调用具名函数(用于 UFCS 与 map 路径)
 val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     const cfn* F = &fn->fn_;
@@ -373,6 +387,7 @@ val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     for (size_t i = 0; i < n; i++) {
         val a = args[i];
         a = apply_decl(R, a, F->params[i].ty);
+        if (ty_is_array(F->params[i].ty)) a = arr_deep_copy(R, a);
         env_let(R, F->params[i].name, a);
     }
     int sr = R->has_ret;
@@ -561,6 +576,7 @@ val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
         val a = vals[i];
         const cparam* pr = &F->params[i];
         a = apply_decl(R, a, pr->ty);
+        if (ty_is_array(pr->ty)) a = arr_deep_copy(R, a);
         env_let(R, pr->name, a);
     }
     if (vals) free(vals);
