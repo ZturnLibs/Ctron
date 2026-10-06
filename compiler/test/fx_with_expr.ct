@@ -1,0 +1,39 @@
+// fx_with_expr.ct —— T27-B 残债:with/with_mut 任意表达式位(emit ANF 提升)
+// eval 全表达式位合法(eval_call with/with_mut 臂=调用闭包取其值);
+// emit 此前仅语句/let 初值/return 尾/闭包体尾四口(trans_expr 恒拒「仅语句位」)。
+// 本夹具八面:语句序=遍历序(从左到右)与 eval 求值序一致;同行双 with=判别位覆盖面。
+fn bump5() -> I32 {
+    return 5
+}
+fn main() -> I32 {
+    let m = Mutex[I32](3)
+    // ① let 初值嵌套(登记债形态:return bump() + m.with(...) 同族)
+    let y = 10 + m.with(|c| c * 2)
+    println(y.to_string())
+    // ② 同行双 with(同行判别位覆盖面)
+    let z = m.with(|c| c + 1) + m.with(|c| c * 10)
+    println(z.to_string())
+    // ③ 调用实参位嵌套
+    println((bump5() + m.with(|c| c)).to_string())
+    // ④ if 条件位
+    if m.with(|c| c) > 2 {
+        println("cond-ok")
+    }
+    // ⑤ with_mut 表达式位(值=闭包尾值;写可见)
+    let w = m.with_mut(|var c| {
+        c += 7
+        c
+    })
+    println(w.to_string())
+    println(m.with(|c| c).to_string())
+    // ⑥ 闭包体内非尾表达式位
+    let f = |q| 1 + m.with(|c| c + q)
+    println(f(5).to_string())
+    // ⑦ 语句位 with_mut(b2c 回归复验面)
+    m.with_mut(|var c| { c += 1 })
+    println(m.with(|c| c).to_string())
+    // ⑧ return 位嵌套(登记债原始形态)
+    var rr = bump5() + m.with(|c| c)
+    println(rr.to_string())
+    return 0
+}

@@ -1033,6 +1033,24 @@ fn ct_structlit_inst(file: List[Str], e: List[Str], env: List[Str]) -> Str {
     return ct_struct_inst_code(e[1], slots)
 }
 
+// with/with_mut 值位型别=闭包体尾型(T27-B 残债:镜像 ct_emit_with_stmt rcdecl
+// wty 口径——Block 尾 None=v;BlockExpr 剥壳;裸表达式直取;形参型绑定由调用点
+// env 预先完成)
+fn ct_with_clo_ty(clo: List[Str], env: List[Str], file: List[Str]) -> Str {
+    var cbody = clo[3]
+    if cbody[0] == "BlockExpr" {
+        cbody = cbody[1]
+    }
+    if cbody[0] == "Block" {
+        var wtl = cbody[cbody.len - 1]
+        if wtl[0] == "None" {
+            return "v"
+        }
+        return ct_typeof(wtl, env, file)
+    }
+    return ct_typeof(cbody, env, file)
+}
+
 fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" {
@@ -1411,7 +1429,24 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[3] == "join" { return "i" }
             if or2(m == "join_or", or2(m == "send", m == "recv")) { return "R" }
             if m == "fetch_add" { return "i" }
-            if m == "with_mut" { return "v" }
+            // with/with_mut 值位型别=闭包体尾型(T27-B 残债清偿:语句位时代硬编码
+            // v/i 在值位即错——let w = m.with_mut(...) 落 void 声明 cc 错)。镜像
+            // ct_emit_with_stmt rcdecl wty 口径;裸成员读兜底维持 Member 臂旧值
+            if or2(m == "with", m == "with_mut") {
+                if e[2].len > 1 {
+                    // 形参型绑定(镜像 ct_emit_with_stmt env2:Mutex 接收者 m<内>
+                    // 绑内值码)——体尾引用形参(`|c| c`)时 typeof 方有型
+                    var wtyenv = env
+                    var wcps = e[2][1][1]
+                    var wobjt2 = ct_strip_p(ct_typeof(cal[1], env, file))
+                    if wcps.len > 1 && wobjt2.len > 1 && byte_at(wobjt2, 0) == 109 {
+                        wtyenv = env_bind(env, wcps[1][2], byte_slice(wobjt2, 1, wobjt2.len))
+                    }
+                    return ct_with_clo_ty(e[2][1], wtyenv, file)
+                }
+                if m == "with_mut" { return "v" }
+                return "i"
+            }
             if m == "map" { return "L" }
             // T53:expect 静态型别=载荷码恢复(与成员读位同口径;回落 i 同注)
             if m == "expect" {

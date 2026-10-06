@@ -1617,3 +1617,35 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   170/2(对端两账)/双陈列室绿;真窗 --run 手验待用户。
 - **GUI-32 后续**:v2 多板(C 数组)+键路由浮板优先+热重载浮板+每板独立
   bind/act;命名守 0924 替身红线(gui_board_* 文档明示引擎级浮板)。
+
+## 2026-10-06 T27-B 残债清偿(t27-anf 泳道)——with 任意表达式位+with_mut 写回语义
+
+- **登记债翻面**:「with 任意表达式位 emit ANF 缺口」清偿。①`trans_expr.ct` ct_expr
+  with/with_mut 臂由恒拒「仅语句位」翻为遍历点即提升点:落 ct_emit_with_stmt 语句块
+  (eln 先于本表达式行装配,语句序=eval 从左到右)+返回 rc 引用文本;rc 判别位=行号+
+  接收者/参名/闭包尾探针串 bsum(镜像 shim 判别位口径;同行双 with `Add`/`Mul` 尾探针
+  实证唯一,真撞=cc 重定义响亮错非静默)。②`trans_ty.ct` with/with_mut 值位型别=
+  闭包体尾型(新 fn ct_with_clo_ty;语句位时代硬编码 with_mut=v/with=i 在值位即错,
+  `let w = m.with_mut(...)` 曾落 `void t_w` 声明;形参型绑定镜像 ct_emit_with_stmt
+  env2)。**坑**:Call 臂 `cal`=被调 Member 非调用节点,实参在 `e[2]`——`cal[2]` 索引
+  即「索引目标非数组」(seed×cc_run 慢路可诊断,native 直 segfault 139)。
+- **计划外治愈在册「with_mut 语句位破坏(b2c)」**:语句位发射面实证完好(trans_stmt
+  Phase 4 在接);真因=**eval 侧** Mutex 构造 MUX 标签与 Assign-Ident 原地写 M 分支
+  失配——with_mut 传内值共享盒,标量内值复合赋值走重绑路径,盒槽不换=写即丢(闭包内
+  自读 10/二入口 3 实证;emit `*t_c+=7`、Rust 宿主同形可见=三臂分歧;struct 内值经
+  u_set_ip 原地写穿幸存=fx_conc_mutex/r3a 形态掩盖多年)。修=with_mut 终值回写对齐
+  Rust 参考语义(interp.rs MutexInst 拷入+body 后回写参数终值):内联闭包调用取 cenv,
+  **Ident 接收者 env_set 换绑 MUX 盒**。**坑(双宿主可移植性)**:cx 槽内写
+  (`cx_of(recv)[1]=…`)在原生侧别名传播、seed×cc_run 侧不传播(终值算到/槽写执行/
+  绑定不动)=S1 在册「cx 包装表终案待执行」同族(struct 拷贝深克隆语义)——env_set
+  路径双宿主一致。非 Ident 接收者(临时)写无 alias 可观察,跳过。
+- **新登记**:①块体闭包体内 return 在 fn main 的 eval 臂静默吞 main(rc=0 零输出;
+  `let g = || \{ return 41 \}` 最小形,check 面过;尾表达式块体正常;发射面「闭包体
+  return 泄漏」在册怪癖同族,归闭包泳道待查)②块体闭包静默无诊断=响亮性缺口(同①)。
+- **新锚**:compiler/test/fx_with_expr.ct 八面(let 嵌套/同行双 with/调用实参/if 条件/
+  with_mut 值位+写可见/闭包体内非尾/语句位/return 位嵌套)入 smoke 3b。
+- **门**(t27-anf 分支基线,8cf14ae3 之上):smoke --full **190 ok/0 fail**(基线
+  177/0 保持+对端新腿+本件 1)+meta_check 555 全绿+suite 自举 103/104·宿主 104/104
+  (唯一分歧=03m L4 生死探针,主树基线同败在册)+fx_with_expr 双臂逐字一致+
+  fx_conc_mutex 双臂 7/7+min 形四连(标量写回 10/10/struct 恒等/块体尾表达式)绿;
+  decl 锁 513 不变(+1 ct_with_clo_ty 仅入 cc_emit,cc_run 口径锁零新增)。

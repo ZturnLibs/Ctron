@@ -920,8 +920,53 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return "(" + neg + "(" + obj + ").variant)"
             }
             if or2(m == "with", m == "with_mut") {
-                panic("emit:with 仅语句位(let/Expr) @" + nline(e) + " recv=" + objt)
-                return ""
+                // T27-B 残债清偿:任意表达式位 with/with_mut ANF 提升——eval 全表达式
+                // 位合法(eval_call 臂=锁内调闭包取其值),emit 此前仅语句/let 初值/
+                // return 尾/闭包体尾四口(ct_clo_with_tail+三站点)。遍历点即提升点:
+                // with 语句块随遍历序 eln 落行(先于本表达式行装配),返回 rc 引用文本
+                // ——嵌套调用本就按此序落行,语句序=eval 从左到右;hreg 空表=闭包体
+                // 尾先例(8eb16e07)同口径,rc 存活仅限本语句消费窗口
+                if ag.len < 2 {
+                    panic("emit:with 需闭包实参 @" + nline(e))
+                    return ""
+                }
+                var wclo = ag[1]
+                var wismut = false
+                if m == "with_mut" {
+                    wismut = true
+                }
+                // rc 判别位:行号+接收者文本+参名+闭包尾探针——同行多 with 去撞
+                //(t_wtl<行> 单 with 口径在此不够);bsum 判别位同 shim 口径,
+                // 判别位相同 ⇔ 子树同文语义互换,真撞=cc 重定义响亮错非静默
+                var wprobe = obj + "|" + m
+                if wclo[1].len > 1 {
+                    if wclo[1][1].len > 2 {
+                        wprobe = wprobe + "|" + wclo[1][1][2]
+                    }
+                }
+                var wcbody = wclo[3]
+                if wcbody[0] == "BlockExpr" {
+                    wcbody = wcbody[1]
+                }
+                var wtail = wcbody
+                if wcbody[0] == "Block" {
+                    wtail = wcbody[wcbody.len - 1]
+                }
+                wprobe = wprobe + "|" + wtail[0] + "@" + nline(wtail)
+                if wtail[0] == "Binary" {
+                    wprobe = wprobe + "|" + wtail[1]
+                }
+                if wtail[0] == "Call" {
+                    if wtail[1][0] == "Ident" {
+                        wprobe = wprobe + "|" + wtail[1][1]
+                    }
+                    if wtail[1][0] == "Member" {
+                        wprobe = wprobe + "|" + wtail[1][3]
+                    }
+                }
+                var wrc = "t_wexp" + nline(e) + "_" + ct_str_bsum(wprobe, 7).to_string()
+                ct_emit_with_stmt(cal, obj, objt, wclo, env, file, wismut, wrc, List[Str](), "1")
+                return wrc
             }
             if m == "into_gc" {
                 // T30 真深拷(§6.3):静态 #elem 型别图分派;无绑定位恒等(v1 兼容回退)

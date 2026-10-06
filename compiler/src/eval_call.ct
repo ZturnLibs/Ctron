@@ -1002,10 +1002,45 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             var fa2 = List[Str]()
             if seq2(cx_of(recv)[0], "M") && seq2(m, "with_mut") {
                 fa2.push(v_box(recv))
-            } else {
-                fa2.push(cx_of(recv)[1])
+                return call_cv(file, ob.env, ob.out, v_unbox(vals[0]), fa2)
             }
-            return call_cv(file, ob.env, ob.out, v_unbox(vals[0]), fa2)
+            fa2.push(cx_of(recv)[1])
+            // MUX with_mut 写回=Rust 宿主对齐语义(interp.rs MutexInst:拷入+终值回写)。
+            // 旧径直调 call_cv 丢 cenv,形参终值不可达——标量内值复合赋值走 Assign
+            // 重绑路径,共享内值盒不换槽,写即丢(main 树 Mutex[I32] 直读丢写实证,
+            // emit *t_c+=7 同形可见=双臂分歧)。此处内联闭包调用取 cenv 终值回写
+            // MUX 载荷槽;struct 内值既有 u_set_ip 原地写穿面不变(回写同盒=恒等)
+            if seq2(m, "with") {
+                return call_cv(file, ob.env, ob.out, v_unbox(vals[0]), fa2)
+            }
+            var wcv = v_unbox(vals[0])
+            if !(wcv.tag == 8 && seq2(cx_of(wcv)[0], "C")) {
+                return call_cv(file, ob.env, ob.out, wcv, fa2)
+            }
+            var wc = cx_of(wcv)
+            var wnenv = wc[3]
+            var wps = wc[1]
+            if wps.len > 1 {
+                wnenv = env_add(wnenv, wps[1][2], v_unbox(fa2[0]))
+            }
+            var wbr = eval_expr(file, wnenv, ob.out, wc[2])
+            if seq2(wbr.kind, "k") && wps.len > 1 {
+                var wpe = env_at(wbr.env, wps[1][2])
+                if wpe.len > 1 {
+                    // 写回=env 绑定槽替换(双宿主可移植):cx 槽内写在 seed 的
+                    // struct 拷贝语义下别名断裂(本地 MUX 实证:终值算到、槽写
+                    // 执行、绑定不传播)=S1 在册「cx 包装表」同族;Ident 接收者
+                    // 经 env_set 换绑 MUX 盒,非 Ident(临时接收者)写无 alias
+                    // 可观察,跳过
+                    if cal[1][0] == "Ident" {
+                        var wmx = List[Str]()
+                        wmx.push("MUX")
+                        wmx.push(wpe[1])
+                        return e4(wbr.kind, env_set(env, cal[1][1], Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(wmx) }), wbr.v, wbr.out)
+                    }
+                }
+            }
+            return e4(wbr.kind, ob.env, wbr.v, wbr.out)
         }
         if seq2(cx_of(recv)[0], "M") && seq2(m, "fetch_add") && vals.len == 1 {
             var oldm = v_unbox(cx_of(recv)[1])
