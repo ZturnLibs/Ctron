@@ -1,0 +1,22 @@
+// geom_match —— S1a-iii 补验夹具:enum+match 形态经 .ctart 密封往返
+// (4991132 解析修复后,恢复式解析吞后续 pub fn 病灶的工件路径回归锚;
+// enum 裸变体构造/match 表达式位 = 语料已证形,变体不跨模块)
+
+pub enum Op {
+    Add
+    Mul
+}
+
+pub fn pick(x: I32) -> Op {
+    if x > 0 {
+        return Add
+    }
+    return Mul
+}
+
+pub fn apply(o: Op, a: I32, b: I32) -> I32 {
+    return match o {
+        Add => a + b
+        Mul => a * b
+    }
+}

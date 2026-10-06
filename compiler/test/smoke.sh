@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=508' "$T/chk.out" && ok "自检 cc_run 绿,decls=508(锁 506→508:FB-2 +2[fs_mkdir extern+fn,2026-10-06];前注:锁 480→506:T49 随批申报二十六 fn[pkg_dep.ct 二十六:pkg_z64/pkg_p2/xor32/and32/not32/rotr32/shr32/pkg_msgb/pkg_hexch/pkg_hex_word/pkg_kk_at/pkg_block_word/pkg_sha256_hex 十三 sha256 移植+pkg_deps_of/pkg_deps_text/pkg_dep_slot/pkg_cseg/pkg_ctag/pkg_constraint_check/pkg_ver_seg/pkg_ver_cmp/pkg_constraint_ok/pkg_names_lt/pkg_names_sort/pkg_tree_digest/pkg_tree_accum 十三 dep 面];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=513' "$T/chk.out" && ok "自检 cc_run 绿,decls=513(锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -846,7 +846,9 @@ mkdir -p "$V/cv/deps/mygeom.ctart" "$V/cv/deps/mygeom2.ctart" "$V/cc/deps/mygeom
 "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom_v1/geom.ct" --ast=seal --astout="$V/a1" --astname=mygeom > "$T/v1.out" 2>&1
 "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider_v2/geom.ct" --ast=seal --astout="$V/a2" --astname=mygeom2 > "$T/v2.out" 2>&1
 "$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$V/ab" --astname=mybase > "$T/vb.out" 2>&1
-"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/calc/calc.ct" --ast=seal --astout="$V/ap" --astname=mypkg > "$T/vp.out" 2>&1
+# D8-2 L2:calc 封印须记录依赖需求摘要(编排层自被依赖工件 meta 读 self_digest 回传)
+VBD=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$V/ab/meta.ctcl")
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/calc/calc.ct" --ast=seal --astout="$V/ap" --astname=mypkg --depdigest="mybase:$VBD" > "$T/vp.out" 2>&1
 cp -r "$V/a1/." "$V/cv/deps/mygeom.ctart/" && cp -r "$V/a2/." "$V/cv/deps/mygeom2.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_ver/main.ct" "$V/cv/"
 (cd "$V/cv" && "$COMP/ctc.sh" main.ct > "$T/cv.out" 2>&1)
 if grep -q "v1=12" "$T/cv.out" && grep -q "v2p=14" "$T/cv.out"; then
@@ -884,10 +886,13 @@ R="$T/realdep"
 for d in ac af1 af2 an ai; do mkdir -p "$R/$d/impl"; done
 mkdir -p "$R/app/deps/codecore.ctart" "$R/app/deps/fmtkit.ctart" "$R/app/deps/fmtkit2.ctart" "$R/app/deps/netlite.ctart" "$R/app/deps/invoiceapi.ctart"
 "$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/codecore/codecore.ct" --ast=seal --astout="$R/ac" --astname=codecore > "$T/r1.out" 2>&1
-"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/fmtkit1/fmtkit.ct" --ast=seal --astout="$R/af1" --astname=fmtkit > "$T/r2.out" 2>&1
-"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/fmtkit2/fmtkit.ct" --ast=seal --astout="$R/af2" --astname=fmtkit2 > "$T/r3.out" 2>&1
-"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/netlite/netlite.ct" --ast=seal --astout="$R/an" --astname=netlite > "$T/r4.out" 2>&1
-"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/invoiceapi/invoiceapi.ct" --ast=seal --astout="$R/ai" --astname=invoiceapi > "$T/r5.out" 2>&1
+# D8-2 L2:封印序 = 依赖序(底层先封),中层封印记录需求摘要;加载期双向比对
+RCD=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$R/ac/meta.ctcl")
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/fmtkit1/fmtkit.ct" --ast=seal --astout="$R/af1" --astname=fmtkit --depdigest="codecore:$RCD" > "$T/r2.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/fmtkit2/fmtkit.ct" --ast=seal --astout="$R/af2" --astname=fmtkit2 --depdigest="codecore:$RCD" > "$T/r3.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/netlite/netlite.ct" --ast=seal --astout="$R/an" --astname=netlite --depdigest="codecore:$RCD" > "$T/r4.out" 2>&1
+RND=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$R/an/meta.ctcl")
+"$COMP/ctc.sh" ast "$ROOT/tests/realdep_demo/pkgs/invoiceapi/invoiceapi.ct" --ast=seal --astout="$R/ai" --astname=invoiceapi --depdigest="netlite:$RND" > "$T/r5.out" 2>&1
 cp -r "$R/ac/." "$R/app/deps/codecore.ctart/" && cp -r "$R/af1/." "$R/app/deps/fmtkit.ctart/" && cp -r "$R/af2/." "$R/app/deps/fmtkit2.ctart/" && cp -r "$R/an/." "$R/app/deps/netlite.ctart/" && cp -r "$R/ai/." "$R/app/deps/invoiceapi.ctart/" && cp "$ROOT/tests/realdep_demo/app/main.ct" "$R/app/"
 (cd "$R/app" && CTRON_STDPATH="$ROOT/lib/std" "$COMP/ctc.sh" main.ct > "$T/rapp.out" 2>&1)
 if grep -q "legacy=1,234,567" "$T/rapp.out" && grep -q "total=CNY 1,234,567" "$T/rapp.out" && grep -q "paid=75%" "$T/rapp.out" && grep -q "ref8=" "$T/rapp.out" && grep -q "resp=OK" "$T/rapp.out"; then
@@ -919,6 +924,66 @@ if CTRON_STDPATH="$SO/neg/lib/std" "$COMP/bin/ctron-cc" run "$T/so_main.ct" > "$
 else
     grep -q "E2020" "$T/so3.out" && ok "包缺席 E2020 兜底(use.read)" || bad "E2020 未兜底: $(head -2 "$T/so3.out")"
     grep -q "W8902" "$T/so3.out" && grep -q "ctron add zsite" "$T/so3.out" && ok "W8902 带出路(安装指引)" || bad "W8902 缺失: $(tail -3 "$T/so3.out")"
+fi
+
+echo "== 3p) T50/D8-2 L2 工件摘要校验(记录-比对 fail-closed)+ S1a-iii match/enum 补验 =="
+DG="$T/dg"
+mkdir -p "$DG/pos/deps/mybase.ctart" "$DG/pos/deps/mypkg.ctart" "$DG/bad/deps/mybase.ctart" "$DG/bad/deps/mypkg.ctart" "$DG/uv1/deps/mybase.ctart" "$DG/uv1/deps/mypkg.ctart" "$DG/nr/deps/mybase.ctart" "$DG/nr/deps/mypkg.ctart" "$DG/mt/deps/mybase.ctart" "$DG/mt/deps/mypkg.ctart" "$DG/match/deps/mygeom.ctart" "$DG/bh/impl" "$DG/be/impl" "$DG/ap/impl" "$DG/am/impl"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$DG/bh" --astname=mybase > "$T/dg1.out" 2>&1
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider_base_evil/base.ct" --ast=seal --astout="$DG/be" --astname=mybase > "$T/dg2.out" 2>&1
+BH=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$DG/bh/meta.ctcl")
+BE=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$DG/be/meta.ctcl")
+if [ -n "$BH" ] && [ -n "$BE" ] && [ "$BH" != "$BE" ] && grep -q "impl/base.ast" "$DG/bh/SHA256SUMS"; then
+    ok "seal 编排自证:self_digest 写入且诚实/恶意相异,SHA256SUMS 面生成"
+else
+    bad "编排摘要缺失: BH=$BH BE=$BE"
+fi
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/calc/calc.ct" --ast=seal --astout="$DG/ap" --astname=mypkg --depdigest="mybase:$BH" > "$T/dg3.out" 2>&1
+cp -r "$DG/bh/." "$DG/pos/deps/mybase.ctart/" && cp -r "$DG/ap/." "$DG/pos/deps/mypkg.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$DG/pos/"
+(cd "$DG/pos" && "$COMP/ctc.sh" main.ct > "$T/dg4.out" 2>&1)
+if grep -q "t=12" "$T/dg4.out"; then
+    ok "L2 正例:需求=实际,工件→工件双边过验(t=12)"
+else
+    bad "L2 正例误拒: $(tail -2 "$T/dg4.out")"
+fi
+cp -r "$DG/be/." "$DG/bad/deps/mybase.ctart/" && cp -r "$DG/ap/." "$DG/bad/deps/mypkg.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$DG/bad/"
+(cd "$DG/bad" && "$COMP/ctc.sh" main.ct > "$T/dg5.out" 2>&1)
+if grep -q "E5054" "$T/dg5.out"; then
+    ok "E5054 错版本精准拦截(需求≠实际,点名 dep 与双摘要;t=7 静默洞已闭)"
+else
+    bad "E5054 未拦截: $(cat "$T/dg5.out")"
+fi
+mkdir -p "$DG/uv1/deps/mybase.ctart/impl" && cp "$DG/bh/impl/base.ast" "$DG/uv1/deps/mybase.ctart/impl/" && cp "$DG/bh/SHA256SUMS" "$DG/uv1/deps/mybase.ctart/" && sed '/self_digest/d' "$DG/bh/meta.ctcl" > "$DG/uv1/deps/mybase.ctart/meta.ctcl"
+cp -r "$DG/ap/." "$DG/uv1/deps/mypkg.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$DG/uv1/"
+(cd "$DG/uv1" && "$COMP/ctc.sh" main.ct > "$T/dg6.out" 2>&1)
+if grep -q "E5055" "$T/dg6.out"; then
+    ok "E5055 拒载:被依赖工件缺 self_digest"
+else
+    bad "E5055 未拦截: $(cat "$T/dg6.out")"
+fi
+mkdir -p "$DG/nr/deps/mypkg.ctart/impl" && cp "$DG/ap/impl/calc.ast" "$DG/nr/deps/mypkg.ctart/impl/" && cp "$DG/ap/SHA256SUMS" "$DG/nr/deps/mypkg.ctart/" && sed '/^dep "/,/^}/d' "$DG/ap/meta.ctcl" > "$DG/nr/deps/mypkg.ctart/meta.ctcl"
+cp -r "$DG/bh/." "$DG/nr/deps/mybase.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$DG/nr/"
+(cd "$DG/nr" && "$COMP/ctc.sh" main.ct > "$T/dg7.out" 2>&1)
+if grep -q "E5055" "$T/dg7.out"; then
+    ok "E5055 拒载:消费方工件缺 dep.digest 记录"
+else
+    bad "E5055 未拦截: $(cat "$T/dg7.out")"
+fi
+cp -r "$DG/bh/." "$DG/mt/deps/mybase.ctart/" && cp -r "$DG/ap/." "$DG/mt/deps/mypkg.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_trans/main.ct" "$DG/mt/"
+printf 'X' >> "$DG/mt/deps/mybase.ctart/impl/base.ast"
+( cd "$DG/mt/deps/mybase.ctart" && shasum -a 256 -c SHA256SUMS > "$T/dg8.out" 2>&1 ) || true
+if grep -q "FAILED" "$T/dg8.out"; then
+    ok "L1 SHA256SUMS 篡改检出(impl 字节;L2 记录串盲区由编排层覆盖)"
+else
+    bad "L1 未检出篡改: $(cat "$T/dg8.out")"
+fi
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/provider/geom_match.ct" --ast=seal --astout="$DG/am" --astname=mygeom > "$T/dg9.out" 2>&1
+cp -r "$DG/am/." "$DG/match/deps/mygeom.ctart/" && cp "$ROOT/tests/artifact_demo/consumer_match/main.ct" "$DG/match/"
+(cd "$DG/match" && "$COMP/ctc.sh" main.ct > "$T/dg9b.out" 2>&1)
+if grep -q "r1=7" "$T/dg9b.out" && grep -q "r2=12" "$T/dg9b.out"; then
+    ok "S1a-iii 补验:enum+match 密封工件消费全绿"
+else
+    bad "match/enum 工件异常: $(tail -2 "$T/dg9b.out")"
 fi
 
 echo "== 结果: $pass ok / $fail fail =="

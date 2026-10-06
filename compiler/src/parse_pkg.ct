@@ -210,6 +210,116 @@ fn pkg_ctcl_pre(t: Str, i: I32) -> Bool {
     return true
 }
 
+// —— D8-2 L2:工件 meta 摘要扫描(记录-比对;记录串由 seal 编排层写入,本面不重算)——
+// 定位 key 在 t 中 from 起的首个出现(词边界由调用方 pkg_ctcl_pre 把守);未命中 -1
+fn pkg_meta_find(t: Str, from: I32, key: Str) -> I32 {
+    var i = from
+    while i < t.len {
+        if pkg_ctcl_at(t, i, key) {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+// 读 i 起(已越过键名)的 `= "值"` 形;畸形返回 ""
+fn pkg_meta_strval(t: Str, i: I32) -> Str {
+    var j = i
+    while j < t.len && byte_at(t, j) == 32 {
+        j += 1
+    }
+    if j < t.len && byte_at(t, j) == 61 {
+        j += 1
+        while j < t.len && byte_at(t, j) == 32 {
+            j += 1
+        }
+        if j < t.len && byte_at(t, j) == 34 {
+            j += 1
+            var st = j
+            while j < t.len && byte_at(t, j) != 34 {
+                j += 1
+            }
+            if j < t.len {
+                return byte_slice(t, st, j)
+            }
+        }
+    }
+    return ""
+}
+
+// 工件自身摘要锚(artifact 块 self_digest);meta 缺失/键缺 → ""
+fn pkg_meta_self_digest(art_dir: Str) -> Str {
+    var t = ""
+    match read_file(art_dir + "/meta.ctcl") {
+        Some(x) => {
+            t = x
+        }
+        None => {
+            return ""
+        }
+    }
+    var i: I32 = 0
+    while i < t.len {
+        if pkg_ctcl_at(t, i, "self_digest") && pkg_ctcl_pre(t, i) {
+            return pkg_meta_strval(t, i + 11)
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 消费方工件 meta 内 dep 块 digest 需求;块/键缺 → ""(125=`}` 为块界,格式机器写入无嵌套)
+fn pkg_meta_dep_digest(meta_path: Str, name: Str) -> Str {
+    var t = ""
+    match read_file(meta_path) {
+        Some(x) => {
+            t = x
+        }
+        None => {
+            return ""
+        }
+    }
+    var needle = "dep \"" + name + "\" \{"
+    var h = pkg_meta_find(t, 0, needle)
+    if h < 0 {
+        return ""
+    }
+    var i = h + needle.len
+    while i < t.len {
+        if byte_at(t, i) == 125 {
+            return ""
+        }
+        if pkg_ctcl_at(t, i, "digest") && pkg_ctcl_pre(t, i) {
+            return pkg_meta_strval(t, i + 6)
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 工件边校验(D8-2 L2,加载算法五步之 3/4):①被依赖工件缺 self_digest → E5055;
+// ②消费方工件边缺 dep 记录 → E5055;③需求 ≠ 实际 → E5054(点名 dep 与双摘要)。
+// 顶层源消费方(ameta="")无记录面,L2 诚实边界内跳过②(钉定归 T49 lock 域)。
+fn pkg_art_verify(diags: List[Str], depname: Str, consumer_meta: Str, art_dir: Str) {
+    var sd = pkg_meta_self_digest(art_dir)
+    if sd.len == 0 {
+        diag1(diags, "E5055", "", art_dir)
+        return
+    }
+    if consumer_meta.len == 0 {
+        return
+    }
+    var rq = pkg_meta_dep_digest(consumer_meta, depname)
+    if rq.len == 0 {
+        diag1(diags, "E5055", "", consumer_meta + " dep " + depname)
+        return
+    }
+    if !seq2(rq, sd) {
+        diag3(diags, "E5054", "", depname, rq, sd)
+    }
+}
+
 fn pkg_caps_allowed(dir: Str, cap: Str) -> Bool {
     var t = ""
     match read_file(dir + "/../Ctron.ctcl") {
@@ -478,7 +588,7 @@ fn pkg_load_use_m(file: List[Str], dir: Str, stack: List[Str], diags: List[Str],
 fn pkg_load_use_t(file: List[Str], dir: Str, stack: List[Str], diags: List[Str], misses: List[Str], prof: Str) -> List[Str] {
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof)
+    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof, "")
     return gui_ds_postmerge(out, unit, diags)
 }
 
@@ -511,7 +621,8 @@ fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[S
 
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
-fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str) -> List[Str] {
+// ameta = 当前展开模块的工件 meta 路径(D8-2 L2 消费方身份;"" = 源码模块,无记录面)
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str, ameta: Str) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
@@ -552,6 +663,10 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                 syms.push(segs[segs.len - 1])
             }
             var mpath = ""
+            // D8-2 L2:命中工件时记其 meta 路径(= 递归展开内 use 的消费方身份)与
+            // 工件目录(校验挂点用);声明在 std/非 std 分支外——校验点在分支汇合后
+            var next_meta = ""
+            var art_dir = ""
             if isstd {
                 mpath = pkg_std_root(dir)
                 var j2: I32 = 2
@@ -712,6 +827,8 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     var apath = dir + "/deps/" + segs[1] + ".ctart/impl" + rel + ".ast"
                     if fs_exists(apath) {
                         mpath = apath
+                        next_meta = dir + "/deps/" + segs[1] + ".ctart/meta.ctcl"
+                        art_dir = dir + "/deps/" + segs[1] + ".ctart"
                     }
                 }
                 // W8902 半面:全链未命中的包形 use(≥3 段)静默收集,驱动层在
@@ -746,6 +863,14 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                 // 已 done 者必为干净完成的合并,顶层重入补并不可能成环 → done 免检
                 diag1(diags, "E5020.circ", "", mpath)
                 return out
+            }
+            // D8-2 L2:工件加载前摘要校验(fail-closed);done 语义不变——
+            // 已验过的依赖随 done 跳过,不重复校验(redo 补并亦免,首载已验)
+            if art_dir.len > 0 && !isdone {
+                pkg_art_verify(diags, segs[1], ameta, art_dir)
+                if diags.len > 0 {
+                    return out
+                }
             }
             var src = read_file(mpath)
             match src {
@@ -818,7 +943,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                             estack = List[Str]()
                             estack.push(mpath)
                         }
-                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof)
+                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof, next_meta)
                         if diags.len > 0 {
                             return out
                         }
@@ -1045,7 +1170,13 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 None => {
                     if !isstd {
-                        diag1(diags, "E2020.use.read", "", mpath)
+                        // D8-2 同批小改:工件目录存在而 impl 未命中/不可读时点名,
+                        // 免得报一个无从下手的 .ct 源路径
+                        var rmsg = mpath
+                        if fs_exists(dir + "/deps/" + segs[1] + ".ctart") {
+                            rmsg = mpath + "(工件 deps/" + segs[1] + ".ctart 存在:impl 路径缺失或不可读)"
+                        }
+                        diag1(diags, "E2020.use.read", "", rmsg)
                         return out
                     }
                     // 前奏类文件缺失路径:带别名请求 = E2020.use.nat(spec §4.6)。

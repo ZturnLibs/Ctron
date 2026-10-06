@@ -41,6 +41,8 @@
 | E5010 | trait 孤儿规则违规 | §2.5 | `modules/orphan` |
 | E5020 | 循环依赖 | §2.6 | `modules/circular` |
 | E5030 | use 导入同名 decl(曾"首个胜出"静默遮蔽,现拦截) | §2.6 | 预留:多文件 use 用例 |
+| E5054 | 依赖工件摘要不符(需求 digest ≠ 实际 self_digest;闭源分发 D8-2 L2 记录-比对,替代静默错版本) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
+| E5055 | 工件摘要未验(meta 缺 self_digest 或 dep.digest 记录;fail-closed 拒载) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
 | E6010 | comptime 预算超限 | §8.4 | `roadmap/r6f_comptime_budget.neg.ct` + `modules/comptime_budget` |
 | E6020 | comptime 副作用/不确定 | §8.4 | 预留 |
 | E5060 | 插件未声明/插件包加载失败/接口面不符(nodecl/load/iface 子码;T52 插件沙箱) | §8.3/§10.6(T52) | `tests/plugins/no_decl/src/main.ct`(nodecl) |

@@ -18,6 +18,15 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
 HOST="$ROOT/compiler-c/build/ctronc"
 
+# sha256 单行封装(darwin shasum / linux sha256sum;D8-2 L2 seal 编排用)
+ctc_sha() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    else
+        sha256sum "$1" | cut -d' ' -f1
+    fi
+}
+
 mode=run
 PROF=full
 TAUSTED=0
@@ -299,19 +308,53 @@ case $mode in
         ASTMODE=roundtrip
         ASTOUT="ANCHOROUT"
         ASTNAME="ANCHORNAME"
+        ASTDEP=""
         for a in "$@"; do
             case $a in
                 --ast=dump) ASTMODE=dump ;;
                 --ast=seal) ASTMODE=seal ;;
                 --astout=*) ASTOUT=${a#--astout=} ;;
                 --astname=*) ASTNAME=${a#--astname=} ;;
+                --depdigest=*) ASTDEP="$ASTDEP${ASTDEP:+;}${a#--depdigest=}" ;;
             esac
         done
         "$DIR/build.sh" >/dev/null
+        # D8-2 L2:依赖需求摘要条目(名:sha256:hex;分号分隔)经临时文件注入驱动
+        #(锚换靶为单行 sed,多行块过不去;文件面由 shell 写,驱动原样拼入 meta)
+        DEPF=$(mktemp /tmp/ctron_depd.XXXXXX)
+        : > "$DEPF"
+        if [ -n "$ASTDEP" ]; then
+            OIFS=$IFS
+            IFS=';'
+            for e in $ASTDEP; do
+                dn=${e%%:*}
+                dv=${e#*:}
+                printf 'dep "%s" {\n  digest = "%s"\n}\n' "$dn" "$dv" >> "$DEPF"
+            done
+            IFS=$OIFS
+        fi
         TMP=$(mktemp /tmp/ctron_ast.XXXXXX)
-        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORAST|$ASTMODE|" -e "s|ANCHOROUT|$ASTOUT|" -e "s|ANCHORNAME|$ASTNAME|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_ast.ct" > "$TMP"
+        sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORAST|$ASTMODE|" -e "s|ANCHOROUT|$ASTOUT|" -e "s|ANCHORNAME|$ASTNAME|" -e "s|ANCHORDEPFILE|$DEPF|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_ast.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
+        # D8-2 L2 seal 编排:SHA256SUMS(impl/** 载荷,路径字节序;不含 meta——
+        # self_digest 入 meta,含之即循环)+ self_digest=sha256(SHA256SUMS 字节)
+        # 插入 artifact 块(meta 首块,首个 ^} 即其闭括号)。摘要计算在编排层,
+        # 编译器热路径零触碰(D8-2 分工冻结)。
+        if [ "$rc" -eq 0 ] && [ "$ASTMODE" = seal ] && [ -f "$ASTOUT/meta.ctcl" ] && [ -d "$ASTOUT/impl" ]; then
+            (
+                cd "$ASTOUT" || exit 1
+                rm -f SHA256SUMS
+                find impl -type f | LC_ALL=C sort | while IFS= read -r f; do
+                    printf '%s  %s\n' "$(ctc_sha "$f")" "$f"
+                done > SHA256SUMS
+            )
+            SELF=$(ctc_sha "$ASTOUT/SHA256SUMS")
+            if [ -n "$SELF" ]; then
+                awk -v sd="$SELF" 'BEGIN{ins=0} ins==0 && $0=="}" { print "  self_digest = \"sha256:" sd "\""; ins=1 } { print }' "$ASTOUT/meta.ctcl" > "$ASTOUT/meta.ctcl.n"
+                mv "$ASTOUT/meta.ctcl.n" "$ASTOUT/meta.ctcl"
+            fi
+        fi
         ;;
     dep)
         "$DIR/build.sh" >/dev/null
@@ -332,5 +375,5 @@ case $mode in
         rc=$?
         ;;
 esac
-rm -f ${TMP:-}
+rm -f ${TMP:-} ${DEPF:-}
 exit $rc
