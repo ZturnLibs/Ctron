@@ -35,6 +35,22 @@ extern "c" fn ctron_prog_args_n() -> I64
 #[trusted]
 extern "c" fn ctron_prog_args_at(i: I64) -> Str
 
+// FB-8/F5:T[N] 形参值语义——A 记录(数组值)递归深拷(镜像发射位调用点栈拷贝;
+// 旧直传共享记录,被调改元即污染调用方,静默错值)
+fn arr_copy_val(v: Val) -> Val {
+    if v.tag == 8 && cx_of(v).len > 0 && seq2(cx_of(v)[0], "A") {
+        var out = List[Str]()
+        out.push("A")
+        var i: I32 = 1
+        while i < cx_of(v).len {
+            out.push(v_box(arr_copy_val(v_unbox(cx_of(v)[i]))))
+            i += 1
+        }
+        return Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(out) }
+    }
+    return v
+}
+
 fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals: List[Str]) -> Flow {
     var ps = d[3]
     var nenv = List[Str]()
@@ -42,7 +58,11 @@ fn call_decl_vals(file: List[Str], env: List[Str], out: Str, d: List[Str], vals:
     while k < ps.len {
         var pr = ps[k]
         if pr[0] == "Param" {
-            nenv = env_add(nenv, pr[2], bind_of(file, v_unbox(vals[k - 1])))
+            var pv8 = v_unbox(vals[k - 1])
+            if pr.len > 3 && pr[3][0] == "ArrayT" {
+                pv8 = arr_copy_val(pv8)
+            }
+            nenv = env_add(nenv, pr[2], bind_of(file, pv8))
         }
         k += 1
     }

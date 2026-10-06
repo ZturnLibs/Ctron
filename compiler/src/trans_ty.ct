@@ -442,6 +442,12 @@ fn ct_ctype(code: Str) -> Str {
     if code.len > 1 && byte_at(code, 0) == 80 {
         return ct_ctype(byte_slice(code, 1, code.len)) + "*"
     }
+    // FB-8/F5:T[N] 定长数组码("a<n><ec>")——形参/返回 ABI 落元素指针
+    //(C 数组实参退化同构,t_buf[i] 下标面天然兼容);值语义由调用位临时
+    // 拷贝承接(ct_call_args_tg a 码包裹)。返回面指针 ABI 债在册(悬垂面)
+    if code.len > 1 && byte_at(code, 0) == 97 {
+        return ct_ctype(a_elem(code)) + "*"
+    }
     return "int32_t"
 }
 

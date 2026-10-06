@@ -1770,6 +1770,14 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
             }
         }
         var ax = ct_expr(ag[i], aenv, file)
+        // FB-8/F5:T[N] 实参值语义——调用位栈拷贝(形参 elem*,直传=别名);
+        // 仅形参码同为 a 码时包裹(视图借用面 &T[]/T[]=v 码不拷,复合字面量
+        // 内语句表达式会产生悬垂数组尾,fx_slice 实证);实参限 Ident,右值形债在册
+        if ac.len > 1 && byte_at(ac, 0) == 97 && pc.len > 1 && byte_at(pc, 0) == 97 && ag[i][0] == "Ident" {
+            var acn8 = a_count(ac)
+            var ace8 = ct_ctype(a_elem(ac))
+            ax = "(\{ " + ace8 + " t_acp" + i.to_string() + "[" + acn8 + "]; memcpy(t_acp" + i.to_string() + ", " + ax + ", sizeof(t_acp" + i.to_string() + ")); t_acp" + i.to_string() + "; })"
+        }
         if ct_env_has(aenv, "#fval") {
             ax = ct_env_ty(aenv, "#fval")
         } else if seq2("", "1") {

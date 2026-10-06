@@ -1,0 +1,13 @@
+// fx_arr_byval.ct —— FB-8/F5:定长数组按值传参(T[N] 值语义;调用方不被污染)
+fn bump(buf: I32[3]) -> I32 {
+    buf[0] = 99
+    return buf[0]
+}
+
+fn main() -> I32 {
+    var a: I32[3] = [1, 2, 3]
+    let r = bump(a)
+    println(r.to_string())
+    println(a[0].to_string())
+    return 0
+}
