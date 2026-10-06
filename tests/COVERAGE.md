@@ -1638,3 +1638,13 @@ ubuntu-msan` 后所有后续轮用 ubuntu-msan(依赖固化,零抖动)。构建�
 (终版路线)=CI ubuntu runner 加 MSAN 诊断 job**(runner=稳定 apt+无共机竞态;gui 链接
 按 [8/8] RUN_GUI skip 逻辑同理,MSAN job 只跑 s30 一锚或以 stub 链接),或隔离机窗口。
 本泳道七轮+毒化+探针+watchpoint+容器共 12 轮取证全部在册,交付面已闭合。
+
+**s30 本轮终态补充(2026-10-06)**:①worktree freetype 源树不完整(缺 dlg 子模块/builds
+/unix/configure 等 gitignore+子模块件)已从主树整树补齐并重建成功——**此前 worktree 所
+有构建都链着残缺 freetype 环境**;②补齐后手工 emit+cc+run 原版夹具=**rc=0 全绿跑通**;
+③同分钟 run.sh 跑=SEGV——同源同编译同旗标,差异仅在运行上下文(重定向/管道/stdin tty);
+④双发射(SITEPATH 有/无)逐字节一致。**终定性:崩溃对运行上下文(重定向/管道)敏感,
+二进制与源码级一切变量已排除**——此类=lib 或 CRT 内与 stdio 管道态交互的深水 bug,
+本机取证工具三系均无法附着。**下段首件(不变)=隔离窗+watchpoint 钉存活 Driver 树
+(方法学在册)+CI MSAN job**。freetype worktree 源树已补完整(含 dlg 子模块/构建件),
+后续 worktree GUI 工作不再受此扰。
