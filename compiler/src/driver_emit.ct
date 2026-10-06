@@ -98,6 +98,7 @@ fn main() -> I32 {
             // 落 flash 别名侥幸绿;主树门绿纯靠 .cache/emit 陈旧好产物,4MB 常量血案
             // 同款)。自旋锁面(T46/T47)保留。
             println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; while (__sync_lock_test_and_set(&ctron_alock, 1)) \{ } if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)16384; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; __sync_lock_release(&ctron_alock); return p; }")
+                        println("static int64_t ctron_str_to_i64(const char* s) \{ int64_t r = 0; int neg = 0; long k = 0; if (s[k] == 45) \{ neg = 1; k++; } else if (s[k] == 43) \{ k++; } while (s[k] >= 48 && s[k] <= 57) \{ r = r * 10 + (s[k] - 48); k++; } return neg ? -r : r; }")
             // 运行时辅助:容器/单元格/字节域/读文件(必须先于使用它的原型)
             println("typedef struct \{ unsigned long long magic; char** items; int n; int cap; } ctron_list;")
             // T29 M1 GC 前向声明(核心实现在 ct_chans 声明之后;保守根先行,
