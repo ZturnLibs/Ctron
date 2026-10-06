@@ -269,7 +269,7 @@
 
 ### T22 · 宿主运行面红账两件
 
-- **预估:** 1 d。**前置:** 无。**状态:** 待办
+- **预估:** 1 d。**前置:** 无。**状态:** ✅ 已核销(2026-09-28 COVERAGE 工作志:r4d/r6a 两锚 09-15 已转绿并迁主套件[03k_u64_overflow.panic/05h_drop_panic_unwind.panic 双线绿],本节系过期登记)
 - **目标:** 翻转 r4d(宿主 rt panic 不跑 Drop 展开)与 r6a(U64 加法无上界检查)。
 - **范围:** `compiler-c/` 运行时(rt panic 展开路径补 drop 派发;U64 Add 补上溢门)。
 - **要点:** r4d 与自举线 `ct_drstack` 语义对齐(逆序、panic 保序);r6a 对照自举 `ctron_i64_add` 的 `__builtin_*_overflow` 形态。
@@ -278,7 +278,7 @@
 
 ### T23 · e2e 缺声明 6 件红销账
 
-- **预估:** 1–1.5 d。**前置:** 无。**状态:** 待办
+- **预估:** 1–1.5 d。**前置:** 无。**状态:** ✅ 已核销(2026-09-28 COVERAGE 工作志:e2e 缺声明 6 红 09-25 深夜 P1b 契约补全已清,http 110/1[唯一红=a_jwt interp OOM=T31 债],本节系过期登记)
 - **目标:** COVERAGE 368 行在册「e2e 缺声明 6 红(饿死族 client/message 面)」销账:P1b 复通后遗留的发射缺声明(t_client_write_str/t_http_method_start 类)补齐。
 - **范围:** `compiler/src/trans_*.ct`/`driver_emit.ct`(声明补齐)、`tests/http/` e2e 红件。
 - **要点:** 饿死族根因=一处发射缺声明饿死同族,按 09-24 复核记录逐件定位;修后 `run.sh` 站岗面回切原生 e2e(todo_app 红账同源可一并试);§11.2「fd 禁触达=发射面拒绝导出」的 E 锚同批登记(同属发射面收口在册账)。
@@ -640,17 +640,17 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T26 | 能力注入归位 | W5 | **已完成**(0929,07a/07b 翻转+Fs 入 std+Env 三线+vtable 全签名+cap_inject 真窗) | 见 git |
 | T27 | 闭包捕获收口【裁决】 | W5 | **已完成·B 终态转正**(0930 用户裁决落注 r-roadmap §4.7;E3070=语义执行;实现零债=as-built 即终态) | — |
 | T28 | GC 契约校准 | W6 | **已完成**(0929,现状校准九处+M1/M2/M3 分阶段契约+栈扫描帧位图径;spec §6.2 挂注) |
-| T29 | MVP tracing GC | W6 | **WIP**(f21fee5;GC 堆+保守根集+排序二分 mark 已实证 74× RSS 回收;余=垫片文件机制绕字符串插值极限,见卡) | — |
-| T30 | into_gc 真实化 | W6 | 待办 | — |
-| T31 | 解释器回收 | W6 | 待办 | — |
-| T32 | GC 门禁 ≤15% | W6 | 待办 | — |
+| T29 | MVP tracing GC | W6 | **已完成**(0930 两史归一 main 24e0233,验收面全过;M1.5 精确帧位图+默认档翻面列切片3) | 见卡 |
+| T30 | into_gc 真实化 | W6 | **已完成**(0930,发射侧真深拷四模式分派;05i 锚双臂双档绿) | 见卡 |
+| T31 | 解释器回收 | W6 | **🔴 负结果落账**(1001,Ctron 级帧回收证伪回退;唯一健全径=M1.5 精确帧位图并案) | 见卡 |
+| T32 | GC 门禁 ≤15% | W6 | **已完成**(1001,tests/gc/bench.sh 入 ci.sh[7/9];首版比值 10.28 WARN 登记不阻 CI) | 见卡 |
 | T33 | parallel 真并行 | W7 | **已完成+登记**:0930 后宏发现 fx_conc_parallel 发射臂 emitter OOB("index out of bounds",ct_emit_clo 捕获分析路径;干净 origin/main 复现,归 T33 泳道修复;**0930 精确定稿**:ct_emit_clo 的 #ifndef 卫兵在 prewalk/实发两遍
 间错位——发射 C 出现「fn 首行后即 #endif、return 与 } 落卫兵外」的截断 shim(闭包无
 返回路径→运行期垃圾;fx_conc_parallel/cloval 双夹具实证)。修法=卫兵只在实发遍 emission
 (pass-1 预扫只直出内层 shim,不落卫兵行),或卫兵行纳入 eln 门控。T33 作者按此分钟级可修。**10-03 T27 复验注**:r3a 面所经 ct_emit_clov 卫兵形态实证完好(单对 #ifndef 包整 shim),r3a 原生臂真因=bsum I32 溢出+with ANF 漏接(已随 T27-B 收口三修);本件 parallel 面 ct_emit_clo OOB("index out of bounds")独立仍在册,bsum 修复后复验依旧复现,卫兵假说待 T33 作者按上法定稿时再证 | — |
 | T34 | 栈经济 P9 | W7 | **已完成**:1002 两波——最小符合径(触顶诊断链 a77f141f)+正案收官(work-stealing 落码+可增长栈判决入册:A/B 双阻塞于发射器机器,退路 1MB 大栈=§7.1 字面终形,解锁条件单列;ws_steal 锚+c10k 满额 PASS+A/B 差分 ≤0.5%) | — |
 | T35 | 分层 stdlib 机制 | W8 | ✅ 1002 | — |
-| T36 | ctc target+后端接口 | W8 | 待办 | — |
+| T36 | ctc target+后端接口 | W8 | **已完成**(1001,--target 注册表+fail-closed 诊断;native/bare 双靶已注册,wasm32 随 T37) | 见卡 |
 | T37 | wasm MVP | W8 | 待办 | — |
 | T38 | WasmGC+JSPI | W8 | 待办 | — |
 | T39 | stdweb 真实化 | W8 | 待办 | — |
@@ -658,11 +658,11 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T41 | bare 分配器族 | W8 | ◐ 核心 1006 | Region/Pool/Static 余债 |
 | T42 | 体积门禁+ISR | W8 | ✅ 1006 | a2036c5b 已汇流 |
 | T43 | ctc 子命令 | W9 | ✅ 完成(1005) | — |
-| T44 | own ±5% 门禁 | W9 | 待办 | — |
+| T44 | own ±5% 门禁 | W9 | **已完成**(1002,tests/lang/bench 首族入 ci.sh;总比值 1.161 WARN 归因 k2 allocator 税) | 见卡 |
 | T45 | CBox+FFI 余账 | W9 | ✅ 完成(1002) | — |
 | T46 | st_serve IO 粘合 | W9 | **已完成**(1006,frm/serve.ct+e2e 双 RT;附发射面两修复治愈六件存量红) | 见 git |
 | T47 | multipart | W9 | **已完成**(1006,解析器 P6-C 已在库;corpus i_multipart 验收收口) | 见 git |
-| T48 | CTCL 迁移 | W9 | 待办 | — |
+| T48 | CTCL 迁移 | W9 | **已完成**(1002,三线硬切+104 份全迁+ctron_smoke 双探针) | 见卡 |
 | T49 | lockfile+workspace | W9 | ✅ | 2026-10-06 |
 | T50 | 闭源 S1/S2【条件】 | W9 | ✅ 主体完成(1006 D8-2 L2+S1a-iii;余 S1b 加速挂账+S3/S4 需求方触发) | — |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | **已完成**(1003;①io_uring 后端落库[POLL_ADD 天然 one-shot 同构映射+G 内单生产者+免 tick+双 NOP 自检门响亮回退,6.10-linuxkit array 异常立案];②NUMA 选项位+拓扑探测[行为位=志向];③Simd 评估报告选 B 落 docs/simd-vectorization-analysis.md[clang -O2 width4 实证/gcc -O3;寄存器驻留=志向];IOCP 环境依赖登记;reactor 冒烟双臂挂 ci.sh;net 18/18+coro_det 101/101+w7+suite 100/100) | 见 git |
