@@ -32,9 +32,10 @@ cat $CORE "$SRC/fmt.ct" "$SRC/driver_fmt.ct" > "$OUT/cc_fmt.ct"
 cat $CORE "$SRC/driver_doc.ct" > "$OUT/cc_doc.ct"
 cat $CORE "$SRC/driver_dep.ct" > "$OUT/cc_dep.ct"
 cat $CORE "$SRC/driver_ast.ct" > "$OUT/cc_ast.ct"
+cat $CORE "$SRC/driver_verify.ct" > "$OUT/cc_verify.ct"
 # ANCHORVERSION 注入:三产物同源版本串(黄金语料不含该锚,逐字不受影响)
 VER=$(git -C "$DIR/.." describe --tags --always 2>/dev/null || echo "0.0.1-dev")
 for P in cc_run cc_check cc_emit cc_fmt cc_doc cc_dep; do
     sed "s|ANCHORVERSION|$VER|" "$OUT/$P.ct" > "$OUT/$P.ct.tmp" && mv "$OUT/$P.ct.tmp" "$OUT/$P.ct"
 done
-echo "build: cc_run=$(wc -l < "$OUT/cc_run.ct") 行 / cc_check=$(wc -l < "$OUT/cc_check.ct") 行 / cc_emit=$(wc -l < "$OUT/cc_emit.ct") 行 / cc_fmt=$(wc -l < "$OUT/cc_fmt.ct") 行 / cc_doc=$(wc -l < "$OUT/cc_doc.ct") 行 / cc_dep=$(wc -l < "$OUT/cc_dep.ct") 行"
+echo "build: cc_run=$(wc -l < "$OUT/cc_run.ct") 行 / cc_check=$(wc -l < "$OUT/cc_check.ct") 行 / cc_emit=$(wc -l < "$OUT/cc_emit.ct") 行 / cc_fmt=$(wc -l < "$OUT/cc_fmt.ct") 行 / cc_doc=$(wc -l < "$OUT/cc_doc.ct") 行 / cc_dep=$(wc -l < "$OUT/cc_dep.ct") 行 / cc_verify=$(wc -l < "$OUT/cc_verify.ct") 行"

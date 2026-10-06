@@ -277,10 +277,12 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 > in-language 重算经实测判死(seed 86.4s/单块 ≈27h/工件;ctron-cc interp 9.6s/2.5KB
 > ≈4.7min/75KB;native 毫秒级)——不可默认开(fail-open-by-slowness 违 D7),
 > **维持 S3/S4 触发线挂账,载体定案 = 独立发射验证器**(ctron-dep 先例,与
-> attest/trace 同批)。余:S1b 缓存接线(加速触发线挂账维持)、L3(S3/S4)、
+> attest/trace 同批)。**L3 载体已落地(同日)**:`bin/ctron-verify` 深验驱动
+> (CORE 复用 pkg_sha256_hex/pkg_meta_*,`ctron pkg verify --deep` 委派,75KB
+> 工件 11ms,smoke 3s 腿 193 ok/0 fail)。余:S1b 缓存接线(加速触发线挂账维持)、
 > trace 录制/复放协议(S3,= §7.2 verify 的复放腿)、跨发布者命名空间(S4;
 > 均需求方触发)。
-> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 裁决节。
+> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 裁决与载体节。
 
 ## 11. 风险
 

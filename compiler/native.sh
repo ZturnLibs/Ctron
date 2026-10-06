@@ -9,6 +9,8 @@
 #   bin/ctron-doc   iface 投影驱动(闭源包分发 S0:pub 符号表 + trait/impl 面,
 #                   --format=json JSON 面;ctc.sh doc 同面)
 #   bin/ctron-dep   依赖解析驱动(T49:lock 内容寻址生成+digest 校验;ctc.sh dep 同面)
+#   bin/ctron-verify 工件深验驱动(T50/L3 载体:SHA256SUMS 逐成员+self_digest
+#                   in-language 重算;ctron pkg verify --deep 委派面)
 #
 # 生成路径(自举链):发射器(cc_emit)编译编译器源 → C → 本机 cc。
 # 宿主 seed(compiler-c/build/ctronc)只在 ctc.sh emit 内部出现 —— 首次引导职责。
@@ -32,6 +34,7 @@ mkdir -p "$BIN"
 "$DIR/ctc.sh" emit "$DIR/build/cc_fmt.ct"  "$TMP/ctron_fmt.c"  > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_doc.ct"  "$TMP/ctron_doc.c"  > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_dep.ct"  "$TMP/ctron_dep.c"  > /dev/null
+"$DIR/ctc.sh" emit "$DIR/build/cc_verify.ct" "$TMP/ctron_verify.c" > /dev/null
 
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
@@ -80,3 +83,6 @@ echo "native: bin/ctron-doc(iface 投影驱动)← $(wc -l < "$TMP/ctron_doc.c")
 
 cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c"
 echo "native: bin/ctron-dep(依赖解析驱动,T49)← $(wc -l < "$TMP/ctron_dep.c") 行 C"
+
+cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c"
+echo "native: bin/ctron-verify(工件深验驱动,T50/L3 载体)← $(wc -l < "$TMP/ctron_verify.c") 行 C"

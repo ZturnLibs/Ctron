@@ -1,0 +1,148 @@
+// driver_verify.ct —— 工件深验驱动(T50/D8-2 L3 载体;2026-10-07)
+// 载体裁决:闭源分发 L3「in-language sha256 重算」经三宿主实测判死 load 期默认开
+// (seed 86.4s/单块 ≈27h/75KB 工件;ctron-cc interp ≈4.7min/75KB;native 毫秒级)
+// —— 本驱动 = 裁决定案的独立发射验证器:与 driver_dep 同构(CORE + 单 driver,
+// sha256 直呼 pkg_dep.ct 的 pkg_sha256_hex,meta 扫描复用 parse_pkg.ct 的
+// pkg_meta_*;零重复实现),native.sh 发射为 bin/ctron-verify,用户面 =
+// ctron pkg verify --deep <dir>(与 shell 版四段算法同文,C 速)。
+// rc 约定同 shell 面:0 过 / 1 校验败 / 2 用法或环境错。
+// 输入:ctron_entry()(原生 `ctron-verify run <dir>`);无 ctc.sh 模式
+// (seed 面跑本驱动无意义——慢宿主正是 L3 判死的主语),锚形仅留同构兜底。
+
+// hex 摘要形态:64 位小写 [0-9a-f]
+fn vr_hex_ok(h: Str) -> Bool {
+    if h.len != 64 {
+        return false
+    }
+    var i = 0
+    while i < 64 {
+        var c = byte_at(h, i)
+        if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// SUMS 行内双空格分隔位(hex  path);-1 = 畸形
+fn vr_sep(line: Str) -> I32 {
+    var i = 0
+    while i + 1 < line.len {
+        if byte_at(line, i) == 32 && byte_at(line, i + 1) == 32 {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+fn main() -> I32 {
+    var dir = ctron_entry()
+    if seq2(dir, "") {
+        dir = "ANCHORINPUT"
+    }
+    if dir.len == 0 {
+        println("ctron-verify: 用法: ctron-verify run <工件目录>(用户面: ctron pkg verify --deep <dir>)")
+        return 2
+    }
+    if !fs_exists(dir) {
+        println("ctron: pkg verify: 工件目录不存在: " + dir)
+        return 2
+    }
+    var bad = false
+    // ① 形态面(§3.5 后缀即契约:自称 .ctart 而缺成员 = 损坏/伪造,fail-closed)
+    if !fs_exists(dir + "/meta.ctcl") {
+        println("ctron pkg verify: 缺 meta.ctcl(fail-closed 拒载)")
+        bad = true
+    }
+    var sums_t = ""
+    var sums_ok = false
+    let sums_src = read_file(dir + "/SHA256SUMS")
+    match sums_src {
+        Some(x) => {
+            sums_t = x
+            sums_ok = true
+        }
+        None => {}
+    }
+    if !sums_ok {
+        println("ctron pkg verify: 缺 SHA256SUMS(fail-closed 拒载)")
+        bad = true
+    }
+    if !fs_exists(dir + "/impl") {
+        println("ctron pkg verify: 缺 impl/(密封实现目录;fail-closed 拒载)")
+        bad = true
+    }
+    if bad {
+        return 1
+    }
+    // ② SHA256SUMS 逐成员重算(SHA256SUMS 是不可信输入:路径越界/畸形即拒)
+    var n: I32 = 0
+    var pos = 0
+    while pos < sums_t.len {
+        var e = pos
+        while e < sums_t.len && byte_at(sums_t, e) != 10 {
+            e += 1
+        }
+        if e > pos {
+            var line = byte_slice(sums_t, pos, e)
+            var sep = vr_sep(line)
+            if sep < 1 {
+                println("ctron pkg verify: SHA256SUMS 行畸形: " + line)
+                bad = true
+            } else {
+                var hex = byte_slice(line, 0, sep)
+                var rel = byte_slice(line, sep + 2, line.len)
+                var okfmt = vr_hex_ok(hex)
+                if rel.len == 0 || byte_at(rel, 0) == 47 || pkg_meta_find(rel, 0, "..") >= 0 {
+                    println("ctron pkg verify: 成员路径越界: " + rel)
+                    bad = true
+                    okfmt = false
+                }
+                if okfmt {
+                    var mp = dir + "/" + rel
+                    if !fs_exists(mp) {
+                        println("ctron pkg verify: 成员缺失: " + rel)
+                        bad = true
+                    } else {
+                        let mf = read_file(mp)
+                        match mf {
+                            Some(mtxt) => {
+                                var act = pkg_sha256_hex(mtxt)
+                                if !seq2(act, hex) {
+                                    println("ctron pkg verify: 成员摘要不符: " + rel + " 记录 " + hex + " 实际 " + act)
+                                    bad = true
+                                }
+                                n += 1
+                            }
+                            None => {
+                                println("ctron pkg verify: 成员缺失: " + rel)
+                                bad = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        pos = e + 1
+    }
+    // ③ self_digest 重算 = sha256(SHA256SUMS 字节)(D8-2 冻结定义;与成员腿独立)
+    var sd = pkg_meta_self_digest(dir)
+    var ssum = pkg_sha256_hex(sums_t)
+    if sd.len == 0 {
+        println("ctron pkg verify: meta 缺 self_digest(fail-closed;工件须经 seal 摘要步骤)")
+        bad = true
+    } else {
+        if !seq2(sd, "sha256:" + ssum) {
+            println("ctron pkg verify: self_digest 不符: 记录 " + sd + " 实际 sha256:" + ssum)
+            bad = true
+        }
+    }
+    // ④ 判决
+    if !bad {
+        println("ctron pkg verify OK: " + dir + "(" + n.to_string() + " 成员,self_digest sha256:" + ssum + ")")
+        return 0
+    }
+    return 1
+}

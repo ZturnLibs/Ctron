@@ -37,7 +37,8 @@ ctron —— Ctron 工具链驱动
   ctron lock                  解析依赖并生成/校验 Ctron.lock(内容寻址)
   ctron pkg verify <artifact-dir>
                              密封工件(.ctart)摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算
-                             + self_digest 重算;fail-closed,不过即 rc=1
+                             + self_digest 重算;fail-closed,不过即 rc=1;--deep 走
+                             in-language 发射验证器(ctron-verify,C 速,L3 载体)
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -76,7 +77,7 @@ ctron build —— 发射 C 并编译为可执行
 	} elseif ($c -eq 'lock') {
 		Write-Output 'ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)'
 	} elseif ($c -eq 'pkg') {
-		Write-Output 'ctron pkg verify <artifact-dir> —— 密封工件摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算 + self_digest=sha256(SHA256SUMS 字节) 重算比对;缺 meta/SHA256SUMS/impl 或任一成员不符即 fail-closed rc=1;trace 复放腿归 S3'
+		Write-Output 'ctron pkg verify <artifact-dir> [--deep] —— 密封工件摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算 + self_digest=sha256(SHA256SUMS 字节) 重算比对;缺 meta/SHA256SUMS/impl 或任一成员不符即 fail-closed rc=1;--deep = ctron-verify 发射验证器(in-language 重算,L3 载体);trace 复放腿归 S3'
 	} elseif ($c -eq 'new') {
 		Write-Output 'ctron new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)'
 	} else { Usage }
@@ -355,11 +356,20 @@ switch ($cmd) {
 		& $dep run (Join-Path (Get-Location).Path 'Ctron.ctcl')
 		exit $LASTEXITCODE }
 	'pkg' {
-		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify <工件目录>)'); exit 2 }
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify [--deep] <工件目录>)'); exit 2 }
 		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify)"); exit 2 }
-		if ($rest.Count -lt 2) { [Console]::Error.WriteLine('ctron: pkg verify 需要工件目录(.ctart)'); exit 2 }
-		if (-not (Test-Path $rest[1] -PathType Container)) { [Console]::Error.WriteLine("ctron: pkg verify: 工件目录不存在: $($rest[1])"); exit 2 }
-		$pvDir = $rest[1]
+		$pvDeep = $false; $pvDir = ''
+		foreach ($pvA in ($rest | Select-Object -Skip 1)) {
+			if ($pvA -eq '--deep') { $pvDeep = $true } elseif ($pvDir -eq '') { $pvDir = $pvA }
+		}
+		if ($pvDir -eq '') { [Console]::Error.WriteLine('ctron: pkg verify 需要工件目录(.ctart)'); exit 2 }
+		if (-not (Test-Path $pvDir -PathType Container)) { [Console]::Error.WriteLine("ctron: pkg verify: 工件目录不存在: $pvDir"); exit 2 }
+		if ($pvDeep) {
+			$vv = Join-Path $Bin 'ctron-verify.exe'
+			if (-not (Test-Path $vv)) { $vv = Join-Path $Bin 'ctron-verify' }
+			if (-not (Test-Path $vv)) { [Console]::Error.WriteLine('ctron: pkg verify --deep: 缺 ctron-verify(重装工具链)'); exit 2 }
+			& $vv run (Resolve-Path $pvDir).Path
+			exit $LASTEXITCODE }
 		$pvBad = $false; $pvN = 0
 		# ① 形态面(§3.5 后缀即契约:自称 .ctart 而缺成员 = 损坏/伪造,fail-closed)
 		foreach ($pvF in @('meta.ctcl','SHA256SUMS')) {

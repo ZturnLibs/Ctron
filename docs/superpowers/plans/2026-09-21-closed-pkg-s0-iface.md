@@ -430,3 +430,26 @@ lib/std/crypto.ct `sha256_hex`;S3/S4)、trace 录制/复放协议(S3,§7.2 verif
 
 状态:✅ L3 裁决落账(2026-10-07,维持挂账+载体定案)。余不变:L3(S3/S4)、
 trace(S3)、命名空间(S4)、S1b(加速线)。
+
+## L3 载体落地(2026-10-07,T50 批):bin/ctron-verify 深验驱动全绿
+
+- **落地形态**(即 L3 裁决定案的独立发射验证器):`compiler/src/driver_verify.ct`
+  与 driver_dep 同构(CORE + 单 driver)——sha256 直呼 pkg_dep.ct 的
+  `pkg_sha256_hex`、meta 扫描复用 parse_pkg.ct 的 `pkg_meta_find`/
+  `pkg_meta_self_digest`,**零重复实现**;build.sh +cc_verify 拼接件、
+  native.sh 发射 `bin/ctron-verify`(36983 行 C);输入走 `ctron_entry()`
+  (`ctron-verify run <dir>`,ctron-dep 同通道,编译器热路径零触碰)。
+- **用户面**:`ctron pkg verify --deep <dir>`(sh+ps1 同文;无 --deep = shell 面
+  不变)。deep 与 shell 面四段算法/文案逐字同构,同工件同判(实测 self_digest
+  双面一致);多失败累积、路径越界(绝对形/含 `..`)拒绝、rc 0/1/2 全同。
+- **性能兑现**:75KB 档工件深验 **11ms 端到端**(L3 裁决"native 毫秒级"经
+  用户 CLI 实证;对照 seed interp ≈27h / ctron-cc interp ≈4.7min)。
+- **门**:smoke 3s 腿三断言(deep 正例同判/成员腿字节篡改/self_digest 腿独立
+  同判;binary 缺席则跳过如 nc 守卫先例);全量 **193 ok / 0 fail**(含 ctecho
+  就绪门修复后首次无需复跑);native 八驱动族重建核齐。
+- **同批治愈**:examples/ctecho run.sh 就绪门(固定 sleep 0.5 → nc -z 轮询
+  10s 上限;仪器实测冷启就绪 0.869s 超固定等待 = 在册 probe3 flake 根因;
+  修复后 run.sh 10/10+全量 190/0,fa3d9b6a)。
+
+状态:✅ L3 载体落地(2026-10-07)。余:trace 录制/复放协议(S3)、命名空间
+(S4)、S1b(加速线)——均触发线挂账。

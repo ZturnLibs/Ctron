@@ -1028,6 +1028,29 @@ else
     grep -q "self_digest 不符" "$T/q6.out" && ok "self_digest 腿:记录串与 SHA256SUMS 字节重算不符" || bad "无 self_digest 文案: $(cat "$T/q6.out")"
 fi
 
+# ---------------- 3s) T50/L3 载体:ctron-verify 深验(in-language 重算,native C 速) ----------------
+echo "== 3s) T50/L3 载体 ctron pkg verify --deep(发射验证器,与 shell 面同判)=="
+if [ -x "$ROOT/compiler/bin/ctron-verify" ]; then
+    if "$ROOT/ctron" pkg verify --deep "$DG/bh" > "$T/s1.out" 2>&1; then
+        grep -q "pkg verify OK" "$T/s1.out" && ok "deep 正例:发射验证器过验(shell 面同判)" || bad "deep OK 无文案: $(cat "$T/s1.out")"
+    else
+        bad "deep 正例误拒: $(cat "$T/s1.out")"
+    fi
+    rm -rf "$DG/vt2" && cp -r "$DG/bh" "$DG/vt2" && printf 'X' >> "$DG/vt2/impl/base.ast"
+    if "$ROOT/ctron" pkg verify --deep "$DG/vt2" > "$T/s2.out" 2>&1; then
+        bad "deep 篡改 impl 未检出"
+    else
+        grep -q "成员摘要不符: impl/base.ast" "$T/s2.out" && ok "deep 成员腿:in-language 重算点名字节篡改" || bad "无成员不符文案: $(cat "$T/s2.out")"
+    fi
+    if "$ROOT/ctron" pkg verify --deep "$DG/vd" > "$T/s3.out" 2>&1; then
+        bad "deep self_digest 翻改未检出"
+    else
+        grep -q "self_digest 不符" "$T/s3.out" && ok "deep self_digest 腿:与成员腿独立同判" || bad "无 self_digest 文案: $(cat "$T/s3.out")"
+    fi
+else
+    ok "3s 跳过(缺 compiler/bin/ctron-verify;先: compiler/native.sh)"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then
