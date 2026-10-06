@@ -23,7 +23,8 @@ fn is_prelude_name(n: Str) -> Bool {
     if or2(n == "F32", or2(n == "F64", or2(n == "Bool", or2(n == "Str", or2(n == "String", or2(n == "Void", n == "Never")))))) { return true }
     if or2(n == "TaskPanic", or2(n == "Channel", or2(n == "List", or2(n == "Map", or2(n == "Set", n == "Box"))))) { return true }
     if or2(n == "StringBuilder", or2(n == "Atomic", or2(n == "Global", or2(n == "Mutex", or2(n == "Sender", or2(n == "Receiver", n == "Task")))))) { return true }
-    if or2(n == "Scope", or2(n == "Arena", or2(n == "Region", or2(n == "Pool", or2(n == "ArenaList", or2(n == "Simd", n == "AnyError")))))) { return true }
+    // T41 余债:Static 入册(Region/Pool/ArenaList 已在册;§5.3 own(alloc) 族对齐)
+    if or2(n == "Scope", or2(n == "Arena", or2(n == "Region", or2(n == "Pool", or2(n == "ArenaList", or2(n == "Static", or2(n == "Simd", n == "AnyError"))))))) { return true }
     if or2(n == "Parallel", or2(n == "Path", or2(n == "Bytes", or2(n == "Option", or2(n == "Result", n == "Bit"))))) { return true }
     if or2(n == "Some", or2(n == "None", or2(n == "Ok", n == "Err"))) { return true }
     if or2(n == "Error", or2(n == "Show", or2(n == "Eq", or2(n == "Drop", or2(n == "Clone", or2(n == "Hash", n == "Iter")))))) { return true }

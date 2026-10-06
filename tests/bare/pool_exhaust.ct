@@ -1,0 +1,10 @@
+// pool_exhaust.ct —— T41 余债负锚:Pool 定长对象池用尽 = 运行期 panic
+//(bare 门 ⑧ 双靶真跑:输出含 "pool exhausted";编译面干净,非 .neg)
+fn main() -> I32 {
+    var p = Pool.fixed[I32](2)
+    p.alloc()
+    p.alloc()
+    p.alloc()                                 // 第三次分配:池尽 → panic
+    println("unreachable")
+    return 0
+}

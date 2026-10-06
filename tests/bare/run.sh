@@ -8,6 +8,8 @@
 #   ④ ARM(qemu netduinoplus2/半主机)裸机 hello 真跑:输出断言
 #   ⑤ RISC-V(qemu virt)裸机 hello 真跑:输出断言
 #   ⑥ 体积报告(ELF 字节数;T42 100KB 门禁的数据源)
+#   ⑦ 08_bare 转正(T41:显式 arena 值族+Region/Pool/Static 双靶真跑,成功锚断言)
+#   ⑧ Pool 用尽负锚(T41:定长对象池超容量 = 裸机 panic 真跑,红绿可演示)
 #
 # 工具链解析随 ctc.sh(env → 宿主 clang+ld.lld → docker ctron-bare-tools);
 # qemu 同三通道(宿主 qemu-system-* → docker 镜像内 qemu)。
@@ -35,6 +37,36 @@ QEMU_ARM=""; QEMU_RV=""
 qemu_host() { command -v "$1" >/dev/null 2>&1 && command -v "$1"; }
 qemu_docker() { # qemu_docker <qemu-bin> <args...>(ELF 路径须为 ROOT 相对)
     docker run --rm -v "$ROOT":/ctroot -w /ctroot ctron-bare-tools:latest "$@"
+}
+
+# bare_run_q <tgv> <elf> —— ⑦⑧ 共用 qemu 双通道取输出(宿主 qemu → docker);
+# 通道全缺 = 输出 __noqemu__ 哨兵(环境登记 SKIP 语义)。
+# 坑位:机参(QARG)按靶独立于宿主 qemu 在否——docker 通道同样需要
+#(旧 ⑦ docker 面曾随宿主探测置空机参,仅 grep exhausted 掩成假绿;
+#  T41 成功锚断言后暴露,随批修)
+bare_run_q() {
+    local tgv=$1 elf=$2
+    local Q="" QARG="" QBIN=""
+    if [ "$tgv" = "thumbv7em-none-eabi" ]; then
+        QARG="-M netduinoplus2"
+        command -v qemu-system-arm >/dev/null 2>&1 && Q=$(command -v qemu-system-arm)
+    else
+        QARG="-M virt -bios none"
+        command -v qemu-system-riscv32 >/dev/null 2>&1 && Q=$(command -v qemu-system-riscv32)
+    fi
+    if [ -n "$Q" ]; then
+        run_to 30 "$Q" $QARG -nographic -monitor none -semihosting-config enable=on,target=native -kernel "$elf" 2>&1 || true
+        return 0
+    fi
+    if docker image inspect ctron-bare-tools:latest >/dev/null 2>&1; then
+        local DT="$ROOT/.cache/bare/gate_$$"; mkdir -p "$DT"
+        cp "$elf" "$DT/hello.elf"
+        QBIN="qemu-system-arm"; [ "$tgv" = "riscv32imac-unknown-none" ] && QBIN="qemu-system-riscv32"
+        run_to 60 docker run --rm -v "$ROOT":/ctroot -w /ctroot ctron-bare-tools:latest sh -c "timeout 20 $QBIN $QARG -nographic -monitor none -semihosting-config enable=on,target=native -kernel .cache/bare/gate_$$/hello.elf" 2>&1 || true
+        rm -rf "$DT"
+        return 0
+    fi
+    echo "__noqemu__"
 }
 
 echo "== ① 注册表面 =="
@@ -150,40 +182,44 @@ if [ "$RVOK" = "1" ]; then
 else
     skp 9 "riscv 体积门(无 RISC-V ELF;工具链登记)"
 fi
-echo "== ⑦ 08_bare 转正(T41 §6.6:显式 arena 值族真跑;零 GC) =="
+echo "== ⑦ 08_bare 转正(T41 §6.6:显式 arena 值族+Region/Pool/Static 真跑;零 GC) =="
 if "$CTC" check "$ROOT/tests/08_bare.ct" >"$T/08b_chk.out" 2>&1; then
-    ok 11 "08_bare check 面(Arena.fixed/zeros 解析+型别)"
+    ok 11 "08_bare check 面(Arena/Region/Pool/Static 解析+型别)"
 else
     bad 11 "08_bare check 红: $(tail -1 "$T/08b_chk.out")"
 fi
 for tgv in thumbv7em-none-eabi riscv32imac-unknown-none; do
     B08="$T/08b_${tgv}.elf"
     if "$CTC" build "$ROOT/tests/08_bare.ct" --target "$tgv" -o "$B08" >"$T/08b_b.out" 2>&1; then
-        Q8=""
-        QARG8=""
-        if [ "$tgv" = "thumbv7em-none-eabi" ]; then
-            if command -v qemu-system-arm >/dev/null 2>&1; then Q8=$(command -v qemu-system-arm); QARG8="-M netduinoplus2"; fi
-        else
-            if command -v qemu-system-riscv32 >/dev/null 2>&1; then Q8=$(command -v qemu-system-riscv32); QARG8="-M virt -bios none"; fi
-        fi
-        if [ -z "$Q8" ] && docker image inspect ctron-bare-tools:latest >/dev/null 2>&1; then
-            DT8="$ROOT/.cache/bare/gate_$$"; mkdir -p "$DT8"
-            cp "$B08" "$DT8/hello.elf"
-            QBIN8="qemu-system-arm"; [ "$tgv" = "riscv32imac-unknown-none" ] && QBIN8="qemu-system-riscv32"
-            O8=$(run_to 60 docker run --rm -v "$ROOT":/ctroot -w /ctroot ctron-bare-tools:latest sh -c "timeout 20 $QBIN8 $QARG8 -nographic -monitor none -semihosting-config enable=on,target=native -kernel .cache/bare/gate_$$/hello.elf" 2>&1 || true)
-            rm -rf "$DT8"
-            if printf '%s' "$O8" | grep -q "exhausted"; then
-                bad "12-$tgv" "08_bare 裸机 panic: $(printf '%s' "$O8" | head -1)"
-            else
-                ok "12-$tgv" "08_bare 裸机真跑(断言过)"
-            fi
-        elif [ -n "$Q8" ]; then
-            run_to 30 "$Q8" $QARG8 -nographic -monitor none -semihosting-config enable=on,target=native -kernel "$B08" >/dev/null 2>&1 && ok "12-$tgv" "08_bare 裸机真跑" || bad "12-$tgv" "08_bare 裸机失败"
-        else
+        O8=$(bare_run_q "$tgv" "$B08")
+        if printf '%s' "$O8" | grep -q "__noqemu__"; then
             skp "08_bare@$tgv" "qemu 不在(环境登记)"
+        elif printf '%s' "$O8" | grep -q "exhausted"; then
+            bad "12-$tgv" "08_bare 裸机 panic: $(printf '%s' "$O8" | head -1)"
+        elif printf '%s' "$O8" | grep -q "t41 alloc ok"; then
+            ok "12-$tgv" "08_bare 裸机真跑(断言过+T41 成功锚)"
+        else
+            bad "12-$tgv" "08_bare 无成功锚(断言早退?): $(printf '%s' "$O8" | tail -1)"
         fi
     else
         bad "13-$tgv" "08_bare 构建失败: $(tail -1 "$T/08b_b.out")"
+    fi
+done
+
+echo "== ⑧ Pool 用尽负锚(T41:定长对象池超容量 = 裸机 panic 真跑;红绿可演示) =="
+for tgv in thumbv7em-none-eabi riscv32imac-unknown-none; do
+    BPE="$T/pex_${tgv}.elf"
+    if "$CTC" build "$DIR/pool_exhaust.ct" --target "$tgv" -o "$BPE" >"$T/pex_b.out" 2>&1; then
+        OPE=$(bare_run_q "$tgv" "$BPE")
+        if printf '%s' "$OPE" | grep -q "__noqemu__"; then
+            skp "pool_exhaust@$tgv" "qemu 不在(环境登记)"
+        elif printf '%s' "$OPE" | grep -q "pool exhausted"; then
+            ok "14-$tgv" "Pool 用尽裸机 panic(负锚真跑)"
+        else
+            bad "14-$tgv" "Pool 用尽无 panic 输出: $(printf '%s' "$OPE" | tail -1)"
+        fi
+    else
+        bad "14-$tgv" "pool_exhaust 构建失败: $(tail -1 "$T/pex_b.out")"
     fi
 done
 

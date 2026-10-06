@@ -1,0 +1,27 @@
+// 41_alloc_family_ok.ct —— T41 余债:Region/Pool/Static 分配器族 check 面
+//(§5.3 own(alloc) 族齐编;发射臂真跑锚 = tests/bare/run.sh ⑦/⑧ 双靶 qemu)
+//@ target: bare
+
+fn drain(p: Pool[I64]) -> I64 {
+    let h = p.alloc()
+    p.set(h, 5)
+    return p.get(h)
+}
+
+test "alloc family check face" {
+    var r = Region.fixed(512)
+    var z = r.zeros[I32](4)
+    z[0] = 1
+    let m = r.mark()
+    var w = r.zeros[I32](4)
+    w[0] = 2
+    r.reset(m)
+    var t = r.zeros[I32](4)
+    t[0] = 3
+    assert_eq(z[0] + t[0], 4)
+    var p = Pool.fixed[I64](2)
+    assert_eq(drain(p), 5)                    // Pool[I64] 注解形参(码 J6)传值
+    var s = Static.zeros[U64](4)
+    s[1] = 9
+    assert_eq(s[1], 9)
+}

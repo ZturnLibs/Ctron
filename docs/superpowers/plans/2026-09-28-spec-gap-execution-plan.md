@@ -495,14 +495,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 ### T41 · bare 分配器族 Region/Pool/Static(§6.6)
 
 - **预估:** 1.5–2 d。**前置:** T35(分层面)、T40(才有 bare 消费场景)。**状态:** ◐ 核心已落(1006;t40-bare)——`Arena` 值类型(code "Q",ct_arena{base,off,cap} 值传递)+`Arena.fixed(n)`(statement-expr 调用者帧 alloca;alloca 不得驻 helper)+`arena.zeros[T](n)`(ct_arena_bump 前进+零填充 view{d,n};泛元素码 via ct_ctype)+视图元素复合赋值(`seen[i]+=e` 读改写,越界守卫同 Eq;溢出守卫债)+minilibc 静态池 malloc 16KiB(切片字面量 amalloc 面引用时取材;发射运行时首块 4MB→16KB 双靶齐治[ARM 写 0 落 flash 别名侥幸绿,RV virt 未映射才暴露])。验收:**08_bare 双靶裸机真跑绿(bare 门 ⑦ 节 13/13)**;E3040 负例族保持(check face);interpret 臂未做(bare 通道=发射臂真跑,check 面双臂同语义)。**余债:Region/Pool/Static/ArenaList 族+zeros 溢出守卫+eval 臂+C 宿主 parity**
-- **目标:** 前奏类型 `Region/Pool/Static` 落地:`Arena.fixed(n)` 转正(测试跳过解除)、`Region`(嵌套区段)、`Pool`(定长对象池)、`Static`(编译期静态分配)。
-- **范围:** `sem_calls.ct` 前奏注册、发射垫片(静态内存段布局)、`tests/08_bare.ct` 扩展。
-- **验收:** 08_bare 转正跑绿;E3040 负例族保持;core 层容器传 arena 可用锚(§6.6)。
-- **坑位:** Static 面涉及链接期布局(段属性),MVP=固定大小静态数组声明宏面;列志向的 ISR 约束归 T42。→ 落码新坑:emit 缓存哈希含 cc_emit.ct 但 build.sh 有条件跳过重拼——改 src 后 emit 产物可静默陈旧(4MB 常量实证),强制 sh build.sh 再验
-- **目标:** 前奏类型 `Region/Pool/Static` 落地:`Arena.fixed(n)` 转正(测试跳过解除)、`Region`(嵌套区段)、`Pool`(定长对象池)、`Static`(编译期静态分配)。
-- **范围:** `sem_calls.ct` 前奏注册、发射垫片(静态内存段布局)、`tests/08_bare.ct` 扩展。
-- **验收:** 08_bare 转正跑绿;E3040 负例族保持;core 层容器传 arena 可用锚(§6.6)。
-- **坑位:** Static 面涉及链接期布局(段属性),MVP=固定大小静态数组声明宏面;列志向的 ISR 约束归 T42。
+- **状态:** ✅ 余债已完成(1006;t41-alloc 泳道)——①`Region`(嵌套区段):`Region.fixed(n)`(帧上 alloca,值面与 Arena 同构;码 "K" 隔离型别面)+`mark()`(off 快照→I64)+`reset(m)`(ct_arena_reset 守卫回卷:负值/超前 panic)+`r.zeros[T](n)`(复用 bump 面);②`Pool`(定长对象池):`Pool.fixed[T](n)`(帧上 alloca 槽位+空闲链,esz 8 字节下限承链域;码 "J"+元素码,get/set 槽型经接收者尾码恢复)+`alloc()`(出链,用尽 panic "pool exhausted")+`free(i)`(头插回链 LIFO 复用)+`get(i)/set(i,v)`(槽位直读直写);③`Static`(编译期静态分配,MVP=固定大小静态数组声明面):`Static.zeros[T](n)`→块域 static 数组(.bss 零初始化)+view{n},n 须编译期整常量(C 静态数组长度语法约束),各展开点独立实体;④zeros 溢出守卫:ct_arena_bump 判式 `off+n>cap` 的有符号溢出面改差式无符号比较(负 n/回绕 n 拦截);⑤成员臂全数接收者码门控(K/J),不遮用户同名方法(.get/.set 族 std/iter 在用)。验收:**bare 门 15/15/0**(⑦ 08_bare 四 test[arena/region/pool/static]+成功锚 "t41 alloc ok" 双靶真跑+⑧ pool_exhaust 用尽 panic 双靶负锚红绿可演示)+smoke 3q 三锚(41_alloc_family_ok check 面/41_alloc_family_e3040.neg E3040 面保持/08_bare 扩锚 check)+meta_check 549 全绿+suite/smoke 基线不动。**随批修二件(本件发现,主树在册):** ①**amalloc 首块 4MB→16KB 合流回退再修**——b0a9b970 原修(4194304→16384)在 c607ed47 合流时被 main 侧自旋锁版(T46/T47 同位行)覆盖回 4MB:RV 裸机首块 malloc(4MB) 超 minilibc 16KiB 池=store fault(tval=0)悬挂,ARM 写 0 落 flash 别名侥幸绿(在册现象复现);主树门绿纯靠 .cache/emit 陈旧好产物掩盖(缓存哈希含 cc_emit 源哈希,但主树源既已回退则缓存永真=4MB 常量血案同款)——随批恢复 16KB 并保留自旋锁;**main 泳道须同步此修**(主树清 emit 缓存即翻红);②RV startup 补 .bss 清零(start_riscv.c 镜像 start_arm;裸机无 crt0,qemu 装载清零面不承承诺,防御性随批,ELF +32 字节)。**坑位四条在册:** ①串字面量 `\}`=E1001 非法转义(串内 `{` 须 `\{` 而 `}` 裸写;GUI-12 教训在册仍踩);②嵌套 or2 链收尾括号数=开括号数,手写易溢一位(两次实证,以 python 数括号自检);③U32 视图槽(码 "i"=int32_t)极值字面量回读分歧:发射侧 `d[i]==4294967295LL` 恒假(store 截断/比较升宽不对称)——U32 槽字面量回读债登记(与 u8widen 同族;08_bare 锚取 2147483647 在绿面);④run.sh ⑦ docker 通道宿主 qemu 探测缺席时机参(QARG)一并置空→docker qemu 无机参启动=旧假绿(仅 grep exhausted 掩盖;T41 成功锚断言后暴露,机参改按靶无条件置)。**余债:ArenaList(规范无契约文本,勿发明形态,留债待规范扩面)+eval 臂(bare 通道=发射臂真跑,维持)+C 宿主 parity(41 族随三线 parity 批次)+U32 槽字面量回读**
 
 ### T42 · 体积门禁 + ISR 约束(§9.4/§6.6)
 
@@ -655,7 +648,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T38 | WasmGC+JSPI | W8 | ✅ 桥落/WasmGC+JSPI 裁决登记 1006 | WasmGC 复活随 clang≥19 GC 面 |
 | T39 | stdweb 真实化 | W8 | ✅ 1006 | title 宿主回读在册 |
 | T40 | bare 交叉编译 | W8 | ✅ 1006 | a2036c5b 已汇流;宿主线 ISR parity 已清(789bd7a5)|
-| T41 | bare 分配器族 | W8 | ◐ 核心 1006 | Region/Pool/Static 余债 |
+| T41 | bare 分配器族 | W8 | ✅ 1006(9b28c4d2) | 余债销账(Region/Pool/Static+溢出守卫);ArenaList 留债(规范无契约);随批修=amalloc 首块 16KB 合流回退再修+RV startup .bss 清零 |
 | T42 | 体积门禁+ISR | W8 | ✅ 1006 | a2036c5b 已汇流 |
 | T43 | ctc 子命令 | W9 | ✅ 完成(1005) | — |
 | T44 | own ±5% 门禁 | W9 | **已完成**(1002,tests/lang/bench 首族入 ci.sh;总比值 1.161 WARN 归因 k2 allocator 税) | 见卡 |
