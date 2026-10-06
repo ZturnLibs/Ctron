@@ -1268,7 +1268,8 @@ static void check_expr(ctx* c, cexpr* e) {
         // 分配语境(E3040):own 块 / #[no_alloc] / bare
         if ((c->in_own || c->fn_noalloc) && call_alloc_in_ctx(c, e)) {
             const char* root = expr_root_name(e->callee);
-            check_alloc_ctx(c, root ? root : "调用");
+            /* 空 kind 逐字对齐 bootstrap(member_root 字面根为空串,sem_alloc.ct:211) */
+            check_alloc_ctx(c, root ? root : "");
             return;
         }
         // 泛型无 TypeArgs 调用的推断诊断(v0.7 修订三)
@@ -1475,9 +1476,12 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
     sub.n_gc = 0;
     sub.fn_pure = has_attr(f->attrs, f->nattrs, "pure");
     sub.fn_comptime = f->is_comptime;
-    sub.fn_no_spawn = has_attr(f->attrs, f->nattrs, "no_spawn");
+    /* T42 §6.6:#[isr] 中断处理函数默认 no_spawn 约束(与 bootstrap sem_main 同判据) */
+    sub.fn_no_spawn = has_attr(f->attrs, f->nattrs, "no_spawn") || has_attr(f->attrs, f->nattrs, "isr");
     sub.fn_ret = f->ret;
+    /* T42 §6.6:#[isr] 默认 no_alloc(与 #[no_alloc] 同判据;bootstrap sem_alloc 镜像) */
     sub.fn_noalloc = has_attr(f->attrs, f->nattrs, "no_alloc") || no_alloc_contract
+                     || has_attr(f->attrs, f->nattrs, "isr")
                      || (c->profile == SEM_BARE);
     for (size_t i = 0; i < f->nparams; i++) {
         const cparam* pr = &f->params[i];

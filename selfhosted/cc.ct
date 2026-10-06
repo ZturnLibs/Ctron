@@ -3887,6 +3887,7 @@ fn sem_alloc(file: List[Str], d: List[Str], tag: Str) -> Str {
     if tag != "Test" {
         body = d[5]
         if has_noalloc(d) { na = true }
+        if d.len >= 7 && d[6] == "isr" { na = true } // #[isr] 默认 no_alloc(T42 §6.6)
     }
     al_b(file, body, false, na, arenaB, gcL, diags)
     var out = ""
@@ -3969,6 +3970,9 @@ fn sem_walk2(file: List[Str]) -> Str {
             if d.len >= 7 && d[6] == "no_spawn" {
                 ns = true
             }
+            if d.len >= 7 && d[6] == "isr" {
+                ns = true
+            } // #[isr] 默认 no_spawn(T42 §6.6)
             walk_b(file, d[5], ns, fns, rets, diags)
             var e6 = sem_e3060(file, d, t)
             if e6 != "" {
@@ -3986,7 +3990,7 @@ fn sem_walk2(file: List[Str]) -> Str {
                     diags.push(byte_slice(ec, 0, ec.len - 1))
                 }
             }
-            if !(d.len >= 7 && d[6] == "no_spawn") {
+            if !(d.len >= 7 && d[6] == "no_spawn") && !(d.len >= 7 && d[6] == "isr") {
                 var es = sem_spawn2(file, d, t)
                 if es != "" {
                     diags.push(byte_slice(es, 0, es.len - 1))
