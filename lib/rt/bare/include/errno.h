@@ -4,3 +4,4 @@
 #define CT_MLC_ERRNO_H
 extern int errno;
 #endif
+#define EEXIST 17

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <errno.h>
 #include <setjmp.h>
+#include <sys/stat.h>
 
 int errno;
 
@@ -322,3 +323,10 @@ static struct _ct_file _ct_stdin_s, _ct_stdout_s, _ct_stderr_s;
 FILE* stdin = &_ct_stdin_s;
 FILE* stdout = &_ct_stdout_s;
 FILE* stderr = &_ct_stderr_s;
+
+/* ---------------- sys/stat.h 桩面(FB-2 fs_mkdir 编译承接;bare 无 fs,恒败) ---------------- */
+int mkdir(const char* path, mode_t mode) {
+    (void)path;
+    (void)mode;
+    return -1;
+}
