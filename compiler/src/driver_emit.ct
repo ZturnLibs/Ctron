@@ -93,7 +93,11 @@ fn main() -> I32 {
             // 可忽略。并发 GC 路径 ct_spawn 置 ct_gc_conc 后同样退化为本函数,
             // 锁此一处即覆盖。__sync 内建 = gcc/clang;MSVC 无此内建,emit 面
             // Windows 支持本身在册为债。
-            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; while (__sync_lock_test_and_set(&ctron_alock, 1)) \{ } if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)4194304; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; __sync_lock_release(&ctron_alock); return p; }")
+            // T41 余债随批修:首块 4MB→16KB(b0a9b970 原修在 c607ed47 合流时被 main
+            // 侧自旋锁版同位覆盖,4MB 请求超出 minilibc 16KiB 池=RV 段错误/ARM 写 0
+            // 落 flash 别名侥幸绿;主树门绿纯靠 .cache/emit 陈旧好产物,4MB 常量血案
+            // 同款)。自旋锁面(T46/T47)保留。
+            println("static void* ctron_amalloc(size_t n) \{ n = (n + 15) & ~(size_t)15; while (__sync_lock_test_and_set(&ctron_alock, 1)) \{ } if (ctron_aoff + n > ctron_acap) \{ size_t nc = ctron_acap ? ctron_acap * 2 : (size_t)16384; while (nc < ctron_aoff + n) \{ nc = nc * 2; } ctron_abase = (char*)malloc(nc); ctron_aoff = 0; ctron_acap = nc; } void* p = ctron_abase + ctron_aoff; ctron_aoff += n; __sync_lock_release(&ctron_alock); return p; }")
             // 运行时辅助:容器/单元格/字节域/读文件(必须先于使用它的原型)
             println("typedef struct \{ unsigned long long magic; char** items; int n; int cap; } ctron_list;")
             // T29 M1 GC 前向声明(核心实现在 ct_chans 声明之后;保守根先行,
@@ -502,7 +506,17 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             println("typedef struct \{ int32_t* d; int64_t n; } ctron_view_i;")
             println("typedef struct \{ int64_t* d; int64_t n; } ctron_view_6;")
             println("typedef struct \{ void* base; int64_t off; int64_t cap; } ct_arena;")
-            println("static void* ct_arena_bump(ct_arena* a, long long n) \{ if (a->off + n > a->cap) \{ ctron_panic(\"arena exhausted\"); } void* p = (char*)a->base + a->off; a->off += n; return p; }")
+            // T41 余债:bump 前进溢出守卫——旧判式 a->off + n 有符号溢出 UB(负 n/
+            // 回绕 n 溜过检查),改差式无符号比较(cap-off 恒在 [0,cap] 不回绕)
+            println("static void* ct_arena_bump(ct_arena* a, long long n) \{ if (n < 0 || (unsigned long long)n > (unsigned long long)(a->cap - a->off)) \{ ctron_panic(\"arena exhausted\"); } void* p = (char*)a->base + a->off; a->off += n; return p; }")
+            // T41 余债:Region 区段回卷(mark 快照 → reset 守卫回卷;负值/超前=panic)
+            println("static void ct_arena_reset(ct_arena* a, long long m) \{ if (m < 0 || m > a->off) \{ ctron_panic(\"arena exhausted\"); } a->off = m; }")
+            // T41 余债:Pool 定长对象池——空闲链头插法(esz 8 字节下限承链域;
+            // 链终止符=cap,free_head>=cap 即池尽;free 后 LIFO 复用)
+            println("typedef struct \{ void* base; int64_t esz; int64_t cap; int64_t free_head; } ct_pool;")
+            println("static void ct_pool_init(ct_pool* p, void* base, long long esz, long long n) \{ if (esz < 8) \{ esz = 8; } p->base = base; p->esz = esz; p->cap = n; p->free_head = 0; \{ long long i = 0; while (i < n) \{ *(long long*)((char*)base + i * esz) = i + 1; i += 1; } } }")
+            println("static long long ct_pool_alloc(ct_pool* p) \{ if (p->free_head >= p->cap) \{ ctron_panic(\"pool exhausted\"); } long long i = p->free_head; p->free_head = *(long long*)((char*)p->base + i * p->esz); return i; }")
+            println("static void ct_pool_free(ct_pool* p, long long i) \{ *(long long*)((char*)p->base + i * p->esz) = p->free_head; p->free_head = i; }")
             println("static ctron_view_i ct_arena_zeros_i(ct_arena* a, long long n) \{ ctron_view_i v; v.d = (int32_t*)ct_arena_bump(a, n * 4); memset(v.d, 0, (size_t)(n * 4)); v.n = n; return v; }")
             println("typedef struct \{ int* d; int64_t n; } ctron_view_b;")
             println("typedef struct \{ const char** d; int64_t n; } ctron_view_s;")

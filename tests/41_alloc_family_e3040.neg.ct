@@ -1,0 +1,16 @@
+// 41_alloc_family_e3040.neg.ct —— T41 余债:E3040 面在新分配器族在册后不破
+//(显式分配器族 op 属 arena 面,#[no_alloc] 内放行;GC/String 分配仍拦)
+//@ target: bare
+//@ fail: E3040
+//@ msg: no_alloc
+
+#[no_alloc]
+fn sneaky() -> I32 {
+    var r = Region.fixed(256)
+    var p = Pool.fixed[I64](4)
+    var s = Static.zeros[U32](8)
+    var z = r.zeros[I32](2)
+    z[0] = 1
+    let x = "abc".to_string()                 // E3040:no_alloc 上下文 GC 分配被拦
+    return 0
+}

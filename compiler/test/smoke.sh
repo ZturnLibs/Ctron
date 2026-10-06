@@ -1014,6 +1014,24 @@ else
     bad "T42 isr 合规体误拦: $(head -2 "$T/t42o.out")"
 fi
 
+# ---------------- 3q) T41 余债 分配器族 Region/Pool/Static(§5.3 own(alloc) 族) ----------------
+echo "== 3q) T41 分配器族(check 面/E3040 面不破;真跑锚在 tests/bare/run.sh ⑦⑧) =="
+if "$COMP/ctc.sh" check "$ROOT/tests/41_alloc_family_ok.ct" > "$T/t41o.out" 2>&1; then
+    ok "T41 Region/Pool/Static check 面放行"
+else
+    bad "T41 分配器族 check 误拦: $(head -2 "$T/t41o.out")"
+fi
+if "$COMP/ctc.sh" check "$ROOT/tests/41_alloc_family_e3040.neg.ct" > "$T/t41n.out" 2>&1; then
+    bad "T41 no_alloc 内 GC 分配未拦(新分配器族不得豁免 E3040)"
+else
+    grep -q "E3040" "$T/t41n.out" && ok "T41 E3040 面保持(arena 族 op 放行+GC 分配仍拦)" || bad "T41 neg 缺 E3040: $(head -1 "$T/t41n.out")"
+fi
+if "$COMP/ctc.sh" check "$ROOT/tests/08_bare.ct" > "$T/t4108.out" 2>&1; then
+    ok "T41 08_bare 扩锚 check 面(Region mark reset/Pool/Static)"
+else
+    bad "T41 08_bare 扩锚 check 红: $(head -2 "$T/t4108.out")"
+fi
+
 echo "== 结果: $pass ok / $fail fail =="
 rm -rf "$T"
 [ $fail -eq 0 ]

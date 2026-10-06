@@ -1,5 +1,7 @@
 // 08_bare.ct —— bare 档:一切分配显式经 arena 参数(§5.6,钉子 16)
 //@ target: bare
+// T41 余债扩锚:Region(嵌套区段 mark/reset)/Pool(定长对象池)/Static(编译期
+// 静态数组)三前奏类型真跑(发射臂;bare 门 ⑦ 双靶 qemu,⑧ Pool 用尽负锚)
 
 fn total(data: U8[], arena: Arena) -> U32 {
     var seen = arena.zeros[U32](256)          // 显式 arena 分配频次表
@@ -12,4 +14,46 @@ fn total(data: U8[], arena: Arena) -> U32 {
 test "bare explicit arena" {
     let data: U8[] = [1, 2, 2, 3]
     assert_eq(total(data, Arena.fixed(1024)), 4)
+}
+
+test "bare region mark reset" {
+    var r = Region.fixed(1024)
+    var hot = r.zeros[U32](8)
+    hot[0] = 11
+    let m = r.mark()                          // 区段标记:出口回卷点
+    var tmp = r.zeros[U32](64)
+    tmp[63] = 99
+    r.reset(m)                                // 区段整体回卷(区段内分配一次释放)
+    var tail = r.zeros[U32](8)
+    tail[0] = 22
+    assert_eq(hot[0], 11)                     // 标记前分配不受回卷影响
+    assert_eq(tail[0], 22)
+    assert_eq(tail[7], 0)                     // 回卷区重分配仍零填充(zeros 面)
+}
+
+test "bare pool fixed objects" {
+    var p = Pool.fixed[I64](4)
+    let a = p.alloc()
+    p.set(a, 42)
+    let b = p.alloc()
+    p.set(b, 7)
+    assert_eq(p.get(a), 42)
+    assert_eq(p.get(b), 7)
+    p.free(a)
+    let c = p.alloc()                         // 空闲链 LIFO:复用 a 的槽位
+    assert_eq(c, a)
+    p.set(c, 99)
+    assert_eq(p.get(c), 99)
+    assert_eq(p.get(b), 7)                    // 其余槽位不受扰动
+}
+
+test "bare static array" {
+    var s = Static.zeros[U32](8)              // .bss 静态数组,零初始化
+    assert_eq(s[3], 0)
+    s[3] = 2147483647
+    assert_eq(s[3], 2147483647)
+    var t = Static.zeros[I64](4)              // 第二展开点 = 独立实体
+    t[2] = 123456789012
+    assert_eq(t[2], 123456789012)
+    println("t41 alloc ok")                   // 成功锚:bare 门 ⑦ 断言此行
 }

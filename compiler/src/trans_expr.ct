@@ -509,6 +509,34 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { asz = ct_expr(ag[1], env, file) }
                 return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + asz + "))); t_a.off = 0; t_a.cap = (int64_t)(" + asz + "); t_a; })"
             }
+            // T41 余债:Region.fixed(n)——嵌套区段分配器,值面与 Arena 同构
+            //(mark/reset 区段面见 Member 臂;ct_arena_reset 守卫回卷界)
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "Region" && base[2] == "Nm" && base[3] == "fixed" {
+                var rsz = "0"
+                if ag.len > 1 { rsz = ct_expr(ag[1], env, file) }
+                return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + rsz + "))); t_a.off = 0; t_a.cap = (int64_t)(" + rsz + "); t_a; })"
+            }
+            // T41 余债:Static.zeros[T](n)——编译期静态数组(.bss 零初始化)视图面,
+            // 声明面 MVP:n 须编译期整常量(C 静态数组长度语法约束,运行期值=cc 拦);
+            // 块域 static 各展开点独立实体,同函数多处不撞名
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "Static" && base[2] == "Nm" && base[3] == "zeros" {
+                var sec = "i"
+                if cal[2].len > 1 && cal[2][1].len > 1 { sec = ct_ty_code(cal[2][1], file) }
+                var scp = ct_ctype(sec)
+                var ssn = "1"
+                if ag.len > 1 { ssn = ct_expr(ag[1], env, file) }
+                return "(\{ static " + scp + " t_sb[" + ssn + "]; ctron_view_" + sec + " t_sv; t_sv.d = t_sb; t_sv.n = (int64_t)(" + ssn + "); t_sv; })"
+            }
+            // T41 余债:Pool.fixed[T](n)——定长对象池(帧上 alloca 槽位+空闲链,
+            // esz 8 字节下限承链域;alloc 用尽 panic "pool exhausted",free 后 LIFO 复用)
+            if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "Pool" && base[2] == "Nm" && base[3] == "fixed" {
+                var pec = "i"
+                if cal[2].len > 1 && cal[2][1].len > 1 { pec = ct_ty_code(cal[2][1], file) }
+                var pcp = ct_ctype(pec)
+                var pnn = "0"
+                if ag.len > 1 { pnn = ct_expr(ag[1], env, file) }
+                return "(\{ int64_t t_pn = (int64_t)(" + pnn + "); int64_t t_pe = ((int64_t)sizeof(" + pcp + ") < 8 ? 8 : (int64_t)sizeof(" + pcp + ")); ct_pool t_p; t_p.base = (void*)(__builtin_alloca((size_t)(t_pn * t_pe))); ct_pool_init(&t_p, t_p.base, t_pe, t_pn); t_p; })"
+            }
             // T41 §6.6:arena.zeros[T](n)——显式分配器零填充切片(view {d,n};
             // 走 ct_arena_bump 前进,零 GC 分配)
             if base[0] == "Member" && base[2] == "Nm" && base[3] == "zeros" {
@@ -618,6 +646,47 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var asz2 = "0"
                 if ag.len > 1 { asz2 = ct_expr(ag[1], env, file) }
                 return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + asz2 + "))); t_a.off = 0; t_a.cap = (int64_t)(" + asz2 + "); t_a; })"
+            }
+            // T41 余债:Region.fixed(n)(无类型实参面)——同 Arena.fixed 帧上驻留
+            if cal[1][0] == "Ident" && cal[1][1] == "Region" && m == "fixed" {
+                var rsz2 = "0"
+                if ag.len > 1 { rsz2 = ct_expr(ag[1], env, file) }
+                return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + rsz2 + "))); t_a.off = 0; t_a.cap = (int64_t)(" + rsz2 + "); t_a; })"
+            }
+            // T41 余债:Region 区段面 mark()/reset(m)——接收者码 K 门控(不遮同名方法):
+            // mark=off 快照;reset=ct_arena_reset 守卫回卷(负值/超前 panic)
+            if or2(m == "mark", m == "reset") {
+                var rkt = ct_typeof(cal[1], env, file)
+                if rkt == "K" {
+                    var rob = ct_expr(cal[1], env, file)
+                    if m == "mark" { return "((int64_t)(" + rob + ").off)" }
+                    var rmk = "0"
+                    if ag.len > 1 { rmk = ct_expr(ag[1], env, file) }
+                    return "ct_arena_reset(&(" + rob + "), (int64_t)(" + rmk + "))"
+                }
+            }
+            // T41 余债:Pool 对象面 alloc()/free(i)/get(i)/set(i,v)——接收者码 J<ec>
+            // 门控;alloc=空闲链头出链(用尽 panic),free=头插回链(LIFO),get/set=槽位直读直写
+            if or2(m == "alloc", or2(m == "free", or2(m == "get", m == "set"))) {
+                var pjt = ct_typeof(cal[1], env, file)
+                if pjt.len > 0 && byte_at(pjt, 0) == 74 {
+                    var pob = ct_expr(cal[1], env, file)
+                    if m == "alloc" { return "ct_pool_alloc(&(" + pob + "))" }
+                    if m == "free" {
+                        var frz = "0"
+                        if ag.len > 1 { frz = ct_expr(ag[1], env, file) }
+                        return "ct_pool_free(&(" + pob + "), (int64_t)(" + frz + "))"
+                    }
+                    var gix = "0"
+                    if ag.len > 1 { gix = ct_expr(ag[1], env, file) }
+                    var gcp = ct_ctype(byte_slice(pjt, 1, pjt.len))
+                    if m == "get" {
+                        return "(*(" + gcp + "*)((char*)(" + pob + ").base + (int64_t)(" + gix + ") * (" + pob + ").esz))"
+                    }
+                    var gv = "0"
+                    if ag.len > 2 { gv = ct_expr(ag[2], env, file) }
+                    return "(*(" + gcp + "*)((char*)(" + pob + ").base + (int64_t)(" + gix + ") * (" + pob + ").esz) = " + gv + ")"
+                }
             }
             if cal[1][0] == "Ident" && cal[1][1] == "parallel" {
                 // parallel 命名空间:map(arr, clo1) / reduce(arr, init, clo2) —— 串行逐元素(镜像 eval)
