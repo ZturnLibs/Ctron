@@ -793,12 +793,24 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 var j: I32 = 1
                 while j < al.len {
                     if j > 1 { acc = acc + ", " }
-                    acc = acc + ct_expr(al[j], env, file)
+                    // 嵌套数组:内层 ArrLit → C 嵌套花括号字面
+                    if al[j][0] == "ArrLit" {
+                        acc = acc + ct_arr_lit_braces(al[j], env, file)
+                    } else {
+                        acc = acc + ct_expr(al[j], env, file)
+                    }
                     j += 1
                 }
-                eln(ct_ctype(ec) + " t_" + pat[1] + "[" + n + "] = \{" + acc + "};", env)
-                // T31 M1.5:定长数组槽=整块域扫(sz=N*sizeof 手拼,ct_ctype 不识 a 码)
-                eln("if (ct_frn.pn < 32) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ct_ctype(ec) + ") * " + n + "; ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)
+                // 多维声明链:a2a2i → int32_t t_m[2][2](a_elem 逐层剥)
+                var dims9 = "[" + n + "]"
+                var rest9 = ec
+                while rest9.len >= 3 && byte_slice(rest9, 0, 1) == "a" {
+                    dims9 = dims9 + "[" + a_count(rest9) + "]"
+                    rest9 = a_elem(rest9)
+                }
+                eln(ct_ctype(rest9) + " t_" + pat[1] + dims9 + " = \{" + acc + "};", env)
+                // T31 M1.5:定长数组槽=整块域扫
+                eln("if (ct_frn.pn < 32) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ct_ctype(rest9) + dims9 + "); ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)
                 return env_bind(env, pat[1], ty)
             }
             if ty.len > 1 && byte_at(ty, 0) == 118 {
@@ -1696,7 +1708,14 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
                 var rex8 = ct_expr(st[1], renv, file)
                 var rn8 = a_count(frt8)
                 var re8 = ct_ctype(a_elem(frt8))
-                eln("return (\{ " + re8 + "* t_rn8 = (" + re8 + "*)ctron_amalloc(sizeof(" + re8 + ") * " + rn8 + "); memcpy(t_rn8, " + rex8 + ", sizeof(" + re8 + ") * " + rn8 + "); t_rn8; });", env)
+                var rdims8 = ""
+                var rrc8 = frt8
+                while rrc8.len >= 3 && byte_slice(rrc8, 0, 1) == "a" {
+                    rdims8 = rdims8 + "[" + a_count(rrc8) + "]"
+                    rrc8 = a_elem(rrc8)
+                }
+                var rp8 = ct_ctype(rrc8) + "*"
+                eln("return (\{ " + rp8 + " t_rn8 = (" + rp8 + ")ctron_amalloc(sizeof(" + ct_ctype(rrc8) + rdims8 + ")); memcpy(t_rn8, " + rex8 + ", sizeof(" + ct_ctype(rrc8) + rdims8 + ")); t_rn8; });", env)
                 return env
             }
         }

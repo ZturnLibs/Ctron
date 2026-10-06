@@ -457,7 +457,13 @@ fn ct_ctype(code: Str) -> Str {
     //(C 数组实参退化同构,t_buf[i] 下标面天然兼容);值语义由调用位临时
     // 拷贝承接(ct_call_args_tg a 码包裹)。返回面指针 ABI 债在册(悬垂面)
     if code.len > 1 && byte_at(code, 0) == 97 {
-        return ct_ctype(a_elem(code)) + "*"
+        // T[N] ABI=elem*(线性,可拼接;多维访问位经 Index 臂行指针转型,
+        // 组合式 (*) 声明符无法与 `ctype + " t_名"` 拼接)
+        var rc10 = code
+        while rc10.len >= 3 && byte_at(rc10, 0) == 97 {
+            rc10 = a_elem(rc10)
+        }
+        return ct_ctype(rc10) + "*"
     }
     // FB-9:元组 "TP:..." → ctron_list*(异构 boxed list;槽位 LI/T54 惯例)
     if code.len > 2 && byte_slice(code, 0, 3) == "TP:" {

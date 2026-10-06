@@ -619,7 +619,8 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     }
     nt.push(ta)
     var base = nt
-    if tok(toks, cur) == "[" {
+    // 嵌套数组(T[N][M])= while 多缀链(旧单发,第二缀落参数流成 Ident("]"))
+    while tok(toks, cur) == "[" {
         var nx2 = toks[cur.load() + 1]
         var isarr = false
         if nx2 == "]" { isarr = true }
@@ -639,6 +640,8 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
                 ar.push(sz)
                 base = ar
             }
+        } else {
+            break
         }
     }
     if tok(toks, cur) == "?" {
