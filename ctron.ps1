@@ -260,8 +260,8 @@ function Cmd-PkgTrace($trest) {
 			$exists += "        if path == self.f$i" + " {`n            return true`n        }`n"
 			$init += " f$i" + ": `"$pe`", b$i" + ": `"$ce`","
 		}
-		$r = "`nclass MemFs {`n$fields}`n`nimpl Fs for MemFs {`n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {`n$reads        return Err(FsError { message: `"not found`".to_string() })`n    }`n"
-		$r += "    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {`n        return Ok(void)`n    }`n"
+		$r = "`nclass WSB {`n    let s: Str`n}`n`nclass MemFs {`n$fields    let log: Box[WSB]`n}`n`nimpl Fs for MemFs {`n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {`n$reads        return Err(FsError { message: `"not found`".to_string() })`n    }`n"
+		$r += "    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {`n        let inner = self.log`n        inner.s = inner.s + esc(path) + `" `" + esc(data) + `"\\n`"`n        return Ok(void)`n    }`n"
 		$r += "    fn exists(&self, path: Str) -> Bool {`n$exists        return false`n    }`n}`n`n"
 		return $r
 	}
@@ -269,7 +269,7 @@ function Cmd-PkgTrace($trest) {
 		$init = ''
 		foreach ($p in $pairs) { $init += $p }
 		if ($pairs.Count -ge 1) {
-			return "fn main() {`n    let fs = MemFs { $init }`n    match $fn($argsLit) {`n        Ok(v) => println(v.to_string())`n        Err(_) => println(`"`<err`>`)`n    }`n}`n"
+			return "fn main() {`n    let wsb = WSB { s: `"`" }`n    let fs = MemFs { $init log: Box[WSB](wsb) }`n    match $fn($argsLit) {`n        Ok(v) => println(v.to_string())`n        Err(_) => println(`"`<err`>")`n    }`n    println(`"---writes---`")`n    print(fs.log.s)`n}`n"
 		}
 		return "fn main() {`n    println($fn($argsLit).to_string())`n}`n"
 	}
@@ -280,18 +280,25 @@ function Cmd-PkgTrace($trest) {
 		$tblocks = @()
 		foreach ($tc in $tcases) {
 			$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
-			[IO.File]::WriteAllText($tdrv, $tsrcText + (MemFs-Prelude $tc.fs) + (Case-Main $tc.fn $tc.args $tc.fs), $enc)
+			$tesc = ''
+			if ($tc.fs.Count -ge 1) { $tesc = "use std.json.{ esc }`n" }
+			[IO.File]::WriteAllText($tdrv, $tesc + $tsrcText + (MemFs-Prelude $tc.fs) + (Case-Main $tc.fn $tc.args $tc.fs), $enc)
 			$oldP = $env:CTRON_STDPATH; $env:CTRON_STDPATH = $stdp
 			$tout = & $cc run $tdrv 2> ($tdrv + '.err')
 			$trc = $LASTEXITCODE
 			$env:CTRON_STDPATH = $oldP
 			if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $($tc.fn)($($tc.args)) 运行失败(rc=$trc)"); exit 2 }
-			if (@($tout).Count -gt 1) { Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $($tc.fn)($($tc.args)) 输出多行(轨迹面向单值函数)"); exit 2 }
+			if ($tc.fs.Count -eq 0 -and @($tout).Count -gt 1) { Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $($tc.fn)($($tc.args)) 输出多行(纯函数轨迹面向单值)"); exit 2 }
 			$texp = (@($tout)[0] -replace '"', '\"')
 			$targsE = $tc.args -replace '"', '\"'
 			$tblk = "trace `"$($tc.fn)`" {`n"
 			foreach ($p in $tc.fs) { $pe = $p[0] -replace '"', '\"'; $ce = $p[1] -replace '"', '\"'; $tblk += "  fs `"$pe`" = `"$ce`"`n" }
-			$tblk += "  args = `"$targsE`"`n  expect = `"$texp`"`n}`n"
+			$tblk += "  args = `"$targsE`"`n  expect = `"$texp`"`n"
+			if ($tc.fs.Count -ge 1) {
+				$inW = $false
+				foreach ($ol in @($tout)) { if ($inW -and $ol -ne '') { $tblk += "  wrote $ol`n" }; if ($ol -eq '---writes---') { $inW = $true } }
+			}
+			$tblk += "}`n"
 			$tblocks += $tblk
 			Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue
 		}
@@ -301,7 +308,7 @@ function Cmd-PkgTrace($trest) {
 	}
 	if (-not (Test-Path $ttgt -PathType Leaf)) { [Console]::Error.WriteLine("ctron: pkg trace replay: 无轨迹文件: $ttgt"); exit 2 }
 	$ttext = [IO.File]::ReadAllText($ttgt)
-	$tms = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n((?:  fs "[^"]*" = "(?:[^"\\]|\\.)*"\r?\n)*)  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
+	$tms = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n((?:  fs "[^"]*" = "(?:[^"\\]|\\.)*"\r?\n)*)  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n((?:  wrote (?:[^"\\]|\\.)*" "(?:[^"\\]|\\.)*"\r?\n)*)\}')
 	if ($tms.Count -lt 1) { [Console]::Error.WriteLine("ctron: pkg trace replay: 轨迹文件无块: $ttgt"); exit 2 }
 	$tbad = 0; $tn = 0
 	foreach ($tm in $tms) {
@@ -310,15 +317,26 @@ function Cmd-PkgTrace($trest) {
 		$texp = $tm.Groups[4].Value -replace '\\"', '"'
 		$pairs = @()
 		foreach ($fl in [regex]::Matches($tm.Groups[2].Value, '  fs "([^"]*)" = "((?:[^"\\]|\\.)*)"')) { $pairs += ,@(($fl.Groups[1].Value -replace '\\"', '"'), ($fl.Groups[2].Value -replace '\\"', '"')) }
+		$twr = @()
+		foreach ($fl in [regex]::Matches($tm.Groups[5].Value, '  wrote (.*)')) { $twr += $fl.Groups[1].Value }
 		$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
-		[IO.File]::WriteAllText($tdrv, $tsrcText + (MemFs-Prelude $pairs) + (Case-Main $tfn $targs $pairs), $enc)
+		$tesc = ''
+		if ($pairs.Count -ge 1) { $tesc = "use std.json.{ esc }`n" }
+		[IO.File]::WriteAllText($tdrv, $tesc + $tsrcText + (MemFs-Prelude $pairs) + (Case-Main $tfn $targs $pairs), $enc)
 		$oldP = $env:CTRON_STDPATH; $env:CTRON_STDPATH = $stdp
 		$tout = & $cc run $tdrv 2> ($tdrv + '.err')
 		$trc = $LASTEXITCODE
 		$env:CTRON_STDPATH = $oldP
 		if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace replay: 用例 $tfn($targs) 运行失败(rc=$trc)"); exit 2 }
-		$tact = @($tout)[0]
-		if ($tact -ne $texp) { [Console]::Error.WriteLine("trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $tbad++ }
+		if ($pairs.Count -ge 1) {
+			$tcanon = "$texp`n---writes---"
+			if ($twr.Count -ge 1) { $tcanon = "$tcanon`n" + ($twr -join "`n") }
+			$tact = (@($tout) -join "`n")
+			if ($tact -ne $tcanon) { [Console]::Error.WriteLine("trace mismatch: $tfn($targs) 记录 $texp 实际 $tact(含 wrote 面)"); $tbad++ }
+		} else {
+			$tact = @($tout)[0]
+			if ($tact -ne $texp) { [Console]::Error.WriteLine("trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $tbad++ }
+		}
 		Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue
 		$tn++
 	}
@@ -576,7 +594,7 @@ switch ($cmd) {
 					$trMod = [IO.Path]::GetFileNameWithoutExtension($trF.Name)
 					if (-not (Test-Path (Join-Path $pvFull "impl/$trMod.ast"))) { [Console]::Error.WriteLine("ctron pkg verify: 陈旧信任证据: traces/$trMod.ctrt 的模块 $trMod 不在工件 impl/(清理或重录)"); exit 1 }
 					$ttext = [IO.File]::ReadAllText($trF.FullName)
-					$tms2 = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n((?:  fs "[^"]*" = "(?:[^"\\]|\\.)*"\r?\n)*)  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
+					$tms2 = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n((?:  fs "[^"]*" = "(?:[^"\\]|\\.)*"\r?\n)*)  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n((?:  wrote (?:[^"\\]|\\.)*" "(?:[^"\\]|\\.)*"\r?\n)*)\}')
 					$fns = (@($tms2 | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) -join ', ')
 					$trp = Join-Path ([IO.Path]::GetTempPath()) ('ctron_trp_' + [guid]::NewGuid().ToString('N'))
 					New-Item -ItemType Directory -Force -Path (Join-Path $trp "deps/$pvName.ctart") | Out-Null
@@ -588,9 +606,11 @@ switch ($cmd) {
 						$texp = $tm2.Groups[4].Value -replace '\\"', '"'
 						$pairs = @()
 						foreach ($fl in [regex]::Matches($tm2.Groups[2].Value, '  fs "([^"]*)" = "((?:[^"\\]|\\.)*)"')) { $pairs += ,@(($fl.Groups[1].Value -replace '\\"', '"'), ($fl.Groups[2].Value -replace '\\"', '"')) }
+						$twr = @()
+						foreach ($fl in [regex]::Matches($tm2.Groups[5].Value, '  wrote (.*)')) { $twr += $fl.Groups[1].Value }
 						$thead = "use $pvName.$trMod.{ $fns }"
 						$tpre = ''
-						if ($pairs.Count -ge 1) { $thead = "use std.fs.{ Fs, FsError }`n$thead"; $tpre = MemFs-Prelude $pairs }
+						if ($pairs.Count -ge 1) { $thead = "use std.fs.{ Fs, FsError }`nuse std.json.{ esc }`n$thead"; $tpre = MemFs-Prelude $pairs }
 						$tmain = Case-Main $tfn $targs $pairs
 						[IO.File]::WriteAllText((Join-Path $trp 'main.ct'), "$thead`n$tpre$tmain", $enc2)
 						$errF = Join-Path $trp 'err.txt'
@@ -601,8 +621,15 @@ switch ($cmd) {
 						Pop-Location
 						if ($pairs.Count -ge 1) { $env:CTRON_STDPATH = $oldP2 }
 						if ($trc -ne 0) { Get-Content $errF | [Console]::Error.WriteLine; Remove-Item $trp -Recurse -Force; [Console]::Error.WriteLine("ctron pkg verify: 复放用例 $tfn($targs) 运行失败(rc=$trc)"); exit 1 }
-						$tact = @($tout)[0]
-						if ($tact -ne $texp) { [Console]::Error.WriteLine("E5056 trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $pvRb++ }
+						if ($pairs.Count -ge 1) {
+							$tcanon = "$texp`n---writes---"
+							if ($twr.Count -ge 1) { $tcanon = "$tcanon`n" + ($twr -join "`n") }
+							$tact = (@($tout) -join "`n")
+							if ($tact -ne $tcanon) { [Console]::Error.WriteLine("E5056 trace mismatch: $tfn($targs) 记录 $texp 实际 $tact(含 wrote 面)"); $pvRb++ }
+						} else {
+							$tact = @($tout)[0]
+							if ($tact -ne $texp) { [Console]::Error.WriteLine("E5056 trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $pvRb++ }
+						}
 						$pvRn++
 					}
 					Remove-Item $trp -Recurse -Force

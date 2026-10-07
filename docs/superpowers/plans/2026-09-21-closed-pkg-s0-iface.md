@@ -616,6 +616,17 @@ S3 余:S3-δ(写效果捕获,需 mut 能力形态)、标量 json 写入器(std �
 num/str_json,重录即迁)、加载期编译器发射腿(E5056/E5057 模板预置)。
 S4 余:跨发布者命名空间。S1b:加速线挂账维持。
 
+## ps1 trace δ 同文补齐(2026-10-07,T50 批):Windows 面四面归队
+
+- Cmd-PkgTrace/verify 腿 δ 化:MemFs-Prelude 扩 WSB+log 写捕获(别名绕行
+  形同 sh)、Case-Main γ/δ 形(match+---writes---+print log)、record stdout
+  多行解析(值行/分隔/wrote 行入块;纯函数面仍单行校验)、replay/verify
+  正则扩 wrote 组+正典比对(γ 无 wrote/δ 带面双形);esc use 前缀按种子
+  有无注入;γ 用例 CTRON_STDPATH 作用域注入。
+- ps1 trace/verify 全功能自此与 sh 同文(此前 δ 块在 ps1 面"无块"响亮降级
+  的登记销账);Windows conformance 维持环境阻塞挂账。
+- 门:全量 smoke(sh 面;ps1 不可测)照常绿基线归因。
+
 ## S3 配套件落地(2026-10-07,T50 批):标量 json 规范形 + esc 引号修复 + S3-δ 解禁
 
 - **标量 json 写出器**(std/json.ct,在册能力件销账):`num_json`(I64 十进制
