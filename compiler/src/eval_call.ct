@@ -165,6 +165,98 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("assert_ne arity")
         return e4("a", env, vV2(), out)
     }
+    // L4-③:Bytes 族 interp(read_bytes 降级=C 串域 NUL 截断,宿主字节原语=L4-②;
+    // Y 记录=box U8 字节表)
+    if seq2(nm, "read_file_bytes") {
+        if vals.len == 1 {
+            var r0 = v_unbox(vals[0])
+            if r0.tag == 5 {
+                // L4-②:宿主字节原语(len 装载+at 逐字节;全量 NUL 保真)
+                var ln2 = read_bytes_len(r0.s)
+                var bv = List[Str]()
+                bv.push("Y")
+                var kb: I32 = 0
+                while kb < ln2 {
+                    bv.push(v_box(vI(read_bytes_at(kb))))
+                    kb += 1
+                }
+                return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(bv) }, out)
+            }
+        }
+        panic("read_bytes args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "bytes_len") {
+        if vals.len == 1 {
+            var b0 = v_unbox(vals[0])
+            if b0.tag == 8 && cx_of(b0).len > 0 && seq2(cx_of(b0)[0], "Y") {
+                return e4("k", env, vI(cx_of(b0).len - 1), out)
+            }
+        }
+        panic("bytes_len args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "bytes_at") {
+        if vals.len == 2 {
+            var b1 = v_unbox(vals[0])
+            var i1 = v_unbox(vals[1])
+            if b1.tag == 8 && cx_of(b1).len > 0 && seq2(cx_of(b1)[0], "Y") {
+                var ix = i1.iv.as[I32]()
+                if ix < 0 || ix >= cx_of(b1).len - 1 {
+                    panic("bytes index out of bounds")
+                    return e4("a", env, vV2(), out)
+                }
+                return e4("k", env, v_unbox(cx_of(b1)[ix + 1]), out)
+            }
+        }
+        panic("bytes_at args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "bytes_slice") {
+        if vals.len == 3 {
+            var b2 = v_unbox(vals[0])
+            var a2v = v_unbox(vals[1])
+            var n2v = v_unbox(vals[2])
+            if b2.tag == 8 && cx_of(b2).len > 0 && seq2(cx_of(b2)[0], "Y") {
+                var st2 = a2v.iv.as[I32]()
+                var nn2 = n2v.iv.as[I32]()
+                var tot2 = cx_of(b2).len - 1
+                if st2 < 0 || nn2 < 0 || st2 + nn2 > tot2 {
+                    panic("bytes slice range")
+                    return e4("a", env, vV2(), out)
+                }
+                var nb = List[Str]()
+                nb.push("Y")
+                var k2: I32 = 0
+                while k2 < nn2 {
+                    nb.push(cx_of(b2)[st2 + k2 + 1])
+                    k2 += 1
+                }
+                return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nb) }, out)
+            }
+        }
+        panic("bytes_slice args")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "bytes_to_str") {
+        if vals.len == 1 {
+            var b3 = v_unbox(vals[0])
+            if b3.tag == 8 && cx_of(b3).len > 0 && seq2(cx_of(b3)[0], "Y") {
+                var s3 = ""
+                var k3: I32 = 1
+                while k3 < cx_of(b3).len {
+                    var e3 = v_unbox(cx_of(b3)[k3])
+                    var by3 = e3.iv.as[I32]()
+                    if by3 == 0 { break }
+                    s3 = s3 + utf8_enc(by3)
+                    k3 += 1
+                }
+                return e4("k", env, vS(s3), out)
+            }
+        }
+        panic("bytes_to_str args")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "read_file") {
         if vals.len == 1 {
             var r0 = v_unbox(vals[0])

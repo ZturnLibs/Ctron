@@ -657,7 +657,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T47 | multipart | W9 | **已完成**(1006,解析器 P6-C 已在库;corpus i_multipart 验收收口) | 见 git |
 | T48 | CTCL 迁移 | W9 | **已完成**(1002,三线硬切+104 份全迁+ctron_smoke 双探针) | 见卡 |
 | T49 | lockfile+workspace | W9 | ✅ | 2026-10-06 |
-| T50 | 闭源 S1/S2【条件】 | W9 | ✅ 主体完成(1006 D8-2 L2+S1a-iii;**L1 `ctron pkg verify` 命令面同日落库**[smoke 3r 腿,189/0];余 S1b 加速挂账+S3/S4 需求方触发) | — |
+| T50 | 闭源 S1/S2【条件】 | W9 | ✅ 主体完成+信任协议全通(1006-07:D8-2 L2+S1a-iii→L1 verify 命令面→L3 载体 ctron-verify→S3-α/β/γ 轨迹三层→**S4-① deps blob 第四形+源消费方 record 面**[210/0];余 S1b 加速挂账+S3-δ/加载期腿/S4 日志仓+命名空间) | — |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | **已完成**(1003;①io_uring 后端落库[POLL_ADD 天然 one-shot 同构映射+G 内单生产者+免 tick+双 NOP 自检门响亮回退,6.10-linuxkit array 异常立案];②NUMA 选项位+拓扑探测[行为位=志向];③Simd 评估报告选 B 落 docs/simd-vectorization-analysis.md[clang -O2 width4 实证/gcc -O3;寄存器驻留=志向];IOCP 环境依赖登记;reactor 冒烟双臂挂 ci.sh;net 18/18+coro_det 101/101+w7+suite 100/100) | 见 git |
 | T52 | 插件沙箱(derive+lint) | W9 | **已完成**(2026-10-03;协议=清单 plugin 块+接口包 ctron.plugin+约定入口;沙箱=纯度门 E6020.sandbox+静态规模门[执行期预算列 v2];derive(Json)=自由 fn/UFCS 产物[trait impl 发射缺口在册];lint_toolong=W9001 清单 codes 先进表;阶梯六锚挂 ci.sh[5.5/9] 含确定性双跑; suite 100/100 双跑;烟主段 159/2 双红在册[T33 conc_parallel/Rust iter 清账]+ctron_smoke 25/25;债八项入 COVERAGE) | 见 git |
 | T53 | emit union 载荷 64 位化 | W9 | **已完成**(1002;五病灶全修[expect 型别/expect 位还原/语句形 match-Ok 硬编码 int32/Try 两语句位/json (h) 绕行],json JNum/JReal 回切摘除,芯=wrap+or 先行 a000a6ad;探针 14 项双臂绿+e_t53_payload64 双臂锚+json_fidelity 13/13+suite 99/99+web_todo 92 裸跑 rc=0) | 见 git |
@@ -702,7 +702,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 - **T54 ✅(已销账,2026-09-30)参数化 List 码 + 装箱容器 ABI**: 容器 ABI 由 T14-② 落地(参数化 List 码 `Lu:<名>`/LI/L6+堆盒 push+索引解引用);收口件补 fn 值链(#fret 字段提取位 ct_fnfield_ret+裸 fn 蹦床/shim `u:` 解盒)——03l/03n 正本 emit 臂绿(03l:`HIT /app -> app:alice`+`SUM 42`),spec §9 P0-1/L6 销账。suite 96/96+96/96 零移动;遗留另录(不扩界):e.h 直呼形态、>8B struct fn 值返回、ct_cb_ref extern 回调
 - **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性已由 T27-B 终态判定 = 不可见,创建时快照即规范语义,10-02 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
 - **T29-T32 GC 全件**: 等 S1 Val 迁移落库(在飞 /tmp/s1-val)
-- **T50 闭源 S1/S2**: ✅ 主体完成(1006 用户点名触发;D8-2 L2+S1a-iii 落库;**L1 `ctron pkg verify` 命令面同日落库**[sh+ps1 同文,smoke 3r 六断言 189/0];余 S1b 加速挂账/S3-S4 需求方触发[trace 复放+L3+命名空间])
+- **T50 闭源 S1/S2**: ✅ 主体完成+信任协议全通(1006-07 用户连批点名;D8-2 L2→L1 命令面→L3 载体 ctron-verify[11ms/75KB]→S3-α/β/γ 轨迹[纯函数/复放腿 E5056/效果函数 MemFs]→S4-① blob 形+record 面;210/0;余 S1b 挂账/S3-δ/加载期腿/S4 日志仓+命名空间)
 - **T37-T40 wasm/bare**: T36 target 接口是前置
 
 ### 关键坑位速查(10 条血泪)

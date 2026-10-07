@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=514' "$T/chk.out" && ok "自检 cc_run 绿,decls=514(锁 513→514:FB-8 +1[eval_call.ct:arr_copy_val 数组形参深拷];前注:锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=515' "$T/chk.out" && ok "自检 cc_run 绿,decls=515(锁 514→515:T50 S4-① +1[parse_pkg.ct:pkg_meta_dep_field 清单 dep 块字段提取泛化,blob record 面];前注:锁 513→514:FB-8 +1[eval_call.ct:arr_copy_val 数组形参深拷];前注:锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -216,7 +216,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
-for cv in fnval cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested; do
+for cv in fnval cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested bytes; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
@@ -1074,6 +1074,7 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
     else
         grep -q "trace mismatch" "$T/t3.out" && ok "不符腿:翻改 expect 精准点名双值" || bad "无 mismatch 文案: $(cat "$T/t3.out")"
     fi
+    sed 's/expect = "13"/expect = "12"/' "$TT/traces/base.ctrt" > "$TT/traces/base.ctrt.n" && mv "$TT/traces/base.ctrt.n" "$TT/traces/base.ctrt"
     AD3="$TT/art"
     mkdir -p "$AD3/impl"
     "$COMP/ctc.sh" ast "$TT/base.ct" --ast=seal --astout="$AD3" --astname=mybase > "$T/t4.out" 2>&1
@@ -1084,6 +1085,135 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
     fi
 else
     ok "3t 跳过(缺 compiler/bin/ctron-cc;先: compiler/native.sh)"
+fi
+
+# ---------------- 3u) S3-β verify 复放腿(E5056;deep = 摘要+轨迹复放) ----------------
+echo "== 3u) S3-β deep 复放腿(E5056:工件行为 vs 录制期望)=="
+if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify" ]; then
+    UB="$T/trace2"
+    mkdir -p "$UB"
+    cp "$ROOT/tests/artifact_demo/base/base.ct" "$UB/base.ct"
+    "$ROOT/ctron" pkg trace record "$UB/base.ct" --case "base_mul=3, 4" --case "base_mul=0, 5" > "$T/u1.out" 2>&1
+    UA="$UB/art"
+    mkdir -p "$UA/impl"
+    "$COMP/ctc.sh" ast "$UB/base.ct" --ast=seal --astout="$UA" --astname=mybase > "$T/u2.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$UA" > "$T/u3.out" 2>&1 && grep -q "复放 2 用例" "$T/u3.out"; then
+        ok "deep 复放腿正例:摘要自洽+轨迹 2 用例全符"
+    else
+        bad "deep 复放腿正例异常: $(tail -2 "$T/u3.out")"
+    fi
+    printf '// base drifted\npub fn base_mul(a: I32, b: I32) -> I32 {\n    return a * b + 1\n}\n' > "$UB/base.ct"
+    UB2="$UB/art2"
+    mkdir -p "$UB2/impl"
+    "$COMP/ctc.sh" ast "$UB/base.ct" --ast=seal --astout="$UB2" --astname=mybase > "$T/u4.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$UB2" > "$T/u5.out" 2>&1; then
+        bad "行为漂移未拒(E5056)"
+    else
+        grep -q "E5056 trace mismatch" "$T/u5.out" && ok "E5056 腿:工件行为漂移 vs 旧轨迹精准拒载" || bad "无 E5056 文案: $(cat "$T/u5.out")"
+    fi
+else
+    ok "3u 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"
+fi
+
+# ---------------- 3v) S3-γ 效果函数轨迹(脚本化 MemFs;种子入块;deep 复放 γ) ----------------
+echo "== 3v) S3-γ 效果函数轨迹(--fs 种子挂 case;MemFs 码gen;deep 复放 γ)=="
+if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify" ]; then
+    VG="$T/trace3"
+    mkdir -p "$VG"
+    cp "$ROOT/tests/artifact_demo/provider/eff.ct" "$VG/eff.ct"
+    if "$ROOT/ctron" pkg trace record "$VG/eff.ct" --case "greet=fs" --fs "name.txt=ada" > "$T/v1.out" 2>&1 && grep -q "1 用例" "$T/v1.out"; then
+        ok "γ 轨迹录制:效果函数+MemFs 种子落块"
+    else
+        bad "γ 录制异常: $(tail -2 "$T/v1.out")"
+    fi
+    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v2.out" 2>&1 && grep -q "replay OK: 1 用例" "$T/v2.out"; then
+        ok "γ 复放:种子重放逐字一致"
+    else
+        bad "γ 复放误拒: $(tail -2 "$T/v2.out")"
+    fi
+    sed 's/fs "name.txt" = "ada"/fs "name.txt" = "bob"/' "$VG/traces/eff.ctrt" > "$VG/traces/eff.ctrt.n" && mv "$VG/traces/eff.ctrt.n" "$VG/traces/eff.ctrt"
+    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v3.out" 2>&1; then
+        bad "γ 种子漂移未检出"
+    else
+        grep -q "trace mismatch" "$T/v3.out" && ok "γ 不符腿:种子翻改即 mismatch" || bad "无 mismatch 文案: $(cat "$T/v3.out")"
+    fi
+    sed 's/= "bob"/= "ada"/' "$VG/traces/eff.ctrt" > "$VG/traces/eff.ctrt.n" && mv "$VG/traces/eff.ctrt.n" "$VG/traces/eff.ctrt"
+    VA="$VG/art"
+    mkdir -p "$VA/impl"
+    "$COMP/ctc.sh" ast "$VG/eff.ct" --ast=seal --astout="$VA" --astname=myeff > "$T/v4.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$VA" > "$T/v5.out" 2>&1 && grep -q "复放 1 用例" "$T/v5.out"; then
+        ok "deep γ 复放:工件行为 vs 种子期望全符"
+    else
+        bad "deep γ 复放异常: $(tail -2 "$T/v5.out")"
+    fi
+else
+    ok "3v 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"
+fi
+
+# ---------------- 3w) S4-① deps blob 第四形(源消费方 record 面;E5049 四形互斥) ----------------
+echo "== 3w) S4-① deps blob(清单 record 面/loader+driver 消解;E5049 四形)=="
+BW="$T/blob"
+mkdir -p "$BW/proj/deps/mybase.ctart/impl"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$BW/proj/deps/mybase.ctart" --astname=mybase > "$T/w0.out" 2>&1
+BSD=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$BW/proj/deps/mybase.ctart/meta.ctcl")
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "%s"\n}\n' "$BSD" > "$BW/proj/Ctron.ctcl"
+printf 'use mybase.base.{base_mul}\n\nfn main() {\n    println("t=" + base_mul(3, 4).to_string())\n}\n' > "$BW/proj/main.ct"
+if (cd "$BW/proj" && "$COMP/ctc.sh" main.ct > "$T/w1.out" 2>&1) && grep -q "t=12" "$T/w1.out"; then
+    ok "blob record 面:源消费方清单 blob=工件 self_digest,加载过验(t=12)"
+else
+    bad "blob 正例异常: $(tail -2 "$T/w1.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "sha256:0000000000000000000000000000000000000000000000000000000000000000"\n}\n' > "$BW/proj/Ctron.ctcl"
+if (cd "$BW/proj" && "$COMP/ctc.sh" main.ct > "$T/w2.out" 2>&1); then
+    bad "blob 错摘要未拒(E5054)"
+else
+    grep -q "E5054" "$T/w2.out" && ok "E5054 腿:blob 需求≠工件 self_digest 精准拒载" || bad "无 E5054 文案: $(cat "$T/w2.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "%s"\n    version = "0.1.0"\n}\n' "$BSD" > "$BW/proj/Ctron.ctcl"
+if "$COMP/ctc.sh" dep "$BW/proj/Ctron.ctcl" > "$T/w3.out" 2>&1; then
+    bad "blob+version 同现未拒(E5049)"
+else
+    grep -q "E5049" "$T/w3.out" && ok "E5049 四形互斥:blob+version 同现点名" || bad "无 E5049 文案: $(cat "$T/w3.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "%s"\n}\n' "$BSD" > "$BW/proj/Ctron.ctcl"
+if "$COMP/ctc.sh" dep "$BW/proj/Ctron.ctcl" > "$T/w4.out" 2>&1 && grep -q 'source = "blob"' "$BW/proj/Ctron.lock"; then
+    ok "driver blob 消解:lock 钉 source=blob 摘要"
+else
+    bad "driver blob 消解异常: $(tail -2 "$T/w4.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "abc"\n}\n' > "$BW/proj/Ctron.ctcl"
+if "$COMP/ctc.sh" dep "$BW/proj/Ctron.ctcl" > "$T/w5.out" 2>&1; then
+    bad "畸形 blob 值未拒(E5046)"
+else
+    grep -q "E5046" "$T/w5.out" && ok "E5046 腿:blob 值形态校验" || bad "无 E5046 文案: $(cat "$T/w5.out")"
+fi
+
+# ---------------- 3x) S4-② pkg attest(发布公证;deep attest 腿 E5057) ----------------
+echo "== 3x) S4-② pkg attest(attest.ctcl 自证;deep 一致性验)=="
+XA="$T/att"
+mkdir -p "$XA/art/impl"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$XA/art" --astname=mybase > "$T/x0.out" 2>&1
+if "$ROOT/ctron" pkg attest "$XA/art" > "$T/x1.out" 2>&1 && grep -q "attest 已生成" "$T/x1.out"; then
+    ok "attest 生成:digest/trace_count 自证落 attest.ctcl"
+else
+    bad "attest 生成异常: $(tail -2 "$T/x1.out")"
+fi
+if "$ROOT/ctron" pkg verify --deep "$XA/art" > "$T/x2.out" 2>&1 && grep -q "attest 过验" "$T/x2.out"; then
+    ok "deep attest 腿:公证与工件一致"
+else
+    bad "deep attest 腿异常: $(tail -2 "$T/x2.out")"
+fi
+sed 's/trace_count = 0/trace_count = 9/' "$XA/art/attest.ctcl" > "$XA/art/attest.ctcl.n" && mv "$XA/art/attest.ctcl.n" "$XA/art/attest.ctcl"
+if "$ROOT/ctron" pkg verify --deep "$XA/art" > "$T/x3.out" 2>&1; then
+    bad "attest trace_count 漂移未拒(E5057)"
+else
+    grep -q "E5057" "$T/x3.out" && ok "E5057 腿:trace_count 漂移精准拒载" || bad "无 E5057 文案: $(cat "$T/x3.out")"
+fi
+printf 'attest "mybase" {\n  artifact_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"\n  toolchain = "dev"\n  hosts = ["interp-cc"]\n  trace_count = 0\n}\n' > "$XA/art/attest.ctcl"
+if "$ROOT/ctron" pkg verify --deep "$XA/art" > "$T/x4.out" 2>&1; then
+    bad "attest digest 伪造未拒(E5057)"
+else
+    grep -q "E5057" "$T/x4.out" && ok "E5057 腿:伪造 digest 拒载" || bad "无 E5057 文案: $(cat "$T/x4.out")"
 fi
 
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------

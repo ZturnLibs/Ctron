@@ -41,7 +41,7 @@ ctron —— Ctron 工具链驱动
                              in-language 发射验证器(ctron-verify,C 速,L3 载体)
   ctron pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...]
                              黄金轨迹录制(S3-α 纯函数):值=to_string 规范形,落
-                             traces/<stem>.ctrt;零参 fn 与含 main 源不支持
+                             traces/<stem>.ctrt;含 main 源不支持
   ctron pkg trace replay <src.ct>
                              轨迹复放:逐字比对,不符即 rc=1 点名双值(S3-α)
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
@@ -223,44 +223,71 @@ function Cmd-PkgTrace($trest) {
 	$cc = Join-Path $Bin 'ctron-cc.exe'
 	if (-not (Test-Path $cc)) { $cc = Join-Path $Bin 'ctron-cc' }
 	if (-not (Test-Path $cc)) { [Console]::Error.WriteLine('ctron: pkg trace: 缺 ctron-cc(重装工具链)'); exit 2 }
-	if ($trest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args> [--case ...] / pkg trace replay <src.ct>)'); exit 2 }
+	if ($trest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args> [--fs <path>=<content>]... / pkg trace replay <src.ct>)'); exit 2 }
 	$tsub = $trest[0]
 	if ($tsub -ne 'record' -and $tsub -ne 'replay') { [Console]::Error.WriteLine("ctron: pkg trace: 未知子命令 '$tsub'(现支持: record replay)"); exit 2 }
 	$tsrc = ''; $tcases = @()
 	$ti = 1
 	while ($ti -lt $trest.Count) {
 		$ta = $trest[$ti]
-		if ($ta -eq '--case') { $ti++; if ($ti -ge $trest.Count) { [Console]::Error.WriteLine('ctron: pkg trace: --case 缺值'); exit 2 }; $tcases += $trest[$ti] }
-		elseif ($ta.StartsWith('--case=')) { $tcases += $ta.Substring(7) }
+		if ($ta -eq '--case') { $ti++; if ($ti -ge $trest.Count) { [Console]::Error.WriteLine('ctron: pkg trace: --case 缺值'); exit 2 }; $tf = $trest[$ti].Split('=')[0]; if ($tf -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { [Console]::Error.WriteLine("ctron: pkg trace record: fn 名非法: '$tf'"); exit 2 }; $tcases += @{ fn = $tf; args = $trest[$ti].Substring($tf.Length + 1); fs = @() } }
+		elseif ($ta.StartsWith('--case=')) { $tv = $ta.Substring(7); $tf = $tv.Split('=')[0]; if ($tf -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { [Console]::Error.WriteLine("ctron: pkg trace record: fn 名非法: '$tf'"); exit 2 }; $tcases += @{ fn = $tf; args = $tv.Substring($tf.Length + 1); fs = @() } }
+		elseif ($ta -eq '--fs') { $ti++; if ($ti -ge $trest.Count) { [Console]::Error.WriteLine('ctron: pkg trace: --fs 缺值'); exit 2 }; if ($tcases.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace: --fs 须跟在 --case 之后(种子挂最近用例)'); exit 2 }; $tp = $trest[$ti].Split('=')[0]; $tcases[-1].fs += ,@($tp, $trest[$ti].Substring($tp.Length + 1)) }
+		elseif ($ta.StartsWith('--fs=')) { if ($tcases.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace: --fs 须跟在 --case 之后'); exit 2 }; $tv = $ta.Substring(5); $tp = $tv.Split('=')[0]; $tcases[-1].fs += ,@($tp, $tv.Substring($tp.Length + 1)) }
 		elseif ($tsrc -eq '') { $tsrc = $ta }
 		$ti++
 	}
 	if ($tsrc -eq '') { [Console]::Error.WriteLine("ctron: pkg trace $tsub 需要源文件"); exit 2 }
 	if (-not (Test-Path $tsrc -PathType Leaf)) { [Console]::Error.WriteLine("ctron: pkg trace: 源文件不存在: $tsrc"); exit 2 }
 	$tsrcText = [IO.File]::ReadAllText((Resolve-Path $tsrc).Path)
-	if ($tsrcText -match 'fn main') { [Console]::Error.WriteLine('ctron: pkg trace: 源含 main(轨迹面向无 main 的 provider 纯函数源)'); exit 2 }
+	if ($tsrcText -match 'fn main') { [Console]::Error.WriteLine('ctron: pkg trace: 源含 main(轨迹面向无 main 的 provider 源)'); exit 2 }
 	$tdir = Split-Path -Parent (Resolve-Path $tsrc).Path
 	$tstem = [IO.Path]::GetFileNameWithoutExtension($tsrc)
 	$ttgt = Join-Path $tdir "traces/$tstem.ctrt"
 	$enc = New-Object Text.UTF8Encoding($false)
+	# γ 码gen:脚本化 MemFs prelude(种子映射,读-only)+ match 解包主(Ok 值/Err <err> 哨兵)
+	function MemFs-Prelude($pairs) {
+		$fields = ''; $reads = ''; $exists = ''; $init = ''
+		for ($i = 0; $i -lt $pairs.Count; $i++) {
+			$pe = $pairs[$i][0]; $ce = ($pairs[$i][1] -replace '"', '\"')
+			$fields += "    let f$i" + ": Str`n    let b$i" + ": Str`n"
+			$reads += "        if path == self.f$i" + " {`n            return Ok(self.b$i" + ".to_string())`n        }`n"
+			$exists += "        if path == self.f$i" + " {`n            return true`n        }`n"
+			$init += " f$i" + ": `"$pe`", b$i" + ": `"$ce`","
+		}
+		$r = "`nclass MemFs {`n$fields}`n`nimpl Fs for MemFs {`n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {`n$reads        return Err(FsError { message: `"not found`".to_string() })`n    }`n"
+		$r += "    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {`n        return Ok(void)`n    }`n"
+		$r += "    fn exists(&self, path: Str) -> Bool {`n$exists        return false`n    }`n}`n`n"
+		return $r
+	}
+	function Case-Main($fn, $argsLit, $pairs) {
+		$init = ''
+		foreach ($p in $pairs) { $init += $p }
+		if ($pairs.Count -ge 1) {
+			return "fn main() {`n    let fs = MemFs { $init }`n    match $fn($argsLit) {`n        Ok(v) => println(v.to_string())`n        Err(_) => println(`"`<err`>`)`n    }`n}`n"
+		}
+		return "fn main() {`n    println($fn($argsLit).to_string())`n}`n"
+	}
+	$stdp = Join-Path $Root 'lib/std'
 	if ($tsub -eq 'record') {
-		if ($tcases.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace record 需要 --case <fn>=<args>(可多例)'); exit 2 }
+		if ($tcases.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace record 需要 --case <fn>=<args>(可多例;--fs 种子挂最近 --case)'); exit 2 }
 		New-Item -ItemType Directory -Force -Path (Join-Path $tdir 'traces') | Out-Null
 		$tblocks = @()
-		foreach ($te in $tcases) {
-			$tfn = $te.Split('=')[0]
-			$targs = $te.Substring($tfn.Length + 1)
-			if ($tfn -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { [Console]::Error.WriteLine("ctron: pkg trace record: fn 名非法: '$tfn'([A-Za-z_][A-Za-z0-9_]*)"); exit 2 }
-			if ($targs -eq '') { [Console]::Error.WriteLine('ctron: pkg trace record: 零参 fn 轨迹 α 不支持(args 为空;零参形随 S3-β)'); exit 2 }
+		foreach ($tc in $tcases) {
 			$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
-			[IO.File]::WriteAllText($tdrv, $tsrcText + "`nfn main() {`n    println($tfn($targs).to_string())`n}`n", $enc)
+			[IO.File]::WriteAllText($tdrv, $tsrcText + (MemFs-Prelude $tc.fs) + (Case-Main $tc.fn $tc.args $tc.fs), $enc)
+			$oldP = $env:CTRON_STDPATH; $env:CTRON_STDPATH = $stdp
 			$tout = & $cc run $tdrv 2> ($tdrv + '.err')
 			$trc = $LASTEXITCODE
-			if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $tfn($targs) 运行失败(rc=$trc)"); exit 2 }
-			if (@($tout).Count -gt 1) { Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $tfn($targs) 输出多行(α 轨迹面向单值纯函数)"); exit 2 }
+			$env:CTRON_STDPATH = $oldP
+			if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $($tc.fn)($($tc.args)) 运行失败(rc=$trc)"); exit 2 }
+			if (@($tout).Count -gt 1) { Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $($tc.fn)($($tc.args)) 输出多行(轨迹面向单值函数)"); exit 2 }
 			$texp = (@($tout)[0] -replace '"', '\"')
-			$targsE = $targs -replace '"', '\"'
-			$tblocks += "trace `"$tfn`" {`n  args = `"$targsE`"`n  expect = `"$texp`"`n}"
+			$targsE = $tc.args -replace '"', '\"'
+			$tblk = "trace `"$($tc.fn)`" {`n"
+			foreach ($p in $tc.fs) { $pe = $p[0] -replace '"', '\"'; $ce = $p[1] -replace '"', '\"'; $tblk += "  fs `"$pe`" = `"$ce`"`n" }
+			$tblk += "  args = `"$targsE`"`n  expect = `"$texp`"`n}`n"
+			$tblocks += $tblk
 			Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue
 		}
 		[IO.File]::WriteAllText($ttgt, ($tblocks -join "`n") + "`n", $enc)
@@ -269,17 +296,21 @@ function Cmd-PkgTrace($trest) {
 	}
 	if (-not (Test-Path $ttgt -PathType Leaf)) { [Console]::Error.WriteLine("ctron: pkg trace replay: 无轨迹文件: $ttgt"); exit 2 }
 	$ttext = [IO.File]::ReadAllText($ttgt)
-	$tms = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
+	$tms = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n((?:  fs "[^"]*" = "(?:[^"\\]|\\.)*"\r?\n)*)  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
 	if ($tms.Count -lt 1) { [Console]::Error.WriteLine("ctron: pkg trace replay: 轨迹文件无块: $ttgt"); exit 2 }
 	$tbad = 0; $tn = 0
 	foreach ($tm in $tms) {
 		$tfn = $tm.Groups[1].Value
-		$targs = $tm.Groups[2].Value -replace '\\"', '"'
-		$texp = $tm.Groups[3].Value -replace '\\"', '"'
+		$targs = $tm.Groups[3].Value -replace '\\"', '"'
+		$texp = $tm.Groups[4].Value -replace '\\"', '"'
+		$pairs = @()
+		foreach ($fl in [regex]::Matches($tm.Groups[2].Value, '  fs "([^"]*)" = "((?:[^"\\]|\\.)*)"')) { $pairs += ,@(($fl.Groups[1].Value -replace '\\"', '"'), ($fl.Groups[2].Value -replace '\\"', '"')) }
 		$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
-		[IO.File]::WriteAllText($tdrv, $tsrcText + "`nfn main() {`n    println($tfn($targs).to_string())`n}`n", $enc)
+		[IO.File]::WriteAllText($tdrv, $tsrcText + (MemFs-Prelude $pairs) + (Case-Main $tfn $targs $pairs), $enc)
+		$oldP = $env:CTRON_STDPATH; $env:CTRON_STDPATH = $stdp
 		$tout = & $cc run $tdrv 2> ($tdrv + '.err')
 		$trc = $LASTEXITCODE
+		$env:CTRON_STDPATH = $oldP
 		if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace replay: 用例 $tfn($targs) 运行失败(rc=$trc)"); exit 2 }
 		$tact = @($tout)[0]
 		if ($tact -ne $texp) { [Console]::Error.WriteLine("trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $tbad++ }
@@ -288,6 +319,28 @@ function Cmd-PkgTrace($trest) {
 	}
 	if ($tbad -gt 0) { [Console]::Error.WriteLine("pkg trace replay: $tn 用例中 $tbad 不符"); exit 1 }
 	Write-Output "trace replay OK: $tn 用例"
+	exit 0
+}
+# T50/S4-②:pkg attest —— 发布公证(§5.4;与 sh 版同文)
+function Cmd-PkgAttest($arest) {
+	if ($arest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg attest 需要工件目录(.ctart;须先 seal)'); exit 2 }
+	$paDir = $arest[0]
+	if (-not (Test-Path $paDir -PathType Container)) { [Console]::Error.WriteLine("ctron: pkg attest: 工件目录不存在: $paDir"); exit 2 }
+	$metaF = Join-Path $paDir 'meta.ctcl'
+	if (-not (Test-Path $metaF -PathType Leaf)) { [Console]::Error.WriteLine('ctron: pkg attest: 缺 meta.ctcl(工件须先 seal)'); exit 2 }
+	$paName = (Select-String -Path $metaF -Pattern '^artifact "([^"]*)"').Matches[0].Groups[1].Value
+	$paSd = (Select-String -Path $metaF -Pattern 'self_digest = "(.*)"').Matches[0].Groups[1].Value
+	$paTc = 0
+	$trDir = Join-Path $paDir 'traces'
+	if (Test-Path $trDir -PathType Container) {
+		foreach ($tf in @(Get-ChildItem -Path (Join-Path $trDir '*.ctrt') -File)) { $paTc += ([regex]::Matches((Get-Content $tf.FullName -Raw), '(?m)^trace "')).Count }
+	}
+	$paVer = 'dev'
+	$vfile = Join-Path $Root 'VERSION'
+	if (Test-Path $vfile) { $paVer = (Get-Content $vfile -Raw).Trim() }
+	$att = "attest `"$paName`" {`n  artifact_digest = `"$paSd`"`n  toolchain = `"$paVer`"`n  hosts = [`"interp-cc`"]`n  trace_count = $paTc`n}`n"
+	[IO.File]::WriteAllText((Join-Path $paDir 'attest.ctcl'), $att, (New-Object Text.UTF8Encoding($false)))
+	Write-Output "ctron: attest 已生成 → $(Join-Path $paDir 'attest.ctcl')(摘要 $paSd;轨迹 $paTc 例)"
 	exit 0
 }
 
@@ -437,7 +490,8 @@ switch ($cmd) {
 	'pkg' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify [--deep] <工件目录> / pkg trace record|replay)'); exit 2 }
 		if ($rest[0] -eq 'trace') { Cmd-PkgTrace @($rest | Select-Object -Skip 1) }
-		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace)"); exit 2 }
+		if ($rest[0] -eq 'attest') { Cmd-PkgAttest @($rest | Select-Object -Skip 1) }
+		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace attest)"); exit 2 }
 		$pvDeep = $false; $pvDir = ''
 		foreach ($pvA in ($rest | Select-Object -Skip 1)) {
 			if ($pvA -eq '--deep') { $pvDeep = $true } elseif ($pvDir -eq '') { $pvDir = $pvA }
@@ -448,8 +502,71 @@ switch ($cmd) {
 			$vv = Join-Path $Bin 'ctron-verify.exe'
 			if (-not (Test-Path $vv)) { $vv = Join-Path $Bin 'ctron-verify' }
 			if (-not (Test-Path $vv)) { [Console]::Error.WriteLine('ctron: pkg verify --deep: 缺 ctron-verify(重装工具链)'); exit 2 }
-			& $vv run (Resolve-Path $pvDir).Path
-			exit $LASTEXITCODE }
+			$pvFull = (Resolve-Path $pvDir).Path
+			& $vv run $pvFull
+			if ($LASTEXITCODE -ne 0) { exit 1 }
+			# S3-β 复放腿(§7.2;E5056):traces/ 在场即逐案复放(D3:工件行为 vs 录制期望)
+			$pvRn = 0; $pvRb = 0
+			$trDir = Join-Path $pvFull 'traces'
+			if (Test-Path $trDir -PathType Container) {
+				$cc = Join-Path $Bin 'ctron-cc.exe'
+				if (-not (Test-Path $cc)) { $cc = Join-Path $Bin 'ctron-cc' }
+				if (-not (Test-Path $cc)) { [Console]::Error.WriteLine('ctron pkg verify: traces 在场但缺 ctron-cc(复放腿不可跳过;重装工具链)'); exit 1 }
+				$pvName = (Select-String -Path (Join-Path $pvFull 'meta.ctcl') -Pattern '^artifact "([^"]*)"').Matches[0].Groups[1].Value
+				if (-not $pvName) { [Console]::Error.WriteLine('ctron pkg verify: meta artifact 块缺失(复放腿无包名)'); exit 1 }
+				$enc2 = New-Object Text.UTF8Encoding($false)
+				foreach ($trF in @(Get-ChildItem -Path (Join-Path $trDir '*.ctrt') -File)) {
+					$trMod = [IO.Path]::GetFileNameWithoutExtension($trF.Name)
+					if (-not (Test-Path (Join-Path $pvFull "impl/$trMod.ast"))) { [Console]::Error.WriteLine("ctron pkg verify: 陈旧信任证据: traces/$trMod.ctrt 的模块 $trMod 不在工件 impl/(清理或重录)"); exit 1 }
+					$ttext = [IO.File]::ReadAllText($trF.FullName)
+					$tms2 = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n((?:  fs "[^"]*" = "(?:[^"\\]|\\.)*"\r?\n)*)  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
+					$fns = (@($tms2 | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) -join ', ')
+					$trp = Join-Path ([IO.Path]::GetTempPath()) ('ctron_trp_' + [guid]::NewGuid().ToString('N'))
+					New-Item -ItemType Directory -Force -Path (Join-Path $trp "deps/$pvName.ctart") | Out-Null
+					Copy-Item (Join-Path $pvFull '*') (Join-Path $trp "deps/$pvName.ctart") -Recurse -Force
+					$enc2 = New-Object Text.UTF8Encoding($false)
+					foreach ($tm2 in $tms2) {
+						$tfn = $tm2.Groups[1].Value
+						$targs = $tm2.Groups[3].Value -replace '\\"', '"'
+						$texp = $tm2.Groups[4].Value -replace '\\"', '"'
+						$pairs = @()
+						foreach ($fl in [regex]::Matches($tm2.Groups[2].Value, '  fs "([^"]*)" = "((?:[^"\\]|\\.)*)"')) { $pairs += ,@(($fl.Groups[1].Value -replace '\\"', '"'), ($fl.Groups[2].Value -replace '\\"', '"')) }
+						$thead = "use $pvName.$trMod.{ $fns }"
+						$tpre = ''
+						if ($pairs.Count -ge 1) { $thead = "use std.fs.{ Fs, FsError }`n$thead"; $tpre = MemFs-Prelude $pairs }
+						$tmain = Case-Main $tfn $targs $pairs
+						[IO.File]::WriteAllText((Join-Path $trp 'main.ct'), "$thead`n$tpre$tmain", $enc2)
+						$errF = Join-Path $trp 'err.txt'
+						$oldP2 = $env:CTRON_STDPATH; if ($pairs.Count -ge 1) { $env:CTRON_STDPATH = Join-Path $Root 'lib/std' }
+						Push-Location $trp
+						$tout = & $cc run main.ct 2> $errF
+						$trc = $LASTEXITCODE
+						Pop-Location
+						if ($pairs.Count -ge 1) { $env:CTRON_STDPATH = $oldP2 }
+						if ($trc -ne 0) { Get-Content $errF | [Console]::Error.WriteLine; Remove-Item $trp -Recurse -Force; [Console]::Error.WriteLine("ctron pkg verify: 复放用例 $tfn($targs) 运行失败(rc=$trc)"); exit 1 }
+						$tact = @($tout)[0]
+						if ($tact -ne $texp) { [Console]::Error.WriteLine("E5056 trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $pvRb++ }
+						$pvRn++
+					}
+					Remove-Item $trp -Recurse -Force
+				}
+				if ($pvRb -gt 0) { [Console]::Error.WriteLine("ctron pkg verify: 复放 $pvRn 用例中 $pvRb 不符(E5056)"); exit 1 }
+			}
+			$attF = Join-Path $pvFull 'attest.ctcl'
+			if (Test-Path $attF -PathType Leaf) {
+				$attText = [IO.File]::ReadAllText($attF)
+				$paAd = [regex]::Match($attText, '  artifact_digest = "([^"]*)"').Groups[1].Value
+				$paAtc = [regex]::Match($attText, '  trace_count = (\d+)').Groups[1].Value
+				if ($paAd -eq '' -or $paAtc -eq '') { [Console]::Error.WriteLine('ctron pkg verify: attest 畸形(缺 artifact_digest/trace_count;E5057)'); exit 1 }
+				$paSd2 = (Select-String -Path (Join-Path $pvFull 'meta.ctcl') -Pattern 'self_digest = "(.*)"').Matches[0].Groups[1].Value
+				if ($paAd -ne $paSd2) { [Console]::Error.WriteLine("E5057 attest 与工件不符: artifact_digest 记录 $paAd 实际 $paSd2"); exit 1 }
+				$pvTc = 0
+				if (Test-Path (Join-Path $pvFull 'traces') -PathType Container) { foreach ($tf2 in @(Get-ChildItem -Path (Join-Path $pvFull 'traces/*.ctrt') -File)) { $pvTc += ([regex]::Matches((Get-Content $tf2.FullName -Raw), '(?m)^trace "')).Count } }
+				if ($paAtc -ne "$pvTc") { [Console]::Error.WriteLine("E5057 attest 与工件不符: trace_count 记录 $paAtc 实际 $pvTc"); exit 1 }
+				Write-Output "ctron pkg verify OK: $pvFull(deep: 摘要自洽;复放 $pvRn 用例;attest 过验)"
+				exit 0 }
+			Write-Output "ctron pkg verify OK: $pvFull(deep: 摘要自洽;复放 $pvRn 用例)"
+			exit 0 }
 		$pvBad = $false; $pvN = 0
 		# ① 形态面(§3.5 后缀即契约:自称 .ctart 而缺成员 = 损坏/伪造,fail-closed)
 		foreach ($pvF in @('meta.ctcl','SHA256SUMS')) {

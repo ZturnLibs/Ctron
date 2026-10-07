@@ -24,7 +24,7 @@ fn seq2(a: Str, b: Str) -> Bool {
 fn prelude_ok(nm: Str) -> Bool {
     if or2(seq2(nm, "print"), or2(seq2(nm, "println"), seq2(nm, "panic"))) { return true }
     if or2(seq2(nm, "assert"), or2(seq2(nm, "assert_eq"), seq2(nm, "assert_ne"))) { return true }
-    if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), seq2(nm, "fs_mkdir")))))) { return true }
+    if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), or2(seq2(nm, "fs_mkdir"), or2(seq2(nm, "read_file_bytes"), or2(seq2(nm, "bytes_len"), or2(seq2(nm, "bytes_at"), or2(seq2(nm, "bytes_slice"), or2(seq2(nm, "bytes_to_str"), or2(seq2(nm, "read_bytes_len"), seq2(nm, "read_bytes_at"))))))))))))) { return true }
     if or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "utf8_enc"))) { return true }
     if or2(seq2(nm, "now_ms"), seq2(nm, "now_ms_text")) { return true }
     if seq2(nm, "ctron_entry") { return true }

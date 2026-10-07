@@ -258,6 +258,25 @@ fn dep_reg_sha(regroot: Str, nm: Str, ver: Str) -> Str {
     return r
 }
 
+// blob 值形态:sha256: 前缀 + 64 位小写 hex(S4-①;不符返描述,合返回 "")
+fn dep_blob_check(v: Str) -> Str {
+    if v.len != 71 {
+        return "sha256:<64 位小写 hex>"
+    }
+    if byte_slice(v, 0, 7) != "sha256:" {
+        return "sha256:<64 位小写 hex>"
+    }
+    var i: I32 = 7
+    while i < 71 {
+        var c = byte_at(v, i)
+        if (c < 48 || c > 57) && (c < 97 || c > 102) {
+            return "sha256:<64 位小写 hex>"
+        }
+        i += 1
+    }
+    return ""
+}
+
 // 单 dep 解析(nm/form/val/extra 出 pkg_deps_text 4 槽组;本 fn 零 match——
 // 发射约束「单 match 每函数(t_mv)」,读取面全走辅助)
 fn dep_resolve_one(mfdir: Str, regroot: Str, locks: List[Str], nm: Str, form: Str, val: Str, extra: Str, entries: List[Str], diags: List[Str], notes: List[Str]) {
@@ -337,6 +356,27 @@ fn dep_resolve_one(mfdir: Str, regroot: Str, locks: List[Str], nm: Str, form: St
             }
         }
         dep_ent_commit(entries, nm, pick, "registry", "", "", "", actual2, diags)
+        return
+    }
+    // blob 形(S4-①,闭源分发 §7 第四来源):消费 = deps/<nm>.ctart 密封工件;
+    // blob 值 = 需求摘要(sha256:<hex>),与工件 self_digest 对账;lock 钉 blob 摘要
+    if form == "blob" {
+        var badb = dep_blob_check(val)
+        if badb.len > 0 {
+            diags.push("Ctron.ctcl: E5046 键 blob 值 '" + val + "' 不符合 " + badb)
+            return
+        }
+        var adir = mfdir + "/deps/" + nm + ".ctart"
+        var asd = pkg_meta_self_digest(adir)
+        if asd.len == 0 {
+            diags.push("Ctron.ctcl: E5052 dep 解析失败:" + nm + "(blob 形)工件缺失或未验(deps/" + nm + ".ctart;须 seal 摘要步骤)")
+            return
+        }
+        if asd != val {
+            diags.push("Ctron.ctcl: E5054 dep 工件摘要不符:" + nm + " 需求 " + val + " 实际 " + asd + "(deps/" + nm + ".ctart;重封或改清单)")
+            return
+        }
+        dep_ent_commit(entries, nm, "0.0.0", "blob", "", "", "", val, diags)
         return
     }
     // git 形:v0 不取网(坑位:T43 对外发布面禁令)——消费 pkgs/ 安装位,lock 钉 rev+digest

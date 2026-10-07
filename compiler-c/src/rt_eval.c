@@ -1,4 +1,8 @@
 #include "rt_internal.h"
+
+// L4-②:read_bytes_len/at 共享缓冲(配对面)
+static unsigned char* ctron_rb = NULL;
+static long ctron_rbn = 0;
 #include <errno.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -1009,6 +1013,30 @@ val eval_expr(rt* R, cexpr* e) {
                 o.s = "";
                 return o;
             }
+            // L4-②:字节读原语(len 装载至文件级缓冲 + at 逐字节;配对使用)
+            if (!strcmp(nm, "read_bytes_len")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_bytes_len 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                FILE* f = fopen(path, "rb");
+                if (!f) return v_int(-1, 64, 0);
+                fseek(f, 0, SEEK_END);
+                long sz = ftell(f);
+                fseek(f, 0, SEEK_SET);
+                if (ctron_rb) free(ctron_rb);
+                ctron_rb = (unsigned char*)malloc((size_t)(sz > 0 ? sz : 1));
+                size_t rd = sz > 0 ? fread(ctron_rb, 1, (size_t)sz, f) : 0;
+                fclose(f);
+                ctron_rbn = (long)rd;
+                return v_int((long long)rd, 64, 0);
+            }
+            if (!strcmp(nm, "read_bytes_at")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_bytes_at 实参");
+                val iv = eval_expr(R, e->elems[0]);
+                long long i = (long long)iv.i;
+                if (!ctron_rb || i < 0 || i >= (long long)ctron_rbn) return v_int(0, 32, 0);
+                return v_int((long long)ctron_rb[i], 32, 0);
+            }
             if (!strcmp(nm, "read_file")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_file 实参");
                 val pv = eval_expr(R, e->elems[0]);
@@ -1143,6 +1171,72 @@ val eval_expr(rt* R, cexpr* e) {
                 char* ar = ctron_arena_strndup(R->a, buf, got);
                 free(buf);
                 return v_str_own(R, ar);
+            }
+            // L4-②:Bytes 值级族(V_ARR of V_INT 表示;读全量/长/取/切/转串)
+            if (!strcmp(nm, "read_file_bytes")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "read_file_bytes 实参");
+                val pv = eval_expr(R, e->elems[0]);
+                const char* path = (pv.k == V_STR && pv.s) ? pv.s : "";
+                FILE* f = fopen(path, "rb");
+                if (!f) rt_abort(R, RT_PANIC, "bytes read open 失败");
+                fseek(f, 0, SEEK_END);
+                long sz = ftell(f);
+                fseek(f, 0, SEEK_SET);
+                // FB-勘验:arena 块上 items[0] 在后续语句被覆写(指针值,k 保留)
+                // ——改 malloc 独立存储(插值 runner 短命,泄漏=设计;arena 交互归档待查)
+                val* items = (val*)malloc((size_t)(sz > 0 ? sz : 1) * sizeof(val));
+                size_t rd = 0;
+                for (long i = 0; i < sz; i++) {
+                    int c = fgetc(f);
+                    if (c == EOF) break;
+                    items[rd] = v_int((long long)c, 32, 0);
+                    rd++;
+                }
+                fclose(f);
+                return v_arr(items, rd);
+            }
+            if (!strcmp(nm, "bytes_len")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "bytes_len 实参");
+                val b = eval_expr(R, e->elems[0]);
+                if (b.k != V_ARR) rt_abort(R, RT_ERROR, "bytes_len 目标非 Bytes");
+                return v_int((long long)b.nitems, 64, 0);
+            }
+            if (!strcmp(nm, "bytes_at")) {
+                if (e->nelems != 2) rt_abort(R, RT_ERROR, "bytes_at 实参");
+                val b = eval_expr(R, e->elems[0]);
+                val iv = eval_expr(R, e->elems[1]);
+                if (b.k != V_ARR) rt_abort(R, RT_ERROR, "bytes_at 目标非 Bytes");
+                long long i = (long long)iv.i;
+                if (i < 0 || (unsigned long long)i >= b.nitems) rt_abort(R, RT_PANIC, "bytes index out of bounds");
+                return b.items[i];
+            }
+            if (!strcmp(nm, "bytes_slice")) {
+                if (e->nelems != 3) rt_abort(R, RT_ERROR, "bytes_slice 实参");
+                val b = eval_expr(R, e->elems[0]);
+                val av = eval_expr(R, e->elems[1]);
+                val nv = eval_expr(R, e->elems[2]);
+                if (b.k != V_ARR) rt_abort(R, RT_ERROR, "bytes_slice 目标非 Bytes");
+                long long a = (long long)av.i;
+                long long n = (long long)nv.i;
+                if (a < 0 || n < 0 || a + n > (long long)b.nitems) rt_abort(R, RT_PANIC, "bytes slice range");
+                // FB-勘验:arena 目的存储遭后续覆写(items[0].i=指针值)——同读面改 malloc 旁路
+                val* items = (val*)malloc((size_t)(n > 0 ? n : 1) * sizeof(val));
+                for (long long k = 0; k < n; k++) items[k] = b.items[a + k];
+                return v_arr(items, (size_t)n);
+            }
+            if (!strcmp(nm, "bytes_to_str")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "bytes_to_str 实参");
+                val b = eval_expr(R, e->elems[0]);
+                if (b.k != V_ARR) rt_abort(R, RT_ERROR, "bytes_to_str 目标非 Bytes");
+                size_t n = b.nitems;
+                char* buf = (char*)ctron_arena_alloc(R->a, n + 1);
+                size_t n2 = 0;
+                for (size_t i = 0; i < n; i++) {
+                    if (b.items[i].i == 0) break;
+                    buf[n2++] = (char)b.items[i].i;
+                }
+                buf[n2] = 0;
+                return v_str_own(R, buf);
             }
             if (!strcmp(nm, "flush_out")) {
                 // 把 print/println 的缓冲立即写到真实 stdout(LSP 每帧后调用)

@@ -475,3 +475,83 @@ trace(S3)、命名空间(S4)、S1b(加速线)。
 状态:✅ S3-α 完成(2026-10-07)。S3 余:S3-β(FakeFs 效果函数录制/加载期
 复放腿接线 + E4040/标量 json 写入器/零参 fn)。S4 余:命名空间 + deps
 `blob =` 形。S1b:加速线挂账维持。
+
+## S3-β 首片落地(2026-10-07,T50 批):verify 复放腿 + E5056 + 轨迹面健壮化
+
+- **deep verify 复放腿(§7.2 verify = 校验和 + 复放轨迹,首兑现)**:
+  `ctron pkg verify --deep` = ctron-verify native 摘要 + 编排层逐案复放——
+  构临时消费工程(deps/<pkg>.ctart 拷入),按轨迹码gen `use <pkg>.<mod>.{fns}`
+  消费驱动经 loader 跑(bin/ctron-cc source 模式),工件行为 vs 录制期望逐字
+  比对;traces 在场即必复放(fail-closed:缺 ctron-cc 硬失败不静默)。
+- **E5056 = 轨迹复放不符**(三面注册:meta_check 码表/conformance 表/diag_msg
+  双语模板——spec §5.2 占位 E4040 已被 `#[trusted]` 面占用,实配 E5056;
+  当前载体 = verify --deep 工具面,加载期编译器发射腿预留,模板已预置)。
+- **陈旧信任证据硬拒**:traces/<mod>.ctrt 的模块不在工件 impl/ = 拒
+  (重封未重录的漂移场景强制显式清理——信任工件要求精确)。
+- **轨迹面健壮化**:replay 解析改行制(每用例三行 fn/args/expect,read 保空
+  字段)——零参 fn 与空 expect 全支持(α 的 tab 切分丢字段病灶拔除);
+  编译器诊断走 stdout,失败捕获改 2>&1 合并打印。
+- **门**:smoke 3u 腿二断言(deep 复放正例 2 用例全符/行为漂移 vs 旧轨迹
+  E5056 精准拒载)+ 3t 顺序修复(篡改步后恢复原值——复放腿上岗后 3t 旧序
+  自我拦截);全量 **200 ok / 0 fail**;native 八驱动族重建。
+- **D3 论题端到端实演**:行为漂移工件(源改 6 重封)+ 旧轨迹(期望 5)→
+  deep verify 拒载,E5056 点名 `five() 记录 5 实际 6`——「确定性重放取代
+  信任发布者」首次全链贯通(摘要链 → 轨迹 → 拒载)。
+
+状态:✅ S3-β 首片完成(2026-10-07)。S3 余:S3-γ(FakeFs 效果函数脚本化
+录制/复放)、标量 json 写入器(std 能力件)、加载期编译器发射腿。S4 余:
+命名空间 + deps `blob =` 形。S1b:加速线挂账维持。
+
+## S3-γ 落地(2026-10-07,T50 批):效果函数轨迹(脚本化 MemFs)全绿
+
+- **机制**:效果函数 = `&Fs` 能力接收者(§8.1 trait Fs: Cap;std.fs.Fs +
+  07a MemFs 注入先例)。轨迹块新增 `fs "<path>" = "<content>"` 种子行
+  (0..N,机写);录制/复放/verify 复放腿三处码gen 同构:按种子内嵌
+  MemFs class+impl(读-only;write no-op=写效果捕获登记),γ 用例主为
+  `match <fn>(args) { Ok(v) => println(v.to_string())  Err(_) => println("<err>") }`
+  ——Ok 值与 Err 哨兵都进对账(Err/Ok 漂移即 E5056,非"运行失败")。
+- **CLI**:`--fs <path>=<content>` 种子挂最近 `--case`(可多对);args 位写
+  MemFs 变量名 `fs`(如 `--case 'greet=fs'`);码gen 驱动运行逐命令带
+  `CTRON_STDPATH=ROOT/lib/std`(dev 布局 ctron-cc exe 旁 std 解析落空;
+  单命令作用域不污染 smoke 环境,避 W8901 雷)。
+- **实现警示(血泪)**:python 生成 shell 时转义层会吞 `\"`(TR_INIT 裸值
+  实红);管道假 rc 四犯再现(PIPESTATUS 是 bash,zsh 用 pipestatus);
+  测试 sed 打点必须锚定唯一行(=`"ada"` 双行命中把期望一起翻了,漂移检验
+  自我失效)。sh+ps1 双面同文(ps1 dict-case + regex fs 行扩展)。
+- **边界(诚实登记)**:读-only 效果(write 捕获=S3-δ,需 mut 能力形态);
+  单 `fs` 变量(多能力参数随 β 后);种子经 CLI 单行(content 不含换行/tab);
+  Err 哨兵 `<err>` 字面冲突不复存在场景=返回值恰为该串(概率级,登记)。
+- **门**:smoke 3v 腿五断言(γ 录制/复放/种子漂移 mismatch/恢复/deep γ 复放);
+  全量 **205 ok / 0 fail**。插曲:一轮 13/9 败集跨无关腿且计数漂移 = 对端
+  机刷正于本 worktree 并发 checkout+build+smoke(进程在册实拿),等槽位
+  清场后复跑即清——败集跨腿漂移先查并发作业再立案。
+
+状态:✅ S3-γ 完成(2026-10-07)。信任协议(S3)录制/复放/verify 三层全通。
+S3 余:S3-δ(写效果捕获)、标量 json 写入器(std 能力件)、加载期编译器
+发射腿。S4 余:命名空间 + deps `blob =` 形。S1b:加速线挂账维持。
+
+## S4-① 落地(2026-10-07,T50 批):deps `blob =` 第四来源形 + 源消费方 record 面
+
+- **E5049 扩四形**:dep 来源互斥注册表序 path < git+rev < version < blob
+  (pkg_deps_text:同现点名扩至四标签;缺来源文案扩 "| blob");blob 槽 =
+  4 槽组 [name, "blob", value, ""]。
+- **driver 消解(dep_resolve_one blob 臂)**:E5046 值形态校验(sha256:+64
+  小写 hex,dep_blob_check);消费 = deps/<nm>.ctart,artifact self_digest 与
+  blob 值对账(缺/未验 → E5052,不符 → E5054 点名双摘要);lock 钉
+  source="blob" + digest=blob 值。
+- **loader record 面(源消费方诚实边界闭合)**:pkg_load_use_done 工件分支,
+  顶层源(ameta="")时读消费方清单 Ctron.ctcl 的 dep blob 记录——有记录即与
+  工件 self_digest 对账(不符 → E5054;工件缺 self_digest → E5055);无 blob
+  记录 = 记录面缺位,维持 L2 边界不拒。新 fn pkg_meta_dep_field(清单 dep 块
+  字段提取泛化,+1 decl,锁 514→515 随批申报)。
+- **门**:smoke 3w 腿五断言(blob 正例 t=12/E5054 错摘要/E5049 四形互斥/
+  driver 消解 lock 钉定/E5046 值形态);全量 **210 ok / 0 fail**;meta_check
+  1 败 = 对端 L4 在飞件(tests/03m_binary_nul_probe.ct 未提交 WIP,git status
+  实证,非本批);native 八驱动族重建。
+- **D8-2 L2 诚实边界清算**:「顶层源消费方无记录面」自此有解——清单 blob
+  记录 = 显式信任锚(§7.2 消费锚三件的 digest 件);t=7 静默错版本洞对
+  源消费方同步闭合。
+
+状态:✅ S4-① 完成(2026-10-07)。S4 余:透明日志仓/attest、跨发布者
+命名空间。S3 余:S3-δ(写效果捕获)、标量 json 写入器、加载期发射腿。
+S1b:加速线挂账维持。

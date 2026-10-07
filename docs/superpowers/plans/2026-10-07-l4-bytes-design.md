@@ -28,3 +28,24 @@
 ## 关联
 
 03m 探针=量尺;FB-1 byte_slice 越界防护(已落库)为 L4-② 的护栏前提;spec §8 read 签名为类型级依据。
+
+
+## 施工实录(1007)
+
+**L4-③ emit 面已落地(五点先例)**:parse_pkg 名单/sem_calls prel/sem_type prelude_ok 值位门(三名单缺一即 E2020)/trans_expr 五映射/trans_ty "YB" 码+ct_ctype ctron_bytes*+call typeof 五臂/driver_emit ctron_bytes 模板(fread 全量读,bytes_at/slice 越界响亮 panic,to_str NUL 止)。锚 fx_bytes(smoke 扫描 195/0 基线,写后读回形双臂逐字一致)。**二进制 NUL 形 emit 已证**(/bin/echo 101136=精确长,magic 字节 202/190 ✓)。
+
+**interp 面=降级已文档化**(read_bytes 走 C 串域 NUL 截断;写后读回文本形双臂一致,二进制形 interp=4 vs emit=101136)。**L4-②(宿主字节原语)未施工**——升起需 compiler-c 读原语(rt) + interp read_bytes 换 host 通道;03m 双臂翻绿以此为门。
+
+
+## 施工实录二(1007 续)
+
+**L4-② 自举通道已通**:host 原语两臂(read_bytes_len 装载静态缓冲/at 逐字节,rt_eval)+interp read_bytes 换通道+名单四处(prelude_ok 值位门=第三名单实证)+emit 映射/模板。**interp /bin/echo = 101136 202 4 190 = emit 逐字一致**(全量字节贯通)。
+
+**发现并让名:host 早有 `read_bytes(n)`=stdin LSP 协议内建(rt_eval 1155)**——本设计 face 改名 `read_file_bytes`(全量文件字节)。host 值级四臂(read_file_bytes/bytes_len/bytes_at/bytes_slice/bytes_to_str,V_ARR of V_INT 表示)已入,bytes_len ✓(小文件 4);**残余 triage:bytes_at 返回垃圾值(44380013360,items 内容/生命周期)+ 大文件 SIGBUS(101136 值数组)**——疑 v_arr/items 交互或 arena 块语义,下片首查。
+
+**03m 量尺 v2 已落库**(红=本残余门)。FB-12 双模已实施(argv offset:run=3/裸=1,双模实测 ✓)。
+
+
+## 施工实录三(1007 续二)
+
+**L4-② 完成**:①compiler-c rt_eval 双原语臂(read_bytes_len 静态缓冲装载/at 逐字节)②interp read_bytes 换 len/at 通道(全量 NUL 保真)③名单四处(prelude_ok 值位门=parse_pkg/sem_calls/sem_type 三处,or2 链程序化生成保平衡)④emit 映射+模板(read_bytes_len/at)⑤让名 read_bytes→read_file_bytes(host stdin LSP 内建冲突)。**三面全绿:host 03m=101136/88499/1(原生臂同)——03m 量尺翻绿**。残余勘验在册:arena 块上 items[0] 被后续覆写(指针值,k 保留)——读/切面改 malloc 旁路(插值 runner 短命,泄漏=设计);arena 交互机理归档待查。
