@@ -15,7 +15,7 @@ pub fn esc(s: Str) -> Str {
     while i < s.len {
         var c = byte_at(s, i)
         if c == 34 {
-            out = out + q
+            out = out + e + q
         } else if c == 92 {
             out = out + e + e
         } else if c == 8 {
@@ -987,7 +987,35 @@ pub fn jw_ent(path: Str, tag: Str, val: Str) -> List[Str] {
     return e
 }
 
+// ---- 标量规范形(S3 轨迹值编码;§5.1 字节级钉死;RFC 8259 标量)----
+// JSON number:整数 = 十进制原文(F64 形态未纳:浮点文本格式语言侧未钉,登记)
+pub fn num_json(v: I64) -> Str {
+    return v.to_string()
+}
+
+// JSON bool
+pub fn bool_json(v: Bool) -> Str {
+    if v {
+        return "true"
+    }
+    return "false"
+}
+
+// JSON string:esc 已含引号(显式别名,语义锚定 S3 轨迹契约)
+pub fn str_json(v: Str) -> Str {
+    return esc(v)
+}
+
 // ============ 测试 ============
+
+test "scalar json canonical forms" {
+    assert_eq(num_json(42), "42")
+    assert_eq(num_json(0 - 7), "-7")
+    assert_eq(bool_json(true), "true")
+    assert_eq(bool_json(false), "false")
+    assert_eq(str_json("ada"), "\"ada\"")
+    assert_eq(str_json("a\"b"), "\"a\\\"b\"")
+}
 
 test "esc round trip" {
     let e = esc("tab\there")
