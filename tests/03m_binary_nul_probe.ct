@@ -1,39 +1,29 @@
-// 03m_binary_nul_probe.ct —— L4 生死探针:含 NUL 字节过 Str 读链(byte_at 扫描/中段切片重组)保真?
-// 判定(只量 nuls 与 mid_ok 两项):nuls>0 且 mid_ok=1 → 链路保真观测成立;
-//       任一不满足 → L4 立项(Upload.data: Bytes 等 §13-③ 面待其)
-// (本探针不测 write-back/round_len 写回门——该门不在量程内,勿据本文件下写回结论)
-use std.fs.{ read_or }
-
+// 03m_binary_nul_probe.ct —— L4 量尺 v2:read_bytes 全量字节链 NUL 保真
+// (判定只量 nuls 与 mid_ok:nuls>0 且 mid_ok=1 → 字节链保真成立)
+// v1(read_or Str 链)=Str NUL 终结结构性局限,Red 账随 L4 设计立稿归档
+// (docs/superpowers/plans/2026-10-07-l4-bytes-design.md)
 fn main() -> I32 {
-    let bin = read_or("/bin/echo", "")
-    println("len:" + bin.len.to_string())
+    let bin = read_bytes("/bin/echo")
+    println("len:" + bytes_len(bin).to_string())
     var nuls: I32 = 0
     var i: I32 = 0
-    while i < bin.len {
-        if byte_at(bin, i) == 0 {
+    while i < bytes_len(bin) {
+        if bytes_at(bin, i) == 0 {
             nuls += 1
         }
         i += 1
     }
     println("nuls:" + nuls.to_string())
-    var mid = ""
-    var j: I32 = bin.len / 2
-    while j < bin.len / 2 + 16 {
-        mid = mid + byte_slice(bin, j, j + 1)
-        j += 1
-    }
-    var ok = true
+    let half = bytes_len(bin) / 2
+    let mid = bytes_slice(bin, half, 8)
+    var mid_ok: I32 = 1
     var k: I32 = 0
-    while k < 16 {
-        if byte_at(mid, k) != byte_at(bin, bin.len / 2 + k) {
-            ok = false
+    while k < 8 {
+        if bytes_at(mid, k) != bytes_at(bin, half + k) {
+            mid_ok = 0
         }
         k += 1
     }
-    println("mid_ok:" + (if ok { "1" } else { "0" }))
+    println("mid_ok:" + mid_ok.to_string())
     return 0
-}
-
-test "probe file carries runnable block" {
-    assert(true)
 }
