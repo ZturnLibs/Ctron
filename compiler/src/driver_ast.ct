@@ -58,21 +58,24 @@ fn ast_emit_node(d: List[Str], k: List[Str], v: List[Str], out: List[Str], depth
 
 fn main() -> I32 {
     var path = "ANCHORINPUT"
-    var s = ""
-    var have = false
     var epath = ctron_entry()
     if seq2(epath, "") {
         epath = path
     }
-    match read_file("ANCHORINPUT") {
+    var s = ""
+    var have = false
+    let src = read_file("ANCHORINPUT")
+    match src {
         Some(x) => {
-            s = x
-            have = true
+            if x.len > 0 {
+                s = x
+                have = true
+            }
         }
         None => {}
     }
     if !have {
-        print("read-failed")
+        print("read-failed:" + epath)
         return 1
     }
     var toks = List[Str]()
@@ -90,7 +93,10 @@ fn main() -> I32 {
         }
         return 1
     }
-    var mode = ctron_cli_flag("ast")
+    var mode = env_get("CTRON_AST_MODE")
+    if mode.len == 0 {
+        mode = ctron_cli_flag("ast")
+    }
     if mode.len == 0 {
         mode = "ANCHORAST"
     }
@@ -114,11 +120,17 @@ fn main() -> I32 {
         sj += 1
     }
     if seq2(mode, "seal") {
-        var outdir = ctron_cli_flag("astout")
+        var outdir = env_get("CTRON_AST_OUT")
+        if outdir.len == 0 {
+            outdir = ctron_cli_flag("astout")
+        }
         if outdir.len == 0 {
             outdir = "ANCHOROUT"
         }
-        var name = ctron_cli_flag("astname")
+        var name = env_get("CTRON_AST_NAME")
+        if name.len == 0 {
+            name = ctron_cli_flag("astname")
+        }
         if name.len == 0 {
             name = "ANCHORNAME"
         }

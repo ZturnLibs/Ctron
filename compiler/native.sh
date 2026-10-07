@@ -35,6 +35,7 @@ mkdir -p "$BIN"
 "$DIR/ctc.sh" emit "$DIR/build/cc_doc.ct"  "$TMP/ctron_doc.c"  > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_dep.ct"  "$TMP/ctron_dep.c"  > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_verify.ct" "$TMP/ctron_verify.c" > /dev/null
+"$DIR/ctc.sh" emit "$DIR/build/cc_ast.ct" "$TMP/ctron_ast.c" > /dev/null
 
 case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
@@ -86,3 +87,6 @@ echo "native: bin/ctron-dep(依赖解析驱动,T49)← $(wc -l < "$TMP/ctron_dep
 
 cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c"
 echo "native: bin/ctron-verify(工件深验驱动,T50/L3 载体)← $(wc -l < "$TMP/ctron_verify.c") 行 C"
+
+cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c"
+echo "native: bin/ctron-ast(封印/序列化驱动,T50/S4-④)← $(wc -l < "$TMP/ctron_ast.c") 行 C"

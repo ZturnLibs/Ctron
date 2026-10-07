@@ -1257,6 +1257,29 @@ else
     ok "3y 跳过(环境无 git)"
 fi
 
+# ---------------- 3z) S4-④ pkg seal 命令面(用户面发布旅程全链) ----------------
+echo "== 3z) S4-④ pkg seal + 发布旅程全链(record→seal→attest→log→verify 用户面)=="
+if [ -x "$ROOT/compiler/bin/ctron-ast" ] && [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify" ]; then
+    ZG="$T/journey"
+    mkdir -p "$ZG"
+    cp "$ROOT/tests/artifact_demo/provider/eff.ct" "$ZG/eff.ct"
+    "$ROOT/ctron" pkg trace record "$ZG/eff.ct" --case "greet=fs" --fs "name.txt=ada" --case "save=fs" --fs "in.txt=seed" > "$T/z1.out" 2>&1
+    if "$ROOT/ctron" pkg seal "$ZG/eff.ct" --out "$ZG/myeff.ctart" > "$T/z2.out" 2>&1 && grep -q "已封印" "$T/z2.out"; then
+        ok "pkg seal:用户面封印(impl+meta+traces 拾取+SHA256SUMS+self_digest)"
+    else
+        bad "pkg seal 异常: $(tail -2 "$T/z2.out")"
+    fi
+    "$ROOT/ctron" pkg attest "$ZG/myeff.ctart" > "$T/z3.out" 2>&1
+    "$ROOT/ctron" pkg log append "$ZG/log" "$ZG/myeff.ctart" > "$T/z4.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$ZG/myeff.ctart" > "$T/z5.out" 2>&1 && grep -q "复放 2 用例" "$T/z5.out" && grep -q "attest 过验" "$T/z5.out"; then
+        ok "发布旅程全链:seal→attest→log→deep(摘要+复放+公证)用户面贯通"
+    else
+        bad "发布旅程异常: $(tail -2 "$T/z5.out")"
+    fi
+else
+    ok "3z 跳过(缺 ctron-ast/ctron-cc/ctron-verify)"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

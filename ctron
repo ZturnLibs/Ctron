@@ -687,6 +687,64 @@ cmd_pkg_log() {
     exit 0
 }
 
+# T50/S4-④:pkg seal —— 发布封印用户面(§7.2 旅程第一步):bin/ctron-ast
+# (env 通道 CTRON_AST_MODE/OUT/NAME)+ 编排三件(traces 拾取/SHA256SUMS/
+# self_digest,与 ctc.sh ast 面同构;sha256_file 载体)。
+cmd_pkg_seal() {
+    [ $# -ge 1 ] || die2 "pkg seal 需要源文件(用法: pkg seal <src.ct> [--out <目录>] [--name <工件名>])"
+    SL_SRC=""
+    SL_OUT=""
+    SL_NAME=""
+    SL_PREV=0
+    for SL_A in "$@"; do
+        if [ "$SL_PREV" = 1 ]; then
+            SL_OUT=$SL_A
+            SL_PREV=0
+            continue
+        fi
+        if [ "$SL_PREV" = 2 ]; then
+            SL_NAME=$SL_A
+            SL_PREV=0
+            continue
+        fi
+        case $SL_A in
+            --out) SL_PREV=1 ;;
+            --out=*) SL_OUT=${SL_A#--out=} ;;
+            --name) SL_PREV=2 ;;
+            --name=*) SL_NAME=${SL_A#--name=} ;;
+            *) [ -z "$SL_SRC" ] && SL_SRC=$SL_A ;;
+        esac
+    done
+    [ -n "$SL_SRC" ] || die2 "pkg seal 需要源文件"
+    [ -f "$SL_SRC" ] || die2 "pkg seal: 源文件不存在: $SL_SRC"
+    if grep -q "fn main" "$SL_SRC"; then
+        die2 "pkg seal: 源含 main(provider 模块面)"
+    fi
+    [ -x "$BIN/ctron-ast" ] || die2 "pkg seal: 缺 ctron-ast(重装工具链;或先: compiler/native.sh)"
+    SL_SRCDIR=$(CDPATH= cd -- "$(dirname -- "$SL_SRC")" && pwd)
+    SL_BASE=$(basename -- "$SL_SRC" .ct)
+    [ -n "$SL_NAME" ] || SL_NAME=$SL_BASE
+    [ -n "$SL_OUT" ] || SL_OUT="$SL_SRCDIR/$SL_NAME.ctart"
+    mkdir -p "$SL_OUT/impl"
+    CTRON_AST_MODE=seal CTRON_AST_OUT="$SL_OUT" CTRON_AST_NAME="$SL_NAME" "$BIN/ctron-ast" run "$SL_SRC"
+    SL_RC=$?
+    [ "$SL_RC" -eq 0 ] || exit 1
+    if [ -d "$SL_SRCDIR/traces" ] && [ ! -e "$SL_OUT/traces" ]; then
+        cp -r "$SL_SRCDIR/traces" "$SL_OUT/traces"
+    fi
+    (
+        cd "$SL_OUT" || exit 1
+        rm -f SHA256SUMS
+        { find impl -type f; if [ -d traces ]; then find traces -type f; fi; } | LC_ALL=C sort | while IFS= read -r f; do
+            printf '%s  %s\n' "$(sha256_file "$f")" "$f"
+        done > SHA256SUMS
+    )
+    SL_SD=$(sha256_file "$SL_OUT/SHA256SUMS")
+    awk -v sd="$SL_SD" 'BEGIN{ins=0} ins==0 && $0=="}" { print "  self_digest = \"sha256:" sd "\""; ins=1 } { print }' "$SL_OUT/meta.ctcl" > "$SL_OUT/meta.ctcl.n" && mv "$SL_OUT/meta.ctcl.n" "$SL_OUT/meta.ctcl"
+    echo "ctron: 已封印 $SL_OUT(模块 $SL_BASE;self_digest sha256:$SL_SD)"
+    exit 0
+}
+
 [ $# -lt 1 ] && { usage; exit 2; }
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
@@ -861,7 +919,8 @@ case $CMD in
             trace) cmd_pkg_trace "$@" ;;
             attest) cmd_pkg_attest "$@" ;;
             log) cmd_pkg_log "$@" ;;
-            *) die2 "pkg: 未知子命令 '$PV_SUB'(现支持: verify trace attest log)" ;;
+            seal) cmd_pkg_seal "$@" ;;
+            *) die2 "pkg: 未知子命令 '$PV_SUB'(现支持: verify trace attest log seal)" ;;
         esac
         PV_DEEP=0
         PV_DIR=""
