@@ -642,3 +642,29 @@ S4 余:跨发布者命名空间。S1b:加速线挂账维持。
 - **门**:json 自测 rc=0(新标量测试+esc 回程);全量 **218 ok / 1 fail**
   (唯一败 = conc_bytes,对端 L4 bytes 域在册);meta_check 过;**std 种副
   镜像同步**(std 漂移腿一次红即打回,镜像纪律生效)。
+## S4-④ 落地(2026-10-07,T50 批):`ctron pkg seal` 命令面(bin/ctron-ast native 化)
+
+- **原生封印驱动**:bin/ctron-ast(cc_ast native 化;native.sh 第九驱动)。
+  driver_ast 输入/旗标三通道改 **env→cli→锚 逆序兜底**(CTRON_AST_MODE/OUT/
+  NAME env 优先,ctron_cli_flag 次之,ANCHOR 字面量收尾=seed sed 换靶位);
+  锚读改 driver_dep 存活形(let+read_file 字面量,ct_swap_anchor 原生 CLI 化)。
+- **用户面**:`ctron pkg seal <src.ct> [--out <目录>] [--name <名>]`(sh+ps1
+  同文)——ctron-ast(env 通道)+ 编排三件(traces 拾取/SHA256SUMS/self_digest,
+  sha256_file 载体,与 ctc.sh ast 面同构);缺 main 预检;缺省
+  <srcdir>/<名>.ctart。
+- **门**:smoke 3z 腿二断言(pkg seal 用户面封印/发布旅程全链 record→seal→
+  attest→log→deep 摘要+复放+公证);全量 **221 ok / 1 fail**(唯一败 =
+  conc_bytes,对端 L4 bytes 域在册);ctc.sh seal 回归 bytes=276 历史值;
+  native 九驱动族。
+- **血坑(本批最大)**:env 兜底初版用 `seq2(mode,"ANCHORAST")` 守卫——
+  ctc.sh sed 会把守卫里的 ANCHOR 字面量一并换靶(守卫自毁成
+  `seq2(mode,"roundtrip")` 恒真 → env 覆写 → 全部走 dump/out → 43 败级联:
+  封印写到 ./out、工件腿全"impl 路径缺失")。**铁律:ANCHOR 字面量在 cc_*
+  源里是 sed 换靶位,任何守卫/比较都不得引用之;通道序必须 env→cli→锚
+  (锚只作末位缺省,永不入比较)**。
+- **§7.2 发布旅程自此双宿主全通**:pkg seal→trace→attest→log→push×2 →
+  消费方 blob+verify --deep(摘要+轨迹+公证)。
+
+状态:✅ S4-④ 完成(2026-10-07)。S4 余:跨发布者命名空间(触发件)。
+S3 余:标量 json 迁移、加载期编译器发射腿(E5056/E5057 模板预置)。
+S1b:加速线挂账维持。
