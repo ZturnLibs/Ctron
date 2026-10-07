@@ -102,9 +102,9 @@ fn main() -> I32 {
             if d.len > 0 {
                 var br = run_block(file, statics_env(file), "", d[5], false)
                 if br.kind == "a" {
-                    // P1-A2:panic 流也输出累积 out(Drop 体 println 已入账,§6.4 展开可观察)
+                    // P1-A2:panic 消息已在 panic 点即时 stderr(panic 内建冲刷,
+                    // §6.4+eprint 对齐);此处只补展开期残余 out(Drop 体 println)
                     print(br.out)
-                    print(fmt(br.v))
                     return 1
                 }
                 print(br.out)
@@ -113,7 +113,6 @@ fn main() -> I32 {
             var tr = run_tests(file)
             if tr.kind == "a" {
                 print(tr.out)
-                print(fmt(tr.v))
                 return 1
             }
             print(tr.out)

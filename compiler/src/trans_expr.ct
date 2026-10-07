@@ -1323,9 +1323,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:print struct")
                 return ""
             }
-            if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "));" }
+            if at2 == "s" { return "printf(\"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             if at2 == "6" { return "printf(\"%lld\", (long long)(" + ct_call_args(ag, 1, env, file, "") + "))" }
             return "printf(\"%d\", (int)(" + ct_call_args(ag, 1, env, file, "") + "))"
+        }
+        if callee == "eprint" {
+            // §9 stderr 面:Str 直写宿主 stderr(无换行,调用方拼 "\n");与 interp
+            // eprint 内建同语义——panic 流分离双臂对齐的唯一发射口
+            var at5 = ct_typeof(ag[1], env, file)
+            if at5.len > 2 && byte_slice(at5, 0, 2) == "u:" {
+                panic("emit:eprint struct")
+                return ""
+            }
+            return "fprintf(stderr, \"%s\", (const char*)(" + ct_call_args(ag, 1, env, file, "") + "))"
         }
         if callee == "ctron_entry" { return "ctron_entry()" }
         if callee == "ctron_exe_path" { return "ctron_exe_path()" }

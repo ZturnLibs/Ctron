@@ -22,7 +22,7 @@ fn seq2(a: Str, b: Str) -> Bool {
 //          tc[6]=vars tc[7]=varAr tc[8]=enums tc[9]=lets tc[10]=reads
 //          tc[11]=isrc(插值原文) tc[12]=prel(前奏名,W8040) tc[13]=tpars(类型参数名)
 fn prelude_ok(nm: Str) -> Bool {
-    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), seq2(nm, "panic"))) { return true }
+    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "eprint"), seq2(nm, "panic")))) { return true }
     if or2(seq2(nm, "assert"), or2(seq2(nm, "assert_eq"), seq2(nm, "assert_ne"))) { return true }
     if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), or2(seq2(nm, "fs_mkdir"), or2(seq2(nm, "read_file_bytes"), or2(seq2(nm, "bytes_len"), or2(seq2(nm, "bytes_at"), or2(seq2(nm, "bytes_slice"), or2(seq2(nm, "bytes_to_str"), or2(seq2(nm, "read_bytes_len"), seq2(nm, "read_bytes_at"))))))))))))) { return true }
     if or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "utf8_enc"))) { return true }

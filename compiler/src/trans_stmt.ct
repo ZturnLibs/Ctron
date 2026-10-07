@@ -1821,6 +1821,11 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
             eln("printf(\"%d\", (int)(" + ct_expr(e[2][1], env, file) + "));", env)
             return env
         }
+        if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "eprint" {
+            // §9 stderr 面(语句位):Str 直写宿主 stderr,与表达式位同形
+            eln("fprintf(stderr, \"%s\", (const char*)(" + ct_expr(e[2][1], env, file) + "));", env)
+            return env
+        }
         eln(ct_expr(e, env, file) + ";", env)
         return env
     }

@@ -13,7 +13,7 @@
 // ---- 沙箱白名单(T52 §5.1;插件表 ⊋ comp 表) ----
 // 自由 fn:I/O/时钟/C 编组/动态链接(插件包禁用;assert/panic 放行同 comptime 口径)
 fn sbx_banned_call(nm: Str) -> Bool {
-    if or2(seq2(nm, "print"), seq2(nm, "println")) { return true }
+    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), seq2(nm, "eprint"))) { return true }
     if or2(seq2(nm, "read_file"), seq2(nm, "read_dir")) { return true }
     if or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), seq2(nm, "fs_mkdir")))) { return true }
     if or2(seq2(nm, "now_ms"), seq2(nm, "now_ms_text")) { return true }

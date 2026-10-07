@@ -908,6 +908,24 @@ val eval_expr(rt* R, cexpr* e) {
                 free(b.d);
                 return v_void();
             }
+            if (!strcmp(nm, "eprint")) {
+                /* §9 stderr 面:先冲宿主 out 缓冲再写 stderr(时间序——镜像
+                 * native ctron_panic 的 fflush(stdout) 后写 stderr,2>&1 合流
+                 * 序双臂逐字一致);本调用不入 out 缓冲,无换行 */
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "eprint 实参");
+                sb b = {0};
+                val pv = eval_expr(R, e->elems[0]);
+                fmt_val(R, pv, &b);
+                if (R->out && R->out_n) {
+                    fwrite(R->out, 1, R->out_n, stdout);
+                    fflush(stdout);
+                    R->out_n = 0;
+                    R->out[0] = 0;
+                }
+                fprintf(stderr, "%s", b.d ? b.d : "");
+                free(b.d);
+                return v_void();
+            }
             if (!strcmp(nm, "byte_at")) {
                 if (e->nelems != 2) rt_abort(R, RT_ERROR, "byte_at 实参");
                 val sv = eval_expr(R, e->elems[0]);
