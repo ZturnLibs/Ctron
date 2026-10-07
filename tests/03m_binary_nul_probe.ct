@@ -27,3 +27,14 @@ fn main() -> I32 {
     println("mid_ok:" + mid_ok.to_string())
     return 0
 }
+
+test "nul chain" {
+    let b = read_file_bytes("/bin/echo")
+    assert(bytes_len(b) > 0)
+    let h = bytes_slice(b, 0, 4)
+    assert_eq(bytes_len(h), 4)
+    assert_eq(bytes_at(h, 0), bytes_at(b, 0))
+    println("h3:" + bytes_at(h, 3).to_string())
+    println("b3:" + bytes_at(b, 3).to_string())
+    assert_eq(bytes_at(h, 3), bytes_at(b, 3))
+}
