@@ -453,3 +453,25 @@ trace(S3)、命名空间(S4)、S1b(加速线)。
 
 状态:✅ L3 载体落地(2026-10-07)。余:trace 录制/复放协议(S3)、命名空间
 (S4)、S1b(加速线)——均触发线挂账。
+
+## S3-α 落地(2026-10-07,T50 批):黄金轨迹录制/复放(纯函数)全绿
+
+- **命令面**:`ctron pkg trace record <src.ct> --case <fn>=<args 字面量>
+  [--case ...]` / `ctron pkg trace replay <src.ct>`(sh+ps1 同文;宿主 =
+  bin/ctron-cc source 复放)。码gen = 编排层拼一次性驱动(src 原文 +
+  `fn main { println(<fn>(<args>).to_string()) }`),值规范形 = to_string
+  原文(同 fn 同参确定性等价;**标量 JSON 规范写入器 = S3-β 的 std 能力件**,
+  届时重录轨迹即迁移)。
+- **轨迹文件**:traces/<stem>.ctrt——CTCL 键控块机写(`trace "<fn>" { args /
+  expect }`);seal 编排拾取源旁 traces/ 入工件 + 并入 SHA256SUMS → 轨迹字节
+  由 self_digest 覆盖,防篡改免费继承(§3 布局 traces/ 首兑现;deep verify
+  对含 traces 工件直接过验)。
+- **诚实边界**:α 纯函数 only——效果函数(FakeFs 脚本化录制)、零参 fn
+  (tab 切分丢字段)、含 main 源(预检拦截)、加载期复放腿(verify 接线 +
+  E4040 编译器码)均划归 S3-β;字符串值引号转义仅 `\"` 一层(反斜杠原文保留)。
+- **门**:smoke 3t 腿四断言(录制 2 用例/复放一致/翻改 expect 点名双值拒/
+  seal 覆盖 traces + deep 过验);全量 **198 ok / 0 fail**。
+
+状态:✅ S3-α 完成(2026-10-07)。S3 余:S3-β(FakeFs 效果函数录制/加载期
+复放腿接线 + E4040/标量 json 写入器/零参 fn)。S4 余:命名空间 + deps
+`blob =` 形。S1b:加速线挂账维持。

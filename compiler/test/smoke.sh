@@ -1051,6 +1051,41 @@ else
     ok "3s 跳过(缺 compiler/bin/ctron-verify;先: compiler/native.sh)"
 fi
 
+# ---------------- 3t) S3-α 黄金轨迹(纯函数录制/复放;seal 覆盖 traces) ----------------
+echo "== 3t) S3-α pkg trace 录制/复放(值=to_string 规范形;seal 拾取 traces)=="
+if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
+    TF="$ROOT/tests/artifact_demo/base/base.ct"
+    TT="$T/trace"
+    mkdir -p "$TT"
+    cp "$TF" "$TT/base.ct"
+    if "$ROOT/ctron" pkg trace record "$TT/base.ct" --case "base_mul=3, 4" --case "base_mul=0, 5" > "$T/t1.out" 2>&1 && grep -q "2 用例" "$T/t1.out"; then
+        ok "轨迹录制:2 用例落 traces/base.ctrt"
+    else
+        bad "轨迹录制异常: $(tail -2 "$T/t1.out")"
+    fi
+    if "$ROOT/ctron" pkg trace replay "$TT/base.ct" > "$T/t2.out" 2>&1 && grep -q "replay OK: 2 用例" "$T/t2.out"; then
+        ok "轨迹复放:双侧逐字一致"
+    else
+        bad "轨迹复放误拒: $(tail -2 "$T/t2.out")"
+    fi
+    sed 's/expect = "12"/expect = "13"/' "$TT/traces/base.ctrt" > "$TT/traces/base.ctrt.n" && mv "$TT/traces/base.ctrt.n" "$TT/traces/base.ctrt"
+    if "$ROOT/ctron" pkg trace replay "$TT/base.ct" > "$T/t3.out" 2>&1; then
+        bad "轨迹不符未拒"
+    else
+        grep -q "trace mismatch" "$T/t3.out" && ok "不符腿:翻改 expect 精准点名双值" || bad "无 mismatch 文案: $(cat "$T/t3.out")"
+    fi
+    AD3="$TT/art"
+    mkdir -p "$AD3/impl"
+    "$COMP/ctc.sh" ast "$TT/base.ct" --ast=seal --astout="$AD3" --astname=mybase > "$T/t4.out" 2>&1
+    if grep -q "traces/base.ctrt" "$AD3/SHA256SUMS" && "$ROOT/ctron" pkg verify --deep "$AD3" > "$T/t5.out" 2>&1; then
+        ok "seal 覆盖 traces:SHA256SUMS 含轨迹行+deep 过验(防篡改免费继承)"
+    else
+        bad "seal traces 异常: $(tail -2 "$T/t5.out")"
+    fi
+else
+    ok "3t 跳过(缺 compiler/bin/ctron-cc;先: compiler/native.sh)"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

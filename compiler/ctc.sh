@@ -538,10 +538,16 @@ case $mode in
         # 插入 artifact 块(meta 首块,首个 ^} 即其闭括号)。摘要计算在编排层,
         # 编译器热路径零触碰(D8-2 分工冻结)。
         if [ "$rc" -eq 0 ] && [ "$ASTMODE" = seal ] && [ -f "$ASTOUT/meta.ctcl" ] && [ -d "$ASTOUT/impl" ]; then
+            # S3-α:源旁 traces/(黄金轨迹)→ 工件;轨迹字节随 SHA256SUMS/self_digest
+            # 覆盖,防篡改免费继承(§3 布局 traces/ 首兑现)。
+            SRCDIR=$(dirname -- "$IN")
+            if [ -d "$SRCDIR/traces" ] && [ ! -e "$ASTOUT/traces" ]; then
+                cp -r "$SRCDIR/traces" "$ASTOUT/traces"
+            fi
             (
                 cd "$ASTOUT" || exit 1
                 rm -f SHA256SUMS
-                find impl -type f | LC_ALL=C sort | while IFS= read -r f; do
+                { find impl -type f; if [ -d traces ]; then find traces -type f; fi; } | LC_ALL=C sort | while IFS= read -r f; do
                     printf '%s  %s\n' "$(ctc_sha "$f")" "$f"
                 done > SHA256SUMS
             )

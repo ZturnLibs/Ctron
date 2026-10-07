@@ -55,6 +55,11 @@ ctron —— Ctron 工具链驱动
                              密封工件(.ctart)摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算
                              + self_digest 重算;fail-closed,不过即 rc=1;--deep 走
                              in-language 发射验证器(ctron-verify,C 速,L3 载体)
+  ctron pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...]
+                             黄金轨迹录制(S3-α 纯函数):值=to_string 规范形,落
+                             traces/<stem>.ctrt;零参 fn 与含 main 源不支持
+  ctron pkg trace replay <src.ct>
+                             轨迹复放:逐字比对,不符即 rc=1 点名双值(S3-α)
   ctron new <dir>              脚手架:hello + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -92,7 +97,7 @@ H
     add) echo "ctron add <name>[@<版本约束>] —— 本地 registry 装包(T49):写 dep 块 + pkgs/<名>/ 安装(module+manifest)+ ctron-dep 刷新 Ctron.lock;registry = CTRON_REGPATH 或 ~/.ctron/registry;零网络";;
     publish) echo "ctron publish —— 当前目录单文件包发布到本地 registry(T49):manifest+module+sha256 三件落 <reg>/<名>/<版>/;版本不可覆盖;零网络(对外发布面启用仍须经用户确认)";;
     lock) echo "ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)";;
-    pkg) echo "ctron pkg verify <artifact-dir> [--deep] —— 密封工件摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算 + self_digest=sha256(SHA256SUMS 字节) 重算比对;缺 meta/SHA256SUMS/impl 或任一成员不符即 fail-closed rc=1;--deep = ctron-verify 发射验证器(in-language 重算,L3 载体);trace 复放腿归 S3";;
+    pkg) echo "ctron pkg verify <artifact-dir> [--deep] / pkg trace record|replay —— verify: 密封工件摘要自洽校验(D8-2 L1;SHA256SUMS 逐成员+self_digest 重算,fail-closed rc=1;--deep = ctron-verify 发射验证器 L3 载体);trace: 纯函数黄金轨迹录制/复放(S3-α,值=to_string 规范形);trace 复放腿接线与效果函数 FakeFs 归 S3-β";;
     new) echo "ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)";;
     *) usage;;
 esac
@@ -280,6 +285,133 @@ cmd_build_proj() {
     echo "ctron: 已构建 build/$NAME"
 }
 
+# T50/S3-α:pkg trace record/replay —— 纯函数黄金轨迹(编排层码gen,值=to_string
+# 规范形;轨迹文件 traces/<stem>.ctrt,CTCL 键控块机写)。效果函数 FakeFs 与
+# 加载期拒载 = S3-β。宿主 = ctron-cc(source 复放;exe 旁 std 解析)。
+cmd_pkg_trace() {
+    [ $# -ge 1 ] || die2 "pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...] / pkg trace replay <src.ct>)"
+    TR_SUB=$1; shift
+    case $TR_SUB in
+        record|replay) ;;
+        *) die2 "pkg trace: 未知子命令 '$TR_SUB'(现支持: record replay)" ;;
+    esac
+    [ -x "$BIN/ctron-cc" ] || die2 "pkg trace: 缺 ctron-cc(重装工具链;或先: compiler/native.sh)"
+    TR_SRC=""
+    TR_CASES=""
+    TR_PREV=0
+    for TR_A in "$@"; do
+        if [ "$TR_PREV" = 1 ]; then
+            TR_CASES="$TR_CASES${TR_CASES:+;}$TR_A"
+            TR_PREV=0
+            continue
+        fi
+        case $TR_A in
+            --case) TR_PREV=1 ;;
+            --case=*) TR_CASES="$TR_CASES${TR_CASES:+;}${TR_A#--case=}" ;;
+            *) [ -z "$TR_SRC" ] && TR_SRC=$TR_A ;;
+        esac
+    done
+    [ "$TR_PREV" = 0 ] || die2 "pkg trace: --case 缺值"
+    [ -n "$TR_SRC" ] || die2 "pkg trace $TR_SUB 需要源文件"
+    [ -f "$TR_SRC" ] || die2 "pkg trace: 源文件不存在: $TR_SRC"
+    if grep -q "fn main" "$TR_SRC"; then
+        die2 "pkg trace: 源含 main(轨迹面向无 main 的 provider 纯函数源)"
+    fi
+    TR_DIR=$(CDPATH= cd -- "$(dirname -- "$TR_SRC")" && pwd)
+    TR_STEM=$(basename -- "$TR_SRC" .ct)
+    TR_TGT="$TR_DIR/traces/$TR_STEM.ctrt"
+    if [ "$TR_SUB" = record ]; then
+        [ -n "$TR_CASES" ] || die2 "pkg trace record 需要 --case <fn>=<args 字面量>(可多例)"
+        mkdir -p "$TR_DIR/traces"
+        : > "$TR_TGT"
+        TR_N=0
+        OIFS=$IFS
+        IFS=';'
+        set -f
+        for TR_E in $TR_CASES; do
+            TR_FN=${TR_E%%=*}
+            TR_ARGS=${TR_E#*=}
+            case $TR_FN in
+                ""|*[!A-Za-z0-9_]*|[0-9]*) die2 "pkg trace record: fn 名非法: '$TR_FN'([A-Za-z_][A-Za-z0-9_]*)" ;;
+            esac
+            [ -n "$TR_ARGS" ] || die2 "pkg trace record: 零参 fn 轨迹 α 不支持(args 为空;零参形随 S3-β)"
+            TR_ARGS_E=$(printf '%s' "$TR_ARGS" | sed 's/"/\\"/g')
+            TR_D=$(mktemp -d /tmp/ctron_tr.XXXXXX)
+            cat "$TR_SRC" > "$TR_D/drv.ct"
+            printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
+            TR_OUT=$("$BIN/ctron-cc" run "$TR_D/drv.ct" 2> "$TR_D/err.txt")
+            TR_RC=$?
+            if [ "$TR_RC" -ne 0 ]; then
+                cat "$TR_D/err.txt" >&2
+                rm -rf "$TR_D"
+                die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 运行失败(rc=$TR_RC)"
+            fi
+            if [ "$(printf '%s\n' "$TR_OUT" | wc -l)" -gt 1 ]; then
+                rm -rf "$TR_D"
+                die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 输出多行(α 轨迹面向单值纯函数)"
+            fi
+            TR_EXPECT_E=$(printf '%s' "$TR_OUT" | sed 's/"/\\"/g')
+            printf 'trace "%s" {\n  args = "%s"\n  expect = "%s"\n}\n' "$TR_FN" "$TR_ARGS_E" "$TR_EXPECT_E" >> "$TR_TGT"
+            rm -rf "$TR_D"
+            TR_N=$((TR_N+1))
+        done
+        IFS=$OIFS
+        set +f
+        echo "ctron: 轨迹已录制 $TR_N 用例 → $TR_TGT"
+        exit 0
+    fi
+    # replay
+    [ -f "$TR_TGT" ] || die2 "pkg trace replay: 无轨迹文件: $TR_TGT"
+    TR_N=0
+    TR_BAD=0
+    OIFS=$IFS
+    set -f
+    BLOCKS=$(awk '
+        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); bfn=l }
+        /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); bargs=a }
+        /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); bexp=x }
+        /^\}$/      { print bfn "\t" bargs "\t" bexp }
+    ' "$TR_TGT")
+    [ -n "$BLOCKS" ] || die2 "pkg trace replay: 轨迹文件无块: $TR_TGT"
+    OIFS=$IFS
+    IFS="
+"
+    set -f
+    for TR_L in $BLOCKS; do
+        IFS=$(printf '\t')
+        set -- $TR_L
+        IFS=$OIFS
+        [ $# -ge 3 ] || die2 "pkg trace replay: 轨迹块畸形: $TR_L"
+        TR_FN=$1
+        TR_ARGS=$(printf '%s' "$2" | sed 's/\\"/"/g')
+        TR_EXP=$(printf '%s' "$3" | sed 's/\\"/"/g')
+        TR_D=$(mktemp -d /tmp/ctron_tr.XXXXXX)
+        cat "$TR_SRC" > "$TR_D/drv.ct"
+        printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
+        TR_OUT=$("$BIN/ctron-cc" run "$TR_D/drv.ct" 2> "$TR_D/err.txt")
+        TR_RC=$?
+        if [ "$TR_RC" -ne 0 ]; then
+            cat "$TR_D/err.txt" >&2
+            rm -rf "$TR_D"
+            die2 "pkg trace replay: 用例 $TR_FN($TR_ARGS) 运行失败(rc=$TR_RC)"
+        fi
+        if [ "$TR_OUT" != "$TR_EXP" ]; then
+            echo "trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT" >&2
+            TR_BAD=$((TR_BAD+1))
+        fi
+        rm -rf "$TR_D"
+        TR_N=$((TR_N+1))
+    done
+    IFS=$OIFS
+    set +f
+    if [ "$TR_BAD" -gt 0 ]; then
+        echo "pkg trace replay: $TR_N 用例中 $TR_BAD 不符" >&2
+        exit 1
+    fi
+    echo "trace replay OK: $TR_N 用例"
+    exit 0
+}
+
 [ $# -lt 1 ] && { usage; exit 2; }
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
@@ -449,7 +581,11 @@ case $CMD in
     pkg)
         [ $# -ge 1 ] || die2 "pkg 需要子命令(现支持: pkg verify [--deep] <工件目录>)"
         PV_SUB=$1; shift
-        [ "$PV_SUB" = "verify" ] || die2 "pkg: 未知子命令 '$PV_SUB'(现支持: verify)"
+        case $PV_SUB in
+            verify) ;;
+            trace) cmd_pkg_trace "$@" ;;
+            *) die2 "pkg: 未知子命令 '$PV_SUB'(现支持: verify trace)" ;;
+        esac
         PV_DEEP=0
         PV_DIR=""
         for PV_A in "$@"; do

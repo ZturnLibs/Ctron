@@ -39,6 +39,11 @@ ctron —— Ctron 工具链驱动
                              密封工件(.ctart)摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算
                              + self_digest 重算;fail-closed,不过即 rc=1;--deep 走
                              in-language 发射验证器(ctron-verify,C 速,L3 载体)
+  ctron pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...]
+                             黄金轨迹录制(S3-α 纯函数):值=to_string 规范形,落
+                             traces/<stem>.ctrt;零参 fn 与含 main 源不支持
+  ctron pkg trace replay <src.ct>
+                             轨迹复放:逐字比对,不符即 rc=1 点名双值(S3-α)
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -212,6 +217,80 @@ function Add-Validate($spec) {
 	}
 }
 
+# T50/S3-α:pkg trace record/replay(与 sh 版同文;值=to_string 规范形,轨迹=
+# traces/<stem>.ctrt CTCL 键控块;宿主 ctron-cc;效果函数/零参与加载期拒载归 S3-β)
+function Cmd-PkgTrace($trest) {
+	$cc = Join-Path $Bin 'ctron-cc.exe'
+	if (-not (Test-Path $cc)) { $cc = Join-Path $Bin 'ctron-cc' }
+	if (-not (Test-Path $cc)) { [Console]::Error.WriteLine('ctron: pkg trace: 缺 ctron-cc(重装工具链)'); exit 2 }
+	if ($trest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args> [--case ...] / pkg trace replay <src.ct>)'); exit 2 }
+	$tsub = $trest[0]
+	if ($tsub -ne 'record' -and $tsub -ne 'replay') { [Console]::Error.WriteLine("ctron: pkg trace: 未知子命令 '$tsub'(现支持: record replay)"); exit 2 }
+	$tsrc = ''; $tcases = @()
+	$ti = 1
+	while ($ti -lt $trest.Count) {
+		$ta = $trest[$ti]
+		if ($ta -eq '--case') { $ti++; if ($ti -ge $trest.Count) { [Console]::Error.WriteLine('ctron: pkg trace: --case 缺值'); exit 2 }; $tcases += $trest[$ti] }
+		elseif ($ta.StartsWith('--case=')) { $tcases += $ta.Substring(7) }
+		elseif ($tsrc -eq '') { $tsrc = $ta }
+		$ti++
+	}
+	if ($tsrc -eq '') { [Console]::Error.WriteLine("ctron: pkg trace $tsub 需要源文件"); exit 2 }
+	if (-not (Test-Path $tsrc -PathType Leaf)) { [Console]::Error.WriteLine("ctron: pkg trace: 源文件不存在: $tsrc"); exit 2 }
+	$tsrcText = [IO.File]::ReadAllText((Resolve-Path $tsrc).Path)
+	if ($tsrcText -match 'fn main') { [Console]::Error.WriteLine('ctron: pkg trace: 源含 main(轨迹面向无 main 的 provider 纯函数源)'); exit 2 }
+	$tdir = Split-Path -Parent (Resolve-Path $tsrc).Path
+	$tstem = [IO.Path]::GetFileNameWithoutExtension($tsrc)
+	$ttgt = Join-Path $tdir "traces/$tstem.ctrt"
+	$enc = New-Object Text.UTF8Encoding($false)
+	if ($tsub -eq 'record') {
+		if ($tcases.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg trace record 需要 --case <fn>=<args>(可多例)'); exit 2 }
+		New-Item -ItemType Directory -Force -Path (Join-Path $tdir 'traces') | Out-Null
+		$tblocks = @()
+		foreach ($te in $tcases) {
+			$tfn = $te.Split('=')[0]
+			$targs = $te.Substring($tfn.Length + 1)
+			if ($tfn -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { [Console]::Error.WriteLine("ctron: pkg trace record: fn 名非法: '$tfn'([A-Za-z_][A-Za-z0-9_]*)"); exit 2 }
+			if ($targs -eq '') { [Console]::Error.WriteLine('ctron: pkg trace record: 零参 fn 轨迹 α 不支持(args 为空;零参形随 S3-β)'); exit 2 }
+			$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
+			[IO.File]::WriteAllText($tdrv, $tsrcText + "`nfn main() {`n    println($tfn($targs).to_string())`n}`n", $enc)
+			$tout = & $cc run $tdrv 2> ($tdrv + '.err')
+			$trc = $LASTEXITCODE
+			if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $tfn($targs) 运行失败(rc=$trc)"); exit 2 }
+			if (@($tout).Count -gt 1) { Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace record: 用例 $tfn($targs) 输出多行(α 轨迹面向单值纯函数)"); exit 2 }
+			$texp = (@($tout)[0] -replace '"', '\"')
+			$targsE = $targs -replace '"', '\"'
+			$tblocks += "trace `"$tfn`" {`n  args = `"$targsE`"`n  expect = `"$texp`"`n}"
+			Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue
+		}
+		[IO.File]::WriteAllText($ttgt, ($tblocks -join "`n") + "`n", $enc)
+		Write-Output "ctron: 轨迹已录制 $($tcases.Count) 用例 → $ttgt"
+		exit 0
+	}
+	if (-not (Test-Path $ttgt -PathType Leaf)) { [Console]::Error.WriteLine("ctron: pkg trace replay: 无轨迹文件: $ttgt"); exit 2 }
+	$ttext = [IO.File]::ReadAllText($ttgt)
+	$tms = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
+	if ($tms.Count -lt 1) { [Console]::Error.WriteLine("ctron: pkg trace replay: 轨迹文件无块: $ttgt"); exit 2 }
+	$tbad = 0; $tn = 0
+	foreach ($tm in $tms) {
+		$tfn = $tm.Groups[1].Value
+		$targs = $tm.Groups[2].Value -replace '\\"', '"'
+		$texp = $tm.Groups[3].Value -replace '\\"', '"'
+		$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
+		[IO.File]::WriteAllText($tdrv, $tsrcText + "`nfn main() {`n    println($tfn($targs).to_string())`n}`n", $enc)
+		$tout = & $cc run $tdrv 2> ($tdrv + '.err')
+		$trc = $LASTEXITCODE
+		if ($trc -ne 0) { Get-Content ($tdrv + '.err') | [Console]::Error.WriteLine; Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue; [Console]::Error.WriteLine("ctron: pkg trace replay: 用例 $tfn($targs) 运行失败(rc=$trc)"); exit 2 }
+		$tact = @($tout)[0]
+		if ($tact -ne $texp) { [Console]::Error.WriteLine("trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $tbad++ }
+		Remove-Item $tdrv, "$tdrv.err" -ErrorAction SilentlyContinue
+		$tn++
+	}
+	if ($tbad -gt 0) { [Console]::Error.WriteLine("pkg trace replay: $tn 用例中 $tbad 不符"); exit 1 }
+	Write-Output "trace replay OK: $tn 用例"
+	exit 0
+}
+
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
@@ -356,8 +435,9 @@ switch ($cmd) {
 		& $dep run (Join-Path (Get-Location).Path 'Ctron.ctcl')
 		exit $LASTEXITCODE }
 	'pkg' {
-		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify [--deep] <工件目录>)'); exit 2 }
-		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify)"); exit 2 }
+		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify [--deep] <工件目录> / pkg trace record|replay)'); exit 2 }
+		if ($rest[0] -eq 'trace') { Cmd-PkgTrace @($rest | Select-Object -Skip 1) }
+		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace)"); exit 2 }
 		$pvDeep = $false; $pvDir = ''
 		foreach ($pvA in ($rest | Select-Object -Skip 1)) {
 			if ($pvA -eq '--deep') { $pvDeep = $true } elseif ($pvDir -eq '') { $pvDir = $pvA }

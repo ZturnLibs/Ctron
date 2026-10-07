@@ -279,10 +279,12 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 > **维持 S3/S4 触发线挂账,载体定案 = 独立发射验证器**(ctron-dep 先例,与
 > attest/trace 同批)。**L3 载体已落地(同日)**:`bin/ctron-verify` 深验驱动
 > (CORE 复用 pkg_sha256_hex/pkg_meta_*,`ctron pkg verify --deep` 委派,75KB
-> 工件 11ms,smoke 3s 腿 193 ok/0 fail)。余:S1b 缓存接线(加速触发线挂账维持)、
-> trace 录制/复放协议(S3,= §7.2 verify 的复放腿)、跨发布者命名空间(S4;
-> 均需求方触发)。
-> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 裁决与载体节。
+> 工件 11ms,smoke 3s 腿 193 ok/0 fail)。**S3-α 已落地(2026-10-07)**:
+> `pkg trace record|replay` 纯函数黄金轨迹(值=to_string 规范形;traces/ 入
+> 工件由 SHA256SUMS/self_digest 防篡改免费继承;smoke 3t 腿,198 ok/0 fail)。
+> 余:S1b 缓存接线(加速触发线挂账维持)、S3-β(效果函数 FakeFs 录制/加载期
+> 复放腿 + E4040/标量 json 写入器)、跨发布者命名空间(S4;均需求方触发)。
+> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 / S3-α 节。
 
 ## 11. 风险
 
