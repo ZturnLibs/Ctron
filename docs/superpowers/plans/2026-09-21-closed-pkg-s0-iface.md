@@ -587,8 +587,34 @@ S1b:加速线挂账维持。
   §7.3 分层触发件。
 
 状态:✅ S4-②/S4-③ 完成(2026-10-07)。S4 余:跨发布者命名空间。
-S3 余:S3-δ、加载期编译器发射腿(E5056/E5057 模板已预置)。
-S1b:加速线挂账维持。
+S3 余:S3-δ(写效果捕获,需 mut 能力形态)、标量 json 写入器(std 能力件)、
+加载期编译器发射腿(E5056/E5057 模板已预置)。S1b:加速线挂账维持。
+
+## S3-δ 落地(2026-10-07,T50 批):写效果捕获(脚本化 MemFs 写日志)全绿
+
+- **机制**:γ MemFs 扩写捕获——`log: Box[WSB]`(WSB={s:Str} 累积器);write 臂
+  经**别名绕行**(`let inner = self.log; inner.s = ...`;两级直写撞
+  「assign target:Member」发射缺口在册)累积 `esc(path) SP esc(data)` 行
+  (esc = std json 规范形,单行保证);γ/δ 用例主出 `值行 + ---writes--- 分隔
+  + wrote 行`(print 无尾换行,与块行制对齐)。
+- **轨迹块新增 `wrote` 行**:`wrote "<jpath>" "<jcontent>"`(esc 形原样存储,
+  复放零转义对称);record 解析 stdout(值行/分隔/wrote 行)入块;replay 与
+  deep verify 复放腿按「expect + ---writes--- + wrote 序列」正典比对——
+  Err/Ok 漂移与写内容/写序列漂移皆入 E5056 对账。
+- **record 语义声明化**:每次 record 调用全量重写 .ctrt(多次调用=多次声明,
+  后者覆前;多次用例须单调用多 --case)——smoke 3v 首版踩此坑(两次调用后
+  断言 2 用例),腿改单调用修正。
+- **门**:smoke 3v 腿重构后全绿(单次声明 2 用例/复放/种子漂移 mismatch/
+  恢复/deep γ+δ 复放);全量 **219 ok / 1 fail**(唯一败 = conc_bytes,对端
+  L4 bytes 域连续在册,非本批)。ps1 trace δ 同文待 Windows conformance 批
+  (γ 块在 ps1 面照常;δ 块 ps1 面报无块=响亮降级,登记)。
+- **语言面收获**:两级 Box 成员直写缺口(assign target:Member)+ 别名绕行
+  实证形入册——mut 能力形态设计(§8 后续)的直接输入。
+
+状态:✅ S3-δ 完成(2026-10-07)。信任协议四层全通:纯函数(α)/verify 复放
+腿(β)/读效果(γ)/写效果(δ)。S3 余:标量 json 迁移(trace 值编码切
+num/str_json,重录即迁)、加载期编译器发射腿(E5056/E5057 模板预置)。
+S4 余:跨发布者命名空间。S1b:加速线挂账维持。
 
 ## S3 配套件落地(2026-10-07,T50 批):标量 json 规范形 + esc 引号修复 + S3-δ 解禁
 

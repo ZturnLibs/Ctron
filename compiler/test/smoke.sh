@@ -1121,13 +1121,13 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify
     VG="$T/trace3"
     mkdir -p "$VG"
     cp "$ROOT/tests/artifact_demo/provider/eff.ct" "$VG/eff.ct"
-    if "$ROOT/ctron" pkg trace record "$VG/eff.ct" --case "greet=fs" --fs "name.txt=ada" > "$T/v1.out" 2>&1 && grep -q "1 用例" "$T/v1.out"; then
-        ok "γ 轨迹录制:效果函数+MemFs 种子落块"
+    if "$ROOT/ctron" pkg trace record "$VG/eff.ct" --case "greet=fs" --fs "name.txt=ada" --case "save=fs" --fs "in.txt=seed" > "$T/v1.out" 2>&1 && grep -q "2 用例" "$T/v1.out"; then
+        ok "γ/δ 轨迹录制:效果函数+MemFs 种子+写捕获落块(2 用例单次声明)"
     else
-        bad "γ 录制异常: $(tail -2 "$T/v1.out")"
+        bad "γ/δ 录制异常: $(tail -2 "$T/v1.out")"
     fi
-    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v2.out" 2>&1 && grep -q "replay OK: 1 用例" "$T/v2.out"; then
-        ok "γ 复放:种子重放逐字一致"
+    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v2.out" 2>&1 && grep -q "replay OK: 2 用例" "$T/v2.out"; then
+        ok "γ/δ 复放:种子重放逐字一致"
     else
         bad "γ 复放误拒: $(tail -2 "$T/v2.out")"
     fi
@@ -1138,13 +1138,19 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify
         grep -q "trace mismatch" "$T/v3.out" && ok "γ 不符腿:种子翻改即 mismatch" || bad "无 mismatch 文案: $(cat "$T/v3.out")"
     fi
     sed 's/= "bob"/= "ada"/' "$VG/traces/eff.ctrt" > "$VG/traces/eff.ctrt.n" && mv "$VG/traces/eff.ctrt.n" "$VG/traces/eff.ctrt"
+
+    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v3c.out" 2>&1 && grep -q "replay OK: 2 用例" "$T/v3c.out"; then
+        ok "δ 复放:wrote 面逐字一致(γ+δ 两用例)"
+    else
+        bad "δ 复放异常: $(tail -2 "$T/v3c.out")"
+    fi
     VA="$VG/art"
     mkdir -p "$VA/impl"
     "$COMP/ctc.sh" ast "$VG/eff.ct" --ast=seal --astout="$VA" --astname=myeff > "$T/v4.out" 2>&1
-    if "$ROOT/ctron" pkg verify --deep "$VA" > "$T/v5.out" 2>&1 && grep -q "复放 1 用例" "$T/v5.out"; then
-        ok "deep γ 复放:工件行为 vs 种子期望全符"
+    if "$ROOT/ctron" pkg verify --deep "$VA" > "$T/v5.out" 2>&1 && grep -q "复放 2 用例" "$T/v5.out"; then
+        ok "deep γ/δ 复放:工件行为 vs 种子期望+wrote 面全符"
     else
-        bad "deep γ 复放异常: $(tail -2 "$T/v5.out")"
+        bad "deep γ/δ 复放异常: $(tail -2 "$T/v5.out")"
     fi
 else
     ok "3v 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"

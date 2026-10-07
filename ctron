@@ -391,9 +391,14 @@ $TR_FC
         while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_NF; do
             TR_ARGS_E=$(printf '%s' "$TR_ARGS" | sed 's/"/\\"/g')
             TR_D=$(mktemp -d /tmp/ctron_tr.XXXXXX)
-            cat "$TR_SRC" > "$TR_D/drv.ct"
             if [ "$TR_NF" -ge 1 ]; then
-                # γ 效果用例:脚本化 MemFs 码gen(种子映射;读-only)+ expect 解包
+                printf 'use std.json.{ esc }\n' > "$TR_D/drv.ct"
+                cat "$TR_SRC" >> "$TR_D/drv.ct"
+            else
+                cat "$TR_SRC" > "$TR_D/drv.ct"
+            fi
+            if [ "$TR_NF" -ge 1 ]; then
+                # γ/δ 效果用例:脚本化 MemFs(种子映射+写捕获 Box accrue)
                 TR_I=0
                 TR_FIELDS=""
                 TR_READS=""
@@ -421,15 +426,19 @@ $TR_FC
                     TR_I=$((TR_I+1))
                 done
                 {
-                    printf '\nclass MemFs {\n%s}\n\n' "$TR_FIELDS"
+                    printf '\nclass WSB {\n    let s: Str\n}\n\n'
+                    printf 'class MemFs {\n%s    let log: Box[WSB]\n}\n\n' "$TR_FIELDS"
                     printf 'impl Fs for MemFs {\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {\n%s        return Err(FsError { message: "not found".to_string() })\n    }\n' "$TR_READS"
-                    printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        return Ok(void)\n    }\n'
+                    printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        let inner = self.log\n        inner.s = inner.s + esc(path) + " " + esc(data) + "\\n"\n        return Ok(void)\n    }\n'
                     printf '    fn exists(&self, path: Str) -> Bool {\n%s        return false\n    }\n}\n\n' "$TR_EXISTS"
-                    printf 'fn main() {\n    let fs = MemFs { %s }
+                    printf 'fn main() {\n    let wsb = WSB { s: "" }\n    let fs = MemFs { %s log: Box[WSB](wsb) }
     match %s(%s) {
         Ok(v) => println(v.to_string())
         Err(_) => println("<err>")
-    }\n}\n' "$TR_INIT" "$TR_FN" "$TR_ARGS"
+    }
+    println("---writes---")
+    print(fs.log.s)\n}\n' "$TR_INIT" "$TR_FN" "$TR_ARGS"
+
                 } >> "$TR_D/drv.ct"
             else
                 printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
@@ -441,17 +450,23 @@ $TR_FC
                 rm -rf "$TR_D" "$TR_MAN"
                 die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 运行失败(rc=$TR_RC)"
             fi
-            if [ "$(printf '%s\n' "$TR_OUT" | wc -l)" -gt 1 ]; then
+            if [ "$TR_NF" -eq 0 ] && [ "$(printf '%s\n' "$TR_OUT" | wc -l)" -gt 1 ]; then
                 rm -rf "$TR_D" "$TR_MAN"
-                die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 输出多行(轨迹面向单值函数)"
+                die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 输出多行(纯函数轨迹面向单值)"
             fi
             {
                 printf 'trace "%s" {\n' "$TR_FN"
                 if [ -n "${TR_FSLINES:-}" ]; then
                     printf '%s' "$TR_FSLINES"
                 fi
-                TR_EXPECT_E=$(printf '%s' "$TR_OUT" | sed 's/"/\\"/g')
-                printf '  args = "%s"\n  expect = "%s"\n}\n' "$TR_ARGS_E" "$TR_EXPECT_E"
+                TR_EXPECT=$(printf '%s\n' "$TR_OUT" | sed -n '1p')
+                printf '  args = "%s"\n  expect = "%s"\n' "$TR_ARGS_E" "$TR_EXPECT"
+                if [ "$TR_NF" -ge 1 ]; then
+                    printf '%s\n' "$TR_OUT" | sed -n '/^---writes---$/,$p' | sed '1d' | grep -v '^$' | while IFS= read -r TR_WL; do
+                        printf '  wrote %s\n' "$TR_WL"
+                    done
+                fi
+                printf '}\n'
             } >> "$TR_TGT"
             rm -rf "$TR_D"
             TR_N=$((TR_N+1))
@@ -466,11 +481,12 @@ $TR_FC
     TR_BAD=0
     TR_BLK=$(mktemp /tmp/ctron_trb.XXXXXX)
     awk '
-        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); cfn=l; nfs=0; np=0 }
+        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); cfn=l; nfs=0; np=0; nws=0 }
         /^  fs /    { p=$0; sub(/^  fs "/, "", p); sub(/" = "/, "\t", p); sub(/"$/, "", p); split(p, pa, "\t"); pair[np++] = pa[1]; pair[np++] = pa[2]; nfs++ }
+        /^  wrote / { w=$0; sub(/^  wrote /, "", w); wpair[nws++] = w }
         /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); cargs=a }
         /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); cexp=x }
-        /^\}$/      { print cfn; print cargs; print nfs + 0; for (i = 0; i < np; i++) print pair[i]; print cexp }
+        /^\}$/      { print cfn; print cargs; print nfs + 0; for (i = 0; i < np; i++) print pair[i]; print cexp; print nws + 0; for (i = 0; i < nws; i++) print wpair[i] }
     ' "$TR_TGT" > "$TR_BLK"
     if [ ! -s "$TR_BLK" ]; then
         rm -f "$TR_BLK" "$TR_MAN"
@@ -479,7 +495,12 @@ $TR_FC
     while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_NF; do
         TR_ARGS=$(printf '%s' "$TR_ARGS" | sed 's/\\"/"/g')
         TR_D=$(mktemp -d /tmp/ctron_tr.XXXXXX)
-        cat "$TR_SRC" > "$TR_D/drv.ct"
+        if [ "$TR_NF" -ge 1 ]; then
+            printf 'use std.json.{ esc }\n' > "$TR_D/drv.ct"
+            cat "$TR_SRC" >> "$TR_D/drv.ct"
+        else
+            cat "$TR_SRC" > "$TR_D/drv.ct"
+        fi
         if [ "$TR_NF" -ge 1 ]; then
             TR_I=0
             TR_FIELDS=""
@@ -505,15 +526,18 @@ $TR_FC
                 TR_I=$((TR_I+1))
             done
             {
-                printf '\nclass MemFs {\n%s}\n\n' "$TR_FIELDS"
+                printf '\nclass WSB {\n    let s: Str\n}\n\n'
+                printf 'class MemFs {\n%s    let log: Box[WSB]\n}\n\n' "$TR_FIELDS"
                 printf 'impl Fs for MemFs {\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {\n%s        return Err(FsError { message: "not found".to_string() })\n    }\n' "$TR_READS"
-                printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        return Ok(void)\n    }\n'
+                printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        let inner = self.log\n        inner.s = inner.s + esc(path) + " " + esc(data) + "\\n"\n        return Ok(void)\n    }\n'
                 printf '    fn exists(&self, path: Str) -> Bool {\n%s        return false\n    }\n}\n\n' "$TR_EXISTS"
-                printf 'fn main() {\n    let fs = MemFs { %s }
+                printf 'fn main() {\n    let wsb = WSB { s: "" }\n    let fs = MemFs { %s log: Box[WSB](wsb) }
     match %s(%s) {
         Ok(v) => println(v.to_string())
         Err(_) => println("<err>")
-    }\n}\n' "$TR_INIT" "$TR_FN" "$TR_ARGS"
+    }
+    println("---writes---")
+    print(fs.log.s)\n}\n' "$TR_INIT" "$TR_FN" "$TR_ARGS"
             } >> "$TR_D/drv.ct"
         else
             printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
@@ -527,9 +551,33 @@ $TR_FC
         fi
         IFS= read -r TR_EXP
         TR_EXP=$(printf '%s' "$TR_EXP" | sed 's/\\"/"/g')
-        if [ "$TR_OUT" != "$TR_EXP" ]; then
-            echo "trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT" >&2
-            TR_BAD=$((TR_BAD+1))
+        IFS= read -r TR_NW
+        TR_WLINES=""
+        TR_I=0
+        while [ "$TR_I" -lt "$TR_NW" ]; do
+            IFS= read -r TR_W
+            TR_WLINES="$TR_WLINES$TR_W
+"
+            TR_I=$((TR_I+1))
+        done
+        if [ "$TR_NF" -ge 1 ]; then
+            TR_CANON="$TR_EXP
+---writes---"
+            if [ -n "$TR_WLINES" ]; then
+                TR_CANON="$TR_CANON
+${TR_WLINES%?}"
+            fi
+            if [ "$TR_OUT" != "$TR_CANON" ]; then
+                TR_OUT1=$(printf '%s\n' "$TR_OUT" | sed -n '1p')
+                echo "trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT1(含 wrote 面,全文见上)" >&2
+                printf '%s\n' "$TR_OUT" >&2
+                TR_BAD=$((TR_BAD+1))
+            fi
+        else
+            if [ "$TR_OUT" != "$TR_EXP" ]; then
+                echo "trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT" >&2
+                TR_BAD=$((TR_BAD+1))
+            fi
         fi
         rm -rf "$TR_D"
         TR_N=$((TR_N+1))
@@ -861,11 +909,12 @@ case $CMD in
                     mkdir -p "$TRP/deps/$PV_NAME.ctart"
                     cp -r "$VDIR/." "$TRP/deps/$PV_NAME.ctart/"
                     awk '
-                        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); cfn=l; nfs=0; np=0 }
+                        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); cfn=l; nfs=0; np=0; nws=0 }
                         /^  fs /    { p=$0; sub(/^  fs "/, "", p); sub(/" = "/, "\t", p); sub(/"$/, "", p); split(p, pa, "\t"); pair[np++] = pa[1]; pair[np++] = pa[2]; nfs++ }
+                        /^  wrote / { w=$0; sub(/^  wrote /, "", w); wpair[nws++] = w }
                         /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); cargs=a }
                         /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); cexp=x }
-                        /^\}$/      { print cfn; print cargs; print nfs + 0; for (i = 0; i < np; i++) print pair[i]; print cexp }
+                        /^\}$/      { print cfn; print cargs; print nfs + 0; for (i = 0; i < np; i++) print pair[i]; print cexp; print nws + 0; for (i = 0; i < nws; i++) print wpair[i] }
                     ' "$TR_F" > "$TRP/cases.txt"
                     while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_NF; do
                         TR_ARGS=$(printf '%s' "$TR_ARGS" | sed 's/\\"/"/g')
@@ -897,21 +946,36 @@ $TR_HEAD"
                         done
                         printf '%s\n' "$TR_HEAD" > "$TRP/main.ct"
                         if [ "$TR_NF" -ge 1 ]; then
+                            printf 'use std.json.{ esc }\n' >> "$TRP/main.ct"
+                        fi
+                        if [ "$TR_NF" -ge 1 ]; then
                             {
-                                printf '\nclass MemFs {\n%s}\n\n' "$TR_FIELDS"
+                                printf '\nclass WSB {\n    let s: Str\n}\n\n'
+                                printf 'class MemFs {\n%s    let log: Box[WSB]\n}\n\n' "$TR_FIELDS"
                                 printf 'impl Fs for MemFs {\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {\n%s        return Err(FsError { message: "not found".to_string() })\n    }\n' "$TR_READS"
-                                printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        return Ok(void)\n    }\n'
+                                printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        let inner = self.log\n        inner.s = inner.s + esc(path) + " " + esc(data) + "\\n"\n        return Ok(void)\n    }\n'
                                 printf '    fn exists(&self, path: Str) -> Bool {\n%s        return false\n    }\n}\n\n' "$TR_EXISTS"
-                                printf 'fn main() {\n    let fs = MemFs { %s }\n    match %s(%s) {
+                                printf 'fn main() {\n    let wsb = WSB { s: "" }\n    let fs = MemFs { %s log: Box[WSB](wsb) }\n    match %s(%s) {
         Ok(v) => println(v.to_string())
         Err(_) => println("<err>")
-    }\n}\n' "$TR_FSLINES" "$TR_FN" "$TR_ARGS"
+    }
+    println("---writes---")
+    print(fs.log.s)\n}\n' "$TR_FSLINES" "$TR_FN" "$TR_ARGS"
                             } >> "$TRP/main.ct"
                         else
                             printf 'fn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TRP/main.ct"
                         fi
                         IFS= read -r TR_EXP
                         TR_EXP=$(printf '%s' "$TR_EXP" | sed 's/\\"/"/g')
+                        IFS= read -r TR_NW
+                        TR_WLINES=""
+                        TR_I=0
+                        while [ "$TR_I" -lt "$TR_NW" ]; do
+                            IFS= read -r TR_W
+                            TR_WLINES="$TR_WLINES$TR_W
+"
+                            TR_I=$((TR_I+1))
+                        done
                         TRP_P=$PWD
                         cd "$TRP"
                         TR_OUT=$(CTRON_STDPATH="$ROOT/lib/std" "$BIN/ctron-cc" run main.ct 2>&1)
@@ -923,9 +987,23 @@ $TR_HEAD"
                             echo "ctron pkg verify: 复放用例 $TR_FN($TR_ARGS) 运行失败(rc=$TR_RC)" >&2
                             exit 1
                         fi
-                        if [ "$TR_OUT" != "$TR_EXP" ]; then
-                            echo "E5056 trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT" >&2
-                            PV_RB=$((PV_RB+1))
+                        if [ "$TR_NF" -ge 1 ]; then
+                            TR_CANON="$TR_EXP
+---writes---"
+                            if [ -n "$TR_WLINES" ]; then
+                                TR_CANON="$TR_CANON
+${TR_WLINES%?}"
+                            fi
+                            if [ "$TR_OUT" != "$TR_CANON" ]; then
+                                TR_OUT1=$(printf '%s\n' "$TR_OUT" | sed -n '1p')
+                                echo "E5056 trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT1(含 wrote 面)" >&2
+                                PV_RB=$((PV_RB+1))
+                            fi
+                        else
+                            if [ "$TR_OUT" != "$TR_EXP" ]; then
+                                echo "E5056 trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT" >&2
+                                PV_RB=$((PV_RB+1))
+                            fi
                         fi
                         PV_RN=$((PV_RN+1))
                     done < "$TRP/cases.txt"

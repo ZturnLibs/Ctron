@@ -6,3 +6,7 @@ use std.fs.{Fs, FsError}
 pub fn greet(fs: &Fs) -> Result[String, FsError] {
     return fs.read_to_string("name.txt")
 }
+
+pub fn save(fs: &Fs) -> Result[Void, FsError] {
+    return fs.write("out.txt", "payload")
+}
