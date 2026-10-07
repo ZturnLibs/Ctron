@@ -167,25 +167,17 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
     }
     // L4-③:Bytes 族 interp(read_bytes 降级=C 串域 NUL 截断,宿主字节原语=L4-②;
     // Y 记录=box U8 字节表)
-    if seq2(nm, "read_bytes") {
+    if seq2(nm, "read_file_bytes") {
         if vals.len == 1 {
             var r0 = v_unbox(vals[0])
             if r0.tag == 5 {
-                var rr = read_file(r0.s)
-                var src = ""
-                match rr {
-                    Some(s2) => {
-                        src = s2
-                    }
-                    None => {
-                        src = ""
-                    }
-                }
+                // L4-②:宿主字节原语(len 装载+at 逐字节;全量 NUL 保真)
+                var ln2 = read_bytes_len(r0.s)
                 var bv = List[Str]()
                 bv.push("Y")
                 var kb: I32 = 0
-                while kb < src.len {
-                    bv.push(v_box(vI(byte_at(src, kb))))
+                while kb < ln2 {
+                    bv.push(v_box(vI(read_bytes_at(kb))))
                     kb += 1
                 }
                 return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(bv) }, out)
