@@ -3,6 +3,10 @@
 // L4-②:read_bytes_len/at 共享缓冲(配对面)
 static unsigned char* ctron_rb = NULL;
 static long ctron_rbn = 0;
+
+// T26:进程参数寄存(rt_core.c 定义;Env.args 面)
+extern int ctron_host_argc;
+extern const char** ctron_host_argv;
 #include <errno.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -993,6 +997,20 @@ val eval_expr(rt* R, cexpr* e) {
                 val o = {0};
                 o.k = V_STR;
                 o.s = "";
+                return o;
+            }
+            // T26/07b:Env.args 面——程序参数(除程序名;镜像发射 ctron_prog_args 语义)
+            if (!strcmp(nm, "ctron_prog_args_n")) {
+                if (e->nelems != 0) rt_abort(R, RT_ERROR, "ctron_prog_args_n 实参");
+                return v_int((long long)(ctron_host_argc > 0 ? ctron_host_argc - 1 : 0), 64, 0);
+            }
+            if (!strcmp(nm, "ctron_prog_args_at")) {
+                if (e->nelems != 1) rt_abort(R, RT_ERROR, "ctron_prog_args_at 实参");
+                val iv = eval_expr(R, e->elems[0]);
+                long long i = (long long)iv.i;
+                val o = {0};
+                o.k = V_STR;
+                o.s = (i >= 0 && i + 1 < ctron_host_argc && ctron_host_argv[i + 1]) ? ctron_host_argv[i + 1] : "";
                 return o;
             }
             if (!strcmp(nm, "env_get")) {

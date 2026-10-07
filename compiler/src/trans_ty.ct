@@ -1568,7 +1568,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "read_dir" { return "s" }
             if or2(cal[1] == "fs_exists", or2(cal[1] == "fs_write", or2(cal[1] == "fs_delete", cal[1] == "fs_mkdir"))) { return "b" }
             // L4:Bytes 族返回型
-            if or2(cal[1] == "read_bytes", cal[1] == "bytes_slice") { return "YB" }
+            if or2(cal[1] == "read_file_bytes", cal[1] == "bytes_slice") { return "YB" }
             if cal[1] == "bytes_len" { return "6" }
             if cal[1] == "bytes_at" { return "i" }
             if cal[1] == "bytes_to_str" { return "s" }
