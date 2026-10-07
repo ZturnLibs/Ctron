@@ -1216,6 +1216,41 @@ else
     grep -q "E5057" "$T/x4.out" && ok "E5057 腿:伪造 digest 拒载" || bad "无 E5057 文案: $(cat "$T/x4.out")"
 fi
 
+# ---------------- 3y) S4-③ 透明日志仓(append-only 公证层;零网络) ----------------
+echo "== 3y) S4-③ pkg log 透明日志仓(append-only 公证层;零网络)=="
+if command -v git >/dev/null 2>&1; then
+    YL="$T/logrepo"
+    "$ROOT/ctron" pkg attest "$XA/art" > "$T/y0.out" 2>&1
+    if "$ROOT/ctron" pkg log append "$YL" "$XA/art" > "$T/y1.out" 2>&1 && grep -q "日志已记" "$T/y1.out"; then
+        ok "日志追加:records/<名>/<digest>/attest 落仓"
+    else
+        bad "日志追加异常: $(tail -2 "$T/y1.out")"
+    fi
+    if "$ROOT/ctron" pkg log append "$YL" "$XA/art" > "$T/y2.out" 2>&1 && grep -q "幂等" "$T/y2.out"; then
+        ok "append-only 幂等:同记录重放不炸"
+    else
+        bad "幂等异常: $(tail -2 "$T/y2.out")"
+    fi
+    if "$ROOT/ctron" pkg log query "$YL" mybase > "$T/y3.out" 2>&1 && grep -q "record: mybase @" "$T/y3.out"; then
+        ok "日志查询:digest+公证要点可读"
+    else
+        bad "日志查询异常: $(tail -2 "$T/y3.out")"
+    fi
+    printf 'attest "mybase" {\n  artifact_digest = "sha256:3554661cd2fe1ca75830841c6d0e9618495084bade35b83649598151d86781a3"\n  toolchain = "evil"\n  hosts = ["interp-cc"]\n  trace_count = 0\n}\n' > "$XA/art/attest.ctcl"
+    if "$ROOT/ctron" pkg log append "$YL" "$XA/art" > "$T/y4.out" 2>&1; then
+        bad "同 digest 翻改公证未拒(append-only)"
+    else
+        grep -q "append-only" "$T/y4.out" && ok "append-only 腿:同 digest 翻改公证拒绝" || bad "无 append-only 文案: $(cat "$T/y4.out")"
+    fi
+    if git -C "$YL" log --oneline | grep -q "log: mybase"; then
+        ok "git 透明性:commit 历史可审计"
+    else
+        bad "git 历史异常"
+    fi
+else
+    ok "3y 跳过(环境无 git)"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

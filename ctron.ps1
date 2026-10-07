@@ -44,6 +44,11 @@ ctron —— Ctron 工具链驱动
                              traces/<stem>.ctrt;含 main 源不支持
   ctron pkg trace replay <src.ct>
                              轨迹复放:逐字比对,不符即 rc=1 点名双值(S3-α)
+  ctron pkg log append <日志仓> <工件目录>
+                             透明日志追加(§7.1 公证层):records/<名>/<digest>/attest
+                             内容寻址不可变,append-only git 仓;零网络
+  ctron pkg log query <日志仓> [名]
+                             日志查询:列名或列某名的 digest+公证要点
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -344,6 +349,57 @@ function Cmd-PkgAttest($arest) {
 	exit 0
 }
 
+# T50/S4-③:pkg log —— 透明日志仓最小面(§7.1 公证层;与 sh 版同文)
+function Cmd-PkgLog($lrest) {
+	if ($lrest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg log 需要子命令(用法: pkg log append <日志仓> <工件目录> / pkg log query <日志仓> [名])'); exit 2 }
+	$lsub = $lrest[0]
+	if ($lsub -ne 'append' -and $lsub -ne 'query') { [Console]::Error.WriteLine("ctron: pkg log: 未知子命令 '$lsub'(现支持: append query)"); exit 2 }
+	if ($lsub -eq 'append') {
+		if ($lrest.Count -lt 3) { [Console]::Error.WriteLine('ctron: pkg log append 需要 <日志仓> <工件目录>'); exit 2 }
+		$plog = $lrest[1]; $part = $lrest[2]
+		if (-not (Test-Path $part -PathType Container)) { [Console]::Error.WriteLine("ctron: pkg log append: 工件目录不存在: $part"); exit 2 }
+		$mf = Join-Path $part 'meta.ctcl'; $at = Join-Path $part 'attest.ctcl'
+		if (-not (Test-Path $mf -PathType Leaf)) { [Console]::Error.WriteLine('ctron: pkg log append: 缺 meta.ctcl(工件须先 seal)'); exit 2 }
+		if (-not (Test-Path $at -PathType Leaf)) { [Console]::Error.WriteLine('ctron: pkg log append: 缺 attest.ctcl(工件须先 pkg attest;日志只存证据)'); exit 2 }
+		$pname = (Select-String -Path $mf -Pattern '^artifact "([^"]*)"').Matches[0].Groups[1].Value
+		$psd = (Select-String -Path $mf -Pattern 'self_digest = "(.*)"').Matches[0].Groups[1].Value
+		New-Item -ItemType Directory -Force -Path $plog | Out-Null
+		if (-not (Test-Path (Join-Path $plog '.git'))) { git -C $plog init -q 2>$null; if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine("ctron: pkg log append: git init 失败($plog)"); exit 2 } }
+		$dst = Join-Path $plog "records/$pname/$psd"
+		$dstAt = Join-Path $dst 'attest.ctcl'
+		if (Test-Path $dstAt -PathType Leaf) {
+			$ba = [IO.File]::ReadAllBytes($at); $bb = [IO.File]::ReadAllBytes($dstAt)
+			$same = ($ba.Length -eq $bb.Length)
+			if ($same) { for ($i = 0; $i -lt $ba.Length; $i++) { if ($ba[$i] -ne $bb[$i]) { $same = $false; break } } }
+			if ($same) { Write-Output "ctron: 日志记录已存在(幂等): records/$pname/$psd"; exit 0 }
+			[Console]::Error.WriteLine("ctron: pkg log append: 记录已存在且内容不同(append-only;同 digest 不得翻改公证): records/$pname/$psd"); exit 2 }
+		New-Item -ItemType Directory -Force -Path $dst | Out-Null
+		Copy-Item $at $dstAt
+		git -C $plog add records 2>$null
+		git -C $plog -c user.name=ctron-log -c user.email=ctron@local commit -q -m "log: $pname @ $psd" 2>$null
+		if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('ctron: pkg log append: git commit 失败'); exit 2 }
+		Write-Output "ctron: 日志已记 → records/$pname/$psd"
+		exit 0 }
+	if ($lrest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg log query 需要 <日志仓>[ 名]'); exit 2 }
+	$plog = $lrest[1]
+	$pname = ''
+	if ($lrest.Count -ge 2) { $pname = $lrest[1] }
+	$recDir = Join-Path $plog 'records'
+	if (-not (Test-Path $recDir -PathType Container)) { [Console]::Error.WriteLine("ctron: 日志仓无记录($plog/records 缺席)"); exit 1 }
+	if ($pname -ne '') {
+		$pd = Join-Path $recDir $pname
+		if (-not (Test-Path $pd -PathType Container)) { [Console]::Error.WriteLine("ctron: 日志无 $pname 的记录"); exit 1 }
+		foreach ($d2 in @(Get-ChildItem -Path $pd -Directory)) {
+			$at2 = Join-Path $d2.FullName 'attest.ctcl'
+			if (-not (Test-Path $at2)) { continue }
+			Write-Output "record: $pname @ $($d2.Name)"
+			Select-String -Path $at2 -Pattern 'toolchain|trace_count' | ForEach-Object { Write-Output ("  " + $_.Line) }
+		}
+		exit 0 }
+	foreach ($nn in @(Get-ChildItem -Path $recDir -Directory)) { Write-Output "name: $($nn.Name)" }
+	exit 0
+}
+
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
@@ -491,7 +547,8 @@ switch ($cmd) {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify [--deep] <工件目录> / pkg trace record|replay)'); exit 2 }
 		if ($rest[0] -eq 'trace') { Cmd-PkgTrace @($rest | Select-Object -Skip 1) }
 		if ($rest[0] -eq 'attest') { Cmd-PkgAttest @($rest | Select-Object -Skip 1) }
-		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace attest)"); exit 2 }
+		if ($rest[0] -eq 'log') { Cmd-PkgLog @($rest | Select-Object -Skip 1) }
+		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace attest log)"); exit 2 }
 		$pvDeep = $false; $pvDir = ''
 		foreach ($pvA in ($rest | Select-Object -Skip 1)) {
 			if ($pvA -eq '--deep') { $pvDeep = $true } elseif ($pvDir -eq '') { $pvDir = $pvA }

@@ -555,3 +555,37 @@ S3 余:S3-δ(写效果捕获)、标量 json 写入器(std 能力件)、加载期
 状态:✅ S4-① 完成(2026-10-07)。S4 余:透明日志仓/attest、跨发布者
 命名空间。S3 余:S3-δ(写效果捕获)、标量 json 写入器、加载期发射腿。
 S1b:加速线挂账维持。
+
+## S4-② 落地(2026-10-07,T50 批):`ctron pkg attest` 发布公证 + deep attest 腿
+
+- **命令面**:`ctron pkg attest <artifact-dir>`(sh+ps1 同文)——生成
+  attest.ctcl(§5.4 形):artifact_digest = meta self_digest、toolchain =
+  VERSION(dev 布局 "dev" 同 --version 口径)、hosts = ["interp-cc"](α 单线,
+  三线一致判定 = 需求方触发件,诚实登记)、trace_count = traces/ 块数实点。
+  attest 位于摘要链外(SHA256SUMS 不含——其内容依赖 self_digest,入链即
+  循环,同 meta 理据)。
+- **deep attest 腿**:attest.ctcl 在场即验 artifact_digest == self_digest、
+  trace_count == 实点数——漂移/伪造 = **E5057**(attest 与工件不符;三面
+  注册;畸形缺键亦拒)。陈旧公证场景(重 seal 后旧 attest)被双键自然捕获。
+- **门**:smoke 3x 腿四断言(生成/deep 过验/trace_count 漂移/伪造 digest);
+  全量 213 ok/1 fail(败 = 对端 L4-② WIP 在册红 conc_bytes);decls 锁不动。
+
+## S4-③ 落地(2026-10-07,T50 批):透明日志仓最小面(§7.1 公证层)
+
+- **命令面**:`ctron pkg log append <日志仓> <工件目录>` / `ctron pkg log
+  query <日志仓> [名]`(sh+ps1 同文)。记录 = `records/<名>/<digest>/attest.ctcl`
+  内容寻址不可变;日志仓 = 本地 git 仓(缺则 init;commit 自带
+  ctron-log 身份),append-only:同 digest 重放幂等,同 digest 内容不同
+  = 翻改公证,拒(§7.1「只存证据不存内容」;远端同步 = git push 发布方
+  自理,零网络协议)。前置:工件须 seal + attest;query 列名/列某名
+  digest+公证要点。
+- **门**:smoke 3y 腿五断言(追加/幂等/查询/翻改拒/git 历史透明);全量
+  **218 ok / 1 fail**(唯一败 = conc_bytes 发射/编译,对端 L4 bytes 域连续
+  多轮在册,非本批)。
+- **D5 最小兑现**:「git 透明日志取代中心注册表」的公证层本地形态全通——
+  append-only、可克隆审计、无中心权威;发现层(静态索引页)与只读代理 =
+  §7.3 分层触发件。
+
+状态:✅ S4-②/S4-③ 完成(2026-10-07)。S4 余:跨发布者命名空间。
+S3 余:S3-δ(写效果捕获,需 mut 能力形态)、标量 json 写入器(std 能力件)、
+加载期编译器发射腿(E5056/E5057 模板已预置)。S1b:加速线挂账维持。
