@@ -293,10 +293,12 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 > 源消费方 record 面(清单 blob 记录 → loader 对账 self_digest,不符 E5054;
 > D8-2 L2「顶层源消费方无记录面」诚实边界闭合)+ driver 消解 lock 钉定;
 > smoke 3w 腿,210 ok/0 fail。§7 的 lockfile(blob 钉 digest)随 T49 既有
-> lock 域自然承接。余:S1b 缓存接线(加速触发线挂账维持)、S3-δ(写效果
-> 捕获)、标量 json 写入器(std 能力件)、加载期编译器发射腿、S4 透明日志
-> 仓/attest、跨发布者命名空间(均需求方触发)。
-> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 / S3-α / S3-β / S3-γ / S4-① 节。
+> lock 域自然承接。**S4-② 已落地(同日)**:`ctron pkg attest` 发布公证
+> (attest.ctcl §5.4 形,digest/trace_count 自证)+ deep verify attest 腿
+> (漂移/伪造 = E5057)。余:S1b 缓存接线(加速触发线挂账维持)、S3-δ(写
+> 效果捕获)、标量 json 写入器(std 能力件)、加载期编译器发射腿、S4 透明
+> 日志仓、跨发布者命名空间(均需求方触发)。
+> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 / S3-α / S3-β / S3-γ / S4-① / S4-② 节。
 
 ## 11. 风险
 
