@@ -556,7 +556,8 @@ fn pkg_deps_text(t: Str, diags: List[Str]) -> List[Str] {
                             var gv = pkg_plugin_field(body, "git")
                             var rv = pkg_plugin_field(body, "rev")
                             var vv = pkg_plugin_field(body, "version")
-                            // C 线同判:g = [path, git&&rev, version](git 无 rev 塌缩缺来源臂)
+                            var bv = pkg_plugin_field(body, "blob")
+                            // C 线同判:g = [path, git&&rev, version, blob](git 无 rev 塌缩缺来源臂)
                             var has_p = pv.len > 0
                             var has_g = false
                             if gv.len > 0 {
@@ -565,6 +566,7 @@ fn pkg_deps_text(t: Str, diags: List[Str]) -> List[Str] {
                                 }
                             }
                             var has_v = vv.len > 0
+                            var has_b = bv.len > 0
                             var np: I32 = 0
                             if has_p {
                                 np += 1
@@ -575,22 +577,68 @@ fn pkg_deps_text(t: Str, diags: List[Str]) -> List[Str] {
                             if has_v {
                                 np += 1
                             }
+                            if has_b {
+                                np += 1
+                            }
                             if np >= 2 {
-                                // labels 注册表序 path < git+rev < version,取同现前两
+                                // labels 注册表序 path < git+rev < version < blob,取同现前两
                                 var l1 = "path"
                                 var l2 = "git+rev"
+                                var l3 = "version"
+                                var l4 = "blob"
                                 if !has_p {
                                     l1 = "git+rev"
                                     l2 = "version"
+                                    l3 = "blob"
+                                    l4 = ""
+                                    if !has_g {
+                                        l1 = "version"
+                                        l2 = "blob"
+                                        l3 = ""
+                                        l4 = ""
+                                        if !has_v {
+                                            l1 = "blob"
+                                            l2 = ""
+                                            l3 = ""
+                                            l4 = ""
+                                        }
+                                    }
                                 } else {
                                     if !has_g {
                                         l2 = "version"
+                                        l3 = "blob"
+                                        l4 = ""
+                                        if !has_v {
+                                            l2 = "blob"
+                                            l3 = ""
+                                            l4 = ""
+                                        }
+                                    } else {
+                                        if !has_v {
+                                            l3 = "blob"
+                                            l4 = ""
+                                            if !has_b {
+                                                l3 = ""
+                                                l4 = ""
+                                            }
+                                        } else {
+                                            if !has_b {
+                                                l4 = ""
+                                            }
+                                        }
                                     }
                                 }
-                                diags.push("Ctron.ctcl: E5049 dep 来源互斥:" + l1 + " 与 " + l2 + " 同现")
+                                var msg = "Ctron.ctcl: E5049 dep 来源互斥:" + l1 + " 与 " + l2 + " 同现"
+                                if l3.len > 0 {
+                                    msg = msg + " 与 " + l3
+                                }
+                                if l4.len > 0 {
+                                    msg = msg + " 与 " + l4
+                                }
+                                diags.push(msg)
                             } else {
                                 if np == 0 {
-                                    diags.push("Ctron.ctcl: E5049 dep 需要且仅需要一种来源:path | git+rev | version")
+                                    diags.push("Ctron.ctcl: E5049 dep 需要且仅需要一种来源:path | git+rev | version | blob")
                                 } else {
                                     if has_p {
                                         out.push(nm)
@@ -604,10 +652,17 @@ fn pkg_deps_text(t: Str, diags: List[Str]) -> List[Str] {
                                             out.push(gv)
                                             out.push(rv)
                                         } else {
-                                            out.push(nm)
-                                            out.push("version")
-                                            out.push(vv)
-                                            out.push("")
+                                            if has_b {
+                                                out.push(nm)
+                                                out.push("blob")
+                                                out.push(bv)
+                                                out.push("")
+                                            } else {
+                                                out.push(nm)
+                                                out.push("version")
+                                                out.push(vv)
+                                                out.push("")
+                                            }
                                         }
                                     }
                                 }

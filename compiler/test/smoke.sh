@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=514' "$T/chk.out" && ok "自检 cc_run 绿,decls=514(锁 513→514:FB-8 +1[eval_call.ct:arr_copy_val 数组形参深拷];前注:锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=515' "$T/chk.out" && ok "自检 cc_run 绿,decls=515(锁 514→515:T50 S4-① +1[parse_pkg.ct:pkg_meta_dep_field 清单 dep 块字段提取泛化,blob record 面];前注:锁 513→514:FB-8 +1[eval_call.ct:arr_copy_val 数组形参深拷];前注:锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -1148,6 +1148,44 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify
     fi
 else
     ok "3v 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"
+fi
+
+# ---------------- 3w) S4-① deps blob 第四形(源消费方 record 面;E5049 四形互斥) ----------------
+echo "== 3w) S4-① deps blob(清单 record 面/loader+driver 消解;E5049 四形)=="
+BW="$T/blob"
+mkdir -p "$BW/proj/deps/mybase.ctart/impl"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$BW/proj/deps/mybase.ctart" --astname=mybase > "$T/w0.out" 2>&1
+BSD=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$BW/proj/deps/mybase.ctart/meta.ctcl")
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "%s"\n}\n' "$BSD" > "$BW/proj/Ctron.ctcl"
+printf 'use mybase.base.{base_mul}\n\nfn main() {\n    println("t=" + base_mul(3, 4).to_string())\n}\n' > "$BW/proj/main.ct"
+if (cd "$BW/proj" && "$COMP/ctc.sh" main.ct > "$T/w1.out" 2>&1) && grep -q "t=12" "$T/w1.out"; then
+    ok "blob record 面:源消费方清单 blob=工件 self_digest,加载过验(t=12)"
+else
+    bad "blob 正例异常: $(tail -2 "$T/w1.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "sha256:0000000000000000000000000000000000000000000000000000000000000000"\n}\n' > "$BW/proj/Ctron.ctcl"
+if (cd "$BW/proj" && "$COMP/ctc.sh" main.ct > "$T/w2.out" 2>&1); then
+    bad "blob 错摘要未拒(E5054)"
+else
+    grep -q "E5054" "$T/w2.out" && ok "E5054 腿:blob 需求≠工件 self_digest 精准拒载" || bad "无 E5054 文案: $(cat "$T/w2.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "%s"\n    version = "0.1.0"\n}\n' "$BSD" > "$BW/proj/Ctron.ctcl"
+if "$COMP/ctc.sh" dep "$BW/proj/Ctron.ctcl" > "$T/w3.out" 2>&1; then
+    bad "blob+version 同现未拒(E5049)"
+else
+    grep -q "E5049" "$T/w3.out" && ok "E5049 四形互斥:blob+version 同现点名" || bad "无 E5049 文案: $(cat "$T/w3.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "%s"\n}\n' "$BSD" > "$BW/proj/Ctron.ctcl"
+if "$COMP/ctc.sh" dep "$BW/proj/Ctron.ctcl" > "$T/w4.out" 2>&1 && grep -q 'source = "blob"' "$BW/proj/Ctron.lock"; then
+    ok "driver blob 消解:lock 钉 source=blob 摘要"
+else
+    bad "driver blob 消解异常: $(tail -2 "$T/w4.out")"
+fi
+printf 'pkg {\n    manifest_version = 1\n    name = "app"\n    version = "0.1.0"\n}\n\ndep "mybase" {\n    blob = "abc"\n}\n' > "$BW/proj/Ctron.ctcl"
+if "$COMP/ctc.sh" dep "$BW/proj/Ctron.ctcl" > "$T/w5.out" 2>&1; then
+    bad "畸形 blob 值未拒(E5046)"
+else
+    grep -q "E5046" "$T/w5.out" && ok "E5046 腿:blob 值形态校验" || bad "无 E5046 文案: $(cat "$T/w5.out")"
 fi
 
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------

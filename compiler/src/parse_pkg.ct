@@ -270,6 +270,27 @@ fn pkg_meta_self_digest(art_dir: Str) -> Str {
 }
 
 // 消费方工件 meta 内 dep 块 digest 需求;块/键缺 → ""(125=`}` 为块界,格式机器写入无嵌套)
+// 消费方清单 dep 块字段值(S4-① 泛化:blob/digest 等单值键;块/键缺 → "")
+// 125=`}` 为块界,格式机器写入无嵌套(同 pkg_meta_dep_digest 先例)
+fn pkg_meta_dep_field(t: Str, name: Str, key: Str) -> Str {
+    var needle = "dep \"" + name + "\" \{"
+    var h = pkg_meta_find(t, 0, needle)
+    if h < 0 {
+        return ""
+    }
+    var i = h + needle.len
+    while i < t.len {
+        if byte_at(t, i) == 125 {
+            return ""
+        }
+        if pkg_ctcl_at(t, i, key) && pkg_ctcl_pre(t, i) {
+            return pkg_meta_strval(t, i + key.len)
+        }
+        i += 1
+    }
+    return ""
+}
+
 fn pkg_meta_dep_digest(meta_path: Str, name: Str) -> Str {
     var t = ""
     match read_file(meta_path) {
@@ -870,6 +891,29 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                 pkg_art_verify(diags, segs[1], ameta, art_dir)
                 if diags.len > 0 {
                     return out
+                }
+                // S4-①:源消费方 blob record 面(§7 第四形)——顶层源(ameta="")
+                // 经清单 dep blob 记录需求摘要,与工件 self_digest 对账;无 blob
+                // 记录 = 记录面缺位,维持 L2 诚实边界(不拒)
+                if ameta.len == 0 {
+                    let cmt = read_file(dir + "/Ctron.ctcl")
+                    match cmt {
+                        Some(ctx) => {
+                            var cbl = pkg_meta_dep_field(ctx, segs[1], "blob")
+                            if cbl.len > 0 {
+                                var csd = pkg_meta_self_digest(art_dir)
+                                if csd.len == 0 {
+                                    diag1(diags, "E5055", "", art_dir)
+                                    return out
+                                }
+                                if !seq2(cbl, csd) {
+                                    diag3(diags, "E5054", "", segs[1], cbl, csd)
+                                    return out
+                                }
+                            }
+                        }
+                        None => {}
+                    }
                 }
             }
             var src = read_file(mpath)

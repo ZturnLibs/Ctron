@@ -289,10 +289,14 @@ npm 式注册表捆绑五角色,逐一对照现行设计:分发存储(→ git �
 > **S3-γ 已落地(同日)**:效果函数轨迹——`--fs` 种子挂 case,脚本化 MemFs
 > 码gen(§8.1 trait Fs: Cap 能力注入;读-only,写捕获归 S3-δ),Ok/Err 哨兵
 > 对账,deep verify 复放腿 γ 支持;smoke 3v 腿,205 ok/0 fail。
-> 余:S1b 缓存接线(加速触发线挂账维持)、S3-δ(写效果捕获)、标量 json
-> 写入器(std 能力件)、加载期编译器发射腿、跨发布者命名空间(S4;
-> 均需求方触发)。
-> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 / S3-α / S3-β / S3-γ 节。
+> **S4-① 部分落地(同日)**:deps `blob =` 第四来源形(E5049 扩四形)+
+> 源消费方 record 面(清单 blob 记录 → loader 对账 self_digest,不符 E5054;
+> D8-2 L2「顶层源消费方无记录面」诚实边界闭合)+ driver 消解 lock 钉定;
+> smoke 3w 腿,210 ok/0 fail。§7 的 lockfile(blob 钉 digest)随 T49 既有
+> lock 域自然承接。余:S1b 缓存接线(加速触发线挂账维持)、S3-δ(写效果
+> 捕获)、标量 json 写入器(std 能力件)、加载期编译器发射腿、S4 透明日志
+> 仓/attest、跨发布者命名空间(均需求方触发)。
+> 明细见 plans/2026-09-21-closed-pkg-s0-iface.md D8-2 L2 / L1 / L3 / S3-α / S3-β / S3-γ / S4-① 节。
 
 ## 11. 风险
 

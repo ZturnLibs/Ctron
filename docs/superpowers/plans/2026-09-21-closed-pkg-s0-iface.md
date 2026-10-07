@@ -529,3 +529,29 @@ trace(S3)、命名空间(S4)、S1b(加速线)。
 状态:✅ S3-γ 完成(2026-10-07)。信任协议(S3)录制/复放/verify 三层全通。
 S3 余:S3-δ(写效果捕获)、标量 json 写入器(std 能力件)、加载期编译器
 发射腿。S4 余:命名空间 + deps `blob =` 形。S1b:加速线挂账维持。
+
+## S4-① 落地(2026-10-07,T50 批):deps `blob =` 第四来源形 + 源消费方 record 面
+
+- **E5049 扩四形**:dep 来源互斥注册表序 path < git+rev < version < blob
+  (pkg_deps_text:同现点名扩至四标签;缺来源文案扩 "| blob");blob 槽 =
+  4 槽组 [name, "blob", value, ""]。
+- **driver 消解(dep_resolve_one blob 臂)**:E5046 值形态校验(sha256:+64
+  小写 hex,dep_blob_check);消费 = deps/<nm>.ctart,artifact self_digest 与
+  blob 值对账(缺/未验 → E5052,不符 → E5054 点名双摘要);lock 钉
+  source="blob" + digest=blob 值。
+- **loader record 面(源消费方诚实边界闭合)**:pkg_load_use_done 工件分支,
+  顶层源(ameta="")时读消费方清单 Ctron.ctcl 的 dep blob 记录——有记录即与
+  工件 self_digest 对账(不符 → E5054;工件缺 self_digest → E5055);无 blob
+  记录 = 记录面缺位,维持 L2 边界不拒。新 fn pkg_meta_dep_field(清单 dep 块
+  字段提取泛化,+1 decl,锁 514→515 随批申报)。
+- **门**:smoke 3w 腿五断言(blob 正例 t=12/E5054 错摘要/E5049 四形互斥/
+  driver 消解 lock 钉定/E5046 值形态);全量 **210 ok / 0 fail**;meta_check
+  1 败 = 对端 L4 在飞件(tests/03m_binary_nul_probe.ct 未提交 WIP,git status
+  实证,非本批);native 八驱动族重建。
+- **D8-2 L2 诚实边界清算**:「顶层源消费方无记录面」自此有解——清单 blob
+  记录 = 显式信任锚(§7.2 消费锚三件的 digest 件);t=7 静默错版本洞对
+  源消费方同步闭合。
+
+状态:✅ S4-① 完成(2026-10-07)。S4 余:透明日志仓/attest、跨发布者
+命名空间。S3 余:S3-δ(写效果捕获)、标量 json 写入器、加载期发射腿。
+S1b:加速线挂账维持。
