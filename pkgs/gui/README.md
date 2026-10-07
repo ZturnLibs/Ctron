@@ -231,6 +231,12 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - input 回显写 mirror label(`{draft}`);`{ident}` 简单槽走名字通道,
   表达式槽走求值器——两态并存零破坏。
 - 零参方法(`.pop()` 等)发射面缺口:以重建列表 + 成员赋值配方绕行。
+- **run(ViewCall) 合成 × 多本地 view = 发射段错误(2026-10-07 实证,gui_contacts 立案)**:
+  单 .ct 内 ≥2 个 GuiBlock view + `run(ViewCall)` 装配,emit 阶段堆损坏崩于后置
+  println(崩点与真凶解耦:输出恒截 48KB 整、lldb 下堆布局差而隐身);最小复现 =
+  任添一个未实例化的第二本地 view 即崩。多组件走两已证形态:`app.ctml` 数据面 +
+  `rt_run_kb_anchor`/`test`(陈列室形,17 view 实证),或组件入库包 use 消费
+  (gui_snippets 形,单本地根视图 + 库 view)。修复归编译泳道。
 - 域包形态构建:`CTRON_STDPATH` 指向 std 三级解析根(域根随仓库布局解析),
   native 链接 `gui/c_src/ctron_gui.c` + `gui/c_src/ft_shim.c` +
   `vendor/gui/build/libraylib.a` + `vendor/gui/build/libfreetype.a`(M3 合流起)。
@@ -241,7 +247,8 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - 示例:`examples/todo`(键入/列表/空态全链)、`gui_counter`(最小活模型/声明式
   中文示范)、`gui_calc`(全场景断言)、`gui_files`(真实 IO 首例:文件查看器)、
   `gui_cjk`(直绘中文渲染)、`gui_themes`(八主题键盘切换陈列室)、`gui_widgets`
-  (Select/WList/Dialog 组件交互演示);各目录 `run.sh` 直跑,`--run` 开真窗口。
+  (Select/WList/Dialog 组件交互演示);各目录 `run.sh` 直跑,`--run` 开真窗口;
+  `gui_contacts`(自定义组件教学:slot 内容投影/行事件 args 解码/实例后缀直驱)。
 
 ## 分层与稳定口径
 

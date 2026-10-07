@@ -1,0 +1,141 @@
+// examples/gui_contacts —— 自定义组件教学示例(通讯录;宿主逻辑面)
+// 视图与样式在 app.ctml(数据面);本文件只持模型/事件头/bind 通道/装配。
+// 双口径:CTRON_GUI_HEADLESS=1 → gui.test 注入断言;缺省 → rt_run_kb_anchor 真窗。
+// 组件库化路径(run(ViewCall) + use 域包)见 examples/gui_snippets。
+use gui.{ev_arg_i, rt_run_kb_anchor, test, theme_apply, theme_auto_apply, theme_dark, d_frame, d_click, d_expect_text, d_expect_absent}
+
+struct Model {
+    var who: Str
+    var role: Str
+    var open: Bool
+    var tags: List[Str]
+    var status: Str
+}
+
+fn make() -> Model {
+    var tl = List[Str]()
+    tl.push("内核组")
+    tl.push("工具链")
+    return Model { who: "林一", role: "编译器", open: true, tags: tl, status: "" }
+}
+
+// bind 通道:每帧按槽名询问(buf[0] 分发,答案 push)
+// 标量 prop 经使用处实参名({who}/{role}/{open});列表 prop 经同名 each:通道
+fn bind_all(buf: List[Str], m: Box[Model]) {
+    if buf[0] == "who" {
+        buf.push(m.who)
+    }
+    if buf[0] == "role" {
+        buf.push(m.role)
+    }
+    if buf[0] == "open" {
+        if m.open {
+            buf.push("b:1")
+        } else {
+            buf.push("b:0")
+        }
+    }
+    if buf[0] == "status" {
+        buf.push(m.status)
+    }
+    if buf[0] == "each:items" {
+        var i: I32 = 0
+        while i < m.tags.len {
+            buf.push(m.tags[i])
+            i += 1
+        }
+    }
+}
+
+// 事件头 = 组件合约:名字扁平分发;行事件自动带实例后缀(pick_tag:N)
+fn card_fold(m: Box[Model]) {
+    if m.open {
+        m.open = false
+    } else {
+        m.open = true
+    }
+}
+
+fn pick_row(m: Box[Model], row: I32) {
+    m.status = "已选分组" + row.to_string()
+}
+
+fn act(name: Str, args: List[Str], m: Box[Model]) {
+    if name == "pick_tag" {
+        // 真命中路径:行号走首参整通道(args[0]="i:N")
+        pick_row(m, ev_arg_i(args, 0))
+        return
+    }
+    if name == "card_fold" {
+        card_fold(m)
+        return
+    }
+    if name.len > 9 {
+        // actc 直驱面:后缀名 "pick_tag:1" → row=1(逐字节前缀:112 105 99 107 95 116 97 103 58)
+        if byte_at(name, 0) == 112 && byte_at(name, 1) == 105 && byte_at(name, 2) == 99 && byte_at(name, 3) == 107 && byte_at(name, 4) == 95 && byte_at(name, 5) == 116 && byte_at(name, 6) == 97 && byte_at(name, 7) == 103 && byte_at(name, 8) == 58 {
+            var row: I32 = 0
+            var k: I32 = 9
+            while k < name.len {
+                row = row * 10 + (byte_at(name, k) - 48)
+                k += 1
+            }
+            pick_row(m, row)
+            return
+        }
+    }
+}
+
+fn apply_key(k: I32, m: Box[Model]) {
+}
+
+fn headless_suite() -> I32 {
+    var src: Str = read_file("app.ctml")
+    var m = Box[Model](make())
+    theme_apply(theme_dark())
+    return test(src, 420, 400,
+        |buf| bind_all(buf, m),
+        |name, ar| act(name, ar, m),
+        |k| apply_key(k, m),
+        |t, actc, k2| {
+            // 首帧:prop 全落位,slot 内容在(open=true),两行分组齐
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "林一")
+            d_expect_text(t, "编译器")
+            d_expect_text(t, "内部联系人")
+            d_expect_text(t, "分组")
+            d_expect_text(t, "内核组")
+            d_expect_text(t, "工具链")
+            // 行事件:d_click 返回实例后缀名,交 act 分发(:0 → row=0)
+            actc(d_click(t, "pick_tag"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已选分组0")
+            // 直驱带后缀名:row=1(实例后缀解码实证)
+            actc("pick_tag:1", List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "已选分组1")
+            // 组件事件(Bool prop + when + slot):折叠 → slot 内容消失,卡片主体仍在
+            actc(d_click(t, "card_fold"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_absent(t, "内部联系人")
+            d_expect_text(t, "林一")
+            d_expect_text(t, "已选分组1")
+            // 再点复原
+            actc(d_click(t, "card_fold"), List[Str]())
+            d_frame(t, |buf| bind_all(buf, m))
+            d_expect_text(t, "内部联系人")
+            println("CONTACTS-GREEN")
+        })
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    var m = Box[Model](make())
+    theme_auto_apply()
+    var rc: I32 = rt_run_kb_anchor("通讯录", 420, 400,
+        |buf| bind_all(buf, m),
+        |name, args| act(name, args, m),
+        |k| apply_key(k, m))
+    return rc
+}

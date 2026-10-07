@@ -1,0 +1,40 @@
+// examples/gui_contacts —— 自定义组件教学示例(通讯录;app.ctml 数据面)
+// 组件三件套地道形态:props 进 / CTML 树出 / 事件头驻宿主;根视图=最后声明。
+// PersonCard 演示 when+slot 内容投影;TagRow 演示 each+行事件实例后缀。
+view PersonCard (who: Str, role: Str, open: Bool) {
+  <vbox class="card">
+    <label class="card_name">{who}</label>
+    <label class="card_sub">{role}</label>
+    <button class="fold" on:click={card_fold}>折叠</button>
+    <when cond={open}>
+      <slot/>
+    </when>
+  </vbox>
+}
+view TagRow (title: Str) {
+  <vbox class="tagrow">
+    <label class="tagrow_t">{title}</label>
+    <each tg in={items}>
+      <button class="tag" on:click={pick_tag}>{tg}</button>
+    </each>
+  </vbox>
+}
+view Contacts {
+  <vbox class="root">
+    <PersonCard who: {who} role: {role} open: {open}>
+      <label class="extra">内部联系人</label>
+    </PersonCard>
+    <TagRow title: "分组"/>
+    <label class="status">{status}</label>
+  </vbox>
+}
+style root { direction: column gap: 10 padding: 16 }
+style card { direction: column gap: 4 bg: SURFACE padding: 12 }
+style card_name { fg: TEXT size: 18 h: 26 font_weight: 700 }
+style card_sub { fg: TEXT_MUTED size: 13 h: 20 }
+style fold { bg: ELEVATED fg: TEXT w: 70 h: 26 hover_bg: BORDER }
+style extra { fg: TEXT_MUTED size: 12 h: 18 }
+style tagrow { direction: column gap: 4 }
+style tagrow_t { fg: TEXT_MUTED size: 13 h: 20 }
+style tag { bg: ELEVATED fg: TEXT w: 90 h: 26 hover_bg: BORDER }
+style status { fg: ACCENT size: 12 h: 18 }
