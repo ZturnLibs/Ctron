@@ -1074,6 +1074,7 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
     else
         grep -q "trace mismatch" "$T/t3.out" && ok "不符腿:翻改 expect 精准点名双值" || bad "无 mismatch 文案: $(cat "$T/t3.out")"
     fi
+    sed 's/expect = "13"/expect = "12"/' "$TT/traces/base.ctrt" > "$TT/traces/base.ctrt.n" && mv "$TT/traces/base.ctrt.n" "$TT/traces/base.ctrt"
     AD3="$TT/art"
     mkdir -p "$AD3/impl"
     "$COMP/ctc.sh" ast "$TT/base.ct" --ast=seal --astout="$AD3" --astname=mybase > "$T/t4.out" 2>&1
@@ -1084,6 +1085,34 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
     fi
 else
     ok "3t 跳过(缺 compiler/bin/ctron-cc;先: compiler/native.sh)"
+fi
+
+# ---------------- 3u) S3-β verify 复放腿(E5056;deep = 摘要+轨迹复放) ----------------
+echo "== 3u) S3-β deep 复放腿(E5056:工件行为 vs 录制期望)=="
+if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify" ]; then
+    UB="$T/trace2"
+    mkdir -p "$UB"
+    cp "$ROOT/tests/artifact_demo/base/base.ct" "$UB/base.ct"
+    "$ROOT/ctron" pkg trace record "$UB/base.ct" --case "base_mul=3, 4" --case "base_mul=0, 5" > "$T/u1.out" 2>&1
+    UA="$UB/art"
+    mkdir -p "$UA/impl"
+    "$COMP/ctc.sh" ast "$UB/base.ct" --ast=seal --astout="$UA" --astname=mybase > "$T/u2.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$UA" > "$T/u3.out" 2>&1 && grep -q "复放 2 用例" "$T/u3.out"; then
+        ok "deep 复放腿正例:摘要自洽+轨迹 2 用例全符"
+    else
+        bad "deep 复放腿正例异常: $(tail -2 "$T/u3.out")"
+    fi
+    printf '// base drifted\npub fn base_mul(a: I32, b: I32) -> I32 {\n    return a * b + 1\n}\n' > "$UB/base.ct"
+    UB2="$UB/art2"
+    mkdir -p "$UB2/impl"
+    "$COMP/ctc.sh" ast "$UB/base.ct" --ast=seal --astout="$UB2" --astname=mybase > "$T/u4.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$UB2" > "$T/u5.out" 2>&1; then
+        bad "行为漂移未拒(E5056)"
+    else
+        grep -q "E5056 trace mismatch" "$T/u5.out" && ok "E5056 腿:工件行为漂移 vs 旧轨迹精准拒载" || bad "无 E5056 文案: $(cat "$T/u5.out")"
+    fi
+else
+    ok "3u 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"
 fi
 
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------

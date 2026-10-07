@@ -475,3 +475,29 @@ trace(S3)、命名空间(S4)、S1b(加速线)。
 状态:✅ S3-α 完成(2026-10-07)。S3 余:S3-β(FakeFs 效果函数录制/加载期
 复放腿接线 + E4040/标量 json 写入器/零参 fn)。S4 余:命名空间 + deps
 `blob =` 形。S1b:加速线挂账维持。
+
+## S3-β 首片落地(2026-10-07,T50 批):verify 复放腿 + E5056 + 轨迹面健壮化
+
+- **deep verify 复放腿(§7.2 verify = 校验和 + 复放轨迹,首兑现)**:
+  `ctron pkg verify --deep` = ctron-verify native 摘要 + 编排层逐案复放——
+  构临时消费工程(deps/<pkg>.ctart 拷入),按轨迹码gen `use <pkg>.<mod>.{fns}`
+  消费驱动经 loader 跑(bin/ctron-cc source 模式),工件行为 vs 录制期望逐字
+  比对;traces 在场即必复放(fail-closed:缺 ctron-cc 硬失败不静默)。
+- **E5056 = 轨迹复放不符**(三面注册:meta_check 码表/conformance 表/diag_msg
+  双语模板——spec §5.2 占位 E4040 已被 `#[trusted]` 面占用,实配 E5056;
+  当前载体 = verify --deep 工具面,加载期编译器发射腿预留,模板已预置)。
+- **陈旧信任证据硬拒**:traces/<mod>.ctrt 的模块不在工件 impl/ = 拒
+  (重封未重录的漂移场景强制显式清理——信任工件要求精确)。
+- **轨迹面健壮化**:replay 解析改行制(每用例三行 fn/args/expect,read 保空
+  字段)——零参 fn 与空 expect 全支持(α 的 tab 切分丢字段病灶拔除);
+  编译器诊断走 stdout,失败捕获改 2>&1 合并打印。
+- **门**:smoke 3u 腿二断言(deep 复放正例 2 用例全符/行为漂移 vs 旧轨迹
+  E5056 精准拒载)+ 3t 顺序修复(篡改步后恢复原值——复放腿上岗后 3t 旧序
+  自我拦截);全量 **200 ok / 0 fail**;native 八驱动族重建。
+- **D3 论题端到端实演**:行为漂移工件(源改 6 重封)+ 旧轨迹(期望 5)→
+  deep verify 拒载,E5056 点名 `five() 记录 5 实际 6`——「确定性重放取代
+  信任发布者」首次全链贯通(摘要链 → 轨迹 → 拒载)。
+
+状态:✅ S3-β 首片完成(2026-10-07)。S3 余:S3-γ(FakeFs 效果函数脚本化
+录制/复放)、标量 json 写入器(std 能力件)、加载期编译器发射腿。S4 余:
+命名空间 + deps `blob =` 形。S1b:加速线挂账维持。

@@ -41,7 +41,7 @@ ctron —— Ctron 工具链驱动
                              in-language 发射验证器(ctron-verify,C 速,L3 载体)
   ctron pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...]
                              黄金轨迹录制(S3-α 纯函数):值=to_string 规范形,落
-                             traces/<stem>.ctrt;零参 fn 与含 main 源不支持
+                             traces/<stem>.ctrt;含 main 源不支持
   ctron pkg trace replay <src.ct>
                              轨迹复放:逐字比对,不符即 rc=1 点名双值(S3-α)
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
@@ -251,7 +251,6 @@ function Cmd-PkgTrace($trest) {
 			$tfn = $te.Split('=')[0]
 			$targs = $te.Substring($tfn.Length + 1)
 			if ($tfn -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { [Console]::Error.WriteLine("ctron: pkg trace record: fn 名非法: '$tfn'([A-Za-z_][A-Za-z0-9_]*)"); exit 2 }
-			if ($targs -eq '') { [Console]::Error.WriteLine('ctron: pkg trace record: 零参 fn 轨迹 α 不支持(args 为空;零参形随 S3-β)'); exit 2 }
 			$tdrv = Join-Path ([IO.Path]::GetTempPath()) ('ctron_tr_' + [guid]::NewGuid().ToString('N') + '.ct')
 			[IO.File]::WriteAllText($tdrv, $tsrcText + "`nfn main() {`n    println($tfn($targs).to_string())`n}`n", $enc)
 			$tout = & $cc run $tdrv 2> ($tdrv + '.err')
@@ -448,8 +447,50 @@ switch ($cmd) {
 			$vv = Join-Path $Bin 'ctron-verify.exe'
 			if (-not (Test-Path $vv)) { $vv = Join-Path $Bin 'ctron-verify' }
 			if (-not (Test-Path $vv)) { [Console]::Error.WriteLine('ctron: pkg verify --deep: 缺 ctron-verify(重装工具链)'); exit 2 }
-			& $vv run (Resolve-Path $pvDir).Path
-			exit $LASTEXITCODE }
+			$pvFull = (Resolve-Path $pvDir).Path
+			& $vv run $pvFull
+			if ($LASTEXITCODE -ne 0) { exit 1 }
+			# S3-β 复放腿(§7.2;E5056):traces/ 在场即逐案复放(D3:工件行为 vs 录制期望)
+			$pvRn = 0; $pvRb = 0
+			$trDir = Join-Path $pvFull 'traces'
+			if (Test-Path $trDir -PathType Container) {
+				$cc = Join-Path $Bin 'ctron-cc.exe'
+				if (-not (Test-Path $cc)) { $cc = Join-Path $Bin 'ctron-cc' }
+				if (-not (Test-Path $cc)) { [Console]::Error.WriteLine('ctron pkg verify: traces 在场但缺 ctron-cc(复放腿不可跳过;重装工具链)'); exit 1 }
+				$pvName = (Select-String -Path (Join-Path $pvFull 'meta.ctcl') -Pattern '^artifact "([^"]*)"').Matches[0].Groups[1].Value
+				if (-not $pvName) { [Console]::Error.WriteLine('ctron pkg verify: meta artifact 块缺失(复放腿无包名)'); exit 1 }
+				$enc2 = New-Object Text.UTF8Encoding($false)
+				foreach ($trF in @(Get-ChildItem -Path (Join-Path $trDir '*.ctrt') -File)) {
+					$trMod = [IO.Path]::GetFileNameWithoutExtension($trF.Name)
+					if (-not (Test-Path (Join-Path $pvFull "impl/$trMod.ast"))) { [Console]::Error.WriteLine("ctron pkg verify: 陈旧信任证据: traces/$trMod.ctrt 的模块 $trMod 不在工件 impl/(清理或重录)"); exit 1 }
+					$ttext = [IO.File]::ReadAllText($trF.FullName)
+					$tms2 = [regex]::Matches($ttext, 'trace "([^"]*)" \{\r?\n  args = "((?:[^"\\]|\\.)*)"\r?\n  expect = "((?:[^"\\]|\\.)*)"\r?\n\}')
+					$fns = (@($tms2 | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) -join ', ')
+					$trp = Join-Path ([IO.Path]::GetTempPath()) ('ctron_trp_' + [guid]::NewGuid().ToString('N'))
+					New-Item -ItemType Directory -Force -Path (Join-Path $trp "deps/$pvName.ctart") | Out-Null
+					Copy-Item (Join-Path $pvFull '*') (Join-Path $trp "deps/$pvName.ctart") -Recurse -Force
+					$enc2 = New-Object Text.UTF8Encoding($false)
+					foreach ($tm2 in $tms2) {
+						$tfn = $tm2.Groups[1].Value
+						$targs = $tm2.Groups[2].Value -replace '\\"', '"'
+						$texp = $tm2.Groups[3].Value -replace '\\"', '"'
+						[IO.File]::WriteAllText((Join-Path $trp 'main.ct'), "use $pvName.$trMod.{ $fns }`nfn main() {`n    println($tfn($targs).to_string())`n}`n", $enc2)
+						$errF = Join-Path $trp 'err.txt'
+						Push-Location $trp
+						$tout = & $cc run main.ct 2> $errF
+						$trc = $LASTEXITCODE
+						Pop-Location
+						if ($trc -ne 0) { Get-Content $errF | [Console]::Error.WriteLine; Remove-Item $trp -Recurse -Force; [Console]::Error.WriteLine("ctron pkg verify: 复放用例 $tfn($targs) 运行失败(rc=$trc)"); exit 1 }
+						$tact = @($tout)[0]
+						if ($tact -ne $texp) { [Console]::Error.WriteLine("E5056 trace mismatch: $tfn($targs) 记录 $texp 实际 $tact"); $pvRb++ }
+						$pvRn++
+					}
+					Remove-Item $trp -Recurse -Force
+				}
+				if ($pvRb -gt 0) { [Console]::Error.WriteLine("ctron pkg verify: 复放 $pvRn 用例中 $pvRb 不符(E5056)"); exit 1 }
+			}
+			Write-Output "ctron pkg verify OK: $pvFull(deep: 摘要自洽;复放 $pvRn 用例)"
+			exit 0 }
 		$pvBad = $false; $pvN = 0
 		# ① 形态面(§3.5 后缀即契约:自称 .ctart 而缺成员 = 损坏/伪造,fail-closed)
 		foreach ($pvF in @('meta.ctcl','SHA256SUMS')) {

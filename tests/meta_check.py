@@ -50,6 +50,7 @@ ERROR_CODES = {
     "E5035": "use 别名与已有 decl 冲突(§2 包路径别名)",
     "E5054": "依赖工件摘要不符(闭源分发 D8-2 L2 记录-比对)",
     "E5055": "工件摘要未验(缺 self_digest/dep.digest;fail-closed 拒载)",
+    "E5056": "轨迹复放不符(闭源分发 S3 信任协议;当前载体=ctron pkg verify --deep 工具面,加载期腿预留)",
     "E5060": "derive 插件未声明/插件包加载或接口面不符(T52 插件沙箱)",
     "E6010": "comptime 预算超限",
     "E6020": "comptime 副作用/不确定",

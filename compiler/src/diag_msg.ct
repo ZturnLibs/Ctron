@@ -97,6 +97,7 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E2020.use.read") { return "use: module file unreadable:%0" }
     if seq2(key, "E5054") { return "artifact dependency digest mismatch: dep %0 requires %1, found %2 (D8-2 L2)" }
     if seq2(key, "E5055") { return "artifact digest unverified (meta lacks self_digest or dep.digest; seal via ctc.sh ast --ast=seal digest step):%0" }
+    if seq2(key, "E5056") { return "trace replay mismatch: %0 expects %1, found %2 (S3 golden traces)" }
     if seq2(key, "E3050.umove") { return "use-after-move (moved):arena handle %0" }
     if seq2(key, "E3040.own") { return "GC allocation inside an own block (allocation):%0" }
     if seq2(key, "E3040.noalloc") { return "GC allocation in a no_alloc context (allocation):%0" }
@@ -202,6 +203,7 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E2020.use.read") { return "use 模块文件不可读:%0" }
     if seq2(key, "E5054") { return "依赖工件摘要不符:dep %0 需求 %1 实际 %2(D8-2 L2)" }
     if seq2(key, "E5055") { return "工件摘要未验(meta 缺 self_digest 或 dep.digest 记录;编排层 seal 摘要步骤):%0" }
+    if seq2(key, "E5056") { return "轨迹复放不符:%0 期望 %1 实际 %2(S3 黄金轨迹)" }
     if seq2(key, "E3050.umove") { return "use-after-move(moved):arena 句柄 %0" }
     if seq2(key, "E3040.own") { return "own 块内 GC 分配(allocation):%0" }
     if seq2(key, "E3040.noalloc") { return "no_alloc 上下文 GC 分配(allocation):%0" }
