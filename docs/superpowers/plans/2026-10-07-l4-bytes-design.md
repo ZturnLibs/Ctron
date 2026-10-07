@@ -28,3 +28,10 @@
 ## 关联
 
 03m 探针=量尺;FB-1 byte_slice 越界防护(已落库)为 L4-② 的护栏前提;spec §8 read 签名为类型级依据。
+
+
+## 施工实录(1007)
+
+**L4-③ emit 面已落地(五点先例)**:parse_pkg 名单/sem_calls prel/sem_type prelude_ok 值位门(三名单缺一即 E2020)/trans_expr 五映射/trans_ty "YB" 码+ct_ctype ctron_bytes*+call typeof 五臂/driver_emit ctron_bytes 模板(fread 全量读,bytes_at/slice 越界响亮 panic,to_str NUL 止)。锚 fx_bytes(smoke 扫描 195/0 基线,写后读回形双臂逐字一致)。**二进制 NUL 形 emit 已证**(/bin/echo 101136=精确长,magic 字节 202/190 ✓)。
+
+**interp 面=降级已文档化**(read_bytes 走 C 串域 NUL 截断;写后读回文本形双臂一致,二进制形 interp=4 vs emit=101136)。**L4-②(宿主字节原语)未施工**——升起需 compiler-c 读原语(rt) + interp read_bytes 换 host 通道;03m 双臂翻绿以此为门。
