@@ -1354,6 +1354,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "fs_write" { return "(ctron_fs_write(" + ct_call_args(ag, 1, env, file, "") + ")?1:0)" }
         if callee == "fs_mkdir" { return "(ctron_fs_mkdir_p(" + ct_call_args(ag, 1, env, file, "") + ")?1:0)" }
         if callee == "fs_delete" { return "(ctron_fs_delete(" + ct_call_args(ag, 1, env, file, "") + ")?1:0)" }
+        // L4-③:Bytes 族(emit 面;ctron_bytes* 堆结构,rt 模板见 driver_emit)
+        if callee == "read_bytes" { return "ctron_read_bytes(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "bytes_len" { return "ctron_bytes_len(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "bytes_at" { return "ctron_bytes_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "bytes_slice" { return "ctron_bytes_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "bytes_to_str" { return "ctron_bytes_to_str(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "now_ms" { return "ctron_now_ms()" }
         if callee == "now_ms_text" { return "ctron_now_ms_text()" }
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
