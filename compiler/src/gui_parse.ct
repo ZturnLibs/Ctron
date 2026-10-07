@@ -4908,12 +4908,10 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     nu.push(nsegs)
     nu.push(nsyms)
     file.push(nu)
-    var hdr: Str = "__ordn__"
+    var hdr: Str = "__ordn__" + vname
     var k2: I32 = 0
     while k2 < ordn.len {
-        if k2 > 0 {
-            hdr = hdr + ","
-        }
+        hdr = hdr + ","
         hdr = hdr + ordn[k2]
         k2 += 1
     }
@@ -4986,25 +4984,40 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
         return file
     }
     var ordntxt: Str = byte_slice(hdr, 8, hdr.len)
-    var ordn = List[Str]()
+    // 头格式 = "__ordn__" + 靶视图名 + (","+ordn)*——靶名随标记走(多本地 view
+    // 下「首个 view」启发式选错靶:合成 fn 拿错 prop 表 → 实参类型落空成
+    // "__a0: " 畸形签名 → emit 面 items 越界读堆损坏,gui_contacts 立案 2026-10-07)
+    var flds = List[Str]()
     var oi: I32 = 0
     var os: I32 = 0
     while oi <= ordntxt.len {
         if oi == ordntxt.len {
             if oi > os {
-                ordn.push(byte_slice(ordntxt, os, oi))
+                flds.push(byte_slice(ordntxt, os, oi))
             }
             oi += 1
         } else {
             if byte_at(ordntxt, oi) == 44 {
-                ordn.push(byte_slice(ordntxt, os, oi))
+                flds.push(byte_slice(ordntxt, os, oi))
                 os = oi + 1
             }
             oi += 1
         }
     }
+    var vname: Str = ""
+    var ordn = List[Str]()
+    if flds.len > 0 {
+        vname = flds[0]
+        var fi: I32 = 1
+        while fi < flds.len {
+            ordn.push(flds[fi])
+            fi += 1
+        }
+    }
     file = gui_ds_sanitize(file)
-    var vname: Str = gui_ds_target(file)
+    if vname == "" {
+        vname = gui_ds_target(file)
+    }
     if vname == "" {
         return file
     }
@@ -5056,6 +5069,19 @@ fn gui_ds_postmerge(file: List[Str], unit: List[Str], diags: List[Str]) -> List[
     var sfk = List[Str]()
     var stv = List[Str]()
     gui_field_tables(file, stns, sfk, stv)
+    // 靶名必须在合并产物里:标记视图缺失(模块加载失败)时跳过合成,
+    // 让 sem 按既有 E2020 报——硬拼会产 "__a0: " 畸形签名喂崩下游
+    var vf: Bool = false
+    var vk: I32 = 0
+    while vk < vnames.len {
+        if vnames[vk] == vname {
+            vf = true
+        }
+        vk += 1
+    }
+    if !vf {
+        return file
+    }
     var paths = List[Str]()
     var pty = List[Str]()
     var lists = List[Str]()

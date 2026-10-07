@@ -1188,8 +1188,10 @@ fn mono_b(b: List[Str], file: List[Str], keys: List[Str]) {
         }
         i += 1
     }
-    if b[b.len - 1][0] != "None" {
-        mono_e(b[b.len - 1], file, keys)
+    if b.len > 1 {
+        if b[b.len - 1][0] != "None" {
+            mono_e(b[b.len - 1], file, keys)
+        }
     }
 }
 
@@ -1310,8 +1312,12 @@ fn ct_let_insts_b(b: List[Str], file: List[Str], out: List[Str]) {
         }
         i += 1
     }
-    if b[b.len - 1][0] != "None" {
-        ct_let_insts_e(b[b.len - 1], file, out)
+    // 尾表达式位守卫:退化树(如畸形合成签名解析产物)块尾可能是裸串——
+    // 无守卫即 items 越界读,emit 面堆损坏延迟引爆(gui_contacts 立案 2026-10-07)
+    if b.len > 1 {
+        if b[b.len - 1][0] != "None" {
+            ct_let_insts_e(b[b.len - 1], file, out)
+        }
     }
 }
 

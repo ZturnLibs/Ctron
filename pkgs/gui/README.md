@@ -231,12 +231,15 @@ flush 的 TEXT 命令走 `gui/c_src/ft_shim.c` 字符串纹理缓存:`gui_ft_tex
 - input 回显写 mirror label(`{draft}`);`{ident}` 简单槽走名字通道,
   表达式槽走求值器——两态并存零破坏。
 - 零参方法(`.pop()` 等)发射面缺口:以重建列表 + 成员赋值配方绕行。
-- **run(ViewCall) 合成 × 多本地 view = 发射段错误(2026-10-07 实证,gui_contacts 立案)**:
-  单 .ct 内 ≥2 个 GuiBlock view + `run(ViewCall)` 装配,emit 阶段堆损坏崩于后置
-  println(崩点与真凶解耦:输出恒截 48KB 整、lldb 下堆布局差而隐身);最小复现 =
-  任添一个未实例化的第二本地 view 即崩。多组件走两已证形态:`app.ctml` 数据面 +
-  `rt_run_kb_anchor`/`test`(陈列室形,17 view 实证),或组件入库包 use 消费
-  (gui_snippets 形,单本地根视图 + 库 view)。修复归编译泳道。
+- ~~run(ViewCall) 合成 × 多本地 view = 发射段错误~~ **已修(2026-10-07,gui_contacts
+  立案同批)**:根因 = `gui_ds_target`「合并文件首个 view」启发式在多本地 view 下选错
+  靶——合成 fn 拿错 prop 表,run 调用点实参在表内落空成 `__a0: ` 畸形签名,emit 面
+  类型互蹭 items 越界读,堆损坏延迟引爆(崩点后置 48KB 整截、lldb 下隐身)。修 =
+  靶名随 `__ordn__` 头携带(标记视图名直通 postmerge)+ 靶缺失时跳过合成让 sem 报
+  E2020 + `ct_let_insts_b`/`mono_b` 尾表达式位 len 守卫(退化树不再 UB)。**多本地
+  view + run(ViewCall) 现为支持形态**;两条习语:组件视图内事件 = 空括号调用形
+  (`{pick_tag()}`,显参全走 ev_arg 位解码 + Box 捕获隐式);headless 套件行事件 =
+  `actc("pick_tag:0")` 后缀名直驱(`d_click` 返回头名,撞不进合成 act 的后缀分支)。
 - 域包形态构建:`CTRON_STDPATH` 指向 std 三级解析根(域根随仓库布局解析),
   native 链接 `gui/c_src/ctron_gui.c` + `gui/c_src/ft_shim.c` +
   `vendor/gui/build/libraylib.a` + `vendor/gui/build/libfreetype.a`(M3 合流起)。
