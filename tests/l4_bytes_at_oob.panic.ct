@@ -1,0 +1,7 @@
+// l4_bytes_at_oob.panic.ct —— L4-④:bytes_at 越界响亮 panic(§6.6 字节面守卫)
+//@ panic: bytes index out of bounds
+fn main() -> I32 {
+    let b = read_file_bytes("/bin/echo")
+    println(bytes_at(b, bytes_len(b) + 1).to_string())
+    return 0
+}

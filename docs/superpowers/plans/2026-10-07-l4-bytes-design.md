@@ -59,3 +59,10 @@
 ## 施工实录五(1007 终二)——极小必现形
 
 **语句序依赖实证(确定性,非 flaky)**:同一块内,`assert_eq(bytes_at(h,3), bytes_at(b,3))` 先行=静默 rc=1(tests_total=0 分支,吞输出);两 println(bytes_at 同址读,打印 190/190 **相等**)先行=过。值相等而断言先行即败=eval 状态病(非值错)。上下文要件=完整 main(nuls 全量循环+slice)在前。**下片首查**:host assert_eq 双 eval 的 arena/状态交互(疑第一 eval 破坏第二 eval 的 h/b 绑定可见性,或 cx/env 栈深交互);复现件 /tmp/v_all.ct(过)vs tests/03m(败)仅语句序异。
+
+
+## 施工实录六(1007 终三)——语句序"病"销账 + L4-④ 落库
+
+**语句序依赖=伪象销账**:让名修复(2da1dac9)后 03m 三连 rc=0 全绿,v_all 同绿——当时"断言先行败"真因=并卷吞臂构建下 assert 参数型别错(bytes_at 的 YB call-typo 臂缺失),打印不经该路径故"先行=过"伪象自洽。
+
+**L4-④ 负例族落库**:l4_bytes_at_oob.panic.ct(越界→"bytes index out of bounds")+l4_bytes_slice_oob.panic.ct(→"bytes slice range"),interp 响亮实证;宿主 rt_abort RT_PANIC 同消息面。
