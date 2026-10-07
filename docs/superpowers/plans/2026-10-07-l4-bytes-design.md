@@ -44,3 +44,8 @@
 **发现并让名:host 早有 `read_bytes(n)`=stdin LSP 协议内建(rt_eval 1155)**——本设计 face 改名 `read_file_bytes`(全量文件字节)。host 值级四臂(read_file_bytes/bytes_len/bytes_at/bytes_slice/bytes_to_str,V_ARR of V_INT 表示)已入,bytes_len ✓(小文件 4);**残余 triage:bytes_at 返回垃圾值(44380013360,items 内容/生命周期)+ 大文件 SIGBUS(101136 值数组)**——疑 v_arr/items 交互或 arena 块语义,下片首查。
 
 **03m 量尺 v2 已落库**(红=本残余门)。FB-12 双模已实施(argv offset:run=3/裸=1,双模实测 ✓)。
+
+
+## 施工实录三(1007 续二)
+
+**L4-② 完成**:①compiler-c rt_eval 双原语臂(read_bytes_len 静态缓冲装载/at 逐字节)②interp read_bytes 换 len/at 通道(全量 NUL 保真)③名单四处(prelude_ok 值位门=parse_pkg/sem_calls/sem_type 三处,or2 链程序化生成保平衡)④emit 映射+模板(read_bytes_len/at)⑤让名 read_bytes→read_file_bytes(host stdin LSP 内建冲突)。**三面全绿:host 03m=101136/88499/1(原生臂同)——03m 量尺翻绿**。残余勘验在册:arena 块上 items[0] 被后续覆写(指针值,k 保留)——读/切面改 malloc 旁路(插值 runner 短命,泄漏=设计);arena 交互机理归档待查。

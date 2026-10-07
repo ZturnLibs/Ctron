@@ -1182,7 +1182,9 @@ val eval_expr(rt* R, cexpr* e) {
                 fseek(f, 0, SEEK_END);
                 long sz = ftell(f);
                 fseek(f, 0, SEEK_SET);
-                val* items = (val*)ctron_arena_alloc(R->a, (size_t)(sz > 0 ? sz : 1));
+                // FB-勘验:arena 块上 items[0] 在后续语句被覆写(指针值,k 保留)
+                // ——改 malloc 独立存储(插值 runner 短命,泄漏=设计;arena 交互归档待查)
+                val* items = (val*)malloc((size_t)(sz > 0 ? sz : 1) * sizeof(val));
                 size_t rd = 0;
                 for (long i = 0; i < sz; i++) {
                     int c = fgetc(f);
@@ -1217,7 +1219,8 @@ val eval_expr(rt* R, cexpr* e) {
                 long long a = (long long)av.i;
                 long long n = (long long)nv.i;
                 if (a < 0 || n < 0 || a + n > (long long)b.nitems) rt_abort(R, RT_PANIC, "bytes slice range");
-                val* items = (val*)ctron_arena_alloc(R->a, (size_t)(n > 0 ? n : 1));
+                // FB-勘验:arena 目的存储遭后续覆写(items[0].i=指针值)——同读面改 malloc 旁路
+                val* items = (val*)malloc((size_t)(n > 0 ? n : 1) * sizeof(val));
                 for (long long k = 0; k < n; k++) items[k] = b.items[a + k];
                 return v_arr(items, (size_t)n);
             }
