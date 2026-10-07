@@ -49,7 +49,7 @@ fn cap_net_fine(sym: Str) -> Str {
 fn pkg_is_prelude_sym(nm: Str) -> Bool {
     if or2(seq2(nm, "parallel"), seq2(nm, "arena")) { return true }
     if or2(seq2(nm, "bit"), seq2(nm, "dom")) { return true }
-    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "panic"), seq2(nm, "assert")))) { return true }
+    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "eprint"), or2(seq2(nm, "panic"), seq2(nm, "assert"))))) { return true }
     if or2(seq2(nm, "assert_eq"), or2(seq2(nm, "assert_ne"), seq2(nm, "expect"))) { return true }
     if or2(seq2(nm, "fmt"), or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "char_len")))) { return true }
     if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), or2(seq2(nm, "fs_mkdir"), or2(seq2(nm, "read_file_bytes"), or2(seq2(nm, "bytes_len"), or2(seq2(nm, "bytes_at"), or2(seq2(nm, "bytes_slice"), or2(seq2(nm, "bytes_to_str"), or2(seq2(nm, "read_bytes_len"), seq2(nm, "read_bytes_at"))))))))))))) { return true }

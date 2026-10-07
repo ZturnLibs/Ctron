@@ -36,6 +36,7 @@ own (arena) {
 ## 6.4 RAII 与确定性析构
 
 - 值类型可实现 `Drop` trait(`fn drop(var self)`),**确定性**执行:作用域退出按声明逆序、panic 展开保证执行。
+- panic 消息流口径(双臂一致):panic/assert 族消息**即时写 stderr**(任务体内 panic 在 panic 点即写,`join` 再展开为二次输出,`join_or` 不重印);`Drop` 体 `println` 走 stdout。`eprint(s)` 为前奏内建:即时写宿主 stderr、无换行、不入输出缓冲——诊断与流分离的唯一能力口。
 - 类引用的回收由 GC,不触发 `Drop`——这是 §6.2 硬规则的根据。
 - `Arena` 本身是值类型,`Drop` 整体释放。
 

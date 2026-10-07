@@ -133,13 +133,27 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("println arity")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "eprint") {
+        // §9 stderr 面:即时写宿主 stderr(不入 out)——panic 流分离与用户
+        // 诊断输出共用的唯一能力口;原生臂映射 fprintf(stderr,"%s",…)
+        if vals.len == 1 {
+            eprint(fmt(v_unbox(vals[0])))
+            return e4("k", env, vV2(), out)
+        }
+        panic("eprint arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "assert") {
         if vals.len == 1 {
             if truth(v_unbox(vals[0])) {
                 return e4("k", env, vV2(), out)
             }
-            // §6.4 对齐:消息在失败点入 out(时序同 native ctron_panic)
-            return e4("a", env, vV2(), out + "assert failed\n")
+            // §6.4+eprint 对齐:panic 点先冲 out(stdout,时间序——镜像 native
+            // ctron_panic 的 fflush(stdout) 后写 stderr),消息即时 stderr;
+            // val 置空防 driver 末尾重印(join-P 再展开经 TASK 存活值二次输出)
+            print(out)
+            eprint("assert failed\n")
+            return e4("a", env, vS("assert failed\n"), "")
         }
         panic("assert arity")
         return e4("a", env, vV2(), out)
@@ -149,8 +163,10 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             if veq(v_unbox(vals[0]), v_unbox(vals[1])) {
                 return e4("k", env, vV2(), out)
             }
-            // §6.4 对齐:同上,消息带操作数值
-            return e4("a", env, vV2(), out + "assert_eq failed: " + fmt(v_unbox(vals[0])) + " != " + fmt(v_unbox(vals[1])) + "\n")
+            // §6.4 对齐:同上(文案与 native 模板逐字一致,裸文案不带值)
+            print(out)
+            eprint("assert_eq failed\n")
+            return e4("a", env, vS("assert_eq failed\n"), "")
         }
         panic("assert_eq arity")
         return e4("a", env, vV2(), out)
@@ -160,7 +176,9 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             if !veq(v_unbox(vals[0]), v_unbox(vals[1])) {
                 return e4("k", env, vV2(), out)
             }
-            return e4("a", env, vS("assert_ne failed: " + fmt(v_unbox(vals[0])) + " != " + fmt(v_unbox(vals[1]))), out)
+            print(out)
+            eprint("assert_ne failed\n")
+            return e4("a", env, vS("assert_ne failed\n"), "")
         }
         panic("assert_ne arity")
         return e4("a", env, vV2(), out)
@@ -553,9 +571,13 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
     }
     if seq2(nm, "panic") {
         if vals.len == 1 {
-            // §6.4 对齐:native ctron_panic 先印消息后展开——消息在 panic 点入 out
-            //(流内位置一致);val 置空防 driver 末尾重印
-            return e4("a", env, vV2(), out + fmt(v_unbox(vals[0])) + "\n")
+            // §6.4+eprint 对齐:panic 点先冲 out(stdout,时间序——镜像 native
+            // ctron_panic 的 fflush(stdout) 后写 stderr),消息即时 stderr;
+            // out 清空(已冲);消息仍随 val 携带——仅供 spawn 存入 TASK(join-P
+            // 再展开二次输出),driver 不重印 val
+            print(out)
+            eprint(fmt(v_unbox(vals[0])) + "\n")
+            return e4("a", env, vS(fmt(v_unbox(vals[0])) + "\n"), "")
         }
         panic("panic arity")
         return e4("a", env, vV2(), out)
@@ -1095,6 +1117,8 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if sr.kind == "a" {
                 tk.push("P")
                 tk.push(v_box(sr.v))
+                // 消息已在 panic 点即时 stderr(panic 内建冲刷),此处不重印;
+                // TASK 存活值供 join 再展开(driver 二次输出)与 join_or 不重印
             } else {
                 tk.push("K")
                 tk.push(v_box(sr.v))
@@ -1103,7 +1127,12 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         }
         if seq2(cx_of(recv)[0], "TASK") && seq2(m, "join") && vals.len == 0 {
             if seq2(cx_of(recv)[1], "P") {
-                return e4("a", ob.env, v_unbox(cx_of(recv)[2]), ob.out)
+                // §6.4 对齐 join 再展开:先冲主 env 的 out(时间序),消息即时
+                // stderr(镜像 native ct_join→ctron_panic 的 fflush 后写);val
+                // 置空防 driver 重印;此后展开期 Drop 输出继续入 out
+                print(ob.out)
+                eprint(fmt(v_unbox(cx_of(recv)[2])))
+                return e4("a", ob.env, vV2(), "")
             }
             return e4("k", ob.env, v_unbox(cx_of(recv)[2]), ob.out)
         }
@@ -1305,7 +1334,11 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                         }
                         return e4("k", ob.env, recv, ob.out)
                     }
-                    return e4("a", ob.env, vS(ev.s), ob.out)
+                    // §6.4+eprint 对齐:同 panic 内建冲刷范式(先冲 stdout 时间序,
+                    // 消息即时 stderr;native expect→ctron_panic 同文案)
+                    print(ob.out)
+                    eprint(ev.s + "\n")
+                    return e4("a", ob.env, vS(ev.s + "\n"), "")
                 }
             }
             if seq2(m, "is_some") && vals.len == 0 {
@@ -1402,12 +1435,17 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                     hi += 1
                 }
                 var ln = recv.s.len
-                // UTF-8 边界(§3.3):切点不得落在续字节上
+                // UTF-8 边界(§3.3):切点不得落在续字节上;冲刷范式同 panic 内建
+                // (native 切片越界→ctron_panic 同文案,stderr+\n)
                 if lo > 0 && lo < ln && utf8_cont(recv.s, lo) {
-                    return e4("a", ob.env, vS("invalid utf8 boundary"), ob.out)
+                    print(ob.out)
+                    eprint("invalid utf8 boundary\n")
+                    return e4("a", ob.env, vS("invalid utf8 boundary\n"), "")
                 }
                 if hi > 0 && hi < ln && utf8_cont(recv.s, hi) {
-                    return e4("a", ob.env, vS("invalid utf8 boundary"), ob.out)
+                    print(ob.out)
+                    eprint("invalid utf8 boundary\n")
+                    return e4("a", ob.env, vS("invalid utf8 boundary\n"), "")
                 }
                 if lo < 0 {
                     lo = 0

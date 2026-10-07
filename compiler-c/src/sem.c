@@ -558,6 +558,7 @@ static int is_prelude_name(const char* n) {
         "Mutex", "Sender", "Receiver", "Task", "Scope", "Arena", "Region", "Pool",
         "ArenaList", "Simd", "AnyError", "Parallel", "Path", "Bytes",
         "Option", "Result", "Some", "None", "Ok", "Err",
+        "print", "println", "eprint", "panic",
         "Error", "Show", "Eq", "Drop", "Clone", "Hash", "Iter", "Cap",
         "Clock", "Fs", "Net", "Log",
     };

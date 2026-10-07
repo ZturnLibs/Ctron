@@ -82,6 +82,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     var prel = List[Str]()
     prel.push("print")
     prel.push("println")
+    prel.push("eprint")
     prel.push("panic")
     prel.push("assert")
     prel.push("assert_eq")
