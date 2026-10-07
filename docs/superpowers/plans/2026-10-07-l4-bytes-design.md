@@ -49,3 +49,8 @@
 ## 施工实录三(1007 续二)
 
 **L4-② 完成**:①compiler-c rt_eval 双原语臂(read_bytes_len 静态缓冲装载/at 逐字节)②interp read_bytes 换 len/at 通道(全量 NUL 保真)③名单四处(prelude_ok 值位门=parse_pkg/sem_calls/sem_type 三处,or2 链程序化生成保平衡)④emit 映射+模板(read_bytes_len/at)⑤让名 read_bytes→read_file_bytes(host stdin LSP 内建冲突)。**三面全绿:host 03m=101136/88499/1(原生臂同)——03m 量尺翻绿**。残余勘验在册:arena 块上 items[0] 被后续覆写(指针值,k 保留)——读/切面改 malloc 旁路(插值 runner 短命,泄漏=设计);arena 交互机理归档待查。
+
+
+## 施工实录四(1007 终)
+
+**flaky 定性**:03m 宿主探针=suite 子进程上下文间歇败(空输出 rc=1),直跑/ASan 构建均 rc=0 干净——布局依赖的悬垂写类(ASan 分配器下不触发),非确定性逻辑 bug。**下片首查**:host 全量 ASan+压测复现(循环跑 03m×50 找必现形)/或 v_arr 拷贝语义审读。**当前基线**:常规构建 host 03m 直跑绿(101136/88499/1);smoke 213/1(1=同源 flaky 形)。
