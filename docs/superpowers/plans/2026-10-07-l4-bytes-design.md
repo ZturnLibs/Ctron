@@ -66,3 +66,10 @@
 **语句序依赖=伪象销账**:让名修复(2da1dac9)后 03m 三连 rc=0 全绿,v_all 同绿——当时"断言先行败"真因=并卷吞臂构建下 assert 参数型别错(bytes_at 的 YB call-typo 臂缺失),打印不经该路径故"先行=过"伪象自洽。
 
 **L4-④ 负例族落库**:l4_bytes_at_oob.panic.ct(越界→"bytes index out of bounds")+l4_bytes_slice_oob.panic.ct(→"bytes slice range"),interp 响亮实证;宿主 rt_abort RT_PANIC 同消息面。
+
+
+## 施工实录七(1007 终四)——L4-② 宿主面收口 + suite 双列满分
+
+①compiler-c Env.args 宿主臂(ctron_prog_args_n/at;rt_core 寄存语义镜像,v_str→手工 val)②07b args 测按 FB-12 双模契约调整(旧「至少含程序名」退役)③L4-④ 负例重构为 test 块-only 形(main 体 panic=runner 静默 rc=1 空出=宿主败真因;块内 panic=计数面正常)④rt_abort 补缓冲输出冲(诊断可见性)。
+
+**终局:suite 111/111 × 111/111 双列满分首次达成;smoke 219/0。** L4 泳道全清(设计/②/③/④)。

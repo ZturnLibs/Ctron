@@ -45,6 +45,13 @@ void rt_abort(rt* R, rt_status st, const char* fmt, ...) {
     vsnprintf(R->msg, sizeof R->msg, fmt, ap);
     va_end(ap);
     R->st = st;
+    // 诊断可见性:缓冲输出先冲(abort 长jmp 会弃 R->out;L4-④ 负例 suite 面实证)
+    if (R->out && R->out_n) {
+        fwrite(R->out, 1, R->out_n, stdout);
+        fflush(stdout);
+        R->out_n = 0;
+        R->out[0] = 0;
+    }
     if (st == RT_PANIC) rt_panic_unwind(R); // §6.4 panic 展开保证 Drop 执行(P1-A2 镜像)
     longjmp(R->jb, 1);
 }

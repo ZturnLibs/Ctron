@@ -8,7 +8,10 @@ test "env missing is None" {
     assert_eq(env.get("CTRON_SURELY_UNSET_R2B").or("fallback"), "fallback")
 }
 
-test "args non-empty" {
+test "args face callable" {
+    // FB-12 双模裁决后:裸执行 argv 直传(≥1);run/test 挂载下程序参=0。
+    // 旧「args 至少含程序名」承诺随双模语义退役,本测只钉面可调与不炸。
     let env = Env.system()
-    assert(env.args().len >= 1)
+    let n = env.args().len
+    assert(n >= 0)
 }

@@ -1,8 +1,7 @@
 // l4_bytes_slice_oob.panic.ct —— L4-④:bytes_slice 越界响亮 panic
 //@ panic: bytes slice range
-fn main() -> I32 {
+
+test "bytes_slice oob panics" {
     let b = read_file_bytes("/bin/echo")
-    let h = bytes_slice(b, 0, bytes_len(b) + 1)
-    println(bytes_len(h).to_string())
-    return 0
+    let _ = bytes_slice(b, 0, bytes_len(b) + 1)   // 越界 → panic,消息含 "bytes slice range"
 }
