@@ -501,3 +501,31 @@ trace(S3)、命名空间(S4)、S1b(加速线)。
 状态:✅ S3-β 首片完成(2026-10-07)。S3 余:S3-γ(FakeFs 效果函数脚本化
 录制/复放)、标量 json 写入器(std 能力件)、加载期编译器发射腿。S4 余:
 命名空间 + deps `blob =` 形。S1b:加速线挂账维持。
+
+## S3-γ 落地(2026-10-07,T50 批):效果函数轨迹(脚本化 MemFs)全绿
+
+- **机制**:效果函数 = `&Fs` 能力接收者(§8.1 trait Fs: Cap;std.fs.Fs +
+  07a MemFs 注入先例)。轨迹块新增 `fs "<path>" = "<content>"` 种子行
+  (0..N,机写);录制/复放/verify 复放腿三处码gen 同构:按种子内嵌
+  MemFs class+impl(读-only;write no-op=写效果捕获登记),γ 用例主为
+  `match <fn>(args) { Ok(v) => println(v.to_string())  Err(_) => println("<err>") }`
+  ——Ok 值与 Err 哨兵都进对账(Err/Ok 漂移即 E5056,非"运行失败")。
+- **CLI**:`--fs <path>=<content>` 种子挂最近 `--case`(可多对);args 位写
+  MemFs 变量名 `fs`(如 `--case 'greet=fs'`);码gen 驱动运行逐命令带
+  `CTRON_STDPATH=ROOT/lib/std`(dev 布局 ctron-cc exe 旁 std 解析落空;
+  单命令作用域不污染 smoke 环境,避 W8901 雷)。
+- **实现警示(血泪)**:python 生成 shell 时转义层会吞 `\"`(TR_INIT 裸值
+  实红);管道假 rc 四犯再现(PIPESTATUS 是 bash,zsh 用 pipestatus);
+  测试 sed 打点必须锚定唯一行(=`"ada"` 双行命中把期望一起翻了,漂移检验
+  自我失效)。sh+ps1 双面同文(ps1 dict-case + regex fs 行扩展)。
+- **边界(诚实登记)**:读-only 效果(write 捕获=S3-δ,需 mut 能力形态);
+  单 `fs` 变量(多能力参数随 β 后);种子经 CLI 单行(content 不含换行/tab);
+  Err 哨兵 `<err>` 字面冲突不复存在场景=返回值恰为该串(概率级,登记)。
+- **门**:smoke 3v 腿五断言(γ 录制/复放/种子漂移 mismatch/恢复/deep γ 复放);
+  全量 **205 ok / 0 fail**。插曲:一轮 13/9 败集跨无关腿且计数漂移 = 对端
+  机刷正于本 worktree 并发 checkout+build+smoke(进程在册实拿),等槽位
+  清场后复跑即清——败集跨腿漂移先查并发作业再立案。
+
+状态:✅ S3-γ 完成(2026-10-07)。信任协议(S3)录制/复放/verify 三层全通。
+S3 余:S3-δ(写效果捕获)、标量 json 写入器(std 能力件)、加载期编译器
+发射腿。S4 余:命名空间 + deps `blob =` 形。S1b:加速线挂账维持。

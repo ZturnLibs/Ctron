@@ -1115,6 +1115,41 @@ else
     ok "3u 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"
 fi
 
+# ---------------- 3v) S3-γ 效果函数轨迹(脚本化 MemFs;种子入块;deep 复放 γ) ----------------
+echo "== 3v) S3-γ 效果函数轨迹(--fs 种子挂 case;MemFs 码gen;deep 复放 γ)=="
+if [ -x "$ROOT/compiler/bin/ctron-cc" ] && [ -x "$ROOT/compiler/bin/ctron-verify" ]; then
+    VG="$T/trace3"
+    mkdir -p "$VG"
+    cp "$ROOT/tests/artifact_demo/provider/eff.ct" "$VG/eff.ct"
+    if "$ROOT/ctron" pkg trace record "$VG/eff.ct" --case "greet=fs" --fs "name.txt=ada" > "$T/v1.out" 2>&1 && grep -q "1 用例" "$T/v1.out"; then
+        ok "γ 轨迹录制:效果函数+MemFs 种子落块"
+    else
+        bad "γ 录制异常: $(tail -2 "$T/v1.out")"
+    fi
+    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v2.out" 2>&1 && grep -q "replay OK: 1 用例" "$T/v2.out"; then
+        ok "γ 复放:种子重放逐字一致"
+    else
+        bad "γ 复放误拒: $(tail -2 "$T/v2.out")"
+    fi
+    sed 's/fs "name.txt" = "ada"/fs "name.txt" = "bob"/' "$VG/traces/eff.ctrt" > "$VG/traces/eff.ctrt.n" && mv "$VG/traces/eff.ctrt.n" "$VG/traces/eff.ctrt"
+    if "$ROOT/ctron" pkg trace replay "$VG/eff.ct" > "$T/v3.out" 2>&1; then
+        bad "γ 种子漂移未检出"
+    else
+        grep -q "trace mismatch" "$T/v3.out" && ok "γ 不符腿:种子翻改即 mismatch" || bad "无 mismatch 文案: $(cat "$T/v3.out")"
+    fi
+    sed 's/= "bob"/= "ada"/' "$VG/traces/eff.ctrt" > "$VG/traces/eff.ctrt.n" && mv "$VG/traces/eff.ctrt.n" "$VG/traces/eff.ctrt"
+    VA="$VG/art"
+    mkdir -p "$VA/impl"
+    "$COMP/ctc.sh" ast "$VG/eff.ct" --ast=seal --astout="$VA" --astname=myeff > "$T/v4.out" 2>&1
+    if "$ROOT/ctron" pkg verify --deep "$VA" > "$T/v5.out" 2>&1 && grep -q "复放 1 用例" "$T/v5.out"; then
+        ok "deep γ 复放:工件行为 vs 种子期望全符"
+    else
+        bad "deep γ 复放异常: $(tail -2 "$T/v5.out")"
+    fi
+else
+    ok "3v 跳过(缺 ctron-cc/ctron-verify;先: compiler/native.sh)"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

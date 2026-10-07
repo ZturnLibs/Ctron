@@ -56,10 +56,10 @@ ctron —— Ctron 工具链驱动
                              + self_digest 重算;fail-closed,不过即 rc=1;--deep 走
                              in-language 发射验证器(ctron-verify,C 速,L3 载体)
   ctron pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...]
-                             黄金轨迹录制(S3-α 纯函数):值=to_string 规范形,落
+                             黄金轨迹录制(S3:纯函数+效果函数 γ):值=to_string 规范形,--fs 种子挂 case,落
                              traces/<stem>.ctrt;含 main 源不支持
   ctron pkg trace replay <src.ct>
-                             轨迹复放:逐字比对,不符即 rc=1 点名双值(S3-α)
+                             轨迹复放:逐字比对,不符即 rc=1 点名双值(S3)
   ctron new <dir>              脚手架:hello + Ctron.ctcl
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
@@ -284,12 +284,20 @@ cmd_build_proj() {
     "$CC_BIN" -O2 -w -pthread "build/$NAME.c" $SRCS -o "build/$NAME" || exit 2
     echo "ctron: 已构建 build/$NAME"
 }
-
-# T50/S3-α:pkg trace record/replay —— 纯函数黄金轨迹(编排层码gen,值=to_string
-# 规范形;轨迹文件 traces/<stem>.ctrt,CTCL 键控块机写)。效果函数 FakeFs 与
-# 加载期拒载 = S3-β。宿主 = ctron-cc(source 复放;exe 旁 std 解析)。
+# T50/S3:pkg trace record/replay —— 黄金轨迹(编排层码gen;宿主 ctron-cc)。
+# α 纯函数:值 = to_string 规范形。γ(S3-β 首片扩展)效果函数:--fs 种子挂
+# 最近 --case,args 位写 MemFs 变量名(fs),expect = Ok 值(Err 路径 expect()
+# panic → 录制即失败);码gen 内嵌脚本化 MemFs(种子文件映射,读-only;
+# write no-op = S3-γ 写效果捕获登记)。轨迹块形:
+#   trace "greet" {
+#     fs "name.txt" = "ada"
+#     args = "fs"
+#     expect = "ada"
+#   }
+# 运行环境:码gen 驱动逐命令带 CTRON_STDPATH=ROOT/lib/std(dev 布局 std 解析;
+# 单命令作用域不污染 smoke 环境)。
 cmd_pkg_trace() {
-    [ $# -ge 1 ] || die2 "pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...] / pkg trace replay <src.ct>)"
+    [ $# -ge 1 ] || die2 "pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args> [--fs <path>=<content>]... / pkg trace replay <src.ct>)"
     TR_SUB=$1; shift
     case $TR_SUB in
         record|replay) ;;
@@ -297,95 +305,223 @@ cmd_pkg_trace() {
     esac
     [ -x "$BIN/ctron-cc" ] || die2 "pkg trace: 缺 ctron-cc(重装工具链;或先: compiler/native.sh)"
     TR_SRC=""
-    TR_CASES=""
     TR_PREV=0
+    TR_MAN=$(mktemp /tmp/ctron_trm.XXXXXX)
+    TR_NF=0
+    TR_FN=""
+    TR_ARGS=""
+    TR_FSS=""
+    TR_FLUSH() {
+        # 落一条用例进 manifest(行制三行头 + NF 对 path/content 行)
+        [ -n "$TR_FN" ] || return 0
+        printf '%s\n%s\n%s\n' "$TR_FN" "$TR_ARGS" "$TR_NF" >> "$TR_MAN"
+        if [ -n "$TR_FSS" ]; then
+            printf '%s' "$TR_FSS" >> "$TR_MAN"
+        fi
+        TR_FN=""; TR_ARGS=""; TR_FSS=""; TR_NF=0
+    }
     for TR_A in "$@"; do
         if [ "$TR_PREV" = 1 ]; then
-            TR_CASES="$TR_CASES${TR_CASES:+;}$TR_A"
+            TR_FN=${TR_A%%=*}
+            TR_ARGS=${TR_A#*=}
+            case $TR_FN in
+                ""|*[!A-Za-z0-9_]*|[0-9]*) rm -f "$TR_MAN"; die2 "pkg trace record: fn 名非法: '$TR_FN'([A-Za-z_][A-Za-z0-9_]*)" ;;
+            esac
+            TR_PREV=0
+            continue
+        fi
+        if [ "$TR_PREV" = 2 ]; then
+            [ -n "$TR_FN" ] || { rm -f "$TR_MAN"; die2 "pkg trace: --fs 须跟在 --case 之后(种子挂最近用例)"; }
+            TR_FP=${TR_A%%=*}
+            TR_FC=${TR_A#*=}
+            TR_FSS="$TR_FSS$TR_FP
+$TR_FC
+"
+            TR_NF=$((TR_NF+1))
             TR_PREV=0
             continue
         fi
         case $TR_A in
-            --case) TR_PREV=1 ;;
-            --case=*) TR_CASES="$TR_CASES${TR_CASES:+;}${TR_A#--case=}" ;;
+            --case) TR_FLUSH; TR_PREV=1 ;;
+            --case=*)
+                TR_FLUSH
+                TR_A2=${TR_A#--case=}
+                TR_FN=${TR_A2%%=*}
+                TR_ARGS=${TR_A2#*=}
+                case $TR_FN in
+                    ""|*[!A-Za-z0-9_]*|[0-9]*) rm -f "$TR_MAN"; die2 "pkg trace record: fn 名非法: '$TR_FN'([A-Za-z_][A-Za-z0-9_]*)" ;;
+                esac ;;
+            --fs)
+                TR_PREV=2 ;;
+            --fs=*)
+                [ -n "$TR_FN" ] || { rm -f "$TR_MAN"; die2 "pkg trace: --fs 须跟在 --case 之后(种子挂最近用例)"; }
+                TR_A2=${TR_A#--fs=}
+                TR_FP=${TR_A2%%=*}
+                TR_FC=${TR_A2#*=}
+                TR_FSS="$TR_FSS$TR_FP
+$TR_FC
+"
+                TR_NF=$((TR_NF+1)) ;;
             *) [ -z "$TR_SRC" ] && TR_SRC=$TR_A ;;
         esac
     done
-    [ "$TR_PREV" = 0 ] || die2 "pkg trace: --case 缺值"
-    [ -n "$TR_SRC" ] || die2 "pkg trace $TR_SUB 需要源文件"
-    [ -f "$TR_SRC" ] || die2 "pkg trace: 源文件不存在: $TR_SRC"
+    [ "$TR_PREV" = 0 ] || { rm -f "$TR_MAN"; die2 "pkg trace: --case/--fs 缺值"; }
+    [ -n "$TR_SRC" ] || { rm -f "$TR_MAN"; die2 "pkg trace $TR_SUB 需要源文件"; }
+    [ -f "$TR_SRC" ] || { rm -f "$TR_MAN"; die2 "pkg trace: 源文件不存在: $TR_SRC"; }
     if grep -q "fn main" "$TR_SRC"; then
-        die2 "pkg trace: 源含 main(轨迹面向无 main 的 provider 纯函数源)"
+        rm -f "$TR_MAN"
+        die2 "pkg trace: 源含 main(轨迹面向无 main 的 provider 源)"
     fi
     TR_DIR=$(CDPATH= cd -- "$(dirname -- "$TR_SRC")" && pwd)
     TR_STEM=$(basename -- "$TR_SRC" .ct)
     TR_TGT="$TR_DIR/traces/$TR_STEM.ctrt"
+    TR_STD="$ROOT/lib/std"
     if [ "$TR_SUB" = record ]; then
-        [ -n "$TR_CASES" ] || die2 "pkg trace record 需要 --case <fn>=<args 字面量>(可多例)"
+        TR_FLUSH
+        TR_TOTAL=$(wc -l < "$TR_MAN" | tr -d ' ')
+        [ "$TR_TOTAL" -ge 1 ] || { rm -f "$TR_MAN"; die2 "pkg trace record 需要 --case <fn>=<args>(可多例;--fs 种子挂最近 --case)"; }
         mkdir -p "$TR_DIR/traces"
         : > "$TR_TGT"
         TR_N=0
-        OIFS=$IFS
-        IFS=';'
-        set -f
-        for TR_E in $TR_CASES; do
-            TR_FN=${TR_E%%=*}
-            TR_ARGS=${TR_E#*=}
-            case $TR_FN in
-                ""|*[!A-Za-z0-9_]*|[0-9]*) die2 "pkg trace record: fn 名非法: '$TR_FN'([A-Za-z_][A-Za-z0-9_]*)" ;;
-            esac
+        while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_NF; do
             TR_ARGS_E=$(printf '%s' "$TR_ARGS" | sed 's/"/\\"/g')
             TR_D=$(mktemp -d /tmp/ctron_tr.XXXXXX)
             cat "$TR_SRC" > "$TR_D/drv.ct"
-            printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
-            TR_OUT=$("$BIN/ctron-cc" run "$TR_D/drv.ct" 2> "$TR_D/err.txt")
+            if [ "$TR_NF" -ge 1 ]; then
+                # γ 效果用例:脚本化 MemFs 码gen(种子映射;读-only)+ expect 解包
+                TR_I=0
+                TR_FIELDS=""
+                TR_READS=""
+                TR_EXISTS=""
+                TR_INIT=""
+                TR_FSLINES=""
+                while [ "$TR_I" -lt "$TR_NF" ]; do
+                    IFS= read -r TR_FP
+                    IFS= read -r TR_FC
+                    TR_FC_E=$(printf '%s' "$TR_FC" | sed 's/"/\\"/g')
+                    TR_FIELDS="$TR_FIELDS    let f$TR_I: Str
+    let b$TR_I: Str
+"
+                    TR_READS="$TR_READS        if path == self.f$TR_I {
+            return Ok(self.b$TR_I.to_string())
+        }
+"
+                    TR_EXISTS="$TR_EXISTS        if path == self.f$TR_I {
+            return true
+        }
+"
+                    TR_INIT="$TR_INIT f$TR_I: \"$TR_FP\", b$TR_I: \"$TR_FC_E\","
+                    TR_FSLINES="$TR_FSLINES  fs \"$TR_FP\" = \"$TR_FC_E\"
+"
+                    TR_I=$((TR_I+1))
+                done
+                {
+                    printf '\nclass MemFs {\n%s}\n\n' "$TR_FIELDS"
+                    printf 'impl Fs for MemFs {\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {\n%s        return Err(FsError { message: "not found".to_string() })\n    }\n' "$TR_READS"
+                    printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        return Ok(void)\n    }\n'
+                    printf '    fn exists(&self, path: Str) -> Bool {\n%s        return false\n    }\n}\n\n' "$TR_EXISTS"
+                    printf 'fn main() {\n    let fs = MemFs { %s }
+    match %s(%s) {
+        Ok(v) => println(v.to_string())
+        Err(_) => println("<err>")
+    }\n}\n' "$TR_INIT" "$TR_FN" "$TR_ARGS"
+                } >> "$TR_D/drv.ct"
+            else
+                printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
+            fi
+            TR_OUT=$(CTRON_STDPATH="$TR_STD" "$BIN/ctron-cc" run "$TR_D/drv.ct" 2>&1)
             TR_RC=$?
             if [ "$TR_RC" -ne 0 ]; then
-                cat "$TR_D/err.txt" >&2
-                rm -rf "$TR_D"
+                printf '%s\n' "$TR_OUT" >&2
+                rm -rf "$TR_D" "$TR_MAN"
                 die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 运行失败(rc=$TR_RC)"
             fi
             if [ "$(printf '%s\n' "$TR_OUT" | wc -l)" -gt 1 ]; then
-                rm -rf "$TR_D"
-                die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 输出多行(α 轨迹面向单值纯函数)"
+                rm -rf "$TR_D" "$TR_MAN"
+                die2 "pkg trace record: 用例 $TR_FN($TR_ARGS) 输出多行(轨迹面向单值函数)"
             fi
-            TR_EXPECT_E=$(printf '%s' "$TR_OUT" | sed 's/"/\\"/g')
-            printf 'trace "%s" {\n  args = "%s"\n  expect = "%s"\n}\n' "$TR_FN" "$TR_ARGS_E" "$TR_EXPECT_E" >> "$TR_TGT"
+            {
+                printf 'trace "%s" {\n' "$TR_FN"
+                if [ -n "${TR_FSLINES:-}" ]; then
+                    printf '%s' "$TR_FSLINES"
+                fi
+                TR_EXPECT_E=$(printf '%s' "$TR_OUT" | sed 's/"/\\"/g')
+                printf '  args = "%s"\n  expect = "%s"\n}\n' "$TR_ARGS_E" "$TR_EXPECT_E"
+            } >> "$TR_TGT"
             rm -rf "$TR_D"
             TR_N=$((TR_N+1))
-        done
-        IFS=$OIFS
-        set +f
+        done < "$TR_MAN"
+        rm -f "$TR_MAN"
         echo "ctron: 轨迹已录制 $TR_N 用例 → $TR_TGT"
         exit 0
     fi
-    # replay(行制解析:每用例三行 fn/args/expect——read 保空字段,零参与空 expect 皆可)
-    [ -f "$TR_TGT" ] || die2 "pkg trace replay: 无轨迹文件: $TR_TGT"
+    # replay(行制:fn/args/expect/NF + NF 对 path/content;read 保空字段)
+    [ -f "$TR_TGT" ] || { rm -f "$TR_MAN"; die2 "pkg trace replay: 无轨迹文件: $TR_TGT"; }
     TR_N=0
     TR_BAD=0
     TR_BLK=$(mktemp /tmp/ctron_trb.XXXXXX)
     awk '
-        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); print l }
-        /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); print a }
-        /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); print x }
+        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); cfn=l; nfs=0; np=0 }
+        /^  fs /    { p=$0; sub(/^  fs "/, "", p); sub(/" = "/, "\t", p); sub(/"$/, "", p); split(p, pa, "\t"); pair[np++] = pa[1]; pair[np++] = pa[2]; nfs++ }
+        /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); cargs=a }
+        /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); cexp=x }
+        /^\}$/      { print cfn; print cargs; print nfs + 0; for (i = 0; i < np; i++) print pair[i]; print cexp }
     ' "$TR_TGT" > "$TR_BLK"
     if [ ! -s "$TR_BLK" ]; then
-        rm -f "$TR_BLK"
+        rm -f "$TR_BLK" "$TR_MAN"
         die2 "pkg trace replay: 轨迹文件无块: $TR_TGT"
     fi
-    while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_EXP; do
+    while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_NF; do
         TR_ARGS=$(printf '%s' "$TR_ARGS" | sed 's/\\"/"/g')
-        TR_EXP=$(printf '%s' "$TR_EXP" | sed 's/\\"/"/g')
         TR_D=$(mktemp -d /tmp/ctron_tr.XXXXXX)
         cat "$TR_SRC" > "$TR_D/drv.ct"
-        printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
-        TR_OUT=$("$BIN/ctron-cc" run "$TR_D/drv.ct" 2> "$TR_D/err.txt")
+        if [ "$TR_NF" -ge 1 ]; then
+            TR_I=0
+            TR_FIELDS=""
+            TR_READS=""
+            TR_EXISTS=""
+            TR_INIT=""
+            while [ "$TR_I" -lt "$TR_NF" ]; do
+                IFS= read -r TR_FP
+                IFS= read -r TR_FC
+                TR_FC_E=$(printf '%s' "$TR_FC" | sed 's/"/\\"/g')
+                TR_FIELDS="$TR_FIELDS    let f$TR_I: Str
+    let b$TR_I: Str
+"
+                TR_READS="$TR_READS        if path == self.f$TR_I {
+            return Ok(self.b$TR_I.to_string())
+        }
+"
+                TR_EXISTS="$TR_EXISTS        if path == self.f$TR_I {
+            return true
+        }
+"
+                TR_INIT="$TR_INIT f$TR_I: \"$TR_FP\", b$TR_I: \"$TR_FC_E\","
+                TR_I=$((TR_I+1))
+            done
+            {
+                printf '\nclass MemFs {\n%s}\n\n' "$TR_FIELDS"
+                printf 'impl Fs for MemFs {\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {\n%s        return Err(FsError { message: "not found".to_string() })\n    }\n' "$TR_READS"
+                printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        return Ok(void)\n    }\n'
+                printf '    fn exists(&self, path: Str) -> Bool {\n%s        return false\n    }\n}\n\n' "$TR_EXISTS"
+                printf 'fn main() {\n    let fs = MemFs { %s }
+    match %s(%s) {
+        Ok(v) => println(v.to_string())
+        Err(_) => println("<err>")
+    }\n}\n' "$TR_INIT" "$TR_FN" "$TR_ARGS"
+            } >> "$TR_D/drv.ct"
+        else
+            printf '\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TR_D/drv.ct"
+        fi
+        TR_OUT=$(CTRON_STDPATH="$TR_STD" "$BIN/ctron-cc" run "$TR_D/drv.ct" 2>&1)
         TR_RC=$?
         if [ "$TR_RC" -ne 0 ]; then
-            cat "$TR_D/err.txt" >&2
-            rm -rf "$TR_D"
+            printf '%s\n' "$TR_OUT" >&2
+            rm -rf "$TR_D" "$TR_BLK" "$TR_MAN"
             die2 "pkg trace replay: 用例 $TR_FN($TR_ARGS) 运行失败(rc=$TR_RC)"
         fi
+        IFS= read -r TR_EXP
+        TR_EXP=$(printf '%s' "$TR_EXP" | sed 's/\\"/"/g')
         if [ "$TR_OUT" != "$TR_EXP" ]; then
             echo "trace mismatch: $TR_FN($TR_ARGS) 记录 $TR_EXP 实际 $TR_OUT" >&2
             TR_BAD=$((TR_BAD+1))
@@ -393,7 +529,7 @@ cmd_pkg_trace() {
         rm -rf "$TR_D"
         TR_N=$((TR_N+1))
     done < "$TR_BLK"
-    rm -f "$TR_BLK"
+    rm -f "$TR_BLK" "$TR_MAN"
     if [ "$TR_BAD" -gt 0 ]; then
         echo "pkg trace replay: $TR_N 用例中 $TR_BAD 不符" >&2
         exit 1
@@ -622,17 +758,60 @@ case $CMD in
                     mkdir -p "$TRP/deps/$PV_NAME.ctart"
                     cp -r "$VDIR/." "$TRP/deps/$PV_NAME.ctart/"
                     awk '
-                        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); print l }
-                        /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); print a }
-                        /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); print x }
+                        /^trace "/  { l=$0; sub(/^trace "/, "", l); sub(/" \{$/, "", l); cfn=l; nfs=0; np=0 }
+                        /^  fs /    { p=$0; sub(/^  fs "/, "", p); sub(/" = "/, "\t", p); sub(/"$/, "", p); split(p, pa, "\t"); pair[np++] = pa[1]; pair[np++] = pa[2]; nfs++ }
+                        /^  args = /   { a=$0; sub(/^  args = "/, "", a); sub(/"$/, "", a); cargs=a }
+                        /^  expect = / { x=$0; sub(/^  expect = "/, "", x); sub(/"$/, "", x); cexp=x }
+                        /^\}$/      { print cfn; print cargs; print nfs + 0; for (i = 0; i < np; i++) print pair[i]; print cexp }
                     ' "$TR_F" > "$TRP/cases.txt"
-                    while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_EXP; do
+                    while IFS= read -r TR_FN && IFS= read -r TR_ARGS && IFS= read -r TR_NF; do
                         TR_ARGS=$(printf '%s' "$TR_ARGS" | sed 's/\\"/"/g')
+                        TR_HEAD="use $PV_NAME.$TR_MOD.{ $TR_FNS }"
+                        TR_FIELDS=""
+                        TR_READS=""
+                        TR_EXISTS=""
+                        TR_FSLINES=""
+                        TR_I=0
+                        while [ "$TR_I" -lt "$TR_NF" ]; do
+                            IFS= read -r TR_FP
+                            IFS= read -r TR_FC
+                            TR_HEAD="use std.fs.{ Fs, FsError }
+$TR_HEAD"
+                            TR_FC_E=$(printf '%s' "$TR_FC" | sed 's/"/\\"/g')
+                            TR_FIELDS="$TR_FIELDS    let f$TR_I: Str
+    let b$TR_I: Str
+"
+                            TR_READS="$TR_READS        if path == self.f$TR_I {
+            return Ok(self.b$TR_I.to_string())
+        }
+"
+                            TR_EXISTS="$TR_EXISTS        if path == self.f$TR_I {
+            return true
+        }
+"
+                            TR_FSLINES="$TR_FSLINES f$TR_I: \"$TR_FP\", b$TR_I: \"$TR_FC_E\","
+                            TR_I=$((TR_I+1))
+                        done
+                        printf '%s\n' "$TR_HEAD" > "$TRP/main.ct"
+                        if [ "$TR_NF" -ge 1 ]; then
+                            {
+                                printf '\nclass MemFs {\n%s}\n\n' "$TR_FIELDS"
+                                printf 'impl Fs for MemFs {\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] {\n%s        return Err(FsError { message: "not found".to_string() })\n    }\n' "$TR_READS"
+                                printf '    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] {\n        return Ok(void)\n    }\n'
+                                printf '    fn exists(&self, path: Str) -> Bool {\n%s        return false\n    }\n}\n\n' "$TR_EXISTS"
+                                printf 'fn main() {\n    let fs = MemFs { %s }\n    match %s(%s) {
+        Ok(v) => println(v.to_string())
+        Err(_) => println("<err>")
+    }\n}\n' "$TR_FSLINES" "$TR_FN" "$TR_ARGS"
+                            } >> "$TRP/main.ct"
+                        else
+                            printf 'fn main() {\n    println(%s(%s).to_string())\n}\n' "$TR_FN" "$TR_ARGS" >> "$TRP/main.ct"
+                        fi
+                        IFS= read -r TR_EXP
                         TR_EXP=$(printf '%s' "$TR_EXP" | sed 's/\\"/"/g')
-                        printf 'use %s.%s.{ %s }\nfn main() {\n    println(%s(%s).to_string())\n}\n' "$PV_NAME" "$TR_MOD" "$TR_FNS" "$TR_FN" "$TR_ARGS" > "$TRP/main.ct"
                         TRP_P=$PWD
                         cd "$TRP"
-                        TR_OUT=$("$BIN/ctron-cc" run main.ct 2>&1)
+                        TR_OUT=$(CTRON_STDPATH="$ROOT/lib/std" "$BIN/ctron-cc" run main.ct 2>&1)
                         TR_RC=$?
                         cd "$TRP_P"
                         if [ "$TR_RC" -ne 0 ]; then

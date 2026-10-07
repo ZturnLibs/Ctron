@@ -1,0 +1,8 @@
+// eff —— S3-γ 效果函数轨迹夹具(能力注入 §8.1:Fs trait 接收者;读-only)
+// 语义承诺:效果经 &Fs 参数显式传入(MemFs 种子由轨迹块 fs 行提供);
+// 错误经 Result[String, FsError];γ-α 边界 = Ok 路径(Err 哨兵 <err> 对账)。
+use std.fs.{Fs, FsError}
+
+pub fn greet(fs: &Fs) -> Result[String, FsError] {
+    return fs.read_to_string("name.txt")
+}
