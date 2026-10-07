@@ -1,7 +1,7 @@
 // fx_bytes.ct —— L4-③:Bytes 族(写后读回/长/取/切;双臂确定性)
 fn main() -> I32 {
     fs_write("l4_tmp.bin", "ABCD")
-    let b = read_bytes("l4_tmp.bin")
+    let b = read_file_bytes("l4_tmp.bin")
     println(bytes_len(b).to_string())
     println(bytes_at(b, 0).to_string())
     let h = bytes_slice(b, 0, 2)
