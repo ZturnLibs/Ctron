@@ -538,6 +538,35 @@ $TR_FC
     exit 0
 }
 
+# T50/S4-②:pkg attest —— 发布公证(§5.4):attest.ctcl 对工件 self_digest 与
+# 轨迹数自证;deep verify 的 attest 腿验其一致(漂移/伪造 = E5057)。hosts α =
+# 单线 ["interp-cc"](三线一致判定 = 需求方触发件,诚实登记)。
+cmd_pkg_attest() {
+    [ $# -ge 1 ] || die2 "pkg attest 需要工件目录(.ctart;须先 seal)"
+    PA_DIR=$1
+    [ -d "$PA_DIR" ] || die2 "pkg attest: 工件目录不存在: $PA_DIR"
+    [ -f "$PA_DIR/meta.ctcl" ] || die2 "pkg attest: 缺 meta.ctcl(工件须先 seal)"
+    PA_NAME=$(sed -n 's/^artifact "\([^"]*\)".*/\1/p' "$PA_DIR/meta.ctcl" | head -1)
+    [ -n "$PA_NAME" ] || die2 "pkg attest: meta artifact 块缺失"
+    PA_SD=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$PA_DIR/meta.ctcl" | head -1)
+    [ -n "$PA_SD" ] || die2 "pkg attest: meta 缺 self_digest(工件须先 seal 摘要步骤)"
+    PA_TC=0
+    if [ -d "$PA_DIR/traces" ]; then
+        for TR_F in "$PA_DIR"/traces/*.ctrt; do
+            [ -f "$TR_F" ] || continue
+            PA_C=$(grep -c '^trace "' "$TR_F")
+            PA_TC=$((PA_TC+PA_C))
+        done
+    fi
+    PA_VER="dev"
+    if [ -f "$ROOT/VERSION" ]; then
+        PA_VER=$(cat "$ROOT/VERSION")
+    fi
+    printf 'attest "%s" {\n  artifact_digest = "%s"\n  toolchain = "%s"\n  hosts = ["interp-cc"]\n  trace_count = %s\n}\n' "$PA_NAME" "$PA_SD" "$PA_VER" "$PA_TC" > "$PA_DIR/attest.ctcl"
+    echo "ctron: attest 已生成 → $PA_DIR/attest.ctcl(摘要 $PA_SD;轨迹 $PA_TC 例)"
+    exit 0
+}
+
 [ $# -lt 1 ] && { usage; exit 2; }
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
@@ -705,12 +734,13 @@ case $CMD in
         echo "ctron: 已发布 $PUB_NAME@$PUB_VER → $PTGT(sha256:$(cat "$PTGT/sha256"))"
         ;;
     pkg)
-        [ $# -ge 1 ] || die2 "pkg 需要子命令(现支持: pkg verify [--deep] <工件目录>)"
+        [ $# -ge 1 ] || die2 "pkg 需要子命令(现支持: pkg verify [--deep] <工件目录> / pkg trace / pkg attest)"
         PV_SUB=$1; shift
         case $PV_SUB in
             verify) ;;
             trace) cmd_pkg_trace "$@" ;;
-            *) die2 "pkg: 未知子命令 '$PV_SUB'(现支持: verify trace)" ;;
+            attest) cmd_pkg_attest "$@" ;;
+            *) die2 "pkg: 未知子命令 '$PV_SUB'(现支持: verify trace attest)" ;;
         esac
         PV_DEEP=0
         PV_DIR=""
@@ -832,6 +862,34 @@ $TR_HEAD"
                     echo "ctron pkg verify: 复放 $PV_RN 用例中 $PV_RB 不符(E5056)" >&2
                     exit 1
                 fi
+            fi
+            # S4-② attest 腿(§5.4):attest.ctcl 在场即验其与工件一致(漂移/伪造 = E5057)
+            if [ -f "$VDIR/attest.ctcl" ]; then
+                PA_AD=$(sed -n 's/^  artifact_digest = "\(.*\)"/\1/p' "$VDIR/attest.ctcl" | head -1)
+                PA_ATC=$(sed -n 's/^  trace_count = \(.*\)$/\1/p' "$VDIR/attest.ctcl" | head -1)
+                if [ -z "$PA_AD" ] || [ -z "$PA_ATC" ]; then
+                    echo "ctron pkg verify: attest 畸形(缺 artifact_digest/trace_count;E5057)" >&2
+                    exit 1
+                fi
+                PA_SD2=$(sed -n 's/.*self_digest = "\(.*\)"/\1/p' "$VDIR/meta.ctcl" | head -1)
+                if [ "$PA_AD" != "$PA_SD2" ]; then
+                    echo "E5057 attest 与工件不符: artifact_digest 记录 $PA_AD 实际 $PA_SD2" >&2
+                    exit 1
+                fi
+                PV_TC=0
+                if [ -d "$VDIR/traces" ]; then
+                    for TR_F in "$VDIR"/traces/*.ctrt; do
+                        [ -f "$TR_F" ] || continue
+                        PA_C2=$(grep -c '^trace "' "$TR_F")
+                        PV_TC=$((PV_TC+PA_C2))
+                    done
+                fi
+                if [ "$PA_ATC" != "$PV_TC" ]; then
+                    echo "E5057 attest 与工件不符: trace_count 记录 $PA_ATC 实际 $PV_TC" >&2
+                    exit 1
+                fi
+                echo "ctron pkg verify OK: $VDIR(deep: 摘要自洽;复放 $PV_RN 用例;attest 过验)"
+                exit 0
             fi
             echo "ctron pkg verify OK: $VDIR(deep: 摘要自洽;复放 $PV_RN 用例)"
             exit 0

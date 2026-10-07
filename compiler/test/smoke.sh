@@ -1188,6 +1188,34 @@ else
     grep -q "E5046" "$T/w5.out" && ok "E5046 腿:blob 值形态校验" || bad "无 E5046 文案: $(cat "$T/w5.out")"
 fi
 
+# ---------------- 3x) S4-② pkg attest(发布公证;deep attest 腿 E5057) ----------------
+echo "== 3x) S4-② pkg attest(attest.ctcl 自证;deep 一致性验)=="
+XA="$T/att"
+mkdir -p "$XA/art/impl"
+"$COMP/ctc.sh" ast "$ROOT/tests/artifact_demo/base/base.ct" --ast=seal --astout="$XA/art" --astname=mybase > "$T/x0.out" 2>&1
+if "$ROOT/ctron" pkg attest "$XA/art" > "$T/x1.out" 2>&1 && grep -q "attest 已生成" "$T/x1.out"; then
+    ok "attest 生成:digest/trace_count 自证落 attest.ctcl"
+else
+    bad "attest 生成异常: $(tail -2 "$T/x1.out")"
+fi
+if "$ROOT/ctron" pkg verify --deep "$XA/art" > "$T/x2.out" 2>&1 && grep -q "attest 过验" "$T/x2.out"; then
+    ok "deep attest 腿:公证与工件一致"
+else
+    bad "deep attest 腿异常: $(tail -2 "$T/x2.out")"
+fi
+sed 's/trace_count = 0/trace_count = 9/' "$XA/art/attest.ctcl" > "$XA/art/attest.ctcl.n" && mv "$XA/art/attest.ctcl.n" "$XA/art/attest.ctcl"
+if "$ROOT/ctron" pkg verify --deep "$XA/art" > "$T/x3.out" 2>&1; then
+    bad "attest trace_count 漂移未拒(E5057)"
+else
+    grep -q "E5057" "$T/x3.out" && ok "E5057 腿:trace_count 漂移精准拒载" || bad "无 E5057 文案: $(cat "$T/x3.out")"
+fi
+printf 'attest "mybase" {\n  artifact_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"\n  toolchain = "dev"\n  hosts = ["interp-cc"]\n  trace_count = 0\n}\n' > "$XA/art/attest.ctcl"
+if "$ROOT/ctron" pkg verify --deep "$XA/art" > "$T/x4.out" 2>&1; then
+    bad "attest digest 伪造未拒(E5057)"
+else
+    grep -q "E5057" "$T/x4.out" && ok "E5057 腿:伪造 digest 拒载" || bad "无 E5057 文案: $(cat "$T/x4.out")"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

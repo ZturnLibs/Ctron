@@ -321,6 +321,29 @@ function Cmd-PkgTrace($trest) {
 	Write-Output "trace replay OK: $tn 用例"
 	exit 0
 }
+# T50/S4-②:pkg attest —— 发布公证(§5.4;与 sh 版同文)
+function Cmd-PkgAttest($arest) {
+	if ($arest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg attest 需要工件目录(.ctart;须先 seal)'); exit 2 }
+	$paDir = $arest[0]
+	if (-not (Test-Path $paDir -PathType Container)) { [Console]::Error.WriteLine("ctron: pkg attest: 工件目录不存在: $paDir"); exit 2 }
+	$metaF = Join-Path $paDir 'meta.ctcl'
+	if (-not (Test-Path $metaF -PathType Leaf)) { [Console]::Error.WriteLine('ctron: pkg attest: 缺 meta.ctcl(工件须先 seal)'); exit 2 }
+	$paName = (Select-String -Path $metaF -Pattern '^artifact "([^"]*)"').Matches[0].Groups[1].Value
+	$paSd = (Select-String -Path $metaF -Pattern 'self_digest = "(.*)"').Matches[0].Groups[1].Value
+	$paTc = 0
+	$trDir = Join-Path $paDir 'traces'
+	if (Test-Path $trDir -PathType Container) {
+		foreach ($tf in @(Get-ChildItem -Path (Join-Path $trDir '*.ctrt') -File)) { $paTc += ([regex]::Matches((Get-Content $tf.FullName -Raw), '(?m)^trace "')).Count }
+	}
+	$paVer = 'dev'
+	$vfile = Join-Path $Root 'VERSION'
+	if (Test-Path $vfile) { $paVer = (Get-Content $vfile -Raw).Trim() }
+	$att = "attest `"$paName`" {`n  artifact_digest = `"$paSd`"`n  toolchain = `"$paVer`"`n  hosts = [`"interp-cc`"]`n  trace_count = $paTc`n}`n"
+	[IO.File]::WriteAllText((Join-Path $paDir 'attest.ctcl'), $att, (New-Object Text.UTF8Encoding($false)))
+	Write-Output "ctron: attest 已生成 → $(Join-Path $paDir 'attest.ctcl')(摘要 $paSd;轨迹 $paTc 例)"
+	exit 0
+}
+
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
@@ -467,7 +490,8 @@ switch ($cmd) {
 	'pkg' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: pkg 需要子命令(现支持: pkg verify [--deep] <工件目录> / pkg trace record|replay)'); exit 2 }
 		if ($rest[0] -eq 'trace') { Cmd-PkgTrace @($rest | Select-Object -Skip 1) }
-		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace)"); exit 2 }
+		if ($rest[0] -eq 'attest') { Cmd-PkgAttest @($rest | Select-Object -Skip 1) }
+		if ($rest[0] -ne 'verify') { [Console]::Error.WriteLine("ctron: pkg: 未知子命令 '$($rest[0])'(现支持: verify trace attest)"); exit 2 }
 		$pvDeep = $false; $pvDir = ''
 		foreach ($pvA in ($rest | Select-Object -Skip 1)) {
 			if ($pvA -eq '--deep') { $pvDeep = $true } elseif ($pvDir -eq '') { $pvDir = $pvA }
@@ -528,6 +552,19 @@ switch ($cmd) {
 				}
 				if ($pvRb -gt 0) { [Console]::Error.WriteLine("ctron pkg verify: 复放 $pvRn 用例中 $pvRb 不符(E5056)"); exit 1 }
 			}
+			$attF = Join-Path $pvFull 'attest.ctcl'
+			if (Test-Path $attF -PathType Leaf) {
+				$attText = [IO.File]::ReadAllText($attF)
+				$paAd = [regex]::Match($attText, '  artifact_digest = "([^"]*)"').Groups[1].Value
+				$paAtc = [regex]::Match($attText, '  trace_count = (\d+)').Groups[1].Value
+				if ($paAd -eq '' -or $paAtc -eq '') { [Console]::Error.WriteLine('ctron pkg verify: attest 畸形(缺 artifact_digest/trace_count;E5057)'); exit 1 }
+				$paSd2 = (Select-String -Path (Join-Path $pvFull 'meta.ctcl') -Pattern 'self_digest = "(.*)"').Matches[0].Groups[1].Value
+				if ($paAd -ne $paSd2) { [Console]::Error.WriteLine("E5057 attest 与工件不符: artifact_digest 记录 $paAd 实际 $paSd2"); exit 1 }
+				$pvTc = 0
+				if (Test-Path (Join-Path $pvFull 'traces') -PathType Container) { foreach ($tf2 in @(Get-ChildItem -Path (Join-Path $pvFull 'traces/*.ctrt') -File)) { $pvTc += ([regex]::Matches((Get-Content $tf2.FullName -Raw), '(?m)^trace "')).Count } }
+				if ($paAtc -ne "$pvTc") { [Console]::Error.WriteLine("E5057 attest 与工件不符: trace_count 记录 $paAtc 实际 $pvTc"); exit 1 }
+				Write-Output "ctron pkg verify OK: $pvFull(deep: 摘要自洽;复放 $pvRn 用例;attest 过验)"
+				exit 0 }
 			Write-Output "ctron pkg verify OK: $pvFull(deep: 摘要自洽;复放 $pvRn 用例)"
 			exit 0 }
 		$pvBad = $false; $pvN = 0

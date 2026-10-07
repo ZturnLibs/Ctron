@@ -44,6 +44,7 @@
 | E5054 | 依赖工件摘要不符(需求 digest ≠ 实际 self_digest;闭源分发 D8-2 L2 记录-比对,替代静默错版本) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
 | E5055 | 工件摘要未验(meta 缺 self_digest 或 dep.digest 记录;fail-closed 拒载) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
 | E5056 | 轨迹复放不符(黄金轨迹期望 ≠ 工件行为;闭源分发 S3 信任协议;当前载体=ctron pkg verify --deep 工具面,加载期腿预留) | 闭源分发 spec D3/§5 | `compiler/test/smoke.sh` 3u 腿 |
+| E5057 | attest 与工件不符(artifact_digest/trace_count 漂移或伪造;闭源分发 S4-② 发布公证;载体=ctron pkg verify --deep 工具面) | 闭源分发 spec §5.4 | `compiler/test/smoke.sh` 3x 腿 |
 | E6010 | comptime 预算超限 | §8.4 | `roadmap/r6f_comptime_budget.neg.ct` + `modules/comptime_budget` |
 | E6020 | comptime 副作用/不确定 | §8.4 | 预留 |
 | E5060 | 插件未声明/插件包加载失败/接口面不符(nodecl/load/iface 子码;T52 插件沙箱) | §8.3/§10.6(T52) | `tests/plugins/no_decl/src/main.ct`(nodecl) |
