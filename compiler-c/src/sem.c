@@ -183,17 +183,19 @@ typedef struct bind {
     cty* ty; // NULL = 未知(保守 Send)
     int depth;
     int used; // W8030:本块内是否被读取(T04)
+    int mut;  // E2080:1 = 可重赋值(var 声明/形参/闭包形参/豁免面);0 = let 局部(§4.1)
     struct bind* next;
 } bind;
 
 static void bind_free(bind* b) {
     while (b) { bind* nx = b->next; free(b); b = nx; }
 }
-static void bind_push(bind** env, const char* name, cty* ty, int depth) {
+static void bind_push(bind** env, const char* name, cty* ty, int depth, int mut) {
     bind* b = (bind*)calloc(1, sizeof(bind));
     b->name = name;
     b->ty = ty;
     b->depth = depth;
+    b->mut = mut;
     b->next = *env;
     *env = b;
 }
@@ -1108,7 +1110,7 @@ static void check_block(ctx* c, cblock* b) {
                     }
                     check_expr(c, st->e);
                 }
-                bind_push(&c->env, st->pat->name, ty, c->depth);
+                bind_push(&c->env, st->pat->name, ty, c->depth, st->is_var);
             } else {
                 if (st->e) check_expr(c, st->e);
             }
@@ -1146,6 +1148,13 @@ static void check_block(ctx* c, cblock* b) {
             break;
         }
         case ST_ASSIGN: {
+            // E2080:let 局部不可重赋值(§4.1;var/形参/闭包形参/豁免面 mut=1 放行;
+            // 循环·match 模式名不入 env → bind_find 落空,天然豁免,与自举线 v0.9 门同判据)
+            if (st->target && st->target->kind == EX_IDENT && st->target->text) {
+                bind* tb = bind_find(c->env, st->target->text);
+                if (tb && !tb->mut)
+                    diag(c->k, "E2080", "对不可变绑定赋值(let 声明):%s — 需重新赋值请声明为 var", st->target->text);
+            }
             // own 块内对类值成员的可变写 → E3060
             if (c->in_own && st->target && st->target->kind == EX_MEMBER) {
                 const char* root = root_ident(st->target);
@@ -1363,7 +1372,7 @@ static void check_expr(ctx* c, cexpr* e) {
         c->depth++;
         for (size_t i = 0; i < e->ncparams; i++)
             if (e->cparams[i].name)
-                bind_push(&c->env, e->cparams[i].name, e->cparams[i].ty, c->depth);
+                bind_push(&c->env, e->cparams[i].name, e->cparams[i].ty, c->depth, 1);
         {
             // v0.7 E2072:闭包体是独立函数边界——深度清零,外层循环存在性穿透
             int sd = brk_depth;
@@ -1379,7 +1388,7 @@ static void check_expr(ctx* c, cexpr* e) {
     }
     case EX_SCOPE: {
         c->depth++;
-        if (e->sparam) bind_push(&c->env, e->sparam, NULL, c->depth);
+        if (e->sparam) bind_push(&c->env, e->sparam, NULL, c->depth, 1);
         check_block(c, e->sbody);
         return;
     }
@@ -1488,7 +1497,7 @@ static void check_fn(ctx* c, const cfn* f, int no_alloc_contract) {
         const cparam* pr = &f->params[i];
         if (!pr->is_receiver && pr->name) {
             check_shadow_prelude(&sub, pr->name); // W8040
-            bind_push(&sub.env, pr->name, pr->ty, 1);
+            bind_push(&sub.env, pr->name, pr->ty, 1, 1);
         }
     }
     fn_has_drop_local = 0;

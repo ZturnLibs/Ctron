@@ -17,6 +17,7 @@
 | E2070 | break/continue 出现在循环外 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_outside.neg.ct` |
 | E2071 | break/continue 需越过带 Drop 局部的作用域(v1 静态拒绝,规范明文可解除) | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_drop.neg.ct` |
 | E2072 | break/continue 穿越闭包边界 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_closure.neg.ct` |
+| E2080 | 对不可变绑定赋值(`let` 局部;`var`/形参/闭包形参/for·match 模式绑定不在本门——豁免面收窄留后续修订) | §4.0(v0.9) | `tests/04g_let_assign.neg.ct`(三线:自举 cc/C 宿主/R 线) |
 | E3010 | spawn 捕获非 Send | §7.4 | `06_spawn_nonsend.neg.ct` |
 | E3020 | channel 收发非 Send 类型 | §7.4 | `06_channel_nonsend.neg.ct` |
 | E3030 | `static var` 不存在(解析器对 `static var` 做恢复并专门产出本码,而非 E1xxx——对 AI 迭代友好) | §7.6 | `06_static_var.neg.ct` |

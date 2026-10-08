@@ -51,6 +51,7 @@ fn expectations() -> Vec<(&'static str, Vec<&'static str>)> {
         ("04e_break_drop.neg.ct", vec!["E2071"]),
         ("04f_infer_ambig.neg.ct", vec!["E2061"]),
         ("04f_infer_missing.neg.ct", vec!["E2060"]),
+        ("04g_let_assign.neg.ct", vec!["E2080"]),
         ("04d_unary_neg_type.neg.ct", vec!["E2010"]),
         ("01j_impl_for.neg.ct", vec!["E1001"]),
         ("01i_semicolon.neg.ct", vec!["E1001"]),

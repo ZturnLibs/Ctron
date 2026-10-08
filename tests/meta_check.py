@@ -25,6 +25,7 @@ ERROR_CODES = {
     "E2070": "break/continue 出现在循环外(v0.7)",
     "E2071": "break/continue 越过带 Drop 局部的作用域(v0.7)",
     "E2072": "break/continue 穿越闭包边界(v0.7)",
+    "E2080": "对不可变绑定赋值(let 局部;§4.0 v0.9)",
     "E3010": "spawn 捕获了非 Send 值",
     "E3020": "channel 收发非 Send 类型",
     "E3030": "static var 不存在",

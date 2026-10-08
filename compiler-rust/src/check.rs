@@ -912,7 +912,7 @@ pub fn check_package(
     per_module
 }
 
-struct Local { ty: Ty }
+struct Local { ty: Ty, mutable: bool }
 
 pub struct Checker<'a> {
     sema: &'a Sema,
@@ -1387,7 +1387,7 @@ impl<'a> Checker<'a> {
         }
         self.scopes.push(HashMap::new());
         for ((name, ty), _) in def.params.iter().zip(param_tys.iter()) {
-            self.scopes.last_mut().unwrap().insert(name.clone(), Local { ty: ty.clone() });
+            self.scopes.last_mut().unwrap().insert(name.clone(), Local { ty: ty.clone(), mutable: true });
         }
         if let Some(body) = &def.body {
             self.check_block(body);
@@ -1476,11 +1476,11 @@ impl<'a> Checker<'a> {
                     } else {
                         Ty::Ref(Box::new(for_named.clone()))
                     };
-                    self.scopes.last_mut().unwrap().insert("self".into(), Local { ty: self_ty });
+                    self.scopes.last_mut().unwrap().insert("self".into(), Local { ty: self_ty, mutable: true });
                     for p in &m.params {
                         if let ast::Param::Param { name, ty, .. } = p {
                             let t = self.lower_local_ty(ty);
-                            self.scopes.last_mut().unwrap().insert(name.clone(), Local { ty: t });
+                            self.scopes.last_mut().unwrap().insert(name.clone(), Local { ty: t, mutable: true });
                         }
                     }
                     self.cur_ret = match &m.ret { Some(t) => self.lower_local_ty(t), None => Ty::Void };
@@ -1634,7 +1634,7 @@ impl<'a> Checker<'a> {
 
     fn check_stmt(&mut self, s: &ast::Stmt) {
         match s {
-            ast::Stmt::Let { pattern, ty: ann, expr, .. } => {
+            ast::Stmt::Let { is_var, pattern, ty: ann, expr, .. } => {
                 let hinted = ann.as_ref().map(|t| self.lower_local_ty(t));
                 let ety = self.expr(expr, hinted.as_ref());
                 // E2010(保守子集):注解为数值/Bool 标量而初值字面量/字面类别明确冲突
@@ -1670,7 +1670,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 let bind_ty = hinted.unwrap_or(ety);
-                let binds = self.check_pattern(pattern, Some(&bind_ty));
+                let binds = self.check_pattern(pattern, Some(&bind_ty), *is_var);
                 self.scopes.last_mut().unwrap().extend(binds);
             }
             ast::Stmt::Return(e) => {
@@ -1692,7 +1692,7 @@ impl<'a> Checker<'a> {
                     _ => Ty::Err,
                 };
                 self.scopes.push(HashMap::new());
-                let binds = self.check_pattern(pattern, Some(&elem));
+                let binds = self.check_pattern(pattern, Some(&elem), true);
                 self.scopes.last_mut().unwrap().extend(binds);
                 self.loop_depth += 1; // v0.7 修订二
                 self.loop_scope_base.push(self.scopes.len()); // 体作用域基线(模式作用域除外:循环变量逐轮 drop)
@@ -1733,6 +1733,17 @@ impl<'a> Checker<'a> {
                 }
             }
             ast::Stmt::Assign { target, op: _, value } => {
+                // E2080:let 局部不可重赋值(§4.1;var/形参/闭包形参/for·match 模式绑定 mutable=true 放行,
+                // 与自举线/C 宿主 v0.9 门同判据)
+                if let ast::Expr::Ident(n) = target {
+                    let mut gate = false;
+                    for scope in self.scopes.iter().rev() {
+                        if let Some(l) = scope.get(n) { gate = !l.mutable; break; }
+                    }
+                    if gate {
+                        self.err("E2080", format!("对不可变绑定赋值(let 声明):{n} — 需重新赋值请声明为 var"), Span::new(1, 1, 0, 0));
+                    }
+                }
                 let tty = self.expr(target, None);
                 if self.in_own && self.root_is_gc_class(target, &tty) {
                     self.err("E3060",
@@ -1775,28 +1786,28 @@ impl<'a> Checker<'a> {
 
     // ---------- 模式 ----------
 
-    fn check_pattern(&mut self, p: &ast::Pattern, hint: Option<&Ty>) -> HashMap<String, Local> {
-        self.check_pattern_cov(p, hint).0
+    fn check_pattern(&mut self, p: &ast::Pattern, hint: Option<&Ty>, mutable: bool) -> HashMap<String, Local> {
+        self.check_pattern_cov(p, hint, mutable).0
     }
 
-    fn check_pattern_cov(&mut self, p: &ast::Pattern, hint: Option<&Ty>) -> (HashMap<String, Local>, HashSet<String>) {
+    fn check_pattern_cov(&mut self, p: &ast::Pattern, hint: Option<&Ty>, mutable: bool) -> (HashMap<String, Local>, HashSet<String>) {
         let mut out = HashMap::new();
         let mut cov = HashSet::new();
-        self.check_pattern_into(p, hint, &mut out, &mut cov);
+        self.check_pattern_into(p, hint, &mut out, &mut cov, mutable);
         (out, cov)
     }
 
-    fn check_pattern_into(&mut self, p: &ast::Pattern, hint: Option<&Ty>, out: &mut HashMap<String, Local>, cov: &mut HashSet<String>) {
+    fn check_pattern_into(&mut self, p: &ast::Pattern, hint: Option<&Ty>, out: &mut HashMap<String, Local>, cov: &mut HashSet<String>, mutable: bool) {
         match p {
             ast::Pattern::Ident(n) => {
-                out.insert(n.clone(), Local { ty: hint.cloned().unwrap_or(Ty::Err) });
+                out.insert(n.clone(), Local { ty: hint.cloned().unwrap_or(Ty::Err), mutable });
             }
             ast::Pattern::Wildcard => {}
             ast::Pattern::Lit(_) => {}
             ast::Pattern::Or(alts) => {
                 // 或模式(R-P3c):逐替身递归(覆盖并入 cov;绑定按声明次序后者覆盖)
                 for a in alts {
-                    self.check_pattern_into(a, hint, out, cov);
+                    self.check_pattern_into(a, hint, out, cov, mutable);
                 }
             }
             ast::Pattern::Tuple(ps) => {
@@ -1805,7 +1816,7 @@ impl<'a> Checker<'a> {
                     _ => vec![],
                 };
                 for (i, sub) in ps.iter().enumerate() {
-                    self.check_pattern_into(sub, elems.get(i), out, cov);
+                    self.check_pattern_into(sub, elems.get(i), out, cov, mutable);
                 }
             }
             ast::Pattern::Agg { path, sub } => {
@@ -1840,7 +1851,7 @@ impl<'a> Checker<'a> {
                                     if std::env::var("CTRON_DEBUG").is_ok() {
                                         eprintln!("[dbg] agg {} payload[{}]={:?} sub={:?} subs={:?} pt={:?}", name, i, payload.get(i), sp, self.subs, pt_of_payload(payload.as_slice(), i));
                                     }
-                                    self.check_pattern_into(sp, payload.get(i), out, cov);
+                                    self.check_pattern_into(sp, payload.get(i), out, cov, mutable);
                                 }
                             }
                         }
@@ -1857,8 +1868,8 @@ impl<'a> Checker<'a> {
                                 for (fname, fty) in fields {
                                     if let Some(sp) = find_field_pat(sub, &fname) {
                                         match &sp.pattern {
-                                            Some(bp) => self.check_pattern_into(bp, Some(&fty), out, cov),
-                                            None => { out.insert(sp.name.clone(), Local { ty: fty }); }
+                                            Some(bp) => self.check_pattern_into(bp, Some(&fty), out, cov, mutable),
+                                            None => { out.insert(sp.name.clone(), Local { ty: fty, mutable: true }); }
                                         }
                                     }
                                 }
@@ -2042,7 +2053,7 @@ impl<'a> Checker<'a> {
                         .or_else(|| fn_hint.as_ref().and_then(|(ps, _)| ps.get(i).cloned()))
                         .unwrap_or(Ty::Err);
                     param_tys.push(ty.clone());
-                    binds.insert(p.name.clone(), Local { ty });
+                    binds.insert(p.name.clone(), Local { ty, mutable: true });
                 }
                 let body_hint = fn_hint.as_ref().map(|(_, r)| r.clone());
                 self.scopes.push(binds);
@@ -2059,7 +2070,7 @@ impl<'a> Checker<'a> {
             }
             Expr::Scope { param, body } => {
                 let scope_ty = self.named("Scope", vec![]);
-                self.scopes.push(HashMap::from([(param.clone(), Local { ty: scope_ty })]));
+                self.scopes.push(HashMap::from([(param.clone(), Local { ty: scope_ty, mutable: true })]));
                 let t = self.check_block(body);
                 self.scopes.pop();
                 t
@@ -2071,7 +2082,7 @@ impl<'a> Checker<'a> {
                 let saved_handles = std::mem::take(&mut self.handles);
                 self.in_own = true;
                 let arena_ty = self.named("Arena", vec![]);
-                self.scopes.push(HashMap::from([(arena.clone(), Local { ty: arena_ty })]));
+                self.scopes.push(HashMap::from([(arena.clone(), Local { ty: arena_ty, mutable: true })]));
                 self.check_block(body);
                 self.scopes.pop();
                 self.in_own = saved_own;
@@ -2099,7 +2110,7 @@ impl<'a> Checker<'a> {
                 let mut has_wildcard = false;
                 for arm in arms {
                     self.scopes.push(HashMap::new());
-                    let (binds, cov) = self.check_pattern_cov(&arm.pattern, Some(&st));
+                    let (binds, cov) = self.check_pattern_cov(&arm.pattern, Some(&st), true);
                     self.scopes.last_mut().unwrap().extend(binds);
                     // 模式守卫(R-P3c):守卫可能不成立,带守卫的臂不算覆盖;
                     // 或模式替身展开计覆盖,通配替身即整体通配

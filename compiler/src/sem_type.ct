@@ -66,15 +66,23 @@ fn root_name(e: List[Str]) -> Str {
     return ""
 }
 
-fn bind_pat(pp: List[Str], loc: List[Str], envT: List[Str], tn: List[Str]) {
+// mk = 可变性标记前缀:"" = let 局部(裸名单推,赋值即 E2080);"@m:" = var 局部;
+// "@o:" = 豁免面(形参/闭包形参/for·match 模式绑定/own·scope 句柄,v0.9 起登记债)。
+// 推入纪律:非 let 绑定恒 [标记, 裸名] 相邻成对且各配一个 envT 槽(标记槽 unk() 占位,
+// 保持 loc/envT 索引平行,env_ty 尾向扫描命中的裸名槽恒为真型);E2080 判定见 immut_gate_hit。
+fn bind_pat(pp: List[Str], loc: List[Str], envT: List[Str], tn: List[Str], mk: Str) {
     var t = pp[0]
     if t == "PatId" {
+        if mk.len > 0 {
+            loc.push(mk + pp[1])
+            envT.push(unk())
+        }
         loc.push(pp[1])
         envT.push(tn)
     } else if t == "PatTup" {
         var i: I32 = 1
         while i < pp.len {
-            bind_pat(pp[i], loc, envT, unk())
+            bind_pat(pp[i], loc, envT, unk(), mk)
             i += 1
         }
     } else if t == "PatAgg" {
@@ -85,18 +93,41 @@ fn bind_pat(pp: List[Str], loc: List[Str], envT: List[Str], tn: List[Str]) {
                 var c = sub[j]
                 if seq2(c[0], "PatFld") {
                     if c[2].len > 1 {
-                        bind_pat(c[2], loc, envT, unk())
+                        bind_pat(c[2], loc, envT, unk(), mk)
                     } else {
+                        if mk.len > 0 {
+                            loc.push(mk + c[1])
+                            envT.push(unk())
+                        }
                         loc.push(c[1])
                         envT.push(unk())
                     }
                 } else {
-                    bind_pat(c, loc, envT, unk())
+                    bind_pat(c, loc, envT, unk(), mk)
                 }
                 j += 1
             }
         }
     }
+}
+
+// E2080 判定(§4.0 let 不可变):nm 的最内层绑定(表尾向首个裸名命中)若为 let
+// 局部 → true;命中格前一格是本名 @m:/@o: 标记(成对推入纪律)→ 豁免。查无此名
+// (模块级/未解析)→ false,交回原诊断面。
+fn immut_gate_hit(loc: List[Str], nm: Str) -> Bool {
+    var i = loc.len - 1
+    while i >= 0 {
+        if seq2(loc[i], nm) {
+            if i > 0 {
+                var p = loc[i - 1]
+                if seq2(p, "@m:" + nm) { return false }
+                if seq2(p, "@o:" + nm) { return false }
+            }
+            return true
+        }
+        i -= 1
+    }
+    return false
 }
 
 // 类型 kind(§3.1):n:<名> / opt:<内> / ref:<内> / slice / arr / tup / fn / ""=未知
@@ -859,7 +890,7 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         var i4: I32 = 1
         while i4 < arms.len {
             var a = arms[i4]
-            bind_pat(a[1], loc, envT, unk())
+            bind_pat(a[1], loc, envT, unk(), "@o:")
             tce(file, a[2], tc, loc, envT, retK, diags)
             i4 += 1
         }
@@ -874,6 +905,8 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
             var fp = retK[1]
             var i8: I32 = 1
             while i8 < cp.len {
+                loc.push("@o:" + cp[i8][2])
+                envT.push(unk())
                 loc.push(cp[i8][2])
                 if i8 < fp.len {
                     envT.push(fp[i8])
@@ -887,6 +920,8 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         }
         var i5: I32 = 1
         while i5 < cp.len {
+            loc.push("@o:" + cp[i5][2])
+            envT.push(unk())
             loc.push(cp[i5][2])
             envT.push(unk())
             i5 += 1
@@ -895,12 +930,16 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         return
     }
     if t == "Own" {
+        loc.push("@o:" + e[1])
+        envT.push(unk())
         loc.push(e[1])
         envT.push(unk())
         tcb(file, e[2], tc, loc, envT, retK, diags)
         return
     }
     if t == "Scope" {
+        loc.push("@o:" + e[1])
+        envT.push(unk())
         loc.push(e[1])
         envT.push(unk())
         tcb(file, e[2], tc, loc, envT, retK, diags)
@@ -1006,7 +1045,11 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                     }
                 }
             }
-            bind_pat(s[2], loc, envT, tn)
+            var vmk = ""
+            if seq2(s[1], "true") {
+                vmk = "@m:"
+            }
+            bind_pat(s[2], loc, envT, tn, vmk)
         } else if t == "Own" {
             tcb(file, s[2], tc, loc, envT, retK, diags)
         } else if t == "While" {
@@ -1017,7 +1060,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
             tce(file, s[1], tc, loc, envT, retK, diags)
             tcb(file, s[2], tc, loc, envT, retK, diags)
         } else if t == "For" {
-            bind_pat(s[1], loc, envT, unk())
+            bind_pat(s[1], loc, envT, unk(), "@o:")
             tce(file, s[2], tc, loc, envT, retK, diags)
             tcb(file, s[3], tc, loc, envT, retK, diags)
         } else if t == "Return" {
@@ -1032,6 +1075,10 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                 tce(file, s[1], tc, loc, envT, retK, diags)
             }
         } else if t == "Assign" {
+            var arn = root_name(s[1])
+            if arn.len > 0 && immut_gate_hit(loc, arn) {
+                diag2(diags, "E2080.let", nline(s), arn, "")
+            }
             var tk = ex_ty(s[1], tc, loc, envT)
             var vk = ex_ty(s[3], tc, loc, envT)
             if !compat(tk, vk, s[3], file, tc) {
@@ -1056,9 +1103,13 @@ fn fn_params_push(ps: List[Str], loc: List[Str], envT: List[Str]) {
     while i < ps.len {
         var p = ps[i]
         if p[0] == "Param" {
+            loc.push("@o:" + p[2])
+            envT.push(unk())
             loc.push(p[2])
             envT.push(p[3])
         } else if p[0] == "Receiver" {
+            loc.push("@o:self")
+            envT.push(unk())
             loc.push("self")
             envT.push(unk())
         }

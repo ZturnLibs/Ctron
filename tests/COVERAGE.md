@@ -1,5 +1,13 @@
 # 测试覆盖审计(v0.5 规范 ↔ 测试集)
 
+> **E2080 批已落地(2026-10-08,let 不可变门;规范 §4.1/§10 已修订)。**
+> 钉子 `tests/04g_let_assign.neg.ct`(= 重赋值/+= 族/var 遮蔽后重赋值三面)三线全强制:
+> 自举线(sem_type.ct:immut_gate_hit,标记成对推入保持 loc/envT 平行)、C 宿主(sem.c:bind.mut 位)、
+> R 线(check.rs:Local.mutable + check_suite 矩阵登记)。**豁免面登记债(v0.9 有意收窄)**:
+> 形参/闭包形参/for·match 模式绑定的重赋值、struct 字段经 let 值的写、切片元素经 let 根的写
+> 三面仍放行,三线同判据;收窄留后续修订(判据=赋值左目最内层绑定的声明可变性)。
+>
+
 > **第六批补测已落地(2026-09-12,v0.7 三项松绑;规范已修订至 v0.7)。**
 > R 线 compiler-rust 新增三 suite:oror(4,`||` 真值表/优先级/位置消歧/续行)、
 > breakc(8,break/continue 绑最近循环/E2070/E2071/E2072/fmt/C 发射)、
