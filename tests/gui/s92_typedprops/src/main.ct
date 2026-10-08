@@ -1,0 +1,119 @@
+// tests/gui/s92_typedprops —— typed-props 组件实参 v1:struct 值穿 CTML 通道
+// 真递归 tree(view 自调用 × struct prop:根相对路径视通道,\x02 marker →
+// 生成 bind obj:/eachobj: 首臂 → reader/items 布局感知下钻)。
+// 断言:三层树递归渲染(TOP→MID→GKID-C + 侧枝 KID-B)+ 终止后 DONE 照常
+// + 嵌套几何 x100 累进(ti padding 逐层右移)。登记边界见 pkgs/gui/README §4。
+use gui.{test, d_frame, d_expect_text, d_cmd_count, d_cmd_type, d_cmd_x100, d_cmd_w100, Driver}
+
+struct TNode {
+    var label: Str
+    var kids: List[TNode]
+}
+
+fn mkleaf(l: Str) -> TNode {
+    return TNode { label: l, kids: List[TNode]() }
+}
+
+fn mk() -> TNode {
+    var gks = List[TNode]()
+    gks.push(mkleaf("GKID-C"))
+    var mid = TNode { label: "MID", kids: gks }
+    var tks = List[TNode]()
+    tks.push(mid)
+    tks.push(mkleaf("KID-B"))
+    return TNode { label: "TOP", kids: tks }
+}
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn act_noop(name: Str, args: List[Str]) {
+}
+
+// 递归组件:label=obj 读标量叶;each=eachobj 字段列表(子 marker 逐项);
+// 实例实参 {c}=itemvar 直穿(marker 值直递 env,末位遮蔽外层)
+view TreeItem(n: TNode) {
+  <vbox class="ti">
+    <label class="tl">{n.label}</label>
+    <each c in={n.kids}>
+      <TreeItem n: {c}/>
+    </each>
+  </vbox>
+}
+
+view Root(m: TNode) {
+  <vbox class="root">
+    <TreeItem n: {m}/>
+    <label class="done">DONE92</label>
+  </vbox>
+}
+
+style root { direction: column gap: 4 padding: 8 }
+style ti { direction: column gap: 2 padding: 6 }
+style tl { fg: "#aabbcc" h: 20 }
+style done { fg: "#22c55e" h: 22 }
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[TNode](mk())
+    var rc: I32 = test(src, 320, 240,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| __gui_act_Root(name, ar, m),
+        |k| { },
+        |t, actc, k2| {
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            // 三层树全节点递归渲染(通道全链:obj 读+eachobj 迭代+直穿)
+            d_expect_text(t, "TOP")
+            d_expect_text(t, "MID")
+            d_expect_text(t, "GKID-C")
+            d_expect_text(t, "KID-B")
+            // 终止后 DONE 照常(递归无死循环)
+            d_expect_text(t, "DONE92")
+            // 嵌套几何:裸容器不发 RECT(Clay 仅对有绘制元素发),嵌套左移
+            // 由文本命令 x100 编码:TOP=14px → MID/KID-B=20px → GKID-C=26px
+            //(ti padding 6 逐层右移);按文本宽唯一寻址(7600/7000/13400)
+            var x1: I32 = -1
+            var x2: I32 = -1
+            var x3: I32 = -1
+            var n: I32 = d_cmd_count()
+            var i: I32 = 0
+            while i < n {
+                if d_cmd_type(i) == 1 {
+                    if d_cmd_w100(i) == 7600 {
+                        x1 = d_cmd_x100(i)
+                    }
+                    if d_cmd_w100(i) == 7000 {
+                        x2 = d_cmd_x100(i)
+                    }
+                    if d_cmd_w100(i) == 13400 {
+                        x3 = d_cmd_x100(i)
+                    }
+                }
+                i += 1
+            }
+            if x1 < 0 {
+                panic("s92: 一层文本未现(7600)")
+            }
+            if x2 < 0 {
+                panic("s92: 二层文本未现(7000)")
+            }
+            if x3 < 0 {
+                panic("s92: 三层文本未现(13400)")
+            }
+            if x2 <= x1 {
+                panic("s92: 二层左缘未右移 x1=" + x1.to_string() + " x2=" + x2.to_string())
+            }
+            if x3 <= x2 {
+                panic("s92: 三层左缘未右移 x2=" + x2.to_string() + " x3=" + x3.to_string())
+            }
+            println("S92-TYPEDPROPS-GREEN")
+        })
+    return rc
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Root(m: mk()))
+}

@@ -84,8 +84,58 @@ pub fn rt_bind_items(t: GuiTree, bind: fn(List[Str]) -> Void, listname: Str) -> 
             }
         }
     }
+    // typed-props:struct 根组合——listname 根为 \x02 marker(组件 prop 根
+    // 为 struct 引用)时走 eachobj 通道(生成侧 items 臂应答子 marker 串);
+    // 非 marker 零改动。env NULL 门控沿 gui_list_ns 先例
+    if gui_list_ns(t.env_n) > 0 {
+        if gui_list_ns(t.env_v) > 0 {
+            if listname.len > 1 {
+                var lr: Str = bxv_root(listname)
+                var lei: I32 = t.env_n.len - 1
+                while lei >= 0 {
+                    if t.env_n[lei] == lr {
+                        var lv: Str = t.env_v[lei]
+                        if lv.len > 1 {
+                            if byte_at(lv, 0) == 2 {
+                                if listname.len > lr.len {
+                                    return rt_bind_obj_items(bind, "eachobj:" + byte_slice(lv, 1, lv.len) + "." + byte_slice(listname, lr.len + 1, listname.len))
+                                }
+                            }
+                        }
+                        lei = -1
+                    }
+                    lei -= 1
+                }
+            }
+        }
+    }
     var buf = List[Str]()
     buf.push("each:" + listname)
+    bind(buf)
+    var out = List[Str]()
+    var i: I32 = 1
+    while i < buf.len {
+        out.push(buf[i])
+        i += 1
+    }
+    return out
+}
+
+// typed-props:obj 查询(生成侧 bind obj:/eachobj: 首臂应答;无臂回 ""=通道口径)
+fn rt_bind_obj(bind: fn(List[Str]) -> Void, q: Str) -> Str {
+    var buf = List[Str]()
+    buf.push(q)
+    bind(buf)
+    if buf.len > 1 {
+        return buf[buf.len - 1]
+    }
+    return ""
+}
+
+// typed-props:eachobj 查询(子节点/标量项多项应答;buf[1..] 逐项收集)
+fn rt_bind_obj_items(bind: fn(List[Str]) -> Void, q: Str) -> List[Str] {
+    var buf = List[Str]()
+    buf.push(q)
     bind(buf)
     var out = List[Str]()
     var i: I32 = 1

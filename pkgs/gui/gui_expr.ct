@@ -402,7 +402,21 @@ fn bxv_ask(t: GuiTree, path: Str, bind: fn(List[Str]) -> Void, itemvar: Str, ite
                 var ei: I32 = t.env_n.len - 1
                 while ei >= 0 {
                     if t.env_n[ei] == root {
-                        return t.env_v[ei]
+                        var vv: Str = t.env_v[ei]
+                        // typed-props:struct 引用值(\x02root.rel marker)→
+                        // obj 查询组合(生成侧 bind obj: 臂应答;裸 struct
+                        // path==root 不可渲染,通道口径回 "")
+                        if vv.len > 1 {
+                            if byte_at(vv, 0) == 2 {
+                                if path.len > root.len {
+                                    var rel: Str = byte_slice(vv, 1, vv.len)
+                                    var suf: Str = byte_slice(path, root.len + 1, path.len)
+                                    return rt_bind_obj(bind, "obj:" + rel + "." + suf)
+                                }
+                                return ""
+                            }
+                        }
+                        return vv
                     }
                     ei -= 1
                 }

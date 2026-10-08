@@ -4,8 +4,9 @@
 > (GUI-28/29)+六红清零(ebebfc7f 发射三缝:env 先行判别/蹦床 void+B: 臂/s33
 > 名通道契约;阶梯 82 过 0 败=历史首次全绿);GUI-25 真窗手验通过(fb7d4289)。
 > 1004:F 档两裁决件销账(GUI-30 持久化默认化/GUI-31 主题包)。
-> 残余=GUI-27 组件跨文件导入(排期靠后)、typed-props 组件实参(cf2132cf 登记)、
-> numeric×textarea emit segfault(1004 立案)、G 档远期。
+> 残余=numeric×textarea emit segfault(1004 立案)、远期评审件。
+> 1008:typed-props 组件实参 v1 销账(s92 路径视通道,真递归 tree 通;GUI-27
+> 亦已于 75c973f8 落库)——GUI 域组件面缺口清零。
 
 ## A 档:P1 组件尾巴(纯组合件,可立即动工;每项 0.5 天内)——✅ 2026-10-03 全档销账
 > 九条全落库(gui-a-tail 分支,夹具 s66_cbx_var/s67_comp_a/s68_menu_acc+陈列室):
@@ -44,7 +45,7 @@
 ## D 档:P2 B 档(各自独立,中等工作量)——✅ 1003 十条全落库
 
 - ✅ **GUI-17(已销账) 可拖分隔条**——✅ 1003 2b3176ea:水平分隔(上下窗格)d_dragv 驱动+mousey 绝对指针内建(permille 相对盒在分隔条场景饱和);前置 GUI-16 最小面同提交落地。
-- ✅ **GUI-18(已销账) tree 组件**——✅ 1003 6bdfc813:扁平表配方(应用侧可见集重算+缩进/▸▾ 前缀),点击经实例后缀定位(s56);递归 view 形态依赖下标表达式留 v2。
+- ✅ **GUI-18(已销账) tree 组件**——✅ 1003 6bdfc813:扁平表配方(应用侧可见集重算+缩进/▸▾ 前缀),点击经实例后缀定位(s56);1008 typed-props v1 落地后真递归 tree 通(s92)。
 - ✅ **GUI-19(已销账) combobox**——✅ 1003 03859b7e:输入即开(on:input 过滤+下拉同帧)+overlay 下拉+点选填入(s59);过滤谓词应用侧手写(GUI-13 落库可换 contains)。
 - ✅ **GUI-20(已销账) OS 文件拖入**——✅ 1003 ffa4acd1:窗口级 on:drop(事件码 6,IsFileDropped 轮询+IsWindowReady 门),逐文件 fire+droppath/dropn 内建;headless d_drop(s61)。
 - ✅ **GUI-21(已销账) 虚拟化长列表**——✅ 1003 718db27b(6663cf9b 改号 s69):scroll 标记容器(gui_cfg2 clip+偏移槽)进共享运行时+可见窗口配方(bind 只组装窗口行,前占位+总高 O(1));**v2 ✅ 1003 c7f22a47:virtual each 标签形态**(each class virtual:N+运行时窗口,固定 overscan 2,合成占位空盒;itemvar/实例下标窗内保真;视口外 overscan 行 Clay 剔除=可观测契约;s76)。

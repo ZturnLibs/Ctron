@@ -734,6 +734,90 @@ fn gui_field_tables(file: List[Str], stns: List[Str], sfk: List[Str], stv: List[
     return 0
 }
 
+// typed-props:型节点原文渲染(Named/泛型实参直拼;Ref &前缀/Optional ?后缀
+// 保留痕——消费侧据后缀跳 Optional 字段,头名侵蚀表 stv 不保这些痕)
+fn gui_ty_raw_node(t: List[Str]) -> Str {
+    var tag: Str = t[0]
+    if tag == "Named" {
+        var s: Str = t[1]
+        if t.len > 2 {
+            var ta = t[2]
+            s = s + "["
+            var ai: I32 = 1
+            var first: Bool = true
+            while ai < ta.len {
+                if !first {
+                    s = s + ","
+                }
+                first = false
+                s = s + gui_ty_raw_node(ta[ai])
+                ai += 1
+            }
+            s = s + "]"
+        }
+        return s
+    }
+    if tag == "Ref" {
+        return "&" + gui_ty_raw_node(t[1])
+    }
+    if tag == "Optional" {
+        return gui_ty_raw_node(t[1]) + "?"
+    }
+    return tag
+}
+
+// typed-props:List[...] 首元素型原文(顶层括号配对;非 List 形回 "")
+fn gui_ds_list_elem(raw: Str) -> Str {
+    if raw.len < 7 {
+        return ""
+    }
+    var depth: I32 = 0
+    var i: I32 = 5
+    while i < raw.len {
+        var c: I32 = byte_at(raw, i)
+        if c == 91 {
+            depth += 1
+        } else {
+            if c == 93 {
+                if depth == 0 {
+                    return byte_slice(raw, 5, i)
+                }
+                depth -= 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
+// typed-props:单 struct 字段原文表(fnames/ftys 平行;gui_field_tables 同源
+// 走查,原文保 Box[...]/?/& 痕供 reader 生成分类)
+fn gui_ds_sfields(file: List[Str], ty: Str, fnames: List[Str], ftys: List[Str]) -> I32 {
+    var i: I32 = 1
+    while i < file.len {
+        var ds = file[i]
+        if ds[0] == "Struct" {
+            if ds[1] == ty {
+                if ds.len > 4 {
+                    var fsx = ds[4]
+                    var fi: I32 = 1
+                    while fi < fsx.len {
+                        var fd = fsx[fi]
+                        if fd[0] == "Field" {
+                            fnames.push(fd[2])
+                            ftys.push(gui_ty_raw_node(fd[3]))
+                        }
+                        fi += 1
+                    }
+                    return 1
+                }
+            }
+        }
+        i += 1
+    }
+    return 0
+}
+
 // 视图收集:名表 + props 形参串表(d[5])
 fn gui_ds_views(file: List[Str], vnames: List[Str], vprops: List[Str]) -> I32 {
     var i: I32 = 1
@@ -4090,6 +4174,335 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
         ptoks.push(tok)
         ii += 1
     }
+    // typed-props:struct 实参消费面生成——run 视图 struct-typed props 出发,
+    // 布局感知 reader/items(路径视设计:通道只走 \x02root.rel 打标串,唯一
+    // 类型化锚=bind 闭包捕获的 __p_*;无句柄表无 extern 无全局,探针定型
+    // 的模块 var/下标成员链/Str→Box/同名 extern 四坑全部绕开)
+    var objsrc: Str = ""
+    var objarms: Str = ""
+    var spn = List[Str]()
+    var sty = List[Str]()
+    ii = 0
+    while ii < ordn.len {
+        var spn2: Str = ordn[ii]
+        var sty2: Str = ""
+        var sti: I32 = 0
+        while sti < pnames.len {
+            if pnames[sti] == spn2 {
+                sty2 = ptyps[sti]
+                sti = pnames.len
+            }
+            sti += 1
+        }
+        var shd: Str = gui_ty_head_txt(sty2)
+        if shd != "" {
+            if gui_ck_has_style(stns, shd) {
+                spn.push(spn2)
+                sty.push(shd)
+            }
+        }
+        ii += 1
+    }
+    var reach = List[Str]()
+    var rq: I32 = 0
+    while rq < sty.len {
+        if !gui_ck_has_style(reach, sty[rq]) {
+            reach.push(sty[rq])
+        }
+        rq += 1
+    }
+    var rr2: I32 = 0
+    while rr2 < reach.len {
+        var rfn = List[Str]()
+        var rft = List[Str]()
+        gui_ds_sfields(file, reach[rr2], rfn, rft)
+        var fj: I32 = 0
+        while fj < rft.len {
+            var fh2: Str = gui_ty_head_txt(rft[fj])
+            var fopt: Bool = false
+            if rft[fj].len > 0 {
+                if byte_at(rft[fj], rft[fj].len - 1) == 63 {
+                    fopt = true
+                }
+            }
+            if !fopt {
+                if fh2 != "" {
+                    if gui_ck_has_style(stns, fh2) {
+                        if !gui_ck_has_style(reach, fh2) {
+                            reach.push(fh2)
+                        }
+                    }
+                }
+            }
+            fj += 1
+        }
+        rr2 += 1
+    }
+    // per-struct reader 生成(字段路径→打标串;Optional/Ref/未知字段跳)
+    var gi2: I32 = 0
+    while gi2 < reach.len {
+        var gty: Str = reach[gi2]
+        var gfn = List[Str]()
+        var gft = List[Str]()
+        gui_ds_sfields(file, gty, gfn, gft)
+        objsrc = objsrc + "fn __gui_ds_read_" + gty + "(p: Box[" + gty + "], path: Str) -> Str \{\n"
+        var gf: I32 = 0
+        while gf < gft.len {
+            var fN: Str = gfn[gf]
+            var fR: Str = gft[gf]
+            var fH: Str = gui_ty_head_txt(fR)
+            var fK: I32 = fN.len + 1
+            var fSkip: Bool = false
+            if fR.len > 0 {
+                if byte_at(fR, fR.len - 1) == 63 {
+                    fSkip = true
+                }
+            }
+            if !fSkip {
+                if fH == "Str" {
+                    objsrc = objsrc + "    if path == \"" + fN + "\" \{ return p." + fN + " }\n"
+                } else {
+                    if fH == "I32" {
+                        objsrc = objsrc + "    if path == \"" + fN + "\" \{ return \"i:\" + p." + fN + ".to_string() }\n"
+                    } else {
+                        if fH == "Bool" {
+                            objsrc = objsrc + "    if path == \"" + fN + "\" \{ if p." + fN + " \{ return \"b:1\" } return \"b:0\" }\n"
+                        } else {
+                            if fH == "List" {
+                                var fe: Str = gui_ds_list_elem(fR)
+                                var feh: Str = gui_ty_head_txt(fe)
+                                var feSkip: Bool = false
+                                if fe.len > 0 {
+                                    if byte_at(fe, fe.len - 1) == 63 {
+                                        feSkip = true
+                                    }
+                                }
+                                objsrc = objsrc + "    if path == \"" + fN + ".len\" \{ return \"i:\" + p." + fN + ".len.to_string() }\n"
+                                objsrc = objsrc + "    if path.len > " + fK.to_string() + " \{ if byte_slice(path, 0, " + fK.to_string() + ") == \"" + fN + ".\" \{\n"
+                                objsrc = objsrc + "        var " + fN + "q: Str = byte_slice(path, " + fK.to_string() + ", path.len)\n"
+                                objsrc = objsrc + "        var " + fN + "d: I32 = -1\n"
+                                objsrc = objsrc + "        var " + fN + "z: I32 = 0\n"
+                                objsrc = objsrc + "        while " + fN + "z < " + fN + "q.len \{\n"
+                                objsrc = objsrc + "            if byte_at(" + fN + "q, " + fN + "z) == 46 \{ " + fN + "d = " + fN + "z\n"
+                                objsrc = objsrc + "                " + fN + "z = " + fN + "q.len\n"
+                                objsrc = objsrc + "            } else \{\n"
+                                objsrc = objsrc + "                " + fN + "z += 1\n"
+                                objsrc = objsrc + "            }\n"
+                                objsrc = objsrc + "        }\n"
+                                objsrc = objsrc + "        var " + fN + "i: I32 = -1\n"
+                                objsrc = objsrc + "        if " + fN + "d >= 0 \{\n"
+                                objsrc = objsrc + "            " + fN + "i = gs2i(byte_slice(" + fN + "q, 0, " + fN + "d))\n"
+                                objsrc = objsrc + "        } else \{\n"
+                                objsrc = objsrc + "            " + fN + "i = gs2i(" + fN + "q)\n"
+                                objsrc = objsrc + "        }\n"
+                                objsrc = objsrc + "        if " + fN + "i >= 0 \{\n"
+                                objsrc = objsrc + "            if " + fN + "i < p." + fN + ".len \{\n"
+                                if !feSkip {
+                                    if feh == "Str" {
+                                        objsrc = objsrc + "                if " + fN + "d < 0 \{ return p." + fN + "[" + fN + "i] }\n"
+                                    } else {
+                                        if feh == "I32" {
+                                            objsrc = objsrc + "                if " + fN + "d < 0 \{ var " + fN + "v: I32 = p." + fN + "[" + fN + "i]\n"
+                                            objsrc = objsrc + "                return \"i:\" + " + fN + "v.to_string() }\n"
+                                        } else {
+                                            if feh == "Bool" {
+                                                objsrc = objsrc + "                if " + fN + "d < 0 \{ var " + fN + "v: Bool = p." + fN + "[" + fN + "i]\n"
+                                                objsrc = objsrc + "                if " + fN + "v \{ return \"b:1\" }\n"
+                                                objsrc = objsrc + "                return \"b:0\" }\n"
+                                            } else {
+                                                if gui_ck_has_style(stns, feh) {
+                                                    objsrc = objsrc + "                if " + fN + "d >= 0 \{ return __gui_ds_read_" + feh + "(Box[" + feh + "](p." + fN + "[" + fN + "i]), byte_slice(" + fN + "q, " + fN + "d + 1, " + fN + "q.len)) }\n"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                objsrc = objsrc + "            }\n"
+                                objsrc = objsrc + "        }\n"
+                                objsrc = objsrc + "        return \"\"\n"
+                                objsrc = objsrc + "    } }\n"
+                            } else {
+                                if fH != "" {
+                                    if gui_ck_has_style(stns, fH) {
+                                        var boxed: Str = ""
+                                        var isBoxF: Bool = false
+                                        if fR.len > 4 {
+                                            if byte_slice(fR, 0, 4) == "Box[" {
+                                                isBoxF = true
+                                            }
+                                        }
+                                        if gui_trim(fR) == fH {
+                                            boxed = "Box[" + fH + "](p." + fN + ")"
+                                        } else {
+                                            if isBoxF {
+                                                boxed = "p." + fN
+                                            }
+                                        }
+                                        if boxed != "" {
+                                            objsrc = objsrc + "    if path == \"" + fN + "\" \{ return char_str(1) + \"" + fN + "\" }\n"
+                                            objsrc = objsrc + "    if path.len > " + fK.to_string() + " \{ if byte_slice(path, 0, " + fK.to_string() + ") == \"" + fN + ".\" \{\n"
+                                            objsrc = objsrc + "        var " + fN + "r: Str = __gui_ds_read_" + fH + "(" + boxed + ", byte_slice(path, " + fK.to_string() + ", path.len))\n"
+                                            objsrc = objsrc + "        if " + fN + "r.len > 0 \{\n"
+                                            objsrc = objsrc + "            if byte_at(" + fN + "r, 0) == 1 \{\n"
+                                            objsrc = objsrc + "                return char_str(1) + \"" + fN + ".\" + byte_slice(" + fN + "r, 1, " + fN + "r.len)\n"
+                                            objsrc = objsrc + "            }\n"
+                                            objsrc = objsrc + "        }\n"
+                                            objsrc = objsrc + "        return " + fN + "r\n"
+                                            objsrc = objsrc + "    } }\n"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            gf += 1
+        }
+        objsrc = objsrc + "    return \"\"\n}\n"
+        // items 生成(路径下钻形,镜像 reader 首段拆分:struct 字段递归深钻,
+        // list 字段=末段迭代;struct 元素=子 marker(根全径),标量元素=打标串)
+        objsrc = objsrc + "fn __gui_ds_items_" + gty + "(buf: List[Str], p: Box[" + gty + "], root: Str, path: Str, base: Str) \{\n"
+        var gf2: I32 = 0
+        while gf2 < gft.len {
+            var iN: Str = gfn[gf2]
+            var iR: Str = gft[gf2]
+            var iH: Str = gui_ty_head_txt(iR)
+            var iSkip: Bool = false
+            if iR.len > 0 {
+                if byte_at(iR, iR.len - 1) == 63 {
+                    iSkip = true
+                }
+            }
+            if !iSkip {
+                var iK: I32 = iN.len + 1
+                if iH == "List" {
+                    var ie: Str = gui_ds_list_elem(iR)
+                    var ieh: Str = gui_ty_head_txt(ie)
+                    var ieSkip: Bool = false
+                    if ie.len > 0 {
+                        if byte_at(ie, ie.len - 1) == 63 {
+                            ieSkip = true
+                        }
+                    }
+                    objsrc = objsrc + "    if path == \"" + iN + "\" \{\n"
+                    objsrc = objsrc + "        var gi: I32 = 0\n"
+                    objsrc = objsrc + "        while gi < p." + iN + ".len \{\n"
+                    if !ieSkip {
+                        if gui_ck_has_style(stns, ieh) {
+                            objsrc = objsrc + "            buf.push(char_str(2) + root + \".\" + base + \".\" + gi.to_string())\n"
+                        } else {
+                            if ieh == "Str" {
+                                objsrc = objsrc + "            buf.push(p." + iN + "[gi])\n"
+                            } else {
+                                if ieh == "I32" {
+                                    objsrc = objsrc + "            var gv: I32 = p." + iN + "[gi]\n"
+                                    objsrc = objsrc + "            buf.push(\"i:\" + gv.to_string())\n"
+                                } else {
+                                    if ieh == "Bool" {
+                                        objsrc = objsrc + "            var gv: Bool = p." + iN + "[gi]\n"
+                                        objsrc = objsrc + "            if gv \{ buf.push(\"b:1\") }\n"
+                                        objsrc = objsrc + "            if !gv \{ buf.push(\"b:0\") }\n"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    objsrc = objsrc + "            gi += 1\n"
+                    objsrc = objsrc + "        }\n"
+                    objsrc = objsrc + "        return\n"
+                    objsrc = objsrc + "    }\n"
+                    if !ieSkip {
+                        if gui_ck_has_style(stns, ieh) {
+                            objsrc = objsrc + "    if path.len > " + iK.to_string() + " \{ if byte_slice(path, 0, " + iK.to_string() + ") == \"" + iN + ".\" \{\n"
+                            objsrc = objsrc + "        var " + iN + "q: Str = byte_slice(path, " + iK.to_string() + ", path.len)\n"
+                            objsrc = objsrc + "        var " + iN + "d: I32 = -1\n"
+                            objsrc = objsrc + "        var " + iN + "z: I32 = 0\n"
+                            objsrc = objsrc + "        while " + iN + "z < " + iN + "q.len \{\n"
+                            objsrc = objsrc + "            if byte_at(" + iN + "q, " + iN + "z) == 46 \{ " + iN + "d = " + iN + "z\n"
+                            objsrc = objsrc + "                " + iN + "z = " + iN + "q.len\n"
+                            objsrc = objsrc + "            } else \{\n"
+                            objsrc = objsrc + "                " + iN + "z += 1\n"
+                            objsrc = objsrc + "            }\n"
+                            objsrc = objsrc + "        }\n"
+                            objsrc = objsrc + "        if " + iN + "d >= 0 \{\n"
+                            objsrc = objsrc + "            var " + iN + "i: I32 = gs2i(byte_slice(" + iN + "q, 0, " + iN + "d))\n"
+                            objsrc = objsrc + "            if " + iN + "i >= 0 \{\n"
+                            objsrc = objsrc + "                if " + iN + "i < p." + iN + ".len \{\n"
+                            objsrc = objsrc + "                    __gui_ds_items_" + ieh + "(buf, Box[" + ieh + "](p." + iN + "[" + iN + "i]), root, byte_slice(" + iN + "q, " + iN + "d + 1, " + iN + "q.len), base)\n"
+                            objsrc = objsrc + "                    return\n"
+                            objsrc = objsrc + "                }\n"
+                            objsrc = objsrc + "            }\n"
+                            objsrc = objsrc + "        }\n"
+                            objsrc = objsrc + "        return\n"
+                            objsrc = objsrc + "    } }\n"
+                        }
+                    }
+                } else {
+                    if iH != "" {
+                        if gui_ck_has_style(stns, iH) {
+                            var iboxed: Str = ""
+                            var iisBoxF: Bool = false
+                            if iR.len > 4 {
+                                if byte_slice(iR, 0, 4) == "Box[" {
+                                    iisBoxF = true
+                                }
+                            }
+                            if gui_trim(iR) == iH {
+                                iboxed = "Box[" + iH + "](p." + iN + ")"
+                            } else {
+                                if iisBoxF {
+                                    iboxed = "p." + iN
+                                }
+                            }
+                            if iboxed != "" {
+                                objsrc = objsrc + "    if path.len > " + iK.to_string() + " \{ if byte_slice(path, 0, " + iK.to_string() + ") == \"" + iN + ".\" \{\n"
+                                objsrc = objsrc + "        __gui_ds_items_" + iH + "(buf, " + iboxed + ", root, byte_slice(path, " + iK.to_string() + ", path.len), base)\n"
+                                objsrc = objsrc + "        return\n"
+                                objsrc = objsrc + "    } }\n"
+                            }
+                        }
+                    }
+                }
+            }
+            gf2 += 1
+        }
+        objsrc = objsrc + "}\n"
+        gi2 += 1
+    }
+    // bind 首臂生成(obj:/eachobj: 根名路由;先于 prop: 臂,键前缀不撞)
+    var oi: I32 = 0
+    while oi < spn.len {
+        var aP: Str = spn[oi]
+        var aT: Str = sty[oi]
+        var al1: I32 = 4 + aP.len
+        var al2: I32 = al1 + 1
+        objarms = objarms + "    if buf[0].len > " + al2.to_string() + " \{\n"
+        objarms = objarms + "        if byte_slice(buf[0], 0, " + al1.to_string() + ") == \"obj:" + aP + "\" \{\n"
+        objarms = objarms + "            if byte_at(buf[0], " + al1.to_string() + ") == 46 \{\n"
+        objarms = objarms + "                var rr" + aP + ": Str = __gui_ds_read_" + aT + "(__p_" + aP + ", byte_slice(buf[0], " + al2.to_string() + ", buf[0].len))\n"
+        objarms = objarms + "                if rr" + aP + ".len > 0 \{\n"
+        objarms = objarms + "                    if byte_at(rr" + aP + ", 0) == 1 \{\n"
+        objarms = objarms + "                        buf.push(char_str(2) + \"" + aP + ".\" + byte_slice(buf[0], " + al2.to_string() + ", buf[0].len) + \".\" + byte_slice(rr" + aP + ", 1, rr" + aP + ".len))\n"
+        objarms = objarms + "                    } else \{\n"
+        objarms = objarms + "                        buf.push(rr" + aP + ")\n"
+        objarms = objarms + "                    }\n"
+        objarms = objarms + "                }\n"
+        objarms = objarms + "                return\n"
+        objarms = objarms + "            }\n"
+        objarms = objarms + "        }\n"
+        objarms = objarms + "    }\n"
+        var ql1: I32 = 9 + aP.len
+        objarms = objarms + "    if buf[0].len > " + ql1.to_string() + " \{\n"
+        objarms = objarms + "        if byte_slice(buf[0], 0, 8) == \"eachobj:\" \{\n"
+        objarms = objarms + "            if byte_slice(buf[0], 8, " + ql1.to_string() + ") == \"" + aP + ".\" \{\n"
+        objarms = objarms + "                __gui_ds_items_" + aT + "(buf, __p_" + aP + ", \"" + aP + "\", byte_slice(buf[0], " + ql1.to_string() + ", buf[0].len), byte_slice(buf[0], " + ql1.to_string() + ", buf[0].len))\n"
+        objarms = objarms + "                return\n"
+        objarms = objarms + "            }\n"
+        objarms = objarms + "        }\n"
+        objarms = objarms + "    }\n"
+        oi += 1
+    }
     var params: Str = ""
     var cargs: Str = ""
     var sigargs: Str = ""
@@ -4125,18 +4538,23 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
         g = g + ", " + sigargs
     }
     g = g + ") \{\n"
+    g = g + objarms
     var k: I32 = 0
     while k < paths.len {
         var rw: Str = gui_ds_rw(paths[k], pnames, ptoks)
         var tyk: Str = pty[k]
         g = g + "    if buf[0] == \"prop:" + paths[k] + "\" \{\n"
-        if tyk == "I32" {
-            g = g + "        buf.push(\"i:\" + (" + rw + ").to_string())\n"
+        if gui_ck_has_style(stns, tyk) {
+            g = g + "        buf.push(char_str(2) + \"" + paths[k] + "\")\n"
         } else {
-            if tyk == "Bool" {
-                g = g + "        if (" + rw + ") \{ buf.push(\"b:1\") } else \{ buf.push(\"b:0\") }\n"
+            if tyk == "I32" {
+                g = g + "        buf.push(\"i:\" + (" + rw + ").to_string())\n"
             } else {
-                g = g + "        buf.push(" + rw + ")\n"
+                if tyk == "Bool" {
+                    g = g + "        if (" + rw + ") \{ buf.push(\"b:1\") } else \{ buf.push(\"b:0\") }\n"
+                } else {
+                    g = g + "        buf.push(" + rw + ")\n"
+                }
             }
         }
         g = g + "    }\n"
@@ -4426,7 +4844,7 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
     r = r + "        " + bindcl + ",\n"
     r = r + "        " + actcl + ")\n"
     r = r + "}\n"
-    var src: Str = g + a2 + r
+    var src: Str = objsrc + g + a2 + r
     fs_write("/tmp/ds_gen_dump.ct", src)
     var toks = List[Str]()
     var lns = List[Str]()
