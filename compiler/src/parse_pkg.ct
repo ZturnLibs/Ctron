@@ -853,8 +853,11 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     }
                 }
                 // W8902 半面:全链未命中的包形 use(≥3 段)静默收集,驱动层在
-                // 诊断输出时附加出路;单段=本地兄弟文件缺文件,维持旧口径不收集
-                if !fs_exists(mpath) && or2(segs.len >= 3, dslot >= 0) {
+                // 诊断输出时附加出路;单段=本地兄弟文件缺文件,维持旧口径不收集。
+                // S4-⑤(2026-10-07):2 段 std use 未命中(emit 静默 fail-open 调查
+                // 定罪)一并收集——驱动按各自语义消费(check/run 走 sem E2020,
+                // emit fail-closed rc=1)
+                if !fs_exists(mpath) && or2(segs.len >= 3, or2(dslot >= 0, isstd)) {
                     misses.push(segs[1])
                 }
             }

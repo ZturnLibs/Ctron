@@ -1280,6 +1280,31 @@ else
     ok "3z 跳过(缺 ctron-ast/ctron-cc/ctron-verify)"
 fi
 
+# ---------------- 3z2) S4-⑤ emit std use 双姿态(管线注入成功态/坏指路 fail-closed) ----------------
+echo "== 3z2) emit std use(定义收编+STDPATH 注入/坏指路 fail-closed)=="
+if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
+    E2="$T/emitstd"
+    mkdir -p "$E2"
+    printf 'use std.crypto.{ sha256_hex }\n\nfn main() {\n    println(sha256_hex("abc"))\n}\n' > "$E2/mini.ct"
+    if "$COMP/ctc.sh" emit "$E2/mini.ct" "$E2/mini.c" > "$E2/e1.out" 2>&1 && grep -q "t_sha256_hex(const char" "$E2/mini.c"; then
+        if cc -O2 -w -pthread "$E2/mini.c" -o "$E2/mini" 2>/dev/null && [ "$("$E2/mini")" = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" ]; then
+            ok "emit std use 成功态:定义收编+编译运行摘要正确(管线 STDPATH 注入)"
+        else
+            bad "emit std use 运行异常: $("$E2/mini")"
+        fi
+    else
+        bad "emit std use 异常: $(tail -2 "$E2/e1.out")"
+    fi
+    rm -rf "$ROOT/.cache/emit"
+    if CTRON_STDPATH=/nonexistent "$COMP/ctc.sh" emit "$E2/mini.ct" "$E2/mini2.c" > /dev/null 2> "$E2/err.txt"; then
+        bad "坏指路未 fail-closed(E2020/W8901)"
+    else
+        grep -qE "E2020|W8901" "$E2/err.txt" && ok "fail-closed 腿:坏指路 rc=1 诊断入 stderr" || bad "无诊断文案: $(cat "$E2/err.txt")"
+    fi
+else
+    ok "3z2 跳过(缺 ctron-cc)"
+fi
+
 # ---------------- 3p) T40/T42 bare 档锚(§9.3/§9.4/§6.6) ----------------
 echo "== 3p) T40/T42 bare 档(注册表/未注册诊断/ISR 约束/体积门骨架) =="
 if "$COMP/ctc.sh" targets | grep -q "thumbv7em-none-eabi" && "$COMP/ctc.sh" targets | grep -q "riscv32imac-unknown-none"; then

@@ -405,7 +405,9 @@ case $mode in
         "$DIR/build.sh" >/dev/null
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" > "$TMP"
-        "$HOST" run "$TMP" > "$OUTC"
+        # S4-⑤:emit 管线注入 std 根(dev 布局 seed 宿主三探皆空,std use 曾静默
+        # fail-open 产废品 C;装机态/显式指路不受影响 ${:-} 保用户覆写)
+        CTRON_STDPATH="${CTRON_STDPATH:-$ROOT/lib/std}" "$HOST" run "$TMP" > "$OUTC"
         rc=$?
         if [ $rc -eq 0 ]; then
             mkdir -p "$CACHE_DIR"

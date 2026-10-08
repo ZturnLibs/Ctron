@@ -38,12 +38,24 @@ fn main() -> I32 {
                 }
                 return 1
             }
-            file = pkg_load_use(file, pkg_dir_of(epath), lstack, ldiags)
+            var lmisses = List[Str]()
+            file = pkg_load_use_m(file, pkg_dir_of(epath), lstack, ldiags, lmisses)
             if ldiags.len > 0 {
                 var li: I32 = 0
                 while li < ldiags.len {
-                    println(ldiags[li])
+                    eprint(ldiags[li])
                     li += 1
+                }
+                return 1
+            }
+            // S4-⑤:emit 面解析链未命中 = fail-closed(此前静默保留 Use 产出
+            // 必然失败的 C 且 rc=0;调查 2026-10-07 定罪,COVERAGE 在册)。
+            // 诊断走 eprint:emit 的 stdout = 产物 C 载体,println 诊断会污染产物
+            if lmisses.len > 0 {
+                var mi2: I32 = 0
+                while mi2 < lmisses.len {
+                    eprint("E2020: use 导入未命中解析链:" + lmisses[mi2] + "(W8902 出路:独立发布包试: ctron pkg add " + lmisses[mi2] + ";std 包查 CTRON_STDPATH)")
+                    mi2 += 1
                 }
                 return 1
             }
